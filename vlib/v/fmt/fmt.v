@@ -922,14 +922,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.write(node.val.str())
 		}
 		ast.CastExpr {
-			node.typname = f.table.get_type_symbol(node.typ).name
-			f.write(f.table.type_to_str(node.typ) + '(')
-			f.expr(node.expr)
-			if node.has_arg {
-				f.write(', ')
-				f.expr(node.arg)
-			}
-			f.write(')')
+			f.cast_expr(node)
 		}
 		ast.AtExpr {
 			f.at_expr(node)
@@ -1021,49 +1014,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.size_of(node)
 		}
 		ast.SqlExpr {
-			// sql app.db { select from Contributor where repo == id && user == 0 }
-			f.write('sql ')
-			f.expr(node.db_expr)
-			f.writeln(' {')
-			f.write('\t')
-			f.write('select ')
-			esym := f.table.get_type_symbol(node.table_type)
-			node.table_name = esym.name
-			if node.is_count {
-				f.write('count ')
-			} else {
-				if node.fields.len > 0 {
-					for tfi, tf in node.fields {
-						f.write(tf.name)
-						if tfi < node.fields.len - 1 {
-							f.write(', ')
-						}
-					}
-					f.write(' ')
-				}
-			}
-			f.write('from ${util.strip_mod_name(node.table_name)}')
-			if node.has_where {
-				f.write(' where ')
-				f.expr(node.where_expr)
-			}
-			if node.has_order {
-				f.write(' order by ')
-				f.expr(node.order_expr)
-				if node.has_desc {
-					f.write(' desc')
-				}
-			}
-			if node.has_limit {
-				f.write(' limit ')
-				f.expr(node.limit_expr)
-			}
-			if node.has_offset {
-				f.write(' offset ')
-				f.expr(node.offset_expr)
-			}
-			f.writeln('')
-			f.write('}')
+			f.sql_expr(node)
 		}
 		ast.StringLiteral {
 			f.string_literal(node)
@@ -1354,6 +1305,16 @@ pub fn (mut f Fmt) assoc(node ast.Assoc) {
 	f.write('}')
 }
 
+pub fn (mut f Fmt) cast_expr(node ast.CastExpr) {
+	f.write(f.table.type_to_str(node.typ) + '(')
+	f.expr(node.expr)
+	if node.has_arg {
+		f.write(', ')
+		f.expr(node.arg)
+	}
+	f.write(')')
+}
+
 pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 	if node.is_vweb {
 		if node.method_name == 'html' {
@@ -1514,6 +1475,52 @@ pub fn (mut f Fmt) size_of(node ast.SizeOf) {
 		f.expr(node.expr)
 	}
 	f.write(')')
+}
+
+pub fn (mut f Fmt) sql_expr(node ast.SqlExpr) {
+	// sql app.db { select from Contributor where repo == id && user == 0 }
+	f.write('sql ')
+	f.expr(node.db_expr)
+	f.writeln(' {')
+	f.write('\t')
+	f.write('select ')
+	esym := f.table.get_type_symbol(node.table_type)
+	table_name := esym.name
+	if node.is_count {
+		f.write('count ')
+	} else {
+		if node.fields.len > 0 {
+			for tfi, tf in node.fields {
+				f.write(tf.name)
+				if tfi < node.fields.len - 1 {
+					f.write(', ')
+				}
+			}
+			f.write(' ')
+		}
+	}
+	f.write('from ${util.strip_mod_name(table_name)}')
+	if node.has_where {
+		f.write(' where ')
+		f.expr(node.where_expr)
+	}
+	if node.has_order {
+		f.write(' order by ')
+		f.expr(node.order_expr)
+		if node.has_desc {
+			f.write(' desc')
+		}
+	}
+	if node.has_limit {
+		f.write(' limit ')
+		f.expr(node.limit_expr)
+	}
+	if node.has_offset {
+		f.write(' offset ')
+		f.expr(node.offset_expr)
+	}
+	f.writeln('')
+	f.write('}')
 }
 
 pub fn (mut f Fmt) string_literal(node ast.StringLiteral) {
