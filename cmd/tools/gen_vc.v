@@ -91,6 +91,8 @@ struct WebhookServer {
 	vweb.Context
 mut:
 	gen_vc &GenVC
+pub mut:
+	dataptr &WebhookServer = voidptr(0)
 }
 
 // storage for flag options
@@ -158,6 +160,8 @@ pub fn (mut ws WebhookServer) init_once() {
 pub fn (mut ws WebhookServer) init() {
 	// ws.init_once()
 }
+
+pub fn (mut ws WebhookServer) uninit() {}
 
 pub fn (mut ws WebhookServer) index() {
 	eprintln('WebhookServer.index() called')
