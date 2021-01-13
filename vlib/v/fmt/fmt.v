@@ -913,22 +913,10 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.array_init(node)
 		}
 		ast.AsCast {
-			type_str := f.table.type_to_str(node.typ)
-			f.expr(node.expr)
-			f.write(' as $type_str')
+			f.as_cast(node)
 		}
 		ast.Assoc {
-			f.writeln('{')
-			// f.indent++
-			f.writeln('\t$node.var_name |')
-			// TODO StructInit copy pasta
-			for i, field in node.fields {
-				f.write('\t$field: ')
-				f.expr(node.exprs[i])
-				f.writeln('')
-			}
-			// f.indent--
-			f.write('}')
+			f.assoc(node)
 		}
 		ast.BoolLiteral {
 			f.write(node.val.str())
@@ -963,36 +951,16 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			}
 		}
 		ast.ComptimeCall {
-			if node.is_vweb {
-				if node.method_name == 'html' {
-					f.write('\$vweb.html()')
-				} else {
-					f.write("\$tmpl('$node.args_var')")
-				}
-			} else {
-				method_expr := if node.has_parens {
-					'(${node.method_name}($node.args_var))'
-				} else {
-					'${node.method_name}($node.args_var)'
-				}
-				f.write('${node.left}.$$method_expr')
-			}
+			f.comptime_call(node)
 		}
 		ast.ComptimeSelector {
-			field_expr := if node.has_parens { '($node.field_expr)' } else { node.field_expr.str() }
-			f.write('${node.left}.$$field_expr')
+			f.comptime_selector(node)
 		}
 		ast.ConcatExpr {
-			for i, val in node.vals {
-				if i != 0 {
-					f.write(', ')
-				}
-				f.expr(val)
-			}
+			f.concat_expr(node)
 		}
 		ast.EnumVal {
-			name := f.short_module(node.enum_name)
-			f.write(name + '.' + node.val)
+			f.enum_val(node)
 		}
 		ast.FloatLiteral {
 			f.write(node.val)
@@ -1001,37 +969,16 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.if_expr(node)
 		}
 		ast.Ident {
-			if mut node.info is ast.IdentVar {
-				if node.info.is_mut {
-					f.write(node.info.share.str() + ' ')
-				}
-			}
-			f.write_language_prefix(node.language)
-			if node.name == 'it' && f.it_name != '' && !f.inside_lambda { // allow `it` in lambdas
-				f.write(f.it_name)
-			} else if node.kind == .blank_ident {
-				f.write('_')
-			} else {
-				name := f.short_module(node.name)
-				// f.write('<$it.name => $name>')
-				f.write(name)
-				if name.contains('.') {
-					f.mark_module_as_used(name)
-				}
-			}
+			f.ident(node)
 		}
 		ast.IfGuardExpr {
-			f.write(node.var_name + ' := ')
-			f.expr(node.expr)
+			f.if_guard_expr(node)
 		}
 		ast.InfixExpr {
 			f.infix_expr(node)
 		}
 		ast.IndexExpr {
-			f.expr(node.left)
-			f.write('[')
-			f.expr(node.index)
-			f.write(']')
+			f.index_expr(node)
 		}
 		ast.IntegerLiteral {
 			f.write(node.val)
@@ -1049,95 +996,29 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.write('none')
 		}
 		ast.OrExpr {
-			// shouldn't happen, an or expression
-			// is always linked to a call expr
+			// shouldn't happen, an or expression is always linked to a call expr
 			panic('fmt: OrExpr should be linked to CallExpr')
 		}
 		ast.ParExpr {
-			f.write('(')
-			f.par_level++
-			f.expr(node.expr)
-			f.par_level--
-			f.write(')')
+			f.par_expr(node)
 		}
 		ast.PostfixExpr {
-			f.expr(node.expr)
-			// `$if foo ?`
-			if node.op == .question {
-				f.write(' ?')
-			} else {
-				f.write('$node.op')
-			}
+			f.postfix_expr(node)
 		}
 		ast.PrefixExpr {
-			f.write(node.op.str())
-			f.prefix_expr_cast_expr(node.right)
+			f.prefix_expr(node)
 		}
 		ast.RangeExpr {
-			f.expr(node.low)
-			if f.is_mbranch_expr {
-				f.write('...')
-			} else {
-				f.write('..')
-			}
-			f.expr(node.high)
+			f.range_expr(node)
 		}
 		ast.SelectExpr {
-			f.writeln('select {')
-			f.indent++
-			for branch in node.branches {
-				if branch.comment.text != '' {
-					f.comment(branch.comment, inline: true)
-					f.writeln('')
-				}
-				if branch.is_else {
-					f.write('else {')
-				} else {
-					if branch.is_timeout {
-						f.write('> ')
-					}
-					f.single_line_if = true
-					match branch.stmt {
-						ast.ExprStmt { f.expr(branch.stmt.expr) }
-						else { f.stmt(branch.stmt) }
-					}
-					f.single_line_if = false
-					f.write(' {')
-				}
-				if branch.stmts.len > 0 {
-					f.writeln('')
-					f.stmts(branch.stmts)
-				}
-				f.writeln('}')
-				if branch.post_comments.len > 0 {
-					f.comments(branch.post_comments, inline: true)
-				}
-			}
-			f.indent--
-			f.write('}')
+			f.select_expr(node)
 		}
 		ast.SelectorExpr {
-			f.expr(node.expr)
-			f.write('.')
-			f.write(node.field_name)
+			f.selector_expr(node)
 		}
 		ast.SizeOf {
-			f.write('sizeof(')
-			if node.is_type {
-				sym := f.table.get_type_symbol(node.typ)
-				if sym.name != '' {
-					if f.is_external_name(sym.name) {
-						f.write(sym.name)
-					} else {
-						f.write(f.short_module(sym.name))
-					}
-				} else {
-					f.write(f.table.type_to_str(node.typ))
-				}
-			} else {
-				f.expr(node.expr)
-			}
-			f.write(')')
+			f.size_of(node)
 		}
 		ast.SqlExpr {
 			// sql app.db { select from Contributor where repo == id && user == 0 }
@@ -1185,60 +1066,10 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.write('}')
 		}
 		ast.StringLiteral {
-			use_double_quote := node.val.contains("'") && !node.val.contains('"')
-			if node.is_raw {
-				f.write('r')
-			} else if node.language == table.Language.c {
-				f.write('c')
-			}
-			if node.is_raw {
-				if use_double_quote {
-					f.write('"$node.val"')
-				} else {
-					f.write("'$node.val'")
-				}
-			} else {
-				unescaped_val := node.val.replace('$bs$bs', '\x01').replace_each(["$bs'", "'",
-					'$bs"', '"'])
-				if use_double_quote {
-					s := unescaped_val.replace_each(['\x01', '$bs$bs', '"', '$bs"'])
-					f.write('"$s"')
-				} else {
-					s := unescaped_val.replace_each(['\x01', '$bs$bs', "'", "$bs'"])
-					f.write("'$s'")
-				}
-			}
+			f.string_literal(node)
 		}
 		ast.StringInterLiteral {
-			// TODO: this code is very similar to ast.Expr.str()
-			mut quote := "'"
-			for val in node.vals {
-				if val.contains("'") {
-					quote = '"'
-				}
-				if val.contains('"') {
-					quote = "'"
-					break
-				}
-			}
-			f.write(quote)
-			for i, val in node.vals {
-				f.write(val)
-				if i >= node.exprs.len {
-					break
-				}
-				f.write('$')
-				fspec_str, needs_braces := node.get_fspec_braces(i)
-				if needs_braces {
-					f.write('{')
-					f.expr(node.exprs[i])
-					f.write(fspec_str)
-					f.write('}')
-				} else {
-					f.expr(node.exprs[i])
-				}
-			}
-			f.write(quote)
+			f.string_inter_literal(node)
 		}
 		ast.StructInit {
 			f.struct_init(node)
@@ -1247,42 +1078,16 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.write(f.table.type_to_str(node.typ))
 		}
 		ast.TypeOf {
-			f.write('typeof(')
-			f.expr(node.expr)
-			f.write(')')
+			f.type_of(node)
 		}
 		ast.Likely {
-			if node.is_likely {
-				f.write('_likely_')
-			} else {
-				f.write('_unlikely_')
-			}
-			f.write('(')
-			f.expr(node.expr)
-			f.write(')')
+			f.likely(node)
 		}
 		ast.UnsafeExpr {
-			single_line := node.pos.line_nr >= node.pos.last_line
-			f.write('unsafe {')
-			if single_line {
-				f.write(' ')
-			} else {
-				f.writeln('')
-				f.indent++
-				f.empty_line = true
-			}
-			f.expr(node.expr)
-			if single_line {
-				f.write(' ')
-			} else {
-				f.writeln('')
-				f.indent--
-			}
-			f.write('}')
+			f.unsafe_expr(node)
 		}
 		ast.ArrayDecompose {
-			f.write('...')
-			f.expr(node.expr)
+			f.array_decompose(node)
 		}
 	}
 }
@@ -1527,6 +1332,288 @@ pub fn (mut f Fmt) short_module(name string) string {
 		return symname
 	}
 	return '$tprefix${aname}.$symname'
+}
+
+pub fn (mut f Fmt) as_cast(node ast.AsCast) {
+	type_str := f.table.type_to_str(node.typ)
+	f.expr(node.expr)
+	f.write(' as $type_str')
+}
+
+pub fn (mut f Fmt) assoc(node ast.Assoc) {
+	f.writeln('{')
+	// f.indent++
+	f.writeln('\t$node.var_name |')
+	// TODO StructInit copy pasta
+	for i, field in node.fields {
+		f.write('\t$field: ')
+		f.expr(node.exprs[i])
+		f.writeln('')
+	}
+	// f.indent--
+	f.write('}')
+}
+
+pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
+	if node.is_vweb {
+		if node.method_name == 'html' {
+			f.write('\$vweb.html()')
+		} else {
+			f.write("\$tmpl('$node.args_var')")
+		}
+	} else {
+		method_expr := if node.has_parens {
+			'(${node.method_name}($node.args_var))'
+		} else {
+			'${node.method_name}($node.args_var)'
+		}
+		f.write('${node.left}.$$method_expr')
+	}
+}
+
+pub fn (mut f Fmt) comptime_selector(node ast.ComptimeSelector) {
+	field_expr := if node.has_parens { '($node.field_expr)' } else { node.field_expr.str() }
+	f.write('${node.left}.$$field_expr')
+}
+
+pub fn (mut f Fmt) concat_expr(node ast.ConcatExpr) {
+	for i, val in node.vals {
+		if i != 0 {
+			f.write(', ')
+		}
+		f.expr(val)
+	}
+}
+
+pub fn (mut f Fmt) enum_val(node ast.EnumVal) {
+	name := f.short_module(node.enum_name)
+	f.write(name + '.' + node.val)
+}
+
+pub fn (mut f Fmt) ident(node ast.Ident) {
+	if mut node.info is ast.IdentVar {
+		if node.info.is_mut {
+			f.write(node.info.share.str() + ' ')
+		}
+	}
+	f.write_language_prefix(node.language)
+	if node.name == 'it' && f.it_name != '' && !f.inside_lambda { // allow `it` in lambdas
+		f.write(f.it_name)
+	} else if node.kind == .blank_ident {
+		f.write('_')
+	} else {
+		name := f.short_module(node.name)
+		// f.write('<$it.name => $name>')
+		f.write(name)
+		if name.contains('.') {
+			f.mark_module_as_used(name)
+		}
+	}
+}
+
+pub fn (mut f Fmt) if_guard_expr(node ast.IfGuardExpr) {
+	f.write(node.var_name + ' := ')
+	f.expr(node.expr)
+}
+
+pub fn (mut f Fmt) index_expr(node ast.IndexExpr) {
+	f.expr(node.left)
+	f.write('[')
+	f.expr(node.index)
+	f.write(']')
+}
+
+pub fn (mut f Fmt) par_expr(node ast.ParExpr) {
+	f.write('(')
+	f.par_level++
+	f.expr(node.expr)
+	f.par_level--
+	f.write(')')
+}
+
+pub fn (mut f Fmt) postfix_expr(node ast.PostfixExpr) {
+	f.expr(node.expr)
+	// `$if foo ?`
+	if node.op == .question {
+		f.write(' ?')
+	} else {
+		f.write('$node.op')
+	}
+}
+
+pub fn (mut f Fmt) prefix_expr(node ast.PrefixExpr) {
+	f.write(node.op.str())
+	f.prefix_expr_cast_expr(node.right)
+}
+
+pub fn (mut f Fmt) range_expr(node ast.RangeExpr) {
+	f.expr(node.low)
+	if f.is_mbranch_expr {
+		f.write('...')
+	} else {
+		f.write('..')
+	}
+	f.expr(node.high)
+}
+
+pub fn (mut f Fmt) select_expr(node ast.SelectExpr) {
+	f.writeln('select {')
+	f.indent++
+	for branch in node.branches {
+		if branch.comment.text != '' {
+			f.comment(branch.comment, inline: true)
+			f.writeln('')
+		}
+		if branch.is_else {
+			f.write('else {')
+		} else {
+			if branch.is_timeout {
+				f.write('> ')
+			}
+			f.single_line_if = true
+			match branch.stmt {
+				ast.ExprStmt { f.expr(branch.stmt.expr) }
+				else { f.stmt(branch.stmt) }
+			}
+			f.single_line_if = false
+			f.write(' {')
+		}
+		if branch.stmts.len > 0 {
+			f.writeln('')
+			f.stmts(branch.stmts)
+		}
+		f.writeln('}')
+		if branch.post_comments.len > 0 {
+			f.comments(branch.post_comments, inline: true)
+		}
+	}
+	f.indent--
+	f.write('}')
+}
+
+pub fn (mut f Fmt) selector_expr(node ast.SelectorExpr) {
+	f.expr(node.expr)
+	f.write('.')
+	f.write(node.field_name)
+}
+
+pub fn (mut f Fmt) size_of(node ast.SizeOf) {
+	f.write('sizeof(')
+	if node.is_type {
+		sym := f.table.get_type_symbol(node.typ)
+		if sym.name != '' {
+			if f.is_external_name(sym.name) {
+				f.write(sym.name)
+			} else {
+				f.write(f.short_module(sym.name))
+			}
+		} else {
+			f.write(f.table.type_to_str(node.typ))
+		}
+	} else {
+		f.expr(node.expr)
+	}
+	f.write(')')
+}
+
+pub fn (mut f Fmt) string_literal(node ast.StringLiteral) {
+	use_double_quote := node.val.contains("'") && !node.val.contains('"')
+	if node.is_raw {
+		f.write('r')
+	} else if node.language == table.Language.c {
+		f.write('c')
+	}
+	if node.is_raw {
+		if use_double_quote {
+			f.write('"$node.val"')
+		} else {
+			f.write("'$node.val'")
+		}
+	} else {
+		unescaped_val := node.val.replace('$bs$bs', '\x01').replace_each(["$bs'", "'",
+			'$bs"', '"'])
+		if use_double_quote {
+			s := unescaped_val.replace_each(['\x01', '$bs$bs', '"', '$bs"'])
+			f.write('"$s"')
+		} else {
+			s := unescaped_val.replace_each(['\x01', '$bs$bs', "'", "$bs'"])
+			f.write("'$s'")
+		}
+	}
+}
+
+pub fn (mut f Fmt) string_inter_literal(node ast.StringInterLiteral) {
+	// TODO: this code is very similar to ast.Expr.str()
+	mut quote := "'"
+	for val in node.vals {
+		if val.contains("'") {
+			quote = '"'
+		}
+		if val.contains('"') {
+			quote = "'"
+			break
+		}
+	}
+	f.write(quote)
+	for i, val in node.vals {
+		f.write(val)
+		if i >= node.exprs.len {
+			break
+		}
+		f.write('$')
+		fspec_str, needs_braces := node.get_fspec_braces(i)
+		if needs_braces {
+			f.write('{')
+			f.expr(node.exprs[i])
+			f.write(fspec_str)
+			f.write('}')
+		} else {
+			f.expr(node.exprs[i])
+		}
+	}
+	f.write(quote)
+}
+
+pub fn (mut f Fmt) type_of(node ast.TypeOf) {
+	f.write('typeof(')
+	f.expr(node.expr)
+	f.write(')')
+}
+
+pub fn (mut f Fmt) likely(node ast.Likely) {
+	if node.is_likely {
+		f.write('_likely_')
+	} else {
+		f.write('_unlikely_')
+	}
+	f.write('(')
+	f.expr(node.expr)
+	f.write(')')
+}
+
+pub fn (mut f Fmt) unsafe_expr(node ast.UnsafeExpr) {
+	single_line := node.pos.line_nr >= node.pos.last_line
+	f.write('unsafe {')
+	if single_line {
+		f.write(' ')
+	} else {
+		f.writeln('')
+		f.indent++
+		f.empty_line = true
+	}
+	f.expr(node.expr)
+	if single_line {
+		f.write(' ')
+	} else {
+		f.writeln('')
+		f.indent--
+	}
+	f.write('}')
+}
+
+pub fn (mut f Fmt) array_decompose(node ast.ArrayDecompose) {
+	f.write('...')
+	f.expr(node.expr)
 }
 
 pub fn (mut f Fmt) lock_expr(lex ast.LockExpr) {
