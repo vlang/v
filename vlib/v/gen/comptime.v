@@ -43,7 +43,7 @@ fn (mut g Gen) comptime_call_embed_file(node ast.ComptimeCall) {
 }
 
 fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
-	if node.method_name == 'embed_file' {
+	if !node.is_vweb && node.method_name == 'embed_file' {
 		g.comptime_call_embed_file(node)
 		return
 	}
