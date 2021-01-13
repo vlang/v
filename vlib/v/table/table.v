@@ -129,19 +129,22 @@ pub fn (t &Table) fn_type_source_signature(f &Fn) string {
 	return sig
 }
 
-pub fn (f &Fn) is_same_method_as(func &Fn) bool {
+pub fn (t &Table) is_same_method(f &Fn, func &Fn) string {
 	if f.return_type != func.return_type {
-		return false
+		s := t.type_to_str(f.return_type)
+		return 'expected return type `$s`'
 	}
 	if f.params.len != func.params.len {
-		return false
+		return 'expected $f.params.len parameter(s), not $func.params.len'
 	}
 	for i in 1 .. f.params.len {
 		if f.params[i].typ != func.params[i].typ {
-			return false
+			exps := t.type_to_str(f.params[i].typ)
+			gots := t.type_to_str(func.params[i].typ)
+			return 'expected `$exps`, not `$gots` for parameter $i'
 		}
 	}
-	return true
+	return ''
 }
 
 pub fn (t &Table) find_fn(name string) ?Fn {
