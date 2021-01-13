@@ -5386,6 +5386,12 @@ fn (mut g Gen) go_stmt(node ast.GoStmt) {
 	tmp := g.new_tmp_var()
 	expr := node.call_expr as ast.CallExpr
 	mut name := expr.name // util.no_dots(expr.name)
+	// TODO: fn call is duplicated. merge with fn_call().
+	if expr.generic_type != table.void_type && expr.generic_type != 0 {
+		// Using _T_ to differentiate between get<string> and get_string
+		// `foo<int>()` => `foo_T_int()`
+		name += '_T_' + g.typ(expr.generic_type)
+	}
 	if expr.is_method {
 		receiver_sym := g.table.get_type_symbol(expr.receiver_type)
 		name = receiver_sym.name + '_' + name
