@@ -35,7 +35,6 @@ fn cb_assertion_failed(i &VAssertMetaInfo) {
 	}
 	final_src := if use_color { term.dim('assert ${term.bold(i.src)}') } else { 'assert ' + i.src }
 	eprintln('$final_filepath $final_funcname')
-	eprintln('    $final_src')
 	if i.op.len > 0 && i.op != 'call' {
 		mut lvtitle := '    Left value:'
 		mut rvtitle := '    Right value:'
@@ -47,10 +46,20 @@ fn cb_assertion_failed(i &VAssertMetaInfo) {
 			lvtitle = term.gray(lvtitle)
 			rvtitle = term.gray(rvtitle)
 		}
-		eprintln(lvtitle)
-		eprintln('      $slvalue')
-		eprintln(rvtitle)
-		eprintln('      $srvalue')
+		cutoff_limit := 30
+		if slvalue.len > cutoff_limit || srvalue.len > cutoff_limit {
+			eprintln('  > $final_src')
+			eprintln(lvtitle)
+			eprintln('      $slvalue')
+			eprintln(rvtitle)
+			eprintln('      $srvalue')
+		} else {
+			eprintln('   > $final_src')
+			eprintln(' $lvtitle $slvalue')
+			eprintln('$rvtitle $srvalue')
+		}
+	} else {
+		eprintln('    $final_src')
 	}
 	eprintln('')
 }
