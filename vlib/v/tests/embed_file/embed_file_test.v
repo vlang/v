@@ -1,7 +1,7 @@
 import os
 
 const (
-	const_file = $embed_file('/home/runner/work/v/v/vlib/v/tests/embed_file/v.png')
+	const_file = $embed_file('v.png')
 )
 
 fn test_const_embed_file() {
@@ -17,7 +17,7 @@ fn test_const_embed_file() {
 }
 
 fn test_embed_file() {
-	mut file := $embed_file('/home/runner/work/v/v/vlib/v/tests/embed_file/v.png')
+	mut file := $embed_file('v.png')
 	out := os.join_path(os.temp_dir(), 'v_embed_out.png')
 	os.rm(out)
 	mut fw := os.create(out) or { panic('failed to create file $out') }
