@@ -240,8 +240,12 @@ fn (mut g Gen) fn_args(args []table.Param, is_variadic bool) ([]string, []string
 				g.definitions.write(')')
 			}
 		} else {
-			//TODO: combine two lines into one once ternary in expression is fixed
-			mut s := if arg_type_sym.kind == .array_fixed { arg_type_name.trim('*') } else { arg_type_name } 
+			// TODO: combine two operations into one once ternary in expression is fixed
+			mut s := if arg_type_sym.kind == .array_fixed {
+				arg_type_name.trim('*')
+			} else {
+				arg_type_name
+			}
 			s += ' ' + caname
 			g.write(s)
 			g.definitions.write(s)
