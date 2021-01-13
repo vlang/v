@@ -1935,9 +1935,10 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				str_add = true
 			}
 			// Assignment Operator Overloading
-			if left_sym.kind == .struct_ &&
-				right_sym.kind == .struct_ && assign_stmt.op in
-				[.plus_assign, .minus_assign, .div_assign, .mult_assign, .mod_assign] {
+			if ((left_sym.kind == .struct_ &&
+				right_sym.kind == .struct_) || (left_sym.kind == .alias &&
+				right_sym.kind == .alias)) &&
+				assign_stmt.op in [.plus_assign, .minus_assign, .div_assign, .mult_assign, .mod_assign] {
 				g.expr(left)
 				extracted_op := match assign_stmt.op {
 					.plus_assign { '+' }
