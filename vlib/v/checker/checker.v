@@ -3357,6 +3357,9 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			return c.selector_expr(mut node)
 		}
 		ast.SizeOf {
+			if !node.is_type {
+				node.typ = c.expr(node.expr)
+			}
 			return table.u32_type
 		}
 		ast.SqlExpr {

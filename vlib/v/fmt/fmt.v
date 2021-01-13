@@ -1122,23 +1122,22 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.write(node.field_name)
 		}
 		ast.SizeOf {
+			f.write('sizeof(')
 			if node.is_type {
-				f.write('sizeof(')
-				if node.type_name != '' {
-					if f.is_external_name(node.type_name) {
-						f.write(node.type_name)
+				sym := f.table.get_type_symbol(node.typ)
+				if sym.name != '' {
+					if f.is_external_name(sym.name) {
+						f.write(sym.name)
 					} else {
-						f.write(f.short_module(node.type_name))
+						f.write(f.short_module(sym.name))
 					}
 				} else {
 					f.write(f.table.type_to_str(node.typ))
 				}
-				f.write(')')
 			} else {
-				f.write('sizeof(')
 				f.expr(node.expr)
-				f.write(')')
 			}
+			f.write(')')
 		}
 		ast.SqlExpr {
 			// sql app.db { select from Contributor where repo == id && user == 0 }
