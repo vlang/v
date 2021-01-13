@@ -1211,21 +1211,17 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		}
 		ast.StringInterLiteral {
 			// TODO: this code is very similar to ast.Expr.str()
-			mut contains_single_quote := false
+			mut quote := "'"
 			for val in node.vals {
 				if val.contains("'") {
-					contains_single_quote = true
+					quote = '"'
 				}
 				if val.contains('"') {
-					contains_single_quote = false
+					quote = "'"
 					break
 				}
 			}
-			if contains_single_quote {
-				f.write('"')
-			} else {
-				f.write("'")
-			}
+			f.write(quote)
 			for i, val in node.vals {
 				f.write(val)
 				if i >= node.exprs.len {
@@ -1242,11 +1238,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 					f.expr(node.exprs[i])
 				}
 			}
-			if contains_single_quote {
-				f.write('"')
-			} else {
-				f.write("'")
-			}
+			f.write(quote)
 		}
 		ast.StructInit {
 			f.struct_init(node)
