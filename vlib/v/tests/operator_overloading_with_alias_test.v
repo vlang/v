@@ -11,5 +11,4 @@ fn test_operator_overloading_alias() {
 	c += Custom(' type')
 	assert c == Custom('custom type')
 	assert c.str() == 'custom type'
-
 }
