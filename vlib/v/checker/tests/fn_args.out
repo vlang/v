@@ -3,17 +3,17 @@ vlib/v/checker/tests/fn_args.vv:6:5: error: cannot use `&int` as `byte` in argum
     5 | v := 4
     6 | ptr(&v)
       |     ~~
-    7 | arr([5]!!)
+    7 | arr([5]!)
     8 | fun(fn(i &int){})
 vlib/v/checker/tests/fn_args.vv:7:5: error: cannot use `[1]int` as `[]int` in argument 1 to `arr`
     5 | v := 4
     6 | ptr(&v)
-    7 | arr([5]!!)
-      |     ~~~~~
+    7 | arr([5]!)
+      |     ~~~~
     8 | fun(fn(i &int){})
 vlib/v/checker/tests/fn_args.vv:8:5: error: cannot use `fn (&int)` as `fn (int)` in argument 1 to `fun`
     6 | ptr(&v)
-    7 | arr([5]!!)
+    7 | arr([5]!)
     8 | fun(fn(i &int){})
       |     ~~~~~~~~~~~~
 details: ``'s expected fn argument: `` is NOT a pointer, but the passed fn argument: `i` is a pointer
