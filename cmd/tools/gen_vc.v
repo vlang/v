@@ -79,9 +79,9 @@ const (
 struct GenVC {
 	// logger
 	// flag options
-	options   FlagOptions
+	options FlagOptions
 mut:
-	logger    &log.Log
+	logger &log.Log
 	// true if error was experienced running generate
 	gen_error bool
 }
@@ -256,8 +256,8 @@ fn (mut gen_vc GenVC) generate() {
 	last_commit_hash_v := git_log_v.find_between('commit', '\n').trim_space()
 	last_commit_hash_v_short := last_commit_hash_v[..7]
 	// subject
-	last_commit_subject := git_log_v.find_between('Subject:', '\n').trim_space().replace('"',
-		'\\"')
+	last_commit_subject := git_log_v.find_between('Subject:', '\n').trim_space().replace("'",
+		'"')
 	// log some info
 	gen_vc.logger.debug('last commit time ($git_repo_v): ' + last_commit_time_v.format_ss())
 	gen_vc.logger.debug('last commit time ($git_repo_vc): ' + last_commit_time_vc.format_ss())
@@ -296,7 +296,7 @@ fn (mut gen_vc GenVC) generate() {
 		gen_vc.gen_error = true
 	}
 	// commit changes to local vc repo
-	gen_vc.cmd_exec_safe('git -C $git_repo_dir_vc commit -m "[v:master] $last_commit_hash_v_short - $last_commit_subject"')
+	gen_vc.cmd_exec_safe("git -C $git_repo_dir_vc commit -m '[v:master] $last_commit_hash_v_short - $last_commit_subject'")
 	// push changes to remote vc repo
 	gen_vc.cmd_exec_safe('git -C $git_repo_dir_vc push https://${urllib.query_escape(git_username)}:${urllib.query_escape(git_password)}@$git_repo_vc master')
 }

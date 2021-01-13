@@ -338,6 +338,12 @@ pub fn (node Stmt) str() string {
 		BranchStmt {
 			return node.str()
 		}
+		ConstDecl {
+			fields := node.fields.map(fn (f ConstField) string {
+				return '${f.name.trim_prefix(f.mod + '.')} = $f.expr'
+			})
+			return 'const (${fields.join(' ')})'
+		}
 		ExprStmt {
 			return node.expr.str()
 		}
@@ -346,6 +352,16 @@ pub fn (node Stmt) str() string {
 		}
 		EnumDecl {
 			return 'enum $node.name { $node.fields.len fields }'
+		}
+		Module {
+			return 'module $node.name'
+		}
+		Import {
+			mut out := 'import $node.mod'
+			if node.alias.len > 0 {
+				out += ' as $node.alias'
+			}
+			return out
 		}
 		StructDecl {
 			return 'struct $node.name { $node.fields.len fields }'

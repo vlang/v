@@ -14,7 +14,7 @@ provides API (functions and methods) for accessing and modifying bit arrays.
 */
 pub struct BitField {
 mut:
-	size  int
+	size int
 	// field *u32
 	field []u32
 }

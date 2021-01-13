@@ -327,6 +327,7 @@ fn get_string(param bool) ?string {
 	if param {
 		return 'Hello World'
 	}
+	return none
 }
 
 fn test_option_auto_add_return_none() {

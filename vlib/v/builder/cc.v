@@ -163,20 +163,20 @@ mut:
 	shared_postfix   string // .so, .dll
 	//
 	//
-	debug_mode       bool
-	is_cc_tcc        bool
-	is_cc_gcc        bool
-	is_cc_msvc       bool
-	is_cc_clang      bool
+	debug_mode  bool
+	is_cc_tcc   bool
+	is_cc_gcc   bool
+	is_cc_msvc  bool
+	is_cc_clang bool
 	//
-	env_cflags       string // prepended *before* everything else
-	env_ldflags      string // appended *after* everything else
+	env_cflags  string // prepended *before* everything else
+	env_ldflags string // appended *after* everything else
 	//
-	args             []string // ordinary C options like `-O2`
-	wargs            []string // for `-Wxyz` *exclusively*
-	o_args           []string // for `-o target`
-	post_args        []string // options that should go after .o_args
-	linker_flags     []string // `-lm`
+	args         []string // ordinary C options like `-O2`
+	wargs        []string // for `-Wxyz` *exclusively*
+	o_args       []string // for `-o target`
+	post_args    []string // options that should go after .o_args
+	linker_flags []string // `-lm`
 }
 
 fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
@@ -510,7 +510,7 @@ fn (mut v Builder) cc() {
 		if v.pref.os == .ios {
 			ios_sdk := if v.pref.is_ios_simulator { 'iphonesimulator' } else { 'iphoneos' }
 			ios_sdk_path_res := os.exec('xcrun --sdk $ios_sdk --show-sdk-path') or {
-				panic("Couldn\'t find iphonesimulator")
+				panic("Couldn't find iphonesimulator")
 			}
 			mut isysroot := ios_sdk_path_res.output.replace('\n', '')
 			ccompiler = 'xcrun --sdk iphoneos clang -isysroot $isysroot'

@@ -16,12 +16,12 @@ pub enum ProcessState {
 [ref_only]
 pub struct Process {
 pub:
-	filename      string // the process's command file path
+	filename string // the process's command file path
 pub mut:
-	pid           int // the PID of the process
-	code          int = -1
+	pid  int // the PID of the process
+	code int = -1
 	// the exit code of the process, != -1 *only* when status is .exited *and* the process was not aborted
-	status        ProcessState = .not_started
+	status ProcessState = .not_started
 	// the current status of the process
 	err           string   // if the process fails, contains the reason why
 	args          []string // the arguments that the command takes

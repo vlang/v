@@ -51,15 +51,26 @@ pub fn prepare_vc_source(vcdir string, cdir string, commit string) (string, stri
 	// or slightly before that time will be able to build the historic v:
 	vline := scripting.run('git rev-list -n1 --timestamp "$commit" ')
 	v_timestamp, v_commithash := line_to_timestamp_and_commit(vline)
+	scripting.verbose_trace(@FN, 'v_timestamp: $v_timestamp | v_commithash: $v_commithash')
 	check_v_commit_timestamp_before_self_rebuilding(v_timestamp)
 	scripting.chdir(vcdir)
 	scripting.run('git checkout master')
-	vcbefore := scripting.run('git rev-list HEAD -n1 --timestamp --before=$v_timestamp ')
-	_, vccommit_before := line_to_timestamp_and_commit(vcbefore)
-	scripting.run('git checkout "$vccommit_before" ')
+	//
+	mut vccommit := ''
+	vcbefore_subject_match := scripting.run('git rev-list HEAD -n1 --timestamp --grep=${v_commithash[0..7]} ')
+	scripting.verbose_trace(@FN, 'vcbefore_subject_match: $vcbefore_subject_match')
+	if vcbefore_subject_match.len > 3 {
+		_, vccommit = line_to_timestamp_and_commit(vcbefore_subject_match)
+	} else {
+		scripting.verbose_trace(@FN, 'the v commit did not match anything in the vc log; try --timestamp instead.')
+		vcbefore := scripting.run('git rev-list HEAD -n1 --timestamp --before=$v_timestamp ')
+		_, vccommit = line_to_timestamp_and_commit(vcbefore)
+	}
+	scripting.verbose_trace(@FN, 'vccommit: $vccommit')
+	scripting.run('git checkout "$vccommit" ')
 	scripting.run('wc *.c')
 	scripting.chdir(cdir)
-	return v_commithash, vccommit_before
+	return v_commithash, vccommit
 }
 
 pub fn clone_or_pull(remote_git_url string, local_worktree_path string) {
@@ -76,13 +87,13 @@ pub fn clone_or_pull(remote_git_url string, local_worktree_path string) {
 
 pub struct VGitContext {
 pub:
-	cc             string = 'cc' // what compiler to use
-	workdir        string = '/tmp' // the base working folder
-	commit_v       string = 'master' // the commit-ish that needs to be prepared
-	path_v         string // where is the local working copy v repo
-	path_vc        string // where is the local working copy vc repo
-	v_repo_url     string // the remote v repo URL
-	vc_repo_url    string // the remote vc repo URL
+	cc          string = 'cc' // what compiler to use
+	workdir     string = '/tmp' // the base working folder
+	commit_v    string = 'master' // the commit-ish that needs to be prepared
+	path_v      string // where is the local working copy v repo
+	path_vc     string // where is the local working copy vc repo
+	v_repo_url  string // the remote v repo URL
+	vc_repo_url string // the remote vc repo URL
 pub mut:
 	// these will be filled by vgitcontext.compile_oldv_if_needed()
 	commit_v__hash string // the git commit of the v repo that should be prepared
@@ -110,7 +121,7 @@ pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 	scripting.chdir(vgit_context.path_v)
 	scripting.run('git checkout $vgit_context.commit_v')
 	v_commithash, vccommit_before := prepare_vc_source(vgit_context.path_vc, vgit_context.path_v,
-		vgit_context.commit_v)
+		'HEAD')
 	vgit_context.commit_v__hash = v_commithash
 	vgit_context.commit_vc_hash = vccommit_before
 	if os.exists('cmd/v') {
@@ -136,8 +147,8 @@ pub mut:
 	workdir     string // the working folder (typically /tmp), where the tool will write
 	v_repo_url  string // the url of the V repository. It can be a local folder path, if you want to eliminate network operations...
 	vc_repo_url string // the url of the vc repository. It can be a local folder path, if you want to eliminate network operations...
-	show_help   bool // whether to show the usage screen
-	verbose     bool // should the tool be much more verbose
+	show_help   bool   // whether to show the usage screen
+	verbose     bool   // should the tool be much more verbose
 }
 
 pub fn add_common_tool_options(mut context VGitOptions, mut fp flag.FlagParser) []string {

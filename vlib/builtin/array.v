@@ -10,9 +10,9 @@ pub struct array {
 pub:
 	element_size int // size in bytes of one element in the array.
 pub mut:
-	data         voidptr
-	len          int // length of the array.
-	cap          int // capacity of the array.
+	data voidptr
+	len  int // length of the array.
+	cap  int // capacity of the array.
 }
 
 // array.data uses a void pointer, which allows implementing arrays without generics and without generating
@@ -474,9 +474,9 @@ pub fn (a []string) str() string {
 	sb.write('[')
 	for i in 0 .. a.len {
 		val := a[i]
-		sb.write("\'")
+		sb.write("'")
 		sb.write(val)
-		sb.write("\'")
+		sb.write("'")
 		if i < a.len - 1 {
 			sb.write(', ')
 		}

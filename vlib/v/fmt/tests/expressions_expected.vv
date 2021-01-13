@@ -23,7 +23,7 @@ fn string_inter_lit(mut c checker.Checker, mut node ast.StringInterLiteral) tabl
 		}
 		if (typ.is_unsigned() && fmt !in [`u`, `x`, `X`, `o`, `c`]) ||
 			(typ.is_signed() && fmt !in [`d`, `x`, `X`, `o`, `c`]) ||
-			(typ.is_any_int() && fmt !in [`d`, `c`, `x`, `X`, `o`, `u`, `x`, `X`, `o`]) ||
+			(typ.is_int_literal() && fmt !in [`d`, `c`, `x`, `X`, `o`, `u`, `x`, `X`, `o`]) ||
 			(typ.is_float() && fmt !in [`E`, `F`, `G`, `e`, `f`, `g`]) ||
 			(typ.is_pointer() && fmt !in [`p`, `x`, `X`]) ||
 			(typ.is_string() && fmt != `s`) ||
