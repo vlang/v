@@ -1,11 +1,11 @@
-vlib/v/checker/tests/vweb_routing_checks.vv:20:1: error: mismatched parameters count between vweb method `App.bar` (1) and route attribute ['/bar'] (0)
+vlib/v/checker/tests/vweb_routing_checks.vv:22:1: error: mismatched parameters count between vweb method `App.bar` (1) and route attribute ['/bar'] (0)
    20 | // segfault because path taks 0 vars and fcn takes 1 arg
    21 | ['/bar']
    22 | pub fn (mut app App) bar(a string) vweb.Result {
       | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
    23 |     return app.html('works')
    24 | }
-vlib/v/checker/tests/vweb_routing_checks.vv:26:1: error: mismatched parameters count between vweb method `App.cow` (0) and route attribute ['/cow/:low'] (1)
+vlib/v/checker/tests/vweb_routing_checks.vv:28:1: error: mismatched parameters count between vweb method `App.cow` (0) and route attribute ['/cow/:low'] (1)
    23 | // no segfault, but it shouldnt compile
    27 | ['/cow/:low']
    28 | pub fn (mut app App) cow() vweb.Result {
