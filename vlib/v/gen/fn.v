@@ -347,7 +347,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.write('${c_name(receiver_type_name)}_name_table[')
 		g.expr(node.left)
 		dot := if node.left_type.is_ptr() { '->' } else { '.' }
-		g.write('${dot}_interface_idx].${node.name}(')
+		mname := c_name(node.name)
+		g.write('${dot}_interface_idx].${mname}(')
 		g.expr(node.left)
 		g.write('${dot}_object')
 		if node.args.len > 0 {
