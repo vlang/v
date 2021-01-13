@@ -91,12 +91,33 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 	pos := p.tok.position()
 	p.next()
 	right, right_comments := if p.tok.kind == .key_go {
+		spos := p.tok.position()
+		p.next()
 		comments := p.eat_comments()
+		mut mod := ''
+		mut language := table.Language.v
+		if p.peek_tok.kind == .dot {
+			if p.tok.lit == 'C' {
+				language = table.Language.c
+				p.check_for_impure_v(language, p.tok.position())
+			} else if p.tok.lit == 'JS' {
+				language = table.Language.js
+				p.check_for_impure_v(language, p.tok.position())
+			} else {
+				mod = p.tok.lit
+			}
+			p.next()
+			p.next()
+		}
+		call_expr := p.call_expr(language, mod)
 		mut exprs := []ast.Expr{cap: 1}
-		go_stmt := p.stmt(false) as ast.GoStmt
+		allpos := spos.extend(p.tok.position())
 		exprs << ast.GoExpr{
-			go_stmt: go_stmt
-			pos: go_stmt.pos
+			go_stmt: ast.GoStmt{
+				call_expr: call_expr
+				pos: allpos
+			}
+			pos: allpos
 		}
 		exprs, comments
 	} else {
