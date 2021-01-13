@@ -1920,6 +1920,15 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			}
 			mut str_add := false
 			mut op_overloaded := false
+			mut alias_op_overloading := false
+			extracted_op := match assign_stmt.op {
+					.plus_assign { '+' }
+					.minus_assign { '-' }
+					.div_assign { '/' }
+					.mod_assign { '%' }
+					.mult_assign { '*' }
+					else { 'unknown op' }
+				}
 			if var_type == table.string_type_idx && assign_stmt.op == .plus_assign {
 				if left is ast.IndexExpr {
 					// a[0] += str => `array_set(&a, 0, &(string[]) {string_add(...))})`
@@ -1940,16 +1949,15 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				right_sym.kind == .alias)) &&
 				assign_stmt.op in [.plus_assign, .minus_assign, .div_assign, .mult_assign, .mod_assign] {
 				g.expr(left)
-				extracted_op := match assign_stmt.op {
-					.plus_assign { '+' }
-					.minus_assign { '-' }
-					.div_assign { '/' }
-					.mod_assign { '%' }
-					.mult_assign { '*' }
-					else { 'unknown op' }
+				parent_type := g.table.get_final_type_symbol(assign_stmt.left_types[i])
+				if !(parent_type.is_number() && left_sym.kind != .struct_ &&
+				right_sym.kind != .struct_) {
+					g.write(' = ${styp}_${util.replace_op(extracted_op)}(')
+					op_overloaded = true
+				} else {
+					g.write(' = ')
+					alias_op_overloading = true
 				}
-				g.write(' = ${styp}_${util.replace_op(extracted_op)}(')
-				op_overloaded = true
 			}
 			if right_sym.kind == .function && is_decl {
 				if is_inside_ternary && is_decl {
@@ -1987,10 +1995,12 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				if is_decl {
 					g.writeln(';')
 				}
-			} else if !g.is_array_set && !str_add && !op_overloaded {
+			} else if !g.is_array_set && !str_add && !op_overloaded && !alias_op_overloading {
 				g.write(' $op ')
 			} else if str_add || op_overloaded {
 				g.write(', ')
+			} else if alias_op_overloading {
+				g.write(' $extracted_op ')
 			}
 			mut cloned := false
 			if g.is_autofree && right_sym.kind in [.array, .string] {

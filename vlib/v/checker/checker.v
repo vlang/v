@@ -2540,6 +2540,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			((left_sym.kind == .struct_ && right_sym.kind == .struct_) || (left_sym.kind == .alias)) {
 			left_name := c.table.type_to_str(left_type)
 			right_name := c.table.type_to_str(right_type)
+			parent_type := c.table.get_final_type_symbol(left_type)
 			if left_sym.kind == .alias && right_sym.kind != .alias {
 				c.error('mismatched types `$left_name` and `$right_name`', assign_stmt.pos)
 			}
@@ -2557,11 +2558,22 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 						assign_stmt.pos)
 				}
 			} else {
-				if left_name == right_name {
-					c.error('operation `$left_name` $extracted_op `$right_name` does not exist, please define it',
-						assign_stmt.pos)
-				} else {
-					c.error('mismatched types `$left_name` and `$right_name`', assign_stmt.pos)
+				if !(extracted_op == '+' && left_type.is_string()) && (parent_type.is_number() || !parent_type.is_number()) {
+					if left_name == right_name {
+						println('right : $right_name')
+						c.error('operation `$left_name` $extracted_op `$right_name` does not exist, please define it',
+							assign_stmt.pos)
+					} else {
+						c.error('mismatched types `$left_name` and `$right_name`', assign_stmt.pos)
+					}
+				} else if !parent_type.is_number() && extracted_op == '+' && left_type.is_string() {
+					if left_name == right_name {
+						println('left : $left_name')
+						c.error('operation `$left_name` $extracted_op `$right_name` does not exist, please define it',
+							assign_stmt.pos)
+					} else {
+						c.error('mismatched types `$left_name` and `$right_name`', assign_stmt.pos)
+					}
 				}
 			}
 		}
