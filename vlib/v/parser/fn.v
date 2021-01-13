@@ -646,7 +646,7 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 						pos)
 					return []table.Param{}, false, false
 				}
-				typ = typ.set_nr_muls(1)
+				typ = typ.set_nr_muls(typ.nr_muls() + 1)
 				if is_shared {
 					typ = typ.set_flag(.shared_f)
 				}
