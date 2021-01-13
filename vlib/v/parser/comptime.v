@@ -13,6 +13,7 @@ import vweb.tmpl
 const (
 	supported_comptime_calls = ['html', 'tmpl', 'embed_file']
 )
+
 // // #include, #flag, #v
 fn (mut p Parser) hash() ast.HashStmt {
 	mut pos := p.prev_tok.position()
