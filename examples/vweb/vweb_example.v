@@ -10,6 +10,8 @@ struct App {
 	vweb.Context
 mut:
 	cnt int
+pub mut:
+	dataptr &App = voidptr(0) // Main app data
 }
 
 fn main() {
@@ -19,6 +21,10 @@ fn main() {
 
 pub fn (mut app App) init_once() {
 	app.handle_static('.')
+}
+
+pub fn (mut app App) uninit() {
+	dataptr.cnt += app.cnt
 }
 
 pub fn (mut app App) json_endpoint() vweb.Result {
