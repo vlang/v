@@ -997,6 +997,9 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		ast.FloatLiteral {
 			f.write(node.val)
 		}
+		ast.GoExpr {
+			f.stmt(node.go_stmt)
+		}
 		ast.IfExpr {
 			f.if_expr(node)
 		}
