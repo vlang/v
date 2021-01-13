@@ -696,7 +696,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				}
 				.name {
 					return ast.ExprStmt{
-						expr: p.vweb()
+						expr: p.comp_call()
 					}
 				}
 				else {

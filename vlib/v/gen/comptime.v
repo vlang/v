@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module gen
 
+import os
 import v.ast
 import v.table
 import v.util
@@ -27,7 +28,25 @@ fn (mut g Gen) comptime_selector(node ast.ComptimeSelector) {
 	g.expr(node.field_expr)
 }
 
+// comptime_embed_file_call generates C code for `$embed_file('...')` calls.
+fn (mut g Gen) comptime_call_embed_file(node ast.ComptimeCall) {
+	path := node.args_var
+	g.writeln('(embed__EmbeddedData){')
+	g.writeln('\t.path = _SLIT("$path"),')
+	file_size := os.file_size(path)
+	if g.pref.is_prod {
+		// Use function generated in Gen.gen_embedded_data()
+		g.writeln('\t.compressed = _v_embed_locate_data(_SLIT("$path")),')
+	}
+	g.writeln('\t.len = $file_size')
+	g.writeln('} // $' + 'embed_file("$node.args_var")')
+}
+
 fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
+	if node.method_name == 'embed_file' {
+		g.comptime_call_embed_file(node)
+		return
+	}
 	if node.is_vweb {
 		is_html := node.method_name == 'html'
 		for stmt in node.vweb_tmpl.stmts {

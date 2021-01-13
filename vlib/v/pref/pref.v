@@ -80,6 +80,7 @@ pub mut:
 	// use cached modules to speed up compilation.
 	use_cache         bool // = true
 	retry_compilation bool = true
+	is_embed          bool // `v -embed ...` enable embedding of files via `$embed_file()`.
 	is_stats          bool // `v -stats file_test.v` will produce more detailed statistics for the tests that were run
 	// TODO Convert this into a []string
 	cflags string // Additional options which will be passed to the C compiler.
@@ -253,6 +254,9 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			}
 			'-stats' {
 				res.is_stats = true
+			}
+			'-embed' {
+				res.is_embed = true
 			}
 			'-obfuscate' {
 				res.obfuscate = true

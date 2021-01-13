@@ -3265,6 +3265,34 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			if node.method_name == 'html' {
 				return c.table.find_type_idx('vweb.Result')
 			}
+			if node.method_name == 'embed_file' {
+				mut path := node.args_var
+				// Validate that the path exists and is actually a file.
+				if path == '' {
+					c.error('please supply a valid relative or absolute file path to the embedded file',
+						node.left.position())
+				}
+				// The file doesn't exist or is a relative path
+				if !os.is_file(path) {
+					// ... it's there, but not a file
+					if os.exists(path) {
+						c.error('embedded file "$path" is not a file', node.left.position())
+					}
+					// ... look relative to the source file
+					dir := os.dir(c.file.path)
+					path = os.join_path(dir, path)
+					if !os.is_file(path) {
+						if os.exists(path) {
+							// ... it there, but not a file
+							c.error('embedded file "$path" is not a file', node.left.position())
+						} else {
+							c.error('embedded file "$path" not found', node.left.position())
+						}
+					}
+				}
+				c.file.embedded_files << os.real_path(path)
+				return c.table.find_type_idx('embed.EmbeddedData')
+			}
 			return table.string_type
 		}
 		ast.ComptimeSelector {

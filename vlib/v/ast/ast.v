@@ -471,6 +471,7 @@ pub mut:
 	stmts            []Stmt   // all the statements in the source file
 	imports          []Import // all the imports
 	auto_imports     []string // imports that were implicitely added
+	embedded_files   []string // list of files to embed in the binary
 	imported_symbols map[string]string // used for `import {symbol}`, it maps symbol => module.symbol
 	errors           []errors.Error    // all the checker errors in the file
 	warnings         []errors.Warning  // all the checker warings in the file

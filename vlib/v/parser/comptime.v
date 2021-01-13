@@ -37,9 +37,10 @@ fn (mut p Parser) hash() ast.HashStmt {
 	}
 }
 
-fn (mut p Parser) vweb() ast.ComptimeCall {
+fn (mut p Parser) comp_call() ast.ComptimeCall {
 	p.check(.dollar)
-	error_msg := 'only `\$tmpl()` and `\$vweb.html()` comptime functions are supported right now'
+	supported_calls := ['html', 'tmpl', 'embed_file']
+	error_msg := 'only `\$tmpl()`, `\$embed_file()` and `\$vweb.html()` comptime functions are supported right now'
 	if p.peek_tok.kind == .dot {
 		n := p.check_name() // skip `vweb.html()` TODO
 		if n != 'vweb' {
@@ -49,10 +50,11 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 		p.check(.dot)
 	}
 	n := p.check_name() // (.name)
-	if n != 'html' && n != 'tmpl' {
+	if n !in supported_calls {
 		p.error(error_msg)
 		return ast.ComptimeCall{}
 	}
+	is_embed_file := n == 'embed_file'
 	is_html := n == 'html'
 	p.check(.lpar)
 	s := if is_html { '' } else { p.tok.lit }
@@ -70,6 +72,12 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 	path += '.html'
 	if !is_html {
 		path = tmpl_path
+		if is_embed_file {
+			return ast.ComptimeCall{
+				method_name: n
+				args_var: path
+			}
+		}
 	}
 	if !os.exists(path) {
 		// can be in `templates/`
