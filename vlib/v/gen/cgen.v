@@ -5386,7 +5386,7 @@ fn (g &Gen) is_importing_os() bool {
 
 fn (mut g Gen) go_stmt(node ast.GoStmt) {
 	tmp := g.new_tmp_var()
-	expr := node.call_expr as ast.CallExpr
+	expr := node.call_expr
 	mut name := expr.name // util.no_dots(expr.name)
 	// TODO: fn call is duplicated. merge with fn_call().
 	if expr.generic_type != table.void_type && expr.generic_type != 0 {

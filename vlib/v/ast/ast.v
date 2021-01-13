@@ -868,14 +868,16 @@ pub:
 
 pub struct GoStmt {
 pub:
-	call_expr Expr
 	pos       token.Position
+pub mut:
+	call_expr CallExpr
 }
 
 pub struct GoExpr {
 pub:
-	go_stmt     GoStmt
 	pos         token.Position
+pub mut:
+	go_stmt     GoStmt
 mut:
 	return_type table.Type
 }
@@ -1260,7 +1262,7 @@ pub fn (stmt Stmt) position() token.Position {
 			return stmt.pos
 		}
 		GoStmt {
-			return stmt.call_expr.position()
+			return stmt.call_expr.pos
 		}
 		TypeDecl {
 			match stmt {

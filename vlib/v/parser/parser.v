@@ -738,10 +738,14 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			p.next()
 			spos := p.tok.position()
 			expr := p.expr(0)
-			// mut call_expr := &ast.CallExpr(0) // TODO
-			// { call_expr = it }
+			call_expr := if expr is ast.CallExpr {
+				expr
+			} else {
+				p.error_with_pos('expression in `go` must be a function call', expr.position())
+				ast.CallExpr{scope: p.scope}
+			}
 			return ast.GoStmt{
-				call_expr: expr
+				call_expr: call_expr
 				pos: spos.extend(p.tok.position())
 			}
 		}
