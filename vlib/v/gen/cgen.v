@@ -1438,7 +1438,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw table.Type, expected_t
 
 // cestring returns a V string, properly escaped for embeddeding in a C string literal.
 fn cestring(s string) string {
-	return s.replace('\\', '\\\\').replace('"', "\'")
+	return s.replace('\\', '\\\\').replace('"', "'")
 }
 
 // ctoslit returns a '_SLIT("$s")' call, where s is properly escaped.

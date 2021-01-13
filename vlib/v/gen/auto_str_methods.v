@@ -44,7 +44,7 @@ fn (g &Gen) type_to_fmt(typ table.Type) string {
 		[.struct_, .array, .array_fixed, .map, .bool, .enum_, .interface_, .sum_type, .function] {
 		return '%.*s\\000'
 	} else if sym.kind == .string {
-		return "\'%.*s\\000\'"
+		return "'%.*s\\000'"
 	} else if sym.kind in [.f32, .f64] {
 		return '%g\\000' // g removes trailing zeros unlike %f
 	} else if sym.kind == .u64 {
