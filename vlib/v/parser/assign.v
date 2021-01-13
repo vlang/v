@@ -90,7 +90,18 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 	op := p.tok.kind
 	pos := p.tok.position()
 	p.next()
-	right, right_comments := p.expr_list()
+	right, right_comments := if p.tok.kind == .key_go {
+		comments := p.eat_comments()
+		mut exprs := []ast.Expr{cap: 1}
+		go_stmt := p.stmt(false) as ast.GoStmt
+		exprs << ast.GoExpr{
+			go_stmt: go_stmt
+			pos: go_stmt.pos
+		}
+		exprs, comments
+	} else {
+		p.expr_list()
+	}
 	mut comments := []ast.Comment{cap: left_comments.len + right_comments.len}
 	comments << left_comments
 	comments << right_comments

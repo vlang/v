@@ -475,6 +475,9 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		ast.FloatLiteral {
 			g.write('${g.typ(table.Type(table.f32_type))}($node.val)')
 		}
+		ast.GoExpr {
+			// TODO
+		}
 		ast.Ident {
 			g.gen_ident(node)
 		}

@@ -2552,6 +2552,8 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.FloatLiteral {
 			g.write(node.val)
 		}
+		ast.GoExpr {
+		}
 		ast.Ident {
 			g.ident(node)
 		}

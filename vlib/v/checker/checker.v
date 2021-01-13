@@ -3230,6 +3230,9 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		ast.CallExpr {
 			return c.call_expr(mut node)
 		}
+		ast.GoExpr {
+			return table.int_type
+		}
 		ast.ChanInit {
 			return c.chan_init(mut node)
 		}
