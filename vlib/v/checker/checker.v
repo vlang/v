@@ -3287,7 +3287,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 							c.error('"$path" is not a file so it cannot be embedded',
 								node.left.position())
 						} else {
-							c.error('"$path" is not found so it cannot be embedded', node.left.position())
+							c.error('"$path" does not exist so it cannot be embedded', node.left.position())
 						}
 					}
 				}
