@@ -1,7 +1,7 @@
 /**********************************************************************
 * regex samples
 *
-* Copyright (c) 2019-2021 Dario Deledda. All rights reserved.
+* Copyright (c) 2019-2020 Dario Deledda. All rights reserved.
 * Use of this source code is governed by an MIT license
 * that can be found in the LICENSE file.
 *
@@ -20,7 +20,7 @@ fn convert_html_rgb(in_col string) u32 {
 	mut col_mul := if in_col.len == 4 { 4 } else { 0 }
 
 	// this is the regex query, it use the V string interpolation to customize the regex query
-	// NOTE: if you want use escaped code you must use the r"" (raw) strings,
+	// NOTE: if you want use escaped code you must use the r"" (raw) strings, 
 	//       *** please remember that the V interpoaltion doesn't work on raw strings. ***
 
 	query:= "#([a-fA-F0-9]{$n_digit})([a-fA-F0-9]{$n_digit})([a-fA-F0-9]{$n_digit})"
@@ -56,13 +56,13 @@ fn convert_html_rgb_n(in_col string) u32 {
 	if start >= 0 {
 		red_s, red_e := re.get_group_bounds_by_name("red")
 		r := ("0x" + in_col[red_s..red_e]).int() << col_mul
-
+		
 		green_s, green_e := re.get_group_bounds_by_name("green")
 		g := ("0x" + in_col[green_s..green_e]).int() << col_mul
-
+		
 		blue_s, blue_e := re.get_group_bounds_by_name("blue")
 		b := ("0x" + in_col[blue_s..blue_e]).int() << col_mul
-
+		
 		println("r: $r g: $g b: $b")
 		res = u32(r) << 16 | u32(g) << 8 | u32(b)
 	}
