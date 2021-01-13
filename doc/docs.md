@@ -2360,7 +2360,7 @@ println(l)
 println(c)
 mut b := Abc{}
 ch2 := chan Abc{}
-res2 := ch2.try_pop(mut b) // try to perform `b = <-ch2
+res2 := ch2.try_pop(mut b) // try to perform `b = <-ch2`
 ```
 
 The `try_push/pop()` methods will return immediately with one of the results
