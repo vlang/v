@@ -240,7 +240,8 @@ fn (mut g Gen) fn_args(args []table.Param, is_variadic bool) ([]string, []string
 				g.definitions.write(')')
 			}
 		} else {
-			s := arg_type_name + ' ' + caname
+			s := if arg_type_sym.kind ==
+				.array_fixed { arg_type_name.trim('*') } else { arg_type_name } + ' ' + caname
 			g.write(s)
 			g.definitions.write(s)
 			fargs << caname
