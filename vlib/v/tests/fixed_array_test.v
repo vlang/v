@@ -57,7 +57,7 @@ fn multiply_by_two(mut arr [3]int) {
 }
 
 fn change_first_element(mut arr [3][3]int) {
-	a[0][0] = 0
+	arr[0][0] = 0
 }
 
 fn test_fixed_array_can_be_passed_as_mut_arg() {
