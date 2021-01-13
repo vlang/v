@@ -686,7 +686,8 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 
 fn (mut p Parser) check_fn_mutable_arguments(typ table.Type, pos token.Position) {
 	sym := p.table.get_type_symbol(typ)
-	if sym.kind !in [.array, .array_fixed, .struct_, .map, .placeholder, .sum_type] && !typ.is_ptr() && !typ.is_pointer() {
+	if sym.kind !in [.array, .array_fixed, .struct_, .map, .placeholder, .sum_type] &&
+		!typ.is_ptr() && !typ.is_pointer() {
 		p.error_with_pos('mutable arguments are only allowed for arrays, maps, structs and pointers\n' +
 			'return values instead: `fn foo(mut n $sym.name) {` => `fn foo(n $sym.name) $sym.name {`',
 			pos)
