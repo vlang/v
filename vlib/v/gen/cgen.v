@@ -3032,6 +3032,10 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		if node.left_type.is_ptr() {
 			g.write('*')
 		}
+		if node.left is ast.ArrayInit {
+			s := g.typ(left_type)
+			g.write('($s)')
+		}
 		g.expr(node.left)
 		g.write(', ')
 		if node.right is ast.ArrayInit {
