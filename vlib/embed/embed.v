@@ -7,7 +7,7 @@ pub const (
 )
 
 // https://github.com/vlang/rfcs/blob/master/embedding_resources.md
-// EmbeddedData incapsulates functionality for the `$embed_file()` compile time call.
+// EmbeddedData encapsulates functionality for the `$embed_file()` compile time call.
 pub struct EmbeddedData {
 	path string
 mut:

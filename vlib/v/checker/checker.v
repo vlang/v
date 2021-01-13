@@ -3269,14 +3269,14 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 				mut path := node.args_var
 				// Validate that the path exists and is actually a file.
 				if path == '' {
-					c.error('please supply a valid relative or absolute file path to the embedded file',
+					c.error('please supply a valid relative or absolute file path to the file to embed',
 						node.left.position())
 				}
 				// The file doesn't exist or is a relative path
 				if !os.is_file(path) {
 					// ... it's there, but not a file
 					if os.exists(path) {
-						c.error('embedded file "$path" is not a file', node.left.position())
+						c.error('"$path" is not a file so it cannot be embedded', node.left.position())
 					}
 					// ... look relative to the source file
 					dir := os.dir(c.file.path)
@@ -3284,9 +3284,10 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 					if !os.is_file(path) {
 						if os.exists(path) {
 							// ... it there, but not a file
-							c.error('embedded file "$path" is not a file', node.left.position())
+							c.error('"$path" is not a file so it cannot be embedded',
+								node.left.position())
 						} else {
-							c.error('embedded file "$path" not found', node.left.position())
+							c.error('"$path" is not found so it cannot be embedded', node.left.position())
 						}
 					}
 				}
