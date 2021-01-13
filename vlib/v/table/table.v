@@ -129,7 +129,7 @@ pub fn (t &Table) fn_type_source_signature(f &Fn) string {
 	return sig
 }
 
-pub fn (t &Table) is_same_method_as(f &Fn, func &Fn) string {
+pub fn (t &Table) is_same_method(f &Fn, func &Fn) string {
 	if f.return_type != func.return_type {
 		s := t.type_to_str(f.return_type)
 		return 'expected return type `$s`'

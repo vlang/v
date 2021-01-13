@@ -1849,7 +1849,7 @@ fn (mut c Checker) type_implements(typ table.Type, inter_typ table.Type, pos tok
 	styp := c.table.type_to_str(typ)
 	for imethod in inter_sym.methods {
 		if method := typ_sym.find_method(imethod.name) {
-			msg := c.table.is_same_method_as(imethod, method)
+			msg := c.table.is_same_method(imethod, method)
 			if msg.len > 0 {
 				c.error('`$styp` incorrectly implements method `$imethod.name` of interface `$inter_sym.name`: $msg',
 					pos)
