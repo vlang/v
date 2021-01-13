@@ -16,7 +16,7 @@ fn (mut g Gen) gen_embedded_data() {
 	*/
 	for i, path in g.embedded_files {
 		fbytes := os.read_bytes(path) or { panic('Error while embedding file: $err') }
-		g.embedded_data.write('static const unsigned int _v_embed_blob_$i[] = {')
+		g.embedded_data.write('static const unsigned char _v_embed_blob_$i[] = {')
 		for j := 1; j < fbytes.len; j++ {
 			b := int(fbytes[j]).str()
 			if j == fbytes.len - 1 {
@@ -31,7 +31,8 @@ fn (mut g Gen) gen_embedded_data() {
 	g.embedded_data.writeln('const struct _v_embed {')
 	g.embedded_data.writeln('\tstring id;')
 	g.embedded_data.writeln('\tbyteptr data;')
-	g.embedded_data.writeln('} _v_embedded_data[] = {')
+	g.embedded_data.writeln('}')
+	g.embedded_data.writeln('_v_embedded_data[] = {')
 	for i, path in g.embedded_files {
 		g.embedded_data.writeln('\t{_SLIT("$path"), _v_embed_blob_$i},')
 	}
