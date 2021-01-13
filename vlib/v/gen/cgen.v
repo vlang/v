@@ -2926,6 +2926,9 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	right_sym := g.table.get_type_symbol(node.right_type)
 	has_eq_overloaded := !left_sym.has_method('==')
 	has_ne_overloaded := !left_sym.has_method('!=')
+	has_string_alias_op := ((left_sym.has_method('+') || left_sym.has_method('>') || left_sym.has_method('<') ||
+		left_sym.has_method('==') || left_sym.has_method('!=')) &&
+		node.op in [.plus, .ne, .eq, .ge, .le, .gt, .lt])
 	unaliased_right := if right_sym.kind == .alias {
 		(right_sym.info as table.Alias).parent_type
 	} else {
@@ -2933,33 +2936,20 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	}
 	if unaliased_left == table.ustring_type_idx && node.op != .key_in && node.op != .not_in {
 		fn_name := match node.op {
-			.plus {
-				'ustring_add('
-			}
-			.eq {
-				'ustring_eq('
-			}
-			.ne {
-				'ustring_ne('
-			}
-			.lt {
-				'ustring_lt('
-			}
-			.le {
-				'ustring_le('
-			}
-			.gt {
-				'ustring_gt('
-			}
-			.ge {
-				'ustring_ge('
-			}
-			else {
-				verror('op error for type `$left_sym.name`')
-				'/*node error*/'
-			}
+			.plus { 'ustring_add(' }
+			.eq { 'ustring_eq(' }
+			.ne { 'ustring_ne(' }
+			.lt { 'ustring_lt(' }
+			.le { 'ustring_le(' }
+			.gt { 'ustring_gt(' }
+			.ge { 'ustring_ge(' }
+			else { overloaded_fn }
 		}
-		g.write(fn_name)
+		if has_string_alias_op {
+			g.write(overloaded_fn)
+		} else {
+			g.write(fn_name)
+		}
 		g.expr(node.left)
 		g.write(', ')
 		g.expr(node.right)
@@ -2974,34 +2964,22 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			g.write(')')
 			g.write('${arrow}len $node.op 0')
 		} else {
+			overloaded_fn := '${g.typ(left_type)}_${util.replace_op(node.op.str())}('
 			fn_name := match node.op {
-				.plus {
-					'string_add('
-				}
-				.eq {
-					'string_eq('
-				}
-				.ne {
-					'string_ne('
-				}
-				.lt {
-					'string_lt('
-				}
-				.le {
-					'string_le('
-				}
-				.gt {
-					'string_gt('
-				}
-				.ge {
-					'string_ge('
-				}
-				else {
-					verror('op error for type `$left_sym.name`')
-					'/*node error*/'
-				}
+				.plus { 'string_add(' }
+				.eq { 'string_eq(' }
+				.ne { 'string_ne(' }
+				.lt { 'string_lt(' }
+				.le { 'string_le(' }
+				.gt { 'string_gt(' }
+				.ge { 'string_ge(' }
+				else { overloaded_fn }
 			}
-			g.write(fn_name)
+			if has_string_alias_op {
+				g.write(overloaded_fn)
+			} else {
+				g.write(fn_name)
+			}
 			g.expr(node.left)
 			g.write(', ')
 			g.expr(node.right)
