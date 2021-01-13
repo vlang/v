@@ -5,6 +5,7 @@ const const_file = $embed_file('v.png')
 fn test_const_embed_file() {
 	mut file := const_file
 	eprintln('file: $file')
+	assert file.len > 0
 	out := os.join_path(os.temp_dir(), 'v_embed_const_out.png')
 	os.rm(out)
 	mut fw := os.create(out) or { panic('failed to create file $out') }
@@ -18,6 +19,7 @@ fn test_const_embed_file() {
 fn test_embed_file() {
 	mut file := $embed_file('v.png')
 	eprintln('file: $file')
+	assert file.len > 0
 	out := os.join_path(os.temp_dir(), 'v_embed_out.png')
 	os.rm(out)
 	mut fw := os.create(out) or { panic('failed to create file $out') }
