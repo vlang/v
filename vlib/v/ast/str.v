@@ -356,6 +356,13 @@ pub fn (node Stmt) str() string {
 		Module {
 			return 'module $node.name'
 		}
+		Import {
+			mut out := 'import $node.mod'
+			if node.alias.len > 0 {
+				out += ' as $node.alias'
+			}
+			return out
+		}
 		StructDecl {
 			return 'struct $node.name { $node.fields.len fields }'
 		}
