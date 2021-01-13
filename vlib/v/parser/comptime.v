@@ -10,6 +10,9 @@ import v.table
 import v.token
 import vweb.tmpl
 
+const (
+	supported_comptime_calls = ['html', 'tmpl', 'embed_file']
+)
 // // #include, #flag, #v
 fn (mut p Parser) hash() ast.HashStmt {
 	mut pos := p.prev_tok.position()
@@ -39,7 +42,6 @@ fn (mut p Parser) hash() ast.HashStmt {
 
 fn (mut p Parser) comp_call() ast.ComptimeCall {
 	p.check(.dollar)
-	supported_calls := ['html', 'tmpl', 'embed_file']
 	error_msg := 'only `\$tmpl()`, `\$embed_file()` and `\$vweb.html()` comptime functions are supported right now'
 	if p.peek_tok.kind == .dot {
 		n := p.check_name() // skip `vweb.html()` TODO
@@ -50,7 +52,7 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 		p.check(.dot)
 	}
 	n := p.check_name() // (.name)
-	if n !in supported_calls {
+	if n !in supported_comptime_calls {
 		p.error(error_msg)
 		return ast.ComptimeCall{}
 	}
