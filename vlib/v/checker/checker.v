@@ -1851,10 +1851,8 @@ fn (mut c Checker) type_implements(typ table.Type, inter_typ table.Type, pos tok
 		if method := typ_sym.find_method(imethod.name) {
 			msg := c.table.is_same_method_as(imethod, method)
 			if msg.len > 0 {
-				sig := c.table.fn_signature(imethod, skip_receiver: true)
 				c.error('`$styp` incorrectly implements method `$imethod.name` of interface `$inter_sym.name`: $msg',
 					pos)
-				c.add_error_detail('expected `$sig`')
 				return false
 			}
 			continue
