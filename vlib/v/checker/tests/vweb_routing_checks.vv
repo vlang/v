@@ -23,7 +23,7 @@ pub fn (mut app App) bar(a string) vweb.Result {
 	return app.html('works')
 }
 
-// no segfault, but it shouldnt compile
+// no segfault, but it shouldn't compile
 ['/cow/:low']
 pub fn (mut app App) cow() vweb.Result {
 	return app.html('works')
