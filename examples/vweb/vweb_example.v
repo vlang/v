@@ -24,7 +24,7 @@ pub fn (mut app App) init_once() {
 }
 
 pub fn (mut app App) uninit() {
-	dataptr.cnt += app.cnt
+	app.dataptr.cnt += app.cnt
 }
 
 pub fn (mut app App) json_endpoint() vweb.Result {

@@ -10,6 +10,8 @@ const (
 
 struct App {
 	vweb.Context
+pub mut:
+	dataptr &App = voidptr(0)
 }
 
 fn main() {
@@ -27,6 +29,9 @@ pub fn (mut app App) init_once() {
 }
 
 pub fn (mut app App) init() {
+}
+
+pub fn (mut app App) uninit() {
 }
 
 pub fn (mut app App) index() vweb.Result {
