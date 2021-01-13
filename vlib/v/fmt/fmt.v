@@ -2049,7 +2049,7 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 	// `[100]byte`
 	if it.is_fixed {
 		if it.has_val {
-			f.write('!!')
+			f.write('!')
 			return
 		}
 		f.write(f.table.type_to_str(it.elem_type))
