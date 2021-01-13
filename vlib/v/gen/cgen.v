@@ -98,7 +98,7 @@ mut:
 	pcs                   []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
 	is_builtin_mod        bool
 	hotcode_fn_names      []string
-	embedded_files        []string
+	embedded_files        []ast.EmbeddedFile
 	// cur_fn               ast.FnDecl
 	cur_generic_type table.Type // `int`, `string`, etc in `foo<T>()`
 	sql_i            int

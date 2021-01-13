@@ -4,4 +4,5 @@ fn main() {
 	content := the_png.data()
 	eprintln('content: ${ptr_str(content)}')
 	eprintln(unsafe { the_png.data().vbytes(the_png.len) }.hex())
+	println(the_png)
 }

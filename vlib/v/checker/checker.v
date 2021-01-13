@@ -3271,12 +3271,14 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 				if path == '' {
 					c.error('please supply a valid relative or absolute file path to the file to embed',
 						node.left.position())
+					return c.table.find_type_idx('embed.EmbeddedData')
 				}
 				// The file doesn't exist or is a relative path
 				if !os.is_file(path) {
 					// ... it's there, but not a file
 					if os.exists(path) {
 						c.error('"$path" is not a file so it cannot be embedded', node.left.position())
+						return c.table.find_type_idx('embed.EmbeddedData')
 					}
 					// ... look relative to the source file
 					dir := os.dir(c.file.path)
@@ -3286,13 +3288,18 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 							// ... it there, but not a file
 							c.error('"$path" is not a file so it cannot be embedded',
 								node.left.position())
+							return c.table.find_type_idx('embed.EmbeddedData')
 						} else {
 							c.error('"$path" does not exist so it cannot be embedded',
 								node.left.position())
+							return c.table.find_type_idx('embed.EmbeddedData')
 						}
 					}
 				}
-				c.file.embedded_files << os.real_path(path)
+				c.file.embedded_files << ast.EmbeddedFile{
+					rpath: node.args_var
+					apath: os.real_path(path)
+				}
 				return c.table.find_type_idx('embed.EmbeddedData')
 			}
 			return table.string_type

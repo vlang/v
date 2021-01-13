@@ -14,8 +14,8 @@ fn (mut g Gen) gen_embedded_data() {
 	// maybe we need to write to separate files or have an external tool for large files
 	// like the `rcc` tool in Qt?
 	*/
-	for i, path in g.embedded_files {
-		fbytes := os.read_bytes(path) or { panic('Error while embedding file: $err') }
+	for i, emfile in g.embedded_files {
+		fbytes := os.read_bytes(emfile.apath) or { panic('Error while embedding file: $err') }
 		g.embedded_data.write('static const unsigned char _v_embed_blob_$i[$fbytes.len] = {\n    ')
 		for j := 0; j < fbytes.len; j++ {
 			b := fbytes[j].hex()
@@ -36,8 +36,8 @@ fn (mut g Gen) gen_embedded_data() {
 	g.embedded_data.writeln('\tbyteptr data;')
 	g.embedded_data.writeln('}')
 	g.embedded_data.writeln('_v_embedded_data[] = {')
-	for i, path in g.embedded_files {
-		g.embedded_data.writeln('\t{_SLIT("$path"), _v_embed_blob_$i},')
+	for i, emfile in g.embedded_files {
+		g.embedded_data.writeln('\t{_SLIT("$emfile.rpath"), _v_embed_blob_$i},')
 	}
 	g.embedded_data.writeln('\t{_SLIT("EOE"), NULL}')
 	g.embedded_data.writeln('};')
