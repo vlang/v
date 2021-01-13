@@ -2823,7 +2823,7 @@ fn C.sqlite3_step(&sqlite3_stmt)
 
 fn C.sqlite3_finalize(&sqlite3_stmt)
 
-fn C.sqlite3_exec(db &sqlite3, sql charptr, FnSqlite3Callback voidptr, cb_arg voidptr, emsg &charptr) int
+fn C.sqlite3_exec(db &sqlite3, sql charptr, cb FnSqlite3Callback, cb_arg voidptr, emsg &charptr) int
 
 fn C.sqlite3_free(voidptr)
 
