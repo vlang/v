@@ -4,22 +4,24 @@ const (
 	const_file = $embed_file('v.png')
 )
 
-fn test_embed_file() {
+fn test_const_embed_file() {
 	mut file := const_file
-	mut out := os.join_path(os.temp_dir(), 'const_v_out.png')
+	out := os.join_path(os.temp_dir(), 'v_embed_const_out.png')
 	mut fw := os.create(out) or { panic('failed to create file $out') }
 	fw.write_bytes(file.data(), file.len)
 	fw.close()
 
-	mut size := os.file_size(out)
+	size := os.file_size(out)
 	assert size == file.len
+}
 
-	file = $embed_file('v.png')
-	out = os.join_path(os.temp_dir(), 'v_out.png')
-	fw = os.create(out) or { panic('failed to create file $out') }
+fn test_embed_file() {
+	mut file := $embed_file('v.png')
+	out := os.join_path(os.temp_dir(), 'v_embed_out.png')
+	mut fw := os.create(out) or { panic('failed to create file $out') }
 	fw.write_bytes(file.data(), file.len)
 	fw.close()
 
-	size = os.file_size(out)
+	size := os.file_size(out)
 	assert size == file.len
 }
