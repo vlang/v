@@ -94,7 +94,7 @@ Otherwise, follow these instructions:
 - [Installing a C compiler on Windows](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows)
 
 However, if none is found when running `make` on Linux or Windows,
-TCC will be downloaded and set as an alternative C backend.
+TCC is downloaded as the default C backend.
 It's very lightweight (several MB) so this shouldn't take too long.
 
 ### Symlinking
