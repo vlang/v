@@ -12,7 +12,7 @@ pub type InspectorFn = fn (node ast.Node, data voidptr) bool
 struct Inspector {
 	inspector_callback InspectorFn
 mut:
-	data               voidptr
+	data voidptr
 }
 
 pub fn (i &Inspector) visit(node ast.Node) ? {

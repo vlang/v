@@ -11,7 +11,7 @@ import v.table
 import v.token
 
 struct Vet {
-	opt    Options
+	opt Options
 mut:
 	errors []vet.Error
 	file   string

@@ -37,8 +37,8 @@ pub:
 	ctdefine       string // compile time define. myflag, when [if myflag] tag
 	attrs          []Attr
 pub mut:
-	name           string
-	source_fn      voidptr // set in the checker, while processing fn declarations
+	name      string
+	source_fn voidptr // set in the checker, while processing fn declarations
 }
 
 fn (f &Fn) method_equals(o &Fn) bool {
@@ -77,7 +77,7 @@ pub:
 	name   string
 	is_mut bool
 mut:
-	typ    Type
+	typ Type
 }
 
 pub fn new_table() &Table {
@@ -680,8 +680,8 @@ pub fn (t &Table) value_type(typ Type) Type {
 [inline]
 pub fn (t &Table) mktyp(typ Type) Type {
 	match typ {
-		any_flt_type { return f64_type }
-		any_int_type { return int_type }
+		float_literal_type { return f64_type }
+		int_literal_type { return int_type }
 		else { return typ }
 	}
 }
@@ -732,8 +732,8 @@ pub fn (table &Table) sumtype_has_variant(parent Type, variant Type) bool {
 pub fn (table &Table) known_type_names() []string {
 	mut res := []string{}
 	for _, idx in table.type_idxs {
-		// Skip `any_int_type_idx` and `any_flt_type_idx` because they shouldn't be visible to the User.
-		if idx in [0, any_int_type_idx, any_flt_type_idx] {
+		// Skip `int_literal_type_idx` and `float_literal_type_idx` because they shouldn't be visible to the User.
+		if idx in [0, int_literal_type_idx, float_literal_type_idx] {
 			continue
 		}
 		res << table.type_to_str(idx)

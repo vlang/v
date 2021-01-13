@@ -156,7 +156,7 @@ fn (mut tf_skl TTF_render_Sokol) create_texture(){
 		height: h
 		num_mipmaps: 0
 		min_filter:   .linear
-    mag_filter:   .linear
+		mag_filter:   .linear
 		//usage: .dynamic
 		wrap_u: .clamp_to_edge
 		wrap_v: .clamp_to_edge

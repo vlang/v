@@ -28,7 +28,6 @@ pub type ScopeObject = ConstField | GlobalField | Var
 // TOOD: replace table.Param
 pub type Node = ConstField | EnumField | Expr | Field | File | GlobalField | IfBranch |
 	MatchBranch | ScopeObject | SelectBranch | Stmt | StructField | StructInitField | table.Param
-	
 
 pub struct Type {
 pub:
@@ -53,7 +52,7 @@ pub:
 	comments []Comment
 	is_expr  bool
 pub mut:
-	typ      table.Type
+	typ table.Type
 }
 
 pub struct IntegerLiteral {
@@ -108,12 +107,12 @@ pub:
 // `foo.bar`
 pub struct SelectorExpr {
 pub:
-	pos             token.Position
-	expr            Expr // expr.field_name
-	field_name      string
-	is_mut          bool // is used for the case `if mut ident.selector is MyType {`, it indicates if the root ident is mutable
-	mut_pos         token.Position
-	next_token      token.Kind
+	pos        token.Position
+	expr       Expr // expr.field_name
+	field_name string
+	is_mut     bool // is used for the case `if mut ident.selector is MyType {`, it indicates if the root ident is mutable
+	mut_pos    token.Position
+	next_token token.Kind
 pub mut:
 	expr_type       table.Type // type of `Foo` in `Foo.bar`
 	typ             table.Type // type of the entire thing (`Foo.bar`)
@@ -153,8 +152,8 @@ pub:
 	attrs            []table.Attr
 	is_public        bool
 pub mut:
-	name             string
-	typ              table.Type
+	name string
+	typ  table.Type
 }
 
 pub struct Field {
@@ -162,17 +161,17 @@ pub:
 	name string
 	pos  token.Position
 pub mut:
-	typ  table.Type
+	typ table.Type
 }
 
 // const field in const declaration group
 pub struct ConstField {
 pub:
-	mod      string
-	name     string
-	expr     Expr // the value expr of field; everything after `=`
-	is_pub   bool
-	pos      token.Position
+	mod    string
+	name   string
+	expr   Expr // the value expr of field; everything after `=`
+	is_pub bool
+	pos    token.Position
 pub mut:
 	typ      table.Type // the type of the const field, it can be any type in V
 	comments []Comment  // comments before current const field
@@ -181,8 +180,8 @@ pub mut:
 // const declaration
 pub struct ConstDecl {
 pub:
-	is_pub       bool
-	pos          token.Position
+	is_pub bool
+	pos    token.Position
 pub mut:
 	fields       []ConstField // all the const fields in the `const (...)` block
 	end_comments []Comment    // comments that after last const field
@@ -204,7 +203,7 @@ pub:
 	end_comments []Comment
 	embeds       []Embed
 pub mut:
-	fields       []StructField
+	fields []StructField
 }
 
 pub struct Embed {
@@ -256,8 +255,8 @@ pub mut:
 
 pub struct StructInit {
 pub:
-	pos                  token.Position
-	is_short             bool
+	pos      token.Position
+	is_short bool
 pub mut:
 	pre_comments         []Comment
 	typ                  table.Type
@@ -278,7 +277,7 @@ pub:
 	mod_pos   token.Position
 	alias_pos token.Position
 pub mut:
-	syms      []ImportSymbol // the list of symbols in `import {symbol1, symbol2}`
+	syms []ImportSymbol // the list of symbols in `import {symbol1, symbol2}`
 }
 
 // import symbol,for import {symbol} syntax
@@ -293,7 +292,7 @@ pub struct AnonFn {
 pub:
 	decl FnDecl
 pub mut:
-	typ  table.Type // the type of anonymous fn. Both .typ and .decl.name are auto generated
+	typ table.Type // the type of anonymous fn. Both .typ and .decl.name are auto generated
 }
 
 // function or method declaration
@@ -324,12 +323,12 @@ pub:
 	is_direct_arr   bool // direct array access
 	attrs           []table.Attr
 pub mut:
-	stmts           []Stmt
-	return_type     table.Type
-	comments        []Comment // comments *after* the header, but *before* `{`; used for InterfaceDecl
-	next_comments   []Comment // coments that are one line after the decl; used for InterfaceDecl
-	source_file     &File = 0
-	scope           &Scope
+	stmts         []Stmt
+	return_type   table.Type
+	comments      []Comment // comments *after* the header, but *before* `{`; used for InterfaceDecl
+	next_comments []Comment // coments that are one line after the decl; used for InterfaceDecl
+	source_file   &File = 0
+	scope         &Scope
 }
 
 // break, continue
@@ -343,9 +342,9 @@ pub:
 // function or method call expr
 pub struct CallExpr {
 pub:
-	pos                token.Position
-	left               Expr // `user` in `user.register()`
-	mod                string
+	pos  token.Position
+	left Expr // `user` in `user.register()`
+	mod  string
 pub mut:
 	name               string // left.name()
 	is_method          bool
@@ -375,10 +374,10 @@ pub struct AutofreeArgVar {
 // function call argument: `f(callarg)`
 pub struct CallArg {
 pub:
-	is_mut          bool
-	share           table.ShareType
-	expr            Expr
-	comments        []Comment
+	is_mut   bool
+	share    table.ShareType
+	expr     Expr
+	comments []Comment
 pub mut:
 	typ             table.Type
 	is_tmp_autofree bool // this tells cgen that a tmp variable has to be used for the arg expression in order to free it after the call
@@ -393,7 +392,7 @@ pub:
 	exprs    []Expr
 	comments []Comment
 pub mut:
-	types    []table.Type
+	types []table.Type
 }
 
 /*
@@ -418,15 +417,15 @@ pub:
 	is_autofree_tmp bool
 	is_arg          bool // fn args should not be autofreed
 pub mut:
-	typ             table.Type
-	sum_type_casts  []table.Type // nested sum types require nested smart casting, for that a list of types is needed
-	pos             token.Position
-	is_used         bool
-	is_changed      bool // to detect mutable vars that are never changed
+	typ            table.Type
+	sum_type_casts []table.Type // nested sum types require nested smart casting, for that a list of types is needed
+	pos            token.Position
+	is_used        bool
+	is_changed     bool // to detect mutable vars that are never changed
 	//
 	// (for setting the position after the or block for autofree)
-	is_or           bool // `x := foo() or { ... }`
-	is_tmp          bool // for tmp for loop vars, so that autofree can skip them
+	is_or  bool // `x := foo() or { ... }`
+	is_tmp bool // for tmp for loop vars, so that autofree can skip them
 }
 
 // used for smartcasting only
@@ -453,7 +452,7 @@ pub mut:
 
 pub struct GlobalDecl {
 pub:
-	pos          token.Position
+	pos token.Position
 pub mut:
 	fields       []GlobalField
 	end_comments []Comment
@@ -464,9 +463,9 @@ pub mut:
 // That array is then passed to V's checker.
 pub struct File {
 pub:
-	path             string // path of the source file
-	mod              Module // the module of the source file (from `module xyz` at the top)
-	global_scope     &Scope
+	path         string // path of the source file
+	mod          Module // the module of the source file (from `module xyz` at the top)
+	global_scope &Scope
 pub mut:
 	scope            &Scope
 	stmts            []Stmt   // all the statements in the source file
@@ -513,13 +512,13 @@ pub:
 	pos      token.Position
 	mut_pos  token.Position
 pub mut:
-	scope    &Scope
-	obj      ScopeObject
-	mod      string
-	name     string
-	kind     IdentKind
-	info     IdentInfo
-	is_mut   bool
+	scope  &Scope
+	obj    ScopeObject
+	mod    string
+	name   string
+	kind   IdentKind
+	info   IdentInfo
+	is_mut bool
 }
 
 pub fn (i &Ident) var_info() IdentVar {
@@ -538,8 +537,8 @@ pub fn (i &Ident) var_info() IdentVar {
 // See: token.Kind.is_infix
 pub struct InfixExpr {
 pub:
-	op          token.Kind
-	pos         token.Position
+	op  token.Kind
+	pos token.Position
 pub mut:
 	left        Expr
 	right       Expr
@@ -552,9 +551,9 @@ pub mut:
 // ++, --
 pub struct PostfixExpr {
 pub:
-	op          token.Kind
-	expr        Expr
-	pos         token.Position
+	op   token.Kind
+	expr Expr
+	pos  token.Position
 pub mut:
 	auto_locked string
 }
@@ -562,9 +561,9 @@ pub mut:
 // See: token.Kind.is_prefix
 pub struct PrefixExpr {
 pub:
-	op         token.Kind
-	right      Expr
-	pos        token.Position
+	op    token.Kind
+	right Expr
+	pos   token.Position
 pub mut:
 	right_type table.Type
 	or_block   OrExpr
@@ -572,10 +571,10 @@ pub mut:
 
 pub struct IndexExpr {
 pub:
-	pos       token.Position
-	left      Expr
-	index     Expr // [0], RangeExpr [start..end] or map[key]
-	or_expr   OrExpr
+	pos     token.Position
+	left    Expr
+	index   Expr // [0], RangeExpr [start..end] or map[key]
+	or_expr OrExpr
 pub mut:
 	left_type table.Type // array, map, fixed array
 	is_setter bool
@@ -589,18 +588,18 @@ pub:
 	pos           token.Position
 	post_comments []Comment
 pub mut:
-	branches      []IfBranch // includes all `else if` branches
-	is_expr       bool
-	typ           table.Type
-	has_else      bool
+	branches []IfBranch // includes all `else if` branches
+	is_expr  bool
+	typ      table.Type
+	has_else bool
 }
 
 pub struct IfBranch {
 pub:
-	cond      Expr
-	pos       token.Position
-	body_pos  token.Position
-	comments  []Comment
+	cond     Expr
+	pos      token.Position
+	body_pos token.Position
+	comments []Comment
 pub mut:
 	stmts     []Stmt
 	smartcast bool // true when cond is `x is SumType`, set in checker.if_expr // no longer needed with union sum types TODO: remove
@@ -619,17 +618,17 @@ pub:
 	is_rlock bool
 	pos      token.Position
 pub mut:
-	lockeds  []Ident // `x`, `y` in `lock x, y {`
-	is_expr  bool
-	typ      table.Type
+	lockeds []Ident // `x`, `y` in `lock x, y {`
+	is_expr bool
+	typ     table.Type
 }
 
 pub struct MatchExpr {
 pub:
-	tok_kind      token.Kind
-	cond          Expr
-	branches      []MatchBranch
-	pos           token.Position
+	tok_kind token.Kind
+	cond     Expr
+	branches []MatchBranch
+	pos      token.Position
 pub mut:
 	is_expr       bool // returns a value
 	return_type   table.Type
@@ -648,7 +647,7 @@ pub:
 	is_else       bool
 	post_comments []Comment
 pub mut:
-	scope         &Scope
+	scope &Scope
 }
 
 pub struct SelectExpr {
@@ -685,7 +684,7 @@ pub:
 	pos     token.Position
 pub mut:
 	// expr    Expr
-	typ     table.Type
+	typ table.Type
 }
 
 pub struct ForStmt {
@@ -695,8 +694,8 @@ pub:
 	is_inf bool // `for {}`
 	pos    token.Position
 pub mut:
-	label  string // `label: for {`
-	scope  &Scope
+	label string // `label: for {`
+	scope &Scope
 }
 
 pub struct ForInStmt {
@@ -711,12 +710,12 @@ pub:
 	val_is_mut bool // `for mut val in vals {` means that modifying `val` will modify the array
 	// and the array cannot be indexed inside the loop
 pub mut:
-	key_type   table.Type
-	val_type   table.Type
-	cond_type  table.Type
-	kind       table.Kind // array/map/string
-	label      string     // `label: for {`
-	scope      &Scope
+	key_type  table.Type
+	val_type  table.Type
+	cond_type table.Type
+	kind      table.Kind // array/map/string
+	label     string     // `label: for {`
+	scope     &Scope
 }
 
 pub struct ForCStmt {
@@ -730,15 +729,15 @@ pub:
 	stmts    []Stmt
 	pos      token.Position
 pub mut:
-	label    string // `label: for {`
-	scope    &Scope
+	label string // `label: for {`
+	scope &Scope
 }
 
 // #include etc
 pub struct HashStmt {
 pub:
-	mod  string
-	pos  token.Position
+	mod string
+	pos token.Position
 pub mut:
 	val  string // example: 'include <openssl/rand.h> # please install openssl // comment'
 	kind string // : 'include'
@@ -756,11 +755,11 @@ pub:
 // variable assign statement
 pub struct AssignStmt {
 pub:
-	right         []Expr
-	op            token.Kind // include: =,:=,+=,-=,*=,/= and so on; for a list of all the assign operators, see vlib/token/token.v
-	pos           token.Position
-	comments      []Comment
-	end_comments  []Comment
+	right        []Expr
+	op           token.Kind // include: =,:=,+=,-=,*=,/= and so on; for a list of all the assign operators, see vlib/token/token.v
+	pos          token.Position
+	comments     []Comment
+	end_comments []Comment
 pub mut:
 	left          []Expr
 	left_types    []table.Type
@@ -772,9 +771,9 @@ pub mut:
 
 pub struct AsCast {
 pub:
-	expr      Expr
-	typ       table.Type
-	pos       token.Position
+	expr Expr
+	typ  table.Type
+	pos  token.Position
 pub mut:
 	expr_type table.Type
 }
@@ -787,7 +786,7 @@ pub:
 	mod       string // for full path `mod_Enum_val`
 	pos       token.Position
 pub mut:
-	typ       table.Type
+	typ table.Type
 }
 
 // enum field in enum declaration
@@ -887,19 +886,19 @@ pub:
 
 pub struct ArrayInit {
 pub:
-	pos            token.Position // `[]` in []Type{} position
-	elem_type_pos  token.Position // `Type` in []Type{} position
-	exprs          []Expr      // `[expr, expr]` or `[expr]Type{}` for fixed array
-	ecmnts         [][]Comment // optional iembed comments after each expr
-	is_fixed       bool
-	has_val        bool // fixed size literal `[expr, expr]!!`
-	mod            string
-	len_expr       Expr // len: expr
-	cap_expr       Expr // cap: expr
-	default_expr   Expr // init: expr
-	has_len        bool
-	has_cap        bool
-	has_default    bool
+	pos           token.Position // `[]` in []Type{} position
+	elem_type_pos token.Position // `Type` in []Type{} position
+	exprs         []Expr      // `[expr, expr]` or `[expr]Type{}` for fixed array
+	ecmnts        [][]Comment // optional iembed comments after each expr
+	is_fixed      bool
+	has_val       bool // fixed size literal `[expr, expr]!!`
+	mod           string
+	len_expr      Expr // len: expr
+	cap_expr      Expr // cap: expr
+	default_expr  Expr // init: expr
+	has_len       bool
+	has_cap       bool
+	has_default   bool
 pub mut:
 	expr_types     []table.Type // [Dog, Cat] // also used for interface_types
 	is_interface   bool       // array of interfaces e.g. `[]Animal` `[Dog{}, Cat{}]`
@@ -910,8 +909,8 @@ pub mut:
 
 pub struct ArrayDecompose {
 pub:
-	expr      Expr
-	pos       token.Position
+	expr Expr
+	pos  token.Position
 pub mut:
 	expr_type table.Type
 	arg_type  table.Type
@@ -919,9 +918,9 @@ pub mut:
 
 pub struct ChanInit {
 pub:
-	pos       token.Position
-	cap_expr  Expr
-	has_cap   bool
+	pos      token.Position
+	cap_expr Expr
+	has_cap  bool
 pub mut:
 	typ       table.Type
 	elem_type table.Type
@@ -929,9 +928,9 @@ pub mut:
 
 pub struct MapInit {
 pub:
-	pos        token.Position
-	keys       []Expr
-	vals       []Expr
+	pos  token.Position
+	keys []Expr
+	vals []Expr
 pub mut:
 	typ        table.Type
 	key_type   table.Type
@@ -958,10 +957,10 @@ pub:
 // `string(x,y)`, while skipping the real pointer casts like `&string(x)`.
 pub struct CastExpr {
 pub:
-	expr      Expr       // `buf` in `string(buf, n)`
-	arg       Expr       // `n` in `string(buf, n)`
-	typ       table.Type // `string` TODO rename to `type_to_cast_to`
-	pos       token.Position
+	expr Expr       // `buf` in `string(buf, n)`
+	arg  Expr       // `n` in `string(buf, n)`
+	typ  table.Type // `string` TODO rename to `type_to_cast_to`
+	pos  token.Position
 pub mut:
 	typname   string     // TypeSymbol.name
 	expr_type table.Type // `byteptr`
@@ -971,7 +970,7 @@ pub mut:
 
 pub struct AssertStmt {
 pub:
-	pos  token.Position
+	pos token.Position
 pub mut:
 	expr Expr
 }
@@ -979,9 +978,9 @@ pub mut:
 // `if [x := opt()] {`
 pub struct IfGuardExpr {
 pub:
-	var_name  string
-	expr      Expr
-	pos       token.Position
+	var_name string
+	expr     Expr
+	pos      token.Position
 pub mut:
 	expr_type table.Type
 }
@@ -1017,17 +1016,17 @@ pub:
 	exprs    []Expr
 	pos      token.Position
 pub mut:
-	typ      table.Type
-	scope    &Scope
+	typ   table.Type
+	scope &Scope
 }
 
 pub struct SizeOf {
 pub:
-	is_type   bool
-	typ       table.Type
-	type_name string
-	expr      Expr
-	pos       token.Position
+	is_type bool
+	expr    Expr // checker uses this to set typ
+	pos     token.Position
+pub mut:
+	typ table.Type
 }
 
 pub struct Likely {
@@ -1039,8 +1038,8 @@ pub:
 
 pub struct TypeOf {
 pub:
-	expr      Expr
-	pos       token.Position
+	expr Expr
+	pos  token.Position
 pub mut:
 	expr_type table.Type
 }
@@ -1055,8 +1054,8 @@ pub:
 
 pub struct ConcatExpr {
 pub:
-	vals        []Expr
-	pos         token.Position
+	vals []Expr
+	pos  token.Position
 pub mut:
 	return_type table.Type
 }
@@ -1068,7 +1067,7 @@ pub:
 	pos  token.Position
 	kind token.AtKind
 pub mut:
-	val  string
+	val string
 }
 
 pub struct ComptimeSelector {
@@ -1077,8 +1076,8 @@ pub:
 	left       Expr
 	field_expr Expr
 pub mut:
-	left_type  table.Type
-	typ        table.Type
+	left_type table.Type
+	typ       table.Type
 }
 
 pub struct ComptimeCall {
@@ -1090,7 +1089,7 @@ pub:
 	vweb_tmpl   File
 	args_var    string
 pub mut:
-	sym         table.TypeSymbol
+	sym table.TypeSymbol
 }
 
 pub struct None {
@@ -1123,8 +1122,8 @@ pub:
 	updated_columns []string // for `update set x=y`
 	update_exprs    []Expr   // for `update`
 pub mut:
-	table_name      string
-	fields          []table.Field
+	table_name string
+	fields     []table.Field
 }
 
 pub struct SqlExpr {
@@ -1145,8 +1144,8 @@ pub:
 	has_limit   bool
 	limit_expr  Expr
 pub mut:
-	table_name  string
-	fields      []table.Field
+	table_name string
+	fields     []table.Field
 }
 
 [inline]

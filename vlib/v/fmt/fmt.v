@@ -10,6 +10,7 @@ import strings
 import v.util
 
 const (
+	bs      = '\\'
 	tabs    = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t',
 		'\t\t\t\t\t\t\t\t',
 	]
@@ -574,7 +575,9 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 				if i < sum_type_names.len - 1 {
 					f.write(' | ')
 				}
-				f.wrap_long_line(2, true)
+				if i < sum_type_names.len - 1 {
+					f.wrap_long_line(2, true)
+				}
 			}
 			// f.write(sum_type_names.join(' | '))
 			comments << node.comments
@@ -587,9 +590,55 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 	f.writeln('\n')
 }
 
+[inline]
+fn abs(v int) int {
+	return if v >= 0 {
+		v
+	} else {
+		-v
+	}
+}
+
 const (
 	threshold_to_align_struct = 8
 )
+
+struct StructFieldAlignInfo {
+mut:
+	first_line   int
+	last_line    int
+	max_type_len int
+	max_len      int
+}
+
+fn (mut list []StructFieldAlignInfo) add_new_info(len int, type_len int, line int) {
+	list << StructFieldAlignInfo{
+		first_line: line
+		last_line: line
+		max_type_len: type_len
+		max_len: len
+	}
+}
+
+[direct_array_access]
+fn (mut list []StructFieldAlignInfo) add_info(len int, type_len int, line int) {
+	if list.len == 0 {
+		list.add_new_info(len, type_len, line)
+		return
+	}
+	i := list.len - 1
+	if line - list[i].last_line > 1 {
+		list.add_new_info(len, type_len, line)
+		return
+	}
+	list[i].last_line = line
+	if len > list[i].max_len {
+		list[i].max_len = len
+	}
+	if type_len > list[i].max_type_len {
+		list[i].max_type_len = type_len
+	}
+}
 
 struct CommentAndExprAlignInfo {
 mut:
@@ -605,15 +654,6 @@ fn (mut list []CommentAndExprAlignInfo) add_new_info(attrs_len int, type_len int
 		max_type_len: type_len
 		first_line: line
 		last_line: line
-	}
-}
-
-[inline]
-fn abs(v int) int {
-	return if v >= 0 {
-		v
-	} else {
-		-v
 	}
 }
 
@@ -665,8 +705,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		return
 	}
 	f.writeln(' {')
-	mut max := 0
-	mut max_type_len := 0
+	mut field_aligns := []StructFieldAlignInfo{}
 	mut comment_aligns := []CommentAndExprAlignInfo{}
 	mut default_expr_aligns := []CommentAndExprAlignInfo{}
 	mut field_types := []string{cap: node.fields.len}
@@ -676,9 +715,6 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 			ft = f.short_module(ft)
 		}
 		field_types << ft
-		if ft.len > max_type_len {
-			max_type_len = ft.len
-		}
 		attrs_len := inline_attrs_len(field.attrs)
 		end_pos := field.pos.pos + field.pos.len
 		mut comments_len := 0 // Length of comments between field name and type
@@ -690,12 +726,10 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 				continue
 			}
 			if comment.pos.pos > field.pos.pos {
-				comments_len += '/* $comment.text */ '.len
+				comments_len += '/* ${comment.text.trim_left('\x01')} */ '.len
 			}
 		}
-		if comments_len + field.name.len > max {
-			max = comments_len + field.name.len
-		}
+		field_aligns.add_info(comments_len + field.name.len, ft.len, field.pos.line_nr)
 		if field.has_default_expr {
 			default_expr_aligns.add_info(attrs_len, field_types[i].len, field.pos.line_nr)
 		}
@@ -704,6 +738,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		styp := f.table.type_to_str(embed.typ)
 		f.writeln('\t$styp')
 	}
+	mut field_align_i := 0
 	mut comment_align_i := 0
 	mut default_expr_align_i := 0
 	for i, field in node.fields {
@@ -730,18 +765,22 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		// Handle comments between field name and type
 		mut comments_len := 0
 		for comm_idx < comments.len && comments[comm_idx].pos.pos < end_pos {
-			comment_text := '/* ${comments[comm_idx].text} */ ' // TODO handle in a function
+			comment_text := '/* ${comments[comm_idx].text.trim_left('\x01')} */ ' // TODO handle in a function
 			comments_len += comment_text.len
 			f.write(comment_text)
 			comm_idx++
 		}
-		f.write(strings.repeat(` `, max - field.name.len - comments_len))
+		mut field_align := field_aligns[field_align_i]
+		if field_align.last_line < field.pos.line_nr {
+			field_align_i++
+			field_align = field_aligns[field_align_i]
+		}
+		f.write(strings.repeat(` `, field_align.max_len - field.name.len - comments_len))
 		f.write(field_types[i])
-		after_type_pad_len := max_type_len - field_types[i].len
 		attrs_len := inline_attrs_len(field.attrs)
 		has_attrs := field.attrs.len > 0
 		if has_attrs {
-			f.write(strings.repeat(` `, after_type_pad_len))
+			f.write(strings.repeat(` `, field_align.max_type_len - field_types[i].len))
 			f.inline_attrs(field.attrs)
 		}
 		if field.has_default_expr {
@@ -1072,23 +1111,22 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.write(node.field_name)
 		}
 		ast.SizeOf {
+			f.write('sizeof(')
 			if node.is_type {
-				f.write('sizeof(')
-				if node.type_name != '' {
-					if f.is_external_name(node.type_name) {
-						f.write(node.type_name)
+				sym := f.table.get_type_symbol(node.typ)
+				if sym.name != '' {
+					if f.is_external_name(sym.name) {
+						f.write(sym.name)
 					} else {
-						f.write(f.short_module(node.type_name))
+						f.write(f.short_module(sym.name))
 					}
 				} else {
 					f.write(f.table.type_to_str(node.typ))
 				}
-				f.write(')')
 			} else {
-				f.write('sizeof(')
 				f.expr(node.expr)
-				f.write(')')
 			}
+			f.write(')')
 		}
 		ast.SqlExpr {
 			// sql app.db { select from Contributor where repo == id && user == 0 }
@@ -1136,15 +1174,28 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.write('}')
 		}
 		ast.StringLiteral {
+			use_double_quote := node.val.contains("'") && !node.val.contains('"')
 			if node.is_raw {
 				f.write('r')
 			} else if node.language == table.Language.c {
 				f.write('c')
 			}
-			if node.val.contains("'") && !node.val.contains('"') {
-				f.write('"$node.val"')
+			if node.is_raw {
+				if use_double_quote {
+					f.write('"$node.val"')
+				} else {
+					f.write("'$node.val'")
+				}
 			} else {
-				f.write("'$node.val'")
+				unescaped_val := node.val.replace('$bs$bs', '\x01').replace_each(["$bs'", "'",
+					'$bs"', '"'])
+				if use_double_quote {
+					s := unescaped_val.replace_each(['\x01', '$bs$bs', '"', '$bs"'])
+					f.write('"$s"')
+				} else {
+					s := unescaped_val.replace_each(['\x01', '$bs$bs', "'", "$bs'"])
+					f.write("'$s'")
+				}
 			}
 		}
 		ast.StringInterLiteral {
@@ -1908,7 +1959,7 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 	// `[100]byte`
 	if it.is_fixed {
 		if it.has_val {
-			f.write('!!')
+			f.write('!')
 			return
 		}
 		f.write(f.table.type_to_str(it.elem_type))

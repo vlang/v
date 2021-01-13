@@ -15,12 +15,12 @@ mut:
 	message_callbacks       []MessageEventHandler // new message callback functions
 	close_callbacks         []CloseEventHandler   // close message callback functions
 pub:
-	port                    int  // port used as listen to incoming connections
-	is_ssl                  bool // true if secure connection (not supported yet on server)
+	port   int  // port used as listen to incoming connections
+	is_ssl bool // true if secure connection (not supported yet on server)
 pub mut:
-	clients                 map[string]&ServerClient // clients connected to this server
-	ping_interval           int = 30 // interval for sending ping to clients (seconds)
-	state                   State // current state of connection
+	clients       map[string]&ServerClient // clients connected to this server
+	ping_interval int = 30 // interval for sending ping to clients (seconds)
+	state         State // current state of connection
 }
 
 // ServerClient represents a connected client
@@ -29,8 +29,8 @@ pub:
 	resource_name string // resource that the client access
 	client_key    string // unique key of client
 pub mut:
-	server        &Server
-	client        &Client
+	server &Server
+	client &Client
 }
 
 // new_server instance a new websocket server on provided port and route

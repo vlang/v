@@ -9,7 +9,7 @@ enum Abc {
 struct User {
 	name string // name
 	// middle comment
-	age  int
+	age int
 	// last comment
 	// last comment2
 }

@@ -20,7 +20,7 @@ const (
 )
 
 pub struct Parser {
-	pref              &pref.Preferences
+	pref &pref.Preferences
 mut:
 	file_base         string // "hello.v"
 	file_name         string // "/home/user/hello.v"

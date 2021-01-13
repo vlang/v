@@ -23,7 +23,7 @@ The code is available <a href='https://github.com/vlang/v/tree/master/tutorials/
 ### Installing V
 
 ```
-wget https://github.com/vlang/v/releases/latest/download/linux.zip
+wget https://github.com/vlang/v/releases/latest/download/v_linux.zip
 unzip v_linux.zip
 cd v
 sudo ./v symlink

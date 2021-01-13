@@ -111,23 +111,23 @@ fn fabs(a f32) f32 {
 // integer part of x
 [inline]
 fn ipart(x f32) f32 {
-    return f32(math.floor(x))
+	return f32(math.floor(x))
 }
 
 [inline]
 fn round(x f32) f32 {
-    return ipart(x + 0.5)
+	return ipart(x + 0.5)
 }
 
 // fractional part of x
 [inline]
 fn fpart(x f32) f32 {
-    return x - f32(math.floor(x))
+	return x - f32(math.floor(x))
 }
 
 [inline]
 fn rfpart(x f32) f32 {
-    return 1 - fpart(x)
+	return 1 - fpart(x)
 }
 
 /******************************************************************************

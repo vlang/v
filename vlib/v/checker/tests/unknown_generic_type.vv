@@ -1,4 +1,5 @@
 fn decode<T>(raw_data string) ?T {
+	return none
 }
 
 fn main() {

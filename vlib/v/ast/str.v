@@ -347,6 +347,9 @@ pub fn (node Stmt) str() string {
 		EnumDecl {
 			return 'enum $node.name { $node.fields.len fields }'
 		}
+		Module {
+			return 'module $node.name'
+		}
 		StructDecl {
 			return 'struct $node.name { $node.fields.len fields }'
 		}

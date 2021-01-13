@@ -179,9 +179,9 @@ pub fn exec(cmd string) ?Result {
 
 pub struct Command {
 mut:
-	f               voidptr
+	f voidptr
 pub mut:
-	eof             bool
+	eof bool
 pub:
 	path            string
 	redirect_stdout bool

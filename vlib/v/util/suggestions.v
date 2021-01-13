@@ -3,8 +3,8 @@ module util
 import strings
 
 struct Possibility {
-	value      string
-	svalue     string
+	value  string
+	svalue string
 mut:
 	similarity f32
 }

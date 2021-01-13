@@ -20,7 +20,7 @@ fn test_typeof_for_builtin_int_types() {
 	assert typeof(i8(1)) == 'i8'
 	assert typeof(i16(1)) == 'i16'
 	assert typeof(int(1)) == 'int'
-	// assert typeof(1) == 'any_int'
+	// assert typeof(1) == 'int_literal'
 	assert typeof(i64(1)) == 'i64'
 	assert typeof(byte(1)) == 'byte'
 	assert typeof(u16(1)) == 'u16'
@@ -31,7 +31,7 @@ fn test_typeof_for_builtin_int_types() {
 fn test_typeof_for_builtin_float_types() {
 	assert typeof(f32(1.0)) == 'f32'
 	assert typeof(f64(1.0)) == 'f64'
-	// assert typeof(1.0) == 'any_float'
+	// assert typeof(1.0) == 'float_literal'
 }
 
 fn test_typeof_for_builtin_string_type() {

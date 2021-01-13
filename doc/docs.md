@@ -371,8 +371,6 @@ rune // represents a Unicode code point
 
 f32 f64
 
-any_int, any_float // internal intermediate types of number literals
-
 byteptr, voidptr, charptr, size_t // these are mostly used for C interoperability
 
 any // similar to C's void* and Go's interface{}
@@ -399,6 +397,21 @@ An `int` value for example can be automatically promoted to `f64`
 or `i64` but not to `f32` or `u32`. (`f32` would mean precision
 loss for large values and `u32` would mean loss of the sign for
 negative values).
+
+Literals like `123` or `4.56` are treated in a special way. They do
+not lead to type promotions, however they default to `int` and `f64`
+respectively, when their type has to be decided:
+
+```v ignore
+u := u16(12)
+v := 13 + u    // v is of type `u16` - no promotion
+x := f32(45.6)
+y := x + 3.14  // x is of type `f32` - no promotion
+a := 75        // a is of type `int` - default for int literal
+b := 14.7      // b is of type `f64` - default for float literal
+c := u + a     // c is of type `int` - automatic promotion of `u`'s value
+d := b + x     // d is of type `f64` - automatic promotion of `x`'s value 
+```
 
 ### Strings
 
@@ -1962,10 +1975,6 @@ fn land(w World) {
 
 `match` must have a pattern for each variant or have an `else` branch.
 
-There are two ways to access the cast variant inside a match branch:
-- the shadowed match variable
-- using `as` to specify a variable name
-
 ```v ignore
 struct Moon {}
 struct Mars {}
@@ -1984,20 +1993,8 @@ fn pass_time(w World) {
         Mars { w.shiver() }
         else {}
     }
-    // using `as` to specify a name for each value
-    match w as var {
-        Mars  { var.shiver() }
-        Venus { var.sweat() }
-        else {
-            // w is of type World
-            assert w is Moon
-        }
-    }
 }
 ```
-
-Note: shadowing only works when the match expression is a variable.
-It will not work on struct fields, array indexes, or map keys.
 
 ### Option/Result types and error handling
 
@@ -2413,10 +2410,10 @@ struct Foo {
 }
 
 struct User {
-	name      string
-	age       int
+	name string
+	age  int
 	// Use the `skip` attribute to skip certain fields
-	foo       Foo    [skip]
+	foo Foo [skip]
 	// If the field name is different in JSON, it can be specified
 	last_name string [json: lastName]
 }
@@ -3219,8 +3216,11 @@ fn (a Vec) - (b Vec) Vec {
 fn main() {
 	a := Vec{2, 3}
 	b := Vec{4, 5}
+	mut c := Vec{1, 2}
 	println(a + b) // "{6, 8}"
 	println(a - b) // "{-2, -2}"
+	c += a
+	println(c) // "{3, 5}"
 }
 ```
 
@@ -3238,6 +3238,8 @@ To improve safety and maintainability, operator overloading is limited:
 - Operator functions can't modify their arguments.
 - When using `<`, `>`, `>=`, `<=`, `==` and `!=` operators, the return type must be `bool`.
 - Both arguments must have the same type (just like with all operators in V).
+- Assignment operators (`*=`, `+=`, `/=`, etc) 
+are auto generated when the operators are defined though they must return the same type.
 
 ## Inline assembly
 

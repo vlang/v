@@ -31,34 +31,34 @@ const (
 )
 
 pub struct Checker {
-	pref                             &pref.Preferences // Preferences shared from V struct
+	pref &pref.Preferences // Preferences shared from V struct
 pub mut:
-	table                            &table.Table
-	file                             &ast.File = 0
-	nr_errors                        int
-	nr_warnings                      int
-	errors                           []errors.Error
-	warnings                         []errors.Warning
-	error_lines                      []int // to avoid printing multiple errors for the same line
-	expected_type                    table.Type
-	expected_or_type                 table.Type  // fn() or { 'this type' } eg. string. expected or block type
-	cur_fn                           &ast.FnDecl // current function
-	const_decl                       string
-	const_deps                       []string
-	const_names                      []string
-	global_names                     []string
-	locked_names                     []string // vars that are currently locked
-	rlocked_names                    []string // vars that are currently read-locked
-	in_for_count                     int      // if checker is currently in a for loop
+	table            &table.Table
+	file             &ast.File = 0
+	nr_errors        int
+	nr_warnings      int
+	errors           []errors.Error
+	warnings         []errors.Warning
+	error_lines      []int // to avoid printing multiple errors for the same line
+	expected_type    table.Type
+	expected_or_type table.Type  // fn() or { 'this type' } eg. string. expected or block type
+	cur_fn           &ast.FnDecl // current function
+	const_decl       string
+	const_deps       []string
+	const_names      []string
+	global_names     []string
+	locked_names     []string // vars that are currently locked
+	rlocked_names    []string // vars that are currently read-locked
+	in_for_count     int      // if checker is currently in a for loop
 	// checked_ident  string // to avoid infinite checker loops
-	returns                          bool
-	scope_returns                    bool
-	mod                              string // current module name
-	is_builtin_mod                   bool   // are we in `builtin`?
-	inside_unsafe                    bool
-	inside_const                     bool
-	skip_flags                       bool // should `#flag` and `#include` be skipped
-	cur_generic_type                 table.Type
+	returns          bool
+	scope_returns    bool
+	mod              string // current module name
+	is_builtin_mod   bool   // are we in `builtin`?
+	inside_unsafe    bool
+	inside_const     bool
+	skip_flags       bool // should `#flag` and `#include` be skipped
+	cur_generic_type table.Type
 mut:
 	expr_level                       int  // to avoid infinite recursion segfaults due to compiler bugs
 	inside_sql                       bool // to handle sql table fields pseudo variables
@@ -319,7 +319,7 @@ pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
 				c.check_valid_pascal_case(node.name, 'type alias', node.pos)
 			}
 			typ_sym := c.table.get_type_symbol(node.parent_type)
-			if typ_sym.kind in [.placeholder, .any_int, .any_float] {
+			if typ_sym.kind in [.placeholder, .int_literal, .float_literal] {
 				c.error("type `$typ_sym.name` doesn't exist", node.pos)
 			} else if typ_sym.kind == .alias {
 				orig_sym := c.table.get_type_symbol((typ_sym.info as table.Alias).parent_type)
@@ -356,7 +356,7 @@ pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
 				if sym.name in names_used {
 					c.error('sum type $node.name cannot hold the type `$sym.name` more than once',
 						variant.pos)
-				} else if sym.kind in [.placeholder, .any_int, .any_float] {
+				} else if sym.kind in [.placeholder, .int_literal, .float_literal] {
 					c.error("type `$sym.name` doesn't exist", variant.pos)
 				} else if sym.kind == .interface_ {
 					c.error('sum type cannot hold an interface', variant.pos)
@@ -400,10 +400,10 @@ pub fn (mut c Checker) struct_decl(mut decl ast.StructDecl) {
 				c.error(util.new_suggestion(sym.name, c.table.known_type_names()).say('unknown type `$sym.name`'),
 					field.type_pos)
 			}
-			// Separate error condition for `any_int` and `any_float` because `util.suggestion` may give different
+			// Separate error condition for `int_literal` and `float_literal` because `util.suggestion` may give different
 			// suggestions due to f32 comparision issue.
-			if sym.kind in [.any_int, .any_float] {
-				msg := if sym.kind == .any_int {
+			if sym.kind in [.int_literal, .float_literal] {
+				msg := if sym.kind == .int_literal {
 					'unknown type `$sym.name`.\nDid you mean `int`?'
 				} else {
 					'unknown type `$sym.name`.\nDid you mean `f64`?'
@@ -2174,7 +2174,7 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 				pos)
 		}
 		if (exp_type.is_ptr() || exp_type.is_pointer()) &&
-			(!got_typ.is_ptr() && !got_typ.is_pointer()) && got_typ != table.any_int_type {
+			(!got_typ.is_ptr() && !got_typ.is_pointer()) && got_typ != table.int_literal_type {
 			pos := return_stmt.exprs[i].position()
 			c.error('fn `$c.cur_fn.name` expects you to return a reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
 				pos)
@@ -2494,10 +2494,10 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 						c.error('invalid right operand: $left_sym.name $assign_stmt.op $right_sym.name',
 							right.position())
 					}
-				} else if !left_sym.is_number() && left_sym.kind !in [.byteptr, .charptr] {
+				} else if !left_sym.is_number() && left_sym.kind !in [.byteptr, .charptr, .struct_] {
 					c.error('operator `$assign_stmt.op` not defined on left operand type `$left_sym.name`',
 						left.position())
-				} else if !right_sym.is_number() && left_sym.kind !in [.byteptr, .charptr] {
+				} else if !right_sym.is_number() && left_sym.kind !in [.byteptr, .charptr, .struct_] {
 					c.error('invalid right operand: $left_sym.name $assign_stmt.op $right_sym.name',
 						right.position())
 				} else if right is ast.IntegerLiteral {
@@ -2513,11 +2513,11 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			}
 			.mult_assign, .div_assign {
 				if !left_sym.is_number() &&
-					!c.table.get_final_type_symbol(left_type_unwrapped).is_int() {
+					!c.table.get_final_type_symbol(left_type_unwrapped).is_int() && left_sym.kind != .struct_ {
 					c.error('operator $assign_stmt.op.str() not defined on left operand type `$left_sym.name`',
 						left.position())
 				} else if !right_sym.is_number() &&
-					!c.table.get_final_type_symbol(left_type_unwrapped).is_int() {
+					!c.table.get_final_type_symbol(left_type_unwrapped).is_int() && left_sym.kind != .struct_ {
 					c.error('operator $assign_stmt.op.str() not defined on right operand type `$right_sym.name`',
 						right.position())
 				}
@@ -2534,6 +2534,33 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 				}
 			}
 			else {}
+		}
+		if assign_stmt.op in
+			[.plus_assign, .minus_assign, .mod_assign, .mult_assign, .div_assign] &&
+			left_sym.kind == .struct_ && right_sym.kind == .struct_ {
+			extracted_op := match assign_stmt.op {
+				.plus_assign { '+' }
+				.minus_assign { '-' }
+				.div_assign { '/' }
+				.mod_assign { '%' }
+				.mult_assign { '*' }
+				else { 'unknown op' }
+			}
+			left_name := c.table.type_to_str(left_type)
+			if method := left_sym.find_method(extracted_op) {
+				if method.return_type != left_type {
+					c.error('operator `$extracted_op` must return `$left_name` to be used as an assignment operator',
+						assign_stmt.pos)
+				}
+			} else {
+				right_name := c.table.type_to_str(right_type)
+				if left_name == right_name {
+					c.error('operation `$left_name` $extracted_op `$right_name` does not exist, please define it',
+						assign_stmt.pos)
+				} else {
+					c.error('mismatched types `$left_name` and `$right_name`', assign_stmt.pos)
+				}
+			}
 		}
 		if !is_blank_ident && right_sym.kind != .placeholder && left_sym.kind != .interface_ {
 			// Dual sides check (compatibility check)
@@ -2608,7 +2635,7 @@ fn scope_register_ab(mut s ast.Scope, pos token.Position, typ table.Type) {
 
 fn (mut c Checker) check_array_init_para_type(para string, expr ast.Expr, pos token.Position) {
 	sym := c.table.get_type_symbol(c.expr(expr))
-	if sym.kind !in [.int, .any_int] {
+	if sym.kind !in [.int, .int_literal] {
 		c.error('array $para needs to be an int', pos)
 	}
 }
@@ -3207,8 +3234,8 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			return c.chan_init(mut node)
 		}
 		ast.CharLiteral {
-			// return any_int, not rune, so that we can do "bytes << `A`" without a cast etc
-			// return table.any_int_type
+			// return int_literal, not rune, so that we can do "bytes << `A`" without a cast etc
+			// return table.int_literal_type
 			return table.rune_type
 			// return table.byte_type
 		}
@@ -3264,7 +3291,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			return c.enum_val(mut node)
 		}
 		ast.FloatLiteral {
-			return table.any_flt_type
+			return table.float_literal_type
 		}
 		ast.Ident {
 			// c.checked_ident = node.name
@@ -3289,7 +3316,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			return c.infix_expr(mut node)
 		}
 		ast.IntegerLiteral {
-			return table.any_int_type
+			return table.int_literal_type
 		}
 		ast.LockExpr {
 			return c.lock_expr(mut node)
@@ -3330,6 +3357,9 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			return c.selector_expr(mut node)
 		}
 		ast.SizeOf {
+			if !node.is_type {
+				node.typ = c.expr(node.expr)
+			}
 			return table.u32_type
 		}
 		ast.SqlExpr {
@@ -3390,8 +3420,8 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
 			node.pos)
 	}
 	if to_type_sym.kind == .sum_type {
-		if node.expr_type in [table.any_int_type, table.any_flt_type] {
-			node.expr_type = c.promote_num(node.expr_type, if node.expr_type == table.any_int_type {
+		if node.expr_type in [table.int_literal_type, table.float_literal_type] {
+			node.expr_type = c.promote_num(node.expr_type, if node.expr_type == table.int_literal_type {
 				table.int_type
 			} else {
 				table.f64_type
@@ -3407,7 +3437,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
 				node.pos)
 		}
 	} else if node.typ == table.string_type &&
-		(from_type_sym.kind in [.any_int, .int, .byte, .byteptr, .bool] ||
+		(from_type_sym.kind in [.int_literal, .int, .byte, .byteptr, .bool] ||
 		(from_type_sym.kind == .array && from_type_sym.name == 'array_byte')) {
 		type_name := c.table.type_to_str(node.expr_type)
 		c.error('cannot cast type `$type_name` to string, use `x.str()` instead', node.pos)
@@ -4318,25 +4348,25 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 						node.is_expr = true
 						node.typ = last_expr.typ
 						continue
-					} else if node.typ in [table.any_flt_type, table.any_int_type] {
-						if node.typ == table.any_int_type {
+					} else if node.typ in [table.float_literal_type, table.int_literal_type] {
+						if node.typ == table.int_literal_type {
 							if last_expr.typ.is_int() || last_expr.typ.is_float() {
 								node.typ = last_expr.typ
 								continue
 							}
-						} else { // node.typ == any_float
+						} else { // node.typ == float_literal
 							if last_expr.typ.is_float() {
 								node.typ = last_expr.typ
 								continue
 							}
 						}
 					}
-					if last_expr.typ in [table.any_flt_type, table.any_int_type] {
-						if last_expr.typ == table.any_int_type {
+					if last_expr.typ in [table.float_literal_type, table.int_literal_type] {
+						if last_expr.typ == table.int_literal_type {
 							if node.typ.is_int() || node.typ.is_float() {
 								continue
 							}
-						} else { // expr_type == any_float
+						} else { // expr_type == float_literal
 							if node.typ.is_float() {
 								continue
 							}
@@ -4378,9 +4408,9 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 		}
 	}
 	// if only untyped literals were given default to int/f64
-	if node.typ == table.any_int_type {
+	if node.typ == table.int_literal_type {
 		node.typ = table.int_type
-	} else if node.typ == table.any_flt_type {
+	} else if node.typ == table.float_literal_type {
 		node.typ = table.f64_type
 	}
 	if expr_required && !node.has_else {
@@ -5096,14 +5126,14 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		for arg in node.params {
 			sym := c.table.get_type_symbol(arg.typ)
 			if sym.kind == .placeholder ||
-				(sym.kind in [table.Kind.any_int, .any_float] && !c.is_builtin_mod) {
+				(sym.kind in [table.Kind.int_literal, .float_literal] && !c.is_builtin_mod) {
 				c.error('unknown type `$sym.name`', node.pos)
 			}
 		}
 	}
 	return_sym := c.table.get_type_symbol(node.return_type)
 	if node.language == .v &&
-		return_sym.kind in [.placeholder, .any_int, .any_float] && return_sym.language == .v {
+		return_sym.kind in [.placeholder, .int_literal, .float_literal] && return_sym.language == .v {
 		c.error('unknown type `$return_sym.name`', node.pos)
 	}
 	if node.language == .v && node.is_method && node.name == 'str' {
@@ -5114,7 +5144,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			c.error('.str() methods should have 0 arguments', node.pos)
 		}
 	}
-	if node.language == .v && node.is_method && node.name in ['+', '-', '*', '%', '/', '<', '>', '==', '!='] {
+	if node.language == .v && node.is_method && node.name in
+		['+', '-', '*', '%', '/', '<', '>', '==', '!=', '>=', '<='] {
 		if node.params.len != 2 {
 			c.error('operator methods should have exactly 1 argument', node.pos)
 		} else {
@@ -5124,7 +5155,11 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				c.error('operator methods are only allowed for struct and type alias',
 					node.pos)
 			} else {
-				if node.receiver.typ != node.params[1].typ {
+				if node.rec_mut {
+					c.error('receiver cannot be `mut` for operator overloading', node.receiver_pos)
+				} else if node.params[1].is_mut {
+					c.error('argument cannot be `mut` for operator overloading', node.pos)
+				} else if node.receiver.typ != node.params[1].typ {
 					c.error('both sides of an operator must be the same type', node.pos)
 				} else if node.name in ['<', '>', '==', '!=', '>=', '<='] &&
 					node.return_type != table.bool_type {
@@ -5159,13 +5194,6 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		if sym.kind == .void {
 			node.stmts << ast.Return{
 				pos: node.pos
-			}
-		} else {
-			node.stmts << ast.Return{
-				pos: node.pos
-				exprs: [ast.Expr(ast.None{
-					pos: node.pos
-				})]
 			}
 		}
 	}

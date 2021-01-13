@@ -89,6 +89,7 @@ pub fn (c TcpConn) read_ptr(buf_ptr byteptr, len int) ?int {
 	} else {
 		wrap_error(code) ?
 	}
+	return none
 }
 
 pub fn (c TcpConn) read(mut buf []byte) ?int {

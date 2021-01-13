@@ -7,8 +7,8 @@ import os
 import strings
 
 const (
-	str_start = "sb.write(\'"
-	str_end   = "\' ) "
+	str_start = "sb.write('"
+	str_end   = "' ) "
 )
 
 // compile_file compiles the content of a file by the given path as a template
@@ -33,14 +33,14 @@ pub fn compile_template(html_ string, fn_name string) string {
 		h := os.read_file('templates/header.html') or {
 			panic('reading file templates/header.html failed')
 		}
-		header = h.trim_space().replace("\'", '"')
+		header = h.trim_space().replace("'", '"')
 		html = header + html
 	}
 	if os.exists('templates/footer.html') && html.contains('@footer') {
 		f := os.read_file('templates/footer.html') or {
 			panic('reading file templates/footer.html failed')
 		}
-		footer = f.trim_space().replace("\'", '"')
+		footer = f.trim_space().replace("'", '"')
 		html += footer
 	}
 	mut lines := html.split_into_lines()
@@ -81,7 +81,7 @@ _ = footer
 			mut file_content := os.read_file(file_path) or {
 				panic('reading file $file_name failed')
 			}
-			file_content = file_content.replace("\'", '"')
+			file_content = file_content.replace("'", '"')
 			lines2 := file_content.split_into_lines()
 			for l in lines2 {
 				lines.insert(i + 1, l)

@@ -97,9 +97,9 @@ struct DenseArray {
 	value_bytes int
 	slot_bytes  int // sum of 2 fields above
 mut:
-	cap         int
-	len         int
-	deletes     u32 // count
+	cap     int
+	len     int
+	deletes u32 // count
 	// array allocated (with `cap` bytes) on first deletion
 	// has non-zero element when key deleted
 	all_deleted &byte
@@ -200,22 +200,22 @@ type MapFreeFn = fn (voidptr)
 
 pub struct map {
 	// Number of bytes of a key
-	key_bytes       int
+	key_bytes int
 	// Number of bytes of a value
-	value_bytes     int
+	value_bytes int
 mut:
 	// Highest even index in the hashtable
-	even_index      u32
+	even_index u32
 	// Number of cached hashbits left for rehasing
 	cached_hashbits byte
 	// Used for right-shifting out used hashbits
-	shift           byte
+	shift byte
 	// Array storing key-values (ordered)
-	key_values      DenseArray
+	key_values DenseArray
 	// Pointer to meta-data:
 	// - Odd indices store kv_index.
 	// - Even indices store probe_count and hashbits.
-	metas           &u32
+	metas &u32
 	// Extra metas that allows for no ranging when incrementing
 	// index in the hashmap
 	extra_metas     u32
@@ -226,7 +226,7 @@ mut:
 	free_fn         MapFreeFn
 pub mut:
 	// Number of key-values currently in the hashmap
-	len             int
+	len int
 }
 
 fn map_hash_string(pkey voidptr) u64 {
