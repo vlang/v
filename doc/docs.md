@@ -2377,24 +2377,24 @@ using `rlock` for read-only and `lock` for read/write access.
 ```v
 struct St {
 mut:
-    x   int // data to shared
+	x int // data to shared
 }
 
 fn (shared b St) g() {
-    lock b {
-        // read/modify/write b.x
-    }
+	lock b {
+		// read/modify/write b.x
+	}
 }
 
 fn main() {
-    shared a := &St{ // create as reference so it's on the heap
-        x: 10
-    }
-    go a.g()
+	shared a := &St{ // create as reference so it's on the heap
+		x: 10
+	}
+	go a.g()
 	// ...
-    rlock a {
-        // read a.x
-    }
+	rlock a {
+		// read a.x
+	}
 }
 ```
 
