@@ -12,6 +12,7 @@ fn test_const_embed_file() {
 	fw.close()
 	size := os.file_size(out)
 	assert size == file.len
+	eprintln('file after .data() call: $file')
 }
 
 fn test_embed_file() {
@@ -24,4 +25,5 @@ fn test_embed_file() {
 	fw.close()
 	size := os.file_size(out)
 	assert size == file.len
+	eprintln('file after .data() call: $file')
 }
