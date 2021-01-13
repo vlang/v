@@ -462,8 +462,18 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	ts.methods = []table.Fn{cap: 20}
 	// Parse methods
 	mut methods := []ast.FnDecl{cap: 20}
+	mut is_mut := false
 	for p.tok.kind != .rcbr && p.tok.kind != .eof {
 		ts = p.table.get_type_symbol(typ) // removing causes memory bug visible by `v -silent test-fmt`
+		if p.tok.kind == .key_mut {
+			if is_mut {
+				p.error_with_pos('redefinition of `mut` section', p.tok.position())
+				return {}
+			}
+			p.next()
+			p.check(.colon)
+			is_mut = true
+		}
 		method_start_pos := p.tok.position()
 		line_nr := p.tok.line_nr
 		name := p.check_name()
@@ -479,6 +489,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		args2, _, is_variadic := p.fn_args() // TODO merge table.Param and ast.Arg to avoid this
 		mut args := [table.Param{
 			name: 'x'
+			is_mut: is_mut
 			typ: typ
 			is_hidden: true
 		}]
