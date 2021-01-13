@@ -73,6 +73,7 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 	if !is_html {
 		path = tmpl_path
 		if is_embed_file {
+			p.register_auto_import('embed')
 			return ast.ComptimeCall{
 				method_name: n
 				args_var: path
