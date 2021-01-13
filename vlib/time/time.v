@@ -37,6 +37,7 @@ const (
 	long_days          = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 )
 
+// Time contains various time units for a point in time.
 pub struct Time {
 pub:
 	year        int
@@ -49,6 +50,7 @@ pub:
 	unix        u64
 }
 
+// FormatDelimiter contains different time formats.
 pub enum FormatTime {
 	hhmm12
 	hhmm24
@@ -59,6 +61,7 @@ pub enum FormatTime {
 	no_time
 }
 
+// FormatDelimiter contains different date formats.
 pub enum FormatDate {
 	ddmmyy
 	ddmmyyyy
@@ -71,6 +74,7 @@ pub enum FormatDate {
 	yyyymmdd
 }
 
+// FormatDelimiter contains different time/date delimiters.
 pub enum FormatDelimiter {
 	dot
 	hyphen
@@ -79,6 +83,7 @@ pub enum FormatDelimiter {
 	no_delimiter
 }
 
+// C.timeval represents a C time value.
 pub struct C.timeval {
 	tv_sec  u64
 	tv_usec u64
@@ -109,7 +114,7 @@ pub fn now() Time {
 	return convert_ctime(now, 0)
 }
 
-// utc returns the current time in utc
+// utc returns the current UTC time.
 pub fn utc() Time {
 	$if macos {
 		return darwin_utc()
@@ -195,8 +200,8 @@ fn since(t Time) int {
 	return 0
 }
 
-// relative returns a string representation of difference between time
-// and current time.
+// relative returns a string representation of the difference between t
+// and the current time.
 pub fn (t Time) relative() string {
 	znow := now()
 	secs := znow.unix - t.unix
@@ -235,6 +240,19 @@ pub fn (t Time) relative() string {
 	return t.md()
 }
 
+// relative_short returns a string saying how long ago a time occured as follows:
+// 0-30 seconds: `"now"`; 30-60 seconds: `"1m"`; anything else is rounded to the
+// nearest minute, hour or day; anything higher than 10000 days (about 27 years)
+// years returns an empty string.
+// Some Examples:
+// `0s -> 'now'`;
+// `20s -> 'now'`;
+// `47s -> '1m'`;
+// `456s -> '7m'`;
+// `1234s -> '20m'`;
+// `16834s -> '4h'`;
+// `1687440s -> '33d'`;
+// `15842354871s -> ''`
 pub fn (t Time) relative_short() string {
 	znow := now()
 	secs := znow.unix - t.unix
@@ -355,6 +373,7 @@ pub fn (t Time) str() string {
 	return t.format_ss()
 }
 
+// convert_ctime converts a C time to V time.
 fn convert_ctime(t C.tm, microsecond int) Time {
 	return Time{
 		year: t.tm_year + 1900
@@ -368,7 +387,7 @@ fn convert_ctime(t C.tm, microsecond int) Time {
 	}
 }
 
-// A lot of these are taken from the Go library
+// A lot of these are taken from the Go library.
 pub type Duration = i64
 
 pub const (
@@ -419,7 +438,7 @@ pub fn (d Duration) hours() f64 {
 	return f64(hr) + f64(nsec) / (60 * 60 * 1e9)
 }
 
-// offset returns time zone UTC offset in seconds
+// offset returns time zone UTC offset in seconds.
 pub fn offset() int {
 	t := now()
 	local := t.local()
