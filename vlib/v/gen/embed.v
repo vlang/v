@@ -16,16 +16,19 @@ fn (mut g Gen) gen_embedded_data() {
 	*/
 	for i, path in g.embedded_files {
 		fbytes := os.read_bytes(path) or { panic('Error while embedding file: $err') }
-		g.embedded_data.write('static const unsigned char _v_embed_blob_$i[] = {')
-		for j := 1; j < fbytes.len; j++ {
-			b := int(fbytes[j]).str()
+		g.embedded_data.write('static const unsigned byte _v_embed_blob_$i[$fbytes.len] = {\n    ')
+		for j := 0; j < fbytes.len; j++ {
+			b := fbytes[j].hex()
 			if j == fbytes.len - 1 {
-				g.embedded_data.write('$b')
+				g.embedded_data.write('0x$b')
 			} else {
-				g.embedded_data.write('$b, ')
+				g.embedded_data.write('0x$b,')
+			}
+			if 0 == ((j + 1) % 16) {
+				g.embedded_data.write('\n    ')
 			}
 		}
-		g.embedded_data.writeln(' };')
+		g.embedded_data.writeln('\n};')
 	}
 	g.embedded_data.writeln('')
 	g.embedded_data.writeln('const struct _v_embed {')
