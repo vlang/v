@@ -338,6 +338,12 @@ pub fn (node Stmt) str() string {
 		BranchStmt {
 			return node.str()
 		}
+		ConstDecl {
+			fields := node.fields.map(fn (f ConstField) string {
+				return '${f.name.trim_prefix(f.mod + '.')} = $f.expr'
+			})
+			return 'const (${fields.join(' ')})'
+		}
 		ExprStmt {
 			return node.expr.str()
 		}
