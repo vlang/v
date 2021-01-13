@@ -56,8 +56,15 @@ fn multiply_by_two(mut arr [3]int) {
 	}
 }
 
+fn change_first_element(mut arr [3][3]int) {
+	a[0][0] = 0
+}
+
 fn test_fixed_array_can_be_passed_as_mut_arg() {
 	mut arr := [1,2,3]!
 	multiply_by_two(mut arr)
 	assert arr == [2,4,6]!
+	mut arr2 := [[1,2,3]!, [4,5,6]!, [7,8,9]!]!
+	change_first_element(mut arr2)
+	assert arr2 == [[0,2,3]!, [4,5,6]!, [7,8,9]!]!
 }
