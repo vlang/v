@@ -273,7 +273,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	//
 	mut b := strings.new_builder(250000)
 	b.writeln('/* Coverage collection */')
-	b.writeln('array_string coverage = __new_array_with_default(0, 0, sizeof(string), 0)')
+	b.writeln('array_string coverage = __new_array_with_default(0, 0, sizeof(string), 0);')
 	b.write(g.hashes())
 	b.writeln('\n// V comptime_defines:')
 	b.write(g.comptime_defines.str())
