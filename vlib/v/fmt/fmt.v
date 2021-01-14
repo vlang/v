@@ -970,8 +970,8 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 					f.write("\$tmpl('$node.args_var')")
 				}
 			} else {
-				if node.method_name == 'embed_file' {
-					f.write("$${node.method_name}('$node.args_var')")
+				if node.is_embed {
+					f.write("\$embed_file('$node.embed_file.rpath')")
 				} else {
 					method_expr := if node.has_parens {
 						'(${node.method_name}($node.args_var))'

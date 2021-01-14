@@ -5,7 +5,8 @@ import os
 // https://github.com/vlang/rfcs/blob/master/embedding_resources.md
 // EmbeddedData encapsulates functionality for the `$embed_file()` compile time call.
 pub struct EmbeddedData {
-	path string
+	path  string
+	apath string
 mut:
 	compressed   byteptr
 	uncompressed byteptr
@@ -26,7 +27,8 @@ pub fn (mut ed EmbeddedData) data() byteptr {
 			// See also C Gen.gen_embedded_data() where the compression should occur.
 			ed.uncompressed = ed.compressed
 		} else {
-			bytes := os.read_bytes(ed.path) or { 'deadbeef'.bytes() }
+			apath := os.resource_abs_path(ed.path)
+			bytes := os.read_bytes(apath) or { 'deadbeef'.bytes() }
 			ed.uncompressed = bytes.data
 		}
 	}

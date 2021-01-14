@@ -3248,6 +3248,10 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		}
 		ast.ComptimeCall {
 			node.sym = c.table.get_type_symbol(c.unwrap_generic(c.expr(node.left)))
+			if node.is_embed {
+				c.file.embedded_files << node.embed_file
+				return c.table.find_type_idx('embed.EmbeddedData')
+			}
 			if node.is_vweb {
 				// TODO assoc parser bug
 				pref := *c.pref
@@ -3264,43 +3268,6 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			}
 			if node.method_name == 'html' {
 				return c.table.find_type_idx('vweb.Result')
-			}
-			if node.method_name == 'embed_file' {
-				mut path := node.args_var
-				// Validate that the path exists and is actually a file.
-				if path == '' {
-					c.error('please supply a valid relative or absolute file path to the file to embed',
-						node.left.position())
-					return c.table.find_type_idx('embed.EmbeddedData')
-				}
-				// The file doesn't exist or is a relative path
-				if !os.is_file(path) {
-					// ... it's there, but not a file
-					if os.exists(path) {
-						c.error('"$path" is not a file so it cannot be embedded', node.left.position())
-						return c.table.find_type_idx('embed.EmbeddedData')
-					}
-					// ... look relative to the source file
-					dir := os.dir(c.file.path)
-					path = os.join_path(dir, path)
-					if !os.is_file(path) {
-						if os.exists(path) {
-							// ... it there, but not a file
-							c.error('"$path" is not a file so it cannot be embedded',
-								node.left.position())
-							return c.table.find_type_idx('embed.EmbeddedData')
-						} else {
-							c.error('"$path" does not exist so it cannot be embedded',
-								node.left.position())
-							return c.table.find_type_idx('embed.EmbeddedData')
-						}
-					}
-				}
-				c.file.embedded_files << ast.EmbeddedFile{
-					rpath: node.args_var
-					apath: os.real_path(path)
-				}
-				return c.table.find_type_idx('embed.EmbeddedData')
 			}
 			return table.string_type
 		}

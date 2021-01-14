@@ -1095,6 +1095,8 @@ pub:
 	is_vweb     bool
 	vweb_tmpl   File
 	args_var    string
+	is_embed    bool
+	embed_file  EmbeddedFile
 pub mut:
 	sym table.TypeSymbol
 }

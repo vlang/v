@@ -1,6 +1,21 @@
 module gen
 
 import os
+import v.ast
+
+// gen_embed_file_struct generates C code for `$embed_file('...')` calls.
+fn (mut g Gen) gen_embed_file_init(node ast.ComptimeCall) {
+	path := node.embed_file.rpath
+	g.writeln('(embed__EmbeddedData){')
+	g.writeln('\t.path = _SLIT("$path"),')
+	file_size := os.file_size(node.embed_file.apath)
+	if g.pref.is_prod {
+		// Use function generated in Gen.gen_embedded_data()
+		g.writeln('\t.compressed = _v_embed_locate_data(_SLIT("$path")),')
+	}
+	g.writeln('\t.len = $file_size')
+	g.writeln('} // $' + 'embed_file("$path")')
+}
 
 // gen_embedded_data embeds data into the V target executable.
 fn (mut g Gen) gen_embedded_data() {
