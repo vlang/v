@@ -27,6 +27,7 @@ pub mut:
 	nmessages     chan LogMessage // many publishers, single consumer/printer
 	nmessage_idx  int      // currently printed message index
 	nprint_ended  chan int // read to block till printing ends, 1:1
+	collect_coverage bool
 }
 
 enum MessageKind {
@@ -138,6 +139,7 @@ pub fn new_test_session(_vargs string) TestSession {
 		skip_files: skip_files
 		vargs: vargs
 		vtmp_dir: new_vtmp_dir
+		collect_coverage: _vargs.contains('-coverage')
 		silent_mode: _vargs.contains('-silent')
 		progress_mode: _vargs.contains('-progress')
 	}

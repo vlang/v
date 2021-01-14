@@ -272,6 +272,8 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	g.finish()
 	//
 	mut b := strings.new_builder(250000)
+	b.writeln('/* Coverage collection */')
+	b.writeln('array_string coverage = __new_array_with_default(0, 0, sizeof(string), 0)')
 	b.write(g.hashes())
 	b.writeln('\n// V comptime_defines:')
 	b.write(g.comptime_defines.str())
@@ -861,6 +863,14 @@ fn (mut g Gen) write_v_source_line_info(pos token.Position) {
 	}
 }
 
+[inline]
+fn (mut g Gen) write_coverage_collection(pos token.Position) {
+	if g.inside_ternary == 0 && g.pref.coverage && !g.is_test {
+		cov_collection := '\n/* here we will collect coverage */array_push(&coverage, _MOV((string[]){ string_clone(_SLIT("")) }));'
+		g.writeln(cov_collection)
+	}
+}
+
 fn (mut g Gen) stmt(node ast.Stmt) {
 	if !g.skip_stmt_pos {
 		g.stmt_path_pos << g.out.len
@@ -872,10 +882,12 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 	match node {
 		ast.AssertStmt {
 			g.write_v_source_line_info(node.pos)
+			g.write_coverage_collection(node.pos)
 			g.gen_assert_stmt(node)
 		}
 		ast.AssignStmt {
 			g.write_v_source_line_info(node.pos)
+			g.write_coverage_collection(node.pos)
 			g.gen_assign_stmt(node)
 		}
 		ast.Block {
@@ -889,6 +901,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.BranchStmt {
 			g.write_v_source_line_info(node.pos)
+			g.write_coverage_collection(node.pos)
 			if node.label != '' {
 				if node.kind == .key_break {
 					g.writeln('goto ${node.label}__break;')
@@ -908,6 +921,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.ConstDecl {
 			g.write_v_source_line_info(node.pos)
+			g.write_coverage_collection(node.pos)
 			// if g.pref.build_mode != .build_module {
 			g.const_decl(node)
 			// }
@@ -955,6 +969,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.ExprStmt {
 			g.write_v_source_line_info(node.pos)
+			g.write_coverage_collection(node.pos)
 			// af := g.autofree && node.expr is ast.CallExpr && !g.is_builtin_mod
 			// if af {
 			// g.autofree_call_pregen(node.expr as ast.CallExpr)
@@ -1027,6 +1042,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			prev_branch_parent_pos := g.branch_parent_pos
 			g.branch_parent_pos = node.pos.pos
 			g.write_v_source_line_info(node.pos)
+			g.write_coverage_collection(node.pos)
 			g.is_vlines_enabled = false
 			if node.label.len > 0 {
 				g.writeln('$node.label:')
@@ -1066,6 +1082,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			prev_branch_parent_pos := g.branch_parent_pos
 			g.branch_parent_pos = node.pos.pos
 			g.write_v_source_line_info(node.pos)
+			g.write_coverage_collection(node.pos)
 			g.for_in(node)
 			g.branch_parent_pos = prev_branch_parent_pos
 		}
@@ -1073,6 +1090,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			prev_branch_parent_pos := g.branch_parent_pos
 			g.branch_parent_pos = node.pos.pos
 			g.write_v_source_line_info(node.pos)
+			g.write_coverage_collection(node.pos)
 			g.is_vlines_enabled = false
 			if node.label.len > 0 {
 				g.writeln('$node.label:')
@@ -3356,6 +3374,7 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 				} else {
 					g.writeln('')
 					g.write_v_source_line_info(branch.pos)
+					g.write_coverage_collection(node.pos)
 					g.writeln('else {')
 				}
 			} else {
@@ -3365,6 +3384,7 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 					} else {
 						g.writeln('')
 						g.write_v_source_line_info(branch.pos)
+						g.write_coverage_collection(node.pos)
 						g.write('else ')
 					}
 				}
@@ -3372,6 +3392,7 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 					g.write('(')
 				} else {
 					g.write_v_source_line_info(branch.pos)
+					g.write_coverage_collection(node.pos)
 					g.write('if (')
 				}
 				g.write(cond_var)
@@ -3417,6 +3438,7 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 				} else {
 					g.writeln('')
 					g.write_v_source_line_info(branch.pos)
+					g.write_coverage_collection(node.pos)
 					g.writeln('else {')
 				}
 			}
@@ -3427,6 +3449,7 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 				} else {
 					g.writeln('')
 					g.write_v_source_line_info(branch.pos)
+					g.write_coverage_collection(node.pos)
 					g.write('else ')
 				}
 			}
@@ -3434,6 +3457,7 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 				g.write('(')
 			} else {
 				g.write_v_source_line_info(branch.pos)
+				g.write_coverage_collection(node.pos)
 				g.write('if (')
 			}
 			for i, expr in branch.exprs {
@@ -4137,6 +4161,7 @@ fn (g &Gen) expr_is_multi_return_call(expr ast.Expr) bool {
 
 fn (mut g Gen) return_statement(node ast.Return) {
 	g.write_v_source_line_info(node.pos)
+	g.write_coverage_collection(node.pos)
 	if node.exprs.len > 0 {
 		// skip `retun $vweb.html()`
 		if node.exprs[0] is ast.ComptimeCall {

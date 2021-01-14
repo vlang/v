@@ -65,6 +65,7 @@ pub mut:
 	is_prof           bool   // benchmark every function
 	profile_file      string // the profile results will be stored inside profile_file
 	profile_no_inline bool   // when true, [inline] functions would not be profiled
+	coverage          bool // `v test -coverage x_test.v` should collect coverage, only if is_test is true
 	translated        bool   // `v translate doom.v` are we running V code translated from C? allow globals, ++ expressions, etc
 	is_prod           bool   // use "-O2"
 	obfuscate         bool   // `v -obf program.v`, renames functions to "f_XXX"
@@ -192,6 +193,9 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				res.is_debug = true
 				res.is_vlines = false
 				res.build_options << arg
+			}
+			'-coverage' {
+				res.coverage = true
 			}
 			'-repl' {
 				res.is_repl = true
