@@ -788,7 +788,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 					left_name := c.table.type_to_str(left_type)
 					right_name := c.table.type_to_str(right_type)
 					if left_name == right_name {
-						c.error('operation `$left_name` $infix_expr.op.str() `$right_name` does not exist, please define it1',
+						c.error('operation `$left_name` $infix_expr.op.str() `$right_name` does not exist, please define it',
 							left_pos)
 					} else {
 						c.error('mismatched types `$left_name` and `$right_name`', left_pos)
@@ -805,7 +805,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 					left_name := c.table.type_to_str(left_type)
 					right_name := c.table.type_to_str(right_type)
 					if left_name == right_name {
-						c.error('operation `$left_name` $infix_expr.op.str() `$right_name` does not exist, please define it2',
+						c.error('operation `$left_name` $infix_expr.op.str() `$right_name` does not exist, please define it',
 							right_pos)
 					} else {
 						c.error('mismatched types `$left_name` and `$right_name`', right_pos)
@@ -848,7 +848,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 					left_name := c.table.type_to_str(left_type)
 					right_name := c.table.type_to_str(right_type)
 					if left_name == right_name {
-						c.error('operation `$left_name` $infix_expr.op.str() `$right_name` does not exist, please define it3',
+						c.error('operation `$left_name` $infix_expr.op.str() `$right_name` does not exist, please define it',
 							infix_expr.pos)
 					} else {
 						c.error('mismatched types `$left_name` and `$right_name`', infix_expr.pos)
@@ -2558,15 +2558,15 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 						assign_stmt.pos)
 				}
 			} else {
-				is_string_op_plus := extracted_op == '+' && parent_sym.is_string()
-				if !is_string_op_plus && !parent_sym.is_number() {
+				    if parent_sym.is_primitive() {
+						c.error('cannot use operator overloading on aliases with parent type `$parent_sym.name`', assign_stmt.pos)
+					}
 					if left_name == right_name {
 						c.error('operation `$left_name` $extracted_op `$right_name` does not exist, please define it',
 							assign_stmt.pos)
 					} else {
 						c.error('mismatched types `$left_name` and `$right_name`', assign_stmt.pos)
 					}
-				}
 			}
 		}
 		if !is_blank_ident && right_sym.kind != .placeholder && left_sym.kind != .interface_ {
@@ -5163,6 +5163,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				c.error('operator methods are only allowed for struct and type alias',
 					node.pos)
 			} else {
+				parent_sym := c.table.get_final_type_symbol(node.receiver.typ)
 				if node.rec_mut {
 					c.error('receiver cannot be `mut` for operator overloading', node.receiver_pos)
 				} else if node.params[1].is_mut {
@@ -5172,6 +5173,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				} else if node.name in ['<', '>', '==', '!=', '>=', '<='] &&
 					node.return_type != table.bool_type {
 					c.error('operator comparison methods should return `bool`', node.pos)
+				} else if parent_sym.is_primitive() {
+					c.error('cannot define operator methods on type alias with parent type as `$parent_sym.name`', node.pos)
 				}
 			}
 		}

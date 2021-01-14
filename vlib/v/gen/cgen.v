@@ -1920,15 +1920,6 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			}
 			mut str_add := false
 			mut op_overloaded := false
-			mut alias_op_overloading := false
-			extracted_op := match assign_stmt.op {
-					.plus_assign { '+' }
-					.minus_assign { '-' }
-					.div_assign { '/' }
-					.mod_assign { '%' }
-					.mult_assign { '*' }
-					else { 'unknown op' }
-				}
 			if var_type == table.string_type_idx && assign_stmt.op == .plus_assign {
 				if left is ast.IndexExpr {
 					// a[0] += str => `array_set(&a, 0, &(string[]) {string_add(...))})`
@@ -1948,16 +1939,17 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				right_sym.kind == .struct_) || (left_sym.kind == .alias &&
 				right_sym.kind == .alias)) &&
 				assign_stmt.op in [.plus_assign, .minus_assign, .div_assign, .mult_assign, .mod_assign] {
-				g.expr(left)
-				parent_type := g.table.get_final_type_symbol(assign_stmt.left_types[i])
-				if !(parent_type.is_number() && left_sym.kind != .struct_ &&
-				right_sym.kind != .struct_) {
-					g.write(' = ${styp}_${util.replace_op(extracted_op)}(')
-					op_overloaded = true
-				} else {
-					g.write(' = ')
-					alias_op_overloading = true
+				extracted_op := match assign_stmt.op {
+					.plus_assign { '+' }
+					.minus_assign { '-' }
+					.div_assign { '/' }
+					.mod_assign { '%' }
+					.mult_assign { '*' }
+					else { 'unknown op' }
 				}
+				g.expr(left)
+				g.write(' = ${styp}_${util.replace_op(extracted_op)}(')
+				op_overloaded = true
 			}
 			if right_sym.kind == .function && is_decl {
 				if is_inside_ternary && is_decl {
@@ -1995,12 +1987,10 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				if is_decl {
 					g.writeln(';')
 				}
-			} else if !g.is_array_set && !str_add && !op_overloaded && !alias_op_overloading {
+			} else if !g.is_array_set && !str_add && !op_overloaded {
 				g.write(' $op ')
 			} else if str_add || op_overloaded {
 				g.write(', ')
-			} else if alias_op_overloading {
-				g.write(' $extracted_op ')
 			}
 			mut cloned := false
 			if g.is_autofree && right_sym.kind in [.array, .string] {
@@ -2938,31 +2928,40 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	right_sym := g.table.get_type_symbol(node.right_type)
 	has_eq_overloaded := !left_sym.has_method('==')
 	has_ne_overloaded := !left_sym.has_method('!=')
-	is_string_op_overloaded := ((left_sym.has_method('+') || left_sym.has_method('>') || left_sym.has_method('<') ||
-		left_sym.has_method('==') || left_sym.has_method('!=')) &&
-		node.op in [.plus, .ne, .eq, .ge, .le, .gt, .lt])
 	unaliased_right := if right_sym.info is table.Alias {
 		right_sym.info.parent_type
 	} else {
 		node.right_type
 	}
 	if unaliased_left == table.ustring_type_idx && node.op != .key_in && node.op != .not_in {
-		overloaded_fn := '${g.typ(left_type)}_${util.replace_op(node.op.str())}('
 		fn_name := match node.op {
-			.plus { 'ustring_add(' }
-			.eq { 'ustring_eq(' }
-			.ne { 'ustring_ne(' }
-			.lt { 'ustring_lt(' }
-			.le { 'ustring_le(' }
-			.gt { 'ustring_gt(' }
-			.ge { 'ustring_ge(' }
-			else { overloaded_fn }
+			.plus {
+				'ustring_add('
+			}
+			.eq {
+				'ustring_eq('
+			}
+			.ne {
+				'ustring_ne('
+			}
+			.lt {
+				'ustring_lt('
+			}
+			.le {
+				'ustring_le('
+			}
+			.gt {
+				'ustring_gt('
+			}
+			.ge {
+				'ustring_ge('
+			}
+			else {
+				verror('op error for type `$left_sym.name`')
+				'/*node error*/'
+			}
 		}
-		if is_string_op_overloaded {
-			g.write(overloaded_fn)
-		} else {
-			g.write(fn_name)
-		}
+		g.write(fn_name)
 		g.expr(node.left)
 		g.write(', ')
 		g.expr(node.right)
@@ -2977,22 +2976,34 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			g.write(')')
 			g.write('${arrow}len $node.op 0')
 		} else {
-			overloaded_fn := '${g.typ(left_type)}_${util.replace_op(node.op.str())}('
 			fn_name := match node.op {
-				.plus { 'string_add(' }
-				.eq { 'string_eq(' }
-				.ne { 'string_ne(' }
-				.lt { 'string_lt(' }
-				.le { 'string_le(' }
-				.gt { 'string_gt(' }
-				.ge { 'string_ge(' }
-				else { overloaded_fn }
+				.plus {
+					'string_add('
+				}
+				.eq {
+					'string_eq('
+				}
+				.ne {
+					'string_ne('
+				}
+				.lt {
+					'string_lt('
+				}
+				.le {
+					'string_le('
+				}
+				.gt {
+					'string_gt('
+				}
+				.ge {
+					'string_ge('
+				}
+				else {
+					verror('op error for type `$left_sym.name`')
+					'/*node error*/'
+				}
 			}
-			if is_string_op_overloaded {
-				g.write(overloaded_fn)
-			} else {
-				g.write(fn_name)
-			}
+			g.write(fn_name)
 			g.expr(node.left)
 			g.write(', ')
 			g.expr(node.right)

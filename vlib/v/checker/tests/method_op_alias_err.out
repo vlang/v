@@ -12,17 +12,31 @@ vlib/v/checker/tests/method_op_alias_err.vv:5:19: error: infix expr: cannot use 
       |                   ^
     6 | }
     7 |
-vlib/v/checker/tests/method_op_alias_err.vv:10:6: error: mismatched types `Foo` and `string`
-    8 | fn main() {
-    9 |    mut f := Foo('fg')
-   10 |    f += 'fg'
+vlib/v/checker/tests/method_op_alias_err.vv:8:1: error: cannot define operator methods on type alias with parent type as `string`
+    6 | }
+    7 | 
+    8 | fn (f Foo) * (f1 Foo) Foo {
+      | ~~~~~~~~~~~~~~~~~~~~~~~~~
+    9 |     return Foo(f + f1)
+   10 | }
+vlib/v/checker/tests/method_op_alias_err.vv:14:6: error: mismatched types `Foo` and `string`
+   12 | fn main() {
+   13 |    mut f := Foo('fg')
+   14 |    f += 'fg'
       |      ~~
-   11 |    f -= Foo('fo') 
-   12 |     println(f)
-vlib/v/checker/tests/method_op_alias_err.vv:11:6: error: operation `Foo` - `Foo` does not exist, please define it
-    9 |    mut f := Foo('fg')
-   10 |    f += 'fg'
-   11 |    f -= Foo('fo') 
+   15 |    f *= Foo2('2')
+   16 |    f -= Foo('fo')
+vlib/v/checker/tests/method_op_alias_err.vv:15:9: error: cannot assign to `f`: expected `Foo`, not `Foo2`
+   13 |    mut f := Foo('fg')
+   14 |    f += 'fg'
+   15 |    f *= Foo2('2')
+      |         ~~~~~~~~~
+   16 |    f -= Foo('fo') 
+   17 |     println(f)
+vlib/v/checker/tests/method_op_alias_err.vv:16:6: error: cannot use operator overloading on aliases with parent type `string`
+   14 |    f += 'fg'
+   15 |    f *= Foo2('2')
+   16 |    f -= Foo('fo') 
       |      ~~
-   12 |     println(f)
-   13 | }
+   17 |     println(f)
+   18 | }

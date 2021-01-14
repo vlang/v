@@ -24,26 +24,30 @@ fn test_from_u64() {
 }
 
 fn test_plus() {
-	a := big.from_u64(2)
+	mut a := big.from_u64(2)
 	b := big.from_u64(3)
 	c := a + b
 	assert c.hexstr() == '5'
 	assert (big.from_u64(1024) + big.from_u64(1024)).hexstr() == '800'
+	a += b
+	assert a.hexstr() == '5'
 }
 
 fn test_minus() {
 	a := big.from_u64(2)
-	b := big.from_u64(3)
+	mut b := big.from_u64(3)
 	c := b - a
 	assert c.hexstr() == '1'
 	e := big.from_u64(1024)
 	ee := e - e
 	assert ee.hexstr() == '0'
+	b -= a
+	assert b.hexstr() == '1'
 }
 
 fn test_divide() {
 	a := big.from_u64(2)
-	b := big.from_u64(3)
+	mut b := big.from_u64(3)
 	c := b / a
 	assert c.hexstr() == '1'
 	assert (b % a).hexstr() == '1'
@@ -52,10 +56,12 @@ fn test_divide() {
 	assert ee.hexstr() == '1'
 	assert (e / a).hexstr() == '200'
 	assert (e / (a * a)).hexstr() == '100'
+	b /= a
+	assert b.hexstr() == '1'
 }
 
 fn test_multiply() {
-	a := big.from_u64(2)
+	mut a := big.from_u64(2)
 	b := big.from_u64(3)
 	c := b * a
 	assert c.hexstr() == '6'
@@ -69,6 +75,8 @@ fn test_multiply() {
 	assert e8.hexstr() == '100000000000000000000'
 	assert e9.hexstr() == '100000000000000000001'
 	assert d.hexstr() == '60000000000000000000c00000000000000000018'
+	a *= b
+	assert a.hexstr() == '6'
 }
 
 fn test_mod() {
