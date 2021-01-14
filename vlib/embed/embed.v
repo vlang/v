@@ -44,7 +44,9 @@ pub fn (mut ed EmbeddedData) data() byteptr {
 			ed.uncompressed = ed.compressed
 		} else {
 			apath := os.resource_abs_path(ed.path)
-			bytes := os.read_bytes(apath) or { panic('EmbeddedData error: could not read from "$apath"') }
+			bytes := os.read_bytes(apath) or {
+				panic('EmbeddedData error: could not read from "$apath"')
+			}
 			ed.uncompressed = bytes.data
 			ed.free_uncompressed = true
 		}

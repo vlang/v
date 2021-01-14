@@ -1,31 +1,25 @@
-import os
-
 const const_file = $embed_file('v.png')
 
 fn test_const_embed_file() {
 	mut file := const_file
 	eprintln('file: $file')
-	assert file.len > 0
-	out := os.join_path(os.temp_dir(), 'v_embed_const_out.png')
-	os.rm(out)
-	mut fw := os.create(out) or { panic('failed to create file $out') }
-	fw.write_bytes(file.data(), file.len)
-	fw.close()
-	size := os.file_size(out)
-	assert size == file.len
+	assert file.len == 603
+	fdata := file.data()
 	eprintln('file after .data() call: $file')
+	assert file.len == 603
+	unsafe {
+		assert fdata.vbytes(4) == [byte(0x89), `P`, `N`, `G`]
+	}
 }
 
 fn test_embed_file() {
 	mut file := $embed_file('v.png')
 	eprintln('file: $file')
-	assert file.len > 0
-	out := os.join_path(os.temp_dir(), 'v_embed_out.png')
-	os.rm(out)
-	mut fw := os.create(out) or { panic('failed to create file $out') }
-	fw.write_bytes(file.data(), file.len)
-	fw.close()
-	size := os.file_size(out)
-	assert size == file.len
+	assert file.len == 603
+	fdata := file.data()
 	eprintln('file after .data() call: $file')
+	assert file.len == 603
+	unsafe {
+		assert fdata.vbytes(4) == [byte(0x89), `P`, `N`, `G`]
+	}
 }
