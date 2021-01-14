@@ -1857,6 +1857,8 @@ fn (mut c Checker) type_implements(typ table.Type, inter_typ table.Type, pos tok
 		if method := typ_sym.find_method(imethod.name) {
 			msg := c.table.is_same_method(imethod, method)
 			if msg.len > 0 {
+				sig := c.table.fn_signature(imethod, skip_receiver: true)
+				c.add_error_detail('$inter_sym.name has `$sig`')
 				c.error('`$styp` incorrectly implements method `$imethod.name` of interface `$inter_sym.name`: $msg',
 					pos)
 				return false
@@ -3253,6 +3255,10 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		}
 		ast.ComptimeCall {
 			node.sym = c.table.get_type_symbol(c.unwrap_generic(c.expr(node.left)))
+			if node.is_embed {
+				c.file.embedded_files << node.embed_file
+				return c.table.find_type_idx('embed.EmbeddedData')
+			}
 			if node.is_vweb {
 				// TODO assoc parser bug
 				pref := *c.pref
@@ -4717,8 +4723,8 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 	typ := c.expr(node.left)
 	node.left_type = typ
 	typ_sym := c.table.get_final_type_symbol(typ)
-	if typ_sym.kind !in [.array, .array_fixed, .string, .map] && !typ.is_ptr() && !(!typ_sym.name[0].is_capital() &&
-		typ_sym.name.ends_with('ptr')) && !typ.has_flag(.variadic) { // byteptr, charptr etc
+	if typ_sym.kind !in [.array, .array_fixed, .string, .map] && !typ.is_ptr() && typ !in [table.byteptr_type, table.charptr_type] &&
+		!typ.has_flag(.variadic) {
 		c.error('type `$typ_sym.name` does not support indexing', node.pos)
 	}
 	if typ_sym.kind == .string && !typ.is_ptr() && node.is_setter {
@@ -4908,6 +4914,7 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) table.Type {
 	return map_type
 }
 
+// call this *before* calling error or warn
 pub fn (mut c Checker) add_error_detail(s string) {
 	c.error_details << s
 }

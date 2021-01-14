@@ -1,0 +1,8 @@
+fn main() {
+	mut the_png := $embed_file('v.png')
+	println(the_png)
+	content := the_png.data()
+	eprintln('content: ${ptr_str(content)}')
+	eprintln(unsafe { the_png.data().vbytes(the_png.len) }.hex())
+	println(the_png)
+}
