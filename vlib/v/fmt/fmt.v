@@ -189,9 +189,85 @@ fn (mut f Fmt) adjust_complete_line() {
 	}
 }
 
+pub fn (mut f Fmt) wrap_long_line(penalty_idx int, add_indent bool) bool {
+	if f.line_len <= max_len[penalty_idx] {
+		return false
+	}
+	if f.out.buf[f.out.buf.len - 1] == ` ` {
+		f.out.go_back(1)
+	}
+	f.write('\n')
+	if add_indent {
+		f.indent++
+	}
+	f.write_indent()
+	if add_indent {
+		f.indent--
+	}
+	f.line_len = 0
+	return true
+}
+
+pub fn (mut f Fmt) remove_new_line() {
+	mut i := 0
+	for i = f.out.len - 1; i >= 0; i-- {
+		if !f.out.buf[i].is_space() { // != `\n` {
+			break
+		}
+	}
+	f.out.go_back(f.out.len - i - 1)
+	f.empty_line = false
+	// f.writeln('sdf')
+}
+
 pub fn (mut f Fmt) set_current_module_name(cmodname string) {
 	f.cur_mod = cmodname
 	f.table.cmod_prefix = cmodname + '.'
+}
+
+fn (f Fmt) get_modname_prefix(mname string) (string, string) {
+	// ./tests/proto_module_importing_vproto_keep.vv to know, why here is checked for ']' and '&'
+	if !mname.contains(']') && !mname.contains('&') {
+		return mname, ''
+	}
+	after_rbc := mname.all_after_last(']')
+	after_ref := mname.all_after_last('&')
+	modname := if after_rbc.len < after_ref.len { after_rbc } else { after_ref }
+	return modname, mname.trim_suffix(modname)
+}
+
+pub fn (mut f Fmt) no_cur_mod(typename string) string {
+	return util.no_cur_mod(typename, f.cur_mod)
+}
+
+// foo.bar.fn() => bar.fn()
+pub fn (mut f Fmt) short_module(name string) string {
+	if !name.contains('.') {
+		return name
+	}
+	if name in f.mod2alias {
+		return f.mod2alias[name]
+	}
+	if name.ends_with('>') {
+		x := name.trim_suffix('>').split('<')
+		if x.len == 2 {
+			main := f.short_module(x[0])
+			genlist := x[1].split(',')
+			genshorts := genlist.map(f.short_module(it)).join(',')
+			return '$main<$genshorts>'
+		}
+	}
+	vals := name.split('.')
+	if vals.len < 2 {
+		return name
+	}
+	mname, tprefix := f.get_modname_prefix(vals[vals.len - 2])
+	symname := vals[vals.len - 1]
+	aname := f.mod2alias[mname]
+	if aname == '' {
+		return symname
+	}
+	return '$tprefix${aname}.$symname'
 }
 
 pub fn (mut f Fmt) mod(mod ast.Module) {
@@ -201,6 +277,25 @@ pub fn (mut f Fmt) mod(mod ast.Module) {
 	}
 	f.attrs(mod.attrs)
 	f.writeln('module $mod.name\n')
+}
+
+pub fn (mut f Fmt) mark_types_import_as_used(typ table.Type) {
+	sym := f.table.get_type_symbol(typ)
+	f.mark_import_as_used(sym.name)
+}
+
+// `name` is a function (`foo.bar()`) or type (`foo.Bar{}`)
+pub fn (mut f Fmt) mark_import_as_used(name string) {
+	if !name.contains('.') {
+		return
+	}
+	pos := name.last_index('.') or { 0 }
+	mod := name[..pos]
+	if mod in f.used_imports {
+		return
+	}
+	f.used_imports << mod
+	// println('marking module $mod as used')
 }
 
 pub fn (mut f Fmt) imports(imports []ast.Import) {
@@ -343,6 +438,15 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			// already handled in f.imports
 			f.type_decl(node)
 		}
+	}
+}
+
+fn stmt_is_single_line(stmt ast.Stmt) bool {
+	match stmt {
+		ast.ExprStmt { return expr_is_single_line(stmt.expr) }
+		ast.Return { return true }
+		ast.AssignStmt { return true }
+		else { return false }
 	}
 }
 
@@ -884,40 +988,35 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 	}
 }
 
-pub fn (mut f Fmt) wrap_long_line(penalty_idx int, add_indent bool) bool {
-	if f.line_len <= max_len[penalty_idx] {
-		return false
+fn expr_is_single_line(expr ast.Expr) bool {
+	match expr {
+		ast.AnonFn {
+			if !expr.decl.no_body {
+				return false
+			}
+		}
+		ast.IfExpr {
+			return false
+		}
+		ast.Comment {
+			return false
+		}
+		ast.MatchExpr {
+			return false
+		}
+		ast.StructInit {
+			if !expr.is_short && (expr.fields.len > 0 || expr.pre_comments.len > 0) {
+				return false
+			}
+		}
+		ast.CallExpr {
+			if expr.or_block.stmts.len > 1 {
+				return false
+			}
+		}
+		else {}
 	}
-	if f.out.buf[f.out.buf.len - 1] == ` ` {
-		f.out.go_back(1)
-	}
-	f.write('\n')
-	if add_indent {
-		f.indent++
-	}
-	f.write_indent()
-	if add_indent {
-		f.indent--
-	}
-	f.line_len = 0
 	return true
-}
-
-pub fn (mut f Fmt) call_args(args []ast.CallArg) {
-	f.single_line_fields = true
-	for i, arg in args {
-		if arg.is_mut {
-			f.write(arg.share.str() + ' ')
-		}
-		if i > 0 {
-			f.wrap_long_line(2, true)
-		}
-		f.expr(arg.expr)
-		if i < args.len - 1 {
-			f.write(', ')
-		}
-	}
-	f.single_line_fields = false
 }
 
 pub fn (mut f Fmt) or_expr(or_block ast.OrExpr) {
@@ -1087,43 +1186,9 @@ pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
 	}
 	// Mark all function's used type so that they are not removed from imports
 	for arg in node.params {
-		f.mark_types_module_as_used(arg.typ)
+		f.mark_types_import_as_used(arg.typ)
 	}
-	f.mark_types_module_as_used(node.return_type)
-}
-
-pub fn (mut f Fmt) no_cur_mod(typename string) string {
-	return util.no_cur_mod(typename, f.cur_mod)
-}
-
-// foo.bar.fn() => bar.fn()
-pub fn (mut f Fmt) short_module(name string) string {
-	if !name.contains('.') {
-		return name
-	}
-	if name in f.mod2alias {
-		return f.mod2alias[name]
-	}
-	if name.ends_with('>') {
-		x := name.trim_suffix('>').split('<')
-		if x.len == 2 {
-			main := f.short_module(x[0])
-			genlist := x[1].split(',')
-			genshorts := genlist.map(f.short_module(it)).join(',')
-			return '$main<$genshorts>'
-		}
-	}
-	vals := name.split('.')
-	if vals.len < 2 {
-		return name
-	}
-	mname, tprefix := f.get_modname_prefix(vals[vals.len - 2])
-	symname := vals[vals.len - 1]
-	aname := f.mod2alias[mname]
-	if aname == '' {
-		return symname
-	}
-	return '$tprefix${aname}.$symname'
+	f.mark_types_import_as_used(node.return_type)
 }
 
 pub fn (mut f Fmt) as_cast(node ast.AsCast) {
@@ -1208,7 +1273,7 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 		// f.write('<$it.name => $name>')
 		f.write(name)
 		if name.contains('.') {
-			f.mark_module_as_used(name)
+			f.mark_import_as_used(name)
 		}
 	}
 }
@@ -1378,8 +1443,9 @@ pub fn (mut f Fmt) string_literal(node ast.StringLiteral) {
 			f.write("'$node.val'")
 		}
 	} else {
-		unescaped_val := node.val.replace('$bs$bs', '\x01').replace_each(["$bs'", "'",
-			'$bs"', '"'])
+		unescaped_val := node.val.replace('$bs$bs', '\x01').replace_each(["$bs'", "'", '$bs"',
+			'"',
+		])
 		if use_double_quote {
 			s := unescaped_val.replace_each(['\x01', '$bs$bs', '"', '$bs"'])
 			f.write('"$s"')
@@ -1623,6 +1689,23 @@ fn (mut f Fmt) write_generic_if_require(node ast.CallExpr) {
 	}
 }
 
+pub fn (mut f Fmt) call_args(args []ast.CallArg) {
+	f.single_line_fields = true
+	for i, arg in args {
+		if arg.is_mut {
+			f.write(arg.share.str() + ' ')
+		}
+		if i > 0 {
+			f.wrap_long_line(2, true)
+		}
+		f.expr(arg.expr)
+		if i < args.len - 1 {
+			f.write(', ')
+		}
+	}
+	f.single_line_fields = false
+}
+
 pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 	old_short_arg_state := f.use_short_fn_args
 	f.use_short_fn_args = false
@@ -1692,7 +1775,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 			f.write('${node.name.after_char(`.`)}')
 		} else {
 			mut name := f.short_module(node.name)
-			f.mark_module_as_used(name)
+			f.mark_import_as_used(name)
 			if node.name in f.mod2alias {
 				name = f.mod2alias[node.name]
 			}
@@ -1780,83 +1863,12 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 	f.it_name = ''
 }
 
-pub fn (mut f Fmt) remove_new_line() {
-	mut i := 0
-	for i = f.out.len - 1; i >= 0; i-- {
-		if !f.out.buf[i].is_space() { // != `\n` {
-			break
-		}
-	}
-	f.out.go_back(f.out.len - i - 1)
-	f.empty_line = false
-	// f.writeln('sdf')
-}
-
-pub fn (mut f Fmt) mark_types_module_as_used(typ table.Type) {
-	sym := f.table.get_type_symbol(typ)
-	f.mark_module_as_used(sym.name)
-}
-
-// `name` is a function (`foo.bar()`) or type (`foo.Bar{}`)
-pub fn (mut f Fmt) mark_module_as_used(name string) {
-	if !name.contains('.') {
-		return
-	}
-	pos := name.last_index('.') or { 0 }
-	mod := name[..pos]
-	if mod in f.used_imports {
-		return
-	}
-	f.used_imports << mod
-	// println('marking module $mod as used')
-}
-
 fn (mut f Fmt) write_language_prefix(lang table.Language) {
 	match lang {
 		.c { f.write('C.') }
 		.js { f.write('JS.') }
 		else {}
 	}
-}
-
-fn stmt_is_single_line(stmt ast.Stmt) bool {
-	match stmt {
-		ast.ExprStmt { return expr_is_single_line(stmt.expr) }
-		ast.Return { return true }
-		ast.AssignStmt { return true }
-		else { return false }
-	}
-}
-
-fn expr_is_single_line(expr ast.Expr) bool {
-	match expr {
-		ast.AnonFn {
-			if !expr.decl.no_body {
-				return false
-			}
-		}
-		ast.IfExpr {
-			return false
-		}
-		ast.Comment {
-			return false
-		}
-		ast.MatchExpr {
-			return false
-		}
-		ast.StructInit {
-			if !expr.is_short && (expr.fields.len > 0 || expr.pre_comments.len > 0) {
-				return false
-			}
-		}
-		ast.CallExpr {
-			if expr.or_block.stmts.len > 1 {
-				return false
-			}
-		}
-		else {}
-	}
-	return true
 }
 
 pub fn (mut f Fmt) chan_init(mut it ast.ChanInit) {
@@ -2215,17 +2227,6 @@ fn (mut f Fmt) is_external_name(name string) bool {
 		return true
 	}
 	return false
-}
-
-fn (f Fmt) get_modname_prefix(mname string) (string, string) {
-	// ./tests/proto_module_importing_vproto_keep.vv to know, why here is checked for ']' and '&'
-	if !mname.contains(']') && !mname.contains('&') {
-		return mname, ''
-	}
-	after_rbc := mname.all_after_last(']')
-	after_ref := mname.all_after_last('&')
-	modname := if after_rbc.len < after_ref.len { after_rbc } else { after_ref }
-	return modname, mname.trim_suffix(modname)
 }
 
 pub fn (mut f Fmt) assign_stmt(node ast.AssignStmt) {
