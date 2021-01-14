@@ -36,6 +36,7 @@ fn (mut g Gen) gen_embedded_data() {
 			b := fbytes[j].hex()
 			if j == fbytes.len - 1 {
 				g.embedded_data.write('0x$b')
+				g.embedded_data.write('0x00')
 			} else {
 				g.embedded_data.write('0x$b,')
 			}
