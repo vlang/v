@@ -8,14 +8,30 @@ pub struct EmbeddedData {
 	path  string
 	apath string
 mut:
-	compressed   byteptr
-	uncompressed byteptr
+	compressed        byteptr
+	uncompressed      byteptr
+	free_compressed   bool
+	free_uncompressed bool
 pub:
 	len int
 }
 
 pub fn (ed EmbeddedData) str() string {
 	return 'embed.EmbeddedData{ len: $ed.len, path: "$ed.path", uncompressed: ${ptr_str(ed.uncompressed)} }'
+}
+
+[unsafe]
+pub fn (mut ed EmbeddedData) free() {
+	unsafe {
+		ed.path.free()
+		ed.apath.free()
+		if ed.free_compressed {
+			free(ed.compressed)
+		}
+		if ed.free_uncompressed {
+			free(ed.uncompressed)
+		}
+	}
 }
 
 pub fn (mut ed EmbeddedData) data() byteptr {
@@ -30,6 +46,7 @@ pub fn (mut ed EmbeddedData) data() byteptr {
 			apath := os.resource_abs_path(ed.path)
 			bytes := os.read_bytes(apath) or { 'deadbeef'.bytes() }
 			ed.uncompressed = bytes.data
+			ed.free_uncompressed = true
 		}
 	}
 	return ed.uncompressed
