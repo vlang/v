@@ -55,7 +55,7 @@ fn (mut g Gen) gen_embedded_data() {
 	g.embedded_data.writeln('}')
 	g.embedded_data.writeln('_v_embedded_data[] = {')
 	for i, emfile in g.embedded_files {
-		g.embedded_data.writeln('\t{${ctoslit(emfile.rpath)}}, _v_embed_blob_$i},')
+		g.embedded_data.writeln('\t{${ctoslit(emfile.rpath)}, _v_embed_blob_$i},')
 	}
 	g.embedded_data.writeln('\t{_SLIT(""), NULL}')
 	g.embedded_data.writeln('};')
