@@ -97,9 +97,9 @@ struct DenseArray {
 	value_bytes int
 	slot_bytes  int // sum of 2 fields above
 mut:
-	cap         int
-	len         int
-	deletes     u32 // count
+	cap     int
+	len     int
+	deletes u32 // count
 	// array allocated (with `cap` bytes) on first deletion
 	// has non-zero element when key deleted
 	all_deleted &byte
@@ -200,22 +200,22 @@ type MapFreeFn = fn (voidptr)
 
 pub struct map {
 	// Number of bytes of a key
-	key_bytes       int
+	key_bytes int
 	// Number of bytes of a value
-	value_bytes     int
+	value_bytes int
 mut:
 	// Highest even index in the hashtable
-	even_index      u32
+	even_index u32
 	// Number of cached hashbits left for rehasing
 	cached_hashbits byte
 	// Used for right-shifting out used hashbits
-	shift           byte
+	shift byte
 	// Array storing key-values (ordered)
-	key_values      DenseArray
+	key_values DenseArray
 	// Pointer to meta-data:
 	// - Odd indices store kv_index.
 	// - Even indices store probe_count and hashbits.
-	metas           &u32
+	metas &u32
 	// Extra metas that allows for no ranging when incrementing
 	// index in the hashmap
 	extra_metas     u32
@@ -226,48 +226,48 @@ mut:
 	free_fn         MapFreeFn
 pub mut:
 	// Number of key-values currently in the hashmap
-	len             int
+	len int
 }
 
 fn map_hash_string(pkey voidptr) u64 {
-	key := *&string(pkey)
+	key := *unsafe { &string(pkey) }
 	return hash.wyhash_c(key.str, u64(key.len), 0)
 }
 
 fn map_hash_int_1(pkey voidptr) u64 {
-	return hash.wyhash64_c(*&byte(pkey), 0)
+	return hash.wyhash64_c(*unsafe { &byte(pkey) }, 0)
 }
 
 fn map_hash_int_2(pkey voidptr) u64 {
-	return hash.wyhash64_c(*&u16(pkey), 0)
+	return hash.wyhash64_c(*unsafe { &u16(pkey) }, 0)
 }
 
 fn map_hash_int_4(pkey voidptr) u64 {
-	return hash.wyhash64_c(*&u32(pkey), 0)
+	return hash.wyhash64_c(*unsafe { &u32(pkey) }, 0)
 }
 
 fn map_hash_int_8(pkey voidptr) u64 {
-	return hash.wyhash64_c(*&u64(pkey), 0)
+	return hash.wyhash64_c(*unsafe { &u64(pkey) }, 0)
 }
 
 fn map_eq_string(a voidptr, b voidptr) bool {
-	return fast_string_eq(*&string(a), *&string(b))
+	return fast_string_eq(*unsafe { &string(a) }, *unsafe { &string(b) })
 }
 
 fn map_eq_int_1(a voidptr, b voidptr) bool {
-	return *&byte(a) == *&byte(b)
+	return unsafe { *&byte(a) == *&byte(b) }
 }
 
 fn map_eq_int_2(a voidptr, b voidptr) bool {
-	return *&u16(a) == *&u16(b)
+	return unsafe { *&u16(a) == *&u16(b) }
 }
 
 fn map_eq_int_4(a voidptr, b voidptr) bool {
-	return *&u32(a) == *&u32(b)
+	return unsafe { *&u32(a) == *&u32(b) }
 }
 
 fn map_eq_int_8(a voidptr, b voidptr) bool {
-	return *&u64(a) == *&u64(b)
+	return unsafe { *&u64(a) == *&u64(b) }
 }
 
 fn map_clone_string(dest voidptr, pkey voidptr) {
@@ -302,7 +302,7 @@ fn map_clone_int_8(dest voidptr, pkey voidptr) {
 }
 
 fn map_free_string(pkey voidptr) {
-	(*&string(pkey)).free()
+	(*unsafe { &string(pkey) }).free()
 }
 
 fn map_free_nop(_ voidptr) {
@@ -646,7 +646,7 @@ pub fn (m &map) keys() []string {
 }
 
 // Returns all keys in the map.
-pub fn (m &map) keys_1() array {
+fn (m &map) keys_1() array {
 	mut keys := __new_array(m.len, 0, m.key_bytes)
 	mut item := unsafe { byteptr(keys.data) }
 	if m.key_values.deletes == 0 {
@@ -674,7 +674,7 @@ pub fn (m &map) keys_1() array {
 
 // warning: only copies keys, does not clone
 [unsafe]
-pub fn (d &DenseArray) clone() DenseArray {
+fn (d &DenseArray) clone() DenseArray {
 	res := DenseArray{
 		key_bytes: d.key_bytes
 		value_bytes: d.value_bytes

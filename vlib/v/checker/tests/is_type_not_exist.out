@@ -1,12 +1,5 @@
-vlib/v/checker/tests/is_type_not_exist.vv:4:25: error: cannot use `any_int` as `Integer` in argument 1 to `fn_with_sum_type_param`
-    2 |
-    3 | fn main() {
-    4 |     fn_with_sum_type_param(1)
-      |                            ^
-    5 | }
-    6 |
 vlib/v/checker/tests/is_type_not_exist.vv:8:10: error: is: type `SomethingThatDontExist` does not exist
-    6 |
+    6 | 
     7 | fn fn_with_sum_type_param(i Integer) {
     8 |     if i is SomethingThatDontExist {
       |             ~~~~~~~~~~~~~~~~~~~~~~

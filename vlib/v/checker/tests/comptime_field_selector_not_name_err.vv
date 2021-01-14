@@ -1,0 +1,17 @@
+struct Foo {
+	test int
+	name string
+}
+
+fn test<T>() {
+	mut t := T{}
+	$for f in T.fields {
+		$if f.typ is string {
+			t.$f = '3'
+		}
+	}
+}
+
+fn main() {
+	test<Foo>()
+}

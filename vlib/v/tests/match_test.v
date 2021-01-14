@@ -152,7 +152,7 @@ struct B1 {
 
 fn f(s Sum) string {
 	match s {
-		A1 { return typeof(s) }
+		A1 { return typeof(s).name }
 		B1 { return '' }
 	}
 	return ''
@@ -167,7 +167,7 @@ fn test_sum_type_name() {
 
 fn f_else(s Sum) string {
 	match s {
-		A1 { return typeof(s) }
+		A1 { return typeof(s).name }
 		else { return '' }
 	}
 }
@@ -229,4 +229,42 @@ fn test_sub_expression() {
 	assert !b
 	c := true || match 1 {0 {false} else {false}}
 	assert c
+}
+
+const (
+	one = 'one'
+)
+
+fn test_match_constant_string() {
+	match one {
+		one {
+			assert true
+		}
+		else {
+			assert false
+		}
+	}
+}
+
+type WithArray = []WithArray | int
+
+fn test_sumtype_with_array() {
+	fa := [WithArray(0)]
+	f := WithArray(fa)
+	match f {
+		[]WithArray {
+			assert true
+		}
+		int {
+			assert false
+		}
+	}
+	match f {
+		int {
+			assert false
+		}
+		[]WithArray {
+			assert true
+		}
+	}
 }

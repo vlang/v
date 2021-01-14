@@ -1,6 +1,7 @@
 module main
 
 import gg
+import sokol.sapp
 import gx
 import os
 import time
@@ -9,9 +10,8 @@ import rand
 import neuroevolution
 
 const (
-	win_width    = 500
-	win_height   = 512
-	timer_period = 24 // ms
+	win_width  = 500
+	win_height = 512
 )
 
 struct Bird {
@@ -86,6 +86,7 @@ mut:
 	generation       int
 	background_speed f64 = 0.5
 	background_x     f64
+	timer_period_ms  int = 24
 }
 
 fn (mut app App) start() {
@@ -185,6 +186,7 @@ fn main() {
 		create_window: true
 		window_title: 'flappylearning-v'
 		frame_fn: frame
+		event_fn: on_event
 		user_data: app
 		init_fn: init_images
 		font_path: os.resource_abs_path('../assets/fonts/RobotoMono-Regular.ttf')
@@ -201,7 +203,7 @@ fn main() {
 fn (mut app App) run() {
 	for {
 		app.update()
-		time.sleep_ms(timer_period)
+		time.sleep_ms(app.timer_period_ms)
 	}
 }
 
@@ -247,4 +249,30 @@ fn (app &App) display() {
 
 fn (app &App) draw() {
 	app.display()
+}
+
+fn on_event(e &sapp.Event, mut app App) {
+	if e.typ == .key_down {
+		app.key_down(e.key_code)
+	}
+}
+
+fn (mut app App) key_down(key sapp.KeyCode) {
+	// global keys
+	match key {
+		.escape {
+			exit(0)
+		}
+		._0 {
+			app.timer_period_ms = 0
+		}
+		.space {
+			if app.timer_period_ms == 24 {
+				app.timer_period_ms = 4
+			} else {
+				app.timer_period_ms = 24
+			}
+		}
+		else {}
+	}
 }

@@ -1,0 +1,10 @@
+enum Color {
+	red
+	blue
+	green
+}
+
+fn main() {
+	println(Color.red > Color.green)
+	println(Color.red + Color.green)
+}

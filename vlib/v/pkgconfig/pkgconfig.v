@@ -31,6 +31,7 @@ pub mut:
 	paths        []string // TODO: move to options?
 	vars         map[string]string
 	requires     []string
+	requires_private []string
 	version      string
 	description  string
 	name         string
@@ -39,7 +40,7 @@ pub mut:
 
 fn (mut pc PkgConfig) parse_list(s string) []string {
 	operators := [ '=', '<', '>', '>=', '<=' ]
-	r := pc.parse_line(s.replace(',', '')).split(' ')
+	r := pc.parse_line(s.replace('  ', ' ').replace(',', '')).split(' ')
 	mut res := []string{}
 	mut skip := false
 	for a in r {
@@ -113,6 +114,8 @@ fn (mut pc PkgConfig) parse(file string) bool {
 				pc.version = pc.parse_line(line[8..])
 			} else if line.starts_with('Requires:') {
 				pc.requires = pc.parse_list(line[9..])
+			} else if line.starts_with('Requires.private:') {
+				pc.requires_private = pc.parse_list(line[17..])
 			} else if line.starts_with('Cflags:') {
 				pc.cflags = pc.parse_list(line[7..])
 			} else if line.starts_with('Libs:') {
@@ -174,20 +177,29 @@ pub fn (mut pc PkgConfig) extend(pcdep &PkgConfig) ?string {
 			pc.libs_private << lib
 		}
 	}
+	return none
 }
 
 fn (mut pc PkgConfig) load_requires() {
 	for dep in pc.requires {
-		mut pcdep := PkgConfig{
-			paths: pc.paths
-		}
-		depfile := pcdep.resolve(dep) or {
-			break
-		}
-		pcdep.parse(depfile)
-		pcdep.load_requires()
-		pc.extend(pcdep)
+		pc.load_require(dep)
 	}
+	for dep in pc.requires_private {
+		pc.load_require(dep)
+	}
+}
+
+fn (mut pc PkgConfig) load_require(dep string) {
+	mut pcdep := PkgConfig{
+		paths: pc.paths
+	}
+	depfile := pcdep.resolve(dep) or {
+		eprintln('cannot resolve $dep')
+		return
+	}
+	pcdep.parse(depfile)
+	pcdep.load_requires()
+	pc.extend(pcdep)
 }
 
 fn (mut pc PkgConfig) add_path(path string) {

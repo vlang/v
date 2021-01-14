@@ -1,0 +1,2 @@
+cmd/tools/vvet/tests/indent_with_space.vv:2: error: Looks like you are using spaces for indentation.
+NB: You can run `v fmt -w file.v` to fix these automatically

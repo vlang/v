@@ -7,6 +7,7 @@ import os
 import v.token
 import v.pref
 import v.util
+import v.vet
 import v.errors
 
 const (
@@ -18,17 +19,16 @@ const (
 
 pub struct Scanner {
 pub mut:
-	file_path                   string
-	text                        string
-	pos                         int
-	line_nr                     int
-	last_nl_pos                 int // for calculating column
-	is_inside_string            bool
-	is_inter_start              bool // for hacky string interpolation TODO simplify
-	is_inter_end                bool
-	is_enclosed_inter           bool
-	is_debug                    bool
-	line_comment                string
+	file_path         string
+	text              string
+	pos               int
+	line_nr           int
+	last_nl_pos       int // for calculating column
+	is_inside_string  bool
+	is_inter_start    bool // for hacky string interpolation TODO simplify
+	is_inter_end      bool
+	is_enclosed_inter bool
+	line_comment      string
 	// prev_tok                 TokenKind
 	is_started                  bool
 	is_print_line_on_error      bool
@@ -37,18 +37,18 @@ pub mut:
 	quote                       byte // which quote is used to denote current string: ' or "
 	inter_quote                 byte
 	line_ends                   []int // the positions of source lines ends   (i.e. \n signs)
-	nr_lines                    int // total number of lines in the source file that were scanned
-	is_vh                       bool // Keep newlines
-	is_fmt                      bool // Used for v fmt.
+	nr_lines                    int   // total number of lines in the source file that were scanned
+	is_vh                       bool  // Keep newlines
+	is_fmt                      bool  // Used for v fmt.
 	comments_mode               CommentsMode
 	is_inside_toplvl_statement  bool // *only* used in comments_mode: .toplevel_comments, toggled by parser
 	all_tokens                  []token.Token // *only* used in comments_mode: .toplevel_comments, contains all tokens
 	tidx                        int
 	eofs                        int
 	pref                        &pref.Preferences
-	vet_errors                  []string
 	errors                      []errors.Error
 	warnings                    []errors.Warning
+	vet_errors                  []vet.Error
 }
 
 /*
@@ -690,14 +690,14 @@ fn (mut s Scanner) text_scan() token.Token {
 			`(` {
 				// TODO `$if vet {` for performance
 				if s.pref.is_vet && s.text[s.pos + 1] == ` ` {
-					s.vet_error('Looks like you are adding a space after `(`')
+					s.vet_error('Looks like you are adding a space after `(`', .vfmt)
 				}
 				return s.new_token(.lpar, '', 1)
 			}
 			`)` {
 				// TODO `$if vet {` for performance
 				if s.pref.is_vet && s.text[s.pos - 1] == ` ` {
-					s.vet_error('Looks like you are adding a space before `)`')
+					s.vet_error('Looks like you are adding a space before `)`', .vfmt)
 				}
 				return s.new_token(.rpar, '', 1)
 			}
@@ -820,9 +820,9 @@ fn (mut s Scanner) text_scan() token.Token {
 				s.ignore_line()
 				if nextc == `!` {
 					// treat shebang line (#!) as a comment
-					s.line_comment = s.text[start + 1..s.pos].trim_space()
+					comment := s.text[start - 1..s.pos].trim_space()
 					// s.fgenln('// shebang line "$s.line_comment"')
-					continue
+					return s.new_token(.comment, comment, comment.len + 2)
 				}
 				hash := s.text[start..s.pos].trim_space()
 				return s.new_token(.hash, hash, hash.len)
@@ -840,19 +840,6 @@ fn (mut s Scanner) text_scan() token.Token {
 					return s.new_token(.right_shift, '', 2)
 				} else {
 					return s.new_token(.gt, '', 1)
-				}
-			}
-			0xE2 {
-				if nextc == 0x89 && s.text[s.pos + 2] == 0xA0 {
-					// case `≠`:
-					s.pos += 2
-					return s.new_token(.ne, '', 3)
-				} else if nextc == 0x89 && s.text[s.pos + 2] == 0xBD {
-					s.pos += 2
-					return s.new_token(.le, '', 3)
-				} else if nextc == 0xA9 && s.text[s.pos + 2] == 0xBE {
-					s.pos += 2
-					return s.new_token(.ge, '', 3)
 				}
 			}
 			`<` {
@@ -971,7 +958,10 @@ fn (mut s Scanner) text_scan() token.Token {
 					}
 					s.pos++
 					if s.should_parse_comment() {
-						comment := s.text[start..(s.pos - 1)].trim_space()
+						mut comment := s.text[start..(s.pos - 1)].trim(' ')
+						if !comment.contains('\n') {
+							comment = '\x01' + comment
+						}
 						return s.new_token(.comment, comment, comment.len + 4)
 					}
 					// Skip if not in fmt mode
@@ -986,7 +976,7 @@ fn (mut s Scanner) text_scan() token.Token {
 				return s.end_of_file()
 			}
 		}
-		s.error('invalid character `$c.str()`')
+		s.error('invalid character `$c.ascii_str()`')
 		break
 	}
 	return s.end_of_file()
@@ -1163,7 +1153,7 @@ fn (mut s Scanner) ident_char() string {
 		}
 	}
 	// Escapes a `'` character
-	return if c == "\'" {
+	return if c == "'" {
 		'\\' + c
 	} else {
 		c
@@ -1182,29 +1172,6 @@ fn (s &Scanner) expect(want string, start_pos int) bool {
 		}
 	}
 	return true
-}
-
-fn (mut s Scanner) debug_tokens() {
-	s.pos = 0
-	s.is_started = false
-	s.is_debug = true
-	fname := s.file_path.all_after_last(os.path_separator)
-	println('\n===DEBUG TOKENS $fname===')
-	for {
-		tok := s.scan()
-		tok_kind := tok.kind
-		lit := tok.lit
-		print(tok_kind.str())
-		if lit != '' {
-			println(' `$lit`')
-		} else {
-			println('')
-		}
-		if tok_kind == .eof {
-			println('============ END OF DEBUG TOKENS ==================')
-			break
-		}
-	}
 }
 
 [inline]
@@ -1272,8 +1239,17 @@ pub fn (mut s Scanner) error(msg string) {
 	}
 }
 
-fn (mut s Scanner) vet_error(msg string) {
-	s.vet_errors << '$s.file_path:$s.line_nr: $msg'
+fn (mut s Scanner) vet_error(msg string, fix vet.FixKind) {
+	ve := vet.Error{
+		message: msg
+		file_path: s.file_path
+		pos: token.Position{
+			line_nr: s.line_nr
+		}
+		kind: .error
+		fix: fix
+	}
+	s.vet_errors << ve
 }
 
 pub fn verror(s string) {

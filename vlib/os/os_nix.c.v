@@ -17,6 +17,26 @@ const (
 	stderr_value = 2
 )
 
+// (Must be realized in Syscall) (Must be specified)
+// ref: http://www.ccfit.nsu.ru/~deviv/courses/unix/unix/ng7c229.html
+pub const (
+	s_ifmt  = 0xF000 // type of file
+	s_ifdir = 0x4000 // directory
+	s_iflnk = 0xa000 // link
+	s_isuid = 0o4000 // SUID
+	s_isgid = 0o2000 // SGID
+	s_isvtx = 0o1000 // Sticky
+	s_irusr = 0o0400 // Read by owner
+	s_iwusr = 0o0200 // Write by owner
+	s_ixusr = 0o0100 // Execute by owner
+	s_irgrp = 0o0040 // Read by group
+	s_iwgrp = 0o0020 // Write by group
+	s_ixgrp = 0o0010 // Execute by group
+	s_iroth = 0o0004 // Read by others
+	s_iwoth = 0o0002 // Write by others
+	s_ixoth = 0o0001 // Execute by others
+)
+
 struct C.utsname {
 mut:
 	sysname  charptr
@@ -47,14 +67,14 @@ pub fn uname() Uname {
 }
 
 fn init_os_args(argc int, argv &&byte) []string {
-	mut args := []string{}
+	mut args_ := []string{}
 	// mut args := []string(make(0, argc, sizeof(string)))
 	// mut args := []string{len:argc}
 	for i in 0 .. argc {
 		// args [i] = argv[i].vstring()
-		unsafe { args << byteptr(argv[i]).vstring() }
+		unsafe { args_ << byteptr(argv[i]).vstring() }
 	}
-	return args
+	return args_
 }
 
 pub fn ls(path string) ?[]string {
@@ -70,10 +90,15 @@ pub fn ls(path string) ?[]string {
 		if isnil(ent) {
 			break
 		}
-		name := tos_clone(byteptr(ent.d_name))
-		if name != '.' && name != '..' && name != '' {
-			res << name
+		bptr := byteptr(ent.d_name)
+		unsafe {
+			if bptr[0] == 0 ||
+				(bptr[0] == `.` && bptr[1] == 0) ||
+				(bptr[0] == `.` && bptr[1] == `.` && bptr[2] == 0) {
+				continue
+			}
 		}
+		res << tos_clone(bptr)
 	}
 	C.closedir(dir)
 	return res
@@ -159,9 +184,9 @@ pub fn exec(cmd string) ?Result {
 
 pub struct Command {
 mut:
-	f               voidptr
+	f voidptr
 pub mut:
-	eof             bool
+	eof bool
 pub:
 	path            string
 	redirect_stdout bool
@@ -263,4 +288,20 @@ pub fn is_writable_folder(folder string) ?bool {
 [inline]
 pub fn getpid() int {
 	return C.getpid()
+}
+
+// Turns the given bit on or off, depending on the `enable` parameter
+pub fn posix_set_permission_bit(path_s string, mode u32, enable bool) {
+	mut s := C.stat{}
+	mut new_mode := u32(0)
+	path := charptr(path_s.str)
+	unsafe {
+		C.stat(path, &s)
+		new_mode = s.st_mode
+	}
+	match enable {
+		true { new_mode |= mode }
+		false { new_mode &= (0o7777 - mode) }
+	}
+	C.chmod(path, int(new_mode))
 }

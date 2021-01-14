@@ -1,6 +1,7 @@
 module main
 
 import os
+import os.cmdline
 import rand
 import term
 import v.pref
@@ -8,14 +9,44 @@ import v.pref
 const (
 	too_long_line_length = 100
 	term_colors          = term.can_show_color_on_stderr()
+	is_all               = '-all' in os.args
+	hide_warnings        = '-hide-warnings' in os.args
+	non_option_args      = cmdline.only_non_options(os.args[1..])
 )
 
+fn wprintln(s string) {
+	if !hide_warnings {
+		println(s)
+	}
+}
+
 fn main() {
-	files_paths := if '-all' in os.args { md_file_paths() } else { os.args[1..] }
+	if os.args.len == 1 {
+		println('Usage: checks the passed markdown files for correct ```v ``` code blocks, 
+and for other style violations. like too long lines/links etc...
+a) `v run cmd/tools/check-md.v -all` - will check *all* .md files in the folders.
+b) `v run cmd/tools/check-md.v doc/docs.md` - will only check a single file.
+c) `v run cmd/tools/check-md.v -hide-warnings file.md` - same, but will not print warnings, only errors.
+
+NB: There are several special keywords, which you can put after the code fences for v.
+These are:
+	compile      - default, you do not need to specify it. cmd/tools/check-md.v compile the example.
+	ignore       - ignore the example, useful for examples that just use the syntax highlighting
+	failcompile  - known failing compilation. Useful for examples demonstrating compiler errors.
+	oksyntax     - it should parse, it may not compile. Useful for partial examples.
+	badsyntax    - known bad syntax, it should not even parse
+	wip          - like ignore; a planned feature; easy to search.
+')
+		exit(0)
+	}
+	files_paths := if is_all { md_file_paths() } else { non_option_args }
 	mut warnings := 0
 	mut errors := 0
 	mut oks := 0
 	mut all_md_files := []MDFile{}
+	if term_colors {
+		os.setenv('VCOLORS', 'always', true)
+	}
 	for file_path in files_paths {
 		real_path := os.real_path(file_path)
 		lines := os.read_lines(real_path) or {
@@ -29,16 +60,16 @@ fn main() {
 		for i, line in lines {
 			if line.len > too_long_line_length {
 				if mdfile.state == .vexample {
-					println(wline(file_path, i, line.len, 'long V example line'))
+					wprintln(wline(file_path, i, line.len, 'long V example line'))
 					warnings++
 				} else if mdfile.state == .codeblock {
-					println(wline(file_path, i, line.len, 'long code block line'))
+					wprintln(wline(file_path, i, line.len, 'long code block line'))
 					warnings++
 				} else if line.starts_with('|') {
-					println(wline(file_path, i, line.len, 'long table'))
+					wprintln(wline(file_path, i, line.len, 'long table'))
 					warnings++
 				} else if line.contains('https') {
-					println(wline(file_path, i, line.len, 'long link'))
+					wprintln(wline(file_path, i, line.len, 'long link'))
 					warnings++
 				} else {
 					eprintln(eline(file_path, i, line.len, 'line too long'))
@@ -176,6 +207,23 @@ fn (mut f MDFile) dump() {
 	}
 }
 
+fn cmdexecute(cmd string) int {
+	res := os.exec(cmd) or { return 1 }
+	if res.exit_code != 0 {
+		eprint(res.output)
+	}
+	return res.exit_code
+}
+
+fn silent_cmdexecute(cmd string) int {
+	res := os.exec(cmd) or { return 1 }
+	return res.exit_code
+}
+
+fn get_fmt_exit_code(vfile string, vexe string) int {
+	return silent_cmdexecute('"$vexe" fmt -verify $vfile')
+}
+
 fn (mut f MDFile) check_examples() (int, int) {
 	mut errors := 0
 	mut oks := 0
@@ -197,11 +245,11 @@ fn (mut f MDFile) check_examples() (int, int) {
 		mut acommands := e.command.split(' ')
 		nofmt := 'nofmt' in acommands
 		for command in acommands {
+			fmt_res := if nofmt { 0 } else { get_fmt_exit_code(vfile, vexe) }
 			match command {
 				'compile' {
-					res := os.system('"$vexe" -w -Wfatal-errors -o x.c $vfile')
+					res := cmdexecute('"$vexe" -w -Wfatal-errors -o x.c $vfile')
 					os.rm('x.c') or { }
-					fmt_res := if nofmt { 0 } else { os.system('"$vexe" fmt -verify $vfile') }
 					if res != 0 || fmt_res != 0 {
 						if res != 0 {
 							eprintln(eline(f.path, e.sline, 0, 'example failed to compile'))
@@ -217,8 +265,7 @@ fn (mut f MDFile) check_examples() (int, int) {
 					oks++
 				}
 				'live' {
-					res := os.system('"$vexe" -w -Wfatal-errors -live -o x.c $vfile')
-					fmt_res := if nofmt { 0 } else { os.system('"$vexe" fmt -verify $vfile') }
+					res := cmdexecute('"$vexe" -w -Wfatal-errors -live -o x.c $vfile')
 					if res != 0 || fmt_res != 0 {
 						if res != 0 {
 							eprintln(eline(f.path, e.sline, 0, 'example failed to compile with -live'))
@@ -234,7 +281,7 @@ fn (mut f MDFile) check_examples() (int, int) {
 					oks++
 				}
 				'failcompile' {
-					res := os.system('"$vexe" -w -Wfatal-errors -o x.c $vfile')
+					res := silent_cmdexecute('"$vexe" -w -Wfatal-errors -o x.c $vfile')
 					os.rm('x.c') or { }
 					if res == 0 {
 						eprintln(eline(f.path, e.sline, 0, '`failcompile` example compiled'))
@@ -246,8 +293,7 @@ fn (mut f MDFile) check_examples() (int, int) {
 					oks++
 				}
 				'oksyntax' {
-					res := os.system('"$vexe" -w -Wfatal-errors -check-syntax $vfile')
-					fmt_res := if nofmt { 0 } else { os.system('"$vexe" fmt -verify $vfile') }
+					res := cmdexecute('"$vexe" -w -Wfatal-errors -check-syntax $vfile')
 					if res != 0 || fmt_res != 0 {
 						if res != 0 {
 							eprintln(eline(f.path, e.sline, 0, '`oksyntax` example with invalid syntax'))
@@ -263,7 +309,7 @@ fn (mut f MDFile) check_examples() (int, int) {
 					oks++
 				}
 				'badsyntax' {
-					res := os.system('"$vexe" -w -Wfatal-errors -check-syntax $vfile')
+					res := silent_cmdexecute('"$vexe" -w -Wfatal-errors -check-syntax $vfile')
 					if res == 0 {
 						eprintln(eline(f.path, e.sline, 0, '`badsyntax` example can be parsed fine'))
 						eprintln(vcontent)

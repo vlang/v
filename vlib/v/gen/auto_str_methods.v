@@ -3,7 +3,6 @@
 module gen
 
 import v.table
-import v.pref
 import v.util
 
 fn (mut g Gen) gen_str_default(sym table.TypeSymbol, styp string, str_fn_name string) {
@@ -45,7 +44,7 @@ fn (g &Gen) type_to_fmt(typ table.Type) string {
 		[.struct_, .array, .array_fixed, .map, .bool, .enum_, .interface_, .sum_type, .function] {
 		return '%.*s\\000'
 	} else if sym.kind == .string {
-		return "\'%.*s\\000\'"
+		return "'%.*s\\000'"
 	} else if sym.kind in [.f32, .f64] {
 		return '%g\\000' // g removes trailing zeros unlike %f
 	} else if sym.kind == .u64 {
@@ -205,7 +204,12 @@ fn (mut g Gen) gen_str_for_array(info table.Array, styp string, str_fn_name stri
 	if sym.kind == .function {
 		g.auto_str_funcs.writeln('\t\tstring x = ${elem_str_fn_name}();')
 	} else {
-		g.auto_str_funcs.writeln('\t\t$field_styp it = (*($field_styp*)array_get(a, i));')
+		if sym.kind == .array_fixed {
+			g.auto_str_funcs.writeln('\t\t$field_styp it;')
+			g.auto_str_funcs.writeln('\t\tmemcpy(*($field_styp*)it, (byte*)array_get(a, i), sizeof($field_styp));')
+		} else {
+			g.auto_str_funcs.writeln('\t\t$field_styp it = *($field_styp*)array_get(a, i);')
+		}
 		if sym.kind == .struct_ && !sym_has_str_method {
 			if is_elem_ptr {
 				g.auto_str_funcs.writeln('\t\tstring x = indent_${elem_str_fn_name}(*it, indent_count);')
@@ -214,6 +218,8 @@ fn (mut g Gen) gen_str_for_array(info table.Array, styp string, str_fn_name stri
 			}
 		} else if sym.kind in [.f32, .f64] {
 			g.auto_str_funcs.writeln('\t\tstring x = _STR("%g", 1, it);')
+		} else if sym.kind == .rune {
+			g.auto_str_funcs.writeln('\t\tstring x = _STR("`%.*s\\000`", 2, ${elem_str_fn_name}(it));')
 		} else {
 			// There is a custom .str() method, so use it.
 			// NB: we need to take account of whether the user has defined
@@ -228,7 +234,7 @@ fn (mut g Gen) gen_str_for_array(info table.Array, styp string, str_fn_name stri
 		}
 	}
 	g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, x);')
-	if g.pref.autofree && typ != table.bool_type {
+	if g.is_autofree && typ != table.bool_type {
 		// no need to free "true"/"false" literals
 		g.auto_str_funcs.writeln('\t\tstring_free(&x);')
 	}
@@ -280,6 +286,8 @@ fn (mut g Gen) gen_str_for_array_fixed(info table.ArrayFixed, styp string, str_f
 			g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("%g", 1, a[i]));')
 		} else if sym.kind == .string {
 			g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\'%.*s\\000\'", 2, a[i]));')
+		} else if sym.kind == .rune {
+			g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("`%.*s\\000`", 2, ${elem_str_fn_name}(a[i])));')
 		} else {
 			if (str_method_expects_ptr && is_elem_ptr) || (!str_method_expects_ptr && !is_elem_ptr) {
 				g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${elem_str_fn_name}(a[i]));')
@@ -301,6 +309,8 @@ fn (mut g Gen) gen_str_for_array_fixed(info table.ArrayFixed, styp string, str_f
 
 fn (mut g Gen) gen_str_for_map(info table.Map, styp string, str_fn_name string) {
 	key_sym := g.table.get_type_symbol(info.key_type)
+	key_styp := g.typ(info.key_type)
+	key_str_fn_name := key_styp.replace('*', '') + '_str'
 	if !key_sym.has_method('str') {
 		g.gen_str_for_type(info.key_type)
 	}
@@ -318,8 +328,18 @@ fn (mut g Gen) gen_str_for_map(info table.Map, styp string, str_fn_name string) 
 	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, _SLIT("{"));')
 	g.auto_str_funcs.writeln('\tfor (int i = 0; i < m.key_values.len; ++i) {')
 	g.auto_str_funcs.writeln('\t\tif (!DenseArray_has_index(&m.key_values, i)) { continue; }')
-	g.auto_str_funcs.writeln('\t\tstring key = *(string*)DenseArray_key(&m.key_values, i);')
-	g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\'%.*s\\000\'", 2, key));')
+	if key_sym.kind == .string {
+		g.auto_str_funcs.writeln('\t\tstring key = *(string*)DenseArray_key(&m.key_values, i);')
+	} else {
+		g.auto_str_funcs.writeln('\t\t$key_styp key = *($key_styp*)DenseArray_key(&m.key_values, i);')
+	}
+	if key_sym.kind == .string {
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\'%.*s\\000\'", 2, key));')
+	} else if key_sym.kind == .rune {
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("`%.*s\\000`", 2, ${key_str_fn_name}(key)));')
+	} else {
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${key_str_fn_name}(key));')
+	}
 	g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _SLIT(": "));')
 	if val_sym.kind == .function {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${elem_str_fn_name}());')
@@ -331,6 +351,8 @@ fn (mut g Gen) gen_str_for_map(info table.Map, styp string, str_fn_name string) 
 			g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, indent_${elem_str_fn_name}(it, indent_count));')
 		} else if val_sym.kind in [.f32, .f64] {
 			g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("%g", 1, it));')
+		} else if val_sym.kind == .rune {
+			g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("`%.*s\\000`", 2, ${elem_str_fn_name}(it)));')
 		} else {
 			g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${elem_str_fn_name}(it));')
 		}

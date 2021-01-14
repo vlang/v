@@ -210,7 +210,7 @@ fn unescape(s_ string, mode EncodingMode) ?string {
 		x := s[i]
 		match x {
 			`%` {
-				t.write(((unhex(s[i + 1]) << byte(4)) | unhex(s[i + 2])).str())
+				t.write(((unhex(s[i + 1]) << byte(4)) | unhex(s[i + 2])).ascii_str())
 				i += 2
 			}
 			`+` {
@@ -221,7 +221,7 @@ fn unescape(s_ string, mode EncodingMode) ?string {
 				}
 			}
 			else {
-				t.write(s[i].str())
+				t.write(s[i].ascii_str())
 			}
 		}
 	}
@@ -315,14 +315,14 @@ fn escape(s string, mode EncodingMode) string {
 pub struct URL {
 pub mut:
 	scheme      string
-	opaque      string // encoded opaque data
+	opaque      string    // encoded opaque data
 	user        &Userinfo // username and password information
-	host        string // host or host:port
-	path        string // path (relative paths may omit leading slash)
-	raw_path    string // encoded path hint (see escaped_path method)
-	force_query bool // append a query ('?') even if raw_query is empty
-	raw_query   string // encoded query values, without '?'
-	fragment    string // fragment for references, without '#'
+	host        string    // host or host:port
+	path        string    // path (relative paths may omit leading slash)
+	raw_path    string    // encoded path hint (see escaped_path method)
+	force_query bool      // append a query ('?') even if raw_query is empty
+	raw_query   string    // encoded query values, without '?'
+	fragment    string    // fragment for references, without '#'
 }
 
 // user returns a Userinfo containing the provided username
@@ -402,9 +402,7 @@ fn split_by_scheme(rawurl string) ?[]string {
 }
 
 fn get_scheme(rawurl string) ?string {
-	split := split_by_scheme(rawurl) or {
-		return err
-	}
+	split := split_by_scheme(rawurl) or { return err }
 	return split[0]
 }
 
@@ -431,15 +429,11 @@ fn split(s string, sep byte, cutc bool) (string, string) {
 pub fn parse(rawurl string) ?URL {
 	// Cut off #frag
 	u, frag := split(rawurl, `#`, true)
-	mut url := parse_url(u, false) or {
-		return error(error_msg(err_msg_parse, u))
-	}
+	mut url := parse_url(u, false) or { return error(error_msg(err_msg_parse, u)) }
 	if frag == '' {
 		return url
 	}
-	f := unescape(frag, .encode_fragment) or {
-		return error(error_msg(err_msg_parse, u))
-	}
+	f := unescape(frag, .encode_fragment) or { return error(error_msg(err_msg_parse, u)) }
 	url.fragment = f
 	return url
 }
@@ -457,6 +451,7 @@ fn parse_request_uri(rawurl string) ?URL {
 // via_request is true, the URL is assumed to have arrived via an HTTP request,
 // in which case only absolute URLs or path-absolute relative URLs are allowed.
 // If via_request is false, all forms of relative URLs are allowed.
+[manualfree]
 fn parse_url(rawurl string, via_request bool) ?URL {
 	if string_contains_ctl_byte(rawurl) {
 		return error(error_msg('parse_url: invalid control character in URL', rawurl))
@@ -501,12 +496,8 @@ fn parse_url(rawurl string, via_request bool) ?URL {
 		// RFC 3986, §3.3:
 		// In addition, a URI reference (Section 4.1) may be a relative-path reference,
 		// in which case the first path segment cannot contain a colon (':') character.
-		colon := rest.index(':') or {
-			return error('there should be a : in the URL')
-		}
-		slash := rest.index('/') or {
-			return error('there should be a / in the URL')
-		}
+		colon := rest.index(':') or { return error('there should be a : in the URL') }
+		slash := rest.index('/') or { return error('there should be a / in the URL') }
 		if colon >= 0 && (slash < 0 || colon < slash) {
 			// First path segment has colon. Not allowed in relative URL.
 			return error(error_msg('parse_url: first path segment in URL cannot contain colon',
@@ -534,9 +525,7 @@ struct ParseAuthorityRes {
 }
 
 fn parse_authority(authority string) ?ParseAuthorityRes {
-	i := authority.last_index('@') or {
-		-1
-	}
+	i := authority.last_index('@') or { -1 }
 	mut host := ''
 	mut zuser := user('')
 	if i < 0 {
@@ -595,15 +584,9 @@ fn parse_host(host string) ?string {
 		// We do impose some restrictions on the zone, to avoid stupidity
 		// like newlines.
 		if zone := host[..i].index('%25') {
-			host1 := unescape(host[..zone], .encode_host) or {
-				return err
-			}
-			host2 := unescape(host[zone..i], .encode_zone) or {
-				return err
-			}
-			host3 := unescape(host[i..], .encode_host) or {
-				return err
-			}
+			host1 := unescape(host[..zone], .encode_host) or { return err }
+			host2 := unescape(host[zone..i], .encode_zone) or { return err }
+			host3 := unescape(host[i..], .encode_host) or { return err }
 			return host1 + host2 + host3
 		}
 		if idx := host.last_index(':') {
@@ -614,9 +597,7 @@ fn parse_host(host string) ?string {
 			}
 		}
 	}
-	h := unescape(host, .encode_host) or {
-		return err
-	}
+	h := unescape(host, .encode_host) or { return err }
 	return h
 	// host = h
 	// return host
@@ -654,9 +635,7 @@ pub fn (mut u URL) set_path(p string) ?bool {
 // reading u.raw_path directly.
 fn (u &URL) escaped_path() string {
 	if u.raw_path != '' && valid_encoded_path(u.raw_path) {
-		unescape(u.raw_path, .encode_path) or {
-			return ''
-		}
+		unescape(u.raw_path, .encode_path) or { return '' }
 		return u.raw_path
 	}
 	if u.path == '*' {
@@ -883,9 +862,7 @@ fn resolve_path(base string, ref string) string {
 	if ref == '' {
 		full = base
 	} else if ref[0] != `/` {
-		i := base.last_index('/') or {
-			-1
-		}
+		i := base.last_index('/') or { -1 }
 		full = base[..i + 1] + ref
 	} else {
 		full = ref
@@ -1020,9 +997,11 @@ fn split_host_port(hostport string) (string, string) {
 	mut host := hostport
 	mut port := ''
 	colon := host.last_index_byte(`:`)
-	if colon != -1 && valid_optional_port(host[colon..]) {
-		port = host[colon + 1..]
-		host = host[..colon]
+	if colon != -1 {
+		if valid_optional_port(host[colon..]) {
+			port = host[colon + 1..]
+			host = host[..colon]
+		}
 	}
 	if host.starts_with('[') && host.ends_with(']') {
 		host = host[1..host.len - 1]
@@ -1050,8 +1029,12 @@ pub fn valid_userinfo(s string) bool {
 			continue
 		}
 		match r {
-			`-`, `.`, `_`, `:`, `~`, `!`, `$`, `&`, `\\`, `(`, `)`, `*`, `+`, `,`, `;`, `=`, `%`, `@` { continue }
-			else { return false }
+			`-`, `.`, `_`, `:`, `~`, `!`, `$`, `&`, `\\`, `(`, `)`, `*`, `+`, `,`, `;`, `=`, `%`, `@` {
+				continue
+			}
+			else {
+				return false
+			}
 		}
 	}
 	return true

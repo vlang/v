@@ -68,17 +68,15 @@ fn (context Context) file2v(bname string, fbytes []byte, bn_max int) string {
 			sb.write('$b, ')
 		}
 	}
-	sb.write(']!!\n')
+	sb.write(']!\n')
 	return sb.str()
 }
 
 fn (context Context) bname_and_bytes(file string) ?(string, []byte) {
 	fname := os.file_name(file)
-	fname_no_dots := fname.replace('.', '_')
-	byte_name := '$context.prefix$fname_no_dots'.to_lower()
-	fbytes := os.read_bytes(file) or {
-		return error('Error: $err')
-	}
+	fname_escpaed := fname.replace_each(['.', '_', '-', '_'])
+	byte_name := '$context.prefix$fname_escpaed'.to_lower()
+	fbytes := os.read_bytes(file) or { return error('Error: $err') }
 	return byte_name, fbytes
 }
 
@@ -118,7 +116,7 @@ fn main() {
 		exit(0)
 	}
 	context.files = real_files
-	if context.write_file != '' && !context.write_file.ends_with('.v') {
+	if context.write_file != '' && os.file_ext(context.write_file) !in ['.vv', '.v'] {
 		context.write_file += '.v'
 	}
 	mut file_byte_map := map[string][]byte{}
@@ -131,19 +129,17 @@ fn main() {
 	}
 	max_bname := context.max_bname_len(file_byte_map.keys())
 	if context.write_file.len > 0 {
-		mut out_file := os.create(context.write_file) or {
-			panic(err)
-		}
+		mut out_file := os.create(context.write_file) or { panic(err) }
 		out_file.write_str(context.header())
 		for bname, fbytes in file_byte_map {
 			out_file.write_str(context.file2v(bname, fbytes, max_bname))
 		}
 		out_file.write_str(context.footer())
 	} else {
-		println(context.header())
+		print(context.header())
 		for bname, fbytes in file_byte_map {
-			println(context.file2v(bname, fbytes, max_bname))
+			print(context.file2v(bname, fbytes, max_bname))
 		}
-		println(context.footer())
+		print(context.footer())
 	}
 }

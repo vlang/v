@@ -45,7 +45,7 @@ pub fn atof_quick(s string) f64 {
 		else {
 			f.u = double_minus_infinity
 		}
-		return f.f
+		return unsafe {f.f}
 	}
 	// skip zeros
 	for i < s.len && s[i] == `0` {
@@ -58,7 +58,7 @@ pub fn atof_quick(s string) f64 {
 			else {
 				f.u = double_minus_zero
 			}
-			return f.f
+			return unsafe {f.f}
 		}
 	}
 	// integer part
@@ -109,11 +109,11 @@ pub fn atof_quick(s string) f64 {
 				else {
 					f.u = double_minus_infinity
 				}
-				return f.f
+				return unsafe {f.f}
 			}
 			tmp_mul := Float64u{u: pos_exp[exp]}
 			// C.printf("exp: %d  [0x%016llx] %f,",exp,pos_exp[exp],tmp_mul)
-			f.f = f.f * tmp_mul.f
+			f.f = unsafe {f.f * tmp_mul.f}
 		}
 		else {
 			if exp > neg_exp.len {
@@ -123,16 +123,18 @@ pub fn atof_quick(s string) f64 {
 				else {
 					f.u = double_minus_zero
 				}
-				return f.f
+				return unsafe {f.f}
 			}
 			tmp_mul := Float64u{u: neg_exp[exp]}
 
 			// C.printf("exp: %d  [0x%016llx] %f,",exp,pos_exp[exp],tmp_mul)
-			f.f = f.f * tmp_mul.f
+			f.f = unsafe {f.f * tmp_mul.f}
 		}
 	}
-	f.f = f.f * sign
-	return f.f
+	unsafe {
+		f.f = f.f * sign
+		return f.f
+	}
 }
 
 const (

@@ -1,0 +1,10 @@
+struct Data {}
+
+fn (_ Data) func<T>() T {
+	return T{}
+}
+
+fn main() {
+	data := Data{}
+	data.func()
+}

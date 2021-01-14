@@ -15,6 +15,38 @@ The language promotes writing simple and clear code with minimal abstraction.
 Despite being simple, V gives the developer a lot of power.
 Anything you can do in other languages, you can do in V.
 
+## Install from source
+The major way to get the latest and greatest V, is to __install it from source__.
+It is __easy__, and it usually takes __only a few seconds__.
+
+### Linux, macOS, FreeBSD, etc:
+You need `git`, a C compiler like `gcc` or `clang`, and `make`:
+```bash
+git clone https://github.com/vlang/v && cd v && make
+```
+
+### Windows:
+You need `git`, and a C compiler like `gcc` or `msvc`:
+```bash
+git clone https://github.com/vlang/v
+cd v
+make
+```
+
+### Android
+Running V graphical apps on Android is also possible via [vab](https://github.com/vlang/vab).
+
+V Android dependencies: **V**, **Java JDK** >= 8, Android **SDK + NDK**.
+
+  1. Install dependencies (see [vab](https://github.com/vlang/vab))
+  2. Plugin-in your Android device
+  3. Run:
+  ```bash
+  git clone https://github.com/vlang/vab && cd vab && v vab.v
+  ./vab --device auto run /path/to/v/examples/sokol/particles
+  ```
+For more details and troubleshooting, please visit the [vab GitHub repository](https://github.com/vlang/vab).
+
 ## Table of Contents
 
 <table>
@@ -56,7 +88,7 @@ Anything you can do in other languages, you can do in V.
 * [Modules](#modules)
 * [Constants](#constants)
 * [Builtin functions](#builtin-functions)
-* [Printing custom types](#printing-custom-types)
+* [Printing custom types](#custom-print-of-types)
 * [Types 2](#types-2)
     * [Interfaces](#interfaces)
     * [Enums](#enums)
@@ -98,14 +130,9 @@ Anything you can do in other languages, you can do in V.
 </table>
 
 <!--
-There are several special keywords, which you can put after the code fences for v.
-These are:
-   compile      - default, you do not need to specify it. cmd/tools/check-md.v compile the example.
-   ignore       - ignore the example, useful for examples that just use the syntax highlighting
-   failcompile  - known failing compilation. Useful for examples demonstrating compiler errors.
-   oksyntax     - it should parse, it may not compile. Useful for partial examples.
-   badsyntax    - known bad syntax, it should not even parse
-   wip          - like ignore; a planned feature; easy to search.
+NB: there are several special keywords, which you can put after the code fences for v:
+compile, ignore, failcompile, oksyntax, badsyntax, wip
+For more details, do: `v run cmd/tools/check-md.v`
 -->
 
 ## Hello World
@@ -186,9 +213,9 @@ or thinking about the order of files and declarations.
 
 ### Returning multiple values
 
-```v nofmt
+```v
 fn foo() (int, int) {
-    return 2, 3
+	return 2, 3
 }
 
 a, b := foo()
@@ -199,23 +226,23 @@ c, _ := foo() // ignore values using `_`
 
 ### Variable number of arguments
 
-```v nofmt
+```v
 fn sum(a ...int) int {
-    mut total := 0
-    for x in a {
-        total += x
-    }
-    return total
+	mut total := 0
+	for x in a {
+		total += x
+	}
+	return total
 }
-println(sum())    // Output: 0
-println(sum(1))   //         1
-println(sum(2,3)) //         5
 
+println(sum()) // 0
+println(sum(1)) // 1
+println(sum(2, 3)) // 5
 // using array decomposition
-a := [2,3,4]
-println(sum(a...))  // <-- using postfix ... here. output: 9
+a := [2, 3, 4]
+println(sum(...a)) // <-- using prefix ... here. output: 9
 b := [5, 6, 7]
-println(sum(b...)) // output: 18
+println(sum(...b)) // output: 18
 ```
 
 ## Symbol visibility
@@ -344,8 +371,6 @@ rune // represents a Unicode code point
 
 f32 f64
 
-any_int, any_float // internal intermediate types of number literals
-
 byteptr, voidptr, charptr, size_t // these are mostly used for C interoperability
 
 any // similar to C's void* and Go's interface{}
@@ -373,14 +398,28 @@ or `i64` but not to `f32` or `u32`. (`f32` would mean precision
 loss for large values and `u32` would mean loss of the sign for
 negative values).
 
+Literals like `123` or `4.56` are treated in a special way. They do
+not lead to type promotions, however they default to `int` and `f64`
+respectively, when their type has to be decided:
+
+```v ignore
+u := u16(12)
+v := 13 + u    // v is of type `u16` - no promotion
+x := f32(45.6)
+y := x + 3.14  // x is of type `f32` - no promotion
+a := 75        // a is of type `int` - default for int literal
+b := 14.7      // b is of type `f64` - default for float literal
+c := u + a     // c is of type `int` - automatic promotion of `u`'s value
+d := b + x     // d is of type `f64` - automatic promotion of `x`'s value
+```
+
 ### Strings
 
-```v nofmt
+```v
 name := 'Bob'
 println(name.len)
 println(name[0]) // indexing gives a byte B
 println(name[1..3]) // slicing gives a string 'ob'
-
 windows_newline := '\r\n' // escape special characters like in C
 assert windows_newline.len == 2
 ```
@@ -409,7 +448,7 @@ Both single and double quotes can be used to denote strings. For consistency,
 
 For raw strings, prepend `r`. Raw strings are not escaped:
 
-```v nofmt
+```v
 s := r'hello\nworld'
 println(s) // "hello\nworld"
 ```
@@ -418,7 +457,7 @@ println(s) // "hello\nworld"
 
 Basic interpolation syntax is pretty simple - use `$` before a variable name.
 The variable will be converted to a string and embedded into the literal:
-```v nofmt
+```v
 name := 'Bob'
 println('Hello, $name!') // Hello, Bob!
 ```
@@ -429,24 +468,24 @@ Format specifiers similar to those in C's `printf()` are also supported.
 `f`, `g`, `x`, etc. are optional and specify the output format.
 The compiler takes care of the storage size, so there is no `hd` or `llu`.
 
-```v nofmt
+```v
 x := 123.4567
 println('x = ${x:4.2f}')
-println('[${x:10}]')       // pad with spaces on the left
+println('[${x:10}]') // pad with spaces on the left
 println('[${int(x):-10}]') // pad with spaces on the right
 ```
 
 ### String operators
 
-```v nofmt
+```v
 name := 'Bob'
 bobby := name + 'by' // + is used to concatenate strings
 println(bobby) // "Bobby"
-
 mut s := 'hello '
 s += 'world' // `+=` is used to append to a string
 println(s) // "hello world"
 ```
+
 All operators in V must have values of the same type on both sides.
 You cannot concatenate an integer to a string:
 
@@ -492,10 +531,10 @@ All of these will be assigned the same value, 123. They will all have type
 
 V also supports writing numbers with `_` as separator:
 
-```v nofmt
+```v
 num := 1_000_000 // same as 1000000
 three := 0b0_11 // same as 0b11
-float_num := 3_122.55  // same as 3122.55
+float_num := 3_122.55 // same as 3122.55
 hexa := 0xF_F // same as 255
 oct := 0o17_3 // same as 0o173
 ```
@@ -520,19 +559,16 @@ will have the type of `f64`.
 
 ### Arrays
 
-```v nofmt
+```v
 mut nums := [1, 2, 3]
 println(nums) // "[1, 2, 3]"
 println(nums[1]) // "2"
 nums[1] = 5
 println(nums) // "[1, 5, 3]"
-
 println(nums[0..2]) // slicing gives an array "[1, 5]"
-
 println(nums.len) // "3"
 nums = [] // The array is now empty
 println(nums.len) // "0"
-
 // Declare an empty array:
 users := []int{}
 ```
@@ -551,15 +587,13 @@ See [Access modifiers](#access-modifiers).
 
 #### Array operations
 
-```v nofmt
+```v
 mut nums := [1, 2, 3]
 nums << 4
 println(nums) // "[1, 2, 3, 4]"
-
 // append array
 nums << [5, 6, 7]
 println(nums) // "[1, 2, 3, 4, 5, 6, 7]"
-
 mut names := ['John']
 names << 'Peter'
 names << 'Sam'
@@ -586,12 +620,12 @@ arr := []int{len: 5, init: -1}
 Setting the capacity improves performance of insertions,
 as it reduces the number of reallocations needed:
 
-```v nofmt
-mut numbers := []int{ cap: 1000 }
+```v
+mut numbers := []int{cap: 1000}
 println(numbers.len) // 0
 // Now appending elements won't reallocate
 for i in 0 .. 1000 {
-    numbers << i
+	numbers << i
 }
 ```
 Note: The above code uses a [range `for`](#range-for) statement.
@@ -603,7 +637,7 @@ with `s := arr.str()`.
 
 Copying the data from the array is done with `.clone()`:
 
-```v nofmt
+```v
 nums := [1, 2, 3]
 nums_copy := nums.clone()
 ```
@@ -611,7 +645,7 @@ nums_copy := nums.clone()
 Arrays can be efficiently filtered and mapped with the `.filter()` and
 `.map()` methods:
 
-```v nofmt
+```v
 nums := [1, 2, 3, 4, 5, 6]
 even := nums.filter(it % 2 == 0)
 println(even) // [2, 4, 6]
@@ -620,7 +654,6 @@ even_fn := nums.filter(fn (x int) bool {
 	return x % 2 == 0
 })
 println(even_fn)
-
 words := ['hello', 'world']
 upper := words.map(it.to_upper())
 println(upper) // ['HELLO', 'WORLD']
@@ -638,15 +671,15 @@ println(upper_fn) // ['HELLO', 'WORLD']
 Arrays can have more than one dimension.
 
 2d array example:
-```v nofmt
-mut a := [][]int{len:2, init: []int{len:3}}
+```v
+mut a := [][]int{len: 2, init: []int{len: 3}}
 a[0][1] = 2
 println(a) // [[0, 2, 0], [0, 0, 0]]
 ```
 
 3d array example:
-```v nofmt
-mut a := [][][]int{len:2, init: [][]int{len:3, init: []int{len:2}}}
+```v
+mut a := [][][]int{len: 2, init: [][]int{len: 3, init: []int{len: 2}}}
 a[0][1][1] = 2
 println(a) // [[[0, 0], [0, 2], [0, 0]], [[0, 0], [0, 0], [0, 0]]]
 ```
@@ -656,34 +689,37 @@ println(a) // [[[0, 0], [0, 2], [0, 0]], [[0, 0], [0, 0], [0, 0]]]
 Sorting arrays of all kinds is very simple and intuitive. Special variables `a` and `b`
 are used when providing a custom sorting condition.
 
-```v nofmt
+```v
 mut numbers := [1, 3, 2]
-numbers.sort()      // 1, 2, 3
+numbers.sort() // 1, 2, 3
 numbers.sort(a > b) // 3, 2, 1
 ```
 
 ```v nofmt
-struct User { age int  name string }
+struct User {
+	age  int
+	name string
+}
+
 mut users := [User{21, 'Bob'}, User{20, 'Zarkon'}, User{25, 'Alice'}]
-users.sort(a.age < b.age)   // sort by User.age int field
+users.sort(a.age < b.age) // sort by User.age int field
 users.sort(a.name > b.name) // reverse sort by User.name string field
 ```
 
 ### Maps
 
-```v nofmt
-mut m := map[string]int // Only maps with string keys are allowed for now
+```v
+mut m := map[string]int{} // Only maps with string keys are allowed for now
 m['one'] = 1
 m['two'] = 2
 println(m['one']) // "1"
 println(m['bad_key']) // "0"
 println('bad_key' in m) // Use `in` to detect whether such key exists
 m.delete('two')
-
 // Short syntax
 numbers := {
-    'one': 1
-    'two': 2
+	'one': 1
+	'two': 2
 }
 ```
 
@@ -711,11 +747,13 @@ This may seem verbose at first, but it makes code much more readable
 and easier to understand - it's always clear which function from
 which module is being called. This is especially useful in large code bases.
 
+Cyclic module imports are not allowed, like in Go.
+
 ### Selective imports
 
 You can also import specific functions and types from modules directly:
 
-```v nofmt
+```v
 import os { input }
 import crypto.sha256 { sum }
 import time { Time }
@@ -806,22 +844,24 @@ println(s)
 You can check the current type of a sum type using `is` and its negated form `!is`.
 
 You can do it either in an `if`:
-```v nofmt
+```v
 struct Abc {
-    val string
+	val string
 }
+
 struct Xyz {
-    foo string
+	foo string
 }
+
 type Alphabet = Abc | Xyz
 
 x := Alphabet(Abc{'test'}) // sum type
 if x is Abc {
-    // x is automatically casted to Abc and can be used here
-    println(x)
+	// x is automatically casted to Abc and can be used here
+	println(x)
 }
 if x !is Abc {
-    println('Not Abc')
+	println('Not Abc')
 }
 ```
 or using `match`:
@@ -879,7 +919,7 @@ It works like this:
 ```v oksyntax
 mut x := MySumType(MyStruct{123})
 if mut x is MyStruct {
-	// x is casted to MyStruct even it's mutable
+	// x is casted to MyStruct even if it's mutable
 	// without the mut keyword that wouldn't work
 	println(x)
 }
@@ -897,11 +937,13 @@ match mut x {
 
 `in` allows to check whether an array or a map contains an element.
 
-```v nofmt
+```v
 nums := [1, 2, 3]
 println(1 in nums) // true
-
-m := {'one': 1, 'two': 2}
+m := {
+	'one': 1
+	'two': 2
+}
 println('one' in m) // true
 ```
 
@@ -937,15 +979,17 @@ V has only one looping keyword: `for`, with several forms.
 
 #### Array `for`
 
-```v nofmt
+```v
 numbers := [1, 2, 3, 4, 5]
 for num in numbers {
-    println(num)
+	println(num)
 }
 names := ['Sam', 'Peter']
 for i, name in names {
-    println('$i) $name')  // Output: 0) Sam
-}                         //         1) Peter
+	println('$i) $name')
+	// Output: 0) Sam
+	//         1) Peter
+}
 ```
 
 The `for value in arr` form is used for going through elements of an array.
@@ -954,7 +998,7 @@ If an index is required, an alternative form `for index, value in arr` can be us
 Note, that the value is read-only.
 If you need to modify the array while looping, you have to use indexing:
 
-```v nofmt
+```v
 mut numbers := [0, 1, 2]
 for i, _ in numbers {
 	numbers[i]++
@@ -965,26 +1009,36 @@ When an identifier is just a single underscore, it is ignored.
 
 #### Map `for`
 
-```v nofmt
-m := {'one':1, 'two':2}
+```v
+m := {
+	'one': 1
+	'two': 2
+}
 for key, value in m {
-    println("$key -> $value")  // Output: one -> 1
-}                              //         two -> 2
+	println('$key -> $value')
+	// Output: one -> 1
+	//         two -> 2
+}
 ```
 
 Either key or value can be ignored by using a single underscore as the identifier.
-```v nofmt
-m := {'one':1, 'two':2}
-
+```v
+m := {
+	'one': 1
+	'two': 2
+}
 // iterate over keys
 for key, _ in m {
-    println(key)  // Output: one
-}                 //         two
-
+	println(key)
+	// Output: one
+	//         two
+}
 // iterate over values
 for _, value in m {
-    println(value)  // Output: 1
-}                   //         2
+	println(value)
+	// Output: 1
+	//         2
+}
 ```
 
 #### Range `for`
@@ -1000,7 +1054,7 @@ from `low` up to *but not including* `high`.
 
 #### Condition `for`
 
-```v nofmt
+```v
 mut sum := 0
 mut i := 0
 for i <= 100 {
@@ -1016,7 +1070,7 @@ Again, there are no parentheses surrounding the condition, and the braces are al
 
 #### Bare `for`
 
-```v nofmt
+```v
 mut num := 0
 for {
 	num += 2
@@ -1167,19 +1221,17 @@ fn read_log() {
 
 ## Structs
 
-```v nofmt
+```v
 struct Point {
-    x int
-    y int
+	x int
+	y int
 }
 
 mut p := Point{
-    x: 10
-    y: 20
+	x: 10
+	y: 20
 }
-
 println(p.x) // Struct fields are accessed using a dot
-
 // Alternative literal syntax for structs with 3 fields or fewer
 p = Point{10, 20}
 assert p.x == 10
@@ -1235,9 +1287,9 @@ button.widget.x = 3
 
 ```v
 struct Foo {
-	n   int // n is 0 by default
+	n   int    // n is 0 by default
 	s   string // s is '' by default
-	a   []int // a is `[]int{}` by default
+	a   []int  // a is `[]int{}` by default
 	pos int = -1 // custom default value
 }
 ```
@@ -1376,19 +1428,22 @@ no need in getters/setters or properties.
 
 ### Methods
 
-```v nofmt
+```v
 struct User {
-    age int
+	age int
 }
 
 fn (u User) can_register() bool {
-    return u.age > 16
+	return u.age > 16
 }
 
-user := User{age: 10}
+user := User{
+	age: 10
+}
 println(user.can_register()) // "false"
-
-user2 := User{age: 20}
+user2 := User{
+	age: 20
+}
 println(user2.can_register()) // "true"
 ```
 
@@ -1785,20 +1840,21 @@ For more information, see [Dynamic casts](#dynamic-casts).
 
 ### Enums
 
-```v nofmt
+```v
 enum Color {
-    red green blue
+	red
+	green
+	blue
 }
 
 mut color := Color.red
 // V knows that `color` is a `Color`. No need to use `color = Color.green` here.
 color = .green
 println(color) // "green"
-
 match color {
-    .red { println('the color was red') }
-    .green { println('the color was green') }
-    .blue { println('the color was blue') }
+	.red { println('the color was red') }
+	.green { println('the color was green') }
+	.blue { println('the color was blue') }
 }
 ```
 
@@ -1870,18 +1926,20 @@ if w is Mars {
 }
 ```
 `w` has type `Mars` inside the body of the `if` statement. This is
-known as *flow-sensitive typing*. You can also specify a variable name:
+known as *flow-sensitive typing*.
+If `w` is a mutable identifier, it would be unsafe if the compiler smart casts it without a warning.
+That's why you have to declare a `mut` before the `is` expression:
 
 ```v ignore
-if w is Mars as mars {
-    assert typeof(w).name == 'World'
-    if mars.dust_storm() {
+if mut w is Mars {
+    assert typeof(w).name == 'Mars'
+    if w.dust_storm() {
         println('bad weather!')
     }
 }
 ```
-`w` keeps its original type. This form is necessary if `w` is a more
-complex expression than just a variable name.
+Otherwise `w` would keep its original type.
+> This works for both, simple variables and complex expressions like `user.name`
 
 #### Matching sum types
 
@@ -1917,10 +1975,6 @@ fn land(w World) {
 
 `match` must have a pattern for each variant or have an `else` branch.
 
-There are two ways to access the cast variant inside a match branch:
-- the shadowed match variable
-- using `as` to specify a variable name
-
 ```v ignore
 struct Moon {}
 struct Mars {}
@@ -1939,20 +1993,8 @@ fn pass_time(w World) {
         Mars { w.shiver() }
         else {}
     }
-    // using `as` to specify a name for each value
-    match w as var {
-        Mars  { var.shiver() }
-        Venus { var.sweat() }
-        else {
-            // w is of type World
-            assert w is Moon
-        }
-    }
 }
 ```
-
-Note: shadowing only works when the match expression is a variable.
-It will not work on struct fields, array indexes, or map keys.
 
 ### Option/Result types and error handling
 
@@ -2061,7 +2103,7 @@ The third method is to provide a default value at the end of the `or` block.
 In case of an error, that value would be assigned instead,
 so it must have the same type as the content of the `Option` being handled.
 
-```v nofmt
+```v
 fn do_something(s string) ?string {
 	if s == 'foo' {
 		return 'foo'
@@ -2122,7 +2164,7 @@ runtime parameter types. This is why `find_by_id` can omit `<T>`, because the
 receiver argument `r` uses a generic type `T`.
 
 Another example:
-```v nofmt
+```v
 fn compare<T>(a T, b T) int {
 	if a < b {
 		return -1
@@ -2137,12 +2179,10 @@ fn compare<T>(a T, b T) int {
 println(compare(1, 0)) // Outputs: 1
 println(compare(1, 1)) //          0
 println(compare(1, 2)) //         -1
-
 // compare<string>
 println(compare('1', '0')) // Outputs: 1
 println(compare('1', '1')) //          0
 println(compare('1', '2')) //         -1
-
 // compare<f64>
 println(compare(1.1, 1.0)) // Outputs: 1
 println(compare(1.1, 1.1)) //          0
@@ -2196,8 +2236,8 @@ Channels can be buffered or unbuffered and it is possible to `select` from multi
 Channels have the type `chan objtype`. An optional buffer length can specified as the `cap` property
 in the declaration:
 
-```v nofmt
-ch := chan int{}          // unbuffered - "synchronous"
+```v
+ch := chan int{} // unbuffered - "synchronous"
 ch2 := chan f64{cap: 100} // buffer length 100
 ```
 
@@ -2206,8 +2246,6 @@ a property of the individual channel object. Channels can be passed to coroutine
 variables:
 
 ```v
-import sync
-
 fn f(ch chan int) {
 	// ...
 }
@@ -2222,18 +2260,17 @@ fn main() {
 Objects can be pushed to channels using the arrow operator. The same operator can be used to
 pop objects from the other end:
 
-```v nofmt
-import sync
-
-mut ch := chan int{}
-mut ch2 := chan f64{}
+```v
+ch := chan int{}
+ch2 := chan f64{}
 n := 5
 x := 7.3
-ch <- n    // push
+ch <- n
+// push
 ch2 <- x
 mut y := f64(0.0)
-m := <-ch  // pop creating new variable
-y = <-ch2  // pop into existing variable
+m := <-ch // pop creating new variable
+y = <-ch2 // pop into existing variable
 ```
 
 A channel can be closed to indicate that no further objects can be pushed. Any attempt
@@ -2243,8 +2280,8 @@ associated channel has been closed and the buffer is empty. This situation can b
 handled using an or branch (see [Handling Optionals](#handling-optionals)).
 
 ```v wip
-mut ch := chan int{}
-mut ch2 := chan f64{}
+ch := chan int{}
+ch2 := chan f64{}
 // ...
 ch.close()
 // ...
@@ -2264,10 +2301,10 @@ of statements - similar to the [match](#match) command:
 ```v wip
 import time
 fn main () {
-  mut c := chan f64{}
-  mut ch := chan f64{}
-  mut ch2 := chan f64{}
-  mut ch3 := chan f64{}
+  c := chan f64{}
+  ch := chan f64{}
+  ch2 := chan f64{}
+  ch3 := chan f64{}
   mut b := 0.0
   // ...
   select {
@@ -2308,24 +2345,22 @@ if select {
 #### Special Channel Features
 
 For special purposes there are some builtin properties and methods:
-```v nofmt
-import sync
-
-struct Abc{x int}
+```v
+struct Abc {
+	x int
+}
 
 a := 2.13
-mut ch := chan f64{}
-
-res := ch.try_push(a)      // try to perform `ch <- a`
+ch := chan f64{}
+res := ch.try_push(a) // try to perform `ch <- a`
 println(res)
-l := ch.len                // number of elements in queue
-c := ch.cap                // maximum queue length
+l := ch.len // number of elements in queue
+c := ch.cap // maximum queue length
 println(l)
 println(c)
-
-// mut b := Abc{}
-// mut ch2 := chan f64{}
-// res2 := ch2.try_pop(mut b) // try to perform `b = <-ch2
+mut b := Abc{}
+ch2 := chan Abc{}
+res2 := ch2.try_pop(b) // try to perform `b = <-ch2`
 ```
 
 The `try_push/pop()` methods will return immediately with one of the results
@@ -2335,33 +2370,31 @@ Usage of these methods and properties in production is not recommended -
 algorithms based on them are often subject to race conditions. Use `select` instead.
 
 Data can be exchanged between a coroutine and the calling thread via a shared variable.
-Such variables should be created as references and passed to the coroutine as `mut`.
-The underlying `struct` should also contain a `mutex` to lock concurrent access:
+Such variables should be created as `shared` and passed to the coroutine as such, too.
+The underlying `struct` contains a hidden *mutex* that allows locking concurrent access
+using `rlock` for read-only and `lock` for read/write access.
 
 ```v
-import sync
-
 struct St {
 mut:
-	x   int // share data
-	mtx &sync.Mutex
+	x int // data to shared
 }
 
-fn (mut b St) g() {
-	b.mtx.m_lock()
-	// read/modify/write b.x
-	b.mtx.unlock()
+fn (shared b St) g() {
+	lock b {
+		// read/modify/write b.x
+	}
 }
 
-fn caller() {
-	mut a := &St{ // create as reference so it's on the heap
+fn main() {
+	shared a := &St{ // create as reference so it's on the heap
 		x: 10
-		mtx: sync.new_mutex()
 	}
 	go a.g()
-	a.mtx.m_lock()
-	// read/modify/write a.x
-	a.mtx.unlock()
+	// ...
+	rlock a {
+		// read a.x
+	}
 }
 ```
 
@@ -2375,10 +2408,10 @@ struct Foo {
 }
 
 struct User {
-	name      string
-	age       int
+	name string
+	age  int
 	// Use the `skip` attribute to skip certain fields
-	foo       Foo    [skip]
+	foo Foo [skip]
 	// If the field name is different in JSON, it can be specified
 	last_name string [json: lastName]
 }
@@ -2495,7 +2528,8 @@ Python, Go, or Java, except there's no heavy GC tracing everything or expensive 
 each object.
 
 For developers willing to have more low level control, autofree can be disabled with
-`-noautofree`.
+`-manualfree`, or by adding a `[manualfree]` on each function that wants manage its
+memory manually.
 
 Note: right now autofree is hidden behind the -autofree flag. It will be enabled by
 default in V 0.3.
@@ -2560,36 +2594,45 @@ V's ORM provides a number of benefits:
 - Readability and simplicity. (You don't need to manually parse the results of a query and
     then manually construct objects from the parsed results.)
 
-```v nofmt
+```v
 import sqlite
-struct Customer { // struct name has to be the same as the table name (for now)
-    id int // a field named `id` of integer type must be the first field
-    name string
-    nr_orders int
-    country string
+
+struct Customer {
+	// struct name has to be the same as the table name (for now)
+	id        int // a field named `id` of integer type must be the first field
+	name      string
+	nr_orders int
+	country   string
 }
 
-db := sqlite.connect('customers.db')?
-
+db := sqlite.connect('customers.db') ?
 // select count(*) from Customer
-nr_customers := sql db { select count from Customer }
+nr_customers := sql db {
+	select count from Customer
+}
 println('number of all customers: $nr_customers')
-
 // V syntax can be used to build queries
 // db.select returns an array
-uk_customers := sql db { select from Customer where country == 'uk' && nr_orders > 0 }
+uk_customers := sql db {
+	select from Customer where country == 'uk' && nr_orders > 0
+}
 println(uk_customers.len)
 for customer in uk_customers {
-    println('$customer.id - $customer.name')
+	println('$customer.id - $customer.name')
 }
-
 // by adding `limit 1` we tell V that there will be only one object
-customer := sql db { select from Customer where id == 1 limit 1 }
+customer := sql db {
+	select from Customer where id == 1 limit 1
+}
 println('$customer.id - $customer.name')
-
 // insert a new customer
-new_customer := Customer{name: 'Bob', nr_orders: 10}
-sql db { insert new_customer into Customer }
+new_customer := Customer{
+	name: 'Bob'
+	nr_orders: 10
+}
+sql db {
+	insert new_customer into Customer
+}
 ```
 
 For more examples, see <a href='https://github.com/vlang/v/blob/master/vlib/orm/orm_test.v'>vlib/orm/orm_test.v</a>.
@@ -2715,6 +2758,42 @@ surrounding code).
 
 * Note: This is work in progress.
 
+### Structs with reference fields
+
+Structs with references require explicitly setting the initial value to a
+reference value unless the struct already defines its own initial value.
+
+Zero-value references, or nil pointers, will **NOT** be supported in the future,
+for now data structures such as Linked Lists or Binary Trees that rely on reference
+fields that can use the value `0`, understanding that it is unsafe, and that it can
+cause a panic.
+
+```v
+struct Node {
+	a &Node
+	b &Node = 0 // Auto-initialized to nil, use with caution!
+}
+
+// Reference fields must be initialized unless an initial value is declared.
+// Zero (0) is OK but use with caution, it's a nil pointer.
+foo := Node{
+	a: 0
+}
+bar := Node{
+	a: &foo
+}
+baz := Node{
+	a: 0
+	b: 0
+}
+qux := Node{
+	a: &foo
+	b: &bar
+}
+println(baz)
+println(qux)
+```
+
 ## Calling C functions from V
 
 ```v
@@ -2742,7 +2821,7 @@ fn C.sqlite3_step(&sqlite3_stmt)
 
 fn C.sqlite3_finalize(&sqlite3_stmt)
 
-fn C.sqlite3_exec(db &sqlite3, sql charptr, FnSqlite3Callback voidptr, cb_arg voidptr, emsg &charptr) int
+fn C.sqlite3_exec(db &sqlite3, sql charptr, cb FnSqlite3Callback, cb_arg voidptr, emsg &charptr) int
 
 fn C.sqlite3_free(voidptr)
 
@@ -2901,12 +2980,26 @@ To cast a `voidptr` to a V reference, use `user := &User(user_void_ptr)`.
 
 To debug issues in the generated C code, you can pass these flags:
 
+- `-g` - produces a less optimized executable with more debug information in it.
+    V will enforce line numbers from the .v files in the stacktraces, that the
+    executable will produce on panic. It is usually better to pass -g, unless
+    you are writing low level code, in which case use the next option `-cg`.
 - `-cg` - produces a less optimized executable with more debug information in it.
+	The executable will use C source line numbers in this case. It is frequently
+    used in combination with `-keepc`, so that you can inspect the generated
+    C program in case of panic, or so that your debugger (`gdb`, `lldb` etc.)
+    can show you the generated C source code.
 - `-showcc` - prints the C command that is used to build the program.
+- `-show-c-output` - prints the output, that your C compiler produced
+    while compiling your program.
+- `-keepc` - do not delete the generated C source code file after a successful
+    compilation. Also keep using the same file path, so it is more stable,
+    and easier to keep opened in an editor/IDE.
 
-For the best debugging experience, you can pass all of them at the same time:
-`v -cg -showcc yourprogram.v`,
-then just run your debugger (gdb/lldb) or IDE on the produced executable `yourprogram`.
+For best debugging experience if you are writing a low level wrapper for an existing
+C library, you can pass several of these flags at the same time:
+`v -keepc -cg -showcc yourprogram.v`, then just run your debugger (gdb/lldb) or IDE
+on the produced executable `yourprogram`.
 
 If you just want to inspect the generated C code,
 without further compilation, you can also use the `-o` flag (e.g. `-o file.c`).
@@ -3135,8 +3228,11 @@ fn (a Vec) - (b Vec) Vec {
 fn main() {
 	a := Vec{2, 3}
 	b := Vec{4, 5}
+	mut c := Vec{1, 2}
 	println(a + b) // "{6, 8}"
 	println(a - b) // "{-2, -2}"
+	c += a
+	println(c) // "{3, 5}"
 }
 ```
 
@@ -3148,10 +3244,14 @@ operator overloading is an important feature to have in order to improve readabi
 
 To improve safety and maintainability, operator overloading is limited:
 
-- It's only possible to overload `+, -, *, /, %` operators.
+- It's only possible to overload `+, -, *, /, %, <, >, ==, !=, <=, >=` operators.
+- `==` and `!=` are self generated by the compiler but can be overriden.
 - Calling other functions inside operator functions is not allowed.
 - Operator functions can't modify their arguments.
+- When using `<`, `>`, `>=`, `<=`, `==` and `!=` operators, the return type must be `bool`.
 - Both arguments must have the same type (just like with all operators in V).
+- Assignment operators (`*=`, `+=`, `/=`, etc)
+are auto generated when the operators are defined though they must return the same type.
 
 ## Inline assembly
 

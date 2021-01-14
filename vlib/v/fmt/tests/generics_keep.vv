@@ -1,0 +1,14 @@
+fn simple<T>() T {
+	return T{}
+}
+
+struct Foo {}
+
+fn (_ Foo) simple<T>() T {
+	return T{}
+}
+
+fn main() {
+	simple<int>()
+	Foo{}.simple<int>()
+}

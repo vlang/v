@@ -116,9 +116,9 @@ fn calculate_time_from_offset(second_offset_ int) (int, int, int) {
 	if second_offset < 0 {
 		second_offset += seconds_per_day
 	}
-	hour := second_offset / seconds_per_hour
+	hour_ := second_offset / seconds_per_hour
 	second_offset %= seconds_per_hour
 	min := second_offset / seconds_per_minute
 	second_offset %= seconds_per_minute
-	return hour, min, second_offset
+	return hour_, min, second_offset
 }

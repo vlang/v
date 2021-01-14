@@ -5,43 +5,43 @@
 module ui
 
 const (
-	value_range = [0x00, 0x5f, 0x87, 0xaf, 0xd7, 0xff]!!
+	value_range = [0x00, 0x5f, 0x87, 0xaf, 0xd7, 0xff]!
 	color_table = init_color_table()
 )
 
 [direct_array_access]
 fn init_color_table() []int {
-	mut color_table := []int{len: 256}
+	mut color_table_ := []int{len: 256}
 	// ansi colors
-	color_table[0] = 0x000000
-	color_table[1] = 0x800000
-	color_table[2] = 0x008000
-	color_table[3] = 0x808000
-	color_table[4] = 0x000080
-	color_table[5] = 0x800080
-	color_table[6] = 0x008080
-	color_table[7] = 0xc0c0c0
-	color_table[8] = 0x808080
-	color_table[9] = 0xff0000
-	color_table[10] = 0x00ff00
-	color_table[11] = 0xffff00
-	color_table[12] = 0x0000ff
-	color_table[13] = 0xff00ff
-	color_table[14] = 0x00ffff
-	color_table[15] = 0xffffff
+	color_table_[0] = 0x000000
+	color_table_[1] = 0x800000
+	color_table_[2] = 0x008000
+	color_table_[3] = 0x808000
+	color_table_[4] = 0x000080
+	color_table_[5] = 0x800080
+	color_table_[6] = 0x008080
+	color_table_[7] = 0xc0c0c0
+	color_table_[8] = 0x808080
+	color_table_[9] = 0xff0000
+	color_table_[10] = 0x00ff00
+	color_table_[11] = 0xffff00
+	color_table_[12] = 0x0000ff
+	color_table_[13] = 0xff00ff
+	color_table_[14] = 0x00ffff
+	color_table_[15] = 0xffffff
 	// color palette
 	for i in 0 .. 216 {
 		r := value_range[(i / 36) % 6]
 		g := value_range[(i / 6) % 6]
 		b := value_range[i % 6]
-		color_table[i + 16] = ((r << 16) & 0xffffff) + ((g << 8) & 0xffff) + (b & 0xff)
+		color_table_[i + 16] = ((r << 16) & 0xffffff) + ((g << 8) & 0xffff) + (b & 0xff)
 	}
 	// grayscale
 	for i in 0 .. 24 {
 		r := 8 + (i * 10)
-		color_table[i + 232] = ((r << 16) & 0xffffff) + ((r << 8) & 0xffff) + (r & 0xff)
+		color_table_[i + 232] = ((r << 16) & 0xffffff) + ((r << 8) & 0xffff) + (r & 0xff)
 	}
-	return color_table
+	return color_table_
 }
 
 fn clamp(x int, y int, z int) int {

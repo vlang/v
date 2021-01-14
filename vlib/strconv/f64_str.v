@@ -371,7 +371,7 @@ fn f64_to_decimal(mant u64, exp u64) Dec64 {
 pub fn f64_to_str(f f64, n_digit int) string {
 	mut u1 := Uf64{}
 	u1.f = f
-	u := u1.u
+	u := unsafe {u1.u}
 
 	neg   := (u>>(mantbits64+expbits64)) != 0
 	mant  := u & ((u64(1)<<mantbits64) - u64(1))
@@ -396,7 +396,7 @@ pub fn f64_to_str(f f64, n_digit int) string {
 pub fn f64_to_str_pad(f f64, n_digit int) string {
 	mut u1 := Uf64{}
 	u1.f = f
-	u := u1.u
+	u := unsafe {u1.u}
 
 	neg   := (u>>(mantbits64+expbits64)) != 0
 	mant  := u & ((u64(1)<<mantbits64) - u64(1))

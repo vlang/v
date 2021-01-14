@@ -1,41 +1,28 @@
-Usage: v [build flags] ['build'] <file.v|directory>
+Usage: v [C build flags] ['run'] <target.v|target_directory> [run options]
 
 This command compiles the given target, along with their dependencies, into an executable.
 
-This help topic explores C-backend specific build flags.
-For help regarding building an executable, see `v help build`.
+This help topic explores the C-backend specific build flags. For more general build help,
+see also `v help build`.
 
-These build flags are enabled on `build` and `run` as long as the backend is set to `c`:
-
+# Interfacing the C compiler, passing options to it:
    -cc <compiler>
       Change the C compiler V invokes to the specified compiler.
       The C compiler is required to support C99.
-      Officially supported/tested C compilers include: `clang`, `gcc`, `tcc`, `mingw-w64` and `msvc`.
+      Officially supported/tested C compilers include:
+      `clang`, `gcc`, `tcc`, `mingw-w64` and `msvc`.
 
    -cflags <flag>
       Pass the provided flag as is to the C compiler.
       Can be specified multiple times to provide multiple flags.
       Use quotes to wrap the flag argument if it contains spaces.
 
-   -printfn <fn_name>
-      Prints the content of the generated C function named fn_name. You can repeat that many times.
-      This is useful when you just want to quickly tweak the generated C code,
-      without opening the generated .c file in an text editor.
-
-   -cg
-      Enable generating more debug information in the compiled executable.
-      This makes program backtraces more useful.
-      Using debuggers like gdb/lldb with such executables is easier too.
-
-   -compress
-      Strip the compiled executable to compress it.
+   -showcc
+      Prints the C command that is used to build the program.
 
    -freestanding
       Build the executable without dependency on libc.
       Supported only on `linux` targets currently.
-
-   -live
-      Build the executable with live capabilities (`[live]`).
 
    -os <os>, -target-os <os>
       Change the target OS that V tries to compile for.
@@ -43,6 +30,25 @@ These build flags are enabled on `build` and `run` as long as the backend is set
       When OS is `cross`, V will attempt to output cross-platform C code.
       List of OS supported by V: `linux`, `windows`, `ios`, `mac`, `freebsd`, `openbsd`,
                                  `netbsd`, `dragonfly`, `solaris`, `android` and `haiku`.
+
+      Note that V has the concept of platform files, i.e. files ending
+      with `_platform.c.v`, and usually only the matching files are used in
+      a compilation, and also it supports a `_default.c.v` file, that will
+      be used, when no other more specific `_platform.c.v` file is found.
+      The default is mainly useful for writing shims for new platforms,
+      until a more specialized _platform.c.v is written instead.
+
+      For example, suppose you have these 3 files:
+          x_default.c.v
+          x_windows.c.v
+          x_linux.c.v
+      If you compile with `-os freebsd`, then x_default.c.v will be used.
+      If you compile with `-os linux`, then x_linux.c.v will be used.
+      If you compile with `-os windows`, then x_windows.c.v will be used.
+      If you compile with `-os cross`, then all, *except x_default.c.v*
+      will be used, wrapped in conditional compilation guards, so that
+      the generated C source code will be larger, but will compile on all
+      explicitly supported platforms without source changes.
 
    -m32, -m64
       Specify whether 32-bit or 64-bit machine code is generated.
@@ -54,6 +60,37 @@ These build flags are enabled on `build` and `run` as long as the backend is set
       Tell V to compile a shared object instead of an executable.
       The resulting file extension will be `.dll` on Windows and `.so` on Unix systems
 
+# Memory management
+   -autofree
+      Free memory used in functions automatically.
+
+   -manualfree
+      Do not free memory used in functions (the developer has to put x.free()
+      and unsafe{free(x)} calls manually in this mode).
+      Some short lived applications, like compilers and other CLI tools are
+      more performant without autofree.
+
+# Miscellaneous:
+   -printfn <fn_name>
+      Print the content of the generated C function named fn_name.
+      You can repeat that many times with different function names.
+      This is useful when you just want to quickly tweak the generated
+      C code, without opening the generated .c file in a text editor,
+      i.e. it enables this workflow:
+
+      1) change vlib/v/gen/cgen.v
+      2) ./v -o v2 cmd/v && ./v2 -printfn main__main bug.v
+      3) inspect the produced C, and goto 1) till the bug is fixed.
+
+      Since V compiles itself very fast (especially with tcc),
+      this loop is very short usually.
+
+   -compress
+      Strip the compiled executable to compress it.
+
+   -live
+      Build the executable with live capabilities (`[live]`).
+
    -no-prelude
       Prevents V from generating a prelude in generated .c files, useful for freestanding targets
       where eg. you replace C standard library with your own, or some definitions/headers break something.
@@ -62,8 +99,31 @@ These build flags are enabled on `build` and `run` as long as the backend is set
       Useful for similar use-case as above option, except it replaces V-generated prelude with
       your custom one loaded from specified <path>.
 
+# Debugging:
+   -g
+      Generate more debug information in the compiled executable.
+      This makes program backtraces more useful.
+      Using debuggers like gdb/lldb with such executables is easier too.
+      Unlike `-cg` (described below), `-g` will enforce V source line numbers
+      so that your debugger and the stacktraces will show you directly
+      what .v file is responsible for each call/panic.
+
+   -cg
+      Like -g, but do not use V source line numbers.
+      When debugging code that wraps C libraries, this option may be
+      more useful than -g, since it will reduce the amount of context
+      switching, that you need to do, while looking at .v and .c sources.
+      This option is usually used in combination with `-keepc`.
+
+   -keepc
+      Do not remove the temporary .tmp.c and .tmp.c.rsp files.
+      Also do not use a random prefix for them, so they would be fixed and predictable.
+
+      NB: when writing low level code that interfaces/wraps an existing C library,
+      it is frequently helpful to use these together: -keepc -cg -showcc -show-c-output
+
    -showcc
       Prints the C command that is used to build the program.
 
-   -keepc
-      Do not remove the temporary .tmp.c and .tmp.c.rsp files. Also do not use a random prefix for them, so they would be fixed and predictable.
+   -show-c-output
+      Prints the output, that your C compiler produced, while compiling your program.

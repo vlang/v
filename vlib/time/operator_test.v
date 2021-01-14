@@ -3,7 +3,7 @@ module time
 fn assert_greater_time(ms int, t1 Time) {
 	sleep_ms(ms)
 	t2 := now()
-	assert t2.gt(t1)
+	assert t2 > t1
 }
 
 // Tests the now in all platform and the gt operator function with at least ms resolution
@@ -50,7 +50,7 @@ fn test_time1_should_be_same_as_time2() {
 		second: 3
 		microsecond: 100
 	})
-	assert t1.eq(t2)
+	assert t1 == t2
 }
 
 fn test_time1_should_not_be_same_as_time2() {
@@ -92,8 +92,8 @@ fn test_time1_should_not_be_same_as_time2() {
 		second: 4
 		microsecond: 0
 	})
-	assert t1.ne(t2)
-	assert t3.ne(t4)
+	assert t1 != t2
+	assert t3 != t4
 }
 
 fn test_time1_should_be_greater_than_time2() {
@@ -135,8 +135,8 @@ fn test_time1_should_be_greater_than_time2() {
 		second: 4
 		microsecond: 0
 	})
-	assert t1.gt(t2)
-	assert t3.gt(t4)
+	assert t1 > t2
+	assert t3 > t4
 }
 
 fn test_time2_should_be_less_than_time1() {
@@ -178,8 +178,8 @@ fn test_time2_should_be_less_than_time1() {
 		second: 2
 		microsecond: 0
 	})
-	assert t2.lt(t1)
-	assert t4.lt(t3)
+	assert t2 < t1
+	assert t4 < t3
 }
 
 fn test_time1_should_be_greater_or_equal_to_time2_when_gt() {
@@ -221,8 +221,8 @@ fn test_time1_should_be_greater_or_equal_to_time2_when_gt() {
 		second: 4
 		microsecond: 0
 	})
-	assert t1.ge(t2)
-	assert t3.ge(t4)
+	assert t1 >= t2
+	assert t3 >= t4
 }
 
 fn test_time1_should_be_greater_or_equal_to_time2_when_eq() {
@@ -264,8 +264,8 @@ fn test_time1_should_be_greater_or_equal_to_time2_when_eq() {
 		second: 3
 		microsecond: 0
 	})
-	assert t1.ge(t2)
-	assert t3.ge(t4)
+	assert t1 >= t2
+	assert t3 >= t4
 }
 
 fn test_time1_should_be_less_or_equal_to_time2_when_lt() {
@@ -307,8 +307,8 @@ fn test_time1_should_be_less_or_equal_to_time2_when_lt() {
 		second: 4
 		microsecond: 0
 	})
-	assert t1.le(t2)
-	assert t3.le(t4)
+	assert t1 <= t2
+	assert t3 <= t4
 }
 
 fn test_time1_should_be_less_or_equal_to_time2_when_eq() {
@@ -350,8 +350,8 @@ fn test_time1_should_be_less_or_equal_to_time2_when_eq() {
 		second: 3
 		microsecond: 0
 	})
-	assert t1.le(t2)
-	assert t3.le(t4)
+	assert t1 <= t2
+	assert t3 <= t4
 }
 
 fn test_time2_copied_from_time1_should_be_equal() {
@@ -365,7 +365,7 @@ fn test_time2_copied_from_time1_should_be_equal() {
 		microsecond: 100
 	})
 	t2 := new_time(t1)
-	assert t2.eq(t1)
+	assert t2 == t1
 }
 
 fn test_subtract() {

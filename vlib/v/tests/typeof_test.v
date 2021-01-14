@@ -8,11 +8,11 @@ fn test_typeof_on_simple_expressions() {
 	assert typeof(a) == 'int'
 	assert typeof(a).name == 'int'
 	// a2 := 123
-	// assert typeof(a2) == 'any_int'
-	// assert typeof(42) == 'any_int'
-	// assert typeof(3.14) == 'any_float'
-	// assert typeof(2+2*10) == 'any_int'
-	// assert typeof(1.0 * 12.2) == 'any_float'
+	// assert typeof(a2) == 'int_literal'
+	// assert typeof(42) == 'int_literal'
+	// assert typeof(3.14) == 'float_literal'
+	// assert typeof(2+2*10) == 'int_literal'
+	// assert typeof(1.0 * 12.2) == 'float_literal'
 }
 
 fn test_arrays() {
@@ -28,8 +28,8 @@ fn test_type_constructors() {
 	v := `c`
 	assert typeof(&v).name == '&rune'
 	assert typeof(&[v]).name == '&[]rune'
-	assert typeof([v]!!).name == '[1]rune'
-	assert typeof(&[v]!!).name == '&[1]rune'
+	assert typeof([v]!).name == '[1]rune'
+	assert typeof(&[v]!).name == '&[1]rune'
 	assert typeof(&FooBar{}).name == '&FooBar'
 }
 
@@ -54,7 +54,7 @@ pub fn (ms MySumType) str() string {
 		int { return ms.str() }
 		f32 { return ms.str() }
 		// FooBar { return it.x.str() }
-		else { return 'unknown: ' + typeof(ms) }
+		else { return ms.type_name() }
 	}
 }
 
@@ -74,6 +74,10 @@ fn test_typeof_on_sumtypes() {
 	assert typeof(a).name == 'MySumType'
 	assert typeof(b).name == 'MySumType'
 	assert typeof(c).name == 'MySumType'
+
+	assert a.str() == '32'
+	assert b.str() == '123.'
+	assert c.str() == 'FooBar'
 }
 
 //
@@ -155,7 +159,7 @@ fn test_generic_type() {
 	v := 5
 	assert type_name(v) == 'int'
 	// assert type_name(&v) == '&int'
-	// assert type_name([v]!!) == '[1]int'
+	// assert type_name([v]!) == '[1]int'
 	assert type_name([v]) == '[]int'
 	assert type_name([[v]]) == '[][]int'
 	assert type_name(FooBar{}) == 'FooBar'

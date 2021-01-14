@@ -41,11 +41,11 @@ pub fn (sk SymbolKind) str() string {
 }
 
 pub struct Doc {
-	prefs           &pref.Preferences = new_vdoc_preferences()
+	prefs &pref.Preferences = new_vdoc_preferences()
 pub mut:
-	base_path       string
-	table           &table.Table = &table.Table{}
-	checker         checker.Checker = checker.Checker{
+	base_path string
+	table     &table.Table    = &table.Table{}
+	checker   checker.Checker = checker.Checker{
 	table: 0
 	cur_fn: 0
 	pref: 0
@@ -80,7 +80,7 @@ pub struct DocNode {
 pub mut:
 	name        string
 	content     string
-	comment     string
+	comments    []DocComment
 	pos         DocPos = DocPos{-1, -1, 0}
 	file_path   string
 	kind        SymbolKind
@@ -128,7 +128,6 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 	mut node := DocNode{
 		name: d.stmt_name(stmt)
 		content: d.stmt_signature(stmt)
-		comment: ''
 		pos: d.convert_pos(filename, stmt.position())
 		file_path: os.join_path(d.base_path, filename)
 		is_pub: d.stmt_pub(stmt)
@@ -139,7 +138,7 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 	if node.name.starts_with(d.orig_mod_name + '.') {
 		node.name = node.name.all_after(d.orig_mod_name + '.')
 	}
-	if node.name.len == 0 && node.comment.len == 0 && node.content.len == 0 {
+	if node.name.len == 0 && node.comments.len == 0 && node.content.len == 0 {
 		return error('empty stmt')
 	}
 	match stmt {
@@ -246,12 +245,13 @@ pub fn (mut d Doc) file_ast(file_ast ast.File) map[string]DocNode {
 			last_import_stmt_idx = sidx
 		}
 	}
-	mut prev_comments := []ast.Comment{}
+	mut preceeding_comments := []DocComment{}
 	mut imports_section := true
 	for sidx, stmt in stmts {
 		if stmt is ast.ExprStmt {
+			// Collect comments
 			if stmt.expr is ast.Comment {
-				prev_comments << stmt.expr
+				preceeding_comments << ast_comment_to_doc_comment(stmt.expr)
 				continue
 			}
 		}
@@ -261,37 +261,30 @@ pub fn (mut d Doc) file_ast(file_ast ast.File) map[string]DocNode {
 				continue
 			}
 			// the previous comments were probably a copyright/license one
-			module_comment := get_comment_block_right_before(prev_comments)
-			prev_comments = []
+			module_comment := merge_doc_comments(preceeding_comments)
+			preceeding_comments = []
 			if !d.is_vlib && !module_comment.starts_with('Copyright (c)') {
-				if module_comment in ['', d.head.comment] {
+				if module_comment == '' {
 					continue
 				}
-				if d.head.comment != '' {
-					d.head.comment += '\n'
-				}
-				d.head.comment += module_comment
+				d.head.comments << preceeding_comments
 			}
 			continue
 		}
 		if last_import_stmt_idx > 0 && sidx == last_import_stmt_idx {
 			// the accumulated comments were interspersed before/between the imports;
-			// just add them all to the module comment:
+			// just add them all to the module comments:
 			if d.with_head {
-				import_comments := merge_comments(prev_comments)
-				if d.head.comment != '' {
-					d.head.comment += '\n'
-				}
-				d.head.comment += import_comments
+				d.head.comments << preceeding_comments
 			}
-			prev_comments = []
+			preceeding_comments = []
 			imports_section = false
 		}
 		if stmt is ast.Import {
 			continue
 		}
 		mut node := d.stmt(stmt, os.base(file_ast.path)) or {
-			prev_comments = []
+			preceeding_comments = []
 			continue
 		}
 		if node.parent_name !in contents {
@@ -305,18 +298,10 @@ pub fn (mut d Doc) file_ast(file_ast ast.File) map[string]DocNode {
 				kind: parent_node_kind
 			}
 		}
-		if d.with_comments && (prev_comments.len > 0) {
-			// last_comment := contents[contents.len - 1].comment
-			// cmt := last_comment + '\n' + get_comment_block_right_before(prev_comments)
-			mut cmt := get_comment_block_right_before(prev_comments)
-			len := node.name.len
-			// fixed-width symbol name at start of comment
-			if cmt.starts_with(node.name) && cmt.len > len && cmt[len] == ` ` {
-				cmt = '`${cmt[..len]}`' + cmt[len..]
-			}
-			node.comment = cmt
+		if d.with_comments && (preceeding_comments.len > 0) {
+			node.comments << preceeding_comments
 		}
-		prev_comments = []
+		preceeding_comments = []
 		if node.parent_name.len > 0 {
 			parent_name := node.parent_name
 			if node.parent_name == 'Constants' {

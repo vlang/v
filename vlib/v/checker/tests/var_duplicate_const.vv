@@ -1,0 +1,10 @@
+module main
+
+const (
+	age = 40
+)
+
+fn main() {
+	age := 30
+	println(age)
+}

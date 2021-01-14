@@ -8,10 +8,10 @@ import os
 // parsed cflag
 pub struct CFlag {
 pub:
-	mod    string // the module in which the flag was given
-	os     string // eg. windows | darwin | linux
-	name   string // eg. -I
-	value  string // eg. /path/to/include
+	mod   string // the module in which the flag was given
+	os    string // eg. windows | darwin | linux
+	name  string // eg. -I
+	value string // eg. /path/to/include
 pub mut:
 	cached string // eg. ~/.vmodules/cache/ea/ea9878886727367672163.o (for .o files)
 }

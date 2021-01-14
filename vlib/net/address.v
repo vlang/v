@@ -9,6 +9,9 @@ pub:
 	port int
 }
 
+struct C.addrinfo {
+}
+
 pub fn (a Addr) str() string {
 	return '${a.saddr}:${a.port}'
 }
@@ -19,7 +22,7 @@ const (
 )
 
 fn new_addr(addr C.sockaddr) ?Addr {
-	addr_len := if addr.sa_family == SocketFamily.inet {
+	addr_len := if addr.sa_family == int(SocketFamily.inet) {
 		sizeof(C.sockaddr)
 	} else {
 		// TODO NOOOOOOOOOOOO
@@ -40,7 +43,7 @@ fn new_addr(addr C.sockaddr) ?Addr {
 	}
 	mut saddr := buf.bytestr()
 
-	hport := (&C.sockaddr_in(&addr)).sin_port
+	hport := unsafe {&C.sockaddr_in(&addr)}.sin_port
 	port := C.ntohs(hport)
 
 	$if windows {
@@ -57,8 +60,8 @@ pub fn resolve_addr(addr string, family SocketFamily, typ SocketType) ?Addr {
 	address, port := split_address(addr)?
 
 	mut hints := C.addrinfo{}
-	hints.ai_family = family
-	hints.ai_socktype = typ
+	hints.ai_family = int(family)
+	hints.ai_socktype = int(typ)
 	hints.ai_flags = C.AI_PASSIVE
 	hints.ai_protocol = 0
 	hints.ai_addrlen = 0

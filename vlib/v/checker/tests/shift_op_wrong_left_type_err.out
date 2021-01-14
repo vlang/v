@@ -1,4 +1,4 @@
-vlib/v/checker/tests/shift_op_wrong_left_type_err.vv:2:10: error: invalid operation: shift of type `any_float`
+vlib/v/checker/tests/shift_op_wrong_left_type_err.vv:2:10: error: invalid operation: shift of type `float literal`
     1 | fn main() {
     2 |     println(0.5 << 1)
       |             ~~~

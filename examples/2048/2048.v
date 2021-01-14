@@ -649,7 +649,7 @@ fn (app &App) draw_tiles() {
 	toffset := app.ui.tile_size + app.ui.padding_size
 	tiles_size := min(app.ui.window_width, app.ui.window_height) - app.ui.border_size * 2
 	// Draw the padding around the tiles
-	app.gg.draw_rect(xstart, ystart, tiles_size, tiles_size, app.theme.padding_color)
+	app.gg.draw_rounded_rect(xstart, ystart, tiles_size / 2, tiles_size / 2, tiles_size / 24, app.theme.padding_color)
 	// Draw the actual tiles
 	for y in 0 .. 4 {
 		for x in 0 .. 4 {
@@ -665,7 +665,7 @@ fn (app &App) draw_tiles() {
 			th := tw // square tiles, w == h
 			xoffset := xstart + app.ui.padding_size + x * toffset + (app.ui.tile_size - tw) / 2
 			yoffset := ystart + app.ui.padding_size + y * toffset + (app.ui.tile_size - th) / 2
-			app.gg.draw_rect(xoffset, yoffset, tw, th, tile_color)
+			app.gg.draw_rounded_rect(xoffset, yoffset, tw / 2, th / 2, tw / 8, tile_color)
 			if tidx != 0 { // 0 == blank spot
 				xpos := xoffset + tw / 2
 				ypos := yoffset + th / 2
@@ -797,7 +797,7 @@ fn (mut app App) next_theme() {
 
 [inline]
 fn (mut app App) next_tile_format() {
-	app.tile_format = int(app.tile_format) + 1
+	app.tile_format = TileFormat(int(app.tile_format) + 1)
 	if app.tile_format == .end_ {
 		app.tile_format = .normal
 	}
@@ -950,20 +950,21 @@ fn main() {
 	$if android {
 		font_path = 'fonts/RobotoMono-Regular.ttf'
 	}
-	mut window_title := 'V 2048'
+	mut window_title_ := 'V 2048'
 	// TODO: Make emcc a real platform ifdef
 	$if emscripten ? {
 		// in emscripten, sokol uses `window_title` as the selector to the canvas it'll render to,
 		// and since `document.querySelector('V 2048')` isn't valid JS, we use `canvas` instead
-		window_title = 'canvas'
+		window_title_ = 'canvas'
 	}
 	app.perf = &Perf{}
 	app.gg = gg.new_context({
 		bg_color: app.theme.bg_color
 		width: default_window_width
 		height: default_window_height
+		sample_count: 8 // higher quality curves
 		create_window: true
-		window_title: window_title
+		window_title: window_title_
 		frame_fn: frame
 		event_fn: on_event
 		init_fn: init

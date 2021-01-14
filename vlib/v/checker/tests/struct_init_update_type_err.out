@@ -1,0 +1,7 @@
+vlib/v/checker/tests/struct_init_update_type_err.vv:11:6: error: expected struct `Foo`, found `int`
+    9 |     f3 := 2
+   10 |     _ := Foo{
+   11 |         ...f3
+      |            ~~
+   12 |         name: 'f2'
+   13 |     }

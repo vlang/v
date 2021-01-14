@@ -42,10 +42,10 @@ fn test_array_of_ints() {
 	assert '$c2' == '[11, 22, 33]'
 }
 
-fn test_array_of_bytes() {
+fn test_array_of_runes() {
 	aa := [`a`, `b`, `c`]
-	assert aa.str() == '[a, b, c]'
-	assert '$aa' == '[a, b, c]'
+	assert aa.str() == '[`a`, `b`, `c`]'
+	assert '$aa' == '[`a`, `b`, `c`]'
 }
 
 fn test_array_of_strings() {
@@ -72,10 +72,10 @@ fn test_map_of_floats() {
 	assert '$aa' == "{'a': 1.1, 'b': 2.2, 'c': 3.3}"
 }
 
-fn test_map_of_bytes() {
+fn test_map_of_runes() {
 	aa := {'a': `a`, 'b': `b`, 'c': `c`}
-	assert aa.str() == "{'a': a, 'b': b, 'c': c}"
-	assert '$aa' == "{'a': a, 'b': b, 'c': c}"
+	assert aa.str() == "{'a': `a`, 'b': `b`, 'c': `c`}"
+	assert '$aa' == "{'a': `a`, 'b': `b`, 'c': `c`}"
 }
 
 fn test_map_of_bools() {
@@ -86,56 +86,56 @@ fn test_map_of_bools() {
 
 fn test_fixed_array_of_floats() {
 	// f64 array
-	aa := [1.2, 3.4, 5.67]!!
+	aa := [1.2, 3.4, 5.67]!
 	assert aa.str() == '[1.2, 3.4, 5.67]'
 	assert '$aa' == '[1.2, 3.4, 5.67]'
 	// f32 array
-	bb := [f32(1.2), 3.4, 5.67]!!
+	bb := [f32(1.2), 3.4, 5.67]!
 	assert bb.str() == '[1.2, 3.4, 5.67]'
 	assert '$bb' == '[1.2, 3.4, 5.67]'
 }
 
 fn test_fixed_array_of_bools() {
-	aa := [true, false, true]!!
+	aa := [true, false, true]!
 	assert aa.str() == '[true, false, true]'
 	assert '$aa' == '[true, false, true]'
 }
 
 fn test_fixed_array_of_ints() {
 	// int
-	a1 := [11, 22, 33]!!
+	a1 := [11, 22, 33]!
 	assert a1.str() == '[11, 22, 33]'
 	assert '$a1' == '[11, 22, 33]'
 	// u32
-	a2 := [u32(11), 22, 33]!!
+	a2 := [u32(11), 22, 33]!
 	assert a2.str() == '[11, 22, 33]'
 	assert '$a2' == '[11, 22, 33]'
 	// i16
-	b1 := [i16(11), 22, 33]!!
+	b1 := [i16(11), 22, 33]!
 	assert b1.str() == '[11, 22, 33]'
 	assert '$b1' == '[11, 22, 33]'
 	// u16
-	b2 := [u16(11), 22, 33]!!
+	b2 := [u16(11), 22, 33]!
 	assert b2.str() == '[11, 22, 33]'
 	assert '$b2' == '[11, 22, 33]'
 	// i64
-	c1 := [i64(11), 22, 33]!!
+	c1 := [i64(11), 22, 33]!
 	assert c1.str() == '[11, 22, 33]'
 	assert '$c1' == '[11, 22, 33]'
 	// u64
-	c2 := [u64(11), 22, 33]!!
+	c2 := [u64(11), 22, 33]!
 	assert c2.str() == '[11, 22, 33]'
 	assert '$c2' == '[11, 22, 33]'
 }
 
-fn test_fixed_array_of_bytes() {
-	aa := [`a`, `b`, `c`]!!
-	assert aa.str() == '[a, b, c]'
-	assert '$aa' == '[a, b, c]'
+fn test_fixed_array_of_runes() {
+	aa := [`a`, `b`, `c`]!
+	assert aa.str() == '[`a`, `b`, `c`]'
+	assert '$aa' == '[`a`, `b`, `c`]'
 }
 
 fn test_fixed_array_of_strings() {
-	aa := ['aa', 'bb', 'cc']!!
+	aa := ['aa', 'bb', 'cc']!
 	assert aa.str() == "['aa', 'bb', 'cc']"
 	assert '$aa' == "['aa', 'bb', 'cc']"
 }
@@ -243,7 +243,7 @@ fn test_alias_in_array() {
 
 type Alias2 = int
 fn test_alias_in_fixed_array() {
-	t := [Alias1(1)]!!
+	t := [Alias1(1)]!
 	assert t.str() == '[1]'
 	assert '$t' == '[1]'
 }
@@ -387,6 +387,16 @@ fn test_multi_return() {
 	assert '$mr_int_int()' == '(111, 222)'
 	assert '$mr_fn_fn()' == '(fn (int), fn (int))'
 	assert '$mr_one_two()' == "(One{
+    value: 'one'
+}, Two{
+    value: 'two'
+})"
+	anon_a := fn() (One, Two) {
+		one := One{}
+		two := Two{}
+		return one, two
+	}
+	assert '$anon_a()' == "(One{
     value: 'one'
 }, Two{
     value: 'two'

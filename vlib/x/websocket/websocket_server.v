@@ -3,26 +3,24 @@ module websocket
 import net
 import x.openssl
 import log
-import sync
 import time
 import rand
 
 // Server represents a websocket server connection
 pub struct Server {
 mut:
-	clients                 map[string]&ServerClient // clients connected to this server
-	logger                  &log.Log // logger used to log
-	ls                      net.TcpListener // listener used to get incoming connection to socket
-	accept_client_callbacks []AcceptClientFn // accept client callback functions
+	logger                  &log.Log              // logger used to log
+	ls                      net.TcpListener       // listener used to get incoming connection to socket
+	accept_client_callbacks []AcceptClientFn      // accept client callback functions
 	message_callbacks       []MessageEventHandler // new message callback functions
-	close_callbacks         []CloseEventHandler // close message callback functions
+	close_callbacks         []CloseEventHandler   // close message callback functions
 pub:
-	port                    int // port used as listen to incoming connections
-	is_ssl                  bool // true if secure connection (not supported yet on server)
+	port   int  // port used as listen to incoming connections
+	is_ssl bool // true if secure connection (not supported yet on server)
 pub mut:
-	ping_interval           int = 30
-	// interval for sending ping to clients (seconds)
-	state                   State // current state of connection
+	clients       map[string]&ServerClient // clients connected to this server
+	ping_interval int = 30 // interval for sending ping to clients (seconds)
+	state         State // current state of connection
 }
 
 // ServerClient represents a connected client
@@ -31,8 +29,8 @@ pub:
 	resource_name string // resource that the client access
 	client_key    string // unique key of client
 pub mut:
-	server        &Server
-	client        &Client
+	server &Server
+	client &Client
 }
 
 // new_server instance a new websocket server on provided port and route

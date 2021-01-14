@@ -8,6 +8,8 @@ import sync
 import v.pref
 import v.util.vtest
 
+const github_job = os.getenv('GITHUB_JOB')
+
 pub struct TestSession {
 pub mut:
 	files         []string
@@ -23,7 +25,7 @@ pub mut:
 	progress_mode bool
 	root_relative bool // used by CI runs, so that the output is stable everywhere
 	nmessages     chan LogMessage // many publishers, single consumer/printer
-	nmessage_idx  int // currently printed message index
+	nmessage_idx  int      // currently printed message index
 	nprint_ended  chan int // read to block till printing ends, 1:1
 }
 
@@ -103,22 +105,36 @@ pub fn (mut ts TestSession) print_messages() {
 
 pub fn new_test_session(_vargs string) TestSession {
 	mut skip_files := []string{}
-	skip_files << '_non_existing_'
 	$if solaris {
 		skip_files << 'examples/gg/gg2.v'
 		skip_files << 'examples/pico/pico.v'
 		skip_files << 'examples/sokol/fonts.v'
 		skip_files << 'examples/sokol/drawing.v'
 	}
+	$if macos {
+		skip_files << 'examples/database/mysql.v'
+	}
 	$if windows {
+		skip_files << 'examples/database/mysql.v'
 		skip_files << 'examples/x/websocket/ping.v' // requires OpenSSL
+		skip_files << 'examples/x/websocket/client-server/client.v' // requires OpenSSL
+		skip_files << 'examples/x/websocket/client-server/server.v' // requires OpenSSL
+	}
+	if github_job != 'ubuntu-tcc' {
+		skip_files << 'examples/wkhtmltopdf.v' // needs installation of wkhtmltopdf from https://github.com/wkhtmltopdf/packaging/releases
+		// the ttf_test.v is not interactive, but needs X11 headers to be installed, which is done only on ubuntu-tcc for now
+		skip_files << 'vlib/x/ttf/ttf_test.v'
 	}
 	vargs := _vargs.replace('-progress', '').replace('-progress', '')
 	vexe := pref.vexe_path()
+	vroot := os.dir(vexe)
 	new_vtmp_dir := setup_new_vtmp_folder()
+	if term.can_show_color_on_stderr() {
+		os.setenv('VCOLORS', 'always', true)
+	}
 	return TestSession{
 		vexe: vexe
-		vroot: os.dir(vexe)
+		vroot: vroot
 		skip_files: skip_files
 		vargs: vargs
 		vtmp_dir: new_vtmp_dir
@@ -130,6 +146,10 @@ pub fn new_test_session(_vargs string) TestSession {
 pub fn (mut ts TestSession) init() {
 	ts.files.sort()
 	ts.benchmark = benchmark.new_benchmark_no_cstep()
+}
+
+pub fn (mut ts TestSession) add(file string) {
+	ts.files << file
 }
 
 pub fn (mut ts TestSession) test() {
@@ -256,7 +276,8 @@ fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 			ts.failed = true
 			ts.benchmark.fail()
 			tls_bench.fail()
-			ts.append_message(.fail, tls_bench.step_message_fail('$relative_file\n$r.output\n'))
+			ending_newline := if r.output.ends_with('\n') { '\n' } else { '' }
+			ts.append_message(.fail, tls_bench.step_message_fail('$relative_file\n$r.output.trim_space()$ending_newline'))
 		} else {
 			ts.benchmark.ok()
 			tls_bench.ok()
@@ -296,32 +317,38 @@ pub fn prepare_test_session(zargs string, folder string, oskipped []string, main
 	files := os.walk_ext(os.join_path(parent_dir, folder), '.v')
 	mut mains := []string{}
 	mut skipped := oskipped.clone()
-	for f in files {
-		if !f.contains('modules') && !f.contains('preludes') {
-			// $if !linux {
-			// run pg example only on linux
-			if f.contains('/pg/') {
-				continue
-			}
-			// }
-			if f.contains('life_gg') || f.contains('/graph.v') || f.contains('rune.v') {
-				continue
-			}
-			$if windows {
-				// skip pico example on windows
-				if f.ends_with('examples\\pico\\pico.v') {
-					continue
-				}
-			}
-			c := os.read_file(f) or { panic(err) }
-			maxc := if c.len > 300 { 300 } else { c.len }
-			start := c[0..maxc]
-			if start.contains('module ') && !start.contains('module main') {
-				skipped_f := f.replace(os.join_path(parent_dir, ''), '')
-				skipped << skipped_f
-			}
-			mains << f
+	next_file: for f in files {
+		if f.contains('modules') || f.contains('preludes') {
+			continue
 		}
+		// $if !linux {
+		// run pg example only on linux
+		if f.contains('/pg/') {
+			continue
+		}
+		// }
+		if f.contains('life_gg') || f.contains('/graph.v') || f.contains('rune.v') {
+			continue
+		}
+		$if windows {
+			// skip pico example on windows
+			if f.ends_with('examples\\pico\\pico.v') {
+				continue
+			}
+		}
+		c := os.read_file(f) or { panic(err) }
+		maxc := if c.len > 300 { 300 } else { c.len }
+		start := c[0..maxc]
+		if start.contains('module ') && !start.contains('module main') {
+			skipped_f := f.replace(os.join_path(parent_dir, ''), '')
+			skipped << skipped_f
+		}
+		for skip_prefix in oskipped {
+			if f.starts_with(skip_prefix) {
+				continue next_file
+			}
+		}
+		mains << f
 	}
 	session.files << mains
 	session.skip_files << skipped

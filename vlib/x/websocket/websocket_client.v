@@ -1,5 +1,6 @@
 // websocket module implements websocket client and a websocket server
 // attribution: @thecoderr the author of original websocket client
+[manualfree]
 module websocket
 
 import net
@@ -7,7 +8,6 @@ import x.openssl
 import net.urllib
 import time
 import log
-import sync
 import rand
 
 const (
@@ -16,27 +16,27 @@ const (
 
 // Client represents websocket client
 pub struct Client {
-	is_server         bool
+	is_server bool
 mut:
 	ssl_conn          &openssl.SSLConn // secure connection used when wss is used
-	flags             []Flag // flags used in handshake
+	flags             []Flag     // flags used in handshake
 	fragments         []Fragment // current fragments
 	message_callbacks []MessageEventHandler // all callbacks on_message
-	error_callbacks   []ErrorEventHandler // all callbacks on_error
-	open_callbacks    []OpenEventHandler // all callbacks on_open
-	close_callbacks   []CloseEventHandler // all callbacks on_close
+	error_callbacks   []ErrorEventHandler   // all callbacks on_error
+	open_callbacks    []OpenEventHandler    // all callbacks on_open
+	close_callbacks   []CloseEventHandler   // all callbacks on_close
 pub:
-	is_ssl            bool // true if secure socket is used
-	uri               Uri // uri of current connection
-	id                string // unique id of client
+	is_ssl bool   // true if secure socket is used
+	uri    Uri    // uri of current connection
+	id     string // unique id of client
 pub mut:
 	conn              net.TcpConn // underlying TCP socket connection
 	nonce_size        int = 16 // size of nounce used for masking
-	panic_on_callback bool // set to true of callbacks can panic
-	state             State // current state of connection
+	panic_on_callback bool     // set to true of callbacks can panic
+	state             State    // current state of connection
 	logger            &log.Log // logger used to log messages
-	resource_name     string // name of current resource
-	last_pong_ut      u64 // last time in unix time we got a pong message
+	resource_name     string   // name of current resource
+	last_pong_ut      u64      // last time in unix time we got a pong message
 }
 
 // Flag represents different types of headers in websocket handshake
@@ -104,7 +104,9 @@ pub fn (mut ws Client) connect() ? {
 
 // listen listens and processes incoming messages
 pub fn (mut ws Client) listen() ? {
-	ws.logger.info('Starting client listener, server($ws.is_server)...')
+	mut log := 'Starting client listener, server($ws.is_server)...'
+	ws.logger.info(log)
+	log.free()
 	defer {
 		ws.logger.info('Quit client listener, server($ws.is_server)...')
 		if ws.state == .open {
@@ -126,7 +128,9 @@ pub fn (mut ws Client) listen() ? {
 		ws.debug_log('got message: $msg.opcode')
 		match msg.opcode {
 			.text_frame {
-				ws.debug_log('read: text')
+				log = 'read: text'
+				ws.debug_log(log)
+				log.free()
 				ws.send_message_event(msg)
 				unsafe { msg.free() }
 			}
@@ -158,7 +162,9 @@ pub fn (mut ws Client) listen() ? {
 				}
 			}
 			.close {
-				ws.debug_log('read: close')
+				log = 'read: close'
+				ws.debug_log(log)
+				log.free()
 				defer {
 					ws.manage_clean_close()
 				}
@@ -220,7 +226,7 @@ pub fn (mut ws Client) pong() ? {
 
 // write_ptr writes len bytes provided a byteptr with a websocket messagetype
 pub fn (mut ws Client) write_ptr(bytes byteptr, payload_len int, code OPCode) ? {
-	ws.debug_log('write_ptr code: $code')
+	// ws.debug_log('write_ptr code: $code')
 	if ws.state != .open || ws.conn.sock.handle < 1 {
 		// todo: send error here later
 		return error('trying to write on a closed socket!')
@@ -333,11 +339,9 @@ pub fn (mut ws Client) close(code int, message string) ? {
 			close_frame[i + 2] = message[i]
 		}
 		ws.send_control_frame(.close, 'CLOSE', close_frame) ?
-		ws.send_close_event(code, message)
 		unsafe { close_frame.free() }
 	} else {
 		ws.send_control_frame(.close, 'CLOSE', []) ?
-		ws.send_close_event(code, '')
 	}
 	ws.fragments = []
 }
@@ -405,12 +409,14 @@ fn (mut ws Client) send_control_frame(code OPCode, frame_typ string, payload []b
 // parse_uri parses the url to a Uri
 fn parse_uri(url string) ?&Uri {
 	u := urllib.parse(url) ?
-	v := u.request_uri().split('?')
+	request_uri := u.request_uri()
+	v := request_uri.split('?')
 	mut port := u.port()
+	uri := u.str()
 	if port == '' {
-		port = if u.str().starts_with('ws://') {
+		port = if uri.starts_with('ws://') {
 			'80'
-		} else if u.str().starts_with('wss://') {
+		} else if uri.starts_with('wss://') {
 			'443'
 		} else {
 			u.port()

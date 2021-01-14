@@ -1,4 +1,4 @@
-vlib/v/checker/tests/bit_op_wrong_right_type_err.vv:2:14: error: right type of `|` cannot be non-integer type any_float
+vlib/v/checker/tests/bit_op_wrong_right_type_err.vv:2:14: error: right type of `|` cannot be non-integer type `float literal`
     1 | fn main() {
     2 |     println(1 | 0.5)
       |                 ~~~

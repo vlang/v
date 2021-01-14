@@ -4,19 +4,20 @@ on:
     types: [edited, published]
 jobs:
   ubuntu:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     timeout-minutes: 5
     steps:
     - name: Install dependencies
       run: |
         sudo apt-get update
         sudo apt-get install --quiet -y postgresql libpq-dev libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-        ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev 
+        ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
     - name: Download V
       run: |
         tag=${GITHUB_REF##*/}
         wget https://github.com/vlang/v/releases/download/$tag/v_linux.zip
         unzip v_linux.zip
+        cd v
         ./v -version
     - name: Test V
       run: |
@@ -36,6 +37,7 @@ jobs:
         tag=${GITHUB_REF##*/}
         wget https://github.com/vlang/v/releases/download/$tag/v_macos.zip
         unzip v_macos.zip
+        cd v
         ./v -version
     - name: Test V
       run: |
@@ -50,6 +52,7 @@ jobs:
         Set-Variable -Name "tag" -Value $env:GITHUB_REF.split("/", 3)[-1]
         & curl -L https://github.com/vlang/v/releases/download/$tag/v_windows.zip -o v_windows.zip
         & unzip .\v_windows.zip
+        & cd v
         & .\v.exe -version
     - name: Test V
       run: |

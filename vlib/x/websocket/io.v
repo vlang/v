@@ -2,7 +2,6 @@ module websocket
 
 import net
 import time
-import sync
 
 // socket_read reads from socket into the provided buffer
 fn (mut ws Client) socket_read(mut buffer []byte) ?int {
@@ -25,6 +24,7 @@ fn (mut ws Client) socket_read(mut buffer []byte) ?int {
 			}
 		}
 	}
+	return none
 }
 
 // socket_read reads from socket into the provided byte pointer and length
@@ -48,6 +48,7 @@ fn (mut ws Client) socket_read_ptr(buf_ptr byteptr, len int) ?int {
 			}
 		}
 	}
+	return none
 }
 
 // socket_write writes the provided byte array to the socket

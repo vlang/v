@@ -4,13 +4,13 @@ fn test_anyfloat() {
 	c := f32(6.75) / 3.0
 	d := 16.5 / f32(2)
 	assert a == 51.515
-	assert typeof(a) == 'f64'
+	assert typeof(a).name == 'f64'
 	assert b == f64(15.3)
-	assert typeof(b) == 'f64'
+	assert typeof(b).name == 'f64'
 	assert c == 2.25
-	assert typeof(c) == 'f32'
+	assert typeof(c).name == 'f32'
 	assert d == 8.25
-	assert typeof(d) == 'f32'
+	assert typeof(d).name == 'f32'
 }
 
 fn g(x f32) f32 {
@@ -92,9 +92,9 @@ fn test_rune() {
 	assert x == 67
 	c := b + a
 	assert c == rune(70)
-	assert typeof(c) == 'rune'
+	assert typeof(c).name == 'rune'
 	d := i64(12)
 	e := b + d
 	assert e == i64(79)
-	assert typeof(e) == 'i64'
+	assert typeof(e).name == 'i64'
 }

@@ -6,7 +6,28 @@ fn mr_fun() (int, int) {
 	return /* one comment */ 1, /* another comment */ 2
 }
 
+fn single_line_blocks() {
+	/* 1 */
+	println('')
+	/* 2 */
+	println('')
+	/* 3 */
+	/* 4 */
+	println('')
+	// 5
+	/* 6 */
+}
+
 fn main() {
+	/* block1
+	*/
+	/*
+	block2 */
+	/*
+
+	block3
+
+	*/
 	a := /* this is a comment */ 1
 	b, c := /* and another comment */ a, /* just to make it worse */ 2
 	d := c // and an extra one

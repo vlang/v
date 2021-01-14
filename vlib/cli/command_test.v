@@ -24,13 +24,13 @@ fn test_if_subcommands_parse_args() {
 	}
 	subcmd := cli.Command{
 		name: 'subcommand'
-		execute: empty_func
+		execute: if_subcommands_parse_args_func
 	}
 	cmd.add_command(subcmd)
 	cmd.parse(['command', 'subcommand', 'arg0', 'arg1'])
 }
 
-fn if_subcommands_parse_args_func(cmd cli.Command) {
+fn if_subcommands_parse_args_func(cmd cli.Command) ? {
 	assert cmd.name == 'subcommand' && compare_arrays(cmd.args, ['arg0', 'arg1'])
 }
 
@@ -143,6 +143,27 @@ fn test_if_global_flag_gets_set_in_subcommand() {
 	}
 	cmd.add_command(subcmd)
 	cmd.parse(['command', '-flag', 'value', 'subcommand'])
+}
+
+fn test_command_setup() {
+	mut cmd := cli.Command{
+		name: 'root'
+		commands: [
+			cli.Command{
+				name: 'child'
+				commands: [
+					cli.Command{
+						name: 'child-child'
+					},
+				]
+			},
+		]
+	}
+	assert isnil(cmd.commands[0].parent)
+	assert isnil(cmd.commands[0].commands[0].parent)
+	cmd.setup()
+	assert cmd.commands[0].parent.name == 'root'
+	assert cmd.commands[0].commands[0].parent.name == 'child'
 }
 
 // helper functions

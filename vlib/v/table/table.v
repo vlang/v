@@ -38,8 +38,8 @@ pub:
 	ctdefine       string // compile time define. myflag, when [if myflag] tag
 	attrs          []Attr
 pub mut:
-	name           string
-	source_fn      voidptr // set in the checker, while processing fn declarations
+	name      string
+	source_fn voidptr // set in the checker, while processing fn declarations
 }
 
 fn (f &Fn) method_equals(o &Fn) bool {
@@ -78,7 +78,7 @@ pub:
 	name   string
 	is_mut bool
 mut:
-	typ    Type
+	typ Type
 }
 
 pub fn new_table() &Table {
@@ -130,19 +130,22 @@ pub fn (t &Table) fn_type_source_signature(f &Fn) string {
 	return sig
 }
 
-pub fn (f &Fn) is_same_method_as(func &Fn) bool {
+pub fn (t &Table) is_same_method(f &Fn, func &Fn) string {
 	if f.return_type != func.return_type {
-		return false
+		s := t.type_to_str(f.return_type)
+		return 'expected return type `$s`'
 	}
 	if f.params.len != func.params.len {
-		return false
+		return 'expected $f.params.len parameter(s), not $func.params.len'
 	}
 	for i in 1 .. f.params.len {
 		if f.params[i].typ != func.params[i].typ {
-			return false
+			exps := t.type_to_str(f.params[i].typ)
+			gots := t.type_to_str(func.params[i].typ)
+			return 'expected `$exps`, not `$gots` for parameter $i'
 		}
 	}
-	return true
+	return ''
 }
 
 pub fn (t &Table) find_fn(name string) ?Fn {
@@ -393,22 +396,18 @@ pub fn (t &Table) known_type(name string) bool {
 // array_source_name generates the original name for the v source.
 // e. g. []int
 [inline]
-pub fn (t &Table) array_name(elem_type Type, nr_dims int) string {
+pub fn (t &Table) array_name(elem_type Type) string {
 	elem_type_sym := t.get_type_symbol(elem_type)
 	ptr := if elem_type.is_ptr() { '&'.repeat(elem_type.nr_muls()) } else { '' }
-	dims := '[]'.repeat(nr_dims)
-	return '$dims$ptr$elem_type_sym.name'
+	return '[]$ptr$elem_type_sym.name'
 }
 
 [inline]
-pub fn (t &Table) array_cname(elem_type Type, nr_dims int) string {
+pub fn (t &Table) array_cname(elem_type Type) string {
 	elem_type_sym := t.get_type_symbol(elem_type)
 	mut res := ''
 	if elem_type.is_ptr() {
 		res = '_ptr'.repeat(elem_type.nr_muls())
-	}
-	if nr_dims > 1 {
-		res += '_${nr_dims}d'
 	}
 	return 'array_$elem_type_sym.cname' + res
 }
@@ -423,14 +422,11 @@ pub fn (t &Table) array_fixed_name(elem_type Type, size int) string {
 }
 
 [inline]
-pub fn (t &Table) array_fixed_cname(elem_type Type, size int, nr_dims int) string {
+pub fn (t &Table) array_fixed_cname(elem_type Type, size int) string {
 	elem_type_sym := t.get_type_symbol(elem_type)
 	mut res := ''
 	if elem_type.is_ptr() {
 		res = '_ptr'
-	}
-	if nr_dims > 1 {
-		res += '_${nr_dims}d'
 	}
 	return 'array_fixed_${elem_type_sym.cname}_$size' + res
 }
@@ -522,9 +518,9 @@ pub fn (mut t Table) find_or_register_map(key_type Type, value_type Type) int {
 	return t.register_type_symbol(map_typ)
 }
 
-pub fn (mut t Table) find_or_register_array(elem_type Type, nr_dims int) int {
-	name := t.array_name(elem_type, nr_dims)
-	cname := t.array_cname(elem_type, nr_dims)
+pub fn (mut t Table) find_or_register_array(elem_type Type) int {
+	name := t.array_name(elem_type)
+	cname := t.array_cname(elem_type)
 	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 {
@@ -538,15 +534,22 @@ pub fn (mut t Table) find_or_register_array(elem_type Type, nr_dims int) int {
 		cname: cname
 		info: Array{
 			elem_type: elem_type
-			nr_dims: nr_dims
 		}
 	}
 	return t.register_type_symbol(array_type)
 }
 
-pub fn (mut t Table) find_or_register_array_fixed(elem_type Type, size int, nr_dims int) int {
+pub fn (mut t Table) find_or_register_array_with_dims(elem_type Type, nr_dims int) int {
+	return if nr_dims == 1 {
+		t.find_or_register_array(elem_type)
+	} else {
+		t.find_or_register_array(t.find_or_register_array_with_dims(elem_type, nr_dims - 1))
+	}
+}
+
+pub fn (mut t Table) find_or_register_array_fixed(elem_type Type, size int) int {
 	name := t.array_fixed_name(elem_type, size)
-	cname := t.array_fixed_cname(elem_type, size, nr_dims)
+	cname := t.array_fixed_cname(elem_type, size)
 	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 {
@@ -560,7 +563,6 @@ pub fn (mut t Table) find_or_register_array_fixed(elem_type Type, size int, nr_d
 		info: ArrayFixed{
 			elem_type: elem_type
 			size: size
-			nr_dims: nr_dims
 		}
 	}
 	return t.register_type_symbol(array_fixed_type)
@@ -639,7 +641,7 @@ pub fn (mut t Table) add_placeholder_type(name string, language Language) int {
 
 [inline]
 pub fn (t &Table) value_type(typ Type) Type {
-	typ_sym := t.get_type_symbol(typ)
+	typ_sym := t.get_final_type_symbol(typ)
 	if typ.has_flag(.variadic) {
 		// ...string => string
 		// return typ.clear_flag(.variadic)
@@ -681,8 +683,8 @@ pub fn (t &Table) value_type(typ Type) Type {
 [inline]
 pub fn (t &Table) mktyp(typ Type) Type {
 	match typ {
-		any_flt_type { return f64_type }
-		any_int_type { return int_type }
+		float_literal_type { return f64_type }
+		int_literal_type { return int_type }
 		else { return typ }
 	}
 }
@@ -745,10 +747,26 @@ pub fn (table &Table) sumtype_has_variant(parent Type, variant Type) bool {
 pub fn (table &Table) known_type_names() []string {
 	mut res := []string{}
 	for _, idx in table.type_idxs {
-		if idx == 0 {
+		// Skip `int_literal_type_idx` and `float_literal_type_idx` because they shouldn't be visible to the User.
+		if idx in [0, int_literal_type_idx, float_literal_type_idx] {
 			continue
 		}
 		res << table.type_to_str(idx)
 	}
 	return res
+}
+
+// has_deep_child_no_ref returns true if type is struct and has any child or nested child with the type of the given name
+// the given name consists of module and name (`mod.Name`)
+// it doesn't care about childs that are references
+pub fn (table &Table) has_deep_child_no_ref(ts &TypeSymbol, name string) bool {
+	if ts.info is Struct {
+		for _, field in ts.info.fields {
+			sym := table.get_type_symbol(field.typ)
+			if !field.typ.is_ptr() && (sym.name == name || table.has_deep_child_no_ref(sym, name)) {
+				return true
+			}
+		}
+	}
+	return false
 }

@@ -1,4 +1,3 @@
-import sync
 import time
 
 struct St {

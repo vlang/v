@@ -1,4 +1,4 @@
-vlib/v/checker/tests/optional_or_block_returns_value_of_incompatible_type.vv:13:3: error: the default expression type in the `or` block should be `string`, instead you gave a value of type `any_int`
+vlib/v/checker/tests/optional_or_block_returns_value_of_incompatible_type.vv:13:3: error: the default expression type in the `or` block should be `string`, instead you gave a value of type `int literal`
    11 |         // must be of the same type of the return
    12 |         // type of the `test_optional` function
    13 |         123

@@ -165,7 +165,7 @@ fn test_as_cast() {
 
 fn test_typeof() {
     x := Expr(IfExpr{})
-	assert typeof(x) == 'IfExpr'
+	assert x.type_name() == 'IfExpr'
 }
 
 type Food = Milk | Eggs
@@ -409,7 +409,7 @@ fn (c CommonType) str() string {
 	match c {		
 		string {
 			d := c.int()
-			e := d
+			_ := d
 			return c
 		}
 		int {
@@ -525,7 +525,7 @@ fn handle(e Expr) string {
 	assert is_literal
 	assert !(e !is IntegerLiteral)
 	if e is IntegerLiteral {
-		assert typeof(e.val) == 'string'
+		assert typeof(e.val).name == 'string'
 	}
 	match e {
 		IntegerLiteral {

@@ -1,3 +1,4 @@
+import time
 // 1 line comment // 1 line comment
 /*
 multi line comment (1)
@@ -39,6 +40,8 @@ type F4 = fn (voidptr) int
 type F5 = fn (int, int) int
 
 type F6 = fn (int, int)
+
+type F7 = fn (time.Time, int)
 
 fn C.atoi(byteptr) int
 

@@ -366,3 +366,15 @@ fn test_fields_array_of_fn() {
     println(commands.show)
 	assert '$commands.show' == '[fn () string, fn () string]'
 }
+
+fn test_struct_update() {
+	c := Country{name: 'test'}
+	c2 := Country{
+		...c
+		capital: City{
+			name: 'city'
+		}
+	}
+	assert c2.capital.name == 'city'
+	assert c2.name == 'test'
+}

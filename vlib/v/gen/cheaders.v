@@ -306,7 +306,7 @@ static inline bool _us64_lt(uint64_t a, int64_t b) { return a < INT64_MAX && (in
 byte* g_str_buf;
 int load_so(byteptr);
 void reload_so();
-void _vinit();
+void _vinit(int ___argc, voidptr ___argv);
 void _vcleanup();
 #define sigaction_size sizeof(sigaction);
 #define _ARR_LEN(a) ( (sizeof(a)) / (sizeof(a[0])) )
@@ -439,8 +439,8 @@ typedef uint8_t byte;
 typedef uint32_t rune;
 typedef float f32;
 typedef double f64;
-typedef int64_t any_int;
-typedef double any_float;
+typedef int64_t int_literal;
+typedef double float_literal;
 typedef unsigned char* byteptr;
 typedef void* voidptr;
 typedef char* charptr;

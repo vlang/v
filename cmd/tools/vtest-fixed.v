@@ -19,6 +19,7 @@ const (
 		'vlib/vweb/tests/vweb_test.v',
 		'vlib/x/websocket/websocket_test.v',
 		'vlib/v/tests/unsafe_test.v',
+		'vlib/net/http/http_httpbin_test.v',
 	]
 	skip_with_fsanitize_address   = [
 		'vlib/encoding/base64/base64_test.v',
@@ -54,9 +55,7 @@ const (
 	skip_with_fsanitize_undefined = [
 		'vlib/encoding/csv/reader_test.v',
 	]
-	skip_test_files               = [
-		'vlib/net/http/http_httpbin_test.v',
-	]
+	skip_test_files               = []string{}
 	skip_on_musl                  = [
 		'vlib/v/tests/profile/profile_test.v',
 	]
@@ -71,6 +70,7 @@ const (
 		'vlib/clipboard/clipboard_test.v',
 		'vlib/vweb/tests/vweb_test.v',
 		'vlib/x/websocket/websocket_test.v',
+		'vlib/net/http/http_httpbin_test.v',
 	]
 	skip_on_linux                 = []string{}
 	skip_on_non_linux             = [
@@ -125,8 +125,7 @@ fn main() {
 	if sanitize_undefined {
 		tsession.skip_files << skip_with_fsanitize_undefined
 	}
-	println(tsession.skip_files)
-	//
+	// println(tsession.skip_files)
 	if os.getenv('V_CI_MUSL').len > 0 {
 		tsession.skip_files << skip_on_musl
 	}

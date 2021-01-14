@@ -1,0 +1,2 @@
+cmd/tools/vvet/tests/array_init_one_val.vv:2: error: Use `var == value` instead of `var in [value]`
+NB: You can run `v fmt -w file.v` to fix these automatically

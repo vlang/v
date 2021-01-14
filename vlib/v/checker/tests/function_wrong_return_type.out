@@ -1,4 +1,4 @@
-vlib/v/checker/tests/function_wrong_return_type.vv:2:9: error: cannot use `any_float` as type `int` in return argument
+vlib/v/checker/tests/function_wrong_return_type.vv:2:9: error: cannot use `float literal` as type `int` in return argument
     1 | fn h() int {
     2 |     return 3.14
       |            ~~~~

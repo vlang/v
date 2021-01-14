@@ -16,8 +16,8 @@ const (
 		'public', 'return', 'static', 'super', 'switch', 'this', 'throw', 'try', 'typeof', 'var', 'void',
 		'while', 'with', 'yield', 'Number', 'String', 'Boolean', 'Array', 'Map']
 	// used to generate type structs
-	v_types     = ['i8', 'i16', 'int', 'i64', 'byte', 'u16', 'u32', 'u64', 'f32', 'f64', 'any_int',
-		'any_float', 'size_t', 'bool', 'string', 'map', 'array']
+	v_types     = ['i8', 'i16', 'int', 'i64', 'byte', 'u16', 'u32', 'u64', 'f32', 'f64', 'int_literal',
+		'float_literal', 'size_t', 'bool', 'string', 'map', 'array']
 	tabs        = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t',
 		'\t\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t\t']
 )
@@ -571,6 +571,9 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.write('"$node.val"')
 		}
 		ast.ComptimeCall {
+			// TODO
+		}
+		ast.ComptimeSelector {
 			// TODO
 		}
 		ast.UnsafeExpr {
@@ -1413,7 +1416,7 @@ fn (mut g JsGen) greater_typ(left table.Type, right table.Type) table.Type {
 		if table.f32_type_idx in lr {
 			return table.Type(table.f32_type_idx)
 		}
-		return table.Type(table.any_flt_type)
+		return table.Type(table.float_literal_type)
 	}
 	should_int := (l in table.integer_type_idxs && r in table.integer_type_idxs)
 	if should_int {
@@ -1440,7 +1443,7 @@ fn (mut g JsGen) greater_typ(left table.Type, right table.Type) table.Type {
 		if table.i8_type_idx in lr {
 			return table.Type(table.i8_type_idx)
 		}
-		return table.Type(table.any_int_type_idx)
+		return table.Type(table.int_literal_type_idx)
 	}
 	return table.Type(l)
 }

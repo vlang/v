@@ -22,14 +22,14 @@ fn f64_from_bits1(b u64) f64 {
 	mut x := Ufloat64{}
 	x.b = b
 	//C.printf("bin: %016llx\n",x.f)
-	return x.f
+	return unsafe {x.f}
 }
 
 fn f32_from_bits1(b u32) f32 {
 	mut x := Ufloat32{}
 	x.b = b
 	//C.printf("bin: %08x\n",x.f)
-	return x.f
+	return unsafe {x.f}
 }
 
 fn test_float_to_str() {

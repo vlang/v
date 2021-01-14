@@ -74,7 +74,16 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		p.error_with_pos('struct names must have more than one character', name_pos)
 		return ast.StructDecl{}
 	}
-	// println('struct decl $name')
+	mut orig_name := name
+	if language == .c {
+		name = 'C.$name'
+		orig_name = name
+	} else if language == .js {
+		name = 'JS.$name'
+		orig_name = name
+	} else {
+		name = p.prepend_mod(name)
+	}
 	mut ast_fields := []ast.StructField{}
 	mut fields := []table.Field{}
 	mut embed_types := []table.Type{}
@@ -158,7 +167,8 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			field_start_pos := p.tok.position()
 			is_embed := ((p.tok.lit.len > 1 && p.tok.lit[0].is_capital()) ||
 				p.peek_tok.kind == .dot) &&
-				language == .v && ast_fields.len == 0 && !(is_field_mut || is_field_mut || is_field_global)
+				language == .v
+			is_on_top := ast_fields.len == 0 && !(is_field_mut || is_field_mut || is_field_global)
 			mut field_name := ''
 			mut typ := table.Type(0)
 			mut type_pos := token.Position{}
@@ -174,6 +184,11 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 					}
 				}
 				type_pos = type_pos.extend(p.prev_tok.position())
+				if !is_on_top {
+					p.error_with_pos('struct embedding must be declared at the beginning of the struct body',
+						type_pos)
+					return ast.StructDecl{}
+				}
 				sym := p.table.get_type_symbol(typ)
 				if typ in embed_types {
 					p.error_with_pos('cannot embed `$sym.name` more than once', type_pos)
@@ -207,7 +222,6 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				type_pos = p.prev_tok.position()
 				field_pos = field_start_pos.extend(type_pos)
 			}
-			// println(p.tok.position())
 			// Comments after type (same line)
 			comments << p.eat_comments()
 			if p.tok.kind == .lsbr {
@@ -220,8 +234,6 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				if p.tok.kind == .assign {
 					// Default value
 					p.next()
-					// default_expr = p.tok.lit
-					// p.expr(0)
 					default_expr = p.expr(0)
 					match mut default_expr {
 						ast.EnumVal { default_expr.typ = typ }
@@ -269,13 +281,6 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		last_line = p.tok.line_nr
 		p.check(.rcbr)
 	}
-	if language == .c {
-		name = 'C.$name'
-	} else if language == .js {
-		name = 'JS.$name'
-	} else {
-		name = p.prepend_mod(name)
-	}
 	t := table.TypeSymbol{
 		kind: .struct_
 		language: language
@@ -289,8 +294,13 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			is_union: is_union
 			is_ref_only: attrs.contains('ref_only')
 			generic_types: generic_types
+			attrs: attrs
 		}
 		is_public: is_pub
+	}
+	if p.table.has_deep_child_no_ref(&t, name) {
+		p.error_with_pos('invalid recursive struct `$orig_name`', name_pos)
+		return ast.StructDecl{}
 	}
 	mut ret := 0
 	// println('reg type symbol $name mod=$p.mod')
@@ -307,9 +317,9 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		is_pub: is_pub
 		fields: ast_fields
 		pos: start_pos.extend_with_last_line(name_pos, last_line)
-		mut_pos: mut_pos
-		pub_pos: pub_pos
-		pub_mut_pos: pub_mut_pos
+		mut_pos: mut_pos - embeds.len
+		pub_pos: pub_pos - embeds.len
+		pub_mut_pos: pub_mut_pos - embeds.len
 		language: language
 		is_union: is_union
 		attrs: attrs
@@ -331,21 +341,31 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 	pre_comments := p.eat_comments()
 	mut fields := []ast.StructInitField{}
 	mut i := 0
-	no_keys := p.peek_tok.kind != .colon && p.tok.kind != .rcbr // `Vec{a,b,c}
+	no_keys := p.peek_tok.kind != .colon && p.tok.kind != .rcbr && p.tok.kind != .ellipsis // `Vec{a,b,c}
 	// p.warn(is_short_syntax.str())
 	saved_is_amp := p.is_amp
 	p.is_amp = false
+	mut update_expr := ast.Expr{}
+	mut update_expr_comments := []ast.Comment{}
+	mut has_update_expr := false
 	for p.tok.kind !in [.rcbr, .rpar, .eof] {
 		mut field_name := ''
 		mut expr := ast.Expr{}
 		mut field_pos := token.Position{}
 		mut comments := []ast.Comment{}
 		mut nline_comments := []ast.Comment{}
+		is_update_expr := fields.len == 0 && p.tok.kind == .ellipsis
 		if no_keys {
 			// name will be set later in checker
 			expr = p.expr(0)
 			field_pos = expr.position()
 			comments = p.eat_line_end_comments()
+		} else if is_update_expr {
+			// struct updating syntax; f2 := Foo{ ...f, name: 'f2' }
+			p.check(.ellipsis)
+			update_expr = p.expr(0)
+			update_expr_comments << p.eat_line_end_comments()
+			has_update_expr = true
 		} else {
 			first_field_pos := p.tok.position()
 			field_name = p.check_name()
@@ -367,12 +387,14 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 		}
 		comments << p.eat_line_end_comments()
 		nline_comments << p.eat_comments()
-		fields << ast.StructInitField{
-			name: field_name
-			expr: expr
-			pos: field_pos
-			comments: comments
-			next_comments: nline_comments
+		if !is_update_expr {
+			fields << ast.StructInitField{
+				name: field_name
+				expr: expr
+				pos: field_pos
+				comments: comments
+				next_comments: nline_comments
+			}
 		}
 	}
 	last_pos := p.tok.position()
@@ -383,11 +405,10 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 	node := ast.StructInit{
 		typ: typ
 		fields: fields
-		pos: token.Position{
-			line_nr: first_pos.line_nr
-			pos: first_pos.pos
-			len: last_pos.pos - first_pos.pos + last_pos.len
-		}
+		update_expr: update_expr
+		update_expr_comments: update_expr_comments
+		has_update_expr: has_update_expr
+		pos: first_pos.extend_with_last_line(last_pos, p.tok.line_nr)
 		is_short: no_keys
 		pre_comments: pre_comments
 	}

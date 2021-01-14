@@ -25,35 +25,36 @@ pub type FNChar = fn (c u32, x voidptr)
 
 pub struct Config {
 pub:
-	width                 int
-	height                int
-	use_ortho             bool
-	retina                bool
-	resizable             bool
-	user_data             voidptr
-	font_size             int
-	create_window         bool
+	width         int
+	height        int
+	use_ortho     bool
+	retina        bool
+	resizable     bool
+	user_data     voidptr
+	font_size     int
+	create_window bool
 	// window_user_ptr voidptr
-	window_title          string
-	borderless_window     bool
-	always_on_top         bool
-	bg_color              gx.Color
-	init_fn               FNCb = voidptr(0)
-	frame_fn              FNCb = voidptr(0)
-	cleanup_fn            FNCb = voidptr(0)
-	fail_fn               FNFail = voidptr(0)
-	event_fn              FNEvent = voidptr(0)
-	keydown_fn            FNKeyDown = voidptr(0)
+	window_title      string
+	borderless_window bool
+	always_on_top     bool
+	bg_color          gx.Color
+	init_fn           FNCb      = voidptr(0)
+	frame_fn          FNCb      = voidptr(0)
+	cleanup_fn        FNCb      = voidptr(0)
+	fail_fn           FNFail    = voidptr(0)
+	event_fn          FNEvent   = voidptr(0)
+	keydown_fn        FNKeyDown = voidptr(0)
 	// special case of event_fn
-	char_fn               FNChar = voidptr(0)
+	char_fn FNChar = voidptr(0)
 	// special case of event_fn
-	move_fn               FNMove = voidptr(0)
+	move_fn FNMove = voidptr(0)
 	// special case of event_fn
-	click_fn              FNMove = voidptr(0)
+	click_fn FNMove = voidptr(0)
 	// special case of event_fn
 	// wait_events       bool // set this to true for UIs, to save power
-	fullscreen            bool
-	scale                 f32 = 1.0
+	fullscreen   bool
+	scale        f32 = 1.0
+	sample_count int
 	// vid needs this
 	// init_text bool
 	font_path             string
@@ -62,7 +63,7 @@ pub:
 }
 
 pub struct Context {
-	render_text   bool
+	render_text bool
 mut:
 	// a cache with all images created by the user. used for sokol image init and to save space
 	// (so that the user can store image ids, not entire Image objects)
@@ -70,17 +71,17 @@ mut:
 	needs_refresh bool = true
 	ticks         int
 pub mut:
-	scale         f32 = 1.0
+	scale f32 = 1.0
 	// will get set to 2.0 for retina, will remain 1.0 for normal
-	width         int
-	height        int
-	clear_pass    C.sg_pass_action
-	window        C.sapp_desc
-	timage_pip    C.sgl_pipeline
-	config        Config
-	ft            &FT
-	font_inited   bool
-	ui_mode       bool // do not redraw everything 60 times/second, but only when the user requests
+	width       int
+	height      int
+	clear_pass  C.sg_pass_action
+	window      C.sapp_desc
+	timage_pip  C.sgl_pipeline
+	config      Config
+	ft          &FT
+	font_inited bool
+	ui_mode     bool // do not redraw everything 60 times/second, but only when the user requests
 }
 
 pub struct Size {
@@ -90,7 +91,7 @@ pub:
 }
 
 fn gg_init_sokol_window(user_data voidptr) {
-	mut g := &Context(user_data)
+	mut g := unsafe { &Context(user_data) }
 	desc := sapp.create_desc()
 	/*
 	desc := C.sg_desc{
@@ -144,8 +145,8 @@ fn gg_init_sokol_window(user_data voidptr) {
 	mut pipdesc := C.sg_pipeline_desc{}
 	unsafe { C.memset(&pipdesc, 0, sizeof(pipdesc)) }
 	pipdesc.blend.enabled = true
-	pipdesc.blend.src_factor_rgb = C.SG_BLENDFACTOR_SRC_ALPHA
-	pipdesc.blend.dst_factor_rgb = C.SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA
+	pipdesc.blend.src_factor_rgb = gfx.BlendFactor(C.SG_BLENDFACTOR_SRC_ALPHA)
+	pipdesc.blend.dst_factor_rgb = gfx.BlendFactor(C.SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA)
 	g.timage_pip = sgl.make_pipeline(&pipdesc)
 	//
 	if g.config.init_fn != voidptr(0) {
@@ -158,7 +159,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 }
 
 fn gg_frame_fn(user_data voidptr) {
-	mut ctx := &Context(user_data)
+	mut ctx := unsafe { &Context(user_data) }
 	if ctx.config.frame_fn == voidptr(0) {
 		return
 	}
@@ -179,8 +180,8 @@ pub fn (mut ctx Context) refresh_ui() {
 }
 
 fn gg_event_fn(ce &C.sapp_event, user_data voidptr) {
-	e := &sapp.Event(ce)
-	mut g := &Context(user_data)
+	e := unsafe { &sapp.Event(ce) }
+	mut g := unsafe { &Context(user_data) }
 	if g.config.event_fn != voidptr(0) {
 		g.config.event_fn(e, g.config.user_data)
 	}
@@ -188,7 +189,7 @@ fn gg_event_fn(ce &C.sapp_event, user_data voidptr) {
 		.key_down {
 			if g.config.keydown_fn != voidptr(0) {
 				kdfn := g.config.keydown_fn
-				kdfn(e.key_code, e.modifiers, g.config.user_data)
+				kdfn(e.key_code, sapp.Modifier(e.modifiers), g.config.user_data)
 			}
 		}
 		.char {
@@ -214,14 +215,14 @@ fn gg_event_fn(ce &C.sapp_event, user_data voidptr) {
 }
 
 fn gg_cleanup_fn(user_data voidptr) {
-	mut g := &Context(user_data)
+	mut g := unsafe { &Context(user_data) }
 	if g.config.cleanup_fn != voidptr(0) {
 		g.config.cleanup_fn(g.config.user_data)
 	}
 }
 
 fn gg_fail_fn(msg charptr, user_data voidptr) {
-	mut g := &Context(user_data)
+	mut g := unsafe { &Context(user_data) }
 	vmsg := tos3(msg)
 	if g.config.fail_fn != voidptr(0) {
 		g.config.fail_fn(vmsg, g.config.user_data)
@@ -253,6 +254,7 @@ pub fn new_context(cfg Config) &Context {
 		html5_canvas_name: cfg.window_title.str
 		width: cfg.width
 		height: cfg.height
+		sample_count: cfg.sample_count
 		high_dpi: true
 		fullscreen: cfg.fullscreen
 	}

@@ -9,7 +9,7 @@ enum Abc {
 struct User {
 	name string // name
 	// middle comment
-	age  int
+	age int
 	// last comment
 	// last comment2
 }
@@ -43,4 +43,8 @@ fn main() {
 	//////
 	// /
 	// 123
+	/*
+	block
+	*/
+	println('hello world')
 }

@@ -7,6 +7,10 @@ const (
 	tfolder = os.join_path(os.temp_dir(), 'v', 'tests', 'os_test')
 )
 
+// os.args has to be *already initialized* with the program's argc/argv at this point
+// thus it can be used for other consts too:
+const args_at_start = os.args.clone()
+
 fn testsuite_begin() {
 	eprintln('testsuite_begin, tfolder = $tfolder')
 	os.rmdir_all(tfolder)
@@ -14,6 +18,9 @@ fn testsuite_begin() {
 	os.mkdir_all(tfolder)
 	os.chdir(tfolder)
 	assert os.is_dir(tfolder)
+	// println('args_at_start: $args_at_start')
+	assert args_at_start.len > 0
+	assert args_at_start == os.args
 }
 
 fn testsuite_end() {
@@ -464,4 +471,54 @@ for !cmd.eof {
 }
 cmd.close()
 	*/
+}
+
+fn test_posix_set_bit() {
+	$if windows {
+		assert true
+	} $else {
+		fpath := '/tmp/permtest'
+		create(fpath) or { panic("Couldn't create file") }
+		chmod(fpath, 0o7777)
+		c_fpath := charptr(fpath.str)
+		mut s := C.stat{}
+		unsafe {
+			C.stat(c_fpath, &s)
+		}
+		// Take the permissions part of the mode
+		mut mode := u32(s.st_mode) & 0o7777
+		assert mode == 0o7777
+		// `chmod u-r`
+		posix_set_permission_bit(fpath, os.s_irusr, false)
+		unsafe {
+			C.stat(c_fpath, &s)
+		}
+		mode = u32(s.st_mode) & 0o7777
+		assert mode == 0o7377
+		// `chmod u+r`
+		posix_set_permission_bit(fpath, os.s_irusr, true)
+		unsafe {
+			C.stat(c_fpath, &s)
+		}
+		mode = u32(s.st_mode) & 0o7777
+		assert mode == 0o7777
+		// `chmod -s -g -t`
+		posix_set_permission_bit(fpath, os.s_isuid, false)
+		posix_set_permission_bit(fpath, os.s_isgid, false)
+		posix_set_permission_bit(fpath, os.s_isvtx, false)
+		unsafe {
+			C.stat(c_fpath, &s)
+		}
+		mode = u32(s.st_mode) & 0o7777
+		assert mode == 0o0777
+		// `chmod g-w o-w`
+		posix_set_permission_bit(fpath, os.s_iwgrp, false)
+		posix_set_permission_bit(fpath, os.s_iwoth, false)
+		unsafe {
+			C.stat(c_fpath, &s)
+		}
+		mode = u32(s.st_mode) & 0o7777
+		assert mode == 0o0755
+		rm(fpath)
+	}
 }

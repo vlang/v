@@ -32,9 +32,6 @@ pub fn new_buffered_reader(o BufferedReaderConfig) &BufferedReader {
 
 // read fufills the Reader interface
 pub fn (mut r BufferedReader) read(mut buf []byte) ?int {
-	if r.end_of_stream {
-		return none
-	}
 	// read data out of the buffer if we dont have any
 	if r.needs_fill() {
 		if !r.fill_buffer() {
@@ -53,7 +50,7 @@ fn (mut r BufferedReader) fill_buffer() bool {
 	if r.end_of_stream {
 		// we know we have already reached the end of stream
 		// so return early
-		return false
+		return true
 	}
 	r.offset = 0
 	r.len = 0
@@ -116,5 +113,5 @@ pub fn (mut r BufferedReader) read_line() ?string {
 		line << r.buf[r.offset..i]
 		r.offset = i
 	}
+	return none
 }
- 
