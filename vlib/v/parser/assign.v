@@ -90,10 +90,12 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 	op := p.tok.kind
 	pos := p.tok.position()
 	p.next()
-	right, right_comments := if p.tok.kind == .key_go {
+	mut right_comments := []ast.Comment{}
+	mut right := []ast.Expr{cap: left.len}
+	if p.tok.kind == .key_go {
 		spos := p.tok.position()
 		p.next()
-		comments := p.eat_comments()
+		right_comments = p.eat_comments()
 		mut mod := ''
 		mut language := table.Language.v
 		if p.peek_tok.kind == .dot {
@@ -110,18 +112,16 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 			p.next()
 		}
 		call_expr := p.call_expr(language, mod)
-		mut exprs := []ast.Expr{cap: 1}
 		allpos := spos.extend(p.tok.position())
-		exprs << ast.GoExpr{
+		right << ast.GoExpr{
 			go_stmt: ast.GoStmt{
 				call_expr: call_expr
 				pos: allpos
 			}
 			pos: allpos
 		}
-		exprs, comments
 	} else {
-		p.expr_list()
+		right, right_comments = p.expr_list()
 	}
 	mut comments := []ast.Comment{cap: left_comments.len + right_comments.len}
 	comments << left_comments

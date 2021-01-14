@@ -2553,6 +2553,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.write(node.val)
 		}
 		ast.GoExpr {
+			g.go_expr(node)
 		}
 		ast.Ident {
 			g.ident(node)
@@ -5385,6 +5386,9 @@ fn (g &Gen) get_all_test_function_names() []string {
 
 fn (g &Gen) is_importing_os() bool {
 	return 'os' in g.table.imports
+}
+
+fn (mut g Gen) go_expr(node ast.GoExpr) {
 }
 
 fn (mut g Gen) go_stmt(node ast.GoStmt) {
