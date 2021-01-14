@@ -225,6 +225,15 @@ pub fn (x Expr) str() string {
 		CharLiteral {
 			return '`$x.val`'
 		}
+		Comment {
+			if x.is_multi {
+				lines := x.text.split_into_lines()
+				return '/* $lines.len lines comment */'
+			} else {
+				text := x.text.trim('\x01').trim_space()
+				return '// $text'
+			}
+		}
 		ComptimeSelector {
 			return '${x.left}.$$x.field_expr'
 		}
