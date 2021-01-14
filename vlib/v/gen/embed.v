@@ -5,19 +5,19 @@ import v.ast
 
 // gen_embed_file_struct generates C code for `$embed_file('...')` calls.
 fn (mut g Gen) gen_embed_file_init(node ast.ComptimeCall) {
-	path := node.embed_file.rpath
 	g.writeln('(embed__EmbeddedData){')
-	g.writeln('\t.path = _SLIT("$path"),')
+	g.writeln('\t.path = _SLIT("$node.embed_file.rpath"),')
+	g.writeln('\t.apath = _SLIT("$node.embed_file.apath"),')
 	file_size := os.file_size(node.embed_file.apath)
 	if file_size > 5242880 {
 		eprintln('Warning: embedding of files >= ~5MB is currently not supported')
 	}
 	if g.pref.is_prod {
 		// Use function generated in Gen.gen_embedded_data()
-		g.writeln('\t.compressed = _v_embed_locate_data(_SLIT("$path")),')
+		g.writeln('\t.compressed = _v_embed_locate_data(_SLIT("$node.embed_file.apath")),')
 	}
 	g.writeln('\t.len = $file_size')
-	g.writeln('} // $' + 'embed_file("$path")')
+	g.writeln('} // $' + 'embed_file("$node.embed_file.apath")')
 }
 
 // gen_embedded_data embeds data into the V target executable.
@@ -37,11 +37,10 @@ fn (mut g Gen) gen_embedded_data() {
 		g.embedded_data.write('static const unsigned char _v_embed_blob_$i[$fbytes.len] = {\n    ')
 		for j := 0; j < fbytes.len; j++ {
 			b := fbytes[j].hex()
-			if j == fbytes.len - 1 {
+			if j < fbytes.len - 1 {
 				g.embedded_data.write('0x$b,')
-				g.embedded_data.write('0x00')
 			} else {
-				g.embedded_data.write('0x$b,')
+				g.embedded_data.write('0x$b')
 			}
 			if 0 == ((j + 1) % 16) {
 				g.embedded_data.write('\n    ')
