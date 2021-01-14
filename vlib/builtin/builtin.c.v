@@ -198,10 +198,12 @@ pub fn v_realloc(b byteptr, n int) byteptr {
 			// 4) free the old block
 			// => if there is still a pointer to the old block somewhere
 			//    it will point to memory that is now filled with 0x57.
-			new_ptr = malloc(n)
-			C.memcpy(new_ptr, b, n)
-			C.memset(b, 0x57, n)
-			C.free(b)
+			unsafe {
+				new_ptr = malloc(n)
+				C.memcpy(new_ptr, b, n)
+				C.memset(b, 0x57, n)
+				C.free(b)
+			}
 		} $else {
 			new_ptr = unsafe { C.realloc(b, n) }
 			if new_ptr == 0 {
