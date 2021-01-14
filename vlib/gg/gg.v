@@ -452,12 +452,16 @@ pub fn (ctx &Context) new_draw_rect(cfg RectConfig) &Rect {
 	if cfg.vertex_colors.len >= 1 {
 		sgl.c4f(cfg.vertex_colors[0].r / 255, cfg.vertex_colors[0].g / 255, cfg.vertex_colors[0].b /
 			255, cfg.vertex_colors[0].a / 255)
+	} else {
+		sgl.c4f(0.0, 0.0, 0.0, 0.0)
 	}
 	sgl.v3f_t2f(cfg.pos_x * ctx.scale, cfg.pos_y * ctx.scale, 0.0, 0.0, 0.0)
 	// vertex positon 1,0
 	if cfg.vertex_colors.len >= 2 {
 		sgl.c4f(cfg.vertex_colors[1].r / 255, cfg.vertex_colors[1].g / 255, cfg.vertex_colors[1].b /
 			255, cfg.vertex_colors[1].a / 255)
+	} else {
+		sgl.c4f(0.0, 0.0, 0.0, 0.0)
 	}
 	sgl.v3f_t2f((cfg.pos_x + cfg.width) * ctx.scale, cfg.pos_y * ctx.scale, 0.0, 1.0 *
 		(1 / tex_scale), 0)
@@ -465,6 +469,8 @@ pub fn (ctx &Context) new_draw_rect(cfg RectConfig) &Rect {
 	if cfg.vertex_colors.len >= 3 {
 		sgl.c4f(cfg.vertex_colors[2].r / 255, cfg.vertex_colors[2].g / 255, cfg.vertex_colors[2].b /
 			255, cfg.vertex_colors[2].a / 255)
+	} else {
+		sgl.c4f(0.0, 0.0, 0.0, 0.0)
 	}
 	sgl.v3f_t2f((cfg.pos_x + cfg.width) * ctx.scale, (cfg.pos_y + cfg.height) * ctx.scale,
 		0.0, 1 * (1 / tex_scale), 1 * (1 / tex_scale))
@@ -472,6 +478,8 @@ pub fn (ctx &Context) new_draw_rect(cfg RectConfig) &Rect {
 	if cfg.vertex_colors.len >= 4 {
 		sgl.c4f(cfg.vertex_colors[3].r / 255, cfg.vertex_colors[3].g / 255, cfg.vertex_colors[3].b /
 			255, cfg.vertex_colors[3].a / 255)
+	} else {
+		sgl.c4f(0.0, 0.0, 0.0, 1.0)
 	}
 	sgl.v3f_t2f(cfg.pos_x * ctx.scale, (cfg.pos_y + cfg.height) * ctx.scale, 0.0, 0.0,
 		1.0 * (1 / tex_scale))
