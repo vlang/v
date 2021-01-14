@@ -8,5 +8,6 @@ fn test_voidptr() {
 		_ = p - 1
 		p--
 		p -= 3
+		_ = p[3]
 	}
 }
