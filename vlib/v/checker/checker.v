@@ -1851,6 +1851,8 @@ fn (mut c Checker) type_implements(typ table.Type, inter_typ table.Type, pos tok
 		if method := typ_sym.find_method(imethod.name) {
 			msg := c.table.is_same_method(imethod, method)
 			if msg.len > 0 {
+				sig := c.table.fn_signature(imethod, skip_receiver: true)
+				c.add_error_detail('$inter_sym.name has `$sig`')
 				c.error('`$styp` incorrectly implements method `$imethod.name` of interface `$inter_sym.name`: $msg',
 					pos)
 				return false
@@ -4907,6 +4909,7 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) table.Type {
 	return map_type
 }
 
+// call this *before* calling error or warn
 pub fn (mut c Checker) add_error_detail(s string) {
 	c.error_details << s
 }
