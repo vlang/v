@@ -9,6 +9,9 @@ fn (mut g Gen) gen_embed_file_init(node ast.ComptimeCall) {
 	g.writeln('(embed__EmbeddedData){')
 	g.writeln('\t.path = _SLIT("$path"),')
 	file_size := os.file_size(node.embed_file.apath)
+	if file_size > 5242880 {
+		eprintln('Warning: embedding of files >= ~5MB is currently not supported')
+	}
 	if g.pref.is_prod {
 		// Use function generated in Gen.gen_embedded_data()
 		g.writeln('\t.compressed = _v_embed_locate_data(_SLIT("$path")),')
