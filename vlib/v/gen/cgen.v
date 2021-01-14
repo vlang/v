@@ -2938,11 +2938,11 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	right_sym := g.table.get_type_symbol(node.right_type)
 	has_eq_overloaded := !left_sym.has_method('==')
 	has_ne_overloaded := !left_sym.has_method('!=')
-	has_string_alias_op := ((left_sym.has_method('+') || left_sym.has_method('>') || left_sym.has_method('<') ||
+	is_string_op_overloaded := ((left_sym.has_method('+') || left_sym.has_method('>') || left_sym.has_method('<') ||
 		left_sym.has_method('==') || left_sym.has_method('!=')) &&
 		node.op in [.plus, .ne, .eq, .ge, .le, .gt, .lt])
-	unaliased_right := if right_sym.kind == .alias {
-		(right_sym.info as table.Alias).parent_type
+	unaliased_right := if right_sym.info is table.Alias {
+		right_sym.info.parent_type
 	} else {
 		node.right_type
 	}
@@ -2958,7 +2958,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			.ge { 'ustring_ge(' }
 			else { overloaded_fn }
 		}
-		if has_string_alias_op {
+		if is_string_op_overloaded {
 			g.write(overloaded_fn)
 		} else {
 			g.write(fn_name)
@@ -2988,7 +2988,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 				.ge { 'string_ge(' }
 				else { overloaded_fn }
 			}
-			if has_string_alias_op {
+			if is_string_op_overloaded {
 				g.write(overloaded_fn)
 			} else {
 				g.write(fn_name)
