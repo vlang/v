@@ -367,7 +367,6 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) {
 	} else {
 		str_fn_name := g.gen_str_for_type(typ)
 		g.write('${str_fn_name}(')
-		println(str_fn_name)
 		if sym.kind != .function {
 			g.expr(expr)
 		}
