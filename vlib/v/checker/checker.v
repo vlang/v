@@ -2560,7 +2560,6 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			} else {
 				if !(extracted_op == '+' && left_type.is_string()) && (parent_type.is_number() || !parent_type.is_number()) {
 					if left_name == right_name {
-						println('right : $right_name')
 						c.error('operation `$left_name` $extracted_op `$right_name` does not exist, please define it',
 							assign_stmt.pos)
 					} else {
@@ -2568,7 +2567,6 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					}
 				} else if !parent_type.is_number() && extracted_op == '+' && left_type.is_string() {
 					if left_name == right_name {
-						println('left : $left_name')
 						c.error('operation `$left_name` $extracted_op `$right_name` does not exist, please define it',
 							assign_stmt.pos)
 					} else {

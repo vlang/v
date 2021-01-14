@@ -2507,7 +2507,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			} else {
 				styp := g.typ(node.typ)
 				mut cast_label := ''
-				// `table.string_type` is done for MSVC's bug 
+				// `table.string_type` is done for MSVC's bug
 				if sym.kind != .alias ||
 					(sym.info as table.Alias).parent_type !in [node.expr_type, table.string_type] {
 					cast_label = '($styp)'
