@@ -3481,11 +3481,13 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
 	} else if node.expr_type == table.none_type {
 		type_name := c.table.type_to_str(node.typ)
 		c.error('cannot cast `none` to `$type_name`', node.pos)
-	} else if from_type_sym.kind == .struct_ && !node.expr_type.is_ptr() && to_type_sym.kind !in
-		[.sum_type, .interface_] && !c.is_builtin_mod {
-		type_name := c.table.type_to_str(node.typ)
-		c.error('cannot cast `struct` to `$type_name`', node.pos)
-	} else if from_type_sym.kind == .struct_ && !node.expr_type.is_ptr() && to_type_sym.kind == .interface_ && !c.type_implements(node.expr_type, node.typ, node.pos) {
+	} else if from_type_sym.kind == .struct_ && !node.expr_type.is_ptr() {
+		if (node.typ.is_ptr() || to_type_sym.kind !in [.sum_type, .interface_]) && !c.is_builtin_mod {
+			type_name := c.table.type_to_str(node.typ)
+			c.error('cannot cast struct to `$type_name`', node.pos)
+		} else if to_type_sym.kind == .interface_ {
+			c.type_implements(node.expr_type, node.typ, node.pos)
+		}
 	} else if node.expr_type.has_flag(.optional) || node.expr_type.has_flag(.variadic) {
 		// variadic case can happen when arrays are converted into variadic
 		msg := if node.expr_type.has_flag(.optional) { 'an optional' } else { 'a variadic' }
