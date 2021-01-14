@@ -12,7 +12,7 @@ vlib/v/checker/tests/method_op_alias_err.vv:5:19: error: infix expr: cannot use 
       |                   ^
     6 | }
     7 |
-vlib/v/checker/tests/method_op_alias_err.vv:8:1: error: cannot define operator methods on type alias with parent type as `string`
+vlib/v/checker/tests/method_op_alias_err.vv:8:1: error: cannot define operator methods on type alias for `string`
     6 | }
     7 | 
     8 | fn (f Foo) * (f1 Foo) Foo {
@@ -33,7 +33,7 @@ vlib/v/checker/tests/method_op_alias_err.vv:15:9: error: cannot assign to `f`: e
       |         ~~~~~~~~~
    16 |    f -= Foo('fo') 
    17 |     println(f)
-vlib/v/checker/tests/method_op_alias_err.vv:16:6: error: cannot use operator overloading on aliases with parent type `string`
+vlib/v/checker/tests/method_op_alias_err.vv:16:6: error: cannot use operator methods on type alias for `string`
    14 |    f += 'fg'
    15 |    f *= Foo2('2')
    16 |    f -= Foo('fo') 

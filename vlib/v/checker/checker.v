@@ -2559,7 +2559,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 				}
 			} else {
 				if parent_sym.is_primitive() {
-					c.error('cannot use operator overloading on aliases with parent type `$parent_sym.name`',
+					c.error('cannot use operator methods on type alias for `$parent_sym.name`',
 						assign_stmt.pos)
 				}
 				if left_name == right_name {
@@ -5175,7 +5175,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 					node.return_type != table.bool_type {
 					c.error('operator comparison methods should return `bool`', node.pos)
 				} else if parent_sym.is_primitive() {
-					c.error('cannot define operator methods on type alias with parent type as `$parent_sym.name`',
+					c.error('cannot define operator methods on type alias for `$parent_sym.name`',
 						node.pos)
 				}
 			}
