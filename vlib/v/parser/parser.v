@@ -1810,7 +1810,7 @@ fn (mut p Parser) import_stmt() ast.Import {
 			pos: import_pos.extend(pos)
 			mod_pos: pos
 			alias_pos: submod_pos
-			mod: mod_name_arr.join('.')
+			mod: p.table.qualify_import(p.pref, mod_name_arr.join('.'), p.file_name)
 			alias: mod_alias
 		}
 	}
@@ -1819,12 +1819,11 @@ fn (mut p Parser) import_stmt() ast.Import {
 			pos: import_node.pos
 			mod_pos: import_node.mod_pos
 			alias_pos: import_node.alias_pos
-			mod: mod_name_arr[0]
+			mod: p.table.qualify_import(p.pref, mod_name_arr[0], p.file_name)
 			alias: mod_alias
 		}
 	}
-	// mod_name := import_node.mod
-	mod_name = p.table.qualify_import(p.pref, import_node.mod, p.file_name)
+	mod_name := import_node.mod
 	if p.tok.kind == .key_as {
 		p.next()
 		alias_pos := p.tok.position()
