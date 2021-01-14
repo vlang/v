@@ -1083,7 +1083,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.global_decl(node)
 		}
 		ast.GoStmt {
-			g.go_stmt(node)
+			g.go_stmt(node, false)
 		}
 		ast.GotoLabel {
 			g.writeln('$node.name: {}')
@@ -4857,6 +4857,9 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 			table.Alias {
 				// table.Alias { TODO
 			}
+			table.GoHandle {
+				g.type_definitions.writeln('typedef pthread_t $name;')
+			}
 			table.SumType {
 				g.typedefs.writeln('typedef struct $name $name;')
 				g.type_definitions.writeln('')
@@ -5389,9 +5392,15 @@ fn (g &Gen) is_importing_os() bool {
 }
 
 fn (mut g Gen) go_expr(node ast.GoExpr) {
+	line := g.go_before_stmt(0)
+	handle := g.go_stmt(node.go_stmt, true)
+	g.empty_line = false
+	g.write(line)
+	g.write(handle)
 }
 
-fn (mut g Gen) go_stmt(node ast.GoStmt) {
+fn (mut g Gen) go_stmt(node ast.GoStmt, joinable bool) string {
+	mut handle := ''
 	tmp := g.new_tmp_var()
 	expr := node.call_expr
 	mut name := expr.name // util.no_dots(expr.name)
@@ -5434,13 +5443,19 @@ fn (mut g Gen) go_stmt(node ast.GoStmt) {
 	if g.pref.os == .windows {
 		g.writeln('CreateThread(0,0, (LPTHREAD_START_ROUTINE)$wrapper_fn_name, $arg_tmp_var, 0,0);')
 	} else {
+		attr := if joinable { 'PTHREAD_CREATE_JOINABLE' } else { 'PTHREAD_CREATE_DETACHED' }
+		g.writeln('pthread_attr_t thread_attr_$tmp;')
+		g.writeln('pthread_attr_init(&thread_attr_$tmp);')
+		g.writeln('pthread_attr_setdetachstate(&thread_attr_$tmp, $attr);')
 		g.writeln('pthread_t thread_$tmp;')
 		g.writeln('pthread_create(&thread_$tmp, NULL, (void*)$wrapper_fn_name, $arg_tmp_var);')
+		g.writeln('pthread_attr_destroy(&thread_attr_$tmp);')
+		handle = 'thread_$tmp'
 	}
 	g.writeln('// endgo\n')
 	// Register the wrapper type and function
 	if name in g.threaded_fns {
-		return
+		return handle
 	}
 	g.type_definitions.writeln('\ntypedef struct $wrapper_struct_name {')
 	if expr.is_method {
@@ -5475,6 +5490,7 @@ fn (mut g Gen) go_stmt(node ast.GoStmt) {
 	g.gowrappers.writeln('\treturn 0;')
 	g.gowrappers.writeln('}')
 	g.threaded_fns << name
+	return handle
 }
 
 fn (mut g Gen) as_cast(node ast.AsCast) {
