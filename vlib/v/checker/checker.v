@@ -2537,7 +2537,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		}
 		if assign_stmt.op in
 			[.plus_assign, .minus_assign, .mod_assign, .mult_assign, .div_assign] &&
-			((left_sym.kind == .struct_ && right_sym.kind == .struct_) || (left_sym.kind == .alias)) {
+			((left_sym.kind == .struct_ && right_sym.kind == .struct_) || left_sym.kind == .alias) {
 			left_name := c.table.type_to_str(left_type)
 			right_name := c.table.type_to_str(right_type)
 			parent_sym := c.table.get_final_type_symbol(left_type)
