@@ -288,21 +288,10 @@ pub fn (ctx &Context) draw_rect(x f32, y f32, w f32, h f32, c gx.Color) {
 	sgl.end()
 }
 
-
 type Color_type = []gx.Color | gx.Color
-
-type ButtonClickFn = fn (voidptr, voidptr) // userptr, btn //TO-DO see on ui #275
-
-type ButtonHoverFn = fn (voidptr, voidptr) // userptr, btn //TO-DO see on ui #275
 
 pub struct RectConfig {
 pub mut:
-	position        string        // absolute or relative
-	additional      bool          // others configs
-	validation      bool          // others configs
-	is_hover        bool          // next TO-DO
-	onclick         ButtonClickFn // TO-DO see on ui #275
-	onhover         ButtonHoverFn // TO-DO see on ui #275
 	width           int = 0
 	height          int = 0
 	pos_x           int = 0
@@ -313,12 +302,8 @@ pub mut:
 
 pub struct Rect {
 pub mut:
-	// id					string
-	pos_x int
-	pos_y int
-	// z-index				int //TO-DO
-	onclick         ButtonClickFn // TO-DO
-	onhover         ButtonHoverFn // TO-DO
+	pos_x           int
+	pos_y           int
 	width           int
 	height          int
 	backgroud_color Color_type
@@ -502,18 +487,28 @@ pub fn (ctx &Context) new_draw_rect(cfg RectConfig) &Rect {
 	}
 	// TO-DO
 	/*
-	Next whanted features 
-		max-width, min-width, max-height, min-height
+	Next whanted features to gg.v
+		shadow inside and outside
 		degree, scale and translate features
-		draw rect just in init and when have some change or event. It is solve the high use of CPU
-		multi-plata cursor
-		onclick and onhover
+		//Solve the high use of CPU
+	*/
+	/*
+	Next features to ui.rectangle
+		shadow
+		max-width, min-width, max-height, min-height
+		degree, scale and translate
+		onclick and onhover 
 		image background
-		children
+		child //just one
+		obsolute, relative position
+	*/
+	/*
+	Next features to UI
+		z-index
+		id or name?
+		validation
 	*/
 }
-
-
 
 pub fn (ctx &Context) draw_triangle(x f32, y f32, x2 f32, y2 f32, x3 f32, y3 f32, c gx.Color) {
 	if c.a != 255 {
