@@ -75,16 +75,22 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 				spos)
 			return ast.ComptimeCall{}
 		}
-		// ... look relative to the source file:
-		epath = os.real_path(os.join_path(os.dir(p.file_name), epath))
 		if !p.pref.is_fmt {
-			if !os.exists(epath) {
-				p.error_with_pos('"$epath" does not exist so it cannot be embedded', spos)
-				return ast.ComptimeCall{}
-			}
-			if !os.is_file(epath) {
-				p.error_with_pos('"$epath" is not a file so it cannot be embedded', spos)
-				return ast.ComptimeCall{}
+			abs_path := os.real_path(epath)
+			// check absolute path first
+			if !os.exists(abs_path) {
+				// ... look relative to the source file:
+				epath = os.real_path(os.join_path(os.dir(p.file_name), epath))
+				if !os.exists(epath) {
+					p.error_with_pos('"$epath" does not exist so it cannot be embedded', spos)
+					return ast.ComptimeCall{}
+				}
+				if !os.is_file(epath) {
+					p.error_with_pos('"$epath" is not a file so it cannot be embedded', spos)
+					return ast.ComptimeCall{}
+				}
+			} else {
+				epath = abs_path
 			}
 		}
 		p.register_auto_import('embed')
