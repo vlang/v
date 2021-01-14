@@ -60,41 +60,40 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 	is_embed_file := n == 'embed_file'
 	is_html := n == 'html'
 	p.check(.lpar)
-	s := if is_html { '' } else { p.tok.lit }
 	spos := p.tok.position()
+	s := if is_html { '' } else { p.tok.lit }
 	if !is_html {
 		p.check(.string)
 	}
 	p.check(.rpar)
+	//
 	if is_embed_file {
-		mut path := s
-		// Validate that the path exists, and that it is actually a file.
-		if path == '' {
+		mut epath := s
+		// Validate that the epath exists, and that it is actually a file.
+		if epath == '' {
 			p.error_with_pos('please supply a valid relative or absolute file path to the file to embed',
 				spos)
 			return ast.ComptimeCall{}
 		}
 		// ... look relative to the source file:
-		path = os.real_path(os.join_path(os.dir(p.file_name), path))
+		epath = os.real_path(os.join_path(os.dir(p.file_name), epath))
 		if !p.pref.is_fmt {
-			if !os.exists(path) {
-				p.error_with_pos('"$path" does not exist so it cannot be embedded', spos)
+			if !os.exists(epath) {
+				p.error_with_pos('"$epath" does not exist so it cannot be embedded', spos)
 				return ast.ComptimeCall{}
 			}
-			if !os.is_file(path) {
-				p.error_with_pos('"$path" is not a file so it cannot be embedded', spos)
+			if !os.is_file(epath) {
+				p.error_with_pos('"$epath" is not a file so it cannot be embedded', spos)
 				return ast.ComptimeCall{}
 			}
-		}
-		efile := ast.EmbeddedFile{
-			rpath: s
-			apath: path
 		}
 		p.register_auto_import('embed')
 		return ast.ComptimeCall{
-			is_vweb: false
 			is_embed: true
-			embed_file: efile
+			embed_file: ast.EmbeddedFile{
+				rpath: s
+				apath: epath
+			}
 		}
 	}
 	// Compile vweb html template to V code, parse that V code and embed the resulting V function
@@ -105,6 +104,10 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 	dir := os.dir(p.scanner.file_path)
 	mut path := os.join_path(dir, fn_path.join('/'))
 	path += '.html'
+	if !is_html {
+		path = tmpl_path
+	}
+	eprintln('>>> is_embed_file: $is_embed_file | is_html: $is_html | s: $s | n: $n | path: $path')
 	if !os.exists(path) {
 		// can be in `templates/`
 		if is_html {
