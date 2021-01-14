@@ -2558,15 +2558,16 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 						assign_stmt.pos)
 				}
 			} else {
-				    if parent_sym.is_primitive() {
-						c.error('cannot use operator overloading on aliases with parent type `$parent_sym.name`', assign_stmt.pos)
-					}
-					if left_name == right_name {
-						c.error('operation `$left_name` $extracted_op `$right_name` does not exist, please define it',
-							assign_stmt.pos)
-					} else {
-						c.error('mismatched types `$left_name` and `$right_name`', assign_stmt.pos)
-					}
+				if parent_sym.is_primitive() {
+					c.error('cannot use operator overloading on aliases with parent type `$parent_sym.name`',
+						assign_stmt.pos)
+				}
+				if left_name == right_name {
+					c.error('operation `$left_name` $extracted_op `$right_name` does not exist, please define it',
+						assign_stmt.pos)
+				} else {
+					c.error('mismatched types `$left_name` and `$right_name`', assign_stmt.pos)
+				}
 			}
 		}
 		if !is_blank_ident && right_sym.kind != .placeholder && left_sym.kind != .interface_ {
@@ -5174,7 +5175,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 					node.return_type != table.bool_type {
 					c.error('operator comparison methods should return `bool`', node.pos)
 				} else if parent_sym.is_primitive() {
-					c.error('cannot define operator methods on type alias with parent type as `$parent_sym.name`', node.pos)
+					c.error('cannot define operator methods on type alias with parent type as `$parent_sym.name`',
+						node.pos)
 				}
 			}
 		}
