@@ -1,4 +1,4 @@
-type Custom = string 
+type Custom = string
 
 type CustomInt = int
 

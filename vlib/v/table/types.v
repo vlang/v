@@ -547,6 +547,11 @@ pub fn (t &TypeSymbol) is_float() bool {
 }
 
 [inline]
+pub fn (t &TypeSymbol) is_string() bool {
+	return t.kind in [.string]
+}
+
+[inline]
 pub fn (t &TypeSymbol) is_number() bool {
 	return t.is_int() || t.is_float()
 }
