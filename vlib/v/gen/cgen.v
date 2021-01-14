@@ -5473,7 +5473,14 @@ fn (mut g Gen) go_stmt(node ast.GoStmt, joinable bool) string {
 	g.type_definitions.writeln('} $wrapper_struct_name;')
 	g.type_definitions.writeln('void* ${wrapper_fn_name}($wrapper_struct_name *arg);')
 	g.gowrappers.writeln('void* ${wrapper_fn_name}($wrapper_struct_name *arg) {')
-	g.gowrappers.write('\t${name}(')
+	if joinable && node.call_expr.return_type != table.void_type {
+		s_ret_typ := g.typ(node.call_expr.return_type)
+		g.gowrappers.writeln('\t$s_ret_typ* ret_ptr = malloc(sizeof($s_ret_typ));')
+		g.gowrappers.write('\t*ret_ptr = ')
+	} else {
+		g.gowrappers.write('\t')
+	}
+	g.gowrappers.write('${name}(')
 	if expr.is_method {
 		g.gowrappers.write('arg->arg0')
 		if expr.args.len > 0 {
@@ -5487,7 +5494,11 @@ fn (mut g Gen) go_stmt(node ast.GoStmt, joinable bool) string {
 		}
 	}
 	g.gowrappers.writeln(');')
-	g.gowrappers.writeln('\treturn 0;')
+	if joinable && node.call_expr.return_type != table.void_type {
+		g.gowrappers.writeln('\treturn ret_ptr;')
+	} else {
+		g.gowrappers.writeln('\treturn 0;')
+	}
 	g.gowrappers.writeln('}')
 	g.threaded_fns << name
 	return handle
