@@ -1338,6 +1338,12 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		if !c.check_types(arg_type, info.elem_type) && !c.check_types(left_type, arg_type) {
 			c.error('cannot $method_name `$arg_sym.name` to `$left_type_sym.name`', arg_expr.position())
 		}
+	} else if left_type_sym.kind == .gohandle && method_name == 'wait' {
+		info := left_type_sym.info as table.GoHandle
+		if call_expr.args.len > 0 {
+			c.error('wait() does not have any arguments', call_expr.args[0].pos)
+		}
+		return info.return_type
 	}
 	mut method := table.Fn{}
 	mut has_method := false

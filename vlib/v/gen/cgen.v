@@ -88,6 +88,7 @@ mut:
 	defer_profile_code    string
 	str_types             []string // types that need automatic str() generation
 	threaded_fns          []string // for generating unique wrapper types and fns for `go xxx()`
+	waiter_fns            []string // functions that wait for `go xxx()` to finish
 	array_fn_definitions  []string // array equality functions that have been defined
 	map_fn_definitions    []string // map equality functions that have been defined
 	struct_fn_definitions []string // struct equality functions that have been defined
@@ -5473,8 +5474,9 @@ fn (mut g Gen) go_stmt(node ast.GoStmt, joinable bool) string {
 	g.type_definitions.writeln('} $wrapper_struct_name;')
 	g.type_definitions.writeln('void* ${wrapper_fn_name}($wrapper_struct_name *arg);')
 	g.gowrappers.writeln('void* ${wrapper_fn_name}($wrapper_struct_name *arg) {')
-	if joinable && node.call_expr.return_type != table.void_type {
-		s_ret_typ := g.typ(node.call_expr.return_type)
+	mut s_ret_typ := ''
+	if node.call_expr.return_type != table.void_type {
+		s_ret_typ = g.typ(node.call_expr.return_type)
 		g.gowrappers.writeln('\t$s_ret_typ* ret_ptr = malloc(sizeof($s_ret_typ));')
 		g.gowrappers.write('\t*ret_ptr = ')
 	} else {
@@ -5494,13 +5496,32 @@ fn (mut g Gen) go_stmt(node ast.GoStmt, joinable bool) string {
 		}
 	}
 	g.gowrappers.writeln(');')
-	if joinable && node.call_expr.return_type != table.void_type {
+	g.gowrappers.writeln('\tfree(arg);')
+	if node.call_expr.return_type != table.void_type {
 		g.gowrappers.writeln('\treturn ret_ptr;')
 	} else {
 		g.gowrappers.writeln('\treturn 0;')
 	}
 	g.gowrappers.writeln('}')
 	g.threaded_fns << name
+	// create wait handler for this function
+	if node.call_expr.return_type != table.void_type {
+		waiter_fn_name := 'gohandle_' +
+			g.table.get_type_symbol(g.unwrap_generic(node.call_expr.return_type)).name + '_wait'
+		// there is only one function per return type
+		if waiter_fn_name in g.waiter_fns {
+			return handle
+		}
+		g.gowrappers.writeln('\n$s_ret_typ ${waiter_fn_name}(pthread_t* thread) {')
+		g.gowrappers.writeln('\t$s_ret_typ* ret_ptr;')
+		g.gowrappers.writeln('\tint stat = pthread_join(*thread, &ret_ptr);')
+		g.gowrappers.writeln('\tif (stat != 0) { v_panic(_SLIT("unable to join thread")); }')
+		g.gowrappers.writeln('\t$s_ret_typ ret = *ret_ptr;')
+		g.gowrappers.writeln('\tfree(ret_ptr);')
+		g.gowrappers.writeln('\treturn ret;')
+		g.gowrappers.writeln('}')
+		g.waiter_fns << waiter_fn_name
+	}
 	return handle
 }
 
