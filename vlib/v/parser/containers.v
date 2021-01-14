@@ -88,7 +88,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 			}
 			if p.tok.kind == .not && p.tok.line_nr == p.prev_tok.line_nr {
 				last_pos = p.tok.position()
-				p.warn_with_pos('use e.g. `[1, 2, 3]!` instead of `[1, 2, 3]!!`', last_pos)
+				p.error_with_pos('use e.g. `[1, 2, 3]!` instead of `[1, 2, 3]!!`', last_pos)
 				p.next()
 			}
 		}
