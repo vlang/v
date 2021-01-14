@@ -35,7 +35,7 @@ fn (mut g Gen) gen_embedded_data() {
 		for j := 0; j < fbytes.len; j++ {
 			b := fbytes[j].hex()
 			if j == fbytes.len - 1 {
-				g.embedded_data.write('0x$b')
+				g.embedded_data.write('0x$b,')
 				g.embedded_data.write('0x00')
 			} else {
 				g.embedded_data.write('0x$b,')
@@ -55,7 +55,7 @@ fn (mut g Gen) gen_embedded_data() {
 	for i, emfile in g.embedded_files {
 		g.embedded_data.writeln('\t{_SLIT("$emfile.rpath"), _v_embed_blob_$i},')
 	}
-	g.embedded_data.writeln('\t{_SLIT("EOE"), NULL}')
+	g.embedded_data.writeln('\t{_SLIT(""), NULL}')
 	g.embedded_data.writeln('};')
 	// See `vlib/v/gen/comptime.v` -> Gen.comptime_call_embed_file(), where this is called at runtime.
 	// Generate function to locate the data.
@@ -63,7 +63,7 @@ fn (mut g Gen) gen_embedded_data() {
 // function to locate embedded data by a vstring
 byteptr _v_embed_locate_data(string id) {
 	const struct _v_embed *ve;
-	for (ve = _v_embedded_data; !string_eq(ve->id,_SLIT("EOE")); ve++) {
+	for (ve = _v_embedded_data; !string_eq(ve->id,_SLIT("")); ve++) {
 		if (string_eq(ve->id, id)) {
 			return (byteptr) ve->data;
 		}
