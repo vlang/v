@@ -4160,7 +4160,10 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
 			g.writeln(';')
 			styp := g.typ(g.fn_decl.return_type)
-			g.writeln('return *($styp*)&$tmp;')
+			err_obj := g.new_tmp_var()
+			g.writeln('$styp $err_obj;')
+			g.writeln('memcpy(&$err_obj, &$tmp, sizeof(Option));')
+			g.writeln('return $err_obj;')
 			return
 		}
 	}
