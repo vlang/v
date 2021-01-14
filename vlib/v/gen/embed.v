@@ -63,7 +63,7 @@ fn (mut g Gen) gen_embedded_data() {
 // function to locate embedded data by a vstring
 byteptr _v_embed_locate_data(string id) {
 	const struct _v_embed *ve;
-	for (ve = _v_embedded_data; !string_eq(ve->id,_SLIT("")); ve++) {
+	for (ve = _v_embedded_data; !string_eq(ve->id,_SLIT("")) && ve->data != NULL; ve++) {
 		if (string_eq(ve->id, id)) {
 			return (byteptr) ve->data;
 		}
