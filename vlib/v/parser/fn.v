@@ -567,7 +567,7 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 				}
 			}
 			if is_variadic {
-				arg_type = table.new_type(p.table.find_or_register_array(arg_type, 1)).set_flag(.variadic)
+				arg_type = table.new_type(p.table.find_or_register_array(arg_type)).set_flag(.variadic)
 			}
 			if p.tok.kind == .eof {
 				p.error_with_pos('expecting `)`', p.prev_tok.position())
@@ -655,7 +655,7 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 				}
 			}
 			if is_variadic {
-				typ = table.new_type(p.table.find_or_register_array(typ, 1)).set_flag(.variadic)
+				typ = table.new_type(p.table.find_or_register_array(typ)).set_flag(.variadic)
 			}
 			for i, arg_name in arg_names {
 				args << table.Param{

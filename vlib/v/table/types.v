@@ -702,8 +702,7 @@ pub mut:
 
 pub struct ArrayFixed {
 pub:
-	nr_dims int
-	size    int
+	size int
 pub mut:
 	elem_type Type
 }

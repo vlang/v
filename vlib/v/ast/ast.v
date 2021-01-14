@@ -901,7 +901,7 @@ pub:
 	exprs         []Expr      // `[expr, expr]` or `[expr]Type{}` for fixed array
 	ecmnts        [][]Comment // optional iembed comments after each expr
 	is_fixed      bool
-	has_val       bool // fixed size literal `[expr, expr]!!`
+	has_val       bool // fixed size literal `[expr, expr]!`
 	mod           string
 	len_expr      Expr // len: expr
 	cap_expr      Expr // cap: expr

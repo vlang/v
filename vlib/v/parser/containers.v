@@ -32,7 +32,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 			elem_type = p.parse_type()
 			// this is set here because it's a known type, others could be the
 			// result of expr so we do those in checker
-			idx := p.table.find_or_register_array(elem_type, 1)
+			idx := p.table.find_or_register_array(elem_type)
 			array_type = table.new_type(idx)
 			has_type = true
 		}
@@ -88,7 +88,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 			}
 			if p.tok.kind == .not && p.tok.line_nr == p.prev_tok.line_nr {
 				last_pos = p.tok.position()
-				p.warn_with_pos('use e.g. `[1, 2, 3]!` instead of `[1, 2, 3]!!`', last_pos)
+				p.error_with_pos('use e.g. `[1, 2, 3]!` instead of `[1, 2, 3]!!`', last_pos)
 				p.next()
 			}
 		}
