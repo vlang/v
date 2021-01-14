@@ -4877,7 +4877,20 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 				// table.Alias { TODO
 			}
 			table.GoHandle {
-				g.type_definitions.writeln('typedef pthread_t $name;')
+				if g.pref.os == .windows {
+					if name == 'gohandle_void' {
+						g.type_definitions.writeln('typedef HANDLE $name')
+					} else {
+						// Windows can only return `u32` (no void*) from a thread, so the
+						// V gohandle must maintain a pointer to the return value
+						g.type_definitions.writeln('typedef struct {')
+						g.type_definitions.writeln('\tvoid*  ret_ptr;')
+						g.type_definitions.writeln('\tHANDLE handle;')
+						g.type_definitions.writeln('} $name;')
+					}
+				} else {
+					g.type_definitions.writeln('typedef pthread_t $name;')
+				}
 			}
 			table.SumType {
 				g.typedefs.writeln('typedef struct $name $name;')
@@ -5459,19 +5472,67 @@ fn (mut g Gen) go_stmt(node ast.GoStmt, joinable bool) string {
 		g.expr(arg.expr)
 		g.writeln(';')
 	}
+	s_ret_typ := g.typ(node.call_expr.return_type)
+	if g.pref.os == .windows && node.call_expr.return_type != table.void_type {
+		g.writeln('$arg_tmp_var->ret_ptr = malloc(sizeof($s_ret_typ));')
+	}
+	gohandle_name := 'gohandle_' +
+		g.table.get_type_symbol(g.unwrap_generic(node.call_expr.return_type)).name
 	if g.pref.os == .windows {
-		g.writeln('CreateThread(0,0, (LPTHREAD_START_ROUTINE)$wrapper_fn_name, $arg_tmp_var, 0,0);')
+		simple_handle := if joinable && node.call_expr.return_type != table.void_type {
+			'thread_handle_$tmp'
+		} else {
+			'thread_$tmp'
+		}
+		g.writeln('HANDLE $simple_handle = CreateThread(0,0, (LPTHREAD_START_ROUTINE)$wrapper_fn_name, $arg_tmp_var, 0,0);')
+		if joinable && node.call_expr.return_type != table.void_type {
+			g.writeln('$gohandle_name thread_$tmp = {')
+			g.writeln('\t.ret_ptr = $arg_tmp_var->ret_ptr,')
+			g.writeln('\t.handle = thread_handle_$tmp')
+			g.writeln('};')
+		}
+		if !joinable {
+			g.writeln('CloseHandle(thread_$tmp);')
+		}
 	} else {
-		attr := if joinable { 'PTHREAD_CREATE_JOINABLE' } else { 'PTHREAD_CREATE_DETACHED' }
-		g.writeln('pthread_attr_t thread_attr_$tmp;')
-		g.writeln('pthread_attr_init(&thread_attr_$tmp);')
-		g.writeln('pthread_attr_setdetachstate(&thread_attr_$tmp, $attr);')
 		g.writeln('pthread_t thread_$tmp;')
 		g.writeln('pthread_create(&thread_$tmp, NULL, (void*)$wrapper_fn_name, $arg_tmp_var);')
-		g.writeln('pthread_attr_destroy(&thread_attr_$tmp);')
-		handle = 'thread_$tmp'
+		if !joinable {
+			g.writeln('pthread_detach(thread_$tmp);')
+		}
 	}
 	g.writeln('// endgo\n')
+	if joinable {
+		handle = 'thread_$tmp'
+		// create wait handler for this return type if none exists
+		waiter_fn_name := gohandle_name + '_wait'
+		if waiter_fn_name !in g.waiter_fns {
+			g.gowrappers.writeln('\n$s_ret_typ ${waiter_fn_name}(void* thread) {')
+			mut c_ret_ptr_ptr := 'NULL'
+			if node.call_expr.return_type != table.void_type {
+				g.gowrappers.writeln('\t$s_ret_typ* ret_ptr;')
+				c_ret_ptr_ptr = '&ret_ptr'
+			}
+			if g.pref.os == .windows {
+				g.gowrappers.writeln('\tu32 stat = WaitForSingleObject(thread, INFINITE);')
+				if node.call_expr.return_type != table.void_type {
+					g.gowrappers.writeln('\tret_ptr = (*($gohandle_name*)thread).ret_ptr;')
+				}
+			} else {
+				g.gowrappers.writeln('\tint stat = pthread_join(*(pthread_t*)thread, $c_ret_ptr_ptr);')
+			}
+			g.gowrappers.writeln('\tif (stat != 0) { v_panic(_SLIT("unable to join thread")); }')
+			if node.call_expr.return_type != table.void_type {
+				g.gowrappers.writeln('\t$s_ret_typ ret = *ret_ptr;')
+				g.gowrappers.writeln('\tfree(ret_ptr);')
+				g.gowrappers.writeln('\treturn ret;')
+			} else {
+				g.gowrappers.writeln('\treturn;')
+			}
+			g.gowrappers.writeln('}')
+			g.waiter_fns << waiter_fn_name
+		}
+	}
 	// Register the wrapper type and function
 	if name in g.threaded_fns {
 		return handle
@@ -5481,7 +5542,8 @@ fn (mut g Gen) go_stmt(node ast.GoStmt, joinable bool) string {
 		styp := g.typ(expr.receiver_type)
 		g.type_definitions.writeln('\t$styp arg0;')
 	}
-	if expr.args.len == 0 {
+	need_return_ptr := g.pref.os == .windows && node.call_expr.return_type != table.void_type
+	if expr.args.len == 0 && !need_return_ptr {
 		g.type_definitions.writeln('EMPTY_STRUCT_DECLARATION;')
 	} else {
 		for i, arg in expr.args {
@@ -5489,14 +5551,20 @@ fn (mut g Gen) go_stmt(node ast.GoStmt, joinable bool) string {
 			g.type_definitions.writeln('\t$styp arg${i + 1};')
 		}
 	}
+	if need_return_ptr {
+		g.type_definitions.writeln('\tvoid* ret_ptr;')
+	}
 	g.type_definitions.writeln('} $wrapper_struct_name;')
-	g.type_definitions.writeln('void* ${wrapper_fn_name}($wrapper_struct_name *arg);')
-	g.gowrappers.writeln('void* ${wrapper_fn_name}($wrapper_struct_name *arg) {')
-	mut s_ret_typ := ''
+	thread_ret_type := if g.pref.os == .windows { 'u32' } else { 'void*' }
+	g.type_definitions.writeln('$thread_ret_type ${wrapper_fn_name}($wrapper_struct_name *arg);')
+	g.gowrappers.writeln('$thread_ret_type ${wrapper_fn_name}($wrapper_struct_name *arg) {')
 	if node.call_expr.return_type != table.void_type {
-		s_ret_typ = g.typ(node.call_expr.return_type)
-		g.gowrappers.writeln('\t$s_ret_typ* ret_ptr = malloc(sizeof($s_ret_typ));')
-		g.gowrappers.write('\t*ret_ptr = ')
+		if g.pref.os == .windows {
+			g.gowrappers.write('\t*(($s_ret_typ*)(arg->ret_ptr)) = ')
+		} else {
+			g.gowrappers.writeln('\t$s_ret_typ* ret_ptr = malloc(sizeof($s_ret_typ));')
+			g.gowrappers.write('\t*ret_ptr = ')
+		}
 	} else {
 		g.gowrappers.write('\t')
 	}
@@ -5515,31 +5583,13 @@ fn (mut g Gen) go_stmt(node ast.GoStmt, joinable bool) string {
 	}
 	g.gowrappers.writeln(');')
 	g.gowrappers.writeln('\tfree(arg);')
-	if node.call_expr.return_type != table.void_type {
+	if g.pref.os != .windows && node.call_expr.return_type != table.void_type {
 		g.gowrappers.writeln('\treturn ret_ptr;')
 	} else {
 		g.gowrappers.writeln('\treturn 0;')
 	}
 	g.gowrappers.writeln('}')
 	g.threaded_fns << name
-	// create wait handler for this function
-	if node.call_expr.return_type != table.void_type {
-		waiter_fn_name := 'gohandle_' +
-			g.table.get_type_symbol(g.unwrap_generic(node.call_expr.return_type)).name + '_wait'
-		// there is only one function per return type
-		if waiter_fn_name in g.waiter_fns {
-			return handle
-		}
-		g.gowrappers.writeln('\n$s_ret_typ ${waiter_fn_name}(pthread_t* thread) {')
-		g.gowrappers.writeln('\t$s_ret_typ* ret_ptr;')
-		g.gowrappers.writeln('\tint stat = pthread_join(*thread, &ret_ptr);')
-		g.gowrappers.writeln('\tif (stat != 0) { v_panic(_SLIT("unable to join thread")); }')
-		g.gowrappers.writeln('\t$s_ret_typ ret = *ret_ptr;')
-		g.gowrappers.writeln('\tfree(ret_ptr);')
-		g.gowrappers.writeln('\treturn ret;')
-		g.gowrappers.writeln('}')
-		g.waiter_fns << waiter_fn_name
-	}
 	return handle
 }
 
