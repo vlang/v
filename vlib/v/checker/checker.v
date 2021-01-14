@@ -3248,6 +3248,10 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		}
 		ast.ComptimeCall {
 			node.sym = c.table.get_type_symbol(c.unwrap_generic(c.expr(node.left)))
+			if node.is_embed {
+				c.file.embedded_files << node.embed_file
+				return c.table.find_type_idx('embed.EmbeddedData')
+			}
 			if node.is_vweb {
 				// TODO assoc parser bug
 				pref := *c.pref

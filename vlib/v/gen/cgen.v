@@ -44,6 +44,7 @@ mut:
 	comptime_defines    strings.Builder // custom defines, given by -d/-define flags on the CLI
 	pcs_declarations    strings.Builder // -prof profile counter declarations for each function
 	hotcode_definitions strings.Builder // -live declarations & functions
+	embedded_data       strings.Builder // data to embed in the executable/binary
 	shared_types        strings.Builder // shared/lock types
 	channel_definitions strings.Builder // channel related code
 	options_typedefs    strings.Builder // Option typedefs
@@ -97,6 +98,7 @@ mut:
 	pcs                   []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
 	is_builtin_mod        bool
 	hotcode_fn_names      []string
+	embedded_files        []ast.EmbeddedFile
 	// cur_fn               ast.FnDecl
 	cur_generic_type table.Type // `int`, `string`, etc in `foo<T>()`
 	sql_i            int
@@ -176,6 +178,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		comptime_defines: strings.new_builder(100)
 		pcs_declarations: strings.new_builder(100)
 		hotcode_definitions: strings.new_builder(100)
+		embedded_data: strings.new_builder(1000)
 		options_typedefs: strings.new_builder(100)
 		options: strings.new_builder(100)
 		shared_types: strings.new_builder(100)
@@ -228,6 +231,14 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 			tests_inited = true
 		}
 		g.stmts(file.stmts)
+		// Transfer embedded files
+		if file.embedded_files.len > 0 {
+			for path in file.embedded_files {
+				if path !in g.embedded_files {
+					g.embedded_files << path
+				}
+			}
+		}
 		g.timers.show('cgen_file $file.path')
 	}
 	g.timers.start('cgen common')
@@ -298,6 +309,10 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	if g.hotcode_definitions.len > 0 {
 		b.writeln('\n// V hotcode definitions:')
 		b.write(g.hotcode_definitions.str())
+	}
+	if g.embedded_data.len > 0 {
+		b.writeln('\n// V embedded data:')
+		b.write(g.embedded_data.str())
 	}
 	if g.options_typedefs.len > 0 {
 		b.writeln('\n// V option typedefs:')
@@ -420,6 +435,9 @@ pub fn (mut g Gen) finish() {
 	}
 	if g.pref.is_livemain || g.pref.is_liveshared {
 		g.generate_hotcode_reloader_code()
+	}
+	if g.pref.is_prod && g.embedded_files.len > 0 {
+		g.gen_embedded_data()
 	}
 	if g.pref.is_test {
 		g.gen_c_main_for_tests()

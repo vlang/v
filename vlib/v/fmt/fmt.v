@@ -970,12 +970,16 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 					f.write("\$tmpl('$node.args_var')")
 				}
 			} else {
-				method_expr := if node.has_parens {
-					'(${node.method_name}($node.args_var))'
+				if node.is_embed {
+					f.write("\$embed_file('$node.embed_file.rpath')")
 				} else {
-					'${node.method_name}($node.args_var)'
+					method_expr := if node.has_parens {
+						'(${node.method_name}($node.args_var))'
+					} else {
+						'${node.method_name}($node.args_var)'
+					}
+					f.write('${node.left}.$$method_expr')
 				}
-				f.write('${node.left}.$$method_expr')
 			}
 		}
 		ast.ComptimeSelector {
