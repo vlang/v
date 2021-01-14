@@ -43,8 +43,15 @@ pub fn (mut ed EmbeddedData) data() byteptr {
 			// See also C Gen.gen_embedded_data() where the compression should occur.
 			ed.uncompressed = ed.compressed
 		} else {
-			bytes := os.read_bytes(ed.apath) or {
-				panic('EmbeddedData error: could not read from "$ed.apath"')
+			mut path := os.resource_abs_path(ed.path)
+			if !os.is_file(path) {
+				path = ed.apath
+				if !os.is_file(path) {
+					panic('EmbeddedData error: files "$ed.path" and "$ed.apath" do not exist')
+				}
+			}
+			bytes := os.read_bytes(path) or {
+				panic('EmbeddedData error: "$path" could not be read: $err')
 			}
 			ed.uncompressed = bytes.data
 			ed.free_uncompressed = true
