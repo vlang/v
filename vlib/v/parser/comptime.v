@@ -82,11 +82,13 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 				// ... look relative to the source file:
 				epath = os.real_path(os.join_path(os.dir(p.file_name), epath))
 				if !os.exists(epath) {
-					p.error_with_pos('"$epath" does not exist so it cannot be embedded', spos)
+					p.error_with_pos('"$epath" does not exist so it cannot be embedded',
+						spos)
 					return ast.ComptimeCall{}
 				}
 				if !os.is_file(epath) {
-					p.error_with_pos('"$epath" is not a file so it cannot be embedded', spos)
+					p.error_with_pos('"$epath" is not a file so it cannot be embedded',
+						spos)
 					return ast.ComptimeCall{}
 				}
 			} else {
