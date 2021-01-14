@@ -32,11 +32,18 @@ vlib/v/checker/tests/pointer_ops.vv:9:4: error: invalid operation: -- (non-numer
     9 |         p--
       |          ~~
    10 |         p -= 3
-   11 |     }
+   11 |         _ = p[3]
 vlib/v/checker/tests/pointer_ops.vv:10:3: error: operator `-=` not defined on left operand type `voidptr`
     8 |         _ = p - 1
     9 |         p--
    10 |         p -= 3
       |         ^
-   11 |     }
-   12 | }
+   11 |         _ = p[3]
+   12 |     }
+vlib/v/checker/tests/pointer_ops.vv:11:8: error: type `voidptr` does not support indexing
+    9 |         p--
+   10 |         p -= 3
+   11 |         _ = p[3]
+      |              ~~~
+   12 |     }
+   13 | }
