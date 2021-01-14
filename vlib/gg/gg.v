@@ -290,6 +290,8 @@ pub fn (ctx &Context) draw_rect(x f32, y f32, w f32, h f32, c gx.Color) {
 
 
 type Color_type = []gx.Color | gx.Color
+type ButtonClickFn = fn (voidptr, voidptr) // userptr, btn //TO-DO see on ui #275
+type ButtonHoverFn = fn (voidptr, voidptr) // userptr, btn //TO-DO see on ui #275
 
 pub struct RectConfig {
 
@@ -297,31 +299,36 @@ pub struct RectConfig {
 	position		string//absolute or relative
 	additional 		bool//others configs
 	validation 		bool//others configs
-	is_hover		bool 
-	width			int=0//.0
-	height			int=0//.0 
-	pos_x			int=0//.0
-	pos_y			int=0//.0
+	is_hover		bool//next TO-DO
+	onclick   ButtonClickFn	//TO-DO see on ui #275
+	onhover   ButtonHoverFn	//TO-DO see on ui #275
+	width			int=0
+	height			int=0
+	pos_x			int=0
+	pos_y			int=0
 	backgroud_color	Color_type
-	vertex_colors	[]gx.Color
+	vertex_colors	[]gx.Color{} //next TO-DO
 }
 
 pub struct Rect {
 	pub mut:
 	// id					string
-	pos_x				int//float_literal
-	pos_y				int//float_literal
-	width				int//float_literal
-	height				int//float_literal
+	pos_x				int
+	pos_y				int
+	//z-index				int //TO-DO
+	onclick     ButtonClickFn //TO-DO
+	onhover     ButtonHoverFn //TO-DO
+	width				int
+	height				int
 	backgroud_color		Color_type
-	vertex_colors		[]gx.Color
+	vertex_colors		[]gx.Color{}
 }
 struct Color_list {
 		mut:
-			r []int
-			g []int
-			b []int
-			a []int			
+	r []int{}
+	g []int{}
+	b []int{}
+	a []int{}		
 }
 
 pub fn (ctx &Context) new_draw_rect(cfg RectConfig ) &Rect {
@@ -329,7 +336,7 @@ pub fn (ctx &Context) new_draw_rect(cfg RectConfig ) &Rect {
 	mut is_uno:=true
 	width:=cfg.width
 	height:=cfg.height	
-	mut linear_colors:=[]gx.Color
+	mut linear_colors:=[]gx.Color{}
 	mut linear_perc_points:=[]f64
 
 	if cfg.backgroud_color is []gx.Color{
@@ -345,11 +352,11 @@ pub fn (ctx &Context) new_draw_rect(cfg RectConfig ) &Rect {
 	}
 	linear_perc_points=[]
 	mut pixel_density:=1.0
-	mut linear:=[]int
+	mut linear:=[]int{}
 
 	//funcion start
 	if linear_perc_points.len==0 && !is_uno {
-		//dividir o array de forma uniforme
+		//divide array into equal parts
 		if linear_colors.len <=2{
 			linear_perc_points=[1.00]
 		}else{
@@ -357,12 +364,15 @@ pub fn (ctx &Context) new_draw_rect(cfg RectConfig ) &Rect {
 				linear_perc_points<<(1.0/f64(linear_colors.len-1))*lena
 			}
 		}
+		
+	}else if linear_perc_points.len< linear_colors && linear_perc_points.last() !=1.0 {
+		//TO-DO divide remaining missing
 	}
 
 	if !is_uno {	
 		for i, linear_color in linear_colors {
 			if i!=linear_colors.len-1{
-				//nomear melhor "color_list"
+				//Find a better name to "color_list"
 				//getting value between next color for each gap
 				color_list.r<<linear_colors[i+1].r-linear_color.r
 				color_list.g<<linear_colors[i+1].g-linear_color.g	
@@ -374,15 +384,15 @@ pub fn (ctx &Context) new_draw_rect(cfg RectConfig ) &Rect {
 		mut line_color_chunck :=[]int
 		for idx, pointer in linear_perc_points{		
 			
-			mut r:=0.0//f64(color_list.r[idx])/f64(width*pixel_density)//*linear_colors.len))
-			mut g:=0.0//f64(color_list.g[idx])/f64(width*pixel_density)//*linear_colors.len))
-			mut b:=0.0//f64(color_list.b[idx])/f64(width*pixel_density)//*linear_colors.len))
-			mut a:=0.0//f64(color_list.a[idx])/f64(width*pixel_density)//*linear_colors.len))
+			mut r:=0.0
+			mut g:=0.0
+			mut b:=0.0
+			mut a:=0.0
 			mut new_pointer:=linear_perc_points[0]
 			
 			//create pointer if haven't
 			if idx!=linear_perc_points.len-1{
-				//pr�ximo menos atual
+				//next less current
 				new_pointer=linear_perc_points[idx+1]-pointer
 			}
 			//create anothers pointers if haven't anought in config
@@ -407,17 +417,17 @@ pub fn (ctx &Context) new_draw_rect(cfg RectConfig ) &Rect {
 	//create sg_image_desc created to be used in texture
 	mut vrau:= linear.clone()
 	mut img_desc := C.sg_image_desc{
-		height: int(height*pixel_density)// int(cfg.height*pixel_density) //em px
-		width: int(linear.len/(height*pixel_density))// int(float(width*pixel_density))//int(linear_colors.len-1*int(cfg.width)*pixel_density) //em px
+		height: int(height*pixel_density) //in px
+		width: int(linear.len/(height*pixel_density))//in px
 		wrap_u: .clamp_to_border
 		wrap_v: .clamp_to_border
 	}
 	img_desc.content.subimage[0][0] = C.sg_subimage_content{
-		ptr: voidptr(linear.data)	//endere�o na mem�ria (Pointer)
-		size: int(sizeof(linear))		//Tamanho dos dados
+		ptr: voidptr(linear.data)	//memory adress (Pointer)
+		size: int(sizeof(linear))		//data size
 	}	
 
-	// mut texture := C.sg_make_image(&img_desc)	
+	//TO-DO
 	mut tex_rot := sgl.rad(f32(0.0))
 	mut tex_scale := f32(1.0)
 	
@@ -434,7 +444,6 @@ pub fn (ctx &Context) new_draw_rect(cfg RectConfig ) &Rect {
 		sgl.disable_texture()
 	}
 
-	//
 	sgl.matrix_mode_projection()
 	sgl.matrix_mode_modelview()
 	sgl.matrix_mode_texture()	
@@ -443,7 +452,7 @@ pub fn (ctx &Context) new_draw_rect(cfg RectConfig ) &Rect {
 	C.sgl_push_pipeline()
 	C.sgl_push_matrix()	 
 	
-	//Future feature
+	//Future feature //TO-DO
 	// sgl.rotate(1.0 * sgl.rad(f32(0)), 1.0, 0.0, 0.0)//ok
 	// sgl.rotate(1.0 * sgl.rad(f32(0)), 0.0, 1.0, 0.0)//ok	
 	sgl.rotate(1.0 * sgl.rad(f32(0)), 0.0, 0.0, 1.0)//ok
@@ -466,24 +475,26 @@ pub fn (ctx &Context) new_draw_rect(cfg RectConfig ) &Rect {
 		c:=cfg.backgroud_color as gx.Color
 		sgl.c4f(c.r/255, c.g/255, c.b/255, c.a/255)
 	}
+	
+	//TO-DO: Test vertex_colors in ui.rectangle //crazy cool feature
 	//positions and sizes
 	//vertex positon 0,0
-	sgl.v3f_t2f(cfg.pos_x * ctx.scale, cfg.pos_y* ctx.scale, 0.0, 0.0, 0.0)//ooooooooooooooooooooooooooo
+	sgl.v3f_t2f(cfg.pos_x * ctx.scale, cfg.pos_y* ctx.scale, 0.0, 0.0, 0.0)
 	if cfg.vertex_colors.len>=1 {
 		sgl.c4f(cfg.vertex_colors[0].r/255, cfg.vertex_colors[0].g/255, cfg.vertex_colors[0].b/255, cfg.vertex_colors[0].a/255)
 	}
 	//vertex positon 1,0
-	sgl.v3f_t2f((cfg.pos_x +cfg.width) * ctx.scale, cfg.pos_y* ctx.scale, 0.0, 1.0 *( 1/tex_scale), 0)//ooooooooooooooooooooooooooo
+	sgl.v3f_t2f((cfg.pos_x +cfg.width) * ctx.scale, cfg.pos_y* ctx.scale, 0.0, 1.0 * (1/tex_scale), 0)
 	if cfg.vertex_colors.len>=2 {
 		sgl.c4f(cfg.vertex_colors[1].r/255, cfg.vertex_colors[1].g/255, cfg.vertex_colors[1].b/255, cfg.vertex_colors[1].a/255)
 	}
 	//vertex positon 1,1
-	sgl.v3f_t2f((cfg.pos_x +cfg.width) * ctx.scale, (cfg.pos_y+cfg.height) * ctx.scale, 0.0, 1 * (1/tex_scale), 1 * (1/tex_scale))//ooooooooooooooooooooooooooo
+	sgl.v3f_t2f((cfg.pos_x +cfg.width) * ctx.scale, (cfg.pos_y+cfg.height) * ctx.scale, 0.0, 1 * (1/tex_scale), 1 * (1/tex_scale))
 	if cfg.vertex_colors.len>=3 {
 		sgl.c4f(cfg.vertex_colors[2].r/255, cfg.vertex_colors[2].g/255, cfg.vertex_colors[2].b/255, cfg.vertex_colors[2].a/255)
 	}
 	//vertex positon 0,1
-	sgl.v3f_t2f(cfg.pos_x * ctx.scale, (cfg.pos_y+cfg.height) * ctx.scale, 0.0, 0.0, 1.0 * (1/tex_scale))//ooooooooooooooooooooooooooo
+	sgl.v3f_t2f(cfg.pos_x * ctx.scale, (cfg.pos_y+cfg.height) * ctx.scale, 0.0, 0.0, 1.0 * (1/tex_scale))
 	if cfg.vertex_colors.len>=4 {
 		sgl.c4f(cfg.vertex_colors[3].r/255, cfg.vertex_colors[3].g/255, cfg.vertex_colors[3].b/255, cfg.vertex_colors[3].a/255)
 	}
@@ -500,6 +511,7 @@ pub fn (ctx &Context) new_draw_rect(cfg RectConfig ) &Rect {
 		backgroud_color:	cfg.backgroud_color		
 		vertex_colors:		[]gx.Color
 	}
+	//TO-DO
 	/*Next whanted features 
 		max-width, min-width, max-height, min-height
 		degree, scale and translate features
