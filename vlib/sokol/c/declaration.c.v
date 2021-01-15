@@ -41,6 +41,8 @@ pub const (
 #flag solaris -DSOKOL_NO_ENTRY
 // TODO end
 
+#include "sokol_v.h"
+
 #include "sokol_app.h"
 
 #define SOKOL_IMPL
