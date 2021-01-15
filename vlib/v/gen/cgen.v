@@ -1953,10 +1953,10 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				str_add = true
 			}
 			// Assignment Operator Overloading
-			if left_sym.kind == .struct_ &&
-				right_sym.kind == .struct_ && assign_stmt.op in
-				[.plus_assign, .minus_assign, .div_assign, .mult_assign, .mod_assign] {
-				g.expr(left)
+			if ((left_sym.kind == .struct_ &&
+				right_sym.kind == .struct_) || (left_sym.kind == .alias &&
+				right_sym.kind == .alias)) &&
+				assign_stmt.op in [.plus_assign, .minus_assign, .div_assign, .mult_assign, .mod_assign] {
 				extracted_op := match assign_stmt.op {
 					.plus_assign { '+' }
 					.minus_assign { '-' }
@@ -1965,6 +1965,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					.mult_assign { '*' }
 					else { 'unknown op' }
 				}
+				g.expr(left)
 				g.write(' = ${styp}_${util.replace_op(extracted_op)}(')
 				op_overloaded = true
 			}
@@ -2514,7 +2515,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 			} else {
 				styp := g.typ(node.typ)
 				mut cast_label := ''
-				if sym.kind != .alias || (sym.info as table.Alias).parent_type != node.expr_type {
+				// `table.string_type` is done for MSVC's bug
+				if sym.kind != .alias ||
+					(sym.info as table.Alias).parent_type !in [node.expr_type, table.string_type] {
 					cast_label = '($styp)'
 				}
 				g.write('(${cast_label}(')
@@ -2943,8 +2946,8 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	right_sym := g.table.get_type_symbol(node.right_type)
 	has_eq_overloaded := !left_sym.has_method('==')
 	has_ne_overloaded := !left_sym.has_method('!=')
-	unaliased_right := if right_sym.kind == .alias {
-		(right_sym.info as table.Alias).parent_type
+	unaliased_right := if right_sym.info is table.Alias {
+		right_sym.info.parent_type
 	} else {
 		node.right_type
 	}
