@@ -94,6 +94,7 @@ mut:
 	map_fn_definitions    []string // map equality functions that have been defined
 	struct_fn_definitions []string // struct equality functions that have been defined
 	auto_fn_definitions   []string // auto generated functions defination list
+	anon_fn_definitions   []string // anon generated functions defination list
 	is_json_fn            bool     // inside json.encode()
 	json_types            []string // to avoid json gen duplicates
 	pcs                   []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
@@ -339,6 +340,11 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	}
 	if g.auto_fn_definitions.len > 0 {
 		for fn_def in g.auto_fn_definitions {
+			b.writeln(fn_def)
+		}
+	}
+	if g.anon_fn_definitions.len > 0 {
+		for fn_def in g.anon_fn_definitions {
 			b.writeln(fn_def)
 		}
 	}
@@ -2362,12 +2368,10 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 
 fn (mut g Gen) gen_anon_fn_decl(it ast.AnonFn) {
 	pos := g.out.len
-	def_pos := g.definitions.len
 	g.stmt(it.decl)
 	fn_body := g.out.after(pos)
 	g.out.go_back(fn_body.len)
-	g.definitions.go_back(g.definitions.len - def_pos)
-	g.definitions.write(fn_body)
+	g.anon_fn_definitions << fn_body
 }
 
 fn (mut g Gen) map_fn_ptrs(key_typ table.TypeSymbol) (string, string, string, string) {
@@ -3894,6 +3898,10 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 			g.write(', ')
 			if node.index.has_high {
 				g.expr(node.index.high)
+			} else if sym.kind == .array_fixed {
+				g.write('_ARR_LEN(')
+				g.expr(node.left)
+				g.write(')')
 			} else {
 				g.expr(node.left)
 				g.write('.len')
