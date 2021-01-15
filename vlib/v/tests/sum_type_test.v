@@ -539,3 +539,39 @@ fn handle(e Expr) string {
 	}
 	return ''
 }
+
+// for a binary tree
+struct Empty {}
+
+struct Node_ {
+	// TODO: make value generic once it's more robust 
+	value f64
+	left  Tree
+	right Tree
+}
+
+type Tree = Empty | Node_
+
+fn size(tree Tree) int {
+	return match tree {
+		// TODO: remove int() here once match gets smarter
+		Empty { int(0) }
+		Node_ { 1 + size(tree.left) + size(tree.right) }
+	}
+}
+
+fn sum(tree Tree) f64 {
+	return match tree {
+		// TODO: remove f64() here once match gets smarter
+		Empty { f64(0) }
+		Node_ { tree.value + sum(tree.left) + sum(tree.right) }
+	}
+}
+
+fn test_binary_tree_operation() {
+	left := Node_{0.2, Empty{}, Empty{}}
+	right := Node_{0.3, Empty{}, Node_{0.4, Empty{}, Empty{}}}
+	tree := Node_{0.5, left, right}
+	assert size(tree) == 4
+	assert sum(tree) == 1.4
+}
