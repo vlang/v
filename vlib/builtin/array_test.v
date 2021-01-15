@@ -292,10 +292,6 @@ const (
 	c_n = 5
 )
 
-struct Foooj {
-	a [5]int // c_n
-}
-
 fn test_fixed() {
 	mut nums := [4]int{}
 	// x := nums[1..3]
@@ -1308,7 +1304,7 @@ fn test_array_of_map_insert() {
 
 fn test_multi_fixed_array_init() {
 	a := [3][3]int{}
-	assert '$a' == '[[0, 0, 0], [0, 0, 0], [0, 0, 0]]'
+	assert '$a' == '[[0, 0, 0]!, [0, 0, 0]!, [0, 0, 0]!]!'
 }
 
 struct Numbers {
