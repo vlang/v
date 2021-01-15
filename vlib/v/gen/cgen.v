@@ -4882,7 +4882,7 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 			table.GoHandle {
 				if g.pref.os == .windows {
 					if name == 'gohandle_void' {
-						g.type_definitions.writeln('typedef HANDLE $name')
+						g.type_definitions.writeln('typedef HANDLE $name;')
 					} else {
 						// Windows can only return `u32` (no void*) from a thread, so the
 						// V gohandle must maintain a pointer to the return value
@@ -5510,21 +5510,30 @@ fn (mut g Gen) go_stmt(node ast.GoStmt, joinable bool) string {
 		// create wait handler for this return type if none exists
 		waiter_fn_name := gohandle_name + '_wait'
 		if waiter_fn_name !in g.waiter_fns {
-			g.gowrappers.writeln('\n$s_ret_typ ${waiter_fn_name}(void* thread) {')
+			g.gowrappers.writeln('\n$s_ret_typ ${waiter_fn_name}($gohandle_name thread) {')
 			mut c_ret_ptr_ptr := 'NULL'
 			if node.call_expr.return_type != table.void_type {
 				g.gowrappers.writeln('\t$s_ret_typ* ret_ptr;')
 				c_ret_ptr_ptr = '&ret_ptr'
 			}
 			if g.pref.os == .windows {
-				g.gowrappers.writeln('\tu32 stat = WaitForSingleObject(thread, INFINITE);')
-				if node.call_expr.return_type != table.void_type {
-					g.gowrappers.writeln('\tret_ptr = (*($gohandle_name*)thread).ret_ptr;')
+				if node.call_expr.return_type == table.void_type {
+					g.gowrappers.writeln('\tu32 stat = WaitForSingleObject(thread, INFINITE);')
+				} else {
+					g.gowrappers.writeln('\tu32 stat = WaitForSingleObject(thread.handle, INFINITE);')
+					g.gowrappers.writeln('\tret_ptr = thread.ret_ptr;')
 				}
 			} else {
-				g.gowrappers.writeln('\tint stat = pthread_join(*(pthread_t*)thread, $c_ret_ptr_ptr);')
+				g.gowrappers.writeln('\tint stat = pthread_join(thread, $c_ret_ptr_ptr);')
 			}
 			g.gowrappers.writeln('\tif (stat != 0) { v_panic(_SLIT("unable to join thread")); }')
+			if g.pref.os == .windows {
+				if node.call_expr.return_type == table.void_type {
+					g.gowrappers.writeln('\tCloseHandle(thread);')
+				} else {
+					g.gowrappers.writeln('\tCloseHandle(thread.handle);')
+				}
+			}
 			if node.call_expr.return_type != table.void_type {
 				g.gowrappers.writeln('\t$s_ret_typ ret = *ret_ptr;')
 				g.gowrappers.writeln('\tfree(ret_ptr);')
