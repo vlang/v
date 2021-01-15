@@ -194,9 +194,11 @@ pub:
 	name         string
 	gen_types    []table.Type
 	is_pub       bool
+	// _pos fields for vfmt
 	mut_pos      int // mut:
 	pub_pos      int // pub:
 	pub_mut_pos  int // pub mut:
+	module_pos   int // module:
 	language     table.Language
 	is_union     bool
 	attrs        []table.Attr
