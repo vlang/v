@@ -2462,7 +2462,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			c.error('use `array2 = array1.clone()` instead of `array2 = array1` (or use `unsafe`)',
 				assign_stmt.pos)
 		}
-		left_is_ptr := left_type.is_ptr() || left_sym.is_pointer()
+		left_is_ptr := (left_type.is_ptr() || left_sym.is_pointer()) && c.in_for_count == 0
 		if left_is_ptr {
 			if !c.inside_unsafe && assign_stmt.op !in [.assign, .decl_assign] {
 				// ptr op=
