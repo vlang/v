@@ -3894,6 +3894,10 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 			g.write(', ')
 			if node.index.has_high {
 				g.expr(node.index.high)
+			} else if sym.kind == .array_fixed {
+				g.write('_ARR_LEN(')
+				g.expr(node.left)
+				g.write(')')
 			} else {
 				g.expr(node.left)
 				g.write('.len')
