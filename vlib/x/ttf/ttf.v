@@ -557,25 +557,12 @@ fn (mut tf TTF_File) get_fixed() f32 {
 	return f32(tf.get_i32() / f32(1 << 16))
 }
 
-/*---- restore when MSVC will work again! ----
 fn (mut tf TTF_File) get_string(length int) string {
 	tmp_pos := tf.pos
 	tf.pos += u32(length)
 	unsafe{
-		return tos(&tf.buf.data[tmp_pos], length)
+		return tos(byteptr(u32(tf.buf.data)+u32(tmp_pos)), length)
 	}
-}
-*/
-
-fn (mut tf TTF_File) get_string(length int) string {
-	tmp_pos := tf.pos
-	mut tmp_txt := strings.new_builder(length)
-	for _ in 0..length {
-		tmp_txt.write_b(tf.get_u8())
-	}
-	res_txt := tmp_txt.str()
-	tf.pos = tmp_pos + u32(length)
-	return res_txt
 }
 
 fn (mut tf TTF_File) get_unicode_string(length int) string {
