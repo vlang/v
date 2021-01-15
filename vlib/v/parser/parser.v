@@ -530,8 +530,8 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 				return p.comment_stmt()
 			}
 			else {
+				p.inside_fn = true
 				if p.pref.is_script && !p.pref.is_test {
-					p.inside_fn = true
 					mut stmts := []ast.Stmt{}
 					for p.tok.kind != .eof {
 						stmts << p.stmt(false)
