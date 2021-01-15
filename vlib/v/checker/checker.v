@@ -2502,10 +2502,10 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 						c.error('invalid right operand: $left_sym.name $assign_stmt.op $right_sym.name',
 							right.position())
 					}
-				} else if !left_sym.is_number() && left_sym.kind !in [.byteptr, .charptr, .struct_] {
+				} else if !left_sym.is_number() && left_sym.kind !in [.byteptr, .charptr, .struct_, .alias] {
 					c.error('operator `$assign_stmt.op` not defined on left operand type `$left_sym.name`',
 						left.position())
-				} else if !right_sym.is_number() && left_sym.kind !in [.byteptr, .charptr, .struct_] {
+				} else if !right_sym.is_number() && left_sym.kind !in [.byteptr, .charptr, .struct_, .alias] {
 					c.error('invalid right operand: $left_sym.name $assign_stmt.op $right_sym.name',
 						right.position())
 				} else if right is ast.IntegerLiteral {
@@ -2521,11 +2521,11 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			}
 			.mult_assign, .div_assign {
 				if !left_sym.is_number() &&
-					!c.table.get_final_type_symbol(left_type_unwrapped).is_int() && left_sym.kind != .struct_ {
+					!c.table.get_final_type_symbol(left_type_unwrapped).is_int() && left_sym.kind !in [.struct_, .alias] {
 					c.error('operator $assign_stmt.op.str() not defined on left operand type `$left_sym.name`',
 						left.position())
 				} else if !right_sym.is_number() &&
-					!c.table.get_final_type_symbol(left_type_unwrapped).is_int() && left_sym.kind != .struct_ {
+					!c.table.get_final_type_symbol(left_type_unwrapped).is_int() && left_sym.kind !in [.struct_, .alias] {
 					c.error('operator $assign_stmt.op.str() not defined on right operand type `$right_sym.name`',
 						right.position())
 				}
@@ -2545,7 +2545,13 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		}
 		if assign_stmt.op in
 			[.plus_assign, .minus_assign, .mod_assign, .mult_assign, .div_assign] &&
-			left_sym.kind == .struct_ && right_sym.kind == .struct_ {
+			((left_sym.kind == .struct_ && right_sym.kind == .struct_) || left_sym.kind == .alias) {
+			left_name := c.table.type_to_str(left_type)
+			right_name := c.table.type_to_str(right_type)
+			parent_sym := c.table.get_final_type_symbol(left_type)
+			if left_sym.kind == .alias && right_sym.kind != .alias {
+				c.error('mismatched types `$left_name` and `$right_name`', assign_stmt.pos)
+			}
 			extracted_op := match assign_stmt.op {
 				.plus_assign { '+' }
 				.minus_assign { '-' }
@@ -2554,14 +2560,16 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 				.mult_assign { '*' }
 				else { 'unknown op' }
 			}
-			left_name := c.table.type_to_str(left_type)
 			if method := left_sym.find_method(extracted_op) {
 				if method.return_type != left_type {
 					c.error('operator `$extracted_op` must return `$left_name` to be used as an assignment operator',
 						assign_stmt.pos)
 				}
 			} else {
-				right_name := c.table.type_to_str(right_type)
+				if parent_sym.is_primitive() {
+					c.error('cannot use operator methods on type alias for `$parent_sym.name`',
+						assign_stmt.pos)
+				}
 				if left_name == right_name {
 					c.error('operation `$left_name` $extracted_op `$right_name` does not exist, please define it',
 						assign_stmt.pos)
@@ -3486,10 +3494,13 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
 	} else if node.expr_type == table.none_type {
 		type_name := c.table.type_to_str(node.typ)
 		c.error('cannot cast `none` to `$type_name`', node.pos)
-	} else if from_type_sym.kind == .struct_ && !node.expr_type.is_ptr() && to_type_sym.kind !in
-		[.sum_type, .interface_] && !c.is_builtin_mod {
-		type_name := c.table.type_to_str(node.typ)
-		c.error('cannot cast `struct` to `$type_name`', node.pos)
+	} else if from_type_sym.kind == .struct_ && !node.expr_type.is_ptr() {
+		if (node.typ.is_ptr() || to_type_sym.kind !in [.sum_type, .interface_]) && !c.is_builtin_mod {
+			type_name := c.table.type_to_str(node.typ)
+			c.error('cannot cast struct to `$type_name`', node.pos)
+		} else if to_type_sym.kind == .interface_ {
+			c.type_implements(node.expr_type, node.typ, node.pos)
+		}
 	} else if node.expr_type.has_flag(.optional) || node.expr_type.has_flag(.variadic) {
 		// variadic case can happen when arrays are converted into variadic
 		msg := if node.expr_type.has_flag(.optional) { 'an optional' } else { 'a variadic' }
@@ -5168,6 +5179,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				c.error('operator methods are only allowed for struct and type alias',
 					node.pos)
 			} else {
+				parent_sym := c.table.get_final_type_symbol(node.receiver.typ)
 				if node.rec_mut {
 					c.error('receiver cannot be `mut` for operator overloading', node.receiver_pos)
 				} else if node.params[1].is_mut {
@@ -5177,6 +5189,9 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				} else if node.name in ['<', '>', '==', '!=', '>=', '<='] &&
 					node.return_type != table.bool_type {
 					c.error('operator comparison methods should return `bool`', node.pos)
+				} else if parent_sym.is_primitive() {
+					c.error('cannot define operator methods on type alias for `$parent_sym.name`',
+						node.pos)
 				}
 			}
 		}
