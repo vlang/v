@@ -547,8 +547,18 @@ pub fn (t &TypeSymbol) is_float() bool {
 }
 
 [inline]
+pub fn (t &TypeSymbol) is_string() bool {
+	return t.kind in [.string, .ustring]
+}
+
+[inline]
 pub fn (t &TypeSymbol) is_number() bool {
 	return t.is_int() || t.is_float()
+}
+
+[inline]
+pub fn (t &TypeSymbol) is_primitive() bool {
+	return t.is_number() || t.is_pointer() || t.is_string()
 }
 
 // for debugging/errors only, perf is not an issue
@@ -688,8 +698,7 @@ pub mut:
 
 pub struct ArrayFixed {
 pub:
-	nr_dims int
-	size    int
+	size int
 pub mut:
 	elem_type Type
 }

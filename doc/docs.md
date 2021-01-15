@@ -2261,8 +2261,8 @@ Objects can be pushed to channels using the arrow operator. The same operator ca
 pop objects from the other end:
 
 ```v
-mut ch := chan int{}
-mut ch2 := chan f64{}
+ch := chan int{}
+ch2 := chan f64{}
 n := 5
 x := 7.3
 ch <- n
@@ -2280,8 +2280,8 @@ associated channel has been closed and the buffer is empty. This situation can b
 handled using an or branch (see [Handling Optionals](#handling-optionals)).
 
 ```v wip
-mut ch := chan int{}
-mut ch2 := chan f64{}
+ch := chan int{}
+ch2 := chan f64{}
 // ...
 ch.close()
 // ...
@@ -2301,10 +2301,10 @@ of statements - similar to the [match](#match) command:
 ```v wip
 import time
 fn main () {
-  mut c := chan f64{}
-  mut ch := chan f64{}
-  mut ch2 := chan f64{}
-  mut ch3 := chan f64{}
+  c := chan f64{}
+  ch := chan f64{}
+  ch2 := chan f64{}
+  ch3 := chan f64{}
   mut b := 0.0
   // ...
   select {
@@ -2351,16 +2351,16 @@ struct Abc {
 }
 
 a := 2.13
-mut ch := chan f64{}
+ch := chan f64{}
 res := ch.try_push(a) // try to perform `ch <- a`
 println(res)
 l := ch.len // number of elements in queue
 c := ch.cap // maximum queue length
 println(l)
 println(c)
-// mut b := Abc{}
-// mut ch2 := chan f64{}
-// res2 := ch2.try_pop(mut b) // try to perform `b = <-ch2
+mut b := Abc{}
+ch2 := chan Abc{}
+res2 := ch2.try_pop(b) // try to perform `b = <-ch2`
 ```
 
 The `try_push/pop()` methods will return immediately with one of the results
@@ -2370,33 +2370,31 @@ Usage of these methods and properties in production is not recommended -
 algorithms based on them are often subject to race conditions. Use `select` instead.
 
 Data can be exchanged between a coroutine and the calling thread via a shared variable.
-Such variables should be created as references and passed to the coroutine as `mut`.
-The underlying `struct` should also contain a `mutex` to lock concurrent access:
+Such variables should be created as `shared` and passed to the coroutine as such, too.
+The underlying `struct` contains a hidden *mutex* that allows locking concurrent access
+using `rlock` for read-only and `lock` for read/write access.
 
 ```v
-import sync
-
 struct St {
 mut:
-	x   int // share data
-	mtx &sync.Mutex
+	x int // data to shared
 }
 
-fn (mut b St) g() {
-	b.mtx.m_lock()
-	// read/modify/write b.x
-	b.mtx.unlock()
+fn (shared b St) g() {
+	lock b {
+		// read/modify/write b.x
+	}
 }
 
-fn caller() {
-	mut a := &St{ // create as reference so it's on the heap
+fn main() {
+	shared a := &St{ // create as reference so it's on the heap
 		x: 10
-		mtx: sync.new_mutex()
 	}
 	go a.g()
-	a.mtx.m_lock()
-	// read/modify/write a.x
-	a.mtx.unlock()
+	// ...
+	rlock a {
+		// read a.x
+	}
 }
 ```
 
@@ -2823,7 +2821,7 @@ fn C.sqlite3_step(&sqlite3_stmt)
 
 fn C.sqlite3_finalize(&sqlite3_stmt)
 
-fn C.sqlite3_exec(db &sqlite3, sql charptr, FnSqlite3Callback voidptr, cb_arg voidptr, emsg &charptr) int
+fn C.sqlite3_exec(db &sqlite3, sql charptr, cb FnSqlite3Callback, cb_arg voidptr, emsg &charptr) int
 
 fn C.sqlite3_free(voidptr)
 
@@ -3015,8 +3013,9 @@ use `v help`, `v help build` and `v help build-c`.
 
 ## Conditional compilation
 
-### Compile time if
+### Compile time code
 
+#### $if
 ```v
 // Support for multiple conditions in one branch
 $if ios || android {
@@ -3063,6 +3062,31 @@ Full list of builtin options:
 | `android`,`mach`, `dragonfly` | `msvc`            | `little_endian`       | `no_bounds_checking`  |
 | `gnu`, `hpux`, `haiku`, `qnx` | `cplusplus`       | `big_endian`          | |
 | `solaris`, `linux_or_macos`   | | | |
+
+#### $embed_file
+
+```v ignore
+module main
+fn main() {
+	embedded_file := $embed_file('v.png')
+	mut fw := os.create('exported.png') or { panic(err) }
+	fw.write_bytes(embedded_file.data(), embedded_file.len)
+	fw.close()
+}
+```
+
+V can embed arbitrary files into the executable with the `$embed_file(<path>)`
+compile time call. Paths can be absolute or relative to the source file.
+
+When you do not use `-prod`, the file will not be embedded. Instead, it will
+be loaded *the first time* your program calls `f.data()` at runtime, making
+it easier to change in external editor programs, without needing to recompile
+your executable.
+
+When you compile with `-prod`, the file *will be embedded inside* your
+executable, increasing your binary size, but making it more self contained 
+and thus easier to distribute. In this case, `f.data()` will cause *no IO*,
+and it will always return the same data.
 
 ### Environment specific files
 

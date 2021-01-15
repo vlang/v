@@ -56,7 +56,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 		.dollar {
 			match p.peek_tok.kind {
 				.name {
-					return p.vweb()
+					return p.comp_call()
 				}
 				.key_if {
 					return p.if_expr(true)

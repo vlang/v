@@ -5,20 +5,18 @@ import v.tests.repl.runner
 import benchmark
 import sync
 
+const turn_off_vcolors = os.setenv('VCOLORS', 'never', true)
+
 fn test_the_v_compiler_can_be_invoked() {
 	vexec := runner.full_path_to_v(5)
 	println('vexecutable: $vexec')
 	assert vexec != ''
 	vcmd := '"$vexec" -version'
-	r := os.exec(vcmd) or {
-		panic(err)
-	}
+	r := os.exec(vcmd) or { panic(err) }
 	// println('"$vcmd" exit_code: $r.exit_code | output: $r.output')
 	assert r.exit_code == 0
 	vcmd_error := '"$vexec" nonexisting.v'
-	r_error := os.exec(vcmd_error) or {
-		panic(err)
-	}
+	r_error := os.exec(vcmd_error) or { panic(err) }
 	// println('"$vcmd_error" exit_code: $r_error.exit_code | output: $r_error.output')
 	assert r_error.exit_code == 1
 	actual_error := r_error.output.trim_space()
@@ -41,9 +39,9 @@ fn test_all_v_repl_files() {
 		panic(err)
 	}
 	session.bmark.set_total_expected_steps(session.options.files.len)
-	mut pool_repl := sync.new_pool_processor({
+	mut pool_repl := sync.new_pool_processor(
 		callback: worker_repl
-	})
+	)
 	pool_repl.set_shared_context(session)
 	$if windows {
 		// See: https://docs.microsoft.com/en-us/cpp/build/reference/fs-force-synchronous-pdb-writes?view=vs-2019
@@ -64,13 +62,11 @@ fn worker_repl(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 		p.set_thread_context(idx, tls_bench)
 	}
 	tls_bench.cstep = idx
-	tfolder := os.join_path(cdir,'vrepl_tests_$idx')
+	tfolder := os.join_path(cdir, 'vrepl_tests_$idx')
 	if os.is_dir(tfolder) {
 		os.rmdir_all(tfolder)
 	}
-	os.mkdir(tfolder) or {
-		panic(err)
-	}
+	os.mkdir(tfolder) or { panic(err) }
 	file := p.get_string_item(idx)
 	session.bmark.step()
 	tls_bench.step()

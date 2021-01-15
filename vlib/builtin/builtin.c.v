@@ -77,25 +77,27 @@ pub fn panic(s string) {
 
 // eprintln prints a message with a line end, to stderr. Both stderr and stdout are flushed.
 pub fn eprintln(s string) {
-	// eprintln is used in panics, so it should not fail at all
-	if s.str == 0 {
-		eprintln('eprintln(NIL)')
-	}
 	C.fflush(C.stdout)
 	C.fflush(C.stderr)
-	C.write(2, s.str, s.len)
-	C.write(2, c'\n', 1)
+	// eprintln is used in panics, so it should not fail at all
+	if s.str == 0 {
+		C.write(2, c'eprintln(NIL)\n', 14)
+	} else {
+		C.write(2, s.str, s.len)
+		C.write(2, c'\n', 1)
+	}
 	C.fflush(C.stderr)
 }
 
 // eprint prints a message to stderr. Both stderr and stdout are flushed.
 pub fn eprint(s string) {
-	if s.str == 0 {
-		eprint('eprint(NIL)')
-	}
 	C.fflush(C.stdout)
 	C.fflush(C.stderr)
-	C.write(2, s.str, s.len)
+	if s.str == 0 {
+		C.write(2, c'eprint(NIL)\n', 12)
+	} else {
+		C.write(2, s.str, s.len)
+	}
 	C.fflush(C.stderr)
 }
 
@@ -143,36 +145,32 @@ pub fn println(s string) {
 [unsafe]
 pub fn malloc(n int) byteptr {
 	if n <= 0 {
-		panic('malloc(<=0)')
+		panic('> V malloc(<=0)')
 	}
+	$if vplayground ? {
+		if n > 10000 {
+			panic('allocating more than 10 KB is not allowed in the playground')
+		}
+	}
+	$if trace_malloc ? {
+		total_m += n
+		C.fprintf(C.stderr, c'v_malloc %d total %d\n', n, total_m)
+		// print_backtrace()
+	}
+	mut res := byteptr(0)
 	$if prealloc {
-		// println('p')
-		res := g_m2_ptr
+		res = g_m2_ptr
 		unsafe {
 			g_m2_ptr += n
 		}
 		nr_mallocs++
-		return res
 	} $else {
-		ptr := unsafe {C.malloc(n)}
-		if ptr == 0 {
+		res = unsafe { C.malloc(n) }
+		if res == 0 {
 			panic('malloc($n) failed')
 		}
-		return ptr
 	}
-	/*
-	TODO
-#ifdef VPLAY
-	if n > 10000 {
-		panic('allocating more than 10 KB is not allowed in the playground')
-	}
-#endif
-#ifdef DEBUG_ALLOC
-	total_m += n
-	println('\n\n\nmalloc($n) total=$total_m')
-	print_backtrace()
-#endif
-	*/
+	return res
 }
 
 /*
@@ -180,23 +178,40 @@ pub fn malloc(n int) byteptr {
 fn malloc_size(b byteptr) int
 */
 // v_realloc resizes the memory block `b` with `n` bytes.
-// The `b byteptr` must be a pointer to an existing memory block previously allocated with `malloc`, `v_calloc` or `vcalloc`.
+// The `b byteptr` must be a pointer to an existing memory block
+// previously allocated with `malloc`, `v_calloc` or `vcalloc`.
 [unsafe]
 pub fn v_realloc(b byteptr, n int) byteptr {
+	mut new_ptr := byteptr(0)
 	$if prealloc {
 		unsafe {
-			new_ptr := malloc(n)
-			size := 0 // malloc_size(b)
-			C.memcpy(new_ptr, b, size)
-			return new_ptr
+			new_ptr = malloc(n)
+			C.memcpy(new_ptr, b, n)
 		}
 	} $else {
-		ptr := unsafe {C.realloc(b, n)}
-		if ptr == 0 {
-			panic('realloc($n) failed')
+		$if debug_realloc ? {
+			// NB: this is slower, but helps debugging memory problems.
+			// The main idea is to always force reallocating:
+			// 1) allocate a new memory block
+			// 2) copy the old to the new
+			// 3) fill the old with 0x57 (`W`)
+			// 4) free the old block
+			// => if there is still a pointer to the old block somewhere
+			//    it will point to memory that is now filled with 0x57.
+			unsafe {
+				new_ptr = malloc(n)
+				C.memcpy(new_ptr, b, n)
+				C.memset(b, 0x57, n)
+				C.free(b)
+			}
+		} $else {
+			new_ptr = unsafe { C.realloc(b, n) }
+			if new_ptr == 0 {
+				panic('realloc($n) failed')
+			}
 		}
-		return ptr
 	}
+	return new_ptr
 }
 
 // v_calloc dynamically allocates a zeroed `n` bytes block of memory on the heap.

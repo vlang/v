@@ -458,6 +458,12 @@ pub mut:
 	end_comments []Comment
 }
 
+pub struct EmbeddedFile {
+pub:
+	rpath string // used in the source code, as an ID/key to the embed
+	apath string // absolute path during compilation to the resource
+}
+
 // Each V source file is represented by one ast.File structure.
 // When the V compiler runs, the parser will fill an []ast.File.
 // That array is then passed to V's checker.
@@ -468,9 +474,10 @@ pub:
 	global_scope &Scope
 pub mut:
 	scope            &Scope
-	stmts            []Stmt   // all the statements in the source file
-	imports          []Import // all the imports
-	auto_imports     []string // imports that were implicitely added
+	stmts            []Stmt            // all the statements in the source file
+	imports          []Import          // all the imports
+	auto_imports     []string          // imports that were implicitely added
+	embedded_files   []EmbeddedFile    // list of files to embed in the binary
 	imported_symbols map[string]string // used for `import {symbol}`, it maps symbol => module.symbol
 	errors           []errors.Error    // all the checker errors in the file
 	warnings         []errors.Warning  // all the checker warings in the file
@@ -891,7 +898,7 @@ pub:
 	exprs         []Expr      // `[expr, expr]` or `[expr]Type{}` for fixed array
 	ecmnts        [][]Comment // optional iembed comments after each expr
 	is_fixed      bool
-	has_val       bool // fixed size literal `[expr, expr]!!`
+	has_val       bool // fixed size literal `[expr, expr]!`
 	mod           string
 	len_expr      Expr // len: expr
 	cap_expr      Expr // cap: expr
@@ -1088,6 +1095,8 @@ pub:
 	is_vweb     bool
 	vweb_tmpl   File
 	args_var    string
+	is_embed    bool
+	embed_file  EmbeddedFile
 pub mut:
 	sym table.TypeSymbol
 }

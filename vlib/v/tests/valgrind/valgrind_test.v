@@ -4,6 +4,8 @@ import benchmark
 import v.util
 import v.util.vtest
 
+const turn_off_vcolors = os.setenv('VCOLORS', 'never', true)
+
 //
 // NB: skip_compile_files can be used for totally skipping .v files temporarily.
 // .v files in skip_valgrind_files will be compiled, but will not be run under
@@ -14,17 +16,16 @@ import v.util.vtest
 // Use: `./v -d noskip vlib/v/tests/valgrind/valgrind_test.v` to ignore skip_valgrind_files
 // Use: `./v -d noskipcompile -d noskip vlib/v/tests/valgrind/valgrind_test.v` to ignore both
 //
-const (
-	skip_compile_files  = [
+const skip_compile_files = [
 		'vlib/v/tests/valgrind/option_reassigned.v',
 	]
-	skip_valgrind_files = [
+
+const skip_valgrind_files = [
 		'vlib/v/tests/valgrind/struct_field.v',
 		'vlib/v/tests/valgrind/fn_returning_string_param.v',
 		'vlib/v/tests/valgrind/fn_with_return_should_free_local_vars.v',
 		'vlib/v/tests/valgrind/option_simple.v',
 	]
-)
 
 fn vprintln(s string) {
 	$if verbose ? {
@@ -49,18 +50,16 @@ fn test_all() {
 	vroot := os.dir(vexe)
 	valgrind_test_path := 'vlib/v/tests/valgrind'
 	dir := os.join_path(vroot, valgrind_test_path)
-	files := os.ls(dir) or {
-		panic(err)
-	}
+	files := os.ls(dir) or { panic(err) }
 	//
 	wrkdir := os.join_path(os.temp_dir(), 'vtests', 'valgrind')
 	os.mkdir_all(wrkdir)
 	os.chdir(wrkdir)
 	//
 	tests := vtest.filter_vtest_only(files.filter(it.ends_with('.v') && !it.ends_with('_test.v')),
-		{
+		
 		basepath: valgrind_test_path
-	})
+	)
 	bench.set_total_expected_steps(tests.len)
 	for test in tests {
 		bench.step()
