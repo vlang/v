@@ -3599,9 +3599,9 @@ unsafe
 ```
 See also [Types](#types).
 
-## Appendix II: Operators
+## Appendix II: Operators and Symbols
 
-This lists operators for [primitive types](#primitive-types) only.
+This is a list of operators for [primitive types](#primitive-types) only:
 
 ```v ignore
 +    sum                    integers, floats, strings
@@ -3636,4 +3636,10 @@ Assignment Operators
 +=   -=   *=   /=   %=
 &=   |=   ^=
 >>=  <<=
+```
+
+This is a list of non-operators symbols:
+
+```v ignore
+$    conditional compilation
 ```
