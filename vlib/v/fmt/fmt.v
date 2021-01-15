@@ -404,7 +404,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.global_decl(node)
 		}
 		ast.GoStmt {
-			f.go_stmt(node)
+			f.go_stmt(node, false)
 		}
 		ast.GotoLabel {
 			f.writeln('$node.name:')
@@ -893,7 +893,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.write(node.val)
 		}
 		ast.GoExpr {
-			f.stmt(node.go_stmt)
+			f.go_stmt(node.go_stmt, true)
 		}
 		ast.IfExpr {
 			f.if_expr(node)
@@ -2294,10 +2294,12 @@ pub fn (mut f Fmt) for_stmt(node ast.ForStmt) {
 	f.writeln('}')
 }
 
-pub fn (mut f Fmt) go_stmt(node ast.GoStmt) {
+pub fn (mut f Fmt) go_stmt(node ast.GoStmt, is_expr bool) {
 	f.write('go ')
 	f.expr(node.call_expr)
-	f.writeln('')
+	if !is_expr {
+		f.writeln('')
+	}
 }
 
 pub fn (mut f Fmt) return_stmt(node ast.Return) {
