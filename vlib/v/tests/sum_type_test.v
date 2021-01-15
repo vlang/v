@@ -568,7 +568,7 @@ fn sum(tree Tree) f64 {
 	}
 }
 
-fn test_binary_tree_operation {
+fn test_binary_tree_operation() {
 	left := Node_{0.2, Leaf{}, Leaf{}}
 	right := Node_{0.3, Leaf{}, Node_{0.4, Leaf{}, Leaf{}}}
 	tree := Node_{0.5, left, right}
