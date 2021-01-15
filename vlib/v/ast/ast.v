@@ -469,7 +469,8 @@ pub:
 // That array is then passed to V's checker.
 pub struct File {
 pub:
-	path         string // path of the source file
+	path         string // absolute path of the source file - '/projects/v/file.v'
+	path_base    string // file name - 'file.v' (useful for tracing)
 	mod          Module // the module of the source file (from `module xyz` at the top)
 	global_scope &Scope
 pub mut:

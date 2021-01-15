@@ -5850,3 +5850,9 @@ pub fn get_guarded_include_text(iname string, imessage string) string {
 	'.strip_margin()
 	return res
 }
+
+fn (mut g Gen) trace(fbase string, message string) {
+	if g.file.path_base == fbase {
+		println('> g.trace | ${fbase:-10s} | $message')
+	}
+}

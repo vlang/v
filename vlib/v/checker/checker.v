@@ -5298,3 +5298,9 @@ fn (mut c Checker) verify_all_vweb_routes() {
 		}
 	}
 }
+
+fn (mut c Checker) trace(fbase string, message string) {
+	if c.file.path_base == fbase {
+		println('> c.trace | ${fbase:-10s} | $message')
+	}
+}

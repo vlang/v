@@ -232,6 +232,7 @@ pub fn (mut p Parser) parse() ast.File {
 	//
 	return ast.File{
 		path: p.file_name
+		path_base: p.file_base
 		mod: module_decl
 		imports: p.ast_imports
 		imported_symbols: p.imported_symbols
