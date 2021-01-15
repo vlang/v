@@ -30,10 +30,10 @@ fn test_access_slice_attribute() {
 }
 
 fn test_fixed_array_slice() {
-	fixed_array1 := [1, 2, 3]!!
+	fixed_array1 := [1, 2, 3]!
 	arr1 := fixed_array1[0..]
 	assert arr1 == [1, 2, 3]
-	fixed_array2 := [[1, 2], [2, 3], [3, 4],[4, 5]]!!
+	fixed_array2 := [[1, 2], [2, 3], [3, 4],[4, 5]]!
 	arr2 := fixed_array2[0..]
 	assert arr2 == [[1, 2], [2, 3], [3, 4],[4, 5]]
 }
