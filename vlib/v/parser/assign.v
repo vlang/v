@@ -90,7 +90,39 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 	op := p.tok.kind
 	pos := p.tok.position()
 	p.next()
-	right, right_comments := p.expr_list()
+	mut right_comments := []ast.Comment{}
+	mut right := []ast.Expr{cap: left.len}
+	if p.tok.kind == .key_go {
+		spos := p.tok.position()
+		p.next()
+		right_comments = p.eat_comments()
+		mut mod := ''
+		mut language := table.Language.v
+		if p.peek_tok.kind == .dot {
+			if p.tok.lit == 'C' {
+				language = table.Language.c
+				p.check_for_impure_v(language, p.tok.position())
+			} else if p.tok.lit == 'JS' {
+				language = table.Language.js
+				p.check_for_impure_v(language, p.tok.position())
+			} else {
+				mod = p.tok.lit
+			}
+			p.next()
+			p.next()
+		}
+		call_expr := p.call_expr(language, mod)
+		allpos := spos.extend(p.tok.position())
+		right << ast.GoExpr{
+			go_stmt: ast.GoStmt{
+				call_expr: call_expr
+				pos: allpos
+			}
+			pos: allpos
+		}
+	} else {
+		right, right_comments = p.expr_list()
+	}
 	mut comments := []ast.Comment{cap: left_comments.len + right_comments.len}
 	comments << left_comments
 	comments << right_comments

@@ -4,5 +4,5 @@ fn fun(a fn(int)) {}
 
 v := 4
 ptr(&v)
-arr([5]!!)
+arr([5]!)
 fun(fn(i &int){})

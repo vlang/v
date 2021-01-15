@@ -28,6 +28,10 @@ fn (mut g Gen) comptime_selector(node ast.ComptimeSelector) {
 }
 
 fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
+	if node.is_embed {
+		g.gen_embed_file_init(node)
+		return
+	}
 	if node.is_vweb {
 		is_html := node.method_name == 'html'
 		for stmt in node.vweb_tmpl.stmts {

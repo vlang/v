@@ -16,7 +16,7 @@ import strings
 pub type Type = int
 
 pub type TypeInfo = Aggregate | Alias | Array | ArrayFixed | Chan | Enum | FnType | GenericStructInst |
-	Interface | Map | MultiReturn | Struct | SumType
+	GoHandle | Interface | Map | MultiReturn | Struct | SumType
 
 pub enum Language {
 	v
@@ -306,6 +306,7 @@ pub const (
 	any_type_idx           = 25
 	float_literal_type_idx = 26
 	int_literal_type_idx   = 27
+	gohandle_type_idx      = 28
 )
 
 pub const (
@@ -350,12 +351,15 @@ pub const (
 	any_type           = new_type(any_type_idx)
 	float_literal_type = new_type(float_literal_type_idx)
 	int_literal_type   = new_type(int_literal_type_idx)
+	gohandle_type      = new_type(gohandle_type_idx)
 )
 
 pub const (
 	builtin_type_names = ['void', 'voidptr', 'charptr', 'byteptr', 'i8', 'i16', 'int', 'i64', 'u16',
 		'u32', 'u64', 'int_literal', 'f32', 'f64', 'float_literal', 'string', 'ustring', 'char', 'byte',
-		'bool', 'none', 'array', 'array_fixed', 'map', 'chan', 'any', 'struct', 'mapnode', 'size_t', 'rune']
+		'bool', 'none', 'array', 'array_fixed', 'map', 'chan', 'any', 'struct', 'mapnode', 'size_t', 'rune',
+		'gohandle',
+	]
 )
 
 pub struct MultiReturn {
@@ -417,6 +421,7 @@ pub enum Kind {
 	float_literal
 	int_literal
 	aggregate
+	gohandle
 }
 
 pub fn (t &TypeSymbol) str() string {
@@ -464,6 +469,14 @@ pub fn (t &TypeSymbol) chan_info() Chan {
 	match mut t.info {
 		Chan { return t.info }
 		else { panic('TypeSymbol.chan_info(): no chan info for type: $t.name') }
+	}
+}
+
+[inline]
+pub fn (t &TypeSymbol) gohandle_info() GoHandle {
+	match mut t.info {
+		GoHandle { return t.info }
+		else { panic('TypeSymbol.gohandle_info(): no gohandle info for type: $t.name') }
 	}
 }
 
@@ -529,6 +542,7 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 		cname: 'int_literal'
 		mod: 'builtin'
 	)
+	t.register_type_symbol(kind: .gohandle, name: 'gohandle', cname: 'gohandle', mod: 'builtin')
 }
 
 [inline]
@@ -547,8 +561,18 @@ pub fn (t &TypeSymbol) is_float() bool {
 }
 
 [inline]
+pub fn (t &TypeSymbol) is_string() bool {
+	return t.kind in [.string, .ustring]
+}
+
+[inline]
 pub fn (t &TypeSymbol) is_number() bool {
 	return t.is_int() || t.is_float()
+}
+
+[inline]
+pub fn (t &TypeSymbol) is_primitive() bool {
+	return t.is_number() || t.is_pointer() || t.is_string()
 }
 
 // for debugging/errors only, perf is not an issue
@@ -592,6 +616,7 @@ pub fn (k Kind) str() string {
 		.generic_struct_inst { 'generic_struct_inst' }
 		.rune { 'rune' }
 		.aggregate { 'aggregate' }
+		.gohandle { 'gohandle' }
 	}
 	return k_str
 }
@@ -688,8 +713,7 @@ pub mut:
 
 pub struct ArrayFixed {
 pub:
-	nr_dims int
-	size    int
+	size int
 pub mut:
 	elem_type Type
 }
@@ -698,6 +722,11 @@ pub struct Chan {
 pub mut:
 	elem_type Type
 	is_mut    bool
+}
+
+pub struct GoHandle {
+pub mut:
+	return_type Type
 }
 
 pub struct Map {

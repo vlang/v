@@ -510,7 +510,7 @@ fn (mut v Builder) cc() {
 		if v.pref.os == .ios {
 			ios_sdk := if v.pref.is_ios_simulator { 'iphonesimulator' } else { 'iphoneos' }
 			ios_sdk_path_res := os.exec('xcrun --sdk $ios_sdk --show-sdk-path') or {
-				panic("Couldn\'t find iphonesimulator")
+				panic("Couldn't find iphonesimulator")
 			}
 			mut isysroot := ios_sdk_path_res.output.replace('\n', '')
 			ccompiler = 'xcrun --sdk iphoneos clang -isysroot $isysroot'

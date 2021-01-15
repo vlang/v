@@ -35,6 +35,13 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 					g.write(', ')
 				}
 			}
+		} else if it.has_default {
+			g.expr(it.default_expr)
+			info := type_sym.info as table.ArrayFixed
+			for _ in 1 .. info.size {
+				g.write(', ')
+				g.expr(it.default_expr)
+			}
 		} else {
 			g.write('0')
 		}
@@ -254,9 +261,9 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 			// when generating the function as long as the args are named the same.
 			g.definitions.writeln('int $compare_fn ($styp* a, $styp* b) {')
 			sym := g.table.get_type_symbol(typ)
-			if sym.has_method('<') && infix_expr.left.str().len == 1 {
+			if !is_reverse && sym.has_method('<') && infix_expr.left.str().len == 1 {
 				g.definitions.writeln('\tif (${styp}__lt(*a, *b)) { return -1; } else { return 1; }}')
-			} else if sym.has_method('>') && infix_expr.left.str().len == 1 {
+			} else if is_reverse && sym.has_method('>') && infix_expr.left.str().len == 1 {
 				g.definitions.writeln('\tif (${styp}__gt(*a, *b)) { return -1; } else { return 1; }}')
 			} else {
 				field_type := g.typ(infix_expr.left_type)

@@ -68,7 +68,7 @@ fn (context Context) file2v(bname string, fbytes []byte, bn_max int) string {
 			sb.write('$b, ')
 		}
 	}
-	sb.write(']!!\n')
+	sb.write(']!\n')
 	return sb.str()
 }
 

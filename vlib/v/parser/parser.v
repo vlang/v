@@ -696,7 +696,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				}
 				.name {
 					return ast.ExprStmt{
-						expr: p.vweb()
+						expr: p.comp_call()
 					}
 				}
 				else {
@@ -738,10 +738,16 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			p.next()
 			spos := p.tok.position()
 			expr := p.expr(0)
-			// mut call_expr := &ast.CallExpr(0) // TODO
-			// { call_expr = it }
+			call_expr := if expr is ast.CallExpr {
+				expr
+			} else {
+				p.error_with_pos('expression in `go` must be a function call', expr.position())
+				ast.CallExpr{
+					scope: p.scope
+				}
+			}
 			return ast.GoStmt{
-				call_expr: expr
+				call_expr: call_expr
 				pos: spos.extend(p.tok.position())
 			}
 		}
@@ -1500,6 +1506,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		//
 		end_pos := p.prev_tok.position()
 		pos := name_pos.extend(end_pos)
+		comments := p.eat_line_end_comments()
 		mcall_expr := ast.CallExpr{
 			left: left
 			name: field_name
@@ -1514,6 +1521,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 				pos: or_pos
 			}
 			scope: p.scope
+			comments: comments
 		}
 		if is_filter || field_name == 'sort' {
 			p.close_scope()

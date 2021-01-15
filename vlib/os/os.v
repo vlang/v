@@ -35,7 +35,7 @@ pub fn cp_all(src string, dst string, overwrite bool) ? {
 	source_path := real_path(src)
 	dest_path := real_path(dst)
 	if !exists(source_path) {
-		return error("Source path doesn\'t exist")
+		return error("Source path doesn't exist")
 	}
 	// single file copy
 	if !is_dir(source_path) {
@@ -152,10 +152,11 @@ pub fn rmdir_all(path string) ? {
 	mut ret_err := ''
 	items := ls(path) ?
 	for item in items {
-		if is_dir(join_path(path, item)) {
-			rmdir_all(join_path(path, item))
+		fullpath := join_path(path, item)
+		if is_dir(fullpath) {
+			rmdir_all(fullpath)
 		}
-		rm(join_path(path, item)) or { ret_err = err }
+		rm(fullpath) or { ret_err = err }
 	}
 	rmdir(path) or { ret_err = err }
 	if ret_err.len > 0 {
@@ -402,13 +403,16 @@ pub fn is_abs_path(path string) bool {
 }
 
 // join_path returns a path as string from input string parameter(s).
+[manualfree]
 pub fn join_path(base string, dirs ...string) string {
 	mut result := []string{}
 	result << base.trim_right('\\/')
 	for d in dirs {
 		result << d
 	}
-	return result.join(path_separator)
+	res := result.join(path_separator)
+	unsafe { result.free() }
+	return res
 }
 
 // walk_ext returns a recursive list of all files in `path` ending with `ext`.
@@ -555,13 +559,20 @@ pub fn vmodules_paths() []string {
 // See https://discordapp.com/channels/592103645835821068/592294828432424960/630806741373943808
 // It gives a convenient way to access program resources like images, fonts, sounds and so on,
 // *no matter* how the program was started, and what is the current working directory.
+[manualfree]
 pub fn resource_abs_path(path string) string {
-	mut base_path := real_path(dir(executable()))
+	exe := executable()
+	dexe := dir(exe)
+	mut base_path := real_path(dexe)
 	vresource := getenv('V_RESOURCE_PATH')
 	if vresource.len != 0 {
 		base_path = vresource
 	}
-	return real_path(join_path(base_path, path))
+	fp := join_path(base_path, path)
+	res := real_path(fp)
+	fp.free()
+	base_path.free()
+	return res
 }
 
 pub struct Uname {
