@@ -281,7 +281,7 @@ fn (mut g Gen) gen_str_for_array_fixed(info table.ArrayFixed, styp string, str_f
 	} else {
 		g.auto_str_funcs.writeln('\tfor (int i = 0; i < $info.size; ++i) {')
 		if sym.kind == .struct_ && !sym_has_str_method {
-			g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${elem_str_fn_name}(a[i], indent_count));')
+			g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${elem_str_fn_name}(a[i]));')
 		} else if sym.kind in [.f32, .f64] {
 			g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("%g", 1, a[i]));')
 		} else if sym.kind == .string {
@@ -631,5 +631,5 @@ fn (mut g Gen) gen_str_for_fn_type(info table.FnType, styp string, str_fn_name s
 
 [inline]
 fn styp_to_str_fn_name(styp string) string {
-	return styp.replace_each(['*', '', '.', '__']) + '_str'
+	return styp.replace_each(['*', '', '.', '__', ' ', '__']) + '_str'
 }
