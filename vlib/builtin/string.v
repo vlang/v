@@ -652,6 +652,9 @@ fn (s string) index_(p string) int {
 	if p.len > s.len || p.len == 0 {
 		return -1
 	}
+	if p.len > 2 {
+		return s.index_kmp(p)
+	}
 	mut i := 0
 	for i < s.len {
 		mut j := 0
@@ -677,7 +680,7 @@ pub fn (s string) index(p string) ?int {
 }
 
 // index_kmp does KMP search.
-pub fn (s string) index_kmp(p string) int {
+fn (s string) index_kmp(p string) int {
 	if p.len > s.len {
 		return -1
 	}
