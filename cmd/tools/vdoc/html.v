@@ -265,7 +265,8 @@ fn (vd VDoc) gen_html(d doc.Doc) string {
 			submod_prefix = if names.len > 1 { names[0] } else { dc.head.name }
 			mut href_name := './${dc.head.name}.html'
 			if (cfg.is_vlib && dc.head.name == 'builtin' && !cfg.include_readme) ||
-				dc.head.name == 'README' {
+				dc.head.name == 'README'
+			{
 				href_name = './index.html'
 			} else if submod_prefix !in vd.docs.map(it.head.name) {
 				href_name = '#'
@@ -310,7 +311,8 @@ fn (vd VDoc) gen_html(d doc.Doc) string {
 	} else {
 		symbols_toc_str
 	}).replace('{{ contents }}', contents.str()).replace('{{ right_content }}', if cfg.is_multi &&
-		vd.docs.len > 1 && d.head.name != 'README' {
+		vd.docs.len > 1 && d.head.name != 'README'
+	{
 		'<div class="doc-toc"><ul>' + symbols_toc_str + '</ul></div>'
 	} else {
 		''
@@ -401,7 +403,8 @@ fn html_highlight(code string, tb &table.Table) string {
 					if token.is_key(tok.lit) || token.is_decl(tok.kind) {
 						tok_typ = .keyword
 					} else if tok.kind == .decl_assign || tok.kind.is_assign() || tok.is_unary() ||
-						tok.kind.is_relational() || tok.kind.is_infix() {
+						tok.kind.is_relational() || tok.kind.is_infix()
+					{
 						tok_typ = .operator
 					}
 				}

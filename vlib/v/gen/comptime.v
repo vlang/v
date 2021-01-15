@@ -18,7 +18,8 @@ fn (mut g Gen) comptime_selector(node ast.ComptimeSelector) {
 	if node.field_expr is ast.SelectorExpr {
 		if node.field_expr.expr is ast.Ident {
 			if node.field_expr.expr.name == g.comp_for_field_var &&
-				node.field_expr.field_name == 'name' {
+				node.field_expr.field_name == 'name'
+			{
 				g.write(g.comp_for_field_value.name)
 				return
 			}

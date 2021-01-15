@@ -482,7 +482,8 @@ pub fn parse_args(args []string) (&Preferences, string) {
 		}
 		must_exist(res.path)
 		if !res.path.ends_with('.v') && os.is_executable(res.path) && os.is_file(res.path) &&
-			os.is_file(res.path + '.v') {
+			os.is_file(res.path + '.v')
+		{
 			eprintln('It looks like you wanted to run "${res.path}.v", so we went ahead and did that since "$res.path" is an executable.')
 			res.path += '.v'
 		}

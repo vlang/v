@@ -989,7 +989,8 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				mod := if g.is_builtin_mod { 'builtin' } else { node.name.all_before_last('.') }
 				if (mod != g.module_built &&
 					node.mod != g.module_built.after('/')) ||
-					should_bundle_module {
+					should_bundle_module
+				{
 					// Skip functions that don't have to be generated for this module.
 					// println('skip bm $node.name mod=$node.mod module_built=$g.module_built')
 					skip = true
@@ -1014,12 +1015,14 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				g.has_main = true
 			}
 			if node.name == 'backtrace' ||
-				node.name == 'backtrace_symbols' || node.name == 'backtrace_symbols_fd' {
+				node.name == 'backtrace_symbols' || node.name == 'backtrace_symbols_fd'
+			{
 				g.write('\n#ifndef __cplusplus\n')
 			}
 			g.gen_fn_decl(node, skip)
 			if node.name == 'backtrace' ||
-				node.name == 'backtrace_symbols' || node.name == 'backtrace_symbols_fd' {
+				node.name == 'backtrace_symbols' || node.name == 'backtrace_symbols_fd'
+			{
 				g.write('\n#endif\n')
 			}
 			g.fn_decl = keep_fn_decl
@@ -1963,7 +1966,8 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			if ((left_sym.kind == .struct_ &&
 				right_sym.kind == .struct_) || (left_sym.kind == .alias &&
 				right_sym.kind == .alias)) &&
-				assign_stmt.op in [.plus_assign, .minus_assign, .div_assign, .mult_assign, .mod_assign] {
+				assign_stmt.op in [.plus_assign, .minus_assign, .div_assign, .mult_assign, .mod_assign]
+			{
 				extracted_op := match assign_stmt.op {
 					.plus_assign { '+' }
 					.minus_assign { '-' }
@@ -2296,7 +2300,8 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 	// ```
 	// if !isnil(scope.parent) && line_nr > 0 {
 	if free_parent_scopes && !isnil(scope.parent) &&
-		(stop_pos == -1 || scope.parent.start_pos >= stop_pos) {
+		(stop_pos == -1 || scope.parent.start_pos >= stop_pos)
+	{
 		g.writeln('// af parent scope:')
 		g.autofree_scope_vars2(scope.parent, start_pos, end_pos, line_nr, true, stop_pos)
 	}
@@ -2455,7 +2460,8 @@ fn (mut g Gen) expr(node ast.Expr) {
 			// println('before:' + node.autofree_pregen)
 			// }
 			if g.is_autofree && !g.is_builtin_mod && !g.is_js_call && g.strs_to_free0.len == 0 &&
-				!g.inside_lambda { // && g.inside_ternary ==
+				!g.inside_lambda
+			{ // && g.inside_ternary ==
 				// if len != 0, that means we are handling call expr inside call expr (arg)
 				// and it'll get messed up here, since it's handled recursively in autofree_call_pregen()
 				// so just skip it
@@ -2522,13 +2528,15 @@ fn (mut g Gen) expr(node ast.Expr) {
 				mut cast_label := ''
 				// `table.string_type` is done for MSVC's bug
 				if sym.kind != .alias ||
-					(sym.info as table.Alias).parent_type !in [node.expr_type, table.string_type] {
+					(sym.info as table.Alias).parent_type !in [node.expr_type, table.string_type]
+				{
 					cast_label = '($styp)'
 				}
 				g.write('(${cast_label}(')
 				g.expr(node.expr)
 				if node.expr is ast.IntegerLiteral &&
-					node.typ in [table.u64_type, table.u32_type, table.u16_type] {
+					node.typ in [table.u64_type, table.u32_type, table.u16_type]
+				{
 					g.write('U')
 				}
 				g.write('))')
@@ -2995,7 +3003,8 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	} else if unaliased_left == table.string_type_idx && node.op !in [.key_in, .not_in] {
 		// `str == ''` -> `str.len == 0` optimization
 		if node.op in [.eq, .ne] &&
-			node.right is ast.StringLiteral && (node.right as ast.StringLiteral).val == '' {
+			node.right is ast.StringLiteral && (node.right as ast.StringLiteral).val == ''
+		{
 			arrow := if left_type.is_ptr() { '->' } else { '.' }
 			g.write('(')
 			g.expr(node.left)
@@ -3052,7 +3061,8 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		g.expr(node.right)
 		g.write(')')
 	} else if node.op in [.eq, .ne] &&
-		left_sym.kind == .array_fixed && right_sym.kind == .array_fixed {
+		left_sym.kind == .array_fixed && right_sym.kind == .array_fixed
+	{
 		ptr_typ := g.gen_fixed_array_equality_fn(left_type)
 		if node.op == .ne {
 			g.write('!')
@@ -3091,7 +3101,8 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		g.expr(node.right)
 		g.write(')')
 	} else if node.op in [.eq, .ne] &&
-		left_sym.kind == .struct_ && right_sym.kind == .struct_ && has_eq_overloaded && has_ne_overloaded {
+		left_sym.kind == .struct_ && right_sym.kind == .struct_ && has_eq_overloaded && has_ne_overloaded
+	{
 		ptr_typ := g.gen_struct_equality_fn(left_type)
 		if node.op == .eq {
 			g.write('${ptr_typ}_struct_eq(')
@@ -3233,18 +3244,22 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			g.or_block(tmp_opt, node.or_block, table.void_type)
 		}
 	} else if unaliased_left.idx() in [table.u32_type_idx, table.u64_type_idx] && unaliased_right.is_signed() &&
-		node.op in [.eq, .ne, .gt, .lt, .ge, .le] {
+		node.op in [.eq, .ne, .gt, .lt, .ge, .le]
+	{
 		bitsize := if unaliased_left.idx() == table.u32_type_idx &&
-			unaliased_right.idx() != table.i64_type_idx { 32 } else { 64 }
+			unaliased_right.idx() != table.i64_type_idx
+		{ 32 } else { 64 }
 		g.write('_us${bitsize}_${cmp_str[int(node.op) - int(token.Kind.eq)]}(')
 		g.expr(node.left)
 		g.write(',')
 		g.expr(node.right)
 		g.write(')')
 	} else if unaliased_right.idx() in [table.u32_type_idx, table.u64_type_idx] && unaliased_left.is_signed() &&
-		node.op in [.eq, .ne, .gt, .lt, .ge, .le] {
+		node.op in [.eq, .ne, .gt, .lt, .ge, .le]
+	{
 		bitsize := if unaliased_right.idx() == table.u32_type_idx &&
-			unaliased_left.idx() != table.i64_type_idx { 32 } else { 64 }
+			unaliased_left.idx() != table.i64_type_idx
+		{ 32 } else { 64 }
 		g.write('_us${bitsize}_${cmp_rev[int(node.op) - int(token.Kind.eq)]}(')
 		g.expr(node.right)
 		g.write(',')
@@ -3261,7 +3276,8 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		// Do not generate operator overloading with these `right_sym.kind`.
 		e := right_sym.kind !in [.voidptr, .int_literal, .int]
 		if node.op in [.plus, .minus, .mul, .div, .mod, .lt, .gt, .eq, .ne, .le, .ge] &&
-			((a && b && e) || c || d) {
+			((a && b && e) || c || d)
+		{
 			// Overloaded operators
 			g.write(g.typ(if !d {
 				left_type
@@ -3466,7 +3482,8 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 					mut skip_low := false
 					if expr.low is ast.IntegerLiteral {
 						if node.cond_type in [table.u16_type, table.u32_type, table.u64_type] &&
-							expr.low.val == '0' {
+							expr.low.val == '0'
+						{
 							skip_low = true
 						}
 					}
@@ -3533,7 +3550,8 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 					expr := branch.stmt.expr as ast.InfixExpr
 					channels << expr.left
 					if expr.right is ast.Ident ||
-						expr.right is ast.IndexExpr || expr.right is ast.SelectorExpr || expr.right is ast.StructInit {
+						expr.right is ast.IndexExpr || expr.right is ast.SelectorExpr || expr.right is ast.StructInit
+					{
 						// addressable objects in the `C` output
 						objs << expr.right
 						tmp_objs << ''
@@ -3554,7 +3572,8 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 					is_push << false
 					// create tmp unless the object with *exactly* the type we need exists already
 					if branch.stmt.op == .decl_assign ||
-						branch.stmt.right_types[0] != branch.stmt.left_types[0] {
+						branch.stmt.right_types[0] != branch.stmt.left_types[0]
+					{
 						tmp_obj := g.new_tmp_var()
 						tmp_objs << tmp_obj
 						el_stype := g.typ(branch.stmt.right_types[0])
@@ -4078,7 +4097,8 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 						g.write('$zero }))')
 					}
 				} else if (g.inside_map_postfix || g.inside_map_infix) ||
-					(g.is_assign_lhs && !g.is_array_set && get_and_set_types) {
+					(g.is_assign_lhs && !g.is_array_set && get_and_set_types)
+				{
 					zero := g.type_default(info.value_type)
 					g.write('(*($elem_type_str*)map_get_and_set_1(')
 					if !left_is_ptr {
@@ -4543,7 +4563,8 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 			}
 			if !cloned {
 				if field.expected_type.is_ptr() && !(field.typ.is_ptr() || field.typ.is_pointer()) &&
-					!field.typ.is_number() {
+					!field.typ.is_number()
+				{
 					g.write('/* autoref */&')
 				}
 				g.expr_with_cast(field.expr, field.typ, field.expected_type)
@@ -4615,7 +4636,8 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 						g.interface_call(sfield.typ, sfield.expected_type)
 					}
 					if sfield.expected_type.is_ptr() && !(sfield.typ.is_ptr() || sfield.typ.is_pointer()) &&
-						!sfield.typ.is_number() {
+						!sfield.typ.is_number()
+					{
 						g.write('/* autoref */&')
 					}
 					g.expr_with_cast(sfield.expr, sfield.typ, sfield.expected_type)
@@ -5066,7 +5088,8 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 		}
 		stmts := or_block.stmts
 		if stmts.len > 0 && stmts[or_block.stmts.len - 1] is ast.ExprStmt && (stmts[stmts.len -
-			1] as ast.ExprStmt).typ != table.void_type {
+			1] as ast.ExprStmt).typ != table.void_type
+		{
 			g.indent++
 			for i, stmt in stmts {
 				if i == stmts.len - 1 {
@@ -5279,7 +5302,8 @@ fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) ?string 
 		}
 		else {
 			if is_comptime_optional ||
-				(g.pref.compile_defines_all.len > 0 && name in g.pref.compile_defines_all) {
+				(g.pref.compile_defines_all.len > 0 && name in g.pref.compile_defines_all)
+			{
 				return 'CUSTOM_DEFINE_$name'
 			}
 			return error('bad os ifdef name "$name"') // should never happen, caught in the checker

@@ -772,7 +772,8 @@ fn normalize_drive_letter(path string) string {
 		return path
 	}
 	if path.len > 2 &&
-		path[0] >= `a` && path[0] <= `z` && path[1] == `:` && path[2] == path_separator[0] {
+		path[0] >= `a` && path[0] <= `z` && path[1] == `:` && path[2] == path_separator[0]
+	{
 		unsafe {
 			x := &path.str[0]
 			(*x) = *x - 32

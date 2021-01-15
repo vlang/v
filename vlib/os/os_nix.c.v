@@ -94,7 +94,8 @@ pub fn ls(path string) ?[]string {
 		unsafe {
 			if bptr[0] == 0 ||
 				(bptr[0] == `.` && bptr[1] == 0) ||
-				(bptr[0] == `.` && bptr[1] == `.` && bptr[2] == 0) {
+				(bptr[0] == `.` && bptr[1] == `.` && bptr[2] == 0)
+			{
 				continue
 			}
 		}
