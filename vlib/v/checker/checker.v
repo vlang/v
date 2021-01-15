@@ -1338,6 +1338,12 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		if !c.check_types(arg_type, info.elem_type) && !c.check_types(left_type, arg_type) {
 			c.error('cannot $method_name `$arg_sym.name` to `$left_type_sym.name`', arg_expr.position())
 		}
+	} else if left_type_sym.kind == .gohandle && method_name == 'wait' {
+		info := left_type_sym.info as table.GoHandle
+		if call_expr.args.len > 0 {
+			c.error('wait() does not have any arguments', call_expr.args[0].pos)
+		}
+		return info.return_type
 	}
 	mut method := table.Fn{}
 	mut has_method := false
@@ -2978,22 +2984,17 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			}
 		}
 		ast.GoStmt {
-			if node.call_expr !is ast.CallExpr {
-				c.error('expression in `go` must be a function call', node.call_expr.position())
+			c.call_expr(mut node.call_expr)
+			// Make sure there are no mutable arguments
+			for arg in node.call_expr.args {
+				if arg.is_mut && !arg.typ.is_ptr() {
+					c.error('function in `go` statement cannot contain mutable non-reference arguments',
+						arg.expr.position())
+				}
 			}
-			c.expr(node.call_expr)
-			if mut node.call_expr is ast.CallExpr {
-				// Make sure there are no mutable arguments
-				for arg in node.call_expr.args {
-					if arg.is_mut && !arg.typ.is_ptr() {
-						c.error('function in `go` statement cannot contain mutable non-reference arguments',
-							arg.expr.position())
-					}
-				}
-				if node.call_expr.is_method && node.call_expr.receiver_type.is_ptr() && !node.call_expr.left_type.is_ptr() {
-					c.error('method in `go` statement cannot have non-reference mutable receiver',
-						node.call_expr.left.position())
-				}
+			if node.call_expr.is_method && node.call_expr.receiver_type.is_ptr() && !node.call_expr.left_type.is_ptr() {
+				c.error('method in `go` statement cannot have non-reference mutable receiver',
+					node.call_expr.left.position())
 			}
 		}
 		ast.GotoLabel {}
@@ -3240,6 +3241,10 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		}
 		ast.CallExpr {
 			return c.call_expr(mut node)
+		}
+		ast.GoExpr {
+			ret_type := c.call_expr(mut node.go_stmt.call_expr)
+			return c.table.find_or_register_gohandle(ret_type)
 		}
 		ast.ChanInit {
 			return c.chan_init(mut node)

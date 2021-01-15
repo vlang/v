@@ -11,10 +11,10 @@ pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
 pub type Expr = AnonFn | ArrayDecompose | ArrayInit | AsCast | Assoc | AtExpr | BoolLiteral |
 	CTempVar | CallExpr | CastExpr | ChanInit | CharLiteral | Comment | ComptimeCall | ComptimeSelector |
-	ConcatExpr | EnumVal | FloatLiteral | Ident | IfExpr | IfGuardExpr | IndexExpr | InfixExpr |
-	IntegerLiteral | Likely | LockExpr | MapInit | MatchExpr | None | OrExpr | ParExpr | PostfixExpr |
-	PrefixExpr | RangeExpr | SelectExpr | SelectorExpr | SizeOf | SqlExpr | StringInterLiteral |
-	StringLiteral | StructInit | Type | TypeOf | UnsafeExpr
+	ConcatExpr | EnumVal | FloatLiteral | GoExpr | Ident | IfExpr | IfGuardExpr | IndexExpr |
+	InfixExpr | IntegerLiteral | Likely | LockExpr | MapInit | MatchExpr | None | OrExpr |
+	ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectExpr | SelectorExpr | SizeOf |
+	SqlExpr | StringInterLiteral | StringLiteral | StructInit | Type | TypeOf | UnsafeExpr
 
 pub type Stmt = AssertStmt | AssignStmt | Block | BranchStmt | CompFor | ConstDecl | DeferStmt |
 	EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl | GoStmt |
@@ -875,8 +875,18 @@ pub:
 
 pub struct GoStmt {
 pub:
-	call_expr Expr
-	pos       token.Position
+	pos token.Position
+pub mut:
+	call_expr CallExpr
+}
+
+pub struct GoExpr {
+pub:
+	pos token.Position
+pub mut:
+	go_stmt GoStmt
+mut:
+	return_type table.Type
 }
 
 pub struct GotoLabel {
@@ -1172,7 +1182,7 @@ pub fn (expr Expr) position() token.Position {
 		AnonFn {
 			return expr.decl.pos
 		}
-		ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr, CastExpr, ChanInit, CharLiteral, ConcatExpr, Comment, EnumVal, FloatLiteral, Ident, IfExpr, IndexExpr, IntegerLiteral, Likely, LockExpr, MapInit, MatchExpr, None, OrExpr, ParExpr, PostfixExpr, PrefixExpr, RangeExpr, SelectExpr, SelectorExpr, SizeOf, SqlExpr, StringInterLiteral, StringLiteral, StructInit, Type, TypeOf, UnsafeExpr {
+		ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr, CastExpr, ChanInit, CharLiteral, ConcatExpr, Comment, EnumVal, FloatLiteral, GoExpr, Ident, IfExpr, IndexExpr, IntegerLiteral, Likely, LockExpr, MapInit, MatchExpr, None, OrExpr, ParExpr, PostfixExpr, PrefixExpr, RangeExpr, SelectExpr, SelectorExpr, SizeOf, SqlExpr, StringInterLiteral, StringLiteral, StructInit, Type, TypeOf, UnsafeExpr {
 			return expr.pos
 		}
 		ArrayDecompose {
@@ -1261,7 +1271,7 @@ pub fn (stmt Stmt) position() token.Position {
 			return stmt.pos
 		}
 		GoStmt {
-			return stmt.call_expr.position()
+			return stmt.call_expr.pos
 		}
 		TypeDecl {
 			match stmt {
