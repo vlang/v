@@ -537,7 +537,6 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 			}
 			pos := p.tok.position()
 			mut arg_type := p.parse_type()
-			//arg_type_pos := p.tok.position()
 			if arg_type == 0 {
 				// error is added in parse_type
 				return []table.Param{}, false, false
