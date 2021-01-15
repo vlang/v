@@ -543,20 +543,20 @@ fn handle(e Expr) string {
 // for a binary tree
 struct Leaf {}
 
-struct Node {
+struct Node_ {
 	// TODO: make value generic once it's more robust 
 	value f64
 	left  Tree
 	right Tree
 }
 
-type Tree = Leaf | Node
+type Tree = Leaf | Node_
 
 fn size(tree Tree) int {
 	return match tree {
 		// TODO: remove int() here once match gets smarter
 		Leaf { int(0) }
-		Node { 1 + size(tree.left) + size(tree.right) }
+		Node_ { 1 + size(tree.left) + size(tree.right) }
 	}
 }
 
@@ -564,14 +564,14 @@ fn sum(tree Tree) f64 {
 	return match tree {
 		// TODO: remove f64() here once match gets smarter
 		Leaf { f64(0) }
-		Node { tree.value + sum(tree.left) + sum(tree.right) }
+		Node_ { tree.value + sum(tree.left) + sum(tree.right) }
 	}
 }
 
 fn test_binary_tree_operation {
-	left := Node{0.2, Leaf{}, Leaf{}}
-	right := Node{0.3, Leaf{}, Node{0.4, Leaf{}, Leaf{}}}
-	tree := Node{0.5, left, right}
+	left := Node_{0.2, Leaf{}, Leaf{}}
+	right := Node_{0.3, Leaf{}, Node_{0.4, Leaf{}, Leaf{}}}
+	tree := Node_{0.5, left, right}
 	assert size(tree) == 4
 	assert sum(tree) == 1.4
 }
