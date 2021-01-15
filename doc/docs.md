@@ -1882,7 +1882,7 @@ println(sum)
 The built-in method `type_name` returns the name of the currently held
 type.
 
-With sum types you could build recursive structures and write concise but powerful code on them. Here's an example of binary tree.
+With sum types you could build recursive structures and write concise but powerful code on them.
 ```v
 // V's binary tree
 struct Empty {}
