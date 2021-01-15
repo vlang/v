@@ -388,7 +388,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	no_body := p.tok.kind != .lcbr
 	body_start_pos := p.peek_tok.position()
 	if p.tok.kind == .lcbr {
+		p.inside_fn = true
 		stmts = p.parse_block_no_scope(true)
+		p.inside_fn = false
 	}
 	if !no_body && are_args_type_only {
 		p.error_with_pos('functions with type only args can not have bodies', body_start_pos)
