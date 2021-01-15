@@ -190,10 +190,10 @@ pub mut:
 
 pub struct StructDecl {
 pub:
-	pos          token.Position
-	name         string
-	gen_types    []table.Type
-	is_pub       bool
+	pos       token.Position
+	name      string
+	gen_types []table.Type
+	is_pub    bool
 	// _pos fields for vfmt
 	mut_pos      int // mut:
 	pub_pos      int // pub:
