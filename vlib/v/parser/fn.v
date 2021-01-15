@@ -537,6 +537,7 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 			}
 			pos := p.tok.position()
 			mut arg_type := p.parse_type()
+			//arg_type_pos := p.tok.position()
 			if arg_type == 0 {
 				// error is added in parse_type
 				return []table.Param{}, false, false
@@ -607,6 +608,7 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 			}
 			mut arg_pos := [p.tok.position()]
 			mut arg_names := [p.check_name()]
+			mut type_pos := [p.tok.position()]
 			// `a, b, c int`
 			for p.tok.kind == .comma {
 				if !p.pref.is_fmt {
@@ -616,6 +618,7 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 				p.next()
 				arg_pos << p.tok.position()
 				arg_names << p.check_name()
+				type_pos << p.tok.position()
 			}
 			if p.tok.kind == .key_mut {
 				// TODO remove old syntax
@@ -663,6 +666,7 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 					name: arg_name
 					is_mut: is_mut
 					typ: typ
+					type_pos: type_pos[i]
 				}
 				// if typ.typ.kind == .variadic && p.tok.kind == .comma {
 				if is_variadic && p.tok.kind == .comma {

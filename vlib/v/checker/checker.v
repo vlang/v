@@ -788,7 +788,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 					left_name := c.table.type_to_str(left_type)
 					right_name := c.table.type_to_str(right_type)
 					if left_name == right_name {
-						c.error('operation `$left_name` $infix_expr.op.str() `$right_name` does not exist, please define it',
+						c.error('undefined operation `$left_name` $infix_expr.op.str() `$right_name`',
 							left_pos)
 					} else {
 						c.error('mismatched types `$left_name` and `$right_name`', left_pos)
@@ -805,7 +805,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 					left_name := c.table.type_to_str(left_type)
 					right_name := c.table.type_to_str(right_type)
 					if left_name == right_name {
-						c.error('operation `$left_name` $infix_expr.op.str() `$right_name` does not exist, please define it',
+						c.error('undefined operation `$left_name` $infix_expr.op.str() `$right_name`',
 							right_pos)
 					} else {
 						c.error('mismatched types `$left_name` and `$right_name`', right_pos)
@@ -848,7 +848,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 					left_name := c.table.type_to_str(left_type)
 					right_name := c.table.type_to_str(right_type)
 					if left_name == right_name {
-						c.error('operation `$left_name` $infix_expr.op.str() `$right_name` does not exist, please define it',
+						c.error('undefined operation `$left_name` $infix_expr.op.str() `$right_name`',
 							infix_expr.pos)
 					} else {
 						c.error('mismatched types `$left_name` and `$right_name`', infix_expr.pos)
@@ -2565,7 +2565,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 						assign_stmt.pos)
 				}
 				if left_name == right_name {
-					c.error('operation `$left_name` $extracted_op `$right_name` does not exist, please define it',
+					c.error('undefined operation `$left_name` $extracted_op `$right_name`',
 						assign_stmt.pos)
 				} else {
 					c.error('mismatched types `$left_name` and `$right_name`', assign_stmt.pos)
@@ -5180,7 +5180,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				} else if node.params[1].is_mut {
 					c.error('argument cannot be `mut` for operator overloading', node.pos)
 				} else if node.receiver.typ != node.params[1].typ {
-					c.error('both sides of an operator must be the same type', node.pos)
+					c.error('expected `$receiver_sym.name` not `$param_sym.name` - both operands must be the same type for operator overloading',
+						node.params[1].type_pos)
 				} else if node.name in ['<', '>', '==', '!=', '>=', '<='] &&
 					node.return_type != table.bool_type {
 					c.error('operator comparison methods should return `bool`', node.pos)
