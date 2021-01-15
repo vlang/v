@@ -110,7 +110,7 @@ mut:
 	strs_to_free0    []string // strings.Builder
 	// strs_to_free          []string // strings.Builder
 	inside_call           bool
-	for_in_mul_val        string
+	for_in_mul_val_typ    table.Type
 	has_main              bool
 	inside_const          bool
 	comp_for_method       string      // $for method in T.methods {}
@@ -1371,11 +1371,11 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		g.error('for in: unhandled symbol `$it.cond` of type `$s`', it.pos)
 	}
 	if it.val_is_mut {
-		g.for_in_mul_val = g.typ(it.val_type)
+		g.for_in_mul_val_typ = it.val_type
 	}
 	g.stmts(it.stmts)
 	if it.val_is_mut {
-		g.for_in_mul_val = ''
+		g.for_in_mul_val_typ = 0
 	}
 	if it.label.len > 0 {
 		g.writeln('\t${it.label}__continue: {}')
@@ -1998,7 +1998,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					g.prevent_sum_type_unwrapping_once = true
 				}
 				if !is_fixed_array_copy || is_decl {
-					if !is_decl && left is ast.Ident && g.for_in_mul_val == g.typ(var_type) {
+					if !is_decl && left is ast.Ident && g.for_in_mul_val_typ == var_type {
 						g.write('*')
 					}
 					g.expr(left)

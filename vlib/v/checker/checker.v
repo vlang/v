@@ -64,6 +64,7 @@ mut:
 	inside_sql                       bool // to handle sql table fields pseudo variables
 	cur_orm_ts                       table.TypeSymbol
 	error_details                    []string
+	for_in_mut_val_typ               table.Type
 	vmod_file_content                string       // needed for @VMOD_FILE, contents of the file, *NOT its path**
 	vweb_gen_types                   []table.Type // vweb route checks
 	prevent_sum_type_unwrapping_once bool   // needed for assign new values to sum type, stopping unwrapping then
@@ -2462,8 +2463,8 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			c.error('use `array2 = array1.clone()` instead of `array2 = array1` (or use `unsafe`)',
 				assign_stmt.pos)
 		}
-		left_is_ptr := (left_type.is_ptr() || left_sym.is_pointer()) && c.in_for_count == 0
-		if left_is_ptr {
+		left_is_ptr := left_type.is_ptr() || left_sym.is_pointer()
+		if left_is_ptr && c.for_in_mut_val_typ != left_type {
 			if !c.inside_unsafe && assign_stmt.op !in [.assign, .decl_assign] {
 				// ptr op=
 				c.warn('pointer arithmetic is only allowed in `unsafe` blocks', assign_stmt.pos)
@@ -2961,7 +2962,13 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 				}
 			}
 			c.check_loop_label(node.label, node.pos)
+			if node.val_is_mut {
+				c.for_in_mut_val_typ = node.val_type
+			}
 			c.stmts(node.stmts)
+			if node.val_is_mut {
+				c.for_in_mut_val_typ = 0
+			}
 			c.loop_label = prev_loop_label
 			c.in_for_count--
 		}
