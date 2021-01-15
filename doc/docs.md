@@ -2200,7 +2200,7 @@ a different thread, just call it with `go foo()`:
 ```v
 import math
 
-fn p(a f64, b f64) {
+fn p(a f64, b f64) { // ordinary function without return value
 	c := math.sqrt(a * a + b * b)
 	println(c)
 }
@@ -2212,22 +2212,22 @@ fn main() {
 ```
 
 Sometimes it is necessary to wait until a parallel thread has finished. This can
-be done by assigning a handle to the started thread and calling the `wait()` method
+be done by assigning a *handle* to the started thread and calling the `wait()` method
 to this handle later:
 
 ```v
 import math
 
-fn p(a f64, b f64) {
+fn p(a f64, b f64) { // ordinary function without return value
 	c := math.sqrt(a * a + b * b)
-	println(c) // prints `5`
+	println(c)   // prints `5`
 }
 
 fn main() {
 	h := go p(3, 4)
-	// p will be run in parallel thread
+	// p() runs in parallel thread
 	h.wait()
-	// p has definitely finished
+	// p() has definitely finished
 }
 ```
 
@@ -2235,7 +2235,7 @@ This approach can also be used to get a return value from a function that is run
 parallel thread. There is no need to modify the function itself to be able to call it
 concurrently.
 
-```
+```v
 import math { sqrt }
 
 fn get_hypot(a f64, b f64) f64 {       // ordinary function returning a value
