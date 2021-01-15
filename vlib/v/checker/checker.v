@@ -1534,10 +1534,13 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			call_expr.is_field = true
 			info := field_type_sym.info as table.FnType
 			call_expr.return_type = info.func.return_type
-			// TODO: check args (do it once for all of the above)
-			for arg in call_expr.args {
-				c.expr(arg.expr)
+			mut earg_types := []table.Type{}
+			for mut arg in call_expr.args {
+				targ := c.expr(arg.expr)
+				arg.typ = targ
+				earg_types << targ
 			}
+			call_expr.expected_arg_types = earg_types
 			return info.func.return_type
 		}
 	}
