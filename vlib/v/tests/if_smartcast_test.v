@@ -47,6 +47,9 @@ fn test_if_is_and_smartcast() {
 	if x is Abc && 1 > 0 {
 		assert x.val == 'test'
 	}
+	if 1 > 0 && (x is Abc && 1 > 0) {
+		assert x.val == 'test'
+	}
 	if x is Abc && y is Xyz {
 		assert x.val == 'test'
 		assert y.name == 'foo'

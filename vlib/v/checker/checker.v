@@ -4277,6 +4277,10 @@ fn (mut c Checker) for_stmt(mut node ast.ForStmt) {
 }
 
 fn (mut c Checker) smartcast_if_branch(mut branches []ast.IfBranch, i int, cond ast.Expr) {
+	if cond is ast.ParExpr {
+		c.smartcast_if_branch(mut branches, i, cond.expr)
+		return
+	}
 	if cond !is ast.InfixExpr {
 		return
 	}
