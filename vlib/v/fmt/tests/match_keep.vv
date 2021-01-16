@@ -1,9 +1,7 @@
 fn main() {
 	// Nested match
 	match 100 {
-		0...1 {
-			println('0 to 1')
-		}
+		0...1 { println('0 to 1') }
 		else {
 			match 200 {
 				0...1 { println('0 to 1') }
@@ -48,5 +46,11 @@ fn main() {
 				panic(err)
 			}
 		}
+	}
+	// Only single line branches
+	match x {
+		'a' { println('a') }
+		'b' { println('b') }
+		else { println('other') }
 	}
 }
