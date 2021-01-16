@@ -49,9 +49,50 @@ fn dprintln(txt string){
 * Utility
 *
 ******************************************************************************/
+// transform the bitmap from one layer to color layers
+fn (mut bmp BitMap) format_texture(){
+	r := byte(bmp.color >> 24)
+	g := byte((bmp.color >> 16) & 0xFF)
+	b := byte((bmp.color >> 8 ) & 0xFF)
+	a := byte(bmp.color & 0xFF)
+
+	b_r := byte(bmp.bg_color >> 24)
+	b_g := byte((bmp.bg_color >> 16) & 0xFF)
+	b_b := byte((bmp.bg_color >> 8 ) & 0xFF)
+	b_a := byte(bmp.bg_color & 0xFF)
+	
+	// trasform buffer in a texture
+	x := byteptr(bmp.buf)
+	unsafe{
+		mut i := 0
+		for i<bmp.buf_size {
+			data := x[i]
+			if data > 0 {			
+				x[i+0] = r
+				x[i+1] = g
+				x[i+2] = b
+				// alpha
+				x[i+3] = byte((a * data) >> 8)
+			} else {
+				x[i+0] = b_r
+				x[i+1] = b_g
+				x[i+2] = b_b
+				x[i+3] = b_a
+			}
+			i += 4
+		}
+	}
+}
+
 // write out a .ppm file
 pub
 fn (mut bmp BitMap) save_as_ppm(file_name string) {
+	tmp_buf := bmp.buf
+	mut buf := malloc(bmp.buf_size)
+	unsafe { C.memcpy(buf, tmp_buf, bmp.buf_size) }
+	bmp.buf = buf
+	
+	bmp.format_texture()
 	npixels := bmp.width * bmp.height
 	mut f_out := os.create(file_name) or { panic(err) }
 	f_out.writeln('P3')
@@ -60,14 +101,17 @@ fn (mut bmp BitMap) save_as_ppm(file_name string) {
 	for i in 0..npixels {
 		pos := i * bmp.bp
 		unsafe {
-			c_r := 0xFF - bmp.buf[pos]
-			c_g := 0xFF - bmp.buf[pos +1 ]
-			c_b := 0xFF - bmp.buf[pos + 2]
+			c_r := bmp.buf[pos]
+			c_g := bmp.buf[pos +1 ]
+			c_b := bmp.buf[pos + 2]
 			f_out.write_str('${c_r} ${c_g} ${c_b} ')
 		}
 		
 	}
 	f_out.close()
+	
+	free(buf)
+	bmp.buf = tmp_buf
 }
 
 pub
