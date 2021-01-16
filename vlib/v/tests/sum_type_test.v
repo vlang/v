@@ -571,9 +571,9 @@ fn insert(tree Tree, x f64) Tree {
 			return if x == tree.value {
 				tree
 			} else if x < tree.value {
-				Node{tree.value, insert(tree.left, x), tree.right}
+				Node{...tree, left: insert(tree.left, x)}
 			} else {
-				Node{tree.value, tree.left, insert(tree.right, x)}
+				Node{...tree, right: insert(tree.right, x)}
 			} 
 		}
 	}
@@ -610,16 +610,16 @@ fn delete(tree Tree, x f64) Tree {
 		Node {
 			if tree.left is Node && tree.right is Node {
 				return if x < tree.value { 
-					Node{tree.value, delete(tree.left, x), tree.right}
+					Node{...tree, left: delete(tree.left, x)}
 				} else if x > tree.value {
-					Node{tree.value, tree.left, delete(tree.right, x)}
+					Node{...tree, right: delete(tree.right, x)}
 				} else {
-					Node{min(tree.right), tree.left, delete(tree.right, min(tree.right))}
+					Node{...tree, value: min(tree.right), right: delete(tree.right, min(tree.right))}
 				}	
 			} else if tree.left is Node {
-				if x == tree.value { return tree.left } else { return Node{tree.value, delete(tree.left, x), tree.right} } 
+				return if x == tree.value { tree.left } else { Node{...tree, left: delete(tree.left, x)} } 
 			} else {
-				if x == tree.value { return tree.right } else { return Node{tree.value, tree.left, delete(tree.right, x)} }  
+				if x == tree.value { return tree.right } else { return Node{...tree, right: delete(tree.right, x)} }  
 			}
 		}
 	}
