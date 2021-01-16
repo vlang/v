@@ -11,10 +11,10 @@ pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
 pub type Expr = AnonFn | ArrayDecompose | ArrayInit | AsCast | Assoc | AtExpr | BoolLiteral |
 	CTempVar | CallExpr | CastExpr | ChanInit | CharLiteral | Comment | ComptimeCall | ComptimeSelector |
-	ConcatExpr | EnumVal | FloatLiteral | Ident | IfExpr | IfGuardExpr | IndexExpr | InfixExpr |
-	IntegerLiteral | Likely | LockExpr | MapInit | MatchExpr | None | OrExpr | ParExpr | PostfixExpr |
-	PrefixExpr | RangeExpr | SelectExpr | SelectorExpr | SizeOf | SqlExpr | StringInterLiteral |
-	StringLiteral | StructInit | Type | TypeOf | UnsafeExpr
+	ConcatExpr | EnumVal | FloatLiteral | GoExpr | Ident | IfExpr | IfGuardExpr | IndexExpr |
+	InfixExpr | IntegerLiteral | Likely | LockExpr | MapInit | MatchExpr | None | OrExpr |
+	ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectExpr | SelectorExpr | SizeOf |
+	SqlExpr | StringInterLiteral | StringLiteral | StructInit | Type | TypeOf | UnsafeExpr
 
 pub type Stmt = AssertStmt | AssignStmt | Block | BranchStmt | CompFor | ConstDecl | DeferStmt |
 	EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl | GoStmt |
@@ -458,19 +458,27 @@ pub mut:
 	end_comments []Comment
 }
 
+pub struct EmbeddedFile {
+pub:
+	rpath string // used in the source code, as an ID/key to the embed
+	apath string // absolute path during compilation to the resource
+}
+
 // Each V source file is represented by one ast.File structure.
 // When the V compiler runs, the parser will fill an []ast.File.
 // That array is then passed to V's checker.
 pub struct File {
 pub:
-	path         string // path of the source file
+	path         string // absolute path of the source file - '/projects/v/file.v'
+	path_base    string // file name - 'file.v' (useful for tracing)
 	mod          Module // the module of the source file (from `module xyz` at the top)
 	global_scope &Scope
 pub mut:
 	scope            &Scope
-	stmts            []Stmt   // all the statements in the source file
-	imports          []Import // all the imports
-	auto_imports     []string // imports that were implicitely added
+	stmts            []Stmt            // all the statements in the source file
+	imports          []Import          // all the imports
+	auto_imports     []string          // imports that were implicitely added
+	embedded_files   []EmbeddedFile    // list of files to embed in the binary
 	imported_symbols map[string]string // used for `import {symbol}`, it maps symbol => module.symbol
 	errors           []errors.Error    // all the checker errors in the file
 	warnings         []errors.Warning  // all the checker warings in the file
@@ -868,8 +876,18 @@ pub:
 
 pub struct GoStmt {
 pub:
-	call_expr Expr
-	pos       token.Position
+	pos token.Position
+pub mut:
+	call_expr CallExpr
+}
+
+pub struct GoExpr {
+pub:
+	pos token.Position
+pub mut:
+	go_stmt GoStmt
+mut:
+	return_type table.Type
 }
 
 pub struct GotoLabel {
@@ -891,7 +909,7 @@ pub:
 	exprs         []Expr      // `[expr, expr]` or `[expr]Type{}` for fixed array
 	ecmnts        [][]Comment // optional iembed comments after each expr
 	is_fixed      bool
-	has_val       bool // fixed size literal `[expr, expr]!!`
+	has_val       bool // fixed size literal `[expr, expr]!`
 	mod           string
 	len_expr      Expr // len: expr
 	cap_expr      Expr // cap: expr
@@ -1088,6 +1106,8 @@ pub:
 	is_vweb     bool
 	vweb_tmpl   File
 	args_var    string
+	is_embed    bool
+	embed_file  EmbeddedFile
 pub mut:
 	sym table.TypeSymbol
 }
@@ -1163,7 +1183,7 @@ pub fn (expr Expr) position() token.Position {
 		AnonFn {
 			return expr.decl.pos
 		}
-		ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr, CastExpr, ChanInit, CharLiteral, ConcatExpr, Comment, EnumVal, FloatLiteral, Ident, IfExpr, IndexExpr, IntegerLiteral, Likely, LockExpr, MapInit, MatchExpr, None, OrExpr, ParExpr, PostfixExpr, PrefixExpr, RangeExpr, SelectExpr, SelectorExpr, SizeOf, SqlExpr, StringInterLiteral, StringLiteral, StructInit, Type, TypeOf, UnsafeExpr {
+		ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr, CastExpr, ChanInit, CharLiteral, ConcatExpr, Comment, EnumVal, FloatLiteral, GoExpr, Ident, IfExpr, IndexExpr, IntegerLiteral, Likely, LockExpr, MapInit, MatchExpr, None, OrExpr, ParExpr, PostfixExpr, PrefixExpr, RangeExpr, SelectExpr, SelectorExpr, SizeOf, SqlExpr, StringInterLiteral, StringLiteral, StructInit, Type, TypeOf, UnsafeExpr {
 			return expr.pos
 		}
 		ArrayDecompose {
@@ -1252,7 +1272,7 @@ pub fn (stmt Stmt) position() token.Position {
 			return stmt.pos
 		}
 		GoStmt {
-			return stmt.call_expr.position()
+			return stmt.call_expr.pos
 		}
 		TypeDecl {
 			match stmt {

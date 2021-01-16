@@ -160,7 +160,8 @@ fn (mut vt Vet) vet_file(path string, is_regression_test bool) {
 fn (mut vet Vet) vet_line(lines []string, line string, lnumber int) {
 	// Vet public functions
 	if line.starts_with('pub fn') ||
-		(line.starts_with('fn ') && !(line.starts_with('fn C.') || line.starts_with('fn main'))) {
+		(line.starts_with('fn ') && !(line.starts_with('fn C.') || line.starts_with('fn main')))
+	{
 		// Scan function declarations for missing documentation
 		is_pub_fn := line.starts_with('pub fn')
 		if lnumber > 0 {
