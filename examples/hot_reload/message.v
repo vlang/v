@@ -2,7 +2,7 @@ module main
 
 // Build this example with `v -live message.v`
 import time
-import live
+import v.live
 
 [live]
 fn print_message() {
