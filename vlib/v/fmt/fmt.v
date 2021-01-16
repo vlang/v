@@ -687,6 +687,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 	mut field_align_i := 0
 	mut comment_align_i := 0
 	mut default_expr_align_i := 0
+	mut inc_indent := false
 	for i, field in node.fields {
 		if i == node.mut_pos {
 			f.writeln('mut:')
@@ -738,7 +739,15 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 			pad_len := align.max_attrs_len - attrs_len + align.max_type_len - field_types[i].len
 			f.write(strings.repeat(` `, pad_len))
 			f.write(' = ')
+			if !expr_is_single_line(field.default_expr) {
+				f.indent++
+				inc_indent = true
+			}
 			f.prefix_expr_cast_expr(field.default_expr)
+			if inc_indent {
+				f.indent--
+				inc_indent = false
+			}
 		}
 		// Handle comments after field type (same line)
 		if comm_idx < comments.len {
@@ -1005,6 +1014,11 @@ fn expr_is_single_line(expr ast.Expr) bool {
 		ast.CallExpr {
 			if expr.or_block.stmts.len > 1 {
 				return false
+			}
+		}
+		ast.ArrayInit {
+			if expr.exprs.len > 0 {
+				return expr_is_single_line(expr.exprs[0])
 			}
 		}
 		else {}
