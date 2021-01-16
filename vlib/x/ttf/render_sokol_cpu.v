@@ -32,37 +32,7 @@ pub mut:
 *
 ******************************************************************************/
 fn (mut tf_skl TTF_render_Sokol) format_texture(){
-	r := byte(tf_skl.bmp.color >> 24)
-	g := byte((tf_skl.bmp.color >> 16) & 0xFF)
-	b := byte((tf_skl.bmp.color >> 8 ) & 0xFF)
-	a := byte(tf_skl.bmp.color & 0xFF)
-
-	b_r := byte(tf_skl.bmp.bg_color >> 24)
-	b_g := byte((tf_skl.bmp.bg_color >> 16) & 0xFF)
-	b_b := byte((tf_skl.bmp.bg_color >> 8 ) & 0xFF)
-	b_a := byte(tf_skl.bmp.bg_color & 0xFF)
-	
-	// trasform buffer in a texture
-	x := byteptr(tf_skl.bmp.buf)
-	unsafe{
-		mut i := 0
-		for i<tf_skl.bmp.buf_size {
-			data := x[i]
-			if data > 0 {			
-				x[i+0] = r
-				x[i+1] = g
-				x[i+2] = b
-				// alpha
-				x[i+3] = byte((a * data) >> 8)
-			} else {
-				x[i+0] = b_r
-				x[i+1] = b_g
-				x[i+2] = b_b
-				x[i+3] = b_a
-			}
-			i += 4
-		}
-	}
+	tf_skl.bmp.format_texture()
 }
 
 pub

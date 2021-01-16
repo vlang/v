@@ -13,13 +13,12 @@ module ttf
 **********************************************************************/
 pub 
 struct Text_block {
-	x int
-	y int
+	x int // x postion of the left high corner
+	y int // y postion of the left high corner
 	w int // width of the text block
 	h int // heigth of the text block
-	cut_lines bool = true
+	cut_lines bool = true  // force to cut the line if the length is over the text block width
 }
-
 
 fn (mut dev BitMap) get_justify_space_cw(txt string, w int, block_w int, space_cw int) f32 {
 	num_spaces := txt.count(" ")
