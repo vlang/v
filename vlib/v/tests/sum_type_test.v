@@ -643,5 +643,6 @@ fn test_binary_search_tree() {
 			deleted << i
 		}
 	}
+	deleted.sort()
 	assert deleted == [0.0, 0.3, 0.6, 1.0]
 }
