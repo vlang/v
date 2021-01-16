@@ -146,7 +146,7 @@ fn main() {
 	mut game := &Game{
 		gg: 0
 	}
-	mut fpath := os.resource_abs_path(os.join_path('../assets/fonts/', 'RobotoMono-Regular.ttf'))
+	mut fpath := os.resource_abs_path(os.join_path('..','assets','fonts','RobotoMono-Regular.ttf'))
 	$if android {
 		fpath = 'fonts/RobotoMono-Regular.ttf'
 	}
