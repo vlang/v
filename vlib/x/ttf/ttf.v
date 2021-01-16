@@ -586,6 +586,7 @@ fn (mut tf TTF_File) get_unicode_string(length int) string {
 }
 
 fn (mut tf TTF_File) get_date() u64 {
+	// get mac time and covert it to unix timestamp
 	mac_time := (u64(tf.get_u32()) << 32) + u64(tf.get_u32())
 	utc_time := mac_time - u64(2082844800)
 	return utc_time
