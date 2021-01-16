@@ -57,6 +57,7 @@ $
 Using the API in your own programs:
 ```v
 import v.pkgconfig
+
 opt := pkgconfig.Options{}
 mut pc := pkgconfig.load('expat', opt) or { panic(err) }
 println(pc.libs)
