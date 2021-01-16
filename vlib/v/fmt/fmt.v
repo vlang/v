@@ -1617,7 +1617,7 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 		if branch.stmts.len == 0 {
 			f.writeln(' {}')
 		} else {
-			single_line := match_branch_is_single_line(branch)
+			single_line := match_branch_is_single_line(branch) && f.line_len < max_len.last()
 			if single_line {
 				f.write(' { ')
 			} else {

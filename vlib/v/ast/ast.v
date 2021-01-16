@@ -1181,7 +1181,9 @@ pub fn (expr Expr) position() token.Position {
 		AnonFn {
 			return expr.decl.pos
 		}
-		ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr, CastExpr, ChanInit, CharLiteral, ConcatExpr, Comment, EnumVal, FloatLiteral, GoExpr, Ident, IfExpr, IndexExpr, IntegerLiteral, Likely, LockExpr, MapInit, MatchExpr, None, OrExpr, ParExpr, PostfixExpr, PrefixExpr, RangeExpr, SelectExpr, SelectorExpr, SizeOf, SqlExpr, StringInterLiteral, StringLiteral, StructInit, Type, TypeOf, UnsafeExpr { return expr.pos }
+		ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr, CastExpr, ChanInit, CharLiteral, ConcatExpr, Comment, EnumVal, FloatLiteral, GoExpr, Ident, IfExpr, IndexExpr, IntegerLiteral, Likely, LockExpr, MapInit, MatchExpr, None, OrExpr, ParExpr, PostfixExpr, PrefixExpr, RangeExpr, SelectExpr, SelectorExpr, SizeOf, SqlExpr, StringInterLiteral, StringLiteral, StructInit, Type, TypeOf, UnsafeExpr {
+			return expr.pos
+		}
 		ArrayDecompose { return expr.pos }
 		IfGuardExpr { return expr.expr.position() }
 		ComptimeCall, ComptimeSelector { return expr.left.position() }
@@ -1254,7 +1256,9 @@ pub:
 
 pub fn (stmt Stmt) position() token.Position {
 	match stmt {
-		AssertStmt, AssignStmt, Block, BranchStmt, CompFor, ConstDecl, DeferStmt, EnumDecl, ExprStmt, FnDecl, ForCStmt, ForInStmt, ForStmt, GotoLabel, GotoStmt, Import, Return, StructDecl, GlobalDecl, HashStmt, InterfaceDecl, Module, SqlStmt { return stmt.pos }
+		AssertStmt, AssignStmt, Block, BranchStmt, CompFor, ConstDecl, DeferStmt, EnumDecl, ExprStmt, FnDecl, ForCStmt, ForInStmt, ForStmt, GotoLabel, GotoStmt, Import, Return, StructDecl, GlobalDecl, HashStmt, InterfaceDecl, Module, SqlStmt {
+			return stmt.pos
+		}
 		GoStmt { return stmt.call_expr.pos }
 		TypeDecl {
 			match stmt {
@@ -1280,7 +1284,9 @@ pub fn (node Node) position() token.Position {
 		}
 		Expr { return node.position() }
 		StructField { return node.pos.extend(node.type_pos) }
-		MatchBranch, SelectBranch, Field, EnumField, ConstField, StructInitField, GlobalField, table.Param { return node.pos }
+		MatchBranch, SelectBranch, Field, EnumField, ConstField, StructInitField, GlobalField, table.Param {
+			return node.pos
+		}
 		IfBranch { return node.pos.extend(node.body_pos) }
 		ScopeObject {
 			match node {
@@ -1304,8 +1310,9 @@ pub fn (node Node) children() []Node {
 	if node is Expr {
 		match node {
 			StringInterLiteral, Assoc, ArrayInit { return node.exprs.map(Node(it)) }
-			SelectorExpr, PostfixExpr, UnsafeExpr, AsCast, ParExpr, IfGuardExpr, SizeOf, Likely, TypeOf, ArrayDecompose { children <<
-					node.expr }
+			SelectorExpr, PostfixExpr, UnsafeExpr, AsCast, ParExpr, IfGuardExpr, SizeOf, Likely, TypeOf, ArrayDecompose {
+				children << node.expr
+			}
 			LockExpr, OrExpr { return node.stmts.map(Node(it)) }
 			StructInit { return node.fields.map(Node(it)) }
 			AnonFn { children << Stmt(node.decl) }
