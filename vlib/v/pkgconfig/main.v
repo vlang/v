@@ -3,7 +3,7 @@ module pkgconfig
 import flag
 import strings
 
-pub struct Main {
+struct Main {
 pub mut:
 	opt         &MainOptions
 	res         string
@@ -36,11 +36,9 @@ struct MainOptions {
 
 fn desc(mod string) ?string {
 	options := Options{
-		norecurse: true
+		only_description: true
 	}
-	mut pc := load(mod, options) or {
-		return error('cannot parse')
-	}
+	mut pc := load(mod, options) or { return error('cannot parse') }
 	return pc.description
 }
 
@@ -53,7 +51,7 @@ pub fn main(args []string) ?&Main {
 	}
 	opt := m.opt
 	if opt.help {
-		m.res = fp.usage().replace('- ,', '   ')
+		m.res = fp.usage()
 	} else if opt.version {
 		m.res = version
 	} else if opt.listall {
@@ -61,9 +59,7 @@ pub fn main(args []string) ?&Main {
 		modules.sort()
 		if opt.description {
 			for mod in modules {
-				d := desc(mod) or {
-					continue
-				}
+				d := desc(mod) or { continue }
 				pad := strings.repeat(` `, 20 - mod.len)
 				m.res += '$mod $pad $d\n'
 			}
@@ -125,9 +121,7 @@ pub fn (mut m Main) run() ?string {
 		return res
 	}
 	if opt.variables {
-		for k, _ in pc.vars {
-			res += '$k\n'
-		}
+		res = pc.vars.keys().join('\n')
 	}
 	if opt.requires {
 		res += pc.requires.join('\n')

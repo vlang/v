@@ -402,7 +402,7 @@ pub fn (fs FlagParser) usage() string {
 			use += '$option_names$xspace$f.usage\n'
 		}
 	}
-	return use
+	return use.replace('- ,', '   ')
 }
 
 // finalize argument parsing -> call after all arguments are defined
