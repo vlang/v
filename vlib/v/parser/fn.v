@@ -278,7 +278,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		}
 	}
 	if p.tok.kind in [.plus, .minus, .mul, .div, .mod, .gt, .lt, .eq, .ne, .le, .ge] &&
-		p.peek_tok.kind == .lpar {
+		p.peek_tok.kind == .lpar
+	{
 		name = p.tok.kind.str() // op_to_fn_name()
 		if rec_type == table.void_type {
 			p.error_with_pos('cannot use operator overloading with normal functions',
@@ -318,7 +319,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	// Return type
 	mut return_type := table.void_type
 	if p.tok.kind.is_start_of_type() ||
-		(p.tok.kind == .key_fn && p.tok.line_nr == p.prev_tok.line_nr) {
+		(p.tok.kind == .key_fn && p.tok.line_nr == p.prev_tok.line_nr)
+	{
 		return_type = p.parse_type()
 	}
 	mut type_sym_method_idx := 0
@@ -687,7 +689,8 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 fn (mut p Parser) check_fn_mutable_arguments(typ table.Type, pos token.Position) {
 	sym := p.table.get_type_symbol(typ)
 	if sym.kind !in [.array, .array_fixed, .struct_, .map, .placeholder, .sum_type] &&
-		!typ.is_ptr() && !typ.is_pointer() {
+		!typ.is_ptr() && !typ.is_pointer()
+	{
 		p.error_with_pos('mutable arguments are only allowed for arrays, maps, structs and pointers\n' +
 			'return values instead: `fn foo(mut n $sym.name) {` => `fn foo(n $sym.name) $sym.name {`',
 			pos)

@@ -158,7 +158,8 @@ fn (mut f Fmt) adjust_complete_line() {
 			// search for next position with low penalty and same precedence to form subexpression
 			for j in i .. f.penalties.len {
 				if f.penalties[j] <= 1 &&
-					f.precedences[j] == precedence && len_sub_expr >= max_len[1] {
+					f.precedences[j] == precedence && len_sub_expr >= max_len[1]
+				{
 					sub_expr_end_idx = j
 					break
 				} else if f.precedences[j] < precedence {
@@ -1555,8 +1556,15 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 			}
 			if i < it.branches.len - 1 || !it.has_else {
 				f.write('${dollar}if ')
+				cur_pos := f.out.len
 				f.expr(branch.cond)
-				f.write(' ')
+				cond_len := f.out.len - cur_pos
+				is_cond_wrapped := if cond_len > 0 { '\n' in f.out.last_n(cond_len) } else { false }
+				if is_cond_wrapped {
+					f.writeln('')
+				} else {
+					f.write(' ')
+				}
 			}
 			f.write('{')
 			if single_line {
@@ -1857,11 +1865,13 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 		mut penalty := if line_break && !is_same_line_comment { 0 } else { 3 }
 		if penalty > 0 {
 			if i == 0 || it.exprs[i - 1] is ast.ArrayInit || it.exprs[i - 1] is ast.StructInit ||
-				it.exprs[i - 1] is ast.MapInit || it.exprs[i - 1] is ast.CallExpr {
+				it.exprs[i - 1] is ast.MapInit || it.exprs[i - 1] is ast.CallExpr
+			{
 				penalty--
 			}
 			if expr is ast.ArrayInit ||
-				expr is ast.StructInit || expr is ast.MapInit || expr is ast.CallExpr {
+				expr is ast.StructInit || expr is ast.MapInit || expr is ast.CallExpr
+			{
 				penalty--
 			}
 		}
@@ -2021,7 +2031,8 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 				f.comments(field.next_comments, inline: false, has_nl: true, level: .keep)
 				if single_line_fields &&
 					(field.comments.len > 0 ||
-					field.next_comments.len > 0 || !expr_is_single_line(field.expr) || f.line_len > max_len.last()) {
+					field.next_comments.len > 0 || !expr_is_single_line(field.expr) || f.line_len > max_len.last())
+				{
 					single_line_fields = false
 					f.out.go_back_to(fields_start)
 					f.line_len = fields_start

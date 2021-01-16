@@ -43,7 +43,8 @@ pub fn (mut ws Client) validate_frame(frame &Frame) ? {
 		return error('rsv cannot be other than 0, not negotiated')
 	}
 	if (int(frame.opcode) >= 3 && int(frame.opcode) <= 7) ||
-		(int(frame.opcode) >= 11 && int(frame.opcode) <= 15) {
+		(int(frame.opcode) >= 11 && int(frame.opcode) <= 15)
+	{
 		ws.close(1002, 'use of reserved opcode') ?
 		return error('use of reserved opcode')
 	}
