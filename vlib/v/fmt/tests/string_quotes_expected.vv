@@ -3,9 +3,8 @@ fn main() {
 	println('This is correct !')
 	println("It's okay")
 	println('This is "too"')
-	// TODO
-	// 'I\'m not correctly formatted' => "I'm not correctly formatted"
-	// "\"Everything on the internet is true\" - Albert Einstein, 1965" => '"Everything on the internet is true" - Albert Einstein, 1965'
+	println("I'm correctly formatted")
+	println('"Everything on the internet is true" - Albert Einstein, 1965')
 	println('I\'m out of idea "_"')
-	// "Definitely out \":'(\"" => 'Definitely out ":\'("'
+	println('Definitely out ":\'("')
 }

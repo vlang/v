@@ -17,7 +17,7 @@ fn C.free(ptr voidptr)
 
 fn C.exit(code int)
 
-fn C.qsort(voidptr, int, int, qsort_callback_func)
+fn C.qsort(base voidptr, items size_t, item_size size_t, cb qsort_callback_func)
 
 fn C.sprintf(a ...voidptr) int
 
@@ -59,7 +59,9 @@ fn C.fopen() voidptr
 
 fn C.fileno(voidptr) int
 
-fn C.fwrite() int
+fn C.fread(ptr voidptr, item_size size_t, items size_t, stream &C.FILE) size_t
+
+fn C.fwrite(ptr voidptr, item_size size_t, items size_t, stream &C.FILE) size_t
 
 fn C.fclose() int
 
@@ -95,8 +97,6 @@ fn C.remove() int
 fn C.rmdir() int
 
 fn C.chdir() int
-
-fn C.fread() int
 
 fn C.rewind() int
 

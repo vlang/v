@@ -20,7 +20,7 @@ const (
 )
 
 pub struct Parser {
-	pref              &pref.Preferences
+	pref &pref.Preferences
 mut:
 	file_base         string // "hello.v"
 	file_name         string // "/home/user/hello.v"
@@ -128,7 +128,8 @@ pub fn (mut p Parser) set_path(path string) {
 	if path.ends_with('_c.v') || path.ends_with('.c.v') || path.ends_with('.c.vv') || path.ends_with('.c.vsh') {
 		p.file_backend_mode = .c
 	} else if path.ends_with('_js.v') || path.ends_with('.js.v') || path.ends_with('.js.vv') ||
-		path.ends_with('.js.vsh') {
+		path.ends_with('.js.vsh')
+	{
 		p.file_backend_mode = .js
 	} else {
 		p.file_backend_mode = .v
@@ -232,6 +233,7 @@ pub fn (mut p Parser) parse() ast.File {
 	//
 	return ast.File{
 		path: p.file_name
+		path_base: p.file_base
 		mod: module_decl
 		imports: p.ast_imports
 		imported_symbols: p.imported_symbols
@@ -672,7 +674,8 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				p.error_with_pos('unexpected name `$p.peek_tok.lit`', p.peek_tok.position())
 				return ast.Stmt{}
 			} else if !p.inside_if_expr && !p.inside_match_body && !p.inside_or_expr &&
-				p.peek_tok.kind in [.rcbr, .eof] && !p.mark_var_as_used(p.tok.lit) {
+				p.peek_tok.kind in [.rcbr, .eof] && !p.mark_var_as_used(p.tok.lit)
+			{
 				p.error_with_pos('`$p.tok.lit` evaluated but not used', p.tok.position())
 				return ast.Stmt{}
 			}
@@ -696,7 +699,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				}
 				.name {
 					return ast.ExprStmt{
-						expr: p.vweb()
+						expr: p.comp_call()
 					}
 				}
 				else {
@@ -738,10 +741,16 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			p.next()
 			spos := p.tok.position()
 			expr := p.expr(0)
-			// mut call_expr := &ast.CallExpr(0) // TODO
-			// { call_expr = it }
+			call_expr := if expr is ast.CallExpr {
+				expr
+			} else {
+				p.error_with_pos('expression in `go` must be a function call', expr.position())
+				ast.CallExpr{
+					scope: p.scope
+				}
+			}
 			return ast.GoStmt{
-				call_expr: expr
+				call_expr: call_expr
 				pos: spos.extend(p.tok.position())
 			}
 		}
@@ -985,7 +994,8 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	} else if tok.kind !in [.key_if, .key_match, .key_lock, .key_rlock, .key_select] &&
 		left0 !is ast.CallExpr && (is_top_level || p.tok.kind != .rcbr) && left0 !is ast.PostfixExpr &&
 		!(left0 is ast.InfixExpr && (left0 as ast.InfixExpr).op in [.left_shift, .arrow]) && left0 !is
-		ast.ComptimeCall && left0 !is ast.SelectorExpr {
+		ast.ComptimeCall && left0 !is ast.SelectorExpr
+	{
 		p.error_with_pos('expression evaluated but not used', left0.position())
 		return ast.Stmt{}
 	}
@@ -1182,7 +1192,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	known_var := p.mark_var_as_used(p.tok.lit)
 	mut is_mod_cast := false
 	if p.peek_tok.kind == .dot && !known_var &&
-		(language != .v || p.known_import(p.tok.lit) || p.mod.all_after_last('.') == p.tok.lit) {
+		(language != .v || p.known_import(p.tok.lit) || p.mod.all_after_last('.') == p.tok.lit)
+	{
 		// p.tok.lit has been recognized as a module
 		if language == .c {
 			mod = 'C'
@@ -1193,10 +1204,12 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 				// mark the imported module as used
 				p.register_used_import(p.tok.lit)
 				if p.peek_tok.kind == .dot &&
-					p.peek_tok2.kind != .eof && p.peek_tok2.lit.len > 0 && p.peek_tok2.lit[0].is_capital() {
+					p.peek_tok2.kind != .eof && p.peek_tok2.lit.len > 0 && p.peek_tok2.lit[0].is_capital()
+				{
 					is_mod_cast = true
 				} else if p.peek_tok.kind == .dot &&
-					p.peek_tok2.kind != .eof && p.peek_tok2.lit.len == 0 {
+					p.peek_tok2.kind != .eof && p.peek_tok2.lit.len == 0
+				{
 					// incomplete module selector must be handled by dot_expr instead
 					node = p.parse_ident(language)
 					return node
@@ -1230,7 +1243,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		// if name in table.builtin_type_names {
 		if (!known_var && (name in p.table.type_idxs ||
 			name_w_mod in p.table.type_idxs) && name !in ['C.stat', 'C.sigaction']) ||
-			is_mod_cast || (language == .v && name[0].is_capital()) {
+			is_mod_cast || (language == .v && name[0].is_capital())
+		{
 			// MainLetter(x) is *always* a cast, as long as it is not `C.`
 			// TODO handle C.stat()
 			start_pos := p.tok.position()
@@ -1274,7 +1288,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		(p.peek_tok.kind == .lt && lit0_is_capital)) &&
 		(!p.inside_match || (p.inside_select && prev_tok_kind == .arrow && lit0_is_capital)) && !p.inside_match_case &&
 		(!p.inside_if || p.inside_select) &&
-		(!p.inside_for || p.inside_select) { // && (p.tok.lit[0].is_capital() || p.builtin_mod) {
+		(!p.inside_for || p.inside_select)
+	{ // && (p.tok.lit[0].is_capital() || p.builtin_mod) {
 		return p.struct_init(false) // short_syntax: false
 	} else if p.peek_tok.kind == .dot && (lit0_is_capital && !known_var && language == .v) {
 		// T.name
@@ -1500,6 +1515,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		//
 		end_pos := p.prev_tok.position()
 		pos := name_pos.extend(end_pos)
+		comments := p.eat_line_end_comments()
 		mcall_expr := ast.CallExpr{
 			left: left
 			name: field_name
@@ -1514,6 +1530,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 				pos: or_pos
 			}
 			scope: p.scope
+			comments: comments
 		}
 		if is_filter || field_name == 'sort' {
 			p.close_scope()
@@ -1995,7 +2012,8 @@ const (
 fn (mut p Parser) global_decl() ast.GlobalDecl {
 	if !p.pref.translated && !p.pref.is_livemain && !p.builtin_mod && !p.pref.building_v &&
 		p.mod != 'ui' && p.mod != 'gg2' && p.mod != 'uiold' && !p.pref.enable_globals && !p.pref.is_fmt &&
-		p.mod !in global_enabled_mods {
+		p.mod !in global_enabled_mods
+	{
 		p.error('use `v --enable-globals ...` to enable globals')
 		return ast.GlobalDecl{}
 	}

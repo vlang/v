@@ -46,6 +46,7 @@ struct C.dirent {
 }
 
 // read_bytes returns all bytes read from file in `path`.
+[manualfree]
 pub fn read_bytes(path string) ?[]byte {
 	mut fp := vfopen(path, 'rb') ?
 	cseek := C.fseek(fp, 0, C.SEEK_END)
@@ -58,12 +59,14 @@ pub fn read_bytes(path string) ?[]byte {
 	}
 	C.rewind(fp)
 	mut res := []byte{len: fsize}
-	nr_read_elements := C.fread(res.data, fsize, 1, fp)
+	nr_read_elements := int(C.fread(res.data, fsize, 1, fp))
 	if nr_read_elements == 0 && fsize > 0 {
 		return error('fread failed')
 	}
 	C.fclose(fp)
-	return res[0..nr_read_elements * fsize]
+	fres := res[0..nr_read_elements * fsize].clone()
+	unsafe { res.free() }
+	return fres
 }
 
 // read_file reads the file in `path` and returns the contents.
@@ -85,7 +88,7 @@ pub fn read_file(path string) ?string {
 	C.rewind(fp)
 	unsafe {
 		mut str := malloc(fsize + 1)
-		nelements := C.fread(str, fsize, 1, fp)
+		nelements := int(C.fread(str, fsize, 1, fp))
 		if nelements == 0 && fsize > 0 {
 			free(str)
 			return error('fread failed')
@@ -580,15 +583,18 @@ pub fn on_segfault(f voidptr) {
 
 // executable returns the path name of the executable that started the current
 // process.
+[manualfree]
 pub fn executable() string {
 	$if linux {
-		mut result := vcalloc(max_path_len)
-		count := C.readlink('/proc/self/exe', charptr(result), max_path_len)
+		mut xresult := vcalloc(max_path_len)
+		count := C.readlink('/proc/self/exe', charptr(xresult), max_path_len)
 		if count < 0 {
 			eprintln('os.executable() failed at reading /proc/self/exe to get exe path')
 			return executable_fallback()
 		}
-		return unsafe { result.vstring() }
+		res := unsafe { xresult.vstring() }.clone()
+		unsafe { free(xresult) }
+		return res
 	}
 	$if windows {
 		max := 512
@@ -713,15 +719,19 @@ pub fn getwd() string {
 		max := 512 // max_path_len * sizeof(wchar_t)
 		buf := &u16(vcalloc(max * 2))
 		if C._wgetcwd(buf, max) == 0 {
+			free(buf)
 			return ''
 		}
 		return string_from_wide(buf)
 	} $else {
 		buf := vcalloc(512)
 		if C.getcwd(charptr(buf), 512) == 0 {
+			free(buf)
 			return ''
 		}
-		return unsafe { buf.vstring() }
+		res := unsafe { buf.vstring() }.clone()
+		free(buf)
+		return res
 	}
 }
 
@@ -730,8 +740,12 @@ pub fn getwd() string {
 // Also https://insanecoding.blogspot.com/2007/11/pathmax-simply-isnt.html
 // and https://insanecoding.blogspot.com/2007/11/implementing-realpath-in-c.html
 // NB: this particular rabbit hole is *deep* ...
+[manualfree]
 pub fn real_path(fpath string) string {
 	mut fullpath := vcalloc(max_path_len)
+	defer {
+		unsafe { free(fullpath) }
+	}
 	mut ret := charptr(0)
 	$if windows {
 		ret = charptr(C._fullpath(charptr(fullpath), charptr(fpath.str), max_path_len))
@@ -745,7 +759,9 @@ pub fn real_path(fpath string) string {
 		}
 	}
 	res := unsafe { fullpath.vstring() }
-	return normalize_drive_letter(res)
+	nres := normalize_drive_letter(res)
+	cres := nres.clone()
+	return cres
 }
 
 fn normalize_drive_letter(path string) string {
@@ -756,7 +772,8 @@ fn normalize_drive_letter(path string) string {
 		return path
 	}
 	if path.len > 2 &&
-		path[0] >= `a` && path[0] <= `z` && path[1] == `:` && path[2] == path_separator[0] {
+		path[0] >= `a` && path[0] <= `z` && path[1] == `:` && path[2] == path_separator[0]
+	{
 		unsafe {
 			x := &path.str[0]
 			(*x) = *x - 32

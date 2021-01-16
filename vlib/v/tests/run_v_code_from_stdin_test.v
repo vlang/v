@@ -1,8 +1,8 @@
 import os
 
-const (
-	vexe = os.getenv('VEXE')
-)
+const vexe = os.getenv('VEXE')
+
+const turn_off_vcolors = os.setenv('VCOLORS', 'never', true)
 
 fn test_vexe_is_set() {
 	assert vexe != ''
@@ -24,7 +24,5 @@ fn pipe_to_v_run() ? {
 }
 
 fn test_pipe_to_v_run() {
-	pipe_to_v_run() or {
-		panic(err)
-	}
+	pipe_to_v_run() or { panic(err) }
 }

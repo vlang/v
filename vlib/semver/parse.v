@@ -5,7 +5,7 @@ struct RawVersion {
 	prerelease string
 	metadata   string
 mut:
-	raw_ints   []string
+	raw_ints []string
 }
 
 const (

@@ -1,0 +1,42 @@
+vlib/v/checker/tests/method_op_alias_err.vv:4:1: error: both sides of an operator must be the same type
+    2 | type Foo2 = string
+    3 | 
+    4 | fn (f Foo) + (f1 Foo2) Foo2 {
+      | ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    5 |     return Foo2(f + f1)
+    6 | }
+vlib/v/checker/tests/method_op_alias_err.vv:5:19: error: infix expr: cannot use `string` (right expression) as `string`
+    3 | 
+    4 | fn (f Foo) + (f1 Foo2) Foo2 {
+    5 |     return Foo2(f + f1)
+      |                   ^
+    6 | }
+    7 |
+vlib/v/checker/tests/method_op_alias_err.vv:8:1: error: cannot define operator methods on type alias for `string`
+    6 | }
+    7 | 
+    8 | fn (f Foo) * (f1 Foo) Foo {
+      | ~~~~~~~~~~~~~~~~~~~~~~~~~
+    9 |     return Foo(f + f1)
+   10 | }
+vlib/v/checker/tests/method_op_alias_err.vv:14:6: error: mismatched types `Foo` and `string`
+   12 | fn main() {
+   13 |    mut f := Foo('fg')
+   14 |    f += 'fg'
+      |      ~~
+   15 |    f *= Foo2('2')
+   16 |    f -= Foo('fo')
+vlib/v/checker/tests/method_op_alias_err.vv:15:9: error: cannot assign to `f`: expected `Foo`, not `Foo2`
+   13 |    mut f := Foo('fg')
+   14 |    f += 'fg'
+   15 |    f *= Foo2('2')
+      |         ~~~~~~~~~
+   16 |    f -= Foo('fo') 
+   17 |     println(f)
+vlib/v/checker/tests/method_op_alias_err.vv:16:6: error: cannot use operator methods on type alias for `string`
+   14 |    f += 'fg'
+   15 |    f *= Foo2('2')
+   16 |    f -= Foo('fo') 
+      |      ~~
+   17 |     println(f)
+   18 | }

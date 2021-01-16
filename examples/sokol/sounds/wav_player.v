@@ -124,10 +124,10 @@ fn read_wav_file_samples(fpath string) ?[]f32 {
 	mut offset := u32(0)
 	rh := &RIFFHeader(pbytes)
 	// eprintln('rh: $rh')
-	if rh.riff != [byte(`R`), `I`, `F`, `F`]!! {
+	if rh.riff != [byte(`R`), `I`, `F`, `F`]! {
 		return error('WAV should start with `RIFF`')
 	}
-	if rh.form_type != [byte(`W`), `A`, `V`, `E`]!! {
+	if rh.form_type != [byte(`W`), `A`, `V`, `E`]! {
 		return error('WAV should have `WAVE` form type')
 	}
 	if rh.file_size + 8 != bytes.len {
@@ -145,15 +145,15 @@ fn read_wav_file_samples(fpath string) ?[]f32 {
 		// eprintln('ch: $ch')
 		// eprintln('p: $pbytes | offset: $offset | bytes.len: $bytes.len')
 		// ////////
-		if ch.chunk_type == [byte(`L`), `I`, `S`, `T`]!! {
+		if ch.chunk_type == [byte(`L`), `I`, `S`, `T`]! {
 			continue
 		}
 		//
-		if ch.chunk_type == [byte(`i`), `d`, `3`, ` `]!! {
+		if ch.chunk_type == [byte(`i`), `d`, `3`, ` `]! {
 			continue
 		}
 		//
-		if ch.chunk_type == [byte(`f`), `m`, `t`, ` `]!! {
+		if ch.chunk_type == [byte(`f`), `m`, `t`, ` `]! {
 			// eprintln('`fmt ` chunk')
 			rf = &RIFFFormat(&ch.chunk_data)
 			// eprintln('fmt riff format: $rf')
@@ -169,7 +169,7 @@ fn read_wav_file_samples(fpath string) ?[]f32 {
 			continue
 		}
 		//
-		if ch.chunk_type == [byte(`d`), `a`, `t`, `a`]!! {
+		if ch.chunk_type == [byte(`d`), `a`, `t`, `a`]! {
 			if rf == 0 {
 				return error('`data` chunk should be after `fmt ` chunk')
 			}

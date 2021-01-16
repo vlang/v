@@ -19,17 +19,16 @@ const (
 
 pub struct Scanner {
 pub mut:
-	file_path                   string
-	text                        string
-	pos                         int
-	line_nr                     int
-	last_nl_pos                 int // for calculating column
-	is_inside_string            bool
-	is_inter_start              bool // for hacky string interpolation TODO simplify
-	is_inter_end                bool
-	is_enclosed_inter           bool
-	is_debug                    bool
-	line_comment                string
+	file_path         string
+	text              string
+	pos               int
+	line_nr           int
+	last_nl_pos       int // for calculating column
+	is_inside_string  bool
+	is_inter_start    bool // for hacky string interpolation TODO simplify
+	is_inter_end      bool
+	is_enclosed_inter bool
+	line_comment      string
 	// prev_tok                 TokenKind
 	is_started                  bool
 	is_print_line_on_error      bool
@@ -885,11 +884,13 @@ fn (mut s Scanner) text_scan() token.Token {
 					s.pos++
 					return s.new_token(.ne, '', 2)
 				} else if s.text.len > s.pos + 3 &&
-					nextc == `i` && s.text[s.pos + 2] == `n` && s.text[s.pos + 3].is_space() {
+					nextc == `i` && s.text[s.pos + 2] == `n` && s.text[s.pos + 3].is_space()
+				{
 					s.pos += 2
 					return s.new_token(.not_in, '', 3)
 				} else if s.text.len > s.pos + 3 &&
-					nextc == `i` && s.text[s.pos + 2] == `s` && s.text[s.pos + 3].is_space() {
+					nextc == `i` && s.text[s.pos + 2] == `s` && s.text[s.pos + 3].is_space()
+				{
 					s.pos += 2
 					return s.new_token(.not_is, '', 3)
 				} else {
@@ -959,7 +960,10 @@ fn (mut s Scanner) text_scan() token.Token {
 					}
 					s.pos++
 					if s.should_parse_comment() {
-						comment := s.text[start..(s.pos - 1)].trim(' ')
+						mut comment := s.text[start..(s.pos - 1)].trim(' ')
+						if !comment.contains('\n') {
+							comment = '\x01' + comment
+						}
 						return s.new_token(.comment, comment, comment.len + 4)
 					}
 					// Skip if not in fmt mode
@@ -1014,7 +1018,8 @@ fn (mut s Scanner) ident_string() string {
 	mut n_cr_chars := 0
 	mut start := s.pos
 	if s.text[start] == s.quote ||
-		(s.text[start] == s.inter_quote && (s.is_inter_start || s.is_enclosed_inter)) {
+		(s.text[start] == s.inter_quote && (s.is_inter_start || s.is_enclosed_inter))
+	{
 		start++
 	}
 	s.is_inside_string = false
@@ -1044,7 +1049,8 @@ fn (mut s Scanner) ident_string() string {
 		// Don't allow \0
 		if c == `0` && s.pos > 2 && prevc == slash {
 			if (s.pos < s.text.len - 1 && s.text[s.pos + 1].is_digit()) ||
-				s.count_symbol_before(s.pos - 1, slash) % 2 == 0 {
+				s.count_symbol_before(s.pos - 1, slash) % 2 == 0
+			{
 			} else if !is_cstr && !is_raw {
 				s.error(r'cannot use `\0` (NULL character) in the string literal')
 			}
@@ -1066,7 +1072,8 @@ fn (mut s Scanner) ident_string() string {
 			if c == `u` && (s.text[s.pos + 1] == s.quote ||
 				s.text[s.pos + 2] == s.quote || s.text[s.pos + 3] == s.quote || s.text[s.pos + 4] == s.quote ||
 				!s.text[s.pos + 1].is_hex_digit() || !s.text[s.pos + 2].is_hex_digit() || !s.text[s.pos + 3].is_hex_digit() ||
-				!s.text[s.pos + 4].is_hex_digit()) {
+				!s.text[s.pos + 4].is_hex_digit())
+			{
 				s.error(r'`\u` incomplete unicode character value')
 			}
 		}
@@ -1080,7 +1087,8 @@ fn (mut s Scanner) ident_string() string {
 		}
 		// $var
 		if prevc == `$` && util.is_name_char(c) && !is_raw && s.count_symbol_before(s.pos - 2, slash) %
-			2 == 0 {
+			2 == 0
+		{
 			s.is_inside_string = true
 			s.is_inter_start = true
 			s.pos -= 2
@@ -1151,7 +1159,7 @@ fn (mut s Scanner) ident_char() string {
 		}
 	}
 	// Escapes a `'` character
-	return if c == "\'" {
+	return if c == "'" {
 		'\\' + c
 	} else {
 		c
@@ -1170,29 +1178,6 @@ fn (s &Scanner) expect(want string, start_pos int) bool {
 		}
 	}
 	return true
-}
-
-fn (mut s Scanner) debug_tokens() {
-	s.pos = 0
-	s.is_started = false
-	s.is_debug = true
-	fname := s.file_path.all_after_last(os.path_separator)
-	println('\n===DEBUG TOKENS $fname===')
-	for {
-		tok := s.scan()
-		tok_kind := tok.kind
-		lit := tok.lit
-		print(tok_kind.str())
-		if lit != '' {
-			println(' `$lit`')
-		} else {
-			println('')
-		}
-		if tok_kind == .eof {
-			println('============ END OF DEBUG TOKENS ==================')
-			break
-		}
-	}
 }
 
 [inline]

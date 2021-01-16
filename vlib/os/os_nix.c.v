@@ -90,10 +90,16 @@ pub fn ls(path string) ?[]string {
 		if isnil(ent) {
 			break
 		}
-		name := tos_clone(byteptr(ent.d_name))
-		if name != '.' && name != '..' && name != '' {
-			res << name
+		bptr := byteptr(ent.d_name)
+		unsafe {
+			if bptr[0] == 0 ||
+				(bptr[0] == `.` && bptr[1] == 0) ||
+				(bptr[0] == `.` && bptr[1] == `.` && bptr[2] == 0)
+			{
+				continue
+			}
 		}
+		res << tos_clone(bptr)
 	}
 	C.closedir(dir)
 	return res
@@ -179,9 +185,9 @@ pub fn exec(cmd string) ?Result {
 
 pub struct Command {
 mut:
-	f               voidptr
+	f voidptr
 pub mut:
-	eof             bool
+	eof bool
 pub:
 	path            string
 	redirect_stdout bool

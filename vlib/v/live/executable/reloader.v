@@ -4,7 +4,7 @@ import os
 import time
 import dl
 import strconv
-import live
+import v.live
 
 pub const (
 	is_used = 1
@@ -50,9 +50,10 @@ pub fn start_reloader(mut r live.LiveReloadInfo) {
 	go reloader(mut r)
 }
 
-[if debuglive]
 fn elog(r &live.LiveReloadInfo, s string){
-	eprintln(s)
+	$if debuglive ? {
+		eprintln(s)
+	}
 }
 
 fn compile_and_reload_shared_lib(mut r live.LiveReloadInfo) ?bool {

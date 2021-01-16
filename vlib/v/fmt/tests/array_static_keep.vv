@@ -6,7 +6,7 @@ mut:
 }
 
 struct TileLine {
-	ypos   int
+	ypos int
 mut:
 	field  [5]int
 	points int

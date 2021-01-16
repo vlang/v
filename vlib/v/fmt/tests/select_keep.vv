@@ -108,7 +108,8 @@ fn test_select_blocks() {
 		else {
 			h = 2
 		}
-	} {
+	}
+	{
 		panic('channel is still open')
 	} else {
 		is_open = false

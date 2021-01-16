@@ -19,7 +19,7 @@ struct Fragment {
 struct Frame {
 mut:
 	// length of the websocket header part
-	header_len  int = 2
+	header_len int = 2
 	// size of total frame
 	frame_size  int = 2
 	fin         bool    // true if final fragment of message
@@ -43,7 +43,8 @@ pub fn (mut ws Client) validate_frame(frame &Frame) ? {
 		return error('rsv cannot be other than 0, not negotiated')
 	}
 	if (int(frame.opcode) >= 3 && int(frame.opcode) <= 7) ||
-		(int(frame.opcode) >= 11 && int(frame.opcode) <= 15) {
+		(int(frame.opcode) >= 11 && int(frame.opcode) <= 15)
+	{
 		ws.close(1002, 'use of reserved opcode') ?
 		return error('use of reserved opcode')
 	}
@@ -177,6 +178,7 @@ pub fn (mut ws Client) read_next_message() ?Message {
 		}
 		return msg
 	}
+	return none
 }
 
 // payload_from_fragments returs the whole paylaod from fragmented message

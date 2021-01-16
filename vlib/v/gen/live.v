@@ -89,7 +89,7 @@ fn (mut g Gen) generate_hotcode_reloading_main_caller() {
 	if g.pref.os == .windows {
 		g.writeln('\t\tlive_fn_mutex = CreateMutexA(0, 0, 0);')
 	}
-	g.writeln('\t\tlive__LiveReloadInfo* live_info = live__executable__new_live_reload_info(')
+	g.writeln('\t\tv__live__LiveReloadInfo* live_info = v__live__executable__new_live_reload_info(')
 	g.writeln('\t\t\t\t\t tos2("$file"),')
 	g.writeln('\t\t\t\t\t tos2("$vexe"),')
 	g.writeln('\t\t\t\t\t tos2("$vopts"),')
@@ -99,7 +99,7 @@ fn (mut g Gen) generate_hotcode_reloading_main_caller() {
 	// g_live_info gives access to the LiveReloadInfo methods,
 	// to the custom user code, through calling v_live_info()
 	g.writeln('\t\t   g_live_info = (void*)live_info;')
-	g.writeln('\t\tlive__executable__start_reloader(live_info);')
+	g.writeln('\t\tv__live__executable__start_reloader(live_info);')
 	g.writeln('\t}\t// end of live code initialization section')
 	g.writeln('')
 }

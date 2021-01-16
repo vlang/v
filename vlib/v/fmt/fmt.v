@@ -10,6 +10,7 @@ import strings
 import v.util
 
 const (
+	bs      = '\\'
 	tabs    = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t',
 		'\t\t\t\t\t\t\t\t',
 	]
@@ -157,7 +158,8 @@ fn (mut f Fmt) adjust_complete_line() {
 			// search for next position with low penalty and same precedence to form subexpression
 			for j in i .. f.penalties.len {
 				if f.penalties[j] <= 1 &&
-					f.precedences[j] == precedence && len_sub_expr >= max_len[1] {
+					f.precedences[j] == precedence && len_sub_expr >= max_len[1]
+				{
 					sub_expr_end_idx = j
 					break
 				} else if f.precedences[j] < precedence {
@@ -188,9 +190,85 @@ fn (mut f Fmt) adjust_complete_line() {
 	}
 }
 
+pub fn (mut f Fmt) wrap_long_line(penalty_idx int, add_indent bool) bool {
+	if f.line_len <= max_len[penalty_idx] {
+		return false
+	}
+	if f.out.buf[f.out.buf.len - 1] == ` ` {
+		f.out.go_back(1)
+	}
+	f.write('\n')
+	if add_indent {
+		f.indent++
+	}
+	f.write_indent()
+	if add_indent {
+		f.indent--
+	}
+	f.line_len = 0
+	return true
+}
+
+pub fn (mut f Fmt) remove_new_line() {
+	mut i := 0
+	for i = f.out.len - 1; i >= 0; i-- {
+		if !f.out.buf[i].is_space() { // != `\n` {
+			break
+		}
+	}
+	f.out.go_back(f.out.len - i - 1)
+	f.empty_line = false
+	// f.writeln('sdf')
+}
+
 pub fn (mut f Fmt) set_current_module_name(cmodname string) {
 	f.cur_mod = cmodname
 	f.table.cmod_prefix = cmodname + '.'
+}
+
+fn (f Fmt) get_modname_prefix(mname string) (string, string) {
+	// ./tests/proto_module_importing_vproto_keep.vv to know, why here is checked for ']' and '&'
+	if !mname.contains(']') && !mname.contains('&') {
+		return mname, ''
+	}
+	after_rbc := mname.all_after_last(']')
+	after_ref := mname.all_after_last('&')
+	modname := if after_rbc.len < after_ref.len { after_rbc } else { after_ref }
+	return modname, mname.trim_suffix(modname)
+}
+
+pub fn (mut f Fmt) no_cur_mod(typename string) string {
+	return util.no_cur_mod(typename, f.cur_mod)
+}
+
+// foo.bar.fn() => bar.fn()
+pub fn (mut f Fmt) short_module(name string) string {
+	if !name.contains('.') {
+		return name
+	}
+	if name in f.mod2alias {
+		return f.mod2alias[name]
+	}
+	if name.ends_with('>') {
+		x := name.trim_suffix('>').split('<')
+		if x.len == 2 {
+			main := f.short_module(x[0])
+			genlist := x[1].split(',')
+			genshorts := genlist.map(f.short_module(it)).join(',')
+			return '$main<$genshorts>'
+		}
+	}
+	vals := name.split('.')
+	if vals.len < 2 {
+		return name
+	}
+	mname, tprefix := f.get_modname_prefix(vals[vals.len - 2])
+	symname := vals[vals.len - 1]
+	aname := f.mod2alias[mname]
+	if aname == '' {
+		return symname
+	}
+	return '$tprefix${aname}.$symname'
 }
 
 pub fn (mut f Fmt) mod(mod ast.Module) {
@@ -200,6 +278,25 @@ pub fn (mut f Fmt) mod(mod ast.Module) {
 	}
 	f.attrs(mod.attrs)
 	f.writeln('module $mod.name\n')
+}
+
+pub fn (mut f Fmt) mark_types_import_as_used(typ table.Type) {
+	sym := f.table.get_type_symbol(typ)
+	f.mark_import_as_used(sym.name)
+}
+
+// `name` is a function (`foo.bar()`) or type (`foo.Bar{}`)
+pub fn (mut f Fmt) mark_import_as_used(name string) {
+	if !name.contains('.') {
+		return
+	}
+	pos := name.last_index('.') or { 0 }
+	mod := name[..pos]
+	if mod in f.used_imports {
+		return
+	}
+	f.used_imports << mod
+	// println('marking module $mod as used')
 }
 
 pub fn (mut f Fmt) imports(imports []ast.Import) {
@@ -266,163 +363,49 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 	}
 	match node {
 		ast.AssignStmt {
-			f.comments(node.comments, {})
-			for i, left in node.left {
-				if left is ast.Ident {
-					var_info := left.var_info()
-					if var_info.is_static {
-						f.write('static ')
-					}
-					f.expr(left)
-				} else {
-					f.expr(left)
-				}
-				if i < node.left.len - 1 {
-					f.write(', ')
-				}
-			}
-			f.is_assign = true
-			f.write(' $node.op.str() ')
-			for i, val in node.right {
-				f.prefix_expr_cast_expr(val)
-				if i < node.right.len - 1 {
-					f.write(', ')
-				}
-			}
-			f.comments(node.end_comments, has_nl: false, inline: true, level: .keep)
-			if !f.single_line_if {
-				f.writeln('')
-			}
-			f.is_assign = false
+			f.assign_stmt(node)
 		}
 		ast.AssertStmt {
-			f.write('assert ')
-			f.expr(node.expr)
-			f.writeln('')
+			f.assert_stmt(node)
 		}
 		ast.Block {
-			if node.is_unsafe {
-				f.write('unsafe ')
-			}
-			f.write('{')
-			if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
-				f.writeln('')
-				f.stmts(node.stmts)
-			}
-			f.writeln('}')
+			f.block(node)
 		}
 		ast.BranchStmt {
 			f.writeln(node.str())
 		}
 		ast.CompFor {
-			typ := f.no_cur_mod(f.table.type_to_str(node.typ))
-			f.write('\$for $node.val_var in ${typ}.$node.kind.str() {')
-			if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
-				f.writeln('')
-				f.stmts(node.stmts)
-			}
-			f.writeln('}')
+			f.comp_for(node)
 		}
 		ast.ConstDecl {
 			f.const_decl(node)
 		}
 		ast.DeferStmt {
-			f.write('defer {')
-			if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
-				f.writeln('')
-				f.stmts(node.stmts)
-			}
-			f.writeln('}')
+			f.defer_stmt(node)
 		}
 		ast.EnumDecl {
 			f.enum_decl(node)
 		}
 		ast.ExprStmt {
-			f.comments(node.comments, {})
-			f.expr(node.expr)
-			if !f.single_line_if {
-				f.writeln('')
-			}
+			f.expr_stmt(node)
 		}
 		ast.FnDecl {
 			f.fn_decl(node)
 		}
 		ast.ForCStmt {
-			if node.label.len > 0 {
-				f.write('$node.label: ')
-			}
-			f.write('for ')
-			if node.has_init {
-				f.single_line_if = true // to keep all for ;; exprs on the same line
-				f.stmt(node.init)
-				f.single_line_if = false
-			}
-			f.write('; ')
-			f.expr(node.cond)
-			f.write('; ')
-			f.stmt(node.inc)
-			f.remove_new_line()
-			f.write(' {')
-			if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
-				f.writeln('')
-				f.stmts(node.stmts)
-			}
-			f.writeln('}')
+			f.for_c_stmt(node)
 		}
 		ast.ForInStmt {
-			if node.label.len > 0 {
-				f.write('$node.label: ')
-			}
-			f.write('for ')
-			if node.key_var != '' {
-				f.write(node.key_var)
-			}
-			if node.val_var != '' {
-				if node.key_var != '' {
-					f.write(', ')
-				}
-				if node.val_is_mut {
-					f.write('mut ')
-				}
-				f.write(node.val_var)
-			}
-			f.write(' in ')
-			f.expr(node.cond)
-			if node.is_range {
-				f.write(' .. ')
-				f.expr(node.high)
-			}
-			f.write(' {')
-			if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
-				f.writeln('')
-				f.stmts(node.stmts)
-			}
-			f.writeln('}')
+			f.for_in_stmt(node)
 		}
 		ast.ForStmt {
-			if node.label.len > 0 {
-				f.write('$node.label: ')
-			}
-			f.write('for ')
-			f.expr(node.cond)
-			if node.is_inf {
-				f.write('{')
-			} else {
-				f.write(' {')
-			}
-			if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
-				f.writeln('')
-				f.stmts(node.stmts)
-			}
-			f.writeln('}')
+			f.for_stmt(node)
 		}
 		ast.GlobalDecl {
 			f.global_decl(node)
 		}
 		ast.GoStmt {
-			f.write('go ')
-			f.expr(node.call_expr)
-			f.writeln('')
+			f.go_stmt(node, false)
 		}
 		ast.GotoLabel {
 			f.writeln('$node.name:')
@@ -444,55 +427,10 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.mod(node)
 		}
 		ast.Return {
-			f.comments(node.comments, {})
-			f.write('return')
-			if node.exprs.len > 1 {
-				// multiple returns
-				f.write(' ')
-				for i, expr in node.exprs {
-					f.expr(expr)
-					if i < node.exprs.len - 1 {
-						f.write(', ')
-					}
-				}
-			} else if node.exprs.len == 1 {
-				// normal return
-				f.write(' ')
-				f.expr(node.exprs[0])
-			}
-			f.writeln('')
+			f.return_stmt(node)
 		}
 		ast.SqlStmt {
-			f.write('sql ')
-			f.expr(node.db_expr)
-			f.writeln(' {')
-			match node.kind {
-				.insert {
-					f.writeln('\tinsert $node.object_var_name into ${util.strip_mod_name(node.table_name)}')
-				}
-				.update {
-					f.write('\tupdate ${util.strip_mod_name(node.table_name)} set ')
-					for i, col in node.updated_columns {
-						f.write('$col = ')
-						f.expr(node.update_exprs[i])
-						if i < node.updated_columns.len - 1 {
-							f.write(', ')
-						} else {
-							f.write(' ')
-						}
-						f.wrap_long_line(2, true)
-					}
-					f.write('where ')
-					f.expr(node.where_expr)
-					f.writeln('')
-				}
-				.delete {
-					f.write('\tdelete from ${util.strip_mod_name(node.table_name)} where ')
-					f.expr(node.where_expr)
-					f.writeln('')
-				}
-			}
-			f.writeln('}')
+			f.sql_stmt(node)
 		}
 		ast.StructDecl {
 			f.struct_decl(node)
@@ -501,6 +439,15 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			// already handled in f.imports
 			f.type_decl(node)
 		}
+	}
+}
+
+fn stmt_is_single_line(stmt ast.Stmt) bool {
+	match stmt {
+		ast.ExprStmt { return expr_is_single_line(stmt.expr) }
+		ast.Return { return true }
+		ast.AssignStmt { return true }
+		else { return false }
 	}
 }
 
@@ -589,9 +536,55 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 	f.writeln('\n')
 }
 
+[inline]
+fn abs(v int) int {
+	return if v >= 0 {
+		v
+	} else {
+		-v
+	}
+}
+
 const (
 	threshold_to_align_struct = 8
 )
+
+struct StructFieldAlignInfo {
+mut:
+	first_line   int
+	last_line    int
+	max_type_len int
+	max_len      int
+}
+
+fn (mut list []StructFieldAlignInfo) add_new_info(len int, type_len int, line int) {
+	list << StructFieldAlignInfo{
+		first_line: line
+		last_line: line
+		max_type_len: type_len
+		max_len: len
+	}
+}
+
+[direct_array_access]
+fn (mut list []StructFieldAlignInfo) add_info(len int, type_len int, line int) {
+	if list.len == 0 {
+		list.add_new_info(len, type_len, line)
+		return
+	}
+	i := list.len - 1
+	if line - list[i].last_line > 1 {
+		list.add_new_info(len, type_len, line)
+		return
+	}
+	list[i].last_line = line
+	if len > list[i].max_len {
+		list[i].max_len = len
+	}
+	if type_len > list[i].max_type_len {
+		list[i].max_type_len = type_len
+	}
+}
 
 struct CommentAndExprAlignInfo {
 mut:
@@ -607,15 +600,6 @@ fn (mut list []CommentAndExprAlignInfo) add_new_info(attrs_len int, type_len int
 		max_type_len: type_len
 		first_line: line
 		last_line: line
-	}
-}
-
-[inline]
-fn abs(v int) int {
-	return if v >= 0 {
-		v
-	} else {
-		-v
 	}
 }
 
@@ -667,8 +651,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		return
 	}
 	f.writeln(' {')
-	mut max := 0
-	mut max_type_len := 0
+	mut field_aligns := []StructFieldAlignInfo{}
 	mut comment_aligns := []CommentAndExprAlignInfo{}
 	mut default_expr_aligns := []CommentAndExprAlignInfo{}
 	mut field_types := []string{cap: node.fields.len}
@@ -678,9 +661,6 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 			ft = f.short_module(ft)
 		}
 		field_types << ft
-		if ft.len > max_type_len {
-			max_type_len = ft.len
-		}
 		attrs_len := inline_attrs_len(field.attrs)
 		end_pos := field.pos.pos + field.pos.len
 		mut comments_len := 0 // Length of comments between field name and type
@@ -692,12 +672,10 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 				continue
 			}
 			if comment.pos.pos > field.pos.pos {
-				comments_len += '/* $comment.text */ '.len
+				comments_len += '/* ${comment.text.trim_left('\x01')} */ '.len
 			}
 		}
-		if comments_len + field.name.len > max {
-			max = comments_len + field.name.len
-		}
+		field_aligns.add_info(comments_len + field.name.len, ft.len, field.pos.line_nr)
 		if field.has_default_expr {
 			default_expr_aligns.add_info(attrs_len, field_types[i].len, field.pos.line_nr)
 		}
@@ -706,6 +684,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		styp := f.table.type_to_str(embed.typ)
 		f.writeln('\t$styp')
 	}
+	mut field_align_i := 0
 	mut comment_align_i := 0
 	mut default_expr_align_i := 0
 	for i, field in node.fields {
@@ -732,18 +711,22 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		// Handle comments between field name and type
 		mut comments_len := 0
 		for comm_idx < comments.len && comments[comm_idx].pos.pos < end_pos {
-			comment_text := '/* ${comments[comm_idx].text} */ ' // TODO handle in a function
+			comment_text := '/* ${comments[comm_idx].text.trim_left('\x01')} */ ' // TODO handle in a function
 			comments_len += comment_text.len
 			f.write(comment_text)
 			comm_idx++
 		}
-		f.write(strings.repeat(` `, max - field.name.len - comments_len))
+		mut field_align := field_aligns[field_align_i]
+		if field_align.last_line < field.pos.line_nr {
+			field_align_i++
+			field_align = field_aligns[field_align_i]
+		}
+		f.write(strings.repeat(` `, field_align.max_len - field.name.len - comments_len))
 		f.write(field_types[i])
-		after_type_pad_len := max_type_len - field_types[i].len
 		attrs_len := inline_attrs_len(field.attrs)
 		has_attrs := field.attrs.len > 0
 		if has_attrs {
-			f.write(strings.repeat(` `, after_type_pad_len))
+			f.write(strings.repeat(` `, field_align.max_type_len - field_types[i].len))
 			f.inline_attrs(field.attrs)
 		}
 		if field.has_default_expr {
@@ -780,17 +763,6 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 	}
 	f.comments_after_last_field(node.end_comments)
 	f.writeln('}\n')
-}
-
-pub fn (mut f Fmt) comments_after_last_field(comments []ast.Comment) {
-	// Handle comments after last field
-	for comment in comments {
-		f.indent++
-		f.empty_line = true
-		f.comment(comment, inline: true)
-		f.writeln('')
-		f.indent--
-	}
 }
 
 pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
@@ -876,35 +848,16 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.array_init(node)
 		}
 		ast.AsCast {
-			type_str := f.table.type_to_str(node.typ)
-			f.expr(node.expr)
-			f.write(' as $type_str')
+			f.as_cast(node)
 		}
 		ast.Assoc {
-			f.writeln('{')
-			// f.indent++
-			f.writeln('\t$node.var_name |')
-			// TODO StructInit copy pasta
-			for i, field in node.fields {
-				f.write('\t$field: ')
-				f.expr(node.exprs[i])
-				f.writeln('')
-			}
-			// f.indent--
-			f.write('}')
+			f.assoc(node)
 		}
 		ast.BoolLiteral {
 			f.write(node.val.str())
 		}
 		ast.CastExpr {
-			node.typname = f.table.get_type_symbol(node.typ).name
-			f.write(f.table.type_to_str(node.typ) + '(')
-			f.expr(node.expr)
-			if node.has_arg {
-				f.write(', ')
-				f.expr(node.arg)
-			}
-			f.write(')')
+			f.cast_expr(node)
 		}
 		ast.AtExpr {
 			f.at_expr(node)
@@ -926,75 +879,37 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			}
 		}
 		ast.ComptimeCall {
-			if node.is_vweb {
-				if node.method_name == 'html' {
-					f.write('\$vweb.html()')
-				} else {
-					f.write("\$tmpl('$node.args_var')")
-				}
-			} else {
-				method_expr := if node.has_parens {
-					'(${node.method_name}($node.args_var))'
-				} else {
-					'${node.method_name}($node.args_var)'
-				}
-				f.write('${node.left}.$$method_expr')
-			}
+			f.comptime_call(node)
 		}
 		ast.ComptimeSelector {
-			field_expr := if node.has_parens { '($node.field_expr)' } else { node.field_expr.str() }
-			f.write('${node.left}.$$field_expr')
+			f.comptime_selector(node)
 		}
 		ast.ConcatExpr {
-			for i, val in node.vals {
-				if i != 0 {
-					f.write(', ')
-				}
-				f.expr(val)
-			}
+			f.concat_expr(node)
 		}
 		ast.EnumVal {
-			name := f.short_module(node.enum_name)
-			f.write(name + '.' + node.val)
+			f.enum_val(node)
 		}
 		ast.FloatLiteral {
 			f.write(node.val)
+		}
+		ast.GoExpr {
+			f.go_stmt(node.go_stmt, true)
 		}
 		ast.IfExpr {
 			f.if_expr(node)
 		}
 		ast.Ident {
-			if mut node.info is ast.IdentVar {
-				if node.info.is_mut {
-					f.write(node.info.share.str() + ' ')
-				}
-			}
-			f.write_language_prefix(node.language)
-			if node.name == 'it' && f.it_name != '' && !f.inside_lambda { // allow `it` in lambdas
-				f.write(f.it_name)
-			} else if node.kind == .blank_ident {
-				f.write('_')
-			} else {
-				name := f.short_module(node.name)
-				// f.write('<$it.name => $name>')
-				f.write(name)
-				if name.contains('.') {
-					f.mark_module_as_used(name)
-				}
-			}
+			f.ident(node)
 		}
 		ast.IfGuardExpr {
-			f.write(node.var_name + ' := ')
-			f.expr(node.expr)
+			f.if_guard_expr(node)
 		}
 		ast.InfixExpr {
 			f.infix_expr(node)
 		}
 		ast.IndexExpr {
-			f.expr(node.left)
-			f.write('[')
-			f.expr(node.index)
-			f.write(']')
+			f.index_expr(node)
 		}
 		ast.IntegerLiteral {
 			f.write(node.val)
@@ -1012,192 +927,38 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.write('none')
 		}
 		ast.OrExpr {
-			// shouldn't happen, an or expression
-			// is always linked to a call expr
+			// shouldn't happen, an or expression is always linked to a call expr
 			panic('fmt: OrExpr should be linked to CallExpr')
 		}
 		ast.ParExpr {
-			f.write('(')
-			f.par_level++
-			f.expr(node.expr)
-			f.par_level--
-			f.write(')')
+			f.par_expr(node)
 		}
 		ast.PostfixExpr {
-			f.expr(node.expr)
-			// `$if foo ?`
-			if node.op == .question {
-				f.write(' ?')
-			} else {
-				f.write('$node.op')
-			}
+			f.postfix_expr(node)
 		}
 		ast.PrefixExpr {
-			f.write(node.op.str())
-			f.prefix_expr_cast_expr(node.right)
+			f.prefix_expr(node)
 		}
 		ast.RangeExpr {
-			f.expr(node.low)
-			if f.is_mbranch_expr {
-				f.write('...')
-			} else {
-				f.write('..')
-			}
-			f.expr(node.high)
+			f.range_expr(node)
 		}
 		ast.SelectExpr {
-			f.writeln('select {')
-			f.indent++
-			for branch in node.branches {
-				if branch.comment.text != '' {
-					f.comment(branch.comment, inline: true)
-					f.writeln('')
-				}
-				if branch.is_else {
-					f.write('else {')
-				} else {
-					if branch.is_timeout {
-						f.write('> ')
-					}
-					f.single_line_if = true
-					match branch.stmt {
-						ast.ExprStmt { f.expr(branch.stmt.expr) }
-						else { f.stmt(branch.stmt) }
-					}
-					f.single_line_if = false
-					f.write(' {')
-				}
-				if branch.stmts.len > 0 {
-					f.writeln('')
-					f.stmts(branch.stmts)
-				}
-				f.writeln('}')
-				if branch.post_comments.len > 0 {
-					f.comments(branch.post_comments, inline: true)
-				}
-			}
-			f.indent--
-			f.write('}')
+			f.select_expr(node)
 		}
 		ast.SelectorExpr {
-			f.expr(node.expr)
-			f.write('.')
-			f.write(node.field_name)
+			f.selector_expr(node)
 		}
 		ast.SizeOf {
-			if node.is_type {
-				f.write('sizeof(')
-				if node.type_name != '' {
-					if f.is_external_name(node.type_name) {
-						f.write(node.type_name)
-					} else {
-						f.write(f.short_module(node.type_name))
-					}
-				} else {
-					f.write(f.table.type_to_str(node.typ))
-				}
-				f.write(')')
-			} else {
-				f.write('sizeof(')
-				f.expr(node.expr)
-				f.write(')')
-			}
+			f.size_of(node)
 		}
 		ast.SqlExpr {
-			// sql app.db { select from Contributor where repo == id && user == 0 }
-			f.write('sql ')
-			f.expr(node.db_expr)
-			f.writeln(' {')
-			f.write('\t')
-			f.write('select ')
-			esym := f.table.get_type_symbol(node.table_type)
-			node.table_name = esym.name
-			if node.is_count {
-				f.write('count ')
-			} else {
-				if node.fields.len > 0 {
-					for tfi, tf in node.fields {
-						f.write(tf.name)
-						if tfi < node.fields.len - 1 {
-							f.write(', ')
-						}
-					}
-					f.write(' ')
-				}
-			}
-			f.write('from ${util.strip_mod_name(node.table_name)}')
-			if node.has_where {
-				f.write(' where ')
-				f.expr(node.where_expr)
-			}
-			if node.has_order {
-				f.write(' order by ')
-				f.expr(node.order_expr)
-				if node.has_desc {
-					f.write(' desc')
-				}
-			}
-			if node.has_limit {
-				f.write(' limit ')
-				f.expr(node.limit_expr)
-			}
-			if node.has_offset {
-				f.write(' offset ')
-				f.expr(node.offset_expr)
-			}
-			f.writeln('')
-			f.write('}')
+			f.sql_expr(node)
 		}
 		ast.StringLiteral {
-			if node.is_raw {
-				f.write('r')
-			} else if node.language == table.Language.c {
-				f.write('c')
-			}
-			if node.val.contains("'") && !node.val.contains('"') {
-				f.write('"$node.val"')
-			} else {
-				f.write("'$node.val'")
-			}
+			f.string_literal(node)
 		}
 		ast.StringInterLiteral {
-			// TODO: this code is very similar to ast.Expr.str()
-			mut contains_single_quote := false
-			for val in node.vals {
-				if val.contains("'") {
-					contains_single_quote = true
-				}
-				if val.contains('"') {
-					contains_single_quote = false
-					break
-				}
-			}
-			if contains_single_quote {
-				f.write('"')
-			} else {
-				f.write("'")
-			}
-			for i, val in node.vals {
-				f.write(val)
-				if i >= node.exprs.len {
-					break
-				}
-				f.write('$')
-				fspec_str, needs_braces := node.get_fspec_braces(i)
-				if needs_braces {
-					f.write('{')
-					f.expr(node.exprs[i])
-					f.write(fspec_str)
-					f.write('}')
-				} else {
-					f.expr(node.exprs[i])
-				}
-			}
-			if contains_single_quote {
-				f.write('"')
-			} else {
-				f.write("'")
-			}
+			f.string_inter_literal(node)
 		}
 		ast.StructInit {
 			f.struct_init(node)
@@ -1206,80 +967,49 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.write(f.table.type_to_str(node.typ))
 		}
 		ast.TypeOf {
-			f.write('typeof(')
-			f.expr(node.expr)
-			f.write(')')
+			f.type_of(node)
 		}
 		ast.Likely {
-			if node.is_likely {
-				f.write('_likely_')
-			} else {
-				f.write('_unlikely_')
-			}
-			f.write('(')
-			f.expr(node.expr)
-			f.write(')')
+			f.likely(node)
 		}
 		ast.UnsafeExpr {
-			single_line := node.pos.line_nr >= node.pos.last_line
-			f.write('unsafe {')
-			if single_line {
-				f.write(' ')
-			} else {
-				f.writeln('')
-				f.indent++
-				f.empty_line = true
-			}
-			f.expr(node.expr)
-			if single_line {
-				f.write(' ')
-			} else {
-				f.writeln('')
-				f.indent--
-			}
-			f.write('}')
+			f.unsafe_expr(node)
 		}
 		ast.ArrayDecompose {
-			f.write('...')
-			f.expr(node.expr)
+			f.array_decompose(node)
 		}
 	}
 }
 
-pub fn (mut f Fmt) wrap_long_line(penalty_idx int, add_indent bool) bool {
-	if f.line_len <= max_len[penalty_idx] {
-		return false
+fn expr_is_single_line(expr ast.Expr) bool {
+	match expr {
+		ast.AnonFn {
+			if !expr.decl.no_body {
+				return false
+			}
+		}
+		ast.IfExpr {
+			return false
+		}
+		ast.Comment {
+			return false
+		}
+		ast.MatchExpr {
+			return false
+		}
+		ast.StructInit {
+			if !expr.is_short && (expr.fields.len > 0 || expr.pre_comments.len > 0) {
+				return false
+			}
+		}
+		ast.CallExpr {
+			if expr.or_block.stmts.len > 1 {
+				return false
+			}
+		}
+		else {}
 	}
-	if f.out.buf[f.out.buf.len - 1] == ` ` {
-		f.out.go_back(1)
-	}
-	f.write('\n')
-	if add_indent {
-		f.indent++
-	}
-	f.write_indent()
-	if add_indent {
-		f.indent--
-	}
-	f.line_len = 0
 	return true
-}
-
-pub fn (mut f Fmt) call_args(args []ast.CallArg) {
-	f.single_line_fields = true
-	for i, arg in args {
-		if arg.is_mut {
-			f.write(arg.share.str() + ' ')
-		}
-		if i > 0 {
-			f.wrap_long_line(2, true)
-		}
-		f.expr(arg.expr)
-		if i < args.len - 1 {
-			f.write(', ')
-		}
-	}
-	f.single_line_fields = false
 }
 
 pub fn (mut f Fmt) or_expr(or_block ast.OrExpr) {
@@ -1348,85 +1078,6 @@ fn inline_attrs_len(attrs []table.Attr) int {
 	return n
 }
 
-enum CommentsLevel {
-	keep
-	indent
-}
-
-// CommentsOptions defines the way comments are going to be written
-// - has_nl: adds an newline at the end of the list of comments
-// - inline: single-line comments will be on the same line as the last statement
-// - iembed: a /* ... */ embedded comment; used in expressions; // comments the whole line
-// - level: either .keep (don't indent), or .indent (increment indentation)
-struct CommentsOptions {
-	has_nl bool = true
-	inline bool
-	level  CommentsLevel
-	iembed bool
-}
-
-pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
-	if node.text.starts_with('#!') {
-		f.writeln(node.text)
-		return
-	}
-	if options.iembed {
-		x := node.text.trim_left('\x01')
-		if x.contains('\n') {
-			f.writeln('/*')
-			f.writeln(x.trim_space())
-			f.write('*/')
-		} else {
-			f.write('/* ${x.trim(' ')} */')
-		}
-		return
-	}
-	if !node.text.contains('\n') {
-		is_separate_line := !options.inline || node.text.starts_with('\x01')
-		mut s := if node.text.starts_with('\x01') { node.text[1..] } else { node.text }
-		mut out_s := '//'
-		if s != '' {
-			match s[0] {
-				`a`...`z`, `A`...`Z`, `0`...`9` { out_s += ' ' }
-				else {}
-			}
-			out_s += s
-		}
-		if !is_separate_line && f.indent > 0 {
-			f.remove_new_line() // delete the generated \n
-			f.write(' ')
-		}
-		f.write(out_s)
-		return
-	}
-	lines := node.text.trim_space().split_into_lines()
-	f.writeln('/*')
-	for line in lines {
-		f.writeln(line)
-		f.empty_line = false
-	}
-	f.empty_line = true
-	f.write('*/')
-}
-
-pub fn (mut f Fmt) comments(comments []ast.Comment, options CommentsOptions) {
-	for i, c in comments {
-		if !f.out.last_n(1)[0].is_space() {
-			f.write(' ')
-		}
-		if options.level == .indent {
-			f.indent++
-		}
-		f.comment(c, options)
-		if i < comments.len - 1 || options.has_nl {
-			f.writeln('')
-		}
-		if options.level == .indent {
-			f.indent--
-		}
-	}
-}
-
 pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
 	// println('$it.name find_comment($it.pos.line_nr)')
 	// f.find_comment(it.pos.line_nr)
@@ -1449,43 +1100,352 @@ pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
 	}
 	// Mark all function's used type so that they are not removed from imports
 	for arg in node.params {
-		f.mark_types_module_as_used(arg.typ)
+		f.mark_types_import_as_used(arg.typ)
 	}
-	f.mark_types_module_as_used(node.return_type)
+	f.mark_types_import_as_used(node.return_type)
 }
 
-pub fn (mut f Fmt) no_cur_mod(typename string) string {
-	return util.no_cur_mod(typename, f.cur_mod)
+pub fn (mut f Fmt) as_cast(node ast.AsCast) {
+	type_str := f.table.type_to_str(node.typ)
+	f.expr(node.expr)
+	f.write(' as $type_str')
 }
 
-// foo.bar.fn() => bar.fn()
-pub fn (mut f Fmt) short_module(name string) string {
-	if !name.contains('.') {
-		return name
+pub fn (mut f Fmt) cast_expr(node ast.CastExpr) {
+	f.write(f.table.type_to_str(node.typ) + '(')
+	f.expr(node.expr)
+	if node.has_arg {
+		f.write(', ')
+		f.expr(node.arg)
 	}
-	if name in f.mod2alias {
-		return f.mod2alias[name]
+	f.write(')')
+}
+
+pub fn (mut f Fmt) assoc(node ast.Assoc) {
+	f.writeln('{')
+	// f.indent++
+	f.writeln('\t$node.var_name |')
+	// TODO StructInit copy pasta
+	for i, field in node.fields {
+		f.write('\t$field: ')
+		f.expr(node.exprs[i])
+		f.writeln('')
 	}
-	if name.ends_with('>') {
-		x := name.trim_suffix('>').split('<')
-		if x.len == 2 {
-			main := f.short_module(x[0])
-			genlist := x[1].split(',')
-			genshorts := genlist.map(f.short_module(it)).join(',')
-			return '$main<$genshorts>'
+	// f.indent--
+	f.write('}')
+}
+
+pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
+	if node.is_vweb {
+		if node.method_name == 'html' {
+			f.write('\$vweb.html()')
+		} else {
+			f.write("\$tmpl('$node.args_var')")
+		}
+	} else {
+		if node.is_embed {
+			f.write("\$embed_file('$node.embed_file.rpath')")
+		} else {
+			method_expr := if node.has_parens {
+				'(${node.method_name}($node.args_var))'
+			} else {
+				'${node.method_name}($node.args_var)'
+			}
+			f.write('${node.left}.$$method_expr')
 		}
 	}
-	vals := name.split('.')
-	if vals.len < 2 {
-		return name
+}
+
+pub fn (mut f Fmt) comptime_selector(node ast.ComptimeSelector) {
+	field_expr := if node.has_parens { '($node.field_expr)' } else { node.field_expr.str() }
+	f.write('${node.left}.$$field_expr')
+}
+
+pub fn (mut f Fmt) concat_expr(node ast.ConcatExpr) {
+	for i, val in node.vals {
+		if i != 0 {
+			f.write(', ')
+		}
+		f.expr(val)
 	}
-	mname, tprefix := f.get_modname_prefix(vals[vals.len - 2])
-	symname := vals[vals.len - 1]
-	aname := f.mod2alias[mname]
-	if aname == '' {
-		return symname
+}
+
+pub fn (mut f Fmt) enum_val(node ast.EnumVal) {
+	name := f.short_module(node.enum_name)
+	f.write(name + '.' + node.val)
+}
+
+pub fn (mut f Fmt) ident(node ast.Ident) {
+	if mut node.info is ast.IdentVar {
+		if node.info.is_mut {
+			f.write(node.info.share.str() + ' ')
+		}
 	}
-	return '$tprefix${aname}.$symname'
+	f.write_language_prefix(node.language)
+	if node.name == 'it' && f.it_name != '' && !f.inside_lambda { // allow `it` in lambdas
+		f.write(f.it_name)
+	} else if node.kind == .blank_ident {
+		f.write('_')
+	} else {
+		name := f.short_module(node.name)
+		// f.write('<$it.name => $name>')
+		f.write(name)
+		if name.contains('.') {
+			f.mark_import_as_used(name)
+		}
+	}
+}
+
+pub fn (mut f Fmt) if_guard_expr(node ast.IfGuardExpr) {
+	f.write(node.var_name + ' := ')
+	f.expr(node.expr)
+}
+
+pub fn (mut f Fmt) index_expr(node ast.IndexExpr) {
+	f.expr(node.left)
+	f.write('[')
+	f.expr(node.index)
+	f.write(']')
+}
+
+pub fn (mut f Fmt) par_expr(node ast.ParExpr) {
+	f.write('(')
+	f.par_level++
+	f.expr(node.expr)
+	f.par_level--
+	f.write(')')
+}
+
+pub fn (mut f Fmt) postfix_expr(node ast.PostfixExpr) {
+	f.expr(node.expr)
+	// `$if foo ?`
+	if node.op == .question {
+		f.write(' ?')
+	} else {
+		f.write('$node.op')
+	}
+}
+
+pub fn (mut f Fmt) prefix_expr(node ast.PrefixExpr) {
+	f.write(node.op.str())
+	f.prefix_expr_cast_expr(node.right)
+}
+
+pub fn (mut f Fmt) range_expr(node ast.RangeExpr) {
+	f.expr(node.low)
+	if f.is_mbranch_expr {
+		f.write('...')
+	} else {
+		f.write('..')
+	}
+	f.expr(node.high)
+}
+
+pub fn (mut f Fmt) select_expr(node ast.SelectExpr) {
+	f.writeln('select {')
+	f.indent++
+	for branch in node.branches {
+		if branch.comment.text != '' {
+			f.comment(branch.comment, inline: true)
+			f.writeln('')
+		}
+		if branch.is_else {
+			f.write('else {')
+		} else {
+			if branch.is_timeout {
+				f.write('> ')
+			}
+			f.single_line_if = true
+			match branch.stmt {
+				ast.ExprStmt { f.expr(branch.stmt.expr) }
+				else { f.stmt(branch.stmt) }
+			}
+			f.single_line_if = false
+			f.write(' {')
+		}
+		if branch.stmts.len > 0 {
+			f.writeln('')
+			f.stmts(branch.stmts)
+		}
+		f.writeln('}')
+		if branch.post_comments.len > 0 {
+			f.comments(branch.post_comments, inline: true)
+		}
+	}
+	f.indent--
+	f.write('}')
+}
+
+pub fn (mut f Fmt) selector_expr(node ast.SelectorExpr) {
+	f.expr(node.expr)
+	f.write('.')
+	f.write(node.field_name)
+}
+
+pub fn (mut f Fmt) size_of(node ast.SizeOf) {
+	f.write('sizeof(')
+	if node.is_type {
+		sym := f.table.get_type_symbol(node.typ)
+		if sym.name != '' {
+			if f.is_external_name(sym.name) {
+				f.write(sym.name)
+			} else {
+				f.write(f.short_module(sym.name))
+			}
+		} else {
+			f.write(f.table.type_to_str(node.typ))
+		}
+	} else {
+		f.expr(node.expr)
+	}
+	f.write(')')
+}
+
+pub fn (mut f Fmt) sql_expr(node ast.SqlExpr) {
+	// sql app.db { select from Contributor where repo == id && user == 0 }
+	f.write('sql ')
+	f.expr(node.db_expr)
+	f.writeln(' {')
+	f.write('\t')
+	f.write('select ')
+	esym := f.table.get_type_symbol(node.table_type)
+	table_name := esym.name
+	if node.is_count {
+		f.write('count ')
+	} else {
+		if node.fields.len > 0 {
+			for tfi, tf in node.fields {
+				f.write(tf.name)
+				if tfi < node.fields.len - 1 {
+					f.write(', ')
+				}
+			}
+			f.write(' ')
+		}
+	}
+	f.write('from ${util.strip_mod_name(table_name)}')
+	if node.has_where {
+		f.write(' where ')
+		f.expr(node.where_expr)
+	}
+	if node.has_order {
+		f.write(' order by ')
+		f.expr(node.order_expr)
+		if node.has_desc {
+			f.write(' desc')
+		}
+	}
+	if node.has_limit {
+		f.write(' limit ')
+		f.expr(node.limit_expr)
+	}
+	if node.has_offset {
+		f.write(' offset ')
+		f.expr(node.offset_expr)
+	}
+	f.writeln('')
+	f.write('}')
+}
+
+pub fn (mut f Fmt) string_literal(node ast.StringLiteral) {
+	use_double_quote := node.val.contains("'") && !node.val.contains('"')
+	if node.is_raw {
+		f.write('r')
+	} else if node.language == table.Language.c {
+		f.write('c')
+	}
+	if node.is_raw {
+		if use_double_quote {
+			f.write('"$node.val"')
+		} else {
+			f.write("'$node.val'")
+		}
+	} else {
+		unescaped_val := node.val.replace('$bs$bs', '\x01').replace_each(["$bs'", "'", '$bs"',
+			'"',
+		])
+		if use_double_quote {
+			s := unescaped_val.replace_each(['\x01', '$bs$bs', '"', '$bs"'])
+			f.write('"$s"')
+		} else {
+			s := unescaped_val.replace_each(['\x01', '$bs$bs', "'", "$bs'"])
+			f.write("'$s'")
+		}
+	}
+}
+
+pub fn (mut f Fmt) string_inter_literal(node ast.StringInterLiteral) {
+	// TODO: this code is very similar to ast.Expr.str()
+	mut quote := "'"
+	for val in node.vals {
+		if val.contains("'") {
+			quote = '"'
+		}
+		if val.contains('"') {
+			quote = "'"
+			break
+		}
+	}
+	f.write(quote)
+	for i, val in node.vals {
+		f.write(val)
+		if i >= node.exprs.len {
+			break
+		}
+		f.write('$')
+		fspec_str, needs_braces := node.get_fspec_braces(i)
+		if needs_braces {
+			f.write('{')
+			f.expr(node.exprs[i])
+			f.write(fspec_str)
+			f.write('}')
+		} else {
+			f.expr(node.exprs[i])
+		}
+	}
+	f.write(quote)
+}
+
+pub fn (mut f Fmt) type_of(node ast.TypeOf) {
+	f.write('typeof(')
+	f.expr(node.expr)
+	f.write(')')
+}
+
+pub fn (mut f Fmt) likely(node ast.Likely) {
+	if node.is_likely {
+		f.write('_likely_')
+	} else {
+		f.write('_unlikely_')
+	}
+	f.write('(')
+	f.expr(node.expr)
+	f.write(')')
+}
+
+pub fn (mut f Fmt) unsafe_expr(node ast.UnsafeExpr) {
+	single_line := node.pos.line_nr >= node.pos.last_line
+	f.write('unsafe {')
+	if single_line {
+		f.write(' ')
+	} else {
+		f.writeln('')
+		f.indent++
+		f.empty_line = true
+	}
+	f.expr(node.expr)
+	if single_line {
+		f.write(' ')
+	} else {
+		f.writeln('')
+		f.indent--
+	}
+	f.write('}')
+}
+
+pub fn (mut f Fmt) array_decompose(node ast.ArrayDecompose) {
+	f.write('...')
+	f.expr(node.expr)
 }
 
 pub fn (mut f Fmt) lock_expr(lex ast.LockExpr) {
@@ -1596,8 +1556,15 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 			}
 			if i < it.branches.len - 1 || !it.has_else {
 				f.write('${dollar}if ')
+				cur_pos := f.out.len
 				f.expr(branch.cond)
-				f.write(' ')
+				cond_len := f.out.len - cur_pos
+				is_cond_wrapped := if cond_len > 0 { '\n' in f.out.last_n(cond_len) } else { false }
+				if is_cond_wrapped {
+					f.writeln('')
+				} else {
+					f.write(' ')
+				}
 			}
 			f.write('{')
 			if single_line {
@@ -1645,6 +1612,23 @@ fn (mut f Fmt) write_generic_if_require(node ast.CallExpr) {
 		f.write(f.table.type_to_str(node.generic_type))
 		f.write('>')
 	}
+}
+
+pub fn (mut f Fmt) call_args(args []ast.CallArg) {
+	f.single_line_fields = true
+	for i, arg in args {
+		if arg.is_mut {
+			f.write(arg.share.str() + ' ')
+		}
+		if i > 0 {
+			f.wrap_long_line(2, true)
+		}
+		f.expr(arg.expr)
+		if i < args.len - 1 {
+			f.write(', ')
+		}
+	}
+	f.single_line_fields = false
 }
 
 pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
@@ -1716,7 +1700,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 			f.write('${node.name.after_char(`.`)}')
 		} else {
 			mut name := f.short_module(node.name)
-			f.mark_module_as_used(name)
+			f.mark_import_as_used(name)
 			if node.name in f.mod2alias {
 				name = f.mod2alias[node.name]
 			}
@@ -1804,83 +1788,12 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 	f.it_name = ''
 }
 
-pub fn (mut f Fmt) remove_new_line() {
-	mut i := 0
-	for i = f.out.len - 1; i >= 0; i-- {
-		if !f.out.buf[i].is_space() { // != `\n` {
-			break
-		}
-	}
-	f.out.go_back(f.out.len - i - 1)
-	f.empty_line = false
-	// f.writeln('sdf')
-}
-
-pub fn (mut f Fmt) mark_types_module_as_used(typ table.Type) {
-	sym := f.table.get_type_symbol(typ)
-	f.mark_module_as_used(sym.name)
-}
-
-// `name` is a function (`foo.bar()`) or type (`foo.Bar{}`)
-pub fn (mut f Fmt) mark_module_as_used(name string) {
-	if !name.contains('.') {
-		return
-	}
-	pos := name.last_index('.') or { 0 }
-	mod := name[..pos]
-	if mod in f.used_imports {
-		return
-	}
-	f.used_imports << mod
-	// println('marking module $mod as used')
-}
-
 fn (mut f Fmt) write_language_prefix(lang table.Language) {
 	match lang {
 		.c { f.write('C.') }
 		.js { f.write('JS.') }
 		else {}
 	}
-}
-
-fn stmt_is_single_line(stmt ast.Stmt) bool {
-	match stmt {
-		ast.ExprStmt { return expr_is_single_line(stmt.expr) }
-		ast.Return { return true }
-		ast.AssignStmt { return true }
-		else { return false }
-	}
-}
-
-fn expr_is_single_line(expr ast.Expr) bool {
-	match expr {
-		ast.AnonFn {
-			if !expr.decl.no_body {
-				return false
-			}
-		}
-		ast.IfExpr {
-			return false
-		}
-		ast.Comment {
-			return false
-		}
-		ast.MatchExpr {
-			return false
-		}
-		ast.StructInit {
-			if !expr.is_short && (expr.fields.len > 0 || expr.pre_comments.len > 0) {
-				return false
-			}
-		}
-		ast.CallExpr {
-			if expr.or_block.stmts.len > 1 {
-				return false
-			}
-		}
-		else {}
-	}
-	return true
 }
 
 pub fn (mut f Fmt) chan_init(mut it ast.ChanInit) {
@@ -1952,11 +1865,13 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 		mut penalty := if line_break && !is_same_line_comment { 0 } else { 3 }
 		if penalty > 0 {
 			if i == 0 || it.exprs[i - 1] is ast.ArrayInit || it.exprs[i - 1] is ast.StructInit ||
-				it.exprs[i - 1] is ast.MapInit || it.exprs[i - 1] is ast.CallExpr {
+				it.exprs[i - 1] is ast.MapInit || it.exprs[i - 1] is ast.CallExpr
+			{
 				penalty--
 			}
 			if expr is ast.ArrayInit ||
-				expr is ast.StructInit || expr is ast.MapInit || expr is ast.CallExpr {
+				expr is ast.StructInit || expr is ast.MapInit || expr is ast.CallExpr
+			{
 				penalty--
 			}
 		}
@@ -2000,7 +1915,7 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 	// `[100]byte`
 	if it.is_fixed {
 		if it.has_val {
-			f.write('!!')
+			f.write('!')
 			return
 		}
 		f.write(f.table.type_to_str(it.elem_type))
@@ -2116,7 +2031,8 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 				f.comments(field.next_comments, inline: false, has_nl: true, level: .keep)
 				if single_line_fields &&
 					(field.comments.len > 0 ||
-					field.next_comments.len > 0 || !expr_is_single_line(field.expr) || f.line_len > max_len.last()) {
+					field.next_comments.len > 0 || !expr_is_single_line(field.expr) || f.line_len > max_len.last())
+				{
 					single_line_fields = false
 					f.out.go_back_to(fields_start)
 					f.line_len = fields_start
@@ -2241,13 +2157,211 @@ fn (mut f Fmt) is_external_name(name string) bool {
 	return false
 }
 
-fn (f Fmt) get_modname_prefix(mname string) (string, string) {
-	// ./tests/proto_module_importing_vproto_keep.vv to know, why here is checked for ']' and '&'
-	if !mname.contains(']') && !mname.contains('&') {
-		return mname, ''
+pub fn (mut f Fmt) assign_stmt(node ast.AssignStmt) {
+	f.comments(node.comments, {})
+	for i, left in node.left {
+		if left is ast.Ident {
+			var_info := left.var_info()
+			if var_info.is_static {
+				f.write('static ')
+			}
+			f.expr(left)
+		} else {
+			f.expr(left)
+		}
+		if i < node.left.len - 1 {
+			f.write(', ')
+		}
 	}
-	after_rbc := mname.all_after_last(']')
-	after_ref := mname.all_after_last('&')
-	modname := if after_rbc.len < after_ref.len { after_rbc } else { after_ref }
-	return modname, mname.trim_suffix(modname)
+	f.is_assign = true
+	f.write(' $node.op.str() ')
+	for i, val in node.right {
+		f.prefix_expr_cast_expr(val)
+		if i < node.right.len - 1 {
+			f.write(', ')
+		}
+	}
+	f.comments(node.end_comments, has_nl: false, inline: true, level: .keep)
+	if !f.single_line_if {
+		f.writeln('')
+	}
+	f.is_assign = false
+}
+
+pub fn (mut f Fmt) assert_stmt(node ast.AssertStmt) {
+	f.write('assert ')
+	f.expr(node.expr)
+	f.writeln('')
+}
+
+pub fn (mut f Fmt) block(node ast.Block) {
+	if node.is_unsafe {
+		f.write('unsafe ')
+	}
+	f.write('{')
+	if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
+		f.writeln('')
+		f.stmts(node.stmts)
+	}
+	f.writeln('}')
+}
+
+pub fn (mut f Fmt) comp_for(node ast.CompFor) {
+	typ := f.no_cur_mod(f.table.type_to_str(node.typ))
+	f.write('\$for $node.val_var in ${typ}.$node.kind.str() {')
+	if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
+		f.writeln('')
+		f.stmts(node.stmts)
+	}
+	f.writeln('}')
+}
+
+pub fn (mut f Fmt) defer_stmt(node ast.DeferStmt) {
+	f.write('defer {')
+	if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
+		f.writeln('')
+		f.stmts(node.stmts)
+	}
+	f.writeln('}')
+}
+
+pub fn (mut f Fmt) expr_stmt(node ast.ExprStmt) {
+	f.comments(node.comments, {})
+	f.expr(node.expr)
+	if !f.single_line_if {
+		f.writeln('')
+	}
+}
+
+pub fn (mut f Fmt) for_c_stmt(node ast.ForCStmt) {
+	if node.label.len > 0 {
+		f.write('$node.label: ')
+	}
+	f.write('for ')
+	if node.has_init {
+		f.single_line_if = true // to keep all for ;; exprs on the same line
+		f.stmt(node.init)
+		f.single_line_if = false
+	}
+	f.write('; ')
+	f.expr(node.cond)
+	f.write('; ')
+	f.stmt(node.inc)
+	f.remove_new_line()
+	f.write(' {')
+	if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
+		f.writeln('')
+		f.stmts(node.stmts)
+	}
+	f.writeln('}')
+}
+
+pub fn (mut f Fmt) for_in_stmt(node ast.ForInStmt) {
+	if node.label.len > 0 {
+		f.write('$node.label: ')
+	}
+	f.write('for ')
+	if node.key_var != '' {
+		f.write(node.key_var)
+	}
+	if node.val_var != '' {
+		if node.key_var != '' {
+			f.write(', ')
+		}
+		if node.val_is_mut {
+			f.write('mut ')
+		}
+		f.write(node.val_var)
+	}
+	f.write(' in ')
+	f.expr(node.cond)
+	if node.is_range {
+		f.write(' .. ')
+		f.expr(node.high)
+	}
+	f.write(' {')
+	if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
+		f.writeln('')
+		f.stmts(node.stmts)
+	}
+	f.writeln('}')
+}
+
+pub fn (mut f Fmt) for_stmt(node ast.ForStmt) {
+	if node.label.len > 0 {
+		f.write('$node.label: ')
+	}
+	f.write('for ')
+	f.expr(node.cond)
+	if node.is_inf {
+		f.write('{')
+	} else {
+		f.write(' {')
+	}
+	if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
+		f.writeln('')
+		f.stmts(node.stmts)
+	}
+	f.writeln('}')
+}
+
+pub fn (mut f Fmt) go_stmt(node ast.GoStmt, is_expr bool) {
+	f.write('go ')
+	f.expr(node.call_expr)
+	if !is_expr {
+		f.writeln('')
+	}
+}
+
+pub fn (mut f Fmt) return_stmt(node ast.Return) {
+	f.comments(node.comments, {})
+	f.write('return')
+	if node.exprs.len > 1 {
+		// multiple returns
+		f.write(' ')
+		for i, expr in node.exprs {
+			f.expr(expr)
+			if i < node.exprs.len - 1 {
+				f.write(', ')
+			}
+		}
+	} else if node.exprs.len == 1 {
+		// normal return
+		f.write(' ')
+		f.expr(node.exprs[0])
+	}
+	f.writeln('')
+}
+
+pub fn (mut f Fmt) sql_stmt(node ast.SqlStmt) {
+	f.write('sql ')
+	f.expr(node.db_expr)
+	f.writeln(' {')
+	match node.kind {
+		.insert {
+			f.writeln('\tinsert $node.object_var_name into ${util.strip_mod_name(node.table_name)}')
+		}
+		.update {
+			f.write('\tupdate ${util.strip_mod_name(node.table_name)} set ')
+			for i, col in node.updated_columns {
+				f.write('$col = ')
+				f.expr(node.update_exprs[i])
+				if i < node.updated_columns.len - 1 {
+					f.write(', ')
+				} else {
+					f.write(' ')
+				}
+				f.wrap_long_line(2, true)
+			}
+			f.write('where ')
+			f.expr(node.where_expr)
+			f.writeln('')
+		}
+		.delete {
+			f.write('\tdelete from ${util.strip_mod_name(node.table_name)} where ')
+			f.expr(node.where_expr)
+			f.writeln('')
+		}
+	}
+	f.writeln('}')
 }

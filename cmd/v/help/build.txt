@@ -1,27 +1,37 @@
-Usage: v [build flags] <file.v|directory>
+Usage: v [build flags] ['run'] <target.v|target_directory> [run options]
 
 This command compiles the given target, along with their dependencies, into an executable.
 
-When compiling packages, build ignores files that end in '_test.v'.
+Note that these build flags also work with `run` too, but you need to
+pass them *before* `run` . The argument directly after `run` is assumed
+to be a .v source file or folder containing .v source files.
+Everything after that, is assumed to be flags, that V will ignore itself,
+but will pass to the executable after it is compiled.
 
-When compiling a single main package, build writes the resulting executable to an output file
+This enables you to do for example: `v -cc gcc -g myfile.v run -param1 abcde`
+... which means for V: "compile using gcc, produce debugging information,
+then run `./myfile -param1 abcde` and exit with its exit code".
+
+When compiling packages, V ignores files that end in '_test.v'.
+
+When compiling a single main package, V writes the resulting executable to an output file
 named after the build target. ('v abc.v' and 'v abc/' both write either 'abc' or 'abc.exe')
-The '.exe' suffix is added when writing a Windows executable.
+The '.exe' suffix is added automatically, when writing a Windows executable.
 By default, the executable is stored in the same directory as the compiled source code.
 
-The -o flag forces build to write the resulting executable or object to the d output file or directory,
+The -o flag forces V to write the resulting executable or object to the d output file or directory,
 instead of the default behavior described in the last two paragraphs.
 
 You can put common options inside an environment variable named VFLAGS, so that
 you don't have to repeat them.
 
-You can set it like this: `export VFLAGS="-cc clang -debug"` on *nix,
+You can set it like this: `export VFLAGS="-cc clang -g"` on *nix,
 `set VFLAGS=-cc msvc` on Windows.
 
 V respects the TMPDIR environment variable, and will put .tmp.c files in TMPDIR/v/ .
 If you have not set it, a suitable platform specific folder (like /tmp) will be used.
 
-The build flags are shared by the build and run commands:
+NB: the build flags are shared with the run command too:
 
    -b <backend>, -backend <backend>
       Specify the backend to use while building the executable.
@@ -39,7 +49,7 @@ The build flags are shared by the build and run commands:
       Enable the specified experiment.
       Currently, the only experiment available is: `prealloc`
 
-   -cg
+   -g
       Compile the executable in debug mode, allowing code to be debugged more easily.
 
    -o <output>, -output <output>
@@ -54,7 +64,7 @@ The build flags are shared by the build and run commands:
       separated by pipes (`|`). In addition to absolute paths, you can
       also use these special strings too:
            @vmodules - replaced with the location of the global ~/.vmodules/ folder
-                       (modules installed with `v install` are there). You can change 
+                       (modules installed with `v install` are there). You can change
                        its location by setting the environment variable VMODULES.
            @vlib - replaced with the location of the v's vlib folder.
       Using these, you can arrange for very flexible search orders for you project, for example:
@@ -62,7 +72,9 @@ The build flags are shared by the build and run commands:
       By default, -path is just "@vlib|@vmodules" .
 
    -prod
-      Compile the executable in production mode where most optimizations are enabled.
+      Compile the executable in production mode, where most optimizations are enabled.
+      Note that most V warnings turn to errors, if you pass -prod, so you will have
+      to fix them first.
 
    -prof, -profile <file.txt>
       Compile the executable with all functions profiled.
@@ -104,9 +116,9 @@ The build flags are shared by the build and run commands:
       up automatically, or you can specify it explicitly with --options=.ctags.d/v.ctags .
 
    -color, -nocolor
-      Force the use of ANSI colors for the error/warning messages, or disable them completely.
-      By default V tries to show its errors/warnings in ANSI color. The heuristic that it uses
-      to detect whether or not to use ANSI colors may not work in all cases.
+      Force the use of ANSI colors for the V error/warning messages, or disable them completely.
+      By default, the V compiler tries to show its errors/warnings in ANSI color. The heuristic
+      that it uses to detect whether or not to use ANSI colors may not work in all cases.
       These options allow you to override the default detection.
 
    -check-syntax
@@ -118,9 +130,9 @@ The build flags are shared by the build and run commands:
          CHECK: 62ms
          C GEN: 103ms
          C tcc: 95ms
-         
-      Related to -show-timings, is the ability to compile a special instrumented 
-      v compiler with this command: 
+
+      Related to -show-timings, is the ability to compile a special instrumented
+      v compiler with this command:
       `v -d time_parsing -d time_checking -d time_cgening -d time_v self`
       The instrumented version will print detailed timing stats while processing
       each .v file.
@@ -129,18 +141,18 @@ The build flags are shared by the build and run commands:
       Hide all warnings.
 
    -W
-      Treat all warnings as errors, even in development builds.
-   
+      Treat *all V warnings* as errors, even in development builds.
+
    -Wfatal-errors
-      Unconditionally exit with exit(1) after the first error. 
+      Unconditionally exit with exit(1) after the first error.
       Useful for scripts/tooling that calls V.
 
    -Wimpure-v
-      Warn about using C. or JS. symbols in plain .v files. 
+      Warn about using C. or JS. symbols in plain .v files.
       These should be moved in .c.v and .js.v .
-      NB: in the future, this will be turned on by default,
-      and will become an error, after vlib is cleaned up.
-      
+      NB: in the future, this will be turned ON by default,
+      and will become an error, after vlib modules are cleaned up.
+
 For C-specific build flags, use `v help build-c`.
 
 See also:

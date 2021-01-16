@@ -163,20 +163,20 @@ mut:
 	shared_postfix   string // .so, .dll
 	//
 	//
-	debug_mode       bool
-	is_cc_tcc        bool
-	is_cc_gcc        bool
-	is_cc_msvc       bool
-	is_cc_clang      bool
+	debug_mode  bool
+	is_cc_tcc   bool
+	is_cc_gcc   bool
+	is_cc_msvc  bool
+	is_cc_clang bool
 	//
-	env_cflags       string // prepended *before* everything else
-	env_ldflags      string // appended *after* everything else
+	env_cflags  string // prepended *before* everything else
+	env_ldflags string // appended *after* everything else
 	//
-	args             []string // ordinary C options like `-O2`
-	wargs            []string // for `-Wxyz` *exclusively*
-	o_args           []string // for `-o target`
-	post_args        []string // options that should go after .o_args
-	linker_flags     []string // `-lm`
+	args         []string // ordinary C options like `-O2`
+	wargs        []string // for `-Wxyz` *exclusively*
+	o_args       []string // for `-o target`
+	post_args    []string // options that should go after .o_args
+	linker_flags []string // `-lm`
 }
 
 fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
@@ -210,7 +210,8 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		if ccversion := os.exec('cc --version') {
 			if ccversion.exit_code == 0 {
 				if ccversion.output.contains('This is free software;') &&
-					ccversion.output.contains('Free Software Foundation, Inc.') {
+					ccversion.output.contains('Free Software Foundation, Inc.')
+				{
 					ccoptions.guessed_compiler = 'gcc'
 				}
 				if ccversion.output.contains('clang version ') {
@@ -351,7 +352,8 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	// Without these libs compilation will fail on Linux
 	// || os.user_os() == 'linux'
 	if !v.pref.is_bare && v.pref.build_mode != .build_module && v.pref.os in
-		[.linux, .freebsd, .openbsd, .netbsd, .dragonfly, .solaris, .haiku] {
+		[.linux, .freebsd, .openbsd, .netbsd, .dragonfly, .solaris, .haiku]
+	{
 		ccoptions.linker_flags << '-lm'
 		ccoptions.linker_flags << '-lpthread'
 		// -ldl is a Linux only thing. BSDs have it in libc.
@@ -399,7 +401,8 @@ fn (ccoptions CcompilerOptions) thirdparty_object_args(middle []string) []string
 
 fn (mut v Builder) setup_output_name() {
 	if !v.pref.is_shared && v.pref.build_mode != .build_module && os.user_os() == 'windows' &&
-		!v.pref.out_name.ends_with('.exe') {
+		!v.pref.out_name.ends_with('.exe')
+	{
 		v.pref.out_name += '.exe'
 	}
 	// Output executable name
@@ -510,7 +513,7 @@ fn (mut v Builder) cc() {
 		if v.pref.os == .ios {
 			ios_sdk := if v.pref.is_ios_simulator { 'iphonesimulator' } else { 'iphoneos' }
 			ios_sdk_path_res := os.exec('xcrun --sdk $ios_sdk --show-sdk-path') or {
-				panic("Couldn\'t find iphonesimulator")
+				panic("Couldn't find iphonesimulator")
 			}
 			mut isysroot := ios_sdk_path_res.output.replace('\n', '')
 			ccompiler = 'xcrun --sdk iphoneos clang -isysroot $isysroot'

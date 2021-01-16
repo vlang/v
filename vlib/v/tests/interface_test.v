@@ -177,6 +177,7 @@ fn (f RegTest) register() {
 }
 
 fn handle_reg(r Register) {
+	r.register()
 }
 
 fn test_register() {

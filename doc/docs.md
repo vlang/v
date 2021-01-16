@@ -96,7 +96,9 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Option/Result types & error handling](#optionresult-types-and-error-handling)
 * [Generics](#generics)
 * [Concurrency](#concurrency)
+    * [Spawning Concurrent Tasks](#spawning-concurrent-tasks)
     * [Channels](#channels)
+    * [Shared Objects](#shared-objects)
 * [Decoding JSON](#decoding-json)
 * [Testing](#testing)
 * [Memory management](#memory-management)
@@ -410,7 +412,7 @@ y := x + 3.14  // x is of type `f32` - no promotion
 a := 75        // a is of type `int` - default for int literal
 b := 14.7      // b is of type `f64` - default for float literal
 c := u + a     // c is of type `int` - automatic promotion of `u`'s value
-d := b + x     // d is of type `f64` - automatic promotion of `x`'s value 
+d := b + x     // d is of type `f64` - automatic promotion of `x`'s value
 ```
 
 ### Strings
@@ -689,7 +691,7 @@ println(a) // [[[0, 0], [0, 2], [0, 0]], [[0, 0], [0, 0], [0, 0]]]
 Sorting arrays of all kinds is very simple and intuitive. Special variables `a` and `b`
 are used when providing a custom sorting condition.
 
-```v nofmt
+```v
 mut numbers := [1, 3, 2]
 numbers.sort() // 1, 2, 3
 numbers.sort(a > b) // 3, 2, 1
@@ -1975,10 +1977,6 @@ fn land(w World) {
 
 `match` must have a pattern for each variant or have an `else` branch.
 
-There are two ways to access the cast variant inside a match branch:
-- the shadowed match variable
-- using `as` to specify a variable name
-
 ```v ignore
 struct Moon {}
 struct Mars {}
@@ -1997,20 +1995,8 @@ fn pass_time(w World) {
         Mars { w.shiver() }
         else {}
     }
-    // using `as` to specify a name for each value
-    match w as var {
-        Mars  { var.shiver() }
-        Venus { var.sweat() }
-        else {
-            // w is of type World
-            assert w is Moon
-        }
-    }
 }
 ```
-
-Note: shadowing only works when the match expression is a variable.
-It will not work on struct fields, array indexes, or map keys.
 
 ### Option/Result types and error handling
 
@@ -2207,10 +2193,67 @@ println(compare(1.1, 1.2)) //         -1
 
 
 ## Concurrency
+### Spawning Concurrent Tasks
+V's model of concurrency is very similar to Go's. To run `foo()` concurrently in
+a different thread, just call it with `go foo()`:
 
-V's model of concurrency is very similar to Go's. To run `foo()` concurrently, just
-call it with `go foo()`. Right now, it launches the function on a new system
-thread. Soon coroutines and a scheduler will be implemented.
+```v
+import math
+
+fn p(a f64, b f64) { // ordinary function without return value
+	c := math.sqrt(a * a + b * b)
+	println(c)
+}
+
+fn main() {
+	go p(3, 4)
+	// p will be run in parallel thread
+}
+```
+
+Sometimes it is necessary to wait until a parallel thread has finished. This can
+be done by assigning a *handle* to the started thread and calling the `wait()` method
+to this handle later:
+
+```v
+import math
+
+fn p(a f64, b f64) { // ordinary function without return value
+	c := math.sqrt(a * a + b * b)
+	println(c) // prints `5`
+}
+
+fn main() {
+	h := go p(3, 4)
+	// p() runs in parallel thread
+	h.wait()
+	// p() has definitely finished
+}
+```
+
+This approach can also be used to get a return value from a function that is run in a
+parallel thread. There is no need to modify the function itself to be able to call it
+concurrently.
+
+```v
+import math { sqrt }
+
+fn get_hypot(a f64, b f64) f64 { //       ordinary function returning a value
+	c := sqrt(a * a + b * b)
+	return c
+}
+
+fn main() {
+	g := go get_hypot(54.06, 2.08) // spawn thread and get handle to it
+	h1 := get_hypot(2.32, 16.74) //   do some other calculation here
+	h2 := g.wait() //                 get result from spawned thread
+	println('Results: $h1, $h2') //   prints `Results: 16.9, 54.1`
+}
+```
+
+If there is a large number of tasks that do not return a value it might be easier to manage
+them using a wait group. However, for this approach the function(s) called concurrently have
+to be designed with this wait group in mind:
 
 ```v
 import sync
@@ -2277,8 +2320,8 @@ Objects can be pushed to channels using the arrow operator. The same operator ca
 pop objects from the other end:
 
 ```v
-mut ch := chan int{}
-mut ch2 := chan f64{}
+ch := chan int{}
+ch2 := chan f64{}
 n := 5
 x := 7.3
 ch <- n
@@ -2296,8 +2339,8 @@ associated channel has been closed and the buffer is empty. This situation can b
 handled using an or branch (see [Handling Optionals](#handling-optionals)).
 
 ```v wip
-mut ch := chan int{}
-mut ch2 := chan f64{}
+ch := chan int{}
+ch2 := chan f64{}
 // ...
 ch.close()
 // ...
@@ -2317,10 +2360,10 @@ of statements - similar to the [match](#match) command:
 ```v wip
 import time
 fn main () {
-  mut c := chan f64{}
-  mut ch := chan f64{}
-  mut ch2 := chan f64{}
-  mut ch3 := chan f64{}
+  c := chan f64{}
+  ch := chan f64{}
+  ch2 := chan f64{}
+  ch3 := chan f64{}
   mut b := 0.0
   // ...
   select {
@@ -2367,16 +2410,16 @@ struct Abc {
 }
 
 a := 2.13
-mut ch := chan f64{}
+ch := chan f64{}
 res := ch.try_push(a) // try to perform `ch <- a`
 println(res)
 l := ch.len // number of elements in queue
 c := ch.cap // maximum queue length
 println(l)
 println(c)
-// mut b := Abc{}
-// mut ch2 := chan f64{}
-// res2 := ch2.try_pop(mut b) // try to perform `b = <-ch2
+mut b := Abc{}
+ch2 := chan Abc{}
+res2 := ch2.try_pop(b) // try to perform `b = <-ch2`
 ```
 
 The `try_push/pop()` methods will return immediately with one of the results
@@ -2385,34 +2428,34 @@ the reason why not.
 Usage of these methods and properties in production is not recommended -
 algorithms based on them are often subject to race conditions. Use `select` instead.
 
+### Shared Objects
+
 Data can be exchanged between a coroutine and the calling thread via a shared variable.
-Such variables should be created as references and passed to the coroutine as `mut`.
-The underlying `struct` should also contain a `mutex` to lock concurrent access:
+Such variables should be created as `shared` and passed to the coroutine as such, too.
+The underlying `struct` contains a hidden *mutex* that allows locking concurrent access
+using `rlock` for read-only and `lock` for read/write access.
 
 ```v
-import sync
-
 struct St {
 mut:
-	x   int // share data
-	mtx &sync.Mutex
+	x int // data to shared
 }
 
-fn (mut b St) g() {
-	b.mtx.m_lock()
-	// read/modify/write b.x
-	b.mtx.unlock()
+fn (shared b St) g() {
+	lock b {
+		// read/modify/write b.x
+	}
 }
 
-fn caller() {
-	mut a := &St{ // create as reference so it's on the heap
+fn main() {
+	shared a := &St{ // create as reference so it's on the heap
 		x: 10
-		mtx: sync.new_mutex()
 	}
 	go a.g()
-	a.mtx.m_lock()
-	// read/modify/write a.x
-	a.mtx.unlock()
+	// ...
+	rlock a {
+		// read a.x
+	}
 }
 ```
 
@@ -2426,10 +2469,10 @@ struct Foo {
 }
 
 struct User {
-	name      string
-	age       int
+	name string
+	age  int
 	// Use the `skip` attribute to skip certain fields
-	foo       Foo    [skip]
+	foo Foo [skip]
 	// If the field name is different in JSON, it can be specified
 	last_name string [json: lastName]
 }
@@ -2839,7 +2882,7 @@ fn C.sqlite3_step(&sqlite3_stmt)
 
 fn C.sqlite3_finalize(&sqlite3_stmt)
 
-fn C.sqlite3_exec(db &sqlite3, sql charptr, FnSqlite3Callback voidptr, cb_arg voidptr, emsg &charptr) int
+fn C.sqlite3_exec(db &sqlite3, sql charptr, cb FnSqlite3Callback, cb_arg voidptr, emsg &charptr) int
 
 fn C.sqlite3_free(voidptr)
 
@@ -2998,12 +3041,26 @@ To cast a `voidptr` to a V reference, use `user := &User(user_void_ptr)`.
 
 To debug issues in the generated C code, you can pass these flags:
 
+- `-g` - produces a less optimized executable with more debug information in it.
+    V will enforce line numbers from the .v files in the stacktraces, that the
+    executable will produce on panic. It is usually better to pass -g, unless
+    you are writing low level code, in which case use the next option `-cg`.
 - `-cg` - produces a less optimized executable with more debug information in it.
+	The executable will use C source line numbers in this case. It is frequently
+    used in combination with `-keepc`, so that you can inspect the generated
+    C program in case of panic, or so that your debugger (`gdb`, `lldb` etc.)
+    can show you the generated C source code.
 - `-showcc` - prints the C command that is used to build the program.
+- `-show-c-output` - prints the output, that your C compiler produced
+    while compiling your program.
+- `-keepc` - do not delete the generated C source code file after a successful
+    compilation. Also keep using the same file path, so it is more stable,
+    and easier to keep opened in an editor/IDE.
 
-For the best debugging experience, you can pass all of them at the same time:
-`v -cg -showcc yourprogram.v`,
-then just run your debugger (gdb/lldb) or IDE on the produced executable `yourprogram`.
+For best debugging experience if you are writing a low level wrapper for an existing
+C library, you can pass several of these flags at the same time:
+`v -keepc -cg -showcc yourprogram.v`, then just run your debugger (gdb/lldb) or IDE
+on the produced executable `yourprogram`.
 
 If you just want to inspect the generated C code,
 without further compilation, you can also use the `-o` flag (e.g. `-o file.c`).
@@ -3017,8 +3074,9 @@ use `v help`, `v help build` and `v help build-c`.
 
 ## Conditional compilation
 
-### Compile time if
+### Compile time code
 
+#### $if
 ```v
 // Support for multiple conditions in one branch
 $if ios || android {
@@ -3065,6 +3123,31 @@ Full list of builtin options:
 | `android`,`mach`, `dragonfly` | `msvc`            | `little_endian`       | `no_bounds_checking`  |
 | `gnu`, `hpux`, `haiku`, `qnx` | `cplusplus`       | `big_endian`          | |
 | `solaris`, `linux_or_macos`   | | | |
+
+#### $embed_file
+
+```v ignore
+module main
+fn main() {
+	embedded_file := $embed_file('v.png')
+	mut fw := os.create('exported.png') or { panic(err) }
+	fw.write_bytes(embedded_file.data(), embedded_file.len)
+	fw.close()
+}
+```
+
+V can embed arbitrary files into the executable with the `$embed_file(<path>)`
+compile time call. Paths can be absolute or relative to the source file.
+
+When you do not use `-prod`, the file will not be embedded. Instead, it will
+be loaded *the first time* your program calls `f.data()` at runtime, making
+it easier to change in external editor programs, without needing to recompile
+your executable.
+
+When you compile with `-prod`, the file *will be embedded inside* your
+executable, increasing your binary size, but making it more self contained 
+and thus easier to distribute. In this case, `f.data()` will cause *no IO*,
+and it will always return the same data.
 
 ### Environment specific files
 
@@ -3232,8 +3315,11 @@ fn (a Vec) - (b Vec) Vec {
 fn main() {
 	a := Vec{2, 3}
 	b := Vec{4, 5}
+	mut c := Vec{1, 2}
 	println(a + b) // "{6, 8}"
 	println(a - b) // "{-2, -2}"
+	c += a
+	println(c) // "{3, 5}"
 }
 ```
 
@@ -3251,6 +3337,8 @@ To improve safety and maintainability, operator overloading is limited:
 - Operator functions can't modify their arguments.
 - When using `<`, `>`, `>=`, `<=`, `==` and `!=` operators, the return type must be `bool`.
 - Both arguments must have the same type (just like with all operators in V).
+- Assignment operators (`*=`, `+=`, `/=`, etc)
+are auto generated when the operators are defined though they must return the same type.
 
 ## Inline assembly
 

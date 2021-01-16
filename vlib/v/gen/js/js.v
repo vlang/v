@@ -475,6 +475,9 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		ast.FloatLiteral {
 			g.write('${g.typ(table.Type(table.f32_type))}($node.val)')
 		}
+		ast.GoExpr {
+			// TODO
+		}
 		ast.Ident {
 			g.gen_ident(node)
 		}
@@ -923,33 +926,28 @@ fn (mut g JsGen) gen_for_stmt(it ast.ForStmt) {
 
 fn (mut g JsGen) gen_go_stmt(node ast.GoStmt) {
 	// x := node.call_expr as ast.CallEpxr // TODO
-	match node.call_expr {
-		ast.CallExpr {
-			mut name := node.call_expr.name
-			if node.call_expr.is_method {
-				receiver_sym := g.table.get_type_symbol(node.call_expr.receiver_type)
-				name = receiver_sym.name + '.' + name
-			}
-			// todo: please add a name feild without the mod name for ast.CallExpr
-			if name.starts_with('${node.call_expr.mod}.') {
-				name = name[node.call_expr.mod.len + 1..]
-			}
-			g.writeln('await new Promise(function(resolve){')
-			g.inc_indent()
-			g.write('${name}(')
-			for i, arg in node.call_expr.args {
-				g.expr(arg.expr)
-				if i < node.call_expr.args.len - 1 {
-					g.write(', ')
-				}
-			}
-			g.writeln(');')
-			g.writeln('resolve();')
-			g.dec_indent()
-			g.writeln('});')
-		}
-		else {}
+	mut name := node.call_expr.name
+	if node.call_expr.is_method {
+		receiver_sym := g.table.get_type_symbol(node.call_expr.receiver_type)
+		name = receiver_sym.name + '.' + name
 	}
+	// todo: please add a name feild without the mod name for ast.CallExpr
+	if name.starts_with('${node.call_expr.mod}.') {
+		name = name[node.call_expr.mod.len + 1..]
+	}
+	g.writeln('await new Promise(function(resolve){')
+	g.inc_indent()
+	g.write('${name}(')
+	for i, arg in node.call_expr.args {
+		g.expr(arg.expr)
+		if i < node.call_expr.args.len - 1 {
+			g.write(', ')
+		}
+	}
+	g.writeln(');')
+	g.writeln('resolve();')
+	g.dec_indent()
+	g.writeln('});')
 }
 
 fn (mut g JsGen) gen_import_stmt(it ast.Import) {

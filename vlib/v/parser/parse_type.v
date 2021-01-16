@@ -19,7 +19,7 @@ pub fn (mut p Parser) parse_array_type() table.Type {
 			return 0
 		}
 		// sym := p.table.get_type_symbol(elem_type)
-		idx := p.table.find_or_register_array_fixed(elem_type, size, 1)
+		idx := p.table.find_or_register_array_fixed(elem_type, size)
 		return table.new_type(idx)
 	}
 	// array
@@ -37,7 +37,7 @@ pub fn (mut p Parser) parse_array_type() table.Type {
 		p.check(.rsbr)
 		nr_dims++
 	}
-	idx := p.table.find_or_register_array(elem_type, nr_dims)
+	idx := p.table.find_or_register_array_with_dims(elem_type, nr_dims)
 	return table.new_type(idx)
 }
 
@@ -53,7 +53,8 @@ pub fn (mut p Parser) parse_map_type() table.Type {
 		return 0
 	}
 	if !(key_type in [table.string_type_idx, table.voidptr_type_idx] ||
-		(key_type.is_int() && !key_type.is_ptr())) {
+		(key_type.is_int() && !key_type.is_ptr()))
+	{
 		s := p.table.type_to_str(key_type)
 		p.error_with_pos('maps only support string, integer, rune or voidptr keys for now (not `$s`)',
 			p.tok.position())
@@ -121,7 +122,7 @@ pub fn (mut p Parser) parse_fn_type(name string) table.Type {
 		is_variadic: is_variadic
 		return_type: return_type
 	}
-	// MapFooFn typedefs are manually added in cheaders.v 
+	// MapFooFn typedefs are manually added in cheaders.v
 	// because typedefs get generated after the map struct is generated
 	has_decl := p.builtin_mod && name.starts_with('Map') && name.ends_with('Fn')
 	idx := p.table.find_or_register_fn_type(p.mod, func, false, has_decl)

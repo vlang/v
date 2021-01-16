@@ -86,4 +86,14 @@ fn test_operator_overloading_with_string_interpolation() {
 	assert e.str() == '{8, 15}'
 	assert f.str() == '{0, 0}'
 	assert g.str() == '{2, 3}'
+	///// /// //
+	mut ad := Vec{2, 4}
+	ad += Vec{3, 6}
+	assert ad.str() == '{5, 10}'
+	ad -= Vec{1, 1}
+	assert ad.str() == '{4, 9}'
+	ad *= Vec{2, 2}
+	assert ad.str() == '{8, 18}'
+	ad /= Vec{2, 2}
+	assert ad.str() == '{4, 9}' 
 }

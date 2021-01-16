@@ -10,7 +10,7 @@ fn (f Foo<int>) value() string {
 type DB = string
 
 struct Repo <T, U> {
-	db         DB
+	db DB
 pub mut:
 	model      T
 	permission U

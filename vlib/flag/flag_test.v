@@ -137,7 +137,7 @@ fn test_finalize_returns_error_for_unknown_flags() {
 	mut fp := flag.new_flag_parser(['--known', '--unknown'])
 	fp.bool('known', 0, false, '')
 	finalized := fp.finalize() or {
-		assert err == "Unknown argument \'unknown\'"
+		assert err == "Unknown argument 'unknown'"
 		return
 	}
 	assert finalized.len < 0 // expect error to be returned
