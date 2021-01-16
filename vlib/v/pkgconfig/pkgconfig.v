@@ -43,7 +43,7 @@ pub mut:
 }
 
 fn (mut pc PkgConfig) parse_list_no_comma(s string) []string {
-	return pc.parse_list( s.replace(',', ' ') )
+	return pc.parse_list(s.replace(',', ' '))
 }
 
 fn (mut pc PkgConfig) parse_list(s string) []string {

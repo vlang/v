@@ -44,9 +44,7 @@ const (
 )
 
 fn get_source_template() string {
-	src := os.read_file(os.join_path(os.dir(@FILE), 'live_test_template.vv')) or {
-    	panic(err)
-    }
+	src := os.read_file(os.join_path(os.dir(@FILE), 'live_test_template.vv')) or { panic(err) }
 	return src.replace('#OUTPUT_FILE#', output_file)
 }
 
