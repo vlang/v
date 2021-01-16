@@ -54,6 +54,11 @@ fn test_if_is_and_smartcast() {
 		assert x.val == 'test'
 		assert y.name == 'foo'
 	}
+	if x is Abc && x is Xyz {
+		// assert x.val == 'test'
+		assert x.name == ''
+		assert false
+	}
 }
 
 type Bar = string | Test

@@ -4287,8 +4287,8 @@ fn (mut c Checker) smartcast_if_branch(mut branches []ast.IfBranch, i int, cond 
 	mut branch := branches[i]
 	infix := cond as ast.InfixExpr
 	if infix.op == .and {
-		c.smartcast_if_branch(mut branches, i, infix.left)
 		c.smartcast_if_branch(mut branches, i, infix.right)
+		c.smartcast_if_branch(mut branches, i, infix.left)
 		return
 	}
 	if infix.op == .key_is {
