@@ -89,9 +89,7 @@ fn main() {
 		return
 	}
 	match command {
-		'help' {
-			invoke_help_and_exit(args)
-		}
+		'help' { invoke_help_and_exit(args) }
 		'new', 'init' {
 			util.launch_tool(prefs.is_verbose, 'vcreate', os.args[1..])
 			return
@@ -104,9 +102,7 @@ fn main() {
 			util.launch_tool(prefs.is_verbose, 'vpm', os.args[1..])
 			return
 		}
-		'vlib-docs' {
-			util.launch_tool(prefs.is_verbose, 'vdoc', ['doc', 'vlib'])
-		}
+		'vlib-docs' { util.launch_tool(prefs.is_verbose, 'vdoc', ['doc', 'vlib']) }
 		'get' {
 			println('V Error: Use `v install` to install modules from vpm.vlang.io')
 			exit(1)

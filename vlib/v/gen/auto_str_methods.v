@@ -79,36 +79,16 @@ fn (mut g Gen) gen_str_for_type(typ table.Type) string {
 					g.gen_str_for_alias(sym.info, styp, str_fn_name)
 				}
 			}
-			table.Array {
-				g.gen_str_for_array(sym.info, styp, str_fn_name)
-			}
-			table.ArrayFixed {
-				g.gen_str_for_array_fixed(sym.info, styp, str_fn_name)
-			}
-			table.Enum {
-				g.gen_str_for_enum(sym.info, styp, str_fn_name)
-			}
-			table.FnType {
-				g.gen_str_for_fn_type(sym.info, styp, str_fn_name)
-			}
-			table.Struct {
-				g.gen_str_for_struct(sym.info, styp, str_fn_name)
-			}
-			table.Map {
-				g.gen_str_for_map(sym.info, styp, str_fn_name)
-			}
-			table.MultiReturn {
-				g.gen_str_for_multi_return(sym.info, styp, str_fn_name)
-			}
-			table.SumType {
-				g.gen_str_for_union_sum_type(sym.info, styp, str_fn_name)
-			}
-			table.Interface {
-				g.gen_str_for_interface(sym.info, styp, str_fn_name)
-			}
-			else {
-				verror("could not generate string method $str_fn_name for type '$styp'")
-			}
+			table.Array { g.gen_str_for_array(sym.info, styp, str_fn_name) }
+			table.ArrayFixed { g.gen_str_for_array_fixed(sym.info, styp, str_fn_name) }
+			table.Enum { g.gen_str_for_enum(sym.info, styp, str_fn_name) }
+			table.FnType { g.gen_str_for_fn_type(sym.info, styp, str_fn_name) }
+			table.Struct { g.gen_str_for_struct(sym.info, styp, str_fn_name) }
+			table.Map { g.gen_str_for_map(sym.info, styp, str_fn_name) }
+			table.MultiReturn { g.gen_str_for_multi_return(sym.info, styp, str_fn_name) }
+			table.SumType { g.gen_str_for_union_sum_type(sym.info, styp, str_fn_name) }
+			table.Interface { g.gen_str_for_interface(sym.info, styp, str_fn_name) }
+			else { verror("could not generate string method $str_fn_name for type '$styp'") }
 		}
 	}
 	if typ.has_flag(.optional) {

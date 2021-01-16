@@ -105,12 +105,8 @@ fn (mut d Doc) convert_pos(filename string, pos token.Position) DocPos {
 // stmt_signature returns the signature of a given `ast.Stmt` node.
 pub fn (mut d Doc) stmt_signature(stmt ast.Stmt) string {
 	match stmt {
-		ast.Module {
-			return 'module $stmt.name'
-		}
-		ast.FnDecl {
-			return stmt.stringify(d.table, d.fmt.cur_mod, d.fmt.mod2alias)
-		}
+		ast.Module { return 'module $stmt.name' }
+		ast.FnDecl { return stmt.stringify(d.table, d.fmt.cur_mod, d.fmt.mod2alias) }
 		else {
 			d.fmt.out = strings.new_builder(1000)
 			d.fmt.stmt(stmt)
@@ -122,20 +118,14 @@ pub fn (mut d Doc) stmt_signature(stmt ast.Stmt) string {
 // stmt_name returns the name of a given `ast.Stmt` node.
 pub fn (d Doc) stmt_name(stmt ast.Stmt) string {
 	match stmt {
-		ast.FnDecl, ast.StructDecl, ast.EnumDecl, ast.InterfaceDecl {
-			return stmt.name
-		}
+		ast.FnDecl, ast.StructDecl, ast.EnumDecl, ast.InterfaceDecl { return stmt.name }
 		ast.TypeDecl {
 			match stmt {
 				ast.FnTypeDecl, ast.AliasTypeDecl, ast.SumTypeDecl { return stmt.name }
 			}
 		}
-		ast.ConstDecl {
-			return ''
-		} // leave it blank
-		else {
-			return ''
-		}
+		ast.ConstDecl { return '' } // leave it blank
+		else { return '' }
 	}
 }
 
@@ -143,17 +133,13 @@ pub fn (d Doc) stmt_name(stmt ast.Stmt) string {
 // is exposed to the public.
 pub fn (d Doc) stmt_pub(stmt ast.Stmt) bool {
 	match stmt {
-		ast.FnDecl, ast.StructDecl, ast.EnumDecl, ast.InterfaceDecl, ast.ConstDecl {
-			return stmt.is_pub
-		}
+		ast.FnDecl, ast.StructDecl, ast.EnumDecl, ast.InterfaceDecl, ast.ConstDecl { return stmt.is_pub }
 		ast.TypeDecl {
 			match stmt {
 				ast.FnTypeDecl, ast.AliasTypeDecl, ast.SumTypeDecl { return stmt.is_pub }
 			}
 		}
-		else {
-			return false
-		}
+		else { return false }
 	}
 }
 

@@ -118,7 +118,9 @@ pub fn sigint_to_signal_name(si int) string {
 		match si {
 			// TODO dependent on platform
 			// works only on x86/ARM/most others
-			10 /* , 30, 16 */ { return 'SIGUSR1' }
+			10 /* , 30, 16 */ {
+				return 'SIGUSR1'
+			}
 			12 /* , 31, 17 */ { return 'SIGUSR2' }
 			17 /* , 20, 18 */ { return 'SIGCHLD' }
 			18 /* , 19, 25 */ { return 'SIGCONT' }

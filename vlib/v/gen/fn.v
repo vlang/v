@@ -943,16 +943,12 @@ fn (mut g Gen) write_fn_attrs(attrs []table.Attr) string {
 	mut msvc_attrs := ''
 	for attr in attrs {
 		match attr.name {
-			'inline' {
-				g.write('inline ')
-			}
+			'inline' { g.write('inline ') }
 			'no_inline' {
 				// since these are supported by GCC, clang and MSVC, we can consider them officially supported.
 				g.write('__NOINLINE ')
 			}
-			'irq_handler' {
-				g.write('__IRQHANDLER ')
-			}
+			'irq_handler' { g.write('__IRQHANDLER ') }
 			'_cold' {
 				// GCC/clang attributes
 				// prefixed by _ to indicate they're for advanced users only and not really supported by V.
@@ -1002,9 +998,7 @@ fn (mut g Gen) write_fn_attrs(attrs []table.Attr) string {
 				// prefixed by windows to indicate they're for advanced users only and not really supported by V.
 				msvc_attrs += '__stdcall '
 			}
-			'console' {
-				g.force_main_console = true
-			}
+			'console' { g.force_main_console = true }
 			else {
 				// nothing but keep V happy
 			}

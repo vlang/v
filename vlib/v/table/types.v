@@ -758,9 +758,7 @@ pub fn (table &Table) type_to_str_using_aliases(t Type, import_aliases map[strin
 	sym := table.get_type_symbol(t)
 	mut res := sym.name
 	match sym.kind {
-		.int_literal, .float_literal {
-			res = sym.name
-		}
+		.int_literal, .float_literal { res = sym.name }
 		.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64, .char, .rune, .string, .bool, .none_, .byteptr, .voidptr, .charptr {
 			// primitive types
 			res = sym.kind.str()
@@ -836,9 +834,7 @@ pub fn (table &Table) type_to_str_using_aliases(t Type, import_aliases map[strin
 			}
 			return 'void'
 		}
-		else {
-			res = table.shorten_user_defined_typenames(res, import_aliases)
-		}
+		else { res = table.shorten_user_defined_typenames(res, import_aliases) }
 	}
 	nr_muls := t.nr_muls()
 	if nr_muls > 0 {

@@ -289,60 +289,24 @@ pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr bool, check
 				return 0
 			}
 			match name {
-				'voidptr' {
-					return table.voidptr_type
-				}
-				'byteptr' {
-					return table.byteptr_type
-				}
-				'charptr' {
-					return table.charptr_type
-				}
-				'i8' {
-					return table.i8_type
-				}
-				'i16' {
-					return table.i16_type
-				}
-				'int' {
-					return table.int_type
-				}
-				'i64' {
-					return table.i64_type
-				}
-				'byte' {
-					return table.byte_type
-				}
-				'u16' {
-					return table.u16_type
-				}
-				'u32' {
-					return table.u32_type
-				}
-				'u64' {
-					return table.u64_type
-				}
-				'f32' {
-					return table.f32_type
-				}
-				'f64' {
-					return table.f64_type
-				}
-				'string' {
-					return table.string_type
-				}
-				'char' {
-					return table.char_type
-				}
-				'bool' {
-					return table.bool_type
-				}
-				'float_literal' {
-					return table.float_literal_type
-				}
-				'int_literal' {
-					return table.int_literal_type
-				}
+				'voidptr' { return table.voidptr_type }
+				'byteptr' { return table.byteptr_type }
+				'charptr' { return table.charptr_type }
+				'i8' { return table.i8_type }
+				'i16' { return table.i16_type }
+				'int' { return table.int_type }
+				'i64' { return table.i64_type }
+				'byte' { return table.byte_type }
+				'u16' { return table.u16_type }
+				'u32' { return table.u32_type }
+				'u64' { return table.u64_type }
+				'f32' { return table.f32_type }
+				'f64' { return table.f64_type }
+				'string' { return table.string_type }
+				'char' { return table.char_type }
+				'bool' { return table.bool_type }
+				'float_literal' { return table.float_literal_type }
+				'int_literal' { return table.int_literal_type }
 				else {
 					if name.len == 1 && name[0].is_capital() {
 						return p.parse_generic_template_type(name)

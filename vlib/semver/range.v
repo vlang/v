@@ -126,9 +126,7 @@ fn parse_xrange(input string) ?Version {
 				raw_ver.raw_ints[ver_minor] = '0'
 				raw_ver.raw_ints[ver_patch] = '0'
 			}
-			ver_patch {
-				raw_ver.raw_ints[ver_patch] = '0'
-			}
+			ver_patch { raw_ver.raw_ints[ver_patch] = '0' }
 			else {}
 		}
 	}

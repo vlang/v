@@ -308,9 +308,7 @@ fn (mut g Gen) mov64(reg Register, val i64) {
 			g.write8(0x48)
 			g.write8(0xbe)
 		}
-		else {
-			println('unhandled mov $reg')
-		}
+		else { println('unhandled mov $reg') }
 	}
 	g.write64(val)
 	g.println('mov64 $reg, $val')
@@ -539,22 +537,14 @@ fn (mut g Gen) mov(reg Register, val int) {
 				g.write8(0x31)
 				g.write8(0xe4)
 			}
-			else {
-				panic('unhandled mov $reg')
-			}
+			else { panic('unhandled mov $reg') }
 		}
 		g.println('xor $reg, $reg')
 	} else {
 		match reg {
-			.eax, .rax {
-				g.write8(0xb8)
-			}
-			.edi, .rdi {
-				g.write8(0xbf)
-			}
-			.edx {
-				g.write8(0xba)
-			}
+			.eax, .rax { g.write8(0xb8) }
+			.edi, .rdi { g.write8(0xbf) }
+			.edx { g.write8(0xba) }
 			.rsi {
 				g.write8(0x48)
 				g.write8(0xbe)
@@ -563,9 +553,7 @@ fn (mut g Gen) mov(reg Register, val int) {
 				g.write8(0x41)
 				g.write8(0xbc) // r11 is 0xbb etc
 			}
-			else {
-				panic('unhandled mov $reg')
-			}
+			else { panic('unhandled mov $reg') }
 		}
 		g.write32(val)
 		g.println('mov $reg, $val')
@@ -621,9 +609,7 @@ pub fn (mut g Gen) call_fn(node ast.CallExpr) {
 				}
 				g.mov_var_to_reg(fn_arg_registers[i], var_offset)
 			}
-			else {
-				verror('unhandled call_fn (name=$name) node: ' + expr.type_name())
-			}
+			else { verror('unhandled call_fn (name=$name) node: ' + expr.type_name()) }
 		}
 	}
 	if node.args.len > 6 {
@@ -636,22 +622,12 @@ pub fn (mut g Gen) call_fn(node ast.CallExpr) {
 
 fn (mut g Gen) stmt(node ast.Stmt) {
 	match node {
-		ast.AssignStmt {
-			g.assign_stmt(node)
-		}
-		ast.Block {
-			g.stmts(node.stmts)
-		}
+		ast.AssignStmt { g.assign_stmt(node) }
+		ast.Block { g.stmts(node.stmts) }
 		ast.ConstDecl {}
-		ast.ExprStmt {
-			g.expr(node.expr)
-		}
-		ast.FnDecl {
-			g.fn_decl(node)
-		}
-		ast.ForStmt {
-			g.for_stmt(node)
-		}
+		ast.ExprStmt { g.expr(node.expr) }
+		ast.FnDecl { g.fn_decl(node) }
+		ast.ForStmt { g.for_stmt(node) }
 		ast.HashStmt {
 			words := node.val.split(' ')
 			for word in words {
@@ -670,9 +646,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.ret()
 		}
 		ast.StructDecl {}
-		else {
-			println('x64.stmt(): bad node: ' + node.type_name())
-		}
+		else { println('x64.stmt(): bad node: ' + node.type_name()) }
 	}
 }
 
@@ -693,19 +667,13 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.FloatLiteral {}
 		ast.Ident {}
-		ast.IfExpr {
-			g.if_expr(node)
-		}
+		ast.IfExpr { g.if_expr(node) }
 		ast.InfixExpr {}
 		ast.IntegerLiteral {}
-		ast.PostfixExpr {
-			g.postfix_expr(node)
-		}
+		ast.PostfixExpr { g.postfix_expr(node) }
 		ast.StringLiteral {}
 		ast.StructInit {}
-		else {
-			println(term.red('x64.expr(): unhandled node: ' + node.type_name()))
-		}
+		else { println(term.red('x64.expr(): unhandled node: ' + node.type_name())) }
 	}
 }
 
@@ -729,9 +697,7 @@ fn (mut g Gen) allocate_var(name string, size int, initial_val int) {
 			g.write8(0xc7)
 			g.write8(0x45)
 		}
-		else {
-			verror('allocate_var: bad size $size')
-		}
+		else { verror('allocate_var: bad size $size') }
 	}
 	// Generate N in `[rbp-N]`
 	n := g.stack_var_pos + size
@@ -752,9 +718,7 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 		// if left is ast.Ident {
 		// ident := left as ast.Ident
 		match right {
-			ast.IntegerLiteral {
-				g.allocate_var(name, 4, right.val.int())
-			}
+			ast.IntegerLiteral { g.allocate_var(name, 4, right.val.int()) }
 			ast.InfixExpr {
 				g.infix_expr(right)
 				g.allocate_var(name, 4, 0)
@@ -774,10 +738,8 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 					g.allocate_var(field_name, 4, 0)
 				}
 			}
-			else {
-				g.error_with_pos('x64 assign_stmt unhandled expr: ' + right.type_name(),
-					right.position())
-			}
+			else { g.error_with_pos('x64 assign_stmt unhandled expr: ' + right.type_name(),
+					right.position()) }
 		}
 		// }
 	}
@@ -813,9 +775,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			g.cmp_var(infix_expr.left.name, lit.val.int())
 			jne_addr = g.jne()
 		}
-		else {
-			verror('unhandled infix.left')
-		}
+		else { verror('unhandled infix.left') }
 	}
 	g.stmts(branch.stmts)
 	// Now that we know where we need to jump if the condition is false, update the `jne` call.
@@ -836,9 +796,7 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 			g.cmp_var(infix_expr.left.name, lit.val.int())
 			jump_addr = g.jge()
 		}
-		else {
-			verror('unhandled infix.left')
-		}
+		else { verror('unhandled infix.left') }
 	}
 	g.stmts(node.stmts)
 	// Go back to `cmp ...`

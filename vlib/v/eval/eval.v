@@ -73,9 +73,7 @@ fn (mut e Eval) stmt(node ast.Stmt) string {
 
 fn (mut e Eval) expr(node ast.Expr) Object {
 	match node {
-		ast.IntegerLiteral {
-			return node.val
-		}
+		ast.IntegerLiteral { return node.val }
 		ast.Ident {
 			print_object(node.value)
 			// Find the variable

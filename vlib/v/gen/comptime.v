@@ -225,9 +225,7 @@ fn (mut g Gen) comp_if(node ast.IfExpr) {
 
 fn (mut g Gen) comp_if_expr(cond ast.Expr) {
 	match cond {
-		ast.BoolLiteral {
-			g.expr(cond)
-		}
+		ast.BoolLiteral { g.expr(cond) }
 		ast.ParExpr {
 			g.write('(')
 			g.comp_if_expr(cond.expr)

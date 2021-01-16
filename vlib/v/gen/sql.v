@@ -327,9 +327,7 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr) {
 				verror('bad sql type=$expr.typ selector expr=$expr.field_name')
 			}
 		}
-		else {
-			g.expr(expr)
-		}
+		else { g.expr(expr) }
 	}
 	/*
 	ast.Ident {

@@ -662,12 +662,8 @@ typedef struct {
 				parent_styp := if is_c_parent { 'struct ' + parent.cname[3..] } else { parent.cname }
 				g.type_definitions.writeln('typedef $parent_styp $typ.cname;')
 			}
-			.array {
-				g.type_definitions.writeln('typedef array $typ.cname;')
-			}
-			.interface_ {
-				g.type_definitions.writeln('typedef _Interface ${c_name(typ.name)};')
-			}
+			.array { g.type_definitions.writeln('typedef array $typ.cname;') }
+			.interface_ { g.type_definitions.writeln('typedef _Interface ${c_name(typ.name)};') }
 			.chan {
 				if typ.name != 'chan' {
 					g.type_definitions.writeln('typedef chan $typ.cname;')
@@ -685,12 +681,8 @@ static inline void __${typ.cname}_pushval($typ.cname ch, $el_stype val) {
 }')
 				}
 			}
-			.map {
-				g.type_definitions.writeln('typedef map $typ.cname;')
-			}
-			.function {
-				g.write_fn_typesymbol_declaration(typ)
-			}
+			.map { g.type_definitions.writeln('typedef map $typ.cname;') }
+			.function { g.write_fn_typesymbol_declaration(typ) }
 			else {
 				continue
 			}
@@ -919,9 +911,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.const_decl(node)
 			// }
 		}
-		ast.CompFor {
-			g.comp_for(node)
-		}
+		ast.CompFor { g.comp_for(node) }
 		ast.DeferStmt {
 			mut defer_stmt := node
 			defer_stmt.ifdef = g.defer_ifdef
@@ -1107,18 +1097,10 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			}
 			g.branch_parent_pos = prev_branch_parent_pos
 		}
-		ast.GlobalDecl {
-			g.global_decl(node)
-		}
-		ast.GoStmt {
-			g.go_stmt(node, false)
-		}
-		ast.GotoLabel {
-			g.writeln('$node.name: {}')
-		}
-		ast.GotoStmt {
-			g.writeln('goto $node.name;')
-		}
+		ast.GlobalDecl { g.global_decl(node) }
+		ast.GoStmt { g.go_stmt(node, false) }
+		ast.GotoLabel { g.writeln('$node.name: {}') }
+		ast.GotoStmt { g.writeln('goto $node.name;') }
 		ast.HashStmt {
 			// #include etc
 			if node.kind == 'include' {
@@ -1170,9 +1152,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			*/
 			g.return_statement(node)
 		}
-		ast.SqlStmt {
-			g.sql_stmt(node)
-		}
+		ast.SqlStmt { g.sql_stmt(node) }
 		ast.StructDecl {
 			name := if node.language == .c { util.no_dots(node.name) } else { c_name(node.name) }
 			// TODO For some reason, build fails with autofree with this line
@@ -1193,9 +1173,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				g.typedefs.writeln('typedef struct $name $name;')
 			}
 		}
-		ast.TypeDecl {
-			g.writeln('// TypeDecl')
-		}
+		ast.TypeDecl { g.writeln('// TypeDecl') }
 	}
 	if !g.skip_stmt_pos { // && g.stmt_path_pos.len > 0 {
 		g.stmt_path_pos.delete_last()
@@ -1552,9 +1530,7 @@ fn (mut g Gen) gen_assert_metainfo(a ast.AssertStmt) string {
 			g.gen_assert_single_expr(a.expr.right, a.expr.right_type)
 			g.writeln(';')
 		}
-		ast.CallExpr {
-			g.writeln('\t${metaname}.op = _SLIT("call");')
-		}
+		ast.CallExpr { g.writeln('\t${metaname}.op = _SLIT("call");') }
 		else {}
 	}
 	return metaname
@@ -1563,9 +1539,7 @@ fn (mut g Gen) gen_assert_metainfo(a ast.AssertStmt) string {
 fn (mut g Gen) gen_assert_single_expr(e ast.Expr, t table.Type) {
 	unknown_value := '*unknown value*'
 	match e {
-		ast.CastExpr, ast.IndexExpr, ast.MatchExpr {
-			g.write(ctoslit(unknown_value))
-		}
+		ast.CastExpr, ast.IndexExpr, ast.MatchExpr { g.write(ctoslit(unknown_value)) }
 		ast.PrefixExpr {
 			if e.right is ast.CastExpr {
 				// TODO: remove this check;
@@ -1580,9 +1554,7 @@ fn (mut g Gen) gen_assert_single_expr(e ast.Expr, t table.Type) {
 			sym := g.table.get_type_symbol(t)
 			g.write(ctoslit('$sym.name'))
 		}
-		else {
-			g.gen_expr_to_string(e, t)
-		}
+		else { g.gen_expr_to_string(e, t) }
 	}
 	g.write(' /* typeof: ' + e.type_name() + ' type: ' + t.str() + ' */ ')
 }
@@ -2173,9 +2145,7 @@ fn (mut g Gen) gen_cross_tmp_variable(left []ast.Expr, val ast.Expr) {
 				g.expr(val_)
 			}
 		}
-		else {
-			g.expr(val_)
-		}
+		else { g.expr(val_) }
 	}
 }
 
@@ -2319,9 +2289,7 @@ fn (mut g Gen) autofree_variable(v ast.Var) {
 	if sym.kind == .string {
 		// Don't free simple string literals.
 		match v.expr {
-			ast.StringLiteral {
-				g.writeln('// str literal')
-			}
+			ast.StringLiteral { g.writeln('// str literal') }
 			else {
 				// NOTE/TODO: assign_stmt multi returns variables have no expr
 				// since the type comes from the called fns return type
@@ -2419,9 +2387,7 @@ fn (mut g Gen) map_fn_ptrs(key_typ table.TypeSymbol) (string, string, string, st
 			clone_fn = '&map_clone_string'
 			free_fn = '&map_free_string'
 		}
-		else {
-			verror('map key type not supported')
-		}
+		else { verror('map key type not supported') }
 	}
 	return hash_fn, key_eq_fn, clone_fn, free_fn
 }
@@ -2436,21 +2402,11 @@ fn (mut g Gen) expr(node ast.Expr) {
 			fsym := g.table.get_type_symbol(node.typ)
 			g.write(fsym.name)
 		}
-		ast.ArrayDecompose {
-			g.expr(node.expr)
-		}
-		ast.ArrayInit {
-			g.array_init(node)
-		}
-		ast.AsCast {
-			g.as_cast(node)
-		}
-		ast.Assoc {
-			g.assoc(node)
-		}
-		ast.BoolLiteral {
-			g.write(node.val.str())
-		}
+		ast.ArrayDecompose { g.expr(node.expr) }
+		ast.ArrayInit { g.array_init(node) }
+		ast.AsCast { g.as_cast(node) }
+		ast.Assoc { g.assoc(node) }
+		ast.BoolLiteral { g.write(node.val.str()) }
 		ast.CallExpr {
 			// if g.fileis('1.strings') {
 			// println('\ncall_expr()()')
@@ -2561,19 +2517,11 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.write("L'$node.val'")
 			}
 		}
-		ast.AtExpr {
-			g.comp_at(node)
-		}
-		ast.ComptimeCall {
-			g.comptime_call(node)
-		}
-		ast.ComptimeSelector {
-			g.comptime_selector(node)
-		}
+		ast.AtExpr { g.comp_at(node) }
+		ast.ComptimeCall { g.comptime_call(node) }
+		ast.ComptimeSelector { g.comptime_selector(node) }
 		ast.Comment {}
-		ast.ConcatExpr {
-			g.concat_expr(node)
-		}
+		ast.ConcatExpr { g.concat_expr(node) }
 		ast.CTempVar {
 			// g.write('/*ctmp .orig: $node.orig.str() , .typ: $node.typ, .is_ptr: $node.is_ptr */ ')
 			g.write(node.name)
@@ -2583,24 +2531,12 @@ fn (mut g Gen) expr(node ast.Expr) {
 			styp := g.typ(node.typ)
 			g.write('${styp}_$node.val')
 		}
-		ast.FloatLiteral {
-			g.write(node.val)
-		}
-		ast.GoExpr {
-			g.go_expr(node)
-		}
-		ast.Ident {
-			g.ident(node)
-		}
-		ast.IfExpr {
-			g.if_expr(node)
-		}
-		ast.IfGuardExpr {
-			g.write('/* guard */')
-		}
-		ast.IndexExpr {
-			g.index_expr(node)
-		}
+		ast.FloatLiteral { g.write(node.val) }
+		ast.GoExpr { g.go_expr(node) }
+		ast.Ident { g.ident(node) }
+		ast.IfExpr { g.if_expr(node) }
+		ast.IfGuardExpr { g.write('/* guard */') }
+		ast.IndexExpr { g.index_expr(node) }
 		ast.InfixExpr {
 			if node.op in [.left_shift, .plus_assign, .minus_assign] {
 				g.inside_map_infix = true
@@ -2618,12 +2554,8 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.write(node.val) // .int().str())
 			}
 		}
-		ast.LockExpr {
-			g.lock_expr(node)
-		}
-		ast.MatchExpr {
-			g.match_expr(node)
-		}
+		ast.LockExpr { g.lock_expr(node) }
+		ast.MatchExpr { g.match_expr(node) }
 		ast.MapInit {
 			key_typ_str := g.typ(node.key_type)
 			value_typ_str := g.typ(node.value_type)
@@ -2682,9 +2614,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.write(', sizeof($styp))')
 			}
 		}
-		ast.None {
-			g.write('opt_none()')
-		}
+		ast.None { g.write('opt_none()') }
 		ast.OrExpr {
 			// this should never appear here
 		}
@@ -2752,30 +2682,20 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.RangeExpr {
 			// Only used in IndexExpr
 		}
-		ast.SelectExpr {
-			g.select_expr(node)
-		}
+		ast.SelectExpr { g.select_expr(node) }
 		ast.SizeOf {
 			node_typ := g.unwrap_generic(node.typ)
 			styp := g.typ(node_typ)
 			g.write('/*SizeOf*/ sizeof(${util.no_dots(styp)})')
 		}
-		ast.SqlExpr {
-			g.sql_select_expr(node)
-		}
-		ast.StringLiteral {
-			g.string_literal(node)
-		}
-		ast.StringInterLiteral {
-			g.string_inter_literal(node)
-		}
+		ast.SqlExpr { g.sql_select_expr(node) }
+		ast.StringLiteral { g.string_literal(node) }
+		ast.StringInterLiteral { g.string_inter_literal(node) }
 		ast.StructInit {
 			// `user := User{name: 'Bob'}`
 			g.struct_init(node)
 		}
-		ast.SelectorExpr {
-			g.selector_expr(node)
-		}
+		ast.SelectorExpr { g.selector_expr(node) }
 		ast.Type {
 			// match sum Type
 			// g.write('/* Type */')
@@ -2785,9 +2705,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			// g.write('$type_idx /* $sym.name */')
 			g.write('$sidx /* $sym.name */')
 		}
-		ast.TypeOf {
-			g.typeof_expr(node)
-		}
+		ast.TypeOf { g.typeof_expr(node) }
 		ast.Likely {
 			if node.is_likely {
 				g.write('_likely_')
@@ -2798,9 +2716,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.expr(node.expr)
 			g.write(')')
 		}
-		ast.UnsafeExpr {
-			g.expr(node.expr)
-		}
+		ast.UnsafeExpr { g.expr(node.expr) }
 	}
 }
 
@@ -2969,27 +2885,13 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	}
 	if unaliased_left == table.ustring_type_idx && node.op != .key_in && node.op != .not_in {
 		fn_name := match node.op {
-			.plus {
-				'ustring_add('
-			}
-			.eq {
-				'ustring_eq('
-			}
-			.ne {
-				'ustring_ne('
-			}
-			.lt {
-				'ustring_lt('
-			}
-			.le {
-				'ustring_le('
-			}
-			.gt {
-				'ustring_gt('
-			}
-			.ge {
-				'ustring_ge('
-			}
+			.plus { 'ustring_add(' }
+			.eq { 'ustring_eq(' }
+			.ne { 'ustring_ne(' }
+			.lt { 'ustring_lt(' }
+			.le { 'ustring_le(' }
+			.gt { 'ustring_gt(' }
+			.ge { 'ustring_ge(' }
 			else {
 				verror('op error for type `$left_sym.name`')
 				'/*node error*/'
@@ -3012,27 +2914,13 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			g.write('${arrow}len $node.op 0')
 		} else {
 			fn_name := match node.op {
-				.plus {
-					'string_add('
-				}
-				.eq {
-					'string_eq('
-				}
-				.ne {
-					'string_ne('
-				}
-				.lt {
-					'string_lt('
-				}
-				.le {
-					'string_le('
-				}
-				.gt {
-					'string_gt('
-				}
-				.ge {
-					'string_ge('
-				}
+				.plus { 'string_add(' }
+				.eq { 'string_eq(' }
+				.ne { 'string_ne(' }
+				.lt { 'string_lt(' }
+				.le { 'string_le(' }
+				.gt { 'string_gt(' }
+				.ge { 'string_ge(' }
 				else {
 					verror('op error for type `$left_sym.name`')
 					'/*node error*/'
@@ -4412,9 +4300,8 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 		} else {
 		*/
 		match field.expr {
-			ast.CharLiteral, ast.FloatLiteral, ast.IntegerLiteral {
-				g.const_decl_simple_define(name, val)
-			}
+			ast.CharLiteral, ast.FloatLiteral, ast.IntegerLiteral { g.const_decl_simple_define(name,
+					val) }
 			ast.ArrayInit {
 				if field.expr.is_fixed {
 					styp := g.typ(field.expr.typ)
@@ -4437,9 +4324,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 					g.const_decl_init_later(field.mod, name, val, field.typ)
 				}
 			}
-			else {
-				g.const_decl_init_later(field.mod, name, val, field.typ)
-			}
+			else { g.const_decl_init_later(field.mod, name, val, field.typ) }
 		}
 	}
 }
@@ -5189,117 +5074,47 @@ fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) ?string 
 		'windows' {
 			return '_WIN32'
 		}
-		'ios' {
-			return '__TARGET_IOS__'
-		}
-		'macos' {
-			return '__APPLE__'
-		}
-		'mach' {
-			return '__MACH__'
-		}
-		'darwin' {
-			return '__DARWIN__'
-		}
-		'hpux' {
-			return '__HPUX__'
-		}
-		'gnu' {
-			return '__GNU__'
-		}
-		'qnx' {
-			return '__QNX__'
-		}
-		'linux' {
-			return '__linux__'
-		}
-		'freebsd' {
-			return '__FreeBSD__'
-		}
-		'openbsd' {
-			return '__OpenBSD__'
-		}
-		'netbsd' {
-			return '__NetBSD__'
-		}
-		'bsd' {
-			return '__BSD__'
-		}
-		'dragonfly' {
-			return '__DragonFly__'
-		}
-		'android' {
-			return '__ANDROID__'
-		}
-		'solaris' {
-			return '__sun'
-		}
-		'haiku' {
-			return '__haiku__'
-		}
-		'linux_or_macos' {
-			return ''
-		}
+		'ios' { return '__TARGET_IOS__' }
+		'macos' { return '__APPLE__' }
+		'mach' { return '__MACH__' }
+		'darwin' { return '__DARWIN__' }
+		'hpux' { return '__HPUX__' }
+		'gnu' { return '__GNU__' }
+		'qnx' { return '__QNX__' }
+		'linux' { return '__linux__' }
+		'freebsd' { return '__FreeBSD__' }
+		'openbsd' { return '__OpenBSD__' }
+		'netbsd' { return '__NetBSD__' }
+		'bsd' { return '__BSD__' }
+		'dragonfly' { return '__DragonFly__' }
+		'android' { return '__ANDROID__' }
+		'solaris' { return '__sun' }
+		'haiku' { return '__haiku__' }
+		'linux_or_macos' { return '' }
 		//
-		'js' {
-			return '_VJS'
-		}
+		'js' { return '_VJS' }
 		// compilers:
-		'gcc' {
-			return '__V_GCC__'
-		}
-		'tinyc' {
-			return '__TINYC__'
-		}
-		'clang' {
-			return '__clang__'
-		}
-		'mingw' {
-			return '__MINGW32__'
-		}
-		'msvc' {
-			return '_MSC_VER'
-		}
-		'cplusplus' {
-			return '__cplusplus'
-		}
+		'gcc' { return '__V_GCC__' }
+		'tinyc' { return '__TINYC__' }
+		'clang' { return '__clang__' }
+		'mingw' { return '__MINGW32__' }
+		'msvc' { return '_MSC_VER' }
+		'cplusplus' { return '__cplusplus' }
 		// other:
-		'debug' {
-			return '_VDEBUG'
-		}
-		'test' {
-			return '_VTEST'
-		}
-		'glibc' {
-			return '__GLIBC__'
-		}
-		'prealloc' {
-			return '_VPREALLOC'
-		}
-		'no_bounds_checking' {
-			return 'CUSTOM_DEFINE_no_bounds_checking'
-		}
+		'debug' { return '_VDEBUG' }
+		'test' { return '_VTEST' }
+		'glibc' { return '__GLIBC__' }
+		'prealloc' { return '_VPREALLOC' }
+		'no_bounds_checking' { return 'CUSTOM_DEFINE_no_bounds_checking' }
 		// architectures:
-		'amd64' {
-			return '__V_amd64'
-		}
-		'aarch64' {
-			return '__V_aarch64'
-		}
+		'amd64' { return '__V_amd64' }
+		'aarch64' { return '__V_aarch64' }
 		// bitness:
-		'x64' {
-			return 'TARGET_IS_64BIT'
-		}
-		'x32' {
-			return 'TARGET_IS_32BIT'
-		}
+		'x64' { return 'TARGET_IS_64BIT' }
+		'x32' { return 'TARGET_IS_32BIT' }
 		// endianness:
-		'little_endian' {
-			return 'TARGET_ORDER_IS_LITTLE'
-		}
-		'big_endian' {
-			return 'TARGET_ORDER_IS_BIG'
-		}
+		'little_endian' { return 'TARGET_ORDER_IS_LITTLE' }
+		'big_endian' { return 'TARGET_ORDER_IS_BIG' }
 		else {
 			if is_comptime_optional ||
 				(g.pref.compile_defines_all.len > 0 && name in g.pref.compile_defines_all)

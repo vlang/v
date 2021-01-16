@@ -394,9 +394,7 @@ fn parse_arguments(args []string) Config {
 		arg := args[i]
 		current_args := args[i..]
 		match arg {
-			'-all' {
-				cfg.pub_only = false
-			}
+			'-all' { cfg.pub_only = false }
 			'-filename' {
 				cfg.is_local = true
 				cfg.local_filename = cmdline.option(current_args, '-filename', '')
@@ -412,15 +410,9 @@ fn parse_arguments(args []string) Config {
 				cfg.output_type = set_output_type_from_str(format)
 				i++
 			}
-			'-inline-assets' {
-				cfg.inline_assets = true
-			}
-			'-l' {
-				cfg.show_loc = true
-			}
-			'-m' {
-				cfg.is_multi = true
-			}
+			'-inline-assets' { cfg.inline_assets = true }
+			'-l' { cfg.show_loc = true }
+			'-m' { cfg.is_multi = true }
 			'-o' {
 				opath := cmdline.option(current_args, '-o', '')
 				cfg.output_path = if opath == 'stdout' { opath } else { os.real_path(opath) }
@@ -434,18 +426,10 @@ fn parse_arguments(args []string) Config {
 				cfg.local_pos = cmdline.option(current_args, '-pos', '').int()
 				i++
 			}
-			'-no-timestamp' {
-				cfg.no_timestamp = true
-			}
-			'-no-examples' {
-				cfg.include_examples = false
-			}
-			'-readme' {
-				cfg.include_readme = true
-			}
-			'-v' {
-				cfg.is_verbose = true
-			}
+			'-no-timestamp' { cfg.no_timestamp = true }
+			'-no-examples' { cfg.include_examples = false }
+			'-readme' { cfg.include_readme = true }
+			'-v' { cfg.is_verbose = true }
 			else {
 				if cfg.input_path.len < 1 {
 					cfg.input_path = arg

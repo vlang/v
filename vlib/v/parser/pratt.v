@@ -40,27 +40,17 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 				p.is_stmt_ident = is_stmt_ident
 			}
 		}
-		.string {
-			node = p.string_expr()
-		}
-		.comment {
-			node = p.comment()
-		}
+		.string { node = p.string_expr() }
+		.comment { node = p.comment() }
 		.dot {
 			// .enum_val
 			node = p.enum_val()
 		}
-		.at {
-			node = p.at()
-		}
+		.at { node = p.at() }
 		.dollar {
 			match p.peek_tok.kind {
-				.name {
-					return p.comp_call()
-				}
-				.key_if {
-					return p.if_expr(true)
-				}
+				.name { return p.comp_call() }
+				.key_if { return p.if_expr(true) }
 				else {
 					p.error_with_pos('unexpected `$`', p.peek_tok.position())
 					return ast.Expr{}
@@ -85,15 +75,9 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			}
 			p.next()
 		}
-		.key_match {
-			node = p.match_expr()
-		}
-		.key_select {
-			node = p.select_expr()
-		}
-		.number {
-			node = p.parse_number_literal()
-		}
+		.key_match { node = p.match_expr() }
+		.key_select { node = p.select_expr() }
+		.number { node = p.parse_number_literal() }
 		.lpar {
 			p.check(.lpar)
 			node = p.expr(0)
@@ -103,9 +87,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 				pos: p.tok.position()
 			}
 		}
-		.key_if {
-			node = p.if_expr(false)
-		}
+		.key_if { node = p.if_expr(false) }
 		.key_unsafe {
 			// unsafe {
 			mut pos := p.tok.position()
@@ -125,9 +107,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			}
 			p.inside_unsafe = false
 		}
-		.key_lock, .key_rlock {
-			node = p.lock_expr()
-		}
+		.key_lock, .key_rlock { node = p.lock_expr() }
 		.lsbr {
 			if p.expecting_type {
 				// parse json.decode type (`json.decode([]User, s)`)

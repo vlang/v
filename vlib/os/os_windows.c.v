@@ -158,9 +158,7 @@ pub fn get_module_filename(handle HANDLE) ?string {
 		for {
 			status := int(C.GetModuleFileNameW(handle, voidptr(&buf), sz))
 			match status {
-				success {
-					return string_from_wide2(buf, sz)
-				}
+				success { return string_from_wide2(buf, sz) }
 				else {
 					// Must handled with GetLastError and converted by FormatMessage
 					return error('Cannot get file name from handle')

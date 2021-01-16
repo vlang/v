@@ -381,24 +381,12 @@ fn html_highlight(code string, tb &table.Table) string {
 						tok_typ = .name
 					}
 				}
-				.comment {
-					tok_typ = .comment
-				}
-				.chartoken {
-					tok_typ = .char
-				}
-				.string {
-					tok_typ = .string
-				}
-				.number {
-					tok_typ = .number
-				}
-				.key_true, .key_false {
-					tok_typ = .boolean
-				}
-				.lpar, .lcbr, .rpar, .rcbr, .lsbr, .rsbr, .semicolon, .colon, .comma, .dot {
-					tok_typ = .punctuation
-				}
+				.comment { tok_typ = .comment }
+				.chartoken { tok_typ = .char }
+				.string { tok_typ = .string }
+				.number { tok_typ = .number }
+				.key_true, .key_false { tok_typ = .boolean }
+				.lpar, .lcbr, .rpar, .rcbr, .lsbr, .rsbr, .semicolon, .colon, .comma, .dot { tok_typ = .punctuation }
 				else {
 					if token.is_key(tok.lit) || token.is_decl(tok.kind) {
 						tok_typ = .keyword

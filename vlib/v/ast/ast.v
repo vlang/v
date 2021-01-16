@@ -531,9 +531,7 @@ pub mut:
 
 pub fn (i &Ident) var_info() IdentVar {
 	match mut i.info {
-		IdentVar {
-			return i.info
-		}
+		IdentVar { return i.info }
 		else {
 			// return IdentVar{}
 			panic('Ident.var_info(): info is not IdentVar variant')
@@ -1183,18 +1181,10 @@ pub fn (expr Expr) position() token.Position {
 		AnonFn {
 			return expr.decl.pos
 		}
-		ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr, CastExpr, ChanInit, CharLiteral, ConcatExpr, Comment, EnumVal, FloatLiteral, GoExpr, Ident, IfExpr, IndexExpr, IntegerLiteral, Likely, LockExpr, MapInit, MatchExpr, None, OrExpr, ParExpr, PostfixExpr, PrefixExpr, RangeExpr, SelectExpr, SelectorExpr, SizeOf, SqlExpr, StringInterLiteral, StringLiteral, StructInit, Type, TypeOf, UnsafeExpr {
-			return expr.pos
-		}
-		ArrayDecompose {
-			return expr.pos
-		}
-		IfGuardExpr {
-			return expr.expr.position()
-		}
-		ComptimeCall, ComptimeSelector {
-			return expr.left.position()
-		}
+		ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr, CastExpr, ChanInit, CharLiteral, ConcatExpr, Comment, EnumVal, FloatLiteral, GoExpr, Ident, IfExpr, IndexExpr, IntegerLiteral, Likely, LockExpr, MapInit, MatchExpr, None, OrExpr, ParExpr, PostfixExpr, PrefixExpr, RangeExpr, SelectExpr, SelectorExpr, SizeOf, SqlExpr, StringInterLiteral, StringLiteral, StructInit, Type, TypeOf, UnsafeExpr { return expr.pos }
+		ArrayDecompose { return expr.pos }
+		IfGuardExpr { return expr.expr.position() }
+		ComptimeCall, ComptimeSelector { return expr.left.position() }
 		InfixExpr {
 			left_pos := expr.left.position()
 			right_pos := expr.right.position()
@@ -1204,9 +1194,7 @@ pub fn (expr Expr) position() token.Position {
 				len: right_pos.pos - left_pos.pos + right_pos.len
 			}
 		}
-		CTempVar {
-			return token.Position{}
-		}
+		CTempVar { return token.Position{} }
 		// Please, do NOT use else{} here.
 		// This match is exhaustive *on purpose*, to help force
 		// maintaining/implementing proper .pos fields.
@@ -1243,9 +1231,7 @@ pub fn (expr Expr) is_lit() bool {
 // check if stmt can be an expression in C
 pub fn (stmt Stmt) check_c_expr() ? {
 	match stmt {
-		AssignStmt {
-			return
-		}
+		AssignStmt { return }
 		ExprStmt {
 			if stmt.expr.is_expr() {
 				return
@@ -1268,12 +1254,8 @@ pub:
 
 pub fn (stmt Stmt) position() token.Position {
 	match stmt {
-		AssertStmt, AssignStmt, Block, BranchStmt, CompFor, ConstDecl, DeferStmt, EnumDecl, ExprStmt, FnDecl, ForCStmt, ForInStmt, ForStmt, GotoLabel, GotoStmt, Import, Return, StructDecl, GlobalDecl, HashStmt, InterfaceDecl, Module, SqlStmt {
-			return stmt.pos
-		}
-		GoStmt {
-			return stmt.call_expr.pos
-		}
+		AssertStmt, AssignStmt, Block, BranchStmt, CompFor, ConstDecl, DeferStmt, EnumDecl, ExprStmt, FnDecl, ForCStmt, ForInStmt, ForStmt, GotoLabel, GotoStmt, Import, Return, StructDecl, GlobalDecl, HashStmt, InterfaceDecl, Module, SqlStmt { return stmt.pos }
+		GoStmt { return stmt.call_expr.pos }
 		TypeDecl {
 			match stmt {
 				AliasTypeDecl, FnTypeDecl, SumTypeDecl { return stmt.pos }
@@ -1296,18 +1278,10 @@ pub fn (node Node) position() token.Position {
 			}
 			return pos
 		}
-		Expr {
-			return node.position()
-		}
-		StructField {
-			return node.pos.extend(node.type_pos)
-		}
-		MatchBranch, SelectBranch, Field, EnumField, ConstField, StructInitField, GlobalField, table.Param {
-			return node.pos
-		}
-		IfBranch {
-			return node.pos.extend(node.body_pos)
-		}
+		Expr { return node.position() }
+		StructField { return node.pos.extend(node.type_pos) }
+		MatchBranch, SelectBranch, Field, EnumField, ConstField, StructInitField, GlobalField, table.Param { return node.pos }
+		IfBranch { return node.pos.extend(node.body_pos) }
 		ScopeObject {
 			match node {
 				ConstField, GlobalField, Var { return node.pos }
@@ -1329,21 +1303,12 @@ pub fn (node Node) children() []Node {
 	mut children := []Node{}
 	if node is Expr {
 		match node {
-			StringInterLiteral, Assoc, ArrayInit {
-				return node.exprs.map(Node(it))
-			}
-			SelectorExpr, PostfixExpr, UnsafeExpr, AsCast, ParExpr, IfGuardExpr, SizeOf, Likely, TypeOf, ArrayDecompose {
-				children << node.expr
-			}
-			LockExpr, OrExpr {
-				return node.stmts.map(Node(it))
-			}
-			StructInit {
-				return node.fields.map(Node(it))
-			}
-			AnonFn {
-				children << Stmt(node.decl)
-			}
+			StringInterLiteral, Assoc, ArrayInit { return node.exprs.map(Node(it)) }
+			SelectorExpr, PostfixExpr, UnsafeExpr, AsCast, ParExpr, IfGuardExpr, SizeOf, Likely, TypeOf, ArrayDecompose { children <<
+					node.expr }
+			LockExpr, OrExpr { return node.stmts.map(Node(it)) }
+			StructInit { return node.fields.map(Node(it)) }
+			AnonFn { children << Stmt(node.decl) }
 			CallExpr {
 				children << node.left
 				children << Expr(node.or_block)
@@ -1352,9 +1317,7 @@ pub fn (node Node) children() []Node {
 				children << node.left
 				children << node.right
 			}
-			PrefixExpr {
-				children << node.right
-			}
+			PrefixExpr { children << node.right }
 			IndexExpr {
 				children << node.left
 				children << node.index
@@ -1367,12 +1330,8 @@ pub fn (node Node) children() []Node {
 				children << node.cond
 				children << node.branches.map(Node(it))
 			}
-			SelectExpr {
-				return node.branches.map(Node(it))
-			}
-			ChanInit {
-				children << node.cap_expr
-			}
+			SelectExpr { return node.branches.map(Node(it)) }
+			ChanInit { children << node.cap_expr }
 			MapInit {
 				children << node.keys.map(Node(it))
 				children << node.vals.map(Node(it))
@@ -1385,45 +1344,25 @@ pub fn (node Node) children() []Node {
 				children << node.expr
 				children << node.arg
 			}
-			ConcatExpr {
-				return node.vals.map(Node(it))
-			}
-			ComptimeCall, ComptimeSelector {
-				children << node.left
-			}
+			ConcatExpr { return node.vals.map(Node(it)) }
+			ComptimeCall, ComptimeSelector { children << node.left }
 			else {}
 		}
 	} else if node is Stmt {
 		match node {
-			Block, DeferStmt, ForCStmt, ForInStmt, ForStmt, CompFor {
-				return node.stmts.map(Node(it))
-			}
-			ExprStmt, AssertStmt {
-				children << node.expr
-			}
-			InterfaceDecl {
-				return node.methods.map(Node(Stmt(it)))
-			}
+			Block, DeferStmt, ForCStmt, ForInStmt, ForStmt, CompFor { return node.stmts.map(Node(it)) }
+			ExprStmt, AssertStmt { children << node.expr }
+			InterfaceDecl { return node.methods.map(Node(Stmt(it))) }
 			AssignStmt {
 				children << node.left.map(Node(it))
 				children << node.right.map(Node(it))
 			}
-			Return {
-				return node.exprs.map(Node(it))
-			}
+			Return { return node.exprs.map(Node(it)) }
 			// NB: these four decl nodes cannot be merged as one branch
-			StructDecl {
-				return node.fields.map(Node(it))
-			}
-			GlobalDecl {
-				return node.fields.map(Node(it))
-			}
-			ConstDecl {
-				return node.fields.map(Node(it))
-			}
-			EnumDecl {
-				return node.fields.map(Node(it))
-			}
+			StructDecl { return node.fields.map(Node(it)) }
+			GlobalDecl { return node.fields.map(Node(it)) }
+			ConstDecl { return node.fields.map(Node(it)) }
+			EnumDecl { return node.fields.map(Node(it)) }
 			FnDecl {
 				if node.is_method {
 					children << Node(node.receiver)
@@ -1439,16 +1378,12 @@ pub fn (node Node) children() []Node {
 		}
 	} else {
 		match node {
-			GlobalField, ConstField, EnumField, StructInitField {
-				children << node.expr
-			}
+			GlobalField, ConstField, EnumField, StructInitField { children << node.expr }
 			SelectBranch {
 				children << node.stmt
 				children << node.stmts.map(Node(it))
 			}
-			IfBranch, File {
-				return node.stmts.map(Node(it))
-			}
+			IfBranch, File { return node.stmts.map(Node(it)) }
 			MatchBranch {
 				children << node.stmts.map(Node(it))
 				children << node.exprs.map(Node(it))

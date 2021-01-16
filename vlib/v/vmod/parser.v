@@ -172,9 +172,7 @@ fn get_array_content(tokens []Token, st_idx int) ?([]string, int) {
 				idx++
 				break
 			}
-			else {
-				return error('vmod: invalid token "$tok.val"')
-			}
+			else { return error('vmod: invalid token "$tok.val"') }
 		}
 	}
 	return vals, idx
@@ -212,24 +210,12 @@ fn (mut p Parser) parse() ?Manifest {
 				}
 				field_value := tokens[i + 1].val
 				match field_name {
-					'name' {
-						mn.name = field_value
-					}
-					'version' {
-						mn.version = field_value
-					}
-					'license' {
-						mn.license = field_value
-					}
-					'repo_url' {
-						mn.repo_url = field_value
-					}
-					'description' {
-						mn.description = field_value
-					}
-					'author' {
-						mn.author = field_value
-					}
+					'name' { mn.name = field_value }
+					'version' { mn.version = field_value }
+					'license' { mn.license = field_value }
+					'repo_url' { mn.repo_url = field_value }
+					'description' { mn.description = field_value }
+					'author' { mn.author = field_value }
 					'dependencies' {
 						deps, idx := get_array_content(tokens, i + 1) ?
 						mn.dependencies = deps
@@ -256,9 +242,7 @@ fn (mut p Parser) parse() ?Manifest {
 				i++
 				continue
 			}
-			else {
-				return error('$err_label invalid token "$tok.val"')
-			}
+			else { return error('$err_label invalid token "$tok.val"') }
 		}
 	}
 	return mn

@@ -675,9 +675,7 @@ fn (mut s Scanner) text_scan() token.Token {
 				}
 				return s.new_token(.mod, '', 1)
 			}
-			`?` {
-				return s.new_token(.question, '', 1)
-			}
+			`?` { return s.new_token(.question, '', 1) }
 			single_quote, double_quote {
 				ident_string := s.ident_string()
 				return s.new_token(.string, ident_string, ident_string.len + 2) // + two quotes
@@ -701,12 +699,8 @@ fn (mut s Scanner) text_scan() token.Token {
 				}
 				return s.new_token(.rpar, '', 1)
 			}
-			`[` {
-				return s.new_token(.lsbr, '', 1)
-			}
-			`]` {
-				return s.new_token(.rsbr, '', 1)
-			}
+			`[` { return s.new_token(.lsbr, '', 1) }
+			`]` { return s.new_token(.rsbr, '', 1) }
 			`{` {
 				// Skip { in `${` in strings
 				if s.is_inside_string {
@@ -765,9 +759,7 @@ fn (mut s Scanner) text_scan() token.Token {
 				}
 				return s.new_token(.pipe, '', 1)
 			}
-			`,` {
-				return s.new_token(.comma, '', 1)
-			}
+			`,` { return s.new_token(.comma, '', 1) }
 			`@` {
 				mut name := ''
 				if nextc != `\0` {
@@ -876,9 +868,7 @@ fn (mut s Scanner) text_scan() token.Token {
 					return s.new_token(.colon, '', 1)
 				}
 			}
-			`;` {
-				return s.new_token(.semicolon, '', 1)
-			}
+			`;` { return s.new_token(.semicolon, '', 1) }
 			`!` {
 				if nextc == `=` {
 					s.pos++
@@ -897,9 +887,7 @@ fn (mut s Scanner) text_scan() token.Token {
 					return s.new_token(.not, '', 1)
 				}
 			}
-			`~` {
-				return s.new_token(.bit_not, '', 1)
-			}
+			`~` { return s.new_token(.bit_not, '', 1) }
 			`/` {
 				if nextc == `=` {
 					s.pos++

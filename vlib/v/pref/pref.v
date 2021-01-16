@@ -156,12 +156,8 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				res.is_apk = true
 				res.build_options << arg
 			}
-			'-show-timings' {
-				res.show_timings = true
-			}
-			'-check-syntax' {
-				res.only_check_syntax = true
-			}
+			'-show-timings' { res.show_timings = true }
+			'-check-syntax' { res.only_check_syntax = true }
 			'-v' {
 				// `-v` flag is for setting verbosity, but without any args it prints the version, like Clang
 				if args.len > 1 {
@@ -174,15 +170,9 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			'-progress' {
 				// processed by testing tools in cmd/tools/modules/testing/common.v
 			}
-			'-Wimpure-v' {
-				res.warn_impure_v = true
-			}
-			'-Wfatal-errors' {
-				res.fatal_errors = true
-			}
-			'-silent' {
-				res.output_mode = .silent
-			}
+			'-Wimpure-v' { res.warn_impure_v = true }
+			'-Wfatal-errors' { res.fatal_errors = true }
+			'-silent' { res.output_mode = .silent }
 			'-g' {
 				res.is_debug = true
 				res.is_vlines = true
@@ -193,22 +183,14 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				res.is_vlines = false
 				res.build_options << arg
 			}
-			'-repl' {
-				res.is_repl = true
-			}
-			'-live' {
-				res.is_livemain = true
-			}
+			'-repl' { res.is_repl = true }
+			'-live' { res.is_livemain = true }
 			'-sharedlive' {
 				res.is_liveshared = true
 				res.is_shared = true
 			}
-			'-shared' {
-				res.is_shared = true
-			}
-			'--enable-globals', '-enable-globals' {
-				res.enable_globals = true
-			}
+			'-shared' { res.is_shared = true }
+			'--enable-globals', '-enable-globals' { res.enable_globals = true }
 			'-autofree' {
 				res.autofree = true
 				res.build_options << arg
@@ -217,16 +199,12 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				res.autofree = false
 				res.build_options << arg
 			}
-			'-compress' {
-				res.compress = true
-			}
+			'-compress' { res.compress = true }
 			'-freestanding' {
 				res.is_bare = true
 				res.build_options << arg
 			}
-			'-no-retry-compilation' {
-				res.retry_compilation = false
-			}
+			'-no-retry-compilation' { res.retry_compilation = false }
 			'-no-preludes' {
 				res.no_preludes = true
 				res.build_options << arg
@@ -237,9 +215,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				res.build_options << '$arg $res.profile_file'
 				i++
 			}
-			'-profile-no-inline' {
-				res.profile_no_inline = true
-			}
+			'-profile-no-inline' { res.profile_no_inline = true }
 			'-prod' {
 				res.is_prod = true
 				res.build_options << arg
@@ -248,69 +224,36 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				res.sanitize = true
 				res.build_options << arg
 			}
-			'-simulator' {
-				res.is_ios_simulator = true
-			}
-			'-stats' {
-				res.is_stats = true
-			}
-			'-obfuscate' {
-				res.obfuscate = true
-			}
-			'-translated' {
-				res.translated = true
-			}
-			'-color' {
-				res.use_color = .always
-			}
+			'-simulator' { res.is_ios_simulator = true }
+			'-stats' { res.is_stats = true }
+			'-obfuscate' { res.obfuscate = true }
+			'-translated' { res.translated = true }
+			'-color' { res.use_color = .always }
 			'-m32', '-m64' {
 				res.m64 = arg[2] == `6`
 				res.cflags += ' $arg'
 			}
-			'-nocolor' {
-				res.use_color = .never
-			}
-			'-showcc' {
-				res.show_cc = true
-			}
-			'-show-c-output' {
-				res.show_c_output = true
-			}
-			'-experimental' {
-				res.experimental = true
-			}
-			'-usecache' {
-				res.use_cache = true
-			}
-			'-nocache' {
-				res.use_cache = false
-			}
+			'-nocolor' { res.use_color = .never }
+			'-showcc' { res.show_cc = true }
+			'-show-c-output' { res.show_c_output = true }
+			'-experimental' { res.experimental = true }
+			'-usecache' { res.use_cache = true }
+			'-nocache' { res.use_cache = false }
 			'-prealloc' {
 				res.prealloc = true
 				res.build_options << arg
 			}
-			'-parallel' {
-				res.is_parallel = true
-			}
+			'-parallel' { res.is_parallel = true }
 			'-x64' {
 				res.backend = .x64
 				res.build_options << arg
 			}
-			'-W' {
-				res.warns_are_errors = true
-			}
-			'-keepc' {
-				res.reuse_tmpc = true
-			}
-			'-w' {
-				res.skip_warnings = true
-			}
-			'-print_v_files' {
-				res.print_v_files = true
-			}
-			'-error-limit' {
-				res.error_limit = cmdline.option(current_args, '-error-limit', '0').int()
-			}
+			'-W' { res.warns_are_errors = true }
+			'-keepc' { res.reuse_tmpc = true }
+			'-w' { res.skip_warnings = true }
+			'-print_v_files' { res.print_v_files = true }
+			'-error-limit' { res.error_limit = cmdline.option(current_args, '-error-limit',
+					'0').int() }
 			'-os' {
 				target_os := cmdline.option(current_args, '-os', '')
 				i++
@@ -565,9 +508,7 @@ fn parse_define(mut prefs Preferences, define string) {
 		prefs.compile_defines_all << define_parts[0]
 		match define_parts[1] {
 			'0' {}
-			'1' {
-				prefs.compile_defines << define_parts[0]
-			}
+			'1' { prefs.compile_defines << define_parts[0] }
 			else {
 				println('V error: Unknown define argument value `${define_parts[1]}` for ${define_parts[0]}.' +
 					' Expected `0` or `1`.')

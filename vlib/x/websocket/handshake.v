@@ -67,12 +67,8 @@ fn (mut s Server) parse_client_handshake(client_handshake string, mut c Client) 
 		}
 		keys := lines[i].split(':')
 		match keys[0] {
-			'Upgrade', 'upgrade' {
-				flags << .has_upgrade
-			}
-			'Connection', 'connection' {
-				flags << .has_connection
-			}
+			'Upgrade', 'upgrade' { flags << .has_upgrade }
+			'Connection', 'connection' { flags << .has_connection }
 			'Sec-WebSocket-Key', 'sec-websocket-key' {
 				key = keys[1].trim_space()
 				s.logger.debug('server-> got key: $key')
@@ -151,12 +147,8 @@ fn (mut ws Client) check_handshake_response(handshake_response string, seckey st
 		}
 		keys := lines[i].split(':')
 		match keys[0] {
-			'Upgrade', 'upgrade' {
-				ws.flags << .has_upgrade
-			}
-			'Connection', 'connection' {
-				ws.flags << .has_connection
-			}
+			'Upgrade', 'upgrade' { ws.flags << .has_upgrade }
+			'Connection', 'connection' { ws.flags << .has_connection }
 			'Sec-WebSocket-Accept', 'sec-websocket-accept' {
 				ws.debug_log('seckey: $seckey')
 				challenge := create_key_challenge_response(seckey) ?

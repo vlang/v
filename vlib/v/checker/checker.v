@@ -516,9 +516,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 		c.error('unknown struct `$type_sym.name`', struct_init.pos)
 	}
 	match type_sym.kind {
-		.placeholder {
-			c.error('unknown struct: $type_sym.name', struct_init.pos)
-		}
+		.placeholder { c.error('unknown struct: $type_sym.name', struct_init.pos) }
 		// string & array are also structs but .kind of string/array
 		.struct_, .string, .array, .alias {
 			mut info := table.Struct{}
@@ -682,9 +680,7 @@ fn (mut c Checker) check_div_mod_by_zero(expr ast.Expr, op_kind token.Kind) {
 				c.error('$oper by zero', expr.pos)
 			}
 		}
-		ast.CastExpr {
-			c.check_div_mod_by_zero(expr.expr, op_kind)
-		}
+		ast.CastExpr { c.check_div_mod_by_zero(expr.expr, op_kind) }
 		else {}
 	}
 }
@@ -757,16 +753,12 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 							infix_expr.pos)
 					}
 				}
-				.string {
-					c.check_expected(left_type, right_type) or {
+				.string { c.check_expected(left_type, right_type) or {
 						c.error('left operand to `$infix_expr.op` does not match: $err',
 							infix_expr.pos)
-					}
-				}
-				else {
-					c.error('`$infix_expr.op.str()` can only be used with an array/map/string',
-						infix_expr.pos)
-				}
+					} }
+				else { c.error('`$infix_expr.op.str()` can only be used with an array/map/string',
+						infix_expr.pos) }
 			}
 			return table.bool_type
 		}
@@ -894,9 +886,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 				return c.check_shift(left_type, right_type, left_pos, right_pos)
 			}
 		}
-		.right_shift {
-			return c.check_shift(left_type, right_type, left_pos, right_pos)
-		}
+		.right_shift { return c.check_shift(left_type, right_type, left_pos, right_pos) }
 		.key_is, .not_is {
 			type_expr := infix_expr.right as ast.Type
 			typ_sym := c.table.get_type_symbol(type_expr.typ)
@@ -1011,9 +1001,7 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 			// TODO
 			return '', pos
 		}
-		ast.ComptimeSelector {
-			return '', pos
-		}
+		ast.ComptimeSelector { return '', pos }
 		ast.Ident {
 			if expr.obj is ast.Var {
 				mut v := expr.obj as ast.Var
@@ -1032,15 +1020,9 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 				c.error('cannot modify constant `$expr.name`', expr.pos)
 			}
 		}
-		ast.IndexExpr {
-			to_lock, pos = c.fail_if_immutable(expr.left)
-		}
-		ast.ParExpr {
-			to_lock, pos = c.fail_if_immutable(expr.expr)
-		}
-		ast.PrefixExpr {
-			to_lock, pos = c.fail_if_immutable(expr.right)
-		}
+		ast.IndexExpr { to_lock, pos = c.fail_if_immutable(expr.left) }
+		ast.ParExpr { to_lock, pos = c.fail_if_immutable(expr.expr) }
+		ast.PrefixExpr { to_lock, pos = c.fail_if_immutable(expr.right) }
 		ast.SelectorExpr {
 			// retrieve table.Field
 			if expr.expr_type == 0 {
@@ -1094,9 +1076,7 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 						c.error('`$typ_sym.kind` can not be modified', expr.pos)
 					}
 				}
-				else {
-					c.error('unexpected symbol `$typ_sym.kind`', expr.pos)
-				}
+				else { c.error('unexpected symbol `$typ_sym.kind`', expr.pos) }
 			}
 		}
 		ast.CallExpr {
@@ -1109,12 +1089,8 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 				}
 			}
 		}
-		ast.ArrayInit {
-			return '', pos
-		}
-		else {
-			c.error('unexpected expression `$expr.type_name()`', expr.position())
-		}
+		ast.ArrayInit { return '', pos }
+		else { c.error('unexpected expression `$expr.type_name()`', expr.position()) }
 	}
 	if explicit_lock_needed {
 		c.error('`$to_lock` is `shared` and needs explicit lock for `$expr.type_name()`',
@@ -1316,9 +1292,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	} else if left_type_sym.kind == .map && method_name in ['clone', 'keys'] {
 		mut ret_type := table.void_type
 		match method_name {
-			'clone' {
-				ret_type = left_type
-			}
+			'clone' { ret_type = left_type }
 			'keys' {
 				info := left_type_sym.info as table.Map
 				typ := c.table.find_or_register_array(info.key_type)
@@ -2023,9 +1997,7 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 		}
 		// Note: in future typeof() should be a type known at compile-time
 		// sum types should not be handled dynamically
-		ast.TypeOf {
-			name_type = c.expr(selector_expr.expr.expr)
-		}
+		ast.TypeOf { name_type = c.expr(selector_expr.expr.expr) }
 		else {}
 	}
 	if name_type > 0 {
@@ -2791,9 +2763,7 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 		init_expr := array_init.exprs[0]
 		c.expr(init_expr)
 		match init_expr {
-			ast.IntegerLiteral {
-				fixed_size = init_expr.val.int()
-			}
+			ast.IntegerLiteral { fixed_size = init_expr.val.int() }
 			ast.Ident {
 				if init_expr.obj is ast.ConstField {
 					if cint := const_int_value(init_expr.obj) {
@@ -2804,9 +2774,7 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 						array_init.pos)
 				}
 			}
-			else {
-				c.error('expecting `int` for fixed size', array_init.pos)
-			}
+			else { c.error('expecting `int` for fixed size', array_init.pos) }
 		}
 		idx := c.table.find_or_register_array_fixed(array_init.elem_type, fixed_size)
 		array_type := table.new_type(idx)
@@ -2863,9 +2831,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			}
 			c.expected_type = cur_exp_typ
 		}
-		ast.AssignStmt {
-			c.assign_stmt(mut node)
-		}
+		ast.AssignStmt { c.assign_stmt(mut node) }
 		ast.Block {
 			if node.is_unsafe {
 				assert !c.inside_unsafe
@@ -2895,12 +2861,8 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.const_decl(mut node)
 			c.inside_const = false
 		}
-		ast.DeferStmt {
-			c.stmts(node.stmts)
-		}
-		ast.EnumDecl {
-			c.enum_decl(node)
-		}
+		ast.DeferStmt { c.stmts(node.stmts) }
+		ast.EnumDecl { c.enum_decl(node) }
 		ast.ExprStmt {
 			node.typ = c.expr(node.expr)
 			c.expected_type = table.void_type
@@ -2908,9 +2870,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			// TODO This should work, even if it's prolly useless .-.
 			// node.typ = c.check_expr_opt_call(node.expr, table.void_type)
 		}
-		ast.FnDecl {
-			c.fn_decl(mut node)
-		}
+		ast.FnDecl { c.fn_decl(mut node) }
 		ast.ForCStmt {
 			c.in_for_count++
 			prev_loop_label := c.loop_label
@@ -3000,9 +2960,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.loop_label = prev_loop_label
 			c.in_for_count--
 		}
-		ast.ForStmt {
-			c.for_stmt(mut node)
-		}
+		ast.ForStmt { c.for_stmt(mut node) }
 		ast.GlobalDecl {
 			for field in node.fields {
 				c.check_valid_snake_case(field.name, 'global name', field.pos)
@@ -3030,15 +2988,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		ast.GotoStmt {
 			// TODO: check label doesn't bypass variable declarations
 		}
-		ast.HashStmt {
-			c.hash_stmt(mut node)
-		}
-		ast.Import {
-			c.import_stmt(node)
-		}
-		ast.InterfaceDecl {
-			c.interface_decl(node)
-		}
+		ast.HashStmt { c.hash_stmt(mut node) }
+		ast.Import { c.import_stmt(node) }
+		ast.InterfaceDecl { c.interface_decl(node) }
 		ast.Module {
 			c.mod = node.name
 			c.is_builtin_mod = node.name in ['builtin', 'os', 'strconv']
@@ -3049,15 +3001,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.return_stmt(mut node)
 			c.scope_returns = true
 		}
-		ast.SqlStmt {
-			c.sql_stmt(mut node)
-		}
-		ast.StructDecl {
-			c.struct_decl(mut node)
-		}
-		ast.TypeDecl {
-			c.type_decl(node)
-		}
+		ast.SqlStmt { c.sql_stmt(mut node) }
+		ast.StructDecl { c.struct_decl(mut node) }
+		ast.TypeDecl { c.type_decl(node) }
 	}
 }
 
@@ -3204,9 +3150,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		return table.void_type
 	}
 	match mut node {
-		ast.CTempVar {
-			return node.typ
-		}
+		ast.CTempVar { return node.typ }
 		ast.AnonFn {
 			keep_fn := c.cur_fn
 			c.cur_fn = &node.decl
@@ -3227,9 +3171,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			node.arg_type = elem_type
 			return elem_type
 		}
-		ast.ArrayInit {
-			return c.array_init(mut node)
-		}
+		ast.ArrayInit { return c.array_init(mut node) }
 		ast.AsCast {
 			node.expr_type = c.expr(node.expr)
 			expr_type_sym := c.table.get_type_symbol(node.expr_type)
@@ -3263,34 +3205,22 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			node.typ = v.typ
 			return v.typ
 		}
-		ast.BoolLiteral {
-			return table.bool_type
-		}
-		ast.CastExpr {
-			return c.cast_expr(mut node)
-		}
-		ast.CallExpr {
-			return c.call_expr(mut node)
-		}
+		ast.BoolLiteral { return table.bool_type }
+		ast.CastExpr { return c.cast_expr(mut node) }
+		ast.CallExpr { return c.call_expr(mut node) }
 		ast.GoExpr {
 			ret_type := c.call_expr(mut node.go_stmt.call_expr)
 			return c.table.find_or_register_gohandle(ret_type)
 		}
-		ast.ChanInit {
-			return c.chan_init(mut node)
-		}
+		ast.ChanInit { return c.chan_init(mut node) }
 		ast.CharLiteral {
 			// return int_literal, not rune, so that we can do "bytes << `A`" without a cast etc
 			// return table.int_literal_type
 			return table.rune_type
 			// return table.byte_type
 		}
-		ast.Comment {
-			return table.void_type
-		}
-		ast.AtExpr {
-			return c.at_expr(mut node)
-		}
+		ast.Comment { return table.void_type }
+		ast.AtExpr { return c.at_expr(mut node) }
 		ast.ComptimeCall {
 			node.sym = c.table.get_type_symbol(c.unwrap_generic(c.expr(node.left)))
 			if node.is_embed {
@@ -3334,24 +3264,16 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 				node.field_expr.position())
 			return table.void_type
 		}
-		ast.ConcatExpr {
-			return c.concat_expr(mut node)
-		}
-		ast.EnumVal {
-			return c.enum_val(mut node)
-		}
-		ast.FloatLiteral {
-			return table.float_literal_type
-		}
+		ast.ConcatExpr { return c.concat_expr(mut node) }
+		ast.EnumVal { return c.enum_val(mut node) }
+		ast.FloatLiteral { return table.float_literal_type }
 		ast.Ident {
 			// c.checked_ident = node.name
 			res := c.ident(mut node)
 			// c.checked_ident = ''
 			return res
 		}
-		ast.IfExpr {
-			return c.if_expr(mut node)
-		}
+		ast.IfExpr { return c.if_expr(mut node) }
 		ast.IfGuardExpr {
 			node.expr_type = c.expr(node.expr)
 			if !node.expr_type.has_flag(.optional) {
@@ -3359,33 +3281,15 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			}
 			return table.bool_type
 		}
-		ast.IndexExpr {
-			return c.index_expr(mut node)
-		}
-		ast.InfixExpr {
-			return c.infix_expr(mut node)
-		}
-		ast.IntegerLiteral {
-			return table.int_literal_type
-		}
-		ast.LockExpr {
-			return c.lock_expr(mut node)
-		}
-		ast.MapInit {
-			return c.map_init(mut node)
-		}
-		ast.MatchExpr {
-			return c.match_expr(mut node)
-		}
-		ast.PostfixExpr {
-			return c.postfix_expr(mut node)
-		}
-		ast.PrefixExpr {
-			return c.prefix_expr(mut node)
-		}
-		ast.None {
-			return table.none_type
-		}
+		ast.IndexExpr { return c.index_expr(mut node) }
+		ast.InfixExpr { return c.infix_expr(mut node) }
+		ast.IntegerLiteral { return table.int_literal_type }
+		ast.LockExpr { return c.lock_expr(mut node) }
+		ast.MapInit { return c.map_init(mut node) }
+		ast.MatchExpr { return c.match_expr(mut node) }
+		ast.PostfixExpr { return c.postfix_expr(mut node) }
+		ast.PrefixExpr { return c.prefix_expr(mut node) }
+		ast.None { return table.none_type }
 		ast.OrExpr {
 			// never happens
 			return table.void_type
@@ -3393,50 +3297,34 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		// ast.OrExpr2 {
 		// return node.typ
 		// }
-		ast.ParExpr {
-			return c.expr(node.expr)
-		}
+		ast.ParExpr { return c.expr(node.expr) }
 		ast.RangeExpr {
 			// never happens
 			return table.void_type
 		}
-		ast.SelectExpr {
-			return c.select_expr(mut node)
-		}
-		ast.SelectorExpr {
-			return c.selector_expr(mut node)
-		}
+		ast.SelectExpr { return c.select_expr(mut node) }
+		ast.SelectorExpr { return c.selector_expr(mut node) }
 		ast.SizeOf {
 			if !node.is_type {
 				node.typ = c.expr(node.expr)
 			}
 			return table.u32_type
 		}
-		ast.SqlExpr {
-			return c.sql_expr(mut node)
-		}
+		ast.SqlExpr { return c.sql_expr(mut node) }
 		ast.StringLiteral {
 			if node.language == .c {
 				return table.byteptr_type
 			}
 			return table.string_type
 		}
-		ast.StringInterLiteral {
-			return c.string_inter_lit(mut node)
-		}
-		ast.StructInit {
-			return c.struct_init(mut node)
-		}
-		ast.Type {
-			return node.typ
-		}
+		ast.StringInterLiteral { return c.string_inter_lit(mut node) }
+		ast.StructInit { return c.struct_init(mut node) }
+		ast.Type { return node.typ }
 		ast.TypeOf {
 			node.expr_type = c.expr(node.expr)
 			return table.string_type
 		}
-		ast.UnsafeExpr {
-			return c.unsafe_expr(mut node)
-		}
+		ast.UnsafeExpr { return c.unsafe_expr(mut node) }
 		ast.Likely {
 			ltype := c.expr(node.expr)
 			if !c.check_types(ltype, table.bool_type) {
@@ -3551,12 +3439,8 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
 
 fn (mut c Checker) at_expr(mut node ast.AtExpr) table.Type {
 	match node.kind {
-		.fn_name {
-			node.val = c.cur_fn.name.all_after_last('.')
-		}
-		.mod_name {
-			node.val = c.cur_fn.mod
-		}
+		.fn_name { node.val = c.cur_fn.name.all_after_last('.') }
+		.mod_name { node.val = c.cur_fn.mod }
 		.struct_name {
 			if c.cur_fn.is_method {
 				node.val = c.table.type_to_str(c.cur_fn.receiver.typ).all_after_last('.')
@@ -3564,22 +3448,14 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) table.Type {
 				node.val = ''
 			}
 		}
-		.vexe_path {
-			node.val = pref.vexe_path()
-		}
-		.file_path {
-			node.val = os.real_path(c.file.path)
-		}
-		.line_nr {
-			node.val = (node.pos.line_nr + 1).str()
-		}
+		.vexe_path { node.val = pref.vexe_path() }
+		.file_path { node.val = os.real_path(c.file.path) }
+		.line_nr { node.val = (node.pos.line_nr + 1).str() }
 		.column_nr {
 			_, column := util.filepath_pos_to_source_and_column(c.file.path, node.pos)
 			node.val = (column + 1).str()
 		}
-		.vhash {
-			node.val = util.vhash()
-		}
+		.vhash { node.val = util.vhash() }
 		.vmod_file {
 			if c.vmod_file_content.len == 0 {
 				mut mcache := vmod.get_cache()
@@ -3597,10 +3473,8 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) table.Type {
 			}
 			node.val = c.vmod_file_content
 		}
-		.unknown {
-			c.error('unknown @ identifier: ${node.name}. Available identifiers: $token.valid_at_tokens',
-				node.pos)
-		}
+		.unknown { c.error('unknown @ identifier: ${node.name}. Available identifiers: $token.valid_at_tokens',
+				node.pos) }
 	}
 	return table.string_type
 }
@@ -3924,12 +3798,8 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym table.TypeS
 					key = c.table.type_to_str(expr.typ)
 					expr_types << expr
 				}
-				ast.EnumVal {
-					key = expr.val
-				}
-				else {
-					key = expr.str()
-				}
+				ast.EnumVal { key = expr.val }
+				else { key = expr.str() }
 			}
 			val := if key in branch_exprs { branch_exprs[key] } else { 0 }
 			if val == 1 {
@@ -4037,9 +3907,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym table.TypeS
 					}
 				}
 			}
-			else {
-				is_exhaustive = false
-			}
+			else { is_exhaustive = false }
 		}
 	}
 	mut else_branch := node.branches[node.branches.len - 1]
@@ -4179,9 +4047,7 @@ pub fn (mut c Checker) select_expr(mut node ast.SelectExpr) table.Type {
 							c.error('$err_prefix not allowed in `select` key', expr.or_block.pos)
 						}
 					}
-					else {
-						c.error('`<-` receive expression expected', branch.stmt.right[0].position())
-					}
+					else { c.error('`<-` receive expression expected', branch.stmt.right[0].position()) }
 				}
 			}
 			else {
@@ -4484,12 +4350,8 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 	// TODO: better error messages here
 	match cond {
-		ast.BoolLiteral {
-			return !cond.val
-		}
-		ast.ParExpr {
-			return c.comp_if_branch(cond.expr, pos)
-		}
+		ast.BoolLiteral { return !cond.val }
+		ast.ParExpr { return c.comp_if_branch(cond.expr, pos) }
 		ast.PrefixExpr {
 			if cond.op != .not {
 				c.error('invalid `\$if` condition', cond.pos)
@@ -4556,9 +4418,7 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 						c.error('invalid `\$if` condition: $cond.left.type_name()', cond.pos)
 					}
 				}
-				else {
-					c.error('invalid `\$if` condition', cond.pos)
-				}
+				else { c.error('invalid `\$if` condition', cond.pos) }
 			}
 		}
 		ast.Ident {
@@ -4601,9 +4461,7 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 				return !(expr as ast.BoolLiteral).val
 			}
 		}
-		else {
-			c.error('invalid `\$if` condition', pos)
-		}
+		else { c.error('invalid `\$if` condition', pos) }
 	}
 	return false
 }

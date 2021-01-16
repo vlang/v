@@ -176,9 +176,7 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 				}
 			}
 		}
-		ast.InterfaceDecl {
-			node.kind = .interface_
-		}
+		ast.InterfaceDecl { node.kind = .interface_ }
 		ast.StructDecl {
 			node.kind = .struct_
 			if d.extract_vars {
@@ -198,9 +196,7 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 				}
 			}
 		}
-		ast.TypeDecl {
-			node.kind = .typedef
-		}
+		ast.TypeDecl { node.kind = .typedef }
 		ast.FnDecl {
 			node.deprecated = stmt.is_deprecated
 			node.kind = .function
@@ -225,9 +221,7 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 				}
 			}
 		}
-		else {
-			return error('invalid stmt type to document')
-		}
+		else { return error('invalid stmt type to document') }
 	}
 	return node
 }

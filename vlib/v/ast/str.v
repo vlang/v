@@ -200,18 +200,10 @@ pub fn (x Expr) str() string {
 				return x.exprs.str()
 			}
 		}
-		CTempVar {
-			return x.orig.str()
-		}
-		BoolLiteral {
-			return x.val.str()
-		}
-		CastExpr {
-			return '${x.typname}($x.expr.str())'
-		}
-		AtExpr {
-			return '$x.val'
-		}
+		CTempVar { return x.orig.str() }
+		BoolLiteral { return x.val.str() }
+		CastExpr { return '${x.typname}($x.expr.str())' }
+		AtExpr { return '$x.val' }
 		CallExpr {
 			sargs := args2str(x.args)
 			if x.is_method {
@@ -222,9 +214,7 @@ pub fn (x Expr) str() string {
 			}
 			return '${x.mod}.${x.name}($sargs)'
 		}
-		CharLiteral {
-			return '`$x.val`'
-		}
+		CharLiteral { return '`$x.val`' }
 		Comment {
 			if x.is_multi {
 				lines := x.text.split_into_lines()
@@ -234,30 +224,14 @@ pub fn (x Expr) str() string {
 				return '// $text'
 			}
 		}
-		ComptimeSelector {
-			return '${x.left}.$$x.field_expr'
-		}
-		EnumVal {
-			return '.$x.val'
-		}
-		FloatLiteral, IntegerLiteral {
-			return x.val
-		}
-		Ident {
-			return x.name
-		}
-		IndexExpr {
-			return '$x.left.str()[$x.index.str()]'
-		}
-		InfixExpr {
-			return '$x.left.str() $x.op.str() $x.right.str()'
-		}
-		ParExpr {
-			return '($x.expr)'
-		}
-		PrefixExpr {
-			return x.op.str() + x.right.str()
-		}
+		ComptimeSelector { return '${x.left}.$$x.field_expr' }
+		EnumVal { return '.$x.val' }
+		FloatLiteral, IntegerLiteral { return x.val }
+		Ident { return x.name }
+		IndexExpr { return '$x.left.str()[$x.index.str()]' }
+		InfixExpr { return '$x.left.str() $x.op.str() $x.right.str()' }
+		ParExpr { return '($x.expr)' }
+		PrefixExpr { return x.op.str() + x.right.str() }
 		RangeExpr {
 			mut s := '..'
 			if x.has_low {
@@ -268,12 +242,8 @@ pub fn (x Expr) str() string {
 			}
 			return s
 		}
-		SelectorExpr {
-			return '${x.expr.str()}.$x.field_name'
-		}
-		SizeOf {
-			return 'sizeof($x.expr)'
-		}
+		SelectorExpr { return '${x.expr.str()}.$x.field_name' }
+		SizeOf { return 'sizeof($x.expr)' }
 		StringInterLiteral {
 			mut res := []string{}
 			res << "'"
@@ -296,18 +266,10 @@ pub fn (x Expr) str() string {
 			res << "'"
 			return res.join('')
 		}
-		StringLiteral {
-			return '"$x.val"'
-		}
-		TypeOf {
-			return 'typeof($x.expr.str())'
-		}
-		Likely {
-			return '_likely_($x.expr.str())'
-		}
-		UnsafeExpr {
-			return 'unsafe { $x.expr }'
-		}
+		StringLiteral { return '"$x.val"' }
+		TypeOf { return 'typeof($x.expr.str())' }
+		Likely { return '_likely_($x.expr.str())' }
+		UnsafeExpr { return 'unsafe { $x.expr }' }
 		else {}
 	}
 	return '[unhandled expr type $x.type_name()]'
@@ -338,9 +300,7 @@ pub fn (node &BranchStmt) str() string {
 
 pub fn (node Stmt) str() string {
 	match node {
-		AssertStmt {
-			return 'assert $node.expr'
-		}
+		AssertStmt { return 'assert $node.expr' }
 		AssignStmt {
 			mut out := ''
 			for i, left in node.left {
@@ -364,27 +324,17 @@ pub fn (node Stmt) str() string {
 			}
 			return out
 		}
-		BranchStmt {
-			return node.str()
-		}
+		BranchStmt { return node.str() }
 		ConstDecl {
 			fields := node.fields.map(fn (f ConstField) string {
 				return '${f.name.trim_prefix(f.mod + '.')} = $f.expr'
 			})
 			return 'const (${fields.join(' ')})'
 		}
-		ExprStmt {
-			return node.expr.str()
-		}
-		FnDecl {
-			return 'fn ${node.name}( $node.params.len params ) { $node.stmts.len stmts }'
-		}
-		EnumDecl {
-			return 'enum $node.name { $node.fields.len fields }'
-		}
-		Module {
-			return 'module $node.name'
-		}
+		ExprStmt { return node.expr.str() }
+		FnDecl { return 'fn ${node.name}( $node.params.len params ) { $node.stmts.len stmts }' }
+		EnumDecl { return 'enum $node.name { $node.fields.len fields }' }
+		Module { return 'module $node.name' }
 		Import {
 			mut out := 'import $node.mod'
 			if node.alias.len > 0 {
@@ -392,12 +342,8 @@ pub fn (node Stmt) str() string {
 			}
 			return out
 		}
-		StructDecl {
-			return 'struct $node.name { $node.fields.len fields }'
-		}
-		else {
-			return '[unhandled stmt str type: $node.type_name() ]'
-		}
+		StructDecl { return 'struct $node.name { $node.fields.len fields }' }
+		else { return '[unhandled stmt str type: $node.type_name() ]' }
 	}
 }
 

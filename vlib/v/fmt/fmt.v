@@ -362,79 +362,33 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 		eprintln('stmt: ${node.position():-42} | node: ${node.type_name():-20}')
 	}
 	match node {
-		ast.AssignStmt {
-			f.assign_stmt(node)
-		}
-		ast.AssertStmt {
-			f.assert_stmt(node)
-		}
-		ast.Block {
-			f.block(node)
-		}
-		ast.BranchStmt {
-			f.writeln(node.str())
-		}
-		ast.CompFor {
-			f.comp_for(node)
-		}
-		ast.ConstDecl {
-			f.const_decl(node)
-		}
-		ast.DeferStmt {
-			f.defer_stmt(node)
-		}
-		ast.EnumDecl {
-			f.enum_decl(node)
-		}
-		ast.ExprStmt {
-			f.expr_stmt(node)
-		}
-		ast.FnDecl {
-			f.fn_decl(node)
-		}
-		ast.ForCStmt {
-			f.for_c_stmt(node)
-		}
-		ast.ForInStmt {
-			f.for_in_stmt(node)
-		}
-		ast.ForStmt {
-			f.for_stmt(node)
-		}
-		ast.GlobalDecl {
-			f.global_decl(node)
-		}
-		ast.GoStmt {
-			f.go_stmt(node, false)
-		}
-		ast.GotoLabel {
-			f.writeln('$node.name:')
-		}
-		ast.GotoStmt {
-			f.writeln('goto $node.name')
-		}
-		ast.HashStmt {
-			f.writeln('#$node.val')
-		}
+		ast.AssignStmt { f.assign_stmt(node) }
+		ast.AssertStmt { f.assert_stmt(node) }
+		ast.Block { f.block(node) }
+		ast.BranchStmt { f.writeln(node.str()) }
+		ast.CompFor { f.comp_for(node) }
+		ast.ConstDecl { f.const_decl(node) }
+		ast.DeferStmt { f.defer_stmt(node) }
+		ast.EnumDecl { f.enum_decl(node) }
+		ast.ExprStmt { f.expr_stmt(node) }
+		ast.FnDecl { f.fn_decl(node) }
+		ast.ForCStmt { f.for_c_stmt(node) }
+		ast.ForInStmt { f.for_in_stmt(node) }
+		ast.ForStmt { f.for_stmt(node) }
+		ast.GlobalDecl { f.global_decl(node) }
+		ast.GoStmt { f.go_stmt(node, false) }
+		ast.GotoLabel { f.writeln('$node.name:') }
+		ast.GotoStmt { f.writeln('goto $node.name') }
+		ast.HashStmt { f.writeln('#$node.val') }
 		ast.Import {
 			// Imports are handled after the file is formatted, to automatically add necessary modules
 			// f.imports(f.file.imports)
 		}
-		ast.InterfaceDecl {
-			f.interface_decl(node)
-		}
-		ast.Module {
-			f.mod(node)
-		}
-		ast.Return {
-			f.return_stmt(node)
-		}
-		ast.SqlStmt {
-			f.sql_stmt(node)
-		}
-		ast.StructDecl {
-			f.struct_decl(node)
-		}
+		ast.InterfaceDecl { f.interface_decl(node) }
+		ast.Module { f.mod(node) }
+		ast.Return { f.return_stmt(node) }
+		ast.SqlStmt { f.sql_stmt(node) }
+		ast.StructDecl { f.struct_decl(node) }
 		ast.TypeDecl {
 			// already handled in f.imports
 			f.type_decl(node)
@@ -838,39 +792,17 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		eprintln('expr: ${node.position():-42} | node: ${node.type_name():-20} | $node.str()')
 	}
 	match mut node {
-		ast.CTempVar {
-			eprintln('ast.CTempVar of $node.orig.str() should be generated/used only in cgen')
-		}
-		ast.AnonFn {
-			f.fn_decl(node.decl)
-		}
-		ast.ArrayInit {
-			f.array_init(node)
-		}
-		ast.AsCast {
-			f.as_cast(node)
-		}
-		ast.Assoc {
-			f.assoc(node)
-		}
-		ast.BoolLiteral {
-			f.write(node.val.str())
-		}
-		ast.CastExpr {
-			f.cast_expr(node)
-		}
-		ast.AtExpr {
-			f.at_expr(node)
-		}
-		ast.CallExpr {
-			f.call_expr(node)
-		}
-		ast.ChanInit {
-			f.chan_init(mut node)
-		}
-		ast.CharLiteral {
-			f.write('`$node.val`')
-		}
+		ast.CTempVar { eprintln('ast.CTempVar of $node.orig.str() should be generated/used only in cgen') }
+		ast.AnonFn { f.fn_decl(node.decl) }
+		ast.ArrayInit { f.array_init(node) }
+		ast.AsCast { f.as_cast(node) }
+		ast.Assoc { f.assoc(node) }
+		ast.BoolLiteral { f.write(node.val.str()) }
+		ast.CastExpr { f.cast_expr(node) }
+		ast.AtExpr { f.at_expr(node) }
+		ast.CallExpr { f.call_expr(node) }
+		ast.ChanInit { f.chan_init(mut node) }
+		ast.CharLiteral { f.write('`$node.val`') }
 		ast.Comment {
 			if f.array_init_depth > 0 {
 				f.comment(node, iembed: true)
@@ -878,106 +810,42 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 				f.comment(node, inline: true)
 			}
 		}
-		ast.ComptimeCall {
-			f.comptime_call(node)
-		}
-		ast.ComptimeSelector {
-			f.comptime_selector(node)
-		}
-		ast.ConcatExpr {
-			f.concat_expr(node)
-		}
-		ast.EnumVal {
-			f.enum_val(node)
-		}
-		ast.FloatLiteral {
-			f.write(node.val)
-		}
-		ast.GoExpr {
-			f.go_stmt(node.go_stmt, true)
-		}
-		ast.IfExpr {
-			f.if_expr(node)
-		}
-		ast.Ident {
-			f.ident(node)
-		}
-		ast.IfGuardExpr {
-			f.if_guard_expr(node)
-		}
-		ast.InfixExpr {
-			f.infix_expr(node)
-		}
-		ast.IndexExpr {
-			f.index_expr(node)
-		}
-		ast.IntegerLiteral {
-			f.write(node.val)
-		}
-		ast.LockExpr {
-			f.lock_expr(node)
-		}
-		ast.MapInit {
-			f.map_init(node)
-		}
-		ast.MatchExpr {
-			f.match_expr(node)
-		}
-		ast.None {
-			f.write('none')
-		}
+		ast.ComptimeCall { f.comptime_call(node) }
+		ast.ComptimeSelector { f.comptime_selector(node) }
+		ast.ConcatExpr { f.concat_expr(node) }
+		ast.EnumVal { f.enum_val(node) }
+		ast.FloatLiteral { f.write(node.val) }
+		ast.GoExpr { f.go_stmt(node.go_stmt, true) }
+		ast.IfExpr { f.if_expr(node) }
+		ast.Ident { f.ident(node) }
+		ast.IfGuardExpr { f.if_guard_expr(node) }
+		ast.InfixExpr { f.infix_expr(node) }
+		ast.IndexExpr { f.index_expr(node) }
+		ast.IntegerLiteral { f.write(node.val) }
+		ast.LockExpr { f.lock_expr(node) }
+		ast.MapInit { f.map_init(node) }
+		ast.MatchExpr { f.match_expr(node) }
+		ast.None { f.write('none') }
 		ast.OrExpr {
 			// shouldn't happen, an or expression is always linked to a call expr
 			panic('fmt: OrExpr should be linked to CallExpr')
 		}
-		ast.ParExpr {
-			f.par_expr(node)
-		}
-		ast.PostfixExpr {
-			f.postfix_expr(node)
-		}
-		ast.PrefixExpr {
-			f.prefix_expr(node)
-		}
-		ast.RangeExpr {
-			f.range_expr(node)
-		}
-		ast.SelectExpr {
-			f.select_expr(node)
-		}
-		ast.SelectorExpr {
-			f.selector_expr(node)
-		}
-		ast.SizeOf {
-			f.size_of(node)
-		}
-		ast.SqlExpr {
-			f.sql_expr(node)
-		}
-		ast.StringLiteral {
-			f.string_literal(node)
-		}
-		ast.StringInterLiteral {
-			f.string_inter_literal(node)
-		}
-		ast.StructInit {
-			f.struct_init(node)
-		}
-		ast.Type {
-			f.write(f.table.type_to_str(node.typ))
-		}
-		ast.TypeOf {
-			f.type_of(node)
-		}
-		ast.Likely {
-			f.likely(node)
-		}
-		ast.UnsafeExpr {
-			f.unsafe_expr(node)
-		}
-		ast.ArrayDecompose {
-			f.array_decompose(node)
-		}
+		ast.ParExpr { f.par_expr(node) }
+		ast.PostfixExpr { f.postfix_expr(node) }
+		ast.PrefixExpr { f.prefix_expr(node) }
+		ast.RangeExpr { f.range_expr(node) }
+		ast.SelectExpr { f.select_expr(node) }
+		ast.SelectorExpr { f.selector_expr(node) }
+		ast.SizeOf { f.size_of(node) }
+		ast.SqlExpr { f.sql_expr(node) }
+		ast.StringLiteral { f.string_literal(node) }
+		ast.StringInterLiteral { f.string_inter_literal(node) }
+		ast.StructInit { f.struct_init(node) }
+		ast.Type { f.write(f.table.type_to_str(node.typ)) }
+		ast.TypeOf { f.type_of(node) }
+		ast.Likely { f.likely(node) }
+		ast.UnsafeExpr { f.unsafe_expr(node) }
+		ast.ArrayDecompose { f.array_decompose(node) }
 	}
 }
 
@@ -988,15 +856,9 @@ fn expr_is_single_line(expr ast.Expr) bool {
 				return false
 			}
 		}
-		ast.IfExpr {
-			return false
-		}
-		ast.Comment {
-			return false
-		}
-		ast.MatchExpr {
-			return false
-		}
+		ast.IfExpr { return false }
+		ast.Comment { return false }
+		ast.MatchExpr { return false }
 		ast.StructInit {
 			if !expr.is_short && (expr.fields.len > 0 || expr.pre_comments.len > 0) {
 				return false
@@ -1037,9 +899,7 @@ pub fn (mut f Fmt) or_expr(or_block ast.OrExpr) {
 				f.write('}')
 			}
 		}
-		.propagate {
-			f.write(' ?')
-		}
+		.propagate { f.write(' ?') }
 	}
 }
 
@@ -1494,9 +1354,7 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 				penalty--
 			}
 		}
-		ast.ParExpr {
-			penalty = 1
-		}
+		ast.ParExpr { penalty = 1 }
 		else {}
 	}
 	match node.right {
@@ -2332,9 +2190,7 @@ pub fn (mut f Fmt) sql_stmt(node ast.SqlStmt) {
 	f.expr(node.db_expr)
 	f.writeln(' {')
 	match node.kind {
-		.insert {
-			f.writeln('\tinsert $node.object_var_name into ${util.strip_mod_name(node.table_name)}')
-		}
+		.insert { f.writeln('\tinsert $node.object_var_name into ${util.strip_mod_name(node.table_name)}') }
 		.update {
 			f.write('\tupdate ${util.strip_mod_name(node.table_name)} set ')
 			for i, col in node.updated_columns {

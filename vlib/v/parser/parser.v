@@ -462,24 +462,12 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 		match p.tok.kind {
 			.key_pub {
 				match p.peek_tok.kind {
-					.key_const {
-						return p.const_decl()
-					}
-					.key_fn {
-						return p.fn_decl()
-					}
-					.key_struct, .key_union {
-						return p.struct_decl()
-					}
-					.key_interface {
-						return p.interface_decl()
-					}
-					.key_enum {
-						return p.enum_decl()
-					}
-					.key_type {
-						return p.type_decl()
-					}
+					.key_const { return p.const_decl() }
+					.key_fn { return p.fn_decl() }
+					.key_struct, .key_union { return p.struct_decl() }
+					.key_interface { return p.interface_decl() }
+					.key_enum { return p.enum_decl() }
+					.key_type { return p.type_decl() }
 					else {
 						p.error('wrong pub keyword usage')
 						return ast.Stmt{}
@@ -491,46 +479,24 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 				p.attributes()
 				continue
 			}
-			.key_interface {
-				return p.interface_decl()
-			}
+			.key_interface { return p.interface_decl() }
 			.key_import {
 				p.error_with_pos('`import x` can only be declared at the beginning of the file',
 					p.tok.position())
 				return p.import_stmt()
 			}
-			.key_global {
-				return p.global_decl()
-			}
-			.key_const {
-				return p.const_decl()
-			}
-			.key_fn {
-				return p.fn_decl()
-			}
-			.key_struct {
-				return p.struct_decl()
-			}
-			.dollar {
-				return ast.ExprStmt{
+			.key_global { return p.global_decl() }
+			.key_const { return p.const_decl() }
+			.key_fn { return p.fn_decl() }
+			.key_struct { return p.struct_decl() }
+			.dollar { return ast.ExprStmt{
 					expr: p.if_expr(true)
-				}
-			}
-			.hash {
-				return p.hash()
-			}
-			.key_type {
-				return p.type_decl()
-			}
-			.key_enum {
-				return p.enum_decl()
-			}
-			.key_union {
-				return p.struct_decl()
-			}
-			.comment {
-				return p.comment_stmt()
-			}
+				} }
+			.hash { return p.hash() }
+			.key_type { return p.type_decl() }
+			.key_enum { return p.enum_decl() }
+			.key_union { return p.struct_decl() }
+			.comment { return p.comment_stmt() }
 			else {
 				if p.pref.is_script && !p.pref.is_test {
 					mut stmts := []ast.Stmt{}
@@ -634,9 +600,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				pos: assert_pos
 			}
 		}
-		.key_for {
-			return p.for_stmt()
-		}
+		.key_for { return p.for_stmt() }
 		.name {
 			if p.tok.lit == 'sql' {
 				return p.sql_stmt()
@@ -681,27 +645,17 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			}
 			return p.parse_multi_expr(is_top_level)
 		}
-		.comment {
-			return p.comment_stmt()
-		}
-		.key_return {
-			return p.return_stmt()
-		}
+		.comment { return p.comment_stmt() }
+		.key_return { return p.return_stmt() }
 		.dollar {
 			match p.peek_tok.kind {
-				.key_if {
-					return ast.ExprStmt{
+				.key_if { return ast.ExprStmt{
 						expr: p.if_expr(true)
-					}
-				}
-				.key_for {
-					return p.comp_for()
-				}
-				.name {
-					return ast.ExprStmt{
+					} }
+				.key_for { return p.comp_for() }
+				.name { return ast.ExprStmt{
 						expr: p.comp_call()
-					}
-				}
+					} }
 				else {
 					p.error_with_pos('unexpected \$', p.tok.position())
 					return ast.Stmt{}
@@ -722,12 +676,8 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				pos: tok.position()
 			}
 		}
-		.key_unsafe {
-			return p.unsafe_stmt()
-		}
-		.hash {
-			return p.hash()
-		}
+		.key_unsafe { return p.unsafe_stmt() }
+		.hash { return p.hash() }
 		.key_defer {
 			p.next()
 			spos := p.tok.position()
@@ -769,9 +719,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			return ast.Stmt{}
 		}
 		// literals, 'if', etc. in here
-		else {
-			return p.parse_multi_expr(is_top_level)
-		}
+		else { return p.parse_multi_expr(is_top_level) }
 	}
 }
 
@@ -1093,9 +1041,7 @@ fn (p &Parser) is_generic_call() bool {
 			// maybe `f<[]T>`, assume `var < []` is invalid
 			p.peek_tok3.kind == .rsbr
 		}
-		else {
-			false
-		}
+		else { false }
 	})
 }
 
@@ -1767,9 +1713,7 @@ fn (mut p Parser) module_decl() ast.Module {
 	if !is_skipped {
 		for ma in module_attrs {
 			match ma.name {
-				'manualfree' {
-					p.is_manualfree = true
-				}
+				'manualfree' { p.is_manualfree = true }
 				else {
 					p.error_with_pos('unknown module attribute `[$ma.name]`', ma.pos)
 					return mod_node
