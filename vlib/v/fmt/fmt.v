@@ -1820,9 +1820,16 @@ pub fn (mut f Fmt) chan_init(mut it ast.ChanInit) {
 	f.write('}')
 }
 
+fn should_decrease_arr_penalty(e ast.Expr) bool {
+	if e is ast.ArrayInit || e is ast.StructInit || e is ast.MapInit || e is ast.CallExpr {
+		return true
+	}
+	return false
+}
+
 pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 	if it.exprs.len == 0 && it.typ != 0 && it.typ != table.void_type {
-		// `x := []string`
+		// `x := []string{}`
 		f.write(f.table.type_to_str_using_aliases(it.typ, f.mod2alias))
 		f.write('{')
 		if it.has_len {
@@ -1864,14 +1871,10 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 		line_break := f.array_init_break[f.array_init_depth - 1]
 		mut penalty := if line_break && !is_same_line_comment { 0 } else { 3 }
 		if penalty > 0 {
-			if i == 0 || it.exprs[i - 1] is ast.ArrayInit || it.exprs[i - 1] is ast.StructInit ||
-				it.exprs[i - 1] is ast.MapInit || it.exprs[i - 1] is ast.CallExpr
-			{
+			if i == 0 || should_decrease_arr_penalty(it.exprs[i - 1]) {
 				penalty--
 			}
-			if expr is ast.ArrayInit ||
-				expr is ast.StructInit || expr is ast.MapInit || expr is ast.CallExpr
-			{
+			if should_decrease_arr_penalty(expr) {
 				penalty--
 			}
 		}
