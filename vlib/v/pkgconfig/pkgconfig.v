@@ -42,6 +42,10 @@ pub mut:
 	conflicts        []string
 }
 
+fn (mut pc PkgConfig) parse_list_no_comma(s string) []string {
+	return pc.parse_list( s.replace(',', ' ') )
+}
+
 fn (mut pc PkgConfig) parse_list(s string) []string {
 	operators := ['=', '<', '>', '>=', '<=']
 	r := pc.parse_line(s.replace('  ', ' ').replace(', ', ' ')).split(' ')
@@ -110,11 +114,11 @@ fn (mut pc PkgConfig) parse(file string) bool {
 			} else if line.starts_with('Version:') {
 				pc.version = pc.parse_line(line[8..])
 			} else if line.starts_with('Requires:') {
-				pc.requires = pc.parse_list(line[9..])
+				pc.requires = pc.parse_list_no_comma(line[9..])
 			} else if line.starts_with('Requires.private:') {
-				pc.requires_private = pc.parse_list(line[17..])
+				pc.requires_private = pc.parse_list_no_comma(line[17..])
 			} else if line.starts_with('Conflicts:') {
-				pc.conflicts = pc.parse_list(line[10..])
+				pc.conflicts = pc.parse_list_no_comma(line[10..])
 			} else if line.starts_with('Cflags:') {
 				pc.cflags = pc.parse_list(line[7..])
 			} else if line.starts_with('Libs:') {
