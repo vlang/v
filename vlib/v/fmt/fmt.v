@@ -814,7 +814,7 @@ pub fn (mut f Fmt) prefix_expr_cast_expr(fexpr ast.Expr) {
 	mut is_pe_amp_ce := false
 	if fexpr is ast.PrefixExpr {
 		if fexpr.right is ast.CastExpr && fexpr.op == .amp {
-			mut ce := fexpr.right as ast.CastExpr
+			mut ce := fexpr.right
 			ce.typname = f.table.get_type_symbol(ce.typ).name
 			is_pe_amp_ce = true
 			f.expr(ce)
@@ -1635,7 +1635,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 	old_short_arg_state := f.use_short_fn_args
 	f.use_short_fn_args = false
 	if node.args.len > 0 && node.args.last().expr is ast.StructInit {
-		struct_expr := node.args.last().expr as ast.StructInit
+		struct_expr := node.args.last().expr
 		if struct_expr.typ == table.void_type {
 			f.use_short_fn_args = true
 		}

@@ -38,6 +38,18 @@ fn test_nested_if_smartcast() {
 	}
 }
 
+fn test_if_is_and_smartcast() {
+	x := Alphabet(Abc{'test'})
+	y := Alphabet(Xyz{'foo'})
+	if 1 > 0 && x is Abc {
+		assert x.val == 'test'
+	}
+	if x is Abc && y is Xyz {
+		assert x.val == 'test'
+		assert y.name == 'foo'
+	}
+}
+
 type Bar = string | Test
 type Xya = int | string
 

@@ -1627,22 +1627,22 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			f = f1
 		}
 	}
-	if !found && call_expr.left is ast.IndexExpr {
-		c.expr(call_expr.left)
-		expr := call_expr.left as ast.IndexExpr
-		sym := c.table.get_type_symbol(expr.left_type)
-		if sym.kind == .array {
-			info := sym.info as table.Array
-			elem_typ := c.table.get_type_symbol(info.elem_type)
-			if elem_typ.info is table.FnType {
-				return elem_typ.info.func.return_type
-			}
-		}
-		found = true
-		return table.string_type
-	}
-	// already prefixed (mod.fn) or C/builtin/main
 	if !found {
+		if call_expr.left is ast.IndexExpr {
+			c.expr(call_expr.left)
+			expr := call_expr.left
+			sym := c.table.get_type_symbol(expr.left_type)
+			if sym.kind == .array {
+				info := sym.info as table.Array
+				elem_typ := c.table.get_type_symbol(info.elem_type)
+				if elem_typ.info is table.FnType {
+					return elem_typ.info.func.return_type
+				}
+			}
+			found = true
+			return table.string_type
+		}
+		// already prefixed (mod.fn) or C/builtin/main
 		if f1 := c.table.find_fn(fn_name) {
 			found = true
 			f = f1
@@ -2054,17 +2054,20 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 	mut unknown_field_msg := 'type `$sym.name` has no field or method `$field_name`'
 	mut has_field := false
 	mut field := table.Field{}
-	if field_name.len > 0 && field_name[0].is_capital() && sym.info is table.Struct {
-		// x.Foo.y => access the embedded struct
-		sym_info := sym.info as table.Struct
-		for embed in sym_info.embeds {
-			embed_sym := c.table.get_type_symbol(embed)
-			if embed_sym.embed_name() == field_name {
-				selector_expr.typ = embed
-				return embed
+	first_field_is_capital := field_name.len > 0 && field_name[0].is_capital()
+	if first_field_is_capital {
+		if sym.info is table.Struct {
+			// x.Foo.y => access the embedded struct
+			for embed in sym.info.embeds {
+				embed_sym := c.table.get_type_symbol(embed)
+				if embed_sym.embed_name() == field_name {
+					selector_expr.typ = embed
+					return embed
+				}
 			}
 		}
-	} else {
+	}
+	if !(first_field_is_capital && sym.info is table.Struct) {
 		if f := c.table.struct_find_field(sym, field_name) {
 			has_field = true
 			field = f
@@ -4246,22 +4249,20 @@ fn (mut c Checker) for_stmt(mut node ast.ForStmt) {
 	if node.cond is ast.InfixExpr {
 		infix := node.cond
 		if infix.op == .key_is {
-			if (infix.left is ast.Ident ||
-				infix.left is ast.SelectorExpr) &&
-				infix.right is ast.Type
-			{
-				right_expr := infix.right as ast.Type
-				is_variable := if mut infix.left is ast.Ident {
-					infix.left.kind == .variable
-				} else {
-					true
-				}
-				left_type := c.expr(infix.left)
-				left_sym := c.table.get_type_symbol(left_type)
-				if is_variable {
-					if left_sym.kind == .sum_type {
-						c.smartcast_sumtype(infix.left, infix.left_type, right_expr.typ, mut
-							node.scope)
+			if infix.left is ast.Ident || infix.left is ast.SelectorExpr {
+				if infix.right is ast.Type {
+					is_variable := if mut infix.left is ast.Ident {
+						infix.left.kind == .variable
+					} else {
+						true
+					}
+					left_type := c.expr(infix.left)
+					left_sym := c.table.get_type_symbol(left_type)
+					if is_variable {
+						if left_sym.kind == .sum_type {
+							c.smartcast_sumtype(infix.left, infix.left_type, infix.right.typ, mut
+								node.scope)
+						}
 					}
 				}
 			}
@@ -4273,6 +4274,67 @@ fn (mut c Checker) for_stmt(mut node ast.ForStmt) {
 	c.stmts(node.stmts)
 	c.loop_label = prev_loop_label
 	c.in_for_count--
+}
+
+fn (mut c Checker) smartcast_if_branch(mut branches []ast.IfBranch, i int, cond ast.Expr) {
+	if cond !is ast.InfixExpr {
+		return
+	}
+	mut branch := branches[i]
+	infix := cond as ast.InfixExpr
+	if infix.op == .and {
+		c.smartcast_if_branch(mut branches, i, infix.left)
+		c.smartcast_if_branch(mut branches, i, infix.right)
+		return
+	}
+	if infix.op == .key_is {
+		right_expr := infix.right as ast.Type
+		left_sym := c.table.get_type_symbol(infix.left_type)
+		expr_type := c.expr(infix.left)
+		if left_sym.kind == .interface_ {
+			c.type_implements(right_expr.typ, expr_type, branch.pos)
+		} else if !c.check_types(right_expr.typ, expr_type) {
+			expect_str := c.table.type_to_str(right_expr.typ)
+			expr_str := c.table.type_to_str(expr_type)
+			c.error('cannot use type `$expect_str` as type `$expr_str`', branch.pos)
+		}
+		if (infix.left is ast.Ident || infix.left is ast.SelectorExpr) && infix.right is ast.Type {
+			is_variable := if mut infix.left is ast.Ident {
+				infix.left.kind == .variable
+			} else {
+				true
+			}
+			if is_variable {
+				if left_sym.kind in [.interface_, .sum_type] {
+					if left_sym.kind == .interface_ {
+						if infix.left is ast.Ident {
+							// TODO: rewrite interface smartcast
+							mut is_mut := false
+							mut sum_type_casts := []table.Type{}
+							if v := branch.scope.find_var(infix.left.name) {
+								is_mut = v.is_mut
+								sum_type_casts << v.sum_type_casts
+							}
+							branch.scope.register(ast.Var{
+								name: infix.left.name
+								typ: right_expr.typ.to_ptr()
+								sum_type_casts: sum_type_casts
+								pos: infix.left.pos
+								is_used: true
+								is_mut: is_mut
+							})
+							// TODO: needs to be removed
+							branches[i].smartcast = true
+						}
+					}
+					if !(infix.left is ast.Ident && left_sym.kind == .interface_) {
+						c.smartcast_sumtype(infix.left, infix.left_type, right_expr.typ, mut
+							branch.scope)
+					}
+				}
+			}
+		}
+	}
 }
 
 pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
@@ -4303,59 +4365,6 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 					// (via missing function etc)
 					typ_sym := c.table.get_type_symbol(cond_typ)
 					c.error('non-bool type `$typ_sym.name` used as if condition', branch.pos)
-				}
-			}
-		}
-		// smartcast sumtypes and interfaces when using `is`
-		if !node.is_comptime && branch.cond is ast.InfixExpr {
-			infix := branch.cond as ast.InfixExpr
-			if infix.op == .key_is {
-				right_expr := infix.right as ast.Type
-				left_sym := c.table.get_type_symbol(infix.left_type)
-				expr_type := c.expr(infix.left)
-				if left_sym.kind == .interface_ {
-					c.type_implements(right_expr.typ, expr_type, branch.pos)
-				} else if !c.check_types(right_expr.typ, expr_type) {
-					expect_str := c.table.type_to_str(right_expr.typ)
-					expr_str := c.table.type_to_str(expr_type)
-					c.error('cannot use type `$expect_str` as type `$expr_str`', branch.pos)
-				}
-				if (infix.left is ast.Ident ||
-					infix.left is ast.SelectorExpr) &&
-					infix.right is ast.Type
-				{
-					is_variable := if mut infix.left is ast.Ident {
-						infix.left.kind == .variable
-					} else {
-						true
-					}
-					if is_variable {
-						if left_sym.kind in [.interface_, .sum_type] {
-							if infix.left is ast.Ident && left_sym.kind == .interface_ {
-								// TODO: rewrite interface smartcast
-								left := infix.left as ast.Ident
-								mut is_mut := false
-								mut sum_type_casts := []table.Type{}
-								if v := branch.scope.find_var(left.name) {
-									is_mut = v.is_mut
-									sum_type_casts << v.sum_type_casts
-								}
-								branch.scope.register(ast.Var{
-									name: left.name
-									typ: right_expr.typ.to_ptr()
-									sum_type_casts: sum_type_casts
-									pos: left.pos
-									is_used: true
-									is_mut: is_mut
-								})
-								// TODO: needs to be removed
-								node.branches[i].smartcast = true
-							} else {
-								c.smartcast_sumtype(infix.left, infix.left_type, right_expr.typ, mut
-									branch.scope)
-							}
-						}
-					}
 				}
 			}
 		}
@@ -4392,6 +4401,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 			}
 			c.skip_flags = cur_skip_flags
 		} else {
+			c.smartcast_if_branch(mut node.branches, i, branch.cond)
 			c.stmts(branch.stmts)
 		}
 		if expr_required {
