@@ -443,7 +443,7 @@ pub fn (mut g Gen) finish() {
 	if g.pref.is_livemain || g.pref.is_liveshared {
 		g.generate_hotcode_reloader_code()
 	}
-	if g.pref.is_prod && g.embedded_files.len > 0 {
+	if g.embed_file_is_prod_mode() && g.embedded_files.len > 0 {
 		g.gen_embedded_data()
 	}
 	if g.pref.is_test {

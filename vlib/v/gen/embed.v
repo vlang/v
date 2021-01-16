@@ -3,20 +3,30 @@ module gen
 import os
 import v.ast
 
+fn (mut g Gen) embed_file_is_prod_mode() bool {
+	if g.pref.is_prod || 'debug_embed_file_in_prod' in g.pref.compile_defines {
+		return true
+	}
+	return false
+}
+
 // gen_embed_file_struct generates C code for `$embed_file('...')` calls.
 fn (mut g Gen) gen_embed_file_init(node ast.ComptimeCall) {
-	g.writeln('(embed__EmbeddedData){')
-	g.writeln('\t.path = ${ctoslit(node.embed_file.rpath)},')
-	g.writeln('\t.apath = ${ctoslit(node.embed_file.apath)},')
+	g.writeln('(v__embed_file__EmbedFileData){')
+	g.writeln('\t\t.path = ${ctoslit(node.embed_file.rpath)},')
+	g.writeln('\t\t.apath = ${ctoslit(node.embed_file.apath)},')
 	file_size := os.file_size(node.embed_file.apath)
 	if file_size > 5242880 {
 		eprintln('Warning: embedding of files >= ~5MB is currently not supported')
 	}
-	if g.pref.is_prod {
+	if g.embed_file_is_prod_mode() {
 		// Use function generated in Gen.gen_embedded_data()
-		g.writeln('\t.compressed = _v_embed_locate_data(${ctoslit(node.embed_file.apath)}),')
+		g.writeln('\t\t.compressed = v__embed_file__find_index_entry_by_path((voidptr)_v_embed_file_index, ${ctoslit(node.embed_file.rpath)})->data,')
 	}
-	g.writeln('\t.len = $file_size')
+	g.writeln('\t\t.uncompressed = NULL,')
+	g.writeln('\t\t.free_compressed = 0,')
+	g.writeln('\t\t.free_uncompressed = 0,')
+	g.writeln('\t\t.len = $file_size')
 	g.writeln('} // $' + 'embed_file("$node.embed_file.apath")')
 }
 
@@ -49,27 +59,11 @@ fn (mut g Gen) gen_embedded_data() {
 		g.embedded_data.writeln('\n};')
 	}
 	g.embedded_data.writeln('')
-	g.embedded_data.writeln('const struct _v_embed {')
-	g.embedded_data.writeln('\tstring id;')
-	g.embedded_data.writeln('\tbyteptr data;')
-	g.embedded_data.writeln('}')
-	g.embedded_data.writeln('_v_embedded_data[] = {')
+	g.embedded_data.writeln('const v__embed_file__EmbedFileIndexEntry _v_embed_file_index[] = {')
 	for i, emfile in g.embedded_files {
-		g.embedded_data.writeln('\t{${ctoslit(emfile.rpath)}, _v_embed_blob_$i},')
+		g.embedded_data.writeln('\t{$i, ${ctoslit(emfile.rpath)}, _v_embed_blob_$i},')
 	}
-	g.embedded_data.writeln('\t{_SLIT(""), NULL}')
+	g.embedded_data.writeln('\t{-1, _SLIT(""), NULL}')
 	g.embedded_data.writeln('};')
-	// See `vlib/v/gen/comptime.v` -> Gen.comptime_call_embed_file(), where this is called at runtime.
-	// Generate function to locate the data.
-	g.embedded_data.writeln('
-// function to locate embedded data by a vstring
-byteptr _v_embed_locate_data(string id) {
-	const struct _v_embed *ve;
-	for (ve = _v_embedded_data; !string_eq(ve->id, _SLIT("")) && ve->data != NULL; ve++) {
-		if (string_eq(ve->id, id)) {
-			return (byteptr) ve->data;
-		}
-	}
-	return NULL;
-}')
+	// see vlib/v/embed_file/embed_file.v, find_index_entry_by_id/2 and find_index_entry_by_path/2
 }

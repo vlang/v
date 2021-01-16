@@ -3225,7 +3225,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			node.sym = c.table.get_type_symbol(c.unwrap_generic(c.expr(node.left)))
 			if node.is_embed {
 				c.file.embedded_files << node.embed_file
-				return c.table.find_type_idx('embed.EmbeddedData')
+				return c.table.find_type_idx('v.embed_file.EmbedFileData')
 			}
 			if node.is_vweb {
 				// TODO assoc parser bug

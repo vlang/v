@@ -114,7 +114,7 @@ pub mut:
 	display_name   string
 	bundle_id      string
 	path           string // Path to file/folder to compile
-	// -d vfmt and -d another=0 for `$if vfmt { will execute }` and `$if another { will NOT get here }`
+	// -d vfmt and -d another=0 for `$if vfmt { will execute }` and `$if another ? { will NOT get here }`
 	compile_defines     []string    // just ['vfmt']
 	compile_defines_all []string    // contains both: ['vfmt','another']
 	run_args            []string    // `v run x.v 1 2 3` => `1 2 3`

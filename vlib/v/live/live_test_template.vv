@@ -1,0 +1,61 @@
+module main
+
+import time
+import os
+import v.live
+
+fn append_to_file(fname string, s string) {
+	mut f := os.open_append(fname) or {
+		println('>>>> could not open file $fname for appending, err: $err ')
+		return
+	}
+	f.writeln(s)
+	//info := live.info()
+	//f.writeln('>>> reloads: ${info.reloads} | ok reloads: ${info.reloads_ok}')
+	f.close()
+}
+
+fn myprintln(s string) {
+	append_to_file('#OUTPUT_FILE#', s)
+	println(s)
+	os.flush()
+}
+
+[live]
+fn pmessage() string {
+	return 'ORIGINAL'
+}
+
+const (
+	delay = 20
+)
+fn edefault(name string, default string) string {
+	res := os.getenv(name)
+	if res == '' {
+		return default
+	}
+	return res
+}
+fn main() {
+	mut info := live.info()
+	info.recheck_period_ms = 5
+	myprintln('START')
+	myprintln('DATE: ' + time.now().str())
+	pmessage()
+	pmessage()
+	max_cycles := edefault('LIVE_CYCLES', '1').int()
+	// NB: 1000 * 20 = maximum of ~20s runtime
+	for i:=0; i<max_cycles; i++ {
+		s := pmessage()
+		myprintln(s)
+		append_to_file(os.resource_abs_path(s + '.txt'), s)
+		if s == 'STOP' {
+			break
+		}
+		time.sleep_ms(delay)
+	}
+	pmessage()
+	pmessage()
+	myprintln('DATE: ' + time.now().str())
+	myprintln('END')
+}

@@ -95,7 +95,7 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 				epath = abs_path
 			}
 		}
-		p.register_auto_import('embed')
+		p.register_auto_import('v.embed_file')
 		return ast.ComptimeCall{
 			is_embed: true
 			embed_file: ast.EmbeddedFile{
