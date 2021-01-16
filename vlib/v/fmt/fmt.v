@@ -1532,10 +1532,17 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	f.or_expr(node.or_block)
 }
 
+fn if_branch_is_single_line(b ast.IfBranch) bool {
+	if b.stmts.len == 1 && b.comments.len == 0 && stmt_is_single_line(b.stmts[0]) {
+		return true
+	}
+	return false
+}
+
 pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 	dollar := if it.is_comptime { '$' } else { '' }
-	mut single_line := it.branches.len == 2 && it.has_else && branch_is_single_line(it.branches[0]) &&
-		branch_is_single_line(it.branches[1]) &&
+	mut single_line := it.branches.len == 2 && it.has_else && if_branch_is_single_line(it.branches[0]) &&
+		if_branch_is_single_line(it.branches[1]) &&
 		(it.is_expr || f.is_assign)
 	f.single_line_if = single_line
 	if_start := f.line_len
@@ -1593,13 +1600,6 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 		f.writeln('')
 		f.comments(it.post_comments, has_nl: false)
 	}
-}
-
-fn branch_is_single_line(b ast.IfBranch) bool {
-	if b.stmts.len == 1 && b.comments.len == 0 && stmt_is_single_line(b.stmts[0]) {
-		return true
-	}
-	return false
 }
 
 pub fn (mut f Fmt) at_expr(node ast.AtExpr) {
@@ -1716,6 +1716,13 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 	f.use_short_fn_args = old_short_arg_state
 }
 
+fn match_branch_is_single_line(b ast.MatchBranch) bool {
+	if b.stmts.len == 1 && b.comments.len == 0 && stmt_is_single_line(b.stmts[0]) {
+		return true
+	}
+	return false
+}
+
 pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 	f.write('match ')
 	f.expr(it.cond)
@@ -1724,20 +1731,6 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 	}
 	f.writeln(' {')
 	f.indent++
-	mut single_line := true
-	for branch in it.branches {
-		if branch.stmts.len > 1 {
-			single_line = false
-			break
-		}
-		if branch.stmts.len == 0 {
-			continue
-		}
-		if !stmt_is_single_line(branch.stmts[0]) {
-			single_line = false
-			break
-		}
-	}
 	for branch in it.branches {
 		for cmnt in branch.comments {
 			f.comment(cmnt, inline: true)
@@ -1766,6 +1759,7 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 		if branch.stmts.len == 0 {
 			f.writeln(' {}')
 		} else {
+			single_line := match_branch_is_single_line(branch)
 			if single_line {
 				f.write(' { ')
 			} else {
