@@ -241,7 +241,6 @@ fn (mut g Gen) fn_args(args []table.Param, is_variadic bool) ([]string, []string
 				g.definitions.write(')')
 			}
 		} else {
-			// TODO: combine two operations into one once ternary in expression is fixed
 			s := '$arg_type_name $caname'
 			g.write(s)
 			g.definitions.write(s)
