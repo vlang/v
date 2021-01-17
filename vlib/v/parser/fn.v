@@ -470,6 +470,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 				p.tok.position())
 		}
 	}
+	end_pos := p.prev_tok.position()
 	mut stmts := []ast.Stmt{}
 	no_body := p.tok.kind != .lcbr
 	same_line = p.tok.line_nr == p.prev_tok.line_nr
@@ -503,7 +504,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 			is_method: false
 			is_anon: true
 			no_body: no_body
-			pos: pos
+			pos: pos.extend_with_last_line(end_pos, p.prev_tok.line_nr)
 			file: p.file_name
 			scope: p.scope
 		}
