@@ -283,14 +283,9 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	mut body := ''
 	mut in_headers := true
 	mut len := 0
-
-
 	// File receive stuff
 	mut ct := 'text/plain'
 	mut boundary := ''
-
-
-
 	// for line in lines[1..] {
 	for lindex in 0 .. 100 {
 		// println(j)
@@ -307,7 +302,6 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 				boundary = args[1][9..]
 			}
 		}
-
 		if sline == '' {
 			// if in_headers {
 			// End of headers, no body => exit
