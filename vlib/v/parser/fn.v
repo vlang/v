@@ -254,7 +254,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		pos := p.tok.position()
 		// TODO high order fn
 		name = if language == .js { p.check_js_name() } else { p.check_name() }
-		if language == .v && !p.pref.translated && util.contains_capital(name) && p.mod != 'builtin' {
+		if language == .v && !p.pref.translated && util.contains_capital(name) && !p.builtin_mod {
 			p.error_with_pos('function names cannot contain uppercase letters, use snake_case instead',
 				pos)
 			return ast.FnDecl{
@@ -270,7 +270,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			}
 		}
 		// cannot redefine buildin function
-		if !is_method && p.mod != 'builtin' && name in builtin_functions {
+		if !is_method && !p.builtin_mod && name in builtin_functions {
 			p.error_with_pos('cannot redefine builtin function `$name`', pos)
 			return ast.FnDecl{
 				scope: 0
