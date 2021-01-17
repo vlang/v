@@ -1276,15 +1276,22 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		}
 	} else if it.kind == .array_fixed {
 		atmp := g.new_tmp_var()
-		atmp_type := g.typ(it.cond_type)
+		atmp_type := g.typ(it.cond_type).trim('*')
 		if !it.cond.is_lvalue() {
-			g.write('$atmp_type *$atmp = &(($atmp_type)')
+			g.write('$atmp_type *$atmp = ')
+			if !it.cond_type.is_ptr() {
+				g.write('&')
+			}
+			g.write('(($atmp_type)')
 		} else {
-			g.write('$atmp_type *$atmp = &(')
+			g.write('$atmp_type *$atmp = ')
+			if !it.cond_type.is_ptr() {
+				g.write('&')
+			}
+			g.write('(')
 		}
 		g.expr(it.cond)
-		g.writeln(')')
-		g.writeln(';')
+		g.writeln(');')
 		i := if it.key_var in ['', '_'] { g.new_tmp_var() } else { it.key_var }
 		cond_sym := g.table.get_type_symbol(it.cond_type)
 		info := cond_sym.info as table.ArrayFixed
@@ -1298,7 +1305,11 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 				styp := g.typ(it.val_type)
 				g.write('\t$styp ${c_name(it.val_var)}')
 			}
-			g.writeln(' = (*$atmp)[$i];')
+			if it.val_is_mut {
+				g.writeln(' = &(*$atmp)[$i];')
+			} else {
+				g.writeln(' = (*$atmp)[$i];')
+			}
 		}
 	} else if it.kind == .map {
 		// `for key, val in map {
