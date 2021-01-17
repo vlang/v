@@ -46,8 +46,8 @@ mut:
 	content_type string = 'text/plain'
 	status       string = '200 OK'
 pub:
-	req  http.Request
-	conn net.TcpConn
+	req    http.Request
+	conn   net.TcpConn
 	uninit UninitFn
 	// TODO Response
 pub mut:
