@@ -52,10 +52,17 @@ pub mut:
 	static_mime_types map[string]string
 	form              map[string]string
 	query             map[string]string
+	files             map[string]FileData
 	headers           string // response headers
 	done              bool
 	page_gen_start    i64
 	form_error        string
+}
+
+struct FileData {
+pub:
+	filename     string
+	content_type string
 }
 
 // declaring init_once in your App struct is optional
@@ -276,6 +283,14 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	mut body := ''
 	mut in_headers := true
 	mut len := 0
+
+
+	// File receive stuff
+	mut ct := 'text/plain'
+	mut boundary := ''
+
+
+
 	// for line in lines[1..] {
 	for lindex in 0 .. 100 {
 		// println(j)
@@ -284,6 +299,15 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 			break
 		}
 		sline := strip(line)
+		// Parse content type
+		if sline.len >= 14 && sline[..14] == 'Content-Type: ' {
+			args := sline[14..].split('; ')
+			ct = args[0]
+			if args.len > 1 {
+				boundary = args[1][9..]
+			}
+		}
+
 		if sline == '' {
 			// if in_headers {
 			// End of headers, no body => exit
@@ -299,8 +323,13 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 			body += read_body.bytestr()
 			break
 		}
+		if ct == 'multipart/form-data' && sline == boundary {
+			body += boundary
+			read_body := io.read_all(reader: reader) or { []byte{} }
+			body += read_body.bytestr()
+			break
+		}
 		if in_headers {
-			// println(sline)
 			headers << sline
 			if sline.starts_with('Content-Length') {
 				len = sline.all_after(': ').int()
@@ -333,7 +362,12 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	}
 	// }
 	if req.method in methods_with_form {
-		app.parse_form(req.data)
+		println(ct)
+		if ct == 'multipart/form-data' {
+			app.parse_multipart_form(body, boundary)
+		} else {
+			app.parse_form(req.data)
+		}
 	}
 	if vals.len < 2 {
 		$if debug {
@@ -556,6 +590,34 @@ pub fn (mut ctx Context) parse_form(s string) {
 	// }
 	// todo: parse form-data and application/json
 	// ...
+}
+
+pub fn (mut ctx Context) parse_multipart_form(s string, b string) {
+	if ctx.req.method !in methods_with_form {
+		return
+	}
+	a := s.split('$b')[1..]
+	fields := a[..a.len - 1]
+	for field in fields {
+		lines := field.split_into_lines()[1..]
+		mut l := 0
+		// Parse name
+		disposition_data := lines[l].split('; ')[1..]
+		l++
+		name := disposition_data[0][6..disposition_data[0].len - 1]
+		// Parse files
+		if disposition_data.len > 1 {
+			filename := disposition_data[1][10..disposition_data[1].len - 1]
+			ct := lines[l].split(': ')[1]
+			l++
+			ctx.files[name] = FileData{
+				filename: filename
+				content_type: ct
+			}
+		}
+		data := lines[l + 1..lines.len - 1]
+		ctx.form[name] = data.join('\n\r')
+	}
 }
 
 fn (mut ctx Context) scan_static_directory(directory_path string, mount_path string) {
