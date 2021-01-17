@@ -3209,8 +3209,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		}
 		ast.AnonFn {
 			keep_fn := c.cur_fn
-			c.cur_fn = &node.decl
-			c.stmts(node.decl.stmts)
+			c.fn_decl(mut node.decl)
 			c.cur_fn = keep_fn
 			return node.typ
 		}

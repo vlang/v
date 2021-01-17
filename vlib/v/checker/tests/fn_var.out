@@ -1,3 +1,8 @@
+vlib/v/checker/tests/fn_var.vv:1:10: error: missing return at end of function `anon_27_7_9`
+    1 | mut f := fn(i int) byte {}
+      |          ~~
+    2 | f = 4
+    3 | mut p := &f
 vlib/v/checker/tests/fn_var.vv:2:5: error: cannot assign to `f`: expected `fn (int) byte`, not `int literal`
     1 | mut f := fn(i int) byte {}
     2 | f = 4

@@ -1,0 +1,6 @@
+vlib/v/checker/tests/anon_fn_missing_return_type.vv:2:7: error: missing return at end of function `anon_49_7_7`
+    1 | fn main() {
+    2 |     f := fn (i int) int { println(i) }
+      |          ~~
+    3 |     f(0)
+    4 | }

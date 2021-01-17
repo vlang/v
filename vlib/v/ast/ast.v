@@ -289,10 +289,9 @@ pub:
 
 // anonymous function
 pub struct AnonFn {
-pub:
-	decl FnDecl
 pub mut:
-	typ table.Type // the type of anonymous fn. Both .typ and .decl.name are auto generated
+	decl FnDecl
+	typ  table.Type // the type of anonymous fn. Both .typ and .decl.name are auto generated
 }
 
 // function or method declaration
