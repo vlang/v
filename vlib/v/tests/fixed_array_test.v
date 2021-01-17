@@ -68,3 +68,20 @@ fn test_fixed_array_can_be_passed_as_mut_arg() {
 	change_first_element(mut arr2)
 	assert arr2 == [[0,2,3]!, [4,5,6]!, [7,8,9]!]!
 }
+
+fn test_iteration_over_fixed_array() {
+	mut s := u16(0)
+	arr := [u16(3), 2, 17, 23]!
+	for v in arr {
+		s += v
+	}
+	assert s == 45
+}
+
+fn test_iteration_over_fixed_array_literal() {
+	mut s := 0.0
+	for v in [0.5, -2.25, 3.75, 12.0, 13.25]! {
+		s += v
+	}
+	assert s == 27.25
+}
