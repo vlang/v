@@ -610,7 +610,7 @@ pub fn (mut ctx Context) parse_multipart_form(s string, b string) {
 			}
 		}
 		mut sb := strings.new_builder(field.len)
-		for i in l + 1..lines.len - 1 {
+		for i in l + 1 .. lines.len - 1 {
 			sb.writeln(lines[i])
 		}
 		ctx.form[name] = sb.str()
