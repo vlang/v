@@ -37,3 +37,14 @@ fn test_fixed_array_slice() {
 	arr2 := fixed_array2[0..]
 	assert arr2 == [[1, 2], [2, 3], [3, 4],[4, 5]]
 }
+
+fn pointer_array_slice(mut a []int) {
+	assert a[0..] == [1,2,3]
+	assert a[..a.len] == [1,2,3]
+
+}
+
+fn test_pointer_array_slice() {
+	mut arr := [1,2,3]
+	pointer_array_slice(mut arr)
+}
