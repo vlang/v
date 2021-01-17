@@ -695,6 +695,8 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 			f.writeln('pub:')
 		} else if i == node.pub_mut_pos {
 			f.writeln('pub mut:')
+		} else if i == node.module_pos {
+			f.writeln('module:')
 		}
 		end_pos := field.pos.pos + field.pos.len
 		comments := field.comments
