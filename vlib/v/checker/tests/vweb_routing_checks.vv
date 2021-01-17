@@ -2,8 +2,6 @@ import vweb
 
 struct App {
 	vweb.Context
-pub mut:
-	dataptr &App = voidptr(0)
 }
 
 pub fn (mut app App) no_attributes(a string) vweb.Result {
@@ -23,7 +21,7 @@ pub fn (mut app App) bar(a string) vweb.Result {
 	return app.html('works')
 }
 
-// no segfault, but it shouldn't compile
+// no segfault, but it shouldnt compile
 ['/cow/:low']
 pub fn (mut app App) cow() vweb.Result {
 	return app.html('works')
@@ -34,10 +32,6 @@ pub fn (app App) init_once() {
 }
 
 pub fn (app App) init() {
-	//
-}
-
-pub fn (mut app App) uninit() {
 	//
 }
 

@@ -39,6 +39,8 @@ pub const (
 	default_port            = 8080
 )
 
+pub type UninitFn = fn ()
+
 pub struct Context {
 mut:
 	content_type string = 'text/plain'
@@ -46,6 +48,7 @@ mut:
 pub:
 	req  http.Request
 	conn net.TcpConn
+	uninit UninitFn
 	// TODO Response
 pub mut:
 	static_files      map[string]string
@@ -223,7 +226,7 @@ pub fn run_app<T>(mut app T, port int) {
 		mut conn := l.accept() or { panic('accept() failed') }
 		mut session := *app
 		session.dataptr = voidptr(app)
-		go handle_conn<T>(mut &conn, mut &session, mut app)
+		go handle_conn<T>(mut &conn, mut &session)
 		// app.vweb.page_gen_time = time.ticks() - t
 		// eprintln('handle conn() took ${time.ticks()-t}ms')
 		// message := readall(conn)
@@ -248,7 +251,7 @@ pub fn run_app<T>(mut app T, port int) {
 	}
 }
 
-fn handle_conn<T>(mut conn net.TcpConn, mut app T, mut org T) {
+fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	conn.set_read_timeout(1 * time.second)
 	defer {
 		conn.close() or { }
@@ -431,7 +434,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T, mut org T) {
 							println('easy match method=$method.name')
 						}
 						app.$method(vars)
-						app.uninit()
+						app.Context.uninit()
 						return
 					}
 				} else if method.name == 'index' {
@@ -440,7 +443,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T, mut org T) {
 						println('route to .index()')
 					}
 					app.$method(vars)
-					app.uninit()
+					app.Context.uninit()
 					return
 				}
 			} else {
@@ -498,7 +501,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T, mut org T) {
 							if matching && !unknown {
 								// absolute router words like `/test/site`
 								app.$method(vars)
-								app.uninit()
+								app.Context.uninit()
 								return
 							} else if matching && unknown {
 								// router words with paramter like `/:test/site`
@@ -524,7 +527,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T, mut org T) {
 				// call action method
 				if method.args.len == vars.len {
 					app.$method(vars)
-					app.uninit()
+					app.Context.uninit()
 				} else {
 					eprintln('warning: uneven parameters count ($method.args.len) in `$method.name`, compared to the vweb route `$method.attrs` ($vars.len)')
 				}

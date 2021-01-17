@@ -42,9 +42,6 @@ pub fn (mut app App) init_once() {
 pub fn (mut app App) init() {
 }
 
-pub fn (mut app App) uninit() {
-}
-
 pub fn (mut app App) new() vweb.Result {
 	return $vweb.html()
 }

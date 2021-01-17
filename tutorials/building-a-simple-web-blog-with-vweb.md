@@ -78,9 +78,6 @@ pub fn (mut app App) index() vweb.Result {
 pub fn (app &App) init() {
 }
 
-pub fn (app &App) uninit() {
-}
-
 pub fn (app &App) init_once() {
 }
 ```
