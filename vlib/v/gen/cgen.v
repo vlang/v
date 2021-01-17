@@ -3938,8 +3938,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				g.expr(node.left)
 				g.write(')')
 				g.write('.len')
-			}
-			else {
+			} else {
 				g.expr(node.left)
 				g.write('.len')
 			}
