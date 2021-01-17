@@ -1,0 +1,6 @@
+vlib/v/checker/tests/typedef_attr_v_struct_err.vv:2:1: error: `typedef` attribute can only be used with C structs
+    1 | [typedef]
+    2 | struct Point{}
+      | ~~~~~~~~~~~~
+    3 | 
+    4 | fn main() {

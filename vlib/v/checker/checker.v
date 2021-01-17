@@ -387,6 +387,11 @@ pub fn (mut c Checker) struct_decl(mut decl ast.StructDecl) {
 				c.error('`$embed_sym.name` is not a struct', embed.pos)
 			}
 		}
+		for attr in decl.attrs {
+			if attr.name == 'typedef' && decl.language != .c {
+				c.error('`typedef` attribute can only be used with C structs', decl.pos)
+			}
+		}
 		for i, field in decl.fields {
 			if decl.language == .v {
 				c.check_valid_snake_case(field.name, 'field name', field.pos)

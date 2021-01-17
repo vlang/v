@@ -660,7 +660,15 @@ typedef struct {
 			.alias {
 				parent := unsafe { &g.table.types[typ.parent_idx] }
 				is_c_parent := parent.name.len > 2 && parent.name[0] == `C` && parent.name[1] == `.`
-				parent_styp := if is_c_parent { 'struct ' + parent.cname[3..] } else { parent.cname }
+				mut is_typedef := false
+				if parent.info is table.Struct {
+					is_typedef = parent.info.is_typedef
+				}
+				parent_styp := if is_c_parent {
+					if !is_typedef { 'struct ' + parent.cname[3..] } else { parent.cname[3..] }
+				} else {
+					parent.cname
+				}
 				g.type_definitions.writeln('typedef $parent_styp $typ.cname;')
 			}
 			.array {
