@@ -4680,14 +4680,15 @@ fn (c &Checker) has_return(stmts []ast.Stmt) ?bool {
 pub fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) table.Type {
 	typ := c.expr(node.expr)
 	typ_sym := c.table.get_type_symbol(typ)
-	if !typ_sym.is_number() && typ_sym.kind !in [.byteptr, .charptr] {
+	is_non_void_pointer := (typ.is_ptr() || typ.is_pointer()) && typ_sym.kind != .voidptr
+	if !c.inside_unsafe && is_non_void_pointer {
+		c.warn('pointer arithmetic is only allowed in `unsafe` blocks', node.pos)
+	}
+	if !(typ_sym.is_number() || (c.inside_unsafe && is_non_void_pointer)) {
 		c.error('invalid operation: $node.op.str() (non-numeric type `$typ_sym.name`)',
 			node.pos)
 	} else {
 		node.auto_locked, _ = c.fail_if_immutable(node.expr)
-	}
-	if !c.inside_unsafe && (typ.is_ptr() || typ_sym.is_pointer()) {
-		c.warn('pointer arithmetic is only allowed in `unsafe` blocks', node.pos)
 	}
 	return typ
 }
