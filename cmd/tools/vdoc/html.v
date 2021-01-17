@@ -39,16 +39,18 @@ const (
 			<header class="doc-nav hidden">
 				<div class="heading-container">
 					<div class="heading">
-						<input type="text" id="search" placeholder="Search... (beta)" autocomplete="off">
-						<div class="module">{{ head_name }}</div>
-						<div class="toggle-version-container">
-							<span>{{ version }}</span>
-							<div id="dark-mode-toggle" role="switch" aria-checked="false" aria-label="Toggle dark mode">{{ light_icon }}{{ dark_icon }}</div>
+						<div class="info">
+							<div class="module">{{ head_name }}</div>
+							<div class="toggle-version-container">
+								<span>{{ version }}</span>
+								<div id="dark-mode-toggle" role="switch" aria-checked="false" aria-label="Toggle dark mode">{{ light_icon }}{{ dark_icon }}</div>
+							</div>
+							{{ menu_icon }}
 						</div>
-						{{ menu_icon }}
+						<input type="text" id="search" placeholder="Search... (beta)" autocomplete="off">
 					</div>
 				</div>
-				<nav class="search"></nav>
+				<nav class="search hidden"></nav>
 				<nav class="content hidden">
 					<ul>
 						{{ toc_links }}
