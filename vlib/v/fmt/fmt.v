@@ -687,7 +687,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 	mut field_align_i := 0
 	mut comment_align_i := 0
 	mut default_expr_align_i := 0
-	mut inc_indent := false
+	mut inc_indent := false // for correct indents with multi line default exprs
 	for i, field in node.fields {
 		if i == node.mut_pos {
 			f.writeln('mut:')
