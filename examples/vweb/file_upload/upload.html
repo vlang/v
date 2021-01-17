@@ -1,8 +1,14 @@
 <meta charset="utf-8">
 
-<h2>Filename: @filename</h2>
-<h2>Type: @filetyp</h2>
+File amount: @fdata.len
 
-<p>@data</p>
+@for i, data in fdata
+
+<h2>Filename: @data.filename</h2>
+<h2>Type: @data.content_type</h2>
+
+<p>@{files[i]}</p>
+
+@end
 
 <a href="/">Back</a>

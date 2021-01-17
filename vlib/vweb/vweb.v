@@ -52,7 +52,7 @@ pub mut:
 	static_mime_types map[string]string
 	form              map[string]string
 	query             map[string]string
-	files             map[string]FileData
+	files             map[string][]FileData
 	headers           string // response headers
 	done              bool
 	page_gen_start    i64
@@ -63,6 +63,7 @@ struct FileData {
 pub:
 	filename     string
 	content_type string
+	data         string
 }
 
 // declaring init_once in your App struct is optional
@@ -356,7 +357,6 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	}
 	// }
 	if req.method in methods_with_form {
-		println(ct)
 		if ct == 'multipart/form-data' {
 			app.parse_multipart_form(body, boundary)
 		} else {
@@ -604,10 +604,20 @@ pub fn (mut ctx Context) parse_multipart_form(s string, b string) {
 			filename := disposition_data[1][10..disposition_data[1].len - 1]
 			ct := lines[l].split(': ')[1]
 			l++
-			ctx.files[name] = FileData{
+			if name !in ctx.files {
+				ctx.files[name] = []FileData{}
+			}
+			mut sb := strings.new_builder(field.len)
+			for i in l + 1 .. lines.len - 1 {
+				sb.writeln(lines[i])
+			}
+			ctx.files[name] << FileData{
 				filename: filename
 				content_type: ct
+				data: sb.str()
 			}
+			sb.free()
+			continue
 		}
 		mut sb := strings.new_builder(field.len)
 		for i in l + 1 .. lines.len - 1 {
