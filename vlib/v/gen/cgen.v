@@ -3932,7 +3932,14 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				g.write('_ARR_LEN(')
 				g.expr(node.left)
 				g.write(')')
-			} else {
+			} else if node.left_type.is_ptr() {
+				g.write('(')
+				g.write('*')
+				g.expr(node.left)
+				g.write(')')
+				g.write('.len')
+			}
+			else {
 				g.expr(node.left)
 				g.write('.len')
 			}
