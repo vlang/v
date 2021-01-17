@@ -1278,11 +1278,12 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		atmp := g.new_tmp_var()
 		atmp_type := g.typ(it.cond_type)
 		if !it.cond.is_lvalue() {
-			g.error('for in: unhandled condition `$it.cond`', it.pos)
+			g.write('$atmp_type *$atmp = &(($atmp_type)')
+		} else {
+			g.write('$atmp_type *$atmp = &(')
 		}
-		// TODO rvalue cond
-		g.write('$atmp_type *$atmp = &')
 		g.expr(it.cond)
+		g.writeln(')')
 		g.writeln(';')
 		i := if it.key_var in ['', '_'] { g.new_tmp_var() } else { it.key_var }
 		cond_sym := g.table.get_type_symbol(it.cond_type)
