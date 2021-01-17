@@ -77,7 +77,7 @@ fn (mut cmd Command) run() {
 	sw := time.new_stopwatch({})
 	cmd.ecode = os.system(cmd.line)
 	spent := sw.elapsed().milliseconds()
-	println(term.yellow('> Running: "$cmd.line" took: $spent ms.'))
+	println(term.colorize(term.yellow, '> Running: "$cmd.line" took: $spent ms.'))
 	println('')
 }
 
@@ -90,15 +90,16 @@ fn (commands []Command) summary() {
 	oks := commands.filter(it.ecode == 0)
 	fails := commands.filter(it.ecode != 0)
 	println('')
-	println(term.header(term.yellow(term.bold('Summary of `v test-all`:')), '-'))
-	println(term.yellow('Total runtime: $spent ms'))
+	println(term.header(term.colorize(term.yellow, term.colorize(term.bold, 'Summary of `v test-all`:')),
+		'-'))
+	println(term.colorize(term.yellow, 'Total runtime: $spent ms'))
 	for ocmd in oks {
 		msg := if ocmd.okmsg != '' { ocmd.okmsg } else { ocmd.line }
-		println(term.green('>          OK: $msg '))
+		println(term.colorize(term.green, '>          OK: $msg '))
 	}
 	for fcmd in fails {
 		msg := if fcmd.errmsg != '' { fcmd.errmsg } else { fcmd.line }
-		println(term.red('>      Failed: $msg '))
+		println(term.colorize(term.red, '>      Failed: $msg '))
 	}
 	if fails.len > 0 {
 		exit(1)

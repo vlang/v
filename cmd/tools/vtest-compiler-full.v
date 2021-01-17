@@ -6,7 +6,6 @@ import v.pref
 
 const (
 	skip_with_fsanitize_memory    = [
-		'vlib/x/websocket/websocket_test.v',
 		'vlib/encoding/csv/reader_test.v',
 		'vlib/net/tcp_test.v',
 		'vlib/net/tcp_simple_client_server_test.v',
@@ -17,8 +16,8 @@ const (
 		'vlib/orm/orm_test.v',
 		'vlib/sqlite/sqlite_test.v',
 		'vlib/vweb/tests/vweb_test.v',
-		'vlib/x/websocket/websocket_test.v',
 		'vlib/v/tests/unsafe_test.v',
+		'vlib/x/websocket/websocket_test.v',
 		'vlib/net/http/http_httpbin_test.v',
 	]
 	skip_with_fsanitize_address   = [
