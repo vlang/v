@@ -95,7 +95,7 @@ fn main() {
 	os.chdir(vroot)
 	args := os.args.clone()
 	args_string := args[1..].join(' ')
-	cmd_prefix := args_string.all_before('test-fixed')
+	cmd_prefix := args_string.all_before('test-compiler-full')
 	title := 'testing all fixed tests'
 	all_test_files := os.walk_ext(os.join_path(vroot, 'vlib'), '_test.v')
 	testing.eheader(title)

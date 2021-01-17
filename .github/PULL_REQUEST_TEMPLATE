@@ -23,13 +23,7 @@ fn test_foo() {
 
 If you are fixing a bug, please add a test that covers it.
 
-Before submitting a PR, please:
-  A) run the tests with `v test-compiler` .
-  B) make sure, that V can still compile itself:
-```shell
-./v -o v cmd/v
-./v -o v cmd/v
-```
+Before submitting a PR, please run `v test-all` .
 See also `TESTS.md`.
 
 I try to process PRs as soon as possible. They should be handled within 24 hours.
