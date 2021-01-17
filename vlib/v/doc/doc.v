@@ -46,10 +46,10 @@ pub mut:
 	base_path string
 	table     &table.Table    = &table.Table{}
 	checker   checker.Checker = checker.Checker{
-	table: 0
-	cur_fn: 0
-	pref: 0
-}
+		table: 0
+		cur_fn: 0
+		pref: 0
+	}
 	fmt             fmt.Fmt
 	filename        string
 	pos             int

@@ -1,0 +1,18 @@
+struct S1 {
+pub mut:
+	v byte
+module:
+	i int
+}
+
+struct S2 {
+module:
+	j int
+mut:
+	v byte
+}
+
+mut s := S1{}
+s.i++
+mut s2 := S2{}
+s2.j++

@@ -59,6 +59,9 @@ fn test_fmt() {
 		if expected_ocontent != result_ocontent {
 			fmt_bench.fail()
 			eprintln(fmt_bench.step_message_fail('file $vrelpath after formatting, does not look as expected.'))
+			if ipath.ends_with(b2v_keep_path) {
+				continue
+			}
 			if diff_cmd == '' {
 				eprintln('>> sorry, but no working "diff" CLI command can be found')
 				continue

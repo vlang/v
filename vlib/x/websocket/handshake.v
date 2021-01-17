@@ -119,7 +119,8 @@ fn (mut ws Client) read_handshake_str() ?string {
 		msg[total_bytes_read] = buffer[0]
 		total_bytes_read++
 		if total_bytes_read > 5 && msg[total_bytes_read - 1] == `\n` && msg[total_bytes_read -
-			2] == `\r` && msg[total_bytes_read - 3] == `\n` && msg[total_bytes_read - 4] == `\r` {
+			2] == `\r` && msg[total_bytes_read - 3] == `\n` && msg[total_bytes_read - 4] == `\r`
+		{
 			break
 		}
 	}

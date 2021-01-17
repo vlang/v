@@ -96,7 +96,9 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Option/Result types & error handling](#optionresult-types-and-error-handling)
 * [Generics](#generics)
 * [Concurrency](#concurrency)
+    * [Spawning Concurrent Tasks](#spawning-concurrent-tasks)
     * [Channels](#channels)
+    * [Shared Objects](#shared-objects)
 * [Decoding JSON](#decoding-json)
 * [Testing](#testing)
 * [Memory management](#memory-management)
@@ -2191,10 +2193,67 @@ println(compare(1.1, 1.2)) //         -1
 
 
 ## Concurrency
+### Spawning Concurrent Tasks
+V's model of concurrency is very similar to Go's. To run `foo()` concurrently in
+a different thread, just call it with `go foo()`:
 
-V's model of concurrency is very similar to Go's. To run `foo()` concurrently, just
-call it with `go foo()`. Right now, it launches the function on a new system
-thread. Soon coroutines and a scheduler will be implemented.
+```v
+import math
+
+fn p(a f64, b f64) { // ordinary function without return value
+	c := math.sqrt(a * a + b * b)
+	println(c)
+}
+
+fn main() {
+	go p(3, 4)
+	// p will be run in parallel thread
+}
+```
+
+Sometimes it is necessary to wait until a parallel thread has finished. This can
+be done by assigning a *handle* to the started thread and calling the `wait()` method
+to this handle later:
+
+```v
+import math
+
+fn p(a f64, b f64) { // ordinary function without return value
+	c := math.sqrt(a * a + b * b)
+	println(c) // prints `5`
+}
+
+fn main() {
+	h := go p(3, 4)
+	// p() runs in parallel thread
+	h.wait()
+	// p() has definitely finished
+}
+```
+
+This approach can also be used to get a return value from a function that is run in a
+parallel thread. There is no need to modify the function itself to be able to call it
+concurrently.
+
+```v
+import math { sqrt }
+
+fn get_hypot(a f64, b f64) f64 { //       ordinary function returning a value
+	c := sqrt(a * a + b * b)
+	return c
+}
+
+fn main() {
+	g := go get_hypot(54.06, 2.08) // spawn thread and get handle to it
+	h1 := get_hypot(2.32, 16.74) //   do some other calculation here
+	h2 := g.wait() //                 get result from spawned thread
+	println('Results: $h1, $h2') //   prints `Results: 16.9, 54.1`
+}
+```
+
+If there is a large number of tasks that do not return a value it might be easier to manage
+them using a wait group. However, for this approach the function(s) called concurrently have
+to be designed with this wait group in mind:
 
 ```v
 import sync
@@ -2368,6 +2427,8 @@ The `try_push/pop()` methods will return immediately with one of the results
 the reason why not.
 Usage of these methods and properties in production is not recommended -
 algorithms based on them are often subject to race conditions. Use `select` instead.
+
+### Shared Objects
 
 Data can be exchanged between a coroutine and the calling thread via a shared variable.
 Such variables should be created as `shared` and passed to the coroutine as such, too.
@@ -3013,8 +3074,9 @@ use `v help`, `v help build` and `v help build-c`.
 
 ## Conditional compilation
 
-### Compile time if
+### Compile time code
 
+#### $if
 ```v
 // Support for multiple conditions in one branch
 $if ios || android {
@@ -3061,6 +3123,31 @@ Full list of builtin options:
 | `android`,`mach`, `dragonfly` | `msvc`            | `little_endian`       | `no_bounds_checking`  |
 | `gnu`, `hpux`, `haiku`, `qnx` | `cplusplus`       | `big_endian`          | |
 | `solaris`, `linux_or_macos`   | | | |
+
+#### $embed_file
+
+```v ignore
+module main
+fn main() {
+	embedded_file := $embed_file('v.png')
+	mut fw := os.create('exported.png') or { panic(err) }
+	fw.write_bytes(embedded_file.data(), embedded_file.len)
+	fw.close()
+}
+```
+
+V can embed arbitrary files into the executable with the `$embed_file(<path>)`
+compile time call. Paths can be absolute or relative to the source file.
+
+When you do not use `-prod`, the file will not be embedded. Instead, it will
+be loaded *the first time* your program calls `f.data()` at runtime, making
+it easier to change in external editor programs, without needing to recompile
+your executable.
+
+When you compile with `-prod`, the file *will be embedded inside* your
+executable, increasing your binary size, but making it more self contained 
+and thus easier to distribute. In this case, `f.data()` will cause *no IO*,
+and it will always return the same data.
 
 ### Environment specific files
 

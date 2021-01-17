@@ -1,4 +1,4 @@
-v-pkgconfig
+v.pkgconfig
 ===========
 
 This module implements the `pkg-config` tool as a library in pure V.
@@ -11,21 +11,21 @@ Features:
 * Resolve full path for `.pc` file given a name
 * Recursively parse all the dependencies
 * Find and replace all inner variables
+* Integration with V, so you can just do `#pkgconfig r_core`
 
 Todo/Future/Wish:
 
 * 100% compatibility with `pkg-config` options
-* Integration with V, to support pkgconfig with `system()`
 * Strictier pc parsing logic, with better error reporting
 
 Example
 -------
 
-The commandline tool is available in `vlib/pkgconfig/bin/pkgconfig.v`
+The commandline tool is available in `vlib/v/pkgconfig/bin/pkgconfig.v`
 
 ```
 $ ./bin/pkgconfig -h
-pkgconfig 0.2.0
+pkgconfig 0.3.0
 -----------------------------------------------
 Usage: pkgconfig [options] [ARGS]
 
@@ -54,13 +54,15 @@ Options:
 $
 ```
 
-Using the API from the V repl
+Using the API in your own programs:
+```v
+import v.pkgconfig
 
+opt := pkgconfig.Options{}
+mut pc := pkgconfig.load('expat', opt) or { panic(err) }
+println(pc.libs)
 ```
->>> import pkgconfig
->>> opt := pkgconfig.Options{}
->>> mut pc := pkgconfig.load('r_core', opt) or { panic(err) }
->>> pc.libs
-['-L/usr/local/lib', '-lr_core', '-lr_config', '-lr_util', '', '-ldl', '-lr_cons', '-lr_io', '-lr_socket', '-lr_hash', '-lr_crypto', '-lr_flag', '-lr_asm', '-lr_syscall', '-lr_lang', '-lr_parse', '-lr_reg', '-lr_debug', '-lr_anal', '-lr_search', '-lr_bp', '-lr_egg', '-lr_bin', '-lr_magic', '-lr_fs']
->>>
+... will produce something like this:
+```
+['-L/usr/lib/x86_64-linux-gnu', '-lexpat']
 ```

@@ -54,6 +54,7 @@ pub:
 	name      string
 	is_mut    bool
 	typ       Type
+	type_pos  token.Position
 	is_hidden bool // interface first arg
 }
 
@@ -455,6 +456,20 @@ pub fn (t &Table) chan_cname(elem_type Type, is_mut bool) string {
 	return 'chan_$elem_type_sym.cname' + suffix
 }
 
+[inline]
+pub fn (t &Table) gohandle_name(return_type Type) string {
+	return_type_sym := t.get_type_symbol(return_type)
+	ptr := if return_type.is_ptr() { '&' } else { '' }
+	return 'gohandle[$ptr$return_type_sym.name]'
+}
+
+[inline]
+pub fn (t &Table) gohandle_cname(return_type Type) string {
+	return_type_sym := t.get_type_symbol(return_type)
+	suffix := if return_type.is_ptr() { '_ptr' } else { '' }
+	return 'gohandle_$return_type_sym.cname$suffix'
+}
+
 // map_source_name generates the original name for the v source.
 // e. g. map[string]int
 [inline]
@@ -516,6 +531,27 @@ pub fn (mut t Table) find_or_register_map(key_type Type, value_type Type) int {
 		}
 	}
 	return t.register_type_symbol(map_typ)
+}
+
+pub fn (mut t Table) find_or_register_gohandle(return_type Type) int {
+	name := t.gohandle_name(return_type)
+	cname := t.gohandle_cname(return_type)
+	// existing
+	existing_idx := t.type_idxs[name]
+	if existing_idx > 0 {
+		return existing_idx
+	}
+	// register
+	gohandle_typ := TypeSymbol{
+		parent_idx: gohandle_type_idx
+		kind: .gohandle
+		name: name
+		cname: cname
+		info: GoHandle{
+			return_type: return_type
+		}
+	}
+	return t.register_type_symbol(gohandle_typ)
 }
 
 pub fn (mut t Table) find_or_register_array(elem_type Type) int {

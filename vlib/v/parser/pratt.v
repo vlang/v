@@ -56,7 +56,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 		.dollar {
 			match p.peek_tok.kind {
 				.name {
-					return p.vweb()
+					return p.comp_call()
 				}
 				.key_if {
 					return p.if_expr(true)
@@ -286,7 +286,7 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 				return node
 			}
 			p.is_stmt_ident = is_stmt_ident
-		} else if p.tok.kind == .lsbr {
+		} else if p.tok.kind == .lsbr && (p.inside_fn || p.tok.line_nr == p.prev_tok.line_nr) {
 			node = p.index_expr(node)
 			p.is_stmt_ident = is_stmt_ident
 			if p.tok.kind == .lpar && p.tok.line_nr == p.prev_tok.line_nr && node is ast.IndexExpr {
@@ -380,7 +380,8 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	right = p.expr(precedence)
 	p.expecting_type = prev_expecting_type
 	if p.pref.is_vet && op in [.key_in, .not_in] && right is ast.ArrayInit && (right as ast.ArrayInit).exprs.len ==
-		1 {
+		1
+	{
 		p.vet_error('Use `var == value` instead of `var in [value]`', pos.line_nr, vet.FixKind.vfmt)
 	}
 	mut or_stmts := []ast.Stmt{}

@@ -254,7 +254,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		pos := p.tok.position()
 		// TODO high order fn
 		name = if language == .js { p.check_js_name() } else { p.check_name() }
-		if language == .v && !p.pref.translated && util.contains_capital(name) && p.mod != 'builtin' {
+		if language == .v && !p.pref.translated && util.contains_capital(name) && !p.builtin_mod {
 			p.error_with_pos('function names cannot contain uppercase letters, use snake_case instead',
 				pos)
 			return ast.FnDecl{
@@ -270,7 +270,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			}
 		}
 		// cannot redefine buildin function
-		if !is_method && p.mod != 'builtin' && name in builtin_functions {
+		if !is_method && !p.builtin_mod && name in builtin_functions {
 			p.error_with_pos('cannot redefine builtin function `$name`', pos)
 			return ast.FnDecl{
 				scope: 0
@@ -278,7 +278,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		}
 	}
 	if p.tok.kind in [.plus, .minus, .mul, .div, .mod, .gt, .lt, .eq, .ne, .le, .ge] &&
-		p.peek_tok.kind == .lpar {
+		p.peek_tok.kind == .lpar
+	{
 		name = p.tok.kind.str() // op_to_fn_name()
 		if rec_type == table.void_type {
 			p.error_with_pos('cannot use operator overloading with normal functions',
@@ -318,7 +319,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	// Return type
 	mut return_type := table.void_type
 	if p.tok.kind.is_start_of_type() ||
-		(p.tok.kind == .key_fn && p.tok.line_nr == p.prev_tok.line_nr) {
+		(p.tok.kind == .key_fn && p.tok.line_nr == p.prev_tok.line_nr)
+	{
 		return_type = p.parse_type()
 	}
 	mut type_sym_method_idx := 0
@@ -388,7 +390,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	no_body := p.tok.kind != .lcbr
 	body_start_pos := p.peek_tok.position()
 	if p.tok.kind == .lcbr {
+		p.inside_fn = true
 		stmts = p.parse_block_no_scope(true)
+		p.inside_fn = false
 	}
 	if !no_body && are_args_type_only {
 		p.error_with_pos('functions with type only args can not have bodies', body_start_pos)
@@ -607,6 +611,7 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 			}
 			mut arg_pos := [p.tok.position()]
 			mut arg_names := [p.check_name()]
+			mut type_pos := [p.tok.position()]
 			// `a, b, c int`
 			for p.tok.kind == .comma {
 				if !p.pref.is_fmt {
@@ -616,6 +621,7 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 				p.next()
 				arg_pos << p.tok.position()
 				arg_names << p.check_name()
+				type_pos << p.tok.position()
 			}
 			if p.tok.kind == .key_mut {
 				// TODO remove old syntax
@@ -663,6 +669,7 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 					name: arg_name
 					is_mut: is_mut
 					typ: typ
+					type_pos: type_pos[i]
 				}
 				// if typ.typ.kind == .variadic && p.tok.kind == .comma {
 				if is_variadic && p.tok.kind == .comma {
@@ -687,7 +694,8 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 fn (mut p Parser) check_fn_mutable_arguments(typ table.Type, pos token.Position) {
 	sym := p.table.get_type_symbol(typ)
 	if sym.kind !in [.array, .array_fixed, .struct_, .map, .placeholder, .sum_type] &&
-		!typ.is_ptr() && !typ.is_pointer() {
+		!typ.is_ptr() && !typ.is_pointer()
+	{
 		p.error_with_pos('mutable arguments are only allowed for arrays, maps, structs and pointers\n' +
 			'return values instead: `fn foo(mut n $sym.name) {` => `fn foo(n $sym.name) $sym.name {`',
 			pos)

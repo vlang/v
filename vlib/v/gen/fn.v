@@ -126,7 +126,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 	arg_start_pos := g.out.len
 	fargs, fargtypes := g.fn_args(it.params, it.is_variadic)
 	arg_str := g.out.after(arg_start_pos)
-	if it.no_body || (g.pref.use_cache && it.is_builtin && !g.is_test) || skip {
+	if it.no_body || (((g.pref.use_cache && g.pref.build_mode != .build_module) && it.is_builtin && !g.is_test) || skip {
 		// Just a function header. Builtin function bodies are defined in builtin.o
 		g.definitions.writeln(');') // // NO BODY')
 		g.writeln(');')
@@ -296,7 +296,8 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	}
 	if node.is_method && !node.is_field {
 		if node.name == 'writeln' && g.pref.experimental && node.args.len > 0 && node.args[0].expr is
-			ast.StringInterLiteral && g.table.get_type_symbol(node.receiver_type).name == 'strings.Builder' {
+			ast.StringInterLiteral && g.table.get_type_symbol(node.receiver_type).name == 'strings.Builder'
+		{
 			g.string_inter_literal_sb_optimized(node)
 		} else {
 			g.method_call(node)
@@ -407,7 +408,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 	// TODO performance, detect `array` method differently
 	if left_sym.kind == .array && node.name in
-		['repeat', 'sort_with_compare', 'free', 'push_many', 'trim', 'first', 'last', 'pop', 'clone', 'reverse', 'slice'] {
+		['repeat', 'sort_with_compare', 'free', 'push_many', 'trim', 'first', 'last', 'pop', 'clone', 'reverse', 'slice']
+	{
 		// && rec_sym.name == 'array' {
 		// && rec_sym.name == 'array' && receiver_name.starts_with('array') {
 		// `array_byte_clone` => `array_clone`
@@ -468,7 +470,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			g.write('&')
 		}
 	} else if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name != 'str' &&
-		node.from_embed_type == 0 {
+		node.from_embed_type == 0
+	{
 		g.write('/*rec*/*')
 	}
 	if g.is_autofree && node.free_receiver && !g.inside_lambda && !g.is_builtin_mod {

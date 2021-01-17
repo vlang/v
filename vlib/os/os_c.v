@@ -59,7 +59,7 @@ pub fn read_bytes(path string) ?[]byte {
 	}
 	C.rewind(fp)
 	mut res := []byte{len: fsize}
-	nr_read_elements := C.fread(res.data, fsize, 1, fp)
+	nr_read_elements := int(C.fread(res.data, fsize, 1, fp))
 	if nr_read_elements == 0 && fsize > 0 {
 		return error('fread failed')
 	}
@@ -88,7 +88,7 @@ pub fn read_file(path string) ?string {
 	C.rewind(fp)
 	unsafe {
 		mut str := malloc(fsize + 1)
-		nelements := C.fread(str, fsize, 1, fp)
+		nelements := int(C.fread(str, fsize, 1, fp))
 		if nelements == 0 && fsize > 0 {
 			free(str)
 			return error('fread failed')
@@ -772,7 +772,8 @@ fn normalize_drive_letter(path string) string {
 		return path
 	}
 	if path.len > 2 &&
-		path[0] >= `a` && path[0] <= `z` && path[1] == `:` && path[2] == path_separator[0] {
+		path[0] >= `a` && path[0] <= `z` && path[1] == `:` && path[2] == path_separator[0]
+	{
 		unsafe {
 			x := &path.str[0]
 			(*x) = *x - 32

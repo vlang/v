@@ -5,6 +5,7 @@ import time
 The goal of this test, is to simulate a developer, that has run a program, compiled with -live flag.
 
 It does so by writing a new generated program containing a [live] fn pmessage() string {...} function,
+(that program is in `vlib/v/live/live_test_template.vv`)
 then runs the generated program at the start *in the background*,
 waits some time, so that the program could run a few iterations, then modifies its source
 (simulates a developer that has saved a new version of the program source),
@@ -39,70 +40,13 @@ const (
 	res_stop_file       = os.join_path(os.temp_dir(), 'STOP.txt')
 	cleanup_files       = [tmp_file, source_file, genexe_file, output_file, res_original_file,
 		res_changed_file, res_another_file, res_stop_file]
-	live_program_source = "
-module main
-
-import time
-import os
-import live
-
-fn append_to_file(fname string, s string) {
-	mut f := os.open_append(fname) or {
-		println('>>>> could not open file \$fname for appending, err: \$err ')
-		return
-	}
-	f.writeln('\$s')
-	//info := live.info()
-	//f.writeln('>>> reloads: \${info.reloads} | ok reloads: \${info.reloads_ok}')
-	f.close()
-}
-
-fn myprintln(s string) {
-	append_to_file('$output_file', s)
-	println(s)
-	os.flush()
-}
-
-[live]
-fn pmessage() string {
-	return 'ORIGINAL'
-}
-
-const (
-	delay = 20
+	live_program_source = get_source_template()
 )
-fn edefault(name string, default string) string {
-	res := os.getenv(name)
-	if res == '' {
-		return default
-	}
-	return res
+
+fn get_source_template() string {
+	src := os.read_file(os.join_path(os.dir(@FILE), 'live_test_template.vv')) or { panic(err) }
+	return src.replace('#OUTPUT_FILE#', output_file)
 }
-fn main() {
-	mut info := live.info()
-	info.recheck_period_ms = 5
-	myprintln('START')
-	myprintln('DATE: ' + time.now().str())
-	pmessage()
-	pmessage()
-	max_cycles := edefault('LIVE_CYCLES', '1').int()
-	// NB: 1000 * 20 = maximum of ~20s runtime
-	for i:=0; i<max_cycles; i++ {
-		s := pmessage()
-		myprintln(s)
-		append_to_file(os.resource_abs_path(s + '.txt'), s)
-		if s == 'STOP' {
-			break
-		}
-		time.sleep_ms(delay)
-	}
-	pmessage()
-	pmessage()
-	myprintln('DATE: ' + time.now().str())
-	myprintln('END')
-}
-"
-)
 
 fn edefault(name string, default string) string {
 	res := os.getenv(name)
@@ -206,7 +150,7 @@ fn setup_cycles_environment() {
 fn test_live_program_can_be_compiled() {
 	setup_cycles_environment()
 	eprintln('Compiling...')
-	os.system('$vexe -live -o $genexe_file $source_file')
+	os.system('$vexe -nocolor -live -o $genexe_file $source_file')
 	//
 	cmd := '$genexe_file > /dev/null &'
 	eprintln('Running with: $cmd')
@@ -227,6 +171,8 @@ fn test_live_program_can_be_changed_2() {
 }
 
 fn test_live_program_can_be_changed_3() {
+	change_source('STOP')
+	change_source('STOP')
 	change_source('STOP')
 	assert true
 }

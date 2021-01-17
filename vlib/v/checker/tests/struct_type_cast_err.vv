@@ -11,5 +11,7 @@ fn main() {
     _ := i8(foo)
     _ := i64(foo)
     _ := int(foo)
+    _ = &I1(foo)
 }
 
+interface I1{}

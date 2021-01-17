@@ -65,8 +65,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		p.error('`$p.tok.lit` lacks body')
 		return ast.StructDecl{}
 	}
-	if language == .v &&
-		p.mod != 'builtin' && name.len > 0 && !name[0].is_capital() && !p.pref.translated {
+	if language == .v && !p.builtin_mod && name.len > 0 && !name[0].is_capital() && !p.pref.translated {
 		p.error_with_pos('struct name `$name` must begin with capital letter', name_pos)
 		return ast.StructDecl{}
 	}
@@ -93,6 +92,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	mut pub_pos := -1
 	mut pub_mut_pos := -1
 	mut global_pos := -1
+	mut module_pos := -1
 	mut is_field_mut := false
 	mut is_field_pub := false
 	mut is_field_global := false
@@ -157,6 +157,17 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				is_field_pub = true
 				is_field_mut = true
 				is_field_global = true
+			} else if p.tok.kind == .key_module {
+				if module_pos != -1 {
+					p.error('redefinition of `module` section')
+					return {}
+				}
+				p.next()
+				p.check(.colon)
+				module_pos = fields.len
+				is_field_pub = false
+				is_field_mut = false
+				is_field_global = false
 			}
 			for p.tok.kind == .comment {
 				comments << p.comment()
@@ -320,6 +331,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		mut_pos: mut_pos - embeds.len
 		pub_pos: pub_pos - embeds.len
 		pub_mut_pos: pub_mut_pos - embeds.len
+		module_pos: module_pos - embeds.len
 		language: language
 		is_union: is_union
 		attrs: attrs

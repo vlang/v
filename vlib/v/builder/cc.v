@@ -212,7 +212,8 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		if ccversion := os.exec('cc --version') {
 			if ccversion.exit_code == 0 {
 				if ccversion.output.contains('This is free software;') &&
-					ccversion.output.contains('Free Software Foundation, Inc.') {
+					ccversion.output.contains('Free Software Foundation, Inc.')
+				{
 					ccoptions.guessed_compiler = 'gcc'
 				}
 				if ccversion.output.contains('clang version ') {
@@ -353,7 +354,8 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	// Without these libs compilation will fail on Linux
 	// || os.user_os() == 'linux'
 	if !v.pref.is_bare && v.pref.build_mode != .build_module && v.pref.os in
-		[.linux, .freebsd, .openbsd, .netbsd, .dragonfly, .solaris, .haiku] {
+		[.linux, .freebsd, .openbsd, .netbsd, .dragonfly, .solaris, .haiku]
+	{
 		ccoptions.linker_flags << '-lm'
 		ccoptions.linker_flags << '-lpthread'
 		// -ldl is a Linux only thing. BSDs have it in libc.
@@ -401,7 +403,8 @@ fn (ccoptions CcompilerOptions) thirdparty_object_args(middle []string) []string
 
 fn (mut v Builder) setup_output_name() {
 	if !v.pref.is_shared && v.pref.build_mode != .build_module && os.user_os() == 'windows' &&
-		!v.pref.out_name.ends_with('.exe') {
+		!v.pref.out_name.ends_with('.exe')
+	{
 		v.pref.out_name += '.exe'
 	}
 	// Output executable name

@@ -44,6 +44,7 @@ mut:
 	comptime_defines    strings.Builder // custom defines, given by -d/-define flags on the CLI
 	pcs_declarations    strings.Builder // -prof profile counter declarations for each function
 	hotcode_definitions strings.Builder // -live declarations & functions
+	embedded_data       strings.Builder // data to embed in the executable/binary
 	shared_types        strings.Builder // shared/lock types
 	channel_definitions strings.Builder // channel related code
 	options_typedefs    strings.Builder // Option typedefs
@@ -88,15 +89,18 @@ mut:
 	defer_profile_code    string
 	str_types             []string // types that need automatic str() generation
 	threaded_fns          []string // for generating unique wrapper types and fns for `go xxx()`
+	waiter_fns            []string // functions that wait for `go xxx()` to finish
 	array_fn_definitions  []string // array equality functions that have been defined
 	map_fn_definitions    []string // map equality functions that have been defined
 	struct_fn_definitions []string // struct equality functions that have been defined
 	auto_fn_definitions   []string // auto generated functions defination list
+	anon_fn_definitions   []string // anon generated functions defination list
 	is_json_fn            bool     // inside json.encode()
 	json_types            []string // to avoid json gen duplicates
 	pcs                   []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
 	is_builtin_mod        bool
 	hotcode_fn_names      []string
+	embedded_files        []ast.EmbeddedFile
 	// cur_fn               ast.FnDecl
 	cur_generic_type table.Type // `int`, `string`, etc in `foo<T>()`
 	sql_i            int
@@ -108,6 +112,7 @@ mut:
 	strs_to_free0    []string // strings.Builder
 	// strs_to_free          []string // strings.Builder
 	inside_call           bool
+	for_in_mul_val_name   string
 	has_main              bool
 	inside_const          bool
 	comp_for_method       string      // $for method in T.methods {}
@@ -175,6 +180,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		comptime_defines: strings.new_builder(100)
 		pcs_declarations: strings.new_builder(100)
 		hotcode_definitions: strings.new_builder(100)
+		embedded_data: strings.new_builder(1000)
 		options_typedefs: strings.new_builder(100)
 		options: strings.new_builder(100)
 		shared_types: strings.new_builder(100)
@@ -227,6 +233,14 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 			tests_inited = true
 		}
 		g.stmts(file.stmts)
+		// Transfer embedded files
+		if file.embedded_files.len > 0 {
+			for path in file.embedded_files {
+				if path !in g.embedded_files {
+					g.embedded_files << path
+				}
+			}
+		}
 		g.timers.show('cgen_file $file.path')
 	}
 	g.timers.start('cgen common')
@@ -298,6 +312,10 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		b.writeln('\n// V hotcode definitions:')
 		b.write(g.hotcode_definitions.str())
 	}
+	if g.embedded_data.len > 0 {
+		b.writeln('\n// V embedded data:')
+		b.write(g.embedded_data.str())
+	}
 	if g.options_typedefs.len > 0 {
 		b.writeln('\n// V option typedefs:')
 		b.write(g.options_typedefs.str())
@@ -322,6 +340,11 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	}
 	if g.auto_fn_definitions.len > 0 {
 		for fn_def in g.auto_fn_definitions {
+			b.writeln(fn_def)
+		}
+	}
+	if g.anon_fn_definitions.len > 0 {
+		for fn_def in g.anon_fn_definitions {
 			b.writeln(fn_def)
 		}
 	}
@@ -419,6 +442,9 @@ pub fn (mut g Gen) finish() {
 	}
 	if g.pref.is_livemain || g.pref.is_liveshared {
 		g.generate_hotcode_reloader_code()
+	}
+	if g.embed_file_is_prod_mode() && g.embedded_files.len > 0 {
+		g.gen_embedded_data()
 	}
 	if g.pref.is_test {
 		g.gen_c_main_for_tests()
@@ -972,7 +998,8 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				mod := if g.is_builtin_mod { 'builtin' } else { node.name.all_before_last('.') }
 				if (mod != g.module_built &&
 					node.mod != g.module_built.after('/')) ||
-					should_bundle_module {
+					should_bundle_module
+				{
 					// Skip functions that don't have to be generated for this module.
 					// println('skip bm $node.name mod=$node.mod module_built=$g.module_built')
 					skip = true
@@ -998,12 +1025,14 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				g.has_main = true
 			}
 			if node.name == 'backtrace' ||
-				node.name == 'backtrace_symbols' || node.name == 'backtrace_symbols_fd' {
+				node.name == 'backtrace_symbols' || node.name == 'backtrace_symbols_fd'
+			{
 				g.write('\n#ifndef __cplusplus\n')
 			}
 			g.gen_fn_decl(node, skip)
 			if node.name == 'backtrace' ||
-				node.name == 'backtrace_symbols' || node.name == 'backtrace_symbols_fd' {
+				node.name == 'backtrace_symbols' || node.name == 'backtrace_symbols_fd'
+			{
 				g.write('\n#endif\n')
 			}
 			g.fn_decl = keep_fn_decl
@@ -1092,7 +1121,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.global_decl(node)
 		}
 		ast.GoStmt {
-			g.go_stmt(node)
+			g.go_stmt(node, false)
 		}
 		ast.GotoLabel {
 			g.writeln('$node.name: {}')
@@ -1258,11 +1287,12 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		atmp := g.new_tmp_var()
 		atmp_type := g.typ(it.cond_type)
 		if !it.cond.is_lvalue() {
-			g.error('for in: unhandled condition `$it.cond`', it.pos)
+			g.write('$atmp_type *$atmp = &(($atmp_type)')
+		} else {
+			g.write('$atmp_type *$atmp = &(')
 		}
-		// TODO rvalue cond
-		g.write('$atmp_type *$atmp = &')
 		g.expr(it.cond)
+		g.writeln(')')
 		g.writeln(';')
 		i := if it.key_var in ['', '_'] { g.new_tmp_var() } else { it.key_var }
 		cond_sym := g.table.get_type_symbol(it.cond_type)
@@ -1360,7 +1390,13 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		s := g.table.type_to_str(it.cond_type)
 		g.error('for in: unhandled symbol `$it.cond` of type `$s`', it.pos)
 	}
+	if it.val_is_mut {
+		g.for_in_mul_val_name = it.val_var
+	}
 	g.stmts(it.stmts)
+	if it.val_is_mut {
+		g.for_in_mul_val_name = ''
+	}
 	if it.label.len > 0 {
 		g.writeln('\t${it.label}__continue: {}')
 	}
@@ -1944,10 +1980,11 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				str_add = true
 			}
 			// Assignment Operator Overloading
-			if left_sym.kind == .struct_ &&
-				right_sym.kind == .struct_ && assign_stmt.op in
-				[.plus_assign, .minus_assign, .div_assign, .mult_assign, .mod_assign] {
-				g.expr(left)
+			if ((left_sym.kind == .struct_ &&
+				right_sym.kind == .struct_) || (left_sym.kind == .alias &&
+				right_sym.kind == .alias)) &&
+				assign_stmt.op in [.plus_assign, .minus_assign, .div_assign, .mult_assign, .mod_assign]
+			{
 				extracted_op := match assign_stmt.op {
 					.plus_assign { '+' }
 					.minus_assign { '-' }
@@ -1956,6 +1993,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					.mult_assign { '*' }
 					else { 'unknown op' }
 				}
+				g.expr(left)
 				g.write(' = ${styp}_${util.replace_op(extracted_op)}(')
 				op_overloaded = true
 			}
@@ -1981,6 +2019,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					g.prevent_sum_type_unwrapping_once = true
 				}
 				if !is_fixed_array_copy || is_decl {
+					if !is_decl && left is ast.Ident && g.for_in_mul_val_name == (left as ast.Ident).name {
+						g.write('*')
+					}
 					g.expr(left)
 				}
 			}
@@ -2279,7 +2320,8 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 	// ```
 	// if !isnil(scope.parent) && line_nr > 0 {
 	if free_parent_scopes && !isnil(scope.parent) &&
-		(stop_pos == -1 || scope.parent.start_pos >= stop_pos) {
+		(stop_pos == -1 || scope.parent.start_pos >= stop_pos)
+	{
 		g.writeln('// af parent scope:')
 		g.autofree_scope_vars2(scope.parent, start_pos, end_pos, line_nr, true, stop_pos)
 	}
@@ -2351,12 +2393,10 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 
 fn (mut g Gen) gen_anon_fn_decl(it ast.AnonFn) {
 	pos := g.out.len
-	def_pos := g.definitions.len
 	g.stmt(it.decl)
 	fn_body := g.out.after(pos)
 	g.out.go_back(fn_body.len)
-	g.definitions.go_back(g.definitions.len - def_pos)
-	g.definitions.write(fn_body)
+	g.anon_fn_definitions << fn_body
 }
 
 fn (mut g Gen) map_fn_ptrs(key_typ table.TypeSymbol) (string, string, string, string) {
@@ -2440,7 +2480,8 @@ fn (mut g Gen) expr(node ast.Expr) {
 			// println('before:' + node.autofree_pregen)
 			// }
 			if g.is_autofree && !g.is_builtin_mod && !g.is_js_call && g.strs_to_free0.len == 0 &&
-				!g.inside_lambda { // && g.inside_ternary ==
+				!g.inside_lambda
+			{ // && g.inside_ternary ==
 				// if len != 0, that means we are handling call expr inside call expr (arg)
 				// and it'll get messed up here, since it's handled recursively in autofree_call_pregen()
 				// so just skip it
@@ -2505,13 +2546,17 @@ fn (mut g Gen) expr(node ast.Expr) {
 			} else {
 				styp := g.typ(node.typ)
 				mut cast_label := ''
-				if sym.kind != .alias || (sym.info as table.Alias).parent_type != node.expr_type {
+				// `table.string_type` is done for MSVC's bug
+				if sym.kind != .alias ||
+					(sym.info as table.Alias).parent_type !in [node.expr_type, table.string_type]
+				{
 					cast_label = '($styp)'
 				}
 				g.write('(${cast_label}(')
 				g.expr(node.expr)
 				if node.expr is ast.IntegerLiteral &&
-					node.typ in [table.u64_type, table.u32_type, table.u16_type] {
+					node.typ in [table.u64_type, table.u32_type, table.u16_type]
+				{
 					g.write('U')
 				}
 				g.write('))')
@@ -2560,6 +2605,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.FloatLiteral {
 			g.write(node.val)
+		}
+		ast.GoExpr {
+			g.go_expr(node)
 		}
 		ast.Ident {
 			g.ident(node)
@@ -2933,8 +2981,8 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	right_sym := g.table.get_type_symbol(node.right_type)
 	has_eq_overloaded := !left_sym.has_method('==')
 	has_ne_overloaded := !left_sym.has_method('!=')
-	unaliased_right := if right_sym.kind == .alias {
-		(right_sym.info as table.Alias).parent_type
+	unaliased_right := if right_sym.info is table.Alias {
+		right_sym.info.parent_type
 	} else {
 		node.right_type
 	}
@@ -2974,7 +3022,8 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	} else if unaliased_left == table.string_type_idx && node.op !in [.key_in, .not_in] {
 		// `str == ''` -> `str.len == 0` optimization
 		if node.op in [.eq, .ne] &&
-			node.right is ast.StringLiteral && (node.right as ast.StringLiteral).val == '' {
+			node.right is ast.StringLiteral && (node.right as ast.StringLiteral).val == ''
+		{
 			arrow := if left_type.is_ptr() { '->' } else { '.' }
 			g.write('(')
 			g.expr(node.left)
@@ -3031,7 +3080,8 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		g.expr(node.right)
 		g.write(')')
 	} else if node.op in [.eq, .ne] &&
-		left_sym.kind == .array_fixed && right_sym.kind == .array_fixed {
+		left_sym.kind == .array_fixed && right_sym.kind == .array_fixed
+	{
 		ptr_typ := g.gen_fixed_array_equality_fn(left_type)
 		if node.op == .ne {
 			g.write('!')
@@ -3070,7 +3120,8 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		g.expr(node.right)
 		g.write(')')
 	} else if node.op in [.eq, .ne] &&
-		left_sym.kind == .struct_ && right_sym.kind == .struct_ && has_eq_overloaded && has_ne_overloaded {
+		left_sym.kind == .struct_ && right_sym.kind == .struct_ && has_eq_overloaded && has_ne_overloaded
+	{
 		ptr_typ := g.gen_struct_equality_fn(left_type)
 		if node.op == .eq {
 			g.write('${ptr_typ}_struct_eq(')
@@ -3212,18 +3263,22 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			g.or_block(tmp_opt, node.or_block, table.void_type)
 		}
 	} else if unaliased_left.idx() in [table.u32_type_idx, table.u64_type_idx] && unaliased_right.is_signed() &&
-		node.op in [.eq, .ne, .gt, .lt, .ge, .le] {
+		node.op in [.eq, .ne, .gt, .lt, .ge, .le]
+	{
 		bitsize := if unaliased_left.idx() == table.u32_type_idx &&
-			unaliased_right.idx() != table.i64_type_idx { 32 } else { 64 }
+			unaliased_right.idx() != table.i64_type_idx
+		{ 32 } else { 64 }
 		g.write('_us${bitsize}_${cmp_str[int(node.op) - int(token.Kind.eq)]}(')
 		g.expr(node.left)
 		g.write(',')
 		g.expr(node.right)
 		g.write(')')
 	} else if unaliased_right.idx() in [table.u32_type_idx, table.u64_type_idx] && unaliased_left.is_signed() &&
-		node.op in [.eq, .ne, .gt, .lt, .ge, .le] {
+		node.op in [.eq, .ne, .gt, .lt, .ge, .le]
+	{
 		bitsize := if unaliased_right.idx() == table.u32_type_idx &&
-			unaliased_left.idx() != table.i64_type_idx { 32 } else { 64 }
+			unaliased_left.idx() != table.i64_type_idx
+		{ 32 } else { 64 }
 		g.write('_us${bitsize}_${cmp_rev[int(node.op) - int(token.Kind.eq)]}(')
 		g.expr(node.right)
 		g.write(',')
@@ -3240,7 +3295,8 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		// Do not generate operator overloading with these `right_sym.kind`.
 		e := right_sym.kind !in [.voidptr, .int_literal, .int]
 		if node.op in [.plus, .minus, .mul, .div, .mod, .lt, .gt, .eq, .ne, .le, .ge] &&
-			((a && b && e) || c || d) {
+			((a && b && e) || c || d)
+		{
 			// Overloaded operators
 			g.write(g.typ(if !d {
 				left_type
@@ -3445,7 +3501,8 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 					mut skip_low := false
 					if expr.low is ast.IntegerLiteral {
 						if node.cond_type in [table.u16_type, table.u32_type, table.u64_type] &&
-							expr.low.val == '0' {
+							expr.low.val == '0'
+						{
 							skip_low = true
 						}
 					}
@@ -3512,7 +3569,8 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 					expr := branch.stmt.expr as ast.InfixExpr
 					channels << expr.left
 					if expr.right is ast.Ident ||
-						expr.right is ast.IndexExpr || expr.right is ast.SelectorExpr || expr.right is ast.StructInit {
+						expr.right is ast.IndexExpr || expr.right is ast.SelectorExpr || expr.right is ast.StructInit
+					{
 						// addressable objects in the `C` output
 						objs << expr.right
 						tmp_objs << ''
@@ -3533,7 +3591,8 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 					is_push << false
 					// create tmp unless the object with *exactly* the type we need exists already
 					if branch.stmt.op == .decl_assign ||
-						branch.stmt.right_types[0] != branch.stmt.left_types[0] {
+						branch.stmt.right_types[0] != branch.stmt.left_types[0]
+					{
 						tmp_obj := g.new_tmp_var()
 						tmp_objs << tmp_obj
 						el_stype := g.typ(branch.stmt.right_types[0])
@@ -3877,6 +3936,10 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 			g.write(', ')
 			if node.index.has_high {
 				g.expr(node.index.high)
+			} else if sym.kind == .array_fixed {
+				g.write('_ARR_LEN(')
+				g.expr(node.left)
+				g.write(')')
 			} else {
 				g.expr(node.left)
 				g.write('.len')
@@ -4053,7 +4116,8 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 						g.write('$zero }))')
 					}
 				} else if (g.inside_map_postfix || g.inside_map_infix) ||
-					(g.is_assign_lhs && !g.is_array_set && get_and_set_types) {
+					(g.is_assign_lhs && !g.is_array_set && get_and_set_types)
+				{
 					zero := g.type_default(info.value_type)
 					g.write('(*($elem_type_str*)map_get_and_set_1(')
 					if !left_is_ptr {
@@ -4522,7 +4586,8 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 			}
 			if !cloned {
 				if field.expected_type.is_ptr() && !(field.typ.is_ptr() || field.typ.is_pointer()) &&
-					!field.typ.is_number() {
+					!field.typ.is_number()
+				{
 					g.write('/* autoref */&')
 				}
 				g.expr_with_cast(field.expr, field.typ, field.expected_type)
@@ -4594,7 +4659,8 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 						g.interface_call(sfield.typ, sfield.expected_type)
 					}
 					if sfield.expected_type.is_ptr() && !(sfield.typ.is_ptr() || sfield.typ.is_pointer()) &&
-						!sfield.typ.is_number() {
+						!sfield.typ.is_number()
+					{
 						g.write('/* autoref */&')
 					}
 					g.expr_with_cast(sfield.expr, sfield.typ, sfield.expected_type)
@@ -4866,6 +4932,22 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 			table.Alias {
 				// table.Alias { TODO
 			}
+			table.GoHandle {
+				if g.pref.os == .windows {
+					if name == 'gohandle_void' {
+						g.type_definitions.writeln('typedef HANDLE $name;')
+					} else {
+						// Windows can only return `u32` (no void*) from a thread, so the
+						// V gohandle must maintain a pointer to the return value
+						g.type_definitions.writeln('typedef struct {')
+						g.type_definitions.writeln('\tvoid*  ret_ptr;')
+						g.type_definitions.writeln('\tHANDLE handle;')
+						g.type_definitions.writeln('} $name;')
+					}
+				} else {
+					g.type_definitions.writeln('typedef pthread_t $name;')
+				}
+			}
 			table.SumType {
 				g.typedefs.writeln('typedef struct $name $name;')
 				g.type_definitions.writeln('')
@@ -5029,7 +5111,8 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 		}
 		stmts := or_block.stmts
 		if stmts.len > 0 && stmts[or_block.stmts.len - 1] is ast.ExprStmt && (stmts[stmts.len -
-			1] as ast.ExprStmt).typ != table.void_type {
+			1] as ast.ExprStmt).typ != table.void_type
+		{
 			g.indent++
 			for i, stmt in stmts {
 				if i == stmts.len - 1 {
@@ -5242,7 +5325,8 @@ fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) ?string 
 		}
 		else {
 			if is_comptime_optional ||
-				(g.pref.compile_defines_all.len > 0 && name in g.pref.compile_defines_all) {
+				(g.pref.compile_defines_all.len > 0 && name in g.pref.compile_defines_all)
+			{
 				return 'CUSTOM_DEFINE_$name'
 			}
 			return error('bad os ifdef name "$name"') // should never happen, caught in the checker
@@ -5397,9 +5481,18 @@ fn (g &Gen) is_importing_os() bool {
 	return 'os' in g.table.imports
 }
 
-fn (mut g Gen) go_stmt(node ast.GoStmt) {
+fn (mut g Gen) go_expr(node ast.GoExpr) {
+	line := g.go_before_stmt(0)
+	handle := g.go_stmt(node.go_stmt, true)
+	g.empty_line = false
+	g.write(line)
+	g.write(handle)
+}
+
+fn (mut g Gen) go_stmt(node ast.GoStmt, joinable bool) string {
+	mut handle := ''
 	tmp := g.new_tmp_var()
-	expr := node.call_expr as ast.CallExpr
+	expr := node.call_expr
 	mut name := expr.name // util.no_dots(expr.name)
 	// TODO: fn call is duplicated. merge with fn_call().
 	if expr.generic_type != table.void_type && expr.generic_type != 0 {
@@ -5437,23 +5530,87 @@ fn (mut g Gen) go_stmt(node ast.GoStmt) {
 		g.expr(arg.expr)
 		g.writeln(';')
 	}
+	s_ret_typ := g.typ(node.call_expr.return_type)
+	if g.pref.os == .windows && node.call_expr.return_type != table.void_type {
+		g.writeln('$arg_tmp_var->ret_ptr = malloc(sizeof($s_ret_typ));')
+	}
+	gohandle_name := 'gohandle_' +
+		g.table.get_type_symbol(g.unwrap_generic(node.call_expr.return_type)).name
 	if g.pref.os == .windows {
-		g.writeln('CreateThread(0,0, (LPTHREAD_START_ROUTINE)$wrapper_fn_name, $arg_tmp_var, 0,0);')
+		simple_handle := if joinable && node.call_expr.return_type != table.void_type {
+			'thread_handle_$tmp'
+		} else {
+			'thread_$tmp'
+		}
+		g.writeln('HANDLE $simple_handle = CreateThread(0,0, (LPTHREAD_START_ROUTINE)$wrapper_fn_name, $arg_tmp_var, 0,0);')
+		if joinable && node.call_expr.return_type != table.void_type {
+			g.writeln('$gohandle_name thread_$tmp = {')
+			g.writeln('\t.ret_ptr = $arg_tmp_var->ret_ptr,')
+			g.writeln('\t.handle = thread_handle_$tmp')
+			g.writeln('};')
+		}
+		if !joinable {
+			g.writeln('CloseHandle(thread_$tmp);')
+		}
 	} else {
 		g.writeln('pthread_t thread_$tmp;')
 		g.writeln('pthread_create(&thread_$tmp, NULL, (void*)$wrapper_fn_name, $arg_tmp_var);')
+		if !joinable {
+			g.writeln('pthread_detach(thread_$tmp);')
+		}
 	}
 	g.writeln('// endgo\n')
+	if joinable {
+		handle = 'thread_$tmp'
+		// create wait handler for this return type if none exists
+		waiter_fn_name := gohandle_name + '_wait'
+		if waiter_fn_name !in g.waiter_fns {
+			g.gowrappers.writeln('\n$s_ret_typ ${waiter_fn_name}($gohandle_name thread) {')
+			mut c_ret_ptr_ptr := 'NULL'
+			if node.call_expr.return_type != table.void_type {
+				g.gowrappers.writeln('\t$s_ret_typ* ret_ptr;')
+				c_ret_ptr_ptr = '&ret_ptr'
+			}
+			if g.pref.os == .windows {
+				if node.call_expr.return_type == table.void_type {
+					g.gowrappers.writeln('\tu32 stat = WaitForSingleObject(thread, INFINITE);')
+				} else {
+					g.gowrappers.writeln('\tu32 stat = WaitForSingleObject(thread.handle, INFINITE);')
+					g.gowrappers.writeln('\tret_ptr = thread.ret_ptr;')
+				}
+			} else {
+				g.gowrappers.writeln('\tint stat = pthread_join(thread, $c_ret_ptr_ptr);')
+			}
+			g.gowrappers.writeln('\tif (stat != 0) { v_panic(_SLIT("unable to join thread")); }')
+			if g.pref.os == .windows {
+				if node.call_expr.return_type == table.void_type {
+					g.gowrappers.writeln('\tCloseHandle(thread);')
+				} else {
+					g.gowrappers.writeln('\tCloseHandle(thread.handle);')
+				}
+			}
+			if node.call_expr.return_type != table.void_type {
+				g.gowrappers.writeln('\t$s_ret_typ ret = *ret_ptr;')
+				g.gowrappers.writeln('\tfree(ret_ptr);')
+				g.gowrappers.writeln('\treturn ret;')
+			} else {
+				g.gowrappers.writeln('\treturn;')
+			}
+			g.gowrappers.writeln('}')
+			g.waiter_fns << waiter_fn_name
+		}
+	}
 	// Register the wrapper type and function
 	if name in g.threaded_fns {
-		return
+		return handle
 	}
 	g.type_definitions.writeln('\ntypedef struct $wrapper_struct_name {')
 	if expr.is_method {
 		styp := g.typ(expr.receiver_type)
 		g.type_definitions.writeln('\t$styp arg0;')
 	}
-	if expr.args.len == 0 {
+	need_return_ptr := g.pref.os == .windows && node.call_expr.return_type != table.void_type
+	if expr.args.len == 0 && !need_return_ptr {
 		g.type_definitions.writeln('EMPTY_STRUCT_DECLARATION;')
 	} else {
 		for i, arg in expr.args {
@@ -5461,10 +5618,24 @@ fn (mut g Gen) go_stmt(node ast.GoStmt) {
 			g.type_definitions.writeln('\t$styp arg${i + 1};')
 		}
 	}
+	if need_return_ptr {
+		g.type_definitions.writeln('\tvoid* ret_ptr;')
+	}
 	g.type_definitions.writeln('} $wrapper_struct_name;')
-	g.type_definitions.writeln('void* ${wrapper_fn_name}($wrapper_struct_name *arg);')
-	g.gowrappers.writeln('void* ${wrapper_fn_name}($wrapper_struct_name *arg) {')
-	g.gowrappers.write('\t${name}(')
+	thread_ret_type := if g.pref.os == .windows { 'u32' } else { 'void*' }
+	g.type_definitions.writeln('$thread_ret_type ${wrapper_fn_name}($wrapper_struct_name *arg);')
+	g.gowrappers.writeln('$thread_ret_type ${wrapper_fn_name}($wrapper_struct_name *arg) {')
+	if node.call_expr.return_type != table.void_type {
+		if g.pref.os == .windows {
+			g.gowrappers.write('\t*(($s_ret_typ*)(arg->ret_ptr)) = ')
+		} else {
+			g.gowrappers.writeln('\t$s_ret_typ* ret_ptr = malloc(sizeof($s_ret_typ));')
+			g.gowrappers.write('\t*ret_ptr = ')
+		}
+	} else {
+		g.gowrappers.write('\t')
+	}
+	g.gowrappers.write('${name}(')
 	if expr.is_method {
 		g.gowrappers.write('arg->arg0')
 		if expr.args.len > 0 {
@@ -5478,9 +5649,15 @@ fn (mut g Gen) go_stmt(node ast.GoStmt) {
 		}
 	}
 	g.gowrappers.writeln(');')
-	g.gowrappers.writeln('\treturn 0;')
+	g.gowrappers.writeln('\tfree(arg);')
+	if g.pref.os != .windows && node.call_expr.return_type != table.void_type {
+		g.gowrappers.writeln('\treturn ret_ptr;')
+	} else {
+		g.gowrappers.writeln('\treturn 0;')
+	}
 	g.gowrappers.writeln('}')
 	g.threaded_fns << name
+	return handle
 }
 
 fn (mut g Gen) as_cast(node ast.AsCast) {
@@ -5735,4 +5912,10 @@ pub fn get_guarded_include_text(iname string, imessage string) string {
 	|#endif
 	'.strip_margin()
 	return res
+}
+
+fn (mut g Gen) trace(fbase string, message string) {
+	if g.file.path_base == fbase {
+		println('> g.trace | ${fbase:-10s} | $message')
+	}
 }
