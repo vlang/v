@@ -53,6 +53,7 @@ pub:
 	name      string
 	is_mut    bool
 	typ       Type
+	type_pos  token.Position
 	is_hidden bool // interface first arg
 }
 
