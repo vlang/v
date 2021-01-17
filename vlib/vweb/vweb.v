@@ -609,8 +609,12 @@ pub fn (mut ctx Context) parse_multipart_form(s string, b string) {
 				content_type: ct
 			}
 		}
-		data := lines[l + 1..lines.len - 1]
-		ctx.form[name] = data.join('\n\r')
+		mut sb := strings.new_builder(field.len)
+		for i in l + 1..lines.len - 1 {
+			sb.writeln(lines[i])
+		}
+		ctx.form[name] = sb.str()
+		sb.free()
 	}
 }
 
