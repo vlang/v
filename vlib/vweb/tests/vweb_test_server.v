@@ -42,9 +42,6 @@ fn main() {
 pub fn (mut app App) init() {
 }
 
-pub fn (mut app App) uninit() {
-}
-
 pub fn (mut app App) init_once() {
 	eprintln('>> webserver: started on http://127.0.0.1:$app.port/ , with maximum runtime of $app.timeout milliseconds.')
 }
