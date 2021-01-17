@@ -156,10 +156,12 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 		println('\n\n')
 	}
 	mut file := parse_comptime(v_code, p.table, p.pref, scope, p.global_scope)
+	/*
 	file = ast.File{
 		...file
 		path: tmpl_path
 	}
+	*/
 	// copy vars from current fn scope into vweb_tmpl scope
 	for stmt in file.stmts {
 		if stmt is ast.FnDecl {
