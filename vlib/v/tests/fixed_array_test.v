@@ -52,12 +52,12 @@ fn test_fixed_array_can_be_assigned_to_a_struct_field() {
 
 fn multiply_by_two(mut arr [3]int) {
 	for i in 0..arr.len {
-		(*arr)[i] *= 2
+		arr[i] *= 2
 	}
 }
 
 fn change_first_element(mut arr [3][3]int) {
-	(*arr)[0][0] = 0
+	arr[0][0] = 0
 }
 
 fn test_fixed_array_can_be_passed_as_mut_arg() {

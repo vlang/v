@@ -4175,7 +4175,13 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				g.expr(node.index)
 				g.write(')')
 			} else {
-				g.expr(node.left)
+				if sym.kind == .array_fixed && node.left_type.is_ptr() {
+					g.write('(*')
+					g.expr(node.left)
+					g.write(')')
+				} else {
+					g.expr(node.left)
+				}
 				g.write('[')
 				g.expr(node.index)
 				g.write(']')
