@@ -633,7 +633,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 				if field.has_default_expr || field.name in inited_fields {
 					continue
 				}
-				if field.typ.is_ptr() && !c.pref.translated {
+				if field.typ.is_ptr() && !struct_init.has_update_expr && !c.pref.translated {
 					c.error('reference field `${type_sym.name}.$field.name` must be initialized',
 						struct_init.pos)
 				}
@@ -3299,29 +3299,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			return c.at_expr(mut node)
 		}
 		ast.ComptimeCall {
-			node.sym = c.table.get_type_symbol(c.unwrap_generic(c.expr(node.left)))
-			if node.is_embed {
-				c.file.embedded_files << node.embed_file
-				return c.table.find_type_idx('v.embed_file.EmbedFileData')
-			}
-			if node.is_vweb {
-				// TODO assoc parser bug
-				pref := *c.pref
-				pref2 := {
-					pref |
-					is_vweb: true
-				}
-				mut c2 := new_checker(c.table, pref2)
-				c2.check(node.vweb_tmpl)
-				c.warnings << c2.warnings
-				c.errors << c2.errors
-				c.nr_warnings += c2.nr_warnings
-				c.nr_errors += c2.nr_errors
-			}
-			if node.method_name == 'html' {
-				return c.table.find_type_idx('vweb.Result')
-			}
-			return table.string_type
+			return c.comptime_call(mut node)
 		}
 		ast.ComptimeSelector {
 			node.left_type = c.unwrap_generic(c.expr(node.left))
@@ -3554,6 +3532,32 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
 	}
 	node.typname = c.table.get_type_symbol(node.typ).name
 	return node.typ
+}
+
+fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) table.Type {
+	node.sym = c.table.get_type_symbol(c.unwrap_generic(c.expr(node.left)))
+	if node.is_embed {
+		c.file.embedded_files << node.embed_file
+		return c.table.find_type_idx('v.embed_file.EmbedFileData')
+	}
+	if node.is_vweb {
+		// TODO assoc parser bug
+		pref := *c.pref
+		pref2 := {
+			pref |
+			is_vweb: true
+		}
+		mut c2 := new_checker(c.table, pref2)
+		c2.check(node.vweb_tmpl)
+		c.warnings << c2.warnings
+		c.errors << c2.errors
+		c.nr_warnings += c2.nr_warnings
+		c.nr_errors += c2.nr_errors
+	}
+	if node.method_name == 'html' {
+		return c.table.find_type_idx('vweb.Result')
+	}
+	return table.string_type
 }
 
 fn (mut c Checker) at_expr(mut node ast.AtExpr) table.Type {

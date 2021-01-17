@@ -156,8 +156,8 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 		println('\n\n')
 	}
 	mut file := parse_comptime(v_code, p.table, p.pref, scope, p.global_scope)
-	file = {
-		file |
+	file = ast.File{
+		...file
 		path: tmpl_path
 	}
 	// copy vars from current fn scope into vweb_tmpl scope
@@ -170,7 +170,10 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 					if obj is ast.Var {
 						mut v := obj
 						v.pos = stmt.body_pos
-						tmpl_scope.register(v)
+						tmpl_scope.register(ast.Var{
+							...v
+							is_used: true
+						})
 						// set the controller action var to used
 						// if it's unused in the template it will warn
 						v.is_used = true
