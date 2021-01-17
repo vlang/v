@@ -424,7 +424,8 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 					// should be called first.
 					if (req_method_str == '' &&
 						url_words[0] == method.name && url_words.len == 1) ||
-						(req_method_str == req.method.str() && url_words[0] == method.name && url_words.len == 1)
+						(req_method_str == req.method.str() && url_words[0] == method.name && url_words.len ==
+						1)
 					{
 						$if debug {
 							println('easy match method=$method.name')

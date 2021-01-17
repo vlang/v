@@ -191,10 +191,10 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	// warnings are totally fixed/removed
 	ccoptions.args = [v.pref.cflags, '-std=gnu99']
 	ccoptions.wargs = ['-Wall', '-Wextra', '-Wno-unused', '-Wno-missing-braces', '-Walloc-zero',
-		'-Wcast-qual', '-Wdate-time', '-Wduplicated-branches', '-Wduplicated-cond', '-Wformat=2', '-Winit-self',
-		'-Winvalid-pch', '-Wjump-misses-init', '-Wlogical-op', '-Wmultichar', '-Wnested-externs', '-Wnull-dereference',
-		'-Wpacked', '-Wpointer-arith', '-Wshadow', '-Wswitch-default', '-Wswitch-enum', '-Wno-unused-parameter',
-		'-Wno-unknown-warning-option', '-Wno-format-nonliteral', '-Wno-unused-command-line-argument']
+		'-Wcast-qual', '-Wdate-time', '-Wduplicated-branches', '-Wduplicated-cond', '-Wformat=2',
+		'-Winit-self', '-Winvalid-pch', '-Wjump-misses-init', '-Wlogical-op', '-Wmultichar', '-Wnested-externs',
+		'-Wnull-dereference', '-Wpacked', '-Wpointer-arith', '-Wshadow', '-Wswitch-default', '-Wswitch-enum',
+		'-Wno-unused-parameter', '-Wno-unknown-warning-option', '-Wno-format-nonliteral', '-Wno-unused-command-line-argument']
 	if v.pref.os == .ios {
 		ccoptions.args << '-framework Foundation'
 		ccoptions.args << '-framework UIKit'

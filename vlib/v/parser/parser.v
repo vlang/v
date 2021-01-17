@@ -994,8 +994,9 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 		return p.partial_assign_stmt(left, left_comments)
 	} else if tok.kind !in [.key_if, .key_match, .key_lock, .key_rlock, .key_select] &&
 		left0 !is ast.CallExpr && (is_top_level || p.tok.kind != .rcbr) && left0 !is ast.PostfixExpr &&
-		!(left0 is ast.InfixExpr && (left0 as ast.InfixExpr).op in [.left_shift, .arrow]) && left0 !is
-		ast.ComptimeCall && left0 !is ast.SelectorExpr
+		!(left0 is ast.InfixExpr &&
+		(left0 as ast.InfixExpr).op in [.left_shift, .arrow]) && left0 !is ast.ComptimeCall &&
+		left0 !is ast.SelectorExpr
 	{
 		p.error_with_pos('expression evaluated but not used', left0.position())
 		return ast.Stmt{}
@@ -1287,7 +1288,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		}
 	} else if (p.peek_tok.kind == .lcbr ||
 		(p.peek_tok.kind == .lt && lit0_is_capital)) &&
-		(!p.inside_match || (p.inside_select && prev_tok_kind == .arrow && lit0_is_capital)) && !p.inside_match_case &&
+		(!p.inside_match || (p.inside_select && prev_tok_kind == .arrow && lit0_is_capital)) &&
+		!p.inside_match_case &&
 		(!p.inside_if || p.inside_select) &&
 		(!p.inside_for || p.inside_select)
 	{ // && (p.tok.lit[0].is_capital() || p.builtin_mod) {
