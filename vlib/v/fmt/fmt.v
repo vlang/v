@@ -95,7 +95,6 @@ pub fn (mut f Fmt) write(s string) {
 	if !f.buffering {
 		if f.indent > 0 && f.empty_line {
 			f.write_indent()
-			f.line_len += f.indent * 4
 		}
 		f.out.write(s)
 		f.line_len += s.len
@@ -143,6 +142,7 @@ fn (mut f Fmt) write_indent() {
 			f.out.write('\t')
 		}
 	}
+	f.line_len += f.indent * 4
 }
 
 // adjustments that can only be done after full line is processed. For now
@@ -198,6 +198,7 @@ pub fn (mut f Fmt) wrap_long_line(penalty_idx int, add_indent bool) bool {
 		f.out.go_back(1)
 	}
 	f.write('\n')
+	f.line_len = 0
 	if add_indent {
 		f.indent++
 	}
@@ -205,7 +206,6 @@ pub fn (mut f Fmt) wrap_long_line(penalty_idx int, add_indent bool) bool {
 	if add_indent {
 		f.indent--
 	}
-	f.line_len = 0
 	return true
 }
 
