@@ -56,8 +56,8 @@ pub mut:
 	done              bool
 	page_gen_start    i64
 	form_error        string
-	chunked_transfer  bool = false
-	max_chunk_len     int  = 20
+	chunked_transfer  bool
+	max_chunk_len     int = 20
 }
 
 // declaring init_once in your App struct is optional
