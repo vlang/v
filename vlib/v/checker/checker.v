@@ -73,7 +73,7 @@ mut:
 	loop_label                       string // set when inside a labelled for loop
 	timers                           &util.Timers = util.new_timers(false)
 	comptime_fields_type             map[string]table.Type
-	vweb_var_names                       []string
+	vweb_var_names                   []string
 }
 
 pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
@@ -3562,6 +3562,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) table.Type {
 		mut i := 0
 		for k, v in c2.file.scope.children[0].objects {
 			if i < 4 {
+				// Skip first three because their are tmpl vars see https://github.com/vlang/v/blob/master/vlib/vweb/tmpl/tmpl.v
 				i++
 				continue
 			}
