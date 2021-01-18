@@ -681,17 +681,20 @@ typedef struct {
 				if typ.name != 'chan' {
 					g.type_definitions.writeln('typedef chan $typ.cname;')
 					chan_inf := typ.chan_info()
-					el_stype := g.typ(chan_inf.elem_type)
-					g.channel_definitions.writeln('
+					chan_elem_type := chan_inf.elem_type
+					if !chan_elem_type.has_flag(.generic) {
+						el_stype := g.typ(chan_elem_type)
+						g.channel_definitions.writeln('
 static inline $el_stype __${typ.cname}_popval($typ.cname ch) {
 	$el_stype val;
 	sync__Channel_try_pop_priv(ch, &val, false);
 	return val;
 }')
-					g.channel_definitions.writeln('
+						g.channel_definitions.writeln('
 static inline void __${typ.cname}_pushval($typ.cname ch, $el_stype val) {
 	sync__Channel_try_push_priv(ch, &val, false);
 }')
+					}
 				}
 			}
 			.map {
