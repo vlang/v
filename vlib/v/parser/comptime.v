@@ -112,7 +112,6 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 	dir := os.dir(p.scanner.file_path)
 	mut path := os.join_path(dir, fn_path.join('/'))
 	path += '.html'
-	path = os.resource_abs_path(path)
 	if !is_html {
 		path = tmpl_path
 	}
@@ -121,7 +120,6 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 		if is_html {
 			path = os.join_path(dir, 'templates', fn_path.join('/'))
 			path += '.html'
-			path = os.resource_abs_path(path)
 		}
 		if !os.exists(path) {
 			if is_html {
