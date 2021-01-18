@@ -33,41 +33,51 @@ pub fn qualify_module(mod string, file_path string) string {
 // TODO: properly define module location / v.mod rules
 pub fn mod_path_to_full_name(mod string, path string) ?string {
 	vmod_folders := ['vlib', '.vmodules', 'modules']
-	path_parts := path.split(os.path_separator)
-	mut mod_path := mod.replace('.', os.path_separator)
-	mut is_in_vmod := false
+	mut in_vmod_path := false
 	for vmod_folder in vmod_folders {
 		if vmod_folder + os.path_separator in path {
-			is_in_vmod = true
+			in_vmod_path = true
 			break
 		}
 	}
+	path_parts := path.split(os.path_separator)
+	mod_path := mod.replace('.', os.path_separator)
+	// go back through each path_parts looking for the destination `mod_path`
 	for i := path_parts.len - 1; i >= 0; i-- {
 		try_path := os.join_path(path_parts[0..i].join(os.path_separator), mod_path)
+		// found module path
 		if os.is_dir(try_path) {
-			if is_in_vmod {
+			// if we know we are in one of the `vmod_folders`
+			if in_vmod_path {
+				// work our way baackwards until checking if we reached a vmod folder
 				for j := i; j >= 0; j-- {
 					path_part := path_parts[j]
+					// we reached a vmod folder
 					if path_part in vmod_folders {
-						x := try_path.split(os.path_separator)[j + 1..].join('.')
-						return x
+						mod_full_name := try_path.split(os.path_separator)[j + 1..].join('.')
+						return mod_full_name
 					}
 				}
+				// we are not in one of the `vmod_folders` so we need to go back up each parent
+				// looking for for a `v.mod` file and break at the first path without it
 			} else {
-				mut parts2 := try_path.split(os.path_separator)
+				mut try_path_parts := try_path.split(os.path_separator)
+				// last path in try_path_parts that contained `v.mod`
 				mut last_v_mod := -1
-				for j := parts2.len; j > 0; j-- {
-					p1 := parts2[0..j].join(os.path_separator)
-					ls := os.ls(p1) or { []string{} }
-					if 'v.mod' in ls {
-						last_v_mod = j
-					} else {
-						break
+				for j := try_path_parts.len; j > 0; j-- {
+					parent := try_path_parts[0..j].join(os.path_separator)
+					if ls := os.ls(parent) {
+						if 'v.mod' in ls {
+							// set last `v.mod` path
+							last_v_mod = j
+							continue
+						}
 					}
+					break
 				}
 				if last_v_mod > -1 {
-					x := parts2[last_v_mod - 1..].join('.')
-					return x
+					mod_full_name := try_path_parts[last_v_mod - 1..].join('.')
+					return mod_full_name
 				}
 			}
 		}
