@@ -3918,6 +3918,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 }
 
 fn (mut g Gen) index_expr(node ast.IndexExpr) {
+	gen_or := node.or_expr.kind != .absent
 	match node.index {
 		ast.RangeExpr {
 			sym := g.table.get_type_symbol(node.left_type)
@@ -3975,7 +3976,8 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 			if sym.kind == .array {
 				info := sym.info as table.Array
 				elem_type_str := g.typ(info.elem_type)
-				elem_typ := g.table.get_type_symbol(info.elem_type)
+				elem_type := info.elem_type
+				elem_typ := g.table.get_type_symbol(elem_type)
 				// `vals[i].field = x` is an exception and requires `array_get`:
 				// `(*(Val*)array_get(vals, i)).field = x;`
 				is_selector := node.left is ast.SelectorExpr
@@ -4054,21 +4056,35 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					}
 					needs_clone := info.elem_type == table.string_type_idx && g.is_autofree &&
 						!g.is_assign_lhs
-					if needs_clone {
-						g.write('/*2*/string_clone(')
-					}
-					if g.is_fn_index_call {
-						if elem_typ.info is table.FnType {
-							g.write('((')
-							g.write_fn_ptr_decl(&elem_typ.info, '')
-							g.write(')(*($array_ptr_type_str)/*ee elem_typ */array_get(')
-						}
-					} else if is_direct_array_access {
-						g.write('(($array_ptr_type_str)')
+					is_gen_or_and_assign_rhs := gen_or && g.is_assign_rhs
+					cur_line := if is_gen_or_and_assign_rhs {
+						line := g.go_before_stmt(0)
+						g.out.write(tabs[g.indent])
+						line
 					} else {
-						g.write('(*($array_ptr_type_str)/*ee elem_typ */array_get(')
-						if left_is_ptr && !node.left_type.has_flag(.shared_f) {
-							g.write('*')
+						''
+					}
+					tmp_opt := if gen_or { g.new_tmp_var() } else { '' }
+					tmp_opt_ptr := if gen_or { g.new_tmp_var() } else { '' }
+					if gen_or {
+						g.write('$array_ptr_type_str $tmp_opt_ptr = ($array_ptr_type_str)/*ee elem_ptr_typ */(array_get_with_check(')
+					} else {
+						if needs_clone {
+							g.write('/*2*/string_clone(')
+						}
+						if g.is_fn_index_call {
+							if elem_typ.info is table.FnType {
+								g.write('((')
+								g.write_fn_ptr_decl(&elem_typ.info, '')
+								g.write(')(*($array_ptr_type_str)/*ee elem_typ */array_get(')
+							}
+						} else if is_direct_array_access {
+							g.write('(($array_ptr_type_str)')
+						} else {
+							g.write('(*($array_ptr_type_str)/*ee elem_typ */array_get(')
+							if left_is_ptr && !node.left_type.has_flag(.shared_f) {
+								g.write('*')
+							}
 						}
 					}
 					g.expr(node.left)
@@ -4100,6 +4116,19 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					}
 					if needs_clone {
 						g.write(')')
+					}
+					if gen_or {
+						g.writeln(';')
+						opt_elem_type := g.typ(elem_type.set_flag(.optional))
+						g.writeln('$opt_elem_type $tmp_opt = {0};')
+						g.writeln('if ($tmp_opt_ptr) {')
+						g.writeln('\t${tmp_opt}.ok = true; ${tmp_opt}.is_none = false; ${tmp_opt}.v_error = (string){.str=(byteptr)""}; ${tmp_opt}.ecode = 0;')
+						g.writeln('\t*(($elem_type_str*)&${tmp_opt}.data) = *(($elem_type_str*)$tmp_opt_ptr);')
+						g.writeln('} else {')
+						g.writeln('\t${tmp_opt}.ok = false; ${tmp_opt}.is_none = false; ${tmp_opt}.v_error = (string){.str=(byteptr)"array index out of range"}; ${tmp_opt}.ecode = 0;')
+						g.writeln('}')
+						g.or_block(tmp_opt, node.or_expr, elem_type)
+						g.write('\n$cur_line*($elem_type_str*)${tmp_opt}.data')
 					}
 				}
 			} else if sym.kind == .map {
