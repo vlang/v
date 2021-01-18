@@ -124,7 +124,9 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 	vroot := os.dir(vexe)
 	set_vroot_folder(vroot)
 	tool_args := args_quote_paths(args)
-	tool_basename := os.real_path(os.join_path(vroot, 'cmd', 'tools', tool_name))
+	tools_folder := os.join_path(vroot, 'cmd', 'tools')
+	is_recompilation_disabled := os.exists(os.join_path(tools_folder, '.disable_autorecompilation'))
+	tool_basename := os.real_path(os.join_path(tools_folder, tool_name))
 	mut tool_exe := ''
 	mut tool_source := ''
 	if os.is_dir(tool_basename) {
@@ -146,7 +148,7 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 	if is_verbose {
 		println('launch_tool should_compile: $should_compile')
 	}
-	if should_compile {
+	if should_compile && !is_recompilation_disabled {
 		emodules := external_module_dependencies_for_tool[tool_name]
 		for emodule in emodules {
 			check_module_is_installed(emodule, is_verbose) or { panic(err) }
