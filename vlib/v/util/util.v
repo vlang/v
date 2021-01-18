@@ -7,6 +7,7 @@ import os
 import time
 import v.pref
 import v.vmod
+import v.util.recompilation
 
 pub const (
 	v_version = '0.2.1'
@@ -119,13 +120,23 @@ pub fn resolve_vroot(str string, dir string) ?string {
 	return str.replace('@VROOT', os.real_path(vmod_path))
 }
 
+// launch_tool - starts a V tool in a separate process, passing it the `args`.
+// All V tools are located in the cmd/tools folder, in files or folders prefixed by
+// the letter `v`, followed by the tool name, i.e. `cmd/tools/vdoc/` or `cmd/tools/vpm.v`.
+// The folder variant is suitable for larger and more complex tools, like `v doc`, because
+// it provides you the ability to split their source in separate .v files, organized by topic,
+// as well as have resources like static css/text/js files, that the tools can use.
+// launch_tool uses a timestamp based detection mechanism, so that after `v self`, each tool
+// will be recompiled too, before it is used, which guarantees that it would be up to date with
+// V itself. That mechanism can be disabled by package managers by creating/touching a small
+// `cmd/tools/.disable_autorecompilation` file, OR by changing the timestamps of all executables
+// in cmd/tools to be < 1024 seconds (in unix time).
 pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
 	set_vroot_folder(vroot)
 	tool_args := args_quote_paths(args)
 	tools_folder := os.join_path(vroot, 'cmd', 'tools')
-	is_recompilation_disabled := os.exists(os.join_path(tools_folder, '.disable_autorecompilation'))
 	tool_basename := os.real_path(os.join_path(tools_folder, tool_name))
 	mut tool_exe := ''
 	mut tool_source := ''
@@ -144,11 +155,14 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 		println('launch_tool tool_source : $tool_source')
 		println('launch_tool tool_command: $tool_command')
 	}
-	should_compile := should_recompile_tool(vexe, tool_source, tool_name, tool_exe)
+	disabling_file := recompilation.disabling_file(vroot)
+	is_recompilation_disabled := os.exists(disabling_file)
+	should_compile := !is_recompilation_disabled &&
+		should_recompile_tool(vexe, tool_source, tool_name, tool_exe)
 	if is_verbose {
 		println('launch_tool should_compile: $should_compile')
 	}
-	if should_compile && !is_recompilation_disabled {
+	if should_compile {
 		emodules := external_module_dependencies_for_tool[tool_name]
 		for emodule in emodules {
 			check_module_is_installed(emodule, is_verbose) or { panic(err) }
