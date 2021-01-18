@@ -4830,7 +4830,6 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 			c.warn('pointer indexing is only allowed in `unsafe` blocks', node.pos)
 		}
 	}
-	
 	if mut node.index is ast.RangeExpr { // [1..2]
 		if node.index.has_low {
 			index_type := c.expr(node.index.low)
