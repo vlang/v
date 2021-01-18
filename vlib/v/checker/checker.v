@@ -73,7 +73,7 @@ mut:
 	loop_label                       string // set when inside a labelled for loop
 	timers                           &util.Timers = util.new_timers(false)
 	comptime_fields_type             map[string]table.Type
-	vweb_types                       map[string]table.Type
+	vweb_types                       []string
 }
 
 pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
@@ -3565,8 +3565,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) table.Type {
 				i++
 				continue
 			}
-			var := v as ast.Var
-			c.vweb_types[k] = var.typ
+			c.vweb_types << k
 		}
 		c.warnings << c2.warnings
 		c.errors << c2.errors
@@ -5301,14 +5300,14 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			}
 		}
 	}
-	c.vweb_types = map[string]table.Type{}
+	c.vweb_types = []string{}
 	c.stmts(node.stmts)
 	if c.vweb_types.len > 0 {
 		// handle vweb variables
 		for k, v in node.scope.objects {
 			match v {
 				ast.Var {
-					if k in c.vweb_types && v.typ == c.vweb_types[k] {
+					if k in c.vweb_types {
 						mut var := v
 						if !var.is_used {
 							var.is_used = true

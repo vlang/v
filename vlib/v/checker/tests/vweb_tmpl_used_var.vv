@@ -1,0 +1,16 @@
+import vweb
+
+struct App {
+	vweb.Context
+}
+
+pub fn (mut app App) index() {
+	test := 'test'
+    return $vweb.html()
+}
+
+fn main() {
+	port := 8181
+	mut app := App{}
+	vweb.run_app<App>(mut app, port)
+}
