@@ -36,4 +36,7 @@ fn test_interpolation_map_to_string() {
 	assert s.contains("y: 'abc'")
 	assert s.contains("}, '2': Test{")
 	assert s.contains("y: 'def'")
+
+	f := {'hello': [1,2,3]!}
+	assert '$f' == "{'hello': [1, 2, 3]}"
 }
