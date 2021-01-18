@@ -247,6 +247,9 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 			post_comments: post_comments
 			scope: branch_scope
 		}
+		if is_else && branches.len == 1 {
+			p.warn_with_pos('`match` must have at least one non `else` branch', pos)
+		}
 		if p.tok.kind == .rcbr || (is_else && no_lcbr) {
 			break
 		}
