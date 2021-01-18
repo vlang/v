@@ -3561,7 +3561,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) table.Type {
 		c2.check(node.vweb_tmpl)
 		mut i := 0
 		for k, v in c2.file.scope.children[0].objects {
-			if i < 5 {
+			if i < 4 {
 				i++
 				continue
 			}
@@ -5305,17 +5305,14 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	if c.vweb_types.len > 0 {
 		// handle vweb variables
 		for k, v in node.scope.objects {
-			match v {
-				ast.Var {
-					if k in c.vweb_types {
-						mut var := v
-						if !var.is_used {
-							var.is_used = true
-						}
-						node.scope.objects[k] = var
+			if v is ast.Var {
+				if k in c.vweb_types {
+					mut var := v
+					if !var.is_used {
+						var.is_used = true
 					}
+					node.scope.objects[k] = var
 				}
-				else {}
 			}
 		}
 	}
