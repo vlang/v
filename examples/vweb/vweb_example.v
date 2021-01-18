@@ -31,6 +31,7 @@ pub fn (mut app App) index() vweb.Result {
 	// app.text('Hello world from vweb')
 	hello := 'Hello world from vweb'
 	numbers := [1, 2, 3]
+	app.enable_chunked_transfer(40)
 	return $vweb.html()
 }
 

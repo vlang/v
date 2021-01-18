@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -115,7 +115,6 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 	if !is_html {
 		path = tmpl_path
 	}
-	eprintln('>>> is_embed_file: $is_embed_file | is_html: $is_html | s: $s | n: $n | path: $path')
 	if !os.exists(path) {
 		// can be in `templates/`
 		if is_html {

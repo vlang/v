@@ -2,7 +2,7 @@
 
 regex 1.0 alpha
 
-Copyright (c) 2019-2020 Dario Deledda. All rights reserved.
+Copyright (c) 2019-2021 Dario Deledda. All rights reserved.
 Use of this source code is governed by an MIT license
 that can be found in the LICENSE file.
 
@@ -261,7 +261,7 @@ pub fn (mut re RE) replace(in_txt string, repl string) string {
 // start   index of the start of the match in in_txt
 // end     index of the end   of the match in in_txt
 // the match is in in_txt[start..end]
-pub type FnReplace = fn (re RE, in_txt string, start int, end int) string 
+pub type FnReplace = fn (re RE, in_txt string, start int, end int) string
 
 // replace_by_fn return a string where the matches are replaced with the string from the repl_fn callback function
 pub fn (mut re RE) replace_by_fn(in_txt string, repl_fn FnReplace) string {
@@ -285,7 +285,7 @@ pub fn (mut re RE) replace_by_fn(in_txt string, repl_fn FnReplace) string {
 			repl  := repl_fn(re, in_txt, start, end)
 
 			res += in_txt[s1..start] + repl
-			s1 = end 
+			s1 = end
 
 			ls = i + s
 			i  = i + e
