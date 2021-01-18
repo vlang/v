@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module vweb
@@ -56,6 +56,8 @@ pub mut:
 	done              bool
 	page_gen_start    i64
 	form_error        string
+	chunked_transfer  bool
+	max_chunk_len     int = 20
 }
 
 // declaring init_once in your App struct is optional
@@ -88,10 +90,35 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 	sb.write('HTTP/1.1 $ctx.status')
 	sb.write('\r\nContent-Type: $mimetype')
 	sb.write('\r\nContent-Length: $res.len')
+	if ctx.chunked_transfer {
+		sb.write('\r\nTransfer-Encoding: chunked')
+	}
 	sb.write(ctx.headers)
 	sb.write('\r\n')
 	sb.write(headers_close)
-	sb.write(res)
+	if ctx.chunked_transfer {
+		mut i := 0
+		mut len := res.len
+		for {
+			if len <= 0 {
+				break
+			}
+			mut chunk := ''
+			if len > ctx.max_chunk_len {
+				chunk = res[i..i + ctx.max_chunk_len]
+				i += ctx.max_chunk_len
+				len -= ctx.max_chunk_len
+			} else {
+				chunk = res[i..]
+				len = 0
+			}
+			sb.write(chunk.len.hex())
+			sb.write('\r\n$chunk\r\n')
+		}
+		sb.write('0\r\n\r\n') // End of chunks
+	} else {
+		sb.write(res)
+	}
 	s := sb.str()
 	defer {
 		s.free()
@@ -138,6 +165,11 @@ pub fn (mut ctx Context) not_found() Result {
 	ctx.done = true
 	send_string(ctx.conn, http_404) or { }
 	return Result{}
+}
+
+pub fn (mut ctx Context) enable_chunked_transfer(max_chunk_len int) {
+	ctx.chunked_transfer = true
+	ctx.max_chunk_len = max_chunk_len
 }
 
 pub fn (mut ctx Context) set_cookie(cookie Cookie) {

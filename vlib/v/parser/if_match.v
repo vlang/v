@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -246,6 +246,9 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 			is_else: is_else
 			post_comments: post_comments
 			scope: branch_scope
+		}
+		if is_else && branches.len == 1 {
+			p.warn_with_pos('`match` must have at least one non `else` branch', pos)
 		}
 		if p.tok.kind == .rcbr || (is_else && no_lcbr) {
 			break

@@ -2,7 +2,7 @@
 
 regex 1.0 alpha
 
-Copyright (c) 2019-2020 Dario Deledda. All rights reserved.
+Copyright (c) 2019-2021 Dario Deledda. All rights reserved.
 Use of this source code is governed by an MIT license
 that can be found in the LICENSE file.
 
@@ -318,7 +318,7 @@ pub mut:
 
 	group_map         map[string]int   // groups names map
 
-	group_stack       []int 
+	group_stack       []int
 	group_data        []int
 
 	// flags
@@ -1268,7 +1268,7 @@ fn (mut re RE) impl_compile(in_txt string) (int,int) {
 					re.prog[pc1+1].rep_max = pc2 + 1
 					break
 				}
-				
+
 				pc2++
 			}
 			// special case query of few chars, teh true can't go on the first instruction
@@ -1485,7 +1485,7 @@ pub fn (re RE) get_query() string {
 fn (mut re RE) group_continuous_save(g_index int) {
 	if re.group_csave_flag == true {
 		// continuous save, save until we have space
-		
+
 		// init the first element as counter
 		if re.group_csave.len == 0 {
 			re.group_csave << 0
@@ -1503,7 +1503,7 @@ fn (mut re RE) group_continuous_save(g_index int) {
 			re.group_csave[re.group_csave.len - 1] = end
 			return
 		}
-		
+
 		// otherwise append a new group to the list
 
 		// increment counter
@@ -1519,7 +1519,7 @@ fn (mut re RE) group_continuous_save(g_index int) {
 *
 * Matching
 *
-******************************************************************************/					
+******************************************************************************/
 enum Match_state{
 	start = 0
 	stop
@@ -1567,14 +1567,14 @@ pub mut:
 [direct_array_access]
 pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 	// result status
-	mut result   := no_match_found    // function return     
+	mut result   := no_match_found    // function return
 
 	mut ch       := rune(0)           // examinated char
 	mut char_len := 0                 // utf8 examinated char len
 	mut m_state  := Match_state.start // start point for the matcher FSM
 	mut src_end  := false
 	mut last_fnd_pc := -1
-                  
+
 	mut state := StateObj{}           // actual state
 	mut ist   := rune(0)              // actual instruction
 	mut l_ist := rune(0)              // last matched instruction
@@ -1681,7 +1681,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 			dbg_line++
 		}
 		//******************************************
-		
+
 		if ist == ist_prog_end {
 			//println("HERE we end!")
 			break
@@ -1717,7 +1717,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 							state.i = in_txt_len-1
 						}
 						re.groups[g_index+1] = state.i
-						
+
 						if re.groups[g_index+1] >= in_txt_len {
 							//println("clamp group on stop!")
 							re.groups[g_index+1] = in_txt_len-1
@@ -1739,11 +1739,11 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 			if state.pc == -1 {
 				state.pc = last_fnd_pc
 			}
-			
+
 			//println("Finished text!!")
 			//println("Instruction: ${ist:08x} pc: $state.pc")
 			//println("min_rep: ${re.prog[state.pc].rep_min} max_rep: ${re.prog[state.pc].rep_max} rep: ${re.prog[state.pc].rep}")
-			
+
 			// program end
 			if ist == ist_prog_end {
 				//println("Program end on end of text!")
@@ -1757,14 +1757,14 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 				//println("rep: ${re.prog[state.pc].group_rep} min: ${re.prog[state.pc].rep_min} max: ${re.prog[state.pc].rep_max}")
 				//println("first match: ${state.first_match}")
 				if re.prog[state.pc].last_dot_flag == true &&
-					re.prog[state.pc].rep >= re.prog[state.pc].rep_min && 
+					re.prog[state.pc].rep >= re.prog[state.pc].rep_min &&
 					re.prog[state.pc].rep <= re.prog[state.pc].rep_max
 				{
 					return state.first_match, state.i
 				}
 				//println("Not fitted!!")
 			}
-		
+
 			//m_state = .end
 			//break
 			return no_match_found,0
@@ -1820,7 +1820,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 				last_fnd_pc = state.pc
 				state.pc = -1
 				state.i += char_len
-				
+
 				m_state = .ist_next
 				re.reset_src()
 				state.match_index = -1
@@ -1896,7 +1896,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 
 	 					// save group results
 						g_index := re.prog[state.pc].group_id*2
-						
+
 						if start_i >= 0 {
 							re.groups[g_index] = start_i
 						} else {
@@ -1906,16 +1906,16 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 						re.groups[g_index+1] = state.i
 
 						if g_index > 0 && re.groups[g_index] <= re.groups[g_index-1] {
-							re.groups[g_index] = re.groups[g_index-1] 
+							re.groups[g_index] = re.groups[g_index-1]
 						}
 
 						if re.groups[g_index+1] >= in_txt_len {
 							//println("clamp group!")
 							re.groups[g_index+1] = in_txt_len-1
 						}
-					
+
 						//println("GROUP ${re.prog[state.pc].group_id} END [${re.groups[g_index]}, ${re.groups[g_index+1]}] i: $state.i in_txt_len: $in_txt_len")
-						
+
 						// continuous save, save until we have space
 						re.group_continuous_save(g_index)
 					}
@@ -1951,21 +1951,21 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 
 				// check next token to be false
 				mut next_check_flag := false
-				
+
 				// if we are done with max go on dot char are dedicated case!!
-				if	re.prog[state.pc].rep >= re.prog[state.pc].rep_max 
+				if	re.prog[state.pc].rep >= re.prog[state.pc].rep_max
 				{
 					re.state_list.pop()
 					m_state = .ist_next
 					continue
 				}
-				
+
 				if re.prog[state.pc].dot_check_pc >= 0 && re.prog[state.pc].rep >= re.prog[state.pc].rep_min {
 					// load the char
 					//ch_t, _ := re.get_charb(in_txt, state.i+char_len)
 					ch_t := ch
 					chk_pc := re.prog[state.pc].dot_check_pc
-					
+
 					// simple char
 					if re.prog[chk_pc].ist == ist_simple_char {
 						if re.prog[chk_pc].ch == ch_t {
@@ -1974,7 +1974,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 						//println("Check [ist_simple_char] [${re.prog[chk_pc].ch}]==[${ch_t:c}] => $next_check_flag")
 					}
 
-					// char char_class 
+					// char char_class
 					else if re.prog[chk_pc].ist == ist_char_class_pos || re.prog[chk_pc].ist == ist_char_class_neg {
 						mut cc_neg := false
 						if re.prog[chk_pc].ist == ist_char_class_neg {
@@ -1996,7 +1996,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 					}
 
 				}
-				
+
 				// check if we must continue or pass to the next IST
 				if next_check_flag == true && re.prog[state.pc+1].ist != ist_prog_end {
 					//println("save the state!!")
@@ -2016,7 +2016,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 					}
 
 					re.state_list << dot_state
-					
+
 					m_state = .ist_quant_n
 					//println("dot_char stack len: ${re.state_list.len}")
 					continue
@@ -2205,7 +2205,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 
 		}
 		// ist_quant_pg => quantifier positive test on group
-		else if m_state == .ist_quant_pg {		
+		else if m_state == .ist_quant_pg {
 			//println(".ist_quant_pg")
 			mut tmp_pc := state.pc
 			if state.group_index >= 0 {
@@ -2225,7 +2225,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 				re.prog[tmp_pc].group_rep = 0 // clear the repetitions
 				state.group_index--
 				m_state = .ist_next
-				
+
 				continue
 			}
 			else if rep >= re.prog[tmp_pc].rep_min {
@@ -2337,10 +2337,10 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 	// Check the results
 	if state.match_index >= 0 {
 		if state.group_index < 0 {
-			
+
 			if re.prog[state.pc].ist == ist_prog_end {
 				//println("program ended!!")
-				
+
 				if (re.flag & f_src) != 0 {
 					//println("find return")
 					return state.first_match, state.i
@@ -2349,9 +2349,9 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 					return 0, state.i
 				}
 			}
-			
+
 			//println("No Group here, natural end [$state.first_match,$state.i] state: ${state_str(m_state)} ist: $ist pgr_end: $re.prog.len")
-				
+
 			if re.prog[state.pc+1].ist == ist_prog_end || re.prog[state.pc].ist == ist_prog_end{
 				rep := re.prog[state.pc].rep
 				//println("rep: $rep re.prog[state.pc].rep_min: ${re.prog[state.pc].rep_min} re.prog[state.pc].rep_max: ${re.prog[state.pc].rep_max}")
@@ -2386,7 +2386,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 *
 * Public functions
 *
-******************************************************************************/	
+******************************************************************************/
 
 //
 // Matchers

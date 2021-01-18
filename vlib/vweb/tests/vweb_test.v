@@ -106,6 +106,13 @@ fn test_http_client_index() {
 	assert x.text == 'Welcome to VWeb'
 }
 
+fn test_http_client_chunk_transfer() {
+	x := http.get('http://127.0.0.1:$sport/chunk') or { panic(err) }
+	assert_common_http_headers(x)
+	assert x.headers['Transfer-Encoding'] == 'chunked'
+	assert x.text == 'Lorem ipsum dolor sit amet, consetetur sadipscing'
+}
+
 fn test_http_client_404() {
 	url_404_list := [
 		'http://127.0.0.1:$sport/zxcnbnm',
