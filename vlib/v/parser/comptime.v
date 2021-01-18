@@ -115,7 +115,6 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 	if !is_html {
 		path = tmpl_path
 	}
-	eprintln('>>> is_embed_file: $is_embed_file | is_html: $is_html | s: $s | n: $n | path: $path')
 	if !os.exists(path) {
 		// can be in `templates/`
 		if is_html {
