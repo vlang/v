@@ -130,7 +130,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		}
 		p.check(.rcbr)
 	}
-	pos := first_pos.extend(last_pos)
+	pos := first_pos.extend_with_last_line(last_pos, p.prev_tok.line_nr)
 	return ast.ArrayInit{
 		is_fixed: is_fixed
 		has_val: has_val
@@ -151,7 +151,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 }
 
 fn (mut p Parser) map_init() ast.MapInit {
-	pos := p.tok.position()
+	mut pos := p.tok.position()
 	mut keys := []ast.Expr{}
 	mut vals := []ast.Expr{}
 	for p.tok.kind != .rcbr && p.tok.kind != .eof {
@@ -167,6 +167,7 @@ fn (mut p Parser) map_init() ast.MapInit {
 			p.next()
 		}
 	}
+	pos.last_line = p.prev_tok.line_nr
 	return ast.MapInit{
 		keys: keys
 		vals: vals

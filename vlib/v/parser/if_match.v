@@ -15,7 +15,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 		p.inside_ct_if_expr = was_inside_ct_if_expr
 	}
 	p.inside_if_expr = true
-	pos := if is_comptime {
+	mut pos := if is_comptime {
 		p.inside_ct_if_expr = true
 		p.next() // `$`
 		p.prev_tok.position().extend(p.tok.position())
@@ -143,6 +143,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 			break
 		}
 	}
+	pos.last_line = p.prev_tok.line_nr
 	return ast.IfExpr{
 		is_comptime: is_comptime
 		branches: branches
@@ -255,7 +256,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		}
 	}
 	match_last_pos := p.tok.position()
-	pos := token.Position{
+	mut pos := token.Position{
 		line_nr: match_first_pos.line_nr
 		pos: match_first_pos.pos
 		len: match_last_pos.pos - match_first_pos.pos + match_last_pos.len
@@ -264,6 +265,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		p.check(.rcbr)
 	}
 	// return ast.StructInit{}
+	pos.last_line = p.prev_tok.line_nr
 	return ast.MatchExpr{
 		branches: branches
 		cond: cond
@@ -427,7 +429,7 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 	}
 	return ast.SelectExpr{
 		branches: branches
-		pos: pos
+		pos: pos.extend_with_last_line(p.prev_tok.position(), p.prev_tok.line_nr)
 		has_exception: has_else || has_timeout
 	}
 }
