@@ -103,8 +103,19 @@ pub fn (mut ts TestSession) print_messages() {
 	}
 }
 
+fn is_nodejs_working() bool {
+	node_res := os.exec('node --version') or { return false }
+	if node_res.exit_code != 0 {
+		return false
+	}
+	return true
+}
+
 pub fn new_test_session(_vargs string) TestSession {
 	mut skip_files := []string{}
+	if !is_nodejs_working() {
+		skip_files << 'vlib/v/gen/js/jsgen_test.v'
+	}
 	$if solaris {
 		skip_files << 'examples/gg/gg2.v'
 		skip_files << 'examples/pico/pico.v'

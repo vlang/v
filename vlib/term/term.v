@@ -30,8 +30,7 @@ pub fn can_show_color_on_stderr() bool {
 // If colors are not allowed, returns a given string.
 pub fn ok_message(s string) string {
 	return if can_show_color_on_stdout() {
-		msg := ' $s '
-		green(msg)
+		green(' $s ')
 	} else {
 		s
 	}
@@ -41,8 +40,7 @@ pub fn ok_message(s string) string {
 // If colors are not allowed, returns a given string.
 pub fn fail_message(s string) string {
 	return if can_show_color_on_stdout() {
-		msg := ' $s '
-		inverse(bg_white(bold(red(msg))))
+		inverse(bg_white(bold(red(' $s '))))
 	} else {
 		s
 	}
@@ -56,6 +54,16 @@ pub fn warn_message(s string) string {
 	} else {
 		s
 	}
+}
+
+// colorize returns a colored string by running the specified `cfn` over
+// the message `s`, only if colored output is supported by the terminal.
+// Example: term.colorize(term.yellow, 'the message')
+pub fn colorize(cfn fn (string) string, s string) string {
+	if can_show_color_on_stdout() {
+		return cfn(s)
+	}
+	return s
 }
 
 // h_divider returns a horizontal divider line with a dynamic width,
@@ -109,6 +117,9 @@ fn supports_escape_sequences(fd int) bool {
 		return false
 	}
 	$if windows {
+		if os.getenv('ConEmuANSI') == 'ON' {
+			return true
+		}
 		// 4 is enable_virtual_terminal_processing
 		return (is_atty(fd) & 0x0004) > 0
 	} $else {

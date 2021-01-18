@@ -79,7 +79,7 @@ pub fn find_index_entry_by_path(start voidptr, path string) &EmbedFileIndexEntry
 	mut x := &EmbedFileIndexEntry(start)
 	for !(x.path == path || isnil(x.data)) {
 		unsafe {
-			x = &EmbedFileIndexEntry(u64(x) + sizeof(EmbedFileIndexEntry))
+			x++
 		}
 	}
 	$if debug_embed_file_in_prod ? {

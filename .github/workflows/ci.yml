@@ -94,7 +94,7 @@ jobs:
       run: |
         thirdparty/tcc/tcc.exe -version
         ./v -cg -o v cmd/v # Make sure vtcc can build itself twice
-#        ./v -silent test-compiler
+#        ./v -silent test-all
     - name: v self compilation
       run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
     - name: v doctor
@@ -105,7 +105,7 @@ jobs:
         ./v cmd/tools/test_if_v_test_system_works.v
         ./cmd/tools/test_if_v_test_system_works
     - name: Fixed tests
-      run: ./v -silent test-fixed
+      run: ./v -silent test-compiler-full
     - name: Test time functions in a timezone UTC-12
       run: TZ=Etc/GMT+12 ./v test vlib/time/
     - name: Test time functions in a timezone UTC-3
@@ -155,7 +155,7 @@ jobs:
           env
       - name: Test V fixed tests
         run: |
-          ./v -silent test-fixed
+          ./v -silent test-compiler-full
 
   macos:
     runs-on: macOS-latest
@@ -195,7 +195,7 @@ jobs:
 #        psql -d postgres -c 'create database customerdb;'
 #        psql -d customerdb -f examples/database/pg/mydb.sql
 #    - name: Test v->c
-#      run: ./v -silent test-compiler
+#      run: ./v -silent test-all
 #    - name: Test v binaries
 #      run: ./v build-vbinaries
 ##    - name: Test v->js
@@ -205,7 +205,7 @@ jobs:
         ./v cmd/tools/test_if_v_test_system_works.v
         ./cmd/tools/test_if_v_test_system_works
     - name: Fixed tests
-      run: VJOBS=1 ./v -silent test-fixed
+      run: VJOBS=1 ./v -silent test-compiler-full
     - name: Build examples
       run: ./v build-examples
     - name: Build examples with -autofree
@@ -264,7 +264,7 @@ jobs:
         UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v2 -o v.c cmd/v
         UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v3 -o v.c cmd/v
 #    - name: Test V
-#      run: ./v -silent test-compiler
+#      run: ./v -silent test-all
 #    - name: Test v binaries
 #      run: ./v build-vbinaries
 ##    - name: Test v->js
@@ -287,9 +287,9 @@ jobs:
         ./cmd/tools/test_if_v_test_system_works
     - name: Fixed tests
       run: |
-        ./v -silent test-fixed
+        ./v -silent test-compiler-full
     - name: Fixed tests (-prod)
-      run: ./v -o vprod -prod cmd/v && ./vprod -silent test-fixed
+      run: ./v -o vprod -prod cmd/v && ./vprod -silent test-compiler-full
     - name: Build examples
       run: ./v build-examples
     - name: Build examples with -autofree
@@ -372,9 +372,9 @@ jobs:
         ./cmd/tools/test_if_v_test_system_works
     - name: Fixed tests
       run: |
-        ./v -silent test-fixed
+        ./v -silent test-compiler-full
     - name: Fixed tests (-prod)
-      run: ./v -o vprod -prod cmd/v && ./vprod -silent test-fixed
+      run: ./v -o vprod -prod cmd/v && ./vprod -silent test-compiler-full
     - name: Build examples
       run: ./v build-examples
     - name: Build examples with -autofree
@@ -429,7 +429,7 @@ jobs:
     - name: Build V
       run: make -j4 && ./v -cc clang -cg -cflags -Werror -o v cmd/v
     - name: Fixed tests (-fsanitize=undefined)
-      run: ./v -cc clang -cflags "-fsanitize=undefined" -o v2 cmd/v && ./v2 -cflags -fsanitize=undefined test-fixed
+      run: ./v -cc clang -cflags "-fsanitize=undefined" -o v2 cmd/v && ./v2 -cflags -fsanitize=undefined test-compiler-full
 
   tests-sanitize-address:
     runs-on: ubuntu-20.04
@@ -452,7 +452,7 @@ jobs:
     - name: Build V
       run: make -j4 && ./v -cc clang -cg -cflags -Werror -o v cmd/v
     - name: Fixed tests (-fsanitize=address)
-      run: ASAN_OPTIONS=detect_leaks=0 ./v -cflags -fsanitize=address test-fixed
+      run: ASAN_OPTIONS=detect_leaks=0 ./v -cflags -fsanitize=address test-compiler-full
 
   tests-sanitize-memory:
     runs-on: ubuntu-20.04
@@ -475,7 +475,7 @@ jobs:
     - name: Build V
       run: make -j4 && ./v -cc clang -cg -cflags -Werror -o v cmd/v
     - name: Fixed tests (-fsanitize=memory)
-      run: ./v -cflags -fsanitize=memory test-fixed
+      run: ./v -cflags -fsanitize=memory test-compiler-full
 
 #  ubuntu-autofree-selfcompile:
 #    runs-on: ubuntu-20.04
@@ -516,7 +516,7 @@ jobs:
           ./cmd/tools/test_if_v_test_system_works
       - name: Test V fixed tests
         run: |
-          ./v -silent test-fixed
+          ./v -silent test-compiler-full
 
 #   ubuntu-musl:
 #     runs-on: ubuntu-20.04
@@ -544,7 +544,7 @@ jobs:
 #     - name: quick debug
 #       run: ./v -stats vlib/strconv/format_test.v
 #     - name: Fixed tests
-#       run: ./v -silent test-fixed
+#       run: ./v -silent test-compiler-full
 
   ubuntu-llvm-mingw:
     runs-on: ubuntu-20.04
@@ -581,10 +581,10 @@ jobs:
         ./cmd/tools/test_if_v_test_system_works
     - name: Fixed tests
       run: |
-        .\v.exe -silent test-fixed
+        .\v.exe -silent test-compiler-full
 #    - name: Test
 #      run: |
-#        .\v.exe -silent test-compiler
+#        .\v.exe -silent test-all
       ## v.js dosent work on windows
         #.\v.exe -o hi.js examples/hello_v_js.v
         #node hi.js
@@ -623,13 +623,13 @@ jobs:
         ./cmd/tools/test_if_v_test_system_works
     - name: Fixed tests
       run: |
-        ./v -cg cmd\tools\vtest-fixed.v
-        ./v -silent test-fixed
+        ./v -cg cmd\tools\vtest-compiler-full.v
+        ./v -silent test-compiler-full
     - name: Build examples
       run: ./v build-examples
 #    - name: Test
 #      run: |
-#        .\v.exe -silent test-compiler
+#        .\v.exe -silent test-all
 #      ## v.js dosent work on windows
         #.\v.exe -o hi.js examples/hello_v_js.v
         #node hi.js
@@ -659,10 +659,10 @@ jobs:
         .\cmd\tools\test_if_v_test_system_works.exe
     - name: Fixed tests
       run: |
-        .\v.exe -silent test-fixed
+        .\v.exe -silent test-compiler-full
 #    - name: Test
 #      run: |
-#        .\v.exe -silent test-compiler
+#        .\v.exe -silent test-all
       ## v.js dosent work on windows
         #.\v.exe -o hi.js examples/hello_v_js.v
         #node hi.js
@@ -728,7 +728,7 @@ jobs:
     - name: V self compilation with g++
       run: ./v -cc g++-9 -o v2 cmd/v && ./v2 -cc g++-9 -o v3 cmd/v
 ##    - name: Running tests with g++
-##      run: ./v -cc g++-9 -silent test-fixed
+##      run: ./v -cc g++-9 -silent test-compiler-full
 
   install-modules:
     runs-on: ubuntu-20.04

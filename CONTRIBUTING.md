@@ -143,7 +143,7 @@ feature/bugfix* that you make.
 
 ### Testing your commits locally:
 You can test locally whether your changes have not broken something by
-running: `v test-compiler`. See `TESTS.md` for more details.
+running: `v test-all`. See `TESTS.md` for more details.
 
 ### Publishing your commits to GitHub:
 

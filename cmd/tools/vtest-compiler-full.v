@@ -6,7 +6,6 @@ import v.pref
 
 const (
 	skip_with_fsanitize_memory    = [
-		'vlib/x/websocket/websocket_test.v',
 		'vlib/encoding/csv/reader_test.v',
 		'vlib/net/tcp_test.v',
 		'vlib/net/tcp_simple_client_server_test.v',
@@ -17,8 +16,8 @@ const (
 		'vlib/orm/orm_test.v',
 		'vlib/sqlite/sqlite_test.v',
 		'vlib/vweb/tests/vweb_test.v',
-		'vlib/x/websocket/websocket_test.v',
 		'vlib/v/tests/unsafe_test.v',
+		'vlib/x/websocket/websocket_test.v',
 		'vlib/net/http/http_httpbin_test.v',
 	]
 	skip_with_fsanitize_address   = [
@@ -95,7 +94,7 @@ fn main() {
 	os.chdir(vroot)
 	args := os.args.clone()
 	args_string := args[1..].join(' ')
-	cmd_prefix := args_string.all_before('test-fixed')
+	cmd_prefix := args_string.all_before('test-compiler-full')
 	title := 'testing all fixed tests'
 	all_test_files := os.walk_ext(os.join_path(vroot, 'vlib'), '_test.v')
 	testing.eheader(title)
