@@ -4,7 +4,7 @@ module strconv
 
 f32 to string
 
-Copyright (c) 2019-2020 Dario Deledda. All rights reserved.
+Copyright (c) 2019-2021 Dario Deledda. All rights reserved.
 Use of this source code is governed by an MIT license
 that can be found in the LICENSE file.
 
@@ -149,7 +149,7 @@ pub fn (d Dec32) get_string_32(neg bool, i_n_digit int, i_pad_digit int) string 
 	}
 	*/
 	return unsafe {
-		tos(byteptr(&buf[0]), i) 
+		tos(byteptr(&buf[0]), i)
 	}
 }
 
