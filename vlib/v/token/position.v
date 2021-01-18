@@ -20,6 +20,7 @@ pub fn (pos Position) extend(end Position) Position {
 	return {
 		pos |
 		len: end.pos - pos.pos + end.len
+		last_line: end.line_nr
 	}
 }
 
@@ -38,5 +39,6 @@ pub fn (tok &Token) position() Position {
 		len: tok.len
 		line_nr: tok.line_nr - 1
 		pos: tok.pos
+		last_line: tok.line_nr - 1
 	}
 }

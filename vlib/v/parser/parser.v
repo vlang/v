@@ -569,8 +569,9 @@ pub fn (mut p Parser) check_comment() ast.Comment {
 }
 
 pub fn (mut p Parser) comment() ast.Comment {
-	pos := p.tok.position()
+	mut pos := p.tok.position()
 	text := p.tok.lit
+	pos.last_line = pos.line_nr + text.count('\n')
 	p.next()
 	// p.next_with_comment()
 	return ast.Comment{
@@ -692,16 +693,20 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 		.dollar {
 			match p.peek_tok.kind {
 				.key_if {
+					pos := p.tok.position()
 					return ast.ExprStmt{
 						expr: p.if_expr(true)
+						pos: pos.extend(p.prev_tok.position())
 					}
 				}
 				.key_for {
 					return p.comp_for()
 				}
 				.name {
+					pos := p.tok.position()
 					return ast.ExprStmt{
 						expr: p.comp_call()
+						pos: pos.extend(p.prev_tok.position())
 					}
 				}
 				else {
@@ -2456,6 +2461,7 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 		stmts << p.stmt(false)
 	}
 	p.next()
+	pos.last_line = p.tok.line_nr - 1
 	return ast.Block{
 		stmts: stmts
 		is_unsafe: true

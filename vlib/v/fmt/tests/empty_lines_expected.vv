@@ -1,0 +1,52 @@
+fn keep_single_empty_line() {
+	println('a')
+	println('b')
+
+	println('c')
+
+	d := 0
+
+	e := 0
+}
+
+fn squash_multiple_empty_lines() {
+	println('a')
+
+	println('b')
+
+	c := 0
+
+	d := 0
+}
+
+fn remove_leading_and_trailing_empty_lines() {
+	println('a')
+
+	println('b')
+
+	if test {
+		c := 0
+	} else {
+		d := 0
+	}
+}
+
+fn no_empty_line_after_multi_line_statements() {
+	// line1
+	/*
+	block1
+	*/
+	/*
+	block2
+	*/
+	if test {
+		println('a')
+	}
+	println('b')
+	for test {
+		println('c')
+	}
+	c := fn (s string) {
+		println('s')
+	}
+}
