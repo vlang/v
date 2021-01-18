@@ -1523,6 +1523,14 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 					idx := c.table.find_or_register_array(call_expr.generic_type)
 					return table.new_type(idx)
 				}
+			} else if return_sym.kind == .chan {
+				elem_info := return_sym.info as table.Chan
+				elem_sym := c.table.get_type_symbol(elem_info.elem_type)
+				if elem_sym.name == 'T' {
+					idx := c.table.find_or_register_chan(elem_info.elem_type, elem_info.elem_type.nr_muls() >
+						0)
+					return table.new_type(idx)
+				}
 			}
 		}
 		if call_expr.generic_type.is_full() && !method.is_generic {
@@ -1859,6 +1867,12 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 				}
 			}
 			idx := c.table.find_or_register_array_with_dims(call_expr.generic_type, dims)
+			typ := table.new_type(idx)
+			call_expr.return_type = typ
+			return typ
+		} else if return_sym.kind == .chan && return_sym.name.contains('T') {
+			idx := c.table.find_or_register_chan(call_expr.generic_type, call_expr.generic_type.nr_muls() >
+				0)
 			typ := table.new_type(idx)
 			call_expr.return_type = typ
 			return typ
