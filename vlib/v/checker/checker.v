@@ -3560,7 +3560,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) table.Type {
 		mut c2 := new_checker(c.table, pref2)
 		c2.check(node.vweb_tmpl)
 		mut i := 0
-		for k, v in c2.file.scope.children[0].objects {
+		for k, _ in c2.file.scope.children[0].objects {
 			if i < 4 {
 				// Skip first three because their are tmpl vars see https://github.com/vlang/v/blob/master/vlib/vweb/tmpl/tmpl.v
 				i++
