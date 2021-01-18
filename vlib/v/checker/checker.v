@@ -5304,21 +5304,21 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	c.vweb_types = map[string]table.Type
 	c.stmts(node.stmts)
 	if c.vweb_types.len > 0 {
-			// handle vweb variables
-			for k, v in node.scope.objects {
-				match v {
-					ast.Var {
-						if k in c.vweb_types && v.typ == c.vweb_types[k] {
-							mut var := v
-							if !var.is_used {
-								var.is_used = true
-							}
-							node.scope.objects[k] = var
+		// handle vweb variables
+		for k, v in node.scope.objects {
+			match v {
+				ast.Var {
+					if k in c.vweb_types && v.typ == c.vweb_types[k] {
+						mut var := v
+						if !var.is_used {
+							var.is_used = true
 						}
+						node.scope.objects[k] = var
 					}
-					else {}
 				}
+				else {}
 			}
+		}
 	}
 	returns := c.returns || has_top_return(node.stmts)
 	if node.language == .v && !node.no_body && node.return_type != table.void_type && !returns &&
