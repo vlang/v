@@ -4,8 +4,12 @@ fn test_array_or() {
 	el := m[4] or {
 		testvar = -43
 	}
+	good := m[1] or {
+		testvar = 11
+	}
 	assert testvar == -43
 	assert el == 0
+	assert good == 4
 }
 
 fn test_map_or() {
@@ -14,6 +18,10 @@ fn test_map_or() {
 	el := m['pp'] or {
 		testvar = 7931
 	}
+	good := m['kl'] or {
+		testvar = -45
+	}
 	assert testvar == 7931
 	assert el == 0
+	assert good == 5
 }
