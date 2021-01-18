@@ -277,7 +277,7 @@ pub fn (mut f Fmt) mod(mod ast.Module) {
 		return
 	}
 	f.attrs(mod.attrs)
-	f.writeln('module $mod.name\n')
+	f.writeln('module $mod.short_name\n')
 }
 
 pub fn (mut f Fmt) mark_types_import_as_used(typ table.Type) {

@@ -1742,27 +1742,12 @@ fn (mut p Parser) module_decl() ast.Module {
 		}
 		module_pos = module_pos.extend(name_pos)
 	}
-	mut full_mod := p.table.qualify_module(name, p.file_name)
-	/*
-	if p.pref.build_mode == .build_module && !full_mod.contains('.') {
-		// A hack to make building vlib modules work
-		// `v build-module v.gen` will result in `full_mod = "gen"`, not "v.gen",
-		// because the module being built
-		// is not imported.
-		// So here we fetch the name of the module by looking at the path that's being built.
-		word := p.pref.path.after('/')
-		if full_mod == word && p.pref.path.contains('vlib') {
-			full_mod = p.pref.path.after('vlib/').replace('/', '.')
-			// println('new full mod =$full_mod')
-		}
-		// println('file_name=$p.file_name path=$p.pref.path')
-	}
-	*/
-	p.mod = full_mod
+	full_name := util.qualify_module(name, p.file_name)
+	p.mod = full_name
 	p.builtin_mod = p.mod == 'builtin'
 	mod_node = ast.Module{
-		name: full_mod
-		alias: name
+		name: full_name
+		short_name: name
 		attrs: module_attrs
 		is_skipped: is_skipped
 		pos: module_pos
@@ -1826,7 +1811,7 @@ fn (mut p Parser) import_stmt() ast.Import {
 			pos: import_pos.extend(pos)
 			mod_pos: pos
 			alias_pos: submod_pos
-			mod: p.table.qualify_import(p.pref, mod_name_arr.join('.'), p.file_name)
+			mod: util.qualify_import(p.pref, mod_name_arr.join('.'), p.file_name)
 			alias: mod_alias
 		}
 	}
@@ -1835,7 +1820,7 @@ fn (mut p Parser) import_stmt() ast.Import {
 			pos: import_node.pos
 			mod_pos: import_node.mod_pos
 			alias_pos: import_node.alias_pos
-			mod: p.table.qualify_import(p.pref, mod_name_arr[0], p.file_name)
+			mod: util.qualify_import(p.pref, mod_name_arr[0], p.file_name)
 			alias: mod_alias
 		}
 	}

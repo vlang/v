@@ -155,8 +155,9 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	if pref.build_mode == .build_module {
 		for file in files {
 			if pref.path in file.path &&
-				file.mod.alias ==
-				pref.path.all_after_last(os.path_separator).trim_right(os.path_separator) {
+				file.mod.short_name ==
+				pref.path.all_after_last(os.path_separator).trim_right(os.path_separator)
+			{
 				module_built = file.mod.name
 				break
 			}
@@ -1023,7 +1024,8 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				// We are using prebuilt modules, we do not need to generate
 				// their functions in main.c.
 				if node.mod != 'main' &&
-					node.mod != 'help' && !should_bundle_module && !g.file.path.ends_with('_test.v') && !node.is_generic {
+					node.mod != 'help' && !should_bundle_module && !g.file.path.ends_with('_test.v') && !node.is_generic
+				{
 					skip = true
 				}
 			}

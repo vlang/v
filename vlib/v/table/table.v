@@ -3,10 +3,8 @@
 // that can be found in the LICENSE file.
 module table
 
-import os
 import v.cflag
 import v.token
-import v.pref
 import v.util
 
 pub struct Table {
@@ -723,35 +721,6 @@ pub fn (t &Table) mktyp(typ Type) Type {
 		int_literal_type { return int_type }
 		else { return typ }
 	}
-}
-
-pub fn (table &Table) qualify_import(pref &pref.Preferences, mod string, file_path string) string {
-	mut mod_paths := pref.lookup_path.clone()
-	mod_paths << os.vmodules_paths()
-	mod_path := mod.replace('.', os.path_separator)
-	for search_path in mod_paths {
-		try_path := os.join_path(search_path, mod_path)
-		if m1 := util.mod_path_to_full_name(mod, try_path) {
-			return m1
-		}
-	}
-	if m1 := util.mod_path_to_full_name(mod, file_path) {
-		return m1
-	}
-	return mod
-}
-
-// TODO: Once we have a module format we can read from module file instead
-// this is not optimal. it depends on the full import being in table.imports
-// already, we can instead lookup the module path and then work it out
-pub fn (table &Table) qualify_module(mod string, file_path string) string {
-	if mod == 'main' {
-		return mod
-	}
-	if m1 := util.mod_path_to_full_name(mod, file_path.all_before_last('/')) {
-		return m1
-	}
-	return mod
 }
 
 pub fn (mut table Table) register_fn_gen_type(fn_name string, typ Type) {

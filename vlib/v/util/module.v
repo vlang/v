@@ -1,7 +1,36 @@
 module util
 
 import os
+import v.pref
 
+pub fn qualify_import(pref &pref.Preferences, mod string, file_path string) string {
+	mut mod_paths := pref.lookup_path.clone()
+	mod_paths << os.vmodules_paths()
+	mod_path := mod.replace('.', os.path_separator)
+	for search_path in mod_paths {
+		try_path := os.join_path(search_path, mod_path)
+		if m1 := mod_path_to_full_name(mod, try_path) {
+			return m1
+		}
+	}
+	if m1 := mod_path_to_full_name(mod, file_path) {
+		// prinlnt('GOT HERE: $mod')
+		return m1
+	}
+	return mod
+}
+
+pub fn qualify_module(mod string, file_path string) string {
+	if mod == 'main' {
+		return mod
+	}
+	if m1 := mod_path_to_full_name(mod, file_path.all_before_last('/')) {
+		return m1
+	}
+	return mod
+}
+
+// TODO: properly define module location / v.mod rules
 pub fn mod_path_to_full_name(mod string, path string) ?string {
 	vmod_folders := ['vlib', '.vmodules', 'modules']
 	path_parts := path.split(os.path_separator)
