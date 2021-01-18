@@ -2622,7 +2622,7 @@ For developers willing to have more low level control, autofree can be disabled 
 memory manually.
 
 Note: right now autofree is hidden behind the -autofree flag. It will be enabled by
-default in V 0.3.
+default in V 0.3. If autofree is not used, V programs will leak memory.
 
 For example:
 
