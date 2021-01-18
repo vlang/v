@@ -4,13 +4,12 @@ struct App {
 	vweb.Context
 }
 
-pub fn (mut app App) index() {
-	test := 'test'
+pub fn (mut app App) index() vweb.Result {
+    test := 'test'
     return $vweb.html()
 }
 
 fn main() {
-	port := 8181
 	mut app := App{}
-	vweb.run_app<App>(mut app, port)
+	vweb.run_app<App>(mut app, 8181)
 }
