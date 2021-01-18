@@ -4110,7 +4110,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 						g.is_array_set = true
 						g.write('map_set_1(')
 					} else {
-						g.write('*(($elem_type_str*)map_get_and_set_1(')
+						g.write('(*(($elem_type_str*)map_get_and_set_1(')
 					}
 					if !left_is_ptr || node.left_type.has_flag(.shared_f) {
 						g.write('&')
@@ -4133,7 +4133,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					}
 					if g.assign_op != .assign && info.value_type != table.string_type {
 						zero := g.type_default(info.value_type)
-						g.write('$zero }))')
+						g.write('$zero })))')
 					}
 				} else if (g.inside_map_postfix || g.inside_map_infix) ||
 					(g.is_assign_lhs && !g.is_array_set && get_and_set_types)
