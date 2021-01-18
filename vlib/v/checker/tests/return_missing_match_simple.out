@@ -1,4 +1,4 @@
- vlib/v/checker/tests/return_missing_match_simple.vv:4:3: error: `match` must have at least one non `else` branch
+vlib/v/checker/tests/return_missing_match_simple.vv:4:3: error: `match` must have at least one non `else` branch
     2 |     a := 1
     3 |     match a {
     4 |         else { println('abc') }
