@@ -759,7 +759,8 @@ pub fn (table &Table) type_to_str_using_aliases(t Type, import_aliases map[strin
 		.int_literal, .float_literal {
 			res = sym.name
 		}
-		.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64, .char, .rune, .string, .bool, .none_, .byteptr, .voidptr, .charptr {
+		.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64, .char, .rune, .string, .bool,
+		.none_, .byteptr, .voidptr, .charptr {
 			// primitive types
 			res = sym.kind.str()
 		}
