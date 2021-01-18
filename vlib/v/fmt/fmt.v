@@ -699,17 +699,10 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 			f.writeln('module:')
 		}
 		end_pos := field.pos.pos + field.pos.len
-		comments := field.comments
-		// Handle comments before field
+		before_comments := field.comments.filter(it.pos.pos < field.pos.pos)
+		comments := field.comments[before_comments.len..]
 		mut comm_idx := 0
-		f.indent++
-		for comm_idx < comments.len && comments[comm_idx].pos.pos < field.pos.pos {
-			f.empty_line = true
-			f.comment(comments[comm_idx], {})
-			f.writeln('')
-			comm_idx++
-		}
-		f.indent--
+		f.comments_before_first_field(before_comments)
 		f.write('\t$field.name ')
 		// Handle comments between field name and type
 		mut comments_len := 0

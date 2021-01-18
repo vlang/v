@@ -84,8 +84,11 @@ pub fn (mut f Fmt) comments(comments []ast.Comment, options CommentsOptions) {
 	}
 }
 
+pub fn (mut f Fmt) comments_before_first_field(comments []ast.Comment) {
+	f.comments_after_last_field(comments)
+}
+
 pub fn (mut f Fmt) comments_after_last_field(comments []ast.Comment) {
-	// Handle comments after last field
 	for comment in comments {
 		f.indent++
 		f.empty_line = true
