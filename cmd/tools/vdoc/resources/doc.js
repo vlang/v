@@ -53,13 +53,20 @@ function setupScrollSpy() {
 function setupMobileToggle() {
     var toggle = document.getElementById('toggle-menu');
     toggle.addEventListener('click', function(ev) {
-        document.querySelectorAll('.doc-nav').forEach(function(el) {
-            el.classList.toggle('hidden');
-        });
-        document.querySelectorAll('.doc-nav .content').forEach(function(el) {
-            el.classList.toggle('hidden');
-            el.classList.toggle('show');
-        });
+        var docNav = document.querySelector('.doc-nav');
+        var isHidden = docNav.classList.contains('hidden');
+        docNav.classList.toggle('hidden');
+        var search = document.querySelector('.doc-nav > .search');
+        console.log(search);
+        var searchHasResults = search.classList.contains('has-results');
+        if (isHidden && searchHasResults) {
+            search.classList.remove('mobile-hidden');
+        } else {
+            search.classList.add('mobile-hidden');
+        }
+        var content = document.querySelector('.doc-nav .content');
+        content.classList.toggle('hidden');
+        content.classList.toggle('show');
     });
 }
 
@@ -87,12 +94,19 @@ function setupSearch() {
         if (searchValue === '') {
             // reset to default
             menu.style.display = '';
-            search.style.display = '';
+            if (!search.classList.contains('hidden')) {
+                search.classList.add('hidden');
+                search.classList.remove('has-results');
+            }
         } else if (searchValue.length > 2) {
             // search for less than 3 characters can display too much results
             search.innerHTML = '';
             menu.style.display = 'none';
-            search.style.display = 'block';
+            if (search.classList.contains('hidden')) {
+                search.classList.remove('hidden');
+                search.classList.remove('mobile-hidden');
+                search.classList.add('has-results');
+            }
             // cache length for performance
             var foundModule = false;
             var searchModuleIndexLength = searchModuleIndex.length;
