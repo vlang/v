@@ -15,9 +15,9 @@ import v.depgraph
 // NB: keywords after 'new' are reserved in C++
 const (
 	c_reserved = ['delete', 'exit', 'link', 'unix', 'error', 'calloc', 'malloc', 'free', 'panic',
-		'auto', 'char', 'default', 'do', 'double', 'extern', 'float', 'inline', 'int', 'long', 'register',
-		'restrict', 'short', 'signed', 'sizeof', 'static', 'switch', 'typedef', 'union', 'unsigned', 'void',
-		'volatile', 'while', 'new', 'namespace', 'class', 'typename', 'export']
+		'auto', 'char', 'default', 'do', 'double', 'extern', 'float', 'inline', 'int', 'long',
+		'register', 'restrict', 'short', 'signed', 'sizeof', 'static', 'switch', 'typedef', 'union',
+		'unsigned', 'void', 'volatile', 'while', 'new', 'namespace', 'class', 'typename', 'export']
 	// same order as in token.Kind
 	cmp_str    = ['eq', 'ne', 'gt', 'lt', 'ge', 'le']
 	// when operands are switched
@@ -1692,8 +1692,8 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	// int pos = *(int*)_t190.data;
 	mut tmp_opt := ''
 	is_optional := g.is_autofree &&
-		(assign_stmt.op in [.decl_assign, .assign]) && assign_stmt.left_types.len == 1 && assign_stmt.right[0] is
-		ast.CallExpr
+		(assign_stmt.op in [.decl_assign, .assign]) && assign_stmt.left_types.len == 1 &&
+		assign_stmt.right[0] is ast.CallExpr
 	if is_optional {
 		// g.write('/* optional assignment */')
 		call_expr := assign_stmt.right[0] as ast.CallExpr
@@ -1980,7 +1980,8 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			}
 			// Assignment Operator Overloading
 			if ((left_sym.kind == .struct_ &&
-				right_sym.kind == .struct_) || (left_sym.kind == .alias &&
+				right_sym.kind == .struct_) ||
+				(left_sym.kind == .alias &&
 				right_sym.kind == .alias)) &&
 				assign_stmt.op in [.plus_assign, .minus_assign, .div_assign, .mult_assign, .mod_assign]
 			{
@@ -3569,7 +3570,8 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 					expr := branch.stmt.expr as ast.InfixExpr
 					channels << expr.left
 					if expr.right is ast.Ident ||
-						expr.right is ast.IndexExpr || expr.right is ast.SelectorExpr || expr.right is ast.StructInit
+						expr.right is ast.IndexExpr || expr.right is ast.SelectorExpr || expr.right is
+						ast.StructInit
 					{
 						// addressable objects in the `C` output
 						objs << expr.right
@@ -3782,7 +3784,8 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	first_branch := node.branches[0]
 	needs_tmp_var := node.is_expr &&
 		(g.is_autofree || (g.pref.experimental &&
-		(first_branch.stmts.len > 1 || (first_branch.stmts[0] is ast.ExprStmt &&
+		(first_branch.stmts.len > 1 ||
+		(first_branch.stmts[0] is ast.ExprStmt &&
 		(first_branch.stmts[0] as ast.ExprStmt).expr is ast.IfExpr))))
 	/*
 	needs_tmp_var := node.is_expr &&

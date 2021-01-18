@@ -305,7 +305,8 @@ fn (vd VDoc) gen_html(d doc.Doc) string {
 			'</style>\n${tabs[0]}<script>' + vd.assets['dark_mode_js'] + '</script>'
 	} else {
 		'\n${tabs[0]}<link rel="stylesheet" href="' + vd.assets['doc_css'] + '" />\n${tabs[0]}<link rel="stylesheet" href="' +
-			vd.assets['normalize_css'] + '" />\n${tabs[0]}<script src="' + vd.assets['dark_mode_js'] + '"></script>'
+			vd.assets['normalize_css'] + '" />\n${tabs[0]}<script src="' + vd.assets['dark_mode_js'] +
+			'"></script>'
 	}).replace('{{ toc_links }}', if cfg.is_multi || vd.docs.len > 1 {
 		modules_toc_str
 	} else {

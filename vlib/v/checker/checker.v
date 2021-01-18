@@ -22,7 +22,9 @@ const (
 
 const (
 	valid_comp_if_os        = ['windows', 'ios', 'macos', 'mach', 'darwin', 'hpux', 'gnu', 'qnx',
-		'linux', 'freebsd', 'openbsd', 'netbsd', 'bsd', 'dragonfly', 'android', 'solaris', 'haiku', 'linux_or_macos']
+		'linux', 'freebsd', 'openbsd', 'netbsd', 'bsd', 'dragonfly', 'android', 'solaris', 'haiku',
+		'linux_or_macos',
+	]
 	valid_comp_if_compilers = ['gcc', 'tinyc', 'clang', 'mingw', 'msvc', 'cplusplus']
 	valid_comp_if_platforms = ['amd64', 'aarch64', 'x64', 'x32', 'little_endian', 'big_endian']
 	valid_comp_if_other     = ['js', 'debug', 'test', 'glibc', 'prealloc', 'no_bounds_checking']
@@ -2551,12 +2553,14 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			}
 			.mult_assign, .div_assign {
 				if !left_sym.is_number() &&
-					!c.table.get_final_type_symbol(left_type_unwrapped).is_int() && left_sym.kind !in [.struct_, .alias]
+					!c.table.get_final_type_symbol(left_type_unwrapped).is_int() && left_sym.kind !in
+					[.struct_, .alias]
 				{
 					c.error('operator $assign_stmt.op.str() not defined on left operand type `$left_sym.name`',
 						left.position())
 				} else if !right_sym.is_number() &&
-					!c.table.get_final_type_symbol(left_type_unwrapped).is_int() && left_sym.kind !in [.struct_, .alias]
+					!c.table.get_final_type_symbol(left_type_unwrapped).is_int() && left_sym.kind !in
+					[.struct_, .alias]
 				{
 					c.error('operator $assign_stmt.op.str() not defined on right operand type `$right_sym.name`',
 						right.position())
