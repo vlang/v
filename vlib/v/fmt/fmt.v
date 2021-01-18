@@ -1773,6 +1773,7 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 				if j < branch.exprs.len - 1 {
 					f.write(', ')
 				}
+				f.wrap_long_line(3, false)
 			}
 			f.is_mbranch_expr = false
 		} else {
