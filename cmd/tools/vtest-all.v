@@ -37,7 +37,7 @@ fn get_all_commands() []Command {
 		okmsg: 'All .v files can be processed with `v fmt`. NB: the result may not always be compilable, it just means that `v fmt` does not crash.'
 	}
 	res << Command{
-		line: '$vexe $vargs -progress test-compiler-full'
+		line: '$vexe $vargs -progress test-self'
 		okmsg: 'There are no _test.v file regressions.'
 	}
 	res << Command{
