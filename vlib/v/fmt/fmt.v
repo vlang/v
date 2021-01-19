@@ -700,17 +700,16 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		}
 		end_pos := field.pos.pos + field.pos.len
 		before_comments := field.comments.filter(it.pos.pos < field.pos.pos)
-		comments := field.comments[before_comments.len..]
-		mut comm_idx := 0
+		between_comments := field.comments[before_comments.len..].filter(it.pos.pos < end_pos)
+		after_type_comments := field.comments[(before_comments.len + between_comments.len)..]
 		f.comments_before_first_field(before_comments)
 		f.write('\t$field.name ')
 		// Handle comments between field name and type
 		mut comments_len := 0
-		for comm_idx < comments.len && comments[comm_idx].pos.pos < end_pos {
-			comment_text := '/* ${comments[comm_idx].text.trim_left('\x01')} */ ' // TODO handle in a function
+		for c in between_comments {
+			comment_text := '/* ${c.text.trim_left('\x01')} */ ' // TODO handle in a function
 			comments_len += comment_text.len
 			f.write(comment_text)
-			comm_idx++
 		}
 		mut field_align := field_aligns[field_align_i]
 		if field_align.last_line < field.pos.line_nr {
@@ -745,8 +744,8 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 			}
 		}
 		// Handle comments after field type (same line)
-		if comm_idx < comments.len {
-			if comments[comm_idx].pos.line_nr > field.pos.line_nr {
+		if after_type_comments.len > 0 {
+			if after_type_comments[0].pos.line_nr > field.pos.line_nr {
 				f.writeln('')
 			} else {
 				if !field.has_default_expr {
@@ -760,7 +759,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 				}
 				f.write(' ')
 			}
-			f.comments(comments[comm_idx..], level: .indent)
+			f.comments(after_type_comments, level: .indent)
 		} else {
 			f.writeln('')
 		}
