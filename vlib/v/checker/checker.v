@@ -1940,6 +1940,10 @@ pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type table.Type) t
 			c.error('unexpected `?`, the function `$expr.name` does not return an optional',
 				expr.or_block.pos)
 		}
+	} else if expr is ast.IndexExpr {
+		if expr.or_expr.kind != .absent {
+			c.check_or_expr(expr.or_expr, ret_type, ret_type)
+		}
 	}
 	return ret_type
 }
