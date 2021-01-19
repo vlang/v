@@ -1307,7 +1307,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 				styp := g.typ(it.val_type)
 				g.write('\t$styp ${c_name(it.val_var)}')
 			}
-			addr := if it.val_is_mut {'&'} else {''}
+			addr := if it.val_is_mut { '&' } else { '' }
 			if it.cond_type.is_ptr() || it.cond is ast.ArrayInit {
 				g.writeln(' = ${addr}(*$atmp)[$i];')
 			} else {
