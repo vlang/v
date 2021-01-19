@@ -42,23 +42,26 @@ pub fn mod_path_to_full_name(mod string, path string) ?string {
 	}
 	path_parts := path.split(os.path_separator)
 	mod_path := mod.replace('.', os.path_separator)
-	// go back through each path_parts looking for the destination `mod_path`
+	// go back through each parent in path_parts and join with `mod_path` to see the dir exists
 	for i := path_parts.len - 1; i >= 0; i-- {
 		try_path := os.join_path(path_parts[0..i].join(os.path_separator), mod_path)
-		// found module path
+		// found module path becsuse `try_path` exists
 		if os.is_dir(try_path) {
-			// if we know we are in one of the `vmod_folders`
+			// we know we are in one of the `vmod_folders`
 			if in_vmod_path {
-				// work our way baackwards until checking if we reached a vmod folder
+				// so we can work our way backwards until we reach a vmod folder
 				for j := i; j >= 0; j-- {
 					path_part := path_parts[j]
 					// we reached a vmod folder
 					if path_part in vmod_folders {
 						mod_full_name := try_path.split(os.path_separator)[j + 1..].join('.')
+						if mod_full_name == '' {
+							println('### A: $mod | try_path:$try_path | j:$j')
+						}
 						return mod_full_name
 					}
 				}
-				// we are not in one of the `vmod_folders` so we need to go back up each parent
+				// not in one of the `vmod_folders` so work backwards through each parent
 				// looking for for a `v.mod` file and break at the first path without it
 			} else {
 				mut try_path_parts := try_path.split(os.path_separator)
@@ -77,6 +80,9 @@ pub fn mod_path_to_full_name(mod string, path string) ?string {
 				}
 				if last_v_mod > -1 {
 					mod_full_name := try_path_parts[last_v_mod - 1..].join('.')
+					if mod_full_name == '' {
+						println('### B: $mod | try_path_parts:[${try_path_parts.join(',')}]')
+					}
 					return mod_full_name
 				}
 			}
