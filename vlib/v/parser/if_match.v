@@ -144,6 +144,9 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 		}
 	}
 	pos.update_last_line(p.prev_tok.line_nr)
+	if comments.len > 0 {
+		pos.last_line = comments.last().pos.last_line
+	}
 	return ast.IfExpr{
 		is_comptime: is_comptime
 		branches: branches
@@ -236,8 +239,12 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		branch_scope := p.scope
 		p.close_scope()
 		p.inside_match_body = false
-		pos := branch_first_pos.extend(branch_last_pos)
+		mut pos := branch_first_pos.extend(branch_last_pos)
 		post_comments := p.eat_comments()
+		pos.update_last_line(p.prev_tok.line_nr)
+		if post_comments.len > 0 {
+			pos.last_line = post_comments.last().pos.last_line
+		}
 		branches << ast.MatchBranch{
 			exprs: exprs
 			ecmnts: ecmnts
@@ -399,12 +406,16 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 		stmts := p.parse_block_no_scope(false)
 		p.close_scope()
 		p.inside_match_body = false
-		pos := token.Position{
+		mut pos := token.Position{
 			line_nr: branch_first_pos.line_nr
 			pos: branch_first_pos.pos
 			len: branch_last_pos.pos - branch_first_pos.pos + branch_last_pos.len
 		}
 		post_comments := p.eat_comments()
+		pos.update_last_line(p.prev_tok.line_nr)
+		if post_comments.len > 0 {
+			pos.last_line = post_comments.last().pos.last_line
+		}
 		branches << ast.SelectBranch{
 			stmt: stmt
 			stmts: stmts
