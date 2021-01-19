@@ -219,29 +219,33 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	// No arguments means we are sorting an array of builtins (e.g. `numbers.sort()`)
 	// The type for the comparison fns is the type of the element itself.
 	mut typ := info.elem_type
+	mut is_default := false
 	mut is_reverse := false
 	mut compare_fn := ''
-	// `users.sort(a.age > b.age)`
-	if node.args.len > 0 {
-		// Get the type of the field that's being compared
-		// `a.age > b.age` => `age int` => int
-		infix_expr := node.args[0].expr as ast.InfixExpr
-		// typ = infix_expr.left_type
-		is_reverse = infix_expr.op == .gt
+	if node.args.len == 0 {
+		is_default = true
 	} else {
-		// users.sort()
+		infix_expr := node.args[0].expr as ast.InfixExpr
+		is_default = '$infix_expr.left' in ['a', 'b'] && '$infix_expr.right' in ['a', 'b']
+		is_reverse = infix_expr.op == .gt
+	}
+	if is_default {
+		// users.sort() or users.sort(a > b)
 		compare_fn = match typ {
-			table.int_type { 'compare_ints' }
-			table.u64_type { 'compare_u64s' }
-			table.string_type { 'compare_strings' }
-			table.f64_type { 'compare_floats' }
+			table.int_type, table.int_type.to_ptr() { 'compare_ints' }
+			table.u64_type, table.u64_type.to_ptr() { 'compare_u64s' }
+			table.string_type, table.string_type.to_ptr() { 'compare_strings' }
+			table.f64_type, table.f64_type.to_ptr() { 'compare_floats' }
 			else {
 				verror('usage: .sort(a.field < b.field)')
 				''
 			}
 		}
-	}
-	if compare_fn == '' {
+		if is_reverse {
+			compare_fn += '_reverse'
+		}
+	} else {
+		// `users.sort(a.age > b.age)`
 		// Generate a comparison function for a custom type
 		tmp_name := g.new_tmp_var()
 		compare_fn = 'compare_${tmp_name}_' + g.typ(typ)
@@ -262,10 +266,8 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 			g.definitions.writeln('\tif (${styp}__gt(*a, *b)) { return -1; } else { return 1; }}')
 		} else {
 			field_type := g.typ(infix_expr.left_type)
-			left_expr_str := g.write_expr_to_string(infix_expr.left).replace_once('.',
-				'->')
-			right_expr_str := g.write_expr_to_string(infix_expr.right).replace_once('.',
-				'->')
+			left_expr_str := g.write_expr_to_string(infix_expr.left)
+			right_expr_str := g.write_expr_to_string(infix_expr.right)
 			g.definitions.writeln('$field_type a_ = $left_expr_str;')
 			g.definitions.writeln('$field_type b_ = $right_expr_str;')
 			mut op1, mut op2 := '', ''

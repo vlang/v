@@ -13,7 +13,7 @@ fn test_sorting_simple() {
 
 fn test_sorting_with_condition_expression() {
 	mut a := unsorted.clone()
-	a.sort(*a > *b)
+	a.sort(a > b)
 	eprintln(' a: $a')
 	assert a == sorted_desc
 }
@@ -61,7 +61,7 @@ fn test_sorting_u64s() {
 	a.sort()
 	eprintln(' a: $a')
 	assert a == [u64(0), 1, 2, 3, 8, 9]
-	a.sort(*a > *b)
+	a.sort(a > b)
 	eprintln(' a: $a')
 	assert a == [u64(9), 8, 3, 2, 1, 0]
 }
