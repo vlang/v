@@ -718,35 +718,45 @@ println(m['one']) // "1"
 println(m['bad_key']) // "0"
 println('bad_key' in m) // Use `in` to detect whether such key exists
 m.delete('two')
-// Short syntax
+// NB: map keys can have any type, `int` in this case,
+// and the whole map can be initialized using this short syntax:
 numbers := {
-	1: 'two' // map keys can have any type, `int` in this case
-	2: 'three'
+	1: 'one'
+	2: 'two'
 }
+println(numbers)
 ```
 
 If a key is not found, a zero value is returned by default:
 
 ```v
-val := m['bad_key']
-println(val) // 0
-
-s := numbers[3]
-println(s) // ""
+sm := {
+	'abc': 'xyz'
+}
+val := sm['bad_key']
+println(val) // ''
+intm := {
+	1: 1234
+	2: 5678
+}
+s := intm[3]
+println(s) // 0
 ```
 
 It's also possible to use an `or {}` block to handle missing keys:
 
 ```v
-val := m['bad_key'] or { println('key not found') }
+mm := map[string]int{}
+val := mm['bad_key'] or { panic('key not found') }
 ```
 
 The same optional check applies to arrays:
 
 ```v
-val := arr[large_index] or { println('out of bounds') }
+arr := [1, 2, 3]
+large_index := 999
+val := arr[large_index] or { panic('out of bounds') }
 ```
-
 
 ## Module imports
 
