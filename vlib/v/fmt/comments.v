@@ -76,13 +76,14 @@ pub fn (mut f Fmt) comments(comments []ast.Comment, options CommentsOptions) {
 			f.write(' ')
 		}
 		f.comment(c, options)
-		if i < comments.len - 1 || options.has_nl {
+		if !options.iembed && (i < comments.len - 1 || options.has_nl) {
 			f.writeln('')
 		}
 	}
 }
 
-pub fn (mut f Fmt) comments_before_first_field(comments []ast.Comment) {
+pub fn (mut f Fmt) comments_before_field(comments []ast.Comment) {
+	// They behave the same as comments after the last field. This alias is just for clarity.
 	f.comments_after_last_field(comments)
 }
 

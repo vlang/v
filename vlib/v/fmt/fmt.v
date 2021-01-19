@@ -702,15 +702,13 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		before_comments := field.comments.filter(it.pos.pos < field.pos.pos)
 		between_comments := field.comments[before_comments.len..].filter(it.pos.pos < end_pos)
 		after_type_comments := field.comments[(before_comments.len + between_comments.len)..]
-		f.comments_before_first_field(before_comments)
+		// Handle comments before the field
+		f.comments_before_field(before_comments)
 		f.write('\t$field.name ')
 		// Handle comments between field name and type
-		mut comments_len := 0
-		for c in between_comments {
-			comment_text := '/* ${c.text.trim_left('\x01')} */ ' // TODO handle in a function
-			comments_len += comment_text.len
-			f.write(comment_text)
-		}
+		before_len := f.line_len
+		f.comments(between_comments, iembed: true, has_nl: false)
+		comments_len := f.line_len - before_len
 		mut field_align := field_aligns[field_align_i]
 		if field_align.last_line < field.pos.line_nr {
 			field_align_i++
@@ -743,7 +741,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 				inc_indent = false
 			}
 		}
-		// Handle comments after field type (same line)
+		// Handle comments after field type
 		if after_type_comments.len > 0 {
 			if after_type_comments[0].pos.line_nr > field.pos.line_nr {
 				f.writeln('')
