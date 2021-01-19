@@ -8,8 +8,8 @@ const (
 )
 
 pub struct TcpConn {
-pub:
-	sock           TcpSocket
+pub mut:
+	sock TcpSocket
 mut:
 	write_deadline time.Time
 	read_deadline  time.Time
@@ -17,23 +17,23 @@ mut:
 	write_timeout  time.Duration
 }
 
-pub fn dial_tcp(address string) ?TcpConn {
-	s := new_tcp_socket() ?
+pub fn dial_tcp(address string) ?&TcpConn {
+	mut s := new_tcp_socket() ?
 	s.connect(address) ?
-	return TcpConn{
+	return &TcpConn{
 		sock: s
 		read_timeout: tcp_default_read_timeout
 		write_timeout: tcp_default_write_timeout
 	}
 }
 
-pub fn (c TcpConn) close() ? {
+pub fn (mut c TcpConn) close() ? {
 	c.sock.close() ?
 	return none
 }
 
 // write_ptr blocks and attempts to write all data
-pub fn (c TcpConn) write_ptr(b byteptr, len int) ? {
+pub fn (mut c TcpConn) write_ptr(b byteptr, len int) ? {
 	$if trace_tcp ? {
 		eprintln('>>> TcpConn.write_ptr | c.sock.handle: $c.sock.handle | b: ${ptr_str(b)} len: $len |\n' +
 			unsafe { b.vstring_with_len(len) })
@@ -61,16 +61,16 @@ pub fn (c TcpConn) write_ptr(b byteptr, len int) ? {
 }
 
 // write blocks and attempts to write all data
-pub fn (c TcpConn) write(bytes []byte) ? {
+pub fn (mut c TcpConn) write(bytes []byte) ? {
 	return c.write_ptr(bytes.data, bytes.len)
 }
 
 // write_str blocks and attempts to write all data
-pub fn (c TcpConn) write_str(s string) ? {
+pub fn (mut c TcpConn) write_str(s string) ? {
 	return c.write_ptr(s.str, s.len)
 }
 
-pub fn (c TcpConn) read_ptr(buf_ptr byteptr, len int) ?int {
+pub fn (mut c TcpConn) read_ptr(buf_ptr byteptr, len int) ?int {
 	mut res := wrap_read_result(C.recv(c.sock.handle, buf_ptr, len, 0)) ?
 	$if trace_tcp ? {
 		eprintln('<<< TcpConn.read_ptr  | c.sock.handle: $c.sock.handle | buf_ptr: ${ptr_str(buf_ptr)} len: $len | res: $res')
@@ -92,11 +92,11 @@ pub fn (c TcpConn) read_ptr(buf_ptr byteptr, len int) ?int {
 	return none
 }
 
-pub fn (c TcpConn) read(mut buf []byte) ?int {
+pub fn (mut c TcpConn) read(mut buf []byte) ?int {
 	return c.read_ptr(buf.data, buf.len)
 }
 
-pub fn (c TcpConn) read_deadline() ?time.Time {
+pub fn (mut c TcpConn) read_deadline() ?time.Time {
 	if c.read_deadline.unix == 0 {
 		return c.read_deadline
 	}
@@ -107,7 +107,7 @@ pub fn (mut c TcpConn) set_read_deadline(deadline time.Time) {
 	c.read_deadline = deadline
 }
 
-pub fn (c TcpConn) write_deadline() ?time.Time {
+pub fn (mut c TcpConn) write_deadline() ?time.Time {
 	if c.write_deadline.unix == 0 {
 		return c.write_deadline
 	}
@@ -118,7 +118,7 @@ pub fn (mut c TcpConn) set_write_deadline(deadline time.Time) {
 	c.write_deadline = deadline
 }
 
-pub fn (c TcpConn) read_timeout() time.Duration {
+pub fn (c &TcpConn) read_timeout() time.Duration {
 	return c.read_timeout
 }
 
@@ -126,7 +126,7 @@ pub fn (mut c TcpConn) set_read_timeout(t time.Duration) {
 	c.read_timeout = t
 }
 
-pub fn (c TcpConn) write_timeout() time.Duration {
+pub fn (c &TcpConn) write_timeout() time.Duration {
 	return c.write_timeout
 }
 
@@ -135,23 +135,23 @@ pub fn (mut c TcpConn) set_write_timeout(t time.Duration) {
 }
 
 [inline]
-pub fn (c TcpConn) wait_for_read() ? {
+pub fn (mut c TcpConn) wait_for_read() ? {
 	return wait_for_read(c.sock.handle, c.read_deadline, c.read_timeout)
 }
 
 [inline]
-pub fn (c TcpConn) wait_for_write() ? {
+pub fn (mut c TcpConn) wait_for_write() ? {
 	return wait_for_write(c.sock.handle, c.write_deadline, c.write_timeout)
 }
 
-pub fn (c TcpConn) peer_addr() ?Addr {
+pub fn (c &TcpConn) peer_addr() ?Addr {
 	mut addr := C.sockaddr{}
 	len := sizeof(C.sockaddr)
 	socket_error(C.getpeername(c.sock.handle, &addr, &len)) ?
 	return new_addr(addr)
 }
 
-pub fn (c TcpConn) peer_ip() ?string {
+pub fn (c &TcpConn) peer_ip() ?string {
 	buf := [44]byte{}
 	peeraddr := C.sockaddr_in{}
 	speeraddr := sizeof(peeraddr)
@@ -164,19 +164,20 @@ pub fn (c TcpConn) peer_ip() ?string {
 	return res
 }
 
-pub fn (c TcpConn) str() string {
+pub fn (c &TcpConn) str() string {
 	// TODO
-	return 'TcpConn'
+	return 'TcpConn {write_deadline: $c.write_deadline, read_deadline: $c.read_deadline, read_timeout: $c.read_timeout, write_timeout: $c.write_timeout, sock: $c.sock}'
 }
 
 pub struct TcpListener {
-	sock            TcpSocket
+pub mut:
+	sock TcpSocket
 mut:
 	accept_timeout  time.Duration
 	accept_deadline time.Time
 }
 
-pub fn listen_tcp(port int) ?TcpListener {
+pub fn listen_tcp(port int) ?&TcpListener {
 	s := new_tcp_socket() ?
 	validate_port(port) ?
 	mut addr := C.sockaddr_in{}
@@ -188,14 +189,14 @@ pub fn listen_tcp(port int) ?TcpListener {
 	sockaddr := unsafe { &C.sockaddr(&addr) }
 	socket_error(C.bind(s.handle, sockaddr, size)) ?
 	socket_error(C.listen(s.handle, 128)) ?
-	return TcpListener{
+	return &TcpListener{
 		sock: s
 		accept_deadline: no_deadline
 		accept_timeout: infinite_timeout
 	}
 }
 
-pub fn (l TcpListener) accept() ?TcpConn {
+pub fn (mut l TcpListener) accept() ?&TcpConn {
 	addr := C.sockaddr_storage{}
 	unsafe { C.memset(&addr, 0, sizeof(C.sockaddr_storage)) }
 	size := sizeof(C.sockaddr_storage)
@@ -210,14 +211,14 @@ pub fn (l TcpListener) accept() ?TcpConn {
 		}
 	}
 	new_sock := tcp_socket_from_handle(new_handle) ?
-	return TcpConn{
+	return &TcpConn{
 		sock: new_sock
 		read_timeout: tcp_default_read_timeout
 		write_timeout: tcp_default_write_timeout
 	}
 }
 
-pub fn (c TcpListener) accept_deadline() ?time.Time {
+pub fn (c &TcpListener) accept_deadline() ?time.Time {
 	if c.accept_deadline.unix != 0 {
 		return c.accept_deadline
 	}
@@ -228,7 +229,7 @@ pub fn (mut c TcpListener) set_accept_deadline(deadline time.Time) {
 	c.accept_deadline = deadline
 }
 
-pub fn (c TcpListener) accept_timeout() time.Duration {
+pub fn (c &TcpListener) accept_timeout() time.Duration {
 	return c.accept_timeout
 }
 
@@ -236,16 +237,16 @@ pub fn (mut c TcpListener) set_accept_timeout(t time.Duration) {
 	c.accept_timeout = t
 }
 
-pub fn (c TcpListener) wait_for_accept() ? {
+pub fn (mut c TcpListener) wait_for_accept() ? {
 	return wait_for_read(c.sock.handle, c.accept_deadline, c.accept_timeout)
 }
 
-pub fn (c TcpListener) close() ? {
+pub fn (mut c TcpListener) close() ? {
 	c.sock.close() ?
 	return none
 }
 
-pub fn (c TcpListener) address() ?Addr {
+pub fn (c &TcpListener) address() ?Addr {
 	return c.sock.address()
 }
 
@@ -256,7 +257,7 @@ pub:
 
 fn new_tcp_socket() ?TcpSocket {
 	sockfd := socket_error(C.socket(SocketFamily.inet, SocketType.tcp, 0)) ?
-	s := TcpSocket{
+	mut s := TcpSocket{
 		handle: sockfd
 	}
 	// s.set_option_bool(.reuse_addr, true)?
@@ -271,7 +272,7 @@ fn new_tcp_socket() ?TcpSocket {
 }
 
 fn tcp_socket_from_handle(sockfd int) ?TcpSocket {
-	s := TcpSocket{
+	mut s := TcpSocket{
 		handle: sockfd
 	}
 	// s.set_option_bool(.reuse_addr, true)?
@@ -285,7 +286,7 @@ fn tcp_socket_from_handle(sockfd int) ?TcpSocket {
 	return s
 }
 
-pub fn (s TcpSocket) set_option_bool(opt SocketOption, value bool) ? {
+pub fn (mut s TcpSocket) set_option_bool(opt SocketOption, value bool) ? {
 	// TODO reenable when this `in` operation works again
 	// if opt !in opts_can_set {
 	// 	return err_option_not_settable
@@ -297,16 +298,16 @@ pub fn (s TcpSocket) set_option_bool(opt SocketOption, value bool) ? {
 	return none
 }
 
-pub fn (s TcpSocket) set_option_int(opt SocketOption, value int) ? {
+pub fn (mut s TcpSocket) set_option_int(opt SocketOption, value int) ? {
 	socket_error(C.setsockopt(s.handle, C.SOL_SOCKET, int(opt), &value, sizeof(int))) ?
 	return none
 }
 
-fn (s TcpSocket) close() ? {
+fn (mut s TcpSocket) close() ? {
 	return shutdown(s.handle)
 }
 
-fn (s TcpSocket) @select(test Select, timeout time.Duration) ?bool {
+fn (mut s TcpSocket) @select(test Select, timeout time.Duration) ?bool {
 	return @select(s.handle, test, timeout)
 }
 
@@ -314,7 +315,7 @@ const (
 	connect_timeout = 5 * time.second
 )
 
-fn (s TcpSocket) connect(a string) ? {
+fn (mut s TcpSocket) connect(a string) ? {
 	addr := resolve_addr(a, .inet, .tcp) ?
 	res := C.connect(s.handle, &addr.addr, addr.len)
 	if res == 0 {
@@ -335,7 +336,7 @@ fn (s TcpSocket) connect(a string) ? {
 }
 
 // address gets the address of a socket
-pub fn (s TcpSocket) address() ?Addr {
+pub fn (s &TcpSocket) address() ?Addr {
 	mut addr := C.sockaddr_in{}
 	size := sizeof(C.sockaddr_in)
 	// cast to the correct type
