@@ -1187,7 +1187,11 @@ pub fn (expr Expr) position() token.Position {
 		AnonFn {
 			return expr.decl.pos
 		}
-		ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr, CastExpr, ChanInit, CharLiteral, ConcatExpr, Comment, EnumVal, FloatLiteral, GoExpr, Ident, IfExpr, IndexExpr, IntegerLiteral, Likely, LockExpr, MapInit, MatchExpr, None, OrExpr, ParExpr, PostfixExpr, PrefixExpr, RangeExpr, SelectExpr, SelectorExpr, SizeOf, SqlExpr, StringInterLiteral, StringLiteral, StructInit, Type, TypeOf, UnsafeExpr {
+		ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr, CastExpr, ChanInit, CharLiteral,
+		ConcatExpr, Comment, EnumVal, FloatLiteral, GoExpr, Ident, IfExpr, IndexExpr, IntegerLiteral,
+		Likely, LockExpr, MapInit, MatchExpr, None, OrExpr, ParExpr, PostfixExpr, PrefixExpr,
+		RangeExpr, SelectExpr, SelectorExpr, SizeOf, SqlExpr, StringInterLiteral, StringLiteral,
+		StructInit, Type, TypeOf, UnsafeExpr {
 			return expr.pos
 		}
 		ArrayDecompose {
@@ -1272,7 +1276,9 @@ pub:
 
 pub fn (stmt Stmt) position() token.Position {
 	match stmt {
-		AssertStmt, AssignStmt, Block, BranchStmt, CompFor, ConstDecl, DeferStmt, EnumDecl, ExprStmt, FnDecl, ForCStmt, ForInStmt, ForStmt, GotoLabel, GotoStmt, Import, Return, StructDecl, GlobalDecl, HashStmt, InterfaceDecl, Module, SqlStmt {
+		AssertStmt, AssignStmt, Block, BranchStmt, CompFor, ConstDecl, DeferStmt, EnumDecl, ExprStmt,
+		FnDecl, ForCStmt, ForInStmt, ForStmt, GotoLabel, GotoStmt, Import, Return, StructDecl,
+		GlobalDecl, HashStmt, InterfaceDecl, Module, SqlStmt {
 			return stmt.pos
 		}
 		GoStmt {
@@ -1306,7 +1312,8 @@ pub fn (node Node) position() token.Position {
 		StructField {
 			return node.pos.extend(node.type_pos)
 		}
-		MatchBranch, SelectBranch, Field, EnumField, ConstField, StructInitField, GlobalField, table.Param {
+		MatchBranch, SelectBranch, Field, EnumField, ConstField, StructInitField, GlobalField,
+		table.Param {
 			return node.pos
 		}
 		IfBranch {
@@ -1336,7 +1343,8 @@ pub fn (node Node) children() []Node {
 			StringInterLiteral, Assoc, ArrayInit {
 				return node.exprs.map(Node(it))
 			}
-			SelectorExpr, PostfixExpr, UnsafeExpr, AsCast, ParExpr, IfGuardExpr, SizeOf, Likely, TypeOf, ArrayDecompose {
+			SelectorExpr, PostfixExpr, UnsafeExpr, AsCast, ParExpr, IfGuardExpr, SizeOf, Likely,
+			TypeOf, ArrayDecompose {
 				children << node.expr
 			}
 			LockExpr, OrExpr {
