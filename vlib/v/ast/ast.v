@@ -1210,6 +1210,7 @@ pub fn (expr Expr) position() token.Position {
 				line_nr: expr.pos.line_nr
 				pos: left_pos.pos
 				len: right_pos.pos - left_pos.pos + right_pos.len
+				last_line: right_pos.last_line
 			}
 		}
 		CTempVar {

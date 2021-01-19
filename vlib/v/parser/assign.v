@@ -88,7 +88,7 @@ fn (mut p Parser) check_cross_variables(exprs []ast.Expr, val ast.Expr) bool {
 fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comment) ast.Stmt {
 	p.is_stmt_ident = false
 	op := p.tok.kind
-	pos := p.tok.position()
+	mut pos := p.tok.position()
 	p.next()
 	mut comments := []ast.Comment{cap: 2 * left_comments.len + 1}
 	comments << left_comments
@@ -195,6 +195,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 			}
 		}
 	}
+	pos.update_last_line(p.prev_tok.line_nr)
 	return ast.AssignStmt{
 		op: op
 		left: left
