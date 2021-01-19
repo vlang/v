@@ -339,20 +339,16 @@ pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
 
 pub fn (mut f Fmt) stmts(stmts []ast.Stmt) {
 	f.indent++
-
 	mut prev_line_nr := 0
 	if stmts.len >= 1 {
 		prev_pos := stmts[0].position()
 		prev_line_nr = util.imax(prev_pos.line_nr, prev_pos.last_line)
 	}
-
 	for stmt in stmts {
 		if stmt.position().line_nr - prev_line_nr > 1 {
 			f.out.writeln('')
 		}
-
 		f.stmt(stmt)
-
 		prev_pos := stmt.position()
 		prev_line_nr = util.imax(prev_pos.line_nr, prev_pos.last_line)
 	}

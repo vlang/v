@@ -1,18 +1,3 @@
-fn keep_single_empty_line() {
-	println('a')
-	println('b')
-
-	println('c')
-
-	d := 0
-
-	if true {
-		println('e')
-	}
-
-	f := 0
-}
-
 fn squash_multiple_empty_lines() {
 	println('a')
 
@@ -32,25 +17,5 @@ fn remove_leading_and_trailing_empty_lines() {
 		c := 0
 	} else {
 		d := 0
-	}
-}
-
-fn no_empty_line_after_multi_line_statements() {
-	// line1
-	/*
-	block1
-	*/
-	/*
-	block2
-	*/
-	if test {
-		println('a')
-	}
-	println('b')
-	for test {
-		println('c')
-	}
-	c := fn (s string) {
-		println('s')
 	}
 }
