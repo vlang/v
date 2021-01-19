@@ -73,3 +73,17 @@ fn test_propagation() {
 	assert g == 12
 	assert h == 3
 }
+
+fn get_arr_el_nested(i int) ?int {
+	ind := [2, 1, 0, 5]
+	m := [3, 4, 5]
+	r := m[ind[i]] ?
+	return r
+}
+
+fn test_nested_array_propagation() {
+	g := get_arr_el_nested(3) or {
+		12
+	}
+	assert g == 12
+}
