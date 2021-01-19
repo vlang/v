@@ -1497,11 +1497,8 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 		node.right is ast.ArrayInit && (node.right as ast.ArrayInit).exprs.len == 1
 	if is_one_val_array_init {
 		// `var in [val]` => `var == val`
-		f.write(if node.op == .key_in {
-			' == '
-		} else {
-			' != '
-		})
+		op := if node.op == .key_in { ' == ' } else { ' != ' }
+		f.write(op)
 	} else {
 		f.write(' $node.op.str() ')
 	}
