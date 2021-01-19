@@ -167,7 +167,7 @@ fn (mut p Parser) map_init() ast.MapInit {
 			p.next()
 		}
 	}
-	pos.last_line = p.prev_tok.line_nr
+	pos.update_last_line(p.tok.line_nr)
 	return ast.MapInit{
 		keys: keys
 		vals: vals

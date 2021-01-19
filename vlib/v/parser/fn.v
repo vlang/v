@@ -57,7 +57,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 	if p.tok.kind == .not {
 		p.next()
 	}
-	pos := first_pos.extend(last_pos)
+	mut pos := first_pos.extend(last_pos)
 	mut or_stmts := []ast.Stmt{} // TODO remove unnecessary allocations by just using .absent
 	mut or_pos := p.tok.position()
 	if p.tok.kind == .key_orelse {
@@ -93,6 +93,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		fn_name = p.imported_symbols[fn_name]
 	}
 	comments := p.eat_line_end_comments()
+	pos.update_last_line(p.prev_tok.line_nr)
 	return ast.CallExpr{
 		name: fn_name
 		args: args
@@ -487,7 +488,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	idx := p.table.find_or_register_fn_type(p.mod, func, true, false)
 	typ := table.new_type(idx)
 	// name := p.table.get_type_name(typ)
-	pos.last_line = p.prev_tok.line_nr
+	pos.update_last_line(p.prev_tok.line_nr)
 	return ast.AnonFn{
 		decl: ast.FnDecl{
 			name: name

@@ -4,9 +4,9 @@ vlib/v/checker/tests/prefix_expr_decl_assign_err.vv:2:5: error: non-name on the 
       |     ^
     3 |     (*d) := 14
     4 | }
-vlib/v/checker/tests/prefix_expr_decl_assign_err.vv:3:10: error: non-name `(*d)` on left side of `:=`
+vlib/v/checker/tests/prefix_expr_decl_assign_err.vv:3:5: error: non-name `(*d)` on left side of `:=`
     1 | fn main() {
     2 |     &a := 12
     3 |     (*d) := 14
-      |          ~~
+      |     ~~~~
     4 | }

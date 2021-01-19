@@ -20,7 +20,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 	if p.tok.kind == .lcbr {
 		p.inside_for = false
 		stmts := p.parse_block_no_scope(false)
-		pos.last_line = p.prev_tok.line_nr - 1
+		pos.update_last_line(p.prev_tok.line_nr)
 		for_stmt := ast.ForStmt{
 			stmts: stmts
 			pos: pos
@@ -64,7 +64,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		}
 		p.inside_for = false
 		stmts := p.parse_block_no_scope(false)
-		pos.last_line = p.prev_tok.line_nr - 1
+		pos.update_last_line(p.prev_tok.line_nr)
 		for_c_stmt := ast.ForCStmt{
 			stmts: stmts
 			has_init: has_init
@@ -159,7 +159,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		}
 		p.inside_for = false
 		stmts := p.parse_block_no_scope(false)
-		pos.last_line = p.prev_tok.line_nr - 1
+		pos.update_last_line(p.prev_tok.line_nr)
 		// println('nr stmts=$stmts.len')
 		for_in_stmt := ast.ForInStmt{
 			stmts: stmts
@@ -181,7 +181,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 	// extra scope for the body
 	p.open_scope()
 	stmts := p.parse_block_no_scope(false)
-	pos.last_line = p.prev_tok.line_nr - 1
+	pos.update_last_line(p.prev_tok.line_nr)
 	for_stmt := ast.ForStmt{
 		cond: cond
 		stmts: stmts
