@@ -1,5 +1,6 @@
 ## V 0.2.3
 *Not yet released*
+- Allow interfaces to define fields, not just methods.
 
 ## V 0.2.2
 *22 Jan 2021*
