@@ -711,7 +711,7 @@ users.sort(a.name > b.name) // reverse sort by User.name string field
 ### Maps
 
 ```v
-mut m := map[string]int{} // Only maps with string keys are allowed for now
+mut m := map[string]int{}
 m['one'] = 1
 m['two'] = 2
 println(m['one']) // "1"
@@ -720,10 +720,30 @@ println('bad_key' in m) // Use `in` to detect whether such key exists
 m.delete('two')
 // Short syntax
 numbers := {
-	'one': 1
-	'two': 2
+	1: 'two'
+	2: 'three'
 }
 ```
+
+If a key is not found, an empty value is returned by default:
+
+```
+val := m['bad_key']
+println(val) // 0
+```
+
+However it's also possible to use an `or {}` block to handle missing keys:
+
+```
+val := m['bad_key'] or { println('key not found') }
+```
+
+The same optional check applies to arrays:
+
+```
+val := arr[large_index] or { println('out of bounds') }
+```
+
 
 ## Module imports
 
