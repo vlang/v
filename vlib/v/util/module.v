@@ -75,10 +75,10 @@ pub fn mod_path_to_full_name(mod string, path string) ?string {
 					if ls := os.ls(parent) {
 						if 'v.mod' in ls {
 							last_v_mod = j
-							continue
+							break
 						}
 					}
-					break
+					// break
 				}
 				if last_v_mod > -1 {
 					mod_full_name := try_path_parts[last_v_mod - 1..].join('.')
