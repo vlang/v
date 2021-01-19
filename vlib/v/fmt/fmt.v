@@ -917,7 +917,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.if_guard_expr(node)
 		}
 		ast.InfixExpr {
-			f.infix_expr(node)
+			f.raw_infix_expr(node)
 		}
 		ast.IndexExpr {
 			f.index_expr(node)
@@ -1485,6 +1485,26 @@ pub fn (mut f Fmt) lock_expr(lex ast.LockExpr) {
 	f.write('}')
 }
 
+pub fn (mut f Fmt) raw_infix_expr(node ast.InfixExpr) {
+	f.expr(node.left)
+	is_one_val_array_init := node.op in [.key_in, .not_in] &&
+		node.right is ast.ArrayInit && (node.right as ast.ArrayInit).exprs.len == 1
+	if is_one_val_array_init {
+		// `var in [val]` => `var == val`
+		op := if node.op == .key_in { ' == ' } else { ' != ' }
+		f.write(op)
+	} else {
+		f.write(' $node.op.str() ')
+	}
+	if is_one_val_array_init {
+		// `var in [val]` => `var == val`
+		f.expr((node.right as ast.ArrayInit).exprs[0])
+	} else {
+		f.expr(node.right)
+	}
+	f.or_expr(node.or_block)
+}
+
 pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	buffering_save := f.buffering
 	if !f.buffering {
@@ -1548,6 +1568,35 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	f.or_expr(node.or_block)
 }
 
+pub fn (mut f Fmt) wrap_if_cond(start_pos int, start_len int) {
+	cut_span := f.out.len - start_pos
+	x := f.out.cut_last(cut_span)
+	f.line_len = start_len
+	xs := x.split(' ')
+	mut conds := ['']
+	for el in xs {
+		if el in ['&&', '||']{
+			conds[conds.len - 1] = conds.last().trim_space()
+			conds << '$el '
+		} else {
+			conds[conds.len - 1] += '$el '
+		}
+	}
+	for i, c in conds {
+		if f.line_len + c.len < max_len.last() {
+			f.write(c)
+		} else {
+			f.writeln('')
+			f.indent++
+			f.write(c)
+			f.indent--
+		}
+		if i < conds.len - 1 {
+			f.write(' ')
+		}
+	}
+}
+
 pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 	dollar := if it.is_comptime { '$' } else { '' }
 	mut single_line := it.branches.len == 2 && it.has_else && branch_is_single_line(it.branches[0]) &&
@@ -1573,14 +1622,12 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 			if i < it.branches.len - 1 || !it.has_else {
 				f.write('${dollar}if ')
 				cur_pos := f.out.len
+				cur_len := f.line_len
 				f.expr(branch.cond)
-				cond_len := f.out.len - cur_pos
-				is_cond_wrapped := if cond_len > 0 { '\n' in f.out.last_n(cond_len) } else { false }
-				if is_cond_wrapped {
-					f.writeln('')
-				} else {
-					f.write(' ')
+				if f.line_len > max_len.last() {
+					f.wrap_if_cond(cur_pos, cur_len)
 				}
+				f.write(' ')
 			}
 			f.write('{')
 			if single_line {
