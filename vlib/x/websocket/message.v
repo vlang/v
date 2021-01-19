@@ -1,6 +1,7 @@
 module websocket
 
 import encoding.utf8
+import math
 
 const (
 	header_len_offset           = 2 // offset for lengthpart of websocket header
@@ -253,8 +254,8 @@ pub fn (mut ws Client) parse_frame_header() ?Frame {
 		if frame.payload_len == 126 && bytes_read == u64(extended_payload16_end_byte) {
 			frame.header_len += 2
 			frame.payload_len = 0
-			frame.payload_len |= buffer[2] << 8
-			frame.payload_len |= buffer[3] << 0
+			frame.payload_len |= (buffer[2] * int(math.pow(2, 8)))
+			frame.payload_len |= buffer[3]
 			frame.frame_size = frame.header_len + frame.payload_len
 			if !frame.has_mask {
 				break
@@ -263,14 +264,14 @@ pub fn (mut ws Client) parse_frame_header() ?Frame {
 		if frame.payload_len == 127 && bytes_read == u64(extended_payload64_end_byte) {
 			frame.header_len += 8
 			frame.payload_len = 0
-			frame.payload_len |= buffer[2] << 56
-			frame.payload_len |= buffer[3] << 48
-			frame.payload_len |= buffer[4] << 40
-			frame.payload_len |= buffer[5] << 32
-			frame.payload_len |= buffer[6] << 24
-			frame.payload_len |= buffer[7] << 16
-			frame.payload_len |= buffer[8] << 8
-			frame.payload_len |= buffer[9] << 0
+			frame.payload_len |= (buffer[2] * int(math.pow(2, 56)))
+			frame.payload_len |= (buffer[3] * int(math.pow(2, 48)))
+			frame.payload_len |= (buffer[4] * int(math.pow(2, 40)))
+			frame.payload_len |= (buffer[5] * int(math.pow(2, 32)))
+			frame.payload_len |= (buffer[6] * int(math.pow(2, 24)))
+			frame.payload_len |= (buffer[7] * int(math.pow(2, 16)))
+			frame.payload_len |= (buffer[8] * int(math.pow(2, 8)))
+			frame.payload_len |= buffer[9]
 			if !frame.has_mask {
 				break
 			}
