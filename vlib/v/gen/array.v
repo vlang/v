@@ -236,15 +236,13 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 			table.u64_type, table.u64_type.to_ptr() { 'compare_u64s' }
 			table.string_type, table.string_type.to_ptr() { 'compare_strings' }
 			table.f64_type, table.f64_type.to_ptr() { 'compare_floats' }
-			else {
-				verror('usage: .sort(a.field < b.field)')
-				''
-			}
+			else { '' }
 		}
-		if is_reverse {
+		if compare_fn != '' && is_reverse {
 			compare_fn += '_reverse'
 		}
-	} else {
+	}
+	if compare_fn == '' {
 		// `users.sort(a.age > b.age)`
 		// Generate a comparison function for a custom type
 		tmp_name := g.new_tmp_var()
