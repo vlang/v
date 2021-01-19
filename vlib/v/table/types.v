@@ -651,7 +651,8 @@ pub mut:
 
 pub struct Interface {
 pub mut:
-	types []Type
+	types  []Type
+	fields []Field
 }
 
 pub struct Enum {
@@ -943,8 +944,26 @@ pub fn (t &TypeSymbol) str_method_info() (bool, bool, int) {
 	return has_str_method, expects_ptr, nr_args
 }
 
+pub fn (t &TypeSymbol) find_field(name string) ?Field {
+	match t.info {
+		Aggregate { return t.info.find_field(name) }
+		Struct { return t.info.find_field(name) }
+		Interface { return t.info.find_field(name) }
+		else { return none }
+	}
+}
+
 fn (a &Aggregate) find_field(name string) ?Field {
 	for field in a.fields {
+		if field.name == name {
+			return field
+		}
+	}
+	return none
+}
+
+fn (i &Interface) find_field(name string) ?Field {
+	for field in i.fields {
 		if field.name == name {
 			return field
 		}

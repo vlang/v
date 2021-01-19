@@ -1573,7 +1573,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	}
 	// call struct field fn type
 	// TODO: can we use SelectorExpr for all? this dosent really belong here
-	if field := c.table.struct_find_field(left_type_sym, method_name) {
+	if field := c.table.find_field(left_type_sym, method_name) {
 		field_type_sym := c.table.get_type_symbol(field.typ)
 		if field_type_sym.kind == .function {
 			// call_expr.is_method = false
@@ -1971,6 +1971,20 @@ fn (mut c Checker) type_implements(typ table.Type, inter_typ table.Type, pos tok
 			pos)
 	}
 	if mut inter_sym.info is table.Interface {
+		for ifield in inter_sym.info.fields {
+			if field := typ_sym.find_field(ifield.name) {
+				if ifield.typ != field.typ {
+					exp := c.table.type_to_str(ifield.typ)
+					got := c.table.type_to_str(field.typ)
+					c.error('`$styp` incorrectly implements field `$ifield.name` of interface `$inter_sym.name`, expected `$exp`, got `$got`',
+						pos)
+					return false
+				}
+				continue
+			}
+			c.error("`$styp` doesn't implement field `$ifield.name` of interface `$inter_sym.name`",
+			pos)
+		}
 		if typ !in inter_sym.info.types && typ_sym.kind != .interface_ {
 			inter_sym.info.types << typ
 		}
@@ -2158,7 +2172,7 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 			}
 		}
 	} else {
-		if f := c.table.struct_find_field(sym, field_name) {
+		if f := c.table.find_field(sym, field_name) {
 			has_field = true
 			field = f
 		} else {
@@ -2168,7 +2182,7 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 				mut embed_of_found_fields := []table.Type{}
 				for embed in sym.info.embeds {
 					embed_sym := c.table.get_type_symbol(embed)
-					if f := c.table.struct_find_field(embed_sym, field_name) {
+					if f := c.table.find_field(embed_sym, field_name) {
 						found_fields << f
 						embed_of_found_fields << embed
 					}
@@ -2209,7 +2223,7 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 		selector_expr.typ = field.typ
 		return field.typ
 	}
-	if sym.kind !in [.struct_, .aggregate] {
+	if sym.kind !in [.struct_, .aggregate, .interface_] {
 		if sym.kind != .placeholder {
 			c.error('`$sym.name` is not a struct', selector_expr.pos)
 		}
@@ -3881,7 +3895,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 		return table.int_type
 	}
 	if c.inside_sql {
-		if field := c.table.struct_find_field(c.cur_orm_ts, ident.name) {
+		if field := c.table.find_field(c.cur_orm_ts, ident.name) {
 			return field.typ
 		}
 	}
@@ -4219,7 +4233,7 @@ fn (c Checker) smartcast_sumtype(expr ast.Expr, cur_type table.Type, to_type tab
 			mut sum_type_casts := []table.Type{}
 			expr_sym := c.table.get_type_symbol(expr.expr_type)
 			mut orig_type := 0
-			if field := c.table.struct_find_field(expr_sym, expr.field_name) {
+			if field := c.table.find_field(expr_sym, expr.field_name) {
 				if field.is_mut {
 					root_ident := expr.root_ident()
 					if v := scope.find_var(root_ident.name) {

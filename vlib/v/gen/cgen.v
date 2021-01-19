@@ -2941,7 +2941,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	}
 	mut sum_type_deref_field := ''
 	mut sum_type_dot := '.'
-	if f := g.table.struct_find_field(sym, node.field_name) {
+	if f := g.table.find_field(sym, node.field_name) {
 		field_sym := g.table.get_type_symbol(f.typ)
 		if field_sym.kind == .sum_type {
 			if !prevent_sum_type_unwrapping_once {
@@ -5888,7 +5888,7 @@ fn (mut g Gen) interface_table() string {
 			}
 			// TODO g.fn_args(method.args[1..], method.is_variadic)
 			methods_typ_def.writeln(');')
-			methods_struct_def.writeln('\t$typ_name ${c_name(method.name)};')
+			methods_struct_def.writeln('\t$typ_name _method_${c_name(method.name)};')
 			imethods[method.name] = typ_name
 		}
 		methods_struct_def.writeln('};')
@@ -5991,7 +5991,7 @@ $staticprefix _Interface* I_${cctype}_to_Interface_${interface_name}_ptr($cctype
 					method_call += '_method_wrapper'
 				}
 				if g.pref.build_mode != .build_module {
-					methods_struct.writeln('\t\t.${c_name(method.name)} = $method_call,')
+					methods_struct.writeln('\t\t._method_${c_name(method.name)} = $method_call,')
 				}
 			}
 			if g.pref.build_mode != .build_module {
