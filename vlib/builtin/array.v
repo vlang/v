@@ -229,6 +229,16 @@ fn (a array) get(i int) voidptr {
 	}
 }
 
+// Private function. Used to implement x = a[i] or { ... }
+fn (a array) get_with_check(i int) voidptr {
+	if i < 0 || i >= a.len {
+		return 0
+	}
+	unsafe {
+		return byteptr(a.data) + i * a.element_size
+	}
+}
+
 // first returns the first element of the array.
 pub fn (a array) first() voidptr {
 	$if !no_bounds_checking ? {
