@@ -472,7 +472,9 @@ pub fn prepare_tool_when_needed(source_name string) {
 
 pub fn recompile_file(vexe string, file string) {
 	cmd := '$vexe $file'
-	println('recompilation command: $cmd')
+	$if trace_recompilation ? {
+		println('recompilation command: $cmd')
+	}
 	recompile_result := os.system(cmd)
 	if recompile_result != 0 {
 		eprintln('could not recompile $file')

@@ -252,64 +252,6 @@ fn (mut p Parser) at() ast.AtExpr {
 	}
 }
 
-// TODO import warning bug
-const (
-	todo_delete_me = pref.OS.linux
-)
-
-fn os_from_string(os string) pref.OS {
-	match os {
-		'linux' {
-			return .linux
-		}
-		'windows' {
-			return .windows
-		}
-		'ios' {
-			return .ios
-		}
-		'macos' {
-			return .macos
-		}
-		'freebsd' {
-			return .freebsd
-		}
-		'openbsd' {
-			return .openbsd
-		}
-		'netbsd' {
-			return .netbsd
-		}
-		'dragonfly' {
-			return .dragonfly
-		}
-		'js' {
-			return .js
-		}
-		'solaris' {
-			return .solaris
-		}
-		'android' {
-			return .android
-		}
-		'msvc' {
-			// notice that `-os msvc` became `-cc msvc`
-			verror('use the flag `-cc msvc` to build using msvc')
-		}
-		'haiku' {
-			return .haiku
-		}
-		'linux_or_macos' {
-			return .linux
-		}
-		else {
-			panic('bad os $os')
-		}
-	}
-	// println('bad os $os') // todo panic?
-	return .linux
-}
-
 fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 	p.check(.dollar)
 	mut has_parens := false
