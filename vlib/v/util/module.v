@@ -9,12 +9,13 @@ pub fn qualify_import(pref &pref.Preferences, mod string, file_path string) stri
 	mod_path := mod.replace('.', os.path_separator)
 	for search_path in mod_paths {
 		try_path := os.join_path(search_path, mod_path)
-		if m1 := mod_path_to_full_name(mod, try_path) {
-			return m1
+		if os.is_dir(try_path) {
+			if m1 := mod_path_to_full_name(mod, try_path) {
+				return m1
+			}
 		}
 	}
 	if m1 := mod_path_to_full_name(mod, file_path) {
-		// prinlnt('GOT HERE: $mod')
 		return m1
 	}
 	return mod
@@ -30,8 +31,13 @@ pub fn qualify_module(mod string, file_path string) string {
 	return mod
 }
 
-// TODO: properly define module location / v.mod rules
+// TODO:
+// * properly define module location / v.mod rules
+// * if possible split this function in two, one which gets the
+// parent module path and another which turns it into the full name
 pub fn mod_path_to_full_name(mod string, path string) ?string {
+	// TODO: explore using `pref.lookup_path` & `os.vmodules_paths()`
+	// absolute paths instead of 'vlib' & '.vmodules'
 	vmod_folders := ['vlib', '.vmodules', 'modules']
 	mut in_vmod_path := false
 	for vmod_folder in vmod_folders {
@@ -45,7 +51,7 @@ pub fn mod_path_to_full_name(mod string, path string) ?string {
 	// go back through each parent in path_parts and join with `mod_path` to see the dir exists
 	for i := path_parts.len - 1; i >= 0; i-- {
 		try_path := os.join_path(path_parts[0..i].join(os.path_separator), mod_path)
-		// found module path becsuse `try_path` exists
+		// found module path
 		if os.is_dir(try_path) {
 			// we know we are in one of the `vmod_folders`
 			if in_vmod_path {
@@ -55,9 +61,6 @@ pub fn mod_path_to_full_name(mod string, path string) ?string {
 					// we reached a vmod folder
 					if path_part in vmod_folders {
 						mod_full_name := try_path.split(os.path_separator)[j + 1..].join('.')
-						if mod_full_name == '' {
-							println('### A: $mod | try_path:$try_path | j:$j')
-						}
 						return mod_full_name
 					}
 				}
@@ -65,24 +68,20 @@ pub fn mod_path_to_full_name(mod string, path string) ?string {
 				// looking for for a `v.mod` file and break at the first path without it
 			} else {
 				mut try_path_parts := try_path.split(os.path_separator)
-				// last path in try_path_parts that contained `v.mod`
+				// last index in try_path_parts that contains a `v.mod`
 				mut last_v_mod := -1
 				for j := try_path_parts.len; j > 0; j-- {
 					parent := try_path_parts[0..j].join(os.path_separator)
 					if ls := os.ls(parent) {
 						if 'v.mod' in ls {
-							// set last `v.mod` path
 							last_v_mod = j
-						} else {
-							break
+							continue
 						}
 					}
+					break
 				}
 				if last_v_mod > -1 {
 					mod_full_name := try_path_parts[last_v_mod - 1..].join('.')
-					if mod_full_name == '' {
-						println('### B: $mod | try_path_parts:[${try_path_parts.join(',')}]')
-					}
 					return mod_full_name
 				}
 			}
