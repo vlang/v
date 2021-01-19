@@ -73,6 +73,7 @@ mut:
 	inside_ternary      int      // ?: comma separated statements on a single line
 	inside_map_postfix  bool     // inside map++/-- postfix expr
 	inside_map_infix    bool     // inside map<</+=/-= infix expr
+	inside_map_index    bool
 	// inside_if_expr        bool
 	ternary_names         map[string]string
 	ternary_level_names   map[string][]string
@@ -4145,7 +4146,13 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					if !left_is_ptr || node.left_type.has_flag(.shared_f) {
 						g.write('&')
 					}
-					g.expr(node.left)
+					if node.left is ast.IndexExpr {
+						g.inside_map_index = true
+						g.expr(node.left)
+						g.inside_map_index = false
+					} else {
+						g.expr(node.left)
+					}
 					if node.left_type.has_flag(.shared_f) {
 						if left_is_ptr {
 							g.write('->val')
@@ -4165,7 +4172,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 						zero := g.type_default(info.value_type)
 						g.write('$zero })))')
 					}
-				} else if (g.inside_map_postfix || g.inside_map_infix) ||
+				} else if g.inside_map_postfix || g.inside_map_infix || g.inside_map_index ||
 					(g.is_assign_lhs && !g.is_array_set && get_and_set_types)
 				{
 					zero := g.type_default(info.value_type)
