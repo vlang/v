@@ -85,3 +85,17 @@ fn test_iteration_over_fixed_array_literal() {
 	}
 	assert s == 27.25
 }
+
+fn calc_size(a [3]int) {
+	mut s := 0
+	for i in a {
+		println(i)
+		s += i
+	}
+	assert s == 6
+}
+
+fn test_for_in_fixed_array() {
+	arr := [1,2,3]!
+	calc_size(arr)
+}
