@@ -1941,6 +1941,10 @@ pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type table.Type) t
 			c.error('unexpected `?`, the function `$expr.name` does not return an optional',
 				expr.or_block.pos)
 		}
+	} else if expr is ast.IndexExpr {
+		if expr.or_expr.kind != .absent {
+			c.check_or_expr(expr.or_expr, ret_type, ret_type)
+		}
 	}
 	return ret_type
 }
@@ -2581,7 +2585,8 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 						right.position())
 				}
 			}
-			.and_assign, .or_assign, .xor_assign, .mod_assign, .left_shift_assign, .right_shift_assign {
+			.and_assign, .or_assign, .xor_assign, .mod_assign, .left_shift_assign, .right_shift_assign
+			 {
 				if !left_sym.is_int() &&
 					!c.table.get_final_type_symbol(left_type_unwrapped).is_int()
 				{
@@ -4818,7 +4823,7 @@ fn (mut c Checker) check_index_type(typ_sym &table.TypeSymbol, index_type table.
 }
 
 pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
-	typ := c.expr(node.left)
+	mut typ := c.expr(node.left)
 	node.left_type = typ
 	typ_sym := c.table.get_final_type_symbol(typ)
 	if typ_sym.kind !in [.array, .array_fixed, .string, .map] && !typ.is_ptr() && typ !in [table.byteptr_type, table.charptr_type] &&
@@ -4858,9 +4863,10 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 		if typ_sym.kind == .array_fixed {
 			elem_type := c.table.value_type(typ)
 			idx := c.table.find_or_register_array(elem_type)
-			return table.new_type(idx)
+			typ = table.new_type(idx)
+		} else {
+			typ = typ.set_nr_muls(0)
 		}
-		return typ.set_nr_muls(0)
 	} else { // [1]
 		index_type := c.expr(node.index)
 		if typ_sym.kind == .map {
@@ -4874,9 +4880,10 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 		}
 		value_type := c.table.value_type(typ)
 		if value_type != table.void_type {
-			return value_type
+			typ = value_type
 		}
 	}
+	c.stmts(node.or_expr.stmts)
 	return typ
 }
 

@@ -62,7 +62,7 @@ This runs various CI tests, e.g.:
 
 Check that most .v files, are invariant of `v fmt` runs.
 
-## `v test-compiler-full`
+## `v test-self`
 
 Run `vlib` module tests, *including* the compiler tests.
 
@@ -79,7 +79,7 @@ most likely pass. Slowest, but most comprehensive.
 
 It works, by running these in succession:
 * `v test-cleancode`
-* `v test-compiler-full`
+* `v test-self`
 * `v test-fmt`
 * `v build-tools`
 * `v build-examples`

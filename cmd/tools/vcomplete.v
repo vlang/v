@@ -53,7 +53,7 @@ const (
 		'bin2v',
 		'test',
 		'test-fmt',
-		'test-compiler-full',
+		'test-self',
 		'test-cleancode',
 		'repl',
 		'complete',

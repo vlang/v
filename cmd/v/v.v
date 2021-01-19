@@ -22,9 +22,10 @@ const (
 		'test-all', /* runs most of the tests and other checking tools, that will be run by the CI */
 		'test-fmt',
 		'test-parser',
-		'test-fixed', /* deprecated by test-compiler-full */
-		'test-compiler', /* deprecated by test-compiler-full */
-		'test-compiler-full',
+		'test-self',
+		'test-fixed', /* deprecated by test-self */
+		'test-compiler', /* deprecated by test-self */
+		'test-compiler-full', /* deprecated by test-self */
 		'test-cleancode',
 		'repl',
 		'complete',
@@ -79,12 +80,12 @@ fn main() {
 		eprintln('-usecache is currently disabled on windows')
 		exit(1)
 	}
-	if command == 'test-fixed' {
-		eprintln('Please use `v test-compiler-full` instead.')
+	if command in ['test-fixed', 'test-compiler-full'] {
+		eprintln('Please use `v test-self` instead.')
 		exit(1)
 	}
 	if command == 'test-compiler' {
-		eprintln('Please use either `v test-all`, `v test-compiler-full`, `v build-examples`, `v build-tools` or `v build-vbinaries` instead.')
+		eprintln('Please use either `v test-all`, `v test-self`, `v build-examples`, `v build-tools` or `v build-vbinaries` instead.')
 		exit(1)
 	}
 	if command == 'test-vet' {
