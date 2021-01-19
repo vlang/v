@@ -1307,22 +1307,13 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 				styp := g.typ(it.val_type)
 				g.write('\t$styp ${c_name(it.val_var)}')
 			}
-			if it.val_is_mut {
-				if it.cond_type.is_ptr() || it.cond is ast.ArrayInit {
-					g.writeln(' = &(*$atmp)[$i];')
-				} else {
-					g.write(' = &')
-					g.expr(it.cond)
-					g.writeln('[$i];')
-				}
+			addr := if it.val_is_mut {'&'} else {''}
+			if it.cond_type.is_ptr() || it.cond is ast.ArrayInit {
+				g.writeln(' = ${addr}(*$atmp)[$i];')
 			} else {
-				if it.cond_type.is_ptr() || it.cond is ast.ArrayInit {
-					g.writeln(' = (*$atmp)[$i];')
-				} else {
-					g.write(' = ')
-					g.expr(it.cond)
-					g.writeln('[$i];')
-				}
+				g.write(' = $addr')
+				g.expr(it.cond)
+				g.writeln('[$i];')
 			}
 		}
 	} else if it.kind == .map {
