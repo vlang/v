@@ -6,7 +6,11 @@ fn keep_single_empty_line() {
 
 	d := 0
 
-	e := 0
+	if true {
+		println('e')
+	}
+
+	f := 0
 }
 
 fn squash_multiple_empty_lines() {

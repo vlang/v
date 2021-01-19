@@ -347,14 +347,14 @@ pub fn (mut f Fmt) stmts(stmts []ast.Stmt) {
 	}
 
 	for stmt in stmts {
-		if f.is_debug {
-			println('${stmt} -> prev_line_nr: ${prev_line_nr}; current_line_nr: ${stmt.position().line_nr}')
-		}
 		if stmt.position().line_nr - prev_line_nr > 1 {
 			if f.is_debug {
-				println("--> EMPTY LINE <---")
+				println('--> EMPTY LINE <---')
 			}
 			f.out.writeln('')
+		}
+		if f.is_debug {
+			println('$stmt -> prev_line_nr: $prev_line_nr; current_line_nr: $stmt.position().line_nr')
 		}
 
 		f.stmt(stmt)

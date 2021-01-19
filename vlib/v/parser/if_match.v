@@ -143,7 +143,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 			break
 		}
 	}
-	pos.last_line = p.prev_tok.line_nr
+	pos.update_last_line(p.prev_tok.line_nr)
 	return ast.IfExpr{
 		is_comptime: is_comptime
 		branches: branches
@@ -265,7 +265,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		p.check(.rcbr)
 	}
 	// return ast.StructInit{}
-	pos.last_line = p.prev_tok.line_nr
+	pos.update_last_line(p.prev_tok.line_nr)
 	return ast.MatchExpr{
 		branches: branches
 		cond: cond

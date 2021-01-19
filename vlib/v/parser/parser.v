@@ -630,11 +630,12 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 		}
 		.key_assert {
 			p.next()
-			assert_pos := p.tok.position()
+			mut pos := p.tok.position()
 			expr := p.expr(0)
+			pos.update_last_line(p.prev_tok.line_nr)
 			return ast.AssertStmt{
 				expr: expr
-				pos: assert_pos
+				pos: pos
 			}
 		}
 		.key_for {
@@ -693,20 +694,24 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 		.dollar {
 			match p.peek_tok.kind {
 				.key_if {
-					pos := p.tok.position()
+					mut pos := p.tok.position()
+					expr := p.if_expr(true)
+					pos.update_last_line(p.prev_tok.line_nr)
 					return ast.ExprStmt{
-						expr: p.if_expr(true)
-						pos: pos.extend(p.prev_tok.position())
+						expr: expr
+						pos: pos
 					}
 				}
 				.key_for {
 					return p.comp_for()
 				}
 				.name {
-					pos := p.tok.position()
+					mut pos := p.tok.position()
+					expr := p.comp_call()
+					pos.update_last_line(p.prev_tok.line_nr)
 					return ast.ExprStmt{
-						expr: p.comp_call()
-						pos: pos.extend(p.prev_tok.position())
+						expr: expr
+						pos: pos
 					}
 				}
 				else {
@@ -990,6 +995,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	// a, mut b ... :=/=   // multi-assign
 	// collect things upto hard boundaries
 	tok := p.tok
+	mut pos := tok.position()
 	left, left_comments := p.expr_list()
 	left0 := left[0]
 	if tok.kind == .key_mut && p.tok.kind != .decl_assign {
@@ -1007,6 +1013,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 		p.error_with_pos('expression evaluated but not used', left0.position())
 		return ast.Stmt{}
 	}
+	pos.update_last_line(p.prev_tok.line_nr)
 	if left.len == 1 {
 		return ast.ExprStmt{
 			expr: left0
@@ -1020,7 +1027,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 			vals: left
 			pos: tok.position()
 		}
-		pos: tok.position()
+		pos: pos
 		comments: left_comments
 	}
 }
@@ -2422,7 +2429,7 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 	}
 	if p.tok.kind == .rcbr {
 		// `unsafe {}`
-		pos.last_line = p.tok.line_nr - 1
+		pos.update_last_line(p.tok.line_nr)
 		p.next()
 		return ast.Block{
 			is_unsafe: true
@@ -2441,7 +2448,7 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 			// `unsafe {expr}`
 			if stmt.expr.is_expr() {
 				p.next()
-				pos.last_line = p.prev_tok.line_nr - 1
+				pos.update_last_line(p.prev_tok.line_nr)
 				ue := ast.UnsafeExpr{
 					expr: stmt.expr
 					pos: pos
@@ -2461,7 +2468,7 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 		stmts << p.stmt(false)
 	}
 	p.next()
-	pos.last_line = p.tok.line_nr - 1
+	pos.update_last_line(p.tok.line_nr)
 	return ast.Block{
 		stmts: stmts
 		is_unsafe: true

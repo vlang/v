@@ -168,7 +168,7 @@ fn (mut s Scanner) new_mulitline_token(tok_kind token.Kind, lit string, len int,
 	return token.Token{
 		kind: tok_kind
 		lit: lit
-		line_nr: start_line + 1,
+		line_nr: start_line + 1
 		pos: s.pos - len + 1
 		len: len
 		tidx: cidx
@@ -979,7 +979,8 @@ fn (mut s Scanner) text_scan() token.Token {
 						if !comment.contains('\n') {
 							comment = '\x01' + comment
 						}
-						return s.new_mulitline_token(.comment, comment, comment.len + 4, start_line)
+						return s.new_mulitline_token(.comment, comment, comment.len + 4,
+							start_line)
 					}
 					// Skip if not in fmt mode
 					continue
