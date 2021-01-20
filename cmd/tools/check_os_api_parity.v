@@ -28,9 +28,9 @@ const (
 )
 
 struct App {
-	diff_cmd        string
-	is_verbose      bool
-	modules         []string
+	diff_cmd   string
+	is_verbose bool
+	modules    []string
 mut:
 	api_differences map[string]int
 }
@@ -40,9 +40,7 @@ fn main() {
 	vroot := os.dir(vexe)
 	util.set_vroot_folder(vroot)
 	os.chdir(vroot)
-	cmd := util.find_working_diff_command() or {
-		''
-	}
+	cmd := util.find_working_diff_command() or { '' }
 	mut app := App{
 		diff_cmd: cmd
 		is_verbose: os.getenv('VERBOSE').len > 0
@@ -63,7 +61,7 @@ fn main() {
 	}
 	howmany := app.api_differences.len
 	eprintln('NB: please, do run `git clean -xf` after this tool, or at least `find thirdparty/ |grep .o$|xargs rm`')
-	eprintln('otherwise, `./v test-fixed` may show false positives, due to .o files compiled with a cross compiler.')
+	eprintln('otherwise, `./v test-self` may show false positives, due to .o files compiled with a cross compiler.')
 	if howmany > 0 {
 		eprintln(term.header('Found $howmany modules with different APIs', '='))
 		for m in app.api_differences.keys() {
@@ -105,7 +103,7 @@ fn (app App) gen_api_for_module_in_os(mod_name string, os_name string) string {
 		for s in f.stmts {
 			if s is ast.FnDecl {
 				if s.is_pub {
-					fn_signature := s.stringify(b.table, mod_name, map[string]string)
+					fn_signature := s.stringify(b.table, mod_name, map[string]string{})
 					fn_mod := s.modname()
 					if fn_mod == mod_name {
 						fline := '$fn_mod: $fn_signature'

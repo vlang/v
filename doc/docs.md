@@ -455,6 +455,13 @@ s := r'hello\nworld'
 println(s) // "hello\nworld"
 ```
 
+Strings can be easily converted to integers:
+
+```v
+s := '42'
+n := s.int() // 42
+```
+
 ### String interpolation
 
 Basic interpolation syntax is pretty simple - use `$` before a variable name.
@@ -711,18 +718,51 @@ users.sort(a.name > b.name) // reverse sort by User.name string field
 ### Maps
 
 ```v
-mut m := map[string]int{} // Only maps with string keys are allowed for now
+mut m := map[string]int{} // a map with `string` keys and `int` values
 m['one'] = 1
 m['two'] = 2
 println(m['one']) // "1"
 println(m['bad_key']) // "0"
 println('bad_key' in m) // Use `in` to detect whether such key exists
 m.delete('two')
-// Short syntax
+// NB: map keys can have any type, `int` in this case,
+// and the whole map can be initialized using this short syntax:
 numbers := {
-	'one': 1
-	'two': 2
+	1: 'one'
+	2: 'two'
 }
+println(numbers)
+```
+
+If a key is not found, a zero value is returned by default:
+
+```v
+sm := {
+	'abc': 'xyz'
+}
+val := sm['bad_key']
+println(val) // ''
+intm := {
+	1: 1234
+	2: 5678
+}
+s := intm[3]
+println(s) // 0
+```
+
+It's also possible to use an `or {}` block to handle missing keys:
+
+```v
+mm := map[string]int{}
+val := mm['bad_key'] or { panic('key not found') }
+```
+
+The same optional check applies to arrays:
+
+```v
+arr := [1, 2, 3]
+large_index := 999
+val := arr[large_index] or { panic('out of bounds') }
 ```
 
 ## Module imports
@@ -1884,6 +1924,35 @@ println(sum)
 The built-in method `type_name` returns the name of the currently held
 type.
 
+With sum types you could build recursive structures and write concise but powerful code on them.
+```v
+// V's binary tree
+struct Empty {}
+
+struct Node {
+	value f64
+	left  Tree
+	right Tree
+}
+
+type Tree = Empty | Node
+
+// sum up all node values
+fn sum(tree Tree) f64 {
+	return match tree {
+		Empty { f64(0) } // TODO: as match gets smarter just remove f64()
+		Node { tree.value + sum(tree.left) + sum(tree.right) }
+	}
+}
+
+fn main() {
+	left := Node{0.2, Empty{}, Empty{}}
+	right := Node{0.3, Empty{}, Node{0.4, Empty{}, Empty{}}}
+	tree := Node{0.5, left, right}
+	println(sum(tree)) // 0.2 + 0.3 + 0.4 + 0.5 = 1.4
+}
+```
+
 #### Dynamic casts
 
 To check whether a sum type instance holds a certain type, use `sum is Type`.
@@ -2593,7 +2662,7 @@ For developers willing to have more low level control, autofree can be disabled 
 memory manually.
 
 Note: right now autofree is hidden behind the -autofree flag. It will be enabled by
-default in V 0.3.
+default in V 0.3. If autofree is not used, V programs will leak memory.
 
 For example:
 
@@ -3145,7 +3214,7 @@ it easier to change in external editor programs, without needing to recompile
 your executable.
 
 When you compile with `-prod`, the file *will be embedded inside* your
-executable, increasing your binary size, but making it more self contained 
+executable, increasing your binary size, but making it more self contained
 and thus easier to distribute. In this case, `f.data()` will cause *no IO*,
 and it will always return the same data.
 

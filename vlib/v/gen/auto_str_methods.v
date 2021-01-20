@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module gen
 
@@ -344,19 +344,16 @@ fn (mut g Gen) gen_str_for_map(info table.Map, styp string, str_fn_name string) 
 	g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _SLIT(": "));')
 	if val_sym.kind == .function {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${elem_str_fn_name}());')
+	} else if val_sym.kind == .string {
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\'%.*s\\000\'", 2, *($val_styp*)DenseArray_value(&m.key_values, i)));')
+	} else if val_sym.kind == .struct_ && !val_sym.has_method('str') {
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, indent_${elem_str_fn_name}(*($val_styp*)DenseArray_value(&m.key_values, i), indent_count));')
+	} else if val_sym.kind in [.f32, .f64] {
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("%g", 1, *($val_styp*)DenseArray_value(&m.key_values, i)));')
+	} else if val_sym.kind == .rune {
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("`%.*s\\000`", 2, ${elem_str_fn_name}(*($val_styp*)DenseArray_value(&m.key_values, i))));')
 	} else {
-		g.auto_str_funcs.writeln('\t\t$val_styp it = *($val_styp*)DenseArray_value(&m.key_values, i);')
-		if val_sym.kind == .string {
-			g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\'%.*s\\000\'", 2, it));')
-		} else if val_sym.kind == .struct_ && !val_sym.has_method('str') {
-			g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, indent_${elem_str_fn_name}(it, indent_count));')
-		} else if val_sym.kind in [.f32, .f64] {
-			g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("%g", 1, it));')
-		} else if val_sym.kind == .rune {
-			g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("`%.*s\\000`", 2, ${elem_str_fn_name}(it)));')
-		} else {
-			g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${elem_str_fn_name}(it));')
-		}
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${elem_str_fn_name}(*($val_styp*)DenseArray_value(&m.key_values, i)));')
 	}
 	g.auto_str_funcs.writeln('\t\tif (i != m.key_values.len-1) {')
 	g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, _SLIT(", "));')

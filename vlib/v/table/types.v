@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 //
@@ -316,9 +316,8 @@ pub const (
 	unsigned_integer_type_idxs = [byte_type_idx, u16_type_idx, u32_type_idx, u64_type_idx]
 	float_type_idxs            = [f32_type_idx, f64_type_idx, float_literal_type_idx]
 	number_type_idxs           = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx, byte_type_idx,
-		u16_type_idx, u32_type_idx, u64_type_idx, f32_type_idx, f64_type_idx, int_literal_type_idx, float_literal_type_idx,
-		rune_type_idx,
-	]
+		u16_type_idx, u32_type_idx, u64_type_idx, f32_type_idx, f64_type_idx, int_literal_type_idx,
+		float_literal_type_idx, rune_type_idx]
 	pointer_type_idxs          = [voidptr_type_idx, byteptr_type_idx, charptr_type_idx]
 	string_type_idxs           = [string_type_idx, ustring_type_idx]
 )
@@ -356,10 +355,9 @@ pub const (
 
 pub const (
 	builtin_type_names = ['void', 'voidptr', 'charptr', 'byteptr', 'i8', 'i16', 'int', 'i64', 'u16',
-		'u32', 'u64', 'int_literal', 'f32', 'f64', 'float_literal', 'string', 'ustring', 'char', 'byte',
-		'bool', 'none', 'array', 'array_fixed', 'map', 'chan', 'any', 'struct', 'mapnode', 'size_t', 'rune',
-		'gohandle',
-	]
+		'u32', 'u64', 'int_literal', 'f32', 'f64', 'float_literal', 'string', 'ustring', 'char',
+		'byte', 'bool', 'none', 'array', 'array_fixed', 'map', 'chan', 'any', 'struct', 'mapnode',
+		'size_t', 'rune', 'gohandle']
 )
 
 pub struct MultiReturn {
@@ -761,7 +759,8 @@ pub fn (table &Table) type_to_str_using_aliases(t Type, import_aliases map[strin
 		.int_literal, .float_literal {
 			res = sym.name
 		}
-		.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64, .char, .rune, .string, .bool, .none_, .byteptr, .voidptr, .charptr {
+		.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64, .char, .rune, .string, .bool,
+		.none_, .byteptr, .voidptr, .charptr {
 			// primitive types
 			res = sym.kind.str()
 		}
@@ -852,16 +851,16 @@ pub fn (table &Table) type_to_str_using_aliases(t Type, import_aliases map[strin
 
 fn (t Table) shorten_user_defined_typenames(originalname string, import_aliases map[string]string) string {
 	mut res := originalname
-	// types defined by the user
-	// mod.submod.submod2.Type => submod2.Type
-	parts := res.split('.')
-	res = if parts.len > 1 { parts[parts.len - 2..].join('.') } else { parts[0] }
-	// cur_mod.Type => Type
-	if res.starts_with(t.cmod_prefix) {
+	if t.cmod_prefix.len > 0 && res.starts_with(t.cmod_prefix) {
+		// cur_mod.Type => Type
 		res = res.replace_once(t.cmod_prefix, '')
-	}
-	if res in import_aliases {
+	} else if res in import_aliases {
 		res = import_aliases[res]
+	} else {
+		// types defined by the user
+		// mod.submod.submod2.Type => submod2.Type
+		parts := res.split('.')
+		res = if parts.len > 1 { parts[parts.len - 2..].join('.') } else { parts[0] }
 	}
 	return res
 }

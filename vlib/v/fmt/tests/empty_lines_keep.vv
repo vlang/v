@@ -1,0 +1,34 @@
+fn keep_single_empty_line() {
+	println('a')
+	println('b')
+
+	println('c')
+
+	d := 0
+
+	if true {
+		println('e')
+	}
+
+	f := 0
+}
+
+fn prevent_empty_line_after_multi_line_statements() {
+	// line1
+	/*
+	block1
+	*/
+	/*
+	block2
+	*/
+	if test {
+		println('a')
+	}
+	println('b')
+	for test {
+		println('c')
+	}
+	c := fn (s string) {
+		println('s')
+	}
+}

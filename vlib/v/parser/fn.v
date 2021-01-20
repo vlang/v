@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -57,7 +57,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 	if p.tok.kind == .not {
 		p.next()
 	}
-	pos := first_pos.extend(last_pos)
+	mut pos := first_pos.extend(last_pos)
 	mut or_stmts := []ast.Stmt{} // TODO remove unnecessary allocations by just using .absent
 	mut or_pos := p.tok.position()
 	if p.tok.kind == .key_orelse {
@@ -93,6 +93,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		fn_name = p.imported_symbols[fn_name]
 	}
 	comments := p.eat_line_end_comments()
+	pos.update_last_line(p.prev_tok.line_nr)
 	return ast.CallExpr{
 		name: fn_name
 		args: args
@@ -400,6 +401,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			scope: 0
 		}
 	}
+	// if no_body && !name.starts_with('C.') {
+	// 	p.error_with_pos('did you mean C.$name instead of $name', start_pos)
+	// }
 	fn_decl := ast.FnDecl{
 		name: name
 		mod: p.mod
@@ -435,7 +439,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 }
 
 fn (mut p Parser) anon_fn() ast.AnonFn {
-	pos := p.tok.position()
+	mut pos := p.tok.position()
 	p.check(.key_fn)
 	if p.pref.is_script && p.tok.kind == .name {
 		p.error_with_pos('function declarations in script mode should be before all script statements',
@@ -487,6 +491,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	idx := p.table.find_or_register_fn_type(p.mod, func, true, false)
 	typ := table.new_type(idx)
 	// name := p.table.get_type_name(typ)
+	pos.update_last_line(p.prev_tok.line_nr)
 	return ast.AnonFn{
 		decl: ast.FnDecl{
 			name: name

@@ -1,0 +1,30 @@
+fn squash_multiple_empty_lines() {
+	println('a')
+
+
+	println('b')
+
+
+	c := 0
+
+
+	d := 0
+}
+
+fn remove_leading_and_trailing_empty_lines() {
+
+	println('a')
+
+	println('b')
+
+	if test {
+
+		c := 0
+
+	} else {
+
+		d := 0
+
+	}
+
+}

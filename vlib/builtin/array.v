@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module builtin
@@ -223,6 +223,16 @@ fn (a array) get(i int) voidptr {
 		if i < 0 || i >= a.len {
 			panic('array.get: index out of range (i == $i, a.len == $a.len)')
 		}
+	}
+	unsafe {
+		return byteptr(a.data) + i * a.element_size
+	}
+}
+
+// Private function. Used to implement x = a[i] or { ... }
+fn (a array) get_with_check(i int) voidptr {
+	if i < 0 || i >= a.len {
+		return 0
 	}
 	unsafe {
 		return byteptr(a.data) + i * a.element_size

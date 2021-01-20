@@ -189,19 +189,19 @@ pub fn (b &Benchmark) step_message_skip(msg string) string {
 
 // total_message returns a string with total summary of the benchmark run.
 pub fn (b &Benchmark) total_message(msg string) string {
-	mut tmsg := '${term.bold('Summary:')} '
+	mut tmsg := '${term.colorize(term.bold, 'Summary:')} '
 	if b.nfail > 0 {
-		tmsg += term.bold(term.red('$b.nfail failed')) + ', '
+		tmsg += term.colorize(term.bold, term.colorize(term.red, '$b.nfail failed')) + ', '
 	}
 	if b.nok > 0 {
-		tmsg += term.bold(term.green('$b.nok passed')) + ', '
+		tmsg += term.colorize(term.bold, term.colorize(term.green, '$b.nok passed')) + ', '
 	}
 	if b.nskip > 0 {
-		tmsg += term.bold(term.yellow('$b.nskip skipped')) + ', '
+		tmsg += term.colorize(term.bold, term.colorize(term.yellow, '$b.nskip skipped')) + ', '
 	}
-	tmsg += '$b.ntotal total. ${term.bold('Runtime:')} ${b.bench_timer.elapsed().microseconds() /
+	tmsg += '$b.ntotal total. ${term.colorize(term.bold, 'Runtime:')} ${b.bench_timer.elapsed().microseconds() /
 		1000} ms.\n'
-	tmsg += term.gray(msg)
+	tmsg += term.colorize(term.gray, msg)
 	return tmsg
 }
 

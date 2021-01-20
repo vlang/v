@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module scanner
@@ -155,6 +155,20 @@ fn (mut s Scanner) new_token(tok_kind token.Kind, lit string, len int) token.Tok
 		kind: tok_kind
 		lit: lit
 		line_nr: s.line_nr + 1
+		pos: s.pos - len + 1
+		len: len
+		tidx: cidx
+	}
+}
+
+[inline]
+fn (mut s Scanner) new_mulitline_token(tok_kind token.Kind, lit string, len int, start_line int) token.Token {
+	cidx := s.tidx
+	s.tidx++
+	return token.Token{
+		kind: tok_kind
+		lit: lit
+		line_nr: start_line + 1
 		pos: s.pos - len + 1
 		len: len
 		tidx: cidx
@@ -938,6 +952,7 @@ fn (mut s Scanner) text_scan() token.Token {
 				// Multiline comments
 				if nextc == `*` {
 					start := s.pos + 2
+					start_line := s.line_nr
 					mut nest_count := 1
 					// Skip comment
 					for nest_count > 0 && s.pos < s.text.len - 1 {
@@ -964,7 +979,8 @@ fn (mut s Scanner) text_scan() token.Token {
 						if !comment.contains('\n') {
 							comment = '\x01' + comment
 						}
-						return s.new_token(.comment, comment, comment.len + 4)
+						return s.new_mulitline_token(.comment, comment, comment.len + 4,
+							start_line)
 					}
 					// Skip if not in fmt mode
 					continue
@@ -1070,9 +1086,9 @@ fn (mut s Scanner) ident_string() string {
 			}
 			// Escape `\u`
 			if c == `u` && (s.text[s.pos + 1] == s.quote ||
-				s.text[s.pos + 2] == s.quote || s.text[s.pos + 3] == s.quote || s.text[s.pos + 4] == s.quote ||
-				!s.text[s.pos + 1].is_hex_digit() || !s.text[s.pos + 2].is_hex_digit() || !s.text[s.pos + 3].is_hex_digit() ||
-				!s.text[s.pos + 4].is_hex_digit())
+				s.text[s.pos + 2] == s.quote || s.text[s.pos + 3] == s.quote || s.text[s.pos +
+				4] == s.quote || !s.text[s.pos + 1].is_hex_digit() || !s.text[s.pos + 2].is_hex_digit() ||
+				!s.text[s.pos + 3].is_hex_digit() || !s.text[s.pos + 4].is_hex_digit())
 			{
 				s.error(r'`\u` incomplete unicode character value')
 			}

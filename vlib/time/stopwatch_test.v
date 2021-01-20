@@ -18,18 +18,18 @@ fn test_stopwatch_time_between_pause_and_start_should_be_skipped_in_elapsed() {
 	mut sw := time.new_stopwatch({})
 	time.sleep_ms(10) // A
 	eprintln('Elapsed after 10ms nap: ${sw.elapsed().milliseconds()}ms')
-	assert sw.elapsed().milliseconds() >= 10
+	assert sw.elapsed().milliseconds() >= 8 // sometimes it sleeps for 9ms on windows..
 	sw.pause()
 	time.sleep_ms(10)
 	eprintln('Elapsed after pause and another 10ms nap: ${sw.elapsed().milliseconds()}ms')
-	assert sw.elapsed().milliseconds() >= 10
+	assert sw.elapsed().milliseconds() >= 8
 	$if stopwatch ? {
 		assert sw.elapsed().milliseconds() < 20
 	}
 	sw.start()
 	time.sleep_ms(10) // B
 	eprintln('Elapsed after resume and another 10ms nap: ${sw.elapsed().milliseconds()}ms')
-	assert sw.elapsed().milliseconds() >= 20
+	assert sw.elapsed().milliseconds() >= 18
 	$if stopwatch ? {
 		assert sw.elapsed().milliseconds() < 30
 	}

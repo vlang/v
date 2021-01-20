@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -115,7 +115,6 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 	if !is_html {
 		path = tmpl_path
 	}
-	eprintln('>>> is_embed_file: $is_embed_file | is_html: $is_html | s: $s | n: $n | path: $path')
 	if !os.exists(path) {
 		// can be in `templates/`
 		if is_html {
@@ -156,8 +155,8 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 		println('\n\n')
 	}
 	mut file := parse_comptime(v_code, p.table, p.pref, scope, p.global_scope)
-	file = {
-		file |
+	file = ast.File{
+		...file
 		path: tmpl_path
 	}
 	// copy vars from current fn scope into vweb_tmpl scope
@@ -170,7 +169,10 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 					if obj is ast.Var {
 						mut v := obj
 						v.pos = stmt.body_pos
-						tmpl_scope.register(v)
+						tmpl_scope.register(ast.Var{
+							...v
+							is_used: true
+						})
 						// set the controller action var to used
 						// if it's unused in the template it will warn
 						v.is_used = true
@@ -248,64 +250,6 @@ fn (mut p Parser) at() ast.AtExpr {
 		pos: p.tok.position()
 		kind: kind
 	}
-}
-
-// TODO import warning bug
-const (
-	todo_delete_me = pref.OS.linux
-)
-
-fn os_from_string(os string) pref.OS {
-	match os {
-		'linux' {
-			return .linux
-		}
-		'windows' {
-			return .windows
-		}
-		'ios' {
-			return .ios
-		}
-		'macos' {
-			return .macos
-		}
-		'freebsd' {
-			return .freebsd
-		}
-		'openbsd' {
-			return .openbsd
-		}
-		'netbsd' {
-			return .netbsd
-		}
-		'dragonfly' {
-			return .dragonfly
-		}
-		'js' {
-			return .js
-		}
-		'solaris' {
-			return .solaris
-		}
-		'android' {
-			return .android
-		}
-		'msvc' {
-			// notice that `-os msvc` became `-cc msvc`
-			verror('use the flag `-cc msvc` to build using msvc')
-		}
-		'haiku' {
-			return .haiku
-		}
-		'linux_or_macos' {
-			return .linux
-		}
-		else {
-			panic('bad os $os')
-		}
-	}
-	// println('bad os $os') // todo panic?
-	return .linux
 }
 
 fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {

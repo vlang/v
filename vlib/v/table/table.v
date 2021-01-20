@@ -1,9 +1,8 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module table
 
-import os
 import v.cflag
 import v.token
 import v.util
@@ -43,8 +42,8 @@ pub mut:
 
 fn (f &Fn) method_equals(o &Fn) bool {
 	return f.params[1..].equals(o.params[1..]) && f.return_type == o.return_type && f.is_variadic ==
-		o.is_variadic && f.language == o.language && f.is_generic == o.is_generic && f.is_pub == o.is_pub &&
-		f.mod == o.mod && f.name == o.name
+		o.is_variadic && f.language == o.language && f.is_generic == o.is_generic && f.is_pub ==
+		o.is_pub && f.mod == o.mod && f.name == o.name
 }
 
 pub struct Param {
@@ -722,23 +721,6 @@ pub fn (t &Table) mktyp(typ Type) Type {
 		int_literal_type { return int_type }
 		else { return typ }
 	}
-}
-
-// TODO: Once we have a module format we can read from module file instead
-// this is not optimal. it depends on the full import being in table.imports
-// already, we can instead lookup the module path and then work it out
-pub fn (table &Table) qualify_module(mod string, file_path string) string {
-	for m in table.imports {
-		// if m.contains('gen') { println('qm=$m') }
-		if m.contains('.') && m.contains(mod) {
-			m_parts := m.split('.')
-			m_path := m_parts.join(os.path_separator)
-			if mod == m_parts[m_parts.len - 1] && file_path.contains(m_path) {
-				return m
-			}
-		}
-	}
-	return mod
 }
 
 pub fn (mut table Table) register_fn_gen_type(fn_name string, typ Type) {

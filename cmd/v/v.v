@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module main
@@ -19,10 +19,13 @@ const (
 		'symlink',
 		'bin2v',
 		'test',
+		'test-all', /* runs most of the tests and other checking tools, that will be run by the CI */
 		'test-fmt',
 		'test-parser',
-		'test-compiler',
-		'test-fixed',
+		'test-self',
+		'test-fixed', /* deprecated by test-self */
+		'test-compiler', /* deprecated by test-self */
+		'test-compiler-full', /* deprecated by test-self */
 		'test-cleancode',
 		'repl',
 		'complete',
@@ -75,6 +78,14 @@ fn main() {
 	}
 	if prefs.use_cache && os.user_os() == 'windows' {
 		eprintln('-usecache is currently disabled on windows')
+		exit(1)
+	}
+	if command in ['test-fixed', 'test-compiler-full'] {
+		eprintln('Please use `v test-self` instead.')
+		exit(1)
+	}
+	if command == 'test-compiler' {
+		eprintln('Please use either `v test-all`, `v test-self`, `v build-examples`, `v build-tools` or `v build-vbinaries` instead.')
 		exit(1)
 	}
 	if command == 'test-vet' {

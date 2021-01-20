@@ -9,7 +9,7 @@ module net
 #include <netdb.h>
 #include <errno.h>
 #include <fcntl.h>
-
+#flag solaris -lsocket
 fn error_code() int {
 	return C.errno
 }
@@ -24,5 +24,3 @@ pub const (
 const (
 	error_ewouldblock = C.EWOULDBLOCK
 )
-
-#flag solaris -lsocket

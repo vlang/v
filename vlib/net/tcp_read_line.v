@@ -10,7 +10,7 @@ const (
 // It will *always* return a line, ending with CRLF, or just '', on EOF.
 // NB: if you want more control over the buffer, please use a buffered IO
 // reader instead: `io.new_buffered_reader({reader: io.make_reader(con)})`
-pub fn (con TcpConn) read_line() string {
+pub fn (mut con TcpConn) read_line() string {
 	mut buf := [max_read]byte{} // where C.recv will store the network data
 	mut res := '' // The final result, including the ending \n.
 	for {

@@ -50,23 +50,25 @@ fn (context Context) file2v(bname string, fbytes []byte, bn_max int) string {
 	mut sb := strings.new_builder(1000)
 	bn_diff_len := bn_max - bname.len
 	sb.write('\t${bname}_len' + ' '.repeat(bn_diff_len - 4) + ' = $fbytes.len\n')
-	mut last_len := sb.len
 	fbyte := fbytes[0]
-	sb.write('\t$bname' + ' '.repeat(bn_diff_len) + ' = [byte($fbyte), ')
+	bnmae_line := '\t$bname' + ' '.repeat(bn_diff_len) + ' = [byte($fbyte), '
+	sb.write(bnmae_line)
+	mut line_len := bnmae_line.len + 3
 	for i := 1; i < fbytes.len; i++ {
 		b := int(fbytes[i]).str()
-		sb_diff_len := sb.len - last_len
-		if i < 30 && sb_diff_len > 86 {
-			sb.write('$b,\n\t\t')
-			last_len = sb.len
-		} else if sb_diff_len > 88 && 92 - sb_diff_len < b.len {
-			sb.write('$b,\n\t\t')
-			last_len = sb.len
-		} else if i == fbytes.len - 1 {
+		if line_len > 94 {
+			sb.go_back(1)
+			sb.write('\n\t\t')
+			line_len = 8
+		}
+		if i == fbytes.len - 1 {
 			sb.write(b)
+			line_len += b.len
 		} else {
 			sb.write('$b, ')
+			line_len += b.len + 2
 		}
+
 	}
 	sb.write(']!\n')
 	return sb.str()

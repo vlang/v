@@ -15,7 +15,7 @@ fn main() {
 	args_after := cmdline.options_after(args_to_executable, ['test'])
 	if args_after.join(' ') == 'v' {
 		eprintln('`v test v` has been deprecated.')
-		eprintln('Use `v test-compiler` instead.')
+		eprintln('Use `v test-all` instead.')
 		exit(1)
 	}
 	mut ts := testing.new_test_session(args_before.join(' '))
