@@ -5,7 +5,6 @@ module fmt
 
 import v.ast
 import v.table
-import v.token
 import strings
 import v.util
 
@@ -27,9 +26,10 @@ pub mut:
 	indent             int
 	empty_line         bool
 	line_len           int
-	par_level          int      // how many parentheses are put around the current expression
-	array_init_break   []bool   // line breaks after elements in hierarchy level of multi dimensional array
-	array_init_depth   int      // current level of hierarchie in array init
+	buffering          bool   // disables line wrapping for exprs that will be analyzed later
+	par_level          int    // how many parentheses are put around the current expression
+	array_init_break   []bool // line breaks after elements in hierarchy level of multi dimensional array
+	array_init_depth   int    // current level of hierarchie in array init
 	single_line_if     bool
 	cur_mod            string
 	file               ast.File
@@ -118,6 +118,9 @@ fn (mut f Fmt) write_indent() {
 }
 
 pub fn (mut f Fmt) wrap_long_line(penalty_idx int, add_indent bool) bool {
+	if f.buffering {
+		return false
+	}
 	if f.line_len <= max_len[penalty_idx] {
 		return false
 	}
@@ -1413,6 +1416,12 @@ pub fn (mut f Fmt) lock_expr(lex ast.LockExpr) {
 }
 
 pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
+	buffering_save := f.buffering
+	if !f.buffering {
+		f.buffering = true
+	}
+	infix_start := f.out.len
+	start_len := f.line_len
 	f.expr(node.left)
 	is_one_val_array_init := node.op in [.key_in, .not_in] &&
 		node.right is ast.ArrayInit && (node.right as ast.ArrayInit).exprs.len == 1
@@ -1429,21 +1438,28 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	} else {
 		f.expr(node.right)
 	}
+	if !buffering_save && f.buffering {
+		f.buffering = false
+		if !f.single_line_if && f.line_len > max_len.last() {
+			f.wrap_infix(infix_start, start_len)
+		}
+	}
 	f.or_expr(node.or_block)
 }
 
-pub fn (mut f Fmt) wrap_if_cond(start_pos int, start_len int) {
+pub fn (mut f Fmt) wrap_infix(start_pos int, start_len int) {
 	cut_span := f.out.len - start_pos
 	condstr := f.out.cut_last(cut_span)
 	f.line_len = start_len
+	or_pen := if condstr.contains('&&') { 3 } else { 5 }
 	cond_parts := condstr.split(' ')
 	mut index := 0
 	mut conditions := ['']
 	mut penalties := [4]
 	for cp in cond_parts {
-		if cp in ['&&', '||']{
-			penalties << if cp == '||' { 2 } else { 5 }
-			conditions[index] = conditions.last().trim_space()
+		if cp in ['&&', '||'] {
+			penalties << if cp == '||' { or_pen } else { 5 }
+			conditions[index] = conditions.last()
 			conditions << '$cp '
 			index++
 		} else {
@@ -1451,12 +1467,13 @@ pub fn (mut f Fmt) wrap_if_cond(start_pos int, start_len int) {
 		}
 	}
 	for i, c in conditions {
-		if f.line_len + c.len < max_len[penalties[i]] {
-			f.write(c)
+		cnd := c.trim_space()
+		if f.line_len + cnd.len < max_len[penalties[i]] {
+			f.write(cnd)
 		} else {
 			f.writeln('')
 			f.indent++
-			f.write(c)
+			f.write(cnd)
 			f.indent--
 		}
 		if i < conditions.len - 1 {
@@ -1489,14 +1506,7 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 			}
 			if i < it.branches.len - 1 || !it.has_else {
 				f.write('${dollar}if ')
-				cond_start := f.out.len
-				start_len := f.line_len
-				f.single_line_if = true
 				f.expr(branch.cond)
-				f.single_line_if = single_line
-				if f.line_len > max_len.last() {
-					f.wrap_if_cond(cond_start, start_len)
-				}
 				f.write(' ')
 			}
 			f.write('{')
@@ -1812,7 +1822,7 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 				penalty--
 			}
 		}
-		is_new_line := if !f.single_line_if {f.wrap_long_line(penalty, !inc_indent)} else {false}
+		is_new_line := f.wrap_long_line(penalty, !inc_indent)
 		if is_new_line && !inc_indent {
 			f.indent++
 			inc_indent = true
