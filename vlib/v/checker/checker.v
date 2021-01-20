@@ -4436,9 +4436,6 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 		} else {
 			c.stmts(branch.stmts)
 		}
-						if c.file.path.ends_with('main.v') {
-							println(expr_required)
-						}
 		if expr_required {
 			if branch.stmts.len > 0 && branch.stmts[branch.stmts.len - 1] is ast.ExprStmt {
 				mut last_expr := branch.stmts[branch.stmts.len - 1] as ast.ExprStmt
