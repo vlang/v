@@ -55,7 +55,7 @@ fn (mut dtp DTP) read() ?[]byte {
 	return data
 }
 
-fn (dtp DTP) close() {
+fn (mut dtp DTP) close() {
 	dtp.conn.close()
 }
 
