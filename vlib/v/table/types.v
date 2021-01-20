@@ -573,6 +573,11 @@ pub fn (t &TypeSymbol) is_primitive() bool {
 	return t.is_number() || t.is_pointer() || t.is_string()
 }
 
+[inline]
+pub fn (t &TypeSymbol) is_builtin() bool {
+	return t.mod == 'builtin'
+}
+
 // for debugging/errors only, perf is not an issue
 pub fn (k Kind) str() string {
 	k_str := match k {

@@ -1479,6 +1479,10 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			c.fail_if_immutable(call_expr.left)
 			// call_expr.is_mut = true
 		}
+		if (!left_type_sym.is_builtin() && method.mod != 'builtin') && method.language == .v
+			&& method.no_body {
+			c.error('cannot call a method that does not have a body', call_expr.pos)
+		}
 		if method.return_type == table.void_type && method.ctdefine.len > 0
 			&& method.ctdefine !in c.pref.compile_defines {
 			call_expr.should_be_skipped = true
@@ -1771,6 +1775,9 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		&& f.mod == 'builtin' {
 		// builtin C.m*, C.s* only - temp
 		c.warn('function `$f.name` must be called from an `unsafe` block', call_expr.pos)
+	}
+	if f.mod != 'builtin' && f.language == .v && f.no_body {
+		c.error('cannot call a function that does not have a body', call_expr.pos)
 	}
 	for generic_type in call_expr.generic_types {
 		sym := c.table.get_type_symbol(generic_type)
