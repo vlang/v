@@ -59,8 +59,16 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string, m2a map[string]s
 	if name in ['+', '-', '*', '/', '%', '<', '>', '==', '!=', '>=', '<='] {
 		f.write(' ')
 	}
-	if node.is_generic {
-		f.write('<T>')
+	if node.generic_params.len > 0 {
+		f.write('<')
+		for i, param in node.generic_params {
+			is_last := i - 1 == node.generic_params.len
+			f.write(param.name)
+			if !is_last {
+				f.write(', ')
+			}
+		}
+		f.write('>')
 	}
 	f.write('(')
 	for i, arg in node.params {

@@ -324,7 +324,7 @@ pub:
 	pos             token.Position // function declaration position
 	body_pos        token.Position // function bodys position
 	file            string
-	is_generic      bool
+	generic_params  []GenericParam
 	is_direct_arr   bool // direct array access
 	attrs           []table.Attr
 pub mut:
@@ -334,6 +334,11 @@ pub mut:
 	next_comments []Comment // coments that are one line after the decl; used for InterfaceDecl
 	source_file   &File = 0
 	scope         &Scope
+}
+
+pub struct GenericParam {
+pub:
+	name string
 }
 
 // break, continue
@@ -362,7 +367,7 @@ pub mut:
 	receiver_type      table.Type // User
 	return_type        table.Type
 	should_be_skipped  bool
-	generic_type       table.Type // TODO array, to support multiple types
+	generic_types      []table.Type
 	generic_list_pos   token.Position
 	free_receiver      bool // true if the receiver expression needs to be freed
 	scope              &Scope

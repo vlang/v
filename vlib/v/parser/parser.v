@@ -1099,9 +1099,9 @@ fn (p &Parser) is_generic_call() bool {
 	// use heuristics to detect `func<T>()` from `var < expr`
 	return !lit0_is_capital && p.peek_tok.kind == .lt && (match p.peek_tok2.kind {
 		.name {
-			// maybe `f<int>`, `f<map[`
+			// maybe `f<int>`, `f<map[`, f<string,
 			(p.peek_tok2.kind == .name &&
-				p.peek_tok3.kind == .gt) ||
+				p.peek_tok3.kind in [.gt, .comma]) ||
 				(p.peek_tok2.lit == 'map' && p.peek_tok3.kind == .lsbr)
 		}
 		.lsbr {
@@ -1494,19 +1494,15 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	}
 	// Method call
 	// TODO move to fn.v call_expr()
-	mut generic_type := table.void_type
+	mut generic_types := []table.Type{}
 	mut generic_list_pos := p.tok.position()
 	if is_generic_call {
 		// `g.foo<int>(10)`
-		p.next() // `<`
-		generic_type = p.parse_type()
-		p.check(.gt) // `>`
+		generic_types = p.parse_generic_type_list()
 		generic_list_pos = generic_list_pos.extend(p.prev_tok.position())
 		// In case of `foo<T>()`
 		// T is unwrapped and registered in the checker.
-		if !generic_type.has_flag(.generic) {
-			p.table.register_fn_gen_type(field_name, generic_type)
-		}
+		p.table.register_fn_gen_type(field_name, generic_types)
 	}
 	if p.tok.kind == .lpar {
 		p.next()
@@ -1550,7 +1546,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 			args: args
 			pos: pos
 			is_method: true
-			generic_type: generic_type
+			generic_types: generic_types
 			generic_list_pos: generic_list_pos
 			or_block: ast.OrExpr{
 				stmts: or_stmts
@@ -1590,6 +1586,24 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		p.close_scope()
 	}
 	return sel_expr
+}
+
+fn (mut p Parser) parse_generic_type_list() []table.Type {
+	mut types := []table.Type{}
+	if p.tok.kind != .lt {
+		return types
+	}
+	p.next() // `<`
+	mut first_done := false
+	for p.tok.kind !in [.eof, .gt] {
+		if first_done {
+			p.check(.comma)
+		}
+		types << p.parse_type()
+		first_done = true
+	}
+	p.check(.gt) // `>`
+	return types
 }
 
 // `.green`

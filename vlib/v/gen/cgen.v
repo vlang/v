@@ -103,7 +103,7 @@ mut:
 	hotcode_fn_names      []string
 	embedded_files        []ast.EmbeddedFile
 	// cur_fn               ast.FnDecl
-	cur_generic_type table.Type // `int`, `string`, etc in `foo<T>()`
+	cur_generic_types []table.Type // `int`, `string`, etc in `foo<T>()`
 	sql_i            int
 	sql_stmt_name    string
 	sql_side         SqlExprSide // left or right, to distinguish idents in `name == name`
@@ -1029,7 +1029,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				// their functions in main.c.
 				if node.mod != 'main' &&
 					node.mod != 'help' && !should_bundle_module && !g.file.path.ends_with('_test.v') &&
-					!node.is_generic
+					node.generic_params.len == 0
 				{
 					skip = true
 				}
@@ -2852,7 +2852,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 fn (mut g Gen) type_name(type_ table.Type) {
 	mut typ := type_
 	if typ.has_flag(.generic) {
-		typ = g.cur_generic_type
+		typ = g.cur_generic_types[0]
 	}
 	s := g.table.type_to_str(typ)
 	g.write('_SLIT("${util.strip_main_name(s)}")')
@@ -5606,10 +5606,15 @@ fn (mut g Gen) go_stmt(node ast.GoStmt, joinable bool) string {
 	expr := node.call_expr
 	mut name := expr.name // util.no_dots(expr.name)
 	// TODO: fn call is duplicated. merge with fn_call().
-	if expr.generic_type != table.void_type && expr.generic_type != 0 {
-		// Using _T_ to differentiate between get<string> and get_string
-		// `foo<int>()` => `foo_T_int()`
-		name += '_T_' + g.typ(expr.generic_type)
+	for i, generic_type in expr.generic_types {
+		if generic_type != table.void_type && generic_type != 0 {
+			// Using _T_ to differentiate between get<string> and get_string
+			// `foo<int>()` => `foo_T_int()`
+			if i == 0 {
+				name += '_T'
+			}
+			name += '_' + g.typ(generic_type)
+		}
 	}
 	if expr.is_method {
 		receiver_sym := g.table.get_type_symbol(expr.receiver_type)

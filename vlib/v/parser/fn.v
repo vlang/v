@@ -9,7 +9,6 @@ import v.token
 import v.util
 
 pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExpr {
-	// pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.Expr {
 	first_pos := p.tok.position()
 	mut fn_name := if language == .c {
 		'C.$p.check_name()'
@@ -29,24 +28,22 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		p.expr_mod = ''
 		or_kind = .block
 	}
-	mut generic_type := table.void_type
+	mut generic_types := []table.Type{}
 	mut generic_list_pos := p.tok.position()
 	if p.tok.kind == .lt {
 		// `foo<int>(10)`
-		p.next() // `<`
 		p.expr_mod = ''
-		generic_type = p.parse_type()
-		p.check(.gt) // `>`
+		generic_types = p.parse_generic_type_list()
 		generic_list_pos = generic_list_pos.extend(p.prev_tok.position())
 		// In case of `foo<T>()`
 		// T is unwrapped and registered in the checker.
-		if !generic_type.has_flag(.generic) {
+		if generic_types.len > 0 {
 			full_generic_fn_name := if fn_name.contains('.') {
 				fn_name
 			} else {
 				p.prepend_mod(fn_name)
 			}
-			p.table.register_fn_gen_type(full_generic_fn_name, generic_type)
+			p.table.register_fn_gen_type(full_generic_fn_name, generic_types)
 		}
 	}
 	p.check(.lpar)
@@ -100,7 +97,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		mod: p.mod
 		pos: pos
 		language: language
-		generic_type: generic_type
+		generic_types: generic_types
 		generic_list_pos: generic_list_pos
 		or_block: ast.OrExpr{
 			stmts: or_stmts
@@ -289,12 +286,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		p.next()
 	}
 	// <T>
-	is_generic := p.tok.kind == .lt
-	if is_generic {
-		p.next()
-		p.next()
-		p.check(.gt)
-	}
+	generic_params := p.parse_generic_params()
 	// Args
 	args2, are_args_type_only, is_variadic := p.fn_args()
 	params << args2
@@ -351,7 +343,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			params: params
 			return_type: return_type
 			is_variadic: is_variadic
-			is_generic: is_generic
+			generic_names: generic_params.map(it.name)
 			is_pub: is_pub
 			is_deprecated: is_deprecated
 			is_unsafe: is_unsafe
@@ -375,7 +367,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			params: params
 			return_type: return_type
 			is_variadic: is_variadic
-			is_generic: is_generic
+			generic_names: generic_params.map(it.name)
 			is_pub: is_pub
 			is_deprecated: is_deprecated
 			is_unsafe: is_unsafe
@@ -414,12 +406,12 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		is_deprecated: is_deprecated
 		is_direct_arr: is_direct_arr
 		is_pub: is_pub
-		is_generic: is_generic
 		is_variadic: is_variadic
 		receiver: ast.Field{
 			name: rec_name
 			typ: rec_type
 		}
+		generic_params: generic_params
 		receiver_pos: receiver_pos
 		is_method: is_method
 		method_type_pos: rec_type_pos
@@ -436,6 +428,36 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	}
 	p.close_scope()
 	return fn_decl
+}
+
+fn (mut p Parser) parse_generic_params() []ast.GenericParam {
+	mut params := []ast.GenericParam{}
+	if p.tok.kind != .lt {
+		return params
+	}
+	p.check(.lt)
+	mut first_done := false
+	mut count := 0
+	for p.tok.kind !in [.gt, .eof] {
+		if first_done {
+			p.check(.comma)
+		}
+		name := p.tok.lit
+		if name.len > 0 && !name[0].is_capital() {
+			p.error('generic parameter needs to be uppercase')
+		}
+		if name.len > 1 {
+			p.error('generic parameter name needs to be exactly one char')
+		}
+		p.check(.name)
+		params << ast.GenericParam{
+			name: name
+		}
+		first_done = true
+		count++
+	}
+	p.check(.gt)
+	return params
 }
 
 fn (mut p Parser) anon_fn() ast.AnonFn {
