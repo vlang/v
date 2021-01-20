@@ -207,6 +207,6 @@ fn f(i int) int {
 }
 
 fn test_call() {
-	assert '${f(4)}' == '4'
-	assert '$f(4)' == '4'
+	assert '${f(f(4))}' == '4'
+	assert '$f(f(4))' == '4'
 }
