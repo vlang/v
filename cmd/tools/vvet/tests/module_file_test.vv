@@ -47,3 +47,9 @@ pub fn (f Foo) fooo() string {
 	// not using convention
 	return f.fo()
 }
+
+// boo
+pub fn (f Foo) boo() string {
+	// Incomplete doc
+	return f.fo()
+}
