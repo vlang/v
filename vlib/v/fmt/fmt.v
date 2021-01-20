@@ -1434,20 +1434,24 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 
 pub fn (mut f Fmt) wrap_if_cond(start_pos int, start_len int) {
 	cut_span := f.out.len - start_pos
-	x := f.out.cut_last(cut_span)
+	condstr := f.out.cut_last(cut_span)
 	f.line_len = start_len
-	xs := x.split(' ')
-	mut conds := ['']
-	for el in xs {
-		if el in ['&&', '||']{
-			conds[conds.len - 1] = conds.last().trim_space()
-			conds << '$el '
+	cond_parts := condstr.split(' ')
+	mut index := 0
+	mut conditions := ['']
+	mut penalties := [4]
+	for cp in cond_parts {
+		if cp in ['&&', '||']{
+			penalties << if cp == '||' { 2 } else { 5 }
+			conditions[index] = conditions.last().trim_space()
+			conditions << '$cp '
+			index++
 		} else {
-			conds[conds.len - 1] += '$el '
+			conditions[index] += '$cp '
 		}
 	}
-	for i, c in conds {
-		if f.line_len + c.len < max_len.last() {
+	for i, c in conditions {
+		if f.line_len + c.len < max_len[penalties[i]] {
 			f.write(c)
 		} else {
 			f.writeln('')
@@ -1455,7 +1459,7 @@ pub fn (mut f Fmt) wrap_if_cond(start_pos int, start_len int) {
 			f.write(c)
 			f.indent--
 		}
-		if i < conds.len - 1 {
+		if i < conditions.len - 1 {
 			f.write(' ')
 		}
 	}
@@ -1485,11 +1489,13 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 			}
 			if i < it.branches.len - 1 || !it.has_else {
 				f.write('${dollar}if ')
-				cur_pos := f.out.len
-				cur_len := f.line_len
+				cond_start := f.out.len
+				start_len := f.line_len
+				f.single_line_if = true
 				f.expr(branch.cond)
+				f.single_line_if = single_line
 				if f.line_len > max_len.last() {
-					f.wrap_if_cond(cur_pos, cur_len)
+					f.wrap_if_cond(cond_start, start_len)
 				}
 				f.write(' ')
 			}
@@ -1806,7 +1812,7 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 				penalty--
 			}
 		}
-		is_new_line := f.wrap_long_line(penalty, !inc_indent)
+		is_new_line := if !f.single_line_if {f.wrap_long_line(penalty, !inc_indent)} else {false}
 		if is_new_line && !inc_indent {
 			f.indent++
 			inc_indent = true
