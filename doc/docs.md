@@ -455,6 +455,15 @@ s := r'hello\nworld'
 println(s) // "hello\nworld"
 ```
 
+Strings can be easily converted to number types:
+
+```v
+s := '42'
+n := s.int() // 42
+b := s.byte()
+u := s.u32()
+```
+
 ### String interpolation
 
 Basic interpolation syntax is pretty simple - use `$` before a variable name.
