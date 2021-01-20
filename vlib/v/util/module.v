@@ -85,12 +85,15 @@ pub fn mod_path_to_full_name(mod string, path string) ?string {
 				mut try_path_parts := try_path.split(os.path_separator)
 				// last index in try_path_parts that contains a `v.mod`
 				mut last_v_mod := -1
-				for j := try_path_parts.len - 1; j > 0; j-- {
+				for j := try_path_parts.len; j > 0; j-- {
 					parent := try_path_parts[0..j].join(os.path_separator)
 					if ls := os.ls(parent) {
 						// currently CI clones some modules into the v repo to test, the condition
 						// after `'v.mod' in ls` can be removed once a proper solution is added
-						if 'v.mod' in ls && try_path_parts[j] != 'v' && 'vlib' !in ls {
+						if try_path_parts.len <= i {
+							continue
+						}
+						if 'v.mod' in ls && try_path_parts[i] != 'v' && 'vlib' !in ls {
 							last_v_mod = j
 							continue
 						}
