@@ -504,9 +504,9 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		methods << method
 		// println('register method $name')
 		ts.register_method(
-			name: name,
-			params: args,
-			return_type: method.return_type,
+			name: name
+			params: args
+			return_type: method.return_type
 			is_variadic: is_variadic
 			is_pub: true
 		)
