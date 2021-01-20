@@ -246,7 +246,7 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 						c.error('function `main` cannot return values', stmt.pos)
 					}
 					if stmt.no_body {
-						c.error('function `main` cannot be no-body function', stmt.pos)
+						c.error('function `main` must declare a body', stmt.pos)
 					}
 				} else {
 					for attr in stmt.attrs {
