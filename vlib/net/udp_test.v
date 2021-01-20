@@ -1,12 +1,9 @@
 import net
 
-fn echo_server(_c net.UdpConn) {
-	mut c := _c
+fn echo_server(mut c net.UdpConn) {
 	for {
-		mut buf := []byte{ len: 100, init: 0 }
-		read, addr := c.read(mut buf) or {
-			continue
-		}
+		mut buf := []byte{len: 100, init: 0}
+		read, addr := c.read(mut buf) or { continue }
 
 		c.write_to(addr, buf[..read]) or {
 			println('Server: connection dropped')
@@ -16,14 +13,16 @@ fn echo_server(_c net.UdpConn) {
 }
 
 fn echo() ? {
-	mut c := net.dial_udp('127.0.0.1:40003', '127.0.0.1:40001')?
-	defer { c.close() or { } }
+	mut c := net.dial_udp('127.0.0.1:40003', '127.0.0.1:40001') ?
+	defer {
+		c.close() or { }
+	}
 	data := 'Hello from vlib/net!'
 
-	c.write_str(data)?
+	c.write_str(data) ?
 
-	mut buf := []byte{ len: 100, init: 0 }
-	read, addr := c.read(mut buf)?
+	mut buf := []byte{len: 100, init: 0}
+	read, addr := c.read(mut buf) ?
 
 	assert read == data.len
 	println('Got address $addr')
@@ -35,21 +34,21 @@ fn echo() ? {
 		assert buf[i] == data[i]
 	}
 
-	println('Got "${buf.bytestr()}"')
+	println('Got "$buf.bytestr()"')
 
-	c.close()?
+	c.close() ?
 
 	return none
 }
 
 fn test_udp() {
-	l := net.listen_udp(40001) or {
+	mut l := net.listen_udp(40001) or {
 		println(err)
 		assert false
 		panic('')
 	}
 
-	go echo_server(l)
+	go echo_server(mut l)
 	echo() or {
 		println(err)
 		assert false

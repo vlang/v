@@ -18,11 +18,11 @@ pub:
 }
 struct C.phr_header_t {}
 
-fn phr_parse_request() int
-fn phr_parse_response() int
-fn phr_parse_headers() int
+fn C.phr_parse_request() int
+fn C.phr_parse_response() int
+fn C.phr_parse_headers() int
 
-fn phr_parse_request_path() int
-fn phr_parse_request_path_pipeline() int
+fn C.phr_parse_request_path() int
+fn C.phr_parse_request_path_pipeline() int
 fn C.get_date() byteptr
 fn C.u64toa() int

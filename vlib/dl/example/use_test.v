@@ -44,7 +44,7 @@ fn v_compile(vopts string) os.Result {
 	eprintln('>>> v_compile res: $res')
 	// assert res.exit_code == 0
 	$if !windows {
-		os.system('dir $cfolder -a -l')
+		os.system('ls -al $cfolder')
 	} $else {
 		os.system('dir $cfolder /a')
 	}
