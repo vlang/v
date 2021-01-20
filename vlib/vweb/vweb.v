@@ -621,12 +621,14 @@ pub fn (mut ctx Context) parse_form(s string) {
 	// ...
 }
 
+[manualfree]
 pub fn (mut ctx Context) parse_multipart_form(s string, b string) {
 	if ctx.req.method !in methods_with_form {
 		return
 	}
 	a := s.split('$b')[1..]
 	fields := a[..a.len - 1]
+	a.free()
 	for field in fields {
 		lines := field.split_into_lines()[1..]
 		mut l := 0
@@ -651,16 +653,23 @@ pub fn (mut ctx Context) parse_multipart_form(s string, b string) {
 				content_type: ct
 				data: sb.str()
 			}
+			filename.free()
+			ct.free()
 			sb.free()
 			continue
 		}
+		disposition_data.free()
 		mut sb := strings.new_builder(field.len)
 		for i in l + 1 .. lines.len - 1 {
 			sb.writeln(lines[i])
 		}
 		ctx.form[name] = sb.str()
+		name.free()
 		sb.free()
 	}
+	fields.free()
+	s.free()
+	b.free()
 }
 
 fn (mut ctx Context) scan_static_directory(directory_path string, mount_path string) {
