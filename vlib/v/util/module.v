@@ -35,6 +35,7 @@ pub fn qualify_module(mod string, file_path string) string {
 // * properly define module location / v.mod rules
 // * if possible split this function in two, one which gets the
 // parent module path and another which turns it into the full name
+// * create shared logic between these fns and builder.find_module_path
 pub fn mod_path_to_full_name(mod string, path string) ?string {
 	// TODO: explore using `pref.lookup_path` & `os.vmodules_paths()`
 	// absolute paths instead of 'vlib' & '.vmodules'
@@ -73,15 +74,18 @@ pub fn mod_path_to_full_name(mod string, path string) ?string {
 				for j := try_path_parts.len; j > 0; j-- {
 					parent := try_path_parts[0..j].join(os.path_separator)
 					if ls := os.ls(parent) {
-						if 'v.mod' in ls {
+						if 'v.mod' in ls && 
+							// currently CI clones some modiles for testing in the v repo, this
+							// condition can be removed once a proper solution is added
+							try_path_parts[i] != 'v' && 'vlib' !in ls {
 							last_v_mod = j
-							break
+							continue
 						}
 					}
-					// break
+					break
 				}
 				if last_v_mod > -1 {
-					mod_full_name := try_path_parts[last_v_mod - 1..].join('.')
+					mod_full_name := try_path_parts[last_v_mod-1..].join('.')
 					return mod_full_name
 				}
 			}
