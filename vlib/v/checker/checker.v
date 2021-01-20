@@ -1854,25 +1854,26 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			}
 			call_expr.return_type = typ
 			return typ
-		} else if return_sym.kind == .array && return_sym.name in f.generic_names {
-			mut info := return_sym.info as table.Array
-			mut sym := c.table.get_type_symbol(info.elem_type)
+		} else if return_sym.kind == .array {
+			return_info := return_sym.info as table.Array
+			mut sym := c.table.get_type_symbol(return_info.elem_type)
 			mut dims := 1
 			for {
-				if sym.kind == .array {
-					info = sym.info as table.Array
-					sym = c.table.get_type_symbol(info.elem_type)
+				if mut sym.info is table.Array {
+					sym = c.table.get_type_symbol(sym.info.elem_type)
 					dims++
 				} else {
 					break
 				}
 			}
-			generic_index := f.generic_names.index(return_sym.name)
-			generic_type := call_expr.generic_types[generic_index]
-			idx := c.table.find_or_register_array_with_dims(generic_type, dims)
-			typ := table.new_type(idx)
-			call_expr.return_type = typ
-			return typ
+			if sym.name in f.generic_names {
+				generic_index := f.generic_names.index(sym.name)
+				generic_type := call_expr.generic_types[generic_index]
+				idx := c.table.find_or_register_array_with_dims(generic_type, dims)
+				typ := table.new_type(idx)
+				call_expr.return_type = typ
+				return typ
+			}
 		} else if return_sym.kind == .chan && return_sym.name in f.generic_names {
 			generic_index := f.generic_names.index(return_sym.name)
 			generic_type := call_expr.generic_types[generic_index]
@@ -5323,6 +5324,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 	}
 	c.expected_type = table.void_type
+
 	c.cur_fn = node
 	// Add return if `fn(...) ? {...}` have no return at end
 	if node.return_type != table.void_type && node.return_type.has_flag(.optional) &&
@@ -5335,18 +5337,6 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			}
 		}
 	}
-	/*if return_sym.kind == .multi_return {
-		info := return_sym.mr_info()
-		mut types := []table.Type{}
-		for return_type in info.types {
-			types << c.unwrap_generic(return_type)
-		}
-		if types != info.types {
-			idx := c.table.find_or_register_multi_return(types)
-			typ := table.new_type(idx)
-			node.return_type = typ
-		}
-	}*/
 	c.stmts(node.stmts)
 	returns := c.returns || has_top_return(node.stmts)
 	if node.language == .v && !node.no_body && node.return_type != table.void_type && !returns &&
