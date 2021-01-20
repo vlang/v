@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -429,7 +429,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 
 fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	p.top_level_statement_start()
-	mut start_pos := p.tok.position()
+	mut pos := p.tok.position()
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
 		p.next()
@@ -506,12 +506,12 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	}
 	p.top_level_statement_end()
 	p.check(.rcbr)
-	start_pos.last_line = p.prev_tok.line_nr - 1
+	pos.update_last_line(p.prev_tok.line_nr)
 	return ast.InterfaceDecl{
 		name: interface_name
 		methods: methods
 		is_pub: is_pub
-		pos: start_pos
+		pos: pos
 		pre_comments: pre_comments
 	}
 }

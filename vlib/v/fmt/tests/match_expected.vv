@@ -30,3 +30,20 @@ fn match_branch_comment() {
 		}
 	}
 }
+
+fn really_long_branch_exprs() {
+	match x {
+		ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr, CastExpr, ChanInit, CharLiteral,
+		ConcatExpr, Comment, EnumVal, FloatLiteral, GoExpr, Ident, IfExpr, IndexExpr, IntegerLiteral,
+		Likely, LockExpr, MapInit, MatchExpr, None, OrExpr, ParExpr, PostfixExpr, PrefixExpr,
+		RangeExpr, SelectExpr, SelectorExpr, SizeOf, SqlExpr, StringInterLiteral, StringLiteral,
+		StructInit, Type, TypeOf, UnsafeExpr {
+			return expr.pos
+		}
+		InfixExpr {
+			Foo{
+				x: 3
+			}
+		}
+	}
+}

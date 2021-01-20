@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module checker
@@ -365,8 +365,8 @@ pub fn (c &Checker) get_default_fmt(ftyp table.Type, typ table.Type) byte {
 		}
 		if ftyp in [table.string_type, table.bool_type] ||
 			sym.kind in
-			[.enum_, .array, .array_fixed, .struct_, .map, .multi_return, .sum_type, .none_] || ftyp.has_flag(.optional) ||
-			sym.has_method('str')
+			[.enum_, .array, .array_fixed, .struct_, .map, .multi_return, .sum_type, .none_] ||
+			ftyp.has_flag(.optional) || sym.has_method('str')
 		{
 			return `s`
 		} else {

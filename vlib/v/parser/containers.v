@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -130,7 +130,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		}
 		p.check(.rcbr)
 	}
-	pos := first_pos.extend(last_pos)
+	pos := first_pos.extend_with_last_line(last_pos, p.prev_tok.line_nr)
 	return ast.ArrayInit{
 		is_fixed: is_fixed
 		has_val: has_val
@@ -151,7 +151,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 }
 
 fn (mut p Parser) map_init() ast.MapInit {
-	pos := p.tok.position()
+	mut pos := p.tok.position()
 	mut keys := []ast.Expr{}
 	mut vals := []ast.Expr{}
 	for p.tok.kind != .rcbr && p.tok.kind != .eof {
@@ -167,6 +167,7 @@ fn (mut p Parser) map_init() ast.MapInit {
 			p.next()
 		}
 	}
+	pos.update_last_line(p.tok.line_nr)
 	return ast.MapInit{
 		keys: keys
 		vals: vals

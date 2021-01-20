@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -107,7 +107,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 // insert user into User
 // update User set nr_oders=nr_orders+1 where id == user_id
 fn (mut p Parser) sql_stmt() ast.SqlStmt {
-	pos := p.tok.position()
+	mut pos := p.tok.position()
 	p.inside_match = true
 	defer {
 		p.inside_match = false
@@ -194,6 +194,7 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 		where_expr = p.expr(0)
 	}
 	p.check(.rcbr)
+	pos.last_line = p.prev_tok.line_nr
 	return ast.SqlStmt{
 		db_expr: db_expr
 		table_name: table_name

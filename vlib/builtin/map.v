@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module builtin
@@ -550,6 +550,29 @@ fn (m &map) get_1(key voidptr, zero voidptr) voidptr {
 		}
 	}
 	return zero
+}
+
+// If `key` matches the key of an element in the container,
+// the method returns a reference to its mapped value.
+// If not, a zero pointer is returned.
+// This is used in `x := m['key'] or { ... }`
+fn (m &map) get_1_check(key voidptr) voidptr {
+	mut index, mut meta := m.key_to_index(key)
+	for {
+		if meta == unsafe { m.metas[index] } {
+			kv_index := int(unsafe { m.metas[index + 1] })
+			pkey := unsafe { m.key_values.key(kv_index) }
+			if m.key_eq_fn(key, pkey) {
+				return unsafe { byteptr(pkey) + m.key_values.key_bytes }
+			}
+		}
+		index += 2
+		meta += probe_inc
+		if meta > unsafe { m.metas[index] } {
+			break
+		}
+	}
+	return 0
 }
 
 // Checks whether a particular key exists in the map.

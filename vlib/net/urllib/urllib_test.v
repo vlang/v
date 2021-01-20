@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
@@ -27,11 +27,11 @@ fn test_str() {
 		panic("unable to parse URL")
 	}
 	assert url.str() == 'https://en.wikipedia.org/wiki/Brazil_(1985_film)'
-}	
+}
 
 fn test_escape_unescape() {
 	original := 'те ст: т\\%'
-	escaped := urllib.query_escape(original) 
+	escaped := urllib.query_escape(original)
 	assert escaped == '%D1%82%D0%B5+%D1%81%D1%82%3A+%D1%82%5C%25'
 	unescaped := urllib.query_unescape(escaped) or { assert false return }
 	assert unescaped == original

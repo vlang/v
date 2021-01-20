@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -569,8 +569,9 @@ pub fn (mut p Parser) check_comment() ast.Comment {
 }
 
 pub fn (mut p Parser) comment() ast.Comment {
-	pos := p.tok.position()
+	mut pos := p.tok.position()
 	text := p.tok.lit
+	pos.last_line = pos.line_nr + text.count('\n')
 	p.next()
 	// p.next_with_comment()
 	return ast.Comment{
@@ -600,9 +601,10 @@ pub fn (mut p Parser) eat_comments() []ast.Comment {
 }
 
 pub fn (mut p Parser) eat_line_end_comments() []ast.Comment {
+	line := p.prev_tok.line_nr
 	mut comments := []ast.Comment{}
 	for {
-		if p.tok.kind != .comment || p.tok.line_nr != p.prev_tok.line_nr {
+		if p.tok.kind != .comment || p.tok.line_nr > line {
 			break
 		}
 		comments << p.comment()
@@ -628,11 +630,12 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 		}
 		.key_assert {
 			p.next()
-			assert_pos := p.tok.position()
+			mut pos := p.tok.position()
 			expr := p.expr(0)
+			pos.update_last_line(p.prev_tok.line_nr)
 			return ast.AssertStmt{
 				expr: expr
-				pos: assert_pos
+				pos: pos
 			}
 		}
 		.key_for {
@@ -691,16 +694,24 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 		.dollar {
 			match p.peek_tok.kind {
 				.key_if {
+					mut pos := p.tok.position()
+					expr := p.if_expr(true)
+					pos.update_last_line(p.prev_tok.line_nr)
 					return ast.ExprStmt{
-						expr: p.if_expr(true)
+						expr: expr
+						pos: pos
 					}
 				}
 				.key_for {
 					return p.comp_for()
 				}
 				.name {
+					mut pos := p.tok.position()
+					expr := p.comp_call()
+					pos.update_last_line(p.prev_tok.line_nr)
 					return ast.ExprStmt{
-						expr: p.comp_call()
+						expr: expr
+						pos: pos
 					}
 				}
 				else {
@@ -984,6 +995,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	// a, mut b ... :=/=   // multi-assign
 	// collect things upto hard boundaries
 	tok := p.tok
+	mut pos := tok.position()
 	left, left_comments := p.expr_list()
 	left0 := left[0]
 	if tok.kind == .key_mut && p.tok.kind != .decl_assign {
@@ -994,12 +1006,14 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 		return p.partial_assign_stmt(left, left_comments)
 	} else if tok.kind !in [.key_if, .key_match, .key_lock, .key_rlock, .key_select] &&
 		left0 !is ast.CallExpr && (is_top_level || p.tok.kind != .rcbr) && left0 !is ast.PostfixExpr &&
-		!(left0 is ast.InfixExpr && (left0 as ast.InfixExpr).op in [.left_shift, .arrow]) && left0 !is
-		ast.ComptimeCall && left0 !is ast.SelectorExpr
+		!(left0 is ast.InfixExpr &&
+		(left0 as ast.InfixExpr).op in [.left_shift, .arrow]) && left0 !is ast.ComptimeCall &&
+		left0 !is ast.SelectorExpr
 	{
 		p.error_with_pos('expression evaluated but not used', left0.position())
 		return ast.Stmt{}
 	}
+	pos.update_last_line(p.prev_tok.line_nr)
 	if left.len == 1 {
 		return ast.ExprStmt{
 			expr: left0
@@ -1013,7 +1027,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 			vals: left
 			pos: tok.position()
 		}
-		pos: tok.position()
+		pos: pos
 		comments: left_comments
 	}
 }
@@ -1287,7 +1301,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		}
 	} else if (p.peek_tok.kind == .lcbr ||
 		(p.peek_tok.kind == .lt && lit0_is_capital)) &&
-		(!p.inside_match || (p.inside_select && prev_tok_kind == .arrow && lit0_is_capital)) && !p.inside_match_case &&
+		(!p.inside_match || (p.inside_select && prev_tok_kind == .arrow && lit0_is_capital)) &&
+		!p.inside_match_case &&
 		(!p.inside_if || p.inside_select) &&
 		(!p.inside_for || p.inside_select)
 	{ // && (p.tok.lit[0].is_capital() || p.builtin_mod) {
@@ -1391,25 +1406,35 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 	// [expr]
 	pos := start_pos.extend(p.tok.position())
 	p.check(.rsbr)
-	// a[i] or { ... }
-	if p.tok.kind == .key_orelse && !p.or_is_handled {
-		was_inside_or_expr := p.inside_or_expr
-		mut or_pos := p.tok.position()
-		p.next()
-		p.open_scope()
-		or_stmts := p.parse_block_no_scope(false)
-		or_pos = or_pos.extend(p.prev_tok.position())
-		p.close_scope()
-		p.inside_or_expr = was_inside_or_expr
-		return ast.IndexExpr{
-			left: left
-			index: expr
-			pos: pos
-			or_expr: ast.OrExpr{
-				kind: .block
-				stmts: or_stmts
-				pos: or_pos
+	mut or_kind := ast.OrKind.absent
+	mut or_stmts := []ast.Stmt{}
+	mut or_pos := token.Position{}
+	if !p.or_is_handled {
+		// a[i] or { ... }
+		if p.tok.kind == .key_orelse {
+			was_inside_or_expr := p.inside_or_expr
+			or_pos = p.tok.position()
+			p.next()
+			p.open_scope()
+			or_stmts = p.parse_block_no_scope(false)
+			or_pos = or_pos.extend(p.prev_tok.position())
+			p.close_scope()
+			p.inside_or_expr = was_inside_or_expr
+			return ast.IndexExpr{
+				left: left
+				index: expr
+				pos: pos
+				or_expr: ast.OrExpr{
+					kind: .block
+					stmts: or_stmts
+					pos: or_pos
+				}
 			}
+		}
+		// `a[i] ?`
+		if p.tok.kind == .question {
+			p.next()
+			or_kind = .propagate
 		}
 	}
 	return ast.IndexExpr{
@@ -1417,7 +1442,9 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 		index: expr
 		pos: pos
 		or_expr: ast.OrExpr{
-			kind: .absent
+			kind: or_kind
+			stmts: or_stmts
+			pos: or_pos
 		}
 	}
 }
@@ -2390,7 +2417,7 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 	}
 	if p.tok.kind == .rcbr {
 		// `unsafe {}`
-		pos.last_line = p.tok.line_nr - 1
+		pos.update_last_line(p.tok.line_nr)
 		p.next()
 		return ast.Block{
 			is_unsafe: true
@@ -2409,7 +2436,7 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 			// `unsafe {expr}`
 			if stmt.expr.is_expr() {
 				p.next()
-				pos.last_line = p.prev_tok.line_nr - 1
+				pos.update_last_line(p.prev_tok.line_nr)
 				ue := ast.UnsafeExpr{
 					expr: stmt.expr
 					pos: pos
@@ -2429,6 +2456,7 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 		stmts << p.stmt(false)
 	}
 	p.next()
+	pos.update_last_line(p.tok.line_nr)
 	return ast.Block{
 		stmts: stmts
 		is_unsafe: true

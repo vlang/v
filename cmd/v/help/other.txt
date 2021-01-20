@@ -14,7 +14,7 @@ but which are used less frequently by users:
 
    test-fmt           Test if all files in the current directory are formatted properly.
 
-   test-compiler-full Test if V is working properly by running all tests, including the compiler ones.
+   test-self Test if V is working properly by running all tests, including the compiler ones.
                       NB: this can 1-2 minutes to run.
 
    test-parser        Test that the V parser works with the given files, as if

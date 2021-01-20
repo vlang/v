@@ -61,7 +61,7 @@ fn main() {
 	}
 	howmany := app.api_differences.len
 	eprintln('NB: please, do run `git clean -xf` after this tool, or at least `find thirdparty/ |grep .o$|xargs rm`')
-	eprintln('otherwise, `./v test-compiler-full` may show false positives, due to .o files compiled with a cross compiler.')
+	eprintln('otherwise, `./v test-self` may show false positives, due to .o files compiled with a cross compiler.')
 	if howmany > 0 {
 		eprintln(term.header('Found $howmany modules with different APIs', '='))
 		for m in app.api_differences.keys() {

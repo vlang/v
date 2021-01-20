@@ -1,17 +1,39 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
 
 import v.table
 import v.util
+import v.ast
 
 pub fn (mut p Parser) parse_array_type() table.Type {
 	p.check(.lsbr)
 	// fixed array
-	if p.tok.kind == .number {
-		size := p.tok.lit.int()
-		p.next()
+	if p.tok.kind in [.number, .name] {
+		mut fixed_size := 0
+		size_expr := p.expr(0)
+		match size_expr {
+			ast.IntegerLiteral {
+				fixed_size = size_expr.val.int()
+			}
+			ast.Ident {
+				if const_field := p.global_scope.find_const('${p.mod}.$size_expr.name') {
+					if const_field.expr is ast.IntegerLiteral {
+						fixed_size = const_field.expr.val.int()
+					} else {
+						p.error_with_pos('non existent integer const $size_expr.name while initializing the size of a static array',
+							size_expr.pos)
+					}
+				} else {
+					p.error_with_pos('non existent integer const $size_expr.name while initializing the size of a static array',
+						size_expr.pos)
+				}
+			}
+			else {
+				p.error('expecting `int` for fixed size')
+			}
+		}
 		p.check(.rsbr)
 		elem_type := p.parse_type()
 		if elem_type.idx() == 0 {
@@ -19,7 +41,7 @@ pub fn (mut p Parser) parse_array_type() table.Type {
 			return 0
 		}
 		// sym := p.table.get_type_symbol(elem_type)
-		idx := p.table.find_or_register_array_fixed(elem_type, size)
+		idx := p.table.find_or_register_array_fixed(elem_type, fixed_size)
 		return table.new_type(idx)
 	}
 	// array

@@ -1,0 +1,7 @@
+vlib/v/checker/tests/method_array_slice.vv:5:12: error: .slice() is a private method, use `x[start..end]` instead
+    3 | fn main() {
+    4 |     a := os.args.clone()
+    5 |     println(a.slice(1))
+      |               ~~~~~~~~
+    6 |     println(a[1..])
+    7 | }

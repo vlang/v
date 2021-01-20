@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module gen
@@ -15,9 +15,9 @@ import v.depgraph
 // NB: keywords after 'new' are reserved in C++
 const (
 	c_reserved = ['delete', 'exit', 'link', 'unix', 'error', 'calloc', 'malloc', 'free', 'panic',
-		'auto', 'char', 'default', 'do', 'double', 'extern', 'float', 'inline', 'int', 'long', 'register',
-		'restrict', 'short', 'signed', 'sizeof', 'static', 'switch', 'typedef', 'union', 'unsigned', 'void',
-		'volatile', 'while', 'new', 'namespace', 'class', 'typename', 'export']
+		'auto', 'char', 'default', 'do', 'double', 'extern', 'float', 'inline', 'int', 'long',
+		'register', 'restrict', 'short', 'signed', 'sizeof', 'static', 'switch', 'typedef', 'union',
+		'unsigned', 'void', 'volatile', 'while', 'new', 'namespace', 'class', 'typename', 'export']
 	// same order as in token.Kind
 	cmp_str    = ['eq', 'ne', 'gt', 'lt', 'ge', 'le']
 	// when operands are switched
@@ -73,6 +73,7 @@ mut:
 	inside_ternary      int      // ?: comma separated statements on a single line
 	inside_map_postfix  bool     // inside map++/-- postfix expr
 	inside_map_infix    bool     // inside map<</+=/-= infix expr
+	inside_map_index    bool
 	// inside_if_expr        bool
 	ternary_names         map[string]string
 	ternary_level_names   map[string][]string
@@ -690,17 +691,20 @@ typedef struct {
 				if typ.name != 'chan' {
 					g.type_definitions.writeln('typedef chan $typ.cname;')
 					chan_inf := typ.chan_info()
-					el_stype := g.typ(chan_inf.elem_type)
-					g.channel_definitions.writeln('
+					chan_elem_type := chan_inf.elem_type
+					if !chan_elem_type.has_flag(.generic) {
+						el_stype := g.typ(chan_elem_type)
+						g.channel_definitions.writeln('
 static inline $el_stype __${typ.cname}_popval($typ.cname ch) {
 	$el_stype val;
 	sync__Channel_try_pop_priv(ch, &val, false);
 	return val;
 }')
-					g.channel_definitions.writeln('
+						g.channel_definitions.writeln('
 static inline void __${typ.cname}_pushval($typ.cname ch, $el_stype val) {
 	sync__Channel_try_push_priv(ch, &val, false);
 }')
+					}
 				}
 			}
 			.map {
@@ -721,7 +725,7 @@ pub fn (mut g Gen) write_fn_typesymbol_declaration(sym table.TypeSymbol) {
 	func := info.func
 	is_fn_sig := func.name == ''
 	not_anon := !info.is_anon
-	if !info.has_decl && (not_anon || is_fn_sig) {
+	if !info.has_decl && (not_anon || is_fn_sig) && !func.return_type.has_flag(.generic) {
 		fn_name := sym.cname
 		g.type_definitions.write('typedef ${g.typ(func.return_type)} (*$fn_name)(')
 		for i, param in func.params {
@@ -1295,15 +1299,16 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		}
 	} else if it.kind == .array_fixed {
 		atmp := g.new_tmp_var()
-		atmp_type := g.typ(it.cond_type)
-		if !it.cond.is_lvalue() {
-			g.write('$atmp_type *$atmp = &(($atmp_type)')
-		} else {
-			g.write('$atmp_type *$atmp = &(')
+		atmp_type := g.typ(it.cond_type).trim('*')
+		if it.cond_type.is_ptr() || it.cond is ast.ArrayInit {
+			if !it.cond.is_lvalue() {
+				g.write('$atmp_type *$atmp = (($atmp_type)')
+			} else {
+				g.write('$atmp_type *$atmp = (')
+			}
+			g.expr(it.cond)
+			g.writeln(');')
 		}
-		g.expr(it.cond)
-		g.writeln(')')
-		g.writeln(';')
 		i := if it.key_var in ['', '_'] { g.new_tmp_var() } else { it.key_var }
 		cond_sym := g.table.get_type_symbol(it.cond_type)
 		info := cond_sym.info as table.ArrayFixed
@@ -1317,7 +1322,14 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 				styp := g.typ(it.val_type)
 				g.write('\t$styp ${c_name(it.val_var)}')
 			}
-			g.writeln(' = (*$atmp)[$i];')
+			addr := if it.val_is_mut { '&' } else { '' }
+			if it.cond_type.is_ptr() || it.cond is ast.ArrayInit {
+				g.writeln(' = ${addr}(*$atmp)[$i];')
+			} else {
+				g.write(' = $addr')
+				g.expr(it.cond)
+				g.writeln('[$i];')
+			}
 		}
 	} else if it.kind == .map {
 		// `for key, val in map {
@@ -1703,8 +1715,8 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	// int pos = *(int*)_t190.data;
 	mut tmp_opt := ''
 	is_optional := g.is_autofree &&
-		(assign_stmt.op in [.decl_assign, .assign]) && assign_stmt.left_types.len == 1 && assign_stmt.right[0] is
-		ast.CallExpr
+		(assign_stmt.op in [.decl_assign, .assign]) && assign_stmt.left_types.len == 1 &&
+		assign_stmt.right[0] is ast.CallExpr
 	if is_optional {
 		// g.write('/* optional assignment */')
 		call_expr := assign_stmt.right[0] as ast.CallExpr
@@ -1991,7 +2003,8 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			}
 			// Assignment Operator Overloading
 			if ((left_sym.kind == .struct_ &&
-				right_sym.kind == .struct_) || (left_sym.kind == .alias &&
+				right_sym.kind == .struct_) ||
+				(left_sym.kind == .alias &&
 				right_sym.kind == .alias)) &&
 				assign_stmt.op in [.plus_assign, .minus_assign, .div_assign, .mult_assign, .mod_assign]
 			{
@@ -3579,7 +3592,8 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 					expr := branch.stmt.expr as ast.InfixExpr
 					channels << expr.left
 					if expr.right is ast.Ident ||
-						expr.right is ast.IndexExpr || expr.right is ast.SelectorExpr || expr.right is ast.StructInit
+						expr.right is ast.IndexExpr || expr.right is ast.SelectorExpr || expr.right is
+						ast.StructInit
 					{
 						// addressable objects in the `C` output
 						objs << expr.right
@@ -3792,7 +3806,8 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	first_branch := node.branches[0]
 	needs_tmp_var := node.is_expr &&
 		(g.is_autofree || (g.pref.experimental &&
-		(first_branch.stmts.len > 1 || (first_branch.stmts[0] is ast.ExprStmt &&
+		(first_branch.stmts.len > 1 ||
+		(first_branch.stmts[0] is ast.ExprStmt &&
 		(first_branch.stmts[0] as ast.ExprStmt).expr is ast.IfExpr))))
 	/*
 	needs_tmp_var := node.is_expr &&
@@ -3911,6 +3926,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 }
 
 fn (mut g Gen) index_expr(node ast.IndexExpr) {
+	gen_or := node.or_expr.kind != .absent
 	match node.index {
 		ast.RangeExpr {
 			sym := g.table.get_type_symbol(node.left_type)
@@ -3968,7 +3984,8 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 			if sym.kind == .array {
 				info := sym.info as table.Array
 				elem_type_str := g.typ(info.elem_type)
-				elem_typ := g.table.get_type_symbol(info.elem_type)
+				elem_type := info.elem_type
+				elem_typ := g.table.get_type_symbol(elem_type)
 				// `vals[i].field = x` is an exception and requires `array_get`:
 				// `(*(Val*)array_get(vals, i)).field = x;`
 				is_selector := node.left is ast.SelectorExpr
@@ -4047,21 +4064,35 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					}
 					needs_clone := info.elem_type == table.string_type_idx && g.is_autofree &&
 						!g.is_assign_lhs
-					if needs_clone {
-						g.write('/*2*/string_clone(')
-					}
-					if g.is_fn_index_call {
-						if elem_typ.info is table.FnType {
-							g.write('((')
-							g.write_fn_ptr_decl(&elem_typ.info, '')
-							g.write(')(*($array_ptr_type_str)/*ee elem_typ */array_get(')
-						}
-					} else if is_direct_array_access {
-						g.write('(($array_ptr_type_str)')
+					is_gen_or_and_assign_rhs := gen_or && g.is_assign_rhs
+					cur_line := if is_gen_or_and_assign_rhs {
+						line := g.go_before_stmt(0)
+						g.out.write(tabs[g.indent])
+						line
 					} else {
-						g.write('(*($array_ptr_type_str)/*ee elem_typ */array_get(')
-						if left_is_ptr && !node.left_type.has_flag(.shared_f) {
-							g.write('*')
+						''
+					}
+					tmp_opt := if gen_or { g.new_tmp_var() } else { '' }
+					tmp_opt_ptr := if gen_or { g.new_tmp_var() } else { '' }
+					if gen_or {
+						g.write('$array_ptr_type_str $tmp_opt_ptr = ($array_ptr_type_str)/*ee elem_ptr_typ */(array_get_with_check(')
+					} else {
+						if needs_clone {
+							g.write('/*2*/string_clone(')
+						}
+						if g.is_fn_index_call {
+							if elem_typ.info is table.FnType {
+								g.write('((')
+								g.write_fn_ptr_decl(&elem_typ.info, '')
+								g.write(')(*($array_ptr_type_str)/*ee elem_typ */array_get(')
+							}
+						} else if is_direct_array_access {
+							g.write('(($array_ptr_type_str)')
+						} else {
+							g.write('(*($array_ptr_type_str)/*ee elem_typ */array_get(')
+							if left_is_ptr && !node.left_type.has_flag(.shared_f) {
+								g.write('*')
+							}
 						}
 					}
 					g.expr(node.left)
@@ -4094,24 +4125,44 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					if needs_clone {
 						g.write(')')
 					}
+					if gen_or {
+						g.writeln(';')
+						opt_elem_type := g.typ(elem_type.set_flag(.optional))
+						g.writeln('$opt_elem_type $tmp_opt = {0};')
+						g.writeln('if ($tmp_opt_ptr) {')
+						g.writeln('\t${tmp_opt}.ok = true; ${tmp_opt}.is_none = false; ${tmp_opt}.v_error = (string){.str=(byteptr)""}; ${tmp_opt}.ecode = 0;')
+						g.writeln('\t*(($elem_type_str*)&${tmp_opt}.data) = *(($elem_type_str*)$tmp_opt_ptr);')
+						g.writeln('} else {')
+						g.writeln('\t${tmp_opt}.ok = false; ${tmp_opt}.is_none = false; ${tmp_opt}.v_error = (string){.str=(byteptr)"array index out of range"}; ${tmp_opt}.ecode = 0;')
+						g.writeln('}')
+						g.or_block(tmp_opt, node.or_expr, elem_type)
+						g.write('\n$cur_line*($elem_type_str*)${tmp_opt}.data')
+					}
 				}
 			} else if sym.kind == .map {
 				info := sym.info as table.Map
 				key_type_str := g.typ(info.key_type)
-				elem_type_str := g.typ(info.value_type)
-				elem_typ := g.table.get_type_symbol(info.value_type)
+				elem_type := info.value_type
+				elem_type_str := g.typ(elem_type)
+				elem_typ := g.table.get_type_symbol(elem_type)
 				get_and_set_types := elem_typ.kind in [.struct_, .map]
 				if g.is_assign_lhs && !g.is_array_set && !get_and_set_types {
 					if g.assign_op == .assign || info.value_type == table.string_type {
 						g.is_array_set = true
 						g.write('map_set_1(')
 					} else {
-						g.write('*(($elem_type_str*)map_get_and_set_1(')
+						g.write('(*(($elem_type_str*)map_get_and_set_1(')
 					}
 					if !left_is_ptr || node.left_type.has_flag(.shared_f) {
 						g.write('&')
 					}
-					g.expr(node.left)
+					if node.left is ast.IndexExpr {
+						g.inside_map_index = true
+						g.expr(node.left)
+						g.inside_map_index = false
+					} else {
+						g.expr(node.left)
+					}
 					if node.left_type.has_flag(.shared_f) {
 						if left_is_ptr {
 							g.write('->val')
@@ -4129,9 +4180,9 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					}
 					if g.assign_op != .assign && info.value_type != table.string_type {
 						zero := g.type_default(info.value_type)
-						g.write('$zero }))')
+						g.write('$zero })))')
 					}
-				} else if (g.inside_map_postfix || g.inside_map_infix) ||
+				} else if g.inside_map_postfix || g.inside_map_infix || g.inside_map_index ||
 					(g.is_assign_lhs && !g.is_array_set && get_and_set_types)
 				{
 					zero := g.type_default(info.value_type)
@@ -4145,16 +4196,30 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					g.write('}, &($elem_type_str[]){ $zero }))')
 				} else {
 					zero := g.type_default(info.value_type)
-					if g.is_fn_index_call {
-						if elem_typ.info is table.FnType {
-							g.write('((')
-							g.write_fn_ptr_decl(&elem_typ.info, '')
-							g.write(')(*(voidptr*)map_get_1(')
-						}
-					} else if elem_typ.kind == .function {
-						g.write('(*(voidptr*)map_get_1(')
+					is_gen_or_and_assign_rhs := gen_or && g.is_assign_rhs
+					cur_line := if is_gen_or_and_assign_rhs {
+						line := g.go_before_stmt(0)
+						g.out.write(tabs[g.indent])
+						line
 					} else {
-						g.write('(*($elem_type_str*)map_get_1(')
+						''
+					}
+					tmp_opt := if gen_or { g.new_tmp_var() } else { '' }
+					tmp_opt_ptr := if gen_or { g.new_tmp_var() } else { '' }
+					if gen_or {
+						g.write('$elem_type_str* $tmp_opt_ptr = ($elem_type_str*)/*ee elem_ptr_typ */(map_get_1_check(')
+					} else {
+						if g.is_fn_index_call {
+							if elem_typ.info is table.FnType {
+								g.write('((')
+								g.write_fn_ptr_decl(&elem_typ.info, '')
+								g.write(')(*(voidptr*)map_get_1(')
+							}
+						} else if elem_typ.kind == .function {
+							g.write('(*(voidptr*)map_get_1(')
+						} else {
+							g.write('(*($elem_type_str*)map_get_1(')
+						}
 					}
 					if !left_is_ptr || node.left_type.has_flag(.shared_f) {
 						g.write('ADDR(map, ')
@@ -4173,12 +4238,27 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					g.write('), &($key_type_str[]){')
 					g.expr(node.index)
 					g.write('}')
-					if g.is_fn_index_call {
+					if gen_or {
+						g.write('))')
+					} else if g.is_fn_index_call {
 						g.write(', &(voidptr[]){ $zero })))')
 					} else if elem_typ.kind == .function {
 						g.write(', &(voidptr[]){ $zero }))')
 					} else {
 						g.write(', &($elem_type_str[]){ $zero }))')
+					}
+					if gen_or {
+						g.writeln(';')
+						opt_elem_type := g.typ(elem_type.set_flag(.optional))
+						g.writeln('$opt_elem_type $tmp_opt = {0};')
+						g.writeln('if ($tmp_opt_ptr) {')
+						g.writeln('\t${tmp_opt}.ok = true; ${tmp_opt}.is_none = false; ${tmp_opt}.v_error = (string){.str=(byteptr)""}; ${tmp_opt}.ecode = 0;')
+						g.writeln('\t*(($elem_type_str*)&${tmp_opt}.data) = *(($elem_type_str*)$tmp_opt_ptr);')
+						g.writeln('} else {')
+						g.writeln('\t${tmp_opt}.ok = false; ${tmp_opt}.is_none = false; ${tmp_opt}.v_error = (string){.str=(byteptr)"array index out of range"}; ${tmp_opt}.ecode = 0;')
+						g.writeln('}')
+						g.or_block(tmp_opt, node.or_expr, elem_type)
+						g.write('\n$cur_line*($elem_type_str*)${tmp_opt}.data')
 					}
 				}
 			} else if sym.kind == .string && !node.left_type.is_ptr() {
@@ -4188,7 +4268,13 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				g.expr(node.index)
 				g.write(')')
 			} else {
-				g.expr(node.left)
+				if sym.kind == .array_fixed && node.left_type.is_ptr() {
+					g.write('(*')
+					g.expr(node.left)
+					g.write(')')
+				} else {
+					g.expr(node.left)
+				}
 				g.write('[')
 				g.expr(node.index)
 				g.write(']')
@@ -5387,24 +5473,32 @@ fn (mut g Gen) type_default(typ_ table.Type) string {
 	// User struct defined in another module.
 	// if typ.contains('__') {
 	if sym.kind == .struct_ {
-		mut has_array_map := false
-		mut zero_str := '{'
+		mut has_none_zero := false
+		mut init_str := '{'
 		info := sym.info as table.Struct
 		for field in info.fields {
 			field_sym := g.table.get_type_symbol(field.typ)
-			if field_sym.kind in [.array, .map] {
-				zero_str += '.$field.name=${g.type_default(field.typ)},'
-				has_array_map = true
+			if field_sym.kind in [.array, .map] || field.has_default_expr {
+				if field.has_default_expr {
+					pos := g.out.len
+					g.expr(ast.fe2ex(field.default_expr))
+					expr_str := g.out.after(pos)
+					g.out.go_back(expr_str.len)
+					init_str += '.$field.name = $expr_str,'
+				} else {
+					init_str += '.$field.name = ${g.type_default(field.typ)},'
+				}
+				has_none_zero = true
 			}
 		}
-		if has_array_map {
-			zero_str += '}'
+		if has_none_zero {
+			init_str += '}'
 			type_name := g.typ(typ)
-			zero_str = '($type_name)' + zero_str
+			init_str = '($type_name)' + init_str
 		} else {
-			zero_str += '0}'
+			init_str += '0}'
 		}
-		return zero_str
+		return init_str
 	}
 	// if typ.ends_with('Fn') { // TODO
 	// return '0'

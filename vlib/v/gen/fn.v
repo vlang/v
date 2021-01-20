@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module gen
@@ -241,13 +241,7 @@ fn (mut g Gen) fn_args(args []table.Param, is_variadic bool) ([]string, []string
 				g.definitions.write(')')
 			}
 		} else {
-			// TODO: combine two operations into one once ternary in expression is fixed
-			mut s := if arg_type_sym.kind == .array_fixed {
-				arg_type_name.trim('*')
-			} else {
-				arg_type_name
-			}
-			s += ' ' + caname
+			s := '$arg_type_name $caname'
 			g.write(s)
 			g.definitions.write(s)
 			fargs << caname

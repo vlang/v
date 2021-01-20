@@ -35,6 +35,7 @@ fn string_inter_lit(mut c checker.Checker, mut node ast.StringInterLiteral) tabl
 		}
 		node.need_fmts[i] = fmt != c.get_default_fmt(ftyp, typ)
 	}
+
 	return table.string_type
 }
 
