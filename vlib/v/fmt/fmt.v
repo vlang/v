@@ -15,7 +15,7 @@ const (
 		'\t\t\t\t\t\t\t\t',
 	]
 	// when to break a line dependant on penalty
-	max_len = [0, 35, 85, 93, 100]
+	max_len = [0, 35, 60, 85, 93, 100]
 )
 
 pub struct Fmt {
@@ -449,7 +449,7 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 					f.write(' | ')
 				}
 				if i < sum_type_names.len - 1 {
-					f.wrap_long_line(2, true)
+					f.wrap_long_line(3, true)
 				}
 			}
 			// f.write(sum_type_names.join(' | '))
@@ -1548,7 +1548,7 @@ pub fn (mut f Fmt) call_args(args []ast.CallArg) {
 			f.write(arg.share.str() + ' ')
 		}
 		if i > 0 {
-			f.wrap_long_line(2, true)
+			f.wrap_long_line(3, true)
 		}
 		f.expr(arg.expr)
 		if i < args.len - 1 {
@@ -1684,7 +1684,7 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 				if j < branch.exprs.len - 1 {
 					f.write(', ')
 				}
-				f.wrap_long_line(3, false)
+				f.wrap_long_line(4, false)
 			}
 			f.is_mbranch_expr = false
 		} else {
@@ -1797,7 +1797,7 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 		is_same_line_comment := i > 0 &&
 			(expr is ast.Comment && line_nr == it.exprs[i - 1].position().line_nr)
 		line_break := f.array_init_break[f.array_init_depth - 1]
-		mut penalty := if line_break && !is_same_line_comment { 0 } else { 3 }
+		mut penalty := if line_break && !is_same_line_comment { 0 } else { 4 }
 		if penalty > 0 {
 			if i == 0 || should_decrease_arr_penalty(it.exprs[i - 1]) {
 				penalty--
@@ -2282,7 +2282,7 @@ pub fn (mut f Fmt) sql_stmt(node ast.SqlStmt) {
 				} else {
 					f.write(' ')
 				}
-				f.wrap_long_line(2, true)
+				f.wrap_long_line(3, true)
 			}
 			f.write('where ')
 			f.expr(node.where_expr)
