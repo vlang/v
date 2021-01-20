@@ -2,4 +2,6 @@ mut f := fn(i int) byte {}
 f = 4
 mut p := &f
 p = &[f]
-f = fn(mut a []int) {}
+i := 0
+println(i)
+f = fn(mut a []int) { println(i) }

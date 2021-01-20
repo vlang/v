@@ -447,6 +447,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 		return ast.AnonFn{}
 	}
 	p.open_scope()
+	p.scope.detached_from_parent = true
 	// TODO generics
 	args, _, is_variadic := p.fn_args()
 	for arg in args {

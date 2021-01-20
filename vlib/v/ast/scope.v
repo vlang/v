@@ -8,12 +8,13 @@ import v.table
 pub struct Scope {
 pub mut:
 	// mut:
-	objects       map[string]ScopeObject
-	struct_fields []ScopeStructField
-	parent        &Scope
-	children      []&Scope
-	start_pos     int
-	end_pos       int
+	objects              map[string]ScopeObject
+	struct_fields        []ScopeStructField
+	parent               &Scope
+	detached_from_parent bool
+	children             []&Scope
+	start_pos            int
+	end_pos              int
 }
 
 pub fn new_scope(parent &Scope, start_pos int) &Scope {
@@ -23,13 +24,17 @@ pub fn new_scope(parent &Scope, start_pos int) &Scope {
 	}
 }
 
+fn (s &Scope) dont_lookup_parent() bool {
+	return isnil(s.parent) || s.detached_from_parent
+}
+
 pub fn (s &Scope) find_with_scope(name string) ?(ScopeObject, &Scope) {
 	mut sc := s
 	for {
 		if name in sc.objects {
 			return sc.objects[name], sc
 		}
-		if isnil(sc.parent) {
+		if sc.dont_lookup_parent() {
 			break
 		}
 		sc = sc.parent
@@ -42,7 +47,7 @@ pub fn (s &Scope) find(name string) ?ScopeObject {
 		if name in sc.objects {
 			return sc.objects[name]
 		}
-		if isnil(sc.parent) {
+		if sc.dont_lookup_parent() {
 			break
 		}
 	}
@@ -56,7 +61,7 @@ pub fn (s &Scope) find_struct_field(struct_type table.Type, field_name string) ?
 				return field
 			}
 		}
-		if isnil(sc.parent) {
+		if sc.dont_lookup_parent() {
 			break
 		}
 	}
@@ -141,7 +146,7 @@ pub fn (mut s Scope) register(obj ScopeObject) {
 
 pub fn (s &Scope) outermost() &Scope {
 	mut sc := s
-	for !isnil(sc.parent) {
+	for !sc.dont_lookup_parent() {
 		sc = sc.parent
 	}
 	return sc
