@@ -245,6 +245,9 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 					if stmt.return_type != table.void_type {
 						c.error('function `main` cannot return values', stmt.pos)
 					}
+					if stmt.no_body {
+						c.error('function `main` cannot be no-body function', stmt.pos)
+					}
 				} else {
 					for attr in stmt.attrs {
 						if attr.name == 'console' {
