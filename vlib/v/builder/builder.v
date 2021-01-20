@@ -257,14 +257,6 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) ?string {
 			}
 		}
 	}
-	// add parent folder for relative imports
-	// path_parts := fpath.split(os.path_separator)
-	// if path_parts.len > 2 {
-	// 	fpath_parent := path_parts[..path_parts.len-3].join(os.path_separator)
-	// 	//println('FPATH PARENT: $fpath_parent FPATH: $fpath')
-	// 	module_lookup_paths << fpath_parent
-	// }
-	// mod_parts := mod.split('.')
 	for search_path in module_lookup_paths {
 		try_path := os.join_path(search_path, mod_path)
 		if b.pref.is_verbose {
