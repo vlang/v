@@ -1362,11 +1362,21 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 				g.write(' = (*(voidptr*)')
 			} else {
 				val_styp := g.typ(it.val_type)
-				g.write('\t$val_styp ${c_name(it.val_var)} = (*($val_styp*)')
+				if it.val_type.is_ptr() {
+					g.write('\t$val_styp ${c_name(it.val_var)} = &(*($val_styp)')
+				} else {
+					g.write('\t$val_styp ${c_name(it.val_var)} = (*($val_styp*)')
+				}
 			}
 			g.writeln('DenseArray_value(&$atmp${arw_or_pt}key_values, $idx));')
 		}
+		if it.val_is_mut {
+			g.for_in_mul_val_name = it.val_var
+		}
 		g.stmts(it.stmts)
+		if it.val_is_mut {
+			g.for_in_mul_val_name = ''
+		}
 		if it.key_type == table.string_type && !g.is_builtin_mod {
 			// g.writeln('string_free(&$key);')
 		}
