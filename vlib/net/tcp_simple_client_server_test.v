@@ -6,36 +6,28 @@ const (
 	server_port = 22334
 )
 
-fn setup() (net.TcpListener, net.TcpConn, net.TcpConn) {
-	server := net.listen_tcp(server_port) or {
-		panic(err)
-	}
-	mut client := net.dial_tcp('127.0.0.1:$server_port') or {
-		panic(err)
-	}
-	mut socket := server.accept() or {
-		panic(err)
-	}
+fn setup() (&net.TcpListener, &net.TcpConn, &net.TcpConn) {
+	mut server := net.listen_tcp(server_port) or { panic(err) }
+	mut client := net.dial_tcp('127.0.0.1:$server_port') or { panic(err) }
+	mut socket := server.accept() or { panic(err) }
 	$if debug_peer_ip ? {
-		ip := con.peer_ip() or {
-			'$err'
-		}
+		ip := con.peer_ip() or { '$err' }
 		eprintln('connection peer_ip: $ip')
 	}
 	assert true
 	return server, client, socket
 }
 
-fn cleanup(server &net.TcpListener, client &net.TcpConn, socket &net.TcpConn) {
+fn cleanup(mut server net.TcpListener, mut client net.TcpConn, mut socket net.TcpConn) {
 	server.close() or { }
 	client.close() or { }
 	socket.close() or { }
 }
 
 fn test_socket() {
-	server, client, socket := setup()
+	mut server, mut client, mut socket := setup()
 	defer {
-		cleanup(server, client, socket)
+		cleanup(mut server, mut client, mut socket)
 	}
 	message := 'Hello World'
 	socket.write_str(message) or {
@@ -65,14 +57,12 @@ fn test_socket() {
 }
 
 fn test_socket_write_and_read() {
-	server, client, socket := setup()
+	mut server, mut client, mut socket := setup()
 	defer {
-		cleanup(server, client, socket)
+		cleanup(mut server, mut client, mut socket)
 	}
 	message1 := 'a message 1'
-	socket.write_str(message1) or {
-		assert false
-	}
+	socket.write_str(message1) or { assert false }
 	mut rbuf := []byte{len: message1.len}
 	client.read(mut rbuf)
 	line := rbuf.bytestr()
@@ -80,18 +70,16 @@ fn test_socket_write_and_read() {
 }
 
 fn test_socket_read_line() {
-	server, client, socket := setup()
-	mut reader := io.new_buffered_reader({
+	mut server, mut client, mut socket := setup()
+	mut reader := io.new_buffered_reader(
 		reader: io.make_reader(client)
-	})
+	)
 	defer {
-		cleanup(server, client, socket)
+		cleanup(mut server, mut client, mut socket)
 	}
 	message1, message2 := 'message1', 'message2'
 	message := '$message1\n$message2\n'
-	socket.write_str(message) or {
-		assert false
-	}
+	socket.write_str(message) or { assert false }
 	assert true
 	//
 	line1 := reader.read_line() or {
@@ -109,9 +97,9 @@ fn test_socket_read_line() {
 }
 
 fn test_socket_write_fail_without_panic() {
-	server, client, socket := setup()
+	mut server, mut client, mut socket := setup()
 	defer {
-		cleanup(server, client, socket)
+		cleanup(mut server, mut client, mut socket)
 	}
 	message2 := 'a message 2'
 	// ensure that socket.write (i.e. done on the server side)
@@ -131,12 +119,12 @@ fn test_socket_write_fail_without_panic() {
 }
 
 fn test_socket_read_line_long_line_without_eol() {
-	server, client, socket := setup()
-	mut reader := io.new_buffered_reader({
+	mut server, mut client, mut socket := setup()
+	mut reader := io.new_buffered_reader(
 		reader: io.make_reader(client)
-	})
+	)
 	defer {
-		cleanup(server, client, socket)
+		cleanup(mut server, mut client, mut socket)
 	}
 	message := strings.repeat_string('123', 400)
 	socket.write_str(message)

@@ -6,7 +6,7 @@ import v.table
 fn (mut p Parser) lock_expr() ast.LockExpr {
 	// TODO Handle aliasing sync
 	p.register_auto_import('sync')
-	pos := p.tok.position()
+	mut pos := p.tok.position()
 	is_rlock := p.tok.kind == .key_rlock
 	p.next()
 	mut lockeds := []ast.Ident{}
@@ -27,6 +27,7 @@ fn (mut p Parser) lock_expr() ast.LockExpr {
 		p.check(.comma)
 	}
 	stmts := p.parse_block()
+	pos.update_last_line(p.prev_tok.line_nr)
 	return ast.LockExpr{
 		lockeds: lockeds
 		stmts: stmts

@@ -9,5 +9,6 @@ fn my_thread_with_params(s string) {
 fn my_fn_calling_threads() {
 	go my_thread()
 	go my_thread_with_params('yay')
+
 	go my_thread_with_params('nono')
 }

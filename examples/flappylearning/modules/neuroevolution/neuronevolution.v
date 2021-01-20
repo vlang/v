@@ -50,7 +50,7 @@ mut:
 fn (mut n Network) populate(network []int) {
 	assert network.len >= 2
 	input := network[0]
-	hiddens := network.slice(1, network.len - 1)
+	hiddens := network[1..network.len-1]
 	output := network[network.len - 1]
 	mut index := 0
 	mut previous_neurons := 0

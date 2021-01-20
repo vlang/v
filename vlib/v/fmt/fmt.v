@@ -204,7 +204,7 @@ pub fn (mut f Fmt) mod(mod ast.Module) {
 		return
 	}
 	f.attrs(mod.attrs)
-	f.writeln('module $mod.name\n')
+	f.writeln('module $mod.short_name\n')
 }
 
 pub fn (mut f Fmt) mark_types_import_as_used(typ table.Type) {
@@ -266,8 +266,18 @@ pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
 
 pub fn (mut f Fmt) stmts(stmts []ast.Stmt) {
 	f.indent++
+	mut prev_line_nr := 0
+	if stmts.len >= 1 {
+		prev_pos := stmts[0].position()
+		prev_line_nr = util.imax(prev_pos.line_nr, prev_pos.last_line)
+	}
 	for stmt in stmts {
+		if stmt.position().line_nr - prev_line_nr > 1 {
+			f.out.writeln('')
+		}
 		f.stmt(stmt)
+		prev_pos := stmt.position()
+		prev_line_nr = util.imax(prev_pos.line_nr, prev_pos.last_line)
 	}
 	f.indent--
 }
@@ -626,26 +636,16 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 			f.writeln('module:')
 		}
 		end_pos := field.pos.pos + field.pos.len
-		comments := field.comments
-		// Handle comments before field
-		mut comm_idx := 0
-		f.indent++
-		for comm_idx < comments.len && comments[comm_idx].pos.pos < field.pos.pos {
-			f.empty_line = true
-			f.comment(comments[comm_idx], {})
-			f.writeln('')
-			comm_idx++
-		}
-		f.indent--
+		before_comments := field.comments.filter(it.pos.pos < field.pos.pos)
+		between_comments := field.comments[before_comments.len..].filter(it.pos.pos < end_pos)
+		after_type_comments := field.comments[(before_comments.len + between_comments.len)..]
+		// Handle comments before the field
+		f.comments_before_field(before_comments)
 		f.write('\t$field.name ')
 		// Handle comments between field name and type
-		mut comments_len := 0
-		for comm_idx < comments.len && comments[comm_idx].pos.pos < end_pos {
-			comment_text := '/* ${comments[comm_idx].text.trim_left('\x01')} */ ' // TODO handle in a function
-			comments_len += comment_text.len
-			f.write(comment_text)
-			comm_idx++
-		}
+		before_len := f.line_len
+		f.comments(between_comments, iembed: true, has_nl: false)
+		comments_len := f.line_len - before_len
 		mut field_align := field_aligns[field_align_i]
 		if field_align.last_line < field.pos.line_nr {
 			field_align_i++
@@ -678,9 +678,9 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 				inc_indent = false
 			}
 		}
-		// Handle comments after field type (same line)
-		if comm_idx < comments.len {
-			if comments[comm_idx].pos.line_nr > field.pos.line_nr {
+		// Handle comments after field type
+		if after_type_comments.len > 0 {
+			if after_type_comments[0].pos.line_nr > field.pos.line_nr {
 				f.writeln('')
 			} else {
 				if !field.has_default_expr {
@@ -694,7 +694,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 				}
 				f.write(' ')
 			}
-			f.comments(comments[comm_idx..], level: .indent)
+			f.comments(after_type_comments, level: .indent)
 		} else {
 			f.writeln('')
 		}

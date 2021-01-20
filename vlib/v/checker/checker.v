@@ -1270,6 +1270,10 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		mut elem_typ := table.void_type
 		is_filter_map := method_name in ['filter', 'map']
 		is_sort := method_name == 'sort'
+		is_slice := method_name == 'slice'
+		if is_slice && !c.is_builtin_mod {
+			c.error('.slice() is a private method, use `x[start..end]` instead', call_expr.pos)
+		}
 		if is_filter_map || is_sort {
 			array_info := left_type_sym.info as table.Array
 			if is_filter_map {

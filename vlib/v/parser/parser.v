@@ -569,8 +569,9 @@ pub fn (mut p Parser) check_comment() ast.Comment {
 }
 
 pub fn (mut p Parser) comment() ast.Comment {
-	pos := p.tok.position()
+	mut pos := p.tok.position()
 	text := p.tok.lit
+	pos.last_line = pos.line_nr + text.count('\n')
 	p.next()
 	// p.next_with_comment()
 	return ast.Comment{
@@ -600,9 +601,10 @@ pub fn (mut p Parser) eat_comments() []ast.Comment {
 }
 
 pub fn (mut p Parser) eat_line_end_comments() []ast.Comment {
+	line := p.prev_tok.line_nr
 	mut comments := []ast.Comment{}
 	for {
-		if p.tok.kind != .comment || p.tok.line_nr != p.prev_tok.line_nr {
+		if p.tok.kind != .comment || p.tok.line_nr > line {
 			break
 		}
 		comments << p.comment()
@@ -628,11 +630,12 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 		}
 		.key_assert {
 			p.next()
-			assert_pos := p.tok.position()
+			mut pos := p.tok.position()
 			expr := p.expr(0)
+			pos.update_last_line(p.prev_tok.line_nr)
 			return ast.AssertStmt{
 				expr: expr
-				pos: assert_pos
+				pos: pos
 			}
 		}
 		.key_for {
@@ -691,16 +694,24 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 		.dollar {
 			match p.peek_tok.kind {
 				.key_if {
+					mut pos := p.tok.position()
+					expr := p.if_expr(true)
+					pos.update_last_line(p.prev_tok.line_nr)
 					return ast.ExprStmt{
-						expr: p.if_expr(true)
+						expr: expr
+						pos: pos
 					}
 				}
 				.key_for {
 					return p.comp_for()
 				}
 				.name {
+					mut pos := p.tok.position()
+					expr := p.comp_call()
+					pos.update_last_line(p.prev_tok.line_nr)
 					return ast.ExprStmt{
-						expr: p.comp_call()
+						expr: expr
+						pos: pos
 					}
 				}
 				else {
@@ -984,6 +995,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	// a, mut b ... :=/=   // multi-assign
 	// collect things upto hard boundaries
 	tok := p.tok
+	mut pos := tok.position()
 	left, left_comments := p.expr_list()
 	left0 := left[0]
 	if tok.kind == .key_mut && p.tok.kind != .decl_assign {
@@ -1001,6 +1013,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 		p.error_with_pos('expression evaluated but not used', left0.position())
 		return ast.Stmt{}
 	}
+	pos.update_last_line(p.prev_tok.line_nr)
 	if left.len == 1 {
 		return ast.ExprStmt{
 			expr: left0
@@ -1014,7 +1027,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 			vals: left
 			pos: tok.position()
 		}
-		pos: tok.position()
+		pos: pos
 		comments: left_comments
 	}
 }
@@ -1393,25 +1406,35 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 	// [expr]
 	pos := start_pos.extend(p.tok.position())
 	p.check(.rsbr)
-	// a[i] or { ... }
-	if p.tok.kind == .key_orelse && !p.or_is_handled {
-		was_inside_or_expr := p.inside_or_expr
-		mut or_pos := p.tok.position()
-		p.next()
-		p.open_scope()
-		or_stmts := p.parse_block_no_scope(false)
-		or_pos = or_pos.extend(p.prev_tok.position())
-		p.close_scope()
-		p.inside_or_expr = was_inside_or_expr
-		return ast.IndexExpr{
-			left: left
-			index: expr
-			pos: pos
-			or_expr: ast.OrExpr{
-				kind: .block
-				stmts: or_stmts
-				pos: or_pos
+	mut or_kind := ast.OrKind.absent
+	mut or_stmts := []ast.Stmt{}
+	mut or_pos := token.Position{}
+	if !p.or_is_handled {
+		// a[i] or { ... }
+		if p.tok.kind == .key_orelse {
+			was_inside_or_expr := p.inside_or_expr
+			or_pos = p.tok.position()
+			p.next()
+			p.open_scope()
+			or_stmts = p.parse_block_no_scope(false)
+			or_pos = or_pos.extend(p.prev_tok.position())
+			p.close_scope()
+			p.inside_or_expr = was_inside_or_expr
+			return ast.IndexExpr{
+				left: left
+				index: expr
+				pos: pos
+				or_expr: ast.OrExpr{
+					kind: .block
+					stmts: or_stmts
+					pos: or_pos
+				}
 			}
+		}
+		// `a[i] ?`
+		if p.tok.kind == .question {
+			p.next()
+			or_kind = .propagate
 		}
 	}
 	return ast.IndexExpr{
@@ -1419,7 +1442,9 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 		index: expr
 		pos: pos
 		or_expr: ast.OrExpr{
-			kind: .absent
+			kind: or_kind
+			stmts: or_stmts
+			pos: or_pos
 		}
 	}
 }
@@ -1744,24 +1769,12 @@ fn (mut p Parser) module_decl() ast.Module {
 		}
 		module_pos = module_pos.extend(name_pos)
 	}
-	mut full_mod := p.table.qualify_module(name, p.file_name)
-	if p.pref.build_mode == .build_module && !full_mod.contains('.') {
-		// A hack to make building vlib modules work
-		// `v build-module v.gen` will result in `full_mod = "gen"`, not "v.gen",
-		// because the module being built
-		// is not imported.
-		// So here we fetch the name of the module by looking at the path that's being built.
-		word := p.pref.path.after('/')
-		if full_mod == word && p.pref.path.contains('vlib') {
-			full_mod = p.pref.path.after('vlib/').replace('/', '.')
-			// println('new full mod =$full_mod')
-		}
-		// println('file_name=$p.file_name path=$p.pref.path')
-	}
-	p.mod = full_mod
+	full_name := util.qualify_module(name, p.file_name)
+	p.mod = full_name
 	p.builtin_mod = p.mod == 'builtin'
 	mod_node = ast.Module{
-		name: full_mod
+		name: full_name
+		short_name: name
 		attrs: module_attrs
 		is_skipped: is_skipped
 		pos: module_pos
@@ -1825,7 +1838,7 @@ fn (mut p Parser) import_stmt() ast.Import {
 			pos: import_pos.extend(pos)
 			mod_pos: pos
 			alias_pos: submod_pos
-			mod: mod_name_arr.join('.')
+			mod: util.qualify_import(p.pref, mod_name_arr.join('.'), p.file_name)
 			alias: mod_alias
 		}
 	}
@@ -1834,7 +1847,7 @@ fn (mut p Parser) import_stmt() ast.Import {
 			pos: import_node.pos
 			mod_pos: import_node.mod_pos
 			alias_pos: import_node.alias_pos
-			mod: mod_name_arr[0]
+			mod: util.qualify_import(p.pref, mod_name_arr[0], p.file_name)
 			alias: mod_alias
 		}
 	}
@@ -2404,7 +2417,7 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 	}
 	if p.tok.kind == .rcbr {
 		// `unsafe {}`
-		pos.last_line = p.tok.line_nr - 1
+		pos.update_last_line(p.tok.line_nr)
 		p.next()
 		return ast.Block{
 			is_unsafe: true
@@ -2423,7 +2436,7 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 			// `unsafe {expr}`
 			if stmt.expr.is_expr() {
 				p.next()
-				pos.last_line = p.prev_tok.line_nr - 1
+				pos.update_last_line(p.prev_tok.line_nr)
 				ue := ast.UnsafeExpr{
 					expr: stmt.expr
 					pos: pos
@@ -2443,6 +2456,7 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 		stmts << p.stmt(false)
 	}
 	p.next()
+	pos.update_last_line(p.tok.line_nr)
 	return ast.Block{
 		stmts: stmts
 		is_unsafe: true

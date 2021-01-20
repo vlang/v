@@ -44,10 +44,10 @@ mut:
 	content_type string = 'text/plain'
 	status       string = '200 OK'
 pub:
-	req  http.Request
-	conn net.TcpConn
+	req http.Request
 	// TODO Response
 pub mut:
+	conn              &net.TcpConn
 	static_files      map[string]string
 	static_mime_types map[string]string
 	form              map[string]string
@@ -123,7 +123,7 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 	defer {
 		s.free()
 	}
-	send_string(ctx.conn, s) or { return false }
+	send_string(mut ctx.conn, s) or { return false }
 	return true
 }
 
@@ -152,7 +152,7 @@ pub fn (mut ctx Context) redirect(url string) Result {
 		return Result{}
 	}
 	ctx.done = true
-	send_string(ctx.conn, 'HTTP/1.1 302 Found\r\nLocation: $url$ctx.headers\r\n$headers_close') or {
+	send_string(mut ctx.conn, 'HTTP/1.1 302 Found\r\nLocation: $url$ctx.headers\r\n$headers_close') or {
 		return Result{}
 	}
 	return Result{}
@@ -163,7 +163,7 @@ pub fn (mut ctx Context) not_found() Result {
 		return Result{}
 	}
 	ctx.done = true
-	send_string(ctx.conn, http_404) or { }
+	send_string(mut ctx.conn, http_404) or { }
 	return Result{}
 }
 
@@ -242,8 +242,10 @@ pub fn run<T>(port int) {
 
 pub fn run_app<T>(mut app T, port int) {
 	println('Running a Vweb app on http://localhost:$port')
-	l := net.listen_tcp(port) or { panic('failed to listen') }
-	app.Context = Context{}
+	mut l := net.listen_tcp(port) or { panic('failed to listen') }
+	app.Context = Context{
+		conn: 0
+	}
 	app.init_once()
 	$for method in T.methods {
 		$if method.return_type is Result {
@@ -301,7 +303,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	vals := first_line.split(' ')
 	if vals.len < 2 {
 		println('no vals for http')
-		send_string(conn, http_500) or { }
+		send_string(mut conn, http_500) or { }
 		return
 	}
 	mut headers := []string{}
@@ -383,7 +385,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	mime_type := app.static_mime_types[static_file_name]
 	if static_file != '' && mime_type != '' {
 		data := os.read_file(static_file) or {
-			send_string(conn, http_404) or { }
+			send_string(mut conn, http_404) or { }
 			return
 		}
 		app.send_response_to_client(mime_type, data)
@@ -544,7 +546,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	}
 	if action == '' {
 		// site not found
-		send_string(conn, http_404) or { }
+		send_string(mut conn, http_404) or { }
 		return
 	}
 	$for method in T.methods {
@@ -685,6 +687,6 @@ fn filter(s string) string {
 
 pub type RawHtml = string
 
-fn send_string(conn net.TcpConn, s string) ? {
+fn send_string(mut conn net.TcpConn, s string) ? {
 	conn.write(s.bytes()) ?
 }

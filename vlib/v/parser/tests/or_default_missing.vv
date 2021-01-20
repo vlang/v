@@ -1,0 +1,20 @@
+fn test_array_or() {
+	m := [3, 4, 5]
+	el := m[4] or {
+		println('error')
+	}
+	println(el)
+}
+
+fn test_map_or() {
+	m := {
+		'as': 3
+		'qw': 4
+		'kl': 5
+	}
+	mut testvar := 0
+	el := m['pp'] or {
+		testvar = 12
+	}
+	println('$el $testvar')
+}
