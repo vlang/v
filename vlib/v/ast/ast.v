@@ -137,7 +137,8 @@ pub fn (e &SelectorExpr) root_ident() Ident {
 // module declaration
 pub struct Module {
 pub:
-	name       string
+	name       string // encoding.base64
+	short_name string // base64
 	attrs      []table.Attr
 	pos        token.Position
 	name_pos   token.Position // `name` in import name

@@ -851,16 +851,16 @@ pub fn (table &Table) type_to_str_using_aliases(t Type, import_aliases map[strin
 
 fn (t Table) shorten_user_defined_typenames(originalname string, import_aliases map[string]string) string {
 	mut res := originalname
-	// types defined by the user
-	// mod.submod.submod2.Type => submod2.Type
-	parts := res.split('.')
-	res = if parts.len > 1 { parts[parts.len - 2..].join('.') } else { parts[0] }
-	// cur_mod.Type => Type
-	if res.starts_with(t.cmod_prefix) {
+	if t.cmod_prefix.len > 0 && res.starts_with(t.cmod_prefix) {
+		// cur_mod.Type => Type
 		res = res.replace_once(t.cmod_prefix, '')
-	}
-	if res in import_aliases {
+	} else if res in import_aliases {
 		res = import_aliases[res]
+	} else {
+		// types defined by the user
+		// mod.submod.submod2.Type => submod2.Type
+		parts := res.split('.')
+		res = if parts.len > 1 { parts[parts.len - 2..].join('.') } else { parts[0] }
 	}
 	return res
 }

@@ -154,12 +154,12 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	// println('start cgen2')
 	mut module_built := ''
 	if pref.build_mode == .build_module {
-		// TODO: detect this properly for all cases
-		// either get if from an earlier stage or use the lookup paths
-		for dir_name in ['vlib', '.vmodules', 'modules'] {
-			if pref.path.contains(dir_name + os.path_separator) {
-				module_built = pref.path.after(dir_name + os.path_separator).replace(os.path_separator,
-					'.')
+		for file in files {
+			if pref.path in file.path &&
+				file.mod.short_name ==
+				pref.path.all_after_last(os.path_separator).trim_right(os.path_separator)
+			{
+				module_built = file.mod.name
 				break
 			}
 		}
@@ -439,7 +439,7 @@ pub fn (mut g Gen) finish() {
 	}
 	g.stringliterals.writeln('// << string literal consts')
 	g.stringliterals.writeln('')
-	if g.pref.is_prof {
+	if g.pref.is_prof && g.pref.build_mode != .build_module {
 		g.gen_vprint_profile_stats()
 	}
 	if g.pref.is_livemain || g.pref.is_liveshared {
@@ -461,16 +461,25 @@ pub fn (mut g Gen) write_typeof_functions() {
 	for typ in g.table.types {
 		if typ.kind == .sum_type {
 			sum_info := typ.info as table.SumType
-			tidx := g.table.find_type_idx(typ.name)
-			g.writeln('static char * v_typeof_sumtype_${tidx}(int sidx) { /* $typ.name */ ')
-			g.writeln('	switch(sidx) {')
-			g.writeln('		case $tidx: return "${util.strip_main_name(typ.name)}";')
-			for v in sum_info.variants {
-				subtype := g.table.get_type_symbol(v)
-				g.writeln('		case $v: return "${util.strip_main_name(subtype.name)}";')
+			g.writeln('static char * v_typeof_sumtype_${typ.cname}(int sidx) { /* $typ.name */ ')
+			if g.pref.build_mode == .build_module {
+				g.writeln('\t\tif( sidx == _v_type_idx_${typ.cname}() ) return "${util.strip_main_name(typ.name)}";')
+				for v in sum_info.variants {
+					subtype := g.table.get_type_symbol(v)
+					g.writeln('\tif( sidx == _v_type_idx_${subtype.cname}() ) return "${util.strip_main_name(subtype.name)}";')
+				}
+				g.writeln('\treturn "unknown ${util.strip_main_name(typ.name)}";')
+			} else {
+				tidx := g.table.find_type_idx(typ.name)
+				g.writeln('\tswitch(sidx) {')
+				g.writeln('\t\tcase $tidx: return "${util.strip_main_name(typ.name)}";')
+				for v in sum_info.variants {
+					subtype := g.table.get_type_symbol(v)
+					g.writeln('\t\tcase $v: return "${util.strip_main_name(subtype.name)}";')
+				}
+				g.writeln('\t\tdefault: return "unknown ${util.strip_main_name(typ.name)}";')
+				g.writeln('\t}')
 			}
-			g.writeln('		default: return "unknown ${util.strip_main_name(typ.name)}";')
-			g.writeln('	}')
 			g.writeln('}')
 		}
 	}
@@ -478,7 +487,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 	g.writeln('')
 }
 
-// V type to C type
+// V type to C typecc
 fn (mut g Gen) typ(t table.Type) string {
 	styp := g.base_type(t)
 	if t.has_flag(.optional) {
@@ -1015,10 +1024,13 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					println('build module `$g.module_built` fn `$node.name`')
 				}
 			}
-			if g.pref.use_cache && g.pref.build_mode != .build_module {
+			if g.pref.use_cache {
 				// We are using prebuilt modules, we do not need to generate
 				// their functions in main.c.
-				if node.mod != 'main' && node.mod != 'help' && !should_bundle_module {
+				if node.mod != 'main' &&
+					node.mod != 'help' && !should_bundle_module && !g.file.path.ends_with('_test.v') &&
+					!node.is_generic
+				{
 					skip = true
 				}
 			}
@@ -2851,8 +2863,7 @@ fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 	if sym.kind == .sum_type {
 		// When encountering a .sum_type, typeof() should be done at runtime,
 		// because the subtype of the expression may change:
-		sum_type_idx := node.expr_type.idx()
-		g.write('tos3( /* $sym.name */ v_typeof_sumtype_${sum_type_idx}( (')
+		g.write('tos3( /* $sym.name */ v_typeof_sumtype_${sym.cname}( (')
 		g.expr(node.expr)
 		g.write(').typ ))')
 	} else if sym.kind == .array_fixed {
@@ -4529,7 +4540,11 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 			ast.ArrayInit {
 				if field.expr.is_fixed {
 					styp := g.typ(field.expr.typ)
-					g.definitions.writeln('$styp _const_$name = $val; // fixed array const')
+					if g.pref.build_mode != .build_module {
+						g.definitions.writeln('$styp _const_$name = $val; // fixed array const')
+					} else {
+						g.definitions.writeln('$styp _const_$name; // fixed array const')
+					}
 				} else {
 					g.const_decl_init_later(field.mod, name, val, field.typ)
 				}
@@ -5812,7 +5827,7 @@ fn (mut g Gen) interface_table() string {
 		}
 		inter_info := ityp.info as table.Interface
 		// interface_name is for example Speaker
-		interface_name := c_name(ityp.name)
+		interface_name := ityp.cname
 		// generate a struct that references interface methods
 		methods_struct_name := 'struct _${interface_name}_interface_methods'
 		mut methods_typ_def := strings.new_builder(100)
@@ -5844,9 +5859,13 @@ fn (mut g Gen) interface_table() string {
 		iname_table_length := inter_info.types.len
 		if iname_table_length == 0 {
 			// msvc can not process `static struct x[0] = {};`
-			methods_struct.writeln('$staticprefix $methods_struct_name ${interface_name}_name_table[1];')
+			methods_struct.writeln('$methods_struct_name ${interface_name}_name_table[1];')
 		} else {
-			methods_struct.writeln('$staticprefix $methods_struct_name ${interface_name}_name_table[$iname_table_length] = {')
+			if g.pref.build_mode != .build_module {
+				methods_struct.writeln('$methods_struct_name ${interface_name}_name_table[$iname_table_length] = {')
+			} else {
+				methods_struct.writeln('$methods_struct_name ${interface_name}_name_table[$iname_table_length];')
+			}
 		}
 		mut cast_functions := strings.new_builder(100)
 		cast_functions.write('// Casting functions for interface "$interface_name"')
@@ -5871,24 +5890,26 @@ fn (mut g Gen) interface_table() string {
 			already_generated_mwrappers[interface_index_name] = current_iinidx
 			current_iinidx++
 			// eprintln('>>> current_iinidx: ${current_iinidx-iinidx_minimum_base} | interface_index_name: $interface_index_name')
-			sb.writeln('_Interface I_${cctype}_to_Interface_${interface_name}($cctype* x);')
-			sb.writeln('_Interface* I_${cctype}_to_Interface_${interface_name}_ptr($cctype* x);')
+			sb.writeln('$staticprefix _Interface I_${cctype}_to_Interface_${interface_name}($cctype* x);')
+			sb.writeln('$staticprefix _Interface* I_${cctype}_to_Interface_${interface_name}_ptr($cctype* x);')
 			cast_functions.writeln('
-_Interface I_${cctype}_to_Interface_${interface_name}($cctype* x) {
+$staticprefix _Interface I_${cctype}_to_Interface_${interface_name}($cctype* x) {
 	return (_Interface) {
 		._object = (void*) (x),
 		._interface_idx = $interface_index_name
 	};
 }
 
-_Interface* I_${cctype}_to_Interface_${interface_name}_ptr($cctype* x) {
+$staticprefix _Interface* I_${cctype}_to_Interface_${interface_name}_ptr($cctype* x) {
 	// TODO Remove memdup
 	return (_Interface*) memdup(&(_Interface) {
 		._object = (void*) (x),
 		._interface_idx = $interface_index_name
 	}, sizeof(_Interface));
 }')
-			methods_struct.writeln('\t{')
+			if g.pref.build_mode != .build_module {
+				methods_struct.writeln('\t{')
+			}
 			st_sym := g.table.get_type_symbol(st)
 			mut method := table.Fn{}
 			for _, m in ityp.methods {
@@ -5928,17 +5949,27 @@ _Interface* I_${cctype}_to_Interface_${interface_name}_ptr($cctype* x) {
 					// .speak = Cat_speak_method_wrapper
 					method_call += '_method_wrapper'
 				}
-				methods_struct.writeln('\t\t.${c_name(method.name)} = $method_call,')
+				if g.pref.build_mode != .build_module {
+					methods_struct.writeln('\t\t.${c_name(method.name)} = $method_call,')
+				}
 			}
-			methods_struct.writeln('\t},')
+			if g.pref.build_mode != .build_module {
+				methods_struct.writeln('\t},')
+			}
 			iin_idx := already_generated_mwrappers[interface_index_name] - iinidx_minimum_base
-			sb.writeln('int $interface_index_name = $iin_idx;')
+			if g.pref.build_mode != .build_module {
+				sb.writeln('int $interface_index_name = $iin_idx;')
+			} else {
+				sb.writeln('int $interface_index_name;')
+			}
 		}
 		sb.writeln('// ^^^ number of types for interface $interface_name: ${current_iinidx - iinidx_minimum_base}')
 		if iname_table_length == 0 {
 			methods_struct.writeln('')
 		} else {
-			methods_struct.writeln('};')
+			if g.pref.build_mode != .build_module {
+				methods_struct.writeln('};')
+			}
 		}
 		// add line return after interface index declarations
 		sb.writeln('')

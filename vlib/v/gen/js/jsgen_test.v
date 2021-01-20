@@ -1,7 +1,7 @@
 import os
 
 const (
-	test_dir   = 'vlib/v/gen/js/tests/'
+	test_dir   = os.join_path('vlib', 'v', 'gen', 'js', 'tests')
 	output_dir = '_js_tests/'
 	v_options  = '-b js -w'
 )

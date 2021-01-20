@@ -1,4 +1,4 @@
-import table
+import v.table
 import v.cflag
 
 const (

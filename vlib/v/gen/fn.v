@@ -107,7 +107,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 		if !(it.is_pub || g.pref.is_debug) {
 			// Private functions need to marked as static so that they are not exportable in the
 			// binaries
-			if g.pref.build_mode != .build_module {
+			if g.pref.build_mode != .build_module && !g.pref.use_cache {
 				// if !(g.pref.build_mode == .build_module && g.is_builtin_mod) {
 				// If we are building vlib/builtin, we need all private functions like array_get
 				// to be public, so that all V programs can access them.
@@ -127,7 +127,8 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 	fargs, fargtypes := g.fn_args(it.params, it.is_variadic)
 	arg_str := g.out.after(arg_start_pos)
 	if it.no_body ||
-		((g.pref.use_cache && g.pref.build_mode != .build_module) && it.is_builtin) || skip
+		((g.pref.use_cache && g.pref.build_mode != .build_module) && it.is_builtin && !g.is_test) ||
+		skip
 	{
 		// Just a function header. Builtin function bodies are defined in builtin.o
 		g.definitions.writeln(');') // // NO BODY')
@@ -161,7 +162,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 		g.hotcode_definitions.writeln('}')
 	}
 	// Profiling mode? Start counting at the beginning of the function (save current time).
-	if g.pref.is_prof {
+	if g.pref.is_prof && g.pref.build_mode != .build_module {
 		g.profile_fn(it)
 	}
 	// we could be in an anon fn so save outer fn defer stmts
@@ -390,7 +391,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 	}
 	if left_sym.kind == .sum_type && node.name == 'type_name' {
-		g.write('tos3( /* $left_sym.name */ v_typeof_sumtype_${node.receiver_type}( (')
+		g.write('tos3( /* $left_sym.name */ v_typeof_sumtype_${typ_sym.cname}( (')
 		g.expr(node.left)
 		g.write(').typ ))')
 		return
