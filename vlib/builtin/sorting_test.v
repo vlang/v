@@ -18,6 +18,25 @@ fn test_sorting_with_condition_expression() {
 	assert a == sorted_desc
 }
 
+fn test_sorting_primitives_with_condition_expression() {
+	mut x := ['9', '87', '3210', '654']
+	x.sort(a.len < b.len)
+	assert x == ['9', '87', '654', '3210']
+}
+
+fn get_score(word string) int {
+	mut total := 0
+	for letter in word {
+		total += int(letter) - 97
+	}
+	return total
+}
+
+fn test_sorting_with_fn_call_in_condition_expression() {
+	mut words := ['aaaa', 'a', 'b', 'foo', 'bar']
+	words.sort(get_score(a) < get_score(b))
+}
+
 fn mysort(mut a []int) {
 	a.sort()
 }

@@ -2700,13 +2700,13 @@ fn scope_register_ab(mut s ast.Scope, pos token.Position, typ table.Type) {
 	s.register(ast.Var{
 		name: 'a'
 		pos: pos
-		typ: typ
+		typ: typ.to_ptr()
 		is_used: true
 	})
 	s.register(ast.Var{
 		name: 'b'
 		pos: pos
-		typ: typ
+		typ: typ.to_ptr()
 		is_used: true
 	})
 }

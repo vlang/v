@@ -219,81 +219,75 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	// No arguments means we are sorting an array of builtins (e.g. `numbers.sort()`)
 	// The type for the comparison fns is the type of the element itself.
 	mut typ := info.elem_type
+	mut is_default := false
 	mut is_reverse := false
-	// `users.sort(a.age > b.age)`
-	if node.args.len > 0 {
-		// Get the type of the field that's being compared
-		// `a.age > b.age` => `age int` => int
+	mut compare_fn := ''
+	if node.args.len == 0 {
+		is_default = true
+	} else {
 		infix_expr := node.args[0].expr as ast.InfixExpr
-		// typ = infix_expr.left_type
+		is_default = '$infix_expr.left' in ['a', 'b'] && '$infix_expr.right' in ['a', 'b']
 		is_reverse = infix_expr.op == .gt
 	}
-	mut compare_fn := ''
-	match typ {
-		table.int_type {
-			compare_fn = 'compare_ints'
+	if is_default {
+		// users.sort() or users.sort(a > b)
+		compare_fn = match typ {
+			table.int_type, table.int_type.to_ptr() { 'compare_ints' }
+			table.u64_type, table.u64_type.to_ptr() { 'compare_u64s' }
+			table.string_type, table.string_type.to_ptr() { 'compare_strings' }
+			table.f64_type, table.f64_type.to_ptr() { 'compare_floats' }
+			else { '' }
 		}
-		table.u64_type {
-			compare_fn = 'compare_u64s'
+		if compare_fn != '' && is_reverse {
+			compare_fn += '_reverse'
 		}
-		table.string_type {
-			compare_fn = 'compare_strings'
+	}
+	if compare_fn == '' {
+		// `users.sort(a.age > b.age)`
+		// Generate a comparison function for a custom type
+		tmp_name := g.new_tmp_var()
+		compare_fn = 'compare_${tmp_name}_' + g.typ(typ)
+		if is_reverse {
+			compare_fn += '_reverse'
 		}
-		table.f64_type {
-			compare_fn = 'compare_floats'
-		}
-		else {
-			// Generate a comparison function for a custom type
-			if node.args.len == 0 {
-				verror('usage: .sort(a.field < b.field)')
-			}
-			// verror('sort(): unhandled type $typ $q.name')
-			tmp_name := g.new_tmp_var()
-			compare_fn = 'compare_${tmp_name}_' + g.typ(typ)
-			if is_reverse {
-				compare_fn += '_reverse'
-			}
-			// Register a new custom `compare_xxx` function for qsort()
-			g.table.register_fn(name: compare_fn, return_type: table.int_type)
-			infix_expr := node.args[0].expr as ast.InfixExpr
-			styp := g.typ(typ)
-			// Variables `a` and `b` are used in the `.sort(a < b)` syntax, so we can reuse them
-			// when generating the function as long as the args are named the same.
-			g.definitions.writeln('int $compare_fn ($styp* a, $styp* b) {')
-			sym := g.table.get_type_symbol(typ)
-			if !is_reverse && sym.has_method('<') && infix_expr.left.str().len == 1 {
-				g.definitions.writeln('\tif (${styp}__lt(*a, *b)) { return -1; } else { return 1; }}')
-			} else if is_reverse && sym.has_method('>') && infix_expr.left.str().len == 1 {
-				g.definitions.writeln('\tif (${styp}__gt(*a, *b)) { return -1; } else { return 1; }}')
-			} else {
-				field_type := g.typ(infix_expr.left_type)
-				left_expr_str := g.write_expr_to_string(infix_expr.left).replace_once('.',
-					'->')
-				right_expr_str := g.write_expr_to_string(infix_expr.right).replace_once('.',
-					'->')
-				g.definitions.writeln('$field_type a_ = $left_expr_str;')
-				g.definitions.writeln('$field_type b_ = $right_expr_str;')
-				mut op1, mut op2 := '', ''
-				if infix_expr.left_type == table.string_type {
-					if is_reverse {
-						op1 = 'string_gt(a_, b_)'
-						op2 = 'string_lt(a_, b_)'
-					} else {
-						op1 = 'string_lt(a_, b_)'
-						op2 = 'string_gt(a_, b_)'
-					}
+		// Register a new custom `compare_xxx` function for qsort()
+		g.table.register_fn(name: compare_fn, return_type: table.int_type)
+		infix_expr := node.args[0].expr as ast.InfixExpr
+		styp := g.typ(typ)
+		// Variables `a` and `b` are used in the `.sort(a < b)` syntax, so we can reuse them
+		// when generating the function as long as the args are named the same.
+		g.definitions.writeln('int $compare_fn ($styp* a, $styp* b) {')
+		sym := g.table.get_type_symbol(typ)
+		if !is_reverse && sym.has_method('<') && infix_expr.left.str().len == 1 {
+			g.definitions.writeln('\tif (${styp}__lt(*a, *b)) { return -1; } else { return 1; }}')
+		} else if is_reverse && sym.has_method('>') && infix_expr.left.str().len == 1 {
+			g.definitions.writeln('\tif (${styp}__gt(*a, *b)) { return -1; } else { return 1; }}')
+		} else {
+			field_type := g.typ(infix_expr.left_type)
+			left_expr_str := g.write_expr_to_string(infix_expr.left)
+			right_expr_str := g.write_expr_to_string(infix_expr.right)
+			g.definitions.writeln('$field_type a_ = $left_expr_str;')
+			g.definitions.writeln('$field_type b_ = $right_expr_str;')
+			mut op1, mut op2 := '', ''
+			if infix_expr.left_type == table.string_type {
+				if is_reverse {
+					op1 = 'string_gt(a_, b_)'
+					op2 = 'string_lt(a_, b_)'
 				} else {
-					if is_reverse {
-						op1 = 'a_ > b_'
-						op2 = 'a_ < b_'
-					} else {
-						op1 = 'a_ < b_'
-						op2 = 'a_ > b_'
-					}
+					op1 = 'string_lt(a_, b_)'
+					op2 = 'string_gt(a_, b_)'
 				}
-				g.definitions.writeln('if ($op1) return -1;')
-				g.definitions.writeln('if ($op2) return 1; return 0; }\n')
+			} else {
+				if is_reverse {
+					op1 = 'a_ > b_'
+					op2 = 'a_ < b_'
+				} else {
+					op1 = 'a_ < b_'
+					op2 = 'a_ > b_'
+				}
 			}
+			g.definitions.writeln('if ($op1) return -1;')
+			g.definitions.writeln('if ($op2) return 1; return 0; }\n')
 		}
 	}
 	if is_reverse && !compare_fn.ends_with('_reverse') {
