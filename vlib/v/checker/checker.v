@@ -703,7 +703,6 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 	defer {
 		c.expected_type = former_expected_type
 	}
-	c.expected_type = table.void_type
 	left_type := c.expr(infix_expr.left)
 	// left_type = c.unwrap_genric(c.expr(infix_expr.left))
 	infix_expr.left_type = left_type
@@ -4437,6 +4436,9 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 		} else {
 			c.stmts(branch.stmts)
 		}
+						if c.file.path.ends_with('main.v') {
+							println(expr_required)
+						}
 		if expr_required {
 			if branch.stmts.len > 0 && branch.stmts[branch.stmts.len - 1] is ast.ExprStmt {
 				mut last_expr := branch.stmts[branch.stmts.len - 1] as ast.ExprStmt
@@ -4518,6 +4520,10 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 	if expr_required && !node.has_else {
 		d := if node.is_comptime { '$' } else { '' }
 		c.error('`$if_kind` expression needs `${d}else` clause', node.pos)
+	}
+	if c.file.path.ends_with('main.v') {
+
+	println(node.typ)
 	}
 	return node.typ
 }
