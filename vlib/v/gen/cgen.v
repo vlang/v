@@ -747,7 +747,7 @@ pub fn (mut g Gen) write_multi_return_types() {
 		}
 		g.typedefs.writeln('typedef struct $sym.cname $sym.cname;')
 		g.type_definitions.writeln('struct $sym.cname {')
-		info := sym.info as table.MultiReturn
+		info := sym.mr_info()
 		for i, mr_typ in info.types {
 			type_name := g.typ(mr_typ)
 			g.type_definitions.writeln('\t$type_name arg$i;')
