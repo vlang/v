@@ -326,7 +326,7 @@ fn (req &Request) build_request_headers(method Method, host_name string, path st
 		uheaders << '$key: $val\r\n'
 	}
 	uheaders << req.build_request_cookies_header()
-	return '$method $path HTTP/1.1\r\n' + uheaders.join('') + 'Connection: close\r\n\r\n' + req.data + '\r\n'
+	return '$method $path HTTP/1.1\r\n' + uheaders.join('') + 'Connection: close\r\n\r\n' + req.data
 }
 
 fn (req &Request) build_request_cookies_header() string {
