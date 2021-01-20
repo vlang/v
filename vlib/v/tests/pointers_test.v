@@ -11,6 +11,23 @@ fn test_pointer_arithmetic() {
 	}
 }
 
+struct User {
+mut:
+	name string
+}
+
+fn modify_ptr(mut user User) {
+	user.name = 'Bob'
+}
+
+fn test_mut_ptr() {
+	mut user := &User{'Peter'}
+	assert user.name == 'Peter'
+	modify_ptr(mut user)
+	assert user.name == 'Bob'
+	println(user)
+}
+
 /*
 fn test_multi_level_pointer_dereferencing() {
 	n := 100

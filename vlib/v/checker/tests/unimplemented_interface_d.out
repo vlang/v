@@ -1,6 +1,7 @@
-vlib/v/checker/tests/unimplemented_interface_d.vv:12:6: error: `Cat` incorrectly implements method `speak` of interface `Animal`, expected `speak(s string)`
-   10 |
+vlib/v/checker/tests/unimplemented_interface_d.vv:12:6: error: `Cat` incorrectly implements method `speak` of interface `Animal`: expected 2 parameter(s), not 1
+   10 | 
    11 | fn main() {
    12 |     foo(Cat{})
       |         ~~~~~
    13 | }
+details: main.Animal has `speak(s string)`

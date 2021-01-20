@@ -1,3 +1,10 @@
+vlib/v/checker/tests/return_missing_match_simple.vv:4:3: warning: `match` must have at least one non `else` branch
+    2 |     a := 1
+    3 |     match a {
+    4 |         else { println('abc') }
+      |         ~~~~
+    5 |     }
+    6 |     println('hello')
 vlib/v/checker/tests/return_missing_match_simple.vv:1:1: error: missing return at end of function `h`
     1 | fn h() int {
       | ~~~~~~~~~~

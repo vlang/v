@@ -1,6 +1,15 @@
-vlib/v/checker/tests/unimplemented_interface_e.vv:12:6: error: `Cat` incorrectly implements method `speak` of interface `Animal`, expected `speak(s string)`
-   10 |
+vlib/v/checker/tests/unimplemented_interface_e.vv:12:6: error: `Cat` incorrectly implements method `speak` of interface `Animal`: expected `string`, not `&string` for parameter 1
+   10 | 
    11 | fn main() {
    12 |     foo(Cat{})
       |         ~~~~~
-   13 | }
+   13 |     _ = Animal(Cat{})
+   14 | }
+details: main.Animal has `speak(s string)`
+vlib/v/checker/tests/unimplemented_interface_e.vv:13:6: error: `Cat` incorrectly implements method `speak` of interface `Animal`: expected `string`, not `&string` for parameter 1
+   11 | fn main() {
+   12 |     foo(Cat{})
+   13 |     _ = Animal(Cat{})
+      |         ~~~~~~~~~~~~~
+   14 | }
+details: main.Animal has `speak(s string)`

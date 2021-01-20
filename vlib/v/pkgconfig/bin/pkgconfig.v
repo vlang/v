@@ -1,7 +1,7 @@
 module main
 
-import v.pkgconfig
 import os
+import v.pkgconfig
 
 fn main() {
 	mut m := pkgconfig.main(os.args[1..]) or {

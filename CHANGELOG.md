@@ -12,6 +12,10 @@
 - Support `[manualfree] fn f1(){}` and `[manualfree] module m1`, for functions doing their own memory management.
 - Allow usage of `<` and `>` operators for struct in `.sort` method for arrays, i.e. `arr.sort(a < b)`.
 - Auto generate assignment operators like `+=`, `-=`, `*=`, `/=` and `%=` if the operators are defined.
+- Colorize and improve failing tests output.
+- Fix `go` with a generic function: `go test<string>(c, 'abcd')`.
+- Add comptime `x := $embed_file('v.png') println(x.len) println(ptr_str(x.data()))`, for embedding files into binaries.
+- Advanced vdoc search on mobile layout.
 
 ## V 0.2.1
 *30 Dec 2020*

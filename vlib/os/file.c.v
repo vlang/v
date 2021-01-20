@@ -33,7 +33,7 @@ pub fn (mut f File) write(buf []byte) ?int {
 		}
 	}
 	*/
-	written := C.fwrite(buf.data, buf.len, 1, f.cfile)
+	written := int(C.fwrite(buf.data, buf.len, 1, f.cfile))
 	if written == 0 && buf.len != 0 {
 		return error('0 bytes written')
 	}
@@ -54,7 +54,7 @@ pub fn (mut f File) writeln(s string) ?int {
 	}
 	*/
 	// TODO perf
-	written := C.fwrite(s.str, s.len, 1, f.cfile)
+	written := int(C.fwrite(s.str, s.len, 1, f.cfile))
 	if written == 0 && s.len != 0 {
 		return error('0 bytes written')
 	}
@@ -70,7 +70,7 @@ pub fn (mut f File) write_string(s string) ?int {
 		return error('file is not opened')
 	}
 	// TODO perf
-	written := C.fwrite(s.str, s.len, 1, f.cfile)
+	written := int(C.fwrite(s.str, s.len, 1, f.cfile))
 	if written == 0 && s.len != 0 {
 		return error('0 bytes written')
 	}
@@ -80,18 +80,18 @@ pub fn (mut f File) write_string(s string) ?int {
 // write_to implements the RandomWriter interface
 pub fn (mut f File) write_to(pos int, buf []byte) ?int {
 	C.fseek(f.cfile, pos, C.SEEK_SET)
-	res := C.fwrite(buf.data, 1, buf.len, f.cfile)
+	res := int(C.fwrite(buf.data, 1, buf.len, f.cfile))
 	C.fseek(f.cfile, 0, C.SEEK_END)
 	return res
 }
 
 pub fn (mut f File) write_bytes(data voidptr, size int) int {
-	return C.fwrite(data, 1, size, f.cfile)
+	return int(C.fwrite(data, 1, size, f.cfile))
 }
 
 pub fn (mut f File) write_bytes_at(data voidptr, size int, pos int) int {
 	C.fseek(f.cfile, pos, C.SEEK_SET)
-	res := C.fwrite(data, 1, size, f.cfile)
+	res := int(C.fwrite(data, 1, size, f.cfile))
 	C.fseek(f.cfile, 0, C.SEEK_END)
 	return res
 }
@@ -123,7 +123,7 @@ pub fn (f &File) read_bytes_into(pos int, mut buf []byte) ?int {
 	C.fseek(f.cfile, pos, C.SEEK_SET)
 	// errno is only set if fread fails, so clear it first to tell
 	C.errno = 0
-	nbytes := C.fread(buf.data, 1, buf.len, f.cfile)
+	nbytes := int(C.fread(buf.data, 1, buf.len, f.cfile))
 	if C.errno != 0 {
 		return error(posix_get_error_msg(C.errno))
 	}
@@ -139,7 +139,7 @@ pub fn (f &File) read(mut buf []byte) ?int {
 		return 0
 	}
 	C.errno = 0
-	nbytes := C.fread(buf.data, 1, buf.len, f.cfile)
+	nbytes := int(C.fread(buf.data, 1, buf.len, f.cfile))
 	if C.errno != 0 {
 		return error(posix_get_error_msg(C.errno))
 	}
@@ -153,7 +153,7 @@ pub fn (f &File) read_at(pos int, mut buf []byte) ?int {
 	}
 	C.fseek(f.cfile, pos, C.SEEK_SET)
 	C.errno = 0
-	nbytes := C.fread(buf.data, 1, buf.len, f.cfile)
+	nbytes := int(C.fread(buf.data, 1, buf.len, f.cfile))
 	if C.errno != 0 {
 		return error(posix_get_error_msg(C.errno))
 	}

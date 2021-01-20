@@ -34,3 +34,13 @@ pub:
 	a int
 	b int
 }
+
+struct KeepMultiLineDefaultExprsIndent {
+	buttons []PeriodButton = [PeriodButton{
+		period: pr.Period.m1
+		text: 'M1'
+	}, PeriodButton{
+		period: pr.Period.m5
+		text: 'M5'
+	}]
+}

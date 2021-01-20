@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module gen
 
@@ -41,7 +41,8 @@ fn (g &Gen) type_to_fmt(typ table.Type) string {
 	if typ.is_ptr() && (typ.is_int() || typ.is_float()) {
 		return '%.*s\\000'
 	} else if sym.kind in
-		[.struct_, .array, .array_fixed, .map, .bool, .enum_, .interface_, .sum_type, .function] {
+		[.struct_, .array, .array_fixed, .map, .bool, .enum_, .interface_, .sum_type, .function]
+	{
 		return '%.*s\\000'
 	} else if sym.kind == .string {
 		return "'%.*s\\000'"
@@ -281,7 +282,7 @@ fn (mut g Gen) gen_str_for_array_fixed(info table.ArrayFixed, styp string, str_f
 	} else {
 		g.auto_str_funcs.writeln('\tfor (int i = 0; i < $info.size; ++i) {')
 		if sym.kind == .struct_ && !sym_has_str_method {
-			g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${elem_str_fn_name}(a[i], indent_count));')
+			g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${elem_str_fn_name}(a[i]));')
 		} else if sym.kind in [.f32, .f64] {
 			g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("%g", 1, a[i]));')
 		} else if sym.kind == .string {
@@ -343,19 +344,16 @@ fn (mut g Gen) gen_str_for_map(info table.Map, styp string, str_fn_name string) 
 	g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _SLIT(": "));')
 	if val_sym.kind == .function {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${elem_str_fn_name}());')
+	} else if val_sym.kind == .string {
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\'%.*s\\000\'", 2, *($val_styp*)DenseArray_value(&m.key_values, i)));')
+	} else if val_sym.kind == .struct_ && !val_sym.has_method('str') {
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, indent_${elem_str_fn_name}(*($val_styp*)DenseArray_value(&m.key_values, i), indent_count));')
+	} else if val_sym.kind in [.f32, .f64] {
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("%g", 1, *($val_styp*)DenseArray_value(&m.key_values, i)));')
+	} else if val_sym.kind == .rune {
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("`%.*s\\000`", 2, ${elem_str_fn_name}(*($val_styp*)DenseArray_value(&m.key_values, i))));')
 	} else {
-		g.auto_str_funcs.writeln('\t\t$val_styp it = *($val_styp*)DenseArray_value(&m.key_values, i);')
-		if val_sym.kind == .string {
-			g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\'%.*s\\000\'", 2, it));')
-		} else if val_sym.kind == .struct_ && !val_sym.has_method('str') {
-			g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, indent_${elem_str_fn_name}(it, indent_count));')
-		} else if val_sym.kind in [.f32, .f64] {
-			g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("%g", 1, it));')
-		} else if val_sym.kind == .rune {
-			g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("`%.*s\\000`", 2, ${elem_str_fn_name}(it)));')
-		} else {
-			g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${elem_str_fn_name}(it));')
-		}
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${elem_str_fn_name}(*($val_styp*)DenseArray_value(&m.key_values, i)));')
 	}
 	g.auto_str_funcs.writeln('\t\tif (i != m.key_values.len-1) {')
 	g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, _SLIT(", "));')
@@ -631,5 +629,5 @@ fn (mut g Gen) gen_str_for_fn_type(info table.FnType, styp string, str_fn_name s
 
 [inline]
 fn styp_to_str_fn_name(styp string) string {
-	return styp.replace_each(['*', '', '.', '__']) + '_str'
+	return styp.replace_each(['*', '', '.', '__', ' ', '__']) + '_str'
 }

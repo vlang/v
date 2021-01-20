@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 // Cipher block chaining (CBC) mode.
@@ -94,21 +94,20 @@ pub fn (mut x AesCbc) decrypt_blocks(mut dst []byte, src []byte) {
 	mut start := end - x.block_size
 	mut prev := start - x.block_size
 	// Copy the last block of ciphertext in preparation as the new iv.
-	copy(x.tmp, src.slice(start, end))
+	copy(x.tmp, src[start..end])
 	// Loop over all but the first block.
 	for start > 0 {
-		mut src_chunk := src.slice(start, end)
-		x.b.decrypt(mut (*dst).slice(start, end), mut src_chunk)
-		cipher.xor_bytes(mut (*dst).slice(start, end), (*dst).slice(start, end), src.slice(prev,
-			start))
+		mut src_chunk := src[start..end]
+		x.b.decrypt(mut (*dst)[start..end], mut src_chunk)
+		cipher.xor_bytes(mut (*dst)[start..end], (*dst)[start..end], src[prev..start])
 		end = start
 		start = prev
 		prev -= x.block_size
 	}
 	// The first block is special because it uses the saved iv.
-	mut src_chunk := src.slice(start, end)
-	x.b.decrypt(mut (*dst).slice(start, end), mut src_chunk)
-	cipher.xor_bytes(mut (*dst).slice(start, end), (*dst).slice(start, end), x.iv)
+	mut src_chunk := src[start..end]
+	x.b.decrypt(mut (*dst)[start..end], mut src_chunk)
+	cipher.xor_bytes(mut (*dst)[start..end], (*dst)[start..end], x.iv)
 	// Set the new iv to the first block we copied earlier.
 	x.iv = x.tmp
 	x.tmp = x.iv

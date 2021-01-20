@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module gen
 
@@ -341,7 +341,8 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) {
 			g.write('")')
 		}
 	} else if sym_has_str_method || sym.kind in
-		[.array, .array_fixed, .map, .struct_, .multi_return, .sum_type, .interface_] {
+		[.array, .array_fixed, .map, .struct_, .multi_return, .sum_type, .interface_]
+	{
 		is_ptr := typ.is_ptr()
 		str_fn_name := g.gen_str_for_type(typ)
 		if is_ptr {

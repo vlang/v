@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -20,7 +20,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 	if p.tok.kind == .lcbr {
 		p.inside_for = false
 		stmts := p.parse_block_no_scope(false)
-		pos.last_line = p.prev_tok.line_nr - 1
+		pos.update_last_line(p.prev_tok.line_nr)
 		for_stmt := ast.ForStmt{
 			stmts: stmts
 			pos: pos
@@ -64,7 +64,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		}
 		p.inside_for = false
 		stmts := p.parse_block_no_scope(false)
-		pos.last_line = p.prev_tok.line_nr - 1
+		pos.update_last_line(p.prev_tok.line_nr)
 		for_c_stmt := ast.ForCStmt{
 			stmts: stmts
 			has_init: has_init
@@ -79,7 +79,8 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		p.close_scope()
 		return for_c_stmt
 	} else if p.peek_tok.kind in [.key_in, .comma] ||
-		(p.tok.kind == .key_mut && p.peek_tok2.kind in [.key_in, .comma]) {
+		(p.tok.kind == .key_mut && p.peek_tok2.kind in [.key_in, .comma])
+	{
 		// `for i in vals`, `for i in start .. end`, `for mut user in users`, `for i, mut user in users`
 		mut val_is_mut := p.tok.kind == .key_mut
 		if val_is_mut {
@@ -158,7 +159,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		}
 		p.inside_for = false
 		stmts := p.parse_block_no_scope(false)
-		pos.last_line = p.prev_tok.line_nr - 1
+		pos.update_last_line(p.prev_tok.line_nr)
 		// println('nr stmts=$stmts.len')
 		for_in_stmt := ast.ForInStmt{
 			stmts: stmts
@@ -180,7 +181,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 	// extra scope for the body
 	p.open_scope()
 	stmts := p.parse_block_no_scope(false)
-	pos.last_line = p.prev_tok.line_nr - 1
+	pos.update_last_line(p.prev_tok.line_nr)
 	for_stmt := ast.ForStmt{
 		cond: cond
 		stmts: stmts

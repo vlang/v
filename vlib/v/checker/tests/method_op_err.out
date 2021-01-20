@@ -5,11 +5,11 @@ vlib/v/checker/tests/method_op_err.vv:11:1: error: operator methods should have 
       | ~~~~~~~~~~~~~~~~
    12 | }
    13 |
-vlib/v/checker/tests/method_op_err.vv:14:1: error: both sides of an operator must be the same type
+vlib/v/checker/tests/method_op_err.vv:14:18: error: expected `User` not `Foo` - both operands must be the same type for operator overloading
    12 | }
    13 | 
    14 | fn (u User) - (f Foo) User {
-      | ~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |                  ~~~
    15 |     return User{u.a - f.a, u.b-f.a}
    16 | }
 vlib/v/checker/tests/method_op_err.vv:18:1: error: operator comparison methods should return `bool`
@@ -40,7 +40,7 @@ vlib/v/checker/tests/method_op_err.vv:36:24: error: infix expr: cannot use `Foo`
       |                        ^
    37 |     println(User{3, 2} < User{2, 4})
    38 |     println(User{3, 4} < Foo{3, 4})
-vlib/v/checker/tests/method_op_err.vv:37:24: error: operation `User` < `User` does not exist, please define it
+vlib/v/checker/tests/method_op_err.vv:37:24: error: undefined operation `User` < `User`
    35 |     println(User{3, 4})
    36 |     println(User{3, 4} - Foo{3, 3})
    37 |     println(User{3, 2} < User{2, 4})

@@ -3,10 +3,12 @@ module main
 import os
 import os.cmdline
 import v.pref
+import v.util.recompilation
 
 fn main() {
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
+	recompilation.must_be_enabled(vroot, 'Please install V from source, to use `v self` .')
 	os.chdir(vroot)
 	os.setenv('VCOLORS', 'always', true)
 	self_idx := os.args.index('self')

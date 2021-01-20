@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module token
@@ -20,6 +20,7 @@ pub fn (pos Position) extend(end Position) Position {
 	return {
 		pos |
 		len: end.pos - pos.pos + end.len
+		last_line: end.last_line
 	}
 }
 
@@ -32,11 +33,16 @@ pub fn (pos Position) extend_with_last_line(end Position, last_line int) Positio
 	}
 }
 
+pub fn (mut pos Position) update_last_line(last_line int) {
+	pos.last_line = last_line - 1
+}
+
 [inline]
 pub fn (tok &Token) position() Position {
 	return Position{
 		len: tok.len
 		line_nr: tok.line_nr - 1
 		pos: tok.pos
+		last_line: tok.line_nr - 1
 	}
 }

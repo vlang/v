@@ -3,6 +3,7 @@ module main
 import os
 import v.pref
 import v.util
+import v.util.recompilation
 
 struct App {
 	is_verbose bool
@@ -12,15 +13,17 @@ struct App {
 
 fn new_app() App {
 	vexe := os.real_path(pref.vexe_path())
+	vroot := os.dir(vexe)
 	return App{
 		is_verbose: '-v' in os.args
 		vexe: vexe
-		vroot: os.dir(vexe)
+		vroot: vroot
 	}
 }
 
 fn main() {
 	app := new_app()
+	recompilation.must_be_enabled(app.vroot, 'Please install V from source, to use `v up` .')
 	os.chdir(app.vroot)
 	println('Updating V...')
 	app.update_from_master()

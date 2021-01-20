@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module pref
@@ -114,7 +114,7 @@ pub mut:
 	display_name   string
 	bundle_id      string
 	path           string // Path to file/folder to compile
-	// -d vfmt and -d another=0 for `$if vfmt { will execute }` and `$if another { will NOT get here }`
+	// -d vfmt and -d another=0 for `$if vfmt { will execute }` and `$if another ? { will NOT get here }`
 	compile_defines     []string    // just ['vfmt']
 	compile_defines_all []string    // contains both: ['vfmt','another']
 	run_args            []string    // `v run x.v 1 2 3` => `1 2 3`
@@ -482,7 +482,8 @@ pub fn parse_args(args []string) (&Preferences, string) {
 		}
 		must_exist(res.path)
 		if !res.path.ends_with('.v') && os.is_executable(res.path) && os.is_file(res.path) &&
-			os.is_file(res.path + '.v') {
+			os.is_file(res.path + '.v')
+		{
 			eprintln('It looks like you wanted to run "${res.path}.v", so we went ahead and did that since "$res.path" is an executable.')
 			res.path += '.v'
 		}

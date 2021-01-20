@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module time
@@ -94,6 +94,7 @@ fn local_as_unix_time() int {
 	return make_unix_time(tm)
 }
 
+// local - return the time `t`, converted to the currently active local timezone
 pub fn (t Time) local() Time {
 	st_utc := SystemTime{
 		year: u16(t.year)
@@ -190,6 +191,7 @@ pub fn solaris_now() Time {
 	return Time{}
 }
 
+// dummy to compile with all compilers
 pub fn darwin_utc() Time {
 	return Time{}
 }

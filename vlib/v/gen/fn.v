@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module gen
@@ -107,7 +107,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 		if !(it.is_pub || g.pref.is_debug) {
 			// Private functions need to marked as static so that they are not exportable in the
 			// binaries
-			if g.pref.build_mode != .build_module {
+			if g.pref.build_mode != .build_module && !g.pref.use_cache {
 				// if !(g.pref.build_mode == .build_module && g.is_builtin_mod) {
 				// If we are building vlib/builtin, we need all private functions like array_get
 				// to be public, so that all V programs can access them.
@@ -127,7 +127,9 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 	fargs, fargtypes := g.fn_args(it.params, it.is_variadic)
 	arg_str := g.out.after(arg_start_pos)
 	if it.no_body ||
-		((g.pref.use_cache && g.pref.build_mode != .build_module) && it.is_builtin) || skip {
+		((g.pref.use_cache && g.pref.build_mode != .build_module) && it.is_builtin && !g.is_test) ||
+		skip
+	{
 		// Just a function header. Builtin function bodies are defined in builtin.o
 		g.definitions.writeln(');') // // NO BODY')
 		g.writeln(');')
@@ -160,7 +162,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 		g.hotcode_definitions.writeln('}')
 	}
 	// Profiling mode? Start counting at the beginning of the function (save current time).
-	if g.pref.is_prof {
+	if g.pref.is_prof && g.pref.build_mode != .build_module {
 		g.profile_fn(it)
 	}
 	// we could be in an anon fn so save outer fn defer stmts
@@ -240,13 +242,7 @@ fn (mut g Gen) fn_args(args []table.Param, is_variadic bool) ([]string, []string
 				g.definitions.write(')')
 			}
 		} else {
-			// TODO: combine two operations into one once ternary in expression is fixed
-			mut s := if arg_type_sym.kind == .array_fixed {
-				arg_type_name.trim('*')
-			} else {
-				arg_type_name
-			}
-			s += ' ' + caname
+			s := '$arg_type_name $caname'
 			g.write(s)
 			g.definitions.write(s)
 			fargs << caname
@@ -297,7 +293,8 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	}
 	if node.is_method && !node.is_field {
 		if node.name == 'writeln' && g.pref.experimental && node.args.len > 0 && node.args[0].expr is
-			ast.StringInterLiteral && g.table.get_type_symbol(node.receiver_type).name == 'strings.Builder' {
+			ast.StringInterLiteral && g.table.get_type_symbol(node.receiver_type).name == 'strings.Builder'
+		{
 			g.string_inter_literal_sb_optimized(node)
 		} else {
 			g.method_call(node)
@@ -394,7 +391,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 	}
 	if left_sym.kind == .sum_type && node.name == 'type_name' {
-		g.write('tos3( /* $left_sym.name */ v_typeof_sumtype_${node.receiver_type}( (')
+		g.write('tos3( /* $left_sym.name */ v_typeof_sumtype_${typ_sym.cname}( (')
 		g.expr(node.left)
 		g.write(').typ ))')
 		return
@@ -408,7 +405,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 	// TODO performance, detect `array` method differently
 	if left_sym.kind == .array && node.name in
-		['repeat', 'sort_with_compare', 'free', 'push_many', 'trim', 'first', 'last', 'pop', 'clone', 'reverse', 'slice'] {
+		['repeat', 'sort_with_compare', 'free', 'push_many', 'trim', 'first', 'last', 'pop', 'clone', 'reverse', 'slice']
+	{
 		// && rec_sym.name == 'array' {
 		// && rec_sym.name == 'array' && receiver_name.starts_with('array') {
 		// `array_byte_clone` => `array_clone`
@@ -469,7 +467,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			g.write('&')
 		}
 	} else if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name != 'str' &&
-		node.from_embed_type == 0 {
+		node.from_embed_type == 0
+	{
 		g.write('/*rec*/*')
 	}
 	if g.is_autofree && node.free_receiver && !g.inside_lambda && !g.is_builtin_mod {
@@ -656,7 +655,8 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 	// g.writeln('// autofree_call_pregen()')
 	// Create a temporary var before fn call for each argument in order to free it (only if it's a complex expression,
 	// like `foo(get_string())` or `foo(a + b)`
-	mut free_tmp_arg_vars := g.is_autofree && !g.is_builtin_mod && node.args.len > 0 && !node.args[0].typ.has_flag(.optional) // TODO copy pasta checker.v
+	mut free_tmp_arg_vars := g.is_autofree && !g.is_builtin_mod && node.args.len > 0 &&
+		!node.args[0].typ.has_flag(.optional) // TODO copy pasta checker.v
 	if !free_tmp_arg_vars {
 		return
 	}

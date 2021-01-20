@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module ast
@@ -43,14 +43,18 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string, m2a map[string]s
 		receiver = '($node.receiver.name $m$name) '
 		*/
 	}
-	mut name := if node.is_anon { '' } else { node.name.after_char(`.`) }
-	if !node.is_method {
-		if node.language == .c {
-			name = 'C.$name'
-		} else if node.language == .js {
-			name = 'JS.$name'
-		}
+	mut name := if node.is_anon { '' } else { node.name }
+	if !node.is_anon && !node.is_method && node.language == .v {
+		name = node.name.all_after_last('.')
 	}
+	// mut name := if node.is_anon { '' } else { node.name.after_char(`.`) }
+	// if !node.is_method {
+	// 	if node.language == .c {
+	// 		name = 'C.$name'
+	// 	} else if node.language == .js {
+	// 		name = 'JS.$name'
+	// 	}
+	// }
 	f.write('fn $receiver$name')
 	if name in ['+', '-', '*', '/', '%', '<', '>', '==', '!=', '>=', '<='] {
 		f.write(' ')
@@ -183,6 +187,23 @@ pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
 // string representation of expr
 pub fn (x Expr) str() string {
 	match x {
+		ArrayInit {
+			mut fields := []string{}
+			if x.has_len {
+				fields << 'len: $x.len_expr.str()'
+			}
+			if x.has_cap {
+				fields << 'cap: $x.cap_expr.str()'
+			}
+			if x.has_default {
+				fields << 'init: $x.default_expr.str()'
+			}
+			if fields.len > 0 {
+				return '[]T{${fields.join(', ')}}'
+			} else {
+				return x.exprs.str()
+			}
+		}
 		CTempVar {
 			return x.orig.str()
 		}
@@ -207,6 +228,15 @@ pub fn (x Expr) str() string {
 		}
 		CharLiteral {
 			return '`$x.val`'
+		}
+		Comment {
+			if x.is_multi {
+				lines := x.text.split_into_lines()
+				return '/* $lines.len lines comment */'
+			} else {
+				text := x.text.trim('\x01').trim_space()
+				return '// $text'
+			}
 		}
 		ComptimeSelector {
 			return '${x.left}.$$x.field_expr'
@@ -312,6 +342,9 @@ pub fn (node &BranchStmt) str() string {
 
 pub fn (node Stmt) str() string {
 	match node {
+		AssertStmt {
+			return 'assert $node.expr'
+		}
 		AssignStmt {
 			mut out := ''
 			for i, left in node.left {

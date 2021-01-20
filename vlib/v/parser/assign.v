@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -88,11 +88,23 @@ fn (mut p Parser) check_cross_variables(exprs []ast.Expr, val ast.Expr) bool {
 fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comment) ast.Stmt {
 	p.is_stmt_ident = false
 	op := p.tok.kind
-	pos := p.tok.position()
+	mut pos := p.tok.position()
 	p.next()
-	right, right_comments := p.expr_list()
-	mut comments := []ast.Comment{cap: left_comments.len + right_comments.len}
+	mut comments := []ast.Comment{cap: 2 * left_comments.len + 1}
 	comments << left_comments
+	comments << p.eat_comments()
+	mut right_comments := []ast.Comment{}
+	mut right := []ast.Expr{cap: left.len}
+	if p.tok.kind == .key_go {
+		stmt := p.stmt(false)
+		go_stmt := stmt as ast.GoStmt
+		right << ast.GoExpr{
+			go_stmt: go_stmt
+			pos: go_stmt.pos
+		}
+	} else {
+		right, right_comments = p.expr_list()
+	}
 	comments << right_comments
 	end_comments := p.eat_line_end_comments()
 	mut has_cross_var := false
@@ -183,6 +195,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 			}
 		}
 	}
+	pos.update_last_line(p.prev_tok.line_nr)
 	return ast.AssignStmt{
 		op: op
 		left: left

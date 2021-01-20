@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module ast
@@ -10,11 +10,12 @@ import v.errors
 pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
 pub type Expr = AnonFn | ArrayDecompose | ArrayInit | AsCast | Assoc | AtExpr | BoolLiteral |
-	CTempVar | CallExpr | CastExpr | ChanInit | CharLiteral | Comment | ComptimeCall | ComptimeSelector |
-	ConcatExpr | EnumVal | FloatLiteral | Ident | IfExpr | IfGuardExpr | IndexExpr | InfixExpr |
-	IntegerLiteral | Likely | LockExpr | MapInit | MatchExpr | None | OrExpr | ParExpr | PostfixExpr |
-	PrefixExpr | RangeExpr | SelectExpr | SelectorExpr | SizeOf | SqlExpr | StringInterLiteral |
-	StringLiteral | StructInit | Type | TypeOf | UnsafeExpr
+	CTempVar | CallExpr | CastExpr | ChanInit | CharLiteral | Comment | ComptimeCall |
+	ComptimeSelector | ConcatExpr | EnumVal | FloatLiteral | GoExpr | Ident | IfExpr |
+	IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | Likely | LockExpr | MapInit |
+	MatchExpr | None | OrExpr | ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectExpr |
+	SelectorExpr | SizeOf | SqlExpr | StringInterLiteral | StringLiteral | StructInit |
+	Type | TypeOf | UnsafeExpr
 
 pub type Stmt = AssertStmt | AssignStmt | Block | BranchStmt | CompFor | ConstDecl | DeferStmt |
 	EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl | GoStmt |
@@ -27,7 +28,8 @@ pub type ScopeObject = ConstField | GlobalField | Var
 
 // TOOD: replace table.Param
 pub type Node = ConstField | EnumField | Expr | Field | File | GlobalField | IfBranch |
-	MatchBranch | ScopeObject | SelectBranch | Stmt | StructField | StructInitField | table.Param
+	MatchBranch | ScopeObject | SelectBranch | Stmt | StructField | StructInitField |
+	table.Param
 
 pub struct Type {
 pub:
@@ -135,7 +137,8 @@ pub fn (e &SelectorExpr) root_ident() Ident {
 // module declaration
 pub struct Module {
 pub:
-	name       string
+	name       string // encoding.base64
+	short_name string // base64
 	attrs      []table.Attr
 	pos        token.Position
 	name_pos   token.Position // `name` in import name
@@ -190,13 +193,15 @@ pub mut:
 
 pub struct StructDecl {
 pub:
-	pos          token.Position
-	name         string
-	gen_types    []table.Type
-	is_pub       bool
+	pos       token.Position
+	name      string
+	gen_types []table.Type
+	is_pub    bool
+	// _pos fields for vfmt
 	mut_pos      int // mut:
 	pub_pos      int // pub:
 	pub_mut_pos  int // pub mut:
+	module_pos   int // module:
 	language     table.Language
 	is_union     bool
 	attrs        []table.Attr
@@ -458,19 +463,27 @@ pub mut:
 	end_comments []Comment
 }
 
+pub struct EmbeddedFile {
+pub:
+	rpath string // used in the source code, as an ID/key to the embed
+	apath string // absolute path during compilation to the resource
+}
+
 // Each V source file is represented by one ast.File structure.
 // When the V compiler runs, the parser will fill an []ast.File.
 // That array is then passed to V's checker.
 pub struct File {
 pub:
-	path         string // path of the source file
+	path         string // absolute path of the source file - '/projects/v/file.v'
+	path_base    string // file name - 'file.v' (useful for tracing)
 	mod          Module // the module of the source file (from `module xyz` at the top)
 	global_scope &Scope
 pub mut:
 	scope            &Scope
-	stmts            []Stmt   // all the statements in the source file
-	imports          []Import // all the imports
-	auto_imports     []string // imports that were implicitely added
+	stmts            []Stmt            // all the statements in the source file
+	imports          []Import          // all the imports
+	auto_imports     []string          // imports that were implicitely added
+	embedded_files   []EmbeddedFile    // list of files to embed in the binary
 	imported_symbols map[string]string // used for `import {symbol}`, it maps symbol => module.symbol
 	errors           []errors.Error    // all the checker errors in the file
 	warnings         []errors.Warning  // all the checker warings in the file
@@ -868,8 +881,18 @@ pub:
 
 pub struct GoStmt {
 pub:
-	call_expr Expr
-	pos       token.Position
+	pos token.Position
+pub mut:
+	call_expr CallExpr
+}
+
+pub struct GoExpr {
+pub:
+	pos token.Position
+pub mut:
+	go_stmt GoStmt
+mut:
+	return_type table.Type
 }
 
 pub struct GotoLabel {
@@ -891,7 +914,7 @@ pub:
 	exprs         []Expr      // `[expr, expr]` or `[expr]Type{}` for fixed array
 	ecmnts        [][]Comment // optional iembed comments after each expr
 	is_fixed      bool
-	has_val       bool // fixed size literal `[expr, expr]!!`
+	has_val       bool // fixed size literal `[expr, expr]!`
 	mod           string
 	len_expr      Expr // len: expr
 	cap_expr      Expr // cap: expr
@@ -1088,6 +1111,8 @@ pub:
 	is_vweb     bool
 	vweb_tmpl   File
 	args_var    string
+	is_embed    bool
+	embed_file  EmbeddedFile
 pub mut:
 	sym table.TypeSymbol
 }
@@ -1163,7 +1188,11 @@ pub fn (expr Expr) position() token.Position {
 		AnonFn {
 			return expr.decl.pos
 		}
-		ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr, CastExpr, ChanInit, CharLiteral, ConcatExpr, Comment, EnumVal, FloatLiteral, Ident, IfExpr, IndexExpr, IntegerLiteral, Likely, LockExpr, MapInit, MatchExpr, None, OrExpr, ParExpr, PostfixExpr, PrefixExpr, RangeExpr, SelectExpr, SelectorExpr, SizeOf, SqlExpr, StringInterLiteral, StringLiteral, StructInit, Type, TypeOf, UnsafeExpr {
+		ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr, CastExpr, ChanInit, CharLiteral,
+		ConcatExpr, Comment, EnumVal, FloatLiteral, GoExpr, Ident, IfExpr, IndexExpr, IntegerLiteral,
+		Likely, LockExpr, MapInit, MatchExpr, None, OrExpr, ParExpr, PostfixExpr, PrefixExpr,
+		RangeExpr, SelectExpr, SelectorExpr, SizeOf, SqlExpr, StringInterLiteral, StringLiteral,
+		StructInit, Type, TypeOf, UnsafeExpr {
 			return expr.pos
 		}
 		ArrayDecompose {
@@ -1182,6 +1211,7 @@ pub fn (expr Expr) position() token.Position {
 				line_nr: expr.pos.line_nr
 				pos: left_pos.pos
 				len: right_pos.pos - left_pos.pos + right_pos.len
+				last_line: right_pos.last_line
 			}
 		}
 		CTempVar {
@@ -1248,11 +1278,13 @@ pub:
 
 pub fn (stmt Stmt) position() token.Position {
 	match stmt {
-		AssertStmt, AssignStmt, Block, BranchStmt, CompFor, ConstDecl, DeferStmt, EnumDecl, ExprStmt, FnDecl, ForCStmt, ForInStmt, ForStmt, GotoLabel, GotoStmt, Import, Return, StructDecl, GlobalDecl, HashStmt, InterfaceDecl, Module, SqlStmt {
+		AssertStmt, AssignStmt, Block, BranchStmt, CompFor, ConstDecl, DeferStmt, EnumDecl, ExprStmt,
+		FnDecl, ForCStmt, ForInStmt, ForStmt, GotoLabel, GotoStmt, Import, Return, StructDecl,
+		GlobalDecl, HashStmt, InterfaceDecl, Module, SqlStmt {
 			return stmt.pos
 		}
 		GoStmt {
-			return stmt.call_expr.position()
+			return stmt.call_expr.pos
 		}
 		TypeDecl {
 			match stmt {
@@ -1282,7 +1314,8 @@ pub fn (node Node) position() token.Position {
 		StructField {
 			return node.pos.extend(node.type_pos)
 		}
-		MatchBranch, SelectBranch, Field, EnumField, ConstField, StructInitField, GlobalField, table.Param {
+		MatchBranch, SelectBranch, Field, EnumField, ConstField, StructInitField, GlobalField,
+		table.Param {
 			return node.pos
 		}
 		IfBranch {
@@ -1312,7 +1345,8 @@ pub fn (node Node) children() []Node {
 			StringInterLiteral, Assoc, ArrayInit {
 				return node.exprs.map(Node(it))
 			}
-			SelectorExpr, PostfixExpr, UnsafeExpr, AsCast, ParExpr, IfGuardExpr, SizeOf, Likely, TypeOf, ArrayDecompose {
+			SelectorExpr, PostfixExpr, UnsafeExpr, AsCast, ParExpr, IfGuardExpr, SizeOf, Likely,
+			TypeOf, ArrayDecompose {
 				children << node.expr
 			}
 			LockExpr, OrExpr {

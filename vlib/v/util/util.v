@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module util
@@ -7,6 +7,7 @@ import os
 import time
 import v.pref
 import v.vmod
+import v.util.recompilation
 
 pub const (
 	v_version = '0.2.1'
@@ -15,7 +16,7 @@ pub const (
 // math.bits is needed by strconv.ftoa
 pub const (
 	builtin_module_parts = ['math.bits', 'strconv', 'strconv.ftoa', 'hash', 'strings', 'builtin']
-	bundle_modules       = ['clipboard', 'fontstash', 'gg', 'gx', 'sokol', 'ui']
+	bundle_modules       = ['clipboard', 'fontstash', 'gg', 'gx', 'sokol', 'szip', 'ui']
 )
 
 pub const (
@@ -119,12 +120,24 @@ pub fn resolve_vroot(str string, dir string) ?string {
 	return str.replace('@VROOT', os.real_path(vmod_path))
 }
 
+// launch_tool - starts a V tool in a separate process, passing it the `args`.
+// All V tools are located in the cmd/tools folder, in files or folders prefixed by
+// the letter `v`, followed by the tool name, i.e. `cmd/tools/vdoc/` or `cmd/tools/vpm.v`.
+// The folder variant is suitable for larger and more complex tools, like `v doc`, because
+// it provides you the ability to split their source in separate .v files, organized by topic,
+// as well as have resources like static css/text/js files, that the tools can use.
+// launch_tool uses a timestamp based detection mechanism, so that after `v self`, each tool
+// will be recompiled too, before it is used, which guarantees that it would be up to date with
+// V itself. That mechanism can be disabled by package managers by creating/touching a small
+// `cmd/tools/.disable_autorecompilation` file, OR by changing the timestamps of all executables
+// in cmd/tools to be < 1024 seconds (in unix time).
 pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
 	set_vroot_folder(vroot)
 	tool_args := args_quote_paths(args)
-	tool_basename := os.real_path(os.join_path(vroot, 'cmd', 'tools', tool_name))
+	tools_folder := os.join_path(vroot, 'cmd', 'tools')
+	tool_basename := os.real_path(os.join_path(tools_folder, tool_name))
 	mut tool_exe := ''
 	mut tool_source := ''
 	if os.is_dir(tool_basename) {
@@ -142,7 +155,10 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 		println('launch_tool tool_source : $tool_source')
 		println('launch_tool tool_command: $tool_command')
 	}
-	should_compile := should_recompile_tool(vexe, tool_source, tool_name, tool_exe)
+	disabling_file := recompilation.disabling_file(vroot)
+	is_recompilation_disabled := os.exists(disabling_file)
+	should_compile := !is_recompilation_disabled &&
+		should_recompile_tool(vexe, tool_source, tool_name, tool_exe)
 	if is_verbose {
 		println('launch_tool should_compile: $should_compile')
 	}
@@ -456,7 +472,9 @@ pub fn prepare_tool_when_needed(source_name string) {
 
 pub fn recompile_file(vexe string, file string) {
 	cmd := '$vexe $file'
-	println('recompilation command: $cmd')
+	$if trace_recompilation ? {
+		println('recompilation command: $cmd')
+	}
 	recompile_result := os.system(cmd)
 	if recompile_result != 0 {
 		eprintln('could not recompile $file')

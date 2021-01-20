@@ -14,8 +14,8 @@ fn memcpy(mut dest voidptr, src voidptr, len u32) voidptr {
 }
 
 fn test_mut_voidptr_arg() {
-	mut a := [1, 2]!!
-	b := [3, 4]!!
+	mut a := [1, 2]!
+	b := [3, 4]!
 	memcpy(mut a, b, sizeof(int))
-	assert a == [3, 2]!!
+	assert a == [3, 2]!
 }

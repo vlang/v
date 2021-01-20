@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module builder
@@ -223,7 +223,7 @@ pub fn (v &Builder) get_user_files() []string {
 	mut user_files := []string{}
 	// See cmd/tools/preludes/README.md for more info about what preludes are
 	vroot := os.dir(pref.vexe_path())
-	preludes_path := os.join_path(vroot, 'cmd', 'tools', 'preludes')
+	preludes_path := os.join_path(vroot, 'vlib', 'v', 'preludes')
 	if v.pref.is_livemain || v.pref.is_liveshared {
 		user_files << os.join_path(preludes_path, 'live.v')
 	}

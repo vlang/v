@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module builder
@@ -126,7 +126,9 @@ fn (mut v Builder) post_process_c_compiler_output(res os.Result) {
 
 fn (mut v Builder) rebuild_cached_module(vexe string, imp_path string) string {
 	res := v.pref.cache_manager.exists('.o', imp_path) or {
-		println('Cached $imp_path .o file not found... Building .o file for $imp_path')
+		if v.pref.is_verbose {
+			println('Cached $imp_path .o file not found... Building .o file for $imp_path')
+		}
 		// do run `v build-module x` always in main vfolder; x can be a relative path
 		pwd := os.getwd()
 		vroot := os.dir(vexe)
@@ -191,10 +193,10 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	// warnings are totally fixed/removed
 	ccoptions.args = [v.pref.cflags, '-std=gnu99']
 	ccoptions.wargs = ['-Wall', '-Wextra', '-Wno-unused', '-Wno-missing-braces', '-Walloc-zero',
-		'-Wcast-qual', '-Wdate-time', '-Wduplicated-branches', '-Wduplicated-cond', '-Wformat=2', '-Winit-self',
-		'-Winvalid-pch', '-Wjump-misses-init', '-Wlogical-op', '-Wmultichar', '-Wnested-externs', '-Wnull-dereference',
-		'-Wpacked', '-Wpointer-arith', '-Wshadow', '-Wswitch-default', '-Wswitch-enum', '-Wno-unused-parameter',
-		'-Wno-unknown-warning-option', '-Wno-format-nonliteral', '-Wno-unused-command-line-argument']
+		'-Wcast-qual', '-Wdate-time', '-Wduplicated-branches', '-Wduplicated-cond', '-Wformat=2',
+		'-Winit-self', '-Winvalid-pch', '-Wjump-misses-init', '-Wlogical-op', '-Wmultichar', '-Wnested-externs',
+		'-Wnull-dereference', '-Wpacked', '-Wpointer-arith', '-Wshadow', '-Wswitch-default', '-Wswitch-enum',
+		'-Wno-unused-parameter', '-Wno-unknown-warning-option', '-Wno-format-nonliteral']
 	if v.pref.os == .ios {
 		ccoptions.args << '-framework Foundation'
 		ccoptions.args << '-framework UIKit'
@@ -210,7 +212,8 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		if ccversion := os.exec('cc --version') {
 			if ccversion.exit_code == 0 {
 				if ccversion.output.contains('This is free software;') &&
-					ccversion.output.contains('Free Software Foundation, Inc.') {
+					ccversion.output.contains('Free Software Foundation, Inc.')
+				{
 					ccoptions.guessed_compiler = 'gcc'
 				}
 				if ccversion.output.contains('clang version ') {
@@ -284,14 +287,14 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		ccoptions.linker_flags << '-static'
 		ccoptions.linker_flags << '-nostdlib'
 	}
-	if ccoptions.debug_mode && os.user_os() != 'windows' {
+	if ccoptions.debug_mode && os.user_os() != 'windows' && v.pref.build_mode != .build_module {
 		ccoptions.linker_flags << ' -rdynamic ' // needed for nicer symbolic backtraces
 	}
 	if ccompiler != 'msvc' && v.pref.os != .freebsd {
 		ccoptions.wargs << '-Werror=implicit-function-declaration'
 	}
 	if v.pref.is_liveshared || v.pref.is_livemain {
-		if v.pref.os == .linux || os.user_os() == 'linux' {
+		if (v.pref.os == .linux || os.user_os() == 'linux') && v.pref.build_mode != .build_module {
 			ccoptions.linker_flags << '-rdynamic'
 		}
 		if v.pref.os == .macos || os.user_os() == 'macos' {
@@ -351,7 +354,8 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	// Without these libs compilation will fail on Linux
 	// || os.user_os() == 'linux'
 	if !v.pref.is_bare && v.pref.build_mode != .build_module && v.pref.os in
-		[.linux, .freebsd, .openbsd, .netbsd, .dragonfly, .solaris, .haiku] {
+		[.linux, .freebsd, .openbsd, .netbsd, .dragonfly, .solaris, .haiku]
+	{
 		ccoptions.linker_flags << '-lm'
 		ccoptions.linker_flags << '-lpthread'
 		// -ldl is a Linux only thing. BSDs have it in libc.
@@ -399,7 +403,8 @@ fn (ccoptions CcompilerOptions) thirdparty_object_args(middle []string) []string
 
 fn (mut v Builder) setup_output_name() {
 	if !v.pref.is_shared && v.pref.build_mode != .build_module && os.user_os() == 'windows' &&
-		!v.pref.out_name.ends_with('.exe') {
+		!v.pref.out_name.ends_with('.exe')
+	{
 		v.pref.out_name += '.exe'
 	}
 	// Output executable name
@@ -411,7 +416,9 @@ fn (mut v Builder) setup_output_name() {
 	}
 	if v.pref.build_mode == .build_module {
 		v.pref.out_name = v.pref.cache_manager.postfix_with_key2cpath('.o', v.pref.path) // v.out_name
-		println('Building $v.pref.path to $v.pref.out_name ...')
+		if v.pref.is_verbose {
+			println('Building $v.pref.path to $v.pref.out_name ...')
+		}
 		v.pref.cache_manager.save('.description.txt', v.pref.path, '${v.pref.path:-30} @ $v.pref.cache_manager.vopts\n')
 		// println('v.table.imports:')
 		// println(v.table.imports)
@@ -527,6 +534,16 @@ fn (mut v Builder) cc() {
 			builtin_obj_path := v.rebuild_cached_module(vexe, 'vlib/builtin')
 			libs += ' ' + builtin_obj_path
 			for ast_file in v.parsed_files {
+				is_test := ast_file.path.ends_with('_test.v')
+				if is_test && ast_file.mod.name != 'main' {
+					imp_path := v.find_module_path(ast_file.mod.name, ast_file.path) or {
+						verror('cannot import module "$ast_file.mod.name" (not found)')
+						break
+					}
+					obj_path := v.rebuild_cached_module(vexe, imp_path)
+					libs += ' ' + obj_path
+					built_modules << ast_file.mod.name
+				}
 				for imp_stmt in ast_file.imports {
 					imp := imp_stmt.mod
 					// strconv is already imported inside builtin, so skip generating its object file

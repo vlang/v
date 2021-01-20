@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -15,7 +15,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 		p.inside_ct_if_expr = was_inside_ct_if_expr
 	}
 	p.inside_if_expr = true
-	pos := if is_comptime {
+	mut pos := if is_comptime {
 		p.inside_ct_if_expr = true
 		p.next() // `$`
 		p.prev_tok.position().extend(p.tok.position())
@@ -143,6 +143,10 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 			break
 		}
 	}
+	pos.update_last_line(p.prev_tok.line_nr)
+	if comments.len > 0 {
+		pos.last_line = comments.last().pos.last_line
+	}
 	return ast.IfExpr{
 		is_comptime: is_comptime
 		branches: branches
@@ -176,9 +180,12 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 			is_else = true
 			p.next()
 		} else if (p.tok.kind == .name && !(p.tok.lit == 'C' &&
-			p.peek_tok.kind == .dot) && (p.tok.lit in table.builtin_type_names || p.tok.lit[0].is_capital() ||
-			(p.peek_tok.kind == .dot && p.peek_tok2.lit.len > 0 && p.peek_tok2.lit[0].is_capital()))) ||
-			p.tok.kind == .lsbr {
+			p.peek_tok.kind == .dot) &&
+			(p.tok.lit in table.builtin_type_names || p.tok.lit[0].is_capital() ||
+			(p.peek_tok.kind == .dot &&
+			p.peek_tok2.lit.len > 0 && p.peek_tok2.lit[0].is_capital()))) ||
+			p.tok.kind == .lsbr
+		{
 			mut types := []table.Type{}
 			for {
 				// Sum type match
@@ -232,8 +239,12 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		branch_scope := p.scope
 		p.close_scope()
 		p.inside_match_body = false
-		pos := branch_first_pos.extend(branch_last_pos)
+		mut pos := branch_first_pos.extend(branch_last_pos)
 		post_comments := p.eat_comments()
+		pos.update_last_line(p.prev_tok.line_nr)
+		if post_comments.len > 0 {
+			pos.last_line = post_comments.last().pos.last_line
+		}
 		branches << ast.MatchBranch{
 			exprs: exprs
 			ecmnts: ecmnts
@@ -244,12 +255,15 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 			post_comments: post_comments
 			scope: branch_scope
 		}
+		if is_else && branches.len == 1 {
+			p.warn_with_pos('`match` must have at least one non `else` branch', pos)
+		}
 		if p.tok.kind == .rcbr || (is_else && no_lcbr) {
 			break
 		}
 	}
 	match_last_pos := p.tok.position()
-	pos := token.Position{
+	mut pos := token.Position{
 		line_nr: match_first_pos.line_nr
 		pos: match_first_pos.pos
 		len: match_last_pos.pos - match_first_pos.pos + match_last_pos.len
@@ -258,6 +272,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		p.check(.rcbr)
 	}
 	// return ast.StructInit{}
+	pos.update_last_line(p.prev_tok.line_nr)
 	return ast.MatchExpr{
 		branches: branches
 		cond: cond
@@ -391,12 +406,16 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 		stmts := p.parse_block_no_scope(false)
 		p.close_scope()
 		p.inside_match_body = false
-		pos := token.Position{
+		mut pos := token.Position{
 			line_nr: branch_first_pos.line_nr
 			pos: branch_first_pos.pos
 			len: branch_last_pos.pos - branch_first_pos.pos + branch_last_pos.len
 		}
 		post_comments := p.eat_comments()
+		pos.update_last_line(p.prev_tok.line_nr)
+		if post_comments.len > 0 {
+			pos.last_line = post_comments.last().pos.last_line
+		}
 		branches << ast.SelectBranch{
 			stmt: stmt
 			stmts: stmts
@@ -421,7 +440,7 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 	}
 	return ast.SelectExpr{
 		branches: branches
-		pos: pos
+		pos: pos.extend_with_last_line(p.prev_tok.position(), p.prev_tok.line_nr)
 		has_exception: has_else || has_timeout
 	}
 }

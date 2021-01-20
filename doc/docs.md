@@ -96,7 +96,9 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Option/Result types & error handling](#optionresult-types-and-error-handling)
 * [Generics](#generics)
 * [Concurrency](#concurrency)
+    * [Spawning Concurrent Tasks](#spawning-concurrent-tasks)
     * [Channels](#channels)
+    * [Shared Objects](#shared-objects)
 * [Decoding JSON](#decoding-json)
 * [Testing](#testing)
 * [Memory management](#memory-management)
@@ -453,6 +455,13 @@ s := r'hello\nworld'
 println(s) // "hello\nworld"
 ```
 
+Strings can be easily converted to integers:
+
+```v
+s := '42'
+n := s.int() // 42
+```
+
 ### String interpolation
 
 Basic interpolation syntax is pretty simple - use `$` before a variable name.
@@ -689,7 +698,7 @@ println(a) // [[[0, 0], [0, 2], [0, 0]], [[0, 0], [0, 0], [0, 0]]]
 Sorting arrays of all kinds is very simple and intuitive. Special variables `a` and `b`
 are used when providing a custom sorting condition.
 
-```v nofmt
+```v
 mut numbers := [1, 3, 2]
 numbers.sort() // 1, 2, 3
 numbers.sort(a > b) // 3, 2, 1
@@ -709,18 +718,51 @@ users.sort(a.name > b.name) // reverse sort by User.name string field
 ### Maps
 
 ```v
-mut m := map[string]int{} // Only maps with string keys are allowed for now
+mut m := map[string]int{} // a map with `string` keys and `int` values
 m['one'] = 1
 m['two'] = 2
 println(m['one']) // "1"
 println(m['bad_key']) // "0"
 println('bad_key' in m) // Use `in` to detect whether such key exists
 m.delete('two')
-// Short syntax
+// NB: map keys can have any type, `int` in this case,
+// and the whole map can be initialized using this short syntax:
 numbers := {
-	'one': 1
-	'two': 2
+	1: 'one'
+	2: 'two'
 }
+println(numbers)
+```
+
+If a key is not found, a zero value is returned by default:
+
+```v
+sm := {
+	'abc': 'xyz'
+}
+val := sm['bad_key']
+println(val) // ''
+intm := {
+	1: 1234
+	2: 5678
+}
+s := intm[3]
+println(s) // 0
+```
+
+It's also possible to use an `or {}` block to handle missing keys:
+
+```v
+mm := map[string]int{}
+val := mm['bad_key'] or { panic('key not found') }
+```
+
+The same optional check applies to arrays:
+
+```v
+arr := [1, 2, 3]
+large_index := 999
+val := arr[large_index] or { panic('out of bounds') }
 ```
 
 ## Module imports
@@ -1882,6 +1924,35 @@ println(sum)
 The built-in method `type_name` returns the name of the currently held
 type.
 
+With sum types you could build recursive structures and write concise but powerful code on them.
+```v
+// V's binary tree
+struct Empty {}
+
+struct Node {
+	value f64
+	left  Tree
+	right Tree
+}
+
+type Tree = Empty | Node
+
+// sum up all node values
+fn sum(tree Tree) f64 {
+	return match tree {
+		Empty { f64(0) } // TODO: as match gets smarter just remove f64()
+		Node { tree.value + sum(tree.left) + sum(tree.right) }
+	}
+}
+
+fn main() {
+	left := Node{0.2, Empty{}, Empty{}}
+	right := Node{0.3, Empty{}, Node{0.4, Empty{}, Empty{}}}
+	tree := Node{0.5, left, right}
+	println(sum(tree)) // 0.2 + 0.3 + 0.4 + 0.5 = 1.4
+}
+```
+
 #### Dynamic casts
 
 To check whether a sum type instance holds a certain type, use `sum is Type`.
@@ -2191,10 +2262,67 @@ println(compare(1.1, 1.2)) //         -1
 
 
 ## Concurrency
+### Spawning Concurrent Tasks
+V's model of concurrency is very similar to Go's. To run `foo()` concurrently in
+a different thread, just call it with `go foo()`:
 
-V's model of concurrency is very similar to Go's. To run `foo()` concurrently, just
-call it with `go foo()`. Right now, it launches the function on a new system
-thread. Soon coroutines and a scheduler will be implemented.
+```v
+import math
+
+fn p(a f64, b f64) { // ordinary function without return value
+	c := math.sqrt(a * a + b * b)
+	println(c)
+}
+
+fn main() {
+	go p(3, 4)
+	// p will be run in parallel thread
+}
+```
+
+Sometimes it is necessary to wait until a parallel thread has finished. This can
+be done by assigning a *handle* to the started thread and calling the `wait()` method
+to this handle later:
+
+```v
+import math
+
+fn p(a f64, b f64) { // ordinary function without return value
+	c := math.sqrt(a * a + b * b)
+	println(c) // prints `5`
+}
+
+fn main() {
+	h := go p(3, 4)
+	// p() runs in parallel thread
+	h.wait()
+	// p() has definitely finished
+}
+```
+
+This approach can also be used to get a return value from a function that is run in a
+parallel thread. There is no need to modify the function itself to be able to call it
+concurrently.
+
+```v
+import math { sqrt }
+
+fn get_hypot(a f64, b f64) f64 { //       ordinary function returning a value
+	c := sqrt(a * a + b * b)
+	return c
+}
+
+fn main() {
+	g := go get_hypot(54.06, 2.08) // spawn thread and get handle to it
+	h1 := get_hypot(2.32, 16.74) //   do some other calculation here
+	h2 := g.wait() //                 get result from spawned thread
+	println('Results: $h1, $h2') //   prints `Results: 16.9, 54.1`
+}
+```
+
+If there is a large number of tasks that do not return a value it might be easier to manage
+them using a wait group. However, for this approach the function(s) called concurrently have
+to be designed with this wait group in mind:
 
 ```v
 import sync
@@ -2261,8 +2389,8 @@ Objects can be pushed to channels using the arrow operator. The same operator ca
 pop objects from the other end:
 
 ```v
-mut ch := chan int{}
-mut ch2 := chan f64{}
+ch := chan int{}
+ch2 := chan f64{}
 n := 5
 x := 7.3
 ch <- n
@@ -2280,8 +2408,8 @@ associated channel has been closed and the buffer is empty. This situation can b
 handled using an or branch (see [Handling Optionals](#handling-optionals)).
 
 ```v wip
-mut ch := chan int{}
-mut ch2 := chan f64{}
+ch := chan int{}
+ch2 := chan f64{}
 // ...
 ch.close()
 // ...
@@ -2301,10 +2429,10 @@ of statements - similar to the [match](#match) command:
 ```v wip
 import time
 fn main () {
-  mut c := chan f64{}
-  mut ch := chan f64{}
-  mut ch2 := chan f64{}
-  mut ch3 := chan f64{}
+  c := chan f64{}
+  ch := chan f64{}
+  ch2 := chan f64{}
+  ch3 := chan f64{}
   mut b := 0.0
   // ...
   select {
@@ -2351,16 +2479,16 @@ struct Abc {
 }
 
 a := 2.13
-mut ch := chan f64{}
+ch := chan f64{}
 res := ch.try_push(a) // try to perform `ch <- a`
 println(res)
 l := ch.len // number of elements in queue
 c := ch.cap // maximum queue length
 println(l)
 println(c)
-// mut b := Abc{}
-// mut ch2 := chan f64{}
-// res2 := ch2.try_pop(mut b) // try to perform `b = <-ch2
+mut b := Abc{}
+ch2 := chan Abc{}
+res2 := ch2.try_pop(b) // try to perform `b = <-ch2`
 ```
 
 The `try_push/pop()` methods will return immediately with one of the results
@@ -2369,34 +2497,34 @@ the reason why not.
 Usage of these methods and properties in production is not recommended -
 algorithms based on them are often subject to race conditions. Use `select` instead.
 
+### Shared Objects
+
 Data can be exchanged between a coroutine and the calling thread via a shared variable.
-Such variables should be created as references and passed to the coroutine as `mut`.
-The underlying `struct` should also contain a `mutex` to lock concurrent access:
+Such variables should be created as `shared` and passed to the coroutine as such, too.
+The underlying `struct` contains a hidden *mutex* that allows locking concurrent access
+using `rlock` for read-only and `lock` for read/write access.
 
 ```v
-import sync
-
 struct St {
 mut:
-	x   int // share data
-	mtx &sync.Mutex
+	x int // data to shared
 }
 
-fn (mut b St) g() {
-	b.mtx.m_lock()
-	// read/modify/write b.x
-	b.mtx.unlock()
+fn (shared b St) g() {
+	lock b {
+		// read/modify/write b.x
+	}
 }
 
-fn caller() {
-	mut a := &St{ // create as reference so it's on the heap
+fn main() {
+	shared a := &St{ // create as reference so it's on the heap
 		x: 10
-		mtx: sync.new_mutex()
 	}
 	go a.g()
-	a.mtx.m_lock()
-	// read/modify/write a.x
-	a.mtx.unlock()
+	// ...
+	rlock a {
+		// read a.x
+	}
 }
 ```
 
@@ -2534,7 +2662,7 @@ For developers willing to have more low level control, autofree can be disabled 
 memory manually.
 
 Note: right now autofree is hidden behind the -autofree flag. It will be enabled by
-default in V 0.3.
+default in V 0.3. If autofree is not used, V programs will leak memory.
 
 For example:
 
@@ -2823,7 +2951,7 @@ fn C.sqlite3_step(&sqlite3_stmt)
 
 fn C.sqlite3_finalize(&sqlite3_stmt)
 
-fn C.sqlite3_exec(db &sqlite3, sql charptr, FnSqlite3Callback voidptr, cb_arg voidptr, emsg &charptr) int
+fn C.sqlite3_exec(db &sqlite3, sql charptr, cb FnSqlite3Callback, cb_arg voidptr, emsg &charptr) int
 
 fn C.sqlite3_free(voidptr)
 
@@ -3015,8 +3143,9 @@ use `v help`, `v help build` and `v help build-c`.
 
 ## Conditional compilation
 
-### Compile time if
+### Compile time code
 
+#### $if
 ```v
 // Support for multiple conditions in one branch
 $if ios || android {
@@ -3063,6 +3192,31 @@ Full list of builtin options:
 | `android`,`mach`, `dragonfly` | `msvc`            | `little_endian`       | `no_bounds_checking`  |
 | `gnu`, `hpux`, `haiku`, `qnx` | `cplusplus`       | `big_endian`          | |
 | `solaris`, `linux_or_macos`   | | | |
+
+#### $embed_file
+
+```v ignore
+module main
+fn main() {
+	embedded_file := $embed_file('v.png')
+	mut fw := os.create('exported.png') or { panic(err) }
+	fw.write_bytes(embedded_file.data(), embedded_file.len)
+	fw.close()
+}
+```
+
+V can embed arbitrary files into the executable with the `$embed_file(<path>)`
+compile time call. Paths can be absolute or relative to the source file.
+
+When you do not use `-prod`, the file will not be embedded. Instead, it will
+be loaded *the first time* your program calls `f.data()` at runtime, making
+it easier to change in external editor programs, without needing to recompile
+your executable.
+
+When you compile with `-prod`, the file *will be embedded inside* your
+executable, increasing your binary size, but making it more self contained
+and thus easier to distribute. In this case, `f.data()` will cause *no IO*,
+and it will always return the same data.
 
 ### Environment specific files
 

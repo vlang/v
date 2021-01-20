@@ -39,16 +39,18 @@ const (
 			<header class="doc-nav hidden">
 				<div class="heading-container">
 					<div class="heading">
-						<input type="text" id="search" placeholder="Search... (beta)" autocomplete="off">
-						<div class="module">{{ head_name }}</div>
-						<div class="toggle-version-container">
-							<span>{{ version }}</span>
-							<div id="dark-mode-toggle" role="switch" aria-checked="false" aria-label="Toggle dark mode">{{ light_icon }}{{ dark_icon }}</div>
+						<div class="info">
+							<div class="module">{{ head_name }}</div>
+							<div class="toggle-version-container">
+								<span>{{ version }}</span>
+								<div id="dark-mode-toggle" role="switch" aria-checked="false" aria-label="Toggle dark mode">{{ light_icon }}{{ dark_icon }}</div>
+							</div>
+							{{ menu_icon }}
 						</div>
-						{{ menu_icon }}
+						<input type="text" id="search" placeholder="Search... (beta)" autocomplete="off">
 					</div>
 				</div>
-				<nav class="search"></nav>
+				<nav class="search hidden"></nav>
 				<nav class="content hidden">
 					<ul>
 						{{ toc_links }}
@@ -265,7 +267,8 @@ fn (vd VDoc) gen_html(d doc.Doc) string {
 			submod_prefix = if names.len > 1 { names[0] } else { dc.head.name }
 			mut href_name := './${dc.head.name}.html'
 			if (cfg.is_vlib && dc.head.name == 'builtin' && !cfg.include_readme) ||
-				dc.head.name == 'README' {
+				dc.head.name == 'README'
+			{
 				href_name = './index.html'
 			} else if submod_prefix !in vd.docs.map(it.head.name) {
 				href_name = '#'
@@ -304,13 +307,15 @@ fn (vd VDoc) gen_html(d doc.Doc) string {
 			'</style>\n${tabs[0]}<script>' + vd.assets['dark_mode_js'] + '</script>'
 	} else {
 		'\n${tabs[0]}<link rel="stylesheet" href="' + vd.assets['doc_css'] + '" />\n${tabs[0]}<link rel="stylesheet" href="' +
-			vd.assets['normalize_css'] + '" />\n${tabs[0]}<script src="' + vd.assets['dark_mode_js'] + '"></script>'
+			vd.assets['normalize_css'] + '" />\n${tabs[0]}<script src="' + vd.assets['dark_mode_js'] +
+			'"></script>'
 	}).replace('{{ toc_links }}', if cfg.is_multi || vd.docs.len > 1 {
 		modules_toc_str
 	} else {
 		symbols_toc_str
 	}).replace('{{ contents }}', contents.str()).replace('{{ right_content }}', if cfg.is_multi &&
-		vd.docs.len > 1 && d.head.name != 'README' {
+		vd.docs.len > 1 && d.head.name != 'README'
+	{
 		'<div class="doc-toc"><ul>' + symbols_toc_str + '</ul></div>'
 	} else {
 		''
@@ -401,7 +406,8 @@ fn html_highlight(code string, tb &table.Table) string {
 					if token.is_key(tok.lit) || token.is_decl(tok.kind) {
 						tok_typ = .keyword
 					} else if tok.kind == .decl_assign || tok.kind.is_assign() || tok.is_unary() ||
-						tok.kind.is_relational() || tok.kind.is_infix() {
+						tok.kind.is_relational() || tok.kind.is_infix()
+					{
 						tok_typ = .operator
 					}
 				}

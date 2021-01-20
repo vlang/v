@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module main
@@ -53,15 +53,15 @@ const (
 	]
 	// Each tetro has its unique color
 	colors           = [
-		gx.rgb(0, 0, 0), // unused ?
-		gx.rgb(255, 242, 0), // yellow quad
-		gx.rgb(174, 0, 255), // purple triple
-		gx.rgb(60, 255, 0), // green short topright
-		gx.rgb(255, 0, 0), // red short topleft
-		gx.rgb(255, 180, 31), // orange long topleft
-		gx.rgb(33, 66, 255), // blue long topright
-		gx.rgb(74, 198, 255), // lightblue longest
-		gx.rgb(0, 170, 170), // unused ?
+		gx.rgb(0, 0, 0), /* unused ? */
+		gx.rgb(255, 242, 0), /* yellow quad */
+		gx.rgb(174, 0, 255), /* purple triple */
+		gx.rgb(60, 255, 0), /* green short topright */
+		gx.rgb(255, 0, 0), /* red short topleft */
+		gx.rgb(255, 180, 31), /* orange long topleft */
+		gx.rgb(33, 66, 255), /* blue long topright */
+		gx.rgb(74, 198, 255), /* lightblue longest */
+		gx.rgb(0, 170, 170), /* unused ? */
 	]
 	background_color = gx.white
 	ui_color         = gx.rgba(255, 0, 0, 210)
@@ -83,45 +83,41 @@ enum GameState {
 struct Game {
 mut:
 	// Score of the current game
-	score          int
+	score int
 	// Lines of the current game
-	lines          int
+	lines int
 	// State of the current game
-	state          GameState
+	state GameState
 	// Position of the current tetro
-	pos_x          int
-	pos_y          int
+	pos_x int
+	pos_y int
 	// field[y][x] contains the color of the block with (x,y) coordinates
 	// "-1" border is to avoid bounds checking.
 	// -1 -1 -1 -1
 	// -1  0  0 -1
 	// -1  0  0 -1
 	// -1 -1 -1 -1
-	field          [][]int
+	field [][]int
 	// TODO: tetro Tetro
-	tetro          []Block
+	tetro []Block
 	// TODO: tetros_cache []Tetro
-	tetros_cache   []Block
+	tetros_cache []Block
 	// Index of the current tetro. Refers to its color.
-	tetro_idx      int
+	tetro_idx int
 	// Idem for the next tetro
 	next_tetro_idx int
 	// Index of the rotation (0-3)
-	rotation_idx   int
+	rotation_idx int
 	// gg context for drawing
-	gg             &gg.Context = voidptr(0)
-	font_loaded    bool
-	show_ghost     bool
+	gg          &gg.Context = voidptr(0)
+	font_loaded bool
+	show_ghost  bool
 	// frame/time counters:
-	frame          int
-	frame_old      int
-	frame_sw       time.StopWatch = time.new_stopwatch({})
-	second_sw      time.StopWatch = time.new_stopwatch({})
+	frame     int
+	frame_old int
+	frame_sw  time.StopWatch = time.new_stopwatch({})
+	second_sw time.StopWatch = time.new_stopwatch({})
 }
-
-const (
-	fpath = os.resource_abs_path('../assets/fonts/RobotoMono-Regular.ttf')
-)
 
 [if showfps]
 fn (mut game Game) showfps() {
@@ -150,7 +146,11 @@ fn main() {
 	mut game := &Game{
 		gg: 0
 	}
-	game.gg = gg.new_context({
+	mut fpath := os.resource_abs_path(os.join_path('..', 'assets', 'fonts', 'RobotoMono-Regular.ttf'))
+	$if android {
+		fpath = 'fonts/RobotoMono-Regular.ttf'
+	}
+	game.gg = gg.new_context(
 		bg_color: gx.white
 		width: win_width
 		height: win_height
@@ -161,7 +161,7 @@ fn main() {
 		frame_fn: frame
 		event_fn: on_event
 		font_path: fpath // wait_events: true
-	})
+	)
 	game.init_game()
 	go game.run() // Run the game loop in a new thread
 	game.gg.run() // Run the render loop in the main thread
@@ -290,7 +290,7 @@ fn (mut g Game) delete_completed_line(y int) {
 	// Move everything down by 1 position
 	for yy := y - 1; yy >= 1; yy-- {
 		for x := 1; x <= field_width; x++ {
-			g.field[yy + 1][x] =  g.field[yy][x]
+			g.field[yy + 1][x] = g.field[yy][x]
 		}
 	}
 }

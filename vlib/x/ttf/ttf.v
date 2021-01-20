@@ -557,25 +557,10 @@ fn (mut tf TTF_File) get_fixed() f32 {
 	return f32(tf.get_i32() / f32(1 << 16))
 }
 
-/*---- restore when MSVC will work again! ----
 fn (mut tf TTF_File) get_string(length int) string {
-	tmp_pos := tf.pos
+	tmp_pos := u64(tf.pos)
 	tf.pos += u32(length)
-	unsafe{
-		return tos(&tf.buf.data[tmp_pos], length)
-	}
-}
-*/
-
-fn (mut tf TTF_File) get_string(length int) string {
-	tmp_pos := tf.pos
-	mut tmp_txt := strings.new_builder(length)
-	for _ in 0..length {
-		tmp_txt.write_b(tf.get_u8())
-	}
-	res_txt := tmp_txt.str()
-	tf.pos = tmp_pos + u32(length)
-	return res_txt
+	return unsafe{ tos(byteptr(u64(tf.buf.data)+tmp_pos), length) }
 }
 
 fn (mut tf TTF_File) get_unicode_string(length int) string {
@@ -601,12 +586,10 @@ fn (mut tf TTF_File) get_unicode_string(length int) string {
 }
 
 fn (mut tf TTF_File) get_date() u64 {
-	// var macTime = this.getUint32() * 0x100000000 + this.getUint32();
-	// utcTime = macTime * 1000 + Date.UTC(1904, 1, 1);
-	// return new Date(utcTime);
-
-	mac_time := u64( (tf.get_u32()) << 32) + u64(tf.get_u32())
-	return mac_time
+	// get mac time and covert it to unix timestamp
+	mac_time := (u64(tf.get_u32()) << 32) + u64(tf.get_u32())
+	utc_time := mac_time - u64(2082844800)
+	return utc_time
 }
 
 fn (mut tf TTF_File) calc_checksum(offset u32, length u32) u32 {
@@ -1068,23 +1051,25 @@ fn (mut tf TTF_File) next_kern(glyph_index int) (int, int){
 * TTF_File Utility
 *
 ******************************************************************************/
-/*
+pub
 fn (tf TTF_File) get_info_string() string{
 	txt := "----- Font Info -----
-version: $tf.version
-font_revision: $tf.font_revision
-magic_number : ${tf.magic_number.hex()}
-flags        : ${tf.flags.hex()}
-created      : ${tf.created}
-modified     : ${tf.modified}
-box          : [xm:${tf.x_min}, ym:${tf.y_min}, xM:${tf.x_max}, yM:${tf.y_max}]
-mac_style    : ${tf.mac_style}
+font_family     : $tf.font_family
+font_sub_family : $tf.font_sub_family
+full_name       : $tf.full_name
+postscript_name : $tf.postscript_name
+version         : $tf.version
+font_revision   : $tf.font_revision
+magic_number    : ${tf.magic_number.hex()}
+flags           : ${tf.flags.hex()}
+created  unixTS : ${tf.created}
+modified unixTS : ${tf.modified}
+box             : [x_min:${tf.x_min}, y_min:${tf.y_min}, x_Max:${tf.x_max}, y_Max:${tf.y_max}]
+mac_style       : ${tf.mac_style}
 -----------------------
 "
 	return txt
 }
-*/
-
 
 /******************************************************************************
 *

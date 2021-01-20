@@ -77,3 +77,6 @@ _docs
 *.suo
 *.VC.db
 *.rsp
+
+# ignore cmd/tools/.disable_autorecompilation, which some package managers use.
+cmd/tools/.disable_autorecompilation

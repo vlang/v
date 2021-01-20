@@ -43,7 +43,8 @@ pub fn (mut ws Client) validate_frame(frame &Frame) ? {
 		return error('rsv cannot be other than 0, not negotiated')
 	}
 	if (int(frame.opcode) >= 3 && int(frame.opcode) <= 7) ||
-		(int(frame.opcode) >= 11 && int(frame.opcode) <= 15) {
+		(int(frame.opcode) >= 11 && int(frame.opcode) <= 15)
+	{
 		ws.close(1002, 'use of reserved opcode') ?
 		return error('use of reserved opcode')
 	}
@@ -253,7 +254,7 @@ pub fn (mut ws Client) parse_frame_header() ?Frame {
 			frame.header_len += 2
 			frame.payload_len = 0
 			frame.payload_len |= buffer[2] << 8
-			frame.payload_len |= buffer[3] << 0
+			frame.payload_len |= buffer[3]
 			frame.frame_size = frame.header_len + frame.payload_len
 			if !frame.has_mask {
 				break
@@ -261,15 +262,17 @@ pub fn (mut ws Client) parse_frame_header() ?Frame {
 		}
 		if frame.payload_len == 127 && bytes_read == u64(extended_payload64_end_byte) {
 			frame.header_len += 8
-			frame.payload_len = 0
-			frame.payload_len |= buffer[2] << 56
-			frame.payload_len |= buffer[3] << 48
-			frame.payload_len |= buffer[4] << 40
-			frame.payload_len |= buffer[5] << 32
-			frame.payload_len |= buffer[6] << 24
-			frame.payload_len |= buffer[7] << 16
-			frame.payload_len |= buffer[8] << 8
-			frame.payload_len |= buffer[9] << 0
+			// these shift operators needs 64 bit on clang with -prod flag
+			mut payload_len := u64(0)
+			payload_len |= buffer[2] << 56
+			payload_len |= buffer[3] << 48
+			payload_len |= buffer[4] << 40
+			payload_len |= buffer[5] << 32
+			payload_len |= buffer[6] << 24
+			payload_len |= buffer[7] << 16
+			payload_len |= buffer[8] << 8
+			payload_len |= buffer[9]
+			frame.payload_len = int(payload_len)
 			if !frame.has_mask {
 				break
 			}

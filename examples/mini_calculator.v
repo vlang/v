@@ -23,7 +23,7 @@ fn expr_to_rev_pol(expr string) ?[]string {
 			stack << expr[pos..end_pos]
 			pos = end_pos
 		} else if end_pos == pos {
-			op := expr[pos].str()
+			op := expr[pos].ascii_str()
 			match op {
 				'(' {
 					stack << op

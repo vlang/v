@@ -7,12 +7,13 @@ import sync
 import runtime
 import benchmark
 
-const (
-	skip_files     = [
+const skip_files = [
 		'vlib/v/checker/tests/custom_comptime_define_if_flag.vv',
 	]
-	should_autofix = os.getenv('VAUTOFIX') != ''
-)
+
+const turn_off_vcolors = os.setenv('VCOLORS', 'never', true)
+
+const should_autofix = os.getenv('VAUTOFIX') != ''
 
 struct TaskDescription {
 	vexe             string
@@ -21,12 +22,12 @@ struct TaskDescription {
 	result_extension string
 	path             string
 mut:
-	is_error         bool
-	is_skipped       bool
-	is_module        bool
-	expected         string
-	found___         string
-	took             time.Duration
+	is_error   bool
+	is_skipped bool
+	is_module  bool
+	expected   string
+	found___   string
+	took       time.Duration
 }
 
 fn test_all() {
@@ -138,7 +139,9 @@ fn (mut tasks []TaskDescription) run() {
 	bench.stop()
 	eprintln(term.h_divider('-'))
 	eprintln(bench.total_message('all tests'))
-	assert total_errors == 0
+	if total_errors != 0 {
+		exit(1)
+	}
 }
 
 // a single worker thread spends its time getting work from the `work` channel,
@@ -192,7 +195,7 @@ fn clean_line_endings(s string) string {
 
 fn diff_content(s1 string, s2 string) {
 	diff_cmd := util.find_working_diff_command() or { return }
-	println('diff: ')
+	println(term.bold(term.yellow('diff: ')))
 	println(util.color_compare_strings(diff_cmd, s1, s2))
 	println('============\n')
 }

@@ -46,10 +46,10 @@ pub mut:
 	base_path string
 	table     &table.Table    = &table.Table{}
 	checker   checker.Checker = checker.Checker{
-	table: 0
-	cur_fn: 0
-	pref: 0
-}
+		table: 0
+		cur_fn: 0
+		pref: 0
+	}
 	fmt             fmt.Fmt
 	filename        string
 	pos             int
@@ -390,9 +390,9 @@ pub fn (mut d Doc) file_asts(file_asts []ast.File) ? {
 		}
 		if d.with_head && i == 0 {
 			mut module_name := file_ast.mod.name
-			if module_name != 'main' && d.parent_mod_name.len > 0 {
-				module_name = d.parent_mod_name + '.' + module_name
-			}
+			// if module_name != 'main' && d.parent_mod_name.len > 0 {
+			// 	module_name = d.parent_mod_name + '.' + module_name
+			// }
 			d.head = DocNode{
 				name: module_name
 				content: 'module $module_name'

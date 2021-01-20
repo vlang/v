@@ -21,7 +21,8 @@ fn (mut v Builder) get_os_cflags() []cflag.CFlag {
 			(flag.os == 'freebsd' && v.pref.os == .freebsd) ||
 			(flag.os == 'windows' && v.pref.os == .windows) ||
 			(flag.os == 'mingw' && v.pref.os == .windows && v.pref.ccompiler != 'msvc') ||
-			(flag.os == 'solaris' && v.pref.os == .solaris) {
+			(flag.os == 'solaris' && v.pref.os == .solaris)
+		{
 			flags << flag
 		}
 		if flag.os in ctimedefines {

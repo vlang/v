@@ -255,9 +255,9 @@ fn test_left() {
 
 fn test_slice() {
 	a := [1, 2, 3, 4]
-	b := a.slice(2, 4)
+	b := a[2..4]
 	assert b.len == 2
-	assert a.slice(1, 2).len == 1
+	assert a[1..2].len == 1
 	assert a.len == 4
 }
 
@@ -355,7 +355,7 @@ fn test_clone() {
 	assert nums2.len == 5
 	assert nums.str() == '[1, 2, 3, 4, 100]'
 	assert nums2.str() == '[1, 2, 3, 4, 100]'
-	assert nums.slice(1, 3).str() == '[2, 3]'
+	assert nums[1..3].str() == '[2, 3]'
 }
 
 /*
@@ -1336,4 +1336,10 @@ fn test_array_of_multi_map() {
 	println(nums)
 	assert nums.odds == [3, 5, 7]
 	assert nums.evens == [2, 6, 10]
+}
+
+fn test_multi_fixed_array_with_default_init() {
+	a := [3][3]int{init: [3]int{init: 10}}
+	println(a)
+	assert a == [[10, 10, 10]!, [10, 10, 10]!, [10, 10, 10]!]!
 }

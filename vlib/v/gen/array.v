@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module gen
 
@@ -34,6 +34,13 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 				if i != it.exprs.len - 1 {
 					g.write(', ')
 				}
+			}
+		} else if it.has_default {
+			g.expr(it.default_expr)
+			info := type_sym.info as table.ArrayFixed
+			for _ in 1 .. info.size {
+				g.write(', ')
+				g.expr(it.default_expr)
 			}
 		} else {
 			g.write('0')

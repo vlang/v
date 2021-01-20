@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -32,7 +32,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 			elem_type = p.parse_type()
 			// this is set here because it's a known type, others could be the
 			// result of expr so we do those in checker
-			idx := p.table.find_or_register_array(elem_type, 1)
+			idx := p.table.find_or_register_array(elem_type)
 			array_type = table.new_type(idx)
 			has_type = true
 		}
@@ -88,7 +88,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 			}
 			if p.tok.kind == .not && p.tok.line_nr == p.prev_tok.line_nr {
 				last_pos = p.tok.position()
-				p.warn_with_pos('use e.g. `[1, 2, 3]!` instead of `[1, 2, 3]!!`', last_pos)
+				p.error_with_pos('use e.g. `[1, 2, 3]!` instead of `[1, 2, 3]!!`', last_pos)
 				p.next()
 			}
 		}
@@ -130,7 +130,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		}
 		p.check(.rcbr)
 	}
-	pos := first_pos.extend(last_pos)
+	pos := first_pos.extend_with_last_line(last_pos, p.prev_tok.line_nr)
 	return ast.ArrayInit{
 		is_fixed: is_fixed
 		has_val: has_val
@@ -151,7 +151,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 }
 
 fn (mut p Parser) map_init() ast.MapInit {
-	pos := p.tok.position()
+	mut pos := p.tok.position()
 	mut keys := []ast.Expr{}
 	mut vals := []ast.Expr{}
 	for p.tok.kind != .rcbr && p.tok.kind != .eof {
@@ -167,6 +167,7 @@ fn (mut p Parser) map_init() ast.MapInit {
 			p.next()
 		}
 	}
+	pos.update_last_line(p.tok.line_nr)
 	return ast.MapInit{
 		keys: keys
 		vals: vals

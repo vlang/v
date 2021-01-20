@@ -1,6 +1,7 @@
-vlib/v/checker/tests/unimplemented_interface_b.vv:13:6: error: `Cat` incorrectly implements method `name` of interface `Animal`, expected `name() string`
+vlib/v/checker/tests/unimplemented_interface_b.vv:13:6: error: `Cat` incorrectly implements method `name` of interface `Animal`: expected return type `string`
    11 | fn main() {
    12 |     c := Cat{}
    13 |     foo(c)
       |         ^
    14 | }
+details: main.Animal has `name() string`

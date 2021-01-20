@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -9,6 +9,10 @@ import v.pref
 import v.table
 import v.token
 import vweb.tmpl
+
+const (
+	supported_comptime_calls = ['html', 'tmpl', 'embed_file']
+)
 
 // // #include, #flag, #v
 fn (mut p Parser) hash() ast.HashStmt {
@@ -37,9 +41,9 @@ fn (mut p Parser) hash() ast.HashStmt {
 	}
 }
 
-fn (mut p Parser) vweb() ast.ComptimeCall {
+fn (mut p Parser) comp_call() ast.ComptimeCall {
 	p.check(.dollar)
-	error_msg := 'only `\$tmpl()` and `\$vweb.html()` comptime functions are supported right now'
+	error_msg := 'only `\$tmpl()`, `\$embed_file()` and `\$vweb.html()` comptime functions are supported right now'
 	if p.peek_tok.kind == .dot {
 		n := p.check_name() // skip `vweb.html()` TODO
 		if n != 'vweb' {
@@ -49,17 +53,57 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 		p.check(.dot)
 	}
 	n := p.check_name() // (.name)
-	if n != 'html' && n != 'tmpl' {
+	if n !in supported_comptime_calls {
 		p.error(error_msg)
 		return ast.ComptimeCall{}
 	}
+	is_embed_file := n == 'embed_file'
 	is_html := n == 'html'
 	p.check(.lpar)
+	spos := p.tok.position()
 	s := if is_html { '' } else { p.tok.lit }
 	if !is_html {
 		p.check(.string)
 	}
 	p.check(.rpar)
+	//
+	if is_embed_file {
+		mut epath := s
+		// Validate that the epath exists, and that it is actually a file.
+		if epath == '' {
+			p.error_with_pos('please supply a valid relative or absolute file path to the file to embed',
+				spos)
+			return ast.ComptimeCall{}
+		}
+		if !p.pref.is_fmt {
+			abs_path := os.real_path(epath)
+			// check absolute path first
+			if !os.exists(abs_path) {
+				// ... look relative to the source file:
+				epath = os.real_path(os.join_path(os.dir(p.file_name), epath))
+				if !os.exists(epath) {
+					p.error_with_pos('"$epath" does not exist so it cannot be embedded',
+						spos)
+					return ast.ComptimeCall{}
+				}
+				if !os.is_file(epath) {
+					p.error_with_pos('"$epath" is not a file so it cannot be embedded',
+						spos)
+					return ast.ComptimeCall{}
+				}
+			} else {
+				epath = abs_path
+			}
+		}
+		p.register_auto_import('v.embed_file')
+		return ast.ComptimeCall{
+			is_embed: true
+			embed_file: ast.EmbeddedFile{
+				rpath: s
+				apath: epath
+			}
+		}
+	}
 	// Compile vweb html template to V code, parse that V code and embed the resulting V function
 	// that returns an html string.
 	fn_path := p.cur_fn_name.split('_')
@@ -111,8 +155,8 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 		println('\n\n')
 	}
 	mut file := parse_comptime(v_code, p.table, p.pref, scope, p.global_scope)
-	file = {
-		file |
+	file = ast.File{
+		...file
 		path: tmpl_path
 	}
 	// copy vars from current fn scope into vweb_tmpl scope
@@ -125,7 +169,10 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 					if obj is ast.Var {
 						mut v := obj
 						v.pos = stmt.body_pos
-						tmpl_scope.register(v)
+						tmpl_scope.register(ast.Var{
+							...v
+							is_used: true
+						})
 						// set the controller action var to used
 						// if it's unused in the template it will warn
 						v.is_used = true
@@ -203,64 +250,6 @@ fn (mut p Parser) at() ast.AtExpr {
 		pos: p.tok.position()
 		kind: kind
 	}
-}
-
-// TODO import warning bug
-const (
-	todo_delete_me = pref.OS.linux
-)
-
-fn os_from_string(os string) pref.OS {
-	match os {
-		'linux' {
-			return .linux
-		}
-		'windows' {
-			return .windows
-		}
-		'ios' {
-			return .ios
-		}
-		'macos' {
-			return .macos
-		}
-		'freebsd' {
-			return .freebsd
-		}
-		'openbsd' {
-			return .openbsd
-		}
-		'netbsd' {
-			return .netbsd
-		}
-		'dragonfly' {
-			return .dragonfly
-		}
-		'js' {
-			return .js
-		}
-		'solaris' {
-			return .solaris
-		}
-		'android' {
-			return .android
-		}
-		'msvc' {
-			// notice that `-os msvc` became `-cc msvc`
-			verror('use the flag `-cc msvc` to build using msvc')
-		}
-		'haiku' {
-			return .haiku
-		}
-		'linux_or_macos' {
-			return .linux
-		}
-		else {
-			panic('bad os $os')
-		}
-	}
-	// println('bad os $os') // todo panic?
-	return .linux
 }
 
 fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {

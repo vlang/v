@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -65,8 +65,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		p.error('`$p.tok.lit` lacks body')
 		return ast.StructDecl{}
 	}
-	if language == .v &&
-		p.mod != 'builtin' && name.len > 0 && !name[0].is_capital() && !p.pref.translated {
+	if language == .v && !p.builtin_mod && name.len > 0 && !name[0].is_capital() && !p.pref.translated {
 		p.error_with_pos('struct name `$name` must begin with capital letter', name_pos)
 		return ast.StructDecl{}
 	}
@@ -93,6 +92,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	mut pub_pos := -1
 	mut pub_mut_pos := -1
 	mut global_pos := -1
+	mut module_pos := -1
 	mut is_field_mut := false
 	mut is_field_pub := false
 	mut is_field_global := false
@@ -157,6 +157,17 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				is_field_pub = true
 				is_field_mut = true
 				is_field_global = true
+			} else if p.tok.kind == .key_module {
+				if module_pos != -1 {
+					p.error('redefinition of `module` section')
+					return {}
+				}
+				p.next()
+				p.check(.colon)
+				module_pos = fields.len
+				is_field_pub = false
+				is_field_mut = false
+				is_field_global = false
 			}
 			for p.tok.kind == .comment {
 				comments << p.comment()
@@ -320,6 +331,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		mut_pos: mut_pos - embeds.len
 		pub_pos: pub_pos - embeds.len
 		pub_mut_pos: pub_mut_pos - embeds.len
+		module_pos: module_pos - embeds.len
 		language: language
 		is_union: is_union
 		attrs: attrs
@@ -417,7 +429,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 
 fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	p.top_level_statement_start()
-	mut start_pos := p.tok.position()
+	mut pos := p.tok.position()
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
 		p.next()
@@ -494,12 +506,12 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	}
 	p.top_level_statement_end()
 	p.check(.rcbr)
-	start_pos.last_line = p.prev_tok.line_nr - 1
+	pos.update_last_line(p.prev_tok.line_nr)
 	return ast.InterfaceDecl{
 		name: interface_name
 		methods: methods
 		is_pub: is_pub
-		pos: start_pos
+		pos: pos
 		pre_comments: pre_comments
 	}
 }

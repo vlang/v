@@ -1,0 +1,14 @@
+vlib/v/parser/tests/or_default_missing.vv:4:3: error: `or` block must provide a default value of type `int`, or return/exit/continue/break/panic
+    2 |     m := [3, 4, 5]
+    3 |     el := m[4] or {
+    4 |         println('error')
+      |         ~~~~~~~~~~~~~~~~
+    5 |     }
+    6 |     println(el)
+vlib/v/parser/tests/or_default_missing.vv:16:16: error: last statement in the `or {}` block should be an expression of type `int` or exit parent scope
+   14 |     }
+   15 |     mut testvar := 0
+   16 |     el := m['pp'] or {
+      |                   ~~~~
+   17 |         testvar = 12
+   18 |     }
