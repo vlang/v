@@ -4519,8 +4519,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 		c.error('`$if_kind` expression needs `${d}else` clause', node.pos)
 	}
 	if c.file.path.ends_with('main.v') {
-
-	println(node.typ)
+		println(node.typ)
 	}
 	return node.typ
 }
