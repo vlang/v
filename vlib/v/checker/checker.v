@@ -2820,7 +2820,7 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 		array_init.elem_type = elem_type
 	} else if array_init.is_fixed && array_init.exprs.len == 1 && array_init.elem_type != table.void_type {
 		// [50]byte
-		mut fixed_size := 1
+		mut fixed_size := 0
 		init_expr := array_init.exprs[0]
 		c.expr(init_expr)
 		match init_expr {
@@ -2840,6 +2840,9 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 			else {
 				c.error('expecting `int` for fixed size', array_init.pos)
 			}
+		}
+		if fixed_size <= 0 {
+			c.error('fixed size cannot be zero or negative', init_expr.position())
 		}
 		idx := c.table.find_or_register_array_fixed(array_init.elem_type, fixed_size)
 		array_type := table.new_type(idx)

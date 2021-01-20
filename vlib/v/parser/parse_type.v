@@ -40,6 +40,9 @@ pub fn (mut p Parser) parse_array_type() table.Type {
 			// error is handled by parse_type
 			return 0
 		}
+		if fixed_size <= 0 {
+			p.error_with_pos('fixed size cannot be zero or negative', size_expr.position())
+		}
 		// sym := p.table.get_type_symbol(elem_type)
 		idx := p.table.find_or_register_array_fixed(elem_type, fixed_size)
 		return table.new_type(idx)

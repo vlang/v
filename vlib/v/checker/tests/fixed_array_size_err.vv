@@ -1,0 +1,8 @@
+const size = -1
+
+fn main() {
+	a := [size]int{}
+	b := [0]byte{}
+	println(a)
+	println(b)
+}
