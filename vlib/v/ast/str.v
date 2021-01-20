@@ -43,11 +43,11 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string, m2a map[string]s
 		receiver = '($node.receiver.name $m$name) '
 		*/
 	}
-	// mut name := if node.is_anon { '' } else { node.name.after_char(`.`) }
 	mut name := if node.is_anon { '' } else { node.name }
 	if !node.is_anon && !node.is_method && node.language == .v {
 		name = node.name.all_after_last('.')
 	}
+	// mut name := if node.is_anon { '' } else { node.name.after_char(`.`) }
 	// if !node.is_method {
 	// 	if node.language == .c {
 	// 		name = 'C.$name'

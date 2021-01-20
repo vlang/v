@@ -400,6 +400,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			scope: 0
 		}
 	}
+	// if no_body && !name.starts_with('C.') {
+	// 	p.error_with_pos('did you mean C.$name instead of $name', start_pos)
+	// }
 	fn_decl := ast.FnDecl{
 		name: name
 		mod: p.mod

@@ -106,27 +106,10 @@ pub fn (mut b Builder) parse_imports() {
 			import_path := b.find_module_path(mod, ast_file.path) or {
 				// v.parsers[i].error_with_token_index('cannot import module "$mod" (not found)', v.parsers[i].import_table.get_import_tok_idx(mod))
 				// break
-				// println('module_search_paths:')
-				// println(b.module_search_paths)
 				verror('cannot import module "$mod" (not found)')
 				break
 			}
 			v_files := b.v_files_from_dir(import_path)
-			// mut v_files2 := []string{}
-			// for f1 in v_files {
-			// 	mut found := false
-			// 	for f2 in b.parsed_files {
-			// 		if os.real_path(f2.path) == f1 {
-			// 			found = true
-			// 			println('### DUPLICATE: $f1')
-			// 			break
-			// 		}
-			// 	}
-			// 	if !found {
-			// 		v_files2 << f1
-			// 	}
-			// }
-			// v_files = v_files2.clone()
 			if v_files.len == 0 {
 				// v.parsers[i].error_with_token_index('cannot import module "$mod" (no .v files in "$import_path")', v.parsers[i].import_table.get_import_tok_idx(mod))
 				verror('cannot import module "$mod" (no .v files in "$import_path")')
@@ -248,6 +231,8 @@ fn module_path(mod string) string {
 	return mod.replace('.', os.path_separator)
 }
 
+// TODO: merge this & util.module functions to create reliable
+// multi use fucntions. see comments in util/module.v
 pub fn (b &Builder) find_module_path(mod string, fpath string) ?string {
 	// support @VROOT/v.mod relative paths:
 	mut mcache := vmod.get_cache()
@@ -297,12 +282,10 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) ?string {
 	for i := path_parts.len - 2; i > 0; i-- {
 		p1 := path_parts[0..i].join(os.path_separator)
 		try_path := os.join_path(p1, mod_path)
-		// println('### TRY: $mod - $try_path')
 		if b.pref.is_verbose {
 			println('  >> trying to find $mod in $try_path ..')
 		}
 		if os.is_dir(try_path) {
-			// println('### FOUND: $mod - $try_path')
 			return try_path
 		}
 	}

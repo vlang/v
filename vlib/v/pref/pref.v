@@ -78,7 +78,7 @@ pub mut:
 	// NB: passing -cg instead of -g will set is_vlines to false and is_debug to true, thus making v generate cleaner C files,
 	// which are sometimes easier to debug / inspect manually than the .tmp.c files by plain -g (when/if v line number generation breaks).
 	// use cached modules to speed up compilation.
-	use_cache         bool = true
+	use_cache         bool // = true
 	retry_compilation bool = true
 	is_stats          bool // `v -stats file_test.v` will produce more detailed statistics for the tests that were run
 	// TODO Convert this into a []string
