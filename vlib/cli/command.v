@@ -2,10 +2,13 @@ module cli
 
 type FnCommandCallback = fn (cmd Command) ?
 
+// str returns the `string` representation of the callback.
 pub fn (f FnCommandCallback) str() string {
 	return 'FnCommandCallback=>' + ptr_str(f)
 }
 
+// Command is a structured representation of a single command
+// or chain of commands.
 pub struct Command {
 pub mut:
 	name            string
@@ -27,6 +30,7 @@ pub mut:
 	args            []string
 }
 
+// str returns the `string` representation of the `Command`.
 pub fn (cmd Command) str() string {
 	mut res := []string{}
 	res << 'Command{'
@@ -55,10 +59,12 @@ pub fn (cmd Command) str() string {
 	return res.join('\n')
 }
 
+// is_root returns `true` if this `Command` has no parents.
 pub fn (cmd Command) is_root() bool {
 	return isnil(cmd.parent)
 }
 
+// root returns the root `Command` of the command chain.
 pub fn (cmd Command) root() Command {
 	if cmd.is_root() {
 		return cmd
@@ -66,6 +72,7 @@ pub fn (cmd Command) root() Command {
 	return cmd.parent.root()
 }
 
+// full_name returns the full `string` representation of all commands int the chain.
 pub fn (cmd Command) full_name() string {
 	if cmd.is_root() {
 		return cmd.name
@@ -73,12 +80,14 @@ pub fn (cmd Command) full_name() string {
 	return cmd.parent.full_name() + ' $cmd.name'
 }
 
+// add_commands adds the `commands` array of `Command`s as sub-commands.
 pub fn (mut cmd Command) add_commands(commands []Command) {
 	for command in commands {
 		cmd.add_command(command)
 	}
 }
 
+// add_command adds `command` as a sub-command of this `Command`.
 pub fn (mut cmd Command) add_command(command Command) {
 	mut subcmd := command
 	if cmd.commands.contains(subcmd.name) {
@@ -89,6 +98,8 @@ pub fn (mut cmd Command) add_command(command Command) {
 	cmd.commands << subcmd
 }
 
+// setup ensures that all sub-commands of this `Command`
+// is linked as a chain.
 pub fn (mut cmd Command) setup() {
 	for mut subcmd in cmd.commands {
 		subcmd.parent = cmd
@@ -96,12 +107,14 @@ pub fn (mut cmd Command) setup() {
 	}
 }
 
+// add_flags adds the array `flags` to this `Command`.
 pub fn (mut cmd Command) add_flags(flags []Flag) {
 	for flag in flags {
 		cmd.add_flag(flag)
 	}
 }
 
+// add_flag adds `flag` to this `Command`.
 pub fn (mut cmd Command) add_flag(flag Flag) {
 	if cmd.flags.contains(flag.name) {
 		println('Flag with the name `$flag.name` already exists')
@@ -110,6 +123,7 @@ pub fn (mut cmd Command) add_flag(flag Flag) {
 	cmd.flags << flag
 }
 
+// parse parses `args` into this structured `Command`.
 pub fn (mut cmd Command) parse(args []string) {
 	if !cmd.disable_flags {
 		cmd.add_default_flags()
@@ -128,6 +142,8 @@ pub fn (mut cmd Command) parse(args []string) {
 	cmd.parse_commands()
 }
 
+// add_default_flags adds the commonly used `-h`/`--help` and
+// `-v`/`--version` flags to the `Command`.
 fn (mut cmd Command) add_default_flags() {
 	if !cmd.disable_help && !cmd.flags.contains('help') {
 		use_help_abbrev := !cmd.flags.contains('h') && cmd.flags.have_abbrev()
@@ -139,6 +155,8 @@ fn (mut cmd Command) add_default_flags() {
 	}
 }
 
+// add_default_commands adds the command functions of the
+// commonly used `help` and `version` flags to the `Command`.
 fn (mut cmd Command) add_default_commands() {
 	if !cmd.disable_help && !cmd.commands.contains('help') && cmd.is_root() {
 		cmd.add_command(help_cmd())
@@ -257,6 +275,8 @@ fn (cmd Command) check_required_flags() {
 	}
 }
 
+// execute_help executes the callback registered
+// for the `-h`/`--help` flag option.
 pub fn (cmd Command) execute_help() {
 	if cmd.commands.contains('help') {
 		help_cmd := cmd.commands.get('help') or { return } // ignore error and handle command normally
