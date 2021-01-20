@@ -1414,6 +1414,9 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			c.fail_if_immutable(call_expr.left)
 			// call_expr.is_mut = true
 		}
+		if method.language == .v && method.no_body {
+			c.error('cannot call a method that does not have a body', call_expr.pos)
+		}
 		if method.return_type == table.void_type &&
 			method.ctdefine.len > 0 && method.ctdefine !in c.pref.compile_defines
 		{
@@ -1715,6 +1718,9 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	{
 		// builtin C.m*, C.s* only - temp
 		c.warn('function `$f.name` must be called from an `unsafe` block', call_expr.pos)
+	}
+	if f.language == .v && f.no_body {
+		c.error('cannot call a function that does not have a body', call_expr.pos)
 	}
 	if f.is_generic {
 		sym := c.table.get_type_symbol(call_expr.generic_type)
