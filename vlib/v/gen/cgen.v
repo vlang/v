@@ -102,7 +102,7 @@ mut:
 	is_builtin_mod        bool
 	hotcode_fn_names      []string
 	embedded_files        []ast.EmbeddedFile
-	// cur_fn               ast.FnDecl
+	cur_fn               ast.FnDecl
 	cur_generic_types []table.Type // `int`, `string`, etc in `foo<T>()`
 	sql_i            int
 	sql_stmt_name    string

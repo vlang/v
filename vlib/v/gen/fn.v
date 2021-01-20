@@ -41,7 +41,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 		g.cur_generic_types = []
 		return
 	}
-	// g.cur_fn = it
+	g.cur_fn = it
 	fn_start_pos := g.out.len
 	g.write_v_source_line_info(it.pos)
 	msvc_attrs := g.write_fn_attrs(it.attrs)
@@ -319,6 +319,14 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 
 pub fn (g &Gen) unwrap_generic(typ table.Type) table.Type {
 	if typ.has_flag(.generic) {
+		sym := g.table.get_type_symbol(typ)
+		mut idx := 0
+		for i, generic_param in g.cur_fn.generic_params {
+			if generic_param.name == sym.name {
+				idx = i
+				break
+			}
+		}
 		return g.cur_generic_types[0].derive(typ).clear_flag(.generic)
 	}
 	return typ
