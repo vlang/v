@@ -260,7 +260,7 @@ pub fn run_app<T>(mut app T, port int) {
 		mut conn := l.accept() or { panic('accept() failed') }
 		mut session := *app
 		session.dataptr = voidptr(app)
-		go handle_conn<T>(mut &conn, mut &session)
+		go handle_conn<T>(mut conn, mut &session)
 		// app.vweb.page_gen_time = time.ticks() - t
 		// eprintln('handle conn() took ${time.ticks()-t}ms')
 		// message := readall(conn)
@@ -297,7 +297,9 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	mut reader := io.new_buffered_reader(reader: io.make_reader(conn))
 	page_gen_start := time.ticks()
 	first_line := reader.read_line() or {
-		eprintln('Failed first_line')
+		$if debug {
+			eprintln('Failed first_line') // show this only in debug mode, because it always would be shown after a chromium user visits the site 
+		}
 		return
 	}
 	$if debug {
