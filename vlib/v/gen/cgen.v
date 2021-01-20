@@ -1028,7 +1028,8 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				// We are using prebuilt modules, we do not need to generate
 				// their functions in main.c.
 				if node.mod != 'main' &&
-					node.mod != 'help' && !should_bundle_module && !g.file.path.ends_with('_test.v') && !node.is_generic
+					node.mod != 'help' && !should_bundle_module && !g.file.path.ends_with('_test.v') &&
+					!node.is_generic
 				{
 					skip = true
 				}
