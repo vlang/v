@@ -455,6 +455,13 @@ s := r'hello\nworld'
 println(s) // "hello\nworld"
 ```
 
+Strings can be easily converted to integers:
+
+```v
+s := '42'
+n := s.int() // 42
+```
+
 ### String interpolation
 
 Basic interpolation syntax is pretty simple - use `$` before a variable name.
@@ -3207,7 +3214,7 @@ it easier to change in external editor programs, without needing to recompile
 your executable.
 
 When you compile with `-prod`, the file *will be embedded inside* your
-executable, increasing your binary size, but making it more self contained 
+executable, increasing your binary size, but making it more self contained
 and thus easier to distribute. In this case, `f.data()` will cause *no IO*,
 and it will always return the same data.
 

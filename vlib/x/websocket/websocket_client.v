@@ -30,7 +30,7 @@ pub:
 	uri    Uri    // uri of current connection
 	id     string // unique id of client
 pub mut:
-	conn              net.TcpConn // underlying TCP socket connection
+	conn              &net.TcpConn // underlying TCP socket connection
 	nonce_size        int = 16 // size of nounce used for masking
 	panic_on_callback bool     // set to true of callbacks can panic
 	state             State    // current state of connection
@@ -75,6 +75,7 @@ pub enum OPCode {
 pub fn new_client(address string) ?&Client {
 	uri := parse_uri(address) ?
 	return &Client{
+		conn: 0
 		is_server: false
 		ssl_conn: openssl.new_ssl_conn()
 		is_ssl: address.starts_with('wss')

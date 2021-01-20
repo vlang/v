@@ -137,7 +137,8 @@ pub fn (e &SelectorExpr) root_ident() Ident {
 // module declaration
 pub struct Module {
 pub:
-	name       string
+	name       string // encoding.base64
+	short_name string // base64
 	attrs      []table.Attr
 	pos        token.Position
 	name_pos   token.Position // `name` in import name
@@ -1210,6 +1211,7 @@ pub fn (expr Expr) position() token.Position {
 				line_nr: expr.pos.line_nr
 				pos: left_pos.pos
 				len: right_pos.pos - left_pos.pos + right_pos.len
+				last_line: right_pos.last_line
 			}
 		}
 		CTempVar {
