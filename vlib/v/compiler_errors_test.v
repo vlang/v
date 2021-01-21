@@ -175,6 +175,9 @@ fn (mut task TaskDescription) execute() {
 	cli_cmd := '$task.vexe $task.voptions $program'
 	res := os.exec(cli_cmd) or { panic(err) }
 	expected_out_path := program.replace('.vv', '') + task.result_extension
+	if should_autofix && !os.exists(expected_out_path) {
+		os.write_file(expected_out_path, '')
+	}
 	mut expected := os.read_file(expected_out_path) or { panic(err) }
 	task.expected = clean_line_endings(expected)
 	task.found___ = clean_line_endings(res.output)
