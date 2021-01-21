@@ -429,9 +429,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 }
 
 fn (mut p Parser) parse_generic_params() []ast.GenericParam {
-	mut params := []ast.GenericParam{}
+	mut param_names := []string{}
 	if p.tok.kind != .lt {
-		return params
+		return []ast.GenericParam{}
 	}
 	p.check(.lt)
 	mut first_done := false
@@ -447,18 +447,19 @@ fn (mut p Parser) parse_generic_params() []ast.GenericParam {
 		if name.len > 1 {
 			p.error('generic parameter name needs to be exactly one char')
 		}
+		if name in param_names {
+			p.error('duplicated generic parameter')
+		}
 		if count > 8 {
 			p.error('too many generic parameters, maximum is 9')
 		}
 		p.check(.name)
-		params << ast.GenericParam{
-			name: name
-		}
+		param_names << name
 		first_done = true
 		count++
 	}
 	p.check(.gt)
-	return params
+	return param_names.map(ast.GenericParam{it})
 }
 
 fn (mut p Parser) anon_fn() ast.AnonFn {
