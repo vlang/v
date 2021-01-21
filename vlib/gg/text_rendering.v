@@ -29,11 +29,42 @@ struct FTConfig {
 	custom_bold_font_path string
 	scale                 f32 = 1.0
 	font_size             int
+
+	bytes_normal          []byte
+	bytes_bold            []byte
+	bytes_mono            []byte
+	bytes_italic          []byte
 }
 
 fn new_ft(c FTConfig) ?&FT {
 	if c.font_path == '' {
-		// Load default font
+		if c.bytes_normal.len > 0 {
+			fons := sfons.create(512, 512, 1)
+			bytes_normal := c.bytes_normal
+			bytes_bold := if c.bytes_bold.len > 0 { c.bytes_bold } else { 
+				debug_font_println("setting bold variant to normal")
+				bytes_normal
+			}
+			bytes_mono := if c.bytes_mono.len > 0 { c.bytes_mono } else { 
+				debug_font_println("setting mono variant to normal")
+				bytes_normal 
+			}
+			bytes_italic := if c.bytes_italic.len > 0 { c.bytes_italic } else { 
+				debug_font_println("setting italic variant to normal")
+				bytes_normal 
+			}
+
+			return &FT{
+				fons: fons
+				font_normal: C.fonsAddFontMem(fons, 'sans', bytes.data, bytes.len, false)
+				font_bold: C.fonsAddFontMem(fons, 'sans', bytes_bold.data, bytes_bold.len, false)
+				font_mono: C.fonsAddFontMem(fons, 'sans', bytes_mono.data, bytes_mono.len, false)
+				font_italic: C.fonsAddFontMem(fons, 'sans', bytes_italic.data, bytes_italic.len, false)
+				scale: c.scale
+			}
+		} else {
+			// Load default font
+		}
 	}
 	$if !android {
 		if c.font_path == '' || !os.exists(c.font_path) {
