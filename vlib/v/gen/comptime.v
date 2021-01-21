@@ -213,6 +213,9 @@ fn (mut g Gen) comp_if(node ast.IfExpr) {
 			if should_create_scope {
 				g.writeln('}')
 			}
+			if !comp_if_stmts_skip {
+				break
+			}
 		}
 		g.defer_ifdef = ''
 	}
