@@ -1859,6 +1859,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		c.infer_fn_types(f, mut call_expr)
 	}
 	if call_expr.generic_types.len > 0 && f.return_type != 0 {
+		// TODO: this logic needs to be cleaned up; maybe make it reusable?
 		// Handle `foo<T>() T` => `foo<int>() int` => return int
 		mut return_sym := c.table.get_type_symbol(f.return_type)
 		if return_sym.name in f.generic_names {
@@ -1914,6 +1915,28 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			typ := table.new_type(idx)
 			call_expr.return_type = typ
 			return typ
+		} else if mut return_sym.info is table.Map {
+			mut type_changed := false
+			mut unwrapped_key_type := return_sym.info.key_type
+			mut unwrapped_value_type := return_sym.info.value_type
+			if return_sym.info.key_type.has_flag(.generic) {
+				key_sym := c.table.get_type_symbol(return_sym.info.key_type)
+				index := f.generic_names.index(key_sym.name)
+				unwrapped_key_type = call_expr.generic_types[index]
+				type_changed = true
+			}
+			if return_sym.info.value_type.has_flag(.generic) {
+				value_sym := c.table.get_type_symbol(return_sym.info.value_type)
+				index := f.generic_names.index(value_sym.name)
+				unwrapped_value_type = call_expr.generic_types[index]
+				type_changed = true
+			}
+			if type_changed {
+				idx := c.table.find_or_register_map(unwrapped_key_type, unwrapped_value_type)
+				typ := table.new_type(idx)
+				call_expr.return_type = typ
+				return typ
+			}
 		}
 	}
 	if call_expr.generic_types.len > 0 && f.generic_names.len == 0 {

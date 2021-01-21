@@ -27,7 +27,6 @@ fn test_identity() {
 
 fn test_plus() {
 	a := plus<int>(2, 3)
-	println(a)
 	assert a == 5
 	assert plus<int>(10, 1) == 11
 	assert plus<string>('a', 'b') == 'ab'
@@ -47,11 +46,9 @@ fn test_foo() {
 }
 
 fn create<T>() {
-	a := T{}
-	println(a.name)
+	_ := T{}
 	mut xx := T{}
 	xx.name = 'foo'
-	println(xx.name)
 	assert xx.name == 'foo'
 	xx.init()
 }
@@ -73,11 +70,11 @@ fn (c City) init() {
 }
 
 fn mut_arg<T>(mut x T) {
-	println(x.name) // = 'foo'
+	// println(x.name) // = 'foo'
 }
 
 fn mut_arg2<T>(mut x T) T {
-	println(x.name) // = 'foo'
+	// println(x.name) // = 'foo'
 	return *x
 }
 
@@ -153,7 +150,7 @@ fn mul_int(x int, y int) int {
 	return x*y
 }
 
-fn assert_eq<T>(a, b T) {
+fn assert_eq<T>(a T, b T) {
 	r := a == b
 	assert r
 }
@@ -184,7 +181,7 @@ mut:
 	y f64
 }
 
-fn (mut p Point) translate<T>(x, y T) {
+fn (mut p Point) translate<T>(x T, y T) {
 	p.x += x
 	p.y += y
 }
@@ -246,9 +243,7 @@ fn test_generic_struct() {
 			name: 'joe'
 		}
 	}
-	// a.model.name = 'joe'
 	assert a.model.name == 'joe'
-	println('a.model.name: $a.model.name')
 	mut b := Repo<Group, Permission>{
 		permission: Permission{
 			name: 'superuser'
@@ -257,15 +252,8 @@ fn test_generic_struct() {
 	b.model.name = 'admins'
 	assert b.model.name == 'admins'
 	assert b.permission.name == 'superuser'
-	println('b.model.name: $b.model.name')
-	println('b.permission.name: $b.permission.name')
 	assert typeof(a.model).name == 'User'
 	assert typeof(b.model).name == 'Group'
-	println('typeof(a.model): ' + typeof(a.model).name)
-	println('typeof(b.model): ' + typeof(b.model).name)
-	// mut x := new_repo<User>(DB{})
-	// x.model.name = 'joe2'
-	// println(x.model.name)
 }
 
 struct Foo<T> {
@@ -330,7 +318,7 @@ mut:
 }
 
 fn test<T>(mut app T) {
-	nested_test<T>(app)
+	nested_test<T>(mut app)
 }
 
 fn nested_test<T>(mut app T) {
@@ -357,4 +345,20 @@ fn method_test<T>(mut app T) {
 fn test_pass_generic_to_nested_method() {
 	mut app := App{}
 	method_test(mut app)
+}*/
+
+fn generic_return_map<M>() map[string]M {
+	return {'': M{}}
+}
+
+fn test_generic_return_map() {
+	assert typeof(generic_return_map<string>()).name == 'map[string]string'
+}
+/*
+fn generic_return_nested_map<M>() map[string]map[string]M {
+	return {'': {'': M{}}}
+}
+
+fn test_generic_return_nested_map() {
+	assert typeof(generic_return_nested_map<string>()).name == 'map[string]map[string]string'
 }*/
