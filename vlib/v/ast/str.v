@@ -62,7 +62,7 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string, m2a map[string]s
 	if node.generic_params.len > 0 {
 		f.write('<')
 		for i, param in node.generic_params {
-			is_last := i - 1 == node.generic_params.len
+			is_last := i == node.generic_params.len - 1
 			f.write(param.name)
 			if !is_last {
 				f.write(', ')
