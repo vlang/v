@@ -66,6 +66,9 @@ pub fn (ctx Context) init_once() {}
 // declaring init in your App struct is optional
 pub fn (ctx Context) init() {}
 
+// declaring uninit in your App struct is optional
+pub fn (ctx Context) uninit() {}
+
 pub struct Cookie {
 	name      string
 	value     string
@@ -255,7 +258,7 @@ pub fn run_app<T>(mut app T, port int) {
 	// app.reset()
 	for {
 		mut conn := l.accept() or { panic('accept() failed') }
-		handle_conn<T>(mut conn, mut app)
+		go handle_conn<T>(mut conn, mut app)
 		// app.vweb.page_gen_time = time.ticks() - t
 		// eprintln('handle conn() took ${time.ticks()-t}ms')
 		// message := readall(conn)
@@ -281,7 +284,8 @@ pub fn run_app<T>(mut app T, port int) {
 }
 
 fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
-	conn.set_read_timeout(1 * time.second)
+	conn.set_read_timeout(30 * time.second)
+	conn.set_write_timeout(30 * time.second)
 	defer {
 		conn.close() or { }
 	}
@@ -291,11 +295,13 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	mut reader := io.new_buffered_reader(reader: io.make_reader(conn))
 	page_gen_start := time.ticks()
 	first_line := reader.read_line() or {
-		println('Failed first_line')
+		$if debug {
+			eprintln('Failed first_line') // show this only in debug mode, because it always would be shown after a chromium user visits the site 
+		}
 		return
 	}
 	$if debug {
-		println('firstline="$first_line"')
+		eprintln('firstline="$first_line"')
 	}
 	// Parse the first line
 	// "GET / HTTP/1.1"
@@ -329,7 +335,8 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 			// break
 			//}
 			// read body
-			read_body := io.read_all(reader: reader) or { []byte{} }
+			mut read_body := []byte{len: len}
+			reader.read(mut read_body) // read just the amount of content len if there is no content there is nothing more to read here
 			body += read_body.bytestr()
 			break
 		}
@@ -465,6 +472,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 							println('easy match method=$method.name')
 						}
 						app.$method(vars)
+
 						return
 					}
 				} else if method.name == 'index' {
@@ -473,6 +481,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 						println('route to .index()')
 					}
 					app.$method(vars)
+
 					return
 				}
 			} else {
@@ -531,6 +540,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 							if matching && !unknown {
 								// absolute router words like `/test/site`
 								app.$method(vars)
+
 								return
 							} else if matching && unknown {
 								// router words with paramter like `/:test/site`
