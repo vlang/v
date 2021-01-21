@@ -1,0 +1,7 @@
+vlib/v/parser/tests/for_in_mut_key.vv:3:6: error: `i` must be immutable
+    1 | fn main() {
+    2 |     mut m := {'foo': 1, 'bar': 2}
+    3 |     for mut i, _ in m {
+      |         ~~~
+    4 |         println(i)
+    5 |     }
