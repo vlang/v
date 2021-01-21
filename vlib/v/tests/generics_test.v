@@ -20,7 +20,7 @@ fn test_identity() {
 	assert simple<int>(1 + 0) == 1
 	assert simple<string>('g') == 'g'
 	assert simple<string>('g') + 'h' == 'gh'
-	
+
 	assert simple<[]int>([1])[0] == 1
 	assert simple<map[string]string>({'a':'b'})['a'] == 'b'
 }
@@ -128,7 +128,6 @@ fn test_ptr() {
 	assert *ptr('aa') == 'aa'
 }
 
-/*
 fn map_f<T,U>(l []T, f fn(T)U) []U {
 	mut r := []U{}
 	for e in l {
@@ -155,16 +154,15 @@ fn mul_int(x int, y int) int {
 
 fn assert_eq<T>(a, b T) {
 	r := a == b
-	println('$a == $b: ${r.str()}')
 	assert r
 }
 
-fn print_nice<T>(x T, indent int) {
+fn print_nice<T>(x T, indent int) string {
 	mut space := ''
 	for _ in 0..indent {
 		space = space + ' '
 	}
-	println('$space$x')
+	return '$space$x'
 }
 
 fn test_generic_fn() {
@@ -176,7 +174,7 @@ fn test_generic_fn() {
 	b := map_f(a, square)
 	assert_eq(sum(b), 30)     // 1+4+9+16 = 30
 	assert_eq(foldl(b, 1, mul_int), 576)   // 1*4*9*16 = 576
-	print_nice('str', 8)
+	assert print_nice('str', 8) == '        str'
 }
 
 struct Point {
@@ -213,7 +211,7 @@ fn test_generic_fn_in_for_in_expression() {
 		assert value == 'a'
 	}
 }
-*/
+
 // test generic struct
 struct DB {
 	driver string
