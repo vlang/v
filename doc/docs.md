@@ -2484,7 +2484,7 @@ res := ch.try_push(a) // try to perform `ch <- a`
 println(res)
 l := ch.len // number of elements in queue
 c := ch.cap // maximum queue length
-is_closed := ch.closed // bool flag -  has `ch` been closed
+is_closed := ch.closed // bool flag - has `ch` been closed
 println(l)
 println(c)
 mut b := Abc{}
