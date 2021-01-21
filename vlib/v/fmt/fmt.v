@@ -1441,13 +1441,13 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	if !buffering_save && f.buffering {
 		f.buffering = false
 		if !f.single_line_if && f.line_len > max_len.last() {
-			f.wrap_infix(infix_start, start_len)
+			f.wrap_condition_infix(infix_start, start_len)
 		}
 	}
 	f.or_expr(node.or_block)
 }
 
-pub fn (mut f Fmt) wrap_infix(start_pos int, start_len int) {
+pub fn (mut f Fmt) wrap_condition_infix(start_pos int, start_len int) {
 	cut_span := f.out.len - start_pos
 	condstr := f.out.cut_last(cut_span)
 	if !condstr.contains_any_substr(['&&', '||']) {
@@ -1476,22 +1476,21 @@ pub fn (mut f Fmt) wrap_infix(start_pos int, start_len int) {
 				grouped_cond = true
 			} else if cp.ends_with(')') {
 				grouped_cond = false
-				// TODO: split if very long
 			}
 		}
 	}
 	for i, c in conditions {
 		cnd := c.trim_space()
 		if f.line_len + cnd.len < max_len[penalties[i]] {
+			if i > 0 && i < conditions.len - 1 {
+				f.write(' ')
+			}
 			f.write(cnd)
 		} else {
 			f.writeln('')
 			f.indent++
 			f.write(cnd)
 			f.indent--
-		}
-		if i < conditions.len - 1 {
-			f.write(' ')
 		}
 	}
 }
