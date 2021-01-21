@@ -3,14 +3,18 @@ module dummy
 pub struct Clipboard {
 mut:
 	text     string // text data sent or received
-	got_text bool // used to confirm that we have got the text
-	is_owner bool // to save selection owner state
+	got_text bool   // used to confirm that we have got the text
+	is_owner bool   // to save selection owner state
 }
 
+// new_clipboard returns a new `Clipboard` instance allocated on the heap.
+// The `Clipboard` resources can be released with `free()`
 pub fn new_clipboard() &Clipboard {
 	return &Clipboard{}
 }
 
+// new_primary returns a new X11 `PRIMARY` type `Clipboard` instance allocated on the heap.
+// Please note: new_primary only works on X11 based systems.
 pub fn new_primary() &Clipboard {
 	return &Clipboard{}
 }
