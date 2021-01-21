@@ -1143,6 +1143,7 @@ pub:
 	object_var_name string // `user`
 	table_type      table.Type
 	pos             token.Position
+	table_pos       token.Position
 	where_expr      Expr
 	updated_columns []string // for `update set x=y`
 	update_exprs    []Expr   // for `update`
@@ -1166,6 +1167,7 @@ pub:
 	is_array    bool
 	table_type  table.Type
 	pos         token.Position
+	table_pos   token.Position
 	has_limit   bool
 	limit_expr  Expr
 pub mut:

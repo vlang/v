@@ -20,6 +20,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		p.check_name() // from
 		typ = table.int_type
 	}
+	table_pos := p.tok.position()
 	table_type := p.parse_type() // `User`
 	mut where_expr := ast.Expr{}
 	has_where := p.tok.kind == .name && p.tok.lit == 'where'
@@ -101,6 +102,8 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		has_desc: has_desc
 		is_array: !query_one
 		pos: pos
+		table_name: p.table.types[int(table_type)].name
+		table_pos: table_pos
 	}
 }
 
@@ -170,9 +173,12 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 		p.error('expecting `from`')
 		return ast.SqlStmt{}
 	}
+
+	mut table_pos := p.tok.position()
 	mut table_type := table.Type(0)
 	mut where_expr := ast.Expr{}
 	if kind == .insert {
+		table_pos = p.tok.position()
 		table_type = p.parse_type() // `User`
 		sym := p.table.get_type_symbol(table_type)
 		// info := sym.info as table.Struct
@@ -187,6 +193,7 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 		p.check_sql_keyword('where') or { return ast.SqlStmt{} }
 		where_expr = p.expr(0)
 	} else if kind == .delete {
+		table_pos = p.tok.position()
 		table_type = p.parse_type()
 		sym := p.table.get_type_symbol(table_type)
 		table_name = sym.name
@@ -199,6 +206,7 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 		db_expr: db_expr
 		table_name: table_name
 		table_type: table_type
+		table_pos: table_pos
 		object_var_name: inserted_var_name
 		pos: pos
 		updated_columns: updated_columns
