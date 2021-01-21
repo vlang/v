@@ -1539,7 +1539,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 				}
 			}
 		}
-		if call_expr.generic_types.len > 0 && method.generic_names.len != 0 {
+		if call_expr.generic_types.len > 0 && method.generic_names.len == 0 {
 			c.error('a non generic function called like a generic one', call_expr.generic_list_pos)
 		}
 		if method.generic_names.len > 0 {
