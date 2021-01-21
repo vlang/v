@@ -4105,7 +4105,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 							g.write('.val')
 						}
 					}
-					if is_direct_array_access {
+					if is_direct_array_access && !gen_or {
 						if left_is_ptr && !node.left_type.has_flag(.shared_f) {
 							g.write('->')
 						} else {
