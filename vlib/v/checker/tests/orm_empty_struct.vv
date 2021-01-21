@@ -1,0 +1,12 @@
+import sqlite
+
+struct Person {
+}
+
+fn main() {
+	db := sqlite.connect(':memory:')?
+	res := sql db {
+		select from Person
+	}
+    println(res)
+}

@@ -1,0 +1,7 @@
+b.v:11:15: error: V orm: select: empty fields in `Person`
+    9 |     db := sqlite.connect(':memory:')?
+   10 |     res := sql db {
+   11 |         select from Person
+      |                     ~~~~~~
+   12 |     }
+   13 |     println(res)
