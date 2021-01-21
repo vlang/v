@@ -1983,7 +1983,7 @@ fn (mut c Checker) type_implements(typ table.Type, inter_typ table.Type, pos tok
 				continue
 			}
 			c.error("`$styp` doesn't implement field `$ifield.name` of interface `$inter_sym.name`",
-			pos)
+				pos)
 		}
 		if typ !in inter_sym.info.types && typ_sym.kind != .interface_ {
 			inter_sym.info.types << typ
