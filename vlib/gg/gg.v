@@ -60,6 +60,11 @@ pub:
 	font_path             string
 	custom_bold_font_path string
 	ui_mode               bool // refreshes only on events to save CPU usage
+	// font bytes for embedding
+	font_bytes_normal []byte
+	font_bytes_bold   []byte
+	font_bytes_mono   []byte
+	font_bytes_italic []byte
 }
 
 pub struct Context {
@@ -131,14 +136,25 @@ fn gg_init_sokol_window(user_data voidptr) {
 		g.font_inited = true
 	} else {
 		if !exists {
-			sfont := system_font_path()
-			eprintln('font file "$g.config.font_path" does not exist, the system font was used instead.')
-			g.ft = new_ft(
-				font_path: sfont
-				custom_bold_font_path: g.config.custom_bold_font_path
-				scale: sapp.dpi_scale()
-			) or { panic(err) }
-			g.font_inited = true
+			if g.config.font_bytes_normal.len > 0 {
+				g.ft = new_ft(
+					bytes_normal: g.config.font_bytes_normal
+					bytes_bold: g.config.font_bytes_bold
+					bytes_mono: g.config.font_bytes_mono
+					bytes_italic: g.config.font_bytes_italic
+					scale: sapp.dpi_scale()
+				) or { panic(err) }
+				g.font_inited = true
+			} else {
+				sfont := system_font_path()
+				eprintln('font file "$g.config.font_path" does not exist, the system font was used instead.')
+				g.ft = new_ft(
+					font_path: sfont
+					custom_bold_font_path: g.config.custom_bold_font_path
+					scale: sapp.dpi_scale()
+				) or { panic(err) }
+				g.font_inited = true
+			}
 		}
 	}
 	//
