@@ -14,15 +14,13 @@ fn (mut v Builder) get_os_cflags() []cflag.CFlag {
 		if flag.value.ends_with('.o') {
 			flag.cached = v.pref.cache_manager.postfix_with_key2cpath('.o', os.real_path(flag.value))
 		}
-		if flag.os == '' ||
-			(flag.os == 'linux' && v.pref.os == .linux) ||
-			(flag.os == 'macos' && v.pref.os == .macos) ||
-			(flag.os == 'darwin' && v.pref.os == .macos) ||
-			(flag.os == 'freebsd' && v.pref.os == .freebsd) ||
-			(flag.os == 'windows' && v.pref.os == .windows) ||
-			(flag.os == 'mingw' && v.pref.os == .windows && v.pref.ccompiler != 'msvc') ||
-			(flag.os == 'solaris' && v.pref.os == .solaris)
-		{
+		if flag.os == '' || (flag.os == 'linux' && v.pref.os == .linux)
+			|| (flag.os == 'macos' && v.pref.os == .macos)
+			|| (flag.os == 'darwin' && v.pref.os == .macos)
+			|| (flag.os == 'freebsd' && v.pref.os == .freebsd)
+			|| (flag.os == 'windows' && v.pref.os == .windows)
+			|| (flag.os == 'mingw' && v.pref.os == .windows && v.pref.ccompiler != 'msvc')
+			|| (flag.os == 'solaris' && v.pref.os == .solaris) {
 			flags << flag
 		}
 		if flag.os in ctimedefines {

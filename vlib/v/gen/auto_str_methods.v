@@ -40,9 +40,7 @@ fn (g &Gen) type_to_fmt(typ table.Type) string {
 	sym := g.table.get_type_symbol(typ)
 	if typ.is_ptr() && (typ.is_int() || typ.is_float()) {
 		return '%.*s\\000'
-	} else if sym.kind in
-		[.struct_, .array, .array_fixed, .map, .bool, .enum_, .interface_, .sum_type, .function]
-	{
+	} else if sym.kind in [.struct_, .array, .array_fixed, .map, .bool, .enum_, .interface_, .sum_type, .function] {
 		return '%.*s\\000'
 	} else if sym.kind == .string {
 		return "'%.*s\\000'"
@@ -184,8 +182,11 @@ fn (mut g Gen) gen_str_for_array(info table.Array, styp string, str_fn_name stri
 	sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
 	mut elem_str_fn_name := ''
 	if sym_has_str_method {
-		elem_str_fn_name = if is_elem_ptr { field_styp.replace('*', '') + '_str' } else { field_styp +
-				'_str' }
+		elem_str_fn_name = if is_elem_ptr {
+			field_styp.replace('*', '') + '_str'
+		} else {
+			field_styp + '_str'
+		}
 		if sym.kind == .byte {
 			elem_str_fn_name = elem_str_fn_name + '_escaped'
 		}
@@ -263,8 +264,11 @@ fn (mut g Gen) gen_str_for_array_fixed(info table.ArrayFixed, styp string, str_f
 	sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
 	mut elem_str_fn_name := ''
 	if sym_has_str_method {
-		elem_str_fn_name = if is_elem_ptr { field_styp.replace('*', '') + '_str' } else { field_styp +
-				'_str' }
+		elem_str_fn_name = if is_elem_ptr {
+			field_styp.replace('*', '') + '_str'
+		} else {
+			field_styp + '_str'
+		}
 	} else {
 		elem_str_fn_name = styp_to_str_fn_name(field_styp)
 	}
@@ -382,8 +386,11 @@ fn (mut g Gen) gen_str_for_multi_return(info table.MultiReturn, styp string, str
 		sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
 		mut arg_str_fn_name := ''
 		if sym_has_str_method {
-			arg_str_fn_name = if is_arg_ptr { field_styp.replace('*', '') + '_str' } else { field_styp +
-					'_str' }
+			arg_str_fn_name = if is_arg_ptr {
+				field_styp.replace('*', '') + '_str'
+			} else {
+				field_styp + '_str'
+			}
 		} else {
 			arg_str_fn_name = styp_to_str_fn_name(field_styp)
 		}
@@ -440,8 +447,7 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp string, str_fn_name st
 	if clean_struct_v_type_name.contains('_T_') {
 		// TODO: this is a bit hacky. styp shouldn't be even parsed with _T_
 		// use something different than g.typ for styp
-		clean_struct_v_type_name = clean_struct_v_type_name.replace('_T_', '<').replace('_', ', ') +
-			'>'
+		clean_struct_v_type_name = clean_struct_v_type_name.replace('_T_', '<').replace('_', ', ') + '>'
 	}
 	clean_struct_v_type_name = util.strip_main_name(clean_struct_v_type_name)
 	// generate ident / indent length = 4 spaces

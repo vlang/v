@@ -387,9 +387,8 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	}
 	right = p.expr(precedence)
 	p.expecting_type = prev_expecting_type
-	if p.pref.is_vet && op in [.key_in, .not_in] && right is ast.ArrayInit && (right as ast.ArrayInit).exprs.len ==
-		1
-	{
+	if p.pref.is_vet && op in [.key_in, .not_in] && right is ast.ArrayInit
+		&& (right as ast.ArrayInit).exprs.len == 1 {
 		p.vet_error('Use `var == value` instead of `var in [value]`', pos.line_nr, vet.FixKind.vfmt)
 	}
 	mut or_stmts := []ast.Stmt{}

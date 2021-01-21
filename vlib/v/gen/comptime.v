@@ -17,9 +17,8 @@ fn (mut g Gen) comptime_selector(node ast.ComptimeSelector) {
 	// check for field.name
 	if node.field_expr is ast.SelectorExpr {
 		if node.field_expr.expr is ast.Ident {
-			if node.field_expr.expr.name == g.comp_for_field_var &&
-				node.field_expr.field_name == 'name'
-			{
+			if node.field_expr.expr.name == g.comp_for_field_var
+				&& node.field_expr.field_name == 'name' {
 				g.write(g.comp_for_field_value.name)
 				return
 			}
@@ -311,8 +310,7 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 				g.writeln('\t${node.val_var}.attrs = __new_array_with_default(0, 0, sizeof(string), 0);')
 			} else {
 				attrs := cgen_attrs(method.attrs)
-				g.writeln('\t${node.val_var}.attrs = new_array_from_c_array($attrs.len, $attrs.len, sizeof(string), _MOV((string[$attrs.len]){' +
-					attrs.join(', ') + '}));')
+				g.writeln('\t${node.val_var}.attrs = new_array_from_c_array($attrs.len, $attrs.len, sizeof(string), _MOV((string[$attrs.len]){' + attrs.join(', ') + '}));')
 			}
 			if method.params.len < 2 {
 				// 0 or 1 (the receiver) args
@@ -380,8 +378,7 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 					g.writeln('\t${node.val_var}.attrs = __new_array_with_default(0, 0, sizeof(string), 0);')
 				} else {
 					attrs := cgen_attrs(field.attrs)
-					g.writeln('\t${node.val_var}.attrs = new_array_from_c_array($attrs.len, $attrs.len, sizeof(string), _MOV((string[$attrs.len]){' +
-						attrs.join(', ') + '}));')
+					g.writeln('\t${node.val_var}.attrs = new_array_from_c_array($attrs.len, $attrs.len, sizeof(string), _MOV((string[$attrs.len]){' + attrs.join(', ') + '}));')
 				}
 				// field_sym := g.table.get_type_symbol(field.typ)
 				// g.writeln('\t${node.val_var}.typ = _SLIT("$field_sym.name");')

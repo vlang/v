@@ -353,8 +353,7 @@ pub fn (input BitField) slice(_start int, _end int) BitField {
 		if start_offset != 0 {
 			for i in 0 .. output_slots - 1 {
 				output.field[i] = u32(input.field[start_slot + i] >> u32(start_offset))
-				output.field[i] = output.field[i] | u32(input.field[start_slot + i + 1] << u32(slot_size -
-					start_offset))
+				output.field[i] = output.field[i] | u32(input.field[start_slot + i + 1] << u32(slot_size - start_offset))
 			}
 		} else {
 			for i in 0 .. output_slots - 1 {
@@ -458,8 +457,7 @@ fn (mut instance BitField) clear_tail() {
 		// create a mask for the tail
 		mask := u32((1 << tail) - 1)
 		// clear the extra bits
-		instance.field[zbitnslots(instance.size) - 1] = instance.field[zbitnslots(instance.size) -
-			1] & mask
+		instance.field[zbitnslots(instance.size) - 1] = instance.field[zbitnslots(instance.size) - 1] & mask
 	}
 }
 

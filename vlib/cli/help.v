@@ -111,8 +111,7 @@ fn (cmd Command) help_message() string {
 			}
 			base_indent := ' '.repeat(base_indent_len)
 			description_indent := ' '.repeat(name_len - flag_name.len)
-			help += '$base_indent$flag_name$description_indent' + pretty_description(flag.description +
-				required, base_indent_len + name_len) + '\n'
+			help += '$base_indent$flag_name$description_indent' + pretty_description(flag.description + required, base_indent_len + name_len) + '\n'
 		}
 	}
 	if cmd.commands.len > 0 {
@@ -120,8 +119,7 @@ fn (cmd Command) help_message() string {
 		for command in cmd.commands {
 			base_indent := ' '.repeat(base_indent_len)
 			description_indent := ' '.repeat(name_len - command.name.len)
-			help += '$base_indent$command.name$description_indent' + pretty_description(command.description, name_len) +
-				'\n'
+			help += '$base_indent$command.name$description_indent' + pretty_description(command.description, name_len) + '\n'
 		}
 	}
 	return help

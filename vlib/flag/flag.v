@@ -11,8 +11,7 @@ pub:
 }
 
 pub fn (f Flag) str() string {
-	return '' + '    flag:\n' + '            name: $f.name\n' + '            abbr: $f.abbr\n' +
-		'            usag: $f.usage\n' + '            desc: $f.val_desc'
+	return '' + '    flag:\n' + '            name: $f.name\n' + '            abbr: $f.abbr\n' + '            usag: $f.usage\n' + '            desc: $f.val_desc'
 }
 
 pub fn (af []Flag) str() string {

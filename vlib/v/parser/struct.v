@@ -65,7 +65,8 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		p.error('`$p.tok.lit` lacks body')
 		return ast.StructDecl{}
 	}
-	if language == .v && !p.builtin_mod && name.len > 0 && !name[0].is_capital() && !p.pref.translated {
+	if language == .v && !p.builtin_mod && name.len > 0 && !name[0].is_capital()
+		&& !p.pref.translated {
 		p.error_with_pos('struct name `$name` must begin with capital letter', name_pos)
 		return ast.StructDecl{}
 	}
@@ -176,9 +177,8 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				}
 			}
 			field_start_pos := p.tok.position()
-			is_embed := ((p.tok.lit.len > 1 && p.tok.lit[0].is_capital()) ||
-				p.peek_tok.kind == .dot) &&
-				language == .v
+			is_embed := ((p.tok.lit.len > 1 && p.tok.lit[0].is_capital())
+				|| p.peek_tok.kind == .dot)&& language == .v
 			is_on_top := ast_fields.len == 0 && !(is_field_mut || is_field_mut || is_field_global)
 			mut field_name := ''
 			mut typ := table.Type(0)
@@ -385,8 +385,11 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 			expr = p.expr(0)
 			comments = p.eat_line_end_comments()
 			last_field_pos := expr.position()
-			field_len := if last_field_pos.len > 0 { last_field_pos.pos - first_field_pos.pos +
-					last_field_pos.len } else { first_field_pos.len + 1 }
+			field_len := if last_field_pos.len > 0 {
+				last_field_pos.pos - first_field_pos.pos + last_field_pos.len
+			} else {
+				first_field_pos.len + 1
+			}
 			field_pos = token.Position{
 				line_nr: first_field_pos.line_nr
 				pos: first_field_pos.pos

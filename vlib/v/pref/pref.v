@@ -481,9 +481,8 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			exit(tmp_result)
 		}
 		must_exist(res.path)
-		if !res.path.ends_with('.v') && os.is_executable(res.path) && os.is_file(res.path) &&
-			os.is_file(res.path + '.v')
-		{
+		if !res.path.ends_with('.v') && os.is_executable(res.path) && os.is_file(res.path)
+			&& os.is_file(res.path + '.v') {
 			eprintln('It looks like you wanted to run "${res.path}.v", so we went ahead and did that since "$res.path" is an executable.')
 			res.path += '.v'
 		}
@@ -569,8 +568,7 @@ fn parse_define(mut prefs Preferences, define string) {
 				prefs.compile_defines << define_parts[0]
 			}
 			else {
-				println('V error: Unknown define argument value `${define_parts[1]}` for ${define_parts[0]}.' +
-					' Expected `0` or `1`.')
+				println('V error: Unknown define argument value `${define_parts[1]}` for ${define_parts[0]}.' + ' Expected `0` or `1`.')
 				exit(1)
 			}
 		}

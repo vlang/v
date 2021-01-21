@@ -71,8 +71,11 @@ pub fn colorize(cfn fn (string) string, s string) string {
 // If an empty string is passed in, print enough spaces to make a new line
 pub fn h_divider(divider string) string {
 	cols, _ := get_terminal_size()
-	result := if divider.len > 0 { divider.repeat(1 + (cols / divider.len)) } else { ' '.repeat(1 +
-			cols) }
+	result := if divider.len > 0 {
+		divider.repeat(1 + (cols / divider.len))
+	} else {
+		' '.repeat(1 + cols)
+	}
 	return result[0..cols]
 }
 
@@ -85,12 +88,18 @@ pub fn header(text string, divider string) string {
 	}
 	xcols, _ := get_terminal_size()
 	cols := imax(1, xcols)
-	tlimit := imax(1, if cols > text.len + 2 + 2 * divider.len { text.len } else { cols - 3 -
-			2 * divider.len })
+	tlimit := imax(1, if cols > text.len + 2 + 2 * divider.len {
+		text.len
+	} else {
+		cols - 3 - 2 * divider.len
+	})
 	tlimit_alligned := if (tlimit % 2) != (cols % 2) { tlimit + 1 } else { tlimit }
 	tstart := imax(0, (cols - tlimit_alligned) / 2)
-	ln := if divider.len > 0 { divider.repeat(1 + cols / divider.len)[0..cols] } else { ' '.repeat(1 +
-			cols) }
+	ln := if divider.len > 0 {
+		divider.repeat(1 + cols / divider.len)[0..cols]
+	} else {
+		' '.repeat(1 + cols)
+	}
 	if ln.len == 1 {
 		return ln + ' ' + text[0..tlimit] + ' ' + ln
 	}

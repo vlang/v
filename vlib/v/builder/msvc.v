@@ -81,8 +81,8 @@ fn find_windows_kit_root(host_arch string) ?WindowsKit {
 	$if windows {
 		root_key := RegKey(0)
 		path := 'SOFTWARE\\Microsoft\\Windows Kits\\Installed Roots'
-		rc := C.RegOpenKeyEx(hkey_local_machine, path.to_wide(), 0, key_query_value | key_wow64_32key |
-			key_enumerate_sub_keys, &root_key)
+		rc := C.RegOpenKeyEx(hkey_local_machine, path.to_wide(), 0, key_query_value | key_wow64_32key | key_enumerate_sub_keys,
+			&root_key)
 		// TODO: Fix defer inside ifs
 		// defer {
 		// C.RegCloseKey(root_key)

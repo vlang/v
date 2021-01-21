@@ -372,8 +372,7 @@ pub fn (mut d Doc) generate() ? {
 		}
 		filename := os.base(file_path)
 		d.sources[filename] = util.read_file(file_path) or { '' }
-		file_asts <<
-			parser.parse_file(file_path, d.table, comments_mode, d.prefs, global_scope)
+		file_asts << parser.parse_file(file_path, d.table, comments_mode, d.prefs, global_scope)
 	}
 	return d.file_asts(file_asts)
 }

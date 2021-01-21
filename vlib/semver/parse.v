@@ -43,8 +43,9 @@ fn (ver RawVersion) is_valid() bool {
 	if ver.raw_ints.len != 3 {
 		return false
 	}
-	return is_valid_number(ver.raw_ints[ver_major]) && is_valid_number(ver.raw_ints[ver_minor]) &&
-		is_valid_number(ver.raw_ints[ver_patch]) && is_valid_string(ver.prerelease) && is_valid_string(ver.metadata)
+	return is_valid_number(ver.raw_ints[ver_major]) && is_valid_number(ver.raw_ints[ver_minor])
+		&& is_valid_number(ver.raw_ints[ver_patch]) && is_valid_string(ver.prerelease)
+		&& is_valid_string(ver.metadata)
 }
 
 fn (ver RawVersion) is_missing(typ int) bool {

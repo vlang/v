@@ -132,8 +132,8 @@ pub fn new_vet_scanner(text string, comments_mode CommentsMode, pref &pref.Prefe
 
 [inline]
 fn (s &Scanner) should_parse_comment() bool {
-	return (s.comments_mode == .parse_comments) ||
-		(s.comments_mode == .toplevel_comments && !s.is_inside_toplvl_statement)
+	return (s.comments_mode == .parse_comments)
+		|| (s.comments_mode == .toplevel_comments && !s.is_inside_toplvl_statement)
 }
 
 // NB: this is called by v's parser
@@ -469,9 +469,7 @@ fn (mut s Scanner) end_of_file() token.Token {
 	s.eofs++
 	if s.eofs > 50 {
 		s.line_nr--
-		panic('the end of file `$s.file_path` has been reached 50 times already, the v parser is probably stuck.\n' +
-			'This should not happen. Please report the bug here, and include the last 2-3 lines of your source code:\n' +
-			'https://github.com/vlang/v/issues/new?labels=Bug&template=bug_report.md')
+		panic('the end of file `$s.file_path` has been reached 50 times already, the v parser is probably stuck.\n' + 'This should not happen. Please report the bug here, and include the last 2-3 lines of your source code:\n' + 'https://github.com/vlang/v/issues/new?labels=Bug&template=bug_report.md')
 	}
 	if s.pos != s.text.len && s.eofs == 1 {
 		s.inc_line_number()
@@ -599,7 +597,8 @@ fn (mut s Scanner) text_scan() token.Token {
 			}
 			// end of `$expr`
 			// allow `'$a.b'` and `'$a.c()'`
-			if s.is_inter_start && next_char == `\\` && s.look_ahead(2) !in [`x`, `n`, `r`, `\\`, `t`, `e`] {
+			if s.is_inter_start && next_char == `\\`
+				&& s.look_ahead(2) !in [`x`, `n`, `r`, `\\`, `t`, `e`] {
 				s.warn('unknown escape sequence \\${s.look_ahead(2)}')
 			}
 			if s.is_inter_start && next_char == `(` {
@@ -897,14 +896,12 @@ fn (mut s Scanner) text_scan() token.Token {
 				if nextc == `=` {
 					s.pos++
 					return s.new_token(.ne, '', 2)
-				} else if s.text.len > s.pos + 3 &&
-					nextc == `i` && s.text[s.pos + 2] == `n` && s.text[s.pos + 3].is_space()
-				{
+				} else if s.text.len > s.pos + 3 && nextc == `i` && s.text[s.pos + 2] == `n`
+					&& s.text[s.pos + 3].is_space() {
 					s.pos += 2
 					return s.new_token(.not_in, '', 3)
-				} else if s.text.len > s.pos + 3 &&
-					nextc == `i` && s.text[s.pos + 2] == `s` && s.text[s.pos + 3].is_space()
-				{
+				} else if s.text.len > s.pos + 3 && nextc == `i` && s.text[s.pos + 2] == `s`
+					&& s.text[s.pos + 3].is_space() {
 					s.pos += 2
 					return s.new_token(.not_is, '', 3)
 				} else {
@@ -1033,9 +1030,8 @@ fn (mut s Scanner) ident_string() string {
 	// }
 	mut n_cr_chars := 0
 	mut start := s.pos
-	if s.text[start] == s.quote ||
-		(s.text[start] == s.inter_quote && (s.is_inter_start || s.is_enclosed_inter))
-	{
+	if s.text[start] == s.quote
+		|| (s.text[start] == s.inter_quote && (s.is_inter_start || s.is_enclosed_inter)) {
 		start++
 	}
 	s.is_inside_string = false
@@ -1064,9 +1060,8 @@ fn (mut s Scanner) ident_string() string {
 		}
 		// Don't allow \0
 		if c == `0` && s.pos > 2 && prevc == slash {
-			if (s.pos < s.text.len - 1 && s.text[s.pos + 1].is_digit()) ||
-				s.count_symbol_before(s.pos - 1, slash) % 2 == 0
-			{
+			if (s.pos < s.text.len - 1 && s.text[s.pos + 1].is_digit())
+				|| s.count_symbol_before(s.pos - 1, slash) % 2 == 0 {
 			} else if !is_cstr && !is_raw {
 				s.error(r'cannot use `\0` (NULL character) in the string literal')
 			}
@@ -1085,11 +1080,11 @@ fn (mut s Scanner) ident_string() string {
 				s.error(r'`\x` used with no following hex digits')
 			}
 			// Escape `\u`
-			if c == `u` && (s.text[s.pos + 1] == s.quote ||
-				s.text[s.pos + 2] == s.quote || s.text[s.pos + 3] == s.quote || s.text[s.pos +
-				4] == s.quote || !s.text[s.pos + 1].is_hex_digit() || !s.text[s.pos + 2].is_hex_digit() ||
-				!s.text[s.pos + 3].is_hex_digit() || !s.text[s.pos + 4].is_hex_digit())
-			{
+			if c == `u`
+				&& (s.text[s.pos + 1] == s.quote || s.text[s.pos + 2] == s.quote || s.text[s.pos + 3] == s.quote || s.text[s.pos + 4] == s.quote || !s.text[s.pos + 1].is_hex_digit()
+				|| !s.text[s.pos + 2].is_hex_digit()
+				|| !s.text[s.pos + 3].is_hex_digit()
+				|| !s.text[s.pos + 4].is_hex_digit()) {
 				s.error(r'`\u` incomplete unicode character value')
 			}
 		}
@@ -1102,9 +1097,8 @@ fn (mut s Scanner) ident_string() string {
 			break
 		}
 		// $var
-		if prevc == `$` && util.is_name_char(c) && !is_raw && s.count_symbol_before(s.pos - 2, slash) %
-			2 == 0
-		{
+		if prevc == `$` && util.is_name_char(c) && !is_raw
+			&& s.count_symbol_before(s.pos - 2, slash) % 2 == 0 {
 			s.is_inside_string = true
 			s.is_inter_start = true
 			s.pos -= 2

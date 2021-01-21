@@ -125,8 +125,9 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string, m2a map[string]s
 // must be enclosed in braces.
 pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
 	mut res := []string{}
-	needs_fspec := lit.need_fmts[i] || lit.pluss[i] ||
-		(lit.fills[i] && lit.fwidths[i] >= 0) || lit.fwidths[i] != 0 || lit.precisions[i] != 987698
+	needs_fspec := lit.need_fmts[i] || lit.pluss[i]
+		|| (lit.fills[i] && lit.fwidths[i] >= 0) || lit.fwidths[i] != 0
+		|| lit.precisions[i] != 987698
 	mut needs_braces := needs_fspec
 	if !needs_braces {
 		if i + 1 < lit.vals.len && lit.vals[i + 1].len > 0 {

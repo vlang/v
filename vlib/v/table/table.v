@@ -41,9 +41,10 @@ pub mut:
 }
 
 fn (f &Fn) method_equals(o &Fn) bool {
-	return f.params[1..].equals(o.params[1..]) && f.return_type == o.return_type && f.is_variadic ==
-		o.is_variadic && f.language == o.language && f.is_generic == o.is_generic && f.is_pub ==
-		o.is_pub && f.mod == o.mod && f.name == o.name
+	return f.params[1..].equals(o.params[1..]) && f.return_type == o.return_type
+		&& f.is_variadic == o.is_variadic && f.language == o.language
+		&& f.is_generic == o.is_generic && f.is_pub == o.is_pub && f.mod == o.mod
+		&& f.name == o.name
 }
 
 pub struct Param {

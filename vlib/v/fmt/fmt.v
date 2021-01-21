@@ -423,8 +423,9 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 					}
 				}
 				is_last_arg := i == fn_info.params.len - 1
-				should_add_type := true || is_last_arg || fn_info.params[i + 1].typ != arg.typ ||
-					(fn_info.is_variadic && i == fn_info.params.len - 2)
+				should_add_type := true || is_last_arg
+					|| fn_info.params[i + 1].typ != arg.typ
+					|| (fn_info.is_variadic && i == fn_info.params.len - 2)
 				if should_add_type {
 					ns := if arg.name == '' { '' } else { ' ' }
 					if fn_info.is_variadic && is_last_arg {
@@ -1423,8 +1424,8 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	infix_start := f.out.len
 	start_len := f.line_len
 	f.expr(node.left)
-	is_one_val_array_init := node.op in [.key_in, .not_in] &&
-		node.right is ast.ArrayInit && (node.right as ast.ArrayInit).exprs.len == 1
+	is_one_val_array_init := node.op in [.key_in, .not_in] && node.right is ast.ArrayInit
+		&& (node.right as ast.ArrayInit).exprs.len == 1
 	if is_one_val_array_init {
 		// `var in [val]` => `var == val`
 		op := if node.op == .key_in { ' == ' } else { ' != ' }
@@ -1466,7 +1467,11 @@ pub fn (mut f Fmt) wrap_condition_infix(start_pos int, start_len int) {
 			if grouped_cond {
 				conditions[index] += '$cp '
 			} else {
-				penalties << if cp == '||' { or_pen } else { 5 }
+				penalties << if cp == '||' {
+					or_pen
+				} else {
+					5
+				}
 				conditions << '$cp '
 				index++
 			}
@@ -1497,9 +1502,8 @@ pub fn (mut f Fmt) wrap_condition_infix(start_pos int, start_len int) {
 
 pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 	dollar := if it.is_comptime { '$' } else { '' }
-	mut single_line := it.branches.len == 2 && it.has_else && branch_is_single_line(it.branches[0]) &&
-		branch_is_single_line(it.branches[1]) &&
-		(it.is_expr || f.is_assign)
+	mut single_line := it.branches.len == 2 && it.has_else && branch_is_single_line(it.branches[0])
+		&& branch_is_single_line(it.branches[1])&& (it.is_expr || f.is_assign)
 	f.single_line_if = single_line
 	if_start := f.line_len
 	for {
@@ -1823,8 +1827,8 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 				f.array_init_break << (last_line_nr < line_nr)
 			}
 		}
-		is_same_line_comment := i > 0 &&
-			(expr is ast.Comment && line_nr == it.exprs[i - 1].position().line_nr)
+		is_same_line_comment := i > 0
+			&& (expr is ast.Comment && line_nr == it.exprs[i - 1].position().line_nr)
 		line_break := f.array_init_break[f.array_init_depth - 1]
 		mut penalty := if line_break && !is_same_line_comment { 0 } else { 4 }
 		if penalty > 0 {
@@ -1989,10 +1993,9 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 					f.writeln('')
 				}
 				f.comments(field.next_comments, inline: false, has_nl: true, level: .keep)
-				if single_line_fields &&
-					(field.comments.len > 0 ||
-					field.next_comments.len > 0 || !expr_is_single_line(field.expr) || f.line_len > max_len.last())
-				{
+				if single_line_fields
+					&& (field.comments.len > 0 || field.next_comments.len > 0 || !expr_is_single_line(field.expr)
+					|| f.line_len > max_len.last()) {
 					single_line_fields = false
 					f.out.go_back_to(fields_start)
 					f.line_len = fields_start
