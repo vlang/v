@@ -36,11 +36,11 @@ enum Direction {
 
 struct App {
 mut:
-	gg    &gg.Context
-	score int
-	snake []Pos
-	dir   Direction
-	food  Pos
+	gg         &gg.Context
+	score      int
+	snake      []Pos
+	dir        Direction
+	food       Pos
 	start_time i64
 	last_tick  i64
 }
@@ -165,7 +165,7 @@ fn on_frame(mut app App) {
 	app.gg.end()
 }
 
-const font = $embed_file("../assets/fonts/RobotoMono-Regular.ttf")
+const font = $embed_file('../assets/fonts/RobotoMono-Regular.ttf')
 
 // setup
 fn main() {
