@@ -33,7 +33,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 		for gen_types in g.table.fn_gen_types[it.name] {
 			if g.pref.is_verbose {
 				syms := gen_types.map(g.table.get_type_symbol(it))
-				println('gen fn `$it.name` for type `${syms.map(it.name).join(", ")}`')
+				println('gen fn `$it.name` for type `${syms.map(it.name).join(', ')}`')
 			}
 			g.cur_generic_types = gen_types
 			g.gen_fn_decl(it, skip)
@@ -606,7 +606,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		if i == 0 {
 			name += '_T'
 		}
-		name += '_' +  g.typ(generic_type)
+		name += '_' + g.typ(generic_type)
 	}
 	// TODO2
 	// cgen shouldn't modify ast nodes, this should be moved

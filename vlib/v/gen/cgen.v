@@ -102,15 +102,15 @@ mut:
 	is_builtin_mod        bool
 	hotcode_fn_names      []string
 	embedded_files        []ast.EmbeddedFile
-	cur_fn               ast.FnDecl
-	cur_generic_types []table.Type // `int`, `string`, etc in `foo<T>()`
-	sql_i            int
-	sql_stmt_name    string
-	sql_side         SqlExprSide // left or right, to distinguish idents in `name == name`
-	inside_vweb_tmpl bool
-	inside_return    bool
-	inside_or_block  bool
-	strs_to_free0    []string // strings.Builder
+	cur_fn                ast.FnDecl
+	cur_generic_types     []table.Type // `int`, `string`, etc in `foo<T>()`
+	sql_i                 int
+	sql_stmt_name         string
+	sql_side              SqlExprSide // left or right, to distinguish idents in `name == name`
+	inside_vweb_tmpl      bool
+	inside_return         bool
+	inside_or_block       bool
+	strs_to_free0         []string // strings.Builder
 	// strs_to_free          []string // strings.Builder
 	inside_call           bool
 	for_in_mul_val_name   string

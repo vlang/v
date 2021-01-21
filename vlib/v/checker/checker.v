@@ -53,13 +53,13 @@ pub mut:
 	rlocked_names    []string // vars that are currently read-locked
 	in_for_count     int      // if checker is currently in a for loop
 	// checked_ident  string // to avoid infinite checker loops
-	returns          bool
-	scope_returns    bool
-	mod              string // current module name
-	is_builtin_mod   bool   // are we in `builtin`?
-	inside_unsafe    bool
-	inside_const     bool
-	skip_flags       bool // should `#flag` and `#include` be skipped
+	returns           bool
+	scope_returns     bool
+	mod               string // current module name
+	is_builtin_mod    bool   // are we in `builtin`?
+	inside_unsafe     bool
+	inside_const      bool
+	skip_flags        bool // should `#flag` and `#include` be skipped
 	cur_generic_types []table.Type
 mut:
 	expr_level                       int  // to avoid infinite recursion segfaults due to compiler bugs
