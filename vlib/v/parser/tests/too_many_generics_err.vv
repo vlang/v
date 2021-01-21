@@ -1,1 +1,1 @@
-fn too_many<A, B, C, D, E, F, G, H, I, J, K>() {}
+fn too_many<A, B, D, E, F, G, H, I, J, K>() {}

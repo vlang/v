@@ -32,7 +32,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 				node = p.sql_expr()
 				p.inside_match = false
 			} else {
-				if p.inside_if && p.tok.lit == 'T' {
+				if p.inside_if && p.is_generic_name() {
 					// $if T is string {}
 					p.expecting_type = true
 				}

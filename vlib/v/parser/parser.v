@@ -1309,7 +1309,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		return p.struct_init(false) // short_syntax: false
 	} else if p.peek_tok.kind == .dot && (lit0_is_capital && !known_var && language == .v) {
 		// T.name
-		if p.tok.lit == 'T' {
+		if p.is_generic_name() {
 			pos := p.tok.position()
 			name := p.check_name()
 			p.check(.dot)

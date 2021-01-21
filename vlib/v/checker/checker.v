@@ -2104,8 +2104,10 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 	mut name_type := 0
 	match mut selector_expr.expr {
 		ast.Ident {
-			if selector_expr.expr.name == 'T' {
-				name_type = table.Type(c.table.find_type_idx('T')).set_flag(.generic)
+			name := selector_expr.expr.name
+			valid_generic := c.cur_fn.generic_params.filter(it.name == name).len != 0
+			if valid_generic {
+				name_type = table.Type(c.table.find_type_idx(name)).set_flag(.generic)
 			}
 		}
 		// Note: in future typeof() should be a type known at compile-time
@@ -4658,7 +4660,7 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 							!different
 						}
 					} else {
-						c.error('invalid `\$if` condition: $cond.left.type_name()', cond.pos)
+						c.error('invalid `\$if` condition: $cond.left.type_name()1', cond.pos)
 					}
 				}
 				else {

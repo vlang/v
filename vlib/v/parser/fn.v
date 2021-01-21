@@ -447,6 +447,9 @@ fn (mut p Parser) parse_generic_params() []ast.GenericParam {
 		if name.len > 1 {
 			p.error('generic parameter name needs to be exactly one char')
 		}
+		if is_generic_name_reserved(p.tok.lit) {
+			p.error('`${p.tok.lit}` is a reserved name and cannot be used for generics')
+		}
 		if name in param_names {
 			p.error('duplicated generic parameter')
 		}
@@ -460,6 +463,25 @@ fn (mut p Parser) parse_generic_params() []ast.GenericParam {
 	}
 	p.check(.gt)
 	return param_names.map(ast.GenericParam{it})
+}
+
+// is_valid_generic_character returns true if the character is reserved for someting else.
+fn is_generic_name_reserved(name string) bool {
+	// C is used for cinterop
+	if name == 'C' {
+		return true
+	}
+	return false
+}
+
+// is_generic_name returns true if the current token is a generic name.
+fn is_generic_name(name string) bool {
+	return name.len == 1 && name.is_capital() && !is_generic_name_reserved(name)
+}
+
+// is_generic_name returns true if the current token is a generic name.
+fn (p Parser) is_generic_name() bool {
+	return p.tok.kind == .name && is_generic_name(p.tok.lit)
 }
 
 fn (mut p Parser) anon_fn() ast.AnonFn {
