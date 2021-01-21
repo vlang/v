@@ -5200,6 +5200,7 @@ fn (mut c Checker) fetch_and_verify_orm_fields(info table.Struct, pos token.Posi
 fn (mut c Checker) post_process_generic_fns() {
 	// Loop thru each generic function concrete type.
 	// Check each specific fn instantiation.
+
 	for i in 0 .. c.file.generic_fns.len {
 		if c.table.fn_gen_types.len == 0 {
 			// no concrete types, so just skip:
@@ -5215,7 +5216,6 @@ fn (mut c Checker) post_process_generic_fns() {
 			}
 		}
 		c.cur_generic_types = []
-		break
 	}
 }
 
