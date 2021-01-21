@@ -1362,11 +1362,21 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 				g.write(' = (*(voidptr*)')
 			} else {
 				val_styp := g.typ(it.val_type)
-				g.write('\t$val_styp ${c_name(it.val_var)} = (*($val_styp*)')
+				if it.val_type.is_ptr() {
+					g.write('\t$val_styp ${c_name(it.val_var)} = &(*($val_styp)')
+				} else {
+					g.write('\t$val_styp ${c_name(it.val_var)} = (*($val_styp*)')
+				}
 			}
 			g.writeln('DenseArray_value(&$atmp${arw_or_pt}key_values, $idx));')
 		}
+		if it.val_is_mut {
+			g.for_in_mul_val_name = it.val_var
+		}
 		g.stmts(it.stmts)
+		if it.val_is_mut {
+			g.for_in_mul_val_name = ''
+		}
 		if it.key_type == table.string_type && !g.is_builtin_mod {
 			// g.writeln('string_free(&$key);')
 		}
@@ -1940,6 +1950,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		right_sym := g.table.get_type_symbol(val_type)
 		is_fixed_array_copy := right_sym.kind == .array_fixed && val is ast.Ident
 		g.is_assign_lhs = true
+		g.assign_op = assign_stmt.op
 		if is_interface && right_sym.kind == .interface_ {
 			is_interface = false
 		}
@@ -1959,25 +1970,42 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			if right.has_val {
 				for j, expr in right.exprs {
 					g.expr(left)
-					g.write('[$j] = ')
+					if g.is_array_set {
+						g.out.go_back(2)
+					} else {
+						g.write('[$j] = ')
+					}
 					g.expr(expr)
-					g.writeln(';')
+					if g.is_array_set {
+						g.writeln(')')
+						g.is_array_set = false
+					} else {
+						g.writeln(';')
+					}
 				}
 			} else {
 				fixed_array := right_sym.info as table.ArrayFixed
 				for j in 0 .. fixed_array.size {
 					g.expr(left)
-					g.write('[$j] = ')
+					if g.is_array_set {
+						g.out.go_back(2)
+					} else {
+						g.write('[$j] = ')
+					}
 					if right.has_default {
 						g.expr(right.default_expr)
 					} else {
 						g.write(g.type_default(right.elem_type))
 					}
-					g.writeln(';')
+					if g.is_array_set {
+						g.writeln(')')
+						g.is_array_set = false
+					} else {
+						g.writeln(';')
+					}
 				}
 			}
 		} else {
-			g.assign_op = assign_stmt.op
 			is_inside_ternary := g.inside_ternary != 0
 			cur_line := if is_inside_ternary && is_decl {
 				g.register_ternary_name(ident.name)
@@ -4105,7 +4133,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 							g.write('.val')
 						}
 					}
-					if is_direct_array_access {
+					if is_direct_array_access && !gen_or {
 						if left_is_ptr && !node.left_type.has_flag(.shared_f) {
 							g.write('->')
 						} else {

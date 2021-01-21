@@ -3,6 +3,10 @@ module util
 import os
 import v.pref
 
+fn trace_mod_path_to_full_name(line string, mod string, file_path string, res string) {
+	eprintln('> $line ${@FN} mod: ${mod:-20} | file_path: ${file_path:-30} | result: $res')
+}
+
 pub fn qualify_import(pref &pref.Preferences, mod string, file_path string) string {
 	mut mod_paths := pref.lookup_path.clone()
 	mod_paths << os.vmodules_paths()
@@ -11,11 +15,17 @@ pub fn qualify_import(pref &pref.Preferences, mod string, file_path string) stri
 		try_path := os.join_path(search_path, mod_path)
 		if os.is_dir(try_path) {
 			if m1 := mod_path_to_full_name(mod, try_path) {
+				$if trace_mod_path_to_full_name ? {
+					trace_mod_path_to_full_name(@LINE, mod, try_path, m1)
+				}
 				return m1
 			}
 		}
 	}
 	if m1 := mod_path_to_full_name(mod, file_path) {
+		$if trace_mod_path_to_full_name ? {
+			trace_mod_path_to_full_name(@LINE, mod, file_path, m1)
+		}
 		return m1
 	}
 	return mod
@@ -25,7 +35,11 @@ pub fn qualify_module(mod string, file_path string) string {
 	if mod == 'main' {
 		return mod
 	}
-	if m1 := mod_path_to_full_name(mod, file_path.all_before_last('/')) {
+	clean_file_path := file_path.all_before_last('/')
+	if m1 := mod_path_to_full_name(mod, clean_file_path) {
+		$if trace_mod_path_to_full_name ? {
+			trace_mod_path_to_full_name(@LINE, mod, clean_file_path, m1)
+		}
 		return m1
 	}
 	return mod
@@ -76,15 +90,17 @@ pub fn mod_path_to_full_name(mod string, path string) ?string {
 					if ls := os.ls(parent) {
 						// currently CI clones some modules into the v repo to test, the condition
 						// after `'v.mod' in ls` can be removed once a proper solution is added
-						if 'v.mod' in ls && try_path_parts[i] != 'v' && 'vlib' !in ls {
+						if 'v.mod' in ls &&
+							(try_path_parts.len > i && try_path_parts[i] != 'v' && 'vlib' !in ls)
+						{
 							last_v_mod = j
-							continue
 						}
+						continue
 					}
 					break
 				}
 				if last_v_mod > -1 {
-					mod_full_name := try_path_parts[last_v_mod - 1..].join('.')
+					mod_full_name := try_path_parts[last_v_mod..].join('.')
 					return mod_full_name
 				}
 			}

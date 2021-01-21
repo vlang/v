@@ -476,7 +476,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			return ast.InterfaceDecl{}
 		}
 		// field_names << name
-		args2, _, _ := p.fn_args() // TODO merge table.Param and ast.Arg to avoid this
+		args2, _, is_variadic := p.fn_args() // TODO merge table.Param and ast.Arg to avoid this
 		mut args := [table.Param{
 			name: 'x'
 			typ: typ
@@ -489,6 +489,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			params: args
 			file: p.file_name
 			return_type: table.void_type
+			is_variadic: is_variadic
 			is_pub: true
 			pos: method_start_pos.extend(p.prev_tok.position())
 			scope: p.scope
@@ -502,7 +503,13 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		method.next_comments = mnext_comments
 		methods << method
 		// println('register method $name')
-		ts.register_method(name: name, params: args, return_type: method.return_type, is_pub: true)
+		ts.register_method(
+			name: name
+			params: args
+			return_type: method.return_type
+			is_variadic: is_variadic
+			is_pub: true
+		)
 	}
 	p.top_level_statement_end()
 	p.check(.rcbr)

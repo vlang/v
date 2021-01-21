@@ -439,7 +439,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 }
 
 fn (mut p Parser) anon_fn() ast.AnonFn {
-	mut pos := p.tok.position()
+	pos := p.tok.position()
 	p.check(.key_fn)
 	if p.pref.is_script && p.tok.kind == .name {
 		p.error_with_pos('function declarations in script mode should be before all script statements',
@@ -491,7 +491,6 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	idx := p.table.find_or_register_fn_type(p.mod, func, true, false)
 	typ := table.new_type(idx)
 	// name := p.table.get_type_name(typ)
-	pos.update_last_line(p.prev_tok.line_nr)
 	return ast.AnonFn{
 		decl: ast.FnDecl{
 			name: name
@@ -503,7 +502,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 			is_method: false
 			is_anon: true
 			no_body: no_body
-			pos: pos
+			pos: pos.extend(p.prev_tok.position())
 			file: p.file_name
 			scope: p.scope
 		}

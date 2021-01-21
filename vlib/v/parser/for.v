@@ -83,6 +83,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 	{
 		// `for i in vals`, `for i in start .. end`, `for mut user in users`, `for i, mut user in users`
 		mut val_is_mut := p.tok.kind == .key_mut
+		mut_pos := p.tok.position()
 		if val_is_mut {
 			p.next()
 		}
@@ -91,6 +92,9 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		mut key_var_name := ''
 		mut val_var_name := p.check_name()
 		if p.tok.kind == .comma {
+			if val_is_mut {
+				p.error_with_pos('index of array or key of map cannot be mutated', mut_pos)
+			}
 			p.next()
 			if p.tok.kind == .key_mut {
 				// `for i, mut user in users {`

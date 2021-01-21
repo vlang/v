@@ -172,30 +172,22 @@ fn (mut vet Vet) vet_line(lines []string, line string, lnumber int) {
 			}
 			ident_fn_name := fn (line string) string {
 				mut fn_idx := line.index(' fn ') or { return '' }
-				mut skip := false
-				mut p_count := 0
-				mut fn_name := ''
-				for i := fn_idx + 4; i < line.len; i++ {
-					char := line[i]
-					if !skip && char == `(` {
-						p_count++
-						skip = true
-						continue
-					} else if skip && char == `)` {
-						skip = false
-						continue
-					} else if char == ` ` {
-						continue
-					} else if char.is_letter() {
-						// fn_name += char.str()
-						fn_name = line[i..].all_before('(')
-						break
-					}
-					if p_count > 1 {
-						break
+				if line.len < fn_idx + 5 {
+					return ''
+				}
+				mut tokens := line[fn_idx + 4..].split(' ')
+				// Skip struct identifier
+				if tokens.first().starts_with('(') {
+					fn_idx = line.index(')') or { return '' }
+					tokens = line[fn_idx..].split(' ')
+					if tokens.len > 1 {
+						tokens = [tokens[1]]
 					}
 				}
-				return fn_name
+				if tokens.len > 0 {
+					return tokens[0].all_before('(')
+				}
+				return ''
 			}
 			mut line_above := lines[lnumber - 1]
 			mut tags := []string{}
@@ -229,6 +221,14 @@ fn (mut vet Vet) vet_line(lines []string, line string, lnumber int) {
 						break
 					} else if prev_line.starts_with('// $fn_name ') {
 						grab = false
+						break
+					} else if prev_line.starts_with('// $fn_name') {
+						grab = false
+						if is_pub_fn {
+							clean_line := line.all_before_last('{').trim(' ')
+							vet.warn('The documentation for "$clean_line" seems incomplete.',
+								lnumber, .doc)
+						}
 						break
 					} else if prev_line.starts_with('[') {
 						tags << collect_tags(prev_line)

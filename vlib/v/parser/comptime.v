@@ -109,9 +109,10 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 	fn_path := p.cur_fn_name.split('_')
 	tmpl_path := if is_html { '${fn_path.last()}.html' } else { s }
 	// Looking next to the vweb program
-	dir := os.dir(p.scanner.file_path)
-	mut path := os.join_path(dir, fn_path.join('/'))
+	dir := os.dir(p.scanner.file_path.replace('/', os.path_separator))
+	mut path := os.join_path(dir, fn_path.join(os.path_separator))
 	path += '.html'
+	path = os.real_path(path)
 	if !is_html {
 		path = tmpl_path
 	}
