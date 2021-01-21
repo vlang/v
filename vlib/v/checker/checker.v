@@ -4804,7 +4804,7 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) table.Type {
 	return right_type
 }
 
-fn (mut c Checker) check_index_type(typ_sym &table.TypeSymbol, index_type table.Type, pos token.Position) {
+fn (mut c Checker) check_index(typ_sym &table.TypeSymbol, index ast.Expr, index_type table.Type, pos token.Position) {
 	index_type_sym := c.table.get_type_symbol(index_type)
 	// println('index expr left=$typ_sym.name $node.pos.line_nr')
 	// if typ_sym.kind == .array && (!(table.type_idx(index_type) in table.number_type_idxs) &&
@@ -4817,6 +4817,14 @@ fn (mut c Checker) check_index_type(typ_sym &table.TypeSymbol, index_type table.
 				'non-integer index `$index_type_sym.name` (array type `$typ_sym.name`)'
 			}
 			c.error('$type_str', pos)
+		}
+		if index is ast.PrefixExpr {
+			if index.op == .minus && index.right is ast.IntegerLiteral {
+				val := (index.right as ast.IntegerLiteral).val
+				if val.int() > 0 {
+					c.error('invalid index `-$val` (index must be non-negative)', index.pos)
+				}
+			}
 		}
 		if index_type.has_flag(.optional) {
 			type_str := if typ_sym.kind in [.string, .ustring] {
@@ -4859,11 +4867,11 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 	if mut node.index is ast.RangeExpr { // [1..2]
 		if node.index.has_low {
 			index_type := c.expr(node.index.low)
-			c.check_index_type(typ_sym, index_type, node.pos)
+			c.check_index(typ_sym, node.index.low, index_type, node.pos)
 		}
 		if node.index.has_high {
 			index_type := c.expr(node.index.high)
-			c.check_index_type(typ_sym, index_type, node.pos)
+			c.check_index(typ_sym, node.index.high, index_type, node.pos)
 		}
 		// array[1..2] => array
 		// fixed_array[1..2] => array
@@ -4883,7 +4891,7 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 				c.error('invalid key: $err', node.pos)
 			}
 		} else {
-			c.check_index_type(typ_sym, index_type, node.pos)
+			c.check_index(typ_sym, node.index, index_type, node.pos)
 		}
 		value_type := c.table.value_type(typ)
 		if value_type != table.void_type {
