@@ -90,18 +90,17 @@ pub fn mod_path_to_full_name(mod string, path string) ?string {
 					if ls := os.ls(parent) {
 						// currently CI clones some modules into the v repo to test, the condition
 						// after `'v.mod' in ls` can be removed once a proper solution is added
-						if try_path_parts.len <= i {
-							continue
-						}
-						if 'v.mod' in ls && try_path_parts[i] != 'v' && 'vlib' !in ls {
+						if 'v.mod' in ls &&
+							(try_path_parts.len > i && try_path_parts[i] != 'v' && 'vlib' !in ls)
+						{
 							last_v_mod = j
-							continue
 						}
+						continue
 					}
 					break
 				}
 				if last_v_mod > -1 {
-					mod_full_name := try_path_parts[last_v_mod - 1..].join('.')
+					mod_full_name := try_path_parts[last_v_mod..].join('.')
 					return mod_full_name
 				}
 			}
