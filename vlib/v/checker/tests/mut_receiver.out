@@ -1,7 +1,29 @@
-vlib/v/checker/tests/mut_receiver_warning.vv:5:4: warning: use `(mut f Foo)` instead of `(f mut Foo)`
+>>> registering name: array                          from /v/new_cleanv/vlib/builtin/array.v                
+>>> registering name: VAssertMetaInfo                from /v/new_cleanv/vlib/builtin/builtin.v              
+>>> registering name: MethodArgs                     from /v/new_cleanv/vlib/builtin/builtin.v              
+>>> registering name: FunctionData                   from /v/new_cleanv/vlib/builtin/builtin.v              
+>>> registering name: FieldData                      from /v/new_cleanv/vlib/builtin/builtin.v              
+>>> registering name: DenseArray                     from /v/new_cleanv/vlib/builtin/map.v                  
+>>> registering name: map                            from /v/new_cleanv/vlib/builtin/map.v                  
+>>> registering name: OptionBase                     from /v/new_cleanv/vlib/builtin/option.v               
+>>> registering name: Option                         from /v/new_cleanv/vlib/builtin/option.v               
+>>> registering name: SortedMap                      from /v/new_cleanv/vlib/builtin/sorted_map.v           
+>>> registering name: mapnode                        from /v/new_cleanv/vlib/builtin/sorted_map.v           
+>>> registering name: string                         from /v/new_cleanv/vlib/builtin/string.v               
+>>> registering name: ustring                        from /v/new_cleanv/vlib/builtin/string.v               
+>>> registering name: RepIndex                       from /v/new_cleanv/vlib/builtin/string.v               
+>>> registering name: main.Foo                       from vlib/v/checker/tests/mut_receiver.vv              
+vlib/v/checker/tests/mut_receiver.vv:5:7: warning: use `(mut f Foo)` instead of `(f mut Foo)`
     3 |     name string
     4 | }
     5 | fn (f mut Foo) info() {
-      |    ~~~~~~~~~~~
+      |       ~~~
     6 |     f.name = 'foo'
     7 | }
+vlib/v/checker/tests/mut_receiver.vv:8:15: error: use `(mut f Foo)` or `(f &Foo)` instead of `(mut f &Foo)`
+    6 |     f.name = 'foo'
+    7 | }
+    8 | fn (mut f &Foo) info2() {
+      |               ^
+    9 |     f.name = 'foo'
+   10 | }
