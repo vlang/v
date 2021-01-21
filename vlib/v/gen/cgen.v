@@ -2939,6 +2939,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		return
 	}
 	mut sum_type_deref_field := ''
+	mut sum_type_dot := '.'
 	if f := g.table.struct_find_field(sym, node.field_name) {
 		field_sym := g.table.get_type_symbol(f.typ)
 		if field_sym.kind == .sum_type {
@@ -2946,6 +2947,9 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 				// check first if field is sum type because scope searching is expensive
 				scope := g.file.scope.innermost(node.pos.pos)
 				if field := scope.find_struct_field(node.expr_type, node.field_name) {
+					if field.orig_type.is_ptr() {
+						sum_type_dot = '->'
+					}
 					// union sum type deref
 					for i, typ in field.sum_type_casts {
 						g.write('(*')
@@ -2957,7 +2961,6 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 						if mut cast_sym.info is table.Aggregate {
 							agg_sym := g.table.get_type_symbol(cast_sym.info.types[g.aggregate_type_idx])
 							sum_type_deref_field += '_$agg_sym.cname'
-							// sum_type_deref_field += '_${cast_sym.info.types[g.aggregate_type_idx]}'
 						} else {
 							sum_type_deref_field += '_$cast_sym.cname'
 						}
@@ -2997,7 +3000,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	}
 	g.write(c_name(node.field_name))
 	if sum_type_deref_field != '' {
-		g.write('.$sum_type_deref_field)')
+		g.write('$sum_type_dot$sum_type_deref_field)')
 	}
 }
 
@@ -3782,10 +3785,14 @@ fn (mut g Gen) ident(node ast.Ident) {
 					}
 					for i, typ in v.sum_type_casts {
 						cast_sym := g.table.get_type_symbol(typ)
+						mut is_ptr := false
 						if i == 0 {
 							g.write(name)
+							if v.orig_type.is_ptr() {
+								is_ptr = true
+							}
 						}
-						dot := if v.typ.is_ptr() { '->' } else { '.' }
+						dot := if is_ptr { '->' } else { '.' }
 						if mut cast_sym.info is table.Aggregate {
 							sym := g.table.get_type_symbol(cast_sym.info.types[g.aggregate_type_idx])
 							g.write('${dot}_$sym.cname')

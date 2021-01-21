@@ -423,10 +423,15 @@ pub:
 	is_arg          bool // fn args should not be autofreed
 pub mut:
 	typ            table.Type
+	orig_type      table.Type   // original sumtype type; 0 if it's not a sumtype
 	sum_type_casts []table.Type // nested sum types require nested smart casting, for that a list of types is needed
-	pos            token.Position
-	is_used        bool
-	is_changed     bool // to detect mutable vars that are never changed
+	// TODO: move this to a real docs site later
+	// 10 <- original type (orig_type)
+	//   [11, 12, 13] <- cast order (sum_type_casts)
+	//        12 <- the current casted type (typ)
+	pos        token.Position
+	is_used    bool
+	is_changed bool // to detect mutable vars that are never changed
 	//
 	// (for setting the position after the or block for autofree)
 	is_or  bool // `x := foo() or { ... }`
@@ -442,6 +447,11 @@ pub:
 	pos            token.Position
 	typ            table.Type
 	sum_type_casts []table.Type // nested sum types require nested smart casting, for that a list of types is needed
+	orig_type      table.Type   // original sumtype type; 0 if it's not a sumtype
+	// TODO: move this to a real docs site later
+	// 10 <- original type (orig_type)
+	//   [11, 12, 13] <- cast order (sum_type_casts)
+	//        12 <- the current casted type (typ)
 }
 
 pub struct GlobalField {
