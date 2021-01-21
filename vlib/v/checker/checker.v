@@ -704,7 +704,6 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 	defer {
 		c.expected_type = former_expected_type
 	}
-	c.expected_type = table.void_type
 	left_type := c.expr(infix_expr.left)
 	// left_type = c.unwrap_genric(c.expr(infix_expr.left))
 	infix_expr.left_type = left_type
