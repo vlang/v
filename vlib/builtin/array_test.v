@@ -1345,7 +1345,7 @@ fn test_multi_fixed_array_with_default_init() {
 }
 
 struct Abc {
-	mut:
+mut:
 	x i64
 	y i64
 	z i64
@@ -1353,9 +1353,8 @@ struct Abc {
 
 fn test_clone_of_same_elem_size_array() {
 	mut arr := []Abc{}
-	arr << Abc{1,2,3}
-	arr << Abc{2,3,4}
-
+	arr << Abc{1, 2, 3}
+	arr << Abc{2, 3, 4}
 	arr2 := arr.clone()
 	println(arr2)
 	assert arr2 == [Abc{1, 2, 3}, Abc{2, 3, 4}]
