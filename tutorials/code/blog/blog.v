@@ -9,8 +9,6 @@ struct App {
 	vweb.Context
 mut:
 	db sqlite.DB
-pub mut:
-	dataptr &App = voidptr(0)
 }
 
 fn main() {

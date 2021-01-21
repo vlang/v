@@ -12,8 +12,6 @@ struct App {
 	vweb.Context
 	port    int
 	timeout int
-pub mut:
-	dataptr &App = voidptr(0)
 }
 
 fn exit_after_timeout(timeout_in_ms int) {

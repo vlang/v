@@ -63,8 +63,6 @@ import vweb
 
 struct App {
 	vweb.Context
-pub mut:
-	dataptr &App = voidptr(0)
 }
 
 fn main() {
