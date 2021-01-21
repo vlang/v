@@ -49,3 +49,12 @@ fn test_for_in_mut_val_of_map() {
 	println(m)
 	assert '$m' == "{'hello': [2, 4, 6]}"
 }
+
+fn test_for_in_mut_val_of_map_direct() {
+	mut m := {'foo': 1, 'bar': 2}
+	for _, mut j in m {
+		j = 3
+	}
+	println(m)
+	assert '$m' == "{'foo': 3, 'bar': 3}"
+}
