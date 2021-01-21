@@ -73,6 +73,7 @@ mut:
 	loop_label                       string // set when inside a labelled for loop
 	timers                           &util.Timers = util.new_timers(false)
 	comptime_fields_type             map[string]table.Type
+	fn_scope                         &ast.Scope = voidptr(0)
 }
 
 pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
@@ -3584,6 +3585,19 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) table.Type {
 		}
 		mut c2 := new_checker(c.table, pref2)
 		c2.check(node.vweb_tmpl)
+		mut i := 0 // tmp counter var for skipping first three tmpl vars
+		for k, _ in c2.file.scope.children[0].objects {
+			if i < 4 {
+				// Skip first three because they are tmpl vars see vlib/vweb/tmpl/tmpl.v
+				i++
+				continue
+			}
+			if k in c.fn_scope.objects && c.fn_scope.objects[k] is ast.Var {
+				mut vsc := c.fn_scope.objects[k] as ast.Var
+				vsc.is_used = true
+				c.fn_scope.objects[k] = vsc
+			}
+		}
 		c.warnings << c2.warnings
 		c.errors << c2.errors
 		c.nr_warnings += c2.nr_warnings
@@ -5319,6 +5333,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			}
 		}
 	}
+	c.fn_scope = node.scope
 	c.stmts(node.stmts)
 	returns := c.returns || has_top_return(node.stmts)
 	if node.language == .v && !node.no_body && node.return_type != table.void_type && !returns &&
