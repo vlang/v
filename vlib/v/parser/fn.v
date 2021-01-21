@@ -195,6 +195,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut rec_mut := false
 	mut params := []table.Param{}
 	if p.tok.kind == .lpar {
+		lpar_pos := p.tok.position()
 		p.next() // (
 		is_method = true
 		is_shared := p.tok.kind == .key_shared
@@ -208,7 +209,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		if !rec_mut {
 			rec_mut = p.tok.kind == .key_mut
 			if rec_mut {
-				p.warn_with_pos('use `(mut f Foo)` instead of `(f mut Foo)`', p.tok.position())
+				p.warn_with_pos('use `(mut f Foo)` instead of `(f mut Foo)`', lpar_pos.extend(p.peek_tok2.position()))
 			}
 		}
 		receiver_pos = rec_start_pos.extend(p.tok.position())
@@ -231,7 +232,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		}
 		rec_type_pos = rec_type_pos.extend(p.prev_tok.position())
 		if is_amp && rec_mut {
-			p.error('use `(mut f Foo)` or `(f &Foo)` instead of `(mut f &Foo)`')
+			p.error_with_pos('use `(mut f Foo)` or `(f &Foo)` instead of `(mut f &Foo)`',
+				lpar_pos.extend(p.tok.position()))
 			return ast.FnDecl{
 				scope: 0
 			}

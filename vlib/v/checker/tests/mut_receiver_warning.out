@@ -1,7 +1,0 @@
-vlib/v/checker/tests/mut_receiver_warning.vv:5:7: warning: use `(mut f Foo)` instead of `(f mut Foo)`
-    3 |     name string
-    4 | }
-    5 | fn (f mut Foo) info() {
-      |       ~~~
-    6 |     f.name = 'foo'
-    7 | }
