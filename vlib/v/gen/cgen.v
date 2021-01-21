@@ -1950,6 +1950,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		right_sym := g.table.get_type_symbol(val_type)
 		is_fixed_array_copy := right_sym.kind == .array_fixed && val is ast.Ident
 		g.is_assign_lhs = true
+		g.assign_op = assign_stmt.op
 		if is_interface && right_sym.kind == .interface_ {
 			is_interface = false
 		}
@@ -1969,25 +1970,42 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			if right.has_val {
 				for j, expr in right.exprs {
 					g.expr(left)
-					g.write('[$j] = ')
+					if g.is_array_set {
+						g.out.go_back(2)
+					} else {
+						g.write('[$j] = ')
+					}
 					g.expr(expr)
-					g.writeln(';')
+					if g.is_array_set {
+						g.writeln(')')
+						g.is_array_set = false
+					} else {
+						g.writeln(';')
+					}
 				}
 			} else {
 				fixed_array := right_sym.info as table.ArrayFixed
 				for j in 0 .. fixed_array.size {
 					g.expr(left)
-					g.write('[$j] = ')
+					if g.is_array_set {
+						g.out.go_back(2)
+					} else {
+						g.write('[$j] = ')
+					}
 					if right.has_default {
 						g.expr(right.default_expr)
 					} else {
 						g.write(g.type_default(right.elem_type))
 					}
-					g.writeln(';')
+					if g.is_array_set {
+						g.writeln(')')
+						g.is_array_set = false
+					} else {
+						g.writeln(';')
+					}
 				}
 			}
 		} else {
-			g.assign_op = assign_stmt.op
 			is_inside_ternary := g.inside_ternary != 0
 			cur_line := if is_inside_ternary && is_decl {
 				g.register_ternary_name(ident.name)
