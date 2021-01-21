@@ -13,6 +13,7 @@ const (
 	bcrypt_use_system_preferred_rng = 0x00000002
 )
 
+// read returns an array of `bytes_needed` random bytes read from the OS.
 pub fn read(bytes_needed int) ?[]byte {
 	mut buffer := malloc(bytes_needed)
 	// use bcrypt_use_system_preferred_rng because we passed null as algo

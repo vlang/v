@@ -10,6 +10,7 @@ module rand
 
 fn C.SecRandomCopyBytes() int
 
+// read returns an array of `bytes_needed` random bytes read from the OS.
 pub fn read(bytes_needed int) ?[]byte {
 	mut buffer := malloc(bytes_needed)
 	status := C.SecRandomCopyBytes(0, bytes_needed, buffer)

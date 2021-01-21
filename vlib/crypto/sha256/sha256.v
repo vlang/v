@@ -89,6 +89,7 @@ pub fn new224() &Digest {
 	return d
 }
 
+// write writes the contents of `p_` to the internal hash representation.
 fn (mut d Digest) write(p_ []byte) int {
 	unsafe {
 		mut p := p_
@@ -171,7 +172,8 @@ fn (mut d Digest) checksum() []byte {
 	return digest
 }
 
-// sum256 returns the SHA256 checksum of the data.
+// sum returns the SHA256 checksum of the bytes in `data`.
+// Example: assert sha256.sum('V'.bytes()).len > 0 == true
 pub fn sum(data []byte) []byte {
 	return sum256(data)
 }
@@ -199,6 +201,7 @@ fn block(mut dig Digest, p []byte) {
 	block_generic(mut dig, p)
 }
 
+// size returns the size of the checksum in bytes.
 pub fn (d &Digest) size() int {
 	if !d.is224 {
 		return size
@@ -206,14 +209,18 @@ pub fn (d &Digest) size() int {
 	return size224
 }
 
+// block_size returns the block size of the checksum in bytes.
 pub fn (d &Digest) block_size() int {
 	return block_size
 }
 
+// hexhash returns a hexadecimal SHA256 hash sum `string` of `s`.
+// Example: assert sha256.hexhash('V') == 'de5a6f78116eca62d7fc5ce159d23ae6b889b365a1739ad2cf36f925a140d0cc'
 pub fn hexhash(s string) string {
 	return sum256(s.bytes()).hex()
 }
 
+// hexhash_224 returns a hexadecimal SHA224 hash sum `string` of `s`.
 pub fn hexhash_224(s string) string {
 	return sum224(s.bytes()).hex()
 }
