@@ -1450,6 +1450,10 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 pub fn (mut f Fmt) wrap_infix(start_pos int, start_len int) {
 	cut_span := f.out.len - start_pos
 	condstr := f.out.cut_last(cut_span)
+	if !condstr.contains_any_substr(['&&', '||']) {
+		f.write(condstr)
+		return
+	}
 	f.line_len = start_len
 	or_pen := if condstr.contains('&&') { 3 } else { 5 }
 	cond_parts := condstr.split(' ')
