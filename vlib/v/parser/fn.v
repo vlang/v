@@ -451,7 +451,7 @@ fn (mut p Parser) parse_generic_params() []ast.GenericParam {
 			p.error('`$p.tok.lit` is a reserved name and cannot be used for generics')
 		}
 		if name in param_names {
-			p.error('duplicated generic parameter')
+			p.error('duplicated generic parameter `$name`')
 		}
 		if count > 8 {
 			p.error('cannot have more than 9 generic parameters')
