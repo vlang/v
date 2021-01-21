@@ -4660,7 +4660,8 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 							!different
 						}
 					} else {
-						c.error('invalid `\$if` condition: $cond.left.type_name()1', cond.pos)
+						c.error('invalid `\$if` condition: ${cond.left.type_name()}1',
+							cond.pos)
 					}
 				}
 				else {

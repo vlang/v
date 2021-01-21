@@ -457,7 +457,8 @@ pub fn (mut c Checker) infer_fn_types(f table.Fn, mut call_expr ast.CallExpr) {
 				mut param_elem_sym := c.table.get_type_symbol(param_elem_info.elem_type)
 				for {
 					if arg_elem_sym.kind == .array &&
-						param_elem_sym.kind == .array && c.cur_fn.generic_params.filter(it.name == param_elem_sym.name).len == 0
+						param_elem_sym.kind == .array && c.cur_fn.generic_params.filter(it.name ==
+						param_elem_sym.name).len == 0
 					{
 						arg_elem_info = arg_elem_sym.info as table.Array
 						arg_elem_sym = c.table.get_type_symbol(arg_elem_info.elem_type)

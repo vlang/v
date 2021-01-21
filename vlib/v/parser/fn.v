@@ -448,7 +448,7 @@ fn (mut p Parser) parse_generic_params() []ast.GenericParam {
 			p.error('generic parameter name needs to be exactly one char')
 		}
 		if is_generic_name_reserved(p.tok.lit) {
-			p.error('`${p.tok.lit}` is a reserved name and cannot be used for generics')
+			p.error('`$p.tok.lit` is a reserved name and cannot be used for generics')
 		}
 		if name in param_names {
 			p.error('duplicated generic parameter')
