@@ -70,7 +70,6 @@ const (
 		'vlib/vweb/tests/vweb_test.v',
 		'vlib/x/websocket/websocket_test.v',
 		'vlib/net/http/http_httpbin_test.v',
-		'vlib/v/checker/tests/vweb_tmpl_used_var.vv'
 	]
 	skip_on_linux                 = []string{}
 	skip_on_non_linux             = [
