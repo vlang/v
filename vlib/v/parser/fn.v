@@ -447,6 +447,9 @@ fn (mut p Parser) parse_generic_params() []ast.GenericParam {
 		if name.len > 1 {
 			p.error('generic parameter name needs to be exactly one char')
 		}
+		if count > 8 {
+			p.error('too many generic parameters, maximum is 9')
+		}
 		p.check(.name)
 		params << ast.GenericParam{
 			name: name
