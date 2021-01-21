@@ -23,8 +23,7 @@ fn main() {
 	an_int := fp.int('an_int', 0, 0o123, 'some int to define 0o123 is its default value')
 	a_bool := fp.bool('a_bool', 0, false, 'some boolean flag. --a_bool will set it to true.')
 	a_float := fp.float('a_float', 0, 1.0, 'some floating point value, by default 1.0 .')
-	a_string := fp.string('a_string', `a`, 'no text', 'finally, some text with ' +
-		' `-a` as an abbreviation, so you can pass --a_string abc or just -a abc')
+	a_string := fp.string('a_string', `a`, 'no text', 'finally, some text with ' + ' `-a` as an abbreviation, so you can pass --a_string abc or just -a abc')
 	additional_args := fp.finalize() or {
 		eprintln(err)
 		println(fp.usage())

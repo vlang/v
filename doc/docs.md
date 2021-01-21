@@ -2092,9 +2092,7 @@ fn (r Repo) find_user_by_id(id int) ?User {
 
 fn main() {
 	repo := Repo{
-		users: [User{1, 'Andrew'}, User{2, 'Bob'},
-			User{10, 'Charles'},
-		]
+		users: [User{1, 'Andrew'}, User{2, 'Bob'}, User{10, 'Charles'}]
 	}
 	user := repo.find_user_by_id(10) or { // Option types must be handled by `or` blocks
 		return
