@@ -7,10 +7,10 @@ import os
 
 // constants
 const (
-	top_height = 100
-	canvas_size = 700
-	game_size = 17
-	tile_size = canvas_size / game_size
+	top_height   = 100
+	canvas_size  = 700
+	game_size    = 17
+	tile_size    = canvas_size / game_size
 	tick_rate_ms = 100
 )
 
@@ -21,17 +21,11 @@ struct Pos {
 }
 
 fn (a Pos) + (b Pos) Pos {
-	return Pos {
-		a.x + b.x,
-		a.y + b.y
-	}
+	return Pos{a.x + b.x, a.y + b.y}
 }
 
 fn (a Pos) - (b Pos) Pos {
-	return Pos {
-		a.x - b.x,
-		a.y - b.y
-	}
+	return Pos{a.x - b.x, a.y - b.y}
 }
 
 enum Direction {
@@ -42,28 +36,27 @@ enum Direction {
 }
 
 struct App {
-	mut:
-		gg &gg.Context
-		score int
-		snake []Pos
-		dir Direction
-		food Pos
-		
-		start_time i64
-		last_tick i64
+mut:
+	gg    &gg.Context
+	score int
+	snake []Pos
+	dir   Direction
+	food  Pos
+	start_time i64
+	last_tick  i64
 }
 
 // utility
 fn (mut app App) reset_game() {
 	app.score = 0
 	app.snake = [
-		Pos {3, 8},
-		Pos {2, 8},
-		Pos {1, 8},
-		Pos {0, 8}
+		Pos{3, 8},
+		Pos{2, 8},
+		Pos{1, 8},
+		Pos{0, 8},
 	]
 	app.dir = .right
-	app.food = Pos {10, 8}
+	app.food = Pos{10, 8}
 	app.start_time = time.ticks()
 	app.last_tick = time.ticks()
 }
@@ -83,11 +76,26 @@ fn (mut app App) move_food() {
 // events
 fn on_keydown(key sapp.KeyCode, mod sapp.Modifier, mut app App) {
 	match key {
-		.w, .up { if app.dir != .down { app.dir = .up } }
-		.s, .down { if app.dir != .up { app.dir = .down } }
-		.a, .left { if app.dir != .right { app.dir = .left } }
-		.d, .right { if app.dir != .left { app.dir = .right } }
-
+		.w, .up {
+			if app.dir != .down {
+				app.dir = .up
+			}
+		}
+		.s, .down {
+			if app.dir != .up {
+				app.dir = .down
+			}
+		}
+		.a, .left {
+			if app.dir != .right {
+				app.dir = .left
+			}
+		}
+		.d, .right {
+			if app.dir != .left {
+				app.dir = .right
+			}
+		}
 		else {}
 	}
 }
@@ -106,13 +114,13 @@ fn on_frame(mut app App) {
 			.down { Pos{0, 1} }
 			.left { Pos{-1, 0} }
 			.right { Pos{1, 0} }
-		}	
+		}
 
 		// "snaking" along
 		mut prev := app.snake[0]
 		app.snake[0] = app.snake[0] + delta_dir
 
-		for i in 1..app.snake.len {
+		for i in 1 .. app.snake.len {
 			tmp := app.snake[i]
 			app.snake[i] = prev
 			prev = tmp
@@ -125,18 +133,19 @@ fn on_frame(mut app App) {
 			app.snake << app.snake.last() + app.snake.last() - app.snake[app.snake.len - 2]
 		}
 	}
-
 	// drawing snake
 	for pos in app.snake {
-		app.gg.draw_rect(tile_size * pos.x, tile_size * pos.y + top_height, tile_size, tile_size, gx.blue)
+		app.gg.draw_rect(tile_size * pos.x, tile_size * pos.y + top_height, tile_size,
+			tile_size, gx.blue)
 	}
 
 	// drawing food
-	app.gg.draw_rect(tile_size * app.food.x, tile_size * app.food.y + top_height, tile_size, tile_size, gx.red)
+	app.gg.draw_rect(tile_size * app.food.x, tile_size * app.food.y + top_height, tile_size,
+		tile_size, gx.red)
 
 	// drawing top
 	app.gg.draw_rect(0, 0, canvas_size, top_height, gx.black)
-	app.gg.draw_text(canvas_size / 2, top_height / 2, app.score.str(), gx.TextCfg {
+	app.gg.draw_text(canvas_size / 2, top_height / 2, app.score.str(), gx.TextCfg{
 		color: gx.white
 		align: .center
 		vertical_align: .middle
@@ -147,9 +156,10 @@ fn on_frame(mut app App) {
 	if app.snake[0] in app.snake[1..] {
 		app.reset_game()
 	}
-	
 	// checking if snake hit a wall
-	if app.snake[0].x < 0 || app.snake[0].x >= game_size || app.snake[0].y < 0 || app.snake[0].y >= game_size {
+	if app.snake[0].x < 0 ||
+		app.snake[0].x >= game_size || app.snake[0].y < 0 || app.snake[0].y >= game_size
+	{
 		app.reset_game()
 	}
 
@@ -158,10 +168,12 @@ fn on_frame(mut app App) {
 
 // setup
 fn main() {
-	mut app := App{gg: 0}
+	mut app := App{
+		gg: 0
+	}
 	app.reset_game()
 
-	app.gg = gg.new_context({
+	app.gg = gg.new_context(
 		bg_color: gx.white
 		frame_fn: on_frame
 		keydown_fn: on_keydown
@@ -171,9 +183,9 @@ fn main() {
 		use_ortho: true
 		create_window: true
 		resizable: false
-		window_title: "snek"
+		window_title: 'snek'
 		font_path: os.resource_abs_path(os.join_path('../assets/fonts/', 'RobotoMono-Regular.ttf'))
-	})
+	)
 
 	app.gg.run()
 }
