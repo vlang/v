@@ -1890,13 +1890,17 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 				call_expr.return_type = typ
 				return typ
 			}
-		} else if return_sym.kind == .chan && return_sym.name in f.generic_names {
-			generic_index := f.generic_names.index(return_sym.name)
-			generic_type := call_expr.generic_types[generic_index]
-			idx := c.table.find_or_register_chan(generic_type, generic_type.nr_muls() > 0)
-			typ := table.new_type(idx)
-			call_expr.return_type = typ
-			return typ
+		} else if return_sym.kind == .chan {
+			return_info := return_sym.info as table.Chan
+			elem_sym := c.table.get_type_symbol(return_info.elem_type)
+			if elem_sym.name in f.generic_names {
+				generic_index := f.generic_names.index(elem_sym.name)
+				generic_type := call_expr.generic_types[generic_index]
+				idx := c.table.find_or_register_chan(generic_type, generic_type.nr_muls() > 0)
+				typ := table.new_type(idx)
+				call_expr.return_type = typ
+				return typ
+			}
 		} else if mut return_sym.info is table.MultiReturn {
 			mut types := []table.Type{}
 			for return_type in return_sym.info.types {
