@@ -14,4 +14,4 @@ vlib/v/checker/tests/fn_var.vv:5:5: error: cannot assign to `f`: expected `fn (i
     3 | mut p := &f
     4 | p = &[f]
     5 | f = fn(mut a []int) {}
-      |     ~~
+      |     ~~~~~~~~~~~~~~~~~~

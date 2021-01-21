@@ -73,6 +73,7 @@ mut:
 	loop_label                       string // set when inside a labelled for loop
 	timers                           &util.Timers = util.new_timers(false)
 	comptime_fields_type             map[string]table.Type
+	fn_scope                         &ast.Scope = voidptr(0)
 }
 
 pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
@@ -2761,13 +2762,13 @@ fn scope_register_ab(mut s ast.Scope, pos token.Position, typ table.Type) {
 	s.register(ast.Var{
 		name: 'a'
 		pos: pos
-		typ: typ
+		typ: typ.to_ptr()
 		is_used: true
 	})
 	s.register(ast.Var{
 		name: 'b'
 		pos: pos
-		typ: typ
+		typ: typ.to_ptr()
 		is_used: true
 	})
 }
@@ -2881,7 +2882,7 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 		array_init.elem_type = elem_type
 	} else if array_init.is_fixed && array_init.exprs.len == 1 && array_init.elem_type != table.void_type {
 		// [50]byte
-		mut fixed_size := 1
+		mut fixed_size := 0
 		init_expr := array_init.exprs[0]
 		c.expr(init_expr)
 		match init_expr {
@@ -2901,6 +2902,9 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 			else {
 				c.error('expecting `int` for fixed size', array_init.pos)
 			}
+		}
+		if fixed_size <= 0 {
+			c.error('fixed size cannot be zero or negative', init_expr.position())
 		}
 		idx := c.table.find_or_register_array_fixed(array_init.elem_type, fixed_size)
 		array_type := table.new_type(idx)
@@ -3648,6 +3652,19 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) table.Type {
 		}
 		mut c2 := new_checker(c.table, pref2)
 		c2.check(node.vweb_tmpl)
+		mut i := 0 // tmp counter var for skipping first three tmpl vars
+		for k, _ in c2.file.scope.children[0].objects {
+			if i < 4 {
+				// Skip first three because they are tmpl vars see vlib/vweb/tmpl/tmpl.v
+				i++
+				continue
+			}
+			if k in c.fn_scope.objects && c.fn_scope.objects[k] is ast.Var {
+				mut vsc := c.fn_scope.objects[k] as ast.Var
+				vsc.is_used = true
+				c.fn_scope.objects[k] = vsc
+			}
+		}
 		c.warnings << c2.warnings
 		c.errors << c2.errors
 		c.nr_warnings += c2.nr_warnings
@@ -5382,6 +5399,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			}
 		}
 	}
+	c.fn_scope = node.scope
 	c.stmts(node.stmts)
 	returns := c.returns || has_top_return(node.stmts)
 	if node.language == .v && !node.no_body && node.return_type != table.void_type && !returns &&

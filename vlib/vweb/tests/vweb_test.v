@@ -225,7 +225,7 @@ struct SimpleTcpClientConfig {
 	host    string = 'static.dev'
 	path    string = '/'
 	agent   string = 'v/net.tcp.v'
-	headers string
+	headers string = '\r\n'
 	content string
 }
 

@@ -346,16 +346,24 @@ pub fn (a &array) clone() array {
 	// Recursively clone-generated elements if array element is array type
 	size_of_array := int(sizeof(array))
 	if a.element_size == size_of_array {
+		mut is_elem_array := true
 		for i in 0 .. a.len {
 			ar := array{}
 			unsafe { C.memcpy(&ar, a.get_unsafe(i), size_of_array) }
+			if ar.len > ar.cap || ar.cap <= 0 || ar.element_size <= 0 {
+				is_elem_array = false
+				break
+			}
 			ar_clone := ar.clone()
 			unsafe { arr.set_unsafe(i, &ar_clone) }
 		}
-	} else {
-		if !isnil(a.data) {
-			unsafe { C.memcpy(byteptr(arr.data), a.data, a.cap * a.element_size) }
+		if is_elem_array {
+			return arr
 		}
+	}
+
+	if !isnil(a.data) {
+		unsafe { C.memcpy(byteptr(arr.data), a.data, a.cap * a.element_size) }
 	}
 	return arr
 }
