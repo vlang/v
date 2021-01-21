@@ -1,7 +1,7 @@
-b.v:11:15: error: V orm: select: empty fields in `Person`
-    9 |     db := sqlite.connect(':memory:')?
-   10 |     res := sql db {
-   11 |         select from Person
+vlib/v/checker/tests/orm_empty_struct.vv:9:15: error: V orm: select: empty fields in `Person`
+    7 |     db := sqlite.connect(':memory:')?
+    8 |     _ := sql db {
+    9 |         select from Person
       |                     ~~~~~~
-   12 |     }
-   13 |     println(res)
+   10 |     }
+   11 | }
