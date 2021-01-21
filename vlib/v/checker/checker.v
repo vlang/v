@@ -1255,6 +1255,24 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	if left_type_sym.kind == .sum_type && method_name == 'type_name' {
 		return table.string_type
 	}
+	mut has_generic_generic := false // x.foo<T>() instead of x.foo<int>()
+	mut generic_types := []table.Type{}
+	for generic_type in call_expr.generic_types {
+		if generic_type.has_flag(.generic) {
+			has_generic_generic = true
+			generic_types << c.unwrap_generic(generic_type)
+		} else {
+			generic_types << generic_type
+		}
+	}
+	if has_generic_generic {
+		if c.mod != '' {
+			// Need to prepend the module when adding a generic type to a function
+			c.table.register_fn_gen_type(c.mod + '.' + call_expr.name, generic_types)
+		} else {
+			c.table.register_fn_gen_type(call_expr.name, generic_types)
+		}
+	}
 	// TODO: remove this for actual methods, use only for compiler magic
 	// FIXME: Argument count != 1 will break these
 	if left_type_sym.kind == .array && method_name in array_builtin_methods {
@@ -1587,6 +1605,24 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	if fn_name == 'typeof' {
 		// TODO: impl typeof properly (probably not going to be a fn call)
 		return table.string_type
+	}
+	mut has_generic_generic := false // foo<T>() instead of foo<int>()
+	mut generic_types := []table.Type{}
+	for generic_type in call_expr.generic_types {
+		if generic_type.has_flag(.generic) {
+			has_generic_generic = true
+			generic_types << c.unwrap_generic(generic_type)
+		} else {
+			generic_types << generic_type
+		}
+	}
+	if has_generic_generic {
+		if c.mod != '' {
+			// Need to prepend the module when adding a generic type to a function
+			c.table.register_fn_gen_type(c.mod + '.' + fn_name, generic_types)
+		} else {
+			c.table.register_fn_gen_type(fn_name, generic_types)
+		}
 	}
 	if fn_name == 'json.encode' {
 	} else if fn_name == 'json.decode' && call_expr.args.len > 0 {

@@ -321,3 +321,40 @@ fn test_generic_fn_with_variadics(){
 	p('Good', 'morning', 'world')
 }
 */
+
+struct Context {}
+
+struct App {
+mut:
+	context Context
+}
+
+fn test<T>(mut app T) {
+	nested_test<T>(app)
+}
+
+fn nested_test<T>(mut app T) {
+	app.context = Context {}
+}
+
+fn test_pass_generic_to_nested_function() {
+	mut app := App{}
+	test(mut app)
+}
+
+/*
+struct NestedGeneric {}
+
+fn (ng NestedGeneric) nested_test<T>(mut app T) {
+	app.context = Context {}
+}
+
+fn method_test<T>(mut app T) {
+	ng := NestedGeneric{}
+	ng.nested_test<T>(app)
+}
+
+fn test_pass_generic_to_nested_method() {
+	mut app := App{}
+	method_test(mut app)
+}*/

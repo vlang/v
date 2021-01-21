@@ -1502,7 +1502,11 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		generic_list_pos = generic_list_pos.extend(p.prev_tok.position())
 		// In case of `foo<T>()`
 		// T is unwrapped and registered in the checker.
-		p.table.register_fn_gen_type(field_name, generic_types)
+		has_generic_generic := generic_types.filter(it.has_flag(.generic)).len > 0
+		if !has_generic_generic {
+			// will be added in checker
+			p.table.register_fn_gen_type(field_name, generic_types)
+		}
 	}
 	if p.tok.kind == .lpar {
 		p.next()
