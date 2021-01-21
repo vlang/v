@@ -253,7 +253,7 @@ pub fn new_context(cfg Config) &Context {
 		width: cfg.width
 		height: cfg.height
 		config: cfg
-		render_text: cfg.font_path != ''
+		render_text: cfg.font_path != '' || cfg.font_bytes_normal.len > 0
 		ft: 0
 		ui_mode: cfg.ui_mode
 	}
