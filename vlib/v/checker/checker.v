@@ -1255,15 +1255,6 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	if left_type_sym.kind == .sum_type && method_name == 'type_name' {
 		return table.string_type
 	}
-	if call_expr.generic_types.len > 0 {
-		if c.mod != '' {
-			// Need to prepend the module when adding a generic type to a function
-			// `fn_gen_types['mymod.myfn'] == ['string', 'int']`
-			c.table.register_fn_gen_type(c.mod + '.' + call_expr.name, c.cur_generic_types)
-		} else {
-			c.table.register_fn_gen_type(call_expr.name, c.cur_generic_types)
-		}
-	}
 	// TODO: remove this for actual methods, use only for compiler magic
 	// FIXME: Argument count != 1 will break these
 	if left_type_sym.kind == .array && method_name in array_builtin_methods {
@@ -1597,18 +1588,6 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		// TODO: impl typeof properly (probably not going to be a fn call)
 		return table.string_type
 	}
-	/*if call_expr.generic_types.len > 0 {
-		if c.mod != '' {
-			// Need to prepend the module when adding a generic type to a function
-			// `fn_gen_types['mymod.myfn'] == ['string', 'int']`
-			c.table.register_fn_gen_type(c.mod + '.' + fn_name, c.cur_generic_types)
-		} else {
-			c.table.register_fn_gen_type(fn_name, c.cur_generic_types)
-		}
-	}*/
-	// if c.fileis('json_test.v') {
-	// println(fn_name)
-	// }
 	if fn_name == 'json.encode' {
 	} else if fn_name == 'json.decode' && call_expr.args.len > 0 {
 		expr := call_expr.args[0].expr
@@ -5325,7 +5304,6 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 	}
 	c.expected_type = table.void_type
-
 	c.cur_fn = node
 	// Add return if `fn(...) ? {...}` have no return at end
 	if node.return_type != table.void_type && node.return_type.has_flag(.optional) &&

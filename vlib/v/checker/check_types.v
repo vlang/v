@@ -469,15 +469,13 @@ pub fn (mut c Checker) infer_fn_types(f table.Fn, mut call_expr ast.CallExpr) {
 		}
 		if typ == table.void_type {
 			c.error('could not infer generic type `$gt_name` in call to `$f.name`', call_expr.pos)
-			inferred_types << 0
-		} else {
-			if c.pref.is_verbose {
-				s := c.table.type_to_str(typ)
-				println('inferred `$f.name<$s>`')
-			}
-			inferred_types << typ
-			call_expr.generic_types << typ
 		}
+		if c.pref.is_verbose {
+			s := c.table.type_to_str(typ)
+			println('inferred `$f.name<$s>`')
+		}
+		inferred_types << typ
+		call_expr.generic_types << typ
 	}
 	c.table.register_fn_gen_type(f.name, inferred_types)
 }
