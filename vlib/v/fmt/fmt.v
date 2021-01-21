@@ -1453,17 +1453,27 @@ pub fn (mut f Fmt) wrap_infix(start_pos int, start_len int) {
 	f.line_len = start_len
 	or_pen := if condstr.contains('&&') { 3 } else { 5 }
 	cond_parts := condstr.split(' ')
+	mut grouped_cond := false
 	mut index := 0
 	mut conditions := ['']
-	mut penalties := [4]
+	mut penalties := [5]
 	for cp in cond_parts {
 		if cp in ['&&', '||'] {
-			penalties << if cp == '||' { or_pen } else { 5 }
-			conditions[index] = conditions.last()
-			conditions << '$cp '
-			index++
+			if grouped_cond {
+				conditions[index] += '$cp '
+			} else {
+				penalties << if cp == '||' { or_pen } else { 5 }
+				conditions << '$cp '
+				index++
+			}
 		} else {
 			conditions[index] += '$cp '
+			if cp.starts_with('(') {
+				grouped_cond = true
+			} else if cp.ends_with(')') {
+				grouped_cond = false
+				// TODO: split if very long
+			}
 		}
 	}
 	for i, c in conditions {
