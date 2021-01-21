@@ -4808,7 +4808,7 @@ fn (mut c Checker) check_index(typ_sym &table.TypeSymbol, index ast.Expr, index_
 			if index.op == .minus && index.right is ast.IntegerLiteral {
 				val := (index.right as ast.IntegerLiteral).val
 				if val.int() > 0 {
-					c.error('invalid index `-$val` (index must be non-negative)', pos)
+					c.error('invalid index `-$val` (index must be non-negative)', index.pos)
 				}
 			}
 		}
