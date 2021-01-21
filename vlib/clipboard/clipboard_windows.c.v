@@ -54,8 +54,8 @@ struct Clipboard {
 	max_retries int
 	retry_delay int
 mut:
-	hwnd        C.HWND
-	foo         int // TODO remove
+	hwnd C.HWND
+	foo  int // TODO remove
 }
 
 fn (cb &Clipboard) get_clipboard_lock() bool {
@@ -178,6 +178,8 @@ fn (mut cb Clipboard) get_text() string {
 	return str
 }
 
+// new_primary returns a new X11 `PRIMARY` type `Clipboard` instance allocated on the heap.
+// Please note: new_primary only works on X11 based systems.
 pub fn new_primary() &Clipboard {
 	panic('Primary clipboard is not supported on non-Linux systems.')
 }

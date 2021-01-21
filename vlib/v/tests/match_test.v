@@ -268,3 +268,8 @@ fn test_sumtype_with_array() {
 		}
 	}
 }
+
+fn test_match_expression_add() {
+	a := match true { true {1} false {2} } + 3
+	assert a == 4
+}

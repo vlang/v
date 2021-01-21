@@ -157,12 +157,14 @@ struct Property {
 	data          byteptr
 }
 
+// new_clipboard returns a new `Clipboard` instance allocated on the heap.
+// The `Clipboard` resources can be released with `free()`
 pub fn new_clipboard() &Clipboard {
 	return new_x11_clipboard(.clipboard)
 }
 
-// Initialize a new clipboard of the given selection type.
-// We can initialize multiple clipboard instances and use them separately
+// new_x11_clipboard initializes a new clipboard of the given selection type.
+// Multiple clipboard instance types can be initialized and used separately.
 fn new_x11_clipboard(selection AtomType) &Clipboard {
 	if selection !in [.clipboard, .primary, .secondary] {
 		panic('Wrong AtomType. Must be one of .primary, .secondary or .clipboard.')
@@ -225,6 +227,7 @@ fn (cb &Clipboard) take_ownership() {
 	C.XFlush(cb.display)
 }
 
+// set_text stores `text` in the system clipboard.
 pub fn (mut cb Clipboard) set_text(text string) bool {
 	if cb.window == C.Window(C.None) {
 		return false
@@ -265,8 +268,8 @@ fn (mut cb Clipboard) get_text() string {
 	return cb.text
 }
 
-// this function is crucial to handling all the different data types
-// if we ever support other mimetypes they should be handled here
+// transmit_selection is crucial to handling all the different data types.
+// If we ever support other mimetypes they should be handled here.
 fn (mut cb Clipboard) transmit_selection(xse &C.XSelectionEvent) bool {
 	if xse.target == cb.get_atom(.targets) {
 		targets := cb.get_supported_targets()
@@ -301,8 +304,9 @@ fn (mut cb Clipboard) start_listener() {
 				}
 			}
 			C.SelectionClear {
-				if unsafe { event.xselectionclear.window == cb.window } && unsafe { event.xselectionclear.selection ==
-					cb.selection }
+				if unsafe { event.xselectionclear.window == cb.window } && unsafe {
+					event.xselectionclear.selection == cb.selection
+				}
 				{
 					cb.mutex.m_lock()
 					cb.is_owner = false
@@ -334,8 +338,9 @@ fn (mut cb Clipboard) start_listener() {
 				}
 			}
 			C.SelectionNotify {
-				if unsafe { event.xselection.selection == cb.selection &&
-					event.xselection.property != C.Atom(C.None) }
+				if unsafe {
+					event.xselection.selection == cb.selection && event.xselection.property != C.Atom(C.None)
+				}
 				{
 					if unsafe { event.xselection.target == cb.get_atom(.targets) && !sent_request } {
 						sent_request = true
@@ -349,10 +354,14 @@ fn (mut cb Clipboard) start_listener() {
 						sent_request = false
 						to_be_requested = C.Atom(0)
 						cb.mutex.m_lock()
-						prop := unsafe { read_property(event.xselection.display, event.xselection.requestor,
-							event.xselection.property) }
-						unsafe { C.XDeleteProperty(event.xselection.display, event.xselection.requestor,
-							event.xselection.property) }
+						prop := unsafe {
+							read_property(event.xselection.display, event.xselection.requestor,
+								event.xselection.property)
+						}
+						unsafe {
+							C.XDeleteProperty(event.xselection.display, event.xselection.requestor,
+								event.xselection.property)
+						}
 						if cb.is_supported_target(prop.actual_type) {
 							cb.got_text = true
 							unsafe {
@@ -369,8 +378,10 @@ fn (mut cb Clipboard) start_listener() {
 	}
 }
 
-// Helpers
-// Initialize all the atoms we need
+/*
+* Helpers
+*/
+// intern_atoms initializes all the atoms we need.
 fn (mut cb Clipboard) intern_atoms() {
 	cb.atoms << C.Atom(4) // XA_ATOM
 	cb.atoms << C.Atom(31) // XA_STRING
@@ -404,7 +415,7 @@ fn read_property(d &C.Display, w C.Window, p C.Atom) Property {
 	return Property{actual_type, actual_format, nitems, ret}
 }
 
-// Finds the best target given a local copy of a property.
+// pick_target finds the best target given a local copy of a property.
 fn (cb &Clipboard) pick_target(prop Property) C.Atom {
 	// The list of targets is a list of atoms, so it should have type XA_ATOM
 	// but it may have the type TARGETS instead.
@@ -485,7 +496,8 @@ fn new_display() &C.Display {
 	return C.XOpenDisplay(C.NULL)
 }
 
-// create a new PRIMARY clipboard (only supported on Linux)
+// new_primary returns a new X11 `PRIMARY` type `Clipboard` instance allocated on the heap.
+// Please note: new_primary only works on X11 based systems.
 pub fn new_primary() &Clipboard {
 	return new_x11_clipboard(.primary)
 }

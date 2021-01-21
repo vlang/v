@@ -14,6 +14,23 @@ fn test_array_or() {
 	assert good == 4
 }
 
+[direct_array_access]
+fn test_array_or_direct() {
+	m := [3, 4, 5]
+	mut testvar := 17
+	el := m[4] or {
+		testvar = -43
+		999
+	}
+	good := m[1] or {
+		testvar = 11
+		0
+	}
+	assert testvar == -43
+	assert el == 999
+	assert good == 4
+}
+
 fn test_map_or() {
 	m := {
 		'as': 3
@@ -47,6 +64,13 @@ fn get_arr_el(i int) ?int {
 	return r
 }
 
+[direct_array_access]
+fn get_arr_el_direct(i int) ?int {
+	m := [3, 4, 5]
+	r := m[i] ?
+	return r
+}
+
 fn test_propagation() {
 	mut testvar1 := 12
 	mut testvar2 := 78
@@ -66,12 +90,20 @@ fn test_propagation() {
 		testvar2 = 177
 		int(-67)
 	}
+	m := get_arr_el_direct(3) or {
+		17
+	}
+	n := get_arr_el_direct(0) or {
+		int(-73)
+	}
 	assert testvar1 == -34
 	assert testvar2 == 99
 	assert e == 7
 	assert f == 3
 	assert g == 12
 	assert h == 3
+	assert m == 17
+	assert n == 3
 }
 
 fn get_arr_el_nested(i int) ?int {
