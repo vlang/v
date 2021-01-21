@@ -4154,12 +4154,16 @@ fn (c Checker) smartcast_sumtype(expr ast.Expr, cur_type table.Type, to_type tab
 			mut is_mut := false
 			mut sum_type_casts := []table.Type{}
 			expr_sym := c.table.get_type_symbol(expr.expr_type)
+			mut orig_type := 0
 			if field := c.table.struct_find_field(expr_sym, expr.field_name) {
 				if field.is_mut {
 					root_ident := expr.root_ident()
 					if v := scope.find_var(root_ident.name) {
 						is_mut = v.is_mut
 					}
+				}
+				if orig_type == 0 {
+					orig_type = field.typ
 				}
 			}
 			if field := scope.find_struct_field(expr.expr_type, expr.field_name) {
@@ -4174,6 +4178,7 @@ fn (c Checker) smartcast_sumtype(expr ast.Expr, cur_type table.Type, to_type tab
 					typ: cur_type
 					sum_type_casts: sum_type_casts
 					pos: expr.pos
+					orig_type: orig_type
 				})
 			}
 		}
@@ -4181,11 +4186,14 @@ fn (c Checker) smartcast_sumtype(expr ast.Expr, cur_type table.Type, to_type tab
 			mut is_mut := false
 			mut sum_type_casts := []table.Type{}
 			mut is_already_casted := false
-			if expr.obj is ast.Var {
-				v := expr.obj as ast.Var
-				is_mut = v.is_mut
-				sum_type_casts << v.sum_type_casts
-				is_already_casted = v.pos.pos == expr.pos.pos
+			mut orig_type := 0
+			if mut expr.obj is ast.Var {
+				is_mut = expr.obj.is_mut
+				sum_type_casts << expr.obj.sum_type_casts
+				is_already_casted = expr.obj.pos.pos == expr.pos.pos
+				if orig_type == 0 {
+					orig_type = expr.obj.typ
+				}
 			}
 			// smartcast either if the value is immutable or if the mut argument is explicitly given
 			if (!is_mut || expr.is_mut) && !is_already_casted {
@@ -4197,6 +4205,7 @@ fn (c Checker) smartcast_sumtype(expr ast.Expr, cur_type table.Type, to_type tab
 					is_used: true
 					is_mut: expr.is_mut
 					sum_type_casts: sum_type_casts
+					orig_type: orig_type
 				})
 			}
 		}
