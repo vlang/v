@@ -454,7 +454,7 @@ fn (mut p Parser) parse_generic_params() []ast.GenericParam {
 			p.error('duplicated generic parameter')
 		}
 		if count > 8 {
-			p.error('too many generic parameters, maximum is 9')
+			p.error('cannot have more than 9 generic parameters')
 		}
 		p.check(.name)
 		param_names << name
