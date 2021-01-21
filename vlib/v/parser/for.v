@@ -93,7 +93,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		mut val_var_name := p.check_name()
 		if p.tok.kind == .comma {
 			if val_is_mut {
-				p.error_with_pos('`$val_var_name` must be immutable', mut_pos)
+				p.error_with_pos('index of array or key of map cannot be mutated', mut_pos)
 			}
 			p.next()
 			if p.tok.kind == .key_mut {
