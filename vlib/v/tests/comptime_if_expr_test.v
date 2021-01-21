@@ -80,3 +80,19 @@ fn test_generic_t_is3() {
 	}
 	assert res == GenericTIsTest{}
 }
+
+fn test_generic_t_is_with_else() {
+	res := generic_t_is_with_return_optional<GenericTIsTest>('') or {
+		assert false
+		GenericTIsTest{}
+	}
+	assert res == GenericTIsTest{}
+}
+
+fn generic_t_is_with_else<T>(raw_data string) ?T {
+	$if T is string {
+		return ''
+	} $else {
+		return T{}
+	}
+}
