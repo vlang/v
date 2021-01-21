@@ -429,9 +429,9 @@ pub mut:
 	// 10 <- original type (orig_type)
 	//   [11, 12, 13] <- cast order (sum_type_casts)
 	//        12 <- the current casted type (typ)
-	pos            token.Position
-	is_used        bool
-	is_changed     bool // to detect mutable vars that are never changed
+	pos        token.Position
+	is_used    bool
+	is_changed bool // to detect mutable vars that are never changed
 	//
 	// (for setting the position after the or block for autofree)
 	is_or  bool // `x := foo() or { ... }`
