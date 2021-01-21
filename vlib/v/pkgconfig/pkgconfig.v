@@ -6,9 +6,11 @@ import os
 const (
 	default_paths = [
 		'/usr/local/lib/x86_64-linux-gnu/pkgconfig',
+		'/usr/local/lib64/pkgconfig',
 		'/usr/local/lib/pkgconfig',
 		'/usr/local/share/pkgconfig',
 		'/usr/lib/x86_64-linux-gnu/pkgconfig',
+		'/usr/lib64/pkgconfig',
 		'/usr/lib/pkgconfig',
 		'/usr/share/pkgconfig',
 	]
