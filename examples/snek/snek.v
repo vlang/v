@@ -3,7 +3,6 @@ import gx
 import sokol.sapp
 import time
 import rand
-import os
 
 // constants
 const (
@@ -166,12 +165,19 @@ fn on_frame(mut app App) {
 	app.gg.end()
 }
 
+const font = $embed_file("../assets/fonts/RobotoMono-Regular.ttf")
+
 // setup
 fn main() {
 	mut app := App{
 		gg: 0
 	}
 	app.reset_game()
+
+	mut font_copy := font
+	font_bytes := unsafe {
+		font_copy.data().vbytes(font_copy.len)
+	}
 
 	app.gg = gg.new_context(
 		bg_color: gx.white
@@ -184,7 +190,7 @@ fn main() {
 		create_window: true
 		resizable: false
 		window_title: 'snek'
-		font_path: os.resource_abs_path(os.join_path('../assets/fonts/', 'RobotoMono-Regular.ttf'))
+		font_bytes_normal: font_bytes
 	)
 
 	app.gg.run()
