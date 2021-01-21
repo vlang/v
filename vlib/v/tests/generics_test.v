@@ -362,3 +362,18 @@ fn generic_return_nested_map<M>() map[string]map[string]M {
 fn test_generic_return_nested_map() {
 	assert typeof(generic_return_nested_map<string>()).name == 'map[string]map[string]string'
 }*/
+
+/*
+fn multi_return<A, B>() (A, B) {
+	return A{}, B{}
+}
+
+struct Foo1{}
+struct Foo2{}
+struct Foo3{}
+struct Foo4{}
+
+fn test_multi_return() {
+	// TODO: multi_return<Foo1, Foo2>()
+	// TODO: temulti_returnst<Foo3, Foo4>()
+}*/
