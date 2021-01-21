@@ -476,7 +476,7 @@ pub fn (mut c Checker) infer_fn_types(f table.Fn, mut call_expr ast.CallExpr) {
 				println('inferred `$f.name<$s>`')
 			}
 			inferred_types << typ
-			call_expr.generic_types[gi] = typ
+			call_expr.generic_types << typ
 		}
 	}
 	c.table.register_fn_gen_type(f.name, inferred_types)
