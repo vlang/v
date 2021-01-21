@@ -2081,6 +2081,10 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 			selector_expr.typ = table.int_type
 			return table.int_type
 		}
+		if sym.kind == .chan && field_name == 'closed' {
+			selector_expr.typ = table.bool_type
+			return table.bool_type
+		}
 	}
 	mut unknown_field_msg := 'type `$sym.name` has no field or method `$field_name`'
 	mut has_field := false
