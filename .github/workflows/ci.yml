@@ -848,7 +848,7 @@ jobs:
     - name: Build local v
       run: |
         make -j4
-        ./v -g self
+        ./v -g cmd/tools/vtest-parser.v
     - name: Run test-parser over fuzzed files
       run: |
         zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/hello_world.v > examples/hello_world_fuzz.v

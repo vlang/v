@@ -554,11 +554,11 @@ fn (mut s Scanner) text_scan() token.Token {
 		} else {
 			s.is_started = true
 		}
-		if s.pos >= s.text.len {
-			return s.end_of_file()
-		}
 		if !s.is_inside_string {
 			s.skip_whitespace()
+		}
+		if s.pos >= s.text.len {
+			return s.end_of_file()
 		}
 		// End of $var, start next string
 		if s.is_inter_end {
