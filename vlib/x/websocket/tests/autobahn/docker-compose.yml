@@ -1,4 +1,4 @@
-version: '3.7'
+version: '3'
 services:
   server:
     container_name: autobahn_server
@@ -7,17 +7,6 @@ services:
     ports:
       - "9001:9001"
       - "8080:8080"
-
-    sysctls:
-      net.core.somaxconn: 4096
-      net.ipv4.tcp_syncookies: 0
-    
-    ulimits:
-      nproc: 65535
-      nofile:
-        soft: 20000
-        hard: 40000
-
   server_wss:
     container_name: autobahn_server_wss
     build: fuzzing_server_wss
@@ -25,29 +14,8 @@ services:
     ports:
       - "9002:9002"
       - "8081:8080"
-
-    sysctls:
-      net.core.somaxconn: 4096
-      net.ipv4.tcp_syncookies: 0
-    
-    ulimits:
-      nproc: 65535
-      nofile:
-        soft: 20000
-        hard: 40000
-
   client:
     container_name: autobahn_client
     build: 
       dockerfile: vlib/x/websocket/tests/autobahn/ws_test/Dockerfile 
       context: ../../../../../
-
-    sysctls:
-      net.core.somaxconn: 4096
-      net.ipv4.tcp_syncookies: 0
-    
-    ulimits:
-      nproc: 65535
-      nofile:
-        soft: 20000
-        hard: 40000
