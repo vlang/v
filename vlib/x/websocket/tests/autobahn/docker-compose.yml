@@ -10,6 +10,10 @@ services:
 
     sysctls:
       net.core.somaxconn: 4096
+      net.ipv4.tcp_syncookies: 0
+    
+    ulimits:
+      nproc: 65535
 
   server_wss:
     container_name: autobahn_server_wss
@@ -21,6 +25,10 @@ services:
 
     sysctls:
       net.core.somaxconn: 4096
+      net.ipv4.tcp_syncookies: 0
+    
+    ulimits:
+      nproc: 65535
 
   client:
     container_name: autobahn_client
@@ -30,3 +38,7 @@ services:
 
     sysctls:
       net.core.somaxconn: 4096
+      net.ipv4.tcp_syncookies: 0
+    
+    ulimits:
+      nproc: 65535
