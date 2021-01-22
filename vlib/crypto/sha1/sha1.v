@@ -56,7 +56,7 @@ pub fn new() &Digest {
 
 // write writes the contents of `p_` to the internal hash representation.
 [manualfree]
-fn (mut d Digest) write(p_ []byte) int {
+pub fn (mut d Digest) write(p_ []byte) int {
 	nn := p_.len
 	unsafe {
 		mut p := p_
@@ -91,7 +91,7 @@ fn (mut d Digest) write(p_ []byte) int {
 }
 
 // sum returns a copy of the generated sum of the bytes in `b_in`.
-fn (d &Digest) sum(b_in []byte) []byte {
+pub fn (d &Digest) sum(b_in []byte) []byte {
 	// Make a copy of d so that caller can keep writing and summing.
 	mut d0 := *d
 	hash := d0.checksum()
