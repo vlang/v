@@ -1342,7 +1342,7 @@ pub fn (mut f Fmt) sql_expr(node ast.SqlExpr) {
 			f.write(' ')
 		}
 	}
-	f.write('from ${util.strip_mod_name(table.name)}')
+	f.write('from ${util.strip_mod_name(table_name)}')
 	if node.has_where {
 		f.write(' where ')
 		f.expr(node.where_expr)
