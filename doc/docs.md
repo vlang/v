@@ -2484,6 +2484,7 @@ res := ch.try_push(a) // try to perform `ch <- a`
 println(res)
 l := ch.len // number of elements in queue
 c := ch.cap // maximum queue length
+is_closed := ch.closed // bool flag - has `ch` been closed
 println(l)
 println(c)
 mut b := Abc{}
@@ -2495,7 +2496,10 @@ The `try_push/pop()` methods will return immediately with one of the results
 `.success`, `.not_ready` or `.closed` - dependent on whether the object has been transferred or
 the reason why not.
 Usage of these methods and properties in production is not recommended -
-algorithms based on them are often subject to race conditions. Use `select` instead.
+algorithms based on them are often subject to race conditions. Especially `.len` and
+`.closed` should not be used to make decisions.
+Use `or` branches, error propagation or `select` instead (see [Syntax and Usage](#syntax-and-usage)
+and [Channel Select](#channel-select) above).
 
 ### Shared Objects
 

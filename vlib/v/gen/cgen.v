@@ -2933,8 +2933,8 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		g.write('$info.size')
 		return
 	}
-	if sym.kind == .chan && node.field_name == 'len' {
-		g.write('sync__Channel_len(')
+	if sym.kind == .chan && (node.field_name == 'len' || node.field_name == 'closed') {
+		g.write('sync__Channel_${node.field_name}(')
 		g.expr(node.expr)
 		g.write(')')
 		return
