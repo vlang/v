@@ -1153,7 +1153,8 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 						c.error('unknown field `${type_str}.$expr.field_name`', expr.pos)
 						return '', pos
 					}
-				} .array, .string {
+				}
+				.array, .string {
 					// This should only happen in `builtin`
 					// TODO Remove `crypto.rand` when possible (see vlib/crypto/rand/rand.v,
 					// if `c_array_to_bytes_tmp` doesn't exist, then it's safe to remove it)

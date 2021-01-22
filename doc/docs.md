@@ -1851,9 +1851,10 @@ fn (c Cat) speak() string {
 	return 'meow'
 }
 
+// unlike Go and like TypeScript, V's interfaces can define fields, not just methods.
 interface Speaker {
+	breed string
 	speak() string
-	breed string // unlike Go and like TypeScript, V's interfaces can have fields, not just methods
 }
 
 dog := Dog{'Leonberger'}
@@ -1866,7 +1867,7 @@ for item in arr {
 }
 ```
 
-A type implements an interface by implementing its methods and/or fields.
+A type implements an interface by implementing its methods and fields.
 There is no explicit declaration of intent, no "implements" keyword.
 
 We can test the underlying type of an interface using dynamic cast operators:
