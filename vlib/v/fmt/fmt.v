@@ -1442,7 +1442,7 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	}
 	if !buffering_save && f.buffering {
 		f.buffering = false
-		if f.line_len > max_len.last() {
+		if !f.single_line_if && f.line_len > max_len.last() {
 			f.wrap_infix(infix_start, start_len)
 		}
 	}
@@ -1453,11 +1453,14 @@ pub fn (mut f Fmt) wrap_infix(start_pos int, start_len int) {
 	cut_span := f.out.len - start_pos
 	condstr := f.out.cut_last(cut_span)
 	is_cond_infix := condstr.contains_any_substr(['&&', '||'])
-	if (!is_cond_infix && !condstr.contains('+')) || (is_cond_infix && f.single_line_if) {
+	if !is_cond_infix && !condstr.contains('+') {
 		f.write(condstr)
 		return
 	}
 	f.line_len = start_len
+	if start_len == 0 {
+		f.empty_line = true
+	}
 	or_pen := if condstr.contains('&&') { 3 } else { 5 }
 	cond_parts := condstr.split(' ')
 	mut grouped_cond := false
