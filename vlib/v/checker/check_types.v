@@ -500,13 +500,15 @@ fn (mut c Checker) resolve_generic_type(generic_type table.Type, generic_names [
 		return typ
 	} else if sym.kind == .array {
 		info := sym.info as table.Array
-		mut elem_sym := c.table.get_type_symbol(info.elem_type)
+		mut elem_type := info.elem_type
+		mut elem_sym := c.table.get_type_symbol(elem_type)
 		mut dims := 1
 		for mut elem_sym.info is table.Array {
-			elem_sym = c.table.get_type_symbol(elem_sym.info.elem_type)
+			elem_type = elem_sym.info.elem_type
+			elem_sym = c.table.get_type_symbol(elem_type)
 			dims++
 		}
-		if typ := c.resolve_generic_type(info.elem_type, generic_names, call_expr) {
+		if typ := c.resolve_generic_type(elem_type, generic_names, call_expr) {
 			idx := c.table.find_or_register_array_with_dims(typ, dims)
 			array_typ := table.new_type(idx)
 			return array_typ
