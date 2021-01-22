@@ -5220,16 +5220,15 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) table.Type {
 	defer {
 		c.inside_sql = false
 	}
-	sym := c.table.get_type_symbol(node.table_type)
+	sym := c.table.get_type_symbol(node.table_expr.typ)
 	if sym.kind == .placeholder {
 		c.error('orm: unknown type `$sym.name`', node.pos)
 		return table.void_type
 	}
 	c.cur_orm_ts = sym
 	info := sym.info as table.Struct
-	fields := c.fetch_and_verify_orm_fields(info, node.pos, node.table_name)
+	fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, sym.name)
 	node.fields = fields
-	node.table_name = sym.name
 	if node.has_where {
 		c.expr(node.where_expr)
 	}
@@ -5251,17 +5250,18 @@ fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) table.Type {
 	defer {
 		c.inside_sql = false
 	}
-	if node.table_type == 0 {
-		c.error('orm: unknown type `$node.table_name`', node.pos)
+	sym := c.table.get_type_symbol(node.table_expr.typ)
+	if node.table_expr.typ == 0 {
+		c.error('orm: unknown type `$sym.name`', node.pos)
 	}
-	sym := c.table.get_type_symbol(node.table_type)
 	if sym.kind == .placeholder {
 		c.error('orm: unknown type `$sym.name`', node.pos)
 		return table.void_type
 	}
 	c.cur_orm_ts = sym
 	info := sym.info as table.Struct
-	fields := c.fetch_and_verify_orm_fields(info, node.pos, node.table_name)
+	table_sym := c.table.get_type_symbol(node.table_expr.typ)
+	fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, table_sym.name)
 	node.fields = fields
 	c.expr(node.db_expr)
 	if node.kind == .update {
@@ -5278,6 +5278,7 @@ fn (mut c Checker) fetch_and_verify_orm_fields(info table.Struct, pos token.Posi
 		[table.string_type, table.int_type, table.bool_type] && !it.attrs.contains('skip'))
 	if fields.len == 0 {
 		c.error('V orm: select: empty fields in `$table_name`', pos)
+		return []table.Field{}
 	}
 	if fields[0].name != 'id' {
 		c.error('V orm: `id int` must be the first field in `$table_name`', pos)
