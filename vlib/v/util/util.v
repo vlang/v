@@ -10,7 +10,7 @@ import v.vmod
 import v.util.recompilation
 
 pub const (
-	v_version = '0.2.1'
+	v_version = '0.2.2'
 )
 
 // math.bits is needed by strconv.ftoa
