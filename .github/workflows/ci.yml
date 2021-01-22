@@ -846,7 +846,9 @@ jobs:
     - name: Install zzuf
       run: sudo apt install -qq zzuf
     - name: Build local v
-      run: make -j4
+      run: |
+        make -j4
+        ./v -g self
     - name: Run test-parser over fuzzed files
       run: |
         zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/hello_world.v > examples/hello_world_fuzz.v
