@@ -7,7 +7,7 @@ mut:
 	breed string
 }
 
-fn (mut c Cat) name() string {
+fn (c &Cat) name() string {
 	if c.breed != '' {
 		assert c.breed == 'Persian'
 	}
@@ -113,7 +113,7 @@ fn test_perform_speak() {
 	*/
 }
 
-fn change_animal_breed(a &Animal, new string) {
+fn change_animal_breed(mut a Animal, new string) {
 	a.set_breed(new)
 }
 
@@ -122,7 +122,7 @@ fn test_interface_ptr_modification() {
 		breed: 'Persian'
 	}
 	// TODO Should fail and require `mut cat`
-	change_animal_breed(cat, 'Siamese')
+	change_animal_breed(mut cat, 'Siamese')
 	assert cat.breed == 'Siamese'
 }
 
@@ -218,11 +218,9 @@ fn (mut b Boss) return_speaker2() ?Speaker2 {
 	return b
 }
 
-fn return_speaker2(sp Speaker2) Speaker2 {
+fn return_speaker2(mut sp Speaker2) Speaker2 {
 	s := sp.return_speaker()
-	s2 := sp.return_speaker2() or {
-		return sp
-	}
+	s2 := sp.return_speaker2() or { return *sp }
 	s.speak()
 	s2.speak()
 	return s2
@@ -231,7 +229,7 @@ fn return_speaker2(sp Speaker2) Speaker2 {
 fn test_interface_returning_interface() {
 	mut b := Boss{'bob'}
 	assert b.name == 'bob'
-	s2 := return_speaker2(b)
+	s2 := return_speaker2(mut b)
 	if s2 is Boss {
 		assert s2.name == 'boss'
 	}
