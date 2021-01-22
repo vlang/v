@@ -1327,7 +1327,7 @@ pub fn (mut f Fmt) sql_expr(node ast.SqlExpr) {
 	f.writeln(' {')
 	f.write('\t')
 	f.write('select ')
-	esym := f.table.get_type_symbol(node.table_type)
+	esym := f.table.get_type_symbol(node.table.typ)
 	table_name := esym.name
 	if node.is_count {
 		f.write('count ')
