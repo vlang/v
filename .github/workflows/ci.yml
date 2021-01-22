@@ -885,19 +885,19 @@ jobs:
         ./v  -o v2 cmd/v
         ./v2 -o v3 cmd/v
 
-  #vls-compiles:
-  #  runs-on: ubuntu-20.04
-  #  timeout-minutes: 30
-  #  steps:
-  #  - uses: actions/checkout@v2
-  #  - name: Build V
-  #    run: make -j2 && ./v -cc gcc -o v cmd/v
-  #  - name: Clone VLS
-  #    run: git clone --depth 1 https://github.com/vlang/vls
-  #  - name: Build VLS
-  #    run: cd vls; ../v cmd/vls ; cd ..
-  #  - name: Build VLS with -prod
-  #    run: cd vls; ../v -prod cmd/vls ; cd ..
+  vls-compiles:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build V
+      run: make -j2 && ./v -cc gcc -o v cmd/v
+    - name: Clone VLS
+      run: git clone --depth 1 https://github.com/vlang/vls
+    - name: Build VLS
+      run: cd vls; ../v cmd/vls ; cd ..
+    - name: Build VLS with -prod
+      run: cd vls; ../v -prod cmd/vls ; cd ..
 
   vab-compiles:
     runs-on: ubuntu-20.04
