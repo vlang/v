@@ -4843,6 +4843,7 @@ fn (mut c Checker) check_index(typ_sym &table.TypeSymbol, index ast.Expr, index_
 		}
 	}
 }
+
 pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 	mut typ := c.expr(node.left)
 	node.left_type = typ
