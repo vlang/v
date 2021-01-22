@@ -132,7 +132,7 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 		kind = .update
 	}
 	mut inserted_var_name := ''
-	mut sql_table := ast.SqlTable{}
+	mut table_name := ''
 	if kind != .delete {
 		expr := p.expr(0)
 		match expr {
@@ -140,7 +140,7 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 				if kind == .insert {
 					inserted_var_name = expr.name
 				} else if kind == .update {
-					sql_table.name = expr.name
+					table_name = expr.name
 				}
 			}
 			else {
@@ -185,11 +185,11 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 		sym := p.table.get_type_symbol(table_type)
 		// info := sym.info as table.Struct
 		// fields := info.fields.filter(it.typ in [table.string_type, table.int_type, table.bool_type])
-		sql_table.name = sym.name
+		table_name = sym.name
 	} else if kind == .update {
 		if !p.pref.is_fmt {
 			// NB: in vfmt mode, v parses just a single file and table_name may not have been registered
-			idx := p.table.find_type_idx(p.prepend_mod(sql_table.name))
+			idx := p.table.find_type_idx(p.prepend_mod(table_name))
 			table_type = table.new_type(idx)
 		}
 		p.check_sql_keyword('where') or { return ast.SqlStmt{} }
@@ -198,7 +198,7 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 		table_pos = p.tok.position()
 		table_type = p.parse_type()
 		sym := p.table.get_type_symbol(table_type)
-		sql_table.name = sym.name
+		table_name = sym.name
 		p.check_sql_keyword('where') or { return ast.SqlStmt{} }
 		where_expr = p.expr(0)
 	}
@@ -206,7 +206,11 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 	pos.last_line = p.prev_tok.line_nr
 	return ast.SqlStmt{
 		db_expr: db_expr
-		table: sql_table
+		table: ast.SqlTable{
+			typ: table_type
+			name: table_name
+			pos: table_pos
+		}
 		object_var_name: inserted_var_name
 		pos: pos
 		updated_columns: updated_columns
