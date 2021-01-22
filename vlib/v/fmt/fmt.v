@@ -2362,10 +2362,10 @@ pub fn (mut f Fmt) sql_stmt(node ast.SqlStmt) {
 	f.writeln(' {')
 	match node.kind {
 		.insert {
-			f.writeln('\tinsert $node.object_var_name into ${util.strip_mod_name(node.table_name)}')
+			f.writeln('\tinsert $node.object_var_name into ${util.strip_mod_name(node.table.name)}')
 		}
 		.update {
-			f.write('\tupdate ${util.strip_mod_name(node.table_name)} set ')
+			f.write('\tupdate ${util.strip_mod_name(node.table.name)} set ')
 			for i, col in node.updated_columns {
 				f.write('$col = ')
 				f.expr(node.update_exprs[i])
@@ -2381,7 +2381,7 @@ pub fn (mut f Fmt) sql_stmt(node ast.SqlStmt) {
 			f.writeln('')
 		}
 		.delete {
-			f.write('\tdelete from ${util.strip_mod_name(node.table_name)} where ')
+			f.write('\tdelete from ${util.strip_mod_name(node.table.name)} where ')
 			f.expr(node.where_expr)
 			f.writeln('')
 		}
