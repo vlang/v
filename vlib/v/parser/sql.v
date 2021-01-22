@@ -101,9 +101,8 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		has_desc: has_desc
 		is_array: !query_one
 		pos: pos
-		table: ast.SqlTable{
+		table_expr: ast.Type{
 			typ: table_type
-			name: p.table.types[int(table_type)].name
 			pos: table_pos
 		}
 	}
@@ -132,18 +131,15 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 		kind = .update
 	}
 	mut inserted_var_name := ''
-	mut table_name := ''
+	mut table_type := table.Type(0)
 	if kind != .delete {
-		expr := p.expr(0)
-		match expr {
-			ast.Ident {
-				if kind == .insert {
+		if kind == .update {
+			table_type = p.parse_type()
+		} else if kind == .insert {
+			expr := p.expr(0)
+			if expr is ast.Ident {
 					inserted_var_name = expr.name
-				} else if kind == .update {
-					table_name = expr.name
-				}
-			}
-			else {
+			} else {
 				p.error('can only insert variables')
 				return ast.SqlStmt{}
 			}
@@ -177,28 +173,16 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 	}
 
 	mut table_pos := p.tok.position()
-	mut table_type := table.Type(0)
 	mut where_expr := ast.Expr{}
 	if kind == .insert {
 		table_pos = p.tok.position()
-		table_type = p.parse_type() // `User`
-		sym := p.table.get_type_symbol(table_type)
-		// info := sym.info as table.Struct
-		// fields := info.fields.filter(it.typ in [table.string_type, table.int_type, table.bool_type])
-		table_name = sym.name
+		table_type = p.parse_type()
 	} else if kind == .update {
-		if !p.pref.is_fmt {
-			// NB: in vfmt mode, v parses just a single file and table_name may not have been registered
-			idx := p.table.find_type_idx(p.prepend_mod(table_name))
-			table_type = table.new_type(idx)
-		}
 		p.check_sql_keyword('where') or { return ast.SqlStmt{} }
 		where_expr = p.expr(0)
 	} else if kind == .delete {
 		table_pos = p.tok.position()
 		table_type = p.parse_type()
-		sym := p.table.get_type_symbol(table_type)
-		table_name = sym.name
 		p.check_sql_keyword('where') or { return ast.SqlStmt{} }
 		where_expr = p.expr(0)
 	}
@@ -206,9 +190,8 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 	pos.last_line = p.prev_tok.line_nr
 	return ast.SqlStmt{
 		db_expr: db_expr
-		table: ast.SqlTable{
+		table_expr: ast.Type{
 			typ: table_type
-			name: table_name
 			pos: table_pos
 		}
 		object_var_name: inserted_var_name

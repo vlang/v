@@ -1146,17 +1146,8 @@ pub:
 	updated_columns []string // for `update set x=y`
 	update_exprs    []Expr   // for `update`
 pub mut:
-	table  SqlTable
-	fields []table.Field
-}
-
-// SqlTable is the table/struct name in `select from Person`.
-pub struct SqlTable {
-pub:
-	pos token.Position
-	typ table.Type
-pub mut:
-	name string
+	table_expr Type
+	fields     []table.Field
 }
 
 pub struct SqlExpr {
@@ -1176,8 +1167,8 @@ pub:
 	has_limit   bool
 	limit_expr  Expr
 pub mut:
-	table  SqlTable
-	fields []table.Field
+	table_expr Type
+	fields     []table.Field
 }
 
 [inline]
