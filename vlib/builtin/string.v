@@ -529,7 +529,7 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 		i = 1
 		for ch in s {
 			if nth > 0 && i >= nth {
-				res << s.right(i)
+				res << s[i..]
 				break
 			}
 			res << ch.ascii_str()
@@ -556,7 +556,7 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 	}
 	// Then the remaining right part of the string
 	if nth < 1 || res.len < nth {
-		res << s.right(start)
+		res << s[start..]
 	}
 	return res
 }
@@ -587,24 +587,6 @@ pub fn (s string) split_into_lines() []string {
 		}
 	}
 	return res
-}
-
-// left returns the `n`th leftmost characters of the string.
-// Example: assert 'hello'.left(2) == 'he'
-fn (s string) left(n int) string {
-	if n >= s.len {
-		return s
-	}
-	return s.substr(0, n)
-}
-
-// right returns the `n`th rightmost characters of the string.
-// Example: assert 'hello'.right(2) == 'lo'
-fn (s string) right(n int) string {
-	if n >= s.len {
-		return ''
-	}
-	return s.substr(n, s.len)
 }
 
 // used internally for [2..4]
@@ -936,7 +918,7 @@ pub fn (s string) capitalize() string {
 	}
 	return s[0].ascii_str().to_upper() + s[1..]
 	// sl := s.to_lower()
-	// cap := sl[0].str().to_upper() + sl.right(1)
+	// cap := sl[0].str().to_upper() + sl[1..]
 	// return cap
 }
 
@@ -986,12 +968,12 @@ pub fn (s string) find_between(start string, end string) string {
 		return ''
 	}
 	// First get everything to the right of 'start'
-	val := s.right(start_pos + start.len)
+	val := s[start_pos + start.len..]
 	end_pos := val.index_(end)
 	if end_pos == -1 {
 		return val
 	}
-	return val.left(end_pos)
+	return val[..end_pos]
 }
 
 /*
@@ -1057,7 +1039,7 @@ pub fn (s string) trim_left(cutset string) string {
 	for pos < s.len && s[pos] in cs_arr {
 		pos++
 	}
-	return s.right(pos)
+	return s[pos..]
 }
 
 // trim_right strips any of the characters given in `cutset` from the right of the string.
@@ -1074,7 +1056,7 @@ pub fn (s string) trim_right(cutset string) string {
 	return if pos < 0 {
 		''
 	} else {
-		s.left(pos + 1)
+		s[..pos + 1]
 	}
 }
 
@@ -1428,7 +1410,7 @@ pub fn (s string) all_before(dot string) string {
 	if pos == -1 {
 		return s
 	}
-	return s.left(pos)
+	return s[..pos]
 }
 
 // all_before_last returns the contents before the last occurence of `dot` in the string.
@@ -1438,7 +1420,7 @@ pub fn (s string) all_before_last(dot string) string {
 	if pos == -1 {
 		return s
 	}
-	return s.left(pos)
+	return s[..pos]
 }
 
 // all_after returns the contents after `dot` in the string.
@@ -1448,7 +1430,7 @@ pub fn (s string) all_after(dot string) string {
 	if pos == -1 {
 		return s
 	}
-	return s.right(pos + dot.len)
+	return s[pos + dot.len..]
 }
 
 // all_after_last returns the contents after the last occurence of `dot` in the string.
@@ -1458,7 +1440,7 @@ pub fn (s string) all_after_last(dot string) string {
 	if pos == -1 {
 		return s
 	}
-	return s.right(pos + dot.len)
+	return s[pos + dot.len..]
 }
 
 // after returns the contents after the last occurence of `dot` in the string.
@@ -1480,7 +1462,7 @@ pub fn (s string) after_char(dot byte) string {
 	if pos == 0 {
 		return s
 	}
-	return s.right(pos + 1)
+	return s[pos + 1..]
 }
 
 // fn (s []string) substr(a, b int) string {
