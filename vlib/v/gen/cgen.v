@@ -659,12 +659,6 @@ fn (g &Gen) type_sidx(t table.Type) string {
 
 //
 pub fn (mut g Gen) write_typedef_types() {
-	g.typedefs.writeln('
-typedef struct {
-	void* _object;
-	int _interface_idx;
-} _Interface;
-')
 	for typ in g.table.types {
 		match typ.kind {
 			.alias {
@@ -685,7 +679,16 @@ typedef struct {
 				g.type_definitions.writeln('typedef array $typ.cname;')
 			}
 			.interface_ {
-				g.type_definitions.writeln('typedef _Interface ${c_name(typ.name)};')
+				info := typ.info as table.Interface
+				g.type_definitions.writeln('typedef struct {')
+				g.type_definitions.writeln('\tvoid* _object;')
+				g.type_definitions.writeln('\tint _interface_idx;')
+				for field in info.fields {
+					styp := g.typ(field.typ)
+					cname := c_name(field.name)
+					g.type_definitions.writeln('\t$styp $cname;')
+				}
+				g.type_definitions.writeln('} ${c_name(typ.name)};')
 			}
 			.chan {
 				if typ.name != 'chan' {
@@ -5909,7 +5912,6 @@ fn (mut g Gen) interface_table() string {
 			}
 		}
 		mut cast_functions := strings.new_builder(100)
-		cast_functions.write('// Casting functions for interface "$interface_name"')
 		mut methods_wrapper := strings.new_builder(100)
 		methods_wrapper.writeln('// Methods wrapper for interface "$interface_name"')
 		mut already_generated_mwrappers := map[string]int{}
@@ -5931,23 +5933,31 @@ fn (mut g Gen) interface_table() string {
 			already_generated_mwrappers[interface_index_name] = current_iinidx
 			current_iinidx++
 			// eprintln('>>> current_iinidx: ${current_iinidx-iinidx_minimum_base} | interface_index_name: $interface_index_name')
-			sb.writeln('$staticprefix _Interface I_${cctype}_to_Interface_${interface_name}($cctype* x);')
-			sb.writeln('$staticprefix _Interface* I_${cctype}_to_Interface_${interface_name}_ptr($cctype* x);')
+			sb.writeln('$staticprefix $interface_name I_${cctype}_to_Interface_${interface_name}($cctype* x);')
+			sb.writeln('$staticprefix $interface_name* I_${cctype}_to_Interface_${interface_name}_ptr($cctype* x);')
+			mut cast_struct := strings.new_builder(100)
+			cast_struct.writeln('($interface_name) {')
+			cast_struct.writeln('\t\t._object = (void*) (x),')
+			cast_struct.writeln('\t\t._interface_idx = $interface_index_name,')
+			for field in inter_info.fields {
+				cname := c_name(field.name)
+				field_styp := g.typ(field.typ)
+				cast_struct.writeln('\t\t.$cname = ($field_styp)((char*)x + offsetof($cctype, $cname)),')
+			}
+			cast_struct.write('\t}')
+			cast_struct_str := cast_struct.str()
+
 			cast_functions.writeln('
-$staticprefix _Interface I_${cctype}_to_Interface_${interface_name}($cctype* x) {
-	return (_Interface) {
-		._object = (void*) (x),
-		._interface_idx = $interface_index_name
-	};
+// Casting functions for interface "$interface_name"
+$staticprefix inline $interface_name I_${cctype}_to_Interface_${interface_name}($cctype* x) {
+	return $cast_struct_str;
 }
 
-$staticprefix _Interface* I_${cctype}_to_Interface_${interface_name}_ptr($cctype* x) {
+$staticprefix $interface_name* I_${cctype}_to_Interface_${interface_name}_ptr($cctype* x) {
 	// TODO Remove memdup
-	return (_Interface*) memdup(&(_Interface) {
-		._object = (void*) (x),
-		._interface_idx = $interface_index_name
-	}, sizeof(_Interface));
+	return ($interface_name*) memdup(&$cast_struct_str, sizeof($interface_name));
 }')
+
 			if g.pref.build_mode != .build_module {
 				methods_struct.writeln('\t{')
 			}

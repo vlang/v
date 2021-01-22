@@ -515,7 +515,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			field_pos := p.tok.position()
 			field_name := p.check_name()
 			mut type_pos := p.tok.position()
-			field_typ := p.parse_type()
+			field_typ := p.parse_type().to_ptr()
 			type_pos = type_pos.extend(p.prev_tok.position())
 			mut comments := []ast.Comment{}
 			for p.tok.kind == .comment {
