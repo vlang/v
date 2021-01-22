@@ -9,8 +9,12 @@ services:
       - "8080:8080"
     sysctls:
       net.core.somaxconn: 1024
+      net.ipv4.tcp_syncookies: 0
     ulimits:
       nproc: 65535
+      nofile:
+        soft: 20000
+        hard: 40000
   server_wss:
     container_name: autobahn_server_wss
     build: fuzzing_server_wss
@@ -20,8 +24,12 @@ services:
       - "8081:8080"
     sysctls:
       net.core.somaxconn: 1024
+      net.ipv4.tcp_syncookies: 0
     ulimits:
       nproc: 65535
+      nofile:
+        soft: 20000
+        hard: 40000
   client:
     container_name: autobahn_client
     build: 
@@ -29,5 +37,9 @@ services:
       context: ../../../../../
     sysctls:
       net.core.somaxconn: 1024
+      net.ipv4.tcp_syncookies: 0
     ulimits:
       nproc: 65535
+      nofile:
+        soft: 20000
+        hard: 40000
