@@ -487,6 +487,7 @@ pub fn (mut c Checker) infer_fn_types(f table.Fn, mut call_expr ast.CallExpr) {
 
 // resolve_generic_type resolves generics to real types T => int.
 // Even map[string]map[string]T can be resolved.
+// This is used for resolving the generic return type of CallExpr white `unwrap_generic` is used to resolve generic usage in FnDecl.
 fn (mut c Checker) resolve_generic_type(generic_type table.Type, generic_names []string, call_expr ast.CallExpr) ?table.Type {
 	mut sym := c.table.get_type_symbol(generic_type)
 	if sym.name in generic_names {
