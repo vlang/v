@@ -190,7 +190,6 @@ interface Speaker2 {
 	name() string
 	speak()
 	return_speaker() Speaker2
-mut:
 	return_speaker2() ?Speaker2
 }
 
@@ -221,9 +220,7 @@ fn (mut b Boss) return_speaker2() ?Speaker2 {
 
 fn return_speaker2(mut sp Speaker2) Speaker2 {
 	s := sp.return_speaker()
-	s2 := sp.return_speaker2() or {
-		return *sp
-	}
+	s2 := sp.return_speaker2() or { return *sp }
 	s.speak()
 	s2.speak()
 	return s2
@@ -247,7 +244,6 @@ interface Animal {
 	name() string
 	name_detailed(pet_name string) string
 	speak(s string)
-mut:
 	set_breed(s string)
 }
 
