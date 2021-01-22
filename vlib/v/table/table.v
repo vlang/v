@@ -355,8 +355,8 @@ pub fn (mut t Table) register_type_symbol(typ TypeSymbol) int {
 			.placeholder {
 				// override placeholder
 				// println('overriding type placeholder `$typ.name`')
-				t.types[existing_idx] = {
-					typ |
+				t.types[existing_idx] = TypeSymbol{
+					...typ
 					methods: ex_type.methods
 				}
 				return existing_idx
@@ -368,8 +368,8 @@ pub fn (mut t Table) register_type_symbol(typ TypeSymbol) int {
 				if existing_idx >= string_type_idx && existing_idx <= map_type_idx {
 					if existing_idx == string_type_idx {
 						// existing_type := t.types[existing_idx]
-						t.types[existing_idx] = {
-							typ |
+						t.types[existing_idx] = TypeSymbol{
+							...typ
 							kind: ex_type.kind
 						}
 					} else {

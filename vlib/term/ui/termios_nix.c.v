@@ -274,8 +274,8 @@ fn single_char(buf string) &Event {
 		// special handling for `ctrl + letter`
 
 		// TODO: Fix assoc in V and remove this workaround :/
-		// 1  ... 26 { event = { event | code: KeyCode(96 | ch), modifiers: ctrl  } }
-		// 65 ... 90 { event = { event | code: KeyCode(32 | ch), modifiers: shift } }
+		// 1  ... 26 { event = Event{ ...event, code: KeyCode(96 | ch), modifiers: ctrl  } }
+		// 65 ... 90 { event = Event{ ...event, code: KeyCode(32 | ch), modifiers: shift } }
 
 
 		// The bit `or`s here are really just `+`'s, just written in this way for a tiny performance improvement
@@ -330,7 +330,6 @@ fn escape_sequence(buf_ string) (&Event, int) {
 
 	if buf.len == 1 {
 		c := single_char(buf)
-		// return { c | modifiers: c.modifiers | alt }, 2
 
 		return &Event{
 			typ: c.typ

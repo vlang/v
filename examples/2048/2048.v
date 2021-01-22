@@ -623,8 +623,8 @@ fn (app &App) draw() {
 		app.gg.draw_text(ww / 2, (m * 4 / 10) + ypad, 'Game Over', app.label_format(.game_over))
 		f := app.label_format(.tile)
 		msg := $if android { 'Tap to restart' } $else { 'Press `r` to restart' }
-		app.gg.draw_text(ww / 2, (m * 6 / 10) + ypad, msg, {
-			f |
+		app.gg.draw_text(ww / 2, (m * 6 / 10) + ypad, msg, gx.TextCfg{
+			...f
 			color: gx.white
 			size: f.size * 3 / 4
 		})
@@ -670,8 +670,8 @@ fn (app &App) draw_tiles() {
 				xpos := xoffset + tw / 2
 				ypos := yoffset + th / 2
 				mut fmt := app.label_format(.tile)
-				fmt = {
-					fmt |
+				fmt = gx.TextCfg{
+					...fmt
 					size: int(f32(fmt.size - 1) / animation_length * anim_size)
 				}
 				match app.tile_format {
@@ -685,16 +685,18 @@ fn (app &App) draw_tiles() {
 						app.gg.draw_text(xpos, ypos, '2', fmt)
 						fs2 := int(f32(fmt.size) * 0.67)
 						app.gg.draw_text(xpos + app.ui.tile_size / 10, ypos - app.ui.tile_size / 8,
-							'$tidx', {
-							fmt |
-							size: fs2
-							align: gx.HorizontalAlign.left
-						})
+							'$tidx'
+							gx.TextCfg{
+								...fmt
+								size: fs2
+								align: gx.HorizontalAlign.left
+							}
+						)
 					}
 					.shifts {
 						fs2 := int(f32(fmt.size) * 0.6)
-						app.gg.draw_text(xpos, ypos, '2<<${tidx - 1}', {
-							fmt |
+						app.gg.draw_text(xpos, ypos, '2<<${tidx - 1}', gx.TextCfg{
+							...fmt
 							size: fs2
 						})
 					}

@@ -84,7 +84,7 @@ fn test_assign_multi_expr() {
 	// test practical complex expressions
 	val3 := Object { name: 'initial', value: 19 }
 	mut q, mut r, mut s := if true {
-		1 + 1, 'awe' + 'some', { val3 | name: 'ok' }
+		1 + 1, 'awe' + 'some', Object{ ...val3, name: 'ok' }
 	} else {
 		0, '0', Object {}
 	}
@@ -97,7 +97,7 @@ fn test_assign_multi_expr() {
 	q, r, s = if false {
 		0, '0', Object {}
 	} else {
-		5, '55', { val3 | value: 555 }
+		5, '55', Object{ ...val3, value: 555 }
 	}
 	assert q == 5
 	assert r == '55'
