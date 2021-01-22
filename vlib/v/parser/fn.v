@@ -275,9 +275,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			}
 		}
 	}
-	if p.tok.kind in [.plus, .minus, .mul, .div, .mod, .gt, .lt, .eq, .ne, .le, .ge] &&
-		p.peek_tok.kind == .lpar
-	{
+	if p.tok.kind in [.plus, .minus, .mul, .div, .mod, .gt, .lt, .eq, .ne, .le, .ge]
+		&& p.peek_tok.kind == .lpar {
 		name = p.tok.kind.str() // op_to_fn_name()
 		if rec_type == table.void_type {
 			p.error_with_pos('cannot use operator overloading with normal functions',
@@ -311,9 +310,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut end_pos := p.prev_tok.position()
 	// Return type
 	mut return_type := table.void_type
-	if p.tok.kind.is_start_of_type() ||
-		(p.tok.kind == .key_fn && p.tok.line_nr == p.prev_tok.line_nr)
-	{
+	if p.tok.kind.is_start_of_type()
+		|| (p.tok.kind == .key_fn && p.tok.line_nr == p.prev_tok.line_nr) {
 		return_type = p.parse_type()
 	}
 	mut type_sym_method_idx := 0
@@ -327,8 +325,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		// check maps & arrays, must be defined in same module as the elem type
 		if !is_non_local && type_sym.kind in [.array, .map] {
 			elem_type_sym := p.table.get_type_symbol(p.table.value_type(rec_type))
-			is_non_local = elem_type_sym.mod.len > 0 &&
-				elem_type_sym.mod != p.mod && elem_type_sym.language == .v
+			is_non_local = elem_type_sym.mod.len > 0 && elem_type_sym.mod != p.mod
+				&& elem_type_sym.language == .v
 		}
 		if is_non_local {
 			p.error_with_pos('cannot define new methods on non-local type $type_sym.name',
@@ -570,9 +568,9 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 	} else {
 		p.tok.lit
 	}
-	types_only := p.tok.kind in [.amp, .ellipsis, .key_fn] ||
-		(p.peek_tok.kind == .comma && p.table.known_type(argname)) || p.peek_tok.kind == .dot ||
-		p.peek_tok.kind == .rpar
+	types_only := p.tok.kind in [.amp, .ellipsis, .key_fn]
+		|| (p.peek_tok.kind == .comma && p.table.known_type(argname))
+		|| p.peek_tok.kind == .dot|| p.peek_tok.kind == .rpar
 	// TODO copy pasta, merge 2 branches
 	if types_only {
 		// p.warn('types only')
@@ -668,7 +666,8 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 			// `a, b, c int`
 			for p.tok.kind == .comma {
 				if !p.pref.is_fmt {
-					p.warn('`fn f(x, y Type)` syntax has been deprecated and will soon be removed. ' +
+					p.warn(
+						'`fn f(x, y Type)` syntax has been deprecated and will soon be removed. ' +
 						'Use `fn f(x Type, y Type)` instead. You can run `v fmt -w "$p.scanner.file_path"` to automatically fix your code.')
 				}
 				p.next()
@@ -746,11 +745,10 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 
 fn (mut p Parser) check_fn_mutable_arguments(typ table.Type, pos token.Position) {
 	sym := p.table.get_type_symbol(typ)
-	if sym.kind !in
-		[.array, .array_fixed, .interface_, .map, .placeholder, .struct_, .sum_type] &&
-		!typ.is_ptr() && !typ.is_pointer()
-	{
-		p.error_with_pos('mutable arguments are only allowed for arrays, interfaces, maps, pointers and structs\n' +
+	if sym.kind !in [.array, .array_fixed, .interface_, .map, .placeholder, .struct_, .sum_type]
+		&& !typ.is_ptr()&& !typ.is_pointer() {
+		p.error_with_pos(
+			'mutable arguments are only allowed for arrays, interfaces, maps, pointers and structs\n' +
 			'return values instead: `fn foo(mut n $sym.name) {` => `fn foo(n $sym.name) $sym.name {`',
 			pos)
 	}

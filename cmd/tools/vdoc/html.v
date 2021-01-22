@@ -302,9 +302,13 @@ fn (vd VDoc) gen_html(d doc.Doc) string {
 		header_name).replace('{{ version }}', version).replace('{{ light_icon }}', vd.assets['light_icon']).replace('{{ dark_icon }}',
 		vd.assets['dark_icon']).replace('{{ menu_icon }}', vd.assets['menu_icon']).replace('{{ head_assets }}',
 		if cfg.inline_assets {
-		'\n${tabs[0]}<style>' + vd.assets['doc_css'] + '</style>\n${tabs[0]}<style>' + vd.assets['normalize_css'] + '</style>\n${tabs[0]}<script>' + vd.assets['dark_mode_js'] + '</script>'
+		'\n${tabs[0]}<style>' + vd.assets['doc_css'] + '</style>\n${tabs[0]}<style>' +
+			vd.assets['normalize_css'] + '</style>\n${tabs[0]}<script>' +
+			vd.assets['dark_mode_js'] + '</script>'
 	} else {
-		'\n${tabs[0]}<link rel="stylesheet" href="' + vd.assets['doc_css'] + '" />\n${tabs[0]}<link rel="stylesheet" href="' + vd.assets['normalize_css'] + '" />\n${tabs[0]}<script src="' + vd.assets['dark_mode_js'] + '"></script>'
+		'\n${tabs[0]}<link rel="stylesheet" href="' + vd.assets['doc_css'] +
+			'" />\n${tabs[0]}<link rel="stylesheet" href="' + vd.assets['normalize_css'] +
+			'" />\n${tabs[0]}<script src="' + vd.assets['dark_mode_js'] + '"></script>'
 	}).replace('{{ toc_links }}', if cfg.is_multi || vd.docs.len > 1 {
 		modules_toc_str
 	} else {
