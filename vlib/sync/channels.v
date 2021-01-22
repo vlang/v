@@ -163,6 +163,11 @@ pub fn (mut ch Channel) len() int {
 }
 
 [inline]
+pub fn (mut ch Channel) closed() bool {
+	return C.atomic_load_u16(&ch.closed) != 0
+}
+
+[inline]
 pub fn (mut ch Channel) push(src voidptr) {
 	if ch.try_push_priv(src, false) == .closed {
 		panic('push on closed channel')

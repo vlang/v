@@ -9,7 +9,6 @@ import v.token
 import v.util
 
 pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExpr {
-	// pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.Expr {
 	first_pos := p.tok.position()
 	mut fn_name := if language == .c {
 		'C.$p.check_name()'
@@ -29,24 +28,20 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		p.expr_mod = ''
 		or_kind = .block
 	}
-	mut generic_type := table.void_type
+	mut generic_types := []table.Type{}
 	mut generic_list_pos := p.tok.position()
 	if p.tok.kind == .lt {
 		// `foo<int>(10)`
-		p.next() // `<`
 		p.expr_mod = ''
-		generic_type = p.parse_type()
-		p.check(.gt) // `>`
+		generic_types = p.parse_generic_type_list()
 		generic_list_pos = generic_list_pos.extend(p.prev_tok.position())
 		// In case of `foo<T>()`
 		// T is unwrapped and registered in the checker.
-		if !generic_type.has_flag(.generic) {
-			full_generic_fn_name := if fn_name.contains('.') {
-				fn_name
-			} else {
-				p.prepend_mod(fn_name)
-			}
-			p.table.register_fn_gen_type(full_generic_fn_name, generic_type)
+		full_generic_fn_name := if fn_name.contains('.') { fn_name } else { p.prepend_mod(fn_name) }
+		has_generic_generic := generic_types.filter(it.has_flag(.generic)).len > 0
+		if !has_generic_generic {
+			// will be added in checker
+			p.table.register_fn_gen_type(full_generic_fn_name, generic_types)
 		}
 	}
 	p.check(.lpar)
@@ -100,7 +95,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		mod: p.mod
 		pos: pos
 		language: language
-		generic_type: generic_type
+		generic_types: generic_types
 		generic_list_pos: generic_list_pos
 		or_block: ast.OrExpr{
 			stmts: or_stmts
@@ -195,6 +190,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut rec_mut := false
 	mut params := []table.Param{}
 	if p.tok.kind == .lpar {
+		lpar_pos := p.tok.position()
 		p.next() // (
 		is_method = true
 		is_shared := p.tok.kind == .key_shared
@@ -208,7 +204,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		if !rec_mut {
 			rec_mut = p.tok.kind == .key_mut
 			if rec_mut {
-				p.warn_with_pos('use `(mut f Foo)` instead of `(f mut Foo)`', p.tok.position())
+				p.warn_with_pos('use `(mut f Foo)` instead of `(f mut Foo)`', lpar_pos.extend(p.peek_tok2.position()))
 			}
 		}
 		receiver_pos = rec_start_pos.extend(p.tok.position())
@@ -231,7 +227,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		}
 		rec_type_pos = rec_type_pos.extend(p.prev_tok.position())
 		if is_amp && rec_mut {
-			p.error('use `(mut f Foo)` or `(f &Foo)` instead of `(mut f &Foo)`')
+			p.error_with_pos('use `(mut f Foo)` or `(f &Foo)` instead of `(mut f &Foo)`',
+				lpar_pos.extend(p.tok.position()))
 			return ast.FnDecl{
 				scope: 0
 			}
@@ -278,8 +275,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			}
 		}
 	}
-	if p.tok.kind in [.plus, .minus, .mul, .div, .mod, .gt, .lt, .eq, .ne, .le, .ge]
-		&& p.peek_tok.kind == .lpar {
+	if p.tok.kind in [.plus, .minus, .mul, .div, .mod, .gt, .lt, .eq, .ne, .le, .ge] &&
+		p.peek_tok.kind == .lpar
+	{
 		name = p.tok.kind.str() // op_to_fn_name()
 		if rec_type == table.void_type {
 			p.error_with_pos('cannot use operator overloading with normal functions',
@@ -288,12 +286,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		p.next()
 	}
 	// <T>
-	is_generic := p.tok.kind == .lt
-	if is_generic {
-		p.next()
-		p.next()
-		p.check(.gt)
-	}
+	generic_params := p.parse_generic_params()
 	// Args
 	args2, are_args_type_only, is_variadic := p.fn_args()
 	params << args2
@@ -318,8 +311,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut end_pos := p.prev_tok.position()
 	// Return type
 	mut return_type := table.void_type
-	if p.tok.kind.is_start_of_type()
-		|| (p.tok.kind == .key_fn && p.tok.line_nr == p.prev_tok.line_nr) {
+	if p.tok.kind.is_start_of_type() ||
+		(p.tok.kind == .key_fn && p.tok.line_nr == p.prev_tok.line_nr)
+	{
 		return_type = p.parse_type()
 	}
 	mut type_sym_method_idx := 0
@@ -333,8 +327,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		// check maps & arrays, must be defined in same module as the elem type
 		if !is_non_local && type_sym.kind in [.array, .map] {
 			elem_type_sym := p.table.get_type_symbol(p.table.value_type(rec_type))
-			is_non_local = elem_type_sym.mod.len > 0 && elem_type_sym.mod != p.mod
-				&& elem_type_sym.language == .v
+			is_non_local = elem_type_sym.mod.len > 0 &&
+				elem_type_sym.mod != p.mod && elem_type_sym.language == .v
 		}
 		if is_non_local {
 			p.error_with_pos('cannot define new methods on non-local type $type_sym.name',
@@ -349,7 +343,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			params: params
 			return_type: return_type
 			is_variadic: is_variadic
-			is_generic: is_generic
+			generic_names: generic_params.map(it.name)
 			is_pub: is_pub
 			is_deprecated: is_deprecated
 			is_unsafe: is_unsafe
@@ -373,7 +367,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			params: params
 			return_type: return_type
 			is_variadic: is_variadic
-			is_generic: is_generic
+			generic_names: generic_params.map(it.name)
 			is_pub: is_pub
 			is_deprecated: is_deprecated
 			is_unsafe: is_unsafe
@@ -412,12 +406,12 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		is_deprecated: is_deprecated
 		is_direct_arr: is_direct_arr
 		is_pub: is_pub
-		is_generic: is_generic
 		is_variadic: is_variadic
 		receiver: ast.Field{
 			name: rec_name
 			typ: rec_type
 		}
+		generic_params: generic_params
 		receiver_pos: receiver_pos
 		is_method: is_method
 		method_type_pos: rec_type_pos
@@ -436,6 +430,62 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	return fn_decl
 }
 
+fn (mut p Parser) parse_generic_params() []ast.GenericParam {
+	mut param_names := []string{}
+	if p.tok.kind != .lt {
+		return []ast.GenericParam{}
+	}
+	p.check(.lt)
+	mut first_done := false
+	mut count := 0
+	for p.tok.kind !in [.gt, .eof] {
+		if first_done {
+			p.check(.comma)
+		}
+		name := p.tok.lit
+		if name.len > 0 && !name[0].is_capital() {
+			p.error('generic parameter needs to be uppercase')
+		}
+		if name.len > 1 {
+			p.error('generic parameter name needs to be exactly one char')
+		}
+		if is_generic_name_reserved(p.tok.lit) {
+			p.error('`$p.tok.lit` is a reserved name and cannot be used for generics')
+		}
+		if name in param_names {
+			p.error('duplicated generic parameter `$name`')
+		}
+		if count > 8 {
+			p.error('cannot have more than 9 generic parameters')
+		}
+		p.check(.name)
+		param_names << name
+		first_done = true
+		count++
+	}
+	p.check(.gt)
+	return param_names.map(ast.GenericParam{it})
+}
+
+// is_valid_generic_character returns true if the character is reserved for someting else.
+fn is_generic_name_reserved(name string) bool {
+	// C is used for cinterop
+	if name == 'C' {
+		return true
+	}
+	return false
+}
+
+// is_generic_name returns true if the current token is a generic name.
+fn is_generic_name(name string) bool {
+	return name.len == 1 && name.is_capital() && !is_generic_name_reserved(name)
+}
+
+// is_generic_name returns true if the current token is a generic name.
+fn (p Parser) is_generic_name() bool {
+	return p.tok.kind == .name && is_generic_name(p.tok.lit)
+}
+
 fn (mut p Parser) anon_fn() ast.AnonFn {
 	pos := p.tok.position()
 	p.check(.key_fn)
@@ -445,6 +495,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 		return ast.AnonFn{}
 	}
 	p.open_scope()
+	p.scope.detached_from_parent = true
 	// TODO generics
 	args, _, is_variadic := p.fn_args()
 	for arg in args {
@@ -519,9 +570,9 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 	} else {
 		p.tok.lit
 	}
-	types_only := p.tok.kind in [.amp, .ellipsis, .key_fn]
-		|| (p.peek_tok.kind == .comma && p.table.known_type(argname))
-		|| p.peek_tok.kind == .dot|| p.peek_tok.kind == .rpar
+	types_only := p.tok.kind in [.amp, .ellipsis, .key_fn] ||
+		(p.peek_tok.kind == .comma && p.table.known_type(argname)) || p.peek_tok.kind == .dot ||
+		p.peek_tok.kind == .rpar
 	// TODO copy pasta, merge 2 branches
 	if types_only {
 		// p.warn('types only')
@@ -617,8 +668,7 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 			// `a, b, c int`
 			for p.tok.kind == .comma {
 				if !p.pref.is_fmt {
-					p.warn(
-						'`fn f(x, y Type)` syntax has been deprecated and will soon be removed. ' +
+					p.warn('`fn f(x, y Type)` syntax has been deprecated and will soon be removed. ' +
 						'Use `fn f(x Type, y Type)` instead. You can run `v fmt -w "$p.scanner.file_path"` to automatically fix your code.')
 				}
 				p.next()
@@ -696,10 +746,11 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 
 fn (mut p Parser) check_fn_mutable_arguments(typ table.Type, pos token.Position) {
 	sym := p.table.get_type_symbol(typ)
-	if sym.kind !in [.array, .array_fixed, .struct_, .map, .placeholder, .sum_type] && !typ.is_ptr()
-		&& !typ.is_pointer() {
-		p.error_with_pos(
-			'mutable arguments are only allowed for arrays, maps, structs and pointers\n' +
+	if sym.kind !in
+		[.array, .array_fixed, .interface_, .map, .placeholder, .struct_, .sum_type] &&
+		!typ.is_ptr() && !typ.is_pointer()
+	{
+		p.error_with_pos('mutable arguments are only allowed for arrays, interfaces, maps, pointers and structs\n' +
 			'return values instead: `fn foo(mut n $sym.name) {` => `fn foo(n $sym.name) $sym.name {`',
 			pos)
 	}

@@ -365,16 +365,14 @@ fn test_runes() {
 
 fn test_left_right() {
 	s := 'ALOHA'
-	assert s.left(3) == 'ALO'
-	assert s.left(0) == ''
-	assert s.left(8) == s
-	assert s.right(3) == 'HA'
-	assert s.right(6) == ''
+	assert s[..3] == 'ALO'
+	assert s[..0] == ''
+	assert s[..5] == s
 	assert s[3..] == 'HA'
+	//assert s.right(6) == ''
 	u := s.ustring()
 	assert u.left(3) == 'ALO'
 	assert u.left(0) == ''
-	assert s.left(8) == s
 	assert u.right(3) == 'HA'
 	assert u.right(6) == ''
 }

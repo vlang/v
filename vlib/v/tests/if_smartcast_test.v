@@ -253,3 +253,51 @@ fn test_nested_sumtype_selector() {
 		assert false
 	}
 }
+
+struct Foo1 {
+	a int
+}
+
+struct Foo2 {
+	a int
+}
+
+struct Bar1 {
+	a int
+}
+
+struct Bar2 {
+	a int
+}
+
+type Sum1 = Foo1 | Foo2
+
+type Sum2 = Bar1 | Bar2
+
+type SumAll = Sum1 | Sum2
+
+struct All_in_one {
+pub mut:
+	ptrs []&SumAll
+	ptr &SumAll
+}
+
+fn test_nested_pointer_smartcast() {
+	mut s := All_in_one{
+		ptr: &Sum1(Foo1{a: 1})
+		ptrs: [&SumAll(Sum2(Bar1{a: 3}))]
+	}
+
+	if mut s.ptr is Sum1 {
+		if mut s.ptr is Foo1 {
+			assert s.ptr.a == 1
+		}
+	}
+
+	a := s.ptrs[0]
+	if a is Sum1 {
+		if a is Foo1{
+			assert a.a == 3
+		}
+	}
+}

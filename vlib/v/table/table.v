@@ -16,7 +16,7 @@ pub mut:
 	modules       []string // Topologically sorted list of all modules registered by the application
 	cflags        []cflag.CFlag
 	redefined_fns []string
-	fn_gen_types  map[string][]Type // for generic functions
+	fn_gen_types  map[string][][]Type // for generic functions
 	cmod_prefix   string // needed for table.type_to_str(Type) while vfmt; contains `os.`
 	is_fmt        bool
 }
@@ -27,7 +27,7 @@ pub:
 	return_type    Type
 	is_variadic    bool
 	language       Language
-	is_generic     bool
+	generic_names  []string
 	is_pub         bool
 	is_deprecated  bool
 	is_unsafe      bool
@@ -41,10 +41,9 @@ pub mut:
 }
 
 fn (f &Fn) method_equals(o &Fn) bool {
-	return f.params[1..].equals(o.params[1..]) && f.return_type == o.return_type
-		&& f.is_variadic == o.is_variadic && f.language == o.language
-		&& f.is_generic == o.is_generic && f.is_pub == o.is_pub && f.mod == o.mod
-		&& f.name == o.name
+	return f.params[1..].equals(o.params[1..]) && f.return_type == o.return_type && f.is_variadic ==
+		o.is_variadic && f.language == o.language && f.generic_names == o.generic_names &&
+		f.is_pub == o.is_pub && f.mod == o.mod && f.name == o.name
 }
 
 pub struct Param {
@@ -724,14 +723,12 @@ pub fn (t &Table) mktyp(typ Type) Type {
 	}
 }
 
-pub fn (mut table Table) register_fn_gen_type(fn_name string, typ Type) {
+pub fn (mut table Table) register_fn_gen_type(fn_name string, types []Type) {
 	mut a := table.fn_gen_types[fn_name]
-	if typ in a {
+	if types in a {
 		return
 	}
-	a << typ
-	// sym := table.get_type_symbol(typ)
-	// println('registering fn ($fn_name) gen type $sym.name')
+	a << types
 	table.fn_gen_types[fn_name] = a
 }
 

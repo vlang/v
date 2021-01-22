@@ -9,9 +9,10 @@ vlib/v/checker/tests/fn_var.vv:4:5: error: cannot assign to `p`: expected `&fn (
     3 | mut p := &f
     4 | p = &[f]
       |     ^
-    5 | f = fn(mut a []int) {}
-vlib/v/checker/tests/fn_var.vv:5:5: error: cannot assign to `f`: expected `fn (int) byte`, not `fn (mut []int)`
-    3 | mut p := &f
-    4 | p = &[f]
-    5 | f = fn(mut a []int) {}
-      |     ~~~~~~~~~~~~~~~~~~
+    5 | i := 0
+    6 | println(i)
+vlib/v/checker/tests/fn_var.vv:7:31: error: undefined ident: `i`
+    5 | i := 0
+    6 | println(i)
+    7 | f = fn(mut a []int) { println(i) }
+      |                               ^

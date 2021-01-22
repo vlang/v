@@ -336,7 +336,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 		}
 		sline := strip(line)
 		// Parse content type
-		if sline.len >= 14 && sline[..14] == 'Content-Type: ' {
+		if sline.len >= 14 && sline[..14].to_lower() == 'content-type: ' {
 			args := sline[14..].split('; ')
 			ct = args[0]
 			if args.len > 1 {
@@ -367,7 +367,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 		}
 		if in_headers {
 			headers << sline
-			if sline.starts_with('Content-Length') {
+			if sline.to_lower().starts_with('content-length') {
 				len = sline.all_after(': ').int()
 				// println('GOT CL=$len')
 			}

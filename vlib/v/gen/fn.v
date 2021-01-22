@@ -28,20 +28,20 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 	// if g.fileis('vweb.v') {
 	// println('\ngen_fn_decl() $it.name $it.is_generic $g.cur_generic_type')
 	// }
-	if it.is_generic && g.cur_generic_type == 0 { // need the cur_generic_type check to avoid inf. recursion
+	if it.generic_params.len > 0 && g.cur_generic_types.len == 0 { // need the cur_generic_type check to avoid inf. recursion
 		// loop thru each generic type and generate a function
-		for gen_type in g.table.fn_gen_types[it.name] {
-			sym := g.table.get_type_symbol(gen_type)
+		for gen_types in g.table.fn_gen_types[it.name] {
 			if g.pref.is_verbose {
-				println('gen fn `$it.name` for type `$sym.name`')
+				syms := gen_types.map(g.table.get_type_symbol(it))
+				println('gen fn `$it.name` for type `${syms.map(it.name).join(', ')}`')
 			}
-			g.cur_generic_type = gen_type
+			g.cur_generic_types = gen_types
 			g.gen_fn_decl(it, skip)
 		}
-		g.cur_generic_type = 0
+		g.cur_generic_types = []
 		return
 	}
-	// g.cur_fn = it
+	g.cur_fn = it
 	fn_start_pos := g.out.len
 	g.write_v_source_line_info(it.pos)
 	msvc_attrs := g.write_fn_attrs(it.attrs)
@@ -69,11 +69,14 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 		name = c_name(name)
 	}
 	mut type_name := g.typ(it.return_type)
-	if g.cur_generic_type != 0 {
+	if g.cur_generic_types.len > 0 {
 		// foo<T>() => foo_T_int(), foo_T_string() etc
-		gen_name := g.typ(g.cur_generic_type)
 		// Using _T_ to differentiate between get<string> and get_string
-		name += '_T_' + gen_name
+		name += '_T'
+		for generic_type in g.cur_generic_types {
+			gen_name := g.typ(generic_type)
+			name += '_' + gen_name
+		}
 	}
 	// if g.pref.show_cc && it.is_builtin {
 	// println(name)
@@ -312,11 +315,17 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	}
 }
 
-[inline]
 pub fn (g &Gen) unwrap_generic(typ table.Type) table.Type {
 	if typ.has_flag(.generic) {
-		// return g.cur_generic_type
-		return g.cur_generic_type.derive(typ).clear_flag(.generic)
+		sym := g.table.get_type_symbol(typ)
+		mut idx := 0
+		for i, generic_param in g.cur_fn.generic_params {
+			if generic_param.name == sym.name {
+				idx = i
+				break
+			}
+		}
+		return g.cur_generic_types[0].derive(typ).clear_flag(.generic)
 	}
 	return typ
 }
@@ -439,10 +448,15 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			}
 		}
 	}
-	if node.generic_type != table.void_type && node.generic_type != 0 {
-		// Using _T_ to differentiate between get<string> and get_string
-		// `foo<int>()` => `foo_T_int()`
-		name += '_T_' + g.typ(node.generic_type)
+	for i, generic_type in node.generic_types {
+		if generic_type != table.void_type && generic_type != 0 {
+			// Using _T_ to differentiate between get<string> and get_string
+			// `foo<int>()` => `foo_T_int()`
+			if i == 0 {
+				name += '_T'
+			}
+			name += '_' + g.typ(generic_type)
+		}
 	}
 	// TODO2
 	// g.generate_tmp_autofree_arg_vars(node, name)
@@ -582,10 +596,13 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	} else {
 		name = c_name(name)
 	}
-	if node.generic_type != table.void_type && node.generic_type != 0 {
+	for i, generic_type in node.generic_types {
 		// Using _T_ to differentiate between get<string> and get_string
 		// `foo<int>()` => `foo_T_int()`
-		name += '_T_' + g.typ(node.generic_type)
+		if i == 0 {
+			name += '_T'
+		}
+		name += '_' + g.typ(generic_type)
 	}
 	// TODO2
 	// cgen shouldn't modify ast nodes, this should be moved

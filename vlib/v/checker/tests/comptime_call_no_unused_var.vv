@@ -1,0 +1,11 @@
+struct Test {}
+
+fn (test Test) print() {
+	println('test')
+}
+
+fn main() {
+	test := Test{}
+	abc := 'print'
+	test.$abc()
+}

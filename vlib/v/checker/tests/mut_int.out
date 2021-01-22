@@ -1,4 +1,4 @@
-vlib/v/checker/tests/mut_int.vv:1:14: error: mutable arguments are only allowed for arrays, maps, structs and pointers
+vlib/v/checker/tests/mut_int.vv:1:14: error: mutable arguments are only allowed for arrays, interfaces, maps, pointers and structs
 return values instead: `fn foo(mut n int) {` => `fn foo(n int) int {`
     1 | fn foo(mut x int) {
       |              ~~~

@@ -84,9 +84,6 @@ pub fn (mut p Parser) parse_map_type() table.Type {
 			p.tok.position())
 		return 0
 	}
-	if key_type != table.string_type_idx {
-		p.warn_with_pos('non-string keys are work in progress', p.tok.position())
-	}
 	p.check(.rsbr)
 	value_type := p.parse_type()
 	if value_type.idx() == 0 {

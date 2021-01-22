@@ -412,47 +412,60 @@ pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) table.T
 }
 
 pub fn (mut c Checker) infer_fn_types(f table.Fn, mut call_expr ast.CallExpr) {
-	gt_name := 'T'
-	mut typ := table.void_type
-	for i, param in f.params {
-		if call_expr.args.len == 0 {
-			break
+	mut inferred_types := []table.Type{}
+	for gi, gt_name in f.generic_names {
+		// skip known types
+		if gi < call_expr.generic_types.len {
+			inferred_types << call_expr.generic_types[gi]
+			continue
 		}
-		arg := if i != 0 && call_expr.is_method { call_expr.args[i - 1] } else { call_expr.args[i] }
-		if param.typ.has_flag(.generic) {
-			typ = arg.typ
-			break
-		}
-		arg_sym := c.table.get_type_symbol(arg.typ)
-		param_type_sym := c.table.get_type_symbol(param.typ)
-		if arg_sym.kind == .array && param_type_sym.kind == .array {
-			mut arg_elem_info := arg_sym.info as table.Array
-			mut param_elem_info := param_type_sym.info as table.Array
-			mut arg_elem_sym := c.table.get_type_symbol(arg_elem_info.elem_type)
-			mut param_elem_sym := c.table.get_type_symbol(param_elem_info.elem_type)
-			for {
-				if arg_elem_sym.kind == .array && param_elem_sym.kind == .array
-					&& param_elem_sym.name != 'T' {
-					arg_elem_info = arg_elem_sym.info as table.Array
-					arg_elem_sym = c.table.get_type_symbol(arg_elem_info.elem_type)
-					param_elem_info = param_elem_sym.info as table.Array
-					param_elem_sym = c.table.get_type_symbol(param_elem_info.elem_type)
-				} else {
-					typ = arg_elem_info.elem_type
-					break
-				}
+		mut typ := table.void_type
+		for i, param in f.params {
+			if call_expr.args.len == 0 {
+				break
 			}
-			break
+			arg := if i != 0 && call_expr.is_method {
+				call_expr.args[i - 1]
+			} else {
+				call_expr.args[i]
+			}
+			if param.typ.has_flag(.generic) {
+				typ = arg.typ
+				break
+			}
+			arg_sym := c.table.get_type_symbol(arg.typ)
+			param_type_sym := c.table.get_type_symbol(param.typ)
+			if arg_sym.kind == .array && param_type_sym.kind == .array {
+				mut arg_elem_info := arg_sym.info as table.Array
+				mut param_elem_info := param_type_sym.info as table.Array
+				mut arg_elem_sym := c.table.get_type_symbol(arg_elem_info.elem_type)
+				mut param_elem_sym := c.table.get_type_symbol(param_elem_info.elem_type)
+				for {
+					if arg_elem_sym.kind == .array &&
+						param_elem_sym.kind == .array && c.cur_fn.generic_params.filter(it.name ==
+						param_elem_sym.name).len == 0
+					{
+						arg_elem_info = arg_elem_sym.info as table.Array
+						arg_elem_sym = c.table.get_type_symbol(arg_elem_info.elem_type)
+						param_elem_info = param_elem_sym.info as table.Array
+						param_elem_sym = c.table.get_type_symbol(param_elem_info.elem_type)
+					} else {
+						typ = arg_elem_info.elem_type
+						break
+					}
+				}
+				break
+			}
 		}
-	}
-	if typ == table.void_type {
-		c.error('could not infer generic type `$gt_name` in call to `$f.name`', call_expr.pos)
-	} else {
+		if typ == table.void_type {
+			c.error('could not infer generic type `$gt_name` in call to `$f.name`', call_expr.pos)
+		}
 		if c.pref.is_verbose {
 			s := c.table.type_to_str(typ)
 			println('inferred `$f.name<$s>`')
 		}
-		c.table.register_fn_gen_type(f.name, typ)
-		call_expr.generic_type = typ
+		inferred_types << typ
+		call_expr.generic_types << typ
 	}
+	c.table.register_fn_gen_type(f.name, inferred_types)
 }
