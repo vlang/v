@@ -55,7 +55,7 @@ pub fn new() &Digest {
 }
 
 [manualfree]
-pub fn (mut d Digest) write(p_ []byte) int {
+fn (mut d Digest) write(p_ []byte) int {
 	nn := p_.len
 	unsafe {
 		mut p := p_
@@ -89,7 +89,7 @@ pub fn (mut d Digest) write(p_ []byte) int {
 	return nn
 }
 
-pub fn (d &Digest) sum(b_in []byte) []byte {
+fn (d &Digest) sum(b_in []byte) []byte {
 	// Make a copy of d so that caller can keep writing and summing.
 	mut d0 := *d
 	hash := d0.checksum()

@@ -29,13 +29,13 @@ fn test_ct_expressions() {
 	}
 }
 
-fn generic_t_is<T>() T {
-	$if T is string {
+fn generic_t_is<O>() O {
+	$if O is string {
 		return 'It\'s a string!'
 	} $else {
-		return T{}
+		return O{}
 	}
-	return T{}
+	return O{}
 }
 
 struct GenericTIsTest {}
