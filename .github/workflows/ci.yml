@@ -782,7 +782,9 @@ jobs:
       - name: Run client wss test
         run: docker exec autobahn_client "/src/vlib/x/websocket/tests/autobahn/autobahn_client_wss"
       - name: Run server test
-        run: docker exec autobahn_server "wstest" "-m" "fuzzingclient" "-s" "/config/fuzzingclient.json"
+        run: |
+          ulimit -n 2048
+          docker exec autobahn_server "wstest" "-m" "fuzzingclient" "-s" "/config/fuzzingclient.json"
       - name: Copy reports
         run: docker cp autobahn_server:/reports ${{github.workspace}}/reports
       - name: Copy reports wss
