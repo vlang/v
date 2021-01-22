@@ -467,15 +467,6 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	for p.tok.kind != .rcbr && p.tok.kind != .eof {
 		if p.peek_tok.kind == .lpar {
 			ts = p.table.get_type_symbol(typ) // removing causes memory bug visible by `v -silent test-fmt`
-			if p.tok.kind == .key_mut {
-				if is_mut {
-					p.error_with_pos('redefinition of `mut` section', p.tok.position())
-					return {}
-				}
-				p.next()
-				p.check(.colon)
-				is_mut = true
-			}
 			method_start_pos := p.tok.position()
 			line_nr := p.tok.line_nr
 			name := p.check_name()
@@ -491,7 +482,6 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			args2, _, is_variadic := p.fn_args() // TODO merge table.Param and ast.Arg to avoid this
 			mut args := [table.Param{
 				name: 'x'
-				is_mut: is_mut
 				typ: typ
 				is_hidden: true
 			}]
@@ -510,6 +500,19 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			if p.tok.kind.is_start_of_type() && p.tok.line_nr == line_nr {
 				method.return_type = p.parse_type()
 			}
+			mcomments := p.eat_line_end_comments()
+			mnext_comments := p.eat_comments()
+			method.comments = mcomments
+			method.next_comments = mnext_comments
+			methods << method
+			// println('register method $name')
+			ts.register_method(
+				name: name
+				params: args
+				return_type: method.return_type
+				is_variadic: is_variadic
+				is_pub: true
+			)
 		} else {
 			// interface fields
 			field_pos := p.tok.position()
