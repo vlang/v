@@ -5942,7 +5942,7 @@ fn (mut g Gen) interface_table() string {
 			for field in inter_info.fields {
 				cname := c_name(field.name)
 				field_styp := g.typ(field.typ)
-				cast_struct.writeln('\t\t.$cname = ($field_styp)((char*)x + offsetof($cctype, $cname)),')
+				cast_struct.writeln('\t\t.$cname = ($field_styp)((char*)x + __offsetof($cctype, $cname)),')
 			}
 			cast_struct.write('\t}')
 			cast_struct_str := cast_struct.str()
