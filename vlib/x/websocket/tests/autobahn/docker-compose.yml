@@ -1,4 +1,4 @@
-version: '3'
+version: '3.7'
 services:
   server:
     container_name: autobahn_server
@@ -14,6 +14,9 @@ services:
     
     ulimits:
       nproc: 65535
+      nofile:
+        soft: 20000
+        hard: 40000
 
   server_wss:
     container_name: autobahn_server_wss
@@ -29,6 +32,9 @@ services:
     
     ulimits:
       nproc: 65535
+      nofile:
+        soft: 20000
+        hard: 40000
 
   client:
     container_name: autobahn_client
@@ -42,3 +48,6 @@ services:
     
     ulimits:
       nproc: 65535
+      nofile:
+        soft: 20000
+        hard: 40000
