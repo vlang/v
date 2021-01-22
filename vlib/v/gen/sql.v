@@ -27,11 +27,11 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 	g.writeln(';')
 	g.write('sqlite3_stmt* $g.sql_stmt_name = ${dbtype}__DB_init_stmt($db_name, _SLIT("')
 	if node.kind == .insert {
-		g.write('INSERT INTO `${util.strip_mod_name(node.table_name)}` (')
+		g.write('INSERT INTO `${util.strip_mod_name(node.table.name)}` (')
 	} else if node.kind == .update {
-		g.write('UPDATE `${util.strip_mod_name(node.table_name)}` SET ')
+		g.write('UPDATE `${util.strip_mod_name(node.table.name)}` SET ')
 	} else if node.kind == .delete {
-		g.write('DELETE FROM `${util.strip_mod_name(node.table_name)}` ')
+		g.write('DELETE FROM `${util.strip_mod_name(node.table.name)}` ')
 	}
 	if node.kind == .insert {
 		for i, field in node.fields {
@@ -110,7 +110,7 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 	mut sql_query := 'SELECT '
 	if node.is_count {
 		// `select count(*) from User`
-		sql_query += 'COUNT(*) FROM `${util.strip_mod_name(node.table_name)}` '
+		sql_query += 'COUNT(*) FROM `${util.strip_mod_name(node.table.name)}` '
 	} else {
 		// `select id, name, country from User`
 		for i, field in node.fields {
@@ -119,7 +119,7 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 				sql_query += ', '
 			}
 		}
-		sql_query += ' FROM `${util.strip_mod_name(node.table_name)}`'
+		sql_query += ' FROM `${util.strip_mod_name(node.table.name)}`'
 	}
 	if node.has_where {
 		sql_query += ' WHERE '

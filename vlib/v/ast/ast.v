@@ -1141,15 +1141,22 @@ pub:
 	kind            SqlStmtKind
 	db_expr         Expr   // `db` in `sql db {`
 	object_var_name string // `user`
-	table_type      table.Type
 	pos             token.Position
-	table_pos       token.Position
 	where_expr      Expr
 	updated_columns []string // for `update set x=y`
 	update_exprs    []Expr   // for `update`
 pub mut:
-	table_name string
+	table      SqlTable
 	fields     []table.Field
+}
+
+// SqlTable is the table/struct name in `select from Person`.
+pub struct SqlTable {
+pub:
+	pos  token.Position
+	typ  table.Type
+pub mut:
+	name string
 }
 
 pub struct SqlExpr {
@@ -1165,13 +1172,11 @@ pub:
 	order_expr  Expr
 	has_desc    bool
 	is_array    bool
-	table_type  table.Type
 	pos         token.Position
-	table_pos   token.Position
 	has_limit   bool
 	limit_expr  Expr
 pub mut:
-	table_name string
+	table      SqlTable
 	fields     []table.Field
 }
 
