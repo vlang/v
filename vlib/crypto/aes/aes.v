@@ -44,7 +44,7 @@ pub fn (c &AesCipher) block_size() int {
 }
 
 // encrypt encrypts the blocks in `src` to `dst`.
-// Please note: `dst` and `src` is both mutable for performance reasons.
+// Please note: `dst` and `src` are both mutable for performance reasons.
 pub fn (c &AesCipher) encrypt(mut dst []byte, mut src []byte) {
 	if src.len < block_size {
 		panic('crypto.aes: input not full block')
@@ -61,7 +61,7 @@ pub fn (c &AesCipher) encrypt(mut dst []byte, mut src []byte) {
 }
 
 // decrypt decrypts the blocks in `src` to `dst`.
-// Please note: `dst` and `src` is both mutable for performance reasons.
+// Please note: `dst` and `src` are both mutable for performance reasons.
 pub fn (c &AesCipher) decrypt(mut dst []byte, mut src []byte) {
 	if src.len < block_size {
 		panic('crypto.aes: input not full block')
