@@ -40,12 +40,14 @@ fn test_all() {
 	os.chdir(vroot)
 	checker_dir := 'vlib/v/checker/tests'
 	parser_dir := 'vlib/v/parser/tests'
+	scanner_dir := 'vlib/v/scanner/tests'
 	module_dir := '$checker_dir/modules'
 	global_dir := '$checker_dir/globals'
 	run_dir := '$checker_dir/run'
 	//
 	checker_tests := get_tests_in_dir(checker_dir, false)
 	parser_tests := get_tests_in_dir(parser_dir, false)
+	scanner_tests := get_tests_in_dir(scanner_dir, false)
 	global_tests := get_tests_in_dir(global_dir, false)
 	module_tests := get_tests_in_dir(module_dir, true)
 	run_tests := get_tests_in_dir(run_dir, false)
@@ -53,6 +55,7 @@ fn test_all() {
 	mut tasks := []TaskDescription{}
 	tasks.add(vexe, parser_dir, '-prod', '.out', parser_tests, false)
 	tasks.add(vexe, checker_dir, '-prod', '.out', checker_tests, false)
+	tasks.add(vexe, scanner_dir, '-prod', '.out', scanner_tests, false)
 	tasks.add(vexe, checker_dir, '-d mysymbol run', '.mysymbol.run.out', ['custom_comptime_define_error.vv'],
 		false)
 	tasks.add(vexe, checker_dir, '-d mydebug run', '.mydebug.run.out', ['custom_comptime_define_if_flag.vv'],

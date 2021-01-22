@@ -212,12 +212,12 @@ fn (mut s Scanner) ident_bin_number() string {
 	mut first_wrong_digit := `\0`
 	start_pos := s.pos
 	s.pos += 2 // skip '0b'
-	if s.text[s.pos] == num_sep {
+	if s.pos < s.text.len && s.text[s.pos] == num_sep {
 		s.error('separator `_` is only valid between digits in a numeric literal')
 	}
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
-		if c == num_sep && s.text[s.pos + 1] == num_sep {
+		if c == num_sep && s.text[s.pos - 1] == num_sep {
 			s.error('cannot use `_` consecutively')
 		}
 		if !c.is_bin_digit() && c != num_sep {
@@ -232,6 +232,7 @@ fn (mut s Scanner) ident_bin_number() string {
 		s.pos++
 	}
 	if s.text[s.pos - 1] == num_sep {
+		s.pos--
 		s.error('cannot use `_` at the end of a numeric literal')
 	} else if start_pos + 2 == s.pos {
 		s.pos-- // adjust error position
@@ -254,12 +255,12 @@ fn (mut s Scanner) ident_hex_number() string {
 		return '0x'
 	}
 	s.pos += 2 // skip '0x'
-	if s.text[s.pos] == num_sep {
+	if s.pos < s.text.len && s.text[s.pos] == num_sep {
 		s.error('separator `_` is only valid between digits in a numeric literal')
 	}
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
-		if c == num_sep && s.text[s.pos + 1] == num_sep {
+		if c == num_sep && s.text[s.pos - 1] == num_sep {
 			s.error('cannot use `_` consecutively')
 		}
 		if !c.is_hex_digit() && c != num_sep {
@@ -274,6 +275,7 @@ fn (mut s Scanner) ident_hex_number() string {
 		s.pos++
 	}
 	if s.text[s.pos - 1] == num_sep {
+		s.pos--
 		s.error('cannot use `_` at the end of a numeric literal')
 	} else if start_pos + 2 == s.pos {
 		s.pos-- // adjust error position
@@ -293,12 +295,12 @@ fn (mut s Scanner) ident_oct_number() string {
 	mut first_wrong_digit := `\0`
 	start_pos := s.pos
 	s.pos += 2 // skip '0o'
-	if s.text[s.pos] == num_sep {
+	if s.pos < s.text.len && s.text[s.pos] == num_sep {
 		s.error('separator `_` is only valid between digits in a numeric literal')
 	}
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
-		if c == num_sep && s.text[s.pos + 1] == num_sep {
+		if c == num_sep && s.text[s.pos - 1] == num_sep {
 			s.error('cannot use `_` consecutively')
 		}
 		if !c.is_oct_digit() && c != num_sep {
@@ -313,6 +315,7 @@ fn (mut s Scanner) ident_oct_number() string {
 		s.pos++
 	}
 	if s.text[s.pos - 1] == num_sep {
+		s.pos--
 		s.error('cannot use `_` at the end of a numeric literal')
 	} else if start_pos + 2 == s.pos {
 		s.pos-- // adjust error position
@@ -334,7 +337,7 @@ fn (mut s Scanner) ident_dec_number() string {
 	// scan integer part
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
-		if c == num_sep && s.text[s.pos + 1] == num_sep {
+		if c == num_sep && s.text[s.pos - 1] == num_sep {
 			s.error('cannot use `_` consecutively')
 		}
 		if !c.is_digit() && c != num_sep {
@@ -349,6 +352,7 @@ fn (mut s Scanner) ident_dec_number() string {
 		s.pos++
 	}
 	if s.text[s.pos - 1] == num_sep {
+		s.pos--
 		s.error('cannot use `_` at the end of a numeric literal')
 	}
 	mut call_method := false // true for, e.g., 5.str(), 5.5.str(), 5e5.str()
