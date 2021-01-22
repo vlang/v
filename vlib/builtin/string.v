@@ -591,7 +591,7 @@ pub fn (s string) split_into_lines() []string {
 
 // left returns the `n`th leftmost characters of the string.
 // Example: assert 'hello'.left(2) == 'he'
-pub fn (s string) left(n int) string {
+fn (s string) left(n int) string {
 	if n >= s.len {
 		return s
 	}
@@ -600,7 +600,7 @@ pub fn (s string) left(n int) string {
 
 // right returns the `n`th rightmost characters of the string.
 // Example: assert 'hello'.right(2) == 'lo'
-pub fn (s string) right(n int) string {
+fn (s string) right(n int) string {
 	if n >= s.len {
 		return ''
 	}
