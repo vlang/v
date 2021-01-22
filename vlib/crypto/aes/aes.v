@@ -34,7 +34,7 @@ pub fn new_cipher(key []byte) AesCipher {
 			// return error('crypto.aes: invalid key size ' + k.str())
 		}
 	}
-	// for now use generic version
+	// for now, use generic version
 	return new_cipher_generic(key)
 }
 
