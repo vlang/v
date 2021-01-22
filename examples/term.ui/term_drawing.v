@@ -190,17 +190,17 @@ fn event(event &tui.Event, x voidptr) {
 			match event.code {
 				.f1, ._1 {
 					oevent := *event
-					nevent := { oevent | button: tui.MouseButton.left, x: app.mouse_pos.x , y: app.mouse_pos.y }
+					nevent := tui.Event{ ...oevent, button: tui.MouseButton.left, x: app.mouse_pos.x , y: app.mouse_pos.y }
 					app.paint(nevent)
 				}
 				.f2, ._2 {
 					oevent := *event
-					nevent := { oevent | button: tui.MouseButton.right, x: app.mouse_pos.x , y: app.mouse_pos.y }
+					nevent := tui.Event{ ...oevent, button: tui.MouseButton.right, x: app.mouse_pos.x , y: app.mouse_pos.y }
 					app.paint(nevent)
 				}
 				.space {
 					oevent := *event
-					nevent := { oevent | button: tui.MouseButton.middle, x: app.mouse_pos.x , y: app.mouse_pos.y }
+					nevent := tui.Event{ ...oevent, button: tui.MouseButton.middle, x: app.mouse_pos.x , y: app.mouse_pos.y }
 					app.paint(nevent)
 				}
 				.j, .down {

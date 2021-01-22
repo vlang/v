@@ -3648,9 +3648,9 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) table.Type {
 	}
 	if node.is_vweb {
 		// TODO assoc parser bug
-		pref := *c.pref
-		pref2 := {
-			pref |
+		pref_ := *c.pref
+		pref2 := pref.Preferences{
+			...pref_
 			is_vweb: true
 		}
 		mut c2 := new_checker(c.table, pref2)
