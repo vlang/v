@@ -2005,6 +2005,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					}
 				}
 			}
+			g.is_assign_lhs = false
 		} else {
 			is_inside_ternary := g.inside_ternary != 0
 			cur_line := if is_inside_ternary && is_decl {
