@@ -369,13 +369,11 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 		p.or_is_handled = true
 		p.register_auto_import('sync')
 	}
-	// mut typ := p.
-	// println('infix op=$op.str()')
 	precedence := p.tok.precedence()
 	mut pos := p.tok.position()
 	if left.position().line_nr < pos.line_nr {
-		pos = {
-			pos |
+		pos = token.Position{
+			...pos
 			line_nr: left.position().line_nr
 		}
 	}

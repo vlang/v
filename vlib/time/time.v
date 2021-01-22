@@ -158,8 +158,8 @@ pub fn new_time(t Time) Time {
 		tm_year: t.year - 1900
 	}
 	utime := u64(make_unix_time(tt))
-	return {
-		t |
+	return Time{
+		...t
 		unix: utime
 	}
 }

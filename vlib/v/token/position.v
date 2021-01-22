@@ -17,8 +17,8 @@ pub fn (pos Position) str() string {
 }
 
 pub fn (pos Position) extend(end Position) Position {
-	return {
-		pos |
+	return Position{
+		...pos
 		len: end.pos - pos.pos + end.len
 		last_line: end.last_line
 	}
