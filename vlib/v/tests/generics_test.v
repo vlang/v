@@ -20,14 +20,13 @@ fn test_identity() {
 	assert simple<int>(1 + 0) == 1
 	assert simple<string>('g') == 'g'
 	assert simple<string>('g') + 'h' == 'gh'
-	
+
 	assert simple<[]int>([1])[0] == 1
 	assert simple<map[string]string>({'a':'b'})['a'] == 'b'
 }
 
 fn test_plus() {
 	a := plus<int>(2, 3)
-	println(a)
 	assert a == 5
 	assert plus<int>(10, 1) == 11
 	assert plus<string>('a', 'b') == 'ab'
@@ -47,11 +46,9 @@ fn test_foo() {
 }
 
 fn create<T>() {
-	a := T{}
-	println(a.name)
+	_ := T{}
 	mut xx := T{}
 	xx.name = 'foo'
-	println(xx.name)
 	assert xx.name == 'foo'
 	xx.init()
 }
@@ -73,11 +70,11 @@ fn (c City) init() {
 }
 
 fn mut_arg<T>(mut x T) {
-	println(x.name) // = 'foo'
+	// println(x.name) // = 'foo'
 }
 
 fn mut_arg2<T>(mut x T) T {
-	println(x.name) // = 'foo'
+	// println(x.name) // = 'foo'
 	return *x
 }
 
@@ -128,7 +125,6 @@ fn test_ptr() {
 	assert *ptr('aa') == 'aa'
 }
 
-/*
 fn map_f<T,U>(l []T, f fn(T)U) []U {
 	mut r := []U{}
 	for e in l {
@@ -137,6 +133,7 @@ fn map_f<T,U>(l []T, f fn(T)U) []U {
 	return r
 }
 
+/*
 fn foldl<T>(l []T, nil T, f fn(T,T)T) T {
 	mut r := nil
 	for e in l {
@@ -144,7 +141,7 @@ fn foldl<T>(l []T, nil T, f fn(T,T)T) T {
 	}
 	return r
 }
-
+*/
 fn square(x int) int {
 	return x*x
 }
@@ -153,18 +150,17 @@ fn mul_int(x int, y int) int {
 	return x*y
 }
 
-fn assert_eq<T>(a, b T) {
+fn assert_eq<T>(a T, b T) {
 	r := a == b
-	println('$a == $b: ${r.str()}')
 	assert r
 }
 
-fn print_nice<T>(x T, indent int) {
+fn print_nice<T>(x T, indent int) string {
 	mut space := ''
 	for _ in 0..indent {
 		space = space + ' '
 	}
-	println('$space$x')
+	return '$space$x'
 }
 
 fn test_generic_fn() {
@@ -174,9 +170,9 @@ fn test_generic_fn() {
 	assert_eq(plus(i64(4), i64(6)), i64(10))
 	a := [1,2,3,4]
 	b := map_f(a, square)
-	assert_eq(sum(b), 30)     // 1+4+9+16 = 30
-	assert_eq(foldl(b, 1, mul_int), 576)   // 1*4*9*16 = 576
-	print_nice('str', 8)
+	assert_eq(sum(b), 30) // 1+4+9+16 = 30
+	//assert_eq(foldl(b, 1, mul_int), 576)   // 1*4*9*16 = 576
+	assert print_nice('str', 8) == '        str'
 }
 
 struct Point {
@@ -185,7 +181,7 @@ mut:
 	y f64
 }
 
-fn (mut p Point) translate<T>(x, y T) {
+fn (mut p Point) translate<T>(x T, y T) {
 	p.x += x
 	p.y += y
 }
@@ -213,7 +209,7 @@ fn test_generic_fn_in_for_in_expression() {
 		assert value == 'a'
 	}
 }
-*/
+
 // test generic struct
 struct DB {
 	driver string
@@ -247,9 +243,7 @@ fn test_generic_struct() {
 			name: 'joe'
 		}
 	}
-	// a.model.name = 'joe'
 	assert a.model.name == 'joe'
-	println('a.model.name: $a.model.name')
 	mut b := Repo<Group, Permission>{
 		permission: Permission{
 			name: 'superuser'
@@ -258,15 +252,8 @@ fn test_generic_struct() {
 	b.model.name = 'admins'
 	assert b.model.name == 'admins'
 	assert b.permission.name == 'superuser'
-	println('b.model.name: $b.model.name')
-	println('b.permission.name: $b.permission.name')
 	assert typeof(a.model).name == 'User'
 	assert typeof(b.model).name == 'Group'
-	println('typeof(a.model): ' + typeof(a.model).name)
-	println('typeof(b.model): ' + typeof(b.model).name)
-	// mut x := new_repo<User>(DB{})
-	// x.model.name = 'joe2'
-	// println(x.model.name)
 }
 
 struct Foo<T> {
@@ -322,3 +309,71 @@ fn test_generic_fn_with_variadics(){
 	p('Good', 'morning', 'world')
 }
 */
+
+struct Context {}
+
+struct App {
+mut:
+	context Context
+}
+
+fn test<T>(mut app T) {
+	nested_test<T>(mut app)
+}
+
+fn nested_test<T>(mut app T) {
+	app.context = Context {}
+}
+
+fn test_pass_generic_to_nested_function() {
+	mut app := App{}
+	test(mut app)
+}
+
+/*
+struct NestedGeneric {}
+
+fn (ng NestedGeneric) nested_test<T>(mut app T) {
+	app.context = Context {}
+}
+
+fn method_test<T>(mut app T) {
+	ng := NestedGeneric{}
+	ng.nested_test<T>(app)
+}
+
+fn test_pass_generic_to_nested_method() {
+	mut app := App{}
+	method_test(mut app)
+}*/
+
+fn generic_return_map<M>() map[string]M {
+	return {'': M{}}
+}
+
+fn test_generic_return_map() {
+	assert typeof(generic_return_map<string>()).name == 'map[string]string'
+}
+/*
+fn generic_return_nested_map<M>() map[string]map[string]M {
+	return {'': {'': M{}}}
+}
+
+fn test_generic_return_nested_map() {
+	assert typeof(generic_return_nested_map<string>()).name == 'map[string]map[string]string'
+}*/
+
+/*
+fn multi_return<A, B>() (A, B) {
+	return A{}, B{}
+}
+
+struct Foo1{}
+struct Foo2{}
+struct Foo3{}
+struct Foo4{}
+
+fn test_multi_return() {
+	// TODO: multi_return<Foo1, Foo2>()
+	// TODO: temulti_returnst<Foo3, Foo4>()
+}*/
