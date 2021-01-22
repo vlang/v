@@ -10,7 +10,7 @@ const (
 	npad = []byte{len: 256, init: 0}
 )
 
-// new returns an HMAC byte array, depending on the hash algorithm used.
+// new returns a HMAC byte array, depending on the hash algorithm used.
 pub fn new(key []byte, data []byte, hash_func fn (bytes []byte) []byte, blocksize int) []byte {
 	mut b_key := []byte{}
 	if key.len <= blocksize {

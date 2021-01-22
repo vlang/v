@@ -44,7 +44,8 @@ pub fn (x &AesCbc) block_size() int {
 	return x.block_size
 }
 
-// encrypt_blocks encrypts the blocks in `_src` to `_dst`.
+// encrypt_blocks encrypts the blocks in `src_` to `dst_`.
+// Please note: `dst_` is mutable for performance reasons.
 pub fn (x &AesCbc) encrypt_blocks(mut dst_ []byte, src_ []byte) {
 	unsafe {
 		mut dst := *dst_
@@ -78,6 +79,7 @@ pub fn (x &AesCbc) encrypt_blocks(mut dst_ []byte, src_ []byte) {
 }
 
 // decrypt_blocks decrypts the blocks in `src` to `dst`.
+// Please note: `dst` is mutable for performance reasons.
 pub fn (mut x AesCbc) decrypt_blocks(mut dst []byte, src []byte) {
 	if src.len % x.block_size != 0 {
 		panic('crypto.cipher: input not full blocks')

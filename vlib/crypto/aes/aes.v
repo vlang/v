@@ -19,7 +19,7 @@ mut:
 	dec []u32
 }
 
-// new_cipher creates and returns a new cipher.Block.
+// new_cipher creates and returns a new `AesCipher`.
 // The key argument should be the AES key,
 // either 16, 24, or 32 bytes to select
 // AES-128, AES-192, or AES-256.
@@ -44,6 +44,7 @@ pub fn (c &AesCipher) block_size() int {
 }
 
 // encrypt encrypts the blocks in `src` to `dst`.
+// Please note: `dst` and `src` is both mutable for performance reasons.
 pub fn (c &AesCipher) encrypt(mut dst []byte, mut src []byte) {
 	if src.len < block_size {
 		panic('crypto.aes: input not full block')
@@ -60,6 +61,7 @@ pub fn (c &AesCipher) encrypt(mut dst []byte, mut src []byte) {
 }
 
 // decrypt decrypts the blocks in `src` to `dst`.
+// Please note: `dst` and `src` is both mutable for performance reasons.
 pub fn (c &AesCipher) decrypt(mut dst []byte, mut src []byte) {
 	if src.len < block_size {
 		panic('crypto.aes: input not full block')
