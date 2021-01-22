@@ -653,7 +653,12 @@ fn (mut v Builder) cc() {
 				}
 			}
 			if res.exit_code == 127 {
-				verror('C compiler error, while attempting to run: \n' + '-----------------------------------------------------------\n' + '$cmd\n' + '-----------------------------------------------------------\n' + 'Probably your C compiler is missing. \n' + 'Please reinstall it, or make it available in your PATH.\n\n' + missing_compiler_info())
+				verror('C compiler error, while attempting to run: \n' +
+					'-----------------------------------------------------------\n' + '$cmd\n' +
+					'-----------------------------------------------------------\n' +
+					'Probably your C compiler is missing. \n' +
+					'Please reinstall it, or make it available in your PATH.\n\n' +
+					missing_compiler_info())
 			}
 		}
 		if !v.pref.show_c_output {

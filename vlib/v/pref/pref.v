@@ -568,7 +568,9 @@ fn parse_define(mut prefs Preferences, define string) {
 				prefs.compile_defines << define_parts[0]
 			}
 			else {
-				println('V error: Unknown define argument value `${define_parts[1]}` for ${define_parts[0]}.' + ' Expected `0` or `1`.')
+				println(
+					'V error: Unknown define argument value `${define_parts[1]}` for ${define_parts[0]}.' +
+					' Expected `0` or `1`.')
 				exit(1)
 			}
 		}

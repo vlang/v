@@ -693,7 +693,8 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 						comment_align_i++
 						align = comment_aligns[comment_align_i]
 					}
-					pad_len := align.max_attrs_len - attrs_len + align.max_type_len - field_types[i].len
+					pad_len := align.max_attrs_len - attrs_len +
+						align.max_type_len - field_types[i].len
 					f.write(strings.repeat(` `, pad_len))
 				}
 				f.write(' ')
@@ -1441,17 +1442,18 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	}
 	if !buffering_save && f.buffering {
 		f.buffering = false
-		if !f.single_line_if && f.line_len > max_len.last() {
-			f.wrap_condition_infix(infix_start, start_len)
+		if f.line_len > max_len.last() {
+			f.wrap_infix(infix_start, start_len)
 		}
 	}
 	f.or_expr(node.or_block)
 }
 
-pub fn (mut f Fmt) wrap_condition_infix(start_pos int, start_len int) {
+pub fn (mut f Fmt) wrap_infix(start_pos int, start_len int) {
 	cut_span := f.out.len - start_pos
 	condstr := f.out.cut_last(cut_span)
-	if !condstr.contains_any_substr(['&&', '||']) {
+	is_cond_infix := condstr.contains_any_substr(['&&', '||'])
+	if (!is_cond_infix && !condstr.contains('+')) || (is_cond_infix && f.single_line_if) {
 		f.write(condstr)
 		return
 	}
@@ -1459,22 +1461,24 @@ pub fn (mut f Fmt) wrap_condition_infix(start_pos int, start_len int) {
 	or_pen := if condstr.contains('&&') { 3 } else { 5 }
 	cond_parts := condstr.split(' ')
 	mut grouped_cond := false
-	mut index := 0
 	mut conditions := ['']
 	mut penalties := [5]
+	mut index := 0
 	for cp in cond_parts {
-		if cp in ['&&', '||'] {
+		if is_cond_infix && cp in ['&&', '||'] {
 			if grouped_cond {
 				conditions[index] += '$cp '
 			} else {
-				penalties << if cp == '||' {
-					or_pen
-				} else {
-					5
-				}
+				p := if cp == '||' { or_pen } else { 5 }
+				penalties << p
 				conditions << '$cp '
 				index++
 			}
+		} else if !is_cond_infix && cp == '+' {
+			penalties << 5
+			conditions[index] += '$cp '
+			conditions << ''
+			index++
 		} else {
 			conditions[index] += '$cp '
 			if cp.starts_with('(') {
@@ -1487,7 +1491,7 @@ pub fn (mut f Fmt) wrap_condition_infix(start_pos int, start_len int) {
 	for i, c in conditions {
 		cnd := c.trim_space()
 		if f.line_len + cnd.len < max_len[penalties[i]] {
-			if i > 0 && i < conditions.len - 1 {
+			if i > 0 && (!is_cond_infix || i < conditions.len - 1) {
 				f.write(' ')
 			}
 			f.write(cnd)

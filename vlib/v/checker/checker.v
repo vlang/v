@@ -516,8 +516,8 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 	if type_sym.kind == .struct_ {
 		info := type_sym.info as table.Struct
 		if info.attrs.len > 0 && info.attrs[0].name == 'noinit' && type_sym.mod != c.mod {
-			c.error('struct `$type_sym.name` is declared with a `[noinit]` attribute, so ' + 'it cannot be initialized with `$type_sym.name{}`',
-				struct_init.pos)
+			c.error('struct `$type_sym.name` is declared with a `[noinit]` attribute, so ' +
+				'it cannot be initialized with `$type_sym.name{}`', struct_init.pos)
 		}
 	}
 	if type_sym.name.len == 1 && !c.cur_fn.is_generic {
@@ -1276,8 +1276,9 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 				// Verify `.sort(a < b)`
 				if call_expr.args.len > 0 {
 					if call_expr.args[0].expr !is ast.InfixExpr {
-						c.error('`.sort()` requires a `<` or `>` comparison as the first and only argument' + '\ne.g. `users.sort(a.id < b.id)`',
-							call_expr.pos)
+						c.error(
+							'`.sort()` requires a `<` or `>` comparison as the first and only argument' +
+							'\ne.g. `users.sort(a.id < b.id)`', call_expr.pos)
 					}
 				}
 			}
@@ -1477,8 +1478,8 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			} else {
 				if param.is_mut && (!arg.is_mut || param.typ.share() != arg.share) {
 					tok := arg.share.str()
-					c.warn('`$call_expr.name` parameter `$param.name` is `$tok`, you need to provide `$tok` e.g. `$tok arg${i + 1}`',
-						arg.expr.position())
+					c.warn('`$call_expr.name` parameter `$param.name` is `$tok`, you need to provide `$tok` e.g. `$tok arg${
+						i + 1}`', arg.expr.position())
 				}
 			}
 		}
@@ -1811,8 +1812,8 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		} else {
 			if arg.is_mut && (!call_arg.is_mut || arg.typ.share() != call_arg.share) {
 				tok := call_arg.share.str()
-				c.warn('`$call_expr.name` parameter `$arg.name` is `$tok`, you need to provide `$tok` e.g. `$tok arg${i + 1}`',
-					call_arg.expr.position())
+				c.warn('`$call_expr.name` parameter `$arg.name` is `$tok`, you need to provide `$tok` e.g. `$tok arg${
+					i + 1}`', call_arg.expr.position())
 			}
 		}
 		// Handle expected interface
@@ -2518,8 +2519,8 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			}
 			right_is_ptr := right_type.is_ptr() || right_sym.is_pointer()
 			if !right_is_ptr && assign_stmt.op == .assign && right_type_unwrapped.is_number() {
-				c.error('cannot assign to `$left`: ' + c.expected_msg(right_type_unwrapped, left_type_unwrapped),
-					right.position())
+				c.error('cannot assign to `$left`: ' +
+					c.expected_msg(right_type_unwrapped, left_type_unwrapped), right.position())
 			}
 			if (right is ast.StructInit || !right_is_ptr) && !right_sym.is_number() {
 				left_name := c.table.type_to_str(left_type_unwrapped)
@@ -2990,8 +2991,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 					node.scope.update_var_type(node.val_var, val_type)
 				} else {
 					if sym.kind == .map && !(node.key_var.len > 0 && node.val_var.len > 0) {
-						c.error('declare a key and a value variable when ranging a map: `for key, val in map {`\n' + 'use `_` if you do not need the variable',
-							node.pos)
+						c.error(
+							'declare a key and a value variable when ranging a map: `for key, val in map {`\n' +
+							'use `_` if you do not need the variable', node.pos)
 					}
 					if node.key_var.len > 0 {
 						key_type := match sym.kind {
@@ -4823,7 +4825,8 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 		c.error('type `$typ_sym.name` does not support indexing', node.pos)
 	}
 	if typ_sym.kind == .string && !typ.is_ptr() && node.is_setter {
-		c.error('cannot assign to s[i] since V strings are immutable\n' + '(note, that variables may be mutable but string values are always immutable, like in Go and Java)',
+		c.error('cannot assign to s[i] since V strings are immutable\n' +
+			'(note, that variables may be mutable but string values are always immutable, like in Go and Java)',
 			node.pos)
 	}
 	if !c.inside_unsafe && (typ.is_ptr() || typ.is_pointer()) {

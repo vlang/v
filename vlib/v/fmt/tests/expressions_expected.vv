@@ -37,7 +37,8 @@ fn string_inter_lit(mut c checker.Checker, mut node ast.StringInterLiteral) tabl
 }
 
 fn get_some_val(a_test f64, b_test f64, c_test f64, d_test f64, e_test f64, f_test f64) f64 {
-	return a_test * b_test * c_test * d_test + e_test * f_test * a_test * d_test + a_test * b_test * c_test
+	return a_test * b_test * c_test * d_test + e_test * f_test * a_test * d_test +
+		a_test * b_test * c_test
 }
 
 fn main() {
@@ -49,7 +50,8 @@ fn main() {
 	s := []string{}
 	s << '	`$v_str`'
 	println(s)
-	println('this is quite a long string' + ' that is followd by an even longer part that should go to another line')
+	println('this is quite a long string' +
+		' that is followd by an even longer part that should go to another line')
 	if (a == b && b > r) || (d > r) || (a < b) || (b < d && a + b > r)
 		|| (a + b + d >= 0 && r < 0)|| (a > b && d - r < b) {
 		println('ok')

@@ -144,7 +144,8 @@ pub fn (ctx &Context) text_width(s string) int {
 	mut buf := [4]f32{}
 	C.fonsTextBounds(ctx.ft.fons, 0, 0, s.str, 0, buf)
 	if s.ends_with(' ') {
-		return int((buf[2] - buf[0]) / ctx.scale) + ctx.text_width('i') // TODO fix this in fontstash?
+		return int((buf[2] - buf[0]) / ctx.scale) +
+			ctx.text_width('i') // TODO fix this in fontstash?
 	}
 	return int((buf[2] - buf[0]) / ctx.scale)
 }

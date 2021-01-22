@@ -107,7 +107,8 @@ pub fn ones_count_16(x u16) int {
 
 // ones_count_32 returns the number of one bits ("population count") in x.
 pub fn ones_count_32(x u32) int {
-	return int(pop_8_tab[x >> 24] + pop_8_tab[x >> 16 & 0xff] + pop_8_tab[x >> 8 & 0xff] + pop_8_tab[x & u32(0xff)])
+	return int(pop_8_tab[x >> 24] + pop_8_tab[x >> 16 & 0xff] + pop_8_tab[x >> 8 & 0xff] +
+		pop_8_tab[x & u32(0xff)])
 }
 
 // ones_count_64 returns the number of one bits ("population count") in x.

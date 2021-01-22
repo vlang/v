@@ -469,7 +469,10 @@ fn (mut s Scanner) end_of_file() token.Token {
 	s.eofs++
 	if s.eofs > 50 {
 		s.line_nr--
-		panic('the end of file `$s.file_path` has been reached 50 times already, the v parser is probably stuck.\n' + 'This should not happen. Please report the bug here, and include the last 2-3 lines of your source code:\n' + 'https://github.com/vlang/v/issues/new?labels=Bug&template=bug_report.md')
+		panic(
+			'the end of file `$s.file_path` has been reached 50 times already, the v parser is probably stuck.\n' +
+			'This should not happen. Please report the bug here, and include the last 2-3 lines of your source code:\n' +
+			'https://github.com/vlang/v/issues/new?labels=Bug&template=bug_report.md')
 	}
 	if s.pos != s.text.len && s.eofs == 1 {
 		s.inc_line_number()
@@ -1165,7 +1168,8 @@ fn (mut s Scanner) ident_char() string {
 	if len != 1 {
 		u := c.ustring()
 		if u.len != 1 {
-			s.error('invalid character literal (more than one character)\n' + 'use quotes for strings, backticks for characters')
+			s.error('invalid character literal (more than one character)\n' +
+				'use quotes for strings, backticks for characters')
 		}
 	}
 	// Escapes a `'` character

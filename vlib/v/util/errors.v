@@ -120,7 +120,7 @@ pub fn source_context(kind string, source string, column int, pos token.Position
 		start_column := imax(0, imin(column, sline.len))
 		end_column := imax(0, imin(column + imax(0, pos.len), sline.len))
 		cline := if iline == pos.line_nr {
-			sline[..start_column] + color(kind, sline[start_column..end_column]) + sline[end_column..]
+sline[..start_column] + color(kind, sline[start_column..end_column]) + sline[end_column..]
 		} else {
 			sline
 		}

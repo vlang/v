@@ -617,7 +617,9 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 			// `a, b, c int`
 			for p.tok.kind == .comma {
 				if !p.pref.is_fmt {
-					p.warn('`fn f(x, y Type)` syntax has been deprecated and will soon be removed. ' + 'Use `fn f(x Type, y Type)` instead. You can run `v fmt -w "$p.scanner.file_path"` to automatically fix your code.')
+					p.warn(
+						'`fn f(x, y Type)` syntax has been deprecated and will soon be removed. ' +
+						'Use `fn f(x Type, y Type)` instead. You can run `v fmt -w "$p.scanner.file_path"` to automatically fix your code.')
 				}
 				p.next()
 				arg_pos << p.tok.position()
@@ -696,7 +698,9 @@ fn (mut p Parser) check_fn_mutable_arguments(typ table.Type, pos token.Position)
 	sym := p.table.get_type_symbol(typ)
 	if sym.kind !in [.array, .array_fixed, .struct_, .map, .placeholder, .sum_type] && !typ.is_ptr()
 		&& !typ.is_pointer() {
-		p.error_with_pos('mutable arguments are only allowed for arrays, maps, structs and pointers\n' + 'return values instead: `fn foo(mut n $sym.name) {` => `fn foo(n $sym.name) $sym.name {`',
+		p.error_with_pos(
+			'mutable arguments are only allowed for arrays, maps, structs and pointers\n' +
+			'return values instead: `fn foo(mut n $sym.name) {` => `fn foo(n $sym.name) $sym.name {`',
 			pos)
 	}
 }
@@ -712,7 +716,8 @@ fn (mut p Parser) check_fn_shared_arguments(typ table.Type, pos token.Position) 
 fn (mut p Parser) check_fn_atomic_arguments(typ table.Type, pos token.Position) {
 	sym := p.table.get_type_symbol(typ)
 	if sym.kind !in [.u32, .int, .u64] {
-		p.error_with_pos('atomic arguments are only allowed for 32/64 bit integers\n' + 'use shared arguments instead: `fn foo(atomic n $sym.name) {` => `fn foo(shared n $sym.name) {`',
+		p.error_with_pos('atomic arguments are only allowed for 32/64 bit integers\n' +
+			'use shared arguments instead: `fn foo(atomic n $sym.name) {` => `fn foo(shared n $sym.name) {`',
 			pos)
 	}
 }

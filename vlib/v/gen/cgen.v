@@ -406,8 +406,10 @@ pub fn (mut g Gen) init() {
 	}
 	if g.pref.compile_defines_all.len > 0 {
 		g.comptime_defines.writeln('// V compile time defines by -d or -define flags:')
-		g.comptime_defines.writeln('//     All custom defines      : ' + g.pref.compile_defines_all.join(','))
-		g.comptime_defines.writeln('//     Turned ON custom defines: ' + g.pref.compile_defines.join(','))
+		g.comptime_defines.writeln('//     All custom defines      : ' +
+			g.pref.compile_defines_all.join(','))
+		g.comptime_defines.writeln('//     Turned ON custom defines: ' +
+			g.pref.compile_defines.join(','))
 		for cdefine in g.pref.compile_defines {
 			g.comptime_defines.writeln('#define CUSTOM_DEFINE_$cdefine')
 		}
@@ -5149,7 +5151,10 @@ fn (g &Gen) sort_structs(typesa []table.TypeSymbol) []table.TypeSymbol {
 	if !dep_graph_sorted.acyclic {
 		// this should no longer be called since it's catched in the parser
 		// TODO: should it be removed?
-		verror('cgen.sort_structs(): the following structs form a dependency cycle:\n' + dep_graph_sorted.display_cycles() + '\nyou can solve this by making one or both of the dependant struct fields references, eg: field &MyStruct' + '\nif you feel this is an error, please create a new issue here: https://github.com/vlang/v/issues and tag @joe-conigliaro')
+		verror('cgen.sort_structs(): the following structs form a dependency cycle:\n' +
+			dep_graph_sorted.display_cycles() +
+			'\nyou can solve this by making one or both of the dependant struct fields references, eg: field &MyStruct' +
+			'\nif you feel this is an error, please create a new issue here: https://github.com/vlang/v/issues and tag @joe-conigliaro')
 	}
 	// sort types
 	mut types_sorted := []table.TypeSymbol{}
@@ -5649,7 +5654,8 @@ fn (mut g Gen) go_stmt(node ast.GoStmt, joinable bool) string {
 	if g.pref.os == .windows && node.call_expr.return_type != table.void_type {
 		g.writeln('$arg_tmp_var->ret_ptr = malloc(sizeof($s_ret_typ));')
 	}
-	gohandle_name := 'gohandle_' + g.table.get_type_symbol(g.unwrap_generic(node.call_expr.return_type)).name
+	gohandle_name := 'gohandle_' +
+		g.table.get_type_symbol(g.unwrap_generic(node.call_expr.return_type)).name
 	if g.pref.os == .windows {
 		simple_handle := if joinable && node.call_expr.return_type != table.void_type {
 			'thread_handle_$tmp'
@@ -5882,7 +5888,9 @@ fn (mut g Gen) interface_table() string {
 			// i.e. cctype is always just Cat, not Cat_ptr:
 			cctype := g.cc_type(st)
 			$if debug_interface_table ? {
-				eprintln('>> interface name: $ityp.name | concrete type: $st.debug() | st symname: ' + g.table.get_type_symbol(st).name)
+				eprintln(
+					'>> interface name: $ityp.name | concrete type: $st.debug() | st symname: ' +
+					g.table.get_type_symbol(st).name)
 			}
 			// Speaker_Cat_index = 0
 			interface_index_name := '_${interface_name}_${cctype}_index'
