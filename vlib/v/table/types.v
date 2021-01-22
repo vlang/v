@@ -962,7 +962,7 @@ fn (a &Aggregate) find_field(name string) ?Field {
 	return none
 }
 
-fn (i &Interface) find_field(name string) ?Field {
+pub fn (i &Interface) find_field(name string) ?Field {
 	for field in i.fields {
 		if field.name == name {
 			return field

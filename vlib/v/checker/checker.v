@@ -1145,7 +1145,15 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 						explicit_lock_needed = true
 					}
 				}
-				.array, .string {
+				.interface_ {
+					// TODO: mutability checks on interface fields?
+					interface_info := typ_sym.info as table.Interface
+					interface_info.find_field(expr.field_name) or {
+						type_str := c.table.type_to_str(expr.expr_type)
+						c.error('unknown field `${type_str}.$expr.field_name`', expr.pos)
+						return '', pos
+					}
+				} .array, .string {
 					// This should only happen in `builtin`
 					// TODO Remove `crypto.rand` when possible (see vlib/crypto/rand/rand.v,
 					// if `c_array_to_bytes_tmp` doesn't exist, then it's safe to remove it)
@@ -2023,8 +2031,8 @@ fn (mut c Checker) type_implements(typ table.Type, inter_typ table.Type, pos tok
 	if mut inter_sym.info is table.Interface {
 		for ifield in inter_sym.info.fields {
 			if field := typ_sym.find_field(ifield.name) {
-				if ifield.typ.deref() != field.typ {
-					exp := c.table.type_to_str(ifield.typ.deref())
+				if ifield.typ != field.typ {
+					exp := c.table.type_to_str(ifield.typ)
 					got := c.table.type_to_str(field.typ)
 					c.error('`$styp` incorrectly implements field `$ifield.name` of interface `$inter_sym.name`, expected `$exp`, got `$got`',
 						pos)

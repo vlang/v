@@ -686,7 +686,7 @@ pub fn (mut g Gen) write_typedef_types() {
 				for field in info.fields {
 					styp := g.typ(field.typ)
 					cname := c_name(field.name)
-					g.type_definitions.writeln('\t$styp $cname;')
+					g.type_definitions.writeln('\t$styp* $cname;')
 				}
 				g.type_definitions.writeln('} ${c_name(typ.name)};')
 			}
@@ -2930,6 +2930,9 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		opt_base_typ := g.base_type(node.expr_type)
 		g.writeln('(*($opt_base_typ*)')
 	}
+	if sym.kind == .interface_ {
+		g.write('*(')
+	}
 	if sym.kind == .array_fixed {
 		assert node.field_name == 'len'
 		info := sym.info as table.ArrayFixed
@@ -3005,6 +3008,9 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	g.write(c_name(node.field_name))
 	if sum_type_deref_field != '' {
 		g.write('$sum_type_dot$sum_type_deref_field)')
+	}
+	if sym.kind == .interface_ {
+		g.write(')')
 	}
 }
 
@@ -5942,7 +5948,7 @@ fn (mut g Gen) interface_table() string {
 			for field in inter_info.fields {
 				cname := c_name(field.name)
 				field_styp := g.typ(field.typ)
-				cast_struct.writeln('\t\t.$cname = ($field_styp)((char*)x + __offsetof($cctype, $cname)),')
+				cast_struct.writeln('\t\t.$cname = ($field_styp*)((char*)x + __offsetof($cctype, $cname)),')
 			}
 			cast_struct.write('\t}')
 			cast_struct_str := cast_struct.str()
