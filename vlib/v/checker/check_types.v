@@ -485,8 +485,9 @@ pub fn (mut c Checker) infer_fn_types(f table.Fn, mut call_expr ast.CallExpr) {
 	c.table.register_fn_gen_type(f.name, inferred_types)
 }
 
+// infer_generic_type resolves generics to real types T => int.
+// Even map[string]map[string]T can be resolved.
 fn (mut c Checker) infer_generic_type(generic_type table.Type, generic_names []string, call_expr ast.CallExpr) ?table.Type {
-	// Handle `foo<T>() T` => `foo<int>() int` => return int
 	mut sym := c.table.get_type_symbol(generic_type)
 	if sym.name in generic_names {
 		index := generic_names.index(sym.name)
