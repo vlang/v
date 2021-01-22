@@ -86,7 +86,7 @@ pub fn (mut d Digest) write(p_ []byte) int {
 	}
 }
 
-// sum returns a copy of the generated sum of the bytes in `b_in`.
+// sum returns the md5 sum of the bytes in `b_in`.
 pub fn (d &Digest) sum(b_in []byte) []byte {
 	// Make a copy of d so that caller can keep writing and summing.
 	mut d0 := *d
