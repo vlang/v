@@ -138,7 +138,7 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 		} else if kind == .insert {
 			expr := p.expr(0)
 			if expr is ast.Ident {
-					inserted_var_name = expr.name
+				inserted_var_name = expr.name
 			} else {
 				p.error('can only insert variables')
 				return ast.SqlStmt{}
