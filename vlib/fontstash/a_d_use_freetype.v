@@ -1,4 +1,4 @@
-module f
+module fontstash
 
 #define FONS_USE_FREETYPE
 

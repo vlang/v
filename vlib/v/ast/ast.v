@@ -765,8 +765,9 @@ pub mut:
 // #include etc
 pub struct HashStmt {
 pub:
-	mod string
-	pos token.Position
+	mod         string
+	pos         token.Position
+	source_file string
 pub mut:
 	val  string // example: 'include <openssl/rand.h> # please install openssl // comment'
 	kind string // : 'include'

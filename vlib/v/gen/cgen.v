@@ -1165,7 +1165,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					g.includes.writeln(guarded_include)
 				}
 			} else if node.kind == 'define' {
-				g.includes.writeln('// defined by module `$node.mod`:')
+				g.includes.writeln('// defined by module `$node.mod` in file `$node.source_file`:')
 				g.includes.writeln('#define $node.main')
 			}
 		}
