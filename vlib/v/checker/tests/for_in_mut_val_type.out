@@ -33,10 +33,10 @@ vlib/v/checker/tests/for_in_mut_val_type.vv:17:15: error: array literal is immut
       |                  ~~~~~~~~~~
    18 |         j *= 2
    19 |     }
-vlib/v/checker/tests/for_in_mut_val_type.vv:20:19: error: map literal is immutable, it cannot be changed
+vlib/v/checker/tests/for_in_mut_val_type.vv:20:18: error: map literal is immutable, it cannot be changed
    18 |         j *= 2
    19 |     }
    20 |     for _, mut j in {'aa': 1, 'bb': 2} {
-      |                      ~~~~
+      |                     ~~~~~~~~~~~~~~~~~~
    21 |         j *= 2
    22 |     }
