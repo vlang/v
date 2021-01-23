@@ -90,6 +90,10 @@ pub fn (mut p Parser) parse_map_type() table.Type {
 		// error is reported in parse_type
 		return 0
 	}
+	if value_type.idx() == table.void_type_idx {
+		p.error_with_pos('map value type cannot be void', p.tok.position())
+		return 0
+	}
 	idx := p.table.find_or_register_map(key_type, value_type)
 	return table.new_type(idx)
 }

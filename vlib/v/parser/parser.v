@@ -1140,9 +1140,13 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	// `map[string]int` initialization
 	if p.tok.lit == 'map' && p.peek_tok.kind == .lsbr {
 		map_type := p.parse_map_type()
-		if p.tok.kind == .lcbr && p.peek_tok.kind == .rcbr {
+		if p.tok.kind == .lcbr {
 			p.next()
-			p.next()
+			if p.tok.kind == .rcbr {
+				p.next()
+			} else {
+				p.error('`}` expected; explicit `map` initialization does not support parameters')
+			}
 		}
 		return ast.MapInit{
 			typ: map_type
