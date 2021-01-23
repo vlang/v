@@ -326,7 +326,8 @@ fn main() {
 }
 ```
 
-The values of multiple variables can be changed in one line. In this way, their values can be swapped without an intermediary variable.
+The values of multiple variables can be changed in one line.
+In this way, their values can be swapped without an intermediary variable.
 
 ```v
 mut a := 0
