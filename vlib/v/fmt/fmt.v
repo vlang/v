@@ -35,6 +35,7 @@ pub mut:
 	file               ast.File
 	did_imports        bool
 	is_assign          bool
+	is_arr_push        bool
 	auto_imports       []string // automatically inserted imports that the user forgot to specify
 	import_pos         int      // position of the imports in the resulting string for later autoimports insertion
 	used_imports       []string // to remove unused imports
@@ -1430,6 +1431,9 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	if !f.buffering {
 		f.buffering = true
 	}
+	if node.op == .left_shift {
+		f.is_arr_push = true
+	}
 	infix_start := f.out.len
 	start_len := f.line_len
 	f.expr(node.left)
@@ -1454,6 +1458,7 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 			f.wrap_infix(infix_start, start_len)
 		}
 	}
+	f.is_arr_push = false
 	f.or_expr(node.or_block)
 }
 
@@ -1518,7 +1523,7 @@ pub fn (mut f Fmt) wrap_infix(start_pos int, start_len int) {
 pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 	dollar := if it.is_comptime { '$' } else { '' }
 	mut single_line := it.branches.len == 2 && it.has_else && branch_is_single_line(it.branches[0])
-		&& branch_is_single_line(it.branches[1])&& (it.is_expr || f.is_assign)
+		&& branch_is_single_line(it.branches[1])&& (it.is_expr || f.is_assign || f.is_arr_push)
 	f.single_line_if = single_line
 	if_start := f.line_len
 	for {
