@@ -1965,7 +1965,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		pos := p.tok.position()
 		name := p.check_name()
 		if util.contains_capital(name) {
-			p.warn_with_pos('$p.file_name_dir const names cannot contain uppercase letters, use snake_case instead',
+			p.warn_with_pos('const names cannot contain uppercase letters, use snake_case instead',
 				pos)
 		}
 		full_name := p.prepend_mod(name)
