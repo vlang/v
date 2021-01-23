@@ -19,17 +19,17 @@ with open("/reports/clients/index.json") as f:
 
         nr_of_client_tests = nr_of_client_tests + 1
 
-# with open("/reports/servers/index.json") as f:
-#     data = json.load(f)
+with open("/reports/servers/index.json") as f:
+    data = json.load(f)
 
-#     for i in data["AutobahnServer"]:
-#         if (
-#             data["AutobahnServer"][i]["behavior"] == "FAILED"
-#             or data["AutobahnServer"][i]["behaviorClose"] == "FAILED"
-#         ):
-#             nr_of_server_errs = nr_of_server_errs + 1
+    for i in data["AutobahnServer"]:
+        if (
+            data["AutobahnServer"][i]["behavior"] == "FAILED"
+            or data["AutobahnServer"][i]["behaviorClose"] == "FAILED"
+        ):
+            nr_of_server_errs = nr_of_server_errs + 1
 
-#         nr_of_server_tests = nr_of_server_tests + 1
+        nr_of_server_tests = nr_of_server_tests + 1
 
 if nr_of_client_errs > 0 or nr_of_server_errs > 0:
     print(
