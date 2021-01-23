@@ -5954,7 +5954,7 @@ fn (mut g Gen) interface_table() string {
 			cast_struct_str := cast_struct.str()
 
 			cast_functions.writeln('
-// Casting functions for interface "$interface_name"
+// Casting functions for converting "$cctype" to interface "$interface_name"
 $staticprefix inline $interface_name I_${cctype}_to_Interface_${interface_name}($cctype* x) {
 	return $cast_struct_str;
 }
