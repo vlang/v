@@ -8,7 +8,7 @@
 - Consts can now be declared outside of `const()` blocks: `const x = 0`.
 - Overloading of  `>`, `<`, `!=`, `==`, `<=` and `>=` operators.
 - New struct updating syntax: `User{ ...u, name: 'new' }` to replace `{ u | name: 'new' }`.
-- `byte.str()` has been fixed and works like with all other numbers. `byte.ascii_str()` has been added.
+- `byte.str()` has been fixed and works like all other numbers. `byte.ascii_str()` has been added.
 - Smart cast in for loops: `for mut x is string {}`.
 - `[noinit]` struct attribute to disallow direct struct initialization with `Foo{}`.
 - Array decompose: `[1, 2, 3]...` is now `...[1, 2, 3]`

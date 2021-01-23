@@ -98,6 +98,11 @@ fn str_replace2() {
 }
 
 fn reassign_str() {
+	mut z := '1' + '2'
+	if true {
+		println('KEK')
+		z = 'foo'
+	}
 	mut x := 'a'
 	x = 'b' // nothing has to be freed here
 	//

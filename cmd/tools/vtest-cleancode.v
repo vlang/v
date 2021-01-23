@@ -22,6 +22,7 @@ const (
 		'vlib/bitfield/',
 		'vlib/builtin/array.v',
 		'vlib/builtin/array_test.v',
+		'vlib/builtin/string.v',
 		'vlib/builtin/map.v',
 		'vlib/math/bits/bits.v',
 		'vlib/orm/',

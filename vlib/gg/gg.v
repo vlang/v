@@ -40,6 +40,7 @@ pub:
 	bg_color          gx.Color
 	init_fn           FNCb      = voidptr(0)
 	frame_fn          FNCb      = voidptr(0)
+	native_frame_fn   FNCb      = voidptr(0)
 	cleanup_fn        FNCb      = voidptr(0)
 	fail_fn           FNFail    = voidptr(0)
 	event_fn          FNEvent   = voidptr(0)
@@ -65,6 +66,7 @@ pub:
 	font_bytes_bold   []byte
 	font_bytes_mono   []byte
 	font_bytes_italic []byte
+	native_rendering  bool // Cocoa on macOS/iOS, GDI+ on Windows
 }
 
 pub struct Context {
@@ -75,6 +77,8 @@ mut:
 	image_cache   []Image
 	needs_refresh bool = true
 	ticks         int
+pub:
+	native_rendering bool
 pub mut:
 	scale f32 = 1.0
 	// will get set to 2.0 for retina, will remain 1.0 for normal
@@ -169,6 +173,9 @@ fn gg_init_sokol_window(user_data voidptr) {
 		g.config.init_fn(g.config.user_data)
 	}
 	// Create images now that we can do that after sg is inited
+	if g.native_rendering {
+		return
+	}
 	for i in 0 .. g.image_cache.len {
 		g.image_cache[i].init_sokol_image()
 	}
@@ -178,6 +185,9 @@ fn gg_frame_fn(user_data voidptr) {
 	mut ctx := unsafe { &Context(user_data) }
 	if ctx.config.frame_fn == voidptr(0) {
 		return
+	}
+	if ctx.native_rendering {
+		// return
 	}
 	if ctx.ui_mode && !ctx.needs_refresh {
 		// Draw 3 more frames after the "stop refresh" command
@@ -256,6 +266,7 @@ pub fn new_context(cfg Config) &Context {
 		render_text: cfg.font_path != '' || cfg.font_bytes_normal.len > 0
 		ft: 0
 		ui_mode: cfg.ui_mode
+		native_rendering: cfg.native_rendering
 	}
 	g.set_bg_color(cfg.bg_color)
 	// C.printf('new_context() %p\n', cfg.user_data)
@@ -273,6 +284,7 @@ pub fn new_context(cfg Config) &Context {
 		sample_count: cfg.sample_count
 		high_dpi: true
 		fullscreen: cfg.fullscreen
+		native_render: cfg.native_rendering
 	}
 	if cfg.use_ortho {
 	} else {
@@ -292,6 +304,12 @@ pub fn (mut ctx Context) set_bg_color(c gx.Color) {
 
 // TODO: Fix alpha
 pub fn (ctx &Context) draw_rect(x f32, y f32, w f32, h f32, c gx.Color) {
+	$if macos {
+		if ctx.native_rendering {
+			C.darwin_draw_rect(x, ctx.height - (y + h), w, h, c)
+			return
+		}
+	}
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
@@ -357,6 +375,12 @@ pub fn (ctx &Context) draw_circle_line(x f32, y f32, r int, segments int, c gx.C
 }
 
 pub fn (ctx &Context) draw_circle(x f32, y f32, r f32, c gx.Color) {
+	$if macos {
+		if ctx.native_rendering {
+			C.darwin_draw_circle(x - r + 1, ctx.height - (y + r + 3), r, c)
+			return
+		}
+	}
 	if ctx.scale == 1 {
 		ctx.draw_circle_with_segments(x, y, r, 10, c)
 	} else {

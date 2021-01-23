@@ -35,6 +35,13 @@ struct FTConfig {
 	bytes_italic          []byte
 }
 
+struct StringToRender {
+	x    int
+	y    int
+	text string
+	cfg  gx.TextCfg
+}
+
 fn new_ft(c FTConfig) ?&FT {
 	if c.font_path == '' {
 		if c.bytes_normal.len > 0 {
@@ -150,6 +157,17 @@ fn (ctx &Context) set_cfg(cfg gx.TextCfg) {
 }
 
 pub fn (ctx &Context) draw_text(x int, y int, text_ string, cfg gx.TextCfg) {
+	$if macos {
+		if ctx.native_rendering {
+			if cfg.align == gx.align_right {
+				width := ctx.text_width(text_)
+				C.darwin_draw_string(x - width, ctx.height - y, text_, cfg)
+			} else {
+				C.darwin_draw_string(x, ctx.height - y, text_, cfg)
+			}
+			return
+		}
+	}
 	if !ctx.font_inited {
 		eprintln('gg: draw_text(): font not initialized')
 		return
@@ -177,6 +195,11 @@ pub fn (ft &FT) flush() {
 }
 
 pub fn (ctx &Context) text_width(s string) int {
+	$if macos {
+		if ctx.native_rendering {
+			return C.darwin_text_width(s)
+		}
+	}
 	// ctx.set_cfg(cfg) TODO
 	if !ctx.font_inited {
 		return 0
@@ -186,6 +209,13 @@ pub fn (ctx &Context) text_width(s string) int {
 	if s.ends_with(' ') {
 		return int((buf[2] - buf[0]) / ctx.scale) +
 			ctx.text_width('i') // TODO fix this in fontstash?
+	}
+	res := int((buf[2] - buf[0]) / ctx.scale)
+	// println('TW "$s" = $res')
+	$if macos {
+		if ctx.native_rendering {
+			return res * 2
+		}
 	}
 	return int((buf[2] - buf[0]) / ctx.scale)
 }

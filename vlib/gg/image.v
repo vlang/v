@@ -28,6 +28,21 @@ fn C.sg_isvalid() bool
 
 // TODO return ?Image
 pub fn (mut ctx Context) create_image(file string) Image {
+	// println('\ncreate_image("$file")')
+	if !os.exists(file) {
+		return Image{}
+	}
+	$if macos {
+		if ctx.native_rendering {
+			// return C.darwin_create_image(file)
+			mut img := C.darwin_create_image(file)
+			// println('created macos image: $img.path w=$img.width')
+			// C.printf('p = %p\n', img.data)
+			img.id = ctx.image_cache.len
+			ctx.image_cache << img
+			return img
+		}
+	}
 	if !C.sg_isvalid() {
 		// Sokol is not initialized yet, add stbi object to a queue/cache
 		// ctx.image_queue << file
@@ -142,6 +157,18 @@ pub fn (ctx &Context) draw_image(x f32, y f32, width f32, height f32, img_ &Imag
 		return
 	}
 	img := ctx.image_cache[img_.id] // fetch the image from cache
+	$if macos {
+		if ctx.native_rendering {
+			if img_.width == 0 {
+				return
+			}
+			if !os.exists(img_.path) {
+				return
+			}
+			C.darwin_draw_image(x, ctx.height - (y + height), width, height, img_)
+			return
+		}
+	}
 	if !img.simg_ok {
 		return
 	}

@@ -457,7 +457,12 @@ pub fn walk(path string, f fn (string)) {
 
 // log will print "os.log: "+`s` ...
 pub fn log(s string) {
-	println('os.log: ' + s)
+	//$if macos {
+		// Use NSLog() on macos
+		//C.darwin_log(s)
+	//} $else {
+		println('os.log: ' + s)
+	//}
 }
 
 [deprecated]
