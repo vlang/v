@@ -57,6 +57,7 @@ mut:
 	method_fn_decls     map[string][]ast.FnDecl
 	builtin_fns         []string // Functions defined in `builtin`
 	empty_line          bool
+	cast_stack					[]table.Type
 }
 
 pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string {
@@ -473,7 +474,7 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.write('${styp}.$node.val')
 		}
 		ast.FloatLiteral {
-			g.write('${g.typ(table.Type(table.f32_type))}($node.val)')
+			g.gen_float_literal_expr(node)
 		}
 		ast.GoExpr {
 			// TODO
@@ -494,7 +495,7 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.gen_infix_expr(node)
 		}
 		ast.IntegerLiteral {
-			g.write('${g.typ(table.Type(table.int_type))}($node.val)')
+			g.gen_integer_literal_expr(node)
 		}
 		ast.LockExpr {
 			g.gen_lock_expr(node)
@@ -1372,7 +1373,12 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 			int(it.right_type) in table.integer_type_idxs
 		is_arithmetic := it.op in [token.Kind.plus, .minus, .mul, .div, .mod]
 		if is_arithmetic {
-			g.write('${g.typ(g.greater_typ(it.left_type, it.right_type))}(')
+			greater_typ := g.greater_typ(it.left_type, it.right_type)
+			if g.ns.name == 'builtin' {
+				g.write('new ')
+			}
+			g.write('${g.typ(greater_typ)}(')
+			g.cast_stack << greater_typ
 		}
 		if it.op == .div && both_are_int {
 			g.write('((')
@@ -1392,6 +1398,7 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 			g.write(')|0)')
 		}
 		if is_arithmetic {
+			g.cast_stack.pop()
 			g.write(')')
 		}
 	}
@@ -1562,6 +1569,13 @@ fn (mut g JsGen) gen_type_cast_expr(it ast.CastExpr) {
 	is_literal := ((it.expr is ast.IntegerLiteral &&
 		it.typ in table.integer_type_idxs) ||
 		(it.expr is ast.FloatLiteral && it.typ in table.float_type_idxs))
+	// Skip cast if type is the same as the parrent caster
+	if g.cast_stack.len > 0 && is_literal {
+		if it.typ == g.cast_stack[g.cast_stack.len - 1] {
+			return
+		}
+	}
+	g.cast_stack << it.typ
 	typ := g.typ(it.typ)
 	if !is_literal {
 		if !(typ in v_types) || g.ns.name == 'builtin' {
@@ -1576,4 +1590,33 @@ fn (mut g JsGen) gen_type_cast_expr(it ast.CastExpr) {
 	if !is_literal {
 		g.write(')')
 	}
+	g.cast_stack.pop()
+}
+
+fn (mut g JsGen) gen_integer_literal_expr(it ast.IntegerLiteral) {
+	typ := table.Type(table.int_type)
+	// Skip cast if type is the same as the parrent caster
+	if g.cast_stack.len > 0 {
+		if typ == g.cast_stack[g.cast_stack.len - 1] {
+			g.write('$it.val')
+			return
+		}
+	}
+	g.write('${g.typ(typ)}($it.val)')
+}
+
+fn (mut g JsGen) gen_float_literal_expr(it ast.FloatLiteral) {
+	typ := table.Type(table.f32_type)
+	// Skip cast if type is the same as the parrent caster
+	if g.cast_stack.len > 0 {
+		if typ == g.cast_stack[g.cast_stack.len - 1] {
+			if g.cast_stack[g.cast_stack.len - 1] in table.integer_type_idxs {
+				g.write('($it.val|0)')
+			} else {
+				g.write('$it.val')
+			}
+			return
+		}
+	}
+	g.write('${g.typ(typ)}($it.val)')
 }
