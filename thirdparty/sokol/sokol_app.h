@@ -2863,34 +2863,31 @@ _SAPP_OBJC_RELEASE( menu_bar );
    */
 
 
-       ///////////////////////////////////////////////////////
+	///////////////////////////////////////////////////////
+	// Create a child view for native rendering
 
-   CGRect wRect = _sapp.macos.window.frame;
-NSView *contentView  =_sapp.macos.window.contentView;
-CGRect cRect = contentView.frame;
+	CGRect wRect = _sapp.macos.window.frame;
+	NSView *contentView  =_sapp.macos.window.contentView;
+	CGRect cRect = contentView.frame;
 
-CGRect rect = CGRectMake(wRect.origin.x, wRect.origin.y, cRect.size.width, cRect.size.height);
-NSWindow *overlayWindow = [[NSWindow alloc]initWithContentRect:rect
-                                                     styleMask:NSBorderlessWindowMask
-                                                       backing:NSBackingStoreBuffered
-                                                         defer:NO];
-//overlayWindow.backgroundColor = [NSColor whiteColor];
+	CGRect rect = CGRectMake(wRect.origin.x, wRect.origin.y, cRect.size.width, cRect.size.height);
+	NSWindow *overlayWindow = [[NSWindow alloc]initWithContentRect:rect
+	                                                     styleMask:NSBorderlessWindowMask
+	                                                       backing:NSBackingStoreBuffered
+	                                                         defer:NO];
+	//overlayWindow.backgroundColor = [NSColor whiteColor];
 
+	//overlayWindow.backgroundColor = [[NSColor whiteColor] colorWithAlphaComponent:0];
+	[overlayWindow setOpaque:YES];
+	[_sapp.macos.window setIgnoresMouseEvents:NO];
+	//[_sapp.macos.window setOpaque:NO];
 
+	//overlayWindow.alphaValue =0.1f;///.1f;
 
-//overlayWindow.backgroundColor = [[NSColor whiteColor] colorWithAlphaComponent:0];
-[overlayWindow setOpaque:YES];
-[_sapp.macos.window setIgnoresMouseEvents:NO];
-//[_sapp.macos.window setOpaque:NO];
+	g_view = [[MyView2 alloc] init];
+	        overlayWindow.contentView = g_view;
 
-
-
-//overlayWindow.alphaValue =0.1f;///.1f;
-
-g_view = [[MyView2 alloc] init];
-        overlayWindow.contentView = g_view;
-
-[   contentView addSubview:g_view];
+	[   contentView addSubview:g_view];
 //[    _sapp.macos.window addChildWindow:overlayWindow ordered:NSWindowAbove];
 
    //////////////////////////////////
@@ -2913,7 +2910,8 @@ g_view = [[MyView2 alloc] init];
 }
 @end
 
-#include "/Users/alex/code/v/thirdparty/sokol/sokol_app2.h"
+//#include "/Users/alex/code/v/thirdparty/sokol/sokol_app2.h"
+#include "sokol_app2.h"
 
 @implementation _sapp_macos_window_delegate
 - (BOOL)windowShouldClose:(id)sender {

@@ -396,7 +396,7 @@ pub fn is_file(path string) bool {
 // is_abs_path returns `true` if `path` is absolute.
 pub fn is_abs_path(path string) bool {
 	$if windows {
-		return path[0] == `/` || // incase we're in MingGW bash
+		return path[0] == `/` ||  // incase we're in MingGW bash
 		(path[0].is_letter() && path[1] == `:`)
 	}
 	return path[0] == `/`
@@ -458,10 +458,10 @@ pub fn walk(path string, f fn (string)) {
 // log will print "os.log: "+`s` ...
 pub fn log(s string) {
 	//$if macos {
-		// Use NSLog() on macos
-		//C.darwin_log(s)
+	// Use NSLog() on macos
+	// C.darwin_log(s)
 	//} $else {
-		println('os.log: ' + s)
+	println('os.log: ' + s)
 	//}
 }
 
