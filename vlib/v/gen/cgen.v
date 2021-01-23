@@ -627,6 +627,13 @@ fn (g &Gen) cc_type2(t table.Type) string {
 			}
 			styp += sgtyps
 		}
+	} else if mut sym.info is table.MultiReturn {
+		styp = 'multi_return'
+		for typ in sym.info.types {
+			unwrapped_type := g.unwrap_generic(typ)
+			gts := g.table.get_type_symbol(unwrapped_type)
+			styp += '_$gts.cname'
+		}
 	}
 	return styp
 }
@@ -748,9 +755,12 @@ pub fn (mut g Gen) write_multi_return_types() {
 		if sym.kind != .multi_return {
 			continue
 		}
+		info := sym.mr_info()
+		if info.types.filter(it.has_flag(.generic)).len > 0 {
+			continue
+		}
 		g.typedefs.writeln('typedef struct $sym.cname $sym.cname;')
 		g.type_definitions.writeln('struct $sym.cname {')
-		info := sym.mr_info()
 		for i, mr_typ in info.types {
 			type_name := g.typ(mr_typ)
 			g.type_definitions.writeln('\t$type_name arg$i;')
@@ -4386,7 +4396,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			g.write('opt_ok2(&($styp/*X*/[]) { ')
 		} else {
 			g.write('return ')
-			styp = g.typ(g.fn_decl.return_type)
+			styp = g.typ(g.cur_fn.return_type)
 		}
 		// Use this to keep the tmp assignments in order
 		mut multi_unpack := ''

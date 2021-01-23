@@ -1579,33 +1579,9 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			c.infer_fn_types(method, mut call_expr)
 		}
 		if call_expr.generic_types.len > 0 && method.return_type != 0 {
-			// Handle `foo<T>() T` => `foo<int>() int` => return int
-			return_sym := c.table.get_type_symbol(method.return_type)
-			if return_sym.name in method.generic_names {
-				generic_index := method.generic_names.index(return_sym.name)
-				mut typ := call_expr.generic_types[generic_index]
-				typ = typ.set_nr_muls(method.return_type.nr_muls())
-				if method.return_type.has_flag(.optional) {
-					typ = typ.set_flag(.optional)
-				}
+			if typ := c.resolve_generic_type(method.return_type, method.generic_names, call_expr) {
 				call_expr.return_type = typ
 				return typ
-			} else if return_sym.kind == .array {
-				elem_info := return_sym.info as table.Array
-				elem_sym := c.table.get_type_symbol(elem_info.elem_type)
-				if elem_sym.name in method.generic_names {
-					generic_index := method.generic_names.index(elem_sym.name)
-					typ := call_expr.generic_types[generic_index]
-					idx := c.table.find_or_register_array(typ)
-					return table.new_type(idx)
-				}
-			} else if return_sym.kind == .chan {
-				elem_info := return_sym.info as table.Chan
-				elem_sym := c.table.get_type_symbol(elem_info.elem_type)
-				if elem_sym.name in method.generic_names {
-					idx := c.table.find_or_register_chan(elem_info.elem_type, elem_info.elem_type.nr_muls() > 0)
-					return table.new_type(idx)
-				}
 			}
 		}
 		if call_expr.generic_types.len > 0 && method.generic_names.len == 0 {

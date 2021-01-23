@@ -325,7 +325,7 @@ pub fn (g &Gen) unwrap_generic(typ table.Type) table.Type {
 				break
 			}
 		}
-		return g.cur_generic_types[0].derive(typ).clear_flag(.generic)
+		return g.cur_generic_types[idx].derive(typ).clear_flag(.generic)
 	}
 	return typ
 }
