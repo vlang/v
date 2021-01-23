@@ -136,13 +136,19 @@ fn (mut pc PkgConfig) parse(file string) bool {
 }
 
 fn (mut pc PkgConfig) resolve(pkgname string) ?string {
-	if pc.paths.len == 0 {
-		pc.paths << '.'
-	}
-	for path in pc.paths {
-		file := '$path/${pkgname}.pc'
-		if os.exists(file) {
-			return file
+	if pkgname.ends_with('.pc') {
+		if os.exists(pkgname) {
+			return pkgname
+		}
+	} else {
+		if pc.paths.len == 0 {
+			pc.paths << '.'
+		}
+		for path in pc.paths {
+			file := '$path/${pkgname}.pc'
+			if os.exists(file) {
+				return file
+			}
 		}
 	}
 	return error('Cannot find "$pkgname" pkgconfig file')
