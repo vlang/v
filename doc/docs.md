@@ -3154,6 +3154,8 @@ use `v help`, `v help build` and `v help build-c`.
 
 ### Compile time code
 
+`$` is used as a prefix for compile-time operations.
+
 #### $if
 ```v
 // Support for multiple conditions in one branch
