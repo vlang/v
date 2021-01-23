@@ -1579,7 +1579,8 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			c.infer_fn_types(method, mut call_expr)
 		}
 		if call_expr.generic_types.len > 0 && method.return_type != 0 {
-			if typ := c.resolve_generic_type(method.return_type, method.generic_names, call_expr) {
+			if typ := c.resolve_generic_type(method.return_type, method.generic_names,
+				call_expr) {
 				call_expr.return_type = typ
 				return typ
 			}
