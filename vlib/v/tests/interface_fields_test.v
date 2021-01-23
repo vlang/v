@@ -5,14 +5,14 @@ interface Animal {
 struct Cat {
 	padding int // ensures that the field offsets can be different
 mut:
-	breed   string
+	breed string
 }
 
 struct Dog {
-	padding  Cat
+	padding  [256]byte
 	padding2 int
 mut:
-	breed    string
+	breed string
 }
 
 fn use_interface(a Animal) {
@@ -40,8 +40,12 @@ fn mutate_interface(mut a Animal) {
 }
 
 fn test_interface_fields() {
-	mut c := Cat{ breed: 'Persian'}
-	mut d := Dog{ breed: 'Labrador'}
+	mut c := Cat{
+		breed: 'Persian'
+	}
+	mut d := Dog{
+		breed: 'Labrador'
+	}
 	use_interface(c)
 	use_interface(d)
 	mutate_interface(mut c)
