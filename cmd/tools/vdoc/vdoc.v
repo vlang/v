@@ -467,8 +467,8 @@ fn parse_arguments(args []string) Config {
 	} $else {
 		cfg.input_path = cfg.input_path.replace('\\', os.path_separator)
 	}
-	is_path := cfg.input_path.ends_with('.v') || cfg.input_path.split(os.path_separator).len >
-		1 || cfg.input_path == '.'
+	is_path := cfg.input_path.ends_with('.v') || cfg.input_path.split(os.path_separator).len > 1
+		|| cfg.input_path == '.'
 	if cfg.input_path.trim_right('/') == 'vlib' {
 		cfg.is_vlib = true
 		cfg.is_multi = true

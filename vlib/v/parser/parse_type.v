@@ -77,9 +77,8 @@ pub fn (mut p Parser) parse_map_type() table.Type {
 		// error is reported in parse_type
 		return 0
 	}
-	if !(key_type in [table.string_type_idx, table.voidptr_type_idx] ||
-		(key_type.is_int() && !key_type.is_ptr()))
-	{
+	if !(key_type in [table.string_type_idx, table.voidptr_type_idx]
+		|| (key_type.is_int() && !key_type.is_ptr())) {
 		s := p.table.type_to_str(key_type)
 		p.error_with_pos('maps only support string, integer, rune or voidptr keys for now (not `$s`)',
 			p.tok.position())

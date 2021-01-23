@@ -5,7 +5,6 @@ module fmt
 
 import v.ast
 import v.table
-import v.token
 import strings
 import v.util
 
@@ -15,7 +14,7 @@ const (
 		'\t\t\t\t\t\t\t\t',
 	]
 	// when to break a line dependant on penalty
-	max_len = [0, 35, 85, 93, 100]
+	max_len = [0, 35, 60, 85, 93, 100]
 )
 
 pub struct Fmt {
@@ -27,13 +26,10 @@ pub mut:
 	indent             int
 	empty_line         bool
 	line_len           int
-	buffering          bool     // expressions will be analyzed later by adjust_complete_line() before finally written
-	expr_bufs          []string // and stored here in the meantime (expr_bufs.len-1 = penalties.len = precedences.len)
-	penalties          []int    // how hard should it be to break line after each expression
-	precedences        []int    // operator/parenthese precedences for operator at end of each expression
-	par_level          int      // how many parentheses are put around the current expression
-	array_init_break   []bool   // line breaks after elements in hierarchy level of multi dimensional array
-	array_init_depth   int      // current level of hierarchie in array init
+	buffering          bool   // disables line wrapping for exprs that will be analyzed later
+	par_level          int    // how many parentheses are put around the current expression
+	array_init_break   []bool // line breaks after elements in hierarchy level of multi dimensional array
+	array_init_depth   int    // current level of hierarchie in array init
 	single_line_if     bool
 	cur_mod            string
 	file               ast.File
@@ -92,43 +88,19 @@ pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 }
 
 pub fn (mut f Fmt) write(s string) {
-	if !f.buffering {
-		if f.indent > 0 && f.empty_line {
-			f.write_indent()
-		}
-		f.out.write(s)
-		f.line_len += s.len
-		f.empty_line = false
-	} else {
-		f.out.write(s)
-	}
-}
-
-pub fn (mut f Fmt) writeln(s string) {
-	empty_fifo := f.buffering
-	if empty_fifo {
-		f.write(s)
-		f.expr_bufs << f.out.str()
-		f.out = f.out_save
-		f.adjust_complete_line()
-		f.buffering = false
-		for i, p in f.penalties {
-			f.write(f.expr_bufs[i])
-			f.wrap_long_line(p, true)
-		}
-		f.write(f.expr_bufs[f.expr_bufs.len - 1])
-		f.expr_bufs = []string{}
-		f.penalties = []int{}
-		f.precedences = []int{}
-	}
 	if f.indent > 0 && f.empty_line {
 		f.write_indent()
 	}
-	f.out.writeln(if empty_fifo {
-		''
-	} else {
-		s
-	})
+	f.out.write(s)
+	f.line_len += s.len
+	f.empty_line = false
+}
+
+pub fn (mut f Fmt) writeln(s string) {
+	if f.indent > 0 && f.empty_line {
+		f.write_indent()
+	}
+	f.out.writeln(s)
 	f.empty_line = true
 	f.line_len = 0
 }
@@ -145,52 +117,10 @@ fn (mut f Fmt) write_indent() {
 	f.line_len += f.indent * 4
 }
 
-// adjustments that can only be done after full line is processed. For now
-// only prevents line breaks if everything fits in max_len[last] by increasing
-// penalties to maximum
-fn (mut f Fmt) adjust_complete_line() {
-	for i, buf in f.expr_bufs {
-		// search for low penalties
-		if i == 0 || f.penalties[i - 1] <= 1 {
-			precedence := if i == 0 { -1 } else { f.precedences[i - 1] }
-			mut len_sub_expr := if i == 0 { buf.len + f.line_len } else { buf.len }
-			mut sub_expr_end_idx := f.penalties.len
-			// search for next position with low penalty and same precedence to form subexpression
-			for j in i .. f.penalties.len {
-				if f.penalties[j] <= 1 &&
-					f.precedences[j] == precedence && len_sub_expr >= max_len[1]
-				{
-					sub_expr_end_idx = j
-					break
-				} else if f.precedences[j] < precedence {
-					// we cannot form a sensible subexpression
-					len_sub_expr = C.INT32_MAX
-					break
-				} else {
-					len_sub_expr += f.expr_bufs[j + 1].len
-				}
-			}
-			// if subexpression would fit in single line adjust penalties to actually do so
-			if len_sub_expr <= max_len[max_len.len - 1] {
-				for j in i .. sub_expr_end_idx {
-					f.penalties[j] = max_len.len - 1
-				}
-				if i > 0 {
-					f.penalties[i - 1] = 0
-				}
-				if sub_expr_end_idx < f.penalties.len {
-					f.penalties[sub_expr_end_idx] = 0
-				}
-			}
-		}
-		// emergency fallback: decrease penalty in front of long unbreakable parts
-		if i > 0 && buf.len > 55 && f.penalties[i - 1] > 0 {
-			f.penalties[i - 1] = if buf.len >= 72 { 0 } else { 1 }
-		}
-	}
-}
-
 pub fn (mut f Fmt) wrap_long_line(penalty_idx int, add_indent bool) bool {
+	if f.buffering {
+		return false
+	}
 	if f.line_len <= max_len[penalty_idx] {
 		return false
 	}
@@ -493,8 +423,9 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 					}
 				}
 				is_last_arg := i == fn_info.params.len - 1
-				should_add_type := true || is_last_arg || fn_info.params[i + 1].typ != arg.typ ||
-					(fn_info.is_variadic && i == fn_info.params.len - 2)
+				should_add_type := true || is_last_arg
+					|| fn_info.params[i + 1].typ != arg.typ
+					|| (fn_info.is_variadic && i == fn_info.params.len - 2)
 				if should_add_type {
 					ns := if arg.name == '' { '' } else { ' ' }
 					if fn_info.is_variadic && is_last_arg {
@@ -532,7 +463,7 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 					f.write(' | ')
 				}
 				if i < sum_type_names.len - 1 {
-					f.wrap_long_line(2, true)
+					f.wrap_long_line(3, true)
 				}
 			}
 			// f.write(sum_type_names.join(' | '))
@@ -762,7 +693,8 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 						comment_align_i++
 						align = comment_aligns[comment_align_i]
 					}
-					pad_len := align.max_attrs_len - attrs_len + align.max_type_len - field_types[i].len
+					pad_len := align.max_attrs_len - attrs_len +
+						align.max_type_len - field_types[i].len
 					f.write(strings.repeat(` `, pad_len))
 				}
 				f.write(' ')
@@ -1496,74 +1428,97 @@ pub fn (mut f Fmt) lock_expr(lex ast.LockExpr) {
 pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	buffering_save := f.buffering
 	if !f.buffering {
-		f.out_save = f.out
-		f.out = strings.new_builder(60)
 		f.buffering = true
 	}
+	infix_start := f.out.len
+	start_len := f.line_len
 	f.expr(node.left)
-	is_one_val_array_init := node.op in [.key_in, .not_in] &&
-		node.right is ast.ArrayInit && (node.right as ast.ArrayInit).exprs.len == 1
+	is_one_val_array_init := node.op in [.key_in, .not_in] && node.right is ast.ArrayInit
+		&& (node.right as ast.ArrayInit).exprs.len == 1
 	if is_one_val_array_init {
 		// `var in [val]` => `var == val`
-		f.write(if node.op == .key_in {
-			' == '
-		} else {
-			' != '
-		})
+		op := if node.op == .key_in { ' == ' } else { ' != ' }
+		f.write(op)
 	} else {
 		f.write(' $node.op.str() ')
 	}
-	f.expr_bufs << f.out.str()
-	mut penalty := 3
-	match mut node.left {
-		ast.InfixExpr {
-			if int(token.precedences[node.left.op]) > int(token.precedences[node.op]) {
-				penalty--
-			}
-		}
-		ast.ParExpr {
-			penalty = 1
-		}
-		else {}
-	}
-	match node.right {
-		ast.InfixExpr { penalty-- }
-		ast.ParExpr { penalty = 1 }
-		else {}
-	}
-	f.penalties << penalty
-	// combine parentheses level with operator precedence to form effective precedence
-	f.precedences << int(token.precedences[node.op]) | (f.par_level << 16)
-	f.out = strings.new_builder(60)
-	f.buffering = true
 	if is_one_val_array_init {
 		// `var in [val]` => `var == val`
 		f.expr((node.right as ast.ArrayInit).exprs[0])
 	} else {
 		f.expr(node.right)
 	}
-	if !buffering_save && f.buffering { // now decide if and where to break
-		f.expr_bufs << f.out.str()
-		f.out = f.out_save
+	if !buffering_save && f.buffering {
 		f.buffering = false
-		f.adjust_complete_line()
-		for i, p in f.penalties {
-			f.write(f.expr_bufs[i])
-			f.wrap_long_line(p, true)
+		if !f.single_line_if && f.line_len > max_len.last() {
+			f.wrap_infix(infix_start, start_len)
 		}
-		f.write(f.expr_bufs[f.expr_bufs.len - 1])
-		f.expr_bufs = []string{}
-		f.penalties = []int{}
-		f.precedences = []int{}
 	}
 	f.or_expr(node.or_block)
 }
 
+pub fn (mut f Fmt) wrap_infix(start_pos int, start_len int) {
+	cut_span := f.out.len - start_pos
+	condstr := f.out.cut_last(cut_span)
+	is_cond_infix := condstr.contains_any_substr(['&&', '||'])
+	if !is_cond_infix && !condstr.contains('+') {
+		f.write(condstr)
+		return
+	}
+	f.line_len = start_len
+	if start_len == 0 {
+		f.empty_line = true
+	}
+	or_pen := if condstr.contains('&&') { 3 } else { 5 }
+	cond_parts := condstr.split(' ')
+	mut grouped_cond := false
+	mut conditions := ['']
+	mut penalties := [5]
+	mut index := 0
+	for cp in cond_parts {
+		if is_cond_infix && cp in ['&&', '||'] {
+			if grouped_cond {
+				conditions[index] += '$cp '
+			} else {
+				p := if cp == '||' { or_pen } else { 5 }
+				penalties << p
+				conditions << '$cp '
+				index++
+			}
+		} else if !is_cond_infix && cp == '+' {
+			penalties << 5
+			conditions[index] += '$cp '
+			conditions << ''
+			index++
+		} else {
+			conditions[index] += '$cp '
+			if cp.starts_with('(') {
+				grouped_cond = true
+			} else if cp.ends_with(')') {
+				grouped_cond = false
+			}
+		}
+	}
+	for i, c in conditions {
+		cnd := c.trim_space()
+		if f.line_len + cnd.len < max_len[penalties[i]] {
+			if i > 0 && (!is_cond_infix || i < conditions.len - 1) {
+				f.write(' ')
+			}
+			f.write(cnd)
+		} else {
+			f.writeln('')
+			f.indent++
+			f.write(cnd)
+			f.indent--
+		}
+	}
+}
+
 pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 	dollar := if it.is_comptime { '$' } else { '' }
-	mut single_line := it.branches.len == 2 && it.has_else && branch_is_single_line(it.branches[0]) &&
-		branch_is_single_line(it.branches[1]) &&
-		(it.is_expr || f.is_assign)
+	mut single_line := it.branches.len == 2 && it.has_else && branch_is_single_line(it.branches[0])
+		&& branch_is_single_line(it.branches[1])&& (it.is_expr || f.is_assign)
 	f.single_line_if = single_line
 	if_start := f.line_len
 	for {
@@ -1583,15 +1538,8 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 			}
 			if i < it.branches.len - 1 || !it.has_else {
 				f.write('${dollar}if ')
-				cur_pos := f.out.len
 				f.expr(branch.cond)
-				cond_len := f.out.len - cur_pos
-				is_cond_wrapped := if cond_len > 0 { '\n' in f.out.last_n(cond_len) } else { false }
-				if is_cond_wrapped {
-					f.writeln('')
-				} else {
-					f.write(' ')
-				}
+				f.write(' ')
 			}
 			f.write('{')
 			if single_line {
@@ -1654,7 +1602,7 @@ pub fn (mut f Fmt) call_args(args []ast.CallArg) {
 			f.write(arg.share.str() + ' ')
 		}
 		if i > 0 {
-			f.wrap_long_line(2, true)
+			f.wrap_long_line(3, true)
 		}
 		f.expr(arg.expr)
 		if i < args.len - 1 {
@@ -1790,7 +1738,7 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 				if j < branch.exprs.len - 1 {
 					f.write(', ')
 				}
-				f.wrap_long_line(3, false)
+				f.wrap_long_line(4, false)
 			}
 			f.is_mbranch_expr = false
 		} else {
@@ -1900,10 +1848,10 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 				f.array_init_break << (last_line_nr < line_nr)
 			}
 		}
-		is_same_line_comment := i > 0 &&
-			(expr is ast.Comment && line_nr == it.exprs[i - 1].position().line_nr)
+		is_same_line_comment := i > 0
+			&& (expr is ast.Comment && line_nr == it.exprs[i - 1].position().line_nr)
 		line_break := f.array_init_break[f.array_init_depth - 1]
-		mut penalty := if line_break && !is_same_line_comment { 0 } else { 3 }
+		mut penalty := if line_break && !is_same_line_comment { 0 } else { 4 }
 		if penalty > 0 {
 			if i == 0 || should_decrease_arr_penalty(it.exprs[i - 1]) {
 				penalty--
@@ -2066,10 +2014,9 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 					f.writeln('')
 				}
 				f.comments(field.next_comments, inline: false, has_nl: true, level: .keep)
-				if single_line_fields &&
-					(field.comments.len > 0 ||
-					field.next_comments.len > 0 || !expr_is_single_line(field.expr) || f.line_len > max_len.last())
-				{
+				if single_line_fields
+					&& (field.comments.len > 0 || field.next_comments.len > 0 || !expr_is_single_line(field.expr)
+					|| f.line_len > max_len.last()) {
 					single_line_fields = false
 					f.out.go_back_to(fields_start)
 					f.line_len = fields_start
@@ -2389,7 +2336,7 @@ pub fn (mut f Fmt) sql_stmt(node ast.SqlStmt) {
 				} else {
 					f.write(' ')
 				}
-				f.wrap_long_line(2, true)
+				f.wrap_long_line(3, true)
 			}
 			f.write('where ')
 			f.expr(node.where_expr)

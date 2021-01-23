@@ -179,13 +179,10 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		if p.tok.kind == .key_else {
 			is_else = true
 			p.next()
-		} else if (p.tok.kind == .name && !(p.tok.lit == 'C' &&
-			p.peek_tok.kind == .dot) &&
-			(p.tok.lit in table.builtin_type_names || p.tok.lit[0].is_capital() ||
-			(p.peek_tok.kind == .dot &&
-			p.peek_tok2.lit.len > 0 && p.peek_tok2.lit[0].is_capital()))) ||
-			p.tok.kind == .lsbr
-		{
+		} else if (p.tok.kind == .name && !(p.tok.lit == 'C' && p.peek_tok.kind == .dot)
+			&& (p.tok.lit in table.builtin_type_names || p.tok.lit[0].is_capital()
+			|| (p.peek_tok.kind == .dot && p.peek_tok2.lit.len > 0 && p.peek_tok2.lit[0].is_capital())))
+			|| p.tok.kind == .lsbr {
 			mut types := []table.Type{}
 			for {
 				// Sum type match

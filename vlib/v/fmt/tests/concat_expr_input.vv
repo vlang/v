@@ -5,3 +5,13 @@ _ := 'Simple'   +    'Concat'
 		'World' + '!'
 		_ := 'There' + ' ' + 'so' + ' ' + 'many' + ' ' + 'words' + ' ' + 'they' + ' ' + "don't" + ' ' + 'fit' + ' ' + 'in' + ' ' + 'one' + ' ' + 'line'
 }
+
+fn concat_inside_ternary() {
+	{ // This block is needed to force line wrapping
+		cline := if iline == pos.line_nr {
+			sline[..start_column] + color(kind, sline[start_column..end_column]) + sline[end_column..]
+		} else {
+			sline
+		}
+	}
+}

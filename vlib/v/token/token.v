@@ -409,14 +409,13 @@ pub fn (tok Token) is_scalar() bool {
 
 // is_unary returns true if the token can be in a unary expression
 pub fn (tok Token) is_unary() bool {
-	return tok.kind in
-		[
-		/* `+` | `-` | `!` | `~` | `*` | `&` */.plus, .minus, .not, .bit_not, .mul, .amp, .arrow]
+	// `+` | `-` | `!` | `~` | `*` | `&` | `<-`
+	return tok.kind in [ .plus, .minus, .not, .bit_not, .mul, .amp, .arrow]
 }
 
 pub fn (tok Kind) is_relational() bool {
-	return tok in [
-		/* `<` | `<=` | `>` | `>=` */.lt, .le, .gt, .ge, .eq, .ne]
+	// `<` | `<=` | `>` | `>=` | `==` | `!=`
+	return tok in [.lt, .le, .gt, .ge, .eq, .ne]
 }
 
 pub fn (k Kind) is_start_of_type() bool {
@@ -429,7 +428,7 @@ pub fn (kind Kind) is_prefix() bool {
 
 pub fn (kind Kind) is_infix() bool {
 	return kind in
-		[.plus, .minus, .mod, .mul, .div, .eq, .ne, .gt, .lt, .key_in, /*  */.key_as, .ge, .le, .logical_or, .xor, .not_in, .key_is, .not_is, /*  */.and, .dot, .pipe, .amp, .left_shift, .right_shift, .arrow]
+		[.plus, .minus, .mod, .mul, .div, .eq, .ne, .gt, .lt, .key_in, .key_as, .ge, .le, .logical_or, .xor, .not_in, .key_is, .not_is, .and, .dot, .pipe, .amp, .left_shift, .right_shift, .arrow]
 }
 
 // Pass table.builtin_type_names

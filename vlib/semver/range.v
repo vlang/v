@@ -139,8 +139,8 @@ fn parse_xrange(input string) ?Version {
 }
 
 fn can_expand(input string) bool {
-	return input[0] == `~` ||
-		input[0] == `^` || input.contains(hyphen_range_sep) || input.index_any(x_range_symbols) > -1
+	return input[0] == `~` || input[0] == `^` || input.contains(hyphen_range_sep)
+		|| input.index_any(x_range_symbols) > -1
 }
 
 fn expand_comparator_set(input string) ?ComparatorSet {

@@ -221,13 +221,13 @@ fn (mut flag Flag) parse(args []string, with_abbrev bool) ?[]string {
 // matches returns `true` if first arg in `args` matches this flag.
 fn (mut flag Flag) matches(args []string, with_abbrev bool) bool {
 	if with_abbrev {
-		return (flag.name != '' && args[0] == '--$flag.name') ||
-			(flag.name != '' && args[0].starts_with('--$flag.name=')) ||
-			(flag.abbrev != '' && args[0] == '-$flag.abbrev') ||
-			(flag.abbrev != '' && args[0].starts_with('-$flag.abbrev='))
+		return (flag.name != '' && args[0] == '--$flag.name')
+			|| (flag.name != '' && args[0].starts_with('--$flag.name='))
+			|| (flag.abbrev != '' && args[0] == '-$flag.abbrev')
+			|| (flag.abbrev != '' && args[0].starts_with('-$flag.abbrev='))
 	} else {
-		return (flag.name != '' && args[0] == '-$flag.name') ||
-			(flag.name != '' && args[0].starts_with('-$flag.name='))
+		return (flag.name != '' && args[0] == '-$flag.name')
+			|| (flag.name != '' && args[0].starts_with('-$flag.name='))
 	}
 }
 

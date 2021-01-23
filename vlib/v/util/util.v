@@ -157,8 +157,8 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 	}
 	disabling_file := recompilation.disabling_file(vroot)
 	is_recompilation_disabled := os.exists(disabling_file)
-	should_compile := !is_recompilation_disabled &&
-		should_recompile_tool(vexe, tool_source, tool_name, tool_exe)
+	should_compile := !is_recompilation_disabled
+		&& should_recompile_tool(vexe, tool_source, tool_name, tool_exe)
 	if is_verbose {
 		println('launch_tool should_compile: $should_compile')
 	}

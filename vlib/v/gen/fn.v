@@ -129,10 +129,8 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 	arg_start_pos := g.out.len
 	fargs, fargtypes := g.fn_args(it.params, it.is_variadic)
 	arg_str := g.out.after(arg_start_pos)
-	if it.no_body ||
-		((g.pref.use_cache && g.pref.build_mode != .build_module) && it.is_builtin && !g.is_test) ||
-		skip
-	{
+	if it.no_body || ((g.pref.use_cache && g.pref.build_mode != .build_module) && it.is_builtin
+		&& !g.is_test)|| skip {
 		// Just a function header. Builtin function bodies are defined in builtin.o
 		g.definitions.writeln(');') // // NO BODY')
 		g.writeln(');')
@@ -295,9 +293,9 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		g.write('$styp $tmp_opt = ')
 	}
 	if node.is_method && !node.is_field {
-		if node.name == 'writeln' && g.pref.experimental && node.args.len > 0 && node.args[0].expr is
-			ast.StringInterLiteral && g.table.get_type_symbol(node.receiver_type).name == 'strings.Builder'
-		{
+		if node.name == 'writeln' && g.pref.experimental && node.args.len > 0
+			&& node.args[0].expr is ast.StringInterLiteral
+			&& g.table.get_type_symbol(node.receiver_type).name == 'strings.Builder' {
 			g.string_inter_literal_sb_optimized(node)
 		} else {
 			g.method_call(node)
@@ -413,9 +411,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		receiver_type_name = 'map'
 	}
 	// TODO performance, detect `array` method differently
-	if left_sym.kind == .array && node.name in
-		['repeat', 'sort_with_compare', 'free', 'push_many', 'trim', 'first', 'last', 'pop', 'clone', 'reverse', 'slice']
-	{
+	if left_sym.kind == .array
+		&& node.name in ['repeat', 'sort_with_compare', 'free', 'push_many', 'trim', 'first', 'last', 'pop', 'clone', 'reverse', 'slice'] {
 		// && rec_sym.name == 'array' {
 		// && rec_sym.name == 'array' && receiver_name.starts_with('array') {
 		// `array_byte_clone` => `array_clone`
@@ -480,9 +477,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		if !is_range_slice {
 			g.write('&')
 		}
-	} else if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name != 'str' &&
-		node.from_embed_type == 0
-	{
+	} else if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name != 'str'
+		&& node.from_embed_type == 0 {
 		g.write('/*rec*/*')
 	}
 	if g.is_autofree && node.free_receiver && !g.inside_lambda && !g.is_builtin_mod {
@@ -505,8 +501,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	if has_cast {
 		g.write(')')
 	}
-	is_variadic := node.expected_arg_types.len > 0 && node.expected_arg_types[node.expected_arg_types.len -
-		1].has_flag(.variadic)
+	is_variadic := node.expected_arg_types.len > 0
+		&& node.expected_arg_types[node.expected_arg_types.len - 1].has_flag(.variadic)
 	if node.args.len > 0 || is_variadic {
 		g.write(', ')
 	}
@@ -672,8 +668,8 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 	// g.writeln('// autofree_call_pregen()')
 	// Create a temporary var before fn call for each argument in order to free it (only if it's a complex expression,
 	// like `foo(get_string())` or `foo(a + b)`
-	mut free_tmp_arg_vars := g.is_autofree && !g.is_builtin_mod && node.args.len > 0 &&
-		!node.args[0].typ.has_flag(.optional) // TODO copy pasta checker.v
+	mut free_tmp_arg_vars := g.is_autofree && !g.is_builtin_mod && node.args.len > 0
+		&& !node.args[0].typ.has_flag(.optional) // TODO copy pasta checker.v
 	if !free_tmp_arg_vars {
 		return
 	}
@@ -803,13 +799,14 @@ fn (mut g Gen) autofree_call_postgen(node_pos int) {
 fn (mut g Gen) call_args(node ast.CallExpr) {
 	args := if g.is_js_call { node.args[1..] } else { node.args }
 	expected_types := node.expected_arg_types
-	is_variadic := expected_types.len > 0 && expected_types[expected_types.len - 1].has_flag(.variadic)
+	is_variadic := expected_types.len > 0
+		&& expected_types[expected_types.len - 1].has_flag(.variadic)
 	for i, arg in args {
 		if is_variadic && i == expected_types.len - 1 {
 			break
 		}
-		use_tmp_var_autofree := g.is_autofree && arg.typ == table.string_type && arg.is_tmp_autofree &&
-			!g.inside_const && !g.is_builtin_mod
+		use_tmp_var_autofree := g.is_autofree && arg.typ == table.string_type && arg.is_tmp_autofree
+			&& !g.inside_const&& !g.is_builtin_mod
 		// g.write('/* af=$arg.is_tmp_autofree */')
 		mut is_interface := false
 		// some c fn definitions dont have args (cfns.v) or are not updated in checker

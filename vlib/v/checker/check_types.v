@@ -56,26 +56,20 @@ pub fn (mut c Checker) check_basic(got table.Type, expected table.Type) bool {
 		return true
 	}
 	// TODO i64 as int etc
-	if (exp_idx in table.pointer_type_idxs ||
-		exp_idx in table.number_type_idxs) &&
-		(got_idx in table.pointer_type_idxs || got_idx in table.number_type_idxs)
-	{
+	if (exp_idx in table.pointer_type_idxs || exp_idx in table.number_type_idxs)
+		&& (got_idx in table.pointer_type_idxs || got_idx in table.number_type_idxs) {
 		return true
 	}
 	// if exp_idx in pointer_type_idxs && got_idx in pointer_type_idxs {
 	// return true
 	// }
 	// see hack in checker IndexExpr line #691
-	if (got_idx == table.byte_type_idx &&
-		exp_idx == table.byteptr_type_idx) ||
-		(exp_idx == table.byte_type_idx && got_idx == table.byteptr_type_idx)
-	{
+	if (got_idx == table.byte_type_idx && exp_idx == table.byteptr_type_idx)
+		|| (exp_idx == table.byte_type_idx && got_idx == table.byteptr_type_idx) {
 		return true
 	}
-	if (got_idx == table.char_type_idx &&
-		exp_idx == table.charptr_type_idx) ||
-		(exp_idx == table.char_type_idx && got_idx == table.charptr_type_idx)
-	{
+	if (got_idx == table.char_type_idx && exp_idx == table.charptr_type_idx)
+		|| (exp_idx == table.char_type_idx && got_idx == table.charptr_type_idx) {
 		return true
 	}
 	// TODO: this should no longer be needed
@@ -110,16 +104,13 @@ pub fn (mut c Checker) check_basic(got table.Type, expected table.Type) bool {
 	}
 	// TODO
 	// accept [] when an expected type is an array
-	if got_type_sym.kind == .array &&
-		exp_type_sym.kind == .array && got_type_sym.name == 'array_void'
-	{
+	if got_type_sym.kind == .array && exp_type_sym.kind == .array
+		&& got_type_sym.name == 'array_void' {
 		return true
 	}
 	// type alias
-	if (got_type_sym.kind == .alias &&
-		got_type_sym.parent_idx == exp_idx) ||
-		(exp_type_sym.kind == .alias && exp_type_sym.parent_idx == got_idx)
-	{
+	if (got_type_sym.kind == .alias && got_type_sym.parent_idx == exp_idx)
+		|| (exp_type_sym.kind == .alias && exp_type_sym.parent_idx == got_idx) {
 		return true
 	}
 	// sum type
@@ -242,9 +233,8 @@ fn (c &Checker) promote_num(left_type table.Type, right_type table.Type) table.T
 		}
 	} else if idx_lo >= table.byte_type_idx { // both operands are unsigned
 		return type_hi
-	} else if idx_lo >= table.i8_type_idx &&
-		(idx_hi <= table.i64_type_idx || idx_hi == table.rune_type_idx)
-	{ // both signed
+	} else if idx_lo >= table.i8_type_idx
+		&& (idx_hi <= table.i64_type_idx || idx_hi == table.rune_type_idx) { // both signed
 		return if idx_lo == table.i64_type_idx {
 			type_lo
 		} else {
@@ -363,11 +353,9 @@ pub fn (c &Checker) get_default_fmt(ftyp table.Type, typ table.Type) byte {
 		if sym.kind == .function {
 			return `s`
 		}
-		if ftyp in [table.string_type, table.bool_type] ||
-			sym.kind in
-			[.enum_, .array, .array_fixed, .struct_, .map, .multi_return, .sum_type, .none_] ||
-			ftyp.has_flag(.optional) || sym.has_method('str')
-		{
+		if ftyp in [table.string_type, table.bool_type]
+			|| sym.kind in [.enum_, .array, .array_fixed, .struct_, .map, .multi_return, .sum_type, .none_]
+			|| ftyp.has_flag(.optional)|| sym.has_method('str') {
 			return `s`
 		} else {
 			return `_`
@@ -382,9 +370,7 @@ pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) table.T
 		typ := c.table.unalias_num_type(ftyp)
 		mut fmt := node.fmts[i]
 		// analyze and validate format specifier
-		if fmt !in
-			[`E`, `F`, `G`, `e`, `f`, `g`, `d`, `u`, `x`, `X`, `o`, `c`, `s`, `p`, `_`]
-		{
+		if fmt !in [`E`, `F`, `G`, `e`, `f`, `g`, `d`, `u`, `x`, `X`, `o`, `c`, `s`, `p`, `_`] {
 			c.error('unknown format specifier `${fmt:c}`', node.fmt_poss[i])
 		}
 		if fmt == `_` { // set default representation for type if none has been given
@@ -405,14 +391,13 @@ pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) table.T
 			if node.pluss[i] && !typ.is_number() {
 				c.error('plus prefix only allowed for numbers', node.fmt_poss[i])
 			}
-			if (typ.is_unsigned() && fmt !in [`u`, `x`, `X`, `o`, `c`]) ||
-				(typ.is_signed() && fmt !in [`d`, `x`, `X`, `o`, `c`]) ||
-				(typ.is_int_literal() && fmt !in [`d`, `c`, `x`, `X`, `o`, `u`, `x`, `X`, `o`]) ||
-				(typ.is_float() && fmt !in [`E`, `F`, `G`, `e`, `f`, `g`]) ||
-				(typ.is_pointer() && fmt !in [`p`, `x`, `X`]) ||
-				(typ.is_string() && fmt != `s`) ||
-				(typ.idx() in [table.i64_type_idx, table.f64_type_idx] && fmt == `c`)
-			{
+			if (typ.is_unsigned() && fmt !in [`u`, `x`, `X`, `o`, `c`])
+				|| (typ.is_signed() && fmt !in [`d`, `x`, `X`, `o`, `c`])
+				|| (typ.is_int_literal() && fmt !in [`d`, `c`, `x`, `X`, `o`, `u`, `x`, `X`, `o`])
+				|| (typ.is_float() && fmt !in [`E`, `F`, `G`, `e`, `f`, `g`])
+				|| (typ.is_pointer() && fmt !in [`p`, `x`, `X`])
+				|| (typ.is_string() && fmt != `s`)
+				|| (typ.idx() in [table.i64_type_idx, table.f64_type_idx] && fmt == `c`) {
 				c.error('illegal format specifier `${fmt:c}` for type `${c.table.get_type_name(ftyp)}`',
 					node.fmt_poss[i])
 			}
@@ -456,10 +441,8 @@ pub fn (mut c Checker) infer_fn_types(f table.Fn, mut call_expr ast.CallExpr) {
 				mut arg_elem_sym := c.table.get_type_symbol(arg_elem_info.elem_type)
 				mut param_elem_sym := c.table.get_type_symbol(param_elem_info.elem_type)
 				for {
-					if arg_elem_sym.kind == .array &&
-						param_elem_sym.kind == .array && c.cur_fn.generic_params.filter(it.name ==
-						param_elem_sym.name).len == 0
-					{
+					if arg_elem_sym.kind == .array && param_elem_sym.kind == .array
+						&& c.cur_fn.generic_params.filter(it.name == param_elem_sym.name).len == 0 {
 						arg_elem_info = arg_elem_sym.info as table.Array
 						arg_elem_sym = c.table.get_type_symbol(arg_elem_info.elem_type)
 						param_elem_info = param_elem_sym.info as table.Array

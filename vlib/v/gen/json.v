@@ -128,7 +128,8 @@ fn (mut g Gen) gen_struct_enc_dec(type_info table.TypeInfo, styp string, mut enc
 		field_sym := g.table.get_type_symbol(field.typ)
 		// First generate decoding
 		if field.attrs.contains('raw') {
-			dec.writeln('\tres.${c_name(field.name)} = tos4(cJSON_PrintUnformatted(' + 'js_get(root, "$name")));')
+			dec.writeln('\tres.${c_name(field.name)} = tos4(cJSON_PrintUnformatted(' +
+				'js_get(root, "$name")));')
 		} else {
 			// Now generate decoders for all field types in this struct
 			// need to do it here so that these functions are generated first
@@ -201,8 +202,7 @@ fn js_dec_name(typ string) string {
 }
 
 fn is_js_prim(typ string) bool {
-	return typ in
-		['int', 'string', 'bool', 'f32', 'f64', 'i8', 'i16', 'i64', 'u16', 'u32', 'u64', 'byte']
+	return typ in ['int', 'string', 'bool', 'f32', 'f64', 'i8', 'i16', 'i64', 'u16', 'u32', 'u64', 'byte']
 }
 
 fn (mut g Gen) decode_array(value_type table.Type) string {
