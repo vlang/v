@@ -2708,10 +2708,11 @@ fn (mut g Gen) expr(node ast.Expr) {
 					g.writeln('($shared_styp*)memdup(&($shared_styp){.val = ')
 				} else {
 					styp = g.typ(node.typ)
-					g.write('($styp*)memdup(&') // TODO: doesn't work with every compiler
+					g.write('($styp*)memdup(ADDR($styp, ')
 				}
 			} else {
 				if g.is_shared {
+					// TODO: shared objects on stack should be forbidden or auto-converted to heap
 					g.writeln('{.val = ($styp*)')
 				}
 			}
@@ -2744,7 +2745,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 					g.write(', sizeof($shared_styp))')
 				}
 			} else if is_amp {
-				g.write(', sizeof($styp))')
+				g.write('), sizeof($styp))')
 			}
 		}
 		ast.None {
