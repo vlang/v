@@ -614,6 +614,7 @@ static inline Option_void __Option_${styp}_pushval($styp ch, $el_type e) {
 fn (g &Gen) cc_type2(t table.Type) string {
 	sym := g.table.get_type_symbol(g.unwrap_generic(t))
 	mut styp := sym.cname
+	// TODO: this needs to be removed; cgen shouldn't resolve generic types (job of checker)
 	if mut sym.info is table.Struct {
 		if sym.info.generic_types.len > 0 {
 			mut sgtyps := '_T'
@@ -627,6 +628,14 @@ fn (g &Gen) cc_type2(t table.Type) string {
 			}
 			styp += sgtyps
 		}
+	} else if mut sym.info is table.MultiReturn {
+		// TODO: this doesn't belong here, but makes it working for now
+		mut cname := 'multi_return'
+		for mr_typ in sym.info.types {
+			mr_type_sym := g.table.get_type_symbol(g.unwrap_generic(mr_typ))
+			cname += '_$mr_type_sym.cname'
+		}
+		return cname
 	}
 	return styp
 }
