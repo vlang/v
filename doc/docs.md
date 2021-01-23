@@ -3149,7 +3149,7 @@ use `v help`, `v help build` and `v help build-c`.
 
 ### Compile time code
 
-`$` is a prefix to indicate a operation evaluated on compile time.
+`$` is used as a prefix for compile-time operations.
 
 #### $if
 ```v
