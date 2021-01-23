@@ -5387,10 +5387,6 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			c.error('test functions should not return anything', node.pos)
 		}
 	}
-	if unwrapped_ret_type := c.resolve_generic_type(node.return_type, node.generic_params.map(it.name),
-		c.cur_generic_types) {
-		node.return_type = unwrapped_ret_type
-	}
 	c.expected_type = table.void_type
 	c.cur_fn = node
 	// Add return if `fn(...) ? {...}` have no return at end
