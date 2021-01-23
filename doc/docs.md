@@ -3147,9 +3147,9 @@ use `v help`, `v help build` and `v help build-c`.
 
 ## Conditional compilation
 
-`$` is a prefix to indicate a conditional compilation operation.
-
 ### Compile time code
+
+`$` is a prefix to indicate a operation evaluated on compile time.
 
 #### $if
 ```v
