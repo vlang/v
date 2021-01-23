@@ -1,0 +1,4 @@
+fn main() {
+	a := map[string]{}
+	b := map[string]{cap: 10}
+}
