@@ -4,17 +4,38 @@ import os
 import term
 import time
 
-const vexe = os.getenv('VEXE')
-
-const vroot = os.dir(vexe)
-
-const args_string = os.args[1..].join(' ')
-
-const vargs = args_string.all_before('test-all')
+const (
+	vexe = os.getenv('VEXE')
+	vroot = os.dir(vexe)
+	args_string = os.args[1..].join(' ')
+	vargs = args_string.all_before('test-all')
+)
 
 fn main() {
-	commands := get_all_commands()
-	commands.summary()
+	mut commands := get_all_commands()
+	// summary
+	sw := time.new_stopwatch({})
+	for mut cmd in commands {
+		cmd.run()
+	}
+	spent := sw.elapsed().milliseconds()
+	oks := commands.filter(it.ecode == 0)
+	fails := commands.filter(it.ecode != 0)
+	println('')
+	println(term.header(term.colorize(term.yellow, term.colorize(term.bold, 'Summary of `v test-all`:')),
+		'-'))
+	println(term.colorize(term.yellow, 'Total runtime: $spent ms'))
+	for ocmd in oks {
+		msg := if ocmd.okmsg != '' { ocmd.okmsg } else { ocmd.line }
+		println(term.colorize(term.green, '>          OK: $msg '))
+	}
+	for fcmd in fails {
+		msg := if fcmd.errmsg != '' { fcmd.errmsg } else { fcmd.line }
+		println(term.colorize(term.red, '>      Failed: $msg '))
+	}
+	if fails.len > 0 {
+		exit(1)
+	}
 }
 
 struct Command {
@@ -79,29 +100,4 @@ fn (mut cmd Command) run() {
 	spent := sw.elapsed().milliseconds()
 	println(term.colorize(term.yellow, '> Running: "$cmd.line" took: $spent ms.'))
 	println('')
-}
-
-fn (commands []Command) summary() {
-	sw := time.new_stopwatch({})
-	for mut cmd in commands {
-		cmd.run()
-	}
-	spent := sw.elapsed().milliseconds()
-	oks := commands.filter(it.ecode == 0)
-	fails := commands.filter(it.ecode != 0)
-	println('')
-	println(term.header(term.colorize(term.yellow, term.colorize(term.bold, 'Summary of `v test-all`:')),
-		'-'))
-	println(term.colorize(term.yellow, 'Total runtime: $spent ms'))
-	for ocmd in oks {
-		msg := if ocmd.okmsg != '' { ocmd.okmsg } else { ocmd.line }
-		println(term.colorize(term.green, '>          OK: $msg '))
-	}
-	for fcmd in fails {
-		msg := if fcmd.errmsg != '' { fcmd.errmsg } else { fcmd.line }
-		println(term.colorize(term.red, '>      Failed: $msg '))
-	}
-	if fails.len > 0 {
-		exit(1)
-	}
 }
