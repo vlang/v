@@ -129,7 +129,7 @@ pub fn (f1 Fraction) *(f2 Fraction) Fraction {
 // Fraction divide using operator overloading
 pub fn (f1 Fraction) /(f2 Fraction) Fraction {
 	if f2.n == 0 {
-		panic('Cannot divive by zero')
+		panic('Cannot divide by zero')
 	}
 	// If the second fraction is negative, it will
 	// mess up the sign. We need positive denominator
