@@ -714,10 +714,18 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 	}
 	name := node.name.after('.')
 	f.write('interface $name {')
-	if node.methods.len > 0 || node.pos.line_nr < node.pos.last_line {
+	if node.fields.len > 0 || node.methods.len > 0 || node.pos.line_nr < node.pos.last_line {
 		f.writeln('')
 	}
 	f.comments_after_last_field(node.pre_comments)
+	for field in node.fields {
+		// TODO: alignment, comments, etc.
+		mut ft := f.no_cur_mod(f.table.type_to_str(field.typ))
+		if !ft.contains('C.') && !ft.contains('JS.') && !ft.contains('fn (') {
+			ft = f.short_module(ft)
+		}
+		f.writeln('\t$field.name $ft')
+	}
 	for method in node.methods {
 		f.write('\t')
 		f.write(method.stringify(f.table, f.cur_mod, f.mod2alias).after('fn '))
@@ -1259,8 +1267,8 @@ pub fn (mut f Fmt) sql_expr(node ast.SqlExpr) {
 	f.writeln(' {')
 	f.write('\t')
 	f.write('select ')
-	esym := f.table.get_type_symbol(node.table_type)
-	table_name := esym.name
+	esym := f.table.get_type_symbol(node.table_expr.typ)
+	table_name := util.strip_mod_name(esym.name)
 	if node.is_count {
 		f.write('count ')
 	} else {
@@ -1274,7 +1282,7 @@ pub fn (mut f Fmt) sql_expr(node ast.SqlExpr) {
 			f.write(' ')
 		}
 	}
-	f.write('from ${util.strip_mod_name(table_name)}')
+	f.write('from $table_name')
 	if node.has_where {
 		f.write(' where ')
 		f.expr(node.where_expr)
@@ -2313,12 +2321,13 @@ pub fn (mut f Fmt) sql_stmt(node ast.SqlStmt) {
 	f.write('sql ')
 	f.expr(node.db_expr)
 	f.writeln(' {')
+	table_name := util.strip_mod_name(f.table.get_type_symbol(node.table_expr.typ).name)
 	match node.kind {
 		.insert {
-			f.writeln('\tinsert $node.object_var_name into ${util.strip_mod_name(node.table_name)}')
+			f.writeln('\tinsert $node.object_var_name into $table_name')
 		}
 		.update {
-			f.write('\tupdate ${util.strip_mod_name(node.table_name)} set ')
+			f.write('\tupdate $table_name set ')
 			for i, col in node.updated_columns {
 				f.write('$col = ')
 				f.expr(node.update_exprs[i])
@@ -2334,7 +2343,7 @@ pub fn (mut f Fmt) sql_stmt(node ast.SqlStmt) {
 			f.writeln('')
 		}
 		.delete {
-			f.write('\tdelete from ${util.strip_mod_name(node.table_name)} where ')
+			f.write('\tdelete from $table_name where ')
 			f.expr(node.where_expr)
 			f.writeln('')
 		}

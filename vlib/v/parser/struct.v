@@ -463,73 +463,104 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	mut ts := p.table.get_type_symbol(typ)
 	// if methods were declared before, it's an error, ignore them
 	ts.methods = []table.Fn{cap: 20}
-	// Parse methods
+	// Parse fields or methods
+	mut fields := []ast.StructField{cap: 20}
 	mut methods := []ast.FnDecl{cap: 20}
 	mut is_mut := false
 	for p.tok.kind != .rcbr && p.tok.kind != .eof {
-		ts = p.table.get_type_symbol(typ) // removing causes memory bug visible by `v -silent test-fmt`
-		if p.tok.kind == .key_mut {
-			if is_mut {
-				p.error_with_pos('redefinition of `mut` section', p.tok.position())
-				return {}
+		if p.peek_tok.kind == .lpar {
+			ts = p.table.get_type_symbol(typ) // removing causes memory bug visible by `v -silent test-fmt`
+			if p.tok.kind == .key_mut {
+				if is_mut {
+					p.error_with_pos('redefinition of `mut` section', p.tok.position())
+					return {}
+				}
+				p.next()
+				p.check(.colon)
+				is_mut = true
 			}
-			p.next()
-			p.check(.colon)
-			is_mut = true
+			method_start_pos := p.tok.position()
+			line_nr := p.tok.line_nr
+			name := p.check_name()
+			if ts.has_method(name) {
+				p.error_with_pos('duplicate method `$name`', method_start_pos)
+				return ast.InterfaceDecl{}
+			}
+			if util.contains_capital(name) {
+				p.error('interface methods cannot contain uppercase letters, use snake_case instead')
+				return ast.InterfaceDecl{}
+			}
+			// field_names << name
+			args2, _, is_variadic := p.fn_args() // TODO merge table.Param and ast.Arg to avoid this
+			mut args := [table.Param{
+				name: 'x'
+				is_mut: is_mut
+				typ: typ
+				is_hidden: true
+			}]
+			args << args2
+			mut method := ast.FnDecl{
+				name: name
+				mod: p.mod
+				params: args
+				file: p.file_name
+				return_type: table.void_type
+				is_variadic: is_variadic
+				is_pub: true
+				pos: method_start_pos.extend(p.prev_tok.position())
+				scope: p.scope
+			}
+			if p.tok.kind.is_start_of_type() && p.tok.line_nr == line_nr {
+				method.return_type = p.parse_type()
+			}
+			mcomments := p.eat_line_end_comments()
+			mnext_comments := p.eat_comments()
+			method.comments = mcomments
+			method.next_comments = mnext_comments
+			methods << method
+			// println('register method $name')
+			ts.register_method(
+				name: name
+				params: args
+				return_type: method.return_type
+				is_variadic: is_variadic
+				is_pub: true
+			)
+		} else {
+			// interface fields
+			field_pos := p.tok.position()
+			field_name := p.check_name()
+			mut type_pos := p.tok.position()
+			field_typ := p.parse_type()
+			type_pos = type_pos.extend(p.prev_tok.position())
+			mut comments := []ast.Comment{}
+			for p.tok.kind == .comment {
+				comments << p.comment()
+				if p.tok.kind == .rcbr {
+					break
+				}
+			}
+			fields << ast.StructField{
+				name: field_name
+				pos: field_pos
+				type_pos: type_pos
+				typ: field_typ
+				comments: comments
+			}
+			mut info := ts.info as table.Interface
+			info.fields << table.Field{
+				name: field_name
+				typ: field_typ
+			}
+			ts.info = info
 		}
-		method_start_pos := p.tok.position()
-		line_nr := p.tok.line_nr
-		name := p.check_name()
-		if ts.has_method(name) {
-			p.error_with_pos('duplicate method `$name`', method_start_pos)
-			return ast.InterfaceDecl{}
-		}
-		if util.contains_capital(name) {
-			p.error('interface methods cannot contain uppercase letters, use snake_case instead')
-			return ast.InterfaceDecl{}
-		}
-		// field_names << name
-		args2, _, is_variadic := p.fn_args() // TODO merge table.Param and ast.Arg to avoid this
-		mut args := [table.Param{
-			name: 'x'
-			is_mut: is_mut
-			typ: typ
-			is_hidden: true
-		}]
-		args << args2
-		mut method := ast.FnDecl{
-			name: name
-			mod: p.mod
-			params: args
-			file: p.file_name
-			return_type: table.void_type
-			is_variadic: is_variadic
-			is_pub: true
-			pos: method_start_pos.extend(p.prev_tok.position())
-			scope: p.scope
-		}
-		if p.tok.kind.is_start_of_type() && p.tok.line_nr == line_nr {
-			method.return_type = p.parse_type()
-		}
-		mcomments := p.eat_line_end_comments()
-		mnext_comments := p.eat_comments()
-		method.comments = mcomments
-		method.next_comments = mnext_comments
-		methods << method
-		// println('register method $name')
-		ts.register_method(
-			name: name
-			params: args
-			return_type: method.return_type
-			is_variadic: is_variadic
-			is_pub: true
-		)
 	}
 	p.top_level_statement_end()
 	p.check(.rcbr)
 	pos.update_last_line(p.prev_tok.line_nr)
 	return ast.InterfaceDecl{
 		name: interface_name
+		fields: fields
 		methods: methods
 		is_pub: is_pub
 		pos: pos

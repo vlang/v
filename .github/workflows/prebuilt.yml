@@ -21,6 +21,7 @@ jobs:
         ./v -version
     - name: Test V
       run: |
+        cd v
         ./v run examples/hello_world.v
 
   macos:
@@ -41,6 +42,7 @@ jobs:
         ./v -version
     - name: Test V
       run: |
+        cd v
         ./v run examples/hello_world.v
 
   windows:
@@ -56,4 +58,5 @@ jobs:
         & .\v.exe -version
     - name: Test V
       run: |
+        & cd v
         & .\v.exe run .\examples\hello_world.v

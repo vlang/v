@@ -8,8 +8,8 @@ fn new_st() MyStruct {
 
 fn get_st() MyStruct {
 	r := new_st()
-	return {
-		r |
+	return MyStruct{
+		...r
 		s: '6'
 	}
 }

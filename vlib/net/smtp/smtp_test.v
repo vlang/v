@@ -44,24 +44,23 @@ fn test_smtp() {
 		return
 	}
 	assert true
-	// client.send({ send_cfg | body_type: .html, body: '<html><h1>HTML V email!</h1></html>' }) or { assert false return }
-	client.send({
-		send_cfg |
+	client.send(smtp.Mail{
+		...send_cfg
 		from: 'alexander@vlang.io'
 	}) or {
 		assert false
 		return
 	}
-	client.send({
-		send_cfg |
+	client.send(smtp.Mail{
+		...send_cfg
 		cc: 'alexander@vlang.io,joe@vlang.io'
 		bcc: 'spytheman@vlang.io'
 	}) or {
 		assert false
 		return
 	}
-	client.send({
-		send_cfg |
+	client.send(smtp.Mail{
+		...send_cfg
 		date: time.now().add_days(1000)
 	}) or {
 		assert false

@@ -376,6 +376,56 @@ pub fn (mut c Checker) interface_decl(decl ast.InterfaceDecl) {
 	for method in decl.methods {
 		c.check_valid_snake_case(method.name, 'method name', method.pos)
 	}
+	// TODO: copy pasta from StructDecl
+	for i, field in decl.fields {
+		c.check_valid_snake_case(field.name, 'field name', field.pos)
+		sym := c.table.get_type_symbol(field.typ)
+		for j in 0 .. i {
+			if field.name == decl.fields[j].name {
+				c.error('field name `$field.name` duplicate', field.pos)
+			}
+		}
+		if sym.kind == .placeholder && !sym.name.starts_with('C.') {
+			c.error(util.new_suggestion(sym.name, c.table.known_type_names()).say('unknown type `$sym.name`'),
+				field.type_pos)
+		}
+		// Separate error condition for `int_literal` and `float_literal` because `util.suggestion` may give different
+		// suggestions due to f32 comparision issue.
+		if sym.kind in [.int_literal, .float_literal] {
+			msg := if sym.kind == .int_literal {
+				'unknown type `$sym.name`.\nDid you mean `int`?'
+			} else {
+				'unknown type `$sym.name`.\nDid you mean `f64`?'
+			}
+			c.error(msg, field.type_pos)
+		}
+		if sym.kind == .array {
+			array_info := sym.array_info()
+			elem_sym := c.table.get_type_symbol(array_info.elem_type)
+			if elem_sym.kind == .placeholder {
+				c.error(util.new_suggestion(elem_sym.name, c.table.known_type_names()).say('unknown type `$elem_sym.name`'),
+					field.type_pos)
+			}
+		}
+		if sym.kind == .struct_ {
+			info := sym.info as table.Struct
+			if info.is_ref_only && !field.typ.is_ptr() {
+				c.error('`$sym.name` type can only be used as a reference: `&$sym.name`',
+					field.type_pos)
+			}
+		}
+		if sym.kind == .map {
+			info := sym.map_info()
+			key_sym := c.table.get_type_symbol(info.key_type)
+			value_sym := c.table.get_type_symbol(info.value_type)
+			if key_sym.kind == .placeholder {
+				c.error('unknown type `$key_sym.name`', field.type_pos)
+			}
+			if value_sym.kind == .placeholder {
+				c.error('unknown type `$value_sym.name`', field.type_pos)
+			}
+		}
+	}
 }
 
 pub fn (mut c Checker) struct_decl(mut decl ast.StructDecl) {
@@ -1089,6 +1139,15 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 						explicit_lock_needed = true
 					}
 				}
+				.interface_ {
+					// TODO: mutability checks on interface fields?
+					interface_info := typ_sym.info as table.Interface
+					interface_info.find_field(expr.field_name) or {
+						type_str := c.table.type_to_str(expr.expr_type)
+						c.error('unknown field `${type_str}.$expr.field_name`', expr.pos)
+						return '', pos
+					}
+				}
 				.array, .string {
 					// This should only happen in `builtin`
 					// TODO Remove `crypto.rand` when possible (see vlib/crypto/rand/rand.v,
@@ -1570,7 +1629,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	}
 	// call struct field fn type
 	// TODO: can we use SelectorExpr for all? this dosent really belong here
-	if field := c.table.struct_find_field(left_type_sym, method_name) {
+	if field := c.table.find_field(left_type_sym, method_name) {
 		field_type_sym := c.table.get_type_symbol(field.typ)
 		if field_type_sym.kind == .function {
 			// call_expr.is_method = false
@@ -1966,6 +2025,20 @@ fn (mut c Checker) type_implements(typ table.Type, inter_typ table.Type, pos tok
 			pos)
 	}
 	if mut inter_sym.info is table.Interface {
+		for ifield in inter_sym.info.fields {
+			if field := typ_sym.find_field(ifield.name) {
+				if ifield.typ != field.typ {
+					exp := c.table.type_to_str(ifield.typ)
+					got := c.table.type_to_str(field.typ)
+					c.error('`$styp` incorrectly implements field `$ifield.name` of interface `$inter_sym.name`, expected `$exp`, got `$got`',
+						pos)
+					return false
+				}
+				continue
+			}
+			c.error("`$styp` doesn't implement field `$ifield.name` of interface `$inter_sym.name`",
+				pos)
+		}
 		if typ !in inter_sym.info.types && typ_sym.kind != .interface_ {
 			inter_sym.info.types << typ
 		}
@@ -2153,7 +2226,7 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 			}
 		}
 	} else {
-		if f := c.table.struct_find_field(sym, field_name) {
+		if f := c.table.find_field(sym, field_name) {
 			has_field = true
 			field = f
 		} else {
@@ -2163,7 +2236,7 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 				mut embed_of_found_fields := []table.Type{}
 				for embed in sym.info.embeds {
 					embed_sym := c.table.get_type_symbol(embed)
-					if f := c.table.struct_find_field(embed_sym, field_name) {
+					if f := c.table.find_field(embed_sym, field_name) {
 						found_fields << f
 						embed_of_found_fields << embed
 					}
@@ -2204,7 +2277,7 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 		selector_expr.typ = field.typ
 		return field.typ
 	}
-	if sym.kind !in [.struct_, .aggregate] {
+	if sym.kind !in [.struct_, .aggregate, .interface_] {
 		if sym.kind != .placeholder {
 			c.error('`$sym.name` is not a struct', selector_expr.pos)
 		}
@@ -3635,9 +3708,9 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) table.Type {
 	}
 	if node.is_vweb {
 		// TODO assoc parser bug
-		pref := *c.pref
-		pref2 := {
-			pref |
+		pref_ := *c.pref
+		pref2 := pref.Preferences{
+			...pref_
 			is_vweb: true
 		}
 		mut c2 := new_checker(c.table, pref2)
@@ -3869,7 +3942,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 		return table.int_type
 	}
 	if c.inside_sql {
-		if field := c.table.struct_find_field(c.cur_orm_ts, ident.name) {
+		if field := c.table.find_field(c.cur_orm_ts, ident.name) {
 			return field.typ
 		}
 	}
@@ -4207,7 +4280,7 @@ fn (c Checker) smartcast_sumtype(expr ast.Expr, cur_type table.Type, to_type tab
 			mut sum_type_casts := []table.Type{}
 			expr_sym := c.table.get_type_symbol(expr.expr_type)
 			mut orig_type := 0
-			if field := c.table.struct_find_field(expr_sym, expr.field_name) {
+			if field := c.table.find_field(expr_sym, expr.field_name) {
 				if field.is_mut {
 					root_ident := expr.root_ident()
 					if v := scope.find_var(root_ident.name) {
@@ -5200,16 +5273,15 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) table.Type {
 	defer {
 		c.inside_sql = false
 	}
-	sym := c.table.get_type_symbol(node.table_type)
+	sym := c.table.get_type_symbol(node.table_expr.typ)
 	if sym.kind == .placeholder {
 		c.error('orm: unknown type `$sym.name`', node.pos)
 		return table.void_type
 	}
 	c.cur_orm_ts = sym
 	info := sym.info as table.Struct
-	fields := c.fetch_and_verify_orm_fields(info, node.pos, node.table_name)
+	fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, sym.name)
 	node.fields = fields
-	node.table_name = sym.name
 	if node.has_where {
 		c.expr(node.where_expr)
 	}
@@ -5231,17 +5303,18 @@ fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) table.Type {
 	defer {
 		c.inside_sql = false
 	}
-	if node.table_type == 0 {
-		c.error('orm: unknown type `$node.table_name`', node.pos)
+	sym := c.table.get_type_symbol(node.table_expr.typ)
+	if node.table_expr.typ == 0 {
+		c.error('orm: unknown type `$sym.name`', node.pos)
 	}
-	sym := c.table.get_type_symbol(node.table_type)
 	if sym.kind == .placeholder {
 		c.error('orm: unknown type `$sym.name`', node.pos)
 		return table.void_type
 	}
 	c.cur_orm_ts = sym
 	info := sym.info as table.Struct
-	fields := c.fetch_and_verify_orm_fields(info, node.pos, node.table_name)
+	table_sym := c.table.get_type_symbol(node.table_expr.typ)
+	fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, table_sym.name)
 	node.fields = fields
 	c.expr(node.db_expr)
 	if node.kind == .update {
@@ -5258,6 +5331,7 @@ fn (mut c Checker) fetch_and_verify_orm_fields(info table.Struct, pos token.Posi
 		&& !it.attrs.contains('skip'))
 	if fields.len == 0 {
 		c.error('V orm: select: empty fields in `$table_name`', pos)
+		return []table.Field{}
 	}
 	if fields[0].name != 'id' {
 		c.error('V orm: `id int` must be the first field in `$table_name`', pos)

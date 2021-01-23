@@ -88,8 +88,8 @@ pub fn (mut c Client) send(config Mail) ? {
 	c.send_mailfrom(from) or { return error('Sending mailfrom failed') }
 	c.send_mailto(config.to) or { return error('Sending mailto failed') }
 	c.send_data() or { return error('Sending mail data failed') }
-	c.send_body({
-		config |
+	c.send_body(Mail{
+		...config
 		from: from
 	}) or { return error('Sending mail body failed') }
 }

@@ -352,7 +352,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.expr(node.left)
 		dot := if node.left_type.is_ptr() { '->' } else { '.' }
 		mname := c_name(node.name)
-		g.write('${dot}_interface_idx].${mname}(')
+		g.write('${dot}_interface_idx]._method_${mname}(')
 		g.expr(node.left)
 		g.write('${dot}_object')
 		if node.args.len > 0 {

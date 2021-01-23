@@ -239,7 +239,7 @@ fn (t &Table) register_aggregate_field(mut sym TypeSymbol, name string) ?Field {
 	mut new_field := Field{}
 	for typ in agg_info.types {
 		ts := t.get_type_symbol(typ)
-		if type_field := t.struct_find_field(ts, name) {
+		if type_field := t.find_field(ts, name) {
 			if !found_once {
 				found_once = true
 				new_field = type_field
@@ -256,15 +256,15 @@ fn (t &Table) register_aggregate_field(mut sym TypeSymbol, name string) ?Field {
 
 pub fn (t &Table) struct_has_field(s &TypeSymbol, name string) bool {
 	// println('struct_has_field($s.name, $name) types.len=$t.types.len s.parent_idx=$s.parent_idx')
-	if _ := t.struct_find_field(s, name) {
+	if _ := t.find_field(s, name) {
 		return true
 	}
 	return false
 }
 
 // search from current type up through each parent looking for field
-pub fn (t &Table) struct_find_field(s &TypeSymbol, name string) ?Field {
-	// println('struct_find_field($s.name, $name) types.len=$t.types.len s.parent_idx=$s.parent_idx')
+pub fn (t &Table) find_field(s &TypeSymbol, name string) ?Field {
+	// println('find_field($s.name, $name) types.len=$t.types.len s.parent_idx=$s.parent_idx')
 	mut ts := s
 	for {
 		if mut ts.info is Struct {
@@ -277,6 +277,10 @@ pub fn (t &Table) struct_find_field(s &TypeSymbol, name string) ?Field {
 			}
 			field := t.register_aggregate_field(mut ts, name) or { return error(err) }
 			return field
+		} else if mut ts.info is Interface {
+			if field := ts.info.find_field(name) {
+				return field
+			}
 		}
 		if ts.parent_idx == 0 {
 			break
@@ -356,8 +360,8 @@ pub fn (mut t Table) register_type_symbol(typ TypeSymbol) int {
 			.placeholder {
 				// override placeholder
 				// println('overriding type placeholder `$typ.name`')
-				t.types[existing_idx] = {
-					typ |
+				t.types[existing_idx] = TypeSymbol{
+					...typ
 					methods: ex_type.methods
 				}
 				return existing_idx
@@ -369,8 +373,8 @@ pub fn (mut t Table) register_type_symbol(typ TypeSymbol) int {
 				if existing_idx >= string_type_idx && existing_idx <= map_type_idx {
 					if existing_idx == string_type_idx {
 						// existing_type := t.types[existing_idx]
-						t.types[existing_idx] = {
-							typ |
+						t.types[existing_idx] = TypeSymbol{
+							...typ
 							kind: ex_type.kind
 						}
 					} else {

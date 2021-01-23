@@ -659,12 +659,6 @@ fn (g &Gen) type_sidx(t table.Type) string {
 
 //
 pub fn (mut g Gen) write_typedef_types() {
-	g.typedefs.writeln('
-typedef struct {
-	void* _object;
-	int _interface_idx;
-} _Interface;
-')
 	for typ in g.table.types {
 		match typ.kind {
 			.alias {
@@ -685,7 +679,16 @@ typedef struct {
 				g.type_definitions.writeln('typedef array $typ.cname;')
 			}
 			.interface_ {
-				g.type_definitions.writeln('typedef _Interface ${c_name(typ.name)};')
+				info := typ.info as table.Interface
+				g.type_definitions.writeln('typedef struct {')
+				g.type_definitions.writeln('\tvoid* _object;')
+				g.type_definitions.writeln('\tint _interface_idx;')
+				for field in info.fields {
+					styp := g.typ(field.typ)
+					cname := c_name(field.name)
+					g.type_definitions.writeln('\t$styp* $cname;')
+				}
+				g.type_definitions.writeln('} ${c_name(typ.name)};')
 			}
 			.chan {
 				if typ.name != 'chan' {
@@ -2916,6 +2919,9 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		opt_base_typ := g.base_type(node.expr_type)
 		g.writeln('(*($opt_base_typ*)')
 	}
+	if sym.kind == .interface_ {
+		g.write('*(')
+	}
 	if sym.kind == .array_fixed {
 		assert node.field_name == 'len'
 		info := sym.info as table.ArrayFixed
@@ -2930,7 +2936,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	}
 	mut sum_type_deref_field := ''
 	mut sum_type_dot := '.'
-	if f := g.table.struct_find_field(sym, node.field_name) {
+	if f := g.table.find_field(sym, node.field_name) {
 		field_sym := g.table.get_type_symbol(f.typ)
 		if field_sym.kind == .sum_type {
 			if !prevent_sum_type_unwrapping_once {
@@ -2991,6 +2997,9 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	g.write(c_name(node.field_name))
 	if sum_type_deref_field != '' {
 		g.write('$sum_type_dot$sum_type_deref_field)')
+	}
+	if sym.kind == .interface_ {
+		g.write(')')
 	}
 }
 
@@ -5869,7 +5878,7 @@ fn (mut g Gen) interface_table() string {
 			}
 			// TODO g.fn_args(method.args[1..], method.is_variadic)
 			methods_typ_def.writeln(');')
-			methods_struct_def.writeln('\t$typ_name ${c_name(method.name)};')
+			methods_struct_def.writeln('\t$typ_name _method_${c_name(method.name)};')
 			imethods[method.name] = typ_name
 		}
 		methods_struct_def.writeln('};')
@@ -5890,7 +5899,6 @@ fn (mut g Gen) interface_table() string {
 			}
 		}
 		mut cast_functions := strings.new_builder(100)
-		cast_functions.write('// Casting functions for interface "$interface_name"')
 		mut methods_wrapper := strings.new_builder(100)
 		methods_wrapper.writeln('// Methods wrapper for interface "$interface_name"')
 		mut already_generated_mwrappers := map[string]int{}
@@ -5913,23 +5921,31 @@ fn (mut g Gen) interface_table() string {
 			already_generated_mwrappers[interface_index_name] = current_iinidx
 			current_iinidx++
 			// eprintln('>>> current_iinidx: ${current_iinidx-iinidx_minimum_base} | interface_index_name: $interface_index_name')
-			sb.writeln('$staticprefix _Interface I_${cctype}_to_Interface_${interface_name}($cctype* x);')
-			sb.writeln('$staticprefix _Interface* I_${cctype}_to_Interface_${interface_name}_ptr($cctype* x);')
+			sb.writeln('$staticprefix $interface_name I_${cctype}_to_Interface_${interface_name}($cctype* x);')
+			sb.writeln('$staticprefix $interface_name* I_${cctype}_to_Interface_${interface_name}_ptr($cctype* x);')
+			mut cast_struct := strings.new_builder(100)
+			cast_struct.writeln('($interface_name) {')
+			cast_struct.writeln('\t\t._object = (void*) (x),')
+			cast_struct.writeln('\t\t._interface_idx = $interface_index_name,')
+			for field in inter_info.fields {
+				cname := c_name(field.name)
+				field_styp := g.typ(field.typ)
+				cast_struct.writeln('\t\t.$cname = ($field_styp*)((char*)x + __offsetof($cctype, $cname)),')
+			}
+			cast_struct.write('\t}')
+			cast_struct_str := cast_struct.str()
+
 			cast_functions.writeln('
-$staticprefix _Interface I_${cctype}_to_Interface_${interface_name}($cctype* x) {
-	return (_Interface) {
-		._object = (void*) (x),
-		._interface_idx = $interface_index_name
-	};
+// Casting functions for converting "$cctype" to interface "$interface_name"
+$staticprefix inline $interface_name I_${cctype}_to_Interface_${interface_name}($cctype* x) {
+	return $cast_struct_str;
 }
 
-$staticprefix _Interface* I_${cctype}_to_Interface_${interface_name}_ptr($cctype* x) {
+$staticprefix $interface_name* I_${cctype}_to_Interface_${interface_name}_ptr($cctype* x) {
 	// TODO Remove memdup
-	return (_Interface*) memdup(&(_Interface) {
-		._object = (void*) (x),
-		._interface_idx = $interface_index_name
-	}, sizeof(_Interface));
+	return ($interface_name*) memdup(&$cast_struct_str, sizeof($interface_name));
 }')
+
 			if g.pref.build_mode != .build_module {
 				methods_struct.writeln('\t{')
 			}
@@ -5973,7 +5989,7 @@ $staticprefix _Interface* I_${cctype}_to_Interface_${interface_name}_ptr($cctype
 					method_call += '_method_wrapper'
 				}
 				if g.pref.build_mode != .build_module {
-					methods_struct.writeln('\t\t.${c_name(method.name)} = $method_call,')
+					methods_struct.writeln('\t\t._method_${c_name(method.name)} = $method_call,')
 				}
 			}
 			if g.pref.build_mode != .build_module {
@@ -5996,10 +6012,12 @@ $staticprefix _Interface* I_${cctype}_to_Interface_${interface_name}_ptr($cctype
 		}
 		// add line return after interface index declarations
 		sb.writeln('')
-		sb.writeln(methods_wrapper.str())
-		sb.writeln(methods_typ_def.str())
-		sb.writeln(methods_struct_def.str())
-		sb.writeln(methods_struct.str())
+		if ityp.methods.len > 0 {
+			sb.writeln(methods_wrapper.str())
+			sb.writeln(methods_typ_def.str())
+			sb.writeln(methods_struct_def.str())
+			sb.writeln(methods_struct.str())
+		}
 		sb.writeln(cast_functions.str())
 	}
 	return sb.str()

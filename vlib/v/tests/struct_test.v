@@ -164,8 +164,8 @@ fn test_assoc_with_vars() {
 	def2 := Def{
 		a: 12
 	}
-	merged := {
-		def2 |
+	merged := Def{
+		...def2
 		a: 42
 	}
 	assert merged.a == 42
@@ -181,7 +181,7 @@ const (
 fn test_assoc_with_constants() {
 	println(1)
 	/*
-	QTODO
+	TODO:
 	merged := { const_def | a: 42 }
 	assert merged.a == 42
 	assert merged.b == 7

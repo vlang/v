@@ -19,7 +19,7 @@
 + IO streams
 + struct embedding
 - interface embedding
-- interfaces: allow struct fields (not just methods)
++ interfaces: allow struct fields (not just methods)
 - vfmt: fix common errors automatically to save time (make vars mutable and vice versa, add missing imports etc)
 - method expressions with an explicit receiver as the first argument: `fn handle(f OnClickFn) { f() } button := Button{} handle(btn.click)`
 + short generics syntax (`foo(5)` instead of `foo<int>(5)`)
