@@ -4940,7 +4940,7 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 			if node.left.obj is ast.Var {
 				v := node.left.obj as ast.Var
 				// `mut param []T` function parameter
-				is_ok = v.is_mut && v.is_arg && !typ.deref().is_ptr()
+				is_ok = ((v.is_mut && v.is_arg) || v.share == .shared_t) && !typ.deref().is_ptr()
 			}
 		}
 		if !is_ok && !c.pref.translated {
