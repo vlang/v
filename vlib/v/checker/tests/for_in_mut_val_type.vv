@@ -1,0 +1,23 @@
+fn main() {
+	a1 := [1, 2, 3]
+	for mut j in a1 {
+		j *= 2
+	}
+	a2 := [1, 2, 3]!
+	for mut j in a2 {
+		j *= 2
+	}
+	m := {'aa': 1, 'bb': 2}
+	for _, mut j in m {
+		j *= 2
+	}
+	for mut j in [1, 2, 3] {
+		j *= 2
+	}
+	for mut j in [1, 2, 3]! {
+		j *= 2
+	}
+	for _, mut j in {'aa': 1, 'bb': 2} {
+		j *= 2
+	}
+}

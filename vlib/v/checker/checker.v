@@ -3079,6 +3079,26 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 					}
 					if node.val_is_mut {
 						value_type = value_type.to_ptr()
+						match node.cond {
+							ast.Ident {
+								if node.cond.obj is ast.Var {
+									obj := node.cond.obj as ast.Var
+									if !obj.is_mut {
+										c.error('`$obj.name` is immutable, it cannot be changed',
+											node.cond.pos)
+									}
+								}
+							}
+							ast.ArrayInit {
+								c.error('array literal is immutable, it cannot be changed',
+									node.cond.pos)
+							}
+							ast.MapInit {
+								c.error('map literal is immutable, it cannot be changed',
+									node.cond.pos)
+							}
+							else {}
+						}
 					}
 					node.cond_type = typ
 					node.kind = sym.kind
