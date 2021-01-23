@@ -22,7 +22,7 @@ fn wprintln(s string) {
 
 fn main() {
 	if os.args.len == 1 {
-		println('Usage: checks the passed markdown files for correct ```v ``` code blocks, 
+		println('Usage: checks the passed markdown files for correct ```v ``` code blocks,
 and for other style violations. like too long lines/links etc...
 a) `v run cmd/tools/check-md.v -all` - will check *all* .md files in the folders.
 b) `v run cmd/tools/check-md.v doc/docs.md` - will only check a single file.
@@ -61,18 +61,23 @@ These are:
 			if line.len > too_long_line_length {
 				if mdfile.state == .vexample {
 					wprintln(wline(file_path, i, line.len, 'long V example line'))
+					wprintln(line)
 					warnings++
 				} else if mdfile.state == .codeblock {
 					wprintln(wline(file_path, i, line.len, 'long code block line'))
+					wprintln(line)
 					warnings++
 				} else if line.starts_with('|') {
 					wprintln(wline(file_path, i, line.len, 'long table'))
+					wprintln(line)
 					warnings++
 				} else if line.contains('https') {
 					wprintln(wline(file_path, i, line.len, 'long link'))
+					wprintln(line)
 					warnings++
 				} else {
 					eprintln(eline(file_path, i, line.len, 'line too long'))
+					eprintln(line)
 					errors++
 				}
 			}
@@ -129,7 +134,8 @@ fn rtext(s string) string {
 }
 
 fn wline(file_path string, lnumber int, column int, message string) string {
-	return btext('$file_path:${lnumber + 1}:${column + 1}:') + btext(mtext(' warn:')) + rtext(' $message')
+	return btext('$file_path:${lnumber + 1}:${column + 1}:') + btext(mtext(' warn:')) +
+		rtext(' $message')
 }
 
 fn eline(file_path string, lnumber int, column int, message string) string {
@@ -155,7 +161,7 @@ enum MDFileParserState {
 }
 
 struct MDFile {
-	path     string
+	path string
 mut:
 	examples []VCodeExample
 	current  VCodeExample
