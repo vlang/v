@@ -1145,7 +1145,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			if p.tok.kind == .rcbr {
 				p.next()
 			} else {
-				p.error('`}` expected - explicit `map` initialization does not support parameters')
+				p.error('`}` expected, explicit `map` initialization does not support parameters')
 			}
 		}
 		return ast.MapInit{
