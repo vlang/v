@@ -95,7 +95,7 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 		}
 		if is_amp {
 			if g.is_shared {
-				g.write(', .mtx = sync__new_rwmutex()}, sizeof($styp))')
+				g.write(', .mtx = sync__new_rwmutex()}, sizeof($shared_styp))')
 			} else {
 				g.write('), sizeof($styp))')
 			}
