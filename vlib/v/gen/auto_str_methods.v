@@ -600,11 +600,13 @@ fn (mut g Gen) gen_str_for_union_sum_type(info table.SumType, styp string, str_f
 			g.gen_str_for_type(typ)
 		}
 		sym := g.table.get_type_symbol(typ)
-		if sym.kind == .struct_ {
+		sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
+		deref := if sym_has_str_method && str_method_expects_ptr { ' ' } else { '*' }
+		if sym.kind == .struct_ && !sym_has_str_method {
 			func_name = 'indent_$func_name'
 		}
-		g.auto_str_funcs.write('\t\tcase $typ: return _STR("${clean_sum_type_v_type_name}($value_fmt)", 2, ${func_name}(*($typ_str*)x._$sym.cname')
-		if sym.kind == .struct_ {
+		g.auto_str_funcs.write('\t\tcase $typ: return _STR("${clean_sum_type_v_type_name}($value_fmt)", 2, ${func_name}(${deref}($typ_str*)x._$sym.cname')
+		if sym.kind == .struct_ && !sym_has_str_method {
 			g.auto_str_funcs.write(', indent_count')
 		}
 		g.auto_str_funcs.writeln('));')
