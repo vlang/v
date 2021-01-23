@@ -326,6 +326,17 @@ fn main() {
 }
 ```
 
+The values of multiple variables can be changed in one line.
+In this way, their values can be swapped without an intermediary variable.
+
+```v
+mut a := 0
+mut b := 1
+println('$a, $b') // 0, 1
+a, b = b, a
+println('$a, $b') // 1, 0
+```
+
 ### Declaration errors
 
 In development mode the compiler will warn you that you haven't used the variable
