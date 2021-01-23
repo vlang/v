@@ -10,7 +10,7 @@ const (
 	npad = []byte{len: 256, init: 0}
 )
 
-// Returns an HMAC byte array, depending on the hash algorithm used
+// new returns a HMAC byte array, depending on the hash algorithm used.
 pub fn new(key []byte, data []byte, hash_func fn (bytes []byte) []byte, blocksize int) []byte {
 	mut b_key := []byte{}
 	if key.len <= blocksize {
@@ -36,7 +36,7 @@ pub fn new(key []byte, data []byte, hash_func fn (bytes []byte) []byte, blocksiz
 	return digest
 }
 
-// equal compares 2 MACs for equality, without leaking timing info
+// equal compares 2 MACs for equality, without leaking timing info.
 // NB: if the lengths of the 2 MACs are different, probably a completely different
 // hash function was used to generate them => no useful timing information.
 pub fn equal(mac1 []byte, mac2 []byte) bool {

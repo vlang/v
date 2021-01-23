@@ -18,15 +18,16 @@ pub fn xor_bytes(mut dst []byte, a []byte, b []byte) int {
 	return n
 }
 
-// n needs to be smaller or equal than the length of a and b.
+// safe_xor_bytes XORs the bytes in `a` and `b` into `dst` it does so `n` times.
+// Please note: `n` needs to be smaller or equal than the length of `a` and `b`.
 pub fn safe_xor_bytes(mut dst []byte, a []byte, b []byte, n int) {
 	for i in 0 .. n {
 		dst[i] = a[i] ^ b[i]
 	}
 }
 
-// fast_xor_words XORs multiples of 4 or 8 bytes (depending on architecture.)
-// The slice arguments a and b are assumed to be of equal length.
+// xor_words XORs multiples of 4 or 8 bytes (depending on architecture.)
+// The slice arguments `a` and `b` are assumed to be of equal length.
 pub fn xor_words(mut dst []byte, a []byte, b []byte) {
 	safe_xor_bytes(mut dst, a, b, b.len)
 }

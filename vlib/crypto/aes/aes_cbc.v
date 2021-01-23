@@ -29,7 +29,7 @@ fn new_aes_cbc(b AesCipher, iv []byte) AesCbc {
 	}
 }
 
-// new_cbc_encrypter returns a BlockMode which encrypts in cipher block chaining
+// new_cbc returns a `AesCbc` which encrypts in cipher block chaining
 // mode, using the given Block. The length of iv must be the same as the
 // Block's block size.
 pub fn new_cbc(b AesCipher, iv []byte) AesCbc {
@@ -39,10 +39,13 @@ pub fn new_cbc(b AesCipher, iv []byte) AesCbc {
 	return new_aes_cbc(b, iv)
 }
 
+// block_size returns the block size of the checksum in bytes.
 pub fn (x &AesCbc) block_size() int {
 	return x.block_size
 }
 
+// encrypt_blocks encrypts the blocks in `src_` to `dst_`.
+// Please note: `dst_` is mutable for performance reasons.
 pub fn (x &AesCbc) encrypt_blocks(mut dst_ []byte, src_ []byte) {
 	unsafe {
 		mut dst := *dst_
@@ -75,6 +78,8 @@ pub fn (x &AesCbc) encrypt_blocks(mut dst_ []byte, src_ []byte) {
 	}
 }
 
+// decrypt_blocks decrypts the blocks in `src` to `dst`.
+// Please note: `dst` is mutable for performance reasons.
 pub fn (mut x AesCbc) decrypt_blocks(mut dst []byte, src []byte) {
 	if src.len % x.block_size != 0 {
 		panic('crypto.cipher: input not full blocks')

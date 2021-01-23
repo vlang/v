@@ -60,7 +60,7 @@ const (
 	init7_384 = u64(0x47b5481dbefa4fa4)
 )
 
-// digest represents the partial evaluation of a checksum.
+// Digest represents the partial evaluation of a checksum.
 struct Digest {
 mut:
 	h        []u64
@@ -148,6 +148,7 @@ fn new384() &Digest {
 	return new_digest(.sha384)
 }
 
+// write writes the contents of `p_` to the internal hash representation.
 fn (mut d Digest) write(p_ []byte) int {
 	unsafe {
 		mut p := p_
@@ -271,7 +272,7 @@ pub fn sum512_224(data []byte) []byte {
 	return sum224
 }
 
-// Sum512_256 returns the Sum512/256 checksum of the data.
+// sum512_256 returns the Sum512/256 checksum of the data.
 pub fn sum512_256(data []byte) []byte {
 	mut d := new_digest(.sha512_256)
 	d.write(data)
@@ -287,6 +288,7 @@ fn block(mut dig Digest, p []byte) {
 	block_generic(mut dig, p)
 }
 
+// size returns the size of the checksum in bytes.
 pub fn (d &Digest) size() int {
 	match d.function {
 		.sha512_224 { return size224 }
@@ -296,22 +298,27 @@ pub fn (d &Digest) size() int {
 	}
 }
 
+// block_size returns the block size of the checksum in bytes.
 pub fn (d &Digest) block_size() int {
 	return block_size
 }
 
+// hexhash returns a hexadecimal SHA512 hash sum `string` of `s`.
 pub fn hexhash(s string) string {
 	return sum512(s.bytes()).hex()
 }
 
+// hexhash_384 returns a hexadecimal SHA384 hash sum `string` of `s`.
 pub fn hexhash_384(s string) string {
 	return sum384(s.bytes()).hex()
 }
 
+// hexhash_512_224 returns a hexadecimal SHA512/224 hash sum `string` of `s`.
 pub fn hexhash_512_224(s string) string {
 	return sum512_224(s.bytes()).hex()
 }
 
+// hexhash_512_256 returns a hexadecimal 512/256 hash sum `string` of `s`.
 pub fn hexhash_512_256(s string) string {
 	return sum512_256(s.bytes()).hex()
 }

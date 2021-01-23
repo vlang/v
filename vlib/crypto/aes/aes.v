@@ -12,14 +12,14 @@ pub const (
 	block_size = 16
 )
 
-// A cipher is an instance of AES encryption using a particular key.
+// AesCipher represents an AES encryption using a particular key.
 struct AesCipher {
 mut:
 	enc []u32
 	dec []u32
 }
 
-// new_cipher creates and returns a new cipher.Block.
+// new_cipher creates and returns a new `AesCipher`.
 // The key argument should be the AES key,
 // either 16, 24, or 32 bytes to select
 // AES-128, AES-192, or AES-256.
@@ -38,10 +38,13 @@ pub fn new_cipher(key []byte) AesCipher {
 	return new_cipher_generic(key)
 }
 
+// block_size returns the block size of the checksum in bytes.
 pub fn (c &AesCipher) block_size() int {
 	return block_size
 }
 
+// encrypt encrypts the blocks in `src` to `dst`.
+// Please note: `dst` and `src` are both mutable for performance reasons.
 pub fn (c &AesCipher) encrypt(mut dst []byte, mut src []byte) {
 	if src.len < block_size {
 		panic('crypto.aes: input not full block')
@@ -57,6 +60,8 @@ pub fn (c &AesCipher) encrypt(mut dst []byte, mut src []byte) {
 	encrypt_block_generic(c.enc, mut dst, src)
 }
 
+// decrypt decrypts the blocks in `src` to `dst`.
+// Please note: `dst` and `src` are both mutable for performance reasons.
 pub fn (c &AesCipher) decrypt(mut dst []byte, mut src []byte) {
 	if src.len < block_size {
 		panic('crypto.aes: input not full block')

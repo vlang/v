@@ -12,6 +12,7 @@ const (
 	read_batch_size = 256
 )
 
+// read returns an array of `bytes_needed` random bytes read from the OS.
 pub fn read(bytes_needed int) ?[]byte {
 	mut buffer := &byte(0)
 	unsafe {

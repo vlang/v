@@ -51,7 +51,8 @@ pub fn new() &Digest {
 	return d
 }
 
-fn (mut d Digest) write(p_ []byte) int {
+// write writes the contents of `p_` to the internal hash representation.
+pub fn (mut d Digest) write(p_ []byte) int {
 	unsafe {
 		mut p := p_
 		nn := p.len
@@ -85,7 +86,8 @@ fn (mut d Digest) write(p_ []byte) int {
 	}
 }
 
-fn (d &Digest) sum(b_in []byte) []byte {
+// sum returns the md5 sum of the bytes in `b_in`.
+pub fn (d &Digest) sum(b_in []byte) []byte {
 	// Make a copy of d so that caller can keep writing and summing.
 	mut d0 := *d
 	hash := d0.checksum()
@@ -96,6 +98,7 @@ fn (d &Digest) sum(b_in []byte) []byte {
 	return b_out
 }
 
+// checksum returns the byte checksum of the `Digest`.
 pub fn (mut d Digest) checksum() []byte {
 	// Append 0x80 to the end of the message and then append zeros
 	// until the length is a multiple of 56 bytes. Finally append
@@ -134,14 +137,18 @@ fn block(mut dig Digest, p []byte) {
 	block_generic(mut dig, p)
 }
 
+// size returns the size of the checksum in bytes.
 pub fn (d &Digest) size() int {
 	return size
 }
 
+// block_size returns the block size of the checksum in bytes.
 pub fn (d &Digest) block_size() int {
 	return block_size
 }
 
+// hexhash returns a hexadecimal MD5 hash sum `string` of `s`.
+// Example: assert md5.hexhash('V') == '5206560a306a2e085a437fd258eb57ce'
 pub fn hexhash(s string) string {
 	return sum(s.bytes()).hex()
 }
