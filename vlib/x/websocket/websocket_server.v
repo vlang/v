@@ -73,8 +73,8 @@ fn (mut s Server) handle_ping() {
 	mut clients_to_remove := []string{}
 	for s.state == .open {
 		time.sleep(s.ping_interval)
-		for _, cli in s.clients {
-			mut c := cli
+		for i, _ in s.clients {
+			mut c := s.clients[i]
 			if c.client.state == .open {
 				c.client.ping() or {
 					s.logger.debug('server-> error sending ping to client')
