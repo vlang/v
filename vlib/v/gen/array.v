@@ -19,7 +19,7 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 			shared_styp = g.typ(shared_typ)
 			g.writeln('($shared_styp*)memdup(&($shared_styp){.val = ')
 		} else {
-			g.write('($styp*)memdup(&') // TODO: doesn't work with every compiler
+			g.write('($styp*)memdup(ADDR($styp, ')
 		}
 	} else {
 		if g.is_shared {
@@ -92,6 +92,13 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 			g.write('}[0])')
 		} else {
 			g.write('0)')
+		}
+		if is_amp {
+			if g.is_shared {
+				g.write(', .mtx = sync__new_rwmutex()}, sizeof($shared_styp))')
+			} else {
+				g.write('), sizeof($styp))')
+			}
 		}
 		return
 	}
