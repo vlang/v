@@ -1839,7 +1839,9 @@ struct Dog {
 	breed string
 }
 
-struct Cat {}
+struct Cat {
+	breed string
+}
 
 fn (d Dog) speak() string {
 	return 'woof'
@@ -1849,30 +1851,32 @@ fn (c Cat) speak() string {
 	return 'meow'
 }
 
+// unlike Go and like TypeScript, V's interfaces can define fields, not just methods.
 interface Speaker {
+	breed string
 	speak() string
 }
 
 dog := Dog{'Leonberger'}
-cat := Cat{}
+cat := Cat{'Siamese'}
 mut arr := []Speaker{}
 arr << dog
 arr << cat
 for item in arr {
-	item.speak()
+	println('a $item.breed ${typeof(item).name} says: $item.speak()')
 }
 ```
 
-A type implements an interface by implementing its methods.
+A type implements an interface by implementing its methods and fields.
 There is no explicit declaration of intent, no "implements" keyword.
 
 We can test the underlying type of an interface using dynamic cast operators:
 ```v oksyntax
 fn announce(s Speaker) {
 	if s is Dog {
-		println('a $s.breed') // `s` is automatically cast to `Dog` (smart cast)
+		println('a $s.breed dog') // `s` is automatically cast to `Dog` (smart cast)
 	} else if s is Cat {
-		println('a cat')
+		println('a $s.breed cat')
 	} else {
 		println('something else')
 	}

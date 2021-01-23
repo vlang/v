@@ -230,6 +230,7 @@ pub:
 	field_names  []string
 	is_pub       bool
 	methods      []FnDecl
+	fields       []StructField
 	pos          token.Position
 	pre_comments []Comment
 }

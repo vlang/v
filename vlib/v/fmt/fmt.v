@@ -782,10 +782,18 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 	}
 	name := node.name.after('.')
 	f.write('interface $name {')
-	if node.methods.len > 0 || node.pos.line_nr < node.pos.last_line {
+	if node.fields.len > 0 || node.methods.len > 0 || node.pos.line_nr < node.pos.last_line {
 		f.writeln('')
 	}
 	f.comments_after_last_field(node.pre_comments)
+	for field in node.fields {
+		// TODO: alignment, comments, etc.
+		mut ft := f.no_cur_mod(f.table.type_to_str(field.typ))
+		if !ft.contains('C.') && !ft.contains('JS.') && !ft.contains('fn (') {
+			ft = f.short_module(ft)
+		}
+		f.writeln('\t$field.name $ft')
+	}
 	for method in node.methods {
 		f.write('\t')
 		f.write(method.stringify(f.table, f.cur_mod, f.mod2alias).after('fn '))
