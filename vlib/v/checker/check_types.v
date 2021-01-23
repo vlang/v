@@ -484,3 +484,75 @@ pub fn (mut c Checker) infer_fn_types(f table.Fn, mut call_expr ast.CallExpr) {
 	}
 	c.table.register_fn_gen_type(f.name, inferred_types)
 }
+
+// resolve_generic_type resolves generics to real types T => int.
+// Even map[string]map[string]T can be resolved.
+// This is used for resolving the generic return type of CallExpr white `unwrap_generic` is used to resolve generic usage in FnDecl.
+fn (mut c Checker) resolve_generic_type(generic_type table.Type, generic_names []string, call_expr ast.CallExpr) ?table.Type {
+	mut sym := c.table.get_type_symbol(generic_type)
+	if sym.name in generic_names {
+		index := generic_names.index(sym.name)
+		mut typ := call_expr.generic_types[index]
+		typ = typ.set_nr_muls(generic_type.nr_muls())
+		if generic_type.has_flag(.optional) {
+			typ = typ.set_flag(.optional)
+		}
+		return typ
+	} else if sym.kind == .array {
+		info := sym.info as table.Array
+		mut elem_type := info.elem_type
+		mut elem_sym := c.table.get_type_symbol(elem_type)
+		mut dims := 1
+		for mut elem_sym.info is table.Array {
+			elem_type = elem_sym.info.elem_type
+			elem_sym = c.table.get_type_symbol(elem_type)
+			dims++
+		}
+		if typ := c.resolve_generic_type(elem_type, generic_names, call_expr) {
+			idx := c.table.find_or_register_array_with_dims(typ, dims)
+			array_typ := table.new_type(idx)
+			return array_typ
+		}
+	} else if sym.kind == .chan {
+		info := sym.info as table.Chan
+		if typ := c.resolve_generic_type(info.elem_type, generic_names, call_expr) {
+			idx := c.table.find_or_register_chan(typ, typ.nr_muls() > 0)
+			chan_typ := table.new_type(idx)
+			return chan_typ
+		}
+	} else if mut sym.info is table.MultiReturn {
+		mut types := []table.Type{}
+		mut type_changed := false
+		for ret_type in sym.info.types {
+			if typ := c.resolve_generic_type(ret_type, generic_names, call_expr) {
+				types << typ
+				type_changed = true
+			} else {
+				types << ret_type
+			}
+		}
+		if type_changed {
+			idx := c.table.find_or_register_multi_return(types)
+			typ := table.new_type(idx)
+			return typ
+		}
+	} else if mut sym.info is table.Map {
+		mut type_changed := false
+		mut unwrapped_key_type := sym.info.key_type
+		mut unwrapped_value_type := sym.info.value_type
+		if typ := c.resolve_generic_type(sym.info.key_type, generic_names, call_expr) {
+			unwrapped_key_type = typ
+			type_changed = true
+		}
+		if typ := c.resolve_generic_type(sym.info.value_type, generic_names, call_expr) {
+			unwrapped_value_type = typ
+			type_changed = true
+		}
+		if type_changed {
+			idx := c.table.find_or_register_map(unwrapped_key_type, unwrapped_value_type)
+			typ := table.new_type(idx)
+			return typ
+		}
+	}
+	return none
+}

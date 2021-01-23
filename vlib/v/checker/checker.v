@@ -1918,84 +1918,9 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		c.infer_fn_types(f, mut call_expr)
 	}
 	if call_expr.generic_types.len > 0 && f.return_type != 0 {
-		// TODO: this logic needs to be cleaned up; maybe make it reusable?
-		// Handle `foo<T>() T` => `foo<int>() int` => return int
-		mut return_sym := c.table.get_type_symbol(f.return_type)
-		if return_sym.name in f.generic_names {
-			index := f.generic_names.index(return_sym.name)
-			mut typ := call_expr.generic_types[index]
-			typ = typ.set_nr_muls(f.return_type.nr_muls())
-			if f.return_type.has_flag(.optional) {
-				typ = typ.set_flag(.optional)
-			}
+		if typ := c.resolve_generic_type(f.return_type, f.generic_names, call_expr) {
 			call_expr.return_type = typ
 			return typ
-		} else if return_sym.kind == .array {
-			return_info := return_sym.info as table.Array
-			mut sym := c.table.get_type_symbol(return_info.elem_type)
-			mut dims := 1
-			for {
-				if mut sym.info is table.Array {
-					sym = c.table.get_type_symbol(sym.info.elem_type)
-					dims++
-				} else {
-					break
-				}
-			}
-			if sym.name in f.generic_names {
-				generic_index := f.generic_names.index(sym.name)
-				generic_type := call_expr.generic_types[generic_index]
-				idx := c.table.find_or_register_array_with_dims(generic_type, dims)
-				typ := table.new_type(idx)
-				call_expr.return_type = typ
-				return typ
-			}
-		} else if return_sym.kind == .chan {
-			return_info := return_sym.info as table.Chan
-			elem_sym := c.table.get_type_symbol(return_info.elem_type)
-			if elem_sym.name in f.generic_names {
-				generic_index := f.generic_names.index(elem_sym.name)
-				generic_type := call_expr.generic_types[generic_index]
-				idx := c.table.find_or_register_chan(generic_type, generic_type.nr_muls() > 0)
-				typ := table.new_type(idx)
-				call_expr.return_type = typ
-				return typ
-			}
-		} else if mut return_sym.info is table.MultiReturn {
-			mut types := []table.Type{}
-			for return_type in return_sym.info.types {
-				multi_return_sym := c.table.get_type_symbol(return_type)
-				if multi_return_sym.name in f.generic_names {
-					generic_index := f.generic_names.index(multi_return_sym.name)
-					types << call_expr.generic_types[generic_index]
-				}
-			}
-			idx := c.table.find_or_register_multi_return(types)
-			typ := table.new_type(idx)
-			call_expr.return_type = typ
-			return typ
-		} else if mut return_sym.info is table.Map {
-			mut type_changed := false
-			mut unwrapped_key_type := return_sym.info.key_type
-			mut unwrapped_value_type := return_sym.info.value_type
-			if return_sym.info.key_type.has_flag(.generic) {
-				key_sym := c.table.get_type_symbol(return_sym.info.key_type)
-				index := f.generic_names.index(key_sym.name)
-				unwrapped_key_type = call_expr.generic_types[index]
-				type_changed = true
-			}
-			if return_sym.info.value_type.has_flag(.generic) {
-				value_sym := c.table.get_type_symbol(return_sym.info.value_type)
-				index := f.generic_names.index(value_sym.name)
-				unwrapped_value_type = call_expr.generic_types[index]
-				type_changed = true
-			}
-			if type_changed {
-				idx := c.table.find_or_register_map(unwrapped_key_type, unwrapped_value_type)
-				typ := table.new_type(idx)
-				call_expr.return_type = typ
-				return typ
-			}
 		}
 	}
 	if call_expr.generic_types.len > 0 && f.generic_names.len == 0 {

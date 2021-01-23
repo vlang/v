@@ -354,14 +354,14 @@ fn generic_return_map<M>() map[string]M {
 fn test_generic_return_map() {
 	assert typeof(generic_return_map<string>()).name == 'map[string]string'
 }
-/*
+
 fn generic_return_nested_map<M>() map[string]map[string]M {
 	return {'': {'': M{}}}
 }
 
 fn test_generic_return_nested_map() {
 	assert typeof(generic_return_nested_map<string>()).name == 'map[string]map[string]string'
-}*/
+}
 
 /*
 fn multi_return<A, B>() (A, B) {
