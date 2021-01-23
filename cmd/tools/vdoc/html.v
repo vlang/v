@@ -201,11 +201,7 @@ fn (mut vd VDoc) create_search_results(mod string, dn doc.DocNode, out Output) {
 	dn_description := trim_doc_node_description(comments)
 	vd.search_index << dn.name
 	vd.search_data << SearchResult{
-		prefix: if dn.parent_name != '' {
-			'$dn.kind ($dn.parent_name)'
-		} else {
-			'$dn.kind '
-		}
+		prefix: if dn.parent_name != '' { '$dn.kind ($dn.parent_name)' } else { '$dn.kind ' }
 		description: dn_description
 		badge: mod
 		link: vd.get_file_name(mod, out) + '#' + get_node_id(dn)
