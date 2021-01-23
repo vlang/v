@@ -1034,6 +1034,9 @@ pub fn (mut p Parser) parse_ident(language table.Language) ast.Ident {
 	// p.warn('name ')
 	is_shared := p.tok.kind == .key_shared
 	is_atomic := p.tok.kind == .key_atomic
+	if is_shared {
+		p.register_auto_import('sync')
+	}
 	mut_pos := p.tok.position()
 	is_mut := p.tok.kind == .key_mut || is_shared || is_atomic
 	if is_mut {
