@@ -1580,7 +1580,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		}
 		if call_expr.generic_types.len > 0 && method.return_type != 0 {
 			if typ := c.resolve_generic_type(method.return_type, method.generic_names,
-				call_expr) {
+				call_expr.generic_types) {
 				call_expr.return_type = typ
 				return typ
 			}
@@ -1893,7 +1893,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		c.infer_fn_types(f, mut call_expr)
 	}
 	if call_expr.generic_types.len > 0 && f.return_type != 0 {
-		if typ := c.resolve_generic_type(f.return_type, f.generic_names, call_expr) {
+		if typ := c.resolve_generic_type(f.return_type, f.generic_names, call_expr.generic_types) {
 			call_expr.return_type = typ
 			return typ
 		}
@@ -5386,6 +5386,14 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		if node.return_type != table.void_type_idx {
 			c.error('test functions should not return anything', node.pos)
 		}
+	}
+	if c.file.path.ends_with('main.v') {
+
+	println(return_sym.name)
+	}
+	if unwrapped_ret_type := c.resolve_generic_type(node.return_type, node.generic_params.map(it.name), c.cur_generic_types) {
+	println(unwrapped_ret_type)
+		node.return_type = unwrapped_ret_type
 	}
 	c.expected_type = table.void_type
 	c.cur_fn = node

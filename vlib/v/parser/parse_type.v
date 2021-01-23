@@ -123,8 +123,11 @@ pub fn (mut p Parser) parse_multi_return_type() table.Type {
 		}
 	}
 	p.check(.rpar)
-	idx := p.table.find_or_register_multi_return(mr_types)
-	return table.new_type(idx)
+	if mr_types.len > 1 {
+		idx := p.table.find_or_register_multi_return(mr_types)
+		return table.new_type(idx)
+	}
+	return mr_types[0]
 }
 
 // given anon name based off signature when `name` is blank

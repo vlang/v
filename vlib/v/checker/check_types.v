@@ -471,11 +471,11 @@ pub fn (mut c Checker) infer_fn_types(f table.Fn, mut call_expr ast.CallExpr) {
 // resolve_generic_type resolves generics to real types T => int.
 // Even map[string]map[string]T can be resolved.
 // This is used for resolving the generic return type of CallExpr white `unwrap_generic` is used to resolve generic usage in FnDecl.
-fn (mut c Checker) resolve_generic_type(generic_type table.Type, generic_names []string, call_expr ast.CallExpr) ?table.Type {
+fn (mut c Checker) resolve_generic_type(generic_type table.Type, generic_names []string, generic_types []table.Type) ?table.Type {
 	mut sym := c.table.get_type_symbol(generic_type)
 	if sym.name in generic_names {
 		index := generic_names.index(sym.name)
-		mut typ := call_expr.generic_types[index]
+		mut typ := generic_types[index]
 		typ = typ.set_nr_muls(generic_type.nr_muls())
 		if generic_type.has_flag(.optional) {
 			typ = typ.set_flag(.optional)
@@ -491,14 +491,14 @@ fn (mut c Checker) resolve_generic_type(generic_type table.Type, generic_names [
 			elem_sym = c.table.get_type_symbol(elem_type)
 			dims++
 		}
-		if typ := c.resolve_generic_type(elem_type, generic_names, call_expr) {
+		if typ := c.resolve_generic_type(elem_type, generic_names, generic_types) {
 			idx := c.table.find_or_register_array_with_dims(typ, dims)
 			array_typ := table.new_type(idx)
 			return array_typ
 		}
 	} else if sym.kind == .chan {
 		info := sym.info as table.Chan
-		if typ := c.resolve_generic_type(info.elem_type, generic_names, call_expr) {
+		if typ := c.resolve_generic_type(info.elem_type, generic_names, generic_types) {
 			idx := c.table.find_or_register_chan(typ, typ.nr_muls() > 0)
 			chan_typ := table.new_type(idx)
 			return chan_typ
@@ -507,7 +507,7 @@ fn (mut c Checker) resolve_generic_type(generic_type table.Type, generic_names [
 		mut types := []table.Type{}
 		mut type_changed := false
 		for ret_type in sym.info.types {
-			if typ := c.resolve_generic_type(ret_type, generic_names, call_expr) {
+			if typ := c.resolve_generic_type(ret_type, generic_names, generic_types) {
 				types << typ
 				type_changed = true
 			} else {
@@ -523,11 +523,11 @@ fn (mut c Checker) resolve_generic_type(generic_type table.Type, generic_names [
 		mut type_changed := false
 		mut unwrapped_key_type := sym.info.key_type
 		mut unwrapped_value_type := sym.info.value_type
-		if typ := c.resolve_generic_type(sym.info.key_type, generic_names, call_expr) {
+		if typ := c.resolve_generic_type(sym.info.key_type, generic_names, generic_types) {
 			unwrapped_key_type = typ
 			type_changed = true
 		}
-		if typ := c.resolve_generic_type(sym.info.value_type, generic_names, call_expr) {
+		if typ := c.resolve_generic_type(sym.info.value_type, generic_names, generic_types) {
 			unwrapped_value_type = typ
 			type_changed = true
 		}
