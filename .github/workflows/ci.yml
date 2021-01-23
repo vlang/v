@@ -825,14 +825,14 @@ jobs:
         run: make -j4
       - name: Run test-parser
         run: |
-          ./v test-parser examples/hello_world.v
-          ./v test-parser examples/hanoi.v
-          ./v test-parser examples/fibonacci.v
-          ./v test-parser examples/cli.v
-          ./v test-parser examples/json.v
-          ./v test-parser examples/vmod.v
-          ./v test-parser examples/regex_example.v
-          ./v test-parser examples/2048/2048.v
+          ./v test-parser -S examples/hello_world.v
+          ./v test-parser -S examples/hanoi.v
+          ./v test-parser -S examples/fibonacci.v
+          ./v test-parser -S examples/cli.v
+          ./v test-parser -S examples/json.v
+          ./v test-parser -S examples/vmod.v
+          ./v test-parser -S examples/regex_example.v
+          ./v test-parser -S examples/2048/2048.v
 
   parser-silent-fuzzing:
     name: Parser silent mode fuzzing
@@ -856,11 +856,11 @@ jobs:
           zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/vmod.v > examples/vmod_fuzz.v
           zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/regex_example.v > examples/regex_example_fuzz.v
           zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/2048/2048.v > examples/2048/2048_fuzz.v
-          ./v test-parser examples/hello_world_fuzz.v
-          ./v test-parser examples/hanoi_fuzz.v
-          ./v test-parser examples/cli_fuzz.v
-          ./v test-parser examples/regex_example_fuzz.v
-          ./v test-parser examples/2048/2048_fuzz.v
+          ./v test-parser -S examples/hello_world_fuzz.v
+          ./v test-parser -S examples/hanoi_fuzz.v
+          ./v test-parser -S examples/cli_fuzz.v
+          ./v test-parser -S examples/regex_example_fuzz.v
+          ./v test-parser -S examples/2048/2048_fuzz.v
 
   v-up-works-on-ubuntu:
     runs-on: ubuntu-20.04
