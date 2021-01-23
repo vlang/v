@@ -227,12 +227,12 @@ f64 to string with string format
 
 */
 
-// f32_to_str_l return a string with the f32 converted in a strign in decimal notation
+// f32_to_str_l return a string with the f32 converted in a string in decimal notation
 pub fn f32_to_str_l(f f64) string {
 	return f64_to_str_l(f32(f))
 }
 
-// f64_to_str_l return a string with the f64 converted in a strign in decimal notation
+// f64_to_str_l return a string with the f64 converted in a string in decimal notation
 pub fn f64_to_str_l(f f64) string {
 	s := f64_to_str(f,18)
 
@@ -250,7 +250,7 @@ pub fn f64_to_str_l(f f64) string {
 	mut exp        := 0
 	mut exp_sgn    := 1
 
-	// get sign and deciaml parts
+	// get sign and decimal parts
 	for c in s {
 		if c == `-` {
 			sgn = -1
