@@ -273,16 +273,8 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				typ: typ
 				default_expr: ast.ex2fe(default_expr)
 				has_default_expr: has_default_expr
-				is_pub: if is_embed {
-					true
-				} else {
-					is_field_pub
-				}
-				is_mut: if is_embed {
-					true
-				} else {
-					is_field_mut
-				}
+				is_pub: if is_embed { true } else { is_field_pub }
+				is_mut: if is_embed { true } else { is_field_mut }
 				is_global: is_field_global
 				attrs: p.attrs
 			}

@@ -17,5 +17,4 @@ fn main() {
 			x: 5
 		}
 	}
-	_ := if false { Foo{} } else { Foo{5, 6} }
 }

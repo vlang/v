@@ -1,3 +1,0 @@
-a, b := if true { 'a', 'b' } else { 'b', 'a' }
-println(a)
-println(b)

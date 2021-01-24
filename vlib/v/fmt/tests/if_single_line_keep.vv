@@ -1,0 +1,4 @@
+a, b := if true { 'a', 'b' } else { 'b', 'a' }
+_ := if false { Foo{} } else { Foo{5, 6} }
+arr := [0, 1]
+arr << if true { 2 } else { 3 }
