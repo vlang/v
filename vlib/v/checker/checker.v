@@ -1153,7 +1153,7 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 						c.error('unknown field `${type_str}.$expr.field_name`', expr.pos)
 						return '', pos
 					}
-					if !field_info.is_mut && !c.pref.translated {
+					if !field_info.is_mut {
 						type_str := c.table.type_to_str(expr.expr_type)
 						c.error('field `$expr.field_name` of interface `$type_str` is immutable',
 							expr.pos)
