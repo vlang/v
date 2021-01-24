@@ -4519,7 +4519,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 				}
 			}
 			for i, expr in node.exprs {
-				g.expr(expr)
+				g.expr_with_cast(expr, node.types[i], g.fn_decl.return_type.clear_flag(.optional))
 				if i < node.exprs.len - 1 {
 					g.write(', ')
 				}
@@ -5299,7 +5299,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 					if is_opt_call {
 						g.write('*($mr_styp*) ')
 					}
-					g.expr(expr_stmt.expr)
+					g.expr_with_cast(expr_stmt.expr, expr_stmt.typ, return_type.clear_flag(.optional))
 					if is_opt_call {
 						g.write('.data')
 					}
