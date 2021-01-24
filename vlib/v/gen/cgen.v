@@ -1978,7 +1978,14 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			right := val as ast.ArrayInit
 			if right.has_val {
 				for j, expr in right.exprs {
-					g.expr(left)
+					if !is_decl && left is ast.Ident
+						&& g.for_in_mul_val_name == (left as ast.Ident).name {
+						g.write('(*')
+						g.expr(left)
+						g.write(')')
+					} else {
+						g.expr(left)
+					}
 					if g.is_array_set {
 						g.out.go_back(2)
 					} else {
@@ -1995,7 +2002,14 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			} else {
 				fixed_array := right_sym.info as table.ArrayFixed
 				for j in 0 .. fixed_array.size {
-					g.expr(left)
+					if !is_decl && left is ast.Ident
+						&& g.for_in_mul_val_name == (left as ast.Ident).name {
+						g.write('(*')
+						g.expr(left)
+						g.write(')')
+					} else {
+						g.expr(left)
+					}
 					if g.is_array_set {
 						g.out.go_back(2)
 					} else {

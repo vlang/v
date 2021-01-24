@@ -58,3 +58,12 @@ fn test_for_in_mut_val_of_map_direct() {
 	println(m)
 	assert '$m' == "{'foo': 3, 'bar': 3}"
 }
+
+fn test_for_in_mut_val_of_map_fixed_array() {
+	mut m := {'foo': [{'a': 1}]!, 'bar': [{'b': 2}]!}
+	for _, mut j in m {
+		j = [{'c': 3}]!
+	}
+	println(m)
+	assert '$m' == "{'foo': [{'c': 3}], 'bar': [{'c': 3}]}"
+}
