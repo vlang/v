@@ -4875,12 +4875,9 @@ fn (mut c Checker) check_index(typ_sym &table.TypeSymbol, index ast.Expr, index_
 			}
 			c.error('$type_str', pos)
 		}
-		if index is ast.PrefixExpr {
-			if index.op == .minus && index.right is ast.IntegerLiteral {
-				val := (index.right as ast.IntegerLiteral).val
-				if val.int() > 0 {
-					c.error('invalid index `-$val` (index must be non-negative)', index.pos)
-				}
+		if index is ast.IntegerLiteral {
+			if index.val.starts_with('-')  {
+				c.error('invalid index `$index.val` (index must be non-negative)', index.pos)
 			}
 		}
 		if index_type.has_flag(.optional) {
