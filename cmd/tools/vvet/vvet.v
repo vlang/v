@@ -38,12 +38,12 @@ const show_warnings = '-hide-warnings' !in vet_options
 
 fn main() {
 	opt := Options{
-		is_verbose: is_verbose
+		is_verbose: main.is_verbose
 	}
 	mut vet := Vet{
 		opt: opt
 	}
-	mut paths := cmdline.only_non_options(vet_options)
+	mut paths := cmdline.only_non_options(main.vet_options)
 	vtmp := os.getenv('VTMP')
 	if vtmp != '' {
 		// `v test-cleancode` passes also `-o tmpfolder` as well as all options in VFLAGS
@@ -57,7 +57,7 @@ fn main() {
 		}
 		if path.ends_with('.v') || path.ends_with('.vv') {
 			if path.contains('cmd/tools/vvet/tests/') {
-				if is_force || paths.len == 1 {
+				if main.is_force || paths.len == 1 {
 					vet.vet_file(path, true)
 					continue
 				} else {
@@ -79,7 +79,7 @@ fn main() {
 			files << vfiles
 			files << vvfiles
 			for file in files {
-				if !is_force && file.ends_with('.vv') && file.contains('cmd/tools/vvet/tests/') {
+				if !main.is_force && file.ends_with('.vv') && file.contains('cmd/tools/vvet/tests/') {
 					continue
 				}
 				vet.vet_file(file, false)
@@ -90,7 +90,7 @@ fn main() {
 	warnings := vet.errors.filter(it.kind == .warning)
 	errors := vet.errors.filter(it.kind == .error)
 	errors_vfmt := vet.errors.filter(it.kind == .error && it.fix == .vfmt)
-	if show_warnings {
+	if main.show_warnings {
 		for err in warnings {
 			eprintln('$err.file_path:$err.pos.line_nr: warning: $err.message')
 		}

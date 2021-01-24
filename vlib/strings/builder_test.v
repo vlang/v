@@ -48,19 +48,19 @@ const (
 fn test_big_sb() {
 	mut sb := strings.new_builder(100)
 	mut sb2 := strings.new_builder(10000)
-	for i in 0 .. maxn {
+	for i in 0 .. main.maxn {
 		sb.writeln(i.str())
 		sb2.write('+')
 	}
 	s := sb.str()
 	lines := s.split_into_lines()
-	assert lines.len == maxn
+	assert lines.len == main.maxn
 	assert lines[0] == '0'
 	assert lines[1] == '1'
 	assert lines[777] == '777'
 	assert lines[98765] == '98765'
 	println(sb2.len)
-	assert sb2.len == maxn
+	assert sb2.len == main.maxn
 }
 
 fn test_byte_write() {

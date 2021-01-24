@@ -45,6 +45,7 @@ pub mut:
 	single_line_fields bool   // should struct fields be on a single line
 	it_name            string // the name to replace `it` with
 	inside_lambda      bool
+	inside_const       bool
 	is_mbranch_expr    bool // math a { x...y { } }
 }
 
@@ -1149,7 +1150,7 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 		// This allows using the variable `minute` inside time's functions
 		// and also makes it clear that a module const is being used
 		// (since V's conts are no longer ALL_CAP).
-		if !node.name.contains('.') {
+		if !node.name.contains('.') && !f.inside_const {
 			full_name := f.cur_mod + '.' + node.name
 			if obj := f.file.global_scope.find(full_name) {
 				if obj is ast.ConstField {
@@ -2067,6 +2068,10 @@ pub fn (mut f Fmt) const_decl(it ast.ConstDecl) {
 	if it.fields.len == 0 && it.pos.line_nr == it.pos.last_line {
 		f.writeln('const ()\n')
 		return
+	}
+	f.inside_const = true
+	defer {
+		f.inside_const = false
 	}
 	f.write('const ')
 	if it.is_block {

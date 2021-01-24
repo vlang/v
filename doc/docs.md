@@ -1673,7 +1673,7 @@ struct Node<T> {
 
 ## Constants
 
-```v
+```v oksyntax
 const (
 	pi    = 3.14
 	world = '世界'

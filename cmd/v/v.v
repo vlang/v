@@ -94,7 +94,7 @@ fn main() {
 	}
 	// Start calling the correct functions/external tools
 	// Note for future contributors: Please add new subcommands in the `match` block below.
-	if command in simple_cmd {
+	if command in main.simple_cmd {
 		// External tools
 		util.launch_tool(prefs.is_verbose, 'v' + command, os.args[1..])
 		return
