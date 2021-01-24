@@ -431,14 +431,14 @@ pub fn v_printf(str string, pt ... voidptr) {
 pub fn v_sprintf(str string, pt ... voidptr) string{
 	mut res := strings.new_builder(pt.len * 16)
 
-	mut i            := 0                // main strign index
+	mut i            := 0                // main string index
 	mut p_index      := 0                // parameter index
 	mut sign         := false            // sign flag
 	mut allign       := Align_text.right
 	mut len0         := -1               // forced length, if -1 free length
 	mut len1         := -1               // decimal part for floats
 	def_len1         := 6                // default value for len1
-	mut pad_ch       := byte(` `)              // pad char
+	mut pad_ch       := byte(` `)        // pad char
 
 	// prefix chars for Length field
 	mut ch1 := `0`  // +1 char if present else `0`
