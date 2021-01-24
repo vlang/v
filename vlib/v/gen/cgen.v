@@ -2691,6 +2691,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 			if node.val.starts_with('0o') {
 				g.write('0')
 				g.write(node.val[2..])
+			} else if node.val.starts_with('-0o') {
+				g.write('-0')
+				g.write(node.val[3..])
 			} else {
 				g.write(node.val) // .int().str())
 			}
