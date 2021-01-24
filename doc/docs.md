@@ -1716,15 +1716,22 @@ const (
 	blue    = rgb(0, 0, 255)
 )
 
-println(numbers)
-println(red)
-println(blue)
+println(main.numbers)
+println(main.red)
+println(main.blue)
 ```
 
 Global variables are not allowed, so this can be really useful.
 
+When naming constants, `snake_case` must be used. In order to distinguish consts
+from local variables, the full path to consts must be specified. For example,
+to access the PI const, full `math.pi` name must be used both outside the `math` module,
+and inside it. This can be seen in the example above with `println(main.numbers)`.
+
+vfmt takes care of this rule, so you can type `println(pi)` inside the `math` module,
+and vffmt will automatically update it to `println(math.pi)`.
+
 <!--
-When naming constants, snake_case must be used.
 Many people prefer all caps consts: `TOP_CITIES`. This wouldn't work
 well in V, because consts are a lot more powerful than in other languages.
 They can represent complex structures, and this is used quite often since there
