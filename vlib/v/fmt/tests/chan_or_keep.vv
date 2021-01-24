@@ -2,13 +2,13 @@ const n = 1000
 
 fn f(ch chan int) {
 	mut s := 0
-	for _ in 0 .. n {
+	for _ in 0 .. main.n {
 		s += <-ch or {
 			println('Something went wrong:')
 			println('got $err')
 		}
 	}
-	assert s == n * (n + 1) / 2
+	assert s == main.n * (main.n + 1) / 2
 	ch.close()
 }
 
@@ -29,5 +29,5 @@ fn main() {
 	for {
 		s = do_send(ch, s) or { break }
 	}
-	assert s == n + 1
+	assert s == main.n + 1
 }
