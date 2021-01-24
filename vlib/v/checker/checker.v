@@ -1147,13 +1147,18 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 					}
 				}
 				.interface_ {
-					// TODO: mutability checks on interface fields?
 					interface_info := typ_sym.info as table.Interface
-					interface_info.find_field(expr.field_name) or {
+					mut field_info := interface_info.find_field(expr.field_name) or {
 						type_str := c.table.type_to_str(expr.expr_type)
 						c.error('unknown field `${type_str}.$expr.field_name`', expr.pos)
 						return '', pos
 					}
+					if !field_info.is_mut && !c.pref.translated {
+						type_str := c.table.type_to_str(expr.expr_type)
+						c.error('field `$expr.field_name` of interface `$type_str` is immutable',
+							expr.pos)
+					}
+					c.fail_if_immutable(expr.expr)
 				}
 				.array, .string {
 					// This should only happen in `builtin`
@@ -1940,6 +1945,10 @@ fn (mut c Checker) type_implements(typ table.Type, inter_typ table.Type, pos tok
 					exp := c.table.type_to_str(ifield.typ)
 					got := c.table.type_to_str(field.typ)
 					c.error('`$styp` incorrectly implements field `$ifield.name` of interface `$inter_sym.name`, expected `$exp`, got `$got`',
+						pos)
+					return false
+				} else if ifield.is_mut && !(field.is_mut || field.is_global) {
+					c.error('`$styp` incorrectly implements interface `$inter_sym.name`, field `$ifield.name` must be mutable',
 						pos)
 					return false
 				}
