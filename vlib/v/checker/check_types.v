@@ -457,6 +457,7 @@ pub fn (mut c Checker) infer_fn_types(f table.Fn, mut call_expr ast.CallExpr) {
 		}
 		if typ == table.void_type {
 			c.error('could not infer generic type `$gt_name` in call to `$f.name`', call_expr.pos)
+			return
 		}
 		if c.pref.is_verbose {
 			s := c.table.type_to_str(typ)

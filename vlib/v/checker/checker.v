@@ -3288,12 +3288,15 @@ fn (mut c Checker) stmts(stmts []ast.Stmt) {
 pub fn (c &Checker) unwrap_generic(typ table.Type) table.Type {
 	if typ.has_flag(.generic) {
 		sym := c.table.get_type_symbol(typ)
-		mut idx := 0
+		mut idx := -1
 		for i, generic_param in c.cur_fn.generic_params {
 			if generic_param.name == sym.name {
 				idx = i
 				break
 			}
+		}
+		if idx == -1 {
+			return typ
 		}
 		return c.cur_generic_types[idx].derive(typ).clear_flag(.generic)
 	}

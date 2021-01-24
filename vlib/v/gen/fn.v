@@ -318,12 +318,15 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 pub fn (g &Gen) unwrap_generic(typ table.Type) table.Type {
 	if typ.has_flag(.generic) {
 		sym := g.table.get_type_symbol(typ)
-		mut idx := 0
+		mut idx := -1
 		for i, generic_param in g.cur_fn.generic_params {
 			if generic_param.name == sym.name {
 				idx = i
 				break
 			}
+		}
+		if idx == -1 {
+			return typ
 		}
 		return g.cur_generic_types[idx].derive(typ).clear_flag(.generic)
 	}
