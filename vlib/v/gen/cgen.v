@@ -3755,6 +3755,10 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 		g.write('-1')
 	}
 	g.writeln(');')
+	// free the temps that were created
+	g.writeln('array_free(&$objs_array);')
+	g.writeln('array_free(&$directions_array);')
+	g.writeln('array_free(&$chan_array);')
 	mut i := 0
 	for j in 0 .. node.branches.len {
 		if j > 0 {
