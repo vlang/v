@@ -5,6 +5,10 @@ pub enum FlagType {
 	int
 	float
 	string
+	// If flag can set multiple time, use array type
+	int_array
+	float_array
+	string_array
 }
 
 // Flag holds information for a command line flag.
@@ -12,17 +16,18 @@ pub enum FlagType {
 // These are typically denoted in the shell by a short form `-f` and/or a long form `--flag`
 pub struct Flag {
 pub mut:
-	flag        FlagType
-	name        string
-	abbrev      string
+	flag FlagType
+	// Name of flag
+	name string
+	// Like short option
+	abbrev string
+	// Desciption of flag
 	description string
 	global      bool
-	required    bool
-	value       []string = []
-	// If allow multiple value.
-	// If bool, multiple has no impact, bool can only set once.
-	// If not multiple, and multiple value set at command args, raise an error.
-	multiple bool
+	// If flag is requierd
+	required bool
+	// Value of flag
+	value []string = []
 mut:
 	// Set true if flag found.
 	found bool
@@ -68,8 +73,8 @@ pub fn (flag Flag) get_int() ?int {
 // get_ints returns the array of `int` value argument of the flag specified in `name`.
 // get_ints returns an error if the `FlagType` is not integer.
 pub fn (flag Flag) get_ints() ?[]int {
-	if flag.flag != .int {
-		return error('$flag.name: Invalid flag type `$flag.flag`, expected `int`')
+	if flag.flag != .int_array {
+		return error('$flag.name: Invalid flag type `$flag.flag`, expected `int_array`')
 	}
 
 	if flag.value.len == 0 {
@@ -116,8 +121,8 @@ pub fn (flag Flag) get_float() ?f64 {
 // get_floats returns the `f64` value argument of the flag.
 // get_floats returns an error if the `FlagType` is not floating point.
 pub fn (flag Flag) get_floats() ?[]f64 {
-	if flag.flag != .float {
-		return error('$flag.name: Invalid flag type `$flag.flag`, expected `float`')
+	if flag.flag != .float_array {
+		return error('$flag.name: Invalid flag type `$flag.flag`, expected `float_array`')
 	}
 
 	if flag.value.len == 0 {
@@ -164,8 +169,8 @@ pub fn (flag Flag) get_string() ?string {
 // get_strings returns the array of `string` value argument of the flag.
 // get_strings returns an error if the `FlagType` is not string.
 pub fn (flag Flag) get_strings() ?[]string {
-	if flag.flag != .string {
-		return error('$flag.name: Invalid flag type `$flag.flag`, expected `string`')
+	if flag.flag != .string_array {
+		return error('$flag.name: Invalid flag type `$flag.flag`, expected `string_array`')
 	}
 
 	if flag.value.len == 0 {
@@ -193,9 +198,6 @@ pub fn (flags []Flag) get_strings(name string) ?[]string {
 // an array of arguments with all consumed elements removed.
 fn (mut flag Flag) parse(args []string, with_abbrev bool) ?[]string {
 	if flag.matches(args, with_abbrev) {
-		// TODO
-		// Si pas multiple generer une erreur
-		// Permettre de récupérer plusieurs valeur
 		if flag.init == false {
 			flag.init = true
 			// Clear defaut value if set
@@ -206,7 +208,8 @@ fn (mut flag Flag) parse(args []string, with_abbrev bool) ?[]string {
 			new_args := flag.parse_bool(args) ?
 			return new_args
 		} else {
-			if flag.value.len > 0 && !flag.multiple {
+			if flag.value.len > 0 && flag.flag != .int_array && flag.flag != .float_array
+				&& flag.flag != .string_array {
 				return error('The argument `$flag.name` accept only one value!')
 			}
 

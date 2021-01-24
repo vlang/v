@@ -18,9 +18,8 @@ fn test_if_string_flag_parses() {
 	assert value == 'value2'
 
 	flag = cli.Flag{
-		flag: .string
+		flag: .string_array
 		name: 'flag'
-		multiple: true
 	}
 	flag.parse(['-flag=value1'], false) or { panic(err) }
 	flag.parse(['-flag=value2'], false) or { panic(err) }
@@ -29,9 +28,8 @@ fn test_if_string_flag_parses() {
 
 	flags := [
 		cli.Flag{
-			flag: .string
+			flag: .string_array
 			name: 'flag'
-			multiple: true
 			value: ['a', 'b', 'c']
 		},
 		cli.Flag{
@@ -88,9 +86,8 @@ fn test_if_int_flag_parses() {
 	assert value == 45
 
 	flag = cli.Flag{
-		flag: .int
+		flag: .int_array
 		name: 'flag'
-		multiple: true
 	}
 
 	flag.parse(['-flag=42'], false) or { panic(err) }
@@ -100,9 +97,8 @@ fn test_if_int_flag_parses() {
 
 	flags := [
 		cli.Flag{
-			flag: .int
+			flag: .int_array
 			name: 'flag'
-			multiple: true
 			value: ['1', '2', '3']
 		},
 		cli.Flag{
@@ -136,9 +132,8 @@ fn test_if_float_flag_parses() {
 	assert value == 3.14159
 
 	flag = cli.Flag{
-		flag: .float
+		flag: .float_array
 		name: 'flag'
-		multiple: true
 	}
 
 	flag.parse(['-flag=3.1'], false) or { panic(err) }
@@ -148,9 +143,8 @@ fn test_if_float_flag_parses() {
 
 	flags := [
 		cli.Flag{
-			flag: .float
+			flag: .float_array
 			name: 'flag'
-			multiple: true
 			value: ['1.1', '2.2', '3.3']
 		},
 		cli.Flag{
