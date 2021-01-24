@@ -55,6 +55,6 @@ fn linebreaks_in_block_comments() {
 	*/
 	/*****
 	Want a long line of stars?
-	nw problem
+	no problem
 	*****/
 }
