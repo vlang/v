@@ -2612,9 +2612,12 @@ fn (mut g Gen) expr(node ast.Expr) {
 				}
 				g.write('(${cast_label}(')
 				g.expr(node.expr)
-				if node.expr is ast.IntegerLiteral
-					&& node.typ in [table.u64_type, table.u32_type, table.u16_type] {
-					g.write('U')
+				if node.expr is ast.IntegerLiteral {
+					if node.typ in [table.u64_type, table.u32_type, table.u16_type] {
+						if !node.expr.val.starts_with('-') {
+							g.write('U')
+						}
+					}
 				}
 				g.write('))')
 			}
