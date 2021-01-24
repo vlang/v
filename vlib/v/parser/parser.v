@@ -1726,17 +1726,23 @@ fn (mut p Parser) string_expr() ast.Expr {
 }
 
 fn (mut p Parser) parse_number_literal() ast.Expr {
+	mut pos := p.tok.position()
+	is_neg := p.tok.kind == .minus
+	if is_neg {
+		p.next()
+		pos = pos.extend(p.tok.position())
+	}
 	lit := p.tok.lit
-	pos := p.tok.position()
+	full_lit := if is_neg { '-' + lit } else { lit }
 	mut node := ast.Expr{}
 	if lit.index_any('.eE') >= 0 && lit[..2] !in ['0x', '0X', '0o', '0O', '0b', '0B'] {
 		node = ast.FloatLiteral{
-			val: lit
+			val: full_lit
 			pos: pos
 		}
 	} else {
 		node = ast.IntegerLiteral{
-			val: lit
+			val: full_lit
 			pos: pos
 		}
 	}
