@@ -2445,26 +2445,15 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		if is_decl {
 			left_type = c.table.mktyp(right_type)
 			if left_type == table.int_type {
-				mut expr := right
-				mut negative := false
-				if right is ast.PrefixExpr {
-					expr = right.right
-					if right.op == .minus {
-						negative = true
-					}
-				}
-				if mut expr is ast.IntegerLiteral {
-					mut is_large := false
-					if expr.val.len > 8 {
-						val := expr.val.i64()
-						if (!negative && val > checker.int_max)
-							|| (negative && -val < checker.int_min) {
-							is_large = true
-						}
+				if right is ast.IntegerLiteral {
+					mut is_large := right.val.len > 13
+					if !is_large && right.val.len > 8 {
+						val := right.val.i64()
+						is_large = val > checker.int_max || val < checker.int_min
 					}
 					if is_large {
 						c.error('overflow in implicit type `int`, use explicit type casting instead',
-							expr.pos)
+							right.pos)
 					}
 				}
 			}
