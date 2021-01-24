@@ -107,8 +107,8 @@ pub fn (mut f Fmt) writeln(s string) {
 }
 
 fn (mut f Fmt) write_indent() {
-	if f.indent < tabs.len {
-		f.out.write(tabs[f.indent])
+	if f.indent < fmt.tabs.len {
+		f.out.write(fmt.tabs[f.indent])
 	} else {
 		// too many indents, do it the slow way:
 		for _ in 0 .. f.indent {
@@ -122,7 +122,7 @@ pub fn (mut f Fmt) wrap_long_line(penalty_idx int, add_indent bool) bool {
 	if f.buffering {
 		return false
 	}
-	if f.line_len <= max_len[penalty_idx] {
+	if f.line_len <= fmt.max_len[penalty_idx] {
 		return false
 	}
 	if f.out.buf[f.out.buf.len - 1] == ` ` {
@@ -556,7 +556,7 @@ fn (mut list []CommentAndExprAlignInfo) add_info(attrs_len int, type_len int, li
 		return
 	}
 	d_len := abs(list[i].max_attrs_len - attrs_len) + abs(list[i].max_type_len - type_len)
-	if !(d_len < threshold_to_align_struct) {
+	if !(d_len < fmt.threshold_to_align_struct) {
 		list.add_new_info(attrs_len, type_len, line)
 		return
 	}
@@ -980,7 +980,7 @@ pub fn (mut f Fmt) or_expr(or_block ast.OrExpr) {
 				// so, since this'll all be on one line, trim any possible whitespace
 				str := f.stmt_str(or_block.stmts[0]).trim_space()
 				single_line := ' or { $str }'
-				if single_line.len + f.line_len <= max_len.last() {
+				if single_line.len + f.line_len <= fmt.max_len.last() {
 					f.write(single_line)
 				} else {
 					// if the line would be too long, make it multiline
@@ -1144,6 +1144,24 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 	} else if node.kind == .blank_ident {
 		f.write('_')
 	} else {
+		// Force usage of full path to const in the same module:
+		// `println(minute)` => `println(time.minute)`
+		// This allows using the variable `minute` inside time's functions
+		// and also makes it clear that a module const is being used
+		// (since V's conts are no longer ALL_CAP).
+		if !node.name.contains('.') {
+			full_name := f.cur_mod + '.' + node.name
+			if obj := f.file.global_scope.find(full_name) {
+				if obj is ast.ConstField {
+					// "v.fmt.foo" => "fmt.foo"
+					vals := full_name.split('.')
+					short := vals[vals.len - 2] + '.' + vals[vals.len - 1]
+					// f.write(f.short_module(full_name))
+					f.write(short)
+					return
+				}
+			}
+		}
 		name := f.short_module(node.name)
 		// f.write('<$it.name => $name>')
 		f.write(name)
@@ -1321,14 +1339,13 @@ pub fn (mut f Fmt) string_literal(node ast.StringLiteral) {
 			f.write("'$node.val'")
 		}
 	} else {
-		unescaped_val := node.val.replace('$bs$bs', '\x01').replace_each(["$bs'", "'", '$bs"',
-			'"',
-		])
+		unescaped_val := node.val.replace('$fmt.bs$fmt.bs', '\x01').replace_each(["$fmt.bs'", "'",
+			'$fmt.bs"', '"'])
 		if use_double_quote {
-			s := unescaped_val.replace_each(['\x01', '$bs$bs', '"', '$bs"'])
+			s := unescaped_val.replace_each(['\x01', '$fmt.bs$fmt.bs', '"', '$fmt.bs"'])
 			f.write('"$s"')
 		} else {
-			s := unescaped_val.replace_each(['\x01', '$bs$bs', "'", "$bs'"])
+			s := unescaped_val.replace_each(['\x01', '$fmt.bs$fmt.bs', "'", "$fmt.bs'"])
 			f.write("'$s'")
 		}
 	}
@@ -1454,7 +1471,7 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	}
 	if !buffering_save && f.buffering {
 		f.buffering = false
-		if !f.single_line_if && f.line_len > max_len.last() {
+		if !f.single_line_if && f.line_len > fmt.max_len.last() {
 			f.wrap_infix(infix_start, start_len)
 		}
 	}
@@ -1506,7 +1523,7 @@ pub fn (mut f Fmt) wrap_infix(start_pos int, start_len int) {
 	}
 	for i, c in conditions {
 		cnd := c.trim_space()
-		if f.line_len + cnd.len < max_len[penalties[i]] {
+		if f.line_len + cnd.len < fmt.max_len[penalties[i]] {
 			if i > 0 && (!is_cond_infix || i < conditions.len - 1) {
 				f.write(' ')
 			}
@@ -1558,7 +1575,7 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 			}
 		}
 		// When a single line if is really long, write it again as multiline
-		if single_line && f.line_len > max_len.last() {
+		if single_line && f.line_len > fmt.max_len.last() {
 			single_line = false
 			f.single_line_if = false
 			f.out.go_back(f.line_len - if_start)
@@ -2021,7 +2038,7 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 				f.comments(field.next_comments, inline: false, has_nl: true, level: .keep)
 				if single_line_fields
 					&& (field.comments.len > 0 || field.next_comments.len > 0 || !expr_is_single_line(field.expr)
-					|| f.line_len > max_len.last()) {
+					|| f.line_len > fmt.max_len.last()) {
 					single_line_fields = false
 					f.out.go_back_to(fields_start)
 					f.line_len = fields_start
