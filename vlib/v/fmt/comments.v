@@ -44,9 +44,8 @@ pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 		mut s := node.text.trim_left('\x01')
 		mut out_s := '//'
 		if s != '' {
-			match s[0] {
-				`a`...`z`, `A`...`Z`, `0`...`9` { out_s += ' ' }
-				else {}
+			if is_first_char_alphanumeric(s) {
+				out_s += ' '
 			}
 			out_s += s
 		}
@@ -56,17 +55,18 @@ pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 		}
 		f.write(out_s)
 	} else {
-		expected_line_count := node.pos.last_line - node.pos.line_nr
 		lines := node.text.trim_space().split_into_lines()
-		f.writeln('/*')
-		if lines.len > expected_line_count {
-			f.remove_new_line()
+		expected_line_count := node.pos.last_line - node.pos.line_nr
+		no_new_lines := lines.len > expected_line_count && !is_first_char_alphanumeric(lines[0])
+		f.write('/*')
+		if !no_new_lines {
+			f.writeln('')
 		}
 		for line in lines {
 			f.writeln(line)
 			f.empty_line = false
 		}
-		if lines.len > expected_line_count {
+		if no_new_lines {
 			f.remove_new_line()
 		} else {
 			f.empty_line = true
@@ -102,5 +102,12 @@ pub fn (mut f Fmt) comments_after_last_field(comments []ast.Comment) {
 		f.comment(comment, inline: true)
 		f.writeln('')
 		f.indent--
+	}
+}
+
+fn is_first_char_alphanumeric(s string) bool {
+	return match s[0] {
+		`a`...`z`, `A`...`Z`, `0`...`9` { true }
+		else { false }
 	}
 }
