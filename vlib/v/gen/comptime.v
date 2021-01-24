@@ -268,7 +268,8 @@ fn (mut g Gen) comp_if_expr(cond ast.Expr) {
 						// this is only allowed for generics currently, otherwise blocked by checker
 						exp_type = g.unwrap_generic(left.typ)
 					}
-					g.write('$exp_type == $got_type')
+					op := if cond.op == .key_is { '==' } else { '!=' }
+					g.write('$exp_type $op $got_type')
 				}
 				.eq, .ne {
 					// TODO Implement `$if method.args.len == 1`
