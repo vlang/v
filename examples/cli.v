@@ -28,7 +28,7 @@ fn main() {
 	greet_cmd.add_flag(Flag{
 		flag: .int
 		name: 'times'
-		value: ['3']
+		default_value: ['3']
 		description: 'Number of times the message gets printed.'
 	})
 	greet_cmd.add_flag(Flag{

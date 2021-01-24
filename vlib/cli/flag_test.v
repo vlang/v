@@ -127,7 +127,6 @@ fn test_if_float_flag_parses() {
 	}
 
 	flag.parse(['-flag=3.14159'], false) or { panic(err) }
-	assert flag.value[0].f64() == 3.14159
 	value = flag.get_float() or { panic(err) }
 	assert value == 3.14159
 
@@ -192,4 +191,26 @@ fn test_if_multiple_value_on_single_value() {
 	} else {
 		assert true
 	}
+}
+
+fn test_default_value() {
+	mut flag := cli.Flag{
+		flag: .float
+		name: 'flag'
+		default_value: ['1.234']
+	}
+
+	flag.parse(['-flag', '3.14158'], false) or { panic(err) }
+	mut value := flag.get_float() or { panic(err) }
+	assert value == 3.14158
+
+	flag = cli.Flag{
+		flag: .float
+		name: 'flag'
+		default_value: ['1.234']
+	}
+
+	flag.parse([''], false) or { panic(err) }
+	value = flag.get_float() or { panic(err) }
+	assert value == 1.234
 }
