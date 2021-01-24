@@ -35,16 +35,26 @@ fn main() {
 	_ := User{
 		// Just a comment
 	}
+	//////
+	// /
+	// 123
+}
+
+fn assign_comments() {
 	a := 123 // comment after assign
 	b := 'foo' // also comment after assign
 	c := true
 	// Between two assigns
 	d := false
-	//////
-	// /
-	// 123
+	// at the end
+}
+
+fn linebreaks_in_block_comments() {
 	/*
 	block
 	*/
-	println('hello world')
+	/*****
+	Want a long line of stars?
+	nw problem
+	*****/
 }

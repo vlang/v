@@ -56,13 +56,21 @@ pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 		}
 		f.write(out_s)
 	} else {
+		expected_line_count := node.pos.last_line - node.pos.line_nr
 		lines := node.text.trim_space().split_into_lines()
 		f.writeln('/*')
+		if lines.len > expected_line_count {
+			f.remove_new_line()
+		}
 		for line in lines {
 			f.writeln(line)
 			f.empty_line = false
 		}
-		f.empty_line = true
+		if lines.len > expected_line_count {
+			f.remove_new_line()
+		} else {
+			f.empty_line = true
+		}
 		f.write('*/')
 	}
 	if options.level == .indent {
