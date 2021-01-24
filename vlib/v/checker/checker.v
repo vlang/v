@@ -550,7 +550,8 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 	if struct_init.typ == 0 {
 		c.error('unknown type', struct_init.pos)
 	}
-	type_sym := c.table.get_type_symbol(c.unwrap_generic(struct_init.typ))
+	utyp := c.unwrap_generic(struct_init.typ)
+	type_sym := c.table.get_type_symbol(utyp)
 	if type_sym.kind == .sum_type && struct_init.fields.len == 1 {
 		sexpr := struct_init.fields[0].expr.str()
 		c.error('cast to sum type using `${type_sym.name}($sexpr)` not `$type_sym.name{$sexpr}`',
@@ -559,12 +560,15 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 	if type_sym.kind == .interface_ {
 		c.error('cannot instantiate interface `$type_sym.name`', struct_init.pos)
 	}
-	if type_sym.kind == .alias {
-		info := type_sym.info as table.Alias
-		if info.parent_type.is_number() {
+	if type_sym.info is table.Alias {
+		if type_sym.info.parent_type.is_number() {
 			c.error('cannot instantiate number type alias `$type_sym.name`', struct_init.pos)
 			return table.void_type
 		}
+	}
+	if utyp.is_number() {
+		c.error('cannot instantiate `$type_sym.name`', struct_init.pos)
+		return table.void_type
 	}
 	if !type_sym.is_public && type_sym.kind != .placeholder && type_sym.mod != c.mod
 		&& type_sym.language != .c && !struct_init.typ.has_flag(.generic) {
