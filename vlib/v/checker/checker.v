@@ -566,12 +566,8 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 			return table.void_type
 		}
 	}
-	if utyp.is_number() {
-		c.error('cannot instantiate `$type_sym.name`', struct_init.pos)
-		return table.void_type
-	}
 	if !type_sym.is_public && type_sym.kind != .placeholder && type_sym.mod != c.mod
-		&& type_sym.language != .c && !struct_init.typ.has_flag(.generic) {
+		&& type_sym.language != .c {
 		c.error('type `$type_sym.name` is private', struct_init.pos)
 	}
 	if type_sym.kind == .struct_ {
