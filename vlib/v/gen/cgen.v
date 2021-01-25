@@ -2692,63 +2692,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.match_expr(node)
 		}
 		ast.MapInit {
-			key_typ_str := g.typ(node.key_type)
-			value_typ_str := g.typ(node.value_type)
-			value_typ := g.table.get_type_symbol(node.value_type)
-			key_typ := g.table.get_type_symbol(node.key_type)
-			hash_fn, key_eq_fn, clone_fn, free_fn := g.map_fn_ptrs(key_typ)
-			size := node.vals.len
-			mut shared_styp := '' // only needed for shared &[]{...}
-			mut styp := ''
-			is_amp := g.is_amp
-			g.is_amp = false
-			if is_amp {
-				g.out.go_back(1) // delete the `&` already generated in `prefix_expr()
-				if g.is_shared {
-					mut shared_typ := node.typ.set_flag(.shared_f)
-					shared_styp = g.typ(shared_typ)
-					g.writeln('($shared_styp*)memdup(&($shared_styp){.val = ')
-				} else {
-					styp = g.typ(node.typ)
-					g.write('($styp*)memdup(ADDR($styp, ')
-				}
-			} else {
-				if g.is_shared {
-					// TODO: shared objects on stack should be forbidden or auto-converted to heap
-					g.writeln('{.val = ($styp*)')
-				}
-			}
-			if size > 0 {
-				if value_typ.kind == .function {
-					g.write('new_map_init_2($hash_fn, $key_eq_fn, $clone_fn, $free_fn, $size, sizeof($key_typ_str), sizeof(voidptr), _MOV(($key_typ_str[$size]){')
-				} else {
-					g.write('new_map_init_2($hash_fn, $key_eq_fn, $clone_fn, $free_fn, $size, sizeof($key_typ_str), sizeof($value_typ_str), _MOV(($key_typ_str[$size]){')
-				}
-				for expr in node.keys {
-					g.expr(expr)
-					g.write(', ')
-				}
-				if value_typ.kind == .function {
-					g.write('}), _MOV((voidptr[$size]){')
-				} else {
-					g.write('}), _MOV(($value_typ_str[$size]){')
-				}
-				for expr in node.vals {
-					g.expr(expr)
-					g.write(', ')
-				}
-				g.write('}))')
-			} else {
-				g.write('new_map_2(sizeof($key_typ_str), sizeof($value_typ_str), $hash_fn, $key_eq_fn, $clone_fn, $free_fn)')
-			}
-			if g.is_shared {
-				g.write(', .mtx = sync__new_rwmutex()}')
-				if is_amp {
-					g.write(', sizeof($shared_styp))')
-				}
-			} else if is_amp {
-				g.write('), sizeof($styp))')
-			}
+			g.map_init(node)
 		}
 		ast.None {
 			g.write('opt_none()')
@@ -2868,10 +2812,12 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		// TODO: remove once we update to checker.expr(mut Expr)
 		ast.UnknownInit {
-			if node.is_struct_init {
+			if node.kind == .struct_init {
 				g.struct_init(node.struct_init)
-			} else {
+			} else if node.kind == .array_init {
 				g.array_init(node.array_init)
+			} else if node.kind == .map_init {
+				g.map_init(node.map_init)
 			}
 		}
 		ast.UnsafeExpr {
@@ -3627,6 +3573,66 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 		if g.inside_ternary == 0 && node.branches.len > 1 {
 			g.write('}')
 		}
+	}
+}
+
+fn (mut g Gen) map_init(node ast.MapInit) {
+	key_typ_str := g.typ(node.key_type)
+	value_typ_str := g.typ(node.value_type)
+	value_typ := g.table.get_type_symbol(node.value_type)
+	key_typ := g.table.get_type_symbol(node.key_type)
+	hash_fn, key_eq_fn, clone_fn, free_fn := g.map_fn_ptrs(key_typ)
+	size := node.vals.len
+	mut shared_styp := '' // only needed for shared &[]{...}
+	mut styp := ''
+	is_amp := g.is_amp
+	g.is_amp = false
+	if is_amp {
+		g.out.go_back(1) // delete the `&` already generated in `prefix_expr()
+		if g.is_shared {
+			mut shared_typ := node.typ.set_flag(.shared_f)
+			shared_styp = g.typ(shared_typ)
+			g.writeln('($shared_styp*)memdup(&($shared_styp){.val = ')
+		} else {
+			styp = g.typ(node.typ)
+			g.write('($styp*)memdup(ADDR($styp, ')
+		}
+	} else {
+		if g.is_shared {
+			// TODO: shared objects on stack should be forbidden or auto-converted to heap
+			g.writeln('{.val = ($styp*)')
+		}
+	}
+	if size > 0 {
+		if value_typ.kind == .function {
+			g.write('new_map_init_2($hash_fn, $key_eq_fn, $clone_fn, $free_fn, $size, sizeof($key_typ_str), sizeof(voidptr), _MOV(($key_typ_str[$size]){')
+		} else {
+			g.write('new_map_init_2($hash_fn, $key_eq_fn, $clone_fn, $free_fn, $size, sizeof($key_typ_str), sizeof($value_typ_str), _MOV(($key_typ_str[$size]){')
+		}
+		for expr in node.keys {
+			g.expr(expr)
+			g.write(', ')
+		}
+		if value_typ.kind == .function {
+			g.write('}), _MOV((voidptr[$size]){')
+		} else {
+			g.write('}), _MOV(($value_typ_str[$size]){')
+		}
+		for expr in node.vals {
+			g.expr(expr)
+			g.write(', ')
+		}
+		g.write('}))')
+	} else {
+		g.write('new_map_2(sizeof($key_typ_str), sizeof($value_typ_str), $hash_fn, $key_eq_fn, $clone_fn, $free_fn)')
+	}
+	if g.is_shared {
+		g.write(', .mtx = sync__new_rwmutex()}')
+		if is_amp {
+			g.write(', sizeof($shared_styp))')
+		}
+	} else if is_amp {
+		g.write('), sizeof($styp))')
 	}
 }
 

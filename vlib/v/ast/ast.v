@@ -1189,12 +1189,19 @@ pub mut:
 }
 
 // TODO: remove once we update to checker.expr(mut Expr)
+enum UnknownInitKind {
+	unknown
+	struct_init
+	array_init
+	map_init
+}
+
 pub struct UnknownInit {
 pub mut:
-	is_struct_init bool
-	is_array_init  bool
-	struct_init    StructInit
-	array_init     ArrayInit
+	kind        UnknownInitKind
+	struct_init StructInit
+	array_init  ArrayInit
+	map_init    MapInit
 }
 
 [inline]
@@ -1243,10 +1250,12 @@ pub fn (expr Expr) position() token.Position {
 		}
 		// TODO: remove once we update to checker.expr(mut Expr)
 		UnknownInit {
-			if expr.is_struct_init {
-				return expr.struct_init.pos
-			} else {
+			if expr.kind == .array_init {
 				return expr.array_init.pos
+			} else if expr.kind == .map_init {
+				return expr.map_init.pos
+			} else {
+				return expr.struct_init.pos
 			}
 		}
 		// Please, do NOT use else{} here.

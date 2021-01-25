@@ -429,7 +429,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.Expr {
 	}
 	if typ.has_flag(.generic) {
 		return ast.UnknownInit{
-			is_struct_init: true
+			kind: .unknown
 			struct_init: node
 		}
 	}

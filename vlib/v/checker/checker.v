@@ -3519,12 +3519,14 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 						default_expr: default_expr
 						exprs: exprs
 					}
-					node.is_struct_init = false
-					node.is_array_init = true
+					node.kind = .array_init
 					node.array_init = array_init
 					return c.array_init(mut array_init)
+				} else if gts.kind == .map {
+					// TODO
 				}
 			}
+			node.kind = .struct_init
 			return c.struct_init(mut node.struct_init)
 		}
 		ast.UnsafeExpr {

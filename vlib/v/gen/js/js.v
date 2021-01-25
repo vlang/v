@@ -582,10 +582,12 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		}
 		// TODO: remove once we update to checker.expr(mut Expr)
 		ast.UnknownInit {
-			if node.is_struct_init {
+			if node.kind == .struct_init {
 				g.gen_struct_init(node.struct_init)
-			} else {
+			} else if node.kind == .array_init {
 				g.gen_array_init_expr(node.array_init)
+			} else if node.kind == .map_init {
+				g.gen_map_init_expr(node.map_init)
 			}
 		}
 		ast.UnsafeExpr {
