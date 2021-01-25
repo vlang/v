@@ -15,7 +15,7 @@ pub type Expr = AnonFn | ArrayDecompose | ArrayInit | AsCast | Assoc | AtExpr | 
 	IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | Likely | LockExpr | MapInit |
 	MatchExpr | None | OrExpr | ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectExpr |
 	SelectorExpr | SizeOf | SqlExpr | StringInterLiteral | StringLiteral | StructInit |
-	Type | TypeOf | UnsafeExpr
+	Type | TypeOf | UnknownInit | UnsafeExpr
 
 pub type Stmt = AssertStmt | AssignStmt | Block | BranchStmt | CompFor | ConstDecl | DeferStmt |
 	EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl | GoStmt |
@@ -1188,6 +1188,22 @@ pub mut:
 	fields     []table.Field
 }
 
+// TODO: remove once we update to checker.expr(mut Expr)
+enum UnknownInitKind {
+	unknown
+	struct_init
+	array_init
+	map_init
+}
+
+pub struct UnknownInit {
+pub mut:
+	kind        UnknownInitKind
+	struct_init StructInit
+	array_init  ArrayInit
+	map_init    MapInit
+}
+
 [inline]
 pub fn (expr Expr) is_blank_ident() bool {
 	match expr {
@@ -1231,6 +1247,16 @@ pub fn (expr Expr) position() token.Position {
 		}
 		CTempVar {
 			return token.Position{}
+		}
+		// TODO: remove once we update to checker.expr(mut Expr)
+		UnknownInit {
+			if expr.kind == .array_init {
+				return expr.array_init.pos
+			} else if expr.kind == .map_init {
+				return expr.map_init.pos
+			} else {
+				return expr.struct_init.pos
+			}
 		}
 		// Please, do NOT use else{} here.
 		// This match is exhaustive *on purpose*, to help force

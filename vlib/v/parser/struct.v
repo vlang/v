@@ -273,8 +273,16 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				typ: typ
 				default_expr: ast.ex2fe(default_expr)
 				has_default_expr: has_default_expr
-				is_pub: if is_embed { true } else { is_field_pub }
-				is_mut: if is_embed { true } else { is_field_mut }
+				is_pub: if is_embed {
+					true
+				} else {
+					is_field_pub
+				}
+				is_mut: if is_embed {
+					true
+				} else {
+					is_field_mut
+				}
 				is_global: is_field_global
 				attrs: p.attrs
 			}
@@ -333,7 +341,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	}
 }
 
-fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
+fn (mut p Parser) struct_init(short_syntax bool) ast.Expr {
 	first_pos := p.tok.position()
 	typ := if short_syntax { table.void_type } else { p.parse_type() }
 	p.expr_mod = ''
@@ -418,6 +426,12 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 		pos: first_pos.extend_with_last_line(last_pos, p.tok.line_nr)
 		is_short: no_keys
 		pre_comments: pre_comments
+	}
+	if typ.has_flag(.generic) {
+		return ast.UnknownInit{
+			kind: .unknown
+			struct_init: node
+		}
 	}
 	return node
 }

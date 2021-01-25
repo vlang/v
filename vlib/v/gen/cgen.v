@@ -779,8 +779,8 @@ pub fn (mut g Gen) write(s string) {
 		eprintln('gen file: ${g.file.path:-30} | last_fn_c_name: ${g.last_fn_c_name:-45} | write: $s')
 	}
 	if g.indent > 0 && g.empty_line {
-		if g.indent < gen.tabs.len {
-			g.out.write(gen.tabs[g.indent])
+		if g.indent < tabs.len {
+			g.out.write(tabs[g.indent])
 		} else {
 			for _ in 0 .. g.indent {
 				g.out.write('\t')
@@ -796,8 +796,8 @@ pub fn (mut g Gen) writeln(s string) {
 		eprintln('gen file: ${g.file.path:-30} | last_fn_c_name: ${g.last_fn_c_name:-45} | writeln: $s')
 	}
 	if g.indent > 0 && g.empty_line {
-		if g.indent < gen.tabs.len {
-			g.out.write(gen.tabs[g.indent])
+		if g.indent < tabs.len {
+			g.out.write(tabs[g.indent])
 		} else {
 			for _ in 0 .. g.indent {
 				g.out.write('\t')
@@ -2042,7 +2042,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			}
 			if right_sym.kind == .function && is_decl {
 				if is_inside_ternary && is_decl {
-					g.out.write(gen.tabs[g.indent - g.inside_ternary])
+					g.out.write(tabs[g.indent - g.inside_ternary])
 				}
 				func := right_sym.info as table.FnType
 				ret_styp := g.typ(func.func.return_type)
@@ -2054,7 +2054,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			} else {
 				if is_decl {
 					if is_inside_ternary {
-						g.out.write(gen.tabs[g.indent - g.inside_ternary])
+						g.out.write(tabs[g.indent - g.inside_ternary])
 					}
 					g.write('$styp ')
 				}
@@ -2071,7 +2071,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			}
 			if is_inside_ternary && is_decl {
 				g.write(';\n$cur_line')
-				g.out.write(gen.tabs[g.indent])
+				g.out.write(tabs[g.indent])
 				g.expr(left)
 			}
 			g.is_assign_lhs = false
@@ -2692,63 +2692,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.match_expr(node)
 		}
 		ast.MapInit {
-			key_typ_str := g.typ(node.key_type)
-			value_typ_str := g.typ(node.value_type)
-			value_typ := g.table.get_type_symbol(node.value_type)
-			key_typ := g.table.get_type_symbol(node.key_type)
-			hash_fn, key_eq_fn, clone_fn, free_fn := g.map_fn_ptrs(key_typ)
-			size := node.vals.len
-			mut shared_styp := '' // only needed for shared &[]{...}
-			mut styp := ''
-			is_amp := g.is_amp
-			g.is_amp = false
-			if is_amp {
-				g.out.go_back(1) // delete the `&` already generated in `prefix_expr()
-				if g.is_shared {
-					mut shared_typ := node.typ.set_flag(.shared_f)
-					shared_styp = g.typ(shared_typ)
-					g.writeln('($shared_styp*)memdup(&($shared_styp){.val = ')
-				} else {
-					styp = g.typ(node.typ)
-					g.write('($styp*)memdup(ADDR($styp, ')
-				}
-			} else {
-				if g.is_shared {
-					// TODO: shared objects on stack should be forbidden or auto-converted to heap
-					g.writeln('{.val = ($styp*)')
-				}
-			}
-			if size > 0 {
-				if value_typ.kind == .function {
-					g.write('new_map_init_2($hash_fn, $key_eq_fn, $clone_fn, $free_fn, $size, sizeof($key_typ_str), sizeof(voidptr), _MOV(($key_typ_str[$size]){')
-				} else {
-					g.write('new_map_init_2($hash_fn, $key_eq_fn, $clone_fn, $free_fn, $size, sizeof($key_typ_str), sizeof($value_typ_str), _MOV(($key_typ_str[$size]){')
-				}
-				for expr in node.keys {
-					g.expr(expr)
-					g.write(', ')
-				}
-				if value_typ.kind == .function {
-					g.write('}), _MOV((voidptr[$size]){')
-				} else {
-					g.write('}), _MOV(($value_typ_str[$size]){')
-				}
-				for expr in node.vals {
-					g.expr(expr)
-					g.write(', ')
-				}
-				g.write('}))')
-			} else {
-				g.write('new_map_2(sizeof($key_typ_str), sizeof($value_typ_str), $hash_fn, $key_eq_fn, $clone_fn, $free_fn)')
-			}
-			if g.is_shared {
-				g.write(', .mtx = sync__new_rwmutex()}')
-				if is_amp {
-					g.write(', sizeof($shared_styp))')
-				}
-			} else if is_amp {
-				g.write('), sizeof($styp))')
-			}
+			g.map_init(node)
 		}
 		ast.None {
 			g.write('opt_none()')
@@ -2787,7 +2731,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 				is_gen_or_and_assign_rhs := gen_or && g.is_assign_rhs
 				cur_line := if is_gen_or_and_assign_rhs {
 					line := g.go_before_stmt(0)
-					g.out.write(gen.tabs[g.indent])
+					g.out.write(tabs[g.indent])
 					line
 				} else {
 					''
@@ -2865,6 +2809,18 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.write('(')
 			g.expr(node.expr)
 			g.write(')')
+		}
+		// TODO: remove once we update to checker.expr(mut Expr)
+		ast.UnknownInit {
+			println('## KIND: $node.kind')
+			if node.kind == .struct_init {
+				g.struct_init(node.struct_init)
+			} else if node.kind == .array_init {
+				g.array_init(node.array_init)
+			} else if node.kind == .map_init {
+				println('### CGEN MAP INIT')
+				g.map_init(node.map_init)
+			}
 		}
 		ast.UnsafeExpr {
 			g.expr(node.expr)
@@ -3353,7 +3309,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		} else {
 			64
 		}
-		g.write('_us${bitsize}_${gen.cmp_str[int(node.op) - int(token.Kind.eq)]}(')
+		g.write('_us${bitsize}_${cmp_str[int(node.op) - int(token.Kind.eq)]}(')
 		g.expr(node.left)
 		g.write(',')
 		g.expr(node.right)
@@ -3366,7 +3322,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		} else {
 			64
 		}
-		g.write('_us${bitsize}_${gen.cmp_rev[int(node.op) - int(token.Kind.eq)]}(')
+		g.write('_us${bitsize}_${cmp_rev[int(node.op) - int(token.Kind.eq)]}(')
 		g.expr(node.right)
 		g.write(',')
 		g.expr(node.left)
@@ -3619,6 +3575,66 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 		if g.inside_ternary == 0 && node.branches.len > 1 {
 			g.write('}')
 		}
+	}
+}
+
+fn (mut g Gen) map_init(node ast.MapInit) {
+	key_typ_str := g.typ(node.key_type)
+	value_typ_str := g.typ(node.value_type)
+	value_typ := g.table.get_type_symbol(node.value_type)
+	key_typ := g.table.get_type_symbol(node.key_type)
+	hash_fn, key_eq_fn, clone_fn, free_fn := g.map_fn_ptrs(key_typ)
+	size := node.vals.len
+	mut shared_styp := '' // only needed for shared &[]{...}
+	mut styp := ''
+	is_amp := g.is_amp
+	g.is_amp = false
+	if is_amp {
+		g.out.go_back(1) // delete the `&` already generated in `prefix_expr()
+		if g.is_shared {
+			mut shared_typ := node.typ.set_flag(.shared_f)
+			shared_styp = g.typ(shared_typ)
+			g.writeln('($shared_styp*)memdup(&($shared_styp){.val = ')
+		} else {
+			styp = g.typ(node.typ)
+			g.write('($styp*)memdup(ADDR($styp, ')
+		}
+	} else {
+		if g.is_shared {
+			// TODO: shared objects on stack should be forbidden or auto-converted to heap
+			g.writeln('{.val = ($styp*)')
+		}
+	}
+	if size > 0 {
+		if value_typ.kind == .function {
+			g.write('new_map_init_2($hash_fn, $key_eq_fn, $clone_fn, $free_fn, $size, sizeof($key_typ_str), sizeof(voidptr), _MOV(($key_typ_str[$size]){')
+		} else {
+			g.write('new_map_init_2($hash_fn, $key_eq_fn, $clone_fn, $free_fn, $size, sizeof($key_typ_str), sizeof($value_typ_str), _MOV(($key_typ_str[$size]){')
+		}
+		for expr in node.keys {
+			g.expr(expr)
+			g.write(', ')
+		}
+		if value_typ.kind == .function {
+			g.write('}), _MOV((voidptr[$size]){')
+		} else {
+			g.write('}), _MOV(($value_typ_str[$size]){')
+		}
+		for expr in node.vals {
+			g.expr(expr)
+			g.write(', ')
+		}
+		g.write('}))')
+	} else {
+		g.write('new_map_2(sizeof($key_typ_str), sizeof($value_typ_str), $hash_fn, $key_eq_fn, $clone_fn, $free_fn)')
+	}
+	if g.is_shared {
+		g.write(', .mtx = sync__new_rwmutex()}')
+		if is_amp {
+			g.write(', sizeof($shared_styp))')
+		}
+	} else if is_amp {
+		g.write('), sizeof($styp))')
 	}
 }
 
@@ -4132,7 +4148,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					is_gen_or_and_assign_rhs := gen_or && g.is_assign_rhs
 					cur_line := if is_gen_or_and_assign_rhs {
 						line := g.go_before_stmt(0)
-						g.out.write(gen.tabs[g.indent])
+						g.out.write(tabs[g.indent])
 						line
 					} else {
 						''
@@ -4265,7 +4281,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					is_gen_or_and_assign_rhs := gen_or && g.is_assign_rhs
 					cur_line := if is_gen_or_and_assign_rhs {
 						line := g.go_before_stmt(0)
-						g.out.write(gen.tabs[g.indent])
+						g.out.write(tabs[g.indent])
 						line
 					} else {
 						''
@@ -4692,7 +4708,7 @@ const (
 fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	styp := g.typ(struct_init.typ)
 	mut shared_styp := '' // only needed for shared &St{...
-	if styp in gen.skip_struct_init {
+	if styp in skip_struct_init {
 		// needed for c++ compilers
 		g.go_back_out(3)
 		return
@@ -5020,7 +5036,7 @@ fn (mut g Gen) write_builtin_types() {
 	mut builtin_types := []table.TypeSymbol{} // builtin types
 	// builtin types need to be on top
 	// everything except builtin will get sorted
-	for builtin_name in gen.builtins {
+	for builtin_name in builtins {
 		builtin_types << g.table.types[g.table.type_idxs[builtin_name]]
 	}
 	g.write_types(builtin_types)
@@ -5032,7 +5048,7 @@ fn (mut g Gen) write_builtin_types() {
 fn (mut g Gen) write_sorted_types() {
 	mut types := []table.TypeSymbol{} // structs that need to be sorted
 	for typ in g.table.types {
-		if typ.name !in gen.builtins {
+		if typ.name !in builtins {
 			types << typ
 		}
 	}
@@ -5504,7 +5520,7 @@ fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) ?string 
 [inline]
 fn c_name(name_ string) string {
 	name := util.no_dots(name_)
-	if name in gen.c_reserved {
+	if name in c_reserved {
 		return 'v_$name'
 	}
 	return name
