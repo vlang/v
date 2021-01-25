@@ -73,8 +73,8 @@ fn builtin_init() {
 	C.SetConsoleOutputCP(C.CP_UTF8)
 	C.atexit(restore_codepage)
 	if is_atty(1) > 0 {
-		C.SetConsoleMode(C.GetStdHandle(C.STD_OUTPUT_HANDLE), C.ENABLE_PROCESSED_OUTPUT | 0x0004) // enable_virtual_terminal_processing
-		C.SetConsoleMode(C.GetStdHandle(C.STD_ERROR_HANDLE), C.ENABLE_PROCESSED_OUTPUT | 0x0004) // enable_virtual_terminal_processing
+		C.SetConsoleMode(C.GetStdHandle(C.STD_OUTPUT_HANDLE), C.ENABLE_PROCESSED_OUTPUT | 0x0004 | C.ENABLE_WRAP_AT_EOL_OUTPUT) // enable_virtual_terminal_processing and enable_wrap_at_eol_output
+		C.SetConsoleMode(C.GetStdHandle(C.STD_ERROR_HANDLE), C.ENABLE_PROCESSED_OUTPUT | 0x0004 | C.ENABLE_WRAP_AT_EOL_OUTPUT) // enable_virtual_terminal_processing and enable_wrap_at_eol_output
 		unsafe {
 			C.setbuf(C.stdout, 0)
 			C.setbuf(C.stderr, 0)
