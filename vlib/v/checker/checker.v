@@ -2124,7 +2124,8 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 	mut unknown_field_msg := 'type `$sym.name` has no field or method `$field_name`'
 	mut has_field := false
 	mut field := table.Field{}
-	if field_name.len > 0 && field_name[0].is_capital() && sym.info is table.Struct {
+	if field_name.len > 0 && field_name[0].is_capital() && sym.info is table.Struct
+		&& sym.language == .v {
 		// x.Foo.y => access the embedded struct
 		sym_info := sym.info as table.Struct
 		for embed in sym_info.embeds {
