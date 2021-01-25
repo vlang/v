@@ -11,10 +11,11 @@ import v.depgraph
 const (
 	// https://ecma-international.org/ecma-262/#sec-reserved-words
 	js_reserved = ['await', 'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger',
-		'default', 'delete', 'do', 'else', 'enum', 'export', 'extends', 'finally', 'for', 'function', 'if',
-		'implements', 'import', 'in', 'instanceof', 'interface', 'let', 'new', 'package', 'private', 'protected',
-		'public', 'return', 'static', 'super', 'switch', 'this', 'throw', 'try', 'typeof', 'var', 'void',
-		'while', 'with', 'yield', 'Number', 'String', 'Boolean', 'Array', 'Map']
+		'default', 'delete', 'do', 'else', 'enum', 'export', 'extends', 'finally', 'for', 'function',
+		'if', 'implements', 'import', 'in', 'instanceof', 'interface', 'let', 'new', 'package',
+		'private', 'protected', 'public', 'return', 'static', 'super', 'switch', 'this', 'throw',
+		'try', 'typeof', 'var', 'void', 'while', 'with', 'yield', 'Number', 'String', 'Boolean',
+		'Array', 'Map']
 	// used to generate type structs
 	v_types     = ['i8', 'i16', 'int', 'i64', 'byte', 'u16', 'u32', 'u64', 'f32', 'f64', 'int_literal',
 		'float_literal', 'size_t', 'bool', 'string', 'map', 'array']
@@ -23,7 +24,7 @@ const (
 )
 
 struct Namespace {
-	name     string
+	name string
 mut:
 	out      strings.Builder = strings.new_builder(128)
 	pub_vars []string
@@ -33,8 +34,8 @@ mut:
 }
 
 struct JsGen {
-	table               &table.Table
-	pref                &pref.Preferences
+	table &table.Table
+	pref  &pref.Preferences
 mut:
 	definitions         strings.Builder
 	ns                  &Namespace
@@ -53,7 +54,7 @@ mut:
 	stmt_start_pos      int
 	defer_stmts         []ast.DeferStmt
 	fn_decl             &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
-	str_types           []string // types that need automatic str() generation
+	str_types           []string    // types that need automatic str() generation
 	method_fn_decls     map[string][]ast.FnDecl
 	builtin_fns         []string // Functions defined in `builtin`
 	empty_line          bool
@@ -547,7 +548,7 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.gen_string_inter_literal(node)
 		}
 		ast.StringLiteral {
-			text := node.val.replace("\'", "\\'")
+			text := node.val.replace("'", "\\'")
 			if g.file.mod.name == 'builtin' {
 				g.write('new ')
 			}
@@ -578,6 +579,14 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		}
 		ast.ComptimeSelector {
 			// TODO
+		}
+		// TODO: remove once we update to checker.expr(mut Expr)
+		ast.UnknownInit {
+			if node.is_struct_init {
+				g.gen_struct_init(node.struct_init)
+			} else {
+				g.gen_array_init_expr(node.array_init)
+			}
 		}
 		ast.UnsafeExpr {
 			g.expr(node.expr)
@@ -1368,8 +1377,8 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 			g.write(')')
 		}
 	} else {
-		both_are_int := int(it.left_type) in table.integer_type_idxs &&
-			int(it.right_type) in table.integer_type_idxs
+		both_are_int := int(it.left_type) in table.integer_type_idxs
+			&& int(it.right_type) in table.integer_type_idxs
 		is_arithmetic := it.op in [token.Kind.plus, .minus, .mul, .div, .mod]
 		if is_arithmetic {
 			g.write('${g.typ(g.greater_typ(it.left_type, it.right_type))}(')
@@ -1404,9 +1413,8 @@ fn (mut g JsGen) greater_typ(left table.Type, right table.Type) table.Type {
 	if table.string_type_idx in lr {
 		return table.Type(table.string_type_idx)
 	}
-	should_float := (l in table.integer_type_idxs &&
-		r in table.float_type_idxs) ||
-		(r in table.integer_type_idxs && l in table.float_type_idxs)
+	should_float := (l in table.integer_type_idxs && r in table.float_type_idxs)
+		|| (r in table.integer_type_idxs && l in table.float_type_idxs)
 	if should_float {
 		if table.f64_type_idx in lr {
 			return table.Type(table.f64_type_idx)
@@ -1559,9 +1567,8 @@ fn (mut g JsGen) gen_typeof_expr(it ast.TypeOf) {
 }
 
 fn (mut g JsGen) gen_type_cast_expr(it ast.CastExpr) {
-	is_literal := ((it.expr is ast.IntegerLiteral &&
-		it.typ in table.integer_type_idxs) ||
-		(it.expr is ast.FloatLiteral && it.typ in table.float_type_idxs))
+	is_literal := ((it.expr is ast.IntegerLiteral && it.typ in table.integer_type_idxs)
+		|| (it.expr is ast.FloatLiteral && it.typ in table.float_type_idxs))
 	typ := g.typ(it.typ)
 	if !is_literal {
 		if !(typ in v_types) || g.ns.name == 'builtin' {

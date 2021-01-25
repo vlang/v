@@ -7,9 +7,6 @@ import v.ast
 import v.table
 
 fn (mut g Gen) array_init(it ast.ArrayInit) {
-	if it.mod == '111' {
-		println('Successful Conversion')
-	}
 	type_sym := g.table.get_type_symbol(it.typ)
 	styp := g.typ(it.typ)
 	mut shared_styp := '' // only needed for shared &[]{...}

@@ -3301,12 +3301,11 @@ pub fn (c &Checker) unwrap_generic(typ table.Type) table.Type {
 }
 
 // TODO node must be mut
-pub fn (mut c Checker) expr(node_ ast.Expr) table.Type {
+pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 	c.expr_level++
 	defer {
 		c.expr_level--
 	}
-	mut node := node_
 	if c.expr_level > 200 {
 		c.error('checker: too many expr levels: $c.expr_level ', node.position())
 		return table.void_type
@@ -3511,12 +3510,25 @@ pub fn (mut c Checker) expr(node_ ast.Expr) table.Type {
 			return c.string_inter_lit(mut node)
 		}
 		ast.StructInit {
-			if node.typ.has_flag(.generic) {
-				gt := c.unwrap_generic(node.typ)
+			return c.struct_init(mut node)
+		}
+		ast.Type {
+			return node.typ
+		}
+		ast.TypeOf {
+			node.expr_type = c.expr(node.expr)
+			return table.string_type
+		}
+		// TODO: remove once we update to checker.expr(mut Expr)
+		// and we can simply use StructInit then and Override it.
+		// this is needed currently as there is no way to Override
+		// the StructInit node with an ArrayInit
+		ast.UnknownInit {
+			if node.struct_init.typ.has_flag(.generic) {
+				gt := c.unwrap_generic(node.struct_init.typ)
 				gts := c.table.get_type_symbol(gt)
 				if gts.kind == .array {
 					array_info := gts.info as table.Array
-					println('### ARRAY INIT')
 					mut has_len := false
 					mut has_cap := false
 					mut has_default := false
@@ -3524,7 +3536,7 @@ pub fn (mut c Checker) expr(node_ ast.Expr) table.Type {
 					mut cap_expr := ast.Expr{}
 					mut default_expr := ast.Expr{}
 					mut exprs := []ast.Expr{}
-					for field in node.fields {
+					for field in node.struct_init.fields {
 						match field.name {
 							'len' {
 								has_len = true
@@ -3544,9 +3556,8 @@ pub fn (mut c Checker) expr(node_ ast.Expr) table.Type {
 						}
 					}
 					mut array_init := ast.ArrayInit{
-						// mod: node.mod
-						mod: '111'
-						pos: node.pos
+						mod: c.file.mod.name
+						pos: node.struct_init.pos
 						typ: gt
 						elem_type: array_info.elem_type
 						has_len: has_len
@@ -3557,25 +3568,13 @@ pub fn (mut c Checker) expr(node_ ast.Expr) table.Type {
 						default_expr: default_expr
 						exprs: exprs
 					}
-					node1 := &node_
-					unsafe {
-						*node1 = array_init
-					}
-					println('typeof node: ')
-					println(typeof(node_))
-					// node_ = array_init
-					mut xxx := node_ as ast.ArrayInit
-					return c.array_init(mut xxx)
+					node.is_struct_init = false
+					node.is_array_init = true
+					node.array_init = array_init
+					return c.array_init(mut array_init)
 				}
 			}
-			return c.struct_init(mut node)
-		}
-		ast.Type {
-			return node.typ
-		}
-		ast.TypeOf {
-			node.expr_type = c.expr(node.expr)
-			return table.string_type
+			return c.struct_init(mut node.struct_init)
 		}
 		ast.UnsafeExpr {
 			return c.unsafe_expr(mut node)
@@ -5333,21 +5332,42 @@ fn (mut c Checker) post_process_generic_fns() {
 	// Loop thru each generic function concrete type.
 	// Check each specific fn instantiation.
 
-	for i in 0 .. c.file.generic_fns.len {
-		if c.table.fn_gen_types.len == 0 {
-			// no concrete types, so just skip:
-			continue
-		}
-		mut node := c.file.generic_fns[i]
-		c.mod = node.mod
-		for gen_types in c.table.fn_gen_types[node.name] {
-			c.cur_generic_types = gen_types
-			c.fn_decl(mut node)
-			if node.name in ['vweb.run_app', 'vweb.run'] {
-				c.vweb_gen_types << gen_types
+	// for i in 0 .. c.file.generic_fns.len {
+	// 	if c.table.fn_gen_types.len == 0 {
+	// 		// no concrete types, so just skip:
+	// 		continue
+	// 	}
+	// 	mut node := c.file.generic_fns[i]
+	// 	c.mod = node.mod
+	// 	for gen_types in c.table.fn_gen_types[node.name] {
+	// 		c.cur_generic_types = gen_types
+	// 		c.fn_decl(mut node)
+	// 		if node.name in ['vweb.run_app', 'vweb.run'] {
+	// 			c.vweb_gen_types << gen_types
+	// 		}
+	// 	}
+	// 	c.cur_generic_types = []
+	// }
+	for node in c.file.stmts {
+		match mut node {
+			ast.FnDecl {
+				if c.table.fn_gen_types.len == 0 {
+					// no concrete types, so just skip:
+					continue
+				}
+				// mut node := c.file.generic_fns[i]
+				c.mod = node.mod
+				for gen_types in c.table.fn_gen_types[node.name] {
+					c.cur_generic_types = gen_types
+					c.fn_decl(mut node)
+					if node.name in ['vweb.run_app', 'vweb.run'] {
+						c.vweb_gen_types << gen_types
+					}
+				}
+				c.cur_generic_types = []
 			}
+			else {}
 		}
-		c.cur_generic_types = []
 	}
 }
 
