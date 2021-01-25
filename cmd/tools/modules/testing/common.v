@@ -65,7 +65,9 @@ pub fn (mut ts TestSession) print_messages() {
 			ts.nprint_ended <- 0
 			return
 		}
-		ts.nmessage_idx++
+		if rmessage.kind != .info {
+			ts.nmessage_idx++
+		}
 		msg := rmessage.message.replace_each([
 			'TMP1',
 			'${ts.nmessage_idx:1d}',
