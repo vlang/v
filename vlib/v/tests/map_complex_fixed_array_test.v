@@ -17,3 +17,12 @@ fn test_innermost_value_of_map_fixed_array() {
 	assert m['foo'][0][0]['bar'] == 1
 	assert '${m['foo'][0][0]['bar']}' == '1'
 }
+
+fn test_complex_map_high_order_fixed_array() {
+	mut m := {'foo': [[{'a': 1}]!]!, 'bar': [[{'b': 2}]!]!}
+	for _, mut j in m {
+		j = [[{'c': 3}]!]!
+	}
+	println(m)
+	assert '$m' == "{'foo': [[{'c': 3}]], 'bar': [[{'c': 3}]]}"
+}
