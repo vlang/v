@@ -54,7 +54,7 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 		p.check(.dot)
 	}
 	n := p.check_name() // (.name)
-	if n !in supported_comptime_calls {
+	if n !in parser.supported_comptime_calls {
 		p.error(error_msg)
 		return ast.ComptimeCall{}
 	}

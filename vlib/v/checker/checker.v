@@ -203,43 +203,18 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 	}
 }
 
-const (
-	no_pub_in_main_warning = 'in module main cannot be declared public'
-)
-
 // do checks specific to files in main module
 // returns `true` if a main function is in the file
 fn (mut c Checker) check_file_in_main(file ast.File) bool {
 	mut has_main_fn := false
 	for stmt in file.stmts {
 		match stmt {
-			ast.ConstDecl {
-				if stmt.is_pub {
-					c.warn('const $checker.no_pub_in_main_warning', stmt.pos)
-				}
-			}
-			/*
-			// TODO not a Stmt
-			ast.ConstField {
-				if stmt.is_pub {
-					c.warn('const field `$stmt.name` $no_pub_in_main_warning', stmt.pos)
-				}
-			}
-			*/
-			ast.EnumDecl {
-				if stmt.is_pub {
-					c.warn('enum `$stmt.name` $checker.no_pub_in_main_warning', stmt.pos)
-				}
-			}
 			ast.FnDecl {
 				if stmt.name == 'main.main' {
 					if has_main_fn {
 						c.error('function `main` is already defined', stmt.pos)
 					}
 					has_main_fn = true
-					if stmt.is_pub {
-						c.error('function `main` cannot be declared public', stmt.pos)
-					}
 					if stmt.params.len > 0 {
 						c.error('function `main` cannot have arguments', stmt.pos)
 					}
@@ -256,10 +231,6 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 								stmt.pos)
 						}
 					}
-					if stmt.is_pub && !stmt.is_method {
-						c.warn('function `$stmt.name` $checker.no_pub_in_main_warning',
-							stmt.pos)
-					}
 				}
 				if stmt.return_type != table.void_type {
 					for attr in stmt.attrs {
@@ -268,29 +239,6 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 								stmt.pos)
 							break
 						}
-					}
-				}
-			}
-			ast.StructDecl {
-				if stmt.is_pub {
-					c.warn('struct `$stmt.name` $checker.no_pub_in_main_warning', stmt.pos)
-				}
-			}
-			ast.TypeDecl {
-				if stmt is ast.AliasTypeDecl {
-					if stmt.is_pub {
-						c.warn('type alias `$stmt.name` $checker.no_pub_in_main_warning',
-							stmt.pos)
-					}
-				} else if stmt is ast.SumTypeDecl {
-					if stmt.is_pub {
-						c.warn('sum type `$stmt.name` $checker.no_pub_in_main_warning',
-							stmt.pos)
-					}
-				} else if stmt is ast.FnTypeDecl {
-					if stmt.is_pub {
-						c.warn('type alias `$stmt.name` $checker.no_pub_in_main_warning',
-							stmt.pos)
 					}
 				}
 			}
@@ -1148,13 +1096,18 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 					}
 				}
 				.interface_ {
-					// TODO: mutability checks on interface fields?
 					interface_info := typ_sym.info as table.Interface
-					interface_info.find_field(expr.field_name) or {
+					mut field_info := interface_info.find_field(expr.field_name) or {
 						type_str := c.table.type_to_str(expr.expr_type)
 						c.error('unknown field `${type_str}.$expr.field_name`', expr.pos)
 						return '', pos
 					}
+					if !field_info.is_mut {
+						type_str := c.table.type_to_str(expr.expr_type)
+						c.error('field `$expr.field_name` of interface `$type_str` is immutable',
+							expr.pos)
+					}
+					c.fail_if_immutable(expr.expr)
 				}
 				.array, .string {
 					// This should only happen in `builtin`
@@ -1943,6 +1896,10 @@ fn (mut c Checker) type_implements(typ table.Type, inter_typ table.Type, pos tok
 					c.error('`$styp` incorrectly implements field `$ifield.name` of interface `$inter_sym.name`, expected `$exp`, got `$got`',
 						pos)
 					return false
+				} else if ifield.is_mut && !(field.is_mut || field.is_global) {
+					c.error('`$styp` incorrectly implements interface `$inter_sym.name`, field `$ifield.name` must be mutable',
+						pos)
+					return false
 				}
 				continue
 			}
@@ -2446,26 +2403,15 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		if is_decl {
 			left_type = c.table.mktyp(right_type)
 			if left_type == table.int_type {
-				mut expr := right
-				mut negative := false
-				if right is ast.PrefixExpr {
-					expr = right.right
-					if right.op == .minus {
-						negative = true
-					}
-				}
-				if mut expr is ast.IntegerLiteral {
-					mut is_large := false
-					if expr.val.len > 8 {
-						val := expr.val.i64()
-						if (!negative && val > checker.int_max)
-							|| (negative && -val < checker.int_min) {
-							is_large = true
-						}
+				if right is ast.IntegerLiteral {
+					mut is_large := right.val.len > 13
+					if !is_large && right.val.len > 8 {
+						val := right.val.i64()
+						is_large = val > checker.int_max || val < checker.int_min
 					}
 					if is_large {
 						c.error('overflow in implicit type `int`, use explicit type casting instead',
-							expr.pos)
+							right.pos)
 					}
 				}
 			}
@@ -4890,12 +4836,9 @@ fn (mut c Checker) check_index(typ_sym &table.TypeSymbol, index ast.Expr, index_
 			}
 			c.error('$type_str', pos)
 		}
-		if index is ast.PrefixExpr {
-			if index.op == .minus && index.right is ast.IntegerLiteral {
-				val := (index.right as ast.IntegerLiteral).val
-				if val.int() > 0 {
-					c.error('invalid index `-$val` (index must be non-negative)', index.pos)
-				}
+		if index is ast.IntegerLiteral {
+			if index.val.starts_with('-') {
+				c.error('invalid index `$index.val` (index must be non-negative)', index.pos)
 			}
 		}
 		if index_type.has_flag(.optional) {

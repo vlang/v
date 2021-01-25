@@ -139,7 +139,7 @@ const (
 )
 
 fn (mcache &ModFileCacher) check_for_stop(cfolder string, files []string) bool {
-	for i in mod_file_stop_paths {
+	for i in vmod.mod_file_stop_paths {
 		if i in files {
 			return true
 		}
@@ -167,5 +167,5 @@ const (
 )
 
 pub fn get_cache() &ModFileCacher {
-	return private_file_cacher
+	return vmod.private_file_cacher
 }

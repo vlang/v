@@ -75,7 +75,7 @@ fn init_win_time_start() u64 {
 pub fn sys_mono_now() u64 {
 	tm := u64(0)
 	C.QueryPerformanceCounter(&tm) // XP or later never fail
-	return (tm - start_time) * 1000000000 / freq_time
+	return (tm - time.start_time) * 1000000000 / time.freq_time
 }
 
 // NB: vpc_now is used by `v -profile` .

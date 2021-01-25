@@ -14,10 +14,10 @@ pub mut:
 // is_example returns true if the contents of this comment is a doc example.
 // The current convention is '// Example: <content>'
 pub fn (dc DocComment) is_example() bool {
-	return dc.text.starts_with(example_pattern)
+	return dc.text.starts_with(doc.example_pattern)
 }
 
 // example returns the content of the example body
 pub fn (dc DocComment) example() string {
-	return dc.text.all_after(example_pattern)
+	return dc.text.all_after(doc.example_pattern)
 }

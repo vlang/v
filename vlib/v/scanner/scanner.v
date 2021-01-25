@@ -196,7 +196,7 @@ fn (s Scanner) num_lit(start int, end int) string {
 		mut b := malloc(end - start + 1) // add a byte for the endstring 0
 		mut i1 := 0
 		for i := start; i < end; i++ {
-			if txt[i] != num_sep {
+			if txt[i] != scanner.num_sep {
 				b[i1] = txt[i]
 				i1++
 			}
@@ -212,15 +212,15 @@ fn (mut s Scanner) ident_bin_number() string {
 	mut first_wrong_digit := `\0`
 	start_pos := s.pos
 	s.pos += 2 // skip '0b'
-	if s.pos < s.text.len && s.text[s.pos] == num_sep {
+	if s.pos < s.text.len && s.text[s.pos] == scanner.num_sep {
 		s.error('separator `_` is only valid between digits in a numeric literal')
 	}
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
-		if c == num_sep && s.text[s.pos - 1] == num_sep {
+		if c == scanner.num_sep && s.text[s.pos - 1] == scanner.num_sep {
 			s.error('cannot use `_` consecutively')
 		}
-		if !c.is_bin_digit() && c != num_sep {
+		if !c.is_bin_digit() && c != scanner.num_sep {
 			if (!c.is_digit() && !c.is_letter()) || s.is_inside_string {
 				break
 			} else if !has_wrong_digit {
@@ -231,7 +231,7 @@ fn (mut s Scanner) ident_bin_number() string {
 		}
 		s.pos++
 	}
-	if s.text[s.pos - 1] == num_sep {
+	if s.text[s.pos - 1] == scanner.num_sep {
 		s.pos--
 		s.error('cannot use `_` at the end of a numeric literal')
 	} else if start_pos + 2 == s.pos {
@@ -255,15 +255,15 @@ fn (mut s Scanner) ident_hex_number() string {
 		return '0x'
 	}
 	s.pos += 2 // skip '0x'
-	if s.pos < s.text.len && s.text[s.pos] == num_sep {
+	if s.pos < s.text.len && s.text[s.pos] == scanner.num_sep {
 		s.error('separator `_` is only valid between digits in a numeric literal')
 	}
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
-		if c == num_sep && s.text[s.pos - 1] == num_sep {
+		if c == scanner.num_sep && s.text[s.pos - 1] == scanner.num_sep {
 			s.error('cannot use `_` consecutively')
 		}
-		if !c.is_hex_digit() && c != num_sep {
+		if !c.is_hex_digit() && c != scanner.num_sep {
 			if !c.is_letter() || s.is_inside_string {
 				break
 			} else if !has_wrong_digit {
@@ -274,7 +274,7 @@ fn (mut s Scanner) ident_hex_number() string {
 		}
 		s.pos++
 	}
-	if s.text[s.pos - 1] == num_sep {
+	if s.text[s.pos - 1] == scanner.num_sep {
 		s.pos--
 		s.error('cannot use `_` at the end of a numeric literal')
 	} else if start_pos + 2 == s.pos {
@@ -295,15 +295,15 @@ fn (mut s Scanner) ident_oct_number() string {
 	mut first_wrong_digit := `\0`
 	start_pos := s.pos
 	s.pos += 2 // skip '0o'
-	if s.pos < s.text.len && s.text[s.pos] == num_sep {
+	if s.pos < s.text.len && s.text[s.pos] == scanner.num_sep {
 		s.error('separator `_` is only valid between digits in a numeric literal')
 	}
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
-		if c == num_sep && s.text[s.pos - 1] == num_sep {
+		if c == scanner.num_sep && s.text[s.pos - 1] == scanner.num_sep {
 			s.error('cannot use `_` consecutively')
 		}
-		if !c.is_oct_digit() && c != num_sep {
+		if !c.is_oct_digit() && c != scanner.num_sep {
 			if (!c.is_digit() && !c.is_letter()) || s.is_inside_string {
 				break
 			} else if !has_wrong_digit {
@@ -314,7 +314,7 @@ fn (mut s Scanner) ident_oct_number() string {
 		}
 		s.pos++
 	}
-	if s.text[s.pos - 1] == num_sep {
+	if s.text[s.pos - 1] == scanner.num_sep {
 		s.pos--
 		s.error('cannot use `_` at the end of a numeric literal')
 	} else if start_pos + 2 == s.pos {
@@ -337,10 +337,10 @@ fn (mut s Scanner) ident_dec_number() string {
 	// scan integer part
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
-		if c == num_sep && s.text[s.pos - 1] == num_sep {
+		if c == scanner.num_sep && s.text[s.pos - 1] == scanner.num_sep {
 			s.error('cannot use `_` consecutively')
 		}
-		if !c.is_digit() && c != num_sep {
+		if !c.is_digit() && c != scanner.num_sep {
 			if !c.is_letter() || c in [`e`, `E`] || s.is_inside_string {
 				break
 			} else if !has_wrong_digit {
@@ -351,7 +351,7 @@ fn (mut s Scanner) ident_dec_number() string {
 		}
 		s.pos++
 	}
-	if s.text[s.pos - 1] == num_sep {
+	if s.text[s.pos - 1] == scanner.num_sep {
 		s.pos--
 		s.error('cannot use `_` at the end of a numeric literal')
 	}
@@ -698,7 +698,7 @@ fn (mut s Scanner) text_scan() token.Token {
 			`?` {
 				return s.new_token(.question, '', 1)
 			}
-			single_quote, double_quote {
+			scanner.single_quote, scanner.double_quote {
 				ident_string := s.ident_string()
 				return s.new_token(.string, ident_string, ident_string.len + 2) // + two quotes
 			}
@@ -1021,7 +1021,7 @@ fn (s &Scanner) count_symbol_before(p int, sym byte) int {
 
 fn (mut s Scanner) ident_string() string {
 	q := s.text[s.pos]
-	is_quote := q == single_quote || q == double_quote
+	is_quote := q == scanner.single_quote || q == scanner.double_quote
 	is_raw := is_quote && s.pos > 0 && s.text[s.pos - 1] == `r`
 	is_cstr := is_quote && s.pos > 0 && s.text[s.pos - 1] == `c`
 	if is_quote {

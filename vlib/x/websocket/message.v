@@ -223,7 +223,7 @@ pub fn (mut ws Client) parse_frame_header() ?Frame {
 		buffer[bytes_read] = rbuff[0]
 		bytes_read++
 		// parses the first two header bytes to get basic frame information
-		if bytes_read == u64(header_len_offset) {
+		if bytes_read == u64(websocket.header_len_offset) {
 			frame.fin = (buffer[0] & 0x80) == 0x80
 			frame.rsv1 = (buffer[0] & 0x40) == 0x40
 			frame.rsv2 = (buffer[0] & 0x20) == 0x20
@@ -234,11 +234,11 @@ pub fn (mut ws Client) parse_frame_header() ?Frame {
 			// if has mask set the byte postition where mask ends
 			if frame.has_mask {
 				mask_end_byte = if frame.payload_len < 126 {
-					header_len_offset + 4
+					websocket.header_len_offset + 4
 				} else if frame.payload_len == 126 {
-					header_len_offset + 6
+					websocket.header_len_offset + 6
 				} else if frame.payload_len == 127 {
-					header_len_offset + 12
+					websocket.header_len_offset + 12
 				} else {
 					0
 				} // impossible
@@ -249,7 +249,7 @@ pub fn (mut ws Client) parse_frame_header() ?Frame {
 				break
 			}
 		}
-		if frame.payload_len == 126 && bytes_read == u64(extended_payload16_end_byte) {
+		if frame.payload_len == 126 && bytes_read == u64(websocket.extended_payload16_end_byte) {
 			frame.header_len += 2
 			frame.payload_len = 0
 			frame.payload_len |= buffer[2] << 8
@@ -259,7 +259,7 @@ pub fn (mut ws Client) parse_frame_header() ?Frame {
 				break
 			}
 		}
-		if frame.payload_len == 127 && bytes_read == u64(extended_payload64_end_byte) {
+		if frame.payload_len == 127 && bytes_read == u64(websocket.extended_payload64_end_byte) {
 			frame.header_len += 8
 			// these shift operators needs 64 bit on clang with -prod flag
 			mut payload_len := u64(0)

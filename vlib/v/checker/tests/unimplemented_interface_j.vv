@@ -1,0 +1,13 @@
+interface Animal {
+mut:
+	name string
+}
+
+struct Cat {
+	name string
+}
+
+fn main() {
+	mut animals := []Animal{}
+	animals << Cat{}
+}

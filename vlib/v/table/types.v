@@ -76,10 +76,10 @@ pub fn (t ShareType) str() string {
 pub fn (t Type) atomic_typename() string {
 	idx := t.idx()
 	match idx {
-		u32_type_idx { return 'atomic_uint' }
-		int_type_idx { return 'atomic_int' }
-		u64_type_idx { return 'atomic_ullong' }
-		i64_type_idx { return 'atomic_llong' }
+		table.u32_type_idx { return 'atomic_uint' }
+		table.int_type_idx { return 'atomic_int' }
+		table.u64_type_idx { return 'atomic_ullong' }
+		table.i64_type_idx { return 'atomic_llong' }
 		else { return 'unknown_atomic' }
 	}
 }
@@ -100,12 +100,12 @@ pub fn (t Type) idx() int {
 
 [inline]
 pub fn (t Type) is_void() bool {
-	return t == void_type
+	return t == table.void_type
 }
 
 [inline]
 pub fn (t Type) is_full() bool {
-	return t != 0 && t != void_type
+	return t != 0 && t != table.void_type
 }
 
 // return nr_muls for `t`
@@ -240,42 +240,42 @@ pub fn new_type_ptr(idx int, nr_muls int) Type {
 // built in pointers (voidptr, byteptr, charptr)
 [inline]
 pub fn (typ Type) is_pointer() bool {
-	return typ.idx() in pointer_type_idxs
+	return typ.idx() in table.pointer_type_idxs
 }
 
 [inline]
 pub fn (typ Type) is_float() bool {
-	return typ.idx() in float_type_idxs
+	return typ.idx() in table.float_type_idxs
 }
 
 [inline]
 pub fn (typ Type) is_int() bool {
-	return typ.idx() in integer_type_idxs
+	return typ.idx() in table.integer_type_idxs
 }
 
 [inline]
 pub fn (typ Type) is_signed() bool {
-	return typ.idx() in signed_integer_type_idxs
+	return typ.idx() in table.signed_integer_type_idxs
 }
 
 [inline]
 pub fn (typ Type) is_unsigned() bool {
-	return typ.idx() in unsigned_integer_type_idxs
+	return typ.idx() in table.unsigned_integer_type_idxs
 }
 
 [inline]
 pub fn (typ Type) is_int_literal() bool {
-	return typ.idx() == int_literal_type_idx
+	return typ.idx() == table.int_literal_type_idx
 }
 
 [inline]
 pub fn (typ Type) is_number() bool {
-	return typ.idx() in number_type_idxs
+	return typ.idx() in table.number_type_idxs
 }
 
 [inline]
 pub fn (typ Type) is_string() bool {
-	return typ.idx() in string_type_idxs
+	return typ.idx() in table.string_type_idxs
 }
 
 pub const (
@@ -745,16 +745,16 @@ pub fn (table &Table) type_to_str(t Type) string {
 }
 
 // type name in code (for builtin)
-pub fn (table &Table) type_to_code(t Type) string {
+pub fn (mytable &Table) type_to_code(t Type) string {
 	match t {
-		int_literal_type, float_literal_type { return table.get_type_symbol(t).kind.str() }
-		else { return table.type_to_str_using_aliases(t, map[string]string{}) }
+		table.int_literal_type, table.float_literal_type { return mytable.get_type_symbol(t).kind.str() }
+		else { return mytable.type_to_str_using_aliases(t, map[string]string{}) }
 	}
 }
 
 // import_aliases is a map of imported symbol aliases 'module.Type' => 'Type'
-pub fn (table &Table) type_to_str_using_aliases(t Type, import_aliases map[string]string) string {
-	sym := table.get_type_symbol(t)
+pub fn (mytable &Table) type_to_str_using_aliases(t Type, import_aliases map[string]string) string {
+	sym := mytable.get_type_symbol(t)
 	mut res := sym.name
 	match sym.kind {
 		.int_literal, .float_literal {
@@ -766,20 +766,20 @@ pub fn (table &Table) type_to_str_using_aliases(t Type, import_aliases map[strin
 			res = sym.kind.str()
 		}
 		.array {
-			if t == array_type {
+			if t == table.array_type {
 				return 'array'
 			}
 			if t.has_flag(.variadic) {
-				res = table.type_to_str_using_aliases(table.value_type(t), import_aliases)
+				res = mytable.type_to_str_using_aliases(mytable.value_type(t), import_aliases)
 			} else {
 				info := sym.info as Array
-				elem_str := table.type_to_str_using_aliases(info.elem_type, import_aliases)
+				elem_str := mytable.type_to_str_using_aliases(info.elem_type, import_aliases)
 				res = '[]$elem_str'
 			}
 		}
 		.array_fixed {
 			info := sym.info as ArrayFixed
-			elem_str := table.type_to_str_using_aliases(info.elem_type, import_aliases)
+			elem_str := mytable.type_to_str_using_aliases(info.elem_type, import_aliases)
 			res = '[$info.size]$elem_str'
 		}
 		.chan {
@@ -792,31 +792,31 @@ pub fn (table &Table) type_to_str_using_aliases(t Type, import_aliases map[strin
 					mut_str = 'mut '
 					elem_type = elem_type.set_nr_muls(elem_type.nr_muls() - 1)
 				}
-				elem_str := table.type_to_str_using_aliases(elem_type, import_aliases)
+				elem_str := mytable.type_to_str_using_aliases(elem_type, import_aliases)
 				res = 'chan $mut_str$elem_str'
 			}
 		}
 		.function {
 			info := sym.info as FnType
-			if !table.is_fmt {
-				res = table.fn_signature(info.func, type_only: true)
+			if !mytable.is_fmt {
+				res = mytable.fn_signature(info.func, type_only: true)
 			} else {
 				if res.starts_with('fn (') {
 					// fn foo ()
-					res = table.fn_signature(info.func, type_only: true)
+					res = mytable.fn_signature(info.func, type_only: true)
 				} else {
 					// FnFoo
-					res = table.shorten_user_defined_typenames(res, import_aliases)
+					res = mytable.shorten_user_defined_typenames(res, import_aliases)
 				}
 			}
 		}
 		.map {
-			if int(t) == map_type_idx {
+			if int(t) == table.map_type_idx {
 				return 'map'
 			}
 			info := sym.info as Map
-			key_str := table.type_to_str_using_aliases(info.key_type, import_aliases)
-			val_str := table.type_to_str_using_aliases(info.value_type, import_aliases)
+			key_str := mytable.type_to_str_using_aliases(info.key_type, import_aliases)
+			val_str := mytable.type_to_str_using_aliases(info.value_type, import_aliases)
 			res = 'map[$key_str]$val_str'
 		}
 		.multi_return {
@@ -826,7 +826,7 @@ pub fn (table &Table) type_to_str_using_aliases(t Type, import_aliases map[strin
 				if i > 0 {
 					res += ', '
 				}
-				res += table.type_to_str_using_aliases(typ, import_aliases)
+				res += mytable.type_to_str_using_aliases(typ, import_aliases)
 			}
 			res += ')'
 		}
@@ -837,7 +837,7 @@ pub fn (table &Table) type_to_str_using_aliases(t Type, import_aliases map[strin
 			return 'void'
 		}
 		else {
-			res = table.shorten_user_defined_typenames(res, import_aliases)
+			res = mytable.shorten_user_defined_typenames(res, import_aliases)
 		}
 	}
 	nr_muls := t.nr_muls()
@@ -899,7 +899,7 @@ pub fn (t &Table) fn_signature(func &Fn, opts FnSignatureOpts) string {
 		sb.write('$styp')
 	}
 	sb.write(')')
-	if func.return_type != void_type {
+	if func.return_type != table.void_type {
 		sb.write(' ${t.type_to_str(func.return_type)}')
 	}
 	return sb.str()

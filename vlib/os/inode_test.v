@@ -8,18 +8,18 @@ const (
 )
 
 fn testsuite_begin() {
-	eprintln('testsuite_begin, tfolder = $tfolder')
-	os.rmdir_all(tfolder)
-	assert !os.is_dir(tfolder)
-	os.mkdir_all(tfolder)
-	os.chdir(tfolder)
-	assert os.is_dir(tfolder)
+	eprintln('testsuite_begin, tfolder = $main.tfolder')
+	os.rmdir_all(main.tfolder)
+	assert !os.is_dir(main.tfolder)
+	os.mkdir_all(main.tfolder)
+	os.chdir(main.tfolder)
+	assert os.is_dir(main.tfolder)
 }
 
 fn testsuite_end() {
 	os.chdir(os.wd_at_startup)
-	os.rmdir_all(tfolder)
-	assert !os.is_dir(tfolder)
+	os.rmdir_all(main.tfolder)
+	assert !os.is_dir(main.tfolder)
 }
 
 fn test_inode_file_type() {
