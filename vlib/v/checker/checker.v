@@ -3528,6 +3528,8 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 					// TODO
 					mut map_init := ast.MapInit{
 						typ: gt
+						key_type: map_info.key_type
+						value_type: map_info.value_type
 					}
 					node.kind = .map_init
 					node.map_init = map_init
