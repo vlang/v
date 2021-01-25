@@ -2335,19 +2335,15 @@ pub fn (mut f Fmt) go_stmt(node ast.GoStmt, is_expr bool) {
 pub fn (mut f Fmt) return_stmt(node ast.Return) {
 	f.comments(node.comments, {})
 	f.write('return')
-	if node.exprs.len > 1 {
-		// multiple returns
+	if node.exprs.len > 0 {
 		f.write(' ')
+		// Loop over all return values. In normal returns this will only run once.
 		for i, expr in node.exprs {
 			f.expr(expr)
 			if i < node.exprs.len - 1 {
 				f.write(', ')
 			}
 		}
-	} else if node.exprs.len == 1 {
-		// normal return
-		f.write(' ')
-		f.expr(node.exprs[0])
 	}
 	f.writeln('')
 }
