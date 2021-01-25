@@ -1,5 +1,13 @@
 import net
 
+fn testsuite_begin() {
+	$if windows {
+		$if !network ? {
+			exit(0)
+		}
+	}
+}
+
 fn echo_server(mut c net.UdpConn) {
 	for {
 		mut buf := []byte{len: 100, init: 0}
@@ -55,8 +63,4 @@ fn test_udp() {
 	}
 
 	l.close() or { }
-}
-
-fn main() {
-	test_udp()
 }
