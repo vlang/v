@@ -1578,7 +1578,6 @@ fn (mut g Gen) gen_assert_stmt(original_assert_statement ast.AssertStmt) {
 		metaname_panic := g.gen_assert_metainfo(a)
 		g.writeln('\t__print_assert_failure(&$metaname_panic);')
 		g.writeln('\tv_panic(_SLIT("Assertion failed..."));')
-		g.writeln('\texit(1);')
 		g.writeln('}')
 	}
 }
@@ -1593,8 +1592,7 @@ fn (mut g Gen) gen_assert_metainfo(a ast.AssertStmt) string {
 	line_nr := a.pos.line_nr
 	src := cestring(a.expr.str())
 	metaname := 'v_assert_meta_info_$g.new_tmp_var()'
-	g.writeln('\tVAssertMetaInfo $metaname;')
-	g.writeln('\tmemset(&$metaname, 0, sizeof(VAssertMetaInfo));')
+	g.writeln('\tVAssertMetaInfo $metaname = {0};')
 	g.writeln('\t${metaname}.fpath = ${ctoslit(mod_path)};')
 	g.writeln('\t${metaname}.line_nr = $line_nr;')
 	g.writeln('\t${metaname}.fn_name = ${ctoslit(fn_name)};')
