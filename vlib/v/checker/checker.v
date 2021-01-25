@@ -2119,7 +2119,7 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 	selector_expr.expr_type = typ
 	if selector_expr.expr_type.has_flag(.optional) && !((selector_expr.expr is ast.Ident
 		&& (selector_expr.expr as ast.Ident).kind == .constant)) {
-		c.error('cannot access fields of an optional, hint: handle the error with `or {...}` or propagate it with `?`',
+		c.error('cannot access fields of an optional, handle the error with `or {...}` or propagate it with `?`',
 			selector_expr.pos)
 	}
 	field_name := selector_expr.field_name
