@@ -255,7 +255,7 @@ fn (mut g Gen) comp_if_cond(cond ast.Expr) bool {
 						// this is only allowed for generics currently, otherwise blocked by checker
 						exp_type = g.unwrap_generic(left.typ)
 					}
-					
+
 					if cond.op == .key_is {
 						g.write('$exp_type == $got_type')
 						return exp_type == got_type
