@@ -2117,6 +2117,10 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 		return table.void_type
 	}
 	selector_expr.expr_type = typ
+	if selector_expr.expr_type.has_flag(.optional) {
+		c.error('cannot access fields of an optional, hint: handle the error with `or {...}` or propagate it with `?`',
+			selector_expr.pos)
+	}
 	field_name := selector_expr.field_name
 	utyp := c.unwrap_generic(typ)
 	sym := c.table.get_type_symbol(utyp)
@@ -4885,7 +4889,7 @@ fn (mut c Checker) check_index(typ_sym &table.TypeSymbol, index ast.Expr, index_
 			c.error('$type_str', pos)
 		}
 		if index is ast.IntegerLiteral {
-			if index.val.starts_with('-')  {
+			if index.val.starts_with('-') {
 				c.error('invalid index `$index.val` (index must be non-negative)', index.pos)
 			}
 		}
