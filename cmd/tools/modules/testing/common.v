@@ -10,6 +10,8 @@ import v.util.vtest
 
 const github_job = os.getenv('GITHUB_JOB')
 
+const show_start = os.getenv('VTEST_SHOW_START') == '1'
+
 pub struct TestSession {
 pub mut:
 	files         []string
@@ -33,6 +35,7 @@ enum MessageKind {
 	ok
 	fail
 	skip
+	info
 	sentinel
 }
 
@@ -131,7 +134,7 @@ pub fn new_test_session(_vargs string) TestSession {
 		skip_files << 'examples/x/websocket/client-server/client.v' // requires OpenSSL
 		skip_files << 'examples/x/websocket/client-server/server.v' // requires OpenSSL
 	}
-	if github_job != 'ubuntu-tcc' {
+	if testing.github_job != 'ubuntu-tcc' {
 		skip_files << 'examples/wkhtmltopdf.v' // needs installation of wkhtmltopdf from https://github.com/wkhtmltopdf/packaging/releases
 		// the ttf_test.v is not interactive, but needs X11 headers to be installed, which is done only on ubuntu-tcc for now
 		skip_files << 'vlib/x/ttf/ttf_test.v'
@@ -276,6 +279,9 @@ fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 			return sync.no_result
 		}
 	} else {
+		if testing.show_start {
+			ts.append_message(.info, '                 starting $relative_file ...')
+		}
 		r := os.exec(cmd) or {
 			ts.failed = true
 			ts.benchmark.fail()
