@@ -203,43 +203,18 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 	}
 }
 
-const (
-	no_pub_in_main_warning = 'in module main cannot be declared public'
-)
-
 // do checks specific to files in main module
 // returns `true` if a main function is in the file
 fn (mut c Checker) check_file_in_main(file ast.File) bool {
 	mut has_main_fn := false
 	for stmt in file.stmts {
 		match stmt {
-			ast.ConstDecl {
-				if stmt.is_pub {
-					c.warn('const $checker.no_pub_in_main_warning', stmt.pos)
-				}
-			}
-			/*
-			// TODO not a Stmt
-			ast.ConstField {
-				if stmt.is_pub {
-					c.warn('const field `$stmt.name` $no_pub_in_main_warning', stmt.pos)
-				}
-			}
-			*/
-			ast.EnumDecl {
-				if stmt.is_pub {
-					c.warn('enum `$stmt.name` $checker.no_pub_in_main_warning', stmt.pos)
-				}
-			}
 			ast.FnDecl {
 				if stmt.name == 'main.main' {
 					if has_main_fn {
 						c.error('function `main` is already defined', stmt.pos)
 					}
 					has_main_fn = true
-					if stmt.is_pub {
-						c.error('function `main` cannot be declared public', stmt.pos)
-					}
 					if stmt.params.len > 0 {
 						c.error('function `main` cannot have arguments', stmt.pos)
 					}
@@ -256,10 +231,6 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 								stmt.pos)
 						}
 					}
-					if stmt.is_pub && !stmt.is_method {
-						c.warn('function `$stmt.name` $checker.no_pub_in_main_warning',
-							stmt.pos)
-					}
 				}
 				if stmt.return_type != table.void_type {
 					for attr in stmt.attrs {
@@ -268,29 +239,6 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 								stmt.pos)
 							break
 						}
-					}
-				}
-			}
-			ast.StructDecl {
-				if stmt.is_pub {
-					c.warn('struct `$stmt.name` $checker.no_pub_in_main_warning', stmt.pos)
-				}
-			}
-			ast.TypeDecl {
-				if stmt is ast.AliasTypeDecl {
-					if stmt.is_pub {
-						c.warn('type alias `$stmt.name` $checker.no_pub_in_main_warning',
-							stmt.pos)
-					}
-				} else if stmt is ast.SumTypeDecl {
-					if stmt.is_pub {
-						c.warn('sum type `$stmt.name` $checker.no_pub_in_main_warning',
-							stmt.pos)
-					}
-				} else if stmt is ast.FnTypeDecl {
-					if stmt.is_pub {
-						c.warn('type alias `$stmt.name` $checker.no_pub_in_main_warning',
-							stmt.pos)
 					}
 				}
 			}
@@ -1336,7 +1284,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	}
 	// TODO: remove this for actual methods, use only for compiler magic
 	// FIXME: Argument count != 1 will break these
-	if left_type_sym.kind == .array && method_name in checker.array_builtin_methods {
+	if left_type_sym.kind == .array && method_name in array_builtin_methods {
 		mut elem_typ := table.void_type
 		is_filter_map := method_name in ['filter', 'map']
 		is_sort := method_name == 'sort'
@@ -2361,7 +2309,7 @@ pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 			match field.expr {
 				ast.IntegerLiteral {
 					val := field.expr.val.i64()
-					if val < checker.int_min || val > checker.int_max {
+					if val < int_min || val > int_max {
 						c.error('enum value `$val` overflows int', field.expr.pos)
 					} else if !decl.is_multi_allowed && i64(val) in seen {
 						c.error('enum value `$val` already exists', field.expr.pos)
@@ -2385,7 +2333,7 @@ pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 		} else {
 			if seen.len > 0 {
 				last := seen[seen.len - 1]
-				if last == checker.int_max {
+				if last == int_max {
 					c.error('enum value overflows', field.pos)
 				}
 				seen << last + 1
@@ -2458,7 +2406,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					mut is_large := right.val.len > 13
 					if !is_large && right.val.len > 8 {
 						val := right.val.i64()
-						is_large = val > checker.int_max || val < checker.int_min
+						is_large = val > int_max || val < int_min
 					}
 					if is_large {
 						c.error('overflow in implicit type `int`, use explicit type casting instead',
@@ -4188,11 +4136,11 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym table.TypeS
 	mut err_details := 'match must be exhaustive'
 	if unhandled.len > 0 {
 		err_details += ' (add match branches for: '
-		if unhandled.len < checker.match_exhaustive_cutoff_limit {
+		if unhandled.len < match_exhaustive_cutoff_limit {
 			err_details += unhandled.join(', ')
 		} else {
-			remaining := unhandled.len - checker.match_exhaustive_cutoff_limit
-			err_details += unhandled[0..checker.match_exhaustive_cutoff_limit].join(', ')
+			remaining := unhandled.len - match_exhaustive_cutoff_limit
+			err_details += unhandled[0..match_exhaustive_cutoff_limit].join(', ')
 			err_details += ', and $remaining others ...'
 		}
 		err_details += ' or `else {}` at the end)'
@@ -4689,13 +4637,13 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 			}
 		}
 		ast.Ident {
-			if cond.name in checker.valid_comp_if_os {
+			if cond.name in valid_comp_if_os {
 				return cond.name != c.pref.os.str().to_lower() // TODO hack
-			} else if cond.name in checker.valid_comp_if_compilers {
+			} else if cond.name in valid_comp_if_compilers {
 				return pref.cc_from_string(cond.name) != c.pref.ccompiler_type
-			} else if cond.name in checker.valid_comp_if_platforms {
+			} else if cond.name in valid_comp_if_platforms {
 				return false // TODO
-			} else if cond.name in checker.valid_comp_if_other {
+			} else if cond.name in valid_comp_if_other {
 				// TODO: This should probably be moved
 				match cond.name {
 					'js' { return c.pref.backend != .js }
@@ -4885,7 +4833,7 @@ fn (mut c Checker) check_index(typ_sym &table.TypeSymbol, index ast.Expr, index_
 			c.error('$type_str', pos)
 		}
 		if index is ast.IntegerLiteral {
-			if index.val.starts_with('-')  {
+			if index.val.starts_with('-') {
 				c.error('invalid index `$index.val` (index must be non-negative)', index.pos)
 			}
 		}
