@@ -42,12 +42,12 @@ fn (mut g Gen) generate_hotcode_reloader_code() {
 			for so_fn in g.hotcode_fn_names {
 				load_code << 'impl_live_$so_fn = dlsym(live_lib, "impl_live_$so_fn");'
 			}
-			phd = posix_hotcode_definitions_1
+			phd = gen.posix_hotcode_definitions_1
 		} else {
 			for so_fn in g.hotcode_fn_names {
 				load_code << 'impl_live_$so_fn = (void *)GetProcAddress(live_lib, "impl_live_$so_fn");  '
 			}
-			phd = windows_hotcode_definitions_1
+			phd = gen.windows_hotcode_definitions_1
 		}
 		g.hotcode_definitions.writeln(phd.replace('@LOAD_FNS@', load_code.join('\n')))
 	}

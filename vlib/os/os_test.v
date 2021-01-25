@@ -12,21 +12,21 @@ const (
 const args_at_start = os.args.clone()
 
 fn testsuite_begin() {
-	eprintln('testsuite_begin, tfolder = $tfolder')
-	os.rmdir_all(tfolder)
-	assert !os.is_dir(tfolder)
-	os.mkdir_all(tfolder)
-	os.chdir(tfolder)
-	assert os.is_dir(tfolder)
+	eprintln('testsuite_begin, tfolder = $main.tfolder')
+	os.rmdir_all(main.tfolder)
+	assert !os.is_dir(main.tfolder)
+	os.mkdir_all(main.tfolder)
+	os.chdir(main.tfolder)
+	assert os.is_dir(main.tfolder)
 	// println('args_at_start: $args_at_start')
-	assert args_at_start.len > 0
-	assert args_at_start == os.args
+	assert main.args_at_start.len > 0
+	assert main.args_at_start == os.args
 }
 
 fn testsuite_end() {
 	os.chdir(os.wd_at_startup)
-	os.rmdir_all(tfolder)
-	assert !os.is_dir(tfolder)
+	os.rmdir_all(main.tfolder)
+	assert !os.is_dir(main.tfolder)
 	// eprintln('testsuite_end  , tfolder = $tfolder removed.')
 }
 
@@ -434,8 +434,8 @@ struct IntPoint {
 
 fn test_write_file_array_bytes() {
 	fpath := './abytes.bin'
-	mut arr := []byte{len: maxn}
-	for i in 0 .. maxn {
+	mut arr := []byte{len: main.maxn}
+	for i in 0 .. main.maxn {
 		arr[i] = 65 + byte(i)
 	}
 	os.write_file_array(fpath, arr)
@@ -447,14 +447,14 @@ fn test_write_file_array_bytes() {
 
 fn test_write_file_array_structs() {
 	fpath := './astructs.bin'
-	mut arr := []IntPoint{len: maxn}
-	for i in 0 .. maxn {
+	mut arr := []IntPoint{len: main.maxn}
+	for i in 0 .. main.maxn {
 		arr[i] = IntPoint{65 + i, 65 + i + 10}
 	}
 	os.write_file_array(fpath, arr)
 	rarr := os.read_file_array<IntPoint>(fpath)
 	assert rarr == arr
-	assert rarr.len == maxn
+	assert rarr.len == main.maxn
 	// eprintln( rarr.str().replace('\n', ' ').replace('},', '},\n'))
 }
 

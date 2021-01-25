@@ -22,7 +22,7 @@ fn test_vlib_fmt() {
 	vexe := os.getenv('VEXE')
 	if vexe.len == 0 || !os.exists(vexe) {
 		eprintln('VEXE must be set')
-		exit(error_missing_vexe)
+		exit(main.error_missing_vexe)
 	}
 	vroot := os.dir(vexe)
 	tmpfolder := os.temp_dir()
@@ -67,6 +67,6 @@ fn test_vlib_fmt() {
 	eprintln(term.h_divider('-'))
 	eprintln(fmt_bench.total_message(fmt_message))
 	if fmt_bench.nfail > 0 {
-		exit(error_failed_tests)
+		exit(main.error_failed_tests)
 	}
 }

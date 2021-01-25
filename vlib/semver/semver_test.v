@@ -76,7 +76,7 @@ const (
 )
 
 fn test_from() {
-	for item in versions_to_test {
+	for item in main.versions_to_test {
 		ver := semver.from(item.raw) or {
 			assert false
 			return
@@ -87,7 +87,7 @@ fn test_from() {
 		assert ver.metadata == item.metadata
 		assert ver.prerelease == item.prerelease
 	}
-	for ver in invalid_versions_to_test {
+	for ver in main.invalid_versions_to_test {
 		semver.from(ver) or {
 			assert true
 			continue
@@ -140,7 +140,7 @@ fn test_compare() {
 }
 
 fn test_satisfies() {
-	for item in ranges_to_test {
+	for item in main.ranges_to_test {
 		ver := semver.from(item.raw_version) or {
 			assert false
 			return
@@ -155,13 +155,13 @@ fn test_satisfies_invalid() {
 		assert false
 		return
 	}
-	for item in invalid_ranges_to_test {
+	for item in main.invalid_ranges_to_test {
 		assert ver.satisfies(item) == false
 	}
 }
 
 fn test_coerce() {
-	for item in coerce_to_test {
+	for item in main.coerce_to_test {
 		valid := semver.from(item.valid) or {
 			assert false
 			return
@@ -183,10 +183,10 @@ fn test_coerce_invalid() {
 }
 
 fn test_is_valid() {
-	for item in versions_to_test {
+	for item in main.versions_to_test {
 		assert semver.is_valid(item.raw)
 	}
-	for item in invalid_versions_to_test {
+	for item in main.invalid_versions_to_test {
 		assert semver.is_valid(item) == false
 	}
 }

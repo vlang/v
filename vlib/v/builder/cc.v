@@ -97,7 +97,7 @@ fn (mut v Builder) post_process_c_compiler_output(res os.Result) {
 		}
 		return
 	}
-	for emsg_marker in [c_verror_message_marker, 'error: include file '] {
+	for emsg_marker in [builder.c_verror_message_marker, 'error: include file '] {
 		if res.output.contains(emsg_marker) {
 			emessage := res.output.all_after(emsg_marker).all_before('\n').all_before('\r').trim_right('\r\n')
 			verror(emessage)
@@ -121,7 +121,7 @@ fn (mut v Builder) post_process_c_compiler_output(res os.Result) {
 			println('(Use `v -cg` to print the entire error message)\n')
 		}
 	}
-	verror(c_error_info)
+	verror(builder.c_error_info)
 }
 
 fn (mut v Builder) rebuild_cached_module(vexe string, imp_path string) string {
@@ -858,7 +858,7 @@ fn (mut c Builder) cc_windows_cross() {
 		println(os.user_os())
 		panic('your platform is not supported yet')
 	}
-	mut cmd := '$mingw_cc $optimization_options $debug_options -std=gnu11 $args -municode'
+	mut cmd := '$builder.mingw_cc $optimization_options $debug_options -std=gnu11 $args -municode'
 	// cmd := 'clang -o $obj_name -w $include -m32 -c -target x86_64-win32 ${pref.default_module_path}/$c.out_name_c'
 	if c.pref.is_verbose || c.pref.show_cc {
 		println(cmd)

@@ -112,7 +112,7 @@ pub fn from_string(input string) Number {
 	mut n := from_int(0)
 	for _, c in input {
 		d := from_int(int(c - `0`))
-		n = (n * ten) + d
+		n = (n * big.ten) + d
 	}
 	return n
 }
@@ -136,7 +136,7 @@ pub fn (n Number) str() string {
 	mut x := n.clone()
 	div := Number{}
 	for !x.is_zero() {
-		mod := divmod(&x, &ten, &div)
+		mod := divmod(&x, &big.ten, &div)
 		digits << byte(mod.int()) + `0`
 		x = div
 	}

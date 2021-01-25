@@ -13,9 +13,9 @@ const (
 	// but otherwise can be changed at will.
 	absolute_zero_year = i64(-292277022399) // as i64
 	seconds_per_minute = 60
-	seconds_per_hour   = 60 * time.seconds_per_minute
-	seconds_per_day    = 24 * time.seconds_per_hour
-	seconds_per_week   = 7 * time.seconds_per_day
+	seconds_per_hour   = 60 * seconds_per_minute
+	seconds_per_day    = 24 * seconds_per_hour
+	seconds_per_week   = 7 * seconds_per_day
 	days_per_400_years = 365 * 400 + 97
 	days_per_100_years = 365 * 100 + 24
 	days_per_4_years   = 365 * 4 + 1
@@ -392,11 +392,11 @@ pub type Duration = i64
 
 pub const (
 	nanosecond  = Duration(1)
-	microsecond = Duration(1000 * time.nanosecond)
-	millisecond = Duration(1000 * time.microsecond)
-	second      = Duration(1000 * time.millisecond)
-	minute      = Duration(60 * time.second)
-	hour        = Duration(60 * time.minute)
+	microsecond = Duration(1000 * nanosecond)
+	millisecond = Duration(1000 * microsecond)
+	second      = Duration(1000 * millisecond)
+	minute      = Duration(60 * second)
+	hour        = Duration(60 * minute)
 	infinite    = Duration(-1)
 )
 
