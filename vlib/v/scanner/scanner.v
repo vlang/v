@@ -162,7 +162,7 @@ fn (mut s Scanner) new_token(tok_kind token.Kind, lit string, len int) token.Tok
 }
 
 [inline]
-fn (mut s Scanner) new_mulitline_token(tok_kind token.Kind, lit string, len int, start_line int) token.Token {
+fn (mut s Scanner) new_multiline_token(tok_kind token.Kind, lit string, len int, start_line int) token.Token {
 	cidx := s.tidx
 	s.tidx++
 	return token.Token{
@@ -983,7 +983,7 @@ fn (mut s Scanner) text_scan() token.Token {
 						if !comment.contains('\n') {
 							comment = '\x01' + comment
 						}
-						return s.new_mulitline_token(.comment, comment, comment.len + 4,
+						return s.new_multiline_token(.comment, comment, comment.len + 4,
 							start_line)
 					}
 					// Skip if not in fmt mode
