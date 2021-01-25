@@ -175,6 +175,39 @@ fn test_parse_expr() {
 	}
 }
 
+fn test_num_literals() {
+	inputs := [
+		'a := -1',
+		'b := -12.e17',
+		'c := -12.',
+		'd := -a',
+	]
+	table := table.new_table()
+	mut scope := &ast.Scope{
+		start_pos: 0
+		parent: 0
+	}
+	mut rhs_types := []string{}
+	for input in inputs {
+		stmt := parse_stmt(input, table, scope)
+		r := (stmt as ast.AssignStmt).right
+		match r[0] {
+			ast.IntegerLiteral { rhs_types << 'int literal' }
+			ast.FloatLiteral { rhs_types << 'float literal' }
+			ast.PrefixExpr { rhs_types << 'prefix expression' }
+			else { rhs_types << 'something else' }
+		}
+	}
+	mut rhs_type := rhs_types[0]
+	assert rhs_type == 'int literal'
+	rhs_type = rhs_types[1]
+	assert rhs_type == 'float literal'
+	rhs_type = rhs_types[2]
+	assert rhs_type == 'float literal'
+	rhs_type = rhs_types[3]
+	assert rhs_type == 'prefix expression'
+}
+
 /*
 table := &table.Table{}
 for s in text_expr {

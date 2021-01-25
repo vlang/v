@@ -199,11 +199,12 @@ const (
 fn ptr_win_get_error_msg(code u32) voidptr {
 	mut buf := voidptr(0)
 	// Check for code overflow
-	if code > u32(max_error_code) {
+	if code > u32(os.max_error_code) {
 		return buf
 	}
-	C.FormatMessage(format_message_allocate_buffer | format_message_from_system | format_message_ignore_inserts,
-		0, code, C.MAKELANGID(lang_neutral, sublang_default), voidptr(&buf), 0, 0)
+	C.FormatMessage(os.format_message_allocate_buffer | os.format_message_from_system | os.format_message_ignore_inserts,
+		0, code, C.MAKELANGID(os.lang_neutral, os.sublang_default), voidptr(&buf), 0,
+		0)
 	return buf
 }
 

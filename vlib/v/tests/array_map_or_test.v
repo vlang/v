@@ -94,7 +94,7 @@ fn test_propagation() {
 		17
 	}
 	n := get_arr_el_direct(0) or {
-		int(-73)
+		-73
 	}
 	assert testvar1 == -34
 	assert testvar2 == 99

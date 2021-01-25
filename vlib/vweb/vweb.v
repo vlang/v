@@ -106,7 +106,7 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 	}
 	sb.write(ctx.headers)
 	sb.write('\r\n')
-	sb.write(headers_close)
+	sb.write(vweb.headers_close)
 	if ctx.chunked_transfer {
 		mut i := 0
 		mut len := res.len
@@ -163,7 +163,7 @@ pub fn (mut ctx Context) redirect(url string) Result {
 		return Result{}
 	}
 	ctx.done = true
-	send_string(mut ctx.conn, 'HTTP/1.1 302 Found\r\nLocation: $url$ctx.headers\r\n$headers_close') or {
+	send_string(mut ctx.conn, 'HTTP/1.1 302 Found\r\nLocation: $url$ctx.headers\r\n$vweb.headers_close') or {
 		return Result{}
 	}
 	return Result{}
@@ -174,7 +174,7 @@ pub fn (mut ctx Context) not_found() Result {
 		return Result{}
 	}
 	ctx.done = true
-	send_string(mut ctx.conn, http_404) or { }
+	send_string(mut ctx.conn, vweb.http_404) or { }
 	return Result{}
 }
 
@@ -317,7 +317,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	vals := first_line.split(' ')
 	if vals.len < 2 {
 		println('no vals for http')
-		send_string(mut conn, http_500) or { }
+		send_string(mut conn, vweb.http_500) or { }
 		return
 	}
 	mut headers := []string{}
@@ -397,7 +397,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 		page_gen_start: page_gen_start
 	}
 	// }
-	if req.method in methods_with_form {
+	if req.method in vweb.methods_with_form {
 		if ct == 'multipart/form-data' {
 			app.parse_multipart_form(body, boundary)
 		} else {
@@ -420,7 +420,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	mime_type := app.static_mime_types[static_file_name]
 	if static_file != '' && mime_type != '' {
 		data := os.read_file(static_file) or {
-			send_string(mut conn, http_404) or { }
+			send_string(mut conn, vweb.http_404) or { }
 			return
 		}
 		app.send_response_to_client(mime_type, data)
@@ -516,7 +516,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 					for route_words_ in route_words_a {
 						// cannot move to line initialize line because of C error with map(it.filter(it != ''))
 						route_words := route_words_.filter(it != '')
-						if route_words.len == 1 && route_words[0] in methods_without_first {
+						if route_words.len == 1 && route_words[0] in vweb.methods_without_first {
 							req_method << route_words[0]
 						}
 						if url_words.len == route_words.len
@@ -581,7 +581,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	}
 	if action == '' {
 		// site not found
-		send_string(mut conn, http_404) or { }
+		send_string(mut conn, vweb.http_404) or { }
 		return
 	}
 	$for method in T.methods {
@@ -600,7 +600,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 }
 
 pub fn (mut ctx Context) parse_form(s string) {
-	if ctx.req.method !in methods_with_form {
+	if ctx.req.method !in vweb.methods_with_form {
 		return
 	}
 	// pos := s.index('\r\n\r\n')
@@ -630,7 +630,7 @@ pub fn (mut ctx Context) parse_form(s string) {
 
 [manualfree]
 pub fn (mut ctx Context) parse_multipart_form(s string, b string) {
-	if ctx.req.method !in methods_with_form {
+	if ctx.req.method !in vweb.methods_with_form {
 		return
 	}
 	a := s.split('$b')[1..]
@@ -696,8 +696,8 @@ fn (mut ctx Context) scan_static_directory(directory_path string, mount_path str
 				ext := os.file_ext(file)
 				// Rudimentary guard against adding files not in mime_types.
 				// Use serve_static directly to add non-standard mime types.
-				if ext in mime_types {
-					ctx.serve_static(mount_path + '/' + file, full_path, mime_types[ext])
+				if ext in vweb.mime_types {
+					ctx.serve_static(mount_path + '/' + file, full_path, vweb.mime_types[ext])
 				}
 			}
 		}

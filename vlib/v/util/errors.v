@@ -47,14 +47,14 @@ pub fn (e &EManager) set_support_color(b bool) {
 }
 
 pub fn bold(msg string) string {
-	if !emanager.support_color {
+	if !util.emanager.support_color {
 		return msg
 	}
 	return term.bold(msg)
 }
 
 fn color(kind string, msg string) string {
-	if !emanager.support_color {
+	if !util.emanager.support_color {
 		return msg
 	}
 	if kind.contains('error') {
@@ -112,8 +112,8 @@ pub fn source_context(kind string, source string, column int, pos token.Position
 		return clines
 	}
 	source_lines := source.split_into_lines()
-	bline := imax(0, pos.line_nr - error_context_before)
-	aline := imax(0, imin(source_lines.len - 1, pos.line_nr + error_context_after))
+	bline := imax(0, pos.line_nr - util.error_context_before)
+	aline := imax(0, imin(source_lines.len - 1, pos.line_nr + util.error_context_after))
 	tab_spaces := '    '
 	for iline := bline; iline <= aline; iline++ {
 		sline := source_lines[iline]

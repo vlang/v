@@ -728,19 +728,19 @@ pub fn (t &Table) mktyp(typ Type) Type {
 	}
 }
 
-pub fn (mut table Table) register_fn_gen_type(fn_name string, types []Type) {
-	mut a := table.fn_gen_types[fn_name]
+pub fn (mut mytable Table) register_fn_gen_type(fn_name string, types []Type) {
+	mut a := mytable.fn_gen_types[fn_name]
 	if types in a {
 		return
 	}
 	a << types
-	table.fn_gen_types[fn_name] = a
+	mytable.fn_gen_types[fn_name] = a
 }
 
 // TODO: there is a bug when casting sumtype the other way if its pointer
 // so until fixed at least show v (not C) error `x(variant) =  y(SumType*)`
-pub fn (table &Table) sumtype_has_variant(parent Type, variant Type) bool {
-	parent_sym := table.get_type_symbol(parent)
+pub fn (mytable &Table) sumtype_has_variant(parent Type, variant Type) bool {
+	parent_sym := mytable.get_type_symbol(parent)
 	if parent_sym.kind == .sum_type {
 		parent_info := parent_sym.info as SumType
 		for v in parent_info.variants {
@@ -752,14 +752,14 @@ pub fn (table &Table) sumtype_has_variant(parent Type, variant Type) bool {
 	return false
 }
 
-pub fn (table &Table) known_type_names() []string {
+pub fn (mytable &Table) known_type_names() []string {
 	mut res := []string{}
-	for _, idx in table.type_idxs {
+	for _, idx in mytable.type_idxs {
 		// Skip `int_literal_type_idx` and `float_literal_type_idx` because they shouldn't be visible to the User.
 		if idx in [0, int_literal_type_idx, float_literal_type_idx] {
 			continue
 		}
-		res << table.type_to_str(idx)
+		res << mytable.type_to_str(idx)
 	}
 	return res
 }
@@ -767,11 +767,11 @@ pub fn (table &Table) known_type_names() []string {
 // has_deep_child_no_ref returns true if type is struct and has any child or nested child with the type of the given name
 // the given name consists of module and name (`mod.Name`)
 // it doesn't care about childs that are references
-pub fn (table &Table) has_deep_child_no_ref(ts &TypeSymbol, name string) bool {
+pub fn (mytable &Table) has_deep_child_no_ref(ts &TypeSymbol, name string) bool {
 	if ts.info is Struct {
 		for _, field in ts.info.fields {
-			sym := table.get_type_symbol(field.typ)
-			if !field.typ.is_ptr() && (sym.name == name || table.has_deep_child_no_ref(sym, name)) {
+			sym := mytable.get_type_symbol(field.typ)
+			if !field.typ.is_ptr() && (sym.name == name || mytable.has_deep_child_no_ref(sym, name)) {
 				return true
 			}
 		}

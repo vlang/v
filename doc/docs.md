@@ -1679,8 +1679,8 @@ const (
 	world = '世界'
 )
 
-println(pi)
-println(world)
+println(main.pi)
+println(main.world)
 ```
 
 Constants are declared with `const`. They can only be defined

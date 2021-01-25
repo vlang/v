@@ -360,7 +360,7 @@ fn (mut ws Client) send_control_frame(code OPCode, frame_typ string, payload []b
 	header_len := if ws.is_server { 2 } else { 6 }
 	frame_len := header_len + payload.len
 	mut control_frame := []byte{len: frame_len}
-	mut masking_key := if !ws.is_server { create_masking_key() } else { empty_bytearr }
+	mut masking_key := if !ws.is_server { create_masking_key() } else { websocket.empty_bytearr }
 	defer {
 		unsafe {
 			control_frame.free()

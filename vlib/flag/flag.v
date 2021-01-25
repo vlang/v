@@ -50,7 +50,7 @@ pub const (
 pub fn new_flag_parser(args []string) &FlagParser {
 	return &FlagParser{
 		args: args.clone()
-		max_free_args: max_args_number
+		max_free_args: flag.max_args_number
 	}
 }
 
@@ -303,8 +303,8 @@ pub fn (mut fs FlagParser) string(name string, abbr byte, sdefault string, usage
 }
 
 pub fn (mut fs FlagParser) limit_free_args_to_at_least(n int) {
-	if n > max_args_number {
-		panic('flag.limit_free_args_to_at_least expect n to be smaller than $max_args_number')
+	if n > flag.max_args_number {
+		panic('flag.limit_free_args_to_at_least expect n to be smaller than $flag.max_args_number')
 	}
 	if n <= 0 {
 		panic('flag.limit_free_args_to_at_least expect n to be a positive number')
@@ -313,8 +313,8 @@ pub fn (mut fs FlagParser) limit_free_args_to_at_least(n int) {
 }
 
 pub fn (mut fs FlagParser) limit_free_args_to_exactly(n int) {
-	if n > max_args_number {
-		panic('flag.limit_free_args_to_exactly expect n to be smaller than $max_args_number')
+	if n > flag.max_args_number {
+		panic('flag.limit_free_args_to_exactly expect n to be smaller than $flag.max_args_number')
 	}
 	if n < 0 {
 		panic('flag.limit_free_args_to_exactly expect n to be a non negative number')
@@ -340,7 +340,7 @@ pub fn (mut fs FlagParser) arguments_description(description string) {
 // collect all given information and
 pub fn (fs FlagParser) usage() string {
 	positive_min_arg := (fs.min_free_args > 0)
-	positive_max_arg := (fs.max_free_args > 0 && fs.max_free_args != max_args_number)
+	positive_max_arg := (fs.max_free_args > 0 && fs.max_free_args != flag.max_args_number)
 	no_arguments := (fs.min_free_args == 0 && fs.max_free_args == 0)
 	mut adesc := if fs.args_description.len > 0 { fs.args_description } else { '[ARGS]' }
 	if no_arguments {
@@ -349,7 +349,7 @@ pub fn (fs FlagParser) usage() string {
 	mut use := ''
 	if fs.application_version != '' {
 		use += '$fs.application_name $fs.application_version\n'
-		use += '$underline\n'
+		use += '$flag.underline\n'
 	}
 	use += 'Usage: $fs.application_name [options] $adesc\n'
 	use += '\n'
@@ -394,10 +394,10 @@ pub fn (fs FlagParser) usage() string {
 			}
 			option_names := '  ' + onames.join(', ')
 			mut xspace := ''
-			if option_names.len > space.len - 2 {
-				xspace = '\n$space'
+			if option_names.len > flag.space.len - 2 {
+				xspace = '\n$flag.space'
 			} else {
-				xspace = space[option_names.len..]
+				xspace = flag.space[option_names.len..]
 			}
 			use += '$option_names$xspace$f.usage\n'
 		}
