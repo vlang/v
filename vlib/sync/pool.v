@@ -51,7 +51,7 @@ mut:
 	items           []voidptr
 	results         []voidptr
 	ntask           int // writing to this should be locked by ntask_mtx.
-	ntask_mtx       &Mutex
+	ntask_mtx       Mutex
 	waitgroup       &WaitGroup
 	shared_context  voidptr
 	thread_contexts []voidptr

@@ -6,7 +6,7 @@ module sync
 [ref_only]
 struct Waiter{
 mut:
-	mx &Mutex
+	mx Mutex
 }
 
 pub fn (mut w Waiter) wait() {

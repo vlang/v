@@ -571,7 +571,7 @@ fn (mut g Gen) find_or_register_shared(t table.Type, base string) string {
 		return sh_typ
 	}
 	mtx_typ := 'sync__RwMutex'
-	g.shared_types.writeln('struct $sh_typ { $base val; $mtx_typ* mtx; };')
+	g.shared_types.writeln('struct $sh_typ { $base val; $mtx_typ mtx; };')
 	g.typedefs2.writeln('typedef struct $sh_typ $sh_typ;')
 	// println('registered shared type $sh_typ')
 	g.shareds << t_idx
@@ -2793,7 +2793,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.PostfixExpr {
 			if node.auto_locked != '' {
-				g.writeln('sync__RwMutex_w_lock($node.auto_locked->mtx);')
+				g.writeln('sync__RwMutex_w_lock(&$node.auto_locked->mtx);')
 			}
 			g.inside_map_postfix = true
 			g.expr(node.expr)
@@ -2801,7 +2801,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.write(node.op.str())
 			if node.auto_locked != '' {
 				g.writeln(';')
-				g.write('sync__RwMutex_w_unlock($node.auto_locked->mtx)')
+				g.write('sync__RwMutex_w_unlock(&$node.auto_locked->mtx)')
 			}
 		}
 		ast.PrefixExpr {
@@ -3052,7 +3052,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	// string + string, string == string etc
 	// g.infix_op = node.op
 	if node.auto_locked != '' {
-		g.writeln('sync__RwMutex_w_lock($node.auto_locked->mtx);')
+		g.writeln('sync__RwMutex_w_lock(&$node.auto_locked->mtx);')
 	}
 	left_type := g.unwrap_generic(node.left_type)
 	left_sym := g.table.get_type_symbol(left_type)
@@ -3442,7 +3442,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	}
 	if node.auto_locked != '' {
 		g.writeln(';')
-		g.write('sync__RwMutex_w_unlock($node.auto_locked->mtx)')
+		g.write('sync__RwMutex_w_unlock(&$node.auto_locked->mtx)')
 	}
 }
 
@@ -3453,7 +3453,7 @@ fn (mut g Gen) lock_expr(node ast.LockExpr) {
 		deref := if id.is_mut { '->' } else { '.' }
 		lock_prefix := if node.is_rlock { `r` } else { `w` }
 		lock_prefixes << lock_prefix // keep for unlock
-		g.writeln('sync__RwMutex_${lock_prefix:c}_lock($name${deref}mtx);')
+		g.writeln('sync__RwMutex_${lock_prefix:c}_lock(&$name${deref}mtx);')
 	}
 	g.stmts(node.stmts)
 	// unlock in reverse order
@@ -3462,7 +3462,7 @@ fn (mut g Gen) lock_expr(node ast.LockExpr) {
 		lock_prefix := lock_prefixes[i]
 		name := id.name
 		deref := if id.is_mut { '->' } else { '.' }
-		g.writeln('sync__RwMutex_${lock_prefix:c}_unlock($name${deref}mtx);')
+		g.writeln('sync__RwMutex_${lock_prefix:c}_unlock(&$name${deref}mtx);')
 	}
 }
 

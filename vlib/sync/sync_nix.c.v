@@ -12,17 +12,14 @@ $if macos {
 #include <semaphore.h>
 
 // [init_with=new_mutex] // TODO: implement support for this struct attribute, and disallow Mutex{} from outside the sync.new_mutex() function.
-[ref_only]
 pub struct Mutex {
 	mutex C.pthread_mutex_t
 }
 
-[ref_only]
 pub struct RwMutex {
 	mutex C.pthread_rwlock_t
 }
 
-[ref_only]
 struct RwMutexAttr {
 	attr C.pthread_rwlockattr_t
 }
@@ -44,15 +41,15 @@ mut:
 	sem voidptr
 }
 
-pub fn new_mutex() &Mutex {
-	m := &Mutex{}
+pub fn new_mutex() Mutex {
+	m := Mutex{}
 	C.pthread_mutex_init(&m.mutex, C.NULL)
 	return m
 }
 
-pub fn new_rwmutex() &RwMutex {
-	m := &RwMutex{}
-	a := &RwMutexAttr{}
+pub fn new_rwmutex() RwMutex {
+	m := RwMutex{}
+	a := RwMutexAttr{}
 	C.pthread_rwlockattr_init(&a.attr)
 	// Give writer priority over readers
 	C.pthread_rwlockattr_setkind_np(&a.attr, C.PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP)

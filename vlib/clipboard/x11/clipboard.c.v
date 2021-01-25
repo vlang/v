@@ -144,7 +144,7 @@ mut:
 	selection C.Atom // the selection atom
 	window    C.Window
 	atoms     []C.Atom
-	mutex     &sync.Mutex
+	mutex     sync.Mutex
 	text      string // text data sent or received
 	got_text  bool   // used to confirm that we have got the text
 	is_owner  bool   // to save selection owner state
