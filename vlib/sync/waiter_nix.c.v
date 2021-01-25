@@ -6,18 +6,17 @@ module sync
 [ref_only]
 struct Waiter{
 mut:
-	sem C.sem_t
+	mx Mutex
 }
 
 pub fn (mut w Waiter) wait() {
-	unsafe { C.sem_wait(&w.sem) }
+	w.mx.m_lock()
 }
 
 pub fn (mut w Waiter) stop() {
-	unsafe { C.sem_post(&w.sem) }
+	w.mx.unlock()
 }
 pub fn new_waiter() &Waiter {
-	w := &Waiter{}
-	unsafe { C.sem_init(&w.sem, 0, 1) }
+	w := &Waiter{mx: new_mutex()}
 	return w
 }
