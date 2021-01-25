@@ -2408,7 +2408,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					mut is_large := right.val.len > 13
 					if !is_large && right.val.len > 8 {
 						val := right.val.i64()
-						is_large = val > checker.int_max || val < checker.int_min
+						is_large = val > int_max || val < int_min
 					}
 					if is_large {
 						c.error('overflow in implicit type `int`, use explicit type casting instead',
@@ -5280,42 +5280,21 @@ fn (mut c Checker) post_process_generic_fns() {
 	// Loop thru each generic function concrete type.
 	// Check each specific fn instantiation.
 
-	// for i in 0 .. c.file.generic_fns.len {
-	// 	if c.table.fn_gen_types.len == 0 {
-	// 		// no concrete types, so just skip:
-	// 		continue
-	// 	}
-	// 	mut node := c.file.generic_fns[i]
-	// 	c.mod = node.mod
-	// 	for gen_types in c.table.fn_gen_types[node.name] {
-	// 		c.cur_generic_types = gen_types
-	// 		c.fn_decl(mut node)
-	// 		if node.name in ['vweb.run_app', 'vweb.run'] {
-	// 			c.vweb_gen_types << gen_types
-	// 		}
-	// 	}
-	// 	c.cur_generic_types = []
-	// }
-	for node in c.file.stmts {
-		match mut node {
-			ast.FnDecl {
-				if c.table.fn_gen_types.len == 0 {
-					// no concrete types, so just skip:
-					continue
-				}
-				// mut node := c.file.generic_fns[i]
-				c.mod = node.mod
-				for gen_types in c.table.fn_gen_types[node.name] {
-					c.cur_generic_types = gen_types
-					c.fn_decl(mut node)
-					if node.name in ['vweb.run_app', 'vweb.run'] {
-						c.vweb_gen_types << gen_types
-					}
-				}
-				c.cur_generic_types = []
-			}
-			else {}
+	for i in 0 .. c.file.generic_fns.len {
+		if c.table.fn_gen_types.len == 0 {
+			// no concrete types, so just skip:
+			continue
 		}
+		mut node := c.file.generic_fns[i]
+		c.mod = node.mod
+		for gen_types in c.table.fn_gen_types[node.name] {
+			c.cur_generic_types = gen_types
+			c.fn_decl(mut node)
+			if node.name in ['vweb.run_app', 'vweb.run'] {
+				c.vweb_gen_types << gen_types
+			}
+		}
+		c.cur_generic_types = []
 	}
 }
 
