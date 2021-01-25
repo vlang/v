@@ -5,8 +5,13 @@ module mod1
 
 #include "header.h"
 
-fn C.cadd(int,int) int
+struct C.MyStruct {
+	UppercaseField int
+}
+
+fn C.cadd(int, int) int
 
 pub fn vadd(a int, b int) int {
-	return 1000 + C.cadd(a,b)
+	x := C.MyStruct{ 100 }
+	return 900 + x.UppercaseField + C.cadd(a, b)
 }
