@@ -1,0 +1,12 @@
+struct Abc {
+	x int
+}
+
+fn (s Abc) import(name string) {
+	println(name)
+}
+
+fn main() {
+	s := Abc{}
+	s.import('lib')
+}
