@@ -1285,21 +1285,16 @@ pub fn (mut f Fmt) sql_expr(node ast.SqlExpr) {
 	f.write('sql ')
 	f.expr(node.db_expr)
 	f.writeln(' {')
-	f.write('\t')
-	f.write('select ')
-	esym := f.table.get_type_symbol(node.table_expr.typ)
-	table_name := util.strip_mod_name(esym.name)
+	f.write('\tselect ')
+	table_name := util.strip_mod_name(f.table.get_type_symbol(node.table_expr.typ).name)
 	if node.is_count {
 		f.write('count ')
 	} else {
-		if node.fields.len > 0 {
-			for tfi, tf in node.fields {
-				f.write(tf.name)
-				if tfi < node.fields.len - 1 {
-					f.write(', ')
-				}
+		for i, fd in node.fields {
+			f.write(fd.name)
+			if i < node.fields.len - 1 {
+				f.write(', ')
 			}
-			f.write(' ')
 		}
 	}
 	f.write('from $table_name')
@@ -2349,12 +2344,13 @@ pub fn (mut f Fmt) sql_stmt(node ast.SqlStmt) {
 	f.expr(node.db_expr)
 	f.writeln(' {')
 	table_name := util.strip_mod_name(f.table.get_type_symbol(node.table_expr.typ).name)
+	f.write('\t')
 	match node.kind {
 		.insert {
-			f.writeln('\tinsert $node.object_var_name into $table_name')
+			f.writeln('insert $node.object_var_name into $table_name')
 		}
 		.update {
-			f.write('\tupdate $table_name set ')
+			f.write('update $table_name set ')
 			for i, col in node.updated_columns {
 				f.write('$col = ')
 				f.expr(node.update_exprs[i])
@@ -2370,7 +2366,7 @@ pub fn (mut f Fmt) sql_stmt(node ast.SqlStmt) {
 			f.writeln('')
 		}
 		.delete {
-			f.write('\tdelete from $table_name where ')
+			f.write('delete from $table_name where ')
 			f.expr(node.where_expr)
 			f.writeln('')
 		}
