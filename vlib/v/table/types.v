@@ -651,8 +651,9 @@ pub mut:
 
 pub struct Interface {
 pub mut:
-	types  []Type
-	fields []Field
+	types   []Type
+	fields  []Field
+	methods []Fn
 }
 
 pub struct Enum {
@@ -985,4 +986,13 @@ pub fn (s Struct) get_field(name string) Field {
 		return field
 	}
 	panic('unknown field `$name`')
+}
+
+pub fn (i Interface) defines_method(name string) bool {
+	for method in i.methods {
+		if method.name == name {
+			return true
+		}
+	}
+	return false
 }

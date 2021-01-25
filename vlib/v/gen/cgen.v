@@ -2953,7 +2953,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		g.writeln('(*($opt_base_typ*)')
 	}
 	if sym.kind == .interface_ {
-		g.write('*(')
+		g.write('(*(')
 	}
 	if sym.kind == .array_fixed {
 		assert node.field_name == 'len'
@@ -3032,7 +3032,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		g.write('$sum_type_dot$sum_type_deref_field)')
 	}
 	if sym.kind == .interface_ {
-		g.write(')')
+		g.write('))')
 	}
 }
 
@@ -5932,7 +5932,7 @@ fn (mut g Gen) interface_table() string {
 		methods_struct_def.writeln('$methods_struct_name {')
 		mut imethods := map[string]string{} // a map from speak -> _Speaker_speak_fn
 		mut methodidx := map[string]int{}
-		for k, method in ityp.methods {
+		for k, method in inter_info.methods {
 			methodidx[method.name] = k
 			typ_name := '_${interface_name}_${method.name}_fn'
 			ret_styp := g.typ(method.return_type)

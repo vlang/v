@@ -343,7 +343,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	typ_sym := g.table.get_type_symbol(g.unwrap_generic(node.receiver_type))
 	// mut receiver_type_name := util.no_dots(typ_sym.name)
 	mut receiver_type_name := util.no_dots(g.cc_type2(g.unwrap_generic(node.receiver_type)))
-	if typ_sym.kind == .interface_ {
+	if typ_sym.kind == .interface_ && (typ_sym.info as table.Interface).defines_method(node.name) {
 		// Speaker_name_table[s._interface_idx].speak(s._object)
 		$if debug_interface_method_call ? {
 			eprintln('>>> interface typ_sym.name: $typ_sym.name | receiver_type_name: $receiver_type_name')

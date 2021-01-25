@@ -453,6 +453,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	}
 	typ := table.new_type(reg_idx)
 	mut ts := p.table.get_type_symbol(typ)
+	mut info := ts.info as table.Interface
 	// if methods were declared before, it's an error, ignore them
 	ts.methods = []table.Fn{cap: 20}
 	// Parse fields or methods
@@ -470,7 +471,6 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			is_mut = true
 		}
 		if p.peek_tok.kind == .lpar {
-			ts = p.table.get_type_symbol(typ) // removing causes memory bug visible by `v -silent test-fmt`
 			method_start_pos := p.tok.position()
 			line_nr := p.tok.line_nr
 			name := p.check_name()
@@ -511,13 +511,15 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			method.next_comments = mnext_comments
 			methods << method
 			// println('register method $name')
-			ts.register_method(
+			tmethod := table.Fn{
 				name: name
 				params: args
 				return_type: method.return_type
 				is_variadic: is_variadic
 				is_pub: true
-			)
+			}
+			ts.register_method(tmethod)
+			info.methods << tmethod
 		} else {
 			// interface fields
 			field_pos := p.tok.position()
@@ -540,16 +542,15 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 				comments: comments
 				is_public: true
 			}
-			mut info := ts.info as table.Interface
 			info.fields << table.Field{
 				name: field_name
 				typ: field_typ
 				is_pub: true
 				is_mut: is_mut
 			}
-			ts.info = info
 		}
 	}
+	ts.info = info
 	p.top_level_statement_end()
 	p.check(.rcbr)
 	pos.update_last_line(p.prev_tok.line_nr)
