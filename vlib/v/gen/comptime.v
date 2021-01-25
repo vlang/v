@@ -298,8 +298,7 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 		methods_with_attrs := sym.methods.filter(it.attrs.len > 0) // methods with attrs second
 		methods << methods_with_attrs
 		if methods.len > 0 {
-			g.writeln('\tFunctionData $node.val_var;')
-			g.writeln('\tmemset(&$node.val_var, 0, sizeof(FunctionData));')
+			g.writeln('\tFunctionData $node.val_var = {0};')
 		}
 		for method in methods { // sym.methods {
 			/*
@@ -372,8 +371,7 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 			fields_with_attrs := sym.info.fields.filter(it.attrs.len > 0)
 			fields << fields_with_attrs
 			if fields.len > 0 {
-				g.writeln('\tFieldData $node.val_var;')
-				g.writeln('\tmemset(&$node.val_var, 0, sizeof(FieldData));')
+				g.writeln('\tFieldData $node.val_var = {0};')
 			}
 			for field in fields {
 				g.comp_for_field_var = node.val_var
