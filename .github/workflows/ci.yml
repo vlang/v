@@ -204,7 +204,7 @@ jobs:
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
       - name: Self tests
-        run: VJOBS=1 ./v test-self
+        run: VJOBS=1 VTEST_SHOW_START=1 ./v test-self
       #  run: VJOBS=1 ./v -silent test-self
       - name: Build examples
         run: ./v build-examples
