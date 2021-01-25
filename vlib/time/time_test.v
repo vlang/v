@@ -83,17 +83,17 @@ fn test_unix() {
 }
 
 fn test_format_ss() {
-	assert '11.07.1980 21:23:42' == time_to_test.get_fmt_str(.dot, .hhmmss24, .ddmmyyyy)
+	assert '11.07.1980 21:23:42' == main.time_to_test.get_fmt_str(.dot, .hhmmss24, .ddmmyyyy)
 }
 
 fn test_format_ss_milli() {
-	assert '11.07.1980 21:23:42.123' == time_to_test.get_fmt_str(.dot, .hhmmss24_milli, .ddmmyyyy)
-	assert '1980-07-11 21:23:42.123' == time_to_test.format_ss_milli()
+	assert '11.07.1980 21:23:42.123' == main.time_to_test.get_fmt_str(.dot, .hhmmss24_milli, .ddmmyyyy)
+	assert '1980-07-11 21:23:42.123' == main.time_to_test.format_ss_milli()
 }
 
 fn test_format_ss_micro() {
-	assert '11.07.1980 21:23:42.123456' == time_to_test.get_fmt_str(.dot, .hhmmss24_micro, .ddmmyyyy)
-	assert '1980-07-11 21:23:42.123456' == time_to_test.format_ss_micro()
+	assert '11.07.1980 21:23:42.123456' == main.time_to_test.get_fmt_str(.dot, .hhmmss24_micro, .ddmmyyyy)
+	assert '1980-07-11 21:23:42.123456' == main.time_to_test.format_ss_micro()
 }
 
 fn test_smonth() {
@@ -153,12 +153,12 @@ fn test_add() {
 	d_seconds := 3
 	d_microseconds := 13
 	duration := time.Duration(d_seconds * time.second + d_microseconds * time.microsecond)
-	t1 := time_to_test
-	t2 := time_to_test.add(duration)
+	t1 := main.time_to_test
+	t2 := main.time_to_test.add(duration)
 	assert t2.second == t1.second + d_seconds
 	assert t2.microsecond == t1.microsecond + d_microseconds
 	assert t2.unix == t1.unix + u64(d_seconds)
-	t3 := time_to_test.add(-duration)
+	t3 := main.time_to_test.add(-duration)
 	assert t3.second == t1.second - d_seconds
 	assert t3.microsecond == t1.microsecond - d_microseconds
 	assert t3.unix == t1.unix - u64(d_seconds)
@@ -166,13 +166,13 @@ fn test_add() {
 
 fn test_add_days() {
 	num_of_days := 3
-	t := time_to_test.add_days(num_of_days)
-	assert t.day == time_to_test.day + num_of_days
-	assert t.unix == time_to_test.unix + 86400 * u64(num_of_days)
+	t := main.time_to_test.add_days(num_of_days)
+	assert t.day == main.time_to_test.day + num_of_days
+	assert t.unix == main.time_to_test.unix + 86400 * u64(num_of_days)
 }
 
 fn test_str() {
-	assert '1980-07-11 21:23:42' == time_to_test.str()
+	assert '1980-07-11 21:23:42' == main.time_to_test.str()
 }
 
 // not optimal test but will find obvious bugs

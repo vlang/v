@@ -6,8 +6,8 @@ module table
 import v.cflag
 
 // check if cflag is in table
-fn (table &Table) has_cflag(flag cflag.CFlag) bool {
-	for cf in table.cflags {
+fn (mytable &Table) has_cflag(flag cflag.CFlag) bool {
+	for cf in mytable.cflags {
 		if cf.os == flag.os && cf.name == flag.name && cf.value == flag.value {
 			return true
 		}
@@ -17,7 +17,7 @@ fn (table &Table) has_cflag(flag cflag.CFlag) bool {
 
 // parse the flags to (table.cflags) []CFlag
 // Note: clean up big time (joe-c)
-pub fn (mut table Table) parse_cflag(cflg string, mod string, ctimedefines []string) ?bool {
+pub fn (mut mytable Table) parse_cflag(cflg string, mod string, ctimedefines []string) ?bool {
 	allowed_flags := ['framework', 'library', 'Wa', 'Wl', 'Wp', 'I', 'l', 'L']
 	flag_orig := cflg.trim_space()
 	mut flag := flag_orig
@@ -78,8 +78,8 @@ pub fn (mut table Table) parse_cflag(cflg string, mod string, ctimedefines []str
 			name: name
 			value: value
 		}
-		if !table.has_cflag(cf) {
-			table.cflags << cf
+		if !mytable.has_cflag(cf) {
+			mytable.cflags << cf
 		}
 		if index == -1 {
 			break

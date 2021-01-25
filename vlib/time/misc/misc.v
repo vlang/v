@@ -9,5 +9,5 @@ const (
 
 // random returns a random time struct in *the past*.
 pub fn random() time.Time {
-	return time.unix(int(rand.u64n(start_time_unix)))
+	return time.unix(int(rand.u64n(misc.start_time_unix)))
 }

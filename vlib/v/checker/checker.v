@@ -203,43 +203,18 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 	}
 }
 
-const (
-	no_pub_in_main_warning = 'in module main cannot be declared public'
-)
-
 // do checks specific to files in main module
 // returns `true` if a main function is in the file
 fn (mut c Checker) check_file_in_main(file ast.File) bool {
 	mut has_main_fn := false
 	for stmt in file.stmts {
 		match stmt {
-			ast.ConstDecl {
-				if stmt.is_pub {
-					c.warn('const $checker.no_pub_in_main_warning', stmt.pos)
-				}
-			}
-			/*
-			// TODO not a Stmt
-			ast.ConstField {
-				if stmt.is_pub {
-					c.warn('const field `$stmt.name` $no_pub_in_main_warning', stmt.pos)
-				}
-			}
-			*/
-			ast.EnumDecl {
-				if stmt.is_pub {
-					c.warn('enum `$stmt.name` $checker.no_pub_in_main_warning', stmt.pos)
-				}
-			}
 			ast.FnDecl {
 				if stmt.name == 'main.main' {
 					if has_main_fn {
 						c.error('function `main` is already defined', stmt.pos)
 					}
 					has_main_fn = true
-					if stmt.is_pub {
-						c.error('function `main` cannot be declared public', stmt.pos)
-					}
 					if stmt.params.len > 0 {
 						c.error('function `main` cannot have arguments', stmt.pos)
 					}
@@ -256,10 +231,6 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 								stmt.pos)
 						}
 					}
-					if stmt.is_pub && !stmt.is_method {
-						c.warn('function `$stmt.name` $checker.no_pub_in_main_warning',
-							stmt.pos)
-					}
 				}
 				if stmt.return_type != table.void_type {
 					for attr in stmt.attrs {
@@ -268,29 +239,6 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 								stmt.pos)
 							break
 						}
-					}
-				}
-			}
-			ast.StructDecl {
-				if stmt.is_pub {
-					c.warn('struct `$stmt.name` $checker.no_pub_in_main_warning', stmt.pos)
-				}
-			}
-			ast.TypeDecl {
-				if stmt is ast.AliasTypeDecl {
-					if stmt.is_pub {
-						c.warn('type alias `$stmt.name` $checker.no_pub_in_main_warning',
-							stmt.pos)
-					}
-				} else if stmt is ast.SumTypeDecl {
-					if stmt.is_pub {
-						c.warn('sum type `$stmt.name` $checker.no_pub_in_main_warning',
-							stmt.pos)
-					}
-				} else if stmt is ast.FnTypeDecl {
-					if stmt.is_pub {
-						c.warn('type alias `$stmt.name` $checker.no_pub_in_main_warning',
-							stmt.pos)
 					}
 				}
 			}
@@ -4885,7 +4833,7 @@ fn (mut c Checker) check_index(typ_sym &table.TypeSymbol, index ast.Expr, index_
 			c.error('$type_str', pos)
 		}
 		if index is ast.IntegerLiteral {
-			if index.val.starts_with('-')  {
+			if index.val.starts_with('-') {
 				c.error('invalid index `$index.val` (index must be non-negative)', index.pos)
 			}
 		}

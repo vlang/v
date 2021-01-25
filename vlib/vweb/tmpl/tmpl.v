@@ -58,7 +58,7 @@ footer := \' \' // TODO remove
 _ = footer
 
 ")
-	s.write(str_start)
+	s.write(tmpl.str_start)
 	mut state := State.html
 	mut in_span := false
 	// for _line in lines {
@@ -99,23 +99,23 @@ _ = footer
 			s.write(line[pos + 6..line.len - 1])
 			s.writeln('" rel="stylesheet" type="text/css">')
 		} else if line.contains('@if ') {
-			s.writeln(str_end)
+			s.writeln(tmpl.str_end)
 			pos := line.index('@if') or { continue }
 			s.writeln('if ' + line[pos + 4..] + '{')
-			s.writeln(str_start)
+			s.writeln(tmpl.str_start)
 		} else if line.contains('@end') {
-			s.writeln(str_end)
+			s.writeln(tmpl.str_end)
 			s.writeln('}')
-			s.writeln(str_start)
+			s.writeln(tmpl.str_start)
 		} else if line.contains('@else') {
-			s.writeln(str_end)
+			s.writeln(tmpl.str_end)
 			s.writeln(' } else { ')
-			s.writeln(str_start)
+			s.writeln(tmpl.str_start)
 		} else if line.contains('@for') {
-			s.writeln(str_end)
+			s.writeln(tmpl.str_end)
 			pos := line.index('@for') or { continue }
 			s.writeln('for ' + line[pos + 4..] + '{')
-			s.writeln(str_start)
+			s.writeln(tmpl.str_start)
 		} else if state == .html && line.contains('span.') && line.ends_with('{') {
 			// `span.header {` => `<span class='header'>`
 			class := line.find_between('span.', '{').trim_space()
@@ -142,7 +142,7 @@ _ = footer
 			s.writeln(line.replace('@', '$').replace("'", '"'))
 		}
 	}
-	s.writeln(str_end)
+	s.writeln(tmpl.str_end)
 	s.writeln('_tmpl_res_$fn_name := sb.str() ')
 	s.writeln('}')
 	s.writeln('// === end of vweb html template ===')

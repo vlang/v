@@ -393,7 +393,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 					exit(1)
 				}
 				if arg[0] == `-` {
-					if arg[1..] in list_of_flags_with_param {
+					if arg[1..] in pref.list_of_flags_with_param {
 						// skip parameter
 						i++
 						continue

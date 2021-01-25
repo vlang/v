@@ -107,7 +107,11 @@ typedef int (*qsort_callback_func)(const void*, const void*);
 		#define __has_attribute(x) 0  // Compatibility with non-clang compilers.
 	#endif
 	#if (defined(__GNUC__) && (__GNUC__ >= 4)) || (defined(__clang__) && __has_attribute(visibility))
-		#define VV_EXPORTED_SYMBOL extern __attribute__ ((visibility ("default")))
+		#ifdef ARM
+			#define VV_EXPORTED_SYMBOL  extern __attribute__((externally_visible,visibility("default")))
+		#else
+			#define VV_EXPORTED_SYMBOL  extern __attribute__((visibility("default")))
+		#endif
 		#define VV_LOCAL_SYMBOL  __attribute__ ((visibility ("hidden")))
 	#else
 		#define VV_EXPORTED_SYMBOL extern
