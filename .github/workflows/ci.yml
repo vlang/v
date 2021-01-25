@@ -71,7 +71,7 @@ jobs:
     runs-on: ubuntu-20.04
     timeout-minutes: 30
     env:
-      VFLAGS: -cc tcc
+      VFLAGS: -cc tcc -no-retry-compilation
     steps:
       - uses: actions/checkout@v2
       - name: Install dependencies
@@ -639,7 +639,7 @@ jobs:
     runs-on: windows-2019
     timeout-minutes: 30
     env:
-      VFLAGS: -cc tcc
+      VFLAGS: -cc tcc -no-retry-compilation
     steps:
       - uses: actions/checkout@v2
       - name: Build with make.bat -tcc

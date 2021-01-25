@@ -131,10 +131,10 @@ fn (vd VDoc) render_search_index(out Output) {
 
 fn (mut vd VDoc) render_static_html(out Output) {
 	vd.assets = {
-		'doc_css':       vd.get_resource(main.css_js_assets[0], out)
-		'normalize_css': vd.get_resource(main.css_js_assets[1], out)
-		'doc_js':        vd.get_resource(main.css_js_assets[2], out)
-		'dark_mode_js':  vd.get_resource(main.css_js_assets[3], out)
+		'doc_css':       vd.get_resource(css_js_assets[0], out)
+		'normalize_css': vd.get_resource(css_js_assets[1], out)
+		'doc_js':        vd.get_resource(css_js_assets[2], out)
+		'dark_mode_js':  vd.get_resource(css_js_assets[3], out)
 		'light_icon':    vd.get_resource('light.svg', out)
 		'dark_icon':     vd.get_resource('dark.svg', out)
 		'menu_icon':     vd.get_resource('menu.svg', out)
@@ -144,7 +144,7 @@ fn (mut vd VDoc) render_static_html(out Output) {
 
 fn (vd VDoc) get_resource(name string, out Output) string {
 	cfg := vd.cfg
-	path := os.join_path(main.res_path, name)
+	path := os.join_path(res_path, name)
 	mut res := os.read_file(path) or { panic('vdoc: could not read $path') }
 	/*
 	if minify {
@@ -294,7 +294,7 @@ fn (vd VDoc) gen_html(d doc.Doc) string {
 	symbols_toc_str := symbols_toc.str()
 	modules_toc.free()
 	symbols_toc.free()
-	return main.html_content.replace('{{ title }}', d.head.name).replace('{{ head_name }}',
+	return html_content.replace('{{ title }}', d.head.name).replace('{{ head_name }}',
 		header_name).replace('{{ version }}', version).replace('{{ light_icon }}', vd.assets['light_icon']).replace('{{ dark_icon }}',
 		vd.assets['dark_icon']).replace('{{ menu_icon }}', vd.assets['menu_icon']).replace('{{ head_assets }}',
 		if cfg.inline_assets {
@@ -452,7 +452,7 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 			dnw.write('${tabs[2]}<div class="title"><$head_tag>$dn.kind $sym_name$hash_link</$head_tag>')
 		}
 		if link.len != 0 {
-			dnw.write('<a class="link" rel="noreferrer" target="_blank" href="$link">$main.link_svg</a>')
+			dnw.write('<a class="link" rel="noreferrer" target="_blank" href="$link">$link_svg</a>')
 		}
 		dnw.write('</div>')
 	}

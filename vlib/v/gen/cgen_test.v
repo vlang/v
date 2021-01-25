@@ -16,7 +16,7 @@ fn test_c_files() {
 	println('Running V => C tests')
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
-	for i in 1 .. (main.nr_tests + 1) {
+	for i in 1 .. (nr_tests + 1) {
 		path := '$vroot/vlib/v/gen/tests/${i}.vv'
 		ctext := os.read_file('$vroot/vlib/v/gen/tests/${i}.c') or { panic(err) }
 		mut b := builder.new_builder(pref.Preferences{})
@@ -28,7 +28,7 @@ fn test_c_files() {
 			res = res[..pos] + res[end + 15..]
 		}
 		if compare_texts(res, ctext, path) {
-			println('$main.term_ok $i')
+			println('$term_ok $i')
 		} else {
 			assert false
 		}
@@ -57,7 +57,7 @@ fn compare_texts(a string, b string, path string) bool {
 		line_b := lines_b[i]
 		if line_a.trim_space() != line_b.trim_space() {
 			println('$path: Got\n$a')
-			println('$path:$i: $main.term_fail')
+			println('$path:$i: $term_fail')
 			println(term.bold(term.bright_yellow('actual  : ')) + line_a)
 			println(term.green('expected: ') + line_b)
 			println(lines_b[i + 1])
