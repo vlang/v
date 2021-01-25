@@ -1150,16 +1150,24 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 		// This allows using the variable `minute` inside time's functions
 		// and also makes it clear that a module const is being used
 		// (since V's conts are no longer ALL_CAP).
+		// ^^^ except for `main`, where consts are allowed to not have a `main.` prefix.
 		if !node.name.contains('.') && !f.inside_const {
 			full_name := f.cur_mod + '.' + node.name
 			if obj := f.file.global_scope.find(full_name) {
 				if obj is ast.ConstField {
 					// "v.fmt.foo" => "fmt.foo"
 					vals := full_name.split('.')
-					short := vals[vals.len - 2] + '.' + vals[vals.len - 1]
+					mod_prefix := vals[vals.len - 2]
+					const_name := vals[vals.len - 1]
 					// f.write(f.short_module(full_name))
-					f.write(short)
-					return
+					if mod_prefix == 'main' {
+						f.write(const_name)
+						return
+					} else {
+						short := mod_prefix + '.' + const_name
+						f.write(short)
+						return
+					}
 				}
 			}
 		}

@@ -64,7 +64,7 @@ pub fn (mut app App) chunk() vweb.Result {
 // the following serve custom routes
 ['/:user/settings']
 pub fn (mut app App) settings(username string) vweb.Result {
-	if username !in main.known_users {
+	if username !in known_users {
 		return app.not_found()
 	}
 	return app.html('username: $username')
@@ -72,7 +72,7 @@ pub fn (mut app App) settings(username string) vweb.Result {
 
 ['/:user/:repo/settings']
 pub fn (mut app App) user_repo_settings(username string, repository string) vweb.Result {
-	if username !in main.known_users {
+	if username !in known_users {
 		return app.not_found()
 	}
 	return app.html('username: $username | repository: $repository')
