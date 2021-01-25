@@ -6078,7 +6078,7 @@ $staticprefix $interface_name* I_${cctype}_to_Interface_${interface_name}_ptr($c
 		}
 		// add line return after interface index declarations
 		sb.writeln('')
-		if ityp.methods.len > 0 {
+		if inter_info.methods.len > 0 {
 			sb.writeln(methods_wrapper.str())
 			sb.writeln(methods_typ_def.str())
 			sb.writeln(methods_struct_def.str())
