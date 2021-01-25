@@ -15,13 +15,13 @@ struct WaitGroup {
 mut:
 	task_count       int // current task count
 	task_count_mutex Mutex // This mutex protects the task_count count in add()
-	wait_blocker     Semaphore // This blocks the wait() until released by add()
+	wait_blocker     &Waiter = &Waiter(0) // This blocks the wait() until released by add()
 }
 
 pub fn new_waitgroup() &WaitGroup {
 	return &WaitGroup{
 		task_count_mutex: new_mutex()
-		wait_blocker: new_semaphore_init(1)
+		wait_blocker: new_waiter()
 	}
 }
 
@@ -43,7 +43,7 @@ pub fn (mut wg WaitGroup) add(delta int) {
 		panic('Negative number of jobs in waitgroup')
 	}
 	if wg.task_count == 0 { // if no more task_count tasks
-		wg.wait_blocker.post() // unblock wait()
+		wg.wait_blocker.stop() // unblock wait()
 	}
 }
 
@@ -55,5 +55,5 @@ pub fn (mut wg WaitGroup) done() {
 // wait blocks until all tasks are done (task count becomes zero)
 pub fn (mut wg WaitGroup) wait() {
 	wg.wait_blocker.wait() // blocks until task_count becomes 0
-	wg.wait_blocker.post() // allow other wait()s to unblock or reuse wait group
+	wg.wait_blocker.stop() // allow other wait()s to unblock or reuse wait group
 }
