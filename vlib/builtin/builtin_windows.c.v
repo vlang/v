@@ -191,6 +191,8 @@ fn print_backtrace_skipping_top_frames_tcc(skipframes int) bool {
 		eprintln('print_backtrace_skipping_top_frames_tcc must be called only when the compiler is tcc')
 		return false
 	}
+	// Not reachable, but it looks like it's not detectable by V
+	return false
 }
 
 // TODO copypaste from os
