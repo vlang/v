@@ -3479,7 +3479,6 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 				gt := c.unwrap_generic(node.struct_init.typ)
 				gts := c.table.get_type_symbol(gt)
 				if gts.kind == .array {
-					println('###### ARRAY INIT')
 					array_info := gts.info as table.Array
 					mut has_len := false
 					mut has_cap := false
@@ -3525,7 +3524,6 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 					return c.array_init(mut array_init)
 				} else if gts.kind == .map {
 					map_info := gts.info as table.Map
-					println('###### MAP: $gts.name - $map_info.key_type, $map_info.value_type')
 					// TODO
 					mut keys := []ast.Expr{}
 					mut vals := []ast.Expr{}

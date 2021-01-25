@@ -2812,13 +2812,11 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		// TODO: remove once we update to checker.expr(mut Expr)
 		ast.UnknownInit {
-			println('## KIND: $node.kind')
 			if node.kind == .struct_init {
 				g.struct_init(node.struct_init)
 			} else if node.kind == .array_init {
 				g.array_init(node.array_init)
 			} else if node.kind == .map_init {
-				println('### CGEN MAP INIT')
 				g.map_init(node.map_init)
 			}
 		}
