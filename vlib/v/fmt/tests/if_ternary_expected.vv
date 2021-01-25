@@ -1,20 +1,24 @@
 fn main() {
+	// This line is too long
 	sprogress := if b.no_cstep {
 		'TMP1/${b.nexpected_steps:1d}'
 	} else {
 		'${b.cstep:1d}/${b.nexpected_steps:1d}'
 	}
-	b := if bar {
-		// comment
-		'some str'
-	} else {
-		'other str'
-	}
+	// Normal struct inits
 	_ := if true {
 		Foo{}
 	} else {
 		Foo{
 			x: 5
 		}
+	}
+	_ := if some_cond {
+		Bar{
+			a: 'bar'
+			b: 'also bar'
+		}
+	} else {
+		Bar{}
 	}
 }

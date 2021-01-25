@@ -1,0 +1,20 @@
+fn valid_single_line() {
+	// Variable initialization
+	a, b := if true { 'a', 'b' } else { 'b', 'a' }
+	// Variable assignment
+	mut x := 'abc'
+	x = if x == 'def' { 'ghi' } else { 'def' }
+	// Array pushes
+	[0, 1] << if true { 2 } else { 3 }
+	// Empty or literal syntax struct inits
+	_ := if false { Foo{} } else { Foo{5, 6} }
+}
+
+fn requires_multiple_lines() {
+	b := if bar {
+		// with comments inside
+		'some str'
+	} else {
+		'other str'
+	}
+}
