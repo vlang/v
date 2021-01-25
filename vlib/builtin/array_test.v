@@ -307,7 +307,7 @@ fn test_fixed() {
 	nums[1] = 7
 	assert nums[1] == 7
 	nums2 := [5]int{} // c_n
-	assert nums2[main.c_n - 1] == 0
+	assert nums2[c_n - 1] == 0
 }
 
 fn modify(mut numbers []int) {
@@ -1101,12 +1101,12 @@ const (
 )
 
 fn test_multidimensional_array_initialization_with_consts() {
-	mut data := [][][]int{len: main.grid_size_1, init: [][]int{len: main.grid_size_2, init: []int{len: main.grid_size_3, init: main.cell_value}}}
-	assert data.len == main.grid_size_1
-	assert data[0].len == main.grid_size_2
-	assert data[0][0].len == main.grid_size_3
-	assert data[0][0][0] == main.cell_value
-	assert data[1][1][1] == main.cell_value
+	mut data := [][][]int{len: grid_size_1, init: [][]int{len: grid_size_2, init: []int{len: grid_size_3, init: cell_value}}}
+	assert data.len == grid_size_1
+	assert data[0].len == grid_size_2
+	assert data[0][0].len == grid_size_3
+	assert data[0][0][0] == cell_value
+	assert data[1][1][1] == cell_value
 }
 
 fn test_byteptr_vbytes() {

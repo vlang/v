@@ -14,12 +14,12 @@ fn test_parse_valid_cflags() {
 	expected_flags := [
 		make_flag('freebsd', '-I', '/usr/local/include/freetype2'),
 		make_flag('linux', '-l', 'glfw'),
-		make_flag('mingw', main.no_name, '-mwindows'),
+		make_flag('mingw', no_name, '-mwindows'),
 		make_flag('solaris', '-L', '/opt/local/lib'),
 		make_flag('darwin', '-framework', 'Cocoa'),
 		make_flag('windows', '-l', 'gdi32'),
-		make_flag(main.no_os, '-l', 'mysqlclient'),
-		make_flag(main.no_os, main.no_name, '-test'),
+		make_flag(no_os, '-l', 'mysqlclient'),
+		make_flag(no_os, no_name, '-test'),
 	]
 	parse_valid_flag(mut t, '-lmysqlclient')
 	parse_valid_flag(mut t, '-test')
@@ -49,22 +49,22 @@ fn test_parse_invalid_cflags() {
 	assert_parse_invalid_flag(mut t, 'solaris')
 	assert_parse_invalid_flag(mut t, 'windows')
 	// Empty flag is not allowed
-	assert_parse_invalid_flag(mut t, main.no_flag)
+	assert_parse_invalid_flag(mut t, no_flag)
 	assert t.cflags.len == 0
 }
 
 fn parse_valid_flag(mut t table.Table, flag string) {
-	t.parse_cflag(flag, main.module_name, main.cdefines) or { }
+	t.parse_cflag(flag, module_name, cdefines) or { }
 }
 
 fn assert_parse_invalid_flag(mut t table.Table, flag string) {
-	t.parse_cflag(flag, main.module_name, main.cdefines) or { return }
+	t.parse_cflag(flag, module_name, cdefines) or { return }
 	assert false
 }
 
 fn make_flag(os string, name string, value string) cflag.CFlag {
 	return cflag.CFlag{
-		mod: main.module_name
+		mod: module_name
 		os: os
 		name: name
 		value: value

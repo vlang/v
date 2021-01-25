@@ -67,7 +67,7 @@ const (
 
 fn main() {
 	// get a mutable reference to the subscriber
-	mut sub := main.eb.subscriber
+	mut sub := eb.subscriber
 	// subscribe to the 'error' event
 	sub.subscribe('error', on_error)
 	// start the work

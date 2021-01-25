@@ -1679,8 +1679,8 @@ const (
 	world = '世界'
 )
 
-println(main.pi)
-println(main.world)
+println(pi)
+println(world)
 ```
 
 Constants are declared with `const`. They can only be defined
@@ -1716,17 +1716,19 @@ const (
 	blue    = rgb(0, 0, 255)
 )
 
-println(main.numbers)
-println(main.red)
-println(main.blue)
+println(numbers)
+println(red)
+println(blue)
 ```
 
 Global variables are not allowed, so this can be really useful.
 
 When naming constants, `snake_case` must be used. In order to distinguish consts
 from local variables, the full path to consts must be specified. For example,
-to access the PI const, full `math.pi` name must be used both outside the `math` module,
-and inside it. This can be seen in the example above with `println(main.numbers)`.
+to access the PI const, full `math.pi` name must be used both outside the `math`
+module, and inside it. That restriction is relaxed only for the `main` module 
+(the one containing your `fn main()`, where you can use the shorter name of the
+constants too, i.e. just `println(numbers)`, not `println(main.numbers)` .
 
 vfmt takes care of this rule, so you can type `println(pi)` inside the `math` module,
 and vffmt will automatically update it to `println(math.pi)`.
