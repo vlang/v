@@ -2817,6 +2817,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			} else if node.kind == .array_init {
 				g.array_init(node.array_init)
 			} else if node.kind == .map_init {
+				println('### CGEN MAP INIT')
 				g.map_init(node.map_init)
 			}
 		}

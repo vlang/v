@@ -3523,7 +3523,15 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 					node.array_init = array_init
 					return c.array_init(mut array_init)
 				} else if gts.kind == .map {
+					map_info := gts.info as table.Map
+					println('###### MAP: $map_info.key_type, $map_info.value_type')
 					// TODO
+					mut map_init := ast.MapInit{
+						typ: gt
+					}
+					node.kind = .map_init
+					node.map_init = map_init
+					return c.map_init(mut map_init)
 				}
 			}
 			node.kind = .struct_init
