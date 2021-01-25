@@ -1871,7 +1871,11 @@ fn (mut c Checker) type_implements(typ table.Type, inter_typ table.Type, pos tok
 	typ_sym := c.table.get_type_symbol(typ)
 	mut inter_sym := c.table.get_type_symbol(inter_typ)
 	styp := c.table.type_to_str(typ)
-	imethods := if inter_sym.kind == .interface_ { (inter_sym.info as table.Interface).methods } else { inter_sym.methods }
+	imethods := if inter_sym.kind == .interface_ {
+		(inter_sym.info as table.Interface).methods
+	} else {
+		inter_sym.methods
+	}
 	for imethod in imethods {
 		if method := typ_sym.find_method(imethod.name) {
 			msg := c.table.is_same_method(imethod, method)
