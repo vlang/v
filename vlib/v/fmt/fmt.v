@@ -2209,6 +2209,14 @@ pub fn (mut f Fmt) assign_stmt(node ast.AssignStmt) {
 
 pub fn (mut f Fmt) assert_stmt(node ast.AssertStmt) {
 	f.write('assert ')
+	if node.expr is ast.ParExpr {
+		if node.expr.expr is ast.InfixExpr {
+			infix := node.expr.expr
+			f.expr(infix)
+			f.writeln('')
+			return
+		}
+	}
 	f.expr(node.expr)
 	f.writeln('')
 }
