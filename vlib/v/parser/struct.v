@@ -161,7 +161,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			} else if p.tok.kind == .key_module {
 				if module_pos != -1 {
 					p.error('redefinition of `module` section')
-					return {}
+					return ast.StructDecl{}
 				}
 				p.next()
 				p.check(.colon)
@@ -463,7 +463,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		if p.tok.kind == .key_mut {
 			if is_mut {
 				p.error_with_pos('redefinition of `mut` section', p.tok.position())
-				return {}
+				return ast.InterfaceDecl{}
 			}
 			p.next()
 			p.check(.colon)

@@ -53,7 +53,7 @@ pub fn (mut ts TestSession) append_message(kind MessageKind, msg string) {
 
 pub fn (mut ts TestSession) print_messages() {
 	empty := term.header(' ', ' ')
-	mut print_msg_time := time.new_stopwatch({})
+	mut print_msg_time := time.new_stopwatch(time.StopWatchOptions{})
 	for {
 		// get a message from the channel of messages to be printed:
 		mut rmessage := <-ts.nmessages

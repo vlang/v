@@ -29,7 +29,7 @@ pub mut:
 // new_benchmark returns a `Benchmark` instance on the stack.
 pub fn new_benchmark() Benchmark {
 	return Benchmark{
-		bench_timer: time.new_stopwatch({})
+		bench_timer: time.new_stopwatch(time.StopWatchOptions{})
 		verbose: true
 	}
 }
@@ -37,7 +37,7 @@ pub fn new_benchmark() Benchmark {
 // new_benchmark_no_cstep returns a new `Benchmark` instance with step counting disabled.
 pub fn new_benchmark_no_cstep() Benchmark {
 	return Benchmark{
-		bench_timer: time.new_stopwatch({})
+		bench_timer: time.new_stopwatch(time.StopWatchOptions{})
 		verbose: true
 		no_cstep: true
 	}
@@ -47,7 +47,7 @@ pub fn new_benchmark_no_cstep() Benchmark {
 // This is useful for long-lived use of `Benchmark` instances.
 pub fn new_benchmark_pointer() &Benchmark {
 	return &Benchmark{
-		bench_timer: time.new_stopwatch({})
+		bench_timer: time.new_stopwatch(time.StopWatchOptions{})
 		verbose: true
 	}
 }

@@ -25,7 +25,7 @@ pub fn (pos Position) extend(end Position) Position {
 }
 
 pub fn (pos Position) extend_with_last_line(end Position, last_line int) Position {
-	return {
+	return Position{
 		len: end.pos - pos.pos + end.len
 		line_nr: pos.line_nr
 		last_line: last_line - 1

@@ -38,7 +38,7 @@ pub fn compile(command string, pref &pref.Preferences) {
 		println('builder.compile() pref:')
 		// println(pref)
 	}
-	mut sw := time.new_stopwatch({})
+	mut sw := time.new_stopwatch(time.StopWatchOptions{})
 	match pref.backend {
 		.c { b.compile_c() }
 		.js { b.compile_js() }

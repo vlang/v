@@ -219,6 +219,8 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 		}
 		.lcbr {
 			// Map `{"age": 20}` or `{ x | foo:bar, a:10 }`
+			prev_tok := p.prev_tok
+			pos := p.tok.position()
 			p.next()
 			if p.tok.kind in [.chartoken, .number, .string] {
 				node = p.map_init()
@@ -227,6 +229,9 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 				if p.peek_tok.kind == .pipe {
 					node = p.assoc()
 				} else if p.peek_tok.kind == .colon || p.tok.kind in [.rcbr, .comment] {
+					if prev_tok.kind != .name {
+						p.error_with_pos('missing struct name', pos)
+					}
 					node = p.struct_init(true) // short_syntax: true
 				} else if p.tok.kind == .name {
 					p.next()
@@ -363,6 +368,10 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 			}
 			p.next()
 			// return node // TODO bring back, only allow ++/-- in exprs in translated code
+		} else if p.tok.kind == .lcbr {
+			p.next()
+			node = p.struct_init(true)
+			p.check(.rcbr)
 		} else {
 			return node
 		}

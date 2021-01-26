@@ -1,8 +1,7 @@
 import flag
 
-_ = fn (name string) 
+_ = fn (name string)
 _ = fn (name string) {}
 _ = fn (name string) flag.Flag
-_ = fn (name string) flag.Flag {return {}}
+_ = fn (name string) flag.Flag {return flag.Flag{}}
 _ = fn (name string) "hi" + name
-

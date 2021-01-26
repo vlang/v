@@ -21,7 +21,7 @@ fn worker_i(p &sync.PoolProcessor, idx int, worker_id int) voidptr {
 }
 
 fn test_work_on_strings() {
-	mut pool_s := sync.new_pool_processor({
+	mut pool_s := sync.new_pool_processor(sync.PoolProcessorConfig{
 		callback: worker_s
 		maxjobs: 8
 	})
@@ -32,7 +32,7 @@ fn test_work_on_strings() {
 	//	println( x.s )
 	//	assert x.s.len > 1
 	//}
-	   
+
 	pool_s.work_on_items_s(['a','b','c','d','e','f','g','h','i','j'])
 	for x in pool_s.get_results_s() {
 		println( x.s )
@@ -44,17 +44,17 @@ fn test_work_on_ints() {
 	// NB: since maxjobs is left empty here,
 	// the pool processor will use njobs = runtime.nr_jobs so that
 	// it will work optimally without overloading the system
-	mut pool_i := sync.new_pool_processor({
+	mut pool_i := sync.new_pool_processor(sync.PoolProcessorConfig{
 		callback: worker_i
 	})
-	   
+
 	// TODO: uncomment this when generics work again
 	//pool_i.work_on_items([1,2,3,4,5,6,7,8])
 	//for x in pool_i.get_results<IResult>() {
 	//	println( x.i )
 	//	assert x.i > 100
 	//}
-	   
+
 	pool_i.work_on_items_i([1,2,3,4,5,6,7,8])
 	for x in pool_i.get_results_i() {
 		println( x.i )

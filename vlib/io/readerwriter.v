@@ -26,7 +26,7 @@ pub fn (mut r ReaderWriterImpl) write(buf []byte) ?int {
 // make_readerwriter takes a rstream and a wstream and makes
 // an rwstream with them
 pub fn make_readerwriter(r Reader, w Writer) ReaderWriterImpl {
-	return {
+	return ReaderWriterImpl{
 		r: r
 		w: w
 	}

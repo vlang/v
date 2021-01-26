@@ -62,7 +62,7 @@ fn test_stringreader() {
 	mut s := StringReader{
 		text: text
 	}
-	mut r := new_buffered_reader({
+	mut r := new_buffered_reader(io.BufferedReaderConfig{
 		reader: make_reader(s)
 	})
 	for i := 0; true; i++ {
@@ -89,7 +89,7 @@ fn test_stringreader2() {
 	mut s := StringReader{
 		text: text
 	}
-	mut r := new_buffered_reader({
+	mut r := new_buffered_reader(io.BufferedReaderConfig{
 		reader: make_reader(s)
 	})
 	for i := 0; true; i++ {
@@ -116,7 +116,7 @@ fn test_leftover() {
 	mut s := StringReader{
 		text: text
 	}
-	mut r := new_buffered_reader({
+	mut r := new_buffered_reader(io.BufferedReaderConfig{
 		reader: make_reader(s)
 	})
 	_ := r.read_line() or {

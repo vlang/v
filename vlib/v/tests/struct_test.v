@@ -245,18 +245,18 @@ fn bar_config(c Config, def int) {
 fn foo_user(u User) {}
 
 fn test_struct_literal_args() {
-	foo_config(20, {
+	foo_config(20, Config{
 		n: 10
 		def: 20
 	})
-	foo_config(10, {})
+	foo_config(10, Config{})
 	foo_config(10, n: 40)
 	foo_config(40, n: 30, def: 40)
 
-	bar_config({}, 10)
-	bar_config({def:4}, 4)
+	bar_config(Config{}, 10)
+	bar_config(Config{def:4}, 4)
 
-	foo_user({
+	foo_user(User{
 		name: 'Peter'
 	})
 	foo_user(name: 'Peter')
@@ -277,7 +277,7 @@ struct Country {
 fn test_levels() {
 	_ := Country{
 		name: 'UK'
-		capital: {
+		capital: City{
 			name: 'London'
 			population: 10
 		}

@@ -4,7 +4,7 @@ fn main() {
 	mut cmd := Command {
 		name: 'cmd'
 	}
-	cmd.add_command({
+	cmd.add_command(Command{
 		name: 'foo'
 	})
 	cmd.parse(['', 'cmd', 'foo'])

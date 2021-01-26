@@ -1556,12 +1556,12 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 		for i, branch in it.branches {
 			if i == 0 {
 				// first `if`
-				f.comments(branch.comments, {})
+				f.comments(branch.comments, CommentsOptions{})
 			} else {
 				// `else`, close previous branch
 				if branch.comments.len > 0 {
 					f.writeln('}')
-					f.comments(branch.comments, {})
+					f.comments(branch.comments, CommentsOptions{})
 				} else {
 					f.write('} ')
 				}
@@ -1653,7 +1653,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 		}
 	}
 	for arg in node.args {
-		f.comments(arg.comments, {})
+		f.comments(arg.comments, CommentsOptions{})
 	}
 	if node.is_method {
 		/*
@@ -2177,7 +2177,7 @@ fn (mut f Fmt) is_external_name(name string) bool {
 }
 
 pub fn (mut f Fmt) assign_stmt(node ast.AssignStmt) {
-	f.comments(node.comments, {})
+	f.comments(node.comments, CommentsOptions{})
 	for i, left in node.left {
 		if left is ast.Ident {
 			var_info := left.var_info()
@@ -2245,7 +2245,7 @@ pub fn (mut f Fmt) defer_stmt(node ast.DeferStmt) {
 }
 
 pub fn (mut f Fmt) expr_stmt(node ast.ExprStmt) {
-	f.comments(node.comments, {})
+	f.comments(node.comments, CommentsOptions{})
 	f.expr(node.expr)
 	if !f.single_line_if {
 		f.writeln('')
@@ -2333,7 +2333,7 @@ pub fn (mut f Fmt) go_stmt(node ast.GoStmt, is_expr bool) {
 }
 
 pub fn (mut f Fmt) return_stmt(node ast.Return) {
-	f.comments(node.comments, {})
+	f.comments(node.comments, CommentsOptions{})
 	f.write('return')
 	if node.exprs.len > 0 {
 		f.write(' ')

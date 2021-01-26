@@ -20,7 +20,7 @@ pub fn new_timers(should_print bool) &Timers {
 }
 
 pub fn (mut t Timers) start(name string) {
-	sw := time.new_stopwatch({})
+	sw := time.new_stopwatch(time.StopWatchOptions{})
 	t.swatches[name] = sw
 }
 

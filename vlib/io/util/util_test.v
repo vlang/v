@@ -26,7 +26,7 @@ fn testsuite_end() {
 
 fn test_temp_file() {
 	// Test defaults
-	mut f, mut path := util.temp_file({}) or {
+	mut f, mut path := util.temp_file(util.TempFileOptions{}) or {
 		assert false
 		return
 	}
@@ -38,7 +38,7 @@ fn test_temp_file() {
 	assert f.is_opened
 	// Test pattern
 	f.close()
-	f, path = util.temp_file({
+	f, path = util.temp_file(util.TempFileOptions{
 		pattern: 'some_*_test.file'
 	}) or {
 		assert false
@@ -58,7 +58,7 @@ fn test_temp_file() {
 	// Test custom path
 	prev_path = path
 	f.close()
-	f, path = util.temp_file({
+	f, path = util.temp_file(util.TempFileOptions{
 		path: tfolder
 	}) or {
 		assert false
@@ -76,7 +76,7 @@ fn test_temp_file() {
 
 fn test_temp_dir() {
 	// Test defaults
-	mut path := util.temp_dir({}) or {
+	mut path := util.temp_dir(util.TempFileOptions{}) or {
 		assert false
 		return
 	}
@@ -88,7 +88,7 @@ fn test_temp_dir() {
 	assert writable
 	mut prev_path := path
 	// Test pattern
-	path = util.temp_dir({
+	path = util.temp_dir(util.TempFileOptions{
 		pattern: 'some_*_test_dir'
 	}) or {
 		assert false
@@ -106,7 +106,7 @@ fn test_temp_dir() {
 	}
 	// Test custom path
 	prev_path = path
-	path = util.temp_dir({
+	path = util.temp_dir(util.TempFileOptions{
 		path: tfolder
 	}) or {
 		assert false

@@ -16,7 +16,7 @@ fn test_semaphore() {
 		unsafe { abc[0]-- }
 	}
 	// wait for the 2 coroutines to finish using the semaphore
-	stopwatch := time.new_stopwatch({})
+	stopwatch := time.new_stopwatch(time.StopWatchOptions{})
 	mut elapsed := stopwatch.elapsed()
 	if !sem.timed_wait(200 * time.millisecond) {
 		// we should come here due to timeout

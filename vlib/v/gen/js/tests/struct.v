@@ -33,7 +33,7 @@ fn main() {
 	b.add(10)
 	println(b.get()) // 10
 	use_config(Config{2, 'bar'})
-	use_config({
+	use_config(Config{
 		foo: 2
 		bar: 'bar'
 	})

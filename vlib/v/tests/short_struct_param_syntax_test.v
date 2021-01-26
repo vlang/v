@@ -1,8 +1,8 @@
-struct TOptions {
+struct Options {
 	a int
 }
 
-fn t(options TOptions) bool {
+fn get_option(options Options) bool {
 	if options.a == 1 {
 		return true
 	}
@@ -10,9 +10,7 @@ fn t(options TOptions) bool {
 }
 
 fn test_short_struct_as_parameter() {
-	if t({
-		a: 1
-	}) {
+	if get_option(Options{a: 1}) {
 		assert true
 		return
 	}

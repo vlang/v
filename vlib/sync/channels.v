@@ -358,7 +358,7 @@ pub fn (mut ch Channel) try_pop(dest voidptr) ChanState {
 }
 
 fn (mut ch Channel) try_pop_priv(dest voidptr, no_block bool) ChanState {
-	spinloops_sem_, spinloops_ := if no_block { 1, 1 } else { spinloops, spinloops_sem } 
+	spinloops_sem_, spinloops_ := if no_block { 1, 1 } else { spinloops, spinloops_sem }
 	mut have_swapped := false
 	mut write_in_progress := false
 	for {
@@ -512,7 +512,7 @@ fn (mut ch Channel) try_pop_priv(dest voidptr, no_block bool) ChanState {
 				dest2 = dest
 			}
 		}
-		break        
+		break
 	}
 	return .success
 }
@@ -559,7 +559,7 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 			C.atomic_store_u16(&ch.read_sub_mtx, u16(0))
 		}
 	}
-	stopwatch := if timeout <= 0 { time.StopWatch{} } else { time.new_stopwatch({}) }
+	stopwatch := if timeout <= 0 { time.StopWatch{} } else { time.new_stopwatch(time.StopWatchOptions{}) }
 	mut event_idx := -1 // negative index means `timed out`
 	for {
 		rnd := rand.u32_in_range(0, u32(channels.len))

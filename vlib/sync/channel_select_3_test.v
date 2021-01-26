@@ -86,13 +86,13 @@ fn test_select_blocks() {
 		a: 13
 	}
 	sem.wait()
-	stopwatch := time.new_stopwatch({})
+	stopwatch := time.new_stopwatch(time.StopWatchOptions{})
 	go f1(ch1, ch2, ch3, ch4, ch5, sem)
 	sem.wait()
 	elapsed_ms := f64(stopwatch.elapsed()) / time.millisecond
 	// https://docs.microsoft.com/en-us/windows-hardware/drivers/kernel/high-resolution-timers
-	// > For example, for Windows running on an x86 processor, the default interval between 
-	// > system clock ticks is typically about 15 milliseconds, and the minimum interval 
+	// > For example, for Windows running on an x86 processor, the default interval between
+	// > system clock ticks is typically about 15 milliseconds, and the minimum interval
 	// > between system clock ticks is about 1 millisecond.
 	assert elapsed_ms >= 280.0 // 300 - (15ms + 5ms just in case)
 

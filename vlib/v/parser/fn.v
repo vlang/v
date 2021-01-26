@@ -128,7 +128,7 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 			p.next()
 			array_decompose = true
 		}
-		mut e := p.expr(0)
+		mut e := p.expr(-1)
 		if array_decompose {
 			e = ast.ArrayDecompose{
 				expr: e
