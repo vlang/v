@@ -1293,21 +1293,16 @@ pub fn (mut f Fmt) sql_expr(node ast.SqlExpr) {
 	f.write('sql ')
 	f.expr(node.db_expr)
 	f.writeln(' {')
-	f.write('\t')
-	f.write('select ')
-	esym := f.table.get_type_symbol(node.table_expr.typ)
-	table_name := util.strip_mod_name(esym.name)
+	f.write('\tselect ')
+	table_name := util.strip_mod_name(f.table.get_type_symbol(node.table_expr.typ).name)
 	if node.is_count {
 		f.write('count ')
 	} else {
-		if node.fields.len > 0 {
-			for tfi, tf in node.fields {
-				f.write(tf.name)
-				if tfi < node.fields.len - 1 {
-					f.write(', ')
-				}
+		for i, fd in node.fields {
+			f.write(fd.name)
+			if i < node.fields.len - 1 {
+				f.write(', ')
 			}
-			f.write(' ')
 		}
 	}
 	f.write('from $table_name')
@@ -1569,8 +1564,17 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 			}
 			if i < it.branches.len - 1 || !it.has_else {
 				f.write('${dollar}if ')
+				cur_pos := f.out.len
 				f.expr(branch.cond)
-				f.write(' ')
+				cond_len := f.out.len - cur_pos
+				is_cond_wrapped := cond_len > 0
+					&& (branch.cond is ast.IfGuardExpr || branch.cond is ast.CallExpr)
+					&& '\n' in f.out.last_n(cond_len)
+				if is_cond_wrapped {
+					f.writeln('')
+				} else {
+					f.write(' ')
+				}
 			}
 			f.write('{')
 			if single_line {
@@ -2209,6 +2213,14 @@ pub fn (mut f Fmt) assign_stmt(node ast.AssignStmt) {
 
 pub fn (mut f Fmt) assert_stmt(node ast.AssertStmt) {
 	f.write('assert ')
+	if node.expr is ast.ParExpr {
+		if node.expr.expr is ast.InfixExpr {
+			infix := node.expr.expr
+			f.expr(infix)
+			f.writeln('')
+			return
+		}
+	}
 	f.expr(node.expr)
 	f.writeln('')
 }
@@ -2335,19 +2347,15 @@ pub fn (mut f Fmt) go_stmt(node ast.GoStmt, is_expr bool) {
 pub fn (mut f Fmt) return_stmt(node ast.Return) {
 	f.comments(node.comments, {})
 	f.write('return')
-	if node.exprs.len > 1 {
-		// multiple returns
+	if node.exprs.len > 0 {
 		f.write(' ')
+		// Loop over all return values. In normal returns this will only run once.
 		for i, expr in node.exprs {
 			f.expr(expr)
 			if i < node.exprs.len - 1 {
 				f.write(', ')
 			}
 		}
-	} else if node.exprs.len == 1 {
-		// normal return
-		f.write(' ')
-		f.expr(node.exprs[0])
 	}
 	f.writeln('')
 }
@@ -2357,12 +2365,13 @@ pub fn (mut f Fmt) sql_stmt(node ast.SqlStmt) {
 	f.expr(node.db_expr)
 	f.writeln(' {')
 	table_name := util.strip_mod_name(f.table.get_type_symbol(node.table_expr.typ).name)
+	f.write('\t')
 	match node.kind {
 		.insert {
-			f.writeln('\tinsert $node.object_var_name into $table_name')
+			f.writeln('insert $node.object_var_name into $table_name')
 		}
 		.update {
-			f.write('\tupdate $table_name set ')
+			f.write('update $table_name set ')
 			for i, col in node.updated_columns {
 				f.write('$col = ')
 				f.expr(node.update_exprs[i])
@@ -2378,7 +2387,7 @@ pub fn (mut f Fmt) sql_stmt(node ast.SqlStmt) {
 			f.writeln('')
 		}
 		.delete {
-			f.write('\tdelete from $table_name where ')
+			f.write('delete from $table_name where ')
 			f.expr(node.where_expr)
 			f.writeln('')
 		}

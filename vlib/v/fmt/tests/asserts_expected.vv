@@ -1,0 +1,5 @@
+fn f() {
+	assert 0 == 0
+	assert 0 < 1
+	assert (1 + 2) == 3
+}

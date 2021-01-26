@@ -715,17 +715,17 @@ fn test_sort() {
 	//
 	mut users := [User{22, 'Peter'}, User{20, 'Bob'}, User{25, 'Alice'}]
 	users.sort(a.age < b.age)
-	assert (users[0].age == 20)
-	assert (users[1].age == 22)
-	assert (users[2].age == 25)
-	assert (users[0].name == 'Bob')
-	assert (users[1].name == 'Peter')
-	assert (users[2].name == 'Alice')
+	assert users[0].age == 20
+	assert users[1].age == 22
+	assert users[2].age == 25
+	assert users[0].name == 'Bob'
+	assert users[1].name == 'Peter'
+	assert users[2].name == 'Alice'
 	//
 	users.sort(a.age > b.age)
-	assert (users[0].age == 25)
-	assert (users[1].age == 22)
-	assert (users[2].age == 20)
+	assert users[0].age == 25
+	assert users[1].age == 22
+	assert users[2].age == 20
 	//
 	users.sort(a.name < b.name) // Test sorting by string fields
 	// assert users.map(it.name).join(' ') == 'Alice Bob Peter'

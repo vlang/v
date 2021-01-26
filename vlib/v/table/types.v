@@ -573,6 +573,11 @@ pub fn (t &TypeSymbol) is_primitive() bool {
 	return t.is_number() || t.is_pointer() || t.is_string()
 }
 
+[inline]
+pub fn (t &TypeSymbol) is_builtin() bool {
+	return t.mod == 'builtin'
+}
+
 // for debugging/errors only, perf is not an issue
 pub fn (k Kind) str() string {
 	k_str := match k {
@@ -651,8 +656,9 @@ pub mut:
 
 pub struct Interface {
 pub mut:
-	types  []Type
-	fields []Field
+	types   []Type
+	fields  []Field
+	methods []Fn
 }
 
 pub struct Enum {
@@ -985,4 +991,13 @@ pub fn (s Struct) get_field(name string) Field {
 		return field
 	}
 	panic('unknown field `$name`')
+}
+
+pub fn (i Interface) defines_method(name string) bool {
+	for method in i.methods {
+		if method.name == name {
+			return true
+		}
+	}
+	return false
 }

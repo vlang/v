@@ -377,3 +377,12 @@ fn test_multi_return() {
 	multi_return<Foo1, Foo2>()
 	multi_return<Foo3, Foo4>()
 }
+
+fn multi_generic_args<T, V>(t T, v V) bool {
+	return true
+}
+
+fn test_multi_generic_args() {
+	assert multi_generic_args("Super", 2021)
+}
+

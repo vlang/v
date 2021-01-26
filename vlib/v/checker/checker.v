@@ -1432,6 +1432,10 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			c.fail_if_immutable(call_expr.left)
 			// call_expr.is_mut = true
 		}
+		if (!left_type_sym.is_builtin() && method.mod != 'builtin') && method.language == .v
+			&& method.no_body {
+			c.error('cannot call a method that does not have a body', call_expr.pos)
+		}
 		if method.return_type == table.void_type && method.ctdefine.len > 0
 			&& method.ctdefine !in c.pref.compile_defines {
 			call_expr.should_be_skipped = true
@@ -1537,7 +1541,8 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		}
 		if call_expr.generic_types.len > 0 && method.return_type != 0 {
 			if typ := c.resolve_generic_type(method.return_type, method.generic_names,
-				call_expr.generic_types) {
+				call_expr.generic_types)
+			{
 				call_expr.return_type = typ
 				return typ
 			}
@@ -1725,6 +1730,9 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		// builtin C.m*, C.s* only - temp
 		c.warn('function `$f.name` must be called from an `unsafe` block', call_expr.pos)
 	}
+	if f.mod != 'builtin' && f.language == .v && f.no_body {
+		c.error('cannot call a function that does not have a body', call_expr.pos)
+	}
 	for generic_type in call_expr.generic_types {
 		sym := c.table.get_type_symbol(generic_type)
 		if sym.kind == .placeholder {
@@ -1871,7 +1879,12 @@ fn (mut c Checker) type_implements(typ table.Type, inter_typ table.Type, pos tok
 	typ_sym := c.table.get_type_symbol(typ)
 	mut inter_sym := c.table.get_type_symbol(inter_typ)
 	styp := c.table.type_to_str(typ)
-	for imethod in inter_sym.methods {
+	imethods := if inter_sym.kind == .interface_ {
+		(inter_sym.info as table.Interface).methods
+	} else {
+		inter_sym.methods
+	}
+	for imethod in imethods {
 		if method := typ_sym.find_method(imethod.name) {
 			msg := c.table.is_same_method(imethod, method)
 			if msg.len > 0 {
@@ -5255,9 +5268,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	}
 	if node.is_method {
 		mut sym := c.table.get_type_symbol(node.receiver.typ)
-		if sym.kind == .interface_ {
-			c.error('interfaces cannot be used as method receiver', node.receiver_pos)
-		} else if sym.kind == .array && !c.is_builtin_mod && node.name == 'map' {
+		if sym.kind == .array && !c.is_builtin_mod && node.name == 'map' {
 			// TODO `node.map in array_builtin_methods`
 			c.error('method overrides built-in array method', node.pos)
 		} else if sym.kind == .sum_type && node.name == 'type_name' {

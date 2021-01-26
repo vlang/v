@@ -1,6 +1,0 @@
-vlib/v/checker/tests/no_interface_receiver.vv:5:5: error: interfaces cannot be used as method receiver
-    3 | }
-    4 |
-    5 | fn (a Animal) str() {}
-      |     ~~~~~~~~
-
