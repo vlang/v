@@ -37,11 +37,11 @@ pub fn (mut ctx Context) write(s string) {
 pub fn (mut ctx Context) flush() {
 	// TODO: Diff the previous frame against this one, and only render things that changed?
 	if !ctx.enable_su {
-		C.write(C.STDOUT_FILENO, ctx.print_buf.data, ctx.print_buf.len)
+		C.write(1, ctx.print_buf.data, ctx.print_buf.len)
 	} else {
-		C.write(C.STDOUT_FILENO, bsu.str, bsu.len)
-		C.write(C.STDOUT_FILENO, ctx.print_buf.data, ctx.print_buf.len)
-		C.write(C.STDOUT_FILENO, esu.str, esu.len)
+		C.write(1, bsu.str, bsu.len)
+		C.write(1, ctx.print_buf.data, ctx.print_buf.len)
+		C.write(1, esu.str, esu.len)
 	}
 	ctx.print_buf.clear()
 }
