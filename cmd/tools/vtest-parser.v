@@ -76,9 +76,9 @@ fn main() {
 		context.expand_all_paths()
 		mut fails := 0
 		mut panics := 0
-		sw := time.new_stopwatch({})
+		sw := time.new_stopwatch(time.StopWatchOptions{})
 		for path in context.all_paths {
-			filesw := time.new_stopwatch({})
+			filesw := time.new_stopwatch(time.StopWatchOptions{})
 			context.start_printing()
 			new_fails, new_panics := context.process_whole_file_in_worker(path)
 			fails += new_fails
