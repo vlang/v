@@ -183,7 +183,7 @@ pub fn (ctx &Context) draw_text(x int, y int, text_ string, cfg gx.TextCfg) {
 }
 
 pub fn (ctx &Context) draw_text_def(x int, y int, text string) {
-	ctx.draw_text(x, y, text, {})
+	ctx.draw_text(x, y, text, gx.TextCfg{})
 }
 
 /*

@@ -32,7 +32,7 @@ fn event(e &tui.Event, x voidptr) {
 	match e.typ {
 		.mouse_down {
 			app.is_drag = true
-			app.cur_rect = {
+			app.cur_rect = Rect{
 				c: random_color()
 				x:  e.x
 				y:  e.y

@@ -33,7 +33,7 @@ fn main() {
 		width: window_width
 		draw_fn: 0
 	}
-	game.gg = gg.new_context({
+	game.gg = gg.new_context(
 		width: window_width
 		height: window_height
 		font_size: 20
@@ -44,7 +44,7 @@ fn main() {
 		frame_fn: frame
 		bg_color: gx.white
 		font_path: gg.system_font_path()
-	})
+	)
 	// window.onkeydown(key_down)
 	println('Starting the game loop...')
 	go game.run()
@@ -84,6 +84,3 @@ fn (mut game Game) run() {
 		time.sleep_ms(17) // 60fps
 	}
 }
-
-
-

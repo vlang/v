@@ -42,7 +42,7 @@ fn main() {
 		gg: 0
 		a: automaton.gun()
 	}
-	app.gg = gg.new_context({
+	app.gg = gg.new_context(
 		bg_color: gx.white
 		frame_fn: frame
 		user_data: &app
@@ -52,6 +52,6 @@ fn main() {
 		create_window: true
 		resizable: false
 		window_title: 'v life (with gg, gx)'
-	})
+	)
 	app.gg.run()
 }

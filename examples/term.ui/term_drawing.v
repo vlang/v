@@ -114,14 +114,14 @@ mut:
 
 fn main() {
 	mut app := &App{}
-	app.tui = tui.init({
+	app.tui = tui.init(
 		user_data: app
 		frame_fn: frame
 		event_fn: event
 		frame_rate: frame_rate
 		hide_cursor: true
 		window_title: 'V terminal pixelart drawing app'
-	})
+	)
 	app.mouse_pos.x = 40
 	app.mouse_pos.y = 15
 	app.tui.clear()

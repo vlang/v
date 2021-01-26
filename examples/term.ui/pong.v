@@ -35,10 +35,10 @@ fn (mut a App) init() {
 	a.width = w
 	a.height = h
 	term.erase_del_clear()
-	term.set_cursor_position({
+	term.set_cursor_position(
 		x: 0
 		y: 0
-	})
+	)
 }
 
 fn (mut a App) start_game() {

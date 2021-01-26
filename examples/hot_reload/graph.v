@@ -20,7 +20,7 @@ fn main() {
 	mut context := &Context{
 		gg: 0
 	}
-	context.gg = gg.new_context({
+	context.gg = gg.new_context(
 		width: size
 		height: size
 		font_size: 20
@@ -32,7 +32,7 @@ fn main() {
 		resizable: true
 		bg_color: gx.white
 		font_path: gg.system_font_path()
-	})
+	)
 	context.gg.run()
 }
 

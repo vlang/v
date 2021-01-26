@@ -31,7 +31,7 @@ mut:
 	texture       C.sg_image
 	init_flag     bool
 	frame_count   int
-	
+
 	mouse_x       int = -1
 	mouse_y       int = -1
 }
@@ -60,7 +60,7 @@ fn create_texture(w int, h int, buf byteptr) C.sg_image{
 		ptr: buf
 		size: sz
 	}
-	
+
 	sg_img := C.sg_make_image(&img_desc)
 	return sg_img
 }
@@ -136,7 +136,7 @@ fn cube() {
 fn draw_cubes(app App) {
 	rot := [f32(1.0)*(app.frame_count % 360), 0.5*f32(app.frame_count%360)]
 	//rot := [f32(app.mouse_x), f32(app.mouse_y)]
-	
+
 	sgl.defaults()
 	sgl.load_pipeline(app.pip_3d)
 
@@ -240,7 +240,7 @@ fn cube_field(app App){
 	rot := [f32(app.mouse_x), f32(app.mouse_y)]
 	xyz_sz := f32(2.0)
 	field_size := 20
-		
+
 	sgl.defaults()
 	sgl.load_pipeline(app.pip_3d)
 
@@ -249,13 +249,13 @@ fn cube_field(app App){
 
 	sgl.matrix_mode_projection()
 	sgl.perspective(sgl.rad(45.0), 1.0, 0.1, 200.0)
-		
+
 	sgl.matrix_mode_modelview()
-		
+
 	sgl.translate(field_size, 0.0, -120.0)
 	sgl.rotate(sgl.rad(rot[0]), 0.0, 1.0, 0.0)
 	sgl.rotate(sgl.rad(rot[1]), 1.0, 0.0, 0.0)
-		
+
 	// draw field_size*field_size cubes
 	for y in 0..field_size {
 		for x in 0..field_size {
@@ -265,7 +265,7 @@ fn cube_field(app App){
 			cube_t(f32(f32(x)/field_size), f32(f32(y)/field_size),1)
 			sgl.pop_matrix()
 		}
-	}		
+	}
 	sgl.disable_texture()
 }
 
@@ -278,28 +278,28 @@ fn frame(mut app App) {
 	//x1 := dw/2
 	y0 := 0
 	y1 := dh/2
-		
+
 	app.gg.begin()
 	//sgl.defaults()
 
 	// 2d triangle
 	sgl.viewport(x0, y0, ww, hh, true)
 	draw_triangle()
-	
+
 	// colored cubes with viewport
 	sgl.viewport(x0, y1, ww, hh, true)
 	draw_cubes(app)
-	
+
 	// textured cubed with viewport
 	sgl.viewport(0, 0, dw, dh, true)
 	draw_texture_cubes(app)
-	
+
 	// textured field of cubes with viewport
 	sgl.viewport(0, 0, dw, dh, true)
 	cube_field(app)
 
 	app.frame_count++
-	
+
 	app.gg.end()
 }
 
@@ -310,7 +310,7 @@ fn frame(mut app App) {
 ******************************************************************************/
 fn my_init(mut app App) {
 	app.init_flag = true
-	
+
 	// set max vertices,
 	// for a large number of the same type of object it is better use the instances!!
 	desc := sapp.create_desc()
@@ -319,7 +319,7 @@ fn my_init(mut app App) {
 		max_vertices: 50 * 65536
 	}
 	sgl.setup(&sgl_desc)
-	
+
 	// 3d pipeline
 	mut pipdesc := C.sg_pipeline_desc{}
 	unsafe {C.memset(&pipdesc, 0, sizeof(pipdesc))}
@@ -334,7 +334,7 @@ fn my_init(mut app App) {
 		cull_mode: .back
 	}
 	app.pip_3d = sgl.make_pipeline(&pipdesc)
-	
+
 	// create chessboard texture 256*256 RGBA
 	w := 256
 	h := 256
@@ -359,7 +359,7 @@ fn my_init(mut app App) {
 				tmp_txt[i+2] =  byte(0)
 				tmp_txt[i+3] =  byte(0xFF)
 			} else {
-				col := if ((x+y) & 1) == 1 {0xFF} else {0}		
+				col := if ((x+y) & 1) == 1 {0xFF} else {0}
 				tmp_txt[i  ] =  byte(col)   // red
 				tmp_txt[i+1] =  byte(col)   // green
 				tmp_txt[i+2] =  byte(col)   // blue
@@ -399,7 +399,7 @@ fn main(){
 		gg: 0
 	}
 
-	app.gg = gg.new_context({
+	app.gg = gg.new_context(
 		width: win_width
 		height: win_height
 		use_ortho: true // This is needed for 2D drawing
@@ -411,7 +411,7 @@ fn main(){
 		init_fn: my_init
 		cleanup_fn: cleanup
 		event_fn: my_event_manager
-	})
+	)
 
 	app.gg.run()
 }

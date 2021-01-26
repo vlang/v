@@ -66,7 +66,7 @@ fn main() {
 	mut app := &App{
 		gg: 0
 	}
-	app.gg = gg.new_context({
+	app.gg = gg.new_context(
 		width: win_width
 		height: win_height
 		use_ortho: true // This is needed for 2D drawing
@@ -76,7 +76,7 @@ fn main() {
 		bg_color: bg_color
 		frame_fn: frame
 		font_path: os.resource_abs_path('../assets/fonts/RobotoMono-Regular.ttf') // window_user_ptr: ctx
-	})
+	)
 	app.gg.run()
 }
 

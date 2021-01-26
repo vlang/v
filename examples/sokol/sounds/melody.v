@@ -35,11 +35,11 @@ fn main() {
 	mut state := &AppState{
 		gg: 0
 	}
-	audio.setup({
+	audio.setup(
 		stream_userdata_cb: my_audio_stream_callback
 		user_data: state
-	})
-	state.gg = gg.new_context({
+	)
+	state.gg = gg.new_context(
 		bg_color: gx.rgb(50, 50, 50)
 		width: 1024
 		height: 400
@@ -48,7 +48,7 @@ fn main() {
 		window_title: 'ByteBeat Music'
 		frame_fn: graphics_frame
 		user_data: state
-	})
+	)
 	state.gg.run()
 	audio.shutdown()
 }
