@@ -1,3 +1,4 @@
+import os
 import objects
 import gg
 import gx
@@ -54,6 +55,11 @@ fn on_frame(mut app App) {
 }
 
 fn main() {
+	mut font_path := os.resource_abs_path(os.join_path('../assets/fonts/', 'RobotoMono-Regular.ttf'))
+	$if android {
+		font_path = 'fonts/RobotoMono-Regular.ttf'
+	}
+
 	mut app := &App{}
 
 	app.gg = gg.new_context(
@@ -64,6 +70,7 @@ fn main() {
 		use_ortho: true
 		user_data: app
 		frame_fn: on_frame
+		font_path: font_path
 	)
 
 	app.gg.run()
