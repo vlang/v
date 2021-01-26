@@ -115,8 +115,8 @@ mut:
 	// frame/time counters:
 	frame     int
 	frame_old int
-	frame_sw  time.StopWatch = time.new_stopwatch({})
-	second_sw time.StopWatch = time.new_stopwatch({})
+	frame_sw  time.StopWatch = time.new_stopwatch(time.StopWatchOptions{})
+	second_sw time.StopWatch = time.new_stopwatch(time.StopWatchOptions{})
 }
 
 [if showfps]
