@@ -1,0 +1,7 @@
+vlib/v/parser/tests/struct_init_without_struct_name_err.vv:7:14: error: missing struct name before `{`
+    5 | fn main () {
+    6 |     pages := []Page{}
+    7 |     pages << {
+      |              ^
+    8 |         contents: 3
+    9 |     }

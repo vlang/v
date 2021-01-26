@@ -1,0 +1,10 @@
+struct Page {
+    contents int
+}
+
+fn main () {
+    pages := []Page{}
+    pages << {
+        contents: 3
+    }
+}

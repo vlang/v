@@ -230,7 +230,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 					node = p.assoc()
 				} else if p.peek_tok.kind == .colon || p.tok.kind in [.rcbr, .comment] {
 					if prev_tok.kind != .name {
-						p.error_with_pos('missing struct name', pos)
+						p.error_with_pos('missing struct name before `{`', pos)
 					}
 					node = p.struct_init(true) // short_syntax: true
 				} else if p.tok.kind == .name {
