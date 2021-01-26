@@ -2362,7 +2362,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			right_type_sym0 := c.table.get_type_symbol(right_type0)
 			if right_type_sym0.kind == .multi_return {
 				if assign_stmt.right.len > 1 {
-					c.error('Cannot use multi-value $right_type_sym0.name in signle-value context',
+					c.error('cannot use multi-value $right_type_sym0.name in signle-value context',
 						right.position())
 				}
 				assign_stmt.right_types = right_type_sym0.mr_info().types
