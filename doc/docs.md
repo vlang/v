@@ -1905,6 +1905,61 @@ fn announce(s Speaker) {
 ```
 For more information, see [Dynamic casts](#dynamic-casts).
 
+```v
+struct Cat {}
+
+interface Animal {}
+
+fn (a Animal) is_animal() {
+	println('is an Animal.')
+}
+
+fn new_cat() Animal {
+	return &Cat{}
+}
+
+fn main() {
+	cat := new_cat()
+	cat.is_animal() // is an Animal.
+	if cat is Cat {
+		println('also a cat.')
+	}
+}
+```
+
+Also unlike Go, an interface may implement a method.
+These methods are not implemented by structs which implement that interface.
+
+When a struct is wrapped in an interface that has implemented a method
+with the same name as one implemented by this struct, only the method
+implemented on the interface is called.
+
+```v
+struct Cat {}
+
+interface Animal {}
+
+fn (c Cat) is_a() {
+	println('is a Cat.')
+}
+
+fn (a Animal) is_a() {
+	println('is an Animal.')
+}
+
+fn new_cat() Animal {
+	return &Cat{}
+}
+
+fn main() {
+	cat := new_cat()
+	cat.is_a() // is an Animal.
+	
+	kitty := &Cat{}
+	kitty.is_a() // is a Cat.
+}
+```
+
 ### Enums
 
 ```v
