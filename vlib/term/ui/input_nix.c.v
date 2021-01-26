@@ -5,6 +5,7 @@ module ui
 
 
 struct ExtraContext {
+mut:
 	read_buf []byte
 }
 
