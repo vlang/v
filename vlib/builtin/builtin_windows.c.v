@@ -182,14 +182,17 @@ fn print_backtrace_skipping_top_frames_tcc(skipframes int) bool {
 	$if tinyc {
 		$if no_backtrace ? {
 			eprintln('backtraces are disabled')
+			return false
 		} $else {
 			C.tcc_backtrace('Backtrace')
-			return false
+			return true
 		}
 	} $else {
 		eprintln('print_backtrace_skipping_top_frames_tcc must be called only when the compiler is tcc')
 		return false
 	}
+	// Not reachable, but it looks like it's not detectable by V
+	return false
 }
 
 // TODO copypaste from os
