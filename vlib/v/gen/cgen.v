@@ -5887,7 +5887,7 @@ fn (g Gen) as_cast_name_table() string {
 	}
 	name_table.write(keys)
 	name_table.write(values)
-	name_table.write('}));')
+	name_table.writeln('}));')
 	return name_table.str()
 }
 
