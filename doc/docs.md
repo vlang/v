@@ -1954,7 +1954,7 @@ fn new_cat() Animal {
 fn main() {
 	cat := new_cat()
 	cat.is_a() // is an Animal.
-	
+
 	kitty := &Cat{}
 	kitty.is_a() // is a Cat.
 }
