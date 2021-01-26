@@ -6,6 +6,8 @@ module builtin
 __global (
 	g_m2_buf byteptr
 	g_m2_ptr byteptr
+	// will be filled in cgen
+	as_cast_name_table map[string]string
 )
 
 // isnil returns true if an object is nil (only for C objects).
@@ -37,6 +39,14 @@ __global (
 fn __as_cast(obj voidptr, obj_type int, expected_type int) voidptr {
 	if obj_type != expected_type {
 		panic('as cast: cannot cast $obj_type to $expected_type')
+	}
+	return obj
+}
+
+fn __as_cast2(obj voidptr, obj_type int, expected_type int, expected_name string) voidptr {
+	if obj_type != expected_type {
+		obj_name := as_cast_name_table[obj_type.str()]
+		panic('as cast: cannot cast `$obj_name` to `$expected_name`')
 	}
 	return obj
 }

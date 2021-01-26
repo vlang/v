@@ -146,6 +146,7 @@ mut:
 	branch_parent_pos  int    // used in BranchStmt (continue/break) for autofree stop position
 	timers             &util.Timers = util.new_timers(false)
 	force_main_console bool // true when [console] used on fn main()
+	as_cast_type_names map[string]string // table for type name lookup in runtime (for __as_cast)
 }
 
 pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string {
@@ -201,7 +202,6 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	}
 	g.init()
 	g.timers.show('cgen init')
-	//
 	mut tests_inited := false
 	mut autofree_used := false
 	for file in files {
@@ -258,7 +258,6 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 			g.definitions.writeln('int _v_type_idx_${typ.cname}() { return $idx; };')
 		}
 	}
-	// g.write_str_definitions()
 	// v files are finished, what remains is pure C code
 	g.gen_vlines_reset()
 	if g.pref.build_mode != .build_module {
@@ -4999,7 +4998,10 @@ fn (mut g Gen) write_init_function() {
 			}
 		}
 	}
-	//
+	as_cast_name_table := g.as_cast_name_table()
+	if as_cast_name_table != '' {
+		g.writeln('\t' + as_cast_name_table)
+	}
 	g.writeln('}')
 	if g.pref.printfn_list.len > 0 && '_vinit' in g.pref.printfn_list {
 		println(g.out.after(fn_vinit_start_pos))
@@ -5848,9 +5850,9 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 	styp := g.typ(node.typ)
 	sym := g.table.get_type_symbol(node.typ)
 	expr_type_sym := g.table.get_type_symbol(node.expr_type)
-	if expr_type_sym.kind == .sum_type {
+	if expr_type_sym.info is table.SumType {
 		dot := if node.expr_type.is_ptr() { '->' } else { '.' }
-		g.write('/* as */ *($styp*)__as_cast((')
+		g.write('/* as */ *($styp*)__as_cast2((')
 		g.expr(node.expr)
 		g.write(')')
 		g.write(dot)
@@ -5860,8 +5862,33 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		g.write(dot)
 		// g.write('typ, /*expected:*/$node.typ)')
 		sidx := g.type_sidx(node.typ)
-		g.write('typ, /*expected:*/$sidx)')
+		expected_sym := g.table.get_type_symbol(node.typ)
+		g.write('typ, /*expected:*/$sidx, /*expected name:*/ _SLIT("$expected_sym.name"))')
+
+		// fill as cast name table
+		for variant in expr_type_sym.info.variants {
+			if variant.str() in g.as_cast_type_names {
+				continue
+			}
+			variant_sym := g.table.get_type_symbol(variant)
+			g.as_cast_type_names[variant.str()] = variant_sym.name
+		}
 	}
+}
+
+fn (g Gen) as_cast_name_table() string {
+	mut name_table := strings.new_builder(50)
+	name_table.write('as_cast_name_table = new_map_init_2(&map_hash_string, &map_eq_string, &map_clone_string, &map_free_string, $g.as_cast_type_names.len, sizeof(string), sizeof(string)')
+	mut keys := ',_MOV((string[$g.as_cast_type_names.len]){'
+	mut values := '}), _MOV((string[$g.as_cast_type_names.len]){'
+	for key, value in g.as_cast_type_names {
+		keys += '_SLIT("$key"),'
+		values += '_SLIT("$value"),'
+	}
+	name_table.write(keys)
+	name_table.write(values)
+	name_table.write('}));')
+	return name_table.str()
 }
 
 fn (mut g Gen) is_expr(node ast.InfixExpr) {
