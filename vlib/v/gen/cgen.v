@@ -5877,6 +5877,9 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 }
 
 fn (g Gen) as_cast_name_table() string {
+	if g.as_cast_type_names.len == 0 {
+		return ''
+	}
 	mut name_table := strings.new_builder(50)
 	name_table.write('as_cast_name_table = new_map_init_2(&map_hash_string, &map_eq_string, &map_clone_string, &map_free_string, $g.as_cast_type_names.len, sizeof(string), sizeof(string)')
 	mut keys := ',_MOV((string[$g.as_cast_type_names.len]){'
