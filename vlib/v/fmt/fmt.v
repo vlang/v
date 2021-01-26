@@ -1564,8 +1564,17 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 			}
 			if i < it.branches.len - 1 || !it.has_else {
 				f.write('${dollar}if ')
+				cur_pos := f.out.len
 				f.expr(branch.cond)
-				f.write(' ')
+				cond_len := f.out.len - cur_pos
+				is_cond_wrapped := cond_len > 0
+					&& (branch.cond is ast.IfGuardExpr || branch.cond is ast.CallExpr)
+					&& '\n' in f.out.last_n(cond_len)
+				if is_cond_wrapped {
+					f.writeln('')
+				} else {
+					f.write(' ')
+				}
 			}
 			f.write('{')
 			if single_line {
