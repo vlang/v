@@ -16,13 +16,14 @@ pub mut:
 }
 
 pub fn (rocket Rocket) draw(mut ctx gg.Context) {
-	ctx.draw_circle(rocket.pos.x, height - rocket.pos.y, rocket_radius, rocket.color)
+	ctx.draw_circle(rocket.pos.x, get_params().height - rocket.pos.y, get_params().rocket_radius,
+		rocket.color)
 }
 
 pub fn (mut rocket Rocket) explode() {
 	rocket.exploded = true
 
-	for _ in 0 .. offspring_count {
+	for _ in 0 .. get_params().offspring_count {
 		rocket.spawn_particle()
 	}
 }
@@ -33,7 +34,7 @@ pub fn (mut rocket Rocket) tick(mut ctx gg.Context) {
 			rocket.explode()
 		}
 
-		rocket.accel += gravity
+		rocket.accel += get_params().gravity
 		rocket.vel += rocket.accel
 		rocket.pos += rocket.vel
 		rocket.draw(mut ctx)
@@ -50,7 +51,7 @@ pub fn new_rocket() Rocket {
 	return Rocket{
 		color: random_color()
 		pos: {
-			x: rand.f32_in_range(50, width - 50)
+			x: rand.f32_in_range(50, get_params().width - 50)
 		}
 		vel: {
 			x: rand.f32_in_range(-1.5, 1.5)
