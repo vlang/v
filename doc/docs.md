@@ -1947,12 +1947,12 @@ fn (a Animal) is_a() {
 	println('is an Animal.')
 }
 
-fn new_cat() Animal {
-	return &Cat{}
+fn new_animal() Animal {
+	return Cat{}
 }
 
 fn main() {
-	cat := new_cat()
+	cat := new_animal()
 	cat.is_a() // is an Animal.
 
 	kitty := &Cat{}
