@@ -8,6 +8,8 @@ mut:
 	gg      &gg.Context = 0
 	rockets []objects.Rocket
 	frames  [][]objects.Rocket
+	// i thought about using a fixed fifo queue for the frames but the array 
+	// seemed to work fine, if you'd like a challenge try implementing it with the queue :)
 }
 
 fn on_frame(mut app App) {
