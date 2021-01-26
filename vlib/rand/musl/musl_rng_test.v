@@ -1,6 +1,6 @@
 import math
 import rand.musl
-import rand.util
+import rand.seed
 
 const (
 	range_limit = 40
@@ -16,7 +16,7 @@ const (
 
 fn gen_randoms(seed_data []u32, bound int) []u64 {
 	bound_u64 := u64(bound)
-	mut randoms := []u64{len:(20)}
+	mut randoms := []u64{len: (20)}
 	mut rnd := musl.MuslRNG{}
 	rnd.seed(seed_data)
 	for i in 0 .. 20 {
@@ -26,7 +26,7 @@ fn gen_randoms(seed_data []u32, bound int) []u64 {
 }
 
 fn test_musl_reproducibility() {
-	seed_data := util.time_seed_array(1)
+	seed_data := seed.time_seed_array(1)
 	randoms1 := gen_randoms(seed_data, 1000)
 	randoms2 := gen_randoms(seed_data, 1000)
 	assert randoms1.len == randoms2.len

@@ -4,8 +4,9 @@
 module wyrand
 
 import math.bits
+import rand.seed
 import rand.util
-import hash as wyhash
+import hash
 
 // Redefinition of some constants that we will need for pseudorandom number generation.
 const (
@@ -16,7 +17,7 @@ const (
 // WyRandRNG is a RNG based on the WyHash hashing algorithm.
 pub struct WyRandRNG {
 mut:
-	state     u64 = util.time_seed_64()
+	state     u64 = seed.time_seed_64()
 	has_extra bool
 	extra     u32
 }
@@ -51,9 +52,9 @@ pub fn (mut rng WyRandRNG) u32() u32 {
 pub fn (mut rng WyRandRNG) u64() u64 {
 	unsafe {
 		mut seed1 := rng.state
-		seed1 += wyp0
+		seed1 += wyrand.wyp0
 		rng.state = seed1
-		return wyhash.wymum(seed1 ^ wyp1, seed1)
+		return hash.wymum(seed1 ^ wyrand.wyp1, seed1)
 	}
 	return 0
 }

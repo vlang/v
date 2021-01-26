@@ -3,13 +3,13 @@
 // that can be found in the LICENSE file.
 module rand
 
-import rand.util
+import rand.seed
 import rand.wyrand
 import time
 
 // PRNGConfigStruct is a configuration struct for creating a new instance of the default RNG.
 pub struct PRNGConfigStruct {
-	seed []u32 = util.time_seed_array(2)
+	seed []u32 = seed.time_seed_array(2)
 }
 
 __global ( default_rng &wyrand.WyRandRNG )
@@ -141,10 +141,10 @@ pub fn string(len int) string {
 	mut buf := malloc(len)
 	for i in 0 .. len {
 		unsafe {
-			buf[i] = chars[intn(chars.len)]
+			buf[i] = rand.chars[intn(rand.chars.len)]
 		}
 	}
-	return unsafe {buf.vstring_with_len(len)}
+	return unsafe { buf.vstring_with_len(len) }
 }
 
 // uuid_v4 generates a random (v4) UUID
@@ -184,7 +184,7 @@ pub fn uuid_v4() string {
 		buf[14] = `4`
 		buf[buflen] = 0
 	}
-	return unsafe {buf.vstring_with_len(buflen)}
+	return unsafe { buf.vstring_with_len(buflen) }
 }
 
 const (
@@ -209,7 +209,7 @@ pub fn ulid_at_millisecond(unix_time_milli u64) string {
 	mut i := 9
 	for i >= 0 {
 		unsafe {
-			buf[i] = ulid_encoding[t & 0x1F]
+			buf[i] = rand.ulid_encoding[t & 0x1F]
 		}
 		t = t >> 5
 		i--
@@ -219,7 +219,7 @@ pub fn ulid_at_millisecond(unix_time_milli u64) string {
 	i = 10
 	for i < 19 {
 		unsafe {
-			buf[i] = ulid_encoding[x & 0x1F]
+			buf[i] = rand.ulid_encoding[x & 0x1F]
 		}
 		x = x >> 5
 		i++
@@ -228,7 +228,7 @@ pub fn ulid_at_millisecond(unix_time_milli u64) string {
 	x = default_rng.u64()
 	for i < 26 {
 		unsafe {
-			buf[i] = ulid_encoding[x & 0x1F]
+			buf[i] = rand.ulid_encoding[x & 0x1F]
 		}
 		x = x >> 5
 		i++
@@ -236,5 +236,5 @@ pub fn ulid_at_millisecond(unix_time_milli u64) string {
 	unsafe {
 		buf[26] = 0
 	}
-	return unsafe {buf.vstring_with_len(buflen)}
+	return unsafe { buf.vstring_with_len(buflen) }
 }
