@@ -12,7 +12,7 @@ pub fn init(cfg Config) &Context {
 	return &Context{}
 }
 
-pub fn (mut ctx Context) run() {
+pub fn (mut ctx Context) run() ? {
 	panic(not_implemented_yet)
 }
 

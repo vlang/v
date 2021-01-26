@@ -71,6 +71,11 @@ pub fn intn(max int) int {
 	return default_rng.intn(max)
 }
 
+// byte returns a uniformly distributed pseudorandom 8-bit unsigned positive `byte`.
+pub fn byte() byte {
+	return byte(default_rng.intn(256))
+}
+
 // int_in_range returns a uniformly distributed pseudorandom  32-bit signed int in range `[min, max)`.
 // Both `min` and `max` can be negative, but we must have `min < max`.
 pub fn int_in_range(min int, max int) int {
