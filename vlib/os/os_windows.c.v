@@ -383,7 +383,7 @@ pub fn is_writable_folder(folder string) ?bool {
 		return error('cannot write to folder $folder: $err')
 	}
 	f.close()
-	rm(tmp_perm_check)
+	rm(tmp_perm_check) ?
 	return true
 }
 
