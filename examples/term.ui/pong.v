@@ -66,10 +66,10 @@ fn (mut a App) quit() {
 		a.game.quit()
 		return
 	}
-	term.set_cursor_position({
+	term.set_cursor_position(
 		x: 0
 		y: 0
-	})
+	)
 	exit(0)
 }
 

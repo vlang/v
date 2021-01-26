@@ -99,16 +99,16 @@ fn (mut a App) footer() {
 	if a.t <= 0 {
 		status = ''
 	} else {
-		a.tui.set_bg_color({
+		a.tui.set_bg_color(
 			r: 200
 			g: 200
 			b: 200
-		})
-		a.tui.set_color({
+		)
+		a.tui.set_color(
 			r: 0
 			g: 0
 			b: 0
-		})
+		)
 		a.tui.draw_text((w + 4 - status.len) / 2, h - 1, ' $status ')
 		a.tui.reset()
 		a.t -= 33

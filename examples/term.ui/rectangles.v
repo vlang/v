@@ -20,7 +20,7 @@ mut:
 }
 
 fn random_color() tui.Color {
-	return {
+	return tui.Color{
 		r: byte(rand.intn(256))
 		g: byte(rand.intn(256))
 		b: byte(rand.intn(256))

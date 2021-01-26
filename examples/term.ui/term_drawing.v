@@ -156,20 +156,20 @@ fn event(event &tui.Event, x voidptr) {
 			app.is_dragging = false
 		}
 		.mouse_drag {
-			app.mouse_pos = {
+			app.mouse_pos = Point{
 				x: event.x
 				y: event.y
 			}
 			app.paint(event)
 		}
 		.mouse_move {
-			app.mouse_pos = {
+			app.mouse_pos = Point{
 				x: event.x
 				y: event.y
 			}
 		}
 		.mouse_scroll {
-			app.mouse_pos = {
+			app.mouse_pos = Point{
 				x: event.x
 				y: event.y
 			}

@@ -34,9 +34,9 @@ fn my_audio_stream_callback(buffer &f32, num_frames int, num_channels int) {
 }
 
 fn main() {
-	audio.setup({
+	audio.setup(
 		stream_cb: my_audio_stream_callback
-	})
+	)
 	time.sleep_ms(2500)
 	audio.shutdown()
 }

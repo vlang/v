@@ -8,9 +8,9 @@ module ttf
 * that can be found in the LICENSE file.
 *
 * Note:
-* - inspired by: http://stevehanov.ca/blog/?id=143 
+* - inspired by: http://stevehanov.ca/blog/?id=143
 *
-* TODO: 
+* TODO:
 * - check for unicode > 0xFFFF if supported
 * - evaluate use a buffer for the points in the glyph
 **********************************************************************/
@@ -83,21 +83,21 @@ pub mut:
 
 	cmaps                []TrueTypeCmap
 
-	ascent                  i16 
-	descent                 i16 
-	line_gap                i16 
-	advance_width_max       u16 
-	min_left_side_bearing   i16 
-	min_right_side_bearing  i16 
-	x_max_extent            i16 
-	caret_slope_rise        i16 
-	caret_slope_run         i16 
-	caret_offset            i16 
-	metric_data_format      i16 
-	num_of_long_hor_metrics u16 
+	ascent                  i16
+	descent                 i16
+	line_gap                i16
+	advance_width_max       u16
+	min_left_side_bearing   i16
+	min_right_side_bearing  i16
+	x_max_extent            i16
+	caret_slope_rise        i16
+	caret_slope_run         i16
+	caret_offset            i16
+	metric_data_format      i16
+	num_of_long_hor_metrics u16
 
 	kern                    []Kern0Table
-	
+
 	// cache
 	glyph_cache             map[int]Glyph
 }
@@ -191,7 +191,7 @@ fn (mut tf TTF_File) get_glyph_offset(index u32) u32{
 	assert "loca" in tf.tables
 	assert "glyf" in tf.tables
 	mut old_pos := tf.pos
-	
+
 	table := tf.tables["loca"]
 	mut offset  := u32(0)
 	mut next    := u32(0)
@@ -204,7 +204,7 @@ fn (mut tf TTF_File) get_glyph_offset(index u32) u32{
 		offset  = tf.get_u16() << 1
 		next    = tf.get_u16() << 1
 	}
-	
+
 	if offset == next {
 		// indicates glyph has no outline( eg space)
 		return 0
@@ -238,13 +238,13 @@ fn (mut tf TTF_File) read_glyph_dim(index u16) (int, int, int, int) {
 
 	tf.pos = offset
 	//dprintln("file seek read_glyph: $tf.pos")
-	
+
 	/*number_of_contours*/ _ := tf.get_i16()
 	x_min := tf.get_fword()
 	y_min := tf.get_fword()
 	x_max := tf.get_fword()
 	y_max := tf.get_fword()
-	
+
 	return x_min, x_max, y_min, y_max
 }
 
@@ -256,7 +256,7 @@ fn (mut tf TTF_File) read_glyph(index u16) Glyph {
 		return tf.glyph_cache[index_int]
 	}
 	//dprintln("Create glyp: ${index}")
-	
+
 	offset := tf.get_glyph_offset(index)
 	//dprintln("offset: $offset")
 	if offset == 0 || offset >= tf.tables["glyf"].offset + tf.tables["glyf"].length {
@@ -269,7 +269,7 @@ fn (mut tf TTF_File) read_glyph(index u16) Glyph {
 
 	tf.pos = offset
 	//dprintln("file seek read_glyph: $tf.pos")
-	
+
 	/* ---- BUG TO SOLVE -----
 	--- Order of the data if printed in the main is shuffled!! Very Strange
 	mut tmp_glyph := Glyph{
@@ -280,14 +280,14 @@ fn (mut tf TTF_File) read_glyph(index u16) Glyph {
 		y_max : tf.get_fword()
 	}
 	*/
-	
+
 	mut tmp_glyph := Glyph{}
 	tmp_glyph.number_of_contours = tf.get_i16()
 	tmp_glyph.x_min = tf.get_fword()
 	tmp_glyph.y_min = tf.get_fword()
 	tmp_glyph.x_max = tf.get_fword()
 	tmp_glyph.y_max = tf.get_fword()
-	
+
 	//dprintln("file seek after read_glyph: $tf.pos")
 
 	assert tmp_glyph.number_of_contours >= -1
@@ -323,8 +323,8 @@ fn (mut tf TTF_File) read_simple_glyph(mut in_glyph Glyph){
 	}
 
 	// skip over intructions
-	tf.pos = tf.get_u16() + tf.pos 
-	
+	tf.pos = tf.get_u16() + tf.pos
+
 	mut num_points := 0
 	for ce in in_glyph.contour_ends {
 		if ce > num_points {
@@ -343,7 +343,7 @@ fn (mut tf TTF_File) read_simple_glyph(mut in_glyph Glyph){
 			y: 0
 			on_curve: (flag & tfk_on_curve) > 0
 		}
-		
+
 		if (flag & tfk_repeat) > 0 {
 			mut repeat_count := tf.get_u8()
 			assert repeat_count > 0
@@ -432,11 +432,11 @@ fn (mut tf TTF_File) read_compound_glyph(mut in_glyph Glyph){
 	for (flags & tfkc_more_components) > 0 {
 		mut arg1 := i16(0)
 		mut arg2 := i16(0)
-		
+
 		flags = tf.get_u16()
 
 		component.glyph_index = tf.get_u16()
-		
+
 		if (flags & tfkc_arg_1_and_2_are_words) > 0 {
 			arg1 = tf.get_i16()
 			arg2 = tf.get_i16()
@@ -482,7 +482,7 @@ fn (mut tf TTF_File) read_compound_glyph(mut in_glyph Glyph){
 				mut x := f32(p.x)
 				mut y := f32(p.y)
 				x = component.matrix[0] * x + component.matrix[1] * y + component.matrix[4]
-				y = component.matrix[2] * x + component.matrix[3] * y + component.matrix[5]            	
+				y = component.matrix[2] * x + component.matrix[3] * y + component.matrix[5]
 				in_glyph.points << Point{
 					x: int(x)
 					y: int(y)
@@ -537,9 +537,9 @@ fn (mut tf TTF_File) get_fword() i16 {
 }
 
 fn (mut tf TTF_File) get_u32() u32 {
-	x :=(u32(tf.buf[tf.pos]) << u32(24)) | 
-		(u32(tf.buf[tf.pos + 1]) << u32(16)) | 
-		(u32(tf.buf[tf.pos + 2]) << u32(8)) | 
+	x :=(u32(tf.buf[tf.pos]) << u32(24)) |
+		(u32(tf.buf[tf.pos + 1]) << u32(16)) |
+		(u32(tf.buf[tf.pos + 2]) << u32(8)) |
 		u32(tf.buf[tf.pos + 3])
 	tf.pos += 4
 	return x
@@ -566,7 +566,7 @@ fn (mut tf TTF_File) get_string(length int) string {
 fn (mut tf TTF_File) get_unicode_string(length int) string {
 	mut tmp_txt := strings.new_builder(length)
 	mut real_len := 0
-	
+
 	for _ in 0..(length>>1) {
 		c := tf.get_u16()
 		c_len := ((0xe5000000>>((c>>3) & 0x1e)) & 3) + 1
@@ -636,7 +636,7 @@ fn (mut tf TTF_File) read_offset_tables() {
 	mut i:= 0
 	for i < num_tables {
 		tag := tf.get_string(4)
-		tf.tables[tag] = {
+		tf.tables[tag] = Offset_Table{
 			checksum: tf.get_u32()
 			offset:   tf.get_u32()
 			length:   tf.get_u32()
@@ -692,7 +692,7 @@ fn (mut tf TTF_File) read_name_table() {
 	assert "name" in tf.tables
 	table_offset := tf.tables["name"].offset
 	tf.pos = tf.tables["name"].offset
-	
+
 	format        := tf.get_u16() // must be 0
 	assert format == 0
 	count         := tf.get_u16()
@@ -915,7 +915,7 @@ fn (mut tf TTF_File) read_hhea_table() {
 	tf.pos = table_offset
 
 	/*version :=*/ tf.get_fixed() // 0x00010000
-	
+
 	tf.ascent                  = tf.get_fword()
 	tf.descent                 = tf.get_fword()
 	tf.line_gap                = tf.get_fword()

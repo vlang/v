@@ -60,7 +60,7 @@ fn (mut v Vec) randomize(min_x int, min_y int, max_x int, max_y int) {
 // part of snake's body representation
 struct BodyPart {
 mut:
-	pos    Vec = {
+	pos    Vec = Vec{
 	x: block_size
 	y: block_size
 }
