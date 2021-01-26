@@ -15,8 +15,8 @@ const (
 pub fn init(cfg Config) &Context {
 	mut ctx := &Context{
 		cfg: cfg,
-		read_buf: []byte{ cap: cfg.buffer_size }
 	}
+	ctx.read_buf = []byte{ cap: cfg.buffer_size }
 
 	// lmao
 	unsafe {
