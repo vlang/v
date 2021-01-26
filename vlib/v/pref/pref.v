@@ -474,10 +474,10 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			//
 			if output_option.len != 0 {
 				res.vrun_elog('remove tmp exe file: $tmp_exe_file_path')
-				os.rm(tmp_exe_file_path)
+				os.rm(tmp_exe_file_path) or { }
 			}
 			res.vrun_elog('remove tmp v file: $tmp_v_file_path')
-			os.rm(tmp_v_file_path)
+			os.rm(tmp_v_file_path) or { panic(err) }
 			exit(tmp_result)
 		}
 		must_exist(res.path)

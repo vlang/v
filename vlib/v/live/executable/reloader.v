@@ -127,7 +127,7 @@ fn protected_load_lib(mut r live.LiveReloadInfo, new_lib_path string) {
 	elog(r, '> load_lib OK, new live_lib: $r.live_lib')
 	// removing the .so file from the filesystem after dlopen-ing
 	// it is safe, since it will still be mapped in memory
-	os.rm(new_lib_path)
+	os.rm(new_lib_path) or { }
 }
 
 // NB: r.reloader() is executed in a new, independent thread

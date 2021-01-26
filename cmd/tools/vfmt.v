@@ -176,7 +176,7 @@ fn (foptions &FormatOptions) format_file(file string) {
 	file_name := os.file_name(file)
 	ulid := rand.ulid()
 	vfmt_output_path := os.join_path(vtmp_folder, 'vfmt_${ulid}_$file_name')
-	os.write_file(vfmt_output_path, formatted_content)
+	os.write_file(vfmt_output_path, formatted_content) or { panic(err) }
 	if foptions.is_verbose {
 		eprintln('fmt.fmt worked and $formatted_content.len bytes were written to $vfmt_output_path .')
 	}
@@ -258,7 +258,8 @@ fn (foptions &FormatOptions) post_process_file(file string, formatted_file_path 
 }
 
 fn (f FormatOptions) str() string {
-	return 'FormatOptions{ is_l: $f.is_l, is_w: $f.is_w, is_diff: $f.is_diff, is_verbose: $f.is_verbose,' +
+	return 
+		'FormatOptions{ is_l: $f.is_l, is_w: $f.is_w, is_diff: $f.is_diff, is_verbose: $f.is_verbose,' +
 		' is_all: $f.is_all, is_worker: $f.is_worker, is_debug: $f.is_debug, is_noerror: $f.is_noerror,' +
 		' is_verify: $f.is_verify" }'
 }

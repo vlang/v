@@ -489,7 +489,7 @@ pub fn get_vtmp_folder() string {
 	}
 	vtmp = os.join_path(os.temp_dir(), 'v')
 	if !os.exists(vtmp) || !os.is_dir(vtmp) {
-		os.mkdir_all(vtmp)
+		os.mkdir_all(vtmp) or { panic(err) }
 	}
 	os.setenv('VTMP', vtmp, true)
 	return vtmp

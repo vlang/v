@@ -4,6 +4,7 @@ import v.pref
 $if windows {
 	$if tinyc {
 		#flag -lAdvapi32
+
 		#flag -lUser32
 	}
 }
@@ -19,20 +20,16 @@ fn main() {
 fn setup_symlink(vexe string) {
 	link_dir := '/usr/local/bin'
 	if !os.exists(link_dir) {
-		os.mkdir_all(link_dir)
+		os.mkdir_all(link_dir) or { panic(err) }
 	}
 	mut link_path := link_dir + '/v'
-	mut ret := os.exec('ln -sf $vexe $link_path') or {
-		panic(err)
-	}
+	mut ret := os.exec('ln -sf $vexe $link_path') or { panic(err) }
 	if ret.exit_code == 0 {
 		println('Symlink "$link_path" has been created')
-	} else if os.system("uname -o | grep -q \'[A/a]ndroid\'") == 0 {
+	} else if os.system("uname -o | grep -q '[A/a]ndroid'") == 0 {
 		println('Failed to create symlink "$link_path". Trying again with Termux path for Android.')
 		link_path = '/data/data/com.termux/files/usr/bin/v'
-		ret = os.exec('ln -sf $vexe $link_path') or {
-			panic(err)
-		}
+		ret = os.exec('ln -sf $vexe $link_path') or { panic(err) }
 		if ret.exit_code == 0 {
 			println('Symlink "$link_path" has been created')
 		} else {
@@ -52,9 +49,9 @@ fn setup_symlink_windows(vexe string) {
 		vsymlinkdir := os.join_path(vdir, '.bin')
 		mut vsymlink := os.join_path(vsymlinkdir, 'v.exe')
 		if !os.exists(vsymlinkdir) {
-			os.mkdir_all(vsymlinkdir) // will panic if fails
+			os.mkdir_all(vsymlinkdir) or { panic(err) } // will panic if fails
 		} else {
-			os.rm(vsymlink)
+			os.rm(vsymlink) or { panic(err) }
 		}
 		// First, try to create a native symlink at .\.bin\v.exe
 		os.symlink(vsymlink, vexe) or {
@@ -64,9 +61,9 @@ fn setup_symlink_windows(vexe string) {
 			eprintln('Creating a batch file instead...')
 			vsymlink = os.join_path(vsymlinkdir, 'v.bat')
 			if os.exists(vsymlink) {
-				os.rm(vsymlink)
+				os.rm(vsymlink) or { panic(err) }
 			}
-			os.write_file(vsymlink, '@echo off\n$vexe %*')
+			os.write_file(vsymlink, '@echo off\n$vexe %*') or { panic(err) }
 			eprintln('$vsymlink file written.')
 		}
 		if !os.exists(vsymlink) {
@@ -83,9 +80,7 @@ fn setup_symlink_windows(vexe string) {
 		// C.RegCloseKey(reg_sys_env_handle)
 		// }
 		// if the above succeeded, and we cannot get the value, it may simply be empty
-		sys_env_path := get_reg_value(reg_sys_env_handle, 'Path') or {
-			''
-		}
+		sys_env_path := get_reg_value(reg_sys_env_handle, 'Path') or { '' }
 		current_sys_paths := sys_env_path.split(os.path_delimiter).map(it.trim('/$os.path_separator'))
 		mut new_paths := [vsymlinkdir]
 		for p in current_sys_paths {
@@ -171,8 +166,7 @@ fn set_reg_value(reg_key voidptr, key string, value string) ?bool {
 // letting them know that the system environment has changed and should be reloaded
 fn send_setting_change_msg(message_data string) ?bool {
 	$if windows {
-		if C.SendMessageTimeout(os.hwnd_broadcast, os.wm_settingchange, 0, message_data.to_wide(), os.smto_abortifhung, 5000, 0) ==
-			0 {
+		if C.SendMessageTimeout(os.hwnd_broadcast, os.wm_settingchange, 0, message_data.to_wide(), os.smto_abortifhung, 5000, 0) == 0 {
 			return error('Could not broadcast WM_SETTINGCHANGE')
 		}
 		return true

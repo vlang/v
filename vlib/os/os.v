@@ -46,7 +46,7 @@ pub fn cp_all(src string, dst string, overwrite bool) ? {
 		}
 		if exists(adjusted_path) {
 			if overwrite {
-				rm(adjusted_path)
+				rm(adjusted_path) ?
 			} else {
 				return error('Destination file path already exist')
 			}
@@ -65,7 +65,7 @@ pub fn cp_all(src string, dst string, overwrite bool) ? {
 			mkdir(dp) ?
 		}
 		cp_all(sp, dp, overwrite) or {
-			rmdir(dp)
+			rmdir(dp) or { return error(err) }
 			return error(err)
 		}
 	}
@@ -144,7 +144,7 @@ pub fn file_exists(_path string) bool {
 [deprecated]
 pub fn rmdir_recursive(path string) {
 	eprintln('warning: `os.rmdir_recursive` has been deprecated, use `os.rmdir_all` instead')
-	rmdir_all(path)
+	rmdir_all(path) or { panic(err) }
 }
 
 // rmdir_all recursively removes the specified directory.
@@ -154,7 +154,7 @@ pub fn rmdir_all(path string) ? {
 	for item in items {
 		fullpath := join_path(path, item)
 		if is_dir(fullpath) {
-			rmdir_all(fullpath)
+			rmdir_all(fullpath) or { ret_err = err }
 		}
 		rm(fullpath) or { ret_err = err }
 	}
@@ -315,7 +315,7 @@ pub fn home_dir() string {
 // write_file writes `text` data to a file in `path`.
 pub fn write_file(path string, text string) ? {
 	mut f := create(path) ?
-	f.write(text.bytes())
+	f.write(text.bytes()) ?
 	f.close()
 }
 

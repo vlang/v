@@ -210,7 +210,7 @@ pub fn (mut ts TestSession) test() {
 	// cleanup generated .tmp.c files after successfull tests:
 	if ts.benchmark.nfail == 0 {
 		if ts.rm_binaries {
-			os.rmdir_all(ts.vtmp_dir)
+			os.rmdir_all(ts.vtmp_dir) or { panic(err) }
 		}
 	}
 }
@@ -241,7 +241,7 @@ fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 	generated_binary_fpath := os.join_path(tmpd, generated_binary_fname)
 	if os.exists(generated_binary_fpath) {
 		if ts.rm_binaries {
-			os.rm(generated_binary_fpath)
+			os.rm(generated_binary_fpath) or { panic(err) }
 		}
 	}
 	mut cmd_options := [ts.vargs]
@@ -294,7 +294,7 @@ fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 	}
 	if os.exists(generated_binary_fpath) {
 		if ts.rm_binaries {
-			os.rm(generated_binary_fpath)
+			os.rm(generated_binary_fpath) or { panic(err) }
 		}
 	}
 	return sync.no_result
@@ -422,7 +422,7 @@ pub fn header(msg string) {
 pub fn setup_new_vtmp_folder() string {
 	now := time.sys_mono_now()
 	new_vtmp_dir := os.join_path(os.temp_dir(), 'v', 'test_session_$now')
-	os.mkdir_all(new_vtmp_dir)
+	os.mkdir_all(new_vtmp_dir) or { panic(err) }
 	os.setenv('VTMP', new_vtmp_dir, true)
 	return new_vtmp_dir
 }

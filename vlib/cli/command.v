@@ -259,7 +259,7 @@ fn (cmd Command) check_version_flag() {
 		version_flag := cmd.flags.get_bool('version') or { return } // ignore error and handle command normally
 		if version_flag {
 			version_cmd := cmd.commands.get('version') or { return } // ignore error and handle command normally
-			version_cmd.execute(version_cmd)
+			version_cmd.execute(version_cmd) or { panic(err) }
 			exit(0)
 		}
 	}
@@ -280,7 +280,7 @@ fn (cmd Command) check_required_flags() {
 pub fn (cmd Command) execute_help() {
 	if cmd.commands.contains('help') {
 		help_cmd := cmd.commands.get('help') or { return } // ignore error and handle command normally
-		help_cmd.execute(help_cmd)
+		help_cmd.execute(help_cmd) or { panic(err) }
 	} else {
 		print(cmd.help_message())
 	}
