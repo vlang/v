@@ -355,7 +355,8 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 			//}
 			// read body
 			mut read_body := []byte{len: len}
-			reader.read(mut read_body) // read just the amount of content len if there is no content there is nothing more to read here
+			// read just the amount of content len if there is no content there is nothing more to read here
+			reader.read(mut read_body) or { println('reader.read failed with err: $err') }
 			body += read_body.bytestr()
 			break
 		}

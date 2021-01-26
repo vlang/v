@@ -53,13 +53,11 @@ fn test_all() {
 	files := os.ls(dir) or { panic(err) }
 	//
 	wrkdir := os.join_path(os.temp_dir(), 'vtests', 'valgrind')
-	os.mkdir_all(wrkdir)
+	os.mkdir_all(wrkdir) or { panic(err) }
 	os.chdir(wrkdir)
 	//
-	tests := vtest.filter_vtest_only(files.filter(it.ends_with('.v') && !it.ends_with('_test.v')),
-		
-		basepath: valgrind_test_path
-	)
+	only_ordinary_v_files := files.filter(it.ends_with('.v') && !it.ends_with('_test.v'))
+	tests := vtest.filter_vtest_only(only_ordinary_v_files, basepath: valgrind_test_path)
 	bench.set_total_expected_steps(tests.len)
 	for test in tests {
 		bench.step()

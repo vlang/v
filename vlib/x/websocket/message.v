@@ -39,7 +39,7 @@ const (
 // validate_client validates client frame rules from RFC6455
 pub fn (mut ws Client) validate_frame(frame &Frame) ? {
 	if frame.rsv1 || frame.rsv2 || frame.rsv3 {
-		ws.close(1002, 'rsv cannot be other than 0, not negotiated')
+		ws.close(1002, 'rsv cannot be other than 0, not negotiated') ?
 		return error('rsv cannot be other than 0, not negotiated')
 	}
 	if (int(frame.opcode) >= 3 && int(frame.opcode) <= 7)
@@ -113,7 +113,7 @@ fn (mut ws Client) validate_utf_8(opcode OPCode, payload []byte) ? {
 	if opcode in [.text_frame, .close] && !utf8.validate(payload.data, payload.len) {
 		ws.logger.error('malformed utf8 payload, payload len: ($payload.len)')
 		ws.send_error_event('Recieved malformed utf8.')
-		ws.close(1007, 'malformed utf8 payload')
+		ws.close(1007, 'malformed utf8 payload') ?
 		return error('malformed utf8 payload')
 	}
 }

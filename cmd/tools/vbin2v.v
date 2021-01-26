@@ -68,7 +68,6 @@ fn (context Context) file2v(bname string, fbytes []byte, bn_max int) string {
 			sb.write('$b, ')
 			line_len += b.len + 2
 		}
-
 	}
 	sb.write(']!\n')
 	return sb.str()
@@ -76,8 +75,8 @@ fn (context Context) file2v(bname string, fbytes []byte, bn_max int) string {
 
 fn (context Context) bname_and_bytes(file string) ?(string, []byte) {
 	fname := os.file_name(file)
-	fname_escpaed := fname.replace_each(['.', '_', '-', '_'])
-	byte_name := '$context.prefix$fname_escpaed'.to_lower()
+	fname_escaped := fname.replace_each(['.', '_', '-', '_'])
+	byte_name := '$context.prefix$fname_escaped'.to_lower()
 	fbytes := os.read_bytes(file) or { return error('Error: $err') }
 	return byte_name, fbytes
 }
@@ -131,12 +130,12 @@ fn main() {
 	}
 	max_bname := context.max_bname_len(file_byte_map.keys())
 	if context.write_file.len > 0 {
-		mut out_file := os.create(context.write_file) or { panic(err) }
-		out_file.write_str(context.header())
+		mut out_file := os.create(context.write_file) ?
+		out_file.write_str(context.header()) ?
 		for bname, fbytes in file_byte_map {
-			out_file.write_str(context.file2v(bname, fbytes, max_bname))
+			out_file.write_str(context.file2v(bname, fbytes, max_bname)) ?
 		}
-		out_file.write_str(context.footer())
+		out_file.write_str(context.footer()) ?
 	} else {
 		print(context.header())
 		for bname, fbytes in file_byte_map {

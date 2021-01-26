@@ -155,7 +155,7 @@ fn (mut pc PkgConfig) resolve(pkgname string) ?string {
 }
 
 pub fn atleast(v string) bool {
-	v0 := semver.from(version) or { return false }
+	v0 := semver.from(pkgconfig.version) or { return false }
 	v1 := semver.from(v) or { return false }
 	return v0.gt(v1)
 }
@@ -207,8 +207,8 @@ fn (mut pc PkgConfig) load_require(dep string) ? {
 	if !pcdep.parse(depfile) {
 		return error('required file "$depfile" could not be parsed')
 	}
-	pcdep.load_requires() or { return error(err) }
-	pc.extend(pcdep)
+	pcdep.load_requires() ?
+	pc.extend(pcdep) ?
 }
 
 fn (mut pc PkgConfig) add_path(path string) {
@@ -223,7 +223,7 @@ fn (mut pc PkgConfig) add_path(path string) {
 
 fn (mut pc PkgConfig) load_paths() {
 	if pc.options.use_default_paths {
-		for path in default_paths {
+		for path in pkgconfig.default_paths {
 			pc.add_path(path)
 		}
 	}

@@ -96,8 +96,8 @@ pub fn (mut c Client) send(config Mail) ? {
 
 // quit closes the connection to the server
 pub fn (mut c Client) quit() ? {
-	c.send_str('QUIT\r\n')
-	c.expect_reply(.close)
+	c.send_str('QUIT\r\n') ?
+	c.expect_reply(.close) ?
 	c.conn.close() ?
 	c.is_open = false
 }
@@ -166,7 +166,7 @@ fn (mut c Client) send_mailto(to string) ? {
 
 fn (mut c Client) send_data() ? {
 	c.send_str('DATA\r\n') ?
-	c.expect_reply(.mail_start)
+	c.expect_reply(.mail_start) ?
 }
 
 fn (mut c Client) send_body(cfg Mail) ? {

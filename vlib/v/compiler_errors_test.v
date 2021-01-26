@@ -13,7 +13,7 @@ const skip_files = [
 
 const skip_on_ubuntu_musl = [
 		'vlib/v/checker/tests/vweb_tmpl_used_var.vv',
-]
+	]
 
 const turn_off_vcolors = os.setenv('VCOLORS', 'never', true)
 
@@ -179,7 +179,7 @@ fn (mut task TaskDescription) execute() {
 	res := os.exec(cli_cmd) or { panic(err) }
 	expected_out_path := program.replace('.vv', '') + task.result_extension
 	if should_autofix && !os.exists(expected_out_path) {
-		os.write_file(expected_out_path, '')
+		os.write_file(expected_out_path, '') or { panic(err) }
 	}
 	mut expected := os.read_file(expected_out_path) or { panic(err) }
 	task.expected = clean_line_endings(expected)
@@ -192,7 +192,7 @@ fn (mut task TaskDescription) execute() {
 	if task.expected != task.found___ {
 		task.is_error = true
 		if should_autofix {
-			os.write_file(expected_out_path, res.output)
+			os.write_file(expected_out_path, res.output) or { panic(err) }
 		}
 	}
 }

@@ -99,7 +99,7 @@ fn (am AssetManager) combine(asset_type string, to_file bool) string {
 		os.mkdir(am.cache_dir) or { panic(err) }
 	}
 	mut file := os.create(out_file) or { panic(err) }
-	file.write(out.bytes())
+	file.write(out.bytes()) or { panic(err) }
 	file.close()
 	return out_file
 }

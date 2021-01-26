@@ -64,7 +64,10 @@ fn test_socket_write_and_read() {
 	message1 := 'a message 1'
 	socket.write_str(message1) or { assert false }
 	mut rbuf := []byte{len: message1.len}
-	client.read(mut rbuf)
+	client.read(mut rbuf) or {
+		assert false
+		return
+	}
 	line := rbuf.bytestr()
 	assert line == message1
 }
@@ -127,8 +130,14 @@ fn test_socket_read_line_long_line_without_eol() {
 		cleanup(mut server, mut client, mut socket)
 	}
 	message := strings.repeat_string('123', 400)
-	socket.write_str(message)
-	socket.write_str('\n')
+	socket.write_str(message) or {
+		assert false
+		return
+	}
+	socket.write_str('\n') or {
+		assert false
+		return
+	}
 	line := reader.read_line() or {
 		assert false
 		return

@@ -49,10 +49,10 @@ interface Logger {
 // Log represents a logging object
 pub struct Log {
 mut:
-	level            Level
-	output_label     string
-	ofile            os.File
-	output_to_file   bool // if true output to file else use stdout/stderr.
+	level          Level
+	output_label   string
+	ofile          os.File
+	output_to_file bool // if true output to file else use stdout/stderr.
 pub mut:
 	output_file_name string // log output to this file
 }
@@ -106,7 +106,7 @@ pub fn (mut l Log) close() {
 fn (mut l Log) log_file(s string, level Level) {
 	timestamp := time.now().format_ss()
 	e := tag_to_file(level)
-	l.ofile.writeln('$timestamp [$e] $s')
+	l.ofile.writeln('$timestamp [$e] $s') or { panic(err) }
 }
 
 // log_cli writes log line `s` with `level` to stdout.

@@ -315,7 +315,7 @@ pub fn (mut v Builder) cc_msvc() {
 	// println(res)
 	// println('C OUTPUT:')
 	// Always remove the object file - it is completely unnecessary
-	os.rm(out_name_obj)
+	os.rm(out_name_obj) or { panic(err) }
 }
 
 fn (mut v Builder) build_thirdparty_obj_file_with_msvc(path string, moduleflags []cflag.CFlag) {

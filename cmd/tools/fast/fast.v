@@ -70,7 +70,8 @@ fn main() {
 		date := time.unix(commit_date.int())
 		mut out := os.create('table.html') ?
 		// Place the new row on top
-		table = '<tr>
+		table = 
+			'<tr>
 		<td>$date.format()</td>
 		<td><a target=_blank href="https://github.com/vlang/v/commit/$commit">$commit</a></td>
 		<td>$message</td>
@@ -80,15 +81,15 @@ fn main() {
 		<td>${diff4}ms</td>
 	</tr>\n' +
 			table.trim_space()
-		out.writeln(table)
+		out.writeln(table) ?
 		out.close()
 		// Regenerate index.html
 		header := os.read_file('header.html') ?
 		footer := os.read_file('footer.html') ?
 		mut res := os.create('index.html') ?
-		res.writeln(header)
-		res.writeln(table)
-		res.writeln(footer)
+		res.writeln(header) ?
+		res.writeln(table) ?
+		res.writeln(footer) ?
 		res.close()
 	}
 	exec('git checkout master')
@@ -96,9 +97,7 @@ fn main() {
 }
 
 fn exec(s string) string {
-	e := os.exec(s) or {
-		panic(err)
-	}
+	e := os.exec(s) or { panic(err) }
 	return e.output.trim_right('\r\n')
 }
 
@@ -112,7 +111,7 @@ fn measure(cmd string, description string) int {
 	println('  Building...')
 	mut runs := []int{}
 	for r in 0 .. 5 {
-		println('  Sample ${r+1}/5')
+		println('  Sample ${r + 1}/5')
 		sw := time.new_stopwatch({})
 		exec(cmd)
 		runs << int(sw.elapsed().milliseconds())

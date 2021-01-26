@@ -12,21 +12,20 @@ pub fn set_verbose(on bool) {
 	// but V does not have globals normally.
 	if on {
 		os.setenv('VERBOSE', '1', true)
-	}
-	else {
+	} else {
 		os.unsetenv('VERBOSE')
 	}
 }
 
 pub fn cprintln(message string) {
 	mut omessage := message
-	omessage = if term_colors { term.green(omessage) } else { omessage }
+	omessage = if scripting.term_colors { term.green(omessage) } else { omessage }
 	println(omessage)
 }
 
 pub fn verbose_trace(label string, message string) {
 	if os.getenv('VERBOSE').len > 0 {
-		slabel := 'scripting.${label}'
+		slabel := 'scripting.$label'
 		cprintln('# ${slabel:-25s} : $message')
 	}
 }
@@ -54,9 +53,9 @@ pub fn rmrf(path string) {
 	verbose_trace(@FN, 'rm -rf $path')
 	if os.exists(path) {
 		if os.is_dir(path) {
-			os.rmdir_all(path)
-		}else{
-			os.rm(path)
+			os.rmdir_all(path) or { panic(err) }
+		} else {
+			os.rm(path) or { panic(err) }
 		}
 	}
 }
@@ -97,7 +96,7 @@ pub fn exit_0_status(cmd string) bool {
 	return false
 }
 
-pub fn tool_must_exist (toolcmd string) {
+pub fn tool_must_exist(toolcmd string) {
 	verbose_trace(@FN, toolcmd)
 	if exit_0_status('type $toolcmd') {
 		return
