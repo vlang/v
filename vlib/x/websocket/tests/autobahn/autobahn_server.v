@@ -6,7 +6,7 @@ import x.websocket
 fn main() {
 	mut s := websocket.new_server(9002, '/')
 	s.on_message(on_message)
-	s.listen()
+	s.listen() or { panic(err) }
 }
 
 fn handle_case(case_nr int) ? {
