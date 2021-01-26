@@ -58,6 +58,7 @@ mut:
 	builtin_fns         []string // Functions defined in `builtin`
 	empty_line          bool
 	cast_stack					[]table.Type
+	call_stack					[]ast.CallExpr
 }
 
 pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string {
@@ -1103,6 +1104,7 @@ fn (mut g JsGen) gen_array_init_values(exprs []ast.Expr) {
 }
 
 fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
+	g.call_stack << it
 	mut name := g.js_name(it.name)
 	call_return_is_optional := it.return_type.has_flag(.optional)
 	if call_return_is_optional {
@@ -1196,6 +1198,7 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 		g.dec_indent()
 		g.write('})()')
 	}
+	g.call_stack.pop()
 }
 
 fn (mut g JsGen) gen_ident(node ast.Ident) {
@@ -1595,6 +1598,22 @@ fn (mut g JsGen) gen_type_cast_expr(it ast.CastExpr) {
 
 fn (mut g JsGen) gen_integer_literal_expr(it ast.IntegerLiteral) {
 	typ := table.Type(table.int_type)
+
+	// Don't wrap integers for use in JS.foo functions.
+	if g.call_stack.len > 0 {
+		call := g.call_stack[g.call_stack.len - 1]
+		//if call.language == .js {
+			for t in call.args {
+				if t.expr is ast.IntegerLiteral {
+					if ast.IntegerLiteral(t.expr) == it {
+						g.write(it.val)
+						return
+					}
+				}
+			}
+		//}
+	}
+
 	// Skip cast if type is the same as the parrent caster
 	if g.cast_stack.len > 0 {
 		if typ == g.cast_stack[g.cast_stack.len - 1] {
@@ -1602,11 +1621,36 @@ fn (mut g JsGen) gen_integer_literal_expr(it ast.IntegerLiteral) {
 			return
 		}
 	}
+
+	if g.ns.name == 'builtin' {
+		g.write('new ')
+	}
+
 	g.write('${g.typ(typ)}($it.val)')
 }
 
 fn (mut g JsGen) gen_float_literal_expr(it ast.FloatLiteral) {
 	typ := table.Type(table.f32_type)
+	
+	// Don't wrap integers for use in JS.foo functions.
+	if g.call_stack.len > 0 {
+		call := g.call_stack[g.call_stack.len - 1]
+		//if call.language == .js {
+			for i, t in call.args {
+				if t.expr is ast.FloatLiteral {
+					if ast.FloatLiteral(t.expr) == it {
+						if call.expected_arg_types[i] in table.integer_type_idxs {
+							g.write('($it.val|0)')
+						} else {
+							g.write(it.val)
+						}
+						return
+					}
+				}
+			}
+		//}
+	}
+
 	// Skip cast if type is the same as the parrent caster
 	if g.cast_stack.len > 0 {
 		if typ == g.cast_stack[g.cast_stack.len - 1] {
@@ -1618,5 +1662,10 @@ fn (mut g JsGen) gen_float_literal_expr(it ast.FloatLiteral) {
 			return
 		}
 	}
+
+	if g.ns.name == 'builtin' {
+		g.write('new ')
+	}
+
 	g.write('${g.typ(typ)}($it.val)')
 }

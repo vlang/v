@@ -22,8 +22,6 @@ fn (v JS.Boolean) toString() JS.String
 fn (v JS.Array) toString() JS.String
 fn (v JS.Map) toString() JS.String
 
-fn (v JS.String) slice(a int, b int) JS.String
-
 // Top level functions
 fn JS.eval(string) any
 fn JS.parseInt(string, f64) f64
@@ -84,3 +82,9 @@ fn JS.Math.tan(f64) f64
 // JSON
 fn JS.JSON.stringify(any) string
 fn JS.JSON.parse(string) any
+
+// String
+fn (v JS.String) slice(a int, b int) JS.String
+fn (s JS.String) indexOf(needle string) int
+fn (s JS.String) lastIndexOf(needle string) int
+
