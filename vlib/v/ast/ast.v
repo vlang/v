@@ -1140,13 +1140,6 @@ pub:
 	foo int // todo
 }
 
-/*
-pub enum SqlExprKind {
-	select_
-	insert
-	update
-}
-*/
 pub enum SqlStmtKind {
 	insert
 	update
