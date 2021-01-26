@@ -30,7 +30,7 @@ fn start_server() ? {
 	}) ?
 	s.on_message(fn (mut ws websocket.Client, msg &websocket.Message) ? {
 		match msg.opcode {
-			.pong { ws.write_str('pong') }
+			.pong { ws.write_str('pong') or { panic(err) } }
 			else { ws.write(msg.payload, msg.opcode) or { panic(err) } }
 		}
 	})

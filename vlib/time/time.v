@@ -141,7 +141,7 @@ pub fn (t Time) smonth() string {
 		return '---'
 	}
 	i := t.month - 1
-	return months_string[i * 3..(i + 1) * 3]
+	return time.months_string[i * 3..(i + 1) * 3]
 }
 
 // new_time returns a time struct with calculated Unix time.
@@ -186,12 +186,12 @@ pub fn (t Time) add(d Duration) Time {
 
 // add_seconds returns a new time struct with an added number of seconds.
 pub fn (t Time) add_seconds(seconds int) Time {
-	return t.add(seconds * second)
+	return t.add(seconds * time.second)
 }
 
 // add_days returns a new time struct with an added number of days.
 pub fn (t Time) add_days(days int) Time {
-	return t.add(days * 24 * hour)
+	return t.add(days * 24 * time.hour)
 }
 
 // since returns a number of seconds elapsed since a given time.
@@ -300,13 +300,13 @@ pub fn (t Time) day_of_week() int {
 // weekday_str returns the current day as a string.
 pub fn (t Time) weekday_str() string {
 	i := t.day_of_week() - 1
-	return days_string[i * 3..(i + 1) * 3]
+	return time.days_string[i * 3..(i + 1) * 3]
 }
 
 // weekday_str returns the current day as a string.
 pub fn (t Time) long_weekday_str() string {
 	i := t.day_of_week() - 1
-	return long_days[i]
+	return time.long_days[i]
 }
 
 // ticks returns a number of milliseconds elapsed since system start.
@@ -362,7 +362,7 @@ pub fn days_in_month(month int, year int) ?int {
 		return error('Invalid month: $month')
 	}
 	extra := if month == 2 && is_leap_year(year) { 1 } else { 0 }
-	res := month_days[month - 1] + extra
+	res := time.month_days[month - 1] + extra
 	return res
 }
 
@@ -382,7 +382,7 @@ fn convert_ctime(t C.tm, microsecond int) Time {
 		hour: t.tm_hour
 		minute: t.tm_min
 		second: t.tm_sec
-		microsecond: microsecond
+		microsecond: time.microsecond
 		unix: u64(make_unix_time(t))
 	}
 }
@@ -419,22 +419,22 @@ pub fn (d Duration) milliseconds() i64 {
 // consider all of them in sub-one intervals
 // seconds returns the duration as a floating point number of seconds.
 pub fn (d Duration) seconds() f64 {
-	sec := d / second
-	nsec := d % second
+	sec := d / time.second
+	nsec := d % time.second
 	return f64(sec) + f64(nsec) / 1e9
 }
 
 // minutes returns the duration as a floating point number of minutes.
 pub fn (d Duration) minutes() f64 {
-	min := d / minute
-	nsec := d % minute
+	min := d / time.minute
+	nsec := d % time.minute
 	return f64(min) + f64(nsec) / (60 * 1e9)
 }
 
 // hours returns the duration as a floating point number of hours.
 pub fn (d Duration) hours() f64 {
-	hr := d / hour
-	nsec := d % hour
+	hr := d / time.hour
+	nsec := d % time.hour
 	return f64(hr) + f64(nsec) / (60 * 60 * 1e9)
 }
 

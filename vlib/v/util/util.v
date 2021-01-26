@@ -45,10 +45,10 @@ pub fn full_hash() string {
 // full_v_version() returns the full version of the V compiler
 pub fn full_v_version(is_verbose bool) string {
 	if is_verbose {
-		return 'V $v_version $full_hash()'
+		return 'V $util.v_version $full_hash()'
 	}
 	hash := githash(false)
-	return 'V $v_version $hash'
+	return 'V $util.v_version $hash'
 }
 
 // githash(x) returns the current git commit hash.
@@ -163,7 +163,7 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 		println('launch_tool should_compile: $should_compile')
 	}
 	if should_compile {
-		emodules := external_module_dependencies_for_tool[tool_name]
+		emodules := util.external_module_dependencies_for_tool[tool_name]
 		for emodule in emodules {
 			check_module_is_installed(emodule, is_verbose) or { panic(err) }
 		}
@@ -411,7 +411,7 @@ and the existing module `$modulename` may still work.')
 }
 
 pub fn ensure_modules_for_all_tools_are_installed(is_verbose bool) {
-	for tool_name, tool_modules in external_module_dependencies_for_tool {
+	for tool_name, tool_modules in util.external_module_dependencies_for_tool {
 		if is_verbose {
 			eprintln('Installing modules for tool: $tool_name ...')
 		}
@@ -444,9 +444,9 @@ const (
 pub fn no_cur_mod(typename string, cur_mod string) string {
 	mut res := typename
 	mod_prefix := cur_mod + '.'
-	has_map_prefix := res.starts_with(map_prefix)
+	has_map_prefix := res.starts_with(util.map_prefix)
 	if has_map_prefix {
-		res = res.replace_once(map_prefix, '')
+		res = res.replace_once(util.map_prefix, '')
 	}
 	no_symbols := res.trim_left('&[]')
 	should_shorten := no_symbols.starts_with(mod_prefix)
@@ -454,7 +454,7 @@ pub fn no_cur_mod(typename string, cur_mod string) string {
 		res = res.replace_once(mod_prefix, '')
 	}
 	if has_map_prefix {
-		res = map_prefix + res
+		res = util.map_prefix + res
 	}
 	return res
 }
@@ -489,12 +489,13 @@ pub fn get_vtmp_folder() string {
 	}
 	vtmp = os.join_path(os.temp_dir(), 'v')
 	if !os.exists(vtmp) || !os.is_dir(vtmp) {
-		os.mkdir_all(vtmp)
+		os.mkdir_all(vtmp) or { panic(err) }
 	}
 	os.setenv('VTMP', vtmp, true)
 	return vtmp
 }
 
 pub fn should_bundle_module(mod string) bool {
-	return mod in bundle_modules || (mod.contains('.') && mod.all_before('.') in bundle_modules)
+	return mod in util.bundle_modules
+		|| (mod.contains('.') && mod.all_before('.') in util.bundle_modules)
 }

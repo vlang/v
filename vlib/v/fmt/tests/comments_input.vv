@@ -52,3 +52,16 @@ fn main() {
 	}
   return // empty return
 }
+
+fn insert_space() {
+	//abc
+}
+
+fn linebreaks_in_block_comments() {
+	/*foo
+	comment goes here!
+	bar*/
+	/*  spam
+	spaces make no difference there
+	eggs */
+}

@@ -126,7 +126,7 @@ fn (vd VDoc) render_search_index(out Output) {
 	js_search_index.writeln('];')
 	js_search_data.writeln('];')
 	out_file_path := os.join_path(out.path, 'search_index.js')
-	os.write_file(out_file_path, js_search_index.str() + js_search_data.str())
+	os.write_file(out_file_path, js_search_index.str() + js_search_data.str()) or { panic(err) }
 }
 
 fn (mut vd VDoc) render_static_html(out Output) {
@@ -162,7 +162,7 @@ fn (vd VDoc) get_resource(name string, out Output) string {
 		output_path := os.join_path(out.path, name)
 		if !os.exists(output_path) {
 			println('Generating $out.typ in "$output_path"')
-			os.write_file(output_path, res)
+			os.write_file(output_path, res) or { panic(err) }
 		}
 		return name
 	}
@@ -201,11 +201,7 @@ fn (mut vd VDoc) create_search_results(mod string, dn doc.DocNode, out Output) {
 	dn_description := trim_doc_node_description(comments)
 	vd.search_index << dn.name
 	vd.search_data << SearchResult{
-		prefix: if dn.parent_name != '' {
-			'$dn.kind ($dn.parent_name)'
-		} else {
-			'$dn.kind '
-		}
+		prefix: if dn.parent_name != '' { '$dn.kind ($dn.parent_name)' } else { '$dn.kind ' }
 		description: dn_description
 		badge: mod
 		link: vd.get_file_name(mod, out) + '#' + get_node_id(dn)

@@ -122,7 +122,7 @@ pub fn start() Benchmark {
 pub fn (mut b Benchmark) measure(label string) i64 {
 	b.ok()
 	res := b.step_timer.elapsed().microseconds()
-	println(b.step_message_with_label(b_spent, 'in $label'))
+	println(b.step_message_with_label(benchmark.b_spent, 'in $label'))
 	b.step()
 	return res
 }
@@ -174,17 +174,17 @@ pub fn (b &Benchmark) step_message(msg string) string {
 
 // step_message_ok returns a string describing the current step with an standard "OK" label.
 pub fn (b &Benchmark) step_message_ok(msg string) string {
-	return b.step_message_with_label(b_ok, msg)
+	return b.step_message_with_label(benchmark.b_ok, msg)
 }
 
 // step_message_fail returns a string describing the current step with an standard "FAIL" label.
 pub fn (b &Benchmark) step_message_fail(msg string) string {
-	return b.step_message_with_label(b_fail, msg)
+	return b.step_message_with_label(benchmark.b_fail, msg)
 }
 
 // step_message_skip returns a string describing the current step with an standard "SKIP" label.
 pub fn (b &Benchmark) step_message_skip(msg string) string {
-	return b.step_message_with_label(b_skip, msg)
+	return b.step_message_with_label(benchmark.b_skip, msg)
 }
 
 // total_message returns a string with total summary of the benchmark run.

@@ -11,17 +11,17 @@
 import regex
 
 /*
-This simple function convert an HTML RGB value with 3 or 6 hex digits to an u32 value,
-this function is not optimized and it si only for didatical purpose
+This simple function converts an HTML RGB value with 3 or 6 hex digits to a u32 value,
+this function is not optimized and it is only for didatical purpose
 example: #A0B0CC #A9F
 */
 fn convert_html_rgb(in_col string) u32 {
 	mut n_digit := if in_col.len == 4 { 1 } else { 2 }
 	mut col_mul := if in_col.len == 4 { 4 } else { 0 }
 
-	// this is the regex query, it use the V string interpolation to customize the regex query
+	// this is the regex query, it uses V string interpolation to customize the regex query
 	// NOTE: if you want use escaped code you must use the r"" (raw) strings, 
-	//       *** please remember that the V interpoaltion doesn't work on raw strings. ***
+	//       *** please remember that V interpoaltion doesn't work on raw strings. ***
 
 	query:= "#([a-fA-F0-9]{$n_digit})([a-fA-F0-9]{$n_digit})([a-fA-F0-9]{$n_digit})"
 
@@ -41,7 +41,7 @@ fn convert_html_rgb(in_col string) u32 {
 }
 
 /*
-This function demostrate the use of the named groups
+This function demonstrates the use of the named groups
 */
 fn convert_html_rgb_n(in_col string) u32 {
 	mut n_digit := if in_col.len == 4 { 1 } else { 2 }
@@ -70,11 +70,11 @@ fn convert_html_rgb_n(in_col string) u32 {
 }
 
 fn main() {
-	// convert HTML rgb color usign groups
+	// convert HTML rgb color using groups
 	println(convert_html_rgb("#A0b0Cc").hex())
 	println(convert_html_rgb("#ABC").hex())
 
-	// convert HTML rgb color using maned groups
+	// convert HTML rgb color using named groups
 	println(convert_html_rgb_n("#A0B0CC").hex())
 	println(convert_html_rgb_n("#ABC").hex())
 }

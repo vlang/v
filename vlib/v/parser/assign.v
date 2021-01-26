@@ -112,7 +112,10 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 	if op == .decl_assign {
 		// a, b := a + 1, b
 		for r in right {
-			p.check_undefined_variables(left, r)
+			p.check_undefined_variables(left, r) or {
+				p.error('check_undefined_variables failed')
+				return ast.Stmt{}
+			}
 		}
 	} else if left.len > 1 {
 		// a, b = b, a

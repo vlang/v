@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module pcg32
 
+import rand.seed
 import rand.util
 
 // PCG32RNG ported from http://www.pcg-random.org/download.html,
@@ -10,8 +11,8 @@ import rand.util
 // https://github.com/imneme/pcg-c-basic/blob/master/pcg_basic.h
 pub struct PCG32RNG {
 mut:
-	state u64 = u64(0x853c49e6748fea9b) ^ util.time_seed_64()
-	inc   u64 = u64(0xda3e39cb94b95bdb) ^ util.time_seed_64()
+	state u64 = u64(0x853c49e6748fea9b) ^ seed.time_seed_64()
+	inc   u64 = u64(0xda3e39cb94b95bdb) ^ seed.time_seed_64()
 }
 
 // seed seeds the PCG32RNG with 4 `u32` values.

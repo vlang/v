@@ -363,7 +363,6 @@ fn test_generic_return_nested_map() {
 	assert typeof(generic_return_nested_map<string>()).name == 'map[string]map[string]string'
 }
 
-/*
 fn multi_return<A, B>() (A, B) {
 	return A{}, B{}
 }
@@ -374,6 +373,16 @@ struct Foo3{}
 struct Foo4{}
 
 fn test_multi_return() {
-	// TODO: multi_return<Foo1, Foo2>()
-	// TODO: temulti_returnst<Foo3, Foo4>()
-}*/
+	// compiles
+	multi_return<Foo1, Foo2>()
+	multi_return<Foo3, Foo4>()
+}
+
+fn multi_generic_args<T, V>(t T, v V) bool {
+	return true
+}
+
+fn test_multi_generic_args() {
+	assert multi_generic_args("Super", 2021)
+}
+

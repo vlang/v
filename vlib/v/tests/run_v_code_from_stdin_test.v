@@ -19,7 +19,7 @@ fn pipe_to_v_run() ? {
 	// eprintln('>> cmd: $cmd | res: $res')
 	assert res.exit_code == 0
 	assert res.output.replace('\r', '').trim_space().split('\n') == ['4', 'hello']
-	os.rm(tmp_v_file)
+	os.rm(tmp_v_file) or { panic(err) }
 	assert !os.exists(tmp_v_file)
 }
 

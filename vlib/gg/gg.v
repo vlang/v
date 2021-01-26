@@ -484,6 +484,11 @@ fn abs(a f32) f32 {
 	return -a
 }
 
+pub fn (mut ctx Context) resize(width int, height int) {
+	ctx.width = width
+	ctx.height = height
+}
+
 pub fn (ctx &Context) draw_line(x f32, y f32, x2 f32, y2 f32, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)

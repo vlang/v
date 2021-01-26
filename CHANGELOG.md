@@ -1,9 +1,9 @@
-## V 0.2.3
-*Not yet released*
-- Allow interfaces to define fields, not just methods.
+-## V 0.2.4
+-*Not yet released*
 
-## V 0.2.2
+## V 0.2.2 - 0.2.3
 *22 Jan 2021*
+- Allow interfaces to define fields, not just methods.
 - `vweb` now uses struct embedding: `app.vweb.text('hello') => app.text('hello')`.
 - Consts can now be declared outside of `const()` blocks: `const x = 0`.
 - Overloading of  `>`, `<`, `!=`, `==`, `<=` and `>=` operators.
@@ -22,6 +22,8 @@
 - Advanced vdoc search on mobile layout.
 - string's `left()`/`right` were removed in favor of slicing syntax: `str[..pos]`.
 - gg: native graphics mode on macOS/iOS (using Cocoa Drawing API).
+- Full path to consts must be specified everywhere. This allows shadowing consts safely and
+makes it easy to distinguish them from local variables.
 
 ## V 0.2.1
 *30 Dec 2020*

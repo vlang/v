@@ -4,12 +4,13 @@
 module musl
 
 import math.bits
+import rand.seed
 import rand.util
 
 // MuslRNG ported from https://git.musl-libc.org/cgit/musl/tree/src/prng/rand_r.c
 pub struct MuslRNG {
 mut:
-	state u32 = util.time_seed_32()
+	state u32 = seed.time_seed_32()
 }
 
 // seed sets the current random state based on `seed_data`.

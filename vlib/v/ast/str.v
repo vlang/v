@@ -312,6 +312,9 @@ pub fn (x Expr) str() string {
 		StringLiteral {
 			return '"$x.val"'
 		}
+		Type {
+			return 'Type($x.typ)'
+		}
 		TypeOf {
 			return 'typeof($x.expr.str())'
 		}

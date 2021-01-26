@@ -326,6 +326,17 @@ fn main() {
 }
 ```
 
+The values of multiple variables can be changed in one line.
+In this way, their values can be swapped without an intermediary variable.
+
+```v
+mut a := 0
+mut b := 1
+println('$a, $b') // 0, 1
+a, b = b, a
+println('$a, $b') // 1, 0
+```
+
 ### Declaration errors
 
 In development mode the compiler will warn you that you haven't used the variable
@@ -1662,7 +1673,7 @@ struct Node<T> {
 
 ## Constants
 
-```v
+```v oksyntax
 const (
 	pi    = 3.14
 	world = '世界'
@@ -1712,8 +1723,17 @@ println(blue)
 
 Global variables are not allowed, so this can be really useful.
 
+When naming constants, `snake_case` must be used. In order to distinguish consts
+from local variables, the full path to consts must be specified. For example,
+to access the PI const, full `math.pi` name must be used both outside the `math`
+module, and inside it. That restriction is relaxed only for the `main` module 
+(the one containing your `fn main()`, where you can use the shorter name of the
+constants too, i.e. just `println(numbers)`, not `println(main.numbers)` .
+
+vfmt takes care of this rule, so you can type `println(pi)` inside the `math` module,
+and vffmt will automatically update it to `println(math.pi)`.
+
 <!--
-When naming constants, snake_case must be used.
 Many people prefer all caps consts: `TOP_CITIES`. This wouldn't work
 well in V, because consts are a lot more powerful than in other languages.
 They can represent complex structures, and this is used quite often since there

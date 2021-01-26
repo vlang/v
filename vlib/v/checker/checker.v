@@ -203,43 +203,18 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 	}
 }
 
-const (
-	no_pub_in_main_warning = 'in module main cannot be declared public'
-)
-
 // do checks specific to files in main module
 // returns `true` if a main function is in the file
 fn (mut c Checker) check_file_in_main(file ast.File) bool {
 	mut has_main_fn := false
 	for stmt in file.stmts {
 		match stmt {
-			ast.ConstDecl {
-				if stmt.is_pub {
-					c.warn('const $no_pub_in_main_warning', stmt.pos)
-				}
-			}
-			/*
-			// TODO not a Stmt
-			ast.ConstField {
-				if stmt.is_pub {
-					c.warn('const field `$stmt.name` $no_pub_in_main_warning', stmt.pos)
-				}
-			}
-			*/
-			ast.EnumDecl {
-				if stmt.is_pub {
-					c.warn('enum `$stmt.name` $no_pub_in_main_warning', stmt.pos)
-				}
-			}
 			ast.FnDecl {
 				if stmt.name == 'main.main' {
 					if has_main_fn {
 						c.error('function `main` is already defined', stmt.pos)
 					}
 					has_main_fn = true
-					if stmt.is_pub {
-						c.error('function `main` cannot be declared public', stmt.pos)
-					}
 					if stmt.params.len > 0 {
 						c.error('function `main` cannot have arguments', stmt.pos)
 					}
@@ -256,9 +231,6 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 								stmt.pos)
 						}
 					}
-					if stmt.is_pub && !stmt.is_method {
-						c.warn('function `$stmt.name` $no_pub_in_main_warning', stmt.pos)
-					}
 				}
 				if stmt.return_type != table.void_type {
 					for attr in stmt.attrs {
@@ -267,26 +239,6 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 								stmt.pos)
 							break
 						}
-					}
-				}
-			}
-			ast.StructDecl {
-				if stmt.is_pub {
-					c.warn('struct `$stmt.name` $no_pub_in_main_warning', stmt.pos)
-				}
-			}
-			ast.TypeDecl {
-				if stmt is ast.AliasTypeDecl {
-					if stmt.is_pub {
-						c.warn('type alias `$stmt.name` $no_pub_in_main_warning', stmt.pos)
-					}
-				} else if stmt is ast.SumTypeDecl {
-					if stmt.is_pub {
-						c.warn('sum type `$stmt.name` $no_pub_in_main_warning', stmt.pos)
-					}
-				} else if stmt is ast.FnTypeDecl {
-					if stmt.is_pub {
-						c.warn('type alias `$stmt.name` $no_pub_in_main_warning', stmt.pos)
 					}
 				}
 			}
@@ -1084,7 +1036,7 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 						pos = expr.pos
 					}
 				}
-			} else if expr.name in c.const_names {
+			} else if expr.obj is ast.ConstField && expr.name in c.const_names {
 				c.error('cannot modify constant `$expr.name`', expr.pos)
 			}
 		}
@@ -1143,13 +1095,18 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 					}
 				}
 				.interface_ {
-					// TODO: mutability checks on interface fields?
 					interface_info := typ_sym.info as table.Interface
-					interface_info.find_field(expr.field_name) or {
+					mut field_info := interface_info.find_field(expr.field_name) or {
 						type_str := c.table.type_to_str(expr.expr_type)
 						c.error('unknown field `${type_str}.$expr.field_name`', expr.pos)
 						return '', pos
 					}
+					if !field_info.is_mut {
+						type_str := c.table.type_to_str(expr.expr_type)
+						c.error('field `$expr.field_name` of interface `$type_str` is immutable',
+							expr.pos)
+					}
+					c.fail_if_immutable(expr.expr)
 				}
 				.array, .string {
 					// This should only happen in `builtin`
@@ -1327,7 +1284,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	}
 	// TODO: remove this for actual methods, use only for compiler magic
 	// FIXME: Argument count != 1 will break these
-	if left_type_sym.kind == .array && method_name in array_builtin_methods {
+	if left_type_sym.kind == .array && method_name in checker.array_builtin_methods {
 		mut elem_typ := table.void_type
 		is_filter_map := method_name in ['filter', 'map']
 		is_sort := method_name == 'sort'
@@ -1475,6 +1432,10 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			c.fail_if_immutable(call_expr.left)
 			// call_expr.is_mut = true
 		}
+		if (!left_type_sym.is_builtin() && method.mod != 'builtin') && method.language == .v
+			&& method.no_body {
+			c.error('cannot call a method that does not have a body', call_expr.pos)
+		}
 		if method.return_type == table.void_type && method.ctdefine.len > 0
 			&& method.ctdefine !in c.pref.compile_defines {
 			call_expr.should_be_skipped = true
@@ -1579,33 +1540,11 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			c.infer_fn_types(method, mut call_expr)
 		}
 		if call_expr.generic_types.len > 0 && method.return_type != 0 {
-			// Handle `foo<T>() T` => `foo<int>() int` => return int
-			return_sym := c.table.get_type_symbol(method.return_type)
-			if return_sym.name in method.generic_names {
-				generic_index := method.generic_names.index(return_sym.name)
-				mut typ := call_expr.generic_types[generic_index]
-				typ = typ.set_nr_muls(method.return_type.nr_muls())
-				if method.return_type.has_flag(.optional) {
-					typ = typ.set_flag(.optional)
-				}
+			if typ := c.resolve_generic_type(method.return_type, method.generic_names,
+				call_expr.generic_types)
+			{
 				call_expr.return_type = typ
 				return typ
-			} else if return_sym.kind == .array {
-				elem_info := return_sym.info as table.Array
-				elem_sym := c.table.get_type_symbol(elem_info.elem_type)
-				if elem_sym.name in method.generic_names {
-					generic_index := method.generic_names.index(elem_sym.name)
-					typ := call_expr.generic_types[generic_index]
-					idx := c.table.find_or_register_array(typ)
-					return table.new_type(idx)
-				}
-			} else if return_sym.kind == .chan {
-				elem_info := return_sym.info as table.Chan
-				elem_sym := c.table.get_type_symbol(elem_info.elem_type)
-				if elem_sym.name in method.generic_names {
-					idx := c.table.find_or_register_chan(elem_info.elem_type, elem_info.elem_type.nr_muls() > 0)
-					return table.new_type(idx)
-				}
 			}
 		}
 		if call_expr.generic_types.len > 0 && method.generic_names.len == 0 {
@@ -1791,6 +1730,9 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		// builtin C.m*, C.s* only - temp
 		c.warn('function `$f.name` must be called from an `unsafe` block', call_expr.pos)
 	}
+	if f.mod != 'builtin' && f.language == .v && f.no_body {
+		c.error('cannot call a function that does not have a body', call_expr.pos)
+	}
 	for generic_type in call_expr.generic_types {
 		sym := c.table.get_type_symbol(generic_type)
 		if sym.kind == .placeholder {
@@ -1916,7 +1858,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		c.infer_fn_types(f, mut call_expr)
 	}
 	if call_expr.generic_types.len > 0 && f.return_type != 0 {
-		if typ := c.resolve_generic_type(f.return_type, f.generic_names, call_expr) {
+		if typ := c.resolve_generic_type(f.return_type, f.generic_names, call_expr.generic_types) {
 			call_expr.return_type = typ
 			return typ
 		}
@@ -1937,7 +1879,12 @@ fn (mut c Checker) type_implements(typ table.Type, inter_typ table.Type, pos tok
 	typ_sym := c.table.get_type_symbol(typ)
 	mut inter_sym := c.table.get_type_symbol(inter_typ)
 	styp := c.table.type_to_str(typ)
-	for imethod in inter_sym.methods {
+	imethods := if inter_sym.kind == .interface_ {
+		(inter_sym.info as table.Interface).methods
+	} else {
+		inter_sym.methods
+	}
+	for imethod in imethods {
 		if method := typ_sym.find_method(imethod.name) {
 			msg := c.table.is_same_method(imethod, method)
 			if msg.len > 0 {
@@ -1961,6 +1908,10 @@ fn (mut c Checker) type_implements(typ table.Type, inter_typ table.Type, pos tok
 					c.error('`$styp` incorrectly implements field `$ifield.name` of interface `$inter_sym.name`, expected `$exp`, got `$got`',
 						pos)
 					return false
+				} else if ifield.is_mut && !(field.is_mut || field.is_global) {
+					c.error('`$styp` incorrectly implements interface `$inter_sym.name`, field `$ifield.name` must be mutable',
+						pos)
+					return false
 				}
 				continue
 			}
@@ -1979,10 +1930,8 @@ pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type table.Type) t
 	if expr is ast.CallExpr {
 		if expr.return_type.has_flag(.optional) {
 			if expr.or_block.kind == .absent {
-				if ret_type != table.void_type {
-					c.error('${expr.name}() returns an option but is missing an `or {}` block',
-						expr.pos)
-				}
+				c.error('${expr.name}() returns an option, so it should have either an `or {}` block, or `?` at the end',
+					expr.pos)
 			} else {
 				c.check_or_expr(expr.or_block, ret_type, expr.return_type.clear_flag(.optional))
 			}
@@ -2143,7 +2092,8 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 	mut unknown_field_msg := 'type `$sym.name` has no field or method `$field_name`'
 	mut has_field := false
 	mut field := table.Field{}
-	if field_name.len > 0 && field_name[0].is_capital() && sym.info is table.Struct {
+	if field_name.len > 0 && field_name[0].is_capital() && sym.info is table.Struct
+		&& sym.language == .v {
 		// x.Foo.y => access the embedded struct
 		sym_info := sym.info as table.Struct
 		for embed in sym_info.embeds {
@@ -2371,7 +2321,7 @@ pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 			match field.expr {
 				ast.IntegerLiteral {
 					val := field.expr.val.i64()
-					if val < int_min || val > int_max {
+					if val < checker.int_min || val > checker.int_max {
 						c.error('enum value `$val` overflows int', field.expr.pos)
 					} else if !decl.is_multi_allowed && i64(val) in seen {
 						c.error('enum value `$val` already exists', field.expr.pos)
@@ -2395,7 +2345,7 @@ pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 		} else {
 			if seen.len > 0 {
 				last := seen[seen.len - 1]
-				if last == int_max {
+				if last == checker.int_max {
 					c.error('enum value overflows', field.pos)
 				}
 				seen << last + 1
@@ -2464,25 +2414,15 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		if is_decl {
 			left_type = c.table.mktyp(right_type)
 			if left_type == table.int_type {
-				mut expr := right
-				mut negative := false
-				if right is ast.PrefixExpr {
-					expr = right.right
-					if right.op == .minus {
-						negative = true
-					}
-				}
-				if mut expr is ast.IntegerLiteral {
-					mut is_large := false
-					if expr.val.len > 8 {
-						val := expr.val.i64()
-						if (!negative && val > int_max) || (negative && -val < int_min) {
-							is_large = true
-						}
+				if right is ast.IntegerLiteral {
+					mut is_large := right.val.len > 13
+					if !is_large && right.val.len > 8 {
+						val := right.val.i64()
+						is_large = val > checker.int_max || val < checker.int_min
 					}
 					if is_large {
 						c.error('overflow in implicit type `int`, use explicit type casting instead',
-							expr.pos)
+							right.pos)
 					}
 				}
 			}
@@ -2534,10 +2474,12 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 						}
 						*/
 					}
-					if is_decl {
+					if false && is_decl {
 						full_name := '${left.mod}.$left.name'
-						if full_name in c.const_names {
-							c.error('duplicate of a const name `$left.name`', left.pos)
+						if obj := c.file.global_scope.find(full_name) {
+							if obj is ast.ConstField {
+								c.warn('duplicate of a const name `$full_name', left.pos)
+							}
 						}
 					}
 				}
@@ -4206,11 +4148,11 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym table.TypeS
 	mut err_details := 'match must be exhaustive'
 	if unhandled.len > 0 {
 		err_details += ' (add match branches for: '
-		if unhandled.len < match_exhaustive_cutoff_limit {
+		if unhandled.len < checker.match_exhaustive_cutoff_limit {
 			err_details += unhandled.join(', ')
 		} else {
-			remaining := unhandled.len - match_exhaustive_cutoff_limit
-			err_details += unhandled[0..match_exhaustive_cutoff_limit].join(', ')
+			remaining := unhandled.len - checker.match_exhaustive_cutoff_limit
+			err_details += unhandled[0..checker.match_exhaustive_cutoff_limit].join(', ')
 			err_details += ', and $remaining others ...'
 		}
 		err_details += ' or `else {}` at the end)'
@@ -4431,7 +4373,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 	mut nbranches_without_return := 0
 	mut should_skip := false // Whether the current branch should be skipped
 	mut found_branch := false // Whether a matching branch was found- skip the rest
-	mut is_comptime_t_is_expr := false // if `$if T is string`
+	mut is_comptime_type_is_expr := false // if `$if T is string`
 	for i in 0 .. node.branches.len {
 		mut branch := node.branches[i]
 		if branch.cond is ast.ParExpr {
@@ -4513,8 +4455,9 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 					got_type := (branch.cond.right as ast.Type).typ
 					if left is ast.SelectorExpr {
 						c.comptime_fields_type[left.expr.str()] = got_type
+						is_comptime_type_is_expr = true
 					} else if left is ast.Type {
-						is_comptime_t_is_expr = true
+						is_comptime_type_is_expr = true
 						left_type := c.unwrap_generic(left.typ)
 						if left_type != got_type {
 							should_skip = true
@@ -4528,12 +4471,12 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 			} else if should_skip {
 				c.skip_flags = true
 				should_skip = false // Reset the value of `should_skip` for the next branch
-			} else {
+			} else if !is_comptime_type_is_expr {
 				found_branch = true // If a branch wasn't skipped, the rest must be
 			}
 			if !c.skip_flags || c.pref.output_cross_c {
 				c.stmts(branch.stmts)
-			} else if !is_comptime_t_is_expr {
+			} else if !is_comptime_type_is_expr {
 				node.branches[i].stmts = []
 			}
 			c.skip_flags = cur_skip_flags
@@ -4707,13 +4650,13 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 			}
 		}
 		ast.Ident {
-			if cond.name in valid_comp_if_os {
+			if cond.name in checker.valid_comp_if_os {
 				return cond.name != c.pref.os.str().to_lower() // TODO hack
-			} else if cond.name in valid_comp_if_compilers {
+			} else if cond.name in checker.valid_comp_if_compilers {
 				return pref.cc_from_string(cond.name) != c.pref.ccompiler_type
-			} else if cond.name in valid_comp_if_platforms {
+			} else if cond.name in checker.valid_comp_if_platforms {
 				return false // TODO
-			} else if cond.name in valid_comp_if_other {
+			} else if cond.name in checker.valid_comp_if_other {
 				// TODO: This should probably be moved
 				match cond.name {
 					'js' { return c.pref.backend != .js }
@@ -4902,12 +4845,9 @@ fn (mut c Checker) check_index(typ_sym &table.TypeSymbol, index ast.Expr, index_
 			}
 			c.error('$type_str', pos)
 		}
-		if index is ast.PrefixExpr {
-			if index.op == .minus && index.right is ast.IntegerLiteral {
-				val := (index.right as ast.IntegerLiteral).val
-				if val.int() > 0 {
-					c.error('invalid index `-$val` (index must be non-negative)', index.pos)
-				}
+		if index is ast.IntegerLiteral {
+			if index.val.starts_with('-') {
+				c.error('invalid index `$index.val` (index must be non-negative)', index.pos)
 			}
 		}
 		if index_type.has_flag(.optional) {
@@ -5326,9 +5266,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	}
 	if node.is_method {
 		mut sym := c.table.get_type_symbol(node.receiver.typ)
-		if sym.kind == .interface_ {
-			c.error('interfaces cannot be used as method receiver', node.receiver_pos)
-		} else if sym.kind == .array && !c.is_builtin_mod && node.name == 'map' {
+		if sym.kind == .array && !c.is_builtin_mod && node.name == 'map' {
 			// TODO `node.map in array_builtin_methods`
 			c.error('method overrides built-in array method', node.pos)
 		} else if sym.kind == .sum_type && node.name == 'type_name' {

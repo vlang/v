@@ -33,13 +33,13 @@ fn test_all() {
 			panic(err)
 		}
 		$if windows {
-			os.rm('./test.exe')
+			os.rm('./test.exe') or { }
 			$if msvc {
-				os.rm('./test.ilk')
-				os.rm('./test.pdb')
+				os.rm('./test.ilk') or { }
+				os.rm('./test.pdb') or { }
 			}
 		} $else {
-			os.rm('./test')
+			os.rm('./test') or { }
 		}
 		// println('============')
 		// println(res.output)

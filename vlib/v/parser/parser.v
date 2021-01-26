@@ -425,7 +425,8 @@ fn (mut p Parser) check(expected token.Kind) {
 		if expected == .name {
 			p.name_error = true
 		}
-		p.error('unexpected `$p.tok.kind.str()`, expecting `$expected.str()`')
+		label := if token.is_key(p.tok.lit) { 'keyword ' } else { '' }
+		p.error('unexpected $label`$p.tok.kind.str()`, expecting `$expected.str()`')
 	}
 }
 
@@ -1140,9 +1141,13 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	// `map[string]int` initialization
 	if p.tok.lit == 'map' && p.peek_tok.kind == .lsbr {
 		map_type := p.parse_map_type()
-		if p.tok.kind == .lcbr && p.peek_tok.kind == .rcbr {
+		if p.tok.kind == .lcbr {
 			p.next()
-			p.next()
+			if p.tok.kind == .rcbr {
+				p.next()
+			} else {
+				p.error('`}` expected; explicit `map` initialization does not support parameters')
+			}
 		}
 		return ast.MapInit{
 			typ: map_type
@@ -1722,17 +1727,23 @@ fn (mut p Parser) string_expr() ast.Expr {
 }
 
 fn (mut p Parser) parse_number_literal() ast.Expr {
+	mut pos := p.tok.position()
+	is_neg := p.tok.kind == .minus
+	if is_neg {
+		p.next()
+		pos = pos.extend(p.tok.position())
+	}
 	lit := p.tok.lit
-	pos := p.tok.position()
+	full_lit := if is_neg { '-' + lit } else { lit }
 	mut node := ast.Expr{}
 	if lit.index_any('.eE') >= 0 && lit[..2] !in ['0x', '0X', '0o', '0O', '0b', '0B'] {
 		node = ast.FloatLiteral{
-			val: lit
+			val: full_lit
 			pos: pos
 		}
 	} else {
 		node = ast.IntegerLiteral{
-			val: lit
+			val: full_lit
 			pos: pos
 		}
 	}
@@ -2038,7 +2049,7 @@ const (
 fn (mut p Parser) global_decl() ast.GlobalDecl {
 	if !p.pref.translated && !p.pref.is_livemain && !p.builtin_mod && !p.pref.building_v
 		&& p.mod != 'ui' && p.mod != 'gg2' && p.mod != 'uiold' && !p.pref.enable_globals
-		&& !p.pref.is_fmt&& p.mod !in global_enabled_mods {
+		&& !p.pref.is_fmt&& p.mod !in parser.global_enabled_mods {
 		p.error('use `v --enable-globals ...` to enable globals')
 		return ast.GlobalDecl{}
 	}

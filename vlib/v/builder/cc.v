@@ -92,12 +92,12 @@ fn (mut v Builder) post_process_c_compiler_output(res os.Result) {
 				if v.pref.is_verbose {
 					eprintln('>> remove tmp file: $tmpfile')
 				}
-				os.rm(tmpfile)
+				os.rm(tmpfile) or { panic(err) }
 			}
 		}
 		return
 	}
-	for emsg_marker in [c_verror_message_marker, 'error: include file '] {
+	for emsg_marker in [builder.c_verror_message_marker, 'error: include file '] {
 		if res.output.contains(emsg_marker) {
 			emessage := res.output.all_after(emsg_marker).all_before('\n').all_before('\r').trim_right('\r\n')
 			verror(emessage)
@@ -121,7 +121,7 @@ fn (mut v Builder) post_process_c_compiler_output(res os.Result) {
 			println('(Use `v -cg` to print the entire error message)\n')
 		}
 	}
-	verror(c_error_info)
+	verror(builder.c_error_info)
 }
 
 fn (mut v Builder) rebuild_cached_module(vexe string, imp_path string) string {
@@ -414,7 +414,9 @@ fn (mut v Builder) setup_output_name() {
 		if v.pref.is_verbose {
 			println('Building $v.pref.path to $v.pref.out_name ...')
 		}
-		v.pref.cache_manager.save('.description.txt', v.pref.path, '${v.pref.path:-30} @ $v.pref.cache_manager.vopts\n')
+		v.pref.cache_manager.save('.description.txt', v.pref.path, '${v.pref.path:-30} @ $v.pref.cache_manager.vopts\n') or {
+			panic(err)
+		}
 		// println('v.table.imports:')
 		// println(v.table.imports)
 	}
@@ -734,7 +736,7 @@ fn (mut b Builder) cc_linux_cross() {
 	b.setup_output_name()
 	parent_dir := os.vmodules_dir()
 	if !os.exists(parent_dir) {
-		os.mkdir(parent_dir)
+		os.mkdir(parent_dir) or { panic(err) }
 	}
 	sysroot := os.join_path(os.vmodules_dir(), 'linuxroot')
 	if !os.is_dir(sysroot) {
@@ -858,7 +860,7 @@ fn (mut c Builder) cc_windows_cross() {
 		println(os.user_os())
 		panic('your platform is not supported yet')
 	}
-	mut cmd := '$mingw_cc $optimization_options $debug_options -std=gnu11 $args -municode'
+	mut cmd := '$builder.mingw_cc $optimization_options $debug_options -std=gnu11 $args -municode'
 	// cmd := 'clang -o $obj_name -w $include -m32 -c -target x86_64-win32 ${pref.default_module_path}/$c.out_name_c'
 	if c.pref.is_verbose || c.pref.show_cc {
 		println(cmd)
@@ -917,7 +919,7 @@ fn (mut v Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CF
 		// for example thirdparty\tcc\lib\openlibm.o
 		// the best we can do for them is just copy them,
 		// and hope that they work with any compiler...
-		os.cp(obj_path, opath)
+		os.cp(obj_path, opath) or { panic(err) }
 		return
 	}
 	println('$obj_path not found, building it in $opath ...')
@@ -943,7 +945,9 @@ fn (mut v Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CF
 		verror(res.output)
 		return
 	}
-	v.pref.cache_manager.save('.description.txt', obj_path, '${obj_path:-30} @ $cmd\n')
+	v.pref.cache_manager.save('.description.txt', obj_path, '${obj_path:-30} @ $cmd\n') or {
+		panic(err)
+	}
 	println(res.output)
 }
 

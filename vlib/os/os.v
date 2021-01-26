@@ -46,7 +46,7 @@ pub fn cp_all(src string, dst string, overwrite bool) ? {
 		}
 		if exists(adjusted_path) {
 			if overwrite {
-				rm(adjusted_path)
+				rm(adjusted_path) ?
 			} else {
 				return error('Destination file path already exist')
 			}
@@ -65,7 +65,7 @@ pub fn cp_all(src string, dst string, overwrite bool) ? {
 			mkdir(dp) ?
 		}
 		cp_all(sp, dp, overwrite) or {
-			rmdir(dp)
+			rmdir(dp) or { return error(err) }
 			return error(err)
 		}
 	}
@@ -144,7 +144,7 @@ pub fn file_exists(_path string) bool {
 [deprecated]
 pub fn rmdir_recursive(path string) {
 	eprintln('warning: `os.rmdir_recursive` has been deprecated, use `os.rmdir_all` instead')
-	rmdir_all(path)
+	rmdir_all(path) or { panic(err) }
 }
 
 // rmdir_all recursively removes the specified directory.
@@ -154,7 +154,7 @@ pub fn rmdir_all(path string) ? {
 	for item in items {
 		fullpath := join_path(path, item)
 		if is_dir(fullpath) {
-			rmdir_all(fullpath)
+			rmdir_all(fullpath) or { ret_err = err }
 		}
 		rm(fullpath) or { ret_err = err }
 	}
@@ -315,7 +315,7 @@ pub fn home_dir() string {
 // write_file writes `text` data to a file in `path`.
 pub fn write_file(path string, text string) ? {
 	mut f := create(path) ?
-	f.write(text.bytes())
+	f.write(text.bytes()) ?
 	f.close()
 }
 
@@ -330,11 +330,11 @@ pub fn write_file_array(path string, buffer array) ? {
 // It relies on path manipulation of os.args[0] and os.wd_at_startup, so it may not work properly in
 // all cases, but it should be better, than just using os.args[0] directly.
 fn executable_fallback() string {
-	if args.len == 0 {
+	if os.args.len == 0 {
 		// we are early in the bootstrap, os.args has not been initialized yet :-|
 		return ''
 	}
-	mut exepath := args[0]
+	mut exepath := os.args[0]
 	$if windows {
 		if !exepath.contains('.exe') {
 			exepath += '.exe'
@@ -342,7 +342,7 @@ fn executable_fallback() string {
 	}
 	if !is_abs_path(exepath) {
 		if exepath.contains(path_separator) {
-			exepath = join_path(wd_at_startup, exepath)
+			exepath = join_path(os.wd_at_startup, exepath)
 		} else {
 			// no choice but to try to walk the PATH folders :-| ...
 			foundpath := find_abs_path_of_executable(exepath) or { '' }

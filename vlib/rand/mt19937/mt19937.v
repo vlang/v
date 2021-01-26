@@ -4,7 +4,7 @@
 module mt19937
 
 import math.bits
-import rand.util
+import rand.seed
 
 /*
 C++ functions for MT19937, with initialization improved 2002/2/10.
@@ -59,8 +59,8 @@ const (
 // MT19937RNG is generator that uses the Mersenne Twister algorithm with period 2^19937.
 pub struct MT19937RNG {
 mut:
-	state    []u64 = calculate_state(util.time_seed_array(2), mut []u64{len: nn})
-	mti      int = nn
+	state    []u64 = calculate_state(seed.time_seed_array(2), mut []u64{len: mt19937.nn})
+	mti      int   = mt19937.nn
 	next_rnd u32
 	has_next bool
 }
@@ -70,7 +70,7 @@ fn calculate_state(seed_data []u32, mut state []u64) []u64 {
 	lo := u64(seed_data[0])
 	hi := u64(seed_data[1])
 	state[0] = u64((hi << 32) | lo)
-	for j := 1; j < nn; j++ {
+	for j := 1; j < mt19937.nn; j++ {
 		state[j] = u64(6364136223846793005) * (state[j - 1] ^ (state[j - 1] >> 62)) + u64(j)
 	}
 	return *state
@@ -84,7 +84,7 @@ pub fn (mut rng MT19937RNG) seed(seed_data []u32) {
 		exit(1)
 	}
 	rng.state = calculate_state(seed_data, mut rng.state)
-	rng.mti = nn
+	rng.mti = mt19937.nn
 	rng.next_rnd = 0
 	rng.has_next = false
 }
@@ -105,21 +105,21 @@ pub fn (mut rng MT19937RNG) u32() u32 {
 // u64 returns a pseudorandom 64bit int in range `[0, 2⁶⁴)`.
 [inline]
 pub fn (mut rng MT19937RNG) u64() u64 {
-	mag01 := [u64(0), u64(matrix_a)]
+	mag01 := [u64(0), u64(mt19937.matrix_a)]
 	mut x := u64(0)
 	mut i := int(0)
-	if rng.mti >= nn {
-		for i = 0; i < nn - mm; i++ {
-			x = (rng.state[i] & um) | (rng.state[i + 1] & lm)
-			rng.state[i] = rng.state[i + mm] ^ (x >> 1) ^ mag01[int(x & 1)]
+	if rng.mti >= mt19937.nn {
+		for i = 0; i < mt19937.nn - mt19937.mm; i++ {
+			x = (rng.state[i] & mt19937.um) | (rng.state[i + 1] & mt19937.lm)
+			rng.state[i] = rng.state[i + mt19937.mm] ^ (x >> 1) ^ mag01[int(x & 1)]
 		}
-		for i < nn - 1 {
-			x = (rng.state[i] & um) | (rng.state[i + 1] & lm)
-			rng.state[i] = rng.state[i + (mm - nn)] ^ (x >> 1) ^ mag01[int(x & 1)]
+		for i < mt19937.nn - 1 {
+			x = (rng.state[i] & mt19937.um) | (rng.state[i + 1] & mt19937.lm)
+			rng.state[i] = rng.state[i + (mt19937.mm - mt19937.nn)] ^ (x >> 1) ^ mag01[int(x & 1)]
 			i++
 		}
-		x = (rng.state[nn - 1] & um) | (rng.state[0] & lm)
-		rng.state[nn - 1] = rng.state[mm - 1] ^ (x >> 1) ^ mag01[int(x & 1)]
+		x = (rng.state[mt19937.nn - 1] & mt19937.um) | (rng.state[0] & mt19937.lm)
+		rng.state[mt19937.nn - 1] = rng.state[mt19937.mm - 1] ^ (x >> 1) ^ mag01[int(x & 1)]
 		rng.mti = 0
 	}
 	x = rng.state[rng.mti]
@@ -279,7 +279,7 @@ pub fn (mut rng MT19937RNG) f32() f32 {
 // f64 returns 64bit real (`f64`) in range `[0, 1)`.
 [inline]
 pub fn (mut rng MT19937RNG) f64() f64 {
-	return f64(rng.u64() >> 11) * inv_f64_limit
+	return f64(rng.u64() >> 11) * mt19937.inv_f64_limit
 }
 
 // f32n returns a 32bit real (`f32`) in range [0, max)`.

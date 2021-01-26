@@ -280,7 +280,7 @@ pub fn is_writable_folder(folder string) ?bool {
 		}
 		C.close(x)
 	}
-	rm(tmp_perm_check)
+	rm(tmp_perm_check) ?
 	return true
 }
 

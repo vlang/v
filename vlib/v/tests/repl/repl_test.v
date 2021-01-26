@@ -64,7 +64,7 @@ fn worker_repl(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 	tls_bench.cstep = idx
 	tfolder := os.join_path(cdir, 'vrepl_tests_$idx')
 	if os.is_dir(tfolder) {
-		os.rmdir_all(tfolder)
+		os.rmdir_all(tfolder) or { panic(err) }
 	}
 	os.mkdir(tfolder) or { panic(err) }
 	file := p.get_string_item(idx)
@@ -73,14 +73,14 @@ fn worker_repl(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 	fres := runner.run_repl_file(tfolder, session.options.vexec, file) or {
 		session.bmark.fail()
 		tls_bench.fail()
-		os.rmdir_all(tfolder)
+		os.rmdir_all(tfolder) or { panic(err) }
 		eprintln(tls_bench.step_message_fail(err))
 		assert false
 		return sync.no_result
 	}
 	session.bmark.ok()
 	tls_bench.ok()
-	os.rmdir_all(tfolder)
+	os.rmdir_all(tfolder) or { panic(err) }
 	println(tls_bench.step_message_ok(fres))
 	assert true
 	return sync.no_result

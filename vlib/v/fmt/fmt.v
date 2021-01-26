@@ -35,6 +35,7 @@ pub mut:
 	file               ast.File
 	did_imports        bool
 	is_assign          bool
+	is_arr_push        bool
 	auto_imports       []string // automatically inserted imports that the user forgot to specify
 	import_pos         int      // position of the imports in the resulting string for later autoimports insertion
 	used_imports       []string // to remove unused imports
@@ -44,6 +45,7 @@ pub mut:
 	single_line_fields bool   // should struct fields be on a single line
 	it_name            string // the name to replace `it` with
 	inside_lambda      bool
+	inside_const       bool
 	is_mbranch_expr    bool // math a { x...y { } }
 }
 
@@ -106,8 +108,8 @@ pub fn (mut f Fmt) writeln(s string) {
 }
 
 fn (mut f Fmt) write_indent() {
-	if f.indent < tabs.len {
-		f.out.write(tabs[f.indent])
+	if f.indent < fmt.tabs.len {
+		f.out.write(fmt.tabs[f.indent])
 	} else {
 		// too many indents, do it the slow way:
 		for _ in 0 .. f.indent {
@@ -121,7 +123,7 @@ pub fn (mut f Fmt) wrap_long_line(penalty_idx int, add_indent bool) bool {
 	if f.buffering {
 		return false
 	}
-	if f.line_len <= max_len[penalty_idx] {
+	if f.line_len <= fmt.max_len[penalty_idx] {
 		return false
 	}
 	if f.out.buf[f.out.buf.len - 1] == ` ` {
@@ -555,7 +557,7 @@ fn (mut list []CommentAndExprAlignInfo) add_info(attrs_len int, type_len int, li
 		return
 	}
 	d_len := abs(list[i].max_attrs_len - attrs_len) + abs(list[i].max_type_len - type_len)
-	if !(d_len < threshold_to_align_struct) {
+	if !(d_len < fmt.threshold_to_align_struct) {
 		list.add_new_info(attrs_len, type_len, line)
 		return
 	}
@@ -979,7 +981,7 @@ pub fn (mut f Fmt) or_expr(or_block ast.OrExpr) {
 				// so, since this'll all be on one line, trim any possible whitespace
 				str := f.stmt_str(or_block.stmts[0]).trim_space()
 				single_line := ' or { $str }'
-				if single_line.len + f.line_len <= max_len.last() {
+				if single_line.len + f.line_len <= fmt.max_len.last() {
 					f.write(single_line)
 				} else {
 					// if the line would be too long, make it multiline
@@ -1143,6 +1145,32 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 	} else if node.kind == .blank_ident {
 		f.write('_')
 	} else {
+		// Force usage of full path to const in the same module:
+		// `println(minute)` => `println(time.minute)`
+		// This allows using the variable `minute` inside time's functions
+		// and also makes it clear that a module const is being used
+		// (since V's conts are no longer ALL_CAP).
+		// ^^^ except for `main`, where consts are allowed to not have a `main.` prefix.
+		if !node.name.contains('.') && !f.inside_const {
+			full_name := f.cur_mod + '.' + node.name
+			if obj := f.file.global_scope.find(full_name) {
+				if obj is ast.ConstField {
+					// "v.fmt.foo" => "fmt.foo"
+					vals := full_name.split('.')
+					mod_prefix := vals[vals.len - 2]
+					const_name := vals[vals.len - 1]
+					// f.write(f.short_module(full_name))
+					if mod_prefix == 'main' {
+						f.write(const_name)
+						return
+					} else {
+						short := mod_prefix + '.' + const_name
+						f.write(short)
+						return
+					}
+				}
+			}
+		}
 		name := f.short_module(node.name)
 		// f.write('<$it.name => $name>')
 		f.write(name)
@@ -1265,21 +1293,16 @@ pub fn (mut f Fmt) sql_expr(node ast.SqlExpr) {
 	f.write('sql ')
 	f.expr(node.db_expr)
 	f.writeln(' {')
-	f.write('\t')
-	f.write('select ')
-	esym := f.table.get_type_symbol(node.table_expr.typ)
-	table_name := util.strip_mod_name(esym.name)
+	f.write('\tselect ')
+	table_name := util.strip_mod_name(f.table.get_type_symbol(node.table_expr.typ).name)
 	if node.is_count {
 		f.write('count ')
 	} else {
-		if node.fields.len > 0 {
-			for tfi, tf in node.fields {
-				f.write(tf.name)
-				if tfi < node.fields.len - 1 {
-					f.write(', ')
-				}
+		for i, fd in node.fields {
+			f.write(fd.name)
+			if i < node.fields.len - 1 {
+				f.write(', ')
 			}
-			f.write(' ')
 		}
 	}
 	f.write('from $table_name')
@@ -1320,14 +1343,13 @@ pub fn (mut f Fmt) string_literal(node ast.StringLiteral) {
 			f.write("'$node.val'")
 		}
 	} else {
-		unescaped_val := node.val.replace('$bs$bs', '\x01').replace_each(["$bs'", "'", '$bs"',
-			'"',
-		])
+		unescaped_val := node.val.replace('$fmt.bs$fmt.bs', '\x01').replace_each(["$fmt.bs'", "'",
+			'$fmt.bs"', '"'])
 		if use_double_quote {
-			s := unescaped_val.replace_each(['\x01', '$bs$bs', '"', '$bs"'])
+			s := unescaped_val.replace_each(['\x01', '$fmt.bs$fmt.bs', '"', '$fmt.bs"'])
 			f.write('"$s"')
 		} else {
-			s := unescaped_val.replace_each(['\x01', '$bs$bs', "'", "$bs'"])
+			s := unescaped_val.replace_each(['\x01', '$fmt.bs$fmt.bs', "'", "$fmt.bs'"])
 			f.write("'$s'")
 		}
 	}
@@ -1430,6 +1452,9 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	if !f.buffering {
 		f.buffering = true
 	}
+	if node.op == .left_shift {
+		f.is_arr_push = true
+	}
 	infix_start := f.out.len
 	start_len := f.line_len
 	f.expr(node.left)
@@ -1450,10 +1475,11 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	}
 	if !buffering_save && f.buffering {
 		f.buffering = false
-		if !f.single_line_if && f.line_len > max_len.last() {
+		if !f.single_line_if && f.line_len > fmt.max_len.last() {
 			f.wrap_infix(infix_start, start_len)
 		}
 	}
+	f.is_arr_push = false
 	f.or_expr(node.or_block)
 }
 
@@ -1501,7 +1527,7 @@ pub fn (mut f Fmt) wrap_infix(start_pos int, start_len int) {
 	}
 	for i, c in conditions {
 		cnd := c.trim_space()
-		if f.line_len + cnd.len < max_len[penalties[i]] {
+		if f.line_len + cnd.len < fmt.max_len[penalties[i]] {
 			if i > 0 && (!is_cond_infix || i < conditions.len - 1) {
 				f.write(' ')
 			}
@@ -1518,7 +1544,7 @@ pub fn (mut f Fmt) wrap_infix(start_pos int, start_len int) {
 pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 	dollar := if it.is_comptime { '$' } else { '' }
 	mut single_line := it.branches.len == 2 && it.has_else && branch_is_single_line(it.branches[0])
-		&& branch_is_single_line(it.branches[1])&& (it.is_expr || f.is_assign)
+		&& branch_is_single_line(it.branches[1])&& (it.is_expr || f.is_assign || f.is_arr_push)
 	f.single_line_if = single_line
 	if_start := f.line_len
 	for {
@@ -1538,8 +1564,17 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 			}
 			if i < it.branches.len - 1 || !it.has_else {
 				f.write('${dollar}if ')
+				cur_pos := f.out.len
 				f.expr(branch.cond)
-				f.write(' ')
+				cond_len := f.out.len - cur_pos
+				is_cond_wrapped := cond_len > 0
+					&& (branch.cond is ast.IfGuardExpr || branch.cond is ast.CallExpr)
+					&& '\n' in f.out.last_n(cond_len)
+				if is_cond_wrapped {
+					f.writeln('')
+				} else {
+					f.write(' ')
+				}
 			}
 			f.write('{')
 			if single_line {
@@ -1553,7 +1588,7 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 			}
 		}
 		// When a single line if is really long, write it again as multiline
-		if single_line && f.line_len > max_len.last() {
+		if single_line && f.line_len > fmt.max_len.last() {
 			single_line = false
 			f.single_line_if = false
 			f.out.go_back(f.line_len - if_start)
@@ -2016,7 +2051,7 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 				f.comments(field.next_comments, inline: false, has_nl: true, level: .keep)
 				if single_line_fields
 					&& (field.comments.len > 0 || field.next_comments.len > 0 || !expr_is_single_line(field.expr)
-					|| f.line_len > max_len.last()) {
+					|| f.line_len > fmt.max_len.last()) {
 					single_line_fields = false
 					f.out.go_back_to(fields_start)
 					f.line_len = fields_start
@@ -2045,6 +2080,10 @@ pub fn (mut f Fmt) const_decl(it ast.ConstDecl) {
 	if it.fields.len == 0 && it.pos.line_nr == it.pos.last_line {
 		f.writeln('const ()\n')
 		return
+	}
+	f.inside_const = true
+	defer {
+		f.inside_const = false
 	}
 	f.write('const ')
 	if it.is_block {
@@ -2174,6 +2213,14 @@ pub fn (mut f Fmt) assign_stmt(node ast.AssignStmt) {
 
 pub fn (mut f Fmt) assert_stmt(node ast.AssertStmt) {
 	f.write('assert ')
+	if node.expr is ast.ParExpr {
+		if node.expr.expr is ast.InfixExpr {
+			infix := node.expr.expr
+			f.expr(infix)
+			f.writeln('')
+			return
+		}
+	}
 	f.expr(node.expr)
 	f.writeln('')
 }
@@ -2300,19 +2347,15 @@ pub fn (mut f Fmt) go_stmt(node ast.GoStmt, is_expr bool) {
 pub fn (mut f Fmt) return_stmt(node ast.Return) {
 	f.comments(node.comments, {})
 	f.write('return')
-	if node.exprs.len > 1 {
-		// multiple returns
+	if node.exprs.len > 0 {
 		f.write(' ')
+		// Loop over all return values. In normal returns this will only run once.
 		for i, expr in node.exprs {
 			f.expr(expr)
 			if i < node.exprs.len - 1 {
 				f.write(', ')
 			}
 		}
-	} else if node.exprs.len == 1 {
-		// normal return
-		f.write(' ')
-		f.expr(node.exprs[0])
 	}
 	f.writeln('')
 }
@@ -2322,12 +2365,13 @@ pub fn (mut f Fmt) sql_stmt(node ast.SqlStmt) {
 	f.expr(node.db_expr)
 	f.writeln(' {')
 	table_name := util.strip_mod_name(f.table.get_type_symbol(node.table_expr.typ).name)
+	f.write('\t')
 	match node.kind {
 		.insert {
-			f.writeln('\tinsert $node.object_var_name into $table_name')
+			f.writeln('insert $node.object_var_name into $table_name')
 		}
 		.update {
-			f.write('\tupdate $table_name set ')
+			f.write('update $table_name set ')
 			for i, col in node.updated_columns {
 				f.write('$col = ')
 				f.expr(node.update_exprs[i])
@@ -2343,7 +2387,7 @@ pub fn (mut f Fmt) sql_stmt(node ast.SqlStmt) {
 			f.writeln('')
 		}
 		.delete {
-			f.write('\tdelete from $table_name where ')
+			f.write('delete from $table_name where ')
 			f.expr(node.where_expr)
 			f.writeln('')
 		}
