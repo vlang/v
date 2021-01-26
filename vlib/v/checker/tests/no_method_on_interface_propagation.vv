@@ -1,0 +1,20 @@
+struct Cat {
+	breed string
+}
+
+interface Animal {
+	breed string
+}
+
+fn (a Animal) foo() {}
+
+fn new_animal(breed string) Animal {
+	return &Cat{breed}
+}
+
+fn test_methods_on_interfaces_dont_exist_on_implementers() {
+	mut a := new_animal('persian')
+	if a is Cat {
+		a.foo()
+	}
+}

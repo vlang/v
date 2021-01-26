@@ -1879,7 +1879,12 @@ fn (mut c Checker) type_implements(typ table.Type, inter_typ table.Type, pos tok
 	typ_sym := c.table.get_type_symbol(typ)
 	mut inter_sym := c.table.get_type_symbol(inter_typ)
 	styp := c.table.type_to_str(typ)
-	for imethod in inter_sym.methods {
+	imethods := if inter_sym.kind == .interface_ {
+		(inter_sym.info as table.Interface).methods
+	} else {
+		inter_sym.methods
+	}
+	for imethod in imethods {
 		if method := typ_sym.find_method(imethod.name) {
 			msg := c.table.is_same_method(imethod, method)
 			if msg.len > 0 {
@@ -5263,9 +5268,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	}
 	if node.is_method {
 		mut sym := c.table.get_type_symbol(node.receiver.typ)
-		if sym.kind == .interface_ {
-			c.error('interfaces cannot be used as method receiver', node.receiver_pos)
-		} else if sym.kind == .array && !c.is_builtin_mod && node.name == 'map' {
+		if sym.kind == .array && !c.is_builtin_mod && node.name == 'map' {
 			// TODO `node.map in array_builtin_methods`
 			c.error('method overrides built-in array method', node.pos)
 		} else if sym.kind == .sum_type && node.name == 'type_name' {
