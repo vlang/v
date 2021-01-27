@@ -272,8 +272,10 @@ pub fn (mut f Fmt) stmts(stmts []ast.Stmt) {
 		prev_line_nr = stmts[0].position().last_line
 	}
 	for i, stmt in stmts {
+		// The stmts should have a newline between but don't have yet
 		if stmt.position().line_nr - prev_line_nr > 1 && f.out.last_n(2) != '\n\n' {
-			if i >= 1 && stmts[i - 1] !is ast.Import {
+			// Imports are handled special hence they are ignored here
+			if stmt !is ast.Import && i >= 1 && stmts[i - 1] !is ast.Import {
 				f.out.writeln('')
 			}
 		}
