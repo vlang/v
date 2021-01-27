@@ -23,6 +23,9 @@ fn (mut p Parser) check_undefined_variables(exprs []ast.Expr, val ast.Expr) ? {
 				}
 			}
 		}
+		ast.CallExpr {
+			p.check_undefined_variables(exprs, val.left) ?
+		}
 		ast.InfixExpr {
 			p.check_undefined_variables(exprs, val.left) ?
 			p.check_undefined_variables(exprs, val.right) ?
