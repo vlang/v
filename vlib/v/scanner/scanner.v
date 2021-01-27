@@ -151,10 +151,11 @@ pub fn (mut s Scanner) set_current_tidx(cidx int) {
 fn (mut s Scanner) new_token(tok_kind token.Kind, lit string, len int) token.Token {
 	cidx := s.tidx
 	s.tidx++
+	line_offset := if tok_kind == .hash { 0 } else { 1 }
 	return token.Token{
 		kind: tok_kind
 		lit: lit
-		line_nr: s.line_nr + 1
+		line_nr: s.line_nr + line_offset
 		pos: s.pos - len + 1
 		len: len
 		tidx: cidx
