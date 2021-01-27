@@ -322,6 +322,16 @@ pub fn (ctx &Context) draw_rect(x f32, y f32, w f32, h f32, c gx.Color) {
 	sgl.end()
 }
 
+[inline]
+pub fn (ctx &Context) draw_square(x f32, y f32, s f32, c gx.Color) {
+	ctx.draw_rect(x, y, s, s, c)
+}
+
+[inline]
+pub fn (ctx &Context) set_pixel(x f32, y f32, c gx.Color) {
+	ctx.draw_square(x, y, 1, c)
+}
+
 pub fn (ctx &Context) draw_triangle(x f32, y f32, x2 f32, y2 f32, x3 f32, y3 f32, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
@@ -354,6 +364,11 @@ pub fn (ctx &Context) draw_empty_rect(x f32, y f32, w f32, h f32, c gx.Color) {
 		sgl.v2f(x * ctx.scale, y * ctx.scale)
 	}
 	sgl.end()
+}
+
+[inline]
+pub fn (ctx &Context) draw_empty_square(x f32, y f32, s f32, c gx.Color) {
+	ctx.draw_empty_rect(x, y, s, s, c)
 }
 
 pub fn (ctx &Context) draw_circle_line(x f32, y f32, r int, segments int, c gx.Color) {
