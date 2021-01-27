@@ -5,7 +5,7 @@ mut:
 	n int
 }
 
-fn f(ch chan &St, sem sync.Semaphore) {
+fn f(ch chan &St, mut sem sync.Semaphore) {
 	w := St{}
 	ch <- w
 	mut x := St{}
@@ -21,8 +21,8 @@ fn f(ch chan &St, sem sync.Semaphore) {
 
 fn main() {
 	c := chan &St{}
-	sem := sync.new_semaphore()
-	go f(c, sem)
+	mut sem := sync.new_semaphore()
+	go f(c, mut sem)
 	y := <-c
 	// this should fail
 	mut z := <-c
