@@ -3376,7 +3376,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 				if expr_name in c.comptime_fields_type {
 					return c.comptime_fields_type[expr_name]
 				}
-				c.error('unknown variable `$expr_name`', node.field_expr.pos)
+				c.error('unknown `\$for` variable `$expr_name`', node.field_expr.pos)
 			}
 			expr := node.field_expr
 			c.error('unsupported expression ($expr.type_name())', expr.position())
