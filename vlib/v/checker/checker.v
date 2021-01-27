@@ -476,7 +476,12 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 			c.error('unexpected short struct syntax', struct_init.pos)
 			return table.void_type
 		}
-		struct_init.typ = c.expected_type
+		sym := c.table.get_type_symbol(c.expected_type)
+		if sym.kind == .array {
+			struct_init.typ = c.table.value_type(c.expected_type)
+		} else {
+			struct_init.typ = c.expected_type
+		}
 	}
 	if struct_init.typ == 0 {
 		c.error('unknown type', struct_init.pos)
