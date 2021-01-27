@@ -695,8 +695,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 						comment_align_i++
 						align = comment_aligns[comment_align_i]
 					}
-					pad_len := align.max_attrs_len - attrs_len +
-						align.max_type_len - field_types[i].len
+					pad_len := align.max_attrs_len - attrs_len + align.max_type_len - field_types[i].len
 					f.write(strings.repeat(` `, pad_len))
 				}
 				f.write(' ')

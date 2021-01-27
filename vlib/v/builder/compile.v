@@ -188,9 +188,11 @@ pub fn (v Builder) get_builtin_files() []string {
 		if os.exists(os.join_path(location, 'builtin')) {
 			mut builtin_files := []string{}
 			if v.pref.is_bare {
-				builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin', 'bare'))
+				builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin',
+					'bare'))
 			} else if v.pref.backend == .js {
-				builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin', 'js'))
+				builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin',
+					'js'))
 			} else {
 				builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin'))
 			}
