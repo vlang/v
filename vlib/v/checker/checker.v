@@ -3377,9 +3377,9 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 					return c.comptime_fields_type[expr_name]
 				}
 				c.error('unknown variable `$expr_name`', node.field_expr.pos)
-			} 
+			}
 			expr := node.field_expr
-			c.error('unsupported expression (${expr.type_name()})', expr.position())
+			c.error('unsupported expression ($expr.type_name())', expr.position())
 			return table.void_type
 		}
 		ast.ConcatExpr {
