@@ -148,7 +148,7 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 		if file.mod.name == 'main' {
 			files_from_main_module << file
 			has_main_mod_file = true
-			if c.check_file_in_main(file) {
+			if c.file_has_main_fn(file) {
 				has_main_fn = true
 			}
 		}
@@ -205,44 +205,27 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 
 // do checks specific to files in main module
 // returns `true` if a main function is in the file
-fn (mut c Checker) check_file_in_main(file ast.File) bool {
+fn (mut c Checker) file_has_main_fn(file ast.File) bool {
 	mut has_main_fn := false
 	for stmt in file.stmts {
-		match stmt {
-			ast.FnDecl {
-				if stmt.name == 'main.main' {
-					if has_main_fn {
-						c.error('function `main` is already defined', stmt.pos)
-					}
-					has_main_fn = true
-					if stmt.params.len > 0 {
-						c.error('function `main` cannot have arguments', stmt.pos)
-					}
-					if stmt.return_type != table.void_type {
-						c.error('function `main` cannot return values', stmt.pos)
-					}
-					if stmt.no_body {
-						c.error('function `main` must declare a body', stmt.pos)
-					}
-				} else {
-					for attr in stmt.attrs {
-						if attr.name == 'console' {
-							c.error('only `main` can have the `[console]` attribute',
-								stmt.pos)
-						}
-					}
+		if stmt is ast.FnDecl {
+			if stmt.name == 'main.main' {
+				if has_main_fn {
+					c.error('function `main` is already defined', stmt.pos)
+				}
+				has_main_fn = true
+				if stmt.params.len > 0 {
+					c.error('function `main` cannot have arguments', stmt.pos)
 				}
 				if stmt.return_type != table.void_type {
-					for attr in stmt.attrs {
-						if attr.is_ctdefine {
-							c.error('only functions that do NOT return values can have `[if $attr.name]` tags',
-								stmt.pos)
-							break
-						}
-					}
+					c.error('function `main` cannot return values', stmt.pos)
 				}
+				if stmt.no_body {
+					c.error('function `main` must declare a body', stmt.pos)
+				}
+			} else if stmt.attrs.contains('console') {
+				c.error('only `main` can have the `[console]` attribute', stmt.pos)
 			}
-			else {}
 		}
 	}
 	return has_main_fn
@@ -5269,6 +5252,15 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	}
 	if node.language == .v && !c.is_builtin_mod {
 		c.check_valid_snake_case(node.name, 'function name', node.pos)
+	}
+	if node.return_type != table.void_type {
+		for attr in node.attrs {
+			if attr.is_ctdefine {
+				c.error('only functions that do NOT return values can have `[if $attr.name]` tags',
+					node.pos)
+				break
+			}
+		}
 	}
 	if node.is_method {
 		mut sym := c.table.get_type_symbol(node.receiver.typ)
