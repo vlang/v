@@ -168,6 +168,14 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 			check_module_is_installed(emodule, is_verbose) or { panic(err) }
 		}
 		mut compilation_command := '"$vexe" '
+		if tool_name in ['vself', 'vup', 'vdoctor', 'vsymlink'] {
+			// These tools will be called by users in cases where there
+			// is high chance of there being a problem somewhere. Thus
+			// it is better to always compile them with -g, so that in
+			// case these tools do crash/panic, their backtraces will have
+			// .v line numbers, to ease diagnostic in #bugs and issues.
+			compilation_command += ' -g '
+		}
 		compilation_command += '"$tool_source"'
 		if is_verbose {
 			println('Compiling $tool_name with: "$compilation_command"')

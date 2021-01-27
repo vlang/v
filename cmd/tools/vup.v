@@ -43,10 +43,14 @@ fn main() {
 	app.show_current_v_version()
 }
 
-fn (app App) update_from_master() {
+fn (app App) vprintln(s string) {
 	if app.is_verbose {
-		println('> updating from master ...')
+		println(s)
 	}
+}
+
+fn (app App) update_from_master() {
+	app.vprintln('> updating from master ...')
 	if !os.exists('.git') {
 		// initialize as if it had been cloned
 		app.git_command('init')
@@ -63,16 +67,14 @@ fn (app App) update_from_master() {
 fn (app App) recompile_v() {
 	// NB: app.vexe is more reliable than just v (which may be a symlink)
 	vself := '"$app.vexe" self'
-	if app.is_verbose {
-		println('> recompiling v itself with `$vself` ...')
-	}
+	app.vprintln('> recompiling v itself with `$vself` ...')
 	if self_result := os.exec(vself) {
 		if self_result.exit_code == 0 {
 			println(self_result.output.trim_space())
 			return
-		} else if app.is_verbose {
-			println('`$vself` failed, running `make`...')
-			println(self_result.output.trim_space())
+		} else {
+			app.vprintln('`$vself` failed, running `make`...')
+			app.vprintln(self_result.output.trim_space())
 		}
 	}
 	app.make(vself)
@@ -84,9 +86,7 @@ fn (app App) make(vself string) {
 		make = 'make.bat'
 	}
 	make_result := os.exec(make) or { panic(err) }
-	if app.is_verbose {
-		println(make_result.output)
-	}
+	app.vprintln(make_result.output)
 }
 
 fn (app App) show_current_v_version() {
@@ -114,17 +114,11 @@ fn (app App) backup(file string) {
 }
 
 fn (app App) git_command(command string) {
+	app.vprintln('git_command: git $command')
 	git_result := os.exec('git $command') or { panic(err) }
 	if git_result.exit_code != 0 {
-		if git_result.output.contains('Permission denied') {
-			eprintln('No access to `$app.vroot`: Permission denied')
-		} else {
-			eprintln(git_result.output)
-		}
+		eprintln(git_result.output)
 		exit(1)
-	} else {
-		if app.is_verbose {
-			println(git_result.output)
-		}
 	}
+	app.vprintln(git_result.output)
 }

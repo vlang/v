@@ -40,13 +40,18 @@ fn compile(vroot string, cmd string) {
 	}
 }
 
-fn backup_old_version_and_rename_newer() ? {
+fn backup_old_version_and_rename_newer() ?bool {
+	mut errors := []string{}
 	v_file := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
 	v2_file := if os.user_os() == 'windows' { 'v2.exe' } else { 'v2' }
 	bak_file := if os.user_os() == 'windows' { 'v_old.exe' } else { 'v_old' }
 	if os.exists(bak_file) {
-		os.rm(bak_file) ?
+		os.rm(bak_file) or { errors << 'failed removing $bak_file: $err' }
 	}
-	os.mv(v_file, bak_file) ?
-	os.mv(v2_file, v_file) ?
+	os.mv(v_file, bak_file) or { errors << err }
+	os.mv(v2_file, v_file) or { errors << err }
+	if errors.len > 0 {
+		return error('backup errors:\n  >>  ' + errors.join('\n  >>  '))
+	}
+	return true
 }
