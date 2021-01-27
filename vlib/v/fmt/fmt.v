@@ -60,14 +60,10 @@ pub fn fmt(file ast.File, table &table.Table, is_debug bool) string {
 	}
 	f.process_file_imports(file)
 	f.set_current_module_name('main')
-	for stmt in file.stmts {
-		if stmt is ast.Import {
-			// Just remember the position of the imports for now
-			f.import_pos = f.out.len
-			// f.imports(f.file.imports)
-		}
-		f.stmt(stmt)
-	}
+	// As these are toplevel stmts, the indent increase done in f.stmts() has to be compensated
+	f.indent--
+	f.stmts(file.stmts)
+	f.indent++
 	// for comment in file.comments { println('$comment.line_nr $comment.text')	}
 	f.imports(f.file.imports) // now that we have all autoimports, handle them
 	res := f.out.str().trim_space() + '\n'
@@ -273,16 +269,14 @@ pub fn (mut f Fmt) stmts(stmts []ast.Stmt) {
 	f.indent++
 	mut prev_line_nr := 0
 	if stmts.len >= 1 {
-		prev_pos := stmts[0].position()
-		prev_line_nr = util.imax(prev_pos.line_nr, prev_pos.last_line)
+		prev_line_nr = stmts[0].position().last_line
 	}
 	for stmt in stmts {
-		if stmt.position().line_nr - prev_line_nr > 1 {
+		if stmt.position().line_nr - prev_line_nr > 1 && f.out.last_n(2) != '\n\n' {
 			f.out.writeln('')
 		}
 		f.stmt(stmt)
-		prev_pos := stmt.position()
-		prev_line_nr = util.imax(prev_pos.line_nr, prev_pos.last_line)
+		prev_line_nr = stmt.position().last_line
 	}
 	f.indent--
 }
@@ -360,6 +354,8 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 		}
 		ast.Import {
 			// Imports are handled after the file is formatted, to automatically add necessary modules
+			// Just remember the position of the imports for now
+			f.import_pos = f.out.len
 			// f.imports(f.file.imports)
 		}
 		ast.InterfaceDecl {
