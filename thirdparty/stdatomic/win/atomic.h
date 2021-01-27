@@ -25,7 +25,8 @@
 #include <windows.h>
 
 #ifdef __TINYC__
-typedef struct _CONDITION_VARIABLE { void* Ptr } CONDITION_VARIABLE;
+typedef struct CONDITION_VARIABLE CONDITION_VARIABLE;
+typedef struct CONDITION_VARIABLE { void* Ptr; };
 #endif
 
 #define ATOMIC_FLAG_INIT 0
