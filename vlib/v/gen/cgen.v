@@ -4710,6 +4710,13 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		} else {
 			g.write('($styp*)memdup(&($styp){')
 		}
+	} else if struct_init.typ.is_ptr() {
+		basetyp := styp.all_before_last('*')
+		if is_multiline {
+			g.writeln('&($basetyp){')
+		} else {
+			g.write('&($basetyp){')
+		}
 	} else {
 		if g.is_shared {
 			g.writeln('{.val = {')
