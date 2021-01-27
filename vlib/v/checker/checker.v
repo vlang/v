@@ -2050,7 +2050,8 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 	match mut selector_expr.expr {
 		ast.Ident {
 			name := selector_expr.expr.name
-			valid_generic := c.cur_fn.generic_params.filter(it.name == name).len != 0
+			valid_generic := util.is_generic_type_name(name)
+				&& c.cur_fn.generic_params.filter(it.name == name).len != 0
 			if valid_generic {
 				name_type = table.Type(c.table.find_type_idx(name)).set_flag(.generic)
 			}
