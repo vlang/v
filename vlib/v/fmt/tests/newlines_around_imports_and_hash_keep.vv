@@ -1,0 +1,9 @@
+// import time This should be commented out
+import os
+import rand
+
+// another comment
+
+//comment above HashStmts
+#flag linux -lsdl2
+#include "stdio.h"

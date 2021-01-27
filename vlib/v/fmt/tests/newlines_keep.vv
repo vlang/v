@@ -1,0 +1,13 @@
+// Module with attribute
+[manualfree]
+module websocket
+
+fn main() {}
+
+// between function
+
+fn x() {}
+
+// comment above an attributed function
+[inline]
+fn y_with_attr() {}
