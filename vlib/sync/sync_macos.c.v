@@ -172,31 +172,7 @@ pub fn (mut sem Semaphore) try_wait() bool {
 	for c > 0 {
 		if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c-1) { return true }
 	}
-	C.pthread_mutex_lock(&sem.mtx)
-	t_spec := time.zero_timespec()
-	mut res := 0
-	c = C.atomic_load_u32(&sem.count)
-	for {
-		if c == 0 {
-			res = C.pthread_cond_timedwait(&sem.cond, &sem.mtx, &t_spec)
-			if res == C.ETIMEDOUT {
-				goto unlock
-				// TODO: handle other errors
-			}
-			c = C.atomic_load_u32(&sem.count)
-		}
-		for c > 0 {
-			if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c-1) {
-				if c > 1 {
-					C.pthread_cond_signal(&sem.cond)
-				}
-				goto unlock
-			}
-		}
-	}
-unlock:
-	C.pthread_mutex_unlock(&sem.mtx)
-	return res == 0
+	return false
 }
 
 pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
