@@ -148,7 +148,7 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 		if file.mod.name == 'main' {
 			files_from_main_module << file
 			has_main_mod_file = true
-			if c.check_file_in_main(file) {
+			if c.file_has_main_fn(file) {
 				has_main_fn = true
 			}
 		}
@@ -205,44 +205,27 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 
 // do checks specific to files in main module
 // returns `true` if a main function is in the file
-fn (mut c Checker) check_file_in_main(file ast.File) bool {
+fn (mut c Checker) file_has_main_fn(file ast.File) bool {
 	mut has_main_fn := false
 	for stmt in file.stmts {
-		match stmt {
-			ast.FnDecl {
-				if stmt.name == 'main.main' {
-					if has_main_fn {
-						c.error('function `main` is already defined', stmt.pos)
-					}
-					has_main_fn = true
-					if stmt.params.len > 0 {
-						c.error('function `main` cannot have arguments', stmt.pos)
-					}
-					if stmt.return_type != table.void_type {
-						c.error('function `main` cannot return values', stmt.pos)
-					}
-					if stmt.no_body {
-						c.error('function `main` must declare a body', stmt.pos)
-					}
-				} else {
-					for attr in stmt.attrs {
-						if attr.name == 'console' {
-							c.error('only `main` can have the `[console]` attribute',
-								stmt.pos)
-						}
-					}
+		if stmt is ast.FnDecl {
+			if stmt.name == 'main.main' {
+				if has_main_fn {
+					c.error('function `main` is already defined', stmt.pos)
+				}
+				has_main_fn = true
+				if stmt.params.len > 0 {
+					c.error('function `main` cannot have arguments', stmt.pos)
 				}
 				if stmt.return_type != table.void_type {
-					for attr in stmt.attrs {
-						if attr.is_ctdefine {
-							c.error('only functions that do NOT return values can have `[if $attr.name]` tags',
-								stmt.pos)
-							break
-						}
-					}
+					c.error('function `main` cannot return values', stmt.pos)
 				}
+				if stmt.no_body {
+					c.error('function `main` must declare a body', stmt.pos)
+				}
+			} else if stmt.attrs.contains('console') {
+				c.error('only `main` can have the `[console]` attribute', stmt.pos)
 			}
-			else {}
 		}
 	}
 	return has_main_fn
@@ -493,7 +476,12 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 			c.error('unexpected short struct syntax', struct_init.pos)
 			return table.void_type
 		}
-		struct_init.typ = c.expected_type
+		sym := c.table.get_type_symbol(c.expected_type)
+		if sym.kind == .array {
+			struct_init.typ = c.table.value_type(c.expected_type)
+		} else {
+			struct_init.typ = c.expected_type
+		}
 	}
 	if struct_init.typ == 0 {
 		c.error('unknown type', struct_init.pos)
@@ -2050,7 +2038,8 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 	match mut selector_expr.expr {
 		ast.Ident {
 			name := selector_expr.expr.name
-			valid_generic := c.cur_fn.generic_params.filter(it.name == name).len != 0
+			valid_generic := util.is_generic_type_name(name)
+				&& c.cur_fn.generic_params.filter(it.name == name).len != 0
 			if valid_generic {
 				name_type = table.Type(c.table.find_type_idx(name)).set_flag(.generic)
 			}
@@ -2076,6 +2065,11 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 		return table.void_type
 	}
 	selector_expr.expr_type = typ
+	if selector_expr.expr_type.has_flag(.optional) && !((selector_expr.expr is ast.Ident
+		&& (selector_expr.expr as ast.Ident).kind == .constant)) {
+		c.error('cannot access fields of an optional, handle the error with `or {...}` or propagate it with `?`',
+			selector_expr.pos)
+	}
 	field_name := selector_expr.field_name
 	utyp := c.unwrap_generic(typ)
 	sym := c.table.get_type_symbol(utyp)
@@ -5263,6 +5257,15 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	}
 	if node.language == .v && !c.is_builtin_mod {
 		c.check_valid_snake_case(node.name, 'function name', node.pos)
+	}
+	if node.return_type != table.void_type {
+		for attr in node.attrs {
+			if attr.is_ctdefine {
+				c.error('only functions that do NOT return values can have `[if $attr.name]` tags',
+					node.pos)
+				break
+			}
+		}
 	}
 	if node.is_method {
 		mut sym := c.table.get_type_symbol(node.receiver.typ)

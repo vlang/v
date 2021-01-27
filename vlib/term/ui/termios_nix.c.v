@@ -1,4 +1,4 @@
-// Copyright (c) 2020 Raúl Hernández. All rights reserved.
+// Copyright (c) 2020-2021 Raúl Hernández. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module ui
@@ -50,14 +50,14 @@ fn restore_terminal_state() {
 	mut c := ctx_ptr
 	if c != 0 {
 		c.paused = true
-		c.load_title()
+		load_title()
 	}
 	os.flush()
 }
 
 fn (mut ctx Context) termios_setup() ? {
 	// store the current title, so restore_terminal_state can get it back
-	ctx.save_title()
+	save_title()
 
 	if !ctx.cfg.skip_init_checks && !(is_atty(C.STDIN_FILENO) != 0 && is_atty(C.STDOUT_FILENO) != 0) {
 		return error('not running under a TTY')
