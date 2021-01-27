@@ -2921,7 +2921,6 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		ast.CompFor {
 			// node.typ = c.expr(node.expr)
 			c.stmts(node.stmts)
-			c.comptime_fields_type.delete(node.val_var)
 		}
 		ast.ConstDecl {
 			c.inside_const = true
@@ -3368,15 +3367,17 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 				c.error('expected `string` instead of `$expr_sym.name` (e.g. `field.name`)',
 					node.field_expr.position())
 			}
+			if c.comptime_fields_type.len == 0 {
+				c.error('compile time field access can only be used when iterating over `T.fields`',
+					node.field_expr.position())
+			}
 			if node.field_expr is ast.SelectorExpr {
 				expr_name := node.field_expr.expr.str()
 				if expr_name in c.comptime_fields_type {
 					return c.comptime_fields_type[expr_name]
 				}
-				c.error('compile time field access can only be used when iterating over `T.fields`',
-					node.field_expr.pos)
-				return table.void_type
-			}
+				c.error('unknown variable `$expr_name`', node.field_expr.pos)
+			} 
 			expr := node.field_expr
 			c.error('unsupported expression (${expr.type_name()})', expr.position())
 			return table.void_type
@@ -4453,12 +4454,14 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 		}
 		if node.is_comptime { // Skip checking if needed
 			// smartcast field type on comptime if
+			mut comptime_field_name := ''
 			if branch.cond is ast.InfixExpr {
 				if branch.cond.op == .key_is {
 					left := branch.cond.left
 					got_type := (branch.cond.right as ast.Type).typ
 					if left is ast.SelectorExpr {
-						c.comptime_fields_type[left.expr.str()] = got_type
+						comptime_field_name = left.expr.str()
+						c.comptime_fields_type[comptime_field_name] = got_type
 						is_comptime_type_is_expr = true
 					} else if left is ast.Type {
 						is_comptime_type_is_expr = true
@@ -4482,6 +4485,9 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 				c.stmts(branch.stmts)
 			} else if !is_comptime_type_is_expr {
 				node.branches[i].stmts = []
+			}
+			if comptime_field_name.len > 0 {
+				c.comptime_fields_type.delete(comptime_field_name)
 			}
 			c.skip_flags = cur_skip_flags
 		} else {
