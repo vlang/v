@@ -175,3 +175,16 @@ fn test_rand_f64_in_range() {
 		assert value < max
 	}
 }
+
+fn test_rand_byte() {
+	mut all := []byte{}
+	for _ in 0 .. 256 {
+		x := rand.byte()
+		assert x >= 0
+		assert x <= 255
+		all << x
+	}
+	all.sort(a < b)
+	assert all[0] != all[255]
+	assert all[0] != all[128]
+}
