@@ -505,6 +505,9 @@ fn event(e &tui.Event, x voidptr) {
 			.escape {
 				exit(0)
 			}
+			.enter {
+				buffer.put('\n')
+			}
 			.backspace {
 				buffer.del(-1)
 			}
@@ -552,8 +555,8 @@ fn event(e &tui.Event, x voidptr) {
 					if e.code == .s {
 						a.save()
 					}
-				} else if e.modifiers in [tui.shift, 0] {
-					buffer.put(e.ascii.str())
+				} else if e.modifiers in [tui.shift, 0] && e.code != .null {
+					buffer.put(e.ascii.ascii_str())
 				}
 			}
 			else {

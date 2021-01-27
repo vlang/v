@@ -2,31 +2,33 @@ module term
 
 import os
 
-pub struct Coord16 {
-pub:
-	x i16
-	y i16
+[typedef]
+struct C.COORD {
+	X i16
+	Y i16
 }
 
-struct SmallRect {
-	left   i16
-	top    i16
-	right  i16
-	bottom i16
+[typedef]
+struct C.SMALL_RECT {
+	Left   u16
+	Top    u16
+	Right  u16
+	Bottom u16
 }
 
 // win: CONSOLE_SCREEN_BUFFER_INFO
 // https://docs.microsoft.com/en-us/windows/console/console-screen-buffer-info-str
-struct ConsoleScreenBufferInfo {
-	dw_size                Coord16
-	dw_cursor_position     Coord16
-	w_attributes           u16
-	sr_window              SmallRect
-	dw_maximum_window_size Coord16
+[typedef]
+struct C.CONSOLE_SCREEN_BUFFER_INFO {
+	dwSize              C.COORD
+	dwCursorPosition    C.COORD
+	wAttributes         u16
+	srWindow            C.SMALL_RECT
+	dwMaximumWindowSize C.COORD
 }
 
 // ref - https://docs.microsoft.com/en-us/windows/console/getconsolescreenbufferinfo
-fn C.GetConsoleScreenBufferInfo(handle os.HANDLE, info &ConsoleScreenBufferInfo) bool
+fn C.GetConsoleScreenBufferInfo(handle os.HANDLE, info &C.CONSOLE_SCREEN_BUFFER_INFO) bool
 
 // ref - https://docs.microsoft.com/en-us/windows/console/setconsoletitle
 fn C.SetConsoleTitle(title &u16) bool
@@ -34,10 +36,10 @@ fn C.SetConsoleTitle(title &u16) bool
 // get_terminal_size returns a number of colums and rows of terminal window.
 pub fn get_terminal_size() (int, int) {
 	if is_atty(1) > 0 && os.getenv('TERM') != 'dumb' {
-		info := ConsoleScreenBufferInfo{}
+		info := C.CONSOLE_SCREEN_BUFFER_INFO{}
 		if C.GetConsoleScreenBufferInfo(C.GetStdHandle(C.STD_OUTPUT_HANDLE), &info) {
-			columns := int(info.sr_window.right - info.sr_window.left + 1)
-			rows := int(info.sr_window.bottom - info.sr_window.top + 1)
+			columns := int(info.srWindow.Right - info.srWindow.Left + 1)
+			rows := int(info.srWindow.Bottom - info.srWindow.Top + 1)
 			return columns, rows
 		}
 	}
@@ -48,10 +50,10 @@ pub fn get_terminal_size() (int, int) {
 pub fn get_cursor_position() Coord {
 	mut res := Coord{}
 	if is_atty(1) > 0 && os.getenv('TERM') != 'dumb' {
-		info := ConsoleScreenBufferInfo{}
+		info := C.CONSOLE_SCREEN_BUFFER_INFO{}
 		if C.GetConsoleScreenBufferInfo(C.GetStdHandle(C.STD_OUTPUT_HANDLE), &info) {
-			res.x = info.dw_cursor_position.x
-			res.y = info.dw_cursor_position.y
+			res.x = info.dwCursorPosition.X
+			res.y = info.dwCursorPosition.Y
 		}
 	}
 	return res

@@ -1,4 +1,4 @@
-// Copyright (c) 2020 Raúl Hernández. All rights reserved.
+// Copyright (c) 2020-2021 Raúl Hernández. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module ui
@@ -35,19 +35,15 @@ pub fn (mut ctx Context) write(s string) {
 [inline]
 // flush displays the accumulated print buffer to the screen.
 pub fn (mut ctx Context) flush() {
-	$if windows {
-		// TODO
-	} $else {
-		// TODO: Diff the previous frame against this one, and only render things that changed?
-		if !ctx.enable_su {
-			C.write(C.STDOUT_FILENO, ctx.print_buf.data, ctx.print_buf.len)
-		} else {
-			C.write(C.STDOUT_FILENO, bsu.str, bsu.len)
-			C.write(C.STDOUT_FILENO, ctx.print_buf.data, ctx.print_buf.len)
-			C.write(C.STDOUT_FILENO, esu.str, esu.len)
-		}
-		ctx.print_buf.clear()
+	// TODO: Diff the previous frame against this one, and only render things that changed?
+	if !ctx.enable_su {
+		C.write(1, ctx.print_buf.data, ctx.print_buf.len)
+	} else {
+		C.write(1, bsu.str, bsu.len)
+		C.write(1, ctx.print_buf.data, ctx.print_buf.len)
+		C.write(1, esu.str, esu.len)
 	}
+	ctx.print_buf.clear()
 }
 
 // bold sets the character state to bold.
