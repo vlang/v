@@ -120,7 +120,7 @@ pub fn new_semaphore_init(n u32) &Semaphore {
 }
 
 pub fn (mut sem Semaphore) init(n u32) {
-	sem.count = n
+	C.atomic_store_u32(&sem.count, n)
 	C.pthread_mutex_init(&sem.mtx, C.NULL)
 	attr := CondAttr{}
 	C.pthread_condattr_init(&attr.attr)
@@ -130,55 +130,104 @@ pub fn (mut sem Semaphore) init(n u32) {
 }
 
 pub fn (mut sem Semaphore) post() {
+	mut c := C.atomic_load_u32(&sem.count)
+	for c > 1 {
+		if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c+1) { return }
+	}
 	C.pthread_mutex_lock(&sem.mtx)
-	sem.count++
-	C.pthread_cond_signal(&sem.cond)
+	c = C.atomic_fetch_add_u32(&sem.count, 1)
+	if c == 0 {
+		C.pthread_cond_signal(&sem.cond)
+	}
 	C.pthread_mutex_unlock(&sem.mtx)
 }
 
 pub fn (mut sem Semaphore) wait() {
-	C.pthread_mutex_lock(&sem.mtx)
-	for sem.count == 0 {
-		C.pthread_cond_wait(&sem.cond, &sem.mtx)
+	mut c := C.atomic_load_u32(&sem.count)
+	for c > 0 {
+		if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c-1) { return }
 	}
-	sem.count--
+	C.pthread_mutex_lock(&sem.mtx)
+	c = C.atomic_load_u32(&sem.count)
+	for {
+		if c == 0 {
+			C.pthread_cond_wait(&sem.cond, &sem.mtx)
+			c = C.atomic_load_u32(&sem.count)
+		}
+		for c > 0 {
+			if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c-1) {
+				if c > 1 {
+					C.pthread_cond_signal(&sem.cond)
+				}
+				goto unlock
+			}
+		}
+	}
+unlock:
 	C.pthread_mutex_unlock(&sem.mtx)
 }
 
 pub fn (mut sem Semaphore) try_wait() bool {
-	t_spec := time.zero_timespec()
+	mut c := C.atomic_load_u32(&sem.count)
+	for c > 0 {
+		if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c-1) { return true }
+	}
 	C.pthread_mutex_lock(&sem.mtx)
-	for sem.count == 0 {
-		res := C.pthread_cond_timedwait(&sem.cond, &sem.mtx, &t_spec)
-		if res == C.ETIMEDOUT {
-			break
+	t_spec := time.zero_timespec()
+	mut res := 0
+	c = C.atomic_load_u32(&sem.count)
+	for {
+		if c == 0 {
+			res = C.pthread_cond_timedwait(&sem.cond, &sem.mtx, &t_spec)
+			if res == C.ETIMEDOUT {
+				goto unlock
+				// TODO: handle other errors
+			}
+			c = C.atomic_load_u32(&sem.count)
+		}
+		for c > 0 {
+			if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c-1) {
+				if c > 1 {
+					C.pthread_cond_signal(&sem.cond)
+				}
+				goto unlock
+			}
 		}
 	}
-	mut res := false
-	if sem.count > 0 {
-		sem.count--
-		res = true
-	}
+unlock:
 	C.pthread_mutex_unlock(&sem.mtx)
-	return res
+	return res == 0
 }
 
 pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
-	t_spec := timeout.timespec()
+	mut c := C.atomic_load_u32(&sem.count)
+	for c > 0 {
+		if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c-1) { return true }
+	}
 	C.pthread_mutex_lock(&sem.mtx)
-	for sem.count == 0 {
-		res := C.pthread_cond_timedwait(&sem.cond, &sem.mtx, &t_spec)
-		if res == C.ETIMEDOUT {
-			break
+	t_spec := timeout.timespec()
+	mut res := 0
+	c = C.atomic_load_u32(&sem.count)
+	for {
+		if c == 0 {
+			res = C.pthread_cond_timedwait(&sem.cond, &sem.mtx, &t_spec)
+			if res == C.ETIMEDOUT {
+				goto unlock
+			}
+			c = C.atomic_load_u32(&sem.count)
+		}
+		for c > 0 {
+			if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c-1) {
+				if c > 1 {
+					C.pthread_cond_signal(&sem.cond)
+				}
+				goto unlock
+			}
 		}
 	}
-	mut res := false
-	if sem.count > 0 {
-		sem.count--
-		res = true
-	}
+unlock:
 	C.pthread_mutex_unlock(&sem.mtx)
-	return res
+	return res == 0
 }
 
 pub fn (mut sem Semaphore) destroy() bool {
