@@ -5,6 +5,10 @@ module sync
 
 import time
 
+fn C.InitializeConditionVariable(voidptr)
+fn C.WakeConditionVariable(voidptr)
+fn C.SleepConditionVariableSRW(voidptr, voidptr, u32, u32) int
+
 // TODO: The suggestion of using CriticalSection instead of mutex
 // was discussed. Needs consideration.
 
@@ -26,21 +30,31 @@ mut:
 	mx C.SRWLOCK    // mutex handle
 }
 
-pub struct Semaphore {
+struct Semaphore {
+	mtx C.SRWLOCK
+	cond C.CONDITION_VARIABLE
 mut:
-	sem SHANDLE
+	count u32
 }
 
-pub fn new_mutex() Mutex {
-	m := Mutex{}
-	C.InitializeSRWLock(&m.mx)
+pub fn new_mutex() &Mutex {
+	mut m := &Mutex{}
+	m.init()
 	return m
 }
 
-pub fn new_rwmutex() RwMutex {
-	m := RwMutex{}
-	C.InitializeSRWLock(&m.mx)
+pub fn new_rwmutex() &RwMutex {
+	mut m := &RwMutex{}
+	m.init()
 	return m
+}
+
+pub fn (mut m Mutex) init() {
+	C.InitializeSRWLock(&m.mx)
+}
+
+pub fn (mut m RwMutex) init() {
+	C.InitializeSRWLock(&m.mx)
 }
 
 pub fn (mut m Mutex) m_lock() {
@@ -75,32 +89,99 @@ pub fn (mut m Mutex) destroy() {
 }
 
 [inline]
-pub fn new_semaphore() Semaphore {
+pub fn new_semaphore() &Semaphore {
 	return new_semaphore_init(0)
 }
 
-pub fn new_semaphore_init(n u32) Semaphore {
-	return Semaphore{
-		sem: SHANDLE(C.CreateSemaphore(0, n, C.INT32_MAX, 0))
+pub fn new_semaphore_init(n u32) &Semaphore {
+	mut sem := &Semaphore{}
+	sem.init(n)
+	return sem
+}
+
+pub fn (mut sem Semaphore) init(n u32) {
+	C.atomic_store_u32(&sem.count, n)
+	C.InitializeSRWLock(&sem.mtx)
+	C.InitializeConditionVariable(&sem.cond)
+}
+
+pub fn (mut sem Semaphore) post() {
+	mut c := C.atomic_load_u32(&sem.count)
+	for c > 1 {
+		if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c+1) { return }
 	}
+	C.AcquireSRWLockExclusive(&sem.mtx)
+	c = C.atomic_fetch_add_u32(&sem.count, 1)
+	if c == 0 {
+		C.WakeConditionVariable(&sem.cond)
+	}
+	C.ReleaseSRWLockExclusive(&sem.mtx)
 }
 
-pub fn (s Semaphore) post() {
-	C.ReleaseSemaphore(s.sem, 1, 0)
+pub fn (mut sem Semaphore) wait() {
+	mut c := C.atomic_load_u32(&sem.count)
+	for c > 0 {
+		if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c-1) { return }
+	}
+	C.AcquireSRWLockExclusive(&sem.mtx)
+	c = C.atomic_load_u32(&sem.count)
+	for {
+		if c == 0 {
+			C.SleepConditionVariableSRW(&sem.cond, &sem.mtx, C.INFINITE, 0)
+			c = C.atomic_load_u32(&sem.count)
+		}
+		for c > 0 {
+			if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c-1) {
+				if c > 1 {
+					C.WakeConditionVariable(&sem.cond)
+				}
+				goto unlock
+			}
+		}
+	}
+unlock:
+	C.ReleaseSRWLockExclusive(&sem.mtx)
 }
 
-pub fn (s Semaphore) wait() {
-	C.WaitForSingleObject(s.sem, C.INFINITE)
+pub fn (mut sem Semaphore) try_wait() bool {
+	mut c := C.atomic_load_u32(&sem.count)
+	for c > 0 {
+		if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c-1) { return true }
+	}
+	return false
 }
 
-pub fn (s Semaphore) try_wait() bool {
-	return C.WaitForSingleObject(s.sem, 0) == 0
-}
-
-pub fn (s Semaphore) timed_wait(timeout time.Duration) bool {
-	return C.WaitForSingleObject(s.sem, timeout / time.millisecond) == 0
+pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
+	mut c := C.atomic_load_u32(&sem.count)
+	for c > 0 {
+		if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c-1) { return true }
+	}
+	C.AcquireSRWLockExclusive(&sem.mtx)
+	t_ms := u32(timeout / time.millisecond)
+	mut res := 0
+	c = C.atomic_load_u32(&sem.count)
+	for {
+		if c == 0 {
+			res = C.SleepConditionVariableSRW(&sem.cond, &sem.mtx, t_ms, 0)
+			if res == 0 {
+				goto unlock
+			}
+			c = C.atomic_load_u32(&sem.count)
+		}
+		for c > 0 {
+			if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c-1) {
+				if c > 1 {
+					C.WakeConditionVariable(&sem.cond)
+				}
+				goto unlock
+			}
+		}
+	}
+unlock:
+	C.ReleaseSRWLockExclusive(&sem.mtx)
+	return res != 0
 }
 
 pub fn (s Semaphore) destroy() bool {
-	return C.CloseHandle(s.sem) != 0
+	return true
 }
