@@ -2358,17 +2358,23 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 	right_first := assign_stmt.right[0]
 	mut right_len := assign_stmt.right.len
 	mut right_type0 := table.void_type
-	if right_first is ast.CallExpr || right_first is ast.IfExpr || right_first is ast.MatchExpr {
-		right_type0 = c.expr(right_first)
-		assign_stmt.right_types = [
-			c.check_expr_opt_call(right_first, right_type0),
-		]
-		right_type_sym0 := c.table.get_type_symbol(right_type0)
-		if right_type_sym0.kind == .multi_return {
-			assign_stmt.right_types = right_type_sym0.mr_info().types
-			right_len = assign_stmt.right_types.len
-		} else if right_type0 == table.void_type {
-			right_len = 0
+	for right in assign_stmt.right {
+		if right is ast.CallExpr || right is ast.IfExpr || right is ast.MatchExpr {
+			right_type0 = c.expr(right)
+			assign_stmt.right_types = [
+				c.check_expr_opt_call(right, right_type0),
+			]
+			right_type_sym0 := c.table.get_type_symbol(right_type0)
+			if right_type_sym0.kind == .multi_return {
+				if assign_stmt.right.len > 1 {
+					c.error('cannot use multi-value $right_type_sym0.name in signle-value context',
+						right.position())
+				}
+				assign_stmt.right_types = right_type_sym0.mr_info().types
+				right_len = assign_stmt.right_types.len
+			} else if right_type0 == table.void_type {
+				right_len = 0
+			}
 		}
 	}
 	if assign_stmt.left.len != right_len {
