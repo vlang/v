@@ -42,16 +42,19 @@ fn compile(vroot string, cmd string) {
 
 fn backup_old_version_and_rename_newer() ?bool {
 	mut errors := []string{}
-	v_file := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
-	v2_file := if os.user_os() == 'windows' { 'v2.exe' } else { 'v2' }
-	bak_file := if os.user_os() == 'windows' { 'v_old.exe' } else { 'v_old' }
+	short_v_file := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
+	short_v2_file := if os.user_os() == 'windows' { 'v2.exe' } else { 'v2' }
+	short_bak_file := if os.user_os() == 'windows' { 'v_old.exe' } else { 'v_old' }
+	v_file := os.real_path(short_v_file)
+	v2_file := os.real_path(short_v2_file)
+	bak_file := os.real_path(short_bak_file)
 	if os.exists(bak_file) {
 		os.rm(bak_file) or { errors << 'failed removing $bak_file: $err' }
 	}
 	os.mv(v_file, bak_file) or { errors << err }
-	os.mv(v2_file, v_file) or { errors << err }
+	os.mv(v2_file, v_file) or { panic(err) }
 	if errors.len > 0 {
-		return error('backup errors:\n  >>  ' + errors.join('\n  >>  '))
+		eprintln('backup errors:\n  >>  ' + errors.join('\n  >>  '))
 	}
 	return true
 }
