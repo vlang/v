@@ -271,9 +271,11 @@ pub fn (mut f Fmt) stmts(stmts []ast.Stmt) {
 	if stmts.len >= 1 {
 		prev_line_nr = stmts[0].position().last_line
 	}
-	for stmt in stmts {
+	for i, stmt in stmts {
 		if stmt.position().line_nr - prev_line_nr > 1 && f.out.last_n(2) != '\n\n' {
-			f.out.writeln('')
+			if i >= 1 && stmts[i - 1] !is ast.Import {
+				f.out.writeln('')
+			}
 		}
 		f.stmt(stmt)
 		prev_line_nr = stmt.position().last_line
