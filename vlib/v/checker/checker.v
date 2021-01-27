@@ -2921,6 +2921,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		ast.CompFor {
 			// node.typ = c.expr(node.expr)
 			c.stmts(node.stmts)
+			c.comptime_fields_type.delete(node.val_var)
 		}
 		ast.ConstDecl {
 			c.inside_const = true
@@ -3372,9 +3373,12 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 				if expr_name in c.comptime_fields_type {
 					return c.comptime_fields_type[expr_name]
 				}
+				c.error('compile time field access can only be used when iterating over `T.fields`',
+					node.field_expr.pos)
+				return table.void_type
 			}
-			c.error('compile time field access can only be used when iterating over `T.fields`',
-				node.field_expr.position())
+			expr := node.field_expr
+			c.error('unsupported expression (${expr.type_name()})', expr.position())
 			return table.void_type
 		}
 		ast.ConcatExpr {
