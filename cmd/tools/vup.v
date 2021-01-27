@@ -110,7 +110,7 @@ fn (app App) backup(file string) {
 	if os.exists(backup_file) {
 		os.rm(backup_file) or { eprintln('failed removing $backup_file: $err') }
 	}
-	os.mv(file, backup_file) or { panic(err) }
+	os.mv(file, backup_file) or { eprintln('failed moving $file: $err') }
 }
 
 fn (app App) git_command(command string) {
