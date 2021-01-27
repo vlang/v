@@ -71,6 +71,7 @@ mut:
 	cur_fn_name       string
 	in_generic_params bool // indicates if parsing between `<` and `>` of a method/function
 	name_error        bool // indicates if the token is not a name or the name is on another line
+	is_parsing_receiver       bool // indicates if parser is parsing receiver fn (x Xxx)
 }
 
 // for tests

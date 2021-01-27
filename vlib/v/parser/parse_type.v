@@ -373,7 +373,7 @@ pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr bool, check
 					return table.int_literal_type
 				}
 				else {
-					if name.len == 1 && name[0].is_capital() {
+					if name.len == 1 && name[0].is_capital() && !p.is_parsing_receiver {
 						return p.parse_generic_template_type(name)
 					}
 					if p.peek_tok.kind == .lt {
