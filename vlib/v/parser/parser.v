@@ -29,49 +29,49 @@ mut:
 	scanner           &scanner.Scanner
 	comments_mode     scanner.CommentsMode = .skip_comments
 	// see comment in parse_file
-	tok               token.Token
-	prev_tok          token.Token
-	peek_tok          token.Token
-	peek_tok2         token.Token
-	peek_tok3         token.Token
-	table             &table.Table
-	language          table.Language
-	inside_if         bool
-	inside_if_expr    bool
-	inside_ct_if_expr bool
-	inside_or_expr    bool
-	inside_for        bool
-	inside_fn         bool // true even with implicit main
-	inside_str_interp bool
-	or_is_handled     bool         // ignore `or` in this expression
-	builtin_mod       bool         // are we in the `builtin` module?
-	mod               string       // current module name
-	is_manualfree     bool         // true when `[manualfree] module abc`, makes *all* fns in the current .v file, opt out of autofree
-	attrs             []table.Attr // attributes before next decl stmt
-	expr_mod          string       // for constructing full type names in parse_type()
-	scope             &ast.Scope
-	global_scope      &ast.Scope
-	imports           map[string]string // alias => mod_name
-	ast_imports       []ast.Import      // mod_names
-	used_imports      []string // alias
-	auto_imports      []string // imports, the user does not need to specify
-	imported_symbols  map[string]string
-	is_amp            bool // for generating the right code for `&Foo{}`
-	returns           bool
-	inside_match      bool // to separate `match A { }` from `Struct{}`
-	inside_select     bool // to allow `ch <- Struct{} {` inside `select`
-	inside_match_case bool // to separate `match_expr { }` from `Struct{}`
-	inside_match_body bool // to fix eval not used TODO
-	inside_unsafe     bool
-	is_stmt_ident     bool // true while the beginning of a statement is an ident/selector
-	expecting_type    bool // `is Type`, expecting type
-	errors            []errors.Error
-	warnings          []errors.Warning
-	vet_errors        []vet.Error
-	cur_fn_name       string
-	in_generic_params bool // indicates if parsing between `<` and `>` of a method/function
-	name_error        bool // indicates if the token is not a name or the name is on another line
-	is_parsing_receiver       bool // indicates if parser is parsing receiver fn (x Xxx)
+	tok                 token.Token
+	prev_tok            token.Token
+	peek_tok            token.Token
+	peek_tok2           token.Token
+	peek_tok3           token.Token
+	table               &table.Table
+	language            table.Language
+	inside_if           bool
+	inside_if_expr      bool
+	inside_ct_if_expr   bool
+	inside_or_expr      bool
+	inside_for          bool
+	inside_fn           bool // true even with implicit main
+	inside_str_interp   bool
+	or_is_handled       bool         // ignore `or` in this expression
+	builtin_mod         bool         // are we in the `builtin` module?
+	mod                 string       // current module name
+	is_manualfree       bool         // true when `[manualfree] module abc`, makes *all* fns in the current .v file, opt out of autofree
+	attrs               []table.Attr // attributes before next decl stmt
+	expr_mod            string       // for constructing full type names in parse_type()
+	scope               &ast.Scope
+	global_scope        &ast.Scope
+	imports             map[string]string // alias => mod_name
+	ast_imports         []ast.Import      // mod_names
+	used_imports        []string // alias
+	auto_imports        []string // imports, the user does not need to specify
+	imported_symbols    map[string]string
+	is_amp              bool // for generating the right code for `&Foo{}`
+	returns             bool
+	inside_match        bool // to separate `match A { }` from `Struct{}`
+	inside_select       bool // to allow `ch <- Struct{} {` inside `select`
+	inside_match_case   bool // to separate `match_expr { }` from `Struct{}`
+	inside_match_body   bool // to fix eval not used TODO
+	inside_unsafe       bool
+	is_stmt_ident       bool // true while the beginning of a statement is an ident/selector
+	expecting_type      bool // `is Type`, expecting type
+	errors              []errors.Error
+	warnings            []errors.Warning
+	vet_errors          []vet.Error
+	cur_fn_name         string
+	in_generic_params   bool // indicates if parsing between `<` and `>` of a method/function
+	name_error          bool // indicates if the token is not a name or the name is on another line
+	is_parsing_receiver bool // indicates if parser is parsing receiver fn (x Xxx)
 }
 
 // for tests
