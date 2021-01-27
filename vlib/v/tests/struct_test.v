@@ -231,6 +231,7 @@ fn test_fixed_field() {
 }
 */
 struct Config {
+mut:
 	n   int
 	def int = 10
 }
@@ -240,6 +241,11 @@ fn foo_config(def int, c Config) {
 }
 fn bar_config(c Config, def int) {
 	assert c.def == def
+}
+fn mut_bar_config(mut c Config, def int) &Config {
+	c.n = c.def
+	assert c.n == def
+	return c
 }
 
 fn foo_user(u User) {}
@@ -255,6 +261,10 @@ fn test_struct_literal_args() {
 
 	bar_config({}, 10)
 	bar_config({def:4}, 4)
+
+	c := mut_bar_config(mut {def: 10}, 10)
+	assert c.n == 10
+	assert c.def == 10
 
 	foo_user({
 		name: 'Peter'
