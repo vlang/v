@@ -540,6 +540,9 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		ast.SizeOf {
 			// TODO
 		}
+		ast.OffsetOf {
+			// TODO
+		}
 		ast.SqlExpr {
 			// TODO
 		}

@@ -904,6 +904,9 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		ast.SizeOf {
 			f.size_of(node)
 		}
+		ast.OffsetOf {
+			f.write('__offsetof(${f.table.type_to_str(node.struct_type)}, $node.field)')
+		}
 		ast.SqlExpr {
 			f.sql_expr(node)
 		}

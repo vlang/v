@@ -13,9 +13,9 @@ pub type Expr = AnonFn | ArrayDecompose | ArrayInit | AsCast | Assoc | AtExpr | 
 	CTempVar | CallExpr | CastExpr | ChanInit | CharLiteral | Comment | ComptimeCall |
 	ComptimeSelector | ConcatExpr | EnumVal | FloatLiteral | GoExpr | Ident | IfExpr |
 	IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | Likely | LockExpr | MapInit |
-	MatchExpr | None | OrExpr | ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectExpr |
-	SelectorExpr | SizeOf | SqlExpr | StringInterLiteral | StringLiteral | StructInit |
-	Type | TypeOf | UnsafeExpr
+	MatchExpr | None | OffsetOf | OrExpr | ParExpr | PostfixExpr | PrefixExpr | RangeExpr |
+	SelectExpr | SelectorExpr | SizeOf | SqlExpr | StringInterLiteral | StringLiteral |
+	StructInit | Type | TypeOf | UnsafeExpr
 
 pub type Stmt = AssertStmt | AssignStmt | Block | BranchStmt | CompFor | ConstDecl | DeferStmt |
 	EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl | GoStmt |
@@ -1069,6 +1069,13 @@ pub mut:
 	typ table.Type
 }
 
+pub struct OffsetOf {
+pub:
+	struct_type table.Type
+	field       string
+	pos         token.Position
+}
+
 pub struct Likely {
 pub:
 	expr      Expr
@@ -1198,7 +1205,7 @@ pub fn (expr Expr) position() token.Position {
 		}
 		ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr, CastExpr, ChanInit, CharLiteral,
 		ConcatExpr, Comment, EnumVal, FloatLiteral, GoExpr, Ident, IfExpr, IndexExpr, IntegerLiteral,
-		Likely, LockExpr, MapInit, MatchExpr, None, OrExpr, ParExpr, PostfixExpr, PrefixExpr,
+		Likely, LockExpr, MapInit, MatchExpr, None, OffsetOf, OrExpr, ParExpr, PostfixExpr, PrefixExpr,
 		RangeExpr, SelectExpr, SelectorExpr, SizeOf, SqlExpr, StringInterLiteral, StringLiteral,
 		StructInit, Type, TypeOf, UnsafeExpr {
 			return expr.pos
