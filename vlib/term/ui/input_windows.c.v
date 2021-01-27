@@ -186,8 +186,8 @@ fn (mut ctx Context) parse_events() {
 				if !C.GetConsoleScreenBufferInfo(ctx.stdout_handle, &sb_info) {
 					panic('could not get screenbuffer info')
 				}
-				x := e.dwMousePosition.X
-				y := int(e.dwMousePosition.Y) - sb_info.srWindow.Top
+				x := e.dwMousePosition.X + 1
+				y := int(e.dwMousePosition.Y) - sb_info.srWindow.Top + 1
 				mut modifiers := u32(0)
 				if e.dwControlKeyState & (0x1 | 0x2) != 0 { modifiers |= alt }
 				if e.dwControlKeyState & (0x4 | 0x8) != 0 { modifiers |= ctrl }
