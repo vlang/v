@@ -81,4 +81,4 @@ fn C.ReadConsoleInput() bool
 
 fn C.GetNumberOfConsoleInputEvents() bool
 
-fn C.GetConsoleScreenBufferInfo(handle os.HANDLE, info &ConsoleScreenBufferInfo) bool
+fn C.GetConsoleScreenBufferInfo(handle os.HANDLE, info &C.CONSOLE_SCREEN_BUFFER_INFO) bool
