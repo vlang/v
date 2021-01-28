@@ -204,7 +204,11 @@ pub fn (mut p Parser) parse() ast.File {
 	}
 	// module
 	module_decl := p.module_decl()
-	stmts << module_decl
+	if module_decl.is_skipped {
+		stmts.insert(0, ast.Stmt(module_decl))
+	} else {
+		stmts << module_decl
+	}
 	// imports
 	for {
 		if p.tok.kind == .key_import {

@@ -279,6 +279,7 @@ pub fn (mut f Fmt) stmts(stmts []ast.Stmt) {
 				f.out.writeln('')
 			}
 		}
+		// println(stmt.str() + ' ' + stmt.position().str())
 		f.stmt(stmt)
 		prev_line_nr = stmt.position().last_line
 	}

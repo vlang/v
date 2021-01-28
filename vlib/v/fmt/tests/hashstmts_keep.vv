@@ -1,0 +1,8 @@
+// comment above HashStmts
+#flag linux -lsdl2
+#include "stdio.h"
+
+// comment between with newlines around
+
+#include "header.h"
+#include "sqlite3.h"
