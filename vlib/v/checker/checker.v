@@ -5287,7 +5287,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 		if sym.name.len == 1 {
 			// One letter types are reserved for generics.
-			c.error('unknown type `$sym.name`', node.pos)
+			c.error('unknown type `$sym.name`', node.receiver_pos)
 			return
 		}
 		// if sym.has_method(node.name) {
