@@ -5,6 +5,8 @@ import os.cmdline
 import v.pref
 import v.util.recompilation
 
+const is_debug = os.args.contains('-debug')
+
 fn main() {
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
@@ -40,6 +42,21 @@ fn compile(vroot string, cmd string) {
 	}
 }
 
+fn list_folder(bmessage string, message string) {
+	if !is_debug {
+		return
+	}
+	if bmessage != '' {
+		println(bmessage)
+	}
+	if os.user_os() == 'windows' {
+		os.system('dir v*.exe')
+	} else {
+		os.system('ls -lartd v*')
+	}
+	println(message)
+}
+
 fn backup_old_version_and_rename_newer() ?bool {
 	mut errors := []string{}
 	short_v_file := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
@@ -48,11 +65,21 @@ fn backup_old_version_and_rename_newer() ?bool {
 	v_file := os.real_path(short_v_file)
 	v2_file := os.real_path(short_v2_file)
 	bak_file := os.real_path(short_bak_file)
-	if os.exists(bak_file) {
-		os.rm(bak_file) or { errors << 'failed removing $bak_file: $err' }
-	}
+
+	list_folder('before:', 'removing $bak_file ...')
+	os.rm(bak_file) or { errors << 'failed removing $bak_file: $err' }
+
+	list_folder('', 'moving $v_file to $bak_file ...')
 	os.mv(v_file, bak_file) or { errors << err }
-	os.mv(v2_file, v_file) or { panic(err) }
+
+	list_folder('', 'removing $v_file ...')
+	os.rm(v_file) or { }
+
+	list_folder('', 'moving $v2_file to $v_file ...')
+	os.mv_by_cp(v2_file, v_file) or { panic(err) }
+
+	list_folder('after:', '')
+
 	if errors.len > 0 {
 		eprintln('backup errors:\n  >>  ' + errors.join('\n  >>  '))
 	}
