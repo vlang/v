@@ -1060,7 +1060,7 @@ pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
 	if node.language == .v {
 		if !node.no_body {
 			f.write(' {')
-			if node.stmts.len > 0 || node.pos.line_nr + node.attrs.len < node.pos.last_line {
+			if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
 				f.writeln('')
 				f.stmts(node.stmts)
 			}

@@ -10,4 +10,5 @@ fn x() {}
 
 // comment above an attributed function
 [inline]
-fn y_with_attr() {}
+fn y_with_attr() {
+}
