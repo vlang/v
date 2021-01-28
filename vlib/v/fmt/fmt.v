@@ -279,7 +279,6 @@ pub fn (mut f Fmt) stmts(stmts []ast.Stmt) {
 				f.out.writeln('')
 			}
 		}
-		// println(stmt.str() + ' ' + stmt.position().str())
 		f.stmt(stmt)
 		prev_line_nr = stmt.position().last_line
 	}
@@ -1044,7 +1043,7 @@ pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
 	if node.language == .v {
 		if !node.no_body {
 			f.write(' {')
-			if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
+			if node.stmts.len > 0 || node.pos.line_nr + node.attrs.len < node.pos.last_line {
 				f.writeln('')
 				f.stmts(node.stmts)
 			}
