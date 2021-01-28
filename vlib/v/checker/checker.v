@@ -5296,7 +5296,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			sym := c.table.get_type_symbol(arg.typ)
 			if sym.kind == .placeholder
 				|| (sym.kind in [table.Kind.int_literal, .float_literal] && !c.is_builtin_mod) {
-				c.error('unknown type `$sym.name`', node.receiver_pos)
+				c.error('unknown type `$sym.name`', node.pos)
 			}
 		}
 	}

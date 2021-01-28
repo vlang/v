@@ -190,7 +190,6 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut rec_mut := false
 	mut params := []table.Param{}
 	if p.tok.kind == .lpar {
-		p.is_parsing_receiver = true
 		lpar_pos := p.tok.position()
 		p.next() // (
 		is_method = true
@@ -247,7 +246,6 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			typ: rec_type
 		}
 		p.check(.rpar)
-		p.is_parsing_receiver = false
 	}
 	mut name := ''
 	if p.tok.kind == .name {
