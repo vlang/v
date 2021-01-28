@@ -655,14 +655,14 @@ pub fn (mut ctx Context) parse_multipart_form(s string, b string) {
 			for i in l + 1 .. lines.len - 1 {
 				sb.writeln(lines[i])
 			}
+			eprintln(filename)
+			eprintln(ct)
 			ctx.files[name] << FileData{
 				filename: filename
 				content_type: ct
 				data: sb.str()
 			}
 			unsafe {
-				filename.free()
-				ct.free()
 				sb.free()
 			}
 			continue
@@ -677,12 +677,6 @@ pub fn (mut ctx Context) parse_multipart_form(s string, b string) {
 			name.free()
 			sb.free()
 		}
-	}
-	unsafe {
-		fields.free()
-		s.free()
-		b.free()
-		a.free()
 	}
 }
 
