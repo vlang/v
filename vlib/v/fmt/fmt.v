@@ -276,7 +276,17 @@ pub fn (mut f Fmt) stmts(stmts []ast.Stmt) {
 		if stmt.position().line_nr - prev_line_nr > 1 && f.out.last_n(2) != '\n\n' {
 			// Imports are handled special hence they are ignored here
 			if stmt !is ast.Import && i >= 1 && stmts[i - 1] !is ast.Import {
-				f.out.writeln('')
+				if stmt is ast.StructDecl {
+					if stmt.attrs.len == 0 || (stmt.attrs.len > 0 && stmt.attrs[0].pos.line_nr - prev_line_nr > 1) {
+						f.out.writeln('')
+					}
+				} else if stmt is ast.FnDecl {
+					if stmt.attrs.len == 0 || (stmt.attrs.len > 0 && stmt.attrs[0].pos.line_nr - prev_line_nr > 1) {
+						f.out.writeln('')
+					}
+				} else {
+					f.out.writeln('')
+				}
 			}
 		}
 		f.stmt(stmt)
