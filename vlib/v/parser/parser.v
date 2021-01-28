@@ -517,8 +517,10 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 				return p.struct_decl()
 			}
 			.dollar {
+				if_expr := p.if_expr(true)
 				return ast.ExprStmt{
-					expr: p.if_expr(true)
+					expr: if_expr
+					pos: if_expr.pos
 				}
 			}
 			.hash {

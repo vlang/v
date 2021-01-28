@@ -15,12 +15,11 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 		p.inside_ct_if_expr = was_inside_ct_if_expr
 	}
 	p.inside_if_expr = true
-	mut pos := if is_comptime {
+	mut pos := p.tok.position()
+	if is_comptime {
 		p.inside_ct_if_expr = true
 		p.next() // `$`
-		p.prev_tok.position().extend(p.tok.position())
-	} else {
-		p.tok.position()
+		pos = p.prev_tok.position().extend(p.tok.position())
 	}
 	mut branches := []ast.IfBranch{}
 	mut has_else := false
