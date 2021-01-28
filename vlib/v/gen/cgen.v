@@ -4716,6 +4716,13 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		} else {
 			g.write('($styp*)memdup(&($styp){')
 		}
+	} else if struct_init.typ.is_ptr() {
+		basetyp := g.typ(struct_init.typ.set_nr_muls(0))
+		if is_multiline {
+			g.writeln('&($basetyp){')
+		} else {
+			g.write('&($basetyp){')
+		}
 	} else {
 		if g.is_shared {
 			// TODO: non-ref shared should be forbidden
