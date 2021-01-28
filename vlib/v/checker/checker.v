@@ -1869,7 +1869,8 @@ fn (mut c Checker) type_implements(typ table.Type, inter_typ table.Type, pos tok
 	styp := c.table.type_to_str(typ)
 	same_base_type := typ.idx() == inter_typ.idx()
 	if typ_sym.kind == .interface_ && inter_sym.kind == .interface_ && !same_base_type {
-		c.error('cannot implement interface `$inter_sym.name` with a different interface `$styp`', pos)
+		c.error('cannot implement interface `$inter_sym.name` with a different interface `$styp`',
+			pos)
 	}
 	imethods := if inter_sym.kind == .interface_ {
 		(inter_sym.info as table.Interface).methods
