@@ -3367,19 +3367,20 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 				c.error('expected `string` instead of `$expr_sym.name` (e.g. `field.name`)',
 					node.field_expr.position())
 			}
-			if c.comptime_fields_type.len == 0 {
-				c.error('compile time field access can only be used when iterating over `T.fields`',
-					node.field_expr.position())
-			}
 			if node.field_expr is ast.SelectorExpr {
+				left_pos := node.field_expr.expr.position()
+				if c.comptime_fields_type.len == 0 {
+					c.error('compile time field access can only be used when iterating over `T.fields`',
+						left_pos)
+				}
 				expr_name := node.field_expr.expr.str()
 				if expr_name in c.comptime_fields_type {
 					return c.comptime_fields_type[expr_name]
 				}
-				c.error('unknown `\$for` variable `$expr_name`', node.field_expr.pos)
+				c.error('unknown `\$for` variable `$expr_name`', left_pos)
+			} else {
+				c.error('expected selector expression e.g. `$(field.name)`', node.field_expr.position())
 			}
-			expr := node.field_expr
-			c.error('unsupported expression ($expr.type_name())', expr.position())
 			return table.void_type
 		}
 		ast.ConcatExpr {
