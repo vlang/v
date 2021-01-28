@@ -32,6 +32,7 @@ pub mut:
 	array_init_depth   int    // current level of hierarchie in array init
 	single_line_if     bool
 	cur_mod            string
+	cur_short_mod      string // TODO clean this up
 	file               ast.File
 	did_imports        bool
 	is_assign          bool
@@ -205,6 +206,7 @@ pub fn (mut f Fmt) short_module(name string) string {
 
 pub fn (mut f Fmt) mod(mod ast.Module) {
 	f.set_current_module_name(mod.name)
+	f.cur_short_mod = mod.short_name
 	if mod.is_skipped {
 		return
 	}
@@ -1146,12 +1148,12 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 	} else {
 		// Force usage of full path to const in the same module:
 		// `println(minute)` => `println(time.minute)`
-		// This allows using the variable `minute` inside time's functions
-		// and also makes it clear that a module const is being used
+		// This makes it clear that a module const is being used
 		// (since V's conts are no longer ALL_CAP).
 		// ^^^ except for `main`, where consts are allowed to not have a `main.` prefix.
 		if !node.name.contains('.') && !f.inside_const {
-			full_name := f.cur_mod + '.' + node.name
+			mod := if f.cur_mod == '' { f.cur_short_mod } else { f.cur_mod } // TODO why is this needed?
+			full_name := mod + '.' + node.name
 			if obj := f.file.global_scope.find(full_name) {
 				if obj is ast.ConstField {
 					// "v.fmt.foo" => "fmt.foo"
