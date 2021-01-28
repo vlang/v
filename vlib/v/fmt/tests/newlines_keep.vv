@@ -4,16 +4,16 @@ module websocket
 
 fn main() {}
 
-// between function
+// This should stay between both functions
 
 fn x() {}
 
-// comment above an attributed function
+// doc comment above an attributed function
 [inline]
 fn y_with_attr() {
 }
 
-// comment above an attributed struct
+// doc comment above an attributed struct
 [typedef]
-struct Foo() {
+struct Foo {
 }
