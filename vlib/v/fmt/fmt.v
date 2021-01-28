@@ -292,7 +292,7 @@ fn (mut f Fmt) should_insert_newline_before_stmt(stmt ast.Stmt, prev_stmt ast.St
 pub fn (mut f Fmt) stmts(stmts []ast.Stmt) {
 	mut prev_stmt := if stmts.len > 0 { stmts[0] } else { ast.Stmt{} }
 	f.indent++
-	for i, stmt in stmts {
+	for stmt in stmts {
 		if f.should_insert_newline_before_stmt(stmt, prev_stmt) {
 			f.out.writeln('')
 		}
