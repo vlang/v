@@ -5284,6 +5284,11 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		} else if sym.kind == .sum_type && node.name == 'type_name' {
 			c.error('method overrides built-in sum type method', node.pos)
 		}
+		if sym.name.len == 1 {
+			// One letter types are reserved for generics.
+			c.error('unknown type `$sym.name`', node.pos)
+			return
+		}
 		// if sym.has_method(node.name) {
 		// c.warn('duplicate method `$node.name`', node.pos)
 		// }
