@@ -2478,11 +2478,11 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 						}
 						*/
 					}
-					if false && is_decl {
+					if is_decl {
 						full_name := '${left.mod}.$left.name'
 						if obj := c.file.global_scope.find(full_name) {
 							if obj is ast.ConstField {
-								c.warn('duplicate of a const name `$full_name', left.pos)
+								c.warn('duplicate of a const name `$full_name`', left.pos)
 							}
 						}
 					}

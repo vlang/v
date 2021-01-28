@@ -567,7 +567,7 @@ pub fn (mut t Table) find_or_register_array(elem_type Type) int {
 		return existing_idx
 	}
 	// register
-	array_type := TypeSymbol{
+	array_type_ := TypeSymbol{
 		parent_idx: array_type_idx
 		kind: .array
 		name: name
@@ -576,7 +576,7 @@ pub fn (mut t Table) find_or_register_array(elem_type Type) int {
 			elem_type: elem_type
 		}
 	}
-	return t.register_type_symbol(array_type)
+	return t.register_type_symbol(array_type_)
 }
 
 pub fn (mut t Table) find_or_register_array_with_dims(elem_type Type, nr_dims int) int {
