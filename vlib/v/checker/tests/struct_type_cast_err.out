@@ -61,10 +61,3 @@ vlib/v/checker/tests/struct_type_cast_err.vv:13:10: error: cannot cast struct to
       |          ~~~~~~~~
    14 |     _ = &I1(foo)
    15 | }
-vlib/v/checker/tests/struct_type_cast_err.vv:14:10: error: cannot cast struct to `&I1`
-   12 |     _ := i64(foo)
-   13 |     _ := int(foo)
-   14 |     _ = &I1(foo)
-      |          ~~~~~~~
-   15 | }
-   16 |
