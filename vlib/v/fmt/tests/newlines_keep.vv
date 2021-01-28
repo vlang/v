@@ -12,3 +12,8 @@ fn x() {}
 [inline]
 fn y_with_attr() {
 }
+
+// comment above an attributed struct
+[typedef]
+struct Foo() {
+}
