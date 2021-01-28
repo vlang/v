@@ -265,32 +265,39 @@ pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
 	return '$imp.mod$imp_alias_suffix'
 }
 
-pub fn (mut f Fmt) stmts(stmts []ast.Stmt) {
-	f.indent++
-	mut prev_line_nr := 0
-	if stmts.len >= 1 {
-		prev_line_nr = stmts[0].position().last_line
+fn (mut f Fmt) should_insert_newline_before_stmt(stmt ast.Stmt, prev_stmt ast.Stmt) bool {
+	prev_line_nr := prev_stmt.position().last_line
+	// The stmt either has or shouldn't have a newline before
+	if stmt.position().line_nr - prev_line_nr <= 1 || f.out.last_n(2) == '\n\n' {
+		return false
 	}
+	// Imports are handled special hence they are ignored here
+	if stmt is ast.Import || prev_stmt is ast.Import {
+		return false
+	}
+	// Attributes are not respected in the stmts position, so we have to check it manually
+	if stmt is ast.StructDecl {
+		if stmt.attrs.len > 0 && stmt.attrs[0].pos.line_nr - prev_line_nr <= 1 {
+			return false
+		}
+	}
+	if stmt is ast.FnDecl {
+		if stmt.attrs.len > 0 && stmt.attrs[0].pos.line_nr - prev_line_nr <= 1 {
+			return false
+		}
+	}
+	return true
+}
+
+pub fn (mut f Fmt) stmts(stmts []ast.Stmt) {
+	mut prev_stmt := if stmts.len > 0 { stmts[0] } else { ast.Stmt{} }
+	f.indent++
 	for i, stmt in stmts {
-		// The stmts should have a newline between but don't have yet
-		if stmt.position().line_nr - prev_line_nr > 1 && f.out.last_n(2) != '\n\n' {
-			// Imports are handled special hence they are ignored here
-			if stmt !is ast.Import && i >= 1 && stmts[i - 1] !is ast.Import {
-				if stmt is ast.StructDecl {
-					if stmt.attrs.len == 0 || (stmt.attrs.len > 0 && stmt.attrs[0].pos.line_nr - prev_line_nr > 1) {
-						f.out.writeln('')
-					}
-				} else if stmt is ast.FnDecl {
-					if stmt.attrs.len == 0 || (stmt.attrs.len > 0 && stmt.attrs[0].pos.line_nr - prev_line_nr > 1) {
-						f.out.writeln('')
-					}
-				} else {
-					f.out.writeln('')
-				}
-			}
+		if f.should_insert_newline_before_stmt(stmt, prev_stmt) {
+			f.out.writeln('')
 		}
 		f.stmt(stmt)
-		prev_line_nr = stmt.position().last_line
+		prev_stmt = stmt
 	}
 	f.indent--
 }
