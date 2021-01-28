@@ -655,8 +655,6 @@ pub fn (mut ctx Context) parse_multipart_form(s string, b string) {
 			for i in l + 1 .. lines.len - 1 {
 				sb.writeln(lines[i])
 			}
-			eprintln(filename)
-			eprintln(ct)
 			ctx.files[name] << FileData{
 				filename: filename
 				content_type: ct
