@@ -15,3 +15,10 @@ fn concat_inside_ternary() {
 		}
 	}
 }
+
+fn concat_two_or_more_ternaries() {
+	x := if some_condition { 'very long string part' } else { 'def' } +
+		if y == 'asd' { 'qwe' } else { 'something else' }
+	var := if other_condition { 'concat three long ternary ifs' } else { 'def' } +
+		if true { 'shorter' } else { 'quite short' } + if true { 'small' } else { 'tiny' }
+}

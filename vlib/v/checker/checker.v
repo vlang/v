@@ -1122,6 +1122,9 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 		ast.ArrayInit {
 			return '', pos
 		}
+		ast.StructInit {
+			return '', pos
+		}
 		else {
 			c.error('unexpected expression `$expr.type_name()`', expr.position())
 		}
@@ -2358,17 +2361,23 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 	right_first := assign_stmt.right[0]
 	mut right_len := assign_stmt.right.len
 	mut right_type0 := table.void_type
-	if right_first is ast.CallExpr || right_first is ast.IfExpr || right_first is ast.MatchExpr {
-		right_type0 = c.expr(right_first)
-		assign_stmt.right_types = [
-			c.check_expr_opt_call(right_first, right_type0),
-		]
-		right_type_sym0 := c.table.get_type_symbol(right_type0)
-		if right_type_sym0.kind == .multi_return {
-			assign_stmt.right_types = right_type_sym0.mr_info().types
-			right_len = assign_stmt.right_types.len
-		} else if right_type0 == table.void_type {
-			right_len = 0
+	for right in assign_stmt.right {
+		if right is ast.CallExpr || right is ast.IfExpr || right is ast.MatchExpr {
+			right_type0 = c.expr(right)
+			assign_stmt.right_types = [
+				c.check_expr_opt_call(right, right_type0),
+			]
+			right_type_sym0 := c.table.get_type_symbol(right_type0)
+			if right_type_sym0.kind == .multi_return {
+				if assign_stmt.right.len > 1 {
+					c.error('cannot use multi-value $right_type_sym0.name in signle-value context',
+						right.position())
+				}
+				assign_stmt.right_types = right_type_sym0.mr_info().types
+				right_len = assign_stmt.right_types.len
+			} else if right_type0 == table.void_type {
+				right_len = 0
+			}
 		}
 	}
 	if assign_stmt.left.len != right_len {
@@ -2400,7 +2409,8 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		if assign_stmt.right_types.len < assign_stmt.left.len { // first type or multi return types added above
 			right_type := c.expr(assign_stmt.right[i])
 			if assign_stmt.right_types.len == i {
-				assign_stmt.right_types << c.check_expr_opt_call(assign_stmt.right[i], right_type)
+				assign_stmt.right_types << c.check_expr_opt_call(assign_stmt.right[i],
+					right_type)
 			}
 		}
 		right := if i < assign_stmt.right.len { assign_stmt.right[i] } else { assign_stmt.right[0] }
@@ -5274,6 +5284,11 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			c.error('method overrides built-in array method', node.pos)
 		} else if sym.kind == .sum_type && node.name == 'type_name' {
 			c.error('method overrides built-in sum type method', node.pos)
+		}
+		if sym.name.len == 1 {
+			// One letter types are reserved for generics.
+			c.error('unknown type `$sym.name`', node.receiver_pos)
+			return
 		}
 		// if sym.has_method(node.name) {
 		// c.warn('duplicate method `$node.name`', node.pos)

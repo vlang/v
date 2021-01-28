@@ -353,8 +353,7 @@ pub fn (input BitField) slice(_start int, _end int) BitField {
 		if start_offset != 0 {
 			for i in 0 .. output_slots - 1 {
 				output.field[i] = u32(input.field[start_slot + i] >> u32(start_offset))
-				output.field[i] = output.field[i] | u32(input.field[start_slot + i +
-					1] << u32(bitfield.slot_size - start_offset))
+				output.field[i] = output.field[i] | u32(input.field[start_slot + i + 1] << u32(bitfield.slot_size - start_offset))
 			}
 		} else {
 			for i in 0 .. output_slots - 1 {

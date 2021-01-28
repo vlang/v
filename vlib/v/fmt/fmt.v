@@ -695,8 +695,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 						comment_align_i++
 						align = comment_aligns[comment_align_i]
 					}
-					pad_len := align.max_attrs_len - attrs_len +
-						align.max_type_len - field_types[i].len
+					pad_len := align.max_attrs_len - attrs_len + align.max_type_len - field_types[i].len
 					f.write(strings.repeat(` `, pad_len))
 				}
 				f.write(' ')
@@ -1449,7 +1448,7 @@ pub fn (mut f Fmt) lock_expr(lex ast.LockExpr) {
 
 pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	buffering_save := f.buffering
-	if !f.buffering {
+	if !f.buffering && node.op in [.logical_or, .and, .plus] {
 		f.buffering = true
 	}
 	if node.op == .left_shift {
@@ -1587,8 +1586,9 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 				f.write(' ')
 			}
 		}
-		// When a single line if is really long, write it again as multiline
-		if single_line && f.line_len > fmt.max_len.last() {
+		// When a single line if is really long, write it again as multiline,
+		// except it is part of an InfixExpr.
+		if single_line && f.line_len > fmt.max_len.last() && !f.buffering {
 			single_line = false
 			f.single_line_if = false
 			f.out.go_back(f.line_len - if_start)
