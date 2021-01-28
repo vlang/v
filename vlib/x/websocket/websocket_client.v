@@ -232,11 +232,8 @@ pub fn (mut ws Client) write_ptr(bytes byteptr, payload_len int, code OPCode) ? 
 		// todo: send error here later
 		return error('trying to write on a closed socket!')
 	}
-	mut header_len := 2 + if payload_len > 125 { 2 } else { 0 } + if payload_len > 0xffff {
-		6
-	} else {
-		0
-	}
+	mut header_len := 2 + if payload_len > 125 { 2 } else { 0 } +
+		if payload_len > 0xffff { 6 } else { 0 }
 	if !ws.is_server {
 		header_len += 4
 	}

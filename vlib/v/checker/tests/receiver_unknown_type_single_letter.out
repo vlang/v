@@ -1,0 +1,4 @@
+vlib/v/checker/tests/receiver_unknown_type_single_letter.vv:1:5: error: unknown type `A`
+    1 | fn (p A) foo() {}
+      |     ~~~
+    2 |
