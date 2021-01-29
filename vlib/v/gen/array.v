@@ -253,14 +253,14 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 		// `users.sort(a.age > b.age)`
 		// Generate a comparison function for a custom type
 		tmp_name := g.new_tmp_var()
-		compare_fn = 'compare_${tmp_name}_' + g.typ(typ)
+		styp := g.typ(typ).trim('*')
+		compare_fn = 'compare_${tmp_name}_$styp'
 		if is_reverse {
 			compare_fn += '_reverse'
 		}
 		// Register a new custom `compare_xxx` function for qsort()
 		g.table.register_fn(name: compare_fn, return_type: table.int_type)
 		infix_expr := node.args[0].expr as ast.InfixExpr
-		styp := g.typ(typ)
 		// Variables `a` and `b` are used in the `.sort(a < b)` syntax, so we can reuse them
 		// when generating the function as long as the args are named the same.
 		g.definitions.writeln('int $compare_fn ($styp* a, $styp* b) {')
