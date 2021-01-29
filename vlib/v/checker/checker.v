@@ -1870,6 +1870,11 @@ fn (mut c Checker) type_implements(typ table.Type, inter_typ table.Type, pos tok
 	typ_sym := c.table.get_type_symbol(typ)
 	mut inter_sym := c.table.get_type_symbol(inter_typ)
 	styp := c.table.type_to_str(typ)
+	same_base_type := typ.idx() == inter_typ.idx()
+	if typ_sym.kind == .interface_ && inter_sym.kind == .interface_ && !same_base_type {
+		c.error('cannot implement interface `$inter_sym.name` with a different interface `$styp`',
+			pos)
+	}
 	imethods := if inter_sym.kind == .interface_ {
 		(inter_sym.info as table.Interface).methods
 	} else {
@@ -2478,11 +2483,11 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 						}
 						*/
 					}
-					if false && is_decl {
+					if is_decl {
 						full_name := '${left.mod}.$left.name'
 						if obj := c.file.global_scope.find(full_name) {
 							if obj is ast.ConstField {
-								c.warn('duplicate of a const name `$full_name', left.pos)
+								c.warn('duplicate of a const name `$full_name`', left.pos)
 							}
 						}
 					}
@@ -3372,13 +3377,19 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 					node.field_expr.position())
 			}
 			if node.field_expr is ast.SelectorExpr {
+				left_pos := node.field_expr.expr.position()
+				if c.comptime_fields_type.len == 0 {
+					c.error('compile time field access can only be used when iterating over `T.fields`',
+						left_pos)
+				}
 				expr_name := node.field_expr.expr.str()
 				if expr_name in c.comptime_fields_type {
 					return c.comptime_fields_type[expr_name]
 				}
+				c.error('unknown `\$for` variable `$expr_name`', left_pos)
+			} else {
+				c.error('expected selector expression e.g. `$(field.name)`', node.field_expr.position())
 			}
-			c.error('compile time field access can only be used when iterating over `T.fields`',
-				node.field_expr.position())
 			return table.void_type
 		}
 		ast.ConcatExpr {
@@ -3566,6 +3577,8 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
 			type_name := c.table.type_to_str(node.expr_type)
 			c.error('cannot cast `$type_name` to struct', node.pos)
 		}
+	} else if to_type_sym.kind == .interface_ {
+		c.type_implements(node.expr_type, node.typ, node.pos)
 	} else if node.typ == table.bool_type {
 		c.error('cannot cast to bool - use e.g. `some_int != 0` instead', node.pos)
 	} else if node.expr_type == table.none_type {
@@ -3575,8 +3588,6 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
 		if (node.typ.is_ptr() || to_type_sym.kind !in [.sum_type, .interface_]) && !c.is_builtin_mod {
 			type_name := c.table.type_to_str(node.typ)
 			c.error('cannot cast struct to `$type_name`', node.pos)
-		} else if to_type_sym.kind == .interface_ {
-			c.type_implements(node.expr_type, node.typ, node.pos)
 		}
 	} else if node.expr_type.has_flag(.optional) || node.expr_type.has_flag(.variadic) {
 		// variadic case can happen when arrays are converted into variadic
@@ -4453,12 +4464,14 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 		}
 		if node.is_comptime { // Skip checking if needed
 			// smartcast field type on comptime if
+			mut comptime_field_name := ''
 			if branch.cond is ast.InfixExpr {
 				if branch.cond.op == .key_is {
 					left := branch.cond.left
 					got_type := (branch.cond.right as ast.Type).typ
 					if left is ast.SelectorExpr {
-						c.comptime_fields_type[left.expr.str()] = got_type
+						comptime_field_name = left.expr.str()
+						c.comptime_fields_type[comptime_field_name] = got_type
 						is_comptime_type_is_expr = true
 					} else if left is ast.Type {
 						is_comptime_type_is_expr = true
@@ -4482,6 +4495,9 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 				c.stmts(branch.stmts)
 			} else if !is_comptime_type_is_expr {
 				node.branches[i].stmts = []
+			}
+			if comptime_field_name.len > 0 {
+				c.comptime_fields_type.delete(comptime_field_name)
 			}
 			c.skip_flags = cur_skip_flags
 		} else {
