@@ -262,7 +262,12 @@ pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
 	is_diff := imp.alias != imp.mod && !imp.mod.ends_with('.' + imp.alias)
 	mut imp_alias_suffix := if is_diff { ' as $imp.alias' } else { '' }
 	if imp.syms.len > 0 {
-		imp_alias_suffix += ' { ' + imp.syms.map(it.name).join(', ') + ' }'
+		names := imp.syms.map(it.name)
+		imp_alias_suffix += if imp.syms[0].pos.line_nr == imp.pos.line_nr {
+			' { ' + names.join(', ') + ' }'
+		} else {
+			' {\n\t' + names.join(',\n\t') + ',\n}'
+		}
 	}
 	return '$imp.mod$imp_alias_suffix'
 }
