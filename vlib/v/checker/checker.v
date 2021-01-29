@@ -3639,7 +3639,9 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) table.Type {
 		c.nr_errors += c2.nr_errors
 	}
 	if node.method_name == 'html' {
-		return c.table.find_type_idx('vweb.Result')
+		rtyp := c.table.find_type_idx('vweb.Result')
+		node.result_type = rtyp
+		return rtyp
 	}
 	mut var := c.fn_scope.objects[node.method_name]
 	if mut var is ast.Var {

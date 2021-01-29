@@ -1132,6 +1132,7 @@ pub:
 	embed_file  EmbeddedFile
 pub mut:
 	sym table.TypeSymbol
+	result_type table.Type
 }
 
 pub struct None {

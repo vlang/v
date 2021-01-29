@@ -57,9 +57,7 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 		}
 		return
 	}
-	g.writeln('// $' + 'method call. sym="$node.sym.name"')
-	mut j := 0
-	result_type := g.table.find_type_idx('vweb.Result') // TODO not just vweb
+	g.writeln('// \$method call. sym="$node.sym.name"')
 	if node.method_name == 'method' {
 		// `app.$method()`
 		m := node.sym.find_method(g.comp_for_method) or { return }
@@ -95,9 +93,11 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 		g.write(' ); // vweb action call with args')
 		return
 	}
+	mut j := 0
 	for method in node.sym.methods {
+		p
 		// if method.return_type != table.void_type {
-		if method.return_type != result_type {
+		if method.return_type != node.result_type {
 			continue
 		}
 		if method.params.len != 1 {
