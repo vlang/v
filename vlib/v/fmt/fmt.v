@@ -1744,7 +1744,7 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 	f.indent++
 	mut single_line := true
 	for branch in it.branches {
-		if branch.stmts.len > 1 {
+		if branch.stmts.len > 1 || branch.pos.line_nr < branch.pos.last_line {
 			single_line = false
 			break
 		}
