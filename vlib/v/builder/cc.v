@@ -43,9 +43,6 @@ const (
 	mingw_cc = 'x86_64-w64-mingw32-gcc'
 )
 
-fn todo() {
-}
-
 fn (mut v Builder) find_win_cc() ? {
 	$if !windows {
 		return none
@@ -629,7 +626,6 @@ fn (mut v Builder) cc() {
 			}
 		}
 		//
-		todo()
 		os.chdir(vdir)
 		cmd := '$ccompiler @$response_file'
 		tried_compilation_commands << cmd
@@ -783,6 +779,7 @@ fn (mut b Builder) cc_linux_cross() {
 	cc_args << '-o "$obj_file"'
 	cc_args << '-c "$b.out_name_c"'
 	cc_args << libs
+	b.dump_c_options(cc_args)
 	cc_cmd := 'cc ' + cc_args.join(' ')
 	if b.pref.show_cc {
 		println(cc_cmd)
@@ -801,6 +798,7 @@ fn (mut b Builder) cc_linux_cross() {
 		'-lc', '-lcrypto', '-lssl', '-lpthread', '$sysroot/crtn.o']
 	linker_args << cflags.c_options_only_object_files()
 	// -ldl
+	b.dump_c_options(linker_args)
 	linker_cmd := '$sysroot/ld.lld ' + linker_args.join(' ')
 	// s = s.replace('SYSROOT', sysroot) // TODO $ inter bug
 	// s = s.replace('-o hi', '-o ' + c.pref.out_name)
