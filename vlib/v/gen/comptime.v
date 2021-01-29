@@ -107,10 +107,10 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 		// p.error('`$p.expr_var.name` needs to be a reference')
 		// }
 		amp := '' // if receiver.is_mut && !p.expr_var.ptr { '&' } else { '' }
-		if j > 0 {
-			g.write(' else ')
-		}
 		if node.is_vweb {
+			if j > 0 {
+				g.write(' else ')
+			}
 			g.write('if (string_eq($node.method_name, _SLIT("$method.name"))) ')
 		}
 		g.write('${util.no_dots(node.sym.name)}_${method.name}($amp ')

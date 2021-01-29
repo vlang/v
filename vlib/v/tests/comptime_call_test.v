@@ -9,6 +9,9 @@ fn (test Test) i() int {
 fn (test Test) s() string {
 	return 'test'
 }
+fn (test Test) s2() string {
+	return 'Two'
+}
 
 fn test_call() {
 	test := Test{}
