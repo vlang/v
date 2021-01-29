@@ -18,12 +18,6 @@ mut:
 }
 
 pub fn dial_udp(laddr string, raddr string) ?&UdpConn {
-	// Dont have to do this when its fixed
-	// this just allows us to store this `none` optional in a struct
-	resolve_wrapper := fn (raddr string) ?Addr {
-		x := resolve_addr(raddr, .inet, .udp) or { return none }
-		return x
-	}
 	local := resolve_addr(laddr, .inet, .udp) ?
 	sbase := new_udp_socket(local.port) ?
 	sock := UdpSocket{
@@ -36,6 +30,13 @@ pub fn dial_udp(laddr string, raddr string) ?&UdpConn {
 		read_timeout: net.udp_default_read_timeout
 		write_timeout: net.udp_default_write_timeout
 	}
+}
+
+fn resolve_wrapper(raddr string) ?Addr {
+	// Dont have to do this when its fixed
+	// this just allows us to store this `none` optional in a struct
+	x := resolve_addr(raddr, .inet, .udp) or { return none }
+	return x
 }
 
 pub fn (mut c UdpConn) write_ptr(b byteptr, len int) ? {
