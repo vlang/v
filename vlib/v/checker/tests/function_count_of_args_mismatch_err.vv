@@ -1,0 +1,12 @@
+fn test(b bool) {
+}
+
+fn test2<T>(b bool, v T) {
+}
+
+fn main() {
+	test(true, false, 1)
+	test()
+	test2(true, false, 1)
+	test2(true)
+}
