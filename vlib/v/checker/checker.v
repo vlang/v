@@ -2278,7 +2278,12 @@ pub fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 	for i, field in node.fields {
 		c.const_decl = field.name
 		c.const_deps << field.name
-		typ := c.expr(field.expr)
+		mut typ := c.expr(field.expr)
+		if field.expr is ast.CallExpr {
+			if field.expr.or_block.kind != .absent {
+				typ = typ.clear_flag(.optional)
+			}
+		}
 		node.fields[i].typ = c.table.mktyp(typ)
 		for cd in c.const_deps {
 			for j, f in node.fields {
@@ -3816,6 +3821,11 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 					mut typ := obj.typ
 					if typ == 0 {
 						typ = c.expr(obj.expr)
+						if obj.expr is ast.CallExpr {
+							if obj.expr.or_block.kind != .absent {
+								typ = typ.clear_flag(.optional)
+							}
+						}
 					}
 					ident.name = name
 					ident.kind = .constant
