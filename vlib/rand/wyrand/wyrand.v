@@ -5,7 +5,7 @@ module wyrand
 
 import math.bits
 import rand.seed
-import rand.util
+import rand.constants
 import hash
 
 // Redefinition of some constants that we will need for pseudorandom number generation.
@@ -40,7 +40,7 @@ pub fn (mut rng WyRandRNG) u32() u32 {
 		return rng.extra
 	}
 	full_value := rng.u64()
-	lower := u32(full_value & util.lower_mask)
+	lower := u32(full_value & constants.lower_mask)
 	upper := u32(full_value >> 32)
 	rng.extra = upper
 	rng.has_extra = true
@@ -149,13 +149,13 @@ pub fn (mut rng WyRandRNG) i64() i64 {
 // int31 returns a positive pseudorandom 31-bit `int`.
 [inline]
 pub fn (mut rng WyRandRNG) int31() int {
-	return int(rng.u32() & util.u31_mask) // Set the 32nd bit to 0.
+	return int(rng.u32() & constants.u31_mask) // Set the 32nd bit to 0.
 }
 
 // int63 returns a positive pseudorandom 63-bit `i64`.
 [inline]
 pub fn (mut rng WyRandRNG) int63() i64 {
-	return i64(rng.u64() & util.u63_mask) // Set the 64th bit to 0.
+	return i64(rng.u64() & constants.u63_mask) // Set the 64th bit to 0.
 }
 
 // intn returns a pseudorandom `int` in range `[0, max)`.
@@ -202,13 +202,13 @@ pub fn (mut rng WyRandRNG) i64_in_range(min i64, max i64) i64 {
 // f32 returns a pseudorandom `f32` value in range `[0, 1)`.
 [inline]
 pub fn (mut rng WyRandRNG) f32() f32 {
-	return f32(rng.u32()) / util.max_u32_as_f32
+	return f32(rng.u32()) / constants.max_u32_as_f32
 }
 
 // f64 returns a pseudorandom `f64` value in range `[0, 1)`.
 [inline]
 pub fn (mut rng WyRandRNG) f64() f64 {
-	return f64(rng.u64()) / util.max_u64_as_f64
+	return f64(rng.u64()) / constants.max_u64_as_f64
 }
 
 // f32n returns a pseudorandom `f32` value in range `[0, max)`.

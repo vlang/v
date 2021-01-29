@@ -5,7 +5,7 @@ module sys
 
 import math.bits
 import rand.seed
-import rand.util
+import rand.constants
 
 // Implementation note:
 // ====================
@@ -176,13 +176,13 @@ pub fn (r SysRNG) i64() i64 {
 // r.int31() returns a pseudorandom 31-bit int which is non-negative
 [inline]
 pub fn (r SysRNG) int31() int {
-	return int(r.u32() & util.u31_mask) // Set the 32nd bit to 0.
+	return int(r.u32() & constants.u31_mask) // Set the 32nd bit to 0.
 }
 
 // r.int63() returns a pseudorandom 63-bit int which is non-negative
 [inline]
 pub fn (r SysRNG) int63() i64 {
-	return i64(r.u64() & util.u63_mask) // Set the 64th bit to 0.
+	return i64(r.u64() & constants.u63_mask) // Set the 64th bit to 0.
 }
 
 // r.intn(max) returns a pseudorandom int that lies in [0, max)
@@ -229,13 +229,13 @@ pub fn (r SysRNG) i64_in_range(min i64, max i64) i64 {
 // r.f32() returns a pseudorandom f32 value between 0.0 (inclusive) and 1.0 (exclusive) i.e [0, 1)
 [inline]
 pub fn (r SysRNG) f32() f32 {
-	return f32(r.u32()) / util.max_u32_as_f32
+	return f32(r.u32()) / constants.max_u32_as_f32
 }
 
 // r.f64() returns a pseudorandom f64 value between 0.0 (inclusive) and 1.0 (exclusive) i.e [0, 1)
 [inline]
 pub fn (r SysRNG) f64() f64 {
-	return f64(r.u64()) / util.max_u64_as_f64
+	return f64(r.u64()) / constants.max_u64_as_f64
 }
 
 // r.f32n() returns a pseudorandom f32 value in [0, max)
