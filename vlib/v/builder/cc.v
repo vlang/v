@@ -43,9 +43,6 @@ const (
 	mingw_cc = 'x86_64-w64-mingw32-gcc'
 )
 
-fn todo() {
-}
-
 fn (mut v Builder) find_win_cc() ? {
 	$if !windows {
 		return none
@@ -177,6 +174,7 @@ mut:
 	//
 	args         []string // ordinary C options like `-O2`
 	wargs        []string // for `-Wxyz` *exclusively*
+	pre_args     []string // options that should go before .o_args
 	o_args       []string // for `-o target`
 	source_args  []string // for `x.tmp.c`
 	post_args    []string // options that should go after .o_args
@@ -305,13 +303,13 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	// macOS code can include objective C  TODO remove once objective C is replaced with C
 	if v.pref.os == .macos || v.pref.os == .ios {
 		if !ccoptions.is_cc_tcc {
-			ccoptions.post_args << '-x objective-c'
+			ccoptions.source_args << '-x objective-c'
 		}
 	}
 	// The C file we are compiling
 	ccoptions.source_args << '"$v.out_name_c"'
 	if v.pref.os == .macos {
-		ccoptions.post_args << '-x none'
+		ccoptions.source_args << '-x none'
 	}
 	// Min macos version is mandatory I think?
 	if v.pref.os == .macos {
@@ -324,8 +322,8 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	cflags := v.get_os_cflags()
 	ccoptions.o_args << cflags.c_options_only_object_files()
 	defines, others, libs := cflags.defines_others_libs()
-	ccoptions.args << defines
-	ccoptions.args << others
+	ccoptions.pre_args << defines
+	ccoptions.pre_args << others
 	ccoptions.linker_flags << libs
 	// TODO: why is this duplicated from above?
 	if v.pref.use_cache && v.pref.build_mode != .build_module {
@@ -385,6 +383,7 @@ fn (ccoptions CcompilerOptions) all_args() []string {
 	all << ccoptions.env_cflags
 	all << ccoptions.args
 	all << ccoptions.o_args
+	all << ccoptions.pre_args
 	all << ccoptions.source_args
 	all << ccoptions.post_args
 	all << ccoptions.linker_flags
@@ -540,7 +539,7 @@ fn (mut v Builder) cc() {
 		//
 		mut libs := []string{} // builtin.o os.o http.o etc
 		if v.pref.build_mode == .build_module {
-			v.ccoptions.args << '-c'
+			v.ccoptions.pre_args << '-c'
 		} else if v.pref.use_cache {
 			mut built_modules := []string{}
 			builtin_obj_path := v.rebuild_cached_module(vexe, 'vlib/builtin')
@@ -629,7 +628,6 @@ fn (mut v Builder) cc() {
 			}
 		}
 		//
-		todo()
 		os.chdir(vdir)
 		cmd := '$ccompiler @$response_file'
 		tried_compilation_commands << cmd
@@ -783,6 +781,7 @@ fn (mut b Builder) cc_linux_cross() {
 	cc_args << '-o "$obj_file"'
 	cc_args << '-c "$b.out_name_c"'
 	cc_args << libs
+	b.dump_c_options(cc_args)
 	cc_cmd := 'cc ' + cc_args.join(' ')
 	if b.pref.show_cc {
 		println(cc_cmd)
@@ -801,6 +800,7 @@ fn (mut b Builder) cc_linux_cross() {
 		'-lc', '-lcrypto', '-lssl', '-lpthread', '$sysroot/crtn.o']
 	linker_args << cflags.c_options_only_object_files()
 	// -ldl
+	b.dump_c_options(linker_args)
 	linker_cmd := '$sysroot/ld.lld ' + linker_args.join(' ')
 	// s = s.replace('SYSROOT', sysroot) // TODO $ inter bug
 	// s = s.replace('-o hi', '-o ' + c.pref.out_name)

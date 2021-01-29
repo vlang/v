@@ -1,7 +1,7 @@
 import sync
 import time
 
-fn run_forever(shared foo []int, sem sync.Semaphore) {
+fn run_forever(shared foo []int, mut sem sync.Semaphore) {
 	for {
 		foo[0]++
 	}
@@ -10,8 +10,8 @@ fn run_forever(shared foo []int, sem sync.Semaphore) {
 
 fn test_semaphore() {
 	shared abc := &[0]
-	sem := sync.new_semaphore()
-	go run_forever(shared abc, sem)
+	mut sem := sync.new_semaphore()
+	go run_forever(shared abc, mut sem)
 	for _ in 0 .. 1000 {
 		unsafe { abc[0]-- }
 	}

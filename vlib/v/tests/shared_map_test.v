@@ -1,6 +1,6 @@
 import sync
 
-fn incr(shared foo map[string]int, key string, sem sync.Semaphore) {
+fn incr(shared foo map[string]int, key string, mut sem sync.Semaphore) {
 	for _ in 0 .. 100000 {
 		lock foo {
 			foo[key] = foo[key] + 1
@@ -14,11 +14,11 @@ fn test_shared_array() {
 	lock foo {
 		foo['q'] = 20
 	}
-	sem := sync.new_semaphore()
-	go incr(shared foo, 'p', sem)
-	go incr(shared foo, 'q', sem)
-	go incr(shared foo, 'p', sem)
-	go incr(shared foo, 'q', sem)
+	mut sem := sync.new_semaphore()
+	go incr(shared foo, 'p', mut sem)
+	go incr(shared foo, 'q', mut sem)
+	go incr(shared foo, 'p', mut sem)
+	go incr(shared foo, 'q', mut sem)
 	for _ in 0 .. 50000 {
 		lock foo {
 			foo['p'] -= 2
