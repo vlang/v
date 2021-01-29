@@ -3643,6 +3643,9 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) table.Type {
 		node.result_type = rtyp
 		return rtyp
 	}
+	if node.is_vweb || node.method_name == 'method' {
+		return table.string_type
+	}
 	// s.$my_str()
 	v := node.scope.find_var(node.method_name) or {
 		c.error('unknown identifier `$node.method_name`', node.method_pos)
