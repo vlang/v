@@ -4,7 +4,6 @@ import gg
 import gx
 import os
 import math
-import sokol.sapp
 
 const (
 	win_width  = 600
@@ -88,7 +87,8 @@ fn main() {
 
 fn frame(mut app App) {
 	app.gg.begin()
-	mut scale_factor := math.round(f32(sapp.width()) / win_width)
+	width := gg.window_size().width
+	mut scale_factor := math.round(f32(width) / win_width)
 	if scale_factor <= 0 {
 		scale_factor = 1
 	}
