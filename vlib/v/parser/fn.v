@@ -289,7 +289,16 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	// Args
 	args2, are_args_type_only, is_variadic := p.fn_args()
 	params << args2
-	if !are_args_type_only {
+	mut end_pos := p.prev_tok.position()
+	// Return type
+	mut return_type := table.void_type
+	if p.tok.kind.is_start_of_type()
+		|| (p.tok.kind == .key_fn && p.tok.line_nr == p.prev_tok.line_nr) {
+		return_type = p.parse_type()
+	}
+	mut type_sym_method_idx := 0
+	no_body := p.tok.kind != .lcbr
+	if !are_args_type_only && !no_body {
 		for param in params {
 			if p.scope.known_var(param.name) {
 				p.error_with_pos('redefinition of parameter `$param.name`', param.pos)
@@ -302,20 +311,10 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 				typ: param.typ
 				is_mut: param.is_mut
 				pos: param.pos
-				is_used: true
 				is_arg: true
 			})
 		}
 	}
-	mut end_pos := p.prev_tok.position()
-	// Return type
-	mut return_type := table.void_type
-	if p.tok.kind.is_start_of_type()
-		|| (p.tok.kind == .key_fn && p.tok.line_nr == p.prev_tok.line_nr) {
-		return_type = p.parse_type()
-	}
-	mut type_sym_method_idx := 0
-	no_body := p.tok.kind != .lcbr
 	// Register
 	if is_method {
 		mut type_sym := p.table.get_type_symbol(rec_type)

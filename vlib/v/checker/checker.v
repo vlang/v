@@ -113,7 +113,8 @@ pub fn (mut c Checker) check_scope_vars(sc &ast.Scope) {
 			ast.Var {
 				if !c.pref.is_repl {
 					if !obj.is_used && obj.name[0] != `_` {
-						c.warn('unused variable: `$obj.name`', obj.pos)
+						obj_type := if obj.is_arg { 'parameter' } else { 'variable' }
+						c.warn('unused $obj_type: `$obj.name`', obj.pos)
 					}
 				}
 				if obj.is_mut && !obj.is_changed && !c.is_builtin_mod && obj.name != 'it' {
