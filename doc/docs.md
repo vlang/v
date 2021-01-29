@@ -586,7 +586,6 @@ println(nums) // "[1, 2, 3]"
 println(nums[1]) // "2"
 nums[1] = 5
 println(nums) // "[1, 5, 3]"
-println(nums[0..2]) // slicing gives an array "[1, 5]"
 println(nums.len) // "3"
 nums = [] // The array is now empty
 println(nums.len) // "0"
@@ -725,6 +724,32 @@ struct User {
 mut users := [User{21, 'Bob'}, User{20, 'Zarkon'}, User{25, 'Alice'}]
 users.sort(a.age < b.age) // sort by User.age int field
 users.sort(a.name > b.name) // reverse sort by User.name string field
+```
+
+#### Array Slices
+
+Slices are partial arrays. They represent every element between two indices
+seprated by a .. operator. The right-side index must be greater than or equal
+to the left side index.
+
+If a right-side index is absent, it is assumed to be the array length. If a
+left-side index is absent, it is assumed to be 0.
+
+```v
+nums := [1, 2, 3, 4, 5]
+println(nums[1..4]) // [2, 3, 4]
+println(nums[..4])  // [1, 2, 3, 4]
+println(nums[1..])  // [2, 3, 4, 5]
+```
+
+All array operations may be performed on slices.
+Slices can be pushed onto an array of the same type.
+
+```v
+array_1 := [3, 5, 4, 7, 6]
+mut array_2 := [0, 1]
+array_2 << array_1[..3]
+println(array_2) // [0, 1, 3, 5, 4]
 ```
 
 ### Maps
