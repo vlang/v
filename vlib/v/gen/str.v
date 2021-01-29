@@ -324,7 +324,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) {
 		g.expr(expr)
 		g.write(' ? _SLIT("true") : _SLIT("false")')
 	} else if sym.kind == .none_ {
-		g.write('_SLIT("none")')
+		g.write('_SLIT("<none>")')
 	} else if sym.kind == .enum_ {
 		is_var := match expr {
 			ast.SelectorExpr, ast.Ident { true }
