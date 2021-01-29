@@ -59,7 +59,7 @@ pub mut:
 	is_builtin_mod    bool   // are we in `builtin`?
 	inside_unsafe     bool
 	inside_const      bool
-    inside_anon_fn    bool
+	inside_anon_fn    bool
 	skip_flags        bool // should `#flag` and `#include` be skipped
 	cur_generic_types []table.Type
 mut:
@@ -3284,13 +3284,13 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			return node.typ
 		}
 		ast.AnonFn {
-            c.inside_anon_fn = true
+			c.inside_anon_fn = true
 			keep_fn := c.cur_fn
 			c.cur_fn = &node.decl
 			c.stmts(node.decl.stmts)
 			c.fn_decl(mut node.decl)
 			c.cur_fn = keep_fn
-            c.inside_anon_fn = false
+			c.inside_anon_fn = false
 			return node.typ
 		}
 		ast.ArrayDecompose {
@@ -5404,11 +5404,11 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	returns := c.returns || has_top_return(node.stmts)
 	if node.language == .v && !node.no_body && node.return_type != table.void_type && !returns
 		&& node.name !in ['panic', 'exit'] {
-		if c.inside_anon_fn {        	
+		if c.inside_anon_fn {
 			c.error('missing return at the end of an anonymous function', node.pos)
-        } else {
+		} else {
 			c.error('missing return at end of function `$node.name`', node.pos)
-        }
+		}
 	}
 	c.returns = false
 	node.source_file = c.file
