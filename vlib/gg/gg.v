@@ -662,10 +662,7 @@ pub fn screen_size() Size {
 
 // window_size returns the `Size` of the active window
 pub fn window_size() Size {
-	return Size{
-		sapp.width()
-		sapp.height()
-	}
+	return Size{sapp.width(), sapp.height()}
 }
 
 fn C.WaitMessage()
