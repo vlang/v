@@ -302,13 +302,13 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	// macOS code can include objective C  TODO remove once objective C is replaced with C
 	if v.pref.os == .macos || v.pref.os == .ios {
 		if !ccoptions.is_cc_tcc {
-			ccoptions.post_args << '-x objective-c'
+			ccoptions.source_args << '-x objective-c'
 		}
 	}
 	// The C file we are compiling
 	ccoptions.source_args << '"$v.out_name_c"'
 	if v.pref.os == .macos {
-		ccoptions.post_args << '-x none'
+		ccoptions.source_args << '-x none'
 	}
 	// Min macos version is mandatory I think?
 	if v.pref.os == .macos {
