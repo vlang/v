@@ -1124,6 +1124,8 @@ pub struct ComptimeCall {
 pub:
 	has_parens  bool // if $() is used, for vfmt
 	method_name string
+	method_pos  token.Position
+	scope       &Scope
 	left        Expr
 	is_vweb     bool
 	vweb_tmpl   File
