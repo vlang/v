@@ -1929,8 +1929,16 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 		}
 		f.expr(expr)
 		if i < it.ecmnts.len && it.ecmnts[i].len > 0 {
-			f.write(' ')
+			mut last_cmt := it.ecmnts[i][0]
+			if last_cmt.pos.line_nr > expr.position().last_line {
+				f.writeln('')
+			} else {
+				f.write(' ')
+			}
 			for cmt in it.ecmnts[i] {
+				if cmt.pos.line_nr > last_cmt.pos.last_line {
+					f.writeln('')
+				}
 				f.comment(cmt, iembed: true)
 			}
 		}
