@@ -43,7 +43,9 @@ fn (mut p Parser) hash() ast.HashStmt {
 }
 
 fn (mut p Parser) comp_call() ast.ComptimeCall {
-	err_node := ast.ComptimeCall{scope: 0}
+	err_node := ast.ComptimeCall{
+		scope: 0
+	}
 	p.check(.dollar)
 	error_msg := 'only `\$tmpl()`, `\$embed_file()` and `\$vweb.html()` comptime functions are supported right now'
 	if p.peek_tok.kind == .dot {

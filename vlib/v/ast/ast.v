@@ -1133,7 +1133,7 @@ pub:
 	is_embed    bool
 	embed_file  EmbeddedFile
 pub mut:
-	sym table.TypeSymbol
+	sym         table.TypeSymbol
 	result_type table.Type
 }
 
