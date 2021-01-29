@@ -162,6 +162,29 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 	return p.parse()
 }
 
+// parse_stdin reads everything from stdin and parses it as a v file.
+pub fn parse_stdin(table &table.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences, global_scope &ast.Scope) ast.File {
+	// NB: when comments_mode == .toplevel_comments,
+	// the parser gives feedback to the scanner about toplevel statements, so that the scanner can skip
+	// all the tricky inner comments. This is needed because we do not have a good general solution
+	// for handling them, and should be removed when we do (the general solution is also needed for vfmt)
+	mut p := Parser{
+		scanner: scanner.new_scanner(os.get_all(), comments_mode, pref)
+		comments_mode: comments_mode
+		table: table
+		pref: pref
+		scope: &ast.Scope{
+			start_pos: 0
+			parent: global_scope
+		}
+		errors: []errors.Error{}
+		warnings: []errors.Warning{}
+		global_scope: global_scope
+	}
+
+	return p.parse()
+}
+
 pub fn parse_vet_file(path string, table_ &table.Table, pref &pref.Preferences) (ast.File, []vet.Error) {
 	global_scope := &ast.Scope{
 		parent: 0

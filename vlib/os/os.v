@@ -265,6 +265,20 @@ pub fn get_lines_joined() string {
 	return inputstr
 }
 
+// get_all reads all data from stdin and returns it as a string.
+pub fn get_all() string {
+	mut line := ''
+	mut inputstr := ''
+	for {
+		line = get_raw_line()
+		if line.len <= 0 {
+			break
+		}
+		inputstr += line
+	}
+	return inputstr
+}
+
 // user_os returns current user operating system name.
 pub fn user_os() string {
 	$if linux {

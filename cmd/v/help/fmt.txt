@@ -22,6 +22,8 @@ Options:
   -verify Make sure the provided file is already formatted. Useful for checking code contributions
           in CI for example.
 
+  -pipe   Expect no file. Read from stdin and output formatted file to stdout.
+
 Environment Variables:
   VDIFF_TOOL      A command-line tool that will be executed with the original file path
                   and a temporary formatted file path as arguments. e.g.

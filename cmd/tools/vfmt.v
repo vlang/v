@@ -25,6 +25,7 @@ struct FormatOptions {
 	is_noerror bool
 	is_verify  bool // exit(1) if the file is not vfmt'ed
 	is_worker  bool // true *only* in the worker processes. NB: workers can crash.
+	is_pipe    bool // read from stdin. Write to stdout.
 }
 
 const (
@@ -62,9 +63,14 @@ fn main() {
 		is_debug: '-debug' in args
 		is_noerror: '-noerror' in args
 		is_verify: '-verify' in args
+		is_pipe: '-pipe' in args
 	}
 	if foptions.is_verbose {
 		eprintln('vfmt foptions: $foptions')
+	}
+	if foptions.is_pipe {
+		foptions.format_pipe()
+		exit(0)
 	}
 	if foptions.is_worker {
 		// -worker should be added by a parent vfmt process.
@@ -181,6 +187,25 @@ fn (foptions &FormatOptions) format_file(file string) {
 		eprintln('fmt.fmt worked and $formatted_content.len bytes were written to $vfmt_output_path .')
 	}
 	eprintln('$formatted_file_token$vfmt_output_path')
+}
+
+fn (foptions &FormatOptions) format_pipe() {
+	mut prefs := pref.new_preferences()
+	prefs.is_fmt = true
+	if foptions.is_verbose {
+		eprintln('vfmt2 running fmt.fmt over stdin')
+	}
+	table := table.new_table()
+	// checker := checker.new_checker(table, prefs)
+	file_ast := parser.parse_stdin(table, .parse_comments, prefs, &ast.Scope{
+		parent: 0
+	})
+	// checker.check(file_ast)
+	formatted_content := fmt.fmt(file_ast, table, foptions.is_debug)
+	print(formatted_content)
+	if foptions.is_verbose {
+		eprintln('fmt.fmt worked and $formatted_content.len bytes were written to stdout.')
+	}
 }
 
 fn print_compiler_options(compiler_params &pref.Preferences) {
