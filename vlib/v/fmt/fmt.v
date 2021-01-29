@@ -1133,8 +1133,7 @@ pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 }
 
 pub fn (mut f Fmt) comptime_selector(node ast.ComptimeSelector) {
-	field_expr := if node.has_parens { '($node.field_expr)' } else { node.field_expr.str() }
-	f.write('${node.left}.$$field_expr')
+	f.write('${node.left}.\$($node.field_expr)')
 }
 
 pub fn (mut f Fmt) concat_expr(node ast.ConcatExpr) {

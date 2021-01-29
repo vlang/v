@@ -281,7 +281,7 @@ fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 		p.check(.lpar)
 		has_parens = true
 	} else {
-		p.warn_with_pos('use brackets instead e.g. `s.$(field.name)`', p.tok.position())
+		p.warn_with_pos('use brackets instead e.g. `s.$(field.name)` - run vfmt', p.tok.position())
 	}
 	expr := p.expr(0)
 	if has_parens {
