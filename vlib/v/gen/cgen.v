@@ -324,6 +324,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	if g.shared_types.len > 0 {
 		b.writeln('\n// V shared types:')
 		b.write(g.shared_types.str())
+		b.write(c_concurrency_helpers)
 	}
 	if g.channel_definitions.len > 0 {
 		b.writeln('\n// V channel code:')
@@ -572,7 +573,12 @@ fn (mut g Gen) find_or_register_shared(t table.Type, base string) string {
 		return sh_typ
 	}
 	mtx_typ := 'sync__RwMutex'
-	g.shared_types.writeln('struct $sh_typ { $base val; $mtx_typ* mtx; };')
+	g.shared_types.writeln('struct $sh_typ { $base val; $mtx_typ mtx; };')
+	g.shared_types.writeln('static inline voidptr __dup${sh_typ}(voidptr src, int sz) {')
+	g.shared_types.writeln('\t$sh_typ* dest = memdup(src, sz);')
+	g.shared_types.writeln('\tsync__RwMutex_init(&dest->mtx);')
+	g.shared_types.writeln('\treturn dest;')
+	g.shared_types.writeln('}')
 	g.typedefs2.writeln('typedef struct $sh_typ $sh_typ;')
 	// println('registered shared type $sh_typ')
 	g.shareds << t_idx
@@ -2707,7 +2713,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 				if g.is_shared {
 					mut shared_typ := node.typ.set_flag(.shared_f)
 					shared_styp = g.typ(shared_typ)
-					g.writeln('($shared_styp*)memdup(&($shared_styp){.val = ')
+					g.writeln('($shared_styp*)__dup_shared_map(&($shared_styp){.val = ')
 				} else {
 					styp = g.typ(node.typ)
 					g.write('($styp*)memdup(ADDR($styp, ')
@@ -2742,7 +2748,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.write('new_map_2(sizeof($key_typ_str), sizeof($value_typ_str), $hash_fn, $key_eq_fn, $clone_fn, $free_fn)')
 			}
 			if g.is_shared {
-				g.write(', .mtx = sync__new_rwmutex()}')
+				g.write('}')
 				if is_amp {
 					g.write(', sizeof($shared_styp))')
 				}
@@ -2763,7 +2769,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.PostfixExpr {
 			if node.auto_locked != '' {
-				g.writeln('sync__RwMutex_w_lock($node.auto_locked->mtx);')
+				g.writeln('sync__RwMutex_w_lock(&$node.auto_locked->mtx);')
 			}
 			g.inside_map_postfix = true
 			g.expr(node.expr)
@@ -2771,7 +2777,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.write(node.op.str())
 			if node.auto_locked != '' {
 				g.writeln(';')
-				g.write('sync__RwMutex_w_unlock($node.auto_locked->mtx)')
+				g.write('sync__RwMutex_w_unlock(&$node.auto_locked->mtx)')
 			}
 		}
 		ast.PrefixExpr {
@@ -3022,7 +3028,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	// string + string, string == string etc
 	// g.infix_op = node.op
 	if node.auto_locked != '' {
-		g.writeln('sync__RwMutex_w_lock($node.auto_locked->mtx);')
+		g.writeln('sync__RwMutex_w_lock(&$node.auto_locked->mtx);')
 	}
 	left_type := g.unwrap_generic(node.left_type)
 	left_sym := g.table.get_type_symbol(left_type)
@@ -3412,7 +3418,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	}
 	if node.auto_locked != '' {
 		g.writeln(';')
-		g.write('sync__RwMutex_w_unlock($node.auto_locked->mtx)')
+		g.write('sync__RwMutex_w_unlock(&$node.auto_locked->mtx)')
 	}
 }
 
@@ -3423,7 +3429,7 @@ fn (mut g Gen) lock_expr(node ast.LockExpr) {
 		deref := if id.is_mut { '->' } else { '.' }
 		lock_prefix := if node.is_rlock { `r` } else { `w` }
 		lock_prefixes << lock_prefix // keep for unlock
-		g.writeln('sync__RwMutex_${lock_prefix:c}_lock($name${deref}mtx);')
+		g.writeln('sync__RwMutex_${lock_prefix:c}_lock(&$name${deref}mtx);')
 	}
 	g.stmts(node.stmts)
 	// unlock in reverse order
@@ -3432,7 +3438,7 @@ fn (mut g Gen) lock_expr(node ast.LockExpr) {
 		lock_prefix := lock_prefixes[i]
 		name := id.name
 		deref := if id.is_mut { '->' } else { '.' }
-		g.writeln('sync__RwMutex_${lock_prefix:c}_unlock($name${deref}mtx);')
+		g.writeln('sync__RwMutex_${lock_prefix:c}_unlock(&$name${deref}mtx);')
 	}
 }
 
@@ -4715,7 +4721,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		if g.is_shared {
 			mut shared_typ := struct_init.typ.set_flag(.shared_f)
 			shared_styp = g.typ(shared_typ)
-			g.writeln('($shared_styp*)memdup(&($shared_styp){.val = ($styp){')
+			g.writeln('($shared_styp*)__dup${shared_styp}(&($shared_styp){.val = ($styp){')
 		} else {
 			g.write('($styp*)memdup(&($styp){')
 		}
@@ -4728,6 +4734,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		}
 	} else {
 		if g.is_shared {
+			// TODO: non-ref shared should be forbidden
 			g.writeln('{.val = {')
 		} else if is_multiline {
 			g.writeln('($styp){')
@@ -4897,7 +4904,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	}
 	g.write('}')
 	if g.is_shared {
-		g.write(', .mtx = sync__new_rwmutex()}')
+		g.write('}')
 		if is_amp {
 			g.write(', sizeof($shared_styp))')
 		}
