@@ -661,8 +661,6 @@ pub fn (mut ctx Context) parse_multipart_form(s string, b string) {
 				data: sb.str()
 			}
 			unsafe {
-				filename.free()
-				ct.free()
 				sb.free()
 			}
 			continue
@@ -677,12 +675,6 @@ pub fn (mut ctx Context) parse_multipart_form(s string, b string) {
 			name.free()
 			sb.free()
 		}
-	}
-	unsafe {
-		fields.free()
-		s.free()
-		b.free()
-		a.free()
 	}
 }
 

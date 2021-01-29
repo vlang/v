@@ -3450,21 +3450,30 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		return
 	}
 	is_expr := (node.is_expr && node.return_type != table.void_type) || g.inside_ternary > 0
+	mut cond_var := ''
 	if is_expr {
 		g.inside_ternary++
 		// g.write('/* EM ret type=${g.typ(node.return_type)}		expected_type=${g.typ(node.expected_type)}  */')
 	}
-	cur_line := if is_expr {
-		g.empty_line = true
-		g.go_before_stmt(0)
+	if node.cond is ast.Ident || node.cond is ast.SelectExpr || node.cond is ast.IndexExpr {
+		pos := g.out.len
+		g.expr(node.cond)
+		cond_var = g.out.after(pos)
+		g.out.go_back(cond_var.len)
 	} else {
-		''
+		cur_line := if is_expr {
+			g.empty_line = true
+			g.go_before_stmt(0)
+		} else {
+			''
+		}
+		cond_var = g.new_tmp_var()
+		g.write('${g.typ(node.cond_type)} $cond_var = ')
+		g.expr(node.cond)
+		g.writeln('; ')
+		g.write(cur_line)
 	}
-	cond_var := g.new_tmp_var()
-	g.write('${g.typ(node.cond_type)} $cond_var = ')
-	g.expr(node.cond)
-	g.writeln('; ')
-	g.write(cur_line)
+
 	if is_expr {
 		// brackets needed otherwise '?' will apply to everything on the left
 		g.write('(')
