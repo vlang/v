@@ -729,7 +729,7 @@ users.sort(a.name > b.name) // reverse sort by User.name string field
 #### Array Slices
 
 Slices are partial arrays. They represent every element between two indices
-seprated by a .. operator. The right-side index must be greater than or equal
+separated by a .. operator. The right-side index must be greater than or equal
 to the left side index.
 
 If a right-side index is absent, it is assumed to be the array length. If a
@@ -738,8 +738,8 @@ left-side index is absent, it is assumed to be 0.
 ```v
 nums := [1, 2, 3, 4, 5]
 println(nums[1..4]) // [2, 3, 4]
-println(nums[..4])  // [1, 2, 3, 4]
-println(nums[1..])  // [2, 3, 4, 5]
+println(nums[..4]) // [1, 2, 3, 4]
+println(nums[1..]) // [2, 3, 4, 5]
 ```
 
 All array operations may be performed on slices.
