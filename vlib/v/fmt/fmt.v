@@ -1742,9 +1742,11 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 	}
 	f.writeln(' {')
 	f.indent++
+	f.comments(it.comments, {})
 	mut single_line := true
 	for branch in it.branches {
 		if branch.stmts.len > 1 || branch.pos.line_nr < branch.pos.last_line {
+			println(branch)
 			single_line = false
 			break
 		}
@@ -1757,10 +1759,6 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 		}
 	}
 	for branch in it.branches {
-		for cmnt in branch.comments {
-			f.comment(cmnt, inline: true)
-			f.writeln('')
-		}
 		if !branch.is_else {
 			// normal branch
 			f.is_mbranch_expr = true

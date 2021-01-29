@@ -167,10 +167,10 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 	if !no_lcbr {
 		p.check(.lcbr)
 	}
+	comments := p.eat_comments() // comments before the first branch
 	mut branches := []ast.MatchBranch{}
 	for p.tok.kind != .eof {
 		branch_first_pos := p.tok.position()
-		comments := p.eat_comments() // comments before {}
 		mut exprs := []ast.Expr{}
 		mut ecmnts := [][]ast.Comment{}
 		p.open_scope()
@@ -243,7 +243,6 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 			ecmnts: ecmnts
 			stmts: stmts
 			pos: pos
-			comments: comments
 			is_else: is_else
 			post_comments: post_comments
 			scope: branch_scope
@@ -271,6 +270,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		cond: cond
 		is_sum_type: is_sum_type
 		pos: pos
+		comments: comments
 	}
 }
 
