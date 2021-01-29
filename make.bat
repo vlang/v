@@ -285,10 +285,10 @@ goto :success
 if [!compiler!] == [] set /a invalid_cc=1
 echo  ^> Attempting to build v_win.c with TCC
 if !flag_verbose! EQU 1 (
-    echo [Debug] "!tcc_exe!" -std=c99 -municode -lws2_32 -lshell32 -ladvapi32 -bt10 -w -o v.exe vc\v_win.c>>"!log_file!"
-    echo    "!tcc_exe!" -std=c99 -municode -lws2_32 -lshell32 -ladvapi32 -bt10 -w -o v.exe vc\v_win.c
+    echo [Debug] "!tcc_exe!" -ladvapi32 -bt10 -w -o v.exe vc\v_win.c>>"!log_file!"
+    echo    "!tcc_exe!" -ladvapi32 -bt10 -w -o v.exe vc\v_win.c
 )
-"!tcc_exe!" -std=c99 -municode -lws2_32 -lshell32 -ladvapi32 -bt10 -w -o v.exe vc\v_win.c>>"!log_file!" 2>NUL
+"!tcc_exe!" -ladvapi32 -bt10 -w -o v.exe vc\v_win.c>>"!log_file!" 2>NUL
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 
 echo  ^> Compiling with .\v.exe self
