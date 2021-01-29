@@ -263,7 +263,8 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 		infix_expr := node.args[0].expr as ast.InfixExpr
 		// Variables `a` and `b` are used in the `.sort(a < b)` syntax, so we can reuse them
 		// when generating the function as long as the args are named the same.
-		g.definitions.writeln('int $compare_fn ($styp* a, $styp* b) {')
+		styp_arg := g.typ(typ)
+		g.definitions.writeln('int $compare_fn ($styp_arg* a, $styp_arg* b) {')
 		sym := g.table.get_type_symbol(typ)
 		if !is_reverse && sym.has_method('<') && infix_expr.left.str().len == 1 {
 			g.definitions.writeln('\tif (${styp}__lt(*a, *b)) { return -1; } else { return 1; }}')
@@ -271,8 +272,12 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 			g.definitions.writeln('\tif (${styp}__gt(*a, *b)) { return -1; } else { return 1; }}')
 		} else {
 			field_type := g.typ(infix_expr.left_type)
-			left_expr_str := g.write_expr_to_string(infix_expr.left)
-			right_expr_str := g.write_expr_to_string(infix_expr.right)
+			mut left_expr_str := g.write_expr_to_string(infix_expr.left)
+			mut right_expr_str := g.write_expr_to_string(infix_expr.right)
+			if typ.is_ptr() {
+				left_expr_str = left_expr_str.replace_once('a', '(*a)')
+				right_expr_str = right_expr_str.replace_once('b', '(*b)')
+			}
 			g.definitions.writeln('$field_type a_ = $left_expr_str;')
 			g.definitions.writeln('$field_type b_ = $right_expr_str;')
 			mut op1, mut op2 := '', ''
