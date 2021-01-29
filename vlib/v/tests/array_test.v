@@ -9,3 +9,12 @@ fn test_for_in_array_named_array() {
 		assert *elem == 2
 	}
 }
+
+fn test_for_in_shared_array_named_array() {
+	shared array := &[1]
+	rlock array {
+		for elem in array {
+			assert elem == 1
+		}
+	}
+}
