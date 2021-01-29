@@ -30,6 +30,8 @@ const (
 	valid_comp_if_other     = ['js', 'debug', 'test', 'glibc', 'prealloc', 'no_bounds_checking']
 	array_builtin_methods   = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort',
 		'contains', 'index']
+	reserved_words          = ['array', 'map', 'int', 'byte', 'string', 'rune', 'float', 'double',
+		'bool', 'byteptr', 'voidptr', 'charptr']
 )
 
 pub struct Checker {
@@ -2458,6 +2460,10 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 				} else {
 					if is_decl {
 						c.check_valid_snake_case(left.name, 'variable name', left.pos)
+						if left.name in checker.reserved_words {
+							c.error('reserved word `$left.name` cannot be used as variable name',
+								left.pos)
+						}
 					}
 					mut ident_var_info := left.info as ast.IdentVar
 					if ident_var_info.share == .shared_t {

@@ -1,0 +1,13 @@
+vlib/v/checker/tests/var_used_reserved_word.vv:2:9: error: reserved word `array` cannot be used as variable name
+    1 | fn main() {
+    2 |     mut array := []int{}
+      |         ~~~~~
+    3 |     array << 11
+    4 |     println(array)
+vlib/v/checker/tests/var_used_reserved_word.vv:6:2: error: reserved word `string` cannot be used as variable name
+    4 |     println(array)
+    5 |
+    6 |     string := 22
+      |     ~~~~~~
+    7 |     println(string)
+    8 | }

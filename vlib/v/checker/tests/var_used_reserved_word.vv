@@ -1,0 +1,8 @@
+fn main() {
+    mut array := []int{}
+	array << 11
+    println(array)
+
+	string := 22
+	println(string)
+}
