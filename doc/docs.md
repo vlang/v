@@ -1905,28 +1905,6 @@ fn announce(s Speaker) {
 ```
 For more information, see [Dynamic casts](#dynamic-casts).
 
-```v
-struct Cat {}
-
-interface Animal {}
-
-fn (a Animal) is_animal() {
-	println('is an Animal.')
-}
-
-fn new_cat() Animal {
-	return &Cat{}
-}
-
-fn main() {
-	cat := new_cat()
-	cat.is_animal() // is an Animal.
-	if cat is Cat {
-		println('also a cat.')
-	}
-}
-```
-
 Also unlike Go, an interface may implement a method.
 These methods are not implemented by structs which implement that interface.
 
@@ -1937,26 +1915,33 @@ implemented on the interface is called.
 ```v
 struct Cat {}
 
-interface Animal {}
+interface Adoptable {}
 
-fn (c Cat) is_a() {
-	println('is a Cat.')
+fn (c Cat) speak() string {
+	return 'meow!'
 }
 
-fn (a Animal) is_a() {
-	println('is an Animal.')
+fn (a Adoptable) speak() string {
+	return 'adopt me!'
 }
 
-fn new_animal() Animal {
+fn (a Adoptable) adopt() ?&Cat {
+	if a is Cat {
+		return a
+	} else {
+		return error('This cannot be adopted.')
+	}
+}
+
+fn new_adoptable() Adoptable {
 	return Cat{}
 }
 
 fn main() {
-	cat := new_animal()
-	cat.is_a() // is an Animal.
-
-	kitty := &Cat{}
-	kitty.is_a() // is a Cat.
+	adoptable := new_adoptable()
+	println(adoptable.speak()) // adopt me!
+	cat := adoptable.adopt() or { return }
+	println(cat.speak()) // meow!
 }
 ```
 
