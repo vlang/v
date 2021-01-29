@@ -155,11 +155,11 @@ pub fn (mut ws WebhookServer) init_once() {
 	// ws.gen_vc = new_gen_vc(flag_options)
 }
 
-pub fn (mut ws WebhookServer) init() {
+pub fn (mut _ WebhookServer) init() {
 	// ws.init_once()
 }
 
-pub fn (mut ws WebhookServer) index() {
+pub fn (mut _ WebhookServer) index() {
 	eprintln('WebhookServer.index() called')
 }
 
@@ -178,7 +178,7 @@ pub fn (mut ws WebhookServer) genhook() {
 	ws.json('{status: "ok"}')
 }
 
-pub fn (ws &WebhookServer) reset() {
+pub fn (_ &WebhookServer) reset() {
 }
 
 // parse flags to FlagOptions struct

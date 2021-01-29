@@ -225,7 +225,7 @@ fn rw_callback(loop &C.picoev_loop, fd int, events int, cb_arg voidptr) {
 	}
 }
 
-fn accept_callback(loop &C.picoev_loop, fd int, events int, cb_arg voidptr) {
+fn accept_callback(loop &C.picoev_loop, fd int, _ int, cb_arg voidptr) {
 	newfd := C.accept(fd, 0, 0)
 	if newfd != -1 {
 		setup_sock(newfd)

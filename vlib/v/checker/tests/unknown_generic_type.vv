@@ -1,4 +1,4 @@
-fn decode<T>(raw_data string) ?T {
+fn decode<T>(_ string) ?T {
 	return none
 }
 

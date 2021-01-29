@@ -1,8 +1,8 @@
 struct App {}
 
-fn (mut app App) method_one() {}
-fn (mut app App) method_two() int {	return 0 }
-fn (mut app App) method_three(s string) string { return s }
+fn (mut _ App) method_one() {}
+fn (mut _ App) method_two() int { return 0 }
+fn (mut _ App) method_three(s string) string { return s }
 
 fn main() {
 	$for method in App.methods {

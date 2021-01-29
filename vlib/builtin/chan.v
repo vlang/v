@@ -9,12 +9,12 @@ enum ChanState {
 // The following methods are only stubs. The real implementation
 // is in `vlib/sync/channels.v`
 
-pub fn (ch chan) close() {}
+pub fn (_ chan) close() {}
 
-pub fn (ch chan) try_pop(obj voidptr) ChanState {
+pub fn (_ chan) try_pop(_ voidptr) ChanState {
 	return .success
 }
 
-pub fn (ch chan) try_push(obj voidptr) ChanState {
+pub fn (_ chan) try_push(_ voidptr) ChanState {
 	return .success
 }

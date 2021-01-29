@@ -197,6 +197,7 @@ pub fn (t Time) add_days(days int) Time {
 
 // since returns a number of seconds elapsed since a given time.
 fn since(t Time) int {
+	_ = t // TODO Remove, just here to silence `unused` warning
 	// TODO Use time.Duration instead of seconds
 	return 0
 }

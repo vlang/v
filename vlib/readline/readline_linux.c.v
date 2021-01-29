@@ -93,7 +93,7 @@ pub fn (mut r Readline) disable_raw_mode() {
 }
 
 // read_char reads a single character.
-pub fn (r Readline) read_char() int {
+pub fn (_ Readline) read_char() int {
 	return utf8_getchar()
 }
 
@@ -452,7 +452,7 @@ fn (mut r Readline) move_cursor_end() {
 }
 
 // is_break_character returns true if the character is considered as a word-breaking character.
-fn (r Readline) is_break_character(c string) bool {
+fn (_ &Readline) is_break_character(c string) bool {
 	break_characters := ' \t\v\f\a\b\r\n`~!@#$%^&*()-=+[{]}\\|;:\'",<.>/?'
 	return break_characters.contains(c)
 }

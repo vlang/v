@@ -573,6 +573,7 @@ fn (mut g Gen) mov(reg Register, val int) {
 }
 
 fn (mut g Gen) mov_reg(a Register, b Register) {
+	_ = b // TODO Remove, just here to silence `unused` warning
 	match a {
 		.rbp {
 			g.write8(0x48)

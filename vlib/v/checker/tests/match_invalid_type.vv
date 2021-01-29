@@ -14,7 +14,7 @@ interface Animal {
 
 struct Dog {}
 
-fn (d Dog) speak() {}
+fn (_ Dog) speak() {}
 
 struct Cat {}
 

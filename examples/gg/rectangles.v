@@ -34,7 +34,7 @@ fn main() {
 	app.gg.run()
 }
 
-fn init_images(mut app App) {
+fn init_images(mut _ App) {
 	// app.image = gg.create_image('logo.png')
 }
 

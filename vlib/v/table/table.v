@@ -90,7 +90,7 @@ pub fn new_table() &Table {
 }
 
 // used to compare fn's & for naming anon fn's
-pub fn (t &Table) fn_type_signature(f &Fn) string {
+pub fn fn_type_signature(f &Fn) string {
 	mut sig := ''
 	for i, arg in f.params {
 		// TODO: for now ignore mut/pts in sig for now
@@ -640,7 +640,7 @@ pub fn (mut t Table) find_or_register_multi_return(mr_typs []Type) int {
 pub fn (mut t Table) find_or_register_fn_type(mod string, f Fn, is_anon bool, has_decl bool) int {
 	name := if f.name.len == 0 { 'fn ${t.fn_type_source_signature(f)}' } else { f.name.clone() }
 	cname := if f.name.len == 0 {
-		'anon_fn_${t.fn_type_signature(f)}'
+		'anon_fn_${fn_type_signature(f)}'
 	} else {
 		util.no_dots(f.name.clone())
 	}
@@ -721,7 +721,7 @@ pub fn (t &Table) value_type(typ Type) Type {
 }
 
 [inline]
-pub fn (t &Table) mktyp(typ Type) Type {
+pub fn mktyp(typ Type) Type {
 	match typ {
 		float_literal_type { return f64_type }
 		int_literal_type { return int_type }

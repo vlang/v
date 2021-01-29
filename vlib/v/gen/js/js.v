@@ -1214,6 +1214,8 @@ fn (mut g JsGen) gen_ident(node ast.Ident) {
 
 fn (mut g JsGen) gen_lock_expr(node ast.LockExpr) {
 	// TODO: implement this
+	_ = g // TODO Remove, just here to silence `unused` warning
+	_ = node
 }
 
 fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
@@ -1376,7 +1378,7 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 			&& int(it.right_type) in table.integer_type_idxs
 		is_arithmetic := it.op in [token.Kind.plus, .minus, .mul, .div, .mod]
 		if is_arithmetic {
-			g.write('${g.typ(g.greater_typ(it.left_type, it.right_type))}(')
+			g.write('${g.typ(greater_typ(it.left_type, it.right_type))}(')
 		}
 		if it.op == .div && both_are_int {
 			g.write('((')
@@ -1401,7 +1403,7 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 	}
 }
 
-fn (mut g JsGen) greater_typ(left table.Type, right table.Type) table.Type {
+fn greater_typ(left table.Type, right table.Type) table.Type {
 	l := int(left)
 	r := int(right)
 	lr := [l, r]

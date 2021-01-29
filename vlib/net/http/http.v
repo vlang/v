@@ -67,7 +67,7 @@ pub fn get(url string) ?Response {
 }
 
 pub fn post(url string, data string) ?Response {
-	return fetch_with_method(.post, url, 
+	return fetch_with_method(.post, url,
 		data: data
 		headers: {
 			'Content-Type': http.content_type_default
@@ -76,7 +76,7 @@ pub fn post(url string, data string) ?Response {
 }
 
 pub fn post_json(url string, data string) ?Response {
-	return fetch_with_method(.post, url, 
+	return fetch_with_method(.post, url,
 		data: data
 		headers: {
 			'Content-Type': 'application/json'
@@ -85,7 +85,7 @@ pub fn post_json(url string, data string) ?Response {
 }
 
 pub fn post_form(url string, data map[string]string) ?Response {
-	return fetch_with_method(.post, url, 
+	return fetch_with_method(.post, url,
 		headers: {
 			'Content-Type': 'application/x-www-form-urlencoded'
 		}
@@ -94,7 +94,7 @@ pub fn post_form(url string, data map[string]string) ?Response {
 }
 
 pub fn put(url string, data string) ?Response {
-	return fetch_with_method(.put, url, 
+	return fetch_with_method(.put, url,
 		data: data
 		headers: {
 			'Content-Type': http.content_type_default
@@ -103,7 +103,7 @@ pub fn put(url string, data string) ?Response {
 }
 
 pub fn patch(url string, data string) ?Response {
-	return fetch_with_method(.patch, url, 
+	return fetch_with_method(.patch, url,
 		data: data
 		headers: {
 			'Content-Type': http.content_type_default
@@ -358,19 +358,19 @@ fn (req &Request) build_request_cookies_header() string {
 	return 'Cookie: ' + cookie.join('; ') + '\r\n'
 }
 
-pub fn unescape_url(s string) string {
+pub fn unescape_url(_ string) string {
 	panic('http.unescape_url() was replaced with urllib.query_unescape()')
 }
 
-pub fn escape_url(s string) string {
+pub fn escape_url(_ string) string {
 	panic('http.escape_url() was replaced with urllib.query_escape()')
 }
 
-pub fn unescape(s string) string {
+pub fn unescape(_ string) string {
 	panic('http.unescape() was replaced with http.unescape_url()')
 }
 
-pub fn escape(s string) string {
+pub fn escape(_ string) string {
 	panic('http.escape() was replaced with http.escape_url()')
 }
 

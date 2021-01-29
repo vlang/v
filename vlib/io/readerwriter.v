@@ -35,11 +35,11 @@ pub fn make_readerwriter(r Reader, w Writer) ReaderWriterImpl {
 struct Zzz_CoerceInterfaceTableGeneration {
 }
 
-fn (_ Zzz_CoerceInterfaceTableGeneration) write(buf []byte) ?int {
+fn (_ Zzz_CoerceInterfaceTableGeneration) write(_ []byte) ?int {
 	return none
 }
 
-fn (_ Zzz_CoerceInterfaceTableGeneration) read(mut buf []byte) ?int {
+fn (_ Zzz_CoerceInterfaceTableGeneration) read(mut _ []byte) ?int {
 	return none
 }
 

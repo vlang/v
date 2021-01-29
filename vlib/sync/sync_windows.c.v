@@ -84,7 +84,7 @@ pub fn (mut m RwMutex) unlock() {
 	C.ReleaseSRWLockExclusive(&m.mx)
 }
 
-pub fn (mut m Mutex) destroy() {
+pub fn (mut _ Mutex) destroy() {
 	// nothing to do
 }
 
@@ -182,6 +182,6 @@ unlock:
 	return res != 0
 }
 
-pub fn (s Semaphore) destroy() bool {
+pub fn (_ Semaphore) destroy() bool {
 	return true
 }

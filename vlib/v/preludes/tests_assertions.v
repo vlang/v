@@ -64,7 +64,7 @@ fn cb_assertion_failed(i &VAssertMetaInfo) {
 	eprintln('')
 }
 
-fn cb_assertion_ok(i &VAssertMetaInfo) {
+fn cb_assertion_ok(_ &VAssertMetaInfo) {
 	// prints for every assertion instead of per test function
 	// TODO: needs to be changed
 	/*

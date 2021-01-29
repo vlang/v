@@ -154,7 +154,7 @@ fn yellow(msg string) string {
 	return term.yellow(msg)
 }
 
-fn (mut context Context) info(msg string) {
+fn (mut _ Context) info(msg string) {
 	println(msg)
 }
 
@@ -166,7 +166,7 @@ fn (mut context Context) log(msg string) {
 	}
 }
 
-fn (mut context Context) error(msg string) {
+fn (mut _ Context) error(msg string) {
 	label := red('error')
 	eprintln('$label: $msg')
 }

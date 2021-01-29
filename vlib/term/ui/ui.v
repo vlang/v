@@ -103,7 +103,7 @@ pub fn (mut ctx Context) clear() {
 
 [inline]
 // set_window_title sets the string `s` as the window title.
-pub fn (mut ctx Context) set_window_title(s string) {
+pub fn (mut _ Context) set_window_title(s string) {
 	print('\x1b]0;$s\x07')
 }
 

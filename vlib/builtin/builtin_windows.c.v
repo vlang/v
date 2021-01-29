@@ -171,14 +171,14 @@ fn print_backtrace_skipping_top_frames_msvc(skipframes int) bool {
 	}
 }
 
-fn print_backtrace_skipping_top_frames_mingw(skipframes int) bool {
+fn print_backtrace_skipping_top_frames_mingw(_ int) bool {
 	eprintln('print_backtrace_skipping_top_frames_mingw is not implemented')
 	return false
 }
 
 fn C.tcc_backtrace(fmt charptr, other ...charptr) int
 
-fn print_backtrace_skipping_top_frames_tcc(skipframes int) bool {
+fn print_backtrace_skipping_top_frames_tcc(_ int) bool {
 	$if tinyc {
 		$if no_backtrace ? {
 			eprintln('backtraces are disabled')

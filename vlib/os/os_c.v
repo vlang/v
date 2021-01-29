@@ -565,7 +565,7 @@ pub fn read_file_array<T>(path string) []T {
 	}
 }
 
-pub fn on_segfault(f voidptr) {
+pub fn on_segfault(_ voidptr) {
 	$if windows {
 		return
 	}

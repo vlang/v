@@ -1,6 +1,6 @@
 interface Speaker {}
 
-fn my_fn(s Speaker) {}
+fn my_fn(_ Speaker) {}
 
 fn main() {
     my_fn({})

@@ -1,5 +1,5 @@
 fn fil(a int, b int) bool {
-	return a > 0
+	return a > 0 && b > 0
 }
 fn main() {
 	a := [1,2,3,4].filter(fil)

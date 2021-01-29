@@ -35,6 +35,7 @@ pub mut:
 
 // new_server instance a new websocket server on provided port and route
 pub fn new_server(port int, route string) &Server {
+	_ = route // TODO Route should probably be used or removed ?
 	return &Server{
 		ls: 0
 		port: port
@@ -64,7 +65,7 @@ pub fn (mut s Server) listen() ? {
 }
 
 // Close closes server (not implemented yet)
-fn (mut s Server) close() {
+fn (mut _ Server) close() {
 	// TODO: implement close when moving to net from x.net
 }
 

@@ -32,10 +32,10 @@ fn main() {
 		description: 'Number of times the message gets printed.'
 	})
 	greet_cmd.add_flag(Flag{
-	 	flag: .string
-	 	name: 'fun'
-	 	multipe: true
-	 	description: 'Just a dumby flags to show multiple.'
+		flag: .string
+		name: 'fun'
+		multipe: true
+		description: 'Just a dumby flags to show multiple.'
 	})
 	cmd.add_command(greet_cmd)
 	cmd.setup()
@@ -76,10 +76,10 @@ fn greet_func(cmd Command) {
 	}
 }
 
-fn greet_pre_func(cmd Command) {
+fn greet_pre_func(_ Command) {
 	println('This is a function running before the main function.\n')
 }
 
-fn greet_post_func(cmd Command) {
+fn greet_post_func(_ Command) {
 	println('\nThis is a function running after the main function.')
 }

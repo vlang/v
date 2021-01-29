@@ -1,7 +1,7 @@
 struct Test {}
 
 fn (test Test) print() {
-	println('test')
+	println(test)
 }
 
 fn main() {

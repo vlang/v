@@ -850,7 +850,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 					}
 				}
 			} else {
-				promoted_type := c.promote(c.table.unalias_num_type(left_type), c.table.unalias_num_type(right_type))
+				promoted_type := promote(c.table.unalias_num_type(left_type), c.table.unalias_num_type(right_type))
 				if promoted_type.idx() == table.void_type_idx {
 					left_name := c.table.type_to_str(left_type)
 					right_name := c.table.type_to_str(right_type)
@@ -2349,7 +2349,7 @@ pub fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 				typ = typ.clear_flag(.optional)
 			}
 		}
-		node.fields[i].typ = c.table.mktyp(typ)
+		node.fields[i].typ = table.mktyp(typ)
 		for cd in c.const_deps {
 			for j, f in node.fields {
 				if j != i && cd in field_names && cd == f.name && j !in done_fields {
@@ -2497,7 +2497,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		right := if i < assign_stmt.right.len { assign_stmt.right[i] } else { assign_stmt.right[0] }
 		mut right_type := assign_stmt.right_types[i]
 		if is_decl {
-			left_type = c.table.mktyp(right_type)
+			left_type = table.mktyp(right_type)
 			if left_type == table.int_type {
 				if right is ast.IntegerLiteral {
 					mut is_large := right.val.len > 13
@@ -2887,7 +2887,7 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 			}
 			// The first element's type
 			if i == 0 {
-				elem_type = c.table.mktyp(typ)
+				elem_type = table.mktyp(typ)
 				c.expected_type = elem_type
 				continue
 			}
@@ -3630,7 +3630,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
 	}
 	if to_type_sym.kind == .sum_type {
 		if node.expr_type in [table.int_literal_type, table.float_literal_type] {
-			node.expr_type = c.promote_num(node.expr_type, if node.expr_type == table.int_literal_type {
+			node.expr_type = promote_num(node.expr_type, if node.expr_type == table.int_literal_type {
 				table.int_type
 			} else {
 				table.f64_type
@@ -3672,7 +3672,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
 				node.pos)
 			from_type_info := from_type_sym.info as table.Struct
 			to_type_info := to_type_sym.info as table.Struct
-			if !c.check_struct_signature(from_type_info, to_type_info) {
+			if !check_struct_signature(from_type_info, to_type_info) {
 				c.error('cannot convert struct `$from_type_sym.name` to struct `$to_type_sym.name`',
 					node.pos)
 			}
@@ -5237,8 +5237,8 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) table.Type {
 		return node.typ
 	}
 	// `{'age': 20}`
-	key0_type := c.table.mktyp(c.expr(node.keys[0]))
-	val0_type := c.table.mktyp(c.expr(node.vals[0]))
+	key0_type := table.mktyp(c.expr(node.keys[0]))
+	val0_type := table.mktyp(c.expr(node.vals[0]))
 	mut same_key_type := true
 	for i, key in node.keys {
 		if i == 0 {
@@ -5292,7 +5292,7 @@ pub fn (mut c Checker) error(message string, pos token.Position) {
 }
 
 // check `to` has all fields of `from`
-fn (c Checker) check_struct_signature(from table.Struct, to table.Struct) bool {
+fn check_struct_signature(from table.Struct, to table.Struct) bool {
 	// Note: `to` can have extra fields
 	if from.fields.len == 0 {
 		return false
@@ -5629,7 +5629,7 @@ fn has_top_return(stmts []ast.Stmt) bool {
 	return false
 }
 
-fn (mut c Checker) verify_vweb_params_for_method(m table.Fn) (bool, int, int) {
+fn verify_vweb_params_for_method(m table.Fn) (bool, int, int) {
 	margs := m.params.len - 1 // first arg is the receiver/this
 	if m.attrs.len == 0 {
 		// allow non custom routed methods, with 1:1 mapping
@@ -5653,7 +5653,7 @@ fn (mut c Checker) verify_all_vweb_routes() {
 		sym_app := c.table.get_type_symbol(vgt)
 		for m in sym_app.methods {
 			if m.return_type == typ_vweb_result {
-				is_ok, nroute_attributes, nargs := c.verify_vweb_params_for_method(m)
+				is_ok, nroute_attributes, nargs := verify_vweb_params_for_method(m)
 				if !is_ok {
 					f := &ast.FnDecl(m.source_fn)
 					if isnil(f) {

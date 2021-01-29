@@ -395,6 +395,6 @@ pub fn getpid() int {
 	return C._getpid()
 }
 
-pub fn posix_set_permission_bit(path_s string, mode u32, enable bool) {
+pub fn posix_set_permission_bit(_ string, _ u32, _ bool) {
 	// windows has no concept of a permission mask, so do nothing
 }

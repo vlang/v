@@ -77,10 +77,10 @@ fn (app App) recompile_v() {
 			app.vprintln(self_result.output.trim_space())
 		}
 	}
-	app.make(vself)
+	app.make()
 }
 
-fn (app App) make(vself string) {
+fn (app App) make() {
 	mut make := 'make'
 	$if windows {
 		make = 'make.bat'
@@ -105,7 +105,7 @@ fn (app App) show_current_v_version() {
 	}
 }
 
-fn (app App) backup(file string) {
+fn (_ App) backup(file string) {
 	backup_file := '${file}_old.exe'
 	if os.exists(backup_file) {
 		os.rm(backup_file) or { eprintln('failed removing $backup_file: $err') }
@@ -127,7 +127,7 @@ fn (app App) git_command(command string) {
 	app.vprintln(git_result.output)
 }
 
-fn (app App) get_git() {
+fn (_ App) get_git() {
 	$if windows {
 		println('Downloading git 32 bit for Windows, please wait.')
 		// We'll use 32 bit because maybe someone out there is using 32-bit windows

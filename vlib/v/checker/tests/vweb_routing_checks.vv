@@ -4,20 +4,20 @@ struct App {
 	vweb.Context
 }
 
-pub fn (mut app App) no_attributes(a string) vweb.Result {
+pub fn (mut app App) no_attributes(_ string) vweb.Result {
 	return app.text('ok')
 }
 
 // works fine, as long as fcn gets 1 arg and route takes 1 var
 ['/foo/:bar']
-pub fn (mut app App) foo(a string) vweb.Result {
+pub fn (mut app App) foo(_ string) vweb.Result {
 	eprintln('foo')
 	return app.html('works')
 }
 
 // segfault because path taks 0 vars and fcn takes 1 arg
 ['/bar']
-pub fn (mut app App) bar(a string) vweb.Result {
+pub fn (mut app App) bar(_ string) vweb.Result {
 	return app.html('works')
 }
 
@@ -27,11 +27,11 @@ pub fn (mut app App) cow() vweb.Result {
 	return app.html('works')
 }
 
-pub fn (app App) init_once() {
+pub fn (_ App) init_once() {
 	//
 }
 
-pub fn (app App) init() {
+pub fn (_ App) init() {
 	//
 }
 

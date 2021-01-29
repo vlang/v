@@ -132,7 +132,7 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 		}
 	}
 	arg_start_pos := g.out.len
-	fargs, fargtypes := g.fn_args(node.params, node.is_variadic)
+	fargs, fargtypes := g.fn_args(node.params)
 	arg_str := g.out.after(arg_start_pos)
 	if node.no_body || ((g.pref.use_cache && g.pref.build_mode != .build_module) && node.is_builtin
 		&& !g.is_test)|| skip {
@@ -235,7 +235,7 @@ fn (mut g Gen) write_defer_stmts_when_needed() {
 }
 
 // fn decl args
-fn (mut g Gen) fn_args(args []table.Param, is_variadic bool) ([]string, []string) {
+fn (mut g Gen) fn_args(args []table.Param) ([]string, []string) {
 	mut fargs := []string{}
 	mut fargtypes := []string{}
 	for i, arg in args {
@@ -254,7 +254,7 @@ fn (mut g Gen) fn_args(args []table.Param, is_variadic bool) ([]string, []string
 			} else {
 				g.write('${g.typ(func.return_type)} (*$caname)(')
 				g.definitions.write('${g.typ(func.return_type)} (*$caname)(')
-				g.fn_args(func.params, func.is_variadic)
+				g.fn_args(func.params)
 				g.write(')')
 				g.definitions.write(')')
 			}

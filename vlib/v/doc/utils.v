@@ -120,7 +120,7 @@ pub fn (mut d Doc) stmt_signature(stmt ast.Stmt) string {
 }
 
 // stmt_name returns the name of a given `ast.Stmt` node.
-pub fn (d Doc) stmt_name(stmt ast.Stmt) string {
+pub fn (_ Doc) stmt_name(stmt ast.Stmt) string {
 	match stmt {
 		ast.FnDecl, ast.StructDecl, ast.EnumDecl, ast.InterfaceDecl {
 			return stmt.name
@@ -141,7 +141,7 @@ pub fn (d Doc) stmt_name(stmt ast.Stmt) string {
 
 // stmt_pub returns a boolean if a given `ast.Stmt` node
 // is exposed to the public.
-pub fn (d Doc) stmt_pub(stmt ast.Stmt) bool {
+pub fn (_ Doc) stmt_pub(stmt ast.Stmt) bool {
 	match stmt {
 		ast.FnDecl, ast.StructDecl, ast.EnumDecl, ast.InterfaceDecl, ast.ConstDecl {
 			return stmt.is_pub

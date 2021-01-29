@@ -520,7 +520,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 		is_variadic: is_variadic
 		return_type: return_type
 	}
-	name := 'anon_${p.tok.pos}_${p.table.fn_type_signature(func)}'
+	name := 'anon_${p.tok.pos}_${table.fn_type_signature(func)}'
 	func.name = name
 	idx := p.table.find_or_register_fn_type(p.mod, func, true, false)
 	typ := table.new_type(idx)

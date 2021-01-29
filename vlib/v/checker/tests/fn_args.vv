@@ -1,6 +1,6 @@
-fn ptr(a byte) {}
-fn arr(a []int) {}
-fn fun(a fn(int)) {}
+fn ptr(_ byte) {}
+fn arr(_ []int) {}
+fn fun(_ fn(int)) {}
 
 v := 4
 ptr(&v)

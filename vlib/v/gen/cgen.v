@@ -524,7 +524,7 @@ fn (mut g Gen) optional_type_name(t table.Type) (string, string) {
 	return styp, base
 }
 
-fn (g &Gen) optional_type_text(styp string, base string) string {
+fn optional_type_text(styp string, base string) string {
 	x := styp // .replace('*', '_ptr')			// handle option ptrs
 	// replace void with something else
 	size := if base == 'void' { 'int' } else { base }
@@ -553,7 +553,7 @@ fn (mut g Gen) register_optional(t table.Type) string {
 		} Option2_$no_ptr;')
 		// println(styp)
 		g.typedefs2.writeln('typedef struct $styp $styp;')
-		g.options.write(g.optional_type_text(styp, base))
+		g.options.write(optional_type_text(styp, base))
 		g.options.writeln(';\n')
 		g.optionals << styp.clone()
 	}
@@ -1451,7 +1451,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 
 // use instead of expr() when you need to cast to a different type
 fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw table.Type, expected_type table.Type) {
-	got_type := g.table.mktyp(got_type_raw)
+	got_type := table.mktyp(got_type_raw)
 	exp_sym := g.table.get_type_symbol(expected_type)
 	if exp_sym.kind == .interface_ && got_type_raw.idx() != expected_type.idx()
 		&& !expected_type.has_flag(.optional) {
@@ -1943,7 +1943,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					ret_styp := g.typ(val.decl.return_type)
 					g.write('$ret_styp (*$ident.name) (')
 					def_pos := g.definitions.len
-					g.fn_args(val.decl.params, val.decl.is_variadic)
+					g.fn_args(val.decl.params)
 					g.definitions.go_back(g.definitions.len - def_pos)
 					g.write(') = ')
 				} else {
@@ -2049,7 +2049,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				ret_styp := g.typ(func.func.return_type)
 				g.write('$ret_styp (*${g.get_ternary_name(ident.name)}) (')
 				def_pos := g.definitions.len
-				g.fn_args(func.func.params, func.func.is_variadic)
+				g.fn_args(func.func.params)
 				g.definitions.go_back(g.definitions.len - def_pos)
 				g.write(')')
 			} else {
@@ -3648,7 +3648,7 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 						objs << ast.Expr{}
 						tmp_obj := g.new_tmp_var()
 						tmp_objs << tmp_obj
-						el_stype := g.typ(g.table.mktyp(expr.right_type))
+						el_stype := g.typ(table.mktyp(expr.right_type))
 						g.writeln('$el_stype $tmp_obj;')
 					}
 					is_push << true
@@ -5091,7 +5091,7 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 							styp, base := g.optional_type_name(field.typ)
 							g.optionals << styp
 							g.typedefs2.writeln('typedef struct $styp $styp;')
-							g.type_definitions.writeln('${g.optional_type_text(styp, base)};')
+							g.type_definitions.writeln('${optional_type_text(styp, base)};')
 							g.type_definitions.write(last_text)
 						}
 						type_name := g.typ(field.typ)
@@ -6041,7 +6041,7 @@ $staticprefix $interface_name* I_${cctype}_to_Interface_${interface_name}_ptr($c
 						first_param |
 						typ: params[0].typ.set_nr_muls(1)
 					}
-					fargs, _ := g.fn_args(params, false) // second argument is ignored anyway
+					fargs, _ := g.fn_args(params)
 					methods_wrapper.write(g.out.cut_last(g.out.len - params_start_pos))
 					methods_wrapper.writeln(') {')
 					methods_wrapper.write('\t')

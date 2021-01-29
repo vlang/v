@@ -6,7 +6,7 @@ interface Animal {
 	breed string
 }
 
-fn (a Animal) foo() {}
+fn (_ Animal) foo() {}
 
 fn new_animal(breed string) Animal {
 	return &Cat{breed}

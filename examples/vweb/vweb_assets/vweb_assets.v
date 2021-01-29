@@ -26,9 +26,6 @@ pub fn (mut app App) init_once() {
 	app.handle_static('.')
 }
 
-pub fn (mut app App) init() {
-}
-
 pub fn (mut app App) index() vweb.Result {
 	// We can dynamically specify which assets are to be used in template.
 	// 	mut am := assets.new_manager()

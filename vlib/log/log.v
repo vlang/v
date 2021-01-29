@@ -110,7 +110,7 @@ fn (mut l Log) log_file(s string, level Level) {
 }
 
 // log_cli writes log line `s` with `level` to stdout.
-fn (l &Log) log_cli(s string, level Level) {
+fn log_cli(s string, level Level) {
 	f := tag_to_cli(level)
 	t := time.now()
 	println('[$f $t.format_ss()] $s')
@@ -122,7 +122,7 @@ fn (mut l Log) send_output(s &string, level Level) {
 	if l.output_to_file {
 		l.log_file(s, level)
 	} else {
-		l.log_cli(s, level)
+		log_cli(s, level)
 	}
 }
 

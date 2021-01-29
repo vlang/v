@@ -14,6 +14,11 @@ mut:
 }
 */
 fn download_cb(ptr voidptr, size size_t, nmemb size_t, userp voidptr) {
+	// TODO Remove, just here to silence `unused` warning
+	_ = ptr
+	_ = size
+	_ = nmemb
+	_ = userp
 	/*
 	mut data := &DownloadStruct(userp)
 	written := C.fwrite(ptr, size, nmemb, data.stream)
@@ -25,6 +30,11 @@ fn download_cb(ptr voidptr, size size_t, nmemb size_t, userp voidptr) {
 }
 
 pub fn download_file_with_progress(url string, out string, cb DownloadFn, cb_finished fn()) {
+	// TODO Remove, just here to silence `unused` warning
+	_ = url
+	_ = out
+	_ = cb
+	_ = cb_finished
 	/*
 	curl := C.curl_easy_init()
 	if isnil(curl) {

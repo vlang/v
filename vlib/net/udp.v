@@ -150,7 +150,7 @@ pub fn (mut c UdpConn) wait_for_write() ? {
 	return wait_for_write(c.sock.handle, c.write_deadline, c.write_timeout)
 }
 
-pub fn (c &UdpConn) str() string {
+pub fn (_ &UdpConn) str() string {
 	// TODO
 	return 'UdpConn'
 }

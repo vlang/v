@@ -1,6 +1,6 @@
-fn f(mut par []int) {
+fn f(mut _ []int) {
 }
-fn g(par []int) {
+fn g(_ []int) {
 }
 
 f([3,4])

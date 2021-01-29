@@ -19,7 +19,7 @@ fn (mut b Builder) get_vtmp_filename(base_file_name string, postfix string) stri
 		'$uniq$postfix'))
 }
 
-pub fn compile(command string, pref &pref.Preferences) {
+pub fn compile(pref &pref.Preferences) {
 	odir := os.dir(pref.out_name)
 	// When pref.out_name is just the name of an executable, i.e. `./v -o executable main.v`
 	// without a folder component, just use the current folder instead:

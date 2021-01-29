@@ -215,7 +215,7 @@ pub fn (mut ts TestSession) test() {
 	}
 }
 
-fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
+fn worker_trunner(mut p sync.PoolProcessor, idx int, _ int) voidptr {
 	mut ts := &TestSession(p.get_shared_context())
 	tmpd := ts.vtmp_dir
 	show_stats := '-stats' in ts.vargs.split(' ')

@@ -449,7 +449,7 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp string, str_fn_name st
 	if clean_struct_v_type_name.contains('_T_') {
 		// TODO: this is a bit hacky. styp shouldn't be even parsed with _T_
 		// use something different than g.typ for styp
-		clean_struct_v_type_name = 
+		clean_struct_v_type_name =
 			clean_struct_v_type_name.replace('_T_', '<').replace('_', ', ') + '>'
 	}
 	clean_struct_v_type_name = util.strip_main_name(clean_struct_v_type_name)
@@ -561,7 +561,7 @@ fn (mut g Gen) gen_str_for_enum(info table.Enum, styp string, str_fn_name string
 	g.auto_str_funcs.writeln('}')
 }
 
-fn (mut g Gen) gen_str_for_interface(info table.Interface, styp string, str_fn_name string) {
+fn (mut g Gen) gen_str_for_interface(_ table.Interface, styp string, str_fn_name string) {
 	// TODO
 	g.type_definitions.writeln('static string ${str_fn_name}($styp it); // auto')
 	g.auto_str_funcs.writeln('static string ${str_fn_name}($styp it) { /* gen_str_for_interface */')
@@ -633,7 +633,7 @@ fn (mut g Gen) fn_decl_str(info table.FnType) string {
 	return fn_str
 }
 
-fn (mut g Gen) gen_str_for_fn_type(info table.FnType, styp string, str_fn_name string) {
+fn (mut g Gen) gen_str_for_fn_type(info table.FnType, _ string, str_fn_name string) {
 	g.type_definitions.writeln('static string ${str_fn_name}(); // auto')
 	g.auto_str_funcs.writeln('static string ${str_fn_name}() { return _SLIT("${g.fn_decl_str(info)}");}')
 }

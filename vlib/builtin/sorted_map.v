@@ -38,6 +38,7 @@ mut:
 }
 
 fn new_sorted_map(n int, value_bytes int) SortedMap { // TODO: Remove `n`
+	_ = n // TODO Remove, just here to silence `unused` warning
 	return SortedMap {
 		value_bytes: value_bytes
 		root: new_node()
@@ -423,6 +424,7 @@ pub fn (m &SortedMap) keys() []string {
 }
 
 fn (mut n mapnode) free() {
+	_ = n // TODO Remove, just here to silence `unused` warning
 	println('TODO')
 }
 
@@ -434,6 +436,7 @@ pub fn (mut m SortedMap) free() {
 }
 
 pub fn (m SortedMap) print() {
+	_ = m // TODO Remove, just here to silence `unused` warning
 	println('TODO')
 }
 

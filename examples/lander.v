@@ -8,7 +8,7 @@ struct Moon {
 
 struct Mars {
 }
-fn (m Mars) dust_storm() bool {
+fn dust_storm() bool {
 	return rand.int() >= 0
 }
 
@@ -19,10 +19,10 @@ type World = Moon | Mars | Venus
 
 struct Lander {
 }
-fn (l Lander) deorbit() {
+fn (_ Lander) deorbit() {
 	println('leaving orbit')
 }
-fn (l Lander) open_parachutes(n int) {
+fn (_ Lander) open_parachutes(n int) {
 	println('opening $n parachutes')
 }
 
@@ -33,7 +33,7 @@ fn wait() {
 
 fn (l Lander) land(w World) {
 	if w is Mars {
-		for w.dust_storm() {
+		for dust_storm() {
 			wait()
 		}
 	}

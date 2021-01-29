@@ -1,4 +1,6 @@
-fn f(i int) {}
+fn f(i int) {
+	_ = i
+}
 
 fn test_postfix() {
 	mut x := 1

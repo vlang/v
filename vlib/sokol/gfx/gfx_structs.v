@@ -163,13 +163,13 @@ pub fn (mut desc C.sg_shader_desc) set_frag_uniform_block_size(block_index int, 
 	return desc
 }
 
-pub fn (mut desc C.sg_shader_desc) set_vert_uniform(block_index int, uniform_index int, name string, @type UniformType, array_count int) &C.sg_shader_desc {
+pub fn (mut desc C.sg_shader_desc) set_vert_uniform(block_index int, uniform_index int, name string, @type UniformType, _ int) &C.sg_shader_desc {
 	desc.vs.uniform_blocks[block_index].uniforms[uniform_index].name = name.str
 	desc.vs.uniform_blocks[block_index].uniforms[uniform_index].@type = @type
 	return desc
 }
 
-pub fn (mut desc C.sg_shader_desc) set_frag_uniform(block_index int, uniform_index int, name string, @type UniformType, array_count int) &C.sg_shader_desc {
+pub fn (mut desc C.sg_shader_desc) set_frag_uniform(block_index int, uniform_index int, name string, @type UniformType, _ int) &C.sg_shader_desc {
 	desc.fs.uniform_blocks[block_index].uniforms[uniform_index].name = name.str
 	desc.fs.uniform_blocks[block_index].uniforms[uniform_index].@type = @type
 	return desc

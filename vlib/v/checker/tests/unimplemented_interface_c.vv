@@ -4,9 +4,9 @@ interface Animal {
 
 struct Cat {}
 
-fn (c Cat) name(s string) {}
+fn (_ Cat) name(_ string) {}
 
-fn foo(a Animal) {}
+fn foo(_ Animal) {}
 
 fn main() {
 	foo(Cat{})

@@ -309,7 +309,7 @@ pub fn (mut v Builder) cc_msvc() {
 	}
 	v.timing_measure('C msvc')
 	if v.pref.show_c_output {
-		v.show_c_compiler_output(res)
+		show_c_compiler_output(res)
 	} else {
 		v.post_process_c_compiler_output(res)
 	}

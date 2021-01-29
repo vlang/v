@@ -42,11 +42,11 @@ fn (context Context) header() string {
 	return header_s
 }
 
-fn (context Context) footer() string {
+fn (_ Context) footer() string {
 	return ')\n'
 }
 
-fn (context Context) file2v(bname string, fbytes []byte, bn_max int) string {
+fn (_ Context) file2v(bname string, fbytes []byte, bn_max int) string {
 	mut sb := strings.new_builder(1000)
 	bn_diff_len := bn_max - bname.len
 	sb.write('\t${bname}_len' + ' '.repeat(bn_diff_len - 4) + ' = $fbytes.len\n')
@@ -81,7 +81,7 @@ fn (context Context) bname_and_bytes(file string) ?(string, []byte) {
 	return byte_name, fbytes
 }
 
-fn (context Context) max_bname_len(bnames []string) int {
+fn (_ Context) max_bname_len(bnames []string) int {
 	mut max := 0
 	for n in bnames {
 		if n.len > max {

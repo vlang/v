@@ -160,7 +160,7 @@ pub fn (mut f Fmt) set_current_module_name(cmodname string) {
 	f.table.cmod_prefix = cmodname + '.'
 }
 
-fn (f Fmt) get_modname_prefix(mname string) (string, string) {
+fn get_modname_prefix(mname string) (string, string) {
 	// ./tests/proto_module_importing_vproto_keep.vv to know, why here is checked for ']' and '&'
 	if !mname.contains(']') && !mname.contains('&') {
 		return mname, ''
@@ -171,7 +171,7 @@ fn (f Fmt) get_modname_prefix(mname string) (string, string) {
 	return modname, mname.trim_suffix(modname)
 }
 
-fn (mut f Fmt) is_external_name(name string) bool {
+fn is_external_name(name string) bool {
 	if name.len > 2 && name[0] == `C` && name[1] == `.` {
 		return true
 	}
@@ -206,7 +206,7 @@ pub fn (mut f Fmt) short_module(name string) string {
 	if vals.len < 2 {
 		return name
 	}
-	mname, tprefix := f.get_modname_prefix(vals[vals.len - 2])
+	mname, tprefix := get_modname_prefix(vals[vals.len - 2])
 	symname := vals[vals.len - 1]
 	aname := f.mod2alias[mname]
 	if aname == '' {
@@ -264,7 +264,7 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 		if imp.mod in f.auto_imports && imp.mod !in f.used_imports {
 			continue
 		}
-		import_text := 'import ${f.imp_stmt_str(imp)}'
+		import_text := 'import ${imp_stmt_str(imp)}'
 		if already_imported[import_text] {
 			continue
 		}
@@ -278,7 +278,7 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 	}
 }
 
-pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
+pub fn imp_stmt_str(imp ast.Import) string {
 	is_diff := imp.alias != imp.mod && !imp.mod.ends_with('.' + imp.alias)
 	mut imp_alias_suffix := if is_diff { ' as $imp.alias' } else { '' }
 	if imp.syms.len > 0 {
@@ -1321,7 +1321,7 @@ pub fn (mut f Fmt) size_of(node ast.SizeOf) {
 	if node.is_type {
 		sym := f.table.get_type_symbol(node.typ)
 		if sym.name != '' {
-			if f.is_external_name(sym.name) {
+			if is_external_name(sym.name) {
 				f.write(sym.name)
 			} else {
 				f.write(f.short_module(sym.name))

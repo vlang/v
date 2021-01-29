@@ -10,8 +10,8 @@ module ttf
 *
 * Note:
 *
-* TODO: 
-* - manage text directions R to L 
+* TODO:
+* - manage text directions R to L
 **********************************************************************/
 import encoding.utf8
 import math
@@ -131,7 +131,7 @@ pub fn (mut bmp BitMap) exec_filler() {
 	}
 }
 
-pub fn (mut bmp BitMap) fline(in_x0 int, in_y0 int, in_x1 int, in_y1 int, c u32) {
+pub fn (mut bmp BitMap) fline(in_x0 int, in_y0 int, in_x1 int, in_y1 int, _ u32) {
 	mut x0 := f32(in_x0)
 	mut x1 := f32(in_x1)
 	mut y0 := f32(in_y0)
@@ -798,7 +798,7 @@ pub fn (mut bmp BitMap) draw_glyph(index u16) (int, int) {
 					//        (prev.y + point.y) / 2 + y);
 
 					// bmp.line(x0, y0, start_point.x, start_point.y, u32(0x00FF0000)
-					// u32(0xFF000000))              
+					// u32(0xFF000000))
 					bmp.quadratic(x0, y0, start_point.x, start_point.y, (point.x +
 						start_point.x) / 2, (point.y + start_point.y) / 2, color)
 				}

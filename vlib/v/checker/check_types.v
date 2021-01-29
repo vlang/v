@@ -120,7 +120,7 @@ pub fn (mut c Checker) check_basic(got table.Type, expected table.Type) bool {
 		return true
 	}
 	// sum type
-	if c.table.sumtype_has_variant(expected, c.table.mktyp(got)) {
+	if c.table.sumtype_has_variant(expected, table.mktyp(got)) {
 		return true
 	}
 	// fn type
@@ -182,7 +182,7 @@ fn (mut c Checker) check_shift(left_type table.Type, right_type table.Type, left
 	return left_type
 }
 
-pub fn (c &Checker) promote(left_type table.Type, right_type table.Type) table.Type {
+pub fn promote(left_type table.Type, right_type table.Type) table.Type {
 	if left_type.is_ptr() || left_type.is_pointer() {
 		if right_type.is_int() {
 			return left_type
@@ -200,7 +200,7 @@ pub fn (c &Checker) promote(left_type table.Type, right_type table.Type) table.T
 		return left_type // strings, self defined operators
 	}
 	if right_type.is_number() && left_type.is_number() {
-		return c.promote_num(left_type, right_type)
+		return promote_num(left_type, right_type)
 	} else if left_type.has_flag(.optional) != right_type.has_flag(.optional) {
 		// incompatible
 		return table.void_type
@@ -209,7 +209,7 @@ pub fn (c &Checker) promote(left_type table.Type, right_type table.Type) table.T
 	}
 }
 
-fn (c &Checker) promote_num(left_type table.Type, right_type table.Type) table.Type {
+fn promote_num(left_type table.Type, right_type table.Type) table.Type {
 	// sort the operands to save time
 	mut type_hi := left_type
 	mut type_lo := right_type
@@ -296,7 +296,7 @@ pub fn (mut c Checker) check_types(got table.Type, expected table.Type) bool {
 		} else if expected == table.rune_type && got == table.byte_type {
 			return true
 		}
-		if c.promote_num(expected, got) != expected {
+		if promote_num(expected, got) != expected {
 			// println('could not promote ${c.table.get_type_symbol(got).name} to ${c.table.get_type_symbol(expected).name}')
 			return false
 		}

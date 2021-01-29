@@ -1,7 +1,7 @@
 struct S1 {}
 
 [unsafe]
-fn (s S1) f(){}
+fn (_ S1) f(){}
 
 fn test_funcs() {
     s := S1{}

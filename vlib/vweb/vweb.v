@@ -69,13 +69,13 @@ pub:
 }
 
 // declaring init_once in your App struct is optional
-pub fn (ctx Context) init_once() {}
+pub fn (_ Context) init_once() {}
 
 // declaring init in your App struct is optional
-pub fn (ctx Context) init() {}
+pub fn (_ Context) init() {}
 
 // declaring uninit in your App struct is optional
-pub fn (ctx Context) uninit() {}
+pub fn (_ Context) uninit() {}
 
 pub struct Cookie {
 	name      string
@@ -304,7 +304,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	page_gen_start := time.ticks()
 	first_line := reader.read_line() or {
 		$if debug {
-			eprintln('Failed first_line') // show this only in debug mode, because it always would be shown after a chromium user visits the site 
+			eprintln('Failed first_line') // show this only in debug mode, because it always would be shown after a chromium user visits the site
 		}
 		return
 	}

@@ -101,22 +101,22 @@ fn (mut p Process) unix_is_alive() bool {
 }
 
 // these are here to make v_win.c/v.c generation work in all cases:
-fn (mut p Process) win_spawn_process() int {
+fn (mut _ Process) win_spawn_process() int {
 	return 0
 }
 
-fn (mut p Process) win_stop_process() {
+fn (mut _ Process) win_stop_process() {
 }
 
-fn (mut p Process) win_resume_process() {
+fn (mut _ Process) win_resume_process() {
 }
 
-fn (mut p Process) win_kill_process() {
+fn (mut _ Process) win_kill_process() {
 }
 
-fn (mut p Process) win_wait() {
+fn (mut _ Process) win_wait() {
 }
 
-fn (mut p Process) win_is_alive() bool {
+fn (mut _ Process) win_is_alive() bool {
 	return false
 }

@@ -138,12 +138,12 @@ fn block(mut dig Digest, p []byte) {
 }
 
 // size returns the size of the checksum in bytes.
-pub fn (d &Digest) size() int {
+pub fn (_ &Digest) size() int {
 	return size
 }
 
 // block_size returns the block size of the checksum in bytes.
-pub fn (d &Digest) block_size() int {
+pub fn (_ &Digest) block_size() int {
 	return block_size
 }
 

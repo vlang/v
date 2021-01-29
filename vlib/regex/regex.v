@@ -185,7 +185,7 @@ fn is_upper(in_char byte) bool {
 	return tmp <= 25
 }
 
-pub fn (re RE) get_parse_error_string(err int) string {
+pub fn (_ RE) get_parse_error_string(err int) string {
 	match err {
 		compile_ok             { return "compile_ok" }
 		no_match_found         { return "no_match_found" }
@@ -685,7 +685,7 @@ enum Quant_parse_state {
 }
 
 // parse_quantifier return (min, max, str_len, greedy_flag) of a {min,max}? quantifier starting after the { char
-fn (re RE) parse_quantifier(in_txt string, in_i int) (int, int, int, bool) {
+fn parse_quantifier(in_txt string, in_i int) (int, int, int, bool) {
 	mut status := Quant_parse_state.start
 	mut i := in_i
 
@@ -1072,7 +1072,7 @@ fn (mut re RE) impl_compile(in_txt string) (int,int) {
 				}
 
 				`{` {
-					min, max, tmp, greedy := re.parse_quantifier(in_txt, i+1)
+					min, max, tmp, greedy := parse_quantifier(in_txt, i+1)
 					// it is a quantifier
 					if min >= 0 {
 						//println("{$min,$max}\n str:[${in_txt[i..i+tmp]}] greedy:$greedy")

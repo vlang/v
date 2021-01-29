@@ -74,7 +74,7 @@ fn (mut v Builder) find_win_cc() ? {
 	v.pref.ccompiler_type = pref.cc_from_string(v.pref.ccompiler)
 }
 
-fn (mut v Builder) show_c_compiler_output(res os.Result) {
+fn show_c_compiler_output(res os.Result) {
 	println('======== C Compiler output ========')
 	println(res.output)
 	println('=================================')
@@ -642,7 +642,7 @@ fn (mut v Builder) cc() {
 		}
 		v.timing_measure(ccompiler_label)
 		if v.pref.show_c_output {
-			v.show_c_compiler_output(res)
+			show_c_compiler_output(res)
 		}
 		os.chdir(original_pwd)
 		vcache.dlog('| Builder.' + @FN, '>       v.pref.use_cache: $v.pref.use_cache | v.pref.retry_compilation: $v.pref.retry_compilation')

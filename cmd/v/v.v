@@ -131,7 +131,7 @@ fn main() {
 	if command in ['run', 'build', 'build-module'] || command.ends_with('.v') || os.exists(command) {
 		// println('command')
 		// println(prefs.path)
-		builder.compile(command, prefs)
+		builder.compile(prefs)
 		return
 	}
 	eprintln('v $command: unknown command\nRun "v help" for usage.')

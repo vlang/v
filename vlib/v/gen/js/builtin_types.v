@@ -1,7 +1,7 @@
 module js
 import v.table
 
-fn (mut g JsGen) to_js_typ_def_val(s string) string {
+fn to_js_typ_def_val(s string) string {
 	mut dval := ''
 	match s {
 		'JS.Number' { dval = '0' }
@@ -16,25 +16,25 @@ fn (mut g JsGen) to_js_typ_def_val(s string) string {
 fn (mut g JsGen) to_js_typ_val(t table.Type) string {
 	sym := g.table.get_type_symbol(t)
 	mut styp := ''
-	mut prefix := if g.file.mod.name == 'builtin' { 'new ' } else { '' } 
+	mut prefix := if g.file.mod.name == 'builtin' { 'new ' } else { '' }
 	match sym.kind {
 		.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64, .int_literal, .float_literal, .size_t {
-			styp = '${prefix}${g.sym_to_js_typ(sym)}(0)'
+			styp = '${prefix}${sym_to_js_typ(sym)}(0)'
 		}
 		.bool {
-			styp = '${prefix}${g.sym_to_js_typ(sym)}(false)'
+			styp = '${prefix}${sym_to_js_typ(sym)}(false)'
 		}
 		.string {
-			styp = '${prefix}${g.sym_to_js_typ(sym)}("")'
+			styp = '${prefix}${sym_to_js_typ(sym)}("")'
 		}
 		.map {
 			styp = 'new Map()'
 		}
 		.array {
-			styp = '${prefix}${g.sym_to_js_typ(sym)}()'
+			styp = '${prefix}${sym_to_js_typ(sym)}()'
 		}
 		.struct_ {
-			styp = 'new ${g.js_name(sym.name)}(${g.to_js_typ_def_val(sym.name)})'
+			styp = 'new ${g.js_name(sym.name)}(${to_js_typ_def_val(sym.name)})'
 		}
 		else {
 			// TODO
@@ -44,7 +44,7 @@ fn (mut g JsGen) to_js_typ_val(t table.Type) string {
 	return styp
 }
 
-fn (mut g JsGen) sym_to_js_typ(sym table.TypeSymbol) string {
+fn sym_to_js_typ(sym table.TypeSymbol) string {
 	mut styp := ''
 	match sym.kind {
 		.i8 { styp = 'i8' }
@@ -88,28 +88,28 @@ pub fn (mut g JsGen) typ(t table.Type) string {
 			styp = 'any'
 		}
 		.byteptr, .charptr {
-			styp = '${g.sym_to_js_typ(sym)}'
+			styp = '${sym_to_js_typ(sym)}'
 		}
 		.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64, .int_literal, .float_literal, .size_t {
-			styp = '${g.sym_to_js_typ(sym)}'
+			styp = '${sym_to_js_typ(sym)}'
 		}
 		.bool {
-			styp = '${g.sym_to_js_typ(sym)}'
+			styp = '${sym_to_js_typ(sym)}'
 		}
 		.none_ {
 			styp = 'undefined'
 		}
 		.string, .ustring, .char {
-			styp = '${g.sym_to_js_typ(sym)}'
+			styp = '${sym_to_js_typ(sym)}'
 		}
 		// 'array_array_int' => 'number[][]'
 		.array {
 			info := sym.info as table.Array
-			styp = '${g.sym_to_js_typ(sym)}(${g.typ(info.elem_type)})'
+			styp = '${sym_to_js_typ(sym)}(${g.typ(info.elem_type)})'
 		}
 		.array_fixed {
 			info := sym.info as table.ArrayFixed
-			styp = '${g.sym_to_js_typ(sym)}(${g.typ(info.elem_type)})'
+			styp = '${sym_to_js_typ(sym)}(${g.typ(info.elem_type)})'
 		}
 		.chan {
 			styp = 'chan'

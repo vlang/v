@@ -10,7 +10,7 @@ struct Story {
 	url   string
 }
 
-fn worker_fetch(p &sync.PoolProcessor, cursor int, worker_id int) voidptr {
+fn worker_fetch(p &sync.PoolProcessor, cursor int, _ int) voidptr {
 	id := p.get_int_item(cursor)
 	resp := http.get('https://hacker-news.firebaseio.com/v0/item/${id}.json') or {
 		println('failed to fetch data from /v0/item/${id}.json')

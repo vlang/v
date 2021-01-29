@@ -106,7 +106,7 @@ fn (mut mcache ModFileCacher) traverse(mfolder string) ([]string, ModFileAndFold
 			}
 			return folders_so_far, res
 		}
-		if mcache.check_for_stop(cfolder, files) {
+		if check_for_stop(files) {
 			break
 		}
 		cfolder = os.dir(cfolder)
@@ -138,7 +138,7 @@ const (
 	mod_file_stop_paths = ['.git', '.hg', '.svn', '.v.mod.stop']
 )
 
-fn (mcache &ModFileCacher) check_for_stop(cfolder string, files []string) bool {
+fn check_for_stop(files []string) bool {
 	for i in vmod.mod_file_stop_paths {
 		if i in files {
 			return true

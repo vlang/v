@@ -9,6 +9,11 @@ module http
 #include <urlmon.h>
 
 fn download_file_with_progress(url string, out string, cb voidptr, cb_finished voidptr) {
+	// TODO
+	_ = url
+	_ = out
+	_ = cb
+	_ = cb_finished
 }
 
 /*

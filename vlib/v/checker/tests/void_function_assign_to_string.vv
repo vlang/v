@@ -1,4 +1,4 @@
-fn x(x int,y int) {
+fn x(_ int, _ int) {
 
 }
 fn main(){

@@ -16,7 +16,7 @@ mut:
 	z f64
 }
 
-fn (mut s St) raise() ?f64 {
+fn (mut _ St) raise() ?f64 {
 	return error('some error')
 }
 

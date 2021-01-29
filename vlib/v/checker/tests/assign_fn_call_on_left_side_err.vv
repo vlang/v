@@ -1,5 +1,5 @@
 fn foo(s string) int {
-	return 1
+	return s.len
 }
 
 fn main() {

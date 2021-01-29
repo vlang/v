@@ -17,7 +17,7 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 		if prefs.backend == .c && !prefs.should_compile_c(file) {
 			continue
 		}
-		if prefs.backend == .js && !prefs.should_compile_js(file) {
+		if prefs.backend == .js && !should_compile_js(file) {
 			continue
 		}
 		if file.contains('_d_') {
@@ -142,7 +142,7 @@ pub fn (prefs &Preferences) should_compile_c(file string) bool {
 	return true
 }
 
-pub fn (prefs &Preferences) should_compile_js(file string) bool {
+pub fn should_compile_js(file string) bool {
 	if !file.ends_with('.js.v') && file.split('.').len > 2 {
 		// Probably something like `a.c.v`.
 		return false

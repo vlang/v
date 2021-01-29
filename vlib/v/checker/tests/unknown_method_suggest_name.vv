@@ -17,7 +17,7 @@ fn (p Point) translate(v Vector) Point {
 	return Point{p.x + v.x, p.y + v.y, p.z + v.z}
 }
 
-fn (p Point) identity() Point {
+fn (_ Point) identity() Point {
 	return Point{1, 1, 1}
 }
 

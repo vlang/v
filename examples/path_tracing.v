@@ -484,7 +484,7 @@ fn radiance(r Ray, depthi int, scene_id int) Vec {
 }
 
 //*********************** beam scan routine *********************************
-fn ray_trace(w int, h int, samps int, file_name string, scene_id int) Image {
+fn ray_trace(w int, h int, samps int, scene_id int) Image {
 	image := new_image(w, h)
 
 	// inverse costants
@@ -563,7 +563,7 @@ fn main() {
 
 	t1 := time.ticks()
 
-	image := ray_trace(width, height, samples, file_name, scene_id)
+	image := ray_trace(width, height, samples, scene_id)
 	t2 := time.ticks()
 
 	eprintln('\nRendering finished. Took: ${(t2 - t1):5}ms')

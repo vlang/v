@@ -1,7 +1,7 @@
-fn test(b bool) {
+fn test(_ bool) {
 }
 
-fn test2<T>(b bool, v T) {
+fn test2<T>(_ bool, _ T) {
 }
 
 fn main() {

@@ -176,7 +176,7 @@ TODO
 pub fn (db DB) exec_param(query string, param string) []Row {
 }
 */
-pub fn (db DB) insert<T>(x T) {
+pub fn (_ DB) insert<T>(_ T) {
 }
 
 pub fn (db DB) create_table(table_name string, columns []string) {
