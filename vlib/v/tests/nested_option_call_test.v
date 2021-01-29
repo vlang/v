@@ -15,15 +15,6 @@ fn test_nested_or() {
 	xx()
 }
 
-fn yy() {
-	s := ret(raise() ?)
-	println(s)
-}
-
-fn test_nested_propagation() {
-	yy()
-}
-
 struct St {
 mut:
 	z f64
@@ -49,17 +40,4 @@ fn test_nested_or_method_call() {
 	}
 	x.aa()
 	assert x.z == 2.25
-}
-
-fn (mut s St) bb() {
-	f := retf(s.raise() ?)
-	println(f)
-}
-
-fn test_nested_propagation_method_call() {
-	mut y := St{
-		z: -3.5
-	}
-	y.bb()
-	assert y.z == -3.5
 }
