@@ -61,14 +61,10 @@ pub fn fmt(file ast.File, table &table.Table, is_debug bool) string {
 	}
 	f.process_file_imports(file)
 	f.set_current_module_name('main')
-	for stmt in file.stmts {
-		if stmt is ast.Import {
-			// Just remember the position of the imports for now
-			f.import_pos = f.out.len
-			// f.imports(f.file.imports)
-		}
-		f.stmt(stmt)
-	}
+	// As these are toplevel stmts, the indent increase done in f.stmts() has to be compensated
+	f.indent--
+	f.stmts(file.stmts)
+	f.indent++
 	// for comment in file.comments { println('$comment.line_nr $comment.text')	}
 	f.imports(f.file.imports) // now that we have all autoimports, handle them
 	res := f.out.str().trim_space() + '\n'
@@ -271,20 +267,39 @@ pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
 	return '$imp.mod$imp_alias_suffix'
 }
 
-pub fn (mut f Fmt) stmts(stmts []ast.Stmt) {
-	f.indent++
-	mut prev_line_nr := 0
-	if stmts.len >= 1 {
-		prev_pos := stmts[0].position()
-		prev_line_nr = util.imax(prev_pos.line_nr, prev_pos.last_line)
+fn (mut f Fmt) should_insert_newline_before_stmt(stmt ast.Stmt, prev_stmt ast.Stmt) bool {
+	prev_line_nr := prev_stmt.position().last_line
+	// The stmt either has or shouldn't have a newline before
+	if stmt.position().line_nr - prev_line_nr <= 1 || f.out.last_n(2) == '\n\n' {
+		return false
 	}
+	// Imports are handled special hence they are ignored here
+	if stmt is ast.Import || prev_stmt is ast.Import {
+		return false
+	}
+	// Attributes are not respected in the stmts position, so we have to check it manually
+	if stmt is ast.StructDecl {
+		if stmt.attrs.len > 0 && stmt.attrs[0].pos.line_nr - prev_line_nr <= 1 {
+			return false
+		}
+	}
+	if stmt is ast.FnDecl {
+		if stmt.attrs.len > 0 && stmt.attrs[0].pos.line_nr - prev_line_nr <= 1 {
+			return false
+		}
+	}
+	return true
+}
+
+pub fn (mut f Fmt) stmts(stmts []ast.Stmt) {
+	mut prev_stmt := if stmts.len > 0 { stmts[0] } else { ast.Stmt{} }
+	f.indent++
 	for stmt in stmts {
-		if stmt.position().line_nr - prev_line_nr > 1 {
+		if f.should_insert_newline_before_stmt(stmt, prev_stmt) {
 			f.out.writeln('')
 		}
 		f.stmt(stmt)
-		prev_pos := stmt.position()
-		prev_line_nr = util.imax(prev_pos.line_nr, prev_pos.last_line)
+		prev_stmt = stmt
 	}
 	f.indent--
 }
@@ -362,6 +377,8 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 		}
 		ast.Import {
 			// Imports are handled after the file is formatted, to automatically add necessary modules
+			// Just remember the position of the imports for now
+			f.import_pos = f.out.len
 			// f.imports(f.file.imports)
 		}
 		ast.InterfaceDecl {

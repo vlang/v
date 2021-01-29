@@ -204,7 +204,11 @@ pub fn (mut p Parser) parse() ast.File {
 	}
 	// module
 	module_decl := p.module_decl()
-	stmts << module_decl
+	if module_decl.is_skipped {
+		stmts.insert(0, ast.Stmt(module_decl))
+	} else {
+		stmts << module_decl
+	}
 	// imports
 	for {
 		if p.tok.kind == .key_import {
@@ -513,8 +517,10 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 				return p.struct_decl()
 			}
 			.dollar {
+				if_expr := p.if_expr(true)
 				return ast.ExprStmt{
-					expr: p.if_expr(true)
+					expr: if_expr
+					pos: if_expr.pos
 				}
 			}
 			.hash {
@@ -1753,6 +1759,7 @@ fn (mut p Parser) parse_number_literal() ast.Expr {
 
 fn (mut p Parser) module_decl() ast.Module {
 	mut module_attrs := []table.Attr{}
+	mut attrs_pos := p.tok.position()
 	if p.tok.kind == .lsbr {
 		p.attributes()
 		module_attrs = p.attrs
@@ -1788,7 +1795,7 @@ fn (mut p Parser) module_decl() ast.Module {
 				return mod_node
 			}
 		}
-		module_pos = module_pos.extend(name_pos)
+		module_pos = attrs_pos.extend(name_pos)
 	}
 	full_name := util.qualify_module(name, p.file_name)
 	p.mod = full_name

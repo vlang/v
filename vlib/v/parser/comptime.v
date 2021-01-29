@@ -16,7 +16,7 @@ const (
 
 // // #include, #flag, #v
 fn (mut p Parser) hash() ast.HashStmt {
-	mut pos := p.prev_tok.position()
+	pos := p.tok.position()
 	val := p.tok.lit
 	kind := val.all_before(' ')
 	p.next()
