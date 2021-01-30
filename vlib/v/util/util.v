@@ -120,6 +120,32 @@ pub fn resolve_vroot(str string, dir string) ?string {
 	return str.replace('@VROOT', os.real_path(vmod_path))
 }
 
+// resolve_env_value replaces all `$env('ENV_VAR_NAME')` entries with the
+// value of the env variable.
+pub fn resolve_env_value(str string) ?string {
+	ident := r'$' + 'env(' + "'"
+	at := str.index(ident) or { return error('No "$ident' + '...\')" could be found in "$str".') }
+	mut ch := byte(`.`)
+	mut env_lit := ''
+	for i := at + ident.len; i < str.len && ch != `)`; i++ {
+		ch = byte(str[i])
+		if ch.is_letter() || ch.is_digit() || ch == `_` {
+			env_lit += ch.ascii_str()
+		} else {
+			if !(ch == `\'` || ch == `)`) {
+				return error('Could not parse "$ident' +
+					'...\')" in "$str". Invalid character "$ch.ascii_str()"')
+			}
+		}
+	}
+	// println('Replacing: "' + ident + env_lit + "') " + 'with "'+os.getenv(env_lit)+'"')
+	rep := str.replace_once(ident + env_lit + "'" + ')', os.getenv(env_lit))
+	if rep.contains(ident) {
+		return resolve_env_value(rep)
+	}
+	return rep
+}
+
 // launch_tool - starts a V tool in a separate process, passing it the `args`.
 // All V tools are located in the cmd/tools folder, in files or folders prefixed by
 // the letter `v`, followed by the tool name, i.e. `cmd/tools/vdoc/` or `cmd/tools/vpm.v`.

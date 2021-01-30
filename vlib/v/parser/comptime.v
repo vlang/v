@@ -11,7 +11,7 @@ import v.token
 import vweb.tmpl
 
 const (
-	supported_comptime_calls = ['html', 'tmpl', 'embed_file']
+	supported_comptime_calls = ['html', 'tmpl', 'env', 'embed_file']
 )
 
 // // #include, #flag, #v
@@ -47,7 +47,7 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 		scope: 0
 	}
 	p.check(.dollar)
-	error_msg := 'only `\$tmpl()`, `\$embed_file()` and `\$vweb.html()` comptime functions are supported right now'
+	error_msg := 'only `\$tmpl()`, `\$env()`, `\$embed_file()` and `\$vweb.html()` comptime functions are supported right now'
 	if p.peek_tok.kind == .dot {
 		n := p.check_name() // skip `vweb.html()` TODO
 		if n != 'vweb' {
@@ -70,7 +70,25 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 		p.check(.string)
 	}
 	p.check(.rpar)
-	//
+	// $env('ENV_VAR_NAME')
+	if n == 'env' {
+		mut env_var := s
+		if env_var == '' {
+			p.error_with_pos('please supply an env variable name like `HOME`, `PATH` or `USER`',
+				spos)
+			return ast.ComptimeCall{}
+		}
+		if env_var.starts_with('$') {
+			p.error_with_pos('no need to prefix the env variable with `$` you can use names like `HOME`, `PATH` or `USER`',
+				spos)
+			return ast.ComptimeCall{}
+		}
+		return ast.ComptimeCall{
+			method_name: n
+			args_var: s
+		}
+	}
+	// $embed_file('/path/to/file')
 	if is_embed_file {
 		mut epath := s
 		// Validate that the epath exists, and that it is actually a file.

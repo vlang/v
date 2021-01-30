@@ -3205,6 +3205,13 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			node.val = 'include $vroot'
 			node.main = vroot
 		}
+		if flag.contains('$' + 'env(') {
+			env := util.resolve_env_value(flag) or {
+				c.error(err, node.pos)
+				return
+			}
+			node.main = env
+		}
 		flag_no_comment := flag.all_before('//').trim_space()
 		if !((flag_no_comment.starts_with('"') && flag_no_comment.ends_with('"'))
 			|| (flag_no_comment.starts_with('<') && flag_no_comment.ends_with('>'))) {
@@ -3235,6 +3242,12 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 		// expand `@VROOT` to its absolute path
 		if flag.contains('@VROOT') {
 			flag = util.resolve_vroot(flag, c.file.path) or {
+				c.error(err, node.pos)
+				return
+			}
+		}
+		if flag.contains('$' + 'env(') {
+			flag = util.resolve_env_value(flag) or {
 				c.error(err, node.pos)
 				return
 			}
