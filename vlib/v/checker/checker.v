@@ -1348,7 +1348,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			// need to return `array_xxx` instead of `array`
 			// in ['clone', 'str'] {
 			call_expr.receiver_type = left_type.to_ptr()
-			// call_expr.return_type = call_expr.receiver_type
+			call_expr.return_type = call_expr.receiver_type.set_nr_muls(0)
 		} else if method_name == 'sort' {
 			call_expr.return_type = table.void_type
 		} else if method_name == 'contains' {
