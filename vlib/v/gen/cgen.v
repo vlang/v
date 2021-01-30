@@ -2099,8 +2099,8 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				// Unwrap the optional now that the testing code has been prepended.
 				// `pos := s.index(...
 				// `int pos = *(int)_t10.data;`
-				g.write('*($styp*)')
 				if g.is_autofree {
+					g.write('*($styp*)')
 					g.write(tmp_opt + '.data/*FFz*/')
 					g.right_is_opt = false
 					g.is_assign_rhs = false
@@ -2154,13 +2154,6 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 							g.write(')')
 						}
 					}
-				}
-			}
-			if unwrap_optional {
-				if g.is_autofree {
-					// g.write(tmp_opt + '/*FF*/')
-				} else {
-					g.write('.data')
 				}
 			}
 			if str_add || op_overloaded {
@@ -4623,7 +4616,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 						g.definitions.writeln('$styp _const_$name; // fixed array const')
 					}
 				} else {
-					g.const_decl_init_later(field.mod, name, val, field.typ)
+					g.const_decl_init_later(field.mod, name, val, field.typ, false)
 				}
 			}
 			ast.StringLiteral {
@@ -4635,13 +4628,15 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 			ast.CallExpr {
 				if val.starts_with('Option_') {
 					g.inits[field.mod].writeln(val)
-					g.const_decl_init_later(field.mod, name, g.current_tmp_var(), field.typ)
+					unwrap_option := field.expr.or_block.kind != .absent
+					g.const_decl_init_later(field.mod, name, g.current_tmp_var(), field.typ,
+						unwrap_option)
 				} else {
-					g.const_decl_init_later(field.mod, name, val, field.typ)
+					g.const_decl_init_later(field.mod, name, val, field.typ, false)
 				}
 			}
 			else {
-				g.const_decl_init_later(field.mod, name, val, field.typ)
+				g.const_decl_init_later(field.mod, name, val, field.typ, false)
 			}
 		}
 	}
@@ -4656,7 +4651,7 @@ fn (mut g Gen) const_decl_simple_define(name string, val string) {
 	g.definitions.writeln(val)
 }
 
-fn (mut g Gen) const_decl_init_later(mod string, name string, val string, typ table.Type) {
+fn (mut g Gen) const_decl_init_later(mod string, name string, val string, typ table.Type, unwrap_option bool) {
 	// Initialize more complex consts in `void _vinit/2{}`
 	// (C doesn't allow init expressions that can't be resolved at compile time).
 	styp := g.typ(typ)
@@ -4669,7 +4664,11 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, val string, typ ta
 			g.inits[mod].writeln('\t_const_os__args = os__init_os_args(___argc, (byte**)___argv);')
 		}
 	} else {
-		g.inits[mod].writeln('\t$cname = $val;')
+		if unwrap_option {
+			g.inits[mod].writeln('\t$cname = *($styp*)${val}.data;')
+		} else {
+			g.inits[mod].writeln('\t$cname = $val;')
+		}
 	}
 	if g.is_autofree {
 		if styp.starts_with('array_') {
@@ -5305,15 +5304,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 					expr_stmt := stmt as ast.ExprStmt
 					g.stmt_path_pos << g.out.len
 					g.write('*($mr_styp*) ${cvar_name}.data = ')
-					is_opt_call := expr_stmt.expr is ast.CallExpr
-						&& expr_stmt.typ.has_flag(.optional)
-					if is_opt_call {
-						g.write('*($mr_styp*) ')
-					}
 					g.expr_with_cast(expr_stmt.expr, expr_stmt.typ, return_type.clear_flag(.optional))
-					if is_opt_call {
-						g.write('.data')
-					}
 					if g.inside_ternary == 0 && !(expr_stmt.expr is ast.IfExpr) {
 						g.writeln(';')
 					}
@@ -5342,11 +5333,15 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 			// the defered statements are generated.
 			g.write_defer_stmts()
 			// Now that option types are distinct we need a cast here
-			styp := g.typ(g.fn_decl.return_type)
-			err_obj := g.new_tmp_var()
-			g.writeln('\t$styp $err_obj;')
-			g.writeln('\tmemcpy(&$err_obj, &$cvar_name, sizeof(Option));')
-			g.writeln('\treturn $err_obj;')
+			if g.fn_decl.return_type == table.void_type {
+				g.writeln('\treturn;')
+			} else {
+				styp := g.typ(g.fn_decl.return_type)
+				err_obj := g.new_tmp_var()
+				g.writeln('\t$styp $err_obj;')
+				g.writeln('\tmemcpy(&$err_obj, &$cvar_name, sizeof(Option));')
+				g.writeln('\treturn $err_obj;')
+			}
 		}
 	}
 	g.write('}')
