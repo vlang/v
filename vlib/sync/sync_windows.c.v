@@ -57,7 +57,7 @@ pub fn (mut m RwMutex) init() {
 	C.InitializeSRWLock(&m.mx)
 }
 
-pub fn (mut m Mutex) m_lock() {
+pub fn (mut m Mutex) @lock() {
 	C.AcquireSRWLockExclusive(&m.mx)
 }
 
@@ -66,21 +66,21 @@ pub fn (mut m Mutex) unlock() {
 }
 
 // RwMutex has separate read- and write locks
-pub fn (mut m RwMutex) r_lock() {
+pub fn (mut m RwMutex) @rlock() {
 	C.AcquireSRWLockShared(&m.mx)
 }
 
-pub fn (mut m RwMutex) w_lock() {
+pub fn (mut m RwMutex) @lock() {
 	C.AcquireSRWLockExclusive(&m.mx)
 }
 
 // Windows SRWLocks have different function to unlock
 // So provide two functions here, too, to have a common interface
-pub fn (mut m RwMutex) r_unlock() {
+pub fn (mut m RwMutex) runlock() {
 	C.ReleaseSRWLockShared(&m.mx)
 }
 
-pub fn (mut m RwMutex) w_unlock() {
+pub fn (mut m RwMutex) unlock() {
 	C.ReleaseSRWLockExclusive(&m.mx)
 }
 
