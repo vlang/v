@@ -48,16 +48,16 @@ fn C.printf(byteptr, ...byteptr) int
 
 fn C.puts(byteptr) int
 
-fn C.fputs(byteptr, voidptr) int
+fn C.fputs(str byteptr, stream &C.FILE) int
 
-fn C.fflush(byteptr) int
+fn C.fflush(&C.FILE) int
 
 // TODO define args in these functions
 fn C.fseek() int
 
-fn C.fopen(charptr, charptr) voidptr
+fn C.fopen(filename charptr, mode charptr) &C.FILE
 
-fn C.fileno(voidptr) int
+fn C.fileno(&C.FILE) int
 
 fn C.fread(ptr voidptr, item_size size_t, items size_t, stream &C.FILE) size_t
 
