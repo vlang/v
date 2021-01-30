@@ -2437,6 +2437,11 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			}
 			left_type = c.expr(left)
 			c.expected_type = c.unwrap_generic(left_type)
+			// `map = {}`
+			sym := c.table.get_type_symbol(left_type)
+			if sym.kind == .map && assign_stmt.right[i] is ast.StructInit {
+				assign_stmt.right[i] = ast.MapInit{}
+			}
 		}
 		if assign_stmt.right_types.len < assign_stmt.left.len { // first type or multi return types added above
 			right_type := c.expr(assign_stmt.right[i])
@@ -5065,6 +5070,17 @@ pub fn (mut c Checker) check_dup_keys(node &ast.MapInit, i int) {
 }
 
 pub fn (mut c Checker) map_init(mut node ast.MapInit) table.Type {
+	// `map = {}`
+	if node.keys.len == 0 && node.vals.len == 0 && node.typ == 0 {
+		sym := c.table.get_type_symbol(c.expected_type)
+		if sym.kind == .map {
+			info := sym.map_info()
+			node.typ = c.expected_type
+			node.key_type = info.key_type
+			node.value_type = info.value_type
+			return node.typ
+		}
+	}
 	// `x := map[string]string` - set in parser
 	if node.typ != 0 {
 		info := c.table.get_type_symbol(node.typ).map_info()
