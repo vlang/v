@@ -4983,6 +4983,12 @@ fn (mut g Gen) write_init_function() {
 		g.writeln('g_m2_buf = malloc(50 * 1000 * 1000);')
 		g.writeln('g_m2_ptr = g_m2_buf;')
 	}
+	// NB: the as_cast table should be *before* the other constant initialize calls,
+	// because it may be needed during const initialization of builtin and during
+	// calling module init functions too, just in case they do fail...
+	g.write('\tas_cast_type_indexes = ')
+	g.writeln(g.as_cast_name_table())
+	//
 	g.writeln('\tbuiltin_init();')
 	g.writeln('\tvinit_string_literals();')
 	//
@@ -4998,10 +5004,6 @@ fn (mut g Gen) write_init_function() {
 			}
 		}
 	}
-	as_cast_name_table := g.as_cast_name_table()
-	if as_cast_name_table != '' {
-		g.writeln('\t' + as_cast_name_table)
-	}
 	g.writeln('}')
 	if g.pref.printfn_list.len > 0 && '_vinit' in g.pref.printfn_list {
 		println(g.out.after(fn_vinit_start_pos))
@@ -5016,6 +5018,7 @@ fn (mut g Gen) write_init_function() {
 			g.writeln(g.cleanups[mod_name].str())
 		}
 		// g.writeln('\tfree(g_str_buf);')
+		g.writeln('\tarray_free(&as_cast_type_indexes);')
 		g.writeln('}')
 		if g.pref.printfn_list.len > 0 && '_vcleanup' in g.pref.printfn_list {
 			println(g.out.after(fn_vcleanup_start_pos))
@@ -5852,45 +5855,45 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 	expr_type_sym := g.table.get_type_symbol(node.expr_type)
 	if expr_type_sym.info is table.SumType {
 		dot := if node.expr_type.is_ptr() { '->' } else { '.' }
-		g.write('/* as */ *($styp*)__as_cast2((')
+		g.write('/* as */ *($styp*)__as_cast(')
+		g.write('(')
 		g.expr(node.expr)
 		g.write(')')
 		g.write(dot)
-		g.write('_$sym.cname, (')
+		g.write('_$sym.cname,')
+		g.write('(')
 		g.expr(node.expr)
 		g.write(')')
 		g.write(dot)
 		// g.write('typ, /*expected:*/$node.typ)')
 		sidx := g.type_sidx(node.typ)
 		expected_sym := g.table.get_type_symbol(node.typ)
-		g.write('typ, /*expected:*/$sidx, /*expected name:*/ _SLIT("$expected_sym.name"))')
+		g.write('typ, $sidx) /*expected idx: $sidx, name: $expected_sym.name */ ')
 
 		// fill as cast name table
 		for variant in expr_type_sym.info.variants {
-			if variant.str() in g.as_cast_type_names {
+			idx := variant.str()
+			if idx in g.as_cast_type_names {
 				continue
 			}
 			variant_sym := g.table.get_type_symbol(variant)
-			g.as_cast_type_names[variant.str()] = variant_sym.name
+			g.as_cast_type_names[idx] = variant_sym.name
 		}
 	}
 }
 
 fn (g Gen) as_cast_name_table() string {
 	if g.as_cast_type_names.len == 0 {
-		return ''
+		return 'new_array_from_c_array(1, 1, sizeof(VCastTypeIndexName), _MOV((VCastTypeIndexName[1]){(VCastTypeIndexName){.tindex = 0,.tname = _SLIT("unknown")}}));'
 	}
-	mut name_table := strings.new_builder(50)
-	name_table.write('as_cast_name_table = new_map_init_2(&map_hash_string, &map_eq_string, &map_clone_string, &map_free_string, $g.as_cast_type_names.len, sizeof(string), sizeof(string)')
-	mut keys := ',_MOV((string[$g.as_cast_type_names.len]){'
-	mut values := '}), _MOV((string[$g.as_cast_type_names.len]){'
+	mut name_table := strings.new_builder(1024)
+	casts_len := g.as_cast_type_names.len + 1
+	name_table.writeln('new_array_from_c_array($casts_len, $casts_len, sizeof(VCastTypeIndexName), _MOV((VCastTypeIndexName[$casts_len]){')
+	name_table.writeln('\t\t  (VCastTypeIndexName){.tindex = 0, .tname = _SLIT("unknown")}')
 	for key, value in g.as_cast_type_names {
-		keys += '_SLIT("$key"),'
-		values += '_SLIT("$value"),'
+		name_table.writeln('\t\t, (VCastTypeIndexName){.tindex = $key, .tname = _SLIT("$value")}')
 	}
-	name_table.write(keys)
-	name_table.write(values)
-	name_table.writeln('}));')
+	name_table.writeln('\t}));')
 	return name_table.str()
 }
 

@@ -1,7 +1,5 @@
 Foo
 ================ V panic ================
    module: builtin
- function: __as_cast2()
+ function: __as_cast()
   message: as cast: cannot cast `main.Struct` to `main.Interface`
-     file: vlib/builtin/builtin.v
-     line: 49

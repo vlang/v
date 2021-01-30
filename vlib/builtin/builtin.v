@@ -4,10 +4,8 @@
 module builtin
 
 __global (
-	g_m2_buf byteptr
-	g_m2_ptr byteptr
-	// will be filled in cgen
-	as_cast_name_table map[string]string
+	g_m2_buf byteptr 
+	g_m2_ptr byteptr 
 )
 
 // isnil returns true if an object is nil (only for C objects).
@@ -31,21 +29,30 @@ pub fn print_backtrace() {
 	print_backtrace_skipping_top_frames(2)
 }
 
+struct VCastTypeIndexName {
+	tindex int
+	tname  string
+}
+
 __global (
-	total_m    = i64(0)
-	nr_mallocs = int(0)
+	total_m              = i64(0)
+	nr_mallocs           = int(0)
+	// will be filled in cgen
+	as_cast_type_indexes   []VCastTypeIndexName 
 )
 
 fn __as_cast(obj voidptr, obj_type int, expected_type int) voidptr {
 	if obj_type != expected_type {
-		panic('as cast: cannot cast $obj_type to $expected_type')
-	}
-	return obj
-}
-
-fn __as_cast2(obj voidptr, obj_type int, expected_type int, expected_name string) voidptr {
-	if obj_type != expected_type {
-		obj_name := as_cast_name_table[obj_type.str()]
+		mut obj_name := as_cast_type_indexes[0].tname
+		mut expected_name := as_cast_type_indexes[0].tname
+		for x in as_cast_type_indexes {
+			if x.tindex == obj_type {
+				obj_name = x.tname
+			}
+			if x.tindex == expected_type {
+				expected_name = x.tname
+			}
+		}
 		panic('as cast: cannot cast `$obj_name` to `$expected_name`')
 	}
 	return obj
@@ -65,15 +72,15 @@ pub:
 	lvalue  string // the stringified *actual value* of the left side of a failed assertion
 	rvalue  string // the stringified *actual value* of the right side of a failed assertion
 }
+
 fn __print_assert_failure(i &VAssertMetaInfo) {
-	eprintln('${i.fpath}:${i.line_nr+1}: FAIL: fn ${i.fn_name}: assert ${i.src}')
+	eprintln('$i.fpath:${i.line_nr + 1}: FAIL: fn $i.fn_name: assert $i.src')
 	if i.op.len > 0 && i.op != 'call' {
-		eprintln('   left value: ${i.llabel} = ${i.lvalue}')
+		eprintln('   left value: $i.llabel = $i.lvalue')
 		if i.rlabel == i.rvalue {
 			eprintln('  right value: $i.rlabel')
-		}
-		else {
-			eprintln('  right value: ${i.rlabel} = ${i.rvalue}')
+		} else {
+			eprintln('  right value: $i.rlabel = $i.rvalue')
 		}
 	}
 }
