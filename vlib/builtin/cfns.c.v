@@ -7,7 +7,7 @@ fn C.memcmp(byteptr, byteptr, int) int
 
 fn C.memmove(byteptr, byteptr, int) voidptr
 
-fn C.calloc(int) byteptr
+fn C.calloc(int, int) byteptr
 
 fn C.malloc(int) byteptr
 
@@ -48,7 +48,7 @@ fn C.printf(byteptr, ...byteptr) int
 
 fn C.puts(byteptr) int
 
-fn C.fputs(byteptr) int
+fn C.fputs(byteptr, voidptr) int
 
 fn C.fflush(byteptr) int
 
@@ -100,7 +100,7 @@ fn C.chdir() int
 
 fn C.rewind() int
 
-fn C.stat(charptr) int
+fn C.stat(charptr, voidptr) int
 
 fn C.lstat() int
 
