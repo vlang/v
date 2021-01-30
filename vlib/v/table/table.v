@@ -136,13 +136,13 @@ pub fn (t &Table) struct_type_signature(s &Struct) string {
 
 	mut sig := ''
 	for i, embed in s.embeds {
-		sig += '${embed}'
+		sig += '$embed'
 		if i < all_field_len - 1 {
 			sig += '_'
 		}
 	}
 	for i, field in s.fields {
-		sig += '${field.name}_${field.typ}'
+		sig += '${field.name}_$field.typ'
 		if i + s.embeds.len < all_field_len - 1 {
 			sig += '_'
 		}
@@ -157,14 +157,14 @@ pub fn (t &Table) struct_type_source_signature(s &Struct) string {
 	mut sig := '{'
 	for i, embed in s.embeds {
 		embed_type_sym := t.get_type_symbol(embed)
-		sig += '${embed_type_sym.name}'
+		sig += '$embed_type_sym.name'
 		if i < all_field_len - 1 {
 			sig += ', '
 		}
 	}
 	for i, field in s.fields {
 		field_type_sym := t.get_type_symbol(field.typ)
-		sig += '${field.name} ${field_type_sym.name}'
+		sig += '$field.name $field_type_sym.name'
 		if i + s.embeds.len < all_field_len - 1 {
 			sig += ', '
 		}
@@ -708,7 +708,11 @@ pub fn (mut t Table) find_or_register_fn_type(mod string, f Fn, is_anon bool, ha
 }
 
 pub fn (mut t Table) find_or_register_struct_type(s_name string, mod string, s Struct) int {
-	name := if s_name.len == 0 { 'struct${t.struct_type_source_signature(s)}' } else { s_name.clone() }
+	name := if s_name.len == 0 {
+		'struct${t.struct_type_source_signature(s)}'
+	} else {
+		s_name.clone()
+	}
 	cname := if s_name.len == 0 {
 		'_anon_struct_${t.struct_type_signature(s)}'
 	} else {
@@ -719,13 +723,13 @@ pub fn (mut t Table) find_or_register_struct_type(s_name string, mod string, s S
 	if existing_idx > 0 && t.types[existing_idx].kind != .placeholder {
 		return existing_idx
 	}
-	return t.register_type_symbol({ 
+	return t.register_type_symbol(
 		kind: .struct_
 		name: name
 		cname: cname
 		mod: mod
 		info: s
-	})
+	)
 }
 
 pub fn (mut t Table) add_placeholder_type(name string, language Language) int {

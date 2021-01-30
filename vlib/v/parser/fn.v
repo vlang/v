@@ -499,9 +499,9 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	mut return_type := table.void_type
 	// lpar: multiple return types
 	if same_line {
-		if p.tok.kind.is_start_of_type() 
-		|| (p.tok.kind == .key_fn && p.tok.line_nr == p.prev_tok.line_nr)
-		|| (p.tok.kind == .key_struct && p.tok.line_nr == p.prev_tok.line_nr) {
+		if p.tok.kind.is_start_of_type()
+			|| (p.tok.kind == .key_fn && p.tok.line_nr == p.prev_tok.line_nr)
+			|| (p.tok.kind == .key_struct && p.tok.line_nr == p.prev_tok.line_nr) {
 			return_type = p.parse_type()
 		} else if p.tok.kind != .lcbr {
 			p.error_with_pos('expected return type, not $p.tok for anonymous function',

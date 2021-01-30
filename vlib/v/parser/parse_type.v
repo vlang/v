@@ -174,7 +174,7 @@ pub fn (mut p Parser) parse_struct_type() table.Type {
 			embeds << p.struct_embed(mut comments).typ
 		} else {
 			field := p.struct_field(false, mut comments)
-			fields << table.Field {
+			fields << table.Field{
 				name: field.name
 				typ: field.typ
 				default_expr: ast.ex2fe(field.default_expr)
@@ -192,7 +192,7 @@ pub fn (mut p Parser) parse_struct_type() table.Type {
 	}
 	p.check(.rcbr)
 
-	s := table.Struct {
+	s := table.Struct{
 		embeds: embeds
 		fields: fields
 		is_typedef: false
