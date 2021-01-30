@@ -43,20 +43,23 @@ fn (mut p Parser) hash() ast.HashStmt {
 }
 
 fn (mut p Parser) comp_call() ast.ComptimeCall {
+	err_node := ast.ComptimeCall{
+		scope: 0
+	}
 	p.check(.dollar)
 	error_msg := 'only `\$tmpl()`, `\$embed_file()` and `\$vweb.html()` comptime functions are supported right now'
 	if p.peek_tok.kind == .dot {
 		n := p.check_name() // skip `vweb.html()` TODO
 		if n != 'vweb' {
 			p.error(error_msg)
-			return ast.ComptimeCall{}
+			return err_node
 		}
 		p.check(.dot)
 	}
 	n := p.check_name() // (.name)
 	if n !in parser.supported_comptime_calls {
 		p.error(error_msg)
-		return ast.ComptimeCall{}
+		return err_node
 	}
 	is_embed_file := n == 'embed_file'
 	is_html := n == 'html'
@@ -74,7 +77,7 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 		if epath == '' {
 			p.error_with_pos('please supply a valid relative or absolute file path to the file to embed',
 				spos)
-			return ast.ComptimeCall{}
+			return err_node
 		}
 		if !p.pref.is_fmt {
 			abs_path := os.real_path(epath)
@@ -85,12 +88,12 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 				if !os.exists(epath) {
 					p.error_with_pos('"$epath" does not exist so it cannot be embedded',
 						spos)
-					return ast.ComptimeCall{}
+					return err_node
 				}
 				if !os.is_file(epath) {
 					p.error_with_pos('"$epath" is not a file so it cannot be embedded',
 						spos)
-					return ast.ComptimeCall{}
+					return err_node
 				}
 			} else {
 				epath = abs_path
@@ -98,6 +101,7 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 		}
 		p.register_auto_import('v.embed_file')
 		return ast.ComptimeCall{
+			scope: 0
 			is_embed: true
 			embed_file: ast.EmbeddedFile{
 				rpath: s
@@ -126,11 +130,10 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 		if !os.exists(path) {
 			if is_html {
 				p.error('vweb HTML template "$path" not found')
-				return ast.ComptimeCall{}
 			} else {
 				p.error('template file "$path" not found')
-				return ast.ComptimeCall{}
 			}
+			return err_node
 		}
 		// println('path is now "$path"')
 	}
@@ -185,6 +188,7 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 		}
 	}
 	return ast.ComptimeCall{
+		scope: 0
 		is_vweb: true
 		vweb_tmpl: file
 		method_name: n
@@ -257,7 +261,9 @@ fn (mut p Parser) at() ast.AtExpr {
 fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 	p.check(.dollar)
 	if p.peek_tok.kind == .lpar {
+		method_pos := p.tok.position()
 		method_name := p.check_name()
+		p.mark_var_as_used(method_name)
 		// `app.$action()` (`action` is a string)
 		p.check(.lpar)
 		mut args_var := ''
@@ -273,6 +279,8 @@ fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 		return ast.ComptimeCall{
 			left: left
 			method_name: method_name
+			method_pos: method_pos
+			scope: p.scope
 			args_var: args_var
 		}
 	}

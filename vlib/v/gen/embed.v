@@ -27,7 +27,7 @@ fn (mut g Gen) gen_embed_file_init(node ast.ComptimeCall) {
 	g.writeln('\t\t.free_compressed = 0,')
 	g.writeln('\t\t.free_uncompressed = 0,')
 	g.writeln('\t\t.len = $file_size')
-	g.writeln('} // $' + 'embed_file("$node.embed_file.apath")')
+	g.writeln('} // \$embed_file("$node.embed_file.apath")')
 }
 
 // gen_embedded_data embeds data into the V target executable.

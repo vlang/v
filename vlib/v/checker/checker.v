@@ -3677,14 +3677,39 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) table.Type {
 		c.nr_errors += c2.nr_errors
 	}
 	if node.method_name == 'html' {
-		return c.table.find_type_idx('vweb.Result')
+		rtyp := c.table.find_type_idx('vweb.Result')
+		node.result_type = rtyp
+		return rtyp
 	}
-	mut var := c.fn_scope.objects[node.method_name]
-	if mut var is ast.Var {
-		var.is_used = true
-		c.fn_scope.objects[node.method_name] = var
+	if node.is_vweb || node.method_name == 'method' {
+		return table.string_type
 	}
-	return table.string_type
+	// s.$my_str()
+	v := node.scope.find_var(node.method_name) or {
+		c.error('unknown identifier `$node.method_name`', node.method_pos)
+		return table.void_type
+	}
+	if v.typ != table.string_type {
+		s := c.expected_msg(v.typ, table.string_type)
+		c.error('invalid string method call: $s', node.method_pos)
+		return table.void_type
+	}
+	// note: we should use a compile-time evaluation function rather than handle here
+	// mut variables will not work after init
+	mut method_name := ''
+	if v.expr is ast.StringLiteral {
+		method_name = v.expr.val
+	} else {
+		c.add_error_detail(v.expr.type_name())
+		c.error('todo: not a string literal', node.method_pos)
+	}
+	f := node.sym.find_method(method_name) or {
+		c.error('could not find method `$method_name`', node.method_pos)
+		return table.void_type
+	}
+	println(f.name + ' ' + c.table.type_to_str(f.return_type))
+	node.result_type = f.return_type
+	return f.return_type
 }
 
 fn (mut c Checker) at_expr(mut node ast.AtExpr) table.Type {
