@@ -1781,6 +1781,15 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		call_expr.should_be_skipped = true
 	}
 	if f.language != .v || call_expr.language != .v {
+		// ignore C function of type `fn()`, assume untyped
+		// For now don't check C functions that are variadic, underscored, capitalized
+		// or have no params and return int
+		if f.language == .c && f.params.len != call_expr.args.len && !f.is_variadic
+			&& f.name[2] != `_` && !f.name[2].is_capital()
+			&& (f.params.len != 0 || f.return_type !in [table.void_type, table.int_type]) {
+			// change to error later
+			c.warn('expected $f.params.len arguments, but got $call_expr.args.len', call_expr.pos)
+		}
 		for arg in call_expr.args {
 			c.expr(arg.expr)
 		}
