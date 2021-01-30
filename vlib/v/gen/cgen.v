@@ -114,7 +114,7 @@ mut:
 	strs_to_free0         []string // strings.Builder
 	// strs_to_free          []string // strings.Builder
 	inside_call           bool
-	for_in_mul_val_name   string
+	for_in_mut_val_name   string
 	has_main              bool
 	inside_const          bool
 	comp_for_method       string      // $for method in T.methods {}
@@ -1384,11 +1384,11 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 			g.writeln('DenseArray_value(&$atmp${arw_or_pt}key_values, $idx));')
 		}
 		if it.val_is_mut {
-			g.for_in_mul_val_name = it.val_var
+			g.for_in_mut_val_name = it.val_var
 		}
 		g.stmts(it.stmts)
 		if it.val_is_mut {
-			g.for_in_mul_val_name = ''
+			g.for_in_mut_val_name = ''
 		}
 		if it.key_type == table.string_type && !g.is_builtin_mod {
 			// g.writeln('string_free(&$key);')
@@ -1437,11 +1437,11 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		g.error('for in: unhandled symbol `$it.cond` of type `$s`', it.pos)
 	}
 	if it.val_is_mut {
-		g.for_in_mul_val_name = it.val_var
+		g.for_in_mut_val_name = it.val_var
 	}
 	g.stmts(it.stmts)
 	if it.val_is_mut {
-		g.for_in_mul_val_name = ''
+		g.for_in_mut_val_name = ''
 	}
 	if it.label.len > 0 {
 		g.writeln('\t${it.label}__continue: {}')
@@ -1994,7 +1994,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			} else {
 				g.out.go_back_to(pos)
 				is_var_mut := !is_decl && left is ast.Ident
-					&& g.for_in_mul_val_name == (left as ast.Ident).name
+					&& g.for_in_mut_val_name == (left as ast.Ident).name
 				addr := if is_var_mut { '' } else { '&' }
 				g.writeln('')
 				g.write('memcpy($addr')
@@ -2066,7 +2066,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				}
 				if !is_fixed_array_copy || is_decl {
 					if !is_decl && left is ast.Ident
-						&& g.for_in_mul_val_name == (left as ast.Ident).name {
+						&& g.for_in_mut_val_name == (left as ast.Ident).name {
 						g.write('*')
 					}
 					g.expr(left)
