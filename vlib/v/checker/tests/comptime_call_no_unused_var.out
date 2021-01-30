@@ -1,4 +1,3 @@
-print void
 vlib/v/checker/tests/comptime_call_no_unused_var.vv:11:8: error: unknown identifier `w`
     9 |     abc := 'print'
    10 |     test.$abc() // OK
@@ -20,7 +19,7 @@ vlib/v/checker/tests/comptime_call_no_unused_var.vv:15:8: error: todo: not a str
       |           ^
    16 |     s2 := 'x'
    17 |     test.$s2()
-details: v.ast.InfixExpr
+Details: v.ast.InfixExpr
 vlib/v/checker/tests/comptime_call_no_unused_var.vv:17:8: error: could not find method `x`
    15 |     test.$s()
    16 |     s2 := 'x'

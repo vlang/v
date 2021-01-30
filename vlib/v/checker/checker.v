@@ -1211,6 +1211,14 @@ pub fn (mut c Checker) call_expr(mut call_expr ast.CallExpr) table.Type {
 	c.expected_or_type = call_expr.return_type.clear_flag(.optional)
 	c.stmts(call_expr.or_block.stmts)
 	c.expected_or_type = table.void_type
+	if call_expr.or_block.kind == .propagate && !c.cur_fn.return_type.has_flag(.optional)
+		&& !c.inside_const {
+		cur_names := c.cur_fn.name.split('.')
+		if cur_names[cur_names.len - 1] != 'main' {
+			c.error('to propagate the optional call, `$c.cur_fn.name` must return an optional',
+				call_expr.or_block.pos)
+		}
+	}
 	return typ
 }
 
@@ -3707,7 +3715,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) table.Type {
 		c.error('could not find method `$method_name`', node.method_pos)
 		return table.void_type
 	}
-	println(f.name + ' ' + c.table.type_to_str(f.return_type))
+	// println(f.name + ' ' + c.table.type_to_str(f.return_type))
 	node.result_type = f.return_type
 	return f.return_type
 }
@@ -3877,7 +3885,9 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 				ast.ConstField {
 					mut typ := obj.typ
 					if typ == 0 {
+						c.inside_const = true
 						typ = c.expr(obj.expr)
+						c.inside_const = false
 						if obj.expr is ast.CallExpr {
 							if obj.expr.or_block.kind != .absent {
 								typ = typ.clear_flag(.optional)
