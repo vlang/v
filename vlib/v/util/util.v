@@ -120,8 +120,8 @@ pub fn resolve_vroot(str string, dir string) ?string {
 	return str.replace('@VROOT', os.real_path(vmod_path))
 }
 
-// resolve_env_value replaces all `$env('ENV_VAR_NAME')` entries with the
-// value of the env variable.
+// resolve_env_value replaces all occurrences of `$env('ENV_VAR_NAME')`
+// in `str` with the value of the env variable `$ENV_VAR_NAME`.
 pub fn resolve_env_value(str string) ?string {
 	ident := r'$' + 'env(' + "'"
 	at := str.index(ident) or { return error('No "$ident' + '...\')" could be found in "$str".') }
