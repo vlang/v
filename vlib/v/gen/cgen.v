@@ -215,10 +215,8 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		}
 		// println('\ncgen "$g.file.path" nr_stmts=$file.stmts.len')
 		// building_v := true && (g.file.path.contains('/vlib/') || g.file.path.contains('cmd/v'))
-		is_test := g.file.path.ends_with('.vv') || g.file.path.ends_with('_test.v')
-		if g.file.path.ends_with('_test.v') {
-			g.is_test = is_test
-		}
+		is_test := g.file.path.ends_with('_test.vv') || g.file.path.ends_with('_test.v')
+		g.is_test = is_test
 		if g.file.path == '' || !g.pref.autofree {
 			// cgen test or building V
 			// println('autofree=false')
@@ -5627,26 +5625,12 @@ fn (g &Gen) get_all_test_function_names() []string {
 	mut tsuite_begin := ''
 	mut tsuite_end := ''
 	for _, f in g.table.fns {
-		if f.name == 'testsuite_begin' {
-			tsuite_begin = f.name
-			continue
-		}
-		if f.name == 'testsuite_end' {
-			tsuite_end = f.name
-			continue
-		}
-		if f.name.starts_with('test_') {
-			tfuncs << f.name
-			continue
-		}
-		// What follows is for internal module tests
-		// (they are part of a V module, NOT in main)
-		if f.name.contains('.test_') {
-			tfuncs << f.name
-			continue
-		}
 		if f.name.ends_with('.testsuite_begin') {
 			tsuite_begin = f.name
+			continue
+		}
+		if f.name.contains('.test_') {
+			tfuncs << f.name
 			continue
 		}
 		if f.name.ends_with('.testsuite_end') {

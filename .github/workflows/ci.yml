@@ -666,8 +666,8 @@ jobs:
   #node hi.js
   #    - name: Test v binaries
   #      run: ./v build-vbinaries
-  #    - name: v2 self compilation
-  #      run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
+      - name: v2 self compilation
+        run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
 
   compilable-v-c-and-v-win-c:
     runs-on: ubuntu-20.04

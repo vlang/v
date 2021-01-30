@@ -257,6 +257,7 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 		f.out_imports.writeln('import ${imp_stmt_str}\n')
 	} else if imports.len > 1 {
 	*/
+	mut already_imported := map[string]bool{}
 	for imp in imports {
 		if imp.mod !in f.used_imports {
 			// TODO bring back once only unused imports are removed
@@ -265,8 +266,12 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 		if imp.mod in f.auto_imports && imp.mod !in f.used_imports {
 			continue
 		}
-		f.out_imports.write('import ')
-		f.out_imports.writeln(f.imp_stmt_str(imp))
+		import_text := 'import ${f.imp_stmt_str(imp)}'
+		if already_imported[import_text] {
+			continue
+		}
+		already_imported[import_text] = true
+		f.out_imports.writeln(import_text)
 		num_imports++
 	}
 	if num_imports > 0 {
