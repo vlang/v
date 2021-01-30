@@ -158,6 +158,53 @@ pub fn (mut p Parser) parse_fn_type(name string) table.Type {
 	return table.new_type(idx)
 }
 
+pub fn (mut p Parser) parse_struct_type() table.Type {
+	p.check(.key_struct)
+
+	mut embeds := []table.Type{}
+	mut fields := []table.Field{}
+
+	p.check(.lcbr)
+	for p.tok.kind != .rcbr {
+		// TODO: Add comment handling. `parse_type()` currently does not handle comments
+		// so we have no way of returning them correctly
+		mut comments := []ast.Comment{}
+		is_embed := ((p.tok.lit.len > 1 && p.tok.lit[0].is_capital()) || p.peek_tok.kind == .dot)
+		if is_embed {
+			embeds << p.struct_embed(mut comments).typ
+		} else {
+			field := p.struct_field(false, mut comments)
+			fields << table.Field {
+				name: field.name
+				typ: field.typ
+				default_expr: ast.ex2fe(field.default_expr)
+				has_default_expr: field.has_default_expr
+				is_pub: true
+				is_mut: true
+				is_global: false
+				attrs: p.attrs
+			}
+		}
+
+		if p.tok.kind == .comma {
+			p.next()
+		}
+	}
+	p.check(.rcbr)
+
+	s := table.Struct {
+		embeds: embeds
+		fields: fields
+		is_typedef: false
+		is_union: false
+		is_ref_only: false
+	}
+
+	name := '_anon_struct_${p.tok.pos}_${p.table.struct_type_signature(s)}'
+	idx := p.table.find_or_register_struct_type(name, p.mod, s)
+	return table.new_type(idx)
+}
+
 pub fn (mut p Parser) parse_type_with_mut(is_mut bool) table.Type {
 	typ := p.parse_type()
 	if is_mut {
@@ -288,6 +335,10 @@ pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr bool, check
 		.key_fn {
 			// func
 			return p.parse_fn_type('')
+		}
+		.key_struct {
+			// struct
+			return p.parse_struct_type()
 		}
 		.lsbr {
 			// array

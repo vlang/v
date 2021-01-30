@@ -5083,6 +5083,8 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 				}
 				if name.contains('_T_') {
 					g.typedefs.writeln('typedef struct $name $name;')
+				} else if name.starts_with('_anon_struct_') {
+					g.typedefs.writeln('typedef struct $name $name;')
 				}
 				// TODO avoid buffer manip
 				start_pos := g.type_definitions.len

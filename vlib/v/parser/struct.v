@@ -113,6 +113,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				end_comments = comments.clone()
 				break
 			}
+
 			if p.tok.kind == .key_pub {
 				p.next()
 				if p.tok.kind == .key_mut {
@@ -176,109 +177,62 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 					break
 				}
 			}
-			field_start_pos := p.tok.position()
 			is_embed := ((p.tok.lit.len > 1 && p.tok.lit[0].is_capital())
 				|| p.peek_tok.kind == .dot)&& language == .v
 			is_on_top := ast_fields.len == 0 && !(is_field_mut || is_field_mut || is_field_global)
 			mut field_name := ''
-			mut typ := table.Type(0)
-			mut type_pos := token.Position{}
-			mut field_pos := token.Position{}
 			if is_embed {
-				// struct embedding
-				type_pos = p.tok.position()
-				typ = p.parse_type()
-				for p.tok.kind == .comment {
-					comments << p.comment()
-					if p.tok.kind == .rcbr {
-						break
-					}
-				}
-				type_pos = type_pos.extend(p.prev_tok.position())
+				embed := p.struct_embed(mut comments)
+
 				if !is_on_top {
 					p.error_with_pos('struct embedding must be declared at the beginning of the struct body',
-						type_pos)
+						embed.pos)
 					return ast.StructDecl{}
 				}
-				sym := p.table.get_type_symbol(typ)
-				if typ in embed_types {
-					p.error_with_pos('cannot embed `$sym.name` more than once', type_pos)
+				sym := p.table.get_type_symbol(embed.typ)
+				if embed.typ in embed_types {
+					p.error_with_pos('cannot embed `$sym.name` more than once', embed.pos)
 					return ast.StructDecl{}
 				}
 				field_name = sym.embed_name()
 				if field_name in embed_field_names {
-					p.error_with_pos('duplicate field `$field_name`', type_pos)
+					p.error_with_pos('duplicate field `$field_name`', embed.pos)
 					return ast.StructDecl{}
 				}
+
 				embed_field_names << field_name
-				embed_types << typ
-				embeds << ast.Embed{
-					typ: typ
-					pos: type_pos
+				embed_types << embed.typ
+				embeds << embed
+
+				fields << table.Field{
+					name: field_name
+					typ: embed.typ
+					is_pub: true
+					is_mut: true
+					is_global: is_field_global
+					attrs: p.attrs
 				}
 			} else {
-				// struct field
-				field_name = p.check_name()
-				for p.tok.kind == .comment {
-					comments << p.comment()
-					if p.tok.kind == .rcbr {
-						break
-					}
-				}
-				typ = p.parse_type()
-				if typ.idx() == 0 {
-					// error is set in parse_type
-					return ast.StructDecl{}
-				}
-				type_pos = p.prev_tok.position()
-				field_pos = field_start_pos.extend(type_pos)
-			}
-			// Comments after type (same line)
-			comments << p.eat_comments()
-			if p.tok.kind == .lsbr {
-				// attrs are stored in `p.attrs`
-				p.attributes()
-			}
-			mut default_expr := ast.Expr{}
-			mut has_default_expr := false
-			if !is_embed {
-				if p.tok.kind == .assign {
-					// Default value
-					p.next()
-					default_expr = p.expr(0)
-					match mut default_expr {
-						ast.EnumVal { default_expr.typ = typ }
-						// TODO: implement all types??
-						else {}
-					}
-					has_default_expr = true
-					comments << p.eat_comments()
-				}
-				// TODO merge table and ast Fields?
-				ast_fields << ast.StructField{
-					name: field_name
-					pos: field_pos
-					type_pos: type_pos
-					typ: typ
-					comments: comments
-					default_expr: default_expr
-					has_default_expr: has_default_expr
+				field := p.struct_field(is_field_global, mut comments)
+				ast_fields << field
+
+				fields << table.Field{
+					name: field.name
+					typ: field.typ
+					default_expr: ast.ex2fe(field.default_expr)
+					has_default_expr: field.has_default_expr
+					is_pub: is_field_pub
+					is_mut: is_field_mut
+					is_global: is_field_global
 					attrs: p.attrs
-					is_public: is_field_pub
 				}
-			}
-			// save embeds as table fields too, it will be used in generation phase
-			fields << table.Field{
-				name: field_name
-				typ: typ
-				default_expr: ast.ex2fe(default_expr)
-				has_default_expr: has_default_expr
-				is_pub: if is_embed { true } else { is_field_pub }
-				is_mut: if is_embed { true } else { is_field_mut }
-				is_global: is_field_global
-				attrs: p.attrs
 			}
 			p.attrs = []
+
+			// Added for consistency with anon struct syntax, should be discouraged/removed in vfmt
+			if p.tok.kind == .comma {
+				p.next()
+			}
 		}
 		p.top_level_statement_end()
 		last_line = p.tok.line_nr
@@ -332,6 +286,89 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		embeds: embeds
 	}
 }
+
+fn (mut p Parser) struct_field(is_public bool, mut comments []ast.Comment) ast.StructField {
+	mut pos := p.tok.position()
+	name := p.check_name()
+
+	for p.tok.kind == .comment {
+		comments << p.comment()
+		if p.tok.kind == .rcbr {
+			break
+		}
+	}
+
+	typ := p.parse_type()
+	if typ.idx() == 0 {
+		// error is set in parse_type
+		return ast.StructField{}
+	}
+	type_pos := p.prev_tok.position()
+	pos = pos.extend(type_pos)
+
+	mut default_expr := ast.Expr{}
+	mut has_default_expr := false
+
+	// Comments after type (same line)
+	comments << p.eat_comments()
+	if p.tok.kind == .lsbr {
+		// attrs are stored in `p.attrs`
+		p.attributes()
+	}
+
+	if p.tok.kind == .assign {
+		// Default value
+		p.next()
+		default_expr = p.expr(0)
+		match mut default_expr {
+			ast.EnumVal { default_expr.typ = typ }
+			// TODO: implement all types??
+			else {}
+		}
+		has_default_expr = true
+		comments << p.eat_comments()
+	}
+
+	return ast.StructField{
+		name: name
+		pos: pos
+		typ: typ
+		type_pos: type_pos
+		comments: comments
+		default_expr: default_expr
+		has_default_expr: has_default_expr
+		is_public: is_public
+		attrs: p.attrs
+	}
+}
+
+fn (mut p Parser) struct_embed(mut comments []ast.Comment) ast.Embed {
+	mut pos := p.tok.position()
+	typ := p.parse_type()
+
+	for p.tok.kind == .comment {
+		comments << p.comment()
+		if p.tok.kind == .rcbr {
+			break
+		}
+	}
+
+	pos = pos.extend(p.prev_tok.position())
+
+	// Comments after type (same line)
+	comments << p.eat_comments()
+	if p.tok.kind == .lsbr {
+		// attrs are stored in `p.attrs`
+		p.attributes()
+	}
+
+	return ast.Embed{
+		typ: typ
+		pos: pos
+	}
+}
+
+fn (mut p Parser) anon_struct()
 
 fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 	first_pos := p.tok.position()
