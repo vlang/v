@@ -3708,7 +3708,6 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) table.Type {
 	if v.expr is ast.StringLiteral {
 		method_name = v.expr.val
 	} else {
-		c.add_error_detail(v.expr.type_name())
 		c.error('todo: not a string literal', node.method_pos)
 	}
 	f := node.sym.find_method(method_name) or {
