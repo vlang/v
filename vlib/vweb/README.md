@@ -42,14 +42,14 @@ pub fn (app App) post() {
 `index.html` is an example of the V template language:
 
 ```html
-@for post in posts
+@for post in posts {
 	<div class=post>
 		<a class=topic href="@post.url">@post.title</a>
 		<img class=comment-img>
 		<span class=nr-comments>@post.nr_comments</span>
 		<span class=time>@post.time</span>
 	</div>
-@end
+}
 ```
 
 `$vweb.html()` compiles an HTML template into V during compilation,
