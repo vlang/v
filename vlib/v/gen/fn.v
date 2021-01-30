@@ -315,8 +315,11 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			g.or_block(tmp_opt, node.or_block, node.return_type)
 		}
 		if is_gen_or_and_assign_rhs {
-			unwrapped_styp := g.typ(node.return_type.clear_flag(.optional))
-			if g.table.get_type_symbol(node.return_type).kind == .multi_return {
+			unwrapped_typ := node.return_type.clear_flag(.optional)
+			unwrapped_styp := g.typ(unwrapped_typ)
+			if unwrapped_typ == table.void_type {
+				g.write('\n $cur_line')
+			} else if g.table.get_type_symbol(node.return_type).kind == .multi_return {
 				g.write('\n $cur_line $tmp_opt')
 			} else {
 				g.write('\n $cur_line *($unwrapped_styp*)${tmp_opt}.data')
