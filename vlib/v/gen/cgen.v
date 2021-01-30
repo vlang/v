@@ -2062,7 +2062,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					g.prevent_sum_type_unwrapping_once = true
 				}
 				if !is_fixed_array_copy || is_decl {
-					if !is_decl && left is ast.Ident
+					if !is_decl && var_type != table.string_type_idx && left is ast.Ident
 						&& (g.for_in_mut_val_name == (left as ast.Ident).name || (left as ast.Ident).name in g.fn_mut_arg_names) {
 						g.write('*')
 					}
