@@ -256,17 +256,9 @@ fn (mut p Parser) at() ast.AtExpr {
 
 fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 	p.check(.dollar)
-	mut has_parens := false
-	if p.tok.kind == .lpar {
-		p.check(.lpar)
-		has_parens = true
-	}
 	if p.peek_tok.kind == .lpar {
 		method_name := p.check_name()
 		// `app.$action()` (`action` is a string)
-		if has_parens {
-			p.check(.rpar)
-		}
 		p.check(.lpar)
 		mut args_var := ''
 		if p.tok.kind == .name {
@@ -279,11 +271,17 @@ fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 			p.check(.lcbr)
 		}
 		return ast.ComptimeCall{
-			has_parens: has_parens
 			left: left
 			method_name: method_name
 			args_var: args_var
 		}
+	}
+	mut has_parens := false
+	if p.tok.kind == .lpar {
+		p.check(.lpar)
+		has_parens = true
+	} else {
+		p.warn_with_pos('use brackets instead e.g. `s.$(field.name)` - run vfmt', p.tok.position())
 	}
 	expr := p.expr(0)
 	if has_parens {
