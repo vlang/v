@@ -265,6 +265,25 @@ pub fn get_lines_joined() string {
 	return inputstr
 }
 
+// get_raw_lines_joined reads *all* input lines from stdin.
+// It returns them as one large string. NB: unlike os.get_lines_joined,
+// empty lines (that contain only `\r\n` or `\n`), will be present in
+// the output.
+// Reading is stopped, only on EOF of stdin.
+pub fn get_raw_lines_joined() string {
+	mut line := ''
+	mut lines := []string{}
+	for {
+		line = get_raw_line()
+		if line.len <= 0 {
+			break
+		}
+		lines << line
+	}
+	res := lines.join('')
+	return res
+}
+
 // user_os returns current user operating system name.
 pub fn user_os() string {
 	$if linux {
