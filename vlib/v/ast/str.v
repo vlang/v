@@ -290,6 +290,9 @@ pub fn (x Expr) str() string {
 		SizeOf {
 			return 'sizeof($x.expr)'
 		}
+		OffsetOf {
+			return '__offsetof($x.struct_type, $x.field)'
+		}
 		StringInterLiteral {
 			mut res := []string{}
 			res << "'"

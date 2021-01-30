@@ -112,6 +112,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Profiling](#profiling)
 * [Advanced Topics](#advanced-topics)
     * [Memory-unsafe code](#memory-unsafe-code)
+	* [sizeof and __offsetof](#sizeof-and-__offsetof)
     * [Calling C functions from V](#calling-c-functions-from-v)
     * [Debugging generated C code](#debugging-generated-c-code)
     * [Conditional compilation](#conditional-compilation)
@@ -2991,6 +2992,22 @@ println(baz)
 println(qux)
 ```
 
+## sizeof and __offsetof
+
+V supports the usage of `sizeof` to calculate sizes of structs and
+`__offsetof` to calculate struct field offsets.
+
+```v
+struct Foo {
+	a int
+	b int
+}
+
+println(sizeof(Foo))
+println(__offsetof(Foo, a))
+println(__offsetof(Foo, b))
+```
+
 ## Calling C functions from V
 
 ```v
@@ -3734,6 +3751,7 @@ type
 typeof
 union
 unsafe
+__offsetof
 ```
 See also [Types](#types).
 

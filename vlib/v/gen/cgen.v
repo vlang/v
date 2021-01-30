@@ -2821,6 +2821,10 @@ fn (mut g Gen) expr(node ast.Expr) {
 			styp := g.typ(node_typ)
 			g.write('/*SizeOf*/ sizeof(${util.no_dots(styp)})')
 		}
+		ast.OffsetOf {
+			styp := g.typ(node.struct_type)
+			g.write('/*OffsetOf*/ (u32)(__offsetof(${util.no_dots(styp)}, $node.field))')
+		}
 		ast.SqlExpr {
 			g.sql_select_expr(node)
 		}
