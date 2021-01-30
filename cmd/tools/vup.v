@@ -115,10 +115,31 @@ fn (app App) backup(file string) {
 
 fn (app App) git_command(command string) {
 	app.vprintln('git_command: git $command')
-	git_result := os.exec('git $command') or { panic(err) }
+	git_result := os.exec('git $command') or {
+		app.get_git()
+		// Try it again with (maybe) git installed
+		os.exec('git $command') or { panic(err) }
+	}
 	if git_result.exit_code != 0 {
 		eprintln(git_result.output)
 		exit(1)
 	}
 	app.vprintln(git_result.output)
+}
+
+fn (app App) get_git() {
+	$if windows {
+		println('Downloading git 32 bit for Windows, please wait.')
+		// We'll use 32 bit because maybe someone out there is using 32-bit windows
+		os.exec('bitsadmin.exe /transfer "vgit" https://github.com/git-for-windows/git/releases/download/v2.30.0.windows.2/Git-2.30.0.2-32-bit.exe "$os.getwd()/git32.exe"') or {
+			eprintln('Unable to install git automatically: please install git manually')
+			panic(err)
+		}
+		os.exec('$os.getwd()/git32.exe') or {
+			eprintln('Unable to install git automatically: please install git manually')
+			panic(err)
+		}
+	} $else { // Probably some kind of *nix, usually need to get using a package manager.
+		eprintln("error: Install `git` using your system's package manager")
+	}
 }
