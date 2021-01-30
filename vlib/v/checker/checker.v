@@ -157,11 +157,12 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 	}
 	if has_main_mod_file && !has_main_fn && files_from_main_module.len > 0 {
 		if c.pref.is_script && !c.pref.is_test {
-			mut first_main_file := files_from_main_module[0]
-			first_main_file.stmts << ast.FnDecl{
+			// files_from_main_module contain preludes at the start
+			mut the_main_file := files_from_main_module.last()
+			the_main_file.stmts << ast.FnDecl{
 				name: 'main.main'
 				mod: 'main'
-				file: first_main_file.path
+				file: the_main_file.path
 				return_type: table.void_type
 				scope: &ast.Scope{
 					parent: 0
@@ -171,6 +172,8 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 		}
 	}
 	c.timers.start('checker_post_process_generic_fns')
+	last_file := c.file
+	last_mod := c.mod
 	// post process generic functions. must be done after all files have been
 	// checked, to eunsure all generic calls are processed as this information
 	// is needed when the generic type is auto inferred from the call argument
@@ -182,12 +185,29 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 			c.post_process_generic_fns()
 		}
 	}
+	// restore the original c.file && c.mod after post processing
+	c.file = last_file
+	c.mod = last_mod
 	c.timers.show('checker_post_process_generic_fns')
 	//
 	c.timers.start('checker_verify_all_vweb_routes')
 	c.verify_all_vweb_routes()
 	c.timers.show('checker_verify_all_vweb_routes')
 	//
+	if c.pref.is_test {
+		mut n_test_fns := 0
+		for _, f in c.table.fns {
+			if f.name.contains('.test_') {
+				n_test_fns++
+			}
+		}
+		if n_test_fns == 0 {
+			c.add_error_detail('The name of a test function in V, should start with `test_`.')
+			c.add_error_detail('The test function should take 0 parameters, and no return type. Example:')
+			c.add_error_detail('fn test_xyz(){ assert 2 + 2 == 4 }')
+			c.error('a _test.v file should have *at least* one `test_` function', token.Position{})
+		}
+	}
 	// Make sure fn main is defined in non lib builds
 	if c.pref.build_mode == .build_module || c.pref.is_test {
 		return
