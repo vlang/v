@@ -243,7 +243,7 @@ fn test_delete_size() {
 		for i in 0 .. 10 {
 			m[arr[i]] = i
 		}
-		assert (m.len == 10)
+		assert m.len == 10
 		println(m.len)
 		for i in 0 .. 10 {
 			m.delete(arr[i])
@@ -485,14 +485,18 @@ fn test_int_keys() {
 	m[5] += 24
 	m[5]++
 	assert m[5] == 25
-	m2 := {3:9 4:16 5:25}
+	m2 := {
+		3: 9
+		4: 16
+		5: 25
+	}
 	assert m2.len == 3
 	// clone
 	mc := m.clone()
 	same := mc == m
 	assert same
 	assert mc.len == 3
-	assert mc.keys() == [3,4,5]
+	assert mc.keys() == [3, 4, 5]
 	mut all := []int{}
 	for k, v in mc {
 		assert m[k] == v
@@ -513,14 +517,17 @@ fn test_voidptr_keys() {
 }
 
 fn test_rune_keys() {
-	mut m := {`!`:2 `%`:3}
+	mut m := {
+		`!`: 2
+		`%`: 3
+	}
 	assert typeof(m).name == 'map[rune]int'
 	assert m[`!`] == 2
 	m[`@`] = 7
 	assert m.len == 3
 	println(m)
 	assert '$m' == '{`!`: 2, `%`: 3, `@`: 7}'
-	
+
 	mut a := []rune{}
 	for k, v in m {
 		a << k
@@ -593,7 +600,25 @@ fn test_eq() {
 }
 
 fn test_non_string_key_map_str() {
-	assert {23: 4}.str() == '{23: 4}'
-	assert {`a`: 12, `b`: 13}.str() == '{`a`: 12, `b`: 13}'
-	assert {23: 'foo', 25: 'bar'}.str() == "{23: 'foo', 25: 'bar'}"
+	assert {
+		23: 4
+	}.str() == '{23: 4}'
+	assert {
+		`a`: 12
+		`b`: 13
+	}.str() == '{`a`: 12, `b`: 13}'
+	assert {
+		23: 'foo'
+		25: 'bar'
+	}.str() == "{23: 'foo', 25: 'bar'}"
+}
+
+fn test_map_assign_empty_map_init() {
+	mut a := {
+		'one': 1
+	}
+	a = {}
+	println(a)
+	assert a == map[string]int{}
+	assert '$a' == '{}'
 }

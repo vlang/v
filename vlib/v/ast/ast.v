@@ -784,12 +784,12 @@ pub:
 // variable assign statement
 pub struct AssignStmt {
 pub:
-	right        []Expr
 	op           token.Kind // include: =,:=,+=,-=,*=,/= and so on; for a list of all the assign operators, see vlib/token/token.v
 	pos          token.Position
 	comments     []Comment
 	end_comments []Comment
 pub mut:
+	right         []Expr
 	left          []Expr
 	left_types    []table.Type
 	right_types   []table.Type
