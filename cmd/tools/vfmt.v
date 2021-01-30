@@ -182,7 +182,7 @@ fn (foptions &FormatOptions) format_pipe() {
 	if foptions.is_verbose {
 		eprintln('vfmt2 running fmt.fmt over stdin')
 	}
-	input_text := os.get_all()
+	input_text := os.get_raw_lines_joined()
 	table := table.new_table()
 	// checker := checker.new_checker(table, prefs)
 	file_ast := parser.parse_text(input_text, '', table, .parse_comments, prefs, &ast.Scope{

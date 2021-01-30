@@ -457,15 +457,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				output_option = '-o "$tmp_exe_file_path"'
 			}
 			tmp_v_file_path := '${tmp_file_path}.v'
-			mut lines := []string{}
-			for {
-				iline := os.get_raw_line()
-				if iline.len == 0 {
-					break
-				}
-				lines << iline
-			}
-			contents := lines.join('')
+			contents := os.get_raw_lines_joined()
 			os.write_file(tmp_v_file_path, contents) or {
 				panic('Failed to create temporary file $tmp_v_file_path')
 			}
