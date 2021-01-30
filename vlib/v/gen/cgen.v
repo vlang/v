@@ -215,10 +215,8 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		}
 		// println('\ncgen "$g.file.path" nr_stmts=$file.stmts.len')
 		// building_v := true && (g.file.path.contains('/vlib/') || g.file.path.contains('cmd/v'))
-		is_test := g.file.path.ends_with('.vv') || g.file.path.ends_with('_test.v')
-		if g.file.path.ends_with('_test.v') {
-			g.is_test = is_test
-		}
+		is_test := g.file.path.ends_with('_test.vv') || g.file.path.ends_with('_test.v')
+		g.is_test = is_test
 		if g.file.path == '' || !g.pref.autofree {
 			// cgen test or building V
 			// println('autofree=false')

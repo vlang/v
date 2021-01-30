@@ -5392,7 +5392,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	// TODO c.pref.is_vet
 	if node.language == .v && !node.is_method && node.params.len == 0
 		&& node.name.after('.').starts_with('test_') {
-		if !c.file.path.ends_with('_test.v') {
+		if !c.pref.is_test {
 			// simple heuristic
 			for st in node.stmts {
 				if st is ast.AssertStmt {

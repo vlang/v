@@ -545,7 +545,7 @@ fn (mut v Builder) cc() {
 			builtin_obj_path := v.rebuild_cached_module(vexe, 'vlib/builtin')
 			libs << builtin_obj_path
 			for ast_file in v.parsed_files {
-				is_test := ast_file.path.ends_with('_test.v')
+				is_test := ast_file.path.ends_with('_test.v') || ast_file.path.ends_with('_test.vv')
 				if is_test && ast_file.mod.name != 'main' {
 					imp_path := v.find_module_path(ast_file.mod.name, ast_file.path) or {
 						verror('cannot import module "$ast_file.mod.name" (not found)')

@@ -70,7 +70,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	}
 	p.find_cc_if_cross_compiling()
 	p.ccompiler_type = cc_from_string(p.ccompiler)
-	p.is_test = p.path.ends_with('_test.v')
+	p.is_test = p.path.ends_with('_test.v') || p.path.ends_with('_test.vv')
 	p.is_vsh = p.path.ends_with('.vsh')
 	p.is_script = p.is_vsh || p.path.ends_with('.v') || p.path.ends_with('.vv')
 	if p.third_party_option == '' {

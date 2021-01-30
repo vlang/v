@@ -245,7 +245,7 @@ pub fn (v &Builder) get_user_files() []string {
 	if v.pref.is_prof {
 		user_files << os.join_path(preludes_path, 'profiled_program.v')
 	}
-	is_test := dir.ends_with('_test.v')
+	is_test := dir.ends_with('_test.v') || dir.ends_with('_test.vv')
 	mut is_internal_module_test := false
 	if is_test {
 		tcontent := os.read_file(dir) or {
