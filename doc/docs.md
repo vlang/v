@@ -1928,6 +1928,21 @@ match color {
 Enum match must be exhaustive or have an `else` branch.
 This ensures that if a new enum field is added, it's handled everywhere in the code.
 
+Enum fields cannot re-use reserved keywords. However, reserved keywords may be escaped
+with an @.
+
+```v
+enum Color {
+	@none
+	red
+	green
+	blue
+}
+
+color := Color.@none
+println(color)
+```
+
 ### Sum types
 
 A sum type instance can hold a value of several different types. Use the `type`

@@ -59,6 +59,7 @@ pub mut:
 	is_builtin_mod    bool   // are we in `builtin`?
 	inside_unsafe     bool
 	inside_const      bool
+	inside_anon_fn    bool
 	skip_flags        bool // should `#flag` and `#include` be skipped
 	cur_generic_types []table.Type
 mut:
@@ -156,11 +157,12 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 	}
 	if has_main_mod_file && !has_main_fn && files_from_main_module.len > 0 {
 		if c.pref.is_script && !c.pref.is_test {
-			mut first_main_file := files_from_main_module[0]
-			first_main_file.stmts << ast.FnDecl{
+			// files_from_main_module contain preludes at the start
+			mut the_main_file := files_from_main_module.last()
+			the_main_file.stmts << ast.FnDecl{
 				name: 'main.main'
 				mod: 'main'
-				file: first_main_file.path
+				file: the_main_file.path
 				return_type: table.void_type
 				scope: &ast.Scope{
 					parent: 0
@@ -170,6 +172,8 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 		}
 	}
 	c.timers.start('checker_post_process_generic_fns')
+	last_file := c.file
+	last_mod := c.mod
 	// post process generic functions. must be done after all files have been
 	// checked, to eunsure all generic calls are processed as this information
 	// is needed when the generic type is auto inferred from the call argument
@@ -181,12 +185,29 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 			c.post_process_generic_fns()
 		}
 	}
+	// restore the original c.file && c.mod after post processing
+	c.file = last_file
+	c.mod = last_mod
 	c.timers.show('checker_post_process_generic_fns')
 	//
 	c.timers.start('checker_verify_all_vweb_routes')
 	c.verify_all_vweb_routes()
 	c.timers.show('checker_verify_all_vweb_routes')
 	//
+	if c.pref.is_test {
+		mut n_test_fns := 0
+		for _, f in c.table.fns {
+			if f.name.contains('.test_') {
+				n_test_fns++
+			}
+		}
+		if n_test_fns == 0 {
+			c.add_error_detail('The name of a test function in V, should start with `test_`.')
+			c.add_error_detail('The test function should take 0 parameters, and no return type. Example:')
+			c.add_error_detail('fn test_xyz(){ assert 2 + 2 == 4 }')
+			c.error('a _test.v file should have *at least* one `test_` function', token.Position{})
+		}
+	}
 	// Make sure fn main is defined in non lib builds
 	if c.pref.build_mode == .build_module || c.pref.is_test {
 		return
@@ -3283,10 +3304,13 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			return node.typ
 		}
 		ast.AnonFn {
+			c.inside_anon_fn = true
 			keep_fn := c.cur_fn
 			c.cur_fn = &node.decl
 			c.stmts(node.decl.stmts)
+			c.fn_decl(mut node.decl)
 			c.cur_fn = keep_fn
+			c.inside_anon_fn = false
 			return node.typ
 		}
 		ast.ArrayDecompose {
@@ -5368,7 +5392,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	// TODO c.pref.is_vet
 	if node.language == .v && !node.is_method && node.params.len == 0
 		&& node.name.after('.').starts_with('test_') {
-		if !c.file.path.ends_with('_test.v') {
+		if !c.pref.is_test {
 			// simple heuristic
 			for st in node.stmts {
 				if st is ast.AssertStmt {
@@ -5400,7 +5424,11 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	returns := c.returns || has_top_return(node.stmts)
 	if node.language == .v && !node.no_body && node.return_type != table.void_type && !returns
 		&& node.name !in ['panic', 'exit'] {
-		c.error('missing return at end of function `$node.name`', node.pos)
+		if c.inside_anon_fn {
+			c.error('missing return at the end of an anonymous function', node.pos)
+		} else {
+			c.error('missing return at end of function `$node.name`', node.pos)
+		}
 	}
 	c.returns = false
 	node.source_file = c.file

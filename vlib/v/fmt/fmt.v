@@ -116,6 +116,14 @@ fn (mut f Fmt) write_indent() {
 	f.line_len += f.indent * 4
 }
 
+fn (mut f Fmt) write_language_prefix(lang table.Language) {
+	match lang {
+		.c { f.write('C.') }
+		.js { f.write('JS.') }
+		else {}
+	}
+}
+
 pub fn (mut f Fmt) wrap_long_line(penalty_idx int, add_indent bool) bool {
 	if f.buffering {
 		return false
@@ -147,7 +155,6 @@ pub fn (mut f Fmt) remove_new_line() {
 	}
 	f.out.go_back(f.out.len - i - 1)
 	f.empty_line = false
-	// f.writeln('sdf')
 }
 
 pub fn (mut f Fmt) set_current_module_name(cmodname string) {
@@ -164,6 +171,16 @@ fn (f Fmt) get_modname_prefix(mname string) (string, string) {
 	after_ref := mname.all_after_last('&')
 	modname := if after_rbc.len < after_ref.len { after_rbc } else { after_ref }
 	return modname, mname.trim_suffix(modname)
+}
+
+fn (mut f Fmt) is_external_name(name string) bool {
+	if name.len > 2 && name[0] == `C` && name[1] == `.` {
+		return true
+	}
+	if name.len > 3 && name[0] == `J` && name[1] == `S` && name[2] == `.` {
+		return true
+	}
+	return false
 }
 
 pub fn (mut f Fmt) no_cur_mod(typename string) string {
@@ -226,7 +243,6 @@ pub fn (mut f Fmt) mark_import_as_used(name string) {
 		return
 	}
 	f.used_imports << mod
-	// println('marking module $mod as used')
 }
 
 pub fn (mut f Fmt) imports(imports []ast.Import) {
@@ -241,6 +257,7 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 		f.out_imports.writeln('import ${imp_stmt_str}\n')
 	} else if imports.len > 1 {
 	*/
+	mut already_imported := map[string]bool{}
 	for imp in imports {
 		if imp.mod !in f.used_imports {
 			// TODO bring back once only unused imports are removed
@@ -249,8 +266,12 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 		if imp.mod in f.auto_imports && imp.mod !in f.used_imports {
 			continue
 		}
-		f.out_imports.write('import ')
-		f.out_imports.writeln(f.imp_stmt_str(imp))
+		import_text := 'import ${f.imp_stmt_str(imp)}'
+		if already_imported[import_text] {
+			continue
+		}
+		already_imported[import_text] = true
+		f.out_imports.writeln(import_text)
 		num_imports++
 	}
 	if num_imports > 0 {
@@ -402,7 +423,6 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.struct_decl(node)
 		}
 		ast.TypeDecl {
-			// already handled in f.imports
 			f.type_decl(node)
 		}
 	}
@@ -1060,8 +1080,6 @@ fn inline_attrs_len(attrs []table.Attr) int {
 }
 
 pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
-	// println('$it.name find_comment($it.pos.line_nr)')
-	// f.find_comment(it.pos.line_nr)
 	f.attrs(node.attrs)
 	f.write(node.stringify(f.table, f.cur_mod, f.mod2alias)) // `Expr` instead of `ast.Expr` in mod ast
 	if node.language == .v {
@@ -1829,14 +1847,6 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 	f.it_name = ''
 }
 
-fn (mut f Fmt) write_language_prefix(lang table.Language) {
-	match lang {
-		.c { f.write('C.') }
-		.js { f.write('JS.') }
-		else {}
-	}
-}
-
 pub fn (mut f Fmt) chan_init(mut it ast.ChanInit) {
 	info := f.table.get_type_symbol(it.typ).chan_info()
 	if it.elem_type == 0 && it.typ > 0 {
@@ -1895,7 +1905,6 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 		return
 	}
 	// `[1,2,3]`
-	// type_sym := f.table.get_type_symbol(it.typ)
 	f.write('[')
 	mut inc_indent := false
 	mut last_line_nr := it.pos.line_nr // to have the same newlines between array elements
@@ -1929,8 +1938,16 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 		}
 		f.expr(expr)
 		if i < it.ecmnts.len && it.ecmnts[i].len > 0 {
-			f.write(' ')
+			mut last_cmt := it.ecmnts[i][0]
+			if last_cmt.pos.line_nr > expr.position().last_line {
+				f.writeln('')
+			} else {
+				f.write(' ')
+			}
 			for cmt in it.ecmnts[i] {
+				if cmt.pos.line_nr > last_cmt.pos.last_line {
+					f.writeln('')
+				}
 				f.comment(cmt, iembed: true)
 			}
 		}
@@ -2019,9 +2036,7 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 		}
 	} else if it.is_short {
 		// `Foo{1,2,3}` (short syntax )
-		// if name != '' {
 		f.write('$name{')
-		// }
 		if it.has_update_expr {
 			f.write('...')
 			f.expr(it.update_expr)
@@ -2194,16 +2209,6 @@ fn (mut f Fmt) global_decl(it ast.GlobalDecl) {
 	f.writeln(')\n')
 }
 
-fn (mut f Fmt) is_external_name(name string) bool {
-	if name.len > 2 && name[0] == `C` && name[1] == `.` {
-		return true
-	}
-	if name.len > 3 && name[0] == `J` && name[1] == `S` && name[2] == `.` {
-		return true
-	}
-	return false
-}
-
 pub fn (mut f Fmt) assign_stmt(node ast.AssignStmt) {
 	f.comments(node.comments, {})
 	for i, left in node.left {
@@ -2348,11 +2353,10 @@ pub fn (mut f Fmt) for_stmt(node ast.ForStmt) {
 	}
 	f.write('for ')
 	f.expr(node.cond)
-	if node.is_inf {
-		f.write('{')
-	} else {
-		f.write(' {')
+	if !node.is_inf {
+		f.write(' ')
 	}
+	f.write('{')
 	if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
 		f.writeln('')
 		f.stmts(node.stmts)

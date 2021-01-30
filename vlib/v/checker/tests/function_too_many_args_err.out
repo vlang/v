@@ -1,6 +1,0 @@
-vlib/v/checker/tests/function_too_many_args_err.vv:5:16: error: expected 1 arguments, but got 3
-    3 |
-    4 | fn main() {
-    5 |     test(true, false, 1)
-      |                ~~~~~~~~
-    6 | }

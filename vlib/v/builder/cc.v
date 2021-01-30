@@ -174,6 +174,7 @@ mut:
 	//
 	args         []string // ordinary C options like `-O2`
 	wargs        []string // for `-Wxyz` *exclusively*
+	pre_args     []string // options that should go before .o_args
 	o_args       []string // for `-o target`
 	source_args  []string // for `x.tmp.c`
 	post_args    []string // options that should go after .o_args
@@ -321,8 +322,8 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	cflags := v.get_os_cflags()
 	ccoptions.o_args << cflags.c_options_only_object_files()
 	defines, others, libs := cflags.defines_others_libs()
-	ccoptions.args << defines
-	ccoptions.args << others
+	ccoptions.pre_args << defines
+	ccoptions.pre_args << others
 	ccoptions.linker_flags << libs
 	// TODO: why is this duplicated from above?
 	if v.pref.use_cache && v.pref.build_mode != .build_module {
@@ -382,6 +383,7 @@ fn (ccoptions CcompilerOptions) all_args() []string {
 	all << ccoptions.env_cflags
 	all << ccoptions.args
 	all << ccoptions.o_args
+	all << ccoptions.pre_args
 	all << ccoptions.source_args
 	all << ccoptions.post_args
 	all << ccoptions.linker_flags
@@ -537,13 +539,13 @@ fn (mut v Builder) cc() {
 		//
 		mut libs := []string{} // builtin.o os.o http.o etc
 		if v.pref.build_mode == .build_module {
-			v.ccoptions.args << '-c'
+			v.ccoptions.pre_args << '-c'
 		} else if v.pref.use_cache {
 			mut built_modules := []string{}
 			builtin_obj_path := v.rebuild_cached_module(vexe, 'vlib/builtin')
 			libs << builtin_obj_path
 			for ast_file in v.parsed_files {
-				is_test := ast_file.path.ends_with('_test.v')
+				is_test := ast_file.path.ends_with('_test.v') || ast_file.path.ends_with('_test.vv')
 				if is_test && ast_file.mod.name != 'main' {
 					imp_path := v.find_module_path(ast_file.mod.name, ast_file.path) or {
 						verror('cannot import module "$ast_file.mod.name" (not found)')
