@@ -3802,3 +3802,10 @@ Assignment Operators
 &=   |=   ^=
 >>=  <<=
 ```
+Logical operators can be combined using () operators.
+eg: 
+```v ignore 
+if (a < 1 && a <100) || (a<0) {
+		// some logic
+	}
+```
