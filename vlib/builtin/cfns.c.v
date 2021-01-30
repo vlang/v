@@ -55,7 +55,7 @@ fn C.fflush(byteptr) int
 // TODO define args in these functions
 fn C.fseek() int
 
-fn C.fopen() voidptr
+fn C.fopen(charptr, charptr) voidptr
 
 fn C.fileno(voidptr) int
 
@@ -86,7 +86,7 @@ fn C.waitpid(pid int, status &int, options int) int
 
 fn C.kill(pid int, sig int) int
 
-fn C.setenv(charptr) int
+fn C.setenv(charptr, charptr, int) int
 
 fn C.unsetenv(charptr) int
 
@@ -125,7 +125,7 @@ fn C.sleep(int) int
 
 fn C.usleep() int
 
-fn C.opendir() voidptr
+fn C.opendir(charptr) voidptr
 
 fn C.closedir() int
 
