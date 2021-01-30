@@ -269,6 +269,7 @@ fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 		mut args_var := ''
 		if p.tok.kind == .name {
 			args_var = p.tok.lit
+			p.mark_var_as_used(args_var)
 			p.next()
 		}
 		p.check(.rpar)
