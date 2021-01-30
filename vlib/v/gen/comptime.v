@@ -57,9 +57,7 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 		}
 		return
 	}
-	g.writeln('// $' + 'method call. sym="$node.sym.name"')
-	mut j := 0
-	result_type := g.table.find_type_idx('vweb.Result') // TODO not just vweb
+	g.writeln('// \$method call. sym="$node.sym.name"')
 	if node.method_name == 'method' {
 		// `app.$method()`
 		m := node.sym.find_method(g.comp_for_method) or { return }
@@ -95,9 +93,10 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 		g.write(' ); // vweb action call with args')
 		return
 	}
+	mut j := 0
 	for method in node.sym.methods {
 		// if method.return_type != table.void_type {
-		if method.return_type != result_type {
+		if method.return_type != node.result_type {
 			continue
 		}
 		if method.params.len != 1 {
@@ -108,10 +107,12 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 		// p.error('`$p.expr_var.name` needs to be a reference')
 		// }
 		amp := '' // if receiver.is_mut && !p.expr_var.ptr { '&' } else { '' }
-		if j > 0 {
-			g.write(' else ')
+		if node.is_vweb {
+			if j > 0 {
+				g.write(' else ')
+			}
+			g.write('if (string_eq($node.method_name, _SLIT("$method.name"))) ')
 		}
-		g.write('if (string_eq($node.method_name, _SLIT("$method.name"))) ')
 		g.write('${util.no_dots(node.sym.name)}_${method.name}($amp ')
 		g.expr(node.left)
 		g.writeln(');')
