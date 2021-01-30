@@ -657,6 +657,7 @@ pub:
 	cond     Expr
 	branches []MatchBranch
 	pos      token.Position
+	comments []Comment // comments before the first branch
 pub mut:
 	is_expr       bool // returns a value
 	return_type   table.Type
@@ -671,9 +672,8 @@ pub:
 	ecmnts        [][]Comment // inline comments for each left side expr
 	stmts         []Stmt      // right side
 	pos           token.Position
-	comments      []Comment // comment above `xxx {`
 	is_else       bool
-	post_comments []Comment
+	post_comments []Comment // comments below ´... }´
 pub mut:
 	scope &Scope
 }
