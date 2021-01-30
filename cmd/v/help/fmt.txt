@@ -1,6 +1,8 @@
 Usage:
   v fmt [options] path_to_source.v [path_to_other_source.v]
   v fmt [options] path/to/dir [path/to/other_dir]
+  cat source.v | v fmt
+        Read source code from stdin, output formatted file to stdout.
 
 Formats the given V source files or recursively formats all files in the directory,
 then prints their formatted source to stdout.
@@ -21,8 +23,6 @@ Options:
 
   -verify Make sure the provided file is already formatted. Useful for checking code contributions
           in CI for example.
-
-  -pipe   Expect no file. Read from stdin and output formatted file to stdout.
 
 Environment Variables:
   VDIFF_TOOL      A command-line tool that will be executed with the original file path

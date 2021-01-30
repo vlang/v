@@ -25,23 +25,11 @@ struct FormatOptions {
 	is_noerror bool
 	is_verify  bool // exit(1) if the file is not vfmt'ed
 	is_worker  bool // true *only* in the worker processes. NB: workers can crash.
-	is_pipe    bool // read from stdin. Write to stdout.
 }
 
 const (
-	formatted_file_token         = '\@\@\@' + 'FORMATTED_FILE: '
-	platform_and_file_extensions = [
-		['windows', '_windows.v'],
-		['linux', '_lin.v', '_linux.v', '_nix.v'],
-		['macos', '_mac.v', '_darwin.v'],
-		['freebsd', '_bsd.v', '_freebsd.v'],
-		['netbsd', '_bsd.v', '_netbsd.v'],
-		['openbsd', '_bsd.v', '_openbsd.v'],
-		['solaris', '_solaris.v'],
-		['haiku', '_haiku.v'],
-		['qnx', '_qnx.v'],
-	]
-	vtmp_folder                  = util.get_vtmp_folder()
+	formatted_file_token = '\@\@\@' + 'FORMATTED_FILE: '
+	vtmp_folder          = util.get_vtmp_folder()
 )
 
 fn main() {
@@ -63,14 +51,9 @@ fn main() {
 		is_debug: '-debug' in args
 		is_noerror: '-noerror' in args
 		is_verify: '-verify' in args
-		is_pipe: '-pipe' in args
 	}
 	if foptions.is_verbose {
 		eprintln('vfmt foptions: $foptions')
-	}
-	if foptions.is_pipe {
-		foptions.format_pipe()
-		exit(0)
 	}
 	if foptions.is_worker {
 		// -worker should be added by a parent vfmt process.
@@ -105,6 +88,10 @@ fn main() {
 			continue
 		}
 		files << file
+	}
+	if is_atty(0) == 0 && files.len == 0 {
+		foptions.format_pipe()
+		exit(0)
 	}
 	if files.len == 0 {
 		vhelp.show_topic('fmt')
@@ -287,17 +274,6 @@ fn (f FormatOptions) str() string {
 		'FormatOptions{ is_l: $f.is_l, is_w: $f.is_w, is_diff: $f.is_diff, is_verbose: $f.is_verbose,' +
 		' is_all: $f.is_all, is_worker: $f.is_worker, is_debug: $f.is_debug, is_noerror: $f.is_noerror,' +
 		' is_verify: $f.is_verify" }'
-}
-
-fn file_to_target_os(file string) string {
-	for extensions in platform_and_file_extensions {
-		for ext in extensions {
-			if file.ends_with(ext) {
-				return extensions[0]
-			}
-		}
-	}
-	return ''
 }
 
 fn file_to_mod_name_and_is_module_file(file string) (string, bool) {
