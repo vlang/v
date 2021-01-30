@@ -78,8 +78,10 @@ pub mut:
 	// NB: passing -cg instead of -g will set is_vlines to false and is_debug to true, thus making v generate cleaner C files,
 	// which are sometimes easier to debug / inspect manually than the .tmp.c files by plain -g (when/if v line number generation breaks).
 	// use cached modules to speed up compilation.
+	dump_c_flags string // `-dump-c-flags file.txt` - let V store all C flags, passed to the backend C compiler
+	// in `file.txt`, one C flag/value per line.
 	use_cache         bool // = true
-	retry_compilation bool = true
+	retry_compilation bool = true // retry the compilation with another C compiler, if tcc fails.
 	is_stats          bool // `v -stats file_test.v` will produce more detailed statistics for the tests that were run
 	// TODO Convert this into a []string
 	cflags string // Additional options which will be passed to the C compiler.
@@ -276,6 +278,10 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			'-show-c-output' {
 				res.show_c_output = true
 			}
+			'-dump-c-flags' {
+				res.dump_c_flags = cmdline.option(current_args, arg, '-')
+				i++
+			}
 			'-experimental' {
 				res.experimental = true
 			}
@@ -451,15 +457,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				output_option = '-o "$tmp_exe_file_path"'
 			}
 			tmp_v_file_path := '${tmp_file_path}.v'
-			mut lines := []string{}
-			for {
-				iline := os.get_raw_line()
-				if iline.len == 0 {
-					break
-				}
-				lines << iline
-			}
-			contents := lines.join('')
+			contents := os.get_raw_lines_joined()
 			os.write_file(tmp_v_file_path, contents) or {
 				panic('Failed to create temporary file $tmp_v_file_path')
 			}

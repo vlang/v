@@ -24,5 +24,5 @@ fn test_semaphore() {
 	}
 	elapsed_ms := f64(elapsed)/time.millisecond
 	println('elapsed: ${elapsed_ms:.1f}ms')
-	assert elapsed_ms >= 195.0
+	assert elapsed_ms >= 190.0
 }

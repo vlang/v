@@ -158,6 +158,9 @@ pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
 				CallExpr {
 					if sub_expr.args.len != 0 {
 						needs_braces = true
+					} else if sub_expr.left is CallExpr {
+						sub_expr = sub_expr.left
+						continue
 					}
 					break
 				}

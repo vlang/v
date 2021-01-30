@@ -22,6 +22,9 @@ const (
 	cmp_str    = ['eq', 'ne', 'gt', 'lt', 'ge', 'le']
 	// when operands are switched
 	cmp_rev    = ['eq', 'ne', 'lt', 'gt', 'le', 'ge']
+	tabs       = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t',
+		'\t\t\t\t\t\t\t\t',
+	]
 )
 
 struct Gen {
@@ -114,7 +117,7 @@ mut:
 	strs_to_free0         []string // strings.Builder
 	// strs_to_free          []string // strings.Builder
 	inside_call           bool
-	for_in_mul_val_name   string
+	for_in_mut_val_name   string
 	has_main              bool
 	inside_const          bool
 	comp_for_method       string      // $for method in T.methods {}
@@ -144,12 +147,6 @@ mut:
 	timers             &util.Timers = util.new_timers(false)
 	force_main_console bool // true when [console] used on fn main()
 }
-
-const (
-	tabs = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t',
-		'\t\t\t\t\t\t\t\t',
-	]
-)
 
 pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string {
 	// println('start cgen2')
@@ -215,10 +212,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		}
 		// println('\ncgen "$g.file.path" nr_stmts=$file.stmts.len')
 		// building_v := true && (g.file.path.contains('/vlib/') || g.file.path.contains('cmd/v'))
-		is_test := g.file.path.ends_with('.vv') || g.file.path.ends_with('_test.v')
-		if g.file.path.ends_with('_test.v') {
-			g.is_test = is_test
-		}
+		g.is_test = g.pref.is_test
 		if g.file.path == '' || !g.pref.autofree {
 			// cgen test or building V
 			// println('autofree=false')
@@ -1048,7 +1042,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				// We are using prebuilt modules, we do not need to generate
 				// their functions in main.c.
 				if node.mod != 'main' && node.mod != 'help' && !should_bundle_module
-					&& !g.file.path.ends_with('_test.v')&& node.generic_params.len == 0 {
+					&& !g.pref.is_test&& node.generic_params.len == 0 {
 					skip = true
 				}
 			}
@@ -1286,14 +1280,14 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		g.writeln('// FOR IN array')
 		styp := g.typ(it.val_type)
 		val_sym := g.table.get_type_symbol(it.val_type)
-		cond_type_is_ptr := it.cond_type.is_ptr()
 		tmp := g.new_tmp_var()
-		tmp_type := if cond_type_is_ptr { 'array *' } else { 'array' }
-		g.write('$tmp_type $tmp = ')
+		g.write(g.typ(it.cond_type))
+		g.write(' $tmp = ')
 		g.expr(it.cond)
 		g.writeln(';')
 		i := if it.key_var in ['', '_'] { g.new_tmp_var() } else { it.key_var }
-		op_field := if cond_type_is_ptr { '->' } else { '.' }
+		op_field := if it.cond_type.is_ptr() { '->' } else { '.' } +
+			if it.cond_type.share() == .shared_t { 'val.' } else { '' }
 		g.writeln('for (int $i = 0; $i < $tmp${op_field}len; ++$i) {')
 		if it.val_var != '_' {
 			if val_sym.kind == .function {
@@ -1353,9 +1347,9 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		g.writeln('// FOR IN map')
 		idx := g.new_tmp_var()
 		atmp := g.new_tmp_var()
-		atmp_styp := g.typ(it.cond_type)
-		arw_or_pt := if it.cond_type.nr_muls() > 0 { '->' } else { '.' }
-		g.write('$atmp_styp $atmp = ')
+		arw_or_pt := if it.cond_type.is_ptr() { '->' } else { '.' }
+		g.write(g.typ(it.cond_type))
+		g.write(' $atmp = ')
 		g.expr(it.cond)
 		g.writeln(';')
 		g.writeln('for (int $idx = 0; $idx < $atmp${arw_or_pt}key_values.len; ++$idx) {')
@@ -1387,11 +1381,11 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 			g.writeln('DenseArray_value(&$atmp${arw_or_pt}key_values, $idx));')
 		}
 		if it.val_is_mut {
-			g.for_in_mul_val_name = it.val_var
+			g.for_in_mut_val_name = it.val_var
 		}
 		g.stmts(it.stmts)
 		if it.val_is_mut {
-			g.for_in_mul_val_name = ''
+			g.for_in_mut_val_name = ''
 		}
 		if it.key_type == table.string_type && !g.is_builtin_mod {
 			// g.writeln('string_free(&$key);')
@@ -1440,11 +1434,11 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		g.error('for in: unhandled symbol `$it.cond` of type `$s`', it.pos)
 	}
 	if it.val_is_mut {
-		g.for_in_mul_val_name = it.val_var
+		g.for_in_mut_val_name = it.val_var
 	}
 	g.stmts(it.stmts)
 	if it.val_is_mut {
-		g.for_in_mul_val_name = ''
+		g.for_in_mut_val_name = ''
 	}
 	if it.label.len > 0 {
 		g.writeln('\t${it.label}__continue: {}')
@@ -1997,7 +1991,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			} else {
 				g.out.go_back_to(pos)
 				is_var_mut := !is_decl && left is ast.Ident
-					&& g.for_in_mul_val_name == (left as ast.Ident).name
+					&& g.for_in_mut_val_name == (left as ast.Ident).name
 				addr := if is_var_mut { '' } else { '&' }
 				g.writeln('')
 				g.write('memcpy($addr')
@@ -2069,7 +2063,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				}
 				if !is_fixed_array_copy || is_decl {
 					if !is_decl && left is ast.Ident
-						&& g.for_in_mul_val_name == (left as ast.Ident).name {
+						&& g.for_in_mut_val_name == (left as ast.Ident).name {
 						g.write('*')
 					}
 					g.expr(left)
@@ -2102,8 +2096,8 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				// Unwrap the optional now that the testing code has been prepended.
 				// `pos := s.index(...
 				// `int pos = *(int)_t10.data;`
-				g.write('*($styp*)')
 				if g.is_autofree {
+					g.write('*($styp*)')
 					g.write(tmp_opt + '.data/*FFz*/')
 					g.right_is_opt = false
 					g.is_assign_rhs = false
@@ -2157,13 +2151,6 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 							g.write(')')
 						}
 					}
-				}
-			}
-			if unwrap_optional {
-				if g.is_autofree {
-					// g.write(tmp_opt + '/*FF*/')
-				} else {
-					g.write('.data')
 				}
 			}
 			if str_add || op_overloaded {
@@ -4626,7 +4613,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 						g.definitions.writeln('$styp _const_$name; // fixed array const')
 					}
 				} else {
-					g.const_decl_init_later(field.mod, name, val, field.typ)
+					g.const_decl_init_later(field.mod, name, val, field.typ, false)
 				}
 			}
 			ast.StringLiteral {
@@ -4638,13 +4625,15 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 			ast.CallExpr {
 				if val.starts_with('Option_') {
 					g.inits[field.mod].writeln(val)
-					g.const_decl_init_later(field.mod, name, g.current_tmp_var(), field.typ)
+					unwrap_option := field.expr.or_block.kind != .absent
+					g.const_decl_init_later(field.mod, name, g.current_tmp_var(), field.typ,
+						unwrap_option)
 				} else {
-					g.const_decl_init_later(field.mod, name, val, field.typ)
+					g.const_decl_init_later(field.mod, name, val, field.typ, false)
 				}
 			}
 			else {
-				g.const_decl_init_later(field.mod, name, val, field.typ)
+				g.const_decl_init_later(field.mod, name, val, field.typ, false)
 			}
 		}
 	}
@@ -4659,7 +4648,7 @@ fn (mut g Gen) const_decl_simple_define(name string, val string) {
 	g.definitions.writeln(val)
 }
 
-fn (mut g Gen) const_decl_init_later(mod string, name string, val string, typ table.Type) {
+fn (mut g Gen) const_decl_init_later(mod string, name string, val string, typ table.Type, unwrap_option bool) {
 	// Initialize more complex consts in `void _vinit/2{}`
 	// (C doesn't allow init expressions that can't be resolved at compile time).
 	styp := g.typ(typ)
@@ -4672,7 +4661,11 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, val string, typ ta
 			g.inits[mod].writeln('\t_const_os__args = os__init_os_args(___argc, (byte**)___argv);')
 		}
 	} else {
-		g.inits[mod].writeln('\t$cname = $val;')
+		if unwrap_option {
+			g.inits[mod].writeln('\t$cname = *($styp*)${val}.data;')
+		} else {
+			g.inits[mod].writeln('\t$cname = $val;')
+		}
 	}
 	if g.is_autofree {
 		if styp.starts_with('array_') {
@@ -5308,15 +5301,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 					expr_stmt := stmt as ast.ExprStmt
 					g.stmt_path_pos << g.out.len
 					g.write('*($mr_styp*) ${cvar_name}.data = ')
-					is_opt_call := expr_stmt.expr is ast.CallExpr
-						&& expr_stmt.typ.has_flag(.optional)
-					if is_opt_call {
-						g.write('*($mr_styp*) ')
-					}
 					g.expr_with_cast(expr_stmt.expr, expr_stmt.typ, return_type.clear_flag(.optional))
-					if is_opt_call {
-						g.write('.data')
-					}
 					if g.inside_ternary == 0 && !(expr_stmt.expr is ast.IfExpr) {
 						g.writeln(';')
 					}
@@ -5345,11 +5330,15 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 			// the defered statements are generated.
 			g.write_defer_stmts()
 			// Now that option types are distinct we need a cast here
-			styp := g.typ(g.fn_decl.return_type)
-			err_obj := g.new_tmp_var()
-			g.writeln('\t$styp $err_obj;')
-			g.writeln('\tmemcpy(&$err_obj, &$cvar_name, sizeof(Option));')
-			g.writeln('\treturn $err_obj;')
+			if g.fn_decl.return_type == table.void_type {
+				g.writeln('\treturn;')
+			} else {
+				styp := g.typ(g.fn_decl.return_type)
+				err_obj := g.new_tmp_var()
+				g.writeln('\t$styp $err_obj;')
+				g.writeln('\tmemcpy(&$err_obj, &$cvar_name, sizeof(Option));')
+				g.writeln('\treturn $err_obj;')
+			}
 		}
 	}
 	g.write('}')
@@ -5632,26 +5621,12 @@ fn (g &Gen) get_all_test_function_names() []string {
 	mut tsuite_begin := ''
 	mut tsuite_end := ''
 	for _, f in g.table.fns {
-		if f.name == 'testsuite_begin' {
-			tsuite_begin = f.name
-			continue
-		}
-		if f.name == 'testsuite_end' {
-			tsuite_end = f.name
-			continue
-		}
-		if f.name.starts_with('test_') {
-			tfuncs << f.name
-			continue
-		}
-		// What follows is for internal module tests
-		// (they are part of a V module, NOT in main)
-		if f.name.contains('.test_') {
-			tfuncs << f.name
-			continue
-		}
 		if f.name.ends_with('.testsuite_begin') {
 			tsuite_begin = f.name
+			continue
+		}
+		if f.name.contains('.test_') {
+			tfuncs << f.name
 			continue
 		}
 		if f.name.ends_with('.testsuite_end') {

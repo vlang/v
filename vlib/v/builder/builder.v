@@ -313,7 +313,7 @@ fn (b &Builder) print_warnings_and_errors() {
 			ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
 			eprintln(ferror)
 			if err.details.len > 0 {
-				eprintln('details: $err.details')
+				eprintln('Details: $err.details')
 			}
 			// eprintln('')
 			if i > b.max_nr_errors {
@@ -335,7 +335,7 @@ fn (b &Builder) print_warnings_and_errors() {
 			ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
 			eprintln(ferror)
 			if err.details.len > 0 {
-				eprintln('details: $err.details')
+				eprintln('Details: $err.details')
 			}
 			// eprintln('')
 			if i > b.max_nr_errors {
