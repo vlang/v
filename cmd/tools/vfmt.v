@@ -93,7 +93,7 @@ fn main() {
 		foptions.format_pipe()
 		exit(0)
 	}
-	if files.len == 0 {
+	if files.len == 0 || '-help' in args || '--help' in args {
 		vhelp.show_topic('fmt')
 		exit(0)
 	}
@@ -182,9 +182,10 @@ fn (foptions &FormatOptions) format_pipe() {
 	if foptions.is_verbose {
 		eprintln('vfmt2 running fmt.fmt over stdin')
 	}
+	input_text := os.get_all()
 	table := table.new_table()
 	// checker := checker.new_checker(table, prefs)
-	file_ast := parser.parse_stdin(table, .parse_comments, prefs, &ast.Scope{
+	file_ast := parser.parse_text(input_text, '', table, .parse_comments, prefs, &ast.Scope{
 		parent: 0
 	})
 	// checker.check(file_ast)
