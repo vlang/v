@@ -76,14 +76,15 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 		if env_var == '' {
 			p.error_with_pos('please supply an env variable name like `HOME`, `PATH` or `USER`',
 				spos)
-			return ast.ComptimeCall{}
+			return err_node
 		}
 		if env_var.starts_with('$') {
 			p.error_with_pos('no need to prefix the env variable with `$` you can use names like `HOME`, `PATH` or `USER`',
 				spos)
-			return ast.ComptimeCall{}
+			return err_node
 		}
 		return ast.ComptimeCall{
+			scope: 0
 			method_name: n
 			args_var: s
 		}
