@@ -215,8 +215,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		}
 		// println('\ncgen "$g.file.path" nr_stmts=$file.stmts.len')
 		// building_v := true && (g.file.path.contains('/vlib/') || g.file.path.contains('cmd/v'))
-		is_test := g.file.path.ends_with('_test.vv') || g.file.path.ends_with('_test.v')
-		g.is_test = is_test
+		g.is_test = g.pref.is_test
 		if g.file.path == '' || !g.pref.autofree {
 			// cgen test or building V
 			// println('autofree=false')
@@ -1046,7 +1045,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				// We are using prebuilt modules, we do not need to generate
 				// their functions in main.c.
 				if node.mod != 'main' && node.mod != 'help' && !should_bundle_module
-					&& !g.file.path.ends_with('_test.v')&& node.generic_params.len == 0 {
+					&& !g.pref.is_test&& node.generic_params.len == 0 {
 					skip = true
 				}
 			}

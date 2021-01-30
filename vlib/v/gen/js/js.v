@@ -82,14 +82,14 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 	for file in files {
 		g.file = file
 		g.enter_namespace(g.file.mod.name)
-		g.is_test = g.file.path.ends_with('_test.v') || g.file.path.ends_with('_test.vv')
+		g.is_test = g.pref.is_test
 		g.find_class_methods(file.stmts)
 		g.escape_namespace()
 	}
 	for file in files {
 		g.file = file
 		g.enter_namespace(g.file.mod.name)
-		g.is_test = g.file.path.ends_with('_test.v') || g.file.path.ends_with('_test.vv')
+		g.is_test = g.pref.is_test
 		// store imports
 		mut imports := []string{}
 		for imp in g.file.imports {
