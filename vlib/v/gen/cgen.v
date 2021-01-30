@@ -1283,14 +1283,14 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		g.writeln('// FOR IN array')
 		styp := g.typ(it.val_type)
 		val_sym := g.table.get_type_symbol(it.val_type)
-		cond_type_is_ptr := it.cond_type.is_ptr()
 		tmp := g.new_tmp_var()
-		tmp_type := if cond_type_is_ptr { 'array *' } else { 'array' }
-		g.write('$tmp_type $tmp = ')
+		g.write(g.typ(it.cond_type))
+		g.write(' $tmp = ')
 		g.expr(it.cond)
 		g.writeln(';')
 		i := if it.key_var in ['', '_'] { g.new_tmp_var() } else { it.key_var }
-		op_field := if cond_type_is_ptr { '->' } else { '.' }
+		op_field := if it.cond_type.is_ptr() { '->' } else { '.' } +
+			if it.cond_type.share() == .shared_t { 'val.' } else { '' }
 		g.writeln('for (int $i = 0; $i < $tmp${op_field}len; ++$i) {')
 		if it.val_var != '_' {
 			if val_sym.kind == .function {
@@ -1350,9 +1350,9 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		g.writeln('// FOR IN map')
 		idx := g.new_tmp_var()
 		atmp := g.new_tmp_var()
-		atmp_styp := g.typ(it.cond_type)
-		arw_or_pt := if it.cond_type.nr_muls() > 0 { '->' } else { '.' }
-		g.write('$atmp_styp $atmp = ')
+		arw_or_pt := if it.cond_type.is_ptr() { '->' } else { '.' }
+		g.write(g.typ(it.cond_type))
+		g.write(' $atmp = ')
 		g.expr(it.cond)
 		g.writeln(';')
 		g.writeln('for (int $idx = 0; $idx < $atmp${arw_or_pt}key_values.len; ++$idx) {')
