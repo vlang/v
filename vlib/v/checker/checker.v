@@ -3204,8 +3204,9 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			}
 			node.val = 'include $vroot'
 			node.main = vroot
+			flag = vroot
 		}
-		if flag.contains('$' + 'env(') {
+		if flag.contains('\$env(') {
 			env := util.resolve_env_value(flag) or {
 				c.error(err, node.pos)
 				return
@@ -3246,7 +3247,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 				return
 			}
 		}
-		if flag.contains('$' + 'env(') {
+		if flag.contains('\$env(') {
 			flag = util.resolve_env_value(flag) or {
 				c.error(err, node.pos)
 				return
