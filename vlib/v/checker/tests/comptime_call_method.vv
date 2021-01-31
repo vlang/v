@@ -1,6 +1,6 @@
 struct S1 {}
 
-fn (t S1) m(s string) int {
+fn (_ S1) m(_ string) int {
 	return 7
 }
 
