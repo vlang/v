@@ -138,7 +138,7 @@ pub fn resolve_env_value(str string) ?string {
 			}
 		}
 	}
-	env_value := os.getenv(env_lit)
+	env_value := os.environ()[env_lit] or { return error('the environment variable "$env_lit" does not exist.') }
 	// println('Replacing: "' + ident + env_lit + "') " + 'with "'+env_value+'"')
 	if env_value == '' {
 		return error('the environment variable "$env_lit" is empty.')
