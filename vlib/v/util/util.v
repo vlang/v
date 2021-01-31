@@ -120,6 +120,49 @@ pub fn resolve_vroot(str string, dir string) ?string {
 	return str.replace('@VROOT', os.real_path(vmod_path))
 }
 
+// resolve_env_value replaces all occurrences of `$env('ENV_VAR_NAME')`
+// in `str` with the value of the env variable `$ENV_VAR_NAME`.
+pub fn resolve_env_value(str string, check_for_presence bool) ?string {
+	env_ident := "\$env('"
+	at := str.index(env_ident) or {
+		return error('no "$env_ident' + '...\')" could be found in "$str".')
+	}
+	mut ch := byte(`.`)
+	mut env_lit := ''
+	for i := at + env_ident.len; i < str.len && ch != `)`; i++ {
+		ch = byte(str[i])
+		if ch.is_letter() || ch.is_digit() || ch == `_` {
+			env_lit += ch.ascii_str()
+		} else {
+			if !(ch == `\'` || ch == `)`) {
+				if ch == `$` {
+					return error('cannot use string interpolation in compile time \$env() expression')
+				}
+				return error('invalid environment variable name in "$str", invalid character "$ch.ascii_str()"')
+			}
+		}
+	}
+	if env_lit == '' {
+		return error('supply an env variable name like HOME, PATH or USER')
+	}
+	mut env_value := ''
+	if check_for_presence {
+		env_value = os.environ()[env_lit] or {
+			return error('the environment variable "$env_lit" does not exist.')
+		}
+		if env_value == '' {
+			return error('the environment variable "$env_lit" is empty.')
+		}
+	} else {
+		env_value = os.getenv(env_lit)
+	}
+	rep := str.replace_once(env_ident + env_lit + "'" + ')', env_value)
+	if rep.contains(env_ident) {
+		return resolve_env_value(rep, check_for_presence)
+	}
+	return rep
+}
+
 // launch_tool - starts a V tool in a separate process, passing it the `args`.
 // All V tools are located in the cmd/tools folder, in files or folders prefixed by
 // the letter `v`, followed by the tool name, i.e. `cmd/tools/vdoc/` or `cmd/tools/vpm.v`.
