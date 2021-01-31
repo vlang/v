@@ -5009,9 +5009,10 @@ fn (mut g Gen) write_init_function() {
 	if g.pref.printfn_list.len > 0 && '_vinit' in g.pref.printfn_list {
 		println(g.out.after(fn_vinit_start_pos))
 	}
+	//
+	fn_vcleanup_start_pos := g.out.len
+	g.writeln('void _vcleanup() {')
 	if g.is_autofree {
-		fn_vcleanup_start_pos := g.out.len
-		g.writeln('void _vcleanup() {')
 		// g.writeln('puts("cleaning up...");')
 		reversed_table_modules := g.table.modules.reverse()
 		for mod_name in reversed_table_modules {
@@ -5020,11 +5021,12 @@ fn (mut g Gen) write_init_function() {
 		}
 		// g.writeln('\tfree(g_str_buf);')
 		g.writeln('\tarray_free(&as_cast_type_indexes);')
-		g.writeln('}')
-		if g.pref.printfn_list.len > 0 && '_vcleanup' in g.pref.printfn_list {
-			println(g.out.after(fn_vcleanup_start_pos))
-		}
 	}
+	g.writeln('}')
+	if g.pref.printfn_list.len > 0 && '_vcleanup' in g.pref.printfn_list {
+		println(g.out.after(fn_vcleanup_start_pos))
+	}
+	//
 	needs_constructor := g.pref.is_shared && g.pref.os != .windows
 	if needs_constructor {
 		// shared libraries need a way to call _vinit/2. For that purpose,
