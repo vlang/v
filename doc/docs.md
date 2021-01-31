@@ -3646,6 +3646,26 @@ struct C.Foo {
 fn C.DefWindowProc(hwnd int, msg int, lparam int, wparam int)
 ```
 
+## Goto
+
+V allows unconditionally jumping to arbitrary labels with `goto`. Labels must be contained
+within the text document from where they are jumped to. A program may `goto` a label outside
+or deeper than the current scope, but it cannot `goto` a label inside of a different function.
+
+```v
+ptr := malloc_buffer()
+file := os.open_file('./data.txt', 'w+', 0o666) or {
+	eprintln('Failed to open data.txt!')
+	goto clean
+}
+
+write_buffer(ptr, file)
+file.close()
+
+clean:
+print_buffer(ptr)
+dealloc_buffer(ptr)
+```
 
 # Appendices
 
