@@ -1881,6 +1881,9 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			if f.generic_names.len > 0 {
 				continue
 			}
+			if arg_typ_sym.kind == .function && typ == arg.typ.deref() {
+				continue
+			}
 			c.error('$err in argument ${i + 1} to `$fn_name`', call_arg.pos)
 		}
 	}
