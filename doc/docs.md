@@ -1906,20 +1906,25 @@ interface Speaker {
 
 dog := Dog{'Leonberger'}
 cat := Cat{'Siamese'}
+
 mut arr := []Speaker{}
 arr << dog
 arr << cat
 for item in arr {
-	println('a $item.breed ${typeof(item).name} says: $item.speak()')
+	println('a $item.breed says: $item.speak()')
 }
 ```
 
 A type implements an interface by implementing its methods and fields.
 There is no explicit declaration of intent, no "implements" keyword.
 
+#### Casting an interface
+
 We can test the underlying type of an interface using dynamic cast operators:
 ```v oksyntax
-fn announce(s Speaker) {
+interface Something {}
+
+fn announce(s Something) {
 	if s is Dog {
 		println('a $s.breed dog') // `s` is automatically cast to `Dog` (smart cast)
 	} else if s is Cat {
@@ -1931,6 +1936,8 @@ fn announce(s Speaker) {
 ```
 For more information, see [Dynamic casts](#dynamic-casts).
 
+#### Interface method definitions
+
 Also unlike Go, an interface may implement a method.
 These methods are not implemented by structs which implement that interface.
 
@@ -1941,22 +1948,14 @@ implemented on the interface is called.
 ```v
 struct Cat {}
 
-interface Adoptable {}
-
 fn (c Cat) speak() string {
 	return 'meow!'
 }
 
+interface Adoptable {}
+
 fn (a Adoptable) speak() string {
 	return 'adopt me!'
-}
-
-fn (a Adoptable) adopt() ?&Cat {
-	if a is Cat {
-		return a
-	} else {
-		return error('This cannot be adopted.')
-	}
 }
 
 fn new_adoptable() Adoptable {
@@ -1964,10 +1963,13 @@ fn new_adoptable() Adoptable {
 }
 
 fn main() {
-	adoptable := new_adoptable()
-	println(adoptable.speak()) // adopt me!
-	cat := adoptable.adopt() or { return }
-	println(cat.speak()) // meow!
+	cat := Cat{}
+	assert cat.speak() == 'meow!'
+	a := new_adoptable()
+	assert a.speak() == 'adopt me!'
+	if a is Cat {
+		println(a.speak()) // meow!
+	}
 }
 ```
 
