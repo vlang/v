@@ -4014,8 +4014,8 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				// Convert a fixed array to V array when doing `fixed_arr[start..end]`
 				info := sym.info as table.ArrayFixed
 				g.write('array_slice(new_array_from_c_array(')
-				g.write('${info.size}')
-				g.write(', ${info.size}')
+				g.write('$info.size')
+				g.write(', $info.size')
 				g.write(', sizeof(')
 				if node.left_type.is_ptr() {
 					g.write('(*')
@@ -4023,7 +4023,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				g.expr(node.left)
 				if node.left_type.is_ptr() {
 					g.write(')')
-				}				
+				}
 				g.write('[0]), ')
 				if node.left_type.is_ptr() {
 					g.write('*')
@@ -4044,7 +4044,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				g.expr(node.index.high)
 			} else if sym.kind == .array_fixed {
 				info := sym.info as table.ArrayFixed
-				g.write('${info.size}')
+				g.write('$info.size')
 			} else if node.left_type.is_ptr() {
 				g.write('(')
 				g.write('*')
