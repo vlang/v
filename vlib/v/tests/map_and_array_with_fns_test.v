@@ -58,9 +58,11 @@ fn test_map_with_fns() {
 	}
 }
 
-fn foo3(a string) int { return 10 + a.len }
+fn foo3(a string) int {
+	return 10 + a.len
+}
 
-fn test_map_and_array_with_fns_typeof_and_direct_call {
+fn test_map_and_array_with_fns_typeof_and_direct_call() {
 	a := [foo3]
 	assert typeof(a).name == '[]fn (string) int'
 	assert a[0]('hello') == 15
