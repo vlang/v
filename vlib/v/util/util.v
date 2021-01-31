@@ -114,7 +114,7 @@ pub fn resolve_vroot(str string, dir string) ?string {
 	vmod_file_location := mcache.get_by_folder(dir)
 	if vmod_file_location.vmod_file.len == 0 {
 		// There was no actual v.mod file found.
-		return error('to use @VROOT, you need to have a "v.mod" file in $dir, or in one of its parent folders.')
+		return error('To use @VROOT, you need to have a "v.mod" file in $dir, or in one of its parent folders.')
 	}
 	vmod_path := vmod_file_location.vmod_folder
 	return str.replace('@VROOT', os.real_path(vmod_path))
