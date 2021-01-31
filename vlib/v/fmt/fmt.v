@@ -1473,16 +1473,43 @@ pub fn (mut f Fmt) array_decompose(node ast.ArrayDecompose) {
 }
 
 pub fn (mut f Fmt) lock_expr(lex ast.LockExpr) {
-	f.write(if lex.is_rlock {
-		'rlock '
-	} else {
-		'lock '
-	})
-	for i, v in lex.lockeds {
-		if i > 0 {
-			f.write(', ')
+	mut num_locked := 0
+	mut num_rlocked := 0
+	for is_rlock in lex.is_rlock {
+		if is_rlock {
+			num_rlocked++
+		} else {
+			num_locked++
 		}
-		f.expr(v)
+	}
+	if num_locked > 0 || num_rlocked == 0 {
+		f.write('lock ')
+		mut n := 0
+		for i, v in lex.lockeds {
+			if !lex.is_rlock[i] {
+				if n > 0 {
+					f.write(', ')
+				}
+				f.expr(v)
+				n++
+			}
+		}
+	}
+	if num_rlocked > 0 {
+		if num_locked > 0 {
+			f.write('; ')
+		}
+		f.write('rlock ')
+		mut n := 0
+		for i, v in lex.lockeds {
+			if lex.is_rlock[i] {
+				if n > 0 {
+					f.write(', ')
+				}
+				f.expr(v)
+				n++
+			}
+		}
 	}
 	f.write(' {')
 	f.writeln('')

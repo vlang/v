@@ -1043,9 +1043,11 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 					if expr.name !in c.locked_names {
 						if c.locked_names.len > 0 || c.rlocked_names.len > 0 {
 							if expr.name in c.rlocked_names {
-								c.error('$expr.name has an `rlock` but needs a `lock`', expr.pos)
+								c.error('$expr.name has an `rlock` but needs a `lock`',
+									expr.pos)
 							} else {
-								c.error('$expr.name must be added to the `lock` list above', expr.pos)
+								c.error('$expr.name must be added to the `lock` list above',
+									expr.pos)
 							}
 						}
 						to_lock = expr.name
@@ -4413,18 +4415,15 @@ pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) table.Type {
 		} else if id.name in c.rlocked_names {
 			c.error('`$id.name` is already read-locked', id.pos)
 		}
-		if node.is_rlock {
+		if node.is_rlock[i] {
 			c.rlocked_names << id.name
 		} else {
 			c.locked_names << id.name
 		}
 	}
 	c.stmts(node.stmts)
-	if node.is_rlock {
-		c.rlocked_names = c.rlocked_names[..c.rlocked_names.len - node.lockeds.len]
-	} else {
-		c.locked_names = c.locked_names[..c.locked_names.len - node.lockeds.len]
-	}
+	c.rlocked_names = []
+	c.locked_names = []
 	// void for now... maybe sometime `x := lock a { a.getval() }`
 	return table.void_type
 }
