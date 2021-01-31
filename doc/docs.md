@@ -1946,22 +1946,14 @@ implemented on the interface is called.
 ```v
 struct Cat {}
 
-interface Adoptable {}
-
 fn (c Cat) speak() string {
 	return 'meow!'
 }
 
+interface Adoptable {}
+
 fn (a Adoptable) speak() string {
 	return 'adopt me!'
-}
-
-fn (a Adoptable) adopt() ?&Cat {
-	if a is Cat {
-		return a
-	} else {
-		return error('This cannot be adopted.')
-	}
 }
 
 fn new_adoptable() Adoptable {
@@ -1969,10 +1961,13 @@ fn new_adoptable() Adoptable {
 }
 
 fn main() {
-	adoptable := new_adoptable()
-	println(adoptable.speak()) // adopt me!
-	cat := adoptable.adopt() or { return }
-	println(cat.speak()) // meow!
+	cat := Cat{}
+	assert cat.speak() == 'meow!'
+	a := new_adoptable()
+	assert a.speak() == 'adopt me!'
+	if a is Cat {
+		println(a.speak()) // meow!
+	}
 }
 ```
 
