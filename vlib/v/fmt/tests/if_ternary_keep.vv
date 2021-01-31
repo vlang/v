@@ -8,6 +8,8 @@ fn valid_single_line() {
 	[0, 1] << if true { 2 } else { 3 }
 	// Empty or literal syntax struct inits
 	_ := if false { Foo{} } else { Foo{5, 6} }
+	// As argument for a function call
+	some_func(if cond { 'param1' } else { 'param2' })
 }
 
 fn requires_multiple_lines() {
