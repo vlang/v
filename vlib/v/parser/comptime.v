@@ -74,7 +74,7 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 	if n == 'env' {
 		mut env_var := s
 		if env_var == '' {
-			p.error_with_pos('please supply an env variable name like `HOME`, `PATH` or `USER`',
+			p.error_with_pos('supply an env variable name like `HOME`, `PATH` or `USER`',
 				spos)
 			return err_node
 		}
@@ -96,7 +96,7 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 		mut epath := s
 		// Validate that the epath exists, and that it is actually a file.
 		if epath == '' {
-			p.error_with_pos('please supply a valid relative or absolute file path to the file to embed',
+			p.error_with_pos('supply a valid relative or absolute file path to the file to embed',
 				spos)
 			return err_node
 		}
