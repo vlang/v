@@ -5035,6 +5035,11 @@ fn (mut g Gen) write_init_function() {
 		g.writeln('\tstatic bool once = false; if (once) {return;} once = true;')
 		g.writeln('\t_vinit(0,0);')
 		g.writeln('}')
+
+		g.writeln('__attribute__ ((destructor))')
+		g.writeln('void _vdeinit_caller() {')
+		g.writeln('\t_vcleanup();')
+		g.writeln('}')
 	}
 }
 
