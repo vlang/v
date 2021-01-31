@@ -26,8 +26,9 @@ fn start_server() ? {
 	
 	// on_message_ref, broadcast all incoming messages to all clients except the one sent it
 	s.on_message_ref(fn (mut ws websocket.Client, msg &websocket.Message, mut m websocket.Server) ? {
-		for _, cli in m.clients {
-			mut c := cli
+		// for _, cli in m.clients {
+		for i, _ in m.clients {
+			mut c := m.clients[i]
 			if c.client.state == .open && c.client.id !=  ws.id {
 				c.client.write(msg.payload, websocket.OPCode.text_frame) or {
 					panic(err)

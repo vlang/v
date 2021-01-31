@@ -78,9 +78,7 @@ fn (mut g Gen) gen_c_main_header() {
 }
 
 pub fn (mut g Gen) gen_c_main_footer() {
-	if g.is_autofree {
-		g.writeln('\t_vcleanup();')
-	}
+	g.writeln('\t_vcleanup();')
 	g.writeln('\treturn 0;')
 	g.writeln('}')
 }
@@ -160,9 +158,7 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 	if g.pref.is_stats {
 		g.writeln('\tmain__BenchedTests_end_testing(&bt);')
 	}
-	if g.is_autofree {
-		g.writeln('\t_vcleanup();')
-	}
+	g.writeln('\t_vcleanup();')
 	g.writeln('\treturn g_test_fails > 0;')
 	g.writeln('}')
 	if g.pref.printfn_list.len > 0 && 'main' in g.pref.printfn_list {
