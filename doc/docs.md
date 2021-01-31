@@ -124,6 +124,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Cross compilation](#cross-compilation)
     * [Cross-platform shell scripts in V](#cross-platform-shell-scripts-in-v)
     * [Attributes](#attributes)
+    * [Goto](#goto)
 * [Appendices](#appendices)
     * [Keywords](#appendix-i-keywords)
     * [Operators](#appendix-ii-operators)
