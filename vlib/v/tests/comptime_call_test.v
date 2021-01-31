@@ -31,7 +31,6 @@ fn test_for_methods() {
 	$for method in Test.methods {
 		// currently the checker thinks all $method calls return string
 		$if method.return_type is string {
-			//~ $if method.name == 's' {println('yes')}
 			v := test.$method()
 			r += v.str()
 		}
@@ -50,3 +49,19 @@ fn test_for_methods() {
 	}
 	assert r == '?testTwo'
 }
+
+struct S1 {}
+
+fn (t S1) rep(s string, i int) string {
+	return s.repeat(i)
+}
+
+fn test_methods_arg() {
+	s1 := S1{}
+	$for method in S1.methods {
+		arr := ['!', '3']
+		r := s1.$method(arr)
+		assert r == '!!!'
+	}
+}
+

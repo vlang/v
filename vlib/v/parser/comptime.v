@@ -11,7 +11,7 @@ import v.token
 import vweb.tmpl
 
 const (
-	supported_comptime_calls = ['html', 'tmpl', 'embed_file']
+	supported_comptime_calls = ['html', 'tmpl', 'env', 'embed_file']
 )
 
 // // #include, #flag, #v
@@ -47,7 +47,7 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 		scope: 0
 	}
 	p.check(.dollar)
-	error_msg := 'only `\$tmpl()`, `\$embed_file()` and `\$vweb.html()` comptime functions are supported right now'
+	error_msg := 'only `\$tmpl()`, `\$env()`, `\$embed_file()` and `\$vweb.html()` comptime functions are supported right now'
 	if p.peek_tok.kind == .dot {
 		n := p.check_name() // skip `vweb.html()` TODO
 		if n != 'vweb' {
@@ -63,6 +63,21 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 	}
 	is_embed_file := n == 'embed_file'
 	is_html := n == 'html'
+	// $env('ENV_VAR_NAME')
+	if n == 'env' {
+		p.check(.lpar)
+		spos := p.tok.position()
+		s := p.tok.lit
+		p.check(.string)
+		p.check(.rpar)
+		return ast.ComptimeCall{
+			scope: 0
+			method_name: n
+			args_var: s
+			is_env: true
+			env_pos: spos
+		}
+	}
 	p.check(.lpar)
 	spos := p.tok.position()
 	s := if is_html { '' } else { p.tok.lit }
@@ -70,12 +85,12 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 		p.check(.string)
 	}
 	p.check(.rpar)
-	//
+	// $embed_file('/path/to/file')
 	if is_embed_file {
 		mut epath := s
 		// Validate that the epath exists, and that it is actually a file.
 		if epath == '' {
-			p.error_with_pos('please supply a valid relative or absolute file path to the file to embed',
+			p.error_with_pos('supply a valid relative or absolute file path to the file to embed',
 				spos)
 			return err_node
 		}
@@ -269,6 +284,7 @@ fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 		mut args_var := ''
 		if p.tok.kind == .name {
 			args_var = p.tok.lit
+			p.mark_var_as_used(args_var)
 			p.next()
 		}
 		p.check(.rpar)

@@ -114,15 +114,7 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 		g.write('\t\t')
 	}
 	for i, expr in it.exprs {
-		if it.is_interface {
-			// sym := g.table.get_type_symbol(it.expr_types[i])
-			// isym := g.table.get_type_symbol(it.interface_type)
-			g.interface_call(it.expr_types[i], it.interface_type)
-		}
 		g.expr_with_cast(expr, it.expr_types[i], it.elem_type)
-		if it.is_interface {
-			g.write(')')
-		}
 		if i != len - 1 {
 			g.write(', ')
 		}
