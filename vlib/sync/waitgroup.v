@@ -30,7 +30,7 @@ pub fn new_waitgroup() &WaitGroup {
 // add panics if task count drops below zero.
 pub fn (mut wg WaitGroup) add(delta int) {
 	// protect task_count
-	wg.task_count_mutex.m_lock()
+	wg.task_count_mutex.@lock()
 	defer {
 		wg.task_count_mutex.unlock()
 	}

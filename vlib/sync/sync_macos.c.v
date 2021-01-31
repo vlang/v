@@ -80,8 +80,8 @@ pub fn (mut m RwMutex) init() {
 	C.pthread_rwlock_init(&m.mutex, &a.attr)
 }
 
-// m_lock(), for *manual* mutex handling, since `lock` is a keyword
-pub fn (mut m Mutex) m_lock() {
+// @lock(), for *manual* mutex handling, since `lock` is a keyword
+pub fn (mut m Mutex) @lock() {
 	C.pthread_mutex_lock(&m.mutex)
 }
 
@@ -90,21 +90,21 @@ pub fn (mut m Mutex) unlock() {
 }
 
 // RwMutex has separate read- and write locks
-pub fn (mut m RwMutex) r_lock() {
+pub fn (mut m RwMutex) @rlock() {
 	C.pthread_rwlock_rdlock(&m.mutex)
 }
 
-pub fn (mut m RwMutex) w_lock() {
+pub fn (mut m RwMutex) @lock() {
 	C.pthread_rwlock_wrlock(&m.mutex)
 }
 
 // Windows SRWLocks have different function to unlock
 // So provide two functions here, too, to have a common interface
-pub fn (mut m RwMutex) r_unlock() {
+pub fn (mut m RwMutex) runlock() {
 	C.pthread_rwlock_unlock(&m.mutex)
 }
 
-pub fn (mut m RwMutex) w_unlock() {
+pub fn (mut m RwMutex) unlock() {
 	C.pthread_rwlock_unlock(&m.mutex)
 }
 

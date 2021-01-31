@@ -1931,6 +1931,46 @@ fn announce(s Speaker) {
 ```
 For more information, see [Dynamic casts](#dynamic-casts).
 
+Also unlike Go, an interface may implement a method.
+These methods are not implemented by structs which implement that interface.
+
+When a struct is wrapped in an interface that has implemented a method
+with the same name as one implemented by this struct, only the method
+implemented on the interface is called.
+
+```v
+struct Cat {}
+
+interface Adoptable {}
+
+fn (c Cat) speak() string {
+	return 'meow!'
+}
+
+fn (a Adoptable) speak() string {
+	return 'adopt me!'
+}
+
+fn (a Adoptable) adopt() ?&Cat {
+	if a is Cat {
+		return a
+	} else {
+		return error('This cannot be adopted.')
+	}
+}
+
+fn new_adoptable() Adoptable {
+	return Cat{}
+}
+
+fn main() {
+	adoptable := new_adoptable()
+	println(adoptable.speak()) // adopt me!
+	cat := adoptable.adopt() or { return }
+	println(cat.speak()) // meow!
+}
+```
+
 ### Enums
 
 ```v
@@ -3349,6 +3389,15 @@ With the example above:
 - when you compile for linux, you will get 'Hello linux'
 - when you compile for any other platform, you will get the
 non specific 'Hello world' message.
+
+- `_d_customflag.v` => will be used *only* if you pass `-d customflag` to V.
+That corresponds to `$if customflag ? {}`, but for a whole file, not just a
+single block. `customflag` should be a snake_case identifier, it can not
+contain arbitrary characters (only lower case latin letters + numbers + `_`).
+NB: a combinatorial `_d_customflag_linux.c.v` postfix will not work.
+If you do need a custom flag file, that has platform dependent code, use the
+postfix `_d_customflag.v`, and then use plaftorm dependent compile time 
+conditional blocks inside it, i.e. `$if linux {}` etc.
 
 ## Compile time pseudo variables
 

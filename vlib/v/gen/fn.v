@@ -126,6 +126,11 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 		g.definitions.write(fn_header)
 		g.write(fn_header)
 	}
+	for param in it.params {
+		if param.is_mut {
+			g.fn_mut_arg_names << param.name
+		}
+	}
 	arg_start_pos := g.out.len
 	fargs, fargtypes := g.fn_args(it.params, it.is_variadic)
 	arg_str := g.out.after(arg_start_pos)
@@ -170,7 +175,11 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 	prev_defer_stmts := g.defer_stmts
 	g.defer_stmts = []
 	g.stmts(it.stmts)
-	//
+	// clear g.fn_mut_arg_names
+	if g.fn_mut_arg_names.len > 0 {
+		g.fn_mut_arg_names.clear()
+	}
+
 	if it.return_type == table.void_type {
 		g.write_defer_stmts_when_needed()
 	}
@@ -185,7 +194,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 		if default_expr == '{0}' {
 			if it.return_type.idx() == 1 && it.return_type.has_flag(.optional) {
 				// The default return for anonymous functions that return `?,
-				// should have .ok = true set, otherwise calling them with 
+				// should have .ok = true set, otherwise calling them with
 				// optfn() or { panic(err) } will cause a panic:
 				g.writeln('\treturn (Option_void){.ok = true};')
 			} else {

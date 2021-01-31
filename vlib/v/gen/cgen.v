@@ -118,6 +118,7 @@ mut:
 	// strs_to_free          []string // strings.Builder
 	inside_call           bool
 	for_in_mut_val_name   string
+	fn_mut_arg_names      []string
 	has_main              bool
 	inside_const          bool
 	comp_for_method       string      // $for method in T.methods {}
@@ -146,6 +147,7 @@ mut:
 	branch_parent_pos  int    // used in BranchStmt (continue/break) for autofree stop position
 	timers             &util.Timers = util.new_timers(false)
 	force_main_console bool // true when [console] used on fn main()
+	as_cast_type_names map[string]string // table for type name lookup in runtime (for __as_cast)
 }
 
 pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string {
@@ -201,7 +203,6 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	}
 	g.init()
 	g.timers.show('cgen init')
-	//
 	mut tests_inited := false
 	mut autofree_used := false
 	for file in files {
@@ -258,7 +259,6 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 			g.definitions.writeln('int _v_type_idx_${typ.cname}() { return $idx; };')
 		}
 	}
-	// g.write_str_definitions()
 	// v files are finished, what remains is pure C code
 	g.gen_vlines_reset()
 	if g.pref.build_mode != .build_module {
@@ -1991,7 +1991,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			} else {
 				g.out.go_back_to(pos)
 				is_var_mut := !is_decl && left is ast.Ident
-					&& g.for_in_mut_val_name == (left as ast.Ident).name
+					&& (g.for_in_mut_val_name == (left as ast.Ident).name || (left as ast.Ident).name in g.fn_mut_arg_names)
 				addr := if is_var_mut { '' } else { '&' }
 				g.writeln('')
 				g.write('memcpy($addr')
@@ -2062,8 +2062,8 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					g.prevent_sum_type_unwrapping_once = true
 				}
 				if !is_fixed_array_copy || is_decl {
-					if !is_decl && left is ast.Ident
-						&& g.for_in_mut_val_name == (left as ast.Ident).name {
+					if !is_decl && var_type != table.string_type_idx && left is ast.Ident
+						&& (g.for_in_mut_val_name == (left as ast.Ident).name || (left as ast.Ident).name in g.fn_mut_arg_names) {
 						g.write('*')
 					}
 					g.expr(left)
@@ -2756,7 +2756,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.PostfixExpr {
 			if node.auto_locked != '' {
-				g.writeln('sync__RwMutex_w_lock(&$node.auto_locked->mtx);')
+				g.writeln('sync__RwMutex_lock(&$node.auto_locked->mtx);')
 			}
 			g.inside_map_postfix = true
 			g.expr(node.expr)
@@ -2764,7 +2764,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.write(node.op.str())
 			if node.auto_locked != '' {
 				g.writeln(';')
-				g.write('sync__RwMutex_w_unlock(&$node.auto_locked->mtx)')
+				g.write('sync__RwMutex_unlock(&$node.auto_locked->mtx)')
 			}
 		}
 		ast.PrefixExpr {
@@ -3019,7 +3019,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	// string + string, string == string etc
 	// g.infix_op = node.op
 	if node.auto_locked != '' {
-		g.writeln('sync__RwMutex_w_lock(&$node.auto_locked->mtx);')
+		g.writeln('sync__RwMutex_lock(&$node.auto_locked->mtx);')
 	}
 	left_type := g.unwrap_generic(node.left_type)
 	left_sym := g.table.get_type_symbol(left_type)
@@ -3409,18 +3409,18 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	}
 	if node.auto_locked != '' {
 		g.writeln(';')
-		g.write('sync__RwMutex_w_unlock(&$node.auto_locked->mtx)')
+		g.write('sync__RwMutex_unlock(&$node.auto_locked->mtx)')
 	}
 }
 
 fn (mut g Gen) lock_expr(node ast.LockExpr) {
-	mut lock_prefixes := []byte{len: 0, cap: node.lockeds.len}
+	mut lock_prefixes := []string{len: 0, cap: node.lockeds.len}
 	for id in node.lockeds {
 		name := id.name
 		deref := if id.is_mut { '->' } else { '.' }
-		lock_prefix := if node.is_rlock { `r` } else { `w` }
+		lock_prefix := if node.is_rlock { 'r' } else { '' }
 		lock_prefixes << lock_prefix // keep for unlock
-		g.writeln('sync__RwMutex_${lock_prefix:c}_lock(&$name${deref}mtx);')
+		g.writeln('sync__RwMutex_${lock_prefix}lock(&$name${deref}mtx);')
 	}
 	g.stmts(node.stmts)
 	// unlock in reverse order
@@ -3429,7 +3429,7 @@ fn (mut g Gen) lock_expr(node ast.LockExpr) {
 		lock_prefix := lock_prefixes[i]
 		name := id.name
 		deref := if id.is_mut { '->' } else { '.' }
-		g.writeln('sync__RwMutex_${lock_prefix:c}_unlock(&$name${deref}mtx);')
+		g.writeln('sync__RwMutex_${lock_prefix}unlock(&$name${deref}mtx);')
 	}
 }
 
@@ -4984,6 +4984,12 @@ fn (mut g Gen) write_init_function() {
 		g.writeln('g_m2_buf = malloc(50 * 1000 * 1000);')
 		g.writeln('g_m2_ptr = g_m2_buf;')
 	}
+	// NB: the as_cast table should be *before* the other constant initialize calls,
+	// because it may be needed during const initialization of builtin and during
+	// calling module init functions too, just in case they do fail...
+	g.write('\tas_cast_type_indexes = ')
+	g.writeln(g.as_cast_name_table())
+	//
 	g.writeln('\tbuiltin_init();')
 	g.writeln('\tvinit_string_literals();')
 	//
@@ -4999,7 +5005,6 @@ fn (mut g Gen) write_init_function() {
 			}
 		}
 	}
-	//
 	g.writeln('}')
 	if g.pref.printfn_list.len > 0 && '_vinit' in g.pref.printfn_list {
 		println(g.out.after(fn_vinit_start_pos))
@@ -5014,6 +5019,7 @@ fn (mut g Gen) write_init_function() {
 			g.writeln(g.cleanups[mod_name].str())
 		}
 		// g.writeln('\tfree(g_str_buf);')
+		g.writeln('\tarray_free(&as_cast_type_indexes);')
 		g.writeln('}')
 		if g.pref.printfn_list.len > 0 && '_vcleanup' in g.pref.printfn_list {
 			println(g.out.after(fn_vcleanup_start_pos))
@@ -5848,20 +5854,48 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 	styp := g.typ(node.typ)
 	sym := g.table.get_type_symbol(node.typ)
 	expr_type_sym := g.table.get_type_symbol(node.expr_type)
-	if expr_type_sym.kind == .sum_type {
+	if expr_type_sym.info is table.SumType {
 		dot := if node.expr_type.is_ptr() { '->' } else { '.' }
-		g.write('/* as */ *($styp*)__as_cast((')
+		g.write('/* as */ *($styp*)__as_cast(')
+		g.write('(')
 		g.expr(node.expr)
 		g.write(')')
 		g.write(dot)
-		g.write('_$sym.cname, (')
+		g.write('_$sym.cname,')
+		g.write('(')
 		g.expr(node.expr)
 		g.write(')')
 		g.write(dot)
 		// g.write('typ, /*expected:*/$node.typ)')
 		sidx := g.type_sidx(node.typ)
-		g.write('typ, /*expected:*/$sidx)')
+		expected_sym := g.table.get_type_symbol(node.typ)
+		g.write('typ, $sidx) /*expected idx: $sidx, name: $expected_sym.name */ ')
+
+		// fill as cast name table
+		for variant in expr_type_sym.info.variants {
+			idx := variant.str()
+			if idx in g.as_cast_type_names {
+				continue
+			}
+			variant_sym := g.table.get_type_symbol(variant)
+			g.as_cast_type_names[idx] = variant_sym.name
+		}
 	}
+}
+
+fn (g Gen) as_cast_name_table() string {
+	if g.as_cast_type_names.len == 0 {
+		return 'new_array_from_c_array(1, 1, sizeof(VCastTypeIndexName), _MOV((VCastTypeIndexName[1]){(VCastTypeIndexName){.tindex = 0,.tname = _SLIT("unknown")}}));'
+	}
+	mut name_table := strings.new_builder(1024)
+	casts_len := g.as_cast_type_names.len + 1
+	name_table.writeln('new_array_from_c_array($casts_len, $casts_len, sizeof(VCastTypeIndexName), _MOV((VCastTypeIndexName[$casts_len]){')
+	name_table.writeln('\t\t  (VCastTypeIndexName){.tindex = 0, .tname = _SLIT("unknown")}')
+	for key, value in g.as_cast_type_names {
+		name_table.writeln('\t\t, (VCastTypeIndexName){.tindex = $key, .tname = _SLIT("$value")}')
+	}
+	name_table.writeln('\t}));')
+	return name_table.str()
 }
 
 fn (mut g Gen) is_expr(node ast.InfixExpr) {

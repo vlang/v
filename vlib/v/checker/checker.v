@@ -68,6 +68,7 @@ mut:
 	cur_orm_ts                       table.TypeSymbol
 	error_details                    []string
 	for_in_mut_val_name              string
+	fn_mut_arg_names                 []string
 	vmod_file_content                string       // needed for @VMOD_FILE, contents of the file, *NOT its path**
 	vweb_gen_types                   []table.Type // vweb route checks
 	prevent_sum_type_unwrapping_once bool   // needed for assign new values to sum type, stopping unwrapping then
@@ -1211,6 +1212,14 @@ pub fn (mut c Checker) call_expr(mut call_expr ast.CallExpr) table.Type {
 	c.expected_or_type = call_expr.return_type.clear_flag(.optional)
 	c.stmts(call_expr.or_block.stmts)
 	c.expected_or_type = table.void_type
+	if call_expr.or_block.kind == .propagate && !c.cur_fn.return_type.has_flag(.optional)
+		&& !c.inside_const {
+		cur_names := c.cur_fn.name.split('.')
+		if cur_names[cur_names.len - 1] != 'main' {
+			c.error('to propagate the optional call, `$c.cur_fn.name` must return an optional',
+				call_expr.or_block.pos)
+		}
+	}
 	return typ
 }
 
@@ -1773,6 +1782,15 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		call_expr.should_be_skipped = true
 	}
 	if f.language != .v || call_expr.language != .v {
+		// ignore C function of type `fn()`, assume untyped
+		// For now don't check C functions that are variadic, underscored, capitalized
+		// or have no params and return int
+		if f.language == .c && f.params.len != call_expr.args.len && !f.is_variadic
+			&& f.name[2] != `_` && !f.name[2].is_capital()
+			&& (f.params.len != 0 || f.return_type !in [table.void_type, table.int_type]) {
+			// change to error later
+			c.warn('expected $f.params.len arguments, but got $call_expr.args.len', call_expr.pos)
+		}
 		for arg in call_expr.args {
 			c.expr(arg.expr)
 		}
@@ -2562,7 +2580,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 				assign_stmt.pos)
 		}
 		left_is_ptr := left_type.is_ptr() || left_sym.is_pointer()
-		if left_is_ptr && c.for_in_mut_val_name != left.str() {
+		if left_is_ptr && c.for_in_mut_val_name != left.str() && left.str() !in c.fn_mut_arg_names {
 			if !c.inside_unsafe && assign_stmt.op !in [.assign, .decl_assign] {
 				// ptr op=
 				c.warn('pointer arithmetic is only allowed in `unsafe` blocks', assign_stmt.pos)
@@ -3677,14 +3695,38 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) table.Type {
 		c.nr_errors += c2.nr_errors
 	}
 	if node.method_name == 'html' {
-		return c.table.find_type_idx('vweb.Result')
+		rtyp := c.table.find_type_idx('vweb.Result')
+		node.result_type = rtyp
+		return rtyp
 	}
-	mut var := c.fn_scope.objects[node.method_name]
-	if mut var is ast.Var {
-		var.is_used = true
-		c.fn_scope.objects[node.method_name] = var
+	if node.is_vweb || node.method_name == 'method' {
+		return table.string_type
 	}
-	return table.string_type
+	// s.$my_str()
+	v := node.scope.find_var(node.method_name) or {
+		c.error('unknown identifier `$node.method_name`', node.method_pos)
+		return table.void_type
+	}
+	if v.typ != table.string_type {
+		s := c.expected_msg(v.typ, table.string_type)
+		c.error('invalid string method call: $s', node.method_pos)
+		return table.void_type
+	}
+	// note: we should use a compile-time evaluation function rather than handle here
+	// mut variables will not work after init
+	mut method_name := ''
+	if v.expr is ast.StringLiteral {
+		method_name = v.expr.val
+	} else {
+		c.error('todo: not a string literal', node.method_pos)
+	}
+	f := node.sym.find_method(method_name) or {
+		c.error('could not find method `$method_name`', node.method_pos)
+		return table.void_type
+	}
+	// println(f.name + ' ' + c.table.type_to_str(f.return_type))
+	node.result_type = f.return_type
+	return f.return_type
 }
 
 fn (mut c Checker) at_expr(mut node ast.AtExpr) table.Type {
@@ -3852,7 +3894,9 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 				ast.ConstField {
 					mut typ := obj.typ
 					if typ == 0 {
+						c.inside_const = true
 						typ = c.expr(obj.expr)
+						c.inside_const = false
 						if obj.expr is ast.CallExpr {
 							if obj.expr.or_block.kind != .absent {
 								typ = typ.clear_flag(.optional)
@@ -5469,8 +5513,17 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			}
 		}
 	}
+	for param in node.params {
+		if param.is_mut {
+			c.fn_mut_arg_names << param.name
+		}
+	}
 	c.fn_scope = node.scope
 	c.stmts(node.stmts)
+
+	if c.fn_mut_arg_names.len > 0 {
+		c.fn_mut_arg_names.clear()
+	}
 	returns := c.returns || has_top_return(node.stmts)
 	if node.language == .v && !node.no_body && node.return_type != table.void_type && !returns
 		&& node.name !in ['panic', 'exit'] {
