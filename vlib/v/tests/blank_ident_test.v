@@ -10,6 +10,20 @@ fn test_fn_with_blank_param() {
 	fn_with_blank_param(321)
 }
 
+fn fn_with_multiple_blank_param(_ int, _ f32) {
+	_ = 'not an int nor a float'
+}
+
+struct Abc {}
+
+fn (_ Abc) fn_with_multiple_blank_param(_ int, _ f32) {}
+
+fn test_fn_with_multiple_blank_param() {
+	fn_with_multiple_blank_param(1, 1.1)
+	a := Abc{}
+	a.fn_with_multiple_blank_param(1, 1.1)
+}
+
 fn test_for_in_range() {
 	for _ in 1 .. 10 {
 		assert true
