@@ -43,7 +43,8 @@ struct Tasks {
 	parallel_jobs int // 0 is using VJOBS, anything else is an override
 	label         string
 mut:
-	all []TaskDescription
+	show_cmd bool
+	all      []TaskDescription
 }
 
 fn test_all() {
@@ -92,11 +93,11 @@ fn test_all() {
 		}
 		cte_dir := '$checker_dir/comptime_env'
 		files := get_tests_in_dir(cte_dir, false)
-		cte_tasks.add('', cte_dir, 'run', '.run.out', files, false)
-		cte_tasks.add('VAR=/usr/include $vexe', cte_dir, 'run', '.var.run.out', files,
-			false)
-		cte_tasks.add('VAR=/opt/invalid/path $vexe', cte_dir, 'run', '.var_invalid.run.out',
-			files, false)
+		cte_tasks.add('', cte_dir, '-no-retry-compilation run', '.run.out', files, false)
+		cte_tasks.add('VAR=/usr/include $vexe', cte_dir, '-no-retry-compilation run',
+			'.var.run.out', files, false)
+		cte_tasks.add('VAR=/opt/invalid/path $vexe', cte_dir, '-no-retry-compilation run',
+			'.var_invalid.run.out', files, false)
 		cte_tasks.run()
 	}
 }
@@ -125,6 +126,7 @@ fn bstep_message(mut bench benchmark.Benchmark, label string, msg string, sdurat
 
 // process an array of tasks in parallel, using no more than vjobs worker threads
 fn (mut tasks Tasks) run() {
+	tasks.show_cmd = os.getenv('VTEST_SHOW_CMD') != ''
 	vjobs := if tasks.parallel_jobs > 0 { tasks.parallel_jobs } else { runtime.nr_jobs() }
 	mut bench := benchmark.new_benchmark()
 	bench.set_total_expected_steps(tasks.all.len)
@@ -181,7 +183,12 @@ fn (mut tasks Tasks) run() {
 			diff_content(task.expected, task.found___)
 		} else {
 			bench.ok()
-			eprintln(bstep_message(mut bench, benchmark.b_ok, task.path, task.took))
+			if tasks.show_cmd {
+				eprintln(bstep_message(mut bench, benchmark.b_ok, '$task.cli_cmd $task.path',
+					task.took))
+			} else {
+				eprintln(bstep_message(mut bench, benchmark.b_ok, task.path, task.took))
+			}
 		}
 	}
 	bench.stop()

@@ -2,7 +2,7 @@
 #include "$env('VAR')/stdio.h"
 
 fn main() {
-  env := $env('VAR')
-  println(env)
-  println('done')
+	env := $env('VAR')
+	println(env)
+	println('done')
 }

@@ -1,1 +1,1 @@
-builder error: Header file "/opt/invalid/path/stdio.h", needed for module `main` was not found. Please install the corresponding development headers.
+builder error: '/opt/invalid/path/stdio.h' not found
