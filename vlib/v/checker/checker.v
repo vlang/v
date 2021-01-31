@@ -4389,6 +4389,10 @@ pub fn (mut c Checker) select_expr(mut node ast.SelectExpr) table.Type {
 }
 
 pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) table.Type {
+	if node.lockeds.len == 0 {
+		c.warn('`lock`/`rlock`: no objects to lock specified. Hint: use `lock a, b, c {`',
+			node.pos)
+	}
 	for i in 0 .. node.lockeds.len {
 		c.ident(mut node.lockeds[i])
 		id := node.lockeds[i]
