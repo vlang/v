@@ -118,6 +118,7 @@ mut:
 	// strs_to_free          []string // strings.Builder
 	inside_call           bool
 	for_in_mut_val_name   string
+	fn_mut_arg_names      []string
 	has_main              bool
 	inside_const          bool
 	comp_for_method       string      // $for method in T.methods {}
@@ -1990,7 +1991,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			} else {
 				g.out.go_back_to(pos)
 				is_var_mut := !is_decl && left is ast.Ident
-					&& g.for_in_mut_val_name == (left as ast.Ident).name
+					&& (g.for_in_mut_val_name == (left as ast.Ident).name || (left as ast.Ident).name in g.fn_mut_arg_names)
 				addr := if is_var_mut { '' } else { '&' }
 				g.writeln('')
 				g.write('memcpy($addr')
@@ -2061,8 +2062,8 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					g.prevent_sum_type_unwrapping_once = true
 				}
 				if !is_fixed_array_copy || is_decl {
-					if !is_decl && left is ast.Ident
-						&& g.for_in_mut_val_name == (left as ast.Ident).name {
+					if !is_decl && var_type != table.string_type_idx && left is ast.Ident
+						&& (g.for_in_mut_val_name == (left as ast.Ident).name || (left as ast.Ident).name in g.fn_mut_arg_names) {
 						g.write('*')
 					}
 					g.expr(left)
@@ -5038,9 +5039,10 @@ fn (mut g Gen) write_init_function() {
 	if g.pref.printfn_list.len > 0 && '_vinit' in g.pref.printfn_list {
 		println(g.out.after(fn_vinit_start_pos))
 	}
+	//
+	fn_vcleanup_start_pos := g.out.len
+	g.writeln('void _vcleanup() {')
 	if g.is_autofree {
-		fn_vcleanup_start_pos := g.out.len
-		g.writeln('void _vcleanup() {')
 		// g.writeln('puts("cleaning up...");')
 		reversed_table_modules := g.table.modules.reverse()
 		for mod_name in reversed_table_modules {
@@ -5049,20 +5051,28 @@ fn (mut g Gen) write_init_function() {
 		}
 		// g.writeln('\tfree(g_str_buf);')
 		g.writeln('\tarray_free(&as_cast_type_indexes);')
-		g.writeln('}')
-		if g.pref.printfn_list.len > 0 && '_vcleanup' in g.pref.printfn_list {
-			println(g.out.after(fn_vcleanup_start_pos))
-		}
 	}
+	g.writeln('}')
+	if g.pref.printfn_list.len > 0 && '_vcleanup' in g.pref.printfn_list {
+		println(g.out.after(fn_vcleanup_start_pos))
+	}
+	//
 	needs_constructor := g.pref.is_shared && g.pref.os != .windows
 	if needs_constructor {
 		// shared libraries need a way to call _vinit/2. For that purpose,
-		// provide a constructor, ensuring that all constants are initialized just once.
+		// provide a constructor/destructor pair, ensuring that all constants
+		// are initialized just once, and that they will be freed too.
 		// NB: os.args in this case will be [].
 		g.writeln('__attribute__ ((constructor))')
 		g.writeln('void _vinit_caller() {')
 		g.writeln('\tstatic bool once = false; if (once) {return;} once = true;')
 		g.writeln('\t_vinit(0,0);')
+		g.writeln('}')
+
+		g.writeln('__attribute__ ((destructor))')
+		g.writeln('void _vcleanup_caller() {')
+		g.writeln('\tstatic bool once = false; if (once) {return;} once = true;')
+		g.writeln('\t_vcleanup();')
 		g.writeln('}')
 	}
 }

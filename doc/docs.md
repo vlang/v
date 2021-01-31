@@ -1931,6 +1931,46 @@ fn announce(s Speaker) {
 ```
 For more information, see [Dynamic casts](#dynamic-casts).
 
+Also unlike Go, an interface may implement a method.
+These methods are not implemented by structs which implement that interface.
+
+When a struct is wrapped in an interface that has implemented a method
+with the same name as one implemented by this struct, only the method
+implemented on the interface is called.
+
+```v
+struct Cat {}
+
+interface Adoptable {}
+
+fn (c Cat) speak() string {
+	return 'meow!'
+}
+
+fn (a Adoptable) speak() string {
+	return 'adopt me!'
+}
+
+fn (a Adoptable) adopt() ?&Cat {
+	if a is Cat {
+		return a
+	} else {
+		return error('This cannot be adopted.')
+	}
+}
+
+fn new_adoptable() Adoptable {
+	return Cat{}
+}
+
+fn main() {
+	adoptable := new_adoptable()
+	println(adoptable.speak()) // adopt me!
+	cat := adoptable.adopt() or { return }
+	println(cat.speak()) // meow!
+}
+```
+
 ### Enums
 
 ```v

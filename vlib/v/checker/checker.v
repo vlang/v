@@ -68,6 +68,7 @@ mut:
 	cur_orm_ts                       table.TypeSymbol
 	error_details                    []string
 	for_in_mut_val_name              string
+	fn_mut_arg_names                 []string
 	vmod_file_content                string       // needed for @VMOD_FILE, contents of the file, *NOT its path**
 	vweb_gen_types                   []table.Type // vweb route checks
 	prevent_sum_type_unwrapping_once bool   // needed for assign new values to sum type, stopping unwrapping then
@@ -2588,7 +2589,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 				assign_stmt.pos)
 		}
 		left_is_ptr := left_type.is_ptr() || left_sym.is_pointer()
-		if left_is_ptr && c.for_in_mut_val_name != left.str() {
+		if left_is_ptr && c.for_in_mut_val_name != left.str() && left.str() !in c.fn_mut_arg_names {
 			if !c.inside_unsafe && assign_stmt.op !in [.assign, .decl_assign] {
 				// ptr op=
 				c.warn('pointer arithmetic is only allowed in `unsafe` blocks', assign_stmt.pos)
@@ -5521,8 +5522,17 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			}
 		}
 	}
+	for param in node.params {
+		if param.is_mut {
+			c.fn_mut_arg_names << param.name
+		}
+	}
 	c.fn_scope = node.scope
 	c.stmts(node.stmts)
+
+	if c.fn_mut_arg_names.len > 0 {
+		c.fn_mut_arg_names.clear()
+	}
 	returns := c.returns || has_top_return(node.stmts)
 	if node.language == .v && !node.no_body && node.return_type != table.void_type && !returns
 		&& node.name !in ['panic', 'exit'] {
