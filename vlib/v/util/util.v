@@ -138,8 +138,12 @@ pub fn resolve_env_value(str string) ?string {
 			}
 		}
 	}
-	// println('Replacing: "' + ident + env_lit + "') " + 'with "'+os.getenv(env_lit)+'"')
-	rep := str.replace_once(ident + env_lit + "'" + ')', os.getenv(env_lit))
+	env_value := os.getenv(env_lit)
+	// println('Replacing: "' + ident + env_lit + "') " + 'with "'+env_value+'"')
+	if env_value == '' {
+		return error('The environments variable "$env_lit" is empty. Please assign a value.')
+	}
+	rep := str.replace_once(ident + env_lit + "'" + ')', env_value)
 	if rep.contains(ident) {
 		return resolve_env_value(rep)
 	}
