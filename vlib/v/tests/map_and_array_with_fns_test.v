@@ -71,3 +71,18 @@ fn test_map_and_array_with_fns_typeof_and_direct_call() {
 	// TODO: enable this
 	// assert b['one']('hi') == 12
 }
+
+fn bar1(mut a []fn (string) int) int {
+	return a[0]('hello')
+}
+
+fn bar2(a []fn (string) int) int {
+	return a[0]('hello')
+}
+
+fn test_array_of_fns_as_argument() {
+	mut a1 := [foo3]
+	assert bar1(mut a1) == 15
+	a2 := [foo3]
+	assert bar2(a2) == 15
+}
