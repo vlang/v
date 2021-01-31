@@ -14,6 +14,10 @@ fn fn_with_multiple_blank_param(_ int, _ f32) {
 	_ = 'not an int nor a float'
 }
 
+interface Foo {
+	fn_with_multiple_blank_param(int, f32)
+}
+
 struct Abc {}
 
 fn (_ Abc) fn_with_multiple_blank_param(_ int, _ f32) {}
@@ -22,6 +26,14 @@ fn test_fn_with_multiple_blank_param() {
 	fn_with_multiple_blank_param(1, 1.1)
 	a := Abc{}
 	a.fn_with_multiple_blank_param(1, 1.1)
+}
+
+fn call_fn_with_multiple_blank_param(foo Foo) {
+	foo.fn_with_multiple_blank_param(1, 1.1)
+}
+
+fn test_interface_fn_with_multiple_blank_param() {
+	call_fn_with_multiple_blank_param(Abc{})
 }
 
 fn test_for_in_range() {

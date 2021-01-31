@@ -6016,22 +6016,22 @@ $staticprefix $interface_name* I_${cctype}_to_Interface_${interface_name}_ptr($c
 					// inline void Cat_speak_method_wrapper(Cat c) { return Cat_speak(*c); }
 					methods_wrapper.write('static inline ${g.typ(method.return_type)}')
 					methods_wrapper.write(' ${method_call}_method_wrapper(')
-					methods_wrapper.write('$cctype* ${method.params[0].name}')
-					// TODO g.fn_args
-					for j in 1 .. method.params.len {
-						arg := method.params[j]
-						methods_wrapper.write(', ${g.typ(arg.typ)} $arg.name')
+					//
+					params_start_pos := g.out.len
+					mut params := method.params.clone()
+					first_param := params[0] // workaround, { params[0] | ... } doesn't work
+					params[0] = {
+						first_param |
+						typ: params[0].typ.set_nr_muls(1)
 					}
+					fargs, _ := g.fn_args(params, false) // second argument is ignored anyway
+					methods_wrapper.write(g.out.cut_last(g.out.len - params_start_pos))
 					methods_wrapper.writeln(') {')
 					methods_wrapper.write('\t')
 					if method.return_type != table.void_type {
 						methods_wrapper.write('return ')
 					}
-					methods_wrapper.write('${method_call}(*${method.params[0].name}')
-					for j in 1 .. method.params.len {
-						methods_wrapper.write(', ${method.params[j].name}')
-					}
-					methods_wrapper.writeln(');')
+					methods_wrapper.writeln('${method_call}(*${fargs.join(', ')});')
 					methods_wrapper.writeln('}')
 					// .speak = Cat_speak_method_wrapper
 					method_call += '_method_wrapper'
