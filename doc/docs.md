@@ -1752,7 +1752,7 @@ Global variables are not allowed, so this can be really useful.
 When naming constants, `snake_case` must be used. In order to distinguish consts
 from local variables, the full path to consts must be specified. For example,
 to access the PI const, full `math.pi` name must be used both outside the `math`
-module, and inside it. That restriction is relaxed only for the `main` module 
+module, and inside it. That restriction is relaxed only for the `main` module
 (the one containing your `fn main()`, where you can use the shorter name of the
 constants too, i.e. just `println(numbers)`, not `println(main.numbers)` .
 
@@ -3398,7 +3398,7 @@ single block. `customflag` should be a snake_case identifier, it can not
 contain arbitrary characters (only lower case latin letters + numbers + `_`).
 NB: a combinatorial `_d_customflag_linux.c.v` postfix will not work.
 If you do need a custom flag file, that has platform dependent code, use the
-postfix `_d_customflag.v`, and then use plaftorm dependent compile time 
+postfix `_d_customflag.v`, and then use plaftorm dependent compile time
 conditional blocks inside it, i.e. `$if linux {}` etc.
 
 ## Compile time pseudo variables
