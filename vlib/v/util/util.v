@@ -114,7 +114,7 @@ pub fn resolve_vroot(str string, dir string) ?string {
 	vmod_file_location := mcache.get_by_folder(dir)
 	if vmod_file_location.vmod_file.len == 0 {
 		// There was no actual v.mod file found.
-		return error('To use @VROOT, you need to have a "v.mod" file in $dir, or in one of its parent folders.')
+		return error('to use @VROOT, you need to have a "v.mod" file in $dir, or in one of its parent folders.')
 	}
 	vmod_path := vmod_file_location.vmod_folder
 	return str.replace('@VROOT', os.real_path(vmod_path))
@@ -124,7 +124,7 @@ pub fn resolve_vroot(str string, dir string) ?string {
 // in `str` with the value of the env variable `$ENV_VAR_NAME`.
 pub fn resolve_env_value(str string) ?string {
 	ident := r'$' + 'env(' + "'"
-	at := str.index(ident) or { return error('No "$ident' + '...\')" could be found in "$str".') }
+	at := str.index(ident) or { return error('no "$ident' + '...\')" could be found in "$str".') }
 	mut ch := byte(`.`)
 	mut env_lit := ''
 	for i := at + ident.len; i < str.len && ch != `)`; i++ {
@@ -133,7 +133,7 @@ pub fn resolve_env_value(str string) ?string {
 			env_lit += ch.ascii_str()
 		} else {
 			if !(ch == `\'` || ch == `)`) {
-				return error('Could not parse "$ident' +
+				return error('could not parse "$ident' +
 					'...\')" in "$str". Invalid character "$ch.ascii_str()"')
 			}
 		}
@@ -141,7 +141,7 @@ pub fn resolve_env_value(str string) ?string {
 	env_value := os.getenv(env_lit)
 	// println('Replacing: "' + ident + env_lit + "') " + 'with "'+env_value+'"')
 	if env_value == '' {
-		return error('Environment variable "$env_lit" is empty.')
+		return error('the environment variable "$env_lit" is empty.')
 	}
 	rep := str.replace_once(ident + env_lit + "'" + ')', env_value)
 	if rep.contains(ident) {
