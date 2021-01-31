@@ -257,7 +257,7 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 	} else if imports.len > 1 {
 	*/
 	mut already_imported := map[string]bool{}
-	for i, imp in imports {
+	for imp in imports {
 		if imp.mod !in f.used_imports {
 			// TODO bring back once only unused imports are removed
 			// continue
