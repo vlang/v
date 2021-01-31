@@ -1,7 +1,5 @@
 module atomic2
 
-import sync
-
 /*
 Implements the atomic operations. For now TCC does not support
 the atomic versions on nix so it uses locks to simulate the same behavor.

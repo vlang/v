@@ -117,9 +117,9 @@ jobs:
       - name: Test time functions in a timezone using daylight saving (Europe/Paris)
         run: TZ=Europe/Paris ./v test vlib/time/
       - name: Build examples
-        run: ./v build-examples
+        run: ./v -W build-examples
       - name: Test building v tools
-        run: ./v build-tools
+        run: ./v -W build-tools
       - name: Test v binaries
         run: ./v build-vbinaries
       - name: Test v tutorials
