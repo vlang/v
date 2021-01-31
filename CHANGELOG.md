@@ -22,8 +22,10 @@
 - Advanced vdoc search on mobile layout.
 - string's `left()`/`right` were removed in favor of slicing syntax: `str[..pos]`.
 - gg: native graphics mode on macOS/iOS (using Cocoa Drawing API).
-- Full path to consts must be specified everywhere. This allows shadowing consts safely and
-makes it easy to distinguish them from local variables.
+- Full path to consts must be specified everywhere. This makes it easy to distinguish them
+from local variables.
+- `__offsetof` for low level needs (works like `offsetof` in C).
+- vfmt now preserves empty lines, like gofmt.
 
 ## V 0.2.1
 *30 Dec 2020*
