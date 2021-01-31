@@ -3207,7 +3207,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			flag = vroot
 		}
 		if flag.contains('\$env(') {
-			env := util.resolve_env_value(flag) or {
+			env := util.resolve_env_value(flag, true) or {
 				c.error(err, node.pos)
 				return
 			}
@@ -3248,7 +3248,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			}
 		}
 		if flag.contains('\$env(') {
-			flag = util.resolve_env_value(flag) or {
+			flag = util.resolve_env_value(flag, true) or {
 				c.error(err, node.pos)
 				return
 			}
@@ -3678,7 +3678,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
 fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) table.Type {
 	node.sym = c.table.get_type_symbol(c.unwrap_generic(c.expr(node.left)))
 	if node.is_env {
-		env_value := util.resolve_env_value("\$env('$node.args_var')") or {
+		env_value := util.resolve_env_value("\$env('$node.args_var')", false) or {
 			c.error(err, node.env_pos)
 			return table.string_type
 		}

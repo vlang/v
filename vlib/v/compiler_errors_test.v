@@ -94,8 +94,10 @@ fn test_all() {
 		cte_dir := '$checker_dir/comptime_env'
 		files := get_tests_in_dir(cte_dir, false)
 		cte_tasks.add('', cte_dir, '-no-retry-compilation run', '.run.out', files, false)
-		cte_tasks.add('VAR=/usr/include $vexe', cte_dir, '-no-retry-compilation run', '.var.run.out', ['using_comptime_env.vv'], false)
-		cte_tasks.add('VAR=/opt/invalid/path $vexe', cte_dir, '-no-retry-compilation run', '.var_invalid.run.out', ['using_comptime_env.vv'], false)
+		cte_tasks.add('VAR=/usr/include $vexe', cte_dir, '-no-retry-compilation run',
+			'.var.run.out', ['using_comptime_env.vv'], false)
+		cte_tasks.add('VAR=/opt/invalid/path $vexe', cte_dir, '-no-retry-compilation run',
+			'.var_invalid.run.out', ['using_comptime_env.vv'], false)
 		cte_tasks.run()
 	}
 }

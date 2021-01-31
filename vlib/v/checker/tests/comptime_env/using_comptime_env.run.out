@@ -9,10 +9,3 @@ vlib/v/checker/tests/comptime_env/using_comptime_env.vv:2:3: error: the environm
       |   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     3 | 
     4 | fn main() {
-vlib/v/checker/tests/comptime_env/using_comptime_env.vv:5:14: error: the environment variable "VAR" does not exist.
-    3 | 
-    4 | fn main() {
-    5 |     env := $env('VAR')
-      |                 ~~~~~
-    6 |     println(env)
-    7 |     println('done')
