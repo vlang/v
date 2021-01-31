@@ -62,6 +62,10 @@ fn foo3(a string) int {
 	return 10 + a.len
 }
 
+fn foo4(a string) int {
+	return 20 + a.len
+}
+
 fn test_map_and_array_with_fns_typeof_and_direct_call() {
 	a := [foo3]
 	assert typeof(a).name == '[]fn (string) int'
@@ -73,7 +77,7 @@ fn test_map_and_array_with_fns_typeof_and_direct_call() {
 }
 
 fn bar1(mut a []fn (string) int) int {
-	a[0] = foo3
+	a[0] = foo4
 	return a[0]('hello')
 }
 
@@ -83,7 +87,7 @@ fn bar2(a []fn (string) int) int {
 
 fn test_array_of_fns_as_argument() {
 	mut a1 := [foo3]
-	assert bar1(mut a1) == 15
+	assert bar1(mut a1) == 25
 	a2 := [foo3]
 	assert bar2(a2) == 15
 }
