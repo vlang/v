@@ -63,21 +63,13 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 	}
 	is_embed_file := n == 'embed_file'
 	is_html := n == 'html'
-	p.check(.lpar)
-	spos := p.tok.position()
-	s := if is_html { '' } else { p.tok.lit }
-	if !is_html {
-		p.check(.string)
-	}
-	p.check(.rpar)
 	// $env('ENV_VAR_NAME')
 	if n == 'env' {
-		mut env_var := s
-		if env_var == '' {
-			p.error_with_pos('supply an env variable name like `HOME`, `PATH` or `USER`',
-				spos)
-			return err_node
-		}
+		p.check(.lpar)
+		spos := p.tok.position()
+		s := p.tok.lit
+		p.check(.string)
+		p.check(.rpar)
 		return ast.ComptimeCall{
 			scope: 0
 			method_name: n
@@ -86,6 +78,13 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 			env_pos: spos
 		}
 	}
+	p.check(.lpar)
+	spos := p.tok.position()
+	s := if is_html { '' } else { p.tok.lit }
+	if !is_html {
+		p.check(.string)
+	}
+	p.check(.rpar)
 	// $embed_file('/path/to/file')
 	if is_embed_file {
 		mut epath := s

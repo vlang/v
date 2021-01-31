@@ -3678,7 +3678,11 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
 fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) table.Type {
 	node.sym = c.table.get_type_symbol(c.unwrap_generic(c.expr(node.left)))
 	if node.is_env {
-		node.env_value = os.getenv(node.args_var)
+		env_value := util.resolve_env_value("\$env('$node.args_var')") or {
+			c.error(err, node.env_pos)
+			return table.string_type
+		}
+		node.env_value = env_value
 		return table.string_type
 	}
 	if node.is_embed {

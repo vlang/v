@@ -123,20 +123,27 @@ pub fn resolve_vroot(str string, dir string) ?string {
 // resolve_env_value replaces all occurrences of `$env('ENV_VAR_NAME')`
 // in `str` with the value of the env variable `$ENV_VAR_NAME`.
 pub fn resolve_env_value(str string) ?string {
-	ident := r'$' + 'env(' + "'"
-	at := str.index(ident) or { return error('no "$ident' + '...\')" could be found in "$str".') }
+	env_ident := "\$env('"
+	at := str.index(env_ident) or {
+		return error('no "$env_ident' + '...\')" could be found in "$str".')
+	}
 	mut ch := byte(`.`)
 	mut env_lit := ''
-	for i := at + ident.len; i < str.len && ch != `)`; i++ {
+	for i := at + env_ident.len; i < str.len && ch != `)`; i++ {
 		ch = byte(str[i])
 		if ch.is_letter() || ch.is_digit() || ch == `_` {
 			env_lit += ch.ascii_str()
 		} else {
 			if !(ch == `\'` || ch == `)`) {
-				return error('could not parse "$ident' +
-					'...\')" in "$str". Invalid character "$ch.ascii_str()"')
+				if ch == `$` {
+					return error('cannot use string interpolation in compile time \$env() expression')
+				}
+				return error('invalid environment variable name in "$str", invalid character "$ch.ascii_str()"')
 			}
 		}
+	}
+	if env_lit == '' {
+		return error('supply an env variable name like HOME, PATH or USER')
 	}
 	env_value := os.environ()[env_lit] or {
 		return error('the environment variable "$env_lit" does not exist.')
@@ -144,9 +151,8 @@ pub fn resolve_env_value(str string) ?string {
 	if env_value == '' {
 		return error('the environment variable "$env_lit" is empty.')
 	}
-	// println('Replacing: "' + ident + env_lit + "') " + 'with "'+env_value+'"')
-	rep := str.replace_once(ident + env_lit + "'" + ')', env_value)
-	if rep.contains(ident) {
+	rep := str.replace_once(env_ident + env_lit + "'" + ')', env_value)
+	if rep.contains(env_ident) {
 		return resolve_env_value(rep)
 	}
 	return rep
