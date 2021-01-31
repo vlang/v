@@ -1359,3 +1359,12 @@ fn test_clone_of_same_elem_size_array() {
 	println(arr2)
 	assert arr2 == [Abc{1, 2, 3}, Abc{2, 3, 4}]
 }
+
+pub fn example<T>(mut arr []T) []T {
+	return arr.clone()
+}
+
+fn test_generic_mutable_arrays() {
+	mut arr := [1, 2, 3]
+	assert example(mut arr) == [1, 2, 3]
+}

@@ -1,0 +1,14 @@
+vlib/v/checker/tests/optional_propagate_nested.vv:10:19: error: to propagate the optional call, `xx_prop` must return an optional
+    8 | 
+    9 | fn xx_prop() string {
+   10 |     s := ret(raise() ?)
+      |                      ^
+   11 |     return s
+   12 | }
+vlib/v/checker/tests/optional_propagate_nested.vv:28:22: error: to propagate the optional call, `aa_propagate` must return an optional
+   26 | 
+   27 | fn (mut s St) aa_propagate() {
+   28 |     f := retf(s.raise() ?)
+      |                         ^
+   29 |     s.z = 7.5
+   30 |     println(f)

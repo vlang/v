@@ -28,19 +28,8 @@ struct FormatOptions {
 }
 
 const (
-	formatted_file_token         = '\@\@\@' + 'FORMATTED_FILE: '
-	platform_and_file_extensions = [
-		['windows', '_windows.v'],
-		['linux', '_lin.v', '_linux.v', '_nix.v'],
-		['macos', '_mac.v', '_darwin.v'],
-		['freebsd', '_bsd.v', '_freebsd.v'],
-		['netbsd', '_bsd.v', '_netbsd.v'],
-		['openbsd', '_bsd.v', '_openbsd.v'],
-		['solaris', '_solaris.v'],
-		['haiku', '_haiku.v'],
-		['qnx', '_qnx.v'],
-	]
-	vtmp_folder                  = util.get_vtmp_folder()
+	formatted_file_token = '\@\@\@' + 'FORMATTED_FILE: '
+	vtmp_folder          = util.get_vtmp_folder()
 )
 
 fn main() {
@@ -100,7 +89,11 @@ fn main() {
 		}
 		files << file
 	}
-	if files.len == 0 {
+	if is_atty(0) == 0 && files.len == 0 {
+		foptions.format_pipe()
+		exit(0)
+	}
+	if files.len == 0 || '-help' in args || '--help' in args {
 		vhelp.show_topic('fmt')
 		exit(0)
 	}
@@ -183,6 +176,26 @@ fn (foptions &FormatOptions) format_file(file string) {
 	eprintln('$formatted_file_token$vfmt_output_path')
 }
 
+fn (foptions &FormatOptions) format_pipe() {
+	mut prefs := pref.new_preferences()
+	prefs.is_fmt = true
+	if foptions.is_verbose {
+		eprintln('vfmt2 running fmt.fmt over stdin')
+	}
+	input_text := os.get_raw_lines_joined()
+	table := table.new_table()
+	// checker := checker.new_checker(table, prefs)
+	file_ast := parser.parse_text(input_text, '', table, .parse_comments, prefs, &ast.Scope{
+		parent: 0
+	})
+	// checker.check(file_ast)
+	formatted_content := fmt.fmt(file_ast, table, foptions.is_debug)
+	print(formatted_content)
+	if foptions.is_verbose {
+		eprintln('fmt.fmt worked and $formatted_content.len bytes were written to stdout.')
+	}
+}
+
 fn print_compiler_options(compiler_params &pref.Preferences) {
 	eprintln('         os: ' + compiler_params.os.str())
 	eprintln('  ccompiler: $compiler_params.ccompiler')
@@ -262,17 +275,6 @@ fn (f FormatOptions) str() string {
 		'FormatOptions{ is_l: $f.is_l, is_w: $f.is_w, is_diff: $f.is_diff, is_verbose: $f.is_verbose,' +
 		' is_all: $f.is_all, is_worker: $f.is_worker, is_debug: $f.is_debug, is_noerror: $f.is_noerror,' +
 		' is_verify: $f.is_verify" }'
-}
-
-fn file_to_target_os(file string) string {
-	for extensions in platform_and_file_extensions {
-		for ext in extensions {
-			if file.ends_with(ext) {
-				return extensions[0]
-			}
-		}
-	}
-	return ''
 }
 
 fn file_to_mod_name_and_is_module_file(file string) (string, bool) {

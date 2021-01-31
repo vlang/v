@@ -4,4 +4,4 @@ vlib/v/checker/tests/unimplemented_interface_b.vv:13:6: error: `Cat` incorrectly
    13 |     foo(c)
       |         ^
    14 | }
-details: main.Animal has `name() string`
+Details: main.Animal has `name() string`

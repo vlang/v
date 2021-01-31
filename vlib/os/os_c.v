@@ -16,7 +16,7 @@ fn C.ftell(fp voidptr) int
 
 fn C.sigaction(int, voidptr, int)
 
-fn C.open(charptr, int, int) int
+fn C.open(charptr, int, ...int) int
 
 fn C.fdopen(int, string) voidptr
 

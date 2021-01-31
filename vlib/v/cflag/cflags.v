@@ -37,37 +37,28 @@ pub fn (cf &CFlag) format() string {
 }
 
 // TODO: implement msvc specific c_options_before_target and c_options_after_target ...
-pub fn (cflags []CFlag) c_options_before_target_msvc() string {
-	return ''
+pub fn (cflags []CFlag) c_options_before_target_msvc() []string {
+	return []
 }
 
-pub fn (cflags []CFlag) c_options_after_target_msvc() string {
-	return ''
+pub fn (cflags []CFlag) c_options_after_target_msvc() []string {
+	return []
 }
 
-pub fn (cflags []CFlag) c_options_before_target() string {
-	// -I flags, optimization flags and so on
+pub fn (cflags []CFlag) c_options_before_target() []string {
+	defines, others, _ := cflags.defines_others_libs()
 	mut args := []string{}
-	for flag in cflags {
-		if flag.name != '-l' && !flag.value.ends_with('.o') {
-			args << flag.format()
-		}
-	}
-	return args.join(' ')
+	args << defines
+	args << others
+	return args
 }
 
-pub fn (cflags []CFlag) c_options_after_target() string {
-	// -l flags (libs)
-	mut args := []string{}
-	for flag in cflags {
-		if flag.name == '-l' {
-			args << flag.format()
-		}
-	}
-	return args.join(' ')
+pub fn (cflags []CFlag) c_options_after_target() []string {
+	_, _, libs := cflags.defines_others_libs()
+	return libs
 }
 
-pub fn (cflags []CFlag) c_options_without_object_files() string {
+pub fn (cflags []CFlag) c_options_without_object_files() []string {
 	mut args := []string{}
 	for flag in cflags {
 		if flag.value.ends_with('.o') || flag.value.ends_with('.obj') {
@@ -75,15 +66,34 @@ pub fn (cflags []CFlag) c_options_without_object_files() string {
 		}
 		args << flag.format()
 	}
-	return args.join(' ')
+	return args
 }
 
-pub fn (cflags []CFlag) c_options_only_object_files() string {
+pub fn (cflags []CFlag) c_options_only_object_files() []string {
 	mut args := []string{}
 	for flag in cflags {
 		if flag.value.ends_with('.o') || flag.value.ends_with('.obj') {
 			args << flag.format()
 		}
 	}
-	return args.join(' ')
+	return args
+}
+
+pub fn (cflags []CFlag) defines_others_libs() ([]string, []string, []string) {
+	copts_without_obj_files := cflags.c_options_without_object_files()
+	mut defines := []string{}
+	mut others := []string{}
+	mut libs := []string{}
+	for copt in copts_without_obj_files {
+		if copt.starts_with('-l') {
+			libs << copt
+			continue
+		}
+		if copt.starts_with('-D') {
+			defines << copt
+			continue
+		}
+		others << copt
+	}
+	return defines, others, libs
 }

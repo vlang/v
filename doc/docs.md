@@ -112,6 +112,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Profiling](#profiling)
 * [Advanced Topics](#advanced-topics)
     * [Memory-unsafe code](#memory-unsafe-code)
+	* [sizeof and __offsetof](#sizeof-and-__offsetof)
     * [Calling C functions from V](#calling-c-functions-from-v)
     * [Debugging generated C code](#debugging-generated-c-code)
     * [Conditional compilation](#conditional-compilation)
@@ -586,7 +587,6 @@ println(nums) // "[1, 2, 3]"
 println(nums[1]) // "2"
 nums[1] = 5
 println(nums) // "[1, 5, 3]"
-println(nums[0..2]) // slicing gives an array "[1, 5]"
 println(nums.len) // "3"
 nums = [] // The array is now empty
 println(nums.len) // "0"
@@ -725,6 +725,32 @@ struct User {
 mut users := [User{21, 'Bob'}, User{20, 'Zarkon'}, User{25, 'Alice'}]
 users.sort(a.age < b.age) // sort by User.age int field
 users.sort(a.name > b.name) // reverse sort by User.name string field
+```
+
+#### Array Slices
+
+Slices are partial arrays. They represent every element between two indices
+separated by a .. operator. The right-side index must be greater than or equal
+to the left side index.
+
+If a right-side index is absent, it is assumed to be the array length. If a
+left-side index is absent, it is assumed to be 0.
+
+```v
+nums := [1, 2, 3, 4, 5]
+println(nums[1..4]) // [2, 3, 4]
+println(nums[..4]) // [1, 2, 3, 4]
+println(nums[1..]) // [2, 3, 4, 5]
+```
+
+All array operations may be performed on slices.
+Slices can be pushed onto an array of the same type.
+
+```v
+array_1 := [3, 5, 4, 7, 6]
+mut array_2 := [0, 1]
+array_2 << array_1[..3]
+println(array_2) // [0, 1, 3, 5, 4]
 ```
 
 ### Maps
@@ -1905,6 +1931,46 @@ fn announce(s Speaker) {
 ```
 For more information, see [Dynamic casts](#dynamic-casts).
 
+Also unlike Go, an interface may implement a method.
+These methods are not implemented by structs which implement that interface.
+
+When a struct is wrapped in an interface that has implemented a method
+with the same name as one implemented by this struct, only the method
+implemented on the interface is called.
+
+```v
+struct Cat {}
+
+interface Adoptable {}
+
+fn (c Cat) speak() string {
+	return 'meow!'
+}
+
+fn (a Adoptable) speak() string {
+	return 'adopt me!'
+}
+
+fn (a Adoptable) adopt() ?&Cat {
+	if a is Cat {
+		return a
+	} else {
+		return error('This cannot be adopted.')
+	}
+}
+
+fn new_adoptable() Adoptable {
+	return Cat{}
+}
+
+fn main() {
+	adoptable := new_adoptable()
+	println(adoptable.speak()) // adopt me!
+	cat := adoptable.adopt() or { return }
+	println(cat.speak()) // meow!
+}
+```
+
 ### Enums
 
 ```v
@@ -1927,6 +1993,21 @@ match color {
 
 Enum match must be exhaustive or have an `else` branch.
 This ensures that if a new enum field is added, it's handled everywhere in the code.
+
+Enum fields cannot re-use reserved keywords. However, reserved keywords may be escaped
+with an @.
+
+```v
+enum Color {
+	@none
+	red
+	green
+	blue
+}
+
+color := Color.@none
+println(color)
+```
 
 ### Sum types
 
@@ -2951,6 +3032,22 @@ println(baz)
 println(qux)
 ```
 
+## sizeof and __offsetof
+
+V supports the usage of `sizeof` to calculate sizes of structs and
+`__offsetof` to calculate struct field offsets.
+
+```v
+struct Foo {
+	a int
+	b int
+}
+
+println(sizeof(Foo))
+println(__offsetof(Foo, a))
+println(__offsetof(Foo, b))
+```
+
 ## Calling C functions from V
 
 ```v
@@ -3292,6 +3389,15 @@ With the example above:
 - when you compile for linux, you will get 'Hello linux'
 - when you compile for any other platform, you will get the
 non specific 'Hello world' message.
+
+- `_d_customflag.v` => will be used *only* if you pass `-d customflag` to V.
+That corresponds to `$if customflag ? {}`, but for a whole file, not just a
+single block. `customflag` should be a snake_case identifier, it can not
+contain arbitrary characters (only lower case latin letters + numbers + `_`).
+NB: a combinatorial `_d_customflag_linux.c.v` postfix will not work.
+If you do need a custom flag file, that has platform dependent code, use the
+postfix `_d_customflag.v`, and then use plaftorm dependent compile time 
+conditional blocks inside it, i.e. `$if linux {}` etc.
 
 ## Compile time pseudo variables
 
@@ -3694,6 +3800,7 @@ type
 typeof
 union
 unsafe
+__offsetof
 ```
 See also [Types](#types).
 

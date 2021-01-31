@@ -324,7 +324,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) {
 		g.expr(expr)
 		g.write(' ? _SLIT("true") : _SLIT("false")')
 	} else if sym.kind == .none_ {
-		g.write('_SLIT("none")')
+		g.write('_SLIT("<none>")')
 	} else if sym.kind == .enum_ {
 		is_var := match expr {
 			ast.SelectorExpr, ast.Ident { true }
@@ -343,14 +343,16 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) {
 	} else if sym_has_str_method
 		|| sym.kind in [.array, .array_fixed, .map, .struct_, .multi_return, .sum_type, .interface_] {
 		is_ptr := typ.is_ptr()
+		is_var_mut := expr is ast.Ident
+			&& ((expr as ast.Ident).name == g.for_in_mut_val_name || (expr as ast.Ident).name in g.fn_mut_arg_names)
 		str_fn_name := g.gen_str_for_type(typ)
-		if is_ptr {
+		if is_ptr && !is_var_mut {
 			g.write('_STR("&%.*s\\000", 2, ')
 		}
 		g.write('${str_fn_name}(')
 		if str_method_expects_ptr && !is_ptr {
 			g.write('&')
-		} else if !str_method_expects_ptr && is_ptr {
+		} else if (!str_method_expects_ptr && is_ptr) || is_var_mut {
 			g.write('*')
 		}
 		if expr is ast.ArrayInit {
@@ -361,7 +363,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) {
 		}
 		g.expr(expr)
 		g.write(')')
-		if is_ptr {
+		if is_ptr && !is_var_mut {
 			g.write(')')
 		}
 	} else {

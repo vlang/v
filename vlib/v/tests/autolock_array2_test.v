@@ -4,7 +4,7 @@ const (
 	iterations_per_thread2 = 100000
 )
 
-fn inc_elements(shared foo []int, n int, sem sync.Semaphore) {
+fn inc_elements(shared foo []int, n int, mut sem sync.Semaphore) {
 	for _ in 0 .. iterations_per_thread2 {
 		foo[n]++
 	}
@@ -13,9 +13,9 @@ fn inc_elements(shared foo []int, n int, sem sync.Semaphore) {
 
 fn test_autolocked_array_2() {
 	shared abc := &[0, 0, 0]
-	sem := sync.new_semaphore()
-	go inc_elements(shared abc, 1, sem)
-	go inc_elements(shared abc, 2, sem)
+	mut sem := sync.new_semaphore()
+	go inc_elements(shared abc, 1, mut sem)
+	go inc_elements(shared abc, 2, mut sem)
 	for _ in 0 .. iterations_per_thread2 {
 		unsafe {
 			abc[2]++

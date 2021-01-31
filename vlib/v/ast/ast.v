@@ -13,9 +13,9 @@ pub type Expr = AnonFn | ArrayDecompose | ArrayInit | AsCast | Assoc | AtExpr | 
 	CTempVar | CallExpr | CastExpr | ChanInit | CharLiteral | Comment | ComptimeCall |
 	ComptimeSelector | ConcatExpr | EnumVal | FloatLiteral | GoExpr | Ident | IfExpr |
 	IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | Likely | LockExpr | MapInit |
-	MatchExpr | None | OrExpr | ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectExpr |
-	SelectorExpr | SizeOf | SqlExpr | StringInterLiteral | StringLiteral | StructInit |
-	Type | TypeOf | UnsafeExpr
+	MatchExpr | None | OffsetOf | OrExpr | ParExpr | PostfixExpr | PrefixExpr | RangeExpr |
+	SelectExpr | SelectorExpr | SizeOf | SqlExpr | StringInterLiteral | StringLiteral |
+	StructInit | Type | TypeOf | UnsafeExpr
 
 pub type Stmt = AssertStmt | AssignStmt | Block | BranchStmt | CompFor | ConstDecl | DeferStmt |
 	EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl | GoStmt |
@@ -295,10 +295,9 @@ pub:
 
 // anonymous function
 pub struct AnonFn {
-pub:
-	decl FnDecl
 pub mut:
-	typ table.Type // the type of anonymous fn. Both .typ and .decl.name are auto generated
+	decl FnDecl
+	typ  table.Type // the type of anonymous fn. Both .typ and .decl.name are auto generated
 }
 
 // function or method declaration
@@ -658,6 +657,7 @@ pub:
 	cond     Expr
 	branches []MatchBranch
 	pos      token.Position
+	comments []Comment // comments before the first branch
 pub mut:
 	is_expr       bool // returns a value
 	return_type   table.Type
@@ -672,9 +672,8 @@ pub:
 	ecmnts        [][]Comment // inline comments for each left side expr
 	stmts         []Stmt      // right side
 	pos           token.Position
-	comments      []Comment // comment above `xxx {`
 	is_else       bool
-	post_comments []Comment
+	post_comments []Comment // comments below ´... }´
 pub mut:
 	scope &Scope
 }
@@ -785,12 +784,12 @@ pub:
 // variable assign statement
 pub struct AssignStmt {
 pub:
-	right        []Expr
 	op           token.Kind // include: =,:=,+=,-=,*=,/= and so on; for a list of all the assign operators, see vlib/token/token.v
 	pos          token.Position
 	comments     []Comment
 	end_comments []Comment
 pub mut:
+	right         []Expr
 	left          []Expr
 	left_types    []table.Type
 	right_types   []table.Type
@@ -1069,6 +1068,13 @@ pub mut:
 	typ table.Type
 }
 
+pub struct OffsetOf {
+pub:
+	struct_type table.Type
+	field       string
+	pos         token.Position
+}
+
 pub struct Likely {
 pub:
 	expr      Expr
@@ -1124,6 +1130,8 @@ pub struct ComptimeCall {
 pub:
 	has_parens  bool // if $() is used, for vfmt
 	method_name string
+	method_pos  token.Position
+	scope       &Scope
 	left        Expr
 	is_vweb     bool
 	vweb_tmpl   File
@@ -1131,7 +1139,8 @@ pub:
 	is_embed    bool
 	embed_file  EmbeddedFile
 pub mut:
-	sym table.TypeSymbol
+	sym         table.TypeSymbol
+	result_type table.Type
 }
 
 pub struct None {
@@ -1198,7 +1207,7 @@ pub fn (expr Expr) position() token.Position {
 		}
 		ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr, CastExpr, ChanInit, CharLiteral,
 		ConcatExpr, Comment, EnumVal, FloatLiteral, GoExpr, Ident, IfExpr, IndexExpr, IntegerLiteral,
-		Likely, LockExpr, MapInit, MatchExpr, None, OrExpr, ParExpr, PostfixExpr, PrefixExpr,
+		Likely, LockExpr, MapInit, MatchExpr, None, OffsetOf, OrExpr, ParExpr, PostfixExpr, PrefixExpr,
 		RangeExpr, SelectExpr, SelectorExpr, SizeOf, SqlExpr, StringInterLiteral, StringLiteral,
 		StructInit, Type, TypeOf, UnsafeExpr {
 			return expr.pos

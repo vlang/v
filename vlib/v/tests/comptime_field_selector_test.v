@@ -12,7 +12,7 @@ fn comptime_field_selector_read<T>() []string {
 	mut value_list := []string{}
 	$for f in T.fields {
 		$if f.typ is string {
-			value_list << t.$f.name
+			value_list << t.$(f.name)
 		}
 	}
 	return value_list
@@ -26,10 +26,10 @@ fn comptime_field_selector_write<T>() T {
 	mut t := T{}
 	$for f in T.fields {
 		$if f.typ is string {
-			t.$f.name = '1'
+			t.$(f.name) = '1'
 		}
 		$if f.typ is int {
-			t.$f.name = 1
+			t.$(f.name) = 1
 		}
 	}
 	return t

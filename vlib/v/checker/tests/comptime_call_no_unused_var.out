@@ -1,1 +1,27 @@
-
+vlib/v/checker/tests/comptime_call_no_unused_var.vv:11:8: error: unknown identifier `w`
+    9 |     abc := 'print'
+   10 |     test.$abc() // OK
+   11 |     test.$w()
+      |           ^
+   12 |     v := 4
+   13 |     test.$v()
+vlib/v/checker/tests/comptime_call_no_unused_var.vv:13:8: error: invalid string method call: expected `string`, not `int`
+   11 |     test.$w()
+   12 |     v := 4
+   13 |     test.$v()
+      |           ^
+   14 |     s := 'x' + 'y'
+   15 |     test.$s()
+vlib/v/checker/tests/comptime_call_no_unused_var.vv:15:8: error: todo: not a string literal
+   13 |     test.$v()
+   14 |     s := 'x' + 'y'
+   15 |     test.$s()
+      |           ^
+   16 |     s2 := 'x'
+   17 |     test.$s2()
+vlib/v/checker/tests/comptime_call_no_unused_var.vv:17:8: error: could not find method `x`
+   15 |     test.$s()
+   16 |     s2 := 'x'
+   17 |     test.$s2()
+      |           ~~
+   18 | }

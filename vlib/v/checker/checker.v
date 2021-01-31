@@ -59,6 +59,7 @@ pub mut:
 	is_builtin_mod    bool   // are we in `builtin`?
 	inside_unsafe     bool
 	inside_const      bool
+	inside_anon_fn    bool
 	skip_flags        bool // should `#flag` and `#include` be skipped
 	cur_generic_types []table.Type
 mut:
@@ -67,6 +68,7 @@ mut:
 	cur_orm_ts                       table.TypeSymbol
 	error_details                    []string
 	for_in_mut_val_name              string
+	fn_mut_arg_names                 []string
 	vmod_file_content                string       // needed for @VMOD_FILE, contents of the file, *NOT its path**
 	vweb_gen_types                   []table.Type // vweb route checks
 	prevent_sum_type_unwrapping_once bool   // needed for assign new values to sum type, stopping unwrapping then
@@ -156,11 +158,12 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 	}
 	if has_main_mod_file && !has_main_fn && files_from_main_module.len > 0 {
 		if c.pref.is_script && !c.pref.is_test {
-			mut first_main_file := files_from_main_module[0]
-			first_main_file.stmts << ast.FnDecl{
+			// files_from_main_module contain preludes at the start
+			mut the_main_file := files_from_main_module.last()
+			the_main_file.stmts << ast.FnDecl{
 				name: 'main.main'
 				mod: 'main'
-				file: first_main_file.path
+				file: the_main_file.path
 				return_type: table.void_type
 				scope: &ast.Scope{
 					parent: 0
@@ -170,6 +173,8 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 		}
 	}
 	c.timers.start('checker_post_process_generic_fns')
+	last_file := c.file
+	last_mod := c.mod
 	// post process generic functions. must be done after all files have been
 	// checked, to eunsure all generic calls are processed as this information
 	// is needed when the generic type is auto inferred from the call argument
@@ -181,12 +186,29 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 			c.post_process_generic_fns()
 		}
 	}
+	// restore the original c.file && c.mod after post processing
+	c.file = last_file
+	c.mod = last_mod
 	c.timers.show('checker_post_process_generic_fns')
 	//
 	c.timers.start('checker_verify_all_vweb_routes')
 	c.verify_all_vweb_routes()
 	c.timers.show('checker_verify_all_vweb_routes')
 	//
+	if c.pref.is_test {
+		mut n_test_fns := 0
+		for _, f in c.table.fns {
+			if f.name.contains('.test_') {
+				n_test_fns++
+			}
+		}
+		if n_test_fns == 0 {
+			c.add_error_detail('The name of a test function in V, should start with `test_`.')
+			c.add_error_detail('The test function should take 0 parameters, and no return type. Example:')
+			c.add_error_detail('fn test_xyz(){ assert 2 + 2 == 4 }')
+			c.error('a _test.v file should have *at least* one `test_` function', token.Position{})
+		}
+	}
 	// Make sure fn main is defined in non lib builds
 	if c.pref.build_mode == .build_module || c.pref.is_test {
 		return
@@ -1190,6 +1212,14 @@ pub fn (mut c Checker) call_expr(mut call_expr ast.CallExpr) table.Type {
 	c.expected_or_type = call_expr.return_type.clear_flag(.optional)
 	c.stmts(call_expr.or_block.stmts)
 	c.expected_or_type = table.void_type
+	if call_expr.or_block.kind == .propagate && !c.cur_fn.return_type.has_flag(.optional)
+		&& !c.inside_const {
+		cur_names := c.cur_fn.name.split('.')
+		if cur_names[cur_names.len - 1] != 'main' {
+			c.error('to propagate the optional call, `$c.cur_fn.name` must return an optional',
+				call_expr.or_block.pos)
+		}
+	}
 	return typ
 }
 
@@ -1239,6 +1269,7 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ table.Type, call_e
 
 pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	left_type := c.expr(call_expr.left)
+	c.expected_type = left_type
 	is_generic := left_type.has_flag(.generic)
 	call_expr.left_type = left_type
 	// Set default values for .return_type & .receiver_type too,
@@ -1326,7 +1357,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			// need to return `array_xxx` instead of `array`
 			// in ['clone', 'str'] {
 			call_expr.receiver_type = left_type.to_ptr()
-			// call_expr.return_type = call_expr.receiver_type
+			call_expr.return_type = call_expr.receiver_type.set_nr_muls(0)
 		} else if method_name == 'sort' {
 			call_expr.return_type = table.void_type
 		} else if method_name == 'contains' {
@@ -1751,6 +1782,15 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		call_expr.should_be_skipped = true
 	}
 	if f.language != .v || call_expr.language != .v {
+		// ignore C function of type `fn()`, assume untyped
+		// For now don't check C functions that are variadic, underscored, capitalized
+		// or have no params and return int
+		if f.language == .c && f.params.len != call_expr.args.len && !f.is_variadic
+			&& f.name[2] != `_` && !f.name[2].is_capital()
+			&& (f.params.len != 0 || f.return_type !in [table.void_type, table.int_type]) {
+			// change to error later
+			c.warn('expected $f.params.len arguments, but got $call_expr.args.len', call_expr.pos)
+		}
 		for arg in call_expr.args {
 			c.expr(arg.expr)
 		}
@@ -2277,7 +2317,12 @@ pub fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 	for i, field in node.fields {
 		c.const_decl = field.name
 		c.const_deps << field.name
-		typ := c.expr(field.expr)
+		mut typ := c.expr(field.expr)
+		if field.expr is ast.CallExpr {
+			if field.expr.or_block.kind != .absent {
+				typ = typ.clear_flag(.optional)
+			}
+		}
 		node.fields[i].typ = c.table.mktyp(typ)
 		for cd in c.const_deps {
 			for j, f in node.fields {
@@ -2410,6 +2455,11 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			}
 			left_type = c.expr(left)
 			c.expected_type = c.unwrap_generic(left_type)
+			// `map = {}`
+			sym := c.table.get_type_symbol(left_type)
+			if sym.kind == .map && assign_stmt.right[i] is ast.StructInit {
+				assign_stmt.right[i] = ast.MapInit{}
+			}
 		}
 		if assign_stmt.right_types.len < assign_stmt.left.len { // first type or multi return types added above
 			right_type := c.expr(assign_stmt.right[i])
@@ -2530,7 +2580,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 				assign_stmt.pos)
 		}
 		left_is_ptr := left_type.is_ptr() || left_sym.is_pointer()
-		if left_is_ptr && c.for_in_mut_val_name != left.str() {
+		if left_is_ptr && c.for_in_mut_val_name != left.str() && left.str() !in c.fn_mut_arg_names {
 			if !c.inside_unsafe && assign_stmt.op !in [.assign, .decl_assign] {
 				// ptr op=
 				c.warn('pointer arithmetic is only allowed in `unsafe` blocks', assign_stmt.pos)
@@ -3282,10 +3332,13 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			return node.typ
 		}
 		ast.AnonFn {
+			c.inside_anon_fn = true
 			keep_fn := c.cur_fn
 			c.cur_fn = &node.decl
 			c.stmts(node.decl.stmts)
+			c.fn_decl(mut node.decl)
 			c.cur_fn = keep_fn
+			c.inside_anon_fn = false
 			return node.typ
 		}
 		ast.ArrayDecompose {
@@ -3470,6 +3523,9 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			}
 			return table.u32_type
 		}
+		ast.OffsetOf {
+			return c.offset_of(node)
+		}
 		ast.SqlExpr {
 			return c.sql_expr(mut node)
 		}
@@ -3639,14 +3695,38 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) table.Type {
 		c.nr_errors += c2.nr_errors
 	}
 	if node.method_name == 'html' {
-		return c.table.find_type_idx('vweb.Result')
+		rtyp := c.table.find_type_idx('vweb.Result')
+		node.result_type = rtyp
+		return rtyp
 	}
-	mut var := c.fn_scope.objects[node.method_name]
-	if mut var is ast.Var {
-		var.is_used = true
-		c.fn_scope.objects[node.method_name] = var
+	if node.is_vweb || node.method_name == 'method' {
+		return table.string_type
 	}
-	return table.string_type
+	// s.$my_str()
+	v := node.scope.find_var(node.method_name) or {
+		c.error('unknown identifier `$node.method_name`', node.method_pos)
+		return table.void_type
+	}
+	if v.typ != table.string_type {
+		s := c.expected_msg(v.typ, table.string_type)
+		c.error('invalid string method call: $s', node.method_pos)
+		return table.void_type
+	}
+	// note: we should use a compile-time evaluation function rather than handle here
+	// mut variables will not work after init
+	mut method_name := ''
+	if v.expr is ast.StringLiteral {
+		method_name = v.expr.val
+	} else {
+		c.error('todo: not a string literal', node.method_pos)
+	}
+	f := node.sym.find_method(method_name) or {
+		c.error('could not find method `$method_name`', node.method_pos)
+		return table.void_type
+	}
+	// println(f.name + ' ' + c.table.type_to_str(f.return_type))
+	node.result_type = f.return_type
+	return f.return_type
 }
 
 fn (mut c Checker) at_expr(mut node ast.AtExpr) table.Type {
@@ -3814,7 +3894,14 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 				ast.ConstField {
 					mut typ := obj.typ
 					if typ == 0 {
+						c.inside_const = true
 						typ = c.expr(obj.expr)
+						c.inside_const = false
+						if obj.expr is ast.CallExpr {
+							if obj.expr.or_block.kind != .absent {
+								typ = typ.clear_flag(.optional)
+							}
+						}
 					}
 					ident.name = name
 					ident.kind = .constant
@@ -4790,13 +4877,21 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) table.Type {
 	// TODO: testing ref/deref strategy
 	if node.op == .amp && !right_type.is_ptr() {
 		match node.right {
-			ast.IntegerLiteral { c.error('cannot take the address of an int literal',
-					node.pos) }
-			ast.BoolLiteral { c.error('cannot take the address of a bool literal', node.pos) }
-			ast.StringLiteral, ast.StringInterLiteral { c.error('cannot take the address of a string literal',
-					node.pos) }
-			ast.FloatLiteral { c.error('cannot take the address of a float literal', node.pos) }
-			ast.CharLiteral { c.error('cannot take the address of a char literal', node.pos) }
+			ast.IntegerLiteral {
+				c.error('cannot take the address of an int literal', node.pos)
+			}
+			ast.BoolLiteral {
+				c.error('cannot take the address of a bool literal', node.pos)
+			}
+			ast.StringLiteral, ast.StringInterLiteral {
+				c.error('cannot take the address of a string literal', node.pos)
+			}
+			ast.FloatLiteral {
+				c.error('cannot take the address of a float literal', node.pos)
+			}
+			ast.CharLiteral {
+				c.error('cannot take the address of a char literal', node.pos)
+			}
 			else {}
 		}
 		if mut node.right is ast.IndexExpr {
@@ -5010,6 +5105,19 @@ pub fn (mut c Checker) chan_init(mut node ast.ChanInit) table.Type {
 	}
 }
 
+pub fn (mut c Checker) offset_of(node ast.OffsetOf) table.Type {
+	sym := c.table.get_final_type_symbol(node.struct_type)
+	if sym.kind != .struct_ {
+		c.error('first argument of __offsetof must be struct', node.pos)
+		return table.u32_type
+	}
+
+	if !c.table.struct_has_field(node.struct_type, node.field) {
+		c.error('struct `$sym.name` has no field called `$node.field`', node.pos)
+	}
+	return table.u32_type
+}
+
 pub fn (mut c Checker) check_dup_keys(node &ast.MapInit, i int) {
 	key_i := node.keys[i]
 	if key_i is ast.StringLiteral {
@@ -5030,6 +5138,17 @@ pub fn (mut c Checker) check_dup_keys(node &ast.MapInit, i int) {
 }
 
 pub fn (mut c Checker) map_init(mut node ast.MapInit) table.Type {
+	// `map = {}`
+	if node.keys.len == 0 && node.vals.len == 0 && node.typ == 0 {
+		sym := c.table.get_type_symbol(c.expected_type)
+		if sym.kind == .map {
+			info := sym.map_info()
+			node.typ = c.expected_type
+			node.key_type = info.key_type
+			node.value_type = info.value_type
+			return node.typ
+		}
+	}
 	// `x := map[string]string` - set in parser
 	if node.typ != 0 {
 		info := c.table.get_type_symbol(node.typ).map_info()
@@ -5367,7 +5486,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	// TODO c.pref.is_vet
 	if node.language == .v && !node.is_method && node.params.len == 0
 		&& node.name.after('.').starts_with('test_') {
-		if !c.file.path.ends_with('_test.v') {
+		if !c.pref.is_test {
 			// simple heuristic
 			for st in node.stmts {
 				if st is ast.AssertStmt {
@@ -5394,12 +5513,25 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			}
 		}
 	}
+	for param in node.params {
+		if param.is_mut {
+			c.fn_mut_arg_names << param.name
+		}
+	}
 	c.fn_scope = node.scope
 	c.stmts(node.stmts)
+
+	if c.fn_mut_arg_names.len > 0 {
+		c.fn_mut_arg_names.clear()
+	}
 	returns := c.returns || has_top_return(node.stmts)
 	if node.language == .v && !node.no_body && node.return_type != table.void_type && !returns
 		&& node.name !in ['panic', 'exit'] {
-		c.error('missing return at end of function `$node.name`', node.pos)
+		if c.inside_anon_fn {
+			c.error('missing return at the end of an anonymous function', node.pos)
+		} else {
+			c.error('missing return at end of function `$node.name`', node.pos)
+		}
 	}
 	c.returns = false
 	node.source_file = c.file
