@@ -1922,7 +1922,9 @@ There is no explicit declaration of intent, no "implements" keyword.
 
 We can test the underlying type of an interface using dynamic cast operators:
 ```v oksyntax
-fn announce(s Speaker) {
+interface Something {}
+
+fn announce(s Something) {
 	if s is Dog {
 		println('a $s.breed dog') // `s` is automatically cast to `Dog` (smart cast)
 	} else if s is Cat {
