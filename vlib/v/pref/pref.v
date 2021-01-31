@@ -424,11 +424,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 					continue
 				}
 				eprint('Unknown argument `$arg`')
-				eprintln(if command.len == 0 {
-					''
-				} else {
-					' for command `$command`'
-				})
+				eprintln(if command.len == 0 { '' } else { ' for command `$command`' })
 				exit(1)
 			}
 		}

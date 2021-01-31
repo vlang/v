@@ -3370,11 +3370,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		if node.op in [.plus, .minus, .mul, .div, .mod, .lt, .gt, .eq, .ne, .le, .ge]
 			&& ((a && b && e) || c|| d) {
 			// Overloaded operators
-			g.write(g.typ(if !d {
-				left_type
-			} else {
-				(left_sym.info as table.Alias).parent_type
-			}))
+			g.write(g.typ(if !d { left_type } else { (left_sym.info as table.Alias).parent_type }))
 			g.write('_')
 			g.write(util.replace_op(node.op.str()))
 			g.write('(')
@@ -3717,11 +3713,7 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 	objs_array := g.new_tmp_var()
 	g.write('array_voidptr $objs_array = new_array_from_c_array($n_channels, $n_channels, sizeof(voidptr), _MOV((voidptr[$n_channels]){')
 	for i in 0 .. n_channels {
-		g.write(if i > 0 {
-			', &'
-		} else {
-			'&'
-		})
+		g.write(if i > 0 { ', &' } else { '&' })
 		if tmp_objs[i] == '' {
 			g.expr(objs[i])
 		} else {
