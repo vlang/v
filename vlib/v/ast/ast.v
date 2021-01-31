@@ -1133,14 +1133,20 @@ pub:
 	method_pos  token.Position
 	scope       &Scope
 	left        Expr
-	is_vweb     bool
-	vweb_tmpl   File
 	args_var    string
-	is_embed    bool
-	embed_file  EmbeddedFile
+	//
+	is_vweb   bool
+	vweb_tmpl File
+	//
+	is_embed   bool
+	embed_file EmbeddedFile
+	//
+	is_env  bool
+	env_pos token.Position
 pub mut:
 	sym         table.TypeSymbol
 	result_type table.Type
+	env_value   string
 }
 
 pub struct None {

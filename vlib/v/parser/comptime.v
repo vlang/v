@@ -87,6 +87,8 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 			scope: 0
 			method_name: n
 			args_var: s
+			is_env: true
+			env_pos: spos
 		}
 	}
 	// $embed_file('/path/to/file')
