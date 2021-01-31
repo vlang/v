@@ -3346,6 +3346,19 @@ executable, increasing your binary size, but making it more self contained
 and thus easier to distribute. In this case, `f.data()` will cause *no IO*,
 and it will always return the same data.
 
+#### $env
+
+```v
+module main
+
+fn main() {
+	compile_time_env := $env('ENV_VAR')
+	println(compile_time_env)
+}
+```
+
+V can bring in values at compile time from environment variables.
+
 ### Environment specific files
 
 If a file has an environment-specific suffix, it will only be compiled for that environment.
