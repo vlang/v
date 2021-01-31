@@ -1449,9 +1449,26 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 	}
 }
 
-// use instead of expr() when you need to cast to union sum type (can add other casts also)
+// use instead of expr() when you need to cast to a different type
 fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw table.Type, expected_type table.Type) {
 	got_type := g.table.mktyp(got_type_raw)
+	exp_sym := g.table.get_type_symbol(expected_type)
+	if exp_sym.kind == .interface_ && got_type_raw.idx() != expected_type.idx()
+		&& !expected_type.has_flag(.optional) {
+		got_styp := g.cc_type(got_type)
+		exp_styp := g.cc_type(expected_type)
+		g.write('I_${got_styp}_to_Interface_$exp_styp')
+		if expected_type.is_ptr() {
+			g.write('_ptr')
+		}
+		g.write('(')
+		if !got_type.is_ptr() {
+			g.write('&')
+		}
+		g.expr(expr)
+		g.write(')')
+		return
+	}
 	// cast to sum type
 	if expected_type != table.void_type {
 		expected_is_ptr := expected_type.is_ptr()
@@ -1878,7 +1895,6 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	}
 	// `a := 1` | `a,b := 1,2`
 	for i, left in assign_stmt.left {
-		mut is_interface := false
 		mut var_type := assign_stmt.left_types[i]
 		mut val_type := assign_stmt.right_types[i]
 		val := assign_stmt.right[i]
@@ -1888,18 +1904,6 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			scope: 0
 		}
 		left_sym := g.table.get_type_symbol(var_type)
-		if left_sym.kind == .interface_ {
-			if left is ast.SelectorExpr {
-				ident = left.root_ident()
-				if ident.obj is ast.Var {
-					idobj := ident.obj as ast.Var
-					root_type_sym := g.table.get_type_symbol(idobj.typ)
-					if root_type_sym.kind == .struct_ {
-						is_interface = true
-					}
-				}
-			}
-		}
 		if left is ast.Ident {
 			ident = left
 			// id_info := ident.var_info()
@@ -1959,9 +1963,6 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		is_fixed_array_copy := right_sym.kind == .array_fixed && val is ast.Ident
 		g.is_assign_lhs = true
 		g.assign_op = assign_stmt.op
-		if is_interface && right_sym.kind == .interface_ {
-			is_interface = false
-		}
 		if val_type.has_flag(.optional) {
 			g.right_is_opt = true
 		}
@@ -2143,13 +2144,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					if assign_stmt.has_cross_var {
 						g.gen_cross_tmp_variable(assign_stmt.left, val)
 					} else {
-						if is_interface {
-							g.interface_call(val_type, var_type)
-						}
 						g.expr_with_cast(val, val_type, var_type)
-						if is_interface {
-							g.write(')')
-						}
 					}
 				}
 			}
@@ -2571,7 +2566,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 					g.expr(node.arg)
 				}
 				g.write(')')
-			} else if sym.kind == .sum_type {
+			} else if sym.kind in [.sum_type, .interface_] {
 				g.expr_with_cast(node.expr, node.expr_type, node.typ)
 			} else if sym.kind == .struct_ && !node.typ.is_ptr()
 				&& !(sym.info as table.Struct).is_typedef {
@@ -3303,10 +3298,6 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			} else {
 				g.write(', _MOV(($elem_type_str[]){ ')
 			}
-			is_interface := elem_sym.kind == .interface_ && node.right_type != info.elem_type
-			if elem_sym.kind == .interface_ && node.right_type != info.elem_type {
-				g.interface_call(node.right_type, info.elem_type)
-			}
 			// if g.autofree
 			needs_clone := info.elem_type == table.string_type && !g.is_builtin_mod
 			if needs_clone {
@@ -3314,9 +3305,6 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			}
 			g.expr_with_cast(node.right, node.right_type, info.elem_type)
 			if needs_clone {
-				g.write(')')
-			}
-			if is_interface {
 				g.write(')')
 			}
 			g.write(' }))')
@@ -4508,11 +4496,8 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			g.writeln('$opt_type $opt_tmp;')
 			g.write('opt_ok2(&($styp[]) { ')
 			if !g.fn_decl.return_type.is_ptr() && node.types[0].is_ptr() {
-				// Automatic Dereference for optional
-				g.write('*')
-				// Fixes returning a mutable receiver with interface as return type
-				if node.exprs[0] is ast.Ident && !g.is_amp {
-					g.write('&')
+				if !(node.exprs[0] is ast.Ident && !g.is_amp) {
+					g.write('*')
 				}
 			}
 			for i, expr in node.exprs {
@@ -4544,14 +4529,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		} else {
 			g.write('return ')
 		}
-		cast_interface := sym.kind == .interface_ && node.types[0] != g.fn_decl.return_type
-		if cast_interface {
-			g.interface_call(node.types[0], g.fn_decl.return_type)
-		}
 		g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
-		if cast_interface {
-			g.write(')')
-		}
 		if free {
 			expr := node.exprs[0]
 			if expr is ast.Ident {
@@ -4830,11 +4808,8 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 					continue
 				}
 				g.write('.$field_name = ')
-				expected_field_type_sym := g.table.get_type_symbol(sfield.expected_type)
 				field_type_sym := g.table.get_type_symbol(sfield.typ)
 				mut cloned := false
-				is_interface := expected_field_type_sym.kind == .interface_
-					&& field_type_sym.kind != .interface_
 				if g.is_autofree && !sfield.typ.is_ptr() && field_type_sym.kind in [.array, .string] {
 					g.write('/*clone1*/')
 					if g.gen_clone_assignment(sfield.expr, field_type_sym, false) {
@@ -4842,17 +4817,11 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 					}
 				}
 				if !cloned {
-					if is_interface {
-						g.interface_call(sfield.typ, sfield.expected_type)
-					}
 					if sfield.expected_type.is_ptr() && !(sfield.typ.is_ptr()
 						|| sfield.typ.is_pointer())&& !sfield.typ.is_number() {
 						g.write('/* autoref */&')
 					}
 					g.expr_with_cast(sfield.expr, sfield.typ, sfield.expected_type)
-					if is_interface {
-						g.write(')')
-					}
 				}
 				if is_multiline {
 					g.writeln(',')
@@ -5209,9 +5178,6 @@ fn (g &Gen) sort_structs(typesa []table.TypeSymbol) []table.TypeSymbol {
 				}
 			}
 			table.Struct {
-				// if info.is_interface {
-				// continue
-				// }
 				for embed in t.info.embeds {
 					dep := g.table.get_type_symbol(embed).name
 					// skip if not in types list or already in deps
@@ -6103,21 +6069,6 @@ $staticprefix $interface_name* I_${cctype}_to_Interface_${interface_name}_ptr($c
 		sb.writeln(cast_functions.str())
 	}
 	return sb.str()
-}
-
-// `ui.foo(button)` =>
-// `ui__foo(I_ui__Button_to_ui__Widget(` ...
-fn (mut g Gen) interface_call(typ table.Type, interface_type table.Type) {
-	interface_styp := g.cc_type(interface_type)
-	styp := g.cc_type(typ)
-	mut cast_fn_name := 'I_${styp}_to_Interface_$interface_styp'
-	if interface_type.is_ptr() {
-		cast_fn_name += '_ptr'
-	}
-	g.write('${cast_fn_name}(')
-	if !typ.is_ptr() {
-		g.write('&')
-	}
 }
 
 fn (mut g Gen) panic_debug_info(pos token.Position) (int, string, string, string) {
