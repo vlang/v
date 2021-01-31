@@ -68,18 +68,7 @@ fn (p Parser) emit_error(msg string) string {
 }
 
 fn new_parser(srce string, convert_type bool) Parser {
-	mut src := srce
-	// from v/util/util.v
-	if src.len >= 3 {
-		c_text := src.str
-		unsafe {
-			if c_text[0] == 0xEF && c_text[1] == 0xBB && c_text[2] == 0xBF {
-				// skip three BOM bytes
-				offset_from_begin := 3
-				src = tos(c_text[offset_from_begin], vstrlen(c_text) - offset_from_begin)
-			}
-		}
-	}
+	src := util.skip_bom(srce)
 	return Parser{
 		scanner: scanner.new_scanner(src, .parse_comments, &pref.Preferences{})
 		convert_type: convert_type
