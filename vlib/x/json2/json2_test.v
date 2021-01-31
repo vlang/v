@@ -86,7 +86,7 @@ fn test_character_unescape() {
 	assert lines['newline'].str() == 'new\nline'
 	assert lines['tab'].str() == '\ttab'
 	assert lines['backslash'].str() == 'back\\slash'
-	assert lines['quotes'].str() == '\"quotes\"'
+	assert lines['quotes'].str() == '"quotes"'
 	assert lines['slash'].str() == '/dev/null'
 }
 
@@ -169,6 +169,7 @@ fn test_parse_user() {
 		assert false
 		User2{}
 	}
+	println(u2)
 	u := json2.decode<User>(s) or {
 		assert false
 		User{}
@@ -249,14 +250,15 @@ fn test_struct_in_struct() {
 fn test_encode_map() {
 	expected := '{"one":1,"two":2,"three":3,"four":4}'
 	numbers := {
-		'one': json2.Any(1)
-		'two': json2.Any(2)
+		'one':   json2.Any(1)
+		'two':   json2.Any(2)
 		'three': json2.Any(3)
-		'four': json2.Any(4)
+		'four':  json2.Any(4)
 	}
 	out := numbers.str()
 	assert out == expected
 }
+
 /*
 fn test_parse_map() {
 	expected := {
