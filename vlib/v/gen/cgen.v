@@ -5030,7 +5030,8 @@ fn (mut g Gen) write_init_function() {
 	needs_constructor := g.pref.is_shared && g.pref.os != .windows
 	if needs_constructor {
 		// shared libraries need a way to call _vinit/2. For that purpose,
-		// provide a constructor, ensuring that all constants are initialized just once.
+		// provide a constructor/destructor pair, ensuring that all constants
+		// are initialized just once, and that they will be freed too.
 		// NB: os.args in this case will be [].
 		g.writeln('__attribute__ ((constructor))')
 		g.writeln('void _vinit_caller() {')
@@ -5039,7 +5040,8 @@ fn (mut g Gen) write_init_function() {
 		g.writeln('}')
 
 		g.writeln('__attribute__ ((destructor))')
-		g.writeln('void _vdeinit_caller() {')
+		g.writeln('void _vcleanup_caller() {')
+		g.writeln('\tstatic bool once = false; if (once) {return;} once = true;')
 		g.writeln('\t_vcleanup();')
 		g.writeln('}')
 	}
