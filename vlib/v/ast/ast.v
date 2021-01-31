@@ -939,9 +939,9 @@ pub:
 	has_cap       bool
 	has_default   bool
 pub mut:
-	expr_types     []table.Type // [Dog, Cat] // also used for interface_types
-	elem_type      table.Type // element type
-	typ            table.Type // array type
+	expr_types []table.Type // [Dog, Cat] // also used for interface_types
+	elem_type  table.Type   // element type
+	typ        table.Type   // array type
 }
 
 pub struct ArrayDecompose {

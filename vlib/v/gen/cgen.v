@@ -1453,10 +1453,11 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw table.Type, expected_type table.Type) {
 	got_type := g.table.mktyp(got_type_raw)
 	exp_sym := g.table.get_type_symbol(expected_type)
-	if exp_sym.kind == .interface_ && got_type_raw.idx() != expected_type.idx() && !expected_type.has_flag(.optional) {
+	if exp_sym.kind == .interface_ && got_type_raw.idx() != expected_type.idx()
+		&& !expected_type.has_flag(.optional) {
 		got_styp := g.cc_type(got_type)
 		exp_styp := g.cc_type(expected_type)
-		g.write('I_${got_styp}_to_Interface_${exp_styp}')
+		g.write('I_${got_styp}_to_Interface_$exp_styp')
 		if expected_type.is_ptr() {
 			g.write('_ptr')
 		}
@@ -1468,7 +1469,6 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw table.Type, expected_t
 		g.write(')')
 		return
 	}
-
 	// cast to sum type
 	if expected_type != table.void_type {
 		expected_is_ptr := expected_type.is_ptr()
