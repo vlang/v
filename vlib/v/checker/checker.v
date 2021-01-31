@@ -3699,7 +3699,21 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) table.Type {
 		node.result_type = rtyp
 		return rtyp
 	}
-	if node.is_vweb || node.method_name == 'method' {
+	if node.method_name == 'method' {
+		if node.args_var.len > 0 {
+			v := node.scope.find_var(node.args_var) or {
+				c.error('unknown identifier `$node.args_var`', node.method_pos)
+				return table.void_type
+			}
+			s := c.table.type_to_str(c.expr(v.expr))
+			if s != '[]string' {
+				c.error('expected `[]string`, not s', node.method_pos)
+			}
+		}
+		// assume string for now
+		return table.string_type
+	}
+	if node.is_vweb {
 		return table.string_type
 	}
 	// s.$my_str()
