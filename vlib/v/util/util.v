@@ -141,7 +141,7 @@ pub fn resolve_env_value(str string) ?string {
 	env_value := os.getenv(env_lit)
 	// println('Replacing: "' + ident + env_lit + "') " + 'with "'+env_value+'"')
 	if env_value == '' {
-		return error('The environments variable "$env_lit" is empty. Please assign a value.')
+		return error('The environment variable "$env_lit" is empty. Please assign a value.')
 	}
 	rep := str.replace_once(ident + env_lit + "'" + ')', env_value)
 	if rep.contains(ident) {
