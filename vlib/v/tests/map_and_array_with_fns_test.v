@@ -73,6 +73,7 @@ fn test_map_and_array_with_fns_typeof_and_direct_call() {
 }
 
 fn bar1(mut a []fn (string) int) int {
+	a[0] = foo3
 	return a[0]('hello')
 }
 
