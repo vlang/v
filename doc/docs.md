@@ -3348,7 +3348,7 @@ and it will always return the same data.
 
 #### $env
 
-```v ignore
+```v
 module main
 
 fn main() {
