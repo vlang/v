@@ -1906,16 +1906,19 @@ interface Speaker {
 
 dog := Dog{'Leonberger'}
 cat := Cat{'Siamese'}
+
 mut arr := []Speaker{}
 arr << dog
 arr << cat
 for item in arr {
-	println('a $item.breed ${typeof(item).name} says: $item.speak()')
+	println('a $item.breed says: $item.speak()')
 }
 ```
 
 A type implements an interface by implementing its methods and fields.
 There is no explicit declaration of intent, no "implements" keyword.
+
+#### Casting an interface
 
 We can test the underlying type of an interface using dynamic cast operators:
 ```v oksyntax
@@ -1930,6 +1933,8 @@ fn announce(s Speaker) {
 }
 ```
 For more information, see [Dynamic casts](#dynamic-casts).
+
+#### Interface method definitions
 
 Also unlike Go, an interface may implement a method.
 These methods are not implemented by structs which implement that interface.
