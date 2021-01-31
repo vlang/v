@@ -2832,8 +2832,6 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 			if c.table.get_type_symbol(expected_value_type).kind == .interface_ {
 				// Array of interfaces? (`[dog, cat]`) Save the interface type (`Animal`)
 				expecting_interface_array = true
-				array_init.interface_type = expected_value_type
-				array_init.is_interface = true
 			}
 		}
 		// expecting_interface_array := c.expected_type != 0 &&

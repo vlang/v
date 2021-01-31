@@ -940,8 +940,6 @@ pub:
 	has_default   bool
 pub mut:
 	expr_types     []table.Type // [Dog, Cat] // also used for interface_types
-	is_interface   bool       // array of interfaces e.g. `[]Animal` `[Dog{}, Cat{}]`
-	interface_type table.Type // Animal
 	elem_type      table.Type // element type
 	typ            table.Type // array type
 }
