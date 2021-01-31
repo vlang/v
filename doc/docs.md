@@ -3654,18 +3654,8 @@ within the text document from where they are jumped to. A program may `goto` a l
 or deeper than the current scope, but it cannot `goto` a label inside of a different function.
 
 ```v ignore
-ptr := malloc_buffer()
-file := os.open_file('./data.txt', 'w+', 0o666) or {
-	eprintln('Failed to open data.txt!')
-	goto clean
-}
-
-write_buffer(ptr, file)
-file.close()
-
-clean:
-print_buffer(ptr)
-dealloc_buffer(ptr)
+my_label:
+    goto my_label
 ```
 
 # Appendices
