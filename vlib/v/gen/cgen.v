@@ -4157,6 +4157,9 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 								g.write_fn_ptr_decl(&elem_typ.info, '')
 								g.write(')(*($array_ptr_type_str)/*ee elem_typ */array_get(')
 							}
+							if left_is_ptr && !node.left_type.has_flag(.shared_f) {
+								g.write('*')
+							}
 						} else if is_direct_array_access {
 							g.write('(($array_ptr_type_str)')
 						} else {
