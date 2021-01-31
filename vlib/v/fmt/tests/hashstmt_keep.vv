@@ -1,8 +1,8 @@
 // comment above HashStmt
-#flag linux -lsdl2
 #flag -I @VROOT/c
+#flag @VROOT/c/implementation.o
 
-#include "stdio.h"
+#include "@VROOT/c/implementation.h"
 
 // comment between with newlines around
 
