@@ -753,6 +753,30 @@ array_2 << array_1[..3]
 println(array_2) // [0, 1, 3, 5, 4]
 ```
 
+### Fixed Size Arrays
+V also supports arrays with fixed size. Unlike ordinary arrays, their 
+lenght is fixed, so you can not append elements to them, only modify 
+them in place. Note also that most methods are defined to work on 
+ordinary arrays, not on fixed size arrays.
+However access to the elements of fixed size arrays is slightly more 
+efficient, they need less memory than ordinary arrays, and unlike
+ordinary arrays, their data is on the stack, so you may want to use
+them as buffers if you do not want additional heap allocations.
+
+You can convert a fixed size array, to an ordinary array with slicing:
+```v
+mut fnums := [3]int{}
+fnums[0] = 1
+fnums[1] = 10
+fnums[2] = 100
+println(fnums) // => [1, 10, 100]
+println(typeof(fnums).name) // => [3]int
+//
+anums := fnums[0..fnums.len]
+println(anums) // => [1, 10, 100]
+println(typeof(anums).name) // => []int
+```
+
 ### Maps
 
 ```v
