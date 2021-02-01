@@ -2594,7 +2594,8 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 				c.error('cannot assign to `$left`: ' +
 					c.expected_msg(right_type_unwrapped, left_type_unwrapped), right.position())
 			}
-			if (right is ast.StructInit || !right_is_ptr) && !(right_sym.is_number() || left_type.has_flag(.shared_f)) {
+			if (right is ast.StructInit || !right_is_ptr) && !(right_sym.is_number()
+				|| left_type.has_flag(.shared_f)) {
 				left_name := c.table.type_to_str(left_type_unwrapped)
 				mut rtype := right_type_unwrapped
 				if rtype.is_ptr() {
