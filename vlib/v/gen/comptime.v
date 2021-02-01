@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module gen
 
+import os
 import v.ast
 import v.table
 import v.util
@@ -29,7 +30,14 @@ fn (mut g Gen) comptime_selector(node ast.ComptimeSelector) {
 
 fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 	if node.is_embed {
+		// $embed_file('/path/to/file')
 		g.gen_embed_file_init(node)
+		return
+	}
+	if node.method_name == 'env' {
+		// $env('ENV_VAR_NAME')
+		val := util.cescaped_path(os.getenv(node.args_var))
+		g.write('_SLIT("$val")')
 		return
 	}
 	if node.is_vweb {
@@ -57,9 +65,7 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 		}
 		return
 	}
-	g.writeln('// $' + 'method call. sym="$node.sym.name"')
-	mut j := 0
-	result_type := g.table.find_type_idx('vweb.Result') // TODO not just vweb
+	g.writeln('// \$method call. sym="$node.sym.name"')
 	if node.method_name == 'method' {
 		// `app.$method()`
 		m := node.sym.find_method(g.comp_for_method) or { return }
@@ -95,9 +101,10 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 		g.write(' ); // vweb action call with args')
 		return
 	}
+	mut j := 0
 	for method in node.sym.methods {
 		// if method.return_type != table.void_type {
-		if method.return_type != result_type {
+		if method.return_type != node.result_type {
 			continue
 		}
 		if method.params.len != 1 {
@@ -108,10 +115,12 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 		// p.error('`$p.expr_var.name` needs to be a reference')
 		// }
 		amp := '' // if receiver.is_mut && !p.expr_var.ptr { '&' } else { '' }
-		if j > 0 {
-			g.write(' else ')
+		if node.is_vweb {
+			if j > 0 {
+				g.write(' else ')
+			}
+			g.write('if (string_eq($node.method_name, _SLIT("$method.name"))) ')
 		}
-		g.write('if (string_eq($node.method_name, _SLIT("$method.name"))) ')
 		g.write('${util.no_dots(node.sym.name)}_${method.name}($amp ')
 		g.expr(node.left)
 		g.writeln(');')
@@ -155,13 +164,14 @@ fn (mut g Gen) comp_if(node ast.IfExpr) {
 		start_pos := g.out.len
 		if i == node.branches.len - 1 && node.has_else {
 			g.writeln('#else')
+			comp_if_stmts_skip = false
 		} else {
 			if i == 0 {
 				g.write('#if ')
 			} else {
 				g.write('#elif ')
 			}
-			g.comp_if_expr(branch.cond)
+			comp_if_stmts_skip = !g.comp_if_cond(branch.cond)
 			g.writeln('')
 		}
 		expr_str := g.out.last_n(g.out.len - start_pos).trim_space()
@@ -193,29 +203,11 @@ fn (mut g Gen) comp_if(node ast.IfExpr) {
 			if should_create_scope {
 				g.writeln('{')
 			}
-			if branch.cond is ast.InfixExpr {
-				if branch.cond.op == .key_is {
-					left := branch.cond.left
-					got_type := (branch.cond.right as ast.Type).typ
-					if left is ast.Type {
-						left_type := g.unwrap_generic(left.typ)
-						if left_type != got_type {
-							comp_if_stmts_skip = true
-						}
-					}
-				}
-			}
-			is_else := node.has_else && i == node.branches.len - 1
-			if !comp_if_stmts_skip || (comp_if_stmts_skip && is_else) {
+			if !comp_if_stmts_skip {
 				g.stmts(branch.stmts)
 			}
 			if should_create_scope {
 				g.writeln('}')
-			}
-			if !comp_if_stmts_skip && branch.cond is ast.InfixExpr {
-				if (branch.cond as ast.InfixExpr).op == .key_is {
-					break
-				}
 			}
 		}
 		g.defer_ifdef = ''
@@ -227,33 +219,37 @@ fn (mut g Gen) comp_if(node ast.IfExpr) {
 	}
 }
 
-fn (mut g Gen) comp_if_expr(cond ast.Expr) {
+fn (mut g Gen) comp_if_cond(cond ast.Expr) bool {
 	match cond {
 		ast.BoolLiteral {
 			g.expr(cond)
+			return true
 		}
 		ast.ParExpr {
 			g.write('(')
-			g.comp_if_expr(cond.expr)
+			is_cond_true := g.comp_if_cond(cond.expr)
 			g.write(')')
+			return is_cond_true
 		}
 		ast.PrefixExpr {
 			g.write(cond.op.str())
-			g.comp_if_expr(cond.right)
+			return g.comp_if_cond(cond.right)
 		}
 		ast.PostfixExpr {
 			ifdef := g.comp_if_to_ifdef((cond.expr as ast.Ident).name, true) or {
 				verror(err)
-				return
+				return false
 			}
 			g.write('defined($ifdef)')
+			return true
 		}
 		ast.InfixExpr {
 			match cond.op {
 				.and, .logical_or {
-					g.comp_if_expr(cond.left)
+					l := g.comp_if_cond(cond.left)
 					g.write(' $cond.op ')
-					g.comp_if_expr(cond.right)
+					r := g.comp_if_cond(cond.right)
+					return l && r
 				}
 				.key_is, .not_is {
 					left := cond.left
@@ -268,23 +264,34 @@ fn (mut g Gen) comp_if_expr(cond ast.Expr) {
 						// this is only allowed for generics currently, otherwise blocked by checker
 						exp_type = g.unwrap_generic(left.typ)
 					}
-					op := if cond.op == .key_is { '==' } else { '!=' }
-					g.write('$exp_type $op $got_type')
+
+					if cond.op == .key_is {
+						g.write('$exp_type == $got_type')
+						return exp_type == got_type
+					} else {
+						g.write('$exp_type !=$got_type')
+						return exp_type != got_type
+					}
 				}
 				.eq, .ne {
 					// TODO Implement `$if method.args.len == 1`
 					g.write('1')
+					return true
 				}
-				else {}
+				else {
+					return true
+				}
 			}
 		}
 		ast.Ident {
 			ifdef := g.comp_if_to_ifdef(cond.name, false) or { 'true' } // handled in checker
 			g.write('defined($ifdef)')
+			return true
 		}
 		else {
 			// should be unreachable, but just in case
 			g.write('1')
+			return true
 		}
 	}
 }
@@ -300,8 +307,7 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 		methods_with_attrs := sym.methods.filter(it.attrs.len > 0) // methods with attrs second
 		methods << methods_with_attrs
 		if methods.len > 0 {
-			g.writeln('\tFunctionData $node.val_var;')
-			g.writeln('\tmemset(&$node.val_var, 0, sizeof(FunctionData));')
+			g.writeln('\tFunctionData $node.val_var = {0};')
 		}
 		for method in methods { // sym.methods {
 			/*
@@ -374,8 +380,7 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 			fields_with_attrs := sym.info.fields.filter(it.attrs.len > 0)
 			fields << fields_with_attrs
 			if fields.len > 0 {
-				g.writeln('\tFieldData $node.val_var;')
-				g.writeln('\tmemset(&$node.val_var, 0, sizeof(FieldData));')
+				g.writeln('\tFieldData $node.val_var = {0};')
 			}
 			for field in fields {
 				g.comp_for_field_var = node.val_var

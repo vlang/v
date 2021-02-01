@@ -1,0 +1,31 @@
+fn ret(s string) string {
+	return s
+}
+
+fn raise() ?string {
+	return none
+}
+
+fn xx_prop() string {
+	s := ret(raise() ?)
+	return s
+}
+
+struct St {
+mut:
+	z f64
+}
+
+fn (mut s St) raise() ?f64 {
+	return error('some error')
+}
+
+fn retf(f f64) f64 {
+	return f
+}
+
+fn (mut s St) aa_propagate() {
+	f := retf(s.raise() ?)
+	s.z = 7.5
+	println(f)
+}

@@ -56,7 +56,7 @@ pub fn (f Fraction) str() string {
 // NOTE: requires reduced inputs
 fn general_addition_result(f1 Fraction, f2 Fraction, addition bool) Fraction {
 	d1 := math.gcd(f1.d, f2.d)
-	// d1 happends to be 1 around 600/(pi)^2 or 61 percent of the time (Theorem 4.5.2D)
+	// d1 happens to be 1 around 600/(pi)^2 or 61 percent of the time (Theorem 4.5.2D)
 	if d1 == 1 {
 		num1n2d := f1.n * f2.d
 		num1d2n := f1.d * f2.n

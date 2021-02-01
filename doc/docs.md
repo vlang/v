@@ -112,6 +112,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Profiling](#profiling)
 * [Advanced Topics](#advanced-topics)
     * [Memory-unsafe code](#memory-unsafe-code)
+	* [sizeof and __offsetof](#sizeof-and-__offsetof)
     * [Calling C functions from V](#calling-c-functions-from-v)
     * [Debugging generated C code](#debugging-generated-c-code)
     * [Conditional compilation](#conditional-compilation)
@@ -586,7 +587,6 @@ println(nums) // "[1, 2, 3]"
 println(nums[1]) // "2"
 nums[1] = 5
 println(nums) // "[1, 5, 3]"
-println(nums[0..2]) // slicing gives an array "[1, 5]"
 println(nums.len) // "3"
 nums = [] // The array is now empty
 println(nums.len) // "0"
@@ -725,6 +725,32 @@ struct User {
 mut users := [User{21, 'Bob'}, User{20, 'Zarkon'}, User{25, 'Alice'}]
 users.sort(a.age < b.age) // sort by User.age int field
 users.sort(a.name > b.name) // reverse sort by User.name string field
+```
+
+#### Array Slices
+
+Slices are partial arrays. They represent every element between two indices
+separated by a .. operator. The right-side index must be greater than or equal
+to the left side index.
+
+If a right-side index is absent, it is assumed to be the array length. If a
+left-side index is absent, it is assumed to be 0.
+
+```v
+nums := [1, 2, 3, 4, 5]
+println(nums[1..4]) // [2, 3, 4]
+println(nums[..4]) // [1, 2, 3, 4]
+println(nums[1..]) // [2, 3, 4, 5]
+```
+
+All array operations may be performed on slices.
+Slices can be pushed onto an array of the same type.
+
+```v
+array_1 := [3, 5, 4, 7, 6]
+mut array_2 := [0, 1]
+array_2 << array_1[..3]
+println(array_2) // [0, 1, 3, 5, 4]
 ```
 
 ### Maps
@@ -1679,8 +1705,8 @@ const (
 	world = '世界'
 )
 
-println(main.pi)
-println(main.world)
+println(pi)
+println(world)
 ```
 
 Constants are declared with `const`. They can only be defined
@@ -1716,17 +1742,19 @@ const (
 	blue    = rgb(0, 0, 255)
 )
 
-println(main.numbers)
-println(main.red)
-println(main.blue)
+println(numbers)
+println(red)
+println(blue)
 ```
 
 Global variables are not allowed, so this can be really useful.
 
 When naming constants, `snake_case` must be used. In order to distinguish consts
 from local variables, the full path to consts must be specified. For example,
-to access the PI const, full `math.pi` name must be used both outside the `math` module,
-and inside it. This can be seen in the example above with `println(main.numbers)`.
+to access the PI const, full `math.pi` name must be used both outside the `math`
+module, and inside it. That restriction is relaxed only for the `main` module 
+(the one containing your `fn main()`, where you can use the shorter name of the
+constants too, i.e. just `println(numbers)`, not `println(main.numbers)` .
 
 vfmt takes care of this rule, so you can type `println(pi)` inside the `math` module,
 and vffmt will automatically update it to `println(math.pi)`.
@@ -1878,20 +1906,25 @@ interface Speaker {
 
 dog := Dog{'Leonberger'}
 cat := Cat{'Siamese'}
+
 mut arr := []Speaker{}
 arr << dog
 arr << cat
 for item in arr {
-	println('a $item.breed ${typeof(item).name} says: $item.speak()')
+	println('a $item.breed says: $item.speak()')
 }
 ```
 
 A type implements an interface by implementing its methods and fields.
 There is no explicit declaration of intent, no "implements" keyword.
 
+#### Casting an interface
+
 We can test the underlying type of an interface using dynamic cast operators:
 ```v oksyntax
-fn announce(s Speaker) {
+interface Something {}
+
+fn announce(s Something) {
 	if s is Dog {
 		println('a $s.breed dog') // `s` is automatically cast to `Dog` (smart cast)
 	} else if s is Cat {
@@ -1902,6 +1935,43 @@ fn announce(s Speaker) {
 }
 ```
 For more information, see [Dynamic casts](#dynamic-casts).
+
+#### Interface method definitions
+
+Also unlike Go, an interface may implement a method.
+These methods are not implemented by structs which implement that interface.
+
+When a struct is wrapped in an interface that has implemented a method
+with the same name as one implemented by this struct, only the method
+implemented on the interface is called.
+
+```v
+struct Cat {}
+
+fn (c Cat) speak() string {
+	return 'meow!'
+}
+
+interface Adoptable {}
+
+fn (a Adoptable) speak() string {
+	return 'adopt me!'
+}
+
+fn new_adoptable() Adoptable {
+	return Cat{}
+}
+
+fn main() {
+	cat := Cat{}
+	assert cat.speak() == 'meow!'
+	a := new_adoptable()
+	assert a.speak() == 'adopt me!'
+	if a is Cat {
+		println(a.speak()) // meow!
+	}
+}
+```
 
 ### Enums
 
@@ -1925,6 +1995,21 @@ match color {
 
 Enum match must be exhaustive or have an `else` branch.
 This ensures that if a new enum field is added, it's handled everywhere in the code.
+
+Enum fields cannot re-use reserved keywords. However, reserved keywords may be escaped
+with an @.
+
+```v
+enum Color {
+	@none
+	red
+	green
+	blue
+}
+
+color := Color.@none
+println(color)
+```
 
 ### Sum types
 
@@ -2949,6 +3034,22 @@ println(baz)
 println(qux)
 ```
 
+## sizeof and __offsetof
+
+V supports the usage of `sizeof` to calculate sizes of structs and
+`__offsetof` to calculate struct field offsets.
+
+```v
+struct Foo {
+	a int
+	b int
+}
+
+println(sizeof(Foo))
+println(__offsetof(Foo, a))
+println(__offsetof(Foo, b))
+```
+
 ## Calling C functions from V
 
 ```v
@@ -3245,6 +3346,21 @@ executable, increasing your binary size, but making it more self contained
 and thus easier to distribute. In this case, `f.data()` will cause *no IO*,
 and it will always return the same data.
 
+#### $env
+
+```v
+module main
+
+fn main() {
+	compile_time_env := $env('ENV_VAR')
+	println(compile_time_env)
+}
+```
+
+V can bring in values at compile time from environment variables.
+`$env('ENV_VAR')` can also be used in top-level `#flag` and `#include` statements:
+`#flag linux -I $env('JAVA_HOME')/include`.
+
 ### Environment specific files
 
 If a file has an environment-specific suffix, it will only be compiled for that environment.
@@ -3290,6 +3406,15 @@ With the example above:
 - when you compile for linux, you will get 'Hello linux'
 - when you compile for any other platform, you will get the
 non specific 'Hello world' message.
+
+- `_d_customflag.v` => will be used *only* if you pass `-d customflag` to V.
+That corresponds to `$if customflag ? {}`, but for a whole file, not just a
+single block. `customflag` should be a snake_case identifier, it can not
+contain arbitrary characters (only lower case latin letters + numbers + `_`).
+NB: a combinatorial `_d_customflag_linux.c.v` postfix will not work.
+If you do need a custom flag file, that has platform dependent code, use the
+postfix `_d_customflag.v`, and then use plaftorm dependent compile time 
+conditional blocks inside it, i.e. `$if linux {}` etc.
 
 ## Compile time pseudo variables
 
@@ -3692,6 +3817,7 @@ type
 typeof
 union
 unsafe
+__offsetof
 ```
 See also [Types](#types).
 

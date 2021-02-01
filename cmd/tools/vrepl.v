@@ -11,10 +11,10 @@ import v.util
 
 struct Repl {
 mut:
-	readline       readline.Readline
-	indent         int // indentation level
-	in_func        bool // are we inside a new custom user function
-	line           string // the current line entered by the user
+	readline readline.Readline
+	indent   int    // indentation level
+	in_func  bool   // are we inside a new custom user function
+	line     string // the current line entered by the user
 	//
 	modules        []string // all the import modules
 	includes       []string // all the #include statements
@@ -109,21 +109,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 		if !is_stdin_a_pipe {
 			println('')
 		}
-		os.rm(file)
-		os.rm(temp_file)
-		$if windows {
-			os.rm(file[..file.len - 2] + '.exe')
-			os.rm(temp_file[..temp_file.len - 2] + '.exe')
-			$if msvc {
-				os.rm(file[..file.len - 2] + '.ilk')
-				os.rm(file[..file.len - 2] + '.pdb')
-				os.rm(temp_file[..temp_file.len - 2] + '.ilk')
-				os.rm(temp_file[..temp_file.len - 2] + '.pdb')
-			}
-		} $else {
-			os.rm(file[..file.len - 2])
-			os.rm(temp_file[..temp_file.len - 2])
-		}
+		cleanup_files([file, temp_file])
 	}
 	mut r := new_repl()
 	vexe := os.getenv('VEXE')
@@ -198,7 +184,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 		}
 		if r.line.starts_with('print') {
 			source_code := r.current_source_code(false) + '\n$r.line\n'
-			os.write_file(file, source_code)
+			os.write_file(file, source_code) or { panic(err) }
 			s := os.exec('"$vexe" -repl run "$file"') or {
 				rerror(err)
 				return
@@ -208,7 +194,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 			mut temp_line := r.line
 			mut temp_flag := false
 			func_call := r.function_call(r.line)
-			filter_line := r.line.replace(r.line.find_between("\'", "\'"), '').replace(r.line.find_between('"',
+			filter_line := r.line.replace(r.line.find_between("'", "'"), '').replace(r.line.find_between('"',
 				'"'), '')
 			possible_statement_patterns := [
 				'=',
@@ -268,7 +254,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 				}
 				temp_source_code = r.current_source_code(true) + '\n$temp_line\n'
 			}
-			os.write_file(temp_file, temp_source_code)
+			os.write_file(temp_file, temp_source_code) or { panic(err) }
 			s := os.exec('"$vexe" -repl run "$temp_file"') or {
 				rerror(err)
 				return
@@ -354,4 +340,19 @@ fn (mut r Repl) get_one_line(prompt string) ?string {
 	}
 	rline := r.readline.read_line(prompt) or { return none }
 	return rline
+}
+
+fn cleanup_files(files []string) {
+	for file in files {
+		os.rm(file) or { }
+		$if windows {
+			os.rm(file[..file.len - 2] + '.exe') or { }
+			$if msvc {
+				os.rm(file[..file.len - 2] + '.ilk') or { }
+				os.rm(file[..file.len - 2] + '.pdb') or { }
+			}
+		} $else {
+			os.rm(file[..file.len - 2]) or { }
+		}
+	}
 }

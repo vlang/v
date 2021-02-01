@@ -3,7 +3,7 @@ module util
 import os
 import rand
 import rand.wyrand
-import rand.util as rutil
+import rand.seed as rseed
 
 const (
 	retries = 10000
@@ -26,9 +26,7 @@ pub fn temp_file(tfo TempFileOptions) ?(os.File, string) {
 	}
 	d = d.trim_right(os.path_separator)
 	mut rng := rand.new_default(rand.PRNGConfigStruct{})
-	prefix, suffix := prefix_and_suffix(tfo.pattern) or {
-		return error(@FN + ' ' + err)
-	}
+	prefix, suffix := prefix_and_suffix(tfo.pattern) or { return error(@FN + ' ' + err) }
 	for retry := 0; retry < retries; retry++ {
 		path := os.join_path(d, prefix + random_number(mut rng) + suffix)
 		mut mode := 'rw+'
@@ -36,7 +34,7 @@ pub fn temp_file(tfo TempFileOptions) ?(os.File, string) {
 			mode = 'w+'
 		}
 		mut file := os.open_file(path, mode, 0o600) or {
-			rng.seed(rutil.time_seed_array(2))
+			rng.seed(rseed.time_seed_array(2))
 			continue
 		}
 		if os.exists(path) && os.is_file(path) {
@@ -64,13 +62,11 @@ pub fn temp_dir(tdo TempFileOptions) ?string {
 	}
 	d = d.trim_right(os.path_separator)
 	mut rng := rand.new_default(rand.PRNGConfigStruct{})
-	prefix, suffix := prefix_and_suffix(tdo.pattern) or {
-		return error(@FN + ' ' + err)
-	}
+	prefix, suffix := prefix_and_suffix(tdo.pattern) or { return error(@FN + ' ' + err) }
 	for retry := 0; retry < retries; retry++ {
 		path := os.join_path(d, prefix + random_number(mut rng) + suffix)
 		os.mkdir_all(path) or {
-			rng.seed(rutil.time_seed_array(2))
+			rng.seed(rseed.time_seed_array(2))
 			continue
 		}
 		if os.is_dir(path) && os.exists(path) {
@@ -96,9 +92,7 @@ fn prefix_and_suffix(pattern string) ?(string, string) {
 	if pat.contains(os.path_separator) {
 		return error('pattern cannot contain path separators ($os.path_separator).')
 	}
-	pos := pat.last_index('*') or {
-		-1
-	}
+	pos := pat.last_index('*') or { -1 }
 	mut prefix := ''
 	mut suffix := ''
 	if pos != -1 {

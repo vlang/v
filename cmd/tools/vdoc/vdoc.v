@@ -162,7 +162,7 @@ fn (vd VDoc) work_processor(mut work sync.Channel, mut wg sync.WaitGroup) {
 		file_name, content := vd.render_doc(pdoc.d, pdoc.out)
 		output_path := os.join_path(pdoc.out.path, file_name)
 		println('Generating $pdoc.out.typ in "$output_path"')
-		os.write_file(output_path, content)
+		os.write_file(output_path, content) or { panic(err) }
 	}
 	wg.done()
 }
@@ -247,7 +247,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 		exit(1)
 	}
 	dir_path := if cfg.is_vlib {
-		main.vroot
+		vroot
 	} else if os.is_dir(cfg.input_path) {
 		cfg.input_path
 	} else {
@@ -358,7 +358,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 				os.mkdir(out.path) or { panic(err) }
 			} else {
 				for fname in css_js_assets {
-					os.rm(os.join_path(out.path, fname))
+					os.rm(os.join_path(out.path, fname)) or { panic(err) }
 				}
 			}
 		}
@@ -376,7 +376,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 			for favicon in favicons {
 				favicon_path := os.join_path(favicons_path, favicon)
 				destination_path := os.join_path(out.path, favicon)
-				os.cp(favicon_path, destination_path)
+				os.cp(favicon_path, destination_path) or { panic(err) }
 			}
 		}
 	}
@@ -404,8 +404,8 @@ fn parse_arguments(args []string) Config {
 			}
 			'-f' {
 				format := cmdline.option(current_args, '-f', '')
-				if format !in main.allowed_formats {
-					allowed_str := main.allowed_formats.join(', ')
+				if format !in allowed_formats {
+					allowed_str := allowed_formats.join(', ')
 					eprintln('vdoc: "$format" is not a valid format. Only $allowed_str are allowed.')
 					exit(1)
 				}
@@ -472,7 +472,7 @@ fn parse_arguments(args []string) Config {
 	if cfg.input_path.trim_right('/') == 'vlib' {
 		cfg.is_vlib = true
 		cfg.is_multi = true
-		cfg.input_path = os.join_path(main.vroot, 'vlib')
+		cfg.input_path = os.join_path(vroot, 'vlib')
 	} else if !is_path {
 		// TODO vd.vprintln('Input "$cfg.input_path" is not a valid path. Looking for modules named "$cfg.input_path"...')
 		mod_path := doc.lookup_module(cfg.input_path) or {
@@ -486,7 +486,7 @@ fn parse_arguments(args []string) Config {
 
 fn main() {
 	if os.args.len < 2 || '-h' in os.args || '--help' in os.args || os.args[1..] == ['doc', 'help'] {
-		os.system('$main.vexe help doc')
+		os.system('$vexe help doc')
 		exit(0)
 	}
 	args := os.args[2..].clone()

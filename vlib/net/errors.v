@@ -36,7 +36,7 @@ pub fn socket_error(potential_code int) ?int {
 pub fn wrap_error(error_code int) ? {
 	$if windows {
 		enum_error := wsa_error(error_code)
-		return error_with_code('socket error: $enum_error', error_code)
+		return error_with_code('net: socket error: $enum_error', error_code)
 	}
 	$else {
 		if error_code == 0 {

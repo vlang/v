@@ -158,10 +158,17 @@ pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
 				CallExpr {
 					if sub_expr.args.len != 0 {
 						needs_braces = true
+					} else if sub_expr.left is CallExpr {
+						sub_expr = sub_expr.left
+						continue
 					}
 					break
 				}
 				SelectorExpr {
+					if sub_expr.field_name[0] == `@` {
+						needs_braces = true
+						break
+					}
 					sub_expr = sub_expr.expr
 					continue
 				}
@@ -287,6 +294,9 @@ pub fn (x Expr) str() string {
 		SizeOf {
 			return 'sizeof($x.expr)'
 		}
+		OffsetOf {
+			return '__offsetof($x.struct_type, $x.field)'
+		}
 		StringInterLiteral {
 			mut res := []string{}
 			res << "'"
@@ -311,6 +321,9 @@ pub fn (x Expr) str() string {
 		}
 		StringLiteral {
 			return '"$x.val"'
+		}
+		Type {
+			return 'Type($x.typ)'
 		}
 		TypeOf {
 			return 'typeof($x.expr.str())'

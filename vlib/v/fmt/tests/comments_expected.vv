@@ -40,7 +40,8 @@ fn main() {
 	e := c
 	// more comments = more good
 	arr := [
-		/* block foo bar */ /* inline foo bar */
+		/* block foo bar */
+		/* inline foo bar */
 		0,
 	]
 	// before arg comment

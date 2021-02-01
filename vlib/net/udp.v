@@ -18,12 +18,6 @@ mut:
 }
 
 pub fn dial_udp(laddr string, raddr string) ?&UdpConn {
-	// Dont have to do this when its fixed
-	// this just allows us to store this `none` optional in a struct
-	resolve_wrapper := fn (raddr string) ?Addr {
-		x := resolve_addr(raddr, .inet, .udp) or { return none }
-		return x
-	}
 	local := resolve_addr(laddr, .inet, .udp) ?
 	sbase := new_udp_socket(local.port) ?
 	sock := UdpSocket{
@@ -33,9 +27,16 @@ pub fn dial_udp(laddr string, raddr string) ?&UdpConn {
 	}
 	return &UdpConn{
 		sock: sock
-		read_timeout: udp_default_read_timeout
-		write_timeout: udp_default_write_timeout
+		read_timeout: net.udp_default_read_timeout
+		write_timeout: net.udp_default_write_timeout
 	}
+}
+
+fn resolve_wrapper(raddr string) ?Addr {
+	// Dont have to do this when its fixed
+	// this just allows us to store this `none` optional in a struct
+	x := resolve_addr(raddr, .inet, .udp) or { return none }
+	return x
 }
 
 pub fn (mut c UdpConn) write_ptr(b byteptr, len int) ? {
@@ -162,8 +163,8 @@ pub fn listen_udp(port int) ?&UdpConn {
 	s := new_udp_socket(port) ?
 	return &UdpConn{
 		sock: s
-		read_timeout: udp_default_read_timeout
-		write_timeout: udp_default_write_timeout
+		read_timeout: net.udp_default_read_timeout
+		write_timeout: net.udp_default_write_timeout
 	}
 }
 
@@ -183,7 +184,7 @@ fn new_udp_socket(local_port int) ?&UdpSocket {
 		t := true
 		socket_error(C.ioctlsocket(sockfd, fionbio, &t)) ?
 	} $else {
-		socket_error(C.fcntl(sockfd, C.F_SETFD, C.O_NONBLOCK))
+		socket_error(C.fcntl(sockfd, C.F_SETFD, C.O_NONBLOCK)) ?
 	}
 	// In UDP we always have to bind to a port
 	validate_port(local_port) ?

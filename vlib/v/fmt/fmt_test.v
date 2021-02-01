@@ -19,7 +19,7 @@ fn test_fmt() {
 	vexe := os.getenv('VEXE')
 	if vexe.len == 0 || !os.exists(vexe) {
 		eprintln('VEXE must be set')
-		exit(main.error_missing_vexe)
+		exit(error_missing_vexe)
 	}
 	vroot := os.dir(vexe)
 	tmpfolder := os.temp_dir()
@@ -58,7 +58,7 @@ fn test_fmt() {
 				continue
 			}
 			vfmt_result_file := os.join_path(tmpfolder, 'vfmt_run_over_$ifilename')
-			os.write_file(vfmt_result_file, result_ocontent)
+			os.write_file(vfmt_result_file, result_ocontent) or { panic(err) }
 			eprintln(util.color_compare_files(diff_cmd, opath, vfmt_result_file))
 			continue
 		}
@@ -69,6 +69,6 @@ fn test_fmt() {
 	eprintln(term.h_divider('-'))
 	eprintln(fmt_bench.total_message(fmt_message))
 	if fmt_bench.nfail > 0 {
-		exit(main.error_failed_tests)
+		exit(error_failed_tests)
 	}
 }

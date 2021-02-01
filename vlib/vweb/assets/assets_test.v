@@ -6,7 +6,7 @@ import os
 // unique cache dirs are needed per test function.
 fn clean_cache_dir(dir string) {
 	if os.is_dir(dir) {
-		os.rmdir_all(dir)
+		os.rmdir_all(dir) or { panic(err) }
 	}
 }
 
@@ -21,10 +21,10 @@ fn cache_dir(test_name string) string {
 fn get_test_file_path(file string) string {
 	path := os.join_path(base_cache_dir(), file)
 	if !os.is_dir(base_cache_dir()) {
-		os.mkdir_all(base_cache_dir())
+		os.mkdir_all(base_cache_dir()) or { panic(err) }
 	}
 	if !os.exists(path) {
-		os.write_file(path, get_test_file_contents(file))
+		os.write_file(path, get_test_file_contents(file)) or { panic(err) }
 	}
 	return path
 }

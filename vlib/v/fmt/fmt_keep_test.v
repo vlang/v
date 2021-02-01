@@ -21,7 +21,7 @@ fn test_fmt() {
 	vexe := os.getenv('VEXE')
 	if vexe.len == 0 || !os.exists(vexe) {
 		eprintln('VEXE must be set')
-		exit(main.error_missing_vexe)
+		exit(error_missing_vexe)
 	}
 	vroot := os.dir(vexe)
 	os.chdir(vroot)
@@ -59,7 +59,7 @@ fn test_fmt() {
 		if expected_ocontent != result_ocontent {
 			fmt_bench.fail()
 			eprintln(fmt_bench.step_message_fail('file $vrelpath after formatting, does not look as expected.'))
-			if ipath.ends_with(main.b2v_keep_path) {
+			if ipath.ends_with(b2v_keep_path) {
 				continue
 			}
 			if diff_cmd == '' {
@@ -67,7 +67,7 @@ fn test_fmt() {
 				continue
 			}
 			vfmt_result_file := os.join_path(tmpfolder, 'vfmt_run_over_$ifilename')
-			os.write_file(vfmt_result_file, result_ocontent)
+			os.write_file(vfmt_result_file, result_ocontent) or { panic(err) }
 			eprintln(util.color_compare_files(diff_cmd, opath, vfmt_result_file))
 			continue
 		}
@@ -79,19 +79,19 @@ fn test_fmt() {
 	eprintln(term.h_divider('-'))
 	eprintln(fmt_bench.total_message(fmt_message))
 	if fmt_bench.nfail > 0 {
-		exit(main.error_failed_tests)
+		exit(error_failed_tests)
 	}
 }
 
 fn fill_bin2v_keep() ? {
 	img0 := os.join_path('tutorials', 'img', 'hello.png')
 	img1 := os.join_path('tutorials', 'img', 'time.png')
-	os.rm(main.b2v_keep_path) ?
-	os.exec('v bin2v -w $main.b2v_keep_path $img0 $img1') ?
+	os.rm(b2v_keep_path) ?
+	os.exec('v bin2v -w $b2v_keep_path $img0 $img1') ?
 }
 
 fn restore_bin2v_placeholder() ? {
 	text := '// This is a placeholder file which will be filled with bin2v output before the test.
 // HINT: do NOT delete, move or rename this file!\n'
-	os.write_file(main.b2v_keep_path, text) ?
+	os.write_file(b2v_keep_path, text) ?
 }

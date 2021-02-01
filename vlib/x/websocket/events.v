@@ -171,21 +171,27 @@ fn (mut ws Client) send_message_event(msg &Message) {
 	ws.debug_log('sending on_message event')
 	for ev_handler in ws.message_callbacks {
 		if !ev_handler.is_ref {
-			ev_handler.handler(ws, msg)
+			ev_handler.handler(ws, msg) or { ws.logger.error('send_message_event error: $err') }
 		} else {
-			ev_handler.handler2(ws, msg, ev_handler.ref)
+			ev_handler.handler2(ws, msg, ev_handler.ref) or {
+				ws.logger.error('send_message_event error: $err')
+			}
 		}
 	}
 }
 
 // send_error_event invokes the on_error callback
-fn (mut ws Client) send_error_event(err string) {
+fn (mut ws Client) send_error_event(error string) {
 	ws.debug_log('sending on_error event')
 	for ev_handler in ws.error_callbacks {
 		if !ev_handler.is_ref {
-			ev_handler.handler(mut ws, err)
+			ev_handler.handler(mut ws, error) or {
+				ws.logger.error('send_error_event error: $error, err: $err')
+			}
 		} else {
-			ev_handler.handler2(mut ws, err, ev_handler.ref)
+			ev_handler.handler2(mut ws, error, ev_handler.ref) or {
+				ws.logger.error('send_error_event error: $error, err: $err')
+			}
 		}
 	}
 }
@@ -195,9 +201,13 @@ fn (mut ws Client) send_close_event(code int, reason string) {
 	ws.debug_log('sending on_close event')
 	for ev_handler in ws.close_callbacks {
 		if !ev_handler.is_ref {
-			ev_handler.handler(mut ws, code, reason)
+			ev_handler.handler(mut ws, code, reason) or {
+				ws.logger.error('send_close_event error: $err')
+			}
 		} else {
-			ev_handler.handler2(mut ws, code, reason, ev_handler.ref)
+			ev_handler.handler2(mut ws, code, reason, ev_handler.ref) or {
+				ws.logger.error('send_close_event error: $err')
+			}
 		}
 	}
 }
@@ -207,9 +217,11 @@ fn (mut ws Client) send_open_event() {
 	ws.debug_log('sending on_open event')
 	for ev_handler in ws.open_callbacks {
 		if !ev_handler.is_ref {
-			ev_handler.handler(mut ws)
+			ev_handler.handler(mut ws) or { ws.logger.error('send_open_event error: $err') }
 		} else {
-			ev_handler.handler2(mut ws, ev_handler.ref)
+			ev_handler.handler2(mut ws, ev_handler.ref) or {
+				ws.logger.error('send_open_event error: $err')
+			}
 		}
 	}
 }

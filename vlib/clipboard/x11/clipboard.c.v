@@ -210,7 +210,7 @@ fn (mut cb Clipboard) free() {
 }
 
 fn (mut cb Clipboard) clear() {
-	cb.mutex.m_lock()
+	cb.mutex.@lock()
 	C.XSetSelectionOwner(cb.display, cb.selection, C.Window(C.None), C.CurrentTime)
 	C.XFlush(cb.display)
 	cb.is_owner = false
@@ -232,7 +232,7 @@ pub fn (mut cb Clipboard) set_text(text string) bool {
 	if cb.window == C.Window(C.None) {
 		return false
 	}
-	cb.mutex.m_lock()
+	cb.mutex.@lock()
 	cb.text = text
 	cb.is_owner = true
 	cb.take_ownership()
@@ -276,7 +276,7 @@ fn (mut cb Clipboard) transmit_selection(xse &C.XSelectionEvent) bool {
 		C.XChangeProperty(xse.display, xse.requestor, xse.property, cb.get_atom(.xa_atom),
 			32, C.PropModeReplace, targets.data, targets.len)
 	} else if cb.is_supported_target(xse.target) && cb.is_owner && cb.text != '' {
-		cb.mutex.m_lock()
+		cb.mutex.@lock()
 		C.XChangeProperty(xse.display, xse.requestor, xse.property, xse.target, 8, C.PropModeReplace,
 			cb.text.str, cb.text.len)
 		cb.mutex.unlock()
@@ -308,7 +308,7 @@ fn (mut cb Clipboard) start_listener() {
 					event.xselectionclear.selection == cb.selection
 				}
 				{
-					cb.mutex.m_lock()
+					cb.mutex.@lock()
 					cb.is_owner = false
 					cb.text = ''
 					cb.mutex.unlock()
@@ -353,7 +353,7 @@ fn (mut cb Clipboard) start_listener() {
 					} else if unsafe { event.xselection.target == to_be_requested } {
 						sent_request = false
 						to_be_requested = C.Atom(0)
-						cb.mutex.m_lock()
+						cb.mutex.@lock()
 						prop := unsafe {
 							read_property(event.xselection.display, event.xselection.requestor,
 								event.xselection.property)

@@ -4,4 +4,4 @@ vlib/v/checker/tests/unimplemented_interface_f.vv:11:13: error: `Cat` incorrectl
    11 |     animals << Cat{}
       |                ~~~~~
    12 | }
-details: main.Animal has `speak(s string)`
+Details: main.Animal has `speak(s string)`

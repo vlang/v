@@ -307,7 +307,7 @@ fn test_fixed() {
 	nums[1] = 7
 	assert nums[1] == 7
 	nums2 := [5]int{} // c_n
-	assert nums2[main.c_n - 1] == 0
+	assert nums2[c_n - 1] == 0
 }
 
 fn modify(mut numbers []int) {
@@ -387,16 +387,22 @@ fn test_mutli_array_clone() {
 	mut a3_2 := a3_1.clone()
 	a3_1[0][0][1] = 0
 	a3_2[0][1][0] = 0
-	assert a3_1 == [[[1, 0], [2, 2], [3, 3]], [[4, 4], [5, 5], [6, 6]]]
-	assert a3_2 == [[[1, 1], [0, 2], [3, 3]], [[4, 4], [5, 5], [6, 6]]]
+	assert a3_1 == [[[1, 0], [2, 2], [3, 3]], [[4, 4], [5, 5],
+		[6, 6],
+	]]
+	assert a3_2 == [[[1, 1], [0, 2], [3, 3]], [[4, 4], [5, 5],
+		[6, 6],
+	]]
 	// 3d array_string
 	mut b3_1 := [[['1', '1'], ['2', '2'], ['3', '3']], [['4', '4'],
 		['5', '5'], ['6', '6']]]
 	mut b3_2 := b3_1.clone()
 	b3_1[0][0][1] = '0'
 	b3_2[0][1][0] = '0'
-	assert b3_1 == [[['1', '0'], ['2', '2'], ['3', '3']], [['4', '4'], ['5', '5'], ['6', '6']]]
-	assert b3_2 == [[['1', '1'], ['0', '2'], ['3', '3']], [['4', '4'], ['5', '5'], ['6', '6']]]
+	assert b3_1 == [[['1', '0'], ['2', '2'], ['3', '3']], [['4', '4'],
+		['5', '5'], ['6', '6']]]
+	assert b3_2 == [[['1', '1'], ['0', '2'], ['3', '3']], [['4', '4'],
+		['5', '5'], ['6', '6']]]
 }
 
 fn test_doubling() {
@@ -715,17 +721,17 @@ fn test_sort() {
 	//
 	mut users := [User{22, 'Peter'}, User{20, 'Bob'}, User{25, 'Alice'}]
 	users.sort(a.age < b.age)
-	assert (users[0].age == 20)
-	assert (users[1].age == 22)
-	assert (users[2].age == 25)
-	assert (users[0].name == 'Bob')
-	assert (users[1].name == 'Peter')
-	assert (users[2].name == 'Alice')
+	assert users[0].age == 20
+	assert users[1].age == 22
+	assert users[2].age == 25
+	assert users[0].name == 'Bob'
+	assert users[1].name == 'Peter'
+	assert users[2].name == 'Alice'
 	//
 	users.sort(a.age > b.age)
-	assert (users[0].age == 25)
-	assert (users[1].age == 22)
-	assert (users[2].age == 20)
+	assert users[0].age == 25
+	assert users[1].age == 22
+	assert users[2].age == 20
 	//
 	users.sort(a.name < b.name) // Test sorting by string fields
 	// assert users.map(it.name).join(' ') == 'Alice Bob Peter'
@@ -1101,12 +1107,12 @@ const (
 )
 
 fn test_multidimensional_array_initialization_with_consts() {
-	mut data := [][][]int{len: main.grid_size_1, init: [][]int{len: main.grid_size_2, init: []int{len: main.grid_size_3, init: main.cell_value}}}
-	assert data.len == main.grid_size_1
-	assert data[0].len == main.grid_size_2
-	assert data[0][0].len == main.grid_size_3
-	assert data[0][0][0] == main.cell_value
-	assert data[1][1][1] == main.cell_value
+	mut data := [][][]int{len: grid_size_1, init: [][]int{len: grid_size_2, init: []int{len: grid_size_3, init: cell_value}}}
+	assert data.len == grid_size_1
+	assert data[0].len == grid_size_2
+	assert data[0][0].len == grid_size_3
+	assert data[0][0][0] == cell_value
+	assert data[1][1][1] == cell_value
 }
 
 fn test_byteptr_vbytes() {
@@ -1352,4 +1358,13 @@ fn test_clone_of_same_elem_size_array() {
 	arr2 := arr.clone()
 	println(arr2)
 	assert arr2 == [Abc{1, 2, 3}, Abc{2, 3, 4}]
+}
+
+pub fn example<T>(mut arr []T) []T {
+	return arr.clone()
+}
+
+fn test_generic_mutable_arrays() {
+	mut arr := [1, 2, 3]
+	assert example(mut arr) == [1, 2, 3]
 }

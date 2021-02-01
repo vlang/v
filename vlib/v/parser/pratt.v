@@ -204,6 +204,25 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 				pos: spos.extend(p.tok.position())
 			}
 		}
+		.key_offsetof {
+			pos := p.tok.position()
+			p.next() // __offsetof
+			p.check(.lpar)
+			st := p.parse_type()
+			p.check(.comma)
+			if p.tok.kind != .name {
+				p.error_with_pos('unexpected `$p.tok.lit`, expecting struct field', p.tok.position())
+				return ast.Expr{}
+			}
+			field := p.tok.lit
+			p.next()
+			p.check(.rpar)
+			node = ast.OffsetOf{
+				struct_type: st
+				field: field
+				pos: pos
+			}
+		}
 		.key_likely, .key_unlikely {
 			is_likely := p.tok.kind == .key_likely
 			p.next()

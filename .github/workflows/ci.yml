@@ -63,15 +63,15 @@ jobs:
       - name: Build the repeat tool
         run: ./v cmd/tools/repeat.v
       - name: Repeat -o hw.c examples/hello_world.v
-        run: cmd/tools/repeat --max_time 150 --series 3 --count 10 --nmaxs 5 --warmup 3 --fail_percent 10 -t '{T} -show-timings -o hw.c examples/hello_world.v' ./v ./vmaster/v
+        run: cmd/tools/repeat --max_time 150 --series 3 --count 10 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -show-timings -o hw.c examples/hello_world.v' . ./vmaster
       - name: Repeat -o v.c cmd/v
-        run: cmd/tools/repeat --max_time 750 --series 3 --count 15 --nmaxs 5 --warmup 3 --fail_percent 10 -t '{T} -show-timings -o v.c cmd/v' ./v ./vmaster/v
+        run: cmd/tools/repeat --max_time 750 --series 3 --count 15 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -show-timings -o v.c cmd/v' . ./vmaster
 
   ubuntu-tcc:
     runs-on: ubuntu-20.04
     timeout-minutes: 30
     env:
-      VFLAGS: -cc tcc
+      VFLAGS: -cc tcc -no-retry-compilation
     steps:
       - uses: actions/checkout@v2
       - name: Install dependencies
@@ -117,9 +117,9 @@ jobs:
       - name: Test time functions in a timezone using daylight saving (Europe/Paris)
         run: TZ=Europe/Paris ./v test vlib/time/
       - name: Build examples
-        run: ./v build-examples
+        run: ./v -W build-examples
       - name: Test building v tools
-        run: ./v build-tools
+        run: ./v -W build-tools
       - name: Test v binaries
         run: ./v build-vbinaries
       - name: Test v tutorials
@@ -158,7 +158,7 @@ jobs:
 
   macos:
     runs-on: macOS-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       VFLAGS: -cc clang
     steps:
@@ -638,7 +638,7 @@ jobs:
     runs-on: windows-2019
     timeout-minutes: 30
     env:
-      VFLAGS: -cc tcc
+      VFLAGS: -cc tcc -no-retry-compilation
     steps:
       - uses: actions/checkout@v2
       - name: Build with make.bat -tcc
@@ -666,8 +666,8 @@ jobs:
   #node hi.js
   #    - name: Test v binaries
   #      run: ./v build-vbinaries
-  #    - name: v2 self compilation
-  #      run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
+      - name: v2 self compilation
+        run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
 
   compilable-v-c-and-v-win-c:
     runs-on: ubuntu-20.04

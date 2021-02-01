@@ -126,6 +126,11 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 		g.definitions.write(fn_header)
 		g.write(fn_header)
 	}
+	for param in it.params {
+		if param.is_mut {
+			g.fn_mut_arg_names << param.name
+		}
+	}
 	arg_start_pos := g.out.len
 	fargs, fargtypes := g.fn_args(it.params, it.is_variadic)
 	arg_str := g.out.after(arg_start_pos)
@@ -170,7 +175,11 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 	prev_defer_stmts := g.defer_stmts
 	g.defer_stmts = []
 	g.stmts(it.stmts)
-	//
+	// clear g.fn_mut_arg_names
+	if g.fn_mut_arg_names.len > 0 {
+		g.fn_mut_arg_names.clear()
+	}
+
 	if it.return_type == table.void_type {
 		g.write_defer_stmts_when_needed()
 	}
@@ -183,7 +192,14 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 		default_expr := g.type_default(it.return_type)
 		// TODO: perf?
 		if default_expr == '{0}' {
-			g.writeln('\treturn ($type_name)$default_expr;')
+			if it.return_type.idx() == 1 && it.return_type.has_flag(.optional) {
+				// The default return for anonymous functions that return `?,
+				// should have .ok = true set, otherwise calling them with
+				// optfn() or { panic(err) } will cause a panic:
+				g.writeln('\treturn (Option_void){.ok = true};')
+			} else {
+				g.writeln('\treturn ($type_name)$default_expr;')
+			}
 		} else {
 			g.writeln('\treturn $default_expr;')
 		}
@@ -223,7 +239,7 @@ fn (mut g Gen) fn_args(args []table.Param, is_variadic bool) ([]string, []string
 	mut fargs := []string{}
 	mut fargtypes := []string{}
 	for i, arg in args {
-		caname := c_name(arg.name)
+		caname := if arg.name == '_' { g.new_tmp_var() } else { c_name(arg.name) }
 		typ := g.unwrap_generic(arg.typ)
 		arg_type_sym := g.table.get_type_symbol(typ)
 		mut arg_type_name := g.typ(typ) // util.no_dots(arg_type_sym.name)
@@ -308,7 +324,15 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			g.or_block(tmp_opt, node.or_block, node.return_type)
 		}
 		if is_gen_or_and_assign_rhs {
-			g.write('\n $cur_line $tmp_opt')
+			unwrapped_typ := node.return_type.clear_flag(.optional)
+			unwrapped_styp := g.typ(unwrapped_typ)
+			if unwrapped_typ == table.void_type {
+				g.write('\n $cur_line')
+			} else if g.table.get_type_symbol(node.return_type).kind == .multi_return {
+				g.write('\n $cur_line $tmp_opt')
+			} else {
+				g.write('\n $cur_line *($unwrapped_styp*)${tmp_opt}.data')
+			}
 			// g.write('\n /*call_expr cur_line:*/ $cur_line /*C*/ $tmp_opt /*end*/')
 			// g.insert_before_stmt('\n /* VVV */ $tmp_opt')
 		}
@@ -346,7 +370,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	typ_sym := g.table.get_type_symbol(g.unwrap_generic(node.receiver_type))
 	// mut receiver_type_name := util.no_dots(typ_sym.name)
 	mut receiver_type_name := util.no_dots(g.cc_type2(g.unwrap_generic(node.receiver_type)))
-	if typ_sym.kind == .interface_ {
+	if typ_sym.kind == .interface_ && (typ_sym.info as table.Interface).defines_method(node.name) {
 		// Speaker_name_table[s._interface_idx].speak(s._object)
 		$if debug_interface_method_call ? {
 			eprintln('>>> interface typ_sym.name: $typ_sym.name | receiver_type_name: $receiver_type_name')
@@ -811,26 +835,10 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 		use_tmp_var_autofree := g.is_autofree && arg.typ == table.string_type && arg.is_tmp_autofree
 			&& !g.inside_const&& !g.is_builtin_mod
 		// g.write('/* af=$arg.is_tmp_autofree */')
-		mut is_interface := false
 		// some c fn definitions dont have args (cfns.v) or are not updated in checker
 		// when these are fixed we wont need this check
 		if i < expected_types.len {
-			if expected_types[i] != 0 {
-				// Cast a type to interface
-				// `foo(dog)` => `foo(I_Dog_to_Animal(dog))`
-				exp_sym := g.table.get_type_symbol(expected_types[i])
-				// exp_styp := g.typ(expected_types[arg_no]) // g.table.get_type_symbol(expected_types[arg_no])
-				// styp := g.typ(arg.typ) // g.table.get_type_symbol(arg.typ)
-				// NB: the second check avoids casting the interface into itself
-				// aka avoid 'I__Speaker_to_Interface_Speaker' thing for example
-				if exp_sym.kind == .interface_ && expected_types[i] != arg.typ {
-					g.interface_call(arg.typ, expected_types[i])
-					is_interface = true
-				}
-			}
-			if is_interface {
-				g.expr(arg.expr)
-			} else if use_tmp_var_autofree {
+			if use_tmp_var_autofree {
 				if arg.is_tmp_autofree { // && !g.is_js_call {
 					// We saved expressions in temp variables so that they can be freed later.
 					// `foo(str + str2) => x := str + str2; foo(x); x.free()`
@@ -854,9 +862,6 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 			} else {
 				g.expr(arg.expr)
 			}
-		}
-		if is_interface {
-			g.write(')')
 		}
 		if i < args.len - 1 || is_variadic {
 			g.write(', ')
@@ -924,8 +929,8 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type table.Type) {
 			} else {
 				expected_type
 			}
-			is_sum_type := g.table.get_type_symbol(expected_deref_type).kind == .sum_type
-			if !((arg_typ_sym.kind == .function) || is_sum_type) {
+			deref_sym := g.table.get_type_symbol(expected_deref_type)
+			if !((arg_typ_sym.kind == .function) || deref_sym.kind in [.sum_type, .interface_]) {
 				g.write('(voidptr)&/*qq*/')
 			}
 		}

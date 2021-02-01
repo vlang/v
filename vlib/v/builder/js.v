@@ -29,7 +29,7 @@ pub fn (mut b Builder) build_js(v_files []string, out_file string) {
 	b.info('build_js($out_file)')
 	output := b.gen_js(v_files)
 	mut f := os.create(out_file) or { panic(err) }
-	f.writeln(output)
+	f.writeln(output) or { panic(err) }
 	f.close()
 }
 

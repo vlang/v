@@ -6,7 +6,7 @@ mut:
 }
 
 fn (shared x St) f(shared z St) {
-	for _ in 0 .. main.reads_per_thread {
+	for _ in 0 .. reads_per_thread {
 		rlock x { // other instances may read at the same time
 			time.sleep_ms(1)
 			assert x.a == 7 || x.a == 5
@@ -29,12 +29,12 @@ fn test_shared_lock() {
 		a: 5
 	}
 	shared z := &St{
-		a: main.read_threads
+		a: read_threads
 	}
-	for _ in 0 .. main.read_threads {
+	for _ in 0 .. read_threads {
 		go x.f(shared z)
 	}
-	for i in 0 .. main.writes {
+	for i in 0 .. writes {
 		lock x { // wait for ongoing reads to finish, don't start new ones
 			x.a = 17 // this value should never be read
 			time.sleep_ms(50)

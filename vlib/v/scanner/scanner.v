@@ -19,13 +19,14 @@ const (
 
 pub struct Scanner {
 pub mut:
-	file_path         string
-	text              string
-	pos               int
-	line_nr           int
-	last_nl_pos       int // for calculating column
-	is_inside_string  bool
-	is_inter_start    bool // for hacky string interpolation TODO simplify
+	file_path         string // '/path/to/file.v'
+	file_base         string // 'file.v'
+	text              string // the whole text of the file
+	pos               int    // current position in the file, first character is s.text[0]
+	line_nr           int    // current line number
+	last_nl_pos       int    // for calculating column
+	is_inside_string  bool   // set to true in a string, *at the start* of an $var or ${expr}
+	is_inter_start    bool   // for hacky string interpolation TODO simplify
 	is_inter_end      bool
 	is_enclosed_inter bool
 	line_comment      string
@@ -109,6 +110,7 @@ pub fn new_vet_scanner_file(file_path string, comments_mode CommentsMode, pref &
 	}
 	mut s := new_vet_scanner(raw_text, comments_mode, pref)
 	s.file_path = file_path
+	s.file_base = os.base(file_path)
 	return s
 }
 
@@ -127,6 +129,7 @@ pub fn new_vet_scanner(text string, comments_mode CommentsMode, pref &pref.Prefe
 		is_fmt: pref.is_fmt
 		comments_mode: comments_mode
 		file_path: 'internal_memory'
+		file_base: 'internal_memory'
 	}
 }
 
@@ -151,10 +154,11 @@ pub fn (mut s Scanner) set_current_tidx(cidx int) {
 fn (mut s Scanner) new_token(tok_kind token.Kind, lit string, len int) token.Token {
 	cidx := s.tidx
 	s.tidx++
+	line_offset := if tok_kind == .hash { 0 } else { 1 }
 	return token.Token{
 		kind: tok_kind
 		lit: lit
-		line_nr: s.line_nr + 1
+		line_nr: s.line_nr + line_offset
 		pos: s.pos - len + 1
 		len: len
 		tidx: cidx
@@ -162,7 +166,7 @@ fn (mut s Scanner) new_token(tok_kind token.Kind, lit string, len int) token.Tok
 }
 
 [inline]
-fn (mut s Scanner) new_mulitline_token(tok_kind token.Kind, lit string, len int, start_line int) token.Token {
+fn (mut s Scanner) new_multiline_token(tok_kind token.Kind, lit string, len int, start_line int) token.Token {
 	cidx := s.tidx
 	s.tidx++
 	return token.Token{
@@ -983,7 +987,7 @@ fn (mut s Scanner) text_scan() token.Token {
 						if !comment.contains('\n') {
 							comment = '\x01' + comment
 						}
-						return s.new_mulitline_token(.comment, comment, comment.len + 4,
+						return s.new_multiline_token(.comment, comment, comment.len + 4,
 							start_line)
 					}
 					// Skip if not in fmt mode
@@ -1022,8 +1026,8 @@ fn (s &Scanner) count_symbol_before(p int, sym byte) int {
 fn (mut s Scanner) ident_string() string {
 	q := s.text[s.pos]
 	is_quote := q == scanner.single_quote || q == scanner.double_quote
-	is_raw := is_quote && s.pos > 0 && s.text[s.pos - 1] == `r`
-	is_cstr := is_quote && s.pos > 0 && s.text[s.pos - 1] == `c`
+	is_raw := is_quote && s.pos > 0 && s.text[s.pos - 1] == `r` && !s.is_inside_string
+	is_cstr := is_quote && s.pos > 0 && s.text[s.pos - 1] == `c` && !s.is_inside_string
 	if is_quote {
 		if s.is_inside_string || s.is_enclosed_inter || s.is_inter_start {
 			s.inter_quote = q
@@ -1289,5 +1293,11 @@ pub fn (mut s Scanner) codegen(newtext string) {
 		$if debug_codegen ? {
 			eprintln('scanner.codegen:\n $newtext')
 		}
+	}
+}
+
+fn (mut s Scanner) trace(fbase string, message string) {
+	if s.file_base == fbase {
+		println('> s.trace | ${fbase:-10s} | $message')
 	}
 }

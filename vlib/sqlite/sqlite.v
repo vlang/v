@@ -179,6 +179,6 @@ pub fn (db DB) exec_param(query string, param string) []Row {
 pub fn (db DB) insert<T>(x T) {
 }
 
-pub fn (db DB) create_table(table_name string, rows []string) {
-	db.exec('create table $table_name (' + rows.join(',\n') + ')')
+pub fn (db DB) create_table(table_name string, columns []string) {
+	db.exec('create table $table_name (' + columns.join(',\n') + ')')
 }

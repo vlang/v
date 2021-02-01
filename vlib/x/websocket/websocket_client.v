@@ -111,7 +111,7 @@ pub fn (mut ws Client) listen() ? {
 	defer {
 		ws.logger.info('Quit client listener, server($ws.is_server)...')
 		if ws.state == .open {
-			ws.close(1000, 'closed by client')
+			ws.close(1000, 'closed by client') or { }
 		}
 	}
 	for ws.state == .open {
@@ -232,21 +232,14 @@ pub fn (mut ws Client) write_ptr(bytes byteptr, payload_len int, code OPCode) ? 
 		// todo: send error here later
 		return error('trying to write on a closed socket!')
 	}
-	mut header_len := 2 + if payload_len > 125 { 2 } else { 0 } + if payload_len > 0xffff {
-		6
-	} else {
-		0
-	}
+	mut header_len := 2 + if payload_len > 125 { 2 } else { 0 } +
+		if payload_len > 0xffff { 6 } else { 0 }
 	if !ws.is_server {
 		header_len += 4
 	}
 	mut header := []byte{len: header_len, init: `0`} // [`0`].repeat(header_len)
 	header[0] = byte(int(code)) | 0x80
 	masking_key := create_masking_key()
-	defer {
-		unsafe {
-		}
-	}
 	if ws.is_server {
 		if payload_len <= 125 {
 			header[1] = byte(payload_len)
@@ -315,7 +308,7 @@ pub fn (mut ws Client) write(bytes []byte, code OPCode) ? {
 
 // write_str, writes a string with a websocket texttype to socket
 pub fn (mut ws Client) write_str(str string) ? {
-	ws.write_ptr(str.str, str.len, .text_frame)
+	ws.write_ptr(str.str, str.len, .text_frame) ?
 }
 
 // close closes the websocket connection
@@ -328,7 +321,7 @@ pub fn (mut ws Client) close(code int, message string) ? {
 		return ret_err
 	}
 	defer {
-		ws.shutdown_socket()
+		ws.shutdown_socket() or { }
 		ws.reset_state()
 	}
 	ws.set_state(.closing)

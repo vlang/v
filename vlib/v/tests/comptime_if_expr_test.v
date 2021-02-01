@@ -81,6 +81,14 @@ fn test_generic_t_is3() {
 	assert res == GenericTIsTest{}
 }
 
+fn generic_t_is_with_else<T>(raw_data string) ?T {
+	$if T is string {
+		return raw_data
+	} $else {
+		return T{}
+	}
+}
+
 fn test_generic_t_is_with_else() {
 	res := generic_t_is_with_else<GenericTIsTest>('') or {
 		assert false
@@ -94,10 +102,25 @@ fn test_generic_t_is_with_else() {
 	assert str == 'test'
 }
 
-fn generic_t_is_with_else<T>(raw_data string) ?T {
-	$if T is string {
-		return raw_data
-	} $else {
-		return T{}
+fn generic_t_is_with_else_if<T>() []string {
+	mut fields := []string{}
+	$for field in T.fields {
+		$if field.typ is string {
+			fields << field.name
+		} $else $if field.typ is int {
+			fields << field.name
+		}
 	}
+	return fields
 }
+
+struct User {
+	name string
+	age  int
+}
+
+fn test_generic_t_is_with_else_if() {
+	x := generic_t_is_with_else_if<User>()
+	assert x == ['name', 'age']
+}
+

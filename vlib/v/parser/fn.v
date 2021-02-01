@@ -315,6 +315,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		return_type = p.parse_type()
 	}
 	mut type_sym_method_idx := 0
+	no_body := p.tok.kind != .lcbr
 	// Register
 	if is_method {
 		mut type_sym := p.table.get_type_symbol(rec_type)
@@ -345,6 +346,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			is_pub: is_pub
 			is_deprecated: is_deprecated
 			is_unsafe: is_unsafe
+			no_body: no_body
 			mod: p.mod
 			attrs: p.attrs
 		})
@@ -369,6 +371,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			is_pub: is_pub
 			is_deprecated: is_deprecated
 			is_unsafe: is_unsafe
+			no_body: no_body
 			mod: p.mod
 			attrs: p.attrs
 			language: language
@@ -378,7 +381,6 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	// Body
 	p.cur_fn_name = name
 	mut stmts := []ast.Stmt{}
-	no_body := p.tok.kind != .lcbr
 	body_start_pos := p.peek_tok.position()
 	if p.tok.kind == .lcbr {
 		p.inside_fn = true
@@ -447,7 +449,7 @@ fn (mut p Parser) parse_generic_params() []ast.GenericParam {
 		if name.len > 1 {
 			p.error('generic parameter name needs to be exactly one char')
 		}
-		if is_generic_name_reserved(p.tok.lit) {
+		if !util.is_generic_type_name(p.tok.lit) {
 			p.error('`$p.tok.lit` is a reserved name and cannot be used for generics')
 		}
 		if name in param_names {
@@ -465,23 +467,9 @@ fn (mut p Parser) parse_generic_params() []ast.GenericParam {
 	return param_names.map(ast.GenericParam{it})
 }
 
-// is_valid_generic_character returns true if the character is reserved for someting else.
-fn is_generic_name_reserved(name string) bool {
-	// C is used for cinterop
-	if name == 'C' {
-		return true
-	}
-	return false
-}
-
-// is_generic_name returns true if the current token is a generic name.
-fn is_generic_name(name string) bool {
-	return name.len == 1 && name.is_capital() && !is_generic_name_reserved(name)
-}
-
 // is_generic_name returns true if the current token is a generic name.
 fn (p Parser) is_generic_name() bool {
-	return p.tok.kind == .name && is_generic_name(p.tok.lit)
+	return p.tok.kind == .name && util.is_generic_type_name(p.tok.lit)
 }
 
 fn (mut p Parser) anon_fn() ast.AnonFn {

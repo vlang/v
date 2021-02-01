@@ -22,8 +22,8 @@ pub fn dial_tcp(address string) ?&TcpConn {
 	s.connect(address) ?
 	return &TcpConn{
 		sock: s
-		read_timeout: tcp_default_read_timeout
-		write_timeout: tcp_default_write_timeout
+		read_timeout: net.tcp_default_read_timeout
+		write_timeout: net.tcp_default_write_timeout
 	}
 }
 
@@ -35,7 +35,8 @@ pub fn (mut c TcpConn) close() ? {
 // write_ptr blocks and attempts to write all data
 pub fn (mut c TcpConn) write_ptr(b byteptr, len int) ? {
 	$if trace_tcp ? {
-		eprintln('>>> TcpConn.write_ptr | c.sock.handle: $c.sock.handle | b: ${ptr_str(b)} len: $len |\n' +
+		eprintln(
+			'>>> TcpConn.write_ptr | c.sock.handle: $c.sock.handle | b: ${ptr_str(b)} len: $len |\n' +
 			unsafe { b.vstring_with_len(len) })
 	}
 	unsafe {
@@ -48,7 +49,7 @@ pub fn (mut c TcpConn) write_ptr(b byteptr, len int) ? {
 			if sent < 0 {
 				code := error_code()
 				if code == int(error_ewouldblock) {
-					c.wait_for_write()
+					c.wait_for_write() ?
 					continue
 				} else {
 					wrap_error(code) ?
@@ -164,9 +165,9 @@ pub fn (c &TcpConn) peer_ip() ?string {
 	return res
 }
 
-pub fn (c &TcpConn) str() string {
-	// TODO
-	return 'TcpConn {write_deadline: $c.write_deadline, read_deadline: $c.read_deadline, read_timeout: $c.read_timeout, write_timeout: $c.write_timeout, sock: $c.sock}'
+pub fn (c TcpConn) str() string {
+	s := c.sock.str().replace('\n', ' ').replace('  ', ' ')
+	return 'TcpConn{ write_deadline: $c.write_deadline, read_deadline: $c.read_deadline, read_timeout: $c.read_timeout, write_timeout: $c.write_timeout, sock: $s }'
 }
 
 pub struct TcpListener {
@@ -213,8 +214,8 @@ pub fn (mut l TcpListener) accept() ?&TcpConn {
 	new_sock := tcp_socket_from_handle(new_handle) ?
 	return &TcpConn{
 		sock: new_sock
-		read_timeout: tcp_default_read_timeout
-		write_timeout: tcp_default_write_timeout
+		read_timeout: net.tcp_default_read_timeout
+		write_timeout: net.tcp_default_write_timeout
 	}
 }
 
@@ -266,7 +267,7 @@ fn new_tcp_socket() ?TcpSocket {
 		t := true
 		socket_error(C.ioctlsocket(sockfd, fionbio, &t)) ?
 	} $else {
-		socket_error(C.fcntl(sockfd, C.F_SETFL, C.fcntl(sockfd, C.F_GETFL) | C.O_NONBLOCK))
+		socket_error(C.fcntl(sockfd, C.F_SETFL, C.fcntl(sockfd, C.F_GETFL) | C.O_NONBLOCK)) ?
 	}
 	return s
 }
@@ -281,7 +282,7 @@ fn tcp_socket_from_handle(sockfd int) ?TcpSocket {
 		t := true
 		socket_error(C.ioctlsocket(sockfd, fionbio, &t)) ?
 	} $else {
-		socket_error(C.fcntl(sockfd, C.F_SETFL, C.fcntl(sockfd, C.F_GETFL) | C.O_NONBLOCK))
+		socket_error(C.fcntl(sockfd, C.F_SETFL, C.fcntl(sockfd, C.F_GETFL) | C.O_NONBLOCK)) ?
 	}
 	return s
 }
@@ -322,12 +323,12 @@ fn (mut s TcpSocket) connect(a string) ? {
 		return none
 	}
 	_ := error_code()
-	write_result := s.@select(.write, connect_timeout) ?
+	write_result := s.@select(.write, net.connect_timeout) ?
 	if write_result {
 		// succeeded
 		return none
 	}
-	except_result := s.@select(.except, connect_timeout) ?
+	except_result := s.@select(.except, net.connect_timeout) ?
 	if except_result {
 		return err_connect_failed
 	}

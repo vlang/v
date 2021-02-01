@@ -28,26 +28,26 @@ fn get_vexe_path() string {
 fn new_tdir() string {
 	tdir_ := os.join_path(os.temp_dir(), rand.ulid())
 	if os.exists(tdir_) {
-		os.rmdir(tdir_)
+		os.rmdir(tdir_) or { panic(err) }
 	}
-	os.mkdir(tdir_)
+	os.mkdir(tdir_) or { panic(err) }
 	C.atexit(cleanup_tdir)
 	return tdir_
 }
 
 fn cleanup_tdir() {
 	println('... removing tdir: $tdir')
-	os.rmdir_all(tdir)
+	os.rmdir_all(tdir) or { panic(err) }
 }
 
 fn main() {
 	println('> vroot: $vroot | vexe: $vexe | tdir: $tdir')
 	ok_fpath := os.join_path(tdir, 'single_test.v')
-	os.write_file(ok_fpath, 'fn test_ok(){ assert true }')
+	os.write_file(ok_fpath, 'fn test_ok(){ assert true }') ?
 	check_ok('"$vexe" $ok_fpath')
 	check_ok('"$vexe" test $ok_fpath')
 	fail_fpath := os.join_path(tdir, 'failing_test.v')
-	os.write_file(fail_fpath, 'fn test_fail(){ assert 1 == 2 }')
+	os.write_file(fail_fpath, 'fn test_fail(){ assert 1 == 2 }') ?
 	check_fail('"$vexe" $fail_fpath')
 	check_fail('"$vexe" test $fail_fpath')
 	check_fail('"$vexe" test $tdir')

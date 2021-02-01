@@ -17,7 +17,7 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 		if g.is_shared {
 			mut shared_typ := it.typ.set_flag(.shared_f)
 			shared_styp = g.typ(shared_typ)
-			g.writeln('($shared_styp*)memdup(&($shared_styp){.val = ')
+			g.writeln('($shared_styp*)__dup_shared_array(&($shared_styp){.val = ')
 		} else {
 			g.write('($styp*)memdup(ADDR($styp, ')
 		}
@@ -95,7 +95,7 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 		}
 		if is_amp {
 			if g.is_shared {
-				g.write(', .mtx = sync__new_rwmutex()}, sizeof($shared_styp))')
+				g.write('}, sizeof($shared_styp))')
 			} else {
 				g.write('), sizeof($styp))')
 			}
@@ -114,15 +114,7 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 		g.write('\t\t')
 	}
 	for i, expr in it.exprs {
-		if it.is_interface {
-			// sym := g.table.get_type_symbol(it.expr_types[i])
-			// isym := g.table.get_type_symbol(it.interface_type)
-			g.interface_call(it.expr_types[i], it.interface_type)
-		}
 		g.expr_with_cast(expr, it.expr_types[i], it.elem_type)
-		if it.is_interface {
-			g.write(')')
-		}
 		if i != len - 1 {
 			g.write(', ')
 		}
@@ -253,17 +245,18 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 		// `users.sort(a.age > b.age)`
 		// Generate a comparison function for a custom type
 		tmp_name := g.new_tmp_var()
-		compare_fn = 'compare_${tmp_name}_' + g.typ(typ)
+		styp := g.typ(typ).trim('*')
+		compare_fn = 'compare_${tmp_name}_$styp'
 		if is_reverse {
 			compare_fn += '_reverse'
 		}
 		// Register a new custom `compare_xxx` function for qsort()
 		g.table.register_fn(name: compare_fn, return_type: table.int_type)
 		infix_expr := node.args[0].expr as ast.InfixExpr
-		styp := g.typ(typ)
 		// Variables `a` and `b` are used in the `.sort(a < b)` syntax, so we can reuse them
 		// when generating the function as long as the args are named the same.
-		g.definitions.writeln('int $compare_fn ($styp* a, $styp* b) {')
+		styp_arg := g.typ(typ)
+		g.definitions.writeln('int $compare_fn ($styp_arg* a, $styp_arg* b) {')
 		sym := g.table.get_type_symbol(typ)
 		if !is_reverse && sym.has_method('<') && infix_expr.left.str().len == 1 {
 			g.definitions.writeln('\tif (${styp}__lt(*a, *b)) { return -1; } else { return 1; }}')
@@ -271,8 +264,12 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 			g.definitions.writeln('\tif (${styp}__gt(*a, *b)) { return -1; } else { return 1; }}')
 		} else {
 			field_type := g.typ(infix_expr.left_type)
-			left_expr_str := g.write_expr_to_string(infix_expr.left)
-			right_expr_str := g.write_expr_to_string(infix_expr.right)
+			mut left_expr_str := g.write_expr_to_string(infix_expr.left)
+			mut right_expr_str := g.write_expr_to_string(infix_expr.right)
+			if typ.is_ptr() {
+				left_expr_str = left_expr_str.replace_once('a', '(*a)')
+				right_expr_str = right_expr_str.replace_once('b', '(*b)')
+			}
 			g.definitions.writeln('$field_type a_ = $left_expr_str;')
 			g.definitions.writeln('$field_type b_ = $right_expr_str;')
 			mut op1, mut op2 := '', ''
