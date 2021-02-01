@@ -71,7 +71,7 @@ fn bar3(m map[string]fn (string) int) int {
 }
 
 fn bar4(mut m map[string]fn (string) int) int {
-    m['fn'] = foo5 
+	m['fn'] = foo5 
 	return m['fn']('hi')
 }
 
