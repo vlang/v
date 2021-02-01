@@ -22,7 +22,6 @@ pub mut:
 	table              &table.Table
 	out_imports        strings.Builder
 	out                strings.Builder
-	out_save           strings.Builder
 	indent             int
 	empty_line         bool
 	line_len           int
@@ -272,6 +271,7 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 		}
 		already_imported[import_text] = true
 		f.out_imports.writeln(import_text)
+		f.import_comments(imp.comments, inline: true)
 		num_imports++
 	}
 	if num_imports > 0 {
@@ -295,6 +295,9 @@ pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
 
 fn (mut f Fmt) should_insert_newline_before_stmt(stmt ast.Stmt, prev_stmt ast.Stmt) bool {
 	prev_line_nr := prev_stmt.position().last_line
+	if prev_stmt is ast.HashStmt && stmt !is ast.HashStmt && stmt !is ast.ExprStmt {
+		return true
+	}
 	// The stmt either has or shouldn't have a newline before
 	if stmt.position().line_nr - prev_line_nr <= 1 || f.out.last_n(2) == '\n\n' {
 		return false

@@ -4198,6 +4198,28 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 						g.write('\n$cur_line*($elem_type_str*)${tmp_opt}.data')
 					}
 				}
+			} else if sym.kind == .array_fixed {
+				info := sym.info as table.ArrayFixed
+				elem_type := info.elem_type
+				elem_sym := g.table.get_type_symbol(elem_type)
+				is_fn_index_call := g.is_fn_index_call && elem_sym.info is table.FnType
+
+				if is_fn_index_call {
+					g.write('(*')
+				}
+				if node.left_type.is_ptr() {
+					g.write('(*')
+					g.expr(node.left)
+					g.write(')')
+				} else {
+					g.expr(node.left)
+				}
+				g.write('[')
+				g.expr(node.index)
+				g.write(']')
+				if is_fn_index_call {
+					g.write(')')
+				}
 			} else if sym.kind == .map {
 				info := sym.info as table.Map
 				key_type_str := g.typ(info.key_type)
@@ -4328,13 +4350,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				g.expr(node.index)
 				g.write(')')
 			} else {
-				if sym.kind == .array_fixed && node.left_type.is_ptr() {
-					g.write('(*')
-					g.expr(node.left)
-					g.write(')')
-				} else {
-					g.expr(node.left)
-				}
+				g.expr(node.left)
 				g.write('[')
 				g.expr(node.index)
 				g.write(']')
@@ -4693,13 +4709,13 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	g.is_amp = false // reset the flag immediately so that other struct inits in this expr are handled correctly
 	if is_amp {
 		g.out.go_back(1) // delete the `&` already generated in `prefix_expr()
-		if g.is_shared {
-			mut shared_typ := struct_init.typ.set_flag(.shared_f)
-			shared_styp = g.typ(shared_typ)
-			g.writeln('($shared_styp*)__dup${shared_styp}(&($shared_styp){.val = ($styp){')
-		} else {
-			g.write('($styp*)memdup(&($styp){')
-		}
+	}
+	if g.is_shared {
+		mut shared_typ := struct_init.typ.set_flag(.shared_f)
+		shared_styp = g.typ(shared_typ)
+		g.writeln('($shared_styp*)__dup${shared_styp}(&($shared_styp){.val = ($styp){')
+	} else if is_amp {
+		g.write('($styp*)memdup(&($styp){')
 	} else if struct_init.typ.is_ptr() {
 		basetyp := g.typ(struct_init.typ.set_nr_muls(0))
 		if is_multiline {
@@ -4708,10 +4724,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 			g.write('&($basetyp){')
 		}
 	} else {
-		if g.is_shared {
-			// TODO: non-ref shared should be forbidden
-			g.writeln('{.val = {')
-		} else if is_multiline {
+		if is_multiline {
 			g.writeln('($styp){')
 		} else {
 			g.write('($styp){')
@@ -4870,10 +4883,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	}
 	g.write('}')
 	if g.is_shared {
-		g.write('}')
-		if is_amp {
-			g.write(', sizeof($shared_styp))')
-		}
+		g.write('}, sizeof($shared_styp))')
 	} else if is_amp {
 		g.write(', sizeof($styp))')
 	}
@@ -5146,8 +5156,19 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 				if fixed.starts_with('C__') {
 					fixed = fixed[3..]
 				}
-				g.type_definitions.writeln('typedef $fixed $styp [$len];')
-				// }
+				elem_type := typ.info.elem_type
+				elem_sym := g.table.get_type_symbol(elem_type)
+				if elem_sym.info is table.FnType {
+					pos := g.out.len
+					g.write_fn_ptr_decl(&elem_sym.info, '')
+					fixed = g.out.after(pos)
+					g.out.go_back(fixed.len)
+					mut def_str := 'typedef $fixed;'
+					def_str = def_str.replace_once('(*)', '(*$styp[$len])')
+					g.type_definitions.writeln(def_str)
+				} else {
+					g.type_definitions.writeln('typedef $fixed $styp [$len];')
+				}
 			}
 			else {}
 		}
