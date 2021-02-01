@@ -3954,6 +3954,9 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 		if obj := c.file.global_scope.find(name) {
 			match mut obj {
 				ast.ConstField {
+					if !(obj.is_pub || obj.mod == c.mod || c.pref.is_test) {
+						c.error('constant `$obj.name` is private', ident.pos)
+					}
 					mut typ := obj.typ
 					if typ == 0 {
 						c.inside_const = true
