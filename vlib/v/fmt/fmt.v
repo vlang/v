@@ -1147,6 +1147,8 @@ pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 	} else {
 		if node.is_embed {
 			f.write("\$embed_file('$node.embed_file.rpath')")
+		} else if node.is_env {
+			f.write("\$env('$node.args_var')")
 		} else {
 			method_expr := if node.has_parens {
 				'(${node.method_name}($node.args_var))'
@@ -1788,7 +1790,7 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 	mut single_line := true
 	for branch in it.branches {
 		if branch.stmts.len > 1 || branch.pos.line_nr < branch.pos.last_line {
-			println(branch)
+			// println(branch)
 			single_line = false
 			break
 		}

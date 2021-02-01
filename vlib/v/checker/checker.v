@@ -2838,8 +2838,6 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 			if c.table.get_type_symbol(expected_value_type).kind == .interface_ {
 				// Array of interfaces? (`[dog, cat]`) Save the interface type (`Animal`)
 				expecting_interface_array = true
-				array_init.interface_type = expected_value_type
-				array_init.is_interface = true
 			}
 		}
 		// expecting_interface_array := c.expected_type != 0 &&
@@ -3210,6 +3208,14 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			}
 			node.val = 'include $vroot'
 			node.main = vroot
+			flag = vroot
+		}
+		if flag.contains('\$env(') {
+			env := util.resolve_env_value(flag, true) or {
+				c.error(err, node.pos)
+				return
+			}
+			node.main = env
 		}
 		flag_no_comment := flag.all_before('//').trim_space()
 		if !((flag_no_comment.starts_with('"') && flag_no_comment.ends_with('"'))
@@ -3241,6 +3247,12 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 		// expand `@VROOT` to its absolute path
 		if flag.contains('@VROOT') {
 			flag = util.resolve_vroot(flag, c.file.path) or {
+				c.error(err, node.pos)
+				return
+			}
+		}
+		if flag.contains('\$env(') {
+			flag = util.resolve_env_value(flag, true) or {
 				c.error(err, node.pos)
 				return
 			}
@@ -3669,6 +3681,14 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
 
 fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) table.Type {
 	node.sym = c.table.get_type_symbol(c.unwrap_generic(c.expr(node.left)))
+	if node.is_env {
+		env_value := util.resolve_env_value("\$env('$node.args_var')", false) or {
+			c.error(err, node.env_pos)
+			return table.string_type
+		}
+		node.env_value = env_value
+		return table.string_type
+	}
 	if node.is_embed {
 		c.file.embedded_files << node.embed_file
 		return c.table.find_type_idx('v.embed_file.EmbedFileData')
@@ -3705,7 +3725,21 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) table.Type {
 		node.result_type = rtyp
 		return rtyp
 	}
-	if node.is_vweb || node.method_name == 'method' {
+	if node.method_name == 'method' {
+		if node.args_var.len > 0 {
+			v := node.scope.find_var(node.args_var) or {
+				c.error('unknown identifier `$node.args_var`', node.method_pos)
+				return table.void_type
+			}
+			s := c.table.type_to_str(c.expr(v.expr))
+			if s != '[]string' {
+				c.error('expected `[]string`, not s', node.method_pos)
+			}
+		}
+		// assume string for now
+		return table.string_type
+	}
+	if node.is_vweb {
 		return table.string_type
 	}
 	// s.$my_str()
