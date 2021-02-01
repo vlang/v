@@ -6,6 +6,7 @@ import strings
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/utsname.h>
+
 pub const (
 	path_separator = '/'
 	path_delimiter = ':'
