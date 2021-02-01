@@ -3,7 +3,7 @@ struct Foo {
 	age int
 }
 
-struct Foo2 {}
+struct Foo2 {b bool}
 
 fn main() {
 	i := 2
