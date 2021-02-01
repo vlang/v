@@ -22,7 +22,6 @@ pub mut:
 	table              &table.Table
 	out_imports        strings.Builder
 	out                strings.Builder
-	out_save           strings.Builder
 	indent             int
 	empty_line         bool
 	line_len           int
@@ -272,6 +271,7 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 		}
 		already_imported[import_text] = true
 		f.out_imports.writeln(import_text)
+		f.import_comments(imp.comments, inline: true)
 		num_imports++
 	}
 	if num_imports > 0 {
