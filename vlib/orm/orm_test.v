@@ -215,7 +215,7 @@ fn test_orm_sqlite() {
 	}
 	assert updated_oldest.age == 31
 
-	db.exec("insert into User (name, age) values (NULL, 31)")
+	db.exec('insert into User (name, age) values (NULL, 31)')
 	null_user := sql db {
 		select from User where id == 5
 	}
