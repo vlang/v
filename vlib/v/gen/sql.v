@@ -226,8 +226,10 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 			mut func := 'sqlite3_column_int'
 			if field.typ == table.string_type {
 				func = 'sqlite3_column_text'
-				g.writeln('if (${func}($g.sql_stmt_name, $i) != NULL) {')
-				g.writeln('\t${tmp}.$field.name = tos_clone(${func}($g.sql_stmt_name, $i));')
+				string_data := g.new_tmp_var()
+				g.writeln('byteptr $string_data = ${func}($g.sql_stmt_name, $i);')
+				g.writeln('if ($string_data != NULL) {')
+				g.writeln('\t${tmp}.$field.name = tos_clone($string_data);')
 				g.writeln('}')
 			} else {
 				g.writeln('${tmp}.$field.name = ${func}($g.sql_stmt_name, $i);')
