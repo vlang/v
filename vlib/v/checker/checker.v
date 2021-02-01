@@ -680,12 +680,17 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 	if struct_init.has_update_expr {
 		update_type := c.expr(struct_init.update_expr)
 		struct_init.update_expr_type = update_type
-		update_sym := c.table.get_type_symbol(update_type)
-		sym := c.table.get_type_symbol(struct_init.typ)
-		if update_sym.kind != .struct_ {
-			c.error('expected struct `$sym.name`, found `$update_sym.name`', struct_init.update_expr.position())
+		if c.table.type_kind(update_type) != .struct_ {
+			s := c.table.type_to_str(update_type)
+			c.error('expected struct, found `$s`', struct_init.update_expr.position())
 		} else if update_type != struct_init.typ {
+			sym := c.table.get_type_symbol(struct_init.typ)
+			update_sym := c.table.get_type_symbol(update_type)
 			c.error('expected struct `$sym.name`, found struct `$update_sym.name`', struct_init.update_expr.position())
+		} else if !struct_init.update_expr.is_lvalue() {
+			// cgen will repeat `update_expr` for each field
+			// so enforce an lvalue for efficiency
+			c.error('expression is not an lvalue', struct_init.update_expr.position())
 		}
 	}
 	return struct_init.typ
@@ -1690,6 +1695,12 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		sym := c.table.get_type_symbol(expr.left_type)
 		if sym.kind == .array {
 			info := sym.info as table.Array
+			elem_typ := c.table.get_type_symbol(info.elem_type)
+			if elem_typ.info is table.FnType {
+				return elem_typ.info.func.return_type
+			}
+		} else if sym.kind == .array_fixed {
+			info := sym.info as table.ArrayFixed
 			elem_typ := c.table.get_type_symbol(info.elem_type)
 			if elem_typ.info is table.FnType {
 				return elem_typ.info.func.return_type

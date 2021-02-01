@@ -295,6 +295,9 @@ pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
 
 fn (mut f Fmt) should_insert_newline_before_stmt(stmt ast.Stmt, prev_stmt ast.Stmt) bool {
 	prev_line_nr := prev_stmt.position().last_line
+	if prev_stmt is ast.HashStmt && stmt !is ast.HashStmt && stmt !is ast.ExprStmt {
+		return true
+	}
 	// The stmt either has or shouldn't have a newline before
 	if stmt.position().line_nr - prev_line_nr <= 1 || f.out.last_n(2) == '\n\n' {
 		return false

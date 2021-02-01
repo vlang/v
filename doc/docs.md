@@ -1752,7 +1752,7 @@ Global variables are not allowed, so this can be really useful.
 When naming constants, `snake_case` must be used. In order to distinguish consts
 from local variables, the full path to consts must be specified. For example,
 to access the PI const, full `math.pi` name must be used both outside the `math`
-module, and inside it. That restriction is relaxed only for the `main` module 
+module, and inside it. That restriction is relaxed only for the `main` module
 (the one containing your `fn main()`, where you can use the shorter name of the
 constants too, i.e. just `println(numbers)`, not `println(main.numbers)` .
 
@@ -3346,6 +3346,56 @@ executable, increasing your binary size, but making it more self contained
 and thus easier to distribute. In this case, `f.data()` will cause *no IO*,
 and it will always return the same data.
 
+#### $tmpl for embedding and parsing V template files
+
+V has a simple template language for text and html templates, and they can easily
+be embedded via `$tmpl('path/to/template.txt')`:
+
+
+```v ignore
+fn build() string {
+	name := 'Peter'
+	age := 25
+	numbers := [1, 2, 3]
+	return $tmpl('1.txt')
+}
+
+fn main() {
+	println(build())
+}
+```
+
+1.txt:
+
+```
+name: @name
+
+age: @age
+
+numbers: @numbers
+
+@for number in numbers
+  @number
+@end
+```
+
+output:
+
+```
+name: Peter
+
+age: 25
+
+numbers: [1, 2, 3]
+
+1
+2
+3
+```
+
+
+
+
 #### $env
 
 ```v
@@ -3413,7 +3463,7 @@ single block. `customflag` should be a snake_case identifier, it can not
 contain arbitrary characters (only lower case latin letters + numbers + `_`).
 NB: a combinatorial `_d_customflag_linux.c.v` postfix will not work.
 If you do need a custom flag file, that has platform dependent code, use the
-postfix `_d_customflag.v`, and then use plaftorm dependent compile time 
+postfix `_d_customflag.v`, and then use plaftorm dependent compile time
 conditional blocks inside it, i.e. `$if linux {}` etc.
 
 ## Compile time pseudo variables

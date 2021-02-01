@@ -4,6 +4,7 @@
 module os
 
 #include "@VROOT/vlib/os/os_darwin.m"
+
 pub const (
 	sys_write         = 4
 	sys_open          = 5
