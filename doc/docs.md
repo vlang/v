@@ -2655,7 +2655,7 @@ fn (shared b St) g() {
 }
 
 fn main() {
-	shared a := &St{ // create as reference so it's on the heap
+	shared a := St{
 		x: 10
 	}
 	go a.g()
@@ -2665,6 +2665,7 @@ fn main() {
 	}
 }
 ```
+Shared variables must be structs, arrays or maps.
 
 ## Decoding JSON
 
