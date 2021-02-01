@@ -76,9 +76,9 @@ fn bar4(mut m map[string]fn (string) int) int {
 }
 
 fn test_map_of_fns_as_argument() {
-	m1 := [foo3]
+	m1 := {'fn': foo3}
 	assert bar3(m1) == 12
-	mut m2 := [foo3]
+	mut m2 := {'fn': foo3}
 	assert bar4(mut m2) == 32
 }
 
