@@ -4198,6 +4198,28 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 						g.write('\n$cur_line*($elem_type_str*)${tmp_opt}.data')
 					}
 				}
+			} else if sym.kind == .array_fixed {
+				info := sym.info as table.ArrayFixed
+				elem_type := info.elem_type
+				elem_sym := g.table.get_type_symbol(elem_type)
+				is_fn_index_call := g.is_fn_index_call && elem_sym.info is table.FnType
+
+				if is_fn_index_call {
+					g.write('(*')
+				}
+				if node.left_type.is_ptr() {
+					g.write('(*')
+					g.expr(node.left)
+					g.write(')')
+				} else {
+					g.expr(node.left)
+				}
+				g.write('[')
+				g.expr(node.index)
+				g.write(']')
+				if is_fn_index_call {
+					g.write(')')
+				}
 			} else if sym.kind == .map {
 				info := sym.info as table.Map
 				key_type_str := g.typ(info.key_type)
@@ -4328,13 +4350,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				g.expr(node.index)
 				g.write(')')
 			} else {
-				if sym.kind == .array_fixed && node.left_type.is_ptr() {
-					g.write('(*')
-					g.expr(node.left)
-					g.write(')')
-				} else {
-					g.expr(node.left)
-				}
+				g.expr(node.left)
 				g.write('[')
 				g.expr(node.index)
 				g.write(']')
@@ -5146,8 +5162,19 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 				if fixed.starts_with('C__') {
 					fixed = fixed[3..]
 				}
-				g.type_definitions.writeln('typedef $fixed $styp [$len];')
-				// }
+				elem_type := typ.info.elem_type
+				elem_sym := g.table.get_type_symbol(elem_type)
+				if elem_sym.info is table.FnType {
+					pos := g.out.len
+					g.write_fn_ptr_decl(&elem_sym.info, '')
+					fixed = g.out.after(pos)
+					g.out.go_back(fixed.len)
+					mut def_str := 'typedef $fixed;'
+					def_str = def_str.replace_once('(*)', '(*$styp[$len])')
+					g.type_definitions.writeln(def_str)
+				} else {
+					g.type_definitions.writeln('typedef $fixed $styp [$len];')
+				}
 			}
 			else {}
 		}
