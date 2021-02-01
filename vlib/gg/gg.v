@@ -322,16 +322,6 @@ pub fn (ctx &Context) draw_rect(x f32, y f32, w f32, h f32, c gx.Color) {
 	sgl.end()
 }
 
-[inline]
-pub fn (ctx &Context) draw_square(x f32, y f32, s f32, c gx.Color) {
-	ctx.draw_rect(x, y, s, s, c)
-}
-
-[inline]
-pub fn (ctx &Context) set_pixel(x f32, y f32, c gx.Color) {
-	ctx.draw_square(x, y, 1, c)
-}
-
 pub fn (ctx &Context) draw_triangle(x f32, y f32, x2 f32, y2 f32, x3 f32, y3 f32, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
@@ -364,11 +354,6 @@ pub fn (ctx &Context) draw_empty_rect(x f32, y f32, w f32, h f32, c gx.Color) {
 		sgl.v2f(x * ctx.scale, y * ctx.scale)
 	}
 	sgl.end()
-}
-
-[inline]
-pub fn (ctx &Context) draw_empty_square(x f32, y f32, s f32, c gx.Color) {
-	ctx.draw_empty_rect(x, y, s, s, c)
 }
 
 pub fn (ctx &Context) draw_circle_line(x f32, y f32, r int, segments int, c gx.Color) {
@@ -652,17 +637,52 @@ pub fn (ctx &Context) draw_empty_rounded_rect(x f32, y f32, w f32, h f32, radius
 	sgl.end()
 }
 
+pub fn (ctx &Context) draw_convex_poly(x []f32, y []f32, c gx.Color) {
+	assert x.len == y.len
+	len := x.len
+	assert len >= 3
+
+	if c.a != 255 {
+		sgl.load_pipeline(ctx.timage_pip)
+	}
+	sgl.c4b(c.r, c.g, c.b, c.a)
+
+	sgl.begin_triangle_strip()
+	for i in 0 .. (len / 2) {
+		sgl.v2f(x[0], y[0])
+		sgl.v2f(x[i * 2 + 1], y[i * 2 + 1])
+		sgl.v2f(x[i * 2 + 2], y[i * 2 + 2])
+	}
+
+	if len % 2 == 0 {
+		sgl.v2f(x[len - 2], y[len - 2])
+	}
+	sgl.end()
+}
+
+pub fn (ctx &Context) draw_empty_poly(x []f32, y []f32, c gx.Color) {
+	assert x.len == y.len
+	assert x.len >= 3
+
+	if c.a != 255 {
+		sgl.load_pipeline(ctx.timage_pip)
+	}
+	sgl.c4b(c.r, c.g, c.b, c.a)
+
+	sgl.begin_line_strip()
+	for i in 0 .. (x.len) {
+		sgl.v2f(x[i], y[i])
+	}
+	sgl.v2f(x[0], y[0])
+	sgl.end()
+}
+
 pub fn screen_size() Size {
 	$if macos {
 		return C.gg_get_screen_size()
 	}
 	// TODO windows, linux, etc
 	return Size{}
-}
-
-// window_size returns the `Size` of the active window
-pub fn window_size() Size {
-	return Size{sapp.width(), sapp.height()}
 }
 
 fn C.WaitMessage()
