@@ -637,6 +637,8 @@ pub fn (ctx &Context) draw_empty_rounded_rect(x f32, y f32, w f32, h f32, radius
 	sgl.end()
 }
 
+//Draws a convex polygon, given an array of x coordinates and an array of y coordinates, and a color.
+//Note that the points must be given in clockwise order.
 pub fn (ctx &Context) draw_convex_poly(x []f32, y []f32, c gx.Color) {
 	assert x.len == y.len
 	len := x.len
@@ -660,6 +662,8 @@ pub fn (ctx &Context) draw_convex_poly(x []f32, y []f32, c gx.Color) {
 	sgl.end()
 }
 
+//Draws the borders of a polygon, given an array of x coordinates and an array of y coordinates, and a color.
+//Note that the points must be given in clockwise order.
 pub fn (ctx &Context) draw_empty_poly(x []f32, y []f32, c gx.Color) {
 	assert x.len == y.len
 	assert x.len >= 3
