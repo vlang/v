@@ -776,6 +776,8 @@ anums := fnums[0..fnums.len]
 println(anums) // => [1, 10, 100]
 println(typeof(anums).name) // => []int
 ```
+NB: slicing will cause the data of the fixed array to be copied to
+the newly created ordinary array.
 
 ### Maps
 
