@@ -4071,8 +4071,11 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 						ret_type = expr_type
 						stmt.typ = ret_type
 					} else if node.is_expr && ret_type != expr_type {
-						sym := c.table.get_type_symbol(ret_type)
-						c.error('return type mismatch, it should be `$sym.name`', stmt.expr.position())
+						if !c.check_types(ret_type, expr_type) {
+							ret_sym := c.table.get_type_symbol(ret_type)
+							c.error('return type mismatch, it should be `$ret_sym.name`',
+								stmt.expr.position())
+						}
 					}
 				}
 				else {
