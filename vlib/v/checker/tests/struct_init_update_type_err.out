@@ -1,7 +1,28 @@
-vlib/v/checker/tests/struct_init_update_type_err.vv:11:6: error: expected struct `Foo`, found `int`
-    9 |     f3 := 2
+vlib/v/checker/tests/struct_init_update_type_err.vv:11:6: error: expected struct, found `int`
+    9 |     i := 2
    10 |     _ := Foo{
-   11 |         ...f3
-      |            ~~
+   11 |         ...i
+      |            ^
    12 |         name: 'f2'
    13 |     }
+vlib/v/checker/tests/struct_init_update_type_err.vv:15:6: error: expected struct, found `&int`
+   13 |     }
+   14 |     _ = Foo{
+   15 |         ...&i
+      |            ^
+   16 |     }
+   17 |     f2 := Foo2{}
+vlib/v/checker/tests/struct_init_update_type_err.vv:19:6: error: expected struct `Foo`, found struct `Foo2`
+   17 |     f2 := Foo2{}
+   18 |     _ = Foo{
+   19 |         ...f2
+      |            ~~
+   20 |     }
+   21 |     _ = Foo{
+vlib/v/checker/tests/struct_init_update_type_err.vv:22:6: error: expression is not an lvalue
+   20 |     }
+   21 |     _ = Foo{
+   22 |         ...Foo{}
+      |            ~~~~~
+   23 |     }
+   24 | }

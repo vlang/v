@@ -6,16 +6,20 @@ struct Foo {
 struct Foo2 {}
 
 fn main() {
-	f3 := 2
+	i := 2
 	_ := Foo{
-		...f3
+		...i
 		name: 'f2'
 	}
 	_ = Foo{
-		...&f3
+		...&i
+	}
+	f2 := Foo2{}
+	_ = Foo{
+		...f2
 	}
 	_ = Foo{
-		...Foo2{}
+		...Foo{}
 	}
 }
 

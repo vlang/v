@@ -687,6 +687,10 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 			sym := c.table.get_type_symbol(struct_init.typ)
 			update_sym := c.table.get_type_symbol(update_type)
 			c.error('expected struct `$sym.name`, found struct `$update_sym.name`', struct_init.update_expr.position())
+		} else if !struct_init.update_expr.is_lvalue() {
+			// cgen will repeat `update_expr` for each field
+			// so enforce an lvalue for efficiency
+			c.error('expression is not an lvalue', struct_init.update_expr.position())
 		}
 	}
 	return struct_init.typ
