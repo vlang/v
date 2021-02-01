@@ -2570,6 +2570,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.expr_with_cast(node.expr, node.expr_type, node.typ)
 			} else if sym.kind == .struct_ && !node.typ.is_ptr()
 				&& !(sym.info as table.Struct).is_typedef {
+				// deprecated, replaced by Struct{...exr}
 				styp := g.typ(node.typ)
 				g.write('*(($styp *)(&')
 				g.expr(node.expr)
