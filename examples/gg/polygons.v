@@ -25,10 +25,10 @@ fn main() {
 
 fn frame(mut app App) {
 	app.gg.begin()
-	app.gg.draw_convex_poly([f32(100.0), 200.0, 300.0, 200.0, 100.0], [f32(100.0), 100.0, 200.0,
-		300.0, 300.0], gx.blue)
-	app.gg.draw_empty_poly([f32(50.0), 70.0, 90.0, 70.0], [f32(50.0), 60.0, 80.0, 110.0],
-		gx.black)
+	app.gg.draw_convex_poly([f32(100.0), 100.0, 200.0, 100.0, 300.0, 200.0, 200.0, 300.0, 100.0,
+		300.0,
+	], gx.blue)
+	app.gg.draw_empty_poly([f32(50.0), 50.0, 70.0, 60.0, 90.0, 80.0, 70.0, 110.0], gx.black)
 	app.gg.draw_triangle(450, 142, 530, 280, 370, 280, gx.red)
 	app.gg.end()
 }
