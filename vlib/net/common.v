@@ -111,12 +111,12 @@ const (
 
 // no_timeout should be given to functions when no timeout is wanted (i.e. all functions
 // return instantly)
-const (
+pub const (
 	no_timeout = time.Duration(0)
 )
 
 // infinite_timeout should be given to functions when an infinite_timeout is wanted (i.e. functions
 // only ever return with data)
-const (
+pub const (
 	infinite_timeout = time.Duration(-1)
 )
