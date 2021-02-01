@@ -5279,9 +5279,10 @@ pub fn (mut c Checker) error(message string, pos token.Position) {
 	c.warn_or_error(msg, pos, false)
 }
 
-// check_struct_signature checks if both structs has the same signature / fields for casting
+// check `to` has all fields of `from`
 fn (c Checker) check_struct_signature(from table.Struct, to table.Struct) bool {
-	if from.fields.len != to.fields.len {
+	// Note: `to` can have extra fields
+	if from.fields.len == 0 {
 		return false
 	}
 	for _, field in from.fields {

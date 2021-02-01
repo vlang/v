@@ -9,7 +9,7 @@ struct Bar {
 	age int
 }
 
-fn test_update() {
+fn test_order() {
 	f := Foo{
 		age: 4
 		name: 'f'
@@ -26,3 +26,17 @@ fn test_update() {
 	assert b2.age == 4
 }
 
+struct Qux {
+	name string
+	age int
+	extra bool
+}
+
+fn test_extra() {
+	f := Foo{4,'f'}
+	q := Qux{
+		...f
+		extra: true
+	}
+	assert q == Qux{'f', 4, true}
+}
