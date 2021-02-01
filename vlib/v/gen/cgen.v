@@ -2692,19 +2692,14 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.is_amp = false
 			if is_amp {
 				g.out.go_back(1) // delete the `&` already generated in `prefix_expr()
-				if g.is_shared {
-					mut shared_typ := node.typ.set_flag(.shared_f)
-					shared_styp = g.typ(shared_typ)
-					g.writeln('($shared_styp*)__dup_shared_map(&($shared_styp){.val = ')
-				} else {
-					styp = g.typ(node.typ)
-					g.write('($styp*)memdup(ADDR($styp, ')
-				}
-			} else {
-				if g.is_shared {
-					// TODO: shared objects on stack should be forbidden or auto-converted to heap
-					g.writeln('{.val = ($styp*)')
-				}
+			}
+			if g.is_shared {
+				mut shared_typ := node.typ.set_flag(.shared_f)
+				shared_styp = g.typ(shared_typ)
+				g.writeln('($shared_styp*)__dup_shared_map(&($shared_styp){.val = ')
+			} else if is_amp {
+				styp = g.typ(node.typ)
+				g.write('($styp*)memdup(ADDR($styp, ')
 			}
 			if size > 0 {
 				if value_typ.kind == .function {
@@ -2730,10 +2725,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.write('new_map_2(sizeof($key_typ_str), sizeof($value_typ_str), $hash_fn, $key_eq_fn, $clone_fn, $free_fn)')
 			}
 			if g.is_shared {
-				g.write('}')
-				if is_amp {
-					g.write(', sizeof($shared_styp))')
-				}
+				g.write('}, sizeof($shared_styp))')
 			} else if is_amp {
 				g.write('), sizeof($styp))')
 			}
