@@ -165,6 +165,10 @@ pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
 					break
 				}
 				SelectorExpr {
+					if sub_expr.field_name[0] == `@` {
+						needs_braces = true
+						break
+					}
 					sub_expr = sub_expr.expr
 					continue
 				}
