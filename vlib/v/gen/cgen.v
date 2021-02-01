@@ -4693,13 +4693,13 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	g.is_amp = false // reset the flag immediately so that other struct inits in this expr are handled correctly
 	if is_amp {
 		g.out.go_back(1) // delete the `&` already generated in `prefix_expr()
-		if g.is_shared {
-			mut shared_typ := struct_init.typ.set_flag(.shared_f)
-			shared_styp = g.typ(shared_typ)
-			g.writeln('($shared_styp*)__dup${shared_styp}(&($shared_styp){.val = ($styp){')
-		} else {
-			g.write('($styp*)memdup(&($styp){')
-		}
+	}
+	if g.is_shared {
+		mut shared_typ := struct_init.typ.set_flag(.shared_f)
+		shared_styp = g.typ(shared_typ)
+		g.writeln('($shared_styp*)__dup${shared_styp}(&($shared_styp){.val = ($styp){')
+	} else if is_amp {
+		g.write('($styp*)memdup(&($styp){')
 	} else if struct_init.typ.is_ptr() {
 		basetyp := g.typ(struct_init.typ.set_nr_muls(0))
 		if is_multiline {
@@ -4708,10 +4708,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 			g.write('&($basetyp){')
 		}
 	} else {
-		if g.is_shared {
-			// TODO: non-ref shared should be forbidden
-			g.writeln('{.val = {')
-		} else if is_multiline {
+		if is_multiline {
 			g.writeln('($styp){')
 		} else {
 			g.write('($styp){')
@@ -4870,10 +4867,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	}
 	g.write('}')
 	if g.is_shared {
-		g.write('}')
-		if is_amp {
-			g.write(', sizeof($shared_styp))')
-		}
+		g.write('}, sizeof($shared_styp))')
 	} else if is_amp {
 		g.write(', sizeof($styp))')
 	}
