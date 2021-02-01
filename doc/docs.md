@@ -125,6 +125,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Cross compilation](#cross-compilation)
     * [Cross-platform shell scripts in V](#cross-platform-shell-scripts-in-v)
     * [Attributes](#attributes)
+    * [Goto](#goto)
 * [Appendices](#appendices)
     * [Keywords](#appendix-i-keywords)
     * [Operators](#appendix-ii-operators)
@@ -3846,6 +3847,16 @@ struct C.Foo {
 fn C.DefWindowProc(hwnd int, msg int, lparam int, wparam int)
 ```
 
+## Goto
+
+V allows unconditionally jumping to arbitrary labels with `goto`. Labels must be contained
+within the text document from where they are jumped to. A program may `goto` a label outside
+or deeper than the current scope, but it cannot `goto` a label inside of a different function.
+
+```v ignore
+my_label:
+    goto my_label
+```
 
 # Appendices
 
