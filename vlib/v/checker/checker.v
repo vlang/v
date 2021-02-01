@@ -2511,7 +2511,11 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					}
 					mut ident_var_info := left.info as ast.IdentVar
 					if ident_var_info.share == .shared_t {
+						if left_type.nr_muls() > 1 {
+							c.error('shared cannot be multi level reference', left.pos)
+						}
 						left_type = left_type.set_flag(.shared_f)
+						left_type = left_type.set_nr_muls(1)
 					}
 					if ident_var_info.share == .atomic_t {
 						left_type = left_type.set_flag(.atomic_f)
@@ -2590,7 +2594,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 				c.error('cannot assign to `$left`: ' +
 					c.expected_msg(right_type_unwrapped, left_type_unwrapped), right.position())
 			}
-			if (right is ast.StructInit || !right_is_ptr) && !right_sym.is_number() {
+			if (right is ast.StructInit || !right_is_ptr) && !(right_sym.is_number() || left_type.has_flag(.shared_f)) {
 				left_name := c.table.type_to_str(left_type_unwrapped)
 				mut rtype := right_type_unwrapped
 				if rtype.is_ptr() {
