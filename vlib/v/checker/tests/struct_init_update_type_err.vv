@@ -11,8 +11,9 @@ fn main() {
 		...i
 		name: 'f2'
 	}
+	p := &i
 	_ = Foo{
-		...&i
+		...p
 	}
 	f2 := Foo2{}
 	_ = Foo{
