@@ -2,7 +2,8 @@
 
 ## Introducción
 
-V es un lenguaje de programación compilado de tipado estático diseñado para crear software mantenible.
+V es un lenguaje de programación compilado de tipado estático diseñado para
+crear software mantenible.
 
 Es similar a Go y su diseño también ha sido influenciado por Oberon, Rust, Swift,
 Kotlin y Python.
@@ -17,7 +18,8 @@ Todo lo que puedas hacer en otros lenguajes, lo puedes hacer en V.
 
 ## Install from source
 
-La forma principal de obtener la versión de V más reciente y mejorada es __instalarlo desde la fuente__.
+La forma principal de obtener la versión de V más reciente y mejorada es
+__instalarlo desde la fuente__.
 Es __fácil__ y, por lo general, toma __sólo unos segundos__.
 
 ### Linux, macOS, FreeBSD, etc:
@@ -40,8 +42,8 @@ make
 
 ### Android
 
-También es posible ejecutar aplicaciones gráficas hechas con V en Android a través de
-[vab](https://github.com/vlang/vab).
+También es posible ejecutar aplicaciones gráficas hechas con V en Android
+a través de [vab](https://github.com/vlang/vab).
 
 Las dependencias que necesita V en Android son: **V** (obviamente), **JavaSDK** >= 8 y Android **SDK + NDK**.
 
