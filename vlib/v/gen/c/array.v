@@ -1,46 +1,42 @@
 // Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
-module gen
+module c
 
 import strings
 import v.ast
 import v.table
 
-fn (mut g Gen) array_init(it ast.ArrayInit) {
-	type_sym := g.table.get_type_symbol(it.typ)
-	styp := g.typ(it.typ)
+fn (mut g Gen) array_init(node ast.ArrayInit) {
+	type_sym := g.table.get_type_symbol(node.typ)
+	styp := g.typ(node.typ)
 	mut shared_styp := '' // only needed for shared &[]{...}
 	is_amp := g.is_amp
 	g.is_amp = false
 	if is_amp {
 		g.out.go_back(1) // delete the `&` already generated in `prefix_expr()
-		if g.is_shared {
-			mut shared_typ := it.typ.set_flag(.shared_f)
-			shared_styp = g.typ(shared_typ)
-			g.writeln('($shared_styp*)__dup_shared_array(&($shared_styp){.val = ')
-		} else {
-			g.write('($styp*)memdup(ADDR($styp, ')
-		}
-	} else {
-		if g.is_shared {
-			g.writeln('{.val = ($styp*)')
-		}
+	}
+	if g.is_shared {
+		mut shared_typ := node.typ.set_flag(.shared_f)
+		shared_styp = g.typ(shared_typ)
+		g.writeln('($shared_styp*)__dup_shared_array(&($shared_styp){.val = ')
+	} else if is_amp {
+		g.write('($styp*)memdup(ADDR($styp, ')
 	}
 	if type_sym.kind == .array_fixed {
 		g.write('{')
-		if it.has_val {
-			for i, expr in it.exprs {
+		if node.has_val {
+			for i, expr in node.exprs {
 				g.expr(expr)
-				if i != it.exprs.len - 1 {
+				if i != node.exprs.len - 1 {
 					g.write(', ')
 				}
 			}
-		} else if it.has_default {
-			g.expr(it.default_expr)
+		} else if node.has_default {
+			g.expr(node.default_expr)
 			info := type_sym.info as table.ArrayFixed
 			for _ in 1 .. info.size {
 				g.write(', ')
-				g.expr(it.default_expr)
+				g.expr(node.default_expr)
 			}
 		} else {
 			g.write('0')
@@ -48,23 +44,23 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 		g.write('}')
 		return
 	}
-	elem_type_str := g.typ(it.elem_type)
-	if it.exprs.len == 0 {
-		elem_sym := g.table.get_type_symbol(it.elem_type)
-		is_default_array := elem_sym.kind == .array && it.has_default
+	elem_type_str := g.typ(node.elem_type)
+	if node.exprs.len == 0 {
+		elem_sym := g.table.get_type_symbol(node.elem_type)
+		is_default_array := elem_sym.kind == .array && node.has_default
 		if is_default_array {
 			g.write('__new_array_with_array_default(')
 		} else {
 			g.write('__new_array_with_default(')
 		}
-		if it.has_len {
-			g.expr(it.len_expr)
+		if node.has_len {
+			g.expr(node.len_expr)
 			g.write(', ')
 		} else {
 			g.write('0, ')
 		}
-		if it.has_cap {
-			g.expr(it.cap_expr)
+		if node.has_cap {
+			g.expr(node.cap_expr)
 			g.write(', ')
 		} else {
 			g.write('0, ')
@@ -76,34 +72,32 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 		}
 		if is_default_array {
 			g.write('($elem_type_str[]){')
-			g.expr(it.default_expr)
+			g.expr(node.default_expr)
 			g.write('}[0])')
-		} else if it.has_default {
+		} else if node.has_default {
 			g.write('&($elem_type_str[]){')
-			g.expr(it.default_expr)
+			g.expr(node.default_expr)
 			g.write('})')
-		} else if it.has_len && it.elem_type == table.string_type {
+		} else if node.has_len && node.elem_type == table.string_type {
 			g.write('&($elem_type_str[]){')
 			g.write('_SLIT("")')
 			g.write('})')
-		} else if it.has_len && elem_sym.kind in [.array, .map] {
+		} else if node.has_len && elem_sym.kind in [.array, .map] {
 			g.write('(voidptr)&($elem_type_str[]){')
-			g.write(g.type_default(it.elem_type))
+			g.write(g.type_default(node.elem_type))
 			g.write('}[0])')
 		} else {
 			g.write('0)')
 		}
-		if is_amp {
-			if g.is_shared {
-				g.write('}, sizeof($shared_styp))')
-			} else {
-				g.write('), sizeof($styp))')
-			}
+		if g.is_shared {
+			g.write('}, sizeof($shared_styp))')
+		} else if is_amp {
+			g.write('), sizeof($styp))')
 		}
 		return
 	}
-	len := it.exprs.len
-	elem_sym := g.table.get_type_symbol(it.elem_type)
+	len := node.exprs.len
+	elem_sym := g.table.get_type_symbol(node.elem_type)
 	if elem_sym.kind == .function {
 		g.write('new_array_from_c_array($len, $len, sizeof(voidptr), _MOV((voidptr[$len]){')
 	} else {
@@ -113,20 +107,17 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 		g.writeln('')
 		g.write('\t\t')
 	}
-	for i, expr in it.exprs {
-		g.expr_with_cast(expr, it.expr_types[i], it.elem_type)
+	for i, expr in node.exprs {
+		g.expr_with_cast(expr, node.expr_types[i], node.elem_type)
 		if i != len - 1 {
 			g.write(', ')
 		}
 	}
 	g.write('}))')
 	if g.is_shared {
-		g.write(', .mtx = sync__new_rwmutex()}')
-		if is_amp {
-			g.write(', sizeof($shared_styp))')
-		}
+		g.write('}, sizeof($shared_styp))')
 	} else if is_amp {
-		g.write(', sizeof($styp))')
+		g.write('), sizeof($styp))')
 	}
 }
 

@@ -409,7 +409,8 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 		p.check(.rcbr)
 	}
 	p.is_amp = saved_is_amp
-	node := ast.StructInit{
+	return ast.StructInit{
+		unresolved: typ.has_flag(.generic)
 		typ: typ
 		fields: fields
 		update_expr: update_expr
@@ -419,7 +420,6 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 		is_short: no_keys
 		pre_comments: pre_comments
 	}
-	return node
 }
 
 fn (mut p Parser) interface_decl() ast.InterfaceDecl {

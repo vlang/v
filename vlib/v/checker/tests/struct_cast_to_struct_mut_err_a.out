@@ -1,4 +1,4 @@
-vlib/v/checker/tests/struct_cast_to_struct_mut_err_a.vv:12:7: error: cannot convert struct `Abc` to struct `Xyz`
+vlib/v/checker/tests/struct_cast_to_struct_mut_err_a.vv:12:7: error: casting to struct is deprecated, use e.g. `Struct{...expr}` instead
    10 | fn main() {
    11 |     abc := Abc{}
    12 |     _ := Xyz(abc)

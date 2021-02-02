@@ -1,3 +1,5 @@
+import semver // as sv
+
 enum Abc {
 	a
 	b // after a value

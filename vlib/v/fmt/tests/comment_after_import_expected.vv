@@ -1,6 +1,0 @@
-import semver
-
-// as semver
-
-fn main() {
-}

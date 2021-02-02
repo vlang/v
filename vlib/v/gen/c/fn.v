@@ -1,24 +1,24 @@
 // Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-module gen
+module c
 
 import v.ast
 import v.table
 import v.util
 
-fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
+fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 	// TODO For some reason, build fails with autofree with this line
 	// as it's only informative, comment it for now
 	// g.gen_attrs(it.attrs)
-	if it.language == .c {
-		// || it.no_body {
+	if node.language == .c {
+		// || node.no_body {
 		return
 	}
 	g.returned_var_name = ''
 	//
 	old_g_autofree := g.is_autofree
-	if it.is_manualfree {
+	if node.is_manualfree {
 		g.is_autofree = false
 	}
 	defer {
@@ -26,49 +26,49 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 	}
 	//
 	// if g.fileis('vweb.v') {
-	// println('\ngen_fn_decl() $it.name $it.is_generic $g.cur_generic_type')
+	// println('\ngen_fn_decl() $node.name $node.is_generic $g.cur_generic_type')
 	// }
-	if it.generic_params.len > 0 && g.cur_generic_types.len == 0 { // need the cur_generic_type check to avoid inf. recursion
+	if node.generic_params.len > 0 && g.cur_generic_types.len == 0 { // need the cur_generic_type check to avoid inf. recursion
 		// loop thru each generic type and generate a function
-		for gen_types in g.table.fn_gen_types[it.name] {
+		for gen_types in g.table.fn_gen_types[node.name] {
 			if g.pref.is_verbose {
 				syms := gen_types.map(g.table.get_type_symbol(it))
-				println('gen fn `$it.name` for type `${syms.map(it.name).join(', ')}`')
+				println('gen fn `$node.name` for type `${syms.map(node.name).join(', ')}`')
 			}
 			g.cur_generic_types = gen_types
-			g.gen_fn_decl(it, skip)
+			g.gen_fn_decl(node, skip)
 		}
 		g.cur_generic_types = []
 		return
 	}
-	g.cur_fn = it
+	g.cur_fn = node
 	fn_start_pos := g.out.len
-	g.write_v_source_line_info(it.pos)
-	msvc_attrs := g.write_fn_attrs(it.attrs)
+	g.write_v_source_line_info(node.pos)
+	msvc_attrs := g.write_fn_attrs(node.attrs)
 	// Live
-	is_livefn := it.attrs.contains('live')
+	is_livefn := node.attrs.contains('live')
 	is_livemain := g.pref.is_livemain && is_livefn
 	is_liveshared := g.pref.is_liveshared && is_livefn
 	is_livemode := g.pref.is_livemain || g.pref.is_liveshared
 	is_live_wrap := is_livefn && is_livemode
 	if is_livefn && !is_livemode {
-		eprintln('INFO: compile with `v -live $g.pref.path `, if you want to use the [live] function $it.name .')
+		eprintln('INFO: compile with `v -live $g.pref.path `, if you want to use the [live] function $node.name .')
 	}
 	//
-	mut name := it.name
+	mut name := node.name
 	if name in ['+', '-', '*', '/', '%', '<', '>', '==', '!=', '<=', '>='] {
 		name = util.replace_op(name)
 	}
-	if it.is_method {
-		name = g.cc_type2(it.receiver.typ) + '_' + name
-		// name = g.table.get_type_symbol(it.receiver.typ).name + '_' + name
+	if node.is_method {
+		name = g.cc_type2(node.receiver.typ) + '_' + name
+		// name = g.table.get_type_symbol(node.receiver.typ).name + '_' + name
 	}
-	if it.language == .c {
+	if node.language == .c {
 		name = util.no_dots(name)
 	} else {
 		name = c_name(name)
 	}
-	mut type_name := g.typ(it.return_type)
+	mut type_name := g.typ(node.return_type)
 	if g.cur_generic_types.len > 0 {
 		// foo<T>() => foo_T_int(), foo_T_string() etc
 		// Using _T_ to differentiate between get<string> and get_string
@@ -76,6 +76,18 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 		for generic_type in g.cur_generic_types {
 			gen_name := g.typ(generic_type)
 			name += '_' + gen_name
+		}
+	}
+	if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__')
+		&& name != 'main__main'&& node.name != 'str' {
+		mut key := node.name
+		if node.is_method {
+			sym := g.table.get_type_symbol(node.receiver.typ)
+			key = sym.name + '.' + node.name
+		}
+		g.writeln('/* obf: $key */')
+		name = g.obf_table[key] or {
+			panic('cgen: fn_decl: obf name "$key" not found, this should never happen')
 		}
 	}
 	// if g.pref.show_cc && it.is_builtin {
@@ -107,7 +119,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 			g.write('$type_name ${impl_fn_name}(')
 		}
 	} else {
-		if !(it.is_pub || g.pref.is_debug) {
+		if !(node.is_pub || g.pref.is_debug) {
 			// Private functions need to marked as static so that they are not exportable in the
 			// binaries
 			if g.pref.build_mode != .build_module && !g.pref.use_cache {
@@ -126,15 +138,15 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 		g.definitions.write(fn_header)
 		g.write(fn_header)
 	}
-	for param in it.params {
+	for param in node.params {
 		if param.is_mut {
 			g.fn_mut_arg_names << param.name
 		}
 	}
 	arg_start_pos := g.out.len
-	fargs, fargtypes := g.fn_args(it.params, it.is_variadic)
+	fargs, fargtypes := g.fn_args(node.params, node.is_variadic)
 	arg_str := g.out.after(arg_start_pos)
-	if it.no_body || ((g.pref.use_cache && g.pref.build_mode != .build_module) && it.is_builtin
+	if node.no_body || ((g.pref.use_cache && g.pref.build_mode != .build_module) && node.is_builtin
 		&& !g.is_test)|| skip {
 		// Just a function header. Builtin function bodies are defined in builtin.o
 		g.definitions.writeln(');') // // NO BODY')
@@ -169,30 +181,30 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 	}
 	// Profiling mode? Start counting at the beginning of the function (save current time).
 	if g.pref.is_prof && g.pref.build_mode != .build_module {
-		g.profile_fn(it)
+		g.profile_fn(node)
 	}
 	// we could be in an anon fn so save outer fn defer stmts
 	prev_defer_stmts := g.defer_stmts
 	g.defer_stmts = []
-	g.stmts(it.stmts)
+	g.stmts(node.stmts)
 	// clear g.fn_mut_arg_names
 	if g.fn_mut_arg_names.len > 0 {
 		g.fn_mut_arg_names.clear()
 	}
 
-	if it.return_type == table.void_type {
+	if node.return_type == table.void_type {
 		g.write_defer_stmts_when_needed()
 	}
-	if it.is_anon {
+	if node.is_anon {
 		g.defer_stmts = prev_defer_stmts
 	} else {
 		g.defer_stmts = []
 	}
-	if it.return_type != table.void_type && it.stmts.len > 0 && it.stmts.last() !is ast.Return {
-		default_expr := g.type_default(it.return_type)
+	if node.return_type != table.void_type && node.stmts.len > 0 && node.stmts.last() !is ast.Return {
+		default_expr := g.type_default(node.return_type)
 		// TODO: perf?
 		if default_expr == '{0}' {
-			if it.return_type.idx() == 1 && it.return_type.has_flag(.optional) {
+			if node.return_type.idx() == 1 && node.return_type.has_flag(.optional) {
 				// The default return for anonymous functions that return `?,
 				// should have .ok = true set, otherwise calling them with
 				// optfn() or { panic(err) } will cause a panic:
@@ -208,11 +220,11 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 	if g.pref.printfn_list.len > 0 && g.last_fn_c_name in g.pref.printfn_list {
 		println(g.out.after(fn_start_pos))
 	}
-	for attr in it.attrs {
+	for attr in node.attrs {
 		if attr.name == 'export' {
 			g.writeln('// export alias: $attr.arg -> $name')
 			export_alias := '$type_name ${attr.arg}($arg_str)'
-			g.definitions.writeln('VV_EXPORTED_SYMBOL $export_alias; // exported fn $it.name')
+			g.definitions.writeln('VV_EXPORTED_SYMBOL $export_alias; // exported fn $node.name')
 			g.writeln('$export_alias {')
 			g.write('\treturn ${name}(')
 			g.write(fargs.join(', '))
@@ -342,14 +354,11 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 pub fn (g &Gen) unwrap_generic(typ table.Type) table.Type {
 	if typ.has_flag(.generic) {
 		sym := g.table.get_type_symbol(typ)
-		mut idx := 0
 		for i, generic_param in g.cur_fn.generic_params {
 			if generic_param.name == sym.name {
-				idx = i
-				break
+				return g.cur_generic_types[i].derive(typ).clear_flag(.generic)
 			}
 		}
-		return g.cur_generic_types[idx].derive(typ).clear_flag(.generic)
 	}
 	return typ
 }
@@ -455,6 +464,16 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	} else if left_sym.kind == .map {
 		if node.name == 'keys' {
 			name = 'map_keys_1'
+		}
+	}
+	if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__')
+		&& node.name != 'str' {
+		sym := g.table.get_type_symbol(node.receiver_type)
+		// key = g.cc_type2(node.receiver.typ) + '.' + node.name
+		key := sym.name + '.' + node.name
+		g.write('/* obf method call: $key */')
+		name = g.obf_table[key] or {
+			panic('cgen: obf name "$key" not found, this should never happen')
 		}
 	}
 	// Check if expression is: arr[a..b].clone(), arr[a..].clone()
@@ -619,6 +638,14 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		name = util.no_dots(name[2..])
 	} else {
 		name = c_name(name)
+	}
+	// Obfuscate only functions in the main module for now
+	if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__') {
+		key := node.name
+		g.write('/* obf call: $key */')
+		name = g.obf_table[key] or {
+			panic('cgen: obf name "$key" not found, this should never happen')
+		}
 	}
 	for i, generic_type in node.generic_types {
 		// Using _T_ to differentiate between get<string> and get_string
