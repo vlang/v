@@ -4,6 +4,7 @@ module big
 #flag -I @VROOT/thirdparty/bignum
 #flag @VROOT/thirdparty/bignum/bn.o
 #include "bn.h"
+
 struct C.bn {
 mut:
 	array [32]u32

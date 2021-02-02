@@ -148,6 +148,7 @@ mut:
 	timers             &util.Timers = util.new_timers(false)
 	force_main_console bool // true when [console] used on fn main()
 	as_cast_type_names map[string]string // table for type name lookup in runtime (for __as_cast)
+	obf_table          map[string]string
 }
 
 pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string {
@@ -426,6 +427,29 @@ pub fn (mut g Gen) init() {
 	}
 	if g.pref.is_livemain || g.pref.is_liveshared {
 		g.generate_hotcode_reloading_declarations()
+	}
+	// Obfuscate only functions in the main module for now.
+	// Generate the obf_table.
+	if g.pref.obfuscate {
+		mut i := 0
+		// fns
+		for key, f in g.table.fns {
+			if f.mod != 'main' && key != 'main' { // !key.starts_with('main.') {
+				continue
+			}
+			g.obf_table[key] = '_f$i'
+			i++
+		}
+		// methods
+		for type_sym in g.table.types {
+			if type_sym.mod != 'main' {
+				continue
+			}
+			for method in type_sym.methods {
+				g.obf_table[type_sym.name + '.' + method.name] = '_f$i'
+				i++
+			}
+		}
 	}
 }
 
@@ -2573,6 +2597,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.expr_with_cast(node.expr, node.expr_type, node.typ)
 			} else if sym.kind == .struct_ && !node.typ.is_ptr()
 				&& !(sym.info as table.Struct).is_typedef {
+				// deprecated, replaced by Struct{...exr}
 				styp := g.typ(node.typ)
 				g.write('*(($styp *)(&')
 				g.expr(node.expr)
@@ -3321,11 +3346,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		if node.op in [.plus, .minus, .mul, .div, .mod, .lt, .gt, .eq, .ne, .le, .ge]
 			&& ((a && b && e) || c|| d) {
 			// Overloaded operators
-			g.write(g.typ(if !d {
-				left_type
-			} else {
-				(left_sym.info as table.Alias).parent_type
-			}))
+			g.write(g.typ(if !d { left_type } else { (left_sym.info as table.Alias).parent_type }))
 			g.write('_')
 			g.write(util.replace_op(node.op.str()))
 			g.write('(')
@@ -3580,19 +3601,14 @@ fn (mut g Gen) map_init(node ast.MapInit) {
 	g.is_amp = false
 	if is_amp {
 		g.out.go_back(1) // delete the `&` already generated in `prefix_expr()
-		if g.is_shared {
-			mut shared_typ := node.typ.set_flag(.shared_f)
-			shared_styp = g.typ(shared_typ)
-			g.writeln('($shared_styp*)__dup_shared_map(&($shared_styp){.val = ')
-		} else {
-			styp = g.typ(node.typ)
-			g.write('($styp*)memdup(ADDR($styp, ')
-		}
-	} else {
-		if g.is_shared {
-			// TODO: shared objects on stack should be forbidden or auto-converted to heap
-			g.writeln('{.val = ($styp*)')
-		}
+	}
+	if g.is_shared {
+		mut shared_typ := node.typ.set_flag(.shared_f)
+		shared_styp = g.typ(shared_typ)
+		g.writeln('($shared_styp*)__dup_shared_map(&($shared_styp){.val = ')
+	} else if is_amp {
+		styp = g.typ(node.typ)
+		g.write('($styp*)memdup(ADDR($styp, ')
 	}
 	if size > 0 {
 		if value_typ.kind == .function {
@@ -3618,10 +3634,7 @@ fn (mut g Gen) map_init(node ast.MapInit) {
 		g.write('new_map_2(sizeof($key_typ_str), sizeof($value_typ_str), $hash_fn, $key_eq_fn, $clone_fn, $free_fn)')
 	}
 	if g.is_shared {
-		g.write('}')
-		if is_amp {
-			g.write(', sizeof($shared_styp))')
-		}
+		g.write('}, sizeof($shared_styp))')
 	} else if is_amp {
 		g.write('), sizeof($styp))')
 	}
@@ -3728,11 +3741,7 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 	objs_array := g.new_tmp_var()
 	g.write('array_voidptr $objs_array = new_array_from_c_array($n_channels, $n_channels, sizeof(voidptr), _MOV((voidptr[$n_channels]){')
 	for i in 0 .. n_channels {
-		g.write(if i > 0 {
-			', &'
-		} else {
-			'&'
-		})
+		g.write(if i > 0 { ', &' } else { '&' })
 		if tmp_objs[i] == '' {
 			g.expr(objs[i])
 		} else {
@@ -3840,6 +3849,14 @@ fn (mut g Gen) ident(node ast.Ident) {
 					}
 					return
 				}
+			}
+		}
+	} else if node_info is ast.IdentFn {
+		if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__') {
+			key := node.name
+			g.write('/* obf identfn: $key */')
+			name = g.obf_table[key] or {
+				panic('cgen: obf name "$key" not found, this should never happen')
 			}
 		}
 	}
@@ -4011,13 +4028,22 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				g.expr(node.left)
 			} else if sym.kind == .array_fixed {
 				// Convert a fixed array to V array when doing `fixed_arr[start..end]`
-				g.write('array_slice(new_array_from_c_array(_ARR_LEN(')
+				info := sym.info as table.ArrayFixed
+				g.write('array_slice(new_array_from_c_array(')
+				g.write('$info.size')
+				g.write(', $info.size')
+				g.write(', sizeof(')
+				if node.left_type.is_ptr() {
+					g.write('(*')
+				}
 				g.expr(node.left)
-				g.write('), _ARR_LEN(')
-				g.expr(node.left)
-				g.write('), sizeof(')
-				g.expr(node.left)
+				if node.left_type.is_ptr() {
+					g.write(')')
+				}
 				g.write('[0]), ')
+				if node.left_type.is_ptr() {
+					g.write('*')
+				}
 				g.expr(node.left)
 				g.write(')')
 			} else {
@@ -4033,9 +4059,8 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 			if node.index.has_high {
 				g.expr(node.index.high)
 			} else if sym.kind == .array_fixed {
-				g.write('_ARR_LEN(')
-				g.expr(node.left)
-				g.write(')')
+				info := sym.info as table.ArrayFixed
+				g.write('$info.size')
 			} else if node.left_type.is_ptr() {
 				g.write('(')
 				g.write('*')
@@ -4156,6 +4181,9 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 								g.write_fn_ptr_decl(&elem_typ.info, '')
 								g.write(')(*($array_ptr_type_str)/*ee elem_typ */array_get(')
 							}
+							if left_is_ptr && !node.left_type.has_flag(.shared_f) {
+								g.write('*')
+							}
 						} else if is_direct_array_access {
 							g.write('(($array_ptr_type_str)')
 						} else {
@@ -4208,6 +4236,28 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 						g.or_block(tmp_opt, node.or_expr, elem_type)
 						g.write('\n$cur_line*($elem_type_str*)${tmp_opt}.data')
 					}
+				}
+			} else if sym.kind == .array_fixed {
+				info := sym.info as table.ArrayFixed
+				elem_type := info.elem_type
+				elem_sym := g.table.get_type_symbol(elem_type)
+				is_fn_index_call := g.is_fn_index_call && elem_sym.info is table.FnType
+
+				if is_fn_index_call {
+					g.write('(*')
+				}
+				if node.left_type.is_ptr() {
+					g.write('(*')
+					g.expr(node.left)
+					g.write(')')
+				} else {
+					g.expr(node.left)
+				}
+				g.write('[')
+				g.expr(node.index)
+				g.write(']')
+				if is_fn_index_call {
+					g.write(')')
 				}
 			} else if sym.kind == .map {
 				info := sym.info as table.Map
@@ -4339,13 +4389,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				g.expr(node.index)
 				g.write(')')
 			} else {
-				if sym.kind == .array_fixed && node.left_type.is_ptr() {
-					g.write('(*')
-					g.expr(node.left)
-					g.write(')')
-				} else {
-					g.expr(node.left)
-				}
+				g.expr(node.left)
 				g.write('[')
 				g.expr(node.index)
 				g.write(']')
@@ -4704,13 +4748,13 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	g.is_amp = false // reset the flag immediately so that other struct inits in this expr are handled correctly
 	if is_amp {
 		g.out.go_back(1) // delete the `&` already generated in `prefix_expr()
-		if g.is_shared {
-			mut shared_typ := struct_init.typ.set_flag(.shared_f)
-			shared_styp = g.typ(shared_typ)
-			g.writeln('($shared_styp*)__dup${shared_styp}(&($shared_styp){.val = ($styp){')
-		} else {
-			g.write('($styp*)memdup(&($styp){')
-		}
+	}
+	if g.is_shared {
+		mut shared_typ := struct_init.typ.set_flag(.shared_f)
+		shared_styp = g.typ(shared_typ)
+		g.writeln('($shared_styp*)__dup${shared_styp}(&($shared_styp){.val = ($styp){')
+	} else if is_amp {
+		g.write('($styp*)memdup(&($styp){')
 	} else if struct_init.typ.is_ptr() {
 		basetyp := g.typ(struct_init.typ.set_nr_muls(0))
 		if is_multiline {
@@ -4719,10 +4763,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 			g.write('&($basetyp){')
 		}
 	} else {
-		if g.is_shared {
-			// TODO: non-ref shared should be forbidden
-			g.writeln('{.val = {')
-		} else if is_multiline {
+		if is_multiline {
 			g.writeln('($styp){')
 		} else {
 			g.write('($styp){')
@@ -4881,10 +4922,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	}
 	g.write('}')
 	if g.is_shared {
-		g.write('}')
-		if is_amp {
-			g.write(', sizeof($shared_styp))')
-		}
+		g.write('}, sizeof($shared_styp))')
 	} else if is_amp {
 		g.write(', sizeof($styp))')
 	}
@@ -5157,8 +5195,19 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 				if fixed.starts_with('C__') {
 					fixed = fixed[3..]
 				}
-				g.type_definitions.writeln('typedef $fixed $styp [$len];')
-				// }
+				elem_type := typ.info.elem_type
+				elem_sym := g.table.get_type_symbol(elem_type)
+				if elem_sym.info is table.FnType {
+					pos := g.out.len
+					g.write_fn_ptr_decl(&elem_sym.info, '')
+					fixed = g.out.after(pos)
+					g.out.go_back(fixed.len)
+					mut def_str := 'typedef $fixed;'
+					def_str = def_str.replace_once('(*)', '(*$styp[$len])')
+					g.type_definitions.writeln(def_str)
+				} else {
+					g.type_definitions.writeln('typedef $fixed $styp [$len];')
+				}
 			}
 			else {}
 		}
@@ -5682,6 +5731,17 @@ fn (mut g Gen) go_stmt(node ast.GoStmt, joinable bool) string {
 		name = fsym.name
 	}
 	name = util.no_dots(name)
+	if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__') {
+		mut key := expr.name
+		if expr.is_method {
+			sym := g.table.get_type_symbol(expr.receiver_type)
+			key = sym.name + '.' + expr.name
+		}
+		g.write('/* obf go: $key */')
+		name = g.obf_table[key] or {
+			panic('cgen: obf name "$key" not found, this should never happen')
+		}
+	}
 	g.writeln('// go')
 	wrapper_struct_name := 'thread_arg_' + name
 	wrapper_fn_name := name + '_thread_wrapper'
