@@ -2530,6 +2530,19 @@ fn (mut g Gen) expr(node ast.Expr) {
 			// if g.fileis('1.strings') {
 			// println('\ncall_expr()()')
 			// }
+			mut shared_styp := ''
+			if g.is_shared {
+				ret_sym := g.table.get_type_symbol(node.return_type)
+				shared_typ := node.return_type.set_flag(.shared_f)
+				shared_styp = g.typ(shared_typ)
+				if ret_sym.kind == .array {
+					g.writeln('($shared_styp*)__dup_shared_array(&($shared_styp){.val = ')
+				} else if ret_sym.kind == .map {
+					g.writeln('($shared_styp*)__dup_shared_map(&($shared_styp){.val = ')
+				} else {
+					g.writeln('($shared_styp*)__dup${shared_styp}(&($shared_styp){.val = ')
+				}
+			}
 			g.call_expr(node)
 			// if g.fileis('1.strings') {
 			// println('before:' + node.autofree_pregen)
@@ -2545,6 +2558,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 				}
 				g.strs_to_free0 = []
 				// println('pos=$node.pos.pos')
+			}
+			if g.is_shared {
+				g.writeln('}, sizeof($shared_styp))')
 			}
 			// if g.autofree && node.autofree_pregen != '' { // g.strs_to_free0.len != 0 {
 			/*
