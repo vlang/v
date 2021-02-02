@@ -64,5 +64,8 @@ pub fn resolve_init(node StructInit, typ table.Type, t &table.Table) Expr {
 		}
 	}
 	// struct / other (sumtype?)
-	return StructInit{...node unresolved: false}
+	return StructInit{
+		...node
+		unresolved: false
+	}
 }

@@ -1310,11 +1310,8 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		g.expr(it.cond)
 		g.writeln(';')
 		i := if it.key_var in ['', '_'] { g.new_tmp_var() } else { it.key_var }
-		op_field := if it.cond_type.is_ptr() { '->' } else { '.' } + if it.cond_type.share() == .shared_t {
-			'val.'
-		} else {
-			''
-		}
+		op_field := if it.cond_type.is_ptr() { '->' } else { '.' } +
+			if it.cond_type.share() == .shared_t { 'val.' } else { '' }
 		g.writeln('for (int $i = 0; $i < $tmp${op_field}len; ++$i) {')
 		if it.val_var != '_' {
 			if val_sym.kind == .function {

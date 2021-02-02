@@ -1578,7 +1578,8 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		}
 		if call_expr.generic_types.len > 0 && method.return_type != 0 {
 			if typ := c.resolve_generic_type(method.return_type, method.generic_names,
-				call_expr.generic_types) {
+				call_expr.generic_types)
+			{
 				call_expr.return_type = typ
 				return typ
 			}
@@ -2490,7 +2491,8 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		if assign_stmt.right_types.len < assign_stmt.left.len { // first type or multi return types added above
 			right_type := c.expr(assign_stmt.right[i])
 			if assign_stmt.right_types.len == i {
-				assign_stmt.right_types << c.check_expr_opt_call(assign_stmt.right[i], right_type)
+				assign_stmt.right_types << c.check_expr_opt_call(assign_stmt.right[i],
+					right_type)
 			}
 		}
 		right := if i < assign_stmt.right.len { assign_stmt.right[i] } else { assign_stmt.right[0] }
@@ -4954,13 +4956,21 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) table.Type {
 	// TODO: testing ref/deref strategy
 	if node.op == .amp && !right_type.is_ptr() {
 		match node.right {
-			ast.IntegerLiteral { c.error('cannot take the address of an int literal',
-					node.pos) }
-			ast.BoolLiteral { c.error('cannot take the address of a bool literal', node.pos) }
-			ast.StringLiteral, ast.StringInterLiteral { c.error('cannot take the address of a string literal',
-					node.pos) }
-			ast.FloatLiteral { c.error('cannot take the address of a float literal', node.pos) }
-			ast.CharLiteral { c.error('cannot take the address of a char literal', node.pos) }
+			ast.IntegerLiteral {
+				c.error('cannot take the address of an int literal', node.pos)
+			}
+			ast.BoolLiteral {
+				c.error('cannot take the address of a bool literal', node.pos)
+			}
+			ast.StringLiteral, ast.StringInterLiteral {
+				c.error('cannot take the address of a string literal', node.pos)
+			}
+			ast.FloatLiteral {
+				c.error('cannot take the address of a float literal', node.pos)
+			}
+			ast.CharLiteral {
+				c.error('cannot take the address of a char literal', node.pos)
+			}
 			else {}
 		}
 		if mut node.right is ast.IndexExpr {
