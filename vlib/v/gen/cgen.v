@@ -2570,6 +2570,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.expr_with_cast(node.expr, node.expr_type, node.typ)
 			} else if sym.kind == .struct_ && !node.typ.is_ptr()
 				&& !(sym.info as table.Struct).is_typedef {
+				// deprecated, replaced by Struct{...exr}
 				styp := g.typ(node.typ)
 				g.write('*(($styp *)(&')
 				g.expr(node.expr)
@@ -2692,19 +2693,14 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.is_amp = false
 			if is_amp {
 				g.out.go_back(1) // delete the `&` already generated in `prefix_expr()
-				if g.is_shared {
-					mut shared_typ := node.typ.set_flag(.shared_f)
-					shared_styp = g.typ(shared_typ)
-					g.writeln('($shared_styp*)__dup_shared_map(&($shared_styp){.val = ')
-				} else {
-					styp = g.typ(node.typ)
-					g.write('($styp*)memdup(ADDR($styp, ')
-				}
-			} else {
-				if g.is_shared {
-					// TODO: shared objects on stack should be forbidden or auto-converted to heap
-					g.writeln('{.val = ($styp*)')
-				}
+			}
+			if g.is_shared {
+				mut shared_typ := node.typ.set_flag(.shared_f)
+				shared_styp = g.typ(shared_typ)
+				g.writeln('($shared_styp*)__dup_shared_map(&($shared_styp){.val = ')
+			} else if is_amp {
+				styp = g.typ(node.typ)
+				g.write('($styp*)memdup(ADDR($styp, ')
 			}
 			if size > 0 {
 				if value_typ.kind == .function {
@@ -2730,10 +2726,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.write('new_map_2(sizeof($key_typ_str), sizeof($value_typ_str), $hash_fn, $key_eq_fn, $clone_fn, $free_fn)')
 			}
 			if g.is_shared {
-				g.write('}')
-				if is_amp {
-					g.write(', sizeof($shared_styp))')
-				}
+				g.write('}, sizeof($shared_styp))')
 			} else if is_amp {
 				g.write('), sizeof($styp))')
 			}
@@ -3370,11 +3363,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		if node.op in [.plus, .minus, .mul, .div, .mod, .lt, .gt, .eq, .ne, .le, .ge]
 			&& ((a && b && e) || c|| d) {
 			// Overloaded operators
-			g.write(g.typ(if !d {
-				left_type
-			} else {
-				(left_sym.info as table.Alias).parent_type
-			}))
+			g.write(g.typ(if !d { left_type } else { (left_sym.info as table.Alias).parent_type }))
 			g.write('_')
 			g.write(util.replace_op(node.op.str()))
 			g.write('(')
@@ -3717,11 +3706,7 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 	objs_array := g.new_tmp_var()
 	g.write('array_voidptr $objs_array = new_array_from_c_array($n_channels, $n_channels, sizeof(voidptr), _MOV((voidptr[$n_channels]){')
 	for i in 0 .. n_channels {
-		g.write(if i > 0 {
-			', &'
-		} else {
-			'&'
-		})
+		g.write(if i > 0 { ', &' } else { '&' })
 		if tmp_objs[i] == '' {
 			g.expr(objs[i])
 		} else {
@@ -4000,13 +3985,22 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				g.expr(node.left)
 			} else if sym.kind == .array_fixed {
 				// Convert a fixed array to V array when doing `fixed_arr[start..end]`
-				g.write('array_slice(new_array_from_c_array(_ARR_LEN(')
+				info := sym.info as table.ArrayFixed
+				g.write('array_slice(new_array_from_c_array(')
+				g.write('$info.size')
+				g.write(', $info.size')
+				g.write(', sizeof(')
+				if node.left_type.is_ptr() {
+					g.write('(*')
+				}
 				g.expr(node.left)
-				g.write('), _ARR_LEN(')
-				g.expr(node.left)
-				g.write('), sizeof(')
-				g.expr(node.left)
+				if node.left_type.is_ptr() {
+					g.write(')')
+				}
 				g.write('[0]), ')
+				if node.left_type.is_ptr() {
+					g.write('*')
+				}
 				g.expr(node.left)
 				g.write(')')
 			} else {
@@ -4022,9 +4016,8 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 			if node.index.has_high {
 				g.expr(node.index.high)
 			} else if sym.kind == .array_fixed {
-				g.write('_ARR_LEN(')
-				g.expr(node.left)
-				g.write(')')
+				info := sym.info as table.ArrayFixed
+				g.write('$info.size')
 			} else if node.left_type.is_ptr() {
 				g.write('(')
 				g.write('*')
@@ -4144,6 +4137,9 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 								g.write('((')
 								g.write_fn_ptr_decl(&elem_typ.info, '')
 								g.write(')(*($array_ptr_type_str)/*ee elem_typ */array_get(')
+							}
+							if left_is_ptr && !node.left_type.has_flag(.shared_f) {
+								g.write('*')
 							}
 						} else if is_direct_array_access {
 							g.write('(($array_ptr_type_str)')

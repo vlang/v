@@ -87,7 +87,7 @@ pub fn (mut c Checker) check_basic(got table.Type, expected table.Type) bool {
 	}
 	// array fn
 	if got_type_sym.kind == .array && exp_type_sym.kind == .array {
-		if c.table.type_to_str(got) == c.table.type_to_str(expected) {
+		if c.table.type_to_str(got) == c.table.type_to_str(expected).trim('&') {
 			return true
 		}
 	}

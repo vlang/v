@@ -10,7 +10,7 @@ fn incr(shared foo map[string]int, key string, mut sem sync.Semaphore) {
 }
 
 fn test_shared_array() {
-	shared foo := &{'p': 10, 'q': 0}
+	shared foo := {'p': 10, 'q': 0}
 	lock foo {
 		foo['q'] = 20
 	}
@@ -33,5 +33,28 @@ fn test_shared_array() {
 		fq := foo['q']
 		assert fp == 100010
 		assert fq == 350020
+	}
+}
+
+fn test_shared_init_syntax() {
+	shared foo := &{'p': 17, 'q': -3, 'qwertz': 10}
+	shared bar := {'wer': 13.75, 'cvbn': -7.25, 'asd': -0.0625}
+	shared baz := &map[string]int{}
+	shared qux := map[string]f64{}
+	lock foo {
+		foo['q'] = 20
+	}
+	lock bar {
+		bar['asd'] = 12.5
+	}
+	lock baz, qux {
+		baz['wer'] = 12
+		qux['abc'] = -17.0625
+	}
+	rlock foo, bar, baz, qux {
+		assert foo['q'] == 20
+		assert bar['asd'] == 12.5
+		assert baz['wer'] == 12
+		assert qux['abc'] == -17.0625
 	}
 }

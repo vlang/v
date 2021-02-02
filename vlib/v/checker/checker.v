@@ -542,6 +542,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 	match type_sym.kind {
 		.placeholder {
 			c.error('unknown struct: $type_sym.name', struct_init.pos)
+			return table.void_type
 		}
 		// string & array are also structs but .kind of string/array
 		.struct_, .string, .array, .alias {
@@ -684,10 +685,17 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 			s := c.table.type_to_str(update_type)
 			c.error('expected struct, found `$s`', struct_init.update_expr.position())
 		} else if update_type != struct_init.typ {
-			sym := c.table.get_type_symbol(struct_init.typ)
-			update_sym := c.table.get_type_symbol(update_type)
-			c.error('expected struct `$sym.name`, found struct `$update_sym.name`', struct_init.update_expr.position())
-		} else if !struct_init.update_expr.is_lvalue() {
+			from_sym := c.table.get_type_symbol(update_type)
+			to_sym := c.table.get_type_symbol(struct_init.typ)
+			from_info := from_sym.info as table.Struct
+			to_info := to_sym.info as table.Struct
+			// TODO this check is too strict
+			if !c.check_struct_signature(from_info, to_info) {
+				c.error('struct `$from_sym.name` is not compatible with struct `$to_sym.name`',
+					struct_init.update_expr.position())
+			}
+		}
+		if !struct_init.update_expr.is_lvalue() {
 			// cgen will repeat `update_expr` for each field
 			// so enforce an lvalue for efficiency
 			c.error('expression is not an lvalue', struct_init.update_expr.position())
@@ -2528,11 +2536,13 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					}
 					mut ident_var_info := left.info as ast.IdentVar
 					if ident_var_info.share == .shared_t {
-						if left_type.nr_muls() > 1 {
-							c.error('shared cannot be multi level reference', left.pos)
-						}
 						left_type = left_type.set_flag(.shared_f)
-						left_type = left_type.set_nr_muls(1)
+						if is_decl {
+							if left_type.nr_muls() > 1 {
+								c.error('shared cannot be multi level reference', left.pos)
+							}
+							left_type = left_type.set_nr_muls(1)
+						}
 					}
 					if ident_var_info.share == .atomic_t {
 						left_type = left_type.set_flag(.atomic_f)
@@ -3657,6 +3667,8 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
 		&& !(to_type_sym.info as table.Struct).is_typedef {
 		// For now we ignore C typedef because of `C.Window(C.None)` in vlib/clipboard
 		if from_type_sym.kind == .struct_ && !node.expr_type.is_ptr() {
+			c.warn('casting to struct is deprecated, use e.g. `Struct{...expr}` instead',
+				node.pos)
 			from_type_info := from_type_sym.info as table.Struct
 			to_type_info := to_type_sym.info as table.Struct
 			if !c.check_struct_signature(from_type_info, to_type_info) {
@@ -4077,8 +4089,11 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 						ret_type = expr_type
 						stmt.typ = ret_type
 					} else if node.is_expr && ret_type != expr_type {
-						sym := c.table.get_type_symbol(ret_type)
-						c.error('return type mismatch, it should be `$sym.name`', stmt.expr.position())
+						if !c.check_types(ret_type, expr_type) {
+							ret_sym := c.table.get_type_symbol(ret_type)
+							c.error('return type mismatch, it should be `$ret_sym.name`',
+								stmt.expr.position())
+						}
 					}
 				}
 				else {
@@ -5275,9 +5290,10 @@ pub fn (mut c Checker) error(message string, pos token.Position) {
 	c.warn_or_error(msg, pos, false)
 }
 
-// check_struct_signature checks if both structs has the same signature / fields for casting
+// check `to` has all fields of `from`
 fn (c Checker) check_struct_signature(from table.Struct, to table.Struct) bool {
-	if from.fields.len != to.fields.len {
+	// Note: `to` can have extra fields
+	if from.fields.len == 0 {
 		return false
 	}
 	for _, field in from.fields {

@@ -24,3 +24,12 @@ fn main() {
 	}
 }
 
+struct Empty {}
+
+fn empty() {
+	e := Empty{}
+	_ = Foo{
+		...e
+	}
+}
+
