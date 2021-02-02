@@ -257,7 +257,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			'-stats' {
 				res.is_stats = true
 			}
-			'-obfuscate' {
+			'-obf', '-obfuscate' {
 				res.obfuscate = true
 			}
 			'-translated' {
