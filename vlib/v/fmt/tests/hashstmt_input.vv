@@ -1,0 +1,2 @@
+#include "header.h"
+struct Foo {}

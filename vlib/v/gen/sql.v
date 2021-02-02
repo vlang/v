@@ -226,7 +226,11 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 			mut func := 'sqlite3_column_int'
 			if field.typ == table.string_type {
 				func = 'sqlite3_column_text'
-				g.writeln('${tmp}.$field.name = tos_clone(${func}($g.sql_stmt_name, $i));')
+				string_data := g.new_tmp_var()
+				g.writeln('byteptr $string_data = ${func}($g.sql_stmt_name, $i);')
+				g.writeln('if ($string_data != NULL) {')
+				g.writeln('\t${tmp}.$field.name = tos_clone($string_data);')
+				g.writeln('}')
 			} else {
 				g.writeln('${tmp}.$field.name = ${func}($g.sql_stmt_name, $i);')
 			}
@@ -292,11 +296,7 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr) {
 			// true/false literals were added to Sqlite 3.23 (2018-04-02)
 			// but lots of apps/distros use older sqlite (e.g. Ubuntu 18.04 LTS )
 			g.inc_sql_i()
-			g.sql_bind_int(if expr.val {
-				'1'
-			} else {
-				'0'
-			})
+			g.sql_bind_int(if expr.val { '1' } else { '0' })
 		}
 		ast.Ident {
 			// `name == user_name` => `name == ?1`

@@ -4,6 +4,7 @@
 module time
 
 #include <time.h>
+
 struct C.tm {
 	tm_sec   int
 	tm_min   int
