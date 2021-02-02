@@ -36,6 +36,9 @@ pub fn (mut c Checker) check_basic(got table.Type, expected table.Type) bool {
 			return true
 		}
 	}
+	if exp_sym.kind in [.voidptr, .any] || got_sym.kind in [.voidptr, .any] {
+		return true
+	}
 	// fn type
 	if got_sym.kind == .function && exp_sym.kind == .function {
 		return c.check_matching_function_symbols(got_sym, exp_sym)
@@ -44,27 +47,26 @@ pub fn (mut c Checker) check_basic(got table.Type, expected table.Type) bool {
 	if c.table.sumtype_has_variant(expected, c.table.mktyp(got)) {
 		return true
 	}
+	// type alias
+	if (got_sym.kind == .alias && got_sym.parent_idx == expected.idx())
+		|| (exp_sym.kind == .alias && exp_sym.parent_idx == got.idx()) {
+		return true
+	}
+	// TODO: use sym so it can be absorbed into above [.voidptr, .any] logic
+	if expected.idx() == table.array_type_idx || got.idx() == table.array_type_idx {
+		return true
+	}
 	got_, exp_ := c.table.unalias_num_type(got), c.table.unalias_num_type(expected)
 	if (exp_.is_pointer() || exp_.is_number()) && (got_.is_pointer() || got_.is_number()) {
 		return true
 	}
-	got_idx, exp_idx := got_.idx(), exp_.idx()
-	if got_idx == exp_idx {
+	if got_.idx() == exp_.idx() {
 		// this is returning true even if one type is a ptr
 		// and the other is not, is this correct behaviour?
 		return true
 	}
 	// allow pointers to be initialized with 0. TODO: use none instead
-	if expected.is_ptr() && got_idx == table.int_type_idx {
-		return true
-	}
-	if exp_idx in [table.voidptr_type_idx, table.any_type_idx, table.array_type_idx]
-		|| got_idx in [table.voidptr_type_idx, table.any_type_idx, table.array_type_idx] {
-		return true
-	}
-	// type alias
-	if (got_sym.kind == .alias && got_sym.parent_idx == exp_idx)
-		|| (exp_sym.kind == .alias && exp_sym.parent_idx == got_idx) {
+	if expected.is_ptr() && got_.idx() == table.int_type_idx {
 		return true
 	}
 	return false
