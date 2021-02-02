@@ -51,3 +51,23 @@ fn test_generic_method_with_array_type() {
 	foo := Foo{}
 	assert foo.new<[]string>() == []string{}
 }
+
+fn test_generic_init() {
+	foo := Foo{}
+	// array init
+	mut a := foo.new<[]string>()
+	assert a.len == 0
+	a << 'a'
+	assert a.len == 1
+	assert a[0] == 'a'
+	// map init
+	mut b := foo.new<map[string]string>()
+	assert b.len == 0
+	b['b'] = 'b'
+	assert b.len == 1
+	assert b['b'] == 'b'
+	// struct init
+	mut c := foo.new<Person>()
+	c.name = 'c'
+	assert c.name == 'c'
+}
