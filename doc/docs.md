@@ -3860,9 +3860,9 @@ or deeper than the current scope, but it must not skip a variable initialization
 if x {
 	// ...
 	if y {
-	    goto my_label
-    }
-    // ...
+		goto my_label
+	}
+	// ...
 }
 my_label:
 ```
