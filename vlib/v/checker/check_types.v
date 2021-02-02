@@ -45,8 +45,7 @@ pub fn (mut c Checker) check_basic(got table.Type, expected table.Type) bool {
 		return true
 	}
 	got_, exp_ := c.table.unalias_num_type(got), c.table.unalias_num_type(expected)
-	if (exp_.is_pointer() || exp_.is_ptr() || exp_.is_number())
-		&& (got.is_pointer() || got_.is_ptr()|| got_.is_number()) {
+	if (exp_.is_pointer() || exp_.is_number()) && (got_.is_pointer() || got_.is_number()) {
 		return true
 	}
 	got_idx, exp_idx := got_.idx(), exp_.idx()
@@ -55,8 +54,17 @@ pub fn (mut c Checker) check_basic(got table.Type, expected table.Type) bool {
 		// and the other is not, is this correct behaviour?
 		return true
 	}
+	// allow pointers to be initialized with 0. TODO: use none instead
+	if expected.is_ptr() && got_idx == table.int_type_idx {
+		return true
+	}
 	if exp_idx in [table.voidptr_type_idx, table.any_type_idx, table.array_type_idx]
 		|| got_idx in [table.voidptr_type_idx, table.any_type_idx, table.array_type_idx] {
+		return true
+	}
+	// type alias
+	if (got_sym.kind == .alias && got_sym.parent_idx == exp_idx)
+		|| (exp_sym.kind == .alias && exp_sym.parent_idx == got_idx) {
 		return true
 	}
 	return false
