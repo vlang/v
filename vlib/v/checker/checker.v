@@ -1516,7 +1516,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			if left_type.has_flag(.shared_f) {
 				to_lock, pos := c.needs_rlock(call_expr.left)
 				if to_lock != '' {
-					c.error('$to_lock is `shared` and must be `rlock`ed or `locked` to be used as non-mut receiver',
+					c.error('$to_lock is `shared` and must be `rlock`ed or `lock`ed to be used as non-mut receiver',
 						pos)
 				}
 			}
@@ -1613,12 +1613,10 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 					c.error('`$call_expr.name` parameter `$param.name` is `$tok`, you need to provide `$tok` e.g. `$tok arg${
 						i + 1}`', arg.expr.position())
 				} else {
-					if arg.share == .shared_t {
-						to_lock, pos := c.needs_rlock(arg.expr)
-						if to_lock != '' {
-							c.error('$to_lock is `shared` and must be `rlock`ed or `locked` to be passed as non-mut argument',
-								pos)
-						}
+					to_lock, pos := c.needs_rlock(arg.expr)
+					if to_lock != '' {
+						c.error('$to_lock is `shared` and must be `rlock`ed or `locked` to be passed as non-mut argument',
+							pos)
 					}
 				}
 			}
@@ -1945,6 +1943,11 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			c.error('when forwarding a varg variable, it must be the final argument',
 				call_expr.pos)
 		}
+		arg_share := arg.typ.share()
+		if arg_share == .shared_t && (c.locked_names.len > 0 || c.rlocked_names.len > 0) {
+			c.error('function with `shared` arguments cannot be called inside `lock`/`rlock` block',
+				call_expr.pos)
+		}
 		if call_arg.is_mut {
 			to_lock, pos := c.fail_if_immutable(call_arg.expr)
 			if !arg.is_mut {
@@ -1966,12 +1969,10 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 				c.warn('`$call_expr.name` parameter `$arg.name` is `$tok`, you need to provide `$tok` e.g. `$tok arg${
 					i + 1}`', call_arg.expr.position())
 			} else {
-				if call_arg.share == .shared_t {
-					to_lock, pos := c.needs_rlock(call_arg.expr)
-					if to_lock != '' {
-						c.error('$to_lock is `shared` and must be `rlock`ed or `locked` to be passed as non-mut argument',
-							pos)
-					}
+				to_lock, pos := c.needs_rlock(call_arg.expr)
+				if to_lock != '' {
+					c.error('$to_lock is `shared` and must be `rlock`ed or `lock`ed to be passed as non-mut argument',
+						pos)
 				}
 			}
 		}
