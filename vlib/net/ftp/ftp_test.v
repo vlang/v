@@ -7,13 +7,13 @@ fn test_ftp_cleint() {
 	// NB: this function makes network calls to external servers,
 	// that is why it is not a very good idea to run it in CI.
 	// If you want to run it manually, use:
-    // `v -d network vlib/net/ftp/ftp_test.v`
+	// `v -d network vlib/net/ftp/ftp_test.v`
 	ftp_client_test_inside() or { panic(err) }
 }
 
 fn ftp_client_test_inside() ? {
 	mut zftp := ftp.new()
-    // eprintln(zftp)
+	// eprintln(zftp)
 	defer {
 		zftp.close() or { panic(err) }
 	}
@@ -41,6 +41,7 @@ fn ftp_client_test_inside() ? {
 		return
 	}
 	assert dir_list2.len > 0
+	assert dir_list2.contains('katello-host-tools-3.3.5-8.sles11_4sat.src.rpm')
 	blob := zftp.get('katello-host-tools-3.3.5-8.sles11_4sat.src.rpm') or {
 		assert false
 		return
