@@ -1,4 +1,4 @@
-module gen
+module c
 
 // NB: @@@ here serve as placeholders.
 // They will be replaced with correct strings

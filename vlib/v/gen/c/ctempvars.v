@@ -1,4 +1,4 @@
-module gen
+module c
 
 import v.ast
 import v.table

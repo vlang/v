@@ -508,7 +508,8 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 	if struct_init.typ == 0 {
 		c.error('unknown type', struct_init.pos)
 	}
-	type_sym := c.table.get_type_symbol(struct_init.typ)
+	utyp := c.unwrap_generic(struct_init.typ)
+	type_sym := c.table.get_type_symbol(utyp)
 	if type_sym.kind == .sum_type && struct_init.fields.len == 1 {
 		sexpr := struct_init.fields[0].expr.str()
 		c.error('cast to sum type using `${type_sym.name}($sexpr)` not `$type_sym.name{$sexpr}`',
@@ -517,15 +518,16 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 	if type_sym.kind == .interface_ {
 		c.error('cannot instantiate interface `$type_sym.name`', struct_init.pos)
 	}
-	if type_sym.kind == .alias {
-		info := type_sym.info as table.Alias
-		if info.parent_type.is_number() {
+	if type_sym.info is table.Alias {
+		if type_sym.info.parent_type.is_number() {
 			c.error('cannot instantiate number type alias `$type_sym.name`', struct_init.pos)
 			return table.void_type
 		}
 	}
-	if !type_sym.is_public && type_sym.kind != .placeholder && type_sym.mod != c.mod
-		&& type_sym.language != .c {
+	// allow init structs from generic if they're private except the type is from builtin module
+	if !type_sym.is_public && type_sym.kind != .placeholder && type_sym.language != .c
+		&& (type_sym.mod != c.mod && !(struct_init.typ.has_flag(.generic)
+		&& type_sym.mod != 'builtin')) {
 		c.error('type `$type_sym.name` is private', struct_init.pos)
 	}
 	if type_sym.kind == .struct_ {
@@ -3358,14 +3360,11 @@ fn (mut c Checker) stmts(stmts []ast.Stmt) {
 pub fn (c &Checker) unwrap_generic(typ table.Type) table.Type {
 	if typ.has_flag(.generic) {
 		sym := c.table.get_type_symbol(typ)
-		mut idx := 0
 		for i, generic_param in c.cur_fn.generic_params {
 			if generic_param.name == sym.name {
-				idx = i
-				break
+				return c.cur_generic_types[i].derive(typ).clear_flag(.generic)
 			}
 		}
-		return c.cur_generic_types[idx].derive(typ).clear_flag(.generic)
 	}
 	return typ
 }
@@ -3592,6 +3591,9 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			return c.string_inter_lit(mut node)
 		}
 		ast.StructInit {
+			if node.unresolved {
+				return c.expr(ast.resolve_init(node, c.unwrap_generic(node.typ), c.table))
+			}
 			return c.struct_init(mut node)
 		}
 		ast.Type {
