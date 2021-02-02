@@ -148,6 +148,7 @@ mut:
 	timers             &util.Timers = util.new_timers(false)
 	force_main_console bool // true when [console] used on fn main()
 	as_cast_type_names map[string]string // table for type name lookup in runtime (for __as_cast)
+	obf_table          map[string]string
 }
 
 pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string {
@@ -426,6 +427,29 @@ pub fn (mut g Gen) init() {
 	}
 	if g.pref.is_livemain || g.pref.is_liveshared {
 		g.generate_hotcode_reloading_declarations()
+	}
+	// Obfuscate only functions in the main module for now.
+	// Generate the obf_table.
+	if g.pref.obfuscate {
+		mut i := 0
+		// fns
+		for key, f in g.table.fns {
+			if f.mod != 'main' && key != 'main' { // !key.starts_with('main.') {
+				continue
+			}
+			g.obf_table[key] = '_f$i'
+			i++
+		}
+		// methods
+		for type_sym in g.table.types {
+			if type_sym.mod != 'main' {
+				continue
+			}
+			for method in type_sym.methods {
+				g.obf_table[type_sym.name + '.' + method.name] = '_f$i'
+				i++
+			}
+		}
 	}
 }
 
@@ -3832,6 +3856,14 @@ fn (mut g Gen) ident(node ast.Ident) {
 				}
 			}
 		}
+	} else if node_info is ast.IdentFn {
+		if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__') {
+			key := node.name
+			g.write('/* obf identfn: $key */')
+			name = g.obf_table[key] or {
+				panic('cgen: obf name "$key" not found, this should never happen')
+			}
+		}
 	}
 	g.write(g.get_ternary_name(name))
 }
@@ -5704,6 +5736,17 @@ fn (mut g Gen) go_stmt(node ast.GoStmt, joinable bool) string {
 		name = fsym.name
 	}
 	name = util.no_dots(name)
+	if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__') {
+		mut key := expr.name
+		if expr.is_method {
+			sym := g.table.get_type_symbol(expr.receiver_type)
+			key = sym.name + '.' + expr.name
+		}
+		g.write('/* obf go: $key */')
+		name = g.obf_table[key] or {
+			panic('cgen: obf name "$key" not found, this should never happen')
+		}
+	}
 	g.writeln('// go')
 	wrapper_struct_name := 'thread_arg_' + name
 	wrapper_fn_name := name + '_thread_wrapper'

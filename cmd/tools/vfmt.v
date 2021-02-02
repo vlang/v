@@ -165,7 +165,7 @@ fn (foptions &FormatOptions) format_file(file string) {
 		parent: 0
 	})
 	// checker.check(file_ast)
-	formatted_content := fmt.fmt(file_ast, table, foptions.is_debug)
+	formatted_content := fmt.fmt(file_ast, table, prefs, foptions.is_debug)
 	file_name := os.file_name(file)
 	ulid := rand.ulid()
 	vfmt_output_path := os.join_path(vtmp_folder, 'vfmt_${ulid}_$file_name')
@@ -189,7 +189,7 @@ fn (foptions &FormatOptions) format_pipe() {
 		parent: 0
 	})
 	// checker.check(file_ast)
-	formatted_content := fmt.fmt(file_ast, table, foptions.is_debug)
+	formatted_content := fmt.fmt(file_ast, table, prefs, foptions.is_debug)
 	print(formatted_content)
 	if foptions.is_verbose {
 		eprintln('fmt.fmt worked and $formatted_content.len bytes were written to stdout.')
