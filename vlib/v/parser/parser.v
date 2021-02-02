@@ -658,6 +658,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				// `label:`
 				spos := p.tok.position()
 				name := p.check_name()
+				p.label_names << name
 				p.next()
 				if p.tok.kind == .key_for {
 					mut stmt := p.stmt(is_top_level)
@@ -679,7 +680,6 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 						}
 					}
 				}
-				p.label_names << name
 				return ast.GotoLabel{
 					name: name
 					pos: spos.extend(p.tok.position())
