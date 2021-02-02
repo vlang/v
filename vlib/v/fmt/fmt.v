@@ -976,15 +976,6 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		ast.Likely {
 			f.likely(node)
 		}
-		ast.UnknownInit {
-			if node.kind == .array_init {
-				f.array_init(node.array_init)
-			} else if node.kind == .map_init {
-				f.map_init(node.map_init)
-			} else {
-				f.struct_init(node.struct_init)
-			}
-		}
 		ast.UnsafeExpr {
 			f.unsafe_expr(node)
 		}

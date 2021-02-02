@@ -410,6 +410,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 	}
 	p.is_amp = saved_is_amp
 	return ast.StructInit{
+		unresolved: typ.has_flag(.generic)
 		typ: typ
 		fields: fields
 		update_expr: update_expr

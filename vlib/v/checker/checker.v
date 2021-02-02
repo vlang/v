@@ -3586,7 +3586,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			return c.string_inter_lit(mut node)
 		}
 		ast.StructInit {
-			if node.typ.has_flag(.generic) {
+			if node.unresolved {
 				return c.expr(ast.resolve_init(node, c.unwrap_generic(node.typ), c.table))
 			}
 			return c.struct_init(mut node)

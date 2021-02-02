@@ -559,7 +559,7 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		}
 		ast.StructInit {
 			// TODO: once generic fns/unwrap_generic is implemented
-			// if node.typ.has_flag(.generic) {
+			// if node.unresolved {
 			// 	g.expr(ast.resolve_init(node, g.unwrap_generic(node.typ), g.table))
 			// } else {
 			// 	// `user := User{name: 'Bob'}`
