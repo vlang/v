@@ -1,5 +1,6 @@
 -## V 0.2.4
 -*Not yet released*
+- Allow method declaration of `==`, `<` and `<=` and auto generate `!=`, `>` and `>=`.
 
 ## V 0.2.2 - 0.2.3
 *22 Jan 2021*
