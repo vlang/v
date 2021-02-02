@@ -63,6 +63,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Strings](#strings)
     * [Numbers](#numbers)
     * [Arrays](#arrays)
+    * [Fixed size arrays](#fixed-size-arrays)
     * [Maps](#maps)
 * [Module imports](#module-imports)
 * [Statements & expressions](#statements--expressions)
@@ -754,31 +755,32 @@ array_2 << array_1[..3]
 println(array_2) // [0, 1, 3, 5, 4]
 ```
 
-### Fixed Size Arrays
-V also supports arrays with fixed size. Unlike ordinary arrays, their 
-length is fixed, so you can not append elements to them, nor shrink them.
-You can only modify their elements in place. Note also, that most methods
-are defined to work on ordinary arrays, not on fixed size arrays.
+### Fixed size arrays
 
-However, access to the elements of fixed size arrays, is more efficient,
+V also supports arrays with fixed size. Unlike ordinary arrays, their 
+length is constant. You cannot append elements to them, nor shrink them.
+You can only modify their elements in place.
+
+However, access to the elements of fixed size arrays is more efficient,
 they need less memory than ordinary arrays, and unlike ordinary arrays,
 their data is on the stack, so you may want to use them as buffers if you
 do not want additional heap allocations.
 
-You can convert a fixed size array, to an ordinary array with slicing:
+Most methods are defined to work on ordinary arrays, not on fixed size arrays.
+You can convert a fixed size array to an ordinary array with slicing:
 ```v
-mut fnums := [3]int{} // fnums is now a fixed size array with 3 elements.
+mut fnums := [3]int{} // fnums is a fixed size array with 3 elements.
 fnums[0] = 1
 fnums[1] = 10
 fnums[2] = 100
 println(fnums) // => [1, 10, 100]
 println(typeof(fnums).name) // => [3]int
-//
+
 anums := fnums[0..fnums.len]
 println(anums) // => [1, 10, 100]
 println(typeof(anums).name) // => []int
 ```
-Note that slicing will cause the data of the fixed array, to be copied to
+Note that slicing will cause the data of the fixed size array to be copied to
 the newly created ordinary array.
 
 ### Maps
@@ -3065,8 +3067,8 @@ println(qux)
 
 ## sizeof and __offsetof
 
-V supports the usage of `sizeof` to calculate sizes of structs and
-`__offsetof` to calculate struct field offsets.
+* `sizeof(Type)` gives the size of a type in bytes.
+* `__offsetof(Struct, field_name)` gives the offset in bytes of a struct field.
 
 ```v
 struct Foo {
@@ -3074,9 +3076,9 @@ struct Foo {
 	b int
 }
 
-println(sizeof(Foo))
-println(__offsetof(Foo, a))
-println(__offsetof(Foo, b))
+assert sizeof(Foo) == 8
+assert __offsetof(Foo, a) == 0
+assert __offsetof(Foo, b) == 4
 ```
 
 ## Calling C functions from V
@@ -3850,13 +3852,19 @@ fn C.DefWindowProc(hwnd int, msg int, lparam int, wparam int)
 
 ## Goto
 
-V allows unconditionally jumping to arbitrary labels with `goto`. Labels must be contained
-within the text document from where they are jumped to. A program may `goto` a label outside
-or deeper than the current scope, but it cannot `goto` a label inside of a different function.
+V allows unconditionally jumping to a label with `goto`. The label name must be contained
+within the same function as the `goto` statement. A program may `goto` a label outside
+or deeper than the current scope, but it must not skip a variable initialization.
 
 ```v ignore
+if x {
+	// ...
+	if y {
+	    goto my_label
+    }
+    // ...
+}
 my_label:
-    goto my_label
 ```
 
 # Appendices
