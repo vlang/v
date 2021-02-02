@@ -1306,17 +1306,6 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ table.Type, call_e
 	}
 }
 
-pub fn (mut c Checker) shared_is_mut(expr ast.Expr) bool {
-	if expr is ast.Ident {
-		if expr.kind == .variable {
-			if (expr.info as ast.IdentVar).share == .shared_t && expr.name in c.locked_names {
-				return false
-			}
-		}
-	}
-	return true
-}
-
 pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	left_type := c.expr(call_expr.left)
 	c.expected_type = left_type
