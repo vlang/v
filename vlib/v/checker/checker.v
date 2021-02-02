@@ -1955,7 +1955,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		} else {
 			if arg.is_mut {
 				tok := call_arg.share.str()
-				c.warn('`$call_expr.name` parameter `$arg.name` is `$tok`, you need to provide `$tok` e.g. `$tok arg${
+				c.error('`$call_expr.name` parameter `$arg.name` is `$tok`, you need to provide `$tok` e.g. `$tok arg${
 					i + 1}`', call_arg.expr.position())
 			} else {
 				to_lock, pos := c.needs_rlock(call_arg.expr)
