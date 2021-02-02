@@ -691,7 +691,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 			from_info := from_sym.info as table.Struct
 			to_info := to_sym.info as table.Struct
 			// TODO this check is too strict
-			if !c.check_struct_signature(from_info, to_info) {
+			if !check_struct_signature(from_info, to_info) {
 				c.error('struct `$from_sym.name` is not compatible with struct `$to_sym.name`',
 					struct_init.update_expr.position())
 			}
