@@ -2,7 +2,6 @@ module builder
 
 import v.parser
 import v.pref
-import v.gen
 import v.gen.x64
 
 pub fn (mut b Builder) build_x64(v_files []string, out_file string) {
