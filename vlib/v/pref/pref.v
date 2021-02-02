@@ -47,6 +47,7 @@ const (
 		'cflags', 'path']
 )
 
+[ref_only]
 pub struct Preferences {
 pub mut:
 	os          OS // the OS to compile for

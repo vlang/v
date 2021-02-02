@@ -7,6 +7,7 @@ import v.ast
 import v.table
 import strings
 import v.util
+import v.pref
 
 const (
 	bs      = '\\'
@@ -46,9 +47,10 @@ pub mut:
 	inside_lambda      bool
 	inside_const       bool
 	is_mbranch_expr    bool // math a { x...y { } }
+	pref               &pref.Preferences
 }
 
-pub fn fmt(file ast.File, table &table.Table, is_debug bool) string {
+pub fn fmt(file ast.File, table &table.Table, pref &pref.Preferences, is_debug bool) string {
 	mut f := Fmt{
 		out: strings.new_builder(1000)
 		out_imports: strings.new_builder(200)
@@ -56,6 +58,7 @@ pub fn fmt(file ast.File, table &table.Table, is_debug bool) string {
 		indent: 0
 		file: file
 		is_debug: is_debug
+		pref: pref
 	}
 	f.process_file_imports(file)
 	f.set_current_module_name('main')
@@ -323,7 +326,7 @@ pub fn (mut f Fmt) stmts(stmts []ast.Stmt) {
 	mut prev_stmt := if stmts.len > 0 { stmts[0] } else { ast.Stmt{} }
 	f.indent++
 	for stmt in stmts {
-		if f.should_insert_newline_before_stmt(stmt, prev_stmt) {
+		if !f.pref.building_v && f.should_insert_newline_before_stmt(stmt, prev_stmt) {
 			f.out.writeln('')
 		}
 		f.stmt(stmt)
