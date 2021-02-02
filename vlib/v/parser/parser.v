@@ -553,6 +553,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 						file: p.file_name
 						return_type: table.void_type
 						scope: p.scope
+						label_names: p.label_names
 					}
 				} else if p.pref.is_fmt {
 					return p.stmt(false)

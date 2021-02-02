@@ -10,3 +10,6 @@ fn g() {
 	goto l3
 }
 
+l4:
+goto l4
+
