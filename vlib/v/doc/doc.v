@@ -113,6 +113,7 @@ pub fn new(input_path string) Doc {
 		time_generated: time.now()
 	}
 	d.fmt = fmt.Fmt{
+		pref: 0
 		indent: 0
 		is_debug: false
 		table: d.table
