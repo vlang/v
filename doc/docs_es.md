@@ -74,6 +74,8 @@ Para más detalles y solución de problemas, por favor visite el repositorio en 
     * [Variables mutables](#variables-mutables)
     * [Inicialización vs asignamiento](#inicializacion-vs-asignamiento)
     * [Errores de declaración](#errores-de-declaracion)
+* [Tipos](#tipos)
+    * [Tipos primitivos](#tipos-primitivos)
 </td></tr>
 </table>
 
@@ -308,4 +310,63 @@ fn draw(ctx &gg.Context) {
     gg := ctx.parent.get_ui().gg
     gg.draw_rect(10, 10, 100, 50)
 }
+```
+
+## Tipos
+
+### Tipos primitivos
+
+```v ignore
+bool
+
+string
+
+i8    i16  int  i64      i128 (soon)
+byte  u16  u32  u64      u128 (soon)
+
+rune // representa un punto de código Unicode
+
+f32 f64
+
+byteptr, voidptr, charptr, size_t // estos se utilizan principalmente para la interoperabilidad de C
+
+any // similar al void* de C, y el interface{} de Go
+```
+
+Ten en cuenta que, a diferencia de C y Go, `int` es siempre un número entero de 32 bits.
+
+Existe una excepción a la regla de que todos los operadores
+en V deben tener valores del mismo tipo en ambos lados. Un pequeño tipo primitivo
+en un lado se puede promover automáticamente si encaja
+completamente en el rango de datos del tipo en el otro lado.
+Estas son las posibilidades permitidas:
+
+```v ignore
+   i8 → i16 → int → i64
+                  ↘     ↘
+                    f32 → f64
+                  ↗     ↗
+ byte → u16 → u32 → u64 ⬎
+      ↘     ↘     ↘      ptr
+   i8 → i16 → int → i64 ⬏
+```
+
+Un valor `int`, por ejemplo, se puede promover automáticamente a `f64`
+o `i64` pero no a `f32` o `u32`. (`f32` significaría precisión
+pérdida para valores grandes y `u32` significaría la pérdida del signo para
+valores negativos).
+
+Los literales como `123` o `4.56` se tratan de una manera especial. No conducen
+a promociones de tipo, sin embargo, por defecto son `int` y` f64` respectivamente,
+cuando se debe decidir su tipo:
+
+```v ignore
+u := u16(12)
+v := 13 + u    // v es de tipo `u16` - no hay promoción
+x := f32(45.6)
+y := x + 3.14  // x es de tipo `f32` - no hay promoción
+a := 75        // a es de tipo `int` - predeterminado para un literal de int (enteros)
+b := 14.7      // b es de tipo `f64` - predeterminado para un literal de float (decimales)
+c := u + a     // c es de tipo `int` - promoción automática del valor de `u`
+d := b + x     // d es de tipo `f64` - promoción automática del valor de `x`
 ```
