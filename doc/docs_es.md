@@ -180,7 +180,7 @@ println(sum()) // 0
 println(sum(1)) // 1
 println(sum(2, 3)) // 5
 
-// usando la descomposición de arrays
+// usando la descomposición de arrays (matrices)
 a := [2, 3, 4]
 println(sum(...a)) // <-- usando el prefijo ... aquí. se imprime: 9
 b := [5, 6, 7]
@@ -202,7 +202,7 @@ Para permitir que otros módulos los usen, tienes que anteponer `pub`. Lo mismo 
 a constantes y tipos (structs, enums, type, etc).
 
 Nota: `pub` solo se puede usar desde un módulo con nombre.
-Para obtener información sobre cómo crear un módulo, puedes consultar [Módulos](#módulos).
+Para obtener información sobre cómo crear un módulo, puedes consultar [Módulos](#modulos).
 
 ## Variables
 
@@ -229,7 +229,7 @@ No se permiten variables globales (a nivel de módulo). No hay un estado global 
 (ver [Funciones puras por defecto](#funciones-puras-por-defecto) para más detalles).
 
 Para lograr coherencia en diferentes bases de código, todos los nombres de funciones y variables
-deben usar el estilo `snake_case`, a diferencia de los nombres de tipo, que deben usar` PascalCase`.
+deben usar el estilo `snake_case`, a diferencia de los nombres de tipo, que deben usar `PascalCase`.
 
 ### Variables mutables
 
