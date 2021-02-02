@@ -44,30 +44,27 @@ fn (v Foo) new<T>() T {
 
 fn test_generic_method_with_map_type() {
 	foo := Foo{}
-	assert foo.new<map[string]string>() == map[string]string{}
+	mut a := foo.new<map[string]string>()
+	assert a == map[string]string{}
+	assert a.len == 0
+	a['a'] = 'a'
+	assert a.len == 1
+	assert a['a'] == 'a'
 }
 
 fn test_generic_method_with_array_type() {
 	foo := Foo{}
-	assert foo.new<[]string>() == []string{}
-}
-
-fn test_generic_init() {
-	foo := Foo{}
-	// array init
 	mut a := foo.new<[]string>()
+	assert a == []string{}
 	assert a.len == 0
 	a << 'a'
 	assert a.len == 1
 	assert a[0] == 'a'
-	// map init
-	mut b := foo.new<map[string]string>()
-	assert b.len == 0
-	b['b'] = 'b'
-	assert b.len == 1
-	assert b['b'] == 'b'
-	// struct init
-	mut c := foo.new<Person>()
-	c.name = 'c'
-	assert c.name == 'c'
+}
+
+fn test_generic_method_with_struct_type() {
+	foo := Foo{}
+	mut a := foo.new<Person>()
+	a.name = 'a'
+	assert a.name == 'a'
 }
