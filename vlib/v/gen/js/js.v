@@ -558,12 +558,15 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.write("string('$text')")
 		}
 		ast.StructInit {
-			if node.typ.has_flag(.generic) {
-				g.expr(ast.resolve_init(node, g.unwrap_generic(node.typ), g.table))
-			} else {
-				// `user := User{name: 'Bob'}`
-				g.gen_struct_init(node)
-			}
+			// TODO: once generic fns/unwrap_generic is implemented
+			// if node.typ.has_flag(.generic) {
+			// 	g.expr(ast.resolve_init(node, g.unwrap_generic(node.typ), g.table))
+			// } else {
+			// 	// `user := User{name: 'Bob'}`
+			// 	g.gen_struct_init(node)
+			// }
+			// `user := User{name: 'Bob'}`
+			g.gen_struct_init(node)
 		}
 		ast.Type {
 			// skip: JS has no types
