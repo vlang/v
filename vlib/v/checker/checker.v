@@ -5414,7 +5414,23 @@ fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) table.Type {
 	info := sym.info as table.Struct
 	table_sym := c.table.get_type_symbol(node.table_expr.typ)
 	fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, table_sym.name)
+	mut sub_structs := map[int]ast.SqlStmt{}
+	for f in fields.filter(c.table.types[int(it.typ)].kind == .struct_) {
+		mut n := ast.SqlStmt{
+			pos: node.pos
+			db_expr: node.db_expr
+			kind: node.kind
+			table_expr: ast.Type{
+				pos: node.table_expr.pos
+				typ: f.typ
+			}
+			object_var_name: '${node.object_var_name}.$f.name'
+		}
+		c.sql_stmt(mut n)
+		sub_structs[int(f.typ)] = n
+	}
 	node.fields = fields
+	node.sub_structs = sub_structs
 	c.expr(node.db_expr)
 	if node.kind == .update {
 		for expr in node.update_exprs {
@@ -5426,8 +5442,9 @@ fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) table.Type {
 }
 
 fn (mut c Checker) fetch_and_verify_orm_fields(info table.Struct, pos token.Position, table_name string) []table.Field {
-	fields := info.fields.filter(it.typ in [table.string_type, table.int_type, table.bool_type]
-		&& !it.attrs.contains('skip'))
+	fields := info.fields.filter(
+		(it.typ in [table.string_type, table.int_type, table.bool_type] && !it.attrs.contains('skip'))
+		|| c.table.types[int(it.typ)].kind == .struct_)
 	if fields.len == 0 {
 		c.error('V orm: select: empty fields in `$table_name`', pos)
 		return []table.Field{}

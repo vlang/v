@@ -80,8 +80,19 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 			x := '${node.object_var_name}.$field.name'
 			if field.typ == table.string_type {
 				g.writeln('sqlite3_bind_text($g.sql_stmt_name, ${i + 0}, ${x}.str, ${x}.len, 0);')
+			} else if g.table.types[int(field.typ)].kind == .struct_ {
+				// insert again
+				expr := node.sub_structs[int(field.typ)]
+				tmp_sql_stmt_name := g.sql_stmt_name
+				g.sql_stmt(expr)
+				g.sql_stmt_name = tmp_sql_stmt_name
+				// get last inserted id
+				g.writeln('array_sqlite__Row rows = sqlite__DB_exec($db_name, _SLIT("SELECT last_insert_rowid()")).arg0;')
+				id_name := g.new_tmp_var()
+				g.writeln('int $id_name = string_int((*(string*)array_get((*(sqlite__Row*)array_get(rows, 0)).vals, 0)));')
+				g.writeln('sqlite3_bind_int($g.sql_stmt_name, ${i + 0} , $id_name); // id')
 			} else {
-				g.writeln('sqlite3_bind_int($g.sql_stmt_name, ${i + 0}, $x); // stmt')
+				g.writeln('sqlite3_bind_int($g.sql_stmt_name, ${i + 0} , $x); // stmt')
 			}
 		}
 	}

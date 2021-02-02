@@ -1170,8 +1170,9 @@ pub:
 	updated_columns []string // for `update set x=y`
 	update_exprs    []Expr   // for `update`
 pub mut:
-	table_expr Type
-	fields     []table.Field
+	table_expr  Type
+	fields      []table.Field
+	sub_structs map[int]SqlStmt
 }
 
 pub struct SqlExpr {
