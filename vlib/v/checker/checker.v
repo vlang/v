@@ -1707,6 +1707,12 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			if elem_typ.info is table.FnType {
 				return elem_typ.info.func.return_type
 			}
+		} else if sym.kind == .map {
+			info := sym.info as table.Map
+			value_typ := c.table.get_type_symbol(info.value_type)
+			if value_typ.info is table.FnType {
+				return value_typ.info.func.return_type
+			}
 		} else if sym.kind == .array_fixed {
 			info := sym.info as table.ArrayFixed
 			elem_typ := c.table.get_type_symbol(info.elem_type)
