@@ -542,6 +542,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 	match type_sym.kind {
 		.placeholder {
 			c.error('unknown struct: $type_sym.name', struct_init.pos)
+			return table.void_type
 		}
 		// string & array are also structs but .kind of string/array
 		.struct_, .string, .array, .alias {
@@ -680,12 +681,24 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 	if struct_init.has_update_expr {
 		update_type := c.expr(struct_init.update_expr)
 		struct_init.update_expr_type = update_type
-		update_sym := c.table.get_type_symbol(update_type)
-		sym := c.table.get_type_symbol(struct_init.typ)
-		if update_sym.kind != .struct_ {
-			c.error('expected struct `$sym.name`, found `$update_sym.name`', struct_init.update_expr.position())
+		if c.table.type_kind(update_type) != .struct_ {
+			s := c.table.type_to_str(update_type)
+			c.error('expected struct, found `$s`', struct_init.update_expr.position())
 		} else if update_type != struct_init.typ {
-			c.error('expected struct `$sym.name`, found struct `$update_sym.name`', struct_init.update_expr.position())
+			from_sym := c.table.get_type_symbol(update_type)
+			to_sym := c.table.get_type_symbol(struct_init.typ)
+			from_info := from_sym.info as table.Struct
+			to_info := to_sym.info as table.Struct
+			// TODO this check is too strict
+			if !c.check_struct_signature(from_info, to_info) {
+				c.error('struct `$from_sym.name` is not compatible with struct `$to_sym.name`',
+					struct_init.update_expr.position())
+			}
+		}
+		if !struct_init.update_expr.is_lvalue() {
+			// cgen will repeat `update_expr` for each field
+			// so enforce an lvalue for efficiency
+			c.error('expression is not an lvalue', struct_init.update_expr.position())
 		}
 	}
 	return struct_init.typ
@@ -1694,6 +1707,18 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			if elem_typ.info is table.FnType {
 				return elem_typ.info.func.return_type
 			}
+		} else if sym.kind == .map {
+			info := sym.info as table.Map
+			value_typ := c.table.get_type_symbol(info.value_type)
+			if value_typ.info is table.FnType {
+				return value_typ.info.func.return_type
+			}
+		} else if sym.kind == .array_fixed {
+			info := sym.info as table.ArrayFixed
+			elem_typ := c.table.get_type_symbol(info.elem_type)
+			if elem_typ.info is table.FnType {
+				return elem_typ.info.func.return_type
+			}
 		}
 		found = true
 		return table.string_type
@@ -2512,6 +2537,12 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					mut ident_var_info := left.info as ast.IdentVar
 					if ident_var_info.share == .shared_t {
 						left_type = left_type.set_flag(.shared_f)
+						if is_decl {
+							if left_type.nr_muls() > 1 {
+								c.error('shared cannot be multi level reference', left.pos)
+							}
+							left_type = left_type.set_nr_muls(1)
+						}
 					}
 					if ident_var_info.share == .atomic_t {
 						left_type = left_type.set_flag(.atomic_f)
@@ -2590,7 +2621,8 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 				c.error('cannot assign to `$left`: ' +
 					c.expected_msg(right_type_unwrapped, left_type_unwrapped), right.position())
 			}
-			if (right is ast.StructInit || !right_is_ptr) && !right_sym.is_number() {
+			if (right is ast.StructInit || !right_is_ptr) && !(right_sym.is_number()
+				|| left_type.has_flag(.shared_f)) {
 				left_name := c.table.type_to_str(left_type_unwrapped)
 				mut rtype := right_type_unwrapped
 				if rtype.is_ptr() {
@@ -2832,8 +2864,6 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 			if c.table.get_type_symbol(expected_value_type).kind == .interface_ {
 				// Array of interfaces? (`[dog, cat]`) Save the interface type (`Animal`)
 				expecting_interface_array = true
-				array_init.interface_type = expected_value_type
-				array_init.is_interface = true
 			}
 		}
 		// expecting_interface_array := c.expected_type != 0 &&
@@ -3204,6 +3234,14 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			}
 			node.val = 'include $vroot'
 			node.main = vroot
+			flag = vroot
+		}
+		if flag.contains('\$env(') {
+			env := util.resolve_env_value(flag, true) or {
+				c.error(err, node.pos)
+				return
+			}
+			node.main = env
 		}
 		flag_no_comment := flag.all_before('//').trim_space()
 		if !((flag_no_comment.starts_with('"') && flag_no_comment.ends_with('"'))
@@ -3235,6 +3273,12 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 		// expand `@VROOT` to its absolute path
 		if flag.contains('@VROOT') {
 			flag = util.resolve_vroot(flag, c.file.path) or {
+				c.error(err, node.pos)
+				return
+			}
+		}
+		if flag.contains('\$env(') {
+			flag = util.resolve_env_value(flag, true) or {
 				c.error(err, node.pos)
 				return
 			}
@@ -3623,6 +3667,8 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
 		&& !(to_type_sym.info as table.Struct).is_typedef {
 		// For now we ignore C typedef because of `C.Window(C.None)` in vlib/clipboard
 		if from_type_sym.kind == .struct_ && !node.expr_type.is_ptr() {
+			c.warn('casting to struct is deprecated, use e.g. `Struct{...expr}` instead',
+				node.pos)
 			from_type_info := from_type_sym.info as table.Struct
 			to_type_info := to_type_sym.info as table.Struct
 			if !c.check_struct_signature(from_type_info, to_type_info) {
@@ -3663,6 +3709,14 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
 
 fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) table.Type {
 	node.sym = c.table.get_type_symbol(c.unwrap_generic(c.expr(node.left)))
+	if node.is_env {
+		env_value := util.resolve_env_value("\$env('$node.args_var')", false) or {
+			c.error(err, node.env_pos)
+			return table.string_type
+		}
+		node.env_value = env_value
+		return table.string_type
+	}
 	if node.is_embed {
 		c.file.embedded_files << node.embed_file
 		return c.table.find_type_idx('v.embed_file.EmbedFileData')
@@ -3699,7 +3753,21 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) table.Type {
 		node.result_type = rtyp
 		return rtyp
 	}
-	if node.is_vweb || node.method_name == 'method' {
+	if node.method_name == 'method' {
+		if node.args_var.len > 0 {
+			v := node.scope.find_var(node.args_var) or {
+				c.error('unknown identifier `$node.args_var`', node.method_pos)
+				return table.void_type
+			}
+			s := c.table.type_to_str(c.expr(v.expr))
+			if s != '[]string' {
+				c.error('expected `[]string`, not s', node.method_pos)
+			}
+		}
+		// assume string for now
+		return table.string_type
+	}
+	if node.is_vweb {
 		return table.string_type
 	}
 	// s.$my_str()
@@ -4021,8 +4089,11 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 						ret_type = expr_type
 						stmt.typ = ret_type
 					} else if node.is_expr && ret_type != expr_type {
-						sym := c.table.get_type_symbol(ret_type)
-						c.error('return type mismatch, it should be `$sym.name`', stmt.expr.position())
+						if !c.check_types(ret_type, expr_type) {
+							ret_sym := c.table.get_type_symbol(ret_type)
+							c.error('return type mismatch, it should be `$ret_sym.name`',
+								stmt.expr.position())
+						}
 					}
 				}
 				else {
@@ -5219,9 +5290,10 @@ pub fn (mut c Checker) error(message string, pos token.Position) {
 	c.warn_or_error(msg, pos, false)
 }
 
-// check_struct_signature checks if both structs has the same signature / fields for casting
+// check `to` has all fields of `from`
 fn (c Checker) check_struct_signature(from table.Struct, to table.Struct) bool {
-	if from.fields.len != to.fields.len {
+	// Note: `to` can have extra fields
+	if from.fields.len == 0 {
 		return false
 	}
 	for _, field in from.fields {

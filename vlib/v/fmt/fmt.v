@@ -22,7 +22,6 @@ pub mut:
 	table              &table.Table
 	out_imports        strings.Builder
 	out                strings.Builder
-	out_save           strings.Builder
 	indent             int
 	empty_line         bool
 	line_len           int
@@ -36,7 +35,6 @@ pub mut:
 	file               ast.File
 	did_imports        bool
 	is_assign          bool
-	is_arr_push        bool
 	auto_imports       []string // automatically inserted imports that the user forgot to specify
 	import_pos         int      // position of the imports in the resulting string for later autoimports insertion
 	used_imports       []string // to remove unused imports
@@ -272,6 +270,7 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 		}
 		already_imported[import_text] = true
 		f.out_imports.writeln(import_text)
+		f.import_comments(imp.comments, inline: true)
 		num_imports++
 	}
 	if num_imports > 0 {
@@ -295,6 +294,9 @@ pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
 
 fn (mut f Fmt) should_insert_newline_before_stmt(stmt ast.Stmt, prev_stmt ast.Stmt) bool {
 	prev_line_nr := prev_stmt.position().last_line
+	if prev_stmt is ast.HashStmt && stmt !is ast.HashStmt && stmt !is ast.ExprStmt {
+		return true
+	}
 	// The stmt either has or shouldn't have a newline before
 	if stmt.position().line_nr - prev_line_nr <= 1 || f.out.last_n(2) == '\n\n' {
 		return false
@@ -1147,6 +1149,8 @@ pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 	} else {
 		if node.is_embed {
 			f.write("\$embed_file('$node.embed_file.rpath')")
+		} else if node.is_env {
+			f.write("\$env('$node.args_var')")
 		} else {
 			method_expr := if node.has_parens {
 				'(${node.method_name}($node.args_var))'
@@ -1473,11 +1477,7 @@ pub fn (mut f Fmt) array_decompose(node ast.ArrayDecompose) {
 }
 
 pub fn (mut f Fmt) lock_expr(lex ast.LockExpr) {
-	f.write(if lex.is_rlock {
-		'rlock '
-	} else {
-		'lock '
-	})
+	f.write(if lex.is_rlock { 'rlock ' } else { 'lock ' })
 	for i, v in lex.lockeds {
 		if i > 0 {
 			f.write(', ')
@@ -1495,8 +1495,9 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	if !f.buffering && node.op in [.logical_or, .and, .plus] {
 		f.buffering = true
 	}
+	is_assign_save := f.is_assign
 	if node.op == .left_shift {
-		f.is_arr_push = true
+		f.is_assign = true // To write ternary if on a single line
 	}
 	infix_start := f.out.len
 	start_len := f.line_len
@@ -1522,7 +1523,7 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 			f.wrap_infix(infix_start, start_len)
 		}
 	}
-	f.is_arr_push = false
+	f.is_assign = is_assign_save
 	f.or_expr(node.or_block)
 }
 
@@ -1587,7 +1588,8 @@ pub fn (mut f Fmt) wrap_infix(start_pos int, start_len int) {
 pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 	dollar := if it.is_comptime { '$' } else { '' }
 	mut single_line := it.branches.len == 2 && it.has_else && branch_is_single_line(it.branches[0])
-		&& branch_is_single_line(it.branches[1])&& (it.is_expr || f.is_assign || f.is_arr_push)
+		&& branch_is_single_line(it.branches[1])
+		&& (it.is_expr || f.is_assign || f.single_line_fields)
 	f.single_line_if = single_line
 	if_start := f.line_len
 	for {
@@ -1788,7 +1790,7 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 	mut single_line := true
 	for branch in it.branches {
 		if branch.stmts.len > 1 || branch.pos.line_nr < branch.pos.last_line {
-			println(branch)
+			// println(branch)
 			single_line = false
 			break
 		}

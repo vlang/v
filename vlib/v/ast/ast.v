@@ -283,7 +283,8 @@ pub:
 	mod_pos   token.Position
 	alias_pos token.Position
 pub mut:
-	syms []ImportSymbol // the list of symbols in `import {symbol1, symbol2}`
+	syms     []ImportSymbol // the list of symbols in `import {symbol1, symbol2}`
+	comments []Comment
 }
 
 // import symbol,for import {symbol} syntax
@@ -939,11 +940,9 @@ pub:
 	has_cap       bool
 	has_default   bool
 pub mut:
-	expr_types     []table.Type // [Dog, Cat] // also used for interface_types
-	is_interface   bool       // array of interfaces e.g. `[]Animal` `[Dog{}, Cat{}]`
-	interface_type table.Type // Animal
-	elem_type      table.Type // element type
-	typ            table.Type // array type
+	expr_types []table.Type // [Dog, Cat] // also used for interface_types
+	elem_type  table.Type   // element type
+	typ        table.Type   // array type
 }
 
 pub struct ArrayDecompose {
@@ -1133,14 +1132,20 @@ pub:
 	method_pos  token.Position
 	scope       &Scope
 	left        Expr
-	is_vweb     bool
-	vweb_tmpl   File
 	args_var    string
-	is_embed    bool
-	embed_file  EmbeddedFile
+	//
+	is_vweb   bool
+	vweb_tmpl File
+	//
+	is_embed   bool
+	embed_file EmbeddedFile
+	//
+	is_env  bool
+	env_pos token.Position
 pub mut:
 	sym         table.TypeSymbol
 	result_type table.Type
+	env_value   string
 }
 
 pub struct None {

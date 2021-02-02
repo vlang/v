@@ -3,6 +3,7 @@ module os
 import strings
 
 #include <process.h>
+
 pub const (
 	path_separator = '\\'
 	path_delimiter = ';'

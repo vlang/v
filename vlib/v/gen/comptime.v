@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module gen
 
+import os
 import v.ast
 import v.table
 import v.util
@@ -29,7 +30,14 @@ fn (mut g Gen) comptime_selector(node ast.ComptimeSelector) {
 
 fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 	if node.is_embed {
+		// $embed_file('/path/to/file')
 		g.gen_embed_file_init(node)
+		return
+	}
+	if node.method_name == 'env' {
+		// $env('ENV_VAR_NAME')
+		val := util.cescaped_path(os.getenv(node.args_var))
+		g.write('_SLIT("$val")')
 		return
 	}
 	if node.is_vweb {
