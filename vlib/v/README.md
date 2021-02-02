@@ -113,7 +113,7 @@ checker.check_files(parsed_files)
 ## Generate target from AST
 Generating C code works just as this:
 ```v oksyntax
-import v.gen
+import v.gen.c
 
-res := gen.cgen(parsed_files, table, &pref)
+res := c.gen(parsed_files, table, &pref)
 ```
