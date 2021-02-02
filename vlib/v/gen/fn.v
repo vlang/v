@@ -78,6 +78,18 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 			name += '_' + gen_name
 		}
 	}
+	if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__')
+		&& name != 'main__main'&& node.name != 'str' {
+		mut key := node.name
+		if node.is_method {
+			sym := g.table.get_type_symbol(node.receiver.typ)
+			key = sym.name + '.' + node.name
+		}
+		g.writeln('/* obf: $key */')
+		name = g.obf_table[key] or {
+			panic('cgen: fn_decl: obf name "$key" not found, this should never happen')
+		}
+	}
 	// if g.pref.show_cc && it.is_builtin {
 	// println(name)
 	// }
@@ -457,6 +469,16 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			name = 'map_keys_1'
 		}
 	}
+	if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__')
+		&& node.name != 'str' {
+		sym := g.table.get_type_symbol(node.receiver_type)
+		// key = g.cc_type2(node.receiver.typ) + '.' + node.name
+		key := sym.name + '.' + node.name
+		g.write('/* obf method call: $key */')
+		name = g.obf_table[key] or {
+			panic('cgen: obf name "$key" not found, this should never happen')
+		}
+	}
 	// Check if expression is: arr[a..b].clone(), arr[a..].clone()
 	// if so, then instead of calling array_clone(&array_slice(...))
 	// call array_clone_static(array_slice(...))
@@ -619,6 +641,14 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		name = util.no_dots(name[2..])
 	} else {
 		name = c_name(name)
+	}
+	// Obfuscate only functions in the main module for now
+	if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__') {
+		key := node.name
+		g.write('/* obf call: $key */')
+		name = g.obf_table[key] or {
+			panic('cgen: obf name "$key" not found, this should never happen')
+		}
 	}
 	for i, generic_type in node.generic_types {
 		// Using _T_ to differentiate between get<string> and get_string
