@@ -298,7 +298,7 @@ A diferencia de la mayoría de los lenguajes, no se permite el shadowing (oculta
 variables. Declarar una variable con un nombre que ya se utiliza en un ámbito pariente
 provocará un error de compilación.
 
-Sin embargo, puedes maquillar módulos importados, ya que es muy útil en algunas situaciones:
+Sin embargo, puedes ocultar módulos importados, ya que es muy útil en algunas situaciones:
 
 ```v ignore
 import ui
