@@ -17,7 +17,7 @@ const (
 #endif
 '
 	c_concurrency_helpers         = '
-typedef struct __shared_map __shared_map; 
+typedef struct __shared_map __shared_map;
 struct __shared_map { map val; sync__RwMutex mtx; };
 static inline voidptr __dup_shared_map(voidptr src, int sz) {
 	__shared_map* dest = memdup(src, sz);
@@ -246,7 +246,9 @@ $c_common_macros
 		#undef _WIN32_WINNT
 	#endif
 	#define _WIN32_WINNT 0x0600
+	#ifndef WIN32_FULL
 	#define WIN32_LEAN_AND_MEAN
+	#endif
 	#ifndef _UNICODE
 	#define _UNICODE
 	#endif

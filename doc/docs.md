@@ -125,6 +125,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Cross compilation](#cross-compilation)
     * [Cross-platform shell scripts in V](#cross-platform-shell-scripts-in-v)
     * [Attributes](#attributes)
+    * [Goto](#goto)
 * [Appendices](#appendices)
     * [Keywords](#appendix-i-keywords)
     * [Operators](#appendix-ii-operators)
@@ -752,6 +753,33 @@ mut array_2 := [0, 1]
 array_2 << array_1[..3]
 println(array_2) // [0, 1, 3, 5, 4]
 ```
+
+### Fixed Size Arrays
+V also supports arrays with fixed size. Unlike ordinary arrays, their 
+length is fixed, so you can not append elements to them, nor shrink them.
+You can only modify their elements in place. Note also, that most methods
+are defined to work on ordinary arrays, not on fixed size arrays.
+
+However, access to the elements of fixed size arrays, is more efficient,
+they need less memory than ordinary arrays, and unlike ordinary arrays,
+their data is on the stack, so you may want to use them as buffers if you
+do not want additional heap allocations.
+
+You can convert a fixed size array, to an ordinary array with slicing:
+```v
+mut fnums := [3]int{} // fnums is now a fixed size array with 3 elements.
+fnums[0] = 1
+fnums[1] = 10
+fnums[2] = 100
+println(fnums) // => [1, 10, 100]
+println(typeof(fnums).name) // => [3]int
+//
+anums := fnums[0..fnums.len]
+println(anums) // => [1, 10, 100]
+println(typeof(anums).name) // => []int
+```
+Note that slicing will cause the data of the fixed array, to be copied to
+the newly created ordinary array.
 
 ### Maps
 
@@ -1752,7 +1780,7 @@ Global variables are not allowed, so this can be really useful.
 When naming constants, `snake_case` must be used. In order to distinguish consts
 from local variables, the full path to consts must be specified. For example,
 to access the PI const, full `math.pi` name must be used both outside the `math`
-module, and inside it. That restriction is relaxed only for the `main` module 
+module, and inside it. That restriction is relaxed only for the `main` module
 (the one containing your `fn main()`, where you can use the shorter name of the
 constants too, i.e. just `println(numbers)`, not `println(main.numbers)` .
 
@@ -1906,20 +1934,25 @@ interface Speaker {
 
 dog := Dog{'Leonberger'}
 cat := Cat{'Siamese'}
+
 mut arr := []Speaker{}
 arr << dog
 arr << cat
 for item in arr {
-	println('a $item.breed ${typeof(item).name} says: $item.speak()')
+	println('a $item.breed says: $item.speak()')
 }
 ```
 
 A type implements an interface by implementing its methods and fields.
 There is no explicit declaration of intent, no "implements" keyword.
 
+#### Casting an interface
+
 We can test the underlying type of an interface using dynamic cast operators:
 ```v oksyntax
-fn announce(s Speaker) {
+interface Something {}
+
+fn announce(s Something) {
 	if s is Dog {
 		println('a $s.breed dog') // `s` is automatically cast to `Dog` (smart cast)
 	} else if s is Cat {
@@ -1931,6 +1964,8 @@ fn announce(s Speaker) {
 ```
 For more information, see [Dynamic casts](#dynamic-casts).
 
+#### Interface method definitions
+
 Also unlike Go, an interface may implement a method.
 These methods are not implemented by structs which implement that interface.
 
@@ -1941,22 +1976,14 @@ implemented on the interface is called.
 ```v
 struct Cat {}
 
-interface Adoptable {}
-
 fn (c Cat) speak() string {
 	return 'meow!'
 }
 
+interface Adoptable {}
+
 fn (a Adoptable) speak() string {
 	return 'adopt me!'
-}
-
-fn (a Adoptable) adopt() ?&Cat {
-	if a is Cat {
-		return a
-	} else {
-		return error('This cannot be adopted.')
-	}
 }
 
 fn new_adoptable() Adoptable {
@@ -1964,10 +1991,13 @@ fn new_adoptable() Adoptable {
 }
 
 fn main() {
-	adoptable := new_adoptable()
-	println(adoptable.speak()) // adopt me!
-	cat := adoptable.adopt() or { return }
-	println(cat.speak()) // meow!
+	cat := Cat{}
+	assert cat.speak() == 'meow!'
+	a := new_adoptable()
+	assert a.speak() == 'adopt me!'
+	if a is Cat {
+		println(a.speak()) // meow!
+	}
 }
 ```
 
@@ -2625,7 +2655,7 @@ fn (shared b St) g() {
 }
 
 fn main() {
-	shared a := &St{ // create as reference so it's on the heap
+	shared a := St{
 		x: 10
 	}
 	go a.g()
@@ -2635,6 +2665,7 @@ fn main() {
 	}
 }
 ```
+Shared variables must be structs, arrays or maps.
 
 ## Decoding JSON
 
@@ -3344,6 +3375,71 @@ executable, increasing your binary size, but making it more self contained
 and thus easier to distribute. In this case, `f.data()` will cause *no IO*,
 and it will always return the same data.
 
+#### $tmpl for embedding and parsing V template files
+
+V has a simple template language for text and html templates, and they can easily
+be embedded via `$tmpl('path/to/template.txt')`:
+
+
+```v ignore
+fn build() string {
+	name := 'Peter'
+	age := 25
+	numbers := [1, 2, 3]
+	return $tmpl('1.txt')
+}
+
+fn main() {
+	println(build())
+}
+```
+
+1.txt:
+
+```
+name: @name
+
+age: @age
+
+numbers: @numbers
+
+@for number in numbers
+  @number
+@end
+```
+
+output:
+
+```
+name: Peter
+
+age: 25
+
+numbers: [1, 2, 3]
+
+1
+2
+3
+```
+
+
+
+
+#### $env
+
+```v
+module main
+
+fn main() {
+	compile_time_env := $env('ENV_VAR')
+	println(compile_time_env)
+}
+```
+
+V can bring in values at compile time from environment variables.
+`$env('ENV_VAR')` can also be used in top-level `#flag` and `#include` statements:
+`#flag linux -I $env('JAVA_HOME')/include`.
+
 ### Environment specific files
 
 If a file has an environment-specific suffix, it will only be compiled for that environment.
@@ -3396,7 +3492,7 @@ single block. `customflag` should be a snake_case identifier, it can not
 contain arbitrary characters (only lower case latin letters + numbers + `_`).
 NB: a combinatorial `_d_customflag_linux.c.v` postfix will not work.
 If you do need a custom flag file, that has platform dependent code, use the
-postfix `_d_customflag.v`, and then use plaftorm dependent compile time 
+postfix `_d_customflag.v`, and then use plaftorm dependent compile time
 conditional blocks inside it, i.e. `$if linux {}` etc.
 
 ## Compile time pseudo variables
@@ -3752,6 +3848,16 @@ struct C.Foo {
 fn C.DefWindowProc(hwnd int, msg int, lparam int, wparam int)
 ```
 
+## Goto
+
+V allows unconditionally jumping to arbitrary labels with `goto`. Labels must be contained
+within the text document from where they are jumped to. A program may `goto` a label outside
+or deeper than the current scope, but it cannot `goto` a label inside of a different function.
+
+```v ignore
+my_label:
+    goto my_label
+```
 
 # Appendices
 

@@ -3,9 +3,15 @@ module net
 import time
 
 const (
-	udp_default_read_timeout  = 30 * time.second
-	udp_default_write_timeout = 30 * time.second
+	udp_default_read_timeout  = time.second / 10
+	udp_default_write_timeout = time.second / 10
 )
+
+struct UdpSocket {
+	handle int
+	l      Addr
+	r      ?Addr
+}
 
 pub struct UdpConn {
 pub mut:
@@ -166,12 +172,6 @@ pub fn listen_udp(port int) ?&UdpConn {
 		read_timeout: net.udp_default_read_timeout
 		write_timeout: net.udp_default_write_timeout
 	}
-}
-
-struct UdpSocket {
-	handle int
-	l      Addr
-	r      ?Addr
 }
 
 fn new_udp_socket(local_port int) ?&UdpSocket {

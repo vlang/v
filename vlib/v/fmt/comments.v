@@ -14,7 +14,7 @@ enum CommentsLevel {
 // - has_nl: adds an newline at the end of the list of comments
 // - inline: single-line comments will be on the same line as the last statement
 // - iembed: a /* ... */ embedded comment; used in expressions; // comments the whole line
-// - level: either .keep (don't indent), or .indent (increment indentation)
+// - level:  either .keep (don't indent), or .indent (increment indentation)
 struct CommentsOptions {
 	has_nl bool = true
 	inline bool
@@ -102,6 +102,34 @@ pub fn (mut f Fmt) comments_after_last_field(comments []ast.Comment) {
 		f.comment(comment, inline: true)
 		f.writeln('')
 		f.indent--
+	}
+}
+
+pub fn (mut f Fmt) import_comments(comments []ast.Comment, options CommentsOptions) {
+	if comments.len == 0 {
+		return
+	}
+	if options.inline {
+		mut i := 0
+		for i = f.out_imports.len - 1; i >= 0; i-- {
+			if !f.out_imports.buf[i].is_space() { // != `\n` {
+				break
+			}
+		}
+		f.out_imports.go_back(f.out_imports.len - i - 1)
+	}
+	for c in comments {
+		ctext := c.text.trim_left('\x01')
+		if ctext == '' {
+			continue
+		}
+		mut out_s := if options.inline { ' ' } else { '' }
+		out_s += '//'
+		if is_first_char_alphanumeric(ctext) {
+			out_s += ' '
+		}
+		out_s += ctext
+		f.out_imports.writeln(out_s)
 	}
 }
 

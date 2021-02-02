@@ -2,6 +2,7 @@ module os
 
 #include <sys/stat.h> // #include <signal.h>
 #include <errno.h>
+
 struct C.dirent {
 	d_name [256]char
 }

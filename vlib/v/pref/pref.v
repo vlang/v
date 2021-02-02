@@ -47,6 +47,7 @@ const (
 		'cflags', 'path']
 )
 
+[ref_only]
 pub struct Preferences {
 pub mut:
 	os          OS // the OS to compile for
@@ -256,7 +257,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			'-stats' {
 				res.is_stats = true
 			}
-			'-obfuscate' {
+			'-obf', '-obfuscate' {
 				res.obfuscate = true
 			}
 			'-translated' {
@@ -424,11 +425,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 					continue
 				}
 				eprint('Unknown argument `$arg`')
-				eprintln(if command.len == 0 {
-					''
-				} else {
-					' for command `$command`'
-				})
+				eprintln(if command.len == 0 { '' } else { ' for command `$command`' })
 				exit(1)
 			}
 		}
