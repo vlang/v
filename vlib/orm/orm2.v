@@ -33,6 +33,8 @@ fn main() {
 	sql db {
 		insert mod into Module
 	}
-	rows, i := db.exec('select last_insert_rowid();')
-	eprintln(rows[0].vals[0].int())
+
+	modul := sql db {
+		select from Module
+	}
 }

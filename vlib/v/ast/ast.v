@@ -1180,7 +1180,6 @@ pub:
 	typ         table.Type
 	is_count    bool
 	db_expr     Expr // `db` in `sql db {`
-	where_expr  Expr
 	has_where   bool
 	has_offset  bool
 	offset_expr Expr
@@ -1192,8 +1191,10 @@ pub:
 	has_limit   bool
 	limit_expr  Expr
 pub mut:
-	table_expr Type
-	fields     []table.Field
+	where_expr  Expr
+	table_expr  Type
+	fields      []table.Field
+	sub_structs map[int]SqlExpr
 }
 
 [inline]

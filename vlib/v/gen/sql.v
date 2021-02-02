@@ -242,6 +242,29 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 				g.writeln('if ($string_data != NULL) {')
 				g.writeln('\t${tmp}.$field.name = tos_clone($string_data);')
 				g.writeln('}')
+			} else if g.table.types[int(field.typ)].kind == .struct_ {
+				id_name := g.new_tmp_var()
+				g.writeln('//parse struct start')
+				g.writeln('int $id_name = ${func}($g.sql_stmt_name, $i);')
+				mut expr := node.sub_structs[int(field.typ)]
+				mut where_expr := expr.where_expr as ast.InfixExpr
+				mut ident := where_expr.right as ast.Ident
+				ident.name = id_name
+				where_expr.right = ident
+				expr.where_expr = where_expr
+
+
+
+				tmp_sql_i := g.sql_i
+				tmp_sql_stmt_name := g.sql_stmt_name
+				tmp_sql_buf := g.sql_buf
+
+				g.sql_select_expr(expr)
+				g.writeln('//parse struct end')
+				
+				g.sql_stmt_name = tmp_sql_stmt_name
+				g.sql_buf = tmp_sql_buf
+				g.sql_i = tmp_sql_i
 			} else {
 				g.writeln('${tmp}.$field.name = ${func}($g.sql_stmt_name, $i);')
 			}
