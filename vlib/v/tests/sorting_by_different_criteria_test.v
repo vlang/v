@@ -11,8 +11,8 @@ fn (p Parent) < (p1 Parent) bool {
     return p.name < p1.name
 }
 
-fn (p Parent) > (p1 Parent) bool {
-    return p.name > p1.name
+fn (p Parent) <= (p1 Parent) bool {
+    return p.name < p1.name || p.name == p1.name
 }
 
 fn test_sorting_by_different_criteria_in_same_function() {

@@ -3374,12 +3374,27 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			&& g.typ((left_sym.info as table.Alias).parent_type).split('__').last()[0].is_capital()
 		// Do not generate operator overloading with these `right_sym.kind`.
 		e := right_sym.kind !in [.voidptr, .int_literal, .int]
-		if node.op in [.plus, .minus, .mul, .div, .mod, .lt, .gt, .eq, .ne, .le, .ge]
-			&& ((a && b && e) || c|| d) {
+		if node.op in [.plus, .minus, .mul, .div, .mod, .lt, .eq, .le] && ((a && b && e) || c || d) {
 			// Overloaded operators
 			g.write(g.typ(if !d { left_type } else { (left_sym.info as table.Alias).parent_type }))
 			g.write('_')
 			g.write(util.replace_op(node.op.str()))
+			g.write('(')
+			g.expr(node.left)
+			g.write(', ')
+			g.expr(node.right)
+			g.write(')')
+		} else if node.op in [.ne, .gt, .ge] && ((a && b && e) || c || d) {
+			typ := g.typ(if !d { left_type } else { (left_sym.info as table.Alias).parent_type })
+			g.write('!$typ')
+			g.write('_')
+			if node.op == .ne {
+				g.write('_eq')
+			} else if node.op == .gt {
+				g.write('_le')
+			} else if node.op == .ge {
+				g.write('_lt')
+			}
 			g.write('(')
 			g.expr(node.left)
 			g.write(', ')

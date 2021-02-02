@@ -275,14 +275,16 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			}
 		}
 	}
-	if p.tok.kind in [.plus, .minus, .mul, .div, .mod, .gt, .lt, .eq, .ne, .le, .ge]
-		&& p.peek_tok.kind == .lpar {
+	if p.tok.kind in [.plus, .minus, .mul, .div, .mod, .lt, .eq, .le] && p.peek_tok.kind == .lpar {
 		name = p.tok.kind.str() // op_to_fn_name()
 		if rec_type == table.void_type {
 			p.error_with_pos('cannot use operator overloading with normal functions',
 				p.tok.position())
 		}
 		p.next()
+	} else if p.tok.kind in [.ne, .gt, .ge] && p.peek_tok.kind == .lpar {
+		p.error_with_pos('cannot overload `!=`, `>` and `>=` as they are auto generated with `==` and`<`',
+			p.tok.position())
 	}
 	// <T>
 	generic_params := p.parse_generic_params()
