@@ -3177,11 +3177,10 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 					node.call_expr.left.position())
 			}
 		}
-		ast.GotoLabel {
-		}
+		ast.GotoLabel {}
 		ast.GotoStmt {
 			if node.name !in c.cur_fn.label_names {
-				c.error('unknown label `${node.name}`', node.pos)
+				c.error('unknown label `$node.name`', node.pos)
 			}
 			// TODO: check label doesn't bypass variable declarations
 		}
@@ -5188,7 +5187,6 @@ pub fn (mut c Checker) offset_of(node ast.OffsetOf) table.Type {
 		c.error('first argument of __offsetof must be struct', node.pos)
 		return table.u32_type
 	}
-
 	if !c.table.struct_has_field(node.struct_type, node.field) {
 		c.error('struct `$sym.name` has no field called `$node.field`', node.pos)
 	}
@@ -5447,7 +5445,6 @@ fn (mut c Checker) fetch_and_verify_orm_fields(info table.Struct, pos token.Posi
 fn (mut c Checker) post_process_generic_fns() {
 	// Loop thru each generic function concrete type.
 	// Check each specific fn instantiation.
-
 	for i in 0 .. c.file.generic_fns.len {
 		if c.table.fn_gen_types.len == 0 {
 			// no concrete types, so just skip:
@@ -5598,7 +5595,6 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	}
 	c.fn_scope = node.scope
 	c.stmts(node.stmts)
-
 	if c.fn_mut_arg_names.len > 0 {
 		c.fn_mut_arg_names.clear()
 	}
