@@ -2,7 +2,7 @@
 
 ## Introducción
 
-V es un lenguaje de programación compilado de tipo estático diseñado para crear software mantenible.
+V es un lenguaje de programación compilado de tipado estático diseñado para crear software mantenible.
 
 Es similar a Go y su diseño también ha sido influenciado por Oberon, Rust, Swift,
 Kotlin y Python.
