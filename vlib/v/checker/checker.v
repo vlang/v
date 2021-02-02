@@ -1308,7 +1308,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	}
 	// TODO: remove this for actual methods, use only for compiler magic
 	// FIXME: Argument count != 1 will break these
-	if left_type_sym.kind == .array && method_name in array_builtin_methods {
+	if left_type_sym.kind == .array && method_name in checker.array_builtin_methods {
 		mut elem_typ := table.void_type
 		is_filter_map := method_name in ['filter', 'map']
 		is_sort := method_name == 'sort'
@@ -2369,7 +2369,7 @@ pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 			match field.expr {
 				ast.IntegerLiteral {
 					val := field.expr.val.i64()
-					if val < int_min || val > int_max {
+					if val < checker.int_min || val > checker.int_max {
 						c.error('enum value `$val` overflows int', field.expr.pos)
 					} else if !decl.is_multi_allowed && i64(val) in seen {
 						c.error('enum value `$val` already exists', field.expr.pos)
@@ -2393,7 +2393,7 @@ pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 		} else {
 			if seen.len > 0 {
 				last := seen[seen.len - 1]
-				if last == int_max {
+				if last == checker.int_max {
 					c.error('enum value overflows', field.pos)
 				}
 				seen << last + 1
@@ -2477,7 +2477,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					mut is_large := right.val.len > 13
 					if !is_large && right.val.len > 8 {
 						val := right.val.i64()
-						is_large = val > int_max || val < int_min
+						is_large = val > checker.int_max || val < checker.int_min
 					}
 					if is_large {
 						c.error('overflow in implicit type `int`, use explicit type casting instead',
@@ -4290,11 +4290,11 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym table.TypeS
 	mut err_details := 'match must be exhaustive'
 	if unhandled.len > 0 {
 		err_details += ' (add match branches for: '
-		if unhandled.len < match_exhaustive_cutoff_limit {
+		if unhandled.len < checker.match_exhaustive_cutoff_limit {
 			err_details += unhandled.join(', ')
 		} else {
-			remaining := unhandled.len - match_exhaustive_cutoff_limit
-			err_details += unhandled[0..match_exhaustive_cutoff_limit].join(', ')
+			remaining := unhandled.len - checker.match_exhaustive_cutoff_limit
+			err_details += unhandled[0..checker.match_exhaustive_cutoff_limit].join(', ')
 			err_details += ', and $remaining others ...'
 		}
 		err_details += ' or `else {}` at the end)'
@@ -4797,13 +4797,13 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 			}
 		}
 		ast.Ident {
-			if cond.name in valid_comp_if_os {
+			if cond.name in checker.valid_comp_if_os {
 				return cond.name != c.pref.os.str().to_lower() // TODO hack
-			} else if cond.name in valid_comp_if_compilers {
+			} else if cond.name in checker.valid_comp_if_compilers {
 				return pref.cc_from_string(cond.name) != c.pref.ccompiler_type
-			} else if cond.name in valid_comp_if_platforms {
+			} else if cond.name in checker.valid_comp_if_platforms {
 				return false // TODO
-			} else if cond.name in valid_comp_if_other {
+			} else if cond.name in checker.valid_comp_if_other {
 				// TODO: This should probably be moved
 				match cond.name {
 					'js' { return c.pref.backend != .js }
