@@ -386,3 +386,25 @@ fn test_multi_generic_args() {
 	assert multi_generic_args("Super", 2021)
 }
 
+fn new<T>() T {
+	return T{}
+}
+
+fn test_generic_init() {
+	// array init
+	mut a := new<[]string>()
+	assert a.len == 0
+	a << 'a'
+	assert a.len == 1
+	assert a[0] == 'a'
+	// map init
+	mut b := new<map[string]string>()
+	assert b.len == 0
+	b['b'] = 'b'
+	assert b.len == 1
+	assert b['b'] == 'b'
+	// struct init
+	mut c := new<User>()
+	c.name = 'c'
+	assert c.name == 'c'
+}

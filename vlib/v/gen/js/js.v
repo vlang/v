@@ -558,6 +558,13 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.write("string('$text')")
 		}
 		ast.StructInit {
+			// TODO: once generic fns/unwrap_generic is implemented
+			// if node.unresolved {
+			// 	g.expr(ast.resolve_init(node, g.unwrap_generic(node.typ), g.table))
+			// } else {
+			// 	// `user := User{name: 'Bob'}`
+			// 	g.gen_struct_init(node)
+			// }
 			// `user := User{name: 'Bob'}`
 			g.gen_struct_init(node)
 		}
@@ -1037,11 +1044,7 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 		g.inc_indent()
 		g.write('return `$js_name {')
 		for i, field in node.fields {
-			g.write(if i == 0 {
-				' '
-			} else {
-				', '
-			})
+			g.write(if i == 0 { ' ' } else { ', ' })
 			match g.typ(field.typ).split('.').last() {
 				'string' { g.write('$field.name: "\${this["$field.name"].toString()}"') }
 				else { g.write('$field.name: \${this["$field.name"].toString()} ') }
