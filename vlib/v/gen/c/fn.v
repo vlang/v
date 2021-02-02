@@ -522,7 +522,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 	} else if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name != 'str'
 		&& node.from_embed_type == 0 {
-		g.write('/*rec*/*')
+		if !node.left_type.has_flag(.shared_f) {
+			g.write('/*rec*/*')
+		}
 	}
 	if g.is_autofree && node.free_receiver && !g.inside_lambda && !g.is_builtin_mod {
 		// The receiver expression needs to be freed, use the temp var.
@@ -539,6 +541,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				g.write('.')
 			}
 			g.write(embed_name)
+		}
+		if node.left_type.has_flag(.shared_f) && !node.receiver_type.is_ptr() {
+			g.write('->val')
 		}
 	}
 	if has_cast {
@@ -958,6 +963,13 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type table.Type) {
 				g.write('(voidptr)&/*qq*/')
 			}
 		}
+	} else if arg.typ.has_flag(.shared_f) && !expected_type.has_flag(.shared_f) {
+		if expected_type.is_ptr() {
+			g.write('&')
+		}
+		g.expr(arg.expr)
+		g.write('->val')
+		return
 	}
 	g.expr_with_cast(arg.expr, arg.typ, expected_type)
 }
