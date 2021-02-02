@@ -332,6 +332,7 @@ pub:
 pub mut:
 	stmts         []Stmt
 	return_type   table.Type
+	has_return    bool
 	comments      []Comment // comments *after* the header, but *before* `{`; used for InterfaceDecl
 	next_comments []Comment // coments that are one line after the decl; used for InterfaceDecl
 	source_file   &File = 0
