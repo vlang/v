@@ -11,7 +11,9 @@ import v.util
 const (
 	error_missing_vexe = 1
 	error_failed_tests = 2
-	fpref = &pref.Preferences { is_fmt: true }
+	fpref              = &pref.Preferences{
+		is_fmt: true
+	}
 )
 
 fn test_fmt() {

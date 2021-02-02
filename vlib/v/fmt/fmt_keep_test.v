@@ -13,7 +13,9 @@ const (
 	error_missing_vexe = 1
 	error_failed_tests = 2
 	b2v_keep_path      = os.join_path('vlib', 'v', 'fmt', 'tests', 'bin2v_keep.vv')
-	fpref = &pref.Preferences { is_fmt: true }
+	fpref              = &pref.Preferences{
+		is_fmt: true
+	}
 )
 
 fn test_fmt() {
