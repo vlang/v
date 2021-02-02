@@ -2,7 +2,7 @@ module parser
 
 // import v.eval
 import v.ast
-import v.gen
+import v.gen.c
 import v.table
 import v.checker
 import v.pref
@@ -83,7 +83,7 @@ x := 10
 	prog := parse_file(s, table, .skip_comments, vpref, gscope)
 	mut checker := checker.new_checker(table, vpref)
 	checker.check(prog)
-	res := gen.cgen([prog], table, vpref)
+	res := c.gen([prog], table, vpref)
 	println(res)
 }
 
@@ -111,7 +111,7 @@ fn test_one() {
 	}
 	mut checker := checker.new_checker(table, vpref)
 	checker.check(program)
-	res := gen.cgen([program], table, vpref).replace('\n', '').trim_space().after('#endif')
+	res := c.gen([program], table, vpref).replace('\n', '').trim_space().after('#endif')
 	println(res)
 	ok := expected == res
 	println(res)
@@ -151,7 +151,7 @@ fn test_parse_expr() {
 		global_scope: scope
 	}
 	checker.check(program)
-	res := gen.cgen([program], table, vpref).after('#endif')
+	res := c.gen([program], table, vpref).after('#endif')
 	println('========')
 	println(res)
 	println('========')
