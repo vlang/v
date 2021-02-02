@@ -91,6 +91,12 @@ pub fn (mut c Checker) check_basic(got table.Type, expected table.Type) bool {
 			return true
 		}
 	}
+	// fixed array fn
+	if got_type_sym.kind == .array_fixed && exp_type_sym.kind == .array_fixed {
+		if c.table.type_to_str(got) == c.table.type_to_str(expected).trim('&') {
+			return true
+		}
+	}
 	if got_type_sym.kind == .array_fixed && exp_type_sym.kind == .byteptr {
 		info := got_type_sym.info as table.ArrayFixed
 		if info.elem_type.idx() == table.byte_type_idx {
