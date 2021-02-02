@@ -46,7 +46,7 @@ También es posible ejecutar aplicaciones gráficas hechas con V en Android a tr
 Las dependencias que necesita V en Android son: **V** (obviamente), **JavaSDK** >= 8 y Android **SDK + NDK**.
 
   1. Instale las dependencias (mirar [vab](https://github.com/vlang/vab))
-  2. Conectar tu dispositivo Android
+  2. Conecte tu dispositivo Android a la PC
   3. Ejecutar:
   ```bash
   git clone https://github.com/vlang/vab && cd vab && v vab.v
