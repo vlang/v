@@ -1,0 +1,14 @@
+vlib/v/checker/tests/goto_label.vv:8:7: error: unknown label `l`
+    6 | fn g() {
+    7 |     l2:
+    8 |     goto l
+      |          ^
+    9 |     goto l2
+   10 |     goto l3
+vlib/v/checker/tests/goto_label.vv:10:7: error: unknown label `l3`
+    8 |     goto l
+    9 |     goto l2
+   10 |     goto l3
+      |          ~~
+   11 | }
+   12 |

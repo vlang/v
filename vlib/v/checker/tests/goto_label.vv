@@ -1,0 +1,12 @@
+fn f() {
+	goto l
+	l:
+}
+
+fn g() {
+	l2:
+	goto l
+	goto l2
+	goto l3
+}
+

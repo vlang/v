@@ -425,7 +425,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		is_builtin: p.builtin_mod || p.mod in util.builtin_module_parts
 		attrs: p.attrs
 		scope: p.scope
+		label_names: p.label_names
 	}
+	p.label_names = []
 	p.close_scope()
 	return fn_decl
 }

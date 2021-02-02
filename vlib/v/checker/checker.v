@@ -3177,8 +3177,12 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 					node.call_expr.left.position())
 			}
 		}
-		ast.GotoLabel {}
+		ast.GotoLabel {
+		}
 		ast.GotoStmt {
+			if node.name !in c.cur_fn.label_names {
+				c.error('unknown label `${node.name}`', node.pos)
+			}
 			// TODO: check label doesn't bypass variable declarations
 		}
 		ast.HashStmt {

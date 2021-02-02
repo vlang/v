@@ -69,6 +69,7 @@ mut:
 	warnings          []errors.Warning
 	vet_errors        []vet.Error
 	cur_fn_name       string
+	label_names       []string
 	in_generic_params bool // indicates if parsing between `<` and `>` of a method/function
 	name_error        bool // indicates if the token is not a name or the name is on another line
 }
@@ -677,6 +678,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 						}
 					}
 				}
+				p.label_names << name
 				return ast.GotoLabel{
 					name: name
 					pos: spos.extend(p.tok.position())
