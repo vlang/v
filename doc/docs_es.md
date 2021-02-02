@@ -45,7 +45,8 @@ make
 También es posible ejecutar aplicaciones gráficas hechas con V en Android
 a través de [vab](https://github.com/vlang/vab).
 
-Las dependencias que necesita V en Android son: **V** (obviamente), **JavaSDK** >= 8 y Android **SDK + NDK**.
+Las dependencias que necesita V en Android son: **V** (obviamente), **JavaSDK** >= 8
+y Android **SDK + NDK**.
 
   1. Instale las dependencias (mirar [vab](https://github.com/vlang/vab))
   2. Conecte tu dispositivo Android a la PC
@@ -65,7 +66,9 @@ Para más detalles y solución de problemas, por favor visite el repositorio en 
 
 * [Hola Mundo](#hola-mundo)
 * [Comentarios](#comentarios)
-
+* [Funciones](#funciones)
+    * [Retornando múltiples valores](#retornando-multiples-valores)
+    * [Numéro variable de argumentos](#numero-variable-de-argumentos)
 </td></tr>
 </table>
 
@@ -115,4 +118,66 @@ println('hello world')
 Esto es un comentario multilínea.
    /* Y este tipo de comentario puede ir dentro de otro. */
 */
+```
+
+## Funciones
+
+```v
+fn main() {
+	println(add(77, 33))
+	println(sub(100, 50))
+}
+
+fn add(x int, y int) int {
+	return x + y
+}
+
+fn sub(x int, y int) int {
+	return x - y
+}
+```
+
+Nuevamente, el tipo viene después del nombre del argumento.
+
+Al igual que en Go y C, las funciones no se pueden sobrecargar.
+Esto simplifica el código y mejora la facilidad de mantenimiento y la legibilidad.
+
+Las funciones se pueden utilizar antes de su declaración:
+`add` y `sub` se declaran después de `main`, pero aún se pueden llamar desde` main`.
+Esto es cierto para todas las declaraciones en V y elimina la necesidad de archivos
+de encabezado o el pensar en el orden de archivos y declaraciones.
+
+### Retornando múltiples valores
+
+```v
+fn foo() (int, int) {
+	return 2, 3
+}
+
+a, b := foo()
+println(a) // 2
+println(b) // 3
+c, _ := foo() // puedes ignorar valores usando la variable `_`
+```
+
+### Número variable de argumentos
+
+```v
+fn sum(a ...int) int {
+	mut total := 0
+	for x in a {
+		total += x
+	}
+	return total
+}
+
+println(sum()) // 0
+println(sum(1)) // 1
+println(sum(2, 3)) // 5
+
+// usando la descomposición de arrays
+a := [2, 3, 4]
+println(sum(...a)) // <-- usando el prefijo ... aquí. se imprime: 9
+b := [5, 6, 7]
+println(sum(...b)) // se imprime: 18
 ```
