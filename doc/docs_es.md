@@ -69,6 +69,7 @@ Para más detalles y solución de problemas, por favor visite el repositorio en 
 * [Funciones](#funciones)
     * [Retornando múltiples valores](#retornando-multiples-valores)
     * [Numéro variable de argumentos](#numero-variable-de-argumentos)
+* [Visibilidad de un símbolo](#visibilidad-de-un-simbolo)
 </td></tr>
 </table>
 
@@ -181,3 +182,20 @@ println(sum(...a)) // <-- usando el prefijo ... aquí. se imprime: 9
 b := [5, 6, 7]
 println(sum(...b)) // se imprime: 18
 ```
+
+## Visibilidad de un símbolo
+
+```v
+pub fn public_function() {
+}
+
+fn private_function() {
+}
+```
+
+Las funciones son privadas (o, no exportadas) de forma predeterminada.
+Para permitir que otros módulos los usen, tienes que anteponer `pub`. Lo mismo aplica
+a constantes y tipos (structs, enums, type, etc).
+
+Nota: `pub` solo se puede usar desde un módulo con nombre.
+Para obtener información sobre cómo crear un módulo, puedes consultar [Módulos](#módulos).
