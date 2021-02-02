@@ -3866,6 +3866,9 @@ if x {
 }
 my_label:
 ```
+`goto` should be avoided when `for` can be used instead. In particular, 
+[labelled break](#labelled-break--continue) can be used to break out of 
+a nested loop.
 
 # Appendices
 
