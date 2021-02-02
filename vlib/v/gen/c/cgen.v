@@ -98,6 +98,7 @@ mut:
 	array_fn_definitions  []string // array equality functions that have been defined
 	map_fn_definitions    []string // map equality functions that have been defined
 	struct_fn_definitions []string // struct equality functions that have been defined
+	alias_fn_definitions  []string // alias equality functions that have been defined
 	auto_fn_definitions   []string // auto generated functions defination list
 	anon_fn_definitions   []string // anon generated functions defination list
 	is_json_fn            bool     // inside json.encode()
@@ -3135,6 +3136,23 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		if node.right is ast.ArrayInit {
 			s := g.typ(left_type)
 			g.write('($s)')
+		}
+		g.expr(node.right)
+		g.write(')')
+	} else if node.op in [.eq, .ne] && left_sym.kind == .alias && right_sym.kind == .alias {
+		ptr_typ := g.gen_alias_equality_fn(left_type)
+		if node.op == .eq {
+			g.write('${ptr_typ}_alias_eq(')
+		} else if node.op == .ne {
+			g.write('!${ptr_typ}_alias_eq(')
+		}
+		if node.left_type.is_ptr() {
+			g.write('*')
+		}
+		g.expr(node.left)
+		g.write(', ')
+		if node.right_type.is_ptr() {
+			g.write('*')
 		}
 		g.expr(node.right)
 		g.write(')')

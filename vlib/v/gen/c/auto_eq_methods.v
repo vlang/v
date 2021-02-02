@@ -32,6 +32,9 @@ fn (mut g Gen) gen_struct_equality_fn(left table.Type) string {
 		} else if sym.kind == .map && !field.typ.is_ptr() {
 			eq_fn := g.gen_map_equality_fn(field.typ)
 			fn_builder.writeln('\tif (!${eq_fn}_map_eq(a.$field.name, b.$field.name)) {')
+		} else if sym.kind == .alias && !field.typ.is_ptr() {
+			eq_fn := g.gen_alias_equality_fn(field.typ)
+			fn_builder.writeln('\tif (!${eq_fn}_alias_eq(a.$field.name, b.$field.name)) {')
 		} else if sym.kind == .function {
 			fn_builder.writeln('\tif (*((voidptr*)(a.$field.name)) != *((voidptr*)(b.$field.name))) {')
 		} else {
@@ -40,6 +43,45 @@ fn (mut g Gen) gen_struct_equality_fn(left table.Type) string {
 		fn_builder.writeln('\t\treturn false;')
 		fn_builder.writeln('\t}')
 	}
+	fn_builder.writeln('\treturn true;')
+	fn_builder.writeln('}')
+	g.auto_fn_definitions << fn_builder.str()
+	return ptr_typ
+}
+
+fn (mut g Gen) gen_alias_equality_fn(left table.Type) string {
+	ptr_typ := g.typ(left).trim('*')
+	if ptr_typ in g.alias_fn_definitions {
+		return ptr_typ
+	}
+	g.alias_fn_definitions << ptr_typ
+	left_sym := g.table.get_type_symbol(left)
+	info := left_sym.info as table.Alias
+	g.type_definitions.writeln('static bool ${ptr_typ}_alias_eq($ptr_typ a, $ptr_typ b); // auto')
+	mut fn_builder := strings.new_builder(512)
+	fn_builder.writeln('static bool ${ptr_typ}_alias_eq($ptr_typ a, $ptr_typ b) {')
+	sym := g.table.get_type_symbol(info.parent_type)
+	if sym.kind == .string {
+		fn_builder.writeln('\tif (string_ne(a, b)) {')
+	} else if sym.kind == .struct_ && !left.is_ptr() {
+		eq_fn := g.gen_struct_equality_fn(info.parent_type)
+		fn_builder.writeln('\tif (!${eq_fn}_struct_eq(a, b)) {')
+	} else if sym.kind == .array && !left.is_ptr() {
+		eq_fn := g.gen_array_equality_fn(info.parent_type)
+		fn_builder.writeln('\tif (!${eq_fn}_arr_eq(a, b)) {')
+	} else if sym.kind == .array_fixed && !left.is_ptr() {
+		eq_fn := g.gen_fixed_array_equality_fn(info.parent_type)
+		fn_builder.writeln('\tif (!${eq_fn}_arr_eq(a, b)) {')
+	} else if sym.kind == .map && !left.is_ptr() {
+		eq_fn := g.gen_map_equality_fn(info.parent_type)
+		fn_builder.writeln('\tif (!${eq_fn}_map_eq(a, b)) {')
+	} else if sym.kind == .function {
+		fn_builder.writeln('\tif (*((voidptr*)(a)) != *((voidptr*)(b))) {')
+	} else {
+		fn_builder.writeln('\tif (a != b) {')
+	}
+	fn_builder.writeln('\t\treturn false;')
+	fn_builder.writeln('\t}')
 	fn_builder.writeln('\treturn true;')
 	fn_builder.writeln('}')
 	g.auto_fn_definitions << fn_builder.str()
@@ -78,6 +120,9 @@ fn (mut g Gen) gen_array_equality_fn(left table.Type) string {
 	} else if elem_sym.kind == .map && !elem_typ.is_ptr() {
 		eq_fn := g.gen_map_equality_fn(elem_typ)
 		fn_builder.writeln('\t\tif (!${eq_fn}_map_eq((($ptr_elem_typ*)a.data)[i], (($ptr_elem_typ*)b.data)[i])) {')
+	} else if elem_sym.kind == .alias && !elem_typ.is_ptr() {
+		eq_fn := g.gen_alias_equality_fn(elem_typ)
+		fn_builder.writeln('\t\tif (!${eq_fn}_alias_eq((($ptr_elem_typ*)a.data)[i], (($ptr_elem_typ*)b.data)[i])) {')
 	} else if elem_sym.kind == .function {
 		fn_builder.writeln('\t\tif (*((voidptr*)((byte*)a.data+(i*a.element_size))) != *((voidptr*)((byte*)b.data+(i*b.element_size)))) {')
 	} else {
@@ -122,6 +167,9 @@ fn (mut g Gen) gen_fixed_array_equality_fn(left table.Type) string {
 	} else if elem_sym.kind == .map && !elem_typ.is_ptr() {
 		eq_fn := g.gen_map_equality_fn(elem_typ)
 		fn_builder.writeln('\t\tif (!${eq_fn}_map_eq(a[i], b[i])) {')
+	} else if elem_sym.kind == .alias && !elem_typ.is_ptr() {
+		eq_fn := g.gen_alias_equality_fn(elem_typ)
+		fn_builder.writeln('\t\tif (!${eq_fn}_alias_eq(a[i], b[i])) {')
 	} else if elem_sym.kind == .function {
 		fn_builder.writeln('\t\tif (a[i] != b[i]) {')
 	} else {
@@ -192,6 +240,10 @@ fn (mut g Gen) gen_map_equality_fn(left table.Type) string {
 		.map {
 			eq_fn := g.gen_map_equality_fn(value_typ)
 			fn_builder.writeln('\t\tif (!${eq_fn}_map_eq(*($ptr_value_typ*)map_get_1(&b, k, &($ptr_value_typ[]){ 0 }), v)) {')
+		}
+		.alias {
+			eq_fn := g.gen_alias_equality_fn(value_typ)
+			fn_builder.writeln('\t\tif (!${eq_fn}_alias_eq(*($ptr_value_typ*)map_get_1(&b, k, &($ptr_value_typ[]){ 0 }), v)) {')
 		}
 		.function {
 			fn_builder.writeln('\t\tif (*(voidptr*)map_get_1(&b, k, &(voidptr[]){ 0 }) != v) {')
