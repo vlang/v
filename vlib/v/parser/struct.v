@@ -341,7 +341,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	}
 }
 
-fn (mut p Parser) struct_init(short_syntax bool) ast.Expr {
+fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 	first_pos := p.tok.position()
 	typ := if short_syntax { table.void_type } else { p.parse_type() }
 	p.expr_mod = ''
@@ -417,7 +417,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.Expr {
 		p.check(.rcbr)
 	}
 	p.is_amp = saved_is_amp
-	node := ast.StructInit{
+	return ast.StructInit{
 		typ: typ
 		fields: fields
 		update_expr: update_expr
@@ -427,13 +427,6 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.Expr {
 		is_short: no_keys
 		pre_comments: pre_comments
 	}
-	if typ.has_flag(.generic) {
-		return ast.UnknownInit{
-			kind: .unknown
-			struct_init: node
-		}
-	}
-	return node
 }
 
 fn (mut p Parser) interface_decl() ast.InterfaceDecl {

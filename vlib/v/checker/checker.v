@@ -1565,8 +1565,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		}
 		if call_expr.generic_types.len > 0 && method.return_type != 0 {
 			if typ := c.resolve_generic_type(method.return_type, method.generic_names,
-				call_expr.generic_types)
-			{
+				call_expr.generic_types) {
 				call_expr.return_type = typ
 				return typ
 			}
@@ -2466,8 +2465,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		if assign_stmt.right_types.len < assign_stmt.left.len { // first type or multi return types added above
 			right_type := c.expr(assign_stmt.right[i])
 			if assign_stmt.right_types.len == i {
-				assign_stmt.right_types << c.check_expr_opt_call(assign_stmt.right[i],
-					right_type)
+				assign_stmt.right_types << c.check_expr_opt_call(assign_stmt.right[i], right_type)
 			}
 		}
 		right := if i < assign_stmt.right.len { assign_stmt.right[i] } else { assign_stmt.right[0] }
@@ -3556,6 +3554,9 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			return c.string_inter_lit(mut node)
 		}
 		ast.StructInit {
+			if node.typ.has_flag(.generic) {
+				return c.expr(ast.resolve_init(node, c.unwrap_generic(node.typ), c.table))
+			}
 			return c.struct_init(mut node)
 		}
 		ast.Type {
@@ -3564,86 +3565,6 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		ast.TypeOf {
 			node.expr_type = c.expr(node.expr)
 			return table.string_type
-		}
-		// TODO: remove once we update to checker.expr(mut Expr)
-		// and we can simply use StructInit then and Override it.
-		// this is needed currently as there is no way to Override
-		// the StructInit node with an ArrayInit
-		ast.UnknownInit {
-			if node.struct_init.typ.has_flag(.generic) {
-				gt := c.unwrap_generic(node.struct_init.typ)
-				gts := c.table.get_type_symbol(gt)
-				if gts.kind == .array {
-					println('###### ARRAY INIT')
-					array_info := gts.info as table.Array
-					mut has_len := false
-					mut has_cap := false
-					mut has_default := false
-					mut len_expr := ast.Expr{}
-					mut cap_expr := ast.Expr{}
-					mut default_expr := ast.Expr{}
-					mut exprs := []ast.Expr{}
-					for field in node.struct_init.fields {
-						match field.name {
-							'len' {
-								has_len = true
-								len_expr = field.expr
-							}
-							'cap' {
-								has_cap = true
-								len_expr = field.expr
-							}
-							'default' {
-								has_default = true
-								len_expr = field.expr
-							}
-							else {
-								exprs << field.expr
-							}
-						}
-					}
-					mut array_init := ast.ArrayInit{
-						mod: c.file.mod.name
-						pos: node.struct_init.pos
-						typ: gt
-						elem_type: array_info.elem_type
-						has_len: has_len
-						has_cap: has_cap
-						has_default: has_default
-						len_expr: len_expr
-						cap_expr: cap_expr
-						default_expr: default_expr
-						exprs: exprs
-					}
-					node.kind = .array_init
-					node.array_init = array_init
-					return c.array_init(mut array_init)
-				} else if gts.kind == .map {
-					map_info := gts.info as table.Map
-					println('###### MAP: $gts.name - $map_info.key_type, $map_info.value_type')
-					// TODO
-					mut keys := []ast.Expr{}
-					mut vals := []ast.Expr{}
-					for field in node.struct_init.fields {
-						keys << ast.StringLiteral{
-							val: field.name
-						}
-						vals << field.expr
-					}
-					mut map_init := ast.MapInit{
-						typ: gt
-						key_type: map_info.key_type
-						value_type: map_info.value_type
-						keys: keys
-						vals: vals
-					}
-					node.kind = .map_init
-					node.map_init = map_init
-					return c.map_init(mut map_init)
-				}
-			}
-			node.kind = .struct_init
-			return c.struct_init(mut node.struct_init)
 		}
 		ast.UnsafeExpr {
 			return c.unsafe_expr(mut node)
@@ -4996,21 +4917,13 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) table.Type {
 	// TODO: testing ref/deref strategy
 	if node.op == .amp && !right_type.is_ptr() {
 		match node.right {
-			ast.IntegerLiteral {
-				c.error('cannot take the address of an int literal', node.pos)
-			}
-			ast.BoolLiteral {
-				c.error('cannot take the address of a bool literal', node.pos)
-			}
-			ast.StringLiteral, ast.StringInterLiteral {
-				c.error('cannot take the address of a string literal', node.pos)
-			}
-			ast.FloatLiteral {
-				c.error('cannot take the address of a float literal', node.pos)
-			}
-			ast.CharLiteral {
-				c.error('cannot take the address of a char literal', node.pos)
-			}
+			ast.IntegerLiteral { c.error('cannot take the address of an int literal',
+					node.pos) }
+			ast.BoolLiteral { c.error('cannot take the address of a bool literal', node.pos) }
+			ast.StringLiteral, ast.StringInterLiteral { c.error('cannot take the address of a string literal',
+					node.pos) }
+			ast.FloatLiteral { c.error('cannot take the address of a float literal', node.pos) }
+			ast.CharLiteral { c.error('cannot take the address of a char literal', node.pos) }
 			else {}
 		}
 		if mut node.right is ast.IndexExpr {

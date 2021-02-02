@@ -133,7 +133,7 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 		out += '\n\treturn {'
 		// export builtin types
 		if name == 'builtin' {
-			for typ in js.v_types {
+			for typ in v_types {
 				out += '\n\t\t$typ,'
 			}
 		}
@@ -159,14 +159,14 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 		if name == 'builtin' {
 			out += '// builtin type casts\n'
 			out += 'const ['
-			for i, typ in js.v_types {
+			for i, typ in v_types {
 				if i > 0 {
 					out += ', '
 				}
 				out += '$typ'
 			}
 			out += '] = ['
-			for i, typ in js.v_types {
+			for i, typ in v_types {
 				if i > 0 {
 					out += ','
 				}
@@ -246,7 +246,7 @@ fn verror(msg string) {
 [inline]
 pub fn (mut g JsGen) gen_indent() {
 	if g.ns.indent > 0 && g.empty_line {
-		g.ns.out.write(js.tabs[g.ns.indent])
+		g.ns.out.write(tabs[g.ns.indent])
 	}
 	g.empty_line = false
 }
@@ -324,7 +324,7 @@ fn (mut g JsGen) js_name(name_ string) string {
 	mut parts := name.split('.')
 	if !is_js {
 		for i, p in parts {
-			if p in js.js_reserved {
+			if p in js_reserved {
 				parts[i] = 'v_$p'
 			}
 		}
@@ -558,8 +558,12 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.write("string('$text')")
 		}
 		ast.StructInit {
-			// `user := User{name: 'Bob'}`
-			g.gen_struct_init(node)
+			if node.typ.has_flag(.generic) {
+				g.expr(ast.resolve_init(node, g.unwrap_generic(node.typ), g.table))
+			} else {
+				// `user := User{name: 'Bob'}`
+				g.gen_struct_init(node)
+			}
 		}
 		ast.Type {
 			// skip: JS has no types
@@ -582,16 +586,6 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		}
 		ast.ComptimeSelector {
 			// TODO
-		}
-		// TODO: remove once we update to checker.expr(mut Expr)
-		ast.UnknownInit {
-			if node.kind == .struct_init {
-				g.gen_struct_init(node.struct_init)
-			} else if node.kind == .array_init {
-				g.gen_array_init_expr(node.array_init)
-			} else if node.kind == .map_init {
-				g.gen_map_init_expr(node.map_init)
-			}
 		}
 		ast.UnsafeExpr {
 			g.expr(node.expr)
@@ -1002,7 +996,7 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 	if name.starts_with('JS.') {
 		return
 	}
-	if name in js.v_types && g.ns.name == 'builtin' {
+	if name in v_types && g.ns.name == 'builtin' {
 		return
 	}
 	js_name := g.js_name(name)
@@ -1576,7 +1570,7 @@ fn (mut g JsGen) gen_type_cast_expr(it ast.CastExpr) {
 		|| (it.expr is ast.FloatLiteral && it.typ in table.float_type_idxs))
 	typ := g.typ(it.typ)
 	if !is_literal {
-		if !(typ in js.v_types) || g.ns.name == 'builtin' {
+		if !(typ in v_types) || g.ns.name == 'builtin' {
 			g.write('new ')
 		}
 		g.write('${typ}(')

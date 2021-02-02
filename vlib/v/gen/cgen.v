@@ -1286,8 +1286,11 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		g.expr(it.cond)
 		g.writeln(';')
 		i := if it.key_var in ['', '_'] { g.new_tmp_var() } else { it.key_var }
-		op_field := if it.cond_type.is_ptr() { '->' } else { '.' } +
-			if it.cond_type.share() == .shared_t { 'val.' } else { '' }
+		op_field := if it.cond_type.is_ptr() { '->' } else { '.' } + if it.cond_type.share() == .shared_t {
+			'val.'
+		} else {
+			''
+		}
 		g.writeln('for (int $i = 0; $i < $tmp${op_field}len; ++$i) {')
 		if it.val_var != '_' {
 			if val_sym.kind == .function {
@@ -2774,8 +2777,12 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.string_inter_literal(node)
 		}
 		ast.StructInit {
-			// `user := User{name: 'Bob'}`
-			g.struct_init(node)
+			if node.typ.has_flag(.generic) {
+				g.expr(ast.resolve_init(node, g.unwrap_generic(node.typ), g.table))
+			} else {
+				// `user := User{name: 'Bob'}`
+				g.struct_init(node)
+			}
 		}
 		ast.SelectorExpr {
 			g.selector_expr(node)
@@ -2801,18 +2808,6 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.write('(')
 			g.expr(node.expr)
 			g.write(')')
-		}
-		// TODO: remove once we update to checker.expr(mut Expr)
-		ast.UnknownInit {
-			println('## KIND: $node.kind')
-			if node.kind == .struct_init {
-				g.struct_init(node.struct_init)
-			} else if node.kind == .array_init {
-				g.array_init(node.array_init)
-			} else if node.kind == .map_init {
-				println('### CGEN MAP INIT')
-				g.map_init(node.map_init)
-			}
 		}
 		ast.UnsafeExpr {
 			g.expr(node.expr)
