@@ -1047,7 +1047,7 @@ fn (mut c Checker) needs_rlock(expr ast.Expr) (string, token.Position) {
 						pos = expr.pos
 					}
 				}
-			} 
+			}
 		}
 		else {
 			to_lock = ''
@@ -1055,7 +1055,7 @@ fn (mut c Checker) needs_rlock(expr ast.Expr) (string, token.Position) {
 		}
 	}
 	return to_lock, pos
-}	
+}
 
 // returns name and position of variable that needs write lock
 // also sets `is_changed` to true (TODO update the name to reflect this?)
@@ -1501,20 +1501,23 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			c.error('method `${left_type_sym.name}.$method_name` is private', call_expr.pos)
 		}
 		rec_share := method.params[0].typ.share()
-		if rec_share  == .shared_t && (c.locked_names.len > 0 || c.rlocked_names.len > 0) {
-			c.error('method with `shared` receiver cannot be called inside `lock`/`rlock` block', call_expr.pos)
+		if rec_share == .shared_t && (c.locked_names.len > 0 || c.rlocked_names.len > 0) {
+			c.error('method with `shared` receiver cannot be called inside `lock`/`rlock` block',
+				call_expr.pos)
 		}
 		if method.params[0].is_mut {
 			to_lock, pos := c.fail_if_immutable(call_expr.left)
 			// call_expr.is_mut = true
-			if to_lock != '' {
-				c.error('$to_lock is `shared` and must be `lock`ed to be passed as `mut`', pos)
+			if to_lock != '' && rec_share != .shared_t {
+				c.error('$to_lock is `shared` and must be `lock`ed to be passed as `mut`',
+					pos)
 			}
 		} else {
 			if left_type.has_flag(.shared_f) {
 				to_lock, pos := c.needs_rlock(call_expr.left)
 				if to_lock != '' {
-					c.error('$to_lock is `shared` and must be `rlock`ed or `locked` to be used as non-mut receiver', pos)
+					c.error('$to_lock is `shared` and must be `rlock`ed or `locked` to be used as non-mut receiver',
+						pos)
 				}
 			}
 		}
@@ -1586,7 +1589,8 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			}
 			param_share := param.typ.share()
 			if param_share == .shared_t && (c.locked_names.len > 0 || c.rlocked_names.len > 0) {
-				c.error('method with `shared` arguments cannot be called inside `lock`/`rlock` block', call_expr.pos)
+				c.error('method with `shared` arguments cannot be called inside `lock`/`rlock` block',
+					call_expr.pos)
 			}
 			if arg.is_mut {
 				to_lock, pos := c.fail_if_immutable(arg.expr)
@@ -1598,8 +1602,9 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 					if param.typ.share() != arg.share {
 						c.error('wrong shared type', arg.expr.position())
 					}
-					if to_lock != '' {
-						c.error('$to_lock is `shared` and must be `lock`ed to be passed as `mut`', pos)
+					if to_lock != '' && param_share != .shared_t {
+						c.error('$to_lock is `shared` and must be `lock`ed to be passed as `mut`',
+							pos)
 					}
 				}
 			} else {
@@ -1611,7 +1616,8 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 					if arg.share == .shared_t {
 						to_lock, pos := c.needs_rlock(arg.expr)
 						if to_lock != '' {
-							c.error('$to_lock is `shared` and must be `rlock`ed or `locked` to be passed as non-mut argument', pos)
+							c.error('$to_lock is `shared` and must be `rlock`ed or `locked` to be passed as non-mut argument',
+								pos)
 						}
 					}
 				}
