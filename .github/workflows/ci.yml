@@ -391,7 +391,7 @@ jobs:
           ./v build-module vlib/v/token
           ./v build-module vlib/v/ast
           ./v build-module vlib/v/parser
-          ./v build-module vlib/v/gen
+          ./v build-module vlib/v/gen/c
           ./v build-module vlib/v/depgraph
           ./v build-module vlib/os/cmdline
       - name: x64 machine code generation
