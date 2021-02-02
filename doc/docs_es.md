@@ -8,7 +8,7 @@ Es similar a Go y su diseño también ha sido influenciado por Oberon, Rust, Swi
 Kotlin y Python.
 
 V es un lenguaje muy simple. Leer esta documentación te llevará aproximadamente una hora,
-y al final habrás aprendido prácticamente todo el idioma.
+y al final habrás aprendido prácticamente todo el lenguaje.
 
 El lenguaje promueve la escritura de código simple y claro con mínima abstracción.
 
@@ -17,7 +17,7 @@ Todo lo que puedas hacer en otros lenguajes, lo puedes hacer en V.
 
 ## Install from source
 
-La forma principal de obtener la versión de V más reciente y mejor es __instalarlo desde la fuente__.
+La forma principal de obtener la versión de V más reciente y mejorada es __instalarlo desde la fuente__.
 Es __fácil__ y, por lo general, toma __sólo unos segundos__.
 
 ### Linux, macOS, FreeBSD, etc:
