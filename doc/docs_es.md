@@ -47,7 +47,7 @@ Las dependencias que necesita V en Android son: **V** (obviamente), **JavaSDK** 
 
   1. Instale las dependencias (mirar [vab](https://github.com/vlang/vab))
   2. Conecte tu dispositivo Android a la PC
-  3. Ejecutar:
+  3. Ejecute:
   ```bash
   git clone https://github.com/vlang/vab && cd vab && v vab.v
   ./vab --device auto run /path/to/v/examples/sokol/particles
