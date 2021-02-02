@@ -33,7 +33,8 @@ pub fn resolve_init(node StructInit, typ table.Type, t &table.Table) Expr {
 			}
 		}
 		return ArrayInit{
-			// mod: c.file.mod.name
+			// TODO: mod is not being set for now, we could need this in future
+			// mod: mod
 			pos: node.pos
 			typ: typ
 			elem_type: array_info.elem_type
