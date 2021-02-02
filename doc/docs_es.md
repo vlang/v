@@ -107,7 +107,7 @@ Esto significa que un programa de "hola mundo" en V es tan simple como
 println('hello world')
 ```
 
-## Comments
+## Comentarios
 
 ```v
 // Esto es un comentario de una simple línea.
