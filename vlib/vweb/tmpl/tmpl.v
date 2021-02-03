@@ -75,12 +75,11 @@ _ = footer
 		}
 		if line.contains('@include ') {
 			lines.delete(i)
-			pos_start := line.index("'") or { continue }
-			pos_end := line[1 + pos_start..].index("'") or { continue }
-			file_name := line[pos_start + 1 ..pos_start + pos_end + 1]
+			file_name := line.split("'")[1]
 			file_path := os.join_path('templates', '${file_name}.html')
 			file_content := os.read_file(file_path) or {
-				panic('reading file $file_name failed') }
+				panic('Vweb: Reading file $file_name failed.')
+			}
 			file_splitted := file_content.split_into_lines().reverse()
 			for f in file_splitted {
 				lines.insert(i, f)
