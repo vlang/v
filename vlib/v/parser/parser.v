@@ -2002,6 +2002,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		field := ast.ConstField{
 			name: full_name
 			mod: p.mod
+			is_pub: is_pub
 			expr: expr
 			pos: pos
 			comments: comments
