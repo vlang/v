@@ -33,7 +33,6 @@ fn main() {
 	sql db {
 		insert mod into Module
 	}
-
 	modul := sql db {
 		select from Module
 	}
