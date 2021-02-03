@@ -1,6 +1,5 @@
 -## V 0.2.4
 -*Not yet released*
-- Allow method declaration of `==` and `<` and auto generate `!=`, `>`, `<=` and `>=`.
 
 ## V 0.2.2 - 0.2.3
 *22 Jan 2021*
@@ -27,7 +26,8 @@
 from local variables.
 - `__offsetof` for low level needs (works like `offsetof` in C).
 - vfmt now preserves empty lines, like gofmt.
-- Support for compile time environment variables via `$env('ENV_VAR')`. 
+- Support for compile time environment variables via `$env('ENV_VAR')`.
+- Allow method declaration of `==` and `<` operators and auto generate `!=`, `>`, `<=` and `>=`.
 
 ## V 0.2.1
 *30 Dec 2020*
