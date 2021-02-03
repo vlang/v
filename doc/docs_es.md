@@ -68,7 +68,7 @@ Para más detalles y solución de problemas, por favor visite el repositorio en 
 * [Comentarios](#comentarios)
 * [Funciones](#funciones)
     * [Retornando múltiples valores](#retornando-m%C3%BAltiples-valores)
-    * [Numéro variable de argumentos](#n%C3%BAmero-variable-de-argumentos)
+    * [Número variable de argumentos](#n%C3%BAmero-variable-de-argumentos)
 * [Visibilidad de un símbolo](#visibilidad-de-un-s%C3%ADmbolo)
 * [Variables](#variables)
     * [Variables mutables](#variables-mutables)
@@ -77,6 +77,7 @@ Para más detalles y solución de problemas, por favor visite el repositorio en 
 * [Tipos](#tipos)
     * [Tipos primitivos](#tipos-primitivos)
     * [Strings (Cadenas)](#strings-cadenas)
+    * [Numéros](#n%C3%BAmeros)
 </td></tr>
 </table>
 
@@ -383,7 +384,8 @@ windows_newline := '\r\n' // asi se escapan caracteres especiales como en C
 assert windows_newline.len == 2
 ```
 
-En V, una cadena (string) es una matriz (array) de bytes de sólo lectura. Los datos de las cadenas se codifican utilizando UTF-8.
+En V, una cadena (string) es una matriz (array) de bytes
+de sólo lectura. Los datos de las cadenas se codifican utilizando UTF-8.
 Los valores de las cadenas son inmutables. No se pueden mutar los elementos:
 
 ```v failcompile
@@ -393,7 +395,8 @@ s[0] = `H` // esto no está permitido
 
 > error: cannot assign to `s[i]` since V strings are immutable
 
-Ten en cuenta que la indexación de una cadena producirá un `byte`, no un `rune`. Los índices corresponden
+Ten en cuenta que la indexación de una cadena producirá un `byte`,
+no un `rune`. Los índices corresponden
 a los bytes de la cadena, no a los puntos de código Unicode.
 
 Los literales de caracteres tienen el tipo "rune". Para denotarlas, utilice un ` (backtick)
@@ -404,9 +407,11 @@ assert 'aloha!'[0] == `a`
 ```
 
 Se pueden utilizar tanto comillas simples como dobles para denotar cadenas. Por coherencia,
-`vfmt` convierte las comillas dobles en comillas simples a menos que la cadena contenga un carácter de comillas simples.
+`vfmt` convierte las comillas dobles en comillas simples a menos
+que la cadena contenga un carácter de comillas simples.
 
-Para las cadenas sin procesar (raw strings), puedes antepoer un `r`. Las cadenas sin procesar no se escapan:
+Para las cadenas sin procesar (raw strings), puedes antepoer un `r`.
+Las cadenas sin procesar no se escapan:
 
 ```v
 s := r'hello\nworld'
@@ -422,7 +427,8 @@ n := s.int() // 42
 
 ### Interpolación de cadenas (String interpolation)
 
-La sintaxis básica de la interpolación es bastante sencilla: utilice un `$` antes de un nombre de variable.
+La sintaxis básica de la interpolación es bastante sencilla: utilice
+un `$` antes de un nombre de variable.
 La variable se convertirá en una cadena y se incrustará en el literal:
 
 ```v
@@ -478,3 +484,53 @@ o utilizar la interpolación de cadenas (el más preferido):
 age := 12
 println('age = $age')
 ```
+
+### Números
+
+```v
+a := 123
+```
+
+Esto asignará el valor de 123 a "a". Por defecto `a` tendrá el tipo `int`.
+
+También puedes utilizar la notación hexadecimal, binaria u octal para los literales enteros:
+
+```v
+a := 0x7B
+b := 0b01111011
+c := 0o173
+```
+
+A todos ellos se les asignará el mismo valor, 123. Todos ellos tendrán el tipo
+`int`, sin importar la notación que hayas utilizado.
+
+V también permite escribir números usando `_` (underscore, guión bajo) como separador:
+
+```v
+num := 1_000_000 // same as 1000000
+three := 0b0_11 // same as 0b11
+float_num := 3_122.55 // same as 3122.55
+hexa := 0xF_F // same as 255
+oct := 0o17_3 // same as 0o173
+```
+
+Si quieres un tipo de entero diferente, puedes usar el casting:
+
+```v
+a := i64(123)
+b := byte(42)
+c := i16(12345)
+```
+
+La asignación de números en coma flotante funciona de la misma manera:
+
+```v
+f := 1.0
+f1 := f64(3.14)
+f2 := f32(3.14)
+```
+
+Si no se especifica el tipo explícitamente, por defecto los literales float
+tendrán el tipo `f64`.
+
+
