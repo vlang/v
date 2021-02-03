@@ -77,7 +77,7 @@ Para más detalles y solución de problemas, por favor visite el repositorio en 
 * [Tipos](#tipos)
     * [Tipos primitivos](#tipos-primitivos)
     * [Strings (Cadenas)](#strings-cadenas)
-    * [Numéros](#n%C3%BAmeros)
+    * [Números](#n%C3%BAmeros)
 </td></tr>
 </table>
 
