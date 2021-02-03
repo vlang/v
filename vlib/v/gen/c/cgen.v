@@ -3405,22 +3405,54 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 }
 
 fn (mut g Gen) lock_expr(node ast.LockExpr) {
-	mut lock_prefixes := []string{len: 0, cap: node.lockeds.len}
-	for id in node.lockeds {
+	mut mtxs := ''
+	if node.lockeds.len == 0 {
+		// this should not happen
+	} else if node.lockeds.len == 1 {
+		id := node.lockeds[0]
 		name := id.name
 		deref := if id.is_mut { '->' } else { '.' }
-		lock_prefix := if node.is_rlock { 'r' } else { '' }
-		lock_prefixes << lock_prefix // keep for unlock
+		lock_prefix := if node.is_rlock[0] { 'r' } else { '' }
 		g.writeln('sync__RwMutex_${lock_prefix}lock(&$name${deref}mtx);')
+	} else {
+		mtxs = g.new_tmp_var()
+		g.writeln('uintptr_t _arr_$mtxs[$node.lockeds.len];')
+		g.writeln('bool _isrlck_$mtxs[$node.lockeds.len];')
+		for i, id in node.lockeds {
+			name := id.name
+			deref := if id.is_mut { '->' } else { '.' }
+			g.writeln('_arr_$mtxs[$i] = &$name${deref}mtx;')
+			// TODO: fix `vfmt` to allow this in string interpolation
+			is_rlock_str := node.is_rlock[i].str()
+			g.writeln('_isrlck_$mtxs[$i] = $is_rlock_str;')
+		}
+		g.writeln('__sort_ptr(_arr_$mtxs, _isrlck_$mtxs, $node.lockeds.len);')
+		g.writeln('for (int $mtxs=0; $mtxs<$node.lockeds.len; $mtxs++) {')
+		g.writeln('\tif ($mtxs && _arr_$mtxs[$mtxs] == _arr_$mtxs[$mtxs-1]) continue;')
+		g.writeln('\tif (_isrlck_$mtxs[$mtxs])')
+		g.writeln('\t\tsync__RwMutex_rlock((sync__RwMutex*)_arr_$mtxs[$mtxs]);')
+		g.writeln('\telse')
+		g.writeln('\t\tsync__RwMutex_lock((sync__RwMutex*)_arr_$mtxs[$mtxs]);')
+		g.writeln('}')
 	}
 	g.stmts(node.stmts)
-	// unlock in reverse order
-	for i := node.lockeds.len - 1; i >= 0; i-- {
-		id := node.lockeds[i]
-		lock_prefix := lock_prefixes[i]
+	if node.lockeds.len == 0 {
+		// this should not happen
+	} else if node.lockeds.len == 1 {
+		id := node.lockeds[0]
 		name := id.name
 		deref := if id.is_mut { '->' } else { '.' }
+		lock_prefix := if node.is_rlock[0] { 'r' } else { '' }
 		g.writeln('sync__RwMutex_${lock_prefix}unlock(&$name${deref}mtx);')
+	} else {
+		// unlock in reverse order
+		g.writeln('for (int $mtxs=${node.lockeds.len - 1}; $mtxs>=0; $mtxs--) {')
+		g.writeln('\tif ($mtxs && _arr_$mtxs[$mtxs] == _arr_$mtxs[$mtxs-1]) continue;')
+		g.writeln('\tif (_isrlck_$mtxs[$mtxs])')
+		g.writeln('\t\tsync__RwMutex_runlock((sync__RwMutex*)_arr_$mtxs[$mtxs]);')
+		g.writeln('\telse')
+		g.writeln('\t\tsync__RwMutex_unlock((sync__RwMutex*)_arr_$mtxs[$mtxs]);')
+		g.writeln('}')
 	}
 }
 
