@@ -22,20 +22,24 @@ fn wprintln(s string) {
 
 fn main() {
 	if os.args.len == 1 {
-		println('Usage: checks the passed markdown files for correct ```v ``` code blocks,
-and for other style violations. like too long lines/links etc...
-a) `v run cmd/tools/check-md.v -all` - will check *all* .md files in the folders.
-b) `v run cmd/tools/check-md.v doc/docs.md` - will only check a single file.
-c) `v run cmd/tools/check-md.v -hide-warnings file.md` - same, but will not print warnings, only errors.
+		println('check-md is a tool to check the passed markdown files for correct ```v ``` code blocks
+and other style violations like too long lines/links etc...
+
+Usage:
+	a) `v run cmd/tools/check-md.v -all` - will check *all* .md files in the working dir.
+	b) `v run cmd/tools/check-md.v doc/docs.md` - will only check a single file.
+	c) `v run cmd/tools/check-md.v -hide-warnings file.md` - same, but will not print warnings, only errors.
 
 NB: There are several special keywords, which you can put after the code fences for v.
 These are:
-	compile      - default, you do not need to specify it. cmd/tools/check-md.v compile the example.
-	ignore       - ignore the example, useful for examples that just use the syntax highlighting
-	failcompile  - known failing compilation. Useful for examples demonstrating compiler errors.
-	oksyntax     - it should parse, it may not compile. Useful for partial examples.
-	badsyntax    - known bad syntax, it should not even parse
-	wip          - like ignore; a planned feature; easy to search.
+	compile      - Default, can be omitted. The example will be compiled and formatting is verified.
+	live         - Compile hot reload examples with the ´-live´ flag set and verify formatting.
+	ignore       - Ignore the example, useful for examples that just use the syntax highlighting
+	failcompile  - Known failing compilation. Useful for examples demonstrating compiler errors.
+	oksyntax     - Should parse and be formatted but may not compile. Useful for partial examples.
+	badsyntax    - Known bad syntax, it should not even parse.
+	wip          - Like ignore; a planned feature; easy to search.
+	nofmt        - Disable fmt verification for individual code blocks.
 ')
 		exit(0)
 	}
