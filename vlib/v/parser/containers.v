@@ -94,7 +94,9 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		}
 	}
 	if exprs.len == 0 && p.tok.kind != .lcbr && has_type {
-		p.warn_with_pos('use `x := []Type{}` instead of `x := []Type`', first_pos.extend(last_pos))
+		if !p.pref.is_fmt {
+			p.warn_with_pos('use `x := []Type{}` instead of `x := []Type`', first_pos.extend(last_pos))
+		}
 	}
 	mut has_len := false
 	mut has_cap := false
