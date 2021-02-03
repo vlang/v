@@ -3428,6 +3428,7 @@ fn (mut g Gen) lock_expr(node ast.LockExpr) {
 		}
 		g.writeln('__sort_ptr(_arr_$mtxs, _isrlck_$mtxs, $node.lockeds.len);')
 		g.writeln('for (int $mtxs=0; $mtxs<$node.lockeds.len; $mtxs++) {')
+		g.writeln('\tif ($mtxs && _arr_$mtxs[$mtxs] == _arr_$mtxs[$mtxs-1]) continue;') 
 		g.writeln('\tif (_isrlck_$mtxs[$mtxs])')
 		g.writeln('\t\tsync__RwMutex_rlock((sync__RwMutex*)_arr_$mtxs[$mtxs]);')
 		g.writeln('\telse')
@@ -3446,6 +3447,7 @@ fn (mut g Gen) lock_expr(node ast.LockExpr) {
 	} else {
 		// unlock in reverse order
 		g.writeln('for (int $mtxs=${node.lockeds.len - 1}; $mtxs>=0; $mtxs--) {')
+		g.writeln('\tif ($mtxs && _arr_$mtxs[$mtxs] == _arr_$mtxs[$mtxs-1]) continue;')
 		g.writeln('\tif (_isrlck_$mtxs[$mtxs])')
 		g.writeln('\t\tsync__RwMutex_runlock((sync__RwMutex*)_arr_$mtxs[$mtxs]);')
 		g.writeln('\telse')

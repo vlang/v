@@ -37,7 +37,7 @@ static inline void __sort_ptr(uintptr_t a[], bool b[], int l)
 		uintptr_t ins = a[i];
 		bool insb = b[i];
 		int j = i;
-		while(j>0 && a[j-1] > ins) {
+		while(j>0 && (a[j-1] > ins || b[j-1] && !insb)) {
 			a[j] = a[j-1];
 			b[j] = b[j-1];
 			j--;
