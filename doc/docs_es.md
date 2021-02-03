@@ -19,7 +19,7 @@ Todo lo que puedas hacer en otros lenguajes, lo puedes hacer en V.
 ## Instalación desde el código fuente
 
 La forma principal de obtener la versión de V más reciente y mejorada es
-__instalarlo desde la fuente__.
+__instalarlo desde el código fuente__.
 Es __fácil__ y, por lo general, toma __sólo unos segundos__.
 
 ### Linux, macOS, FreeBSD, etc:
@@ -370,3 +370,70 @@ b := 14.7      // b es de tipo `f64` - predeterminado para un literal de float (
 c := u + a     // c es de tipo `int` - promoción automática del valor de `u`
 d := b + x     // d es de tipo `f64` - promoción automática del valor de `x`
 ```
+
+### Strings (Cadenas)
+
+```v
+name := 'Bob'
+println(name.len)
+println(name[0]) // la indexación da un byte: 'B'
+println(name[1..3]) // el slicing (corte) da una cadena 'ob'
+windows_newline := '\r\n' // asi se escapan caracteres especiales como en C
+assert windows_newline.len == 2
+```
+
+En V, una cadena (string) es una matriz (array) de bytes de sólo lectura. Los datos de las cadenas se codifican utilizando UTF-8.
+Los valores de las cadenas son inmutables. No se pueden mutar los elementos:
+
+```v failcompile
+mut s := 'hello 🌎'
+s[0] = `H` // esto no está permitido
+```
+
+> error: cannot assign to `s[i]` since V strings are immutable
+
+Ten en cuenta que la indexación de una cadena producirá un `byte`, no un `rune`. Los índices corresponden
+a los bytes de la cadena, no a los puntos de código Unicode.
+
+Los literales de caracteres tienen el tipo "rune". Para denotarlas, utilice un ` (backtick)
+
+```v
+rocket := `🚀`
+assert 'aloha!'[0] == `a`
+```
+
+Se pueden utilizar tanto comillas simples como dobles para denotar cadenas. Por coherencia,
+`vfmt` convierte las comillas dobles en comillas simples a menos que la cadena contenga un carácter de comillas simples.
+
+Para las cadenas sin procesar (raw strings), puedes antepoer un `r`. Las cadenas sin procesar no se escapan:
+
+```v
+s := r'hello\nworld'
+println(s) // "hello\nworld"
+```
+
+Las cadenas se pueden convertir fácilmente en números enteros (integers):
+
+```v
+s := '42'
+n := s.int() // 42
+```
+
+### Interpolación de cadenas (String interpolation)
+
+La sintaxis básica de la interpolación es bastante sencilla: utilice un `$` antes de un nombre de variable.
+La variable se convertirá en una cadena y se incrustará en el literal:
+
+```v
+name := 'Bob'
+println('Hello, $name!') // Hello, Bob!
+```
+
+También funciona con los campos: `'edad = $usuario.edad'`.
+Si necesitas expresiones más complejas, utiliza `${}`: `'puede registrarse = ${user.age > 13}'`.
+
+También se admiten especificadores de formato similares a los de `printf()` en C.
+`f`, `g`, `x`, etc. son opcionales y especifican el formato de salida.
+El compilador se encarga del tamaño de almacenamiento, por lo que no hay necesidad de `hd` o `llu`.
+
+
