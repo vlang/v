@@ -83,7 +83,7 @@ _ = footer
 				panic('reading file $file_name failed') }
 			file_splitted := file_content.split_into_lines().reverse()
 			for f in file_splitted {
-				lines.insert(i, file_splitted[k])
+				lines.insert(i, f)
 			}
 			i--
 		} else if line.contains('@js ') {
