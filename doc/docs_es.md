@@ -554,7 +554,8 @@ El tipo de una matriz viene determinado por el primer elemento:
 * `[1, 2, 3]` es una matriz de enteros (`[]int`).
 * `['a', 'b']` es una matriz de cadenas (`[]string`).
 
-Puedes especificar explícitamente el tipo del primer elemento haciendo un casting: `[byte(16), 32, 64, 128]`.
+Puedes especificar explícitamente el tipo del primer elemento
+haciendo un casting: `[byte(16), 32, 64, 128]`.
 Las matrices en V son homogéneos (todos los elementos deben tener del mismo tipo).
 Esto significa que un código como `[1, 'a']` no se compilará.
 
@@ -582,11 +583,13 @@ println('Alex' in names) // "false"
 `<<` es un operador que añade un valor al final de la matriz.
 También puedes añadir una matriz completa.
 
-`val in array` devuelve true (verdadero) si la matriz contiene el elemento `val`. Ver [operador `in`](#operador-in).
+`val in array` devuelve true (verdadero) si la matriz contiene
+el elemento `val`. Ver [operador `in`](#operador-in).
 
 #### Inicialización de las propiedades de una matriz
 
-Durante la inicialización puedes especificar la capacidad del array (`cap`), su longitud inicial (`len`)
+Durante la inicialización puedes especificar la capacidad del
+array (`cap`), su longitud inicial (`len`)
 y el elemento por defecto (`init`):
 
 ```v
@@ -642,7 +645,8 @@ upper_fn := words.map(fn (w string) string {
 println(upper_fn) // ['HELLO', 'WORLD']
 ```
 
-`it` es una variable incorporada que se refiere al elemento que se está procesando actualmente en los métodos filter/map.
+`it` es una variable incorporada que se refiere al elemento que
+se está procesando actualmente en los métodos filter/map.
 
 #### Matriz multidimensional
 
@@ -692,7 +696,8 @@ Las rebanadas son matrices parciales. Representan cada elemento entre dos índic
 separados por un operador .. El índice del lado derecho debe ser mayor o igual
 al índice del lado izquierdo.
 
-Si un índice del lado derecho está ausente, se asume que es la longitud de la matriz. Si no hay un índice
+Si un índice del lado derecho está ausente, se asume que es la
+longitud de la matriz. Si no hay un índice
 índice del lado izquierdo está ausente, se asume que es 0.
 
 ```v
