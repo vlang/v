@@ -3,7 +3,6 @@ module builder
 import os
 import v.parser
 import v.pref
-import v.gen
 import v.gen.js
 
 pub fn (mut b Builder) gen_js(v_files []string) string {

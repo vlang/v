@@ -1,7 +1,7 @@
 // Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-module gen
+module c
 
 import v.ast
 import v.table
@@ -354,14 +354,11 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 pub fn (g &Gen) unwrap_generic(typ table.Type) table.Type {
 	if typ.has_flag(.generic) {
 		sym := g.table.get_type_symbol(typ)
-		mut idx := 0
 		for i, generic_param in g.cur_fn.generic_params {
 			if generic_param.name == sym.name {
-				idx = i
-				break
+				return g.cur_generic_types[i].derive(typ).clear_flag(.generic)
 			}
 		}
-		return g.cur_generic_types[idx].derive(typ).clear_flag(.generic)
 	}
 	return typ
 }
@@ -525,7 +522,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 	} else if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name != 'str'
 		&& node.from_embed_type == 0 {
-		g.write('/*rec*/*')
+		if !node.left_type.has_flag(.shared_f) {
+			g.write('/*rec*/*')
+		}
 	}
 	if g.is_autofree && node.free_receiver && !g.inside_lambda && !g.is_builtin_mod {
 		// The receiver expression needs to be freed, use the temp var.
@@ -542,6 +541,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				g.write('.')
 			}
 			g.write(embed_name)
+		}
+		if node.left_type.has_flag(.shared_f) && !node.receiver_type.is_ptr() {
+			g.write('->val')
 		}
 	}
 	if has_cast {
@@ -961,6 +963,13 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type table.Type) {
 				g.write('(voidptr)&/*qq*/')
 			}
 		}
+	} else if arg.typ.has_flag(.shared_f) && !expected_type.has_flag(.shared_f) {
+		if expected_type.is_ptr() {
+			g.write('&')
+		}
+		g.expr(arg.expr)
+		g.write('->val')
+		return
 	}
 	g.expr_with_cast(arg.expr, arg.typ, expected_type)
 }
