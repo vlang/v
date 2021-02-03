@@ -79,6 +79,8 @@ Para más detalles y solución de problemas, por favor visite el repositorio en 
     * [Strings (Cadenas)](#strings-cadenas)
     * [Números](#n%C3%BAmeros)
     * [Matrices (Arrays)](#matrices-arrays)
+    * [Matrices de tamaño fijo](#matrices-de-tamaño-fijo)
+    * [Mapas](#mapas)
 </td></tr>
 </table>
 
@@ -563,7 +565,7 @@ El campo `.len` devuelve la longitud de la matriz. Ten en cuenta que es un campo
 y no puede ser modificado. Los campos exportados son de sólo lectura por defecto en V.
 Ver [Modificadores de acceso](#modificadores-de-acceso).
 
-#### Operaciones de matriz
+#### Operaciones con las matrices
 
 ```v
 mut nums := [1, 2, 3]
@@ -715,4 +717,88 @@ array_1 := [3, 5, 4, 7, 6]
 mut array_2 := [0, 1]
 array_2 << array_1[..3]
 println(array_2) // [0, 1, 3, 5, 4]
+```
+
+### Matrices de tamaño fijo
+
+V también admite matrices de tamaño fijo. A diferencia de las matrices
+ordinarias, su  longitud es constante. No se pueden añadir elementos a
+ellas, ni reducirlas.
+Sólo se pueden modificar sus elementos en su lugar.
+
+Sin embargo, el acceso a los elementos de las matrices de tamaño fijo
+es más eficiente, necesitan menos memoria que las matrices ordinarias
+y, a diferencia de éstas, sus datos están en la pila, por lo que puedes
+querer utilizarlos como buffers si no quieres asignaciones adicionales
+de la pila.
+
+La mayoría de los métodos están definidos para trabajar con matrices
+ordinarias, no con matrices de tamaño fijo.
+Se puede convertir un array de tamaño fijo en un array ordinario con
+el rebanado:
+
+```v
+mut fnums := [3]int{} // fnums es una matriz de tamaño fijo con 3 elementos.
+fnums[0] = 1
+fnums[1] = 10
+fnums[2] = 100
+println(fnums) // => [1, 10, 100]
+println(typeof(fnums).name) // => [3]int
+
+anums := fnums[0..fnums.len]
+println(anums) // => [1, 10, 100]
+println(typeof(anums).name) // => []int
+```
+
+Ten en cuenta que el corte hará que los datos de la matriz de tamaño
+fijo se copien en la nueva matriz ordinaria creada.
+
+### Mapas
+
+```v
+mut m := map[string]int{} // un mapa con claves tipo `string` y valores tipo `int`.
+m['one'] = 1
+m['two'] = 2
+println(m['one']) // "1"
+println(m['bad_key']) // "0"
+println('bad_key' in m) // utiliza `in` para detectar si dicha clave existe
+m.delete('two')
+// NB: las claves del mapa pueden tener cualquier tipo, `int` en este caso,
+// y todo el mapa puede ser inicializado usando esta corta sintaxis:
+numbers := {
+	1: 'one'
+	2: 'two'
+}
+println(numbers)
+```
+
+Si no se encuentra una clave, se devuelve un valor cero por defecto:
+
+```v
+sm := {
+	'abc': 'xyz'
+}
+val := sm['bad_key']
+println(val) // ''
+intm := {
+	1: 1234
+	2: 5678
+}
+s := intm[3]
+println(s) // 0
+```
+
+También es posible utilizar un bloque `or {}` para manejar las claves que faltan:
+
+```v
+mm := map[string]int{}
+val := mm['bad_key'] or { panic('clave no encontrada') }
+```
+
+La misma comprobación opcional se aplica a las matrices:
+
+```v
+arr := [1, 2, 3]
+large_index := 999
+val := arr[large_index] or { panic('fuera de los límites') }
 ```
