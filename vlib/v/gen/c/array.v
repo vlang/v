@@ -251,8 +251,8 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 		sym := g.table.get_type_symbol(typ)
 		if !is_reverse && sym.has_method('<') && infix_expr.left.str().len == 1 {
 			g.definitions.writeln('\tif (${styp}__lt(*a, *b)) { return -1; } else { return 1; }}')
-		} else if is_reverse && sym.has_method('>') && infix_expr.left.str().len == 1 {
-			g.definitions.writeln('\tif (${styp}__gt(*a, *b)) { return -1; } else { return 1; }}')
+		} else if is_reverse && sym.has_method('<') && infix_expr.left.str().len == 1 {
+			g.definitions.writeln('\tif (!${styp}__lt(*a, *b)) { return -1; } else { return 1; }}')
 		} else {
 			field_type := g.typ(infix_expr.left_type)
 			mut left_expr_str := g.write_expr_to_string(infix_expr.left)
