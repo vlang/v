@@ -73,7 +73,7 @@ _ = footer
 		} else if line == '</script>' {
 			state = .html
 		}
-		if line.contains('@include ') && false {
+		if line.contains('@include ') {
 			lines.delete(i)
 			pos_start := line.index("'") or { continue }
 			pos_end := line[1 + pos_start..].index("'") or { continue }
