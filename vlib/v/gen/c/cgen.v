@@ -876,7 +876,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 			// Handle if expressions, set the value of the last expression to the temp var.
 			g.stmt_path_pos << g.out.len
 			g.skip_stmt_pos = true
-			g.writeln('$tmp_var = /* if expr set */')
+			g.write('$tmp_var = ')
 		}
 		g.stmt(stmt)
 		g.skip_stmt_pos = false
@@ -3407,6 +3407,13 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 }
 
 fn (mut g Gen) lock_expr(node ast.LockExpr) {
+	tmp_result := if node.is_expr { g.new_tmp_var() } else { '' }
+	mut cur_line := ''
+	if node.is_expr {
+		styp := g.typ(node.typ)
+		cur_line = g.go_before_stmt(0)
+		g.writeln('$styp $tmp_result;')
+	}
 	mut mtxs := ''
 	if node.lockeds.len == 0 {
 		// this should not happen
@@ -3449,7 +3456,7 @@ fn (mut g Gen) lock_expr(node ast.LockExpr) {
 		g.writeln('}')
 	}
 	g.writeln('/*lock*/ {')
-	g.stmts(node.stmts)
+	g.stmts_with_tmp_var(node.stmts, tmp_result)
 	g.writeln('}')
 	if node.lockeds.len == 0 {
 		// this should not happen
@@ -3468,6 +3475,11 @@ fn (mut g Gen) lock_expr(node ast.LockExpr) {
 		g.writeln('\telse')
 		g.writeln('\t\tsync__RwMutex_unlock((sync__RwMutex*)_arr_$mtxs[$mtxs]);')
 		g.write('}')
+	}
+	if node.is_expr {
+		g.writeln('')
+		g.write(cur_line)
+		g.write('$tmp_result')
 	}
 }
 

@@ -4589,8 +4589,19 @@ pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) table.Type {
 	c.stmts(node.stmts)
 	c.rlocked_names = []
 	c.locked_names = []
-	// void for now... maybe sometime `x := lock a { a.getval() }`
-	return table.void_type
+	// handle `x := rlock a { a.getval() }`
+	mut ret_type := table.void_type
+	if node.stmts.len > 0 {
+		last_stmt := node.stmts[node.stmts.len - 1]
+		if last_stmt is ast.ExprStmt {
+			ret_type = last_stmt.typ
+		}
+	}
+	if ret_type != table.void_type {
+		node.is_expr = true
+	}
+	node.typ = ret_type
+	return ret_type
 }
 
 pub fn (mut c Checker) unsafe_expr(mut node ast.UnsafeExpr) table.Type {
