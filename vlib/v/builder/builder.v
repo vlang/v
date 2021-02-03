@@ -96,7 +96,7 @@ pub fn (mut b Builder) parse_imports() {
 		ast_file := b.parsed_files[i]
 		for imp in ast_file.imports {
 			mod := imp.mod
-			fileline := '$ast_file.path:$imp.pos.line_nr'
+			fileline := '\n$ast_file.path:$imp.pos.line_nr'
 			if mod == 'builtin' {
 				verror('$fileline: cannot import module "builtin"')
 				break
