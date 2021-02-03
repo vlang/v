@@ -81,6 +81,7 @@ Para más detalles y solución de problemas, por favor visite el repositorio en 
     * [Matrices (Arrays)](#matrices-arrays)
     * [Matrices de tamaño fijo](#matrices-de-tamaño-fijo)
     * [Mapas](#mapas)
+* [Importación de módulos](#importaci%C3%B3n-de-m%C3%B3dulos)
 </td></tr>
 </table>
 
