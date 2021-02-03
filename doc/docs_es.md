@@ -96,7 +96,7 @@ fn main() {
 Guarda este fragmento de código en un archivo llamado "hello.v". Ahora ejecuta: `v run hello.v`.
 
 > Esto se hace asumiendo que ha enlazado V usando `v symlink`, como se describe
-[aquí](https://github.com/vlang/v/blob/master/README.md#symlinking).
+[aquí (en inglés)](https://github.com/vlang/v/blob/master/README.md#symlinking).
 Si aún no lo has hecho, debes escribir la ruta al ejecutable de V manualmente.
 
 ¡Felicitaciones, acaba de escribir y ejecutar su primer programa hecho en V!
@@ -822,7 +822,7 @@ fn main() {
 
 Este programa puede utilizar cualquier definición pública del módulo `os`,
 como la función `input`. Consulte la documentación de la
-[biblioteca estándar](https://modules.vlang.io/) para una lista de módulos
+[biblioteca estándar (en inglés)](https://modules.vlang.io/) para una lista de módulos
 comunes y sus símbolos públicos.
 
 Por defecto, hay que especificar el prefijo del módulo cada vez que se llama
@@ -897,5 +897,3 @@ fn main() {
 	println('Century: $my_time.century()')
 }
 ```
-
-
