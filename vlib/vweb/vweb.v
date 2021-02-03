@@ -158,6 +158,17 @@ pub fn (mut ctx Context) ok(s string) Result {
 	return Result{}
 }
 
+pub fn (mut ctx Context) server_error(ecode int) Result {
+	$if debug {
+		eprintln('> ctx.server_error ecode: $ecode')
+	}
+	if ctx.done {
+		return Result{}
+	}
+	send_string(mut ctx.conn, vweb.http_500) or { }
+	return Result{}
+}
+
 pub fn (mut ctx Context) redirect(url string) Result {
 	if ctx.done {
 		return Result{}
@@ -304,7 +315,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	page_gen_start := time.ticks()
 	first_line := reader.read_line() or {
 		$if debug {
-			eprintln('Failed first_line') // show this only in debug mode, because it always would be shown after a chromium user visits the site 
+			eprintln('Failed first_line') // show this only in debug mode, because it always would be shown after a chromium user visits the site
 		}
 		return
 	}
@@ -592,6 +603,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 				// call action method
 				if method.args.len == vars.len {
 					app.$method(vars)
+					return
 				} else {
 					eprintln('warning: uneven parameters count ($method.args.len) in `$method.name`, compared to the vweb route `$method.attrs` ($vars.len)')
 				}

@@ -126,9 +126,12 @@ pub enum Kind {
 	_end_
 }
 
-const (
+pub const (
 	assign_tokens = [Kind.assign, .plus_assign, .minus_assign, .mult_assign, .div_assign, .xor_assign,
 		.mod_assign, .or_assign, .and_assign, .right_shift_assign, .left_shift_assign]
+)
+
+const (
 	nr_tokens     = int(Kind._end_)
 )
 
@@ -160,7 +163,7 @@ pub enum AtKind {
 	vmod_file
 }
 
-const (
+pub const (
 	valid_at_tokens = ['@FN', '@MOD', '@STRUCT', '@VEXE', '@FILE', '@LINE', '@COLUMN', '@VHASH',
 		'@VMOD_FILE',
 	]
@@ -291,6 +294,9 @@ fn build_token_str() []string {
 
 const (
 	token_str = build_token_str()
+)
+
+pub const (
 	keywords  = build_keys()
 )
 

@@ -882,7 +882,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 		.gt, .lt, .ge, .le {
 			if left.kind in [.array, .array_fixed] && right.kind in [.array, .array_fixed] {
 				c.error('only `==` and `!=` are defined on arrays', infix_expr.pos)
-			} else if left.kind == .struct_ && right.kind == .struct_ {
+			} else if left.kind == .struct_ && right.kind == .struct_ && infix_expr.op in [.eq, .lt] {
 				if !(left.has_method(infix_expr.op.str()) && right.has_method(infix_expr.op.str())) {
 					left_name := c.table.type_to_str(left_type)
 					right_name := c.table.type_to_str(right_type)
@@ -892,6 +892,14 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 					} else {
 						c.error('mismatched types `$left_name` and `$right_name`', infix_expr.pos)
 					}
+				}
+			}
+			if left.kind == .struct_ && right.kind == .struct_ {
+				if !left.has_method('<') && infix_expr.op in [.ge, .le] {
+					c.error('cannot use `$infix_expr.op` as `<` operator method is not defined',
+						infix_expr.pos)
+				} else if !left.has_method('<') && infix_expr.op == .gt {
+					c.error('cannot use `>` as `<=` operator method is not defined', infix_expr.pos)
 				}
 			}
 		}
@@ -1034,6 +1042,30 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 }
 
 // returns name and position of variable that needs write lock
+fn (mut c Checker) needs_rlock(expr ast.Expr) (string, token.Position) {
+	mut to_lock := '' // name of variable that needs lock
+	mut pos := token.Position{} // and its position
+	match mut expr {
+		ast.Ident {
+			if expr.obj is ast.Var {
+				mut v := expr.obj as ast.Var
+				if v.typ.share() == .shared_t {
+					if expr.name !in c.rlocked_names && expr.name !in c.locked_names {
+						to_lock = expr.name
+						pos = expr.pos
+					}
+				}
+			}
+		}
+		else {
+			to_lock = ''
+			pos = token.Position{}
+		}
+	}
+	return to_lock, pos
+}
+
+// returns name and position of variable that needs write lock
 // also sets `is_changed` to true (TODO update the name to reflect this?)
 fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 	mut to_lock := '' // name of variable that needs lock
@@ -1057,6 +1089,15 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 				v.is_changed = true
 				if v.typ.share() == .shared_t {
 					if expr.name !in c.locked_names {
+						if c.locked_names.len > 0 || c.rlocked_names.len > 0 {
+							if expr.name in c.rlocked_names {
+								c.error('$expr.name has an `rlock` but needs a `lock`',
+									expr.pos)
+							} else {
+								c.error('$expr.name must be added to the `lock` list above',
+									expr.pos)
+							}
+						}
 						to_lock = expr.name
 						pos = expr.pos
 					}
@@ -1465,9 +1506,26 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			// println('warn $method_name lef.mod=$left_type_sym.mod c.mod=$c.mod')
 			c.error('method `${left_type_sym.name}.$method_name` is private', call_expr.pos)
 		}
+		rec_share := method.params[0].typ.share()
+		if rec_share == .shared_t && (c.locked_names.len > 0 || c.rlocked_names.len > 0) {
+			c.error('method with `shared` receiver cannot be called inside `lock`/`rlock` block',
+				call_expr.pos)
+		}
 		if method.params[0].is_mut {
-			c.fail_if_immutable(call_expr.left)
+			to_lock, pos := c.fail_if_immutable(call_expr.left)
 			// call_expr.is_mut = true
+			if to_lock != '' && rec_share != .shared_t {
+				c.error('$to_lock is `shared` and must be `lock`ed to be passed as `mut`',
+					pos)
+			}
+		} else {
+			if left_type.has_flag(.shared_f) {
+				to_lock, pos := c.needs_rlock(call_expr.left)
+				if to_lock != '' {
+					c.error('$to_lock is `shared` and must be `rlock`ed or `lock`ed to be used as non-mut receiver',
+						pos)
+				}
+			}
 		}
 		if (!left_type_sym.is_builtin() && method.mod != 'builtin') && method.language == .v
 			&& method.no_body {
@@ -1535,20 +1593,37 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			} else {
 				method.params[i + 1]
 			}
+			param_share := param.typ.share()
+			if param_share == .shared_t && (c.locked_names.len > 0 || c.rlocked_names.len > 0) {
+				c.error('method with `shared` arguments cannot be called inside `lock`/`rlock` block',
+					call_expr.pos)
+			}
 			if arg.is_mut {
-				c.fail_if_immutable(arg.expr)
+				to_lock, pos := c.fail_if_immutable(arg.expr)
 				if !param.is_mut {
 					tok := arg.share.str()
 					c.error('`$call_expr.name` parameter `$param.name` is not `$tok`, `$tok` is not needed`',
 						arg.expr.position())
-				} else if param.typ.share() != arg.share {
-					c.error('wrong shared type', arg.expr.position())
+				} else {
+					if param.typ.share() != arg.share {
+						c.error('wrong shared type', arg.expr.position())
+					}
+					if to_lock != '' && param_share != .shared_t {
+						c.error('$to_lock is `shared` and must be `lock`ed to be passed as `mut`',
+							pos)
+					}
 				}
 			} else {
-				if param.is_mut && (!arg.is_mut || param.typ.share() != arg.share) {
+				if param.is_mut {
 					tok := arg.share.str()
-					c.warn('`$call_expr.name` parameter `$param.name` is `$tok`, you need to provide `$tok` e.g. `$tok arg${
+					c.error('`$call_expr.name` parameter `$param.name` is `$tok`, you need to provide `$tok` e.g. `$tok arg${
 						i + 1}`', arg.expr.position())
+				} else {
+					to_lock, pos := c.needs_rlock(arg.expr)
+					if to_lock != '' {
+						c.error('$to_lock is `shared` and must be `rlock`ed or `locked` to be passed as non-mut argument',
+							pos)
+					}
 				}
 			}
 		}
@@ -1874,20 +1949,37 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			c.error('when forwarding a varg variable, it must be the final argument',
 				call_expr.pos)
 		}
+		arg_share := arg.typ.share()
+		if arg_share == .shared_t && (c.locked_names.len > 0 || c.rlocked_names.len > 0) {
+			c.error('function with `shared` arguments cannot be called inside `lock`/`rlock` block',
+				call_expr.pos)
+		}
 		if call_arg.is_mut {
-			c.fail_if_immutable(call_arg.expr)
+			to_lock, pos := c.fail_if_immutable(call_arg.expr)
 			if !arg.is_mut {
 				tok := call_arg.share.str()
 				c.error('`$call_expr.name` parameter `$arg.name` is not `$tok`, `$tok` is not needed`',
 					call_arg.expr.position())
-			} else if arg.typ.share() != call_arg.share {
-				c.error('wrong shared type', call_arg.expr.position())
+			} else {
+				if arg.typ.share() != call_arg.share {
+					c.error('wrong shared type', call_arg.expr.position())
+				}
+				if to_lock != '' && !arg.typ.has_flag(.shared_f) {
+					c.error('$to_lock is `shared` and must be `lock`ed to be passed as `mut`',
+						pos)
+				}
 			}
 		} else {
-			if arg.is_mut && (!call_arg.is_mut || arg.typ.share() != call_arg.share) {
+			if arg.is_mut {
 				tok := call_arg.share.str()
-				c.warn('`$call_expr.name` parameter `$arg.name` is `$tok`, you need to provide `$tok` e.g. `$tok arg${
+				c.error('`$call_expr.name` parameter `$arg.name` is `$tok`, you need to provide `$tok` e.g. `$tok arg${
 					i + 1}`', call_arg.expr.position())
+			} else {
+				to_lock, pos := c.needs_rlock(call_arg.expr)
+				if to_lock != '' {
+					c.error('$to_lock is `shared` and must be `rlock`ed or `lock`ed to be passed as non-mut argument',
+						pos)
+				}
 			}
 		}
 		// Handle expected interface
@@ -2545,6 +2637,8 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 							}
 							left_type = left_type.set_nr_muls(1)
 						}
+					} else if left_type.has_flag(.shared_f) {
+						left_type = left_type.clear_flag(.shared_f)
 					}
 					if ident_var_info.share == .atomic_t {
 						left_type = left_type.set_flag(.atomic_f)
@@ -3179,6 +3273,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		}
 		ast.GotoLabel {}
 		ast.GotoStmt {
+			if node.name !in c.cur_fn.label_names {
+				c.error('unknown label `$node.name`', node.pos)
+			}
 			// TODO: check label doesn't bypass variable declarations
 		}
 		ast.HashStmt {
@@ -3962,6 +4059,9 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 		if obj := c.file.global_scope.find(name) {
 			match mut obj {
 				ast.ConstField {
+					if !(obj.is_pub || obj.mod == c.mod || c.pref.is_test) {
+						c.error('constant `$obj.name` is private', ident.pos)
+					}
 					mut typ := obj.typ
 					if typ == 0 {
 						c.inside_const = true
@@ -4462,6 +4562,9 @@ pub fn (mut c Checker) select_expr(mut node ast.SelectExpr) table.Type {
 }
 
 pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) table.Type {
+	if c.rlocked_names.len > 0 || c.locked_names.len > 0 {
+		c.error('nested `lock`/`rlock` not allowed', node.pos)
+	}
 	for i in 0 .. node.lockeds.len {
 		c.ident(mut node.lockeds[i])
 		id := node.lockeds[i]
@@ -4477,18 +4580,15 @@ pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) table.Type {
 		} else if id.name in c.rlocked_names {
 			c.error('`$id.name` is already read-locked', id.pos)
 		}
-		if node.is_rlock {
+		if node.is_rlock[i] {
 			c.rlocked_names << id.name
 		} else {
 			c.locked_names << id.name
 		}
 	}
 	c.stmts(node.stmts)
-	if node.is_rlock {
-		c.rlocked_names = c.rlocked_names[..c.rlocked_names.len - node.lockeds.len]
-	} else {
-		c.locked_names = c.locked_names[..c.locked_names.len - node.lockeds.len]
-	}
+	c.rlocked_names = []
+	c.locked_names = []
 	// void for now... maybe sometime `x := lock a { a.getval() }`
 	return table.void_type
 }
@@ -5184,7 +5284,6 @@ pub fn (mut c Checker) offset_of(node ast.OffsetOf) table.Type {
 		c.error('first argument of __offsetof must be struct', node.pos)
 		return table.u32_type
 	}
-
 	if !c.table.struct_has_field(node.struct_type, node.field) {
 		c.error('struct `$sym.name` has no field called `$node.field`', node.pos)
 	}
@@ -5443,7 +5542,6 @@ fn (mut c Checker) fetch_and_verify_orm_fields(info table.Struct, pos token.Posi
 fn (mut c Checker) post_process_generic_fns() {
 	// Loop thru each generic function concrete type.
 	// Check each specific fn instantiation.
-
 	for i in 0 .. c.file.generic_fns.len {
 		if c.table.fn_gen_types.len == 0 {
 			// no concrete types, so just skip:
@@ -5528,8 +5626,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			c.error('.str() methods should have 0 arguments', node.pos)
 		}
 	}
-	if node.language == .v && node.is_method
-		&& node.name in ['+', '-', '*', '%', '/', '<', '>', '==', '!=', '>=', '<='] {
+	if node.language == .v && node.is_method && node.name in ['+', '-', '*', '%', '/', '<', '=='] {
 		if node.params.len != 2 {
 			c.error('operator methods should have exactly 1 argument', node.pos)
 		} else {
@@ -5547,8 +5644,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				} else if node.receiver.typ != node.params[1].typ {
 					c.error('expected `$receiver_sym.name` not `$param_sym.name` - both operands must be the same type for operator overloading',
 						node.params[1].type_pos)
-				} else if node.name in ['<', '>', '==', '!=', '>=', '<=']
-					&& node.return_type != table.bool_type {
+				} else if node.name in ['<', '=='] && node.return_type != table.bool_type {
 					c.error('operator comparison methods should return `bool`', node.pos)
 				} else if parent_sym.is_primitive() {
 					c.error('cannot define operator methods on type alias for `$parent_sym.name`',
@@ -5594,13 +5690,12 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	}
 	c.fn_scope = node.scope
 	c.stmts(node.stmts)
-
 	if c.fn_mut_arg_names.len > 0 {
 		c.fn_mut_arg_names.clear()
 	}
-	returns := c.returns || has_top_return(node.stmts)
-	if node.language == .v && !node.no_body && node.return_type != table.void_type && !returns
-		&& node.name !in ['panic', 'exit'] {
+	node.has_return = c.returns || has_top_return(node.stmts)
+	if node.language == .v && !node.no_body && node.return_type != table.void_type
+		&& !node.has_return&& node.name !in ['panic', 'exit'] {
 		if c.inside_anon_fn {
 			c.error('missing return at the end of an anonymous function', node.pos)
 		} else {

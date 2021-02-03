@@ -125,6 +125,7 @@ pub fn (mut sem Semaphore) wait() {
 	}
 	C.AcquireSRWLockExclusive(&sem.mtx)
 	c = C.atomic_load_u32(&sem.count)
+outer:
 	for {
 		if c == 0 {
 			C.SleepConditionVariableSRW(&sem.cond, &sem.mtx, C.INFINITE, 0)
@@ -135,11 +136,10 @@ pub fn (mut sem Semaphore) wait() {
 				if c > 1 {
 					C.WakeConditionVariable(&sem.cond)
 				}
-				goto unlock
+				break outer
 			}
 		}
 	}
-unlock:
 	C.ReleaseSRWLockExclusive(&sem.mtx)
 }
 
@@ -160,11 +160,12 @@ pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
 	t_ms := u32(timeout / time.millisecond)
 	mut res := 0
 	c = C.atomic_load_u32(&sem.count)
+outer:
 	for {
 		if c == 0 {
 			res = C.SleepConditionVariableSRW(&sem.cond, &sem.mtx, t_ms, 0)
 			if res == 0 {
-				goto unlock
+				break outer
 			}
 			c = C.atomic_load_u32(&sem.count)
 		}
@@ -173,11 +174,10 @@ pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
 				if c > 1 {
 					C.WakeConditionVariable(&sem.cond)
 				}
-				goto unlock
+				break outer
 			}
 		}
 	}
-unlock:
 	C.ReleaseSRWLockExclusive(&sem.mtx)
 	return res != 0
 }
