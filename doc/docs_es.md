@@ -76,6 +76,7 @@ Para más detalles y solución de problemas, por favor visite el repositorio en 
     * [Errores de declaración](#errores-de-declaraci%C3%B3n)
 * [Tipos](#tipos)
     * [Tipos primitivos](#tipos-primitivos)
+    * [Strings (Cadenas)](#strings-cadenas)
 </td></tr>
 </table>
 
