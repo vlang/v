@@ -427,7 +427,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		is_builtin: p.builtin_mod || p.mod in util.builtin_module_parts
 		attrs: p.attrs
 		scope: p.scope
+		label_names: p.label_names
 	}
+	p.label_names = []
 	p.close_scope()
 	return fn_decl
 }
@@ -514,8 +516,13 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 		p.error_with_pos('unexpected `$p.tok.kind` after anonymous function signature, expecting `{`',
 			p.tok.position())
 	}
+	mut label_names := []string{}
 	if p.tok.kind == .lcbr {
+		tmp := p.label_names
+		p.label_names = []
 		stmts = p.parse_block_no_scope(false)
+		label_names = p.label_names
+		p.label_names = tmp
 	}
 	p.close_scope()
 	mut func := table.Fn{
@@ -542,6 +549,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 			pos: pos.extend(p.prev_tok.position())
 			file: p.file_name
 			scope: p.scope
+			label_names: label_names
 		}
 		typ: typ
 	}

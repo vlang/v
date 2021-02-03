@@ -69,6 +69,7 @@ mut:
 	warnings          []errors.Warning
 	vet_errors        []vet.Error
 	cur_fn_name       string
+	label_names       []string
 	in_generic_params bool // indicates if parsing between `<` and `>` of a method/function
 	name_error        bool // indicates if the token is not a name or the name is on another line
 }
@@ -552,6 +553,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 						file: p.file_name
 						return_type: table.void_type
 						scope: p.scope
+						label_names: p.label_names
 					}
 				} else if p.pref.is_fmt {
 					return p.stmt(false)
@@ -656,6 +658,10 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				// `label:`
 				spos := p.tok.position()
 				name := p.check_name()
+				if name in p.label_names {
+					p.error_with_pos('duplicate label `$name`', spos)
+				}
+				p.label_names << name
 				p.next()
 				if p.tok.kind == .key_for {
 					mut stmt := p.stmt(is_top_level)
