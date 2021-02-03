@@ -5732,6 +5732,10 @@ fn (mut g Gen) type_default(typ_ table.Type) string {
 		'rune' { return '0' }
 		else {}
 	}
+	if sym.kind == .chan {
+		elemtypstr := g.typ(sym.chan_info().elem_type)
+		return 'sync__new_channel_st(0, sizeof($elemtypstr))'
+	}
 	return match sym.kind {
 		.interface_, .sum_type, .array_fixed, .multi_return { '{0}' }
 		.alias { g.type_default((sym.info as table.Alias).parent_type) }
