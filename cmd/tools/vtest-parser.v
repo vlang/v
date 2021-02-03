@@ -97,7 +97,7 @@ fn main() {
 
 fn process_cli_args() &Context {
 	mut context := &Context{
-		pref: 0
+		pref: pref.new_preferences()
 	}
 	context.myself = os.executable()
 	mut fp := flag.new_flag_parser(os.args_after('test-parser'))

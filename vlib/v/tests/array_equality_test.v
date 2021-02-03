@@ -74,3 +74,17 @@ fn test_nested_array_equality() {
 	assert a9 == [[[u16(22), 11]]]
 	assert a9 != [[[u16(20), 10]]]
 }
+
+type Literal = string
+type Literals = []Literal
+
+fn (l1 Literal) concat(l2 Literal) Literals {
+	return Literals([l1, l2])
+}
+
+fn test_array_of_alias_equality() {
+	mut literals := Literals([]Literal{})
+	literals = Literal('hello').concat(Literal('World'))
+	println(literals)
+	assert literals == Literals([Literal('hello'), Literal('World')])
+}

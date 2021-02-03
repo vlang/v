@@ -221,8 +221,7 @@ pub fn (mut zftp FTP) dir() ?[]string {
 	sdir := list_dir.bytestr()
 	for lfile in sdir.split('\n') {
 		if lfile.len > 1 {
-			spl := lfile.split(' ')
-			dir << spl[spl.len - 1].trim_space()
+			dir << lfile.after(' ').trim_space()
 		}
 	}
 	return dir
