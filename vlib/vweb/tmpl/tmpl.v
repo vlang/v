@@ -74,20 +74,18 @@ _ = footer
 			state = .html
 		}
 		if line.contains('@include ') && false {
-			// TODO
-			pos := line.index('@include ') or { continue }
-			file_name := line[pos + 9..]
+			lines.delete(i)
+			pos_start := line.index("'") or { continue }
+			pos_end := line[1 + pos_start..].index("'") or { continue }
+			file_name := line[pos_start + 1 ..pos_start + pos_end + 1]
 			file_path := os.join_path('templates', '${file_name}.html')
-			mut file_content := os.read_file(file_path) or {
-				panic('reading file $file_name failed')
+			file_content := os.read_file(file_path) or {
+				panic('reading file $file_name failed') }
+			file_splitted := file_content.split_into_lines().reverse()
+			for f in file_splitted {
+				lines.insert(i, file_splitted[k])
 			}
-			file_content = file_content.replace("'", '"')
-			lines2 := file_content.split_into_lines()
-			for l in lines2 {
-				lines.insert(i + 1, l)
-			}
-			continue
-			// s.writeln(file_content)
+			i--
 		} else if line.contains('@js ') {
 			pos := line.index('@js') or { continue }
 			s.write('<script src="')
