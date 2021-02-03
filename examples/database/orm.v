@@ -33,9 +33,12 @@ fn main() {
 	sql db {
 		insert mod into Module
 	}
+	
 	modul := sql db {
-		select from Module
+		select from Module limit 1
 	}
 
-	eprintln(modul)
+	println(modul.name)
+	println(modul.creator.name)
+	
 }
