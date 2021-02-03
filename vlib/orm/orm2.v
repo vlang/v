@@ -37,4 +37,6 @@ fn main() {
 	modul := sql db {
 		select from Module
 	}
+
+	eprintln(modul)
 }

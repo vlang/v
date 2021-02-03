@@ -106,7 +106,7 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 	g.writeln('\tsqlite3_finalize($g.sql_stmt_name);')
 }
 
-fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
+fn (mut g Gen) sql_select_expr(node ast.SqlExpr, sub bool, line string) {
 	g.sql_i = 0
 	/*
 	`nr_users := sql db { ... }` =>
@@ -117,8 +117,11 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 		...
 		int nr_users = get_int(stmt)
 	```
-	*/
-	cur_line := g.go_before_stmt(0)
+	*/	
+	mut cur_line := line
+	if !sub {
+		cur_line = g.go_before_stmt(0)
+	}
 	mut sql_query := 'SELECT '
 	table_name := util.strip_mod_name(g.table.get_type_symbol(node.table_expr.typ).name)
 	if node.is_count {
@@ -253,13 +256,11 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 				where_expr.right = ident
 				expr.where_expr = where_expr
 
-
-
 				tmp_sql_i := g.sql_i
 				tmp_sql_stmt_name := g.sql_stmt_name
 				tmp_sql_buf := g.sql_buf
 
-				g.sql_select_expr(expr)
+				g.sql_select_expr(expr, true, '\t${tmp}.$field.name =')
 				g.writeln('//parse struct end')
 				
 				g.sql_stmt_name = tmp_sql_stmt_name

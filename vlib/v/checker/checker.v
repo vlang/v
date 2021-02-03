@@ -5386,6 +5386,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) table.Type {
 			pos: node.pos
 			has_where: true
 			typ: f.typ
+			db_expr: node.db_expr
 			table_expr: ast.Type{
 				pos: node.table_expr.pos
 				typ: f.typ
