@@ -16,7 +16,7 @@ El lenguaje promueve la escritura de código simple y claro con mínima abstracc
 A pesar de ser simple, V le da mucho poder al desarrollador.
 Todo lo que puedas hacer en otros lenguajes, lo puedes hacer en V.
 
-## Install from source
+## Instalación desde el código fuente
 
 La forma principal de obtener la versión de V más reciente y mejorada es
 __instalarlo desde la fuente__.
@@ -67,13 +67,13 @@ Para más detalles y solución de problemas, por favor visite el repositorio en 
 * [Hola Mundo](#hola-mundo)
 * [Comentarios](#comentarios)
 * [Funciones](#funciones)
-    * [Retornando múltiples valores](#retornando-multiples-valores)
-    * [Numéro variable de argumentos](#numero-variable-de-argumentos)
-* [Visibilidad de un símbolo](#visibilidad-de-un-simbolo)
+    * [Retornando múltiples valores](#retornando-m%C3%BAltiples-valores)
+    * [Numéro variable de argumentos](#n%C3%BAmero-variable-de-argumentos)
+* [Visibilidad de un símbolo](#visibilidad-de-un-s%C3%ADmbolo)
 * [Variables](#variables)
     * [Variables mutables](#variables-mutables)
-    * [Inicialización vs asignamiento](#inicializacion-vs-asignamiento)
-    * [Errores de declaración](#errores-de-declaracion)
+    * [Inicialización vs asignamiento](#inicializaci%C3%B3n-vs-asignamiento)
+    * [Errores de declaración](#errores-de-declaraci%C3%B3n)
 * [Tipos](#tipos)
     * [Tipos primitivos](#tipos-primitivos)
 </td></tr>
