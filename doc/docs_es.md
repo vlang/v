@@ -458,7 +458,7 @@ name := 'Bob'
 bobby := name + 'by' // + es usado para concatenar cadenas
 println(bobby) // "Bobby"
 mut s := 'hello '
-s += 'world' // `+=` se utiliza para añadir a una cadena a la actual
+s += 'world' // `+=` se utiliza para añadir una cadena a otra
 println(s) // "hello world"
 ```
 
