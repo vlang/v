@@ -382,7 +382,6 @@ pub fn replace_op(s string) string {
 	} else {
 		suffix := match s {
 			'==' { '_eq' }
-			'<=' { '_le' }
 			else { '' }
 		}
 		return s[..s.len - 2] + suffix

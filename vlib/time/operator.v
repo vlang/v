@@ -18,12 +18,6 @@ pub fn (t1 Time) < (t2 Time) bool {
 	return false
 }
 
-// operator `<=` returns true if provided time is less or equal to time
-[inline]
-pub fn (t1 Time) <= (t2 Time) bool {
-	return t1 < t2 || t1 == t2
-}
-
 // Time subtract using operator overloading.
 [inline]
 pub fn (lhs Time) - (rhs Time) Duration {

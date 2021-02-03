@@ -882,8 +882,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 		.gt, .lt, .ge, .le {
 			if left.kind in [.array, .array_fixed] && right.kind in [.array, .array_fixed] {
 				c.error('only `==` and `!=` are defined on arrays', infix_expr.pos)
-			} else if left.kind == .struct_ && right.kind == .struct_
-				&& infix_expr.op in [.eq, .le, .lt] {
+			} else if left.kind == .struct_ && right.kind == .struct_ && infix_expr.op in [.eq, .lt] {
 				if !(left.has_method(infix_expr.op.str()) && right.has_method(infix_expr.op.str())) {
 					left_name := c.table.type_to_str(left_type)
 					right_name := c.table.type_to_str(right_type)
@@ -896,9 +895,10 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 				}
 			}
 			if left.kind == .struct_ && right.kind == .struct_ {
-				if !left.has_method('<') && infix_expr.op == .ge {
-					c.error('cannot use `=>` as `<` operator method is not defined', infix_expr.pos)
-				} else if !left.has_method('<=') && infix_expr.op == .gt {
+				if !left.has_method('<') && infix_expr.op in [.ge, .le] {
+					c.error('cannot use `$infix_expr.op` as `<` operator method is not defined',
+						infix_expr.pos)
+				} else if !left.has_method('<') && infix_expr.op == .gt {
 					c.error('cannot use `>` as `<=` operator method is not defined', infix_expr.pos)
 				}
 			}
@@ -5614,8 +5614,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			c.error('.str() methods should have 0 arguments', node.pos)
 		}
 	}
-	if node.language == .v && node.is_method
-		&& node.name in ['+', '-', '*', '%', '/', '<', '==', '<='] {
+	if node.language == .v && node.is_method && node.name in ['+', '-', '*', '%', '/', '<', '=='] {
 		if node.params.len != 2 {
 			c.error('operator methods should have exactly 1 argument', node.pos)
 		} else {
@@ -5633,7 +5632,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				} else if node.receiver.typ != node.params[1].typ {
 					c.error('expected `$receiver_sym.name` not `$param_sym.name` - both operands must be the same type for operator overloading',
 						node.params[1].type_pos)
-				} else if node.name in ['<', '==', '<='] && node.return_type != table.bool_type {
+				} else if node.name in ['<', '=='] && node.return_type != table.bool_type {
 					c.error('operator comparison methods should return `bool`', node.pos)
 				} else if parent_sym.is_primitive() {
 					c.error('cannot define operator methods on type alias for `$parent_sym.name`',
