@@ -117,7 +117,7 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr, sub bool, line string) {
 		...
 		int nr_users = get_int(stmt)
 	```
-	*/	
+	*/
 	mut cur_line := line
 	if !sub {
 		cur_line = g.go_before_stmt(0)
@@ -262,7 +262,7 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr, sub bool, line string) {
 
 				g.sql_select_expr(expr, true, '\t${tmp}.$field.name =')
 				g.writeln('//parse struct end')
-				
+
 				g.sql_stmt_name = tmp_sql_stmt_name
 				g.sql_buf = tmp_sql_buf
 				g.sql_i = tmp_sql_i

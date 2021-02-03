@@ -5396,7 +5396,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) table.Type {
 		n.where_expr = ast.InfixExpr{
 			op: .eq
 			pos: n.pos
-			left: ast.Ident {
+			left: ast.Ident{
 				language: .v
 				tok_kind: .eq
 				scope: c.fn_scope
