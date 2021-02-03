@@ -192,7 +192,7 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 		g.fn_mut_arg_names.clear()
 	}
 
-	if node.return_type == table.void_type {
+	if !node.has_return {
 		g.write_defer_stmts_when_needed()
 	}
 	if node.is_anon {
