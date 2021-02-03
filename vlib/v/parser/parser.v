@@ -658,6 +658,9 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				// `label:`
 				spos := p.tok.position()
 				name := p.check_name()
+				if name in p.label_names {
+					p.error_with_pos('duplicate label `$name`', spos)
+				}
 				p.label_names << name
 				p.next()
 				if p.tok.kind == .key_for {
