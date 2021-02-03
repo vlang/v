@@ -3420,13 +3420,24 @@ fn (mut g Gen) lock_expr(node ast.LockExpr) {
 		mtxs = g.new_tmp_var()
 		g.writeln('uintptr_t _arr_$mtxs[$node.lockeds.len];')
 		g.writeln('bool _isrlck_$mtxs[$node.lockeds.len];')
+		mut j := 0
 		for i, id in node.lockeds {
-			name := id.name
-			deref := if id.is_mut { '->' } else { '.' }
-			g.writeln('_arr_$mtxs[$i] = &$name${deref}mtx;')
-			// TODO: fix `vfmt` to allow this in string interpolation
-			is_rlock_str := node.is_rlock[i].str()
-			g.writeln('_isrlck_$mtxs[$i] = $is_rlock_str;')
+			if !node.is_rlock[i] {
+				name := id.name
+				deref := if id.is_mut { '->' } else { '.' }
+				g.writeln('_arr_$mtxs[$j] = &$name${deref}mtx;')
+				g.writeln('_isrlck_$mtxs[$j] = false;')
+				j++
+			}
+		}
+		for i, id in node.lockeds {
+			if node.is_rlock[i] {
+				name := id.name
+				deref := if id.is_mut { '->' } else { '.' }
+				g.writeln('_arr_$mtxs[$j] = &$name${deref}mtx;')
+				g.writeln('_isrlck_$mtxs[$j] = true;')
+				j++
+			}
 		}
 		g.writeln('__sort_ptr(_arr_$mtxs, _isrlck_$mtxs, $node.lockeds.len);')
 		g.writeln('for (int $mtxs=0; $mtxs<$node.lockeds.len; $mtxs++) {')
