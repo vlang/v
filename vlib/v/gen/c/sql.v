@@ -1,6 +1,6 @@
 // Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
-module gen
+module c
 
 import v.ast
 import strings
@@ -22,10 +22,10 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 	g.writeln('\n\t// sql insert')
 	db_name := g.new_tmp_var()
 	g.sql_stmt_name = g.new_tmp_var()
-	g.write('${gen.dbtype}__DB $db_name = ')
+	g.write('${c.dbtype}__DB $db_name = ')
 	g.expr(node.db_expr)
 	g.writeln(';')
-	g.write('sqlite3_stmt* $g.sql_stmt_name = ${gen.dbtype}__DB_init_stmt($db_name, _SLIT("')
+	g.write('sqlite3_stmt* $g.sql_stmt_name = ${c.dbtype}__DB_init_stmt($db_name, _SLIT("')
 	table_name := util.strip_mod_name(g.table.get_type_symbol(node.table_expr.typ).name)
 	if node.kind == .insert {
 		g.write('INSERT INTO `$table_name` (')
@@ -145,11 +145,11 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr, sub bool, line string) {
 	db_name := g.new_tmp_var()
 	g.writeln('\n\t// sql select')
 	// g.write('${dbtype}__DB $db_name = *(${dbtype}__DB*)${node.db_var_name}.data;')
-	g.write('${gen.dbtype}__DB $db_name = ') // $node.db_var_name;')
+	g.write('${c.dbtype}__DB $db_name = ') // $node.db_var_name;')
 	g.expr(node.db_expr)
 	g.writeln(';')
 	// g.write('sqlite3_stmt* $g.sql_stmt_name = ${dbtype}__DB_init_stmt(*(${dbtype}__DB*)${node.db_var_name}.data, _SLIT("$sql_query')
-	g.write('sqlite3_stmt* $g.sql_stmt_name = ${gen.dbtype}__DB_init_stmt($db_name, _SLIT("')
+	g.write('sqlite3_stmt* $g.sql_stmt_name = ${c.dbtype}__DB_init_stmt($db_name, _SLIT("')
 	g.write(sql_query)
 	if node.has_where && node.where_expr is ast.InfixExpr {
 		g.expr_to_sql(node.where_expr)
@@ -184,7 +184,7 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr, sub bool, line string) {
 	g.writeln('if ($binding_res != SQLITE_OK) { puts(sqlite3_errmsg(${db_name}.conn)); }')
 	//
 	if node.is_count {
-		g.writeln('$cur_line ${gen.dbtype}__get_int_from_stmt($g.sql_stmt_name);')
+		g.writeln('$cur_line ${c.dbtype}__get_int_from_stmt($g.sql_stmt_name);')
 	} else {
 		// `user := sql db { select from User where id = 1 }`
 		tmp := g.new_tmp_var()

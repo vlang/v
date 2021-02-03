@@ -10,8 +10,8 @@ pub const (
 	default_module_path = os.vmodules_dir()
 )
 
-pub fn new_preferences() Preferences {
-	mut p := Preferences{}
+pub fn new_preferences() &Preferences {
+	mut p := &Preferences{}
 	p.fill_with_defaults()
 	return p
 }

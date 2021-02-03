@@ -264,6 +264,7 @@ pub:
 	pos      token.Position
 	is_short bool
 pub mut:
+	unresolved           bool
 	pre_comments         []Comment
 	typ                  table.Type
 	update_expr          Expr

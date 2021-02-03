@@ -5,7 +5,7 @@ module time
 
 #include <time.h>
 
-const (
+pub const (
 	days_string        = 'MonTueWedThuFriSatSun'
 	month_days         = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 	months_string      = 'JanFebMarAprMayJunJulAugSepOctNovDec'

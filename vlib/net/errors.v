@@ -1,8 +1,11 @@
 module net
 
-// Well defined errors that are returned from socket functions
 const (
 	errors_base = 0
+)
+
+// Well defined errors that are returned from socket functions
+pub const (
 	err_new_socket_failed = error_with_code('net: new_socket failed to create socket', errors_base+1)
 	err_option_not_settable = error_with_code('net: set_option_xxx option not settable', errors_base+2)
 	err_option_wrong_type = error_with_code('net: set_option_xxx option wrong type', errors_base+3)
