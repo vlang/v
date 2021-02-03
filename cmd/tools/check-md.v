@@ -17,12 +17,6 @@ const (
 	non_option_args      = cmdline.only_non_options(os.args[1..])
 )
 
-fn wprintln(s string) {
-	if !hide_warnings {
-		println(s)
-	}
-}
-
 fn main() {
 	if os.args.len == 1 {
 		println('check-md is a tool to check the passed markdown files for correct ```v ``` code blocks
@@ -46,7 +40,7 @@ These are:
 ')
 		exit(0)
 	}
-	files_paths := if is_all { md_file_paths('.') } else { non_option_args }
+	mut files_paths := if is_all { md_file_paths('.') } else { non_option_args }
 	mut warnings := 0
 	mut errors := 0
 	mut oks := 0
@@ -54,7 +48,12 @@ These are:
 	if term_colors {
 		os.setenv('VCOLORS', 'always', true)
 	}
-	for file_path in files_paths {
+	for i := 0; i < files_paths.len; i++ {
+		file_path := files_paths[i]
+		if os.is_dir(file_path) {
+			files_paths << md_file_paths(file_path)
+			continue
+		}
 		real_path := os.real_path(file_path)
 		lines := os.read_lines(real_path) or {
 			println('"$file_path" does not exist')
@@ -64,31 +63,31 @@ These are:
 		mut mdfile := MDFile{
 			path: file_path
 		}
-		for i, line in lines {
+		for j, line in lines {
 			if line.len > too_long_line_length {
 				if mdfile.state == .vexample {
-					wprintln(wline(file_path, i, line.len, 'long V example line'))
+					wprintln(wline(file_path, j, line.len, 'long V example line'))
 					wprintln(line)
 					warnings++
 				} else if mdfile.state == .codeblock {
-					wprintln(wline(file_path, i, line.len, 'long code block line'))
+					wprintln(wline(file_path, j, line.len, 'long code block line'))
 					wprintln(line)
 					warnings++
 				} else if line.starts_with('|') {
-					wprintln(wline(file_path, i, line.len, 'long table'))
+					wprintln(wline(file_path, j, line.len, 'long table'))
 					wprintln(line)
 					warnings++
 				} else if line.contains('https') {
-					wprintln(wline(file_path, i, line.len, 'long link'))
+					wprintln(wline(file_path, j, line.len, 'long link'))
 					wprintln(line)
 					warnings++
 				} else {
-					eprintln(eline(file_path, i, line.len, 'line too long'))
+					eprintln(eline(file_path, j, line.len, 'line too long'))
 					eprintln(line)
 					errors++
 				}
 			}
-			mdfile.parse_line(i, line)
+			mdfile.parse_line(j, line)
 		}
 		all_md_files << mdfile
 	}
@@ -97,7 +96,6 @@ These are:
 		errors += new_errors
 		oks += new_oks
 	}
-	// println('all_md_files: $all_md_files')
 	if warnings > 0 || errors > 0 || oks > 0 {
 		println('\nWarnings: $warnings | Errors: $errors | OKs: $oks')
 	}
@@ -116,6 +114,12 @@ fn md_file_paths(dir string) []string {
 		files_to_check << file
 	}
 	return files_to_check
+}
+
+fn wprintln(s string) {
+	if !hide_warnings {
+		println(s)
+	}
 }
 
 fn ftext(s string, cb fn (string) string) string {
