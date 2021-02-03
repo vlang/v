@@ -106,7 +106,7 @@ pub fn (mut b Builder) parse_imports() {
 			import_path := b.find_module_path(mod, ast_file.path) or {
 				// v.parsers[i].error_with_token_index('cannot import module "$mod" (not found)', v.parsers[i].import_table.get_import_tok_idx(mod))
 				// break
-				verror('cannot import module "$mod" (not found)')
+				verror('cannot find module "$mod" in $ast_file.path:$imp.pos.line_nr')
 				break
 			}
 			v_files := b.v_files_from_dir(import_path)
