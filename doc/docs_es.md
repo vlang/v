@@ -507,11 +507,11 @@ A todos ellos se les asignará el mismo valor, 123. Todos ellos tendrán el tipo
 V también permite escribir números usando `_` (underscore, guión bajo) como separador:
 
 ```v
-num := 1_000_000 // same as 1000000
-three := 0b0_11 // same as 0b11
-float_num := 3_122.55 // same as 3122.55
-hexa := 0xF_F // same as 255
-oct := 0o17_3 // same as 0o173
+num := 1_000_000 // igual que escribir: 1000000
+three := 0b0_11 // igual que escribir: 0b11
+float_num := 3_122.55 // igual que escribir: 3122.55
+hexa := 0xF_F // igual que escribir: 255
+oct := 0o17_3 // igual que escribir: 0o173
 ```
 
 Si quieres un tipo de entero diferente, puedes usar el casting:
