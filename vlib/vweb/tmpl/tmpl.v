@@ -38,7 +38,7 @@ pub fn compile_template(html_ string, fn_name string) string {
 	}
 	if os.exists('templates/footer.html') && html.contains('@footer') {
 		f := os.read_file('templates/footer.html') or {
-			panic('reading file templates/footer.html failed')
+			panic('reading file templates/footer.html has failed')
 		}
 		footer = f.trim_space().replace("'", '"')
 		html += footer
@@ -73,12 +73,18 @@ _ = footer
 		} else if line == '</script>' {
 			state = .html
 		}
-		if line.contains('@include ') {
+		if line.contains('@include ') && false {
 			lines.delete(i)
-			file_name := line.split("'")[1]
+
+
+			pos_start := line.index("'") or { continue }
+			pos_end := line[1 + pos_start..].index("'") or { continue }
+			file_name := line[pos_start + 1 ..pos_start + pos_end + 1]
+
+
 			file_path := os.join_path('templates', '${file_name}.html')
 			file_content := os.read_file(file_path) or {
-				panic('Vweb: Reading file $file_name failed.')
+				panic('reading file $file_name failed')
 			}
 			file_splitted := file_content.split_into_lines().reverse()
 			for f in file_splitted {
