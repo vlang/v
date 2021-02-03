@@ -3448,7 +3448,9 @@ fn (mut g Gen) lock_expr(node ast.LockExpr) {
 		g.writeln('\t\tsync__RwMutex_lock((sync__RwMutex*)_arr_$mtxs[$mtxs]);')
 		g.writeln('}')
 	}
+	g.writeln('/*lock*/ {')
 	g.stmts(node.stmts)
+	g.writeln('}')
 	if node.lockeds.len == 0 {
 		// this should not happen
 	} else if node.lockeds.len == 1 {
@@ -3465,7 +3467,7 @@ fn (mut g Gen) lock_expr(node ast.LockExpr) {
 		g.writeln('\t\tsync__RwMutex_runlock((sync__RwMutex*)_arr_$mtxs[$mtxs]);')
 		g.writeln('\telse')
 		g.writeln('\t\tsync__RwMutex_unlock((sync__RwMutex*)_arr_$mtxs[$mtxs]);')
-		g.writeln('}')
+		g.write('}')
 	}
 }
 
