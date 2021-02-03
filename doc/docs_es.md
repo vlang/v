@@ -436,4 +436,44 @@ También se admiten especificadores de formato similares a los de `printf()` en 
 `f`, `g`, `x`, etc. son opcionales y especifican el formato de salida.
 El compilador se encarga del tamaño de almacenamiento, por lo que no hay necesidad de `hd` o `llu`.
 
+```v
+x := 123.4567
+println('x = ${x:4.2f}')
+println('[${x:10}]') // espacios a la izquierda => [   123.457]
+println('[${int(x):-10}]') // espacios a la derecha => [123       ]
+println('[${int(x):010}]') // ceros a la izquierda => [0000000123]
+```
 
+### Operadores de cadena (String operators)
+
+```v
+name := 'Bob'
+bobby := name + 'by' // + es usado para concatenar cadenas
+println(bobby) // "Bobby"
+mut s := 'hello '
+s += 'world' // `+=` se utiliza para añadir a una cadena a la actual
+println(s) // "hello world"
+```
+
+Todos los operadores en V deben tener valores del mismo tipo en ambos lados.
+No se puede concatenar un entero con una cadena:
+
+```v failcompile
+age := 10
+println('age = ' + age) // not allowed
+```
+> error: infix expr: cannot use `int` (right expression) as `string`
+
+Tenemos que convertir a `edad` en una `cadena`:
+
+```v
+age := 11
+println('age = ' + age.str())
+```
+
+o utilizar la interpolación de cadenas (el más preferido):
+
+```v
+age := 12
+println('age = $age')
+```
