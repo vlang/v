@@ -32,7 +32,6 @@ fn (mut s Utf8State) seq(r0 bool, r1 bool, is_tail bool) bool {
 			s.subindex++
 			return true
 		}
-		goto next
 	} else {
 		s.failed = true
 		if is_tail {
@@ -42,7 +41,6 @@ fn (mut s Utf8State) seq(r0 bool, r1 bool, is_tail bool) bool {
 		}
 		return true
 	}
-	next:
 	s.index++
 	s.subindex = 0
 	return false
