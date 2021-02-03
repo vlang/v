@@ -802,3 +802,99 @@ arr := [1, 2, 3]
 large_index := 999
 val := arr[large_index] or { panic('fuera de los límites') }
 ```
+
+## Importación de módulos
+
+Para obtener información sobre la creación de un módulo, consulte [Módulos](#modulos).
+
+Los módulos pueden importarse mediante la palabra clave `import`:
+
+```v
+import os
+
+fn main() {
+	// leer texto desde stdin
+	name := os.input('Ingresa tu nombre: ')
+	println('¡Hola, $name!')
+}
+```
+
+Este programa puede utilizar cualquier definición pública del módulo `os`,
+como la función `input`. Consulte la documentación de la
+[biblioteca estándar](https://modules.vlang.io/) para una lista de módulos
+comunes y sus símbolos públicos.
+
+Por defecto, hay que especificar el prefijo del módulo cada vez que se llama
+a una función externa. Esto puede parecer verboso al principio, pero hace que
+el código sea mucho más legible y más fácil de entender - siempre está claro
+qué función de qué módulo se está llamando. Esto es especialmente útil en
+bases de código grandes.
+
+Las importaciones cíclicas de módulos no están permitidas, como en Go.
+
+### Importación selectiva
+
+También puedes importar directamente funciones y tipos específicos de los módulos
+
+```v
+import os { input }
+import crypto.sha256 { sum }
+import time { Time }
+```
+
+Nota: Esto no está permitido para las constantes - siempre deben llevar un prefijo.
+
+Puedes importar varios símbolos específicos a la vez:
+
+```v
+import os { input, user_os }
+
+name := input('Enter your name: ')
+println('Name: $name')
+os := user_os()
+println('Your OS is ${os}.')
+```
+
+### Importando módulos con alias
+
+Cualquier nombre de módulo importado puede ser aliasado utilizando la palabra clave `as`:
+
+NOTA: este ejemplo no compilará a menos que hayas creado `mymod/sha256.v`.
+
+```v failcompile
+import crypto.sha256
+import mymod.sha256 as mysha256
+
+fn main() {
+    v_hash := sha256.sum('hi'.bytes()).hex()
+    my_hash := mysha256.sum('hi'.bytes()).hex()
+    assert my_hash == v_hash
+}
+```
+
+No se puede poner un alias a una función o tipo importado.
+Sin embargo, _puede_ volver a declarar un tipo.
+
+
+```v
+import time
+import math
+
+type MyTime = time.Time
+
+fn (mut t MyTime) century() int {
+	return int(1.0 + math.trunc(f64(t.year) * 0.009999794661191))
+}
+
+fn main() {
+	mut my_time := MyTime{
+		year: 2020
+		month: 12
+		day: 25
+	}
+	println(time.new_time(my_time).utc_string())
+	println('Century: $my_time.century()')
+}
+```
+
+
