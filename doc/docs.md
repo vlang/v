@@ -3638,7 +3638,7 @@ To improve safety and maintainability, operator overloading is limited:
 - Calling other functions inside operator functions is not allowed.
 - Operator functions can't modify their arguments.
 - When using `<`, `<=` and `==` operators, the return type must be `bool`.
-- `!=`, `>` and `>=` are auto generated when `!=`, `<=` and `<` are defined.
+- `!=`, `>` and `>=` are auto generated when `==`, `<=` and `<` are defined.
 - Both arguments must have the same type (just like with all operators in V).
 - Assignment operators (`*=`, `+=`, `/=`, etc)
 are auto generated when the operators are defined though they must return the same type.
