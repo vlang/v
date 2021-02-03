@@ -43,7 +43,7 @@ These are:
 ')
 		exit(0)
 	}
-	files_paths := if is_all { md_file_paths() } else { non_option_args }
+	files_paths := if is_all { md_file_paths('.') } else { non_option_args }
 	mut warnings := 0
 	mut errors := 0
 	mut oks := 0
@@ -103,9 +103,9 @@ These are:
 	}
 }
 
-fn md_file_paths() []string {
+fn md_file_paths(dir string) []string {
 	mut files_to_check := []string{}
-	md_files := os.walk_ext('.', '.md')
+	md_files := os.walk_ext(dir, '.md')
 	for file in md_files {
 		if file.starts_with('./thirdparty') {
 			continue
