@@ -224,6 +224,8 @@ fn (mut g Gen) gen_str_for_array(info table.Array, styp string, str_fn_name stri
 			g.auto_str_funcs.writeln('\t\tstring x = _STR("%g", 1, it);')
 		} else if sym.kind == .rune {
 			g.auto_str_funcs.writeln('\t\tstring x = _STR("`%.*s\\000`", 2, ${elem_str_fn_name}(it));')
+		} else if sym.kind == .string {
+			g.auto_str_funcs.writeln('\t\tstring x = _STR("\'%.*s\\000\'", 2, it);')
 		} else {
 			// There is a custom .str() method, so use it.
 			// NB: we need to take account of whether the user has defined
@@ -315,18 +317,30 @@ fn (mut g Gen) gen_str_for_array_fixed(info table.ArrayFixed, styp string, str_f
 }
 
 fn (mut g Gen) gen_str_for_map(info table.Map, styp string, str_fn_name string) {
-	key_sym := g.table.get_type_symbol(info.key_type)
-	key_styp := g.typ(info.key_type)
+	mut key_typ := info.key_type
+	mut key_sym := g.table.get_type_symbol(key_typ)
+	if mut key_sym.info is table.Alias {
+		key_typ = key_sym.info.parent_type
+		key_sym = g.table.get_type_symbol(key_typ)
+	}
+	key_styp := g.typ(key_typ)
 	key_str_fn_name := key_styp.replace('*', '') + '_str'
 	if !key_sym.has_method('str') {
-		g.gen_str_for_type(info.key_type)
+		g.gen_str_for_type(key_typ)
 	}
-	val_sym := g.table.get_type_symbol(info.value_type)
-	val_styp := g.typ(info.value_type)
+
+	mut val_typ := info.value_type
+	mut val_sym := g.table.get_type_symbol(val_typ)
+	if mut val_sym.info is table.Alias {
+		val_typ = val_sym.info.parent_type
+		val_sym = g.table.get_type_symbol(val_typ)
+	}
+	val_styp := g.typ(val_typ)
 	elem_str_fn_name := val_styp.replace('*', '') + '_str'
 	if !val_sym.has_method('str') {
-		g.gen_str_for_type(info.value_type)
+		g.gen_str_for_type(val_typ)
 	}
+
 	g.type_definitions.writeln('static string ${str_fn_name}($styp m); // auto')
 	g.auto_str_funcs.writeln('static string ${str_fn_name}($styp m) { return indent_${str_fn_name}(m, 0);}')
 	g.type_definitions.writeln('static string indent_${str_fn_name}($styp m, int indent_count); // auto')
@@ -335,6 +349,7 @@ fn (mut g Gen) gen_str_for_map(info table.Map, styp string, str_fn_name string) 
 	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, _SLIT("{"));')
 	g.auto_str_funcs.writeln('\tfor (int i = 0; i < m.key_values.len; ++i) {')
 	g.auto_str_funcs.writeln('\t\tif (!DenseArray_has_index(&m.key_values, i)) { continue; }')
+
 	if key_sym.kind == .string {
 		g.auto_str_funcs.writeln('\t\tstring key = *(string*)DenseArray_key(&m.key_values, i);')
 	} else {
