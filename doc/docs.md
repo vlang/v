@@ -30,7 +30,7 @@ You need `git`, and a C compiler like `gcc` or `msvc`:
 ```bash
 git clone https://github.com/vlang/v
 cd v
-make
+make.bat -gcc
 ```
 
 ### Android
