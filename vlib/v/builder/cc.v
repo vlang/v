@@ -628,7 +628,7 @@ fn (mut v Builder) cc() {
 		}
 		//
 		os.chdir(vdir)
-		cmd := '$ccompiler @$response_file'
+		cmd := '$ccompiler "@$response_file"'
 		tried_compilation_commands << cmd
 		v.show_cc(cmd, response_file, response_file_content)
 		// Run
