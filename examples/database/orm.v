@@ -4,7 +4,7 @@ struct Module {
 	id           int
 	name         string
 	nr_downloads int
-	creator      User
+	creator      User [skip]
 }
 
 struct User {
