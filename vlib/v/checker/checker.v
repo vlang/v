@@ -5472,7 +5472,9 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) table.Type {
 				typ: f.typ
 			}
 		}
+		tmp_inside_sql := c.inside_sql
 		c.sql_expr(mut n)
+		c.inside_sql = tmp_inside_sql
 		n.where_expr = ast.InfixExpr{
 			op: .eq
 			pos: n.pos
@@ -5553,7 +5555,9 @@ fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) table.Type {
 			}
 			object_var_name: '${node.object_var_name}.$f.name'
 		}
+		tmp_inside_sql := c.inside_sql
 		c.sql_stmt(mut n)
+		c.inside_sql = tmp_inside_sql
 		sub_structs[int(f.typ)] = n
 	}
 	node.fields = fields
@@ -5565,6 +5569,7 @@ fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) table.Type {
 		}
 	}
 	c.expr(node.where_expr)
+
 	return table.void_type
 }
 
