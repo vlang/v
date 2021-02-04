@@ -4,7 +4,7 @@ struct Module {
 	id           int
 	name         string
 	nr_downloads int
-	creator      User [skip]
+	creator      User
 }
 
 struct User {
@@ -35,7 +35,7 @@ fn main() {
 	}
 	
 	modul := sql db {
-		select from Module limit 1
+		select from Module where id == 1
 	}
 
 	println(modul.name)

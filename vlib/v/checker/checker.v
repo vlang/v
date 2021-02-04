@@ -5509,6 +5509,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) table.Type {
 	node.fields = fields
 	node.sub_structs = sub_structs
 	if node.has_where {
+		eprintln(node)
 		c.expr(node.where_expr)
 	}
 	if node.has_offset {
@@ -5543,7 +5544,6 @@ fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) table.Type {
 	fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, table_sym.name)
 	mut sub_structs := map[int]ast.SqlStmt{}
 	for f in fields.filter(c.table.types[int(it.typ)].kind == .struct_) {
-		eprintln(f.attrs.contains('skip'))
 		mut n := ast.SqlStmt{
 			pos: node.pos
 			db_expr: node.db_expr
