@@ -5509,7 +5509,6 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) table.Type {
 	node.fields = fields
 	node.sub_structs = sub_structs
 	if node.has_where {
-		eprintln(node)
 		c.expr(node.where_expr)
 	}
 	if node.has_offset {
