@@ -26,11 +26,11 @@ git clone https://github.com/vlang/v && cd v && make
 ```
 
 ### Windows:
-You need `git`, and a C compiler like `gcc` or `msvc`:
+You need `git`, and a C compiler like `tcc`, `gcc` or `msvc`:
 ```bash
 git clone https://github.com/vlang/v
 cd v
-make.bat -gcc
+make.bat -tcc/-gcc/-msvc/-clang
 ```
 
 ### Android
