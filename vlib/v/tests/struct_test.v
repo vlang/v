@@ -170,6 +170,14 @@ fn test_assoc_with_vars() {
 	}
 	assert merged.a == 42
 	assert merged.b == 7
+
+	def3 := &Def{ 100, 200 }
+	merged1 := Def{...(*def3)}
+	merged2 := &Def{...(*def3)}
+	assert merged1.a == 100
+	assert merged1.b == 200
+	assert merged2.a == 100
+	assert merged2.b == 200
 }
 
 const (
