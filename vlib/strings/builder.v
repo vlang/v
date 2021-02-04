@@ -118,24 +118,25 @@ pub fn (b &Builder) after(n int) string {
 	return bytes2string(b.buf[n..])
 }
 
-// str returns all of the accumulated content of the buffer.
-// NB: in order to avoid memleaks and additional memory copies, after a call to b.str(),
-// the builder b will be empty. The returned string *owns* the accumulated data so far.
+// str returns a copy of all of the accumulated buffer content.
+// NB: after a call to b.str(), the builder b should not be
+// used again, you need to call b.free() first, or just leave
+// it to be freed by -autofree when it goes out of scope.
+// The returned string *owns* its own separate copy of the
+// accumulated data that was in the string builder, before the
+// .str() call.
 pub fn (mut b Builder) str() string {
 	b.str_calls++
 	if b.str_calls > 1 {
 		panic('builder.str() should be called just once.\nIf you want to reuse a builder, call b.free() first.')
 	}
 	b.buf << `\0`
-	s := tos(b.buf.data, b.len)
-	bis := b.initial_size
-	// free(b.buf.data)
-	b.buf = []byte{cap: bis}
+	s := unsafe { byteptr(memdup(b.buf.data, b.len)).vstring_with_len(b.len) }
 	b.len = 0
 	return s
 }
 
-// manually free the contents of the buffer
+// free - manually free the contents of the buffer
 pub fn (mut b Builder) free() {
 	unsafe { free(b.buf.data) }
 	// b.buf = []byte{cap: b.initial_size}
