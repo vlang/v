@@ -1044,15 +1044,18 @@ match mut x {
 ### In operator
 
 `in` allows to check whether an array or a map contains an element.
+The negation of it is `!in` operator.
 
 ```v
 nums := [1, 2, 3]
 println(1 in nums) // true
+println(4 !in nums) // true
 m := {
 	'one': 1
 	'two': 2
 }
 println('one' in m) // true
+println('three' !in m) // true
 ```
 
 It's also useful for writing boolean expressions that are clearer and more compact:
