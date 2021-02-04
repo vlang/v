@@ -274,8 +274,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 				scope: 0
 			}
 		}
-	}
-	if p.tok.kind in [.plus, .minus, .mul, .div, .mod, .lt, .eq] && p.peek_tok.kind == .lpar {
+	} else if p.tok.kind in [.plus, .minus, .mul, .div, .mod, .lt, .eq] && p.peek_tok.kind == .lpar {
 		name = p.tok.kind.str() // op_to_fn_name()
 		if rec_type == table.void_type {
 			p.error_with_pos('cannot use operator overloading with normal functions',
@@ -285,6 +284,12 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	} else if p.tok.kind in [.ne, .gt, .ge, .le] && p.peek_tok.kind == .lpar {
 		p.error_with_pos('cannot overload `!=`, `>`, `<=` and `>=` as they are auto generated with `==` and`<`',
 			p.tok.position())
+	} else {
+		pos := p.tok.position()
+		p.error_with_pos('expecting method name', pos)
+		return ast.FnDecl{
+			scope: 0
+		}
 	}
 	// <T>
 	generic_params := p.parse_generic_params()
