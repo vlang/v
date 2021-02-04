@@ -17,6 +17,7 @@ const (
 		'vlib/sqlite/sqlite_test.v',
 		'vlib/vweb/tests/vweb_test.v',
 		'vlib/v/tests/unsafe_test.v',
+		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/x/websocket/websocket_test.v',
 		'vlib/net/http/http_httpbin_test.v',
 	]
@@ -66,6 +67,7 @@ const (
 		'vlib/net/websocket/ws_test.v',
 		'vlib/sqlite/sqlite_test.v',
 		'vlib/orm/orm_test.v',
+		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/clipboard/clipboard_test.v',
 		'vlib/vweb/tests/vweb_test.v',
 		'vlib/x/websocket/websocket_test.v',
@@ -77,6 +79,7 @@ const (
 	]
 	skip_on_windows               = [
 		'vlib/orm/orm_test.v',
+		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/net/websocket/ws_test.v',
 		'vlib/x/websocket/websocket_test.v',
 		'vlib/vweb/tests/vweb_test.v',
