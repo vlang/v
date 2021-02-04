@@ -15,8 +15,8 @@ pub fn sample_nr<T>(array []T, k int) []T {
 	mut results := []T{len: k}
 	mut indices := []int{len: n}
 	// Initialize with all indices
-	for i := 0; i < n; i++ {
-		indices[i] = i
+	for i, mut v in indices {
+		v = i
 	}
 	arrays.shuffle<int>(mut indices, k)
 	for i in 0 .. k {
