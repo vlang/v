@@ -1,20 +1,22 @@
 import rand.util
 
 fn test_sample_nr() {
-	length := 5
+	lengths := [1, 3, 4, 5, 6, 7]
 	a := ['one', 'two', 'three', 'four', 'five', 'six', 'seven']
-	b := util.sample_nr(a, length)
-	assert b.len == length
-	for element in b {
-		assert element in a
-		// make sure every element occurs once
-		mut count := 0
-		for e in b {
-			if e == element {
-				count++
+	for length in lengths {
+		b := util.sample_nr(a, length)
+		assert b.len == length
+		for element in b {
+			assert element in a
+			// make sure every element occurs once
+			mut count := 0
+			for e in b {
+				if e == element {
+					count++
+				}
 			}
+			assert count == 1
 		}
-		assert count == 1
 	}
 }
 
