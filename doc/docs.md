@@ -26,9 +26,9 @@ git clone https://github.com/vlang/v && cd v && make
 ```
 
 ### Windows:
-You need `git`, and a C compiler like `tcc`, `gcc` or `msvc`:
+You need `git`, and a C compiler like `tcc`, `gcc`, `clang` or `msvc`:
 ```bash
-git clone https://github.com/vlang/v
+git clone -depth=1 https://github.com/vlang/v
 cd v
 make.bat -tcc/-gcc/-msvc/-clang
 ```
