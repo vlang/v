@@ -332,10 +332,12 @@ pub:
 pub mut:
 	stmts         []Stmt
 	return_type   table.Type
+	has_return    bool
 	comments      []Comment // comments *after* the header, but *before* `{`; used for InterfaceDecl
 	next_comments []Comment // coments that are one line after the decl; used for InterfaceDecl
 	source_file   &File = 0
 	scope         &Scope
+	label_names   []string
 }
 
 pub struct GenericParam {
@@ -645,7 +647,7 @@ pub:
 pub struct LockExpr {
 pub:
 	stmts    []Stmt
-	is_rlock bool
+	is_rlock []bool
 	pos      token.Position
 pub mut:
 	lockeds []Ident // `x`, `y` in `lock x, y {`

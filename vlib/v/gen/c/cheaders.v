@@ -31,6 +31,21 @@ static inline voidptr __dup_shared_array(voidptr src, int sz) {
 	sync__RwMutex_init(&dest->mtx);
 	return dest;
 }
+static inline void __sort_ptr(uintptr_t a[], bool b[], int l)
+{
+	for (int i=1; i<l; i++) {
+		uintptr_t ins = a[i];
+		bool insb = b[i];
+		int j = i;
+		while(j>0 && a[j-1] > ins) {
+			a[j] = a[j-1];
+			b[j] = b[j-1];
+			j--;
+		}
+		a[j] = ins;
+		b[j] = insb;
+	}
+}
 '
 	c_common_macros               = '
 #define EMPTY_VARG_INITIALIZATION 0

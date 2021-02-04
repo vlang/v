@@ -26,14 +26,14 @@ vlib/v/checker/tests/shared_bad_args.vv:51:13: error: a is `shared` and must be 
       |                ^
    52 |     println('$w $x')
    53 | }
-vlib/v/checker/tests/shared_bad_args.vv:61:3: error: r is `shared` and must be `lock`ed to be passed as `mut`
+vlib/v/checker/tests/shared_bad_args.vv:61:3: error: r must be added to the `lock` list above
    59 |     shared r := Qr{ a: 7 }
    60 |     lock s {
    61 |         r.s_mut(mut s)
       |         ^
    62 |     }
    63 |     lock r {
-vlib/v/checker/tests/shared_bad_args.vv:64:15: error: s is `shared` and must be `lock`ed to be passed as `mut`
+vlib/v/checker/tests/shared_bad_args.vv:64:15: error: s must be added to the `lock` list above
    62 |     }
    63 |     lock r {
    64 |         r.s_mut(mut s)

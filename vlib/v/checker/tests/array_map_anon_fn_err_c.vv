@@ -1,4 +1,0 @@
-fn main() {
-	a := [1,2,3,4].map(fn(a string) {})
-	println(a)
-}
