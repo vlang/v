@@ -1254,7 +1254,7 @@ pub fn (expr Expr) is_lvalue() bool {
 		CTempVar { return true }
 		IndexExpr { return expr.left.is_lvalue() }
 		SelectorExpr { return expr.expr.is_lvalue() }
-		ParExpr { return expr.expr.is_lvalue() }	//for var := &{...(*pointer_var)}
+		ParExpr { return expr.expr.is_lvalue() } // for var := &{...(*pointer_var)}
 		PrefixExpr { return expr.right.is_lvalue() }
 		else {}
 	}
