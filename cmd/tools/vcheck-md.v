@@ -170,6 +170,8 @@ fn (mut f MDFile) parse_line(lnumber int, line string) {
 			mut command := line.replace('```v', '').trim_space()
 			if command == '' {
 				command = default_command
+			} else if command == 'nofmt' {
+				command += ' $default_command'
 			}
 			f.current = VCodeExample{
 				sline: lnumber
