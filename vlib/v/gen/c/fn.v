@@ -62,6 +62,10 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 		g.cur_generic_types = []
 		return
 	}
+	cur_fn_save := g.cur_fn
+	defer {
+		g.cur_fn = cur_fn_save
+	}
 	g.cur_fn = node
 	fn_start_pos := g.out.len
 	g.write_v_source_line_info(node.pos)
@@ -128,6 +132,10 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 	if is_live_wrap {
 		impl_fn_name = 'impl_live_$name'
 	}
+	last_fn_c_name_save := g.last_fn_c_name
+	defer {
+		g.last_fn_c_name = last_fn_c_name_save
+	}
 	g.last_fn_c_name = impl_fn_name
 	//
 	if is_live_wrap {
@@ -176,6 +184,9 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 	}
 	g.definitions.writeln(');')
 	g.writeln(') {')
+	for defer_stmt in node.defer_stmts {
+		g.writeln('bool ${g.defer_flag_var(defer_stmt)} = false;')
+	}
 	if is_live_wrap {
 		// The live function just calls its implementation dual, while ensuring
 		// that the call is wrapped by the mutex lock & unlock calls.
@@ -253,6 +264,10 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 			g.writeln('}')
 		}
 	}
+}
+
+fn (g &Gen) defer_flag_var(stmt &ast.DeferStmt) string {
+	return '${g.last_fn_c_name}_defer_$stmt.idx_in_fn'
 }
 
 fn (mut g Gen) write_defer_stmts_when_needed() {
