@@ -323,6 +323,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		mut_pos: mut_pos - embeds.len
 		pub_pos: pub_pos - embeds.len
 		pub_mut_pos: pub_mut_pos - embeds.len
+		global_pos: global_pos - embeds.len
 		module_pos: module_pos - embeds.len
 		language: language
 		is_union: is_union
