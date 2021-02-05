@@ -1799,7 +1799,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			call_expr.name = name_prefixed
 			found = true
 			f = f1
-			c.table.fns[name_prefixed].is_used = true
+			c.table.fns[name_prefixed].usages++
 		}
 	}
 	if !found && call_expr.left is ast.IndexExpr {
@@ -1833,7 +1833,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		if f1 := c.table.find_fn(fn_name) {
 			found = true
 			f = f1
-			c.table.fns[fn_name].is_used = true
+			c.table.fns[fn_name].usages++
 		}
 	}
 	if c.pref.is_script && !found {
@@ -1845,7 +1845,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			call_expr.name = os_name
 			found = true
 			f = f1
-			c.table.fns[os_name].is_used = true
+			c.table.fns[os_name].usages++
 		}
 	}
 	// check for arg (var) of fn type

@@ -26,13 +26,16 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 			return
 		}
 	}
-	if f := g.table.find_fn(node.name) {
-		if !f.is_used {
-			g.writeln('// fn $node.name UNUSED')
-			// return
+	*/
+	if g.pref.experimental {
+		if f := g.table.find_fn(node.name) {
+			println('> usages: ${f.usages:-10} | node.name: $node.name')
+			if f.usages == 0 {
+				g.writeln('// fn $node.name UNUSED')
+				return
+			}
 		}
 	}
-	*/
 
 	g.returned_var_name = ''
 	//

@@ -39,7 +39,7 @@ pub:
 pub mut:
 	name      string
 	source_fn voidptr // set in the checker, while processing fn declarations
-	is_used   bool
+	usages    int
 }
 
 fn (f &Fn) method_equals(o &Fn) bool {
