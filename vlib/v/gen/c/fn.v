@@ -82,7 +82,7 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 	if is_livefn && !is_livemode {
 		eprintln('INFO: compile with `v -live $g.pref.path `, if you want to use the [live] function $node.name .')
 	}
-	//
+
 	mut name := node.name
 	if name in ['+', '-', '*', '/', '%', '<', '=='] {
 		name = util.replace_op(name)
