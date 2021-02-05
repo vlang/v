@@ -718,7 +718,7 @@ numbers.sort() // 1, 2, 3
 numbers.sort(a > b) // 3, 2, 1
 ```
 
-```v nofmt
+```v
 struct User {
 	age  int
 	name string
@@ -1496,20 +1496,20 @@ Struct fields are private and immutable by default (making structs immutable as 
 Their access modifiers can be changed with
 `pub` and `mut`. In total, there are 5 possible options:
 
-```v nofmt
+```v
 struct Foo {
-    a int   // private immutable (default)
+	a int // private immutable (default)
 mut:
-    b int   // private mutable
-    c int   // (you can list multiple fields with the same access modifier)
+	b int // private mutable
+	c int // (you can list multiple fields with the same access modifier)
 pub:
-    d int   // public immutable (readonly)
+	d int // public immutable (readonly)
 pub mut:
-    e int   // public, but mutable only in parent module
+	e int // public, but mutable only in parent module
 __global:
-    f int   // public and mutable both inside and outside parent module
-}           // (not recommended to use, that's why the 'global' keyword
-            // starts with __)
+	// (not recommended to use, that's why the 'global' keyword starts with __)
+	f int // public and mutable both inside and outside parent module
+}
 ```
 
 For example, here's the `string` type defined in the `builtin` module:
@@ -1584,15 +1584,15 @@ intended for low-level applications like kernels and drivers.
 
 It is possible to modify function arguments by using the keyword `mut`:
 
-```v nofmt
+```v
 struct User {
 	name string
 mut:
-    is_registered bool
+	is_registered bool
 }
 
 fn (mut u User) register() {
-    u.is_registered = true
+	u.is_registered = true
 }
 
 mut user := User{}
@@ -1832,12 +1832,16 @@ fn print_backtrace() // print backtraces on stderr
 `println` is a simple yet powerful builtin function, that can print anything:
 strings, numbers, arrays, maps, structs.
 
-```v nofmt
-struct User{ name string age int }
+```v
+struct User {
+	name string
+	age  int
+}
+
 println(1) // "1"
 println('hi') // "hi"
-println([1,2,3]) // "[1, 2, 3]"
-println(User{name:'Bob', age:20}) // "User{name:'Bob', age:20}"
+println([1, 2, 3]) // "[1, 2, 3]"
+println(User{ name: 'Bob', age: 20 }) // "User{name:'Bob', age:20}"
 ```
 
 ## Custom print of types
