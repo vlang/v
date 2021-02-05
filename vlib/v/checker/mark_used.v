@@ -11,7 +11,7 @@ fn (mut c Checker) mark_used(ast_files []ast.File) {
 	// c.is_recursive = true
 	// c.fn_decl(mut c.table2.main_fn_decl_node)
 
-	util.timing_start(@STRUCT + '.' + @FN)
+	util.timing_start(@METHOD)
 	mut walker := mark_used_walker.Walker{
 		files: ast_files
 	}
@@ -101,7 +101,7 @@ fn (mut c Checker) mark_used(ast_files []ast.File) {
 	c.table.used_fns['main.can_use_relative_paths'] = true
 	//
 	// eprintln('>>> c.table.used_fns: $c.table.used_fns')
-	util.timing_measure(@STRUCT + '.' + @FN)
+	util.timing_measure(@METHOD)
 
 	// println(walker.used_fns)
 	// c.walk(ast_files)
