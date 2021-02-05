@@ -170,7 +170,10 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 		g.definitions.write(fn_header)
 		g.write(fn_header)
 	}
-	for param in node.params {
+	for i, param in node.params {
+		if node.is_method && i == 0 {
+			continue
+		}
 		if param.is_mut {
 			g.fn_mut_arg_names << param.name
 		}
