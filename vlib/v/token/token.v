@@ -136,6 +136,7 @@ const (
 )
 
 // @FN => will be substituted with the name of the current V function
+// @METHOD => will be substituted with ReceiverType.MethodName
 // @MOD => will be substituted with the name of the current V module
 // @STRUCT => will be substituted with the name of the current V struct
 // @VEXE => will be substituted with the path to the V compiler
@@ -153,6 +154,7 @@ const (
 pub enum AtKind {
 	unknown
 	fn_name
+	method_name
 	mod_name
 	struct_name
 	vexe_path
@@ -164,9 +166,8 @@ pub enum AtKind {
 }
 
 pub const (
-	valid_at_tokens = ['@FN', '@MOD', '@STRUCT', '@VEXE', '@FILE', '@LINE', '@COLUMN', '@VHASH',
-		'@VMOD_FILE',
-	]
+	valid_at_tokens = ['@FN', '@METHOD', '@MOD', '@STRUCT', '@VEXE', '@FILE', '@LINE', '@COLUMN',
+		'@VHASH', '@VMOD_FILE']
 )
 
 // build_keys genereates a map with keywords' string values:

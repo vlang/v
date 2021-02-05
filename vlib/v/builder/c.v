@@ -3,27 +3,28 @@ module builder
 import os
 import v.parser
 import v.pref
+import v.util
 import v.gen.c
 
 pub fn (mut b Builder) gen_c(v_files []string) string {
-	b.timing_start('PARSE')
+	util.timing_start('PARSE')
 	b.parsed_files = parser.parse_files(v_files, b.table, b.pref, b.global_scope)
 	b.parse_imports()
-	b.timing_measure('PARSE')
+	util.timing_measure('PARSE')
 	if b.pref.only_check_syntax {
 		return ''
 	}
 	//
-	b.timing_start('CHECK')
+	util.timing_start('CHECK')
 	b.generic_struct_insts_to_concrete()
 	b.checker.check_files(b.parsed_files)
-	b.timing_measure('CHECK')
+	util.timing_measure('CHECK')
 	//
 	b.print_warnings_and_errors()
 	// TODO: move gen.cgen() to c.gen()
-	b.timing_start('C GEN')
+	util.timing_start('C GEN')
 	res := c.gen(b.parsed_files, b.table, b.pref)
-	b.timing_measure('C GEN')
+	util.timing_measure('C GEN')
 	// println('cgen done')
 	// println(res)
 	return res

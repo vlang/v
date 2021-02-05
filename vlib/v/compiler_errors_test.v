@@ -57,6 +57,7 @@ fn test_all() {
 	module_dir := '$checker_dir/modules'
 	global_dir := '$checker_dir/globals'
 	run_dir := '$checker_dir/run'
+	skip_unused_dir := 'vlib/v/tests/skip_unused'
 	//
 	checker_tests := get_tests_in_dir(checker_dir, false)
 	parser_tests := get_tests_in_dir(parser_dir, false)
@@ -64,6 +65,7 @@ fn test_all() {
 	global_tests := get_tests_in_dir(global_dir, false)
 	module_tests := get_tests_in_dir(module_dir, true)
 	run_tests := get_tests_in_dir(run_dir, false)
+	skip_unused_dir_tests := get_tests_in_dir(skip_unused_dir, false)
 	// -prod is used for the parser and checker tests, so that warns are errors
 	mut tasks := Tasks{
 		vexe: vexe
@@ -83,6 +85,11 @@ fn test_all() {
 	tasks.add('', global_dir, '--enable-globals', '.out', global_tests, false)
 	tasks.add('', module_dir, '-prod run', '.out', module_tests, true)
 	tasks.add('', run_dir, 'run', '.run.out', run_tests, false)
+	tasks.add('', skip_unused_dir, 'run', '.run.out', skip_unused_dir_tests, false)
+	if os.user_os() == 'linux' {
+		tasks.add('', skip_unused_dir, '-d no_backtrace -skip-unused run', '.skip_unused.run.out',
+			skip_unused_dir_tests, false)
+	}
 	tasks.run()
 	if github_job == 'ubuntu-tcc' {
 		// these should be run serially, since they depend on setting and using environment variables

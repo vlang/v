@@ -777,9 +777,9 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 	match infix_expr.op {
 		// .eq, .ne, .gt, .lt, .ge, .le, .and, .logical_or, .dot, .key_as, .right_shift {}
 		.eq, .ne {
-			is_alias_eq_struct := left.kind == .alias && right.kind == .struct_
-			is_struct_eq_alias := left.kind == .struct_ && right.kind == .alias
-			if is_alias_eq_struct || is_struct_eq_alias {
+			is_mismatch := (left.kind == .alias && right.kind in [.struct_, .array])
+				|| (right.kind == .alias && left.kind in [.struct_, .array])
+			if is_mismatch {
 				c.error('possible type mismatch of compared values of `$infix_expr.op` operation',
 					infix_expr.pos)
 			}
@@ -3910,6 +3910,15 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) table.Type {
 	match node.kind {
 		.fn_name {
 			node.val = c.cur_fn.name.all_after_last('.')
+		}
+		.method_name {
+			fname := c.cur_fn.name.all_after_last('.')
+			if c.cur_fn.is_method {
+				node.val = c.table.type_to_str(c.cur_fn.receiver.typ).all_after_last('.') + '.' +
+					fname
+			} else {
+				node.val = fname
+			}
 		}
 		.mod_name {
 			node.val = c.cur_fn.mod

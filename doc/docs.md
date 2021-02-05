@@ -136,8 +136,8 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
 
 <!--
 NB: there are several special keywords, which you can put after the code fences for v:
-compile, ignore, failcompile, oksyntax, badsyntax, wip
-For more details, do: `v run cmd/tools/check-md.v`
+compile, live, ignore, failcompile, oksyntax, badsyntax, wip, nofmt
+For more details, do: `v check-md`
 -->
 
 ## Hello World
@@ -418,7 +418,7 @@ Literals like `123` or `4.56` are treated in a special way. They do
 not lead to type promotions, however they default to `int` and `f64`
 respectively, when their type has to be decided:
 
-```v ignore
+```v nofmt
 u := u16(12)
 v := 13 + u    // v is of type `u16` - no promotion
 x := f32(45.6)
@@ -718,7 +718,7 @@ numbers.sort() // 1, 2, 3
 numbers.sort(a > b) // 3, 2, 1
 ```
 
-```v nofmt
+```v
 struct User {
 	age  int
 	name string
@@ -1046,15 +1046,18 @@ match mut x {
 ### In operator
 
 `in` allows to check whether an array or a map contains an element.
+To do the opposite, use `!in`.
 
 ```v
 nums := [1, 2, 3]
 println(1 in nums) // true
+println(4 !in nums) // true
 m := {
 	'one': 1
 	'two': 2
 }
 println('one' in m) // true
+println('three' !in m) // true
 ```
 
 It's also useful for writing boolean expressions that are clearer and more compact:
@@ -1484,7 +1487,7 @@ assert button.height == 20
 
 As you can see, both the struct name and braces can be omitted, instead of:
 
-```v ignore
+```v oksyntax nofmt
 new_button(ButtonConfig{text:'Click me', width:100})
 ```
 
@@ -1496,20 +1499,20 @@ Struct fields are private and immutable by default (making structs immutable as 
 Their access modifiers can be changed with
 `pub` and `mut`. In total, there are 5 possible options:
 
-```v nofmt
+```v
 struct Foo {
-    a int   // private immutable (default)
+	a int // private immutable (default)
 mut:
-    b int   // private mutable
-    c int   // (you can list multiple fields with the same access modifier)
+	b int // private mutable
+	c int // (you can list multiple fields with the same access modifier)
 pub:
-    d int   // public immutable (readonly)
+	d int // public immutable (readonly)
 pub mut:
-    e int   // public, but mutable only in parent module
+	e int // public, but mutable only in parent module
 __global:
-    f int   // public and mutable both inside and outside parent module
-}           // (not recommended to use, that's why the 'global' keyword
-            // starts with __)
+	// (not recommended to use, that's why the 'global' keyword starts with __)
+	f int // public and mutable both inside and outside parent module
+}
 ```
 
 For example, here's the `string` type defined in the `builtin` module:
@@ -1584,15 +1587,15 @@ intended for low-level applications like kernels and drivers.
 
 It is possible to modify function arguments by using the keyword `mut`:
 
-```v nofmt
+```v
 struct User {
 	name string
 mut:
-    is_registered bool
+	is_registered bool
 }
 
 fn (mut u User) register() {
-    u.is_registered = true
+	u.is_registered = true
 }
 
 mut user := User{}
@@ -1800,7 +1803,7 @@ module, and inside it. That restriction is relaxed only for the `main` module
 constants too, i.e. just `println(numbers)`, not `println(main.numbers)` .
 
 vfmt takes care of this rule, so you can type `println(pi)` inside the `math` module,
-and vffmt will automatically update it to `println(math.pi)`.
+and vfmt will automatically update it to `println(math.pi)`.
 
 <!--
 Many people prefer all caps consts: `TOP_CITIES`. This wouldn't work
@@ -1809,8 +1812,8 @@ They can represent complex structures, and this is used quite often since there
 are no globals:
 -->
 
-```v ignore
-println('Top cities: $top_cities.filter(.usa)')
+```v oksyntax
+println('Top cities: ${top_cities.filter(.usa)}')
 ```
 
 ## Builtin functions
@@ -1832,12 +1835,16 @@ fn print_backtrace() // print backtraces on stderr
 `println` is a simple yet powerful builtin function, that can print anything:
 strings, numbers, arrays, maps, structs.
 
-```v nofmt
-struct User{ name string age int }
+```v
+struct User {
+	name string
+	age  int
+}
+
 println(1) // "1"
 println('hi') // "hi"
-println([1,2,3]) // "[1, 2, 3]"
-println(User{name:'Bob', age:20}) // "User{name:'Bob', age:20}"
+println([1, 2, 3]) // "[1, 2, 3]"
+println(User{ name: 'Bob', age: 20 }) // "User{name:'Bob', age:20}"
 ```
 
 ## Custom print of types
@@ -2154,10 +2161,10 @@ That's why you have to declare a `mut` before the `is` expression:
 
 ```v ignore
 if mut w is Mars {
-    assert typeof(w).name == 'Mars'
-    if w.dust_storm() {
-        println('bad weather!')
-    }
+	assert typeof(w).name == 'Mars'
+	if w.dust_storm() {
+		println('bad weather!')
+	}
 }
 ```
 Otherwise `w` would keep its original type.
@@ -3516,6 +3523,7 @@ V also gives your code access to a set of pseudo string variables,
 that are substituted at compile time:
 
 - `@FN` => replaced with the name of the current V function
+- `@METHOD` => replaced with ReceiverType.MethodName
 - `@MOD` => replaced with the name of the current V module
 - `@STRUCT` => replaced with the name of the current V struct
 - `@FILE` => replaced with the path of the V source file
@@ -3796,17 +3804,19 @@ module global (so that you can use `ls()` instead of `os.ls()`, for example).
 // so it can be run just by specifying the path to the file
 // once it's made executable using `chmod +x`.
 
-rm('build/*')
+rm('build/*')?
 // Same as:
-for file in ls('build/') {
-    rm(file)
+files_build := ls('build/')?
+for file in files_build {
+    rm(file)?
 }
 
-mv('*.v', 'build/')
+mv('*.v', 'build/')?
 // Same as:
-for file in ls('.') {
+files := ls('.')?
+for file in files {
     if file.ends_with('.v') {
-        mv(file, 'build/')
+        mv(file, 'build/')?
     }
 }
 ```

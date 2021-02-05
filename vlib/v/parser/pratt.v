@@ -397,12 +397,6 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	}
 	precedence := p.tok.precedence()
 	mut pos := p.tok.position()
-	if left.position().line_nr < pos.line_nr {
-		pos = token.Position{
-			...pos
-			line_nr: left.position().line_nr
-		}
-	}
 	p.next()
 	mut right := ast.Expr{}
 	prev_expecting_type := p.expecting_type

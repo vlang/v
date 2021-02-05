@@ -1,9 +1,13 @@
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
 module main
 
 import os
 import os.cmdline
 import rand
 import term
+import vhelp
 import v.pref
 
 const (
@@ -11,35 +15,19 @@ const (
 	term_colors          = term.can_show_color_on_stderr()
 	is_all               = '-all' in os.args
 	hide_warnings        = '-hide-warnings' in os.args
-	non_option_args      = cmdline.only_non_options(os.args[1..])
+	non_option_args      = cmdline.only_non_options(os.args[2..])
 )
 
-fn wprintln(s string) {
-	if !hide_warnings {
-		println(s)
-	}
-}
-
 fn main() {
-	if os.args.len == 1 {
-		println('Usage: checks the passed markdown files for correct ```v ``` code blocks,
-and for other style violations. like too long lines/links etc...
-a) `v run cmd/tools/check-md.v -all` - will check *all* .md files in the folders.
-b) `v run cmd/tools/check-md.v doc/docs.md` - will only check a single file.
-c) `v run cmd/tools/check-md.v -hide-warnings file.md` - same, but will not print warnings, only errors.
-
-NB: There are several special keywords, which you can put after the code fences for v.
-These are:
-	compile      - default, you do not need to specify it. cmd/tools/check-md.v compile the example.
-	ignore       - ignore the example, useful for examples that just use the syntax highlighting
-	failcompile  - known failing compilation. Useful for examples demonstrating compiler errors.
-	oksyntax     - it should parse, it may not compile. Useful for partial examples.
-	badsyntax    - known bad syntax, it should not even parse
-	wip          - like ignore; a planned feature; easy to search.
-')
+	if non_option_args.len == 0 || '-help' in os.args {
+		vhelp.show_topic('check-md')
 		exit(0)
 	}
-	files_paths := if is_all { md_file_paths() } else { non_option_args }
+	if is_all {
+		println('´-all´ flag is deprecated. Please use ´v check-md .´ instead.')
+		exit(1)
+	}
+	mut files_paths := non_option_args.clone()
 	mut warnings := 0
 	mut errors := 0
 	mut oks := 0
@@ -47,7 +35,12 @@ These are:
 	if term_colors {
 		os.setenv('VCOLORS', 'always', true)
 	}
-	for file_path in files_paths {
+	for i := 0; i < files_paths.len; i++ {
+		file_path := files_paths[i]
+		if os.is_dir(file_path) {
+			files_paths << md_file_paths(file_path)
+			continue
+		}
 		real_path := os.real_path(file_path)
 		lines := os.read_lines(real_path) or {
 			println('"$file_path" does not exist')
@@ -57,31 +50,31 @@ These are:
 		mut mdfile := MDFile{
 			path: file_path
 		}
-		for i, line in lines {
+		for j, line in lines {
 			if line.len > too_long_line_length {
 				if mdfile.state == .vexample {
-					wprintln(wline(file_path, i, line.len, 'long V example line'))
+					wprintln(wline(file_path, j, line.len, 'long V example line'))
 					wprintln(line)
 					warnings++
 				} else if mdfile.state == .codeblock {
-					wprintln(wline(file_path, i, line.len, 'long code block line'))
+					wprintln(wline(file_path, j, line.len, 'long code block line'))
 					wprintln(line)
 					warnings++
 				} else if line.starts_with('|') {
-					wprintln(wline(file_path, i, line.len, 'long table'))
+					wprintln(wline(file_path, j, line.len, 'long table'))
 					wprintln(line)
 					warnings++
 				} else if line.contains('https') {
-					wprintln(wline(file_path, i, line.len, 'long link'))
+					wprintln(wline(file_path, j, line.len, 'long link'))
 					wprintln(line)
 					warnings++
 				} else {
-					eprintln(eline(file_path, i, line.len, 'line too long'))
+					eprintln(eline(file_path, j, line.len, 'line too long'))
 					eprintln(line)
 					errors++
 				}
 			}
-			mdfile.parse_line(i, line)
+			mdfile.parse_line(j, line)
 		}
 		all_md_files << mdfile
 	}
@@ -90,7 +83,6 @@ These are:
 		errors += new_errors
 		oks += new_oks
 	}
-	// println('all_md_files: $all_md_files')
 	if warnings > 0 || errors > 0 || oks > 0 {
 		println('\nWarnings: $warnings | Errors: $errors | OKs: $oks')
 	}
@@ -99,19 +91,22 @@ These are:
 	}
 }
 
-fn md_file_paths() []string {
+fn md_file_paths(dir string) []string {
 	mut files_to_check := []string{}
-	md_files := os.walk_ext('.', '.md')
+	md_files := os.walk_ext(dir, '.md')
 	for file in md_files {
-		if file.starts_with('./thirdparty') {
-			continue
-		}
-		if file.contains('CHANGELOG') {
+		if file.contains_any_substr(['/thirdparty/', 'CHANGELOG']) {
 			continue
 		}
 		files_to_check << file
 	}
 	return files_to_check
+}
+
+fn wprintln(s string) {
+	if !hide_warnings {
+		println(s)
+	}
 }
 
 fn ftext(s string, cb fn (string) string) string {
@@ -175,6 +170,8 @@ fn (mut f MDFile) parse_line(lnumber int, line string) {
 			mut command := line.replace('```v', '').trim_space()
 			if command == '' {
 				command = default_command
+			} else if command == 'nofmt' {
+				command += ' $default_command'
 			}
 			f.current = VCodeExample{
 				sline: lnumber
