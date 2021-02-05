@@ -1,4 +1,0 @@
-fn main() {
-	a := [1,2,3,4].filter(fn(a string) bool { return a.len > 0 })
-	println(a)
-}

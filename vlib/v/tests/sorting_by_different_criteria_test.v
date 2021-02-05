@@ -11,10 +11,6 @@ fn (p Parent) < (p1 Parent) bool {
     return p.name < p1.name
 }
 
-fn (p Parent) > (p1 Parent) bool {
-    return p.name > p1.name
-}
-
 fn test_sorting_by_different_criteria_in_same_function() {
 	mut arr := [
 		Parent{Child{0.2}, 'def'},

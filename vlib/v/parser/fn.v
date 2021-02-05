@@ -274,15 +274,22 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 				scope: 0
 			}
 		}
-	}
-	if p.tok.kind in [.plus, .minus, .mul, .div, .mod, .gt, .lt, .eq, .ne, .le, .ge]
-		&& p.peek_tok.kind == .lpar {
+	} else if p.tok.kind in [.plus, .minus, .mul, .div, .mod, .lt, .eq] && p.peek_tok.kind == .lpar {
 		name = p.tok.kind.str() // op_to_fn_name()
 		if rec_type == table.void_type {
 			p.error_with_pos('cannot use operator overloading with normal functions',
 				p.tok.position())
 		}
 		p.next()
+	} else if p.tok.kind in [.ne, .gt, .ge, .le] && p.peek_tok.kind == .lpar {
+		p.error_with_pos('cannot overload `!=`, `>`, `<=` and `>=` as they are auto generated with `==` and`<`',
+			p.tok.position())
+	} else {
+		pos := p.tok.position()
+		p.error_with_pos('expecting method name', pos)
+		return ast.FnDecl{
+			scope: 0
+		}
 	}
 	// <T>
 	generic_params := p.parse_generic_params()
@@ -425,7 +432,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		is_builtin: p.builtin_mod || p.mod in util.builtin_module_parts
 		attrs: p.attrs
 		scope: p.scope
+		label_names: p.label_names
 	}
+	p.label_names = []
 	p.close_scope()
 	return fn_decl
 }
@@ -512,8 +521,13 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 		p.error_with_pos('unexpected `$p.tok.kind` after anonymous function signature, expecting `{`',
 			p.tok.position())
 	}
+	mut label_names := []string{}
 	if p.tok.kind == .lcbr {
+		tmp := p.label_names
+		p.label_names = []
 		stmts = p.parse_block_no_scope(false)
+		label_names = p.label_names
+		p.label_names = tmp
 	}
 	p.close_scope()
 	mut func := table.Fn{
@@ -540,6 +554,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 			pos: pos.extend(p.prev_tok.position())
 			file: p.file_name
 			scope: p.scope
+			label_names: label_names
 		}
 		typ: typ
 	}
@@ -665,7 +680,9 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 			}
 			if p.tok.kind == .key_mut {
 				// TODO remove old syntax
-				p.warn_with_pos('use `mut f Foo` instead of `f mut Foo`', p.tok.position())
+				if !p.pref.is_fmt {
+					p.warn_with_pos('use `mut f Foo` instead of `f mut Foo`', p.tok.position())
+				}
 				is_mut = true
 			}
 			if p.tok.kind == .ellipsis {

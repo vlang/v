@@ -15,6 +15,27 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 		// || node.no_body {
 		return
 	}
+	// Skip [if xxx] if xxx is not defined
+	/*
+	for attr in node.attrs {
+		if !attr.is_comptime_define {
+			continue
+		}
+		if attr.name !in g.pref.compile_defines_all {
+			// println('skipping [if]')
+			return
+		}
+	}
+	*/
+	if g.pref.skip_unused {
+		is_used_by_main := g.table.used_fns[node.name]
+		// println('> is_used_by_main: $is_used_by_main | node.name: $node.name')
+		if !is_used_by_main {
+			g.writeln('// fn $node.name UNUSED')
+			return
+		}
+	}
+
 	g.returned_var_name = ''
 	//
 	old_g_autofree := g.is_autofree
@@ -56,7 +77,7 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 	}
 	//
 	mut name := node.name
-	if name in ['+', '-', '*', '/', '%', '<', '>', '==', '!=', '<=', '>='] {
+	if name in ['+', '-', '*', '/', '%', '<', '=='] {
 		name = util.replace_op(name)
 	}
 	if node.is_method {
@@ -192,7 +213,7 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 		g.fn_mut_arg_names.clear()
 	}
 
-	if node.return_type == table.void_type {
+	if !node.has_return {
 		g.write_defer_stmts_when_needed()
 	}
 	if node.is_anon {

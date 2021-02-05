@@ -63,6 +63,7 @@ pub mut:
 	skip_flags        bool // should `#flag` and `#include` be skipped
 	cur_generic_types []table.Type
 mut:
+	files                            []ast.File
 	expr_level                       int  // to avoid infinite recursion segfaults due to compiler bugs
 	inside_sql                       bool // to handle sql table fields pseudo variables
 	cur_orm_ts                       table.TypeSymbol
@@ -76,6 +77,8 @@ mut:
 	timers                           &util.Timers = util.new_timers(false)
 	comptime_fields_type             map[string]table.Type
 	fn_scope                         &ast.Scope = voidptr(0)
+	used_fns                         map[string]bool // used_fns['println'] == true
+	main_fn_decl_node                ast.FnDecl
 }
 
 pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
@@ -140,6 +143,7 @@ pub fn (mut c Checker) check2(ast_file &ast.File) []errors.Error {
 }
 
 pub fn (mut c Checker) check_files(ast_files []ast.File) {
+	// c.files = ast_files
 	mut has_main_mod_file := false
 	mut has_main_fn := false
 	mut files_from_main_module := []&ast.File{}
@@ -208,6 +212,9 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 			c.add_error_detail('fn test_xyz(){ assert 2 + 2 == 4 }')
 			c.error('a _test.v file should have *at least* one `test_` function', token.Position{})
 		}
+	}
+	if c.pref.skip_unused {
+		c.mark_used(ast_files)
 	}
 	// Make sure fn main is defined in non lib builds
 	if c.pref.build_mode == .build_module || c.pref.is_test {
@@ -882,7 +889,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 		.gt, .lt, .ge, .le {
 			if left.kind in [.array, .array_fixed] && right.kind in [.array, .array_fixed] {
 				c.error('only `==` and `!=` are defined on arrays', infix_expr.pos)
-			} else if left.kind == .struct_ && right.kind == .struct_ {
+			} else if left.kind == .struct_ && right.kind == .struct_ && infix_expr.op in [.eq, .lt] {
 				if !(left.has_method(infix_expr.op.str()) && right.has_method(infix_expr.op.str())) {
 					left_name := c.table.type_to_str(left_type)
 					right_name := c.table.type_to_str(right_type)
@@ -892,6 +899,14 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 					} else {
 						c.error('mismatched types `$left_name` and `$right_name`', infix_expr.pos)
 					}
+				}
+			}
+			if left.kind == .struct_ && right.kind == .struct_ {
+				if !left.has_method('<') && infix_expr.op in [.ge, .le] {
+					c.error('cannot use `$infix_expr.op` as `<` operator method is not defined',
+						infix_expr.pos)
+				} else if !left.has_method('<') && infix_expr.op == .gt {
+					c.error('cannot use `>` as `<=` operator method is not defined', infix_expr.pos)
 				}
 			}
 		}
@@ -1081,6 +1096,15 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 				v.is_changed = true
 				if v.typ.share() == .shared_t {
 					if expr.name !in c.locked_names {
+						if c.locked_names.len > 0 || c.rlocked_names.len > 0 {
+							if expr.name in c.rlocked_names {
+								c.error('$expr.name has an `rlock` but needs a `lock`',
+									expr.pos)
+							} else {
+								c.error('$expr.name must be added to the `lock` list above',
+									expr.pos)
+							}
+						}
 						to_lock = expr.name
 						pos = expr.pos
 					}
@@ -1286,7 +1310,7 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ table.Type, call_e
 		ast.Ident {
 			if arg_expr.kind == .function {
 				func := c.table.find_fn(arg_expr.name) or {
-					c.error('$arg_expr.name is not exist', arg_expr.pos)
+					c.error('$arg_expr.name does not exist', arg_expr.pos)
 					return
 				}
 				if func.params.len > 1 {
@@ -1755,6 +1779,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			call_expr.name = name_prefixed
 			found = true
 			f = f1
+			c.table.fns[name_prefixed].usages++
 		}
 	}
 	if !found && call_expr.left is ast.IndexExpr {
@@ -1788,6 +1813,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		if f1 := c.table.find_fn(fn_name) {
 			found = true
 			f = f1
+			c.table.fns[fn_name].usages++
 		}
 	}
 	if c.pref.is_script && !found {
@@ -1799,6 +1825,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			call_expr.name = os_name
 			found = true
 			f = f1
+			c.table.fns[os_name].usages++
 		}
 	}
 	// check for arg (var) of fn type
@@ -2620,6 +2647,8 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 							}
 							left_type = left_type.set_nr_muls(1)
 						}
+					} else if left_type.has_flag(.shared_f) {
+						left_type = left_type.clear_flag(.shared_f)
 					}
 					if ident_var_info.share == .atomic_t {
 						left_type = left_type.set_flag(.atomic_f)
@@ -3254,6 +3283,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		}
 		ast.GotoLabel {}
 		ast.GotoStmt {
+			if node.name !in c.cur_fn.label_names {
+				c.error('unknown label `$node.name`', node.pos)
+			}
 			// TODO: check label doesn't bypass variable declarations
 		}
 		ast.HashStmt {
@@ -4540,6 +4572,9 @@ pub fn (mut c Checker) select_expr(mut node ast.SelectExpr) table.Type {
 }
 
 pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) table.Type {
+	if c.rlocked_names.len > 0 || c.locked_names.len > 0 {
+		c.error('nested `lock`/`rlock` not allowed', node.pos)
+	}
 	for i in 0 .. node.lockeds.len {
 		c.ident(mut node.lockeds[i])
 		id := node.lockeds[i]
@@ -4555,20 +4590,28 @@ pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) table.Type {
 		} else if id.name in c.rlocked_names {
 			c.error('`$id.name` is already read-locked', id.pos)
 		}
-		if node.is_rlock {
+		if node.is_rlock[i] {
 			c.rlocked_names << id.name
 		} else {
 			c.locked_names << id.name
 		}
 	}
 	c.stmts(node.stmts)
-	if node.is_rlock {
-		c.rlocked_names = c.rlocked_names[..c.rlocked_names.len - node.lockeds.len]
-	} else {
-		c.locked_names = c.locked_names[..c.locked_names.len - node.lockeds.len]
+	c.rlocked_names = []
+	c.locked_names = []
+	// handle `x := rlock a { a.getval() }`
+	mut ret_type := table.void_type
+	if node.stmts.len > 0 {
+		last_stmt := node.stmts[node.stmts.len - 1]
+		if last_stmt is ast.ExprStmt {
+			ret_type = last_stmt.typ
+		}
 	}
-	// void for now... maybe sometime `x := lock a { a.getval() }`
-	return table.void_type
+	if ret_type != table.void_type {
+		node.is_expr = true
+	}
+	node.typ = ret_type
+	return ret_type
 }
 
 pub fn (mut c Checker) unsafe_expr(mut node ast.UnsafeExpr) table.Type {
@@ -5262,7 +5305,6 @@ pub fn (mut c Checker) offset_of(node ast.OffsetOf) table.Type {
 		c.error('first argument of __offsetof must be struct', node.pos)
 		return table.u32_type
 	}
-
 	if !c.table.struct_has_field(node.struct_type, node.field) {
 		c.error('struct `$sym.name` has no field called `$node.field`', node.pos)
 	}
@@ -5460,7 +5502,56 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) table.Type {
 	c.cur_orm_ts = sym
 	info := sym.info as table.Struct
 	fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, sym.name)
+	mut sub_structs := map[int]ast.SqlExpr{}
+	for f in fields.filter(c.table.types[int(it.typ)].kind == .struct_) {
+		mut n := ast.SqlExpr{
+			pos: node.pos
+			has_where: true
+			typ: f.typ
+			db_expr: node.db_expr
+			table_expr: ast.Type{
+				pos: node.table_expr.pos
+				typ: f.typ
+			}
+		}
+		tmp_inside_sql := c.inside_sql
+		c.sql_expr(mut n)
+		c.inside_sql = tmp_inside_sql
+		n.where_expr = ast.InfixExpr{
+			op: .eq
+			pos: n.pos
+			left: ast.Ident{
+				language: .v
+				tok_kind: .eq
+				scope: c.fn_scope
+				obj: ast.Var{}
+				mod: 'main'
+				name: 'id'
+				is_mut: false
+				kind: .unresolved
+				info: ast.IdentVar{}
+			}
+			right: ast.Ident{
+				language: .c
+				mod: 'main'
+				tok_kind: .eq
+				obj: ast.Var{}
+				is_mut: false
+				scope: c.fn_scope
+				info: ast.IdentVar{
+					typ: table.int_type
+				}
+			}
+			left_type: table.int_type
+			right_type: table.int_type
+			auto_locked: ''
+			or_block: ast.OrExpr{}
+		}
+
+		sub_structs[int(f.typ)] = n
+	}
 	node.fields = fields
+	node.sub_structs = sub_structs
 	if node.has_where {
 		c.expr(node.where_expr)
 	}
@@ -5494,7 +5585,25 @@ fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) table.Type {
 	info := sym.info as table.Struct
 	table_sym := c.table.get_type_symbol(node.table_expr.typ)
 	fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, table_sym.name)
+	mut sub_structs := map[int]ast.SqlStmt{}
+	for f in fields.filter(c.table.types[int(it.typ)].kind == .struct_) {
+		mut n := ast.SqlStmt{
+			pos: node.pos
+			db_expr: node.db_expr
+			kind: node.kind
+			table_expr: ast.Type{
+				pos: node.table_expr.pos
+				typ: f.typ
+			}
+			object_var_name: '${node.object_var_name}.$f.name'
+		}
+		tmp_inside_sql := c.inside_sql
+		c.sql_stmt(mut n)
+		c.inside_sql = tmp_inside_sql
+		sub_structs[int(f.typ)] = n
+	}
 	node.fields = fields
+	node.sub_structs = sub_structs
 	c.expr(node.db_expr)
 	if node.kind == .update {
 		for expr in node.update_exprs {
@@ -5502,11 +5611,13 @@ fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) table.Type {
 		}
 	}
 	c.expr(node.where_expr)
+
 	return table.void_type
 }
 
 fn (mut c Checker) fetch_and_verify_orm_fields(info table.Struct, pos token.Position, table_name string) []table.Field {
-	fields := info.fields.filter(it.typ in [table.string_type, table.int_type, table.bool_type]
+	fields := info.fields.filter(
+		(it.typ in [table.string_type, table.int_type, table.bool_type] || c.table.types[int(it.typ)].kind == .struct_)
 		&& !it.attrs.contains('skip'))
 	if fields.len == 0 {
 		c.error('V orm: select: empty fields in `$table_name`', pos)
@@ -5521,7 +5632,6 @@ fn (mut c Checker) fetch_and_verify_orm_fields(info table.Struct, pos token.Posi
 fn (mut c Checker) post_process_generic_fns() {
 	// Loop thru each generic function concrete type.
 	// Check each specific fn instantiation.
-
 	for i in 0 .. c.file.generic_fns.len {
 		if c.table.fn_gen_types.len == 0 {
 			// no concrete types, so just skip:
@@ -5555,9 +5665,12 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	if node.language == .v && !c.is_builtin_mod {
 		c.check_valid_snake_case(node.name, 'function name', node.pos)
 	}
+	if node.name == 'main.main' {
+		c.main_fn_decl_node = node
+	}
 	if node.return_type != table.void_type {
 		for attr in node.attrs {
-			if attr.is_ctdefine {
+			if attr.is_comptime_define {
 				c.error('only functions that do NOT return values can have `[if $attr.name]` tags',
 					node.pos)
 				break
@@ -5606,8 +5719,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			c.error('.str() methods should have 0 arguments', node.pos)
 		}
 	}
-	if node.language == .v && node.is_method
-		&& node.name in ['+', '-', '*', '%', '/', '<', '>', '==', '!=', '>=', '<='] {
+	if node.language == .v && node.is_method && node.name in ['+', '-', '*', '%', '/', '<', '=='] {
 		if node.params.len != 2 {
 			c.error('operator methods should have exactly 1 argument', node.pos)
 		} else {
@@ -5625,8 +5737,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				} else if node.receiver.typ != node.params[1].typ {
 					c.error('expected `$receiver_sym.name` not `$param_sym.name` - both operands must be the same type for operator overloading',
 						node.params[1].type_pos)
-				} else if node.name in ['<', '>', '==', '!=', '>=', '<=']
-					&& node.return_type != table.bool_type {
+				} else if node.name in ['<', '=='] && node.return_type != table.bool_type {
 					c.error('operator comparison methods should return `bool`', node.pos)
 				} else if parent_sym.is_primitive() {
 					c.error('cannot define operator methods on type alias for `$parent_sym.name`',
@@ -5672,13 +5783,12 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	}
 	c.fn_scope = node.scope
 	c.stmts(node.stmts)
-
 	if c.fn_mut_arg_names.len > 0 {
 		c.fn_mut_arg_names.clear()
 	}
-	returns := c.returns || has_top_return(node.stmts)
-	if node.language == .v && !node.no_body && node.return_type != table.void_type && !returns
-		&& node.name !in ['panic', 'exit'] {
+	node.has_return = c.returns || has_top_return(node.stmts)
+	if node.language == .v && !node.no_body && node.return_type != table.void_type
+		&& !node.has_return&& node.name !in ['panic', 'exit'] {
 		if c.inside_anon_fn {
 			c.error('missing return at the end of an anonymous function', node.pos)
 		} else {

@@ -69,6 +69,7 @@ mut:
 	warnings          []errors.Warning
 	vet_errors        []vet.Error
 	cur_fn_name       string
+	label_names       []string
 	in_generic_params bool // indicates if parsing between `<` and `>` of a method/function
 	name_error        bool // indicates if the token is not a name or the name is on another line
 }
@@ -552,6 +553,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 						file: p.file_name
 						return_type: table.void_type
 						scope: p.scope
+						label_names: p.label_names
 					}
 				} else if p.pref.is_fmt {
 					return p.stmt(false)
@@ -656,6 +658,10 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				// `label:`
 				spos := p.tok.position()
 				name := p.check_name()
+				if name in p.label_names {
+					p.error_with_pos('duplicate label `$name`', spos)
+				}
+				p.label_names << name
 				p.next()
 				if p.tok.kind == .key_for {
 					mut stmt := p.stmt(is_top_level)
@@ -822,7 +828,7 @@ fn (mut p Parser) attributes() {
 			p.error_with_pos('duplicate attribute `$attr.name`', start_pos.extend(p.prev_tok.position()))
 			return
 		}
-		if attr.is_ctdefine {
+		if attr.is_comptime_define {
 			if has_ctdefine {
 				p.error_with_pos('only one `[if flag]` may be applied at a time `$attr.name`',
 					start_pos.extend(p.prev_tok.position()))
@@ -857,10 +863,9 @@ fn (mut p Parser) parse_attr() table.Attr {
 			pos: apos.extend(p.tok.position())
 		}
 	}
-	mut is_ctdefine := false
-	if p.tok.kind == .key_if {
+	is_comptime_define := p.tok.kind == .key_if
+	if is_comptime_define {
 		p.next()
-		is_ctdefine = true
 	}
 	mut name := ''
 	mut arg := ''
@@ -893,7 +898,7 @@ fn (mut p Parser) parse_attr() table.Attr {
 	return table.Attr{
 		name: name
 		is_string: is_string
-		is_ctdefine: is_ctdefine
+		is_comptime_define: is_comptime_define
 		arg: arg
 		is_string_arg: is_string_arg
 		pos: apos.extend(p.tok.position())

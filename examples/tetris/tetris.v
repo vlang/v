@@ -61,7 +61,7 @@ const (
 		gx.rgb(255, 180, 31), /* orange long topleft */
 		gx.rgb(33, 66, 255), /* blue long topright */
 		gx.rgb(74, 198, 255), /* lightblue longest */
-		gx.rgb(0, 170, 170), /* unused ? */
+		gx.rgb(0, 170, 170),
 	]
 	background_color = gx.white
 	ui_color         = gx.rgba(255, 0, 0, 210)

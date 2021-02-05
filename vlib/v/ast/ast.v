@@ -329,13 +329,16 @@ pub:
 	generic_params  []GenericParam
 	is_direct_arr   bool // direct array access
 	attrs           []table.Attr
+	skip_gen        bool // this function doesn't need to be generated (for example [if foo])
 pub mut:
 	stmts         []Stmt
 	return_type   table.Type
+	has_return    bool
 	comments      []Comment // comments *after* the header, but *before* `{`; used for InterfaceDecl
 	next_comments []Comment // coments that are one line after the decl; used for InterfaceDecl
 	source_file   &File = 0
 	scope         &Scope
+	label_names   []string
 }
 
 pub struct GenericParam {
@@ -645,7 +648,7 @@ pub:
 pub struct LockExpr {
 pub:
 	stmts    []Stmt
-	is_rlock bool
+	is_rlock []bool
 	pos      token.Position
 pub mut:
 	lockeds []Ident // `x`, `y` in `lock x, y {`
@@ -1171,8 +1174,9 @@ pub:
 	updated_columns []string // for `update set x=y`
 	update_exprs    []Expr   // for `update`
 pub mut:
-	table_expr Type
-	fields     []table.Field
+	table_expr  Type
+	fields      []table.Field
+	sub_structs map[int]SqlStmt
 }
 
 pub struct SqlExpr {
@@ -1180,7 +1184,6 @@ pub:
 	typ         table.Type
 	is_count    bool
 	db_expr     Expr // `db` in `sql db {`
-	where_expr  Expr
 	has_where   bool
 	has_offset  bool
 	offset_expr Expr
@@ -1192,8 +1195,10 @@ pub:
 	has_limit   bool
 	limit_expr  Expr
 pub mut:
-	table_expr Type
-	fields     []table.Field
+	where_expr  Expr
+	table_expr  Type
+	fields      []table.Field
+	sub_structs map[int]SqlExpr
 }
 
 [inline]
@@ -1252,6 +1257,8 @@ pub fn (expr Expr) is_lvalue() bool {
 		CTempVar { return true }
 		IndexExpr { return expr.left.is_lvalue() }
 		SelectorExpr { return expr.expr.is_lvalue() }
+		ParExpr { return expr.expr.is_lvalue() } // for var := &{...(*pointer_var)}
+		PrefixExpr { return expr.right.is_lvalue() }
 		else {}
 	}
 	return false
@@ -1511,4 +1518,10 @@ pub fn ex2fe(x Expr) table.FExpr {
 	res := table.FExpr{}
 	unsafe { C.memcpy(&res, &x, sizeof(table.FExpr)) }
 	return res
+}
+
+// experimental ast.Table
+pub struct Table {
+	// pub mut:
+	// main_fn_decl_node FnDecl
 }

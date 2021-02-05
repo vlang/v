@@ -149,6 +149,7 @@ pub fn (mut sem Semaphore) wait() {
 	}
 	C.pthread_mutex_lock(&sem.mtx)
 	c = C.atomic_load_u32(&sem.count)
+outer:
 	for {
 		if c == 0 {
 			C.pthread_cond_wait(&sem.cond, &sem.mtx)
@@ -159,11 +160,10 @@ pub fn (mut sem Semaphore) wait() {
 				if c > 1 {
 					C.pthread_cond_signal(&sem.cond)
 				}
-				goto unlock
+				break outer
 			}
 		}
 	}
-unlock:
 	C.pthread_mutex_unlock(&sem.mtx)
 }
 
@@ -184,11 +184,12 @@ pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
 	t_spec := timeout.timespec()
 	mut res := 0
 	c = C.atomic_load_u32(&sem.count)
+outer:
 	for {
 		if c == 0 {
 			res = C.pthread_cond_timedwait(&sem.cond, &sem.mtx, &t_spec)
 			if res == C.ETIMEDOUT {
-				goto unlock
+				break outer
 			}
 			c = C.atomic_load_u32(&sem.count)
 		}
@@ -197,11 +198,10 @@ pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
 				if c > 1 {
 					C.pthread_cond_signal(&sem.cond)
 				}
-				goto unlock
+				break outer
 			}
 		}
 	}
-unlock:
 	C.pthread_mutex_unlock(&sem.mtx)
 	return res == 0
 }

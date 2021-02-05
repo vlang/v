@@ -80,8 +80,19 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 			x := '${node.object_var_name}.$field.name'
 			if field.typ == table.string_type {
 				g.writeln('sqlite3_bind_text($g.sql_stmt_name, ${i + 0}, ${x}.str, ${x}.len, 0);')
+			} else if g.table.types[int(field.typ)].kind == .struct_ {
+				// insert again
+				expr := node.sub_structs[int(field.typ)]
+				tmp_sql_stmt_name := g.sql_stmt_name
+				g.sql_stmt(expr)
+				g.sql_stmt_name = tmp_sql_stmt_name
+				// get last inserted id
+				g.writeln('array_sqlite__Row rows = sqlite__DB_exec($db_name, _SLIT("SELECT last_insert_rowid()")).arg0;')
+				id_name := g.new_tmp_var()
+				g.writeln('int $id_name = string_int((*(string*)array_get((*(sqlite__Row*)array_get(rows, 0)).vals, 0)));')
+				g.writeln('sqlite3_bind_int($g.sql_stmt_name, ${i + 0} , $id_name); // id')
 			} else {
-				g.writeln('sqlite3_bind_int($g.sql_stmt_name, ${i + 0}, $x); // stmt')
+				g.writeln('sqlite3_bind_int($g.sql_stmt_name, ${i + 0} , $x); // stmt')
 			}
 		}
 	}
@@ -95,7 +106,7 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 	g.writeln('\tsqlite3_finalize($g.sql_stmt_name);')
 }
 
-fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
+fn (mut g Gen) sql_select_expr(node ast.SqlExpr, sub bool, line string) {
 	g.sql_i = 0
 	/*
 	`nr_users := sql db { ... }` =>
@@ -107,7 +118,10 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 		int nr_users = get_int(stmt)
 	```
 	*/
-	cur_line := g.go_before_stmt(0)
+	mut cur_line := line
+	if !sub {
+		cur_line = g.go_before_stmt(0)
+	}
 	mut sql_query := 'SELECT '
 	table_name := util.strip_mod_name(g.table.get_type_symbol(node.table_expr.typ).name)
 	if node.is_count {
@@ -231,6 +245,27 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 				g.writeln('if ($string_data != NULL) {')
 				g.writeln('\t${tmp}.$field.name = tos_clone($string_data);')
 				g.writeln('}')
+			} else if g.table.types[int(field.typ)].kind == .struct_ {
+				id_name := g.new_tmp_var()
+				g.writeln('//parse struct start')
+				g.writeln('int $id_name = ${func}($g.sql_stmt_name, $i);')
+				mut expr := node.sub_structs[int(field.typ)]
+				mut where_expr := expr.where_expr as ast.InfixExpr
+				mut ident := where_expr.right as ast.Ident
+				ident.name = id_name
+				where_expr.right = ident
+				expr.where_expr = where_expr
+
+				tmp_sql_i := g.sql_i
+				tmp_sql_stmt_name := g.sql_stmt_name
+				tmp_sql_buf := g.sql_buf
+
+				g.sql_select_expr(expr, true, '\t${tmp}.$field.name =')
+				g.writeln('//parse struct end')
+
+				g.sql_stmt_name = tmp_sql_stmt_name
+				g.sql_buf = tmp_sql_buf
+				g.sql_i = tmp_sql_i
 			} else {
 				g.writeln('${tmp}.$field.name = ${func}($g.sql_stmt_name, $i);')
 			}
