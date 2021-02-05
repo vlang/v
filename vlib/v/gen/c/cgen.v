@@ -49,6 +49,7 @@ mut:
 	hotcode_definitions strings.Builder // -live declarations & functions
 	embedded_data       strings.Builder // data to embed in the executable/binary
 	shared_types        strings.Builder // shared/lock types
+	shared_functions    strings.Builder // shared constructors
 	channel_definitions strings.Builder // channel related code
 	options_typedefs    strings.Builder // Option typedefs
 	options             strings.Builder // `Option_xxxx` types
@@ -187,6 +188,7 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 		options_typedefs: strings.new_builder(100)
 		options: strings.new_builder(100)
 		shared_types: strings.new_builder(100)
+		shared_functions: strings.new_builder(100)
 		channel_definitions: strings.new_builder(100)
 		json_forward_decls: strings.new_builder(100)
 		enum_typedefs: strings.new_builder(100)
@@ -291,6 +293,8 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 	b.write(g.enum_typedefs.str())
 	b.writeln('\n// V type definitions:')
 	b.write(g.type_definitions.str())
+	b.writeln('\n// V shared types:')
+	b.write(g.shared_types.str())
 	b.writeln('\n// V Option_xxx definitions:')
 	b.write(g.options.str())
 	b.writeln('\n// V json forward decls:')
@@ -319,8 +323,8 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 		b.write(g.options_typedefs.str())
 	}
 	if g.shared_types.len > 0 {
-		b.writeln('\n// V shared types:')
-		b.write(g.shared_types.str())
+		b.writeln('\n// V shared type functions:')
+		b.write(g.shared_functions.str())
 		b.write(c_concurrency_helpers)
 	}
 	if g.channel_definitions.len > 0 {
@@ -594,11 +598,11 @@ fn (mut g Gen) find_or_register_shared(t table.Type, base string) string {
 	}
 	mtx_typ := 'sync__RwMutex'
 	g.shared_types.writeln('struct $sh_typ { $base val; $mtx_typ mtx; };')
-	g.shared_types.writeln('static inline voidptr __dup${sh_typ}(voidptr src, int sz) {')
-	g.shared_types.writeln('\t$sh_typ* dest = memdup(src, sz);')
-	g.shared_types.writeln('\tsync__RwMutex_init(&dest->mtx);')
-	g.shared_types.writeln('\treturn dest;')
-	g.shared_types.writeln('}')
+	g.shared_functions.writeln('static inline voidptr __dup${sh_typ}(voidptr src, int sz) {')
+	g.shared_functions.writeln('\t$sh_typ* dest = memdup(src, sz);')
+	g.shared_functions.writeln('\tsync__RwMutex_init(&dest->mtx);')
+	g.shared_functions.writeln('\treturn dest;')
+	g.shared_functions.writeln('}')
 	g.typedefs2.writeln('typedef struct $sh_typ $sh_typ;')
 	// println('registered shared type $sh_typ')
 	g.shareds << t_idx
