@@ -78,7 +78,7 @@ fn get_all_commands() []Command {
 		okmsg: 'All examples can be compiled.'
 	}
 	res << Command{
-		line: '$vexe run cmd/tools/check-md.v -hide-warnings .'
+		line: '$vexe check-md -hide-warnings .'
 		label: 'Check ```v ``` code examples and formatting of .MD files...'
 		okmsg: 'All .md files look good.'
 	}

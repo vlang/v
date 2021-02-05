@@ -137,7 +137,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
 <!--
 NB: there are several special keywords, which you can put after the code fences for v:
 compile, live, ignore, failcompile, oksyntax, badsyntax, wip, nofmt
-For more details, do: `v run cmd/tools/check-md.v`
+For more details, do: `v check-md`
 -->
 
 ## Hello World

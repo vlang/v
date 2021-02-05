@@ -46,7 +46,7 @@ This is not required.
 
 Test all files in the current directory are formatted.
 
-* `v run cmd/tools/check-md.v -hide-warnings .`
+* `v check-md -hide-warnings .`
 
 Ensure that all .md files in the project are formatted properly,
 and that the V code block examples in them can be compiled/formatted too.
@@ -83,5 +83,5 @@ It works, by running these in succession:
 * `v test-fmt`
 * `v build-tools`
 * `v build-examples`
-* `v run cmd/tools/check-md.v -hide-warnings .`
+* `v check-md -hide-warnings .`
 * `v install nedpals.args`
