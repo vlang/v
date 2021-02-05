@@ -85,6 +85,21 @@ fn (mut c Checker) mark_used(ast_files []ast.File) {
 	c.table.used_fns['main.main'] = true
 	c.table.used_fns['builtin_init'] = true
 	c.table.used_fns['memdup'] = true
+	c.table.used_fns['vstring'] = true
+	c.table.used_fns['vstring_with_len'] = true
+	c.table.used_fns['string'] = true // array.string
+	// c.table.used_fns['str'] = true // builtin .str() methods; They use strings.builder and strconv.ftoa_64 etc.
+	// whitelist common modules const initializers too:
+	c.table.used_fns['os.getwd'] = true
+	c.table.used_fns['os.init_os_args'] = true
+	//
+	c.table.used_fns['term.can_show_color_on_stdin'] = true
+	c.table.used_fns['term.can_show_color_on_stdout'] = true
+	c.table.used_fns['term.can_show_color_on_stderr'] = true
+	//
+	c.table.used_fns['main.can_use_relative_paths'] = true
+	//
+	// eprintln('>>> c.table.used_fns: $c.table.used_fns')
 	// c.timing_measure(@FN)
 
 	// println(walker.used_fns)
