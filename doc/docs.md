@@ -1044,7 +1044,7 @@ match mut x {
 ### In operator
 
 `in` allows to check whether an array or a map contains an element.
-The negation of it is `!in` operator.
+To do the opposite, use `!in`.
 
 ```v
 nums := [1, 2, 3]
