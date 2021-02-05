@@ -1,1 +1,5 @@
-builder error: cannot import module "notexist" (not found)
+vlib/v/checker/tests/import_not_found_err.vv:1:1: builder error: cannot import module "notexist" (not found)
+    1 | import notexist
+      | ~~~~~~~~~~~~~~~
+    2 | fn main() {
+    3 |     println(notexist.name)

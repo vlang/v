@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module pref
 
+// import v.ast // TODO this results in a compiler bug
 import os.cmdline
 import os
 import v.vcache
@@ -135,6 +136,7 @@ pub mut:
 	is_vweb             bool // skip _ var warning in templates
 	only_check_syntax   bool // when true, just parse the files, then stop, before running checker
 	experimental        bool // enable experimental features
+	skip_unused         bool // skip generating C code for functions, that are not used
 	show_timings        bool // show how much time each compiler stage took
 	is_ios_simulator    bool
 	is_apk              bool     // build as Android .apk format
@@ -219,6 +221,9 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			'-manualfree' {
 				res.autofree = false
 				res.build_options << arg
+			}
+			'-skip-unused' {
+				res.skip_unused = true
 			}
 			'-compress' {
 				res.compress = true

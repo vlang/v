@@ -150,6 +150,7 @@ mut:
 	force_main_console bool // true when [console] used on fn main()
 	as_cast_type_names map[string]string // table for type name lookup in runtime (for __as_cast)
 	obf_table          map[string]string
+	// main_fn_decl_node  ast.FnDecl
 }
 
 pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string {
@@ -876,7 +877,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 			// Handle if expressions, set the value of the last expression to the temp var.
 			g.stmt_path_pos << g.out.len
 			g.skip_stmt_pos = true
-			g.writeln('$tmp_var = /* if expr set */')
+			g.write('$tmp_var = ')
 		}
 		g.stmt(stmt)
 		g.skip_stmt_pos = false
@@ -2471,7 +2472,7 @@ fn (mut g Gen) map_fn_ptrs(key_typ table.TypeSymbol) (string, string, string, st
 			key_eq_fn = '&map_eq_int_2'
 			clone_fn = '&map_clone_int_2'
 		}
-		.int, .u32, .rune {
+		.int, .u32, .rune, .f32 {
 			hash_fn = '&map_hash_int_4'
 			key_eq_fn = '&map_eq_int_4'
 			clone_fn = '&map_clone_int_4'
@@ -2484,7 +2485,7 @@ fn (mut g Gen) map_fn_ptrs(key_typ table.TypeSymbol) (string, string, string, st
 			}
 			return g.map_fn_ptrs(ts)
 		}
-		.u64, .i64 {
+		.u64, .i64, .f64 {
 			hash_fn = '&map_hash_int_8'
 			key_eq_fn = '&map_eq_int_8'
 			clone_fn = '&map_clone_int_8'
@@ -2807,7 +2808,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.write('/*OffsetOf*/ (u32)(__offsetof(${util.no_dots(styp)}, $node.field))')
 		}
 		ast.SqlExpr {
-			g.sql_select_expr(node)
+			g.sql_select_expr(node, false, '')
 		}
 		ast.StringLiteral {
 			g.string_literal(node)
@@ -3407,6 +3408,13 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 }
 
 fn (mut g Gen) lock_expr(node ast.LockExpr) {
+	tmp_result := if node.is_expr { g.new_tmp_var() } else { '' }
+	mut cur_line := ''
+	if node.is_expr {
+		styp := g.typ(node.typ)
+		cur_line = g.go_before_stmt(0)
+		g.writeln('$styp $tmp_result;')
+	}
 	mut mtxs := ''
 	if node.lockeds.len == 0 {
 		// this should not happen
@@ -3420,13 +3428,24 @@ fn (mut g Gen) lock_expr(node ast.LockExpr) {
 		mtxs = g.new_tmp_var()
 		g.writeln('uintptr_t _arr_$mtxs[$node.lockeds.len];')
 		g.writeln('bool _isrlck_$mtxs[$node.lockeds.len];')
+		mut j := 0
 		for i, id in node.lockeds {
-			name := id.name
-			deref := if id.is_mut { '->' } else { '.' }
-			g.writeln('_arr_$mtxs[$i] = &$name${deref}mtx;')
-			// TODO: fix `vfmt` to allow this in string interpolation
-			is_rlock_str := node.is_rlock[i].str()
-			g.writeln('_isrlck_$mtxs[$i] = $is_rlock_str;')
+			if !node.is_rlock[i] {
+				name := id.name
+				deref := if id.is_mut { '->' } else { '.' }
+				g.writeln('_arr_$mtxs[$j] = &$name${deref}mtx;')
+				g.writeln('_isrlck_$mtxs[$j] = false;')
+				j++
+			}
+		}
+		for i, id in node.lockeds {
+			if node.is_rlock[i] {
+				name := id.name
+				deref := if id.is_mut { '->' } else { '.' }
+				g.writeln('_arr_$mtxs[$j] = &$name${deref}mtx;')
+				g.writeln('_isrlck_$mtxs[$j] = true;')
+				j++
+			}
 		}
 		g.writeln('__sort_ptr(_arr_$mtxs, _isrlck_$mtxs, $node.lockeds.len);')
 		g.writeln('for (int $mtxs=0; $mtxs<$node.lockeds.len; $mtxs++) {')
@@ -3437,7 +3456,9 @@ fn (mut g Gen) lock_expr(node ast.LockExpr) {
 		g.writeln('\t\tsync__RwMutex_lock((sync__RwMutex*)_arr_$mtxs[$mtxs]);')
 		g.writeln('}')
 	}
-	g.stmts(node.stmts)
+	g.writeln('/*lock*/ {')
+	g.stmts_with_tmp_var(node.stmts, tmp_result)
+	g.writeln('}')
 	if node.lockeds.len == 0 {
 		// this should not happen
 	} else if node.lockeds.len == 1 {
@@ -3454,7 +3475,12 @@ fn (mut g Gen) lock_expr(node ast.LockExpr) {
 		g.writeln('\t\tsync__RwMutex_runlock((sync__RwMutex*)_arr_$mtxs[$mtxs]);')
 		g.writeln('\telse')
 		g.writeln('\t\tsync__RwMutex_unlock((sync__RwMutex*)_arr_$mtxs[$mtxs]);')
-		g.writeln('}')
+		g.write('}')
+	}
+	if node.is_expr {
+		g.writeln('')
+		g.write(cur_line)
+		g.write('$tmp_result')
 	}
 }
 
@@ -5706,6 +5732,10 @@ fn (mut g Gen) type_default(typ_ table.Type) string {
 		'string' { return '(string){.str=(byteptr)""}' }
 		'rune' { return '0' }
 		else {}
+	}
+	if sym.kind == .chan {
+		elemtypstr := g.typ(sym.chan_info().elem_type)
+		return 'sync__new_channel_st(0, sizeof($elemtypstr))'
 	}
 	return match sym.kind {
 		.interface_, .sum_type, .array_fixed, .multi_return { '{0}' }

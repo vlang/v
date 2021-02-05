@@ -63,6 +63,7 @@ pub mut:
 	skip_flags        bool // should `#flag` and `#include` be skipped
 	cur_generic_types []table.Type
 mut:
+	files                            []ast.File
 	expr_level                       int  // to avoid infinite recursion segfaults due to compiler bugs
 	inside_sql                       bool // to handle sql table fields pseudo variables
 	cur_orm_ts                       table.TypeSymbol
@@ -76,6 +77,8 @@ mut:
 	timers                           &util.Timers = util.new_timers(false)
 	comptime_fields_type             map[string]table.Type
 	fn_scope                         &ast.Scope = voidptr(0)
+	used_fns                         map[string]bool // used_fns['println'] == true
+	main_fn_decl_node                ast.FnDecl
 }
 
 pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
@@ -140,6 +143,7 @@ pub fn (mut c Checker) check2(ast_file &ast.File) []errors.Error {
 }
 
 pub fn (mut c Checker) check_files(ast_files []ast.File) {
+	// c.files = ast_files
 	mut has_main_mod_file := false
 	mut has_main_fn := false
 	mut files_from_main_module := []&ast.File{}
@@ -208,6 +212,9 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 			c.add_error_detail('fn test_xyz(){ assert 2 + 2 == 4 }')
 			c.error('a _test.v file should have *at least* one `test_` function', token.Position{})
 		}
+	}
+	if c.pref.skip_unused {
+		c.mark_used(ast_files)
 	}
 	// Make sure fn main is defined in non lib builds
 	if c.pref.build_mode == .build_module || c.pref.is_test {
@@ -1303,7 +1310,7 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ table.Type, call_e
 		ast.Ident {
 			if arg_expr.kind == .function {
 				func := c.table.find_fn(arg_expr.name) or {
-					c.error('$arg_expr.name is not exist', arg_expr.pos)
+					c.error('$arg_expr.name does not exist', arg_expr.pos)
 					return
 				}
 				if func.params.len > 1 {
@@ -1772,6 +1779,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			call_expr.name = name_prefixed
 			found = true
 			f = f1
+			c.table.fns[name_prefixed].usages++
 		}
 	}
 	if !found && call_expr.left is ast.IndexExpr {
@@ -1805,6 +1813,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		if f1 := c.table.find_fn(fn_name) {
 			found = true
 			f = f1
+			c.table.fns[fn_name].usages++
 		}
 	}
 	if c.pref.is_script && !found {
@@ -1816,6 +1825,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			call_expr.name = os_name
 			found = true
 			f = f1
+			c.table.fns[os_name].usages++
 		}
 	}
 	// check for arg (var) of fn type
@@ -4589,8 +4599,19 @@ pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) table.Type {
 	c.stmts(node.stmts)
 	c.rlocked_names = []
 	c.locked_names = []
-	// void for now... maybe sometime `x := lock a { a.getval() }`
-	return table.void_type
+	// handle `x := rlock a { a.getval() }`
+	mut ret_type := table.void_type
+	if node.stmts.len > 0 {
+		last_stmt := node.stmts[node.stmts.len - 1]
+		if last_stmt is ast.ExprStmt {
+			ret_type = last_stmt.typ
+		}
+	}
+	if ret_type != table.void_type {
+		node.is_expr = true
+	}
+	node.typ = ret_type
+	return ret_type
 }
 
 pub fn (mut c Checker) unsafe_expr(mut node ast.UnsafeExpr) table.Type {
@@ -5481,7 +5502,56 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) table.Type {
 	c.cur_orm_ts = sym
 	info := sym.info as table.Struct
 	fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, sym.name)
+	mut sub_structs := map[int]ast.SqlExpr{}
+	for f in fields.filter(c.table.types[int(it.typ)].kind == .struct_) {
+		mut n := ast.SqlExpr{
+			pos: node.pos
+			has_where: true
+			typ: f.typ
+			db_expr: node.db_expr
+			table_expr: ast.Type{
+				pos: node.table_expr.pos
+				typ: f.typ
+			}
+		}
+		tmp_inside_sql := c.inside_sql
+		c.sql_expr(mut n)
+		c.inside_sql = tmp_inside_sql
+		n.where_expr = ast.InfixExpr{
+			op: .eq
+			pos: n.pos
+			left: ast.Ident{
+				language: .v
+				tok_kind: .eq
+				scope: c.fn_scope
+				obj: ast.Var{}
+				mod: 'main'
+				name: 'id'
+				is_mut: false
+				kind: .unresolved
+				info: ast.IdentVar{}
+			}
+			right: ast.Ident{
+				language: .c
+				mod: 'main'
+				tok_kind: .eq
+				obj: ast.Var{}
+				is_mut: false
+				scope: c.fn_scope
+				info: ast.IdentVar{
+					typ: table.int_type
+				}
+			}
+			left_type: table.int_type
+			right_type: table.int_type
+			auto_locked: ''
+			or_block: ast.OrExpr{}
+		}
+
+		sub_structs[int(f.typ)] = n
+	}
 	node.fields = fields
+	node.sub_structs = sub_structs
 	if node.has_where {
 		c.expr(node.where_expr)
 	}
@@ -5515,7 +5585,25 @@ fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) table.Type {
 	info := sym.info as table.Struct
 	table_sym := c.table.get_type_symbol(node.table_expr.typ)
 	fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, table_sym.name)
+	mut sub_structs := map[int]ast.SqlStmt{}
+	for f in fields.filter(c.table.types[int(it.typ)].kind == .struct_) {
+		mut n := ast.SqlStmt{
+			pos: node.pos
+			db_expr: node.db_expr
+			kind: node.kind
+			table_expr: ast.Type{
+				pos: node.table_expr.pos
+				typ: f.typ
+			}
+			object_var_name: '${node.object_var_name}.$f.name'
+		}
+		tmp_inside_sql := c.inside_sql
+		c.sql_stmt(mut n)
+		c.inside_sql = tmp_inside_sql
+		sub_structs[int(f.typ)] = n
+	}
 	node.fields = fields
+	node.sub_structs = sub_structs
 	c.expr(node.db_expr)
 	if node.kind == .update {
 		for expr in node.update_exprs {
@@ -5523,11 +5611,13 @@ fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) table.Type {
 		}
 	}
 	c.expr(node.where_expr)
+
 	return table.void_type
 }
 
 fn (mut c Checker) fetch_and_verify_orm_fields(info table.Struct, pos token.Position, table_name string) []table.Field {
-	fields := info.fields.filter(it.typ in [table.string_type, table.int_type, table.bool_type]
+	fields := info.fields.filter(
+		(it.typ in [table.string_type, table.int_type, table.bool_type] || c.table.types[int(it.typ)].kind == .struct_)
 		&& !it.attrs.contains('skip'))
 	if fields.len == 0 {
 		c.error('V orm: select: empty fields in `$table_name`', pos)
@@ -5575,9 +5665,12 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	if node.language == .v && !c.is_builtin_mod {
 		c.check_valid_snake_case(node.name, 'function name', node.pos)
 	}
+	if node.name == 'main.main' {
+		c.main_fn_decl_node = node
+	}
 	if node.return_type != table.void_type {
 		for attr in node.attrs {
-			if attr.is_ctdefine {
+			if attr.is_comptime_define {
 				c.error('only functions that do NOT return values can have `[if $attr.name]` tags',
 					node.pos)
 				break

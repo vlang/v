@@ -11,6 +11,9 @@ const (
 		'vlib/v',
 		'cmd/v',
 		'cmd/tools',
+		'examples/2048',
+		'examples/tetris',
+		'examples/term.ui',
 	]
 	verify_known_failing_exceptions = []string{}
 	vfmt_verify_list                = [

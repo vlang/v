@@ -63,12 +63,12 @@ pub fn run_repl_file(wd string, vexec string, file string) ?string {
 		file_expected := '${file}.expected.txt'
 		os.write_file(file_result, result) or { panic(err) }
 		os.write_file(file_expected, output) or { panic(err) }
-		diff := diff_files(file_result, file_expected)
+		diff := diff_files(file_expected, file_result)
 		return error('Difference found in REPL file: $file
-====> Got      :
-|$result|
 ====> Expected :
 |$output|
+====> Got      :
+|$result|
 ====> Diff     :
 $diff
 		')

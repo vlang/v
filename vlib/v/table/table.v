@@ -19,6 +19,7 @@ pub mut:
 	fn_gen_types  map[string][][]Type // for generic functions
 	cmod_prefix   string // needed for table.type_to_str(Type) while vfmt; contains `os.`
 	is_fmt        bool
+	used_fns      map[string]bool // filled in by the checker, when pref.skip_unused = true;
 }
 
 pub struct Fn {
@@ -34,11 +35,12 @@ pub:
 	is_placeholder bool
 	no_body        bool
 	mod            string
-	ctdefine       string // compile time define. myflag, when [if myflag] tag
+	ctdefine       string // compile time define. "myflag", when [if myflag] tag
 	attrs          []Attr
 pub mut:
 	name      string
 	source_fn voidptr // set in the checker, while processing fn declarations
+	usages    int
 }
 
 fn (f &Fn) method_equals(o &Fn) bool {

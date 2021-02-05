@@ -48,12 +48,12 @@ fn test_shared_as_value() {
 		assert v == 35
 	}
 	rlock m {
-		w := m_val(m)
-		assert w == -3.125
+		u := m_val(m)
+		assert u == -3.125
 	}
 	lock a {
-		x := a_val(a)
-		assert x == 4
+		u := a_val(a)
+		assert u == 4
 	}
 }
 
