@@ -73,7 +73,7 @@ pub fn (mut p Parser) parse_map_type() table.Type {
 	}
 	p.check(.lsbr)
 	key_type := p.parse_type()
-	is_alias := p.table.get_final_type_symbol(key_type).is_primitive()
+	is_alias := p.table.get_type_symbol(key_type).kind == .alias
 	if key_type.idx() == 0 {
 		// error is reported in parse_type
 		return 0
