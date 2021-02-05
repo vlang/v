@@ -418,7 +418,7 @@ Literals like `123` or `4.56` are treated in a special way. They do
 not lead to type promotions, however they default to `int` and `f64`
 respectively, when their type has to be decided:
 
-```v ignore
+```v nofmt
 u := u16(12)
 v := 13 + u    // v is of type `u16` - no promotion
 x := f32(45.6)
@@ -1487,7 +1487,7 @@ assert button.height == 20
 
 As you can see, both the struct name and braces can be omitted, instead of:
 
-```v ignore
+```v oksyntax nofmt
 new_button(ButtonConfig{text:'Click me', width:100})
 ```
 
@@ -1803,7 +1803,7 @@ module, and inside it. That restriction is relaxed only for the `main` module
 constants too, i.e. just `println(numbers)`, not `println(main.numbers)` .
 
 vfmt takes care of this rule, so you can type `println(pi)` inside the `math` module,
-and vffmt will automatically update it to `println(math.pi)`.
+and vfmt will automatically update it to `println(math.pi)`.
 
 <!--
 Many people prefer all caps consts: `TOP_CITIES`. This wouldn't work
@@ -1812,8 +1812,8 @@ They can represent complex structures, and this is used quite often since there
 are no globals:
 -->
 
-```v ignore
-println('Top cities: $top_cities.filter(.usa)')
+```v oksyntax
+println('Top cities: ${top_cities.filter(.usa)}')
 ```
 
 ## Builtin functions
@@ -2161,10 +2161,10 @@ That's why you have to declare a `mut` before the `is` expression:
 
 ```v ignore
 if mut w is Mars {
-    assert typeof(w).name == 'Mars'
-    if w.dust_storm() {
-        println('bad weather!')
-    }
+	assert typeof(w).name == 'Mars'
+	if w.dust_storm() {
+		println('bad weather!')
+	}
 }
 ```
 Otherwise `w` would keep its original type.
