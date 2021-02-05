@@ -2538,6 +2538,15 @@ pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 	}
 }
 
+pub fn (mut c Checker) is_mut_ident(expr ast.Expr) bool {
+	if expr is ast.Ident {
+		if c.for_in_mut_val_name == expr.name || expr.name in c.fn_mut_arg_names {
+			return true
+		}
+	}
+	return false
+}
+
 pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 	c.expected_type = table.none_type // TODO a hack to make `x := if ... work`
 	defer {
@@ -2606,7 +2615,11 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		right := if i < assign_stmt.right.len { assign_stmt.right[i] } else { assign_stmt.right[0] }
 		mut right_type := assign_stmt.right_types[i]
 		if is_decl {
-			left_type = c.table.mktyp(right_type)
+			if c.is_mut_ident(right) {
+				left_type = c.table.mktyp(right_type.deref())
+			} else {
+				left_type = c.table.mktyp(right_type)
+			}
 			if left_type == table.int_type {
 				if right is ast.IntegerLiteral {
 					mut is_large := right.val.len > 13
@@ -5802,7 +5815,10 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			}
 		}
 	}
-	for param in node.params {
+	for i, param in node.params {
+		if i == 0 && node.is_method {
+			continue
+		}
 		if param.is_mut {
 			c.fn_mut_arg_names << param.name
 		}
