@@ -770,9 +770,9 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 	match infix_expr.op {
 		// .eq, .ne, .gt, .lt, .ge, .le, .and, .logical_or, .dot, .key_as, .right_shift {}
 		.eq, .ne {
-			is_alias_eq_struct := left.kind == .alias && right.kind == .struct_
-			is_struct_eq_alias := left.kind == .struct_ && right.kind == .alias
-			if is_alias_eq_struct || is_struct_eq_alias {
+			is_mismatch := (left.kind == .alias && right.kind in [.struct_, .array])
+				|| (right.kind == .alias && left.kind in [.struct_, .array])
+			if is_mismatch {
 				c.error('possible type mismatch of compared values of `$infix_expr.op` operation',
 					infix_expr.pos)
 			}
