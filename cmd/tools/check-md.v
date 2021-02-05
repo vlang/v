@@ -43,7 +43,11 @@ These are:
 ')
 		exit(0)
 	}
-	mut files_paths := if is_all { md_file_paths('.') } else { non_option_args }
+	if is_all {
+		println('´-all´ flag is deprecated. Please use ´v run check-md.v .´ instead.')
+		exit(1)
+	}
+	mut files_paths := non_option_args.clone()
 	mut warnings := 0
 	mut errors := 0
 	mut oks := 0
