@@ -23,9 +23,12 @@ fn main() {
 and other style violations like too long lines/links etc...
 
 Usage:
-	a) `v run cmd/tools/check-md.v -all` - will check *all* .md files in the working dir.
-	b) `v run cmd/tools/check-md.v doc/docs.md` - will only check a single file.
-	c) `v run cmd/tools/check-md.v -hide-warnings file.md` - same, but will not print warnings, only errors.
+	a) `v run check-md.v [flags] <...files>` - Check the given .md files.
+	b) `v run check-md.v [flags] <...dirs>`  - Check *all* files in the given directories.
+	Note: You can also combine files and directories.
+
+Flags:
+	-hide-warnings    Do not print warnings, only errors.
 
 NB: There are several special keywords, which you can put after the code fences for v.
 These are:
