@@ -3008,6 +3008,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	}
 	left_type := g.unwrap_generic(node.left_type)
 	left_sym := g.table.get_type_symbol(left_type)
+	left_final_sym := g.table.get_final_type_symbol(left_type)
 	unaliased_left := if left_sym.kind == .alias {
 		(left_sym.info as table.Alias).parent_type
 	} else {
@@ -3018,6 +3019,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		return
 	}
 	right_sym := g.table.get_type_symbol(node.right_type)
+	right_final_sym := g.table.get_final_type_symbol(node.right_type)
 	has_eq_overloaded := !left_sym.has_method('==')
 	unaliased_right := if right_sym.info is table.Alias {
 		right_sym.info.parent_type
@@ -3253,11 +3255,11 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			g.expr(node.left)
 			g.write(')')
 		}
-	} else if node.op == .left_shift && left_sym.kind == .array {
+	} else if node.op == .left_shift && left_final_sym.kind == .array {
 		// arr << val
 		tmp := g.new_tmp_var()
-		info := left_sym.info as table.Array
-		if right_sym.kind == .array && info.elem_type != node.right_type {
+		info := left_final_sym.info as table.Array
+		if right_final_sym.kind == .array && info.elem_type != node.right_type {
 			// push an array => PUSH_MANY, but not if pushing an array to 2d array (`[][]int << []int`)
 			g.write('_PUSH_MANY(')
 			mut expected_push_many_atype := left_type
