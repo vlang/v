@@ -53,27 +53,27 @@ pub fn (ver Version) satisfies(input string) bool {
 	return version_satisfies(ver, input)
 }
 
-// eq returns true if `v1` is equal to `v2`.
+// eq returns `true` if `v1` is equal to `v2`.
 pub fn (v1 Version) eq(v2 Version) bool {
 	return compare_eq(v1, v2)
 }
 
-// gt returns true if `v1` is greater than `v2`.
+// gt returns `true` if `v1` is greater than `v2`.
 pub fn (v1 Version) gt(v2 Version) bool {
 	return compare_gt(v1, v2)
 }
 
-// lt returns true if `v1` is less than `v2`.
+// lt returns `true` if `v1` is less than `v2`.
 pub fn (v1 Version) lt(v2 Version) bool {
 	return compare_lt(v1, v2)
 }
 
-// ge returns true if `v1` is greater than or equal to `v2`.
+// ge returns `true` if `v1` is greater than or equal to `v2`.
 pub fn (v1 Version) ge(v2 Version) bool {
 	return compare_ge(v1, v2)
 }
 
-// le returns true if `v1` is less than or equal to `v2`.
+// le returns `true` if `v1` is less than or equal to `v2`.
 pub fn (v1 Version) le(v2 Version) bool {
 	return compare_le(v1, v2)
 }
@@ -92,7 +92,7 @@ pub fn coerce(input string) ?Version {
 	return ver
 }
 
-// is_valid returns true if the `input` `string` can be converted to
+// is_valid returns `true` if the `input` `string` can be converted to
 // a  (semantic) `Version` struct.
 pub fn is_valid(input string) bool {
 	return is_version_valid(input)
