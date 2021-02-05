@@ -79,6 +79,7 @@ mut:
 	inside_map_postfix  bool     // inside map++/-- postfix expr
 	inside_map_infix    bool     // inside map<</+=/-= infix expr
 	inside_map_index    bool
+	inside_opt_data     bool
 	// inside_if_expr        bool
 	ternary_names         map[string]string
 	ternary_level_names   map[string][]string
@@ -322,7 +323,7 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 		b.writeln('\n// V option typedefs:')
 		b.write(g.options_typedefs.str())
 	}
-	if g.shared_types.len > 0 {
+	if g.shared_functions.len > 0 {
 		b.writeln('\n// V shared type functions:')
 		b.write(g.shared_functions.str())
 		b.write(c_concurrency_helpers)
@@ -2536,10 +2537,15 @@ fn (mut g Gen) expr(node ast.Expr) {
 			// if g.fileis('1.strings') {
 			// println('\ncall_expr()()')
 			// }
+			ret_type := if node.or_block.kind == .absent {
+				node.return_type
+			} else {
+				node.return_type.clear_flag(.optional)
+			}
 			mut shared_styp := ''
 			if g.is_shared {
-				ret_sym := g.table.get_type_symbol(node.return_type)
-				shared_typ := node.return_type.set_flag(.shared_f)
+				ret_sym := g.table.get_type_symbol(ret_type)
+				shared_typ := ret_type.set_flag(.shared_f)
 				shared_styp = g.typ(shared_typ)
 				if ret_sym.kind == .array {
 					g.writeln('($shared_styp*)__dup_shared_array(&($shared_styp){.val = ')
@@ -4844,7 +4850,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	if is_amp {
 		g.out.go_back(1) // delete the `&` already generated in `prefix_expr()
 	}
-	if g.is_shared {
+	if g.is_shared && !g.inside_opt_data {
 		mut shared_typ := struct_init.typ.set_flag(.shared_f)
 		shared_styp = g.typ(shared_typ)
 		g.writeln('($shared_styp*)__dup${shared_styp}(&($shared_styp){.val = ($styp){')
@@ -5016,7 +5022,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		g.write('\n#ifndef __cplusplus\n0\n#endif\n')
 	}
 	g.write('}')
-	if g.is_shared {
+	if g.is_shared && !g.inside_opt_data {
 		g.write('}, sizeof($shared_styp))')
 	} else if is_amp {
 		g.write(', sizeof($styp))')
@@ -5441,7 +5447,10 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 					expr_stmt := stmt as ast.ExprStmt
 					g.stmt_path_pos << g.out.len
 					g.write('*($mr_styp*) ${cvar_name}.data = ')
+					old_inside_opt_data := g.inside_opt_data
+					g.inside_opt_data = true
 					g.expr_with_cast(expr_stmt.expr, expr_stmt.typ, return_type.clear_flag(.optional))
+					g.inside_opt_data = old_inside_opt_data
 					if g.inside_ternary == 0 && !(expr_stmt.expr is ast.IfExpr) {
 						g.writeln(';')
 					}
