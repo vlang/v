@@ -16,6 +16,7 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 		return
 	}
 	// Skip [if xxx] if xxx is not defined
+	/*
 	for attr in node.attrs {
 		if !attr.is_comptime_define {
 			continue
@@ -31,6 +32,7 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 			// return
 		}
 	}
+	*/
 
 	g.returned_var_name = ''
 	//
