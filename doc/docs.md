@@ -3516,6 +3516,7 @@ V also gives your code access to a set of pseudo string variables,
 that are substituted at compile time:
 
 - `@FN` => replaced with the name of the current V function
+- `@METHOD` => replaced with ReceiverType.MethodName
 - `@MOD` => replaced with the name of the current V module
 - `@STRUCT` => replaced with the name of the current V struct
 - `@FILE` => replaced with the path of the V source file

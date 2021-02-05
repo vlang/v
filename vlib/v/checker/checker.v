@@ -3911,6 +3911,15 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) table.Type {
 		.fn_name {
 			node.val = c.cur_fn.name.all_after_last('.')
 		}
+		.method_name {
+			fname := c.cur_fn.name.all_after_last('.')
+			if c.cur_fn.is_method {
+				node.val = c.table.type_to_str(c.cur_fn.receiver.typ).all_after_last('.') + '.' +
+					fname
+			} else {
+				node.val = fname
+			}
+		}
 		.mod_name {
 			node.val = c.cur_fn.mod
 		}
