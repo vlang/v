@@ -19,6 +19,7 @@ pub mut:
 	fn_gen_types  map[string][][]Type // for generic functions
 	cmod_prefix   string // needed for table.type_to_str(Type) while vfmt; contains `os.`
 	is_fmt        bool
+	used_fns      map[string]bool // filled in by the checker, when pref.skip_unused = true;
 }
 
 pub struct Fn {

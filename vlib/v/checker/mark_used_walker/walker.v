@@ -1,9 +1,8 @@
 // Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
-module walker
+module mark_used_walker
 
-// This module walks the entire program starting at fn main and marks used (called)
-// functions.
+// This module walks the entire program starting at fn main and marks used (called) functions.
 // Unused functions can be safely skipped by the backends to save CPU time and space.
 import v.ast
 
@@ -91,7 +90,7 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 	if node.language == .c {
 		return
 	}
-	println('fn decl $fn_name')
+	// println('fn decl $fn_name')
 	w.used_fns[fn_name] = true
 	for stmt in node.stmts {
 		w.stmt(stmt)
@@ -102,7 +101,7 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 	fn_name := if node.is_method { node.receiver_type.str() + '.' + node.name } else { node.name }
 	// fn_name := node.name
-	println('call_expr $fn_name')
+	// println('call_expr $fn_name')
 	// if node.is_method {
 	// println('M $node.name $node.receiver_type')
 	//}

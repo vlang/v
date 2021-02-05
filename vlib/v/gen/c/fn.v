@@ -27,13 +27,12 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 		}
 	}
 	*/
-	if g.pref.experimental {
-		if f := g.table.find_fn(node.name) {
-			println('> usages: ${f.usages:-10} | node.name: $node.name')
-			if f.usages == 0 {
-				g.writeln('// fn $node.name UNUSED')
-				return
-			}
+	if g.pref.skip_unused {
+		is_used_by_main := g.table.used_fns[ node.name ]
+		// println('> is_used_by_main: $is_used_by_main | node.name: $node.name')
+		if !is_used_by_main {
+			g.writeln('// fn $node.name UNUSED')
+			return
 		}
 	}
 

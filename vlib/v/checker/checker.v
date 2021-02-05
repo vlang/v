@@ -12,8 +12,6 @@ import v.pref
 import v.util
 import v.errors
 import v.pkgconfig
-import v.walker
-import time
 
 const (
 	max_nr_errors                 = 300
@@ -229,26 +227,8 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 	} else if !has_main_fn {
 		c.error('function `main` must be declared in the main module', token.Position{})
 	}
-	// Walk the tree starting at main() and mark all used fns.
-	if c.pref.experimental {
-		println('walking the ast')
-		// c.is_recursive = true
-		// c.fn_decl(mut c.table2.main_fn_decl_node)
-		t := time.ticks()
-		mut walker := walker.Walker{
-			files: ast_files
-		}
-		for stmt in c.main_fn_decl_node.stmts {
-			walker.stmt(stmt)
-		}
-		// walker.fn_decl(mut c.table2.main_fn_decl_node)
-		println('time = ${time.ticks() - t}ms, nr used fns=$walker.used_fns.len')
-
-		for key, _ in walker.used_fns {
-			println(key)
-		}
-		// println(walker.used_fns)
-		// c.walk(ast_files)
+	if c.pref.skip_unused {
+		c.mark_used(ast_files)
 	}
 }
 
