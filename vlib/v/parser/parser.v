@@ -828,7 +828,7 @@ fn (mut p Parser) attributes() {
 			p.error_with_pos('duplicate attribute `$attr.name`', start_pos.extend(p.prev_tok.position()))
 			return
 		}
-		if attr.is_ctdefine {
+		if attr.is_comptime_define {
 			if has_ctdefine {
 				p.error_with_pos('only one `[if flag]` may be applied at a time `$attr.name`',
 					start_pos.extend(p.prev_tok.position()))
@@ -863,10 +863,9 @@ fn (mut p Parser) parse_attr() table.Attr {
 			pos: apos.extend(p.tok.position())
 		}
 	}
-	mut is_ctdefine := false
-	if p.tok.kind == .key_if {
+	is_comptime_define := p.tok.kind == .key_if
+	if is_comptime_define {
 		p.next()
-		is_ctdefine = true
 	}
 	mut name := ''
 	mut arg := ''
@@ -899,7 +898,7 @@ fn (mut p Parser) parse_attr() table.Attr {
 	return table.Attr{
 		name: name
 		is_string: is_string
-		is_ctdefine: is_ctdefine
+		is_comptime_define: is_comptime_define
 		arg: arg
 		is_string_arg: is_string_arg
 		pos: apos.extend(p.tok.position())

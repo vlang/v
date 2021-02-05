@@ -34,11 +34,12 @@ pub:
 	is_placeholder bool
 	no_body        bool
 	mod            string
-	ctdefine       string // compile time define. myflag, when [if myflag] tag
+	ctdefine       string // compile time define. "myflag", when [if myflag] tag
 	attrs          []Attr
 pub mut:
 	name      string
 	source_fn voidptr // set in the checker, while processing fn declarations
+	is_used   bool
 }
 
 fn (f &Fn) method_equals(o &Fn) bool {

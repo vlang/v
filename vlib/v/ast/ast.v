@@ -329,6 +329,7 @@ pub:
 	generic_params  []GenericParam
 	is_direct_arr   bool // direct array access
 	attrs           []table.Attr
+	skip_gen        bool // this function doesn't need to be generated (for example [if foo])
 pub mut:
 	stmts         []Stmt
 	return_type   table.Type
@@ -1517,4 +1518,10 @@ pub fn ex2fe(x Expr) table.FExpr {
 	res := table.FExpr{}
 	unsafe { C.memcpy(&res, &x, sizeof(table.FExpr)) }
 	return res
+}
+
+// experimental ast.Table
+pub struct Table {
+	// pub mut:
+	// main_fn_decl_node FnDecl
 }

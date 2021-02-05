@@ -12,6 +12,8 @@ import v.pref
 import v.util
 import v.errors
 import v.pkgconfig
+import v.walker
+import time
 
 const (
 	max_nr_errors                 = 300
@@ -36,6 +38,7 @@ pub struct Checker {
 	pref &pref.Preferences // Preferences shared from V struct
 pub mut:
 	table            &table.Table
+	table2           &ast.Table
 	file             &ast.File = 0
 	nr_errors        int
 	nr_warnings      int
@@ -63,6 +66,7 @@ pub mut:
 	skip_flags        bool // should `#flag` and `#include` be skipped
 	cur_generic_types []table.Type
 mut:
+	files                            []ast.File
 	expr_level                       int  // to avoid infinite recursion segfaults due to compiler bugs
 	inside_sql                       bool // to handle sql table fields pseudo variables
 	cur_orm_ts                       table.TypeSymbol
@@ -76,15 +80,18 @@ mut:
 	timers                           &util.Timers = util.new_timers(false)
 	comptime_fields_type             map[string]table.Type
 	fn_scope                         &ast.Scope = voidptr(0)
+	used_fns                         map[string]bool // used_fns['println'] == true
+	main_fn_decl_node                ast.FnDecl
 }
 
-pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
+pub fn new_checker(table &table.Table, table2 &ast.Table, pref &pref.Preferences) Checker {
 	mut timers_should_print := false
 	$if time_checking ? {
 		timers_should_print = true
 	}
 	return Checker{
 		table: table
+		table2: table2
 		pref: pref
 		cur_fn: 0
 		timers: util.new_timers(timers_should_print)
@@ -140,6 +147,7 @@ pub fn (mut c Checker) check2(ast_file &ast.File) []errors.Error {
 }
 
 pub fn (mut c Checker) check_files(ast_files []ast.File) {
+	// c.files = ast_files
 	mut has_main_mod_file := false
 	mut has_main_fn := false
 	mut files_from_main_module := []&ast.File{}
@@ -222,6 +230,27 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 			token.Position{})
 	} else if !has_main_fn {
 		c.error('function `main` must be declared in the main module', token.Position{})
+	}
+	// Walk the tree starting at main() and mark all used fns.
+	if c.pref.experimental {
+		println('walking the ast')
+		// c.is_recursive = true
+		// c.fn_decl(mut c.table2.main_fn_decl_node)
+		t := time.ticks()
+		mut walker := walker.Walker{
+			files: ast_files
+		}
+		for stmt in c.main_fn_decl_node.stmts {
+			walker.stmt(stmt)
+		}
+		// walker.fn_decl(mut c.table2.main_fn_decl_node)
+		println('time = ${time.ticks() - t}ms, nr used fns=$walker.used_fns.len')
+
+		for key, _ in walker.used_fns {
+			println(key)
+		}
+		// println(walker.used_fns)
+		// c.walk(ast_files)
 	}
 }
 
@@ -1303,7 +1332,7 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ table.Type, call_e
 		ast.Ident {
 			if arg_expr.kind == .function {
 				func := c.table.find_fn(arg_expr.name) or {
-					c.error('$arg_expr.name is not exist', arg_expr.pos)
+					c.error('$arg_expr.name does not exist', arg_expr.pos)
 					return
 				}
 				if func.params.len > 1 {
@@ -1772,6 +1801,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			call_expr.name = name_prefixed
 			found = true
 			f = f1
+			c.table.fns[name_prefixed].is_used = true
 		}
 	}
 	if !found && call_expr.left is ast.IndexExpr {
@@ -1805,6 +1835,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		if f1 := c.table.find_fn(fn_name) {
 			found = true
 			f = f1
+			c.table.fns[fn_name].is_used = true
 		}
 	}
 	if c.pref.is_script && !found {
@@ -1816,6 +1847,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			call_expr.name = os_name
 			found = true
 			f = f1
+			c.table.fns[os_name].is_used = true
 		}
 	}
 	// check for arg (var) of fn type
@@ -3827,7 +3859,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) table.Type {
 			...pref_
 			is_vweb: true
 		}
-		mut c2 := new_checker(c.table, pref2)
+		mut c2 := new_checker(c.table, c.table2, pref2)
 		c2.check(node.vweb_tmpl)
 		mut i := 0 // tmp counter var for skipping first three tmpl vars
 		for k, _ in c2.file.scope.children[0].objects {
@@ -5655,9 +5687,12 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	if node.language == .v && !c.is_builtin_mod {
 		c.check_valid_snake_case(node.name, 'function name', node.pos)
 	}
+	if node.name == 'main.main' {
+		c.main_fn_decl_node = node
+	}
 	if node.return_type != table.void_type {
 		for attr in node.attrs {
-			if attr.is_ctdefine {
+			if attr.is_comptime_define {
 				c.error('only functions that do NOT return values can have `[if $attr.name]` tags',
 					node.pos)
 				break

@@ -15,6 +15,23 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 		// || node.no_body {
 		return
 	}
+	// Skip [if xxx] if xxx is not defined
+	for attr in node.attrs {
+		if !attr.is_comptime_define {
+			continue
+		}
+		if attr.name !in g.pref.compile_defines_all {
+			// println('skipping [if]')
+			return
+		}
+	}
+	if f := g.table.find_fn(node.name) {
+		if !f.is_used {
+			g.writeln('// fn $node.name UNUSED')
+			// return
+		}
+	}
+
 	g.returned_var_name = ''
 	//
 	old_g_autofree := g.is_autofree

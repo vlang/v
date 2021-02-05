@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module pref
 
+// import v.ast // TODO this results in a compiler bug
 import os.cmdline
 import os
 import v.vcache

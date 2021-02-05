@@ -22,7 +22,7 @@ pub fn (mut b Builder) gen_c(v_files []string) string {
 	b.print_warnings_and_errors()
 	// TODO: move gen.cgen() to c.gen()
 	b.timing_start('C GEN')
-	res := c.gen(b.parsed_files, b.table, b.pref)
+	res := c.gen(b.parsed_files, b.table, b.table2, b.pref)
 	b.timing_measure('C GEN')
 	// println('cgen done')
 	// println(res)

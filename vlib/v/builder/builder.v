@@ -27,6 +27,7 @@ pub mut:
 	parsed_files        []ast.File
 	cached_msvc         MsvcResult
 	table               &table.Table
+	table2              &ast.Table
 	timers              &util.Timers = util.new_timers(false)
 	ccoptions           CcompilerOptions
 }
@@ -36,6 +37,7 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 	compiled_dir := if os.is_dir(rdir) { rdir } else { os.dir(rdir) }
 	mut table := table.new_table()
 	table.is_fmt = false
+	table2 := &ast.Table{}
 	if pref.use_color == .always {
 		util.emanager.set_support_color(true)
 	}
@@ -53,7 +55,8 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 	return Builder{
 		pref: pref
 		table: table
-		checker: checker.new_checker(table, pref)
+		table2: table2
+		checker: checker.new_checker(table, table2, pref)
 		global_scope: &ast.Scope{
 			parent: 0
 		}
@@ -235,7 +238,7 @@ fn module_path(mod string) string {
 	return mod.replace('.', os.path_separator)
 }
 
-// TODO: try to merge this & util.module functions to create a 
+// TODO: try to merge this & util.module functions to create a
 // reliable multi use function. see comments in util/module.v
 pub fn (b &Builder) find_module_path(mod string, fpath string) ?string {
 	// support @VROOT/v.mod relative paths:
