@@ -101,3 +101,8 @@ pub fn merge<T>(a []T, b []T) []T {
 	}
 	return m
 }
+
+[deprecated]
+pub fn shuffle<T>(mut a []T, n int) {
+	panic('Please use rand.util.shuffle() instead')
+}
