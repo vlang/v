@@ -21,5 +21,4 @@ fn main(){
 	
 	// exec(["-c","find","/tmp/"])  // does not work I guess is normal
 
-
 }

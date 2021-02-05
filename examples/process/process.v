@@ -25,12 +25,11 @@ fn exec(args []string) string {
 			line = cmd.stdout_read()
 			println(line)
 
-			// line_err = cmd.stderr_read() //IF WE CALL STDERR_READ will block
-			// we need a mechanism which allows us to check if stderr/stdread
+			line_err = cmd.stderr_read() //IF WE CALL STDERR_READ will block
+
+			// we need a mechanism which allows us to check if stderr/stdout has data or it should never block
 
 			// line_err = cmd.stderr_slurp()
-
-			
 
 			// println(line_err)
 			out += line
@@ -54,7 +53,7 @@ fn main() {
 	mut out := ''
 	// out = exec(["-c","find /"]) 
 	out = exec(["-c","find /tmp/"]) //DOES NOT WORK???? why not, it works in execve?
-	// out = exec(["-c","find","/tmp/"]) //DOES NOT WORK???? not sure what the right way is
+
 
 	//TODO: 
 
