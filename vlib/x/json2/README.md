@@ -4,51 +4,51 @@
 `x.json2` is an experimental JSON parser written from scratch on V.
 
 ## Usage
-```v oksyntax nofmt
+```v oksyntax
 import x.json2
 import net.http
 
 fn main() {
-    // Decoding
-    resp := http.get('https://example.com')?
+	// Decoding
+	resp := http.get('https://example.com') ?
 
-    // raw decode
-    raw_person := json2.raw_decode(resp.text)?
+	// raw decode
+	raw_person := json2.raw_decode(resp.text) ?
 
-    // Casting `Any` type / Navigating
-    person := raw_person.as_map()
-    name := person['name'].str() // Bob
-    age := person['age'].int() // 19
-    pi := person['pi'].f64() // 3.14....
+	// Casting `Any` type / Navigating
+	person := raw_person.as_map()
+	name := person['name'].str() // Bob
+	age := person['age'].int() // 19
+	pi := person['pi'].f64() // 3.14....
 
-    // Constructing an `Any` type
-    mut me := map[string]json2.Any
-    me['name'] = 'Bob'
-    me['age'] = 18
+	// Constructing an `Any` type
+	mut me := map[string]json2.Any{}
+	me['name'] = 'Bob'
+	me['age'] = 18
 
-    mut arr := []json2.Any
-    arr << 'rock'
-    arr << 'papers'
-    arr << json2.null
-    arr << 12
+	mut arr := []json2.Any{}
+	arr << 'rock'
+	arr << 'papers'
+	arr << json2.null
+	arr << 12
 
-    me['interests'] = arr
+	me['interests'] = arr
 
-    mut pets := map[string]json2.Any
-    pets['Sam'] = 'Maltese Shitzu'
-    me['pets'] = pets
+	mut pets := map[string]json2.Any{}
+	pets['Sam'] = 'Maltese Shitzu'
+	me['pets'] = pets
 
-    // Stringify to JSON
-    println(me.str())
-    //{
-    //   "name":"Bob",
-    //   "age":18,
-    //   "interests":["rock","papers","scissors",null,12],
-    //   "pets":{"Sam":"Maltese"}
-    //}
+	// Stringify to JSON
+	println(me.str())
+	//{
+	//   "name":"Bob",
+	//   "age":18,
+	//   "interests":["rock","papers","scissors",null,12],
+	//   "pets":{"Sam":"Maltese"}
+	//}
 
-    // Encode a struct/type to JSON
-    encoded_json := json2.encode<Person>(person2)
+	// Encode a struct/type to JSON
+	encoded_json := json2.encode<Person>(person2)
 }
 ```
 ## Using `decode<T>` and `encode<T>`
