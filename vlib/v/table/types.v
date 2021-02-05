@@ -570,7 +570,7 @@ pub fn (t &TypeSymbol) is_number() bool {
 
 [inline]
 pub fn (t &TypeSymbol) is_primitive() bool {
-	return t.is_number() || t.is_pointer() || t.is_string()
+	return t.is_number() || t.is_pointer() || t.is_string() || t.kind == .rune
 }
 
 [inline]

@@ -3702,7 +3702,7 @@ fn (mut g Gen) map_init(node ast.MapInit) {
 	key_typ_str := g.typ(node.key_type)
 	value_typ_str := g.typ(node.value_type)
 	value_typ := g.table.get_type_symbol(node.value_type)
-	key_typ := g.table.get_type_symbol(node.key_type)
+	key_typ := g.table.get_final_type_symbol(node.key_type)
 	hash_fn, key_eq_fn, clone_fn, free_fn := g.map_fn_ptrs(key_typ)
 	size := node.vals.len
 	mut shared_styp := '' // only needed for shared &[]{...}
