@@ -37,7 +37,7 @@ app.tui = tui.init(
 	frame_fn: frame
 	hide_cursor: true
 )
-app.tui.run()
+app.tui.run() ?
 ```
 
 See the `/examples/term.ui/` folder for more usage examples.
