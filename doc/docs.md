@@ -136,8 +136,8 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
 
 <!--
 NB: there are several special keywords, which you can put after the code fences for v:
-compile, ignore, failcompile, oksyntax, badsyntax, wip
-For more details, do: `v run cmd/tools/check-md.v`
+compile, live, ignore, failcompile, oksyntax, badsyntax, wip, nofmt
+For more details, do: `v check-md`
 -->
 
 ## Hello World
@@ -1046,15 +1046,18 @@ match mut x {
 ### In operator
 
 `in` allows to check whether an array or a map contains an element.
+To do the opposite, use `!in`.
 
 ```v
 nums := [1, 2, 3]
 println(1 in nums) // true
+println(4 !in nums) // true
 m := {
 	'one': 1
 	'two': 2
 }
 println('one' in m) // true
+println('three' !in m) // true
 ```
 
 It's also useful for writing boolean expressions that are clearer and more compact:
@@ -3520,6 +3523,7 @@ V also gives your code access to a set of pseudo string variables,
 that are substituted at compile time:
 
 - `@FN` => replaced with the name of the current V function
+- `@METHOD` => replaced with ReceiverType.MethodName
 - `@MOD` => replaced with the name of the current V module
 - `@STRUCT` => replaced with the name of the current V struct
 - `@FILE` => replaced with the path of the V source file
@@ -3800,17 +3804,19 @@ module global (so that you can use `ls()` instead of `os.ls()`, for example).
 // so it can be run just by specifying the path to the file
 // once it's made executable using `chmod +x`.
 
-rm('build/*')
+rm('build/*')?
 // Same as:
-for file in ls('build/') {
-    rm(file)
+files_build := ls('build/')?
+for file in files_build {
+    rm(file)?
 }
 
-mv('*.v', 'build/')
+mv('*.v', 'build/')?
 // Same as:
-for file in ls('.') {
+files := ls('.')?
+for file in files {
     if file.ends_with('.v') {
-        mv(file, 'build/')
+        mv(file, 'build/')?
     }
 }
 ```

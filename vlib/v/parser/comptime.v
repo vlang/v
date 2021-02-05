@@ -255,6 +255,7 @@ fn (mut p Parser) at() ast.AtExpr {
 	name := p.tok.lit
 	kind := match name {
 		'@FN' { token.AtKind.fn_name }
+		'@METHOD' { token.AtKind.method_name }
 		'@MOD' { token.AtKind.mod_name }
 		'@STRUCT' { token.AtKind.struct_name }
 		'@VEXE' { token.AtKind.vexe_path }

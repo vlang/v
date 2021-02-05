@@ -2,6 +2,7 @@ module checker
 
 import v.ast
 import v.table
+import v.util
 import v.checker.mark_used_walker
 
 // mark_used walks the AST, starting at main() and marks all used fns transitively
@@ -10,7 +11,7 @@ fn (mut c Checker) mark_used(ast_files []ast.File) {
 	// c.is_recursive = true
 	// c.fn_decl(mut c.table2.main_fn_decl_node)
 
-	// c.timing_measure(@FN)
+	util.timing_start(@METHOD)
 	mut walker := mark_used_walker.Walker{
 		files: ast_files
 	}
@@ -41,7 +42,18 @@ fn (mut c Checker) mark_used(ast_files []ast.File) {
 	c.table.used_fns['panic'] = true
 	c.table.used_fns['eprintln'] = true
 	c.table.used_fns['print_backtrace_skipping_top_frames'] = true
+	c.table.used_fns['print_backtrace_skipping_top_frames_mac'] = true
 	c.table.used_fns['print_backtrace_skipping_top_frames_linux'] = true
+	c.table.used_fns['print_backtrace_skipping_top_frames_freebsd'] = true
+	c.table.used_fns['print_backtrace_skipping_top_frames_windows'] = true
+	c.table.used_fns['print_backtrace_skipping_top_frames_mingw'] = true
+	c.table.used_fns['print_backtrace_skipping_top_frames_msvc'] = true
+	c.table.used_fns['print_backtrace_skipping_top_frames_tcc'] = true
+	c.table.used_fns['is_atty'] = true
+	c.table.used_fns['add_unhandled_exception_handler'] = true
+	c.table.used_fns['add_vectored_exception_handler'] = true
+	c.table.used_fns['unhandled_exception_handler'] = true
+	c.table.used_fns['restore_codepage'] = true
 	c.table.used_fns['new_array_from_c_array'] = true
 	c.table.used_fns['__new_array_with_default'] = true
 	c.table.used_fns['__new_array'] = true
@@ -100,7 +112,7 @@ fn (mut c Checker) mark_used(ast_files []ast.File) {
 	c.table.used_fns['main.can_use_relative_paths'] = true
 	//
 	// eprintln('>>> c.table.used_fns: $c.table.used_fns')
-	// c.timing_measure(@FN)
+	util.timing_measure(@METHOD)
 
 	// println(walker.used_fns)
 	// c.walk(ast_files)

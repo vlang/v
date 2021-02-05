@@ -1,15 +1,15 @@
 # Automated tests
 
-TLDR: run `v test-all` locally, after making your changes, 
+TLDR: run `v test-all` locally, after making your changes,
 and before submitting PRs.
 
 ## Notes
 In the `v` repo there are several different tests. The main types are:
 
-* `_test.v` tests - check that `test_` functions succeed. These can be 
+* `_test.v` tests - check that `test_` functions succeed. These can be
 run per directory or individually.
-* `.out` tests - run a `.vv` file and check the output matches the 
-contents of the `.out` file with the same base name. This is 
+* `.out` tests - run a `.vv` file and check the output matches the
+contents of the `.out` file with the same base name. This is
 particularly useful for checking that errors are printed.
 
 Tip: use `v -cc tcc` when compiling tests for speed.
@@ -46,7 +46,7 @@ This is not required.
 
 Test all files in the current directory are formatted.
 
-* `v run cmd/tools/check-md.v -hide-warnings -all`
+* `v check-md -hide-warnings .`
 
 Ensure that all .md files in the project are formatted properly,
 and that the V code block examples in them can be compiled/formatted too.
@@ -75,7 +75,7 @@ This runs tests for:
 ## `v test-all`
 
 Test and build *everything*. Usefull to verify *locally*, that the CI will
-most likely pass. Slowest, but most comprehensive. 
+most likely pass. Slowest, but most comprehensive.
 
 It works, by running these in succession:
 * `v test-cleancode`
@@ -83,5 +83,5 @@ It works, by running these in succession:
 * `v test-fmt`
 * `v build-tools`
 * `v build-examples`
-* `v run cmd/tools/check-md.v -hide-warnings -all`
+* `v check-md -hide-warnings .`
 * `v install nedpals.args`
