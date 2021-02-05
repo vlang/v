@@ -2175,7 +2175,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					g.write('for (int $i_var=0; $i_var<$fixed_array.size; $i_var++) {')
 					g.expr(left)
 					g.write('[$i_var] = ')
-					if g.is_mut_ident(val) {
+					if var_type != table.string_type_idx && g.is_mut_ident(val) {
 						g.write('*')
 					}
 					g.expr(val)
@@ -2200,7 +2200,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 							g.write('{0}')
 						}
 					} else {
-						if g.is_mut_ident(val) {
+						if var_type != table.string_type_idx && g.is_mut_ident(val) {
 							g.write('*')
 						}
 						g.expr(val)
