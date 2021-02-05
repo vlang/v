@@ -27,7 +27,6 @@ pub mut:
 	parsed_files        []ast.File
 	cached_msvc         MsvcResult
 	table               &table.Table
-	table2              &ast.Table
 	timers              &util.Timers = util.new_timers(false)
 	ccoptions           CcompilerOptions
 }
@@ -37,7 +36,6 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 	compiled_dir := if os.is_dir(rdir) { rdir } else { os.dir(rdir) }
 	mut table := table.new_table()
 	table.is_fmt = false
-	table2 := &ast.Table{}
 	if pref.use_color == .always {
 		util.emanager.set_support_color(true)
 	}
@@ -55,8 +53,7 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 	return Builder{
 		pref: pref
 		table: table
-		table2: table2
-		checker: checker.new_checker(table, table2, pref)
+		checker: checker.new_checker(table, pref)
 		global_scope: &ast.Scope{
 			parent: 0
 		}

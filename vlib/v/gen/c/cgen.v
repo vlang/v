@@ -32,7 +32,6 @@ struct Gen {
 	module_built string
 mut:
 	table               &table.Table
-	table2              &ast.Table
 	out                 strings.Builder
 	cheaders            strings.Builder
 	includes            strings.Builder // all C #includes required by V modules
@@ -154,7 +153,7 @@ mut:
 	// main_fn_decl_node  ast.FnDecl
 }
 
-pub fn gen(files []ast.File, table &table.Table, table2 &ast.Table, pref &pref.Preferences) string {
+pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string {
 	// println('start cgen2')
 	mut module_built := ''
 	if pref.build_mode == .build_module {
@@ -193,7 +192,6 @@ pub fn gen(files []ast.File, table &table.Table, table2 &ast.Table, pref &pref.P
 		enum_typedefs: strings.new_builder(100)
 		sql_buf: strings.new_builder(100)
 		table: table
-		table2: table2
 		pref: pref
 		fn_decl: 0
 		is_autofree: true

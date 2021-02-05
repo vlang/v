@@ -38,7 +38,6 @@ pub struct Checker {
 	pref &pref.Preferences // Preferences shared from V struct
 pub mut:
 	table            &table.Table
-	table2           &ast.Table
 	file             &ast.File = 0
 	nr_errors        int
 	nr_warnings      int
@@ -84,14 +83,13 @@ mut:
 	main_fn_decl_node                ast.FnDecl
 }
 
-pub fn new_checker(table &table.Table, table2 &ast.Table, pref &pref.Preferences) Checker {
+pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
 	mut timers_should_print := false
 	$if time_checking ? {
 		timers_should_print = true
 	}
 	return Checker{
 		table: table
-		table2: table2
 		pref: pref
 		cur_fn: 0
 		timers: util.new_timers(timers_should_print)
@@ -3859,7 +3857,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) table.Type {
 			...pref_
 			is_vweb: true
 		}
-		mut c2 := new_checker(c.table, c.table2, pref2)
+		mut c2 := new_checker(c.table, pref2)
 		c2.check(node.vweb_tmpl)
 		mut i := 0 // tmp counter var for skipping first three tmpl vars
 		for k, _ in c2.file.scope.children[0].objects {
