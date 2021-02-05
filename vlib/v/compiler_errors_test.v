@@ -86,8 +86,8 @@ fn test_all() {
 	tasks.add('', module_dir, '-prod run', '.out', module_tests, true)
 	tasks.add('', run_dir, 'run', '.run.out', run_tests, false)
 	tasks.add('', skip_unused_dir, 'run', '.run.out', skip_unused_dir_tests, false)
-	tasks.add('', skip_unused_dir, '-skip-unused run', '.skip_unused.run.out', skip_unused_dir_tests,
-		false)
+	tasks.add('', skip_unused_dir, '-d no_backtrace -skip-unused run', '.skip_unused.run.out',
+		skip_unused_dir_tests, false)
 	tasks.run()
 	if github_job == 'ubuntu-tcc' {
 		// these should be run serially, since they depend on setting and using environment variables
