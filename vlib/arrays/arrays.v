@@ -3,9 +3,7 @@ module arrays
 // Common arrays functions:
 // - min / max - return the value of the minumum / maximum
 // - idx_min / idx_max - return the index of the first minumum / maximum
-// - shuffle - randomize array items order in place (allowing exit after n items)
 // - merge - combine two sorted arrays and maintain sorted order
-import rand
 
 // min returns the minimum
 [direct_array_access]
@@ -69,22 +67,6 @@ pub fn idx_max<T>(a []T) int {
 		}
 	}
 	return idx
-}
-
-// shuffle randomizes the first n items of an array in place (all if n=0)
-[direct_array_access]
-pub fn shuffle<T>(mut a []T, n int) {
-	if n < 0 || n > a.len {
-		panic("shuffle's argument 'n' must be in range [0,a.len]")
-	}
-	cnt := if n == 0 { a.len - 1 } else { n }
-	for i in 0 .. cnt {
-		x := rand.int_in_range(i, a.len)
-		// swap
-		a_i := a[i]
-		a[i] = a[x]
-		a[x] = a_i
-	}
 }
 
 // merge two sorted arrays (ascending) and maintain sorted order
