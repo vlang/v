@@ -4,38 +4,38 @@ A V module for designing terminal UI apps
 
 #### Quickstart
 
-```v nofmt
+```v
 import term.ui as tui
 
 struct App {
 mut:
-    tui  &tui.Context = 0
+	tui &tui.Context = 0
 }
 
 fn event(e &tui.Event, x voidptr) {
-    mut app := &App(x)
-    println(e)
+	mut app := &App(x)
+	println(e)
 }
 
 fn frame(x voidptr) {
-    mut app := &App(x)
+	mut app := &App(x)
 
-    app.tui.clear()
-    app.tui.set_bg_color(r: 63, g: 81, b: 181)
-    app.tui.draw_rect(20, 6, 41, 10)
-    app.tui.draw_text(24, 8, 'Hello from V!')
-    app.tui.set_cursor_position(0, 0)
+	app.tui.clear()
+	app.tui.set_bg_color(r: 63, g: 81, b: 181)
+	app.tui.draw_rect(20, 6, 41, 10)
+	app.tui.draw_text(24, 8, 'Hello from V!')
+	app.tui.set_cursor_position(0, 0)
 
-    app.tui.reset()
-    app.tui.flush()
+	app.tui.reset()
+	app.tui.flush()
 }
 
 mut app := &App{}
 app.tui = tui.init(
-    user_data: app,
-    event_fn: event,
-    frame_fn: frame
-    hide_cursor: true
+	user_data: app
+	event_fn: event
+	frame_fn: frame
+	hide_cursor: true
 )
 app.tui.run()
 ```
