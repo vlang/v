@@ -1683,9 +1683,12 @@ fn main() {
 	})
 	// You can even have an array/map of functions:
 	fns := [sqr, cube]
-	println(fns[0](10)) // "100"
-	fns_map := { 'sqr': sqr, 'cube': cube}
-	println(fns_map['cube'](2)) // "8"
+	println((10)) // "100"
+	fns_map := {
+		'sqr':  sqr
+		'cube': cube
+	}
+	println((2)) // "8"
 }
 ```
 
