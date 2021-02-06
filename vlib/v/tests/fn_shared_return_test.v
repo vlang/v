@@ -36,15 +36,19 @@ fn test_shared_opt_propagate() {
 }
 
 fn test_shared_opt_good() {
-	shared my_default := St{ x: 37.5 }
-	shared yy := g(true) or { my_default }
+	shared yy := g(true) or {
+		shared my_default := St{ x: 37.5 }
+	    my_default
+	}
 	val := rlock yy { yy.x }
 	assert val == 12.75
 }
 
 fn test_shared_opt_bad() {
-	shared my_default := St{ x: 37.5 }
-	shared yy := g(false) or { my_default }
+	shared yy := g(false) or {
+		shared my_default := St{ x: 37.5 }
+	    my_default
+	}
 	val := rlock yy { yy.x }
 	assert val == 37.5
 }
