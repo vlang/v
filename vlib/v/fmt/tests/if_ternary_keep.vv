@@ -20,3 +20,15 @@ fn requires_multiple_lines() {
 		'other str'
 	}
 }
+
+fn return_ternary(cond bool) int {
+	return if cond { 5 } else { 12 }
+}
+
+fn long_return_ternary() string {
+	return if false {
+		'spam and eggs'
+	} else {
+		'Lorem ipsum dolor sit amet, consectetur adipiscing elit.'
+	}
+}
