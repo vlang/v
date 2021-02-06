@@ -103,7 +103,7 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 		}
 	}
 	if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__')
-		&& name != 'main__main'&& node.name != 'str' {
+		&& name != 'main__main' && node.name != 'str' {
 		mut key := node.name
 		if node.is_method {
 			sym := g.table.get_type_symbol(node.receiver.typ)
@@ -171,7 +171,7 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 	fargs, fargtypes := g.fn_args(node.params, node.is_variadic)
 	arg_str := g.out.after(arg_start_pos)
 	if node.no_body || ((g.pref.use_cache && g.pref.build_mode != .build_module) && node.is_builtin
-		&& !g.is_test)|| skip {
+		&& !g.is_test) || skip {
 		// Just a function header. Builtin function bodies are defined in builtin.o
 		g.definitions.writeln(');') // // NO BODY')
 		g.writeln(');')
@@ -886,7 +886,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 			break
 		}
 		use_tmp_var_autofree := g.is_autofree && arg.typ == table.string_type && arg.is_tmp_autofree
-			&& !g.inside_const&& !g.is_builtin_mod
+			&& !g.inside_const && !g.is_builtin_mod
 		// g.write('/* af=$arg.is_tmp_autofree */')
 		// some c fn definitions dont have args (cfns.v) or are not updated in checker
 		// when these are fixed we wont need this check

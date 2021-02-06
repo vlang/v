@@ -573,7 +573,7 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 	}
 	types_only := p.tok.kind in [.amp, .ellipsis, .key_fn]
 		|| (p.peek_tok.kind == .comma && p.table.known_type(argname))
-		|| p.peek_tok.kind == .dot|| p.peek_tok.kind == .rpar
+		|| p.peek_tok.kind == .dot || p.peek_tok.kind == .rpar
 	// TODO copy pasta, merge 2 branches
 	if types_only {
 		// p.warn('types only')
@@ -751,7 +751,7 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 fn (mut p Parser) check_fn_mutable_arguments(typ table.Type, pos token.Position) {
 	sym := p.table.get_type_symbol(typ)
 	if sym.kind !in [.array, .array_fixed, .interface_, .map, .placeholder, .struct_, .sum_type]
-		&& !typ.is_ptr()&& !typ.is_pointer() {
+		&& !typ.is_ptr() && !typ.is_pointer() {
 		p.error_with_pos(
 			'mutable arguments are only allowed for arrays, interfaces, maps, pointers and structs\n' +
 			'return values instead: `fn foo(mut n $sym.name) {` => `fn foo(n $sym.name) $sym.name {`',

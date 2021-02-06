@@ -1622,8 +1622,8 @@ pub fn (mut f Fmt) wrap_infix(start_pos int, start_len int, ignore_paren bool) {
 			f.indent++
 			f.write(cnd)
 			f.indent--
-			if f.line_len > fmt.max_len.last()
-				&& (cnd[0] == `(` || cnd[3] == `(`) && cnd.ends_with(')') {
+			if f.line_len > fmt.max_len.last() && (cnd[0] == `(` || cnd[3] == `(`)
+				&& cnd.ends_with(')') {
 				f.wrap_infix(prev_pos, prev_len, true)
 			}
 		}
@@ -2135,8 +2135,9 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 					f.writeln('')
 				}
 				f.comments(field.next_comments, inline: false, has_nl: true, level: .keep)
-				if single_line_fields
-					&& (field.comments.len > 0 || field.next_comments.len > 0 || !expr_is_single_line(field.expr)
+				if single_line_fields && (field.comments.len > 0
+					|| field.next_comments.len > 0
+					|| !expr_is_single_line(field.expr)
 					|| f.line_len > fmt.max_len.last()) {
 					single_line_fields = false
 					f.out.go_back_to(fields_start)

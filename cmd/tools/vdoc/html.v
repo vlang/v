@@ -310,7 +310,7 @@ fn (vd VDoc) gen_html(d doc.Doc) string {
 	} else {
 		symbols_toc_str
 	}).replace('{{ contents }}', contents.str()).replace('{{ right_content }}', if cfg.is_multi
-		&& vd.docs.len > 1&& d.head.name != 'README' {
+		&& vd.docs.len > 1 && d.head.name != 'README' {
 		'<div class="doc-toc"><ul>' + symbols_toc_str + '</ul></div>'
 	} else {
 		''
@@ -401,7 +401,7 @@ fn html_highlight(code string, tb &table.Table) string {
 					if token.is_key(tok.lit) || token.is_decl(tok.kind) {
 						tok_typ = .keyword
 					} else if tok.kind == .decl_assign || tok.kind.is_assign() || tok.is_unary()
-						|| tok.kind.is_relational()|| tok.kind.is_infix() {
+						|| tok.kind.is_relational() || tok.kind.is_infix() {
 						tok_typ = .operator
 					}
 				}
