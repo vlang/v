@@ -85,13 +85,22 @@ fn test_all() {
 	tasks.add('', global_dir, '--enable-globals', '.out', global_tests, false)
 	tasks.add('', module_dir, '-prod run', '.out', module_tests, true)
 	tasks.add('', run_dir, 'run', '.run.out', run_tests, false)
-	tasks.add('', skip_unused_dir, 'run', '.run.out', skip_unused_dir_tests, false)
-	if os.user_os() == 'linux' {
-		tasks.add('', skip_unused_dir, '-d no_backtrace -skip-unused run', '.skip_unused.run.out',
-			skip_unused_dir_tests, false)
-	}
 	tasks.run()
-	if github_job == 'ubuntu-tcc' {
+	//
+	if os.user_os() == 'linux' {
+		mut skip_unused_tasks := Tasks{
+			vexe: vexe
+			parallel_jobs: 1
+			label: '-skip-unused tests'
+		}
+		skip_unused_tasks.add('', skip_unused_dir, 'run', '.run.out', skip_unused_dir_tests,
+			false)
+		skip_unused_tasks.add('', skip_unused_dir, '-d no_backtrace -skip-unused run',
+			'.skip_unused.run.out', skip_unused_dir_tests, false)
+		skip_unused_tasks.run()
+	}
+	//
+	{
 		// these should be run serially, since they depend on setting and using environment variables
 		mut cte_tasks := Tasks{
 			vexe: vexe
@@ -103,8 +112,11 @@ fn test_all() {
 		cte_tasks.add('', cte_dir, '-no-retry-compilation run', '.run.out', files, false)
 		cte_tasks.add('VAR=/usr/include $vexe', cte_dir, '-no-retry-compilation run',
 			'.var.run.out', ['using_comptime_env.vv'], false)
-		cte_tasks.add('VAR=/opt/invalid/path $vexe', cte_dir, '-no-retry-compilation run',
-			'.var_invalid.run.out', ['using_comptime_env.vv'], false)
+		if github_job == 'ubuntu-tcc' {
+			// this is done with tcc only, because the error output is compiler specific:
+			cte_tasks.add('VAR=/opt/invalid/path $vexe', cte_dir, '-no-retry-compilation run',
+				'.var_invalid.run.out', ['using_comptime_env.vv'], false)
+		}
 		cte_tasks.run()
 	}
 }
