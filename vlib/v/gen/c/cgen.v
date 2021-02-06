@@ -4725,6 +4725,15 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 		g.inside_const = false
 	}
 	for field in node.fields {
+		if g.pref.skip_unused {
+			if field.name !in g.table.used_consts {
+				$if trace_skip_unused_consts ? {
+					eprintln('>> skipping unused const name: $field.name')
+				}
+				continue
+			}
+		}
+
 		name := c_name(field.name)
 		// TODO hack. Cut the generated value and paste it into definitions.
 		pos := g.out.len

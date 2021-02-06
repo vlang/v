@@ -30,7 +30,7 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 	if g.pref.skip_unused {
 		fkey := if node.is_method { '${int(node.receiver.typ)}.$node.name' } else { node.name }
 		is_used_by_main := g.table.used_fns[fkey]
-		$if trace_skip_unused ? {
+		$if trace_skip_unused_fns ? {
 			println('> is_used_by_main: $is_used_by_main | node.name: $node.name | fkey: $fkey | node.is_method: $node.is_method')
 		}
 		if !is_used_by_main {
