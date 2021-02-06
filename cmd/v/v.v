@@ -27,6 +27,7 @@ const (
 		'test-compiler', /* deprecated by test-self */
 		'test-compiler-full', /* deprecated by test-self */
 		'test-cleancode',
+		'check-md',
 		'repl',
 		'complete',
 		'build-tools',

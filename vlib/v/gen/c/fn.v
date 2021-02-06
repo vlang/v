@@ -28,8 +28,11 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 	}
 	*/
 	if g.pref.skip_unused {
-		is_used_by_main := g.table.used_fns[node.name]
-		// println('> is_used_by_main: $is_used_by_main | node.name: $node.name')
+		fkey := if node.is_method { '${int(node.receiver.typ)}.$node.name' } else { node.name }
+		is_used_by_main := g.table.used_fns[fkey]
+		$if trace_skip_unused ? {
+			println('> is_used_by_main: $is_used_by_main | node.name: $node.name | fkey: $fkey | node.is_method: $node.is_method')
+		}
 		if !is_used_by_main {
 			g.writeln('// fn $node.name UNUSED')
 			return

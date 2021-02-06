@@ -4,7 +4,6 @@
 module util
 
 import rand
-import arrays
 
 // sample_nr returns a sample of the array without replacement. This means the indices cannot repeat and it restricts the sample size to be less than or equal to the size of the given array. Note that if the array has repeating elements, then the sample may have repeats as well.
 pub fn sample_nr<T>(array []T, k int) []T {
@@ -18,7 +17,7 @@ pub fn sample_nr<T>(array []T, k int) []T {
 	for i, mut v in indices {
 		v = i
 	}
-	arrays.shuffle<int>(mut indices, k)
+	shuffle(mut indices, k)
 	for i in 0 .. k {
 		results[i] = array[indices[i]]
 	}
@@ -33,4 +32,20 @@ pub fn sample_r<T>(array []T, k int) []T {
 		results[i] = array[rand.intn(n)]
 	}
 	return results
+}
+
+// shuffle randomizes the first `n` items of an array in place (all if `n` is 0)
+[direct_array_access]
+pub fn shuffle<T>(mut a []T, n int) {
+	if n < 0 || n > a.len {
+		panic("argument 'n' must be in range [0, a.len]")
+	}
+	cnt := if n == 0 { a.len - 1 } else { n }
+	for i in 0 .. cnt {
+		x := rand.int_in_range(i, a.len)
+		// swap
+		a_i := a[i]
+		a[i] = a[x]
+		a[x] = a_i
+	}
 }

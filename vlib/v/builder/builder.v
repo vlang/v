@@ -27,7 +27,6 @@ pub mut:
 	parsed_files        []ast.File
 	cached_msvc         MsvcResult
 	table               &table.Table
-	timers              &util.Timers = util.new_timers(false)
 	ccoptions           CcompilerOptions
 }
 
@@ -50,6 +49,7 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 			valid: false
 		}
 	}
+	util.timing_set_should_print(pref.show_timings || pref.is_verbose)
 	return Builder{
 		pref: pref
 		table: table
@@ -64,7 +64,6 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 			100
 		}
 		cached_msvc: msvc
-		timers: util.new_timers(pref.show_timings || pref.is_verbose)
 	}
 	// max_nr_errors: pref.error_limit ?? 100 TODO potential syntax?
 }
@@ -402,12 +401,4 @@ fn error_with_pos(s string, fpath string, pos token.Position) {
 
 fn verror(s string) {
 	util.verror('builder error', s)
-}
-
-pub fn (mut b Builder) timing_start(label string) {
-	b.timers.start(label)
-}
-
-pub fn (mut b Builder) timing_measure(label string) {
-	b.timers.show(label)
 }

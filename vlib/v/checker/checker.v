@@ -777,9 +777,9 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 	match infix_expr.op {
 		// .eq, .ne, .gt, .lt, .ge, .le, .and, .logical_or, .dot, .key_as, .right_shift {}
 		.eq, .ne {
-			is_alias_eq_struct := left.kind == .alias && right.kind == .struct_
-			is_struct_eq_alias := left.kind == .struct_ && right.kind == .alias
-			if is_alias_eq_struct || is_struct_eq_alias {
+			is_mismatch := (left.kind == .alias && right.kind in [.struct_, .array])
+				|| (right.kind == .alias && left.kind in [.struct_, .array])
+			if is_mismatch {
 				c.error('possible type mismatch of compared values of `$infix_expr.op` operation',
 					infix_expr.pos)
 			}
@@ -2713,7 +2713,14 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			&& right_sym.kind == .array && (left is ast.Ident && !left.is_blank_ident())
 			&& right is ast.Ident {
 			// Do not allow `a = b`, only `a = b.clone()`
-			c.error('use `array2 = array1.clone()` instead of `array2 = array1` (or use `unsafe`)',
+			c.error('use `array2 $assign_stmt.op.str() array1.clone()` instead of `array2 $assign_stmt.op.str() array1` (or use `unsafe`)',
+				assign_stmt.pos)
+		}
+		if left_sym.kind == .map && !c.inside_unsafe && assign_stmt.op in [.assign, .decl_assign]
+			&& right_sym.kind == .map && (left is ast.Ident && !left.is_blank_ident())
+			&& right is ast.Ident {
+			// Do not allow `a = b`, only `a = b.clone()`
+			c.error('use `map2 $assign_stmt.op.str() map1.clone()` instead of `map2 $assign_stmt.op.str() map1` (or use `unsafe`)',
 				assign_stmt.pos)
 		}
 		left_is_ptr := left_type.is_ptr() || left_sym.is_pointer()
@@ -3910,6 +3917,15 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) table.Type {
 	match node.kind {
 		.fn_name {
 			node.val = c.cur_fn.name.all_after_last('.')
+		}
+		.method_name {
+			fname := c.cur_fn.name.all_after_last('.')
+			if c.cur_fn.is_method {
+				node.val = c.table.type_to_str(c.cur_fn.receiver.typ).all_after_last('.') + '.' +
+					fname
+			} else {
+				node.val = fname
+			}
 		}
 		.mod_name {
 			node.val = c.cur_fn.mod
