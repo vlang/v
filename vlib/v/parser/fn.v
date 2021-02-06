@@ -207,6 +207,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 				p.warn_with_pos('use `(mut f Foo)` instead of `(f mut Foo)`', lpar_pos.extend(p.peek_tok2.position()))
 			}
 		}
+		if p.tok.kind == .key_shared {
+			p.error_with_pos('use `(shared f Foo)` instead of `(f shared Foo)`', lpar_pos.extend(p.peek_tok2.position()))
+		}
 		receiver_pos = rec_start_pos.extend(p.tok.position())
 		is_amp := p.tok.kind == .amp
 		if p.tok.kind == .name && p.tok.lit == 'JS' {
@@ -684,6 +687,9 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 					p.warn_with_pos('use `mut f Foo` instead of `f mut Foo`', p.tok.position())
 				}
 				is_mut = true
+			}
+			if p.tok.kind == .key_shared {
+				p.error_with_pos('use `shared f Foo` instead of `f shared Foo`', p.tok.position())
 			}
 			if p.tok.kind == .ellipsis {
 				p.next()

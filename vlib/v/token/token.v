@@ -427,7 +427,7 @@ pub fn (tok Kind) is_relational() bool {
 }
 
 pub fn (k Kind) is_start_of_type() bool {
-	return k in [.name, .lpar, .amp, .lsbr, .question]
+	return k in [.name, .lpar, .amp, .lsbr, .question, .key_shared]
 }
 
 pub fn (kind Kind) is_prefix() bool {
