@@ -49,6 +49,7 @@ mut:
 	hotcode_definitions strings.Builder // -live declarations & functions
 	embedded_data       strings.Builder // data to embed in the executable/binary
 	shared_types        strings.Builder // shared/lock types
+	shared_functions    strings.Builder // shared constructors
 	channel_definitions strings.Builder // channel related code
 	options_typedefs    strings.Builder // Option typedefs
 	options             strings.Builder // `Option_xxxx` types
@@ -78,6 +79,7 @@ mut:
 	inside_map_postfix  bool     // inside map++/-- postfix expr
 	inside_map_infix    bool     // inside map<</+=/-= infix expr
 	inside_map_index    bool
+	inside_opt_data     bool
 	// inside_if_expr        bool
 	ternary_names         map[string]string
 	ternary_level_names   map[string][]string
@@ -187,6 +189,7 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 		options_typedefs: strings.new_builder(100)
 		options: strings.new_builder(100)
 		shared_types: strings.new_builder(100)
+		shared_functions: strings.new_builder(100)
 		channel_definitions: strings.new_builder(100)
 		json_forward_decls: strings.new_builder(100)
 		enum_typedefs: strings.new_builder(100)
@@ -291,6 +294,8 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 	b.write(g.enum_typedefs.str())
 	b.writeln('\n// V type definitions:')
 	b.write(g.type_definitions.str())
+	b.writeln('\n// V shared types:')
+	b.write(g.shared_types.str())
 	b.writeln('\n// V Option_xxx definitions:')
 	b.write(g.options.str())
 	b.writeln('\n// V json forward decls:')
@@ -318,9 +323,9 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 		b.writeln('\n// V option typedefs:')
 		b.write(g.options_typedefs.str())
 	}
-	if g.shared_types.len > 0 {
-		b.writeln('\n// V shared types:')
-		b.write(g.shared_types.str())
+	if g.shared_functions.len > 0 {
+		b.writeln('\n// V shared type functions:')
+		b.write(g.shared_functions.str())
 		b.write(c_concurrency_helpers)
 	}
 	if g.channel_definitions.len > 0 {
@@ -594,11 +599,11 @@ fn (mut g Gen) find_or_register_shared(t table.Type, base string) string {
 	}
 	mtx_typ := 'sync__RwMutex'
 	g.shared_types.writeln('struct $sh_typ { $base val; $mtx_typ mtx; };')
-	g.shared_types.writeln('static inline voidptr __dup${sh_typ}(voidptr src, int sz) {')
-	g.shared_types.writeln('\t$sh_typ* dest = memdup(src, sz);')
-	g.shared_types.writeln('\tsync__RwMutex_init(&dest->mtx);')
-	g.shared_types.writeln('\treturn dest;')
-	g.shared_types.writeln('}')
+	g.shared_functions.writeln('static inline voidptr __dup${sh_typ}(voidptr src, int sz) {')
+	g.shared_functions.writeln('\t$sh_typ* dest = memdup(src, sz);')
+	g.shared_functions.writeln('\tsync__RwMutex_init(&dest->mtx);')
+	g.shared_functions.writeln('\treturn dest;')
+	g.shared_functions.writeln('}')
 	g.typedefs2.writeln('typedef struct $sh_typ $sh_typ;')
 	// println('registered shared type $sh_typ')
 	g.shareds << t_idx
@@ -2532,10 +2537,15 @@ fn (mut g Gen) expr(node ast.Expr) {
 			// if g.fileis('1.strings') {
 			// println('\ncall_expr()()')
 			// }
+			ret_type := if node.or_block.kind == .absent {
+				node.return_type
+			} else {
+				node.return_type.clear_flag(.optional)
+			}
 			mut shared_styp := ''
 			if g.is_shared {
-				ret_sym := g.table.get_type_symbol(node.return_type)
-				shared_typ := node.return_type.set_flag(.shared_f)
+				ret_sym := g.table.get_type_symbol(ret_type)
+				shared_typ := ret_type.set_flag(.shared_f)
 				shared_styp = g.typ(shared_typ)
 				if ret_sym.kind == .array {
 					g.writeln('($shared_styp*)__dup_shared_array(&($shared_styp){.val = ')
@@ -4840,7 +4850,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	if is_amp {
 		g.out.go_back(1) // delete the `&` already generated in `prefix_expr()
 	}
-	if g.is_shared {
+	if g.is_shared && !g.inside_opt_data {
 		mut shared_typ := struct_init.typ.set_flag(.shared_f)
 		shared_styp = g.typ(shared_typ)
 		g.writeln('($shared_styp*)__dup${shared_styp}(&($shared_styp){.val = ($styp){')
@@ -5012,7 +5022,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		g.write('\n#ifndef __cplusplus\n0\n#endif\n')
 	}
 	g.write('}')
-	if g.is_shared {
+	if g.is_shared && !g.inside_opt_data {
 		g.write('}, sizeof($shared_styp))')
 	} else if is_amp {
 		g.write(', sizeof($styp))')
@@ -5437,7 +5447,10 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 					expr_stmt := stmt as ast.ExprStmt
 					g.stmt_path_pos << g.out.len
 					g.write('*($mr_styp*) ${cvar_name}.data = ')
+					old_inside_opt_data := g.inside_opt_data
+					g.inside_opt_data = true
 					g.expr_with_cast(expr_stmt.expr, expr_stmt.typ, return_type.clear_flag(.optional))
+					g.inside_opt_data = old_inside_opt_data
 					if g.inside_ternary == 0 && !(expr_stmt.expr is ast.IfExpr) {
 						g.writeln(';')
 					}
