@@ -128,7 +128,13 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 			p.next()
 			array_decompose = true
 		}
-		mut e := p.expr(0)
+		mut e := ast.Expr{}
+		if p.tok.kind == .name && p.peek_tok.kind == .colon {
+			// `foo(key:val, key2:val2)`
+			e = p.struct_init(true) // short_syntax:true
+		} else {
+			e = p.expr(0)
+		}
 		if array_decompose {
 			e = ast.ArrayDecompose{
 				expr: e

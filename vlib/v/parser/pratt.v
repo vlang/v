@@ -240,6 +240,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			// Map `{"age": 20}` or `{ x | foo:bar, a:10 }`
 			p.next()
 			if p.tok.kind in [.chartoken, .number, .string] {
+				// TODO deprecate
 				node = p.map_init()
 			} else {
 				// it should be a struct
