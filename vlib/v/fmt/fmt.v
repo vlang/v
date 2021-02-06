@@ -1718,7 +1718,7 @@ pub fn (mut f Fmt) call_args(args []ast.CallArg) {
 		if arg.is_mut {
 			f.write(arg.share.str() + ' ')
 		}
-		if i > 0 {
+		if i > 0 && !f.single_line_if {
 			f.wrap_long_line(3, true)
 		}
 		f.expr(arg.expr)
@@ -1782,14 +1782,6 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 		}
 		f.expr(node.left)
 		f.write('.' + node.name)
-		f.write_generic_if_require(node)
-		f.write('(')
-		f.call_args(node.args)
-		f.write(')')
-		// if is_mut {
-		// f.write('!')
-		// }
-		f.or_expr(node.or_block)
 	} else {
 		f.write_language_prefix(node.language)
 		if node.left is ast.AnonFn {
@@ -1804,12 +1796,12 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 			}
 			f.write('$name')
 		}
-		f.write_generic_if_require(node)
-		f.write('(')
-		f.call_args(node.args)
-		f.write(')')
-		f.or_expr(node.or_block)
 	}
+	f.write_generic_if_require(node)
+	f.write('(')
+	f.call_args(node.args)
+	f.write(')')
+	f.or_expr(node.or_block)
 	f.comments(node.comments, has_nl: false)
 	f.use_short_fn_args = old_short_arg_state
 }
