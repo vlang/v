@@ -5331,16 +5331,20 @@ pub fn (mut c Checker) check_dup_keys(node &ast.MapInit, i int) {
 	key_i := node.keys[i]
 	if key_i is ast.StringLiteral {
 		for j in 0 .. i {
-			key_j := node.keys[j] as ast.StringLiteral
-			if key_i.val == key_j.val {
-				c.error('duplicate key "$key_i.val" in map literal', key_i.pos)
+			key_j := node.keys[j]
+			if key_j is ast.StringLiteral {
+				if key_i.val == key_j.val {
+					c.error('duplicate key "$key_i.val" in map literal', key_i.pos)
+				}
 			}
 		}
 	} else if key_i is ast.IntegerLiteral {
 		for j in 0 .. i {
-			key_j := node.keys[j] as ast.IntegerLiteral
-			if key_i.val == key_j.val {
-				c.error('duplicate key "$key_i.val" in map literal', key_i.pos)
+			key_j := node.keys[j]
+			if key_j is ast.IntegerLiteral {
+				if key_i.val == key_j.val {
+					c.error('duplicate key "$key_i.val" in map literal', key_i.pos)
+				}
 			}
 		}
 	}
