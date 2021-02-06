@@ -2713,7 +2713,14 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			&& right_sym.kind == .array && (left is ast.Ident && !left.is_blank_ident())
 			&& right is ast.Ident {
 			// Do not allow `a = b`, only `a = b.clone()`
-			c.error('use `array2 = array1.clone()` instead of `array2 = array1` (or use `unsafe`)',
+			c.error('use `array2 $assign_stmt.op.str() array1.clone()` instead of `array2 $assign_stmt.op.str() array1` (or use `unsafe`)',
+				assign_stmt.pos)
+		}
+		if left_sym.kind == .map && !c.inside_unsafe && assign_stmt.op in [.assign, .decl_assign]
+			&& right_sym.kind == .map && (left is ast.Ident && !left.is_blank_ident())
+			&& right is ast.Ident {
+			// Do not allow `a = b`, only `a = b.clone()`
+			c.error('use `map2 $assign_stmt.op.str() map1.clone()` instead of `map2 $assign_stmt.op.str() map1` (or use `unsafe`)',
 				assign_stmt.pos)
 		}
 		left_is_ptr := left_type.is_ptr() || left_sym.is_pointer()

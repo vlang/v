@@ -2026,12 +2026,6 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				g.writeln(', &$v_var, sizeof($arr_typ));')
 			}
 			g.is_assign_lhs = false
-		} else if is_decl && right_sym.kind == .map && val is ast.Ident && !val_type.is_ptr() {
-			g.write('$styp ')
-			g.expr(left)
-			g.write(' = map_clone(&')
-			g.expr(val)
-			g.writeln(');')
 		} else {
 			is_inside_ternary := g.inside_ternary != 0
 			cur_line := if is_inside_ternary && is_decl {
