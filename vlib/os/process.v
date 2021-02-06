@@ -162,20 +162,20 @@ pub fn (mut p Process) stdin_write(s string) {
 	fd_write(p.stdio_fd[0], s)
 }
 
-//will read from stdout pipe, will only return when EOF (end of file) or data
-//means this will block unless there is data
+// will read from stdout pipe, will only return when EOF (end of file) or data
+// means this will block unless there is data
 pub fn (mut p Process) stdout_slurp() string {
 	p._check_redirection_call('stdout_slurp')
 	return fd_slurp(p.stdio_fd[1]).join('')
 }
 
-//read from stderr pipe, wait for data or EOF
+// read from stderr pipe, wait for data or EOF
 pub fn (mut p Process) stderr_slurp() string {
 	p._check_redirection_call('stderr_slurp')
 	return fd_slurp(p.stdio_fd[2]).join('')
 }
 
-//read from stdout, return if data or not
+// read from stdout, return if data or not
 pub fn (mut p Process) stdout_read() string {
 	p._check_redirection_call('stdout_read')
 	s, _ := fd_read(p.stdio_fd[1], 4096)
