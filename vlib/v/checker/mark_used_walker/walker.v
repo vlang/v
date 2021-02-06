@@ -31,9 +31,9 @@ pub fn (mut w Walker) stmt(node ast.Stmt) {
 		ast.ExprStmt {
 			w.expr(node.expr)
 		}
-		// ast.FnDecl {
-		// w.fn_decl(mut node)
-		//}
+		ast.FnDecl {
+			w.fn_decl(mut node)
+		}
 		ast.ForStmt {
 			w.expr(node.cond)
 			for stmt in node.stmts {
@@ -79,10 +79,9 @@ fn (mut w Walker) expr(node ast.Expr) {
 	}
 }
 
-/*
 pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
-	fn_name := if node.is_method { node.receiver.typ.str() + '.' + node.name } else { node.name }
-	if w.used_fns[fn_name] {
+	fkey := if node.is_method { '${int(node.receiver.typ)}.$node.name' } else { node.name }
+	if w.used_fns[fkey] {
 		// This function is already known to be called, meaning it has been processed already.
 		// Save CPU time and do nothing.
 		return
@@ -90,13 +89,11 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 	if node.language == .c {
 		return
 	}
-	// println('fn decl $fn_name')
-	w.used_fns[fn_name] = true
+	w.used_fns[fkey] = true
 	for stmt in node.stmts {
 		w.stmt(stmt)
 	}
 }
-*/
 
 pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 	fn_name := if node.is_method { node.receiver_type.str() + '.' + node.name } else { node.name }
