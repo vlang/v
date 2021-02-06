@@ -1535,7 +1535,7 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	if node.op == .left_shift {
 		f.is_assign = true // To write ternary if on a single line
 	}
-	infix_start := f.out.len
+	start_pos := f.out.len
 	start_len := f.line_len
 	f.expr(node.left)
 	is_one_val_array_init := node.op in [.key_in, .not_in] && node.right is ast.ArrayInit
@@ -1556,14 +1556,14 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	if !buffering_save && f.buffering {
 		f.buffering = false
 		if !f.single_line_if && f.line_len > fmt.max_len.last() {
-			f.wrap_infix(infix_start, start_len)
+			f.wrap_infix(start_pos, start_len, false)
 		}
 	}
 	f.is_assign = is_assign_save
 	f.or_expr(node.or_block)
 }
 
-pub fn (mut f Fmt) wrap_infix(start_pos int, start_len int) {
+pub fn (mut f Fmt) wrap_infix(start_pos int, start_len int, ignore_paren bool) {
 	cut_span := f.out.len - start_pos
 	condstr := f.out.cut_last(cut_span)
 	is_cond_infix := condstr.contains_any_substr(['&&', '||'])
@@ -1598,6 +1598,9 @@ pub fn (mut f Fmt) wrap_infix(start_pos int, start_len int) {
 			index++
 		} else {
 			conditions[index] += '$cp '
+			if ignore_paren {
+				continue
+			}
 			if cp.starts_with('(') {
 				grouped_cond = true
 			} else if cp.ends_with(')') {
@@ -1608,15 +1611,21 @@ pub fn (mut f Fmt) wrap_infix(start_pos int, start_len int) {
 	for i, c in conditions {
 		cnd := c.trim_space()
 		if f.line_len + cnd.len < fmt.max_len[penalties[i]] {
-			if i > 0 && (!is_cond_infix || i < conditions.len - 1) {
+			if ignore_paren || (i > 0 && i < conditions.len) {
 				f.write(' ')
 			}
 			f.write(cnd)
 		} else {
+			prev_len := f.line_len
+			prev_pos := f.out.len
 			f.writeln('')
 			f.indent++
 			f.write(cnd)
 			f.indent--
+			if f.line_len > fmt.max_len.last()
+				&& (cnd[0] == `(` || cnd[3] == `(`) && cnd.ends_with(')') {
+				f.wrap_infix(prev_pos, prev_len, true)
+			}
 		}
 	}
 }
