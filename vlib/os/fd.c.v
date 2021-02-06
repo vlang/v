@@ -1,6 +1,8 @@
 module os
 
 // file descriptor based operations:
+
+//close filedescriptor
 pub fn fd_close(fd int) int {
 	return C.close(fd)
 }
@@ -18,6 +20,7 @@ pub fn fd_write(fd int, s string) {
 	}
 }
 
+//read from filedescriptor, block until data
 pub fn fd_slurp(fd int) []string {
 	mut res := []string{}
 	for {
@@ -30,6 +33,8 @@ pub fn fd_slurp(fd int) []string {
 	return res
 }
 
+//read from filedescriptor, don't block
+//return [bytestring,nrbytes]
 pub fn fd_read(fd int, maxbytes int) (string, int) {
 	mut buf := malloc(maxbytes)
 	nbytes := C.read(fd, buf, maxbytes)
