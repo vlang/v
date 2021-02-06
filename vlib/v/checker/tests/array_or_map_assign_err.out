@@ -1,0 +1,27 @@
+vlib/v/checker/tests/array_or_map_assign_err.vv:3:5: error: use `array2 := array1.clone()` instead of `array2 := array1` (or use `unsafe`)
+    1 | fn main() {
+    2 |     a1 := [1, 2, 3]
+    3 |     a2 := a1
+      |        ~~
+    4 |     mut a3 := []int{}
+    5 |     a3 = a1
+vlib/v/checker/tests/array_or_map_assign_err.vv:5:5: error: use `array2 = array1.clone()` instead of `array2 = array1` (or use `unsafe`)
+    3 |     a2 := a1
+    4 |     mut a3 := []int{}
+    5 |     a3 = a1
+      |        ^
+    6 |
+    7 |     m1 := {'one': 1}
+vlib/v/checker/tests/array_or_map_assign_err.vv:8:5: error: use `map2 := map1.clone()` instead of `map2 := map1` (or use `unsafe`)
+    6 |
+    7 |     m1 := {'one': 1}
+    8 |     m2 := m1
+      |        ~~
+    9 |     mut m3 := map[string]int{}
+   10 |     m3 = m1
+vlib/v/checker/tests/array_or_map_assign_err.vv:10:5: error: use `map2 = map1.clone()` instead of `map2 = map1` (or use `unsafe`)
+    8 |     m2 := m1
+    9 |     mut m3 := map[string]int{}
+   10 |     m3 = m1
+      |        ^
+   11 | }
