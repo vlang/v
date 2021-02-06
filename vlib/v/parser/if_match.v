@@ -15,6 +15,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 		p.inside_ct_if_expr = was_inside_ct_if_expr
 	}
 	p.inside_if_expr = true
+	is_expr := p.prev_tok.kind == .key_return
 	mut pos := p.tok.position()
 	if is_comptime {
 		p.inside_ct_if_expr = true
@@ -152,6 +153,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 		post_comments: comments
 		pos: pos
 		has_else: has_else
+		is_expr: is_expr
 	}
 }
 
