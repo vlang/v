@@ -3130,6 +3130,10 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.inside_const = false
 		}
 		ast.DeferStmt {
+			if node.idx_in_fn < 0 {
+				node.idx_in_fn = c.cur_fn.defer_stmts.len
+				c.cur_fn.defer_stmts << &node
+			}
 			c.stmts(node.stmts)
 		}
 		ast.EnumDecl {

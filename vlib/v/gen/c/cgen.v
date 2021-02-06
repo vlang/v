@@ -994,6 +994,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.DeferStmt {
 			mut defer_stmt := node
 			defer_stmt.ifdef = g.defer_ifdef
+			g.writeln('${g.defer_flag_var(defer_stmt)} = true;')
 			g.defer_stmts << defer_stmt
 		}
 		ast.EnumDecl {
@@ -1280,6 +1281,8 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 fn (mut g Gen) write_defer_stmts() {
 	for defer_stmt in g.defer_stmts {
 		g.writeln('// Defer begin')
+		g.writeln('if (${g.defer_flag_var(defer_stmt)} == true) {')
+		g.indent++
 		if defer_stmt.ifdef.len > 0 {
 			g.writeln(defer_stmt.ifdef)
 			g.stmts(defer_stmt.stmts)
@@ -1290,6 +1293,8 @@ fn (mut g Gen) write_defer_stmts() {
 			g.stmts(defer_stmt.stmts)
 			g.indent++
 		}
+		g.indent--
+		g.writeln('}')
 		g.writeln('// Defer end')
 	}
 }
