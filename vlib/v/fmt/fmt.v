@@ -530,11 +530,7 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 
 [inline]
 fn abs(v int) int {
-	return if v >= 0 {
-		v
-	} else {
-		-v
-	}
+	return if v >= 0 { v } else { -v }
 }
 
 const (
@@ -1623,8 +1619,8 @@ pub fn (mut f Fmt) wrap_infix(start_pos int, start_len int) {
 
 pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 	dollar := if node.is_comptime { '$' } else { '' }
-	mut single_line := node.branches.len == 2 && node.has_else && branch_is_single_line(node.branches[0])
-		&& branch_is_single_line(node.branches[1])
+	mut single_line := node.branches.len == 2 && node.has_else
+		&& branch_is_single_line(node.branches[0]) && branch_is_single_line(node.branches[1])
 		&& (node.is_expr || f.is_assign || f.single_line_fields)
 	f.single_line_if = single_line
 	if_start := f.line_len

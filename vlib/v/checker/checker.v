@@ -1041,11 +1041,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 		c.warn('`++` and `--` are statements, not expressions', infix_expr.pos)
 	}
 	*/
-	return if infix_expr.op.is_relational() {
-		table.bool_type
-	} else {
-		return_type
-	}
+	return if infix_expr.op.is_relational() { table.bool_type } else { return_type }
 }
 
 // returns name and position of variable that needs write lock
@@ -4951,11 +4947,7 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 						// :)
 						// until `v.eval` is stable, I can't think of a better way to do this
 						different := expr.str() != cond.right.str()
-						return if cond.op == .eq {
-							different
-						} else {
-							!different
-						}
+						return if cond.op == .eq { different } else { !different }
 					} else {
 						c.error('invalid `\$if` condition: ${cond.left.type_name()}1',
 							cond.pos)
