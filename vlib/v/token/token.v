@@ -324,7 +324,16 @@ pub fn (t Kind) str() string {
 }
 
 pub fn (t Token) str() string {
-	return '$t.kind.str() "$t.lit"'
+	mut s := t.kind.str()
+	if s.len == 0 {
+		eprintln('missing token kind string')
+	} else if !s[0].is_letter() { 
+		// punctuation, operators
+		return '`$s`' 
+	}
+	// string contents etc
+	if t.lit != '' { s += ' `$t.lit`' }
+	return s
 }
 
 // Representation of highest and lowest precedence
