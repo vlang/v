@@ -333,7 +333,7 @@ pub:
 	skip_gen        bool // this function doesn't need to be generated (for example [if foo])
 pub mut:
 	stmts         []Stmt
-	defer_stmts   []&DeferStmt
+	defer_stmts   []DeferStmt
 	return_type   table.Type
 	has_return    bool
 	comments      []Comment // comments *after* the header, but *before* `{`; used for InterfaceDecl
