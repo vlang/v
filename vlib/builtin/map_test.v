@@ -128,13 +128,17 @@ fn test_map() {
 }
 
 fn test_map_init() {
-	m := {
-		'one': 1
+	one := 'one'
+	three := 'three'
+	m := map{
+		one: 1
 		'two': 2
+		three: 1 + 2
 	}
 	assert m['one'] == 1
 	assert m['two'] == 2
-	assert m['three'] == 0
+	assert m['three'] == 3
+	assert m['unknown'] == 0
 }
 
 fn test_string_map() {
