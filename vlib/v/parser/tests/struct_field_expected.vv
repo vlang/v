@@ -1,0 +1,9 @@
+enum TestEnum {
+	a b
+}
+
+x = {
+	.a : 'Alpha'
+	.b : 'Beta'
+}
+
