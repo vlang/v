@@ -3378,14 +3378,18 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			g.write(')')
 		} else if node.op in [.ne, .gt, .ge, .le] && ((a && b && e) || c || d) {
 			typ := g.typ(if !d { left_type } else { (left_sym.info as table.Alias).parent_type })
-			g.write('!$typ')
+			if node.op == .gt {
+				g.write('$typ')
+			} else {
+				g.write('!$typ')
+			}
 			g.write('_')
 			if node.op == .ne {
 				g.write('_eq')
 			} else if node.op in [.ge, .le, .gt] {
 				g.write('_lt')
 			}
-			if node.op == .le {
+			if node.op in [.le, .gt] {
 				g.write('(')
 				g.expr(node.right)
 				g.write(', ')
