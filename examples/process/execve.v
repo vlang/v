@@ -1,6 +1,5 @@
 module main
 
-import time
 import os
 
 fn exec(args []string) {
