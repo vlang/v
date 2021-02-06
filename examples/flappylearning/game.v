@@ -16,10 +16,10 @@ const (
 
 struct Bird {
 mut:
-	x        f64 = 80
-	y        f64 = 250
-	width    f64 = 40
-	height   f64 = 30
+	x        f64  = 80
+	y        f64  = 250
+	width    f64  = 40
+	height   f64  = 30
 	alive    bool = true
 	gravity  f64
 	velocity f64 = 0.3
@@ -40,8 +40,8 @@ fn (b Bird) is_dead(height f64, pipes []Pipe) bool {
 		return true
 	}
 	for pipe in pipes {
-		if !(b.x > pipe.x + pipe.width ||
-			b.x + b.width < pipe.x || b.y > pipe.y + pipe.height || b.y + b.height < pipe.y) {
+		if !(b.x > pipe.x + pipe.width || b.x + b.width < pipe.x || b.y > pipe.y + pipe.height
+			|| b.y + b.height < pipe.y) {
 			return true
 		}
 	}
@@ -153,8 +153,8 @@ fn (mut app App) update() {
 	if app.interval == 0 {
 		delta_bord := f64(50)
 		pipe_holl := f64(120)
-		holl_position := math.round(rand.f64() *
-			(app.height - delta_bord * 2.0 - pipe_holl)) + delta_bord
+		holl_position := math.round(rand.f64() * (app.height - delta_bord * 2.0 - pipe_holl)) +
+			delta_bord
 		app.pipes << Pipe{
 			x: app.width
 			y: 0
@@ -178,6 +178,10 @@ fn main() {
 	mut app := &App{
 		gg: 0
 	}
+	mut font_path := os.resource_abs_path(os.join_path('../assets/fonts/', 'RobotoMono-Regular.ttf'))
+	$if android {
+		font_path = 'fonts/RobotoMono-Regular.ttf'
+	}
 	app.gg = gg.new_context(
 		bg_color: gx.white
 		width: win_width
@@ -189,7 +193,7 @@ fn main() {
 		event_fn: on_event
 		user_data: app
 		init_fn: init_images
-		font_path: os.resource_abs_path('../assets/fonts/RobotoMono-Regular.ttf')
+		font_path: font_path
 	)
 	app.nv = neuroevolution.Generations{
 		population: 50
@@ -208,10 +212,25 @@ fn (mut app App) run() {
 }
 
 fn init_images(mut app App) {
-	app.background = app.gg.create_image(os.resource_abs_path('./img/background.png'))
-	app.bird = app.gg.create_image(os.resource_abs_path('./img/bird.png'))
-	app.pipetop = app.gg.create_image(os.resource_abs_path('./img/pipetop.png'))
-	app.pipebottom = app.gg.create_image(os.resource_abs_path('./img/pipebottom.png'))
+	$if android {
+		mut background := []byte{}
+		background = os.read_apk_asset('img/background.png') or { panic(err) }
+		app.background = app.gg.create_image_from_byte_array(background)
+		mut bird := []byte{}
+		bird = os.read_apk_asset('img/bird.png') or { panic(err) }
+		app.bird = app.gg.create_image_from_byte_array(bird)
+		mut pipetop := []byte{}
+		pipetop = os.read_apk_asset('img/pipetop.png') or { panic(err) }
+		app.pipetop = app.gg.create_image_from_byte_array(pipetop)
+		mut pipebottom := []byte{}
+		pipebottom = os.read_apk_asset('img/pipebottom.png') or { panic(err) }
+		app.pipebottom = app.gg.create_image_from_byte_array(pipebottom)
+	} $else {
+		app.background = app.gg.create_image(os.resource_abs_path('assets/img/background.png'))
+		app.bird = app.gg.create_image(os.resource_abs_path('assets/img/bird.png'))
+		app.pipetop = app.gg.create_image(os.resource_abs_path('assets/img/pipetop.png'))
+		app.pipebottom = app.gg.create_image(os.resource_abs_path('assets/img/pipebottom.png'))
+	}
 }
 
 fn frame(app &App) {
