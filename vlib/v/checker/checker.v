@@ -2587,6 +2587,8 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			// `map = {}`
 			sym := c.table.get_type_symbol(left_type)
 			if sym.kind == .map && assign_stmt.right[i] is ast.StructInit {
+				c.warn('assigning a struct literal to a map is deprecated - use `map{}` instead',
+					assign_stmt.right[i].position())
 				assign_stmt.right[i] = ast.MapInit{}
 			}
 		}
