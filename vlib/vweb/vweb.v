@@ -228,8 +228,11 @@ pub fn (ctx &Context) get_cookie(key string) ?string { // TODO refactor
 	cookie_header = ' ' + cookie_header
 	// println('cookie_header="$cookie_header"')
 	// println(ctx.req.headers)
-	cookie := if cookie_header.contains(';') { cookie_header.find_between(' $key=', ';') } else { cookie_header.find_between(' $key=',
-			'\r') }
+	cookie := if cookie_header.contains(';') {
+		cookie_header.find_between(' $key=', ';')
+	} else {
+		cookie_header.find_between(' $key=', '\r')
+	}
 	if cookie != '' {
 		return cookie.trim_space()
 	}
