@@ -2543,7 +2543,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 				node.return_type.clear_flag(.optional)
 			}
 			mut shared_styp := ''
-			if g.is_shared {
+			if g.is_shared && !ret_type.has_flag(.shared_f) {
 				ret_sym := g.table.get_type_symbol(ret_type)
 				shared_typ := ret_type.set_flag(.shared_f)
 				shared_styp = g.typ(shared_typ)
@@ -2571,7 +2571,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.strs_to_free0 = []
 				// println('pos=$node.pos.pos')
 			}
-			if g.is_shared {
+			if g.is_shared && !ret_type.has_flag(.shared_f) {
 				g.writeln('}, sizeof($shared_styp))')
 			}
 			// if g.autofree && node.autofree_pregen != '' { // g.strs_to_free0.len != 0 {
