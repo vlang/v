@@ -1,0 +1,3 @@
+fn non_ternary_return() string {
+	return if some_cond { 'foo' } else if false { 'bar' } else { 'baz' }
+}
