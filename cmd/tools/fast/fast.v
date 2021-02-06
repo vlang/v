@@ -44,6 +44,11 @@ fn main() {
 	// Fetch all unprocessed commits (commits after the last processed commit)
 	mut commits := []string{}
 	println('!last_commit="$commit_hash"')
+	if last_commits.len == 0 || last_commits[0] == commit_hash {
+		println('nothing to benchmark')
+		exit(1)
+		return
+	}
 	for i, c in last_commits {
 		if c == commit_hash {
 			commits = last_commits[..i].reverse()
