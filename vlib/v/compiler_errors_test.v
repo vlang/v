@@ -100,8 +100,10 @@ fn test_all() {
 		skip_unused_tasks.run()
 	}
 	//
-	{
-		// these should be run serially, since they depend on setting and using environment variables
+	if github_job == 'ubuntu-tcc' {
+		// This is done with tcc only, because the error output is compiler specific.
+		// NB: the tasks should be run serially, since they depend on
+		// setting and using environment variables.
 		mut cte_tasks := Tasks{
 			vexe: vexe
 			parallel_jobs: 1
@@ -112,11 +114,8 @@ fn test_all() {
 		cte_tasks.add('', cte_dir, '-no-retry-compilation run', '.run.out', files, false)
 		cte_tasks.add('VAR=/usr/include $vexe', cte_dir, '-no-retry-compilation run',
 			'.var.run.out', ['using_comptime_env.vv'], false)
-		if github_job == 'ubuntu-tcc' {
-			// this is done with tcc only, because the error output is compiler specific:
-			cte_tasks.add('VAR=/opt/invalid/path $vexe', cte_dir, '-no-retry-compilation run',
-				'.var_invalid.run.out', ['using_comptime_env.vv'], false)
-		}
+		cte_tasks.add('VAR=/opt/invalid/path $vexe', cte_dir, '-no-retry-compilation run',
+			'.var_invalid.run.out', ['using_comptime_env.vv'], false)
 		cte_tasks.run()
 	}
 }
