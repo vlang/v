@@ -820,7 +820,7 @@ val := sm['bad_key']
 println(val) // ''
 ```
 ```v
-intm := map {
+intm := map{
 	1: 1234
 	2: 5678
 }
@@ -1066,7 +1066,7 @@ To do the opposite, use `!in`.
 nums := [1, 2, 3]
 println(1 in nums) // true
 println(4 !in nums) // true
-m := {
+m := map{
 	'one': 1
 	'two': 2
 }
@@ -1703,7 +1703,7 @@ fn main() {
 	// You can even have an array/map of functions:
 	fns := [sqr, cube]
 	println((10)) // "100"
-	fns_map := map {
+	fns_map := map{
 		'sqr':  sqr
 		'cube': cube
 	}
