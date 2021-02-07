@@ -107,7 +107,7 @@ jobs:
       - name: Self tests
         run: ./v -silent test-self
       - name: Self tests (-Werror)
-        run: ./v -cc gcc -cflags "-Werror" test-self
+        run: ./v -cflags "-Werror" test-self
       - name: Test time functions in a timezone UTC-12
         run: TZ=Etc/GMT+12 ./v test vlib/time/
       - name: Test time functions in a timezone UTC-3
