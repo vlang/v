@@ -469,7 +469,7 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp string, str_fn_name st
 	if clean_struct_v_type_name.contains('_T_') {
 		// TODO: this is a bit hacky. styp shouldn't be even parsed with _T_
 		// use something different than g.typ for styp
-		clean_struct_v_type_name =
+		clean_struct_v_type_name = 
 			clean_struct_v_type_name.replace('_T_', '<').replace('_', ', ') + '>'
 	}
 	clean_struct_v_type_name = util.strip_main_name(clean_struct_v_type_name)
