@@ -3,10 +3,6 @@ module main
 import os
 
 fn exec(args []string) {
-	mut out := ''
-	mut line := ''
-	mut line_err := ''
-
 	os.execve('/bin/bash', args, []) or {
 		// eprintln(err)
 		panic(err)

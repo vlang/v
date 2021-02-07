@@ -12,15 +12,14 @@ fn main() {
 		println('fast.html generator needs to be located in `v/cmd/tools/fast`')
 	}
 	println('fast.html generator\n')
-	// Fetch the last commit's hash
 	println('Fetching updates...')
 	ret := os.system('$vdir/v up')
 	if ret != 0 {
 		println('failed to update V')
 		return
 	}
+	// Fetch the last commit's hash
 	commit := exec('git rev-parse HEAD')[..8]
-	// commit_hash = commit_hash[..8]
 	if !os.exists('table.html') {
 		os.create('table.html') ?
 	}
@@ -113,8 +112,6 @@ fn measure(cmd string, description string) int {
 
 fn measure_steps(vdir string) (int, int, int) {
 	resp := os.exec('$vdir/vprod -o v.c -show-timings $vdir/cmd/v') or { panic(err) }
-	println('=======')
-	println(resp.output)
 	lines := resp.output.split_into_lines()
 	if lines.len != 3 {
 		return 0, 0, 0
