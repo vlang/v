@@ -865,8 +865,12 @@ You can also import specific functions and types from modules directly:
 
 ```v
 import os { input }
-import crypto.sha256 { sum }
-import time { Time }
+
+fn main() {
+	// read text from stdin
+	name := input('Enter your name: ')
+	println('Hello, $name!')
+}
 ```
 Note: This is not allowed for constants - they must always be prefixed.
 
