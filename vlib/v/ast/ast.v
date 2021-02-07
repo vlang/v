@@ -1054,6 +1054,8 @@ pub:
 	pos       token.Position
 }
 */
+
+// deprecated
 pub struct Assoc {
 pub:
 	var_name string

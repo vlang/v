@@ -1140,8 +1140,7 @@ pub fn (mut f Fmt) cast_expr(node ast.CastExpr) {
 pub fn (mut f Fmt) assoc(node ast.Assoc) {
 	f.writeln('{')
 	// f.indent++
-	f.writeln('\t$node.var_name |')
-	// TODO StructInit copy pasta
+	f.writeln('\t...$node.var_name')
 	for i, field in node.fields {
 		f.write('\t$field: ')
 		f.expr(node.exprs[i])
