@@ -10,9 +10,8 @@ struct Abc {
     foobar FooBar = Foo { x: 123 }
 }
 
-fn main() {
+fn test_struct_field_default_value_interface_cast() {
 	x := Abc{}
-	println(123)
 	assert x.foobar is Foo
 	assert x.foobar.x == 123
 }
