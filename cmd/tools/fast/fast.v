@@ -19,71 +19,40 @@ fn main() {
 		println('failed to update V')
 		return
 	}
-	mut commit_hash := exec('git rev-parse HEAD')
-	commit_hash = commit_hash[..8]
-	if os.exists('last_commit.txt') {
-		last_commit := os.read_file('last_commit.txt') ?
-		if last_commit.trim_space() == commit_hash.trim_space() {
-			println('No new commits to benchmark. Commit $commit_hash has already been processed.')
-			return
-		}
-		commit_hash = last_commit.trim_space()
-	}
+	commit := exec('git rev-parse HEAD')[..8]
+	// commit_hash = commit_hash[..8]
 	if !os.exists('table.html') {
 		os.create('table.html') ?
 	}
 	mut table := os.read_file('table.html') ?
-	/*
-	// Do nothing if it's already been processed.
-	if table.contains(commit_hash) {
-		println('Commit $commit_hash has already been processed')
-		return
-	}
-	*/
-	last_commits := exec('git log --pretty=format:"%h" -n 50').split('\n')
-	// Fetch all unprocessed commits (commits after the last processed commit)
-	mut commits := []string{}
-	println('!last_commit="$commit_hash"')
-	if last_commits.len == 0 || last_commits[0] == commit_hash {
+	if table.contains('>$commit<') {
 		println('nothing to benchmark')
 		exit(1)
 		return
 	}
-	for i, c in last_commits {
-		if c == commit_hash {
-			commits = last_commits[..i].reverse()
-			break
-		}
-	}
-	println(last_commits)
-	if commits.len == 0 {
-		// Just benchmark the last commit if the tool hasn't been run for too long.
-		// commits = [commit_hash]
-	}
-	println('Commits to benchmark:')
-	println(commits)
-	for i, commit in commits {
-		message := exec('git log --pretty=format:"%s" -n1 $commit')
-		println('\n${i + 1}/$commits.len Benchmarking commit $commit "$message"')
-		// Build an optimized V
-		println('Checking out ${commit}...')
-		exec('git checkout $commit')
-		println('  Building vprod...')
-		exec('v -o $vdir/vprod -prod $vdir/cmd/v')
-		diff1 := measure('$vdir/vprod -cc clang -o v.c -show-timings $vdir/cmd/v', 'v.c')
-		diff2 := measure('$vdir/vprod -cc clang -o v2 $vdir/cmd/v', 'v2')
-		diff3 := measure('$vdir/vprod -x64 $vdir/cmd/tools/1mil.v', 'x64 1mil')
-		diff4 := measure('$vdir/vprod -cc clang $vdir/examples/hello_world.v', 'hello.v')
-		vc_size := os.file_size('v.c') / 1000
-		// parse/check/cgen
-		parse, check, cgen := measure_steps(vdir)
-		// println('Building V took ${diff}ms')
-		commit_date := exec('git log -n1 --pretty="format:%at" $commit')
-		date := time.unix(commit_date.int())
-		mut out := os.create('table.html') ?
-		// Place the new row on top
-		table = 
-			'<tr>
+	// for i, commit in commits {
+	message := exec('git log --pretty=format:"%s" -n1 $commit')
+	// println('\n${i + 1}/$commits.len Benchmarking commit $commit "$message"')
+	println('\nBenchmarking commit $commit "$message"')
+	// Build an optimized V
+	// println('Checking out ${commit}...')
+	// exec('git checkout $commit')
+	println('  Building vprod...')
+	exec('v -o $vdir/vprod -prod $vdir/cmd/v')
+	diff1 := measure('$vdir/vprod -cc clang -o v.c -show-timings $vdir/cmd/v', 'v.c')
+	diff2 := measure('$vdir/vprod -cc clang -o v2 $vdir/cmd/v', 'v2')
+	diff3 := measure('$vdir/vprod -x64 $vdir/cmd/tools/1mil.v', 'x64 1mil')
+	diff4 := measure('$vdir/vprod -cc clang $vdir/examples/hello_world.v', 'hello.v')
+	vc_size := os.file_size('v.c') / 1000
+	// parse/check/cgen
+	parse, check, cgen := measure_steps(vdir)
+	// println('Building V took ${diff}ms')
+	commit_date := exec('git log -n1 --pretty="format:%at" $commit')
+	date := time.unix(commit_date.int())
+	mut out := os.create('table.html') ?
+	// Place the new row on top
+	table = 
+		'<tr>
 		<td>$date.format()</td>
 		<td><a target=_blank href="https://github.com/vlang/v/commit/$commit">$commit</a></td>
 		<td>$message</td>
@@ -96,20 +65,20 @@ fn main() {
 		<td>${check}ms</td>
 		<td>${cgen}ms</td>
 	</tr>\n' +
-			table.trim_space()
-		out.writeln(table) ?
-		out.close()
-		// Regenerate index.html
-		header := os.read_file('header.html') ?
-		footer := os.read_file('footer.html') ?
-		mut res := os.create('index.html') ?
-		res.writeln(header) ?
-		res.writeln(table) ?
-		res.writeln(footer) ?
-		res.close()
-	}
-	exec('git checkout master')
-	os.write_file('last_commit.txt', commits[commits.len - 1]) ?
+		table.trim_space()
+	out.writeln(table) ?
+	out.close()
+	// Regenerate index.html
+	header := os.read_file('header.html') ?
+	footer := os.read_file('footer.html') ?
+	mut res := os.create('index.html') ?
+	res.writeln(header) ?
+	res.writeln(table) ?
+	res.writeln(footer) ?
+	res.close()
+	//}
+	// exec('git checkout master')
+	// os.write_file('last_commit.txt', commits[commits.len - 1]) ?
 }
 
 fn exec(s string) string {
