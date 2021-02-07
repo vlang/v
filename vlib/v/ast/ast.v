@@ -333,6 +333,7 @@ pub:
 	skip_gen        bool // this function doesn't need to be generated (for example [if foo])
 pub mut:
 	stmts         []Stmt
+	defer_stmts   []DeferStmt
 	return_type   table.Type
 	has_return    bool
 	comments      []Comment // comments *after* the header, but *before* `{`; used for InterfaceDecl
@@ -891,7 +892,8 @@ pub:
 	stmts []Stmt
 	pos   token.Position
 pub mut:
-	ifdef string
+	ifdef     string
+	idx_in_fn int = -1 // index in FnDecl.defer_stmts
 }
 
 // `(3+4)`

@@ -1314,6 +1314,16 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		&& (!p.inside_match || (p.inside_select && prev_tok_kind == .arrow && lit0_is_capital))
 		&& !p.inside_match_case && (!p.inside_if || p.inside_select)
 		&& (!p.inside_for || p.inside_select) { // && (p.tok.lit[0].is_capital() || p.builtin_mod) {
+		// map.v has struct literal: map{field: expr}
+		if p.peek_tok.kind == .lcbr && !(p.builtin_mod && p.file_base == 'map.v')
+			&& p.tok.lit == 'map' {
+			// map{key_expr: val_expr}
+			p.check(.name)
+			p.check(.lcbr)
+			map_init := p.map_init()
+			p.check(.rcbr)
+			return map_init
+		}
 		return p.struct_init(false) // short_syntax: false
 	} else if p.peek_tok.kind == .dot && (lit0_is_capital && !known_var && language == .v) {
 		// T.name
@@ -1351,11 +1361,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			pos: p.tok.position()
 			mod: mod
 		}
-	} else if p.peek_tok.kind == .colon && p.prev_tok.kind != .str_dollar {
-		// `foo(key:val, key2:val2)`
-		return p.struct_init(true) // short_syntax:true
-		// JS. function call with more than 1 dot
 	} else if language == .js && p.peek_tok.kind == .dot && p.peek_tok2.kind == .name {
+		// JS. function call with more than 1 dot
 		node = p.call_expr(language, mod)
 	} else {
 		node = p.parse_ident(language)

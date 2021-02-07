@@ -128,7 +128,13 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 			p.next()
 			array_decompose = true
 		}
-		mut e := p.expr(0)
+		mut e := ast.Expr{}
+		if p.tok.kind == .name && p.peek_tok.kind == .colon {
+			// `foo(key:val, key2:val2)`
+			e = p.struct_init(true) // short_syntax:true
+		} else {
+			e = p.expr(0)
+		}
 		if array_decompose {
 			e = ast.ArrayDecompose{
 				expr: e
@@ -206,6 +212,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			if rec_mut {
 				p.warn_with_pos('use `(mut f Foo)` instead of `(f mut Foo)`', lpar_pos.extend(p.peek_tok2.position()))
 			}
+		}
+		if p.tok.kind == .key_shared {
+			p.error_with_pos('use `(shared f Foo)` instead of `(f shared Foo)`', lpar_pos.extend(p.peek_tok2.position()))
 		}
 		receiver_pos = rec_start_pos.extend(p.tok.position())
 		is_amp := p.tok.kind == .amp
@@ -684,6 +693,9 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 					p.warn_with_pos('use `mut f Foo` instead of `f mut Foo`', p.tok.position())
 				}
 				is_mut = true
+			}
+			if p.tok.kind == .key_shared {
+				p.error_with_pos('use `shared f Foo` instead of `f shared Foo`', p.tok.position())
 			}
 			if p.tok.kind == .ellipsis {
 				p.next()

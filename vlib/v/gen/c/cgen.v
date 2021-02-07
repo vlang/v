@@ -994,6 +994,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.DeferStmt {
 			mut defer_stmt := node
 			defer_stmt.ifdef = g.defer_ifdef
+			g.writeln('${g.defer_flag_var(defer_stmt)} = true;')
 			g.defer_stmts << defer_stmt
 		}
 		ast.EnumDecl {
@@ -1280,6 +1281,8 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 fn (mut g Gen) write_defer_stmts() {
 	for defer_stmt in g.defer_stmts {
 		g.writeln('// Defer begin')
+		g.writeln('if (${g.defer_flag_var(defer_stmt)} == true) {')
+		g.indent++
 		if defer_stmt.ifdef.len > 0 {
 			g.writeln(defer_stmt.ifdef)
 			g.stmts(defer_stmt.stmts)
@@ -1290,6 +1293,8 @@ fn (mut g Gen) write_defer_stmts() {
 			g.stmts(defer_stmt.stmts)
 			g.indent++
 		}
+		g.indent--
+		g.writeln('}')
 		g.writeln('// Defer end')
 	}
 }
@@ -2545,7 +2550,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 				node.return_type.clear_flag(.optional)
 			}
 			mut shared_styp := ''
-			if g.is_shared {
+			if g.is_shared && !ret_type.has_flag(.shared_f) {
 				ret_sym := g.table.get_type_symbol(ret_type)
 				shared_typ := ret_type.set_flag(.shared_f)
 				shared_styp = g.typ(shared_typ)
@@ -2573,7 +2578,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.strs_to_free0 = []
 				// println('pos=$node.pos.pos')
 			}
-			if g.is_shared {
+			if g.is_shared && !ret_type.has_flag(.shared_f) {
 				g.writeln('}, sizeof($shared_styp))')
 			}
 			// if g.autofree && node.autofree_pregen != '' { // g.strs_to_free0.len != 0 {
@@ -3380,14 +3385,18 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			g.write(')')
 		} else if node.op in [.ne, .gt, .ge, .le] && ((a && b && e) || c || d) {
 			typ := g.typ(if !d { left_type } else { (left_sym.info as table.Alias).parent_type })
-			g.write('!$typ')
+			if node.op == .gt {
+				g.write('$typ')
+			} else {
+				g.write('!$typ')
+			}
 			g.write('_')
 			if node.op == .ne {
 				g.write('_eq')
 			} else if node.op in [.ge, .le, .gt] {
 				g.write('_lt')
 			}
-			if node.op == .le {
+			if node.op in [.le, .gt] {
 				g.write('(')
 				g.expr(node.right)
 				g.write(', ')
@@ -4719,6 +4728,15 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 		g.inside_const = false
 	}
 	for field in node.fields {
+		if g.pref.skip_unused {
+			if field.name !in g.table.used_consts {
+				$if trace_skip_unused_consts ? {
+					eprintln('>> skipping unused const name: $field.name')
+				}
+				continue
+			}
+		}
+
 		name := c_name(field.name)
 		// TODO hack. Cut the generated value and paste it into definitions.
 		pos := g.out.len

@@ -164,12 +164,14 @@ fn test_assoc_with_vars() {
 	def2 := Def{
 		a: 12
 	}
-	merged := Def{
+	mut merged := Def{
 		...def2
 		a: 42
 	}
 	assert merged.a == 42
 	assert merged.b == 7
+	merged = {...def2, b: 9}
+	assert merged == Def{12, 9}
 
 	def3 := &Def{ 100, 200 }
 	merged1 := Def{...(*def3)}

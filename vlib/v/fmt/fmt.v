@@ -36,9 +36,10 @@ pub mut:
 	file               ast.File
 	did_imports        bool
 	is_assign          bool
-	auto_imports       []string // automatically inserted imports that the user forgot to specify
-	import_pos         int      // position of the imports in the resulting string for later autoimports insertion
-	used_imports       []string // to remove unused imports
+	auto_imports       []string        // automatically inserted imports that the user forgot to specify
+	import_pos         int             // position of the imports in the resulting string for later autoimports insertion
+	used_imports       []string        // to remove unused imports
+	import_syms_used   map[string]bool // to remove unused import symbols.
 	is_debug           bool
 	mod2alias          map[string]string // for `import time as t`, will contain: 'time'=>'t'
 	use_short_fn_args  bool
@@ -82,6 +83,7 @@ pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 		for sym in imp.syms {
 			f.mod2alias['${imp.mod}.$sym.name'] = sym.name
 			f.mod2alias[sym.name] = sym.name
+			f.import_syms_used[sym.name] = false
 		}
 	}
 	f.auto_imports = file.auto_imports
@@ -235,11 +237,15 @@ pub fn (mut f Fmt) mark_types_import_as_used(typ table.Type) {
 
 // `name` is a function (`foo.bar()`) or type (`foo.Bar{}`)
 pub fn (mut f Fmt) mark_import_as_used(name string) {
-	if !name.contains('.') {
+	parts := name.split('.')
+	last := parts.last()
+	if last in f.import_syms_used {
+		f.import_syms_used[last] = true
+	}
+	if parts.len == 1 {
 		return
 	}
-	pos := name.last_index('.') or { 0 }
-	mod := name[..pos]
+	mod := parts[0..parts.len - 1].join('.')
 	if mod in f.used_imports {
 		return
 	}
@@ -284,12 +290,13 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
 	is_diff := imp.alias != imp.mod && !imp.mod.ends_with('.' + imp.alias)
 	mut imp_alias_suffix := if is_diff { ' as $imp.alias' } else { '' }
-	if imp.syms.len > 0 {
-		names := imp.syms.map(it.name)
+
+	syms := imp.syms.map(it.name).filter(f.import_syms_used[it])
+	if syms.len > 0 {
 		imp_alias_suffix += if imp.syms[0].pos.line_nr == imp.pos.line_nr {
-			' { ' + names.join(', ') + ' }'
+			' { ' + syms.join(', ') + ' }'
 		} else {
-			' {\n\t' + names.join(',\n\t') + ',\n}'
+			' {\n\t' + syms.join(',\n\t') + ',\n}'
 		}
 	}
 	return '$imp.mod$imp_alias_suffix'
@@ -1218,6 +1225,7 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 					} else {
 						short := mod_prefix + '.' + const_name
 						f.write(short)
+						f.mark_import_as_used(short)
 						return
 					}
 				}
@@ -1226,9 +1234,7 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 		name := f.short_module(node.name)
 		// f.write('<$it.name => $name>')
 		f.write(name)
-		if name.contains('.') {
-			f.mark_import_as_used(name)
-		}
+		f.mark_import_as_used(name)
 	}
 }
 
@@ -1727,7 +1733,7 @@ pub fn (mut f Fmt) call_args(args []ast.CallArg) {
 		if arg.is_mut {
 			f.write(arg.share.str() + ' ')
 		}
-		if i > 0 {
+		if i > 0 && !f.single_line_if {
 			f.wrap_long_line(3, true)
 		}
 		f.expr(arg.expr)
@@ -1791,14 +1797,6 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 		}
 		f.expr(node.left)
 		f.write('.' + node.name)
-		f.write_generic_if_require(node)
-		f.write('(')
-		f.call_args(node.args)
-		f.write(')')
-		// if is_mut {
-		// f.write('!')
-		// }
-		f.or_expr(node.or_block)
 	} else {
 		f.write_language_prefix(node.language)
 		if node.left is ast.AnonFn {
@@ -1813,12 +1811,12 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 			}
 			f.write('$name')
 		}
-		f.write_generic_if_require(node)
-		f.write('(')
-		f.call_args(node.args)
-		f.write(')')
-		f.or_expr(node.or_block)
 	}
+	f.write_generic_if_require(node)
+	f.write('(')
+	f.call_args(node.args)
+	f.write(')')
+	f.or_expr(node.or_block)
 	f.comments(node.comments, has_nl: false)
 	f.use_short_fn_args = old_short_arg_state
 }
@@ -1928,6 +1926,7 @@ fn should_decrease_arr_penalty(e ast.Expr) bool {
 pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 	if it.exprs.len == 0 && it.typ != 0 && it.typ != table.void_type {
 		// `x := []string{}`
+		f.mark_types_import_as_used(it.typ)
 		f.write(f.table.type_to_str_using_aliases(it.typ, f.mod2alias))
 		f.write('{')
 		if it.has_len {
@@ -2039,6 +2038,7 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 
 pub fn (mut f Fmt) map_init(it ast.MapInit) {
 	if it.keys.len == 0 {
+		f.mark_types_import_as_used(it.typ)
 		f.write(f.table.type_to_str(it.typ))
 		f.write('{}')
 		return
@@ -2081,9 +2081,11 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 			f.comments(it.pre_comments, inline: true, has_nl: true, level: .indent)
 			f.write('}')
 		}
+		f.mark_import_as_used(name)
 	} else if it.is_short {
 		// `Foo{1,2,3}` (short syntax )
 		f.write('$name{')
+		f.mark_import_as_used(name)
 		if it.has_update_expr {
 			f.write('...')
 			f.expr(it.update_expr)
@@ -2106,6 +2108,7 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 		}
 		if !use_short_args {
 			f.write('$name{')
+			f.mark_import_as_used(name)
 			if single_line_fields {
 				f.write(' ')
 			}
