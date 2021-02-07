@@ -26,7 +26,8 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string, m2a map[string]s
 	}
 	mut receiver := ''
 	if node.is_method {
-		mut styp := util.no_cur_mod(t.type_to_code(node.receiver.typ), cur_mod)
+		mut styp := util.no_cur_mod(t.type_to_code(node.receiver.typ.clear_flag(.shared_f)),
+			cur_mod)
 		m := if node.rec_mut { node.receiver.typ.share().str() + ' ' } else { '' }
 		if node.rec_mut {
 			styp = styp[1..] // remove &
@@ -88,7 +89,7 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string, m2a map[string]s
 			f.write(arg.typ.share().str() + ' ')
 		}
 		f.write(arg.name)
-		mut s := t.type_to_str(arg.typ)
+		mut s := t.type_to_str(arg.typ.clear_flag(.shared_f))
 		if arg.is_mut {
 			// f.write(' mut')
 			if s.starts_with('&') {

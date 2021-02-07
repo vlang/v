@@ -324,7 +324,16 @@ pub fn (t Kind) str() string {
 }
 
 pub fn (t Token) str() string {
-	return '$t.kind.str() "$t.lit"'
+	mut s := t.kind.str()
+	if s.len == 0 {
+		eprintln('missing token kind string')
+	} else if !s[0].is_letter() { 
+		// punctuation, operators
+		return '`$s`' 
+	}
+	// string contents etc
+	if t.lit != '' { s += ' `$t.lit`' }
+	return s
 }
 
 // Representation of highest and lowest precedence
@@ -427,7 +436,7 @@ pub fn (tok Kind) is_relational() bool {
 }
 
 pub fn (k Kind) is_start_of_type() bool {
-	return k in [.name, .lpar, .amp, .lsbr, .question]
+	return k in [.name, .lpar, .amp, .lsbr, .question, .key_shared]
 }
 
 pub fn (kind Kind) is_prefix() bool {

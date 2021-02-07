@@ -240,20 +240,22 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			// Map `{"age": 20}` or `{ x | foo:bar, a:10 }`
 			p.next()
 			if p.tok.kind in [.chartoken, .number, .string] {
+				// TODO deprecate
 				node = p.map_init()
 			} else {
 				// it should be a struct
 				if p.peek_tok.kind == .pipe {
 					node = p.assoc()
-				} else if p.peek_tok.kind == .colon || p.tok.kind in [.rcbr, .comment] {
+				} else if (p.tok.kind == .name && p.peek_tok.kind == .colon)
+					|| p.tok.kind in [.rcbr, .comment, .ellipsis] {
 					node = p.struct_init(true) // short_syntax: true
 				} else if p.tok.kind == .name {
 					p.next()
-					s := if p.tok.lit != '' { '`$p.tok.lit`' } else { p.tok.kind.str() }
-					p.error_with_pos('unexpected $s, expecting `:`', p.tok.position())
+					p.error_with_pos('unexpected $p.tok, expecting `:` after struct field name',
+						p.tok.position())
 					return ast.Expr{}
 				} else {
-					p.error_with_pos('unexpected `$p.tok.lit`, expecting struct key',
+					p.error_with_pos('unexpected $p.tok, expecting struct field name',
 						p.tok.position())
 					return ast.Expr{}
 				}
