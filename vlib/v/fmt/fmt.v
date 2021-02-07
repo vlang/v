@@ -537,11 +537,7 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 
 [inline]
 fn abs(v int) int {
-	return if v >= 0 {
-		v
-	} else {
-		-v
-	}
+	return if v >= 0 { v } else { -v }
 }
 
 const (
@@ -1636,15 +1632,15 @@ pub fn (mut f Fmt) wrap_infix(start_pos int, start_len int, ignore_paren bool) {
 	}
 }
 
-pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
-	dollar := if it.is_comptime { '$' } else { '' }
-	mut single_line := it.branches.len == 2 && it.has_else && branch_is_single_line(it.branches[0])
-		&& branch_is_single_line(it.branches[1])
-		&& (it.is_expr || f.is_assign || f.single_line_fields)
+pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
+	dollar := if node.is_comptime { '$' } else { '' }
+	mut single_line := node.branches.len == 2 && node.has_else
+		&& branch_is_single_line(node.branches[0]) && branch_is_single_line(node.branches[1])
+		&& (node.is_expr || f.is_assign || f.single_line_fields)
 	f.single_line_if = single_line
 	if_start := f.line_len
 	for {
-		for i, branch in it.branches {
+		for i, branch in node.branches {
 			if i == 0 {
 				// first `if`
 				f.comments(branch.comments, {})
@@ -1658,7 +1654,7 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 				}
 				f.write('${dollar}else ')
 			}
-			if i < it.branches.len - 1 || !it.has_else {
+			if i < node.branches.len - 1 || !node.has_else {
 				f.write('${dollar}if ')
 				cur_pos := f.out.len
 				f.expr(branch.cond)
@@ -1696,9 +1692,9 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 	}
 	f.write('}')
 	f.single_line_if = false
-	if it.post_comments.len > 0 {
+	if node.post_comments.len > 0 {
 		f.writeln('')
-		f.comments(it.post_comments, has_nl: false)
+		f.comments(node.post_comments, has_nl: false)
 	}
 }
 
