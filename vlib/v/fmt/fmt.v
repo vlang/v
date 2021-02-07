@@ -2034,7 +2034,7 @@ pub fn (mut f Fmt) map_init(it ast.MapInit) {
 		f.write('{}')
 		return
 	}
-	f.writeln('{')
+	f.writeln('map{')
 	f.indent++
 	mut max_field_len := 0
 	for key in it.keys {

@@ -445,7 +445,7 @@ fn (mut g Gen) gen_str_for_multi_return(info table.MultiReturn, styp string, str
 fn (mut g Gen) gen_str_for_struct(info table.Struct, styp string, str_fn_name string) {
 	// TODO: short it if possible
 	// generates all definitions of substructs
-	mut fnames2strfunc := {
+	mut fnames2strfunc := map{
 		'': ''
 	} // map[string]string // TODO vfmt bug
 	for field in info.fields {
