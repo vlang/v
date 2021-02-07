@@ -5633,7 +5633,7 @@ fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) table.Type {
 }
 
 fn (mut c Checker) fetch_and_verify_orm_fields(info table.Struct, pos token.Position, table_name string) []table.Field {
-	fields := info.fields.filter( (it.typ in [table.string_type, table.int_type, table.bool_type]
+	fields := info.fields.filter((it.typ in [table.string_type, table.int_type, table.bool_type]
 		|| c.table.types[int(it.typ)].kind == .struct_) && !it.attrs.contains('skip'))
 	if fields.len == 0 {
 		c.error('V orm: select: empty fields in `$table_name`', pos)

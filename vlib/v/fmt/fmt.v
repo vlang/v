@@ -1611,7 +1611,7 @@ pub fn (mut f Fmt) wrap_infix(start_pos int, start_len int, ignore_paren bool) {
 	for i, c in conditions {
 		cnd := c.trim_space()
 		if f.line_len + cnd.len < fmt.max_len[penalties[i]] {
-			if ignore_paren || (i > 0 && i < conditions.len) {
+			if (i > 0 && i < conditions.len) || (ignore_paren && i == 0 && cnd[3] == `(`) {
 				f.write(' ')
 			}
 			f.write(cnd)
