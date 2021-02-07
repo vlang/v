@@ -56,6 +56,10 @@ fn main() {
 		}
 	}
 	println(last_commits)
+	if commits.len == 0 {
+		// Just benchmark the last commit if the tool hasn't been run for too long.
+		// commits = [commit_hash]
+	}
 	println('Commits to benchmark:')
 	println(commits)
 	for i, commit in commits {
@@ -66,10 +70,13 @@ fn main() {
 		exec('git checkout $commit')
 		println('  Building vprod...')
 		exec('v -o $vdir/vprod -prod $vdir/cmd/v')
-		diff1 := measure('$vdir/vprod -cc clang -o v.c $vdir/cmd/v', 'v.c')
+		diff1 := measure('$vdir/vprod -cc clang -o v.c -show-timings $vdir/cmd/v', 'v.c')
 		diff2 := measure('$vdir/vprod -cc clang -o v2 $vdir/cmd/v', 'v2')
 		diff3 := measure('$vdir/vprod -x64 $vdir/cmd/tools/1mil.v', 'x64 1mil')
 		diff4 := measure('$vdir/vprod -cc clang $vdir/examples/hello_world.v', 'hello.v')
+		vc_size := os.file_size('v.c') / 1000
+		// parse/check/cgen
+		parse, check, cgen := measure_steps(vdir)
 		// println('Building V took ${diff}ms')
 		commit_date := exec('git log -n1 --pretty="format:%at" $commit')
 		date := time.unix(commit_date.int())
@@ -84,6 +91,10 @@ fn main() {
 		<td>${diff2}ms</td>
 		<td>${diff3}ms</td>
 		<td>${diff4}ms</td>
+		<td>$vc_size KB</td>
+		<td>${parse}ms</td>
+		<td>${check}ms</td>
+		<td>${cgen}ms</td>
 	</tr>\n' +
 			table.trim_space()
 		out.writeln(table) ?
@@ -129,4 +140,18 @@ fn measure(cmd string, description string) int {
 		sum += run
 	}
 	return int(sum / 3)
+}
+
+fn measure_steps(vdir string) (int, int, int) {
+	resp := os.exec('$vdir/vprod -o v.c -show-timings $vdir/cmd/v') or { panic(err) }
+	println('=======')
+	println(resp.output)
+	lines := resp.output.split_into_lines()
+	if lines.len != 3 {
+		return 0, 0, 0
+	}
+	parse := lines[0].before('.').int()
+	check := lines[1].before('.').int()
+	cgen := lines[2].before('.').int()
+	return parse, check, cgen
 }

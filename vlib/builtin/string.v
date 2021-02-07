@@ -1403,9 +1403,20 @@ pub fn (s &string) free() {
 	s.is_lit = -98761234
 }
 
+// before returns the contents before `dot` in the string.
+// Example: assert '23:34:45.234'.all_before('.') == '23:34:45'
+pub fn (s string) before(dot string) string {
+	pos := s.index_(dot)
+	if pos == -1 {
+		return s
+	}
+	return s[..pos]
+}
+
 // all_before returns the contents before `dot` in the string.
 // Example: assert '23:34:45.234'.all_before('.') == '23:34:45'
 pub fn (s string) all_before(dot string) string {
+	// TODO remove dup method
 	pos := s.index_(dot)
 	if pos == -1 {
 		return s
