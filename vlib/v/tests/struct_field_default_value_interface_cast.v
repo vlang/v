@@ -2,9 +2,9 @@ struct Foo {
 	x int
 }
 
-struct Bar {}
-
-type FooBar = Foo | Bar
+interface FooBar {
+	x int
+}
 
 struct Abc {
     foobar FooBar = Foo { x: 123 }
@@ -12,6 +12,7 @@ struct Abc {
 
 fn main() {
 	x := Abc{}
+	println(123)
 	assert x.foobar is Foo
-	assert (x.foobar as Foo).x == 123
+	assert x.foobar.x == 123
 }
