@@ -21,7 +21,7 @@ fn main() {
 			println('failed to git pull. uncommitted changes?')
 			return
 		}
-		println('running fast')
+		// println('running fast')
 		resp := os.exec('./fast') or {
 			println(err)
 			return
@@ -36,7 +36,7 @@ fn main() {
 			os.system('git push origin gh-pages')
 			os.chdir('..')
 		}
-		println('sleeping 20')
-		time.sleep(20)
+		// println('sleeping 60')
+		time.sleep(60)
 	}
 }
