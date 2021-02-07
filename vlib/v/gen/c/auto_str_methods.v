@@ -138,7 +138,7 @@ fn (mut g Gen) gen_str_for_option(typ table.Type, styp string, str_fn_name strin
 	g.auto_str_funcs.writeln('\tif (it.is_none) {')
 	g.auto_str_funcs.writeln('\t\tres = _SLIT("none");')
 	g.auto_str_funcs.writeln('\t} else if (it.ok) {')
-	if typ.is_string() {
+	if sym.kind == .string {
 		g.auto_str_funcs.writeln('\t\tres = _STR("\'%.*s\\000\'", 2, ${parent_str_fn_name}(*($sym.cname*)it.data));')
 	} else if sym.kind == .struct_ && !sym_has_str_method {
 		g.auto_str_funcs.writeln('\t\tres = indent_${parent_str_fn_name}(*($sym.cname*)it.data, indent_count);')
@@ -469,7 +469,7 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp string, str_fn_name st
 	if clean_struct_v_type_name.contains('_T_') {
 		// TODO: this is a bit hacky. styp shouldn't be even parsed with _T_
 		// use something different than g.typ for styp
-		clean_struct_v_type_name = 
+		clean_struct_v_type_name =
 			clean_struct_v_type_name.replace('_T_', '<').replace('_', ', ') + '>'
 	}
 	clean_struct_v_type_name = util.strip_main_name(clean_struct_v_type_name)
