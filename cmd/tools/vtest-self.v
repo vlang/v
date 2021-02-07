@@ -159,6 +159,7 @@ const (
 		'vlib/x/json2/json2_test.v',
 		'vlib/x/json2/decoder_test.v',
 		'vlib/x/websocket/websocket_test.v',
+		'vlib/x/ttf/ttf_test.v'
 	]
 	skip_test_files               = []string{}
 	skip_on_musl                  = [
