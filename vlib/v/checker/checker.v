@@ -1306,11 +1306,11 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ table.Type, call_e
 		ast.AnonFn {
 			if arg_expr.decl.params.len > 1 {
 				c.error('function needs exactly 1 argument', arg_expr.decl.pos)
-			} else if is_map
-				&& (arg_expr.decl.return_type == table.void_type || arg_expr.decl.params[0].typ != elem_typ) {
+			} else if is_map && (arg_expr.decl.return_type == table.void_type
+				|| arg_expr.decl.params[0].typ != elem_typ) {
 				c.error('type mismatch, should use `fn(a $elem_sym.name) T {...}`', arg_expr.decl.pos)
-			} else if !is_map
-				&& (arg_expr.decl.return_type != table.bool_type || arg_expr.decl.params[0].typ != elem_typ) {
+			} else if !is_map && (arg_expr.decl.return_type != table.bool_type
+				|| arg_expr.decl.params[0].typ != elem_typ) {
 				c.error('type mismatch, should use `fn(a $elem_sym.name) bool {...}`',
 					arg_expr.decl.pos)
 			}
@@ -2397,8 +2397,8 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 	}
 	for i, exp_type in expected_types {
 		got_typ := c.unwrap_generic(got_types[i])
-		if got_typ.has_flag(.optional)
-			&& (!exp_type.has_flag(.optional) || c.table.type_to_str(got_typ) != c.table.type_to_str(exp_type)) {
+		if got_typ.has_flag(.optional) && (!exp_type.has_flag(.optional)
+			|| c.table.type_to_str(got_typ) != c.table.type_to_str(exp_type)) {
 			pos := return_stmt.exprs[i].position()
 			c.error('cannot use `${c.table.type_to_str(got_typ)}` as type `${c.table.type_to_str(exp_type)}` in return argument',
 				pos)
@@ -2421,7 +2421,7 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 				pos)
 		}
 		if (exp_type.is_ptr() || exp_type.is_pointer())
-			&& (!got_typ.is_ptr() && !got_typ.is_pointer())&& got_typ != table.int_literal_type {
+			&& (!got_typ.is_ptr() && !got_typ.is_pointer()) && got_typ != table.int_literal_type {
 			pos := return_stmt.exprs[i].position()
 			c.error('fn `$c.cur_fn.name` expects you to return a reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
 				pos)
@@ -3773,7 +3773,8 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
 				node.pos)
 		}
 	} else if node.typ == table.string_type
-		&& (from_type_sym.kind in [.int_literal, .int, .byte, .byteptr, .bool] || (from_type_sym.kind == .array && from_type_sym.name == 'array_byte')) {
+		&& (from_type_sym.kind in [.int_literal, .int, .byte, .byteptr, .bool]
+		|| (from_type_sym.kind == .array && from_type_sym.name == 'array_byte')) {
 		type_name := c.table.type_to_str(node.expr_type)
 		c.error('cannot cast type `$type_name` to string, use `x.str()` instead', node.pos)
 	} else if node.expr_type == table.string_type {
@@ -5203,7 +5204,7 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 	node.left_type = typ
 	typ_sym := c.table.get_final_type_symbol(typ)
 	if typ_sym.kind !in [.array, .array_fixed, .string, .map] && !typ.is_ptr()
-		&& typ !in [table.byteptr_type, table.charptr_type]&& !typ.has_flag(.variadic) {
+		&& typ !in [table.byteptr_type, table.charptr_type] && !typ.has_flag(.variadic) {
 		c.error('type `$typ_sym.name` does not support indexing', node.pos)
 	}
 	if typ_sym.kind == .string && !typ.is_ptr() && node.is_setter {
@@ -5648,9 +5649,8 @@ fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) table.Type {
 }
 
 fn (mut c Checker) fetch_and_verify_orm_fields(info table.Struct, pos token.Position, table_name string) []table.Field {
-	fields := info.fields.filter(
-		(it.typ in [table.string_type, table.int_type, table.bool_type] || c.table.types[int(it.typ)].kind == .struct_)
-		&& !it.attrs.contains('skip'))
+	fields := info.fields.filter((it.typ in [table.string_type, table.int_type, table.bool_type]
+		|| c.table.types[int(it.typ)].kind == .struct_) && !it.attrs.contains('skip'))
 	if fields.len == 0 {
 		c.error('V orm: select: empty fields in `$table_name`', pos)
 		return []table.Field{}
@@ -5820,7 +5820,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	}
 	node.has_return = c.returns || has_top_return(node.stmts)
 	if node.language == .v && !node.no_body && node.return_type != table.void_type
-		&& !node.has_return&& node.name !in ['panic', 'exit'] {
+		&& !node.has_return && node.name !in ['panic', 'exit'] {
 		if c.inside_anon_fn {
 			c.error('missing return at the end of an anonymous function', node.pos)
 		} else {

@@ -178,7 +178,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			}
 			field_start_pos := p.tok.position()
 			is_embed := ((p.tok.lit.len > 1 && p.tok.lit[0].is_capital())
-				|| p.peek_tok.kind == .dot)&& language == .v
+				|| p.peek_tok.kind == .dot) && language == .v
 			is_on_top := ast_fields.len == 0 && !(is_field_mut || is_field_mut || is_field_global)
 			mut field_name := ''
 			mut typ := table.Type(0)

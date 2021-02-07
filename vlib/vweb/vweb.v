@@ -534,8 +534,8 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 						if route_words.len == 1 && route_words[0] in vweb.methods_without_first {
 							req_method << route_words[0]
 						}
-						if url_words.len == route_words.len
-							|| (url_words.len >= route_words.len - 1 && route_words.len > 0 && route_words.last().ends_with('...')) {
+						if url_words.len == route_words.len || (url_words.len >= route_words.len - 1
+							&& route_words.len > 0 && route_words.last().ends_with('...')) {
 							if req_method.len > 0 {
 								if req_method_str.to_lower()[1..] !in req_method {
 									continue
