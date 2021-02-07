@@ -467,7 +467,8 @@ pub fn (mut c Checker) struct_decl(mut decl ast.StructDecl) {
 				field_expr_type := c.expr(field.default_expr)
 				struct_sym.info.fields[i].default_expr_typ = field_expr_type
 				c.check_expected(field_expr_type, field.typ) or {
-					if !(sym.kind == .interface_  && c.type_implements(field_expr_type, field.typ, field.pos)) {
+					if !(sym.kind == .interface_
+						&& c.type_implements(field_expr_type, field.typ, field.pos)) {
 						c.error('incompatible initializer for field `$field.name`: $err',
 							field.default_expr.position())
 					}
