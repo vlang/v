@@ -291,7 +291,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		}
 		p.next()
 	} else if p.tok.kind in [.ne, .gt, .ge, .le] && p.peek_tok.kind == .lpar {
-		p.error_with_pos('cannot overload `!=`, `>`, `<=` and `>=` as they are auto generated with `==` and`<`',
+		p.error_with_pos('cannot overload `!=`, `>`, `<=` and `>=` as they are auto generated from `==` and`<`',
 			p.tok.position())
 	} else {
 		pos := p.tok.position()
