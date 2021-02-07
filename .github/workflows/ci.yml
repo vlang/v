@@ -106,6 +106,8 @@ jobs:
           ./cmd/tools/test_if_v_test_system_works
       - name: Self tests
         run: ./v -silent test-self
+      - name: Self tests (-Werror)
+        run: ./v -cc gcc -cflags "-Werror" test-self
       - name: Test time functions in a timezone UTC-12
         run: TZ=Etc/GMT+12 ./v test vlib/time/
       - name: Test time functions in a timezone UTC-3
@@ -289,6 +291,8 @@ jobs:
           ./v -silent test-self
       - name: Self tests (-prod)
         run: ./v -o vprod -prod cmd/v && ./vprod -silent test-self
+      - name: Self tests (-Werror)
+        run: ./v -cc gcc -cflags "-Werror" test-self
       - name: Build examples
         run: ./v build-examples
       - name: Build examples with -autofree
@@ -358,9 +362,11 @@ jobs:
           ./v -o v2 cmd/v -cflags -fsanitize=memory
           ./v -o v3 cmd/v -cflags -fsanitize=thread
           ./v -o v4 cmd/v -cflags -fsanitize=undefined
+          ./v -o v5 cmd/v -cflags -fsanitize=address
           UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v2 -o v.c cmd/v
           UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v3 -o v.c cmd/v
           UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v4 -o v.c cmd/v
+          ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v5 -o v.c cmd/v
       - name: v self compilation
         run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
       - name: v self with -usecache
@@ -374,6 +380,8 @@ jobs:
           ./v -silent test-self
       - name: Self tests (-prod)
         run: ./v -o vprod -prod cmd/v && ./vprod -silent test-self
+      - name: Self tests (-Werror)
+        run: ./v -cflags "-Werror" test-self
       - name: Build examples
         run: ./v build-examples
       - name: Build examples with -autofree
