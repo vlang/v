@@ -1074,7 +1074,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				// We are using prebuilt modules, we do not need to generate
 				// their functions in main.c.
 				if node.mod != 'main' && node.mod != 'help' && !should_bundle_module
-					&& !g.pref.is_test&& node.generic_params.len == 0 {
+					&& !g.pref.is_test && node.generic_params.len == 0 {
 					skip = true
 				}
 			}
@@ -1788,7 +1788,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	// int pos = *(int*)_t190.data;
 	mut tmp_opt := ''
 	is_optional := g.is_autofree && (assign_stmt.op in [.decl_assign, .assign])
-		&& assign_stmt.left_types.len == 1&& assign_stmt.right[0] is ast.CallExpr
+		&& assign_stmt.left_types.len == 1 && assign_stmt.right[0] is ast.CallExpr
 	if is_optional {
 		// g.write('/* optional assignment */')
 		call_expr := assign_stmt.right[0] as ast.CallExpr
@@ -2028,7 +2028,8 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			} else {
 				g.out.go_back_to(pos)
 				is_var_mut := !is_decl && left is ast.Ident
-					&& (g.for_in_mut_val_name == (left as ast.Ident).name || (left as ast.Ident).name in g.fn_mut_arg_names)
+					&& (g.for_in_mut_val_name == (left as ast.Ident).name
+					|| (left as ast.Ident).name in g.fn_mut_arg_names)
 				addr := if is_var_mut { '' } else { '&' }
 				g.writeln('')
 				g.write('memcpy($addr')
@@ -2100,7 +2101,8 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				}
 				if !is_fixed_array_copy || is_decl {
 					if !is_decl && var_type != table.string_type_idx && left is ast.Ident
-						&& (g.for_in_mut_val_name == (left as ast.Ident).name || (left as ast.Ident).name in g.fn_mut_arg_names) {
+						&& (g.for_in_mut_val_name == (left as ast.Ident).name
+						|| (left as ast.Ident).name in g.fn_mut_arg_names) {
 						g.write('*')
 					}
 					g.expr(left)
@@ -3337,7 +3339,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			g.or_block(tmp_opt, node.or_block, table.void_type)
 		}
 	} else if unaliased_left.idx() in [table.u32_type_idx, table.u64_type_idx]
-		&& unaliased_right.is_signed()&& node.op in [.eq, .ne, .gt, .lt, .ge, .le] {
+		&& unaliased_right.is_signed() && node.op in [.eq, .ne, .gt, .lt, .ge, .le] {
 		bitsize := if unaliased_left.idx() == table.u32_type_idx
 			&& unaliased_right.idx() != table.i64_type_idx {
 			32
@@ -3350,7 +3352,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		g.expr(node.right)
 		g.write(')')
 	} else if unaliased_right.idx() in [table.u32_type_idx, table.u64_type_idx]
-		&& unaliased_left.is_signed()&& node.op in [.eq, .ne, .gt, .lt, .ge, .le] {
+		&& unaliased_left.is_signed() && node.op in [.eq, .ne, .gt, .lt, .ge, .le] {
 		bitsize := if unaliased_right.idx() == table.u32_type_idx
 			&& unaliased_left.idx() != table.i64_type_idx {
 			32
@@ -3785,7 +3787,7 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 					expr := branch.stmt.expr as ast.InfixExpr
 					channels << expr.left
 					if expr.right is ast.Ident || expr.right is ast.IndexExpr
-						|| expr.right is ast.SelectorExpr|| expr.right is ast.StructInit {
+						|| expr.right is ast.SelectorExpr || expr.right is ast.StructInit {
 						// addressable objects in the `C` output
 						objs << expr.right
 						tmp_objs << ''
@@ -4006,8 +4008,9 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	// (as it used to be done).
 	// Always use this in -autofree, since ?: can have tmp expressions that have to be freed.
 	first_branch := node.branches[0]
-	needs_tmp_var := node.is_expr
-		&& (g.is_autofree || (g.pref.experimental && (first_branch.stmts.len > 1 || (first_branch.stmts[0] is ast.ExprStmt && (first_branch.stmts[0] as ast.ExprStmt).expr is ast.IfExpr))))
+	needs_tmp_var := node.is_expr && (g.is_autofree || (g.pref.experimental
+		&& (first_branch.stmts.len > 1 || (first_branch.stmts[0] is ast.ExprStmt
+		&& (first_branch.stmts[0] as ast.ExprStmt).expr is ast.IfExpr))))
 	/*
 	needs_tmp_var := node.is_expr &&
 		(g.autofree || g.pref.experimental) &&
@@ -4925,7 +4928,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 			}
 			if !cloned {
 				if field.expected_type.is_ptr() && !(field.typ.is_ptr()
-					|| field.typ.is_pointer())&& !field.typ.is_number() {
+					|| field.typ.is_pointer()) && !field.typ.is_number() {
 					g.write('/* autoref */&')
 				}
 				g.expr_with_cast(field.expr, field.typ, field.expected_type)
@@ -4991,7 +4994,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 				}
 				if !cloned {
 					if sfield.expected_type.is_ptr() && !(sfield.typ.is_ptr()
-						|| sfield.typ.is_pointer())&& !sfield.typ.is_number() {
+						|| sfield.typ.is_pointer()) && !sfield.typ.is_number() {
 						g.write('/* autoref */&')
 					}
 					g.expr_with_cast(sfield.expr, sfield.typ, sfield.expected_type)

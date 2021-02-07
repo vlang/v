@@ -1091,8 +1091,9 @@ fn (mut s Scanner) ident_string() string {
 				s.error(r'`\x` used with no following hex digits')
 			}
 			// Escape `\u`
-			if c == `u`
-				&& (s.text[s.pos + 1] == s.quote || s.text[s.pos + 2] == s.quote || s.text[s.pos + 3] == s.quote || s.text[s.pos + 4] == s.quote || !s.text[s.pos + 1].is_hex_digit()
+			if c == `u` && (s.text[s.pos + 1] == s.quote
+				|| s.text[s.pos + 2] == s.quote || s.text[s.pos + 3] == s.quote
+				|| s.text[s.pos + 4] == s.quote || !s.text[s.pos + 1].is_hex_digit()
 				|| !s.text[s.pos + 2].is_hex_digit()
 				|| !s.text[s.pos + 3].is_hex_digit()
 				|| !s.text[s.pos + 4].is_hex_digit()) {

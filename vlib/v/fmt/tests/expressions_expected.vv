@@ -53,7 +53,7 @@ fn main() {
 	println('this is quite a long string' +
 		' that is followd by an even longer part that should go to another line')
 	if (a == b && b > r) || (d > r) || (a < b) || (b < d && a + b > r)
-		|| (a + b + d >= 0 && r < 0)|| (a > b && d - r < b) {
+		|| (a + b + d >= 0 && r < 0) || (a > b && d - r < b) {
 		println('ok')
 	}
 }

@@ -144,7 +144,7 @@ fn (mut c Checker) mark_used(ast_files []ast.File) {
 	if walker.n_maps > 0 {
 		for k, mut mfn in all_fns {
 			if k == 'new_map_2' || k.starts_with('map_') || k.ends_with('set_1')
-				|| k.ends_with('exists_1')|| k.ends_with('get_1') {
+				|| k.ends_with('exists_1') || k.ends_with('get_1') {
 				walker.fn_decl(mut mfn)
 			}
 		}
