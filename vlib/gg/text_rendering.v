@@ -82,17 +82,24 @@ fn new_ft(c FTConfig) ?&FT {
 			// Load default font
 		}
 	}
-	$if !android {
-		if c.font_path == '' || !os.exists(c.font_path) {
+
+	if c.font_path == '' || !os.exists(c.font_path) {
+		$if !android {
 			println('failed to load font "$c.font_path"')
 			return none
 		}
 	}
+
 	mut bytes := []byte{}
 	$if android {
-		bytes = os.read_apk_asset(c.font_path) or {
-			println('failed to load font "$c.font_path"')
-			return none
+		// First try any filesystem paths
+		bytes = os.read_bytes(c.font_path) or { []byte{} }
+		if bytes.len == 0 {
+			// ... then try the APK asset path
+			bytes = os.read_apk_asset(c.font_path) or {
+				println('failed to load font "$c.font_path"')
+				return none
+			}
 		}
 	} $else {
 		bytes = os.read_bytes(c.font_path) or {
@@ -255,6 +262,31 @@ pub fn system_font_path() string {
 		for font in fonts {
 			if os.is_file(font) {
 				return font
+			}
+		}
+	}
+	$if android {
+		xml_files := ['/system/etc/system_fonts.xml', '/system/etc/fonts.xml', '/etc/system_fonts.xml',
+			'/etc/fonts.xml', '/data/fonts/fonts.xml', '/etc/fallback_fonts.xml']
+		font_locations := ['/system/fonts', '/data/fonts']
+		for xml_file in xml_files {
+			if os.is_file(xml_file) && os.is_readable(xml_file) {
+				xml := os.read_file(xml_file) or { continue }
+				lines := xml.split('\n')
+				mut candidate_font := ''
+				for line in lines {
+					if line.contains('<font') {
+						candidate_font = line.all_after('>').all_before('<').trim(' \n\t\r')
+						if candidate_font.contains('.ttf') {
+							for location in font_locations {
+								candidate_path := os.join_path(location, candidate_font)
+								if os.is_file(candidate_path) && os.is_readable(candidate_path) {
+									return candidate_path
+								}
+							}
+						}
+					}
+				}
 			}
 		}
 	}

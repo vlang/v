@@ -846,7 +846,11 @@ pub fn (mytable &Table) type_to_str_using_aliases(t Type, import_aliases map[str
 			res = mytable.shorten_user_defined_typenames(res, import_aliases)
 		}
 	}
-	nr_muls := t.nr_muls()
+	mut nr_muls := t.nr_muls()
+	if t.has_flag(.shared_f) {
+		nr_muls--
+		res = 'shared ' + res
+	}
 	if nr_muls > 0 {
 		res = strings.repeat(`&`, nr_muls) + res
 	}

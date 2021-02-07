@@ -865,8 +865,12 @@ You can also import specific functions and types from modules directly:
 
 ```v
 import os { input }
-import crypto.sha256 { sum }
-import time { Time }
+
+fn main() {
+	// read text from stdin
+	name := input('Enter your name: ')
+	println('Hello, $name!')
+}
 ```
 Note: This is not allowed for constants - they must always be prefixed.
 
@@ -1633,6 +1637,8 @@ Only more complex types such as arrays and maps may be modified.
 Use `user.register()` or `user = register(user)`
 instead of `register(mut user)`.
 
+#### Struct update syntax
+
 V makes it easy to return a modified version of an object:
 
 ```v
@@ -1644,7 +1650,7 @@ struct User {
 
 fn register(u User) User {
 	return {
-		u |
+		...u
 		is_registered: true
 	}
 }

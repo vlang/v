@@ -1,0 +1,18 @@
+struct St {
+mut:
+	x f64
+}
+
+fn f() ?shared St {
+	shared x := St{ x: 12.75 }
+	return x
+}
+
+fn test_shared_opt_bad() {
+	shared yy := f() or {
+		St{ x: 37.5 }
+	}
+	rlock yy {
+	    println(yy.x)
+	}
+}
