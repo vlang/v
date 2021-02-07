@@ -246,7 +246,8 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 				// it should be a struct
 				if p.peek_tok.kind == .pipe {
 					node = p.assoc()
-				} else if p.peek_tok.kind == .colon || p.tok.kind in [.rcbr, .comment] {
+				} else if (p.tok.kind == .name && p.peek_tok.kind == .colon)
+					|| p.tok.kind in [.rcbr, .comment, .ellipsis] {
 					node = p.struct_init(true) // short_syntax: true
 				} else if p.tok.kind == .name {
 					p.next()

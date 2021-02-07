@@ -1633,6 +1633,8 @@ Only more complex types such as arrays and maps may be modified.
 Use `user.register()` or `user = register(user)`
 instead of `register(mut user)`.
 
+#### Struct update syntax
+
 V makes it easy to return a modified version of an object:
 
 ```v
@@ -1644,7 +1646,7 @@ struct User {
 
 fn register(u User) User {
 	return {
-		u |
+		...u
 		is_registered: true
 	}
 }
