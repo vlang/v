@@ -652,9 +652,17 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 								field.pos)
 						}
 					}
-					if info_field.typ.is_ptr() && !expr_type.is_ptr() && !expr_type.is_pointer()
-						&& !expr_type.is_number() {
-						c.error('ref', field.pos)
+					if info_field.typ.has_flag(.shared_f) {
+						if !expr_type.has_flag(.shared_f) && expr_type.is_ptr() {
+							c.error('`shared` field must be initialized with `shared` or value',
+								field.pos)
+						}
+					} else {
+						if info_field.typ.is_ptr() && !expr_type.is_ptr() && !expr_type.is_pointer()
+							&& !expr_type.is_number() {
+							c.error('reference field must be initialized with reference',
+								field.pos)
+						}
 					}
 					struct_init.fields[i].typ = expr_type
 					struct_init.fields[i].expected_type = info_field.typ
