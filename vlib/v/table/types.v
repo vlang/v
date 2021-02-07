@@ -694,6 +694,7 @@ pub mut:
 	typ              Type
 	default_expr     FExpr
 	has_default_expr bool
+	default_expr_typ Type
 	default_val      string
 	attrs            []Attr
 	is_pub           bool

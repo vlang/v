@@ -5053,8 +5053,8 @@ fn (mut g Gen) zero_struct_field(field table.Field) {
 	sym := g.table.get_type_symbol(field.typ)
 	defex := ast.fe2ex(field.default_expr)
 	if field.has_default_expr {
-		if sym.kind == .sum_type && defex is ast.StructInit {
-			g.expr_with_cast(defex, (defex as ast.StructInit).typ, field.typ)
+		if sym.kind in [.sum_type, .interface_] {
+			g.expr_with_cast(defex, field.default_expr_typ, field.typ)
 			return
 		}
 		g.expr(defex)
