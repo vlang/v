@@ -33,6 +33,7 @@ fn main() {
 			os.exec('git checkout gh-pages') ?
 			os.cp('../index.html', 'index.html') ?
 			os.system('git commit -am "update benchmark"')
+			os.system('git push origin gh-pages')
 			os.chdir('..')
 		}
 		println('sleeping 20')
