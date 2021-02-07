@@ -132,6 +132,7 @@ const (
 		'vlib/v/tests/semaphore_timed_test.v',
 		'vlib/v/tests/shared_array_test.v',
 		'vlib/v/tests/shared_autolock_test.v',
+		'vlib/v/tests/shared_elem_test.v',
 		'vlib/v/tests/shared_lock_2_test.v',
 		'vlib/v/tests/shared_lock_3_test.v',
 		'vlib/v/tests/shared_fn_return_test.v',
