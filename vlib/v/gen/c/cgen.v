@@ -1489,6 +1489,9 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw table.Type, expected_type table.Type) {
 	got_type := g.table.mktyp(got_type_raw)
 	exp_sym := g.table.get_type_symbol(expected_type)
+	expected_is_ptr := expected_type.is_ptr()
+	got_is_ptr := got_type.is_ptr()
+	got_sym := g.table.get_type_symbol(got_type)
 	if exp_sym.kind == .interface_ && got_type_raw.idx() != expected_type.idx()
 		&& !expected_type.has_flag(.optional) {
 		got_styp := g.cc_type(got_type)
@@ -1506,16 +1509,13 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw table.Type, expected_t
 		return
 	}
 	// cast to sum type
+	exp_styp := g.typ(expected_type)
+	got_styp := g.typ(got_type)
 	if expected_type != table.void_type {
-		expected_is_ptr := expected_type.is_ptr()
 		expected_deref_type := if expected_is_ptr { expected_type.deref() } else { expected_type }
-		got_is_ptr := got_type.is_ptr()
 		got_deref_type := if got_is_ptr { got_type.deref() } else { got_type }
 		if g.table.sumtype_has_variant(expected_deref_type, got_deref_type) {
-			exp_styp := g.typ(expected_type)
-			got_styp := g.typ(got_type)
 			// got_idx := got_type.idx()
-			got_sym := g.table.get_type_symbol(got_type)
 			got_sidx := g.type_sidx(got_type)
 			// TODO: do we need 1-3?
 			if expected_is_ptr && got_is_ptr {
@@ -1560,12 +1560,28 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw table.Type, expected_t
 		}
 	}
 	// Generic dereferencing logic
-	expected_sym := g.table.get_type_symbol(expected_type)
-	got_is_ptr := got_type.is_ptr()
-	expected_is_ptr := expected_type.is_ptr()
 	neither_void := table.voidptr_type !in [got_type, expected_type]
+	to_shared := expected_type.has_flag(.shared_f) && !got_type_raw.has_flag(.shared_f)
+		&& !expected_type.has_flag(.optional)
+	// from_shared := got_type_raw.has_flag(.shared_f) && !expected_type.has_flag(.shared_f)
+	if to_shared {
+		shared_styp := exp_styp[0..exp_styp.len - 1] // `shared` implies ptr, so eat one `*`
+		if got_type_raw.is_ptr() {
+			g.error('cannot convert reference to `shared`', expr.position())
+		}
+		if exp_sym.kind == .array {
+			g.writeln('($shared_styp*)__dup_shared_array(&($shared_styp){.val = ')
+		} else if exp_sym.kind == .map {
+			g.writeln('($shared_styp*)__dup_shared_map(&($shared_styp){.val = ')
+		} else {
+			g.writeln('($shared_styp*)__dup${shared_styp}(&($shared_styp){.val = ')
+		}
+		g.expr(expr)
+		g.writeln('}, sizeof($shared_styp))')
+		return
+	}
 	if got_is_ptr && !expected_is_ptr && neither_void
-		&& expected_sym.kind !in [.interface_, .placeholder] {
+		&& exp_sym.kind !in [.interface_, .placeholder] {
 		got_deref_type := got_type.deref()
 		deref_sym := g.table.get_type_symbol(got_deref_type)
 		deref_will_match := expected_type in [got_type, got_deref_type, deref_sym.parent_idx]
@@ -4857,7 +4873,7 @@ const (
 
 fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	styp := g.typ(struct_init.typ)
-	mut shared_styp := '' // only needed for shared &St{...
+	mut shared_styp := '' // only needed for shared x := St{...
 	if styp in c.skip_struct_init {
 		// needed for c++ compilers
 		g.go_back_out(3)
@@ -4870,7 +4886,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	if is_amp {
 		g.out.go_back(1) // delete the `&` already generated in `prefix_expr()
 	}
-	if g.is_shared && !g.inside_opt_data {
+	if g.is_shared && !g.inside_opt_data && !g.is_array_set {
 		mut shared_typ := struct_init.typ.set_flag(.shared_f)
 		shared_styp = g.typ(shared_typ)
 		g.writeln('($shared_styp*)__dup${shared_styp}(&($shared_styp){.val = ($styp){')
@@ -4924,8 +4940,8 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 				}
 			}
 			if !cloned {
-				if field.expected_type.is_ptr() && !(field.typ.is_ptr()
-					|| field.typ.is_pointer())&& !field.typ.is_number() {
+				if (field.expected_type.is_ptr() && !field.expected_type.has_flag(.shared_f))
+					&& !(field.typ.is_ptr() || field.typ.is_pointer())&& !field.typ.is_number() {
 					g.write('/* autoref */&')
 				}
 				g.expr_with_cast(field.expr, field.typ, field.expected_type)
@@ -4990,8 +5006,9 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 					}
 				}
 				if !cloned {
-					if sfield.expected_type.is_ptr() && !(sfield.typ.is_ptr()
-						|| sfield.typ.is_pointer())&& !sfield.typ.is_number() {
+					if (sfield.expected_type.is_ptr() && !sfield.expected_type.has_flag(.shared_f))
+						&& !(sfield.typ.is_ptr() || sfield.typ.is_pointer())
+						&& !sfield.typ.is_number() {
 						g.write('/* autoref */&')
 					}
 					g.expr_with_cast(sfield.expr, sfield.typ, sfield.expected_type)
@@ -5042,7 +5059,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		g.write('\n#ifndef __cplusplus\n0\n#endif\n')
 	}
 	g.write('}')
-	if g.is_shared && !g.inside_opt_data {
+	if g.is_shared && !g.inside_opt_data && !g.is_array_set {
 		g.write('}, sizeof($shared_styp))')
 	} else if is_amp {
 		g.write(', sizeof($styp))')
