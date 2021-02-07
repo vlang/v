@@ -339,8 +339,9 @@ pub fn prepare_test_session(zargs string, folder string, oskipped []string, main
 			continue
 		}
 		$if windows {
-			// skip pico example on windows
-			if f.ends_with('examples\\pico\\pico.v') {
+			// skip pico and process/command examples on windows
+			if f.ends_with('examples\\pico\\pico.v')
+				|| f.ends_with('examples\\process\\command.v') {
 				continue
 			}
 		}
