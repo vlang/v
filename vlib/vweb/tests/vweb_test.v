@@ -208,7 +208,7 @@ fn testsuite_end() {
 	// It sends a request to the server to shutdown.
 	x := http.fetch('http://127.0.0.1:$sport/shutdown', 
 		method: .get
-		cookies: {
+		cookies: map{
 			'skey': 'superman'
 		}
 	) or {
