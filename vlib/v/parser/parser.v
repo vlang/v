@@ -1918,6 +1918,7 @@ fn (mut p Parser) import_stmt() ast.Import {
 		}
 	}
 	import_node.comments = p.eat_comments(same_line: true)
+	import_node.next_comments = p.eat_comments(follow_up: true)
 	p.imports[mod_alias] = mod_name
 	// if mod_name !in p.table.imports {
 	p.table.imports << mod_name
