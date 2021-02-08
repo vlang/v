@@ -18,7 +18,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 	is_stmt_ident := p.is_stmt_ident
 	p.is_stmt_ident = false
 	if !p.pref.is_fmt {
-		p.eat_comments()
+		p.eat_comments({})
 	}
 	// Prefix
 	match p.tok.kind {

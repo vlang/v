@@ -96,7 +96,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 	p.next()
 	mut comments := []ast.Comment{cap: 2 * left_comments.len + 1}
 	comments << left_comments
-	comments << p.eat_comments()
+	comments << p.eat_comments({})
 	mut right_comments := []ast.Comment{}
 	mut right := []ast.Expr{cap: left.len}
 	if p.tok.kind == .key_go {
@@ -110,7 +110,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 		right, right_comments = p.expr_list()
 	}
 	comments << right_comments
-	end_comments := p.eat_line_end_comments()
+	end_comments := p.eat_comments(same_line: true)
 	mut has_cross_var := false
 	if op == .decl_assign {
 		// a, b := a + 1, b
