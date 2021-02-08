@@ -285,8 +285,9 @@ pub:
 	mod_pos   token.Position
 	alias_pos token.Position
 pub mut:
-	syms     []ImportSymbol // the list of symbols in `import {symbol1, symbol2}`
-	comments []Comment
+	syms          []ImportSymbol // the list of symbols in `import {symbol1, symbol2}`
+	comments      []Comment
+	next_comments []Comment
 }
 
 // import symbol,for import {symbol} syntax
