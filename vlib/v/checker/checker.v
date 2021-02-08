@@ -652,9 +652,17 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 								field.pos)
 						}
 					}
-					if info_field.typ.is_ptr() && !expr_type.is_ptr() && !expr_type.is_pointer()
-						&& !expr_type.is_number() {
-						c.error('ref', field.pos)
+					if info_field.typ.has_flag(.shared_f) {
+						if !expr_type.has_flag(.shared_f) && expr_type.is_ptr() {
+							c.error('`shared` field must be initialized with `shared` or value',
+								field.pos)
+						}
+					} else {
+						if info_field.typ.is_ptr() && !expr_type.is_ptr() && !expr_type.is_pointer()
+							&& !expr_type.is_number() {
+							c.error('reference field must be initialized with reference',
+								field.pos)
+						}
 					}
 					struct_init.fields[i].typ = expr_type
 					struct_init.fields[i].expected_type = info_field.typ
@@ -748,7 +756,9 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 	// right_type = c.unwrap_genric(c.expr(infix_expr.right))
 	infix_expr.right_type = right_type
 	mut right := c.table.get_type_symbol(right_type)
+	right_final := c.table.get_final_type_symbol(right_type)
 	mut left := c.table.get_type_symbol(left_type)
+	left_final := c.table.get_final_type_symbol(left_type)
 	left_pos := infix_expr.left.position()
 	right_pos := infix_expr.right.position()
 	if (left_type.is_ptr() || left.is_pointer()) && infix_expr.op in [.plus, .minus] {
@@ -911,17 +921,17 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 			}
 		}
 		.left_shift {
-			if left.kind == .array {
+			if left_final.kind == .array {
 				// `array << elm`
 				infix_expr.auto_locked, _ = c.fail_if_immutable(infix_expr.left)
 				left_value_type := c.table.value_type(left_type)
 				left_value_sym := c.table.get_type_symbol(left_value_type)
 				if left_value_sym.kind == .interface_ {
-					if right.kind != .array {
+					if right_final.kind != .array {
 						// []Animal << Cat
 						c.type_implements(right_type, left_value_type, right_pos)
 					} else {
-						// []Animal << Cat
+						// []Animal << []Cat
 						c.type_implements(c.table.value_type(right_type), left_value_type,
 							right_pos)
 					}
@@ -932,7 +942,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 					// []T << T
 					return table.void_type
 				}
-				if right.kind == .array
+				if right_final.kind == .array
 					&& c.check_types(left_value_type, c.table.value_type(right_type)) {
 					// []T << []T
 					return table.void_type
@@ -1041,11 +1051,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 		c.warn('`++` and `--` are statements, not expressions', infix_expr.pos)
 	}
 	*/
-	return if infix_expr.op.is_relational() {
-		table.bool_type
-	} else {
-		return_type
-	}
+	return if infix_expr.op.is_relational() { table.bool_type } else { return_type }
 }
 
 // returns name and position of variable that needs write lock
@@ -1298,11 +1304,11 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ table.Type, call_e
 		ast.AnonFn {
 			if arg_expr.decl.params.len > 1 {
 				c.error('function needs exactly 1 argument', arg_expr.decl.pos)
-			} else if is_map
-				&& (arg_expr.decl.return_type == table.void_type || arg_expr.decl.params[0].typ != elem_typ) {
+			} else if is_map && (arg_expr.decl.return_type == table.void_type
+				|| arg_expr.decl.params[0].typ != elem_typ) {
 				c.error('type mismatch, should use `fn(a $elem_sym.name) T {...}`', arg_expr.decl.pos)
-			} else if !is_map
-				&& (arg_expr.decl.return_type != table.bool_type || arg_expr.decl.params[0].typ != elem_typ) {
+			} else if !is_map && (arg_expr.decl.return_type != table.bool_type
+				|| arg_expr.decl.params[0].typ != elem_typ) {
 				c.error('type mismatch, should use `fn(a $elem_sym.name) bool {...}`',
 					arg_expr.decl.pos)
 			}
@@ -2389,8 +2395,8 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 	}
 	for i, exp_type in expected_types {
 		got_typ := c.unwrap_generic(got_types[i])
-		if got_typ.has_flag(.optional)
-			&& (!exp_type.has_flag(.optional) || c.table.type_to_str(got_typ) != c.table.type_to_str(exp_type)) {
+		if got_typ.has_flag(.optional) && (!exp_type.has_flag(.optional)
+			|| c.table.type_to_str(got_typ) != c.table.type_to_str(exp_type)) {
 			pos := return_stmt.exprs[i].position()
 			c.error('cannot use `${c.table.type_to_str(got_typ)}` as type `${c.table.type_to_str(exp_type)}` in return argument',
 				pos)
@@ -2413,7 +2419,7 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 				pos)
 		}
 		if (exp_type.is_ptr() || exp_type.is_pointer())
-			&& (!got_typ.is_ptr() && !got_typ.is_pointer())&& got_typ != table.int_literal_type {
+			&& (!got_typ.is_ptr() && !got_typ.is_pointer()) && got_typ != table.int_literal_type {
 			pos := return_stmt.exprs[i].position()
 			c.error('fn `$c.cur_fn.name` expects you to return a reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
 				pos)
@@ -3765,7 +3771,8 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
 				node.pos)
 		}
 	} else if node.typ == table.string_type
-		&& (from_type_sym.kind in [.int_literal, .int, .byte, .byteptr, .bool] || (from_type_sym.kind == .array && from_type_sym.name == 'array_byte')) {
+		&& (from_type_sym.kind in [.int_literal, .int, .byte, .byteptr, .bool]
+		|| (from_type_sym.kind == .array && from_type_sym.name == 'array_byte')) {
 		type_name := c.table.type_to_str(node.expr_type)
 		c.error('cannot cast type `$type_name` to string, use `x.str()` instead', node.pos)
 	} else if node.expr_type == table.string_type {
@@ -4955,11 +4962,7 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 						// :)
 						// until `v.eval` is stable, I can't think of a better way to do this
 						different := expr.str() != cond.right.str()
-						return if cond.op == .eq {
-							different
-						} else {
-							!different
-						}
+						return if cond.op == .eq { different } else { !different }
 					} else {
 						c.error('invalid `\$if` condition: ${cond.left.type_name()}1',
 							cond.pos)
@@ -5195,7 +5198,7 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 	node.left_type = typ
 	typ_sym := c.table.get_final_type_symbol(typ)
 	if typ_sym.kind !in [.array, .array_fixed, .string, .map] && !typ.is_ptr()
-		&& typ !in [table.byteptr_type, table.charptr_type]&& !typ.has_flag(.variadic) {
+		&& typ !in [table.byteptr_type, table.charptr_type] && !typ.has_flag(.variadic) {
 		c.error('type `$typ_sym.name` does not support indexing', node.pos)
 	}
 	if typ_sym.kind == .string && !typ.is_ptr() && node.is_setter {
@@ -5640,9 +5643,8 @@ fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) table.Type {
 }
 
 fn (mut c Checker) fetch_and_verify_orm_fields(info table.Struct, pos token.Position, table_name string) []table.Field {
-	fields := info.fields.filter(
-		(it.typ in [table.string_type, table.int_type, table.bool_type] || c.table.types[int(it.typ)].kind == .struct_)
-		&& !it.attrs.contains('skip'))
+	fields := info.fields.filter((it.typ in [table.string_type, table.int_type, table.bool_type]
+		|| c.table.types[int(it.typ)].kind == .struct_) && !it.attrs.contains('skip'))
 	if fields.len == 0 {
 		c.error('V orm: select: empty fields in `$table_name`', pos)
 		return []table.Field{}
@@ -5812,7 +5814,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	}
 	node.has_return = c.returns || has_top_return(node.stmts)
 	if node.language == .v && !node.no_body && node.return_type != table.void_type
-		&& !node.has_return&& node.name !in ['panic', 'exit'] {
+		&& !node.has_return && node.name !in ['panic', 'exit'] {
 		if c.inside_anon_fn {
 			c.error('missing return at the end of an anonymous function', node.pos)
 		} else {

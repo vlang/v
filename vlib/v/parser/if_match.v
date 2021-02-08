@@ -15,6 +15,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 		p.inside_ct_if_expr = was_inside_ct_if_expr
 	}
 	p.inside_if_expr = true
+	is_expr := p.prev_tok.kind == .key_return
 	mut pos := p.tok.position()
 	if is_comptime {
 		p.inside_ct_if_expr = true
@@ -152,6 +153,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 		post_comments: comments
 		pos: pos
 		has_else: has_else
+		is_expr: is_expr
 	}
 }
 
@@ -180,8 +182,8 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 			p.next()
 		} else if (p.tok.kind == .name && !(p.tok.lit == 'C' && p.peek_tok.kind == .dot)
 			&& (p.tok.lit in table.builtin_type_names || p.tok.lit[0].is_capital()
-			|| (p.peek_tok.kind == .dot && p.peek_tok2.lit.len > 0 && p.peek_tok2.lit[0].is_capital())))
-			|| p.tok.kind == .lsbr {
+			|| (p.peek_tok.kind == .dot && p.peek_tok2.lit.len > 0
+			&& p.peek_tok2.lit[0].is_capital()))) || p.tok.kind == .lsbr {
 			mut types := []table.Type{}
 			for {
 				// Sum type match

@@ -84,7 +84,7 @@ pub fn (mut p Parser) parse_map_type() table.Type {
 		return 0
 	}
 	if !(key_type in [table.string_type_idx, table.voidptr_type_idx]
-		|| ((key_type.is_int() || key_type.is_float() || is_alias)&& !key_type.is_ptr())) {
+		|| ((key_type.is_int() || key_type.is_float() || is_alias) && !key_type.is_ptr())) {
 		s := p.table.type_to_str(key_type)
 		p.error_with_pos('maps only support string, integer, float, rune or voidptr keys for now (not `$s`)',
 			p.tok.position())
@@ -205,6 +205,9 @@ pub fn (mut p Parser) parse_type() table.Type {
 	}
 	is_shared := p.tok.kind == .key_shared
 	is_atomic := p.tok.kind == .key_atomic
+	if is_shared {
+		p.register_auto_import('sync')
+	}
 	mut nr_muls := 0
 	if p.tok.kind == .key_mut || is_shared || is_atomic {
 		nr_muls++

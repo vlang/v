@@ -1053,11 +1053,7 @@ pub fn (s string) trim_right(cutset string) string {
 	for pos >= 0 && s[pos] in cs_arr {
 		pos--
 	}
-	return if pos < 0 {
-		''
-	} else {
-		s[..pos + 1]
-	}
+	return if pos < 0 { '' } else { s[..pos + 1] }
 }
 
 // trim_prefix strips `str` from the start of the string.

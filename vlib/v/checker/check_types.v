@@ -183,11 +183,7 @@ fn (c &Checker) promote_num(left_type table.Type, right_type table.Type) table.T
 		return type_hi
 	} else if idx_lo >= table.i8_type_idx
 		&& (idx_hi <= table.i64_type_idx || idx_hi == table.rune_type_idx) { // both signed
-		return if idx_lo == table.i64_type_idx {
-			type_lo
-		} else {
-			type_hi
-		}
+		return if idx_lo == table.i64_type_idx { type_lo } else { type_hi }
 	} else if idx_hi - idx_lo < (table.byte_type_idx - table.i8_type_idx) {
 		return type_lo // conversion unsigned -> signed if signed type is larger
 	} else {
@@ -303,7 +299,7 @@ pub fn (c &Checker) get_default_fmt(ftyp table.Type, typ table.Type) byte {
 		}
 		if ftyp in [table.string_type, table.bool_type]
 			|| sym.kind in [.enum_, .array, .array_fixed, .struct_, .map, .multi_return, .sum_type, .none_]
-			|| ftyp.has_flag(.optional)|| sym.has_method('str') {
+			|| ftyp.has_flag(.optional) || sym.has_method('str') {
 			return `s`
 		} else {
 			return `_`

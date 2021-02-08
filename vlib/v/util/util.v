@@ -349,20 +349,12 @@ pub fn skip_bom(file_content string) string {
 
 [inline]
 pub fn imin(a int, b int) int {
-	return if a < b {
-		a
-	} else {
-		b
-	}
+	return if a < b { a } else { b }
 }
 
 [inline]
 pub fn imax(a int, b int) int {
-	return if a > b {
-		a
-	} else {
-		b
-	}
+	return if a > b { a } else { b }
 }
 
 pub fn replace_op(s string) string {
