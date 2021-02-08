@@ -6240,9 +6240,9 @@ $staticprefix $interface_name* I_${cctype}_to_Interface_${interface_name}_ptr($c
 					//
 					params_start_pos := g.out.len
 					mut params := method.params.clone()
-					first_param := params[0] // workaround, { params[0] | ... } doesn't work
+					// hack to mutate typ
 					params[0] = {
-						first_param |
+						...params[0]
 						typ: params[0].typ.set_nr_muls(1)
 					}
 					fargs, _ := g.fn_args(params, false) // second argument is ignored anyway
