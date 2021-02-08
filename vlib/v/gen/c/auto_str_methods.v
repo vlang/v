@@ -138,7 +138,7 @@ fn (mut g Gen) gen_str_for_option(typ table.Type, styp string, str_fn_name strin
 	g.auto_str_funcs.writeln('\tif (it.is_none) {')
 	g.auto_str_funcs.writeln('\t\tres = _SLIT("none");')
 	g.auto_str_funcs.writeln('\t} else if (it.ok) {')
-	if typ.is_string() {
+	if sym.kind == .string {
 		g.auto_str_funcs.writeln('\t\tres = _STR("\'%.*s\\000\'", 2, ${parent_str_fn_name}(*($sym.cname*)it.data));')
 	} else if sym.kind == .struct_ && !sym_has_str_method {
 		g.auto_str_funcs.writeln('\t\tres = indent_${parent_str_fn_name}(*($sym.cname*)it.data, indent_count);')
