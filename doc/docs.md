@@ -798,9 +798,12 @@ println(m['one']) // "1"
 println(m['bad_key']) // "0"
 println('bad_key' in m) // Use `in` to detect whether such key exists
 m.delete('two')
-// NB: map keys can have any type, `int` in this case,
-// and the whole map can be initialized using this short syntax:
-numbers := {
+```
+Maps can have keys of type string, rune, integer, float or voidptr.
+
+The whole map can be initialized using this short syntax:
+```v
+numbers := map{
 	1: 'one'
 	2: 'two'
 }
@@ -810,12 +813,14 @@ println(numbers)
 If a key is not found, a zero value is returned by default:
 
 ```v
-sm := {
+sm := map{
 	'abc': 'xyz'
 }
 val := sm['bad_key']
 println(val) // ''
-intm := {
+```
+```v
+intm := map{
 	1: 1234
 	2: 5678
 }
@@ -1061,7 +1066,7 @@ To do the opposite, use `!in`.
 nums := [1, 2, 3]
 println(1 in nums) // true
 println(4 !in nums) // true
-m := {
+m := map{
 	'one': 1
 	'two': 2
 }
@@ -1132,7 +1137,7 @@ When an identifier is just a single underscore, it is ignored.
 #### Map `for`
 
 ```v
-m := {
+m := map{
 	'one': 1
 	'two': 2
 }
@@ -1145,7 +1150,7 @@ for key, value in m {
 
 Either key or value can be ignored by using a single underscore as the identifier.
 ```v
-m := {
+m := map{
 	'one': 1
 	'two': 2
 }
@@ -1698,7 +1703,7 @@ fn main() {
 	// You can even have an array/map of functions:
 	fns := [sqr, cube]
 	println((10)) // "100"
-	fns_map := {
+	fns_map := map{
 		'sqr':  sqr
 		'cube': cube
 	}

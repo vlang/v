@@ -12,7 +12,7 @@ fn test_map_of_f32() {
 }
 
 fn test_map_of_f64() {
-	mut m64 := {
+	mut m64 := map{
 		3.14: 'pi'
 	}
 	m64[1.0] = 'one'
