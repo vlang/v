@@ -73,12 +73,18 @@ pub fn (mut p Parser) parse_map_type() table.Type {
 	}
 	p.check(.lsbr)
 	key_type := p.parse_type()
+	is_alias := p.table.get_type_symbol(key_type).kind == .alias
 	if key_type.idx() == 0 {
 		// error is reported in parse_type
 		return 0
 	}
-	if !(key_type in [table.string_type_idx, table.voidptr_type_idx]
+	if is_alias && !(key_type in [table.string_type_idx, table.voidptr_type_idx]
 		|| ((key_type.is_int() || key_type.is_float()) && !key_type.is_ptr())) {
+		p.error('cannot use the alias type as the parent type is unsupported')
+		return 0
+	}
+	if !(key_type in [table.string_type_idx, table.voidptr_type_idx]
+		|| ((key_type.is_int() || key_type.is_float() || is_alias) && !key_type.is_ptr())) {
 		s := p.table.type_to_str(key_type)
 		p.error_with_pos('maps only support string, integer, float, rune or voidptr keys for now (not `$s`)',
 			p.tok.position())
