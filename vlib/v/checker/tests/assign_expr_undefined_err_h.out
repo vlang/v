@@ -1,0 +1,7 @@
+vlib/v/checker/tests/assign_expr_undefined_err_h.vv:6:9: error: undefined variable: `n`
+    4 | 
+    5 | fn main() {
+    6 |     n := f(n)
+      |            ^
+    7 |     println(n)
+    8 | }

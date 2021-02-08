@@ -18,7 +18,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 	is_stmt_ident := p.is_stmt_ident
 	p.is_stmt_ident = false
 	if !p.pref.is_fmt {
-		p.eat_comments()
+		p.eat_comments({})
 	}
 	// Prefix
 	match p.tok.kind {
@@ -244,7 +244,8 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 				node = p.map_init()
 			} else {
 				// it should be a struct
-				if p.peek_tok.kind == .pipe {
+				if p.tok.kind == .name && p.peek_tok.kind == .pipe {
+					p.warn_with_pos('use e.g. `...struct_var` instead', p.peek_tok.position())
 					node = p.assoc()
 				} else if (p.tok.kind == .name && p.peek_tok.kind == .colon)
 					|| p.tok.kind in [.rcbr, .comment, .ellipsis] {

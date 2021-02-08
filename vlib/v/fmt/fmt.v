@@ -1137,8 +1137,7 @@ pub fn (mut f Fmt) cast_expr(node ast.CastExpr) {
 pub fn (mut f Fmt) assoc(node ast.Assoc) {
 	f.writeln('{')
 	// f.indent++
-	f.writeln('\t$node.var_name |')
-	// TODO StructInit copy pasta
+	f.writeln('\t...$node.var_name')
 	for i, field in node.fields {
 		f.write('\t$field: ')
 		f.expr(node.exprs[i])
@@ -2035,12 +2034,17 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 
 pub fn (mut f Fmt) map_init(it ast.MapInit) {
 	if it.keys.len == 0 {
-		f.mark_types_import_as_used(it.typ)
-		f.write(f.table.type_to_str(it.typ))
+		if it.typ > table.void_type {
+			f.mark_types_import_as_used(it.typ)
+			f.write(f.table.type_to_str(it.typ))
+		} else {
+			// m = map{}
+			f.write('map')
+		}
 		f.write('{}')
 		return
 	}
-	f.writeln('{')
+	f.writeln('map{')
 	f.indent++
 	mut max_field_len := 0
 	for key in it.keys {

@@ -5074,8 +5074,14 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 fn (mut g Gen) zero_struct_field(field table.Field) {
 	field_name := c_name(field.name)
 	g.write('.$field_name = ')
+	sym := g.table.get_type_symbol(field.typ)
+	defex := ast.fe2ex(field.default_expr)
 	if field.has_default_expr {
-		g.expr(ast.fe2ex(field.default_expr))
+		if sym.kind in [.sum_type, .interface_] {
+			g.expr_with_cast(defex, field.default_expr_typ, field.typ)
+			return
+		}
+		g.expr(defex)
 	} else {
 		g.write(g.type_default(field.typ))
 	}
@@ -6240,9 +6246,9 @@ $staticprefix $interface_name* I_${cctype}_to_Interface_${interface_name}_ptr($c
 					//
 					params_start_pos := g.out.len
 					mut params := method.params.clone()
-					first_param := params[0] // workaround, { params[0] | ... } doesn't work
+					// hack to mutate typ
 					params[0] = {
-						first_param |
+						...params[0]
 						typ: params[0].typ.set_nr_muls(1)
 					}
 					fargs, _ := g.fn_args(params, false) // second argument is ignored anyway

@@ -87,7 +87,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 	if fn_name in p.imported_symbols {
 		fn_name = p.imported_symbols[fn_name]
 	}
-	comments := p.eat_line_end_comments()
+	comments := p.eat_comments(same_line: true)
 	pos.update_last_line(p.prev_tok.line_nr)
 	return ast.CallExpr{
 		name: fn_name
@@ -121,7 +121,7 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 		if is_mut {
 			p.next()
 		}
-		mut comments := p.eat_comments()
+		mut comments := p.eat_comments({})
 		arg_start_pos := p.tok.position()
 		mut array_decompose := false
 		if p.tok.kind == .ellipsis {
@@ -146,7 +146,7 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 			comments = []ast.Comment{}
 		}
 		pos := arg_start_pos.extend(p.prev_tok.position())
-		comments << p.eat_comments()
+		comments << p.eat_comments({})
 		args << ast.CallArg{
 			is_mut: is_mut
 			share: table.sharetype_from_flags(is_shared, is_atomic)
@@ -291,7 +291,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		}
 		p.next()
 	} else if p.tok.kind in [.ne, .gt, .ge, .le] && p.peek_tok.kind == .lpar {
-		p.error_with_pos('cannot overload `!=`, `>`, `<=` and `>=` as they are auto generated with `==` and`<`',
+		p.error_with_pos('cannot overload `!=`, `>`, `<=` and `>=` as they are auto generated from `==` and`<`',
 			p.tok.position())
 	} else {
 		pos := p.tok.position()
