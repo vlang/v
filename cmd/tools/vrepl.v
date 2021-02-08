@@ -5,6 +5,7 @@ module main
 
 import os
 import term
+import rand
 import readline
 import os.cmdline
 import v.util
@@ -24,9 +25,9 @@ mut:
 	temp_lines     []string // all the temporary expressions/printlns
 }
 
-const (
-	is_stdin_a_pipe = (is_atty(0) == 0)
-)
+const is_stdin_a_pipe = (is_atty(0) == 0)
+
+const vexe = os.getenv('VEXE')
 
 fn new_repl() Repl {
 	return Repl{
@@ -112,7 +113,6 @@ fn run_repl(workdir string, vrepl_prefix string) {
 		cleanup_files([file, temp_file])
 	}
 	mut r := new_repl()
-	vexe := os.getenv('VEXE')
 	for {
 		if r.indent == 0 {
 			prompt = '>>> '
@@ -185,10 +185,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 		if r.line.starts_with('print') {
 			source_code := r.current_source_code(false) + '\n$r.line\n'
 			os.write_file(file, source_code) or { panic(err) }
-			s := os.exec('"$vexe" -repl run "$file"') or {
-				rerror(err)
-				return
-			}
+			s := repl_run_vfile(file) or { return }
 			print_output(s)
 		} else {
 			mut temp_line := r.line
@@ -255,10 +252,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 				temp_source_code = r.current_source_code(true) + '\n$temp_line\n'
 			}
 			os.write_file(temp_file, temp_source_code) or { panic(err) }
-			s := os.exec('"$vexe" -repl run "$temp_file"') or {
-				rerror(err)
-				return
-			}
+			s := repl_run_vfile(temp_file) or { return }
 			if !func_call && s.exit_code == 0 && !temp_flag {
 				for r.temp_lines.len > 0 {
 					if !r.temp_lines[0].starts_with('print') {
@@ -313,9 +307,8 @@ fn main() {
 	// so that the repl can be launched in parallel by several different
 	// threads by the REPL test runner.
 	args := cmdline.options_after(os.args, ['repl'])
-	replfolder := os.real_path(cmdline.option(args, '-replfolder', '.'))
-	replprefix := cmdline.option(args, '-replprefix', 'noprefix.')
-	os.chdir(replfolder)
+	replfolder := os.real_path(cmdline.option(args, '-replfolder', os.temp_dir()))
+	replprefix := cmdline.option(args, '-replprefix', 'noprefix.${rand.ulid()}.')
 	if !os.exists(os.getenv('VEXE')) {
 		println('Usage:')
 		println('  VEXE=vexepath vrepl\n')
@@ -355,4 +348,15 @@ fn cleanup_files(files []string) {
 			os.rm(file[..file.len - 2]) or { }
 		}
 	}
+}
+
+fn repl_run_vfile(file string) ?os.Result {
+	$if trace_repl_temp_files ? {
+		eprintln('>> repl_run_vfile file: $file')
+	}
+	s := os.exec('"$vexe" -repl run "$file"') or {
+		rerror(err)
+		return error(err)
+	}
+	return s
 }
