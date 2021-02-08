@@ -2034,7 +2034,7 @@ fn (mut c Checker) type_implements(typ table.Type, inter_typ table.Type, pos tok
 	}
 	typ_sym := c.table.get_type_symbol(typ)
 	mut inter_sym := c.table.get_type_symbol(inter_typ)
-	styp := c.table.type_to_str(typ)
+	styp := c.table.type_to_str(typ.set_nr_muls(0))
 	same_base_type := typ.idx() == inter_typ.idx()
 	if typ_sym.kind == .interface_ && inter_sym.kind == .interface_ && !same_base_type {
 		c.error('cannot implement interface `$inter_sym.name` with a different interface `$styp`',
@@ -2061,6 +2061,9 @@ fn (mut c Checker) type_implements(typ table.Type, inter_typ table.Type, pos tok
 			pos)
 	}
 	if mut inter_sym.info is table.Interface {
+		if !typ.is_ptr() && !same_base_type {
+			c.error('cannot cast non-reference type `$styp` to interface `$inter_sym.name`', pos)
+		}
 		for ifield in inter_sym.info.fields {
 			if field := typ_sym.find_field(ifield.name) {
 				if ifield.typ != field.typ {
@@ -4769,11 +4772,37 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 		if !node.is_comptime && branch.cond is ast.InfixExpr {
 			infix := branch.cond as ast.InfixExpr
 			if infix.op == .key_is {
+				// // handle `foo is &MyInterface`
+				// // TODO: is this a parser issue? Should the & be parsed as part of the type,
+				// // rather than as a separate `ast.PrefixExpr` node?
+				// right_expr := match infix.right {
+				// 	ast.Type {
+				// 		infix.right
+				// 	}
+				// 	ast.PrefixExpr {
+				// 		expr := infix.right.expr
+				// 		if expr !is ast.Type {
+				// 			c.error('expecting type, not `$expr`', expr.position())
+				// 			return
+				// 		}
+				// 		expr as ast.Type
+				// 	}
+				// 	else {
+				// 		c.error('expecting type, not `$infix.right`', infix.right.position())
+				// 		ast.Type{}
+				// 	}
+				// }
+
 				right_expr := infix.right as ast.Type
 				left_sym := c.table.get_type_symbol(infix.left_type)
 				expr_type := c.expr(infix.left)
 				if left_sym.kind == .interface_ {
-					c.type_implements(right_expr.typ, expr_type, branch.pos)
+					// allow `interface is MyStruct`, where `MyStruct` is actually `&MyStruct`
+					mut right_typ := right_expr.typ
+					if !right_typ.is_ptr() {
+						right_typ = right_typ.to_ptr()
+					}
+					c.type_implements(right_typ, expr_type, branch.pos)
 				} else if !c.check_types(right_expr.typ, expr_type) {
 					expect_str := c.table.type_to_str(right_expr.typ)
 					expr_str := c.table.type_to_str(expr_type)
