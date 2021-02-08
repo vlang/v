@@ -318,7 +318,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	page_gen_start := time.ticks()
 	first_line := reader.read_line() or {
 		$if debug {
-			eprintln('Failed To Read first_line') // show this only in debug mode, because it always would be shown after a chromium user visits the site
+			eprintln('Failed to read first_line') // show this only in debug mode, because it always would be shown after a chromium user visits the site
 		}
 		return
 	}
