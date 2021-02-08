@@ -5074,8 +5074,14 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 fn (mut g Gen) zero_struct_field(field table.Field) {
 	field_name := c_name(field.name)
 	g.write('.$field_name = ')
+	sym := g.table.get_type_symbol(field.typ)
+	defex := ast.fe2ex(field.default_expr)
 	if field.has_default_expr {
-		g.expr(ast.fe2ex(field.default_expr))
+		if sym.kind in [.sum_type, .interface_] {
+			g.expr_with_cast(defex, field.default_expr_typ, field.typ)
+			return
+		}
+		g.expr(defex)
 	} else {
 		g.write(g.type_default(field.typ))
 	}
