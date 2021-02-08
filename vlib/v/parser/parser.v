@@ -599,17 +599,22 @@ pub fn (mut p Parser) comment_stmt() ast.ExprStmt {
 }
 
 struct EatCommentsConfig {
-	same_line bool
+	same_line bool // Only eat comments on the same line as the previous token
+	follow_up bool // Comments directly below the previous token as long as there is no empty line
 }
 
 pub fn (mut p Parser) eat_comments(cfg EatCommentsConfig) []ast.Comment {
-	line := p.prev_tok.line_nr
+	mut line := p.prev_tok.line_nr
 	mut comments := []ast.Comment{}
 	for {
-		if p.tok.kind != .comment || (cfg.same_line && p.tok.line_nr > line) {
+		if p.tok.kind != .comment || (cfg.same_line && p.tok.line_nr > line)
+			|| (cfg.follow_up && p.tok.line_nr > line + 1) {
 			break
 		}
 		comments << p.comment()
+		if cfg.follow_up {
+			line = p.prev_tok.line_nr
+		}
 	}
 	return comments
 }
