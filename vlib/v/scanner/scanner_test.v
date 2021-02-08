@@ -141,3 +141,8 @@ fn test_escape_string() {
 	assert '\x61' == 'a'
 	assert '\x62' == 'b'
 }
+
+fn test_escape_keywords() {
+	@continue := "Needs a prefix because it's a shared keyword w/ C"
+	assert @continue == "Needs a prefix because it's a shared keyword w/ C"
+}

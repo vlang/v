@@ -813,7 +813,13 @@ fn (mut s Scanner) text_scan() token.Token {
 					}
 					s.error(at_error_msg)
 				}
-				return s.new_token(.name, name, name.len)
+				if name in ['continue', 'return', 'assert', 'atomic', 'const', 'continue', 'else',
+					'enum', 'false', 'for', 'goto', 'if', 'lock', 'shared', 'static', 'struct',
+					'true', 'union'] {
+					return s.new_token(.name, 'v_' + name, name.len + 2)
+				} else {
+					return s.new_token(.name, name, name.len)
+				}
 			}
 			/*
 			case `\r`:
