@@ -598,25 +598,23 @@ pub fn (mut p Parser) comment_stmt() ast.ExprStmt {
 	}
 }
 
-pub fn (mut p Parser) eat_comments() []ast.Comment {
-	mut comments := []ast.Comment{}
-	for {
-		if p.tok.kind != .comment {
-			break
-		}
-		comments << p.comment()
-	}
-	return comments
+struct EatCommentsConfig {
+	same_line bool // Only eat comments on the same line as the previous token
+	follow_up bool // Comments directly below the previous token as long as there is no empty line
 }
 
-pub fn (mut p Parser) eat_line_end_comments() []ast.Comment {
-	line := p.prev_tok.line_nr
+pub fn (mut p Parser) eat_comments(cfg EatCommentsConfig) []ast.Comment {
+	mut line := p.prev_tok.line_nr
 	mut comments := []ast.Comment{}
 	for {
-		if p.tok.kind != .comment || p.tok.line_nr > line {
+		if p.tok.kind != .comment || (cfg.same_line && p.tok.line_nr > line)
+			|| (cfg.follow_up && p.tok.line_nr > line + 1) {
 			break
 		}
 		comments << p.comment()
+		if cfg.follow_up {
+			line = p.prev_tok.line_nr
+		}
 	}
 	return comments
 }
@@ -1558,7 +1556,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		//
 		end_pos := p.prev_tok.position()
 		pos := name_pos.extend(end_pos)
-		comments := p.eat_line_end_comments()
+		comments := p.eat_comments(same_line: true)
 		mcall_expr := ast.CallExpr{
 			left: left
 			name: field_name
@@ -1919,7 +1917,7 @@ fn (mut p Parser) import_stmt() ast.Import {
 			return import_node
 		}
 	}
-	import_node.comments = p.eat_line_end_comments()
+	import_node.comments = p.eat_comments(same_line: true)
 	p.imports[mod_alias] = mod_name
 	// if mod_name !in p.table.imports {
 	p.table.imports << mod_name
@@ -1992,7 +1990,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 			p.error_with_pos('const declaration is missing closing `)`', const_pos)
 			return ast.ConstDecl{}
 		}
-		comments = p.eat_comments()
+		comments = p.eat_comments({})
 		if p.tok.kind == .rpar {
 			break
 		}
@@ -2043,7 +2041,7 @@ fn (mut p Parser) return_stmt() ast.Return {
 	first_pos := p.tok.position()
 	p.next()
 	// no return
-	mut comments := p.eat_comments()
+	mut comments := p.eat_comments({})
 	if p.tok.kind == .rcbr {
 		return ast.Return{
 			comments: comments
@@ -2085,7 +2083,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 	mut fields := []ast.GlobalField{}
 	mut comments := []ast.Comment{}
 	for {
-		comments = p.eat_comments()
+		comments = p.eat_comments({})
 		if p.tok.kind == .rpar {
 			break
 		}
@@ -2147,7 +2145,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	}
 	name := p.prepend_mod(enum_name)
 	p.check(.lcbr)
-	enum_decl_comments := p.eat_comments()
+	enum_decl_comments := p.eat_comments({})
 	mut vals := []string{}
 	// mut default_exprs := []ast.Expr{}
 	mut fields := []ast.EnumField{}
@@ -2168,8 +2166,8 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			pos: pos
 			expr: expr
 			has_expr: has_expr
-			comments: p.eat_line_end_comments()
-			next_comments: p.eat_comments()
+			comments: p.eat_comments(same_line: true)
+			next_comments: p.eat_comments({})
 		}
 	}
 	p.top_level_statement_end()
@@ -2248,7 +2246,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		// function type: `type mycallback = fn(string, int)`
 		fn_name := p.prepend_mod(name)
 		fn_type := p.parse_fn_type(fn_name)
-		comments = p.eat_line_end_comments()
+		comments = p.eat_comments(same_line: true)
 		return ast.FnTypeDecl{
 			name: fn_name
 			is_pub: is_pub
@@ -2296,7 +2294,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			}
 			is_public: is_pub
 		})
-		comments = p.eat_line_end_comments()
+		comments = p.eat_comments(same_line: true)
 		return ast.SumTypeDecl{
 			name: name
 			is_pub: is_pub
@@ -2332,7 +2330,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		p.error_with_pos('a type alias can not refer to itself: $name', decl_pos.extend(type_alias_pos))
 		return ast.AliasTypeDecl{}
 	}
-	comments = p.eat_line_end_comments()
+	comments = p.eat_comments(same_line: true)
 	return ast.AliasTypeDecl{
 		name: name
 		is_pub: is_pub
