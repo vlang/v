@@ -47,3 +47,18 @@ fn test_mut_2() {
 	assert b.a[0].v[3] == 8
 	assert b.a[0].v[4] == 5
 }
+
+fn test_mut_3() {
+    mut indices := []int{len: 3}
+	mut results := []string{}
+
+    for i, mut v in indices {
+        v = i
+        a := v
+        println('$i $v $a')
+		results << '$i $v $a'
+    }
+	assert results[0] == '0 0 0'
+	assert results[1] == '1 1 1'
+	assert results[2] == '2 2 2'
+}

@@ -267,6 +267,9 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 				g.expr(expr)
 				g.write(')')
 			} else {
+				if g.is_mut_ident(expr) {
+					g.write('*')
+				}
 				g.expr(expr)
 			}
 		} else if node.fmts[i] == `s` || typ.has_flag(.variadic) {
@@ -283,12 +286,21 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 				} else {
 					g.write('(u64)(')
 				}
+				if g.is_mut_ident(expr) {
+					g.write('*')
+				}
 				g.expr(expr)
 				g.write(')')
 			} else {
+				if g.is_mut_ident(expr) {
+					g.write('*')
+				}
 				g.expr(expr)
 			}
 		} else {
+			if g.is_mut_ident(expr) {
+				g.write('*')
+			}
 			g.expr(expr)
 		}
 		if node.fmts[i] == `s` && node.fwidths[i] != 0 {

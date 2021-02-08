@@ -1729,6 +1729,15 @@ fn (mut g Gen) write_fn_ptr_decl(func &table.FnType, ptr_name string) {
 	g.write(')')
 }
 
+fn (mut g Gen) is_mut_ident(expr ast.Expr) bool {
+	if expr is ast.Ident {
+		if g.for_in_mut_val_name == expr.name || expr.name in g.fn_mut_arg_names {
+			return true
+		}
+	}
+	return false
+}
+
 // TODO this function is scary. Simplify/split up.
 fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	if assign_stmt.is_static {
@@ -2043,9 +2052,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				g.array_set_pos = 0
 			} else {
 				g.out.go_back_to(pos)
-				is_var_mut := !is_decl && left is ast.Ident
-					&& (g.for_in_mut_val_name == (left as ast.Ident).name
-					|| (left as ast.Ident).name in g.fn_mut_arg_names)
+				is_var_mut := !is_decl && g.is_mut_ident(left)
 				addr := if is_var_mut { '' } else { '&' }
 				g.writeln('')
 				g.write('memcpy($addr')
@@ -2116,9 +2123,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					g.prevent_sum_type_unwrapping_once = true
 				}
 				if !is_fixed_array_copy || is_decl {
-					if !is_decl && var_type != table.string_type_idx && left is ast.Ident
-						&& (g.for_in_mut_val_name == (left as ast.Ident).name
-						|| (left as ast.Ident).name in g.fn_mut_arg_names) {
+					if !is_decl && var_type != table.string_type_idx && g.is_mut_ident(left) {
 						g.write('*')
 					}
 					g.expr(left)
@@ -2170,6 +2175,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					g.write('for (int $i_var=0; $i_var<$fixed_array.size; $i_var++) {')
 					g.expr(left)
 					g.write('[$i_var] = ')
+					if g.is_mut_ident(val) {
+						g.write('*')
+					}
 					g.expr(val)
 					g.write('[$i_var];')
 					g.writeln('}')
@@ -2192,6 +2200,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 							g.write('{0}')
 						}
 					} else {
+						if g.is_mut_ident(val) {
+							g.write('*')
+						}
 						g.expr(val)
 					}
 				} else {
