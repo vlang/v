@@ -2116,7 +2116,7 @@ fn (mut c Checker) type_implements(typ table.Type, inter_typ table.Type, pos tok
 			}
 		}
 	}
-	styp := c.table.type_to_str(utyp)
+	styp := c.table.type_to_str(utyp.set_nr_muls(0))
 	if utyp.idx() == inter_typ.idx() {
 		// same type -> already casted to the interface
 		return true
@@ -2150,6 +2150,10 @@ fn (mut c Checker) type_implements(typ table.Type, inter_typ table.Type, pos tok
 			pos)
 	}
 	if mut inter_sym.info is table.Interface {
+		if !typ.is_ptr() && !same_base_type {
+			c.error('cannot cast non-reference type `$styp` to interface `$inter_sym.name`',
+				pos)
+		}
 		for ifield in inter_sym.info.fields {
 			if field := c.table.find_field_with_embeds(typ_sym, ifield.name) {
 				if ifield.typ != field.typ {
@@ -5154,7 +5158,12 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 					left_sym := c.table.get_type_symbol(branch.cond.left_type)
 					expr_type := c.expr(branch.cond.left)
 					if left_sym.kind == .interface_ {
-						c.type_implements(right_expr.typ, expr_type, pos)
+						// allow `interface is MyStruct`, where `MyStruct` is actually `&MyStruct`
+						mut right_typ := right_expr.typ
+						if !right_typ.is_ptr() {
+							right_typ = right_typ.to_ptr()
+						}
+						c.type_implements(right_typ, expr_type, branch.pos)
 					} else if !c.check_types(right_expr.typ, expr_type) {
 						expect_str := c.table.type_to_str(right_expr.typ)
 						expr_str := c.table.type_to_str(expr_type)

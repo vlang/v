@@ -19,7 +19,7 @@ fn (d Dog) speak() {}
 struct Cat {}
 
 fn iface() {
-	a := Animal(Dog{})
+	a := Animal(&Dog{})
 	match a {
 		Cat {
 			println('not cool either')

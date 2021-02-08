@@ -6,7 +6,7 @@ interface Adoptable {
 }
 
 fn test_casting_to_interface() {
-	cat := Cat{}
+	cat := &Cat{}
 	a := Adoptable(cat)
 	if a is Cat {
 		assert typeof(a).name == '&Cat'

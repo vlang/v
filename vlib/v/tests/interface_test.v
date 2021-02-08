@@ -89,20 +89,20 @@ fn perform_speak_on_ptr(a &Animal) {
 }
 
 fn test_perform_speak() {
-	dog := Dog{
+	dog := &Dog{
 		breed: 'Labrador Retriever'
 	}
 	perform_speak(dog)
 	perform_speak_on_ptr(dog)
-	cat := Cat{
+	cat := &Cat{
 		breed: 'Persian'
 	}
 	perform_speak(cat)
-	perform_speak(Cat{
+	perform_speak(&Cat{
 		breed: 'Persian'
 	})
 	perform_speak_on_ptr(cat)
-	perform_speak_on_ptr(Cat{
+	perform_speak_on_ptr(&Cat{
 		breed: 'Persian'
 	})
 	handle_animals([dog, cat])
@@ -118,7 +118,7 @@ fn change_animal_breed(mut a Animal, new string) {
 }
 
 fn test_interface_ptr_modification() {
-	mut cat := Cat{
+	mut cat := &Cat{
 		breed: 'Persian'
 	}
 	// TODO Should fail and require `mut cat`
@@ -133,23 +133,23 @@ fn perform_name_detailed(a Animal) {
 }
 
 fn test_perform_name_detailed() {
-	dog := Dog{
+	dog := &Dog{
 		breed: 'Labrador Retriever'
 	}
 	println('Test on Dog: $dog ...') // using default conversion to string
 	perform_name_detailed(dog)
-	cat := Cat{}
+	cat := &Cat{}
 	println('Test on empty Cat: $cat ...')
 	perform_speak(cat)
 	println('Test on a Persian Cat: ...')
-	perform_speak(Cat{
+	perform_speak(&Cat{
 		breed: 'Persian'
 	})
 	cat_persian2 := Cat{
 		breed: 'Persian'
 	}
 	println('Test on another Persian Cat: "$cat_persian2" ...')
-	perform_speak(cat_persian2)
+	perform_speak(&cat_persian2)
 	cat_persian2_str := cat_persian2.str()
 	println("Persian Cat 2: '$cat_persian2_str' ...")
 	assert cat_persian2_str == 'Custom string conversion for Cat: Persian'
@@ -181,7 +181,7 @@ fn handle_reg(r Register) {
 }
 
 fn test_register() {
-	f := RegTest{}
+	f := &RegTest{}
 	f.register()
 	handle_reg(f)
 }
@@ -227,7 +227,7 @@ fn return_speaker2(mut sp Speaker2) Speaker2 {
 }
 
 fn test_interface_returning_interface() {
-	mut b := Boss{'bob'}
+	mut b := &Boss{'bob'}
 	assert b.name == 'bob'
 	s2 := return_speaker2(mut b)
 	if s2 is Boss {
@@ -250,11 +250,11 @@ interface Animal {
 fn test_interface_array() {
 	println('Test on array of animals ...')
 	mut animals := []Animal{}
-	animals = [Cat{}, Dog{
+	animals = [&Cat{}, &Dog{
 		breed: 'Labrador Retriever'
 	}]
 	assert true
-	animals << Cat{}
+	animals << &Cat{}
 	assert true
 	// TODO .str() from the real types should be called
 	// println('Animals array contains: ${animals.str()}') // explicit call to 'str' function
@@ -264,17 +264,17 @@ fn test_interface_array() {
 
 fn test_interface_ptr_array() {
 	mut animals := []&Animal{}
-	animals = [Cat{}, Dog{
+	animals = [&Cat{}, &Dog{
 		breed: 'Labrador Retriever'
 	}]
 	assert true
-	animals << Cat{}
+	animals << &Cat{}
 	assert true
 	assert animals.len == 3
 }
 
 fn test_is() {
-	dog := Dog{}
+	dog := &Dog{}
 	assert foo2(dog) == 1
 }
 
@@ -287,7 +287,7 @@ fn foo2(a Animal) int {
 }
 
 fn new_animal() Animal {
-	dog := Dog{}
+	dog := &Dog{}
 	return dog
 }
 

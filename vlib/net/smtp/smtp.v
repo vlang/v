@@ -71,7 +71,7 @@ pub fn (mut c Client) reconnect() ? {
 	conn := net.dial_tcp('$c.server:$c.port') or { return error('Connecting to server failed') }
 	c.conn = conn
 
-	c.reader = io.new_buffered_reader(reader: io.make_reader(c.conn))
+	c.reader = io.new_buffered_reader(reader: io.make_reader(&c.conn))
 
 	c.expect_reply(.ready) or { return error('Received invalid response from server') }
 	c.send_ehlo() or { return error('Sending EHLO packet failed') }
@@ -104,7 +104,7 @@ pub fn (mut c Client) quit() ? {
 
 // expect_reply checks if the SMTP server replied with the expected reply code
 fn (mut c Client) expect_reply(expected ReplyCode) ? {
-	bytes := io.read_all(reader: c.conn) ?
+	bytes := io.read_all(reader: &c.conn) ?
 
 	str := bytes.bytestr().trim_space()
 	$if smtp_debug ? {

@@ -35,7 +35,7 @@ mut:
 
 fn test_interface_struct() {
 	bz1 := Baz{
-		sp: Boss{
+		sp: &Boss{
 			name: 'Richard'
 		}
 	}
@@ -43,7 +43,7 @@ fn test_interface_struct() {
 	print('Test Boss inside Baz struct: ')
 	bz1.sp.speak('Hello world!')
 	bz2 := Baz{
-		sp: Cat{
+		sp: &Cat{
 			name: 'Grungy'
 			breed: 'Persian Cat'
 		}
@@ -55,12 +55,12 @@ fn test_interface_struct() {
 
 fn test_interface_mut_struct() {
 	mut mbaz := Baz{
-		sp: Boss{
+		sp: &Boss{
 			name: 'Derek'
 		}
 	}
 	assert mbaz.sp.say_hello() == "Hello, My name is Derek and I\'m the bawz"
-	mbaz.sp = Cat{
+	mbaz.sp = &Cat{
 		name: 'Dog'
 		breed: 'Not a dog'
 	}
@@ -70,13 +70,13 @@ fn test_interface_mut_struct() {
 fn test_interface_struct_from_array() {
 	bazs := [
 		Baz{
-			sp: Cat{
+			sp: &Cat{
 				name: 'Kitty'
 				breed: 'Catty Koo'
 			}
 		},
 		Baz{
-			sp: Boss{
+			sp: &Boss{
 				name: 'Bob'
 			}
 		},

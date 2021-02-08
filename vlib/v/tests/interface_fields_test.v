@@ -41,10 +41,10 @@ fn mutate_interface(mut a Animal) {
 }
 
 fn test_interface_fields() {
-	mut c := Cat{
+	mut c := &Cat{
 		breed: 'Persian'
 	}
-	mut d := Dog{
+	mut d := &Dog{
 		breed: 'Labrador'
 	}
 	use_interface(c)

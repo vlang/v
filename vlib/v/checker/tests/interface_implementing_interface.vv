@@ -10,7 +10,7 @@ struct Dog {
     kind string = 'labrador'
 }
 
-dog := Dog{}
+dog := &Dog{}
 animal := Animal(dog)
 thing := Thing(animal)
 println(thing)

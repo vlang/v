@@ -10,7 +10,7 @@ fn (c Cow)speak() {
 }
 
 fn get_animal() Animal {
-	return Cow{}
+	return &Cow{}
 }
 
 fn moin() {

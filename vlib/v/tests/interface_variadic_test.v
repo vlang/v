@@ -10,7 +10,7 @@ fn (f &Foo) method(params ...f64) string {
 
 fn test_variadic_array_decompose() {
 	mut a := []Element{}
-	a << Foo{}
+	a << &Foo{}
 
 	input := [0.0, 1.0]
 	assert a[0].method(...input) == '[0, 1]'
@@ -19,7 +19,7 @@ fn test_variadic_array_decompose() {
 
 fn test_variadic_multiple_args() {
 	mut a := []Element{}
-	a << Foo{}
+	a << &Foo{}
 
 	assert a[0].method(0.0, 1.0) == '[0, 1]'
 }

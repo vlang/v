@@ -2065,8 +2065,8 @@ interface Speaker {
 	speak() string
 }
 
-dog := Dog{'Leonberger'}
-cat := Cat{'Siamese'}
+dog := &Dog{'Leonberger'}
+cat := &Cat{'Siamese'}
 
 mut arr := []Speaker{}
 arr << dog
@@ -2120,7 +2120,7 @@ fn (a Adoptable) speak() string {
 }
 
 fn new_adoptable() Adoptable {
-	return Cat{}
+	return &Cat{}
 }
 
 fn main() {

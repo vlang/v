@@ -42,6 +42,6 @@ fn use(a Animal) {
 }
 
 fn main() {
-	use(Dog{'Doggo', 5})
-	use(Cat{'Nyancat', 6})
+	use(&Dog{'Doggo', 5})
+	use(&Cat{'Nyancat', 6})
 }

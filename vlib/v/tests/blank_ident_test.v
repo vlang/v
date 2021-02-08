@@ -33,7 +33,7 @@ fn call_fn_with_multiple_blank_param(foo Foo) {
 }
 
 fn test_interface_fn_with_multiple_blank_param() {
-	call_fn_with_multiple_blank_param(Abc{})
+	call_fn_with_multiple_blank_param(&Abc{})
 }
 
 fn test_for_in_range() {
