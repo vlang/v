@@ -510,7 +510,14 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp string, str_fn_name st
 						g.auto_str_funcs.write('*')
 					}
 				}
-				g.auto_str_funcs.write(func)
+
+				// handle circular ref type of struct to the struct itself
+				if styp == field_styp {
+					g.auto_str_funcs.write('_SLIT("<circular>")')
+				} else {
+					g.auto_str_funcs.write(func)
+				}
+
 				if i < info.fields.len - 1 {
 					g.auto_str_funcs.write(',\n\t\t')
 				}
