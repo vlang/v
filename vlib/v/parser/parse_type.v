@@ -79,7 +79,7 @@ pub fn (mut p Parser) parse_map_type() table.Type {
 		return 0
 	}
 	if is_alias && !(key_type in [table.string_type_idx, table.voidptr_type_idx]
-		|| ((key_type.is_int() || key_type.is_float())&& !key_type.is_ptr())) {
+		|| ((key_type.is_int() || key_type.is_float()) && !key_type.is_ptr())) {
 		p.error('cannot use the alias type as the parent type is unsupported')
 		return 0
 	}
