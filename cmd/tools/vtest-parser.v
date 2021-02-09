@@ -37,7 +37,7 @@ mut:
 	// parser context in the worker processes:
 	table      table.Table
 	scope      ast.Scope
-	pref       pref.Preferences
+	pref       &pref.Preferences
 	period_ms  int  // print periodic progress
 	stop_print bool // stop printing the periodic progress
 }
@@ -96,7 +96,9 @@ fn main() {
 }
 
 fn process_cli_args() &Context {
-	mut context := &Context{}
+	mut context := &Context{
+		pref: pref.new_preferences()
+	}
 	context.myself = os.executable()
 	mut fp := flag.new_flag_parser(os.args_after('test-parser'))
 	fp.application(os.file_name(context.myself))

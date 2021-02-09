@@ -1,6 +1,0 @@
-vlib/v/checker/tests/array_filter_anon_fn_err_b.vv:2:24: error: type mismatch, should use `fn(a int) bool {...}`
-    1 | fn main() {
-    2 |     a := [1,2,3,4].filter(fn(a string) bool { return a.len > 0 })
-      |                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    3 |     println(a)
-    4 | }

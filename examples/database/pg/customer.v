@@ -2,6 +2,8 @@ module main
 
 import pg
 
+const dash = '----------------------------------------------------------------'
+
 struct Customer {
 	id int
 	name string
@@ -24,27 +26,27 @@ fn main() {
 	println('Total customers: $nr_customers')
 
 	// V syntax can be used to build queries
-	println('----------------------------------------------------------------')
+	println(dash)
 	bg_country := 'Bulgaria'
 	bg_customers := db.select from Customer where country == bg_country  && id != 2
 	for customer in bg_customers {
 		println('$customer.country | $customer.id - $customer.name')
 	}
 
-	println('----------------------------------------------------------------')
+	println(dash)
 	ru_customers := db.select from Customer where country == 'Russia'
 	for customer in ru_customers {
 		println('$customer.country | $customer.id - $customer.name')
 	}
 
 	// by adding `limit 1` we tell V that there will be only one object
-	println('----------------------------------------------------------------')
+	println(dash)
 	existing := db.select from Customer where id == 1 limit 1 or { panic(err) }
 	println('Existing customer name: $existing.name')
 	println('Existing customer full information:')
 	println(existing)
 
-	println('------------------------------------------------------------------------')
+	println(dash)
 	q := Customer{}
 	// It's easy to handle queries that don't return any data
 	if anon := db.select from Customer where id == 12345 && name == q.name &&

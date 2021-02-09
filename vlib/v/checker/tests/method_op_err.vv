@@ -15,10 +15,6 @@ fn (u User) - (f Foo) User {
     return User{u.a - f.a, u.b-f.a}
 }
 
-fn (u User) > (u1 User) User {
-    return User{}
-}
-
 fn (mut u User) * (u1 User) User {
     return User{}
 }

@@ -67,7 +67,9 @@ mut:
 }
 
 pub fn new() FTP {
-	mut f := FTP{ conn: 0 }
+	mut f := FTP{
+		conn: 0
+	}
 	f.buffer_size = 1024
 	return f
 }
@@ -178,7 +180,7 @@ fn new_dtp(msg string) ?&DTP {
 	mut dtp := &DTP{
 		ip: ip
 		port: port
-        conn: 0
+		conn: 0
 	}
 	conn := net.dial_tcp('$ip:$port') or { return error('Cannot connect to the data channel') }
 	dtp.conn = conn
@@ -219,8 +221,7 @@ pub fn (mut zftp FTP) dir() ?[]string {
 	sdir := list_dir.bytestr()
 	for lfile in sdir.split('\n') {
 		if lfile.len > 1 {
-			spl := lfile.split(' ')
-			dir << spl[spl.len - 1]
+			dir << lfile.after(' ').trim_space()
 		}
 	}
 	return dir

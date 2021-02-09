@@ -66,7 +66,7 @@ const (
 				gx.rgb(237, 204, 97), /* 256 */
 				gx.rgb(237, 200, 80), /* 512 */
 				gx.rgb(237, 197, 63), /* 1024 */
-				gx.rgb(237, 194, 46), /* 2048 */
+				gx.rgb(237, 194, 46),
 			]
 		},
 		&Theme{
@@ -957,7 +957,7 @@ fn main() {
 		bg_color: app.theme.bg_color
 		width: default_window_width
 		height: default_window_height
-		sample_count: 8 // higher quality curves
+		sample_count: 4 // higher quality curves
 		create_window: true
 		window_title: window_title_
 		frame_fn: frame

@@ -84,12 +84,14 @@ fn frame(x voidptr) {
 	app.redraw = false
 }
 
-mut app := &App{}
-app.tui = tui.init(
-	user_data: app
-	event_fn: event
-	frame_fn: frame
-	hide_cursor: true
-	frame_rate: 60
-)
-app.tui.run() ?
+fn main() {
+	mut app := &App{}
+	app.tui = tui.init(
+		user_data: app
+		event_fn: event
+		frame_fn: frame
+		hide_cursor: true
+		frame_rate: 60
+	)
+	app.tui.run() ?
+}

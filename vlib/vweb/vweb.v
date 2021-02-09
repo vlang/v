@@ -19,7 +19,7 @@ pub const (
 	headers_close           = '$header_server$header_connection_close\r\n'
 	http_404                = 'HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 13\r\n${headers_close}404 Not Found'
 	http_500                = 'HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\n${headers_close}500 Internal Server Error'
-	mime_types              = {
+	mime_types              = map{
 		'.css':  'text/css; charset=utf-8'
 		'.gif':  'image/gif'
 		'.htm':  'text/html; charset=utf-8'
@@ -158,6 +158,17 @@ pub fn (mut ctx Context) ok(s string) Result {
 	return Result{}
 }
 
+pub fn (mut ctx Context) server_error(ecode int) Result {
+	$if debug {
+		eprintln('> ctx.server_error ecode: $ecode')
+	}
+	if ctx.done {
+		return Result{}
+	}
+	send_string(mut ctx.conn, vweb.http_500) or { }
+	return Result{}
+}
+
 pub fn (mut ctx Context) redirect(url string) Result {
 	if ctx.done {
 		return Result{}
@@ -217,8 +228,11 @@ pub fn (ctx &Context) get_cookie(key string) ?string { // TODO refactor
 	cookie_header = ' ' + cookie_header
 	// println('cookie_header="$cookie_header"')
 	// println(ctx.req.headers)
-	cookie := if cookie_header.contains(';') { cookie_header.find_between(' $key=', ';') } else { cookie_header.find_between(' $key=',
-			'\r') }
+	cookie := if cookie_header.contains(';') {
+		cookie_header.find_between(' $key=', ';')
+	} else {
+		cookie_header.find_between(' $key=', '\r')
+	}
 	if cookie != '' {
 		return cookie.trim_space()
 	}
@@ -252,8 +266,8 @@ pub fn run<T>(port int) {
 }
 
 pub fn run_app<T>(mut app T, port int) {
-	println('Running a Vweb app on http://localhost:$port')
 	mut l := net.listen_tcp(port) or { panic('failed to listen') }
+	println('[Vweb] Running app on http://localhost:$port')
 	app.Context = Context{
 		conn: 0
 	}
@@ -304,7 +318,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	page_gen_start := time.ticks()
 	first_line := reader.read_line() or {
 		$if debug {
-			eprintln('Failed first_line') // show this only in debug mode, because it always would be shown after a chromium user visits the site 
+			eprintln('Failed to read first_line') // show this only in debug mode, because it always would be shown after a chromium user visits the site
 		}
 		return
 	}
@@ -520,8 +534,8 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 						if route_words.len == 1 && route_words[0] in vweb.methods_without_first {
 							req_method << route_words[0]
 						}
-						if url_words.len == route_words.len
-							|| (url_words.len >= route_words.len - 1 && route_words.len > 0 && route_words.last().ends_with('...')) {
+						if url_words.len == route_words.len || (url_words.len >= route_words.len - 1
+							&& route_words.len > 0 && route_words.last().ends_with('...')) {
 							if req_method.len > 0 {
 								if req_method_str.to_lower()[1..] !in req_method {
 									continue
@@ -592,6 +606,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 				// call action method
 				if method.args.len == vars.len {
 					app.$method(vars)
+					return
 				} else {
 					eprintln('warning: uneven parameters count ($method.args.len) in `$method.name`, compared to the vweb route `$method.attrs` ($vars.len)')
 				}

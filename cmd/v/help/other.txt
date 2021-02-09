@@ -8,6 +8,8 @@ but which are used less frequently by users:
    build-tools        Test if all tools can be built.
    build-vbinaries    Test if V can be built with different configuration.
 
+   check-md          Check that V examples in markdown files are formatted and can compile.
+
    test-all           Run most checks, that the CI does locally.
                       It may take over 2 minutes, and it needs internet connectivity too,
                       because it tries to also verify that `v install` works.

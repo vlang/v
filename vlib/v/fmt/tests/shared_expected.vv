@@ -17,6 +17,34 @@ fn (shared x St) f(shared z St) {
 	}
 }
 
+fn g() shared St {
+	shared x := St{
+		a: 12
+	}
+	return x
+}
+
+fn h() ?shared St {
+	return error('no value')
+}
+
+fn k() {
+	shared x := g()
+	shared y := h() or {
+		shared f := St{}
+		f
+	}
+	shared z := h() ?
+	shared p := v
+	v := rlock z {
+		z.a
+	}
+	lock y, z; rlock x, p {
+		z.a = x.a + y.a
+	}
+	println(v)
+}
+
 const (
 	reads_per_thread = 30
 	read_threads     = 10

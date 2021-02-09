@@ -1,0 +1,7 @@
+vlib/v/checker/tests/shared_type_mismatch.vv:13:3: error: wrong return type `St` in the `or {}` block, expected `shared St`
+   11 | fn test_shared_opt_bad() {
+   12 |     shared yy := f() or {
+   13 |         St{ x: 37.5 }
+      |         ~~~~~~~~~~~~~
+   14 |     }
+   15 |     rlock yy {

@@ -20,7 +20,7 @@ pub const (
 )
 
 pub const (
-	external_module_dependencies_for_tool = {
+	external_module_dependencies_for_tool = map{
 		'vdoc': ['markdown']
 	}
 )
@@ -349,20 +349,12 @@ pub fn skip_bom(file_content string) string {
 
 [inline]
 pub fn imin(a int, b int) int {
-	return if a < b {
-		a
-	} else {
-		b
-	}
+	return if a < b { a } else { b }
 }
 
 [inline]
 pub fn imax(a int, b int) int {
-	return if a > b {
-		a
-	} else {
-		b
-	}
+	return if a > b { a } else { b }
 }
 
 pub fn replace_op(s string) string {
@@ -382,9 +374,6 @@ pub fn replace_op(s string) string {
 	} else {
 		suffix := match s {
 			'==' { '_eq' }
-			'!=' { '_ne' }
-			'<=' { '_le' }
-			'>=' { '_ge' }
 			else { '' }
 		}
 		return s[..s.len - 2] + suffix

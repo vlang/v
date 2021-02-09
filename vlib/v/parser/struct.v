@@ -178,7 +178,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			}
 			field_start_pos := p.tok.position()
 			is_embed := ((p.tok.lit.len > 1 && p.tok.lit[0].is_capital())
-				|| p.peek_tok.kind == .dot)&& language == .v
+				|| p.peek_tok.kind == .dot) && language == .v
 			is_on_top := ast_fields.len == 0 && !(is_field_mut || is_field_mut || is_field_global)
 			mut field_name := ''
 			mut typ := table.Type(0)
@@ -234,7 +234,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				field_pos = field_start_pos.extend(type_pos)
 			}
 			// Comments after type (same line)
-			comments << p.eat_comments()
+			comments << p.eat_comments({})
 			if p.tok.kind == .lsbr {
 				// attrs are stored in `p.attrs`
 				p.attributes()
@@ -252,7 +252,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 						else {}
 					}
 					has_default_expr = true
-					comments << p.eat_comments()
+					comments << p.eat_comments({})
 				}
 				// TODO merge table and ast Fields?
 				ast_fields << ast.StructField{
@@ -323,6 +323,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		mut_pos: mut_pos - embeds.len
 		pub_pos: pub_pos - embeds.len
 		pub_mut_pos: pub_mut_pos - embeds.len
+		global_pos: global_pos - embeds.len
 		module_pos: module_pos - embeds.len
 		language: language
 		is_union: is_union
@@ -342,7 +343,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 	if !short_syntax {
 		p.check(.lcbr)
 	}
-	pre_comments := p.eat_comments()
+	pre_comments := p.eat_comments({})
 	mut fields := []ast.StructInitField{}
 	mut i := 0
 	no_keys := p.peek_tok.kind != .colon && p.tok.kind != .rcbr && p.tok.kind != .ellipsis // `Vec{a,b,c}
@@ -363,19 +364,19 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 			// name will be set later in checker
 			expr = p.expr(0)
 			field_pos = expr.position()
-			comments = p.eat_line_end_comments()
+			comments = p.eat_comments(same_line: true)
 		} else if is_update_expr {
 			// struct updating syntax; f2 := Foo{ ...f, name: 'f2' }
 			p.check(.ellipsis)
 			update_expr = p.expr(0)
-			update_expr_comments << p.eat_line_end_comments()
+			update_expr_comments << p.eat_comments(same_line: true)
 			has_update_expr = true
 		} else {
 			first_field_pos := p.tok.position()
 			field_name = p.check_name()
 			p.check(.colon)
 			expr = p.expr(0)
-			comments = p.eat_line_end_comments()
+			comments = p.eat_comments(same_line: true)
 			last_field_pos := expr.position()
 			field_len := if last_field_pos.len > 0 {
 				last_field_pos.pos - first_field_pos.pos + last_field_pos.len
@@ -392,8 +393,8 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 		if p.tok.kind == .comma {
 			p.next()
 		}
-		comments << p.eat_line_end_comments()
-		nline_comments << p.eat_comments()
+		comments << p.eat_comments(same_line: true)
+		nline_comments << p.eat_comments({})
 		if !is_update_expr {
 			fields << ast.StructInitField{
 				name: field_name
@@ -409,7 +410,8 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 		p.check(.rcbr)
 	}
 	p.is_amp = saved_is_amp
-	node := ast.StructInit{
+	return ast.StructInit{
+		unresolved: typ.has_flag(.generic)
 		typ: typ
 		fields: fields
 		update_expr: update_expr
@@ -419,7 +421,6 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 		is_short: no_keys
 		pre_comments: pre_comments
 	}
-	return node
 }
 
 fn (mut p Parser) interface_decl() ast.InterfaceDecl {
@@ -434,7 +435,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	interface_name := p.prepend_mod(p.check_name()).clone()
 	// println('interface decl $interface_name')
 	p.check(.lcbr)
-	pre_comments := p.eat_comments()
+	pre_comments := p.eat_comments({})
 	// Declare the type
 	reg_idx := p.table.register_type_symbol(
 		is_public: is_pub
@@ -505,8 +506,8 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			if p.tok.kind.is_start_of_type() && p.tok.line_nr == line_nr {
 				method.return_type = p.parse_type()
 			}
-			mcomments := p.eat_line_end_comments()
-			mnext_comments := p.eat_comments()
+			mcomments := p.eat_comments(same_line: true)
+			mnext_comments := p.eat_comments({})
 			method.comments = mcomments
 			method.next_comments = mnext_comments
 			methods << method

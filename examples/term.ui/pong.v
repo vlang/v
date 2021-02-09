@@ -480,17 +480,18 @@ fn event(e &ui.Event, x voidptr) {
 	app.event(e)
 }
 
-// main
-mut app := &App{}
-app.tui = ui.init(
-	user_data: app
-	init_fn: init
-	frame_fn: frame
-	cleanup_fn: cleanup
-	event_fn: event
-	fail_fn: fail
-	capture_events: true
-	hide_cursor: true
-	frame_rate: 60
-)
-app.tui.run() ?
+fn main() {
+	mut app := &App{}
+	app.tui = ui.init(
+		user_data: app
+		init_fn: init
+		frame_fn: frame
+		cleanup_fn: cleanup
+		event_fn: event
+		fail_fn: fail
+		capture_events: true
+		hide_cursor: true
+		frame_rate: 60
+	)
+	app.tui.run() ?
+}

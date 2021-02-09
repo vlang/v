@@ -1198,20 +1198,20 @@ fn test_struct_array_of_multi_type_in() {
 	ivan := Person{
 		name: 'ivan'
 		nums: [1, 2, 3]
-		kv: {
+		kv: map{
 			'aaa': '111'
 		}
 	}
 	people := [Person{
 		name: 'ivan'
 		nums: [1, 2, 3]
-		kv: {
+		kv: map{
 			'aaa': '111'
 		}
 	}, Person{
 		name: 'bob'
 		nums: [2]
-		kv: {
+		kv: map{
 			'bbb': '222'
 		}
 	}]
@@ -1223,20 +1223,20 @@ fn test_struct_array_of_multi_type_index() {
 	ivan := Person{
 		name: 'ivan'
 		nums: [1, 2, 3]
-		kv: {
+		kv: map{
 			'aaa': '111'
 		}
 	}
 	people := [Person{
 		name: 'ivan'
 		nums: [1, 2, 3]
-		kv: {
+		kv: map{
 			'aaa': '111'
 		}
 	}, Person{
 		name: 'bob'
 		nums: [2]
-		kv: {
+		kv: map{
 			'bbb': '222'
 		}
 	}]

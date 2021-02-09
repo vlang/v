@@ -78,7 +78,7 @@ const (
 	probe_inc           = u32(0x01000000)
 )
 
-// This function is intended to be fast when
+// fast_string_eq is intended to be fast when
 // the strings are very likely to be equal
 // TODO: add branch prediction hints
 [inline]
@@ -91,7 +91,7 @@ fn fast_string_eq(a string, b string) bool {
 	}
 }
 
-// Dynamic array with very low growth factor
+// DenseArray represents a dynamic array with very low growth factor
 struct DenseArray {
 	key_bytes   int
 	value_bytes int
@@ -198,6 +198,7 @@ type MapCloneFn = fn (voidptr, voidptr)
 
 type MapFreeFn = fn (voidptr)
 
+// map is the internal representation of a V `map` type.
 pub struct map {
 	// Number of bytes of a key
 	key_bytes int
@@ -717,6 +718,7 @@ fn (d &DenseArray) clone() DenseArray {
 	return res
 }
 
+// clone returns a clone of the `map`.
 [unsafe]
 pub fn (m &map) clone() map {
 	metasize := int(sizeof(u32) * (m.even_index + 2 + m.extra_metas))
@@ -750,6 +752,7 @@ pub fn (m &map) clone() map {
 	return res
 }
 
+// free releases all memory resources occupied by the `map`.
 [unsafe]
 pub fn (m &map) free() {
 	unsafe { free(m.metas) }
