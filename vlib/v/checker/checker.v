@@ -2551,7 +2551,8 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 	mut right_len := assign_stmt.right.len
 	mut right_type0 := table.void_type
 	for right in assign_stmt.right {
-		if right is ast.CallExpr || right is ast.IfExpr || right is ast.MatchExpr {
+		if right is ast.CallExpr || right is ast.IfExpr || right is ast.LockExpr
+			|| right is ast.MatchExpr {
 			right_type0 = c.expr(right)
 			assign_stmt.right_types = [
 				c.check_expr_opt_call(right, right_type0),
