@@ -1042,7 +1042,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			// if af {
 			// g.autofree_call_postgen()
 			// }
-			if g.inside_ternary == 0 && !node.is_expr && !(node.expr is ast.IfExpr) {
+			if g.inside_ternary == 0 && !node.is_expr && node.expr !is ast.IfExpr {
 				g.writeln(';')
 			}
 		}
