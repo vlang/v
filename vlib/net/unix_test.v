@@ -1,7 +1,8 @@
 import net
+import os
 
 const (
-	test_port = './test'
+	test_port = 'test'
 )
 
 fn handle_conn(mut c net.UnixConn) {
@@ -27,7 +28,7 @@ fn echo_server(mut l net.UnixListener) ? {
 }
 
 fn echo() ? {
-	mut c := net.connect_unix('./test') ?
+	mut c := net.connect_unix('test') ?
 	defer {
 		c.close() or { }
 	}
