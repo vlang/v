@@ -684,7 +684,7 @@ pub fn (a1 []string) eq(a2 []string) bool {
 	return true
 }
 
-// compare_i64 for []f64 sort_with_compare()
+// compare_i64 for []i64 sort_with_compare()
 // sort []i64 with quicksort
 // usage :
 // mut x := [i64(100),10,70,28,92]
