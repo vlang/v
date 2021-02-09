@@ -266,8 +266,8 @@ pub fn run<T>(port int) {
 }
 
 pub fn run_app<T>(mut app T, port int) {
-	println('Running a Vweb app on http://localhost:$port')
 	mut l := net.listen_tcp(port) or { panic('failed to listen') }
+	println('[Vweb] Running app on http://localhost:$port')
 	app.Context = Context{
 		conn: 0
 	}
@@ -318,7 +318,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	page_gen_start := time.ticks()
 	first_line := reader.read_line() or {
 		$if debug {
-			eprintln('Failed first_line') // show this only in debug mode, because it always would be shown after a chromium user visits the site
+			eprintln('Failed to read first_line') // show this only in debug mode, because it always would be shown after a chromium user visits the site
 		}
 		return
 	}
