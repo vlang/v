@@ -280,14 +280,6 @@ $c_common_macros
 		#pragma comment(lib, "Dbghelp")
 
 		extern wchar_t **_wenviron;
-	#elif !defined(SRWLOCK_INIT)
-		// these seem to be missing on Windows tcc
-		typedef struct SRWLOCK { void* SRWLOCK; } SRWLOCK;
-		void InitializeSRWLock(void*);
-		void AcquireSRWLockShared(void*);
-		void AcquireSRWLockExclusive(void*);
-		void ReleaseSRWLockShared(void*);
-		void ReleaseSRWLockExclusive(void*);
 	#endif
 #else
 	#include <pthread.h>
