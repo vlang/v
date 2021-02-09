@@ -493,6 +493,9 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 					.key_type {
 						return p.type_decl()
 					}
+					.key_asm {
+						return p.asm_stmt(true)
+					}
 					else {
 						p.error('wrong pub keyword usage')
 						return ast.Stmt{}
@@ -503,6 +506,9 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 				// attrs are stored in `p.attrs`
 				p.attributes()
 				continue
+			}
+			.key_asm {
+				return p.asm_stmt(true)
 			}
 			.key_interface {
 				return p.interface_decl()
@@ -799,11 +805,159 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				p.tok.position())
 			return ast.Stmt{}
 		}
+		.key_asm {
+			a := p.asm_stmt(false)
+			// println(a)
+			return a
+		}
 		// literals, 'if', etc. in here
 		else {
 			return p.parse_multi_expr(is_top_level)
 		}
 	}
+}
+
+fn (mut p Parser) asm_stmt(top_level bool) ast.AsmStmt {
+	if top_level {
+		p.top_level_statement_start()
+	}
+	is_pub := p.tok.kind == .key_pub
+	if is_pub {
+		p.next()
+	}
+	mut templates := []ast.AsmTemplate{}
+	pos := p.tok.position()
+
+	p.check(.key_asm)
+	arch := p.tok.lit
+	if p.tok.kind != .name {
+		p.error('must specify assembly architecture')
+	} else {
+		p.check(.name)
+	}
+
+	p.check(.lcbr)
+	for p.tok.kind == .string {
+		mut template := ast.AsmTemplate{}
+
+		template.template = p.tok.lit
+		p.check(.string)
+		mut comments := []ast.Comment{}
+		for p.tok.kind == .comment {
+			comments << p.comment()
+		}
+		if comments.len != 0 {
+			template.comments = comments
+		}
+		templates << template
+	}
+	mut output, mut input, mut clobbered := []ast.AsmIO{}, []ast.AsmIO{}, []ast.AsmClobbered{}
+	if !top_level {
+		if p.tok.kind == .colon {
+			output = p.asm_ios()
+			if p.tok.kind == .colon {
+				input = p.asm_ios()
+			}
+			if p.tok.kind == .colon {
+				p.check(.colon)
+				mut clob := ast.AsmClobbered{}
+				for p.tok.kind == .string {
+					clob.reg_name = p.tok.lit
+					p.next()
+					mut should_break := false
+					if p.tok.kind != .comma {
+						should_break = true
+					} else {
+						p.check(.comma)
+					}
+					mut comments := []ast.Comment{}
+					for p.tok.kind == .comment {
+						comments << p.comment()
+					}
+					clob.comments = comments
+					clobbered << clob
+					if should_break {
+						break
+					}
+				}
+			}
+		}
+	}
+	if p.tok.kind == .colon {
+		p.error('extended assembly is not allowed in the top-level')
+	}
+	p.check(.rcbr)
+	if top_level {
+		p.top_level_statement_end()
+	}
+	mut stmt := ast.AsmStmt{
+		arch: arch
+		templates: templates
+		output: output
+		input: input
+		clobbered: clobbered
+		pos: pos
+		top_level: top_level
+	}
+	asm_fix(mut stmt)
+	return stmt
+}
+
+fn asm_fix(mut stmt ast.AsmStmt) {
+	for i, template in stmt.templates {
+		if !template.template.contains(':') {
+			stmt.templates[i].template += ';'
+		}
+	}
+}
+
+fn (mut p Parser) asm_ios() []ast.AsmIO {
+	mut res := []ast.AsmIO{}
+	p.check(.colon)
+	for i := 0; true; i++ {
+		mut alias := ''
+		if p.tok.kind == .lsbr {
+			p.check(.lsbr)
+			alias = p.tok.lit
+			p.check(.name)
+
+			p.check(.rsbr)
+		} else {
+			alias = 'x$i' // x so that it is recognized as an identifier
+		}
+		constraint := p.tok.lit
+		p.check(.string)
+
+		mut expr := p.expr(0)
+		if expr.type_name() == 'v.ast.ParExpr' {
+			exp := expr as ast.ParExpr // unpack expression
+			expr = exp.expr
+		} else {
+			p.error('asm in/output must be incolsed in  brackets')
+		}
+		mut should_break := false
+		if p.tok.kind != .comma {
+			should_break = true
+		} else {
+			p.check(.comma)
+		}
+
+		mut comments := []ast.Comment{}
+		for p.tok.kind == .comment {
+			comments << p.comment()
+		}
+
+		res << ast.AsmIO{
+			alias: alias
+			constraint: constraint
+			expr: expr
+			comments: comments
+		}
+		if should_break {
+			break
+		}
+	}
+	return res
 }
 
 fn (mut p Parser) expr_list() ([]ast.Expr, []ast.Comment) {

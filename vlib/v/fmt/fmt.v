@@ -391,6 +391,9 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 		eprintln('stmt: ${node.position():-42} | node: ${node.type_name():-20}')
 	}
 	match node {
+		ast.AsmStmt {
+			f.asm_stmt(node)
+		}
 		ast.AssignStmt {
 			f.assign_stmt(node)
 		}
@@ -468,6 +471,56 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 		ast.TypeDecl {
 			f.type_decl(node)
 		}
+	}
+}
+
+fn (mut f Fmt) asm_stmt(stmt ast.AsmStmt) {
+	f.writeln('asm $stmt.arch {')
+	f.indent++
+	for mut template in stmt.templates {
+		if template.template.contains(';') {
+			template.template = template.template.all_before(';')
+		}
+		f.writeln("'$template.template'")
+		f.comments(template.comments, inline: false)
+	}
+	if !stmt.top_level {
+		f.write(': ')
+	}
+
+	f.asm_ios(stmt.output)
+	if stmt.input.len != 0 || stmt.clobbered.len != 0 {
+		f.write(': ')
+	}
+	f.asm_ios(stmt.input)
+	if stmt.clobbered.len != 0 {
+		f.write(': ')
+	}
+
+	for i, clob in stmt.clobbered {
+		if i != 0 {
+			f.write('  ')
+		}
+		f.write("'$clob.reg_name'")
+		if i + 1 < stmt.clobbered.len {
+			f.writeln(',')
+		}
+		f.comments(clob.comments, inline: false)
+	}
+	f.indent--
+	f.writeln('}')
+}
+
+fn (mut f Fmt) asm_ios(ios []ast.AsmIO) {
+	for i, io in ios {
+		if i != 0 {
+			f.write('  ')
+		}
+		f.write('[$io.alias] "$io.constraint" ($io.expr)')
+		if i + 1 < ios.len {
+			f.writeln(',')
+		}
+		f.comments(io.comments, inline: false, level: .indent)
 	}
 }
 

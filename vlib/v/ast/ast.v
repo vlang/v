@@ -17,10 +17,10 @@ pub type Expr = AnonFn | ArrayDecompose | ArrayInit | AsCast | Assoc | AtExpr | 
 	RangeExpr | SelectExpr | SelectorExpr | SizeOf | SqlExpr | StringInterLiteral | StringLiteral |
 	StructInit | Type | TypeOf | UnsafeExpr
 
-pub type Stmt = AssertStmt | AssignStmt | Block | BranchStmt | CompFor | ConstDecl | DeferStmt |
-	EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl | GoStmt |
-	GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module | Return | SqlStmt |
-	StructDecl | TypeDecl
+pub type Stmt = AsmStmt | AssertStmt | AssignStmt | Block | BranchStmt | CompFor | ConstDecl |
+	DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl |
+	GoStmt | GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module | Return |
+	SqlStmt | StructDecl | TypeDecl
 
 // NB: when you add a new Expr or Stmt type with a .pos field, remember to update
 // the .position() token.Position methods too.
@@ -1029,6 +1029,42 @@ pub mut:
 	in_prexpr bool // is the parent node an ast.PrefixExpr
 }
 
+pub struct AsmStmt {
+pub:
+	is_pub    bool // false if inline
+	top_level bool
+	arch      string
+	volatile  bool
+	output    []AsmIO
+	input     []AsmIO
+	clobbered []AsmClobbered
+	pos       token.Position
+pub mut:
+	templates []AsmTemplate
+}
+
+pub struct AsmTemplate {
+pub mut:
+	template string
+	comments []Comment
+}
+
+// represents either the template or the clobbered registers 
+pub struct AsmClobbered {
+pub mut:
+	reg_name string // eax
+	comments []Comment
+}
+
+// : [var_a] '=r' (a) // this is a comment
+pub struct AsmIO {
+pub:
+	alias      string    // [var_a]
+	constraint string    // '=r'
+	expr       Expr      // (a)
+	comments   []Comment // // this is a comment
+}
+
 pub struct AssertStmt {
 pub:
 	pos token.Position
@@ -1356,8 +1392,8 @@ pub:
 
 pub fn (stmt Stmt) position() token.Position {
 	match stmt {
-		AssertStmt, AssignStmt, Block, BranchStmt, CompFor, ConstDecl, DeferStmt, EnumDecl, ExprStmt,
-		FnDecl, ForCStmt, ForInStmt, ForStmt, GotoLabel, GotoStmt, Import, Return, StructDecl,
+		AsmStmt, AssertStmt, AssignStmt, Block, BranchStmt, CompFor, ConstDecl, DeferStmt, EnumDecl,
+		ExprStmt, FnDecl, ForCStmt, ForInStmt, ForStmt, GotoLabel, GotoStmt, Import, Return, StructDecl,
 		GlobalDecl, HashStmt, InterfaceDecl, Module, SqlStmt, GoStmt {
 			return stmt.pos
 		}

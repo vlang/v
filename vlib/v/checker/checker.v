@@ -3112,6 +3112,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 	}
 	// c.expected_type = table.void_type
 	match mut node {
+		ast.AsmStmt {}
 		ast.AssertStmt {
 			c.assert_stmt(node)
 		}

@@ -19,7 +19,9 @@ const (
 		'delete', 'do', 'double', 'else', 'enum', 'error', 'exit', 'export', 'extern', 'float',
 		'for', 'free', 'goto', 'if', 'inline', 'int', 'link', 'long', 'malloc', 'namespace', 'new',
 		'panic', 'register', 'restrict', 'return', 'short', 'signed', 'sizeof', 'static', 'struct',
-		'switch', 'typedef', 'typename', 'union', 'unix', 'unsigned', 'void', 'volatile', 'while']
+		'switch', 'typedef', 'typename', 'union', 'unix', 'unsigned', 'void', 'volatile', 'while',
+		'template',
+	]
 	// same order as in token.Kind
 	cmp_str    = ['eq', 'ne', 'gt', 'lt', 'ge', 'le']
 	// when operands are switched
@@ -1004,6 +1006,10 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 	// println('g.stmt()')
 	// g.writeln('//// stmt start')
 	match node {
+		ast.AsmStmt {
+			g.write_v_source_line_info(node.pos)
+			g.gen_asm_stmt(node)
+		}
 		ast.AssertStmt {
 			g.write_v_source_line_info(node.pos)
 			g.gen_assert_stmt(node)
@@ -1692,6 +1698,88 @@ fn ctoslit(s string) string {
 fn (mut g Gen) gen_attrs(attrs []table.Attr) {
 	for attr in attrs {
 		g.writeln('// Attr: [$attr.name]')
+	}
+}
+
+fn (mut g Gen) gen_asm_stmt(stmt ast.AsmStmt) {
+	g.writeln('__asm__ (')
+	g.indent++
+	for template in stmt.templates {
+		g.writeln('"$template.template"')
+	}
+	if !stmt.top_level {
+		g.write(': ')
+	}
+	g.gen_asm_ios(stmt.output)
+	if stmt.input.len != 0 || stmt.clobbered.len != 0 {
+		g.write(': ')
+	}
+	g.gen_asm_ios(stmt.input)
+	if stmt.clobbered.len != 0 {
+		g.write(': ')
+	}
+	for i, clob in stmt.clobbered {
+		g.write('"$clob.reg_name"')
+		if i + 1 < stmt.clobbered.len {
+			g.writeln(',')
+		} else {
+			g.writeln('')
+		}
+	}
+	g.indent--
+	g.writeln(');')
+}
+
+fn (mut g Gen) gen_asm_ios(ios []ast.AsmIO) {
+	for i, io in ios {
+		g.write('[$io.alias] "$io.constraint" ($io.expr)')
+		if i + 1 < ios.len {
+			g.writeln(',')
+		} else {
+			g.writeln('')
+		}
+	}
+}
+
+fn (mut g Gen) gen_assert_stmt(original_assert_statement ast.AssertStmt) {
+	mut node := original_assert_statement
+	g.writeln('// assert')
+	if mut node.expr is ast.InfixExpr {
+		if mut node.expr.left is ast.CallExpr {
+			node.expr.left = g.new_ctemp_var_then_gen(node.expr.left, node.expr.left_type)
+		}
+		if mut node.expr.right is ast.CallExpr {
+			node.expr.right = g.new_ctemp_var_then_gen(node.expr.right, node.expr.right_type)
+		}
+	}
+	g.inside_ternary++
+	if g.is_test {
+		g.write('if (')
+		g.expr(node.expr)
+		g.write(')')
+		g.decrement_inside_ternary()
+		g.writeln(' {')
+		g.writeln('\tg_test_oks++;')
+		metaname_ok := g.gen_assert_metainfo(node)
+		g.writeln('\tmain__cb_assertion_ok(&$metaname_ok);')
+		g.writeln('} else {')
+		g.writeln('\tg_test_fails++;')
+		metaname_fail := g.gen_assert_metainfo(node)
+		g.writeln('\tmain__cb_assertion_failed(&$metaname_fail);')
+		g.writeln('\tlongjmp(g_jump_buffer, 1);')
+		g.writeln('\t// TODO')
+		g.writeln('\t// Maybe print all vars in a test function if it fails?')
+		g.writeln('}')
+	} else {
+		g.write('if (!(')
+		g.expr(node.expr)
+		g.write('))')
+		g.decrement_inside_ternary()
+		g.writeln(' {')
+		metaname_panic := g.gen_assert_metainfo(node)
+		g.writeln('\t__print_assert_failure(&$metaname_panic);')
+		g.writeln('\tv_panic(_SLIT("Assertion failed..."));')
+		g.writeln('}')
 	}
 }
 
