@@ -5926,7 +5926,7 @@ fn (mut g Gen) go_stmt(node ast.GoStmt, joinable bool) string {
 		g.writeln('$arg_tmp_var->ret_ptr = malloc(sizeof($s_ret_typ));')
 	}
 	gohandle_name := 'gohandle_' +
-		g.table.get_type_symbol(g.unwrap_generic(node.call_expr.return_type)).name
+		g.table.get_type_symbol(g.unwrap_generic(node.call_expr.return_type)).cname
 	if g.pref.os == .windows {
 		simple_handle := if joinable && node.call_expr.return_type != table.void_type {
 			'thread_handle_$tmp'
