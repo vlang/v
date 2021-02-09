@@ -1,4 +1,6 @@
 struct Foo {
+mut:
+	num int
 }
 
 struct Bar {
@@ -15,7 +17,9 @@ type FBB = Bar | Baz | Foo
 
 fn test_sumtype_assign() {
 	mut arr := []FBB{}
-	arr << Foo{}
+	arr << Foo{
+		num: 22
+	}
 	arr << Bar{
 		text: 'bar'
 	}
@@ -30,9 +34,13 @@ fn test_sumtype_assign() {
 				println(a.text)
 				results << a.text
 			}
-			else {}
+			Foo {
+				a.num = 11
+				results << 'Num is $a.num'
+			}
 		}
 	}
-	assert results[0] == 'I am bar'
-	assert results[1] == 'I am baz'
+	assert results[0] == 'Num is 11'
+	assert results[1] == 'I am bar'
+	assert results[2] == 'I am baz'
 }
