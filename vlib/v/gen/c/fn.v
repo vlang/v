@@ -479,7 +479,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.gen_str_for_type(node.receiver_type)
 	}
 	mut has_cast := false
-	if left_sym.kind == .map && node.name == 'clone' {
+	if left_sym.kind == .map && node.name in ['clone', 'move'] {
 		receiver_type_name = 'map'
 	}
 	// TODO performance, detect `array` method differently

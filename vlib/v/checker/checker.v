@@ -1439,10 +1439,10 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			call_expr.return_type = table.int_type
 		}
 		return call_expr.return_type
-	} else if left_type_sym.kind == .map && method_name in ['clone', 'keys'] {
+	} else if left_type_sym.kind == .map && method_name in ['clone', 'keys', 'move'] {
 		mut ret_type := table.void_type
 		match method_name {
-			'clone' {
+			'clone', 'move' {
 				ret_type = left_type
 			}
 			'keys' {
