@@ -1443,6 +1443,9 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		mut ret_type := table.void_type
 		match method_name {
 			'clone', 'move' {
+				if method_name[0] == `m` {
+					c.fail_if_immutable(call_expr.left)
+				}
 				ret_type = left_type
 			}
 			'keys' {
@@ -2732,7 +2735,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		if left_sym.kind == .map && !c.inside_unsafe && assign_stmt.op in [.assign, .decl_assign]
 			&& right_sym.kind == .map && (left is ast.Ident && !left.is_blank_ident())
 			&& right is ast.Ident {
-			// Do not allow `a = b`, only `a = b.clone()`
+			// Do not allow `a = b`
 			c.error('cannot copy map: call `move` or `clone` method first (or use `unsafe`)',
 				right.position())
 		}
