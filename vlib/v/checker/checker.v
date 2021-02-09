@@ -2742,7 +2742,8 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 				assign_stmt.pos)
 		}
 		if left_sym.kind == .map && !c.inside_unsafe && assign_stmt.op in [.assign, .decl_assign]
-			&& right_sym.kind == .map && !left.is_blank_ident() && right.is_lvalue() {
+			&& right_sym.kind == .map && !right_type.is_ptr() && !left.is_blank_ident()
+			&& right.is_lvalue() {
 			// Do not allow `a = b`
 			c.error('cannot copy map: call `move` or `clone` method first (or use `unsafe`)',
 				right.position())
