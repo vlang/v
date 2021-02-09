@@ -428,7 +428,7 @@ fn (mut p Parser) check(expected token.Kind) {
 		if expected == .name {
 			p.name_error = true
 		}
-		p.error('unexpected $p.tok, expecting `$expected`')
+		p.error('unexpected $p.tok, expecting $expected')
 	}
 }
 
