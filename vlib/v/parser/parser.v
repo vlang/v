@@ -424,14 +424,11 @@ fn (mut p Parser) check(expected token.Kind) {
 	// }
 	if p.tok.kind == expected {
 		p.next()
-	} else if p.tok.kind == .name {
-		p.error('unexpected name `$p.tok.lit`, expecting `$expected.str()`')
 	} else {
 		if expected == .name {
 			p.name_error = true
 		}
-		label := if token.is_key(p.tok.lit) { 'keyword ' } else { '' }
-		p.error('unexpected $label`$p.tok.kind.str()`, expecting `$expected.str()`')
+		p.error('unexpected $p.tok, expecting `$expected`')
 	}
 }
 
