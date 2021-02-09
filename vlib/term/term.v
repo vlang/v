@@ -120,10 +120,3 @@ fn supports_escape_sequences(fd int) bool {
 	}
 }
 
-// clear clears current terminal screen.
-pub fn clear() {
-	$if !windows {
-		print('\x1b[2J')
-		print('\x1b[H')
-	}
-}
