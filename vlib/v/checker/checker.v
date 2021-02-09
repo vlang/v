@@ -2742,8 +2742,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 				assign_stmt.pos)
 		}
 		if left_sym.kind == .map && !c.inside_unsafe && assign_stmt.op in [.assign, .decl_assign]
-			&& right_sym.kind == .map && (left is ast.Ident && !left.is_blank_ident())
-			&& right is ast.Ident {
+			&& right_sym.kind == .map && !left.is_blank_ident() && right.is_lvalue() {
 			// Do not allow `a = b`
 			c.error('cannot copy map: call `move` or `clone` method first (or use `unsafe`)',
 				right.position())
@@ -5621,7 +5620,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) table.Type {
 		sub_structs[int(f.typ)] = n
 	}
 	node.fields = fields
-	node.sub_structs = sub_structs
+	node.sub_structs = sub_structs.move()
 	if node.has_where {
 		c.expr(node.where_expr)
 	}
@@ -5673,7 +5672,7 @@ fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) table.Type {
 		sub_structs[int(f.typ)] = n
 	}
 	node.fields = fields
-	node.sub_structs = sub_structs
+	node.sub_structs = sub_structs.move()
 	c.expr(node.db_expr)
 	if node.kind == .update {
 		for expr in node.update_exprs {

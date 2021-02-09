@@ -115,7 +115,7 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 			out += '/** @namespace $name */\n'
 		}
 		out += 'const $name = (function ('
-		imports := g.namespaces[node.name].imports
+		imports := unsafe {g.namespaces[node.name].imports}
 		for i, key in imports.keys() {
 			if i > 0 {
 				out += ', '
