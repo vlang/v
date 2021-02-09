@@ -841,7 +841,7 @@ fn (mut p Parser) attributes() {
 				p.next()
 				break
 			}
-			p.error('unexpected `$p.tok.kind.str()`, expecting `;`')
+			p.error('unexpected $p.tok, expecting `;`')
 			return
 		}
 		p.next()
