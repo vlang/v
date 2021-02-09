@@ -2,6 +2,8 @@ module main
 
 import pg
 
+const dash = '----------------------------------------------------------------'
+
 struct Customer {
 	id int
 	name string
@@ -10,7 +12,6 @@ struct Customer {
 }
 
 fn main() {
-	dash := '----------------------------------------------------------------'
 	db := pg.connect(pg.Config{
 		host: 'localhost' //'127.0.0.1'
 		user: 'postgres'
