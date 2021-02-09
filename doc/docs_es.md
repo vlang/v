@@ -99,9 +99,9 @@ Guarda este fragmento de código en un archivo llamado "hello.v". Ahora ejecuta:
 [aquí (en inglés)](https://github.com/vlang/v/blob/master/README.md#symlinking).
 Si aún no lo has hecho, debes escribir la ruta al ejecutable de V manualmente.
 
-¡Felicitaciones, acaba de escribir y ejecutar su primer programa hecho en V!
+¡Felicitaciones, acabas de escribir y ejecutar tu primer programa escrito en V!
 
-También puedes compilar un programa sin ejecución con `v hello.v`.
+También puedes compilar un programa sin ejecutarlo con `v hello.v`.
 Puedes ejecutar `v help` para ver todos los comandos soportados.
 
 En el ejemplo anterior, puede ver que las funciones se declaran con la palabra clave `fn`.
@@ -248,7 +248,7 @@ age = 21
 println(age)
 ```
 
-Para cambiar el valor de la variable usa `=`. En V, las variables son
+Para cambiar el valor de una variable usa `=`. En V, las variables son
 inmutables por defecto.
 Para poder cambiar el valor de la variable, debes declararlo con `mut`.
 
@@ -693,15 +693,15 @@ users.sort(a.age < b.age) // ordenación por el campo de entero User.age
 users.sort(a.name > b.name) // ordenación inversa por el campo de cadena User.name
 ```
 
-#### Rebanadas de la matriz (Array slices)
+#### Cortes de una matriz (Array slices)
 
-Las rebanadas son matrices parciales. Representan cada elemento entre dos índices
-separados por un operador .. El índice del lado derecho debe ser mayor o igual
+Los cortes son matrices parciales. Representan cada elemento entre dos índices
+separados por un operador `..` El índice del lado derecho debe ser mayor o igual
 al índice del lado izquierdo.
 
 Si un índice del lado derecho está ausente, se asume que es la
-longitud de la matriz. Si no hay un índice
-índice del lado izquierdo está ausente, se asume que es 0.
+longitud de la matriz. Si el índice del lado izquierdo está ausente, se asume que
+es 0.
 
 ```v
 nums := [1, 2, 3, 4, 5]
@@ -710,8 +710,8 @@ println(nums[..4]) // [1, 2, 3, 4]
 println(nums[1..]) // [2, 3, 4, 5]
 ```
 
-Todas las operaciones de las matrices se pueden realizar sobre rebanadas.
-Las rebanadas pueden ser empujadas a una matriz del mismo tipo.
+Todas las operaciones de las matrices se pueden realizar sobre los cortes.
+Los cortes pueden ser insertadas a una matriz del mismo tipo.
 
 ```v
 array_1 := [3, 5, 4, 7, 6]
