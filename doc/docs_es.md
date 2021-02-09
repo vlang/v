@@ -756,17 +756,23 @@ fijo se copien en la nueva matriz ordinaria creada.
 
 ### Mapas
 
-```v
+```v nofmt
 mut m := map[string]int{} // un mapa con claves tipo `string` y valores tipo `int`.
 m['one'] = 1
 m['two'] = 2
 println(m['one']) // "1"
 println(m['bad_key']) // "0"
 println('bad_key' in m) // utiliza `in` para detectar si dicha clave existe
+println('bad_key_2' !in m) // utiliza `in` para detectar si dicha clave no existe
 m.delete('two')
-// NB: las claves del mapa pueden tener cualquier tipo, `int` en este caso,
-// y todo el mapa puede ser inicializado usando esta corta sintaxis:
-numbers := {
+```
+
+Los mapas pueden tener claves de tipo `cadenas`, `rune`, `enteros` o `voidptr`
+
+Un mapa se puede inicializar usando esta breve sintaxis:
+
+```v nofmt
+numbers := map{
 	1: 'one'
 	2: 'two'
 }
@@ -775,8 +781,8 @@ println(numbers)
 
 Si no se encuentra una clave, se devuelve un valor cero por defecto:
 
-```v
-sm := {
+```v nofmt
+sm := map{
 	'abc': 'xyz'
 }
 val := sm['bad_key']
@@ -837,7 +843,7 @@ Las importaciones cíclicas de módulos no están permitidas, como en Go.
 
 También puedes importar directamente funciones y tipos específicos de los módulos
 
-```v
+```v nofmt
 import os { input }
 import crypto.sha256 { sum }
 import time { Time }
