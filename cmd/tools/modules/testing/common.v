@@ -125,7 +125,6 @@ pub fn new_test_session(_vargs string) TestSession {
 		skip_files << 'examples/websocket/client-server/client.v' // requires OpenSSL
 		skip_files << 'examples/websocket/client-server/server.v' // requires OpenSSL
 		$if tinyc {
-			skip_files << 'examples/vpwgen.v' // try fix it
 			skip_files << 'examples/database/orm.v' // try fix it
 		}
 	}
