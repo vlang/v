@@ -53,7 +53,7 @@ fn C.SetConsoleTitle(title &u16) bool
 fn C.SetConsoleCursorPosition(handle os.HANDLE, coord C.COORD) bool
 
 // ref - https://docs.microsoft.com/en-us/windows/console/scrollconsolescreenbuffer
-fn C.ScrollConsoleScreenBuffer(output os.HANDLE, scroll_rect &C.SMALL_RECT, clip_rect &C.SMALL_RECT, des C.COORD, fill C.CHAR_INFO)
+fn C.ScrollConsoleScreenBuffer(output os.HANDLE, scroll_rect &C.SMALL_RECT, clip_rect &C.SMALL_RECT, des C.COORD, fill C.CHAR_INFO) bool
 
 // get_terminal_size returns a number of colums and rows of terminal window.
 pub fn get_terminal_size() (int, int) {
