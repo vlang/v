@@ -119,4 +119,3 @@ fn supports_escape_sequences(fd int) bool {
 		return is_atty(fd) > 0
 	}
 }
-
