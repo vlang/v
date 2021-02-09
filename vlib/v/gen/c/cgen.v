@@ -5970,7 +5970,7 @@ fn (mut g Gen) go_stmt(node ast.GoStmt, joinable bool) string {
 					g.gowrappers.writeln('\tret_ptr = thread.ret_ptr;')
 				}
 			} else {
-				g.gowrappers.writeln('\tint stat = pthread_join(thread, $c_ret_ptr_ptr);')
+				g.gowrappers.writeln('\tint stat = pthread_join(thread, (void **)$c_ret_ptr_ptr);')
 			}
 			g.gowrappers.writeln('\tif (stat != 0) { v_panic(_SLIT("unable to join thread")); }')
 			if g.pref.os == .windows {
