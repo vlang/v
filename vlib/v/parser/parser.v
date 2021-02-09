@@ -428,7 +428,10 @@ fn (mut p Parser) check(expected token.Kind) {
 		if expected == .name {
 			p.name_error = true
 		}
-		p.error('unexpected $p.tok, expecting $expected')
+		mut s := expected.str()
+		// quote keywords, punctuation, operators
+		if token.is_key(s) || (s.len > 0 && !s[0].is_letter()) {s = '`$s`'}
+		p.error('unexpected $p.tok, expecting $s')
 	}
 }
 

@@ -319,6 +319,7 @@ pub fn (t Kind) is_assign() bool {
 	return t in token.assign_tokens
 }
 
+// note: used for some code generation, so no quoting
 pub fn (t Kind) str() string {
 	return token.token_str[int(t)]
 }
