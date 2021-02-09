@@ -5,6 +5,8 @@ module sync
 
 import time
 
+#include <synchapi.h>
+
 fn C.InitializeConditionVariable(voidptr)
 fn C.WakeConditionVariable(voidptr)
 fn C.SleepConditionVariableSRW(voidptr, voidptr, u32, u32) int
