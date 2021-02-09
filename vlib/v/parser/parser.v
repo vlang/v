@@ -424,14 +424,16 @@ fn (mut p Parser) check(expected token.Kind) {
 	// }
 	if p.tok.kind == expected {
 		p.next()
-	} else if p.tok.kind == .name {
-		p.error('unexpected name `$p.tok.lit`, expecting `$expected.str()`')
 	} else {
 		if expected == .name {
 			p.name_error = true
 		}
-		label := if token.is_key(p.tok.lit) { 'keyword ' } else { '' }
-		p.error('unexpected $label`$p.tok.kind.str()`, expecting `$expected.str()`')
+		mut s := expected.str()
+		// quote keywords, punctuation, operators
+		if token.is_key(s) || (s.len > 0 && !s[0].is_letter()) {
+			s = '`$s`'
+		}
+		p.error('unexpected $p.tok, expecting $s')
 	}
 }
 
@@ -841,7 +843,7 @@ fn (mut p Parser) attributes() {
 				p.next()
 				break
 			}
-			p.error('unexpected `$p.tok.kind.str()`, expecting `;`')
+			p.error('unexpected $p.tok, expecting `;`')
 			return
 		}
 		p.next()

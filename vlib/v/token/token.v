@@ -319,6 +319,7 @@ pub fn (t Kind) is_assign() bool {
 	return t in token.assign_tokens
 }
 
+// note: used for some code generation, so no quoting
 pub fn (t Kind) str() string {
 	return token.token_str[int(t)]
 }
@@ -327,12 +328,17 @@ pub fn (t Token) str() string {
 	mut s := t.kind.str()
 	if s.len == 0 {
 		eprintln('missing token kind string')
-	} else if !s[0].is_letter() { 
+	} else if !s[0].is_letter() {
 		// punctuation, operators
-		return '`$s`' 
+		return 'token `$s`'
 	}
-	// string contents etc
-	if t.lit != '' { s += ' `$t.lit`' }
+	if is_key(t.lit) {
+		s = 'keyword'
+	}
+	if t.lit != '' {
+		// string contents etc
+		s += ' `$t.lit`'
+	}
 	return s
 }
 
