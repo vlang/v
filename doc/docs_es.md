@@ -767,7 +767,7 @@ println('bad_key_2' !in m) // utiliza `in` para detectar si dicha clave no exist
 m.delete('two')
 ```
 
-Los mapas pueden tener claves de tipo `cadenas`, `rune`, `enteros` o `voidptr`
+Los mapas pueden tener claves de tipo `cadenas`, `rune`, `enteros` o `voidptr`.
 
 Un mapa se puede inicializar usando esta breve sintaxis:
 
@@ -787,7 +787,7 @@ sm := map{
 }
 val := sm['bad_key']
 println(val) // ''
-intm := {
+intm := map{
 	1: 1234
 	2: 5678
 }
