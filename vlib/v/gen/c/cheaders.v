@@ -277,7 +277,7 @@ $c_common_macros
 		#define __IRQHANDLER __declspec(naked)
 
 		#include <dbghelp.h>
-		#pragma comment(lib, "Dbghelp.lib")
+		#pragma comment(lib, "Dbghelp")
 
 		extern wchar_t **_wenviron;
 	#elif !defined(SRWLOCK_INIT)
