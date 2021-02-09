@@ -93,3 +93,9 @@ pub fn set_terminal_title(title string) bool {
 	print('\033]0;${title}\007')
 	return true
 }
+
+// clear clears current terminal screen.
+pub fn clear() {
+	print('\x1b[2J')
+	print('\x1b[H')
+}
