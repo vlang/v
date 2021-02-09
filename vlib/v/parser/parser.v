@@ -430,7 +430,9 @@ fn (mut p Parser) check(expected token.Kind) {
 		}
 		mut s := expected.str()
 		// quote keywords, punctuation, operators
-		if token.is_key(s) || (s.len > 0 && !s[0].is_letter()) {s = '`$s`'}
+		if token.is_key(s) || (s.len > 0 && !s[0].is_letter()) {
+			s = '`$s`'
+		}
 		p.error('unexpected $p.tok, expecting $s')
 	}
 }
