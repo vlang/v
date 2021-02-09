@@ -1742,6 +1742,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	right_expr := assign_stmt.right[0]
 	match right_expr {
 		ast.CallExpr { return_type = right_expr.return_type }
+		ast.LockExpr { return_type = right_expr.typ }
 		ast.MatchExpr { return_type = right_expr.return_type }
 		ast.IfExpr { return_type = right_expr.typ }
 		else {}
