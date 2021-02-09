@@ -163,8 +163,8 @@ fn fetch_with_method(method Method, url string, _config FetchConfig) ?Response {
 
 fn build_url_from_fetch(_url string, config FetchConfig) ?string {
 	mut url := urllib.parse(_url) ?
-	params := config.params
-	if params.keys().len == 0 {
+	params := unsafe {config.params}
+	if params.len == 0 {
 		return url.str()
 	}
 	mut pieces := []string{}
