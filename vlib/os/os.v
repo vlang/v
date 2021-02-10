@@ -463,8 +463,12 @@ pub fn walk(path string, f fn (string)) {
 		return
 	}
 	mut files := ls(path) or { return }
+	mut local_path_separator := path_separator
+	if path.ends_with(path_separator) {
+		local_path_separator = ""
+	}
 	for file in files {
-		p := path + path_separator + file
+		p := path + local_path_separator + file
 		if is_dir(p) && !is_link(p) {
 			walk(p, f)
 		} else if exists(p) {
