@@ -102,6 +102,33 @@ pub fn merge<T>(a []T, b []T) []T {
 	return m
 }
 
+// zip n arrays into a single array of arrays with n elements
+pub fn zip<T>(lists ...[]T) [][]T {
+	mut length := lists[0].len
+	// calculate length of output array by finding shortest input list
+	for ndx in 1 .. lists.len {
+		if lists[ndx].len < length {
+			length = lists[ndx].len
+		}
+	}
+
+	if length > 0 {
+		mut arr := [][]T{cap: length}
+		// append all combined arrays into the resultant array
+		for ndx in 0 .. length {
+			mut zipped := []T{}
+			// combine each list item for the ndx position into one array
+			for list_ndx in 0 .. lists.len {
+				zipped << lists[list_ndx][ndx]
+			}
+			arr << zipped
+		}
+		return arr
+	}
+
+	return [][]T{}
+}
+
 [deprecated]
 pub fn shuffle<T>(mut a []T, n int) {
 	panic('Please use rand.util.shuffle() instead')
