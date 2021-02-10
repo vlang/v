@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module builtin
@@ -135,7 +135,7 @@ pub fn (a array) repeat(count int) array {
 	return arr
 }
 
-// sort sorts array in-place using given `compare` function as comparator.
+// sort_with_compare sorts array in-place using given `compare` function as comparator.
 pub fn (mut a array) sort_with_compare(compare voidptr) {
 	C.qsort(mut a.data, a.len, a.element_size, compare)
 }
@@ -223,6 +223,16 @@ fn (a array) get(i int) voidptr {
 		if i < 0 || i >= a.len {
 			panic('array.get: index out of range (i == $i, a.len == $a.len)')
 		}
+	}
+	unsafe {
+		return byteptr(a.data) + i * a.element_size
+	}
+}
+
+// Private function. Used to implement x = a[i] or { ... }
+fn (a array) get_with_check(i int) voidptr {
+	if i < 0 || i >= a.len {
+		return 0
 	}
 	unsafe {
 		return byteptr(a.data) + i * a.element_size
@@ -336,16 +346,24 @@ pub fn (a &array) clone() array {
 	// Recursively clone-generated elements if array element is array type
 	size_of_array := int(sizeof(array))
 	if a.element_size == size_of_array {
+		mut is_elem_array := true
 		for i in 0 .. a.len {
 			ar := array{}
 			unsafe { C.memcpy(&ar, a.get_unsafe(i), size_of_array) }
+			if ar.len > ar.cap || ar.cap <= 0 || ar.element_size <= 0 {
+				is_elem_array = false
+				break
+			}
 			ar_clone := ar.clone()
 			unsafe { arr.set_unsafe(i, &ar_clone) }
 		}
-	} else {
-		if !isnil(a.data) {
-			unsafe { C.memcpy(byteptr(arr.data), a.data, a.cap * a.element_size) }
+		if is_elem_array {
+			return arr
 		}
+	}
+
+	if !isnil(a.data) {
+		unsafe { C.memcpy(byteptr(arr.data), a.data, a.cap * a.element_size) }
 	}
 	return arr
 }
@@ -400,7 +418,8 @@ fn (mut a array) push(val voidptr) {
 	a.len++
 }
 
-// `val` is array.data
+// push_many implements the functionality for pushing another array.
+// `val` is array.data and user facing usage is `a << [1,2,3]`
 // TODO make private, right now it's used by strings.Builder
 pub fn (mut a3 array) push_many(val voidptr, size int) {
 	if a3.data == val && !isnil(a3.data) {
@@ -429,8 +448,8 @@ pub fn (mut a array) reverse_in_place() {
 		mut tmp_value := malloc(a.element_size)
 		for i in 0 .. a.len / 2 {
 			C.memcpy(tmp_value, byteptr(a.data) + i * a.element_size, a.element_size)
-			C.memcpy(byteptr(a.data) + i * a.element_size, byteptr(a.data) + (a.len - 1 - i) *
-				a.element_size, a.element_size)
+			C.memcpy(byteptr(a.data) + i * a.element_size, byteptr(a.data) +
+				(a.len - 1 - i) * a.element_size, a.element_size)
 			C.memcpy(byteptr(a.data) + (a.len - 1 - i) * a.element_size, tmp_value, a.element_size)
 		}
 		free(tmp_value)
@@ -474,9 +493,9 @@ pub fn (a []string) str() string {
 	sb.write('[')
 	for i in 0 .. a.len {
 		val := a[i]
-		sb.write("\'")
+		sb.write("'")
 		sb.write(val)
-		sb.write("\'")
+		sb.write("'")
 		if i < a.len - 1 {
 			sb.write(', ')
 		}
@@ -665,7 +684,7 @@ pub fn (a1 []string) eq(a2 []string) bool {
 	return true
 }
 
-// compare_i64 for []f64 sort_with_compare()
+// compare_i64 for []i64 sort_with_compare()
 // sort []i64 with quicksort
 // usage :
 // mut x := [i64(100),10,70,28,92]

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module builtin
@@ -78,7 +78,7 @@ const (
 	probe_inc           = u32(0x01000000)
 )
 
-// This function is intended to be fast when
+// fast_string_eq is intended to be fast when
 // the strings are very likely to be equal
 // TODO: add branch prediction hints
 [inline]
@@ -91,7 +91,7 @@ fn fast_string_eq(a string, b string) bool {
 	}
 }
 
-// Dynamic array with very low growth factor
+// DenseArray represents a dynamic array with very low growth factor
 struct DenseArray {
 	key_bytes   int
 	value_bytes int
@@ -198,6 +198,7 @@ type MapCloneFn = fn (voidptr, voidptr)
 
 type MapFreeFn = fn (voidptr)
 
+// map is the internal representation of a V `map` type.
 pub struct map {
 	// Number of bytes of a key
 	key_bytes int
@@ -552,6 +553,29 @@ fn (m &map) get_1(key voidptr, zero voidptr) voidptr {
 	return zero
 }
 
+// If `key` matches the key of an element in the container,
+// the method returns a reference to its mapped value.
+// If not, a zero pointer is returned.
+// This is used in `x := m['key'] or { ... }`
+fn (m &map) get_1_check(key voidptr) voidptr {
+	mut index, mut meta := m.key_to_index(key)
+	for {
+		if meta == unsafe { m.metas[index] } {
+			kv_index := int(unsafe { m.metas[index + 1] })
+			pkey := unsafe { m.key_values.key(kv_index) }
+			if m.key_eq_fn(key, pkey) {
+				return unsafe { byteptr(pkey) + m.key_values.key_bytes }
+			}
+		}
+		index += 2
+		meta += probe_inc
+		if meta > unsafe { m.metas[index] } {
+			break
+		}
+	}
+	return 0
+}
+
 // Checks whether a particular key exists in the map.
 fn (m &map) exists_1(key voidptr) bool {
 	mut index, mut meta := m.key_to_index(key)
@@ -694,6 +718,7 @@ fn (d &DenseArray) clone() DenseArray {
 	return res
 }
 
+// clone returns a clone of the `map`.
 [unsafe]
 pub fn (m &map) clone() map {
 	metasize := int(sizeof(u32) * (m.even_index + 2 + m.extra_metas))
@@ -727,6 +752,7 @@ pub fn (m &map) clone() map {
 	return res
 }
 
+// free releases all memory resources occupied by the `map`.
 [unsafe]
 pub fn (m &map) free() {
 	unsafe { free(m.metas) }

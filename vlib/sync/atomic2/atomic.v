@@ -16,16 +16,13 @@ further tested.
 #flag darwin -I @VROOT/thirdparty/stdatomic/nix
 #flag freebsd -I @VROOT/thirdparty/stdatomic/nix
 #flag solaris -I @VROOT/thirdparty/stdatomic/nix
-
 $if linux {
 	$if tinyc {
 		// most Linux distributions have /usr/lib/libatomic.so, but Ubuntu uses gcc version specific dir
 		#flag -L/usr/lib/gcc/x86_64-linux-gnu/6 -L/usr/lib/gcc/x86_64-linux-gnu/7 -L/usr/lib/gcc/x86_64-linux-gnu/8 -L/usr/lib/gcc/x86_64-linux-gnu/9 -latomic
 	}
 }
-
 #include <atomic.h>
-
 // add_u64 adds provided delta as an atomic operation
 pub fn add_u64(ptr &u64, delta int) bool {
 	res := C.atomic_fetch_add_u64(ptr, delta)
@@ -51,7 +48,6 @@ pub fn sub_i64(ptr &i64, delta int) bool {
 }
 
 // atomic store/load operations have to be used when there might be another concurrent access
-
 // atomicall set a value
 pub fn store_u64(ptr &u64, val u64) {
 	C.atomic_store_u64(ptr, val)

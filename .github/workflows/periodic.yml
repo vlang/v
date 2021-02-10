@@ -19,7 +19,7 @@ jobs:
     - name: Symlink V
       run:  sudo ./v symlink
     - name: Run network tests
-      run: ./v -d network -silent test-fixed
+      run: ./v -d network -silent test-self
 
 
   network-tests-macos:
@@ -38,7 +38,7 @@ jobs:
     - name: Ensure thirdparty/cJSON/cJSON.o is compiled, before running tests.
       run:  ./v examples/json.v
     - name: Run network tests
-      run: ./v -d network -silent test-fixed
+      run: ./v -d network -silent test-self
 
 
   network-windows-msvc:
@@ -55,4 +55,4 @@ jobs:
         echo $VFLAGS
         .\make.bat -msvc
     - name: Run network tests
-      run: .\v.exe -d network -silent test-fixed
+      run: .\v.exe -d network -silent test-self

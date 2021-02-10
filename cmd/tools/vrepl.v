@@ -1,20 +1,21 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module main
 
 import os
 import term
+import rand
 import readline
 import os.cmdline
 import v.util
 
 struct Repl {
 mut:
-	readline       readline.Readline
-	indent         int // indentation level
-	in_func        bool // are we inside a new custom user function
-	line           string // the current line entered by the user
+	readline readline.Readline
+	indent   int    // indentation level
+	in_func  bool   // are we inside a new custom user function
+	line     string // the current line entered by the user
 	//
 	modules        []string // all the import modules
 	includes       []string // all the #include statements
@@ -24,9 +25,9 @@ mut:
 	temp_lines     []string // all the temporary expressions/printlns
 }
 
-const (
-	is_stdin_a_pipe = (is_atty(0) == 0)
-)
+const is_stdin_a_pipe = (is_atty(0) == 0)
+
+const vexe = os.getenv('VEXE')
 
 fn new_repl() Repl {
 	return Repl{
@@ -109,24 +110,9 @@ fn run_repl(workdir string, vrepl_prefix string) {
 		if !is_stdin_a_pipe {
 			println('')
 		}
-		os.rm(file)
-		os.rm(temp_file)
-		$if windows {
-			os.rm(file[..file.len - 2] + '.exe')
-			os.rm(temp_file[..temp_file.len - 2] + '.exe')
-			$if msvc {
-				os.rm(file[..file.len - 2] + '.ilk')
-				os.rm(file[..file.len - 2] + '.pdb')
-				os.rm(temp_file[..temp_file.len - 2] + '.ilk')
-				os.rm(temp_file[..temp_file.len - 2] + '.pdb')
-			}
-		} $else {
-			os.rm(file[..file.len - 2])
-			os.rm(temp_file[..temp_file.len - 2])
-		}
+		cleanup_files([file, temp_file])
 	}
 	mut r := new_repl()
-	vexe := os.getenv('VEXE')
 	for {
 		if r.indent == 0 {
 			prompt = '>>> '
@@ -198,17 +184,14 @@ fn run_repl(workdir string, vrepl_prefix string) {
 		}
 		if r.line.starts_with('print') {
 			source_code := r.current_source_code(false) + '\n$r.line\n'
-			os.write_file(file, source_code)
-			s := os.exec('"$vexe" -repl run "$file"') or {
-				rerror(err)
-				return
-			}
+			os.write_file(file, source_code) or { panic(err) }
+			s := repl_run_vfile(file) or { return }
 			print_output(s)
 		} else {
 			mut temp_line := r.line
 			mut temp_flag := false
 			func_call := r.function_call(r.line)
-			filter_line := r.line.replace(r.line.find_between("\'", "\'"), '').replace(r.line.find_between('"',
+			filter_line := r.line.replace(r.line.find_between("'", "'"), '').replace(r.line.find_between('"',
 				'"'), '')
 			possible_statement_patterns := [
 				'=',
@@ -268,11 +251,8 @@ fn run_repl(workdir string, vrepl_prefix string) {
 				}
 				temp_source_code = r.current_source_code(true) + '\n$temp_line\n'
 			}
-			os.write_file(temp_file, temp_source_code)
-			s := os.exec('"$vexe" -repl run "$temp_file"') or {
-				rerror(err)
-				return
-			}
+			os.write_file(temp_file, temp_source_code) or { panic(err) }
+			s := repl_run_vfile(temp_file) or { return }
 			if !func_call && s.exit_code == 0 && !temp_flag {
 				for r.temp_lines.len > 0 {
 					if !r.temp_lines[0].starts_with('print') {
@@ -327,9 +307,8 @@ fn main() {
 	// so that the repl can be launched in parallel by several different
 	// threads by the REPL test runner.
 	args := cmdline.options_after(os.args, ['repl'])
-	replfolder := os.real_path(cmdline.option(args, '-replfolder', '.'))
-	replprefix := cmdline.option(args, '-replprefix', 'noprefix.')
-	os.chdir(replfolder)
+	replfolder := os.real_path(cmdline.option(args, '-replfolder', os.temp_dir()))
+	replprefix := cmdline.option(args, '-replprefix', 'noprefix.${rand.ulid()}.')
 	if !os.exists(os.getenv('VEXE')) {
 		println('Usage:')
 		println('  VEXE=vexepath vrepl\n')
@@ -354,4 +333,30 @@ fn (mut r Repl) get_one_line(prompt string) ?string {
 	}
 	rline := r.readline.read_line(prompt) or { return none }
 	return rline
+}
+
+fn cleanup_files(files []string) {
+	for file in files {
+		os.rm(file) or { }
+		$if windows {
+			os.rm(file[..file.len - 2] + '.exe') or { }
+			$if msvc {
+				os.rm(file[..file.len - 2] + '.ilk') or { }
+				os.rm(file[..file.len - 2] + '.pdb') or { }
+			}
+		} $else {
+			os.rm(file[..file.len - 2]) or { }
+		}
+	}
+}
+
+fn repl_run_vfile(file string) ?os.Result {
+	$if trace_repl_temp_files ? {
+		eprintln('>> repl_run_vfile file: $file')
+	}
+	s := os.exec('"$vexe" -repl run "$file"') or {
+		rerror(err)
+		return error(err)
+	}
+	return s
 }

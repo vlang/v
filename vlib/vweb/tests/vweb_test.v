@@ -20,12 +20,14 @@ const (
 fn testsuite_begin() {
 	os.chdir(vroot)
 	if os.exists(serverexe) {
-		os.rm(serverexe)
+		os.rm(serverexe) or { }
 	}
 }
 
 fn test_a_simple_vweb_app_can_be_compiled() {
-	did_server_compile := os.system('$vexe -g -o $serverexe vlib/vweb/tests/vweb_test_server.v')
+	// did_server_compile := os.system('$vexe -g -o $serverexe vlib/vweb/tests/vweb_test_server.v')
+	// TODO: find out why it does not compile with -usecache and -g
+	did_server_compile := os.system('$vexe -o $serverexe vlib/vweb/tests/vweb_test_server.v')
 	assert did_server_compile == 0
 	assert os.exists(serverexe)
 }
@@ -104,6 +106,13 @@ fn test_http_client_index() {
 	assert_common_http_headers(x)
 	assert x.headers['Content-Type'] == 'text/plain'
 	assert x.text == 'Welcome to VWeb'
+}
+
+fn test_http_client_chunk_transfer() {
+	x := http.get('http://127.0.0.1:$sport/chunk') or { panic(err) }
+	assert_common_http_headers(x)
+	assert x.headers['Transfer-Encoding'] == 'chunked'
+	assert x.text == 'Lorem ipsum dolor sit amet, consetetur sadipscing'
 }
 
 fn test_http_client_404() {
@@ -199,7 +208,7 @@ fn testsuite_end() {
 	// It sends a request to the server to shutdown.
 	x := http.fetch('http://127.0.0.1:$sport/shutdown', 
 		method: .get
-		cookies: {
+		cookies: map{
 			'skey': 'superman'
 		}
 	) or {
@@ -216,12 +225,12 @@ struct SimpleTcpClientConfig {
 	host    string = 'static.dev'
 	path    string = '/'
 	agent   string = 'v/net.tcp.v'
-	headers string
+	headers string = '\r\n'
 	content string
 }
 
 fn simple_tcp_client(config SimpleTcpClientConfig) ?string {
-	mut client := net.TcpConn{}
+	mut client := &net.TcpConn(0)
 	mut tries := 0
 	for tries < config.retries {
 		tries++
@@ -237,7 +246,7 @@ fn simple_tcp_client(config SimpleTcpClientConfig) ?string {
 	client.set_read_timeout(tcp_r_timeout)
 	client.set_write_timeout(tcp_w_timeout)
 	defer {
-		client.close()
+		client.close() or { }
 	}
 	message := 'GET $config.path HTTP/1.1
 Host: $config.host

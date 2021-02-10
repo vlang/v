@@ -139,7 +139,7 @@ fn process_in_thread(mut pool PoolProcessor, task_id int) {
 		if pool.ntask >= ilen {
 			break
 		}
-		pool.ntask_mtx.m_lock()
+		pool.ntask_mtx.@lock()
 		idx = pool.ntask
 		pool.ntask++
 		pool.ntask_mtx.unlock()

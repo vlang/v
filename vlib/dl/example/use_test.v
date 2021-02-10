@@ -22,7 +22,7 @@ fn test_vexe() {
 
 fn test_can_compile_library() {
 	os.chdir(cfolder)
-	os.rm(library_file_name)
+	os.rm(library_file_name) or { }
 	res := v_compile('-d no_backtrace -o library -shared library.v')
 	eprintln('res: $res')
 	assert os.is_file(library_file_name)
@@ -34,7 +34,7 @@ fn test_can_compile_main_program() {
 	result := v_compile('run use.v')
 	eprintln('result: $result')
 	assert result.output.contains('res: 4')
-	os.rm(library_file_name)
+	os.rm(library_file_name) or { }
 }
 
 fn v_compile(vopts string) os.Result {
@@ -44,7 +44,7 @@ fn v_compile(vopts string) os.Result {
 	eprintln('>>> v_compile res: $res')
 	// assert res.exit_code == 0
 	$if !windows {
-		os.system('dir $cfolder -a -l')
+		os.system('ls -al $cfolder')
 	} $else {
 		os.system('dir $cfolder /a')
 	}

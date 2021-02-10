@@ -39,16 +39,18 @@ const (
 			<header class="doc-nav hidden">
 				<div class="heading-container">
 					<div class="heading">
-						<input type="text" id="search" placeholder="Search... (beta)" autocomplete="off">
-						<div class="module">{{ head_name }}</div>
-						<div class="toggle-version-container">
-							<span>{{ version }}</span>
-							<div id="dark-mode-toggle" role="switch" aria-checked="false" aria-label="Toggle dark mode">{{ light_icon }}{{ dark_icon }}</div>
+						<div class="info">
+							<div class="module">{{ head_name }}</div>
+							<div class="toggle-version-container">
+								<span>{{ version }}</span>
+								<div id="dark-mode-toggle" role="switch" aria-checked="false" aria-label="Toggle dark mode">{{ light_icon }}{{ dark_icon }}</div>
+							</div>
+							{{ menu_icon }}
 						</div>
-						{{ menu_icon }}
+						<input type="text" id="search" placeholder="Search... (beta)" autocomplete="off">
 					</div>
 				</div>
-				<nav class="search"></nav>
+				<nav class="search hidden"></nav>
 				<nav class="content hidden">
 					<ul>
 						{{ toc_links }}
@@ -124,11 +126,11 @@ fn (vd VDoc) render_search_index(out Output) {
 	js_search_index.writeln('];')
 	js_search_data.writeln('];')
 	out_file_path := os.join_path(out.path, 'search_index.js')
-	os.write_file(out_file_path, js_search_index.str() + js_search_data.str())
+	os.write_file(out_file_path, js_search_index.str() + js_search_data.str()) or { panic(err) }
 }
 
 fn (mut vd VDoc) render_static_html(out Output) {
-	vd.assets = {
+	vd.assets = map{
 		'doc_css':       vd.get_resource(css_js_assets[0], out)
 		'normalize_css': vd.get_resource(css_js_assets[1], out)
 		'doc_js':        vd.get_resource(css_js_assets[2], out)
@@ -160,7 +162,7 @@ fn (vd VDoc) get_resource(name string, out Output) string {
 		output_path := os.join_path(out.path, name)
 		if !os.exists(output_path) {
 			println('Generating $out.typ in "$output_path"')
-			os.write_file(output_path, res)
+			os.write_file(output_path, res) or { panic(err) }
 		}
 		return name
 	}
@@ -199,11 +201,7 @@ fn (mut vd VDoc) create_search_results(mod string, dn doc.DocNode, out Output) {
 	dn_description := trim_doc_node_description(comments)
 	vd.search_index << dn.name
 	vd.search_data << SearchResult{
-		prefix: if dn.parent_name != '' {
-			'$dn.kind ($dn.parent_name)'
-		} else {
-			'$dn.kind '
-		}
+		prefix: if dn.parent_name != '' { '$dn.kind ($dn.parent_name)' } else { '$dn.kind ' }
 		description: dn_description
 		badge: mod
 		link: vd.get_file_name(mod, out) + '#' + get_node_id(dn)
@@ -264,8 +262,8 @@ fn (vd VDoc) gen_html(d doc.Doc) string {
 			names := dc.head.name.split('.')
 			submod_prefix = if names.len > 1 { names[0] } else { dc.head.name }
 			mut href_name := './${dc.head.name}.html'
-			if (cfg.is_vlib && dc.head.name == 'builtin' && !cfg.include_readme) ||
-				dc.head.name == 'README' {
+			if (cfg.is_vlib && dc.head.name == 'builtin' && !cfg.include_readme)
+				|| dc.head.name == 'README' {
 				href_name = './index.html'
 			} else if submod_prefix !in vd.docs.map(it.head.name) {
 				href_name = '#'
@@ -300,17 +298,19 @@ fn (vd VDoc) gen_html(d doc.Doc) string {
 		header_name).replace('{{ version }}', version).replace('{{ light_icon }}', vd.assets['light_icon']).replace('{{ dark_icon }}',
 		vd.assets['dark_icon']).replace('{{ menu_icon }}', vd.assets['menu_icon']).replace('{{ head_assets }}',
 		if cfg.inline_assets {
-		'\n${tabs[0]}<style>' + vd.assets['doc_css'] + '</style>\n${tabs[0]}<style>' + vd.assets['normalize_css'] +
-			'</style>\n${tabs[0]}<script>' + vd.assets['dark_mode_js'] + '</script>'
+		'\n${tabs[0]}<style>' + vd.assets['doc_css'] + '</style>\n${tabs[0]}<style>' +
+			vd.assets['normalize_css'] + '</style>\n${tabs[0]}<script>' +
+			vd.assets['dark_mode_js'] + '</script>'
 	} else {
-		'\n${tabs[0]}<link rel="stylesheet" href="' + vd.assets['doc_css'] + '" />\n${tabs[0]}<link rel="stylesheet" href="' +
-			vd.assets['normalize_css'] + '" />\n${tabs[0]}<script src="' + vd.assets['dark_mode_js'] + '"></script>'
+		'\n${tabs[0]}<link rel="stylesheet" href="' + vd.assets['doc_css'] +
+			'" />\n${tabs[0]}<link rel="stylesheet" href="' + vd.assets['normalize_css'] +
+			'" />\n${tabs[0]}<script src="' + vd.assets['dark_mode_js'] + '"></script>'
 	}).replace('{{ toc_links }}', if cfg.is_multi || vd.docs.len > 1 {
 		modules_toc_str
 	} else {
 		symbols_toc_str
-	}).replace('{{ contents }}', contents.str()).replace('{{ right_content }}', if cfg.is_multi &&
-		vd.docs.len > 1 && d.head.name != 'README' {
+	}).replace('{{ contents }}', contents.str()).replace('{{ right_content }}', if cfg.is_multi
+		&& vd.docs.len > 1 && d.head.name != 'README' {
 		'<div class="doc-toc"><ul>' + symbols_toc_str + '</ul></div>'
 	} else {
 		''
@@ -353,11 +353,7 @@ fn html_highlight(code string, tb &table.Table) string {
 		} else {
 			tok.lit
 		}
-		return if typ in [.unone, .name] {
-			lit
-		} else {
-			'<span class="token $typ">$lit</span>'
-		}
+		return if typ in [.unone, .name] { lit } else { '<span class="token $typ">$lit</span>' }
 	}
 	mut s := scanner.new_scanner(code, .parse_comments, &pref.Preferences{})
 	mut tok := s.scan()
@@ -400,8 +396,8 @@ fn html_highlight(code string, tb &table.Table) string {
 				else {
 					if token.is_key(tok.lit) || token.is_decl(tok.kind) {
 						tok_typ = .keyword
-					} else if tok.kind == .decl_assign || tok.kind.is_assign() || tok.is_unary() ||
-						tok.kind.is_relational() || tok.kind.is_infix() {
+					} else if tok.kind == .decl_assign || tok.kind.is_assign() || tok.is_unary()
+						|| tok.kind.is_relational() || tok.kind.is_infix() {
 						tok_typ = .operator
 					}
 				}

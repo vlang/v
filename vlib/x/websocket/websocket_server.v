@@ -9,8 +9,8 @@ import rand
 // Server represents a websocket server connection
 pub struct Server {
 mut:
-	logger                  &log.Log              // logger used to log
-	ls                      net.TcpListener       // listener used to get incoming connection to socket
+	logger                  &log.Log // logger used to log
+	ls                      &net.TcpListener      // listener used to get incoming connection to socket
 	accept_client_callbacks []AcceptClientFn      // accept client callback functions
 	message_callbacks       []MessageEventHandler // new message callback functions
 	close_callbacks         []CloseEventHandler   // close message callback functions
@@ -36,6 +36,7 @@ pub mut:
 // new_server instance a new websocket server on provided port and route
 pub fn new_server(port int, route string) &Server {
 	return &Server{
+		ls: 0
 		port: port
 		logger: &log.Log{
 			level: .info
@@ -72,8 +73,8 @@ fn (mut s Server) handle_ping() {
 	mut clients_to_remove := []string{}
 	for s.state == .open {
 		time.sleep(s.ping_interval)
-		for _, cli in s.clients {
-			mut c := cli
+		for i, _ in s.clients {
+			mut c := s.clients[i]
 			if c.client.state == .open {
 				c.client.ping() or {
 					s.logger.debug('server-> error sending ping to client')

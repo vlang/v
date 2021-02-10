@@ -40,7 +40,7 @@ fn test_ulids_generated_in_the_same_millisecond_have_the_same_prefix() {
 	t := time.utc().unix_time_milli()
 	mut ulid1 := ''
 	mut ulid2 := ''
-	mut ulid3 := ''    
+	mut ulid3 := ''
 	ulid1 = rand.ulid_at_millisecond(t)
 	ulid2 = rand.ulid_at_millisecond(t)
 	ulid3 = rand.ulid_at_millisecond(t)

@@ -164,12 +164,22 @@ fn test_assoc_with_vars() {
 	def2 := Def{
 		a: 12
 	}
-	merged := {
-		def2 |
+	mut merged := Def{
+		...def2
 		a: 42
 	}
 	assert merged.a == 42
 	assert merged.b == 7
+	merged = {...def2, b: 9}
+	assert merged == Def{12, 9}
+
+	def3 := &Def{ 100, 200 }
+	merged1 := Def{...(*def3)}
+	merged2 := &Def{...(*def3)}
+	assert merged1.a == 100
+	assert merged1.b == 200
+	assert merged2.a == 100
+	assert merged2.b == 200
 }
 
 const (
@@ -181,7 +191,7 @@ const (
 fn test_assoc_with_constants() {
 	println(1)
 	/*
-	QTODO
+	TODO:
 	merged := { const_def | a: 42 }
 	assert merged.a == 42
 	assert merged.b == 7
@@ -231,6 +241,7 @@ fn test_fixed_field() {
 }
 */
 struct Config {
+mut:
 	n   int
 	def int = 10
 }
@@ -240,6 +251,11 @@ fn foo_config(def int, c Config) {
 }
 fn bar_config(c Config, def int) {
 	assert c.def == def
+}
+fn mut_bar_config(mut c Config, def int) &Config {
+	c.n = c.def
+	assert c.n == def
+	return c
 }
 
 fn foo_user(u User) {}
@@ -255,6 +271,10 @@ fn test_struct_literal_args() {
 
 	bar_config({}, 10)
 	bar_config({def:4}, 4)
+
+	c := mut_bar_config(mut {def: 10}, 10)
+	assert c.n == 10
+	assert c.def == 10
 
 	foo_user({
 		name: 'Peter'

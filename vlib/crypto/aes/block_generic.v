@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 // This implementation is derived from the golang implementation
@@ -41,9 +41,9 @@ import encoding.binary
 fn encrypt_block_generic(xk []u32, mut dst []byte, src []byte) {
 	_ = src[15] // early bounds check
 	mut s0 := binary.big_endian_u32(src[..4])
-	mut s1 := binary.big_endian_u32(src.slice(4, 8))
-	mut s2 := binary.big_endian_u32(src.slice(8, 12))
-	mut s3 := binary.big_endian_u32(src.slice(12, 16))
+	mut s1 := binary.big_endian_u32(src[4..8])
+	mut s2 := binary.big_endian_u32(src[8..12])
+	mut s3 := binary.big_endian_u32(src[12..16])
 	// First round just XORs input with key.
 	s0 ^= xk[0]
 	s1 ^= xk[1]
@@ -83,18 +83,18 @@ fn encrypt_block_generic(xk []u32, mut dst []byte, src []byte) {
 	s3 ^= xk[k + 3]
 	_ := dst[15] // early bounds check
 	binary.big_endian_put_u32(mut (*dst)[0..4], s0)
-	binary.big_endian_put_u32(mut (*dst).slice(4, 8), s1)
-	binary.big_endian_put_u32(mut (*dst).slice(8, 12), s2)
-	binary.big_endian_put_u32(mut (*dst).slice(12, 16), s3)
+	binary.big_endian_put_u32(mut (*dst)[4..8], s1)
+	binary.big_endian_put_u32(mut (*dst)[8..12], s2)
+	binary.big_endian_put_u32(mut (*dst)[12..16], s3)
 }
 
 // Decrypt one block from src into dst, using the expanded key xk.
 fn decrypt_block_generic(xk []u32, mut dst []byte, src []byte) {
 	_ = src[15] // early bounds check
 	mut s0 := binary.big_endian_u32(src[0..4])
-	mut s1 := binary.big_endian_u32(src.slice(4, 8))
-	mut s2 := binary.big_endian_u32(src.slice(8, 12))
-	mut s3 := binary.big_endian_u32(src.slice(12, 16))
+	mut s1 := binary.big_endian_u32(src[4..8])
+	mut s2 := binary.big_endian_u32(src[8..12])
+	mut s3 := binary.big_endian_u32(src[12..16])
 	// First round just XORs input with key.
 	s0 ^= xk[0]
 	s1 ^= xk[1]
@@ -134,9 +134,9 @@ fn decrypt_block_generic(xk []u32, mut dst []byte, src []byte) {
 	s3 ^= xk[k + 3]
 	_ = dst[15] // early bounds check
 	binary.big_endian_put_u32(mut (*dst)[..4], s0)
-	binary.big_endian_put_u32(mut (*dst).slice(4, 8), s1)
-	binary.big_endian_put_u32(mut (*dst).slice(8, 12), s2)
-	binary.big_endian_put_u32(mut (*dst).slice(12, 16), s3)
+	binary.big_endian_put_u32(mut (*dst)[4..8], s1)
+	binary.big_endian_put_u32(mut (*dst)[8..12], s2)
+	binary.big_endian_put_u32(mut (*dst)[12..16], s3)
 }
 
 // Apply s_box0 to each byte in w.

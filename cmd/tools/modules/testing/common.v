@@ -10,6 +10,8 @@ import v.util.vtest
 
 const github_job = os.getenv('GITHUB_JOB')
 
+const show_start = os.getenv('VTEST_SHOW_START') == '1'
+
 pub struct TestSession {
 pub mut:
 	files         []string
@@ -33,6 +35,7 @@ enum MessageKind {
 	ok
 	fail
 	skip
+	info
 	sentinel
 }
 
@@ -62,7 +65,9 @@ pub fn (mut ts TestSession) print_messages() {
 			ts.nprint_ended <- 0
 			return
 		}
-		ts.nmessage_idx++
+		if rmessage.kind != .info {
+			ts.nmessage_idx++
+		}
 		msg := rmessage.message.replace_each([
 			'TMP1',
 			'${ts.nmessage_idx:1d}',
@@ -116,11 +121,11 @@ pub fn new_test_session(_vargs string) TestSession {
 	}
 	$if windows {
 		skip_files << 'examples/database/mysql.v'
-		skip_files << 'examples/x/websocket/ping.v' // requires OpenSSL
-		skip_files << 'examples/x/websocket/client-server/client.v' // requires OpenSSL
-		skip_files << 'examples/x/websocket/client-server/server.v' // requires OpenSSL
+		skip_files << 'examples/websocket/ping.v' // requires OpenSSL
+		skip_files << 'examples/websocket/client-server/client.v' // requires OpenSSL
+		skip_files << 'examples/websocket/client-server/server.v' // requires OpenSSL
 	}
-	if github_job != 'ubuntu-tcc' {
+	if testing.github_job != 'ubuntu-tcc' {
 		skip_files << 'examples/wkhtmltopdf.v' // needs installation of wkhtmltopdf from https://github.com/wkhtmltopdf/packaging/releases
 		// the ttf_test.v is not interactive, but needs X11 headers to be installed, which is done only on ubuntu-tcc for now
 		skip_files << 'vlib/x/ttf/ttf_test.v'
@@ -129,6 +134,9 @@ pub fn new_test_session(_vargs string) TestSession {
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
 	new_vtmp_dir := setup_new_vtmp_folder()
+	if term.can_show_color_on_stderr() {
+		os.setenv('VCOLORS', 'always', true)
+	}
 	return TestSession{
 		vexe: vexe
 		vroot: vroot
@@ -202,7 +210,7 @@ pub fn (mut ts TestSession) test() {
 	// cleanup generated .tmp.c files after successfull tests:
 	if ts.benchmark.nfail == 0 {
 		if ts.rm_binaries {
-			os.rmdir_all(ts.vtmp_dir)
+			os.rmdir_all(ts.vtmp_dir) or { panic(err) }
 		}
 	}
 }
@@ -233,7 +241,7 @@ fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 	generated_binary_fpath := os.join_path(tmpd, generated_binary_fname)
 	if os.exists(generated_binary_fpath) {
 		if ts.rm_binaries {
-			os.rm(generated_binary_fpath)
+			os.rm(generated_binary_fpath) or { panic(err) }
 		}
 	}
 	mut cmd_options := [ts.vargs]
@@ -262,6 +270,9 @@ fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 			return sync.no_result
 		}
 	} else {
+		if testing.show_start {
+			ts.append_message(.info, '                 starting $relative_file ...')
+		}
 		r := os.exec(cmd) or {
 			ts.failed = true
 			ts.benchmark.fail()
@@ -273,7 +284,8 @@ fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 			ts.failed = true
 			ts.benchmark.fail()
 			tls_bench.fail()
-			ts.append_message(.fail, tls_bench.step_message_fail('$relative_file\n$r.output\n'))
+			ending_newline := if r.output.ends_with('\n') { '\n' } else { '' }
+			ts.append_message(.fail, tls_bench.step_message_fail('$relative_file\n$r.output.trim_space()$ending_newline'))
 		} else {
 			ts.benchmark.ok()
 			tls_bench.ok()
@@ -282,7 +294,7 @@ fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 	}
 	if os.exists(generated_binary_fpath) {
 		if ts.rm_binaries {
-			os.rm(generated_binary_fpath)
+			os.rm(generated_binary_fpath) or { panic(err) }
 		}
 	}
 	return sync.no_result
@@ -327,8 +339,9 @@ pub fn prepare_test_session(zargs string, folder string, oskipped []string, main
 			continue
 		}
 		$if windows {
-			// skip pico example on windows
-			if f.ends_with('examples\\pico\\pico.v') {
+			// skip pico and process/command examples on windows
+			if f.ends_with('examples\\pico\\pico.v')
+				|| f.ends_with('examples\\process\\command.v') {
 				continue
 			}
 		}
@@ -410,7 +423,7 @@ pub fn header(msg string) {
 pub fn setup_new_vtmp_folder() string {
 	now := time.sys_mono_now()
 	new_vtmp_dir := os.join_path(os.temp_dir(), 'v', 'test_session_$now')
-	os.mkdir_all(new_vtmp_dir)
+	os.mkdir_all(new_vtmp_dir) or { panic(err) }
 	os.setenv('VTMP', new_vtmp_dir, true)
 	return new_vtmp_dir
 }

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module vweb
@@ -19,7 +19,7 @@ pub const (
 	headers_close           = '$header_server$header_connection_close\r\n'
 	http_404                = 'HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 13\r\n${headers_close}404 Not Found'
 	http_500                = 'HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\n${headers_close}500 Internal Server Error'
-	mime_types              = {
+	mime_types              = map{
 		'.css':  'text/css; charset=utf-8'
 		'.gif':  'image/gif'
 		'.htm':  'text/html; charset=utf-8'
@@ -44,18 +44,28 @@ mut:
 	content_type string = 'text/plain'
 	status       string = '200 OK'
 pub:
-	req  http.Request
-	conn net.TcpConn
+	req http.Request
 	// TODO Response
 pub mut:
+	conn              &net.TcpConn
 	static_files      map[string]string
 	static_mime_types map[string]string
 	form              map[string]string
 	query             map[string]string
+	files             map[string][]FileData
 	headers           string // response headers
 	done              bool
 	page_gen_start    i64
 	form_error        string
+	chunked_transfer  bool
+	max_chunk_len     int = 20
+}
+
+struct FileData {
+pub:
+	filename     string
+	content_type string
+	data         string
 }
 
 // declaring init_once in your App struct is optional
@@ -63,6 +73,9 @@ pub fn (ctx Context) init_once() {}
 
 // declaring init in your App struct is optional
 pub fn (ctx Context) init() {}
+
+// declaring uninit in your App struct is optional
+pub fn (ctx Context) uninit() {}
 
 pub struct Cookie {
 	name      string
@@ -88,15 +101,40 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 	sb.write('HTTP/1.1 $ctx.status')
 	sb.write('\r\nContent-Type: $mimetype')
 	sb.write('\r\nContent-Length: $res.len')
+	if ctx.chunked_transfer {
+		sb.write('\r\nTransfer-Encoding: chunked')
+	}
 	sb.write(ctx.headers)
 	sb.write('\r\n')
-	sb.write(headers_close)
-	sb.write(res)
+	sb.write(vweb.headers_close)
+	if ctx.chunked_transfer {
+		mut i := 0
+		mut len := res.len
+		for {
+			if len <= 0 {
+				break
+			}
+			mut chunk := ''
+			if len > ctx.max_chunk_len {
+				chunk = res[i..i + ctx.max_chunk_len]
+				i += ctx.max_chunk_len
+				len -= ctx.max_chunk_len
+			} else {
+				chunk = res[i..]
+				len = 0
+			}
+			sb.write(chunk.len.hex())
+			sb.write('\r\n$chunk\r\n')
+		}
+		sb.write('0\r\n\r\n') // End of chunks
+	} else {
+		sb.write(res)
+	}
 	s := sb.str()
 	defer {
 		s.free()
 	}
-	send_string(ctx.conn, s) or { return false }
+	send_string(mut ctx.conn, s) or { return false }
 	return true
 }
 
@@ -120,12 +158,23 @@ pub fn (mut ctx Context) ok(s string) Result {
 	return Result{}
 }
 
+pub fn (mut ctx Context) server_error(ecode int) Result {
+	$if debug {
+		eprintln('> ctx.server_error ecode: $ecode')
+	}
+	if ctx.done {
+		return Result{}
+	}
+	send_string(mut ctx.conn, vweb.http_500) or { }
+	return Result{}
+}
+
 pub fn (mut ctx Context) redirect(url string) Result {
 	if ctx.done {
 		return Result{}
 	}
 	ctx.done = true
-	send_string(ctx.conn, 'HTTP/1.1 302 Found\r\nLocation: $url$ctx.headers\r\n$headers_close') or {
+	send_string(mut ctx.conn, 'HTTP/1.1 302 Found\r\nLocation: $url$ctx.headers\r\n$vweb.headers_close') or {
 		return Result{}
 	}
 	return Result{}
@@ -136,8 +185,13 @@ pub fn (mut ctx Context) not_found() Result {
 		return Result{}
 	}
 	ctx.done = true
-	send_string(ctx.conn, http_404) or { }
+	send_string(mut ctx.conn, vweb.http_404) or { }
 	return Result{}
+}
+
+pub fn (mut ctx Context) enable_chunked_transfer(max_chunk_len int) {
+	ctx.chunked_transfer = true
+	ctx.max_chunk_len = max_chunk_len
 }
 
 pub fn (mut ctx Context) set_cookie(cookie Cookie) {
@@ -174,8 +228,11 @@ pub fn (ctx &Context) get_cookie(key string) ?string { // TODO refactor
 	cookie_header = ' ' + cookie_header
 	// println('cookie_header="$cookie_header"')
 	// println(ctx.req.headers)
-	cookie := if cookie_header.contains(';') { cookie_header.find_between(' $key=', ';') } else { cookie_header.find_between(' $key=',
-			'\r') }
+	cookie := if cookie_header.contains(';') {
+		cookie_header.find_between(' $key=', ';')
+	} else {
+		cookie_header.find_between(' $key=', '\r')
+	}
 	if cookie != '' {
 		return cookie.trim_space()
 	}
@@ -209,9 +266,11 @@ pub fn run<T>(port int) {
 }
 
 pub fn run_app<T>(mut app T, port int) {
-	println('Running a Vweb app on http://localhost:$port')
-	l := net.listen_tcp(port) or { panic('failed to listen') }
-	app.Context = Context{}
+	mut l := net.listen_tcp(port) or { panic('failed to listen') }
+	println('[Vweb] Running app on http://localhost:$port')
+	app.Context = Context{
+		conn: 0
+	}
 	app.init_once()
 	$for method in T.methods {
 		$if method.return_type is Result {
@@ -221,7 +280,7 @@ pub fn run_app<T>(mut app T, port int) {
 	// app.reset()
 	for {
 		mut conn := l.accept() or { panic('accept() failed') }
-		handle_conn<T>(mut conn, mut app)
+		go handle_conn<T>(mut conn, mut app)
 		// app.vweb.page_gen_time = time.ticks() - t
 		// eprintln('handle conn() took ${time.ticks()-t}ms')
 		// message := readall(conn)
@@ -247,7 +306,8 @@ pub fn run_app<T>(mut app T, port int) {
 }
 
 fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
-	conn.set_read_timeout(1 * time.second)
+	conn.set_read_timeout(30 * time.second)
+	conn.set_write_timeout(30 * time.second)
 	defer {
 		conn.close() or { }
 	}
@@ -257,11 +317,13 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	mut reader := io.new_buffered_reader(reader: io.make_reader(conn))
 	page_gen_start := time.ticks()
 	first_line := reader.read_line() or {
-		println('Failed first_line')
+		$if debug {
+			eprintln('Failed to read first_line') // show this only in debug mode, because it always would be shown after a chromium user visits the site
+		}
 		return
 	}
 	$if debug {
-		println('firstline="$first_line"')
+		eprintln('firstline="$first_line"')
 	}
 	// Parse the first line
 	// "GET / HTTP/1.1"
@@ -269,13 +331,16 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	vals := first_line.split(' ')
 	if vals.len < 2 {
 		println('no vals for http')
-		send_string(conn, http_500) or { }
+		send_string(mut conn, vweb.http_500) or { }
 		return
 	}
 	mut headers := []string{}
 	mut body := ''
 	mut in_headers := true
 	mut len := 0
+	// File receive stuff
+	mut ct := 'text/plain'
+	mut boundary := ''
 	// for line in lines[1..] {
 	for lindex in 0 .. 100 {
 		// println(j)
@@ -284,6 +349,14 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 			break
 		}
 		sline := strip(line)
+		// Parse content type
+		if sline.len >= 14 && sline[..14].to_lower() == 'content-type: ' {
+			args := sline[14..].split('; ')
+			ct = args[0]
+			if args.len > 1 {
+				boundary = args[1][9..]
+			}
+		}
 		if sline == '' {
 			// if in_headers {
 			// End of headers, no body => exit
@@ -295,14 +368,21 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 			// break
 			//}
 			// read body
+			mut read_body := []byte{len: len}
+			// read just the amount of content len if there is no content there is nothing more to read here
+			reader.read(mut read_body) or { println('reader.read failed with err: $err') }
+			body += read_body.bytestr()
+			break
+		}
+		if ct == 'multipart/form-data' && sline == boundary {
+			body += boundary
 			read_body := io.read_all(reader: reader) or { []byte{} }
 			body += read_body.bytestr()
 			break
 		}
 		if in_headers {
-			// println(sline)
 			headers << sline
-			if sline.starts_with('Content-Length') {
+			if sline.to_lower().starts_with('content-length') {
 				len = sline.all_after(': ').int()
 				// println('GOT CL=$len')
 			}
@@ -332,8 +412,12 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 		page_gen_start: page_gen_start
 	}
 	// }
-	if req.method in methods_with_form {
-		app.parse_form(req.data)
+	if req.method in vweb.methods_with_form {
+		if ct == 'multipart/form-data' {
+			app.parse_multipart_form(body, boundary)
+		} else {
+			app.parse_form(req.data)
+		}
 	}
 	if vals.len < 2 {
 		$if debug {
@@ -351,7 +435,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	mime_type := app.static_mime_types[static_file_name]
 	if static_file != '' && mime_type != '' {
 		data := os.read_file(static_file) or {
-			send_string(conn, http_404) or { }
+			send_string(mut conn, vweb.http_404) or { }
 			return
 		}
 		app.send_response_to_client(mime_type, data)
@@ -422,13 +506,14 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 					// since such methods have a priority.
 					// For example URL `/register` matches route `/:user`, but `fn register()`
 					// should be called first.
-					if (req_method_str == '' &&
-						url_words[0] == method.name && url_words.len == 1) ||
-						(req_method_str == req.method.str() && url_words[0] == method.name && url_words.len == 1) {
+					if (req_method_str == '' && url_words[0] == method.name && url_words.len == 1)
+						|| (req_method_str == req.method.str() && url_words[0] == method.name
+						&& url_words.len == 1) {
 						$if debug {
 							println('easy match method=$method.name')
 						}
 						app.$method(vars)
+
 						return
 					}
 				} else if method.name == 'index' {
@@ -437,6 +522,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 						println('route to .index()')
 					}
 					app.$method(vars)
+
 					return
 				}
 			} else {
@@ -445,11 +531,11 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 					for route_words_ in route_words_a {
 						// cannot move to line initialize line because of C error with map(it.filter(it != ''))
 						route_words := route_words_.filter(it != '')
-						if route_words.len == 1 && route_words[0] in methods_without_first {
+						if route_words.len == 1 && route_words[0] in vweb.methods_without_first {
 							req_method << route_words[0]
 						}
-						if url_words.len == route_words.len ||
-							(url_words.len >= route_words.len - 1 && route_words.len > 0 && route_words.last().ends_with('...')) {
+						if url_words.len == route_words.len || (url_words.len >= route_words.len - 1
+							&& route_words.len > 0 && route_words.last().ends_with('...')) {
 							if req_method.len > 0 {
 								if req_method_str.to_lower()[1..] !in req_method {
 									continue
@@ -494,6 +580,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 							if matching && !unknown {
 								// absolute router words like `/test/site`
 								app.$method(vars)
+
 								return
 							} else if matching && unknown {
 								// router words with paramter like `/:test/site`
@@ -509,7 +596,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	}
 	if action == '' {
 		// site not found
-		send_string(conn, http_404) or { }
+		send_string(mut conn, vweb.http_404) or { }
 		return
 	}
 	$for method in T.methods {
@@ -519,6 +606,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 				// call action method
 				if method.args.len == vars.len {
 					app.$method(vars)
+					return
 				} else {
 					eprintln('warning: uneven parameters count ($method.args.len) in `$method.name`, compared to the vweb route `$method.attrs` ($vars.len)')
 				}
@@ -528,7 +616,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 }
 
 pub fn (mut ctx Context) parse_form(s string) {
-	if ctx.req.method !in methods_with_form {
+	if ctx.req.method !in vweb.methods_with_form {
 		return
 	}
 	// pos := s.index('\r\n\r\n')
@@ -556,6 +644,55 @@ pub fn (mut ctx Context) parse_form(s string) {
 	// ...
 }
 
+[manualfree]
+pub fn (mut ctx Context) parse_multipart_form(s string, b string) {
+	if ctx.req.method !in vweb.methods_with_form {
+		return
+	}
+	a := s.split('$b')[1..]
+	fields := a[..a.len - 1]
+	for field in fields {
+		lines := field.split_into_lines()[1..]
+		mut l := 0
+		// Parse name
+		disposition_data := lines[l].split('; ')[1..]
+		l++
+		name := disposition_data[0][6..disposition_data[0].len - 1]
+		// Parse files
+		if disposition_data.len > 1 {
+			filename := disposition_data[1][10..disposition_data[1].len - 1]
+			ct := lines[l].split(': ')[1]
+			l++
+			if name !in ctx.files {
+				ctx.files[name] = []FileData{}
+			}
+			mut sb := strings.new_builder(field.len)
+			for i in l + 1 .. lines.len - 1 {
+				sb.writeln(lines[i])
+			}
+			ctx.files[name] << FileData{
+				filename: filename
+				content_type: ct
+				data: sb.str()
+			}
+			unsafe {
+				sb.free()
+			}
+			continue
+		}
+		mut sb := strings.new_builder(field.len)
+		for i in l + 1 .. lines.len - 1 {
+			sb.writeln(lines[i])
+		}
+		ctx.form[name] = sb.str()
+		unsafe {
+			disposition_data.free()
+			name.free()
+			sb.free()
+		}
+	}
+}
+
 fn (mut ctx Context) scan_static_directory(directory_path string, mount_path string) {
 	files := os.ls(directory_path) or { panic(err) }
 	if files.len > 0 {
@@ -567,8 +704,8 @@ fn (mut ctx Context) scan_static_directory(directory_path string, mount_path str
 				ext := os.file_ext(file)
 				// Rudimentary guard against adding files not in mime_types.
 				// Use serve_static directly to add non-standard mime types.
-				if ext in mime_types {
-					ctx.serve_static(mount_path + '/' + file, full_path, mime_types[ext])
+				if ext in vweb.mime_types {
+					ctx.serve_static(mount_path + '/' + file, full_path, vweb.mime_types[ext])
 				}
 			}
 		}
@@ -650,6 +787,6 @@ fn filter(s string) string {
 
 pub type RawHtml = string
 
-fn send_string(conn net.TcpConn, s string) ? {
+fn send_string(mut conn net.TcpConn, s string) ? {
 	conn.write(s.bytes()) ?
 }

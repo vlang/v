@@ -3,32 +3,28 @@ import term
 import v.util
 import v.util.vtest
 
+const turn_off_vcolors = os.setenv('VCOLORS', 'never', true)
+
 fn test_all() {
 	mut total_errors := 0
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
 	os.chdir(vroot)
-	diff_cmd := util.find_working_diff_command() or {
-		''
-	}
+	diff_cmd := util.find_working_diff_command() or { '' }
 	dir := 'vlib/v/tests/inout'
-	files := os.ls(dir) or {
-		panic(err)
-	}
+	files := os.ls(dir) or { panic(err) }
 	tests := files.filter(it.ends_with('.vv'))
 	if tests.len == 0 {
 		println('no compiler tests found')
 		assert false
 	}
-	paths := vtest.filter_vtest_only(tests, {
+	paths := vtest.filter_vtest_only(tests, 
 		basepath: dir
-	})
+	)
 	for path in paths {
 		print(path + ' ')
 		program := path
-		compilation := os.exec('$vexe -o test -cflags "-w" -cg $program') or {
-			panic(err)
-		}
+		compilation := os.exec('$vexe -o test -cflags "-w" -cg $program') or { panic(err) }
 		if compilation.exit_code != 0 {
 			panic('compilation failed: $compilation.output')
 		}
@@ -37,21 +33,19 @@ fn test_all() {
 			panic(err)
 		}
 		$if windows {
-			os.rm('./test.exe')
+			os.rm('./test.exe') or { }
 			$if msvc {
-				os.rm('./test.ilk')
-				os.rm('./test.pdb')
+				os.rm('./test.ilk') or { }
+				os.rm('./test.pdb') or { }
 			}
 		} $else {
-			os.rm('./test')
+			os.rm('./test') or { }
 		}
 		// println('============')
 		// println(res.output)
 		// println('============')
 		mut found := res.output.trim_right('\r\n').replace('\r\n', '\n')
-		mut expected := os.read_file(program.replace('.vv', '') + '.out') or {
-			panic(err)
-		}
+		mut expected := os.read_file(program.replace('.vv', '') + '.out') or { panic(err) }
 		expected = expected.trim_right('\r\n').replace('\r\n', '\n')
 		if expected.contains('================ V panic ================') {
 			// panic include backtraces and absolute file paths, so can't do char by char comparison

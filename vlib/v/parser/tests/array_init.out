@@ -1,0 +1,12 @@
+vlib/v/parser/tests/array_init.vv:2:7: warning: use `x := []Type{}` instead of `x := []Type`
+    1 | fn main() {
+    2 |     _ := []int
+      |          ~~~~~
+    3 |     _ := [1]int
+    4 | }
+vlib/v/parser/tests/array_init.vv:3:7: warning: use e.g. `x := [1]Type{}` instead of `x := [1]Type`
+    1 | fn main() {
+    2 |     _ := []int
+    3 |     _ := [1]int
+      |          ~~~~~~
+    4 | }

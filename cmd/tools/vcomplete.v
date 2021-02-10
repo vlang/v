@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 //
@@ -53,8 +53,7 @@ const (
 		'bin2v',
 		'test',
 		'test-fmt',
-		'test-compiler',
-		'test-fixed',
+		'test-self',
 		'test-cleancode',
 		'repl',
 		'complete',
@@ -283,7 +282,7 @@ compdef _v v
 			mut lines := []string{}
 			list := auto_complete_request(sub_args[1..])
 			for entry in list {
-				lines << "compadd -U -S \"\" -- '$entry';"
+				lines << 'compadd -U -S' + '""' + ' -- ' + "'$entry';"
 			}
 			println(lines.join('\n'))
 		}

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -20,6 +20,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		p.check_name() // from
 		typ = table.int_type
 	}
+	table_pos := p.tok.position()
 	table_type := p.parse_type() // `User`
 	mut where_expr := ast.Expr{}
 	has_where := p.tok.kind == .name && p.tok.lit == 'where'
@@ -77,7 +78,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 	}
 	if !query_one && !is_count {
 		// return an array
-		typ = table.new_type(p.table.find_or_register_array(table_type, 1))
+		typ = table.new_type(p.table.find_or_register_array(table_type))
 	} else if !is_count {
 		// return a single object
 		// TODO optional
@@ -89,7 +90,6 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		is_count: is_count
 		typ: typ
 		db_expr: db_expr
-		table_type: table_type
 		where_expr: where_expr
 		has_where: has_where
 		has_limit: has_limit
@@ -101,13 +101,17 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		has_desc: has_desc
 		is_array: !query_one
 		pos: pos
+		table_expr: ast.Type{
+			typ: table_type
+			pos: table_pos
+		}
 	}
 }
 
 // insert user into User
 // update User set nr_oders=nr_orders+1 where id == user_id
 fn (mut p Parser) sql_stmt() ast.SqlStmt {
-	pos := p.tok.position()
+	mut pos := p.tok.position()
 	p.inside_match = true
 	defer {
 		p.inside_match = false
@@ -127,18 +131,15 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 		kind = .update
 	}
 	mut inserted_var_name := ''
-	mut table_name := ''
+	mut table_type := table.Type(0)
 	if kind != .delete {
-		expr := p.expr(0)
-		match expr {
-			ast.Ident {
-				if kind == .insert {
-					inserted_var_name = expr.name
-				} else if kind == .update {
-					table_name = expr.name
-				}
-			}
-			else {
+		if kind == .update {
+			table_type = p.parse_type()
+		} else if kind == .insert {
+			expr := p.expr(0)
+			if expr is ast.Ident {
+				inserted_var_name = expr.name
+			} else {
 				p.error('can only insert variables')
 				return ast.SqlStmt{}
 			}
@@ -170,34 +171,29 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 		p.error('expecting `from`')
 		return ast.SqlStmt{}
 	}
-	mut table_type := table.Type(0)
+
+	mut table_pos := p.tok.position()
 	mut where_expr := ast.Expr{}
 	if kind == .insert {
-		table_type = p.parse_type() // `User`
-		sym := p.table.get_type_symbol(table_type)
-		// info := sym.info as table.Struct
-		// fields := info.fields.filter(it.typ in [table.string_type, table.int_type, table.bool_type])
-		table_name = sym.name
+		table_pos = p.tok.position()
+		table_type = p.parse_type()
 	} else if kind == .update {
-		if !p.pref.is_fmt {
-			// NB: in vfmt mode, v parses just a single file and table_name may not have been registered
-			idx := p.table.find_type_idx(p.prepend_mod(table_name))
-			table_type = table.new_type(idx)
-		}
 		p.check_sql_keyword('where') or { return ast.SqlStmt{} }
 		where_expr = p.expr(0)
 	} else if kind == .delete {
+		table_pos = p.tok.position()
 		table_type = p.parse_type()
-		sym := p.table.get_type_symbol(table_type)
-		table_name = sym.name
 		p.check_sql_keyword('where') or { return ast.SqlStmt{} }
 		where_expr = p.expr(0)
 	}
 	p.check(.rcbr)
+	pos.last_line = p.prev_tok.line_nr
 	return ast.SqlStmt{
 		db_expr: db_expr
-		table_name: table_name
-		table_type: table_type
+		table_expr: ast.Type{
+			typ: table_type
+			pos: table_pos
+		}
 		object_var_name: inserted_var_name
 		pos: pos
 		updated_columns: updated_columns

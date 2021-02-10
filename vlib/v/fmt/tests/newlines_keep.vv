@@ -1,0 +1,19 @@
+// Module with attribute
+[manualfree]
+module websocket
+
+fn main() {}
+
+// This should stay between both functions
+
+fn x() {}
+
+// doc comment above an attributed function
+[inline]
+fn y_with_attr() {
+}
+
+// doc comment above an attributed struct
+[typedef]
+struct Foo {
+}

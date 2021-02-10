@@ -66,7 +66,7 @@ enum BufferElemStat {
 
 struct Subscription {
 mut:
-	sem Semaphore
+	sem &Semaphore
 	prev &&Subscription
 	nxt &Subscription
 }
@@ -77,14 +77,14 @@ enum Direction {
 }
 
 struct Channel {
-	writesem           Semaphore // to wake thread that wanted to write, but buffer was full
-	readsem            Semaphore // to wake thread that wanted to read, but buffer was empty
-	writesem_im        Semaphore
-	readsem_im         Semaphore
 	ringbuf            byteptr // queue for buffered channels
 	statusbuf          byteptr // flags to synchronize write/read in ringbuf
 	objsize            u32
 mut: // atomic
+	writesem           Semaphore // to wake thread that wanted to write, but buffer was full
+	readsem            Semaphore // to wake thread that wanted to read, but buffer was empty
+	writesem_im        Semaphore
+	readsem_im         Semaphore
 	write_adr          C.atomic_uintptr_t // if != NULL the next obj can be written here without wait
 	read_adr           C.atomic_uintptr_t // if != NULL an obj can be read from here without wait
 	adr_read           C.atomic_uintptr_t // used to identify origin of writesem
@@ -113,11 +113,7 @@ fn new_channel_st(n u32, st u32) &Channel {
 	rsem := if n > 0 { u32(0) } else { 1 }
 	rbuf := if n > 0 { malloc(int(n * st)) } else { byteptr(0) }
 	sbuf := if n > 0 { vcalloc(int(n * 2)) } else { byteptr(0) }
-	return &Channel{
-		writesem: new_semaphore_init(wsem)
-		readsem:  new_semaphore_init(rsem)
-		writesem_im: new_semaphore()
-		readsem_im: new_semaphore()
+	mut ch := &Channel{
 		objsize: st
 		cap: n
 		write_free: n
@@ -127,6 +123,11 @@ fn new_channel_st(n u32, st u32) &Channel {
 		write_subscriber: 0
 		read_subscriber: 0
 	}
+	ch.writesem.init(wsem)
+	ch.readsem.init(rsem)
+	ch.writesem_im.init(0)
+	ch.readsem_im.init(0)
+	return ch
 }
 
 pub fn (mut ch Channel) close() {
@@ -160,6 +161,11 @@ pub fn (mut ch Channel) close() {
 [inline]
 pub fn (mut ch Channel) len() int {
 	return int(C.atomic_load_u32(&ch.read_avail))
+}
+
+[inline]
+pub fn (mut ch Channel) closed() bool {
+	return C.atomic_load_u16(&ch.closed) != 0
 }
 
 [inline]
@@ -523,9 +529,10 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 	assert channels.len == dir.len
 	assert dir.len == objrefs.len
 	mut subscr := []Subscription{len: channels.len}
-	sem := new_semaphore()
+	mut sem := Semaphore{}
+	sem.init(0)
 	for i, ch in channels {
-		subscr[i].sem = sem
+		subscr[i].sem = &sem
 		if dir[i] == .push {
 			mut null16 := u16(0)
 			for !C.atomic_compare_exchange_weak_u16(&ch.write_sub_mtx, &null16, u16(1)) {
@@ -556,6 +563,7 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 	}
 	stopwatch := if timeout <= 0 { time.StopWatch{} } else { time.new_stopwatch({}) }
 	mut event_idx := -1 // negative index means `timed out`
+outer:
 	for {
 		rnd := rand.u32_in_range(0, u32(channels.len))
 		mut num_closed := 0
@@ -568,7 +576,7 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 				stat := channels[i].try_push_priv(objrefs[i], true)
 				if stat == .success {
 					event_idx = i
-					goto restore
+					break outer
 				} else if stat == .closed {
 					num_closed++
 				}
@@ -576,7 +584,7 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 				stat := channels[i].try_pop_priv(objrefs[i], true)
 				if stat == .success {
 					event_idx = i
-					goto restore
+					break outer
 				} else if stat == .closed {
 					num_closed++
 				}
@@ -584,21 +592,20 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 		}
 		if num_closed == channels.len {
 			event_idx = -2
-			goto restore
+			break outer
 		}
 		if timeout == 0 {
-			goto restore
+			break outer
 		}
 		if timeout > 0 {
 			remaining := timeout - stopwatch.elapsed()
 			if !sem.timed_wait(remaining) {
-				goto restore
+				break outer
 			}
 		} else {
 			sem.wait()
 		}
 	}
-restore:
 	// reset subscribers
 	for i, ch in channels {
 		if dir[i] == .push {

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module json
@@ -105,22 +105,22 @@ fn decode_string(root &C.cJSON) string {
 	return tos_clone(root.valuestring) // , _strlen(root.valuestring))
 }
 
-fn C.cJSON_IsTrue() bool
+fn C.cJSON_IsTrue(voidptr) bool
 
 
-fn C.cJSON_CreateNumber() &C.cJSON
+fn C.cJSON_CreateNumber(int) &C.cJSON
 
 
-fn C.cJSON_CreateBool() &C.cJSON
+fn C.cJSON_CreateBool(bool) &C.cJSON
 
 
-fn C.cJSON_CreateString() &C.cJSON
+fn C.cJSON_CreateString(charptr) &C.cJSON
 
 
-fn C.cJSON_Parse() &C.cJSON
+fn C.cJSON_Parse(charptr) &C.cJSON
 
 
-fn C.cJSON_PrintUnformatted() byteptr
+fn C.cJSON_PrintUnformatted(voidptr) byteptr
 
 
 fn decode_bool(root &C.cJSON) bool {

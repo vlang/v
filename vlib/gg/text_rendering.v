@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module gg
 
@@ -29,23 +29,77 @@ struct FTConfig {
 	custom_bold_font_path string
 	scale                 f32 = 1.0
 	font_size             int
+	bytes_normal          []byte
+	bytes_bold            []byte
+	bytes_mono            []byte
+	bytes_italic          []byte
+}
+
+struct StringToRender {
+	x    int
+	y    int
+	text string
+	cfg  gx.TextCfg
 }
 
 fn new_ft(c FTConfig) ?&FT {
 	if c.font_path == '' {
-		// Load default font
+		if c.bytes_normal.len > 0 {
+			fons := sfons.create(512, 512, 1)
+			bytes_normal := c.bytes_normal
+			bytes_bold := if c.bytes_bold.len > 0 {
+				c.bytes_bold
+			} else {
+				debug_font_println('setting bold variant to normal')
+				bytes_normal
+			}
+			bytes_mono := if c.bytes_mono.len > 0 {
+				c.bytes_mono
+			} else {
+				debug_font_println('setting mono variant to normal')
+				bytes_normal
+			}
+			bytes_italic := if c.bytes_italic.len > 0 {
+				c.bytes_italic
+			} else {
+				debug_font_println('setting italic variant to normal')
+				bytes_normal
+			}
+
+			return &FT{
+				fons: fons
+				font_normal: C.fonsAddFontMem(fons, 'sans', bytes_normal.data, bytes_normal.len,
+					false)
+				font_bold: C.fonsAddFontMem(fons, 'sans', bytes_bold.data, bytes_bold.len,
+					false)
+				font_mono: C.fonsAddFontMem(fons, 'sans', bytes_mono.data, bytes_mono.len,
+					false)
+				font_italic: C.fonsAddFontMem(fons, 'sans', bytes_italic.data, bytes_italic.len,
+					false)
+				scale: c.scale
+			}
+		} else {
+			// Load default font
+		}
 	}
-	$if !android {
-		if c.font_path == '' || !os.exists(c.font_path) {
+
+	if c.font_path == '' || !os.exists(c.font_path) {
+		$if !android {
 			println('failed to load font "$c.font_path"')
 			return none
 		}
 	}
+
 	mut bytes := []byte{}
 	$if android {
-		bytes = os.read_apk_asset(c.font_path) or {
-			println('failed to load font "$c.font_path"')
-			return none
+		// First try any filesystem paths
+		bytes = os.read_bytes(c.font_path) or { []byte{} }
+		if bytes.len == 0 {
+			// ... then try the APK asset path
+			bytes = os.read_apk_asset(c.font_path) or {
+				println('failed to load font "$c.font_path"')
+				return none
+			}
 		}
 	} $else {
 		bytes = os.read_bytes(c.font_path) or {
@@ -110,6 +164,17 @@ fn (ctx &Context) set_cfg(cfg gx.TextCfg) {
 }
 
 pub fn (ctx &Context) draw_text(x int, y int, text_ string, cfg gx.TextCfg) {
+	$if macos {
+		if ctx.native_rendering {
+			if cfg.align == gx.align_right {
+				width := ctx.text_width(text_)
+				C.darwin_draw_string(x - width, ctx.height - y, text_, cfg)
+			} else {
+				C.darwin_draw_string(x, ctx.height - y, text_, cfg)
+			}
+			return
+		}
+	}
 	if !ctx.font_inited {
 		eprintln('gg: draw_text(): font not initialized')
 		return
@@ -137,6 +202,11 @@ pub fn (ft &FT) flush() {
 }
 
 pub fn (ctx &Context) text_width(s string) int {
+	$if macos {
+		if ctx.native_rendering {
+			return C.darwin_text_width(s)
+		}
+	}
 	// ctx.set_cfg(cfg) TODO
 	if !ctx.font_inited {
 		return 0
@@ -144,7 +214,15 @@ pub fn (ctx &Context) text_width(s string) int {
 	mut buf := [4]f32{}
 	C.fonsTextBounds(ctx.ft.fons, 0, 0, s.str, 0, buf)
 	if s.ends_with(' ') {
-		return int((buf[2] - buf[0]) / ctx.scale) + ctx.text_width('i') // TODO fix this in fontstash?
+		return int((buf[2] - buf[0]) / ctx.scale) +
+			ctx.text_width('i') // TODO fix this in fontstash?
+	}
+	res := int((buf[2] - buf[0]) / ctx.scale)
+	// println('TW "$s" = $res')
+	$if macos {
+		if ctx.native_rendering {
+			return res * 2
+		}
 	}
 	return int((buf[2] - buf[0]) / ctx.scale)
 }
@@ -184,6 +262,31 @@ pub fn system_font_path() string {
 		for font in fonts {
 			if os.is_file(font) {
 				return font
+			}
+		}
+	}
+	$if android {
+		xml_files := ['/system/etc/system_fonts.xml', '/system/etc/fonts.xml', '/etc/system_fonts.xml',
+			'/etc/fonts.xml', '/data/fonts/fonts.xml', '/etc/fallback_fonts.xml']
+		font_locations := ['/system/fonts', '/data/fonts']
+		for xml_file in xml_files {
+			if os.is_file(xml_file) && os.is_readable(xml_file) {
+				xml := os.read_file(xml_file) or { continue }
+				lines := xml.split('\n')
+				mut candidate_font := ''
+				for line in lines {
+					if line.contains('<font') {
+						candidate_font = line.all_after('>').all_before('<').trim(' \n\t\r')
+						if candidate_font.contains('.ttf') {
+							for location in font_locations {
+								candidate_path := os.join_path(location, candidate_font)
+								if os.is_file(candidate_path) && os.is_readable(candidate_path) {
+									return candidate_path
+								}
+							}
+						}
+					}
+				}
 			}
 		}
 	}

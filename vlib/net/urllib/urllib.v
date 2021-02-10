@@ -53,8 +53,8 @@ fn should_escape(c byte, mode EncodingMode) bool {
 		// we could possibly allow, and parse will reject them if we
 		// escape them (because hosts can`t use %-encoding for
 		// ASCII bytes).
-		if c in
-			[`!`, `$`, `&`, `\\`, `(`, `)`, `*`, `+`, `,`, `;`, `=`, `:`, `[`, `]`, `<`, `>`, `"`] {
+		if 
+			c in [`!`, `$`, `&`, `\\`, `(`, `)`, `*`, `+`, `,`, `;`, `=`, `:`, `[`, `]`, `<`, `>`, `"`] {
 			return false
 		}
 	}
@@ -162,7 +162,7 @@ fn unescape(s_ string, mode EncodingMode) ?string {
 					if s.len > 3 {
 						s = s[..3]
 					}
-					return error(error_msg(err_msg_escape, s))
+					return error(error_msg(urllib.err_msg_escape, s))
 				}
 				// Per https://tools.ietf.org/html/rfc3986#page-21
 				// in the host component %-encoding can only be used
@@ -171,7 +171,7 @@ fn unescape(s_ string, mode EncodingMode) ?string {
 				// introduces %25 being allowed to escape a percent sign
 				// in IPv6 scoped-address literals. Yay.
 				if mode == .encode_host && unhex(s[i + 1]) < 8 && s[i..i + 3] != '%25' {
-					return error(error_msg(err_msg_escape, s[i..i + 3]))
+					return error(error_msg(urllib.err_msg_escape, s[i..i + 3]))
 				}
 				if mode == .encode_zone {
 					// RFC 6874 says basically 'anything goes' for zone identifiers
@@ -183,7 +183,7 @@ fn unescape(s_ string, mode EncodingMode) ?string {
 					// But Windows puts spaces here! Yay.
 					v := ((unhex(s[i + 1]) << byte(4)) | unhex(s[i + 2]))
 					if s[i..i + 3] != '%25' && v != ` ` && should_escape(v, .encode_host) {
-						error(error_msg(err_msg_escape, s[i..i + 3]))
+						error(error_msg(urllib.err_msg_escape, s[i..i + 3]))
 					}
 				}
 				i += 3
@@ -193,9 +193,8 @@ fn unescape(s_ string, mode EncodingMode) ?string {
 				i++
 			}
 			else {
-				if (mode == .encode_host ||
-					mode == .encode_zone) &&
-					s[i] < 0x80 && should_escape(s[i], mode) {
+				if (mode == .encode_host || mode == .encode_zone) && s[i] < 0x80
+					&& should_escape(s[i], mode) {
 					error(error_msg('unescape: invalid character in host name', s[i..i + 1]))
 				}
 				i++
@@ -429,11 +428,12 @@ fn split(s string, sep byte, cutc bool) (string, string) {
 pub fn parse(rawurl string) ?URL {
 	// Cut off #frag
 	u, frag := split(rawurl, `#`, true)
-	mut url := parse_url(u, false) or { return error(error_msg(err_msg_parse, u)) }
+	mut url := parse_url(u, false) or { return error(error_msg(urllib.err_msg_parse, u)) }
 	if frag == '' {
 		return url
 	}
-	f := unescape(frag, .encode_fragment) or { return error(error_msg(err_msg_parse, u)) }
+	f := unescape(frag, .encode_fragment) or { return error(error_msg(urllib.err_msg_parse,
+		u)) }
 	url.fragment = f
 	return url
 }
@@ -570,7 +570,7 @@ fn parse_host(host string) ?string {
 		// parse an IP-Literal in RFC 3986 and RFC 6874.
 		// E.g., '[fe80::1]', '[fe80::1%25en0]', '[fe80::1]:80'.
 		mut i := host.last_index(']') or {
-			return error(error_msg("parse_host: missing \']\' in host", ''))
+			return error(error_msg("parse_host: missing ']' in host", ''))
 		}
 		mut colon_port := host[i + 1..]
 		if !valid_optional_port(colon_port) {
@@ -785,7 +785,7 @@ pub fn parse_query(query string) ?Values {
 // but any errors will be silent
 fn parse_query_silent(query string) Values {
 	mut m := new_values()
-	parse_query_values(mut m, query)
+	parse_query_values(mut m, query) or { }
 	return m
 }
 
@@ -997,9 +997,11 @@ fn split_host_port(hostport string) (string, string) {
 	mut host := hostport
 	mut port := ''
 	colon := host.last_index_byte(`:`)
-	if colon != -1 && valid_optional_port(host[colon..]) {
-		port = host[colon + 1..]
-		host = host[..colon]
+	if colon != -1 {
+		if valid_optional_port(host[colon..]) {
+			port = host[colon + 1..]
+			host = host[..colon]
+		}
 	}
 	if host.starts_with('[') && host.ends_with(']') {
 		host = host[1..host.len - 1]
@@ -1027,7 +1029,8 @@ pub fn valid_userinfo(s string) bool {
 			continue
 		}
 		match r {
-			`-`, `.`, `_`, `:`, `~`, `!`, `$`, `&`, `\\`, `(`, `)`, `*`, `+`, `,`, `;`, `=`, `%`, `@` {
+			`-`, `.`, `_`, `:`, `~`, `!`, `$`, `&`, `\\`, `(`, `)`, `*`, `+`, `,`, `;`, `=`, `%`,
+			`@` {
 				continue
 			}
 			else {

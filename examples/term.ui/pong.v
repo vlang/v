@@ -19,7 +19,7 @@ const (
 struct App {
 mut:
 	tui    &ui.Context = 0
-	mode   Mode = Mode.menu
+	mode   Mode        = Mode.menu
 	width  int
 	height int
 	game   &Game = 0
@@ -35,10 +35,10 @@ fn (mut a App) init() {
 	a.width = w
 	a.height = h
 	term.erase_del_clear()
-	term.set_cursor_position({
+	term.set_cursor_position(
 		x: 0
 		y: 0
-	})
+	)
 }
 
 fn (mut a App) start_game() {
@@ -66,10 +66,10 @@ fn (mut a App) quit() {
 		a.game.quit()
 		return
 	}
-	term.set_cursor_position({
+	term.set_cursor_position(
 		x: 0
 		y: 0
-	})
+	)
 	exit(0)
 }
 
@@ -480,17 +480,18 @@ fn event(e &ui.Event, x voidptr) {
 	app.event(e)
 }
 
-// main
-mut app := &App{}
-app.tui = ui.init({
-	user_data: app
-	init_fn: init
-	frame_fn: frame
-	cleanup_fn: cleanup
-	event_fn: event
-	fail_fn: fail
-	capture_events: true
-	hide_cursor: true
-	frame_rate: 60
-})
-app.tui.run()
+fn main() {
+	mut app := &App{}
+	app.tui = ui.init(
+		user_data: app
+		init_fn: init
+		frame_fn: frame
+		cleanup_fn: cleanup
+		event_fn: event
+		fail_fn: fail
+		capture_events: true
+		hide_cursor: true
+		frame_rate: 60
+	)
+	app.tui.run() ?
+}

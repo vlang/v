@@ -7,7 +7,7 @@ fn C.memcmp(byteptr, byteptr, int) int
 
 fn C.memmove(byteptr, byteptr, int) voidptr
 
-fn C.calloc(int) byteptr
+fn C.calloc(int, int) byteptr
 
 fn C.malloc(int) byteptr
 
@@ -17,7 +17,7 @@ fn C.free(ptr voidptr)
 
 fn C.exit(code int)
 
-fn C.qsort(voidptr, int, int, qsort_callback_func)
+fn C.qsort(base voidptr, items size_t, item_size size_t, cb qsort_callback_func)
 
 fn C.sprintf(a ...voidptr) int
 
@@ -48,18 +48,20 @@ fn C.printf(byteptr, ...byteptr) int
 
 fn C.puts(byteptr) int
 
-fn C.fputs(byteptr) int
+fn C.fputs(str byteptr, stream &C.FILE) int
 
-fn C.fflush(byteptr) int
+fn C.fflush(&C.FILE) int
 
 // TODO define args in these functions
 fn C.fseek() int
 
-fn C.fopen() voidptr
+fn C.fopen(filename charptr, mode charptr) &C.FILE
 
-fn C.fileno(voidptr) int
+fn C.fileno(&C.FILE) int
 
-fn C.fwrite() int
+fn C.fread(ptr voidptr, item_size size_t, items size_t, stream &C.FILE) size_t
+
+fn C.fwrite(ptr voidptr, item_size size_t, items size_t, stream &C.FILE) size_t
 
 fn C.fclose() int
 
@@ -84,7 +86,7 @@ fn C.waitpid(pid int, status &int, options int) int
 
 fn C.kill(pid int, sig int) int
 
-fn C.setenv(charptr) int
+fn C.setenv(charptr, charptr, int) int
 
 fn C.unsetenv(charptr) int
 
@@ -96,11 +98,9 @@ fn C.rmdir() int
 
 fn C.chdir() int
 
-fn C.fread() int
-
 fn C.rewind() int
 
-fn C.stat(charptr) int
+fn C.stat(charptr, voidptr) int
 
 fn C.lstat() int
 
@@ -125,7 +125,7 @@ fn C.sleep(int) int
 
 fn C.usleep() int
 
-fn C.opendir() voidptr
+fn C.opendir(charptr) voidptr
 
 fn C.closedir() int
 

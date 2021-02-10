@@ -2,12 +2,12 @@ import term.ui as tui
 
 const (
 	colors = [
-		tui.Color{33, 150, 243}
-		tui.Color{0, 150, 136}
-		tui.Color{205, 220, 57}
-		tui.Color{255, 152, 0}
-		tui.Color{244, 67, 54}
-		tui.Color{156, 39, 176}
+		tui.Color{33, 150, 243},
+		tui.Color{0, 150, 136},
+		tui.Color{205, 220, 57},
+		tui.Color{255, 152, 0},
+		tui.Color{244, 67, 54},
+		tui.Color{156, 39, 176},
 	]
 )
 
@@ -66,27 +66,35 @@ fn event(e &tui.Event, x voidptr) {
 				}
 				.space, .enter {
 					app.color_idx++
-					if app.color_idx == colors.len { app.color_idx = 0 }
+					if app.color_idx == colors.len {
+						app.color_idx = 0
+					}
 					app.color = colors[app.color_idx]
-				} else {}
+				}
+				else {}
 			}
-		} .mouse_move, .mouse_drag, .mouse_down {
-			app.points << Point{ e.x, e.y }
-		} .mouse_scroll {
+		}
+		.mouse_move, .mouse_drag, .mouse_down {
+			app.points << Point{e.x, e.y}
+		}
+		.mouse_scroll {
 			d := if e.direction == .up { 0.1 } else { -0.1 }
 			app.cut_rate += d
-			if app.cut_rate < 1 { app.cut_rate = 1 }
-		} else {}
+			if app.cut_rate < 1 {
+				app.cut_rate = 1
+			}
+		}
+		else {}
 	}
 }
 
-mut app := &App{}
-app.tui = tui.init(
-	user_data: app,
-	frame_fn: frame,
-	event_fn: event,
-
-	hide_cursor: true
-)
-
-app.tui.run()
+fn main() {
+	mut app := &App{}
+	app.tui = tui.init(
+		user_data: app
+		frame_fn: frame
+		event_fn: event
+		hide_cursor: true
+	)
+	app.tui.run() ?
+}

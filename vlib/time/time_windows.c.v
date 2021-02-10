@@ -1,10 +1,11 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module time
 
 #include <time.h>
 // #include <sysinfoapi.h>
+
 struct C.tm {
 	tm_year int
 	tm_mon  int
@@ -71,10 +72,11 @@ fn init_win_time_start() u64 {
 	return s
 }
 
+// sys_mono_now returns a *monotonically increasing time*, NOT a time adjusted for daylight savings, location etc.
 pub fn sys_mono_now() u64 {
 	tm := u64(0)
 	C.QueryPerformanceCounter(&tm) // XP or later never fail
-	return (tm - start_time) * 1000000000 / freq_time
+	return (tm - time.start_time) * 1000000000 / time.freq_time
 }
 
 // NB: vpc_now is used by `v -profile` .
@@ -93,6 +95,7 @@ fn local_as_unix_time() int {
 	return make_unix_time(tm)
 }
 
+// local - return the time `t`, converted to the currently active local timezone
 pub fn (t Time) local() Time {
 	st_utc := SystemTime{
 		year: u16(t.year)
@@ -189,6 +192,7 @@ pub fn solaris_now() Time {
 	return Time{}
 }
 
+// dummy to compile with all compilers
 pub fn darwin_utc() Time {
 	return Time{}
 }

@@ -11,10 +11,11 @@ import v.depgraph
 const (
 	// https://ecma-international.org/ecma-262/#sec-reserved-words
 	js_reserved = ['await', 'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger',
-		'default', 'delete', 'do', 'else', 'enum', 'export', 'extends', 'finally', 'for', 'function', 'if',
-		'implements', 'import', 'in', 'instanceof', 'interface', 'let', 'new', 'package', 'private', 'protected',
-		'public', 'return', 'static', 'super', 'switch', 'this', 'throw', 'try', 'typeof', 'var', 'void',
-		'while', 'with', 'yield', 'Number', 'String', 'Boolean', 'Array', 'Map']
+		'default', 'delete', 'do', 'else', 'enum', 'export', 'extends', 'finally', 'for', 'function',
+		'if', 'implements', 'import', 'in', 'instanceof', 'interface', 'let', 'new', 'package',
+		'private', 'protected', 'public', 'return', 'static', 'super', 'switch', 'this', 'throw',
+		'try', 'typeof', 'var', 'void', 'while', 'with', 'yield', 'Number', 'String', 'Boolean',
+		'Array', 'Map']
 	// used to generate type structs
 	v_types     = ['i8', 'i16', 'int', 'i64', 'byte', 'u16', 'u32', 'u64', 'f32', 'f64', 'int_literal',
 		'float_literal', 'size_t', 'bool', 'string', 'map', 'array']
@@ -23,7 +24,7 @@ const (
 )
 
 struct Namespace {
-	name     string
+	name string
 mut:
 	out      strings.Builder = strings.new_builder(128)
 	pub_vars []string
@@ -33,8 +34,8 @@ mut:
 }
 
 struct JsGen {
-	table               &table.Table
-	pref                &pref.Preferences
+	table &table.Table
+	pref  &pref.Preferences
 mut:
 	definitions         strings.Builder
 	ns                  &Namespace
@@ -53,7 +54,7 @@ mut:
 	stmt_start_pos      int
 	defer_stmts         []ast.DeferStmt
 	fn_decl             &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
-	str_types           []string // types that need automatic str() generation
+	str_types           []string    // types that need automatic str() generation
 	method_fn_decls     map[string][]ast.FnDecl
 	builtin_fns         []string // Functions defined in `builtin`
 	empty_line          bool
@@ -81,14 +82,14 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 	for file in files {
 		g.file = file
 		g.enter_namespace(g.file.mod.name)
-		g.is_test = g.file.path.ends_with('_test.v')
+		g.is_test = g.pref.is_test
 		g.find_class_methods(file.stmts)
 		g.escape_namespace()
 	}
 	for file in files {
 		g.file = file
 		g.enter_namespace(g.file.mod.name)
-		g.is_test = g.file.path.ends_with('_test.v')
+		g.is_test = g.pref.is_test
 		// store imports
 		mut imports := []string{}
 		for imp in g.file.imports {
@@ -132,7 +133,7 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 		out += '\n\treturn {'
 		// export builtin types
 		if name == 'builtin' {
-			for typ in v_types {
+			for typ in js.v_types {
 				out += '\n\t\t$typ,'
 			}
 		}
@@ -158,14 +159,14 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 		if name == 'builtin' {
 			out += '// builtin type casts\n'
 			out += 'const ['
-			for i, typ in v_types {
+			for i, typ in js.v_types {
 				if i > 0 {
 					out += ', '
 				}
 				out += '$typ'
 			}
 			out += '] = ['
-			for i, typ in v_types {
+			for i, typ in js.v_types {
 				if i > 0 {
 					out += ','
 				}
@@ -245,7 +246,7 @@ fn verror(msg string) {
 [inline]
 pub fn (mut g JsGen) gen_indent() {
 	if g.ns.indent > 0 && g.empty_line {
-		g.ns.out.write(tabs[g.ns.indent])
+		g.ns.out.write(js.tabs[g.ns.indent])
 	}
 	g.empty_line = false
 }
@@ -323,7 +324,7 @@ fn (mut g JsGen) js_name(name_ string) string {
 	mut parts := name.split('.')
 	if !is_js {
 		for i, p in parts {
-			if p in js_reserved {
+			if p in js.js_reserved {
 				parts[i] = 'v_$p'
 			}
 		}
@@ -475,6 +476,9 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		ast.FloatLiteral {
 			g.write('${g.typ(table.Type(table.f32_type))}($node.val)')
 		}
+		ast.GoExpr {
+			// TODO
+		}
 		ast.Ident {
 			g.gen_ident(node)
 		}
@@ -537,6 +541,9 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		ast.SizeOf {
 			// TODO
 		}
+		ast.OffsetOf {
+			// TODO
+		}
 		ast.SqlExpr {
 			// TODO
 		}
@@ -544,13 +551,20 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.gen_string_inter_literal(node)
 		}
 		ast.StringLiteral {
-			text := node.val.replace("\'", "\\'")
+			text := node.val.replace("'", "\\'")
 			if g.file.mod.name == 'builtin' {
 				g.write('new ')
 			}
 			g.write("string('$text')")
 		}
 		ast.StructInit {
+			// TODO: once generic fns/unwrap_generic is implemented
+			// if node.unresolved {
+			// 	g.expr(ast.resolve_init(node, g.unwrap_generic(node.typ), g.table))
+			// } else {
+			// 	// `user := User{name: 'Bob'}`
+			// 	g.gen_struct_init(node)
+			// }
 			// `user := User{name: 'Bob'}`
 			g.gen_struct_init(node)
 		}
@@ -923,33 +937,28 @@ fn (mut g JsGen) gen_for_stmt(it ast.ForStmt) {
 
 fn (mut g JsGen) gen_go_stmt(node ast.GoStmt) {
 	// x := node.call_expr as ast.CallEpxr // TODO
-	match node.call_expr {
-		ast.CallExpr {
-			mut name := node.call_expr.name
-			if node.call_expr.is_method {
-				receiver_sym := g.table.get_type_symbol(node.call_expr.receiver_type)
-				name = receiver_sym.name + '.' + name
-			}
-			// todo: please add a name feild without the mod name for ast.CallExpr
-			if name.starts_with('${node.call_expr.mod}.') {
-				name = name[node.call_expr.mod.len + 1..]
-			}
-			g.writeln('await new Promise(function(resolve){')
-			g.inc_indent()
-			g.write('${name}(')
-			for i, arg in node.call_expr.args {
-				g.expr(arg.expr)
-				if i < node.call_expr.args.len - 1 {
-					g.write(', ')
-				}
-			}
-			g.writeln(');')
-			g.writeln('resolve();')
-			g.dec_indent()
-			g.writeln('});')
-		}
-		else {}
+	mut name := node.call_expr.name
+	if node.call_expr.is_method {
+		receiver_sym := g.table.get_type_symbol(node.call_expr.receiver_type)
+		name = receiver_sym.name + '.' + name
 	}
+	// todo: please add a name feild without the mod name for ast.CallExpr
+	if name.starts_with('${node.call_expr.mod}.') {
+		name = name[node.call_expr.mod.len + 1..]
+	}
+	g.writeln('await new Promise(function(resolve){')
+	g.inc_indent()
+	g.write('${name}(')
+	for i, arg in node.call_expr.args {
+		g.expr(arg.expr)
+		if i < node.call_expr.args.len - 1 {
+			g.write(', ')
+		}
+	}
+	g.writeln(');')
+	g.writeln('resolve();')
+	g.dec_indent()
+	g.writeln('});')
 }
 
 fn (mut g JsGen) gen_import_stmt(it ast.Import) {
@@ -990,7 +999,7 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 	if name.starts_with('JS.') {
 		return
 	}
-	if name in v_types && g.ns.name == 'builtin' {
+	if name in js.v_types && g.ns.name == 'builtin' {
 		return
 	}
 	js_name := g.js_name(name)
@@ -1030,16 +1039,12 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 	}
 	// gen toString method
 	fn_names := fns.map(it.name)
-	if !('toString' in fn_names) {
+	if 'toString' !in fn_names {
 		g.writeln('toString() {')
 		g.inc_indent()
 		g.write('return `$js_name {')
 		for i, field in node.fields {
-			g.write(if i == 0 {
-				' '
-			} else {
-				', '
-			})
+			g.write(if i == 0 { ' ' } else { ', ' })
 			match g.typ(field.typ).split('.').last() {
 				'string' { g.write('$field.name: "\${this["$field.name"].toString()}"') }
 				else { g.write('$field.name: \${this["$field.name"].toString()} ') }
@@ -1370,8 +1375,8 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 			g.write(')')
 		}
 	} else {
-		both_are_int := int(it.left_type) in table.integer_type_idxs &&
-			int(it.right_type) in table.integer_type_idxs
+		both_are_int := int(it.left_type) in table.integer_type_idxs
+			&& int(it.right_type) in table.integer_type_idxs
 		is_arithmetic := it.op in [token.Kind.plus, .minus, .mul, .div, .mod]
 		if is_arithmetic {
 			g.write('${g.typ(g.greater_typ(it.left_type, it.right_type))}(')
@@ -1406,9 +1411,8 @@ fn (mut g JsGen) greater_typ(left table.Type, right table.Type) table.Type {
 	if table.string_type_idx in lr {
 		return table.Type(table.string_type_idx)
 	}
-	should_float := (l in table.integer_type_idxs &&
-		r in table.float_type_idxs) ||
-		(r in table.integer_type_idxs && l in table.float_type_idxs)
+	should_float := (l in table.integer_type_idxs && r in table.float_type_idxs)
+		|| (r in table.integer_type_idxs && l in table.float_type_idxs)
 	if should_float {
 		if table.f64_type_idx in lr {
 			return table.Type(table.f64_type_idx)
@@ -1561,18 +1565,17 @@ fn (mut g JsGen) gen_typeof_expr(it ast.TypeOf) {
 }
 
 fn (mut g JsGen) gen_type_cast_expr(it ast.CastExpr) {
-	is_literal := ((it.expr is ast.IntegerLiteral &&
-		it.typ in table.integer_type_idxs) ||
-		(it.expr is ast.FloatLiteral && it.typ in table.float_type_idxs))
+	is_literal := ((it.expr is ast.IntegerLiteral && it.typ in table.integer_type_idxs)
+		|| (it.expr is ast.FloatLiteral && it.typ in table.float_type_idxs))
 	typ := g.typ(it.typ)
 	if !is_literal {
-		if !(typ in v_types) || g.ns.name == 'builtin' {
+		if typ !in js.v_types || g.ns.name == 'builtin' {
 			g.write('new ')
 		}
 		g.write('${typ}(')
 	}
 	g.expr(it.expr)
-	if typ == 'string' && !(it.expr is ast.StringLiteral) {
+	if typ == 'string' && it.expr !is ast.StringLiteral {
 		g.write('.toString()')
 	}
 	if !is_literal {

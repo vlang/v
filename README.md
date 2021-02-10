@@ -1,6 +1,6 @@
 <div align="center">
 <p>
-    <img width="80" src="https://raw.githubusercontent.com/donnisnoni95/v-logo/master/dist/v-logo.svg?sanitize=true">
+    <img width="80" src="https://raw.githubusercontent.com/vlang/v-logo/master/dist/v-logo.svg?sanitize=true">
 </p>
 <h1>The V Programming Language</h1>
 
@@ -76,7 +76,7 @@ That's it! Now you have a V executable at `[path to V repo]/v`.
 
 Now you can try `./v run examples/hello_world.v` (`v.exe` on Windows).
 
-V is being constantly updated. To update V, simply run:
+V is constantly being updated. To update V, simply run:
 
 ```bash
 v up
@@ -84,7 +84,7 @@ v up
 
 ### C compiler
 
-It's recommended to use Clang or GCC or Visual Studio.
+It's recommended to use Clang, GCC, or Visual Studio.
 If you are doing development, you most likely already have one of those installed.
 
 Otherwise, follow these instructions:
@@ -94,7 +94,7 @@ Otherwise, follow these instructions:
 - [Installing a C compiler on Windows](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows)
 
 However, if none is found when running `make` on Linux or Windows,
-TCC would be downloaded and set as an alternative C backend.
+TCC is downloaded as the default C backend.
 It's very lightweight (several MB) so this shouldn't take too long.
 
 ### Symlinking
@@ -119,7 +119,7 @@ shell, cd to the path, where you have compiled v.exe, then type:
 .\v.exe symlink
 ```
 
-That will make v available everywhere, by adding it to your PATH.
+That will make V available everywhere, by adding it to your PATH.
 Please restart your shell/editor after that, so that it can pick
 the new PATH variable.
 

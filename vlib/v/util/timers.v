@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module util
@@ -17,6 +17,25 @@ pub fn new_timers(should_print bool) &Timers {
 		swatches: map[string]time.StopWatch{}
 		should_print: should_print
 	}
+}
+
+const timers = new_timers(false)
+
+pub fn get_timers() &Timers {
+	return util.timers
+}
+
+pub fn timing_start(label string) {
+	get_timers().start(label)
+}
+
+pub fn timing_measure(label string) {
+	get_timers().show(label)
+}
+
+pub fn timing_set_should_print(should_print bool) {
+	mut t := util.timers
+	t.should_print = should_print
 }
 
 pub fn (mut t Timers) start(name string) {

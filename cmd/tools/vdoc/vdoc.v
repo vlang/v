@@ -162,7 +162,7 @@ fn (vd VDoc) work_processor(mut work sync.Channel, mut wg sync.WaitGroup) {
 		file_name, content := vd.render_doc(pdoc.d, pdoc.out)
 		output_path := os.join_path(pdoc.out.path, file_name)
 		println('Generating $pdoc.out.typ in "$output_path"')
-		os.write_file(output_path, content)
+		os.write_file(output_path, content) or { panic(err) }
 	}
 	wg.done()
 }
@@ -358,7 +358,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 				os.mkdir(out.path) or { panic(err) }
 			} else {
 				for fname in css_js_assets {
-					os.rm(os.join_path(out.path, fname))
+					os.rm(os.join_path(out.path, fname)) or { panic(err) }
 				}
 			}
 		}
@@ -376,7 +376,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 			for favicon in favicons {
 				favicon_path := os.join_path(favicons_path, favicon)
 				destination_path := os.join_path(out.path, favicon)
-				os.cp(favicon_path, destination_path)
+				os.cp(favicon_path, destination_path) or { panic(err) }
 			}
 		}
 	}
@@ -467,8 +467,8 @@ fn parse_arguments(args []string) Config {
 	} $else {
 		cfg.input_path = cfg.input_path.replace('\\', os.path_separator)
 	}
-	is_path := cfg.input_path.ends_with('.v') || cfg.input_path.split(os.path_separator).len >
-		1 || cfg.input_path == '.'
+	is_path := cfg.input_path.ends_with('.v') || cfg.input_path.split(os.path_separator).len > 1
+		|| cfg.input_path == '.'
 	if cfg.input_path.trim_right('/') == 'vlib' {
 		cfg.is_vlib = true
 		cfg.is_multi = true

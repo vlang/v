@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module main
@@ -19,15 +19,15 @@ const (
 	supported_vcs_folders        = ['.git', '.hg']
 	supported_vcs_update_cmds    = {
 		'git': 'git pull'
-		'hg': 'hg pull --update'
+		'hg':  'hg pull --update'
 	}
 	supported_vcs_install_cmds   = {
 		'git': 'git clone --depth=1'
-		'hg': 'hg clone'
+		'hg':  'hg clone'
 	}
 	supported_vcs_outdated_steps = {
 		'git': ['git fetch', 'git rev-parse @', 'git rev-parse @{u}']
-		'hg': ['hg incoming']
+		'hg':  ['hg incoming']
 	}
 )
 
@@ -71,9 +71,7 @@ fn main() {
 		'install' {
 			if module_names.len == 0 && os.exists('./v.mod') {
 				println('Detected v.mod file inside the project directory. Using it...')
-				manifest := vmod.from_file('./v.mod') or {
-					panic(err)
-				}
+				manifest := vmod.from_file('./v.mod') or { panic(err) }
 				module_names = manifest.dependencies
 			}
 			vpm_install(module_names)
@@ -227,15 +225,11 @@ fn vpm_update(m []string) {
 	}
 	mut errors := 0
 	for name in module_names {
-		final_module_path := valid_final_path_of_existing_module(name) or {
-			continue
-		}
+		final_module_path := valid_final_path_of_existing_module(name) or { continue }
 		os.chdir(final_module_path)
 		println('Updating module "$name"...')
 		verbose_println('  work folder: $final_module_path')
-		vcs := vcs_used_in_dir(final_module_path) or {
-			continue
-		}
+		vcs := vcs_used_in_dir(final_module_path) or { continue }
 		vcs_cmd := supported_vcs_update_cmds[vcs[0]]
 		verbose_println('    command: $vcs_cmd')
 		vcs_res := os.exec('$vcs_cmd') or {
@@ -265,13 +259,9 @@ fn get_outdated() ?[]string {
 	module_names := get_installed_modules()
 	mut outdated := []string{}
 	for name in module_names {
-		final_module_path := valid_final_path_of_existing_module(name) or {
-			continue
-		}
+		final_module_path := valid_final_path_of_existing_module(name) or { continue }
 		os.chdir(final_module_path)
-		vcs := vcs_used_in_dir(final_module_path) or {
-			continue
-		}
+		vcs := vcs_used_in_dir(final_module_path) or { continue }
 		vcs_cmd_steps := supported_vcs_outdated_steps[vcs[0]]
 		mut outputs := []string{}
 		for step in vcs_cmd_steps {
@@ -296,9 +286,7 @@ fn get_outdated() ?[]string {
 }
 
 fn vpm_upgrade() {
-	outdated := get_outdated() or {
-		exit(1)
-	}
+	outdated := get_outdated() or { exit(1) }
 	if outdated.len > 0 {
 		vpm_update(outdated)
 	} else {
@@ -307,9 +295,7 @@ fn vpm_upgrade() {
 }
 
 fn vpm_outdated() {
-	outdated := get_outdated() or {
-		exit(1)
-	}
+	outdated := get_outdated() or { exit(1) }
 	if outdated.len > 0 {
 		println('Outdated modules:')
 		for m in outdated {
@@ -342,18 +328,16 @@ fn vpm_remove(module_names []string) {
 		exit(2)
 	}
 	for name in module_names {
-		final_module_path := valid_final_path_of_existing_module(name) or {
-			continue
-		}
+		final_module_path := valid_final_path_of_existing_module(name) or { continue }
 		println('Removing module "$name"...')
 		verbose_println('removing folder $final_module_path')
-		os.rmdir_all(final_module_path)
+		os.rmdir_all(final_module_path) or { panic(err) }
 		// delete author directory if it is empty
 		author := name.split('.')[0]
 		author_dir := os.real_path(os.join_path(settings.vmodules_path, author))
 		if os.is_dir_empty(author_dir) {
 			verbose_println('removing author folder $author_dir')
-			os.rmdir(author_dir)
+			os.rmdir(author_dir) or { panic(err) }
 		}
 	}
 }
@@ -380,9 +364,7 @@ fn valid_final_path_of_existing_module(name string) ?string {
 fn ensure_vmodules_dir_exist() {
 	if !os.is_dir(settings.vmodules_path) {
 		println('Creating $settings.vmodules_path/ ...')
-		os.mkdir(settings.vmodules_path) or {
-			panic(err)
-		}
+		os.mkdir(settings.vmodules_path) or { panic(err) }
 	}
 }
 
@@ -405,9 +387,7 @@ fn vcs_used_in_dir(dir string) ?[]string {
 }
 
 fn get_installed_modules() []string {
-	dirs := os.ls(settings.vmodules_path) or {
-		return []
-	}
+	dirs := os.ls(settings.vmodules_path) or { return [] }
 	mut modules := []string{}
 	for dir in dirs {
 		adir := os.join_path(settings.vmodules_path, dir)
@@ -420,13 +400,9 @@ fn get_installed_modules() []string {
 			continue
 		}
 		author := dir
-		mods := os.ls(adir) or {
-			continue
-		}
+		mods := os.ls(adir) or { continue }
 		for m in mods {
-			vcs_used_in_dir(os.join_path(adir, m)) or {
-				continue
-			}
+			vcs_used_in_dir(os.join_path(adir, m)) or { continue }
 			modules << '${author}.$m'
 		}
 	}
@@ -435,9 +411,7 @@ fn get_installed_modules() []string {
 
 fn get_all_modules() []string {
 	url := get_working_server_url()
-	r := http.get(url) or {
-		panic(err)
-	}
+	r := http.get(url) or { panic(err) }
 	if r.status_code != 200 {
 		println('Failed to search vpm.vlang.io. Status code: $r.status_code')
 		exit(1)
@@ -476,9 +450,7 @@ fn resolve_dependencies(name string, module_path string, module_names []string) 
 	if !os.exists(vmod_path) {
 		return
 	}
-	data := os.read_file(vmod_path) or {
-		return
-	}
+	data := os.read_file(vmod_path) or { return }
 	vmod := parse_vmod(data)
 	mut deps := []string{}
 	// filter out dependencies that were already specified by the user
@@ -497,14 +469,12 @@ fn resolve_dependencies(name string, module_path string, module_names []string) 
 fn parse_vmod(data string) Vmod {
 	keys := ['name', 'version', 'deps']
 	mut m := {
-		'name': ''
+		'name':    ''
 		'version': ''
-		'deps': ''
+		'deps':    ''
 	}
 	for key in keys {
-		mut key_index := data.index('$key:') or {
-			continue
-		}
+		mut key_index := data.index('$key:') or { continue }
 		key_index += key.len + 1
 		m[key] = data[key_index..data.index_after('\n', key_index)].trim_space().replace("'",
 			'').replace('[', '').replace(']', '')
@@ -519,7 +489,11 @@ fn parse_vmod(data string) Vmod {
 }
 
 fn get_working_server_url() string {
-	server_urls := if settings.server_urls.len > 0 { settings.server_urls } else { default_vpm_server_urls }
+	server_urls := if settings.server_urls.len > 0 {
+		settings.server_urls
+	} else {
+		default_vpm_server_urls
+	}
 	for url in server_urls {
 		verbose_println('Trying server url: $url')
 		http.head(url) or {
@@ -572,13 +546,11 @@ fn get_module_meta_info(name string) ?Mod {
 			continue
 		}
 		if r.status_code == 404 || r.text.contains('404') {
-			errors <<
-				'Skipping module "$name", since $server_url reported that "$name" does not exist.'
+			errors << 'Skipping module "$name", since $server_url reported that "$name" does not exist.'
 			continue
 		}
 		if r.status_code != 200 {
-			errors <<
-				'Skipping module "$name", since $server_url responded with $r.status_code http status code. Please try again later.'
+			errors << 'Skipping module "$name", since $server_url responded with $r.status_code http status code. Please try again later.'
 			continue
 		}
 		s := r.text

@@ -4,8 +4,7 @@ const (
 	test_port = 45123
 )
 
-fn handle_conn(_c net.TcpConn) {
-	mut c := _c
+fn handle_conn(mut c net.TcpConn) {
 	for {
 		mut buf := []byte{len: 100, init: 0}
 		read := c.read(mut buf) or {
@@ -19,25 +18,23 @@ fn handle_conn(_c net.TcpConn) {
 	}
 }
 
-fn echo_server(l net.TcpListener) ? {
+fn echo_server(mut l net.TcpListener) ? {
 	for {
-		new_conn := l.accept() or {
-			continue
-		}
-		go handle_conn(new_conn)
+		mut new_conn := l.accept() or { continue }
+		go handle_conn(mut new_conn)
 	}
 	return none
 }
 
 fn echo() ? {
-	mut c := net.dial_tcp('127.0.0.1:$test_port')?
+	mut c := net.dial_tcp('127.0.0.1:$test_port') ?
 	defer {
 		c.close() or { }
 	}
 	data := 'Hello from vlib/net!'
-	c.write_str(data)?
+	c.write_str(data) ?
 	mut buf := []byte{len: 4096}
-	read := c.read(mut buf)?
+	read := c.read(mut buf) ?
 	assert read == data.len
 	for i := 0; i < read; i++ {
 		assert buf[i] == data[i]
@@ -47,16 +44,8 @@ fn echo() ? {
 }
 
 fn test_tcp() {
-	l := net.listen_tcp(test_port) or {
-		panic(err)
-	}
-	go echo_server(l)
-	echo() or {
-		panic(err)
-	}
+	mut l := net.listen_tcp(test_port) or { panic(err) }
+	go echo_server(mut l)
+	echo() or { panic(err) }
 	l.close() or { }
-}
-
-fn main() {
-	test_tcp()
 }

@@ -79,6 +79,18 @@ fn test_if_flag_gets_set_with_abbrev() {
 		abbrev: 'f'
 	})
 	cmd.parse(['command', '-f', 'value'])
+}
+
+fn test_if_flag_gets_set_with_long_arg() {
+	mut cmd := cli.Command{
+		name: 'command'
+		execute: flag_should_be_set
+	}
+	cmd.add_flag(cli.Flag{
+		flag: .string
+		name: 'flag'
+		abbrev: 'f'
+	})
 	cmd.parse(['command', '--flag', 'value'])
 }
 

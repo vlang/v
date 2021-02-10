@@ -323,15 +323,52 @@ fn test_option_void_return_types_of_anon_fn_in_struct() {
 	}
 }
 
-fn get_string(param bool) ?string {
-	if param {
-		return 'Hello World'
+type AA = BB | CC
+
+struct BB {
+	str string
+}
+
+struct CC {
+	str string
+}
+
+fn optional_sum_type(a int) ?AA {
+	match a {
+		1 {
+			return BB{'Test'}
+		}
+		2 {
+			return CC{'Test'}
+		}
+		else {
+			return error('Wrong number')
+		}
 	}
 }
 
-fn test_option_auto_add_return_none() {
-	r := get_string(false) or {
-		'test'
+fn test_optional_sum_type() {
+	res1 := optional_sum_type(1) or {
+		assert false
+		BB{}
 	}
-	assert r == 'test'
+	res2 := optional_sum_type(2) or {
+		assert false
+		CC{}
+	}
+	if res1 is BB {
+		assert res1.str == 'Test'
+	} else {
+		assert false
+	}
+	if res2 is CC {
+		assert res2.str == 'Test'
+	} else {
+		assert false
+	}
+	optional_sum_type(3) or {
+		assert true
+		return
+	}
+	assert false
 }

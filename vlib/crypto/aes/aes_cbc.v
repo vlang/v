@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 // Cipher block chaining (CBC) mode.
@@ -29,7 +29,7 @@ fn new_aes_cbc(b AesCipher, iv []byte) AesCbc {
 	}
 }
 
-// new_cbc_encrypter returns a BlockMode which encrypts in cipher block chaining
+// new_cbc returns a `AesCbc` which encrypts in cipher block chaining
 // mode, using the given Block. The length of iv must be the same as the
 // Block's block size.
 pub fn new_cbc(b AesCipher, iv []byte) AesCbc {
@@ -39,10 +39,13 @@ pub fn new_cbc(b AesCipher, iv []byte) AesCbc {
 	return new_aes_cbc(b, iv)
 }
 
+// block_size returns the block size of the checksum in bytes.
 pub fn (x &AesCbc) block_size() int {
 	return x.block_size
 }
 
+// encrypt_blocks encrypts the blocks in `src_` to `dst_`.
+// Please note: `dst_` is mutable for performance reasons.
 pub fn (x &AesCbc) encrypt_blocks(mut dst_ []byte, src_ []byte) {
 	unsafe {
 		mut dst := *dst_
@@ -75,6 +78,8 @@ pub fn (x &AesCbc) encrypt_blocks(mut dst_ []byte, src_ []byte) {
 	}
 }
 
+// decrypt_blocks decrypts the blocks in `src` to `dst`.
+// Please note: `dst` is mutable for performance reasons.
 pub fn (mut x AesCbc) decrypt_blocks(mut dst []byte, src []byte) {
 	if src.len % x.block_size != 0 {
 		panic('crypto.cipher: input not full blocks')
@@ -94,21 +99,20 @@ pub fn (mut x AesCbc) decrypt_blocks(mut dst []byte, src []byte) {
 	mut start := end - x.block_size
 	mut prev := start - x.block_size
 	// Copy the last block of ciphertext in preparation as the new iv.
-	copy(x.tmp, src.slice(start, end))
+	copy(x.tmp, src[start..end])
 	// Loop over all but the first block.
 	for start > 0 {
-		mut src_chunk := src.slice(start, end)
-		x.b.decrypt(mut (*dst).slice(start, end), mut src_chunk)
-		cipher.xor_bytes(mut (*dst).slice(start, end), (*dst).slice(start, end), src.slice(prev,
-			start))
+		mut src_chunk := src[start..end]
+		x.b.decrypt(mut (*dst)[start..end], mut src_chunk)
+		cipher.xor_bytes(mut (*dst)[start..end], (*dst)[start..end], src[prev..start])
 		end = start
 		start = prev
 		prev -= x.block_size
 	}
 	// The first block is special because it uses the saved iv.
-	mut src_chunk := src.slice(start, end)
-	x.b.decrypt(mut (*dst).slice(start, end), mut src_chunk)
-	cipher.xor_bytes(mut (*dst).slice(start, end), (*dst).slice(start, end), x.iv)
+	mut src_chunk := src[start..end]
+	x.b.decrypt(mut (*dst)[start..end], mut src_chunk)
+	cipher.xor_bytes(mut (*dst)[start..end], (*dst)[start..end], x.iv)
 	// Set the new iv to the first block we copied earlier.
 	x.iv = x.tmp
 	x.tmp = x.iv

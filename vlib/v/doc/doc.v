@@ -46,10 +46,10 @@ pub mut:
 	base_path string
 	table     &table.Table    = &table.Table{}
 	checker   checker.Checker = checker.Checker{
-	table: 0
-	cur_fn: 0
-	pref: 0
-}
+		table: 0
+		cur_fn: 0
+		pref: 0
+	}
 	fmt             fmt.Fmt
 	filename        string
 	pos             int
@@ -113,6 +113,7 @@ pub fn new(input_path string) Doc {
 		time_generated: time.now()
 	}
 	d.fmt = fmt.Fmt{
+		pref: d.prefs
 		indent: 0
 		is_debug: false
 		table: d.table
@@ -217,7 +218,7 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 						kind: .variable
 						parent_name: node.name
 						pos: d.convert_pos(filename, param.pos)
-						attrs: {
+						attrs: map{
 							'mut': param.is_mut.str()
 						}
 						return_type: d.type_to_str(param.typ)
@@ -372,8 +373,7 @@ pub fn (mut d Doc) generate() ? {
 		}
 		filename := os.base(file_path)
 		d.sources[filename] = util.read_file(file_path) or { '' }
-		file_asts <<
-			parser.parse_file(file_path, d.table, comments_mode, d.prefs, global_scope)
+		file_asts << parser.parse_file(file_path, d.table, comments_mode, d.prefs, global_scope)
 	}
 	return d.file_asts(file_asts)
 }
@@ -390,9 +390,9 @@ pub fn (mut d Doc) file_asts(file_asts []ast.File) ? {
 		}
 		if d.with_head && i == 0 {
 			mut module_name := file_ast.mod.name
-			if module_name != 'main' && d.parent_mod_name.len > 0 {
-				module_name = d.parent_mod_name + '.' + module_name
-			}
+			// if module_name != 'main' && d.parent_mod_name.len > 0 {
+			// 	module_name = d.parent_mod_name + '.' + module_name
+			// }
 			d.head = DocNode{
 				name: module_name
 				content: 'module $module_name'

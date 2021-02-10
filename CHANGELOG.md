@@ -1,16 +1,33 @@
-## V 0.2.2
-*Not yet released*
+-## V 0.2.4
+-*Not yet released*
+
+## V 0.2.2 - 0.2.3
+*22 Jan 2021*
+- Allow interfaces to define fields, not just methods.
 - `vweb` now uses struct embedding: `app.vweb.text('hello') => app.text('hello')`.
 - Consts can now be declared outside of `const()` blocks: `const x = 0`.
 - Overloading of  `>`, `<`, `!=`, `==`, `<=` and `>=` operators.
 - New struct updating syntax: `User{ ...u, name: 'new' }` to replace `{ u | name: 'new' }`.
-- `byte.str()` has been fixed and works like with all other numbers. `byte.ascii_str()` has been added.
+- `byte.str()` has been fixed and works like all other numbers. `byte.ascii_str()` has been added.
 - Smart cast in for loops: `for mut x is string {}`.
 - `[noinit]` struct attribute to disallow direct struct initialization with `Foo{}`.
 - Array decompose: `[1, 2, 3]...` is now `...[1, 2, 3]`
 - Treating `enum` as `int` and operations on `enum` except `==` and `!=` are removed for strict type checking.
 - Support `[manualfree] fn f1(){}` and `[manualfree] module m1`, for functions doing their own memory management.
 - Allow usage of `<` and `>` operators for struct in `.sort` method for arrays, i.e. `arr.sort(a < b)`.
+- Auto generate assignment operators like `+=`, `-=`, `*=`, `/=` and `%=` if the operators are defined.
+- Colorize and improve failing tests output.
+- Fix `go` with a generic function: `go test<string>(c, 'abcd')`.
+- Add comptime `x := $embed_file('v.png') println(x.len) println(ptr_str(x.data()))`, for embedding files into binaries.
+- Advanced vdoc search on mobile layout.
+- string's `left()`/`right` were removed in favor of slicing syntax: `str[..pos]`.
+- gg: native graphics mode on macOS/iOS (using Cocoa Drawing API).
+- Full path to consts must be specified everywhere. This makes it easy to distinguish them
+from local variables.
+- `__offsetof` for low level needs (works like `offsetof` in C).
+- vfmt now preserves empty lines, like gofmt.
+- Support for compile time environment variables via `$env('ENV_VAR')`.
+- Allow method declaration of `==` and `<` operators and auto generate `!=`, `>`, `<=` and `>=`.
 
 ## V 0.2.1
 *30 Dec 2020*

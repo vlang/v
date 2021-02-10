@@ -255,9 +255,9 @@ fn test_left() {
 
 fn test_slice() {
 	a := [1, 2, 3, 4]
-	b := a.slice(2, 4)
+	b := a[2..4]
 	assert b.len == 2
-	assert a.slice(1, 2).len == 1
+	assert a[1..2].len == 1
 	assert a.len == 4
 }
 
@@ -355,7 +355,7 @@ fn test_clone() {
 	assert nums2.len == 5
 	assert nums.str() == '[1, 2, 3, 4, 100]'
 	assert nums2.str() == '[1, 2, 3, 4, 100]'
-	assert nums.slice(1, 3).str() == '[2, 3]'
+	assert nums[1..3].str() == '[2, 3]'
 }
 
 /*
@@ -383,25 +383,26 @@ fn test_mutli_array_clone() {
 	assert b2_1 == [['1', '0', '3'], ['4', '5', '6']]
 	assert b2_2 == [['1', '2', '3'], ['0', '5', '6']]
 	// 3d array_int
-	mut a3_1 := [[[1, 1], [2, 2], [3, 3]],
-		[[4, 4], [5, 5], [6, 6]],
-	]
+	mut a3_1 := [[[1, 1], [2, 2], [3, 3]], [[4, 4], [5, 5], [6, 6]]]
 	mut a3_2 := a3_1.clone()
 	a3_1[0][0][1] = 0
 	a3_2[0][1][0] = 0
-	assert a3_1 == [[[1, 0], [2, 2], [3, 3]], [[4, 4], [5, 5], [6, 6]]]
-	assert a3_2 == [[[1, 1], [0, 2], [3, 3]], [[4, 4], [5, 5], [6, 6]]]
+	assert a3_1 == [[[1, 0], [2, 2], [3, 3]], [[4, 4], [5, 5],
+		[6, 6],
+	]]
+	assert a3_2 == [[[1, 1], [0, 2], [3, 3]], [[4, 4], [5, 5],
+		[6, 6],
+	]]
 	// 3d array_string
-	mut b3_1 := [[['1', '1'], ['2', '2'],
-		['3', '3'],
-	], [['4', '4'], ['5', '5'], ['6', '6']]]
+	mut b3_1 := [[['1', '1'], ['2', '2'], ['3', '3']], [['4', '4'],
+		['5', '5'], ['6', '6']]]
 	mut b3_2 := b3_1.clone()
 	b3_1[0][0][1] = '0'
 	b3_2[0][1][0] = '0'
-	assert b3_1 ==
-		[[['1', '0'], ['2', '2'], ['3', '3']], [['4', '4'], ['5', '5'], ['6', '6']]]
-	assert b3_2 ==
-		[[['1', '1'], ['0', '2'], ['3', '3']], [['4', '4'], ['5', '5'], ['6', '6']]]
+	assert b3_1 == [[['1', '0'], ['2', '2'], ['3', '3']], [['4', '4'],
+		['5', '5'], ['6', '6']]]
+	assert b3_2 == [[['1', '1'], ['0', '2'], ['3', '3']], [['4', '4'],
+		['5', '5'], ['6', '6']]]
 }
 
 fn test_doubling() {
@@ -718,20 +719,19 @@ fn test_sort() {
 	assert nums[3] == 67
 	assert nums[4] == 108
 	//
-	mut users := [User{22, 'Peter'},
-		User{20, 'Bob'}, User{25, 'Alice'}]
+	mut users := [User{22, 'Peter'}, User{20, 'Bob'}, User{25, 'Alice'}]
 	users.sort(a.age < b.age)
-	assert (users[0].age == 20)
-	assert (users[1].age == 22)
-	assert (users[2].age == 25)
-	assert (users[0].name == 'Bob')
-	assert (users[1].name == 'Peter')
-	assert (users[2].name == 'Alice')
+	assert users[0].age == 20
+	assert users[1].age == 22
+	assert users[2].age == 25
+	assert users[0].name == 'Bob'
+	assert users[1].name == 'Peter'
+	assert users[2].name == 'Alice'
 	//
 	users.sort(a.age > b.age)
-	assert (users[0].age == 25)
-	assert (users[1].age == 22)
-	assert (users[2].age == 20)
+	assert users[0].age == 25
+	assert users[1].age == 22
+	assert users[2].age == 20
 	//
 	users.sort(a.name < b.name) // Test sorting by string fields
 	// assert users.map(it.name).join(' ') == 'Alice Bob Peter'
@@ -1198,20 +1198,20 @@ fn test_struct_array_of_multi_type_in() {
 	ivan := Person{
 		name: 'ivan'
 		nums: [1, 2, 3]
-		kv: {
+		kv: map{
 			'aaa': '111'
 		}
 	}
 	people := [Person{
 		name: 'ivan'
 		nums: [1, 2, 3]
-		kv: {
+		kv: map{
 			'aaa': '111'
 		}
 	}, Person{
 		name: 'bob'
 		nums: [2]
-		kv: {
+		kv: map{
 			'bbb': '222'
 		}
 	}]
@@ -1223,20 +1223,20 @@ fn test_struct_array_of_multi_type_index() {
 	ivan := Person{
 		name: 'ivan'
 		nums: [1, 2, 3]
-		kv: {
+		kv: map{
 			'aaa': '111'
 		}
 	}
 	people := [Person{
 		name: 'ivan'
 		nums: [1, 2, 3]
-		kv: {
+		kv: map{
 			'aaa': '111'
 		}
 	}, Person{
 		name: 'bob'
 		nums: [2]
-		kv: {
+		kv: map{
 			'bbb': '222'
 		}
 	}]
@@ -1336,4 +1336,35 @@ fn test_array_of_multi_map() {
 	println(nums)
 	assert nums.odds == [3, 5, 7]
 	assert nums.evens == [2, 6, 10]
+}
+
+fn test_multi_fixed_array_with_default_init() {
+	a := [3][3]int{init: [3]int{init: 10}}
+	println(a)
+	assert a == [[10, 10, 10]!, [10, 10, 10]!, [10, 10, 10]!]!
+}
+
+struct Abc {
+mut:
+	x i64
+	y i64
+	z i64
+}
+
+fn test_clone_of_same_elem_size_array() {
+	mut arr := []Abc{}
+	arr << Abc{1, 2, 3}
+	arr << Abc{2, 3, 4}
+	arr2 := arr.clone()
+	println(arr2)
+	assert arr2 == [Abc{1, 2, 3}, Abc{2, 3, 4}]
+}
+
+pub fn example<T>(mut arr []T) []T {
+	return arr.clone()
+}
+
+fn test_generic_mutable_arrays() {
+	mut arr := [1, 2, 3]
+	assert example(mut arr) == [1, 2, 3]
 }

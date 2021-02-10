@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module x64
@@ -34,18 +34,18 @@ const (
 )
 
 pub fn (mut g Gen) generate_elf_header() {
-	g.buf << [byte(mag0), mag1, mag2, mag3]
-	g.buf << elfclass64 // file class
-	g.buf << elfdata2lsb // data encoding
-	g.buf << ev_current // file version
+	g.buf << [byte(x64.mag0), x64.mag1, x64.mag2, x64.mag3]
+	g.buf << x64.elfclass64 // file class
+	g.buf << x64.elfdata2lsb // data encoding
+	g.buf << x64.ev_current // file version
 	g.buf << 1 // elf_osabi
 	g.write64(0) // et_rel) // et_rel for .o
 	g.write16(2) // e_type
-	g.write16(e_machine) //
-	g.write32(ev_current) // e_version
+	g.write16(x64.e_machine) //
+	g.write32(x64.ev_current) // e_version
 	eh_size := 0x40
 	phent_size := 0x38
-	g.write64(segment_start + eh_size + phent_size) // e_entry
+	g.write64(x64.segment_start + eh_size + phent_size) // e_entry
 	g.write64(0x40) // e_phoff
 	g.write64(0) // e_shoff
 	g.write32(0) // e_flags
@@ -59,8 +59,8 @@ pub fn (mut g Gen) generate_elf_header() {
 	g.write32(1) // p_type
 	g.write32(5) // p_flags
 	g.write64(0) // p_offset
-	g.write64(segment_start) // p_vaddr addr:050
-	g.write64(segment_start) //
+	g.write64(x64.segment_start) // p_vaddr addr:050
+	g.write64(x64.segment_start) //
 	g.file_size_pos = i64(g.buf.len)
 	g.write64(0) // p_filesz PLACEHOLDER, set to file_size later // addr: 060
 	g.write64(0) // p_memsz
@@ -70,7 +70,7 @@ pub fn (mut g Gen) generate_elf_header() {
 	println('code_start_pos = $g.buf.len.hex()')
 	g.code_start_pos = i64(g.buf.len)
 	g.debug_pos = g.buf.len
-	g.call(placeholder) // call main function, it's not guaranteed to be the first, we don't know its address yet
+	g.call(x64.placeholder) // call main function, it's not guaranteed to be the first, we don't know its address yet
 	g.println('call fn main')
 }
 
@@ -84,7 +84,7 @@ pub fn (mut g Gen) generate_elf_footer() {
 	// Strings table
 	// Loop thru all strings and set the right addresses
 	for i, s in g.strings {
-		g.write64_at(segment_start + g.buf.len, int(g.str_pos[i]))
+		g.write64_at(x64.segment_start + g.buf.len, int(g.str_pos[i]))
 		g.write_string(s)
 		g.write8(0)
 	}

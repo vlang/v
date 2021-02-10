@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module main
@@ -6,6 +6,7 @@ module main
 import os
 import os.cmdline
 import rand
+import term
 import v.ast
 import v.pref
 import v.fmt
@@ -28,19 +29,9 @@ struct FormatOptions {
 }
 
 const (
-	formatted_file_token         = '\@\@\@' + 'FORMATTED_FILE: '
-	platform_and_file_extensions = [
-		['windows', '_windows.v'],
-		['linux', '_lin.v', '_linux.v', '_nix.v'],
-		['macos', '_mac.v', '_darwin.v'],
-		['freebsd', '_bsd.v', '_freebsd.v'],
-		['netbsd', '_bsd.v', '_netbsd.v'],
-		['openbsd', '_bsd.v', '_openbsd.v'],
-		['solaris', '_solaris.v'],
-		['haiku', '_haiku.v'],
-		['qnx', '_qnx.v'],
-	]
-	vtmp_folder                  = util.get_vtmp_folder()
+	formatted_file_token = '\@\@\@' + 'FORMATTED_FILE: '
+	vtmp_folder          = util.get_vtmp_folder()
+	term_colors          = term.can_show_color_on_stderr()
 )
 
 fn main() {
@@ -62,6 +53,9 @@ fn main() {
 		is_debug: '-debug' in args
 		is_noerror: '-noerror' in args
 		is_verify: '-verify' in args
+	}
+	if term_colors {
+		os.setenv('VCOLORS', 'always', true)
 	}
 	if foptions.is_verbose {
 		eprintln('vfmt foptions: $foptions')
@@ -100,7 +94,11 @@ fn main() {
 		}
 		files << file
 	}
-	if files.len == 0 {
+	if is_atty(0) == 0 && files.len == 0 {
+		foptions.format_pipe()
+		exit(0)
+	}
+	if files.len == 0 || '-help' in args || '--help' in args {
 		vhelp.show_topic('fmt')
 		exit(0)
 	}
@@ -157,6 +155,7 @@ fn main() {
 		if foptions.is_c {
 			exit(2)
 		}
+		exit(1)
 	}
 }
 
@@ -172,15 +171,35 @@ fn (foptions &FormatOptions) format_file(file string) {
 		parent: 0
 	})
 	// checker.check(file_ast)
-	formatted_content := fmt.fmt(file_ast, table, foptions.is_debug)
+	formatted_content := fmt.fmt(file_ast, table, prefs, foptions.is_debug)
 	file_name := os.file_name(file)
 	ulid := rand.ulid()
 	vfmt_output_path := os.join_path(vtmp_folder, 'vfmt_${ulid}_$file_name')
-	os.write_file(vfmt_output_path, formatted_content)
+	os.write_file(vfmt_output_path, formatted_content) or { panic(err) }
 	if foptions.is_verbose {
 		eprintln('fmt.fmt worked and $formatted_content.len bytes were written to $vfmt_output_path .')
 	}
 	eprintln('$formatted_file_token$vfmt_output_path')
+}
+
+fn (foptions &FormatOptions) format_pipe() {
+	mut prefs := pref.new_preferences()
+	prefs.is_fmt = true
+	if foptions.is_verbose {
+		eprintln('vfmt2 running fmt.fmt over stdin')
+	}
+	input_text := os.get_raw_lines_joined()
+	table := table.new_table()
+	// checker := checker.new_checker(table, prefs)
+	file_ast := parser.parse_text(input_text, '', table, .parse_comments, prefs, &ast.Scope{
+		parent: 0
+	})
+	// checker.check(file_ast)
+	formatted_content := fmt.fmt(file_ast, table, prefs, foptions.is_debug)
+	print(formatted_content)
+	if foptions.is_verbose {
+		eprintln('fmt.fmt worked and $formatted_content.len bytes were written to stdout.')
+	}
 }
 
 fn print_compiler_options(compiler_params &pref.Preferences) {
@@ -258,20 +277,10 @@ fn (foptions &FormatOptions) post_process_file(file string, formatted_file_path 
 }
 
 fn (f FormatOptions) str() string {
-	return 'FormatOptions{ is_l: $f.is_l, is_w: $f.is_w, is_diff: $f.is_diff, is_verbose: $f.is_verbose,' +
+	return 
+		'FormatOptions{ is_l: $f.is_l, is_w: $f.is_w, is_diff: $f.is_diff, is_verbose: $f.is_verbose,' +
 		' is_all: $f.is_all, is_worker: $f.is_worker, is_debug: $f.is_debug, is_noerror: $f.is_noerror,' +
 		' is_verify: $f.is_verify" }'
-}
-
-fn file_to_target_os(file string) string {
-	for extensions in platform_and_file_extensions {
-		for ext in extensions {
-			if file.ends_with(ext) {
-				return extensions[0]
-			}
-		}
-	}
-	return ''
 }
 
 fn file_to_mod_name_and_is_module_file(file string) (string, bool) {

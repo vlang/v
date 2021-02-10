@@ -56,6 +56,11 @@ pub fn (mut app App) html_page() vweb.Result {
 	return app.html('<h1>ok</h1>')
 }
 
+pub fn (mut app App) chunk() vweb.Result {
+	app.enable_chunked_transfer(20)
+	return app.html('Lorem ipsum dolor sit amet, consetetur sadipscing')
+}
+
 // the following serve custom routes
 ['/:user/settings']
 pub fn (mut app App) settings(username string) vweb.Result {

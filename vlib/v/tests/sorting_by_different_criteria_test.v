@@ -26,4 +26,6 @@ fn test_sorting_by_different_criteria_in_same_function() {
 	assert arr[0].name == 'xyz'
 	arr.sort(a < b)
 	assert arr[0].name == 'abc'
+	arr.sort(a > b)
+	assert arr[0].name == 'xyz'
 }

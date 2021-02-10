@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 // Package sha1 implements the SHA-1 hash algorithm as defined in RFC 3174.
@@ -54,6 +54,7 @@ pub fn new() &Digest {
 	return d
 }
 
+// write writes the contents of `p_` to the internal hash representation.
 [manualfree]
 pub fn (mut d Digest) write(p_ []byte) int {
 	nn := p_.len
@@ -89,6 +90,7 @@ pub fn (mut d Digest) write(p_ []byte) int {
 	return nn
 }
 
+// sum returns a copy of the generated sum of the bytes in `b_in`.
 pub fn (d &Digest) sum(b_in []byte) []byte {
 	// Make a copy of d so that caller can keep writing and summing.
 	mut d0 := *d
@@ -100,6 +102,7 @@ pub fn (d &Digest) sum(b_in []byte) []byte {
 	return b_out
 }
 
+// checksum returns the byte checksum of the `Digest`.
 fn (mut d Digest) checksum() []byte {
 	mut len := d.len
 	// Padding.  Add a 1 bit and 0 bits until 56 bytes mod 64.
@@ -123,7 +126,7 @@ fn (mut d Digest) checksum() []byte {
 	return digest
 }
 
-// Sum returns the SHA-1 checksum of the data.
+// sum returns the SHA-1 checksum of the bytes passed in `data`.
 pub fn sum(data []byte) []byte {
 	mut d := new()
 	d.write(data)
@@ -136,14 +139,17 @@ fn block(mut dig Digest, p []byte) {
 	block_generic(mut dig, p)
 }
 
+// size returns the size of the checksum in bytes.
 pub fn (d &Digest) size() int {
 	return size
 }
 
+// block_size returns the block size of the checksum in bytes.
 pub fn (d &Digest) block_size() int {
 	return block_size
 }
 
+// hexhash returns a hexadecimal SHA1 hash sum `string` of `s`.
 pub fn hexhash(s string) string {
 	return sum(s.bytes()).hex()
 }

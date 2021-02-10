@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module os
@@ -35,7 +35,7 @@ pub fn cp_all(src string, dst string, overwrite bool) ? {
 	source_path := real_path(src)
 	dest_path := real_path(dst)
 	if !exists(source_path) {
-		return error("Source path doesn\'t exist")
+		return error("Source path doesn't exist")
 	}
 	// single file copy
 	if !is_dir(source_path) {
@@ -46,7 +46,7 @@ pub fn cp_all(src string, dst string, overwrite bool) ? {
 		}
 		if exists(adjusted_path) {
 			if overwrite {
-				rm(adjusted_path)
+				rm(adjusted_path) ?
 			} else {
 				return error('Destination file path already exist')
 			}
@@ -65,7 +65,7 @@ pub fn cp_all(src string, dst string, overwrite bool) ? {
 			mkdir(dp) ?
 		}
 		cp_all(sp, dp, overwrite) or {
-			rmdir(dp)
+			rmdir(dp) or { return error(err) }
 			return error(err)
 		}
 	}
@@ -144,7 +144,7 @@ pub fn file_exists(_path string) bool {
 [deprecated]
 pub fn rmdir_recursive(path string) {
 	eprintln('warning: `os.rmdir_recursive` has been deprecated, use `os.rmdir_all` instead')
-	rmdir_all(path)
+	rmdir_all(path) or { panic(err) }
 }
 
 // rmdir_all recursively removes the specified directory.
@@ -152,10 +152,11 @@ pub fn rmdir_all(path string) ? {
 	mut ret_err := ''
 	items := ls(path) ?
 	for item in items {
-		if is_dir(join_path(path, item)) {
-			rmdir_all(join_path(path, item))
+		fullpath := join_path(path, item)
+		if is_dir(fullpath) {
+			rmdir_all(fullpath) or { ret_err = err }
 		}
-		rm(join_path(path, item)) or { ret_err = err }
+		rm(fullpath) or { ret_err = err }
 	}
 	rmdir(path) or { ret_err = err }
 	if ret_err.len > 0 {
@@ -264,6 +265,25 @@ pub fn get_lines_joined() string {
 	return inputstr
 }
 
+// get_raw_lines_joined reads *all* input lines from stdin.
+// It returns them as one large string. NB: unlike os.get_lines_joined,
+// empty lines (that contain only `\r\n` or `\n`), will be present in
+// the output.
+// Reading is stopped, only on EOF of stdin.
+pub fn get_raw_lines_joined() string {
+	mut line := ''
+	mut lines := []string{}
+	for {
+		line = get_raw_line()
+		if line.len <= 0 {
+			break
+		}
+		lines << line
+	}
+	res := lines.join('')
+	return res
+}
+
 // user_os returns current user operating system name.
 pub fn user_os() string {
 	$if linux {
@@ -314,7 +334,7 @@ pub fn home_dir() string {
 // write_file writes `text` data to a file in `path`.
 pub fn write_file(path string, text string) ? {
 	mut f := create(path) ?
-	f.write(text.bytes())
+	f.write(text.bytes()) ?
 	f.close()
 }
 
@@ -329,11 +349,11 @@ pub fn write_file_array(path string, buffer array) ? {
 // It relies on path manipulation of os.args[0] and os.wd_at_startup, so it may not work properly in
 // all cases, but it should be better, than just using os.args[0] directly.
 fn executable_fallback() string {
-	if args.len == 0 {
+	if os.args.len == 0 {
 		// we are early in the bootstrap, os.args has not been initialized yet :-|
 		return ''
 	}
-	mut exepath := args[0]
+	mut exepath := os.args[0]
 	$if windows {
 		if !exepath.contains('.exe') {
 			exepath += '.exe'
@@ -341,7 +361,7 @@ fn executable_fallback() string {
 	}
 	if !is_abs_path(exepath) {
 		if exepath.contains(path_separator) {
-			exepath = join_path(wd_at_startup, exepath)
+			exepath = join_path(os.wd_at_startup, exepath)
 		} else {
 			// no choice but to try to walk the PATH folders :-| ...
 			foundpath := find_abs_path_of_executable(exepath) or { '' }
@@ -395,20 +415,23 @@ pub fn is_file(path string) bool {
 // is_abs_path returns `true` if `path` is absolute.
 pub fn is_abs_path(path string) bool {
 	$if windows {
-		return path[0] == `/` ||  // incase we're in MingGW bash
+		return path[0] == `/` || // incase we're in MingGW bash
 		(path[0].is_letter() && path[1] == `:`)
 	}
 	return path[0] == `/`
 }
 
 // join_path returns a path as string from input string parameter(s).
+[manualfree]
 pub fn join_path(base string, dirs ...string) string {
 	mut result := []string{}
 	result << base.trim_right('\\/')
 	for d in dirs {
 		result << d
 	}
-	return result.join(path_separator)
+	res := result.join(path_separator)
+	unsafe { result.free() }
+	return res
 }
 
 // walk_ext returns a recursive list of all files in `path` ending with `ext`.
@@ -453,7 +476,12 @@ pub fn walk(path string, f fn (string)) {
 
 // log will print "os.log: "+`s` ...
 pub fn log(s string) {
+	//$if macos {
+	// Use NSLog() on macos
+	// C.darwin_log(s)
+	//} $else {
 	println('os.log: ' + s)
+	//}
 }
 
 [deprecated]
@@ -555,13 +583,20 @@ pub fn vmodules_paths() []string {
 // See https://discordapp.com/channels/592103645835821068/592294828432424960/630806741373943808
 // It gives a convenient way to access program resources like images, fonts, sounds and so on,
 // *no matter* how the program was started, and what is the current working directory.
+[manualfree]
 pub fn resource_abs_path(path string) string {
-	mut base_path := real_path(dir(executable()))
+	exe := executable()
+	dexe := dir(exe)
+	mut base_path := real_path(dexe)
 	vresource := getenv('V_RESOURCE_PATH')
 	if vresource.len != 0 {
 		base_path = vresource
 	}
-	return real_path(join_path(base_path, path))
+	fp := join_path(base_path, path)
+	res := real_path(fp)
+	fp.free()
+	base_path.free()
+	return res
 }
 
 pub struct Uname {

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module fractions
@@ -56,7 +56,7 @@ pub fn (f Fraction) str() string {
 // NOTE: requires reduced inputs
 fn general_addition_result(f1 Fraction, f2 Fraction, addition bool) Fraction {
 	d1 := math.gcd(f1.d, f2.d)
-	// d1 happends to be 1 around 600/(pi)^2 or 61 percent of the time (Theorem 4.5.2D)
+	// d1 happens to be 1 around 600/(pi)^2 or 61 percent of the time (Theorem 4.5.2D)
 	if d1 == 1 {
 		num1n2d := f1.n * f2.d
 		num1d2n := f1.d * f2.n
@@ -129,7 +129,7 @@ pub fn (f1 Fraction) *(f2 Fraction) Fraction {
 // Fraction divide using operator overloading
 pub fn (f1 Fraction) /(f2 Fraction) Fraction {
 	if f2.n == 0 {
-		panic('Cannot divive by zero')
+		panic('Cannot divide by zero')
 	}
 	// If the second fraction is negative, it will
 	// mess up the sign. We need positive denominator

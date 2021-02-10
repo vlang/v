@@ -7,12 +7,19 @@ import sync
 import runtime
 import benchmark
 
-const (
-	skip_files     = [
+const skip_files = [
 		'vlib/v/checker/tests/custom_comptime_define_if_flag.vv',
 	]
-	should_autofix = os.getenv('VAUTOFIX') != ''
-)
+
+const skip_on_ubuntu_musl = [
+		'vlib/v/checker/tests/vweb_tmpl_used_var.vv',
+	]
+
+const turn_off_vcolors = os.setenv('VCOLORS', 'never', true)
+
+const should_autofix = os.getenv('VAUTOFIX') != ''
+
+const github_job = os.getenv('GITHUB_JOB')
 
 struct TaskDescription {
 	vexe             string
@@ -21,12 +28,23 @@ struct TaskDescription {
 	result_extension string
 	path             string
 mut:
-	is_error         bool
-	is_skipped       bool
-	is_module        bool
-	expected         string
-	found___         string
-	took             time.Duration
+	is_error          bool
+	is_skipped        bool
+	is_module         bool
+	expected          string
+	expected_out_path string
+	found___          string
+	took              time.Duration
+	cli_cmd           string
+}
+
+struct Tasks {
+	vexe          string
+	parallel_jobs int // 0 is using VJOBS, anything else is an override
+	label         string
+mut:
+	show_cmd bool
+	all      []TaskDescription
 }
 
 fn test_all() {
@@ -35,37 +53,81 @@ fn test_all() {
 	os.chdir(vroot)
 	checker_dir := 'vlib/v/checker/tests'
 	parser_dir := 'vlib/v/parser/tests'
+	scanner_dir := 'vlib/v/scanner/tests'
 	module_dir := '$checker_dir/modules'
 	global_dir := '$checker_dir/globals'
 	run_dir := '$checker_dir/run'
+	skip_unused_dir := 'vlib/v/tests/skip_unused'
 	//
 	checker_tests := get_tests_in_dir(checker_dir, false)
 	parser_tests := get_tests_in_dir(parser_dir, false)
+	scanner_tests := get_tests_in_dir(scanner_dir, false)
 	global_tests := get_tests_in_dir(global_dir, false)
 	module_tests := get_tests_in_dir(module_dir, true)
 	run_tests := get_tests_in_dir(run_dir, false)
+	skip_unused_dir_tests := get_tests_in_dir(skip_unused_dir, false)
 	// -prod is used for the parser and checker tests, so that warns are errors
-	mut tasks := []TaskDescription{}
-	tasks.add(vexe, parser_dir, '-prod', '.out', parser_tests, false)
-	tasks.add(vexe, checker_dir, '-prod', '.out', checker_tests, false)
-	tasks.add(vexe, checker_dir, '-d mysymbol run', '.mysymbol.run.out', ['custom_comptime_define_error.vv'],
+	mut tasks := Tasks{
+		vexe: vexe
+		label: 'all tests'
+	}
+	tasks.add('', parser_dir, '-prod', '.out', parser_tests, false)
+	tasks.add('', checker_dir, '-prod', '.out', checker_tests, false)
+	tasks.add('', scanner_dir, '-prod', '.out', scanner_tests, false)
+	tasks.add('', checker_dir, '-d mysymbol run', '.mysymbol.run.out', ['custom_comptime_define_error.vv'],
 		false)
-	tasks.add(vexe, checker_dir, '-d mydebug run', '.mydebug.run.out', ['custom_comptime_define_if_flag.vv'],
+	tasks.add('', checker_dir, '-d mydebug run', '.mydebug.run.out', ['custom_comptime_define_if_flag.vv'],
 		false)
-	tasks.add(vexe, checker_dir, '-d nodebug run', '.nodebug.run.out', ['custom_comptime_define_if_flag.vv'],
+	tasks.add('', checker_dir, '-d nodebug run', '.nodebug.run.out', ['custom_comptime_define_if_flag.vv'],
 		false)
-	tasks.add(vexe, checker_dir, '--enable-globals run', '.run.out', ['globals_error.vv'],
+	tasks.add('', checker_dir, '--enable-globals run', '.run.out', ['globals_error.vv'],
 		false)
-	tasks.add(vexe, global_dir, '--enable-globals', '.out', global_tests, false)
-	tasks.add(vexe, module_dir, '-prod run', '.out', module_tests, true)
-	tasks.add(vexe, run_dir, 'run', '.run.out', run_tests, false)
+	tasks.add('', global_dir, '--enable-globals', '.out', global_tests, false)
+	tasks.add('', module_dir, '-prod run', '.out', module_tests, true)
+	tasks.add('', run_dir, 'run', '.run.out', run_tests, false)
 	tasks.run()
+	//
+	if os.user_os() == 'linux' {
+		mut skip_unused_tasks := Tasks{
+			vexe: vexe
+			parallel_jobs: 1
+			label: '-skip-unused tests'
+		}
+		skip_unused_tasks.add('', skip_unused_dir, 'run', '.run.out', skip_unused_dir_tests,
+			false)
+		skip_unused_tasks.add('', skip_unused_dir, '-d no_backtrace -skip-unused run',
+			'.skip_unused.run.out', skip_unused_dir_tests, false)
+		skip_unused_tasks.run()
+	}
+	//
+	if github_job == 'ubuntu-tcc' {
+		// This is done with tcc only, because the error output is compiler specific.
+		// NB: the tasks should be run serially, since they depend on
+		// setting and using environment variables.
+		mut cte_tasks := Tasks{
+			vexe: vexe
+			parallel_jobs: 1
+			label: 'comptime env tests'
+		}
+		cte_dir := '$checker_dir/comptime_env'
+		files := get_tests_in_dir(cte_dir, false)
+		cte_tasks.add('', cte_dir, '-no-retry-compilation run', '.run.out', files, false)
+		cte_tasks.add('VAR=/usr/include $vexe', cte_dir, '-no-retry-compilation run',
+			'.var.run.out', ['using_comptime_env.vv'], false)
+		cte_tasks.add('VAR=/opt/invalid/path $vexe', cte_dir, '-no-retry-compilation run',
+			'.var_invalid.run.out', ['using_comptime_env.vv'], false)
+		cte_tasks.run()
+	}
 }
 
-fn (mut tasks []TaskDescription) add(vexe string, dir string, voptions string, result_extension string, tests []string, is_module bool) {
+fn (mut tasks Tasks) add(custom_vexe string, dir string, voptions string, result_extension string, tests []string, is_module bool) {
+	mut vexe := tasks.vexe
+	if custom_vexe != '' {
+		vexe = custom_vexe
+	}
 	paths := vtest.filter_vtest_only(tests, basepath: dir)
 	for path in paths {
-		tasks << TaskDescription{
+		tasks.all << TaskDescription{
 			vexe: vexe
 			dir: dir
 			voptions: voptions
@@ -81,13 +143,17 @@ fn bstep_message(mut bench benchmark.Benchmark, label string, msg string, sdurat
 }
 
 // process an array of tasks in parallel, using no more than vjobs worker threads
-fn (mut tasks []TaskDescription) run() {
-	vjobs := runtime.nr_jobs()
+fn (mut tasks Tasks) run() {
+	tasks.show_cmd = os.getenv('VTEST_SHOW_CMD') != ''
+	vjobs := if tasks.parallel_jobs > 0 { tasks.parallel_jobs } else { runtime.nr_jobs() }
 	mut bench := benchmark.new_benchmark()
-	bench.set_total_expected_steps(tasks.len)
-	mut work := sync.new_channel<TaskDescription>(tasks.len)
-	mut results := sync.new_channel<TaskDescription>(tasks.len)
+	bench.set_total_expected_steps(tasks.all.len)
+	mut work := sync.new_channel<TaskDescription>(tasks.all.len)
+	mut results := sync.new_channel<TaskDescription>(tasks.all.len)
 	mut m_skip_files := skip_files.clone()
+	if os.getenv('V_CI_UBUNTU_MUSL').len > 0 {
+		m_skip_files << skip_on_ubuntu_musl
+	}
 	$if noskip ? {
 		m_skip_files = []
 	}
@@ -98,18 +164,18 @@ fn (mut tasks []TaskDescription) run() {
 		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_1.vv'
 		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_with_explanation_2.vv'
 	}
-	for i in 0 .. tasks.len {
-		if tasks[i].path in m_skip_files {
-			tasks[i].is_skipped = true
+	for i in 0 .. tasks.all.len {
+		if tasks.all[i].path in m_skip_files {
+			tasks.all[i].is_skipped = true
 		}
-		unsafe { work.push(&tasks[i]) }
+		unsafe { work.push(&tasks.all[i]) }
 	}
 	work.close()
 	for _ in 0 .. vjobs {
 		go work_processor(mut work, mut results)
 	}
 	mut total_errors := 0
-	for _ in 0 .. tasks.len {
+	for _ in 0 .. tasks.all.len {
 		mut task := TaskDescription{}
 		results.pop(&task)
 		bench.step()
@@ -123,6 +189,9 @@ fn (mut tasks []TaskDescription) run() {
 			bench.fail()
 			eprintln(bstep_message(mut bench, benchmark.b_fail, task.path, task.took))
 			println('============')
+			println('failed cmd: $task.cli_cmd')
+			println('expected_out_path: $task.expected_out_path')
+			println('============')
 			println('expected:')
 			println(task.expected)
 			println('============')
@@ -132,13 +201,20 @@ fn (mut tasks []TaskDescription) run() {
 			diff_content(task.expected, task.found___)
 		} else {
 			bench.ok()
-			eprintln(bstep_message(mut bench, benchmark.b_ok, task.path, task.took))
+			if tasks.show_cmd {
+				eprintln(bstep_message(mut bench, benchmark.b_ok, '$task.cli_cmd $task.path',
+					task.took))
+			} else {
+				eprintln(bstep_message(mut bench, benchmark.b_ok, task.path, task.took))
+			}
 		}
 	}
 	bench.stop()
 	eprintln(term.h_divider('-'))
-	eprintln(bench.total_message('all tests'))
-	assert total_errors == 0
+	eprintln(bench.total_message(tasks.label))
+	if total_errors != 0 {
+		exit(1)
+	}
 }
 
 // a single worker thread spends its time getting work from the `work` channel,
@@ -165,6 +241,11 @@ fn (mut task TaskDescription) execute() {
 	cli_cmd := '$task.vexe $task.voptions $program'
 	res := os.exec(cli_cmd) or { panic(err) }
 	expected_out_path := program.replace('.vv', '') + task.result_extension
+	task.expected_out_path = expected_out_path
+	task.cli_cmd = cli_cmd
+	if should_autofix && !os.exists(expected_out_path) {
+		os.write_file(expected_out_path, '') or { panic(err) }
+	}
 	mut expected := os.read_file(expected_out_path) or { panic(err) }
 	task.expected = clean_line_endings(expected)
 	task.found___ = clean_line_endings(res.output)
@@ -176,7 +257,7 @@ fn (mut task TaskDescription) execute() {
 	if task.expected != task.found___ {
 		task.is_error = true
 		if should_autofix {
-			os.write_file(expected_out_path, res.output)
+			os.write_file(expected_out_path, res.output) or { panic(err) }
 		}
 	}
 }
@@ -192,7 +273,7 @@ fn clean_line_endings(s string) string {
 
 fn diff_content(s1 string, s2 string) {
 	diff_cmd := util.find_working_diff_command() or { return }
-	println('diff: ')
+	println(term.bold(term.yellow('diff: ')))
 	println(util.color_compare_strings(diff_cmd, s1, s2))
 	println('============\n')
 }

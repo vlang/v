@@ -1,7 +1,7 @@
-vlib/v/checker/tests/lock_already_locked.vv:11:9: error: `a` is already locked 
+vlib/v/checker/tests/lock_already_locked.vv:11:3: error: nested `lock`/`rlock` not allowed
     9 |     }
    10 |     lock a {
    11 |         rlock a {
-      |               ^
+      |         ~~~~~
    12 |             a.x++
    13 |         }

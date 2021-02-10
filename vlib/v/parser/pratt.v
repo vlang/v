@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -18,7 +18,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 	is_stmt_ident := p.is_stmt_ident
 	p.is_stmt_ident = false
 	if !p.pref.is_fmt {
-		p.eat_comments()
+		p.eat_comments({})
 	}
 	// Prefix
 	match p.tok.kind {
@@ -32,7 +32,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 				node = p.sql_expr()
 				p.inside_match = false
 			} else {
-				if p.inside_if && p.tok.lit == 'T' {
+				if p.inside_if && p.is_generic_name() {
 					// $if T is string {}
 					p.expecting_type = true
 				}
@@ -56,7 +56,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 		.dollar {
 			match p.peek_tok.kind {
 				.name {
-					return p.vweb()
+					return p.comp_call()
 				}
 				.key_if {
 					return p.if_expr(true)
@@ -74,9 +74,16 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			}
 			p.next()
 		}
-		.minus, .amp, .mul, .not, .bit_not, .arrow {
+		.amp, .mul, .not, .bit_not, .arrow {
 			// -1, -a, !x, &x, ~x, <-a
 			node = p.prefix_expr()
+		}
+		.minus {
+			if p.peek_tok.kind == .number {
+				node = p.parse_number_literal()
+			} else {
+				node = p.prefix_expr()
+			}
 		}
 		.key_true, .key_false {
 			node = ast.BoolLiteral{
@@ -95,12 +102,13 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			node = p.parse_number_literal()
 		}
 		.lpar {
+			mut pos := p.tok.position()
 			p.check(.lpar)
 			node = p.expr(0)
 			p.check(.rpar)
 			node = ast.ParExpr{
 				expr: node
-				pos: p.tok.position()
+				pos: pos.extend(p.prev_tok.position())
 			}
 		}
 		.key_if {
@@ -118,7 +126,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			p.check(.lcbr)
 			e := p.expr(0)
 			p.check(.rcbr)
-			pos.last_line = p.prev_tok.line_nr - 1
+			pos.update_last_line(p.prev_tok.line_nr)
 			node = ast.UnsafeExpr{
 				expr: e
 				pos: pos
@@ -132,7 +140,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			if p.expecting_type {
 				// parse json.decode type (`json.decode([]User, s)`)
 				node = p.name_expr()
-			} else if p.is_amp && p.peek_tok.kind == .rsbr {
+			} else if p.is_amp && p.peek_tok.kind == .rsbr && p.peek_tok3.kind != .lcbr {
 				pos := p.tok.position()
 				typ := p.parse_type().to_ptr()
 				p.check(.lpar)
@@ -158,10 +166,9 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			pos := p.tok.position()
 			p.next() // sizeof
 			p.check(.lpar)
-			if !p.tok.can_start_type(table.builtin_type_names) {
-				if p.tok.kind == .name {
-					p.mark_var_as_used(p.tok.lit)
-				}
+			is_known_var := p.mark_var_as_used(p.tok.lit)
+			// assume mod. prefix leads to a type
+			if is_known_var || !(p.known_import(p.tok.lit) || p.tok.kind.is_start_of_type()) {
 				expr := p.expr(0)
 				node = ast.SizeOf{
 					is_type: false
@@ -169,6 +176,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 					pos: pos
 				}
 			} else {
+				p.register_used_import(p.tok.lit)
 				save_expr_mod := p.expr_mod
 				p.expr_mod = ''
 				sizeof_type := p.parse_type()
@@ -176,7 +184,6 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 				node = ast.SizeOf{
 					is_type: true
 					typ: sizeof_type
-					type_name: p.table.get_type_symbol(sizeof_type).name
 					pos: pos
 				}
 			}
@@ -197,6 +204,25 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 				pos: spos.extend(p.tok.position())
 			}
 		}
+		.key_offsetof {
+			pos := p.tok.position()
+			p.next() // __offsetof
+			p.check(.lpar)
+			st := p.parse_type()
+			p.check(.comma)
+			if p.tok.kind != .name {
+				p.error_with_pos('unexpected `$p.tok.lit`, expecting struct field', p.tok.position())
+				return ast.Expr{}
+			}
+			field := p.tok.lit
+			p.next()
+			p.check(.rpar)
+			node = ast.OffsetOf{
+				struct_type: st
+				field: field
+				pos: pos
+			}
+		}
 		.key_likely, .key_unlikely {
 			is_likely := p.tok.kind == .key_likely
 			p.next()
@@ -214,20 +240,23 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			// Map `{"age": 20}` or `{ x | foo:bar, a:10 }`
 			p.next()
 			if p.tok.kind in [.chartoken, .number, .string] {
+				// TODO deprecate
 				node = p.map_init()
 			} else {
 				// it should be a struct
-				if p.peek_tok.kind == .pipe {
+				if p.tok.kind == .name && p.peek_tok.kind == .pipe {
+					p.warn_with_pos('use e.g. `...struct_var` instead', p.peek_tok.position())
 					node = p.assoc()
-				} else if p.peek_tok.kind == .colon || p.tok.kind in [.rcbr, .comment] {
+				} else if (p.tok.kind == .name && p.peek_tok.kind == .colon)
+					|| p.tok.kind in [.rcbr, .comment, .ellipsis] {
 					node = p.struct_init(true) // short_syntax: true
 				} else if p.tok.kind == .name {
 					p.next()
-					s := if p.tok.lit != '' { '`$p.tok.lit`' } else { p.tok.kind.str() }
-					p.error_with_pos('unexpected $s, expecting `:`', p.tok.position())
+					p.error_with_pos('unexpected $p.tok, expecting `:` after struct field name',
+						p.tok.position())
 					return ast.Expr{}
 				} else {
-					p.error_with_pos('unexpected `$p.tok.lit`, expecting struct key',
+					p.error_with_pos('unexpected $p.tok, expecting struct field name',
 						p.tok.position())
 					return ast.Expr{}
 				}
@@ -268,8 +297,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 		else {
 			if p.tok.kind != .eof {
 				// eof should be handled where it happens
-				p.error_with_pos('invalid expression: unexpected `$p.tok.kind.str()` token',
-					p.tok.position())
+				p.error_with_pos('invalid expression: unexpected $p.tok', p.tok.position())
 				return ast.Expr{}
 			}
 		}
@@ -287,7 +315,7 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 				return node
 			}
 			p.is_stmt_ident = is_stmt_ident
-		} else if p.tok.kind == .lsbr {
+		} else if p.tok.kind == .lsbr && (p.inside_fn || p.tok.line_nr == p.prev_tok.line_nr) {
 			node = p.index_expr(node)
 			p.is_stmt_ident = is_stmt_ident
 			if p.tok.kind == .lpar && p.tok.line_nr == p.prev_tok.line_nr && node is ast.IndexExpr {
@@ -316,9 +344,10 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 		} else if p.tok.kind == .left_shift && p.is_stmt_ident {
 			// arr << elem
 			tok := p.tok
-			pos := tok.position()
+			mut pos := tok.position()
 			p.next()
 			right := p.expr(precedence - 1)
+			pos.update_last_line(p.prev_tok.line_nr)
 			node = ast.InfixExpr{
 				left: node
 				right: right
@@ -348,6 +377,10 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 				p.warn_with_pos('`$p.tok.kind` operator can only be used as a statement',
 					p.peek_tok.position())
 			}
+			if p.tok.kind in [.inc, .dec] && p.prev_tok.line_nr != p.tok.line_nr {
+				p.error_with_pos('$p.tok must be on the same line as the previous token',
+					p.tok.position())
+			}
 			node = ast.PostfixExpr{
 				op: p.tok.kind
 				expr: node
@@ -368,10 +401,8 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 		p.or_is_handled = true
 		p.register_auto_import('sync')
 	}
-	// mut typ := p.
-	// println('infix op=$op.str()')
 	precedence := p.tok.precedence()
-	pos := p.tok.position()
+	mut pos := p.tok.position()
 	p.next()
 	mut right := ast.Expr{}
 	prev_expecting_type := p.expecting_type
@@ -380,8 +411,8 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	}
 	right = p.expr(precedence)
 	p.expecting_type = prev_expecting_type
-	if p.pref.is_vet && op in [.key_in, .not_in] && right is ast.ArrayInit && (right as ast.ArrayInit).exprs.len ==
-		1 {
+	if p.pref.is_vet && op in [.key_in, .not_in] && right is ast.ArrayInit
+		&& (right as ast.ArrayInit).exprs.len == 1 {
 		p.vet_error('Use `var == value` instead of `var in [value]`', pos.line_nr, vet.FixKind.vfmt)
 	}
 	mut or_stmts := []ast.Stmt{}
@@ -415,6 +446,7 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 		}
 		p.or_is_handled = false
 	}
+	pos.update_last_line(p.prev_tok.line_nr)
 	return ast.InfixExpr{
 		left: left
 		right: right
@@ -429,7 +461,7 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 }
 
 fn (mut p Parser) prefix_expr() ast.PrefixExpr {
-	pos := p.tok.position()
+	mut pos := p.tok.position()
 	op := p.tok.kind
 	if op == .amp {
 		p.is_amp = true
@@ -482,6 +514,7 @@ fn (mut p Parser) prefix_expr() ast.PrefixExpr {
 		}
 		p.or_is_handled = false
 	}
+	pos.update_last_line(p.prev_tok.line_nr)
 	return ast.PrefixExpr{
 		op: op
 		right: right

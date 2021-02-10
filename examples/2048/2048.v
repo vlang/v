@@ -16,7 +16,7 @@ mut:
 	board       Board
 	undo        []Undo
 	atickers    [4][4]int
-	state       GameState = .play
+	state       GameState  = .play
 	tile_format TileFormat = .normal
 	moves       int
 	perf        &Perf = 0
@@ -47,7 +47,7 @@ struct Theme {
 }
 
 const (
-	themes = [
+	themes                = [
 		&Theme{
 			bg_color: gx.rgb(250, 248, 239)
 			padding_color: gx.rgb(143, 130, 119)
@@ -55,18 +55,18 @@ const (
 			game_over_color: gx.rgb(190, 50, 50)
 			text_color: gx.black
 			tile_colors: [
-				gx.rgb(205, 193, 180), // Empty / 0 tile
-				gx.rgb(238, 228, 218), // 2
-				gx.rgb(237, 224, 200), // 4
-				gx.rgb(242, 177, 121), // 8
-				gx.rgb(245, 149, 99), // 16
-				gx.rgb(246, 124, 95), // 32
-				gx.rgb(246, 94, 59), // 64
-				gx.rgb(237, 207, 114), // 128
-				gx.rgb(237, 204, 97), // 256
-				gx.rgb(237, 200, 80), // 512
-				gx.rgb(237, 197, 63), // 1024
-				gx.rgb(237, 194, 46), // 2048
+				gx.rgb(205, 193, 180), /* Empty / 0 tile */
+				gx.rgb(238, 228, 218), /* 2 */
+				gx.rgb(237, 224, 200), /* 4 */
+				gx.rgb(242, 177, 121), /* 8 */
+				gx.rgb(245, 149, 99), /* 16 */
+				gx.rgb(246, 124, 95), /* 32 */
+				gx.rgb(246, 94, 59), /* 64 */
+				gx.rgb(237, 207, 114), /* 128 */
+				gx.rgb(237, 204, 97), /* 256 */
+				gx.rgb(237, 200, 80), /* 512 */
+				gx.rgb(237, 197, 63), /* 1024 */
+				gx.rgb(237, 194, 46),
 			]
 		},
 		&Theme{
@@ -149,7 +149,7 @@ struct Undo {
 }
 
 struct TileLine {
-	ypos   int
+	ypos int
 mut:
 	field  [5]int
 	points int
@@ -351,7 +351,8 @@ fn (mut b Board) is_game_over() bool {
 			if (x > 0 && fidx == b.field[y][x - 1]) ||
 				(x < 4 - 1 && fidx == b.field[y][x + 1]) ||
 				(y > 0 && fidx == b.field[y - 1][x]) ||
-				(y < 4 - 1 && fidx == b.field[y + 1][x]) {
+				(y < 4 - 1 && fidx == b.field[y + 1][x])
+			{
 				// there are remaining merges
 				return false
 			}
@@ -623,8 +624,8 @@ fn (app &App) draw() {
 		app.gg.draw_text(ww / 2, (m * 4 / 10) + ypad, 'Game Over', app.label_format(.game_over))
 		f := app.label_format(.tile)
 		msg := $if android { 'Tap to restart' } $else { 'Press `r` to restart' }
-		app.gg.draw_text(ww / 2, (m * 6 / 10) + ypad, msg, {
-			f |
+		app.gg.draw_text(ww / 2, (m * 6 / 10) + ypad, msg, gx.TextCfg{
+			...f
 			color: gx.white
 			size: f.size * 3 / 4
 		})
@@ -649,7 +650,8 @@ fn (app &App) draw_tiles() {
 	toffset := app.ui.tile_size + app.ui.padding_size
 	tiles_size := min(app.ui.window_width, app.ui.window_height) - app.ui.border_size * 2
 	// Draw the padding around the tiles
-	app.gg.draw_rounded_rect(xstart, ystart, tiles_size / 2, tiles_size / 2, tiles_size / 24, app.theme.padding_color)
+	app.gg.draw_rounded_rect(xstart, ystart, tiles_size / 2, tiles_size / 2, tiles_size / 24,
+		app.theme.padding_color)
 	// Draw the actual tiles
 	for y in 0 .. 4 {
 		for x in 0 .. 4 {
@@ -670,8 +672,8 @@ fn (app &App) draw_tiles() {
 				xpos := xoffset + tw / 2
 				ypos := yoffset + th / 2
 				mut fmt := app.label_format(.tile)
-				fmt = {
-					fmt |
+				fmt = gx.TextCfg{
+					...fmt
 					size: int(f32(fmt.size - 1) / animation_length * anim_size)
 				}
 				match app.tile_format {
@@ -685,16 +687,16 @@ fn (app &App) draw_tiles() {
 						app.gg.draw_text(xpos, ypos, '2', fmt)
 						fs2 := int(f32(fmt.size) * 0.67)
 						app.gg.draw_text(xpos + app.ui.tile_size / 10, ypos - app.ui.tile_size / 8,
-							'$tidx', {
-							fmt |
+							'$tidx', gx.TextCfg{
+							...fmt
 							size: fs2
 							align: gx.HorizontalAlign.left
 						})
 					}
 					.shifts {
 						fs2 := int(f32(fmt.size) * 0.6)
-						app.gg.draw_text(xpos, ypos, '2<<${tidx - 1}', {
-							fmt |
+						app.gg.draw_text(xpos, ypos, '2<<${tidx - 1}', gx.TextCfg{
+							...fmt
 							size: fs2
 						})
 					}
@@ -936,13 +938,6 @@ fn (mut app App) showfps() {
 	}
 }
 
-// TODO: Move this somewhere else (vlib?) once Android support is merged
-$if android {
-	#include <android/log.h>
-	#define LOG_TAG "v_logcat_test"
-	#define printf(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
-	#define fprintf(a, ...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
-}
 fn main() {
 	mut app := &App{}
 	app.new_game()
@@ -958,11 +953,11 @@ fn main() {
 		window_title_ = 'canvas'
 	}
 	app.perf = &Perf{}
-	app.gg = gg.new_context({
+	app.gg = gg.new_context(
 		bg_color: app.theme.bg_color
 		width: default_window_width
 		height: default_window_height
-		sample_count: 8 // higher quality curves
+		sample_count: 4 // higher quality curves
 		create_window: true
 		window_title: window_title_
 		frame_fn: frame
@@ -970,6 +965,6 @@ fn main() {
 		init_fn: init
 		user_data: app
 		font_path: font_path
-	})
+	)
 	app.gg.run()
 }

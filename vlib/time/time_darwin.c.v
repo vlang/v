@@ -1,6 +1,7 @@
 module time
 
 #include <mach/mach_time.h>
+
 const (
 	// start_time is needed on Darwin and Windows because of potential overflows
 	start_time = C.mach_absolute_time()
@@ -40,10 +41,10 @@ fn init_time_base() C.mach_timebase_info_data_t {
 
 fn sys_mono_now_darwin() u64 {
 	tm := C.mach_absolute_time()
-	if time_base.denom == 0 {
-		C.mach_timebase_info(&time_base)
+	if time.time_base.denom == 0 {
+		C.mach_timebase_info(&time.time_base)
 	}
-	return (tm - start_time) * time_base.numer / time_base.denom
+	return (tm - time.start_time) * time.time_base.numer / time.time_base.denom
 }
 
 // NB: vpc_now_darwin is used by `v -profile` .
@@ -51,10 +52,10 @@ fn sys_mono_now_darwin() u64 {
 [inline]
 fn vpc_now_darwin() u64 {
 	tm := C.mach_absolute_time()
-	if time_base.denom == 0 {
-		C.mach_timebase_info(&time_base)
+	if time.time_base.denom == 0 {
+		C.mach_timebase_info(&time.time_base)
 	}
-	return (tm - start_time) * time_base.numer / time_base.denom
+	return (tm - time.start_time) * time.time_base.numer / time.time_base.denom
 }
 
 // darwin_now returns a better precision current time for Darwin based operating system

@@ -1,0 +1,12 @@
+import math { max,
+	min,
+}
+import os {
+	input, user_os, file_ext }
+
+fn main() {
+	println(max(0.1, 0.2))
+	println(min(0.1, 0.2))
+	println(user_os())
+	println(file_ext('main.v'))
+}

@@ -1,0 +1,6 @@
+vlib/v/checker/tests/unimplemented_interface_h.vv:9:13: error: `Cat` doesn't implement field `name` of interface `Animal`
+    7 | fn main() {
+    8 |     mut animals := []Animal{}
+    9 |     animals << Cat{}
+      |                ~~~~~
+   10 | }

@@ -75,21 +75,21 @@ fn (cmd Command) help_message() string {
 		help += '\n$cmd.description\n'
 	}
 	mut abbrev_len := 0
-	mut name_len := min_description_indent_len
+	mut name_len := cli.min_description_indent_len
 	if cmd.flags.have_abbrev() {
 		for flag in cmd.flags {
-			abbrev_len = max(abbrev_len, flag.abbrev.len + spacing + 1) // + 1 for '-' in front
-			name_len = max(name_len, abbrev_len + flag.name.len + spacing + 2) // + 2 for '--' in front
+			abbrev_len = max(abbrev_len, flag.abbrev.len + cli.spacing + 1) // + 1 for '-' in front
+			name_len = max(name_len, abbrev_len + flag.name.len + cli.spacing + 2) // + 2 for '--' in front
 		}
 		for command in cmd.commands {
-			name_len = max(name_len, command.name.len + spacing)
+			name_len = max(name_len, command.name.len + cli.spacing)
 		}
 	} else {
 		for flag in cmd.flags {
-			name_len = max(name_len, abbrev_len + flag.name.len + spacing + 1) // + 1 for '-' in front
+			name_len = max(name_len, abbrev_len + flag.name.len + cli.spacing + 1) // + 1 for '-' in front
 		}
 		for command in cmd.commands {
-			name_len = max(name_len, command.name.len + spacing)
+			name_len = max(name_len, command.name.len + cli.spacing)
 		}
 	}
 	if cmd.flags.len > 0 {
@@ -109,19 +109,20 @@ fn (cmd Command) help_message() string {
 			if flag.required {
 				required = ' (required)'
 			}
-			base_indent := ' '.repeat(base_indent_len)
+			base_indent := ' '.repeat(cli.base_indent_len)
 			description_indent := ' '.repeat(name_len - flag_name.len)
-			help += '$base_indent$flag_name$description_indent' + pretty_description(flag.description +
-				required, base_indent_len + name_len) + '\n'
+			help += '$base_indent$flag_name$description_indent' +
+				pretty_description(flag.description + required, cli.base_indent_len + name_len) +
+				'\n'
 		}
 	}
 	if cmd.commands.len > 0 {
 		help += '\nCommands:\n'
 		for command in cmd.commands {
-			base_indent := ' '.repeat(base_indent_len)
+			base_indent := ' '.repeat(cli.base_indent_len)
 			description_indent := ' '.repeat(name_len - command.name.len)
-			help += '$base_indent$command.name$description_indent' + pretty_description(command.description, name_len) +
-				'\n'
+			help += '$base_indent$command.name$description_indent' +
+				pretty_description(command.description, name_len) + '\n'
 		}
 	}
 	return help

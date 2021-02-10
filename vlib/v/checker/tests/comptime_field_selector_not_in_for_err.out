@@ -1,7 +1,7 @@
-vlib/v/checker/tests/comptime_field_selector_not_in_for_err.vv:9:5: error: compile time field access can only be used when iterating over `T.fields`
+vlib/v/checker/tests/comptime_field_selector_not_in_for_err.vv:9:6: error: expected selector expression e.g. `$(field.name)`
     7 |     mut t := T{}
     8 |     name := 'test'
-    9 |     t.$name = '3'
-      |        ~~~~
+    9 |     t.$(name) = '3'
+      |         ~~~~
    10 | }
    11 |

@@ -15,33 +15,33 @@ jobs:
     env:
       VFLAGS: -cc tcc
     steps:
-    - uses: actions/checkout@v2
-    - name: Environment info
-      run: echo $VFLAGS $GITHUB_SHA $GITHUB_REF
-    - name: Build local v
-      run: make -j4
-    - name: v test-cleancode
-      run: ./v -silent test-cleancode
-    - name: v test-fmt
-      run: ./v -silent test-fmt
+      - uses: actions/checkout@v2
+      - name: Environment info
+        run: echo $VFLAGS $GITHUB_SHA $GITHUB_REF
+      - name: Build local v
+        run: make -j4
+      - name: v test-cleancode
+        run: ./v -silent test-cleancode
+      - name: v test-fmt
+        run: ./v -silent test-fmt
 
-#  v-fmt:
-#    runs-on: ubuntu-20.04
-#    timeout-minutes: 30
-#    steps:
-#    - uses: actions/checkout@v2
-#    - name: getting all branch metainfo from github
-#      run: |
-#          git fetch --no-tags --prune --depth=1 origin +refs/heads/*:refs/remotes/origin/*
-#          echo "Changed files compared to origin/master are:" && git diff --name-status origin/master HEAD -- '*.v'
-#    - name: Build v (there is no need for dependencies for fmt)
-#      run: make -j4
-#    - name: Build a production cmd/tools/vfmt
-#      run: ./v -prod -d vfmt cmd/tools/vfmt.v
-#    - name: Run v fmt -diff on only the changed files. Does NOT fail for now.
-#      run: git diff --name-status origin/master HEAD -- '*.v' |grep -v '^D'|rev|cut -f1|rev| xargs ./v fmt -noerror -diff
-#    - name: Run v test-fmt
-#      run: echo "TODO" #./v test-fmt
+  #  v-fmt:
+  #    runs-on: ubuntu-20.04
+  #    timeout-minutes: 30
+  #    steps:
+  #    - uses: actions/checkout@v2
+  #    - name: getting all branch metainfo from github
+  #      run: |
+  #          git fetch --no-tags --prune --depth=1 origin +refs/heads/*:refs/remotes/origin/*
+  #          echo "Changed files compared to origin/master are:" && git diff --name-status origin/master HEAD -- '*.v'
+  #    - name: Build v (there is no need for dependencies for fmt)
+  #      run: make -j4
+  #    - name: Build a production cmd/tools/vfmt
+  #      run: ./v -prod -d vfmt cmd/tools/vfmt.v
+  #    - name: Run v fmt -diff on only the changed files. Does NOT fail for now.
+  #      run: git diff --name-status origin/master HEAD -- '*.v' |grep -v '^D'|rev|cut -f1|rev| xargs ./v fmt -noerror -diff
+  #    - name: Run v test-fmt
+  #      run: echo "TODO" #./v test-fmt
 
   performance-regressions:
     runs-on: ubuntu-20.04
@@ -49,84 +49,85 @@ jobs:
     env:
       VFLAGS: -cc gcc
     steps:
-    - uses: actions/checkout@v2
-    - name: Environment info
-      run: echo $VFLAGS $GITHUB_SHA $GITHUB_REF
-    - name: Build local v
-      run: (make -j4)
-    - name: Clone & Build vmaster/v
-      run: |
-        git clone --depth=1 https://github.com/vlang/v vmaster/
-        (cd vmaster; make -j4)
-    - name: V versions
-      run: ./v version && ./vmaster/v version
-    - name: Build the repeat tool
-      run: ./v cmd/tools/repeat.v
-    - name: Repeat -o hw.c examples/hello_world.v
-      run: cmd/tools/repeat --max_time 150 --series 3 --count 10 --nmaxs 5 --warmup 3 --fail_percent 10 -t '{T} -show-timings -o hw.c examples/hello_world.v' ./v ./vmaster/v
-    - name: Repeat -o v.c cmd/v
-      run: cmd/tools/repeat --max_time 750 --series 3 --count 15 --nmaxs 5 --warmup 3 --fail_percent 10 -t '{T} -show-timings -o v.c cmd/v' ./v ./vmaster/v
+      - uses: actions/checkout@v2
+      - name: Environment info
+        run: echo $VFLAGS $GITHUB_SHA $GITHUB_REF
+      - name: Build local v
+        run: (make -j4)
+      - name: Clone & Build vmaster/v
+        run: |
+          git clone --depth=1 https://github.com/vlang/v vmaster/
+          (cd vmaster; make -j4)
+      - name: V versions
+        run: ./v version && ./vmaster/v version
+      - name: Build the repeat tool
+        run: ./v cmd/tools/repeat.v
+      - name: Repeat -o hw.c examples/hello_world.v
+        run: cmd/tools/repeat --max_time 150 --series 3 --count 10 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -show-timings -o hw.c examples/hello_world.v' . ./vmaster
+      - name: Repeat -o v.c cmd/v
+        run: cmd/tools/repeat --max_time 750 --series 3 --count 15 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -show-timings -o v.c cmd/v' . ./vmaster
 
   ubuntu-tcc:
     runs-on: ubuntu-20.04
     timeout-minutes: 30
     env:
-      VFLAGS: -cc tcc
+      VFLAGS: -cc tcc -no-retry-compilation
     steps:
-    - uses: actions/checkout@v2
-    - name: Install dependencies
-      run: |
-           sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update;
-           sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind
-           sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
-           ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
-           ## The following is needed for examples/wkhtmltopdf.v
-           wget https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.focal_amd64.deb
-           sudo apt-get install xfonts-75dpi xfonts-base
-           sudo dpkg -i wkhtmltox_0.12.6-1.focal_amd64.deb
-    - name: Build v
-      run: |
-        echo $VFLAGS
-        sudo ln -s $PWD/thirdparty/tcc/tcc.exe /usr/local/bin/tcc ## TODO: remove
-        make -j4
-        ./v -cg -cflags -Werror -o v cmd/v
-    - name: Test v->c
-      run: |
-        thirdparty/tcc/tcc.exe -version
-        ./v -cg -o v cmd/v # Make sure vtcc can build itself twice
-#        ./v -silent test-compiler
-    - name: v self compilation
-      run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
-    - name: v doctor
-      run: |
-        ./v doctor
-    - name: Verify `v test` works
-      run: |
-        ./v cmd/tools/test_if_v_test_system_works.v
-        ./cmd/tools/test_if_v_test_system_works
-    - name: Fixed tests
-      run: ./v -silent test-fixed
-    - name: Test time functions in a timezone UTC-12
-      run: TZ=Etc/GMT+12 ./v test vlib/time/
-    - name: Test time functions in a timezone UTC-3
-      run: TZ=Etc/GMT+3 ./v test vlib/time/
-    - name: Test time functions in a timezone UTC+3
-      run: TZ=Etc/GMT-3 ./v test vlib/time/
-    - name: Test time functions in a timezone UTC+12
-      run: TZ=Etc/GMT-12 ./v test vlib/time/
-    - name: Test time functions in a timezone using daylight saving (Europe/Paris)
-      run: TZ=Europe/Paris ./v test vlib/time/
-    - name: Build examples
-      run: ./v build-examples
-    - name: Test building v tools
-      run: ./v build-tools
-    - name: Test v binaries
-      run: ./v build-vbinaries
-    - name: Test v tutorials
-      run: |
-        cd tutorials/code/blog
-        ../../../v .
-
+      - uses: actions/checkout@v2
+      - name: Install dependencies
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update;
+          sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind
+          sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
+          ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
+          ## The following is needed for examples/wkhtmltopdf.v
+          wget https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.focal_amd64.deb
+          sudo apt-get install xfonts-75dpi xfonts-base
+          sudo dpkg -i wkhtmltox_0.12.6-1.focal_amd64.deb
+      - name: Build v
+        run: |
+          echo $VFLAGS
+          sudo ln -s $PWD/thirdparty/tcc/tcc.exe /usr/local/bin/tcc ## TODO: remove
+          make -j4
+          ./v -cg -cflags -Werror -o v cmd/v
+      - name: Test v->c
+        run: |
+          thirdparty/tcc/tcc.exe -version
+          ./v -cg -o v cmd/v # Make sure vtcc can build itself twice
+      #        ./v -silent test-all
+      - name: v self compilation
+        run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
+      - name: v doctor
+        run: |
+          ./v doctor
+      - name: Verify `v test` works
+        run: |
+          ./v cmd/tools/test_if_v_test_system_works.v
+          ./cmd/tools/test_if_v_test_system_works
+      - name: Self tests
+        run: ./v -silent test-self
+      - name: Self tests (-Werror)
+        run: ./v -cflags "-Werror" test-self
+      - name: Test time functions in a timezone UTC-12
+        run: TZ=Etc/GMT+12 ./v test vlib/time/
+      - name: Test time functions in a timezone UTC-3
+        run: TZ=Etc/GMT+3 ./v test vlib/time/
+      - name: Test time functions in a timezone UTC+3
+        run: TZ=Etc/GMT-3 ./v test vlib/time/
+      - name: Test time functions in a timezone UTC+12
+        run: TZ=Etc/GMT-12 ./v test vlib/time/
+      - name: Test time functions in a timezone using daylight saving (Europe/Paris)
+        run: TZ=Europe/Paris ./v test vlib/time/
+      - name: Build examples
+        run: ./v -W build-examples
+      - name: Test building v tools
+        run: ./v -W build-tools
+      - name: Test v binaries
+        run: ./v build-vbinaries
+      - name: Test v tutorials
+        run: |
+          cd tutorials/code/blog
+          ../../../v .
 
   # Alpine docker pre-built container
   alpine-docker-musl-gcc:
@@ -155,182 +156,184 @@ jobs:
           env
       - name: Test V fixed tests
         run: |
-          ./v -silent test-fixed
+          ./v -silent test-self
 
   macos:
     runs-on: macOS-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       VFLAGS: -cc clang
     steps:
-    - uses: actions/checkout@v2
-    - uses: actions/setup-node@v1
-      with:
-        node-version: 12.x
-    - name: Install dependencies
-      run: |
-        ##brew install libpq openssl freetype ### these are *already installed* on Catalina ...
-        brew uninstall --ignore-dependencies libpq ## libpq is a dependency of PHP
-        brew install postgresql
-        brew install glfw
-        ## brew install sdl2 sdl2_ttf sdl2_mixer sdl2_image
-        brew install mingw-w64
-        export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
-    - name: Build V
-      run:  make -j4 && ./v -cg -cflags -Werror -o v cmd/v
-    - name: Run sanitizers
-      run: |
-        ./v -o v2 cmd/v -cflags -fsanitize=undefined
-        UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v2 -o v.c cmd/v
-    - name: Build V using V
-      run:  ./v -o v2 cmd/v && ./v2 -o v3 cmd/v
-    - name: v self with -usecache
-      run: ./v -o v2 -usecache cmd/v
-    - name: Test symlink
-      run:  ./v symlink
-#    - name: Set up pg database
-#      run: |
-#        pg_ctl -D /usr/local/var/postgres -l /usr/local/var/postgres/server.log start
-#        psql -d postgres -c 'select rolname from pg_roles'
-#        psql -d postgres -c 'create database customerdb;'
-#        psql -d customerdb -f examples/database/pg/mydb.sql
-#    - name: Test v->c
-#      run: ./v -silent test-compiler
-#    - name: Test v binaries
-#      run: ./v build-vbinaries
-##    - name: Test v->js
-##      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
-    - name: Verify `v test` works
-      run: |
-        ./v cmd/tools/test_if_v_test_system_works.v
-        ./cmd/tools/test_if_v_test_system_works
-    - name: Fixed tests
-      run: VJOBS=1 ./v -silent test-fixed
-    - name: Build examples
-      run: ./v build-examples
-    - name: Build examples with -autofree
-      run: |
-        ./v -autofree -o tetris examples/tetris/tetris.v
-    - name: v doctor
-      run: |
-        ./v doctor
-    - name: Cross-compilation to Linux
-      run: |
-        ./v -os linux cmd/v
-        # TODO: fix this: ./v -os linux examples/2048/2048.v
-    - name: Cross-compilation to Windows
-      run: |
-        ./v -os windows cmd/v
-        ./v -os windows examples/2048/2048.v
-#    - name: Test vsh
-#      run:  ./v examples/v_script.vsh
-    - name: Test ved
-      run: |
-        git clone --depth 1 https://github.com/vlang/ved
-        cd ved && ../v -o ved .
-        ../v -autofree .
-    - name: Build V UI examples
-      run: |
-        git clone --depth 1 https://github.com/vlang/ui
-        cd ui
-        mkdir -p ~/.vmodules
-        ln -s $(pwd) ~/.vmodules/ui
-        ../v examples/rectangles.v
-        ../v run examples/build_examples.vsh
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v1
+        with:
+          node-version: 12.x
+      - name: Install dependencies
+        run: |
+          ##brew install libpq openssl freetype ### these are *already installed* on Catalina ...
+          brew uninstall --ignore-dependencies libpq ## libpq is a dependency of PHP
+          brew install postgresql
+          brew install glfw
+          ## brew install sdl2 sdl2_ttf sdl2_mixer sdl2_image
+          brew install mingw-w64
+          export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
+      - name: Build V
+        run: make -j4 && ./v -cg -cflags -Werror -o v cmd/v
+      - name: Run sanitizers
+        run: |
+          ./v -o v2 cmd/v -cflags -fsanitize=undefined
+          UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v2 -o v.c cmd/v
+      - name: Build V using V
+        run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v
+      - name: v self with -usecache
+        run: ./v -o v2 -usecache cmd/v
+      - name: Test symlink
+        run: ./v symlink
+      #    - name: Set up pg database
+      #      run: |
+      #        pg_ctl -D /usr/local/var/postgres -l /usr/local/var/postgres/server.log start
+      #        psql -d postgres -c 'select rolname from pg_roles'
+      #        psql -d postgres -c 'create database customerdb;'
+      #        psql -d customerdb -f examples/database/pg/mydb.sql
+      #    - name: Test v->c
+      #      run: ./v -silent test-all
+      #    - name: Test v binaries
+      #      run: ./v build-vbinaries
+      ##    - name: Test v->js
+      ##      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
+      - name: Verify `v test` works
+        run: |
+          ./v cmd/tools/test_if_v_test_system_works.v
+          ./cmd/tools/test_if_v_test_system_works
+      - name: Self tests
+        run: VJOBS=1 ./v -silent test-self
+      - name: Build examples
+        run: ./v build-examples
+      - name: Build examples with -autofree
+        run: |
+          ./v -autofree -o tetris examples/tetris/tetris.v
+      - name: v doctor
+        run: |
+          ./v doctor
+      - name: Cross-compilation to Linux
+        run: |
+          ./v -os linux cmd/v
+          # TODO: fix this: ./v -os linux examples/2048/2048.v
+      - name: Cross-compilation to Windows
+        run: |
+          ./v -os windows cmd/v
+          ./v -os windows examples/2048/2048.v
+      #    - name: Test vsh
+      #      run:  ./v examples/v_script.vsh
+      - name: Test ved
+        run: |
+          git clone --depth 1 https://github.com/vlang/ved
+          cd ved && ../v -o ved .
+          ../v -autofree .
+      - name: Build V UI examples
+        run: |
+          git clone --depth 1 https://github.com/vlang/ui
+          cd ui
+          mkdir -p ~/.vmodules
+          ln -s $(pwd) ~/.vmodules/ui
+          ../v examples/rectangles.v
+          ../v run examples/build_examples.vsh
 
   ubuntu:
     runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
-    - uses: actions/checkout@v2
-    - uses: actions/setup-node@v1
-      with:
-        node-version: 12.x
-    - name: Install dependencies
-      run: |
-         sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list;
-         sudo apt-get update;
-         sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-         sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
-         ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
-    - name: Build V
-      run: make -j4 && ./v -cc gcc -cg -cflags -Werror -o v cmd/v
-    - name: Valgrind
-      run: valgrind --error-exitcode=1 ./v -o v.c cmd/v
-    - name: Run sanitizers
-      run: |
-        ./v -o v2 cmd/v -cflags -fsanitize=thread
-        ./v -o v3 cmd/v -cflags "-fsanitize=undefined -fno-sanitize=alignment"
-        UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v2 -o v.c cmd/v
-        UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v3 -o v.c cmd/v
-#    - name: Test V
-#      run: ./v -silent test-compiler
-#    - name: Test v binaries
-#      run: ./v build-vbinaries
-##    - name: Test v->js
-##      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
-#    - name: Build Vorum
-#      run: git clone --depth 1 https://github.com/vlang/vorum && cd vorum && ../v . && cd ..
-#    - name: Build vpm
-#      run: git clone --depth 1 https://github.com/vlang/vpm && cd vpm && ../v . && cd ..
-#    - name: Freestanding
-#      run: ./v -freestanding -o bare vlib/os/bare/bare_example_linux.v
-    - name: v self compilation
-      run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
-    - name: -usecache
-      run: |
-        ./v -o v2 -usecache cmd/v
-        ./v -usecache examples/tetris/tetris.v
-    - name: Verify `v test` works
-      run: |
-        ./v cmd/tools/test_if_v_test_system_works.v
-        ./cmd/tools/test_if_v_test_system_works
-    - name: Fixed tests
-      run: |
-        ./v -silent test-fixed
-    - name: Fixed tests (-prod)
-      run: ./v -o vprod -prod cmd/v && ./vprod -silent test-fixed
-    - name: Build examples
-      run: ./v build-examples
-    - name: Build examples with -autofree
-      run: |
-        ./v -autofree -experimental -o tetris examples/tetris/tetris.v
-    - name: Build modules
-      run: |
-        ./v build-module vlib/os
-        ./v build-module vlib/builtin
-        ./v build-module vlib/strconv
-        ./v build-module vlib/time
-        ./v build-module vlib/term
-        ./v build-module vlib/math
-        ./v build-module vlib/strings
-        ./v build-module vlib/v/token
-        ./v build-module vlib/v/ast
-        ./v build-module vlib/v/parser
-        ./v build-module vlib/v/gen
-        ./v build-module vlib/v/depgraph
-        ./v build-module vlib/os/cmdline
-    - name: x64 machine code generation
-      run: |
-        exit
-        ./v -o vprod -prod cmd/v
-        cd cmd/tools
-        echo "Generating a 1m line V file..."
-        ../../vprod gen1m.v
-        ./gen1m > 1m.v
-        echo "Building it..."
-        ../../vprod -backend x64 -o 1m 1m.v
-        echo "Running it..."
-        ls
-#    - name: SDL examples
-#      run: git clone --depth 1 https://github.com/vlang/sdl && cd sdl
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v1
+        with:
+          node-version: 12.x
+      - name: Install dependencies
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list;
+          sudo apt-get update;
+          sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+          sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
+          ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
+      - name: Build V
+        run: make -j4 && ./v -cc gcc -cg -cflags -Werror -o v cmd/v
+      - name: Valgrind v.c
+        run: valgrind --error-exitcode=1 ./v -o v.c cmd/v
+      - name: Run sanitizers
+        run: |
+          ./v -o v2 cmd/v -cflags -fsanitize=thread
+          ./v -o v3 cmd/v -cflags "-fsanitize=undefined -fno-sanitize=alignment"
+          UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v2 -o v.c cmd/v
+          UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v3 -o v.c cmd/v
+      #    - name: Test V
+      #      run: ./v -silent test-all
+      #    - name: Test v binaries
+      #      run: ./v build-vbinaries
+      ##    - name: Test v->js
+      ##      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
+      #    - name: Build Vorum
+      #      run: git clone --depth 1 https://github.com/vlang/vorum && cd vorum && ../v . && cd ..
+      #    - name: Build vpm
+      #      run: git clone --depth 1 https://github.com/vlang/vpm && cd vpm && ../v . && cd ..
+      #    - name: Freestanding
+      #      run: ./v -freestanding -o bare vlib/os/bare/bare_example_linux.v
+      - name: v self compilation
+        run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
+      - name: -usecache
+        run: |
+          ./v -o v2 -usecache cmd/v
+          ./v -usecache examples/tetris/tetris.v
+      - name: Verify `v test` works
+        run: |
+          ./v cmd/tools/test_if_v_test_system_works.v
+          ./cmd/tools/test_if_v_test_system_works
+      - name: Self tests
+        run: |
+          ./v -silent test-self
+      - name: Self tests (-prod)
+        run: ./v -o vprod -prod cmd/v && ./vprod -silent test-self
+      - name: Self tests (-Werror)
+        run: ./v -cc gcc -cflags "-Werror" test-self
+      - name: Build examples
+        run: ./v build-examples
+      - name: Build examples with -autofree
+        run: |
+          ./v -autofree -experimental -o tetris examples/tetris/tetris.v
+      - name: Build modules
+        run: |
+          ./v build-module vlib/os
+          ./v build-module vlib/builtin
+          ./v build-module vlib/strconv
+          ./v build-module vlib/time
+          ./v build-module vlib/term
+          ./v build-module vlib/math
+          ./v build-module vlib/strings
+          ./v build-module vlib/v/token
+          ./v build-module vlib/v/ast
+          ./v build-module vlib/v/parser
+          ./v build-module vlib/v/gen/c
+          ./v build-module vlib/v/depgraph
+          ./v build-module vlib/os/cmdline
+      - name: x64 machine code generation
+        run: |
+          exit
+          ./v -o vprod -prod cmd/v
+          cd cmd/tools
+          echo "Generating a 1m line V file..."
+          ../../vprod gen1m.v
+          ./gen1m > 1m.v
+          echo "Building it..."
+          ../../vprod -backend x64 -o 1m 1m.v
+          echo "Running it..."
+          ls
+  #    - name: SDL examples
+  #      run: git clone --depth 1 https://github.com/vlang/sdl && cd sdl
 
-#        ./1m
-      #run: echo "TODO" #cd examples/x64 && ../../v -x64 hello_world.v && ./hello_world
-#    - name: Coveralls GitHub Action
-#      uses: coverallsapp/github-action@v1.0.1
-#      with:
-#        github-token: ${{ secrets.GITHUB_TOKEN }}
+  #        ./1m
+  #run: echo "TODO" #cd examples/x64 && ../../v -x64 hello_world.v && ./hello_world
+  #    - name: Coveralls GitHub Action
+  #      uses: coverallsapp/github-action@v1.0.1
+  #      with:
+  #        github-token: ${{ secrets.GITHUB_TOKEN }}
 
   ubuntu-clang:
     runs-on: ubuntu-20.04
@@ -338,75 +341,79 @@ jobs:
     env:
       VFLAGS: -cc clang
     steps:
-    - uses: actions/checkout@v2
-    - uses: actions/setup-node@v1
-      with:
-        node-version: 12.x
-    - name: Install dependencies
-      run: |
-         sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list;
-         sudo apt-get update;
-         sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-         sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
-         sudo apt-get install clang
-         ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
-    - name: Build V
-      run: make -j4 && ./v -cc clang -cg -cflags -Werror -o v cmd/v
-    - name: Valgrind
-      run: valgrind --error-exitcode=1 ./v -o v.c cmd/v
-    - name: Run sanitizers
-      run: |
-        ./v -o v2 cmd/v -cflags -fsanitize=memory
-        ./v -o v3 cmd/v -cflags -fsanitize=thread
-        ./v -o v4 cmd/v -cflags -fsanitize=undefined
-        UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v2 -o v.c cmd/v
-        UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v3 -o v.c cmd/v
-        UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v4 -o v.c cmd/v
-    - name: v self compilation
-      run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
-    - name: v self with -usecache
-      run: ./v -o v2 -usecache cmd/v
-    - name: Verify `v test` works
-      run: |
-        ./v cmd/tools/test_if_v_test_system_works.v
-        ./cmd/tools/test_if_v_test_system_works
-    - name: Fixed tests
-      run: |
-        ./v -silent test-fixed
-    - name: Fixed tests (-prod)
-      run: ./v -o vprod -prod cmd/v && ./vprod -silent test-fixed
-    - name: Build examples
-      run: ./v build-examples
-    - name: Build examples with -autofree
-      run: |
-        ./v -autofree -experimental -o tetris examples/tetris/tetris.v
-    - name: Build modules
-      run: |
-        ./v build-module vlib/os
-        ./v build-module vlib/builtin
-        ./v build-module vlib/strconv
-        ./v build-module vlib/time
-        ./v build-module vlib/term
-        ./v build-module vlib/math
-        ./v build-module vlib/strings
-        ./v build-module vlib/v/token
-        ./v build-module vlib/v/ast
-        ./v build-module vlib/v/parser
-        ./v build-module vlib/v/gen
-        ./v build-module vlib/v/depgraph
-        ./v build-module vlib/os/cmdline
-    - name: x64 machine code generation
-      run: |
-        exit
-        ./v -o vprod -prod cmd/v
-        cd cmd/tools
-        echo "Generating a 1m line V file..."
-        ../../vprod gen1m.v
-        ./gen1m > 1m.v
-        echo "Building it..."
-        ../../vprod -backend x64 -o 1m 1m.v
-        echo "Running it..."
-        ls
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v1
+        with:
+          node-version: 12.x
+      - name: Install dependencies
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list;
+          sudo apt-get update;
+          sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+          sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
+          sudo apt-get install clang
+          ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
+      - name: Build V
+        run: make -j4 && ./v -cc clang -cg -cflags -Werror -o v cmd/v
+      - name: Valgrind
+        run: valgrind --error-exitcode=1 ./v -o v.c cmd/v
+      - name: Run sanitizers
+        run: |
+          ./v -o v2 cmd/v -cflags -fsanitize=memory
+          ./v -o v3 cmd/v -cflags -fsanitize=thread
+          ./v -o v4 cmd/v -cflags -fsanitize=undefined
+          ./v -o v5 cmd/v -cflags -fsanitize=address
+          UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v2 -o v.c cmd/v
+          UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v3 -o v.c cmd/v
+          UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v4 -o v.c cmd/v
+          ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v5 -o v.c cmd/v
+      - name: v self compilation
+        run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
+      - name: v self with -usecache
+        run: ./v -o v2 -usecache cmd/v
+      - name: Verify `v test` works
+        run: |
+          ./v cmd/tools/test_if_v_test_system_works.v
+          ./cmd/tools/test_if_v_test_system_works
+      - name: Self tests
+        run: |
+          ./v -silent test-self
+      - name: Self tests (-prod)
+        run: ./v -o vprod -prod cmd/v && ./vprod -silent test-self
+      - name: Self tests (-Werror)
+        run: ./v -cflags "-Werror" test-self
+      - name: Build examples
+        run: ./v build-examples
+      - name: Build examples with -autofree
+        run: |
+          ./v -autofree -experimental -o tetris examples/tetris/tetris.v
+      - name: Build modules
+        run: |
+          ./v build-module vlib/os
+          ./v build-module vlib/builtin
+          ./v build-module vlib/strconv
+          ./v build-module vlib/time
+          ./v build-module vlib/term
+          ./v build-module vlib/math
+          ./v build-module vlib/strings
+          ./v build-module vlib/v/token
+          ./v build-module vlib/v/ast
+          ./v build-module vlib/v/parser
+          ./v build-module vlib/v/gen/c
+          ./v build-module vlib/v/depgraph
+          ./v build-module vlib/os/cmdline
+      - name: x64 machine code generation
+        run: |
+          exit
+          ./v -o vprod -prod cmd/v
+          cd cmd/tools
+          echo "Generating a 1m line V file..."
+          ../../vprod gen1m.v
+          ./gen1m > 1m.v
+          echo "Building it..."
+          ../../vprod -backend x64 -o 1m 1m.v
+          echo "Running it..."
+          ls
 
   tests-sanitize-undefined:
     runs-on: ubuntu-20.04
@@ -414,22 +421,22 @@ jobs:
     env:
       VFLAGS: -cc clang
     steps:
-    - uses: actions/checkout@v2
-    - uses: actions/setup-node@v1
-      with:
-        node-version: 12.x
-    - name: Install dependencies
-      run: |
-         sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list;
-         sudo apt-get update;
-         sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-         sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
-         sudo apt-get install clang
-         ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
-    - name: Build V
-      run: make -j4 && ./v -cc clang -cg -cflags -Werror -o v cmd/v
-    - name: Fixed tests (-fsanitize=undefined)
-      run: ./v -cc clang -cflags "-fsanitize=undefined" -o v2 cmd/v && ./v2 -cflags -fsanitize=undefined test-fixed
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v1
+        with:
+          node-version: 12.x
+      - name: Install dependencies
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list;
+          sudo apt-get update;
+          sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+          sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
+          sudo apt-get install clang
+          ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
+      - name: Build V
+        run: make -j4 && ./v -cc clang -cg -cflags -Werror -o v cmd/v
+      - name: Self tests (-fsanitize=undefined)
+        run: ./v -cc clang -cflags "-fsanitize=undefined" -o v2 cmd/v && ./v2 -cflags -fsanitize=undefined test-self
 
   tests-sanitize-address:
     runs-on: ubuntu-20.04
@@ -437,22 +444,22 @@ jobs:
     env:
       VFLAGS: -cc clang
     steps:
-    - uses: actions/checkout@v2
-    - uses: actions/setup-node@v1
-      with:
-        node-version: 12.x
-    - name: Install dependencies
-      run: |
-         sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list;
-         sudo apt-get update;
-         sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-         sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
-         sudo apt-get install clang
-         ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
-    - name: Build V
-      run: make -j4 && ./v -cc clang -cg -cflags -Werror -o v cmd/v
-    - name: Fixed tests (-fsanitize=address)
-      run: ASAN_OPTIONS=detect_leaks=0 ./v -cflags -fsanitize=address test-fixed
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v1
+        with:
+          node-version: 12.x
+      - name: Install dependencies
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list;
+          sudo apt-get update;
+          sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+          sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
+          sudo apt-get install clang
+          ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
+      - name: Build V
+        run: make -j4 && ./v -cc clang -cg -cflags -Werror -o v cmd/v
+      - name: Self tests (-fsanitize=address)
+        run: ASAN_OPTIONS=detect_leaks=0 ./v -cflags -fsanitize=address test-self
 
   tests-sanitize-memory:
     runs-on: ubuntu-20.04
@@ -460,35 +467,34 @@ jobs:
     env:
       VFLAGS: -cc clang
     steps:
-    - uses: actions/checkout@v2
-    - uses: actions/setup-node@v1
-      with:
-        node-version: 12.x
-    - name: Install dependencies
-      run: |
-         sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list;
-         sudo apt-get update;
-         sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-         sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
-         sudo apt-get install clang
-         ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
-    - name: Build V
-      run: make -j4 && ./v -cc clang -cg -cflags -Werror -o v cmd/v
-    - name: Fixed tests (-fsanitize=memory)
-      run: ./v -cflags -fsanitize=memory test-fixed
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v1
+        with:
+          node-version: 12.x
+      - name: Install dependencies
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list;
+          sudo apt-get update;
+          sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+          sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
+          sudo apt-get install clang
+          ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
+      - name: Build V
+        run: make -j4 && ./v -cc clang -cg -cflags -Werror -o v cmd/v
+      - name: Self tests (-fsanitize=memory)
+        run: ./v -cflags -fsanitize=memory test-self
 
-#  ubuntu-autofree-selfcompile:
-#    runs-on: ubuntu-20.04
-#    timeout-minutes: 30
-#    env:
-#      VFLAGS: -cc gcc
-#    steps:
-#    - uses: actions/checkout@v2
-#    - name: Build V
-#      run: make -j4
-#    - name: V self compilation with -autofree
-#      run: ./v -o v2 -autofree cmd/v && ./v2 -o v3 -autofree cmd/v && ./v3 -o v4 -autofree cmd/v
-
+  #  ubuntu-autofree-selfcompile:
+  #    runs-on: ubuntu-20.04
+  #    timeout-minutes: 30
+  #    env:
+  #      VFLAGS: -cc gcc
+  #    steps:
+  #    - uses: actions/checkout@v2
+  #    - name: Build V
+  #      run: make -j4
+  #    - name: V self compilation with -autofree
+  #      run: ./v -o v2 -autofree cmd/v && ./v2 -o v3 -autofree cmd/v && ./v3 -o v4 -autofree cmd/v
 
   # Ubuntu docker pre-built container
   ubuntu-musl:
@@ -516,252 +522,251 @@ jobs:
           ./cmd/tools/test_if_v_test_system_works
       - name: Test V fixed tests
         run: |
-          ./v -silent test-fixed
+          ./v -silent test-self
 
-#   ubuntu-musl:
-#     runs-on: ubuntu-20.04
-#     timeout-minutes: 30
-#     env:
-#       VFLAGS: -cc musl-gcc
-#       V_CI_MUSL: 1
-#     steps:
-#     - uses: actions/checkout@v2
-#     - uses: actions/setup-node@v1
-#       with:
-#         node-version: 12.x
-#     - name: Install dependencies
-#       run: |
-#          sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list;
-#          sudo apt-get update;
-#          sudo apt-get install --quiet -y musl musl-tools libssl-dev sqlite3 libsqlite3-dev valgrind
-#          sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
-#     - name: Build v
-#       run: echo $VFLAGS && make -j4 && ./v -cg -o v cmd/v
-# #    - name: Test v binaries
-# #      run: ./v build-vbinaries
-# ##    - name: Test v->js
-# ##      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
-#     - name: quick debug
-#       run: ./v -stats vlib/strconv/format_test.v
-#     - name: Fixed tests
-#       run: ./v -silent test-fixed
+  #   ubuntu-musl:
+  #     runs-on: ubuntu-20.04
+  #     timeout-minutes: 30
+  #     env:
+  #       VFLAGS: -cc musl-gcc
+  #       V_CI_MUSL: 1
+  #     steps:
+  #     - uses: actions/checkout@v2
+  #     - uses: actions/setup-node@v1
+  #       with:
+  #         node-version: 12.x
+  #     - name: Install dependencies
+  #       run: |
+  #          sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list;
+  #          sudo apt-get update;
+  #          sudo apt-get install --quiet -y musl musl-tools libssl-dev sqlite3 libsqlite3-dev valgrind
+  #          sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
+  #     - name: Build v
+  #       run: echo $VFLAGS && make -j4 && ./v -cg -o v cmd/v
+  # #    - name: Test v binaries
+  # #      run: ./v build-vbinaries
+  # ##    - name: Test v->js
+  # ##      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
+  #     - name: quick debug
+  #       run: ./v -stats vlib/strconv/format_test.v
+  #     - name: Self tests
+  #       run: ./v -silent test-self
 
   ubuntu-llvm-mingw:
     runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
-    - uses: actions/checkout@v2
-#    - name: Cross-compile V
-#      run: docker build . -f Dockerfile.cross
+      - uses: actions/checkout@v2
+  #    - name: Cross-compile V
+  #      run: docker build . -f Dockerfile.cross
 
   windows-gcc:
     runs-on: windows-2019
     timeout-minutes: 30
     env:
-        VFLAGS: -cc gcc
+      VFLAGS: -cc gcc
     steps:
-    - uses: actions/checkout@v2
-    #- uses: actions/setup-node@v1
-    #  with:
-    #    node-version: 12.x
-    - name: Build
-      run: |
-        gcc --version
-        .\make.bat -gcc
-    - name: Test new v.c
-      run: .\v.exe -o v.c cmd/v && gcc -Werror -municode -w v.c
-    - name: Install dependencies
-      run: |
-        .\v.exe setup-freetype
-        .\.github\workflows\windows-install-sqlite.bat
-        ## .\.github\workflows\windows-install-sdl.bat
-    - name: Verify `v test` works
-      run: |
-        ./v cmd/tools/test_if_v_test_system_works.v
-        ./cmd/tools/test_if_v_test_system_works
-    - name: Fixed tests
-      run: |
-        .\v.exe -silent test-fixed
-#    - name: Test
-#      run: |
-#        .\v.exe -silent test-compiler
+      - uses: actions/checkout@v2
+      #- uses: actions/setup-node@v1
+      #  with:
+      #    node-version: 12.x
+      - name: Build
+        run: |
+          gcc --version
+          .\make.bat -gcc
+      - name: Test new v.c
+        run: .\v.exe -o v.c cmd/v && gcc -Werror -municode -w v.c
+      - name: Install dependencies
+        run: |
+          .\v.exe setup-freetype
+          .\.github\workflows\windows-install-sqlite.bat
+          ## .\.github\workflows\windows-install-sdl.bat
+      - name: Verify `v test` works
+        run: |
+          ./v cmd/tools/test_if_v_test_system_works.v
+          ./cmd/tools/test_if_v_test_system_works
+      - name: Self tests
+        run: |
+          .\v.exe -silent test-self
+      #    - name: Test
+      #      run: |
+      #        .\v.exe -silent test-all
       ## v.js dosent work on windows
-        #.\v.exe -o hi.js examples/hello_v_js.v
-        #node hi.js
-    - name: Test v binaries
-      run: ./v build-vbinaries
-    - name: v2 self compilation
-      run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
+      #.\v.exe -o hi.js examples/hello_v_js.v
+      #node hi.js
+      - name: Test v binaries
+        run: ./v build-vbinaries
+      - name: v2 self compilation
+        run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
 
   windows-msvc:
     runs-on: windows-2019
     timeout-minutes: 30
     env:
-        VFLAGS: -cc msvc
+      VFLAGS: -cc msvc
     steps:
-    - uses: actions/checkout@v2
-    #- uses: actions/setup-node@v1
-    #  with:
-    #    node-version: 12.x
-    - name: Build
-      run: |
-        echo %VFLAGS%
-        echo $VFLAGS
-        .\make.bat -msvc
-        .\v.exe -cflags /WX self
-    - name: Install dependencies
-      run: |
-        .\v.exe setup-freetype
-        .\.github\workflows\windows-install-sqlite.bat
-        ## .\.github\workflows\windows-install-sdl.bat
-    - name: v doctor
-      run: |
-        ./v doctor
-    - name: Verify `v test` works
-      run: |
-        ./v cmd/tools/test_if_v_test_system_works.v
-        ./cmd/tools/test_if_v_test_system_works
-    - name: Fixed tests
-      run: |
-        ./v -cg cmd\tools\vtest-fixed.v
-        ./v -silent test-fixed
-    - name: Build examples
-      run: ./v build-examples
-#    - name: Test
-#      run: |
-#        .\v.exe -silent test-compiler
-#      ## v.js dosent work on windows
-        #.\v.exe -o hi.js examples/hello_v_js.v
-        #node hi.js
-#    - name: Test v binaries
-#      run: ./v build-vbinaries
+      - uses: actions/checkout@v2
+      #- uses: actions/setup-node@v1
+      #  with:
+      #    node-version: 12.x
+      - name: Build
+        run: |
+          echo %VFLAGS%
+          echo $VFLAGS
+          .\make.bat -msvc
+          .\v.exe -cflags /WX self
+      - name: Install dependencies
+        run: |
+          .\v.exe setup-freetype
+          .\.github\workflows\windows-install-sqlite.bat
+          ## .\.github\workflows\windows-install-sdl.bat
+      - name: v doctor
+        run: |
+          ./v doctor
+      - name: Verify `v test` works
+        run: |
+          ./v cmd/tools/test_if_v_test_system_works.v
+          ./cmd/tools/test_if_v_test_system_works
+      - name: Self tests
+        run: |
+          ./v -cg cmd\tools\vtest-self.v
+          ./v -silent test-self
+      - name: Build examples
+        run: ./v build-examples
+  #    - name: Test
+  #      run: |
+  #        .\v.exe -silent test-all
+  #      ## v.js dosent work on windows
+  #.\v.exe -o hi.js examples/hello_v_js.v
+  #node hi.js
+  #    - name: Test v binaries
+  #      run: ./v build-vbinaries
 
   windows-tcc:
     runs-on: windows-2019
     timeout-minutes: 30
     env:
-         VFLAGS: -cc tcc
+      VFLAGS: -cc tcc -no-retry-compilation
     steps:
-    - uses: actions/checkout@v2
-    - name: Build with make.bat -tcc
-      run: |
-        .\make.bat -tcc
-    - name: Test new v.c
-      run: .\v.exe -o v.c cmd/v && .\thirdparty\tcc\tcc.exe -Werror -w -ladvapi32 -bt10 v.c
-    - name: Install dependencies
-      run: |
-        .\v.exe setup-freetype
-        .\.github\workflows\windows-install-sqlite.bat
-        ## .\.github\workflows\windows-install-sdl.bat
-    - name: Verify `v test` works
-      run: |
-        .\v.exe cmd/tools/test_if_v_test_system_works.v
-        .\cmd\tools\test_if_v_test_system_works.exe
-    - name: Fixed tests
-      run: |
-        .\v.exe -silent test-fixed
-#    - name: Test
-#      run: |
-#        .\v.exe -silent test-compiler
-      ## v.js dosent work on windows
-        #.\v.exe -o hi.js examples/hello_v_js.v
-        #node hi.js
-#    - name: Test v binaries
-#      run: ./v build-vbinaries
-#    - name: v2 self compilation
-#      run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
-
+      - uses: actions/checkout@v2
+      - name: Build with make.bat -tcc
+        run: |
+          .\make.bat -tcc
+      - name: Test new v.c
+        run: .\v.exe -o v.c cmd/v && .\thirdparty\tcc\tcc.exe -Werror -w -ladvapi32 -bt10 v.c
+      - name: Install dependencies
+        run: |
+          .\v.exe setup-freetype
+          .\.github\workflows\windows-install-sqlite.bat
+          ## .\.github\workflows\windows-install-sdl.bat
+      - name: Verify `v test` works
+        run: |
+          .\v.exe cmd/tools/test_if_v_test_system_works.v
+          .\cmd\tools\test_if_v_test_system_works.exe
+      - name: Self tests
+        run: |
+          .\v.exe -silent test-self
+  #    - name: Test
+  #      run: |
+  #        .\v.exe -silent test-all
+  ## v.js dosent work on windows
+  #.\v.exe -o hi.js examples/hello_v_js.v
+  #node hi.js
+  #    - name: Test v binaries
+  #      run: ./v build-vbinaries
+      - name: v2 self compilation
+        run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
 
   compilable-v-c-and-v-win-c:
     runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
-    - uses: actions/checkout@v2
-    - name: Install dependencies
-      run: |
-        sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list
-        sudo apt-get update
-        sudo apt install --quiet -y mingw-w64 wine-stable winetricks
-    - name: Build V
-      run: make -j4
-    - name: v.c can be compiled and run
-      run: |
-        ./v -os cross -o /tmp/v.c cmd/v
-        gcc  -g -std=gnu11 -w -o v_from_vc /tmp/v.c  -lm -lpthread
-        ls -lart v_from_vc
-        ./v_from_vc version
-    - name: turn off the wine crash dialog
-      run: winetricks nocrashdialog
-    - name: v_win.c can be compiled and run
-      run: |
-        ./v -os windows -o /tmp/v_win.c cmd/v
-        x86_64-w64-mingw32-gcc  /tmp/v_win.c -std=c99 -w -municode -o v_from_vc.exe
-        ls -lart v_from_vc.exe
-        wine v_from_vc.exe version
-    - name: hello_world.v can be cross compiled to hello_world.exe
-      run: |
-        ./v -os windows examples/hello_world.v
-        ls -lart examples/hello_world.exe
-        wine examples/hello_world.exe
-    - name: 2048.v can be cross compiled to 2048.exe
-      run: |
-        ./v -os windows examples/2048/2048.v
-        ls -lart examples/2048/2048.exe
+      - uses: actions/checkout@v2
+      - name: Install dependencies
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list
+          sudo apt-get update
+          sudo apt install --quiet -y mingw-w64 wine-stable winetricks
+      - name: Build V
+        run: make -j4
+      - name: v.c can be compiled and run
+        run: |
+          ./v -os cross -o /tmp/v.c cmd/v
+          gcc  -g -std=gnu11 -w -o v_from_vc /tmp/v.c  -lm -lpthread
+          ls -lart v_from_vc
+          ./v_from_vc version
+      - name: turn off the wine crash dialog
+        run: winetricks nocrashdialog
+      - name: v_win.c can be compiled and run
+        run: |
+          ./v -os windows -o /tmp/v_win.c cmd/v
+          x86_64-w64-mingw32-gcc  /tmp/v_win.c -std=c99 -w -municode -o v_from_vc.exe
+          ls -lart v_from_vc.exe
+          wine v_from_vc.exe version
+      - name: hello_world.v can be cross compiled to hello_world.exe
+        run: |
+          ./v -os windows examples/hello_world.v
+          ls -lart examples/hello_world.exe
+          wine examples/hello_world.exe
+      - name: 2048.v can be cross compiled to 2048.exe
+        run: |
+          ./v -os windows examples/2048/2048.v
+          ls -lart examples/2048/2048.exe
 
   ubuntu-c-plus-plus:
     runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
-    - uses: actions/checkout@v2
-    - name: Install dependencies
-      run: |
-        sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list;
-        sudo apt-get update;
-        sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev
-        sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
-        sudo apt-get install --quiet -y valgrind g++-9
-        ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
-    - name: Build V
-      run: make -j4
-    - name: g++ version
-      run: g++-9 --version
-    - name: V self compilation with g++
-      run: ./v -cc g++-9 -o v2 cmd/v && ./v2 -cc g++-9 -o v3 cmd/v
-##    - name: Running tests with g++
-##      run: ./v -cc g++-9 -silent test-fixed
+      - uses: actions/checkout@v2
+      - name: Install dependencies
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list;
+          sudo apt-get update;
+          sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev
+          sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
+          sudo apt-get install --quiet -y valgrind g++-9
+          ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
+      - name: Build V
+        run: make -j4
+      - name: g++ version
+        run: g++-9 --version
+      - name: V self compilation with g++
+        run: ./v -cc g++-9 -o v2 cmd/v && ./v2 -cc g++-9 -o v3 cmd/v
+  ##    - name: Running tests with g++
+  ##      run: ./v -cc g++-9 -silent test-self
 
   install-modules:
     runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
-    - uses: actions/checkout@v2
-    - name: Install dependencies
-      run: sudo apt-get install --quiet -y libssl-dev
-    - name: Build V
-      run: make -j4
-    - name: Installing V modules
-      run: |
-        ./v install ui
-        ./v install nedpals.args
+      - uses: actions/checkout@v2
+      - name: Install dependencies
+        run: sudo apt-get install --quiet -y libssl-dev
+      - name: Build V
+        run: make -j4
+      - name: Installing V modules
+        run: |
+          ./v install ui
+          ./v install nedpals.args
 
   gitly-compiles:
     runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
-    - uses: actions/checkout@v2
-    - name: Install dependencies
-      run: sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev
-    - name: Build V
-      run: make -j2 && ./v -cc gcc -o v cmd/v
-    - name: Install markdown
-      run: ./v install markdown
-    - name: Build Gitly
-      run: |
-        git clone --depth 1 https://github.com/vlang/gitly
-        cd gitly
-        ../v .
-        ../v -autofree .
-        cd ..
+      - uses: actions/checkout@v2
+      - name: Install dependencies
+        run: sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev
+      - name: Build V
+        run: make -j2 && ./v -cc gcc -o v cmd/v
+      - name: Install markdown
+        run: ./v install markdown
+      - name: Build Gitly
+        run: |
+          git clone --depth 1 https://github.com/vlang/gitly
+          cd gitly
+          ../v .
+          ../v -autofree .
+          cd ..
 
   websocket_autobahn:
     name: Autobahn integrations tests
@@ -795,73 +800,75 @@ jobs:
       - name: Publish all reports
         uses: actions/upload-artifact@v2
         with:
-            name: full report
-            path: ${{github.workspace}}/reports
+          name: full report
+          path: ${{github.workspace}}/reports
       - name: Publish report client
         uses: actions/upload-artifact@v2
         with:
-            name: client
-            path: ${{github.workspace}}/reports/clients/index.html
+          name: client
+          path: ${{github.workspace}}/reports/clients/index.html
       - name: Publish report server
         uses: actions/upload-artifact@v2
         with:
-            name: server
-            path: ${{github.workspace}}/reports/servers/index.html
+          name: server
+          path: ${{github.workspace}}/reports/servers/index.html
       - name: Publish all reports WSS
         uses: actions/upload-artifact@v2
         with:
-            name: full report wss
-            path: ${{github.workspace}}/reports_wss
+          name: full report wss
+          path: ${{github.workspace}}/reports_wss
       - name: Publish report client wss
         uses: actions/upload-artifact@v2
         with:
-            name: client wss
-            path: ${{github.workspace}}/reports_wss/clients/index.html
+          name: client wss
+          path: ${{github.workspace}}/reports_wss/clients/index.html
 
   parser-silent:
     name: Parser silent mode
     runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
-    - uses: actions/checkout@v2
-    - name: Build local v
-      run: make -j4
-    - name: Run test-parser
-      run: |
-        ./v test-parser examples/hello_world.v
-        ./v test-parser examples/hanoi.v
-        ./v test-parser examples/fibonacci.v
-        ./v test-parser examples/cli.v
-        ./v test-parser examples/json.v
-        ./v test-parser examples/vmod.v
-        ./v test-parser examples/regex_example.v
-        ./v test-parser examples/2048/2048.v
+      - uses: actions/checkout@v2
+      - name: Build local v
+        run: make -j4
+      - name: Run test-parser
+        run: |
+          ./v test-parser -S examples/hello_world.v
+          ./v test-parser -S examples/hanoi.v
+          ./v test-parser -S examples/fibonacci.v
+          ./v test-parser -S examples/cli.v
+          ./v test-parser -S examples/json.v
+          ./v test-parser -S examples/vmod.v
+          ./v test-parser -S examples/regex_example.v
+          ./v test-parser -S examples/2048/2048.v
 
   parser-silent-fuzzing:
     name: Parser silent mode fuzzing
     runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
-    - uses: actions/checkout@v2
-    - name: Install zzuf
-      run: sudo apt install -qq zzuf
-    - name: Build local v
-      run: make -j4
-    - name: Run test-parser over fuzzed files
-      run: |
-        zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/hello_world.v > examples/hello_world_fuzz.v
-        zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/hanoi.v > examples/hanoi_fuzz.v
-        zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/fibonacci.v > examples/fibonacci_fuzz.v
-        zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/cli.v > examples/cli_fuzz.v
-        zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/json.v > examples/json_fuzz.v
-        zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/vmod.v > examples/vmod_fuzz.v
-        zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/regex_example.v > examples/regex_example_fuzz.v
-        zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/2048/2048.v > examples/2048/2048_fuzz.v
-        ./v test-parser examples/hello_world_fuzz.v
-        ./v test-parser examples/hanoi_fuzz.v
-        ./v test-parser examples/cli_fuzz.v
-        ./v test-parser examples/regex_example_fuzz.v
-        ./v test-parser examples/2048/2048_fuzz.v
+      - uses: actions/checkout@v2
+      - name: Install zzuf
+        run: sudo apt install -qq zzuf
+      - name: Build local v
+        run: |
+          make -j4
+          ./v -g cmd/tools/vtest-parser.v
+      - name: Run test-parser over fuzzed files
+        run: |
+          zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/hello_world.v > examples/hello_world_fuzz.v
+          zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/hanoi.v > examples/hanoi_fuzz.v
+          zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/fibonacci.v > examples/fibonacci_fuzz.v
+          zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/cli.v > examples/cli_fuzz.v
+          zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/json.v > examples/json_fuzz.v
+          zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/vmod.v > examples/vmod_fuzz.v
+          zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/regex_example.v > examples/regex_example_fuzz.v
+          zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/2048/2048.v > examples/2048/2048_fuzz.v
+          ./v test-parser -S examples/hello_world_fuzz.v
+          ./v test-parser -S examples/hanoi_fuzz.v
+          ./v test-parser -S examples/cli_fuzz.v
+          ./v test-parser -S examples/regex_example_fuzz.v
+          ./v test-parser -S examples/2048/2048_fuzz.v
 
   v-up-works-on-ubuntu:
     runs-on: ubuntu-20.04
@@ -869,46 +876,46 @@ jobs:
     env:
       VFLAGS: -cc tcc
     steps:
-    - uses: actions/checkout@v2
-      with:
-        fetch-depth: 10
-    - name: Build local v
-      run: make -j4
-    - name: v up
-      run: |
-        ./v cmd/tools/oldv.v
-        ./cmd/tools/oldv -v HEAD^^^^^
-        cd /tmp/v_at_HEAD_____/
-        ./v version
-        ./v -v up
-        ./v version
-        ./v  -o v2 cmd/v
-        ./v2 -o v3 cmd/v
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 10
+      - name: Build local v
+        run: make -j4
+      - name: v up
+        run: |
+          ./v cmd/tools/oldv.v
+          ./cmd/tools/oldv -v HEAD^^^^^
+          cd /tmp/v_at_HEAD_____/
+          ./v version
+          ./v -v up
+          ./v version
+          ./v  -o v2 cmd/v
+          ./v2 -o v3 cmd/v
 
   vls-compiles:
     runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
-    - uses: actions/checkout@v2
-    - name: Build V
-      run: make -j2 && ./v -cc gcc -o v cmd/v
-    - name: Clone VLS
-      run: git clone --depth 1 https://github.com/vlang/vls
-    - name: Build VLS
-      run: cd vls; ../v cmd/vls ; cd ..
-    - name: Build VLS with -prod
-      run: cd vls; ../v -prod cmd/vls ; cd ..
+      - uses: actions/checkout@v2
+      - name: Build V
+        run: make -j2 && ./v -cc gcc -o v cmd/v
+      - name: Clone VLS
+        run: git clone --depth 1 https://github.com/vlang/vls
+      - name: Build VLS
+        run: cd vls; ../v cmd/vls ; cd ..
+      - name: Build VLS with -prod
+        run: cd vls; ../v -prod cmd/vls ; cd ..
 
   vab-compiles:
     runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
-    - uses: actions/checkout@v2
-    - name: Build V
-      run: make -j2 && ./v -cc gcc -o v cmd/v
-    - name: Clone vab
-      run: git clone --depth 1 https://github.com/vlang/vab
-    - name: Build vab
-      run: cd vab; ../v ./vab.v ; cd ..
-    - name: Build vab with -prod
-      run: cd vab; ../v -prod ./vab.v ; cd ..
+      - uses: actions/checkout@v2
+      - name: Build V
+        run: make -j2 && ./v -cc gcc -o v cmd/v
+      - name: Clone vab
+        run: git clone --depth 1 https://github.com/vlang/vab
+      - name: Build vab
+        run: cd vab; ../v ./vab.v ; cd ..
+      - name: Build vab with -prod
+        run: cd vab; ../v -prod ./vab.v ; cd ..

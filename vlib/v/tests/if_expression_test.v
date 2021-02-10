@@ -157,3 +157,13 @@ fn test_lots_of_if_expressions() {
 	}
 	assert a == 1
 }
+
+fn test_if_expr_with_infix() {
+	a := if true { 1 } else { 0 } + 5
+	assert a == 6
+}
+
+fn test_multi_if_expr_with_infix() {
+	a := if 1 == 0 { 1 } else if 1 == 0 { 2 } else { 3 } + 4
+	assert a == 7
+}

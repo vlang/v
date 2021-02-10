@@ -30,7 +30,7 @@ pub:
 	uri    Uri    // uri of current connection
 	id     string // unique id of client
 pub mut:
-	conn              net.TcpConn // underlying TCP socket connection
+	conn              &net.TcpConn // underlying TCP socket connection
 	nonce_size        int = 16 // size of nounce used for masking
 	panic_on_callback bool     // set to true of callbacks can panic
 	state             State    // current state of connection
@@ -75,6 +75,7 @@ pub enum OPCode {
 pub fn new_client(address string) ?&Client {
 	uri := parse_uri(address) ?
 	return &Client{
+		conn: 0
 		is_server: false
 		ssl_conn: openssl.new_ssl_conn()
 		is_ssl: address.starts_with('wss')
@@ -110,7 +111,7 @@ pub fn (mut ws Client) listen() ? {
 	defer {
 		ws.logger.info('Quit client listener, server($ws.is_server)...')
 		if ws.state == .open {
-			ws.close(1000, 'closed by client')
+			ws.close(1000, 'closed by client') or { }
 		}
 	}
 	for ws.state == .open {
@@ -231,17 +232,14 @@ pub fn (mut ws Client) write_ptr(bytes byteptr, payload_len int, code OPCode) ? 
 		// todo: send error here later
 		return error('trying to write on a closed socket!')
 	}
-	mut header_len := 2 + if payload_len > 125 { 2 } else { 0 } + if payload_len > 0xffff { 6 } else { 0 }
+	mut header_len := 2 + if payload_len > 125 { 2 } else { 0 } +
+		if payload_len > 0xffff { 6 } else { 0 }
 	if !ws.is_server {
 		header_len += 4
 	}
 	mut header := []byte{len: header_len, init: `0`} // [`0`].repeat(header_len)
 	header[0] = byte(int(code)) | 0x80
 	masking_key := create_masking_key()
-	defer {
-		unsafe {
-		}
-	}
 	if ws.is_server {
 		if payload_len <= 125 {
 			header[1] = byte(payload_len)
@@ -310,7 +308,7 @@ pub fn (mut ws Client) write(bytes []byte, code OPCode) ? {
 
 // write_str, writes a string with a websocket texttype to socket
 pub fn (mut ws Client) write_str(str string) ? {
-	ws.write_ptr(str.str, str.len, .text_frame)
+	ws.write_ptr(str.str, str.len, .text_frame) ?
 }
 
 // close closes the websocket connection
@@ -323,7 +321,7 @@ pub fn (mut ws Client) close(code int, message string) ? {
 		return ret_err
 	}
 	defer {
-		ws.shutdown_socket()
+		ws.shutdown_socket() or { }
 		ws.reset_state()
 	}
 	ws.set_state(.closing)
@@ -355,7 +353,7 @@ fn (mut ws Client) send_control_frame(code OPCode, frame_typ string, payload []b
 	header_len := if ws.is_server { 2 } else { 6 }
 	frame_len := header_len + payload.len
 	mut control_frame := []byte{len: frame_len}
-	mut masking_key := if !ws.is_server { create_masking_key() } else { empty_bytearr }
+	mut masking_key := if !ws.is_server { create_masking_key() } else { websocket.empty_bytearr }
 	defer {
 		unsafe {
 			control_frame.free()

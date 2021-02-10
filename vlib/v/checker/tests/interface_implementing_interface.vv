@@ -1,0 +1,16 @@
+interface Thing {
+    kind string
+}
+
+interface Animal {
+    kind string
+}
+
+struct Dog {
+    kind string = 'labrador'
+}
+
+dog := Dog{}
+animal := Animal(dog)
+thing := Thing(animal)
+println(thing)

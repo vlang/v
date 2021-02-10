@@ -1,7 +1,0 @@
-vlib/v/checker/tests/struct_init_update_struct_err.vv:11:6: error: expected struct `Foo`, found struct `Foo2`
-    9 |     f3 := Foo2{}
-   10 |     _ := Foo{
-   11 |         ...f3
-      |            ~~
-   12 |         name: 'f2'
-   13 |     }

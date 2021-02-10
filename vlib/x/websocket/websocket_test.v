@@ -1,6 +1,12 @@
 import x.websocket
 import time
 
+struct WebsocketTestResults {
+pub mut:
+	nr_messages      int
+	nr_pong_received int
+}
+
 // tests with internal ws servers
 fn test_ws() {
 	go start_server()
@@ -11,7 +17,8 @@ fn test_ws() {
 fn start_server() ? {
 	mut s := websocket.new_server(30000, '')
 	// make that in execution test time give time to execute at least one time
-	s.ping_interval = 100
+	s.ping_interval = 1
+
 	s.on_connect(fn (mut s websocket.ServerClient) ?bool {
 		// here you can look att the client info and accept or not accept
 		// just returning a true/false
@@ -22,8 +29,12 @@ fn start_server() ? {
 		return true
 	}) ?
 	s.on_message(fn (mut ws websocket.Client, msg &websocket.Message) ? {
-		ws.write(msg.payload, msg.opcode) or { panic(err) }
+		match msg.opcode {
+			.pong { ws.write_str('pong') or { panic(err) } }
+			else { ws.write(msg.payload, msg.opcode) or { panic(err) } }
+		}
 	})
+
 	s.on_close(fn (mut ws websocket.Client, code int, reason string) ? {
 		// not used
 	})
@@ -33,10 +44,11 @@ fn start_server() ? {
 // ws_test tests connect to the websocket server from websocket client
 fn ws_test(uri string) ? {
 	eprintln('connecting to $uri ...')
+
+	mut test_results := WebsocketTestResults{}
 	mut ws := websocket.new_client(uri) ?
 	ws.on_open(fn (mut ws websocket.Client) ? {
-		println('open!')
-		ws.pong()
+		ws.pong() ?
 		assert true
 	})
 	ws.on_error(fn (mut ws websocket.Client, err string) ? {
@@ -44,19 +56,26 @@ fn ws_test(uri string) ? {
 		// this can be thrown by internet connection problems
 		assert false
 	})
-	ws.on_close(fn (mut ws websocket.Client, code int, reason string) ? {
-		println('closed')
-	})
-	ws.on_message(fn (mut ws websocket.Client, msg &websocket.Message) ? {
+
+	ws.on_message_ref(fn (mut ws websocket.Client, msg &websocket.Message, mut res WebsocketTestResults) ? {
 		println('client got type: $msg.opcode payload:\n$msg.payload')
 		if msg.opcode == .text_frame {
 			smessage := msg.payload.bytestr()
-			println('Message: $smessage')
-			assert smessage == 'a'
+			match smessage {
+				'pong' {
+					res.nr_pong_received++
+				}
+				'a' {
+					res.nr_messages++
+				}
+				else {
+					assert false
+				}
+			}
 		} else {
 			println('Binary message: $msg')
 		}
-	})
+	}, test_results)
 	ws.connect() or { panic('fail to connect') }
 	go ws.listen()
 	text := ['a'].repeat(2)
@@ -66,5 +85,8 @@ fn ws_test(uri string) ? {
 		time.sleep_ms(100)
 	}
 	// sleep to give time to recieve response before asserts
-	time.sleep_ms(500)
+	time.sleep_ms(1500)
+	// We expect at least 2 pongs, one sent directly and one indirectly 
+	assert test_results.nr_pong_received >= 2
+	assert test_results.nr_messages == 2
 }

@@ -2,7 +2,9 @@ module net
 
 // Select represents a select operation
 enum Select {
-	read write except
+	read
+	write
+	except
 }
 
 // SocketType are the available sockets
@@ -13,7 +15,8 @@ pub enum SocketType {
 
 // SocketFamily are the available address families
 pub enum SocketFamily {
-	inet = C. AF_INET
+	inet = C.AF_INET
+	unix = C.AF_UNIX
 }
 
 struct C.in_addr {
@@ -32,6 +35,11 @@ mut:
 	sin_addr   C.in_addr
 }
 
+struct C.sockaddr_un {
+mut:
+	sun_family int
+	sun_path   charptr
+}
 
 struct C.addrinfo {
 mut:
@@ -67,9 +75,11 @@ fn C.getaddrinfo() int
 fn C.connect() int
 
 fn C.send() int
+
 fn C.sendto() int
 
 fn C.recv() int
+
 fn C.recvfrom() int
 
 fn C.shutdown() int
@@ -89,11 +99,15 @@ fn C.getsockname() int
 // fn C.close() int
 
 fn C.ioctlsocket() int
+
 fn C.fcntl() int
 
 fn C.@select() int
+
 fn C.FD_ZERO()
+
 fn C.FD_SET()
+
 fn C.FD_ISSET() bool
 
 [typedef]

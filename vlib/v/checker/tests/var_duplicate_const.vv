@@ -1,10 +1,6 @@
-module main
-
-const (
-	age = 40
-)
+const size = 22
 
 fn main() {
-	age := 30
-	println(age)
+    size := 11
+    println(main.size)
 }

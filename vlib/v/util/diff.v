@@ -12,8 +12,8 @@ pub fn find_working_diff_command() ?string {
 	if env_difftool.len > 0 {
 		known_diff_tools << env_difftool
 	}
-	known_diff_tools <<
-		['colordiff', 'gdiff', 'diff', 'colordiff.exe', 'diff.exe', 'opendiff', 'code', 'code.cmd']
+	known_diff_tools << ['colordiff', 'gdiff', 'diff', 'colordiff.exe', 'diff.exe', 'opendiff',
+		'code', 'code.cmd']
 	// NOTE: code.cmd is the Windows variant of the `code` cli tool
 	for diffcmd in known_diff_tools {
 		if diffcmd == 'opendiff' { // opendiff has no `--version` option
@@ -64,10 +64,10 @@ pub fn color_compare_strings(diff_cmd string, expected string, found string) str
 	ctime := time.sys_mono_now()
 	e_file := os.join_path(cdir, '${ctime}.expected.txt')
 	f_file := os.join_path(cdir, '${ctime}.found.txt')
-	os.write_file(e_file, expected)
-	os.write_file(f_file, found)
+	os.write_file(e_file, expected) or { panic(err) }
+	os.write_file(f_file, found) or { panic(err) }
 	res := color_compare_files(diff_cmd, e_file, f_file)
-	os.rm(e_file)
-	os.rm(f_file)
+	os.rm(e_file) or { panic(err) }
+	os.rm(f_file) or { panic(err) }
 	return res
 }

@@ -111,11 +111,11 @@ println(cc)
 println(dd)
 
 // fixed arrays: implemented as normal arrays
-f1 := [1, 2, 3, 4, 5]!!
+f1 := [1, 2, 3, 4, 5]!
 mut f2 := [8]f32
 f2[0] = f32(1.23)
-f3 := ['foo', 'bar']!!
-f4 := [u64(0xffffffffffffffff), 0xdeadface]!!
+f3 := ['foo', 'bar']!
+f4 := [u64(0xffffffffffffffff), 0xdeadface]!
 
 println('
 $f1

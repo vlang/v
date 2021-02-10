@@ -971,6 +971,7 @@ typedef struct sapp_desc {
     bool html5_ask_leave_site;          /* initial state of the internal html5_ask_leave_site flag (see sapp_html5_ask_leave_site()) */
     bool ios_keyboard_resizes_canvas;   /* if true, showing the iOS keyboard shrinks the canvas */
     bool gl_force_gles2;                /* if true, setup GLES2/WebGL even if GLES3/WebGL2 is available */
+   bool native_render;
 } sapp_desc;
 
 /* user-provided functions */
@@ -1360,11 +1361,17 @@ inline int sapp_run(const sapp_desc& desc) { return sapp_run(&desc); }
 }
 @end
 
+    @interface MyView2 : NSView
+    @end
+
+   MyView2* g_view;
+
 // A custom NSWindow interface to handle events in borderless windows.
 @implementation SokolWindow
 - (BOOL)canBecomeKeyWindow { return YES; } // needed for NSWindowStyleMaskBorderless
 - (BOOL)canBecomeMainWindow { return YES; }
 @end
+
 
 @interface _sapp_macos_app_delegate : NSObject<NSApplicationDelegate>
 @end
@@ -1846,6 +1853,7 @@ typedef struct {
     char window_title[_SAPP_MAX_TITLE_LENGTH];      /* UTF-8 */
     wchar_t window_title_wide[_SAPP_MAX_TITLE_LENGTH];   /* UTF-32 or UCS-2 */
     sapp_keycode keycodes[SAPP_MAX_KEYCODES];
+bool   native_render;
 } _sapp_t;
 static _sapp_t _sapp;
 
@@ -2235,7 +2243,23 @@ _SOKOL_PRIVATE void _sapp_call_init(void) {
     _sapp.init_called = true;
 }
 
+
+
 _SOKOL_PRIVATE void _sapp_call_frame(void) {
+	if (_sapp.native_render) {
+		return;
+	}
+    if (_sapp.init_called && !_sapp.cleanup_called) {
+        if (_sapp.desc.frame_cb) {
+            _sapp.desc.frame_cb();
+        }
+        else if (_sapp.desc.frame_userdata_cb) {
+            _sapp.desc.frame_userdata_cb(_sapp.desc.user_data);
+        }
+    }
+}
+
+_SOKOL_PRIVATE void _sapp_call_frame2(void) {
     if (_sapp.init_called && !_sapp.cleanup_called) {
         if (_sapp.desc.frame_cb) {
             _sapp.desc.frame_cb();
@@ -2328,6 +2352,7 @@ _SOKOL_PRIVATE void _sapp_init_state(const sapp_desc* desc) {
     _sapp.dpi_scale = 1.0f;
     _sapp.fullscreen = _sapp.desc.fullscreen;
     _sapp.mouse.shown = true;
+    _sapp.native_render = _sapp.desc.native_render;
 }
 
 _SOKOL_PRIVATE void _sapp_discard_state(void) {
@@ -2740,6 +2765,27 @@ _SOKOL_PRIVATE void _sapp_macos_frame(void) {
     _sapp.macos.window.title = [NSString stringWithUTF8String:_sapp.window_title];
     _sapp.macos.window.acceptsMouseMovedEvents = YES;
     _sapp.macos.window.restorable = YES;
+	_sapp.macos.window.backgroundColor = [NSColor whiteColor];
+
+	// Quit menu
+	NSMenu* menu_bar = [[NSMenu alloc] init];
+NSMenuItem* app_menu_item = [[NSMenuItem alloc] init];
+[menu_bar addItem:app_menu_item];
+NSApp.mainMenu = menu_bar;
+NSMenu* app_menu = [[NSMenu alloc] init];
+NSString* window_title_as_nsstring = [NSString stringWithUTF8String:_sapp.window_title];
+// `quit_title` memory will be owned by the NSMenuItem, so no need to release it ourselves
+NSString* quit_title =  [@"Quit " stringByAppendingString:window_title_as_nsstring];
+NSMenuItem* quit_menu_item = [[NSMenuItem alloc]
+	initWithTitle:quit_title
+	action:@selector(terminate:)
+	keyEquivalent:@"q"];
+[app_menu addItem:quit_menu_item];
+app_menu_item.submenu = app_menu;
+_SAPP_OBJC_RELEASE( window_title_as_nsstring );
+_SAPP_OBJC_RELEASE( app_menu );
+_SAPP_OBJC_RELEASE( app_menu_item );
+_SAPP_OBJC_RELEASE( menu_bar );
 
     _sapp.macos.win_dlg = [[_sapp_macos_window_delegate alloc] init];
     _sapp.macos.window.delegate = _sapp.macos.win_dlg;
@@ -2796,6 +2842,7 @@ _SOKOL_PRIVATE void _sapp_macos_frame(void) {
         _sapp.macos.window.contentView = _sapp.macos.view;
         [_sapp.macos.window makeFirstResponder:_sapp.macos.view];
 
+
         NSTimer* timer_obj = [NSTimer timerWithTimeInterval:0.001
             target:_sapp.macos.view
             selector:@selector(timerFired:)
@@ -2814,6 +2861,37 @@ _SOKOL_PRIVATE void _sapp_macos_frame(void) {
         [_sapp.macos.window center];
     }
    */
+
+
+	///////////////////////////////////////////////////////
+	// Create a child view for native rendering
+
+	CGRect wRect = _sapp.macos.window.frame;
+	NSView *contentView  =_sapp.macos.window.contentView;
+	CGRect cRect = contentView.frame;
+
+	CGRect rect = CGRectMake(wRect.origin.x, wRect.origin.y, cRect.size.width, cRect.size.height);
+	NSWindow *overlayWindow = [[NSWindow alloc]initWithContentRect:rect
+	                                                     styleMask:NSBorderlessWindowMask
+	                                                       backing:NSBackingStoreBuffered
+	                                                         defer:NO];
+	//overlayWindow.backgroundColor = [NSColor whiteColor];
+
+	//overlayWindow.backgroundColor = [[NSColor whiteColor] colorWithAlphaComponent:0];
+	[overlayWindow setOpaque:YES];
+	[_sapp.macos.window setIgnoresMouseEvents:NO];
+	//[_sapp.macos.window setOpaque:NO];
+
+	//overlayWindow.alphaValue =0.1f;///.1f;
+
+	g_view = [[MyView2 alloc] init];
+	        overlayWindow.contentView = g_view;
+
+	[   contentView addSubview:g_view];
+//[    _sapp.macos.window addChildWindow:overlayWindow ordered:NSWindowAbove];
+
+   //////////////////////////////////
+
     [_sapp.macos.window center];
     [_sapp.macos.window makeKeyAndOrderFront:nil];
     _sapp_macos_update_dimensions();
@@ -2831,6 +2909,9 @@ _SOKOL_PRIVATE void _sapp_macos_frame(void) {
     _sapp_discard_state();
 }
 @end
+
+//#include "/Users/alex/code/v/thirdparty/sokol/sokol_app2.h"
+#include "sokol_app2.h"
 
 @implementation _sapp_macos_window_delegate
 - (BOOL)windowShouldClose:(id)sender {
@@ -2884,6 +2965,7 @@ _SOKOL_PRIVATE void _sapp_macos_frame(void) {
 }
 @end
 
+
 @implementation _sapp_macos_view
 #if defined(SOKOL_GLCORE33)
 /* NOTE: this is a hack/fix when the initial window size has been clipped by
@@ -2912,9 +2994,13 @@ _SOKOL_PRIVATE void _sapp_macos_frame(void) {
 }
 #endif
 
+//int g_is_native = 0;
+
 - (void)drawRect:(NSRect)rect {
     _SOKOL_UNUSED(rect);
     _sapp_macos_frame();
+//   puts("drawRect() metal");
+//   NSLog(@"rect %@", NSStringFromRect(rect));
     #if !defined(SOKOL_METAL)
     [[_sapp.macos.view openGLContext] flushBuffer];
     #endif
@@ -2929,6 +3015,10 @@ _SOKOL_PRIVATE void _sapp_macos_frame(void) {
 - (BOOL)acceptsFirstResponder {
     return YES;
 }
+
+	- (BOOL)acceptsFirstMouse:(NSEvent *)event {
+		return YES;
+	}
 - (void)updateTrackingAreas {
     if (_sapp.macos.tracking_area != nil) {
         [self removeTrackingArea:_sapp.macos.tracking_area];
@@ -2953,6 +3043,7 @@ _SOKOL_PRIVATE void _sapp_macos_frame(void) {
     }
 }
 - (void)mouseExited:(NSEvent*)event {
+	// NSLog(@"mouse exited");
     if (0 == _sapp.macos.mouse_buttons) {
         _sapp_macos_mouse_event(SAPP_EVENTTYPE_MOUSE_LEAVE, SAPP_MOUSEBUTTON_INVALID, _sapp_macos_mod(event.modifierFlags));
     }
@@ -3002,11 +3093,13 @@ _SOKOL_PRIVATE void _sapp_macos_frame(void) {
     _sapp_macos_mouse_event(SAPP_EVENTTYPE_MOUSE_MOVE, SAPP_MOUSEBUTTON_INVALID , _sapp_macos_mod(event.modifierFlags));
 }
 - (void)mouseDragged:(NSEvent*)event {
+	//puts("(void)mouseDragged");
     if (_sapp.mouse.locked) {
         _sapp.mouse.dx = [event deltaX];
         _sapp.mouse.dy = [event deltaY];
     }
-    _sapp_macos_mouse_event(SAPP_EVENTTYPE_MOUSE_MOVE, SAPP_MOUSEBUTTON_INVALID , _sapp_macos_mod(event.modifierFlags));
+   // QTODO hack INVALID=>MIDDLE macos bug
+    _sapp_macos_mouse_event(SAPP_EVENTTYPE_MOUSE_MOVE, SAPP_MOUSEBUTTON_MIDDLE , _sapp_macos_mod(event.modifierFlags));
 }
 - (void)rightMouseDragged:(NSEvent*)event {
     if (_sapp.mouse.locked) {

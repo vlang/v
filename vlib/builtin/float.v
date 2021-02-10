@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module builtin
 
@@ -26,7 +26,7 @@ pub fn (d float_literal) str() string {
 	return f64(d).str()
 }
 
-// strsci returns the `f64` as a `string` in scientific notation with `digit_num` deciamals displayed, max 17 digits.
+// strsci returns the `f64` as a `string` in scientific notation with `digit_num` decimals displayed, max 17 digits.
 // Example: assert f64(1.234).strsci(3) == '1.234e+00'
 [inline]
 pub fn (x f64) strsci(digit_num int) string {

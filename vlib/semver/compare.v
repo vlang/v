@@ -8,8 +8,8 @@ fn version_satisfies(ver Version, input string) bool {
 }
 
 fn compare_eq(v1 Version, v2 Version) bool {
-	return v1.major == v2.major &&
-		v1.minor == v2.minor && v1.patch == v2.patch && v1.prerelease == v2.prerelease
+	return v1.major == v2.major && v1.minor == v2.minor && v1.patch == v2.patch
+		&& v1.prerelease == v2.prerelease
 }
 
 fn compare_gt(v1 Version, v2 Version) bool {

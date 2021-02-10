@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module builder
@@ -15,7 +15,8 @@ fn (mut b Builder) get_vtmp_filename(base_file_name string, postfix string) stri
 	if !b.pref.reuse_tmpc {
 		uniq = '.$rand.u64()'
 	}
-	return os.real_path(os.join_path(vtmp, os.file_name(os.real_path(base_file_name)) + '$uniq$postfix'))
+	return os.real_path(os.join_path(vtmp, os.file_name(os.real_path(base_file_name)) +
+		'$uniq$postfix'))
 }
 
 pub fn compile(command string, pref &pref.Preferences) {
@@ -92,12 +93,12 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 	}
 	if b.pref.os == .ios {
 		device := '"iPhone SE (2nd generation)"'
-		os.exec('xcrun simctl boot $device')
+		os.exec('xcrun simctl boot $device') or { panic(err) }
 		bundle_name := b.pref.out_name.split('/').last()
 		display_name := if b.pref.display_name != '' { b.pref.display_name } else { bundle_name }
-		os.exec('xcrun simctl install $device ${display_name}.app')
+		os.exec('xcrun simctl install $device ${display_name}.app') or { panic(err) }
 		bundle_id := if b.pref.bundle_id != '' { b.pref.bundle_id } else { 'app.vlang.$bundle_name' }
-		os.exec('xcrun simctl launch $device $bundle_id')
+		os.exec('xcrun simctl launch $device $bundle_id') or { panic(err) }
 	} else {
 		exefile := os.real_path(b.pref.out_name)
 		mut cmd := '"$exefile"'
@@ -132,7 +133,7 @@ fn (mut v Builder) cleanup_run_executable_after_exit(exefile string) {
 	}
 	if os.is_file(exefile) {
 		v.pref.vrun_elog('remove run executable: $exefile')
-		os.rm(exefile)
+		os.rm(exefile) or { panic(err) }
 	}
 }
 
@@ -187,9 +188,11 @@ pub fn (v Builder) get_builtin_files() []string {
 		if os.exists(os.join_path(location, 'builtin')) {
 			mut builtin_files := []string{}
 			if v.pref.is_bare {
-				builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin', 'bare'))
+				builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin',
+					'bare'))
 			} else if v.pref.backend == .js {
-				builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin', 'js'))
+				builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin',
+					'js'))
 			} else {
 				builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin'))
 			}
@@ -223,7 +226,7 @@ pub fn (v &Builder) get_user_files() []string {
 	mut user_files := []string{}
 	// See cmd/tools/preludes/README.md for more info about what preludes are
 	vroot := os.dir(pref.vexe_path())
-	preludes_path := os.join_path(vroot, 'cmd', 'tools', 'preludes')
+	preludes_path := os.join_path(vroot, 'vlib', 'v', 'preludes')
 	if v.pref.is_livemain || v.pref.is_liveshared {
 		user_files << os.join_path(preludes_path, 'live.v')
 	}
@@ -242,7 +245,7 @@ pub fn (v &Builder) get_user_files() []string {
 	if v.pref.is_prof {
 		user_files << os.join_path(preludes_path, 'profiled_program.v')
 	}
-	is_test := dir.ends_with('_test.v')
+	is_test := v.pref.is_test
 	mut is_internal_module_test := false
 	if is_test {
 		tcontent := os.read_file(dir) or {

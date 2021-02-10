@@ -43,8 +43,10 @@ fn (ver RawVersion) is_valid() bool {
 	if ver.raw_ints.len != 3 {
 		return false
 	}
-	return is_valid_number(ver.raw_ints[ver_major]) && is_valid_number(ver.raw_ints[ver_minor]) &&
-		is_valid_number(ver.raw_ints[ver_patch]) && is_valid_string(ver.prerelease) && is_valid_string(ver.metadata)
+	return is_valid_number(ver.raw_ints[semver.ver_major])
+		&& is_valid_number(ver.raw_ints[semver.ver_minor])
+		&& is_valid_number(ver.raw_ints[semver.ver_patch]) && is_valid_string(ver.prerelease)
+		&& is_valid_string(ver.metadata)
 }
 
 fn (ver RawVersion) is_missing(typ int) bool {
@@ -53,7 +55,7 @@ fn (ver RawVersion) is_missing(typ int) bool {
 
 fn (raw_ver RawVersion) coerce() ?Version {
 	ver := raw_ver.complete()
-	if !is_valid_number(ver.raw_ints[ver_major]) {
+	if !is_valid_number(ver.raw_ints[semver.ver_major]) {
 		return error('Invalid major version: $ver.raw_ints[ver_major]')
 	}
 	return ver.to_version()
@@ -79,5 +81,5 @@ fn (raw_ver RawVersion) validate() ?Version {
 }
 
 fn (raw_ver RawVersion) to_version() Version {
-	return Version{raw_ver.raw_ints[ver_major].int(), raw_ver.raw_ints[ver_minor].int(), raw_ver.raw_ints[ver_patch].int(), raw_ver.prerelease, raw_ver.metadata}
+	return Version{raw_ver.raw_ints[semver.ver_major].int(), raw_ver.raw_ints[semver.ver_minor].int(), raw_ver.raw_ints[semver.ver_patch].int(), raw_ver.prerelease, raw_ver.metadata}
 }

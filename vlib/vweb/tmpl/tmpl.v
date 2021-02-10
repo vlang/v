@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module tmpl
@@ -7,8 +7,8 @@ import os
 import strings
 
 const (
-	str_start = "sb.write(\'"
-	str_end   = "\' ) "
+	str_start = "sb.write('"
+	str_end   = "' ) "
 )
 
 // compile_file compiles the content of a file by the given path as a template
@@ -33,14 +33,14 @@ pub fn compile_template(html_ string, fn_name string) string {
 		h := os.read_file('templates/header.html') or {
 			panic('reading file templates/header.html failed')
 		}
-		header = h.trim_space().replace("\'", '"')
+		header = h.trim_space().replace("'", '"')
 		html = header + html
 	}
 	if os.exists('templates/footer.html') && html.contains('@footer') {
 		f := os.read_file('templates/footer.html') or {
 			panic('reading file templates/footer.html failed')
 		}
-		footer = f.trim_space().replace("\'", '"')
+		footer = f.trim_space().replace("'", '"')
 		html += footer
 	}
 	mut lines := html.split_into_lines()
@@ -58,7 +58,7 @@ footer := \' \' // TODO remove
 _ = footer
 
 ")
-	s.write(str_start)
+	s.write(tmpl.str_start)
 	mut state := State.html
 	mut in_span := false
 	// for _line in lines {
@@ -73,21 +73,18 @@ _ = footer
 		} else if line == '</script>' {
 			state = .html
 		}
-		if line.contains('@include ') && false {
-			// TODO
-			pos := line.index('@include ') or { continue }
-			file_name := line[pos + 9..]
+		if line.contains('@include ') {
+			lines.delete(i)
+			file_name := line.split("'")[1]
 			file_path := os.join_path('templates', '${file_name}.html')
-			mut file_content := os.read_file(file_path) or {
-				panic('reading file $file_name failed')
+			file_content := os.read_file(file_path) or {
+				panic('Vweb: Reading file $file_name failed.')
 			}
-			file_content = file_content.replace("\'", '"')
-			lines2 := file_content.split_into_lines()
-			for l in lines2 {
-				lines.insert(i + 1, l)
+			file_splitted := file_content.split_into_lines().reverse()
+			for f in file_splitted {
+				lines.insert(i, f)
 			}
-			continue
-			// s.writeln(file_content)
+			i--
 		} else if line.contains('@js ') {
 			pos := line.index('@js') or { continue }
 			s.write('<script src="')
@@ -99,23 +96,23 @@ _ = footer
 			s.write(line[pos + 6..line.len - 1])
 			s.writeln('" rel="stylesheet" type="text/css">')
 		} else if line.contains('@if ') {
-			s.writeln(str_end)
+			s.writeln(tmpl.str_end)
 			pos := line.index('@if') or { continue }
 			s.writeln('if ' + line[pos + 4..] + '{')
-			s.writeln(str_start)
+			s.writeln(tmpl.str_start)
 		} else if line.contains('@end') {
-			s.writeln(str_end)
+			s.writeln(tmpl.str_end)
 			s.writeln('}')
-			s.writeln(str_start)
+			s.writeln(tmpl.str_start)
 		} else if line.contains('@else') {
-			s.writeln(str_end)
+			s.writeln(tmpl.str_end)
 			s.writeln(' } else { ')
-			s.writeln(str_start)
+			s.writeln(tmpl.str_start)
 		} else if line.contains('@for') {
-			s.writeln(str_end)
+			s.writeln(tmpl.str_end)
 			pos := line.index('@for') or { continue }
 			s.writeln('for ' + line[pos + 4..] + '{')
-			s.writeln(str_start)
+			s.writeln(tmpl.str_start)
 		} else if state == .html && line.contains('span.') && line.ends_with('{') {
 			// `span.header {` => `<span class='header'>`
 			class := line.find_between('span.', '{').trim_space()
@@ -142,7 +139,7 @@ _ = footer
 			s.writeln(line.replace('@', '$').replace("'", '"'))
 		}
 	}
-	s.writeln(str_end)
+	s.writeln(tmpl.str_end)
 	s.writeln('_tmpl_res_$fn_name := sb.str() ')
 	s.writeln('}')
 	s.writeln('// === end of vweb html template ===')

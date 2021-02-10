@@ -28,8 +28,8 @@ fn test_type_constructors() {
 	v := `c`
 	assert typeof(&v).name == '&rune'
 	assert typeof(&[v]).name == '&[]rune'
-	assert typeof([v]!!).name == '[1]rune'
-	assert typeof(&[v]!!).name == '&[1]rune'
+	assert typeof([v]!).name == '[1]rune'
+	assert typeof(&[v]!).name == '&[1]rune'
 	assert typeof(&FooBar{}).name == '&FooBar'
 }
 
@@ -74,7 +74,7 @@ fn test_typeof_on_sumtypes() {
 	assert typeof(a).name == 'MySumType'
 	assert typeof(b).name == 'MySumType'
 	assert typeof(c).name == 'MySumType'
-	
+
 	assert a.str() == '32'
 	assert b.str() == '123.'
 	assert c.str() == 'FooBar'
@@ -159,7 +159,7 @@ fn test_generic_type() {
 	v := 5
 	assert type_name(v) == 'int'
 	// assert type_name(&v) == '&int'
-	// assert type_name([v]!!) == '[1]int'
+	// assert type_name([v]!) == '[1]int'
 	assert type_name([v]) == '[]int'
 	assert type_name([[v]]) == '[][]int'
 	assert type_name(FooBar{}) == 'FooBar'

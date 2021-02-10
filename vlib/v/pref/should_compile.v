@@ -20,7 +20,10 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 		if prefs.backend == .js && !prefs.should_compile_js(file) {
 			continue
 		}
-		if prefs.compile_defines_all.len > 0 && file.contains('_d_') {
+		if file.contains('_d_') {
+			if prefs.compile_defines_all.len == 0 {
+				continue
+			}
 			mut allowed := false
 			for cdefine in prefs.compile_defines {
 				file_postfix := '_d_${cdefine}.v'

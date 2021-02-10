@@ -3,6 +3,7 @@ module os
 import strings
 
 #include <process.h>
+
 pub const (
 	path_separator = '\\'
 	path_delimiter = ';'
@@ -135,7 +136,8 @@ pub fn mkdir(path string) ?bool {
 	}
 	apath := real_path(path)
 	if !C.CreateDirectory(apath.to_wide(), 0) {
-		return error('mkdir failed for "$apath", because CreateDirectory returned ' + get_error_msg(int(C.GetLastError())))
+		return error('mkdir failed for "$apath", because CreateDirectory returned ' +
+			get_error_msg(int(C.GetLastError())))
 	}
 	return true
 }
@@ -198,11 +200,12 @@ const (
 fn ptr_win_get_error_msg(code u32) voidptr {
 	mut buf := voidptr(0)
 	// Check for code overflow
-	if code > u32(max_error_code) {
+	if code > u32(os.max_error_code) {
 		return buf
 	}
-	C.FormatMessage(format_message_allocate_buffer | format_message_from_system | format_message_ignore_inserts,
-		0, code, C.MAKELANGID(lang_neutral, sublang_default), voidptr(&buf), 0, 0)
+	C.FormatMessage(os.format_message_allocate_buffer | os.format_message_from_system | os.format_message_ignore_inserts,
+		0, code, C.MAKELANGID(os.lang_neutral, os.sublang_default), voidptr(&buf), 0,
+		0)
 	return buf
 }
 
@@ -381,7 +384,7 @@ pub fn is_writable_folder(folder string) ?bool {
 		return error('cannot write to folder $folder: $err')
 	}
 	f.close()
-	rm(tmp_perm_check)
+	rm(tmp_perm_check) ?
 	return true
 }
 

@@ -2,11 +2,13 @@ module builder
 
 import os
 import v.pref
+import v.util
 import v.cflag
 
 #flag windows -l shell32
 #flag windows -l dbghelp
 #flag windows -l advapi32
+
 struct MsvcResult {
 	full_cl_exe_path    string
 	exe_path            string
@@ -81,8 +83,8 @@ fn find_windows_kit_root(host_arch string) ?WindowsKit {
 	$if windows {
 		root_key := RegKey(0)
 		path := 'SOFTWARE\\Microsoft\\Windows Kits\\Installed Roots'
-		rc := C.RegOpenKeyEx(hkey_local_machine, path.to_wide(), 0, key_query_value | key_wow64_32key |
-			key_enumerate_sub_keys, &root_key)
+		rc := C.RegOpenKeyEx(builder.hkey_local_machine, path.to_wide(), 0, builder.key_query_value | builder.key_wow64_32key | builder.key_enumerate_sub_keys,
+			&root_key)
 		// TODO: Fix defer inside ifs
 		// defer {
 		// C.RegCloseKey(root_key)
@@ -296,17 +298,17 @@ pub fn (mut v Builder) cc_msvc() {
 	os.write_file(out_name_cmd_line, args) or {
 		verror('Unable to write response file to "$out_name_cmd_line"')
 	}
-	cmd := '"$r.full_cl_exe_path" @$out_name_cmd_line'
+	cmd := '"$r.full_cl_exe_path" "@$out_name_cmd_line"'
 	// It is hard to see it at first, but the quotes above ARE balanced :-| ...
 	// Also the double quotes at the start ARE needed.
 	v.show_cc(cmd, out_name_cmd_line, args)
-	v.timing_start('C msvc')
+	util.timing_start('C msvc')
 	res := os.exec(cmd) or {
 		println(err)
 		verror('msvc error')
 		return
 	}
-	v.timing_measure('C msvc')
+	util.timing_measure('C msvc')
 	if v.pref.show_c_output {
 		v.show_c_compiler_output(res)
 	} else {
@@ -315,7 +317,7 @@ pub fn (mut v Builder) cc_msvc() {
 	// println(res)
 	// println('C OUTPUT:')
 	// Always remove the object file - it is completely unnecessary
-	os.rm(out_name_obj)
+	os.rm(out_name_obj) or { panic(err) }
 }
 
 fn (mut v Builder) build_thirdparty_obj_file_with_msvc(path string, moduleflags []cflag.CFlag) {

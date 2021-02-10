@@ -19,13 +19,13 @@ fn f(shared x St, shared y St, shared z St) {
 }
 
 fn test_shared_lock() {
-	shared x := &St{
+	shared x := St{
 		a: 5
 	}
 	shared y := &St{
 		a: 7
 	}
-	shared z := &St{
+	shared z := St{
 		a: 1
 	}
 	go f(shared x, shared y, shared z)

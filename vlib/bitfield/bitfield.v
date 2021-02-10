@@ -118,7 +118,7 @@ pub fn (instance BitField) get_bit(bitnr int) int {
 	if bitnr >= instance.size {
 		return 0
 	}
-	return int((instance.field[bitslot(bitnr)] >> (bitnr % slot_size)) & u32(1))
+	return int((instance.field[bitslot(bitnr)] >> (bitnr % bitfield.slot_size)) & u32(1))
 }
 
 // set_bit sets bit number 'bit_nr' to 1 (count from 0).
@@ -224,8 +224,8 @@ pub fn join(input1 BitField, input2 BitField) BitField {
 		output.field[i] = input1.field[i]
 	}
 	// find offset bit and offset slot
-	offset_bit := input1.size % slot_size
-	offset_slot := input1.size / slot_size
+	offset_bit := input1.size % bitfield.slot_size
+	offset_slot := input1.size / bitfield.slot_size
 	for i in 0 .. zbitnslots(input2.size) {
 		output.field[i + offset_slot] |= u32(input2.field[i] << u32(offset_bit))
 	}
@@ -242,13 +242,13 @@ pub fn join(input1 BitField, input2 BitField) BitField {
 	 * input.
 	 * If offset_bit is zero, no additional copies needed.
 	*/
-	if (output_size - 1) % slot_size < (input2.size - 1) % slot_size {
+	if (output_size - 1) % bitfield.slot_size < (input2.size - 1) % bitfield.slot_size {
 		for i in 0 .. zbitnslots(input2.size) {
-			output.field[i + offset_slot + 1] |= u32(input2.field[i] >> u32(slot_size - offset_bit))
+			output.field[i + offset_slot + 1] |= u32(input2.field[i] >> u32(bitfield.slot_size - offset_bit))
 		}
-	} else if (output_size - 1) % slot_size > (input2.size - 1) % slot_size {
+	} else if (output_size - 1) % bitfield.slot_size > (input2.size - 1) % bitfield.slot_size {
 		for i in 0 .. zbitnslots(input2.size) - 1 {
-			output.field[i + offset_slot + 1] |= u32(input2.field[i] >> u32(slot_size - offset_bit))
+			output.field[i + offset_slot + 1] |= u32(input2.field[i] >> u32(bitfield.slot_size - offset_bit))
 		}
 	}
 	return output
@@ -287,10 +287,10 @@ pub fn (instance BitField) cmp(input BitField) bool {
 pub fn (instance BitField) pop_count() int {
 	size := instance.size
 	bitnslots := zbitnslots(size)
-	tail := size % slot_size
+	tail := size % bitfield.slot_size
 	mut count := 0
 	for i in 0 .. bitnslots - 1 {
-		for j in 0 .. slot_size {
+		for j in 0 .. bitfield.slot_size {
 			if u32(instance.field[i] >> u32(j)) & u32(1) == u32(1) {
 				count++
 			}
@@ -344,17 +344,16 @@ pub fn (input BitField) slice(_start int, _end int) BitField {
 		start = end // or panic?
 	}
 	mut output := new(end - start)
-	start_offset := start % slot_size
-	end_offset := (end - 1) % slot_size
-	start_slot := start / slot_size
-	end_slot := (end - 1) / slot_size
+	start_offset := start % bitfield.slot_size
+	end_offset := (end - 1) % bitfield.slot_size
+	start_slot := start / bitfield.slot_size
+	end_slot := (end - 1) / bitfield.slot_size
 	output_slots := zbitnslots(end - start)
 	if output_slots > 1 {
 		if start_offset != 0 {
 			for i in 0 .. output_slots - 1 {
 				output.field[i] = u32(input.field[start_slot + i] >> u32(start_offset))
-				output.field[i] = output.field[i] | u32(input.field[start_slot + i + 1] << u32(slot_size -
-					start_offset))
+				output.field[i] = output.field[i] | u32(input.field[start_slot + i + 1] << u32(bitfield.slot_size - start_offset))
 			}
 		} else {
 			for i in 0 .. output_slots - 1 {
@@ -363,25 +362,25 @@ pub fn (input BitField) slice(_start int, _end int) BitField {
 		}
 	}
 	if start_offset > end_offset {
-		output.field[(end - start - 1) / slot_size] = u32(input.field[end_slot - 1] >> u32(start_offset))
+		output.field[(end - start - 1) / bitfield.slot_size] = u32(input.field[end_slot - 1] >> u32(start_offset))
 		mut mask := u32((1 << (end_offset + 1)) - 1)
 		mask = input.field[end_slot] & mask
-		mask = u32(mask << u32(slot_size - start_offset))
-		output.field[(end - start - 1) / slot_size] |= mask
+		mask = u32(mask << u32(bitfield.slot_size - start_offset))
+		output.field[(end - start - 1) / bitfield.slot_size] |= mask
 	} else if start_offset == 0 {
 		mut mask := u32(0)
-		if end_offset == slot_size - 1 {
+		if end_offset == bitfield.slot_size - 1 {
 			mask = u32(-1)
 		} else {
 			mask = u32(u32(1) << u32(end_offset + 1))
 			mask = mask - u32(1)
 		}
-		output.field[(end - start - 1) / slot_size] = (input.field[end_slot] & mask)
+		output.field[(end - start - 1) / bitfield.slot_size] = (input.field[end_slot] & mask)
 	} else {
 		mut mask := u32(((1 << (end_offset - start_offset + 1)) - 1) << start_offset)
 		mask = input.field[end_slot] & mask
 		mask = u32(mask >> u32(start_offset))
-		output.field[(end - start - 1) / slot_size] |= mask
+		output.field[(end - start - 1) / bitfield.slot_size] |= mask
 	}
 	return output
 }
@@ -393,13 +392,13 @@ pub fn (instance BitField) reverse() BitField {
 	bitnslots := zbitnslots(size)
 	mut output := new(size)
 	for i := 0; i < (bitnslots - 1); i++ {
-		for j in 0 .. slot_size {
+		for j in 0 .. bitfield.slot_size {
 			if u32(instance.field[i] >> u32(j)) & u32(1) == u32(1) {
-				output.set_bit(size - i * slot_size - j - 1)
+				output.set_bit(size - i * bitfield.slot_size - j - 1)
 			}
 		}
 	}
-	bits_in_last_input_slot := (size - 1) % slot_size + 1
+	bits_in_last_input_slot := (size - 1) % bitfield.slot_size + 1
 	for j in 0 .. bits_in_last_input_slot {
 		if u32(instance.field[bitnslots - 1] >> u32(j)) & u32(1) == u32(1) {
 			output.set_bit(bits_in_last_input_slot - j - 1)
@@ -419,7 +418,7 @@ pub fn (mut instance BitField) resize(new_size int) {
 	}
 	instance.field = field.clone()
 	instance.size = new_size
-	if new_size < old_size && new_size % slot_size != 0 {
+	if new_size < old_size && new_size % bitfield.slot_size != 0 {
 		instance.clear_tail()
 	}
 }
@@ -453,24 +452,23 @@ pub fn (instance BitField) rotate(offset int) BitField {
 // Internal functions
 // clear_tail clears the extra bits that are not part of the bitfield, but yet are allocated
 fn (mut instance BitField) clear_tail() {
-	tail := instance.size % slot_size
+	tail := instance.size % bitfield.slot_size
 	if tail != 0 {
 		// create a mask for the tail
 		mask := u32((1 << tail) - 1)
 		// clear the extra bits
-		instance.field[zbitnslots(instance.size) - 1] = instance.field[zbitnslots(instance.size) -
-			1] & mask
+		instance.field[zbitnslots(instance.size) - 1] = instance.field[zbitnslots(instance.size) - 1] & mask
 	}
 }
 
 // bitmask is the bitmask needed to access a particular bit at offset bitnr
 fn bitmask(bitnr int) u32 {
-	return u32(u32(1) << u32(bitnr % slot_size))
+	return u32(u32(1) << u32(bitnr % bitfield.slot_size))
 }
 
 // bitslot is the slot index (i.e. the integer) where a particular bit is located
 fn bitslot(size int) int {
-	return size / slot_size
+	return size / bitfield.slot_size
 }
 
 // min returns the minimum of 2 integers; it is here to avoid importing math just for that
@@ -484,5 +482,5 @@ fn min(input1 int, input2 int) int {
 
 // zbitnslots returns the minimum number of whole integers, needed to represent a bitfield of size length
 fn zbitnslots(length int) int {
-	return (length - 1) / slot_size + 1
+	return (length - 1) / bitfield.slot_size + 1
 }

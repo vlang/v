@@ -1,8 +1,9 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module pref
 
+// import v.ast // TODO this results in a compiler bug
 import os.cmdline
 import os
 import v.vcache
@@ -47,6 +48,7 @@ const (
 		'cflags', 'path']
 )
 
+[ref_only]
 pub struct Preferences {
 pub mut:
 	os          OS // the OS to compile for
@@ -78,8 +80,10 @@ pub mut:
 	// NB: passing -cg instead of -g will set is_vlines to false and is_debug to true, thus making v generate cleaner C files,
 	// which are sometimes easier to debug / inspect manually than the .tmp.c files by plain -g (when/if v line number generation breaks).
 	// use cached modules to speed up compilation.
+	dump_c_flags string // `-dump-c-flags file.txt` - let V store all C flags, passed to the backend C compiler
+	// in `file.txt`, one C flag/value per line.
 	use_cache         bool // = true
-	retry_compilation bool = true
+	retry_compilation bool = true // retry the compilation with another C compiler, if tcc fails.
 	is_stats          bool // `v -stats file_test.v` will produce more detailed statistics for the tests that were run
 	// TODO Convert this into a []string
 	cflags string // Additional options which will be passed to the C compiler.
@@ -114,7 +118,7 @@ pub mut:
 	display_name   string
 	bundle_id      string
 	path           string // Path to file/folder to compile
-	// -d vfmt and -d another=0 for `$if vfmt { will execute }` and `$if another { will NOT get here }`
+	// -d vfmt and -d another=0 for `$if vfmt { will execute }` and `$if another ? { will NOT get here }`
 	compile_defines     []string    // just ['vfmt']
 	compile_defines_all []string    // contains both: ['vfmt','another']
 	run_args            []string    // `v run x.v 1 2 3` => `1 2 3`
@@ -132,6 +136,7 @@ pub mut:
 	is_vweb             bool // skip _ var warning in templates
 	only_check_syntax   bool // when true, just parse the files, then stop, before running checker
 	experimental        bool // enable experimental features
+	skip_unused         bool // skip generating C code for functions, that are not used
 	show_timings        bool // show how much time each compiler stage took
 	is_ios_simulator    bool
 	is_apk              bool     // build as Android .apk format
@@ -217,6 +222,9 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				res.autofree = false
 				res.build_options << arg
 			}
+			'-skip-unused' {
+				res.skip_unused = true
+			}
 			'-compress' {
 				res.compress = true
 			}
@@ -254,7 +262,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			'-stats' {
 				res.is_stats = true
 			}
-			'-obfuscate' {
+			'-obf', '-obfuscate' {
 				res.obfuscate = true
 			}
 			'-translated' {
@@ -275,6 +283,10 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			}
 			'-show-c-output' {
 				res.show_c_output = true
+			}
+			'-dump-c-flags' {
+				res.dump_c_flags = cmdline.option(current_args, arg, '-')
+				i++
 			}
 			'-experimental' {
 				res.experimental = true
@@ -393,7 +405,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 					exit(1)
 				}
 				if arg[0] == `-` {
-					if arg[1..] in list_of_flags_with_param {
+					if arg[1..] in pref.list_of_flags_with_param {
 						// skip parameter
 						i++
 						continue
@@ -418,11 +430,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 					continue
 				}
 				eprint('Unknown argument `$arg`')
-				eprintln(if command.len == 0 {
-					''
-				} else {
-					' for command `$command`'
-				})
+				eprintln(if command.len == 0 { '' } else { ' for command `$command`' })
 				exit(1)
 			}
 		}
@@ -451,15 +459,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				output_option = '-o "$tmp_exe_file_path"'
 			}
 			tmp_v_file_path := '${tmp_file_path}.v'
-			mut lines := []string{}
-			for {
-				iline := os.get_raw_line()
-				if iline.len == 0 {
-					break
-				}
-				lines << iline
-			}
-			contents := lines.join('')
+			contents := os.get_raw_lines_joined()
 			os.write_file(tmp_v_file_path, contents) or {
 				panic('Failed to create temporary file $tmp_v_file_path')
 			}
@@ -474,15 +474,15 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			//
 			if output_option.len != 0 {
 				res.vrun_elog('remove tmp exe file: $tmp_exe_file_path')
-				os.rm(tmp_exe_file_path)
+				os.rm(tmp_exe_file_path) or { }
 			}
 			res.vrun_elog('remove tmp v file: $tmp_v_file_path')
-			os.rm(tmp_v_file_path)
+			os.rm(tmp_v_file_path) or { panic(err) }
 			exit(tmp_result)
 		}
 		must_exist(res.path)
-		if !res.path.ends_with('.v') && os.is_executable(res.path) && os.is_file(res.path) &&
-			os.is_file(res.path + '.v') {
+		if !res.path.ends_with('.v') && os.is_executable(res.path) && os.is_file(res.path)
+			&& os.is_file(res.path + '.v') {
 			eprintln('It looks like you wanted to run "${res.path}.v", so we went ahead and did that since "$res.path" is an executable.')
 			res.path += '.v'
 		}
@@ -568,7 +568,8 @@ fn parse_define(mut prefs Preferences, define string) {
 				prefs.compile_defines << define_parts[0]
 			}
 			else {
-				println('V error: Unknown define argument value `${define_parts[1]}` for ${define_parts[0]}.' +
+				println(
+					'V error: Unknown define argument value `${define_parts[1]}` for ${define_parts[0]}.' +
 					' Expected `0` or `1`.')
 				exit(1)
 			}

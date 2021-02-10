@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module x64
@@ -249,11 +249,7 @@ fn (mut g Gen) jmp(addr int) {
 }
 
 fn abs(a i64) i64 {
-	return if a < 0 {
-		-a
-	} else {
-		a
-	}
+	return if a < 0 { -a } else { a }
 }
 
 fn (mut g Gen) jle(addr i64) {
@@ -610,16 +606,16 @@ pub fn (mut g Gen) call_fn(node ast.CallExpr) {
 		match expr {
 			ast.IntegerLiteral {
 				// `foo(2)` => `mov edi,0x2`
-				g.mov(fn_arg_registers[i], expr.val.int())
+				g.mov(x64.fn_arg_registers[i], expr.val.int())
 			}
 			ast.Ident {
 				// `foo(x)` => `mov edi,DWORD PTR [rbp-0x8]`
 				var_offset := g.get_var_offset(expr.name)
 				if g.pref.is_verbose {
 					println('i=$i fn name= $name offset=$var_offset')
-					println(int(fn_arg_registers[i]))
+					println(int(x64.fn_arg_registers[i]))
 				}
-				g.mov_var_to_reg(fn_arg_registers[i], var_offset)
+				g.mov_var_to_reg(x64.fn_arg_registers[i], var_offset)
 			}
 			else {
 				verror('unhandled call_fn (name=$name) node: ' + expr.type_name())
@@ -877,7 +873,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		g.allocate_var(name, 4, 0)
 		// `mov DWORD PTR [rbp-0x4],edi`
 		offset += 4
-		g.mov_reg_to_rbp(offset, fn_arg_registers[i])
+		g.mov_reg_to_rbp(offset, x64.fn_arg_registers[i])
 	}
 	//
 	g.stmts(node.stmts)

@@ -1,0 +1,11 @@
+// import time This should be commented out
+import os
+// between
+import rand
+// first between
+// second between
+import semver
+// after the last import
+// also after the last import
+
+// this comment does not belong to the imports anymore

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module ast
@@ -26,7 +26,8 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string, m2a map[string]s
 	}
 	mut receiver := ''
 	if node.is_method {
-		mut styp := util.no_cur_mod(t.type_to_code(node.receiver.typ), cur_mod)
+		mut styp := util.no_cur_mod(t.type_to_code(node.receiver.typ.clear_flag(.shared_f)),
+			cur_mod)
 		m := if node.rec_mut { node.receiver.typ.share().str() + ' ' } else { '' }
 		if node.rec_mut {
 			styp = styp[1..] // remove &
@@ -43,20 +44,32 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string, m2a map[string]s
 		receiver = '($node.receiver.name $m$name) '
 		*/
 	}
-	mut name := if node.is_anon { '' } else { node.name.after_char(`.`) }
-	if !node.is_method {
-		if node.language == .c {
-			name = 'C.$name'
-		} else if node.language == .js {
-			name = 'JS.$name'
-		}
+	mut name := if node.is_anon { '' } else { node.name }
+	if !node.is_anon && !node.is_method && node.language == .v {
+		name = node.name.all_after_last('.')
 	}
+	// mut name := if node.is_anon { '' } else { node.name.after_char(`.`) }
+	// if !node.is_method {
+	// 	if node.language == .c {
+	// 		name = 'C.$name'
+	// 	} else if node.language == .js {
+	// 		name = 'JS.$name'
+	// 	}
+	// }
 	f.write('fn $receiver$name')
 	if name in ['+', '-', '*', '/', '%', '<', '>', '==', '!=', '>=', '<='] {
 		f.write(' ')
 	}
-	if node.is_generic {
-		f.write('<T>')
+	if node.generic_params.len > 0 {
+		f.write('<')
+		for i, param in node.generic_params {
+			is_last := i == node.generic_params.len - 1
+			f.write(param.name)
+			if !is_last {
+				f.write(', ')
+			}
+		}
+		f.write('>')
 	}
 	f.write('(')
 	for i, arg in node.params {
@@ -76,7 +89,7 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string, m2a map[string]s
 			f.write(arg.typ.share().str() + ' ')
 		}
 		f.write(arg.name)
-		mut s := t.type_to_str(arg.typ)
+		mut s := t.type_to_str(arg.typ.clear_flag(.shared_f))
 		if arg.is_mut {
 			// f.write(' mut')
 			if s.starts_with('&') {
@@ -121,8 +134,9 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string, m2a map[string]s
 // must be enclosed in braces.
 pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
 	mut res := []string{}
-	needs_fspec := lit.need_fmts[i] || lit.pluss[i] ||
-		(lit.fills[i] && lit.fwidths[i] >= 0) || lit.fwidths[i] != 0 || lit.precisions[i] != 987698
+	needs_fspec := lit.need_fmts[i] || lit.pluss[i]
+		|| (lit.fills[i] && lit.fwidths[i] >= 0) || lit.fwidths[i] != 0
+		|| lit.precisions[i] != 987698
 	mut needs_braces := needs_fspec
 	if !needs_braces {
 		if i + 1 < lit.vals.len && lit.vals[i + 1].len > 0 {
@@ -145,10 +159,17 @@ pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
 				CallExpr {
 					if sub_expr.args.len != 0 {
 						needs_braces = true
+					} else if sub_expr.left is CallExpr {
+						sub_expr = sub_expr.left
+						continue
 					}
 					break
 				}
 				SelectorExpr {
+					if sub_expr.field_name[0] == `@` {
+						needs_braces = true
+						break
+					}
 					sub_expr = sub_expr.expr
 					continue
 				}
@@ -183,6 +204,23 @@ pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
 // string representation of expr
 pub fn (x Expr) str() string {
 	match x {
+		ArrayInit {
+			mut fields := []string{}
+			if x.has_len {
+				fields << 'len: $x.len_expr.str()'
+			}
+			if x.has_cap {
+				fields << 'cap: $x.cap_expr.str()'
+			}
+			if x.has_default {
+				fields << 'init: $x.default_expr.str()'
+			}
+			if fields.len > 0 {
+				return '[]T{${fields.join(', ')}}'
+			} else {
+				return x.exprs.str()
+			}
+		}
 		CTempVar {
 			return x.orig.str()
 		}
@@ -207,6 +245,15 @@ pub fn (x Expr) str() string {
 		}
 		CharLiteral {
 			return '`$x.val`'
+		}
+		Comment {
+			if x.is_multi {
+				lines := x.text.split_into_lines()
+				return '/* $lines.len lines comment */'
+			} else {
+				text := x.text.trim('\x01').trim_space()
+				return '// $text'
+			}
 		}
 		ComptimeSelector {
 			return '${x.left}.$$x.field_expr'
@@ -248,6 +295,9 @@ pub fn (x Expr) str() string {
 		SizeOf {
 			return 'sizeof($x.expr)'
 		}
+		OffsetOf {
+			return '__offsetof($x.struct_type, $x.field)'
+		}
 		StringInterLiteral {
 			mut res := []string{}
 			res << "'"
@@ -272,6 +322,9 @@ pub fn (x Expr) str() string {
 		}
 		StringLiteral {
 			return '"$x.val"'
+		}
+		Type {
+			return 'Type($x.typ)'
 		}
 		TypeOf {
 			return 'typeof($x.expr.str())'
@@ -312,6 +365,9 @@ pub fn (node &BranchStmt) str() string {
 
 pub fn (node Stmt) str() string {
 	match node {
+		AssertStmt {
+			return 'assert $node.expr'
+		}
 		AssignStmt {
 			mut out := ''
 			for i, left in node.left {
@@ -338,6 +394,12 @@ pub fn (node Stmt) str() string {
 		BranchStmt {
 			return node.str()
 		}
+		ConstDecl {
+			fields := node.fields.map(fn (f ConstField) string {
+				return '${f.name.trim_prefix(f.mod + '.')} = $f.expr'
+			})
+			return 'const (${fields.join(' ')})'
+		}
 		ExprStmt {
 			return node.expr.str()
 		}
@@ -346,6 +408,16 @@ pub fn (node Stmt) str() string {
 		}
 		EnumDecl {
 			return 'enum $node.name { $node.fields.len fields }'
+		}
+		Module {
+			return 'module $node.name'
+		}
+		Import {
+			mut out := 'import $node.mod'
+			if node.alias.len > 0 {
+				out += ' as $node.alias'
+			}
+			return out
 		}
 		StructDecl {
 			return 'struct $node.name { $node.fields.len fields }'

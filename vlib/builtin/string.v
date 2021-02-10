@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module builtin
@@ -43,8 +43,8 @@ NB: A V string should be/is immutable from the point of view of
 */
 pub struct string {
 pub:
-	str    byteptr // points to a C style 0 terminated string of bytes.
-	len    int     // the length of the .str field, excluding the ending 0 byte. It is always equal to strlen(.str).
+	str byteptr // points to a C style 0 terminated string of bytes.
+	len int     // the length of the .str field, excluding the ending 0 byte. It is always equal to strlen(.str).
 mut:
 	is_lit int
 }
@@ -212,8 +212,11 @@ pub fn cstring_to_vstring(cstr byteptr) string {
 
 // replace_once replaces the first occurence of `rep` with the string passed in `with`.
 pub fn (s string) replace_once(rep string, with string) string {
-	index := s.index(rep) or { return s.clone() }
-	return s.substr(0, index) + with + s.substr(index + rep.len, s.len)
+	idx := s.index_(rep)
+	if idx == -1 {
+		return s.clone()
+	}
+	return s.substr(0, idx) + with + s.substr(idx + rep.len, s.len)
 }
 
 // replace replaces all occurences of `rep` with the string passed in `with`.
@@ -526,7 +529,7 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 		i = 1
 		for ch in s {
 			if nth > 0 && i >= nth {
-				res << s.right(i)
+				res << s[i..]
 				break
 			}
 			res << ch.ascii_str()
@@ -553,7 +556,7 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 	}
 	// Then the remaining right part of the string
 	if nth < 1 || res.len < nth {
-		res << s.right(start)
+		res << s[start..]
 	}
 	return res
 }
@@ -584,24 +587,6 @@ pub fn (s string) split_into_lines() []string {
 		}
 	}
 	return res
-}
-
-// left returns the `n`th leftmost characters of the string.
-// Example: assert 'hello'.left(2) == 'he'
-fn (s string) left(n int) string {
-	if n >= s.len {
-		return s
-	}
-	return s.substr(0, n)
-}
-
-// right returns the `n`th rightmost characters of the string.
-// Example: assert 'hello'.right(2) == 'lo'
-fn (s string) right(n int) string {
-	if n >= s.len {
-		return ''
-	}
-	return s.substr(n, s.len)
 }
 
 // used internally for [2..4]
@@ -643,10 +628,14 @@ pub fn (s string) substr(start int, end int) string {
 	return res
 }
 
-// TODO should probably be deprecated? Not used in the V code base (df4ec89a0)
-pub fn (s string) index_old(p string) int {
+// index returns the position of the first character of the input string.
+// It will return `-1` if the input string can't be found.
+fn (s string) index_(p string) int {
 	if p.len > s.len || p.len == 0 {
 		return -1
+	}
+	if p.len > 2 {
+		return s.index_kmp(p)
 	}
 	mut i := 0
 	for i < s.len {
@@ -665,21 +654,11 @@ pub fn (s string) index_old(p string) int {
 // index returns the position of the first character of the input string.
 // It will return `none` if the input string can't be found.
 pub fn (s string) index(p string) ?int {
-	if p.len > s.len || p.len == 0 {
+	idx := s.index_(p)
+	if idx == -1 {
 		return none
 	}
-	mut i := 0
-	for i < s.len {
-		mut j := 0
-		for j < p.len && unsafe { s.str[i + j] == p.str[j] } {
-			j++
-		}
-		if j == p.len {
-			return i
-		}
-		i++
-	}
-	return none
+	return idx
 }
 
 // index_kmp does KMP search.
@@ -716,16 +695,19 @@ fn (s string) index_kmp(p string) int {
 // index_any returns the position of any of the characters in the input string - if found.
 pub fn (s string) index_any(chars string) int {
 	for c in chars {
-		index := s.index(c.ascii_str()) or { continue }
-		return index
+		idx := s.index_(c.ascii_str())
+		if idx == -1 {
+			continue
+		}
+		return idx
 	}
 	return -1
 }
 
 // last_index returns the position of the last occurence of the input string.
-pub fn (s string) last_index(p string) ?int {
+fn (s string) last_index_(p string) int {
 	if p.len > s.len || p.len == 0 {
-		return none
+		return -1
 	}
 	mut i := s.len - p.len
 	for i >= 0 {
@@ -738,7 +720,16 @@ pub fn (s string) last_index(p string) ?int {
 		}
 		i--
 	}
-	return none
+	return -1
+}
+
+// last_index returns the position of the last occurence of the input string.
+pub fn (s string) last_index(p string) ?int {
+	idx := s.last_index_(p)
+	if idx == -1 {
+		return none
+	}
+	return idx
 }
 
 // index_after returns the position of the input string, starting search from `start` position.
@@ -818,7 +809,9 @@ pub fn (s string) contains(substr string) bool {
 	if substr.len == 0 {
 		return true
 	}
-	s.index(substr) or { return false }
+	if s.index_(substr) == -1 {
+		return false
+	}
 	return true
 }
 
@@ -925,7 +918,7 @@ pub fn (s string) capitalize() string {
 	}
 	return s[0].ascii_str().to_upper() + s[1..]
 	// sl := s.to_lower()
-	// cap := sl[0].str().to_upper() + sl.right(1)
+	// cap := sl[0].str().to_upper() + sl[1..]
 	// return cap
 }
 
@@ -970,11 +963,17 @@ pub fn (s string) is_title() bool {
 // find_between returns the string found between `start` string and `end` string.
 // Example: assert 'hey [man] how you doin'.find_between('[', ']') == 'man'
 pub fn (s string) find_between(start string, end string) string {
-	start_pos := s.index(start) or { return '' }
+	start_pos := s.index_(start)
+	if start_pos == -1 {
+		return ''
+	}
 	// First get everything to the right of 'start'
-	val := s.right(start_pos + start.len)
-	end_pos := val.index(end) or { return val }
-	return val.left(end_pos)
+	val := s[start_pos + start.len..]
+	end_pos := val.index_(end)
+	if end_pos == -1 {
+		return val
+	}
+	return val[..end_pos]
 }
 
 /*
@@ -1040,7 +1039,7 @@ pub fn (s string) trim_left(cutset string) string {
 	for pos < s.len && s[pos] in cs_arr {
 		pos++
 	}
-	return s.right(pos)
+	return s[pos..]
 }
 
 // trim_right strips any of the characters given in `cutset` from the right of the string.
@@ -1054,11 +1053,7 @@ pub fn (s string) trim_right(cutset string) string {
 	for pos >= 0 && s[pos] in cs_arr {
 		pos--
 	}
-	return if pos < 0 {
-		''
-	} else {
-		s.left(pos + 1)
-	}
+	return if pos < 0 { '' } else { s[..pos + 1] }
 }
 
 // trim_prefix strips `str` from the start of the string.
@@ -1404,32 +1399,55 @@ pub fn (s &string) free() {
 	s.is_lit = -98761234
 }
 
+// before returns the contents before `dot` in the string.
+// Example: assert '23:34:45.234'.all_before('.') == '23:34:45'
+pub fn (s string) before(dot string) string {
+	pos := s.index_(dot)
+	if pos == -1 {
+		return s
+	}
+	return s[..pos]
+}
+
 // all_before returns the contents before `dot` in the string.
 // Example: assert '23:34:45.234'.all_before('.') == '23:34:45'
 pub fn (s string) all_before(dot string) string {
-	pos := s.index(dot) or { return s }
-	return s.left(pos)
+	// TODO remove dup method
+	pos := s.index_(dot)
+	if pos == -1 {
+		return s
+	}
+	return s[..pos]
 }
 
 // all_before_last returns the contents before the last occurence of `dot` in the string.
 // Example: assert '23:34:45.234'.all_before_last(':') == '23:34'
 pub fn (s string) all_before_last(dot string) string {
-	pos := s.last_index(dot) or { return s }
-	return s.left(pos)
+	pos := s.last_index_(dot)
+	if pos == -1 {
+		return s
+	}
+	return s[..pos]
 }
 
 // all_after returns the contents after `dot` in the string.
 // Example: assert '23:34:45.234'.all_after('.') == '234'
 pub fn (s string) all_after(dot string) string {
-	pos := s.index(dot) or { return s }
-	return s.right(pos + dot.len)
+	pos := s.index_(dot)
+	if pos == -1 {
+		return s
+	}
+	return s[pos + dot.len..]
 }
 
 // all_after_last returns the contents after the last occurence of `dot` in the string.
 // Example: assert '23:34:45.234'.all_after_last(':') == '45.234'
 pub fn (s string) all_after_last(dot string) string {
-	pos := s.last_index(dot) or { return s }
-	return s.right(pos + dot.len)
+	pos := s.last_index_(dot)
+	if pos == -1 {
+		return s
+	}
+	return s[pos + dot.len..]
 }
 
 // after returns the contents after the last occurence of `dot` in the string.
@@ -1451,7 +1469,7 @@ pub fn (s string) after_char(dot byte) string {
 	if pos == 0 {
 		return s
 	}
-	return s.right(pos + 1)
+	return s[pos + 1..]
 }
 
 // fn (s []string) substr(a, b int) string {

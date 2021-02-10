@@ -1,79 +1,73 @@
 import sync
 
-fn do_rec(mut ch sync.Channel, mut resch sync.Channel) {
+fn do_rec(ch chan int, resch chan i64) {
 	mut sum := i64(0)
 	for {
-		mut a := 0
-		if !ch.pop(&a) {
+		a := <-ch or {
 			break
 		}
 		sum += a
 	}
+	assert ch.closed == true
 	println(sum)
-	resch.push(&sum)
+	resch <- sum
 }
 
-fn do_send(mut ch sync.Channel) {
+fn do_send(ch chan int) {
 	for i in 0 .. 8000 {
-		ch.push(&i)
+		ch <- i
 	}
+	assert ch.closed == false
 	ch.close()
+	assert ch.closed == true
 }
 
 fn test_channel_close_buffered_multi() {
-	mut ch := sync.new_channel<int>(0)
-	mut resch := sync.new_channel<i64>(100)
-	go do_rec(mut ch, mut resch)
-	go do_rec(mut ch, mut resch)
-	go do_rec(mut ch, mut resch)
-	go do_rec(mut ch, mut resch)
-	go do_send(mut ch)
+	ch := chan int{cap: 10}
+	resch := chan i64{}
+	go do_rec(ch, resch)
+	go do_rec(ch, resch)
+	go do_rec(ch, resch)
+	go do_rec(ch, resch)
+	go do_send(ch)
 	mut sum := i64(0)
 	for _ in 0 .. 4 {
-		mut r := i64(0)
-		resch.pop(&r)
-		sum += r
+		sum += <- resch
 	}
 	assert sum == i64(8000) * (8000 - 1) / 2
 }
 
 fn test_channel_close_unbuffered_multi() {
-	mut ch := sync.new_channel<int>(0)
-	mut resch := sync.new_channel<i64>(100)
-	go do_rec(mut ch, mut resch)
-	go do_rec(mut ch, mut resch)
-	go do_rec(mut ch, mut resch)
-	go do_rec(mut ch, mut resch)
-	go do_send(mut ch)
+	ch := chan int{}
+	resch := chan i64{}
+	go do_rec(ch, resch)
+	go do_rec(ch, resch)
+	go do_rec(ch, resch)
+	go do_rec(ch, resch)
+	go do_send(ch)
 	mut sum := i64(0)
 	for _ in 0 .. 4 {
-		mut r := i64(0)
-		resch.pop(&r)
-		sum += r
+		sum += <-resch
 	}
 	assert sum == i64(8000) * (8000 - 1) / 2
 }
 
 fn test_channel_close_buffered() {
-	mut ch := sync.new_channel<int>(0)
-	mut resch := sync.new_channel<i64>(100)
-	go do_rec(mut ch, mut resch)
-	go do_send(mut ch)
+	ch := chan int{cap: 100}
+	resch := chan i64{}
+	go do_rec(ch, resch)
+	go do_send(ch)
 	mut sum := i64(0)
-	mut r := i64(0)
-	resch.pop(&r)
-	sum += r
+	sum += <-resch
 	assert sum == i64(8000) * (8000 - 1) / 2
 }
 
 fn test_channel_close_unbuffered() {
-	mut ch := sync.new_channel<int>(0)
-	mut resch := sync.new_channel<i64>(100)
-	go do_rec(mut ch, mut resch)
-	go do_send(mut ch)
+	ch := chan int{}
+	resch := chan i64{cap: 100}
+	go do_rec(ch, resch)
+	go do_send(ch)
 	mut sum := i64(0)
-	mut r := i64(0)
-	resch.pop(&r)
-	sum += r
+	sum += <-resch
 	assert sum == i64(8000) * (8000 - 1) / 2
 }

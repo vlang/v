@@ -24,6 +24,7 @@ fn (mut ws Client) socket_read(mut buffer []byte) ?int {
 			}
 		}
 	}
+	return none
 }
 
 // socket_read reads from socket into the provided byte pointer and length
@@ -47,6 +48,7 @@ fn (mut ws Client) socket_read_ptr(buf_ptr byteptr, len int) ?int {
 			}
 		}
 	}
+	return none
 }
 
 // socket_write writes the provided byte array to the socket
@@ -84,7 +86,7 @@ fn (mut ws Client) shutdown_socket() ? {
 }
 
 // dial_socket connects tcp socket and initializes default configurations
-fn (mut ws Client) dial_socket() ?net.TcpConn {
+fn (mut ws Client) dial_socket() ?&net.TcpConn {
 	tcp_address := '$ws.uri.hostname:$ws.uri.port'
 	mut t := net.dial_tcp(tcp_address) ?
 	optval := int(1)

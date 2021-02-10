@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module http
@@ -67,33 +67,48 @@ pub fn get(url string) ?Response {
 }
 
 pub fn post(url string, data string) ?Response {
-	return fetch_with_method(.post, url, data: data, headers: {
-			'Content-Type': content_type_default
-		})
+	return fetch_with_method(.post, url, 
+		data: data
+		headers: {
+			'Content-Type': http.content_type_default
+		}
+	)
 }
 
 pub fn post_json(url string, data string) ?Response {
-	return fetch_with_method(.post, url, data: data, headers: {
+	return fetch_with_method(.post, url, 
+		data: data
+		headers: {
 			'Content-Type': 'application/json'
-		})
+		}
+	)
 }
 
 pub fn post_form(url string, data map[string]string) ?Response {
-	return fetch_with_method(.post, url, headers: {
+	return fetch_with_method(.post, url, 
+		headers: {
 			'Content-Type': 'application/x-www-form-urlencoded'
-		}, data: url_encode_form_data(data))
+		}
+		data: url_encode_form_data(data)
+	)
 }
 
 pub fn put(url string, data string) ?Response {
-	return fetch_with_method(.put, url, data: data, headers: {
-			'Content-Type': content_type_default
-		})
+	return fetch_with_method(.put, url, 
+		data: data
+		headers: {
+			'Content-Type': http.content_type_default
+		}
+	)
 }
 
 pub fn patch(url string, data string) ?Response {
-	return fetch_with_method(.patch, url, data: data, headers: {
-			'Content-Type': content_type_default
-		})
+	return fetch_with_method(.patch, url, 
+		data: data
+		headers: {
+			'Content-Type': http.content_type_default
+		}
+	)
 }
 
 pub fn head(url string) ?Response {
@@ -165,11 +180,11 @@ fn build_url_from_fetch(_url string, config FetchConfig) ?string {
 }
 
 fn (mut req Request) free() {
-	unsafe {req.headers.free()}
+	unsafe { req.headers.free() }
 }
 
 fn (mut resp Response) free() {
-	unsafe {resp.headers.free()}
+	unsafe { resp.headers.free() }
 }
 
 // add_header adds the key and value of an HTTP request header
@@ -199,8 +214,8 @@ pub fn (req &Request) do() ?Response {
 	mut resp := Response{}
 	mut no_redirects := 0
 	for {
-		if no_redirects == max_redirects {
-			return error('http.request.do: maximum number of redirects reached ($max_redirects)')
+		if no_redirects == http.max_redirects {
+			return error('http.request.do: maximum number of redirects reached ($http.max_redirects)')
 		}
 		qresp := req.method_and_url_to_response(req.method, rurl) ?
 		resp = qresp
@@ -366,7 +381,7 @@ fn (req &Request) http_do(host string, method Method, path string) ?Response {
 	// TODO this really needs to be exposed somehow
 	client.write(s.bytes()) ?
 	mut bytes := io.read_all(reader: client) ?
-	client.close()
+	client.close() ?
 	return parse_response(bytes.bytestr())
 }
 

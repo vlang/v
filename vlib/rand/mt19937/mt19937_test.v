@@ -1,6 +1,6 @@
 import math
 import rand.mt19937
-import rand.util
+import rand.seed
 
 const (
 	range_limit = 40
@@ -26,7 +26,7 @@ fn mt19937_basic_test() {
 
 fn gen_randoms(seed_data []u32, bound int) []u64 {
 	bound_u64 := u64(bound)
-	mut randoms := []u64{len:(20)}
+	mut randoms := []u64{len: (20)}
 	mut rnd := mt19937.MT19937RNG{}
 	rnd.seed(seed_data)
 	for i in 0 .. 20 {
@@ -36,7 +36,7 @@ fn gen_randoms(seed_data []u32, bound int) []u64 {
 }
 
 fn test_mt19937_reproducibility() {
-	seed_data := util.time_seed_array(2)
+	seed_data := seed.time_seed_array(2)
 	randoms1 := gen_randoms(seed_data, 1000)
 	randoms2 := gen_randoms(seed_data, 1000)
 	assert randoms1.len == randoms2.len
