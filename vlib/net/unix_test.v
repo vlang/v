@@ -1,5 +1,4 @@
 import net
-import os
 
 const (
 	test_port = 'test'
