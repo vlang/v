@@ -1717,17 +1717,6 @@ fn (mut g Gen) write_fn_ptr_decl(func &table.FnType, ptr_name string) {
 	g.write(')')
 }
 
-pub fn (mut g Gen) is_mut_ident(expr ast.Expr) bool {
-	if mut expr is ast.Ident {
-		if mut expr.obj is ast.Var {
-			if expr.obj.is_auto_deref {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 // TODO this function is scary. Simplify/split up.
 fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	if assign_stmt.is_static {
@@ -2043,7 +2032,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				g.array_set_pos = 0
 			} else {
 				g.out.go_back_to(pos)
-				is_var_mut := !is_decl && g.is_mut_ident(left)
+				is_var_mut := !is_decl && left.is_mut_ident()
 				addr := if is_var_mut { '' } else { '&' }
 				g.writeln('')
 				g.write('memcpy($addr')
@@ -2114,7 +2103,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					g.prevent_sum_type_unwrapping_once = true
 				}
 				if !is_fixed_array_copy || is_decl {
-					if !is_decl && g.is_mut_ident(left) {
+					if !is_decl && left.is_mut_ident() {
 						g.write('*')
 					}
 					g.expr(left)

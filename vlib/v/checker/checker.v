@@ -2543,17 +2543,6 @@ pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 	}
 }
 
-pub fn (mut c Checker) is_mut_ident(expr ast.Expr) bool {
-	if mut expr is ast.Ident {
-		if mut expr.obj is ast.Var {
-			if expr.obj.is_auto_deref {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 	c.expected_type = table.none_type // TODO a hack to make `x := if ... work`
 	defer {
@@ -2749,7 +2738,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 				assign_stmt.pos)
 		}
 		left_is_ptr := left_type.is_ptr() || left_sym.is_pointer()
-		if left_is_ptr && !c.is_mut_ident(left) {
+		if left_is_ptr && !left.is_mut_ident() {
 			if !c.inside_unsafe && assign_stmt.op !in [.assign, .decl_assign] {
 				// ptr op=
 				c.warn('pointer arithmetic is only allowed in `unsafe` blocks', assign_stmt.pos)

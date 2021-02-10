@@ -1532,3 +1532,14 @@ pub struct Table {
 	// pub mut:
 	// main_fn_decl_node FnDecl
 }
+
+pub fn (expr Expr) is_mut_ident() bool {
+	if expr is Ident {
+		if expr.obj is Var {
+			if expr.obj.is_auto_deref {
+				return true
+			}
+		}
+	}
+	return false
+}
