@@ -629,7 +629,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	is_json_encode := name == 'json.encode'
 	is_json_encode_pretty := name == 'json.encode_pretty'
 	is_json_decode := name == 'json.decode'
-	g.is_json_fn = is_json_encode || is_json_decode
+	g.is_json_fn = is_json_encode || is_json_encode_pretty || is_json_decode
 	mut json_type_str := ''
 	mut json_obj := ''
 	if g.is_json_fn {
