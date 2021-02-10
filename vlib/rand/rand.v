@@ -152,6 +152,22 @@ pub fn string(len int) string {
 	return unsafe { buf.vstring_with_len(len) }
 }
 
+
+const (
+	hex_chars = 'abcdef0123456789'
+)
+
+// hex returns a hexadecimal number of length `len` containing random characters in range `[a-f0-9]`.
+pub fn hex(len int) string {
+	mut buf := malloc(len)
+	for i in 0 .. len {
+		unsafe {
+			buf[i] = rand.hex_chars[intn(rand.hex_chars.len)]
+		}
+	}
+	return unsafe { buf.vstring_with_len(len) }
+}
+
 // uuid_v4 generates a random (v4) UUID
 // See https://en.wikipedia.org/wiki/Universally_unique_identifier#Version_4_(random)
 pub fn uuid_v4() string {
