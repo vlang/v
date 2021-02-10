@@ -168,6 +168,21 @@ pub fn hex(len int) string {
 	return unsafe { buf.vstring_with_len(len) }
 }
 
+const (
+	ascii_chars = '!"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ\\^_`abcdefghijklmnopqrstuvwxyz{|}~'
+)
+
+// ascii returns a random string of the printable ASCII characters with length `len`.
+pub fn ascii(len int) string {
+	mut buf := malloc(len)
+	for i in 0 .. len {
+		unsafe {
+			buf[i] = rand.ascii_chars[intn(rand.ascii_chars.len)]
+		}
+	}
+	return unsafe { buf.vstring_with_len(len) }
+}
+
 // uuid_v4 generates a random (v4) UUID
 // See https://en.wikipedia.org/wiki/Universally_unique_identifier#Version_4_(random)
 pub fn uuid_v4() string {
