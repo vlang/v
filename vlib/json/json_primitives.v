@@ -7,6 +7,7 @@ module json
 #flag @VROOT/thirdparty/cJSON/cJSON.o
 #include "cJSON.h"
 #define js_get(object, key) cJSON_GetObjectItemCaseSensitive((object), (key))
+
 struct C.cJSON {
 	valueint    int
 	valuedouble f32
@@ -19,6 +20,11 @@ pub fn decode(typ voidptr, s string) ?voidptr {
 }
 
 pub fn encode(x voidptr) string {
+	// compiler implementation
+	return ''
+}
+
+pub fn encode_pretty(x voidptr) string {
 	// compiler implementation
 	return ''
 }
@@ -107,21 +113,17 @@ fn decode_string(root &C.cJSON) string {
 
 fn C.cJSON_IsTrue(voidptr) bool
 
-
 fn C.cJSON_CreateNumber(int) &C.cJSON
-
 
 fn C.cJSON_CreateBool(bool) &C.cJSON
 
-
 fn C.cJSON_CreateString(charptr) &C.cJSON
-
 
 fn C.cJSON_Parse(charptr) &C.cJSON
 
-
 fn C.cJSON_PrintUnformatted(voidptr) byteptr
 
+fn C.cJSON_Print(voidptr) byteptr
 
 fn decode_bool(root &C.cJSON) bool {
 	if isnil(root) {
@@ -178,6 +180,7 @@ fn encode_bool(val bool) &C.cJSON {
 fn encode_string(val string) &C.cJSON {
 	return C.cJSON_CreateString(val.str)
 }
+
 // ///////////////////////
 // user := decode_User(json_parse(js_string_var))
 fn json_parse(s string) &C.cJSON {
@@ -187,6 +190,11 @@ fn json_parse(s string) &C.cJSON {
 // json_string := json_print(encode_User(user))
 fn json_print(json &C.cJSON) string {
 	s := C.cJSON_PrintUnformatted(json)
+	return unsafe { tos(s, C.strlen(s)) }
+}
+
+fn json_print_pretty(json &C.cJSON) string {
+	s := C.cJSON_Print(json)
 	return unsafe { tos(s, C.strlen(s)) }
 }
 
