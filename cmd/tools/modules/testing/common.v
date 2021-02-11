@@ -124,6 +124,9 @@ pub fn new_test_session(_vargs string) TestSession {
 		skip_files << 'examples/websocket/ping.v' // requires OpenSSL
 		skip_files << 'examples/websocket/client-server/client.v' // requires OpenSSL
 		skip_files << 'examples/websocket/client-server/server.v' // requires OpenSSL
+		$if tinyc {
+			skip_files << 'examples/database/orm.v' // try fix it
+		}
 	}
 	if testing.github_job != 'ubuntu-tcc' {
 		skip_files << 'examples/wkhtmltopdf.v' // needs installation of wkhtmltopdf from https://github.com/wkhtmltopdf/packaging/releases
