@@ -44,7 +44,7 @@ Running V graphical apps on Android is also possible via [vab](https://github.co
 V Android dependencies: **V**, **Java JDK** >= 8, Android **SDK + NDK**.
 
   1. Install dependencies (see [vab](https://github.com/vlang/vab))
-  2. Plugin-in your Android device
+  2. Connect your Android device
   3. Run:
   ```bash
   git clone https://github.com/vlang/vab && cd vab && v vab.v
