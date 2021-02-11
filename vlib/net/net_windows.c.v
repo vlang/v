@@ -1,5 +1,8 @@
 module net
 
+// needed for unix domain sockets support
+#include <afunix.h>
+
 // WsaError is all of the socket errors that WSA provides from WSAGetLastError
 pub enum WsaError {
 	//
