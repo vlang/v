@@ -246,7 +246,7 @@ Hello from V.js
 
 ## Android graphical apps
 
-With V's `vab` tool, building V UI and graphical apps on Android can become as easy as:
+With V's `vab` tool, building V UI and graphical apps for Android can become as easy as:
 
 ```
 ./vab /path/to/v/examples/2048
