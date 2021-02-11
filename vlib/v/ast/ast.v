@@ -434,6 +434,7 @@ pub:
 	is_mut          bool
 	is_autofree_tmp bool
 	is_arg          bool // fn args should not be autofreed
+	is_auto_deref   bool
 pub mut:
 	typ            table.Type
 	orig_type      table.Type   // original sumtype type; 0 if it's not a sumtype

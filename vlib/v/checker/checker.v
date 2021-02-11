@@ -68,8 +68,6 @@ mut:
 	inside_sql                       bool // to handle sql table fields pseudo variables
 	cur_orm_ts                       table.TypeSymbol
 	error_details                    []string
-	for_in_mut_val_name              string
-	fn_mut_arg_names                 []string
 	vmod_file_content                string       // needed for @VMOD_FILE, contents of the file, *NOT its path**
 	vweb_gen_types                   []table.Type // vweb route checks
 	prevent_sum_type_unwrapping_once bool   // needed for assign new values to sum type, stopping unwrapping then
@@ -2545,6 +2543,17 @@ pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 	}
 }
 
+pub fn (mut c Checker) is_mut_ident(expr ast.Expr) bool {
+	if mut expr is ast.Ident {
+		if mut expr.obj is ast.Var {
+			if expr.obj.is_auto_deref {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 	c.expected_type = table.none_type // TODO a hack to make `x := if ... work`
 	defer {
@@ -2740,7 +2749,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 				assign_stmt.pos)
 		}
 		left_is_ptr := left_type.is_ptr() || left_sym.is_pointer()
-		if left_is_ptr && c.for_in_mut_val_name != left.str() && left.str() !in c.fn_mut_arg_names {
+		if left_is_ptr && !c.is_mut_ident(left) {
 			if !c.inside_unsafe && assign_stmt.op !in [.assign, .decl_assign] {
 				// ptr op=
 				c.warn('pointer arithmetic is only allowed in `unsafe` blocks', assign_stmt.pos)
@@ -3333,13 +3342,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 		}
 	}
 	c.check_loop_label(node.label, node.pos)
-	if node.val_is_mut {
-		c.for_in_mut_val_name = node.val_var
-	}
 	c.stmts(node.stmts)
-	if node.val_is_mut {
-		c.for_in_mut_val_name = ''
-	}
 	c.loop_label = prev_loop_label
 	c.in_for_count--
 }
@@ -5836,16 +5839,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			}
 		}
 	}
-	for param in node.params {
-		if param.is_mut {
-			c.fn_mut_arg_names << param.name
-		}
-	}
 	c.fn_scope = node.scope
 	c.stmts(node.stmts)
-	if c.fn_mut_arg_names.len > 0 {
-		c.fn_mut_arg_names.clear()
-	}
 	node.has_return = c.returns || has_top_return(node.stmts)
 	if node.language == .v && !node.no_body && node.return_type != table.void_type
 		&& !node.has_return && node.name !in ['panic', 'exit'] {
