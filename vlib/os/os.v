@@ -456,6 +456,10 @@ pub fn walk_ext(path string, ext string) []string {
 	return res
 }
 
+pub fn ends_with_path_separator(path string) {
+	return path.end_with(path_separator)
+}
+
 // walk recursively traverses the given directory `path`.
 // When a file is encountred it will call the callback function with current file as argument.
 pub fn walk(path string, f fn (string)) {
