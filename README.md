@@ -249,10 +249,12 @@ Hello from V.js
 With V's `vab` tool, building V UI and graphical apps on Android is as easy as:
 
 ```
-./vab /path/to/v/examples/tetris
+./vab /path/to/v/examples/2048
 ```
 
-For more details, please visit the [vab GitHub repository](https://github.com/vlang/vab).
+[https://github.com/vlang/vab](https://github.com/vlang/vab).
+
+<img src="https://user-images.githubusercontent.com/768942/107621650-e03ccb80-6c56-11eb-8bb2-6781f8c38ba0.png">
 
 ## Developing web applications
 
