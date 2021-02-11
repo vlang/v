@@ -52,7 +52,7 @@ const (
 		'vlib/net/tcp_simple_client_server_test.v',
 		'vlib/net/tcp_test.v',
 		'vlib/net/udp_test.v',
-		'vlib/net/unix_test.v',
+		'vlib/net/unix/unix_test.v',
 		'vlib/orm/orm_test.v',
 		'vlib/os/os_test.v',
 		'vlib/dl/dl_test.v',
@@ -189,6 +189,7 @@ const (
 		'vlib/orm/orm_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/net/websocket/ws_test.v',
+		'vlib/net/unix/unix_test.v',
 		'vlib/x/websocket/websocket_test.v',
 		'vlib/vweb/tests/vweb_test.v',
 	]
