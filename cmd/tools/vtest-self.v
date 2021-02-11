@@ -52,6 +52,7 @@ const (
 		'vlib/net/tcp_simple_client_server_test.v',
 		'vlib/net/tcp_test.v',
 		'vlib/net/udp_test.v',
+		'vlib/net/unix_test.v',
 		'vlib/orm/orm_test.v',
 		'vlib/os/os_test.v',
 		'vlib/dl/dl_test.v',
@@ -160,7 +161,7 @@ const (
 		'vlib/x/json2/json2_test.v',
 		'vlib/x/json2/decoder_test.v',
 		'vlib/x/websocket/websocket_test.v',
-		'vlib/x/ttf/ttf_test.v'
+		'vlib/x/ttf/ttf_test.v',
 	]
 	skip_test_files               = []string{}
 	skip_on_musl                  = [
