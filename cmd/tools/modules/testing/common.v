@@ -4,7 +4,7 @@ import os
 import time
 import term
 import benchmark
-import sync
+import sync.pool
 import v.pref
 import v.util.vtest
 
@@ -198,7 +198,7 @@ pub fn (mut ts TestSession) test() {
 	remaining_files = vtest.filter_vtest_only(remaining_files, fix_slashes: false)
 	ts.files = remaining_files
 	ts.benchmark.set_total_expected_steps(remaining_files.len)
-	mut pool_of_test_runners := sync.new_pool_processor(callback: worker_trunner)
+	mut pool_of_test_runners := pool.new_pool_processor(callback: worker_trunner)
 	// for handling messages across threads
 	ts.nmessages = chan LogMessage{cap: 10000}
 	ts.nprint_ended = chan int{cap: 0}
@@ -218,7 +218,7 @@ pub fn (mut ts TestSession) test() {
 	}
 }
 
-fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
+fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	mut ts := &TestSession(p.get_shared_context())
 	tmpd := ts.vtmp_dir
 	show_stats := '-stats' in ts.vargs.split(' ')
@@ -230,7 +230,7 @@ fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 		p.set_thread_context(idx, tls_bench)
 	}
 	tls_bench.no_cstep = true
-	dot_relative_file := p.get_string_item(idx)
+	dot_relative_file := p.get_item<string>(idx)
 	mut relative_file := dot_relative_file.replace('./', '')
 	if ts.root_relative {
 		relative_file = relative_file.replace(ts.vroot + os.path_separator, '')
@@ -239,8 +239,11 @@ fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 	// Ensure that the generated binaries will be stored in the temporary folder.
 	// Remove them after a test passes/fails.
 	fname := os.file_name(file)
-	generated_binary_fname := if os.user_os() == 'windows' { fname.replace('.v', '.exe') } else { fname.replace('.v',
-			'') }
+	generated_binary_fname := if os.user_os() == 'windows' {
+		fname.replace('.v', '.exe')
+	} else {
+		fname.replace('.v', '')
+	}
 	generated_binary_fpath := os.join_path(tmpd, generated_binary_fname)
 	if os.exists(generated_binary_fpath) {
 		if ts.rm_binaries {
@@ -258,7 +261,7 @@ fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 		ts.benchmark.skip()
 		tls_bench.skip()
 		ts.append_message(.skip, tls_bench.step_message_skip(relative_file))
-		return sync.no_result
+		return pool.no_result
 	}
 	if show_stats {
 		ts.append_message(.ok, term.h_divider('-'))
@@ -270,7 +273,7 @@ fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 			ts.failed = true
 			ts.benchmark.fail()
 			tls_bench.fail()
-			return sync.no_result
+			return pool.no_result
 		}
 	} else {
 		if testing.show_start {
@@ -281,7 +284,7 @@ fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 			ts.benchmark.fail()
 			tls_bench.fail()
 			ts.append_message(.fail, tls_bench.step_message_fail(relative_file))
-			return sync.no_result
+			return pool.no_result
 		}
 		if r.exit_code != 0 {
 			ts.failed = true
@@ -300,7 +303,7 @@ fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 			os.rm(generated_binary_fpath) or { panic(err) }
 		}
 	}
-	return sync.no_result
+	return pool.no_result
 }
 
 pub fn vlib_should_be_present(parent_dir string) {
@@ -343,8 +346,7 @@ pub fn prepare_test_session(zargs string, folder string, oskipped []string, main
 		}
 		$if windows {
 			// skip pico and process/command examples on windows
-			if f.ends_with('examples\\pico\\pico.v')
-				|| f.ends_with('examples\\process\\command.v') {
+			if f.ends_with('examples\\pico\\pico.v') || f.ends_with('examples\\process\\command.v') {
 				continue
 			}
 		}
