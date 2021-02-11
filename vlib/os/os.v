@@ -456,8 +456,9 @@ pub fn walk_ext(path string, ext string) []string {
 	return res
 }
 
-pub fn ends_with_path_separator(path string) {
-	return path.end_with(path_separator)
+[inline]
+pub fn ends_with_path_separator(path string) bool {
+	return path.ends_with(path_separator)
 }
 
 // walk recursively traverses the given directory `path`.
