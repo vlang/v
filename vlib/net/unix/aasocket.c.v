@@ -1,4 +1,4 @@
-module net
+module unix
 
 // Select represents a select operation
 enum Select {
@@ -8,30 +8,14 @@ enum Select {
 }
 
 // SocketType are the available sockets
-pub enum SocketType {
-	udp = C.SOCK_DGRAM
-	tcp = C.SOCK_STREAM
-}
-
-// SocketFamily are the available address families
-pub enum SocketFamily {
-	inet = C.AF_INET
-}
-
-struct C.in_addr {
-mut:
-	s_addr int
+enum SocketType {
+	dgram = C.SOCK_DGRAM
+	stream = C.SOCK_STREAM
+	seqpacket = C.SOCK_SEQPACKET
 }
 
 struct C.sockaddr {
 	sa_family u16
-}
-
-struct C.sockaddr_in {
-mut:
-	sin_family int
-	sin_port   int
-	sin_addr   C.in_addr
 }
 
 struct C.sockaddr_un {
@@ -110,4 +94,4 @@ fn C.FD_SET()
 fn C.FD_ISSET() bool
 
 [typedef]
-pub struct C.fd_set {}
+struct C.fd_set {}
