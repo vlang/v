@@ -226,7 +226,6 @@ pub fn (mut p Parser) parse_type() table.Type {
 	}
 	language := p.parse_language()
 	mut typ := table.void_type
-	is_array := p.tok.kind == .lsbr
 	if p.tok.kind != .lcbr {
 		pos := p.tok.position()
 		typ = p.parse_any_type(language, nr_muls > 0, true)
