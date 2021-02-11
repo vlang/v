@@ -2356,13 +2356,12 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 	expected_type := c.unwrap_generic(c.expected_type)
 	expected_type_sym := c.table.get_type_symbol(expected_type)
 	if return_stmt.exprs.len > 0 && c.cur_fn.return_type == table.void_type {
-		c.error('unexpected argument, current function does not return anything',
-			return_stmt.exprs[0].position())
+		c.error('unexpected argument, current function does not return anything', return_stmt.exprs[0].position())
 		return
 	} else if return_stmt.exprs.len == 0 && !(c.expected_type == table.void_type
 		|| expected_type_sym.kind == .void) {
 		stype := c.table.type_to_str(expected_type)
-		arg := if expected_type_sym.kind == .multi_return {'arguments'} else {'argument'}
+		arg := if expected_type_sym.kind == .multi_return { 'arguments' } else { 'argument' }
 		c.error('expected `$stype` $arg', return_stmt.pos)
 		return
 	}
@@ -2396,7 +2395,7 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 		return
 	}
 	if expected_types.len > 0 && expected_types.len != got_types.len {
-		arg := if expected_types.len == 1 {'argument'} else {'arguments'}
+		arg := if expected_types.len == 1 { 'argument' } else { 'arguments' }
 		c.error('expected $expected_types.len $arg, but got $got_types.len', return_stmt.pos)
 		return
 	}
