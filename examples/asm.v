@@ -1,17 +1,16 @@
 fn main() {
 	a := 100
 	b := 20
-	c := 0 // set by asm
+	c := 0
 	asm x64 {
-		'movl %[a], %[c]'
-		'subl %[b], %[c]'
+		'mov %[c], %[a]'
+		'add %[c], %[b]'
 		: [c] "=r" (c) // output 
-		: [a] "r" (a),
-		  [b] "r" (b) // input 
-		: '%ebx' // clobbered register 
+		: [a] "r" (a),// input 
+		  [b] "r" (b) 
 	}
 
 	println('a: $a') // 100
 	println('b: $b') // 20
-	println('c: $c') // 80
+	println('c: $c') // 120
 }

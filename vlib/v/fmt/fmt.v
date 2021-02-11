@@ -488,9 +488,16 @@ fn (mut f Fmt) asm_stmt(stmt ast.AsmStmt) {
 		f.write(': ')
 	}
 
+	if stmt.output.len == 0 {
+		f.writeln('')
+	}
+
 	f.asm_ios(stmt.output)
 	if stmt.input.len != 0 || stmt.clobbered.len != 0 {
 		f.write(': ')
+	}
+	if stmt.input.len == 0 {
+		f.writeln('')
 	}
 	f.asm_ios(stmt.input)
 	if stmt.clobbered.len != 0 {
@@ -516,11 +523,19 @@ fn (mut f Fmt) asm_ios(ios []ast.AsmIO) {
 		if i != 0 {
 			f.write('  ')
 		}
-		f.write('[$io.alias] "$io.constraint" ($io.expr)')
+		if io.alias != '' {
+			f.write('[$io.alias] ')
+		}
+		f.write("'$io.constraint' ($io.expr)")
 		if i + 1 < ios.len {
 			f.writeln(',')
+		} else {
+			f.writeln('')
 		}
 		f.comments(io.comments, inline: false, level: .indent)
+		if i + 1 >= ios.len {
+			f.writeln('')
+		}
 	}
 }
 

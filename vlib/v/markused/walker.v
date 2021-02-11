@@ -49,6 +49,10 @@ pub fn (mut w Walker) mark_root_fns(all_fn_root_names []string) {
 
 pub fn (mut w Walker) stmt(node ast.Stmt) {
 	match mut node {
+		ast.AsmStmt { // TODO: look for `call` instructions
+			w.asm_io(node.output)
+			w.asm_io(node.input)
+		}
 		ast.AssertStmt {
 			w.expr(node.expr)
 			w.n_asserts++
@@ -119,6 +123,12 @@ pub fn (mut w Walker) stmt(node ast.Stmt) {
 		ast.InterfaceDecl {}
 		ast.Module {}
 		ast.TypeDecl {}
+	}
+}
+
+fn (mut w Walker) asm_io(ios []ast.AsmIO) {
+	for io in ios {
+		w.expr(io.expr)
 	}
 }
 

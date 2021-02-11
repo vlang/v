@@ -1702,7 +1702,11 @@ fn (mut g Gen) gen_attrs(attrs []table.Attr) {
 }
 
 fn (mut g Gen) gen_asm_stmt(stmt ast.AsmStmt) {
-	g.writeln('__asm__ (')
+	g.write('__asm__')
+	if stmt.volatile {
+		g.writeln(' volatile')
+	}
+	g.writeln(' (')
 	g.indent++
 	for template in stmt.templates {
 		g.writeln('"$template.template"')
@@ -1732,7 +1736,10 @@ fn (mut g Gen) gen_asm_stmt(stmt ast.AsmStmt) {
 
 fn (mut g Gen) gen_asm_ios(ios []ast.AsmIO) {
 	for i, io in ios {
-		g.write('[$io.alias] "$io.constraint" ($io.expr)')
+		if io.alias != '' {
+			g.write('[$io.alias] ')
+		}
+		g.write('"$io.constraint" ($io.expr)')
 		if i + 1 < ios.len {
 			g.writeln(',')
 		} else {

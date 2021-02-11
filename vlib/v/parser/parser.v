@@ -69,6 +69,7 @@ mut:
 	label_names       []string
 	in_generic_params bool // indicates if parsing between `<` and `>` of a method/function
 	name_error        bool // indicates if the token is not a name or the name is on another line
+	n_asm             int  // controls assembly labels 
 }
 
 // for tests
@@ -818,6 +819,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 }
 
 fn (mut p Parser) asm_stmt(top_level bool) ast.AsmStmt {
+	p.n_asm = 0
 	if top_level {
 		p.top_level_statement_start()
 	}
@@ -829,7 +831,13 @@ fn (mut p Parser) asm_stmt(top_level bool) ast.AsmStmt {
 	pos := p.tok.position()
 
 	p.check(.key_asm)
-	arch := p.tok.lit
+	mut arch := p.tok.lit
+	mut volatile := false
+	if p.tok.lit == 'volatile' {
+		arch = p.peek_tok.lit
+		volatile = true
+		p.check(.name)
+	}
 	if p.tok.kind != .name {
 		p.error('must specify assembly architecture')
 	} else {
@@ -837,6 +845,13 @@ fn (mut p Parser) asm_stmt(top_level bool) ast.AsmStmt {
 	}
 
 	p.check(.lcbr)
+
+	// `in`, `lock`, `or` are v keywords that are also x86/arm/riscv instructions.
+	// NB: dots are part of instructions for some riscv extensions
+	// riscv: https://github.com/jameslzhu/riscv-card/blob/master/riscv-card.pdf
+	// x86: https://www.felixcloutier.com/x86/
+	// arm: https://developer.arm.com/documentation/dui0068/b/arm-instruction-reference
+	// TODO: no string literals
 	for p.tok.kind == .string {
 		mut template := ast.AsmTemplate{}
 
@@ -882,14 +897,14 @@ fn (mut p Parser) asm_stmt(top_level bool) ast.AsmStmt {
 				}
 			}
 		}
-	}
-	if p.tok.kind == .colon {
+	} else if p.tok.kind == .colon {
 		p.error('extended assembly is not allowed in the top-level')
 	}
 	p.check(.rcbr)
 	if top_level {
 		p.top_level_statement_end()
 	}
+
 	mut stmt := ast.AsmStmt{
 		arch: arch
 		templates: templates
@@ -904,9 +919,17 @@ fn (mut p Parser) asm_stmt(top_level bool) ast.AsmStmt {
 }
 
 fn asm_fix(mut stmt ast.AsmStmt) {
+	stmt.templates.insert(0, ast.AsmTemplate{
+		template: '.intel_syntax noprefix\\n'
+	})
+	stmt.templates << ast.AsmTemplate{
+		template: '.att_syntax noprefix\\n'
+	}
 	for i, template in stmt.templates {
 		if !template.template.contains(':') {
-			stmt.templates[i].template += ';'
+			stmt.templates[i].template += if stmt.top_level { '\n' } else { ';' }
+		} else {
+			// TODO: register labels
 		}
 	}
 }
@@ -914,7 +937,10 @@ fn asm_fix(mut stmt ast.AsmStmt) {
 fn (mut p Parser) asm_ios() []ast.AsmIO {
 	mut res := []ast.AsmIO{}
 	p.check(.colon)
-	for i := 0; true; i++ {
+	if p.tok.kind == .rcbr {
+		return []
+	}
+	for {
 		mut alias := ''
 		if p.tok.kind == .lsbr {
 			p.check(.lsbr)
@@ -922,16 +948,13 @@ fn (mut p Parser) asm_ios() []ast.AsmIO {
 			p.check(.name)
 
 			p.check(.rsbr)
-		} else {
-			alias = 'x$i' // x so that it is recognized as an identifier
 		}
 		constraint := p.tok.lit
 		p.check(.string)
 
 		mut expr := p.expr(0)
-		if expr.type_name() == 'v.ast.ParExpr' {
-			exp := expr as ast.ParExpr // unpack expression
-			expr = exp.expr
+		if mut expr is ast.ParExpr {
+			expr = expr.expr
 		} else {
 			p.error('asm in/output must be incolsed in  brackets')
 		}
@@ -956,6 +979,7 @@ fn (mut p Parser) asm_ios() []ast.AsmIO {
 		if should_break {
 			break
 		}
+		p.n_asm++
 	}
 	return res
 }
