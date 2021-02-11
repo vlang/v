@@ -254,7 +254,7 @@ With V's `vab` tool, building V UI and graphical apps for Android can become as 
 
 [https://github.com/vlang/vab](https://github.com/vlang/vab).
 
-<img src="https://user-images.githubusercontent.com/768942/107621650-e03ccb80-6c56-11eb-8bb2-6781f8c38ba0.png">
+<img src="https://user-images.githubusercontent.com/768942/107622846-c13f3900-6c58-11eb-8a66-55db12979b73.png">
 
 ## Developing web applications
 
