@@ -102,10 +102,10 @@ pub fn merge<T>(a []T, b []T) []T {
 	return m
 }
 
-// zip n arrays into a single array of arrays with n elements
-pub fn zip<T>(lists ...[]T) [][]T {
+// group n arrays into a single array of arrays with n elements
+pub fn group<T>(lists ...[]T) [][]T {
 	mut length := lists[0].len
-	// calculate length of output array by finding shortest input list
+	// calculate length of output by finding shortest input array
 	for ndx in 1 .. lists.len {
 		if lists[ndx].len < length {
 			length = lists[ndx].len
@@ -116,7 +116,7 @@ pub fn zip<T>(lists ...[]T) [][]T {
 		mut arr := [][]T{cap: length}
 		// append all combined arrays into the resultant array
 		for ndx in 0 .. length {
-			mut zipped := []T{}
+			mut zipped := []T{cap: lists.len}
 			// combine each list item for the ndx position into one array
 			for list_ndx in 0 .. lists.len {
 				zipped << lists[list_ndx][ndx]

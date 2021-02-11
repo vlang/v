@@ -76,14 +76,14 @@ fn test_fixed_array_assignment() {
 	}
 }
 
-fn test_zip() {
+fn test_group() {
 	x := [4, 5, 6]
 	y := [2, 1, 3]
 
-	z := zip<int>(x, y)
+	z := group<int>(x, y)
 	assert z == [[4, 2], [5, 1], [6, 3]]
 	x2 := [8, 9]
-	z2 := zip<int>(x2, y)
+	z2 := group<int>(x2, y)
 	assert z2 == [[8, 2], [9, 1]]
-	assert zip<int>(x, []int{}) == [][]int{}
+	assert group<int>(x, []int{}) == [][]int{}
 }
