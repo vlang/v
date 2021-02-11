@@ -250,12 +250,6 @@ pub fn (mut p Parser) parse_type() table.Type {
 	}
 	if nr_muls > 0 {
 		typ = typ.set_nr_muls(nr_muls)
-		if is_array && nr_amps > 0 {
-			p.error('V arrays are already references behind the scenes,
-there is no need to use a reference to an array (e.g. use `[]string` instead of `&[]string`).
-If you need to modify an array in a function, use a mutable argument instead: `fn foo(mut s []string) {}`.')
-			return 0
-		}
 	}
 	return typ
 }
