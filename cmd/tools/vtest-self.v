@@ -85,7 +85,7 @@ const (
 		'vlib/sync/channel_try_buf_test.v',
 		'vlib/sync/select_close_test.v',
 		'vlib/sync/struct_chan_init_test.v',
-		'vlib/sync/pool_test.v',
+		'vlib/sync/pool/pool_test.v',
 		'vlib/szip/szip_test.v',
 		'vlib/v/compiler_errors_test.v',
 		'vlib/v/ast/walker/walker_test.v',
