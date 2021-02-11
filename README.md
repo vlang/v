@@ -244,6 +244,18 @@ Hello from V.js
 ```
 -->
 
+## Android graphical apps
+
+With V's `vab` tool, building V UI and graphical apps for Android can become as easy as:
+
+```
+./vab /path/to/v/examples/2048
+```
+
+[https://github.com/vlang/vab](https://github.com/vlang/vab).
+
+<img src="https://user-images.githubusercontent.com/768942/107622846-c13f3900-6c58-11eb-8a66-55db12979b73.png">
+
 ## Developing web applications
 
 Check out the [Building a simple web blog](https://github.com/vlang/v/blob/master/tutorials/building-a-simple-web-blog-with-vweb.md)
