@@ -21,7 +21,7 @@ download the C version of the compiler and rebuild it from scratch.
 
 The architecture of the compiler is very simple and has three distinct steps:
 
-Parse/generate AST (`v.parser`) => Check types (`v.checker`) 
+Parse/generate AST (`v.parser`) => Check types (`v.checker`)
 => Generate C/JavaScript/machine code (`v.gen`)
 
 
@@ -53,7 +53,7 @@ for objects by name, register new objects, modify types' fields, etc.
 the types are correct. Unresolved types are resolved, type information is added
 to the AST.
 
-7. `v/gen` C backend. It simply walks the AST and generates C code that can be
+7. `v/gen/c` C backend. It simply walks the AST and generates C code that can be
 compiled with Clang, GCC, Visual Studio, and TCC.
 
 8. `json.v` defines the json code generation. This file will be removed once V
@@ -171,11 +171,11 @@ their status.
 V allows you to pass custom flags using `-d my_flag` that can then be checked
 at compile time (see the documentation about
 [compile-time if](https://github.com/vlang/v/blob/master/doc/docs.md#compile-time-if)).
-There are numerous flags that can be passed when building the compiler 
-with `v self` or when creating a copy of the compiler, that will help 
+There are numerous flags that can be passed when building the compiler
+with `v self` or when creating a copy of the compiler, that will help
 you when debugging.
 
-Beware that the flags must be passed when building the compiler, 
+Beware that the flags must be passed when building the compiler,
 not the program, so do for example: `v -d time_parsing cmd/v` or
 `v -d trace_checker self`.
 Some flags can make the compiler very verbose, so it is recommended
