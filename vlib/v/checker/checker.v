@@ -1301,7 +1301,7 @@ pub fn (mut c Checker) call_expr(mut call_expr ast.CallExpr) table.Type {
 
 fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ table.Type, call_expr ast.CallExpr) {
 	if call_expr.args.len != 1 {
-		c.error('expected 1 arguments, but got $call_expr.args.len', call_expr.pos)
+		c.error('expected 1 argument, but got $call_expr.args.len', call_expr.pos)
 		// Finish early so that it doesn't fail later
 		return
 	}
@@ -2359,12 +2359,13 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 	expected_type := c.unwrap_generic(c.expected_type)
 	expected_type_sym := c.table.get_type_symbol(expected_type)
 	if return_stmt.exprs.len > 0 && c.cur_fn.return_type == table.void_type {
-		c.error('too many arguments to return, current function does not return anything',
-			return_stmt.pos)
+		c.error('unexpected argument, current function does not return anything', return_stmt.exprs[0].position())
 		return
 	} else if return_stmt.exprs.len == 0 && !(c.expected_type == table.void_type
 		|| expected_type_sym.kind == .void) {
-		c.error('too few arguments to return', return_stmt.pos)
+		stype := c.table.type_to_str(expected_type)
+		arg := if expected_type_sym.kind == .multi_return { 'arguments' } else { 'argument' }
+		c.error('expected `$stype` $arg', return_stmt.pos)
 		return
 	}
 	if return_stmt.exprs.len == 0 {
@@ -2397,7 +2398,8 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 		return
 	}
 	if expected_types.len > 0 && expected_types.len != got_types.len {
-		c.error('wrong number of return arguments', return_stmt.pos)
+		arg := if expected_types.len == 1 { 'argument' } else { 'arguments' }
+		c.error('expected $expected_types.len $arg, but got $got_types.len', return_stmt.pos)
 		return
 	}
 	for i, exp_type in expected_types {
