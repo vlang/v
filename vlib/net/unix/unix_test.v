@@ -1,10 +1,10 @@
-import net
+import net.unix
 
 const (
 	test_port = 'test'
 )
 
-fn handle_conn(mut c net.UnixConn) {
+fn handle_conn(mut c unix.StreamConn) {
 	for {
 		mut buf := []byte{len: 100, init: 0}
 		read := c.read(mut buf) or {
@@ -18,7 +18,7 @@ fn handle_conn(mut c net.UnixConn) {
 	}
 }
 
-fn echo_server(mut l net.UnixListener) ? {
+fn echo_server(mut l unix.StreamListener) ? {
 	for {
 		mut new_conn := l.accept() or { continue }
 		go handle_conn(mut new_conn)
@@ -27,7 +27,7 @@ fn echo_server(mut l net.UnixListener) ? {
 }
 
 fn echo() ? {
-	mut c := net.connect_unix('test') ?
+	mut c := unix.connect_stream('test') ?
 	defer {
 		c.close() or { }
 	}
@@ -44,7 +44,7 @@ fn echo() ? {
 }
 
 fn test_tcp() {
-	mut l := net.listen_unix(test_port) or { panic(err) }
+	mut l := unix.listen_stream(test_port) or { panic(err) }
 	go echo_server(mut l)
 	echo() or { panic(err) }
 	l.close() or { }
