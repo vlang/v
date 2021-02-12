@@ -5745,6 +5745,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			c.error('method overrides built-in array method', node.pos)
 		} else if sym.kind == .sum_type && node.name == 'type_name' {
 			c.error('method overrides built-in sum type method', node.pos)
+		} else if sym.kind == .multi_return {
+			c.error('cannot define method on multi-value', node.method_type_pos)
 		}
 		if sym.name.len == 1 {
 			// One letter types are reserved for generics.
