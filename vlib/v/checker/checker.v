@@ -1442,10 +1442,13 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			call_expr.return_type = table.int_type
 		}
 		return call_expr.return_type
-	} else if left_type_sym.kind == .map && method_name in ['clone', 'keys'] {
+	} else if left_type_sym.kind == .map && method_name in ['clone', 'keys', 'move'] {
 		mut ret_type := table.void_type
 		match method_name {
-			'clone' {
+			'clone', 'move' {
+				if method_name[0] == `m` {
+					c.fail_if_immutable(call_expr.left)
+				}
 				ret_type = left_type
 			}
 			'keys' {
@@ -2737,9 +2740,9 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		if left_sym.kind == .map && !c.inside_unsafe && assign_stmt.op in [.assign, .decl_assign]
 			&& right_sym.kind == .map && (left is ast.Ident && !left.is_blank_ident())
 			&& right is ast.Ident {
-			// Do not allow `a = b`, only `a = b.clone()`
-			c.error('use `map2 $assign_stmt.op.str() map1.clone()` instead of `map2 $assign_stmt.op.str() map1` (or use `unsafe`)',
-				assign_stmt.pos)
+			// Do not allow `a = b`
+			c.error('cannot copy map: call `move` or `clone` method first (or use `unsafe`)',
+				right.position())
 		}
 		left_is_ptr := left_type.is_ptr() || left_sym.is_pointer()
 		if left_is_ptr && c.for_in_mut_val_name != left.str() && left.str() !in c.fn_mut_arg_names {
