@@ -5782,7 +5782,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				c.error('.str() methods should have 0 arguments', node.pos)
 			}
 		}
-		if node.language == .v && node.is_method && node.name in ['+', '-', '*', '%', '/', '<', '=='] {
+		if node.language == .v && node.is_method
+			&& node.name in ['+', '-', '*', '%', '/', '<', '=='] {
 			if node.params.len != 2 {
 				c.error('operator methods should have exactly 1 argument', node.pos)
 			} else {
