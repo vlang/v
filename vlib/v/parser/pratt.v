@@ -297,8 +297,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 		else {
 			if p.tok.kind != .eof {
 				// eof should be handled where it happens
-				p.error_with_pos('invalid expression: unexpected `$p.tok.kind.str()` token',
-					p.tok.position())
+				p.error_with_pos('invalid expression: unexpected $p.tok', p.tok.position())
 				return ast.Expr{}
 			}
 		}

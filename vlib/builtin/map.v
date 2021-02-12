@@ -207,7 +207,7 @@ pub struct map {
 mut:
 	// Highest even index in the hashtable
 	even_index u32
-	// Number of cached hashbits left for rehasing
+	// Number of cached hashbits left for rehashing
 	cached_hashbits byte
 	// Used for right-shifting out used hashbits
 	shift byte
@@ -344,6 +344,14 @@ fn new_map_init_2(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, fre
 		}
 	}
 	return out
+}
+
+pub fn (mut m map) move() map {
+	r := *m
+	unsafe {
+		C.memset(m, 0, sizeof(map))
+	}
+	return r
 }
 
 [inline]

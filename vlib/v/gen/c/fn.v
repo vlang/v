@@ -170,11 +170,6 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 		g.definitions.write(fn_header)
 		g.write(fn_header)
 	}
-	for param in node.params {
-		if param.is_mut {
-			g.fn_mut_arg_names << param.name
-		}
-	}
 	arg_start_pos := g.out.len
 	fargs, fargtypes := g.fn_args(node.params, node.is_variadic)
 	arg_str := g.out.after(arg_start_pos)
@@ -223,9 +218,6 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 	g.defer_stmts = []
 	g.stmts(node.stmts)
 	// clear g.fn_mut_arg_names
-	if g.fn_mut_arg_names.len > 0 {
-		g.fn_mut_arg_names.clear()
-	}
 
 	if !node.has_return {
 		g.write_defer_stmts_when_needed()
@@ -479,7 +471,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.gen_str_for_type(node.receiver_type)
 	}
 	mut has_cast := false
-	if left_sym.kind == .map && node.name == 'clone' {
+	if left_sym.kind == .map && node.name in ['clone', 'move'] {
 		receiver_type_name = 'map'
 	}
 	// TODO performance, detect `array` method differently
@@ -627,15 +619,16 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	is_print := name in ['print', 'println', 'eprint', 'eprintln']
 	print_method := name
 	is_json_encode := name == 'json.encode'
+	is_json_encode_pretty := name == 'json.encode_pretty'
 	is_json_decode := name == 'json.decode'
-	g.is_json_fn = is_json_encode || is_json_decode
+	g.is_json_fn = is_json_encode || is_json_encode_pretty || is_json_decode
 	mut json_type_str := ''
 	mut json_obj := ''
 	if g.is_json_fn {
 		json_obj = g.new_tmp_var()
 		mut tmp2 := ''
 		cur_line := g.go_before_stmt(0)
-		if is_json_encode {
+		if is_json_encode || is_json_encode_pretty {
 			g.gen_json_for_type(node.args[0].typ)
 			json_type_str = g.typ(node.args[0].typ)
 			// `json__encode` => `json__encode_User`
@@ -650,7 +643,11 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			g.call_args(node)
 			g.writeln(');')
 			tmp2 = g.new_tmp_var()
-			g.writeln('string $tmp2 = json__json_print($json_obj);')
+			if is_json_encode {
+				g.writeln('string $tmp2 = json__json_print($json_obj);')
+			} else {
+				g.writeln('string $tmp2 = json__json_print_pretty($json_obj);')
+			}
 		} else {
 			ast_type := node.args[0].expr as ast.Type
 			// `json.decode(User, s)` => json.decode_User(s)

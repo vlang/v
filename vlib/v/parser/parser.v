@@ -424,14 +424,16 @@ fn (mut p Parser) check(expected token.Kind) {
 	// }
 	if p.tok.kind == expected {
 		p.next()
-	} else if p.tok.kind == .name {
-		p.error('unexpected name `$p.tok.lit`, expecting `$expected.str()`')
 	} else {
 		if expected == .name {
 			p.name_error = true
 		}
-		label := if token.is_key(p.tok.lit) { 'keyword ' } else { '' }
-		p.error('unexpected $label`$p.tok.kind.str()`, expecting `$expected.str()`')
+		mut s := expected.str()
+		// quote keywords, punctuation, operators
+		if token.is_key(s) || (s.len > 0 && !s[0].is_letter()) {
+			s = '`$s`'
+		}
+		p.error('unexpected $p.tok, expecting $s')
 	}
 }
 
@@ -841,7 +843,7 @@ fn (mut p Parser) attributes() {
 				p.next()
 				break
 			}
-			p.error('unexpected `$p.tok.kind.str()`, expecting `;`')
+			p.error('unexpected $p.tok, expecting `;`')
 			return
 		}
 		p.next()
@@ -1011,9 +1013,11 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 		p.error('expecting `:=` (e.g. `mut x :=`)')
 		return ast.Stmt{}
 	}
+	// TODO remove translated
 	if p.tok.kind in [.assign, .decl_assign] || p.tok.kind.is_assign() {
 		return p.partial_assign_stmt(left, left_comments)
-	} else if tok.kind !in [.key_if, .key_match, .key_lock, .key_rlock, .key_select]
+	} else if !p.pref.translated
+		&& tok.kind !in [.key_if, .key_match, .key_lock, .key_rlock, .key_select]
 		&& left0 !is ast.CallExpr && (is_top_level || p.tok.kind != .rcbr)
 		&& left0 !is ast.PostfixExpr && !(left0 is ast.InfixExpr
 		&& (left0 as ast.InfixExpr).op in [.left_shift, .arrow]) && left0 !is ast.ComptimeCall

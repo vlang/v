@@ -15,7 +15,7 @@ fn (mut p Parser) lock_expr() ast.LockExpr {
 		}
 		is_rlock := p.tok.kind == .key_rlock
 		if !is_rlock && p.tok.kind != .key_lock {
-			p.error_with_pos('unexpected `$p.tok.lit`; `lock` or `rlock` expected', p.tok.position())
+			p.error_with_pos('unexpected $p.tok, expected `lock` or `rlock`', p.tok.position())
 		}
 		p.next()
 		for p.tok.kind == .name {

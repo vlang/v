@@ -90,7 +90,7 @@ jobs:
           ./cmd/tools/vdoctor.exe
           !./.git
           !./vc
-          !./v_old
+          !./v_old.exe
     - name: Create binary only artifact
       uses: actions/upload-artifact@v2
       with:
@@ -144,6 +144,7 @@ jobs:
            chmod 755 cmd/tools/vup.exe || true
            chmod 755 cmd/tools/vdoctor || true
            chmod 755 cmd/tools/vdoctor.exe || true
+           rm -rf v_old v_old.exe
            cd ..
            zip -r9 --symlinks ../v_${{ matrix.version }}.zip v/*
            cd ..

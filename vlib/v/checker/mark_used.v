@@ -131,6 +131,7 @@ fn (mut c Checker) mark_used(ast_files []ast.File) {
 	}
 
 	mut walker := mark_used_walker.Walker{
+		table: c.table
 		files: ast_files
 		all_fns: all_fns
 		all_consts: all_consts

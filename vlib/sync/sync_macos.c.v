@@ -7,6 +7,7 @@ import time
 
 #flag -lpthread
 #include <semaphore.h>
+#include <sys/errno.h>
 
 [trusted]
 fn C.pthread_mutex_init(voidptr, voidptr) int

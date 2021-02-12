@@ -68,8 +68,6 @@ mut:
 	inside_sql                       bool // to handle sql table fields pseudo variables
 	cur_orm_ts                       table.TypeSymbol
 	error_details                    []string
-	for_in_mut_val_name              string
-	fn_mut_arg_names                 []string
 	vmod_file_content                string       // needed for @VMOD_FILE, contents of the file, *NOT its path**
 	vweb_gen_types                   []table.Type // vweb route checks
 	prevent_sum_type_unwrapping_once bool   // needed for assign new values to sum type, stopping unwrapping then
@@ -1199,6 +1197,9 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 						c.error('`$typ_sym.kind` can not be modified', expr.pos)
 					}
 				}
+				.aggregate {
+					c.fail_if_immutable(expr.expr)
+				}
 				else {
 					c.error('unexpected symbol `$typ_sym.kind`', expr.pos)
 				}
@@ -1298,7 +1299,7 @@ pub fn (mut c Checker) call_expr(mut call_expr ast.CallExpr) table.Type {
 
 fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ table.Type, call_expr ast.CallExpr) {
 	if call_expr.args.len != 1 {
-		c.error('expected 1 arguments, but got $call_expr.args.len', call_expr.pos)
+		c.error('expected 1 argument, but got $call_expr.args.len', call_expr.pos)
 		// Finish early so that it doesn't fail later
 		return
 	}
@@ -1439,10 +1440,13 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			call_expr.return_type = table.int_type
 		}
 		return call_expr.return_type
-	} else if left_type_sym.kind == .map && method_name in ['clone', 'keys'] {
+	} else if left_type_sym.kind == .map && method_name in ['clone', 'keys', 'move'] {
 		mut ret_type := table.void_type
 		match method_name {
-			'clone' {
+			'clone', 'move' {
+				if method_name[0] == `m` {
+					c.fail_if_immutable(call_expr.left)
+				}
 				ret_type = left_type
 			}
 			'keys' {
@@ -1874,7 +1878,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		// builtin C.m*, C.s* only - temp
 		c.warn('function `$f.name` must be called from an `unsafe` block', call_expr.pos)
 	}
-	if f.mod != 'builtin' && f.language == .v && f.no_body {
+	if f.mod != 'builtin' && f.language == .v && f.no_body && !c.pref.translated {
 		c.error('cannot call a function that does not have a body', call_expr.pos)
 	}
 	for generic_type in call_expr.generic_types {
@@ -2356,12 +2360,13 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 	expected_type := c.unwrap_generic(c.expected_type)
 	expected_type_sym := c.table.get_type_symbol(expected_type)
 	if return_stmt.exprs.len > 0 && c.cur_fn.return_type == table.void_type {
-		c.error('too many arguments to return, current function does not return anything',
-			return_stmt.pos)
+		c.error('unexpected argument, current function does not return anything', return_stmt.exprs[0].position())
 		return
 	} else if return_stmt.exprs.len == 0 && !(c.expected_type == table.void_type
 		|| expected_type_sym.kind == .void) {
-		c.error('too few arguments to return', return_stmt.pos)
+		stype := c.table.type_to_str(expected_type)
+		arg := if expected_type_sym.kind == .multi_return { 'arguments' } else { 'argument' }
+		c.error('expected `$stype` $arg', return_stmt.pos)
 		return
 	}
 	if return_stmt.exprs.len == 0 {
@@ -2394,7 +2399,8 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 		return
 	}
 	if expected_types.len > 0 && expected_types.len != got_types.len {
-		c.error('wrong number of return arguments', return_stmt.pos)
+		arg := if expected_types.len == 1 { 'argument' } else { 'arguments' }
+		c.error('expected $expected_types.len $arg, but got $got_types.len', return_stmt.pos)
 		return
 	}
 	for i, exp_type in expected_types {
@@ -2551,7 +2557,8 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 	mut right_len := assign_stmt.right.len
 	mut right_type0 := table.void_type
 	for right in assign_stmt.right {
-		if right is ast.CallExpr || right is ast.IfExpr || right is ast.MatchExpr {
+		if right is ast.CallExpr || right is ast.IfExpr || right is ast.LockExpr
+			|| right is ast.MatchExpr {
 			right_type0 = c.expr(right)
 			assign_stmt.right_types = [
 				c.check_expr_opt_call(right, right_type0),
@@ -2731,12 +2738,12 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		if left_sym.kind == .map && !c.inside_unsafe && assign_stmt.op in [.assign, .decl_assign]
 			&& right_sym.kind == .map && (left is ast.Ident && !left.is_blank_ident())
 			&& right is ast.Ident {
-			// Do not allow `a = b`, only `a = b.clone()`
-			c.error('use `map2 $assign_stmt.op.str() map1.clone()` instead of `map2 $assign_stmt.op.str() map1` (or use `unsafe`)',
-				assign_stmt.pos)
+			// Do not allow `a = b`
+			c.error('cannot copy map: call `move` or `clone` method first (or use `unsafe`)',
+				right.position())
 		}
 		left_is_ptr := left_type.is_ptr() || left_sym.is_pointer()
-		if left_is_ptr && c.for_in_mut_val_name != left.str() && left.str() !in c.fn_mut_arg_names {
+		if left_is_ptr && !left.is_mut_ident() {
 			if !c.inside_unsafe && assign_stmt.op !in [.assign, .decl_assign] {
 				// ptr op=
 				c.warn('pointer arithmetic is only allowed in `unsafe` blocks', assign_stmt.pos)
@@ -2978,7 +2985,8 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 		// }
 		array_info := type_sym.array_info()
 		array_init.elem_type = array_info.elem_type
-		return c.expected_type
+		// clear optional flag incase of: `fn opt_arr ?[]int { return [] }`
+		return c.expected_type.clear_flag(.optional)
 	}
 	// [1,2,3]
 	if array_init.exprs.len > 0 && array_init.elem_type == table.void_type {
@@ -3100,37 +3108,16 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 	// c.expected_type = table.void_type
 	match mut node {
 		ast.AssertStmt {
-			cur_exp_typ := c.expected_type
-			assert_type := c.expr(node.expr)
-			if assert_type != table.bool_type_idx {
-				atype_name := c.table.get_type_symbol(assert_type).name
-				c.error('assert can be used only with `bool` expressions, but found `$atype_name` instead',
-					node.pos)
-			}
-			c.expected_type = cur_exp_typ
+			c.assert_stmt(node)
 		}
 		ast.AssignStmt {
 			c.assign_stmt(mut node)
 		}
 		ast.Block {
-			if node.is_unsafe {
-				assert !c.inside_unsafe
-				c.inside_unsafe = true
-				c.stmts(node.stmts)
-				c.inside_unsafe = false
-			} else {
-				c.stmts(node.stmts)
-			}
+			c.block(node)
 		}
 		ast.BranchStmt {
-			if c.in_for_count == 0 {
-				c.error('$node.kind.str() statement not within a loop', node.pos)
-			}
-			if node.label.len > 0 {
-				if node.label != c.loop_label {
-					c.error('invalid label name `$node.label`', node.pos)
-				}
-			}
+			c.branch_stmt(node)
 		}
 		ast.CompFor {
 			// node.typ = c.expr(node.expr)
@@ -3162,147 +3149,19 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.fn_decl(mut node)
 		}
 		ast.ForCStmt {
-			c.in_for_count++
-			prev_loop_label := c.loop_label
-			c.stmt(node.init)
-			c.expr(node.cond)
-			c.stmt(node.inc)
-			c.check_loop_label(node.label, node.pos)
-			c.stmts(node.stmts)
-			c.loop_label = prev_loop_label
-			c.in_for_count--
+			c.for_c_stmt(node)
 		}
 		ast.ForInStmt {
-			c.in_for_count++
-			prev_loop_label := c.loop_label
-			typ := c.expr(node.cond)
-			typ_idx := typ.idx()
-			if node.key_var.len > 0 && node.key_var != '_' {
-				c.check_valid_snake_case(node.key_var, 'variable name', node.pos)
-			}
-			if node.val_var.len > 0 && node.val_var != '_' {
-				c.check_valid_snake_case(node.val_var, 'variable name', node.pos)
-			}
-			if node.is_range {
-				high_type := c.expr(node.high)
-				high_type_idx := high_type.idx()
-				if typ_idx in table.integer_type_idxs && high_type_idx !in table.integer_type_idxs {
-					c.error('range types do not match', node.cond.position())
-				} else if typ_idx in table.float_type_idxs || high_type_idx in table.float_type_idxs {
-					c.error('range type can not be float', node.cond.position())
-				} else if typ_idx == table.bool_type_idx || high_type_idx == table.bool_type_idx {
-					c.error('range type can not be bool', node.cond.position())
-				} else if typ_idx == table.string_type_idx || high_type_idx == table.string_type_idx {
-					c.error('range type can not be string', node.cond.position())
-				}
-			} else {
-				sym := c.table.get_type_symbol(typ)
-				if sym.kind == .struct_ {
-					// iterators
-					next_fn := sym.find_method('next') or {
-						c.error('a struct must have a `next()` method to be an iterator',
-							node.cond.position())
-						return
-					}
-					if !next_fn.return_type.has_flag(.optional) {
-						c.error('iterator method `next()` must return an optional', node.cond.position())
-					}
-					// the receiver
-					if next_fn.params.len != 1 {
-						c.error('iterator method `next()` must have 0 parameters', node.cond.position())
-					}
-					val_type := next_fn.return_type.clear_flag(.optional)
-					node.cond_type = typ
-					node.kind = sym.kind
-					node.val_type = val_type
-					node.scope.update_var_type(node.val_var, val_type)
-				} else {
-					if sym.kind == .map && !(node.key_var.len > 0 && node.val_var.len > 0) {
-						c.error(
-							'declare a key and a value variable when ranging a map: `for key, val in map {`\n' +
-							'use `_` if you do not need the variable', node.pos)
-					}
-					if node.key_var.len > 0 {
-						key_type := match sym.kind {
-							.map { sym.map_info().key_type }
-							else { table.int_type }
-						}
-						node.key_type = key_type
-						node.scope.update_var_type(node.key_var, key_type)
-					}
-					mut value_type := c.table.value_type(typ)
-					if value_type == table.void_type || typ.has_flag(.optional) {
-						if typ != table.void_type {
-							c.error('for in: cannot index `${c.table.type_to_str(typ)}`',
-								node.cond.position())
-						}
-					}
-					if node.val_is_mut {
-						value_type = value_type.to_ptr()
-						match node.cond {
-							ast.Ident {
-								if node.cond.obj is ast.Var {
-									obj := node.cond.obj as ast.Var
-									if !obj.is_mut {
-										c.error('`$obj.name` is immutable, it cannot be changed',
-											node.cond.pos)
-									}
-								}
-							}
-							ast.ArrayInit {
-								c.error('array literal is immutable, it cannot be changed',
-									node.cond.pos)
-							}
-							ast.MapInit {
-								c.error('map literal is immutable, it cannot be changed',
-									node.cond.pos)
-							}
-							else {}
-						}
-					}
-					node.cond_type = typ
-					node.kind = sym.kind
-					node.val_type = value_type
-					node.scope.update_var_type(node.val_var, value_type)
-				}
-			}
-			c.check_loop_label(node.label, node.pos)
-			if node.val_is_mut {
-				c.for_in_mut_val_name = node.val_var
-			}
-			c.stmts(node.stmts)
-			if node.val_is_mut {
-				c.for_in_mut_val_name = ''
-			}
-			c.loop_label = prev_loop_label
-			c.in_for_count--
+			c.for_in_stmt(mut node)
 		}
 		ast.ForStmt {
 			c.for_stmt(mut node)
 		}
 		ast.GlobalDecl {
-			for field in node.fields {
-				c.check_valid_snake_case(field.name, 'global name', field.pos)
-				if field.name in c.global_names {
-					c.error('duplicate global `$field.name`', field.pos)
-				}
-				c.global_names << field.name
-			}
+			c.global_decl(node)
 		}
 		ast.GoStmt {
-			c.call_expr(mut node.call_expr)
-			// Make sure there are no mutable arguments
-			for arg in node.call_expr.args {
-				if arg.is_mut && !arg.typ.is_ptr() {
-					c.error('function in `go` statement cannot contain mutable non-reference arguments',
-						arg.expr.position())
-				}
-			}
-			if node.call_expr.is_method && node.call_expr.receiver_type.is_ptr()
-				&& !node.call_expr.left_type.is_ptr() {
-				c.error('method in `go` statement cannot have non-reference mutable receiver',
-					node.call_expr.left.position())
-			}
+			c.go_stmt(mut node)
 		}
 		ast.GotoLabel {}
 		ast.GotoStmt {
@@ -3339,6 +3198,211 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		ast.TypeDecl {
 			c.type_decl(node)
 		}
+	}
+}
+
+fn (mut c Checker) assert_stmt(node ast.AssertStmt) {
+	cur_exp_typ := c.expected_type
+	assert_type := c.expr(node.expr)
+	if assert_type != table.bool_type_idx {
+		atype_name := c.table.get_type_symbol(assert_type).name
+		c.error('assert can be used only with `bool` expressions, but found `$atype_name` instead',
+			node.pos)
+	}
+	c.expected_type = cur_exp_typ
+}
+
+fn (mut c Checker) block(node ast.Block) {
+	if node.is_unsafe {
+		assert !c.inside_unsafe
+		c.inside_unsafe = true
+		c.stmts(node.stmts)
+		c.inside_unsafe = false
+	} else {
+		c.stmts(node.stmts)
+	}
+}
+
+fn (mut c Checker) branch_stmt(node ast.BranchStmt) {
+	if c.in_for_count == 0 {
+		c.error('$node.kind.str() statement not within a loop', node.pos)
+	}
+	if node.label.len > 0 {
+		if node.label != c.loop_label {
+			c.error('invalid label name `$node.label`', node.pos)
+		}
+	}
+}
+
+fn (mut c Checker) for_c_stmt(node ast.ForCStmt) {
+	c.in_for_count++
+	prev_loop_label := c.loop_label
+	c.stmt(node.init)
+	c.expr(node.cond)
+	c.stmt(node.inc)
+	c.check_loop_label(node.label, node.pos)
+	c.stmts(node.stmts)
+	c.loop_label = prev_loop_label
+	c.in_for_count--
+}
+
+fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
+	c.in_for_count++
+	prev_loop_label := c.loop_label
+	typ := c.expr(node.cond)
+	typ_idx := typ.idx()
+	if node.key_var.len > 0 && node.key_var != '_' {
+		c.check_valid_snake_case(node.key_var, 'variable name', node.pos)
+	}
+	if node.val_var.len > 0 && node.val_var != '_' {
+		c.check_valid_snake_case(node.val_var, 'variable name', node.pos)
+	}
+	if node.is_range {
+		high_type := c.expr(node.high)
+		high_type_idx := high_type.idx()
+		if typ_idx in table.integer_type_idxs && high_type_idx !in table.integer_type_idxs {
+			c.error('range types do not match', node.cond.position())
+		} else if typ_idx in table.float_type_idxs || high_type_idx in table.float_type_idxs {
+			c.error('range type can not be float', node.cond.position())
+		} else if typ_idx == table.bool_type_idx || high_type_idx == table.bool_type_idx {
+			c.error('range type can not be bool', node.cond.position())
+		} else if typ_idx == table.string_type_idx || high_type_idx == table.string_type_idx {
+			c.error('range type can not be string', node.cond.position())
+		}
+	} else {
+		sym := c.table.get_type_symbol(typ)
+		if sym.kind == .struct_ {
+			// iterators
+			next_fn := sym.find_method('next') or {
+				c.error('a struct must have a `next()` method to be an iterator', node.cond.position())
+				return
+			}
+			if !next_fn.return_type.has_flag(.optional) {
+				c.error('iterator method `next()` must return an optional', node.cond.position())
+			}
+			// the receiver
+			if next_fn.params.len != 1 {
+				c.error('iterator method `next()` must have 0 parameters', node.cond.position())
+			}
+			val_type := next_fn.return_type.clear_flag(.optional)
+			node.cond_type = typ
+			node.kind = sym.kind
+			node.val_type = val_type
+			node.scope.update_var_type(node.val_var, val_type)
+		} else {
+			if sym.kind == .map && !(node.key_var.len > 0 && node.val_var.len > 0) {
+				c.error(
+					'declare a key and a value variable when ranging a map: `for key, val in map {`\n' +
+					'use `_` if you do not need the variable', node.pos)
+			}
+			if node.key_var.len > 0 {
+				key_type := match sym.kind {
+					.map { sym.map_info().key_type }
+					else { table.int_type }
+				}
+				node.key_type = key_type
+				node.scope.update_var_type(node.key_var, key_type)
+			}
+			mut value_type := c.table.value_type(typ)
+			if value_type == table.void_type || typ.has_flag(.optional) {
+				if typ != table.void_type {
+					c.error('for in: cannot index `${c.table.type_to_str(typ)}`', node.cond.position())
+				}
+			}
+			if node.val_is_mut {
+				value_type = value_type.to_ptr()
+				match node.cond {
+					ast.Ident {
+						if node.cond.obj is ast.Var {
+							obj := node.cond.obj as ast.Var
+							if !obj.is_mut {
+								c.error('`$obj.name` is immutable, it cannot be changed',
+									node.cond.pos)
+							}
+						}
+					}
+					ast.ArrayInit {
+						c.error('array literal is immutable, it cannot be changed', node.cond.pos)
+					}
+					ast.MapInit {
+						c.error('map literal is immutable, it cannot be changed', node.cond.pos)
+					}
+					else {}
+				}
+			}
+			node.cond_type = typ
+			node.kind = sym.kind
+			node.val_type = value_type
+			node.scope.update_var_type(node.val_var, value_type)
+		}
+	}
+	c.check_loop_label(node.label, node.pos)
+	c.stmts(node.stmts)
+	c.loop_label = prev_loop_label
+	c.in_for_count--
+}
+
+fn (mut c Checker) for_stmt(mut node ast.ForStmt) {
+	c.in_for_count++
+	prev_loop_label := c.loop_label
+	c.expected_type = table.bool_type
+	typ := c.expr(node.cond)
+	if !node.is_inf && typ.idx() != table.bool_type_idx && !c.pref.translated {
+		c.error('non-bool used as for condition', node.pos)
+	}
+	if node.cond is ast.InfixExpr {
+		infix := node.cond
+		if infix.op == .key_is {
+			if (infix.left is ast.Ident || infix.left is ast.SelectorExpr)
+				&& infix.right is ast.Type {
+				right_expr := infix.right as ast.Type
+				is_variable := if mut infix.left is ast.Ident {
+					infix.left.kind == .variable
+				} else {
+					true
+				}
+				left_type := c.expr(infix.left)
+				left_sym := c.table.get_type_symbol(left_type)
+				if is_variable {
+					if left_sym.kind == .sum_type {
+						c.smartcast_sumtype(infix.left, infix.left_type, right_expr.typ, mut
+							node.scope)
+					}
+				}
+			}
+		}
+	}
+	// TODO: update loop var type
+	// how does this work currenly?
+	c.check_loop_label(node.label, node.pos)
+	c.stmts(node.stmts)
+	c.loop_label = prev_loop_label
+	c.in_for_count--
+}
+
+fn (mut c Checker) global_decl(node ast.GlobalDecl) {
+	for field in node.fields {
+		c.check_valid_snake_case(field.name, 'global name', field.pos)
+		if field.name in c.global_names {
+			c.error('duplicate global `$field.name`', field.pos)
+		}
+		c.global_names << field.name
+	}
+}
+
+fn (mut c Checker) go_stmt(mut node ast.GoStmt) {
+	c.call_expr(mut node.call_expr)
+	// Make sure there are no mutable arguments
+	for arg in node.call_expr.args {
+		if arg.is_mut && !arg.typ.is_ptr() {
+			c.error('function in `go` statement cannot contain mutable non-reference arguments',
+				arg.expr.position())
+		}
+	}
+	if node.call_expr.is_method && node.call_expr.receiver_type.is_ptr()
+		&& !node.call_expr.left_type.is_ptr() {
+		c.error('method in `go` statement cannot have non-reference mutable receiver',
+			node.call_expr.left.position())
 	}
 }
 
@@ -4655,44 +4719,6 @@ pub fn (mut c Checker) unsafe_expr(mut node ast.UnsafeExpr) table.Type {
 	return t
 }
 
-fn (mut c Checker) for_stmt(mut node ast.ForStmt) {
-	c.in_for_count++
-	prev_loop_label := c.loop_label
-	c.expected_type = table.bool_type
-	typ := c.expr(node.cond)
-	if !node.is_inf && typ.idx() != table.bool_type_idx && !c.pref.translated {
-		c.error('non-bool used as for condition', node.pos)
-	}
-	if node.cond is ast.InfixExpr {
-		infix := node.cond
-		if infix.op == .key_is {
-			if (infix.left is ast.Ident || infix.left is ast.SelectorExpr)
-				&& infix.right is ast.Type {
-				right_expr := infix.right as ast.Type
-				is_variable := if mut infix.left is ast.Ident {
-					infix.left.kind == .variable
-				} else {
-					true
-				}
-				left_type := c.expr(infix.left)
-				left_sym := c.table.get_type_symbol(left_type)
-				if is_variable {
-					if left_sym.kind == .sum_type {
-						c.smartcast_sumtype(infix.left, infix.left_type, right_expr.typ, mut
-							node.scope)
-					}
-				}
-			}
-		}
-	}
-	// TODO: update loop var type
-	// how does this work currenly?
-	c.check_loop_label(node.label, node.pos)
-	c.stmts(node.stmts)
-	c.loop_label = prev_loop_label
-	c.in_for_count--
-}
-
 pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 	if_kind := if node.is_comptime { '\$if' } else { 'if' }
 	expr_required := c.expected_type != table.void_type
@@ -5099,21 +5125,25 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) table.Type {
 	node.right_type = right_type
 	// TODO: testing ref/deref strategy
 	if node.op == .amp && !right_type.is_ptr() {
-		match node.right {
-			ast.IntegerLiteral {
-				c.error('cannot take the address of an int literal', node.pos)
-			}
+		right_expr := node.right
+		match right_expr {
 			ast.BoolLiteral {
 				c.error('cannot take the address of a bool literal', node.pos)
 			}
-			ast.StringLiteral, ast.StringInterLiteral {
-				c.error('cannot take the address of a string literal', node.pos)
+			ast.CallExpr {
+				c.error('cannot take the address of $node.right', node.pos)
+			}
+			ast.CharLiteral {
+				c.error('cannot take the address of a char literal', node.pos)
 			}
 			ast.FloatLiteral {
 				c.error('cannot take the address of a float literal', node.pos)
 			}
-			ast.CharLiteral {
-				c.error('cannot take the address of a char literal', node.pos)
+			ast.IntegerLiteral {
+				c.error('cannot take the address of an int literal', node.pos)
+			}
+			ast.StringLiteral, ast.StringInterLiteral {
+				c.error('cannot take the address of a string literal', node.pos)
 			}
 			else {}
 		}
@@ -5808,16 +5838,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			}
 		}
 	}
-	for param in node.params {
-		if param.is_mut {
-			c.fn_mut_arg_names << param.name
-		}
-	}
 	c.fn_scope = node.scope
 	c.stmts(node.stmts)
-	if c.fn_mut_arg_names.len > 0 {
-		c.fn_mut_arg_names.clear()
-	}
 	node.has_return = c.returns || has_top_return(node.stmts)
 	if node.language == .v && !node.no_body && node.return_type != table.void_type
 		&& !node.has_return && node.name !in ['panic', 'exit'] {
