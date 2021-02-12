@@ -543,7 +543,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 			c.error('struct `$type_sym.name` is declared with a `[noinit]` attribute, so ' +
 				'it cannot be initialized with `$type_sym.name{}`', struct_init.pos)
 		}
-		if info.is_ref_only && !c.inside_ref_lit && !struct_init.typ.is_ptr() {
+		if info.is_ref_only && !c.inside_ref_lit && !c.inside_unsafe && !struct_init.typ.is_ptr() {
 			c.error('`$type_sym.name` type can only be used as a reference `&$type_sym.name` or inside a `struct` reference',
 				struct_init.pos)
 		}
