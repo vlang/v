@@ -11,6 +11,7 @@ pub const (
 	no_result = voidptr(0)
 )
 
+[ref_only]
 pub struct PoolProcessor {
 	thread_cb       voidptr
 mut:
