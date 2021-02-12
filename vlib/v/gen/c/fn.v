@@ -170,11 +170,6 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 		g.definitions.write(fn_header)
 		g.write(fn_header)
 	}
-	for param in node.params {
-		if param.is_mut {
-			g.fn_mut_arg_names << param.name
-		}
-	}
 	arg_start_pos := g.out.len
 	fargs, fargtypes := g.fn_args(node.params, node.is_variadic)
 	arg_str := g.out.after(arg_start_pos)
@@ -223,9 +218,6 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 	g.defer_stmts = []
 	g.stmts(node.stmts)
 	// clear g.fn_mut_arg_names
-	if g.fn_mut_arg_names.len > 0 {
-		g.fn_mut_arg_names.clear()
-	}
 
 	if !node.has_return {
 		g.write_defer_stmts_when_needed()
@@ -479,7 +471,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.gen_str_for_type(node.receiver_type)
 	}
 	mut has_cast := false
-	if left_sym.kind == .map && node.name == 'clone' {
+	if left_sym.kind == .map && node.name in ['clone', 'move'] {
 		receiver_type_name = 'map'
 	}
 	// TODO performance, detect `array` method differently

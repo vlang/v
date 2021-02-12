@@ -62,7 +62,9 @@ pub fn cp_all(src string, dst string, overwrite bool) ? {
 		sp := join_path(source_path, file)
 		dp := join_path(dest_path, file)
 		if is_dir(sp) {
-			mkdir(dp) ?
+			if !exists(dp) {
+				mkdir(dp) ?
+			}
 		}
 		cp_all(sp, dp, overwrite) or {
 			rmdir(dp) or { return error(err) }

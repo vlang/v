@@ -58,13 +58,13 @@ fn (mut s StreamSocket) @select(test Select, timeout time.Duration) ?bool {
 }
 
 fn (mut s StreamSocket) connect(a string) ? {
-	if a.len >= 108 {
-		return error('Socket path too long! Max length: 107 chars.')
+	if a.len >= max_sun_path {
+		return error('Socket path too long! Max length: ${max_sun_path - 1} chars.')
 	}
 	mut addr := C.sockaddr_un{}
 	unsafe { C.memset(&addr, 0, sizeof(C.sockaddr_un)) }
 	addr.sun_family = C.AF_UNIX
-	C.strncpy(addr.sun_path, a.str, 108)
+	unsafe { C.strncpy(addr.sun_path, a.str, max_sun_path) }
 	size := C.SUN_LEN(&addr)
 	sockaddr := unsafe { &C.sockaddr(&addr) }
 	res := C.connect(s.handle, sockaddr, size)
@@ -89,15 +89,15 @@ fn (mut s StreamSocket) connect(a string) ? {
 }
 
 pub fn listen_stream(sock string) ?&StreamListener {
-	if sock.len >= 108 {
-		return error('Socket path too long! Max length: 107 chars.')
+	if sock.len >= max_sun_path {
+		return error('Socket path too long! Max length: ${max_sun_path - 1} chars.')
 	}
 	mut s := new_stream_socket() ?
 	s.path = sock
 	mut addr := C.sockaddr_un{}
 	unsafe { C.memset(&addr, 0, sizeof(C.sockaddr_un)) }
 	addr.sun_family = C.AF_UNIX
-	C.strncpy(addr.sun_path, sock.str, 108)
+	unsafe { C.strncpy(addr.sun_path, sock.str, max_sun_path) }
 	size := C.SUN_LEN(&addr)
 	sockaddr := unsafe { &C.sockaddr(&addr) }
 	net.socket_error(C.bind(s.handle, sockaddr, size)) ?

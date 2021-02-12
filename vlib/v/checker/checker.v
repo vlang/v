@@ -68,8 +68,6 @@ mut:
 	inside_sql                       bool // to handle sql table fields pseudo variables
 	cur_orm_ts                       table.TypeSymbol
 	error_details                    []string
-	for_in_mut_val_name              string
-	fn_mut_arg_names                 []string
 	vmod_file_content                string       // needed for @VMOD_FILE, contents of the file, *NOT its path**
 	vweb_gen_types                   []table.Type // vweb route checks
 	prevent_sum_type_unwrapping_once bool   // needed for assign new values to sum type, stopping unwrapping then
@@ -1301,7 +1299,7 @@ pub fn (mut c Checker) call_expr(mut call_expr ast.CallExpr) table.Type {
 
 fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ table.Type, call_expr ast.CallExpr) {
 	if call_expr.args.len != 1 {
-		c.error('expected 1 arguments, but got $call_expr.args.len', call_expr.pos)
+		c.error('expected 1 argument, but got $call_expr.args.len', call_expr.pos)
 		// Finish early so that it doesn't fail later
 		return
 	}
@@ -1442,10 +1440,13 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			call_expr.return_type = table.int_type
 		}
 		return call_expr.return_type
-	} else if left_type_sym.kind == .map && method_name in ['clone', 'keys'] {
+	} else if left_type_sym.kind == .map && method_name in ['clone', 'keys', 'move'] {
 		mut ret_type := table.void_type
 		match method_name {
-			'clone' {
+			'clone', 'move' {
+				if method_name[0] == `m` {
+					c.fail_if_immutable(call_expr.left)
+				}
 				ret_type = left_type
 			}
 			'keys' {
@@ -2359,12 +2360,13 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 	expected_type := c.unwrap_generic(c.expected_type)
 	expected_type_sym := c.table.get_type_symbol(expected_type)
 	if return_stmt.exprs.len > 0 && c.cur_fn.return_type == table.void_type {
-		c.error('too many arguments to return, current function does not return anything',
-			return_stmt.pos)
+		c.error('unexpected argument, current function does not return anything', return_stmt.exprs[0].position())
 		return
 	} else if return_stmt.exprs.len == 0 && !(c.expected_type == table.void_type
 		|| expected_type_sym.kind == .void) {
-		c.error('too few arguments to return', return_stmt.pos)
+		stype := c.table.type_to_str(expected_type)
+		arg := if expected_type_sym.kind == .multi_return { 'arguments' } else { 'argument' }
+		c.error('expected `$stype` $arg', return_stmt.pos)
 		return
 	}
 	if return_stmt.exprs.len == 0 {
@@ -2397,7 +2399,8 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 		return
 	}
 	if expected_types.len > 0 && expected_types.len != got_types.len {
-		c.error('wrong number of return arguments', return_stmt.pos)
+		arg := if expected_types.len == 1 { 'argument' } else { 'arguments' }
+		c.error('expected $expected_types.len $arg, but got $got_types.len', return_stmt.pos)
 		return
 	}
 	for i, exp_type in expected_types {
@@ -2735,12 +2738,12 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		if left_sym.kind == .map && !c.inside_unsafe && assign_stmt.op in [.assign, .decl_assign]
 			&& right_sym.kind == .map && (left is ast.Ident && !left.is_blank_ident())
 			&& right is ast.Ident {
-			// Do not allow `a = b`, only `a = b.clone()`
-			c.error('use `map2 $assign_stmt.op.str() map1.clone()` instead of `map2 $assign_stmt.op.str() map1` (or use `unsafe`)',
-				assign_stmt.pos)
+			// Do not allow `a = b`
+			c.error('cannot copy map: call `move` or `clone` method first (or use `unsafe`)',
+				right.position())
 		}
 		left_is_ptr := left_type.is_ptr() || left_sym.is_pointer()
-		if left_is_ptr && c.for_in_mut_val_name != left.str() && left.str() !in c.fn_mut_arg_names {
+		if left_is_ptr && !left.is_mut_ident() {
 			if !c.inside_unsafe && assign_stmt.op !in [.assign, .decl_assign] {
 				// ptr op=
 				c.warn('pointer arithmetic is only allowed in `unsafe` blocks', assign_stmt.pos)
@@ -3333,13 +3336,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 		}
 	}
 	c.check_loop_label(node.label, node.pos)
-	if node.val_is_mut {
-		c.for_in_mut_val_name = node.val_var
-	}
 	c.stmts(node.stmts)
-	if node.val_is_mut {
-		c.for_in_mut_val_name = ''
-	}
 	c.loop_label = prev_loop_label
 	c.in_for_count--
 }
@@ -5127,21 +5124,25 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) table.Type {
 	node.right_type = right_type
 	// TODO: testing ref/deref strategy
 	if node.op == .amp && !right_type.is_ptr() {
-		match node.right {
-			ast.IntegerLiteral {
-				c.error('cannot take the address of an int literal', node.pos)
-			}
+		right_expr := node.right
+		match right_expr {
 			ast.BoolLiteral {
 				c.error('cannot take the address of a bool literal', node.pos)
 			}
-			ast.StringLiteral, ast.StringInterLiteral {
-				c.error('cannot take the address of a string literal', node.pos)
+			ast.CallExpr {
+				c.error('cannot take the address of $node.right', node.pos)
+			}
+			ast.CharLiteral {
+				c.error('cannot take the address of a char literal', node.pos)
 			}
 			ast.FloatLiteral {
 				c.error('cannot take the address of a float literal', node.pos)
 			}
-			ast.CharLiteral {
-				c.error('cannot take the address of a char literal', node.pos)
+			ast.IntegerLiteral {
+				c.error('cannot take the address of an int literal', node.pos)
+			}
+			ast.StringLiteral, ast.StringInterLiteral {
+				c.error('cannot take the address of a string literal', node.pos)
 			}
 			else {}
 		}
@@ -5836,16 +5837,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			}
 		}
 	}
-	for param in node.params {
-		if param.is_mut {
-			c.fn_mut_arg_names << param.name
-		}
-	}
 	c.fn_scope = node.scope
 	c.stmts(node.stmts)
-	if c.fn_mut_arg_names.len > 0 {
-		c.fn_mut_arg_names.clear()
-	}
 	node.has_return = c.returns || has_top_return(node.stmts)
 	if node.language == .v && !node.no_body && node.return_type != table.void_type
 		&& !node.has_return && node.name !in ['panic', 'exit'] {

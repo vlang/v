@@ -18,10 +18,15 @@ struct C.sockaddr {
 	sa_family u16
 }
 
+const max_sun_path = 104
+
+// 104 for macos, 108 for linux => use the minimum
+
 struct C.sockaddr_un {
 mut:
+	//	sun_len    byte // only on macos
 	sun_family int
-	sun_path   charptr
+	sun_path   [104]char // on linux that is 108
 }
 
 struct C.addrinfo {

@@ -1,8 +1,6 @@
 import net.unix
 
-const (
-	test_port = 'test'
-)
+const test_port = 'unix_domain_socket'
 
 fn handle_conn(mut c unix.StreamConn) {
 	for {
@@ -27,7 +25,7 @@ fn echo_server(mut l unix.StreamListener) ? {
 }
 
 fn echo() ? {
-	mut c := unix.connect_stream('test') ?
+	mut c := unix.connect_stream(test_port) ?
 	defer {
 		c.close() or { }
 	}
