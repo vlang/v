@@ -2985,7 +2985,8 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 		// }
 		array_info := type_sym.array_info()
 		array_init.elem_type = array_info.elem_type
-		return c.expected_type
+		// clear optional flag incase of: `fn opt_arr ?[]int { return [] }`
+		return c.expected_type.clear_flag(.optional)
 	}
 	// [1,2,3]
 	if array_init.exprs.len > 0 && array_init.elem_type == table.void_type {
