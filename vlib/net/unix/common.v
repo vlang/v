@@ -3,6 +3,10 @@ module unix
 import time
 import net
 
+const (
+	error_ewouldblock = C.EWOULDBLOCK
+)
+
 fn C.SUN_LEN(C.sockaddr_un) int
 
 fn C.strncpy(charptr, charptr, int)
