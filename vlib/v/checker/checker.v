@@ -5125,25 +5125,15 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) table.Type {
 	node.right_type = right_type
 	// TODO: testing ref/deref strategy
 	if node.op == .amp && !right_type.is_ptr() {
-		right_expr := node.right
-		match right_expr {
-			ast.BoolLiteral {
-				c.error('cannot take the address of a bool literal', node.pos)
-			}
-			ast.CallExpr {
-				c.error('cannot take the address of $node.right', node.pos)
-			}
-			ast.CharLiteral {
-				c.error('cannot take the address of a char literal', node.pos)
-			}
-			ast.FloatLiteral {
-				c.error('cannot take the address of a float literal', node.pos)
-			}
-			ast.IntegerLiteral {
-				c.error('cannot take the address of an int literal', node.pos)
-			}
-			ast.StringLiteral, ast.StringInterLiteral {
-				c.error('cannot take the address of a string literal', node.pos)
+		mut expr := node.right
+		// if ParExpr get the innermost expr
+		for mut expr is ast.ParExpr {
+			expr = expr.expr
+		}
+		match expr {
+			ast.BoolLiteral, ast.CallExpr, ast.CharLiteral, ast.FloatLiteral, ast.IntegerLiteral,
+			ast.InfixExpr, ast.StringLiteral, ast.StringInterLiteral {
+				c.error('cannot take the address of $expr', node.pos)
 			}
 			else {}
 		}
