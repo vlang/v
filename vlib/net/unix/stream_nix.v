@@ -185,7 +185,7 @@ pub fn (mut c StreamConn) write_ptr(b byteptr, len int) ? {
 			mut sent := C.send(c.sock.handle, ptr, remaining, unix.msg_nosignal)
 			if sent < 0 {
 				code := error_code()
-				if code == int(net.error_ewouldblock) {
+				if code == int(error_ewouldblock) {
 					c.wait_for_write() ?
 					continue
 				} else {
@@ -217,7 +217,7 @@ pub fn (mut c StreamConn) read_ptr(buf_ptr byteptr, len int) ?int {
 		return res
 	}
 	code := error_code()
-	if code == int(net.error_ewouldblock) {
+	if code == int(error_ewouldblock) {
 		c.wait_for_read() ?
 		res = wrap_read_result(C.recv(c.sock.handle, buf_ptr, len, 0)) ?
 		$if trace_unix ? {
