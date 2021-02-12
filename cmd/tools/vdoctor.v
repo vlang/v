@@ -231,7 +231,7 @@ fn (mut a App) get_linux_os_name() string {
 	return os_details
 }
 
-fn (mut a App) cpu_info(key string ) string {
+fn (mut a App) cpu_info(key string) string {
 	if a.cached_cpuinfo.len > 0 {
 		return a.cached_cpuinfo[key]
 	}
