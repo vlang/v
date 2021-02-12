@@ -1700,6 +1700,7 @@ fn main() {
 	res := run(5, fn (n int) int {
 		return n + n
 	})
+	println(res) // "10"
 	// You can even have an array/map of functions:
 	fns := [sqr, cube]
 	println(fns[0](10)) // "100"
