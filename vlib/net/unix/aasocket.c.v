@@ -24,9 +24,9 @@ const max_sun_path = 104
 
 struct C.sockaddr_un {
 mut:
-	sun_len    byte
+	//	sun_len    byte // only on macos
 	sun_family int
-	sun_path   [104]char
+	sun_path   [104]char // on linux that is 108
 }
 
 struct C.addrinfo {

@@ -434,6 +434,7 @@ pub:
 	is_mut          bool
 	is_autofree_tmp bool
 	is_arg          bool // fn args should not be autofreed
+	is_auto_deref   bool
 pub mut:
 	typ            table.Type
 	orig_type      table.Type   // original sumtype type; 0 if it's not a sumtype
@@ -1530,4 +1531,15 @@ pub fn ex2fe(x Expr) table.FExpr {
 pub struct Table {
 	// pub mut:
 	// main_fn_decl_node FnDecl
+}
+
+pub fn (expr Expr) is_mut_ident() bool {
+	if expr is Ident {
+		if expr.obj is Var {
+			if expr.obj.is_auto_deref {
+				return true
+			}
+		}
+	}
+	return false
 }
