@@ -241,6 +241,9 @@ pub fn (x Expr) str() string {
 			if x.name.starts_with('${x.mod}.') {
 				return util.strip_main_name('${x.name}($sargs)')
 			}
+			if x.mod == '' && x.name == '' {
+				return x.left.str() + '($sargs)'
+			}
 			return '${x.mod}.${x.name}($sargs)'
 		}
 		CharLiteral {
@@ -272,6 +275,14 @@ pub fn (x Expr) str() string {
 		}
 		InfixExpr {
 			return '$x.left.str() $x.op.str() $x.right.str()'
+		}
+		MapInit {
+			mut pairs := []string{}
+			for ik, kv in x.keys {
+				mv := x.vals[ik].str()
+				pairs << '$kv: $mv'
+			}
+			return 'map{ ${pairs.join(' ')} }'
 		}
 		ParExpr {
 			return '($x.expr)'
@@ -321,7 +332,7 @@ pub fn (x Expr) str() string {
 			return res.join('')
 		}
 		StringLiteral {
-			return '"$x.val"'
+			return "'$x.val'"
 		}
 		Type {
 			return 'Type($x.typ)'

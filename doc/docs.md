@@ -1700,14 +1700,15 @@ fn main() {
 	res := run(5, fn (n int) int {
 		return n + n
 	})
+	println(res) // "10"
 	// You can even have an array/map of functions:
 	fns := [sqr, cube]
-	println((10)) // "100"
+	println(fns[0](10)) // "100"
 	fns_map := map{
 		'sqr':  sqr
 		'cube': cube
 	}
-	println((2)) // "8"
+	println(fns_map['cube'](2)) // "8"
 }
 ```
 

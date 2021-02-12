@@ -33,7 +33,7 @@ vlib/v/checker/tests/prefix_err.vv:9:6: error: cannot take the address of 10
       |      ^
    10 | _ := &"Hi"
    11 | _ := &"${b}"
-vlib/v/checker/tests/prefix_err.vv:10:6: error: cannot take the address of "Hi"
+vlib/v/checker/tests/prefix_err.vv:10:6: error: cannot take the address of 'Hi'
     8 | _ := &(get() + 1)
     9 | _ := &10
    10 | _ := &"Hi"
