@@ -317,6 +317,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 				name: param.name
 				typ: param.typ
 				is_mut: param.is_mut
+				is_auto_deref: param.is_mut
 				pos: param.pos
 				is_used: true
 				is_arg: true
