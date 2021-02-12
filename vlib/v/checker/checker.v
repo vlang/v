@@ -60,6 +60,7 @@ pub mut:
 	inside_unsafe     bool
 	inside_const      bool
 	inside_anon_fn    bool
+	inside_ref_lit    bool
 	skip_flags        bool // should `#flag` and `#include` be skipped
 	cur_generic_types []table.Type
 mut:
@@ -372,13 +373,6 @@ pub fn (mut c Checker) interface_decl(decl ast.InterfaceDecl) {
 					field.type_pos)
 			}
 		}
-		if sym.kind == .struct_ {
-			info := sym.info as table.Struct
-			if info.is_ref_only && !field.typ.is_ptr() {
-				c.error('`$sym.name` type can only be used as a reference: `&$sym.name`',
-					field.type_pos)
-			}
-		}
 		if sym.kind == .map {
 			info := sym.map_info()
 			key_sym := c.table.get_type_symbol(info.key_type)
@@ -403,6 +397,11 @@ pub fn (mut c Checker) struct_decl(mut decl ast.StructDecl) {
 			embed_sym := c.table.get_type_symbol(embed.typ)
 			if embed_sym.kind != .struct_ {
 				c.error('`$embed_sym.name` is not a struct', embed.pos)
+			} else {
+				info := embed_sym.info as table.Struct
+				if info.is_ref_only && !embed.typ.is_ptr() {
+					struct_sym.info.is_ref_only = true
+				}
 			}
 		}
 		for attr in decl.attrs {
@@ -445,8 +444,7 @@ pub fn (mut c Checker) struct_decl(mut decl ast.StructDecl) {
 			if sym.kind == .struct_ {
 				info := sym.info as table.Struct
 				if info.is_ref_only && !field.typ.is_ptr() {
-					c.error('`$sym.name` type can only be used as a reference: `&$sym.name`',
-						field.type_pos)
+					struct_sym.info.is_ref_only = true
 				}
 			}
 			if sym.kind == .map {
@@ -544,6 +542,10 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 		if info.attrs.len > 0 && info.attrs[0].name == 'noinit' && type_sym.mod != c.mod {
 			c.error('struct `$type_sym.name` is declared with a `[noinit]` attribute, so ' +
 				'it cannot be initialized with `$type_sym.name{}`', struct_init.pos)
+		}
+		if info.is_ref_only && !c.inside_ref_lit && !struct_init.typ.is_ptr() {
+			c.error('`$type_sym.name` type can only be used as a reference `&$type_sym.name` or inside a `struct` reference',
+				struct_init.pos)
 		}
 	}
 	if type_sym.name.len == 1 && c.cur_fn.generic_params.len == 0 {
@@ -2610,7 +2612,14 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			}
 		}
 		if assign_stmt.right_types.len < assign_stmt.left.len { // first type or multi return types added above
+			old_inside_ref_lit := c.inside_ref_lit
+			if left is ast.Ident {
+				if left.info is ast.IdentVar {
+					c.inside_ref_lit = c.inside_ref_lit || left.info.share == .shared_t
+				}
+			}
 			right_type := c.expr(assign_stmt.right[i])
+			c.inside_ref_lit = old_inside_ref_lit
 			if assign_stmt.right_types.len == i {
 				assign_stmt.right_types << c.check_expr_opt_call(assign_stmt.right[i],
 					right_type)
@@ -2875,7 +2884,14 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		left_first := assign_stmt.left[0]
 		if left_first is ast.Ident {
 			assigned_var := left_first
+			mut is_shared := false
+			if left_first.info is ast.IdentVar {
+				is_shared = left_first.info.share == .shared_t
+			}
+			old_inside_ref_lit := c.inside_ref_lit
+			c.inside_ref_lit = (c.inside_ref_lit || node.op == .amp || is_shared)
 			c.expr(node.right)
+			c.inside_ref_lit = old_inside_ref_lit
 			if node.right is ast.Ident {
 				if node.right.obj is ast.Var {
 					v := node.right.obj
@@ -3921,7 +3937,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) table.Type {
 	if node.is_vweb {
 		// TODO assoc parser bug
 		pref_ := *c.pref
-		pref2 := pref.Preferences{
+		pref2 := &pref.Preferences{
 			...pref_
 			is_vweb: true
 		}
@@ -5121,7 +5137,10 @@ pub fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) table.Type {
 }
 
 pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) table.Type {
+	old_inside_ref_lit := c.inside_ref_lit
+	c.inside_ref_lit = c.inside_ref_lit || node.op == .amp
 	right_type := c.expr(node.right)
+	c.inside_ref_lit = old_inside_ref_lit
 	node.right_type = right_type
 	// TODO: testing ref/deref strategy
 	if node.op == .amp && !right_type.is_ptr() {
