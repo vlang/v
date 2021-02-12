@@ -462,7 +462,7 @@ fn draw_start_glsl(app App){
 	}
 
 	ws := gg.window_size()
-	ratio := f32(ws.width) / ws.height
+	//ratio := f32(ws.width) / ws.height
 	dw := f32(ws.width  / 2)
 	dh := f32(ws.height / 2)
 	
