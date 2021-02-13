@@ -35,8 +35,8 @@ pub struct SSEMessage {
 	retry int
 }
 
-pub fn new_connection(conn &net.TcpConn) SSEConnection {
-	return SSEConnection{
+pub fn new_connection(conn &net.TcpConn) &SSEConnection {
+	return &SSEConnection{
 		conn: conn
 	}
 }

@@ -127,6 +127,7 @@ const (
 		'vlib/v/tests/module_test.v',
 		'vlib/v/tests/operator_overloading_with_string_interpolation_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
+		'vlib/v/tests/ref_struct_test.v',
 		'vlib/v/tests/repl/repl_test.v',
 		'vlib/v/tests/semaphore_test.v',
 		'vlib/v/tests/shared_arg_test.v',

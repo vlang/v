@@ -529,7 +529,7 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 	assert channels.len == dir.len
 	assert dir.len == objrefs.len
 	mut subscr := []Subscription{len: channels.len}
-	mut sem := Semaphore{}
+	mut sem := unsafe { Semaphore{} }
 	sem.init(0)
 	for i, ch in channels {
 		subscr[i].sem = &sem
