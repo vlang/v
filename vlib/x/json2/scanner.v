@@ -11,7 +11,6 @@ mut:
 	pos      int
 	line int
 	col  int
-	errors []Token
 }
 
 enum TokenKind {
@@ -87,9 +86,7 @@ fn (mut s Scanner) move_pos_upto(num int) {
 }
 
 fn (mut s Scanner) error(description string) Token {
-	err := s.tokenize(description.bytes(), .error)
-	s.errors << err
-	return err
+	return s.tokenize(description.bytes(), .error)
 }
 
 fn (s Scanner) tokenize(lit []byte, kind TokenKind) Token {
@@ -224,11 +221,32 @@ fn (mut s Scanner) num_scan() Token {
 	return s.tokenize(digits, kind)
 }
 
+[manualfree]
 fn (mut s Scanner) scan() Token {
 	for s.text[s.pos] == ` ` {
 		s.pos++
 	}
-	if s.text[s.pos] in json2.char_list {
+	if s.pos + 3 < s.text.len && (s.text[s.pos] == `t` || s.text[s.pos] == `n`) {
+		ident := s.text[s.pos..s.pos + 4].bytestr()
+		if ident == 'true' || ident == 'null' {
+			mut kind := TokenKind.null
+			if ident == 'true' {
+				kind = .true_
+			}
+			unsafe { ident.free() }
+			return s.tokenize(s.text[s.pos..s.pos + 4], kind)
+		}
+		unsafe { ident.free() }
+		return s.error('invalid token `${s.text[s.pos].ascii_str()}`')
+	} if s.pos + 4 < s.text.len && s.text[s.pos] == `f` {
+		ident := s.text[s.pos..s.pos + 5].bytestr()
+		if ident == 'false' {
+			unsafe { ident.free() }
+			return s.tokenize(s.text[s.pos..s.pos + 5], .false_)
+		}
+		unsafe { ident.free() }
+		return s.error('invalid token `${s.text[s.pos].ascii_str()}`')
+	} else if s.text[s.pos] in json2.char_list {
 		tok := s.text[s.pos]
 		s.move_pos()
 		return s.tokenize([]byte{}, TokenKind(int(tok)))

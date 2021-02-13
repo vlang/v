@@ -224,3 +224,26 @@ fn test_number_invalid_double_exp() {
 	assert tok.lit.bytestr() == 'invalid token `E`'
 }
 
+fn test_null() {
+	mut sc := Scanner{ text: 'null'.bytes() }
+	tok := sc.scan()
+	assert tok.kind == .null
+	assert tok.lit.len == 4
+	assert tok.lit.bytestr() == 'null'
+}
+
+fn test_bool_true() {
+	mut sc := Scanner{ text: 'true'.bytes() }
+	tok := sc.scan()
+	assert tok.kind == .true_
+	assert tok.lit.len == 4
+	assert tok.lit.bytestr() == 'true'
+}
+
+fn test_bool_false() {
+	mut sc := Scanner{ text: 'false'.bytes() }
+	tok := sc.scan()
+	assert tok.kind == .false_
+	assert tok.lit.len == 5
+	assert tok.lit.bytestr() == 'false'
+}
