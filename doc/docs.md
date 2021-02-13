@@ -91,10 +91,10 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Mutable arguments](#mutable-arguments)
     * [Anonymous & high order functions](#anonymous--high-order-functions)
 * [References](#references)
-* [Modules](#modules)
 * [Constants](#constants)
 * [Builtin functions](#builtin-functions)
-* [Printing custom types](#custom-print-of-types)
+* [Printing custom types](#printing-custom-types)
+* [Modules](#modules)
 * [Types 2](#types-2)
     * [Interfaces](#interfaces)
     * [Enums](#enums)
@@ -1864,7 +1864,9 @@ println([1, 2, 3]) // "[1, 2, 3]"
 println(User{ name: 'Bob', age: 20 }) // "User{name:'Bob', age:20}"
 ```
 
-## Custom print of types
+<a id='custom-print-of-types' />
+
+## Printing custom types
 
 If you want to define a custom print value for your type, simply define a
 `.str() string` method:
