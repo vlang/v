@@ -1767,7 +1767,7 @@ struct Node<T> {
 
 ## Constants
 
-```v oksyntax
+```v
 const (
 	pi    = 3.14
 	world = '世界'
@@ -1779,8 +1779,12 @@ println(world)
 
 Constants are declared with `const`. They can only be defined
 at the module level (outside of functions).
+Constant values can never be changed. You can also declare a single 
+constant separately:
 
-Constant values can never be changed.
+```v
+const e = 2.71828
+```
 
 V constants are more flexible than in most languages. You can assign more complex values:
 
@@ -1806,7 +1810,7 @@ const (
 		g: 0
 		b: 0
 	}
-	// evaluate function call at compile-time
+	// evaluate function call at compile-time*
 	blue    = rgb(0, 0, 255)
 )
 
@@ -1814,15 +1818,18 @@ println(numbers)
 println(red)
 println(blue)
 ```
+\* WIP - for now function calls are evaluated at program start-up
 
-Global variables are not allowed, so this can be really useful.
+Global variables are not normally allowed, so this can be really useful.
+
+### Required module prefix
 
 When naming constants, `snake_case` must be used. In order to distinguish consts
 from local variables, the full path to consts must be specified. For example,
 to access the PI const, full `math.pi` name must be used both outside the `math`
 module, and inside it. That restriction is relaxed only for the `main` module
-(the one containing your `fn main()`, where you can use the shorter name of the
-constants too, i.e. just `println(numbers)`, not `println(main.numbers)` .
+(the one containing your `fn main()`), where you can use the unqualified name of
+constants defined there, i.e. `numbers`, rather than `main.numbers`.
 
 vfmt takes care of this rule, so you can type `println(pi)` inside the `math` module,
 and vfmt will automatically update it to `println(math.pi)`.
@@ -1832,11 +1839,11 @@ Many people prefer all caps consts: `TOP_CITIES`. This wouldn't work
 well in V, because consts are a lot more powerful than in other languages.
 They can represent complex structures, and this is used quite often since there
 are no globals:
--->
 
 ```v oksyntax
 println('Top cities: ${top_cities.filter(.usa)}')
 ```
+-->
 
 ## Builtin functions
 
