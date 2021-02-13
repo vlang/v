@@ -4,6 +4,9 @@ import sync
 
 import runtime
 
+[trusted]
+fn C.atomic_fetch_add_u32(voidptr, u32) u32
+
 pub const (
 	no_result = voidptr(0)
 )
@@ -14,9 +17,8 @@ mut:
 	njobs           int
 	items           []voidptr
 	results         []voidptr
-	ntask           int // writing to this should be locked by ntask_mtx.
-	ntask_mtx       &sync.Mutex
-	waitgroup       &sync.WaitGroup
+	ntask           u32 // reading/writing to this should be atomic
+	waitgroup       sync.WaitGroup
 	shared_context  voidptr
 	thread_contexts []voidptr
 }
@@ -44,17 +46,16 @@ pub fn new_pool_processor(context PoolProcessorConfig) &PoolProcessor {
 	if isnil(context.callback) {
 		panic('You need to pass a valid callback to new_pool_processor.')
 	}
-	pool := &PoolProcessor {
+	mut pool := &PoolProcessor {
 		items: []
 		results: []
 		shared_context: voidptr(0)
 		thread_contexts: []
 		njobs: context.maxjobs
 		ntask: 0
-		ntask_mtx: sync.new_mutex()
-		waitgroup: sync.new_waitgroup()
 		thread_cb: voidptr(context.callback)
 	}
+	pool.waitgroup.init()
 	return pool
 }
 
@@ -104,16 +105,9 @@ pub fn (mut pool PoolProcessor) work_on_pointers(items []voidptr) {
 // method in a callback.
 fn process_in_thread(mut pool PoolProcessor, task_id int) {
 	cb := ThreadCB(pool.thread_cb)
-	mut idx := 0
 	ilen := pool.items.len
 	for {
-		if pool.ntask >= ilen {
-			break
-		}
-		pool.ntask_mtx.@lock()
-		idx = pool.ntask
-		pool.ntask++
-		pool.ntask_mtx.unlock()
+		idx := int(C.atomic_fetch_add_u32(&pool.ntask, 1))
 		if idx >= ilen {
 			break
 		}
