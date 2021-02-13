@@ -1104,7 +1104,12 @@ so both `if` statements above produce the same machine code and no arrays are cr
 
 V has only one looping keyword: `for`, with several forms.
 
-#### Array `for`
+#### `for`/`in`
+
+This is the most common form. You can use it with an array, map or 
+numeric range.
+
+##### Array `for`
 
 ```v
 numbers := [1, 2, 3, 4, 5]
@@ -1134,7 +1139,7 @@ println(numbers) // [1, 2, 3]
 ```
 When an identifier is just a single underscore, it is ignored.
 
-#### Map `for`
+##### Map `for`
 
 ```v
 m := map{
@@ -1168,7 +1173,7 @@ for _, value in m {
 }
 ```
 
-#### Range `for`
+##### Range `for`
 
 ```v
 // Prints '01234'
