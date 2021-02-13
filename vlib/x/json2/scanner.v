@@ -211,7 +211,7 @@ fn (mut s Scanner) num_scan() Token {
 }
 
 fn (s Scanner) invalid_token() Token {
-	return s.error('invalid token `${s.text[s.pos]}`')
+	return s.error('invalid token `${s.text[s.pos].ascii_str()}`')
 }
 
 [manualfree]
