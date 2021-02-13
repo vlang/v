@@ -173,9 +173,13 @@ fn (mut s Scanner) num_scan() Token {
 	// analyze json number structure
 	// -[digit][?[dot][digit]][?[E/e][?-/+][digit]]
 	mut is_fl := false
+	mut dot_index := -1
 	mut digits := []byte{}
 	if is_minus {
 		digits << `-`
+		if !s.text[s.pos + 1].is_digit() {
+			return s.invalid_token()
+		}
 		s.move_pos()
 	}
 	if s.text[s.pos] == `0` && (s.pos + 1 < s.text.len && s.text[s.pos + 1].is_digit()) {
@@ -185,8 +189,12 @@ fn (mut s Scanner) num_scan() Token {
 		digits << s.text[s.pos]
 		if s.text[s.pos] == `.` {
 			is_fl = true
+			dot_index = digits.len - 1
 		}
 		s.move_pos()
+	}
+	if dot_index + 1 < s.text.len && digits[dot_index + 1..].len == 0 {
+		return s.error('invalid float')
 	}
 	if s.pos < s.text.len && (s.text[s.pos] == `e` || s.text[s.pos] == `E`) {
 		digits << s.text[s.pos]

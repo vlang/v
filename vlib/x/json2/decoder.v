@@ -29,10 +29,10 @@ fn (mut p Parser) next() {
 }
 
 fn (mut p Parser) next_with_err() ? {
-	if p.n_tok.kind == .error {
+	p.next()
+	if p.tok.kind == .error {
 		return error(p.emit_error(p.n_tok.lit.bytestr(), p.n_tok.line, p.n_tok.col))
 	}
-	p.next()
 }
 
 fn (p Parser) emit_error(msg string, line int, column int) string {
@@ -48,9 +48,19 @@ fn new_parser(srce string, convert_type bool) Parser {
 }
 
 fn (mut p Parser) decode() ?Any {
+	mut is_valid := false
 	p.next()
 	p.next_with_err() ?
+	if p.tok.kind in [.lcbr, .lsbr, .str_ .true_, .false_, .int_, .float, .null] {
+		is_valid = true
+	}
+	if !is_valid {
+		return error(p.emit_error('invalid JSON', 0, 0))
+	}
 	fi := p.decode_value() ?
+	if p.tok.kind != .eof {
+		return error(p.emit_error('invalid token `$p.tok.kind`', p.tok.line, p.tok.col))
+	}
 	return fi
 }
 
@@ -92,7 +102,9 @@ fn (mut p Parser) decode_value() ?Any {
 		.str_ {
 			return p.decode_string()
 		}
-		else { }
+		else {
+			return error(p.emit_error('invalid token `$p.tok.kind`', p.tok.line, p.tok.col))
+		}
 	}
 	return Any{}
 }
@@ -126,10 +138,13 @@ fn (mut p Parser) decode_array() ?Any {
 		items << item
 		if p.tok.kind == .comma {
 			p.next_with_err() ?
+			if p.tok.kind in [.rsbr, .rcbr] {
+				return error(p.emit_error('invalid token `$p.tok.lit', p.tok.line, p.tok.col))
+			}
 		} else if p.tok.kind == .rsbr {
-			continue
+			break
 		} else {
-			return error("unknown token '$p.tok.lit' when decoding object.")
+			return error("unknown token '$p.tok.lit' when decoding array.")
 		}
 	}
 	p.next_with_err() ?
