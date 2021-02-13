@@ -3866,8 +3866,9 @@ fn old_function() {
 fn inlined_function() {
 }
 
-// The following struct can only be used as a reference (`&Window`) and allocated on the heap.
-[ref_only]
+// The following struct must be allocated on the heap. Therefore, it can only be used as a 
+// reference (`&Window`) or inside another reference (`&OuterStruct{ Window{...} }`).
+[heap]
 struct Window {
 }
 
