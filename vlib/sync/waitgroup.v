@@ -22,7 +22,7 @@ fn C.atomic_fetch_add_u32(voidptr, u32) u32
 [ref_only]
 struct WaitGroup {
 mut:
-	task_count u32 // current task count
+	task_count u32 // current task count - reading/writing should be atomic
 	sem        Semaphore // This blocks wait() until tast_countreleased by add()
 }
 

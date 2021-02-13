@@ -18,7 +18,7 @@ mut:
 	njobs           int
 	items           []voidptr
 	results         []voidptr
-	ntask           u32 // writing to this should be atomic
+	ntask           u32 // reading/writing to this should be atomic
 	waitgroup       sync.WaitGroup
 	shared_context  voidptr
 	thread_contexts []voidptr
