@@ -19,16 +19,12 @@ mut:
 	tok          Token
 	n_tok        Token
 	n_level      int
-	debug		 bool
 	convert_type bool = true
 }
 
 fn (mut p Parser) next() {
 	p.p_tok = p.tok
 	p.tok = p.n_tok
-	if p.debug {
-		println(p.tok)
-	}
 	p.n_tok = p.scanner.scan()
 }
 
