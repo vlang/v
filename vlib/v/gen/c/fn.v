@@ -17,8 +17,13 @@ fn (mut g Gen) is_used_by_main(node ast.FnDecl) bool {
 		}
 		if !is_used_by_main {
 			$if trace_skip_unused_fns_in_c_code ? {
-				g.writeln('// fn $node.name UNUSED')
+				g.writeln('// trace_skip_unused_fns_in_c_code, $node.name, fkey: $fkey')
 			}
+		}
+	} else {
+		$if trace_skip_unused_fns_in_c_code ? {
+			fkey := if node.is_method { '${int(node.receiver.typ)}.$node.name' } else { node.name }
+			g.writeln('// trace_skip_unused_fns_in_c_code, $node.name, fkey: $fkey')
 		}
 	}
 	return is_used_by_main
