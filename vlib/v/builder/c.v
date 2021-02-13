@@ -5,6 +5,7 @@ import v.parser
 import v.pref
 import v.util
 import v.gen.c
+import v.markused
 
 pub fn (mut b Builder) gen_c(v_files []string) string {
 	util.timing_start('PARSE')
@@ -20,6 +21,10 @@ pub fn (mut b Builder) gen_c(v_files []string) string {
 	b.checker.check_files(b.parsed_files)
 	util.timing_measure('CHECK')
 	//
+	if b.pref.skip_unused {
+		markused.mark_used(mut b.table, b.pref, b.parsed_files)
+	}
+
 	b.print_warnings_and_errors()
 	// TODO: move gen.cgen() to c.gen()
 	util.timing_start('C GEN')

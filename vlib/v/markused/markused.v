@@ -1,39 +1,20 @@
-module checker
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license that can be found in the LICENSE file.
+module markused
 
 import v.ast
 import v.table
 import v.util
-import v.checker.mark_used_walker
+import v.pref
 
 // mark_used walks the AST, starting at main() and marks all used fns transitively
-fn (mut c Checker) mark_used(ast_files []ast.File) {
+pub fn mark_used(mut the_table table.Table, pref &pref.Preferences, ast_files []ast.File) {
+	mut all_fns, all_consts := all_fn_and_const(ast_files)
+
 	util.timing_start(@METHOD)
-	util.timing_start('all_fn_and_const')
-	mut all_fns := map[string]ast.FnDecl{}
-	mut all_consts := map[string]ast.ConstField{}
-	for i in 0 .. ast_files.len {
-		file := unsafe { &ast_files[i] }
-		for node in file.stmts {
-			match node {
-				ast.FnDecl {
-					fkey := if node.is_method {
-						'${int(node.receiver.typ)}.$node.name'
-					} else {
-						node.name
-					}
-					all_fns[fkey] = node
-				}
-				ast.ConstDecl {
-					for cfield in node.fields {
-						ckey := cfield.name
-						all_consts[ckey] = cfield
-					}
-				}
-				else {}
-			}
-		}
+	defer {
+		util.timing_measure(@METHOD)
 	}
-	util.timing_measure('all_fn_and_const')
 
 	mut all_fn_root_names := [
 		'main.main',
@@ -120,7 +101,7 @@ fn (mut c Checker) mark_used(ast_files []ast.File) {
 
 	// implicit string builders are generated in auto_eq_methods.v
 	mut sb_mut_type := ''
-	if sbfn := c.table.find_fn('strings.new_builder') {
+	if sbfn := the_table.find_fn('strings.new_builder') {
 		sb_mut_type = sbfn.return_type.set_nr_muls(1).str() + '.'
 	}
 
@@ -138,7 +119,7 @@ fn (mut c Checker) mark_used(ast_files []ast.File) {
 			|| k.ends_with('.runlock') {
 			all_fn_root_names << k
 		}
-		if c.pref.is_test {
+		if pref.is_test {
 			if k.starts_with('test_') || k.contains('.test_') {
 				all_fn_root_names << k
 			}
@@ -151,13 +132,13 @@ fn (mut c Checker) mark_used(ast_files []ast.File) {
 			all_fn_root_names << k
 		}
 	}
-	if c.pref.is_debug {
+	if pref.is_debug {
 		all_fn_root_names << 'panic_debug'
 	}
-	if c.pref.is_test {
+	if pref.is_test {
 		all_fn_root_names << 'main.cb_assertion_ok'
 		all_fn_root_names << 'main.cb_assertion_failed'
-		if benched_tests_sym := c.table.find_type('main.BenchedTests') {
+		if benched_tests_sym := the_table.find_type('main.BenchedTests') {
 			bts_type := benched_tests_sym.methods[0].params[0].typ
 			all_fn_root_names << '${bts_type}.testing_step_start'
 			all_fn_root_names << '${bts_type}.testing_step_end'
@@ -166,8 +147,8 @@ fn (mut c Checker) mark_used(ast_files []ast.File) {
 		}
 	}
 
-	mut walker := mark_used_walker.Walker{
-		table: c.table
+	mut walker := Walker{
+		table: the_table
 		files: ast_files
 		all_fns: all_fns
 		all_consts: all_consts
@@ -197,13 +178,44 @@ fn (mut c Checker) mark_used(ast_files []ast.File) {
 		}
 	}
 
-	c.table.used_fns = walker.used_fns
-	c.table.used_consts = walker.used_consts
+	the_table.used_fns = walker.used_fns
+	the_table.used_consts = walker.used_consts
 
 	$if trace_skip_unused ? {
-		eprintln('>> c.table.used_fns: $c.table.used_fns.keys()')
-		eprintln('>> c.table.used_consts: $c.table.used_consts.keys()')
+		eprintln('>> the_table.used_fns: $the_table.used_fns.keys()')
+		eprintln('>> the_table.used_consts: $the_table.used_consts.keys()')
 		eprintln('>> walker.n_maps: $walker.n_maps')
 	}
-	util.timing_measure(@METHOD)
+}
+
+fn all_fn_and_const(ast_files []ast.File) (map[string]ast.FnDecl, map[string]ast.ConstField) {
+	util.timing_start(@METHOD)
+	defer {
+		util.timing_measure(@METHOD)
+	}
+	mut all_fns := map[string]ast.FnDecl{}
+	mut all_consts := map[string]ast.ConstField{}
+	for i in 0 .. ast_files.len {
+		file := unsafe { &ast_files[i] }
+		for node in file.stmts {
+			match node {
+				ast.FnDecl {
+					fkey := if node.is_method {
+						'${int(node.receiver.typ)}.$node.name'
+					} else {
+						node.name
+					}
+					all_fns[fkey] = node
+				}
+				ast.ConstDecl {
+					for cfield in node.fields {
+						ckey := cfield.name
+						all_consts[ckey] = cfield
+					}
+				}
+				else {}
+			}
+		}
+	}
+	return all_fns, all_consts
 }

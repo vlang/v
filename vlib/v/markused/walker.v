@@ -1,8 +1,8 @@
 // Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
-module mark_used_walker
+module markused
 
-// This module walks the entire program starting at fn main and marks used (called) functions.
+// Walk the entire program starting at fn main and marks used (called) functions.
 // Unused functions can be safely skipped by the backends to save CPU time and space.
 import v.ast
 import v.table

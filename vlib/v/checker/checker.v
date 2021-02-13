@@ -212,9 +212,6 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 			c.error('a _test.v file should have *at least* one `test_` function', token.Position{})
 		}
 	}
-	if c.pref.skip_unused {
-		c.mark_used(ast_files)
-	}
 	// Make sure fn main is defined in non lib builds
 	if c.pref.build_mode == .build_module || c.pref.is_test {
 		return
