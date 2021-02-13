@@ -366,8 +366,8 @@ fn (mut vd VDoc) generate_docs_from_file() {
 			vd.render_static_html(out)
 		}
 		vd.render_parallel(out)
-		println('Creating search index...')
 		if out.typ == .html {
+			println('Creating search index...')
 			vd.collect_search_index(out)
 			vd.render_search_index(out)
 			// move favicons to target directory
