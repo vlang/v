@@ -43,6 +43,7 @@ fn (mut c Checker) mark_used(ast_files []ast.File) {
 		'new_array_from_c_array',
 		'memdup',
 		'vstrlen',
+		'__as_cast',
 		'tos',
 		'tos2',
 		'tos3',
@@ -62,18 +63,6 @@ fn (mut c Checker) mark_used(ast_files []ast.File) {
 		'3.vstring_with_len',
 		'4.vstring',
 		'4.vstring_with_len',
-		'5.str', /* i8_str */
-		'6.str', /* i16_str */
-		'7.str', /* int_str */
-		'8.str', /* i64_str */
-		'9.str', /* byte_str */
-		'10.str', /* u16_str */
-		'11.str', /* u32_str */
-		'12.str', /* u64_str */
-		'13.str', /* f32_str */
-		'14.str', /* f64_str */
-		'15.str', /* char_str */
-		'16.str', /* bool_str */
 		/* byte. methods */
 		'9.str_escaped',
 		/* string. methods */
@@ -101,8 +90,6 @@ fn (mut c Checker) mark_used(ast_files []ast.File) {
 		'19.le',
 		'19.ge',
 		'19.add',
-		'19.str',
-		'20.str',
 		/* other array methods */
 		'21.get',
 		'21.set',
@@ -115,9 +102,6 @@ fn (mut c Checker) mark_used(ast_files []ast.File) {
 		'21.repeat',
 		'21.slice',
 		'21.slice2',
-		'26.str', /* float_literal_str */
-		'27.str', /* int_literal_str */
-		'29.str', /* array_string_str */
 		'59.get',
 		'59.set',
 		'65557.last',
@@ -140,6 +124,9 @@ fn (mut c Checker) mark_used(ast_files []ast.File) {
 	}
 
 	for k, _ in all_fns {
+		if k.ends_with('.str') {
+			all_fn_root_names << k
+		}
 		if k.ends_with('.init') {
 			all_fn_root_names << k
 		}
@@ -195,8 +182,9 @@ fn (mut c Checker) mark_used(ast_files []ast.File) {
 			if k in ['new_map_2', 'new_map_init_2']
 				|| (k.starts_with('map_') || k.ends_with('clone') || k.ends_with('exists_1')
 				|| k.ends_with('keys') || k.ends_with('keys_1') || k.ends_with('get_1')
-				|| k.ends_with('set_1') || k.ends_with('key') || k.ends_with('value')
-				|| k.ends_with('has_index') || k.ends_with('expand') || k.ends_with('zeros_to_end')) {
+				|| k.ends_with('get_1_check') || k.ends_with('set_1') || k.ends_with('key')
+				|| k.ends_with('value') || k.ends_with('has_index') || k.ends_with('expand')
+				|| k.ends_with('zeros_to_end')) {
 				walker.fn_decl(mut mfn)
 			}
 		}
