@@ -161,22 +161,73 @@ fn (mut s Scanner) text_scan() Token {
 	return s.tokenize(chrs, .str_)
 }
 
-fn (mut s Scanner) parse_num() ?[]byte {
+fn (mut s Scanner) get_num(is_float bool) ?[]byte {
 	mut digits := []byte{}
+	mut has_dot := false
+	mut dot_idx := -1
 	for s.pos < s.text.len {
-		if s.text[s.pos].is_digit() {
+		if s.text[s.pos].is_digit() || (!has_dot && is_float && s.text[s.pos] == `.`) {
 			digits << s.text[s.pos]
+			if s.text[s.pos] == `.` {
+				has_dot = true
+				dot_idx = digits.len - 1
+			}
 			s.move_pos()
-		} else if s.text[s.pos] in [`.`, `e`, `E`] {
+		} else if (digits.len > 0 || (has_dot && digits[digits.len - 1] != `.`)) && s.text[s.pos] in [`e`, `E`] {
 			break
 		} else {
-			return error('unknown token `${s.text[s.pos]}`')
+			return error('invalid token `${s.text[s.pos].ascii_str()}`')
 		}
 	}
 	return digits
 }
 
+fn (mut s Scanner) num_scan() Token {
+	// analyze json number structure
+	// -[digit][?[dot][digit]][?[E/e][?-/+][digit]]
+	mut is_fl := false
+	mut digits := []byte{}
+
+	is_minus := s.text[s.pos] == `-`
+	start_digit_pos := if is_minus { s.pos + 1 } else { s.pos }
+
+	if is_minus {
+		digits << `-`
+		s.move_pos()
+	}
+	if s.text[start_digit_pos] == `0` && (start_digit_pos + 1 < s.text.len && s.text[start_digit_pos + 1].is_digit()) {
+		return s.error('leading zeroes in a number are not allowed')
+	}
+	new_digits := s.get_num(true) or {
+		return s.error(err)
+	}
+	if `.` in new_digits {
+		is_fl = true
+	}
+	digits << new_digits
+	if s.pos < s.text.len && s.text[s.pos] in [`e`, `E`] {
+		digits << s.text[s.pos]
+		s.move_pos()
+		if s.pos < s.text.len && s.text[s.pos] in [`-`, `+`] {
+			digits << s.text[s.pos]
+			s.move_pos()
+		}
+		exp_digits := s.get_num(false) or {
+			return s.error(err)
+		}
+		if exp_digits.len == 0 {
+			return s.error('invalid exponent')
+		}
+		digits << exp_digits
+	}
+	kind := if is_fl { TokenKind.float } else { TokenKind.int_ }
+	return s.tokenize(digits, kind)
+}
+
 fn (mut s Scanner) scan() Token {
+	for s.text[s.pos] == ` ` {
+		s.pos++
+	}
 	if s.text[s.pos] in json2.char_list {
 		tok := s.text[s.pos]
 		s.move_pos()
@@ -184,44 +235,10 @@ fn (mut s Scanner) scan() Token {
 	} else if s.text[s.pos] == `"` {
 		return s.text_scan()
 	} else if s.text[s.pos].is_digit() || s.text[s.pos] == `-` {
-		// analyze json number structure
-		// -[digit][?[dot][digit]][?[E/e][?-/+][digit]]
-		// mut is_fl := false
-		// mut has_exp := false
-		// mut digits := []byte{}
-
-		// is_minus := s.text[s.pos] == `-`
-		// start_pos := s.pos
-		// start_digit_pos := if is_minus { s.pos + 1 } else { s.pos }
-
-		// if is_minus {
-		// 	digits << `-`
-		// 	s.move_pos()
-		// }
-		// if !s.text[start_digit_pos].is_digit() {
-		// 	return s.error('invalid token `${s.text[start_digit_pos]}`')
-		// } else if s.text[start_digit_pos] == `0` && (start_digit_pos + 1 < s.text.len && s.text[start_digit_pos + 1].is_digit()) {
-		// 	return s.error('leading zeroes in integers are not allowed')
-		// }
-
-		// digits << s.parse_num() or {
-		// 	return s.error(err)
-		// }
-		// if s.text[s.pos] == `.` {
-		// 	is_fl = true
-		// 	digits << `.`
-		// 	s.move_pos()
-		// 	dec_digits := s.parse_num() or {
-		// 		return s.error(err)
-		// 	}
-		// 	digits << dec_digits
-		// } else if s.text[s.pos] !in [`.`, `e`, `E`] {
-		// 	return s.error('invalid token `${s.text[s.pos]}`')
-		// }
-		return Token{}
+		return s.num_scan()
 	} else if s.pos >= s.text.len {
 		return s.tokenize([]byte{}, .eof)
 	} else {
-		return s.error('invalid token `${s.text[s.pos]}`')
+		return s.error('invalid token `${s.text[s.pos].ascii_str()}`')
 	}
 }

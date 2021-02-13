@@ -59,4 +59,168 @@ fn test_str_missing_closing_bracket() {
 	assert tok.lit.bytestr() == 'missing closing bracket in string'
 }
 
-fn test_int() {}
+fn test_int() {
+	mut sc := Scanner{ text: '10'.bytes() }
+	tok := sc.scan()
+	assert tok.kind == .int_
+	assert tok.lit.len == 2
+	assert tok.lit.bytestr() == '10'
+}
+
+fn test_int_negative() {
+	mut sc := Scanner{ text: '-10'.bytes() }
+	tok := sc.scan()
+	assert tok.kind == .int_
+	assert tok.lit.len == 3
+	assert tok.lit.bytestr() == '-10'
+}
+
+fn test_float() {
+	mut sc := Scanner{ text: '123.400'.bytes() }
+	tok := sc.scan()
+	assert tok.kind == .float
+	assert tok.lit.len == 7
+	assert tok.lit.bytestr() == '123.400'
+}
+
+fn test_float_negative() {
+	mut sc := Scanner{ text: '-123.400'.bytes() }
+	tok := sc.scan()
+	assert tok.kind == .float
+	assert tok.lit.len == 8
+	assert tok.lit.bytestr() == '-123.400'
+}
+
+fn test_int_exp() {
+	mut sc := Scanner{ text: '1E22'.bytes() }
+	tok := sc.scan()
+	assert tok.kind == .int_
+	assert tok.lit.len == 4
+	assert tok.lit.bytestr() == '1E22'
+}
+
+fn test_int_exp_negative() {
+	mut sc := Scanner{ text: '1E-2'.bytes() }
+	tok := sc.scan()
+	assert tok.kind == .int_
+	assert tok.lit.len == 4
+	assert tok.lit.bytestr() == '1E-2'
+}
+
+fn test_int_exp_positive() {
+	mut sc := Scanner{ text: '1E+2'.bytes() }
+	tok := sc.scan()
+	assert tok.kind == .int_
+	assert tok.lit.len == 4
+	assert tok.lit.bytestr() == '1E+2'
+}
+
+fn test_float_exp() {
+	mut sc := Scanner{ text: '123.456e78'.bytes() }
+	tok := sc.scan()
+	assert tok.kind == .float
+	assert tok.lit.len == 10
+	assert tok.lit.bytestr() == '123.456e78'
+}
+
+fn test_float_exp_negative() {
+	mut sc := Scanner{ text: '20.56e-5'.bytes() }
+	tok := sc.scan()
+	assert tok.kind == .float
+	assert tok.lit.len == 8
+	assert tok.lit.bytestr() == '20.56e-5'
+}
+
+fn test_float_exp_positive() {
+	mut sc := Scanner{ text: '20.56e+5'.bytes() }
+	tok := sc.scan()
+	assert tok.kind == .float
+	assert tok.lit.len == 8
+	assert tok.lit.bytestr() == '20.56e+5'
+}
+
+fn test_number_with_space() {
+	mut sc := Scanner{ text: ' 4'.bytes() }
+	tok := sc.scan()
+	assert tok.kind == .int_
+	assert tok.lit.len == 1
+	assert tok.lit.bytestr() == '4'
+}
+
+fn test_number_invalid_leading_zero() {
+	mut sc := Scanner{ text: '0010'.bytes() }
+	tok := sc.scan()
+	assert tok.kind == .error
+	assert tok.lit.bytestr() == 'leading zeroes in a number are not allowed'
+}
+
+fn test_number_invalid_leading_zero_negative() {
+	mut sc := Scanner{ text: '-0010'.bytes() }
+	tok := sc.scan()
+	assert tok.kind == .error
+	assert tok.lit.bytestr() == 'leading zeroes in a number are not allowed'
+}
+
+fn test_number_invalid_start_char() {
+	mut sc := Scanner{ text: '+1'.bytes() }
+	tok := sc.scan()
+	assert tok.kind == .error
+	assert tok.lit.bytestr() == 'invalid token `+`'
+}
+
+fn test_number_invalid_char() {
+	mut sc := Scanner{ text: '122x'.bytes() }
+	tok := sc.scan()
+	assert tok.kind == .error
+	assert tok.lit.bytestr() == 'invalid token `x`'
+}
+
+fn test_number_invalid_char_float() {
+	mut sc := Scanner{ text: '122x.1'.bytes() }
+	tok := sc.scan()
+	assert tok.kind == .error
+	assert tok.lit.bytestr() == 'invalid token `x`'
+}
+
+fn test_number_invalid_multiple_dot() {
+	mut sc := Scanner{ text: '122.108.10'.bytes() }
+	tok := sc.scan()
+	assert tok.kind == .error
+	assert tok.lit.bytestr() == 'invalid token `.`'
+}
+
+fn test_number_invalid_exp() {
+	mut sc := Scanner{ text: '0.3e'.bytes() }
+	tok := sc.scan()
+	assert tok.kind == .error
+	assert tok.lit.bytestr() == 'invalid exponent'
+}
+
+fn test_number_invalid_exp_with_sign() {
+	mut sc := Scanner{ text: '0.3e+'.bytes() }
+	tok := sc.scan()
+	assert tok.kind == .error
+	assert tok.lit.bytestr() == 'invalid exponent'
+}
+
+fn test_number_invalid_zero_exp() {
+	mut sc := Scanner{ text: '0e'.bytes() }
+	tok := sc.scan()
+	assert tok.kind == .error
+	assert tok.lit.bytestr() == 'invalid exponent'
+}
+
+fn test_number_invalid_dot_exp() {
+	mut sc := Scanner{ text: '0.e'.bytes() }
+	tok := sc.scan()
+	assert tok.kind == .error
+	assert tok.lit.bytestr() == 'invalid exponent'
+}
+
+fn test_number_invalid_double_exp() {
+	mut sc := Scanner{ text: '2eE'.bytes() }
+	tok := sc.scan()
+	assert tok.kind == .error
+	assert tok.lit.bytestr() == 'invalid token `E`'
+}
+
