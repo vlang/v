@@ -1762,7 +1762,7 @@ struct Node<T> {
 
 ## Constants
 
-```v oksyntax
+```v
 const (
 	pi    = 3.14
 	world = '世界'
@@ -1774,8 +1774,12 @@ println(world)
 
 Constants are declared with `const`. They can only be defined
 at the module level (outside of functions).
+Constant values can never be changed. You can also declare a single 
+constant separately:
 
-Constant values can never be changed.
+```v
+const e = 2.71828
+```
 
 V constants are more flexible than in most languages. You can assign more complex values:
 
@@ -1810,7 +1814,9 @@ println(red)
 println(blue)
 ```
 
-Global variables are not allowed, so this can be really useful.
+Global variables are not normally allowed, so this can be really useful.
+
+### Required module prefix
 
 When naming constants, `snake_case` must be used. In order to distinguish consts
 from local variables, the full path to consts must be specified. For example,
@@ -1827,11 +1833,11 @@ Many people prefer all caps consts: `TOP_CITIES`. This wouldn't work
 well in V, because consts are a lot more powerful than in other languages.
 They can represent complex structures, and this is used quite often since there
 are no globals:
--->
 
 ```v oksyntax
 println('Top cities: ${top_cities.filter(.usa)}')
 ```
+-->
 
 ## Builtin functions
 
