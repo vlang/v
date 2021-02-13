@@ -131,7 +131,13 @@ fn C.closedir() int
 
 fn C.mkdir() int
 
-fn C.srand() int
+// C.rand returns a pseudorandom integer from 0 (inclusive) to C.RAND_MAX (exclusive)
+[trusted]
+fn C.rand() int
+
+// C.srand seeds the internal PRNG with the given value.
+[trusted]
+fn C.srand(seed uint)
 
 fn C.atof() int
 
