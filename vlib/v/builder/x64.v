@@ -4,6 +4,7 @@ import v.parser
 import v.pref
 import v.util
 import v.gen.x64
+import v.markused
 
 pub fn (mut b Builder) build_x64(v_files []string, out_file string) {
 	$if !linux {
@@ -20,6 +21,9 @@ pub fn (mut b Builder) build_x64(v_files []string, out_file string) {
 	b.checker.check_files(b.parsed_files)
 	util.timing_measure('CHECK')
 	//
+	if b.pref.skip_unused {
+		markused.mark_used(mut b.table, b.pref, b.parsed_files)
+	}
 	util.timing_start('x64 GEN')
 	x64.gen(b.parsed_files, b.table, out_file, b.pref)
 	util.timing_measure('x64 GEN')
