@@ -173,7 +173,7 @@ fn (mut s Scanner) get_num(is_float bool) ?[]byte {
 		} else if (digits.len > 0 || (has_dot && digits[digits.len - 1] != `.`)) && s.text[s.pos] in [`e`, `E`] {
 			break
 		} else {
-			return error('invalid token `${s.text[s.pos].ascii_str()}`')
+			return s.invalid_token()
 		}
 	}
 	return digits
@@ -221,6 +221,10 @@ fn (mut s Scanner) num_scan() Token {
 	return s.tokenize(digits, kind)
 }
 
+fn (s Scanner) invalid_token() {
+	return s.error('invalid token `${s.text[s.pos].ascii_str()}`')
+}
+
 [manualfree]
 fn (mut s Scanner) scan() Token {
 	for s.text[s.pos] == ` ` {
@@ -237,7 +241,7 @@ fn (mut s Scanner) scan() Token {
 			return s.tokenize(s.text[s.pos..s.pos + 4], kind)
 		}
 		unsafe { ident.free() }
-		return s.error('invalid token `${s.text[s.pos].ascii_str()}`')
+		return s.invalid_token()
 	} if s.pos + 4 < s.text.len && s.text[s.pos] == `f` {
 		ident := s.text[s.pos..s.pos + 5].bytestr()
 		if ident == 'false' {
@@ -245,7 +249,7 @@ fn (mut s Scanner) scan() Token {
 			return s.tokenize(s.text[s.pos..s.pos + 5], .false_)
 		}
 		unsafe { ident.free() }
-		return s.error('invalid token `${s.text[s.pos].ascii_str()}`')
+		return s.invalid_token()
 	} else if s.text[s.pos] in json2.char_list {
 		tok := s.text[s.pos]
 		s.move_pos()
@@ -257,6 +261,6 @@ fn (mut s Scanner) scan() Token {
 	} else if s.pos >= s.text.len {
 		return s.tokenize([]byte{}, .eof)
 	} else {
-		return s.error('invalid token `${s.text[s.pos].ascii_str()}`')
+		return s.invalid_token()
 	}
 }
