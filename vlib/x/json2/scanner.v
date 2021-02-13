@@ -46,7 +46,7 @@ struct Token {
 
 const (
 	char_list = [`{`, `}`, `[`, `]`, `,`, `:`]
-	newlines = [`\r`, `\n`]
+	newlines = [`\r`, `\n`, byte(9), `\t`]
 	num_indicators = [`-`, `+`]
 	important_escapable_chars = [byte(9), 10, 0]
 	invalid_unicode_endpoints = [byte(9), 229]
@@ -64,19 +64,27 @@ const (
 )
 
 fn (mut s Scanner) move_pos() {
-	if s.pos + 1 < s.text.len && s.text[s.pos + 1] in json2.newlines {
-		s.line++
-		s.col = 0
-		if s.pos + 2 < s.text.len && s.text[s.pos + 1] == `\r` && s.text[s.pos + 2] == `\n` {
+	s.pos++
+	if s.pos < s.text.len {
+		if s.text[s.pos] in json2.newlines {
+			s.line++
+			s.col = 0
+			if s.text[s.pos] == `\r` && s.pos + 1 < s.text.len && s.text[s.pos + 1] == `\n` {
+				s.pos++
+			}
+			for s.pos < s.text.len && s.text[s.pos] in json2.newlines {
+				s.move_pos()
+			}
+		} else if s.text[s.pos] == ` ` {
 			s.pos++
+			s.col++
+			for s.pos < s.text.len && s.text[s.pos] == ` ` {
+				s.move_pos()
+			}
 		}
-	} else if s.text[s.pos] == ` ` {
-		s.pos++
-		s.col++
 	} else {
 		s.col++
 	}
-	s.pos++
 }
 
 fn (mut s Scanner) move_pos_upto(num int) {
@@ -85,7 +93,7 @@ fn (mut s Scanner) move_pos_upto(num int) {
 	}
 }
 
-fn (mut s Scanner) error(description string) Token {
+fn (s Scanner) error(description string) Token {
 	return s.tokenize(description.bytes(), .error)
 }
 
@@ -152,85 +160,68 @@ fn (mut s Scanner) text_scan() Token {
 		}
 		chrs << ch
 	}
+	s.move_pos()
 	if !has_closed {
 		return s.error('missing closing bracket in string')
 	}
 	return s.tokenize(chrs, .str_)
 }
 
-fn (mut s Scanner) get_num(is_float bool) ?[]byte {
-	mut digits := []byte{}
-	mut has_dot := false
-	mut dot_idx := -1
-	for s.pos < s.text.len {
-		if s.text[s.pos].is_digit() || (!has_dot && is_float && s.text[s.pos] == `.`) {
-			digits << s.text[s.pos]
-			if s.text[s.pos] == `.` {
-				has_dot = true
-				dot_idx = digits.len - 1
-			}
-			s.move_pos()
-		} else if (digits.len > 0 || (has_dot && digits[digits.len - 1] != `.`)) && s.text[s.pos] in [`e`, `E`] {
-			break
-		} else {
-			return s.invalid_token()
-		}
-	}
-	return digits
-}
-
 fn (mut s Scanner) num_scan() Token {
+	is_minus := s.text[s.pos] == `-`
+
 	// analyze json number structure
 	// -[digit][?[dot][digit]][?[E/e][?-/+][digit]]
 	mut is_fl := false
 	mut digits := []byte{}
-
-	is_minus := s.text[s.pos] == `-`
-	start_digit_pos := if is_minus { s.pos + 1 } else { s.pos }
-
 	if is_minus {
 		digits << `-`
 		s.move_pos()
 	}
-	if s.text[start_digit_pos] == `0` && (start_digit_pos + 1 < s.text.len && s.text[start_digit_pos + 1].is_digit()) {
+	if s.text[s.pos] == `0` && (s.pos + 1 < s.text.len && s.text[s.pos + 1].is_digit()) {
 		return s.error('leading zeroes in a number are not allowed')
 	}
-	new_digits := s.get_num(true) or {
-		return s.error(err)
+	for s.pos < s.text.len && (s.text[s.pos].is_digit() || (!is_fl && s.text[s.pos] == `.`)) {
+		digits << s.text[s.pos]
+		if s.text[s.pos] == `.` {
+			is_fl = true
+		}
+		s.move_pos()
 	}
-	if `.` in new_digits {
-		is_fl = true
-	}
-	digits << new_digits
-	if s.pos < s.text.len && s.text[s.pos] in [`e`, `E`] {
+	if s.pos < s.text.len && (s.text[s.pos] == `e` || s.text[s.pos] == `E`) {
 		digits << s.text[s.pos]
 		s.move_pos()
 		if s.pos < s.text.len && s.text[s.pos] in [`-`, `+`] {
 			digits << s.text[s.pos]
 			s.move_pos()
 		}
-		exp_digits := s.get_num(false) or {
-			return s.error(err)
+		mut exp_digits := []byte{}
+		for s.pos < s.text.len && s.text[s.pos].is_digit() {
+			exp_digits << s.text[s.pos]
+			s.move_pos()
 		}
 		if exp_digits.len == 0 {
 			return s.error('invalid exponent')
 		}
 		digits << exp_digits
+		unsafe { exp_digits.free() }
 	}
 	kind := if is_fl { TokenKind.float } else { TokenKind.int_ }
 	return s.tokenize(digits, kind)
 }
 
-fn (s Scanner) invalid_token() {
-	return s.error('invalid token `${s.text[s.pos].ascii_str()}`')
+fn (s Scanner) invalid_token() Token {
+	return s.error('invalid token `${s.text[s.pos]}`')
 }
 
 [manualfree]
 fn (mut s Scanner) scan() Token {
-	for s.text[s.pos] == ` ` {
+	for s.pos < s.text.len && s.text[s.pos] == ` ` {
 		s.pos++
 	}
-	if s.pos + 3 < s.text.len && (s.text[s.pos] == `t` || s.text[s.pos] == `n`) {
+	if s.pos >= s.text.len {
+		return s.tokenize([]byte{}, .eof)
+	} else if s.pos + 3 < s.text.len && (s.text[s.pos] == `t` || s.text[s.pos] == `n`) {
 		ident := s.text[s.pos..s.pos + 4].bytestr()
 		if ident == 'true' || ident == 'null' {
 			mut kind := TokenKind.null
@@ -238,7 +229,9 @@ fn (mut s Scanner) scan() Token {
 				kind = .true_
 			}
 			unsafe { ident.free() }
-			return s.tokenize(s.text[s.pos..s.pos + 4], kind)
+			val := s.text[s.pos..s.pos + 4]
+			s.move_pos_upto(4)
+			return s.tokenize(val, kind)
 		}
 		unsafe { ident.free() }
 		return s.invalid_token()
@@ -246,7 +239,9 @@ fn (mut s Scanner) scan() Token {
 		ident := s.text[s.pos..s.pos + 5].bytestr()
 		if ident == 'false' {
 			unsafe { ident.free() }
-			return s.tokenize(s.text[s.pos..s.pos + 5], .false_)
+			val := s.text[s.pos..s.pos + 5]
+			s.move_pos_upto(5)
+			return s.tokenize(val, .false_)
 		}
 		unsafe { ident.free() }
 		return s.invalid_token()
@@ -258,8 +253,6 @@ fn (mut s Scanner) scan() Token {
 		return s.text_scan()
 	} else if s.text[s.pos].is_digit() || s.text[s.pos] == `-` {
 		return s.num_scan()
-	} else if s.pos >= s.text.len {
-		return s.tokenize([]byte{}, .eof)
 	} else {
 		return s.invalid_token()
 	}

@@ -48,8 +48,9 @@ fn test_simple() {
 	eprintln('Employee x: $s')
 	assert s == '{"name":"Peter","age":28,"salary":95000.5,"title":2}'
 	y := json2.decode<Employee>(s) or {
+		println(err)
 		assert false
-		Employee{}
+		return
 	}
 	eprintln('Employee y: $y')
 	assert y.name == 'Peter'
@@ -78,8 +79,9 @@ fn test_character_unescape() {
 		"slash":"\/dev\/null"
 	}'
 	mut obj := json2.raw_decode(message) or {
+		println(err)
 		assert false
-		json2.Any{}
+		return
 	}
 	lines := obj.as_map()
 	eprintln('$lines')
@@ -166,13 +168,15 @@ fn (u User) to_json() string {
 fn test_parse_user() {
 	s := '{"age": 10, "nums": [1,2,3], "type": 1, "lastName": "Johnson", "IsRegistered": true, "pet_animals": {"name": "Bob", "animal": "Dog"}}'
 	u2 := json2.decode<User2>(s) or {
+		println(err)
 		assert false
-		User2{}
+		return
 	}
 	println(u2)
 	u := json2.decode<User>(s) or {
+		println(err)
 		assert false
-		User{}
+		return
 	}
 	assert u.age == 10
 	assert u.last_name == 'Johnson'

@@ -170,6 +170,7 @@ fn test_number_invalid_start_char() {
 
 fn test_number_invalid_char() {
 	mut sc := Scanner{ text: '122x'.bytes() }
+	sc.scan()
 	tok := sc.scan()
 	assert tok.kind == .error
 	assert tok.lit.bytestr() == 'invalid token `x`'
@@ -177,6 +178,7 @@ fn test_number_invalid_char() {
 
 fn test_number_invalid_char_float() {
 	mut sc := Scanner{ text: '122x.1'.bytes() }
+	sc.scan()
 	tok := sc.scan()
 	assert tok.kind == .error
 	assert tok.lit.bytestr() == 'invalid token `x`'
@@ -184,6 +186,7 @@ fn test_number_invalid_char_float() {
 
 fn test_number_invalid_multiple_dot() {
 	mut sc := Scanner{ text: '122.108.10'.bytes() }
+	sc.scan()
 	tok := sc.scan()
 	assert tok.kind == .error
 	assert tok.lit.bytestr() == 'invalid token `.`'
@@ -219,6 +222,7 @@ fn test_number_invalid_dot_exp() {
 
 fn test_number_invalid_double_exp() {
 	mut sc := Scanner{ text: '2eE'.bytes() }
+	sc.scan()
 	tok := sc.scan()
 	assert tok.kind == .error
 	assert tok.lit.bytestr() == 'invalid token `E`'
