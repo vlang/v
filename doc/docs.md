@@ -1805,7 +1805,7 @@ const (
 		g: 0
 		b: 0
 	}
-	// evaluate function call at compile-time
+	// evaluate function call at compile-time*
 	blue    = rgb(0, 0, 255)
 )
 
@@ -1813,6 +1813,7 @@ println(numbers)
 println(red)
 println(blue)
 ```
+\* WIP - for now function calls are evaluated at program start-up
 
 Global variables are not normally allowed, so this can be really useful.
 
