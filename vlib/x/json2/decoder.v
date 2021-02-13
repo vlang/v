@@ -51,7 +51,7 @@ fn (mut p Parser) decode() ?Any {
 	mut is_valid := false
 	p.next()
 	p.next_with_err() ?
-	if p.tok.kind in [.lcbr, .lsbr, .str_ .true_, .false_, .int_, .float, .null] {
+	if p.tok.kind in [.lcbr, .lsbr, .str_, .bool_, .int_, .float, .null] {
 		is_valid = true
 	}
 	if !is_valid {
@@ -82,7 +82,7 @@ fn (mut p Parser) decode_value() ?Any {
 		.int_, .float {
 			return p.decode_number()
 		}
-		.false_, .true_ {
+		.bool_ {
 			lit := p.tok.lit.bytestr()
 			p.next_with_err() ?
 			return if p.convert_type {

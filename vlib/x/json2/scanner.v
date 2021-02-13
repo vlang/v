@@ -20,8 +20,7 @@ enum TokenKind {
 	float
 	int_
 	null
-	true_
-	false_
+	bool_
 	eof
 	comma = 44
 	colon = 58
@@ -234,7 +233,7 @@ fn (mut s Scanner) scan() Token {
 		if ident == 'true' || ident == 'null' {
 			mut kind := TokenKind.null
 			if ident == 'true' {
-				kind = .true_
+				kind = .bool_
 			}
 			unsafe { ident.free() }
 			val := s.text[s.pos..s.pos + 4]
@@ -249,7 +248,7 @@ fn (mut s Scanner) scan() Token {
 			unsafe { ident.free() }
 			val := s.text[s.pos..s.pos + 5]
 			s.move_pos_upto(5)
-			return s.tokenize(val, .false_)
+			return s.tokenize(val, .bool_)
 		}
 		unsafe { ident.free() }
 		return s.invalid_token()
