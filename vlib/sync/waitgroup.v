@@ -18,7 +18,6 @@ fn C.atomic_fetch_add_u32(voidptr, u32) u32
 // `wg.done()` when finished 
 //
 // [init_with=new_waitgroup] // TODO: implement support for init_with struct attribute, and disallow WaitGroup{} from outside the sync.new_waitgroup() function.
-
 [ref_only]
 struct WaitGroup {
 mut:
