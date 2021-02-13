@@ -432,17 +432,14 @@ pub fn is_readable(path string) bool {
 
 // rm removes file in `path`.
 pub fn rm(path string) ? {
+	mut rc := 0
 	$if windows {
-		rc := C._wremove(path.to_wide())
-		if rc == -1 {
-			// TODO: proper error as soon as it's supported on windows
-			return error('Failed to remove "$path"')
-		}
+		rc = C._wremove(path.to_wide())
 	} $else {
-		rc := C.remove(charptr(path.str))
-		if rc == -1 {
-			return error(posix_get_error_msg(C.errno))
-		}
+		rc = C.remove(charptr(path.str))
+	}
+	if rc == -1 {
+		return error('Failed to remove "$path": ' + posix_get_error_msg(C.errno))
 	}
 	// C.unlink(path.cstr())
 }
