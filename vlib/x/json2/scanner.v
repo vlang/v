@@ -49,8 +49,8 @@ const (
 	char_list = [`{`, `}`, `[`, `]`, `,`, `:`]
 	newlines = [`\r`, `\n`]
 	num_indicators = [`-`, `+`]
-	important_escapable_chars = [byte(9), byte(10), byte(0)]
-	invalid_unicode_endpoints = [byte(9), byte(229)]
+	important_escapable_chars = [byte(9), 10, 0]
+	invalid_unicode_endpoints = [byte(9), 229]
 	valid_unicode_escapes = [`b`, `f`, `n`, `r`, `t`, `\\`, `"`, `/`]
 	unicode_escapes = {
 		98: `\b`
@@ -102,11 +102,13 @@ fn (s Scanner) tokenize(lit []byte, kind TokenKind) Token {
 }
 
 fn (mut s Scanner) text_scan() Token {
-	start_pos := s.pos + 1
 	mut has_closed := false
 	mut chrs := []byte{}
-	for s.pos < s.text.len {
+	for {
 		s.move_pos()
+		if s.pos >= s.text.len {
+			break
+		}
 		ch := s.text[s.pos]
 		if ((s.pos - 1 >= 0 && s.text[s.pos - 1] != `/`) || s.pos == 0) && ch in json2.important_escapable_chars {
 			return s.error('character must be escaped with a backslash')
@@ -120,20 +122,23 @@ fn (mut s Scanner) text_scan() Token {
 				continue
 			} else if peek == `u` {
 				if s.pos + 5 < s.text.len {
-					mut codepoint := []string{}
-					s.move_pos_upto(2)
+					s.move_pos()
+					mut codepoint := []byte{}
 					codepoint_start := s.pos
-					for s.pos < s.text.len && s.pos < codepoint_start + 3 {
-						if !s.text[s.pos].is_hex_digit() {
-							return s.error('`${s.text[s.pos]}` is not a hex digit')
-						}
-						codepoint << s.text[s.pos].str()
+					for s.pos < s.text.len && s.pos < codepoint_start + 4 {
 						s.move_pos()
+						if s.text[s.pos] == `"` {
+							break
+						} else if !s.text[s.pos].is_hex_digit() {
+							return s.error('`${s.text[s.pos].ascii_str()}` is not a hex digit')
+						}
+						codepoint << s.text[s.pos]
 					}
 					if codepoint.len != 4 {
 						return s.error('unicode escape must be 4 characters')
 					}
-					chrs << byte(strconv.parse_int(codepoint.join(''), 16, 0))
+					chrs << byte(strconv.parse_int(codepoint.bytestr(), 16, 0))
+					continue
 				} else {
 					return s.error('incomplete unicode escape')
 				}
@@ -151,10 +156,9 @@ fn (mut s Scanner) text_scan() Token {
 		chrs << ch
 	}
 	if !has_closed {
-		s.error('missing double-quote in string')
-		return s.tokenize([]byte{}, .eof)
+		return s.error('missing closing bracket in string')
 	}
-	return s.tokenize(s.text[start_pos..s.pos], .str_)
+	return s.tokenize(chrs, .str_)
 }
 
 fn (mut s Scanner) parse_num() ?[]byte {
