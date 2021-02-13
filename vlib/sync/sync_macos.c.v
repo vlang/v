@@ -7,6 +7,7 @@ import time
 
 #flag -lpthread
 #include <semaphore.h>
+#include <sys/errno.h>
 
 [trusted]
 fn C.pthread_mutex_init(voidptr, voidptr) int
@@ -30,10 +31,12 @@ fn C.pthread_cond_timedwait(voidptr, voidptr, voidptr) int
 fn C.pthread_cond_destroy(voidptr) int
 
 // [init_with=new_mutex] // TODO: implement support for this struct attribute, and disallow Mutex{} from outside the sync.new_mutex() function.
+[ref_only]
 pub struct Mutex {
 	mutex C.pthread_mutex_t
 }
 
+[ref_only]
 pub struct RwMutex {
 	mutex C.pthread_rwlock_t
 }
@@ -48,6 +51,7 @@ struct CondAttr {
 
 /* MacOSX has no unnamed semaphores and no `timed_wait()` at all
    so we emulate the behaviour with other devices */
+[ref_only]
 struct Semaphore {
 	mtx C.pthread_mutex_t
 	cond C.pthread_cond_t
@@ -149,6 +153,7 @@ pub fn (mut sem Semaphore) wait() {
 	}
 	C.pthread_mutex_lock(&sem.mtx)
 	c = C.atomic_load_u32(&sem.count)
+outer:
 	for {
 		if c == 0 {
 			C.pthread_cond_wait(&sem.cond, &sem.mtx)
@@ -159,11 +164,10 @@ pub fn (mut sem Semaphore) wait() {
 				if c > 1 {
 					C.pthread_cond_signal(&sem.cond)
 				}
-				goto unlock
+				break outer
 			}
 		}
 	}
-unlock:
 	C.pthread_mutex_unlock(&sem.mtx)
 }
 
@@ -184,11 +188,12 @@ pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
 	t_spec := timeout.timespec()
 	mut res := 0
 	c = C.atomic_load_u32(&sem.count)
+outer:
 	for {
 		if c == 0 {
 			res = C.pthread_cond_timedwait(&sem.cond, &sem.mtx, &t_spec)
 			if res == C.ETIMEDOUT {
-				goto unlock
+				break outer
 			}
 			c = C.atomic_load_u32(&sem.count)
 		}
@@ -197,11 +202,10 @@ pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
 				if c > 1 {
 					C.pthread_cond_signal(&sem.cond)
 				}
-				goto unlock
+				break outer
 			}
 		}
 	}
-unlock:
 	C.pthread_mutex_unlock(&sem.mtx)
 	return res == 0
 }

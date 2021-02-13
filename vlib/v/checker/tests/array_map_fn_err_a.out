@@ -1,7 +1,0 @@
-vlib/v/checker/tests/array_map_fn_err_a.vv:5:17: error: function needs exactly 1 argument
-    3 | }
-    4 | fn main() {
-    5 |     a := [1,2,3,4].map(add)
-      |                    ~~~~~~~~
-    6 |     println(a)
-    7 | }

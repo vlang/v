@@ -1,57 +1,95 @@
-vlib/v/checker/tests/prefix_err.vv:1:6: error: cannot take the address of a bool literal
-    1 | b := &true
+vlib/v/checker/tests/prefix_err.vv:5:6: error: cannot take the address of true
+    3 | }
+    4 | 
+    5 | b := &true
       |      ^
-    2 | _ := &10
-    3 | _ := &"Hi"
-vlib/v/checker/tests/prefix_err.vv:2:6: error: cannot take the address of an int literal
-    1 | b := &true
-    2 | _ := &10
+    6 | _ := &get()
+    7 | _ := &(get())
+vlib/v/checker/tests/prefix_err.vv:6:6: error: cannot take the address of get()
+    4 | 
+    5 | b := &true
+    6 | _ := &get()
       |      ^
-    3 | _ := &"Hi"
-    4 | _ := &"${b}"
-vlib/v/checker/tests/prefix_err.vv:3:6: error: cannot take the address of a string literal
-    1 | b := &true
-    2 | _ := &10
-    3 | _ := &"Hi"
+    7 | _ := &(get())
+    8 | _ := &(get() + 1)
+vlib/v/checker/tests/prefix_err.vv:7:6: error: cannot take the address of get()
+    5 | b := &true
+    6 | _ := &get()
+    7 | _ := &(get())
       |      ^
-    4 | _ := &"${b}"
-    5 | _ := &`c`
-vlib/v/checker/tests/prefix_err.vv:4:6: error: cannot take the address of a string literal
-    2 | _ := &10
-    3 | _ := &"Hi"
-    4 | _ := &"${b}"
+    8 | _ := &(get() + 1)
+    9 | _ := &10
+vlib/v/checker/tests/prefix_err.vv:8:6: error: cannot take the address of get() + 1
+    6 | _ := &get()
+    7 | _ := &(get())
+    8 | _ := &(get() + 1)
       |      ^
-    5 | _ := &`c`
-    6 | _ := 12.3
-vlib/v/checker/tests/prefix_err.vv:5:6: error: cannot take the address of a char literal
-    3 | _ := &"Hi"
-    4 | _ := &"${b}"
-    5 | _ := &`c`
+    9 | _ := &10
+   10 | _ := &"Hi"
+vlib/v/checker/tests/prefix_err.vv:9:6: error: cannot take the address of 10
+    7 | _ := &(get())
+    8 | _ := &(get() + 1)
+    9 | _ := &10
       |      ^
-    6 | _ := 12.3
-    7 |
-vlib/v/checker/tests/prefix_err.vv:9:5: error: invalid indirect of `int`
-    7 | 
-    8 | a := 1
-    9 | _ = *a
+   10 | _ := &"Hi"
+   11 | _ := &"${b}"
+vlib/v/checker/tests/prefix_err.vv:10:6: error: cannot take the address of 'Hi'
+    8 | _ := &(get() + 1)
+    9 | _ := &10
+   10 | _ := &"Hi"
+      |      ^
+   11 | _ := &"${b}"
+   12 | _ := &`c`
+vlib/v/checker/tests/prefix_err.vv:11:6: error: cannot take the address of '$b'
+    9 | _ := &10
+   10 | _ := &"Hi"
+   11 | _ := &"${b}"
+      |      ^
+   12 | _ := &`c`
+   13 | _ := &1.2
+vlib/v/checker/tests/prefix_err.vv:12:6: error: cannot take the address of `c`
+   10 | _ := &"Hi"
+   11 | _ := &"${b}"
+   12 | _ := &`c`
+      |      ^
+   13 | _ := &1.2
+   14 | _ := &(1 + 2)
+vlib/v/checker/tests/prefix_err.vv:13:6: error: cannot take the address of 1.2
+   11 | _ := &"${b}"
+   12 | _ := &`c`
+   13 | _ := &1.2
+      |      ^
+   14 | _ := &(1 + 2)
+   15 | _ := 12.3
+vlib/v/checker/tests/prefix_err.vv:14:6: error: cannot take the address of 1 + 2
+   12 | _ := &`c`
+   13 | _ := &1.2
+   14 | _ := &(1 + 2)
+      |      ^
+   15 | _ := 12.3
+   16 |
+vlib/v/checker/tests/prefix_err.vv:18:5: error: invalid indirect of `int`
+   16 | 
+   17 | a := 1
+   18 | _ = *a
       |     ^
-   10 | a <- 4
-   11 |
-vlib/v/checker/tests/prefix_err.vv:10:1: error: cannot push on non-channel `int`
-    8 | a := 1
-    9 | _ = *a
-   10 | a <- 4
+   19 | a <- 4
+   20 |
+vlib/v/checker/tests/prefix_err.vv:19:1: error: cannot push on non-channel `int`
+   17 | a := 1
+   18 | _ = *a
+   19 | a <- 4
       | ^
-   11 | 
-   12 | _ = ~true
-vlib/v/checker/tests/prefix_err.vv:12:5: error: operator ~ only defined on int types
-   10 | a <- 4
-   11 | 
-   12 | _ = ~true
+   20 | 
+   21 | _ = ~true
+vlib/v/checker/tests/prefix_err.vv:21:5: error: operator ~ only defined on int types
+   19 | a <- 4
+   20 | 
+   21 | _ = ~true
       |     ^
-   13 | _ = !4
-vlib/v/checker/tests/prefix_err.vv:13:5: error: ! operator can only be used with bool types
-   11 | 
-   12 | _ = ~true
-   13 | _ = !4
+   22 | _ = !4
+vlib/v/checker/tests/prefix_err.vv:22:5: error: ! operator can only be used with bool types
+   20 | 
+   21 | _ = ~true
+   22 | _ = !4
       |     ^

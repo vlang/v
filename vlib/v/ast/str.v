@@ -26,7 +26,8 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string, m2a map[string]s
 	}
 	mut receiver := ''
 	if node.is_method {
-		mut styp := util.no_cur_mod(t.type_to_code(node.receiver.typ), cur_mod)
+		mut styp := util.no_cur_mod(t.type_to_code(node.receiver.typ.clear_flag(.shared_f)),
+			cur_mod)
 		m := if node.rec_mut { node.receiver.typ.share().str() + ' ' } else { '' }
 		if node.rec_mut {
 			styp = styp[1..] // remove &
@@ -88,7 +89,7 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string, m2a map[string]s
 			f.write(arg.typ.share().str() + ' ')
 		}
 		f.write(arg.name)
-		mut s := t.type_to_str(arg.typ)
+		mut s := t.type_to_str(arg.typ.clear_flag(.shared_f))
 		if arg.is_mut {
 			// f.write(' mut')
 			if s.starts_with('&') {
@@ -165,6 +166,10 @@ pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
 					break
 				}
 				SelectorExpr {
+					if sub_expr.field_name[0] == `@` {
+						needs_braces = true
+						break
+					}
 					sub_expr = sub_expr.expr
 					continue
 				}
@@ -236,6 +241,9 @@ pub fn (x Expr) str() string {
 			if x.name.starts_with('${x.mod}.') {
 				return util.strip_main_name('${x.name}($sargs)')
 			}
+			if x.mod == '' && x.name == '' {
+				return x.left.str() + '($sargs)'
+			}
 			return '${x.mod}.${x.name}($sargs)'
 		}
 		CharLiteral {
@@ -267,6 +275,14 @@ pub fn (x Expr) str() string {
 		}
 		InfixExpr {
 			return '$x.left.str() $x.op.str() $x.right.str()'
+		}
+		MapInit {
+			mut pairs := []string{}
+			for ik, kv in x.keys {
+				mv := x.vals[ik].str()
+				pairs << '$kv: $mv'
+			}
+			return 'map{ ${pairs.join(' ')} }'
 		}
 		ParExpr {
 			return '($x.expr)'
@@ -316,7 +332,7 @@ pub fn (x Expr) str() string {
 			return res.join('')
 		}
 		StringLiteral {
-			return '"$x.val"'
+			return "'$x.val'"
 		}
 		Type {
 			return 'Type($x.typ)'

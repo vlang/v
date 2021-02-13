@@ -249,11 +249,7 @@ fn (mut g Gen) jmp(addr int) {
 }
 
 fn abs(a i64) i64 {
-	return if a < 0 {
-		-a
-	} else {
-		a
-	}
+	return if a < 0 { -a } else { a }
 }
 
 fn (mut g Gen) jle(addr i64) {

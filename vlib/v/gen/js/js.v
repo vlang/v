@@ -558,6 +558,13 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.write("string('$text')")
 		}
 		ast.StructInit {
+			// TODO: once generic fns/unwrap_generic is implemented
+			// if node.unresolved {
+			// 	g.expr(ast.resolve_init(node, g.unwrap_generic(node.typ), g.table))
+			// } else {
+			// 	// `user := User{name: 'Bob'}`
+			// 	g.gen_struct_init(node)
+			// }
 			// `user := User{name: 'Bob'}`
 			g.gen_struct_init(node)
 		}
@@ -1032,16 +1039,12 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 	}
 	// gen toString method
 	fn_names := fns.map(it.name)
-	if !('toString' in fn_names) {
+	if 'toString' !in fn_names {
 		g.writeln('toString() {')
 		g.inc_indent()
 		g.write('return `$js_name {')
 		for i, field in node.fields {
-			g.write(if i == 0 {
-				' '
-			} else {
-				', '
-			})
+			g.write(if i == 0 { ' ' } else { ', ' })
 			match g.typ(field.typ).split('.').last() {
 				'string' { g.write('$field.name: "\${this["$field.name"].toString()}"') }
 				else { g.write('$field.name: \${this["$field.name"].toString()} ') }
@@ -1566,13 +1569,13 @@ fn (mut g JsGen) gen_type_cast_expr(it ast.CastExpr) {
 		|| (it.expr is ast.FloatLiteral && it.typ in table.float_type_idxs))
 	typ := g.typ(it.typ)
 	if !is_literal {
-		if !(typ in js.v_types) || g.ns.name == 'builtin' {
+		if typ !in js.v_types || g.ns.name == 'builtin' {
 			g.write('new ')
 		}
 		g.write('${typ}(')
 	}
 	g.expr(it.expr)
-	if typ == 'string' && !(it.expr is ast.StringLiteral) {
+	if typ == 'string' && it.expr !is ast.StringLiteral {
 		g.write('.toString()')
 	}
 	if !is_literal {

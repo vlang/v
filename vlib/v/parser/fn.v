@@ -87,7 +87,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 	if fn_name in p.imported_symbols {
 		fn_name = p.imported_symbols[fn_name]
 	}
-	comments := p.eat_line_end_comments()
+	comments := p.eat_comments(same_line: true)
 	pos.update_last_line(p.prev_tok.line_nr)
 	return ast.CallExpr{
 		name: fn_name
@@ -121,14 +121,20 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 		if is_mut {
 			p.next()
 		}
-		mut comments := p.eat_comments()
+		mut comments := p.eat_comments({})
 		arg_start_pos := p.tok.position()
 		mut array_decompose := false
 		if p.tok.kind == .ellipsis {
 			p.next()
 			array_decompose = true
 		}
-		mut e := p.expr(0)
+		mut e := ast.Expr{}
+		if p.tok.kind == .name && p.peek_tok.kind == .colon {
+			// `foo(key:val, key2:val2)`
+			e = p.struct_init(true) // short_syntax:true
+		} else {
+			e = p.expr(0)
+		}
 		if array_decompose {
 			e = ast.ArrayDecompose{
 				expr: e
@@ -140,7 +146,7 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 			comments = []ast.Comment{}
 		}
 		pos := arg_start_pos.extend(p.prev_tok.position())
-		comments << p.eat_comments()
+		comments << p.eat_comments({})
 		args << ast.CallArg{
 			is_mut: is_mut
 			share: table.sharetype_from_flags(is_shared, is_atomic)
@@ -206,6 +212,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			if rec_mut {
 				p.warn_with_pos('use `(mut f Foo)` instead of `(f mut Foo)`', lpar_pos.extend(p.peek_tok2.position()))
 			}
+		}
+		if p.tok.kind == .key_shared {
+			p.error_with_pos('use `(shared f Foo)` instead of `(f shared Foo)`', lpar_pos.extend(p.peek_tok2.position()))
 		}
 		receiver_pos = rec_start_pos.extend(p.tok.position())
 		is_amp := p.tok.kind == .amp
@@ -274,15 +283,22 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 				scope: 0
 			}
 		}
-	}
-	if p.tok.kind in [.plus, .minus, .mul, .div, .mod, .gt, .lt, .eq, .ne, .le, .ge]
-		&& p.peek_tok.kind == .lpar {
+	} else if p.tok.kind in [.plus, .minus, .mul, .div, .mod, .lt, .eq] && p.peek_tok.kind == .lpar {
 		name = p.tok.kind.str() // op_to_fn_name()
 		if rec_type == table.void_type {
 			p.error_with_pos('cannot use operator overloading with normal functions',
 				p.tok.position())
 		}
 		p.next()
+	} else if p.tok.kind in [.ne, .gt, .ge, .le] && p.peek_tok.kind == .lpar {
+		p.error_with_pos('cannot overload `!=`, `>`, `<=` and `>=` as they are auto generated from `==` and`<`',
+			p.tok.position())
+	} else {
+		pos := p.tok.position()
+		p.error_with_pos('expecting method name', pos)
+		return ast.FnDecl{
+			scope: 0
+		}
 	}
 	// <T>
 	generic_params := p.parse_generic_params()
@@ -301,6 +317,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 				name: param.name
 				typ: param.typ
 				is_mut: param.is_mut
+				is_auto_deref: param.is_mut
 				pos: param.pos
 				is_used: true
 				is_arg: true
@@ -425,7 +442,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		is_builtin: p.builtin_mod || p.mod in util.builtin_module_parts
 		attrs: p.attrs
 		scope: p.scope
+		label_names: p.label_names
 	}
+	p.label_names = []
 	p.close_scope()
 	return fn_decl
 }
@@ -509,11 +528,16 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	no_body := p.tok.kind != .lcbr
 	same_line = p.tok.line_nr == p.prev_tok.line_nr
 	if no_body && same_line {
-		p.error_with_pos('unexpected `$p.tok.kind` after anonymous function signature, expecting `{`',
+		p.error_with_pos('unexpected $p.tok after anonymous function signature, expecting `{`',
 			p.tok.position())
 	}
+	mut label_names := []string{}
 	if p.tok.kind == .lcbr {
+		tmp := p.label_names
+		p.label_names = []
 		stmts = p.parse_block_no_scope(false)
+		label_names = p.label_names
+		p.label_names = tmp
 	}
 	p.close_scope()
 	mut func := table.Fn{
@@ -540,6 +564,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 			pos: pos.extend(p.prev_tok.position())
 			file: p.file_name
 			scope: p.scope
+			label_names: label_names
 		}
 		typ: typ
 	}
@@ -558,7 +583,7 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 	}
 	types_only := p.tok.kind in [.amp, .ellipsis, .key_fn]
 		|| (p.peek_tok.kind == .comma && p.table.known_type(argname))
-		|| p.peek_tok.kind == .dot|| p.peek_tok.kind == .rpar
+		|| p.peek_tok.kind == .dot || p.peek_tok.kind == .rpar
 	// TODO copy pasta, merge 2 branches
 	if types_only {
 		// p.warn('types only')
@@ -665,8 +690,13 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 			}
 			if p.tok.kind == .key_mut {
 				// TODO remove old syntax
-				p.warn_with_pos('use `mut f Foo` instead of `f mut Foo`', p.tok.position())
+				if !p.pref.is_fmt {
+					p.warn_with_pos('use `mut f Foo` instead of `f mut Foo`', p.tok.position())
+				}
 				is_mut = true
+			}
+			if p.tok.kind == .key_shared {
+				p.error_with_pos('use `shared f Foo` instead of `f shared Foo`', p.tok.position())
 			}
 			if p.tok.kind == .ellipsis {
 				p.next()
@@ -734,7 +764,7 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 fn (mut p Parser) check_fn_mutable_arguments(typ table.Type, pos token.Position) {
 	sym := p.table.get_type_symbol(typ)
 	if sym.kind !in [.array, .array_fixed, .interface_, .map, .placeholder, .struct_, .sum_type]
-		&& !typ.is_ptr()&& !typ.is_pointer() {
+		&& !typ.is_ptr() && !typ.is_pointer() {
 		p.error_with_pos(
 			'mutable arguments are only allowed for arrays, interfaces, maps, pointers and structs\n' +
 			'return values instead: `fn foo(mut n $sym.name) {` => `fn foo(n $sym.name) $sym.name {`',

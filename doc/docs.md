@@ -20,18 +20,23 @@ The major way to get the latest and greatest V, is to __install it from source__
 It is __easy__, and it usually takes __only a few seconds__.
 
 ### Linux, macOS, FreeBSD, etc:
-You need `git`, a C compiler like `gcc` or `clang`, and `make`:
+You need `git`, and a C compiler like `tcc`, `gcc` or `clang`, and `make`:
 ```bash
-git clone https://github.com/vlang/v && cd v && make
+git clone https://github.com/vlang/v 
+cd v 
+make
 ```
 
 ### Windows:
-You need `git`, and a C compiler like `gcc` or `msvc`:
+You need `git`, and a C compiler like `tcc`, `gcc`, `clang` or `msvc`:
 ```bash
 git clone https://github.com/vlang/v
 cd v
-make
+make.bat -tcc
 ```
+NB: You can also pass one of `-gcc`, `-msvc`, `-clang` to `make.bat` instead,
+if you do prefer to use a different C compiler, but -tcc is small, fast, and
+easy to install (V will download a prebuilt binary automatically).
 
 ### Android
 Running V graphical apps on Android is also possible via [vab](https://github.com/vlang/vab).
@@ -39,7 +44,7 @@ Running V graphical apps on Android is also possible via [vab](https://github.co
 V Android dependencies: **V**, **Java JDK** >= 8, Android **SDK + NDK**.
 
   1. Install dependencies (see [vab](https://github.com/vlang/vab))
-  2. Plugin-in your Android device
+  2. Connect your Android device
   3. Run:
   ```bash
   git clone https://github.com/vlang/vab && cd vab && v vab.v
@@ -63,6 +68,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Strings](#strings)
     * [Numbers](#numbers)
     * [Arrays](#arrays)
+    * [Fixed size arrays](#fixed-size-arrays)
     * [Maps](#maps)
 * [Module imports](#module-imports)
 * [Statements & expressions](#statements--expressions)
@@ -125,6 +131,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Cross compilation](#cross-compilation)
     * [Cross-platform shell scripts in V](#cross-platform-shell-scripts-in-v)
     * [Attributes](#attributes)
+    * [Goto](#goto)
 * [Appendices](#appendices)
     * [Keywords](#appendix-i-keywords)
     * [Operators](#appendix-ii-operators)
@@ -134,8 +141,8 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
 
 <!--
 NB: there are several special keywords, which you can put after the code fences for v:
-compile, ignore, failcompile, oksyntax, badsyntax, wip
-For more details, do: `v run cmd/tools/check-md.v`
+compile, live, ignore, failcompile, oksyntax, badsyntax, wip, nofmt
+For more details, do: `v check-md`
 -->
 
 ## Hello World
@@ -416,7 +423,7 @@ Literals like `123` or `4.56` are treated in a special way. They do
 not lead to type promotions, however they default to `int` and `f64`
 respectively, when their type has to be decided:
 
-```v ignore
+```v nofmt
 u := u16(12)
 v := 13 + u    // v is of type `u16` - no promotion
 x := f32(45.6)
@@ -716,7 +723,7 @@ numbers.sort() // 1, 2, 3
 numbers.sort(a > b) // 3, 2, 1
 ```
 
-```v nofmt
+```v
 struct User {
 	age  int
 	name string
@@ -753,6 +760,34 @@ array_2 << array_1[..3]
 println(array_2) // [0, 1, 3, 5, 4]
 ```
 
+### Fixed size arrays
+
+V also supports arrays with fixed size. Unlike ordinary arrays, their
+length is constant. You cannot append elements to them, nor shrink them.
+You can only modify their elements in place.
+
+However, access to the elements of fixed size arrays is more efficient,
+they need less memory than ordinary arrays, and unlike ordinary arrays,
+their data is on the stack, so you may want to use them as buffers if you
+do not want additional heap allocations.
+
+Most methods are defined to work on ordinary arrays, not on fixed size arrays.
+You can convert a fixed size array to an ordinary array with slicing:
+```v
+mut fnums := [3]int{} // fnums is a fixed size array with 3 elements.
+fnums[0] = 1
+fnums[1] = 10
+fnums[2] = 100
+println(fnums) // => [1, 10, 100]
+println(typeof(fnums).name) // => [3]int
+
+anums := fnums[0..fnums.len]
+println(anums) // => [1, 10, 100]
+println(typeof(anums).name) // => []int
+```
+Note that slicing will cause the data of the fixed size array to be copied to
+the newly created ordinary array.
+
 ### Maps
 
 ```v
@@ -763,9 +798,12 @@ println(m['one']) // "1"
 println(m['bad_key']) // "0"
 println('bad_key' in m) // Use `in` to detect whether such key exists
 m.delete('two')
-// NB: map keys can have any type, `int` in this case,
-// and the whole map can be initialized using this short syntax:
-numbers := {
+```
+Maps can have keys of type string, rune, integer, float or voidptr.
+
+The whole map can be initialized using this short syntax:
+```v
+numbers := map{
 	1: 'one'
 	2: 'two'
 }
@@ -775,12 +813,14 @@ println(numbers)
 If a key is not found, a zero value is returned by default:
 
 ```v
-sm := {
+sm := map{
 	'abc': 'xyz'
 }
 val := sm['bad_key']
 println(val) // ''
-intm := {
+```
+```v
+intm := map{
 	1: 1234
 	2: 5678
 }
@@ -835,8 +875,12 @@ You can also import specific functions and types from modules directly:
 
 ```v
 import os { input }
-import crypto.sha256 { sum }
-import time { Time }
+
+fn main() {
+	// read text from stdin
+	name := input('Enter your name: ')
+	println('Hello, $name!')
+}
 ```
 Note: This is not allowed for constants - they must always be prefixed.
 
@@ -1016,15 +1060,18 @@ match mut x {
 ### In operator
 
 `in` allows to check whether an array or a map contains an element.
+To do the opposite, use `!in`.
 
 ```v
 nums := [1, 2, 3]
 println(1 in nums) // true
-m := {
+println(4 !in nums) // true
+m := map{
 	'one': 1
 	'two': 2
 }
 println('one' in m) // true
+println('three' !in m) // true
 ```
 
 It's also useful for writing boolean expressions that are clearer and more compact:
@@ -1090,7 +1137,7 @@ When an identifier is just a single underscore, it is ignored.
 #### Map `for`
 
 ```v
-m := {
+m := map{
 	'one': 1
 	'two': 2
 }
@@ -1103,7 +1150,7 @@ for key, value in m {
 
 Either key or value can be ignored by using a single underscore as the identifier.
 ```v
-m := {
+m := map{
 	'one': 1
 	'two': 2
 }
@@ -1454,7 +1501,7 @@ assert button.height == 20
 
 As you can see, both the struct name and braces can be omitted, instead of:
 
-```v ignore
+```v oksyntax nofmt
 new_button(ButtonConfig{text:'Click me', width:100})
 ```
 
@@ -1466,20 +1513,20 @@ Struct fields are private and immutable by default (making structs immutable as 
 Their access modifiers can be changed with
 `pub` and `mut`. In total, there are 5 possible options:
 
-```v nofmt
+```v
 struct Foo {
-    a int   // private immutable (default)
+	a int // private immutable (default)
 mut:
-    b int   // private mutable
-    c int   // (you can list multiple fields with the same access modifier)
+	b int // private mutable
+	c int // (you can list multiple fields with the same access modifier)
 pub:
-    d int   // public immutable (readonly)
+	d int // public immutable (readonly)
 pub mut:
-    e int   // public, but mutable only in parent module
+	e int // public, but mutable only in parent module
 __global:
-    f int   // public and mutable both inside and outside parent module
-}           // (not recommended to use, that's why the 'global' keyword
-            // starts with __)
+	// (not recommended to use, that's why the 'global' keyword starts with __)
+	f int // public and mutable both inside and outside parent module
+}
 ```
 
 For example, here's the `string` type defined in the `builtin` module:
@@ -1554,15 +1601,15 @@ intended for low-level applications like kernels and drivers.
 
 It is possible to modify function arguments by using the keyword `mut`:
 
-```v nofmt
+```v
 struct User {
 	name string
 mut:
-    is_registered bool
+	is_registered bool
 }
 
 fn (mut u User) register() {
-    u.is_registered = true
+	u.is_registered = true
 }
 
 mut user := User{}
@@ -1600,6 +1647,8 @@ Only more complex types such as arrays and maps may be modified.
 Use `user.register()` or `user = register(user)`
 instead of `register(mut user)`.
 
+#### Struct update syntax
+
 V makes it easy to return a modified version of an object:
 
 ```v
@@ -1611,7 +1660,7 @@ struct User {
 
 fn register(u User) User {
 	return {
-		u |
+		...u
 		is_registered: true
 	}
 }
@@ -1631,11 +1680,16 @@ fn sqr(n int) int {
 	return n * n
 }
 
+fn cube(n int) int {
+	return n * n * n
+}
+
 fn run(value int, op fn (int) int) int {
 	return op(value)
 }
 
 fn main() {
+	// Functions can be passed to other functions
 	println(run(5, sqr)) // "25"
 	// Anonymous functions can be declared inside other functions:
 	double_fn := fn (n int) int {
@@ -1646,6 +1700,15 @@ fn main() {
 	res := run(5, fn (n int) int {
 		return n + n
 	})
+	println(res) // "10"
+	// You can even have an array/map of functions:
+	fns := [sqr, cube]
+	println(fns[0](10)) // "100"
+	fns_map := map{
+		'sqr':  sqr
+		'cube': cube
+	}
+	println(fns_map['cube'](2)) // "8"
 }
 ```
 
@@ -1752,12 +1815,12 @@ Global variables are not allowed, so this can be really useful.
 When naming constants, `snake_case` must be used. In order to distinguish consts
 from local variables, the full path to consts must be specified. For example,
 to access the PI const, full `math.pi` name must be used both outside the `math`
-module, and inside it. That restriction is relaxed only for the `main` module 
+module, and inside it. That restriction is relaxed only for the `main` module
 (the one containing your `fn main()`, where you can use the shorter name of the
 constants too, i.e. just `println(numbers)`, not `println(main.numbers)` .
 
 vfmt takes care of this rule, so you can type `println(pi)` inside the `math` module,
-and vffmt will automatically update it to `println(math.pi)`.
+and vfmt will automatically update it to `println(math.pi)`.
 
 <!--
 Many people prefer all caps consts: `TOP_CITIES`. This wouldn't work
@@ -1766,8 +1829,8 @@ They can represent complex structures, and this is used quite often since there
 are no globals:
 -->
 
-```v ignore
-println('Top cities: $top_cities.filter(.usa)')
+```v oksyntax
+println('Top cities: ${top_cities.filter(.usa)}')
 ```
 
 ## Builtin functions
@@ -1789,12 +1852,16 @@ fn print_backtrace() // print backtraces on stderr
 `println` is a simple yet powerful builtin function, that can print anything:
 strings, numbers, arrays, maps, structs.
 
-```v nofmt
-struct User{ name string age int }
+```v
+struct User {
+	name string
+	age  int
+}
+
 println(1) // "1"
 println('hi') // "hi"
-println([1,2,3]) // "[1, 2, 3]"
-println(User{name:'Bob', age:20}) // "User{name:'Bob', age:20}"
+println([1, 2, 3]) // "[1, 2, 3]"
+println(User{ name: 'Bob', age: 20 }) // "User{name:'Bob', age:20}"
 ```
 
 ## Custom print of types
@@ -1906,20 +1973,25 @@ interface Speaker {
 
 dog := Dog{'Leonberger'}
 cat := Cat{'Siamese'}
+
 mut arr := []Speaker{}
 arr << dog
 arr << cat
 for item in arr {
-	println('a $item.breed ${typeof(item).name} says: $item.speak()')
+	println('a $item.breed says: $item.speak()')
 }
 ```
 
 A type implements an interface by implementing its methods and fields.
 There is no explicit declaration of intent, no "implements" keyword.
 
+#### Casting an interface
+
 We can test the underlying type of an interface using dynamic cast operators:
 ```v oksyntax
-fn announce(s Speaker) {
+interface Something {}
+
+fn announce(s Something) {
 	if s is Dog {
 		println('a $s.breed dog') // `s` is automatically cast to `Dog` (smart cast)
 	} else if s is Cat {
@@ -1931,6 +2003,8 @@ fn announce(s Speaker) {
 ```
 For more information, see [Dynamic casts](#dynamic-casts).
 
+#### Interface method definitions
+
 Also unlike Go, an interface may implement a method.
 These methods are not implemented by structs which implement that interface.
 
@@ -1941,22 +2015,14 @@ implemented on the interface is called.
 ```v
 struct Cat {}
 
-interface Adoptable {}
-
 fn (c Cat) speak() string {
 	return 'meow!'
 }
 
+interface Adoptable {}
+
 fn (a Adoptable) speak() string {
 	return 'adopt me!'
-}
-
-fn (a Adoptable) adopt() ?&Cat {
-	if a is Cat {
-		return a
-	} else {
-		return error('This cannot be adopted.')
-	}
 }
 
 fn new_adoptable() Adoptable {
@@ -1964,10 +2030,13 @@ fn new_adoptable() Adoptable {
 }
 
 fn main() {
-	adoptable := new_adoptable()
-	println(adoptable.speak()) // adopt me!
-	cat := adoptable.adopt() or { return }
-	println(cat.speak()) // meow!
+	cat := Cat{}
+	assert cat.speak() == 'meow!'
+	a := new_adoptable()
+	assert a.speak() == 'adopt me!'
+	if a is Cat {
+		println(a.speak()) // meow!
+	}
 }
 ```
 
@@ -2109,10 +2178,10 @@ That's why you have to declare a `mut` before the `is` expression:
 
 ```v ignore
 if mut w is Mars {
-    assert typeof(w).name == 'Mars'
-    if w.dust_storm() {
-        println('bad weather!')
-    }
+	assert typeof(w).name == 'Mars'
+	if w.dust_storm() {
+		println('bad weather!')
+	}
 }
 ```
 Otherwise `w` would keep its original type.
@@ -2625,7 +2694,7 @@ fn (shared b St) g() {
 }
 
 fn main() {
-	shared a := &St{ // create as reference so it's on the heap
+	shared a := St{
 		x: 10
 	}
 	go a.g()
@@ -2635,6 +2704,7 @@ fn main() {
 	}
 }
 ```
+Shared variables must be structs, arrays or maps.
 
 ## Decoding JSON
 
@@ -3034,8 +3104,8 @@ println(qux)
 
 ## sizeof and __offsetof
 
-V supports the usage of `sizeof` to calculate sizes of structs and
-`__offsetof` to calculate struct field offsets.
+* `sizeof(Type)` gives the size of a type in bytes.
+* `__offsetof(Struct, field_name)` gives the offset in bytes of a struct field.
 
 ```v
 struct Foo {
@@ -3043,9 +3113,9 @@ struct Foo {
 	b int
 }
 
-println(sizeof(Foo))
-println(__offsetof(Foo, a))
-println(__offsetof(Foo, b))
+assert sizeof(Foo) == 8
+assert __offsetof(Foo, a) == 0
+assert __offsetof(Foo, b) == 4
 ```
 
 ## Calling C functions from V
@@ -3228,7 +3298,7 @@ To cast a `voidptr` to a V reference, use `user := &User(user_void_ptr)`.
 
 `voidptr` can also be dereferenced into a V struct through casting: `user := User(user_void_ptr)`.
 
-[socket.v has an example which calls C code from V](https://github.com/vlang/v/blob/master/vlib/net/socket.v) .
+[an example of a module that calls C code from V](https://github.com/vlang/v/blob/master/vlib/v/tests/project_with_c_code/mod1/wrapper.v)
 
 ## Debugging generated C code
 
@@ -3344,6 +3414,71 @@ executable, increasing your binary size, but making it more self contained
 and thus easier to distribute. In this case, `f.data()` will cause *no IO*,
 and it will always return the same data.
 
+#### $tmpl for embedding and parsing V template files
+
+V has a simple template language for text and html templates, and they can easily
+be embedded via `$tmpl('path/to/template.txt')`:
+
+
+```v ignore
+fn build() string {
+	name := 'Peter'
+	age := 25
+	numbers := [1, 2, 3]
+	return $tmpl('1.txt')
+}
+
+fn main() {
+	println(build())
+}
+```
+
+1.txt:
+
+```
+name: @name
+
+age: @age
+
+numbers: @numbers
+
+@for number in numbers
+  @number
+@end
+```
+
+output:
+
+```
+name: Peter
+
+age: 25
+
+numbers: [1, 2, 3]
+
+1
+2
+3
+```
+
+
+
+
+#### $env
+
+```v
+module main
+
+fn main() {
+	compile_time_env := $env('ENV_VAR')
+	println(compile_time_env)
+}
+```
+
+V can bring in values at compile time from environment variables.
+`$env('ENV_VAR')` can also be used in top-level `#flag` and `#include` statements:
+`#flag linux -I $env('JAVA_HOME')/include`.
+
 ### Environment specific files
 
 If a file has an environment-specific suffix, it will only be compiled for that environment.
@@ -3396,7 +3531,7 @@ single block. `customflag` should be a snake_case identifier, it can not
 contain arbitrary characters (only lower case latin letters + numbers + `_`).
 NB: a combinatorial `_d_customflag_linux.c.v` postfix will not work.
 If you do need a custom flag file, that has platform dependent code, use the
-postfix `_d_customflag.v`, and then use plaftorm dependent compile time 
+postfix `_d_customflag.v`, and then use plaftorm dependent compile time
 conditional blocks inside it, i.e. `$if linux {}` etc.
 
 ## Compile time pseudo variables
@@ -3405,6 +3540,7 @@ V also gives your code access to a set of pseudo string variables,
 that are substituted at compile time:
 
 - `@FN` => replaced with the name of the current V function
+- `@METHOD` => replaced with ReceiverType.MethodName
 - `@MOD` => replaced with the name of the current V module
 - `@STRUCT` => replaced with the name of the current V struct
 - `@FILE` => replaced with the path of the V source file
@@ -3539,7 +3675,8 @@ To improve safety and maintainability, operator overloading is limited:
 - `==` and `!=` are self generated by the compiler but can be overriden.
 - Calling other functions inside operator functions is not allowed.
 - Operator functions can't modify their arguments.
-- When using `<`, `>`, `>=`, `<=`, `==` and `!=` operators, the return type must be `bool`.
+- When using `<` and `==` operators, the return type must be `bool`.
+- `!=`, `>`, `<=` and `>=` are auto generated when `==` and `<` are defined.
 - Both arguments must have the same type (just like with all operators in V).
 - Assignment operators (`*=`, `+=`, `/=`, etc)
 are auto generated when the operators are defined though they must return the same type.
@@ -3684,17 +3821,19 @@ module global (so that you can use `ls()` instead of `os.ls()`, for example).
 // so it can be run just by specifying the path to the file
 // once it's made executable using `chmod +x`.
 
-rm('build/*')
+rm('build/*')?
 // Same as:
-for file in ls('build/') {
-    rm(file)
+files_build := ls('build/')?
+for file in files_build {
+    rm(file)?
 }
 
-mv('*.v', 'build/')
+mv('*.v', 'build/')?
 // Same as:
-for file in ls('.') {
+files := ls('.')?
+for file in files {
     if file.ends_with('.v') {
-        mv(file, 'build/')
+        mv(file, 'build/')?
     }
 }
 ```
@@ -3752,6 +3891,25 @@ struct C.Foo {
 fn C.DefWindowProc(hwnd int, msg int, lparam int, wparam int)
 ```
 
+## Goto
+
+V allows unconditionally jumping to a label with `goto`. The label name must be contained
+within the same function as the `goto` statement. A program may `goto` a label outside
+or deeper than the current scope, but it must not skip a variable initialization.
+
+```v ignore
+if x {
+	// ...
+	if y {
+		goto my_label
+	}
+	// ...
+}
+my_label:
+```
+`goto` should be avoided when `for` can be used instead. In particular,
+[labelled break](#labelled-break--continue) can be used to break out of
+a nested loop.
 
 # Appendices
 

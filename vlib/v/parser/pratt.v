@@ -18,7 +18,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 	is_stmt_ident := p.is_stmt_ident
 	p.is_stmt_ident = false
 	if !p.pref.is_fmt {
-		p.eat_comments()
+		p.eat_comments({})
 	}
 	// Prefix
 	match p.tok.kind {
@@ -240,20 +240,23 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			// Map `{"age": 20}` or `{ x | foo:bar, a:10 }`
 			p.next()
 			if p.tok.kind in [.chartoken, .number, .string] {
+				// TODO deprecate
 				node = p.map_init()
 			} else {
 				// it should be a struct
-				if p.peek_tok.kind == .pipe {
+				if p.tok.kind == .name && p.peek_tok.kind == .pipe {
+					p.warn_with_pos('use e.g. `...struct_var` instead', p.peek_tok.position())
 					node = p.assoc()
-				} else if p.peek_tok.kind == .colon || p.tok.kind in [.rcbr, .comment] {
+				} else if (p.tok.kind == .name && p.peek_tok.kind == .colon)
+					|| p.tok.kind in [.rcbr, .comment, .ellipsis] {
 					node = p.struct_init(true) // short_syntax: true
 				} else if p.tok.kind == .name {
 					p.next()
-					s := if p.tok.lit != '' { '`$p.tok.lit`' } else { p.tok.kind.str() }
-					p.error_with_pos('unexpected $s, expecting `:`', p.tok.position())
+					p.error_with_pos('unexpected $p.tok, expecting `:` after struct field name',
+						p.tok.position())
 					return ast.Expr{}
 				} else {
-					p.error_with_pos('unexpected `$p.tok.lit`, expecting struct key',
+					p.error_with_pos('unexpected $p.tok, expecting struct field name',
 						p.tok.position())
 					return ast.Expr{}
 				}
@@ -294,8 +297,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 		else {
 			if p.tok.kind != .eof {
 				// eof should be handled where it happens
-				p.error_with_pos('invalid expression: unexpected `$p.tok.kind.str()` token',
-					p.tok.position())
+				p.error_with_pos('invalid expression: unexpected $p.tok', p.tok.position())
 				return ast.Expr{}
 			}
 		}
@@ -375,6 +377,10 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 				p.warn_with_pos('`$p.tok.kind` operator can only be used as a statement',
 					p.peek_tok.position())
 			}
+			if p.tok.kind in [.inc, .dec] && p.prev_tok.line_nr != p.tok.line_nr {
+				p.error_with_pos('$p.tok must be on the same line as the previous token',
+					p.tok.position())
+			}
 			node = ast.PostfixExpr{
 				op: p.tok.kind
 				expr: node
@@ -397,12 +403,6 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	}
 	precedence := p.tok.precedence()
 	mut pos := p.tok.position()
-	if left.position().line_nr < pos.line_nr {
-		pos = token.Position{
-			...pos
-			line_nr: left.position().line_nr
-		}
-	}
 	p.next()
 	mut right := ast.Expr{}
 	prev_expecting_type := p.expecting_type

@@ -135,7 +135,7 @@ pub fn (a array) repeat(count int) array {
 	return arr
 }
 
-// sort sorts array in-place using given `compare` function as comparator.
+// sort_with_compare sorts array in-place using given `compare` function as comparator.
 pub fn (mut a array) sort_with_compare(compare voidptr) {
 	C.qsort(mut a.data, a.len, a.element_size, compare)
 }
@@ -418,7 +418,8 @@ fn (mut a array) push(val voidptr) {
 	a.len++
 }
 
-// `val` is array.data
+// push_many implements the functionality for pushing another array.
+// `val` is array.data and user facing usage is `a << [1,2,3]`
 // TODO make private, right now it's used by strings.Builder
 pub fn (mut a3 array) push_many(val voidptr, size int) {
 	if a3.data == val && !isnil(a3.data) {
@@ -683,7 +684,7 @@ pub fn (a1 []string) eq(a2 []string) bool {
 	return true
 }
 
-// compare_i64 for []f64 sort_with_compare()
+// compare_i64 for []i64 sort_with_compare()
 // sort []i64 with quicksort
 // usage :
 // mut x := [i64(100),10,70,28,92]

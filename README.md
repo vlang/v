@@ -1,6 +1,6 @@
 <div align="center">
 <p>
-    <img width="80" src="https://raw.githubusercontent.com/donnisnoni95/v-logo/master/dist/v-logo.svg?sanitize=true">
+    <img width="80" src="https://raw.githubusercontent.com/vlang/v-logo/master/dist/v-logo.svg?sanitize=true">
 </p>
 <h1>The V Programming Language</h1>
 
@@ -243,6 +243,18 @@ Hello from V.js
 Hello from V.js
 ```
 -->
+
+## Android graphical apps
+
+With V's `vab` tool, building V UI and graphical apps for Android can become as easy as:
+
+```
+./vab /path/to/v/examples/2048
+```
+
+[https://github.com/vlang/vab](https://github.com/vlang/vab).
+
+<img src="https://user-images.githubusercontent.com/768942/107622846-c13f3900-6c58-11eb-8a66-55db12979b73.png">
 
 ## Developing web applications
 

@@ -1,4 +1,4 @@
-vlib/v/checker/tests/struct_cast_to_struct_generic_err.vv:11:7: error: cannot convert struct `Abc<int>` to struct `Xyz`
+vlib/v/checker/tests/struct_cast_to_struct_generic_err.vv:11:7: error: casting to struct is deprecated, use e.g. `Struct{...expr}` instead
     9 | fn main() {
    10 |     abc := Abc<int>{}
    11 |     _ := Xyz(abc)

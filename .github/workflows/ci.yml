@@ -63,9 +63,9 @@ jobs:
       - name: Build the repeat tool
         run: ./v cmd/tools/repeat.v
       - name: Repeat -o hw.c examples/hello_world.v
-        run: cmd/tools/repeat --max_time 150 --series 3 --count 10 --nmaxs 5 --warmup 3 --fail_percent 10 -t '{T} -show-timings -o hw.c examples/hello_world.v' ./v ./vmaster/v
+        run: cmd/tools/repeat --max_time 150 --series 3 --count 10 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -show-timings -o hw.c examples/hello_world.v' . ./vmaster
       - name: Repeat -o v.c cmd/v
-        run: cmd/tools/repeat --max_time 750 --series 3 --count 15 --nmaxs 5 --warmup 3 --fail_percent 10 -t '{T} -show-timings -o v.c cmd/v' ./v ./vmaster/v
+        run: cmd/tools/repeat --max_time 750 --series 3 --count 15 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -show-timings -o v.c cmd/v' . ./vmaster
 
   ubuntu-tcc:
     runs-on: ubuntu-20.04
@@ -106,6 +106,8 @@ jobs:
           ./cmd/tools/test_if_v_test_system_works
       - name: Self tests
         run: ./v -silent test-self
+      - name: Self tests (-Werror)
+        run: ./v -cflags "-Werror" test-self
       - name: Test time functions in a timezone UTC-12
         run: TZ=Etc/GMT+12 ./v test vlib/time/
       - name: Test time functions in a timezone UTC-3
@@ -117,9 +119,9 @@ jobs:
       - name: Test time functions in a timezone using daylight saving (Europe/Paris)
         run: TZ=Europe/Paris ./v test vlib/time/
       - name: Build examples
-        run: ./v build-examples
+        run: ./v -W build-examples
       - name: Test building v tools
-        run: ./v build-tools
+        run: ./v -W build-tools
       - name: Test v binaries
         run: ./v build-vbinaries
       - name: Test v tutorials
@@ -254,7 +256,7 @@ jobs:
           ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
       - name: Build V
         run: make -j4 && ./v -cc gcc -cg -cflags -Werror -o v cmd/v
-      - name: Valgrind
+      - name: Valgrind v.c
         run: valgrind --error-exitcode=1 ./v -o v.c cmd/v
       - name: Run sanitizers
         run: |
@@ -289,6 +291,8 @@ jobs:
           ./v -silent test-self
       - name: Self tests (-prod)
         run: ./v -o vprod -prod cmd/v && ./vprod -silent test-self
+      - name: Self tests (-Werror)
+        run: ./v -cc gcc -cflags "-Werror" test-self
       - name: Build examples
         run: ./v build-examples
       - name: Build examples with -autofree
@@ -306,7 +310,7 @@ jobs:
           ./v build-module vlib/v/token
           ./v build-module vlib/v/ast
           ./v build-module vlib/v/parser
-          ./v build-module vlib/v/gen
+          ./v build-module vlib/v/gen/c
           ./v build-module vlib/v/depgraph
           ./v build-module vlib/os/cmdline
       - name: x64 machine code generation
@@ -358,9 +362,11 @@ jobs:
           ./v -o v2 cmd/v -cflags -fsanitize=memory
           ./v -o v3 cmd/v -cflags -fsanitize=thread
           ./v -o v4 cmd/v -cflags -fsanitize=undefined
+          ./v -o v5 cmd/v -cflags -fsanitize=address
           UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v2 -o v.c cmd/v
           UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v3 -o v.c cmd/v
           UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v4 -o v.c cmd/v
+          ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v5 -o v.c cmd/v
       - name: v self compilation
         run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
       - name: v self with -usecache
@@ -374,6 +380,8 @@ jobs:
           ./v -silent test-self
       - name: Self tests (-prod)
         run: ./v -o vprod -prod cmd/v && ./vprod -silent test-self
+      - name: Self tests (-Werror)
+        run: ./v -cflags "-Werror" test-self
       - name: Build examples
         run: ./v build-examples
       - name: Build examples with -autofree
@@ -391,7 +399,7 @@ jobs:
           ./v build-module vlib/v/token
           ./v build-module vlib/v/ast
           ./v build-module vlib/v/parser
-          ./v build-module vlib/v/gen
+          ./v build-module vlib/v/gen/c
           ./v build-module vlib/v/depgraph
           ./v build-module vlib/os/cmdline
       - name: x64 machine code generation
@@ -666,6 +674,8 @@ jobs:
   #node hi.js
   #    - name: Test v binaries
   #      run: ./v build-vbinaries
+      - name: Build examples
+        run: ./v build-examples
       - name: v2 self compilation
         run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
 

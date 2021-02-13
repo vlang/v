@@ -529,7 +529,7 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 	assert channels.len == dir.len
 	assert dir.len == objrefs.len
 	mut subscr := []Subscription{len: channels.len}
-	mut sem := Semaphore{}
+	mut sem := unsafe { Semaphore{} }
 	sem.init(0)
 	for i, ch in channels {
 		subscr[i].sem = &sem
@@ -563,6 +563,7 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 	}
 	stopwatch := if timeout <= 0 { time.StopWatch{} } else { time.new_stopwatch({}) }
 	mut event_idx := -1 // negative index means `timed out`
+outer:
 	for {
 		rnd := rand.u32_in_range(0, u32(channels.len))
 		mut num_closed := 0
@@ -575,7 +576,7 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 				stat := channels[i].try_push_priv(objrefs[i], true)
 				if stat == .success {
 					event_idx = i
-					goto restore
+					break outer
 				} else if stat == .closed {
 					num_closed++
 				}
@@ -583,7 +584,7 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 				stat := channels[i].try_pop_priv(objrefs[i], true)
 				if stat == .success {
 					event_idx = i
-					goto restore
+					break outer
 				} else if stat == .closed {
 					num_closed++
 				}
@@ -591,21 +592,20 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 		}
 		if num_closed == channels.len {
 			event_idx = -2
-			goto restore
+			break outer
 		}
 		if timeout == 0 {
-			goto restore
+			break outer
 		}
 		if timeout > 0 {
 			remaining := timeout - stopwatch.elapsed()
 			if !sem.timed_wait(remaining) {
-				goto restore
+				break outer
 			}
 		} else {
 			sem.wait()
 		}
 	}
-restore:
 	// reset subscribers
 	for i, ch in channels {
 		if dir[i] == .push {

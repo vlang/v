@@ -27,7 +27,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		line_nr := p.tok.line_nr
 		p.next()
 		// []string
-		if p.tok.kind in [.name, .amp, .lsbr] && p.tok.line_nr == line_nr {
+		if p.tok.kind in [.name, .amp, .lsbr, .key_shared] && p.tok.line_nr == line_nr {
 			elem_type_pos = p.tok.position()
 			elem_type = p.parse_type()
 			// this is set here because it's a known type, others could be the
@@ -41,7 +41,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		// [1,2,3] or [const]byte
 		for i := 0; p.tok.kind !in [.rsbr, .eof]; i++ {
 			exprs << p.expr(0)
-			ecmnts << p.eat_comments()
+			ecmnts << p.eat_comments({})
 			if p.tok.kind == .comma {
 				p.next()
 			}
@@ -80,7 +80,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 					first_pos.extend(last_pos))
 			}
 		} else {
-			if p.tok.kind == .not && p.tok.line_nr == p.prev_tok.line_nr {
+			if p.tok.kind == .not { // && p.tok.line_nr == p.prev_tok.line_nr {
 				last_pos = p.tok.position()
 				is_fixed = true
 				has_val = true
@@ -94,7 +94,9 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		}
 	}
 	if exprs.len == 0 && p.tok.kind != .lcbr && has_type {
-		p.warn_with_pos('use `x := []Type{}` instead of `x := []Type`', first_pos.extend(last_pos))
+		if !p.pref.is_fmt {
+			p.warn_with_pos('use `x := []Type{}` instead of `x := []Type`', first_pos.extend(last_pos))
+		}
 	}
 	mut has_len := false
 	mut has_cap := false
@@ -150,15 +152,13 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 	}
 }
 
+// parse tokens between braces
 fn (mut p Parser) map_init() ast.MapInit {
 	first_pos := p.prev_tok.position()
 	mut keys := []ast.Expr{}
 	mut vals := []ast.Expr{}
 	for p.tok.kind != .rcbr && p.tok.kind != .eof {
 		key := p.expr(0)
-		if key is ast.FloatLiteral {
-			p.error_with_pos('maps do not support floating point keys yet', key.pos)
-		}
 		keys << key
 		p.check(.colon)
 		val := p.expr(0)

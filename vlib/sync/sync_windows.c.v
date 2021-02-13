@@ -5,6 +5,8 @@ module sync
 
 import time
 
+#include <synchapi.h>
+
 fn C.InitializeConditionVariable(voidptr)
 fn C.WakeConditionVariable(voidptr)
 fn C.SleepConditionVariableSRW(voidptr, voidptr, u32, u32) int
@@ -20,16 +22,19 @@ type SHANDLE = voidptr
 //[init_with=new_mutex] // TODO: implement support for this struct attribute, and disallow Mutex{} from outside the sync.new_mutex() function.
 
 // `SRWLOCK` is much more performant that `Mutex` on Windows, so use that in both cases since we don't want to share with other processes
+[ref_only]
 pub struct Mutex {
 mut:
 	mx C.SRWLOCK    // mutex handle
 }
 
+[ref_only]
 pub struct RwMutex {
 mut:
 	mx C.SRWLOCK    // mutex handle
 }
 
+[ref_only]
 struct Semaphore {
 	mtx C.SRWLOCK
 	cond C.CONDITION_VARIABLE
@@ -125,6 +130,7 @@ pub fn (mut sem Semaphore) wait() {
 	}
 	C.AcquireSRWLockExclusive(&sem.mtx)
 	c = C.atomic_load_u32(&sem.count)
+outer:
 	for {
 		if c == 0 {
 			C.SleepConditionVariableSRW(&sem.cond, &sem.mtx, C.INFINITE, 0)
@@ -135,11 +141,10 @@ pub fn (mut sem Semaphore) wait() {
 				if c > 1 {
 					C.WakeConditionVariable(&sem.cond)
 				}
-				goto unlock
+				break outer
 			}
 		}
 	}
-unlock:
 	C.ReleaseSRWLockExclusive(&sem.mtx)
 }
 
@@ -160,11 +165,12 @@ pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
 	t_ms := u32(timeout / time.millisecond)
 	mut res := 0
 	c = C.atomic_load_u32(&sem.count)
+outer:
 	for {
 		if c == 0 {
 			res = C.SleepConditionVariableSRW(&sem.cond, &sem.mtx, t_ms, 0)
 			if res == 0 {
-				goto unlock
+				break outer
 			}
 			c = C.atomic_load_u32(&sem.count)
 		}
@@ -173,11 +179,10 @@ pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
 				if c > 1 {
 					C.WakeConditionVariable(&sem.cond)
 				}
-				goto unlock
+				break outer
 			}
 		}
 	}
-unlock:
 	C.ReleaseSRWLockExclusive(&sem.mtx)
 	return res != 0
 }

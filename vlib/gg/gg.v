@@ -652,6 +652,53 @@ pub fn (ctx &Context) draw_empty_rounded_rect(x f32, y f32, w f32, h f32, radius
 	sgl.end()
 }
 
+// draw_convex_poly draws a convex polygon, given an array of points, and a color.
+// Note that the points must be given in clockwise order.
+pub fn (ctx &Context) draw_convex_poly(points []f32, c gx.Color) {
+	assert points.len % 2 == 0
+	len := points.len / 2
+	assert len >= 3
+
+	if c.a != 255 {
+		sgl.load_pipeline(ctx.timage_pip)
+	}
+	sgl.c4b(c.r, c.g, c.b, c.a)
+
+	sgl.begin_triangle_strip()
+	x0 := points[0]
+	y0 := points[1]
+	for i in 1 .. (len / 2 + 1) {
+		sgl.v2f(x0, y0)
+		sgl.v2f(points[i * 4 - 2], points[i * 4 - 1])
+		sgl.v2f(points[i * 4], points[i * 4 + 1])
+	}
+
+	if len % 2 == 0 {
+		sgl.v2f(points[2 * len - 2], points[2 * len - 1])
+	}
+	sgl.end()
+}
+
+// draw_empty_poly - draws the borders of a polygon, given an array of points, and a color.
+// Note that the points must be given in clockwise order.
+pub fn (ctx &Context) draw_empty_poly(points []f32, c gx.Color) {
+	assert points.len % 2 == 0
+	len := points.len / 2
+	assert len >= 3
+
+	if c.a != 255 {
+		sgl.load_pipeline(ctx.timage_pip)
+	}
+	sgl.c4b(c.r, c.g, c.b, c.a)
+
+	sgl.begin_line_strip()
+	for i in 0 .. len {
+		sgl.v2f(points[2 * i], points[2 * i + 1])
+	}
+	sgl.v2f(points[0], points[1])
+	sgl.end()
+}
+
 pub fn screen_size() Size {
 	$if macos {
 		return C.gg_get_screen_size()

@@ -628,19 +628,19 @@ fn (mut v Builder) cc() {
 		}
 		//
 		os.chdir(vdir)
-		cmd := '$ccompiler @$response_file'
+		cmd := '$ccompiler "@$response_file"'
 		tried_compilation_commands << cmd
 		v.show_cc(cmd, response_file, response_file_content)
 		// Run
 		ccompiler_label := 'C ${os.file_name(ccompiler):3}'
-		v.timing_start(ccompiler_label)
+		util.timing_start(ccompiler_label)
 		res := os.exec(cmd) or {
 			println('C compilation failed.')
 			os.chdir(original_pwd)
 			verror(err)
 			return
 		}
-		v.timing_measure(ccompiler_label)
+		util.timing_measure(ccompiler_label)
 		if v.pref.show_c_output {
 			v.show_c_compiler_output(res)
 		}

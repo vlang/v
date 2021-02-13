@@ -4,8 +4,8 @@
 module builtin
 
 __global (
-	g_m2_buf byteptr 
-	g_m2_ptr byteptr 
+	g_m2_buf byteptr
+	g_m2_ptr byteptr
 )
 
 // isnil returns true if an object is nil (only for C objects).
@@ -38,7 +38,7 @@ __global (
 	total_m              = i64(0)
 	nr_mallocs           = int(0)
 	// will be filled in cgen
-	as_cast_type_indexes   []VCastTypeIndexName 
+	as_cast_type_indexes   []VCastTypeIndexName
 )
 
 fn __as_cast(obj voidptr, obj_type int, expected_type int) voidptr {
@@ -85,11 +85,13 @@ fn __print_assert_failure(i &VAssertMetaInfo) {
 	}
 }
 
+// MethodArgs holds type information for function and/or method arguments.
 pub struct MethodArgs {
 pub:
 	typ int
 }
 
+// FunctionData holds information about a parsed function.
 pub struct FunctionData {
 pub:
 	name        string
@@ -99,6 +101,7 @@ pub:
 	typ         int
 }
 
+// FieldData holds information about a field. Fields reside on structs.
 pub struct FieldData {
 pub:
 	name   string

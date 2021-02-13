@@ -1,7 +1,0 @@
-fn fil(a string) bool {
-	return a.len > 0
-}
-fn main() {
-	a := [1,2,3,4].filter(fil)
-	println(a)
-}

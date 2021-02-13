@@ -550,7 +550,7 @@ pub fn (t &TypeSymbol) is_pointer() bool {
 
 [inline]
 pub fn (t &TypeSymbol) is_int() bool {
-	return t.kind in [.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .int_literal]
+	return t.kind in [.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .int_literal, .rune]
 }
 
 [inline]
@@ -694,6 +694,7 @@ pub mut:
 	typ              Type
 	default_expr     FExpr
 	has_default_expr bool
+	default_expr_typ Type
 	default_val      string
 	attrs            []Attr
 	is_pub           bool
@@ -846,7 +847,11 @@ pub fn (mytable &Table) type_to_str_using_aliases(t Type, import_aliases map[str
 			res = mytable.shorten_user_defined_typenames(res, import_aliases)
 		}
 	}
-	nr_muls := t.nr_muls()
+	mut nr_muls := t.nr_muls()
+	if t.has_flag(.shared_f) {
+		nr_muls--
+		res = 'shared ' + res
+	}
 	if nr_muls > 0 {
 		res = strings.repeat(`&`, nr_muls) + res
 	}

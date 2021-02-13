@@ -6,6 +6,7 @@ module main
 import os
 import os.cmdline
 import rand
+import term
 import v.ast
 import v.pref
 import v.fmt
@@ -30,6 +31,7 @@ struct FormatOptions {
 const (
 	formatted_file_token = '\@\@\@' + 'FORMATTED_FILE: '
 	vtmp_folder          = util.get_vtmp_folder()
+	term_colors          = term.can_show_color_on_stderr()
 )
 
 fn main() {
@@ -51,6 +53,9 @@ fn main() {
 		is_debug: '-debug' in args
 		is_noerror: '-noerror' in args
 		is_verify: '-verify' in args
+	}
+	if term_colors {
+		os.setenv('VCOLORS', 'always', true)
 	}
 	if foptions.is_verbose {
 		eprintln('vfmt foptions: $foptions')
@@ -150,6 +155,7 @@ fn main() {
 		if foptions.is_c {
 			exit(2)
 		}
+		exit(1)
 	}
 }
 
@@ -165,7 +171,7 @@ fn (foptions &FormatOptions) format_file(file string) {
 		parent: 0
 	})
 	// checker.check(file_ast)
-	formatted_content := fmt.fmt(file_ast, table, foptions.is_debug)
+	formatted_content := fmt.fmt(file_ast, table, prefs, foptions.is_debug)
 	file_name := os.file_name(file)
 	ulid := rand.ulid()
 	vfmt_output_path := os.join_path(vtmp_folder, 'vfmt_${ulid}_$file_name')
@@ -189,7 +195,7 @@ fn (foptions &FormatOptions) format_pipe() {
 		parent: 0
 	})
 	// checker.check(file_ast)
-	formatted_content := fmt.fmt(file_ast, table, foptions.is_debug)
+	formatted_content := fmt.fmt(file_ast, table, prefs, foptions.is_debug)
 	print(formatted_content)
 	if foptions.is_verbose {
 		eprintln('fmt.fmt worked and $formatted_content.len bytes were written to stdout.')

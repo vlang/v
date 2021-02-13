@@ -609,7 +609,7 @@ fn (mut s Scanner) text_scan() token.Token {
 			// end of `$expr`
 			// allow `'$a.b'` and `'$a.c()'`
 			if s.is_inter_start && next_char == `\\`
-				&& s.look_ahead(2) !in [`x`, `n`, `r`, `\\`, `t`, `e`] {
+				&& s.look_ahead(2) !in [`x`, `n`, `r`, `\\`, `t`, `e`, `"`] {
 				s.warn('unknown escape sequence \\${s.look_ahead(2)}')
 			}
 			if s.is_inter_start && next_char == `(` {
@@ -1091,8 +1091,9 @@ fn (mut s Scanner) ident_string() string {
 				s.error(r'`\x` used with no following hex digits')
 			}
 			// Escape `\u`
-			if c == `u`
-				&& (s.text[s.pos + 1] == s.quote || s.text[s.pos + 2] == s.quote || s.text[s.pos + 3] == s.quote || s.text[s.pos + 4] == s.quote || !s.text[s.pos + 1].is_hex_digit()
+			if c == `u` && (s.text[s.pos + 1] == s.quote
+				|| s.text[s.pos + 2] == s.quote || s.text[s.pos + 3] == s.quote
+				|| s.text[s.pos + 4] == s.quote || !s.text[s.pos + 1].is_hex_digit()
 				|| !s.text[s.pos + 2].is_hex_digit()
 				|| !s.text[s.pos + 3].is_hex_digit()
 				|| !s.text[s.pos + 4].is_hex_digit()) {
@@ -1181,11 +1182,7 @@ fn (mut s Scanner) ident_char() string {
 		}
 	}
 	// Escapes a `'` character
-	return if c == "'" {
-		'\\' + c
-	} else {
-		c
-	}
+	return if c == "'" { '\\' + c } else { c }
 }
 
 [inline]
