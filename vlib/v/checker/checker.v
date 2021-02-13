@@ -5777,42 +5777,45 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			}
 		}
 	}
-	return_sym := c.table.get_type_symbol(node.return_type)
-	if node.language == .v && return_sym.kind in [.placeholder, .int_literal, .float_literal]
-		&& return_sym.language == .v {
-		c.error('unknown type `$return_sym.name`', node.pos)
-	}
-	if node.language == .v && node.is_method && node.name == 'str' {
-		if node.return_type != table.string_type {
-			c.error('.str() methods should return `string`', node.pos)
+	if node.return_type != table.Type(0) {
+		return_sym := c.table.get_type_symbol(node.return_type)
+		if node.language == .v && return_sym.kind in [.placeholder, .int_literal, .float_literal]
+			&& return_sym.language == .v {
+			c.error('unknown type `$return_sym.name`', node.pos)
 		}
-		if node.params.len != 1 {
-			c.error('.str() methods should have 0 arguments', node.pos)
+		if node.language == .v && node.is_method && node.name == 'str' {
+			if node.return_type != table.string_type {
+				c.error('.str() methods should return `string`', node.pos)
+			}
+			if node.params.len != 1 {
+				c.error('.str() methods should have 0 arguments', node.pos)
+			}
 		}
-	}
-	if node.language == .v && node.is_method && node.name in ['+', '-', '*', '%', '/', '<', '=='] {
-		if node.params.len != 2 {
-			c.error('operator methods should have exactly 1 argument', node.pos)
-		} else {
-			receiver_sym := c.table.get_type_symbol(node.receiver.typ)
-			param_sym := c.table.get_type_symbol(node.params[1].typ)
-			if param_sym.kind !in [.struct_, .alias] || receiver_sym.kind !in [.struct_, .alias] {
-				c.error('operator methods are only allowed for struct and type alias',
-					node.pos)
+		if node.language == .v && node.is_method
+			&& node.name in ['+', '-', '*', '%', '/', '<', '=='] {
+			if node.params.len != 2 {
+				c.error('operator methods should have exactly 1 argument', node.pos)
 			} else {
-				parent_sym := c.table.get_final_type_symbol(node.receiver.typ)
-				if node.rec_mut {
-					c.error('receiver cannot be `mut` for operator overloading', node.receiver_pos)
-				} else if node.params[1].is_mut {
-					c.error('argument cannot be `mut` for operator overloading', node.pos)
-				} else if node.receiver.typ != node.params[1].typ {
-					c.error('expected `$receiver_sym.name` not `$param_sym.name` - both operands must be the same type for operator overloading',
-						node.params[1].type_pos)
-				} else if node.name in ['<', '=='] && node.return_type != table.bool_type {
-					c.error('operator comparison methods should return `bool`', node.pos)
-				} else if parent_sym.is_primitive() {
-					c.error('cannot define operator methods on type alias for `$parent_sym.name`',
+				receiver_sym := c.table.get_type_symbol(node.receiver.typ)
+				param_sym := c.table.get_type_symbol(node.params[1].typ)
+				if param_sym.kind !in [.struct_, .alias] || receiver_sym.kind !in [.struct_, .alias] {
+					c.error('operator methods are only allowed for struct and type alias',
 						node.pos)
+				} else {
+					parent_sym := c.table.get_final_type_symbol(node.receiver.typ)
+					if node.rec_mut {
+						c.error('receiver cannot be `mut` for operator overloading', node.receiver_pos)
+					} else if node.params[1].is_mut {
+						c.error('argument cannot be `mut` for operator overloading', node.pos)
+					} else if node.receiver.typ != node.params[1].typ {
+						c.error('expected `$receiver_sym.name` not `$param_sym.name` - both operands must be the same type for operator overloading',
+							node.params[1].type_pos)
+					} else if node.name in ['<', '=='] && node.return_type != table.bool_type {
+						c.error('operator comparison methods should return `bool`', node.pos)
+					} else if parent_sym.is_primitive() {
+						c.error('cannot define operator methods on type alias for `$parent_sym.name`',
+							node.pos)
+					}
 				}
 			}
 		}
