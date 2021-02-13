@@ -643,7 +643,7 @@ pub mut:
 	fields        []Field
 	is_typedef    bool // C. [typedef]
 	is_union      bool
-	is_ref_only   bool
+	is_heap   bool
 	generic_types []Type
 }
 

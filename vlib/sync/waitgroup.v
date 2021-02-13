@@ -10,7 +10,7 @@ module sync
 // task_count becomes zero.
 //
 // [init_with=new_waitgroup] // TODO: implement support for init_with struct attribute, and disallow WaitGroup{} from outside the sync.new_waitgroup() function.
-[ref_only]
+[heap]
 struct WaitGroup {
 mut:
 	task_count       int // current task count

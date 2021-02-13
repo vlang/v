@@ -30,7 +30,7 @@ pub:
 	vmod_folder string
 }
 
-[ref_only]
+[heap]
 pub struct ModFileCacher {
 mut:
 	cache map[string]ModFileAndFolder

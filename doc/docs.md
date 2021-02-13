@@ -3867,7 +3867,7 @@ fn inlined_function() {
 }
 
 // The following struct can only be used as a reference (`&Window`) and allocated on the heap.
-[ref_only]
+[heap]
 struct Window {
 }
 

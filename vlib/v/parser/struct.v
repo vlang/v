@@ -295,7 +295,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			fields: fields
 			is_typedef: attrs.contains('typedef')
 			is_union: is_union
-			is_ref_only: attrs.contains('ref_only')
+			is_heap: attrs.contains('heap')
 			generic_types: generic_types
 			attrs: attrs
 		}

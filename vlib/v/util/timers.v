@@ -5,7 +5,7 @@ module util
 
 import time
 
-[ref_only]
+[heap]
 pub struct Timers {
 pub mut:
 	swatches     map[string]time.StopWatch
