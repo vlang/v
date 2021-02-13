@@ -6,16 +6,18 @@ module json2
 import strconv
 
 struct Scanner {
+mut:
 	text     []byte
 	pos      int
-	cur_line int
-	cur_col  int
+	line int
+	col  int
+	errors []Token
 }
 
 enum TokenKind {
 	none_
 	error
-	str
+	str_
 	float
 	int_
 	null
@@ -41,7 +43,6 @@ struct Token {
 	kind TokenKind
 	line int
 	col  int
-	errors []Token
 }
 
 const (
@@ -95,8 +96,8 @@ fn (s Scanner) tokenize(lit []byte, kind TokenKind) Token {
 	return Token{
 		lit: lit
 		kind: kind
-		col: s.cur_col
-		line: s.cur_line
+		col: s.col
+		line: s.line
 	}
 }
 
@@ -119,20 +120,20 @@ fn (mut s Scanner) text_scan() Token {
 				continue
 			} else if peek == `u` {
 				if s.pos + 5 < s.text.len {
-					mut codepoint := []int{}
+					mut codepoint := []string{}
 					s.move_pos_upto(2)
 					codepoint_start := s.pos
 					for s.pos < s.text.len && s.pos < codepoint_start + 3 {
 						if !s.text[s.pos].is_hex_digit() {
 							return s.error('`${s.text[s.pos]}` is not a hex digit')
 						}
-						codepoint << int(s.text[s.pos])
+						codepoint << s.text[s.pos].str()
 						s.move_pos()
 					}
 					if codepoint.len != 4 {
 						return s.error('unicode escape must be 4 characters')
 					}
-					chrs << byte(strconv.parse_int(codepoint, 16, 0))
+					chrs << byte(strconv.parse_int(codepoint.join(''), 16, 0))
 				} else {
 					return s.error('incomplete unicode escape')
 				}
@@ -153,7 +154,7 @@ fn (mut s Scanner) text_scan() Token {
 		s.error('missing double-quote in string')
 		return s.tokenize([]byte{}, .eof)
 	}
-	return s.tokenize(s.text[start_pos..s.pos], .str)
+	return s.tokenize(s.text[start_pos..s.pos], .str_)
 }
 
 fn (mut s Scanner) parse_num() ?[]byte {
@@ -181,38 +182,39 @@ fn (mut s Scanner) scan() Token {
 	} else if s.text[s.pos].is_digit() || s.text[s.pos] == `-` {
 		// analyze json number structure
 		// -[digit][?[dot][digit]][?[E/e][?-/+][digit]]
-		mut is_fl := false
-		mut has_exp := false
-		mut digits := []byte{}
+		// mut is_fl := false
+		// mut has_exp := false
+		// mut digits := []byte{}
 
-		is_minus := s.text[s.pos] == `-`
-		start_pos := s.pos
-		start_digit_pos := if is_minus { s.pos + 1 } else { s.pos }
+		// is_minus := s.text[s.pos] == `-`
+		// start_pos := s.pos
+		// start_digit_pos := if is_minus { s.pos + 1 } else { s.pos }
 
-		if is_minus {
-			digits << `-`
-			s.move_pos()
-		}
-		if !s.text[start_digit_pos].is_digit() {
-			return s.error('invalid token `${s.text[start_digit_pos]}`')
-		} else if s.text[start_digit_pos] == `0` && (start_digit_pos + 1 < s.text.len && s.text[start_digit_pos + 1].is_digit()) {
-			return s.error('leading zeroes in integers are not allowed')
-		}
+		// if is_minus {
+		// 	digits << `-`
+		// 	s.move_pos()
+		// }
+		// if !s.text[start_digit_pos].is_digit() {
+		// 	return s.error('invalid token `${s.text[start_digit_pos]}`')
+		// } else if s.text[start_digit_pos] == `0` && (start_digit_pos + 1 < s.text.len && s.text[start_digit_pos + 1].is_digit()) {
+		// 	return s.error('leading zeroes in integers are not allowed')
+		// }
 
-		digits << s.parse_num() or {
-			return s.error(err)
-		}
-		if s.text[s.pos] == `.` {
-			is_fl = true
-			digits << `.`
-			s.move_pos()
-			dec_digits := s.parse_num() or {
-				return s.error(err)
-			}
-			digits << dec_digits
-		} else if s.text[s.pos] !in [`.`, `e`, `E`] {
-			return s.error('invalid token `${s.text[s.pos]}`')
-		}
+		// digits << s.parse_num() or {
+		// 	return s.error(err)
+		// }
+		// if s.text[s.pos] == `.` {
+		// 	is_fl = true
+		// 	digits << `.`
+		// 	s.move_pos()
+		// 	dec_digits := s.parse_num() or {
+		// 		return s.error(err)
+		// 	}
+		// 	digits << dec_digits
+		// } else if s.text[s.pos] !in [`.`, `e`, `E`] {
+		// 	return s.error('invalid token `${s.text[s.pos]}`')
+		// }
+		return Token{}
 	} else if s.pos >= s.text.len {
 		return s.tokenize([]byte{}, .eof)
 	} else {
