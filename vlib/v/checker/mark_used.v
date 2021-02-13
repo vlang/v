@@ -115,6 +115,7 @@ fn (mut c Checker) mark_used(ast_files []ast.File) {
 		/* TODO: process the _vinit const initializations automatically too */
 		'os.getwd',
 		'os.init_os_args',
+		'os.init_os_args_wide',
 	]
 
 	// implicit string builders are generated in auto_eq_methods.v
