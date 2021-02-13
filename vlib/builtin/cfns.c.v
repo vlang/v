@@ -7,6 +7,7 @@ fn C.memcmp(byteptr, byteptr, int) int
 
 fn C.memmove(byteptr, byteptr, int) voidptr
 
+[trusted]
 fn C.calloc(int, int) byteptr
 
 fn C.malloc(int) byteptr
@@ -15,6 +16,7 @@ fn C.realloc(a byteptr, b int) byteptr
 
 fn C.free(ptr voidptr)
 
+[trusted]
 fn C.exit(code int)
 
 fn C.qsort(base voidptr, items size_t, item_size size_t, cb qsort_callback_func)
@@ -25,7 +27,8 @@ fn C.strlen(s charptr) int
 
 fn C.sscanf(byteptr, byteptr, ...byteptr) int
 
-fn C.isdigit(s byteptr) bool
+[trusted]
+fn C.isdigit(c int) bool
 
 // stdio.h
 fn C.popen(c charptr, t charptr) voidptr
@@ -70,7 +73,7 @@ fn C.pclose() int
 // process execution, os.process:
 fn C.getpid() int
 
-fn C.system() int
+fn C.system(cmd charptr) int
 
 fn C.posix_spawn(child_pid &int, path charptr, file_actions voidptr, attrp voidptr, argv &charptr, envp &charptr) int
 
@@ -78,6 +81,7 @@ fn C.posix_spawnp(child_pid &int, exefile charptr, file_actions voidptr, attrp v
 
 fn C.execve(cmd_path charptr, args voidptr, envs voidptr) int
 
+[trusted]
 fn C.fork() int
 
 fn C.wait(status &int) int
@@ -112,7 +116,7 @@ fn C.memset() int
 
 fn C.sigemptyset() int
 
-fn C.getcwd() int
+fn C.getcwd(buf charptr, size size_t) charptr
 
 fn C.signal(signal int, handlercb voidptr) voidptr
 
