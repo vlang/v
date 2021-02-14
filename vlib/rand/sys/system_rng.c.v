@@ -9,10 +9,11 @@ import rand.constants
 
 // Implementation note:
 // ====================
-// C.rand() is okay to use within its defined range of C.RAND_MAX.
+// C.rand returns a pseudorandom integer from 0 (inclusive) to C.RAND_MAX (exclusive)
+// C.rand() is okay to use within its defined range.
 // (See: https://web.archive.org/web/20180801210127/http://eternallyconfuzzled.com/arts/jsw_art_rand.aspx)
 // The problem is, this value varies with the libc implementation. On windows,
-// for example, RAND_MAX is usually a measly 32767, whereas on (newer) linux it's generaly
+// for example, RAND_MAX is usually a measly 32767, whereas on (newer) linux it's generally
 // 2147483647. The repetition period also varies wildly. In order to provide more entropy
 // without altering the underlying algorithm too much, this implementation simply
 // requests for more random bits until the necessary width for the integers is achieved.
@@ -29,11 +30,6 @@ fn calculate_iterations_for(bits int) int {
 	return base + extra
 }
 
-// C.rand returns a pseudorandom integer from 0 (inclusive) to C.RAND_MAX (exclusive)
-fn C.rand() int
-
-// C.srand seeds the internal PRNG with the given int seed.
-// fn C.srand(seed int)
 // SysRNG is the PRNG provided by default in the libc implementiation that V uses.
 pub struct SysRNG {
 mut:
@@ -47,7 +43,7 @@ pub fn (mut r SysRNG) seed(seed_data []u32) {
 		exit(1)
 	}
 	r.seed = seed_data[0]
-	unsafe { C.srand(int(r.seed)) }
+	C.srand(r.seed)
 }
 
 // r.default_rand() exposes the default behavior of the system's RNG
