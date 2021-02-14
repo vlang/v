@@ -4755,10 +4755,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 				// check condition type is boolean
 				c.expected_type = table.bool_type
 				cond_typ := c.expr(branch.cond)
-				if cond_typ.idx() !in [table.bool_type_idx, table.void_type_idx]
-					&& !c.pref.translated {
-					// void types are skipped, because they mean the var was initialized incorrectly
-					// (via missing function etc)
+				if cond_typ.idx() != table.bool_type_idx && !c.pref.translated {
 					typ_sym := c.table.get_type_symbol(cond_typ)
 					c.error('non-bool type `$typ_sym.name` used as if condition', branch.pos)
 				}
