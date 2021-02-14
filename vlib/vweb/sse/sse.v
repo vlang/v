@@ -20,7 +20,7 @@ import strings
 // > Each field is represented by the field name, followed by a colon, followed by the text
 // > data for that field's value.
 
-[ref_only]
+[heap]
 pub struct SSEConnection {
 pub mut:
 	headers       map[string]string

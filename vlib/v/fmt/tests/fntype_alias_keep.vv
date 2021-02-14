@@ -14,7 +14,7 @@ pub type ScrollFn = fn (e ScrollEvent, func voidptr)
 
 pub type MouseMoveFn = fn (e MouseMoveEvent, func voidptr)
 
-[ref_only]
+[heap]
 pub struct Window {
 pub mut:
 	ui            &UI = voidptr(0)

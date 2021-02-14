@@ -1,4 +1,4 @@
-[ref_only]
+[heap]
 struct Abc {
 mut:
 	n int

@@ -1045,60 +1045,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			}
 		}
 		ast.FnDecl {
-			g.gen_attrs(node.attrs)
-			// g.tmp_count = 0 TODO
-			mut skip := false
-			pos := g.out.buf.len
-			should_bundle_module := util.should_bundle_module(node.mod)
-			if g.pref.build_mode == .build_module {
-				// if node.name.contains('parse_text') {
-				// println('!!! $node.name mod=$node.mod, built=$g.module_built')
-				// }
-				// TODO true for not just "builtin"
-				// TODO: clean this up
-				mod := if g.is_builtin_mod { 'builtin' } else { node.name.all_before_last('.') }
-				if (mod != g.module_built && node.mod != g.module_built.after('/'))
-					|| should_bundle_module {
-					// Skip functions that don't have to be generated for this module.
-					// println('skip bm $node.name mod=$node.mod module_built=$g.module_built')
-					skip = true
-				}
-				if g.is_builtin_mod && g.module_built == 'builtin' && node.mod == 'builtin' {
-					skip = false
-				}
-				if !skip && g.pref.is_verbose {
-					println('build module `$g.module_built` fn `$node.name`')
-				}
-			}
-			if g.pref.use_cache {
-				// We are using prebuilt modules, we do not need to generate
-				// their functions in main.c.
-				if node.mod != 'main' && node.mod != 'help' && !should_bundle_module
-					&& !g.pref.is_test && node.generic_params.len == 0 {
-					skip = true
-				}
-			}
-			keep_fn_decl := g.fn_decl
-			g.fn_decl = &node
-			if node.name == 'main.main' {
-				g.has_main = true
-			}
-			if node.name == 'backtrace' || node.name == 'backtrace_symbols'
-				|| node.name == 'backtrace_symbols_fd' {
-				g.write('\n#ifndef __cplusplus\n')
-			}
-			g.gen_fn_decl(node, skip)
-			if node.name == 'backtrace' || node.name == 'backtrace_symbols'
-				|| node.name == 'backtrace_symbols_fd' {
-				g.write('\n#endif\n')
-			}
-			g.fn_decl = keep_fn_decl
-			if skip {
-				g.out.go_back_to(pos)
-			}
-			if node.language != .c {
-				g.writeln('')
-			}
+			g.process_fn_decl(node)
 		}
 		ast.ForCStmt {
 			prev_branch_parent_pos := g.branch_parent_pos

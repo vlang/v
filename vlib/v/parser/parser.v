@@ -877,11 +877,14 @@ fn (mut p Parser) parse_attr() table.Attr {
 	} else {
 		name = p.check_name()
 		if name == 'unsafe_fn' {
-			p.error_with_pos('please use `[unsafe]` instead', p.tok.position())
+			p.error_with_pos('[unsafe_fn] is obsolete, use `[unsafe]` instead', apos.extend(p.tok.position()))
 			return table.Attr{}
 		} else if name == 'trusted_fn' {
-			p.error_with_pos('please use `[trusted]` instead', p.tok.position())
+			p.error_with_pos('[trusted_fn] is obsolete, use `[trusted]` instead', apos.extend(p.tok.position()))
 			return table.Attr{}
+		} else if name == 'ref_only' {
+			p.warn_with_pos('[ref_only] is deprecated, use [heap] instead', apos.extend(p.tok.position()))
+			name = 'heap'
 		}
 		if p.tok.kind == .colon {
 			p.next()
