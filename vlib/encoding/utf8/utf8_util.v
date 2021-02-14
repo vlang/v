@@ -17,7 +17,7 @@ Utility functions
 
 */
 
-// len return the leght as number of unicode chars from a string
+// len return the length as number of unicode chars from a string
 pub fn len(s string) int {
 	mut count := 0
 	mut index := 0
@@ -33,7 +33,7 @@ pub fn len(s string) int {
 	return count
 }
 
-// u_len return the leght as number of unicode chars from a ustring
+// u_len return the length as number of unicode chars from a ustring
 pub fn u_len(s ustring) int {
 	return len(s.s)
 }
