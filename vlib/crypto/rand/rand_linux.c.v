@@ -25,7 +25,7 @@ pub fn read(bytes_needed int) ?[]byte {
 		}
 		rbytes := getrandom(batch_size, bstart)
 		if rbytes == -1 {
-			free(buffer)
+			unsafe { free(buffer) }
 			return read_error
 		}
 		bytes_read += rbytes
