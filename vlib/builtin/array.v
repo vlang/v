@@ -600,7 +600,7 @@ fn compare_floats_reverse(a &f64, b &f64) int {
 	return 0
 }
 
-// sort sorts array of int in place in ascending order.
+// sort sorts an array of int in place in ascending order.
 pub fn (mut a []int) sort() {
 	a.sort_with_compare(compare_ints)
 }
