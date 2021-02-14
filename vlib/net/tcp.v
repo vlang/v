@@ -161,7 +161,7 @@ pub fn (c &TcpConn) peer_ip() ?string {
 	if cstr == 0 {
 		return error('net.peer_ip: inet_ntop failed')
 	}
-	res := cstring_to_vstring(cstr)
+	res := unsafe {cstring_to_vstring(cstr)}
 	return res
 }
 

@@ -165,7 +165,7 @@ fn utf8util_char_len(b byte) int {
 // up_low make the dirt job
 fn up_low(s string, upper_flag bool) string {
 	mut index := 0
-	mut str_res := malloc(s.len + 1)
+	mut str_res := unsafe {malloc(s.len + 1)}
 
 	for {
 		ch_len := utf8util_char_len(s[index])
@@ -289,11 +289,9 @@ fn up_low(s string, upper_flag bool) string {
 	// for c compatibility set the ending 0
 	unsafe {
 		str_res[index] = 0
+		//C.printf("str_res: %s\n--------------\n",str_res)
+		return tos(str_res, s.len)
 	}
-
-	//C.printf("str_res: %s\n--------------\n",str_res)
-
-	return tos(str_res, s.len)
 }
 
 // find_char_in_table utility function for up_low, search utf8 chars in the conversion table
