@@ -242,7 +242,7 @@ pub fn scale(m Mat4, v Vec3) Mat4 {
 	return mat4(out)
 }
 
-// multiplicates two matrices
+// multiplies two matrices
 pub fn mult(a Mat4, b Mat4) Mat4 {
 	mut out := f32_calloc(16)
 	for i in 0 .. 4 {
