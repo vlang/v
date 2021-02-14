@@ -2625,7 +2625,11 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		right := if i < assign_stmt.right.len { assign_stmt.right[i] } else { assign_stmt.right[0] }
 		mut right_type := assign_stmt.right_types[i]
 		if is_decl {
-			left_type = c.table.mktyp(right_type)
+			if right.is_mut_ident() {
+				left_type = c.table.mktyp(right_type.deref())
+			} else {
+				left_type = c.table.mktyp(right_type)
+			}
 			if left_type == table.int_type {
 				if right is ast.IntegerLiteral {
 					mut is_large := right.val.len > 13
