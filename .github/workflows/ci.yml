@@ -591,9 +591,9 @@ jobs:
       - name: Self tests
         run: |
           .\v.exe -silent test-self
-      - name: Test
-        run: |
-          .\v.exe -silent test-all
+      # - name: Test
+      #  run: |
+      #    .\v.exe -silent test-all
       - name: Test v->js
         run: ./v -o hi.js examples/hello_v_js.v && node hi.js
       - name: Test v binaries
