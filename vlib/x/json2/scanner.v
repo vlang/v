@@ -142,7 +142,7 @@ fn (mut s Scanner) text_scan() Token {
 						if s.text[s.pos] == `"` {
 							break
 						} else if !s.text[s.pos].is_hex_digit() {
-							return s.error('`$s.text[s.pos].ascii_str()` is not a hex digit')
+							return s.error('`${s.text[s.pos].ascii_str()}` is not a hex digit')
 						}
 						codepoint << s.text[s.pos]
 					}
@@ -226,7 +226,7 @@ fn (mut s Scanner) num_scan() Token {
 }
 
 fn (s Scanner) invalid_token() Token {
-	return s.error('invalid token `$s.text[s.pos].ascii_str()`')
+	return s.error('invalid token `${s.text[s.pos].ascii_str()}`')
 }
 
 [manualfree]
