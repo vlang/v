@@ -327,8 +327,10 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut end_pos := p.prev_tok.position()
 	// Return type
 	mut return_type := table.void_type
-	if p.tok.kind.is_start_of_type()
-		|| (p.tok.kind == .key_fn && p.tok.line_nr == p.prev_tok.line_nr) {
+	// don't confuse token on the next line: fn decl, [attribute]
+	same_line := p.tok.line_nr == p.prev_tok.line_nr
+	if (p.tok.kind.is_start_of_type() && (same_line || p.tok.kind != .lsbr))
+		|| (same_line && p.tok.kind == .key_fn) {
 		return_type = p.parse_type()
 	}
 	mut type_sym_method_idx := 0
