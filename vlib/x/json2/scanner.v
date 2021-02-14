@@ -7,8 +7,8 @@ import strconv
 
 struct Scanner {
 mut:
-	text     []byte
-	pos      int
+	text []byte
+	pos  int
 	line int
 	col  int
 }
@@ -32,8 +32,8 @@ enum TokenKind {
 
 struct Error {
 	description string
-	line int
-	col int
+	line        int
+	col         int
 }
 
 struct Token {
@@ -44,21 +44,21 @@ struct Token {
 }
 
 const (
-	char_list = [`{`, `}`, `[`, `]`, `,`, `:`]
-	newlines = [`\r`, `\n`, byte(9), `\t`]
-	num_indicators = [`-`, `+`]
+	char_list                 = [`{`, `}`, `[`, `]`, `,`, `:`]
+	newlines                  = [`\r`, `\n`, byte(9), `\t`]
+	num_indicators            = [`-`, `+`]
 	important_escapable_chars = [byte(9), 10, 0, `\n`, `\t`]
 	invalid_unicode_endpoints = [byte(9), 229]
-	valid_unicode_escapes = [`b`, `f`, `n`, `r`, `t`, `\\`, `"`, `/`]
-	unicode_escapes = {
-		98: `\b`
+	valid_unicode_escapes     = [`b`, `f`, `n`, `r`, `t`, `\\`, `"`, `/`]
+	unicode_escapes           = map{
+		98:  `\b`
 		102: `\f`
 		110: `\n`
 		114: `\r`
 		116: `\t`
-		92: `\\`
-		34: `"`
-		47: `/`
+		92:  `\\`
+		34:  `"`
+		47:  `/`
 	}
 )
 
@@ -129,7 +129,7 @@ fn (mut s Scanner) text_scan() Token {
 		} else if s.pos + 1 < s.text.len && ch == `\\` {
 			peek := s.text[s.pos + 1]
 			if peek in json2.valid_unicode_escapes {
-				chrs << unicode_escapes[int(peek)]
+				chrs << json2.unicode_escapes[int(peek)]
 				s.move_pos()
 				continue
 			} else if peek == `u` {
@@ -142,7 +142,7 @@ fn (mut s Scanner) text_scan() Token {
 						if s.text[s.pos] == `"` {
 							break
 						} else if !s.text[s.pos].is_hex_digit() {
-							return s.error('`${s.text[s.pos].ascii_str()}` is not a hex digit')
+							return s.error('`$s.text[s.pos].ascii_str()` is not a hex digit')
 						}
 						codepoint << s.text[s.pos]
 					}
@@ -226,7 +226,7 @@ fn (mut s Scanner) num_scan() Token {
 }
 
 fn (s Scanner) invalid_token() Token {
-	return s.error('invalid token `${s.text[s.pos].ascii_str()}`')
+	return s.error('invalid token `$s.text[s.pos].ascii_str()`')
 }
 
 [manualfree]
@@ -250,7 +250,7 @@ fn (mut s Scanner) scan() Token {
 		}
 		unsafe { ident.free() }
 		return s.invalid_token()
-	} if s.pos + 4 < s.text.len && s.text[s.pos] == `f` {
+	} else if s.pos + 4 < s.text.len && s.text[s.pos] == `f` {
 		ident := s.text[s.pos..s.pos + 5].bytestr()
 		if ident == 'false' {
 			unsafe { ident.free() }

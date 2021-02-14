@@ -6,7 +6,7 @@ module json2
 import v.util
 
 // `Any` is a sum type that lists the possible types to be decoded and used.
-pub type Any = string | int | i64 | f32 | f64 | bool | Null | []Any | map[string]Any
+pub type Any = Null | []Any | bool | f32 | f64 | i64 | int | map[string]Any | string
 
 // `Null` struct is a simple representation of the `null` value in JSON.
 pub struct Null {
@@ -42,7 +42,9 @@ fn (p Parser) emit_error(msg string, line int, column int) string {
 fn new_parser(srce string, convert_type bool) Parser {
 	src := util.skip_bom(srce)
 	return Parser{
-		scanner: &Scanner{ text: src.bytes() }
+		scanner: &Scanner{
+			text: src.bytes()
+		}
 		convert_type: convert_type
 	}
 }
@@ -59,10 +61,11 @@ fn (mut p Parser) decode() ?Any {
 
 fn (mut p Parser) decode_value() ?Any {
 	if p.n_level == 500 {
-		return error(p.emit_error('reached maximum nesting level of 500', p.tok.line, p.tok.col))
+		return error(p.emit_error('reached maximum nesting level of 500', p.tok.line,
+			p.tok.col))
 	}
-	if (p.tok.kind == .lsbr && p.n_tok.kind == .lcbr) ||
-		(p.p_tok.kind == p.tok.kind && p.tok.kind == .lsbr) {
+	if (p.tok.kind == .lsbr && p.n_tok.kind == .lcbr)
+		|| (p.p_tok.kind == p.tok.kind && p.tok.kind == .lsbr) {
 		p.n_level++
 	}
 	match p.tok.kind {
@@ -78,19 +81,11 @@ fn (mut p Parser) decode_value() ?Any {
 		.bool_ {
 			lit := p.tok.lit.bytestr()
 			p.next_with_err() ?
-			return if p.convert_type {
-				Any(lit.bool())
-			} else {
-				Any(lit)
-			}
+			return if p.convert_type { Any(lit.bool()) } else { Any(lit) }
 		}
 		.null {
 			p.next_with_err() ?
-			return if p.convert_type {
-				Any(json2.null)
-			} else {
-				Any('null')
-			}
+			return if p.convert_type { Any(null) } else { Any('null') }
 		}
 		.str_ {
 			return p.decode_string()
@@ -114,11 +109,7 @@ fn (mut p Parser) decode_number() ?Any {
 	kind := p.tok.kind
 	p.next_with_err() ?
 	if p.convert_type {
-		return if kind == .float {
-			Any(tl.f64())
-		} else {
-			Any(tl.i64())
-		}
+		return if kind == .float { Any(tl.f64()) } else { Any(tl.i64()) }
 	}
 	return Any(tl)
 }
@@ -151,7 +142,7 @@ fn (mut p Parser) decode_object() ?Any {
 	for p.tok.kind != .rcbr {
 		is_key := p.tok.kind == .str_ && p.n_tok.kind == .colon
 		if !is_key {
-			return error("invalid token `$p.tok.kind`, expecting `string`")
+			return error('invalid token `$p.tok.kind`, expecting `string`')
 		}
 		cur_key = p.tok.lit.bytestr()
 		p.next_with_err() ?
