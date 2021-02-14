@@ -217,7 +217,7 @@ fn test_number_invalid_dot_exp() {
 	mut sc := Scanner{ text: '0.e'.bytes() }
 	tok := sc.scan()
 	assert tok.kind == .error
-	assert tok.lit.bytestr() == 'invalid exponent'
+	assert tok.lit.bytestr() == 'invalid float'
 }
 
 fn test_number_invalid_double_exp() {
@@ -239,7 +239,7 @@ fn test_null() {
 fn test_bool_true() {
 	mut sc := Scanner{ text: 'true'.bytes() }
 	tok := sc.scan()
-	assert tok.kind == .true_
+	assert tok.kind == .bool_
 	assert tok.lit.len == 4
 	assert tok.lit.bytestr() == 'true'
 }
@@ -247,7 +247,7 @@ fn test_bool_true() {
 fn test_bool_false() {
 	mut sc := Scanner{ text: 'false'.bytes() }
 	tok := sc.scan()
-	assert tok.kind == .false_
+	assert tok.kind == .bool_
 	assert tok.lit.len == 5
 	assert tok.lit.bytestr() == 'false'
 }

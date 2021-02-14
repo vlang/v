@@ -47,7 +47,7 @@ const (
 	char_list = [`{`, `}`, `[`, `]`, `,`, `:`]
 	newlines = [`\r`, `\n`, byte(9), `\t`]
 	num_indicators = [`-`, `+`]
-	important_escapable_chars = [byte(9), 10, 0]
+	important_escapable_chars = [byte(9), 10, 0, `\n`, `\t`]
 	invalid_unicode_endpoints = [byte(9), 229]
 	valid_unicode_escapes = [`b`, `f`, `n`, `r`, `t`, `\\`, `"`, `/`]
 	unicode_escapes = {
@@ -63,9 +63,17 @@ const (
 )
 
 fn (mut s Scanner) move_pos() {
+	s.move(true, true)
+}
+
+fn (mut s Scanner) move_pos_with_newlines() {
+	s.move(false, true)
+}
+
+fn (mut s Scanner) move(include_space bool, include_newlines bool) {
 	s.pos++
 	if s.pos < s.text.len {
-		if s.text[s.pos] in json2.newlines {
+		if include_newlines && s.text[s.pos] in json2.newlines {
 			s.line++
 			s.col = 0
 			if s.text[s.pos] == `\r` && s.pos + 1 < s.text.len && s.text[s.pos + 1] == `\n` {
@@ -74,7 +82,7 @@ fn (mut s Scanner) move_pos() {
 			for s.pos < s.text.len && s.text[s.pos] in json2.newlines {
 				s.move_pos()
 			}
-		} else if s.text[s.pos] == ` ` {
+		} else if include_space && s.text[s.pos] == ` ` {
 			s.pos++
 			s.col++
 			for s.pos < s.text.len && s.text[s.pos] == ` ` {
@@ -109,12 +117,12 @@ fn (mut s Scanner) text_scan() Token {
 	mut has_closed := false
 	mut chrs := []byte{}
 	for {
-		s.move_pos()
+		s.move(false, false)
 		if s.pos >= s.text.len {
 			break
 		}
 		ch := s.text[s.pos]
-		if ((s.pos - 1 >= 0 && s.text[s.pos - 1] != `/`) || s.pos == 0) && ch in json2.important_escapable_chars {
+		if ch in json2.important_escapable_chars {
 			return s.error('character must be escaped with a backslash')
 		} else if s.pos == s.text.len - 1 && ch == `\\` {
 			return s.error('invalid backslash escape')
@@ -130,7 +138,7 @@ fn (mut s Scanner) text_scan() Token {
 					mut codepoint := []byte{}
 					codepoint_start := s.pos
 					for s.pos < s.text.len && s.pos < codepoint_start + 4 {
-						s.move_pos()
+						s.move(false, false)
 						if s.text[s.pos] == `"` {
 							break
 						} else if !s.text[s.pos].is_hex_digit() {
@@ -179,7 +187,7 @@ fn (mut s Scanner) num_scan() Token {
 		if !s.text[s.pos + 1].is_digit() {
 			return s.invalid_token()
 		}
-		s.move_pos()
+		s.move_pos_with_newlines()
 	}
 	if s.text[s.pos] == `0` && (s.pos + 1 < s.text.len && s.text[s.pos + 1].is_digit()) {
 		return s.error('leading zeroes in a number are not allowed')
@@ -190,22 +198,22 @@ fn (mut s Scanner) num_scan() Token {
 			is_fl = true
 			dot_index = digits.len - 1
 		}
-		s.move_pos()
+		s.move_pos_with_newlines()
 	}
 	if dot_index + 1 < s.text.len && digits[dot_index + 1..].len == 0 {
 		return s.error('invalid float')
 	}
 	if s.pos < s.text.len && (s.text[s.pos] == `e` || s.text[s.pos] == `E`) {
 		digits << s.text[s.pos]
-		s.move_pos()
+		s.move_pos_with_newlines()
 		if s.pos < s.text.len && s.text[s.pos] in [`-`, `+`] {
 			digits << s.text[s.pos]
-			s.move_pos()
+			s.move_pos_with_newlines()
 		}
 		mut exp_digits := []byte{}
 		for s.pos < s.text.len && s.text[s.pos].is_digit() {
 			exp_digits << s.text[s.pos]
-			s.move_pos()
+			s.move_pos_with_newlines()
 		}
 		if exp_digits.len == 0 {
 			return s.error('invalid exponent')

@@ -48,15 +48,8 @@ fn new_parser(srce string, convert_type bool) Parser {
 }
 
 fn (mut p Parser) decode() ?Any {
-	mut is_valid := false
 	p.next()
 	p.next_with_err() ?
-	if p.tok.kind in [.lcbr, .lsbr, .str_, .bool_, .int_, .float, .null] {
-		is_valid = true
-	}
-	if !is_valid {
-		return error(p.emit_error('invalid JSON', 0, 0))
-	}
 	fi := p.decode_value() ?
 	if p.tok.kind != .eof {
 		return error(p.emit_error('invalid token `$p.tok.kind`', p.tok.line, p.tok.col))
@@ -66,7 +59,7 @@ fn (mut p Parser) decode() ?Any {
 
 fn (mut p Parser) decode_value() ?Any {
 	if p.n_level == 500 {
-		return error('reached maximum nesting level of 500.')
+		return error(p.emit_error('reached maximum nesting level of 500', p.tok.line, p.tok.col))
 	}
 	if (p.tok.kind == .lsbr && p.n_tok.kind == .lcbr) ||
 		(p.p_tok.kind == p.tok.kind && p.tok.kind == .lsbr) {
