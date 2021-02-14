@@ -73,7 +73,7 @@ pub fn vstrlen(s byteptr) int {
 
 // tos converts a C string to a V string.
 // String data is reused, not copied.
-//[unsafe]
+[unsafe]
 pub fn tos(s byteptr, len int) string {
 	// This should never happen.
 	if s == 0 {
@@ -86,12 +86,14 @@ pub fn tos(s byteptr, len int) string {
 }
 
 // tos_clone returns a copy of `s`.
+[unsafe]
 pub fn tos_clone(s byteptr) string {
 	return tos2(s).clone()
 }
 
 // tos2 does the same as `tos`, but also calculates the length. Called by `string(bytes)` casts.
 // Used only internally.
+[unsafe]
 pub fn tos2(s byteptr) string {
 	if s == 0 {
 		panic('tos2: nil string')
@@ -103,6 +105,7 @@ pub fn tos2(s byteptr) string {
 }
 
 // tos3 does the same as `tos2`, but for char*, to avoid warnings.
+[unsafe]
 pub fn tos3(s charptr) string {
 	if s == 0 {
 		panic('tos3: nil string')
@@ -114,6 +117,7 @@ pub fn tos3(s charptr) string {
 }
 
 // tos4 does the same as `tos2`, but returns an empty string on nil ptr.
+[unsafe]
 pub fn tos4(s byteptr) string {
 	if s == 0 {
 		return ''
@@ -122,6 +126,7 @@ pub fn tos4(s byteptr) string {
 }
 
 // tos5 does the same as `tos4`, but for char*, to avoid warnings.
+[unsafe]
 pub fn tos5(s charptr) string {
 	if s == 0 {
 		return ''

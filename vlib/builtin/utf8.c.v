@@ -21,6 +21,7 @@ pub fn (_str string) to_wide() &u16 {
 	}
 }
 
+[unsafe]
 pub fn string_from_wide(_wstr &u16) string {
 	$if windows {
 		unsafe {
@@ -32,6 +33,7 @@ pub fn string_from_wide(_wstr &u16) string {
 	}
 }
 
+[unsafe]
 pub fn string_from_wide2(_wstr &u16, len int) string {
 	$if windows {
 		unsafe {
