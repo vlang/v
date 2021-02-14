@@ -98,7 +98,7 @@ fn (mut a array) ensure_cap(required int) {
 	new_size := cap * a.element_size
 	mut new_data := byteptr(0)
 	if a.cap > 0 {
-		new_data = unsafe {v_realloc(a.data, new_size)}
+		new_data = unsafe { v_realloc(a.data, new_size) }
 	} else {
 		new_data = vcalloc(new_size)
 	}
@@ -274,7 +274,7 @@ pub fn (mut a array) pop() voidptr {
 	a.len = new_len
 	// NB: a.cap is not changed here *on purpose*, so that
 	// further << ops on that array will be more efficient.
-	return unsafe {memdup(last_elem, a.element_size)}
+	return unsafe { memdup(last_elem, a.element_size) }
 }
 
 // delete_last efficiently deletes the last element of the array.
@@ -507,7 +507,7 @@ pub fn (a []string) str() string {
 // hex returns a string with the hexadecimal representation
 // of the byte elements of the array.
 pub fn (b []byte) hex() string {
-	mut hex := unsafe {malloc(b.len * 2 + 1)}
+	mut hex := unsafe { malloc(b.len * 2 + 1) }
 	mut dst_i := 0
 	for i in b {
 		n0 := i >> 4

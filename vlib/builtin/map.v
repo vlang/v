@@ -118,7 +118,7 @@ fn new_dense_array(key_bytes int, value_bytes int) DenseArray {
 		len: 0
 		deletes: 0
 		all_deleted: 0
-		data: unsafe {malloc(cap * slot_bytes)}
+		data: unsafe { malloc(cap * slot_bytes) }
 	}
 }
 
@@ -165,7 +165,7 @@ fn (mut d DenseArray) expand() int {
 // Move all zeros to the end of the array and resize array
 fn (mut d DenseArray) zeros_to_end() {
 	// TODO alloca?
-	mut tmp_buf := unsafe {malloc(d.slot_bytes)}
+	mut tmp_buf := unsafe { malloc(d.slot_bytes) }
 	mut count := 0
 	for i in 0 .. d.len {
 		if d.has_index(i) {
@@ -743,7 +743,7 @@ pub fn (m &map) clone() map {
 		cached_hashbits: m.cached_hashbits
 		shift: m.shift
 		key_values: unsafe { m.key_values.clone() }
-		metas: unsafe {&u32(malloc(metasize))}
+		metas: unsafe { &u32(malloc(metasize)) }
 		extra_metas: m.extra_metas
 		len: m.len
 		has_string_keys: m.has_string_keys

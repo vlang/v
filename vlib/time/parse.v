@@ -37,8 +37,8 @@ pub fn parse_rfc2822(s string) ?Time {
 	mm := pos / 3 + 1
 	unsafe {
 		tmstr := malloc(s.len * 2)
-		count := C.snprintf(charptr(tmstr), (s.len * 2), '%s-%02d-%s %s', fields[3].str, mm, fields[1].str,
-			fields[4].str)
+		count := C.snprintf(charptr(tmstr), (s.len * 2), '%s-%02d-%s %s', fields[3].str,
+			mm, fields[1].str, fields[4].str)
 		return parse(tos(tmstr, count))
 	}
 }
