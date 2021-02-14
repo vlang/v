@@ -581,6 +581,9 @@ jobs:
           .\v.exe setup-freetype
           .\.github\workflows\windows-install-sqlite.bat
           ## .\.github\workflows\windows-install-sdl.bat
+      - name: v doctor
+        run: |
+          ./v doctor
       - name: Verify `v test` works
         run: |
           ./v cmd/tools/test_if_v_test_system_works.v
@@ -591,9 +594,8 @@ jobs:
       #    - name: Test
       #      run: |
       #        .\v.exe -silent test-all
-      ## v.js dosent work on windows
-      #.\v.exe -o hi.js examples/hello_v_js.v
-      #node hi.js
+      - name: Test v->js
+        run: ./v -o hi.js examples/hello_v_js.v && node hi.js
       - name: Test v binaries
         run: ./v build-vbinaries
       - name: Build examples
@@ -633,16 +635,15 @@ jobs:
         run: |
           ./v -cg cmd\tools\vtest-self.v
           ./v -silent test-self
-      - name: Build examples
-        run: ./v build-examples
   #    - name: Test
   #      run: |
   #        .\v.exe -silent test-all
-  #      ## v.js dosent work on windows
-  #.\v.exe -o hi.js examples/hello_v_js.v
-  #node hi.js
+      - name: Test v->js
+        run: ./v -o hi.js examples/hello_v_js.v && node hi.js
       - name: Test v binaries
         run: ./v build-vbinaries
+      - name: Build examples
+        run: ./v build-examples
       - name: v2 self compilation
         run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
 
@@ -663,6 +664,9 @@ jobs:
           .\v.exe setup-freetype
           .\.github\workflows\windows-install-sqlite.bat
           ## .\.github\workflows\windows-install-sdl.bat
+      - name: v doctor
+        run: |
+          ./v doctor
       - name: Verify `v test` works
         run: |
           .\v.exe cmd/tools/test_if_v_test_system_works.v
@@ -673,9 +677,8 @@ jobs:
   #    - name: Test
   #      run: |
   #        .\v.exe -silent test-all
-  ## v.js dosent work on windows
-  #.\v.exe -o hi.js examples/hello_v_js.v
-  #node hi.js
+      - name: Test v->js
+        run: ./v -o hi.js examples/hello_v_js.v && node hi.js
       - name: Test v binaries
         run: ./v build-vbinaries
       - name: Build examples
