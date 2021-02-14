@@ -36,6 +36,7 @@ pub mut:
 	file               ast.File
 	did_imports        bool
 	is_assign          bool
+	is_struct_init     bool
 	auto_imports       []string        // automatically inserted imports that the user forgot to specify
 	import_pos         int             // position of the imports in the resulting string for later autoimports insertion
 	used_imports       []string        // to remove unused imports
@@ -1636,7 +1637,7 @@ pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 	dollar := if node.is_comptime { '$' } else { '' }
 	mut single_line := node.branches.len == 2 && node.has_else
 		&& branch_is_single_line(node.branches[0]) && branch_is_single_line(node.branches[1])
-		&& (node.is_expr || f.is_assign || f.single_line_fields)
+		&& (node.is_expr || f.is_assign || f.is_struct_init || f.single_line_fields)
 	f.single_line_if = single_line
 	if_start := f.line_len
 	for {
@@ -2067,6 +2068,12 @@ pub fn (mut f Fmt) map_init(it ast.MapInit) {
 }
 
 pub fn (mut f Fmt) struct_init(it ast.StructInit) {
+	struct_init_save := f.is_struct_init
+	f.is_struct_init = true
+	defer {
+		f.is_struct_init = struct_init_save
+	}
+
 	type_sym := f.table.get_type_symbol(it.typ)
 	// f.write('<old name: $type_sym.name>')
 	mut name := type_sym.name

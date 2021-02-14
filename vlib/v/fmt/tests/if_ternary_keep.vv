@@ -1,3 +1,8 @@
+struct Foo {
+	n int
+	s string
+}
+
 fn valid_single_line() {
 	// Variable initialization
 	a, b := if true { 'a', 'b' } else { 'b', 'a' }
@@ -10,6 +15,11 @@ fn valid_single_line() {
 	_ := if false { Foo{} } else { Foo{5, 6} }
 	// As argument for a function call
 	some_func(if cond { 'param1' } else { 'param2' })
+	// struct init
+	foo := Foo{
+		n: if true { 1 } else { 0 }
+		s: if false { 'false' } else { 'true' }
+	}
 }
 
 fn requires_multiple_lines() {
