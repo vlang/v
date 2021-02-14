@@ -17,7 +17,60 @@ enum SqlExprSide {
 	right
 }
 
+enum SqlType {
+	sqlite3
+	mysql
+	psql
+	unknown
+}
+
 fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
+	match g.parse_db_type(node.db_expr) {
+		.sqlite3 {
+			g.sqlite3_stmt(node)
+		}
+		else {
+			verror('This database type is not implemented yet in orm') // TODO add better error
+		}
+	}
+}
+
+fn (mut g Gen) sql_select_expr(node ast.SqlExpr, sub bool, line string) {
+	match g.parse_db_type(node.db_expr) {
+		.sqlite3 {
+			g.sqlite3_select_expr(node, sub, line)
+		}
+		else {
+			verror('This database type is not implemented yet in orm') // TODO add better error
+		}
+	}
+}
+
+fn (mut g Gen) sql_bind_int(val int, typ SqlType) {
+	match typ {
+		.sqlite3 {
+			g.sqlite3_bind_int(val)
+		}
+		else {
+			// add error
+		}
+	}
+}
+
+fn (mut g Gen) sql_bind_string(val string, len string, typ SqlType) {
+	match typ {
+		.sqlite3 {
+			g.sqlite3_bind_string(val, len)
+		}
+		else {
+			// add error
+		}
+	}
+}
+
+// sqlite3
+
+fn (mut g Gen) sqlite3_stmt(node ast.SqlStmt) {
 	g.sql_i = 0
 	g.writeln('\n\t// sql insert')
 	db_name := g.new_tmp_var()
@@ -106,14 +159,14 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 	g.writeln('\tsqlite3_finalize($g.sql_stmt_name);')
 }
 
-fn (mut g Gen) sql_select_expr(node ast.SqlExpr, sub bool, line string) {
+fn (mut g Gen) sqlite3_select_expr(node ast.SqlExpr, sub bool, line string) {
 	g.sql_i = 0
 	/*
 	`nr_users := sql db { ... }` =>
 	```
 		sql_init_stmt()
-		sql_bind_int()
-		sql_bind_string()
+		sqlite3_bind_int()
+		sqlite3_bind_string()
 		...
 		int nr_users = get_int(stmt)
 	```
@@ -283,15 +336,31 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr, sub bool, line string) {
 	}
 }
 
-fn (mut g Gen) sql_bind_int(val string) {
+fn (mut g Gen) sqlite3_bind_int(val string) {
 	g.sql_buf.writeln('sqlite3_bind_int($g.sql_stmt_name, $g.sql_i, $val);')
 }
 
-fn (mut g Gen) sql_bind_string(val string, len string) {
+fn (mut g Gen) sqlite3_bind_string(val string, len string) {
 	g.sql_buf.writeln('sqlite3_bind_text($g.sql_stmt_name, $g.sql_i, $val, $len, 0);')
 }
 
-fn (mut g Gen) expr_to_sql(expr ast.Expr) {
+// mysql
+
+fn (mut g Gen) mysql_stmt(node ast.SqlStmt) {
+}
+
+fn (mut g Gen) mysql_select_expr(node ast.SqlExpr, sub bool, line string) {
+}
+
+fn (mut g Gen) mysql_bind_int(val string) {
+}
+
+fn (mut g Gen) mysql_bind_string(val string, len string) {
+}
+
+// utils
+
+fn (mut g Gen) expr_to_sql(expr ast.Expr, typ SqlType) {
 	// Custom handling for infix exprs (since we need e.g. `and` instead of `&&` in SQL queries),
 	// strings. Everything else (like numbers, a.b) is handled by g.expr()
 	//
@@ -321,17 +390,17 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr) {
 		ast.StringLiteral {
 			// g.write("'$it.val'")
 			g.inc_sql_i()
-			g.sql_bind_string('"$expr.val"', expr.val.len.str())
+			g.sql_bind_string('"$expr.val"', expr.val.len.str(), typ)
 		}
 		ast.IntegerLiteral {
 			g.inc_sql_i()
-			g.sql_bind_int(expr.val)
+			g.sql_bind_int(expr.val, typ)
 		}
 		ast.BoolLiteral {
 			// true/false literals were added to Sqlite 3.23 (2018-04-02)
 			// but lots of apps/distros use older sqlite (e.g. Ubuntu 18.04 LTS )
 			g.inc_sql_i()
-			g.sql_bind_int(if expr.val { '1' } else { '0' })
+			g.sql_bind_int(if expr.val { '1' } else { '0' }, typ)
 		}
 		ast.Ident {
 			// `name == user_name` => `name == ?1`
@@ -342,13 +411,13 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr) {
 			} else {
 				g.inc_sql_i()
 				info := expr.info as ast.IdentVar
-				typ := info.typ
-				if typ == table.string_type {
-					g.sql_bind_string('${expr.name}.str', '${expr.name}.len')
+				ityp := info.typ
+				if ityp == table.string_type {
+					g.sql_bind_string('${expr.name}.str', '${expr.name}.len', typ)
 				} else if typ == table.int_type {
-					g.sql_bind_int(expr.name)
+					g.sql_bind_int(expr.name, ityp)
 				} else {
-					verror('bad sql type=$typ ident_name=$expr.name')
+					verror('bad sql type=$ityp ident_name=$expr.name')
 				}
 			}
 		}
@@ -359,7 +428,7 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr) {
 					verror('orm selector not ident')
 				}
 				ident := expr.expr as ast.Ident
-				g.sql_bind_int(ident.name + '.' + expr.field_name)
+				g.sql_bind_int(ident.name + '.' + expr.field_name, typ)
 			} else {
 				verror('bad sql type=$expr.typ selector expr=$expr.field_name')
 			}
@@ -379,4 +448,29 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr) {
 fn (mut g Gen) inc_sql_i() {
 	g.sql_i++
 	g.write('?$g.sql_i')
+}
+
+fn (mut g Gen) parse_db_type(expr ast.Expr) SqlType {
+	match expr {
+		ast.Ident {
+			if expr.info is ast.IdentVar {
+				return g.parse_db_from_type_string(g.table.get_type_name(expr.info.typ))
+			}
+		}
+		else {
+			return .unknown
+		}
+	}
+	return .unknown
+}
+
+fn (mut g Gen) parse_db_from_type_string(name string) SqlType {
+	match name {
+		'sqlite.DB' {
+			return .sqlite3
+		}
+		else {
+			return .unknown
+		}
+	}
 }
