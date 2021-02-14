@@ -107,7 +107,7 @@ pub fn (mut ws Client) connect() ? {
 pub fn (mut ws Client) listen() ? {
 	mut log := 'Starting client listener, server($ws.is_server)...'
 	ws.logger.info(log)
-	log.free()
+	unsafe { log.free() }
 	defer {
 		ws.logger.info('Quit client listener, server($ws.is_server)...')
 		if ws.state == .open {
@@ -131,7 +131,7 @@ pub fn (mut ws Client) listen() ? {
 			.text_frame {
 				log = 'read: text'
 				ws.debug_log(log)
-				log.free()
+				unsafe { log.free() }
 				ws.send_message_event(msg)
 				unsafe { msg.free() }
 			}
@@ -165,7 +165,7 @@ pub fn (mut ws Client) listen() ? {
 			.close {
 				log = 'read: close'
 				ws.debug_log(log)
-				log.free()
+				unsafe { log.free() }
 				defer {
 					ws.manage_clean_close()
 				}

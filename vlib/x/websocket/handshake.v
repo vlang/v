@@ -25,7 +25,7 @@ fn (mut ws Client) handshake() ? {
 	sb.write('\r\nSec-WebSocket-Version: 13\r\n\r\n')
 	handshake := sb.str()
 	defer {
-		handshake.free()
+		unsafe { handshake.free() }
 	}
 	handshake_bytes := handshake.bytes()
 	ws.debug_log('sending handshake: $handshake')

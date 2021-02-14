@@ -164,12 +164,13 @@ fn (mut ctx Context) termios_setup() ? {
 
 fn get_cursor_position() (int, int) {
 	print('\033[6n')
-	buf := malloc(25)
-	len := C.read(C.STDIN_FILENO, buf, 24)
+	mut s := ''
 	unsafe {
+		buf := malloc(25)
+		len := C.read(C.STDIN_FILENO, buf, 24)
 		buf[len] = 0
+		s = tos(buf, len)
 	}
-	s := tos(buf, len)
 	a := s[2..].split(';')
 	if a.len != 2 {
 		return -1, -1
@@ -186,12 +187,13 @@ fn supports_truecolor() bool {
 	print('\x1b[48:2:1:2:3m')
 	// andquery the current color
 	print('\x1bP\$qm\x1b\\')
-	buf := malloc(25)
-	len := C.read(C.STDIN_FILENO, buf, 24)
+	mut s := ''
 	unsafe {
+		buf := malloc(25)
+		len := C.read(C.STDIN_FILENO, buf, 24)
 		buf[len] = 0
+		s = tos(buf, len)
 	}
-	s := tos(buf, len)
 	return '1:2:3' in s
 }
 
