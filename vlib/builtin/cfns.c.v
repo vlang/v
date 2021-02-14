@@ -213,7 +213,7 @@ fn C.RemoveDirectory() int
 fn C.GetStdHandle(u32) voidptr
 
 // fn C.SetConsoleMode()
-fn C.SetConsoleMode(voidptr, u32)
+fn C.SetConsoleMode(voidptr, u32) int
 
 // fn C.GetConsoleMode() int
 fn C.GetConsoleMode(voidptr, &u32) int
