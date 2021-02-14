@@ -30,6 +30,7 @@
 * - frame counter
 **********************************************************************/
 import gg
+import gg.m4
 import gx
 //import math
 
@@ -69,12 +70,8 @@ mut:
 *
 ******************************************************************************/
 #flag -I @VROOT/.
-#include "HandmadeMath.h"
 #include "rt_glsl.h"
-#include "default_include.h"
 fn C.rt_shader_desc() &C.sg_shader_desc
-
-fn C.calc_matrices(res voidptr,w f32, h f32, rx f32, ry f32, scale f32)
 
 /******************************************************************************
 *
@@ -245,6 +242,21 @@ fn init_cube_glsl(mut app App) {
 	println("GLSL init DONE!")
 }
 
+fn calc_tr_matrices(w f32, h f32, rx f32, ry f32, in_scale f32) m4.Mat4{
+	proj := m4.perspective(60, w/h, 0.01, 10.0)
+	view := m4.look_at(m4.Vec4{e:[f32(0.0),0.0,6,0]!}, m4.Vec4{e:[f32(0),0,0,0]!}, m4.Vec4{e:[f32(0),1.0,0,0]!})
+	view_proj := view * proj 
+	
+	rxm := m4.rotate(m4.rad(rx), m4.Vec4{e:[f32(1),0,0,0]!})
+	rym := m4.rotate(m4.rad(ry), m4.Vec4{e:[f32(0),1,0,0]!})
+	
+	model :=  rym * rxm
+	scale_m := m4.scale(m4.Vec4{e:[in_scale, in_scale, in_scale, 1]!})
+	
+	res :=  (scale_m * model)* view_proj
+	return res
+}
+
 fn draw_cube_glsl(app App){
 	if app.init_flag == false {
 		return
@@ -255,12 +267,10 @@ fn draw_cube_glsl(app App){
 	dw := f32(ws.width  / 2)
 	dh := f32(ws.height / 2)
 	
-	mut res := [f32(0),0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0]!
-
 	// use the following commented lines to rotate the 3d glsl cube
 	// rot := [f32(app.mouse_y), f32(app.mouse_x)]
-	// C.calc_matrices( voidptr(&res), dw, dh, rot[0], rot[1] ,2.3)
-	C.calc_matrices( voidptr(&res), dw, dh, 0, 0 ,2.3)
+	// calc_tr_matrices(dw, dh, rot[0], rot[1] ,2.3)
+	tr_matrix := calc_tr_matrices(dw, dh, 0, 0 ,2.3)
 	gfx.apply_viewport(0, 0, ws.width, ws.height, true)
 
 	// apply the pipline and bindings
@@ -272,7 +282,7 @@ fn draw_cube_glsl(app App){
 	//***************
 	// passing the view matrix as uniform
 	// res is a 4x4 matrix of f32 thus: 4*16 byte of size
-	gfx.apply_uniforms(C.SG_SHADERSTAGE_VS, C.SLOT_vs_params, &res, int(sizeof(res)) )
+	gfx.apply_uniforms(C.SG_SHADERSTAGE_VS, C.SLOT_vs_params, &tr_matrix, 4*16 )
 	
 	// fragment shader uniforms
 	time_ticks := f32(time.ticks() - app.ticks) / 1000

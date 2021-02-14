@@ -80,7 +80,7 @@
 #define SLOT_vs_params (0)
 #pragma pack(push,1)
 SOKOL_SHDC_ALIGN(16) typedef struct vs_params_t {
-    hmm_mat4 mvp;
+    float mvp[16];
 } vs_params_t;
 #pragma pack(pop)
 #define SLOT_fs_params (0)
