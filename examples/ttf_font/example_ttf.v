@@ -145,7 +145,7 @@ fn main() {
 	app.ttf_render << &ttf.TTF_render_Sokol{
 		bmp: &ttf.BitMap{
 			tf: &(app.tf[0])
-			buf: malloc(32000000)
+			buf: unsafe {malloc(32000000)}
 			buf_size: (32000000)
 			color: 0xFF0000FF
 			// style: .raw

@@ -300,7 +300,7 @@ fn (mut b Buffer) free() {
 		eprintln(@MOD + '.' + @STRUCT + '::' + @FN)
 	}
 	for line in b.lines {
-		line.free()
+		unsafe {line.free()}
 	}
 	unsafe { b.lines.free() }
 }

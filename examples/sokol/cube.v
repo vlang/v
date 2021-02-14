@@ -341,7 +341,7 @@ fn my_init(mut app App) {
 	w := 256
 	h := 256
 	sz := w * h * 4
-	tmp_txt := malloc(sz)
+	tmp_txt := unsafe {malloc(sz)}
 	mut i := 0
 	for i < sz {
 		unsafe {
@@ -370,8 +370,10 @@ fn my_init(mut app App) {
 			i += 4
 		}
 	}
-	app.texture = create_texture(w, h, tmp_txt)
-	free(tmp_txt)
+	unsafe {
+		app.texture = create_texture(w, h, tmp_txt)
+		free(tmp_txt)
+	}
 }
 
 fn cleanup(mut app App) {
