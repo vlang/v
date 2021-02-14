@@ -567,9 +567,9 @@ jobs:
       VFLAGS: -cc gcc
     steps:
       - uses: actions/checkout@v2
-      #- uses: actions/setup-node@v1
-      #  with:
-      #    node-version: 12.x
+      - uses: actions/setup-node@v1
+        with:
+          node-version: 12.x
       - name: Build
         run: |
           gcc --version
@@ -610,9 +610,9 @@ jobs:
       VFLAGS: -cc msvc
     steps:
       - uses: actions/checkout@v2
-      #- uses: actions/setup-node@v1
-      #  with:
-      #    node-version: 12.x
+      - uses: actions/setup-node@v1
+        with:
+          node-version: 12.x
       - name: Build
         run: |
           echo %VFLAGS%
@@ -654,6 +654,9 @@ jobs:
       VFLAGS: -cc tcc -no-retry-compilation
     steps:
       - uses: actions/checkout@v2
+      - uses: actions/setup-node@v1
+        with:
+          node-version: 12.x
       - name: Build with make.bat -tcc
         run: |
           .\make.bat -tcc
