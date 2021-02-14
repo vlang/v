@@ -1,0 +1,5 @@
+fn main() {
+	mut array := [1, 2, 3]
+	array << 4, 5
+	println(array)
+}
