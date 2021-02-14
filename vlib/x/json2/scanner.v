@@ -30,12 +30,6 @@ enum TokenKind {
 	rcbr = 125
 }
 
-struct Error {
-	description string
-	line        int
-	col         int
-}
-
 struct Token {
 	lit  []byte
 	kind TokenKind
