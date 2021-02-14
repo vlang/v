@@ -596,6 +596,8 @@ jobs:
       #node hi.js
       - name: Test v binaries
         run: ./v build-vbinaries
+      - name: Build examples
+        run: ./v build-examples
       - name: v2 self compilation
         run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
 
@@ -639,8 +641,10 @@ jobs:
   #      ## v.js dosent work on windows
   #.\v.exe -o hi.js examples/hello_v_js.v
   #node hi.js
-  #    - name: Test v binaries
-  #      run: ./v build-vbinaries
+      - name: Test v binaries
+        run: ./v build-vbinaries
+      - name: v2 self compilation
+        run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
 
   windows-tcc:
     runs-on: windows-2019
@@ -672,8 +676,8 @@ jobs:
   ## v.js dosent work on windows
   #.\v.exe -o hi.js examples/hello_v_js.v
   #node hi.js
-  #    - name: Test v binaries
-  #      run: ./v build-vbinaries
+      - name: Test v binaries
+        run: ./v build-vbinaries
       - name: Build examples
         run: ./v build-examples
       - name: v2 self compilation
