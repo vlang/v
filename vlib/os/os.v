@@ -600,8 +600,10 @@ pub fn resource_abs_path(path string) string {
 	}
 	fp := join_path(base_path, path)
 	res := real_path(fp)
-	fp.free()
-	base_path.free()
+	unsafe {
+		fp.free()
+		base_path.free()
+	}
 	return res
 }
 

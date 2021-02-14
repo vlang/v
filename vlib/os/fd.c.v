@@ -36,14 +36,14 @@ pub fn fd_slurp(fd int) []string {
 // read from filedescriptor, don't block
 // return [bytestring,nrbytes]
 pub fn fd_read(fd int, maxbytes int) (string, int) {
-	mut buf := malloc(maxbytes)
-	nbytes := C.read(fd, buf, maxbytes)
-	if nbytes < 0 {
-		free(buf)
-		return '', nbytes
-	}
 	unsafe {
+		mut buf := malloc(maxbytes)
+		nbytes := C.read(fd, buf, maxbytes)
+		if nbytes < 0 {
+			free(buf)
+			return '', nbytes
+		}
 		buf[nbytes] = 0
+		return tos(buf, nbytes), nbytes
 	}
-	return tos(buf, nbytes), nbytes
 }

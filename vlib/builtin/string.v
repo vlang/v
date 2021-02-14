@@ -73,7 +73,7 @@ pub fn vstrlen(s byteptr) int {
 
 // tos converts a C string to a V string.
 // String data is reused, not copied.
-[unsafe]
+//[unsafe]
 pub fn tos(s byteptr, len int) string {
 	// This should never happen.
 	if s == 0 {
@@ -98,7 +98,7 @@ pub fn tos2(s byteptr) string {
 	}
 	return string{
 		str: s
-		len: vstrlen(s)
+		len: unsafe {vstrlen(s)}
 	}
 }
 
@@ -245,7 +245,7 @@ pub fn (s string) replace(rep string, with string) string {
 	}
 	// Now we know the number of replacements we need to do and we can calc the len of the new string
 	new_len := s.len + idxs.len * (with.len - rep.len)
-	mut b := malloc(new_len + 1) // add a newline just in case
+	mut b := unsafe {malloc(new_len + 1)} // add a newline just in case
 	// Fill the new string
 	mut idx_pos := 0
 	mut cur_idx := idxs[idx_pos]
@@ -348,7 +348,7 @@ pub fn (s string) replace_each(vals []string) string {
 		return s
 	}
 	idxs.sort2()
-	mut b := malloc(new_len + 1) // add a \0 just in case
+	mut b := unsafe {malloc(new_len + 1)} // add a \0 just in case
 	// Fill the new string
 	mut idx_pos := 0
 	mut cur_idx := idxs[idx_pos]
@@ -491,7 +491,7 @@ fn (s string) ge(a string) bool {
 fn (s string) add(a string) string {
 	new_len := a.len + s.len
 	mut res := string{
-		str: malloc(new_len + 1)
+		str: unsafe {malloc(new_len + 1)}
 		len: new_len
 	}
 	for j in 0 .. s.len {
@@ -608,7 +608,7 @@ pub fn (s string) substr(start int, end int) string {
 		return s.clone()
 	}
 	mut res := string{
-		str: malloc(len + 1)
+		str: unsafe {malloc(len + 1)}
 		len: len
 	}
 	for i in 0 .. len {
@@ -1384,6 +1384,7 @@ pub fn (c byte) is_letter() bool {
 }
 
 // free allows for manually freeing the memory occupied by the string
+[unsafe]
 pub fn (s &string) free() {
 	$if prealloc {
 		return
@@ -1395,7 +1396,9 @@ pub fn (s &string) free() {
 	if s.is_lit == 1 || s.len == 0 {
 		return
 	}
-	free(s.str)
+	unsafe {
+		free(s.str)
+	}
 	s.is_lit = -98761234
 }
 
@@ -1489,7 +1492,7 @@ pub fn (a []string) join(del string) string {
 	// Allocate enough memory
 	mut res := ''
 	res.len = len
-	res.str = malloc(res.len + 1)
+	res.str = unsafe {malloc(res.len + 1)}
 	mut idx := 0
 	// Go thru every string and copy its every char one by one
 	for i, val in a {
@@ -1527,7 +1530,7 @@ pub fn (s string) reverse() string {
 		return s
 	}
 	mut res := string{
-		str: malloc(s.len)
+		str: unsafe {malloc(s.len)}
 		len: s.len
 	}
 	for i := s.len - 1; i >= 0; i-- {
@@ -1586,7 +1589,7 @@ pub fn (s string) repeat(count int) string {
 	} else if count == 1 {
 		return s
 	}
-	mut ret := malloc(s.len * count + 1)
+	mut ret := unsafe {malloc(s.len * count + 1)}
 	for i in 0 .. count {
 		for j in 0 .. s.len {
 			unsafe {
@@ -1635,7 +1638,7 @@ pub fn (s string) strip_margin_custom(del byte) string {
 	}
 	// don't know how much space the resulting string will be, but the max it
 	// can be is this big
-	mut ret := malloc(s.len + 1)
+	mut ret := unsafe {malloc(s.len + 1)}
 	mut count := 0
 	for i := 0; i < s.len; i++ {
 		if s[i] in [`\n`, `\r`] {

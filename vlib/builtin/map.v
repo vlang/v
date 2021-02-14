@@ -107,7 +107,6 @@ mut:
 }
 
 [inline]
-[unsafe]
 fn new_dense_array(key_bytes int, value_bytes int) DenseArray {
 	slot_bytes := key_bytes + value_bytes
 	cap := 8
@@ -119,7 +118,7 @@ fn new_dense_array(key_bytes int, value_bytes int) DenseArray {
 		len: 0
 		deletes: 0
 		all_deleted: 0
-		data: malloc(cap * slot_bytes)
+		data: unsafe {malloc(cap * slot_bytes)}
 	}
 }
 
@@ -166,7 +165,7 @@ fn (mut d DenseArray) expand() int {
 // Move all zeros to the end of the array and resize array
 fn (mut d DenseArray) zeros_to_end() {
 	// TODO alloca?
-	mut tmp_buf := malloc(d.slot_bytes)
+	mut tmp_buf := unsafe {malloc(d.slot_bytes)}
 	mut count := 0
 	for i in 0 .. d.len {
 		if d.has_index(i) {
@@ -179,10 +178,12 @@ fn (mut d DenseArray) zeros_to_end() {
 			count++
 		}
 	}
-	free(tmp_buf)
-	d.deletes = 0
-	// TODO: reallocate instead as more deletes are likely
-	free(d.all_deleted)
+	unsafe {
+		free(tmp_buf)
+		d.deletes = 0
+		// TODO: reallocate instead as more deletes are likely
+		free(d.all_deleted)
+	}
 	d.len = count
 	d.cap = if count < 8 { 8 } else { count }
 	unsafe {
@@ -303,7 +304,9 @@ fn map_clone_int_8(dest voidptr, pkey voidptr) {
 }
 
 fn map_free_string(pkey voidptr) {
-	(*unsafe { &string(pkey) }).free()
+	unsafe {
+		(*&string(pkey)).free()
+	}
 }
 
 fn map_free_nop(_ voidptr) {
@@ -617,10 +620,13 @@ fn (mut d DenseArray) delete(i int) {
 
 // delete this
 pub fn (mut m map) delete(key string) {
-	m.delete_1(&key)
+	unsafe {
+		m.delete_1(&key)
+	}
 }
 
 // Removes the mapping of a particular key from the map.
+[unsafe]
 pub fn (mut m map) delete_1(key voidptr) {
 	mut index, mut meta := m.key_to_index(key)
 	index, meta = m.meta_less(index, meta)
@@ -737,7 +743,7 @@ pub fn (m &map) clone() map {
 		cached_hashbits: m.cached_hashbits
 		shift: m.shift
 		key_values: unsafe { m.key_values.clone() }
-		metas: &u32(malloc(metasize))
+		metas: unsafe {&u32(malloc(metasize))}
 		extra_metas: m.extra_metas
 		len: m.len
 		has_string_keys: m.has_string_keys

@@ -106,8 +106,8 @@ fn (mut m SortedMap) set(key string, value voidptr) {
 				j--
 			}
 			node.keys[j + 1] = key
-			node.values[j + 1] = malloc(m.value_bytes)
 			unsafe {
+				node.values[j + 1] = malloc(m.value_bytes)
 				C.memcpy(node.values[j + 1], value, m.value_bytes)
 			}
 			node.len++
@@ -129,17 +129,17 @@ fn (mut n mapnode) split_child(child_index int, mut y mapnode) {
 		z.values[j] = y.values[j + degree]
 	}
 	if !isnil(y.children) {
-		z.children = &voidptr(malloc(int(children_bytes)))
+		z.children = unsafe {&voidptr(malloc(int(children_bytes)))}
 		for jj := degree - 1; jj >= 0; jj-- {
 			unsafe {
 				z.children[jj] = y.children[jj + degree]
 			}
 		}
 	}
-	if isnil(n.children) {
-		n.children = &voidptr(malloc(int(children_bytes)))
-	}
 	unsafe {
+		if isnil(n.children) {
+			n.children = &voidptr(malloc(int(children_bytes)))
+		}
 		n.children[n.len + 1] = n.children[n.len]
 	}
 	for j := n.len; j > child_index; j-- {
