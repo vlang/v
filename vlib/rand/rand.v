@@ -143,7 +143,7 @@ const (
 
 // string returns a string of length `len` containing random characters in range `[a-zA-Z]`.
 pub fn string(len int) string {
-	mut buf := malloc(len)
+	mut buf := unsafe {malloc(len)}
 	for i in 0 .. len {
 		unsafe {
 			buf[i] = rand.chars[intn(rand.chars.len)]
@@ -159,7 +159,7 @@ const (
 
 // hex returns a hexadecimal number of length `len` containing random characters in range `[a-f0-9]`.
 pub fn hex(len int) string {
-	mut buf := malloc(len)
+	mut buf := unsafe {malloc(len)}
 	for i in 0 .. len {
 		unsafe {
 			buf[i] = rand.hex_chars[intn(rand.hex_chars.len)]
@@ -174,7 +174,7 @@ const (
 
 // ascii returns a random string of the printable ASCII characters with length `len`.
 pub fn ascii(len int) string {
-	mut buf := malloc(len)
+	mut buf := unsafe {malloc(len)}
 	for i in 0 .. len {
 		unsafe {
 			buf[i] = rand.ascii_chars[intn(rand.ascii_chars.len)]
@@ -187,7 +187,7 @@ pub fn ascii(len int) string {
 // See https://en.wikipedia.org/wiki/Universally_unique_identifier#Version_4_(random)
 pub fn uuid_v4() string {
 	buflen := 36
-	mut buf := malloc(37)
+	mut buf := unsafe {malloc(37)}
 	mut i_buf := 0
 	mut x := u64(0)
 	mut d := byte(0)
@@ -219,8 +219,8 @@ pub fn uuid_v4() string {
 		buf[23] = `-`
 		buf[14] = `4`
 		buf[buflen] = 0
+		return buf.vstring_with_len(buflen)
 	}
-	return unsafe { buf.vstring_with_len(buflen) }
 }
 
 const (
@@ -240,7 +240,7 @@ pub fn ulid() string {
 // ulid_at_millisecond does the same as `ulid` but takes a custom Unix millisecond timestamp via `unix_time_milli`.
 pub fn ulid_at_millisecond(unix_time_milli u64) string {
 	buflen := 26
-	mut buf := malloc(27)
+	mut buf := unsafe {malloc(27)}
 	mut t := unix_time_milli
 	mut i := 9
 	for i >= 0 {
@@ -271,6 +271,6 @@ pub fn ulid_at_millisecond(unix_time_milli u64) string {
 	}
 	unsafe {
 		buf[26] = 0
+		return buf.vstring_with_len(buflen)
 	}
-	return unsafe { buf.vstring_with_len(buflen) }
 }

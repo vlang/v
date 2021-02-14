@@ -12,19 +12,21 @@ fn C.FreeEnvironmentStringsW(&u16) int
 
 // `getenv` returns the value of the environment variable named by the key.
 pub fn getenv(key string) string {
-	$if windows {
-		s := C._wgetenv(key.to_wide())
-		if s == 0 {
-			return ''
+	unsafe {
+		$if windows {
+			s := C._wgetenv(key.to_wide())
+			if s == 0 {
+				return ''
+			}
+			return string_from_wide(s)
+		} $else {
+			s := C.getenv(charptr(key.str))
+			if s == voidptr(0) {
+				return ''
+			}
+			// NB: C.getenv *requires* that the result be copied.
+			return cstring_to_vstring(byteptr(s))
 		}
-		return string_from_wide(s)
-	} $else {
-		s := C.getenv(charptr(key.str))
-		if s == voidptr(0) {
-			return ''
-		}
-		// NB: C.getenv *requires* that the result be copied.
-		return cstring_to_vstring(byteptr(s))
 	}
 }
 

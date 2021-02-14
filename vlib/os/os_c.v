@@ -715,21 +715,25 @@ pub fn chdir(path string) {
 pub fn getwd() string {
 	$if windows {
 		max := 512 // max_path_len * sizeof(wchar_t)
-		buf := &u16(vcalloc(max * 2))
-		if C._wgetcwd(buf, max) == 0 {
-			free(buf)
-			return ''
+		unsafe {
+			buf := &u16(vcalloc(max * 2))
+			if C._wgetcwd(buf, max) == 0 {
+				free(buf)
+				return ''
+			}
+			return string_from_wide(buf)
 		}
-		return string_from_wide(buf)
 	} $else {
 		buf := vcalloc(512)
-		if C.getcwd(charptr(buf), 512) == 0 {
+		unsafe {
+			if C.getcwd(charptr(buf), 512) == 0 {
+				free(buf)
+				return ''
+			}
+			res := buf.vstring().clone()
 			free(buf)
-			return ''
+			return res
 		}
-		res := unsafe { buf.vstring() }.clone()
-		free(buf)
-		return res
 	}
 }
 

@@ -262,8 +262,8 @@ pub fn new(port int, cb voidptr) &Picoev {
 		loop: loop
 		cb: cb
 		date: C.get_date()
-		buf: malloc(max_fds * max_read + 1)
-		out: malloc(max_fds * max_write + 1)
+		buf: unsafe { malloc(max_fds * max_read + 1) }
+		out: unsafe { malloc(max_fds * max_write + 1) }
 	}
 	C.picoev_add(loop, fd, C.PICOEV_READ, 0, accept_callback, pv)
 	go update_date(mut pv)

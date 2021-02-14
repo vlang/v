@@ -132,7 +132,7 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 	}
 	s := sb.str()
 	defer {
-		s.free()
+		unsafe { s.free() }
 	}
 	send_string(mut ctx.conn, s) or { return false }
 	return true
@@ -439,7 +439,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 			return
 		}
 		app.send_response_to_client(mime_type, data)
-		data.free()
+		unsafe { data.free() }
 		return
 	}
 	app.init()
