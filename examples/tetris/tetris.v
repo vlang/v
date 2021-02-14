@@ -144,8 +144,8 @@ fn (mut game Game) showfps() {
 
 fn frame(mut game Game) {
 	ws := gg.window_size()
-	bs := remap(block_size, 0, win_height, 0, ws.height)
-	m := (f32(ws.width) - bs * field_width) * 0.5
+	bs := remap(block_size, 0, win_height, 0, ws.height) / game.gg.scale
+	m := ((f32(ws.width) - bs * field_width) / game.gg.scale) * 0.5  / game.gg.scale
 	game.block_size = int(bs)
 	game.margin = int(m)
 	game.frame_sw.restart()
