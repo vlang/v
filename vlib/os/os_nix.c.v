@@ -168,9 +168,11 @@ pub fn exec(cmd string) ?Result {
 	}
 	buf := [4096]byte{}
 	mut res := strings.new_builder(1024)
-	for C.fgets(charptr(buf), 4096, f) != 0 {
-		bufbp := byteptr(buf)
-		res.write_bytes(bufbp, vstrlen(bufbp))
+	unsafe {
+		for C.fgets(charptr(buf), 4096, f) != 0 {
+			bufbp := byteptr(buf)
+			res.write_bytes(bufbp, vstrlen(bufbp))
+		}
 	}
 	soutput := res.str()
 	// res.free()
