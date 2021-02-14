@@ -54,16 +54,18 @@ fn C.symlink(charptr, charptr) int
 pub fn uname() Uname {
 	mut u := Uname{}
 	utsize := sizeof(C.utsname)
-	x := malloc(int(utsize))
-	d := &C.utsname(x)
-	if C.uname(d) == 0 {
-		u.sysname = cstring_to_vstring(byteptr(d.sysname))
-		u.nodename = cstring_to_vstring(byteptr(d.nodename))
-		u.release = cstring_to_vstring(byteptr(d.release))
-		u.version = cstring_to_vstring(byteptr(d.version))
-		u.machine = cstring_to_vstring(byteptr(d.machine))
+	unsafe {
+		x := malloc(int(utsize))
+		d := &C.utsname(x)
+		if C.uname(d) == 0 {
+			u.sysname = cstring_to_vstring(byteptr(d.sysname))
+			u.nodename = cstring_to_vstring(byteptr(d.nodename))
+			u.release = cstring_to_vstring(byteptr(d.release))
+			u.version = cstring_to_vstring(byteptr(d.version))
+			u.machine = cstring_to_vstring(byteptr(d.machine))
+		}
+		free(d)
 	}
-	free(d)
 	return u
 }
 
