@@ -58,11 +58,7 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 			parent: 0
 		}
 		compiled_dir: compiled_dir
-		max_nr_errors: if pref.error_limit > 0 {
-			pref.error_limit
-		} else {
-			100
-		}
+		max_nr_errors: if pref.error_limit > 0 { pref.error_limit } else { 100 }
 		cached_msvc: msvc
 	}
 	// max_nr_errors: pref.error_limit ?? 100 TODO potential syntax?
