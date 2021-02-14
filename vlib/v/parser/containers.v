@@ -80,7 +80,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 					first_pos.extend(last_pos))
 			}
 		} else {
-			if p.tok.kind == .not && p.tok.line_nr == p.prev_tok.line_nr {
+			if p.tok.kind == .not { // && p.tok.line_nr == p.prev_tok.line_nr {
 				last_pos = p.tok.position()
 				is_fixed = true
 				has_val = true

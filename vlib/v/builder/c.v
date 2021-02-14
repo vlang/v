@@ -5,6 +5,7 @@ import v.parser
 import v.pref
 import v.util
 import v.gen.c
+import v.markused
 
 pub fn (mut b Builder) gen_c(v_files []string) string {
 	util.timing_start('PARSE')
@@ -20,6 +21,10 @@ pub fn (mut b Builder) gen_c(v_files []string) string {
 	b.checker.check_files(b.parsed_files)
 	util.timing_measure('CHECK')
 	//
+	if b.pref.skip_unused {
+		markused.mark_used(mut b.table, b.pref, b.parsed_files)
+	}
+
 	b.print_warnings_and_errors()
 	// TODO: move gen.cgen() to c.gen()
 	util.timing_start('C GEN')
@@ -38,6 +43,9 @@ pub fn (mut b Builder) build_c(v_files []string, out_file string) {
 	mut f := os.create(out_file) or { panic(err) }
 	f.writeln(output2) or { panic(err) }
 	f.close()
+	if b.pref.is_stats {
+		println('generated C source code size: ${util.bold((output2.count('\n') + 1).str())} lines, ${util.bold(output2.len.str())} bytes')
+	}
 	// os.write_file(out_file, b.gen_c(v_files))
 }
 

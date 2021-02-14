@@ -1808,6 +1808,9 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 			f.write('$name')
 		}
 	}
+	if node.mod == '' && node.name == '' {
+		f.write(node.left.str())
+	}
 	f.write_generic_if_require(node)
 	f.write('(')
 	f.call_args(node.args)

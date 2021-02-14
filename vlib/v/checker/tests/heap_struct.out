@@ -1,0 +1,35 @@
+vlib/v/checker/tests/heap_struct.vv:18:7: error: `Abc` type can only be used as a reference `&Abc` or inside a `struct` reference
+   16 | 
+   17 | fn main() {
+   18 |     a := Abc{ n: 3 }
+      |          ~~~~~~~~~~~
+   19 |     b := St{
+   20 |         Abc{ n: 7 }
+vlib/v/checker/tests/heap_struct.vv:19:7: error: `St` type can only be used as a reference `&St` or inside a `struct` reference
+   17 | fn main() {
+   18 |     a := Abc{ n: 3 }
+   19 |     b := St{
+      |          ~~~
+   20 |         Abc{ n: 7 }
+   21 |     }
+vlib/v/checker/tests/heap_struct.vv:20:3: error: `Abc` type can only be used as a reference `&Abc` or inside a `struct` reference
+   18 |     a := Abc{ n: 3 }
+   19 |     b := St{
+   20 |         Abc{ n: 7 }
+      |         ~~~~~~~~~~~
+   21 |     }
+   22 |     x := Qwe{
+vlib/v/checker/tests/heap_struct.vv:22:7: error: `Qwe` type can only be used as a reference `&Qwe` or inside a `struct` reference
+   20 |         Abc{ n: 7 }
+   21 |     }
+   22 |     x := Qwe{
+      |          ~~~~
+   23 |         f: 12.25
+   24 |         a: Abc{ n: 23 }
+vlib/v/checker/tests/heap_struct.vv:24:6: error: `Abc` type can only be used as a reference `&Abc` or inside a `struct` reference
+   22 |     x := Qwe{
+   23 |         f: 12.25
+   24 |         a: Abc{ n: 23 }
+      |            ~~~~~~~~~~~~
+   25 |     }
+   26 |     println('$a.n $b.n $x.a.n')

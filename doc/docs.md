@@ -44,7 +44,7 @@ Running V graphical apps on Android is also possible via [vab](https://github.co
 V Android dependencies: **V**, **Java JDK** >= 8, Android **SDK + NDK**.
 
   1. Install dependencies (see [vab](https://github.com/vlang/vab))
-  2. Plugin-in your Android device
+  2. Connect your Android device
   3. Run:
   ```bash
   git clone https://github.com/vlang/vab && cd vab && v vab.v
@@ -91,10 +91,10 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Mutable arguments](#mutable-arguments)
     * [Anonymous & high order functions](#anonymous--high-order-functions)
 * [References](#references)
-* [Modules](#modules)
 * [Constants](#constants)
 * [Builtin functions](#builtin-functions)
-* [Printing custom types](#custom-print-of-types)
+* [Printing custom types](#printing-custom-types)
+* [Modules](#modules)
 * [Types 2](#types-2)
     * [Interfaces](#interfaces)
     * [Enums](#enums)
@@ -1104,7 +1104,12 @@ so both `if` statements above produce the same machine code and no arrays are cr
 
 V has only one looping keyword: `for`, with several forms.
 
-#### Array `for`
+#### `for`/`in`
+
+This is the most common form. You can use it with an array, map or 
+numeric range.
+
+##### Array `for`
 
 ```v
 numbers := [1, 2, 3, 4, 5]
@@ -1134,7 +1139,7 @@ println(numbers) // [1, 2, 3]
 ```
 When an identifier is just a single underscore, it is ignored.
 
-#### Map `for`
+##### Map `for`
 
 ```v
 m := map{
@@ -1168,7 +1173,7 @@ for _, value in m {
 }
 ```
 
-#### Range `for`
+##### Range `for`
 
 ```v
 // Prints '01234'
@@ -1700,14 +1705,15 @@ fn main() {
 	res := run(5, fn (n int) int {
 		return n + n
 	})
+	println(res) // "10"
 	// You can even have an array/map of functions:
 	fns := [sqr, cube]
-	println((10)) // "100"
+	println(fns[0](10)) // "100"
 	fns_map := map{
 		'sqr':  sqr
 		'cube': cube
 	}
-	println((2)) // "8"
+	println(fns_map['cube'](2)) // "8"
 }
 ```
 
@@ -1761,7 +1767,7 @@ struct Node<T> {
 
 ## Constants
 
-```v oksyntax
+```v
 const (
 	pi    = 3.14
 	world = '世界'
@@ -1773,8 +1779,12 @@ println(world)
 
 Constants are declared with `const`. They can only be defined
 at the module level (outside of functions).
+Constant values can never be changed. You can also declare a single 
+constant separately:
 
-Constant values can never be changed.
+```v
+const e = 2.71828
+```
 
 V constants are more flexible than in most languages. You can assign more complex values:
 
@@ -1800,7 +1810,7 @@ const (
 		g: 0
 		b: 0
 	}
-	// evaluate function call at compile-time
+	// evaluate function call at compile-time*
 	blue    = rgb(0, 0, 255)
 )
 
@@ -1808,15 +1818,18 @@ println(numbers)
 println(red)
 println(blue)
 ```
+\* WIP - for now function calls are evaluated at program start-up
 
-Global variables are not allowed, so this can be really useful.
+Global variables are not normally allowed, so this can be really useful.
+
+### Required module prefix
 
 When naming constants, `snake_case` must be used. In order to distinguish consts
 from local variables, the full path to consts must be specified. For example,
 to access the PI const, full `math.pi` name must be used both outside the `math`
 module, and inside it. That restriction is relaxed only for the `main` module
-(the one containing your `fn main()`, where you can use the shorter name of the
-constants too, i.e. just `println(numbers)`, not `println(main.numbers)` .
+(the one containing your `fn main()`), where you can use the unqualified name of
+constants defined there, i.e. `numbers`, rather than `main.numbers`.
 
 vfmt takes care of this rule, so you can type `println(pi)` inside the `math` module,
 and vfmt will automatically update it to `println(math.pi)`.
@@ -1826,11 +1839,11 @@ Many people prefer all caps consts: `TOP_CITIES`. This wouldn't work
 well in V, because consts are a lot more powerful than in other languages.
 They can represent complex structures, and this is used quite often since there
 are no globals:
--->
 
 ```v oksyntax
 println('Top cities: ${top_cities.filter(.usa)}')
 ```
+-->
 
 ## Builtin functions
 
@@ -1863,7 +1876,9 @@ println([1, 2, 3]) // "[1, 2, 3]"
 println(User{ name: 'Bob', age: 20 }) // "User{name:'Bob', age:20}"
 ```
 
-## Custom print of types
+<a id='custom-print-of-types' />
+
+## Printing custom types
 
 If you want to define a custom print value for your type, simply define a
 `.str() string` method:
@@ -3865,8 +3880,9 @@ fn old_function() {
 fn inlined_function() {
 }
 
-// The following struct can only be used as a reference (`&Window`) and allocated on the heap.
-[ref_only]
+// The following struct must be allocated on the heap. Therefore, it can only be used as a 
+// reference (`&Window`) or inside another reference (`&OuterStruct{ Window{...} }`).
+[heap]
 struct Window {
 }
 

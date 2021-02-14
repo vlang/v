@@ -1,4 +1,4 @@
-vlib/v/parser/tests/struct_update_err.vv:15:3: error: unexpected `...`, expecting `name`
+vlib/v/parser/tests/struct_update_err.vv:15:3: error: unexpected token `...`, expecting name
    13 |     f2 := Foo{
    14 |         name: 'f2'
    15 |         ...f

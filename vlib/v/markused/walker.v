@@ -1,13 +1,15 @@
 // Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
-module mark_used_walker
+module markused
 
-// This module walks the entire program starting at fn main and marks used (called) functions.
+// Walk the entire program starting at fn main and marks used (called) functions.
 // Unused functions can be safely skipped by the backends to save CPU time and space.
 import v.ast
+import v.table
 
 pub struct Walker {
 pub mut:
+	table       &table.Table
 	used_fns    map[string]bool // used_fns['println'] == true
 	used_consts map[string]bool // used_consts['os.args'] == true
 	n_maps      int
@@ -202,8 +204,17 @@ fn (mut w Walker) expr(node ast.Expr) {
 			}
 		}
 		ast.Ident {
-			if node.kind == .constant {
-				w.mark_const_as_used(node.name)
+			match node.kind {
+				.constant {
+					w.mark_const_as_used(node.name)
+				}
+				.function {
+					w.fn_by_name(node.name)
+				}
+				else {
+					// `.unresolved`, `.blank_ident`, `.variable`, `.global`, `.function`
+					// println('>>> else, ast.Ident kind: $node.kind')
+				}
 			}
 		}
 		ast.Likely {
@@ -258,8 +269,19 @@ fn (mut w Walker) expr(node ast.Expr) {
 			w.expr(node.where_expr)
 		}
 		ast.StructInit {
-			// eprintln('>>>> ast.StructInit: $node')
-			w.expr(node.update_expr)
+			sym := w.table.get_type_symbol(node.typ)
+			if sym.kind == .struct_ {
+				info := sym.info as table.Struct
+				for ifield in info.fields {
+					if ifield.has_default_expr {
+						defex := ast.fe2ex(ifield.default_expr)
+						w.expr(defex)
+					}
+				}
+			}
+			if node.has_update_expr {
+				w.expr(node.update_expr)
+			}
 			for sif in node.fields {
 				w.expr(sif.expr)
 			}
@@ -321,26 +343,35 @@ pub fn (mut w Walker) fn_decl(mut node ast.FnDecl) {
 }
 
 pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
+	for arg in node.args {
+		w.expr(arg.expr)
+	}
 	if node.language == .c {
 		return
 	}
 	w.expr(node.left)
-	for arg in node.args {
-		w.expr(arg.expr)
-	}
 	w.or_block(node.or_block)
 	//
 	fn_name := if node.is_method { node.receiver_type.str() + '.' + node.name } else { node.name }
 	if w.used_fns[fn_name] {
 		return
 	}
+	w.mark_fn_as_used(fn_name)
 	stmt := w.all_fns[fn_name] or { return }
 	if stmt.name == node.name {
 		if !node.is_method || (node.receiver_type == stmt.receiver.typ) {
-			w.mark_fn_as_used(fn_name)
 			w.stmts(stmt.stmts)
 		}
 	}
+}
+
+pub fn (mut w Walker) fn_by_name(fn_name string) {
+	if w.used_fns[fn_name] {
+		return
+	}
+	stmt := w.all_fns[fn_name] or { return }
+	w.mark_fn_as_used(fn_name)
+	w.stmts(stmt.stmts)
 }
 
 pub fn (mut w Walker) struct_fields(sfields []ast.StructField) {

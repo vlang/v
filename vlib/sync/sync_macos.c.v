@@ -7,6 +7,7 @@ import time
 
 #flag -lpthread
 #include <semaphore.h>
+#include <sys/errno.h>
 
 [trusted]
 fn C.pthread_mutex_init(voidptr, voidptr) int
@@ -30,10 +31,12 @@ fn C.pthread_cond_timedwait(voidptr, voidptr, voidptr) int
 fn C.pthread_cond_destroy(voidptr) int
 
 // [init_with=new_mutex] // TODO: implement support for this struct attribute, and disallow Mutex{} from outside the sync.new_mutex() function.
+[heap]
 pub struct Mutex {
 	mutex C.pthread_mutex_t
 }
 
+[heap]
 pub struct RwMutex {
 	mutex C.pthread_rwlock_t
 }
@@ -48,6 +51,7 @@ struct CondAttr {
 
 /* MacOSX has no unnamed semaphores and no `timed_wait()` at all
    so we emulate the behaviour with other devices */
+[heap]
 struct Semaphore {
 	mtx C.pthread_mutex_t
 	cond C.pthread_cond_t

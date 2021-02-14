@@ -16,7 +16,6 @@ pub enum SocketType {
 // SocketFamily are the available address families
 pub enum SocketFamily {
 	inet = C.AF_INET
-	unix = C.AF_UNIX
 }
 
 struct C.in_addr {

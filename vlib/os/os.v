@@ -62,7 +62,9 @@ pub fn cp_all(src string, dst string, overwrite bool) ? {
 		sp := join_path(source_path, file)
 		dp := join_path(dest_path, file)
 		if is_dir(sp) {
-			mkdir(dp) ?
+			if !exists(dp) {
+				mkdir(dp) ?
+			}
 		}
 		cp_all(sp, dp, overwrite) or {
 			rmdir(dp) or { return error(err) }
@@ -463,8 +465,12 @@ pub fn walk(path string, f fn (string)) {
 		return
 	}
 	mut files := ls(path) or { return }
+	mut local_path_separator := path_separator
+	if path.ends_with(path_separator) {
+		local_path_separator = ''
+	}
 	for file in files {
-		p := path + path_separator + file
+		p := path + local_path_separator + file
 		if is_dir(p) && !is_link(p) {
 			walk(p, f)
 		} else if exists(p) {

@@ -122,8 +122,6 @@ mut:
 	strs_to_free0         []string // strings.Builder
 	// strs_to_free          []string // strings.Builder
 	inside_call           bool
-	for_in_mut_val_name   string
-	fn_mut_arg_names      []string
 	has_main              bool
 	inside_const          bool
 	comp_for_method       string      // $for method in T.methods {}
@@ -1042,65 +1040,12 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			// if af {
 			// g.autofree_call_postgen()
 			// }
-			if g.inside_ternary == 0 && !node.is_expr && !(node.expr is ast.IfExpr) {
+			if g.inside_ternary == 0 && !node.is_expr && node.expr !is ast.IfExpr {
 				g.writeln(';')
 			}
 		}
 		ast.FnDecl {
-			g.gen_attrs(node.attrs)
-			// g.tmp_count = 0 TODO
-			mut skip := false
-			pos := g.out.buf.len
-			should_bundle_module := util.should_bundle_module(node.mod)
-			if g.pref.build_mode == .build_module {
-				// if node.name.contains('parse_text') {
-				// println('!!! $node.name mod=$node.mod, built=$g.module_built')
-				// }
-				// TODO true for not just "builtin"
-				// TODO: clean this up
-				mod := if g.is_builtin_mod { 'builtin' } else { node.name.all_before_last('.') }
-				if (mod != g.module_built && node.mod != g.module_built.after('/'))
-					|| should_bundle_module {
-					// Skip functions that don't have to be generated for this module.
-					// println('skip bm $node.name mod=$node.mod module_built=$g.module_built')
-					skip = true
-				}
-				if g.is_builtin_mod && g.module_built == 'builtin' && node.mod == 'builtin' {
-					skip = false
-				}
-				if !skip && g.pref.is_verbose {
-					println('build module `$g.module_built` fn `$node.name`')
-				}
-			}
-			if g.pref.use_cache {
-				// We are using prebuilt modules, we do not need to generate
-				// their functions in main.c.
-				if node.mod != 'main' && node.mod != 'help' && !should_bundle_module
-					&& !g.pref.is_test && node.generic_params.len == 0 {
-					skip = true
-				}
-			}
-			keep_fn_decl := g.fn_decl
-			g.fn_decl = &node
-			if node.name == 'main.main' {
-				g.has_main = true
-			}
-			if node.name == 'backtrace' || node.name == 'backtrace_symbols'
-				|| node.name == 'backtrace_symbols_fd' {
-				g.write('\n#ifndef __cplusplus\n')
-			}
-			g.gen_fn_decl(node, skip)
-			if node.name == 'backtrace' || node.name == 'backtrace_symbols'
-				|| node.name == 'backtrace_symbols_fd' {
-				g.write('\n#endif\n')
-			}
-			g.fn_decl = keep_fn_decl
-			if skip {
-				g.out.go_back_to(pos)
-			}
-			if node.language != .c {
-				g.writeln('')
-			}
+			g.process_fn_decl(node)
 		}
 		ast.ForCStmt {
 			prev_branch_parent_pos := g.branch_parent_pos
@@ -1418,13 +1363,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 			}
 			g.writeln('DenseArray_value(&$atmp${arw_or_pt}key_values, $idx));')
 		}
-		if it.val_is_mut {
-			g.for_in_mut_val_name = it.val_var
-		}
 		g.stmts(it.stmts)
-		if it.val_is_mut {
-			g.for_in_mut_val_name = ''
-		}
 		if it.key_type == table.string_type && !g.is_builtin_mod {
 			// g.writeln('string_free(&$key);')
 		}
@@ -1471,13 +1410,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		s := g.table.type_to_str(it.cond_type)
 		g.error('for in: unhandled symbol `$it.cond` of type `$s`', it.pos)
 	}
-	if it.val_is_mut {
-		g.for_in_mut_val_name = it.val_var
-	}
 	g.stmts(it.stmts)
-	if it.val_is_mut {
-		g.for_in_mut_val_name = ''
-	}
 	if it.label.len > 0 {
 		g.writeln('\t${it.label}__continue: {}')
 	}
@@ -1742,6 +1675,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	right_expr := assign_stmt.right[0]
 	match right_expr {
 		ast.CallExpr { return_type = right_expr.return_type }
+		ast.LockExpr { return_type = right_expr.typ }
 		ast.MatchExpr { return_type = right_expr.return_type }
 		ast.IfExpr { return_type = right_expr.typ }
 		else {}
@@ -2045,9 +1979,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				g.array_set_pos = 0
 			} else {
 				g.out.go_back_to(pos)
-				is_var_mut := !is_decl && left is ast.Ident
-					&& (g.for_in_mut_val_name == (left as ast.Ident).name
-					|| (left as ast.Ident).name in g.fn_mut_arg_names)
+				is_var_mut := !is_decl && left.is_mut_ident()
 				addr := if is_var_mut { '' } else { '&' }
 				g.writeln('')
 				g.write('memcpy($addr')
@@ -2118,9 +2050,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					g.prevent_sum_type_unwrapping_once = true
 				}
 				if !is_fixed_array_copy || is_decl {
-					if !is_decl && var_type != table.string_type_idx && left is ast.Ident
-						&& (g.for_in_mut_val_name == (left as ast.Ident).name
-						|| (left as ast.Ident).name in g.fn_mut_arg_names) {
+					if !is_decl && left.is_mut_ident() {
 						g.write('*')
 					}
 					g.expr(left)
@@ -3545,6 +3475,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		g.expr(node.cond)
 		cond_var = g.out.after(pos)
 		g.out.go_back(cond_var.len)
+		cond_var = cond_var.trim_space()
 	} else {
 		cur_line := if is_expr {
 			g.empty_line = true
@@ -3604,6 +3535,9 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 				if is_expr {
 					g.write('(')
 				} else {
+					if j == 0 && sumtype_index == 0 {
+						g.writeln('')
+					}
 					g.write_v_source_line_info(branch.pos)
 					g.write('if (')
 				}
@@ -3666,6 +3600,9 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 			if is_expr {
 				g.write('(')
 			} else {
+				if j == 0 {
+					g.writeln('')
+				}
 				g.write_v_source_line_info(branch.pos)
 				g.write('if (')
 			}
@@ -5584,134 +5521,6 @@ fn op_to_fn_name(name string) string {
 	}
 }
 
-fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) ?string {
-	match name {
-		// platforms/os-es:
-		'windows' {
-			return '_WIN32'
-		}
-		'ios' {
-			return '__TARGET_IOS__'
-		}
-		'macos' {
-			return '__APPLE__'
-		}
-		'mach' {
-			return '__MACH__'
-		}
-		'darwin' {
-			return '__DARWIN__'
-		}
-		'hpux' {
-			return '__HPUX__'
-		}
-		'gnu' {
-			return '__GNU__'
-		}
-		'qnx' {
-			return '__QNX__'
-		}
-		'linux' {
-			return '__linux__'
-		}
-		'freebsd' {
-			return '__FreeBSD__'
-		}
-		'openbsd' {
-			return '__OpenBSD__'
-		}
-		'netbsd' {
-			return '__NetBSD__'
-		}
-		'bsd' {
-			return '__BSD__'
-		}
-		'dragonfly' {
-			return '__DragonFly__'
-		}
-		'android' {
-			return '__ANDROID__'
-		}
-		'solaris' {
-			return '__sun'
-		}
-		'haiku' {
-			return '__haiku__'
-		}
-		'linux_or_macos' {
-			return ''
-		}
-		//
-		'js' {
-			return '_VJS'
-		}
-		// compilers:
-		'gcc' {
-			return '__V_GCC__'
-		}
-		'tinyc' {
-			return '__TINYC__'
-		}
-		'clang' {
-			return '__clang__'
-		}
-		'mingw' {
-			return '__MINGW32__'
-		}
-		'msvc' {
-			return '_MSC_VER'
-		}
-		'cplusplus' {
-			return '__cplusplus'
-		}
-		// other:
-		'debug' {
-			return '_VDEBUG'
-		}
-		'test' {
-			return '_VTEST'
-		}
-		'glibc' {
-			return '__GLIBC__'
-		}
-		'prealloc' {
-			return '_VPREALLOC'
-		}
-		'no_bounds_checking' {
-			return 'CUSTOM_DEFINE_no_bounds_checking'
-		}
-		// architectures:
-		'amd64' {
-			return '__V_amd64'
-		}
-		'aarch64' {
-			return '__V_aarch64'
-		}
-		// bitness:
-		'x64' {
-			return 'TARGET_IS_64BIT'
-		}
-		'x32' {
-			return 'TARGET_IS_32BIT'
-		}
-		// endianness:
-		'little_endian' {
-			return 'TARGET_ORDER_IS_LITTLE'
-		}
-		'big_endian' {
-			return 'TARGET_ORDER_IS_BIG'
-		}
-		else {
-			if is_comptime_optional
-				|| (g.pref.compile_defines_all.len > 0 && name in g.pref.compile_defines_all) {
-				return 'CUSTOM_DEFINE_$name'
-			}
-			return error('bad os ifdef name "$name"') // should never happen, caught in the checker
-		}
-	}
-	return none
-}
-
 [inline]
 fn c_name(name_ string) string {
 	name := util.no_dots(name_)
@@ -5970,7 +5779,7 @@ fn (mut g Gen) go_stmt(node ast.GoStmt, joinable bool) string {
 					g.gowrappers.writeln('\tret_ptr = thread.ret_ptr;')
 				}
 			} else {
-				g.gowrappers.writeln('\tint stat = pthread_join(thread, $c_ret_ptr_ptr);')
+				g.gowrappers.writeln('\tint stat = pthread_join(thread, (void **)$c_ret_ptr_ptr);')
 			}
 			g.gowrappers.writeln('\tif (stat != 0) { v_panic(_SLIT("unable to join thread")); }')
 			if g.pref.os == .windows {
