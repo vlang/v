@@ -5474,7 +5474,7 @@ pub fn (mut c Checker) error(message string, pos token.Position) {
 	if c.pref.is_verbose {
 		print_backtrace()
 	}
-	msg := message.replace('`array_', '`[]')
+	msg := message.replace('`Array_', '`[]')
 	c.warn_or_error(msg, pos, false)
 }
 
