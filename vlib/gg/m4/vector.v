@@ -45,25 +45,13 @@ pub fn (a Vec4) clean() Vec4 {
 // Set all elements to value
 [direct_array_access]
 pub fn (mut x Vec4) copy(value f32) {
-	x.e = [
-		value,
-		value,
-		value,
-		value,
-	]!
+	x.e = [ value, value, value, value,	]!
 }
 
 // Scale the vector using a scalar
 [direct_array_access]
 pub fn (x Vec4) mul_scalar(value f32) Vec4 {
-	return Vec4{
-		e: [
-			x.e[0] * value,
-			x.e[1] * value,
-			x.e[2] * value,
-			x.e[3] * value,
-		]!
-	}
+	return Vec4{ e: [ x.e[0] * value, x.e[1] * value,  x.e[2] * value, x.e[3] * value, ]! }
 }
 
 // Reciprocal of the vector
