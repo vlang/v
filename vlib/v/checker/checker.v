@@ -3231,10 +3231,10 @@ fn (mut c Checker) assert_stmt(node ast.AssertStmt) {
 
 fn (mut c Checker) block(node ast.Block) {
 	if node.is_unsafe {
-		assert !c.inside_unsafe
+		old_inside_unsafe := c.inside_unsafe
 		c.inside_unsafe = true
 		c.stmts(node.stmts)
-		c.inside_unsafe = false
+		c.inside_unsafe = old_inside_unsafe
 	} else {
 		c.stmts(node.stmts)
 	}
@@ -4729,10 +4729,10 @@ pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) table.Type {
 }
 
 pub fn (mut c Checker) unsafe_expr(mut node ast.UnsafeExpr) table.Type {
-	assert !c.inside_unsafe
+	old_inside_unsafe := c.inside_unsafe
 	c.inside_unsafe = true
 	t := c.expr(node.expr)
-	c.inside_unsafe = false
+	c.inside_unsafe = old_inside_unsafe
 	return t
 }
 
@@ -5737,15 +5737,25 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	if node.name == 'main.main' {
 		c.main_fn_decl_node = node
 	}
-	if node.return_type != table.void_type {
-		for attr in node.attrs {
-			if attr.is_comptime_define {
-				c.error('only functions that do NOT return values can have `[if $attr.name]` tags',
-					node.pos)
-				break
-			}
+    
+	prev_unsafe := c.inside_unsafe
+	mut is_unsafe := c.inside_unsafe
+	for attr in node.attrs {
+		if attr.name == 'unsafe' {
+			is_unsafe = true
+		}
+		if node.return_type != table.void_type && attr.is_comptime_define {
+			c.error('only functions that do NOT return values can have `[if $attr.name]` tags',
+				node.pos)
+			break
 		}
 	}
+
+	c.inside_unsafe = is_unsafe
+	defer {
+		c.inside_unsafe = prev_unsafe
+	}
+
 	if node.is_method {
 		mut sym := c.table.get_type_symbol(node.receiver.typ)
 		if sym.kind == .array && !c.is_builtin_mod && node.name == 'map' {
