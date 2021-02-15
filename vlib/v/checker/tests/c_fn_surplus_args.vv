@@ -11,4 +11,9 @@ fn main() {
 	C.ret(1)
 	// avoid cgen whilst warning, later above should error
 	main()
+	C.af() // ok
+	C.af(3)
 }
+
+[trusted]
+fn C.af()int

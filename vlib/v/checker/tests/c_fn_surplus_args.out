@@ -24,4 +24,12 @@ vlib/v/checker/tests/c_fn_surplus_args.vv:13:2: error: the `main` function canno
    12 |     // avoid cgen whilst warning, later above should error
    13 |     main()
       |     ~~~~~~
-   14 | }
+   14 |     C.af() // ok
+   15 |     C.af(3)
+vlib/v/checker/tests/c_fn_surplus_args.vv:15:4: error: expected 0 arguments, but got 1
+   13 |     main()
+   14 |     C.af() // ok
+   15 |     C.af(3)
+      |       ~~~~~
+   16 | }
+   17 |
