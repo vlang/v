@@ -319,7 +319,7 @@ pub fn posix_get_error_msg(code int) string {
 	if ptr_text == 0 {
 		return ''
 	}
-	return tos3(ptr_text)
+	return unsafe { tos3(ptr_text) }
 }
 
 // vpclose will close a file pointer opened with `vpopen`.
@@ -463,7 +463,7 @@ pub fn rmdir(path string) ? {
 // print_c_errno will print the current value of `C.errno`.
 fn print_c_errno() {
 	e := C.errno
-	se := tos_clone(byteptr(C.strerror(C.errno)))
+	se := unsafe { tos_clone(byteptr(C.strerror(C.errno))) }
 	println('errno=$e err=$se')
 }
 
@@ -498,12 +498,12 @@ pub fn get_raw_line() string {
 	} $else {
 		max := size_t(0)
 		mut buf := charptr(0)
-		nr_chars := C.getline(&buf, &max, C.stdin)
+		nr_chars := unsafe { C.getline(&buf, &max, C.stdin) }
 		// defer { unsafe{ free(buf) } }
 		if nr_chars == 0 || nr_chars == -1 {
 			return ''
 		}
-		return tos3(buf)
+		return unsafe { tos3(buf) }
 		// res := tos_clone(buf)
 		// return res
 	}
@@ -610,7 +610,7 @@ pub fn executable() string {
 				// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew
 				final_len := C.GetFinalPathNameByHandleW(file, final_path, size, 0)
 				if final_len < size {
-					ret := string_from_wide2(final_path, final_len)
+					ret := unsafe { string_from_wide2(final_path, final_len) }
 					// remove '\\?\' from beginning (see link above)
 					return ret[4..]
 				} else {
@@ -619,7 +619,7 @@ pub fn executable() string {
 			}
 			C.CloseHandle(file)
 		}
-		return string_from_wide2(result, len)
+		return unsafe { string_from_wide2(result, len) }
 	}
 	$if macos {
 		mut result := vcalloc(max_path_len)

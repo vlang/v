@@ -4,6 +4,7 @@ import time
 
 #include <windows.h>
 #flag -lUser32
+
 struct WndClassEx {
 	cb_size         u32
 	style           u32
@@ -173,7 +174,7 @@ fn (mut cb Clipboard) get_text() string {
 		C.CloseClipboard()
 		return ''
 	}
-	str := string_from_wide(&u16(C.GlobalLock(h_data)))
+	str := unsafe { string_from_wide(&u16(C.GlobalLock(h_data))) }
 	C.GlobalUnlock(h_data)
 	return str
 }

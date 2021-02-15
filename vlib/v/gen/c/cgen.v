@@ -484,7 +484,7 @@ pub fn (mut g Gen) finish() {
 
 pub fn (mut g Gen) write_typeof_functions() {
 	g.writeln('')
-	g.writeln('// >> typeof() support for sum types')
+	g.writeln('// >> typeof() support for sum types / interfaces')
 	for typ in g.table.types {
 		if typ.kind == .sum_type {
 			sum_info := typ.info as table.SumType
@@ -507,6 +507,15 @@ pub fn (mut g Gen) write_typeof_functions() {
 				g.writeln('\t\tdefault: return "unknown ${util.strip_main_name(typ.name)}";')
 				g.writeln('\t}')
 			}
+			g.writeln('}')
+		} else if typ.kind == .interface_ {
+			inter_info := typ.info as table.Interface
+			g.writeln('static char * v_typeof_interface_${typ.cname}(int sidx) { /* $typ.name */ ')
+			for t in inter_info.types {
+				subtype := g.table.get_type_symbol(t)
+				g.writeln('\tif (sidx == _${typ.cname}_${subtype.cname}_index) return "${util.strip_main_name(subtype.name)}";')
+			}
+			g.writeln('\treturn "unknown ${util.strip_main_name(typ.name)}";')
 			g.writeln('}')
 		}
 	}
@@ -3786,7 +3795,7 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 		}
 	}
 	chan_array := g.new_tmp_var()
-	g.write('array_sync__Channel_ptr $chan_array = new_array_from_c_array($n_channels, $n_channels, sizeof(sync__Channel*), _MOV((sync__Channel*[$n_channels]){')
+	g.write('Array_sync__Channel_ptr $chan_array = new_array_from_c_array($n_channels, $n_channels, sizeof(sync__Channel*), _MOV((sync__Channel*[$n_channels]){')
 	for i in 0 .. n_channels {
 		if i > 0 {
 			g.write(', ')
@@ -3797,7 +3806,7 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 	}
 	g.writeln('}));')
 	directions_array := g.new_tmp_var()
-	g.write('array_sync__Direction $directions_array = new_array_from_c_array($n_channels, $n_channels, sizeof(sync__Direction), _MOV((sync__Direction[$n_channels]){')
+	g.write('Array_sync__Direction $directions_array = new_array_from_c_array($n_channels, $n_channels, sizeof(sync__Direction), _MOV((sync__Direction[$n_channels]){')
 	for i in 0 .. n_channels {
 		if i > 0 {
 			g.write(', ')
@@ -3810,7 +3819,7 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 	}
 	g.writeln('}));')
 	objs_array := g.new_tmp_var()
-	g.write('array_voidptr $objs_array = new_array_from_c_array($n_channels, $n_channels, sizeof(voidptr), _MOV((voidptr[$n_channels]){')
+	g.write('Array_voidptr $objs_array = new_array_from_c_array($n_channels, $n_channels, sizeof(voidptr), _MOV((voidptr[$n_channels]){')
 	for i in 0 .. n_channels {
 		g.write(if i > 0 { ', &' } else { '&' })
 		if tmp_objs[i] == '' {
@@ -4786,7 +4795,7 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, val string, typ ta
 		}
 	}
 	if g.is_autofree {
-		if styp.starts_with('array_') {
+		if styp.starts_with('Array_') {
 			g.cleanups[mod].writeln('\tarray_free(&$cname);')
 		}
 		if styp == 'string' {

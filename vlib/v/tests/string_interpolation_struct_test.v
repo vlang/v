@@ -50,3 +50,22 @@ fn test_struct_map_field_string_interpolation() {
 	assert s.contains("dict: {'a': 1, 'b': 2}")
 	assert s.ends_with('}')
 }
+
+struct Circular {
+mut:
+	next &Circular
+}
+
+fn test_stack_circular_elem_auto_str() {
+	mut elem := Circular{0}
+	elem.next = &elem
+	s := '$elem'.replace('\n', '|')
+	assert s == 'Circular{|    next: &<circular>|}'
+}
+
+fn test_heap_circular_elem_auto_str() {
+	mut elem := &Circular{0}
+	elem.next = elem
+	s := '$elem'.replace('\n', '|')
+	assert s == '&Circular{|    next: &<circular>|}'
+}

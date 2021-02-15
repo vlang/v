@@ -1332,7 +1332,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		c.error('optional type cannot be called directly', call_expr.left.position())
 		return table.void_type
 	}
-	if left_type_sym.kind == .sum_type && method_name == 'type_name' {
+	if left_type_sym.kind in [.sum_type, .interface_] && method_name == 'type_name' {
 		return table.string_type
 	}
 	mut has_generic_generic := false // x.foo<T>() instead of x.foo<int>()
@@ -1882,10 +1882,11 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	if f.language != .v || call_expr.language != .v {
 		// ignore C function of type `fn()`, assume untyped
 		// For now don't check C functions that are variadic, underscored, capitalized
-		// or have no params and return int
+		// or have no params or attributes and return int
 		if f.language == .c && f.params.len != call_expr.args.len && !f.is_variadic
-			&& f.name[2] != `_` && !f.name[2].is_capital()
-			&& (f.params.len != 0 || f.return_type !in [table.void_type, table.int_type]) {
+			&& f.name[2] != `_` && !f.name[2].is_capital() && (f.params.len != 0
+			|| f.return_type !in [table.void_type, table.int_type]
+			|| f.attrs.len > 0) {
 			// change to error later
 			c.warn('expected $f.params.len arguments, but got $call_expr.args.len', call_expr.pos)
 		}
@@ -3152,6 +3153,10 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		}
 		ast.GotoLabel {}
 		ast.GotoStmt {
+			if !c.inside_unsafe {
+				c.warn('`goto` requires `unsafe` (consider using labelled break/continue)',
+					node.pos)
+			}
 			if node.name !in c.cur_fn.label_names {
 				c.error('unknown label `$node.name`', node.pos)
 			}
@@ -5448,7 +5453,7 @@ pub fn (mut c Checker) error(message string, pos token.Position) {
 	if c.pref.is_verbose {
 		print_backtrace()
 	}
-	msg := message.replace('`array_', '`[]')
+	msg := message.replace('`Array_', '`[]')
 	c.warn_or_error(msg, pos, false)
 }
 
@@ -5723,6 +5728,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			c.error('method overrides built-in array method', node.pos)
 		} else if sym.kind == .sum_type && node.name == 'type_name' {
 			c.error('method overrides built-in sum type method', node.pos)
+		} else if sym.kind == .multi_return {
+			c.error('cannot define method on multi-value', node.method_type_pos)
 		}
 		if sym.name.len == 1 {
 			// One letter types are reserved for generics.

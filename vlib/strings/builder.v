@@ -27,6 +27,7 @@ pub fn new_builder(initial_size int) Builder {
 }
 
 // write_bytes appends `bytes` to the accumulated buffer
+[unsafe]
 pub fn (mut b Builder) write_bytes(bytes byteptr, howmany int) {
 	b.buf.push_many(bytes, howmany)
 	b.len += howmany
@@ -61,8 +62,7 @@ pub fn (mut b Builder) go_back(n int) {
 fn bytes2string(b []byte) string {
 	mut copy := b.clone()
 	copy << byte(`\0`)
-	res := tos(copy.data, copy.len - 1)
-	return res
+	return unsafe { tos(copy.data, copy.len - 1) }
 }
 
 // cut_last cuts the last `n` bytes from the buffer and returns them
@@ -137,6 +137,7 @@ pub fn (mut b Builder) str() string {
 }
 
 // free - manually free the contents of the buffer
+[unsafe]
 pub fn (mut b Builder) free() {
 	unsafe { free(b.buf.data) }
 	// b.buf = []byte{cap: b.initial_size}

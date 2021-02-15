@@ -96,7 +96,7 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 	ctx.done = true
 	mut sb := strings.new_builder(1024)
 	defer {
-		sb.free()
+		unsafe { sb.free() }
 	}
 	sb.write('HTTP/1.1 $ctx.status')
 	sb.write('\r\nContent-Type: $mimetype')

@@ -49,7 +49,7 @@ pub fn(c &Crc32) checksum(b []byte) u32 {
 	return c.sum32(b)
 }
 
-// pass the polinomial to use
+// pass the polynomial to use
 pub fn new(poly int) &Crc32 {
 	mut c := &Crc32{}
 	c.generate_table(poly)
