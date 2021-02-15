@@ -87,7 +87,7 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 				g.sql_stmt(expr)
 				g.sql_stmt_name = tmp_sql_stmt_name
 				// get last inserted id
-				g.writeln('array_sqlite__Row rows = sqlite__DB_exec($db_name, _SLIT("SELECT last_insert_rowid()")).arg0;')
+				g.writeln('Array_sqlite__Row rows = sqlite__DB_exec($db_name, _SLIT("SELECT last_insert_rowid()")).arg0;')
 				id_name := g.new_tmp_var()
 				g.writeln('int $id_name = string_int((*(string*)array_get((*(sqlite__Row*)array_get(rows, 0)).vals, 0)));')
 				g.writeln('sqlite3_bind_int($g.sql_stmt_name, ${i + 0} , $id_name); // id')

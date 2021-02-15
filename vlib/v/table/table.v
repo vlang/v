@@ -417,7 +417,7 @@ pub fn (t &Table) array_cname(elem_type Type) string {
 	if elem_type.is_ptr() {
 		res = '_ptr'.repeat(elem_type.nr_muls())
 	}
-	return 'array_$elem_type_sym.cname' + res
+	return 'Array_$elem_type_sym.cname' + res
 }
 
 // array_fixed_source_name generates the original name for the v source.
@@ -436,7 +436,7 @@ pub fn (t &Table) array_fixed_cname(elem_type Type, size int) string {
 	if elem_type.is_ptr() {
 		res = '_ptr'
 	}
-	return 'array_fixed_${elem_type_sym.cname}_$size' + res
+	return 'Array_fixed_${elem_type_sym.cname}_$size' + res
 }
 
 [inline]
@@ -492,7 +492,7 @@ pub fn (t &Table) map_cname(key_type Type, value_type Type) string {
 	key_type_sym := t.get_type_symbol(key_type)
 	value_type_sym := t.get_type_symbol(value_type)
 	suffix := if value_type.is_ptr() { '_ptr' } else { '' }
-	return 'map_${key_type_sym.cname}_$value_type_sym.cname' + suffix
+	return 'Map_${key_type_sym.cname}_$value_type_sym.cname' + suffix
 	// return 'map_${value_type_sym.name}' + suffix
 }
 
