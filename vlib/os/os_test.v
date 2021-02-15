@@ -415,6 +415,19 @@ fn test_base() {
 	assert os.base('filename') == 'filename'
 }
 
+fn test_file_name() {
+	$if windows {
+		assert os.file_name('v\\vlib\\os\\os.v') == 'os.v'
+		assert os.file_name('v\\vlib\\os\\') == ''
+		assert os.file_name('v\\vlib\\os') == 'os'
+	} $else {
+		assert os.file_name('v/vlib/os/os.v') == 'os.v'
+		assert os.file_name('v/vlib/os/') == ''
+		assert os.file_name('v/vlib/os') == 'os'
+	}
+	assert os.file_name('filename') == 'filename'
+}
+
 fn test_uname() {
 	u := os.uname()
 	assert u.sysname.len > 0
