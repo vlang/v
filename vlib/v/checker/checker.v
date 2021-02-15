@@ -1669,6 +1669,9 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		if call_expr.args.len > 0 {
 			c.error('.str() method calls should have no arguments', call_expr.pos)
 		}
+		if left_type.has_flag(.shared_f) {
+			c.fail_if_not_rlocked(call_expr.left, 'receiver')
+		}
 		return table.string_type
 	}
 	// call struct field fn type
