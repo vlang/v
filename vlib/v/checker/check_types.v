@@ -313,7 +313,7 @@ pub fn (mut c Checker) fail_if_not_rlocked(expr ast.Expr) {
 			c.error('$expr.name must be `rlock`ed to be used as non-mut argument or receiver', expr.pos)
 		}
 	} else {
-		c.error('you have to create a handle and `rlock` it tu use a `shared` element as non-mut argument or receiver',
+		c.error('you have to create a handle and `rlock` it to use a `shared` element as non-mut argument or receiver',
 			expr.position())
 	}
 }
@@ -321,6 +321,9 @@ pub fn (mut c Checker) fail_if_not_rlocked(expr ast.Expr) {
 pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) table.Type {
 	for i, expr in node.exprs {
 		ftyp := c.expr(expr)
+		if ftyp.has_flag(.shared_f) {
+			c.fail_if_not_rlocked(expr)
+		}
 		node.expr_types << ftyp
 		typ := c.table.unalias_num_type(ftyp)
 		mut fmt := node.fmts[i]
