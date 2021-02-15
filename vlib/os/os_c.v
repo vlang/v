@@ -498,12 +498,12 @@ pub fn get_raw_line() string {
 	} $else {
 		max := size_t(0)
 		mut buf := charptr(0)
-		nr_chars := C.getline(&buf, &max, C.stdin)
+		nr_chars := unsafe { C.getline(&buf, &max, C.stdin) }
 		// defer { unsafe{ free(buf) } }
 		if nr_chars == 0 || nr_chars == -1 {
 			return ''
 		}
-		return tos3(buf)
+		return unsafe { tos3(buf) }
 		// res := tos_clone(buf)
 		// return res
 	}

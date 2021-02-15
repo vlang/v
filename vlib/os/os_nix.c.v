@@ -82,7 +82,7 @@ fn init_os_args(argc int, argv &&byte) []string {
 
 pub fn ls(path string) ?[]string {
 	mut res := []string{}
-	dir := C.opendir(charptr(path.str))
+	dir := unsafe { C.opendir(charptr(path.str)) }
 	if isnil(dir) {
 		return error('ls() couldnt open dir "$path"')
 	}
@@ -99,8 +99,8 @@ pub fn ls(path string) ?[]string {
 				|| (bptr[0] == `.` && bptr[1] == `.` && bptr[2] == 0) {
 				continue
 			}
+			res << tos_clone(bptr)
 		}
-		res << tos_clone(bptr)
 	}
 	C.closedir(dir)
 	return res
