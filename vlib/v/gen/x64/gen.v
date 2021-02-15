@@ -672,7 +672,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 	}
 }
 
-fn C.strtol() int
+fn C.strtol(str charptr, endptr &&char, base int) int
 
 fn (mut g Gen) expr(node ast.Expr) {
 	// println('cgen expr()')

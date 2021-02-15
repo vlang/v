@@ -19,7 +19,7 @@ fn C.sigaction(int, voidptr, int)
 
 fn C.open(charptr, int, ...int) int
 
-fn C.fdopen(int, string) voidptr
+fn C.fdopen(fd int, mode charptr) &C.FILE
 
 fn C.CopyFile(&u32, &u32, int) int
 

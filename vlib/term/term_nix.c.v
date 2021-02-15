@@ -4,6 +4,7 @@ import os
 
 #include <sys/ioctl.h>
 #include <termios.h> // TIOCGWINSZ
+
 pub struct C.winsize {
 pub:
 	ws_row    u16
@@ -20,7 +21,7 @@ pub fn get_terminal_size() (int, int) {
 		return default_columns_size, default_rows_size
 	}
 	w := C.winsize{}
-	C.ioctl(1, C.TIOCGWINSZ, &w)
+	C.ioctl(1, u64(C.TIOCGWINSZ), &w)
 	return int(w.ws_col), int(w.ws_row)
 }
 
@@ -52,7 +53,7 @@ pub fn get_cursor_position() Coord {
 		i++
 		if i >= 15 {
 			panic('C.getchar() called too many times')
-		}        
+		}
 		// state management:
 		if b == `R` {
 			break

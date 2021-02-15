@@ -45,7 +45,8 @@ pub fn proc_pidpath(int, voidptr, int) int
 
 fn C.realpath(charptr, charptr) &char
 
-fn C.chmod(byteptr, int) int
+// fn C.chmod(byteptr, mode_t) int
+fn C.chmod(byteptr, u32) int
 
 fn C.printf(byteptr, ...byteptr) int
 
@@ -56,7 +57,7 @@ fn C.fputs(str byteptr, stream &C.FILE) int
 fn C.fflush(&C.FILE) int
 
 // TODO define args in these functions
-fn C.fseek() int
+fn C.fseek(stream &C.FILE, offset int, whence int) int
 
 fn C.fopen(filename charptr, mode charptr) &C.FILE
 
@@ -66,9 +67,9 @@ fn C.fread(ptr voidptr, item_size size_t, items size_t, stream &C.FILE) size_t
 
 fn C.fwrite(ptr voidptr, item_size size_t, items size_t, stream &C.FILE) size_t
 
-fn C.fclose() int
+fn C.fclose(stream &C.FILE) int
 
-fn C.pclose() int
+fn C.pclose(stream &C.FILE) int
 
 // process execution, os.process:
 fn C.getpid() int
@@ -94,25 +95,25 @@ fn C.setenv(charptr, charptr, int) int
 
 fn C.unsetenv(charptr) int
 
-fn C.access() int
+fn C.access(path charptr, amode int) int
 
-fn C.remove() int
+fn C.remove(filename charptr) int
 
-fn C.rmdir() int
+fn C.rmdir(path charptr) int
 
-fn C.chdir() int
+fn C.chdir(path charptr) int
 
-fn C.rewind() int
+fn C.rewind(stream &C.FILE) int
 
 fn C.stat(charptr, voidptr) int
 
-fn C.lstat() int
+fn C.lstat(path charptr, buf &C.stat) int
 
-fn C.rename() int
+fn C.rename(old_filename charptr, new_filename charptr) int
 
-fn C.fgets() int
+fn C.fgets(str charptr, n int, stream &C.FILE) int
 
-fn C.memset() int
+fn C.memset(str voidptr, c int, n size_t) int
 
 fn C.sigemptyset() int
 
@@ -122,18 +123,20 @@ fn C.signal(signal int, handlercb voidptr) voidptr
 
 fn C.mktime() int
 
-fn C.gettimeofday() int
+fn C.gettimeofday(tv &C.timeval, tz &C.timezone) int
 
 [trusted]
-fn C.sleep(int) int
+fn C.sleep(seconds u32) u32
 
-fn C.usleep() int
+// fn C.usleep(usec useconds_t) int
+fn C.usleep(usec u32) int
 
 fn C.opendir(charptr) voidptr
 
-fn C.closedir() int
+fn C.closedir(dirp &C.DIR) int
 
-fn C.mkdir() int
+// fn C.mkdir(path charptr, mode mode_t) int
+fn C.mkdir(path charptr, mode u32) int
 
 // C.rand returns a pseudorandom integer from 0 (inclusive) to C.RAND_MAX (exclusive)
 [trusted]
@@ -145,9 +148,9 @@ fn C.srand(seed uint)
 
 fn C.atof() int
 
-fn C.tolower() int
+fn C.tolower(c int) int
 
-fn C.toupper() int
+fn C.toupper(c int) int
 
 [trusted]
 fn C.getchar() int
@@ -155,19 +158,19 @@ fn C.getchar() int
 [trusted]
 fn C.strerror(int) charptr
 
-fn C.snprintf() int
+fn C.snprintf(str charptr, size size_t, format charptr, opt ...voidptr) int
 
 fn C.fprintf(byteptr, ...byteptr)
 
-fn C.WIFEXITED() bool
+fn C.WIFEXITED(status int) bool
 
-fn C.WEXITSTATUS() int
+fn C.WEXITSTATUS(status int) int
 
-fn C.WIFSIGNALED() bool
+fn C.WIFSIGNALED(status int) bool
 
-fn C.WTERMSIG() int
+fn C.WTERMSIG(status int) int
 
-fn C.isatty() int
+fn C.isatty(fd int) int
 
 fn C.syscall() int
 

@@ -302,7 +302,7 @@ pub const (
 	array_type_idx         = 21
 	map_type_idx           = 22
 	chan_type_idx          = 23
-	sizet_type_idx         = 24
+	size_t_type_idx        = 24
 	any_type_idx           = 25
 	float_literal_type_idx = 26
 	int_literal_type_idx   = 27

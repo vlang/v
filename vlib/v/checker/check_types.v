@@ -7,13 +7,36 @@ import v.table
 import v.token
 import v.ast
 
-pub fn (mut c Checker) check_expected_call_arg(got table.Type, expected_ table.Type) ? {
+pub fn (mut c Checker) check_expected_call_arg(got table.Type, expected_ table.Type, language table.Language) ? {
 	mut expected := expected_
 	// variadic
 	if expected.has_flag(.variadic) {
 		exp_type_sym := c.table.get_type_symbol(expected_)
 		exp_info := exp_type_sym.info as table.Array
 		expected = exp_info.elem_type
+	}
+	if language == .c {
+		// allow number types to be used interchangeably
+		if got.is_number() && expected.is_number() {
+			return
+		}
+		// mode_t - currently using u32 as mode_t for C fns
+		// if got.idx() in [table.int_type_idx, table.u32_type_idx] && expected.idx() in [table.int_type_idx, table.u32_type_idx] {
+		// 	return
+		// }
+		// allow number to be used as size_t
+		if got.is_number() && expected.idx() == table.size_t_type_idx {
+			return
+		}
+		// allow passing bool arg to C fn bool arg (int)
+		if got.idx() == table.bool_type_idx && expected.idx() == table.int_type_idx {
+			return
+		}
+		if got.idx() == table.string_type_idx
+			&& expected in [table.byteptr_type_idx, table.charptr_type_idx] {
+			return
+		}
+		// return
 	}
 	if c.check_types(got, expected) {
 		return
@@ -160,7 +183,7 @@ fn (c &Checker) promote_num(left_type table.Type, right_type table.Type) table.T
 	}
 	idx_hi := type_hi.idx()
 	idx_lo := type_lo.idx()
-	// the following comparisons rely on the order of the indices in atypes.v
+	// the following comparisons rely on the order of the indices in table/types.v
 	if idx_hi == table.int_literal_type_idx {
 		return type_lo
 	} else if idx_hi == table.float_literal_type_idx {

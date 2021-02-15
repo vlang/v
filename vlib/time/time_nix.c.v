@@ -17,10 +17,10 @@ struct C.tm {
 	tm_isdst int
 }
 
-fn C.timegm(&tm) time_t
+fn C.timegm(&C.tm) time_t
 
 // fn C.gmtime_r(&tm, &gbuf)
-fn C.localtime_r(t &C.time_t, tm &C.tm)
+fn C.localtime_r(t &time_t, tm &C.tm)
 
 fn make_unix_time(t C.tm) int {
 	return int(C.timegm(&t))

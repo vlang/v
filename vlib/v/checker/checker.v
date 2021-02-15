@@ -1596,7 +1596,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			if method.generic_names.len > 0 {
 				continue
 			}
-			c.check_expected_call_arg(got_arg_typ, exp_arg_typ) or {
+			c.check_expected_call_arg(got_arg_typ, exp_arg_typ, call_expr.language) or {
 				// str method, allow type with str method if fn arg is string
 				// Passing an int or a string array produces a c error here
 				// Deleting this condition results in propper V error messages
@@ -1906,21 +1906,21 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		&& f.ctdefine !in c.pref.compile_defines {
 		call_expr.should_be_skipped = true
 	}
-	if f.language != .v || call_expr.language != .v {
-		// ignore C function of type `fn()`, assume untyped
-		// For now don't check C functions that are variadic, underscored, capitalized
-		// or have no params and return int
-		if f.language == .c && f.params.len != call_expr.args.len && !f.is_variadic
-			&& f.name[2] != `_` && !f.name[2].is_capital()
-			&& (f.params.len != 0 || f.return_type !in [table.void_type, table.int_type]) {
-			// change to error later
-			c.warn('expected $f.params.len arguments, but got $call_expr.args.len', call_expr.pos)
-		}
-		for arg in call_expr.args {
-			c.expr(arg.expr)
-		}
-		return f.return_type
-	}
+	// if f.language != .v || call_expr.language != .v {
+	// 	// ignore C function of type `fn()`, assume untyped
+	// 	// For now don't check C functions that are variadic, underscored, capitalized
+	// 	// or have no params and return int
+	// 	if f.language == .c && f.params.len != call_expr.args.len && !f.is_variadic
+	// 		&& f.name[2] != `_` && !f.name[2].is_capital()
+	// 		&& (f.params.len != 0 || f.return_type !in [table.void_type, table.int_type]) {
+	// 		// change to error later
+	// 		c.warn('expected $f.params.len arguments, but got $call_expr.args.len', call_expr.pos)
+	// 	}
+	// 	for arg in call_expr.args {
+	// 		c.expr(arg.expr)
+	// 	}
+	// 	return f.return_type
+	// }
 	min_required_args := if f.is_variadic { f.params.len - 1 } else { f.params.len }
 	if call_expr.args.len < min_required_args {
 		c.error('expected $min_required_args arguments, but got $call_expr.args.len',
@@ -1977,7 +1977,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			c.error('function with `shared` arguments cannot be called inside `lock`/`rlock` block',
 				call_expr.pos)
 		}
-		if call_arg.is_mut {
+		if call_arg.is_mut && f.language == .v {
 			to_lock, pos := c.fail_if_immutable(call_arg.expr)
 			if !arg.is_mut {
 				tok := call_arg.share.str()
@@ -2010,7 +2010,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			c.type_implements(typ, arg.typ, call_arg.expr.position())
 			continue
 		}
-		c.check_expected_call_arg(typ, arg.typ) or {
+		c.check_expected_call_arg(typ, arg.typ, call_expr.language) or {
 			// str method, allow type with str method if fn arg is string
 			// Passing an int or a string array produces a c error here
 			// Deleting this condition results in propper V error messages
