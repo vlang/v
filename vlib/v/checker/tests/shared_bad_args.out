@@ -5,7 +5,7 @@ vlib/v/checker/tests/shared_bad_args.vv:43:8: error: r is `shared` and must be `
       |              ^
    44 |         println(u)
    45 |     }
-vlib/v/checker/tests/shared_bad_args.vv:47:16: error: s is `shared` and must be `rlock`ed or `locked` to be passed as non-mut argument
+vlib/v/checker/tests/shared_bad_args.vv:47:16: error: s is `shared` and must be `rlock`ed or `lock`ed to be passed as non-mut argument
    45 |     }
    46 |     lock r {
    47 |         v := r.s_val(s)
