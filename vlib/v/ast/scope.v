@@ -4,6 +4,7 @@
 module ast
 
 import v.table
+import v.token
 
 pub struct Scope {
 pub mut:
@@ -15,6 +16,22 @@ pub mut:
 	children             []&Scope
 	start_pos            int
 	end_pos              int
+}
+
+// used for smartcasting only
+// struct fields change type in scopes
+pub struct ScopeStructField {
+pub:
+	struct_type    table.Type // type of struct
+	name           string
+	pos            token.Position
+	typ            table.Type
+	sum_type_casts []table.Type // nested sum types require nested smart casting, for that a list of types is needed
+	orig_type      table.Type   // original sumtype type; 0 if it's not a sumtype
+	// TODO: move this to a real docs site later
+	// 10 <- original type (orig_type)
+	//   [11, 12, 13] <- cast order (sum_type_casts)
+	//        12 <- the current casted type (typ)
 }
 
 pub fn new_scope(parent &Scope, start_pos int) &Scope {
