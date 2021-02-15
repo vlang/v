@@ -37,10 +37,19 @@ fn test_print_shared() {
 	shared s := Abc{ x: 6.25 }
 	shared a := [0.25, -6.125, 12.5]
 	shared m := {'xy': 12.125, 'qwe': -6.0625, 'foo': 0.5}
-	rlock a, m, s {
+	x, y := rlock a, s {
 		println(s)
 		println(a)
-		println(m)
+		s.str(), a.str()
 	}
+	z := rlock m {
+		println(m)
+		m.str()
+	}
+	assert x.starts_with('Abc{')
+	assert x.contains('x: 6.25')
+	assert x.ends_with('}')
+	assert y == '[0.25, -6.125, 12.5]'
+	assert z == "{'xy': 12.125, 'qwe': -6.0625, 'foo': 0.5}"
 }
 
