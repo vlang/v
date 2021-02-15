@@ -307,6 +307,17 @@ pub fn (c &Checker) get_default_fmt(ftyp table.Type, typ table.Type) byte {
 	}
 }
 
+pub fn (mut c Checker) fail_if_not_rlocked(expr ast.Expr) {
+	if expr is ast.Ident {
+		if expr.name !in c.rlocked_names && expr.name !in c.locked_names {
+			c.error('$expr.name must be `rlock`ed to be used as non-mut argument or receiver', expr.pos)
+		}
+	} else {
+		c.error('you have to create a handle and `rlock` it tu use a `shared` element as non-mut argument or receiver',
+			expr.position())
+	}
+}
+
 pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) table.Type {
 	for i, expr in node.exprs {
 		ftyp := c.expr(expr)

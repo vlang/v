@@ -1055,7 +1055,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 	return if infix_expr.op.is_relational() { table.bool_type } else { return_type }
 }
 
-// returns name and position of variable that needs write lock
+// returns name and position of variable that needs read lock
 fn (mut c Checker) needs_rlock(expr ast.Expr) (string, token.Position) {
 	mut to_lock := '' // name of variable that needs lock
 	mut pos := token.Position{} // and its position
@@ -1936,6 +1936,9 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	if fn_name in ['println', 'print', 'eprintln', 'eprint'] && call_expr.args.len > 0 {
 		c.expected_type = table.string_type
 		call_expr.args[0].typ = c.expr(call_expr.args[0].expr)
+		if call_expr.args[0].typ.has_flag(.shared_f) {
+			c.fail_if_not_rlocked(call_expr.args[0].expr)
+		}
 		/*
 		// TODO: optimize `struct T{} fn (t &T) str() string {return 'abc'} mut a := []&T{} a << &T{} println(a[0])`
 		// It currently generates:
