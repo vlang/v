@@ -9,7 +9,7 @@ struct C.dirent {
 
 fn C.readdir(voidptr) &C.dirent
 
-fn C.readlink() int
+fn C.readlink(pathname charptr, buf charptr, bufsiz size_t) int
 
 fn C.getline(voidptr, voidptr, voidptr) int
 
