@@ -45,17 +45,17 @@ fn (req &Request) ssl_do(port int, method Method, host_name string, path string)
 	mut readcounter := 0
 	for {
 		readcounter++
-		len := C.BIO_read(web, buff, bufsize)
+		len := unsafe { C.BIO_read(web, buff, bufsize) }
 		if len <= 0 {
 			break
 		}
 		$if debug_http ? {
 			eprintln('ssl_do, read ${readcounter:4d} | len: $len')
 			eprintln('-'.repeat(20))
-			eprintln(tos(buff, len))
+			eprintln(unsafe { tos(buff, len) })
 			eprintln('-'.repeat(20))
 		}
-		content.write_bytes(buff, len)
+		unsafe { content.write_bytes(buff, len) }
 	}
 	if web != 0 {
 		C.BIO_free_all(web)

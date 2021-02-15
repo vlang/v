@@ -183,7 +183,7 @@ pub fn f64_to_str_lnd(f f64, dec_digit int) string {
 		}
 		res[r_i] = 0
 		//println("result: [${tos(&res[0],r_i)}]")
-		return tos(res.data, r_i)
+		return unsafe { tos(res.data, r_i) }
 	} else {
 		if dec_digit > 0 {
 			mut c := 0
@@ -194,7 +194,7 @@ pub fn f64_to_str_lnd(f f64, dec_digit int) string {
 			}
 			res[r_i] = 0
 		}
-		return tos(res.data, r_i)
+		return unsafe { tos(res.data, r_i) }
 	}
 }
 

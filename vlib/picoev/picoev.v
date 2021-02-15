@@ -170,7 +170,7 @@ fn rw_callback(loop &C.picoev_loop, fd int, events int, cb_arg voidptr) {
 			}
 		} else {
 			r += idx
-			mut s := tos(buf, r)
+			mut s := unsafe { tos(buf, r) }
 			mut out := p.out
 			unsafe {
 				out += fd * max_write
