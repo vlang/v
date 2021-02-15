@@ -475,6 +475,10 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			method_start_pos := p.tok.position()
 			line_nr := p.tok.line_nr
 			name := p.check_name()
+			if name == 'type_name' {
+				p.error_with_pos('cannot override built-in method `type_name`', method_start_pos)
+				return ast.InterfaceDecl{}
+			}
 			if ts.has_method(name) {
 				p.error_with_pos('duplicate method `$name`', method_start_pos)
 				return ast.InterfaceDecl{}
