@@ -484,7 +484,7 @@ pub fn (mut g Gen) finish() {
 
 pub fn (mut g Gen) write_typeof_functions() {
 	g.writeln('')
-	g.writeln('// >> typeof() support for sum types')
+	g.writeln('// >> typeof() support for sum types / interfaces')
 	for typ in g.table.types {
 		if typ.kind == .sum_type {
 			sum_info := typ.info as table.SumType
@@ -507,6 +507,15 @@ pub fn (mut g Gen) write_typeof_functions() {
 				g.writeln('\t\tdefault: return "unknown ${util.strip_main_name(typ.name)}";')
 				g.writeln('\t}')
 			}
+			g.writeln('}')
+		} else if typ.kind == .interface_ {
+			inter_info := typ.info as table.Interface
+			g.writeln('static char * v_typeof_interface_${typ.cname}(int sidx) { /* $typ.name */ ')
+			for t in inter_info.types {
+				subtype := g.table.get_type_symbol(t)
+				g.writeln('\tif (sidx == _${typ.cname}_${subtype.cname}_index) return "${util.strip_main_name(subtype.name)}";')
+			}
+			g.writeln('\treturn "unknown ${util.strip_main_name(typ.name)}";')
 			g.writeln('}')
 		}
 	}

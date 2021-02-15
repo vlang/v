@@ -1356,7 +1356,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		c.error('optional type cannot be called directly', call_expr.left.position())
 		return table.void_type
 	}
-	if left_type_sym.kind == .sum_type && method_name == 'type_name' {
+	if left_type_sym.kind in [.sum_type, .interface_] && method_name == 'type_name' {
 		return table.string_type
 	}
 	mut has_generic_generic := false // x.foo<T>() instead of x.foo<int>()
