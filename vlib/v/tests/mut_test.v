@@ -111,3 +111,36 @@ fn test_mut_5() {
 	assert results[6] == '1 1 1'
 	assert results[7] == '1 1 1'
 }
+
+fn test_mut_6() {
+	mut results := []int{}
+    mut arr := []int{len:3}
+    for _, mut v in arr {
+		v = v + 1
+		println(v)
+		results << v
+    }
+	assert results[0] == 1
+	assert results[1] == 1
+	assert results[2] == 1
+}
+
+fn test_mut_7() {
+    mut arr := []int{len:3}
+	mut results := []int{}
+    for _, mut v in arr {
+		v = v + 1 // v: 1
+		mut vv := v // vv: 1, v: 1
+		vv = vv + v // vv: 2, v: 1
+		println(v)
+		println(vv)
+		results << v
+		results << vv
+    }
+	assert results[0] == 1
+	assert results[1] == 2
+	assert results[2] == 1
+	assert results[3] == 2
+	assert results[4] == 1
+	assert results[5] == 2
+}

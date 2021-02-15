@@ -1516,7 +1516,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw table.Type, expected_t
 		return
 	}
 	if got_is_ptr && !expected_is_ptr && neither_void
-		&& exp_sym.kind !in [.interface_, .placeholder] {
+		&& exp_sym.kind !in [.interface_, .placeholder] && expr !is ast.InfixExpr {
 		got_deref_type := got_type.deref()
 		deref_sym := g.table.get_type_symbol(got_deref_type)
 		deref_will_match := expected_type in [got_type, got_deref_type, deref_sym.parent_idx]
@@ -3372,8 +3372,14 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			if need_par {
 				g.write('(')
 			}
+			if node.left_type.is_ptr() && node.left.is_mut_ident() {
+				g.write('*')
+			}
 			g.expr(node.left)
 			g.write(' $node.op.str() ')
+			if node.right_type.is_ptr() && node.right.is_mut_ident() {
+				g.write('*')
+			}
 			g.expr(node.right)
 			if need_par {
 				g.write(')')

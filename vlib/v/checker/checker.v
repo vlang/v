@@ -763,7 +763,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 	left_pos := infix_expr.left.position()
 	right_pos := infix_expr.right.position()
 	if (left_type.is_ptr() || left.is_pointer()) && infix_expr.op in [.plus, .minus] {
-		if !c.inside_unsafe {
+		if !c.inside_unsafe && !infix_expr.left.is_mut_ident() && !infix_expr.right.is_mut_ident() {
 			c.warn('pointer arithmetic is only allowed in `unsafe` blocks', left_pos)
 		}
 		if left_type == table.voidptr_type {
@@ -5122,7 +5122,7 @@ pub fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) table.Type {
 	typ := c.expr(node.expr)
 	typ_sym := c.table.get_type_symbol(typ)
 	is_non_void_pointer := (typ.is_ptr() || typ.is_pointer()) && typ_sym.kind != .voidptr
-	if !c.inside_unsafe && is_non_void_pointer {
+	if !c.inside_unsafe && is_non_void_pointer && !node.expr.is_mut_ident() {
 		c.warn('pointer arithmetic is only allowed in `unsafe` blocks', node.pos)
 	}
 	if !(typ_sym.is_number() || (c.inside_unsafe && is_non_void_pointer)) {
