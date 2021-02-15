@@ -88,7 +88,7 @@ pub fn tos(s byteptr, len int) string {
 // tos_clone returns a copy of `s`.
 [unsafe]
 pub fn tos_clone(s byteptr) string {
-	return tos2(s).clone()
+	return unsafe { tos2(s) }.clone()
 }
 
 // tos2 does the same as `tos`, but also calculates the length. Called by `string(bytes)` casts.
@@ -122,7 +122,7 @@ pub fn tos4(s byteptr) string {
 	if s == 0 {
 		return ''
 	}
-	return tos2(s)
+	return unsafe { tos2(s) }
 }
 
 // tos5 does the same as `tos4`, but for char*, to avoid warnings.
@@ -131,7 +131,7 @@ pub fn tos5(s charptr) string {
 	if s == 0 {
 		return ''
 	}
-	return tos3(s)
+	return unsafe { tos3(s) }
 }
 
 [deprecated]
@@ -212,7 +212,7 @@ pub fn (s string) cstr() byteptr {
 // cstring_to_vstring creates a copy of cstr and turns it into a v string.
 [unsafe]
 pub fn cstring_to_vstring(cstr byteptr) string {
-	return tos_clone(cstr)
+	return unsafe { tos_clone(cstr) }
 }
 
 // replace_once replaces the first occurence of `rep` with the string passed in `with`.

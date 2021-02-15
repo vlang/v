@@ -62,8 +62,7 @@ pub fn (mut b Builder) go_back(n int) {
 fn bytes2string(b []byte) string {
 	mut copy := b.clone()
 	copy << byte(`\0`)
-	res := tos(copy.data, copy.len - 1)
-	return res
+	return unsafe { tos(copy.data, copy.len - 1) }
 }
 
 // cut_last cuts the last `n` bytes from the buffer and returns them
