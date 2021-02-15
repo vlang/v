@@ -3910,21 +3910,25 @@ fn C.DefWindowProc(hwnd int, msg int, lparam int, wparam int)
 
 V allows unconditionally jumping to a label with `goto`. The label name must be contained
 within the same function as the `goto` statement. A program may `goto` a label outside
-or deeper than the current scope, but it must not skip a variable initialization.
+or deeper than the current scope. `goto` allows jumping past variable initialization or 
+jumping back to code that accesses memory that has already been freed, so it requires
+`unsafe`.
 
 ```v ignore
 if x {
 	// ...
 	if y {
-		goto my_label
+		unsafe {
+			goto my_label
+		}
 	}
 	// ...
 }
 my_label:
 ```
-`goto` should be avoided when `for` can be used instead. In particular,
-[labelled break](#labelled-break--continue) can be used to break out of
-a nested loop.
+`goto` should be avoided, particularly when `for` can be used instead.
+[Labelled break/continue](#labelled-break--continue) can be used to break out of
+a nested loop, and those do not risk violating memory-safety.
 
 # Appendices
 
