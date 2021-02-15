@@ -31,7 +31,7 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 			g.sqlite3_stmt(node, typ)
 		}
 		else {
-			verror('This database type is not implemented yet in orm') // TODO add better error
+			verror('This database type `$typ` is not implemented yet in orm') // TODO add better error
 		}
 	}
 }
@@ -43,7 +43,7 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr, sub bool, line string) {
 			g.sqlite3_select_expr(node, sub, line, typ)
 		}
 		else {
-			verror('This database type is not implemented yet in orm') // TODO add better error
+			verror('This database type `$typ` is not implemented yet in orm') // TODO add better error
 		}
 	}
 }
@@ -458,6 +458,9 @@ fn (mut g Gen) parse_db_type(expr ast.Expr) SqlType {
 			if expr.info is ast.IdentVar {
 				return g.parse_db_from_type_string(g.table.get_type_name(expr.info.typ))
 			}
+		}
+		ast.SelectorExpr {
+			return g.parse_db_from_type_string(g.table.get_type_name(expr.typ))
 		}
 		else {
 			return .unknown
