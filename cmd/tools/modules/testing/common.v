@@ -128,6 +128,13 @@ pub fn new_test_session(_vargs string) TestSession {
 			skip_files << 'examples/database/orm.v' // try fix it
 		}
 	}
+	if testing.github_job != 'sokol-shaders-can-be-compiled' {
+		// These examples need .h files that are produced from the supplied .glsl files,
+		// using by the shader compiler tools in https://github.com/floooh/sokol-tools-bin/archive/pre-feb2021-api-changes.tar.gz
+		skip_files << 'examples/sokol/02_cubes_glsl/cube_glsl.v'
+		skip_files << 'examples/sokol/03_march_tracing_glsl/rt_glsl.v'
+		skip_files << 'examples/sokol/04_multi_shader_glsl/rt_glsl.v'
+	}
 	if testing.github_job != 'ubuntu-tcc' {
 		skip_files << 'examples/wkhtmltopdf.v' // needs installation of wkhtmltopdf from https://github.com/wkhtmltopdf/packaging/releases
 		// the ttf_test.v is not interactive, but needs X11 headers to be installed, which is done only on ubuntu-tcc for now
