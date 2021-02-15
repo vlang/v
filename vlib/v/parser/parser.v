@@ -1020,13 +1020,16 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	if p.tok.kind in [.assign, .decl_assign] || p.tok.kind.is_assign() {
 		return p.partial_assign_stmt(left, left_comments)
 	} else if !p.pref.translated
-		&& tok.kind !in [.key_if, .key_match, .key_lock, .key_rlock, .key_select]
-		&& left0 !is ast.CallExpr && (is_top_level || p.tok.kind != .rcbr)
-		&& left0 !is ast.PostfixExpr && !(left0 is ast.InfixExpr
-		&& (left0 as ast.InfixExpr).op in [.left_shift, .arrow]) && left0 !is ast.ComptimeCall
-		&& left0 !is ast.SelectorExpr {
-		p.error_with_pos('expression evaluated but not used', left0.position())
-		return ast.Stmt{}
+		&& tok.kind !in [.key_if, .key_match, .key_lock, .key_rlock, .key_select] {
+		for node in left {
+			if node !is ast.CallExpr && (is_top_level || p.tok.kind != .rcbr)
+				&& node !is ast.PostfixExpr && !(node is ast.InfixExpr
+				&& (node as ast.InfixExpr).op in [.left_shift, .arrow]) && node !is ast.ComptimeCall
+				&& node !is ast.SelectorExpr {
+				p.error_with_pos('expression evaluated but not used', node.position())
+				return ast.Stmt{}
+			}
+		}
 	}
 	pos.update_last_line(p.prev_tok.line_nr)
 	if left.len == 1 {
