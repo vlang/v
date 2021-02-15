@@ -341,7 +341,7 @@ fn my_init(mut app App) {
 	w := 256
 	h := 256
 	sz := w * h * 4
-	tmp_txt := unsafe {malloc(sz)}
+	tmp_txt := unsafe { malloc(sz) }
 	mut i := 0
 	for i < sz {
 		unsafe {
