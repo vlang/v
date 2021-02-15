@@ -5737,7 +5737,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	if node.name == 'main.main' {
 		c.main_fn_decl_node = node
 	}
-    
+
 	prev_unsafe := c.inside_unsafe
 	mut is_unsafe := c.inside_unsafe
 	for attr in node.attrs {
