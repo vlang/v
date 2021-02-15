@@ -142,11 +142,11 @@ fn get_reg_value(reg_env_key voidptr, key string) ?string {
 	$if windows {
 		// query the value (shortcut the sizing step)
 		reg_value_size := 4095 // this is the max length (not for the registry, but for the system %PATH%)
-		mut reg_value := &u16(malloc(reg_value_size))
+		mut reg_value := unsafe { &u16(malloc(reg_value_size)) }
 		if C.RegQueryValueEx(reg_env_key, key.to_wide(), 0, 0, reg_value, &reg_value_size) != 0 {
 			return error('Unable to get registry value for "$key", try rerunning as an Administrator')
 		}
-		return string_from_wide(reg_value)
+		return unsafe { string_from_wide(reg_value) }
 	}
 	return error('not on windows')
 }
