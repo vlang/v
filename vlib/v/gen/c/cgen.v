@@ -5036,10 +5036,13 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	if is_multiline {
 		g.indent--
 	}
-	// if struct_init.fields.len == 0 && info.fields.len == 0 {
-	if !initialized {
-		g.write('\n#ifndef __cplusplus\n0\n#endif\n')
+
+	if g.pref.ccompiler == 'msvc' {
+		if !initialized {
+			g.write('\n#ifndef __cplusplus\n0\n#endif\n')
+		}
 	}
+
 	g.write('}')
 	if g.is_shared && !g.inside_opt_data && !g.is_array_set {
 		g.write('}, sizeof($shared_styp))')
