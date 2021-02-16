@@ -917,6 +917,7 @@ pub fn (s string) is_upper() bool {
 
 // is_empty - return true if string is empty
 // example: ''.is_empty() => true or 'hello'.is_empty() => false
+[inline]
 pub fn (s string) is_empty() bool {
 	return s.len == 0
 }
