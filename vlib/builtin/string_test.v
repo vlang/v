@@ -592,6 +592,13 @@ fn test_upper() {
 	assert s.to_upper() == 'HI'
 }
 
+fn test_is_empty() {
+	mut s := ""
+	assert s.is_empty() == true
+	s = "hello"
+	assert s.is_empty() == false
+}
+
 fn test_capitalize() {
 	mut s := 'hello'
 	assert !s.is_capital()
