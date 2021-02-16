@@ -144,3 +144,20 @@ fn test_mut_7() {
 	assert results[4] == 1
 	assert results[5] == 2
 }
+
+fn test_mut_8() {
+    mut indices := []int{len: 1}
+    for i, mut v in indices {
+        v = i
+        mut b := v
+        println(typeof(i).name)
+        println(typeof(v).name)
+        println(typeof(b).name)
+        u := [v, 5, 6]
+        println(typeof(u).name)
+		println(u)
+		assert typeof(b).name == 'int'
+		assert typeof(u).name == '[]int'
+		assert u == [0, 5, 6]
+    }
+}

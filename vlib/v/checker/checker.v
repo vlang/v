@@ -3036,7 +3036,11 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 			}
 			// The first element's type
 			if i == 0 {
-				elem_type = c.table.mktyp(typ)
+				if expr.is_mut_ident() {
+					elem_type = c.table.mktyp(typ.deref())
+				} else {
+					elem_type = c.table.mktyp(typ)
+				}
 				c.expected_type = elem_type
 				continue
 			}
