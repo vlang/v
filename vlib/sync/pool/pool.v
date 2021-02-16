@@ -4,9 +4,6 @@ import sync
 
 import runtime
 
-[trusted]
-fn C.atomic_fetch_add_u32(voidptr, u32) u32
-
 pub const (
 	no_result = voidptr(0)
 )
