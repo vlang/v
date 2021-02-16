@@ -644,7 +644,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		f.write('>')
 	}
 	if node.fields.len == 0 && node.embeds.len == 0 && node.pos.line_nr == node.pos.last_line {
-		f.writeln(' {}\n')
+		f.writeln(' {}')
 		return
 	}
 	f.writeln(' {')
@@ -1107,10 +1107,10 @@ pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
 			f.write('}')
 		}
 		if !node.is_anon {
-			f.writeln('\n')
+			f.writeln('')
 		}
 	} else {
-		f.writeln('\n')
+		f.writeln('')
 	}
 	// Mark all function's used type so that they are not removed from imports
 	for arg in node.params {
