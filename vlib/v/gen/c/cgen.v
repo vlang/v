@@ -5037,10 +5037,8 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		g.indent--
 	}
 
-	if g.pref.ccompiler == 'msvc' {
-		if !initialized {
-			g.write('\n#ifndef __cplusplus\n0\n#endif\n')
-		}
+	if !initialized {
+		g.write('\n#ifndef __cplusplus\n0\n#endif\n')
 	}
 
 	g.write('}')
