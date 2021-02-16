@@ -93,8 +93,8 @@ pub fn ls(path string) ?[]string {
 		if isnil(ent) {
 			break
 		}
-		bptr := &ent.d_name[0]
 		unsafe {
+			bptr := byteptr(&ent.d_name[0])
 			if bptr[0] == 0 || (bptr[0] == `.` && bptr[1] == 0)
 				|| (bptr[0] == `.` && bptr[1] == `.` && bptr[2] == 0) {
 				continue
