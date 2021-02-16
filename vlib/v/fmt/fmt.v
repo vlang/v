@@ -1034,6 +1034,7 @@ pub fn (mut f Fmt) or_expr(or_block ast.OrExpr) {
 		.block {
 			if or_block.stmts.len == 0 {
 				f.write(' or { }')
+				return
 			} else if or_block.stmts.len == 1 {
 				// the control stmts (return/break/continue...) print a newline inside them,
 				// so, since this'll all be on one line, trim any possible whitespace
@@ -1041,17 +1042,14 @@ pub fn (mut f Fmt) or_expr(or_block ast.OrExpr) {
 				single_line := ' or { $str }'
 				if single_line.len + f.line_len <= fmt.max_len.last() {
 					f.write(single_line)
-				} else {
-					// if the line would be too long, make it multiline
-					f.writeln(' or {')
-					f.stmts(or_block.stmts)
-					f.write('}')
+					return
 				}
-			} else {
-				f.writeln(' or {')
-				f.stmts(or_block.stmts)
-				f.write('}')
 			}
+			// Make it multiline if the blocks has at least two stmts
+			// or a single line would be too long
+			f.writeln(' or {')
+			f.stmts(or_block.stmts)
+			f.write('}')
 		}
 		.propagate {
 			f.write(' ?')
