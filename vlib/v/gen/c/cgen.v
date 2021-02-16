@@ -6113,7 +6113,7 @@ $staticprefix $interface_name* I_${cctype}_to_Interface_${interface_name}_ptr($c
 					method_call += '_method_wrapper'
 				}
 				if g.pref.build_mode != .build_module {
-					methods_struct.writeln('\t\t._method_${c_name(method.name)} = $method_call,')
+					methods_struct.writeln('\t\t._method_${c_name(method.name)} = (void*) $method_call,')
 				}
 			}
 			if g.pref.build_mode != .build_module {
