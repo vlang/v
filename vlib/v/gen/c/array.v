@@ -26,6 +26,9 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 		g.write('{')
 		if node.has_val {
 			for i, expr in node.exprs {
+				if expr.is_mut_ident() {
+					g.write('*')
+				}
 				g.expr(expr)
 				if i != node.exprs.len - 1 {
 					g.write(', ')

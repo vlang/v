@@ -1092,7 +1092,9 @@ fn test_push_arr_string_free() {
 	mut lines := ['hi']
 	s := 'a' + 'b'
 	lines << s
-	s.free() // make sure the data in the array is valid after freeing the string
+	// make sure the data in the array is valid after freeing the string
+	unsafe { s.free() }
+	//
 	println(lines)
 	assert lines.len == 2
 	assert lines[0] == 'hi'

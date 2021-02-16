@@ -148,6 +148,7 @@ const (
 		'vlib/v/tests/shift_test.v',
 		'vlib/v/tests/str_gen_test.v',
 		'vlib/v/tests/string_interpolation_multi_return_test.v',
+		'vlib/v/tests/string_interpolation_shared_test.v',
 		'vlib/v/tests/struct_allow_both_field_defaults_and_skip_flag_test.v',
 		'vlib/v/tests/string_interpolation_test.v',
 		'vlib/v/tests/struct_test.v',
