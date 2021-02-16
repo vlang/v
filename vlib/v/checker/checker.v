@@ -1056,30 +1056,6 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 }
 
 // returns name and position of variable that needs write lock
-fn (mut c Checker) needs_rlock(expr ast.Expr) (string, token.Position) {
-	mut to_lock := '' // name of variable that needs lock
-	mut pos := token.Position{} // and its position
-	match mut expr {
-		ast.Ident {
-			if expr.obj is ast.Var {
-				mut v := expr.obj as ast.Var
-				if v.typ.share() == .shared_t {
-					if expr.name !in c.rlocked_names && expr.name !in c.locked_names {
-						to_lock = expr.name
-						pos = expr.pos
-					}
-				}
-			}
-		}
-		else {
-			to_lock = ''
-			pos = token.Position{}
-		}
-	}
-	return to_lock, pos
-}
-
-// returns name and position of variable that needs write lock
 // also sets `is_changed` to true (TODO update the name to reflect this?)
 fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 	mut to_lock := '' // name of variable that needs lock
@@ -1540,11 +1516,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			}
 		} else {
 			if left_type.has_flag(.shared_f) {
-				to_lock, pos := c.needs_rlock(call_expr.left)
-				if to_lock != '' {
-					c.error('$to_lock is `shared` and must be `rlock`ed or `lock`ed to be used as non-mut receiver',
-						pos)
-				}
+				c.fail_if_not_rlocked(call_expr.left, 'receiver')
 			}
 		}
 		if (!left_type_sym.is_builtin() && method.mod != 'builtin') && method.language == .v
@@ -1639,10 +1611,8 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 					c.error('`$call_expr.name` parameter `$param.name` is `$tok`, you need to provide `$tok` e.g. `$tok arg${
 						i + 1}`', arg.expr.position())
 				} else {
-					to_lock, pos := c.needs_rlock(arg.expr)
-					if to_lock != '' {
-						c.error('$to_lock is `shared` and must be `rlock`ed or `locked` to be passed as non-mut argument',
-							pos)
+					if got_arg_typ.has_flag(.shared_f) {
+						c.fail_if_not_rlocked(arg.expr, 'argument')
 					}
 				}
 			}
@@ -1698,6 +1668,9 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		call_expr.return_type = table.string_type
 		if call_expr.args.len > 0 {
 			c.error('.str() method calls should have no arguments', call_expr.pos)
+		}
+		if left_type.has_flag(.shared_f) {
+			c.fail_if_not_rlocked(call_expr.left, 'receiver')
 		}
 		return table.string_type
 	}
@@ -1937,6 +1910,9 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	if fn_name in ['println', 'print', 'eprintln', 'eprint'] && call_expr.args.len > 0 {
 		c.expected_type = table.string_type
 		call_expr.args[0].typ = c.expr(call_expr.args[0].expr)
+		if call_expr.args[0].typ.has_flag(.shared_f) {
+			c.fail_if_not_rlocked(call_expr.args[0].expr, 'argument to print')
+		}
 		/*
 		// TODO: optimize `struct T{} fn (t &T) str() string {return 'abc'} mut a := []&T{} a << &T{} println(a[0])`
 		// It currently generates:
@@ -1999,10 +1975,8 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 				c.error('`$call_expr.name` parameter `$arg.name` is `$tok`, you need to provide `$tok` e.g. `$tok arg${
 					i + 1}`', call_arg.expr.position())
 			} else {
-				to_lock, pos := c.needs_rlock(call_arg.expr)
-				if to_lock != '' {
-					c.error('$to_lock is `shared` and must be `rlock`ed or `lock`ed to be passed as non-mut argument',
-						pos)
+				if typ.has_flag(.shared_f) {
+					c.fail_if_not_rlocked(call_arg.expr, 'argument')
 				}
 			}
 		}

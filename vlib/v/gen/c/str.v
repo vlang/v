@@ -302,7 +302,11 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 }
 
 fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) {
+	is_shared := etype.has_flag(.shared_f)
 	mut typ := etype
+	if is_shared {
+		typ = typ.clear_flag(.shared_f).set_nr_muls(0)
+	}
 	mut sym := g.table.get_type_symbol(typ)
 	// when type is alias, print the aliased value
 	if mut sym.info is table.Alias {
@@ -351,7 +355,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) {
 		g.write('${str_fn_name}(')
 		if str_method_expects_ptr && !is_ptr {
 			g.write('&')
-		} else if (!str_method_expects_ptr && is_ptr) || is_var_mut {
+		} else if (!str_method_expects_ptr && is_ptr && !is_shared) || is_var_mut {
 			g.write('*')
 		}
 		if expr is ast.ArrayInit {
@@ -361,6 +365,9 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) {
 			}
 		}
 		g.expr(expr)
+		if is_shared {
+			g.write('->val')
+		}
 		g.write(')')
 		if is_ptr && !is_var_mut {
 			g.write(')')
