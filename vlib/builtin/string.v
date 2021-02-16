@@ -915,6 +915,12 @@ pub fn (s string) is_upper() bool {
 	return true
 }
 
+// is_empty - return true if string is empty
+// example: ''.is_empty() => true or 'hello'.is_empty() => false
+pub fn (s string) is_empty() bool {
+	return s.len == 0
+}
+
 // capitalize returns the string with the first character capitalized.
 // Example: assert 'hello'.capitalize() == 'Hello'
 pub fn (s string) capitalize() string {
