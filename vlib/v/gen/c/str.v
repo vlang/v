@@ -264,15 +264,9 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		if typ == table.string_type {
 			if g.inside_vweb_tmpl {
 				g.write('vweb__filter(')
-				if expr.is_mut_ident() {
-					g.write('*')
-				}
 				g.expr(expr)
 				g.write(')')
 			} else {
-				if expr.is_mut_ident() {
-					g.write('*')
-				}
 				g.expr(expr)
 			}
 		} else if node.fmts[i] == `s` || typ.has_flag(.variadic) {
@@ -289,21 +283,12 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 				} else {
 					g.write('(u64)(')
 				}
-				if expr.is_mut_ident() {
-					g.write('*')
-				}
 				g.expr(expr)
 				g.write(')')
 			} else {
-				if expr.is_mut_ident() {
-					g.write('*')
-				}
 				g.expr(expr)
 			}
 		} else {
-			if expr.is_mut_ident() {
-				g.write('*')
-			}
 			g.expr(expr)
 		}
 		if node.fmts[i] == `s` && node.fwidths[i] != 0 {
@@ -369,7 +354,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) {
 		g.write('${str_fn_name}(')
 		if str_method_expects_ptr && !is_ptr {
 			g.write('&')
-		} else if (!str_method_expects_ptr && is_ptr && !is_shared) || is_var_mut {
+		} else if !str_method_expects_ptr && is_ptr && !is_shared {
 			g.write('*')
 		}
 		if expr is ast.ArrayInit {

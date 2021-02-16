@@ -1525,7 +1525,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw table.Type, expected_t
 		return
 	}
 	if got_is_ptr && !expected_is_ptr && neither_void
-		&& exp_sym.kind !in [.interface_, .placeholder] && expr !is ast.InfixExpr {
+		&& exp_sym.kind !in [.interface_, .placeholder] {
 		got_deref_type := got_type.deref()
 		deref_sym := g.table.get_type_symbol(got_deref_type)
 		deref_will_match := expected_type in [got_type, got_deref_type, deref_sym.parent_idx]
@@ -2105,9 +2105,6 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					g.write('for (int $i_var=0; $i_var<$fixed_array.size; $i_var++) {')
 					g.expr(left)
 					g.write('[$i_var] = ')
-					if val.is_mut_ident() {
-						g.write('*')
-					}
 					g.expr(val)
 					g.write('[$i_var];')
 					g.writeln('}')
@@ -2130,9 +2127,6 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 							g.write('{0}')
 						}
 					} else {
-						if val.is_mut_ident() {
-							g.write('*')
-						}
 						g.expr(val)
 					}
 				} else {
@@ -2719,13 +2713,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.writeln('sync__RwMutex_lock(&$node.auto_locked->mtx);')
 			}
 			g.inside_map_postfix = true
-			if node.expr.is_mut_ident() {
-				g.write('(*')
-				g.expr(node.expr)
-				g.write(')')
-			} else {
-				g.expr(node.expr)
-			}
+			g.expr(node.expr)
 			g.inside_map_postfix = false
 			g.write(node.op.str())
 			if node.auto_locked != '' {
@@ -3401,14 +3389,8 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			if need_par {
 				g.write('(')
 			}
-			if node.left_type.is_ptr() && node.left.is_mut_ident() {
-				g.write('*')
-			}
 			g.expr(node.left)
 			g.write(' $node.op.str() ')
-			if node.right_type.is_ptr() && node.right.is_mut_ident() {
-				g.write('*')
-			}
 			g.expr(node.right)
 			if need_par {
 				g.write(')')
@@ -3738,9 +3720,6 @@ fn (mut g Gen) map_init(node ast.MapInit) {
 			g.write('}), _MOV(($value_typ_str[$size]){')
 		}
 		for expr in node.vals {
-			if expr.is_mut_ident() {
-				g.write('*')
-			}
 			g.expr(expr)
 			g.write(', ')
 		}

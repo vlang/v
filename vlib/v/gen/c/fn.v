@@ -625,7 +625,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	} else {
 		g.write('${name}(')
 	}
-	if node.receiver_type.is_ptr() && (!node.left_type.is_ptr()
+	if (node.receiver_type.is_ptr() || node.receiver_is_mut) && (!node.left_type.is_ptr()
 		|| node.from_embed_type != 0 || (node.left_type.has_flag(.shared_f) && node.name != 'str')) {
 		// The receiver is a reference, but the caller provided a value
 		// Add `&` automatically.
@@ -638,8 +638,6 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		if !node.left_type.has_flag(.shared_f) && !node.receiver_is_mut {
 			g.write('/*rec*/*')
 		}
-	} else {
-		g.write('/* asdf ${node.receiver_type.is_ptr()} ${node.left_type.is_ptr()} */')
 	}
 	if g.is_autofree && node.free_receiver && !g.inside_lambda && !g.is_builtin_mod {
 		// The receiver expression needs to be freed, use the temp var.
@@ -1091,7 +1089,6 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type table.Type) {
 		g.write('->val')
 		return
 	}
-	g.write('/*pppp ${arg.typ.is_ptr()} ${expected_type.is_ptr()} */')
 	g.expr_with_cast(arg.expr, arg.typ, expected_type)
 }
 
