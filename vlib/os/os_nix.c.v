@@ -93,7 +93,7 @@ pub fn ls(path string) ?[]string {
 		if isnil(ent) {
 			break
 		}
-		bptr := byteptr(ent.d_name)
+		bptr := &ent.d_name[0]
 		unsafe {
 			if bptr[0] == 0 || (bptr[0] == `.` && bptr[1] == 0)
 				|| (bptr[0] == `.` && bptr[1] == `.` && bptr[2] == 0) {
@@ -169,8 +169,8 @@ pub fn exec(cmd string) ?Result {
 	buf := [4096]byte{}
 	mut res := strings.new_builder(1024)
 	unsafe {
-		for C.fgets(charptr(buf), 4096, f) != 0 {
-			bufbp := byteptr(buf)
+		bufbp := &buf[0]
+		for C.fgets(bufbp, 4096, f) != 0 {
 			res.write_bytes(bufbp, vstrlen(bufbp))
 		}
 	}
@@ -210,11 +210,11 @@ pub fn (mut c Command) read_line() string {
 	buf := [4096]byte{}
 	mut res := strings.new_builder(1024)
 	unsafe {
-		for C.fgets(charptr(buf), 4096, c.f) != 0 {
-			bufbp := byteptr(buf)
+		bufbp := &buf[0]
+		for C.fgets(bufbp, 4096, c.f) != 0 {
 			len := vstrlen(bufbp)
 			for i in 0 .. len {
-				if int(bufbp[i]) == `\n` {
+				if bufbp[i] == `\n` {
 					res.write_bytes(bufbp, i)
 					return res.str()
 				}
