@@ -3902,6 +3902,8 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
 		ft := c.table.type_to_str(node.expr_type)
 		tt := c.table.type_to_str(node.typ)
 		c.warn('casting `$ft` to `$tt` is only allowed in `unsafe` code', node.pos)
+	} else if from_type_sym.kind == .array_fixed && !node.expr_type.is_ptr() {
+		c.warn('cannot cast a fixed array (use e.g. `&arr[0]` instead)', node.pos)
 	}
 	if node.has_arg {
 		c.expr(node.arg)
