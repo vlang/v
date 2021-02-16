@@ -643,7 +643,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		f.write(gtypes)
 		f.write('>')
 	}
-	if node.fields.len == 0 && node.pos.line_nr == node.pos.last_line {
+	if node.fields.len == 0 && node.embeds.len == 0 && node.pos.line_nr == node.pos.last_line {
 		f.writeln(' {}\n')
 		return
 	}

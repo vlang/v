@@ -19,6 +19,10 @@ pub mut:
 	pub_mut_field string
 }
 
+struct Bar {
+	Foo
+}
+
 fn new_user() User {
 	return User{
 		name: 'Serious Sam'
