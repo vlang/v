@@ -5253,7 +5253,7 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 			'(note, that variables may be mutable but string values are always immutable, like in Go and Java)',
 			node.pos)
 	}
-	if !c.inside_unsafe && (typ.is_ptr() || typ.is_pointer()) {
+	if !c.inside_unsafe && ((typ.is_ptr() && !node.left.is_mut_ident()) || typ.is_pointer()) {
 		mut is_ok := false
 		if mut node.left is ast.Ident {
 			if node.left.obj is ast.Var {
@@ -5432,8 +5432,14 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) table.Type {
 		return node.typ
 	}
 	// `{'age': 20}`
-	key0_type := c.table.mktyp(c.expr(node.keys[0]))
-	val0_type := c.table.mktyp(c.expr(node.vals[0]))
+	mut key0_type := c.table.mktyp(c.expr(node.keys[0]))
+	if node.keys[0].is_mut_ident() {
+		key0_type = key0_type.deref()
+	}
+	mut val0_type := c.table.mktyp(c.expr(node.vals[0]))
+	if node.vals[0].is_mut_ident() {
+		val0_type = val0_type.deref()
+	}
 	mut same_key_type := true
 	for i, key in node.keys {
 		if i == 0 {

@@ -2712,7 +2712,13 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.writeln('sync__RwMutex_lock(&$node.auto_locked->mtx);')
 			}
 			g.inside_map_postfix = true
-			g.expr(node.expr)
+			if node.expr.is_mut_ident() {
+				g.write('(*')
+				g.expr(node.expr)
+				g.write(')')
+			} else {
+				g.expr(node.expr)
+			}
 			g.inside_map_postfix = false
 			g.write(node.op.str())
 			if node.auto_locked != '' {
@@ -3709,6 +3715,9 @@ fn (mut g Gen) map_init(node ast.MapInit) {
 			g.write('}), _MOV(($value_typ_str[$size]){')
 		}
 		for expr in node.vals {
+			if expr.is_mut_ident() {
+				g.write('*')
+			}
 			g.expr(expr)
 			g.write(', ')
 		}

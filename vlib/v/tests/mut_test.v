@@ -161,3 +161,96 @@ fn test_mut_8() {
 		assert u == [0, 5, 6]
     }
 }
+
+fn test_mut_9() {
+    mut arr := [0,0,0]
+	mut results := []string{}
+	for _, mut v in arr {
+		v = v + 1 // v: 1
+		mut vv := v // vv: 1, v: 1
+		vv = vv + v // vv: 2, v: 1
+		foo := {'a': v, 'b': vv} // or use new syntax foo := map{'a': v, 'b': vv}, results are the same
+		println(v)
+		println(vv)
+		println(foo)
+		results << '$v'
+		results << '$vv'
+		results << '$foo'
+    }
+	assert results[0] == '1'
+	assert results[1] == '2'
+	assert results[2] == "{'a': 1, 'b': 2}"
+	assert results[3] == '1'
+	assert results[4] == '2'
+	assert results[5] == "{'a': 1, 'b': 2}"
+	assert results[6] == '1'
+	assert results[7] == '2'
+	assert results[8] == "{'a': 1, 'b': 2}"
+}
+
+fn foo1(mut arr [][]int) {
+	mut results := []int{}
+	for _, mut j in arr {
+		for _, mut k in j {
+			k = k + 1 // k: 1
+			mut kk := k // kk: 1, k: 1
+			kk = kk + k // kk: 2, k: 1
+			k++ // kk: 2, k: 2
+			kk++ // kk: 3, k: 2
+			println(k)
+			println(kk)
+			results << k
+			results << kk
+		}
+	}
+	assert results[0] == 2
+	assert results[1] == 3
+	assert results[2] == 2
+	assert results[3] == 3
+}
+
+fn test_mut_10() {
+    mut arr := [[0,0]]
+	foo1(mut arr)
+}
+
+fn foo2(mut arr [][]int) {
+	mut results := []int{}
+	for _, mut j in arr {
+		for _, mut k in j {
+			k = k + 1 // k: 1
+			mut kk := k // kk: 1, k: 1
+			kk = kk + k // kk: 2, k: 1
+			k-- // kk: 2, k: 2
+			kk-- // kk: 3, k: 2
+			println(k)
+			println(kk)
+			results << k
+			results << kk
+		}
+	}
+	assert results[0] == 0
+	assert results[1] == 1
+	assert results[2] == 0
+	assert results[3] == 1
+}
+
+fn test_mut_11() {
+    mut arr := [[0,0]]
+	foo2(mut arr)
+}
+
+fn foo3(mut arr [][]int) {
+	mut results := []string{}
+	for _, mut j in arr {
+		j[0] += 2
+		println(j) // [2, 0]
+		results << '$j'
+	}
+	assert results[0] == '[2, 0]'
+}
+
+fn test_mut_12() {
+    mut arr := [[0, 0]]
+	foo3(mut arr)
+}
