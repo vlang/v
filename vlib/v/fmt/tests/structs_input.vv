@@ -25,6 +25,8 @@ struct Foo {
 	pub_mut_field string
 }
 
+struct Bar { Foo }
+
 fn new_user()
 User
 {
