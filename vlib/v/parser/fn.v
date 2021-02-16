@@ -440,7 +440,7 @@ fn (mut p Parser) fn_receiver(mut params []table.Param, mut rec ReceiverParsingI
 	// TODO: talk to alex, should mut be parsed with the type like this?
 	// or should it be a property of the arg, like this ptr/mut becomes indistinguishable
 	rec.type_pos = p.tok.position()
-	rec.typ = p.parse_type_with_mut(rec.is_mut)
+	rec.typ = p.parse_type()
 	if rec.typ.idx() == 0 {
 		// error is set in parse_type
 		return none
@@ -645,12 +645,11 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 				// p.error('cannot mut')
 				// }
 				// arg_type = arg_type.to_ptr()
-				arg_type = arg_type.set_nr_muls(1)
 				if is_shared {
-					arg_type = arg_type.set_flag(.shared_f)
+					arg_type = arg_type.set_flag(.shared_f).set_nr_muls(1)
 				}
 				if is_atomic {
-					arg_type = arg_type.set_flag(.atomic_f)
+					arg_type = arg_type.set_flag(.atomic_f).set_nr_muls(1)
 				}
 			}
 			if is_variadic {
@@ -741,12 +740,11 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 						pos)
 					return []table.Param{}, false, false
 				}
-				typ = typ.set_nr_muls(1)
 				if is_shared {
-					typ = typ.set_flag(.shared_f)
+					typ = typ.set_flag(.shared_f).set_nr_muls(1)
 				}
 				if is_atomic {
-					typ = typ.set_flag(.atomic_f)
+					typ = typ.set_flag(.atomic_f).set_nr_muls(1)
 				}
 			}
 			if is_variadic {

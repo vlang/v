@@ -69,8 +69,6 @@ mut:
 	inside_sql                       bool // to handle sql table fields pseudo variables
 	cur_orm_ts                       table.TypeSymbol
 	error_details                    []string
-	for_in_mut_val_name              string
-	fn_mut_arg_names                 []string
 	vmod_file_content                string       // needed for @VMOD_FILE, contents of the file, *NOT its path**
 	vweb_gen_types                   []table.Type // vweb route checks
 	prevent_sum_type_unwrapping_once bool   // needed for assign new values to sum type, stopping unwrapping then
@@ -662,9 +660,21 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 						}
 					} else {
 						if info_field.typ.is_ptr() && !expr_type.is_ptr() && !expr_type.is_pointer()
-							&& !expr_type.is_number() {
-							c.error('reference field must be initialized with reference',
-								field.pos)
+						&& !expr_type.is_number() {
+							// temporary workaround to allow compiling existing code
+							// TODO: generate a warning for some time, then remove
+							mut auto_deref_allow_for_now := false
+							if field.expr is ast.Ident {
+								scope_obj := field.expr.obj
+								if scope_obj is ast.Var {
+									auto_deref_allow_for_now = scope_obj.is_auto_deref
+								}
+							}
+							if !auto_deref_allow_for_now {
+								// end of temporary workaround
+								c.error('reference field must be initialized with reference',
+									field.pos)
+							}
 						}
 					}
 					struct_init.fields[i].typ = expr_type
@@ -1533,6 +1543,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			c.error('method with `shared` receiver cannot be called inside `lock`/`rlock` block',
 				call_expr.pos)
 		}
+		call_expr.receiver_is_mut = method.params[0].is_mut
 		if method.params[0].is_mut {
 			to_lock, pos := c.fail_if_immutable(call_expr.left)
 			// call_expr.is_mut = true
@@ -2432,9 +2443,22 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 		}
 		if (exp_type.is_ptr() || exp_type.is_pointer())
 			&& (!got_typ.is_ptr() && !got_typ.is_pointer()) && got_typ != table.int_literal_type {
-			pos := return_stmt.exprs[i].position()
-			c.error('fn `$c.cur_fn.name` expects you to return a reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
-				pos)
+			// temporary workaround to allow compiling existing code
+			// TODO: generate a warning for some time, then remove
+			mut auto_deref_allow_for_now := false
+			ret_expr := return_stmt.exprs[i]
+			if ret_expr is ast.Ident {
+				scope_obj := ret_expr.obj
+				if scope_obj is ast.Var {
+					auto_deref_allow_for_now = scope_obj.is_auto_deref
+				}
+			}
+			if !auto_deref_allow_for_now {
+				// end of temporary workaround
+				pos := return_stmt.exprs[i].position()
+				c.error('fn `$c.cur_fn.name` expects you to return a reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
+					pos)
+			}
 		}
 	}
 	if exp_is_optional && return_stmt.exprs.len > 0 {
@@ -2752,7 +2776,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 				right.position())
 		}
 		left_is_ptr := left_type.is_ptr() || left_sym.is_pointer()
-		if left_is_ptr && c.for_in_mut_val_name != left.str() && left.str() !in c.fn_mut_arg_names {
+		if left_is_ptr {
 			if !c.inside_unsafe && assign_stmt.op !in [.assign, .decl_assign] {
 				// ptr op=
 				c.warn('pointer arithmetic is only allowed in `unsafe` blocks', assign_stmt.pos)
@@ -2764,13 +2788,25 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			}
 			if (right is ast.StructInit || !right_is_ptr) && !(right_sym.is_number()
 				|| left_type.has_flag(.shared_f)) {
-				left_name := c.table.type_to_str(left_type_unwrapped)
-				mut rtype := right_type_unwrapped
-				if rtype.is_ptr() {
-					rtype = rtype.deref()
+				// temporary workaround to allow compiling existing code
+				// TODO: generate a warning for some time, then remove
+				mut auto_deref_allow_for_now := false
+				if right is ast.Ident {
+					scope_obj := right.obj
+					if scope_obj is ast.Var {
+						auto_deref_allow_for_now = scope_obj.is_auto_deref
+					}
 				}
-				right_name := c.table.type_to_str(rtype)
-				c.error('mismatched types `$left_name` and `$right_name`', assign_stmt.pos)
+				if !auto_deref_allow_for_now {
+					// end of temporary workaround
+					left_name := c.table.type_to_str(left_type_unwrapped)
+					mut rtype := right_type_unwrapped
+					if rtype.is_ptr() {
+						rtype = rtype.deref()
+					}
+					right_name := c.table.type_to_str(rtype)
+					c.error('mismatched types `$left_name` annd `$right_name`', assign_stmt.pos)
+				}
 			}
 		}
 		// Single side check
@@ -3330,7 +3366,6 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				}
 			}
 			if node.val_is_mut {
-				value_type = value_type.to_ptr()
 				match node.cond {
 					ast.Ident {
 						if node.cond.obj is ast.Var {
@@ -3357,13 +3392,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 		}
 	}
 	c.check_loop_label(node.label, node.pos)
-	if node.val_is_mut {
-		c.for_in_mut_val_name = node.val_var
-	}
 	c.stmts(node.stmts)
-	if node.val_is_mut {
-		c.for_in_mut_val_name = ''
-	}
 	c.loop_label = prev_loop_label
 	c.in_for_count--
 }
@@ -5193,8 +5222,20 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) table.Type {
 			return right_type.deref()
 		}
 		if !right_type.is_pointer() {
-			s := c.table.type_to_str(right_type)
-			c.error('invalid indirect of `$s`', node.pos)
+			// temporary workaround to allow compiling existing code
+			// TODO: generate a warning for some time, then remove
+			mut auto_deref_allow_for_now := false
+			if node.right is ast.Ident {
+				scope_obj := node.right.obj
+				if scope_obj is ast.Var {
+					auto_deref_allow_for_now = scope_obj.is_auto_deref
+				}
+			}
+			if !auto_deref_allow_for_now {
+				// end of temporary workaround
+				s := c.table.type_to_str(right_type)
+				c.error('invalid indirect of `$s`', node.pos)
+			}
 		}
 	}
 	if node.op == .bit_not && !right_type.is_int() && !c.pref.translated {
@@ -5774,7 +5815,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		// c.warn('duplicate method `$node.name`', node.pos)
 		// }
 		// needed for proper error reporting during vweb route checking
-		sym.methods[node.method_idx].source_fn = voidptr(node)
+		sym.methods[node.method_idx].source_fn = voidptr(&node)
 	}
 	if node.language == .v {
 		// Make sure all types are valid
@@ -5859,16 +5900,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			}
 		}
 	}
-	for param in node.params {
-		if param.is_mut {
-			c.fn_mut_arg_names << param.name
-		}
-	}
 	c.fn_scope = node.scope
 	c.stmts(node.stmts)
-	if c.fn_mut_arg_names.len > 0 {
-		c.fn_mut_arg_names.clear()
-	}
 	node.has_return = c.returns || has_top_return(node.stmts)
 	if node.language == .v && !node.no_body && node.return_type != table.void_type
 		&& !node.has_return && node.name !in ['panic', 'exit'] {

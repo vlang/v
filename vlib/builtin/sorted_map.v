@@ -152,7 +152,7 @@ fn (mut n mapnode) split_child(child_index int, mut y mapnode) {
 	n.keys[child_index] = y.keys[mid_index]
 	n.values[child_index] = y.values[mid_index]
 	unsafe {
-		n.children[child_index] = voidptr(y)
+		n.children[child_index] = voidptr(&y)
 		n.children[child_index + 1] = voidptr(z)
 	}
 	n.len++

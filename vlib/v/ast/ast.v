@@ -373,6 +373,7 @@ pub mut:
 	or_block           OrExpr
 	left_type          table.Type // type of `user`
 	receiver_type      table.Type // User
+	receiver_is_mut    bool
 	return_type        table.Type
 	should_be_skipped  bool
 	generic_types      []table.Type

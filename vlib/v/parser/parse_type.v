@@ -209,7 +209,7 @@ pub fn (mut p Parser) parse_type() table.Type {
 		p.register_auto_import('sync')
 	}
 	mut nr_muls := 0
-	if p.tok.kind == .key_mut || is_shared || is_atomic {
+	if is_shared || is_atomic {
 		nr_muls++
 		p.next()
 	}

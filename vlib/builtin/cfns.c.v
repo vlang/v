@@ -112,7 +112,7 @@ fn C.rename() int
 
 fn C.fgets() int
 
-fn C.memset() int
+fn C.memset(voidptr, int, size_t) voidptr
 
 fn C.sigemptyset() int
 

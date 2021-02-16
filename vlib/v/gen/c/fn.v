@@ -240,11 +240,6 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 		g.definitions.write(fn_header)
 		g.write(fn_header)
 	}
-	for param in node.params {
-		if param.is_mut {
-			g.fn_mut_arg_names << param.name
-		}
-	}
 	arg_start_pos := g.out.len
 	fargs, fargtypes := g.fn_args(node.params, node.is_variadic)
 	arg_str := g.out.after(arg_start_pos)
@@ -292,11 +287,6 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 	prev_defer_stmts := g.defer_stmts
 	g.defer_stmts = []
 	g.stmts(node.stmts)
-	// clear g.fn_mut_arg_names
-	if g.fn_mut_arg_names.len > 0 {
-		g.fn_mut_arg_names.clear()
-	}
-
 	if !node.has_return {
 		g.write_defer_stmts_when_needed()
 	}
@@ -380,7 +370,8 @@ fn (mut g Gen) fn_args(args []table.Param, is_variadic bool) ([]string, []string
 				g.definitions.write(')')
 			}
 		} else {
-			s := '$arg_type_name $caname'
+			auto_deref := if arg.is_mut { '*' } else { '' }
+			s := '$arg_type_name$auto_deref $caname'
 			g.write(s)
 			g.definitions.write(s)
 			fargs << caname
@@ -630,7 +621,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	} else {
 		g.write('${name}(')
 	}
-	if node.receiver_type.is_ptr() && (!node.left_type.is_ptr() || node.from_embed_type != 0) {
+	if (node.receiver_type.is_ptr() || node.receiver_is_mut) && (!node.left_type.is_ptr() || node.from_embed_type != 0) {
 		// The receiver is a reference, but the caller provided a value
 		// Add `&` automatically.
 		// TODO same logic in call_args()
@@ -639,9 +630,11 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 	} else if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name != 'str'
 		&& node.from_embed_type == 0 {
-		if !node.left_type.has_flag(.shared_f) {
+		if !node.left_type.has_flag(.shared_f) && !node.receiver_is_mut {
 			g.write('/*rec*/*')
 		}
+	} else {
+		g.write('/* asdf ${node.receiver_type.is_ptr()} ${node.left_type.is_ptr()} */')
 	}
 	if g.is_autofree && node.free_receiver && !g.inside_lambda && !g.is_builtin_mod {
 		// The receiver expression needs to be freed, use the temp var.
@@ -1093,6 +1086,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type table.Type) {
 		g.write('->val')
 		return
 	}
+	g.write('/*pppp ${arg.typ.is_ptr()} ${expected_type.is_ptr()} */')
 	g.expr_with_cast(arg.expr, arg.typ, expected_type)
 }
 

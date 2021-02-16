@@ -122,8 +122,6 @@ mut:
 	strs_to_free0         []string // strings.Builder
 	// strs_to_free          []string // strings.Builder
 	inside_call           bool
-	for_in_mut_val_name   string
-	fn_mut_arg_names      []string
 	has_main              bool
 	inside_const          bool
 	comp_for_method       string      // $for method in T.methods {}
@@ -1293,13 +1291,11 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 				// `int* val = ((int*)arr.data) + i;`
 				// instead of
 				// `int* val = ((int**)arr.data)[i];`
-				// right := if it.val_is_mut { styp } else { styp + '*' }
-				right := if it.val_is_mut {
-					'(($styp)$tmp${op_field}data) + $i'
+				if it.val_is_mut {
+					g.writeln('\t$styp* ${c_name(it.val_var)} = (($styp*)$tmp${op_field}data) + $i;')
 				} else {
-					'(($styp*)$tmp${op_field}data)[$i]'
+					g.writeln('\t$styp ${c_name(it.val_var)} = (($styp*)$tmp${op_field}data)[$i];')
 				}
-				g.writeln('\t$styp ${c_name(it.val_var)} = $right;')
 			}
 		}
 	} else if it.kind == .array_fixed {
@@ -1366,7 +1362,9 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 				g.write(' = (*(voidptr*)')
 			} else {
 				val_styp := g.typ(it.val_type)
-				if it.val_type.is_ptr() {
+				if it.val_is_mut {
+					g.write('\t$val_styp* ${c_name(it.val_var)} = (($val_styp*)')
+				} else if it.val_type.is_ptr() {
 					g.write('\t$val_styp ${c_name(it.val_var)} = &(*($val_styp)')
 				} else {
 					g.write('\t$val_styp ${c_name(it.val_var)} = (*($val_styp*)')
@@ -1374,13 +1372,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 			}
 			g.writeln('DenseArray_value(&$atmp${arw_or_pt}key_values, $idx));')
 		}
-		if it.val_is_mut {
-			g.for_in_mut_val_name = it.val_var
-		}
 		g.stmts(it.stmts)
-		if it.val_is_mut {
-			g.for_in_mut_val_name = ''
-		}
 		if it.key_type == table.string_type && !g.is_builtin_mod {
 			// g.writeln('string_free(&$key);')
 		}
@@ -1427,13 +1419,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		s := g.table.type_to_str(it.cond_type)
 		g.error('for in: unhandled symbol `$it.cond` of type `$s`', it.pos)
 	}
-	if it.val_is_mut {
-		g.for_in_mut_val_name = it.val_var
-	}
 	g.stmts(it.stmts)
-	if it.val_is_mut {
-		g.for_in_mut_val_name = ''
-	}
 	if it.label.len > 0 {
 		g.writeln('\t${it.label}__continue: {}')
 	}
@@ -2002,12 +1988,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				g.array_set_pos = 0
 			} else {
 				g.out.go_back_to(pos)
-				is_var_mut := !is_decl && left is ast.Ident
-					&& (g.for_in_mut_val_name == (left as ast.Ident).name
-					|| (left as ast.Ident).name in g.fn_mut_arg_names)
-				addr := if is_var_mut { '' } else { '&' }
-				g.writeln('')
-				g.write('memcpy($addr')
+				g.write('memcpy(&')
 				g.expr(left)
 				g.writeln(', &$v_var, sizeof($arr_typ));')
 			}
@@ -2075,11 +2056,6 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					g.prevent_sum_type_unwrapping_once = true
 				}
 				if !is_fixed_array_copy || is_decl {
-					if !is_decl && var_type != table.string_type_idx && left is ast.Ident
-						&& (g.for_in_mut_val_name == (left as ast.Ident).name
-						|| (left as ast.Ident).name in g.fn_mut_arg_names) {
-						g.write('*')
-					}
 					g.expr(left)
 				}
 			}
@@ -2157,6 +2133,10 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					if assign_stmt.has_cross_var {
 						g.gen_cross_tmp_variable(assign_stmt.left, val)
 					} else {
+						// temporary workaround for now
+						if var_type.is_ptr() && !val_type.is_ptr() && !val_type.is_pointer() && !val_type.is_number() {
+							g.write('&')
+						}
 						g.expr_with_cast(val, val_type, var_type)
 					}
 				}
@@ -2777,9 +2757,21 @@ fn (mut g Gen) expr(node ast.Expr) {
 					}
 				}
 			} else {
-				// g.write('/*pref*/')
-				g.write(node.op.str())
-				// g.write('(')
+			// temporary workaround to allow compiling existing code
+			// TODO: generate a warning for some time, then remove
+				mut auto_deref_allow_for_now := false
+				if node.op == .mul {
+					if node.right is ast.Ident {
+						scope_obj := node.right.obj
+						if scope_obj is ast.Var {
+							auto_deref_allow_for_now = scope_obj.is_auto_deref
+						}
+					}
+				}
+				if !auto_deref_allow_for_now {
+					// end of temporary workaround
+					g.write(node.op.str())
+				}
 				g.expr(node.right)
 			}
 			g.is_amp = false
@@ -3287,6 +3279,10 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			needs_clone := info.elem_type == table.string_type && !g.is_builtin_mod
 			if needs_clone {
 				g.write('string_clone(')
+			}
+			// temporary workaround for now
+			if info.elem_type.is_ptr() && !node.right_type.is_ptr() && !node.right_type.is_pointer() && !node.right_type.is_number() {
+				g.write('&')
 			}
 			g.expr_with_cast(node.right, node.right_type, info.elem_type)
 			if needs_clone {
@@ -3947,6 +3943,10 @@ fn (mut g Gen) ident(node ast.Ident) {
 					}
 					return
 				}
+			}
+			if v.is_auto_deref {
+				g.write('(*$name)')
+				return
 			}
 		}
 	} else if node_info is ast.IdentFn {
@@ -4682,6 +4682,10 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			}
 		} else {
 			g.write('return ')
+		}
+		// temporary workaround for now
+		if g.fn_decl.return_type.is_ptr() && !node.types[0].is_ptr() && !node.types[0].is_pointer() && !node.types[0].is_number() {
+			g.write('&')
 		}
 		g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
 		if free {
