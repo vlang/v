@@ -23,7 +23,7 @@ pub fn read(bytes_needed int) ?[]byte {
 		}
 		bytes_read += rbytes
 	}
-	return buffer.vbytes(bytes_needed)
+	return unsafe {buffer.vbytes(bytes_needed)}
 }
 
 fn getrandom(bytes_needed int, buffer voidptr) int {

@@ -22,12 +22,12 @@ pub fn read(bytes_needed int) ?[]byte {
 		batch_size := if remaining_bytes > read_batch_size { read_batch_size } else { remaining_bytes }
 		rbytes := unsafe { getrandom(batch_size, buffer + bytes_read) }
 		if rbytes == -1 {
-			free(buffer)
+			unsafe { free(buffer) }
 			return read_error
 		}
 		bytes_read += rbytes
 	}
-	return buffer.vbytes(bytes_needed)
+	return unsafe {buffer.vbytes(bytes_needed)}
 }
 
 fn v_getrandom(bytes_needed int, buffer voidptr) int {
