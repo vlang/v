@@ -3430,14 +3430,34 @@ fn (mut c Checker) go_stmt(mut node ast.GoStmt) {
 	// Make sure there are no mutable arguments
 	for arg in node.call_expr.args {
 		if arg.is_mut && !arg.typ.is_ptr() {
-			c.error('function in `go` statement cannot contain mutable non-reference arguments',
-				arg.expr.position())
+			// This should be forbidden or require `unsafe`
+			mut allow_mut_passed_fn_arg := false
+			if arg.expr is ast.Ident {
+				scope_obj := arg.expr.obj
+				if scope_obj is ast.Var {
+					allow_mut_passed_fn_arg = scope_obj.is_auto_deref
+				}
+			}
+			if !allow_mut_passed_fn_arg {
+				c.error('function in `go` statement cannot contain mutable non-reference arguments',
+					arg.expr.position())
+			}
 		}
 	}
 	if node.call_expr.is_method && node.call_expr.receiver_type.is_ptr()
 		&& !node.call_expr.left_type.is_ptr() {
-		c.error('method in `go` statement cannot have non-reference mutable receiver',
-			node.call_expr.left.position())
+		// This should be forbidden or require `unsafe`
+		mut allow_mut_passed_fn_arg := false
+		if node.call_expr.left is ast.Ident {
+			scope_obj := node.call_expr.left.obj
+			if scope_obj is ast.Var {
+				allow_mut_passed_fn_arg = scope_obj.is_auto_deref
+			}
+		}
+		if !allow_mut_passed_fn_arg {
+			c.error('method in `go` statement cannot have non-reference mutable receiver',
+				node.call_expr.left.position())
+		}
 	}
 }
 

@@ -5761,11 +5761,17 @@ fn (mut g Gen) go_stmt(node ast.GoStmt, joinable bool) string {
 			g.write('&')
 		}
 		*/
+		if expr.receiver_is_mut {
+			g.write('&')
+		}
 		g.expr(expr.left)
 		g.writeln(';')
 	}
 	for i, arg in expr.args {
 		g.write('$arg_tmp_var->arg${i + 1} = ')
+		if arg.is_mut {
+			g.write('&')
+		}
 		g.expr(arg.expr)
 		g.writeln(';')
 	}
@@ -5846,7 +5852,8 @@ fn (mut g Gen) go_stmt(node ast.GoStmt, joinable bool) string {
 	g.type_definitions.writeln('\ntypedef struct $wrapper_struct_name {')
 	if expr.is_method {
 		styp := g.typ(expr.receiver_type)
-		g.type_definitions.writeln('\t$styp arg0;')
+		deref := if expr.receiver_is_mut { '*' } else { '' }
+		g.type_definitions.writeln('\t$styp$deref arg0;')
 	}
 	need_return_ptr := g.pref.os == .windows && node.call_expr.return_type != table.void_type
 	if expr.args.len == 0 && !need_return_ptr {
@@ -5854,7 +5861,8 @@ fn (mut g Gen) go_stmt(node ast.GoStmt, joinable bool) string {
 	} else {
 		for i, arg in expr.args {
 			styp := g.typ(arg.typ)
-			g.type_definitions.writeln('\t$styp arg${i + 1};')
+			deref := if arg.is_mut { '*' } else { '' }
+			g.type_definitions.writeln('\t$styp$deref arg${i + 1};')
 		}
 	}
 	if need_return_ptr {

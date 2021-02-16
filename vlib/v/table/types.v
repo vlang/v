@@ -900,7 +900,6 @@ pub fn (t &Table) fn_signature(func &Fn, opts FnSignatureOpts) string {
 		param := func.params[i]
 		mut typ := param.typ
 		if param.is_mut {
-			typ = typ.deref()
 			sb.write('mut ')
 		}
 		if !opts.type_only {
