@@ -12,10 +12,10 @@ fn C.SecRandomCopyBytes() int
 
 // read returns an array of `bytes_needed` random bytes read from the OS.
 pub fn read(bytes_needed int) ?[]byte {
-	mut buffer := malloc(bytes_needed)
-	status := C.SecRandomCopyBytes(0, bytes_needed, buffer)
+	mut buffer := unsafe { malloc(bytes_needed).vbytes(bytes_needed) }
+	status := C.SecRandomCopyBytes(0, bytes_needed, buffer.data)
 	if status != 0 {
 		return read_error
 	}
-	return c_array_to_bytes_tmp(bytes_needed, buffer)
+	return buffer
 }
