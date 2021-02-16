@@ -1639,7 +1639,8 @@ pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 		&& branch_is_single_line(node.branches[0]) && branch_is_single_line(node.branches[1])
 		&& (node.is_expr || f.is_assign || f.is_struct_init || f.single_line_fields)
 	f.single_line_if = single_line
-	if_start := f.line_len
+	start_pos := f.out.len
+	start_len := f.line_len
 	for {
 		for i, branch in node.branches {
 			if i == 0 {
@@ -1685,8 +1686,9 @@ pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 		if single_line && f.line_len > fmt.max_len.last() && !f.buffering {
 			single_line = false
 			f.single_line_if = false
-			f.out.go_back(f.line_len - if_start)
-			f.line_len = if_start
+			f.out.go_back_to(start_pos)
+			f.line_len = start_len
+			f.empty_line = start_len == 0
 			continue
 		}
 		break
