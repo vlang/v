@@ -254,3 +254,22 @@ fn test_mut_12() {
     mut arr := [[0, 0]]
 	foo3(mut arr)
 }
+
+struct Foo {
+mut:
+	foo int
+}
+
+fn foo4(mut f Foo) {
+	f2 := &f
+	f.foo = 100
+	println(f.foo)
+	println(f2.foo)
+	assert f.foo == 100
+	assert f2.foo == 100
+}
+
+fn test_mut_13() {
+	mut f := Foo{foo: 1}
+	foo4(mut f)
+}
