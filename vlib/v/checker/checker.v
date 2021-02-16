@@ -2695,6 +2695,12 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 				}
 			}
 			else {
+				if mut left is ast.IndexExpr {
+					// eprintln('>>> left.is_setter: ${left.is_setter:10} | left.is_map: ${left.is_map:10} | left.is_array: ${left.is_array:10}')
+					if left.is_map && left.is_setter {
+						left.recursive_mapset_is_setter(true)
+					}
+				}
 				if is_decl {
 					c.error('non-name `$left` on left side of `:=`', left.position())
 				}
@@ -5223,6 +5229,18 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 	mut typ := c.expr(node.left)
 	node.left_type = typ
 	typ_sym := c.table.get_final_type_symbol(typ)
+	match typ_sym.kind {
+		.map {
+			node.is_map = true
+		}
+		.array {
+			node.is_array = true
+		}
+		.array_fixed {
+			node.is_farray = true
+		}
+		else {}
+	}
 	if typ_sym.kind !in [.array, .array_fixed, .string, .map] && !typ.is_ptr()
 		&& typ !in [table.byteptr_type, table.charptr_type] && !typ.has_flag(.variadic) {
 		c.error('type `$typ_sym.name` does not support indexing', node.pos)

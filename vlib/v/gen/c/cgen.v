@@ -4373,7 +4373,11 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 						g.is_array_set = true
 						g.write('map_set_1(')
 					} else {
-						g.write('(*(($elem_type_str*)map_get_and_set_1(')
+						if node.is_setter {
+							g.write('(*(($elem_type_str*)map_get_and_set_1(')
+						} else {
+							g.write('(*(($elem_type_str*)map_get_1(')
+						}
 					}
 					if !left_is_ptr || node.left_type.has_flag(.shared_f) {
 						g.write('&')
@@ -4409,7 +4413,11 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					|| g.inside_map_index
 					|| (g.is_assign_lhs && !g.is_array_set && get_and_set_types) {
 					zero := g.type_default(info.value_type)
-					g.write('(*($elem_type_str*)map_get_and_set_1(')
+					if node.is_setter {
+						g.write('(*($elem_type_str*)map_get_and_set_1(')
+					} else {
+						g.write('(*($elem_type_str*)map_get_1(')
+					}
 					if !left_is_ptr {
 						g.write('&')
 					}
