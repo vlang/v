@@ -170,7 +170,7 @@ pub fn exec(cmd string) ?Result {
 	mut res := strings.new_builder(1024)
 	unsafe {
 		bufbp := &buf[0]
-		for C.fgets(bufbp, 4096, f) != 0 {
+		for C.fgets(charptr(bufbp), 4096, f) != 0 {
 			res.write_bytes(bufbp, vstrlen(bufbp))
 		}
 	}
@@ -211,7 +211,7 @@ pub fn (mut c Command) read_line() string {
 	mut res := strings.new_builder(1024)
 	unsafe {
 		bufbp := &buf[0]
-		for C.fgets(bufbp, 4096, c.f) != 0 {
+		for C.fgets(charptr(bufbp), 4096, c.f) != 0 {
 			len := vstrlen(bufbp)
 			for i in 0 .. len {
 				if bufbp[i] == `\n` {

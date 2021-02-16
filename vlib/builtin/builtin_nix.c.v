@@ -90,7 +90,7 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 			C.tcc_backtrace("Backtrace")
 			return false
 		}
-		buffer := [100]byteptr{}
+		buffer := [100]voidptr{}
 		nr_ptrs := C.backtrace(&buffer[0], 100)
 		if nr_ptrs < 2 {
 			eprintln('C.backtrace returned less than 2 frames')
@@ -118,7 +118,7 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 			mut output := ''
 			unsafe {
 				bp := &buf[0]
-				for C.fgets(bp, 1000, f) != 0 {
+				for C.fgets(charptr(bp), 1000, f) != 0 {
 					output += tos(bp, vstrlen(bp))
 				}
 			}
