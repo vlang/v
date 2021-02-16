@@ -7,6 +7,12 @@ struct User {
 	very_long_type_field2 very_loooooooong_type // long
 }
 
+struct FamousUser {
+pub:
+	User
+	aka string
+}
+
 struct Foo {
 	field1 int // f1
 	field2 string // f2
