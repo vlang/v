@@ -2137,7 +2137,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 						g.gen_cross_tmp_variable(assign_stmt.left, val)
 					} else {
 						// temporary workaround for now
-						if var_type.is_ptr() && !val_type.is_ptr() && !val_type.is_pointer() && !val_type.is_number() {
+						if var_type.is_ptr() && !val_type.is_ptr() && !var_type.has_flag(.shared_f) && !val_type.is_pointer() && !val_type.is_number() {
 							g.write('&')
 						}
 						g.expr_with_cast(val, val_type, var_type)
@@ -5044,7 +5044,6 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	if !initialized {
 		g.write('\n#ifndef __cplusplus\n0\n#endif\n')
 	}
-
 	g.write('}')
 	if g.is_shared && !g.inside_opt_data && !g.is_array_set {
 		g.write('}, sizeof($shared_styp))')
@@ -5765,7 +5764,7 @@ fn (mut g Gen) go_stmt(node ast.GoStmt, joinable bool) string {
 			g.write('&')
 		}
 		*/
-		if expr.receiver_is_mut && !expr.receiver_type.has_flag(.shared_f) {
+		if expr.receiver_is_mut {
 			g.write('&')
 		}
 		g.expr(expr.left)
@@ -5773,7 +5772,7 @@ fn (mut g Gen) go_stmt(node ast.GoStmt, joinable bool) string {
 	}
 	for i, arg in expr.args {
 		g.write('$arg_tmp_var->arg${i + 1} = ')
-		if arg.is_mut && !expr.expected_arg_types[i].has_flag(.shared_f) {
+		if arg.is_mut {
 			g.write('&')
 		}
 		g.expr(arg.expr)
@@ -5865,7 +5864,7 @@ fn (mut g Gen) go_stmt(node ast.GoStmt, joinable bool) string {
 	} else {
 		for i, arg in expr.args {
 			styp := g.typ(arg.typ)
-			deref := if arg.is_mut && !arg.typ.has_flag(.shared_f) { '*' } else { '' }
+			deref := if arg.is_mut { '*' } else { '' }
 			g.type_definitions.writeln('\t$styp$deref arg${i + 1};')
 		}
 	}

@@ -9,14 +9,14 @@ pub struct IResult {
 	i int
 }
 
-fn worker_s(p &pool.PoolProcessor, idx int, worker_id int) &SResult {
+fn worker_s(mut p pool.PoolProcessor, idx int, worker_id int) &SResult {
 	item := p.get_item<string>(idx)
 	println('worker_s worker_id: $worker_id | idx: $idx | item: $item')
 	time.sleep_ms(3)
 	return &SResult{'$item $item'}
 }
 
-fn worker_i(p &pool.PoolProcessor, idx int, worker_id int) &IResult {
+fn worker_i(mut p pool.PoolProcessor, idx int, worker_id int) &IResult {
 	item := p.get_item<int>(idx)
 	println('worker_i worker_id: $worker_id | idx: $idx | item: $item')
 	time.sleep_ms(5)
