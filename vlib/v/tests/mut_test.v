@@ -334,3 +334,17 @@ fn test_mut_17() {
 		assert k == {'foo': 10}
 	}
 }
+
+fn foo8(mut a [1]int) {
+	a2 := a
+	a[0] = 100
+	println(a)
+	println(a2)
+	assert '$a' == '[100]'
+	assert '$a2' == '[1]'
+}
+
+fn test_mut_18() {
+	mut a := [1]!
+	foo8(mut a)
+}
