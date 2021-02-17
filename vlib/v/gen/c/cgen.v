@@ -5765,7 +5765,7 @@ fn (mut g Gen) go_stmt(node ast.GoStmt, joinable bool) string {
 			g.write('&')
 		}
 		*/
-		if expr.receiver_is_mut {
+		if expr.receiver_is_mut && !expr.receiver_type.has_flag(.shared_f) {
 			g.write('&')
 		}
 		g.expr(expr.left)
@@ -5773,7 +5773,7 @@ fn (mut g Gen) go_stmt(node ast.GoStmt, joinable bool) string {
 	}
 	for i, arg in expr.args {
 		g.write('$arg_tmp_var->arg${i + 1} = ')
-		if arg.is_mut {
+		if arg.is_mut && !expr.expected_arg_types[i].has_flag(.shared_f) {
 			g.write('&')
 		}
 		g.expr(arg.expr)
@@ -5865,7 +5865,7 @@ fn (mut g Gen) go_stmt(node ast.GoStmt, joinable bool) string {
 	} else {
 		for i, arg in expr.args {
 			styp := g.typ(arg.typ)
-			deref := if arg.is_mut { '*' } else { '' }
+			deref := if arg.is_mut && !arg.typ.has_flag(.shared_f) { '*' } else { '' }
 			g.type_definitions.writeln('\t$styp$deref arg${i + 1};')
 		}
 	}

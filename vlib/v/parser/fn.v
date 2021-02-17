@@ -452,10 +452,10 @@ fn (mut p Parser) fn_receiver(mut params []table.Param, mut rec ReceiverParsingI
 		return none
 	}
 	if is_shared {
-		rec.typ = rec.typ.set_flag(.shared_f)
+		rec.typ = rec.typ.set_flag(.shared_f).set_nr_muls(1)
 	}
 	if is_atomic {
-		rec.typ = rec.typ.set_flag(.atomic_f)
+		rec.typ = rec.typ.set_flag(.atomic_f).set_nr_muls(1)
 	}
 	params << table.Param{
 		pos: rec_start_pos
