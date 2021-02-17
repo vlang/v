@@ -2726,11 +2726,11 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			c.error('use `array2 $assign_stmt.op.str() array1.clone()` instead of `array2 $assign_stmt.op.str() array1` (or use `unsafe`)',
 				assign_stmt.pos)
 		}
-		if left_sym.kind == .map && !c.inside_unsafe && assign_stmt.op in [.assign, .decl_assign]
+		if left_sym.kind == .map && assign_stmt.op in [.assign, .decl_assign]
 			&& right_sym.kind == .map && !right_type.is_ptr() && !left.is_blank_ident()
 			&& right.is_lvalue() {
 			// Do not allow `a = b`
-			c.error('cannot copy map: call `move` or `clone` method first (or use `unsafe`)',
+			c.error('cannot copy map: call `move` or `clone` method (or use a reference)',
 				right.position())
 		}
 		left_is_ptr := left_type.is_ptr() || left_sym.is_pointer()
