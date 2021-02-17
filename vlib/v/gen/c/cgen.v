@@ -5040,10 +5040,11 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	if is_multiline {
 		g.indent--
 	}
-	// if struct_init.fields.len == 0 && info.fields.len == 0 {
+
 	if !initialized {
 		g.write('\n#ifndef __cplusplus\n0\n#endif\n')
 	}
+
 	g.write('}')
 	if g.is_shared && !g.inside_opt_data && !g.is_array_set {
 		g.write('}, sizeof($shared_styp))')
@@ -6126,7 +6127,7 @@ $staticprefix $interface_name* I_${cctype}_to_Interface_${interface_name}_ptr($c
 					method_call += '_method_wrapper'
 				}
 				if g.pref.build_mode != .build_module {
-					methods_struct.writeln('\t\t._method_${c_name(method.name)} = $method_call,')
+					methods_struct.writeln('\t\t._method_${c_name(method.name)} = (void*) $method_call,')
 				}
 			}
 			if g.pref.build_mode != .build_module {

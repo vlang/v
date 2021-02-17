@@ -696,6 +696,24 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 			f.writeln('__global:')
 		} else if i == node.module_pos {
 			f.writeln('module:')
+		} else if i > 0 {
+			// keep one empty line between fields (exclude one after mut:, pub:, ...)
+			mut before_last_line := node.fields[i - 1].pos.line_nr
+			if node.fields[i - 1].comments.len > 0 {
+				before_last_line = util.imax(before_last_line, node.fields[i - 1].comments.last().pos.last_line)
+			}
+			if node.fields[i - 1].has_default_expr {
+				before_last_line = util.imax(before_last_line, node.fields[i - 1].default_expr.position().last_line)
+			}
+
+			mut next_first_line := field.pos.line_nr
+			if field.comments.len > 0 {
+				next_first_line = util.imin(next_first_line, field.comments[0].pos.line_nr)
+			}
+			println('$field.name $next_first_line $before_last_line')
+			if next_first_line - before_last_line > 1 {
+				f.writeln('')
+			}
 		}
 		end_pos := field.pos.pos + field.pos.len
 		before_comments := field.comments.filter(it.pos.pos < field.pos.pos)
@@ -1028,30 +1046,28 @@ fn expr_is_single_line(expr ast.Expr) bool {
 	return true
 }
 
-pub fn (mut f Fmt) or_expr(or_block ast.OrExpr) {
-	match or_block.kind {
+pub fn (mut f Fmt) or_expr(node ast.OrExpr) {
+	match node.kind {
 		.absent {}
 		.block {
-			if or_block.stmts.len == 0 {
+			if node.stmts.len == 0 {
 				f.write(' or { }')
-			} else if or_block.stmts.len == 1 {
+				return
+			} else if node.stmts.len == 1 {
 				// the control stmts (return/break/continue...) print a newline inside them,
 				// so, since this'll all be on one line, trim any possible whitespace
-				str := f.stmt_str(or_block.stmts[0]).trim_space()
+				str := f.stmt_str(node.stmts[0]).trim_space()
 				single_line := ' or { $str }'
 				if single_line.len + f.line_len <= fmt.max_len.last() {
 					f.write(single_line)
-				} else {
-					// if the line would be too long, make it multiline
-					f.writeln(' or {')
-					f.stmts(or_block.stmts)
-					f.write('}')
+					return
 				}
-			} else {
-				f.writeln(' or {')
-				f.stmts(or_block.stmts)
-				f.write('}')
 			}
+			// Make it multiline if the blocks has at least two stmts
+			// or a single line would be too long
+			f.writeln(' or {')
+			f.stmts(node.stmts)
+			f.write('}')
 		}
 		.propagate {
 			f.write(' ?')

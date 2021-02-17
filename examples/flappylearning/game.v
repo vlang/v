@@ -1,7 +1,6 @@
 module main
 
 import gg
-import sokol.sapp
 import gx
 import os
 import time
@@ -266,13 +265,13 @@ fn (app &App) draw() {
 	app.display()
 }
 
-fn on_event(e &sapp.Event, mut app App) {
+fn on_event(e &gg.Event, mut app App) {
 	if e.typ == .key_down {
 		app.key_down(e.key_code)
 	}
 }
 
-fn (mut app App) key_down(key sapp.KeyCode) {
+fn (mut app App) key_down(key gg.KeyCode) {
 	// global keys
 	match key {
 		.escape {
