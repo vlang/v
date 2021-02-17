@@ -696,6 +696,24 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 			f.writeln('__global:')
 		} else if i == node.module_pos {
 			f.writeln('module:')
+		} else if i > 0 {
+			// keep one empty line between fields (exclude one after mut:, pub:, ...)
+			mut before_last_line := node.fields[i - 1].pos.line_nr
+			if node.fields[i - 1].comments.len > 0 {
+				before_last_line = util.imax(before_last_line, node.fields[i - 1].comments.last().pos.last_line)
+			}
+			if node.fields[i - 1].has_default_expr {
+				before_last_line = util.imax(before_last_line, node.fields[i - 1].default_expr.position().last_line)
+			}
+
+			mut next_first_line := field.pos.line_nr
+			if field.comments.len > 0 {
+				next_first_line = util.imin(next_first_line, field.comments[0].pos.line_nr)
+			}
+			println('$field.name $next_first_line $before_last_line')
+			if next_first_line - before_last_line > 1 {
+				f.writeln('')
+			}
 		}
 		end_pos := field.pos.pos + field.pos.len
 		before_comments := field.comments.filter(it.pos.pos < field.pos.pos)
