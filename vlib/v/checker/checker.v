@@ -1406,7 +1406,11 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			// need to return `array_xxx` instead of `array`
 			// in ['clone', 'str'] {
 			call_expr.receiver_type = left_type.to_ptr()
-			call_expr.return_type = call_expr.receiver_type.set_nr_muls(0)
+			if call_expr.left.is_mut_ident() {
+				call_expr.return_type = left_type.deref()
+			} else {
+				call_expr.return_type = call_expr.receiver_type.set_nr_muls(0)
+			}
 		} else if method_name == 'sort' {
 			call_expr.return_type = table.void_type
 		} else if method_name == 'contains' {
@@ -1422,7 +1426,11 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 				if method_name[0] == `m` {
 					c.fail_if_immutable(call_expr.left)
 				}
-				ret_type = left_type
+				if call_expr.left.is_mut_ident() {
+					ret_type = left_type.deref()
+				} else {
+					ret_type = left_type
+				}
 			}
 			'keys' {
 				info := left_type_sym.info as table.Map

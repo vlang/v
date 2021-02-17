@@ -321,3 +321,16 @@ fn test_mut_16() {
 	mut m := map{'one': 100, 'two': 2}
 	foo7(mut m)
 }
+
+fn test_mut_17() {
+	mut arr := [map{'foo':1}]
+	for _, mut j in arr {
+		mut k := j.clone()
+		j['foo'] = 0
+		unsafe {k['foo'] = 10}
+		println(j)
+		println(k)
+		assert j == {'foo': 0}
+		assert k == {'foo': 10}
+	}
+}
