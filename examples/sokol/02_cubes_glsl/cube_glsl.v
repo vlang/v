@@ -302,20 +302,14 @@ fn init_cube_glsl(mut app App) {
 	vert_buffer_desc.label = 'cube-vertices'.str
 	vbuf := gfx.make_buffer(&vert_buffer_desc)
 
-	// create an index buffer for the cube
+	/* create an index buffer for the cube */
 	indices := [
-		u16(0), 1, 2,  
-		0 , 2 , 3 ,
-		6 , 5 , 4 ,
-		7 , 6 , 4 ,
-		8 , 9 , 10,
-		8 , 10, 11,
-		14, 13, 12,
-		15, 14, 12,
-		16, 17, 18, 
-		16, 18, 19,
-		22, 21, 20,
-		23, 22, 20
+		u16(0), 1, 2,  0, 2, 3,
+		6, 5, 4,       7, 6, 4,
+		8, 9, 10,      8, 10, 11,
+		14, 13, 12,    15, 14, 12,
+		16, 17, 18,    16, 18, 19,
+		22, 21, 20,    23, 22, 20
 	]
 
 	mut index_buffer_desc := C.sg_buffer_desc{}
