@@ -783,6 +783,9 @@ pub fn (mut g Gen) write_fn_typesymbol_declaration(sym table.TypeSymbol) {
 		g.type_definitions.write('typedef ${g.typ(func.return_type)} (*$fn_name)(')
 		for i, param in func.params {
 			g.type_definitions.write(g.typ(param.typ))
+			if param.is_mut {
+				g.type_definitions.write('*')
+			}
 			if i < func.params.len - 1 {
 				g.type_definitions.write(',')
 			}
@@ -6007,7 +6010,8 @@ fn (mut g Gen) interface_table() string {
 			// the first param is the receiver, it's handled by `void*` above
 			for i in 1 .. method.params.len {
 				arg := method.params[i]
-				methods_typ_def.write(', ${g.typ(arg.typ)} $arg.name')
+				deref := if arg.is_mut { '*' } else { '' }
+				methods_typ_def.write(', ${g.typ(arg.typ)}$deref $arg.name')
 			}
 			// TODO g.fn_args(method.args[1..], method.is_variadic)
 			methods_typ_def.writeln(');')

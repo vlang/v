@@ -77,6 +77,9 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 		}
 		*/
 		g.write('${util.no_dots(node.sym.name)}_${g.comp_for_method}(')
+		if true /* node.receiver_is_mut */ {
+			g.write('&')
+		}
 		g.expr(node.left)
 		if m.params.len > 1 {
 			g.write(', ')

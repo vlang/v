@@ -55,7 +55,7 @@ fn (mut a App) run() {
 	desc := C.sapp_desc{
 		width: a.width
 		height: a.height
-		user_data: a
+		user_data: &a
 		init_userdata_cb: init
 		frame_userdata_cb: frame
 		event_userdata_cb: event

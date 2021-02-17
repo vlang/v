@@ -370,7 +370,7 @@ fn (mut g Gen) fn_args(args []table.Param, is_variadic bool) ([]string, []string
 				g.definitions.write(')')
 			}
 		} else {
-			auto_deref := if arg.is_mut { '*' } else { '' }
+			auto_deref := if arg.is_mut && !typ.has_flag(.shared_f) { '*' } else { '' }
 			s := '$arg_type_name$auto_deref $caname'
 			g.write(s)
 			g.definitions.write(s)
@@ -1048,9 +1048,9 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type table.Type) {
 		g.checker_bug('ref_or_deref_arg expected_type is 0', arg.pos)
 	}
 	exp_sym := g.table.get_type_symbol(expected_type)
-	if arg.is_mut && !arg_is_ptr {
-		g.write('&/*mut*/')
-	} else if arg_is_ptr && !expr_is_ptr {
+	if arg.is_mut && !arg_is_ptr && exp_sym.kind != .array {
+		g.write('&/*mut $arg.typ $expected_type */')
+	} else if (arg_is_ptr && !expr_is_ptr) || (arg.is_mut && exp_sym.kind == .array) {
 		if arg.is_mut {
 			if exp_sym.kind == .array {
 				if arg.expr is ast.Ident && (arg.expr as ast.Ident).kind == .variable {
