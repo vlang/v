@@ -773,7 +773,7 @@ pub fn (mytable &Table) known_type_names() []string {
 // it doesn't care about childs that are references
 pub fn (mytable &Table) has_deep_child_no_ref(ts &TypeSymbol, name string) bool {
 	if ts.info is Struct {
-		for _, field in ts.info.fields {
+		for field in ts.info.fields {
 			sym := mytable.get_type_symbol(field.typ)
 			if !field.typ.is_ptr() && (sym.name == name || mytable.has_deep_child_no_ref(sym, name)) {
 				return true

@@ -127,7 +127,7 @@ pub fn (mut c Checker) check_scope_vars(sc &ast.Scope) {
 			else {}
 		}
 	}
-	for _, child in sc.children {
+	for child in sc.children {
 		c.check_scope_vars(child)
 	}
 }
@@ -5506,7 +5506,7 @@ fn (c Checker) check_struct_signature(from table.Struct, to table.Struct) bool {
 	if from.fields.len == 0 {
 		return false
 	}
-	for _, field in from.fields {
+	for field in from.fields {
 		filtered := to.fields.filter(it.name == field.name)
 		if filtered.len != 1 {
 			// field doesn't exist
