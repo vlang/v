@@ -262,6 +262,7 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 	f.did_imports = true
 	mut num_imports := 0
 	mut already_imported := map[string]bool{}
+
 	for imp in imports {
 		if imp.mod !in f.used_imports {
 			// TODO bring back once only unused imports are removed
@@ -289,7 +290,8 @@ pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
 	is_diff := imp.alias != imp.mod && !imp.mod.ends_with('.' + imp.alias)
 	mut imp_alias_suffix := if is_diff { ' as $imp.alias' } else { '' }
 
-	syms := imp.syms.map(it.name).filter(f.import_syms_used[it])
+	mut syms := imp.syms.map(it.name).filter(f.import_syms_used[it])
+	syms.sort()
 	if syms.len > 0 {
 		imp_alias_suffix += if imp.syms[0].pos.line_nr == imp.pos.line_nr {
 			' { ' + syms.join(', ') + ' }'
