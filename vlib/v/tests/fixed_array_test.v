@@ -18,6 +18,27 @@ fn test_fixed_array_can_be_assigned() {
 	assert v[1] == 3.0
 }
 
+fn test_fixed_array_assignment() {
+	mut a := [2]int{}
+	a[0] = 111
+	a[1] = 222
+	b := a
+	assert b[0] == a[0]
+	assert b[1] == a[1]
+	mut c := [2]int{}
+	c = a
+	assert c[0] == a[0]
+	assert c[1] == a[1]
+	d := [3]int{init: 333}
+	for val in d {
+		assert val == 333
+	}
+	e := [3]string{init: 'vlang'}
+	for val in e {
+		assert val == 'vlang'
+	}
+}
+
 fn test_fixed_array_can_be_used_in_declaration() {
 	x := 2.32
 	v := [1.0, x, 3.0,4.0,5.0,6.0,7.0,8.0]!
@@ -99,3 +120,4 @@ fn test_for_in_fixed_array() {
 	arr := [1,2,3]!
 	calc_size(arr)
 }
+
