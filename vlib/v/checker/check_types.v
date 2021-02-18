@@ -330,9 +330,25 @@ pub fn (c &Checker) get_default_fmt(ftyp table.Type, typ table.Type) byte {
 	}
 }
 
+pub fn (mut c Checker) fail_if_not_rlocked(expr ast.Expr, what string) {
+	if expr is ast.Ident {
+		if expr.name !in c.rlocked_names && expr.name !in c.locked_names {
+			action := if what == 'argument' { 'passed' } else { 'used' }
+			c.error('$expr.name is `shared` and must be `rlock`ed or `lock`ed to be $action as non-mut $what',
+				expr.pos)
+		}
+	} else {
+		c.error('you have to create a handle and `rlock` it to use a `shared` element as non-mut $what',
+			expr.position())
+	}
+}
+
 pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) table.Type {
 	for i, expr in node.exprs {
 		ftyp := c.expr(expr)
+		if ftyp.has_flag(.shared_f) {
+			c.fail_if_not_rlocked(expr, 'interpolation object')
+		}
 		node.expr_types << ftyp
 		typ := c.table.unalias_num_type(ftyp)
 		mut fmt := node.fmts[i]

@@ -34,7 +34,7 @@ fn main() {
 	greet_cmd.add_flag(Flag{
 	 	flag: .string
 	 	name: 'fun'
-	 	multipe: true
+	 	multiple: true
 	 	description: 'Just a dumby flags to show multiple.'
 	})
 	cmd.add_command(greet_cmd)

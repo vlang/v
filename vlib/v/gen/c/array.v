@@ -26,6 +26,9 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 		g.write('{')
 		if node.has_val {
 			for i, expr in node.exprs {
+				if expr.is_mut_ident() {
+					g.write('*')
+				}
 				g.expr(expr)
 				if i != node.exprs.len - 1 {
 					g.write(', ')
@@ -437,7 +440,7 @@ fn (mut g Gen) gen_array_contains_method(left_type table.Type) string {
 		mut elem_type_str := g.typ(left_info.elem_type)
 		elem_sym := g.table.get_type_symbol(left_info.elem_type)
 		if elem_sym.kind == .function {
-			left_type_str = 'array_voidptr'
+			left_type_str = 'Array_voidptr'
 			elem_type_str = 'voidptr'
 		}
 		g.type_definitions.writeln('static bool ${fn_name}($left_type_str a, $elem_type_str v); // auto')
@@ -500,7 +503,7 @@ fn (mut g Gen) gen_array_index_method(left_type table.Type) string {
 		mut elem_type_str := g.typ(info.elem_type)
 		elem_sym := g.table.get_type_symbol(info.elem_type)
 		if elem_sym.kind == .function {
-			left_type_str = 'array_voidptr'
+			left_type_str = 'Array_voidptr'
 			elem_type_str = 'voidptr'
 		}
 		g.type_definitions.writeln('static int ${fn_name}($left_type_str a, $elem_type_str v); // auto')

@@ -108,7 +108,7 @@ fn decode_string(root &C.cJSON) string {
 	}
 	// println('decode string valuestring="$root.valuestring"')
 	// return tos(root.valuestring, _strlen(root.valuestring))
-	return tos_clone(root.valuestring) // , _strlen(root.valuestring))
+	return unsafe { tos_clone(root.valuestring) } // , _strlen(root.valuestring))
 }
 
 fn C.cJSON_IsTrue(voidptr) bool

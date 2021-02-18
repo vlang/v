@@ -10,7 +10,7 @@ fn (mut ws Client) handshake() ? {
 	seckey := base64.encode(nonce)
 	mut sb := strings.new_builder(1024)
 	defer {
-		sb.free()
+		unsafe { sb.free() }
 	}
 	sb.write('GET ')
 	sb.write(ws.uri.resource)

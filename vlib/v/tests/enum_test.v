@@ -34,7 +34,7 @@ fn test_enum() {
 
 fn test_in() {
 	color := Color.red
-	num := 3	// used to be an expr bug before `in`
+	num := 3 // used to be an expr bug before `in`
 	assert color in [.red, .green]
 	assert num == 3
 	println(color)
@@ -118,3 +118,18 @@ fn test_typed_enum() {
 	}
 }
 */
+
+enum FileType {
+	unknown
+	wiki
+	file
+	image
+	html
+}
+
+fn test_enum_instance() {
+	mut filetype := FileType{}
+	eprintln(filetype)
+	s := 'x $filetype z'
+	assert s == 'x unknown z'
+}

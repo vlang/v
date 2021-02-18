@@ -110,12 +110,12 @@ pub:
 pub struct SelectorExpr {
 pub:
 	pos        token.Position
-	expr       Expr // expr.field_name
 	field_name string
 	is_mut     bool // is used for the case `if mut ident.selector is MyType {`, it indicates if the root ident is mutable
 	mut_pos    token.Position
 	next_token token.Kind
 pub mut:
+	expr            Expr       // expr.field_name
 	expr_type       table.Type // type of `Foo` in `Foo.bar`
 	typ             table.Type // type of the entire thing (`Foo.bar`)
 	name_type       table.Type // T in `T.name` or typeof in `typeof(expr).name`
@@ -609,12 +609,15 @@ pub mut:
 pub struct IndexExpr {
 pub:
 	pos     token.Position
-	left    Expr
 	index   Expr // [0], RangeExpr [start..end] or map[key]
 	or_expr OrExpr
 pub mut:
+	left      Expr
 	left_type table.Type // array, map, fixed array
 	is_setter bool
+	is_map    bool
+	is_array  bool
+	is_farray bool
 }
 
 pub struct IfExpr {
@@ -1534,12 +1537,30 @@ pub struct Table {
 }
 
 pub fn (expr Expr) is_mut_ident() bool {
-	if expr is Ident {
-		if expr.obj is Var {
-			if expr.obj.is_auto_deref {
+	match expr {
+		Ident {
+			if expr.obj is Var {
+				if expr.obj.is_auto_deref {
+					return true
+				}
+			}
+		}
+		PrefixExpr {
+			if expr.op == .amp && expr.right.is_mut_ident() {
 				return true
 			}
 		}
+		else {}
 	}
 	return false
+}
+
+// helper for dealing with `m[k1][k2][k3][k3] = value`
+pub fn (mut lx IndexExpr) recursive_mapset_is_setter(val bool) {
+	lx.is_setter = val
+	if mut lx.left is IndexExpr {
+		if lx.left.is_map {
+			lx.left.recursive_mapset_is_setter(val)
+		}
+	}
 }

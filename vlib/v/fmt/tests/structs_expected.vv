@@ -7,6 +7,12 @@ struct User {
 	very_long_type_field2 very_loooooooong_type // long
 }
 
+struct FamousUser {
+	User
+pub:
+	aka string
+}
+
 struct Foo {
 	field1 int    // f1
 	field2 string // f2
@@ -17,6 +23,10 @@ mut:
 	mut_field string
 pub mut:
 	pub_mut_field string
+}
+
+struct Bar {
+	Foo
 }
 
 fn new_user() User {
@@ -41,6 +51,8 @@ mut:
 	somefield2 /* 11 */ int // 12
 pub:
 	somefield3 int
+
+	somefield4 int
 	/*
 	13
 14

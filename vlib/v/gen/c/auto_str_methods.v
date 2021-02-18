@@ -447,7 +447,7 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp string, str_fn_name st
 	// generates all definitions of substructs
 	mut fnames2strfunc := map{
 		'': ''
-	} // map[string]string // TODO vfmt bug
+	}
 	for field in info.fields {
 		sym := g.table.get_type_symbol(field.typ)
 		if !sym.has_method('str') {
@@ -470,7 +470,8 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp string, str_fn_name st
 		// TODO: this is a bit hacky. styp shouldn't be even parsed with _T_
 		// use something different than g.typ for styp
 		clean_struct_v_type_name = 
-			clean_struct_v_type_name.replace('_T_', '<').replace('_', ', ') + '>'
+			clean_struct_v_type_name.replace('_T_', '<').replace('_', ', ').replace('Array', 'array') +
+			'>'
 	}
 	clean_struct_v_type_name = util.strip_main_name(clean_struct_v_type_name)
 	// generate ident / indent length = 4 spaces
@@ -510,7 +511,13 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp string, str_fn_name st
 						g.auto_str_funcs.write('*')
 					}
 				}
-				g.auto_str_funcs.write(func)
+				// handle circular ref type of struct to the struct itself
+				if styp == field_styp {
+					g.auto_str_funcs.write('_SLIT("<circular>")')
+				} else {
+					g.auto_str_funcs.write(func)
+				}
+
 				if i < info.fields.len - 1 {
 					g.auto_str_funcs.write(',\n\t\t')
 				}

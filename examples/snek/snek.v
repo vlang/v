@@ -1,6 +1,6 @@
 import gg
 import gx
-import sokol.sapp
+// import sokol.sapp
 import time
 import rand
 
@@ -73,7 +73,7 @@ fn (mut app App) move_food() {
 }
 
 // events
-fn on_keydown(key sapp.KeyCode, mod sapp.Modifier, mut app App) {
+fn on_keydown(key gg.KeyCode, mod gg.Modifier, mut app App) {
 	match key {
 		.w, .up {
 			if app.dir != .down {
@@ -156,9 +156,8 @@ fn on_frame(mut app App) {
 		app.reset_game()
 	}
 	// checking if snake hit a wall
-	if app.snake[0].x < 0 ||
-		app.snake[0].x >= game_size || app.snake[0].y < 0 || app.snake[0].y >= game_size
-	{
+	if app.snake[0].x < 0 || app.snake[0].x >= game_size || app.snake[0].y < 0
+		|| app.snake[0].y >= game_size {
 		app.reset_game()
 	}
 

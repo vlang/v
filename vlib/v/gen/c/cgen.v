@@ -484,7 +484,7 @@ pub fn (mut g Gen) finish() {
 
 pub fn (mut g Gen) write_typeof_functions() {
 	g.writeln('')
-	g.writeln('// >> typeof() support for sum types')
+	g.writeln('// >> typeof() support for sum types / interfaces')
 	for typ in g.table.types {
 		if typ.kind == .sum_type {
 			sum_info := typ.info as table.SumType
@@ -507,6 +507,15 @@ pub fn (mut g Gen) write_typeof_functions() {
 				g.writeln('\t\tdefault: return "unknown ${util.strip_main_name(typ.name)}";')
 				g.writeln('\t}')
 			}
+			g.writeln('}')
+		} else if typ.kind == .interface_ {
+			inter_info := typ.info as table.Interface
+			g.writeln('static char * v_typeof_interface_${typ.cname}(int sidx) { /* $typ.name */ ')
+			for t in inter_info.types {
+				subtype := g.table.get_type_symbol(t)
+				g.writeln('\tif (sidx == _${typ.cname}_${subtype.cname}_index) return "${util.strip_main_name(subtype.name)}";')
+			}
+			g.writeln('\treturn "unknown ${util.strip_main_name(typ.name)}";')
 			g.writeln('}')
 		}
 	}
@@ -1516,7 +1525,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw table.Type, expected_t
 		return
 	}
 	if got_is_ptr && !expected_is_ptr && neither_void
-		&& exp_sym.kind !in [.interface_, .placeholder] {
+		&& exp_sym.kind !in [.interface_, .placeholder] && expr !is ast.InfixExpr {
 		got_deref_type := got_type.deref()
 		deref_sym := g.table.get_type_symbol(got_deref_type)
 		deref_will_match := expected_type in [got_type, got_deref_type, deref_sym.parent_idx]
@@ -2102,6 +2111,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					g.write('for (int $i_var=0; $i_var<$fixed_array.size; $i_var++) {')
 					g.expr(left)
 					g.write('[$i_var] = ')
+					if val.is_mut_ident() {
+						g.write('*')
+					}
 					g.expr(val)
 					g.write('[$i_var];')
 					g.writeln('}')
@@ -2124,6 +2136,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 							g.write('{0}')
 						}
 					} else {
+						if val.is_mut_ident() {
+							g.write('*')
+						}
 						g.expr(val)
 					}
 				} else {
@@ -2706,7 +2721,13 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.writeln('sync__RwMutex_lock(&$node.auto_locked->mtx);')
 			}
 			g.inside_map_postfix = true
-			g.expr(node.expr)
+			if node.expr.is_mut_ident() {
+				g.write('(*')
+				g.expr(node.expr)
+				g.write(')')
+			} else {
+				g.expr(node.expr)
+			}
 			g.inside_map_postfix = false
 			g.write(node.op.str())
 			if node.auto_locked != '' {
@@ -3366,8 +3387,14 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			if need_par {
 				g.write('(')
 			}
+			if node.left_type.is_ptr() && node.left.is_mut_ident() {
+				g.write('*')
+			}
 			g.expr(node.left)
 			g.write(' $node.op.str() ')
+			if node.right_type.is_ptr() && node.right.is_mut_ident() {
+				g.write('*')
+			}
 			g.expr(node.right)
 			if need_par {
 				g.write(')')
@@ -3697,6 +3724,9 @@ fn (mut g Gen) map_init(node ast.MapInit) {
 			g.write('}), _MOV(($value_typ_str[$size]){')
 		}
 		for expr in node.vals {
+			if expr.is_mut_ident() {
+				g.write('*')
+			}
 			g.expr(expr)
 			g.write(', ')
 		}
@@ -3786,7 +3816,7 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 		}
 	}
 	chan_array := g.new_tmp_var()
-	g.write('array_sync__Channel_ptr $chan_array = new_array_from_c_array($n_channels, $n_channels, sizeof(sync__Channel*), _MOV((sync__Channel*[$n_channels]){')
+	g.write('Array_sync__Channel_ptr $chan_array = new_array_from_c_array($n_channels, $n_channels, sizeof(sync__Channel*), _MOV((sync__Channel*[$n_channels]){')
 	for i in 0 .. n_channels {
 		if i > 0 {
 			g.write(', ')
@@ -3797,7 +3827,7 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 	}
 	g.writeln('}));')
 	directions_array := g.new_tmp_var()
-	g.write('array_sync__Direction $directions_array = new_array_from_c_array($n_channels, $n_channels, sizeof(sync__Direction), _MOV((sync__Direction[$n_channels]){')
+	g.write('Array_sync__Direction $directions_array = new_array_from_c_array($n_channels, $n_channels, sizeof(sync__Direction), _MOV((sync__Direction[$n_channels]){')
 	for i in 0 .. n_channels {
 		if i > 0 {
 			g.write(', ')
@@ -3810,7 +3840,7 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 	}
 	g.writeln('}));')
 	objs_array := g.new_tmp_var()
-	g.write('array_voidptr $objs_array = new_array_from_c_array($n_channels, $n_channels, sizeof(voidptr), _MOV((voidptr[$n_channels]){')
+	g.write('Array_voidptr $objs_array = new_array_from_c_array($n_channels, $n_channels, sizeof(voidptr), _MOV((voidptr[$n_channels]){')
 	for i in 0 .. n_channels {
 		g.write(if i > 0 { ', &' } else { '&' })
 		if tmp_objs[i] == '' {
@@ -4343,7 +4373,11 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 						g.is_array_set = true
 						g.write('map_set_1(')
 					} else {
-						g.write('(*(($elem_type_str*)map_get_and_set_1(')
+						if node.is_setter {
+							g.write('(*(($elem_type_str*)map_get_and_set_1(')
+						} else {
+							g.write('(*(($elem_type_str*)map_get_1(')
+						}
 					}
 					if !left_is_ptr || node.left_type.has_flag(.shared_f) {
 						g.write('&')
@@ -4379,7 +4413,11 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					|| g.inside_map_index
 					|| (g.is_assign_lhs && !g.is_array_set && get_and_set_types) {
 					zero := g.type_default(info.value_type)
-					g.write('(*($elem_type_str*)map_get_and_set_1(')
+					if node.is_setter {
+						g.write('(*($elem_type_str*)map_get_and_set_1(')
+					} else {
+						g.write('(*($elem_type_str*)map_get_1(')
+					}
 					if !left_is_ptr {
 						g.write('&')
 					}
@@ -4786,7 +4824,7 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, val string, typ ta
 		}
 	}
 	if g.is_autofree {
-		if styp.starts_with('array_') {
+		if styp.starts_with('Array_') {
 			g.cleanups[mod].writeln('\tarray_free(&$cname);')
 		}
 		if styp == 'string' {
@@ -4998,10 +5036,11 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	if is_multiline {
 		g.indent--
 	}
-	// if struct_init.fields.len == 0 && info.fields.len == 0 {
+
 	if !initialized {
 		g.write('\n#ifndef __cplusplus\n0\n#endif\n')
 	}
+
 	g.write('}')
 	if g.is_shared && !g.inside_opt_data && !g.is_array_set {
 		g.write('}, sizeof($shared_styp))')
@@ -6075,7 +6114,7 @@ $staticprefix $interface_name* I_${cctype}_to_Interface_${interface_name}_ptr($c
 					method_call += '_method_wrapper'
 				}
 				if g.pref.build_mode != .build_module {
-					methods_struct.writeln('\t\t._method_${c_name(method.name)} = $method_call,')
+					methods_struct.writeln('\t\t._method_${c_name(method.name)} = (void*) $method_call,')
 				}
 			}
 			if g.pref.build_mode != .build_module {

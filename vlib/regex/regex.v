@@ -530,7 +530,7 @@ fn (re RE) get_char_class(pc int) string {
 		buf_ptr[i] = byte(0)
 	}
 
-	return tos_clone( buf_ptr )
+	return unsafe { tos_clone( buf_ptr ) }
 }
 
 fn (re RE) check_char_class(pc int, ch rune) bool {

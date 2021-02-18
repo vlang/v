@@ -20,7 +20,7 @@ fn test_if_string_flag_parses() {
 	flag = cli.Flag{
 		flag: .string
 		name: 'flag'
-		multipe: true
+		multiple: true
 	}
 	flag.parse(['-flag=value1'], false) or { panic(err) }
 	flag.parse(['-flag=value2'], false) or { panic(err) }
@@ -31,7 +31,7 @@ fn test_if_string_flag_parses() {
 		cli.Flag{
 			flag: .string
 			name: 'flag'
-			multipe: true
+			multiple: true
 			value: ['a', 'b', 'c']
 		},
 		cli.Flag{
@@ -90,7 +90,7 @@ fn test_if_int_flag_parses() {
 	flag = cli.Flag{
 		flag: .int
 		name: 'flag'
-		multipe: true
+		multiple: true
 	}
 
 	flag.parse(['-flag=42'], false) or { panic(err) }
@@ -102,7 +102,7 @@ fn test_if_int_flag_parses() {
 		cli.Flag{
 			flag: .int
 			name: 'flag'
-			multipe: true
+			multiple: true
 			value: ['1', '2', '3']
 		},
 		cli.Flag{
@@ -138,7 +138,7 @@ fn test_if_float_flag_parses() {
 	flag = cli.Flag{
 		flag: .float
 		name: 'flag'
-		multipe: true
+		multiple: true
 	}
 
 	flag.parse(['-flag=3.1'], false) or { panic(err) }
@@ -150,7 +150,7 @@ fn test_if_float_flag_parses() {
 		cli.Flag{
 			flag: .float
 			name: 'flag'
-			multipe: true
+			multiple: true
 			value: ['1.1', '2.2', '3.3']
 		},
 		cli.Flag{

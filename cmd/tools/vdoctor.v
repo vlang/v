@@ -35,13 +35,12 @@ fn (mut a App) collect_info() {
 		})
 	}
 	if os_kind == 'linux' {
-		info := a.cpu_info()
 		mut cpu_details := ''
 		if cpu_details == '' {
-			cpu_details = info['model name']
+			cpu_details = a.cpu_info('model name')
 		}
 		if cpu_details == '' {
-			cpu_details = info['hardware']
+			cpu_details = a.cpu_info('hardware')
 		}
 		if cpu_details == '' {
 			cpu_details = os.uname().machine
@@ -61,8 +60,7 @@ fn (mut a App) collect_info() {
 	})
 	if os_kind == 'linux' {
 		os_details = a.get_linux_os_name()
-		info := a.cpu_info()
-		if 'hypervisor' in info['flags'] {
+		if 'hypervisor' in a.cpu_info('flags') {
 			if 'microsoft' in wsl_check {
 				// WSL 2 is a Managed VM and Full Linux Kernel
 				// See https://docs.microsoft.com/en-us/windows/wsl/compare-versions
@@ -233,16 +231,15 @@ fn (mut a App) get_linux_os_name() string {
 	return os_details
 }
 
-fn (mut a App) cpu_info() map[string]string {
+fn (mut a App) cpu_info(key string) string {
 	if a.cached_cpuinfo.len > 0 {
-		return a.cached_cpuinfo
+		return a.cached_cpuinfo[key]
 	}
 	info := os.exec('cat /proc/cpuinfo') or {
-		return a.cached_cpuinfo
+		return a.cached_cpuinfo[key]
 	}
-	vals := a.parse(info.output, ':')
-	a.cached_cpuinfo = vals
-	return vals
+	a.cached_cpuinfo = a.parse(info.output, ':')
+	return a.cached_cpuinfo[key]
 }
 
 fn (mut a App) git_info() string {

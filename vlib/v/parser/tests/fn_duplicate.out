@@ -1,0 +1,4 @@
+vlib/v/parser/tests/fn_duplicate.vv:2:4: error: redefinition of function `foo`
+    1 | fn foo() {}
+    2 | fn foo() {}
+      |    ~~~

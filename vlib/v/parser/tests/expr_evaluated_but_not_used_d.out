@@ -1,7 +1,6 @@
-vlib/v/parser/tests/expr_evaluated_but_not_used_d.vv:4:5: error: expression evaluated but not used
+vlib/v/parser/tests/expr_evaluated_but_not_used_d.vv:4:19: error: expression evaluated but not used
     2 |     a := 1
     3 |     b := 2
-    4 |     a+b
-      |     ~~~
-    5 |     println(a*b)
-    6 | }
+    4 |     println(a*b), a+b
+      |                   ~~~
+    5 | }
