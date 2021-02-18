@@ -272,7 +272,7 @@ fn test_cp_all() {
 }
 
 fn test_realpath() {
-	assert(os.real_path('') == '')
+	assert os.real_path('') == ''
 }
 
 fn test_tmpdir() {
