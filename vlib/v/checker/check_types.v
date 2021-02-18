@@ -76,6 +76,11 @@ pub fn (mut c Checker) check_basic(got table.Type, expected table.Type) bool {
 			return true
 		}
 	}
+	// TODO: check if this should be allowed everywhere, or just for fn (or C fn) args, or nowhere?
+	// allow enum value to be used as int
+	if expected.idx() == table.int_type_idx && got_sym.kind == .enum_ {
+		return true
+	}
 	if exp_sym.kind in [.voidptr, .any] || got_sym.kind in [.voidptr, .any] {
 		return true
 	}

@@ -42,23 +42,27 @@ fn C.atoi() int
 
 fn C.strncasecmp() int
 
-fn C.socket() int
+fn C.socket(domain int, typ int, protocol int) int
 
-fn C.setsockopt() int
+// fn C.setsockopt(sockfd int, level int, optname int, optval voidptr, optlen C.socklen_t) int
+fn C.setsockopt(sockfd int, level int, optname int, optval voidptr, optlen u32) int
 
-fn C.htonl() int
+fn C.htonl(hostlong u32) int
 
-fn C.htons() int
+fn C.htons(netshort u16) int
 
-fn C.bind() int
+// fn C.bind(sockfd int, addr &C.sockaddr, addrlen C.socklen_t) int
+fn C.bind(sockfd int, addr &C.sockaddr, addrlen u32) int
 
-fn C.listen() int
+fn C.listen(sockfd int, backlog int) int
 
-fn C.accept() int
+// fn C.accept(sockfd int, addr &C.sockaddr, addrlen &C.socklen_t) int
+fn C.accept(sockfd int, addr &C.sockaddr, addrlen &u32) int
 
 fn C.getaddrinfo(node charptr, service charptr, hints &C.addrinfo, res &&C.addrinfo) int
 
-fn C.connect() int
+// fn C.connect(sockfd int, addr &C.sockaddr, addrlen C.socklen_t) int
+fn C.connect(sockfd int, addr &C.sockaddr, addrlen u32) int
 
 // fn C.send(sockfd int, buf voidptr, len size_t, flags int) size_t
 fn C.send(sockfd int, buf voidptr, len size_t, flags int) int
@@ -72,9 +76,10 @@ fn C.shutdown(socket int, how int) int
 // fn C.close() int
 fn C.ntohs(netshort u16) int
 
-fn C.getsockname() int
+// fn C.getsockname(sockfd int, addr &C.sockaddr, addrlen &C.socklen_t) int
+fn C.getsockname(sockfd int, addr &C.sockaddr, addrlen &u32) int
 
-fn C.fcntl() int
+fn C.fcntl(fd int, cmd int, arg ...voidptr) int
 
 // fn C.write() int
 struct C.picoev_loop {
