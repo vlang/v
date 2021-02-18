@@ -45,10 +45,12 @@ pub fn (mut s Suggestion) add(val string) {
 	if sval in [s.wanted, s.swanted] {
 		return
 	}
+	// round to 3 decimal places to avoid float comparison issues
+	similarity := f32(int(strings.dice_coefficient(s.swanted, sval) * 1000)) / 1000
 	s.known << Possibility{
 		value: val
 		svalue: sval
-		similarity: strings.dice_coefficient(s.swanted, sval)
+		similarity: similarity
 	}
 }
 
