@@ -400,6 +400,12 @@ pub fn (mut c Checker) struct_decl(mut decl ast.StructDecl) {
 				}
 			}
 			c.check_fields(sym, field.type_pos)
+			if sym.kind == .struct_ {
+				info := sym.info as table.Struct
+				if info.is_heap && !field.typ.is_ptr() {
+					struct_sym.info.is_heap = true
+				}
+			}
 			if field.has_default_expr {
 				c.expected_type = field.typ
 				field_expr_type := c.expr(field.default_expr)
@@ -5896,7 +5902,7 @@ fn (mut c Checker) trace(fbase string, message string) {
 }
 
 fn (mut c Checker) check_fields(sym table.TypeSymbol, pos token.Position) {
-	if sym.kind == .placeholder && decl.language != .c && !sym.name.starts_with('C.') {
+	if sym.kind == .placeholder && sym.language != .c && !sym.name.starts_with('C.') {
 		c.error(util.new_suggestion(sym.name, c.table.known_type_names()).say('unknown type `$sym.name`'),
 			pos)
 	}
@@ -5916,12 +5922,6 @@ fn (mut c Checker) check_fields(sym table.TypeSymbol, pos token.Position) {
 		if elem_sym.kind == .placeholder {
 			c.error(util.new_suggestion(elem_sym.name, c.table.known_type_names()).say('unknown type `$elem_sym.name`'),
 				pos)
-		}
-	}
-	if sym.kind == .struct_ {
-		info := sym.info as table.Struct
-		if info.is_heap && !field.typ.is_ptr() {
-			struct_sym.info.is_heap = true
 		}
 	}
 	if sym.kind == .map {
