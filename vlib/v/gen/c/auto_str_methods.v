@@ -469,7 +469,7 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp string, str_fn_name st
 	if clean_struct_v_type_name.contains('_T_') {
 		// TODO: this is a bit hacky. styp shouldn't be even parsed with _T_
 		// use something different than g.typ for styp
-		clean_struct_v_type_name =
+		clean_struct_v_type_name = 
 			clean_struct_v_type_name.replace('_T_', '<').replace('_', ', ').replace('Array', 'array') +
 			'>'
 	}
@@ -553,7 +553,8 @@ fn struct_auto_str_func(sym table.TypeSymbol, field_type table.Type, fn_name str
 		mut method_str := 'it.${c_name(field_name)}'
 		if sym.kind == .bool {
 			method_str += ' ? _SLIT("true") : _SLIT("false")'
-		} else if (field_type.is_int() || field_type.is_float()) && field_type.is_ptr() && !expects_ptr {
+		} else if (field_type.is_int() || field_type.is_float()) && field_type.is_ptr()
+			&& !expects_ptr {
 			// ptr int can be "nil", so this needs to be castet to a string
 			fmt := if sym.kind in [.f32, .f64] {
 				'%g\\000'
