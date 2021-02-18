@@ -9,17 +9,6 @@ mut:
 	similarity f32
 }
 
-fn compare_by_similarity(a &Possibility, b &Possibility) int {
-	if a.similarity < b.similarity {
-		return -1
-	}
-	if a.similarity > b.similarity {
-		return 1
-	}
-	return 0
-}
-
-//
 struct Suggestion {
 mut:
 	known   []Possibility
@@ -61,7 +50,7 @@ pub fn (mut s Suggestion) add_many(many []string) {
 }
 
 pub fn (mut s Suggestion) sort() {
-	s.known.sort_with_compare(compare_by_similarity)
+	s.known.sort(a.similarity < b.similarity)
 }
 
 pub fn (s Suggestion) say(msg string) string {
