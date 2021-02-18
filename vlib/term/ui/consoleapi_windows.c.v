@@ -54,6 +54,31 @@ struct C.FOCUS_EVENT_RECORD {
 	bSetFocus int
 }
 
+[typedef]
+struct C.COORD {
+	X i16
+	Y i16
+}
+
+[typedef]
+struct C.SMALL_RECT {
+	Left   u16
+	Top    u16
+	Right  u16
+	Bottom u16
+}
+
+[typedef]
+struct C.CONSOLE_SCREEN_BUFFER_INFO {
+	dwSize              C.COORD
+	dwCursorPosition    C.COORD
+	wAttributes         u16
+	srWindow            C.SMALL_RECT
+	dwMaximumWindowSize C.COORD
+}
+
 fn C.ReadConsoleInput() bool
 
 fn C.GetNumberOfConsoleInputEvents() bool
+
+fn C.GetConsoleScreenBufferInfo(handle os.HANDLE, info &C.CONSOLE_SCREEN_BUFFER_INFO) bool
