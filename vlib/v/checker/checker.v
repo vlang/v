@@ -2062,7 +2062,8 @@ fn (mut c Checker) type_implements(typ table.Type, inter_typ table.Type, pos tok
 	}
 	if mut inter_sym.info is table.Interface {
 		if !typ.is_ptr() && !same_base_type {
-			c.error('cannot cast non-reference type `$styp` to interface `$inter_sym.name`', pos)
+			c.error('cannot cast non-reference type `$styp` to interface `$inter_sym.name`',
+				pos)
 		}
 		for ifield in inter_sym.info.fields {
 			if field := typ_sym.find_field(ifield.name) {
