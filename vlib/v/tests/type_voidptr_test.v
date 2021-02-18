@@ -1,6 +1,6 @@
 [direct_array_access]
 [unsafe]
-fn memcpy(mut dest voidptr, src voidptr, len u32) voidptr {
+fn memcpy(dest voidptr, src voidptr, len u32) voidptr {
 	mut d := byteptr(dest)
 	s := byteptr(src)
 	mut l := len

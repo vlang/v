@@ -1613,7 +1613,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			}
 			if arg.is_mut {
 				to_lock, pos := c.fail_if_immutable(arg.expr)
-				if !param.is_mut {
+				if !param.is_mut && call_expr.expected_arg_types[i] != table.voidptr_type {
 					tok := arg.share.str()
 					c.error('`$call_expr.name` parameter `$param.name` is not `$tok`, `$tok` is not needed`',
 						arg.expr.position())
@@ -1977,7 +1977,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		}
 		if call_arg.is_mut {
 			to_lock, pos := c.fail_if_immutable(call_arg.expr)
-			if !arg.is_mut {
+			if !arg.is_mut && call_expr.expected_arg_types[i] != table.voidptr_type {
 				tok := call_arg.share.str()
 				c.error('`$call_expr.name` parameter `$arg.name` is not `$tok`, `$tok` is not needed`',
 					call_arg.expr.position())
