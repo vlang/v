@@ -51,7 +51,7 @@ fn (mut v Builder) find_win_cc() ? {
 		if v.pref.is_verbose {
 			println('$v.pref.ccompiler not found, looking for msvc...')
 		}
-		find_msvc() or {
+		find_msvc(v.pref.m64) or {
 			if v.pref.is_verbose {
 				println('msvc not found, looking for thirdparty/tcc...')
 			}
