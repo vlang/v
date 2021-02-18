@@ -5383,7 +5383,7 @@ pub fn (mut c Checker) offset_of(node ast.OffsetOf) table.Type {
 		c.error('first argument of __offsetof must be struct', node.pos)
 		return table.u32_type
 	}
-	if !c.table.struct_has_field(node.struct_type, node.field) {
+	if !c.table.struct_has_field(sym, node.field) {
 		c.error('struct `$sym.name` has no field called `$node.field`', node.pos)
 	}
 	return table.u32_type
