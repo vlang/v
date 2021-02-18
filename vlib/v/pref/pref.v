@@ -145,7 +145,7 @@ pub mut:
 	cache_manager       vcache.CacheManager
 }
 
-pub fn parse_args(args []string) (&Preferences, string) {
+pub fn parse_args(known_external_commands []string, args []string) (&Preferences, string) {
 	mut res := &Preferences{}
 	$if x64 {
 		res.m64 = true // follow V model by default
@@ -417,7 +417,8 @@ pub fn parse_args(args []string) (&Preferences, string) {
 						if command == 'run' {
 							break
 						}
-					} else if is_source_file(command) && is_source_file(arg) {
+					} else if is_source_file(command) && is_source_file(arg)
+						&& command !in known_external_commands {
 						eprintln('Too many targets. Specify just one target: <target.v|target_directory>.')
 						exit(1)
 					}
