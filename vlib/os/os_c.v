@@ -748,14 +748,16 @@ pub fn real_path(fpath string) string {
 	defer {
 		unsafe { free(fullpath) }
 	}
-	mut ret := charptr(0)
+
 	$if windows {
-		ret = charptr(C._fullpath(charptr(fullpath), charptr(fpath.str), max_path_len))
+		// TODO: check errors if path len is not enough
+		ret := C.GetFullPathNameA(charptr(fpath.str), max_path_len, charptr(fullpath),
+			0)
 		if ret == 0 {
 			return fpath
 		}
 	} $else {
-		ret = charptr(C.realpath(charptr(fpath.str), charptr(fullpath)))
+		ret := charptr(C.realpath(charptr(fpath.str), charptr(fullpath)))
 		if ret == 0 {
 			return fpath
 		}

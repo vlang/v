@@ -271,6 +271,10 @@ fn test_cp_all() {
 	os.cp_all('ex', './', true) or { panic(err) }
 }
 
+fn test_realpath() {
+	assert(os.real_path('') == '')
+}
+
 fn test_tmpdir() {
 	t := os.temp_dir()
 	assert t.len > 0
