@@ -157,7 +157,7 @@ pub fn (c &TcpConn) peer_ip() ?string {
 	peeraddr := C.sockaddr_in{}
 	speeraddr := sizeof(peeraddr)
 	socket_error(C.getpeername(c.sock.handle, unsafe { &C.sockaddr(&peeraddr) }, &speeraddr)) ?
-	cstr := C.inet_ntop(C.AF_INET, &peeraddr.sin_addr, &buf[0], sizeof(buf))
+	cstr := C.inet_ntop(SocketFamily.inet, &peeraddr.sin_addr, &buf[0], sizeof(buf))
 	if cstr == 0 {
 		return error('net.peer_ip: inet_ntop failed')
 	}

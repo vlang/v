@@ -55,7 +55,7 @@ mut:
 struct C.sockaddr_storage {
 }
 
-fn C.socket(domain int, typ int, protocol int) int
+fn C.socket(domain SocketFamily, typ SocketType, protocol int) int
 
 // fn C.setsockopt(sockfd int, level int, optname int, optval voidptr, optlen C.socklen_t) int
 fn C.setsockopt(sockfd int, level int, optname int, optval voidptr, optlen u32) int
@@ -96,7 +96,7 @@ fn C.ntohs(netshort u16) int
 // fn C.getpeername(sockfd int, addr &C.sockaddr, addlen &C.socklen_t) int
 fn C.getpeername(sockfd int, addr &C.sockaddr, addlen &u32) int
 
-fn C.inet_ntop(af int, src voidptr, dst charptr, dst_size int) charptr
+fn C.inet_ntop(af SocketFamily, src voidptr, dst charptr, dst_size int) charptr
 
 fn C.WSAAddressToStringA() int
 

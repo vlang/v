@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module picoev
 
+import net
 import picohttpparser
 
 #include <errno.h>
@@ -42,45 +43,6 @@ fn C.atoi() int
 
 fn C.strncasecmp() int
 
-fn C.socket(domain int, typ int, protocol int) int
-
-// fn C.setsockopt(sockfd int, level int, optname int, optval voidptr, optlen C.socklen_t) int
-fn C.setsockopt(sockfd int, level int, optname int, optval voidptr, optlen u32) int
-
-fn C.htonl(hostlong u32) int
-
-fn C.htons(netshort u16) int
-
-// fn C.bind(sockfd int, addr &C.sockaddr, addrlen C.socklen_t) int
-fn C.bind(sockfd int, addr &C.sockaddr, addrlen u32) int
-
-fn C.listen(sockfd int, backlog int) int
-
-// fn C.accept(sockfd int, addr &C.sockaddr, addrlen &C.socklen_t) int
-fn C.accept(sockfd int, addr &C.sockaddr, addrlen &u32) int
-
-fn C.getaddrinfo(node charptr, service charptr, hints &C.addrinfo, res &&C.addrinfo) int
-
-// fn C.connect(sockfd int, addr &C.sockaddr, addrlen C.socklen_t) int
-fn C.connect(sockfd int, addr &C.sockaddr, addrlen u32) int
-
-// fn C.send(sockfd int, buf voidptr, len size_t, flags int) size_t
-fn C.send(sockfd int, buf voidptr, len size_t, flags int) int
-
-// fn C.recv(sockfd int, buf voidptr, len size_t, flags int) size_t
-fn C.recv(sockfd int, buf voidptr, len size_t, flags int) int
-
-// fn C.read() int
-fn C.shutdown(socket int, how int) int
-
-// fn C.close() int
-fn C.ntohs(netshort u16) int
-
-// fn C.getsockname(sockfd int, addr &C.sockaddr, addrlen &C.socklen_t) int
-fn C.getsockname(sockfd int, addr &C.sockaddr, addrlen &u32) int
-
-fn C.fcntl(fd int, cmd int, arg ...voidptr) int
-
 // fn C.write() int
 struct C.picoev_loop {
 }
@@ -111,12 +73,6 @@ fn C.picoev_loop_once(&C.picoev_loop, int) int
 fn C.picoev_destroy_loop(&C.picoev_loop) int
 
 fn C.picoev_deinit() int
-
-fn C.phr_parse_request() int
-
-fn C.phr_parse_request_path_pipeline() int
-
-fn C.phr_parse_request_path() int
 
 [inline]
 fn setup_sock(fd int) {
