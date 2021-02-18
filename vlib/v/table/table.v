@@ -397,7 +397,25 @@ pub fn (mut t Table) register_type_symbol(typ TypeSymbol) int {
 }
 
 pub fn (t &Table) known_type(name string) bool {
-	t.find_type(name) or { return false }
+	return t.find_type_idx(name) != 0
+}
+
+pub fn (t &Table) known_type_idx(typ Type) bool {
+	if typ == 0 { return false }
+	sym := t.get_type_symbol(typ)
+	match sym.kind {
+		.placeholder {
+			return sym.language != .v || sym.name.starts_with('C.')
+		}
+		.array {
+			return t.known_type_idx((sym.info as Array).elem_type)
+		}
+		.map {
+			info := sym.info as Map
+			return t.known_type_idx(info.key_type) && t.known_type_idx(info.value_type)
+		}
+		else {}
+	}
 	return true
 }
 
@@ -756,14 +774,13 @@ pub fn (mytable &Table) sumtype_has_variant(parent Type, variant Type) bool {
 	return false
 }
 
-pub fn (mytable &Table) known_type_names() []string {
-	mut res := []string{}
-	for _, idx in mytable.type_idxs {
+pub fn (t &Table) known_type_names() []string {
+	mut res := []string{ cap: t.type_idxs.len }
+	for _, idx in t.type_idxs {
 		// Skip `int_literal_type_idx` and `float_literal_type_idx` because they shouldn't be visible to the User.
-		if idx in [0, int_literal_type_idx, float_literal_type_idx] {
-			continue
+		if idx !in [0, int_literal_type_idx, float_literal_type_idx] && t.known_type_idx(idx) {
+			res << t.type_to_str(idx)
 		}
-		res << mytable.type_to_str(idx)
 	}
 	return res
 }

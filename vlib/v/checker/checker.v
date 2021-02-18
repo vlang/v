@@ -339,23 +339,20 @@ pub fn (mut c Checker) interface_decl(decl ast.InterfaceDecl) {
 	for method in decl.methods {
 		c.check_valid_snake_case(method.name, 'method name', method.pos)
 		if method.return_type != table.Type(0) {
-			return_sym := c.table.get_type_symbol(method.return_type)
-			c.ensure_type_exists(return_sym, method.pos)
+			c.ensure_type_exists(method.return_type, method.pos) or { return }
 		}
 		for param in method.params {
-			sym := c.table.get_type_symbol(param.typ)
-			c.ensure_type_exists(sym, param.pos)
+			c.ensure_type_exists(param.typ, param.pos) or { return }
 		}
 	}
 	for i, field in decl.fields {
 		c.check_valid_snake_case(field.name, 'field name', field.pos)
-		sym := c.table.get_type_symbol(field.typ)
+		c.ensure_type_exists(field.typ, field.pos) or { return }
 		for j in 0 .. i {
 			if field.name == decl.fields[j].name {
 				c.error('field name `$field.name` duplicate', field.pos)
 			}
 		}
-		c.ensure_type_exists(sym, field.pos)
 	}
 }
 
@@ -382,6 +379,7 @@ pub fn (mut c Checker) struct_decl(mut decl ast.StructDecl) {
 			}
 		}
 		for i, field in decl.fields {
+			c.ensure_type_exists(field.typ, field.type_pos) or { return }
 			if decl.language == .v {
 				c.check_valid_snake_case(field.name, 'field name', field.pos)
 			}
@@ -391,7 +389,6 @@ pub fn (mut c Checker) struct_decl(mut decl ast.StructDecl) {
 					c.error('field name `$field.name` duplicate', field.pos)
 				}
 			}
-			c.ensure_type_exists(sym, field.type_pos)
 			if sym.kind == .struct_ {
 				info := sym.info as table.Struct
 				if info.is_heap && !field.typ.is_ptr() {
@@ -452,10 +449,8 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 			struct_init.typ = c.expected_type
 		}
 	}
-	if struct_init.typ == 0 {
-		c.error('unknown type', struct_init.pos)
-	}
 	utyp := c.unwrap_generic(struct_init.typ)
+	c.ensure_type_exists(utyp, struct_init.pos) or {}
 	type_sym := c.table.get_type_symbol(utyp)
 	if type_sym.kind == .sum_type && struct_init.fields.len == 1 {
 		sexpr := struct_init.fields[0].expr.str()
@@ -1050,14 +1045,8 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 		}
 		ast.SelectorExpr {
 			// retrieve table.Field
-			if expr.expr_type == 0 {
-				c.error('0 type in SelectorExpr', expr.pos)
-				return '', pos
-			}
-			mut typ_sym := c.table.get_type_symbol(c.unwrap_generic(expr.expr_type))
-			if mut typ_sym.info is table.Alias {
-				typ_sym = c.table.get_type_symbol(typ_sym.info.parent_type)
-			}
+			c.ensure_type_exists(expr.expr_type, expr.pos) or { return '', pos }
+			mut typ_sym := c.table.get_final_type_symbol(c.unwrap_generic(expr.expr_type))
 			match typ_sym.kind {
 				.struct_ {
 					struct_info := typ_sym.info as table.Struct
@@ -1817,9 +1806,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 				gts := c.table.get_type_symbol(call_expr.generic_types[0])
 				nrt := '$rts.name<$gts.name>'
 				idx := c.table.type_idxs[nrt]
-				if idx == 0 {
-					c.error('unknown type: $nrt', call_expr.pos)
-				}
+				c.ensure_type_exists(idx, call_expr.pos) or {}
 				call_expr.return_type = table.new_type(idx).derive(f.return_type)
 			}
 		}
@@ -4221,10 +4208,8 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 	cond_type := c.expr(node.cond)
 	// we setting this here rather than at the end of the method
 	// since it is used in c.match_exprs() it saves checking twice
-	node.cond_type = cond_type
-	if cond_type == 0 {
-		c.error('compiler bug: match 0 cond type', node.pos)
-	}
+	node.cond_type = c.table.mktyp(cond_type)
+	c.ensure_type_exists(node.cond_type, node.pos) or { return table.void_type }
 	cond_type_sym := c.table.get_type_symbol(cond_type)
 	if cond_type_sym.kind !in [.interface_, .sum_type] {
 		node.is_sum_type = false
@@ -5604,17 +5589,10 @@ fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) table.Type {
 	defer {
 		c.inside_sql = false
 	}
-	sym := c.table.get_type_symbol(node.table_expr.typ)
-	if node.table_expr.typ == 0 {
-		c.error('orm: unknown type `$sym.name`', node.pos)
-	}
-	if sym.kind == .placeholder {
-		c.error('orm: unknown type `$sym.name`', node.pos)
-		return table.void_type
-	}
-	c.cur_orm_ts = sym
-	info := sym.info as table.Struct
+	c.ensure_type_exists(node.table_expr.typ, node.pos) or { return table.void_type }
 	table_sym := c.table.get_type_symbol(node.table_expr.typ)
+	c.cur_orm_ts = table_sym
+	info := table_sym.info as table.Struct
 	fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, table_sym.name)
 	mut sub_structs := map[int]ast.SqlStmt{}
 	for f in fields.filter(c.table.types[int(it.typ)].kind == .struct_) {
@@ -5731,19 +5709,11 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	if node.language == .v {
 		// Make sure all types are valid
 		for arg in node.params {
-			sym := c.table.get_type_symbol(arg.typ)
-			if sym.kind == .placeholder
-				|| (sym.kind in [table.Kind.int_literal, .float_literal] && !c.is_builtin_mod) {
-				c.error('unknown type `$sym.name`', node.pos)
-			}
+			c.ensure_type_exists(arg.typ, node.pos) or { return }
 		}
 	}
 	if node.return_type != table.Type(0) {
-		return_sym := c.table.get_type_symbol(node.return_type)
-		if node.language == .v && return_sym.kind in [.placeholder, .int_literal, .float_literal]
-			&& return_sym.language == .v {
-			c.error('unknown type `$return_sym.name`', node.pos)
-		}
+		c.ensure_type_exists(node.return_type, node.pos) or { return }
 		if node.language == .v && node.is_method && node.name == 'str' {
 			if node.return_type != table.string_type {
 				c.error('.str() methods should return `string`', node.pos)
@@ -5893,38 +5863,40 @@ fn (mut c Checker) trace(fbase string, message string) {
 	}
 }
 
-fn (mut c Checker) ensure_type_exists(sym table.TypeSymbol, pos token.Position) {
-	if sym.kind == .placeholder && sym.language == .v && !sym.name.starts_with('C.') {
-		c.error(util.new_suggestion(sym.name, c.table.known_type_names()).say('unknown type `$sym.name`'),
-			pos)
+fn (mut c Checker) ensure_type_exists(typ table.Type, pos token.Position) ? {
+	if typ == 0 {
+		c.error('unknown type', pos)
 	}
-	// Separate error condition for `int_literal` and `float_literal` because `util.suggestion` may give different
-	// suggestions due to f32 comparision issue.
-	if sym.kind in [.int_literal, .float_literal] {
-		msg := if sym.kind == .int_literal {
-			'unknown type `$sym.name`.\nDid you mean `int`?'
-		} else {
-			'unknown type `$sym.name`.\nDid you mean `f64`?'
+	sym := c.table.get_type_symbol(typ)
+	match sym.kind {
+		.placeholder {
+			if sym.language == .v && !sym.name.starts_with('C.') {
+				c.error(util.new_suggestion(sym.name, c.table.known_type_names()).say('unknown type `$sym.name`'),
+					pos)
+				return none
+			}
 		}
-		c.error(msg, pos)
-	}
-	if sym.kind == .array {
-		array_info := sym.array_info()
-		elem_sym := c.table.get_type_symbol(array_info.elem_type)
-		if elem_sym.kind == .placeholder {
-			c.error(util.new_suggestion(elem_sym.name, c.table.known_type_names()).say('unknown type `$elem_sym.name`'),
-				pos)
+		.int_literal, .float_literal {
+			// Separate error condition for `int_literal` and `float_literal` because `util.suggestion` may give different
+			// suggestions due to f32 comparision issue.
+			if !c.is_builtin_mod {
+				msg := if sym.kind == .int_literal {
+					'unknown type `$sym.name`.\nDid you mean `int`?'
+				} else {
+					'unknown type `$sym.name`.\nDid you mean `f64`?'
+				}
+				c.error(msg, pos)
+				return none
+			}
 		}
-	}
-	if sym.kind == .map {
-		info := sym.map_info()
-		key_sym := c.table.get_type_symbol(info.key_type)
-		value_sym := c.table.get_type_symbol(info.value_type)
-		if key_sym.kind == .placeholder {
-			c.error('unknown type `$key_sym.name`', pos)
+		.array {
+			c.ensure_type_exists((sym.info as table.Array).elem_type, pos) ?
 		}
-		if value_sym.kind == .placeholder {
-			c.error('unknown type `$value_sym.name`', pos)
+		.map {
+			info := sym.info as table.Map
+			c.ensure_type_exists(info.key_type, pos) ?
+			c.ensure_type_exists(info.value_type, pos) ?
 		}
+		else {}
 	}
 }
