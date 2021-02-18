@@ -69,21 +69,25 @@ fn C.listen() int
 
 fn C.accept() int
 
-fn C.getaddrinfo() int
+fn C.getaddrinfo(node charptr, service charptr, hints &C.addrinfo, res &&C.addrinfo) int
 
 fn C.connect() int
 
-fn C.send() int
+// fn C.send(sockfd int, buf voidptr, len size_t, flags int) size_t
+fn C.send(sockfd int, buf voidptr, len size_t, flags int) int
 
-fn C.sendto() int
+// fn C.sendto(sockfd int, buf voidptr, len size_t, flags int, dest_add &C.sockaddr, addrlen C.socklen_t) size_t
+fn C.sendto(sockfd int, buf voidptr, len size_t, flags int, dest_add &C.sockaddr, addrlen int) int
 
-fn C.recv() int
+// fn C.recv(sockfd int, buf voidptr, len size_t, flags int) size_t
+fn C.recv(sockfd int, buf voidptr, len size_t, flags int) int
 
-fn C.recvfrom() int
+// fn C.recvfrom(sockfd int, buf voidptr, len size_t, flags int, src_addr &C.sockaddr, addrlen &C.socklen_t) size_t
+fn C.recvfrom(sockfd int, buf voidptr, len size_t, flags int, src_addr &C.sockaddr, addrlen &C.socklen_t) int
 
-fn C.shutdown() int
+fn C.shutdown(socket int, how int) int
 
-fn C.ntohs() int
+fn C.ntohs(netshort u16) int
 
 fn C.getpeername() int
 
@@ -101,13 +105,13 @@ fn C.ioctlsocket() int
 
 fn C.fcntl() int
 
-fn C.@select() int
+fn C.@select(ndfs int, readfds &C.fd_set, writefds &C.fd_set, exceptfds &C.fd_set, timeout &C.timeval) int
 
-fn C.FD_ZERO()
+fn C.FD_ZERO(fdset &C.fd_set)
 
-fn C.FD_SET()
+fn C.FD_SET(fd int, fdset &C.fd_set)
 
-fn C.FD_ISSET() bool
+fn C.FD_ISSET(fd int, fdset &C.fd_set) bool
 
 [typedef]
 pub struct C.fd_set {}

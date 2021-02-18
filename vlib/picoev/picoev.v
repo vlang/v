@@ -56,19 +56,21 @@ fn C.listen() int
 
 fn C.accept() int
 
-fn C.getaddrinfo() int
+fn C.getaddrinfo(node charptr, service charptr, hints &C.addrinfo, res &&C.addrinfo) int
 
 fn C.connect() int
 
-fn C.send() int
+// fn C.send(sockfd int, buf voidptr, len size_t, flags int) size_t
+fn C.send(sockfd int, buf voidptr, len size_t, flags int) int
 
-fn C.recv() int
+// fn C.recv(sockfd int, buf voidptr, len size_t, flags int) size_t
+fn C.recv(sockfd int, buf voidptr, len size_t, flags int) int
 
 // fn C.read() int
-fn C.shutdown() int
+fn C.shutdown(socket int, how int) int
 
 // fn C.close() int
-fn C.ntohs() int
+fn C.ntohs(netshort u16) int
 
 fn C.getsockname() int
 
