@@ -21,8 +21,8 @@ pub mut:
 	disable_help    bool
 	disable_version bool
 	disable_flags   bool
-	sort_flags      bool     = true
-	sort_commands   bool     = true
+	sort_flags      bool
+	sort_commands   bool
 	parent          &Command = 0
 	commands        []Command
 	flags           []Flag
