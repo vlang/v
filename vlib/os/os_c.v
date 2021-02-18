@@ -750,10 +750,9 @@ pub fn real_path(fpath string) string {
 	}
 
 	$if windows {
-		fullpath = unsafe { &u16(malloc(max_path_len*2)) }
+		fullpath = unsafe { &u16(malloc(max_path_len * 2)) }
 		// TODO: check errors if path len is not enough
-		ret := C.GetFullPathName(fpath.to_wide(), max_path_len, fullpath,
-			0)
+		ret := C.GetFullPathName(fpath.to_wide(), max_path_len, fullpath, 0)
 		if ret == 0 {
 			return fpath
 		}
