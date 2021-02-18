@@ -1418,7 +1418,11 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			// need to return `array_xxx` instead of `array`
 			// in ['clone', 'str'] {
 			call_expr.receiver_type = left_type.to_ptr()
-			call_expr.return_type = call_expr.receiver_type.set_nr_muls(0)
+			if call_expr.left.is_mut_ident() {
+				call_expr.return_type = left_type.deref()
+			} else {
+				call_expr.return_type = call_expr.receiver_type.set_nr_muls(0)
+			}
 		} else if method_name == 'sort' {
 			call_expr.return_type = table.void_type
 		} else if method_name == 'contains' {
@@ -1434,7 +1438,11 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 				if method_name[0] == `m` {
 					c.fail_if_immutable(call_expr.left)
 				}
-				ret_type = left_type
+				if call_expr.left.is_mut_ident() {
+					ret_type = left_type.deref()
+				} else {
+					ret_type = left_type
+				}
 			}
 			'keys' {
 				info := left_type_sym.info as table.Map
@@ -2883,7 +2891,8 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 				}
 			}
 		}
-		if !is_blank_ident && right_sym.kind != .placeholder && left_sym.kind != .interface_ {
+		if !is_blank_ident && !right.is_mut_ident() && right_sym.kind != .placeholder
+			&& left_sym.kind != .interface_ {
 			// Dual sides check (compatibility check)
 			c.check_expected(right_type_unwrapped, left_type_unwrapped) or {
 				c.error('cannot assign to `$left`: $err', right.position())
@@ -3951,6 +3960,8 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
 		ft := c.table.type_to_str(node.expr_type)
 		tt := c.table.type_to_str(node.typ)
 		c.warn('casting `$ft` to `$tt` is only allowed in `unsafe` code', node.pos)
+	} else if from_type_sym.kind == .array_fixed && !node.expr_type.is_ptr() {
+		c.warn('cannot cast a fixed array (use e.g. `&arr[0]` instead)', node.pos)
 	}
 	if node.has_arg {
 		c.expr(node.arg)

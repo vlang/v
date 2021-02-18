@@ -591,8 +591,8 @@ fn (mut app App) resize() {
 		s = 1.0
 	}
 	window_size := gg.window_size()
-	w := int(window_size.width / s)
-	h := int(window_size.height / s)
+	w := window_size.width
+	h := window_size.height
 	m := f32(min(w, h))
 	app.ui.dpi_scale = s
 	app.ui.window_width = w

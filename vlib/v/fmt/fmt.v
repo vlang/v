@@ -80,9 +80,11 @@ pub fn fmt(file ast.File, table &table.Table, pref &pref.Preferences, is_debug b
 
 pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 	for imp in file.imports {
-		f.mod2alias[imp.mod.all_after_last('.')] = imp.alias
+		mod := imp.mod.all_after_last('.')
+		f.mod2alias[mod] = imp.alias
 		for sym in imp.syms {
 			f.mod2alias['${imp.mod}.$sym.name'] = sym.name
+			f.mod2alias['${mod}.$sym.name'] = sym.name
 			f.mod2alias[sym.name] = sym.name
 			f.import_syms_used[sym.name] = false
 		}
@@ -259,12 +261,6 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 	}
 	f.did_imports = true
 	mut num_imports := 0
-	/*
-	if imports.len == 1 {
-		imp_stmt_str := f.imp_stmt_str(imports[0])
-		f.out_imports.writeln('import ${imp_stmt_str}\n')
-	} else if imports.len > 1 {
-	*/
 	mut already_imported := map[string]bool{}
 	for imp in imports {
 		if imp.mod !in f.used_imports {
@@ -710,7 +706,6 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 			if field.comments.len > 0 {
 				next_first_line = util.imin(next_first_line, field.comments[0].pos.line_nr)
 			}
-			println('$field.name $next_first_line $before_last_line')
 			if next_first_line - before_last_line > 1 {
 				f.writeln('')
 			}
@@ -1772,24 +1767,6 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 		f.comments(arg.comments, {})
 	}
 	if node.is_method {
-		/*
-		// x.foo!() experiment
-		mut is_mut := false
-		if node.left is ast.Ident {
-			scope := f.file.scope.innermost(node.pos.pos)
-			x := node.left as ast.Ident
-			var := scope.find_var(x.name) or {
-				panic(err)
-			}
-			println(var.typ)
-			if var.typ != 0 {
-				sym := f.table.get_type_symbol(var.typ)
-				if method := f.table.type_find_method(sym, node.name) {
-					is_mut = method.args[0].is_mut
-				}
-			}
-		}
-		*/
 		if node.name in ['map', 'filter'] {
 			f.inside_lambda = true
 			defer {

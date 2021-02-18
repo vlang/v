@@ -25,12 +25,13 @@ pub type FNChar = fn (c u32, x voidptr)
 
 pub struct Event {
 pub:
-	frame_count        u64
-	typ                sapp.EventType
-	key_code           KeyCode
-	char_code          u32
-	key_repeat         bool
-	modifiers          u32
+	frame_count u64
+	typ         sapp.EventType
+	key_code    KeyCode
+	char_code   u32
+	key_repeat  bool
+	modifiers   u32
+pub mut:
 	mouse_button       sapp.MouseButton
 	mouse_x            f32
 	mouse_y            f32
@@ -121,6 +122,7 @@ pub mut:
 	ft          &FT
 	font_inited bool
 	ui_mode     bool // do not redraw everything 60 times/second, but only when the user requests
+	mbtn_mask   byte
 }
 
 pub struct Size {
@@ -237,8 +239,27 @@ pub fn (mut ctx Context) refresh_ui() {
 
 fn gg_event_fn(ce &C.sapp_event, user_data voidptr) {
 	// e := unsafe { &sapp.Event(ce) }
-	e := unsafe { &Event(ce) }
+	mut e := unsafe { &Event(ce) }
 	mut g := unsafe { &Context(user_data) }
+	if e.typ == .mouse_down {
+		bitplace := int(e.mouse_button)
+		g.mbtn_mask |= byte(1 << bitplace)
+	}
+	if e.typ == .mouse_up {
+		bitplace := int(e.mouse_button)
+		g.mbtn_mask &= ~(byte(1 << bitplace))
+	}
+	if e.typ == .mouse_move && e.mouse_button == .invalid {
+		if g.mbtn_mask & 0x01 > 0 {
+			e.mouse_button = .left
+		}
+		if g.mbtn_mask & 0x02 > 0 {
+			e.mouse_button = .right
+		}
+		if g.mbtn_mask & 0x04 > 0 {
+			e.mouse_button = .middle
+		}
+	}
 	if g.config.event_fn != voidptr(0) {
 		g.config.event_fn(e, g.config.user_data)
 	}

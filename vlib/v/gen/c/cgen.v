@@ -2787,6 +2787,10 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.SizeOf {
 			node_typ := g.unwrap_generic(node.typ)
+			sym := g.table.get_type_symbol(node_typ)
+			if sym.language == .v && sym.kind in [.placeholder, .any] {
+				g.error('unknown type `$sym.name`', node.pos)
+			}
 			styp := g.typ(node_typ)
 			g.write('/*SizeOf*/ sizeof(${util.no_dots(styp)})')
 		}

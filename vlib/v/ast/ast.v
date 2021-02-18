@@ -1538,12 +1538,20 @@ pub struct Table {
 }
 
 pub fn (expr Expr) is_mut_ident() bool {
-	if expr is Ident {
-		if expr.obj is Var {
-			if expr.obj.is_auto_deref {
+	match expr {
+		Ident {
+			if expr.obj is Var {
+				if expr.obj.is_auto_deref {
+					return true
+				}
+			}
+		}
+		PrefixExpr {
+			if expr.op == .amp && expr.right.is_mut_ident() {
 				return true
 			}
 		}
+		else {}
 	}
 	return false
 }
