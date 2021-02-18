@@ -401,7 +401,9 @@ pub fn (t &Table) known_type(name string) bool {
 }
 
 pub fn (t &Table) known_type_idx(typ Type) bool {
-	if typ == 0 { return false }
+	if typ == 0 {
+		return false
+	}
 	sym := t.get_type_symbol(typ)
 	match sym.kind {
 		.placeholder {
@@ -775,7 +777,7 @@ pub fn (mytable &Table) sumtype_has_variant(parent Type, variant Type) bool {
 }
 
 pub fn (t &Table) known_type_names() []string {
-	mut res := []string{ cap: t.type_idxs.len }
+	mut res := []string{cap: t.type_idxs.len}
 	for _, idx in t.type_idxs {
 		// Skip `int_literal_type_idx` and `float_literal_type_idx` because they shouldn't be visible to the User.
 		if idx !in [0, int_literal_type_idx, float_literal_type_idx] && t.known_type_idx(idx) {

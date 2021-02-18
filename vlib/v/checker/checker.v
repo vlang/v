@@ -450,7 +450,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 		}
 	}
 	utyp := c.unwrap_generic(struct_init.typ)
-	c.ensure_type_exists(utyp, struct_init.pos) or {}
+	c.ensure_type_exists(utyp, struct_init.pos) or { }
 	type_sym := c.table.get_type_symbol(utyp)
 	if type_sym.kind == .sum_type && struct_init.fields.len == 1 {
 		sexpr := struct_init.fields[0].expr.str()
@@ -1806,7 +1806,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 				gts := c.table.get_type_symbol(call_expr.generic_types[0])
 				nrt := '$rts.name<$gts.name>'
 				idx := c.table.type_idxs[nrt]
-				c.ensure_type_exists(idx, call_expr.pos) or {}
+				c.ensure_type_exists(idx, call_expr.pos) or { }
 				call_expr.return_type = table.new_type(idx).derive(f.return_type)
 			}
 		}
