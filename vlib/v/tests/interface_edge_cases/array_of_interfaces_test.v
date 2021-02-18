@@ -12,7 +12,7 @@ fn get_name(s Speaker) {
 
 //
 fn test_an_array_of_interfaces_works() {
-	dog := Dog{}
+	dog := &Dog{}
 	// get_name(dog) // uncommenting this line fixes the example
 	get_names([dog, dog])
 }

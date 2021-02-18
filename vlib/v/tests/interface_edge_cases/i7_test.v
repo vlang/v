@@ -20,7 +20,7 @@ fn (p Point) draw() string {
 // Note: this helper function forced the compiler to generate an
 // interface dispatch table. Now, it should not be needed anymore,
 // but it is better to test it too, to prevent future interface regressions.
-fn (x Point) tointerface() Drawable {
+fn (x &Point) tointerface() Drawable {
 	return x
 }
 
@@ -29,7 +29,7 @@ fn to_string(d Drawable) string {
 }
 
 fn test_p_draw_can_be_called() {
-	p := Point{
+	p := &Point{
 		x: 2
 		y: 3
 	}

@@ -6,5 +6,5 @@ struct Cat {}
 
 fn main() {
 	mut animals := []Animal{}
-	animals << Cat{}
+	animals << &Cat{}
 }

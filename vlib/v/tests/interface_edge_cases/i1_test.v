@@ -26,6 +26,6 @@ fn test_to_string_can_be_called() {
 		x: 2
 		y: 3
 	}
-	to_string(p)
+	to_string(&p)
 	assert true
 }

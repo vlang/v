@@ -24,7 +24,7 @@ pub fn (i &Inspector) visit(node ast.Node) ? {
 
 // inspect traverses and checks the AST node on a depth-first order and based on the data given
 pub fn inspect(node ast.Node, data voidptr, inspector_callback InspectorFn) {
-	walk(Inspector{inspector_callback, data}, node)
+	walk(&Inspector{inspector_callback, data}, node)
 }
 
 // walk traverses the AST using the given visitor

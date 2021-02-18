@@ -11,6 +11,6 @@ fn mutate_interface(mut b Bbb) {
 }
 
 fn main() {
-	mut a := Aaa{1}
+	mut a := &Aaa{1}
 	mutate_interface(mut a)
 }

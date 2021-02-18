@@ -1,5 +1,5 @@
 vlib/v/checker/tests/interface_implementing_interface.vv:15:10: error: cannot implement interface `Thing` with a different interface `Animal`
-   13 | dog := Dog{}
+   13 | dog := &Dog{}
    14 | animal := Animal(dog)
    15 | thing := Thing(animal)
       |          ~~~~~~~~~~~~~

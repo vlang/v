@@ -29,6 +29,6 @@ fn test_to_string_can_be_called() {
 		x: 2
 		y: 3
 	}
-	res := to_string(p)
+	res := to_string(&p)
 	assert res == 'Point(2,3)'
 }

@@ -7,7 +7,7 @@ vlib/v/checker/tests/is_type_invalid.vv:14:12: error: `IoS` has no variant `byte
    16 |     }
 vlib/v/checker/tests/is_type_invalid.vv:18:2: error: `Cat` doesn't implement method `speak` of interface `Animal`
    16 |     }
-   17 |     a := Animal(Dog{})
+   17 |     a := Animal(&Dog{})
    18 |     if a is Cat {
       |     ~~~~~~~~~~~
    19 |         println('not cool either')

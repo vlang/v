@@ -39,7 +39,7 @@ struct Foo {
 	mut nbo := NodeByOffset{
 		pos: 13
 	}
-	walker.walk(nbo, file)
+	walker.walk(&nbo, file)
 	assert nbo.node is ast.Stmt
 	stmt := nbo.node as ast.Stmt
 	assert stmt is ast.StructDecl

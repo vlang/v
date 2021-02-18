@@ -20,7 +20,7 @@ fn test_read_all() {
 	buf := Buf{
 		bytes: '123'.repeat(10).bytes()
 	}
-	res := read_all(reader: buf) or {
+	res := read_all(reader: &buf) or {
 		assert false
 		''.bytes()
 	}
@@ -31,7 +31,7 @@ fn test_read_all_huge() {
 	buf := Buf{
 		bytes: '123'.repeat(100000).bytes()
 	}
-	res := read_all(reader: buf) or {
+	res := read_all(reader: &buf) or {
 		assert false
 		''.bytes()
 	}
@@ -63,7 +63,7 @@ fn test_stringreader() {
 		text: text
 	}
 	mut r := new_buffered_reader({
-		reader: make_reader(s)
+		reader: make_reader(&s)
 	})
 	for i := 0; true; i++ {
 		if _ := r.read_line() {
@@ -90,7 +90,7 @@ fn test_stringreader2() {
 		text: text
 	}
 	mut r := new_buffered_reader({
-		reader: make_reader(s)
+		reader: make_reader(&s)
 	})
 	for i := 0; true; i++ {
 		if _ := r.read_line() {
@@ -117,7 +117,7 @@ fn test_leftover() {
 		text: text
 	}
 	mut r := new_buffered_reader({
-		reader: make_reader(s)
+		reader: make_reader(&s)
 	})
 	_ := r.read_line() or {
 		assert false

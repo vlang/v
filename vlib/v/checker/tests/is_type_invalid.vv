@@ -14,7 +14,7 @@ fn main() {
 	if IoS(1) is byte {
 		println('not cool')
 	}
-	a := Animal(Dog{})
+	a := Animal(&Dog{})
 	if a is Cat {
 		println('not cool either')
 	}
