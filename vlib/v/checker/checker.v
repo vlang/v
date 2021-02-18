@@ -338,6 +338,21 @@ pub fn (mut c Checker) interface_decl(decl ast.InterfaceDecl) {
 	c.check_valid_pascal_case(decl.name, 'interface name', decl.pos)
 	for method in decl.methods {
 		c.check_valid_snake_case(method.name, 'method name', method.pos)
+		if method.return_type != table.Type(0) {
+			return_sym := c.table.get_type_symbol(method.return_type)
+			if method.language == .v
+				&& return_sym.kind in [.placeholder, .int_literal, .float_literal]
+				&& return_sym.language == .v {
+				c.error('unknown type `$return_sym.name`', method.pos)
+			}
+		}
+		for arg in method.params {
+			sym := c.table.get_type_symbol(arg.typ)
+			if sym.kind == .placeholder
+				|| (sym.kind in [table.Kind.int_literal, .float_literal] && !c.is_builtin_mod) {
+				c.error('unknown type `$sym.name`', arg.pos)
+			}
+		}
 	}
 	// TODO: copy pasta from StructDecl
 	for i, field in decl.fields {
