@@ -363,39 +363,7 @@ pub fn (mut c Checker) interface_decl(decl ast.InterfaceDecl) {
 				c.error('field name `$field.name` duplicate', field.pos)
 			}
 		}
-		if sym.kind == .placeholder && !sym.name.starts_with('C.') {
-			c.error(util.new_suggestion(sym.name, c.table.known_type_names()).say('unknown type `$sym.name`'),
-				field.type_pos)
-		}
-		// Separate error condition for `int_literal` and `float_literal` because `util.suggestion` may give different
-		// suggestions due to f32 comparision issue.
-		if sym.kind in [.int_literal, .float_literal] {
-			msg := if sym.kind == .int_literal {
-				'unknown type `$sym.name`.\nDid you mean `int`?'
-			} else {
-				'unknown type `$sym.name`.\nDid you mean `f64`?'
-			}
-			c.error(msg, field.type_pos)
-		}
-		if sym.kind == .array {
-			array_info := sym.array_info()
-			elem_sym := c.table.get_type_symbol(array_info.elem_type)
-			if elem_sym.kind == .placeholder {
-				c.error(util.new_suggestion(elem_sym.name, c.table.known_type_names()).say('unknown type `$elem_sym.name`'),
-					field.type_pos)
-			}
-		}
-		if sym.kind == .map {
-			info := sym.map_info()
-			key_sym := c.table.get_type_symbol(info.key_type)
-			value_sym := c.table.get_type_symbol(info.value_type)
-			if key_sym.kind == .placeholder {
-				c.error('unknown type `$key_sym.name`', field.type_pos)
-			}
-			if value_sym.kind == .placeholder {
-				c.error('unknown type `$value_sym.name`', field.type_pos)
-			}
-		}
+		c.check_fields(sym, field.pos)
 	}
 }
 
@@ -431,45 +399,7 @@ pub fn (mut c Checker) struct_decl(mut decl ast.StructDecl) {
 					c.error('field name `$field.name` duplicate', field.pos)
 				}
 			}
-			if sym.kind == .placeholder && decl.language != .c && !sym.name.starts_with('C.') {
-				c.error(util.new_suggestion(sym.name, c.table.known_type_names()).say('unknown type `$sym.name`'),
-					field.type_pos)
-			}
-			// Separate error condition for `int_literal` and `float_literal` because `util.suggestion` may give different
-			// suggestions due to f32 comparision issue.
-			if sym.kind in [.int_literal, .float_literal] {
-				msg := if sym.kind == .int_literal {
-					'unknown type `$sym.name`.\nDid you mean `int`?'
-				} else {
-					'unknown type `$sym.name`.\nDid you mean `f64`?'
-				}
-				c.error(msg, field.type_pos)
-			}
-			if sym.kind == .array {
-				array_info := sym.array_info()
-				elem_sym := c.table.get_type_symbol(array_info.elem_type)
-				if elem_sym.kind == .placeholder {
-					c.error(util.new_suggestion(elem_sym.name, c.table.known_type_names()).say('unknown type `$elem_sym.name`'),
-						field.type_pos)
-				}
-			}
-			if sym.kind == .struct_ {
-				info := sym.info as table.Struct
-				if info.is_heap && !field.typ.is_ptr() {
-					struct_sym.info.is_heap = true
-				}
-			}
-			if sym.kind == .map {
-				info := sym.map_info()
-				key_sym := c.table.get_type_symbol(info.key_type)
-				value_sym := c.table.get_type_symbol(info.value_type)
-				if key_sym.kind == .placeholder {
-					c.error('unknown type `$key_sym.name`', field.type_pos)
-				}
-				if value_sym.kind == .placeholder {
-					c.error('unknown type `$value_sym.name`', field.type_pos)
-				}
-			}
+			c.check_fields(sym, field.type_pos)
 			if field.has_default_expr {
 				c.expected_type = field.typ
 				field_expr_type := c.expr(field.default_expr)
@@ -5962,5 +5892,41 @@ fn (mut c Checker) verify_all_vweb_routes() {
 fn (mut c Checker) trace(fbase string, message string) {
 	if c.file.path_base == fbase {
 		println('> c.trace | ${fbase:-10s} | $message')
+	}
+}
+
+fn (mut c Checker) check_fields(sym table.TypeSymbol, pos token.Position) {
+	if sym.kind == .placeholder && !sym.name.starts_with('C.') {
+		c.error(util.new_suggestion(sym.name, c.table.known_type_names()).say('unknown type `$sym.name`'),
+			pos)
+	}
+	// Separate error condition for `int_literal` and `float_literal` because `util.suggestion` may give different
+	// suggestions due to f32 comparision issue.
+	if sym.kind in [.int_literal, .float_literal] {
+		msg := if sym.kind == .int_literal {
+			'unknown type `$sym.name`.\nDid you mean `int`?'
+		} else {
+			'unknown type `$sym.name`.\nDid you mean `f64`?'
+		}
+		c.error(msg, pos)
+	}
+	if sym.kind == .array {
+		array_info := sym.array_info()
+		elem_sym := c.table.get_type_symbol(array_info.elem_type)
+		if elem_sym.kind == .placeholder {
+			c.error(util.new_suggestion(elem_sym.name, c.table.known_type_names()).say('unknown type `$elem_sym.name`'),
+				pos)
+		}
+	}
+	if sym.kind == .map {
+		info := sym.map_info()
+		key_sym := c.table.get_type_symbol(info.key_type)
+		value_sym := c.table.get_type_symbol(info.value_type)
+		if key_sym.kind == .placeholder {
+			c.error('unknown type `$key_sym.name`', pos)
+		}
+		if value_sym.kind == .placeholder {
+			c.error('unknown type `$value_sym.name`', pos)
+		}
 	}
 }
