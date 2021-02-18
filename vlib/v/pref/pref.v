@@ -400,7 +400,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				i++
 			}
 			else {
-				if command == 'build' && (arg.ends_with('.v') || os.exists(command)) {
+				if command == 'build' && is_source_file(arg) {
 					eprintln('Use `v $arg` instead.')
 					exit(1)
 				}
@@ -417,6 +417,9 @@ pub fn parse_args(args []string) (&Preferences, string) {
 						if command == 'run' {
 							break
 						}
+					} else if is_source_file(command) && is_source_file(arg) {
+						eprintln('Too many targets. Specify just one target: <target.v|target_directory>.')
+						exit(1)
 					}
 					continue
 				}
@@ -440,7 +443,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 		eprintln('Cannot save output binary in a .v file.')
 		exit(1)
 	}
-	if command.ends_with('.v') || os.exists(command) {
+	if is_source_file(command) {
 		res.path = command
 	} else if command == 'run' {
 		res.is_run = true
@@ -513,6 +516,11 @@ fn must_exist(path string) {
 		eprintln('v expects that `$path` exists, but it does not')
 		exit(1)
 	}
+}
+
+[inline]
+fn is_source_file(path string) bool {
+	return path.ends_with('.v') || os.exists(path)
 }
 
 pub fn backend_from_string(s string) ?Backend {
