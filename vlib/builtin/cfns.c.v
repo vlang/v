@@ -346,39 +346,54 @@ fn C.ReleaseSRWLockShared(voidptr)
 fn C.ReleaseSRWLockExclusive(voidptr)
 
 // pthread.h
-[trusted]
 fn C.pthread_mutex_init(voidptr, voidptr) int
+
 fn C.pthread_mutex_lock(voidptr) int
+
 fn C.pthread_mutex_unlock(voidptr) int
+
 fn C.pthread_mutex_destroy(voidptr) int
+
 fn C.pthread_rwlockattr_init(voidptr) int
+
 fn C.pthread_rwlockattr_setkind_np(voidptr, int) int
+
 fn C.pthread_rwlockattr_setpshared(voidptr, int) int
+
 fn C.pthread_rwlock_init(voidptr, voidptr) int
+
 fn C.pthread_rwlock_rdlock(voidptr) int
+
 fn C.pthread_rwlock_wrlock(voidptr) int
+
 fn C.pthread_rwlock_unlock(voidptr) int
 
 fn C.pthread_condattr_init(voidptr) int
+
 fn C.pthread_condattr_setpshared(voidptr, int) int
+
 fn C.pthread_condattr_destroy(voidptr) int
+
 fn C.pthread_cond_init(voidptr, voidptr) int
+
 fn C.pthread_cond_signal(voidptr) int
+
 fn C.pthread_cond_wait(voidptr, voidptr) int
+
 fn C.pthread_cond_timedwait(voidptr, voidptr, voidptr) int
+
 fn C.pthread_cond_destroy(voidptr) int
 
-[trusted]
 fn C.sem_init(voidptr, int, u32) int
-[trusted]
+
 fn C.sem_post(voidptr) int
-[trusted]
+
 fn C.sem_wait(voidptr) int
-[trusted]
+
 fn C.sem_trywait(voidptr) int
-[trusted]
+
 fn C.sem_timedwait(voidptr, voidptr) int
-[trusted]
+
 fn C.sem_destroy(voidptr) int
 
 // MacOS semaphore functions

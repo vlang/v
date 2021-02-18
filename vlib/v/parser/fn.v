@@ -215,13 +215,13 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		language = rec.language
 	}
 	mut name := ''
-	name_pos := p.tok.position()
 	if p.tok.kind == .name {
+		pos := p.tok.position()
 		// TODO high order fn
 		name = if language == .js { p.check_js_name() } else { p.check_name() }
 		if language == .v && !p.pref.translated && util.contains_capital(name) && !p.builtin_mod {
 			p.error_with_pos('function names cannot contain uppercase letters, use snake_case instead',
-				name_pos)
+				pos)
 			return ast.FnDecl{
 				scope: 0
 			}
@@ -229,14 +229,14 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		type_sym := p.table.get_type_symbol(rec.typ)
 		// interfaces are handled in the checker, methods can not be defined on them this way
 		if is_method && (type_sym.has_method(name) && type_sym.kind != .interface_) {
-			p.error_with_pos('duplicate method `$name`', name_pos)
+			p.error_with_pos('duplicate method `$name`', pos)
 			return ast.FnDecl{
 				scope: 0
 			}
 		}
 		// cannot redefine buildin function
 		if !is_method && !p.builtin_mod && name in builtin_functions {
-			p.error_with_pos('cannot redefine builtin function `$name`', name_pos)
+			p.error_with_pos('cannot redefine builtin function `$name`', pos)
 			return ast.FnDecl{
 				scope: 0
 			}
@@ -252,7 +252,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		p.error_with_pos('cannot overload `!=`, `>`, `<=` and `>=` as they are auto generated from `==` and`<`',
 			p.tok.position())
 	} else {
-		p.error_with_pos('expecting method name', name_pos)
+		pos := p.tok.position()
+		p.error_with_pos('expecting method name', pos)
 		return ast.FnDecl{
 			scope: 0
 		}
@@ -334,8 +335,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		} else {
 			name = p.prepend_mod(name)
 		}
-		if p.table.known_fn(name) {
-			p.fn_redefinition_error(name, name_pos)
+		if _ := p.table.find_fn(name) {
+			p.fn_redefinition_error(name)
 		}
 		// p.warn('reg functn $name ()')
 		p.table.register_fn(table.Fn{
@@ -807,7 +808,7 @@ fn (mut p Parser) check_fn_atomic_arguments(typ table.Type, pos token.Position) 
 	}
 }
 
-fn (mut p Parser) fn_redefinition_error(name string, pos token.Position) {
+fn (mut p Parser) fn_redefinition_error(name string) {
 	if p.pref.translated {
 		return
 	}
@@ -819,7 +820,7 @@ fn (mut p Parser) fn_redefinition_error(name string, pos token.Position) {
 	}
 	*/
 	p.table.redefined_fns << name
-	p.error_with_pos('redefinition of function `$name`', pos)
+	// p.error('redefinition of function `$name`')
 }
 
 fn have_fn_main(stmts []ast.Stmt) bool {
