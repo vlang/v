@@ -9,32 +9,28 @@ vlib/v/checker/tests/any_int_float_ban_err.vv:2:1: error: type `int_literal` doe
       | ~~~~~~~~
     3 | 
     4 | struct Int {
-vlib/v/checker/tests/any_int_float_ban_err.vv:5:7: error: unknown type `int_literal`.
-Did you mean `Int`?
+vlib/v/checker/tests/any_int_float_ban_err.vv:5:7: error: unknown type `int_literal`
     3 | 
     4 | struct Int {
     5 |     i int_literal
       |       ~~~~~~~~~~~
     6 |     f float_literal
     7 | }
-vlib/v/checker/tests/any_int_float_ban_err.vv:6:7: error: unknown type `float_literal`.
-Did you mean `Int`?
+vlib/v/checker/tests/any_int_float_ban_err.vv:6:7: error: unknown type `float_literal`
     4 | struct Int {
     5 |     i int_literal
     6 |     f float_literal
       |       ~~~~~~~~~~~~~
     7 | }
     8 |
-vlib/v/checker/tests/any_int_float_ban_err.vv:9:1: error: unknown type `int_literal`.
-Did you mean `Int`?
+vlib/v/checker/tests/any_int_float_ban_err.vv:9:1: error: unknown type `int_literal`
     7 | }
     8 | 
     9 | fn foo(i int_literal) int_literal {
       | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
    10 |     return i
    11 | }
-vlib/v/checker/tests/any_int_float_ban_err.vv:13:1: error: unknown type `int_literal`.
-Did you mean `Int`?
+vlib/v/checker/tests/any_int_float_ban_err.vv:13:1: error: unknown type `int_literal`
    11 | }
    12 | 
    13 | fn foo2() int_literal {

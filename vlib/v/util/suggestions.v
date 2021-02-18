@@ -69,7 +69,7 @@ pub fn (s Suggestion) say(msg string) string {
 	mut found := false
 	if s.known.len > 0 {
 		top_posibility := s.known.last()
-		if top_posibility.similarity > 0.10 {
+		if top_posibility.similarity > 0.5 {
 			val := top_posibility.value
 			if !val.starts_with('[]') {
 				res += '.\nDid you mean `$val`?'
