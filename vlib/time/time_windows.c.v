@@ -50,7 +50,7 @@ struct C.timespec {
 	tv_nsec i64
 }
 
-fn C._mkgmtime(&C.tm) time_t
+fn C._mkgmtime(&C.tm) C.time_t
 
 fn C.QueryPerformanceCounter(&u64) C.BOOL
 
