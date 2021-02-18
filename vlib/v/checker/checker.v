@@ -340,21 +340,13 @@ pub fn (mut c Checker) interface_decl(decl ast.InterfaceDecl) {
 		c.check_valid_snake_case(method.name, 'method name', method.pos)
 		if method.return_type != table.Type(0) {
 			return_sym := c.table.get_type_symbol(method.return_type)
-			if method.language == .v
-				&& return_sym.kind in [.placeholder, .int_literal, .float_literal]
-				&& return_sym.language == .v {
-				c.error('unknown type `$return_sym.name`', method.pos)
-			}
+			c.ensure_type_exists(return_sym, method.pos)
 		}
-		for arg in method.params {
-			sym := c.table.get_type_symbol(arg.typ)
-			if sym.kind == .placeholder
-				|| (sym.kind in [table.Kind.int_literal, .float_literal] && !c.is_builtin_mod) {
-				c.error('unknown type `$sym.name`', arg.pos)
-			}
+		for param in method.params {
+			sym := c.table.get_type_symbol(param.typ)
+			c.ensure_type_exists(sym, param.pos)
 		}
 	}
-	// TODO: copy pasta from StructDecl
 	for i, field in decl.fields {
 		c.check_valid_snake_case(field.name, 'field name', field.pos)
 		sym := c.table.get_type_symbol(field.typ)
@@ -363,7 +355,7 @@ pub fn (mut c Checker) interface_decl(decl ast.InterfaceDecl) {
 				c.error('field name `$field.name` duplicate', field.pos)
 			}
 		}
-		c.check_fields(sym, field.pos)
+		c.ensure_type_exists(sym, field.pos)
 	}
 }
 
@@ -399,7 +391,7 @@ pub fn (mut c Checker) struct_decl(mut decl ast.StructDecl) {
 					c.error('field name `$field.name` duplicate', field.pos)
 				}
 			}
-			c.check_fields(sym, field.type_pos)
+			c.ensure_type_exists(sym, field.type_pos)
 			if sym.kind == .struct_ {
 				info := sym.info as table.Struct
 				if info.is_heap && !field.typ.is_ptr() {
@@ -5901,8 +5893,8 @@ fn (mut c Checker) trace(fbase string, message string) {
 	}
 }
 
-fn (mut c Checker) check_fields(sym table.TypeSymbol, pos token.Position) {
-	if sym.kind == .placeholder && sym.language != .c && !sym.name.starts_with('C.') {
+fn (mut c Checker) ensure_type_exists(sym table.TypeSymbol, pos token.Position) {
+	if sym.kind == .placeholder && sym.language == .v && !sym.name.starts_with('C.') {
 		c.error(util.new_suggestion(sym.name, c.table.known_type_names()).say('unknown type `$sym.name`'),
 			pos)
 	}

@@ -1,4 +1,4 @@
 interface Foo {
-    bar(string) Baz
+    bar(string) []Baz
     bar2(Bax) string
 }
