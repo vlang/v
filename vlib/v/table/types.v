@@ -16,7 +16,7 @@ import strings
 pub type Type = int
 
 pub type TypeInfo = Aggregate | Alias | Array | ArrayFixed | Chan | Enum | FnType | GenericStructInst |
-	Thread | Interface | Map | MultiReturn | Struct | SumType
+	Interface | Map | MultiReturn | Struct | SumType | Thread
 
 pub enum Language {
 	v
@@ -306,7 +306,7 @@ pub const (
 	any_type_idx           = 25
 	float_literal_type_idx = 26
 	int_literal_type_idx   = 27
-	thread_type_idx      = 28
+	thread_type_idx        = 28
 )
 
 pub const (

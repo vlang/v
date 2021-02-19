@@ -105,7 +105,8 @@ pub fn (mut p Parser) parse_map_type() table.Type {
 }
 
 pub fn (mut p Parser) parse_chan_type() table.Type {
-	if p.peek_tok.kind != .name && p.peek_tok.kind != .key_mut && p.peek_tok.kind != .amp && p.peek_tok.kind != .lsbr {
+	if p.peek_tok.kind != .name && p.peek_tok.kind != .key_mut && p.peek_tok.kind != .amp
+		&& p.peek_tok.kind != .lsbr {
 		p.next()
 		return table.chan_type
 	}
@@ -118,7 +119,8 @@ pub fn (mut p Parser) parse_chan_type() table.Type {
 }
 
 pub fn (mut p Parser) parse_thread_type() table.Type {
-	if p.peek_tok.kind != .name && p.peek_tok.kind != .key_mut && p.peek_tok.kind != .amp && p.peek_tok.kind != .lsbr {
+	if p.peek_tok.kind != .name && p.peek_tok.kind != .key_mut && p.peek_tok.kind != .amp
+		&& p.peek_tok.kind != .lsbr {
 		p.next()
 		return table.thread_type
 	}
