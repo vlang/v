@@ -1,0 +1,20 @@
+struct Foo {}
+struct Bar {}
+
+fn x() {}
+fn y() {}
+
+
+struct Foo2 {}
+
+struct Bar2 {}
+
+fn x2() {}
+
+fn y2() {}
+
+struct Bar3 {}
+fn x3() {}
+
+fn x4() {}
+struct Bar4 {}

@@ -305,6 +305,16 @@ fn (mut f Fmt) should_insert_newline_before_stmt(stmt ast.Stmt, prev_stmt ast.St
 	if prev_stmt is ast.HashStmt && stmt !is ast.HashStmt && stmt !is ast.ExprStmt {
 		return true
 	}
+	if prev_stmt is ast.FnDecl {
+		if (prev_stmt.no_body || prev_stmt.stmts.len == 0) && stmt !is ast.FnDecl {
+			return true
+		}
+	}
+	if prev_stmt is ast.StructDecl {
+		if prev_stmt.fields.len == 0 && prev_stmt.end_comments.len == 0 && stmt !is ast.StructDecl {
+			return true
+		}
+	}
 	// The stmt either has or shouldn't have a newline before
 	if stmt.position().line_nr - prev_line_nr <= 1 || f.out.last_n(2) == '\n\n' {
 		return false
