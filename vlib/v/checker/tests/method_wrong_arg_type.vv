@@ -1,9 +1,19 @@
 enum MyEnum { x y z }
 pub fn (e MyEnum) str() string { return int(e).str() }
+
 struct Sss { }
 fn (s Sss) info(msg string) { println(msg) }
-fn main() {
+
+fn enum_str() {
 	e := MyEnum.x
 	s := Sss{}
 	s.info(e)
+}
+
+fn (s Sss) ptr(p &Sss) {}
+
+fn ptr_arg() {
+	s := Sss{}
+	v := 4
+	s.ptr(v)
 }
