@@ -47,7 +47,15 @@ somefield /*4*/ /*5*/ int /*6*/ /*7*/ /*8*/ /*
 */
 somefield2 /*11*/ int // 12
 pub:
+
+
+
+
 somefield3 int
+
+
+
+somefield4 int
 /*
 13
 14

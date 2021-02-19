@@ -122,10 +122,6 @@ __CRT_INLINE SHORT _InterlockedExchangeAdd16(SHORT volatile *Addend, SHORT Value
 
 #define InterlockedIncrement64 _InterlockedExchangeAdd64
 
-__CRT_INLINE VOID __faststorefence() {
-	__asm__ __volatile__ ("mfence");
-}
-
 #endif
 
 #define atomic_store(object, desired) \

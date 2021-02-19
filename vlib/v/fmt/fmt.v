@@ -80,9 +80,11 @@ pub fn fmt(file ast.File, table &table.Table, pref &pref.Preferences, is_debug b
 
 pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 	for imp in file.imports {
-		f.mod2alias[imp.mod.all_after_last('.')] = imp.alias
+		mod := imp.mod.all_after_last('.')
+		f.mod2alias[mod] = imp.alias
 		for sym in imp.syms {
 			f.mod2alias['${imp.mod}.$sym.name'] = sym.name
+			f.mod2alias['${mod}.$sym.name'] = sym.name
 			f.mod2alias[sym.name] = sym.name
 			f.import_syms_used[sym.name] = false
 		}
@@ -259,12 +261,6 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 	}
 	f.did_imports = true
 	mut num_imports := 0
-	/*
-	if imports.len == 1 {
-		imp_stmt_str := f.imp_stmt_str(imports[0])
-		f.out_imports.writeln('import ${imp_stmt_str}\n')
-	} else if imports.len > 1 {
-	*/
 	mut already_imported := map[string]bool{}
 	for imp in imports {
 		if imp.mod !in f.used_imports {
@@ -678,6 +674,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		}
 	}
 	for embed in node.embeds {
+		f.mark_types_import_as_used(embed.typ)
 		styp := f.table.type_to_str(embed.typ)
 		f.writeln('\t$styp')
 	}
@@ -696,6 +693,23 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 			f.writeln('__global:')
 		} else if i == node.module_pos {
 			f.writeln('module:')
+		} else if i > 0 {
+			// keep one empty line between fields (exclude one after mut:, pub:, ...)
+			mut before_last_line := node.fields[i - 1].pos.line_nr
+			if node.fields[i - 1].comments.len > 0 {
+				before_last_line = util.imax(before_last_line, node.fields[i - 1].comments.last().pos.last_line)
+			}
+			if node.fields[i - 1].has_default_expr {
+				before_last_line = util.imax(before_last_line, node.fields[i - 1].default_expr.position().last_line)
+			}
+
+			mut next_first_line := field.pos.line_nr
+			if field.comments.len > 0 {
+				next_first_line = util.imin(next_first_line, field.comments[0].pos.line_nr)
+			}
+			if next_first_line - before_last_line > 1 {
+				f.writeln('')
+			}
 		}
 		end_pos := field.pos.pos + field.pos.len
 		before_comments := field.comments.filter(it.pos.pos < field.pos.pos)
@@ -715,6 +729,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		}
 		f.write(strings.repeat(` `, field_align.max_len - field.name.len - comments_len))
 		f.write(field_types[i])
+		f.mark_types_import_as_used(field.typ)
 		attrs_len := inline_attrs_len(field.attrs)
 		has_attrs := field.attrs.len > 0
 		if has_attrs {
@@ -1028,30 +1043,28 @@ fn expr_is_single_line(expr ast.Expr) bool {
 	return true
 }
 
-pub fn (mut f Fmt) or_expr(or_block ast.OrExpr) {
-	match or_block.kind {
+pub fn (mut f Fmt) or_expr(node ast.OrExpr) {
+	match node.kind {
 		.absent {}
 		.block {
-			if or_block.stmts.len == 0 {
+			if node.stmts.len == 0 {
 				f.write(' or { }')
-			} else if or_block.stmts.len == 1 {
+				return
+			} else if node.stmts.len == 1 {
 				// the control stmts (return/break/continue...) print a newline inside them,
 				// so, since this'll all be on one line, trim any possible whitespace
-				str := f.stmt_str(or_block.stmts[0]).trim_space()
+				str := f.stmt_str(node.stmts[0]).trim_space()
 				single_line := ' or { $str }'
 				if single_line.len + f.line_len <= fmt.max_len.last() {
 					f.write(single_line)
-				} else {
-					// if the line would be too long, make it multiline
-					f.writeln(' or {')
-					f.stmts(or_block.stmts)
-					f.write('}')
+					return
 				}
-			} else {
-				f.writeln(' or {')
-				f.stmts(or_block.stmts)
-				f.write('}')
 			}
+			// Make it multiline if the blocks has at least two stmts
+			// or a single line would be too long
+			f.writeln(' or {')
+			f.stmts(node.stmts)
+			f.write('}')
 		}
 		.propagate {
 			f.write(' ?')
@@ -1756,24 +1769,6 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 		f.comments(arg.comments, {})
 	}
 	if node.is_method {
-		/*
-		// x.foo!() experiment
-		mut is_mut := false
-		if node.left is ast.Ident {
-			scope := f.file.scope.innermost(node.pos.pos)
-			x := node.left as ast.Ident
-			var := scope.find_var(x.name) or {
-				panic(err)
-			}
-			println(var.typ)
-			if var.typ != 0 {
-				sym := f.table.get_type_symbol(var.typ)
-				if method := f.table.type_find_method(sym, node.name) {
-					is_mut = method.args[0].is_mut
-				}
-			}
-		}
-		*/
 		if node.name in ['map', 'filter'] {
 			f.inside_lambda = true
 			defer {

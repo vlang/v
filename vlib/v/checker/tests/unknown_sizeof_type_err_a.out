@@ -1,0 +1,6 @@
+vlib/v/checker/tests/unknown_sizeof_type_err_a.vv:14:34: cgen error: unknown type `T`
+   12 |     println("size of Abc: ${sizeof(Abc)}")
+   13 |     println("size of Xyz: ${sizeof(Xyz)}")
+   14 |     println("size of Test: ${sizeof(T)}")
+      |                                     ^
+   15 | }

@@ -30,7 +30,7 @@ pub fn (flds map[string]Any) str() string {
 	}
 	wr.write_b(`}`)
 	defer {
-		wr.free()
+		unsafe { wr.free() }
 	}
 	res := wr.str()
 	return res
@@ -45,7 +45,7 @@ pub fn (flds []Any) str() string {
 	}
 	wr.write_b(`]`)
 	defer {
-		wr.free()
+		unsafe { wr.free() }
 	}
 	res := wr.str()
 	return res

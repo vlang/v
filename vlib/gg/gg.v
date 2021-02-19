@@ -13,15 +13,46 @@ import math
 // import time
 pub type FNCb = fn (x voidptr)
 
-pub type FNEvent = fn (e voidptr, x voidptr)
+pub type FNEvent = fn (e &Event, x voidptr)
 
 pub type FNFail = fn (msg string, x voidptr)
 
-pub type FNKeyDown = fn (c sapp.KeyCode, m sapp.Modifier, x voidptr)
+pub type FNKeyDown = fn (c KeyCode, m Modifier, x voidptr)
 
 pub type FNMove = fn (x f32, y f32, z voidptr)
 
 pub type FNChar = fn (c u32, x voidptr)
+
+pub struct Event {
+pub:
+	frame_count u64
+	typ         sapp.EventType
+	key_code    KeyCode
+	char_code   u32
+	key_repeat  bool
+	modifiers   u32
+pub mut:
+	mouse_button       sapp.MouseButton
+	mouse_x            f32
+	mouse_y            f32
+	mouse_dx           f32
+	mouse_dy           f32
+	scroll_x           f32
+	scroll_y           f32
+	num_touches        int
+	touches            [8]C.sapp_touchpoint
+	window_width       int
+	window_height      int
+	framebuffer_width  int
+	framebuffer_height int
+}
+
+pub enum Modifier {
+	shift = 1 //(1<<0)
+	ctrl = 2 //(1<<1)
+	alt = 4 //(1<<2)
+	super = 8 //(1<<3)
+}
 
 pub struct Config {
 pub:
@@ -91,6 +122,7 @@ pub mut:
 	ft          &FT
 	font_inited bool
 	ui_mode     bool // do not redraw everything 60 times/second, but only when the user requests
+	mbtn_mask   byte
 }
 
 pub struct Size {
@@ -206,8 +238,28 @@ pub fn (mut ctx Context) refresh_ui() {
 }
 
 fn gg_event_fn(ce &C.sapp_event, user_data voidptr) {
-	e := unsafe { &sapp.Event(ce) }
+	// e := unsafe { &sapp.Event(ce) }
+	mut e := unsafe { &Event(ce) }
 	mut g := unsafe { &Context(user_data) }
+	if e.typ == .mouse_down {
+		bitplace := int(e.mouse_button)
+		g.mbtn_mask |= byte(1 << bitplace)
+	}
+	if e.typ == .mouse_up {
+		bitplace := int(e.mouse_button)
+		g.mbtn_mask &= ~(byte(1 << bitplace))
+	}
+	if e.typ == .mouse_move && e.mouse_button == .invalid {
+		if g.mbtn_mask & 0x01 > 0 {
+			e.mouse_button = .left
+		}
+		if g.mbtn_mask & 0x02 > 0 {
+			e.mouse_button = .right
+		}
+		if g.mbtn_mask & 0x04 > 0 {
+			e.mouse_button = .middle
+		}
+	}
 	if g.config.event_fn != voidptr(0) {
 		g.config.event_fn(e, g.config.user_data)
 	}
@@ -215,7 +267,7 @@ fn gg_event_fn(ce &C.sapp_event, user_data voidptr) {
 		.key_down {
 			if g.config.keydown_fn != voidptr(0) {
 				kdfn := g.config.keydown_fn
-				kdfn(e.key_code, sapp.Modifier(e.modifiers), g.config.user_data)
+				kdfn(e.key_code, Modifier(e.modifiers), g.config.user_data)
 			}
 		}
 		.char {
@@ -711,6 +763,14 @@ pub fn screen_size() Size {
 pub fn window_size() Size {
 	s := sapp.dpi_scale()
 	return Size{int(sapp.width() / s), int(sapp.height() / s)}
+}
+
+pub fn dpi_scale() f32 {
+	return sapp.dpi_scale()
+}
+
+pub fn high_dpi() bool {
+	return C.sapp_high_dpi()
 }
 
 fn C.WaitMessage()

@@ -1,0 +1,14 @@
+vlib/v/checker/tests/interface_return_parameter_err.vv:2:5: error: unknown type `Baz`.
+Did you mean `Foo`?
+    1 | interface Foo {
+    2 |     bar(string) []Baz
+      |     ~~~~~~~~~~~
+    3 |     bar2(Bax) string
+    4 | }
+vlib/v/checker/tests/interface_return_parameter_err.vv:3:10: error: unknown type `Bax`.
+Did you mean `Foo`?
+    1 | interface Foo {
+    2 |     bar(string) []Baz
+    3 |     bar2(Bax) string
+      |          ~~~
+    4 | }

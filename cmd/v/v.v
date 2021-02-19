@@ -10,7 +10,7 @@ import v.util
 import v.builder
 
 const (
-	simple_cmd                          = [
+	external_tools                      = [
 		'fmt',
 		'up',
 		'vet',
@@ -63,14 +63,14 @@ fn main() {
 			} else {
 				mut args_and_flags := util.join_env_vflags_and_os_args()[1..].clone()
 				args_and_flags << ['run', '-']
-				pref.parse_args(args_and_flags)
+				pref.parse_args(external_tools, args_and_flags)
 			}
 		}
 		util.launch_tool(false, 'vrepl', os.args[1..])
 		return
 	}
 	args_and_flags := util.join_env_vflags_and_os_args()[1..]
-	prefs, command := pref.parse_args(args_and_flags)
+	prefs, command := pref.parse_args(external_tools, args_and_flags)
 	if prefs.is_verbose {
 		// println('args= ')
 		// println(args) // QTODO
@@ -95,7 +95,7 @@ fn main() {
 	}
 	// Start calling the correct functions/external tools
 	// Note for future contributors: Please add new subcommands in the `match` block below.
-	if command in simple_cmd {
+	if command in external_tools {
 		// External tools
 		util.launch_tool(prefs.is_verbose, 'v' + command, os.args[1..])
 		return

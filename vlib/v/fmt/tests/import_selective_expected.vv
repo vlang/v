@@ -1,7 +1,17 @@
 import math { max, min }
+import cli { Command }
+import math.complex { complex, Complex }
 import os {
 	user_os,
 	file_ext,
+}
+
+struct App {
+	command Command
+}
+
+fn imaginary(im f64) Complex {
+	return complex(0, im)
 }
 
 fn main() {
@@ -9,4 +19,5 @@ fn main() {
 	println(min(0.1, 0.2))
 	println(user_os())
 	println(file_ext('main.v'))
+	println(imaginary(1))
 }
