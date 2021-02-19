@@ -267,7 +267,7 @@ fn (cmd Command) check_version_flag() {
 
 fn (cmd Command) check_required_flags() {
 	for flag in cmd.flags {
-		if flag.required && flag.value.len > 0 {
+		if flag.required && flag.value.len == 0 {
 			full_name := cmd.full_name()
 			println('Flag `$flag.name` is required by `$full_name`')
 			exit(1)
