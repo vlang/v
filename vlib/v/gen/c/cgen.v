@@ -3127,20 +3127,34 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			g.write(')')
 		}
 	} else if op_is_eq_or_ne && left_sym.kind == .array && right_sym.kind == .array {
-		ptr_typ := g.gen_array_equality_fn(left_type)
+		ptr_typ := g.gen_array_equality_fn(left_type.clear_flag(.shared_f))
 		if node.op == .ne {
 			g.write('!')
 		}
 		g.write('${ptr_typ}_arr_eq(')
-		if node.left_type.is_ptr() {
+		if node.left_type.is_ptr() && ! node.left_type.has_flag(.shared_f) {
 			g.write('*')
 		}
 		g.expr(node.left)
+		if node.left_type.has_flag(.shared_f) {
+			if node.left_type.is_ptr() {
+				g.write('->val')
+			} else {
+				g.write('.val')
+			}
+		}
 		g.write(', ')
-		if node.right_type.is_ptr() {
+		if node.right_type.is_ptr() && !node.right_type.has_flag(.shared_f) {
 			g.write('*')
 		}
 		g.expr(node.right)
+		if node.right_type.has_flag(.shared_f) {
+			if node.right_type.is_ptr() {
+				g.write('->val')
+			} else {
+				g.write('.val')
+			}
+		}
 		g.write(')')
 	} else if op_is_eq_or_ne && left_sym.kind == .array_fixed && right_sym.kind == .array_fixed {
 		ptr_typ := g.gen_fixed_array_equality_fn(left_type)
