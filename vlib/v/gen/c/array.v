@@ -556,3 +556,16 @@ fn (mut g Gen) gen_array_index(node ast.CallExpr) {
 	g.expr(node.args[0].expr)
 	g.write(')')
 }
+
+fn (mut g Gen) gen_array_wait(node ast.CallExpr) {
+	arr := g.table.get_type_symbol(node.receiver_type)
+	thread_type := arr.array_info().elem_type
+	thread_sym := g.table.get_type_symbol(thread_type)
+	thread_ret_type := thread_sym.thread_info().return_type
+	eltyp := g.table.get_type_symbol(thread_ret_type).cname
+	fn_name := g.register_thread_array_wait_call(eltyp)
+	g.write('${fn_name}(')
+	g.expr(node.left)
+	g.write(')')
+}
+

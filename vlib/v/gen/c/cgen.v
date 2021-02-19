@@ -619,6 +619,36 @@ fn (mut g Gen) find_or_register_shared(t table.Type, base string) string {
 	return sh_typ
 }
 
+fn (mut g Gen) register_thread_array_wait_call(eltyp string) string {
+	thread_typ := '__v_thread_${eltyp}'
+	ret_typ := if eltyp == '' { 'void' } else { 'Array_$eltyp' }
+	thread_arr_typ := 'Array_${thread_typ}'
+	fn_name := '${thread_arr_typ}_wait'
+	if fn_name !in g.waiter_fns {
+		g.waiter_fns << fn_name
+		if eltyp == 'void' {
+			g.gowrappers.writeln('
+void ${fn_name}($thread_arr_typ a) {
+	for (int i = 0; i < a.len; ++i) {
+		$thread_typ t = (($thread_typ*)a.data)[i];
+		__v_thread_${eltyp}_wait(t);
+	}
+}')
+		} else {
+			g.gowrappers.writeln('
+$ret_typ ${fn_name}($thread_arr_typ a) {
+	$ret_typ res = __new_array_with_default(a.len, a.len, sizeof($eltyp), 0);
+	for (int i = 0; i < a.len; ++i) {
+		$thread_typ t = (($thread_typ*)a.data)[i];
+		(($eltyp*)res.data)[i] = __v_thread_${eltyp}_wait(t);
+	}
+	return res;
+}')
+		}
+	}
+	return fn_name
+}
+
 fn (mut g Gen) register_chan_pop_optional_call(opt_el_type string, styp string) {
 	if opt_el_type !in g.chan_pop_optionals {
 		g.chan_pop_optionals << opt_el_type

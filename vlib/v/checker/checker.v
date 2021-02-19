@@ -29,7 +29,7 @@ const (
 	valid_comp_if_platforms = ['amd64', 'aarch64', 'x64', 'x32', 'little_endian', 'big_endian']
 	valid_comp_if_other     = ['js', 'debug', 'test', 'glibc', 'prealloc', 'no_bounds_checking']
 	array_builtin_methods   = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort',
-		'contains', 'index']
+		'contains', 'index', 'wait']
 )
 
 pub struct Checker {
@@ -1293,10 +1293,11 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		is_filter_map := method_name in ['filter', 'map']
 		is_sort := method_name == 'sort'
 		is_slice := method_name == 'slice'
+		is_wait := method_name == 'wait'
 		if is_slice && !c.is_builtin_mod {
 			c.error('.slice() is a private method, use `x[start..end]` instead', call_expr.pos)
 		}
-		if is_filter_map || is_sort {
+		if is_filter_map || is_sort || is_wait {
 			array_info := left_type_sym.info as table.Array
 			if is_filter_map {
 				// position of `it` doesn't matter
@@ -1315,6 +1316,19 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 				}
 			}
 			elem_typ = array_info.elem_type
+			if is_wait {
+				elem_sym := c.table.get_type_symbol(elem_typ)
+				if elem_sym.kind == .thread {
+					if call_expr.args.len != 0 {
+						c.error('wait() does not have any arguments', call_expr.args[0].pos)
+					}
+					thread_ret_type := elem_sym.thread_info().return_type
+					call_expr.return_type = c.table.find_or_register_array(thread_ret_type)
+				} else {
+					c.error('`${left_type_sym.name}` has no method `wait()` (only thread handles and arrays of them have)',
+						call_expr.left.position())
+				}
+			}
 		}
 		// map/filter are supposed to have 1 arg only
 		mut arg_type := left_type
