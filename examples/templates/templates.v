@@ -171,11 +171,11 @@ fn data_get() []SiteConfig {
 
 fn data_dump(data []SiteConfig) {
 	a := json.encode_pretty(data)
-	os.write_file('data.json', a) or { panic(err) }
+	os.write_file(os.resource_abs_path('data.json'), a) or { panic(err) }
 }
 
 fn data_load() []SiteConfig {
-	data := os.read_file('data.json') or { panic(err) }
+	data := os.read_file(os.resource_abs_path('data.json')) or { panic(err) }
 	a := json.decode([]SiteConfig, data) or { panic(err) }
 	return a
 }
