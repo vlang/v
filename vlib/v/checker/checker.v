@@ -762,6 +762,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 	left_final := c.table.get_final_type_symbol(left_type)
 	left_pos := infix_expr.left.position()
 	right_pos := infix_expr.right.position()
+	left_right_pos := left_pos.extend(right_pos)
 	if (left_type.is_ptr() || left.is_pointer()) && infix_expr.op in [.plus, .minus] {
 		if !c.inside_unsafe && !infix_expr.left.is_mut_ident() && !infix_expr.right.is_mut_ident() {
 			c.warn('pointer arithmetic is only allowed in `unsafe` blocks', left_pos)
@@ -792,7 +793,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 				|| (right.kind == .alias && left.kind in [.struct_, .array])
 			if is_mismatch {
 				c.error('possible type mismatch of compared values of `$infix_expr.op` operation',
-					infix_expr.pos)
+					left_right_pos)
 			}
 		}
 		.key_in, .not_in {
@@ -802,20 +803,20 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 					// if left_default.kind != right_sym.kind {
 					c.check_expected(left_type, elem_type) or {
 						c.error('left operand to `$infix_expr.op` does not match the array element type: $err',
-							infix_expr.pos)
+							left_right_pos)
 					}
 				}
 				.map {
 					elem_type := right.map_info().key_type
 					c.check_expected(left_type, elem_type) or {
 						c.error('left operand to `$infix_expr.op` does not match the map key type: $err',
-							infix_expr.pos)
+							left_right_pos)
 					}
 				}
 				.string {
 					c.check_expected(left_type, right_type) or {
 						c.error('left operand to `$infix_expr.op` does not match: $err',
-							infix_expr.pos)
+							left_right_pos)
 					}
 				}
 				else {
@@ -846,9 +847,9 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 					right_name := c.table.type_to_str(right_type)
 					if left_name == right_name {
 						c.error('undefined operation `$left_name` $infix_expr.op.str() `$right_name`',
-							left_pos)
+							left_right_pos)
 					} else {
-						c.error('mismatched types `$left_name` and `$right_name`', left_pos)
+						c.error('mismatched types `$left_name` and `$right_name`', left_right_pos)
 					}
 				}
 			} else if right.kind in [.array, .array_fixed, .map, .struct_] {
@@ -863,9 +864,9 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 					right_name := c.table.type_to_str(right_type)
 					if left_name == right_name {
 						c.error('undefined operation `$left_name` $infix_expr.op.str() `$right_name`',
-							right_pos)
+							left_right_pos)
 					} else {
-						c.error('mismatched types `$left_name` and `$right_name`', right_pos)
+						c.error('mismatched types `$left_name` and `$right_name`', left_right_pos)
 					}
 				}
 			} else {
@@ -873,7 +874,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 				if promoted_type.idx() == table.void_type_idx {
 					left_name := c.table.type_to_str(left_type)
 					right_name := c.table.type_to_str(right_type)
-					c.error('mismatched types `$left_name` and `$right_name`', infix_expr.pos)
+					c.error('mismatched types `$left_name` and `$right_name`', left_right_pos)
 				} else if promoted_type.has_flag(.optional) {
 					s := c.table.type_to_str(promoted_type)
 					c.error('`$infix_expr.op` cannot be used with `$s`', infix_expr.pos)
@@ -906,18 +907,18 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 					right_name := c.table.type_to_str(right_type)
 					if left_name == right_name {
 						c.error('undefined operation `$left_name` $infix_expr.op.str() `$right_name`',
-							infix_expr.pos)
+							left_right_pos)
 					} else {
-						c.error('mismatched types `$left_name` and `$right_name`', infix_expr.pos)
+						c.error('mismatched types `$left_name` and `$right_name`', left_right_pos)
 					}
 				}
 			}
 			if left.kind == .struct_ && right.kind == .struct_ {
 				if !left.has_method('<') && infix_expr.op in [.ge, .le] {
 					c.error('cannot use `$infix_expr.op` as `<` operator method is not defined',
-						infix_expr.pos)
+						left_right_pos)
 				} else if !left.has_method('<') && infix_expr.op == .gt {
-					c.error('cannot use `>` as `<=` operator method is not defined', infix_expr.pos)
+					c.error('cannot use `>` as `<=` operator method is not defined', left_right_pos)
 				}
 			}
 		}
@@ -1034,7 +1035,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 	left_is_optional := left_type.has_flag(.optional)
 	right_is_optional := right_type.has_flag(.optional)
 	if (left_is_optional && !right_is_optional) || (!left_is_optional && right_is_optional) {
-		c.error('unwrapped optional cannot be used in an infix expression', infix_expr.pos)
+		c.error('unwrapped optional cannot be used in an infix expression', left_right_pos)
 	}
 	// Dual sides check (compatibility check)
 	if !c.symmetric_check(right_type, left_type) && !c.pref.translated {
@@ -1043,7 +1044,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 			return table.void_type
 		}
 		c.error('infix expr: cannot use `$right.name` (right expression) as `$left.name`',
-			infix_expr.pos)
+			left_right_pos)
 	}
 	/*
 	if (infix_expr.left is ast.InfixExpr &&
