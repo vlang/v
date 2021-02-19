@@ -5,11 +5,11 @@ vlib/v/checker/tests/method_op_alias_err.vv:4:18: error: expected `Foo` not `Foo
       |                  ~~~~
     5 |     return Foo2(f + f1)
     6 | }
-vlib/v/checker/tests/method_op_alias_err.vv:5:19: error: infix expr: cannot use `string` (right expression) as `string`
+vlib/v/checker/tests/method_op_alias_err.vv:5:17: error: infix expr: cannot use `string` (right expression) as `string`
     3 | 
     4 | fn (f Foo) + (f1 Foo2) Foo2 {
     5 |     return Foo2(f + f1)
-      |                   ^
+      |                 ~~~~~~
     6 | }
     7 |
 vlib/v/checker/tests/method_op_alias_err.vv:8:1: error: cannot define operator methods on type alias for `string`
@@ -40,3 +40,4 @@ vlib/v/checker/tests/method_op_alias_err.vv:16:6: error: cannot use operator met
       |      ~~
    17 |     println(f)
    18 | }
+

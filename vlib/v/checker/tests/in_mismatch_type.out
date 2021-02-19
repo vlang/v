@@ -1,29 +1,29 @@
-vlib/v/checker/tests/in_mismatch_type.vv:10:7: error: left operand to `in` does not match the array element type: expected `string`, not `int literal`
+vlib/v/checker/tests/in_mismatch_type.vv:10:5: error: left operand to `in` does not match the array element type: expected `string`, not `int literal`
     8 |     }
     9 |     s := 'abcd'
    10 |     if 1 in a_s {
-      |          ~~
+      |        ~~~~~~~~
    11 |         println('ok')
    12 |     }
-vlib/v/checker/tests/in_mismatch_type.vv:13:7: error: left operand to `in` does not match the map key type: expected `string`, not `int literal`
+vlib/v/checker/tests/in_mismatch_type.vv:13:5: error: left operand to `in` does not match the map key type: expected `string`, not `int literal`
    11 |         println('ok')
    12 |     }
    13 |     if 2 in m {
-      |          ~~
+      |        ~~~~~~
    14 |         println('yeah')
    15 |     }
-vlib/v/checker/tests/in_mismatch_type.vv:16:7: error: left operand to `in` does not match: expected `string`, not `int literal`
+vlib/v/checker/tests/in_mismatch_type.vv:16:5: error: left operand to `in` does not match: expected `string`, not `int literal`
    14 |         println('yeah')
    15 |     }
    16 |     if 3 in s {
-      |          ~~
+      |        ~~~~~~
    17 |         println('dope')
    18 |     }
-vlib/v/checker/tests/in_mismatch_type.vv:19:9: error: left operand to `in` does not match: expected `string`, not `rune`
+vlib/v/checker/tests/in_mismatch_type.vv:19:5: error: left operand to `in` does not match: expected `string`, not `rune`
    17 |         println('dope')
    18 |     }
    19 |     if `a` in s {
-      |            ~~
+      |        ~~~~~~~~
    20 |         println("oh no :'(")
    21 |     }
 vlib/v/checker/tests/in_mismatch_type.vv:22:7: error: `in` can only be used with an array/map/string
@@ -33,45 +33,45 @@ vlib/v/checker/tests/in_mismatch_type.vv:22:7: error: `in` can only be used with
       |          ~~
    23 |         println('right')
    24 |     }
-vlib/v/checker/tests/in_mismatch_type.vv:25:12: error: left operand to `in` does not match the map key type: expected `string`, not `Int`
+vlib/v/checker/tests/in_mismatch_type.vv:25:5: error: left operand to `in` does not match the map key type: expected `string`, not `Int`
    23 |         println('right')
    24 |     }
    25 |     if Int(2) in m {
-      |               ~~
+      |        ~~~~~~~~~~~
    26 |         println('yeah')
    27 |     }
-vlib/v/checker/tests/in_mismatch_type.vv:28:9: error: left operand to `in` does not match the array element type: expected `int`, not `string`
+vlib/v/checker/tests/in_mismatch_type.vv:28:5: error: left operand to `in` does not match the array element type: expected `int`, not `string`
    26 |         println('yeah')
    27 |     }
    28 |     if '3' in a_i {
-      |            ~~
+      |        ~~~~~~~~~~
    29 |         println('sure')
    30 |     }
-vlib/v/checker/tests/in_mismatch_type.vv:31:9: error: left operand to `in` does not match the array element type: expected `int`, not `string`
+vlib/v/checker/tests/in_mismatch_type.vv:31:5: error: left operand to `in` does not match the array element type: expected `int`, not `string`
    29 |         println('sure')
    30 |     }
    31 |     if '2' in a_i {
-      |            ~~
+      |        ~~~~~~~~~~
    32 |         println('all right')
    33 |     }
-vlib/v/checker/tests/in_mismatch_type.vv:34:7: error: left operand to `!in` does not match the array element type: expected `string`, not `int literal`
+vlib/v/checker/tests/in_mismatch_type.vv:34:5: error: left operand to `!in` does not match the array element type: expected `string`, not `int literal`
    32 |         println('all right')
    33 |     }
    34 |     if 1 !in a_s {
-      |          ~~~
+      |        ~~~~~~~~~
    35 |         println('ok')
    36 |     }
-vlib/v/checker/tests/in_mismatch_type.vv:37:9: error: left operand to `!in` does not match the array element type: expected `int`, not `string`
+vlib/v/checker/tests/in_mismatch_type.vv:37:5: error: left operand to `!in` does not match the array element type: expected `int`, not `string`
    35 |         println('ok')
    36 |     }
    37 |     if '1' !in a_i {
-      |            ~~~
+      |        ~~~~~~~~~~~
    38 |         println('good')
    39 |     }
-vlib/v/checker/tests/in_mismatch_type.vv:41:7: error: left operand to `!in` does not match the map key type: expected `string`, not `int literal`
+vlib/v/checker/tests/in_mismatch_type.vv:41:5: error: left operand to `!in` does not match the map key type: expected `string`, not `int literal`
    39 |     }
    40 | 
    41 |     if 5 !in m {
-      |          ~~~
+      |        ~~~~~~~
    42 |         println('yay')
    43 |     }

@@ -26,25 +26,25 @@ vlib/v/checker/tests/method_op_err.vv:22:1: error: argument cannot be `mut` for 
       | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
    23 |     return User{}
    24 | }
-vlib/v/checker/tests/method_op_err.vv:32:24: error: infix expr: cannot use `Foo` (right expression) as `User`
+vlib/v/checker/tests/method_op_err.vv:32:13: error: infix expr: cannot use `Foo` (right expression) as `User`
    30 | fn main() {
    31 |     println(User{3, 4})
    32 |     println(User{3, 4} - Foo{3, 3})
-      |                        ^
+      |             ~~~~~~~~~~~~~~~~~~~~~~
    33 |     println(User{3, 2} < User{2, 4})
    34 |     println(User{3, 4} < Foo{3, 4})
-vlib/v/checker/tests/method_op_err.vv:33:24: error: undefined operation `User` < `User`
+vlib/v/checker/tests/method_op_err.vv:33:13: error: undefined operation `User` < `User`
    31 |     println(User{3, 4})
    32 |     println(User{3, 4} - Foo{3, 3})
    33 |     println(User{3, 2} < User{2, 4})
-      |                        ^
+      |             ~~~~~~~~~~~~~~~~~~~~~~~
    34 |     println(User{3, 4} < Foo{3, 4})
    35 |     mut u := User{3, 4}
-vlib/v/checker/tests/method_op_err.vv:34:24: error: mismatched types `User` and `Foo`
+vlib/v/checker/tests/method_op_err.vv:34:13: error: mismatched types `User` and `Foo`
    32 |     println(User{3, 4} - Foo{3, 3})
    33 |     println(User{3, 2} < User{2, 4})
    34 |     println(User{3, 4} < Foo{3, 4})
-      |                        ^
+      |             ~~~~~~~~~~~~~~~~~~~~~~
    35 |     mut u := User{3, 4}
    36 |     u += 12
 vlib/v/checker/tests/method_op_err.vv:36:10: error: cannot assign to `u`: expected `User`, not `int literal`
@@ -67,3 +67,4 @@ vlib/v/checker/tests/method_op_err.vv:38:7: error: operator `+` must return `Use
    38 |     u += User{2, 3} 
       |       ~~
    39 | }
+
