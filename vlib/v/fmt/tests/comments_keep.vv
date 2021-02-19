@@ -60,3 +60,11 @@ fn linebreaks_in_block_comments() {
 	no problem
 	*****/
 }
+
+fn empty_line_after_if() {
+	if foo {
+	}
+
+	// cmt
+	bar()
+}

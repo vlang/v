@@ -1684,7 +1684,7 @@ pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 				}
 			}
 			f.write('{')
-			if is_ternary{
+			if is_ternary {
 				f.write(' ')
 			} else {
 				f.writeln('')
