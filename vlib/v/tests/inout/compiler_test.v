@@ -86,7 +86,10 @@ fn test_all() {
 
 fn normalize_panic_message(message string, vroot string) string {
 	mut msg := message.all_before('=========================================')
-	msg = msg.replace(vroot + os.path_separator, '')
+	// change windows to nix path
+	s := vroot.replace(os.path_separator, '/')
+	// remove vroot
+	msg = msg.replace(s + '/', '')
 	msg = msg.trim_space()
 	return msg
 }
