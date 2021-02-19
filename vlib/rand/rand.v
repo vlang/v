@@ -138,49 +138,35 @@ pub fn f64_in_range(min f64, max f64) f64 {
 }
 
 const (
-	chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
-)
-
-// string returns a string of length `len` containing random characters in range `[a-zA-Z]`.
-pub fn string(len int) string {
-	mut buf := unsafe {malloc(len)}
-	for i in 0 .. len {
-		unsafe {
-			buf[i] = rand.chars[intn(rand.chars.len)]
-		}
-	}
-	return unsafe { buf.vstring_with_len(len) }
-}
-
-
-const (
+	english_letters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
 	hex_chars = 'abcdef0123456789'
-)
-
-// hex returns a hexadecimal number of length `len` containing random characters in range `[a-f0-9]`.
-pub fn hex(len int) string {
-	mut buf := unsafe {malloc(len)}
-	for i in 0 .. len {
-		unsafe {
-			buf[i] = rand.hex_chars[intn(rand.hex_chars.len)]
-		}
-	}
-	return unsafe { buf.vstring_with_len(len) }
-}
-
-const (
 	ascii_chars = '!"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ\\^_`abcdefghijklmnopqrstuvwxyz{|}~'
 )
 
-// ascii returns a random string of the printable ASCII characters with length `len`.
-pub fn ascii(len int) string {
+// string_from_set returns a string of length `len` containing random characters sampled from the given `charset`
+pub fn string_from_set(charset string, len int) string {
 	mut buf := unsafe {malloc(len)}
 	for i in 0 .. len {
 		unsafe {
-			buf[i] = rand.ascii_chars[intn(rand.ascii_chars.len)]
+			buf[i] = rand.charset[intn(rand.charset.len)]
 		}
 	}
 	return unsafe { buf.vstring_with_len(len) }
+}
+
+// string returns a string of length `len` containing random characters in range `[a-zA-Z]`.
+pub fn string(len int) string {
+	return string_from_set(english_letters, len)
+}
+
+// hex returns a hexadecimal number of length `len` containing random characters in range `[a-f0-9]`.
+pub fn hex(len int) string {
+	return string_from_set(hex_chars, len)
+}
+
+// ascii returns a random string of the printable ASCII characters with length `len`.
+pub fn ascii(len int) string {
+	return string_from_set(ascii_chars, len)
 }
 
 // uuid_v4 generates a random (v4) UUID
