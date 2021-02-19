@@ -198,6 +198,13 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 				res.is_vlines = false
 				res.build_options << arg
 			}
+			'-debug-tcc' {
+				res.ccompiler = 'tcc'
+				res.build_options << '$arg "$res.ccompiler"'
+				res.retry_compilation = false
+				res.show_cc = true
+				res.show_c_output = true
+			}
 			'-repl' {
 				res.is_repl = true
 			}
