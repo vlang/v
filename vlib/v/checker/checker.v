@@ -5206,7 +5206,7 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) table.Type {
 	return right_type
 }
 
-fn (mut c Checker) check_index(typ_sym &table.TypeSymbol, index ast.Expr, index_type table.Type, pos token.Position) {
+fn (mut c Checker) check_index(typ_sym &table.TypeSymbol, index ast.Expr, index_type table.Type, pos token.Position, right_range bool) {
 	index_type_sym := c.table.get_type_symbol(index_type)
 	// println('index expr left=$typ_sym.name $node.pos.line_nr')
 	// if typ_sym.kind == .array && (!(table.type_idx(index_type) in table.number_type_idxs) &&
@@ -5226,7 +5226,7 @@ fn (mut c Checker) check_index(typ_sym &table.TypeSymbol, index ast.Expr, index_
 			} else if typ_sym.kind == .array_fixed {
 				i := index.val.int()
 				info := typ_sym.info as table.ArrayFixed
-				if i >= info.size {
+				if (!right_range && i >= info.size) || (right_range && i > info.size) {
 					c.error('index out of range (index: $i, len: $info.size)', index.pos)
 				}
 			}
@@ -5283,11 +5283,11 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 	if mut node.index is ast.RangeExpr { // [1..2]
 		if node.index.has_low {
 			index_type := c.expr(node.index.low)
-			c.check_index(typ_sym, node.index.low, index_type, node.pos)
+			c.check_index(typ_sym, node.index.low, index_type, node.pos, false)
 		}
 		if node.index.has_high {
 			index_type := c.expr(node.index.high)
-			c.check_index(typ_sym, node.index.high, index_type, node.pos)
+			c.check_index(typ_sym, node.index.high, index_type, node.pos, true)
 		}
 		// array[1..2] => array
 		// fixed_array[1..2] => array
@@ -5307,7 +5307,7 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 				c.error('invalid key: $err', node.pos)
 			}
 		} else {
-			c.check_index(typ_sym, node.index, index_type, node.pos)
+			c.check_index(typ_sym, node.index, index_type, node.pos, false)
 		}
 		value_type := c.table.value_type(typ)
 		if value_type != table.void_type {
