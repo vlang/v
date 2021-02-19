@@ -107,6 +107,7 @@ const (
 		'vlib/v/tests/fn_variadic_test.v',
 		'vlib/v/tests/generic_chan_test.v',
 		'vlib/v/tests/generics_method_test.v',
+		'vlib/v/tests/go_array_wait_test.v',
 		'vlib/v/tests/go_wait_1_test.v',
 		'vlib/v/tests/go_call_generic_fn_test.v',
 		'vlib/v/tests/generics_test.v',
