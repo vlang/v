@@ -1,5 +1,7 @@
 module main
 
+// NB: you need to `v install pcre` to be able to compile this example.
+
 import pcre
 
 fn example() {
