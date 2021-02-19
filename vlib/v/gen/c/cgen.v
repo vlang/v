@@ -4360,7 +4360,14 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					g.expr(node.left)
 				}
 				g.write('[')
-				g.expr(node.index)
+				if node.index is ast.IntegerLiteral {
+					g.expr(node.index)
+				} else {
+					// bounds check
+					g.write('v_fixed_index(')
+					g.expr(node.index)
+					g.write(', $info.size)')
+				}
 				g.write(']')
 				if is_fn_index_call {
 					g.write(')')

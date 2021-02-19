@@ -274,3 +274,12 @@ pub fn is_atty(fd int) int {
 		return C.isatty(fd)
 	}
 }
+
+[inline]
+fn v_fixed_index(i int, len int) int {
+	if i >= len {
+		s := 'fixed array index out of range (index: $i, len: $len)'
+		panic(s)
+	}
+	return i
+}
