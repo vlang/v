@@ -415,7 +415,6 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			// Imports are handled after the file is formatted, to automatically add necessary modules
 			// Just remember the position of the imports for now
 			f.import_pos = f.out.len
-			// f.imports(f.file.imports)
 		}
 		ast.InterfaceDecl {
 			f.interface_decl(node)
@@ -522,7 +521,6 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 					f.wrap_long_line(3, true)
 				}
 			}
-			// f.write(sum_type_names.join(' | '))
 			comments << node.comments
 		}
 	}
@@ -1150,14 +1148,14 @@ pub fn (mut f Fmt) cast_expr(node ast.CastExpr) {
 
 pub fn (mut f Fmt) assoc(node ast.Assoc) {
 	f.writeln('{')
-	// f.indent++
-	f.writeln('\t...$node.var_name')
+	f.indent++
+	f.writeln('...$node.var_name')
 	for i, field in node.fields {
-		f.write('\t$field: ')
+		f.write('$field: ')
 		f.expr(node.exprs[i])
 		f.writeln('')
 	}
-	// f.indent--
+	f.indent--
 	f.write('}')
 }
 
@@ -1228,7 +1226,6 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 					vals := full_name.split('.')
 					mod_prefix := vals[vals.len - 2]
 					const_name := vals[vals.len - 1]
-					// f.write(f.short_module(full_name))
 					if mod_prefix == 'main' {
 						f.write(const_name)
 						return
@@ -1242,7 +1239,6 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 			}
 		}
 		name := f.short_module(node.name)
-		// f.write('<$it.name => $name>')
 		f.write(name)
 		f.mark_import_as_used(name)
 	}
@@ -1784,9 +1780,6 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 					mod: node.left.name
 					alias: node.left.name
 				}
-				// for imp in f.file.imports {
-				// println(imp.mod)
-				// }
 			}
 		}
 		f.expr(node.left)
