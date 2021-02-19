@@ -302,28 +302,29 @@ pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
 
 fn (mut f Fmt) should_insert_newline_before_stmt(stmt ast.Stmt, prev_stmt ast.Stmt) bool {
 	prev_line_nr := prev_stmt.position().last_line
+	// No need to insert a newline if there is already one
+	if f.out.last_n(2) == '\n\n' {
+		return false
+	}
+	// Force a newline after a block of HashStmts
 	if prev_stmt is ast.HashStmt && stmt !is ast.HashStmt && stmt !is ast.ExprStmt {
 		return true
 	}
+	// Force a newline after a block of function declarations
 	if prev_stmt is ast.FnDecl {
-		if (prev_stmt.no_body || prev_stmt.stmts.len == 0) && stmt !is ast.FnDecl {
+		if prev_stmt.no_body && stmt !is ast.FnDecl {
 			return true
 		}
 	}
-	if prev_stmt is ast.StructDecl {
-		if prev_stmt.fields.len == 0 && prev_stmt.end_comments.len == 0 && stmt !is ast.StructDecl {
-			return true
-		}
-	}
-	// The stmt either has or shouldn't have a newline before
-	if stmt.position().line_nr - prev_line_nr <= 1 || f.out.last_n(2) == '\n\n' {
+	// The stmt shouldn't have a newline before
+	if stmt.position().line_nr - prev_line_nr <= 1 {
 		return false
 	}
 	// Imports are handled special hence they are ignored here
 	if stmt is ast.Import || prev_stmt is ast.Import {
 		return false
 	}
-	// Attributes are not respected in the stmts position, so we have to check it manually
+	// Attributes are not respected in the stmts position, so this requires a manual check
 	if stmt is ast.StructDecl {
 		if stmt.attrs.len > 0 && stmt.attrs[0].pos.line_nr - prev_line_nr <= 1 {
 			return false
