@@ -4773,27 +4773,6 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 		if !node.is_comptime && branch.cond is ast.InfixExpr {
 			infix := branch.cond as ast.InfixExpr
 			if infix.op == .key_is {
-				// // handle `foo is &MyInterface`
-				// // TODO: is this a parser issue? Should the & be parsed as part of the type,
-				// // rather than as a separate `ast.PrefixExpr` node?
-				// right_expr := match infix.right {
-				// 	ast.Type {
-				// 		infix.right
-				// 	}
-				// 	ast.PrefixExpr {
-				// 		expr := infix.right.expr
-				// 		if expr !is ast.Type {
-				// 			c.error('expecting type, not `$expr`', expr.position())
-				// 			return
-				// 		}
-				// 		expr as ast.Type
-				// 	}
-				// 	else {
-				// 		c.error('expecting type, not `$infix.right`', infix.right.position())
-				// 		ast.Type{}
-				// 	}
-				// }
-
 				right_expr := infix.right as ast.Type
 				left_sym := c.table.get_type_symbol(infix.left_type)
 				expr_type := c.expr(infix.left)
