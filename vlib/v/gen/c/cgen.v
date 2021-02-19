@@ -5282,15 +5282,15 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 			table.Alias {
 				// table.Alias { TODO
 			}
-			table.GoHandle {
+			table.Thread {
 				if g.pref.os == .windows {
-					if name == 'gohandle_void' {
+					if name == '__v_thread_void' {
 						g.type_definitions.writeln('typedef HANDLE $name;')
 					} else {
 						// Windows can only return `u32` (no void*) from a thread, so the
 						// V gohandle must maintain a pointer to the return value
 						g.type_definitions.writeln('typedef struct {')
-						g.type_definitions.writeln('\tvoid*  ret_ptr;')
+						g.type_definitions.writeln('\tvoid* ret_ptr;')
 						g.type_definitions.writeln('\tHANDLE handle;')
 						g.type_definitions.writeln('} $name;')
 					}
@@ -5777,7 +5777,7 @@ fn (mut g Gen) go_stmt(node ast.GoStmt, joinable bool) string {
 	if g.pref.os == .windows && node.call_expr.return_type != table.void_type {
 		g.writeln('$arg_tmp_var->ret_ptr = malloc(sizeof($s_ret_typ));')
 	}
-	gohandle_name := 'gohandle_' +
+	gohandle_name := '__v_thread_' +
 		g.table.get_type_symbol(g.unwrap_generic(node.call_expr.return_type)).cname
 	if g.pref.os == .windows {
 		simple_handle := if joinable && node.call_expr.return_type != table.void_type {

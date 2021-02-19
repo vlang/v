@@ -105,7 +105,7 @@ pub fn (mut p Parser) parse_map_type() table.Type {
 }
 
 pub fn (mut p Parser) parse_chan_type() table.Type {
-	if p.peek_tok.kind != .name && p.peek_tok.kind != .key_mut && p.peek_tok.kind != .amp {
+	if p.peek_tok.kind != .name && p.peek_tok.kind != .key_mut && p.peek_tok.kind != .amp && p.peek_tok.kind != .lsbr {
 		p.next()
 		return table.chan_type
 	}
@@ -114,6 +114,17 @@ pub fn (mut p Parser) parse_chan_type() table.Type {
 	is_mut := p.tok.kind == .key_mut
 	elem_type := p.parse_type()
 	idx := p.table.find_or_register_chan(elem_type, is_mut)
+	return table.new_type(idx)
+}
+
+pub fn (mut p Parser) parse_thread_type() table.Type {
+	if p.peek_tok.kind != .name && p.peek_tok.kind != .key_mut && p.peek_tok.kind != .amp && p.peek_tok.kind != .lsbr {
+		p.next()
+		return table.thread_type
+	}
+	p.next()
+	elem_type := p.parse_type()
+	idx := p.table.find_or_register_thread(elem_type)
 	return table.new_type(idx)
 }
 
@@ -317,6 +328,9 @@ pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr bool, check
 			}
 			if name == 'chan' {
 				return p.parse_chan_type()
+			}
+			if name == 'thread' {
+				return p.parse_thread_type()
 			}
 			defer {
 				p.next()

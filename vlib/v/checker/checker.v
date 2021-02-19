@@ -1396,8 +1396,8 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		if !c.check_types(arg_type, info.elem_type) && !c.check_types(left_type, arg_type) {
 			c.error('cannot $method_name `$arg_sym.name` to `$left_type_sym.name`', arg_expr.position())
 		}
-	} else if left_type_sym.kind == .gohandle && method_name == 'wait' {
-		info := left_type_sym.info as table.GoHandle
+	} else if left_type_sym.kind == .thread && method_name == 'wait' {
+		info := left_type_sym.info as table.Thread
 		if call_expr.args.len > 0 {
 			c.error('wait() does not have any arguments', call_expr.args[0].pos)
 		}
@@ -3584,7 +3584,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		}
 		ast.GoExpr {
 			ret_type := c.call_expr(mut node.go_stmt.call_expr)
-			return c.table.find_or_register_gohandle(ret_type)
+			return c.table.find_or_register_thread(ret_type)
 		}
 		ast.ChanInit {
 			return c.chan_init(mut node)
