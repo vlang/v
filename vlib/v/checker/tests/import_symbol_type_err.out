@@ -3,7 +3,8 @@ vlib/v/checker/tests/import_symbol_type_err.vv:1:17: error: module `crypto` has 
       |                 ~~~~
     2 | fn main() {
     3 |   println(Coin{})
-vlib/v/checker/tests/import_symbol_type_err.vv:3:11: error: unknown struct: crypto.Coin
+vlib/v/checker/tests/import_symbol_type_err.vv:3:11: error: unknown type `crypto.Coin`.
+Did you mean `crypto.Hash`?
     1 | import crypto { Coin }
     2 | fn main() {
     3 |   println(Coin{})

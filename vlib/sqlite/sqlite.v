@@ -54,7 +54,7 @@ fn C.sqlite3_column_text(&C.sqlite3_stmt, int) byteptr
 
 fn C.sqlite3_column_int(&C.sqlite3_stmt, int) int
 
-fn C.sqlite3_column_int64(&C.sqlite3_stmt, int) int64
+fn C.sqlite3_column_int64(&C.sqlite3_stmt, int) i64
 
 fn C.sqlite3_column_double(&C.sqlite3_stmt, int) f64
 
