@@ -1,14 +1,15 @@
-vlib/v/checker/tests/mismatched_ptr_op_ptr.vv:5:18: error: mismatched types `&string` and `string`
+vlib/v/checker/tests/mismatched_ptr_op_ptr.vv:5:17: error: mismatched types `&string` and `string`
     3 |     unsafe {
     4 |         b := &a
     5 |         println(b+*b)
-      |                  ^
+      |                 ~~~
     6 |         println(b+b)
     7 |     }
-vlib/v/checker/tests/mismatched_ptr_op_ptr.vv:6:18: error: mismatched types `&string` and `&string`
+vlib/v/checker/tests/mismatched_ptr_op_ptr.vv:6:17: error: mismatched types `&string` and `&string`
     4 |         b := &a
     5 |         println(b+*b)
     6 |         println(b+b)
-      |                  ^
+      |                 ~~~
     7 |     }
     8 | }
+

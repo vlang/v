@@ -530,12 +530,12 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp string, str_fn_name st
 }
 
 fn struct_auto_str_func(sym table.TypeSymbol, field_type table.Type, fn_name string, field_name string) string {
-	has_custom_str := sym.has_method('str')
+	has_custom_str, expects_ptr, _ := sym.str_method_info()
 	if sym.kind in [.enum_, .interface_] {
 		return '${fn_name}(it.${c_name(field_name)})'
 	} else if sym.kind == .struct_ {
 		mut obj := 'it.${c_name(field_name)}'
-		if field_type.is_ptr() {
+		if field_type.is_ptr() && !expects_ptr {
 			obj = '*$obj'
 		}
 		if has_custom_str {
@@ -553,7 +553,8 @@ fn struct_auto_str_func(sym table.TypeSymbol, field_type table.Type, fn_name str
 		mut method_str := 'it.${c_name(field_name)}'
 		if sym.kind == .bool {
 			method_str += ' ? _SLIT("true") : _SLIT("false")'
-		} else if (field_type.is_int() || field_type.is_float()) && field_type.is_ptr() {
+		} else if (field_type.is_int() || field_type.is_float()) && field_type.is_ptr()
+			&& !expects_ptr {
 			// ptr int can be "nil", so this needs to be castet to a string
 			fmt := if sym.kind in [.f32, .f64] {
 				'%g\\000'

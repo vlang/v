@@ -138,56 +138,45 @@ pub fn f64_in_range(min f64, max f64) f64 {
 }
 
 const (
-	chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
+	english_letters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
+	hex_chars       = 'abcdef0123456789'
+	ascii_chars     = '!"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ\\^_`abcdefghijklmnopqrstuvwxyz{|}~'
 )
+
+// string_from_set returns a string of length `len` containing random characters sampled from the given `charset`
+pub fn string_from_set(charset string, len int) string {
+	if len == 0 {
+		return ''
+	}
+	mut buf := unsafe { malloc(len) }
+	for i in 0 .. len {
+		unsafe {
+			buf[i] = charset[intn(charset.len)]
+		}
+	}
+	return unsafe { buf.vstring_with_len(len) }
+}
 
 // string returns a string of length `len` containing random characters in range `[a-zA-Z]`.
 pub fn string(len int) string {
-	mut buf := unsafe {malloc(len)}
-	for i in 0 .. len {
-		unsafe {
-			buf[i] = rand.chars[intn(rand.chars.len)]
-		}
-	}
-	return unsafe { buf.vstring_with_len(len) }
+	return string_from_set(rand.english_letters, len)
 }
-
-
-const (
-	hex_chars = 'abcdef0123456789'
-)
 
 // hex returns a hexadecimal number of length `len` containing random characters in range `[a-f0-9]`.
 pub fn hex(len int) string {
-	mut buf := unsafe {malloc(len)}
-	for i in 0 .. len {
-		unsafe {
-			buf[i] = rand.hex_chars[intn(rand.hex_chars.len)]
-		}
-	}
-	return unsafe { buf.vstring_with_len(len) }
+	return string_from_set(rand.hex_chars, len)
 }
-
-const (
-	ascii_chars = '!"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ\\^_`abcdefghijklmnopqrstuvwxyz{|}~'
-)
 
 // ascii returns a random string of the printable ASCII characters with length `len`.
 pub fn ascii(len int) string {
-	mut buf := unsafe {malloc(len)}
-	for i in 0 .. len {
-		unsafe {
-			buf[i] = rand.ascii_chars[intn(rand.ascii_chars.len)]
-		}
-	}
-	return unsafe { buf.vstring_with_len(len) }
+	return string_from_set(rand.ascii_chars, len)
 }
 
 // uuid_v4 generates a random (v4) UUID
 // See https://en.wikipedia.org/wiki/Universally_unique_identifier#Version_4_(random)
 pub fn uuid_v4() string {
 	buflen := 36
-	mut buf := unsafe {malloc(37)}
+	mut buf := unsafe { malloc(37) }
 	mut i_buf := 0
 	mut x := u64(0)
 	mut d := byte(0)
@@ -240,7 +229,7 @@ pub fn ulid() string {
 // ulid_at_millisecond does the same as `ulid` but takes a custom Unix millisecond timestamp via `unix_time_milli`.
 pub fn ulid_at_millisecond(unix_time_milli u64) string {
 	buflen := 26
-	mut buf := unsafe {malloc(27)}
+	mut buf := unsafe { malloc(27) }
 	mut t := unix_time_milli
 	mut i := 9
 	for i >= 0 {

@@ -117,6 +117,23 @@ fn test_if_multiple_flags_get_set() {
 	cmd.parse(['command', '-flag', 'value', '-value', '42'])
 }
 
+fn test_if_required_flags_get_set() {
+	mut cmd := cli.Command{
+		name: 'command'
+		execute: flag_should_have_value_of_42
+	}
+	cmd.add_flag(cli.Flag{
+		flag: .string
+		name: 'flag'
+	})
+	cmd.add_flag(cli.Flag{
+		flag: .int
+		name: 'value'
+		required: true
+	})
+	cmd.parse(['command', '-flag', 'value', '-value', '42'])
+}
+
 fn flag_is_set_in_subcommand(cmd cli.Command) ? {
 	flag := cmd.flags.get_string('flag') or { panic(err) }
 	assert flag == 'value'

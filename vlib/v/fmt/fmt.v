@@ -674,6 +674,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		}
 	}
 	for embed in node.embeds {
+		f.mark_types_import_as_used(embed.typ)
 		styp := f.table.type_to_str(embed.typ)
 		f.writeln('\t$styp')
 	}
@@ -728,6 +729,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		}
 		f.write(strings.repeat(` `, field_align.max_len - field.name.len - comments_len))
 		f.write(field_types[i])
+		f.mark_types_import_as_used(field.typ)
 		attrs_len := inline_attrs_len(field.attrs)
 		has_attrs := field.attrs.len > 0
 		if has_attrs {
