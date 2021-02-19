@@ -5212,7 +5212,7 @@ fn (mut c Checker) check_index(typ_sym &table.TypeSymbol, index ast.Expr, index_
 	// if typ_sym.kind == .array && (!(table.type_idx(index_type) in table.number_type_idxs) &&
 	// index_type_sym.kind != .enum_) {
 	if typ_sym.kind in [.array, .array_fixed, .string, .ustring] {
-		if !(index_type.is_number() || index_type_sym.kind == .enum_) {
+		if !(index_type.is_int() || index_type_sym.kind == .enum_) {
 			type_str := if typ_sym.kind in [.string, .ustring] {
 				'non-integer string index `$index_type_sym.name`'
 			} else {
@@ -5221,8 +5221,14 @@ fn (mut c Checker) check_index(typ_sym &table.TypeSymbol, index ast.Expr, index_
 			c.error('$type_str', pos)
 		}
 		if index is ast.IntegerLiteral {
-			if index.val.starts_with('-') {
-				c.error('invalid index `$index.val` (index must be non-negative)', index.pos)
+			if index.val[0] == `-` {
+				c.error('negative index `$index.val`', index.pos)
+			} else if typ_sym.kind == .array_fixed {
+				i := index.val.int()
+				info := typ_sym.info as table.ArrayFixed
+				if i >= info.size {
+					c.error('index out of range (index: $i, len: $info.size)', index.pos)
+				}
 			}
 		}
 		if index_type.has_flag(.optional) {
