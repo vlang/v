@@ -744,23 +744,32 @@ pub fn getwd() string {
 // NB: this particular rabbit hole is *deep* ...
 [manualfree]
 pub fn real_path(fpath string) string {
-	mut fullpath := vcalloc(max_path_len)
+	mut fullpath := byteptr(0)
 	defer {
 		unsafe { free(fullpath) }
 	}
-	mut ret := charptr(0)
+
 	$if windows {
-		ret = charptr(C._fullpath(charptr(fullpath), charptr(fpath.str), max_path_len))
+		fullpath = unsafe { &u16(vcalloc(max_path_len * 2)) }
+		// TODO: check errors if path len is not enough
+		ret := C.GetFullPathName(fpath.to_wide(), max_path_len, fullpath, 0)
 		if ret == 0 {
 			return fpath
 		}
 	} $else {
-		ret = charptr(C.realpath(charptr(fpath.str), charptr(fullpath)))
+		fullpath = vcalloc(max_path_len)
+		ret := charptr(C.realpath(charptr(fpath.str), charptr(fullpath)))
 		if ret == 0 {
 			return fpath
 		}
 	}
-	res := unsafe { fullpath.vstring() }
+
+	mut res := ''
+	$if windows {
+		res = unsafe { string_from_wide(fullpath) }
+	} $else {
+		res = unsafe { fullpath.vstring() }
+	}
 	nres := normalize_drive_letter(res)
 	cres := nres.clone()
 	return cres
