@@ -851,7 +851,7 @@ jobs:
           ./v test-parser -S examples/cli.v
           ./v test-parser -S examples/json.v
           ./v test-parser -S examples/vmod.v
-          ./v test-parser -S examples/regex_example.v
+          ./v test-parser -S examples/regex/regex_example.v
           ./v test-parser -S examples/2048/2048.v
 
   parser-silent-fuzzing:
@@ -874,7 +874,7 @@ jobs:
           zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/cli.v > examples/cli_fuzz.v
           zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/json.v > examples/json_fuzz.v
           zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/vmod.v > examples/vmod_fuzz.v
-          zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/regex_example.v > examples/regex_example_fuzz.v
+          zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/regex/regex_example.v > examples/regex_example_fuzz.v
           zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/2048/2048.v > examples/2048/2048_fuzz.v
           ./v test-parser -S examples/hello_world_fuzz.v
           ./v test-parser -S examples/hanoi_fuzz.v
