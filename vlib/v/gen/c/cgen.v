@@ -620,9 +620,9 @@ fn (mut g Gen) find_or_register_shared(t table.Type, base string) string {
 }
 
 fn (mut g Gen) register_thread_array_wait_call(eltyp string) string {
-	thread_typ := '__v_thread_${eltyp}'
+	thread_typ := '__v_thread_$eltyp'
 	ret_typ := if eltyp == '' { 'void' } else { 'Array_$eltyp' }
-	thread_arr_typ := 'Array_${thread_typ}'
+	thread_arr_typ := 'Array_$thread_typ'
 	fn_name := '${thread_arr_typ}_wait'
 	if fn_name !in g.waiter_fns {
 		g.waiter_fns << fn_name
@@ -3132,7 +3132,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			g.write('!')
 		}
 		g.write('${ptr_typ}_arr_eq(')
-		if node.left_type.is_ptr() && ! node.left_type.has_flag(.shared_f) {
+		if node.left_type.is_ptr() && !node.left_type.has_flag(.shared_f) {
 			g.write('*')
 		}
 		g.expr(node.left)
