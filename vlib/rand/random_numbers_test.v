@@ -188,3 +188,83 @@ fn test_rand_byte() {
 	assert all[0] != all[255]
 	assert all[0] != all[128]
 }
+
+const (
+	string_count = 25
+)
+
+fn test_rand_string_from_set() {
+	sets := [
+		'0123456789',
+		'qwertyuiop',
+		'abcdefghijklmnopqrstuvwxyz',
+	]
+	for charset in sets {
+		for _ in 0 .. string_count {
+			len := rand.intn(rnd_count)
+			str := rand.string_from_set(charset, len)
+			assert str.len == len
+			for character in str {
+				position := charset.index(character.ascii_str()) or { -1 }
+				assert position > -1
+			}
+		}
+	}
+}
+
+fn test_rand_string() {
+	rand.seed([u32(0), 1])
+	outputs := [
+		'rzJfVBJgvAyCNpEdXIteDQezg',
+		'AJOeswgoelDOCfcrSUWzVPjeL',
+		'NQfKauQqsXYXSUMFPGnXXPJIn',
+		'vfBGUKbpLoBMQVYXfkvRplWih',
+		'aYHLjMJqvUJmJJHGxEnrEmQGl',
+		'rBJXkQZcembAteaRFoxXmECJo',
+		'HYVLfHmDOCTlSbiSzHrsAIaBH',
+		'zgOiwyISjLSdLGhLzJsSKHVBi',
+		'UiAtobWXGcHsEtgzuNatxfkoI',
+		'NisnYlffJgFEcIdcgzWcGjnHy',
+	]
+	for output in outputs {
+		assert rand.string(25) == output
+	}
+}
+
+fn test_rand_hex() {
+	rand.seed([u32(0), 1])
+	outputs := [
+		'fc30e495deee09e008e15ffc3',
+		'4320efa837788397fb59b28f4',
+		'4995210abf33b6765c240ce62',
+		'f3d20dbe0a8aa6b9c88cd1f6f',
+		'8d7d58b256ab00213dd519cf7',
+		'fa2251284bc20a21eff48127c',
+		'5fef90cdc0c37143117599092',
+		'2a6170531c76dfb50c54126bc',
+		'a686dfd536042d1c1a9afdaf4',
+		'7f12013f6e1177e2d63726de3',
+	]
+	for output in outputs {
+		assert rand.hex(25) == output
+	}
+}
+
+fn test_rand_ascii() {
+	rand.seed([u32(0), 1])
+	outputs := [
+		"2Z:&PeD'V;9=mn\$C>yKg'DIr%",
+		'Ub7ix,}>I=&#2QJki{%FHKv&K',
+		'1WStRylMO|p.R~qqRtr&AOEsd',
+		'yka<GPZ&m+r0^Zi!ShB*1dU~W',
+		'uDA?.zU2X,<DkKT#_-halW\\ki',
+		'fsx!@uRc?re/fSPXj`Y&\\BU}p',
+		'fI_qM"):2;CUno!<dX:Yv*FX$',
+		'FnA(Fr|D`WZVWEzp<k)O;auub',
+		"QRkxH!kjXh&/j{)uSe&{D'v?|",
+		"_CyaU\$z':#}At*v2|xDu6w=;1",
+	]
+	for output in outputs {
+		assert rand.ascii(25) == output
+	}
+}
