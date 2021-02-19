@@ -140,7 +140,7 @@ fn (mut v Builder) cleanup_run_executable_after_exit(exefile string) {
 // 'strings' => 'VROOT/vlib/strings'
 // 'installed_mod' => '~/.vmodules/installed_mod'
 // 'local_mod' => '/path/to/current/dir/local_mod'
-fn (mut v Builder) set_module_lookup_paths() {
+pub fn (mut v Builder) set_module_lookup_paths() {
 	// Module search order:
 	// 0) V test files are very commonly located right inside the folder of the
 	// module, which they test. Adding the parent folder of the module folder
