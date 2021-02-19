@@ -8,6 +8,25 @@ import time
 #flag -lpthread
 #include <semaphore.h>
 
+[trusted]
+fn C.pthread_mutex_init(voidptr, voidptr) int
+fn C.pthread_mutex_lock(voidptr) int
+fn C.pthread_mutex_unlock(voidptr) int
+fn C.pthread_mutex_destroy(voidptr) int
+fn C.pthread_rwlockattr_init(voidptr) int
+fn C.pthread_rwlockattr_setkind_np(voidptr, int) int
+fn C.pthread_rwlockattr_setpshared(voidptr, int) int
+fn C.pthread_rwlock_init(voidptr, voidptr) int
+fn C.pthread_rwlock_rdlock(voidptr) int
+fn C.pthread_rwlock_wrlock(voidptr) int
+fn C.pthread_rwlock_unlock(voidptr) int
+fn C.sem_init(voidptr, int, u32) int
+fn C.sem_post(voidptr) int
+fn C.sem_wait(voidptr) int
+fn C.sem_trywait(voidptr) int
+fn C.sem_timedwait(voidptr, voidptr) int
+fn C.sem_destroy(voidptr) int
+
 // [init_with=new_mutex] // TODO: implement support for this struct attribute, and disallow Mutex{} from outside the sync.new_mutex() function.
 [heap]
 pub struct Mutex {

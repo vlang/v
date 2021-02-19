@@ -1,8 +1,13 @@
 import math { max, min }
+import cli { Command }
 import math.complex { complex, Complex }
 import os {
 	user_os,
 	file_ext,
+}
+
+struct App {
+	command Command
 }
 
 fn imaginary(im f64) Complex {

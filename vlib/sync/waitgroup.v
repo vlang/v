@@ -3,6 +3,9 @@
 // that can be found in the LICENSE file.
 module sync
 
+[trusted]
+fn C.atomic_fetch_add_u32(voidptr, u32) u32
+
 // WaitGroup
 // Do not copy an instance of WaitGroup, use a ref instead.
 //
@@ -12,7 +15,7 @@ module sync
 // `wg.wait()` to wait for all jobs to have finished
 //
 // in each parallel job:
-// `wg.done()` when finished
+// `wg.done()` when finished 
 //
 // [init_with=new_waitgroup] // TODO: implement support for init_with struct attribute, and disallow WaitGroup{} from outside the sync.new_waitgroup() function.
 [heap]
