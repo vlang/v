@@ -253,7 +253,7 @@ fn test_rand_hex() {
 fn test_rand_ascii() {
 	rand.seed([u32(0), 1])
 	outputs := [
-		'2Z:&PeD\'V;9=mn\$C>yKg\'DIr%',
+		"2Z:&PeD'V;9=mn\$C>yKg'DIr%",
 		'Ub7ix,}>I=&#2QJki{%FHKv&K',
 		'1WStRylMO|p.R~qqRtr&AOEsd',
 		'yka<GPZ&m+r0^Zi!ShB*1dU~W',
@@ -261,8 +261,8 @@ fn test_rand_ascii() {
 		'fsx!@uRc?re/fSPXj`Y&\\BU}p',
 		'fI_qM"):2;CUno!<dX:Yv*FX$',
 		'FnA(Fr|D`WZVWEzp<k)O;auub',
-		'QRkxH!kjXh&/j{)uSe&{D\'v?|',
-		'_CyaU\$z\':#}At*v2|xDu6w=;1',
+		"QRkxH!kjXh&/j{)uSe&{D'v?|",
+		"_CyaU\$z':#}At*v2|xDu6w=;1",
 	]
 	for output in outputs {
 		assert rand.ascii(25) == output
