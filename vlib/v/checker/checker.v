@@ -1325,7 +1325,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 					thread_ret_type := elem_sym.thread_info().return_type
 					call_expr.return_type = c.table.find_or_register_array(thread_ret_type)
 				} else {
-					c.error('`${left_type_sym.name}` has no method `wait()` (only thread handles and arrays of them have)',
+					c.error('`$left_type_sym.name` has no method `wait()` (only thread handles and arrays of them have)',
 						call_expr.left.position())
 				}
 			}
