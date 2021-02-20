@@ -11,3 +11,10 @@ vlib/v/checker/tests/use_deprecated_function_warning.vv:13:2: error: function `a
    13 |     abc()
       |     ~~~~~
    14 | }
+   15 |
+vlib/v/checker/tests/use_deprecated_function_warning.vv:23:4: error: method `S1.m` has been deprecated; use bar instead
+   21 | fn method() {
+   22 |     s := S1{}
+   23 |     s.m()
+      |       ~~~
+   24 | }

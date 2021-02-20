@@ -1562,6 +1562,15 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			c.warn('method `${left_type_sym.name}.$method_name` must be called from an `unsafe` block',
 				call_expr.pos)
 		}
+		if method.is_deprecated {
+			mut deprecation_message := 'method `${left_type_sym.name}.$method.name` has been deprecated'
+			for attr in method.attrs {
+				if attr.name == 'deprecated' && attr.arg != '' {
+					deprecation_message += '; $attr.arg'
+				}
+			}
+			c.warn(deprecation_message, call_expr.pos)
+		}
 		// TODO: typ optimize.. this node can get processed more than once
 		if call_expr.expected_arg_types.len == 0 {
 			for i in 1 .. method.params.len {
