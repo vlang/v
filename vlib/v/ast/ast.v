@@ -1226,14 +1226,11 @@ pub fn (expr Expr) position() token.Position {
 		AnonFn {
 			return expr.decl.pos
 		}
-		ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr, CastExpr, ChanInit, CharLiteral,
-		ConcatExpr, Comment, EnumVal, FloatLiteral, GoExpr, Ident, IfExpr, IndexExpr, IntegerLiteral,
-		Likely, LockExpr, MapInit, MatchExpr, None, OffsetOf, OrExpr, ParExpr, PostfixExpr, PrefixExpr,
-		RangeExpr, SelectExpr, SelectorExpr, SizeOf, SqlExpr, StringInterLiteral, StringLiteral,
-		StructInit, Type, TypeOf, UnsafeExpr {
-			return expr.pos
-		}
-		ArrayDecompose {
+		ArrayDecompose, ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr, CastExpr, ChanInit,
+		CharLiteral, ConcatExpr, Comment, EnumVal, FloatLiteral, GoExpr, Ident, IfExpr, IndexExpr,
+		IntegerLiteral, Likely, LockExpr, MapInit, MatchExpr, None, OffsetOf, OrExpr, ParExpr,
+		PostfixExpr, PrefixExpr, RangeExpr, SelectExpr, SelectorExpr, SizeOf, SqlExpr, StringInterLiteral,
+		StringLiteral, StructInit, Type, TypeOf, UnsafeExpr {
 			return expr.pos
 		}
 		IfGuardExpr {
@@ -1288,6 +1285,25 @@ pub fn (expr Expr) is_lit() bool {
 		BoolLiteral, StringLiteral, IntegerLiteral { true }
 		else { false }
 	}
+}
+
+pub fn (expr Expr) is_mut_ident() bool {
+	match expr {
+		Ident {
+			if expr.obj is Var {
+				if expr.obj.is_auto_deref {
+					return true
+				}
+			}
+		}
+		PrefixExpr {
+			if expr.op == .amp && expr.right.is_mut_ident() {
+				return true
+			}
+		}
+		else {}
+	}
+	return false
 }
 
 // check if stmt can be an expression in C
@@ -1534,25 +1550,6 @@ pub fn ex2fe(x Expr) table.FExpr {
 pub struct Table {
 	// pub mut:
 	// main_fn_decl_node FnDecl
-}
-
-pub fn (expr Expr) is_mut_ident() bool {
-	match expr {
-		Ident {
-			if expr.obj is Var {
-				if expr.obj.is_auto_deref {
-					return true
-				}
-			}
-		}
-		PrefixExpr {
-			if expr.op == .amp && expr.right.is_mut_ident() {
-				return true
-			}
-		}
-		else {}
-	}
-	return false
 }
 
 // helper for dealing with `m[k1][k2][k3][k3] = value`
