@@ -462,7 +462,7 @@ jobs:
         run: ASAN_OPTIONS=detect_leaks=0 ./v -cflags -fsanitize=address test-self
       - name: Self tests (-asan-compiler)
         run: 
-          ./v -cflags -fsanitize=address -o v cmd/v 
+          ./v -cflags -fsanitize=address -o v cmd/v &&
           ASAN_OPTIONS=detect_leaks=0 ./v -cc tcc test-self -asan-compiler
 
   tests-sanitize-memory:
