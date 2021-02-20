@@ -962,7 +962,14 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 	} else if left.kind == .enum_ && right.kind == .enum_ && infix_expr.op !in [.ne, .eq] {
 		left_enum := left.info as table.Enum
 		right_enum := right.info as table.Enum
-		if !(left_enum.is_flag && right_enum.is_flag) {
+		if left_enum.is_flag && right_enum.is_flag {
+			// `[flag]` tagged enums are a special case that allow also `|` and `&` binary operators
+			if infix_expr.op !in [.pipe, .amp] {
+				c.error('only `==`, `!=`, `|` and `&` are defined on `[flag]` tagged `enum`, use an explicit cast to `int` if needed',
+					infix_expr.pos)
+			}
+		} else {
+			// Regular enums
 			c.error('only `==` and `!=` are defined on `enum`, use an explicit cast to `int` if needed',
 				infix_expr.pos)
 		}

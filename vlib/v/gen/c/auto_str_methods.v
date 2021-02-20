@@ -576,12 +576,9 @@ fn (mut g Gen) gen_str_for_enum(info table.Enum, styp string, str_fn_name string
 	// Enums tagged with `[flag]` are special in that they can be a combination of enum values
 	if info.is_flag {
 		g.auto_str_funcs.writeln('\tstring ret = _SLIT("[");')
+		g.auto_str_funcs.writeln('\tint first = 1;')
 		for i, val in info.vals {
-			g.auto_str_funcs.write('\tif (it & (1 << $i)) {ret = string_add(ret, _SLIT("')
-			if i > 0 {
-				g.auto_str_funcs.write(', ')
-			}
-			g.auto_str_funcs.writeln('$val"));}')
+			g.auto_str_funcs.writeln('\tif (it & (1 << $i)) {if (!first) {ret = string_add(ret, _SLIT(", "));} ret = string_add(ret, _SLIT("$val")); first = 0;}')
 		}
 		g.auto_str_funcs.writeln('\tret = string_add(ret, _SLIT("]"));')
 		g.auto_str_funcs.writeln('\treturn ret;')
