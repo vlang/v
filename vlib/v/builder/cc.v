@@ -520,6 +520,7 @@ fn (mut v Builder) cc() {
 	vexe := pref.vexe_path()
 	vdir := os.dir(vexe)
 	mut tried_compilation_commands := []string{}
+	mut tcc_output := os.Result{}
 	original_pwd := os.getwd()
 	for {
 		// try to compile with the choosen compiler
@@ -659,6 +660,7 @@ fn (mut v Builder) cc() {
 					exit(101)
 				}
 				if v.pref.retry_compilation {
+					tcc_output = res
 					v.pref.ccompiler = pref.default_c_compiler()
 					if v.pref.is_verbose {
 						eprintln('Compilation with tcc failed. Retrying with $v.pref.ccompiler ...')
@@ -676,7 +678,14 @@ fn (mut v Builder) cc() {
 			}
 		}
 		if !v.pref.show_c_output {
-			v.post_process_c_compiler_output(res)
+			// if tcc failed once, and the system C compiler has failed as well,
+			// print the tcc error instead since it may contain more useful information
+			// see https://discord.com/channels/592103645835821068/592115457029308427/811956304314761228
+			if res.exit_code != 0 && tcc_output.output != '' {
+				v.post_process_c_compiler_output(tcc_output)
+			} else {
+				v.post_process_c_compiler_output(res)
+			}
 		}
 		// Print the C command
 		if v.pref.is_verbose {
