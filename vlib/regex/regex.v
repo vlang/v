@@ -903,11 +903,6 @@ fn (re RE) parse_groups(in_txt string, in_i int) (int, bool, string, int) {
 // main compiler
 //
 // compile return (return code, index) where index is the index of the error in the query string if return code is an error code
-[deprecated]
-pub fn (mut re RE) compile(in_txt string) (int, int) {
-	return re.impl_compile(in_txt)
-}
-
 fn (mut re RE) impl_compile(in_txt string) (int,int) {
 	mut i        := 0      // input string index
 	mut pc       := 0      // program counter
@@ -2380,36 +2375,4 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 	}
 	//println("no_match_found, natural end")
 	return no_match_found, 0
-}
-
-/******************************************************************************
-*
-* Public functions
-*
-******************************************************************************/
-
-//
-// Matchers
-//
-[direct_array_access]
-pub fn (mut re RE) match_string(in_txt string) (int,int) {
-
-	start, mut end := re.match_base(in_txt.str, in_txt.len + 1)
-	if end > in_txt.len {
-		end = in_txt.len
-	}
-
-	if start >= 0 && end > start {
-		if (re.flag & f_ms) != 0 && start > 0 {
-			return no_match_found, 0
-		}
-		if (re.flag & f_me) != 0 && end < in_txt.len {
-			if in_txt[end] in new_line_list {
-				return start, end
-			}
-			return no_match_found, 0
-		}
-		return start, end
-	}
-	return start, end
 }
