@@ -210,7 +210,7 @@ fn (mut cmd Command) parse_commands() {
 			}
 		}
 	}
-	if cmd.is_root() && int(cmd.execute) == 0 {
+	if cmd.is_root() && isnil(cmd.execute) {
 		if !cmd.disable_help {
 			cmd.execute_help()
 			return
@@ -224,19 +224,19 @@ fn (mut cmd Command) parse_commands() {
 		}
 	}
 	cmd.check_required_flags()
-	if int(cmd.pre_execute) > 0 {
+	if !isnil(cmd.pre_execute) {
 		cmd.pre_execute(*cmd) or {
 			eprintln('cli preexecution error: $err')
 			exit(1)
 		}
 	}
-	if int(cmd.execute) > 0 {
+	if !isnil(cmd.execute) {
 		cmd.execute(*cmd) or {
 			eprintln('cli execution error: $err')
 			exit(1)
 		}
 	}
-	if int(cmd.post_execute) > 0 {
+	if !isnil(cmd.post_execute) {
 		cmd.post_execute(*cmd) or {
 			eprintln('cli postexecution error: $err')
 			exit(1)
