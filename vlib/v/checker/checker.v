@@ -960,8 +960,12 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 		c.error('string types only have the following operators defined: `==`, `!=`, `<`, `>`, `<=`, `>=`, and `+`',
 			infix_expr.pos)
 	} else if left.kind == .enum_ && right.kind == .enum_ && infix_expr.op !in [.ne, .eq] {
-		c.error('only `==` and `!=` are defined on `enum`, use an explicit cast to `int` if needed',
-			infix_expr.pos)
+		left_enum := left.info as table.Enum
+		right_enum := right.info as table.Enum
+		if !(left_enum.is_flag && right_enum.is_flag) {
+			c.error('only `==` and `!=` are defined on `enum`; use an explicit cast to `int` if needed',
+				infix_expr.pos)
+		}
 	}
 	// sum types can't have any infix operation except of "is", is is checked before and doesn't reach this
 	if c.table.type_kind(left_type) == .sum_type {
