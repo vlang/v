@@ -434,9 +434,9 @@ jobs:
           sudo apt-get install clang
           ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
       - name: Build V
-        run: make -j4 && ./v -cc clang -cg -cflags -Werror -o v cmd/v
+        run: make -j4 && ./v -cg -cflags -Werror -o v cmd/v
       - name: Self tests (-fsanitize=undefined)
-        run: ./v -cc clang -cflags "-fsanitize=undefined" -o v2 cmd/v && ./v2 -cflags -fsanitize=undefined test-self
+        run: ./v -cflags "-fsanitize=undefined" -o v2 cmd/v && ./v2 -cflags -fsanitize=undefined test-self
 
   tests-sanitize-address:
     runs-on: ubuntu-20.04
@@ -457,9 +457,13 @@ jobs:
           sudo apt-get install clang
           ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
       - name: Build V
-        run: make -j4 && ./v -cc clang -cg -cflags -Werror -o v cmd/v
+        run: make -j4 && ./v -cg -cflags -Werror -o v cmd/v
       - name: Self tests (-fsanitize=address)
         run: ASAN_OPTIONS=detect_leaks=0 ./v -cflags -fsanitize=address test-self
+      - name: Self tests (-asan-compiler)
+        run: 
+          ./v -cflags -fsanitize=address -o v cmd/v 
+          ASAN_OPTIONS=detect_leaks=0 ./v -cc tcc test-self -asan-compiler
 
   tests-sanitize-memory:
     runs-on: ubuntu-20.04
