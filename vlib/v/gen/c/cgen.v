@@ -2447,7 +2447,7 @@ fn (mut g Gen) map_fn_ptrs(key_typ table.TypeSymbol) (string, string, string, st
 			key_eq_fn = '&map_eq_int_2'
 			clone_fn = '&map_clone_int_2'
 		}
-		.int, .u32, .rune, .f32 {
+		.int, .u32, .rune, .f32, .enum_ {
 			hash_fn = '&map_hash_int_4'
 			key_eq_fn = '&map_eq_int_4'
 			clone_fn = '&map_clone_int_4'
