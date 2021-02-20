@@ -279,7 +279,7 @@ pub fn run<T>(port int) {
 	run_app<T>(mut app, port)
 }
 
-fn run_app<T>(mut app T, port int) {
+pub fn run_app<T>(mut app T, port int) {
 	mut l := net.listen_tcp(port) or { panic('failed to listen') }
 	println('[Vweb] Running app on http://localhost:$port')
 	app.Context = Context{
