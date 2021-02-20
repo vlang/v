@@ -573,19 +573,31 @@ fn (mut g Gen) gen_str_for_enum(info table.Enum, styp string, str_fn_name string
 	s := util.no_dots(styp)
 	g.type_definitions.writeln('static string ${str_fn_name}($styp it); // auto')
 	g.auto_str_funcs.writeln('static string ${str_fn_name}($styp it) { /* gen_str_for_enum */')
-	g.auto_str_funcs.writeln('\tswitch(it) {')
-	// Only use the first multi value on the lookup
-	mut seen := []string{len: info.vals.len}
-	for val in info.vals {
-		if info.is_multi_allowed && val in seen {
-			continue
-		} else if info.is_multi_allowed {
-			seen << val
+	// Enums tagged with `[flag]` are special in that they can be a combination of enum values
+	if info.is_flag {
+		clean_name := util.strip_main_name(styp.replace('__', '.'))
+		g.auto_str_funcs.writeln('\tstring ret = _SLIT("$clean_name{");')
+		g.auto_str_funcs.writeln('\tint first = 1;')
+		for i, val in info.vals {
+			g.auto_str_funcs.writeln('\tif (it & (1 << $i)) {if (!first) {ret = string_add(ret, _SLIT(" | "));} ret = string_add(ret, _SLIT(".$val")); first = 0;}')
 		}
-		g.auto_str_funcs.writeln('\t\tcase ${s}_$val: return _SLIT("$val");')
+		g.auto_str_funcs.writeln('\tret = string_add(ret, _SLIT("}"));')
+		g.auto_str_funcs.writeln('\treturn ret;')
+	} else {
+		g.auto_str_funcs.writeln('\tswitch(it) {')
+		// Only use the first multi value on the lookup
+		mut seen := []string{len: info.vals.len}
+		for val in info.vals {
+			if info.is_multi_allowed && val in seen {
+				continue
+			} else if info.is_multi_allowed {
+				seen << val
+			}
+			g.auto_str_funcs.writeln('\t\tcase ${s}_$val: return _SLIT("$val");')
+		}
+		g.auto_str_funcs.writeln('\t\tdefault: return _SLIT("unknown enum value");')
+		g.auto_str_funcs.writeln('\t}')
 	}
-	g.auto_str_funcs.writeln('\t\tdefault: return _SLIT("unknown enum value");')
-	g.auto_str_funcs.writeln('\t}')
 	g.auto_str_funcs.writeln('}')
 }
 
