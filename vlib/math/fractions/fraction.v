@@ -15,8 +15,8 @@ import math.bits
 // 2. d cannot be set to zero. The factory function will panic.
 // 3. If provided d is negative, it will be made positive. n will change as well.
 struct Fraction {
-	n          i64
-	d          i64
+	n i64
+	d i64
 pub:
 	is_reduced bool
 }
@@ -82,12 +82,12 @@ fn general_addition_result(f1 Fraction, f2 Fraction, addition bool) Fraction {
 }
 
 // Fraction add using operator overloading
-pub fn (f1 Fraction) +(f2 Fraction) Fraction {
+pub fn (f1 Fraction) + (f2 Fraction) Fraction {
 	return general_addition_result(f1.reduce(), f2.reduce(), true)
 }
 
 // Fraction subtract using operator overloading
-pub fn (f1 Fraction) -(f2 Fraction) Fraction {
+pub fn (f1 Fraction) - (f2 Fraction) Fraction {
 	return general_addition_result(f1.reduce(), f2.reduce(), false)
 }
 
@@ -122,12 +122,12 @@ fn general_multiplication_result(f1 Fraction, f2 Fraction, multiplication bool) 
 }
 
 // Fraction multiply using operator overloading
-pub fn (f1 Fraction) *(f2 Fraction) Fraction {
+pub fn (f1 Fraction) * (f2 Fraction) Fraction {
 	return general_multiplication_result(f1.reduce(), f2.reduce(), true)
 }
 
 // Fraction divide using operator overloading
-pub fn (f1 Fraction) /(f2 Fraction) Fraction {
+pub fn (f1 Fraction) / (f2 Fraction) Fraction {
 	if f2.n == 0 {
 		panic('Cannot divide by zero')
 	}
@@ -137,30 +137,6 @@ pub fn (f1 Fraction) /(f2 Fraction) Fraction {
 		return f1.negate() / f2.negate()
 	}
 	return general_multiplication_result(f1.reduce(), f2.reduce(), false)
-}
-
-// Fraction add method. Deprecated. Use the operator instead.
-[deprecated]
-pub fn (f1 Fraction) add(f2 Fraction) Fraction {
-	return f1 + f2
-}
-
-// Fraction subtract method. Deprecated. Use the operator instead.
-[deprecated]
-pub fn (f1 Fraction) subtract(f2 Fraction) Fraction {
-	return f1 - f2
-}
-
-// Fraction multiply method. Deprecated. Use the operator instead.
-[deprecated]
-pub fn (f1 Fraction) multiply(f2 Fraction) Fraction {
-	return f1 * f2
-}
-
-// Fraction divide method. Deprecated. Use the operator instead.
-[deprecated]
-pub fn (f1 Fraction) divide(f2 Fraction) Fraction {
-	return f1 / f2
 }
 
 // Fraction negate method
