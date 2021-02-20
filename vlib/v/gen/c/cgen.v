@@ -3501,7 +3501,8 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		g.inside_ternary++
 		// g.write('/* EM ret type=${g.typ(node.return_type)}		expected_type=${g.typ(node.expected_type)}  */')
 	}
-	if node.cond is ast.Ident || node.cond is ast.SelectExpr || node.cond is ast.IndexExpr {
+	if node.cond is ast.Ident || node.cond is ast.SelectorExpr || node.cond is ast.IntegerLiteral
+		|| node.cond is ast.StringLiteral || node.cond is ast.FloatLiteral {
 		pos := g.out.len
 		g.expr(node.cond)
 		cond_var = g.out.after(pos)
