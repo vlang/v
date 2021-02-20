@@ -22,12 +22,11 @@ pub fn (mut p Parser) parse_array_type() table.Type {
 					if const_field.expr is ast.IntegerLiteral {
 						fixed_size = const_field.expr.val.int()
 					} else {
-						p.error_with_pos('non existent integer const $size_expr.name while initializing the size of a static array',
+						p.error_with_pos('non-constant array bound `$size_expr.name`',
 							size_expr.pos)
 					}
 				} else {
-					p.error_with_pos('non existent integer const $size_expr.name while initializing the size of a static array',
-						size_expr.pos)
+					p.error_with_pos('non-constant array bound `$size_expr.name`', size_expr.pos)
 				}
 			}
 			else {

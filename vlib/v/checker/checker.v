@@ -2993,8 +2993,7 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 						fixed_size = cint
 					}
 				} else {
-					c.error('non existent integer const $init_expr.name while initializing the size of a static array',
-						array_init.pos)
+					c.error('non-constant array bound `$init_expr.name`', init_expr.pos)
 				}
 			}
 			else {
