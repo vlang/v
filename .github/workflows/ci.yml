@@ -415,7 +415,7 @@ jobs:
           echo "Running it..."
           ls
 
-  tests-sanitize-undefined:
+  tests-sanitize-undefined-clang:
     runs-on: ubuntu-20.04
     timeout-minutes: 30
     env:
@@ -437,8 +437,30 @@ jobs:
         run: make -j4 && ./v -cg -cflags -Werror -o v cmd/v
       - name: Self tests (-fsanitize=undefined)
         run: ./v -cflags "-fsanitize=undefined" -o v2 cmd/v && ./v2 -cflags -fsanitize=undefined test-self
+  
+  tests-sanitize-undefined-gcc:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 30
+    env:
+      VFLAGS: -cc gcc
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v1
+        with:
+          node-version: 12.x
+      - name: Install dependencies
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list;
+          sudo apt-get update;
+          sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+          sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
+          ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
+      - name: Build V
+        run: make -j4 && ./v -cg -cflags -Werror -o v cmd/v
+      - name: Self tests (-fsanitize=undefined)
+        run: ./v -cflags "-fsanitize=undefined" -o v2 cmd/v && ./v2 -cflags -fsanitize=undefined test-self
 
-  tests-sanitize-address:
+  tests-sanitize-address-clang:
     runs-on: ubuntu-20.04
     timeout-minutes: 30
     env:
@@ -464,8 +486,35 @@ jobs:
         run: 
           ./v -cflags -fsanitize=address -o v cmd/v &&
           ASAN_OPTIONS=detect_leaks=0 ./v -cc tcc test-self -asan-compiler
+  
+  tests-sanitize-address-gcc:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 30
+    env:
+      VFLAGS: -cc gcc
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v1
+        with:
+          node-version: 12.x
+      - name: Install dependencies
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list;
+          sudo apt-get update;
+          sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+          sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
+          sudo apt-get install clang
+          ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
+      - name: Build V
+        run: make -j4 && ./v -cg -cflags -Werror -o v cmd/v
+      - name: Self tests (-fsanitize=address)
+        run: ASAN_OPTIONS=detect_leaks=0 ./v -cflags -fsanitize=address test-self
+      - name: Self tests (-asan-compiler)
+        run: 
+          ./v -cflags -fsanitize=address -o v cmd/v &&
+          ASAN_OPTIONS=detect_leaks=0 ./v -cc tcc test-self -asan-compiler
 
-  tests-sanitize-memory:
+  tests-sanitize-memory-clang:
     runs-on: ubuntu-20.04
     timeout-minutes: 30
     env:
