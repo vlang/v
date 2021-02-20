@@ -515,7 +515,6 @@ fn write_toc(dn doc.DocNode, mut toc strings.Builder) {
 		}
 	}
 	if is_module_readme(dn) {
-		println(dn)
 		if dn.comments.len == 0 || (dn.comments.len > 0 && dn.comments[0].text.len == 0) {
 			return
 		}
