@@ -102,7 +102,7 @@ pub fn (mut f Fmt) write(s string) {
 }
 
 pub fn (mut f Fmt) writeln(s string) {
-	if f.indent > 0 && f.empty_line {
+	if f.indent > 0 && f.empty_line && s.len > 0 {
 		f.write_indent()
 	}
 	f.out.writeln(s)
@@ -1657,10 +1657,10 @@ pub fn (mut f Fmt) wrap_infix(start_pos int, start_len int, ignore_paren bool) {
 
 pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 	dollar := if node.is_comptime { '$' } else { '' }
-	mut single_line := node.branches.len == 2 && node.has_else
+	mut is_ternary := node.branches.len == 2 && node.has_else
 		&& branch_is_single_line(node.branches[0]) && branch_is_single_line(node.branches[1])
 		&& (node.is_expr || f.is_assign || f.is_struct_init || f.single_line_fields)
-	f.single_line_if = single_line
+	f.single_line_if = is_ternary
 	start_pos := f.out.len
 	start_len := f.line_len
 	for {
@@ -1693,20 +1693,20 @@ pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 				}
 			}
 			f.write('{')
-			if single_line {
+			if is_ternary {
 				f.write(' ')
 			} else {
 				f.writeln('')
 			}
 			f.stmts(branch.stmts)
-			if single_line {
+			if is_ternary {
 				f.write(' ')
 			}
 		}
 		// When a single line if is really long, write it again as multiline,
 		// except it is part of an InfixExpr.
-		if single_line && f.line_len > fmt.max_len.last() && !f.buffering {
-			single_line = false
+		if is_ternary && f.line_len > fmt.max_len.last() && !f.buffering {
+			is_ternary = false
 			f.single_line_if = false
 			f.out.go_back_to(start_pos)
 			f.line_len = start_len
@@ -1719,7 +1719,10 @@ pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 	f.single_line_if = false
 	if node.post_comments.len > 0 {
 		f.writeln('')
-		f.comments(node.post_comments, has_nl: false)
+		f.comments(node.post_comments, 
+			has_nl: false
+			prev_line: node.branches.last().body_pos.last_line
+		)
 	}
 }
 
