@@ -12,3 +12,13 @@ fn main() {
 	xyz()
 	abc()
 }
+
+struct S1 {}
+
+[deprecated: 'use bar instead']
+fn (s S1) m() {}
+
+fn method() {
+	s := S1{}
+	s.m()
+}
