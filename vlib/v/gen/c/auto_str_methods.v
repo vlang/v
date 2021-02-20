@@ -469,7 +469,7 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp string, str_fn_name st
 	if clean_struct_v_type_name.contains('_T_') {
 		// TODO: this is a bit hacky. styp shouldn't be even parsed with _T_
 		// use something different than g.typ for styp
-		clean_struct_v_type_name = 
+		clean_struct_v_type_name =
 			clean_struct_v_type_name.replace('_T_', '<').replace('_', ', ').replace('Array', 'array') +
 			'>'
 	}
@@ -575,12 +575,13 @@ fn (mut g Gen) gen_str_for_enum(info table.Enum, styp string, str_fn_name string
 	g.auto_str_funcs.writeln('static string ${str_fn_name}($styp it) { /* gen_str_for_enum */')
 	// Enums tagged with `[flag]` are special in that they can be a combination of enum values
 	if info.is_flag {
-		g.auto_str_funcs.writeln('\tstring ret = _SLIT("[");')
+		clean_name := util.strip_main_name(styp.replace('__', '.'))
+		g.auto_str_funcs.writeln('\tstring ret = _SLIT("$clean_name{");')
 		g.auto_str_funcs.writeln('\tint first = 1;')
 		for i, val in info.vals {
-			g.auto_str_funcs.writeln('\tif (it & (1 << $i)) {if (!first) {ret = string_add(ret, _SLIT(", "));} ret = string_add(ret, _SLIT("$val")); first = 0;}')
+			g.auto_str_funcs.writeln('\tif (it & (1 << $i)) {if (!first) {ret = string_add(ret, _SLIT(" | "));} ret = string_add(ret, _SLIT(".$val")); first = 0;}')
 		}
-		g.auto_str_funcs.writeln('\tret = string_add(ret, _SLIT("]"));')
+		g.auto_str_funcs.writeln('\tret = string_add(ret, _SLIT("}"));')
 		g.auto_str_funcs.writeln('\treturn ret;')
 	} else {
 		g.auto_str_funcs.writeln('\tswitch(it) {')
