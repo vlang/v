@@ -1,4 +1,14 @@
-import os
+[deprecated]
+fn xyz() {
+	println('hi')
+}
+
+[deprecated: 'use foo2 instead']
+fn abc() {
+	println('hi')
+}
+
 fn main() {
-	os.cp_r('./aa', './bb', true)
+	xyz()
+	abc()
 }

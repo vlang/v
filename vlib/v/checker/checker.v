@@ -1784,7 +1784,13 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			call_expr.pos)
 	}
 	if f.is_deprecated {
-		c.warn('function `$f.name` has been deprecated', call_expr.pos)
+		mut deprecation_message := 'function `$f.name` has been deprecated'
+		for d in f.attrs {
+			if d.name == 'deprecated' && d.arg != '' {
+				deprecation_message += '; $d.arg'
+			}
+		}
+		c.warn(deprecation_message, call_expr.pos)
 	}
 	if f.is_unsafe && !c.inside_unsafe
 		&& (f.language != .c || (f.name[2] in [`m`, `s`] && f.mod == 'builtin')) {
