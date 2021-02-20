@@ -1562,7 +1562,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			c.warn('method `${left_type_sym.name}.$method_name` must be called from an `unsafe` block',
 				call_expr.pos)
 		}
-		if method.is_deprecated {
+		if !c.cur_fn.is_deprecated && method.is_deprecated {
 			mut deprecation_message := 'method `${left_type_sym.name}.$method.name` has been deprecated'
 			for attr in method.attrs {
 				if attr.name == 'deprecated' && attr.arg != '' {
@@ -1792,7 +1792,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		c.error('function `$f.name` is private, so you can not import it in module `$c.mod`',
 			call_expr.pos)
 	}
-	if f.is_deprecated {
+	if !c.cur_fn.is_deprecated && f.is_deprecated {
 		mut deprecation_message := 'function `$f.name` has been deprecated'
 		for d in f.attrs {
 			if d.name == 'deprecated' && d.arg != '' {
