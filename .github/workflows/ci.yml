@@ -510,11 +510,10 @@ jobs:
           ## .\.github\workflows\windows-install-sdl.bat
       - name: Self tests (-fsanitize=address)
         run: |
-          ./v -cg cmd\tools\vtest-self.v
-          ./v -cflags "-fsanitize=address /Zi" test-self
+          .\v.exe -cflags "-fsanitize=address" test-self
       - name: Self tests (-asan-compiler)
         run: |
-          .\v.exe -cflags "-fsanitize=address /Zi" -o v.exe cmd/v &&
+          .\v.exe -cflags "-fsanitize=address" -o v.exe cmd/v &&
           ASAN_OPTIONS=detect_leaks=0 .\v.exe -cc tcc -no-retry-compilation test-self -asan-compiler
 
   tests-sanitize-address-gcc:
