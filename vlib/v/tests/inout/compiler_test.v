@@ -1,3 +1,7 @@
+// .out file:
+// To test a panic, remove everything after the long `===` line
+// To test a panic triggered by a builtin function, use `line: *`.
+
 import os
 import term
 import v.util
@@ -49,9 +53,14 @@ fn test_all() {
 		expected = expected.trim_right('\r\n').replace('\r\n', '\n')
 		if expected.contains('================ V panic ================') {
 			// panic include backtraces and absolute file paths, so can't do char by char comparison
-			n_found := normalize_panic_message(found, vroot)
+			mut n_found := normalize_panic_message(found, vroot)
 			n_expected := normalize_panic_message(expected, vroot)
 			if found.contains('================ V panic ================') {
+				// allow `line: *`
+				any_line := '\n     line: *'
+				if n_expected.ends_with(any_line) {
+					n_found = n_found.all_before_last('\n') + any_line
+				}
 				if n_found.contains(n_expected) {
 					println(term.green('OK (panic)'))
 					continue
