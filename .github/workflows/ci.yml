@@ -511,10 +511,6 @@ jobs:
       - name: Self tests (-fsanitize=address)
         run: |
           .\v.exe -cflags "-fsanitize=address" test-self
-      - name: Self tests (-asan-compiler)
-        run: |
-          .\v.exe -cflags "-fsanitize=address" -o v.exe cmd/v &&
-          ASAN_OPTIONS=detect_leaks=0 .\v.exe -cc tcc -no-retry-compilation test-self -asan-compiler
 
   tests-sanitize-address-gcc:
     runs-on: ubuntu-20.04
