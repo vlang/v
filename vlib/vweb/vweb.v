@@ -86,7 +86,8 @@ pub struct Cookie {
 pub struct Result {
 }
 
-fn (mut ctx Context) send_response_to_client(mimetype string, res string) bool {
+// vweb intern function
+pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bool {
 	if ctx.done {
 		return false
 	}
@@ -628,7 +629,8 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	}
 }
 
-fn (mut ctx Context) parse_form(s string) {
+// vweb intern function
+pub fn (mut ctx Context) parse_form(s string) {
 	if ctx.req.method !in vweb.methods_with_form {
 		return
 	}
@@ -657,8 +659,9 @@ fn (mut ctx Context) parse_form(s string) {
 	// ...
 }
 
+// vweb intern function
 [manualfree]
-fn (mut ctx Context) parse_multipart_form(s string, b string) {
+pub fn (mut ctx Context) parse_multipart_form(s string, b string) {
 	if ctx.req.method !in vweb.methods_with_form {
 		return
 	}
