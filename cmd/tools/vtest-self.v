@@ -148,6 +148,7 @@ const (
 		'vlib/v/tests/voidptr_to_u64_cast_b_test.v',
 		'vlib/dl/dl_test.v',
 		'vlib/strconv/f32_f64_to_string_test.v',
+		'vlib/x/ttf/ttf_test.v',
 	]
 	skip_with_asan_compiler       = [
 		'vlib/builtin/map_of_floats_test.v',
