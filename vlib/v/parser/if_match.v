@@ -129,7 +129,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 		if is_guard {
 			p.close_scope()
 		}
-		comments = p.eat_comments(follow_up: true)
+		comments = p.eat_comments({})
 		if is_comptime {
 			if p.tok.kind == .key_else {
 				p.error('use `\$else` instead of `else` in compile-time `if` branches')

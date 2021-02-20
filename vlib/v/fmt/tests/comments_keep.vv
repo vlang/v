@@ -20,9 +20,6 @@ fn main() {
 	u := User{
 		name: 'Peter'
 	}
-	if true {
-	}
-	// some comment after an if without else
 	n := sizeof(User)
 	// else
 	// else {
@@ -61,10 +58,14 @@ fn linebreaks_in_block_comments() {
 	*****/
 }
 
-fn empty_line_after_if() {
-	if foo {
+fn ifs_comments_and_empty_lines() {
+	if true {
+	}
+	// some comment after an if without else
+	if false {
 	}
 
-	// cmt
-	bar()
+	// this is parsed as post_comment of the if but does not really belong there
+	// thereore keep the empty line
+	something_else()
 }
