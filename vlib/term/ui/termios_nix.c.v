@@ -9,6 +9,7 @@ import time
 #include <termios.h>
 #include <sys/ioctl.h>
 #include <signal.h>
+
 fn C.tcgetattr()
 
 fn C.tcsetattr()
@@ -222,7 +223,7 @@ fn (mut ctx Context) termios_loop() {
 		}
 		// println('SLEEPING: $sleep_len')
 		if sleep_len > 0 {
-			time.usleep(sleep_len)
+			time.wait(sleep_len * time.microsecond)
 		}
 		if !ctx.paused {
 			sw.restart()
@@ -287,7 +288,8 @@ fn single_char(buf string) &Event {
 		// 65 ... 90 { event = Event{ ...event, code: KeyCode(32 | ch), modifiers: .shift } }
 		// The bit `or`s here are really just `+`'s, just written in this way for a tiny performance improvement
 		// don't treat tab, enter as ctrl+i, ctrl+j
-		1...8, 11...26 { event = &Event{
+		1...8, 11...26 {
+			event = &Event{
 				typ: event.typ
 				ascii: event.ascii
 				utf8: event.utf8
