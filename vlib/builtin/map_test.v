@@ -626,3 +626,7 @@ fn test_map_assign_empty_map_init() {
 	assert a == map[string]int{}
 	assert '$a' == '{}'
 }
+
+fn test_in_map_literal() {
+	assert 1 in map{1: 'one'}
+}
