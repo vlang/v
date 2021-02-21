@@ -1287,7 +1287,7 @@ pub fn (expr Expr) is_lit() bool {
 	}
 }
 
-pub fn (expr Expr) is_mut_ident() bool {
+pub fn (expr Expr) is_auto_deref_var() bool {
 	match expr {
 		Ident {
 			if expr.obj is Var {
@@ -1297,7 +1297,7 @@ pub fn (expr Expr) is_mut_ident() bool {
 			}
 		}
 		PrefixExpr {
-			if expr.op == .amp && expr.right.is_mut_ident() {
+			if expr.op == .amp && expr.right.is_auto_deref_var() {
 				return true
 			}
 		}

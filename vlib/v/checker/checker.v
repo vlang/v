@@ -702,7 +702,8 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 	right_pos := infix_expr.right.position()
 	left_right_pos := left_pos.extend(right_pos)
 	if (left_type.is_ptr() || left.is_pointer()) && infix_expr.op in [.plus, .minus] {
-		if !c.inside_unsafe && !infix_expr.left.is_mut_ident() && !infix_expr.right.is_mut_ident() {
+		if !c.inside_unsafe && !infix_expr.left.is_auto_deref_var()
+			&& !infix_expr.right.is_auto_deref_var() {
 			c.warn('pointer arithmetic is only allowed in `unsafe` blocks', left_pos)
 		}
 		if left_type == table.voidptr_type {
@@ -1351,7 +1352,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			// need to return `array_xxx` instead of `array`
 			// in ['clone', 'str'] {
 			call_expr.receiver_type = left_type.to_ptr()
-			if call_expr.left.is_mut_ident() {
+			if call_expr.left.is_auto_deref_var() {
 				call_expr.return_type = left_type.deref()
 			} else {
 				call_expr.return_type = call_expr.receiver_type.set_nr_muls(0)
@@ -1371,7 +1372,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 				if method_name[0] == `m` {
 					c.fail_if_immutable(call_expr.left)
 				}
-				if call_expr.left.is_mut_ident() {
+				if call_expr.left.is_auto_deref_var() {
 					ret_type = left_type.deref()
 				} else {
 					ret_type = left_type
@@ -2566,7 +2567,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		right := if i < assign_stmt.right.len { assign_stmt.right[i] } else { assign_stmt.right[0] }
 		mut right_type := assign_stmt.right_types[i]
 		if is_decl {
-			if right.is_mut_ident() {
+			if right.is_auto_deref_var() {
 				left_type = c.table.mktyp(right_type.deref())
 			} else {
 				left_type = c.table.mktyp(right_type)
@@ -2700,7 +2701,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 				right.position())
 		}
 		left_is_ptr := left_type.is_ptr() || left_sym.is_pointer()
-		if left_is_ptr && !left.is_mut_ident() {
+		if left_is_ptr && !left.is_auto_deref_var() {
 			if !c.inside_unsafe && assign_stmt.op !in [.assign, .decl_assign] {
 				// ptr op=
 				c.warn('pointer arithmetic is only allowed in `unsafe` blocks', assign_stmt.pos)
@@ -2815,7 +2816,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 				}
 			}
 		}
-		if !is_blank_ident && !right.is_mut_ident() && right_sym.kind != .placeholder
+		if !is_blank_ident && !right.is_auto_deref_var() && right_sym.kind != .placeholder
 			&& left_sym.kind != .interface_ {
 			// Dual sides check (compatibility check)
 			c.check_expected(right_type_unwrapped, left_type_unwrapped) or {
@@ -2984,7 +2985,7 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 			}
 			// The first element's type
 			if i == 0 {
-				if expr.is_mut_ident() {
+				if expr.is_auto_deref_var() {
 					elem_type = c.table.mktyp(typ.deref())
 				} else {
 					elem_type = c.table.mktyp(typ)
@@ -5077,7 +5078,7 @@ pub fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) table.Type {
 	typ := c.expr(node.expr)
 	typ_sym := c.table.get_type_symbol(typ)
 	is_non_void_pointer := (typ.is_ptr() || typ.is_pointer()) && typ_sym.kind != .voidptr
-	if !c.inside_unsafe && is_non_void_pointer && !node.expr.is_mut_ident() {
+	if !c.inside_unsafe && is_non_void_pointer && !node.expr.is_auto_deref_var() {
 		c.warn('pointer arithmetic is only allowed in `unsafe` blocks', node.pos)
 	}
 	if !(typ_sym.is_number() || (c.inside_unsafe && is_non_void_pointer)) {
@@ -5222,7 +5223,7 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 			'(note, that variables may be mutable but string values are always immutable, like in Go and Java)',
 			node.pos)
 	}
-	if !c.inside_unsafe && ((typ.is_ptr() && !node.left.is_mut_ident()) || typ.is_pointer()) {
+	if !c.inside_unsafe && ((typ.is_ptr() && !node.left.is_auto_deref_var()) || typ.is_pointer()) {
 		mut is_ok := false
 		if mut node.left is ast.Ident {
 			if node.left.obj is ast.Var {
@@ -5402,11 +5403,11 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) table.Type {
 	}
 	// `{'age': 20}`
 	mut key0_type := c.table.mktyp(c.expr(node.keys[0]))
-	if node.keys[0].is_mut_ident() {
+	if node.keys[0].is_auto_deref_var() {
 		key0_type = key0_type.deref()
 	}
 	mut val0_type := c.table.mktyp(c.expr(node.vals[0]))
-	if node.vals[0].is_mut_ident() {
+	if node.vals[0].is_auto_deref_var() {
 		val0_type = val0_type.deref()
 	}
 	mut same_key_type := true
