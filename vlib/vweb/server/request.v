@@ -36,8 +36,10 @@ pub fn parse_request(mut reader io.BufferedReader) ?Request {
 	// body
 	mut body := [byte(0)]
 	if 'content-length' in headers {
-		body = []byte{len: headers['content-length'][0].int()}
+		n := headers['content-length'][0].int()
+		body = []byte{len: n, cap: n+1}
 		reader.read(mut body) or { }
+		body << 0
 	}
 
 	mut http_headers := map[string]string{}

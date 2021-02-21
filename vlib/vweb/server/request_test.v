@@ -56,7 +56,7 @@ fn test_parse_request_two_header_values() {
 }
 
 fn test_parse_request_body() {
-	req := parse_request(mut reader('GET / HTTP/1.1\r\nTest1: a\r\nTest2: b\r\nContent-Length: 4\r\n\r\nbody')) or {
+	req := parse_request(mut reader('GET / HTTP/1.1\r\nTest1: a\r\nTest2: b\r\nContent-Length: 4\r\n\r\nbodyabc')) or {
 		panic('did not parse: $err')
 	}
 	assert req.data == 'body'
