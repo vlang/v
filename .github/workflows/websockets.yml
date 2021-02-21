@@ -23,11 +23,11 @@ jobs:
           echo $VFLAGS
           sudo ln -s $PWD/thirdparty/tcc/tcc.exe /usr/local/bin/tcc ## TODO: remove
           make -j4
-          ./v -cg -cflags -Werror -o v cmd/v
+          ./v -g -o v cmd/v
       - name: v doctor
         run: ./v doctor
       - name: Run websockets tests
-        run: ./v -cflags "-Werror" test vlib/x/websocket/
+        run: ./v -g test vlib/x/websocket/
 
   autobahn_tests:
     name: Autobahn integrations tests
