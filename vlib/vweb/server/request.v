@@ -37,7 +37,7 @@ pub fn parse_request(mut reader io.BufferedReader) ?Request {
 	mut body := [byte(0)]
 	if 'content-length' in headers {
 		n := headers['content-length'][0].int()
-		body = []byte{len: n, cap: n+1}
+		body = []byte{len: n, cap: n + 1}
 		reader.read(mut body) or { }
 		body << 0
 	}
