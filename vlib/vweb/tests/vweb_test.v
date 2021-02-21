@@ -50,7 +50,7 @@ fn test_a_simple_vweb_app_runs_in_the_background() {
 		res := os.system(server_exec_cmd)
 		assert res == 0
 	}
-	time.sleep_ms(100)
+	time.wait(100 * time.millisecond)
 }
 
 // web client tests follow
@@ -238,7 +238,7 @@ fn simple_tcp_client(config SimpleTcpClientConfig) ?string {
 			if tries > config.retries {
 				return error(err)
 			}
-			time.sleep_ms(100)
+			time.wait(100 * time.millisecond)
 			continue
 		}
 		break
