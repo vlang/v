@@ -43,3 +43,8 @@ pub fn (mut app App) cookie() vweb.Result {
 	app.set_cookie(name: 'cookie', value: 'test')
 	return app.text('Headers: $app.headers')
 }
+
+[post]
+pub fn (mut app App) post() vweb.Result {
+	return app.text('Post body: ${string(app.req.body)}')
+}
