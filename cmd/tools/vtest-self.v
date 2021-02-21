@@ -28,6 +28,7 @@ const (
 		'vlib/v/tests/ptr_arithmetic_test.v',
 		'vlib/v/tests/unsafe_test.v',
 		'vlib/x/websocket/websocket_test.v',
+		'vlib/v/tests/match_in_map_init_test.v',
 	]
 	skip_with_fsanitize_undefined = [
 		'vlib/encoding/csv/reader_test.v',
@@ -315,6 +316,7 @@ const (
 		'vlib/v/checker/tests/lock_nonshared.vv',
 		'vlib/v/checker/tests/shared_type_mismatch.vv',
 		'vlib/v/tests/match_with_complex_exprs_in_branches_test.v',
+		'vlib/v/tests/match_in_map_init_test.v',
 	]
 	skip_test_files               = []string{}
 	skip_on_musl                  = [

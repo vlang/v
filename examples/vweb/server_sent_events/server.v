@@ -15,7 +15,7 @@ fn main() {
 
 pub fn (mut app App) init_once() {
 	app.serve_static('/favicon.ico', 'favicon.ico', 'img/x-icon')
-	app.handle_static('.')
+	app.handle_static('.', false)
 }
 
 pub fn (mut app App) index() vweb.Result {
