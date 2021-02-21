@@ -551,7 +551,7 @@ pub fn read_file_array<T>(path string) []T {
 	C.rewind(fp)
 	// read the actual data from the file
 	len := fsize / tsize
-	buf := malloc(fsize)
+	buf := unsafe { malloc(fsize) }
 	C.fread(buf, fsize, 1, fp)
 	C.fclose(fp)
 	return array{
