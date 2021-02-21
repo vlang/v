@@ -1594,9 +1594,9 @@ Just like structs, unions support embedding.
 
 ```v
 struct Rgba32_Component {
-	b byte
-	g byte
 	r byte
+	g byte
+	b byte
 	a byte
 }
 
