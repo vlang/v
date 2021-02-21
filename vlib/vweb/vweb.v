@@ -136,13 +136,13 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 	return true
 }
 
-// Response HTTP_OK with s as payload with content-type `application/html`
+// Response HTTP_OK with s as payload with content-type `text/html`
 pub fn (mut ctx Context) html(s string) Result {
 	ctx.send_response_to_client('text/html', s)
 	return Result{}
 }
 
-// Response HTTP_OK with s as payload with content-type `application/text`
+// Response HTTP_OK with s as payload with content-type `text/plain`
 pub fn (mut ctx Context) text(s string) Result {
 	ctx.send_response_to_client('text/plain', s)
 	return Result{}
@@ -214,6 +214,7 @@ pub fn (mut ctx Context) set_cookie(cookie Cookie) {
 }
 
 // Old function
+[deprecated]
 pub fn (mut ctx Context) set_cookie_old(key string, val string) {
 	// TODO support directives, escape cookie value (https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie)
 	// ctx.add_header('Set-Cookie', '${key}=${val};  Secure; HttpOnly')
