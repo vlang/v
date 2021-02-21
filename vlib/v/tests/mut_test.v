@@ -254,3 +254,97 @@ fn test_mut_12() {
     mut arr := [[0, 0]]
 	foo3(mut arr)
 }
+
+struct Foo {
+mut:
+	foo int
+}
+
+fn foo4(mut f Foo) {
+	f2 := &f
+	f.foo = 100
+	println(f.foo)
+	println(f2.foo)
+	assert f.foo == 100
+	assert f2.foo == 100
+}
+
+fn test_mut_13() {
+	mut f := Foo{foo: 1}
+	foo4(mut f)
+}
+
+fn foo5(mut arr []int) {
+	arr2 := &arr
+	arr[0] = 0
+	println(arr[0]) // 0
+	assert arr[0] == 0
+	unsafe {
+		println(arr2[0]) // 0
+		assert arr2[0] == 0
+	}
+}
+
+fn test_mut_14() {
+	mut arr := [1,2,3]
+	foo5(mut arr)
+}
+
+fn foo6(mut arr [3]int) {
+	arr2 := &arr
+	arr[0] = 0
+	println(arr[0]) // 0
+	assert arr[0] == 0
+	unsafe {
+		println(arr2[0]) // 0
+		assert arr2[0] == 0
+	}
+}
+
+fn test_mut_15() {
+	mut arr := [1,2,3]!
+	foo6(mut arr)
+}
+
+fn foo7(mut m map[string]int) {
+	m2 := &m
+	m['one'] = 1
+	println(m['one']) // 1
+	assert m['one'] == 1
+	unsafe {
+		println(m2['one']) // 1
+		assert m2['one'] == 1
+	}
+}
+
+fn test_mut_16() {
+	mut m := map{'one': 100, 'two': 2}
+	foo7(mut m)
+}
+
+fn test_mut_17() {
+	mut arr := [map{'foo':1}]
+	for _, mut j in arr {
+		mut k := j.clone()
+		j['foo'] = 0
+		unsafe {k['foo'] = 10}
+		println(j)
+		println(k)
+		assert j == {'foo': 0}
+		assert k == {'foo': 10}
+	}
+}
+
+fn foo8(mut a [1]int) {
+	a2 := a
+	a[0] = 100
+	println(a)
+	println(a2)
+	assert '$a' == '[100]'
+	assert '$a2' == '[1]'
+}
+
+fn test_mut_18() {
+	mut a := [1]!
+	foo8(mut a)
+}

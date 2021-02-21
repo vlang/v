@@ -1,5 +1,6 @@
 import x.websocket
 import time
+import rand
 
 struct WebsocketTestResults {
 pub mut:
@@ -9,13 +10,14 @@ pub mut:
 
 // tests with internal ws servers
 fn test_ws() {
-	go start_server()
-	time.sleep_ms(100)
-	ws_test('ws://localhost:30000') or { assert false }
+	port := 30000 + rand.intn(1024)
+	go start_server(port)
+	time.sleep_ms(500)
+	ws_test('ws://localhost:$port') or { assert false }
 }
 
-fn start_server() ? {
-	mut s := websocket.new_server(30000, '')
+fn start_server(listen_port int) ? {
+	mut s := websocket.new_server(listen_port, '')
 	// make that in execution test time give time to execute at least one time
 	s.ping_interval = 1
 

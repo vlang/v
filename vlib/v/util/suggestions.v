@@ -9,17 +9,6 @@ mut:
 	similarity f32
 }
 
-fn compare_by_similarity(a &Possibility, b &Possibility) int {
-	if a.similarity < b.similarity {
-		return -1
-	}
-	if a.similarity > b.similarity {
-		return 1
-	}
-	return 0
-}
-
-//
 struct Suggestion {
 mut:
 	known   []Possibility
@@ -45,10 +34,12 @@ pub fn (mut s Suggestion) add(val string) {
 	if sval in [s.wanted, s.swanted] {
 		return
 	}
+	// round to 3 decimal places to avoid float comparison issues
+	similarity := f32(int(strings.dice_coefficient(s.swanted, sval) * 1000)) / 1000
 	s.known << Possibility{
 		value: val
 		svalue: sval
-		similarity: strings.dice_coefficient(s.swanted, sval)
+		similarity: similarity
 	}
 }
 
@@ -59,7 +50,7 @@ pub fn (mut s Suggestion) add_many(many []string) {
 }
 
 pub fn (mut s Suggestion) sort() {
-	s.known.sort_with_compare(compare_by_similarity)
+	s.known.sort(a.similarity < b.similarity)
 }
 
 pub fn (s Suggestion) say(msg string) string {
@@ -67,7 +58,7 @@ pub fn (s Suggestion) say(msg string) string {
 	mut found := false
 	if s.known.len > 0 {
 		top_posibility := s.known.last()
-		if top_posibility.similarity > 0.10 {
+		if top_posibility.similarity > 0.5 {
 			val := top_posibility.value
 			if !val.starts_with('[]') {
 				res += '.\nDid you mean `$val`?'

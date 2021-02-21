@@ -2447,7 +2447,7 @@ fn (mut g Gen) map_fn_ptrs(key_typ table.TypeSymbol) (string, string, string, st
 			key_eq_fn = '&map_eq_int_2'
 			clone_fn = '&map_clone_int_2'
 		}
-		.int, .u32, .rune, .f32 {
+		.int, .u32, .rune, .f32, .enum_ {
 			hash_fn = '&map_hash_int_4'
 			key_eq_fn = '&map_eq_int_4'
 			clone_fn = '&map_clone_int_4'
@@ -2786,6 +2786,10 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.SizeOf {
 			node_typ := g.unwrap_generic(node.typ)
+			sym := g.table.get_type_symbol(node_typ)
+			if sym.language == .v && sym.kind in [.placeholder, .any] {
+				g.error('unknown type `$sym.name`', node.pos)
+			}
 			styp := g.typ(node_typ)
 			g.write('/*SizeOf*/ sizeof(${util.no_dots(styp)})')
 		}
@@ -3497,7 +3501,8 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		g.inside_ternary++
 		// g.write('/* EM ret type=${g.typ(node.return_type)}		expected_type=${g.typ(node.expected_type)}  */')
 	}
-	if node.cond is ast.Ident || node.cond is ast.SelectExpr || node.cond is ast.IndexExpr {
+	if node.cond is ast.Ident || node.cond is ast.SelectorExpr || node.cond is ast.IntegerLiteral
+		|| node.cond is ast.StringLiteral || node.cond is ast.FloatLiteral {
 		pos := g.out.len
 		g.expr(node.cond)
 		cond_var = g.out.after(pos)
@@ -5036,10 +5041,11 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	if is_multiline {
 		g.indent--
 	}
-	// if struct_init.fields.len == 0 && info.fields.len == 0 {
+
 	if !initialized {
 		g.write('\n#ifndef __cplusplus\n0\n#endif\n')
 	}
+
 	g.write('}')
 	if g.is_shared && !g.inside_opt_data && !g.is_array_set {
 		g.write('}, sizeof($shared_styp))')
@@ -6113,7 +6119,7 @@ $staticprefix $interface_name* I_${cctype}_to_Interface_${interface_name}_ptr($c
 					method_call += '_method_wrapper'
 				}
 				if g.pref.build_mode != .build_module {
-					methods_struct.writeln('\t\t._method_${c_name(method.name)} = $method_call,')
+					methods_struct.writeln('\t\t._method_${c_name(method.name)} = (void*) $method_call,')
 				}
 			}
 			if g.pref.build_mode != .build_module {

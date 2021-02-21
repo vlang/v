@@ -4,7 +4,7 @@ module io
 pub interface ReaderWriter {
 	// from Reader
 	read(mut buf []byte) ?int
-		// from Writer
+	// from Writer
 	write(buf []byte) ?int
 }
 
@@ -30,20 +30,4 @@ pub fn make_readerwriter(r Reader, w Writer) ReaderWriterImpl {
 		r: r
 		w: w
 	}
-}
-
-struct Zzz_CoerceInterfaceTableGeneration {
-}
-
-fn (_ Zzz_CoerceInterfaceTableGeneration) write(buf []byte) ?int {
-	return none
-}
-
-fn (_ Zzz_CoerceInterfaceTableGeneration) read(mut buf []byte) ?int {
-	return none
-}
-
-fn zzz_reader_writer_coerce_compiler() {
-	x := Zzz_CoerceInterfaceTableGeneration{}
-	_ := make_readerwriter(x, x)
 }

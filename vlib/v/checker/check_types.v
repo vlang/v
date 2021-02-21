@@ -32,7 +32,7 @@ pub fn (mut c Checker) check_basic(got table.Type, expected table.Type) bool {
 		return true
 	}
 	// allow pointers to be initialized with 0. TODO: use none instead
-	if expected.is_ptr() && got_.idx() == table.int_type_idx {
+	if expected.is_ptr() && got_ == table.int_literal_type {
 		return true
 	}
 	// TODO: use sym so it can be absorbed into below [.voidptr, .any] logic

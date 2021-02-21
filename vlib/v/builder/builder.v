@@ -41,7 +41,7 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 	if pref.use_color == .never {
 		util.emanager.set_support_color(false)
 	}
-	msvc := find_msvc() or {
+	msvc := find_msvc(pref.m64) or {
 		if pref.ccompiler == 'msvc' {
 			verror('Cannot find MSVC on this OS')
 		}

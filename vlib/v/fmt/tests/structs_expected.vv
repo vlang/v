@@ -51,6 +51,8 @@ mut:
 	somefield2 /* 11 */ int // 12
 pub:
 	somefield3 int
+
+	somefield4 int
 	/*
 	13
 14

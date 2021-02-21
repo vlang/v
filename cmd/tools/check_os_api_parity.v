@@ -95,7 +95,7 @@ fn (app App) gen_api_for_module_in_os(mod_name string, os_name string) string {
 	}
 	mpath := os.join_path('vlib', mod_name.replace('.', '/'))
 	tmpname := '/tmp/${mod_name}_${os_name}.c'
-	prefs, _ := pref.parse_args(['-os', os_name, '-o', tmpname, '-shared', mpath])
+	prefs, _ := pref.parse_args([], ['-os', os_name, '-o', tmpname, '-shared', mpath])
 	mut b := builder.new_builder(prefs)
 	b.compile_c()
 	mut res := []string{}

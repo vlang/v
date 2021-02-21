@@ -515,6 +515,9 @@ fn write_toc(dn doc.DocNode, mut toc strings.Builder) {
 		}
 	}
 	if is_module_readme(dn) {
+		if dn.comments.len == 0 || (dn.comments.len > 0 && dn.comments[0].text.len == 0) {
+			return
+		}
 		toc.write('<li class="open"><a href="#readme_$toc_slug">README</a>')
 	} else if dn.name != 'Constants' {
 		toc.write('<li class="open"><a href="#$toc_slug">$dn.kind $dn.name</a>')

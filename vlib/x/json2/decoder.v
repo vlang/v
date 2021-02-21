@@ -311,7 +311,7 @@ fn (mut p Parser) decode_string() ?Any {
 	}
 	p.next()
 	defer {
-		strwr.free()
+		unsafe { strwr.free() }
 	}
 	str := strwr.str()
 	return Any(str)

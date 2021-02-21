@@ -134,6 +134,7 @@ pub fn new_test_session(_vargs string) TestSession {
 		skip_files << 'examples/sokol/02_cubes_glsl/cube_glsl.v'
 		skip_files << 'examples/sokol/03_march_tracing_glsl/rt_glsl.v'
 		skip_files << 'examples/sokol/04_multi_shader_glsl/rt_glsl.v'
+		skip_files << 'examples/sokol/05_instancing_glsl/rt_glsl.v'
 	}
 	if testing.github_job != 'ubuntu-tcc' {
 		skip_files << 'examples/wkhtmltopdf.v' // needs installation of wkhtmltopdf from https://github.com/wkhtmltopdf/packaging/releases

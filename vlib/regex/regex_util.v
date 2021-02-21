@@ -14,9 +14,8 @@ module regex
 * Inits
 *
 ******************************************************************************/
-// regex create a regex object from the query string
-[deprecated]
-pub fn regex(pattern string) (RE,int,int){
+// regex create a regex object from the query string, retunr RE object and errors as re_err, err_pos
+pub fn regex_base(pattern string) (RE,int,int){
 	// init regex
     mut re := regex.RE{}
     re.prog = []Token    {len: pattern.len + 1} // max program length, can not be longer then the pattern
@@ -28,7 +27,7 @@ pub fn regex(pattern string) (RE,int,int){
     re.group_stack = []int{len: re.group_max, init: -1}
 	re.group_data  = []int{len: re.group_max, init: -1}
 
-	re_err,err_pos := re.compile(pattern)
+	re_err,err_pos := re.impl_compile(pattern)
 	return re, re_err, err_pos
 }
 
@@ -110,6 +109,36 @@ pub fn (re RE) get_group_list() []Re_group {
 	}
 	return res
 }
+
+/******************************************************************************
+*
+* Matchers
+*
+******************************************************************************/
+// match_string Match the pattern with the in_txt string
+[direct_array_access]
+pub fn (mut re RE) match_string(in_txt string) (int,int) {
+
+	start, mut end := re.match_base(in_txt.str, in_txt.len + 1)
+	if end > in_txt.len {
+		end = in_txt.len
+	}
+
+	if start >= 0 && end > start {
+		if (re.flag & f_ms) != 0 && start > 0 {
+			return no_match_found, 0
+		}
+		if (re.flag & f_me) != 0 && end < in_txt.len {
+			if in_txt[end] in new_line_list {
+				return start, end
+			}
+			return no_match_found, 0
+		}
+		return start, end
+	}
+	return start, end
+}
+
 
 /******************************************************************************
 *

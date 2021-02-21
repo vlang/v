@@ -67,7 +67,7 @@ pub struct C.FONStextIter {
 	codepoint u32
 	isize i16
 	iblur i16
-	font &FONSfont
+	font &C.FONSfont
 	prevGlyphIndex int
 	str byteptr
 	next byteptr

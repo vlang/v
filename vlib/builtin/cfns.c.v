@@ -275,6 +275,8 @@ fn C._wgetcwd() int
 
 fn C._fullpath() int
 
+fn C.GetFullPathName(voidptr, u32, voidptr, voidptr) u32
+
 fn C.GetCommandLine() voidptr
 
 fn C.LocalFree()

@@ -551,6 +551,14 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 			p.tok.position())
 	}
 	mut label_names := []string{}
+	mut func := table.Fn{
+		params: args
+		is_variadic: is_variadic
+		return_type: return_type
+	}
+	name := 'anon_fn_${p.table.fn_type_signature(func)}_$p.tok.pos'
+	keep_fn_name := p.cur_fn_name
+	p.cur_fn_name = name
 	if p.tok.kind == .lcbr {
 		tmp := p.label_names
 		p.label_names = []
@@ -558,13 +566,8 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 		label_names = p.label_names
 		p.label_names = tmp
 	}
+	p.cur_fn_name = keep_fn_name
 	p.close_scope()
-	mut func := table.Fn{
-		params: args
-		is_variadic: is_variadic
-		return_type: return_type
-	}
-	name := 'anon_${p.tok.pos}_${p.table.fn_type_signature(func)}'
 	func.name = name
 	idx := p.table.find_or_register_fn_type(p.mod, func, true, false)
 	typ := table.new_type(idx)

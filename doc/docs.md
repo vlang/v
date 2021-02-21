@@ -3827,29 +3827,42 @@ The advantage of using V for this is the simplicity and predictability of the la
 cross-platform support. "V scripts" run on Unix-like systems as well as on Windows.
 
 Use the `.vsh` file extension. It will make all functions in the `os`
-module global (so that you can use `ls()` instead of `os.ls()`, for example).
+module global (so that you can use `mkdir()` instead of `os.mkdir()`, for example).
 
+An example `deploy.vsh`:
 ```v wip
-#!/usr/local/bin/v run
 // The shebang above associates the file to V on Unix-like systems,
 // so it can be run just by specifying the path to the file
 // once it's made executable using `chmod +x`.
 
-rm('build/*')?
-// Same as:
-files_build := ls('build/')?
-for file in files_build {
-    rm(file)?
-}
+// Remove if build/ exits, ignore any errors if it doesn't
+rmdir_all('build') or { }
 
-mv('*.v', 'build/')?
-// Same as:
-files := ls('.')?
-for file in files {
-    if file.ends_with('.v') {
-        mv(file, 'build/')?
-    }
+// Create build/, never fails as build/ does not exist
+mkdir('build') ?
+
+// Move *.v files to build/
+result := exec('mv *.v build/') ?
+if result.exit_code != 0 {
+	println(result.output)
 }
+// Similar to:
+// files := ls('.') ?
+// mut count := 0
+// if files.len > 0 {
+//     for file in files {
+//         if file.ends_with('.v') {
+//              mv(file, 'build/') or {
+//                  println('err: $err')
+//                  return
+//              }
+//         }
+//         count++
+//     }
+// }
+// if count == 0 {
+//     println('No files')
+// }
 ```
 
 Now you can either compile this like a normal V program and get an executable you can deploy and run

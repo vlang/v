@@ -30,8 +30,8 @@ mut:
 	texture     C.sg_image
 	init_flag   bool
 	frame_count int
-	mouse_x int = -1
-	mouse_y int = -1
+	mouse_x     int = -1
+	mouse_y     int = -1
 }
 
 /******************************************************************************
@@ -383,7 +383,7 @@ fn cleanup(mut app App) {
 * event
 *
 ******************************************************************************/
-fn my_event_manager(mut ev sapp.Event, mut app App) {
+fn my_event_manager(mut ev gg.Event, mut app App) {
 	if ev.typ == .mouse_move {
 		app.mouse_x = int(ev.mouse_x)
 		app.mouse_y = int(ev.mouse_y)
@@ -402,6 +402,7 @@ fn my_event_manager(mut ev sapp.Event, mut app App) {
 * Main
 *
 ******************************************************************************/
+[console] // is needed for easier diagnostics on windows
 fn main() {
 	// App init
 	mut app := &App{

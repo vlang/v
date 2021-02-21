@@ -163,9 +163,9 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			}
 		}
 		.key_sizeof {
-			pos := p.tok.position()
 			p.next() // sizeof
 			p.check(.lpar)
+			pos := p.tok.position()
 			is_known_var := p.mark_var_as_used(p.tok.lit)
 			// assume mod. prefix leads to a type
 			if is_known_var || !(p.known_import(p.tok.lit) || p.tok.kind.is_start_of_type()) {

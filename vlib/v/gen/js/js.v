@@ -115,16 +115,18 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 			out += '/** @namespace $name */\n'
 		}
 		out += 'const $name = (function ('
-		imports := unsafe {g.namespaces[node.name].imports}
-		for i, key in imports.keys() {
-			if i > 0 {
+		mut namespace := g.namespaces[node.name]
+		mut first := true
+		for _, val in namespace.imports {
+			if !first {
 				out += ', '
 			}
-			out += imports[key]
+			first = false
+			out += val
 		}
 		out += ') {\n\t'
 		// private scope
-		out += g.namespaces[node.name].out.str().trim_space()
+		out += namespace.out.str().trim_space()
 		// public scope
 		out += '\n'
 		if g.enable_doc {
@@ -137,21 +139,23 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 				out += '\n\t\t$typ,'
 			}
 		}
-		for i, pub_var in g.namespaces[node.name].pub_vars {
+		for i, pub_var in namespace.pub_vars {
 			out += '\n\t\t$pub_var'
-			if i < g.namespaces[node.name].pub_vars.len - 1 {
+			if i < namespace.pub_vars.len - 1 {
 				out += ','
 			}
 		}
-		if g.namespaces[node.name].pub_vars.len > 0 {
+		if namespace.pub_vars.len > 0 {
 			out += '\n\t'
 		}
 		out += '};'
 		out += '\n})('
-		for i, key in imports.keys() {
-			if i > 0 {
+		first = true
+		for key, _ in namespace.imports {
+			if !first {
 				out += ', '
 			}
+			first = false
 			out += key.replace('.', '_')
 		}
 		out += ');\n'

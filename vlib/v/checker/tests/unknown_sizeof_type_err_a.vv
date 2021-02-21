@@ -1,0 +1,15 @@
+struct Abc {
+	i int
+}
+
+struct Xyz {
+	f f64
+}
+
+type Test = Abc | Xyz
+
+fn main() {
+	println("size of Abc: ${sizeof(Abc)}")
+	println("size of Xyz: ${sizeof(Xyz)}")
+	println("size of Test: ${sizeof(T)}")
+}

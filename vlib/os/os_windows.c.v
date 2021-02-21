@@ -102,12 +102,12 @@ pub fn ls(path string) ?[]string {
 	// NOTE:TODO: once we have a way to convert utf16 wide character to utf8
 	// we should use FindFirstFileW and FindNextFileW
 	h_find_files := C.FindFirstFile(path_files.to_wide(), voidptr(&find_file_data))
-	first_filename := unsafe { string_from_wide(&u16(find_file_data.c_file_name)) }
+	first_filename := unsafe { string_from_wide(&find_file_data.c_file_name[0]) }
 	if first_filename != '.' && first_filename != '..' {
 		dir_files << first_filename
 	}
 	for C.FindNextFile(h_find_files, voidptr(&find_file_data)) > 0 {
-		filename := unsafe { string_from_wide(&u16(find_file_data.c_file_name)) }
+		filename := unsafe { string_from_wide(&find_file_data.c_file_name[0]) }
 		if filename != '.' && filename != '..' {
 			dir_files << filename.clone()
 		}

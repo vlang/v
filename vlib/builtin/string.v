@@ -1557,12 +1557,6 @@ pub fn (s string) limit(max int) string {
 	return u.substr(0, max)
 }
 
-[deprecated]
-pub fn (c byte) is_white() bool {
-	eprintln('warning: `string.is_white` has been deprecated, use `string.is_space` instead')
-	return c.is_space()
-}
-
 // hash returns an integer hash of the string.
 pub fn (s string) hash() int {
 	// mut h := s.hash_cache

@@ -15,11 +15,13 @@ enum CommentsLevel {
 // - inline: single-line comments will be on the same line as the last statement
 // - iembed: a /* ... */ embedded comment; used in expressions; // comments the whole line
 // - level:  either .keep (don't indent), or .indent (increment indentation)
+// - prev_line: the line number of the previous token
 struct CommentsOptions {
-	has_nl bool = true
-	inline bool
-	level  CommentsLevel
-	iembed bool
+	has_nl    bool = true
+	inline    bool
+	level     CommentsLevel
+	iembed    bool
+	prev_line int = -1
 }
 
 pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
@@ -79,14 +81,19 @@ pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 }
 
 pub fn (mut f Fmt) comments(comments []ast.Comment, options CommentsOptions) {
+	mut prev_line := options.prev_line
 	for i, c in comments {
 		if !f.out.last_n(1)[0].is_space() {
 			f.write(' ')
+		}
+		if options.prev_line > -1 && c.pos.line_nr > prev_line + 1 {
+			f.writeln('')
 		}
 		f.comment(c, options)
 		if !options.iembed && (i < comments.len - 1 || options.has_nl) {
 			f.writeln('')
 		}
+		prev_line = c.pos.last_line
 	}
 }
 

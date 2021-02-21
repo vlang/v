@@ -8,7 +8,7 @@ import rand
 import time
 import gx
 import gg
-import sokol.sapp
+// import sokol.sapp
 
 const (
 	block_size      = 20 // virtual pixels
@@ -426,7 +426,7 @@ fn parse_binary_tetro(t_ int) []Block {
 	return res
 }
 
-fn on_event(e &sapp.Event, mut game Game) {
+fn on_event(e &gg.Event, mut game Game) {
 	// println('code=$e.char_code')
 	if e.typ == .key_down {
 		game.key_down(e.key_code)
@@ -455,7 +455,7 @@ fn (mut game Game) rotate_tetro() {
 	}
 }
 
-fn (mut game Game) key_down(key sapp.KeyCode) {
+fn (mut game Game) key_down(key gg.KeyCode) {
 	// global keys
 	match key {
 		.escape {

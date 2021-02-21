@@ -12,14 +12,14 @@ vlib/v/checker/tests/array_or_map_assign_err.vv:5:5: error: use `array2 = array1
       |        ^
     6 | 
     7 |     m1 := {'one': 1}
-vlib/v/checker/tests/array_or_map_assign_err.vv:8:8: error: cannot copy map: call `move` or `clone` method first (or use `unsafe`)
+vlib/v/checker/tests/array_or_map_assign_err.vv:8:8: error: cannot copy map: call `move` or `clone` method (or use a reference)
     6 | 
     7 |     m1 := {'one': 1}
     8 |     m2 := m1
       |           ~~
     9 |     mut m3 := map[string]int{}
    10 |     m3 = m1
-vlib/v/checker/tests/array_or_map_assign_err.vv:10:7: error: cannot copy map: call `move` or `clone` method first (or use `unsafe`)
+vlib/v/checker/tests/array_or_map_assign_err.vv:10:7: error: cannot copy map: call `move` or `clone` method (or use a reference)
     8 |     m2 := m1
     9 |     mut m3 := map[string]int{}
    10 |     m3 = m1

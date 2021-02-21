@@ -215,7 +215,7 @@ pub fn (mut ws Client) parse_frame_header() ?Frame {
 	mut rbuff := [1]byte{}
 	mut mask_end_byte := 0
 	for ws.state == .open {
-		read_bytes := ws.socket_read_ptr(byteptr(rbuff), 1) ?
+		read_bytes := ws.socket_read_ptr(&rbuff[0], 1) ?
 		if read_bytes == 0 {
 			// this is probably a timeout or close
 			continue
