@@ -86,6 +86,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
 
 </td><td width=33% valign=top>
 
+* [Unions](#unions)
 * [Functions 2](#functions-2)
     * [Pure functions by default](#pure-functions-by-default)
     * [Mutable arguments](#mutable-arguments)
@@ -1586,6 +1587,45 @@ The receiver appears in its own argument list between the `fn` keyword and the m
 In this example, the `can_register` method has a receiver of type `User` named `u`.
 The convention is not to use receiver names like `self` or `this`,
 but a short, preferably one letter long, name.
+
+## Unions
+
+Just like structs, unions support embedding.
+
+```v
+struct Rgba32_Component {
+	r byte
+	g byte
+	b byte
+	a byte
+}
+
+union Rgba32 {
+	Rgba32_Component
+	value u32
+}
+
+clr1 := Rgba32{
+	value: 0x008811FF
+}
+
+clr2 := Rgba32{
+	Rgba32_Component: {
+		a: 128
+	}
+}
+
+sz := sizeof(Rgba32)
+unsafe {
+	println('Size: ${sz}B,clr1.b: $clr1.b,clr2.b: $clr2.b')
+}
+```
+
+Output: `Size: 4B, clr1.b: 136, clr2.b: 0`
+
+Union member access must be performed in an `unsafe` block.
+
+Note that the embedded struct arguments are not necessarily stored in the order listed.
 
 ## Functions 2
 
