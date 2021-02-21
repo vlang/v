@@ -17,6 +17,7 @@ const (
 		'vlib/sqlite/sqlite_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/vweb/tests/vweb_test.v',
+		'vlib/vweb/server/request_test.v',
 		'vlib/x/websocket/websocket_test.v',
 	]
 	skip_with_fsanitize_address   = [
@@ -133,6 +134,7 @@ const (
 		'vlib/v/tests/unsafe_test.v',
 		'vlib/v/tests/working_with_an_empty_struct_test.v',
 		'vlib/vweb/tests/vweb_test.v',
+		'vlib/vweb/server/request_test.v',
 		'vlib/x/json2/any_test.v',
 		'vlib/x/json2/decoder_test.v',
 		'vlib/x/json2/json2_test.v',
@@ -306,6 +308,7 @@ const (
 		'vlib/v/tests/working_with_an_empty_struct_test.v',
 		'vlib/v/vcache/vcache_test.v',
 		'vlib/vweb/tests/vweb_test.v',
+		'vlib/vweb/server/request_test.v',
 		'vlib/v/compiler_errors_test.v',
 		'vlib/v/tests/map_enum_keys_test.v',
 		'vlib/v/tests/tmpl_test.v',
@@ -334,6 +337,7 @@ const (
 		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/clipboard/clipboard_test.v',
 		'vlib/vweb/tests/vweb_test.v',
+		'vlib/vweb/server/request_test.v',
 		'vlib/x/websocket/websocket_test.v',
 		'vlib/net/http/http_httpbin_test.v',
 	]
@@ -348,6 +352,7 @@ const (
 		'vlib/net/unix/unix_test.v',
 		'vlib/x/websocket/websocket_test.v',
 		'vlib/vweb/tests/vweb_test.v',
+		'vlib/vweb/server/request_test.v',
 	]
 	skip_on_non_windows           = []string{}
 	skip_on_macos                 = []string{}
