@@ -2217,6 +2217,7 @@ $pubfn (mut e  $enum_name) toggle(flag $enum_name)   { unsafe{ *e = ${enum_name}
 			is_flag: is_flag
 			is_multi_allowed: is_multi_allowed
 		}
+		is_public: is_pub
 	})
 	if idx == -1 {
 		p.error_with_pos('cannot register enum `$name`, another type with this name exists',
