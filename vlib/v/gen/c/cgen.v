@@ -1988,7 +1988,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				g.array_set_pos = 0
 			} else {
 				g.out.go_back_to(pos)
-				is_var_mut := !is_decl && left.is_mut_ident()
+				is_var_mut := !is_decl && left.is_auto_deref_var()
 				addr := if is_var_mut { '' } else { '&' }
 				g.writeln('')
 				g.write('memcpy($addr')
@@ -2059,7 +2059,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					g.prevent_sum_type_unwrapping_once = true
 				}
 				if !is_fixed_array_copy || is_decl {
-					if !is_decl && left.is_mut_ident() {
+					if !is_decl && left.is_auto_deref_var() {
 						g.write('*')
 					}
 					g.expr(left)
@@ -2111,7 +2111,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					g.write('for (int $i_var=0; $i_var<$fixed_array.size; $i_var++) {')
 					g.expr(left)
 					g.write('[$i_var] = ')
-					if val.is_mut_ident() {
+					if val.is_auto_deref_var() {
 						g.write('*')
 					}
 					g.expr(val)
@@ -2136,7 +2136,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 							g.write('{0}')
 						}
 					} else {
-						if val.is_mut_ident() {
+						if val.is_auto_deref_var() {
 							g.write('*')
 						}
 						g.expr(val)
@@ -2721,7 +2721,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.writeln('sync__RwMutex_lock(&$node.auto_locked->mtx);')
 			}
 			g.inside_map_postfix = true
-			if node.expr.is_mut_ident() {
+			if node.expr.is_auto_deref_var() {
 				g.write('(*')
 				g.expr(node.expr)
 				g.write(')')
@@ -3391,12 +3391,12 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			if need_par {
 				g.write('(')
 			}
-			if node.left_type.is_ptr() && node.left.is_mut_ident() {
+			if node.left_type.is_ptr() && node.left.is_auto_deref_var() {
 				g.write('*')
 			}
 			g.expr(node.left)
 			g.write(' $node.op.str() ')
-			if node.right_type.is_ptr() && node.right.is_mut_ident() {
+			if node.right_type.is_ptr() && node.right.is_auto_deref_var() {
 				g.write('*')
 			}
 			g.expr(node.right)
@@ -3729,7 +3729,7 @@ fn (mut g Gen) map_init(node ast.MapInit) {
 			g.write('}), _MOV(($value_typ_str[$size]){')
 		}
 		for expr in node.vals {
-			if expr.is_mut_ident() {
+			if expr.is_auto_deref_var() {
 				g.write('*')
 			}
 			g.expr(expr)
