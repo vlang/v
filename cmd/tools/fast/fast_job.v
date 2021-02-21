@@ -36,7 +36,6 @@ fn main() {
 			os.system('git push origin gh-pages')
 			os.chdir('..')
 		}
-		// println('sleeping 60')
-		time.sleep(60)
+		time.wait(60 * time.second)
 	}
 }
