@@ -26,7 +26,7 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 		g.write('{')
 		if node.has_val {
 			for i, expr in node.exprs {
-				if expr.is_mut_ident() {
+				if expr.is_auto_deref_var() {
 					g.write('*')
 				}
 				g.expr(expr)

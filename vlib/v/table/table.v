@@ -98,16 +98,16 @@ pub fn (t &Table) fn_type_signature(f &Fn) string {
 	for i, arg in f.params {
 		// TODO: for now ignore mut/pts in sig for now
 		typ := arg.typ.set_nr_muls(0)
-		// if arg.is_mut {
-		// sig += 'mut_'
-		// }
-		// sig += '$arg.typ'
-		sig += '$typ'
+		arg_type_sym := t.get_type_symbol(typ)
+		sig += '$arg_type_sym.kind'
 		if i < f.params.len - 1 {
 			sig += '_'
 		}
 	}
-	sig += '_$f.return_type'
+	if f.return_type != 0 && f.return_type != void_type {
+		sym := t.get_type_symbol(f.return_type)
+		sig += '__$sym.kind'
+	}
 	return sig
 }
 

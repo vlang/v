@@ -4,7 +4,7 @@ import time
 // Simulate expensive computing using sleep function
 fn expensive_computing(id int, duration int, mut wg sync.WaitGroup) {
 	println('Executing expensive computing task ($id)...')
-	time.sleep_ms(duration)
+	time.wait(duration * time.millisecond)
 	println('Finish task $id on $duration ms')
 	wg.done()
 }

@@ -22,12 +22,11 @@ pub fn (mut p Parser) parse_array_type() table.Type {
 					if const_field.expr is ast.IntegerLiteral {
 						fixed_size = const_field.expr.val.int()
 					} else {
-						p.error_with_pos('non existent integer const $size_expr.name while initializing the size of a static array',
+						p.error_with_pos('non-constant array bound `$size_expr.name`',
 							size_expr.pos)
 					}
 				} else {
-					p.error_with_pos('non existent integer const $size_expr.name while initializing the size of a static array',
-						size_expr.pos)
+					p.error_with_pos('non-constant array bound `$size_expr.name`', size_expr.pos)
 				}
 			}
 			else {
@@ -73,7 +72,8 @@ pub fn (mut p Parser) parse_map_type() table.Type {
 	}
 	p.check(.lsbr)
 	key_type := p.parse_type()
-	is_alias := p.table.get_type_symbol(key_type).kind == .alias
+	key_sym := p.table.get_type_symbol(key_type)
+	is_alias := key_sym.kind == .alias
 	if key_type.idx() == 0 {
 		// error is reported in parse_type
 		return 0
@@ -84,9 +84,10 @@ pub fn (mut p Parser) parse_map_type() table.Type {
 		return 0
 	}
 	if !(key_type in [table.string_type_idx, table.voidptr_type_idx]
-		|| ((key_type.is_int() || key_type.is_float() || is_alias) && !key_type.is_ptr())) {
+		|| key_sym.kind == .enum_ || ((key_type.is_int() || key_type.is_float()
+		|| is_alias) && !key_type.is_ptr())) {
 		s := p.table.type_to_str(key_type)
-		p.error_with_pos('maps only support string, integer, float, rune or voidptr keys for now (not `$s`)',
+		p.error_with_pos('maps only support string, integer, float, rune, enum or voidptr keys for now (not `$s`)',
 			p.tok.position())
 		return 0
 	}

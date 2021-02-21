@@ -36,7 +36,7 @@ fn new_addr(addr C.sockaddr) ?Addr {
 			socket_error(-1) ?
 		}
 	} $else {
-		res := C.inet_ntop(SocketFamily.inet, &addr, buf.data, buf.len)
+		res := charptr(C.inet_ntop(SocketFamily.inet, &addr, buf.data, buf.len))
 		if res == 0 {
 			socket_error(-1) ?
 		}

@@ -247,7 +247,7 @@ if not exist "%VsWhereDir%\Microsoft Visual Studio\Installer\vswhere.exe" (
 	goto :tcc_strap
 )
 
-for /f "usebackq tokens=*" %%i in (`"%VsWhereDir%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -prerelease -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do (
+for /f "usebackq tokens=*" %%i in (`"%VsWhereDir%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do (
 	set InstallDir=%%i
 )
 

@@ -702,7 +702,8 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 	right_pos := infix_expr.right.position()
 	left_right_pos := left_pos.extend(right_pos)
 	if (left_type.is_ptr() || left.is_pointer()) && infix_expr.op in [.plus, .minus] {
-		if !c.inside_unsafe && !infix_expr.left.is_mut_ident() && !infix_expr.right.is_mut_ident() {
+		if !c.inside_unsafe && !infix_expr.left.is_auto_deref_var()
+			&& !infix_expr.right.is_auto_deref_var() {
 			c.warn('pointer arithmetic is only allowed in `unsafe` blocks', left_pos)
 		}
 		if left_type == table.voidptr_type {
@@ -745,11 +746,12 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 					}
 				}
 				.map {
-					elem_type := right.map_info().key_type
-					c.check_expected(left_type, elem_type) or {
+					map_info := right.map_info()
+					c.check_expected(left_type, map_info.key_type) or {
 						c.error('left operand to `$infix_expr.op` does not match the map key type: $err',
 							left_right_pos)
 					}
+					infix_expr.left_type = map_info.key_type
 				}
 				.string {
 					c.check_expected(left_type, right_type) or {
@@ -960,8 +962,19 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 		c.error('string types only have the following operators defined: `==`, `!=`, `<`, `>`, `<=`, `>=`, and `+`',
 			infix_expr.pos)
 	} else if left.kind == .enum_ && right.kind == .enum_ && infix_expr.op !in [.ne, .eq] {
-		c.error('only `==` and `!=` are defined on `enum`, use an explicit cast to `int` if needed',
-			infix_expr.pos)
+		left_enum := left.info as table.Enum
+		right_enum := right.info as table.Enum
+		if left_enum.is_flag && right_enum.is_flag {
+			// `[flag]` tagged enums are a special case that allow also `|` and `&` binary operators
+			if infix_expr.op !in [.pipe, .amp] {
+				c.error('only `==`, `!=`, `|` and `&` are defined on `[flag]` tagged `enum`, use an explicit cast to `int` if needed',
+					infix_expr.pos)
+			}
+		} else {
+			// Regular enums
+			c.error('only `==` and `!=` are defined on `enum`, use an explicit cast to `int` if needed',
+				infix_expr.pos)
+		}
 	}
 	// sum types can't have any infix operation except of "is", is is checked before and doesn't reach this
 	if c.table.type_kind(left_type) == .sum_type {
@@ -1353,7 +1366,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			// need to return `array_xxx` instead of `array`
 			// in ['clone', 'str'] {
 			call_expr.receiver_type = left_type.to_ptr()
-			if call_expr.left.is_mut_ident() {
+			if call_expr.left.is_auto_deref_var() {
 				call_expr.return_type = left_type.deref()
 			} else {
 				call_expr.return_type = call_expr.receiver_type.set_nr_muls(0)
@@ -1373,7 +1386,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 				if method_name[0] == `m` {
 					c.fail_if_immutable(call_expr.left)
 				}
-				if call_expr.left.is_mut_ident() {
+				if call_expr.left.is_auto_deref_var() {
 					ret_type = left_type.deref()
 				} else {
 					ret_type = left_type
@@ -1575,6 +1588,15 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		if method.is_unsafe && !c.inside_unsafe {
 			c.warn('method `${left_type_sym.name}.$method_name` must be called from an `unsafe` block',
 				call_expr.pos)
+		}
+		if !c.cur_fn.is_deprecated && method.is_deprecated {
+			mut deprecation_message := 'method `${left_type_sym.name}.$method.name` has been deprecated'
+			for attr in method.attrs {
+				if attr.name == 'deprecated' && attr.arg != '' {
+					deprecation_message += '; $attr.arg'
+				}
+			}
+			c.warn(deprecation_message, call_expr.pos)
 		}
 		// TODO: typ optimize.. this node can get processed more than once
 		if call_expr.expected_arg_types.len == 0 {
@@ -1797,8 +1819,14 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		c.error('function `$f.name` is private, so you can not import it in module `$c.mod`',
 			call_expr.pos)
 	}
-	if f.is_deprecated {
-		c.warn('function `$f.name` has been deprecated', call_expr.pos)
+	if !c.cur_fn.is_deprecated && f.is_deprecated {
+		mut deprecation_message := 'function `$f.name` has been deprecated'
+		for d in f.attrs {
+			if d.name == 'deprecated' && d.arg != '' {
+				deprecation_message += '; $d.arg'
+			}
+		}
+		c.warn(deprecation_message, call_expr.pos)
 	}
 	if f.is_unsafe && !c.inside_unsafe
 		&& (f.language != .c || (f.name[2] in [`m`, `s`] && f.mod == 'builtin')) {
@@ -2553,7 +2581,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		right := if i < assign_stmt.right.len { assign_stmt.right[i] } else { assign_stmt.right[0] }
 		mut right_type := assign_stmt.right_types[i]
 		if is_decl {
-			if right.is_mut_ident() {
+			if right.is_auto_deref_var() {
 				left_type = c.table.mktyp(right_type.deref())
 			} else {
 				left_type = c.table.mktyp(right_type)
@@ -2687,7 +2715,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 				right.position())
 		}
 		left_is_ptr := left_type.is_ptr() || left_sym.is_pointer()
-		if left_is_ptr && !left.is_mut_ident() {
+		if left_is_ptr && !left.is_auto_deref_var() {
 			if !c.inside_unsafe && assign_stmt.op !in [.assign, .decl_assign] {
 				// ptr op=
 				c.warn('pointer arithmetic is only allowed in `unsafe` blocks', assign_stmt.pos)
@@ -2802,7 +2830,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 				}
 			}
 		}
-		if !is_blank_ident && !right.is_mut_ident() && right_sym.kind != .placeholder
+		if !is_blank_ident && !right.is_auto_deref_var() && right_sym.kind != .placeholder
 			&& left_sym.kind != .interface_ {
 			// Dual sides check (compatibility check)
 			c.check_expected(right_type_unwrapped, left_type_unwrapped) or {
@@ -2971,7 +2999,7 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 			}
 			// The first element's type
 			if i == 0 {
-				if expr.is_mut_ident() {
+				if expr.is_auto_deref_var() {
 					elem_type = c.table.mktyp(typ.deref())
 				} else {
 					elem_type = c.table.mktyp(typ)
@@ -3007,8 +3035,7 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 						fixed_size = cint
 					}
 				} else {
-					c.error('non existent integer const $init_expr.name while initializing the size of a static array',
-						array_init.pos)
+					c.error('non-constant array bound `$init_expr.name`', init_expr.pos)
 				}
 			}
 			else {
@@ -5065,7 +5092,7 @@ pub fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) table.Type {
 	typ := c.expr(node.expr)
 	typ_sym := c.table.get_type_symbol(typ)
 	is_non_void_pointer := (typ.is_ptr() || typ.is_pointer()) && typ_sym.kind != .voidptr
-	if !c.inside_unsafe && is_non_void_pointer && !node.expr.is_mut_ident() {
+	if !c.inside_unsafe && is_non_void_pointer && !node.expr.is_auto_deref_var() {
 		c.warn('pointer arithmetic is only allowed in `unsafe` blocks', node.pos)
 	}
 	if !(typ_sym.is_number() || (c.inside_unsafe && is_non_void_pointer)) {
@@ -5149,13 +5176,13 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) table.Type {
 	return right_type
 }
 
-fn (mut c Checker) check_index(typ_sym &table.TypeSymbol, index ast.Expr, index_type table.Type, pos token.Position) {
+fn (mut c Checker) check_index(typ_sym &table.TypeSymbol, index ast.Expr, index_type table.Type, pos token.Position, range_index bool) {
 	index_type_sym := c.table.get_type_symbol(index_type)
 	// println('index expr left=$typ_sym.name $node.pos.line_nr')
 	// if typ_sym.kind == .array && (!(table.type_idx(index_type) in table.number_type_idxs) &&
 	// index_type_sym.kind != .enum_) {
 	if typ_sym.kind in [.array, .array_fixed, .string, .ustring] {
-		if !(index_type.is_number() || index_type_sym.kind == .enum_) {
+		if !(index_type.is_int() || index_type_sym.kind == .enum_) {
 			type_str := if typ_sym.kind in [.string, .ustring] {
 				'non-integer string index `$index_type_sym.name`'
 			} else {
@@ -5164,8 +5191,14 @@ fn (mut c Checker) check_index(typ_sym &table.TypeSymbol, index ast.Expr, index_
 			c.error('$type_str', pos)
 		}
 		if index is ast.IntegerLiteral {
-			if index.val.starts_with('-') {
-				c.error('invalid index `$index.val` (index must be non-negative)', index.pos)
+			if index.val[0] == `-` {
+				c.error('negative index `$index.val`', index.pos)
+			} else if typ_sym.kind == .array_fixed {
+				i := index.val.int()
+				info := typ_sym.info as table.ArrayFixed
+				if (!range_index && i >= info.size) || (range_index && i > info.size) {
+					c.error('index out of range (index: $i, len: $info.size)', index.pos)
+				}
 			}
 		}
 		if index_type.has_flag(.optional) {
@@ -5204,7 +5237,7 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 			'(note, that variables may be mutable but string values are always immutable, like in Go and Java)',
 			node.pos)
 	}
-	if !c.inside_unsafe && ((typ.is_ptr() && !node.left.is_mut_ident()) || typ.is_pointer()) {
+	if !c.inside_unsafe && ((typ.is_ptr() && !node.left.is_auto_deref_var()) || typ.is_pointer()) {
 		mut is_ok := false
 		if mut node.left is ast.Ident {
 			if node.left.obj is ast.Var {
@@ -5220,11 +5253,11 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 	if mut node.index is ast.RangeExpr { // [1..2]
 		if node.index.has_low {
 			index_type := c.expr(node.index.low)
-			c.check_index(typ_sym, node.index.low, index_type, node.pos)
+			c.check_index(typ_sym, node.index.low, index_type, node.pos, true)
 		}
 		if node.index.has_high {
 			index_type := c.expr(node.index.high)
-			c.check_index(typ_sym, node.index.high, index_type, node.pos)
+			c.check_index(typ_sym, node.index.high, index_type, node.pos, true)
 		}
 		// array[1..2] => array
 		// fixed_array[1..2] => array
@@ -5244,7 +5277,7 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 				c.error('invalid key: $err', node.pos)
 			}
 		} else {
-			c.check_index(typ_sym, node.index, index_type, node.pos)
+			c.check_index(typ_sym, node.index, index_type, node.pos, false)
 		}
 		value_type := c.table.value_type(typ)
 		if value_type != table.void_type {
@@ -5384,11 +5417,11 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) table.Type {
 	}
 	// `{'age': 20}`
 	mut key0_type := c.table.mktyp(c.expr(node.keys[0]))
-	if node.keys[0].is_mut_ident() {
+	if node.keys[0].is_auto_deref_var() {
 		key0_type = key0_type.deref()
 	}
 	mut val0_type := c.table.mktyp(c.expr(node.vals[0]))
-	if node.vals[0].is_mut_ident() {
+	if node.vals[0].is_auto_deref_var() {
 		val0_type = val0_type.deref()
 	}
 	mut same_key_type := true
@@ -5398,6 +5431,7 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) table.Type {
 		}
 		val := node.vals[i]
 		key_type := c.expr(key)
+		c.expected_type = val0_type
 		val_type := c.expr(val)
 		if !c.check_types(key_type, key0_type) {
 			msg := c.expected_msg(key_type, key0_type)

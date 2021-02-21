@@ -13,12 +13,6 @@ struct FileInfo {
 	size int
 }
 
-[deprecated]
-pub fn (f File) is_opened() bool {
-	eprintln('warning: `File.is_opened()` has been deprecated, use `File.is_opened` instead')
-	return f.is_opened
-}
-
 // **************************** Write ops  ***************************
 // write implements the Writer interface
 pub fn (mut f File) write(buf []byte) ?int {
@@ -176,22 +170,6 @@ pub fn open_stdin() File {
 		cfile: C.stdin
 		is_opened: true
 	}
-}
-
-// File.get_line - get a single line from the file. NB: the ending newline is *included*.
-[deprecated]
-pub fn (mut f File) get_line() ?string {
-	eprintln('File.get_line() is deprecated... Use a BufferedReader instead')
-	if !f.is_opened {
-		return error('file is closed')
-	}
-	return error('use io.new_buffered_reader')
-	/*
-	mut reader := io.new_buffered_reader({
-		reader: io.make_reader(f)
-	})
-	return reader.read_line()
-	*/
 }
 
 pub fn (mut f File) write_str(s string) ? {

@@ -23,12 +23,6 @@ const (
 	r_ok = 4
 )
 
-[deprecated]
-pub fn cp_r(osource_path string, odest_path string, overwrite bool) ? {
-	eprintln('warning: `os.cp_r` has been deprecated, use `os.cp_all` instead')
-	return cp_all(osource_path, odest_path, overwrite)
-}
-
 // cp_all will recursively copy `src` to `dst`,
 // optionally overwriting files or dirs in `dst`.
 pub fn cp_all(src string, dst string, overwrite bool) ? {
@@ -135,18 +129,6 @@ pub fn sigint_to_signal_name(si int) string {
 		}
 	}
 	return 'unknown'
-}
-
-[deprecated]
-pub fn file_exists(_path string) bool {
-	eprintln('warning: `os.file_exists` has been deprecated, use `os.exists` instead')
-	return exists(_path)
-}
-
-[deprecated]
-pub fn rmdir_recursive(path string) {
-	eprintln('warning: `os.rmdir_recursive` has been deprecated, use `os.rmdir_all` instead')
-	rmdir_all(path) or { panic(err) }
 }
 
 // rmdir_all recursively removes the specified directory.
@@ -403,12 +385,6 @@ pub fn exists_in_system_path(prog string) bool {
 	return true
 }
 
-[deprecated]
-pub fn dir_exists(path string) bool {
-	eprintln('warning: `os.dir_exists` has been deprecated, use `os.is_dir` instead')
-	return is_dir(path)
-}
-
 // is_file returns a `bool` indicating whether the given `path` is a file.
 pub fn is_file(path string) bool {
 	return exists(path) && !is_dir(path)
@@ -488,12 +464,6 @@ pub fn log(s string) {
 	//} $else {
 	println('os.log: ' + s)
 	//}
-}
-
-[deprecated]
-pub fn flush_stdout() {
-	eprintln('warning: `os.flush_stdout` has been deprecated, use `os.flush` instead')
-	flush()
 }
 
 // mkdir_all will create a valid full path of all directories given in `path`.

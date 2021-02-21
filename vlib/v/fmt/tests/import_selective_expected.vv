@@ -1,9 +1,9 @@
 import math { max, min }
 import cli { Command }
-import math.complex { complex, Complex }
+import math.complex { Complex, complex }
 import os {
-	user_os,
 	file_ext,
+	user_os,
 }
 
 struct App {

@@ -10,7 +10,6 @@ module strings
 pub struct Builder {
 pub mut:
 	buf          []byte
-	str_calls    int
 	len          int
 	initial_size int = 1
 }
@@ -20,7 +19,6 @@ pub fn new_builder(initial_size int) Builder {
 	return Builder{
 		// buf: make(0, initial_size)
 		buf: []byte{cap: initial_size}
-		str_calls: 0
 		len: 0
 		initial_size: initial_size
 	}
@@ -126,13 +124,10 @@ pub fn (b &Builder) after(n int) string {
 // accumulated data that was in the string builder, before the
 // .str() call.
 pub fn (mut b Builder) str() string {
-	b.str_calls++
-	if b.str_calls > 1 {
-		panic('builder.str() should be called just once.\nIf you want to reuse a builder, call b.free() first.')
-	}
 	b.buf << `\0`
 	s := unsafe { byteptr(memdup(b.buf.data, b.len)).vstring_with_len(b.len) }
 	b.len = 0
+	b.buf.trim(0)
 	return s
 }
 
@@ -140,7 +135,5 @@ pub fn (mut b Builder) str() string {
 [unsafe]
 pub fn (mut b Builder) free() {
 	unsafe { free(b.buf.data) }
-	// b.buf = []byte{cap: b.initial_size}
 	b.len = 0
-	b.str_calls = 0
 }

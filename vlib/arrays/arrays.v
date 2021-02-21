@@ -6,46 +6,43 @@ module arrays
 // - merge - combine two sorted arrays and maintain sorted order
 
 // min returns the minimum
-[direct_array_access]
 pub fn min<T>(a []T) T {
 	if a.len == 0 {
 		panic('.min called on an empty array')
 	}
 	mut val := a[0]
-	for i in 0 .. a.len {
-		if a[i] < val {
-			val = a[i]
+	for e in a {
+		if e < val {
+			val = e
 		}
 	}
 	return val
 }
 
 // max returns the maximum
-[direct_array_access]
 pub fn max<T>(a []T) T {
 	if a.len == 0 {
 		panic('.max called on an empty array')
 	}
 	mut val := a[0]
-	for i in 0 .. a.len {
-		if a[i] > val {
-			val = a[i]
+	for e in a {
+		if e > val {
+			val = e
 		}
 	}
 	return val
 }
 
 // idx_min returns the index of the first minimum
-[direct_array_access]
 pub fn idx_min<T>(a []T) int {
 	if a.len == 0 {
-		panic('.idxmin called on an empty array')
+		panic('.idx_min called on an empty array')
 	}
 	mut idx := 0
 	mut val := a[0]
-	for i in 0 .. a.len {
-		if a[i] < val {
-			val = a[i]
+	for i, e in a {
+		if e < val {
+			val = e
 			idx = i
 		}
 	}
@@ -53,16 +50,15 @@ pub fn idx_min<T>(a []T) int {
 }
 
 // idx_max returns the index of the first maximum
-[direct_array_access]
 pub fn idx_max<T>(a []T) int {
 	if a.len == 0 {
-		panic('.idxmax called on an empty array')
+		panic('.idx_max called on an empty array')
 	}
 	mut idx := 0
 	mut val := a[0]
-	for i in 0 .. a.len {
-		if a[i] > val {
-			val = a[i]
+	for i, e in a {
+		if e > val {
+			val = e
 			idx = i
 		}
 	}

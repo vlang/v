@@ -21,6 +21,7 @@ module openssl
 #include <openssl/rand.h> # Please install OpenSSL development headers
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+
 pub struct C.SSL {
 }
 
@@ -59,11 +60,11 @@ fn C.SSL_CTX_load_verify_locations() int
 
 fn C.SSL_CTX_free()
 
-fn C.SSL_new() &C.SSL
+fn C.SSL_new(&C.SSL_CTX) &C.SSL
 
-fn C.SSL_set_fd() int
+fn C.SSL_set_fd(&C.SSL) int
 
-fn C.SSL_connect() int
+fn C.SSL_connect(&C.SSL) int
 
 fn C.SSL_set_cipher_list() int
 
@@ -77,17 +78,17 @@ fn C.SSL_get_verify_result() int
 
 fn C.SSL_set_tlsext_host_name() int
 
-fn C.SSL_shutdown() int
+fn C.SSL_shutdown(&C.SSL) int
 
-fn C.SSL_free()
+fn C.SSL_free(&C.SSL)
 
-fn C.SSL_write() int
+fn C.SSL_write(ssl &C.SSL, buf voidptr, buflen int) int
 
-fn C.SSL_read() int
+fn C.SSL_read(ssl &C.SSL, buf voidptr, buflen int) int
 
 fn C.SSL_load_error_strings()
 
-fn C.SSL_library_init()
+fn C.SSL_library_init() int
 
 fn C.SSLv23_client_method() &C.SSL_METHOD
 
