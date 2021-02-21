@@ -5297,13 +5297,16 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 						if field.typ.has_flag(.optional) {
 							// Dont use g.typ() here becuase it will register
 							// optional and we dont want that
-							last_text := g.type_definitions.after(start_pos).clone()
-							g.type_definitions.go_back_to(start_pos)
 							styp, base := g.optional_type_name(field.typ)
-							g.optionals << styp
-							g.typedefs2.writeln('typedef struct $styp $styp;')
-							g.type_definitions.writeln('${g.optional_type_text(styp, base)};')
-							g.type_definitions.write(last_text)
+							if styp !in g.optionals {
+								last_text := g.type_definitions.after(start_pos).clone()
+								g.type_definitions.go_back_to(start_pos)
+								g.optionals << styp
+								g.typedefs2.writeln('typedef struct $styp $styp;')
+								g.type_definitions.writeln('${g.optional_type_text(styp,
+									base)};')
+								g.type_definitions.write(last_text)
+							}
 						}
 						type_name := g.typ(field.typ)
 						field_name := c_name(field.name)
