@@ -8,6 +8,6 @@ fn main(){
 	some_module.do_work()
 }
 
-fn on_error(sender voidptr, e &some_module.Error, x voidptr) {
+fn on_error(sender voidptr, e &some_module.MyError, x voidptr) {
 	println(e.message)
 }
