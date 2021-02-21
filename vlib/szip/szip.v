@@ -117,8 +117,8 @@ pub fn (mut zentry Zip) index() ?int {
 	return index // must be check for INVALID_VALUE
 }
 
-// isdir determines if the current zip entry is a directory entry.
-pub fn (mut zentry Zip) isdir() ?bool {
+// is_dir determines if the current zip entry is a directory entry.
+pub fn (mut zentry Zip) is_dir() ?bool {
 	isdir := C.zip_entry_isdir(zentry)
 	if isdir < 0 {
 		return error('szip: cannot check entry type')
@@ -180,7 +180,8 @@ pub fn (mut zentry Zip) extract_entry(path string) ? {
 	}
 }
 
-/* extract extracts the current zip entry using a callback function (on_extract).
+/*
+extract extracts the current zip entry using a callback function (on_extract).
 fn (mut zentry Zip) extract(path string) bool {
 	if C.access(path.str, 0) == -1 {
 		return false
@@ -188,7 +189,8 @@ fn (mut zentry Zip) extract(path string) bool {
 	}
 	res := C.zip_extract(zentry, path.str, 0, 0)
 	return res == 0
-}*/
+}
+*/
 
 // total returns the number of all entries (files and directories) in the zip archive.
 pub fn (mut zentry Zip) total() ?int {
