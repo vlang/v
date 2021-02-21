@@ -44,7 +44,7 @@ fn (mut ctx Context) println(s string) {
 
 fn do_timeout(c &Context) {
 	mut ctx := c
-	time.sleep_ms(ctx.timeout_ms)
+	time.wait(ctx.timeout_ms * time.millisecond)
 	exit(ctx.exitcode)
 }
 
@@ -58,7 +58,7 @@ fn main() {
 		After a while (-timeout_ms), exit with (-exitcode).
 		This program is useful for platform independent testing
 		of child process/standart input/output control.
-		It is used in V\'s `os` module tests.
+		It is used in V's `os` module tests.
 ")
 	}
 	ctx.is_verbose = '-v' in args
@@ -75,7 +75,7 @@ fn main() {
 	go do_timeout(&ctx)
 	for i := 1; true; i++ {
 		ctx.println('$i')
-		time.sleep_ms(ctx.period_ms)
+		time.wait(ctx.period_ms * time.millisecond)
 	}
-	time.sleep(100000)
+	time.wait(100 * time.second)
 }

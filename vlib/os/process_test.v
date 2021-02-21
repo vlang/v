@@ -24,7 +24,7 @@ fn test_run() {
 			break
 		}
 		os.system('ps -opid= -oppid= -ouser= -onice= -of= -ovsz= -orss= -otime= -oargs= -p $p.pid')
-		time.sleep_ms(50)
+		time.wait(50 * time.millisecond)
 		i++
 	}
 	p.wait()

@@ -12,8 +12,6 @@ import v.util
 import v.vet
 import v.errors
 import os
-import runtime
-import time
 
 const (
 	builtin_functions = ['print', 'println', 'eprint', 'eprintln', 'isnil', 'panic', 'exit']
@@ -312,11 +310,6 @@ pub fn parse_files(paths []string, table &table.Table, pref &pref.Preferences, g
 			return q.parsed_ast_files
 		}
 		*/
-	}
-	if false {
-		// TODO: remove this; it just prevents warnings about unused time and runtime
-		time.sleep_ms(1)
-		println(runtime.nr_cpus())
 	}
 	// ///////////////
 	mut files := []ast.File{}

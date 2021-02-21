@@ -20,7 +20,7 @@ fn test_ws() {
 	}
 	port := 30000 + rand.intn(1024)
 	go start_server(port)
-	time.sleep_ms(500)
+	time.wait(500 * time.millisecond)
 	ws_test('ws://localhost:$port') or { assert false }
 }
 
@@ -92,10 +92,10 @@ fn ws_test(uri string) ? {
 	for msg in text {
 		ws.write(msg.bytes(), .text_frame) or { panic('fail to write to websocket') }
 		// sleep to give time to recieve response before send a new one
-		time.sleep_ms(100)
+		time.wait(100 * time.millisecond)
 	}
 	// sleep to give time to recieve response before asserts
-	time.sleep_ms(1500)
+	time.wait(1500 * time.millisecond)
 	// We expect at least 2 pongs, one sent directly and one indirectly 
 	assert test_results.nr_pong_received >= 2
 	assert test_results.nr_messages == 2

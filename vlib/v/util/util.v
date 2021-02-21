@@ -509,7 +509,7 @@ pub fn prepare_tool_when_needed(source_name string) {
 	stool := os.join_path(vroot, 'cmd', 'tools', source_name)
 	tool_name, tool_exe := tool_source2name_and_exe(stool)
 	if should_recompile_tool(vexe, stool, tool_name, tool_exe) {
-		time.sleep_ms(1001) // TODO: remove this when we can get mtime with a better resolution
+		time.wait(1001 * time.millisecond) // TODO: remove this when we can get mtime with a better resolution
 		recompile_file(vexe, stool)
 	}
 }
