@@ -2092,6 +2092,25 @@ color := Color.@none
 println(color)
 ```
 
+Integers may be assigned to enum fields.
+
+```v
+enum Grocery {
+	apple
+	orange = 5
+	pear
+}
+
+g1 := int(Grocery.apple)
+g2 := int(Grocery.orange)
+g3 := int(Grocery.pear)
+println("Grocery IDs: $g1, $g2, $g3")
+```
+
+Output: `Grocery IDs: 0, 5, 6`.
+
+Operations are not allowed on enum variables; they must be explicity cast to `int`.
+
 ### Sum types
 
 A sum type instance can hold a value of several different types. Use the `type`
