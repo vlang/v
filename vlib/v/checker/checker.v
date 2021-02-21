@@ -5417,6 +5417,7 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) table.Type {
 		}
 		val := node.vals[i]
 		key_type := c.expr(key)
+		c.expected_type = val0_type
 		val_type := c.expr(val)
 		if !c.check_types(key_type, key0_type) {
 			msg := c.expected_msg(key_type, key0_type)
