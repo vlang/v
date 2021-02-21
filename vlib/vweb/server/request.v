@@ -20,11 +20,12 @@ pub:
 
 pub fn parse_request(mut reader io.BufferedReader) ?Request {
 	// request line
-	method, target, version := parse_request_line(reader.read_line() ?) ?
+	mut line := reader.read_line() ?
+	method, target, version := parse_request_line(line) ?
 
 	// headers
 	mut headers := map[string][]string{}
-	mut line := reader.read_line() ?
+	line = reader.read_line() ?
 	for line != '' {
 		key, values := parse_header(line) ?
 		headers[key] << values
