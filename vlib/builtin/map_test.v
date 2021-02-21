@@ -326,7 +326,7 @@ fn test_assign_directly() {
 }
 
 fn test_map_in_directly() {
-	for k, v in map{
+	for k, v in {
 		'aa': 1
 	} {
 		assert k == 'aa'
