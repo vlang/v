@@ -314,6 +314,7 @@ const (
 		'vlib/v/checker/tests/lock_needed.vv',
 		'vlib/v/checker/tests/lock_nonshared.vv',
 		'vlib/v/checker/tests/shared_type_mismatch.vv',
+		'vlib/v/tests/match_with_complex_exprs_in_branches_test.v',
 	]
 	skip_test_files               = []string{}
 	skip_on_musl                  = [
