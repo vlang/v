@@ -1961,6 +1961,18 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 	mut inc_indent := false
 	mut last_line_nr := it.pos.line_nr // to have the same newlines between array elements
 	f.array_init_depth++
+	for i, c in it.pre_cmnts {
+		if c.pos.line_nr > last_line_nr {
+			f.writeln('')
+		} else if i > 0 {
+			f.write(' ')
+		}
+		f.comment(c, level: .indent, iembed: true)
+		last_line_nr = c.pos.last_line
+	}
+	if it.exprs.len == 0 && it.pre_cmnts.len > 0 && it.pre_cmnts[0].pos.line_nr != it.pos.line_nr {
+		f.writeln('')
+	}
 	for i, expr in it.exprs {
 		line_nr := expr.position().line_nr
 		if i == 0 {

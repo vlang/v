@@ -942,6 +942,7 @@ pub:
 	elem_type_pos token.Position // `Type` in []Type{} position
 	exprs         []Expr      // `[expr, expr]` or `[expr]Type{}` for fixed array
 	ecmnts        [][]Comment // optional iembed comments after each expr
+	pre_cmnts     []Comment
 	is_fixed      bool
 	has_val       bool // fixed size literal `[expr, expr]!`
 	mod           string
