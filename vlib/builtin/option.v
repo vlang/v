@@ -86,7 +86,7 @@ struct OptionBase2 {
 	// derived Option2_xxx types
 }
 
-// ErrorInfo holds information about an error instance
+// Error holds information about an error instance
 struct Error {
 	msg  string
 	code int
