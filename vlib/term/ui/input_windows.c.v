@@ -164,10 +164,10 @@ fn (mut ctx Context) parse_events() {
 					else { KeyCode(ascii) }
 				}
 
-				mut modifiers := u32(0)
-				if e.dwControlKeyState & (0x1 | 0x2) != 0 { modifiers |= alt }
-				if e.dwControlKeyState & (0x4 | 0x8) != 0 { modifiers |= ctrl }
-				if e.dwControlKeyState & 0x10        != 0 { modifiers |= shift }
+				mut modifiers := Modifiers{}
+				if e.dwControlKeyState & (0x1 | 0x2) != 0 { modifiers.set(.alt) }
+				if e.dwControlKeyState & (0x4 | 0x8) != 0 { modifiers.set(.ctrl) }
+				if e.dwControlKeyState & 0x10        != 0 { modifiers.set(.shift) }
 
 				mut event := &Event{
 					typ: .key_down
@@ -188,10 +188,10 @@ fn (mut ctx Context) parse_events() {
 				}
 				x := e.dwMousePosition.X + 1
 				y := int(e.dwMousePosition.Y) - sb_info.srWindow.Top + 1
-				mut modifiers := u32(0)
-				if e.dwControlKeyState & (0x1 | 0x2) != 0 { modifiers |= alt }
-				if e.dwControlKeyState & (0x4 | 0x8) != 0 { modifiers |= ctrl }
-				if e.dwControlKeyState & 0x10        != 0 { modifiers |= shift }
+				mut modifiers := Modifiers{}
+				if e.dwControlKeyState & (0x1 | 0x2) != 0 { modifiers.set(.alt) }
+				if e.dwControlKeyState & (0x4 | 0x8) != 0 { modifiers.set(.ctrl) }
+				if e.dwControlKeyState & 0x10        != 0 { modifiers.set(.shift) }
 				// TODO: handle capslock/numlock/etc?? events exist for those keys
 				match int(e.dwEventFlags) {
 					C.MOUSE_MOVED {
