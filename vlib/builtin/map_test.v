@@ -131,7 +131,7 @@ fn test_map_init() {
 	one := 'one'
 	three := 'three'
 	m := map{
-		one: 1
+		one:   1
 		'two': 2
 		three: 1 + 2
 	}
@@ -326,7 +326,7 @@ fn test_assign_directly() {
 }
 
 fn test_map_in_directly() {
-	for k, v in {
+	for k, v in map{
 		'aa': 1
 	} {
 		assert k == 'aa'
@@ -628,5 +628,7 @@ fn test_map_assign_empty_map_init() {
 }
 
 fn test_in_map_literal() {
-	assert 1 in map{1: 'one'}
+	assert 1 in map{
+		1: 'one'
+	}
 }
