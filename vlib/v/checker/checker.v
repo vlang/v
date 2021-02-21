@@ -745,11 +745,12 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 					}
 				}
 				.map {
-					elem_type := right.map_info().key_type
-					c.check_expected(left_type, elem_type) or {
+					map_info := right.map_info()
+					c.check_expected(left_type, map_info.key_type) or {
 						c.error('left operand to `$infix_expr.op` does not match the map key type: $err',
 							left_right_pos)
 					}
+					infix_expr.left_type = map_info.key_type
 				}
 				.string {
 					c.check_expected(left_type, right_type) or {
