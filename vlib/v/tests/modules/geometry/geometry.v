@@ -4,6 +4,12 @@ const(
 	module_name = 'geometry'
 )
 
+pub enum Shape {
+	circle
+	rectangle
+	triangle
+}
+
 pub struct Point {
 pub mut:
     x   int

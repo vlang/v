@@ -1,0 +1,197 @@
+[
+    {
+        "name": "www_threefold_io",
+        "url": "https://github.com/threefoldfoundation/www_threefold_io",
+        "branch": "default",
+        "pull": false,
+        "cat": 2,
+        "alias": "tf",
+        "path_code": "/Users/despiegk/codewww/github/threefoldfoundation/www_threefold_io",
+        "domains": [
+            "www.threefold.io",
+            "www.threefold.me"
+        ],
+        "descr": "is our entry point for everyone, redirect to the detailed websites underneith."
+    },
+    {
+        "name": "www_threefold_cloud",
+        "url": "https://github.com/threefoldfoundation/www_threefold_cloud",
+        "branch": "default",
+        "pull": false,
+        "cat": 2,
+        "alias": "cloud",
+        "path_code": "/Users/despiegk/codewww/github/threefoldfoundation/www_threefold_cloud",
+        "domains": [
+            "cloud.threefold.io",
+            "cloud.threefold.me"
+        ],
+        "descr": "for people looking to deploy solutions on top of a cloud, alternative to e.g. digital ocean"
+    },
+    {
+        "name": "www_threefold_farming",
+        "url": "https://github.com/threefoldfoundation/www_threefold_farming",
+        "branch": "default",
+        "pull": false,
+        "cat": 2,
+        "alias": "farming",
+        "path_code": "/Users/despiegk/codewww/github/threefoldfoundation/www_threefold_farming",
+        "domains": [
+            "farming.threefold.io",
+            "farming.threefold.me"
+        ],
+        "descr": "crypto & minining enthusiasts, be the internet, know about farming & tokens."
+    },
+    {
+        "name": "www_threefold_twin",
+        "url": "https://github.com/threefoldfoundation/www_threefold_twin",
+        "branch": "default",
+        "pull": false,
+        "cat": 2,
+        "alias": "twin",
+        "path_code": "/Users/despiegk/codewww/github/threefoldfoundation/www_threefold_twin",
+        "domains": [
+            "twin.threefold.io",
+            "twin.threefold.me"
+        ],
+        "descr": "you digital life"
+    },
+    {
+        "name": "www_threefold_marketplace",
+        "url": "https://github.com/threefoldfoundation/www_threefold_marketplace",
+        "branch": "default",
+        "pull": false,
+        "cat": 2,
+        "alias": "marketplace",
+        "path_code": "/Users/despiegk/codewww/github/threefoldfoundation/www_threefold_marketplace",
+        "domains": [
+            "now.threefold.io",
+            "marketplace.threefold.io",
+            "now.threefold.me",
+            "marketplace.threefold.me"
+        ],
+        "descr": "apps for community builders, runs on top of evdc"
+    },
+    {
+        "name": "www_conscious_internet",
+        "url": "https://github.com/threefoldfoundation/www_conscious_internet",
+        "branch": "default",
+        "pull": false,
+        "cat": 2,
+        "alias": "conscious_internet",
+        "path_code": "/Users/despiegk/codewww/github/threefoldfoundation/www_conscious_internet",
+        "domains": [
+            "www.consciousinternet.org",
+            "eco.threefold.io",
+            "community.threefold.io",
+            "eco.threefold.me",
+            "community.threefold.me"
+        ],
+        "descr": "community around threefold, partners, friends, ..."
+    },
+    {
+        "name": "www_threefold_tech",
+        "url": "https://github.com/threefoldtech/www_threefold_tech",
+        "branch": "default",
+        "pull": false,
+        "cat": 2,
+        "alias": "tech",
+        "path_code": "/Users/despiegk/codewww/github/threefoldtech/www_threefold_tech",
+        "domains": [
+            "www.threefold.tech"
+        ],
+        "descr": "cyberpandemic, use the tech to build your own solutions with, certification for TFGrid"
+    },
+    {
+        "name": "www_examplesite",
+        "url": "https://github.com/threefoldfoundation/www_examplesite",
+        "branch": "default",
+        "pull": false,
+        "cat": 2,
+        "alias": "example",
+        "path_code": "/Users/despiegk/codewww/github/threefoldfoundation/www_examplesite",
+        "domains": [
+            "example.threefold.io"
+        ],
+        "descr": ""
+    },
+    {
+        "name": "info_threefold",
+        "url": "https://github.com/threefoldfoundation/info_foundation_archive",
+        "branch": "default",
+        "pull": false,
+        "cat": 0,
+        "alias": "threefold",
+        "path_code": "/Users/despiegk/codewww/github/threefoldfoundation/info_foundation_archive",
+        "domains": [
+            "info.threefold.io"
+        ],
+        "descr": "wiki for foundation, collaborate, what if farmings, tokens"
+    },
+    {
+        "name": "info_sdk",
+        "url": "https://github.com/threefoldfoundation/info_sdk",
+        "branch": "default",
+        "pull": false,
+        "cat": 0,
+        "alias": "sdk",
+        "path_code": "/Users/despiegk/codewww/github/threefoldfoundation/info_sdk",
+        "domains": [
+            "sdk.threefold.io",
+            "sdk_info.threefold.io"
+        ],
+        "descr": "for IAC, devops, how to do Infrastruture As Code, 3bot, Ansible, tfgrid-sdk, ..."
+    },
+    {
+        "name": "info_legal",
+        "url": "https://github.com/threefoldfoundation/info_legal",
+        "branch": "default",
+        "pull": false,
+        "cat": 0,
+        "alias": "legal",
+        "path_code": "/Users/despiegk/codewww/github/threefoldfoundation/info_legal",
+        "domains": [
+            "legal.threefold.io",
+            "legal_info.threefold.io"
+        ],
+        "descr": ""
+    },
+    {
+        "name": "info_cloud",
+        "url": "https://github.com/threefoldfoundation/info_cloud",
+        "branch": "default",
+        "pull": false,
+        "cat": 0,
+        "alias": "cloud",
+        "path_code": "/Users/despiegk/codewww/github/threefoldfoundation/info_cloud",
+        "domains": [
+            "cloud_info.threefold.io"
+        ],
+        "descr": "how to use the cloud for deploying apps: evdc, kubernetes, planetary fs, ... + marketplace solutions "
+    },
+    {
+        "name": "info_tftech",
+        "url": "https://github.com/threefoldtech/info_tftech",
+        "branch": "default",
+        "pull": false,
+        "cat": 0,
+        "alias": "tftech",
+        "path_code": "/Users/despiegk/codewww/github/threefoldtech/info_tftech",
+        "domains": [
+            "info.threefold.tech"
+        ],
+        "descr": ""
+    },
+    {
+        "name": "info_digitaltwin",
+        "url": "https://github.com/threefoldfoundation/info_digitaltwin.git",
+        "branch": "default",
+        "pull": false,
+        "cat": 0,
+        "alias": "twin",
+        "path_code": "/Users/despiegk/codewww/github/threefoldfoundation/info_digitaltwin",
+        "domains": [
+            "twin_info.threefold.io"
+        ],
+        "descr": ""
+    }
+]

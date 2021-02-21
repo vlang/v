@@ -264,13 +264,13 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		if typ == table.string_type {
 			if g.inside_vweb_tmpl {
 				g.write('vweb__filter(')
-				if expr.is_mut_ident() {
+				if expr.is_auto_deref_var() {
 					g.write('*')
 				}
 				g.expr(expr)
 				g.write(')')
 			} else {
-				if expr.is_mut_ident() {
+				if expr.is_auto_deref_var() {
 					g.write('*')
 				}
 				g.expr(expr)
@@ -289,19 +289,19 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 				} else {
 					g.write('(u64)(')
 				}
-				if expr.is_mut_ident() {
+				if expr.is_auto_deref_var() {
 					g.write('*')
 				}
 				g.expr(expr)
 				g.write(')')
 			} else {
-				if expr.is_mut_ident() {
+				if expr.is_auto_deref_var() {
 					g.write('*')
 				}
 				g.expr(expr)
 			}
 		} else {
-			if expr.is_mut_ident() {
+			if expr.is_auto_deref_var() {
 				g.write('*')
 			}
 			g.expr(expr)
@@ -362,7 +362,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) {
 	} else if sym_has_str_method
 		|| sym.kind in [.array, .array_fixed, .map, .struct_, .multi_return, .sum_type, .interface_] {
 		is_ptr := typ.is_ptr()
-		is_var_mut := expr.is_mut_ident()
+		is_var_mut := expr.is_auto_deref_var()
 		str_fn_name := g.gen_str_for_type(typ)
 		if is_ptr && !is_var_mut {
 			g.write('_STR("&%.*s\\000", 2, ')
