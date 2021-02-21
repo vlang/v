@@ -482,7 +482,7 @@ jobs:
         run: make -j4 && ./v -cg -cflags -Werror -o v cmd/v
       - name: Self tests (-fsanitize=address)
         run: ASAN_OPTIONS=detect_leaks=0 ./v -cflags -fsanitize=address test-self
-      - name: Self tests (-asan-compiler)
+      - name: Self tests (V compiled with -fsanitize=address)
         run: 
           ./v -cflags -fsanitize=address -o v cmd/v &&
           ASAN_OPTIONS=detect_leaks=0 ./v -cc tcc test-self -asan-compiler
@@ -534,7 +534,7 @@ jobs:
         run: make -j4 && ./v -cg -cflags -Werror -o v cmd/v
       - name: Self tests (-fsanitize=address)
         run: ASAN_OPTIONS=detect_leaks=0 ./v -cflags -fsanitize=address test-self
-      - name: Self tests (-asan-compiler)
+      - name: Self tests (V compiled with -fsanitize=address)
         run: 
           ./v -cflags -fsanitize=address -o v cmd/v &&
           ASAN_OPTIONS=detect_leaks=0 ./v -cc tcc test-self -asan-compiler
