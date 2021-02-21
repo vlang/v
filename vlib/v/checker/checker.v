@@ -5430,9 +5430,9 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) table.Type {
 			continue
 		}
 		val := node.vals[i]
-		key_type := c.expr(key)
+		key_type := if i == 0 { key0_type } else { c.expr(key) }
 		c.expected_type = val0_type
-		val_type := c.expr(val)
+		val_type := if i == 0 { val0_type } else { c.expr(val) }
 		if !c.check_types(key_type, key0_type) {
 			msg := c.expected_msg(key_type, key0_type)
 			c.error('invalid map key: $msg', key.position())
