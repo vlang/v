@@ -23,7 +23,7 @@ pub fn (mut app App) init_once() {
 	// app.handle_static('assets')
 	// This would make available all known static mime types from current
 	// directory and below.
-	app.handle_static('.')
+	app.handle_static('.', false)
 }
 
 pub fn (mut app App) init() {
