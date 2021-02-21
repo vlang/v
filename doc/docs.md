@@ -3938,8 +3938,8 @@ On Unix-like platforms, the file can be run directly after making it executable 
 
 V has several attributes that modify the behavior of functions and structs.
 
-An attribute is specified inside `[]` right before a function/struct declaration
-and applies only to the following declaration.
+An attribute is a compiler instruction specified inside `[]` right before a
+function/struct/enum declaration and applies only to the following declaration.
 
 ```v
 // Calling this function will result in a deprecation warning
@@ -3976,6 +3976,14 @@ struct C.Foo {
 // Used in Win32 API code when you need to pass callback function
 [windows_stdcall]
 fn C.DefWindowProc(hwnd int, msg int, lparam int, wparam int)
+
+// Windows only:
+// If a default graphics library is imported (ex. gg, ui), then the graphical window takes
+// priority and no console window is created, effectively disabling println() statements.
+// Use to explicity create console window. Valid before main() only.
+[console]
+fn main() {
+}
 ```
 
 ## Goto
