@@ -1,3 +1,4 @@
+import os
 import x.websocket
 import time
 import rand
@@ -8,8 +9,15 @@ pub mut:
 	nr_pong_received int
 }
 
+const github_job = os.getenv('GITHUB_JOB')
+
 // tests with internal ws servers
 fn test_ws() {
+	if github_job != '' && github_job != 'websocket_tests' {
+		// Do not run these tests everytime, since they are flaky.
+		// They have their own specialized CI runner.
+		return
+	}
 	port := 30000 + rand.intn(1024)
 	go start_server(port)
 	time.sleep_ms(500)
