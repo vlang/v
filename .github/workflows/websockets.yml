@@ -28,7 +28,7 @@ on:
       - name: Run websockets tests
         run: ./v -cflags "-Werror" test vlib/x/websocket/
 
-  websocket_autobahn_tests:
+  autobahn_tests:
     name: Autobahn integrations tests
     runs-on: ubuntu-20.04
     timeout-minutes: 20
