@@ -270,10 +270,7 @@ pub fn (mut ctx Context) add_header(key string, val string) {
 
 // Returns the header data from the key
 pub fn (ctx &Context) get_header(key string) string {
-	if key in ctx.req.headers {
-		return ctx.req.headers[key][0]
-	}
-	return ''
+	return ctx.req.headers[key.to_lower()]
 }
 
 pub fn run<T>(port int) {
@@ -318,20 +315,20 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 		page_gen_start: page_gen_start
 	}
 	if req.method in vweb.methods_with_form {
-		if 'multipart/form-data' in req.headers['content-type'] {
-			boundary := req.headers['content-type'].filter(it.starts_with('boundary '))
+		if 'multipart/form-data' in req.parsed_headers['content-type'] {
+			boundary := req.parsed_headers['content-type'].filter(it.starts_with('boundary '))
 			if boundary.len != 1 {
 				// TODO: send 400 error
 				return
 			}
-			app.parse_multipart_form(string(req.body), boundary[0][9..])
+			app.parse_multipart_form(req.data, boundary[0][9..])
 		} else {
-			app.parse_form(string(req.body))
+			app.parse_form(req.data)
 		}
 	}
 	// Serve a static file if it is one
 	// TODO: handle url parameters properly - for now, ignore them
-	mut static_file_name := app.req.target.path
+	mut static_file_name := app.req.url
 	// TODO: use urllib methods instead of manually parsing
 	if static_file_name.contains('?') {
 		static_file_name = static_file_name.all_before('?')
@@ -354,7 +351,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	}
 	mut route_words_a := [][]string{}
 	// TODO: use urllib methods instead of manually parsing
-	mut url_words := req.target.path.split('/').filter(it != '')
+	mut url_words := req.url.split('/').filter(it != '')
 	// Parse URL query
 	if url_words.len > 0 && url_words.last().contains('?') {
 		words := url_words.last().after('?').split('&')
@@ -641,11 +638,10 @@ pub fn (mut ctx Context) serve_static(url string, file_path string, mime_type st
 
 // Returns the ip address from the current user
 pub fn (ctx &Context) ip() string {
-	mut iph := ctx.req.headers['x-forwarded-for']
-	if iph.len == 0 {
-		iph = ctx.req.headers['x-real-ip']
+	mut ip := ctx.req.headers['x-forwarded-for']
+	if ip == '' {
+		ip = ctx.req.headers['x-real-ip']
 	}
-	mut ip := if iph.len == 0 { '' } else { iph[0] }
 
 	if ip.contains(',') {
 		ip = ip.all_before(',')

@@ -12,13 +12,10 @@ enum HttpVersion {
 
 // HTTP request received as a server
 struct Request {
+	http.Request
 pub:
-	method  http.Method
-	target  urllib.URL
-	version HttpVersion
-	// key is always lowercase
-	headers map[string][]string
-	body    []byte
+	parsed_headers map[string][]string
+	version        HttpVersion
 }
 
 pub fn parse_request(mut reader io.BufferedReader) ?Request {
@@ -31,22 +28,31 @@ pub fn parse_request(mut reader io.BufferedReader) ?Request {
 	for line != '' {
 		key, values := parse_header(line) ?
 		headers[key] << values
+		headers[key.to_lower()] << values
 		line = reader.read_line() ?
 	}
 
 	// body
-	mut body := []byte{}
+	mut body := [byte(0)]
 	if 'content-length' in headers {
 		body = []byte{len: headers['content-length'][0].int()}
 		reader.read(mut body) or { }
 	}
 
+	mut http_headers := map[string]string{}
+	for k, v in headers {
+		http_headers[k] = v.join('; ')
+	}
+
 	return Request{
-		method: method
-		target: target
+		Request: {
+			method: method
+			url: target.str()
+			headers: http_headers
+			data: string(body)
+		}
+		parsed_headers: headers
 		version: version
-		headers: headers
-		body: body
 	}
 }
 
@@ -81,7 +87,7 @@ fn parse_header(s string) ?(string, []string) {
 		return error('invalid character in header name')
 	}
 	// TODO: parse quoted text according to the RFC
-	return words[0].to_lower(), words[1].trim_left(' \t').split(';').map(it.trim_space())
+	return words[0], words[1].trim_left(' \t').split(';').map(it.trim_space())
 }
 
 // TODO: use map for faster lookup (untested)

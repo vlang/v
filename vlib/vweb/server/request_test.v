@@ -29,7 +29,7 @@ fn test_parse_request_not_http() {
 fn test_parse_request_no_headers() {
 	req := parse_request(mut reader('GET / HTTP/1.1\r\n\r\n')) or { panic('did not parse: $err') }
 	assert req.method == .get
-	assert req.target.path == '/'
+	assert req.url == '/'
 	assert req.version == .v1_1
 }
 
@@ -38,8 +38,10 @@ fn test_parse_request_two_headers() {
 		panic('did not parse: $err')
 	}
 	assert req.headers == map{
-		'test1': ['a']
-		'test2': ['b']
+		'Test1': 'a'
+		'Test2': 'b'
+		'test1': 'a'
+		'test2': 'b'
 	}
 }
 
@@ -48,7 +50,8 @@ fn test_parse_request_two_header_values() {
 		panic('did not parse: $err')
 	}
 	assert req.headers == map{
-		'test1': ['a', 'b']
+		'Test1': 'a; b'
+		'test1': 'a; b'
 	}
 }
 
@@ -56,7 +59,7 @@ fn test_parse_request_body() {
 	req := parse_request(mut reader('GET / HTTP/1.1\r\nTest1: a\r\nTest2: b\r\nContent-Length: 4\r\n\r\nbody')) or {
 		panic('did not parse: $err')
 	}
-	assert req.body == 'body'.bytes()
+	assert req.data == 'body'
 }
 
 fn test_parse_request_line() {

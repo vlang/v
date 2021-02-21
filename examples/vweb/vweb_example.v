@@ -46,5 +46,5 @@ pub fn (mut app App) cookie() vweb.Result {
 
 [post]
 pub fn (mut app App) post() vweb.Result {
-	return app.text('Post body: ${string(app.req.body)}')
+	return app.text('Post body: $app.req.data')
 }
