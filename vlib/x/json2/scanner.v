@@ -38,12 +38,15 @@ struct Token {
 }
 
 const (
+	// list of characters commonly used in JSON.
 	char_list                 = [`{`, `}`, `[`, `]`, `,`, `:`]
+	// list of newlines to check when moving to a new position.
 	newlines                  = [`\r`, `\n`, byte(9), `\t`]
-	num_indicators            = [`-`, `+`]
+	// list of escapable that needs to be escaped inside a JSON string.
 	important_escapable_chars = [byte(9), 10, 0, `\n`, `\t`]
-	invalid_unicode_endpoints = [byte(9), 229]
+	// list of valid unicode escapes aside from \u{4-hex digits}
 	valid_unicode_escapes     = [`b`, `f`, `n`, `r`, `t`, `\\`, `"`, `/`]
+	// used for transforming escapes into valid unicode (eg. n => \n)
 	unicode_escapes           = map{
 		98:  `\b`
 		102: `\f`
@@ -56,10 +59,12 @@ const (
 	}
 )
 
+// move_pos proceeds to the next position.
 fn (mut s Scanner) move_pos() {
 	s.move(true, true)
 }
 
+// move_pos_with_newlines is the same as move_pos but only enables newline checking.
 fn (mut s Scanner) move_pos_with_newlines() {
 	s.move(false, true)
 }
@@ -88,16 +93,12 @@ fn (mut s Scanner) move(include_space bool, include_newlines bool) {
 	}
 }
 
-fn (mut s Scanner) move_pos_upto(num int) {
-	for i := 0; i < num; i++ {
-		s.move_pos()
-	}
-}
-
+// error returns an error token.
 fn (s Scanner) error(description string) Token {
 	return s.tokenize(description.bytes(), .error)
 }
 
+// tokenize returns a token based on the given lit and kind.
 fn (s Scanner) tokenize(lit []byte, kind TokenKind) Token {
 	return Token{
 		lit: lit
@@ -107,6 +108,7 @@ fn (s Scanner) tokenize(lit []byte, kind TokenKind) Token {
 	}
 }
 
+// text_scan scans and returns a string token.
 fn (mut s Scanner) text_scan() Token {
 	mut has_closed := false
 	mut chrs := []byte{}
@@ -150,7 +152,7 @@ fn (mut s Scanner) text_scan() Token {
 				}
 			} else if peek == `U` {
 				return s.error('unicode endpoints must be in lowercase `u`')
-			} else if peek in json2.invalid_unicode_endpoints {
+			} else if peek == byte(229) {
 				return s.error('unicode endpoint not allowed')
 			} else {
 				return s.error('invalid backslash escape')
@@ -168,15 +170,14 @@ fn (mut s Scanner) text_scan() Token {
 	return s.tokenize(chrs, .str_)
 }
 
+// num_scan scans and returns an int/float token.
 fn (mut s Scanner) num_scan() Token {
-	is_minus := s.text[s.pos] == `-`
-
 	// analyze json number structure
 	// -[digit][?[dot][digit]][?[E/e][?-/+][digit]]
 	mut is_fl := false
 	mut dot_index := -1
 	mut digits := []byte{}
-	if is_minus {
+	if s.text[s.pos] == `-` {
 		digits << `-`
 		if !s.text[s.pos + 1].is_digit() {
 			return s.invalid_token()
@@ -219,10 +220,12 @@ fn (mut s Scanner) num_scan() Token {
 	return s.tokenize(digits, kind)
 }
 
+// invalid_token returns an error token with the invalid token message.
 fn (s Scanner) invalid_token() Token {
 	return s.error('invalid token `${s.text[s.pos].ascii_str()}`')
 }
 
+// scan returns a token based on the scanner's current position.
 [manualfree]
 fn (mut s Scanner) scan() Token {
 	for s.pos < s.text.len && s.text[s.pos] == ` ` {
@@ -239,7 +242,10 @@ fn (mut s Scanner) scan() Token {
 			}
 			unsafe { ident.free() }
 			val := s.text[s.pos..s.pos + 4]
-			s.move_pos_upto(4)
+			s.move_pos()
+			s.move_pos()
+			s.move_pos()
+			s.move_pos()
 			return s.tokenize(val, kind)
 		}
 		unsafe { ident.free() }
@@ -249,7 +255,11 @@ fn (mut s Scanner) scan() Token {
 		if ident == 'false' {
 			unsafe { ident.free() }
 			val := s.text[s.pos..s.pos + 5]
-			s.move_pos_upto(5)
+			s.move_pos()
+			s.move_pos()
+			s.move_pos()
+			s.move_pos()
+			s.move_pos()
 			return s.tokenize(val, .bool_)
 		}
 		unsafe { ident.free() }
