@@ -39,7 +39,7 @@ fn C.zip_entry_fread(&Zip, byteptr) int
 
 fn C.zip_total_entries(&Zip) int
 
-// CompressionLevel lists compression levels - ref: miniz.h
+// CompressionLevel lists compression levels, see in "thirdparty/miniz.h"
 pub enum CompressionLevel {
 	no_compression = 0
 	best_speed = 1
@@ -120,7 +120,7 @@ pub fn (mut zentry Zip) name() string {
 	if name == 0 {
 		return ''
 	}
-	return unsafe { tos_clone(name) }
+	return unsafe { name.vstring() }
 }
 
 /// index returns an index of the current zip entry.
