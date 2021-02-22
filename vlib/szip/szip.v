@@ -50,8 +50,8 @@ pub enum CompressionLevel {
 }
 
 // OpenMode lists the opening modes
-// .write: opens a file for reading/extracting (the file must exists).<br>
-// .read_only: creates an empty file for writing.<br>
+// .write: opens a file for reading/extracting (the file must exists).
+// .read_only: creates an empty file for writing.
 // .append: appends to an existing archive.
 pub enum OpenMode {
 	write
