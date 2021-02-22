@@ -67,6 +67,7 @@ fn test_slurping_output() {
 		return
 	}
 	mut p := os.new_process(test_os_process)
+	p.set_args(['-timeout_ms', '500', '-period_ms', '50'])
 	p.set_redirect_stdio()
 	assert p.status != .exited
 	p.wait()
