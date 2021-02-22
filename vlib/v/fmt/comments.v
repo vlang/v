@@ -5,18 +5,18 @@ module fmt
 
 import v.ast
 
-enum CommentsLevel {
+pub enum CommentsLevel {
 	keep
 	indent
 }
 
 // CommentsOptions defines the way comments are going to be written
-// - has_nl: adds an newline at the end of the list of comments
-// - inline: single-line comments will be on the same line as the last statement
-// - iembed: a /* ... */ embedded comment; used in expressions; // comments the whole line
+// - has_nl: adds an newline at the end of a list of comments
+// - inline: line comments will be on the same line as the last statement
 // - level:  either .keep (don't indent), or .indent (increment indentation)
-// - prev_line: the line number of the previous token
-struct CommentsOptions {
+// - iembed: a /* ... */ block comment used inside expressions; // comments the whole line
+// - prev_line: the line number of the previous token to save linebreaks
+pub struct CommentsOptions {
 	has_nl    bool = true
 	inline    bool
 	level     CommentsLevel
@@ -25,6 +25,7 @@ struct CommentsOptions {
 }
 
 pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
+	// Shebang in .vsh files
 	if node.text.starts_with('#!') {
 		f.writeln(node.text)
 		return
