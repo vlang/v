@@ -9,9 +9,11 @@ pub const (
 // i.e. .dll on windows, .so on most unixes, .dylib on macos.
 [inline]
 pub fn get_shared_library_extension() string {
-	mut res := $if macos {
+	mut res := '.so'
+	$if macos {
 		res = '.dylib'
-	} $else $if windows {
+	}
+	$if windows {
 		res = '.dll'
 	}
 	return res
