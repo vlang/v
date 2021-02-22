@@ -152,14 +152,19 @@ pub fn (mut f Fmt) wrap_long_line(penalty_idx int, add_indent bool) bool {
 	return true
 }
 
-pub fn (mut f Fmt) remove_new_line() {
+pub struct RemoveNewLineConfig {
+	imports_buffer bool // Work on f.out_imports instead of f.out
+}
+
+pub fn (mut f Fmt) remove_new_line(cfg RemoveNewLineConfig) {
+	mut buffer := if cfg.imports_buffer { &f.out_imports } else { &f.out }
 	mut i := 0
-	for i = f.out.len - 1; i >= 0; i-- {
-		if !f.out.buf[i].is_space() { // != `\n` {
+	for i = buffer.len - 1; i >= 0; i-- {
+		if !buffer.buf[i].is_space() { // != `\n` {
 			break
 		}
 	}
-	f.out.go_back(f.out.len - i - 1)
+	buffer.go_back(buffer.len - i - 1)
 	f.empty_line = false
 }
 
@@ -1883,7 +1888,7 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 			}
 			f.stmts(branch.stmts)
 			if single_line {
-				f.remove_new_line()
+				f.remove_new_line({})
 				f.writeln(' }')
 			} else {
 				f.writeln('}')
@@ -2181,7 +2186,7 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 					single_line_fields = false
 					f.out.go_back_to(fields_start)
 					f.line_len = fields_start
-					f.remove_new_line()
+					f.remove_new_line({})
 					continue fields_loop
 				}
 			}
@@ -2394,7 +2399,7 @@ pub fn (mut f Fmt) for_c_stmt(node ast.ForCStmt) {
 	f.expr(node.cond)
 	f.write('; ')
 	f.stmt(node.inc)
-	f.remove_new_line()
+	f.remove_new_line({})
 	f.write(' {')
 	if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
 		f.writeln('')
