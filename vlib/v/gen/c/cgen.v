@@ -3610,16 +3610,15 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 					g.write('if (')
 				}
 				g.write(cond_var)
-				// branch_sym := g.table.get_type_symbol(branch.typ)
+				dot_or_ptr := if node.cond_type.is_ptr() { '->' } else { '.' }
 				if sym.kind == .sum_type {
-					dot_or_ptr := if node.cond_type.is_ptr() { '->' } else { '.' }
-					g.write(dot_or_ptr)
-					g.write('typ == ')
+					g.write('${dot_or_ptr}typ == ')
+					g.expr(branch.exprs[sumtype_index])
 				} else if sym.kind == .interface_ {
-					// g.write('._interface_idx == _${sym.name}_${branch_sym} ')
-					g.write('._interface_idx == ')
+					typ := branch.exprs[sumtype_index] as ast.Type
+					branch_sym := g.table.get_type_symbol(typ.typ)
+					g.write('${dot_or_ptr}_interface_idx == _${sym.cname}_${branch_sym.cname}_index')
 				}
-				g.expr(branch.exprs[sumtype_index])
 				if is_expr && tmp_var.len == 0 {
 					g.write(') ? ')
 				} else {
