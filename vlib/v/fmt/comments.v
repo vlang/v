@@ -126,8 +126,7 @@ pub fn (mut f Fmt) import_comments(comments []ast.Comment, options CommentsOptio
 		if ctext == '' {
 			continue
 		}
-		mut out_s := if options.inline { ' ' } else { '' }
-		out_s += '//'
+		mut out_s := if options.inline { ' ' } else { '' } + '//'
 		if is_first_char_alphanumeric(ctext) {
 			out_s += ' '
 		}
