@@ -3,8 +3,6 @@
 // that can be found in the LICENSE file.
 module json2
 
-import v.util
-
 // `Any` is a sum type that lists the possible types to be decoded and used.
 pub type Any = Null | []Any | bool | f32 | f64 | i64 | int | map[string]Any | string
 
@@ -39,8 +37,26 @@ fn (p Parser) emit_error(msg string, line int, column int) string {
 	return '[x.json2] $msg ($line:$column)'
 }
 
+// TODO: copied from v.util to avoid the entire module and its functions
+// from being imported. remove later once -skip-unused is enabled by default.
+fn skip_bom(file_content string) string {
+	mut raw_text := file_content
+	// BOM check
+	if raw_text.len >= 3 {
+		unsafe {
+			c_text := raw_text.str
+			if c_text[0] == 0xEF && c_text[1] == 0xBB && c_text[2] == 0xBF {
+				// skip three BOM bytes
+				offset_from_begin := 3
+				raw_text = tos(c_text[offset_from_begin], vstrlen(c_text) - offset_from_begin)
+			}
+		}
+	}
+	return raw_text
+}
+
 fn new_parser(srce string, convert_type bool) Parser {
-	src := util.skip_bom(srce)
+	src := skip_bom(srce)
 	return Parser{
 		scanner: &Scanner{
 			text: src.bytes()
