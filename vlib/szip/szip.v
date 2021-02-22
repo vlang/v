@@ -79,15 +79,10 @@ fn (om OpenMode) to_byte() byte {
 // level: can be any value of the CompressionLevel enum
 // mode: can be any value of the OpenMode enum
 pub fn open(name string, level CompressionLevel, mode OpenMode) ?&Zip {
-	mut nlevel := int(level)
-	// 10 = uber_compression
-	if (nlevel & 0xF) > 10 {
-		nlevel = 6 // szip.default_level
-	}
 	if name.len == 0 {
 		return error('szip: name of file empty')
 	}
-	p_zip := &Zip(C.zip_open(name.str, nlevel, mode.to_byte()))
+	p_zip := &Zip(C.zip_open(name.str, int(level), mode.to_byte()))
 	if isnil(p_zip) {
 		return error('szip: cannot open/create/append new zip archive')
 	}
