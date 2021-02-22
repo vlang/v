@@ -68,7 +68,7 @@ fn test_str_invalid_uppercase_u() {
 
 fn test_str_missing_closing_bracket() {
 	mut sc := Scanner{
-		text: r'"incomplete'.bytes()
+		text: '"incomplete'.bytes()
 	}
 	tok := sc.scan()
 	assert tok.kind == .error
