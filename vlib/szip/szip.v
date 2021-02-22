@@ -53,12 +53,12 @@ const (
 	m_append = `a`
 )
 
-// open opens zip archive with compression level using the given mode.<br>
-// compression levels: 0-9 are the standard zlib-style levels.<br>
-// modes:<br>
-// - 'r': opens a file for reading/extracting (the file must exists).<br>
-// - 'w': creates an empty file for writing.<br>
-// - 'a': appends to an existing archive.
+// open opens zip archive with compression level using the given mode.
+// compression levels: 0-9 are the standard zlib-style levels.
+// modes:
+// 'r' (opens a file for reading/extracting, note: the file must exists)
+// 'w' (creates an empty file for writing)
+// 'a' (appends to an existing archive)
 pub fn open(name string, level int, mode byte) ?&Zip {
 	mut nlevel := level
 	if (nlevel & 0xF) > szip.uber_compression {
