@@ -53,7 +53,7 @@ fn test_all() {
 		expected = expected.trim_right('\r\n').replace('\r\n', '\n')
 		if expected.contains('================ V panic ================') {
 			// panic include backtraces and absolute file paths, so can't do char by char comparison
-			mut n_found := normalize_panic_message(found, vroot)
+			n_found := normalize_panic_message(found, vroot)
 			n_expected := normalize_panic_message(expected, vroot)
 			if found.contains('================ V panic ================') {
 				if n_found.starts_with(n_expected) {
