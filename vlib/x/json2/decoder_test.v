@@ -59,3 +59,11 @@ fn test_raw_decode_invalid() {
 	}
 	assert false
 }
+
+fn test_raw_decode_string_with_dollarsign() {
+	str := json2.raw_decode('"Hello \$world"') or {
+		assert false
+		json2.Any{}
+	}
+	assert str.str() == 'Hello \$world'
+}
