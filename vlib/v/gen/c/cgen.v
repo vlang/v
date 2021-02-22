@@ -2442,7 +2442,7 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 	// if v.is_autofree_tmp && !g.doing_autofree_tmp {
 	// return
 	// }
-	if v.name.contains('expr_write_1_') {
+	if v.name.contains('expr_write_string_1_') {
 		// TODO remove this temporary hack
 		return
 	}
