@@ -761,7 +761,10 @@ pub fn screen_size() Size {
 
 // window_size returns the `Size` of the active window
 pub fn window_size() Size {
-	s := sapp.dpi_scale()
+	mut s := sapp.dpi_scale()
+	if s == 0 {
+		s = 1.
+	}
 	return Size{int(sapp.width() / s), int(sapp.height() / s)}
 }
 
