@@ -43,8 +43,10 @@ const (
 	// list of newlines to check when moving to a new position.
 	newlines                  = [`\r`, `\n`, byte(9), `\t`]
 	// list of escapable that needs to be escaped inside a JSON string.
-	// double quotes are excluded intentionally since there is a separate check for it.
-	important_escapable_chars = [byte(9), 10, 0, `\b`, `\f`, `\n`, `\r`, `\t`, `/`]
+	// double quotes and forward slashes are excluded intentionally since
+	// they have their own separate checks for it in order to pass the
+	// JSON test suite (https://github.com/nst/JSONTestSuite/).
+	important_escapable_chars = [byte(9), 10, 0, `\b`, `\f`, `\n`, `\r`, `\t`]
 	// list of valid unicode escapes aside from \u{4-hex digits}
 	valid_unicode_escapes     = [`b`, `f`, `n`, `r`, `t`, `\\`, `"`, `/`]
 	// used for transforming escapes into valid unicode (eg. n => \n)
