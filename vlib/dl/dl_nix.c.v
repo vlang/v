@@ -1,6 +1,7 @@
 module dl
 
 #include <dlfcn.h>
+
 pub const (
 	rtld_now  = C.RTLD_NOW
 	rtld_lazy = C.RTLD_LAZY
