@@ -2355,7 +2355,8 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 	}
 	return_stmt.types = got_types
 	// allow `none` & `error (Option)` return types for function that returns optional
-	if exp_is_optional && got_types[0].idx() in [table.none_type_idx, c.table.type_idxs['Option']] {
+	if exp_is_optional
+		&& got_types[0].idx() in [table.none_type_idx, c.table.type_idxs['Option'], c.table.type_idxs['Option2']] {
 		return
 	}
 	if expected_types.len > 0 && expected_types.len != got_types.len {

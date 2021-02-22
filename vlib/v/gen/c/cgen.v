@@ -5286,7 +5286,7 @@ fn (mut g Gen) write_init_function() {
 }
 
 const (
-	builtins = ['string', 'array', 'KeyValue', 'DenseArray', 'map', 'Option']
+	builtins = ['string', 'array', 'KeyValue', 'DenseArray', 'map', 'Option', 'Error', 'Option2']
 )
 
 fn (mut g Gen) write_builtin_types() {

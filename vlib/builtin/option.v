@@ -3,16 +3,6 @@
 // that can be found in the LICENSE file.
 module builtin
 
-/*
-struct Option2<T> {
-	ok bool
-	is_none bool
-	error string
-	ecode int
-	data T
-}
-*/
-// OptionBase is the the base of V's internal optional return system.
 struct OptionBase {
 	ok      bool
 	is_none bool
@@ -81,3 +71,65 @@ pub fn error_with_code(message string, code int) Option {
 		ecode: code
 	}
 }
+
+struct Option2 {
+	state byte
+	err   Error
+}
+
+// OptionBase is the the base of V's internal optional return system.
+struct OptionBase2 {
+	state byte
+	err   Error
+	// Data is trailing after err
+	// and is not included in here but in the
+	// derived Option2_xxx types
+}
+
+// Error holds information about an error instance
+struct Error {
+	msg  string
+	code int
+}
+
+// /*
+pub fn (o Option2) str() string {
+	if o.state == 0 {
+		return 'Option2{ ok }'
+	}
+	if o.state == 1 {
+		return 'Option2{ none }'
+	}
+	return 'Option2{ err: "$o.err.msg" }'
+}
+
+// opt_none is used internally when returning `none`.
+fn opt_none2() Option2 {
+	return Option2{
+		state: 1
+	}
+}
+
+// error returns an optional containing the error given in `message`.
+// `if ouch { return error('an error occurred') }`
+pub fn error2(message string) Option2 {
+	return Option2{
+		state: 2
+		err: {
+			msg: message
+		}
+	}
+}
+
+// error_with_code returns an optional containing both error `message` and error `code`.
+// `if ouch { return error_with_code('an error occurred',1) }`
+pub fn error_with_code2(message string, code int) Option2 {
+	return Option2{
+		state: 2
+		err: {
+			msg: message
+			code: code
+		}
+	}
+}
+// */
