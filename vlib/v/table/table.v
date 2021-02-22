@@ -86,7 +86,9 @@ mut:
 }
 
 pub fn new_table() &Table {
-	mut t := &Table{}
+	mut t := &Table{
+		types: []TypeSymbol{cap: 64000}
+	}
 	t.register_builtin_type_symbols()
 	t.is_fmt = true
 	return t
