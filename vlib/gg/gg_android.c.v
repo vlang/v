@@ -16,10 +16,10 @@ struct C.ANativeActivity {
 }
 
 fn android_dpi() f32 {
-    config := C.AConfiguration_new()
+	config := C.AConfiguration_new()
 	activity := &C.ANativeActivity(sapp.android_get_native_activity())
-    C.AConfiguration_fromAssetManager(config, activity.assetManager)
-    density := C.AConfiguration_getDensity(config)
-    C.AConfiguration_delete(config)
-    return f32(density) / 160
+	C.AConfiguration_fromAssetManager(config, activity.assetManager)
+	density := C.AConfiguration_getDensity(config)
+	C.AConfiguration_delete(config)
+	return f32(density) / 160
 }
