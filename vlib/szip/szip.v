@@ -59,6 +59,7 @@ pub enum OpenMode {
 	append
 }
 
+[inline]
 fn (om OpenMode) to_byte() byte {
 	return match om {
 		.write {
