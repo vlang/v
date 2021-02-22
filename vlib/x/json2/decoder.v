@@ -8,6 +8,7 @@ pub type Any = Null | []Any | bool | f32 | f64 | i64 | int | map[string]Any | st
 
 // `Null` struct is a simple representation of the `null` value in JSON.
 pub struct Null {
+	is_null bool = true
 }
 
 struct Parser {
