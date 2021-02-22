@@ -10,16 +10,6 @@ fn test_str() {
 	assert tok.lit.bytestr() == 'test'
 }
 
-fn test_str_valid_escape() {
-	mut sc := Scanner{
-		text: r'"t\nest"'.bytes()
-	}
-	tok := sc.scan()
-	assert tok.kind == .str_
-	assert tok.lit.len == 5
-	assert tok.lit.bytestr() == 't\nest'
-}
-
 fn test_str_valid_unicode_escape() {
 	mut sc := Scanner{
 		text: r'"\u0048"'.bytes()
@@ -37,6 +27,17 @@ fn test_str_invalid_escape() {
 	tok := sc.scan()
 	assert tok.kind == .error
 	assert tok.lit.bytestr() == 'invalid backslash escape'
+}
+
+fn test_str_invalid_must_be_escape() {
+	for char in important_escapable_chars {
+		mut sc := Scanner{
+			text: [byte(`"`), `t`, char, `"`]
+		}
+		tok := sc.scan()
+		assert tok.kind == .error
+		assert tok.lit.bytestr() == 'character must be escaped with a backslash'
+	}
 }
 
 fn test_str_invalid_unicode_escape() {

@@ -29,11 +29,13 @@ fn (mut p Parser) next() {
 fn (mut p Parser) next_with_err() ? {
 	p.next()
 	if p.tok.kind == .error {
-		return error(p.emit_error(p.n_tok.lit.bytestr(), p.n_tok.line, p.n_tok.col))
+		return error(p.emit_error(p.tok.lit.bytestr()))
 	}
 }
 
-fn (p Parser) emit_error(msg string, line int, column int) string {
+fn (p Parser) emit_error(msg string) string {
+	line := p.tok.line
+	column := p.tok.col + p.tok.lit.len
 	return '[x.json2] $msg ($line:$column)'
 }
 
@@ -70,15 +72,14 @@ fn (mut p Parser) decode() ?Any {
 	p.next_with_err() ?
 	fi := p.decode_value() ?
 	if p.tok.kind != .eof {
-		return error(p.emit_error('invalid token `$p.tok.kind`', p.tok.line, p.tok.col))
+		return error(p.emit_error('invalid token `$p.tok.kind`'))
 	}
 	return fi
 }
 
 fn (mut p Parser) decode_value() ?Any {
 	if p.n_level == 500 {
-		return error(p.emit_error('reached maximum nesting level of 500', p.tok.line,
-			p.tok.col))
+		return error(p.emit_error('reached maximum nesting level of 500'))
 	}
 	if (p.tok.kind == .lsbr && p.n_tok.kind == .lcbr)
 		|| (p.p_tok.kind == p.tok.kind && p.tok.kind == .lsbr) {
@@ -107,7 +108,7 @@ fn (mut p Parser) decode_value() ?Any {
 			return p.decode_string()
 		}
 		else {
-			return error(p.emit_error('invalid token `$p.tok.kind`', p.tok.line, p.tok.col))
+			return error(p.emit_error('invalid token `$p.tok.kind`'))
 		}
 	}
 	return Any{}
@@ -139,12 +140,12 @@ fn (mut p Parser) decode_array() ?Any {
 		if p.tok.kind == .comma {
 			p.next_with_err() ?
 			if p.tok.kind in [.rsbr, .rcbr] {
-				return error(p.emit_error('invalid token `$p.tok.lit', p.tok.line, p.tok.col))
+				return error(p.emit_error('invalid token `$p.tok.lit'))
 			}
 		} else if p.tok.kind == .rsbr {
 			break
 		} else {
-			return error("unknown token '$p.tok.lit' when decoding array.")
+			return error(p.emit_error("unknown token '$p.tok.lit' when decoding array."))
 		}
 	}
 	p.next_with_err() ?
@@ -158,7 +159,7 @@ fn (mut p Parser) decode_object() ?Any {
 	for p.tok.kind != .rcbr {
 		is_key := p.tok.kind == .str_ && p.n_tok.kind == .colon
 		if !is_key {
-			return error('invalid token `$p.tok.kind`, expecting `string`')
+			return error(p.emit_error('invalid token `$p.tok.kind`, expecting `str_`'))
 		}
 		cur_key = p.tok.lit.bytestr()
 		p.next_with_err() ?
@@ -167,7 +168,7 @@ fn (mut p Parser) decode_object() ?Any {
 		if p.tok.kind == .comma {
 			p.next_with_err() ?
 			if p.tok.kind != .str_ {
-				return error("unknown token '$p.tok.lit' when decoding object.")
+				return error(p.emit_error("unknown token '$p.tok.lit' when decoding object."))
 			}
 		}
 	}

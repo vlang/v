@@ -43,11 +43,12 @@ const (
 	// list of newlines to check when moving to a new position.
 	newlines                  = [`\r`, `\n`, byte(9), `\t`]
 	// list of escapable that needs to be escaped inside a JSON string.
-	important_escapable_chars = [byte(9), 10, 0, `\n`, `\t`]
+	// double quotes are excluded intentionally since there is a separate check for it.
+	important_escapable_chars = [byte(9), 10, 0, `\b`, `\f`, `\n`, `\r`, `\t`, `/`]
 	// list of valid unicode escapes aside from \u{4-hex digits}
 	valid_unicode_escapes     = [`b`, `f`, `n`, `r`, `t`, `\\`, `"`, `/`]
 	// used for transforming escapes into valid unicode (eg. n => \n)
-	unicode_escapes           = map{
+	unicode_transform_escapes = map{
 		98:  `\b`
 		102: `\f`
 		110: `\n`
@@ -118,19 +119,23 @@ fn (mut s Scanner) text_scan() Token {
 			break
 		}
 		ch := s.text[s.pos]
-		if ch in json2.important_escapable_chars {
+		if (s.pos - 1 >= 0 && s.text[s.pos - 1] != `\\`) && ch == `"` {
+			has_closed = true
+			break
+		} else if (s.pos - 1 >= 0 && s.text[s.pos - 1] != `\\`)
+			&& ch in json2.important_escapable_chars {
 			return s.error('character must be escaped with a backslash')
 		} else if s.pos == s.text.len - 1 && ch == `\\` {
 			return s.error('invalid backslash escape')
 		} else if s.pos + 1 < s.text.len && ch == `\\` {
 			peek := s.text[s.pos + 1]
 			if peek in json2.valid_unicode_escapes {
-				chrs << json2.unicode_escapes[int(peek)]
-				s.move_pos()
+				chrs << json2.unicode_transform_escapes[int(peek)]
+				s.move(false, false)
 				continue
 			} else if peek == `u` {
 				if s.pos + 5 < s.text.len {
-					s.move_pos()
+					s.move(false, false)
 					mut codepoint := []byte{}
 					codepoint_start := s.pos
 					for s.pos < s.text.len && s.pos < codepoint_start + 4 {
@@ -157,17 +162,15 @@ fn (mut s Scanner) text_scan() Token {
 			} else {
 				return s.error('invalid backslash escape')
 			}
-		} else if ch == `"` {
-			has_closed = true
-			break
 		}
 		chrs << ch
 	}
+	tok := s.tokenize(chrs, .str_)
 	s.move_pos()
 	if !has_closed {
 		return s.error('missing closing bracket in string')
 	}
-	return s.tokenize(chrs, .str_)
+	return tok
 }
 
 // num_scan scans and returns an int/float token.
@@ -242,11 +245,12 @@ fn (mut s Scanner) scan() Token {
 			}
 			unsafe { ident.free() }
 			val := s.text[s.pos..s.pos + 4]
+			tok := s.tokenize(val, kind)
 			s.move_pos()
 			s.move_pos()
 			s.move_pos()
 			s.move_pos()
-			return s.tokenize(val, kind)
+			return tok
 		}
 		unsafe { ident.free() }
 		return s.invalid_token()
@@ -255,19 +259,21 @@ fn (mut s Scanner) scan() Token {
 		if ident == 'false' {
 			unsafe { ident.free() }
 			val := s.text[s.pos..s.pos + 5]
+			tok := s.tokenize(val, .bool_)
 			s.move_pos()
 			s.move_pos()
 			s.move_pos()
 			s.move_pos()
 			s.move_pos()
-			return s.tokenize(val, .bool_)
+			return tok
 		}
 		unsafe { ident.free() }
 		return s.invalid_token()
 	} else if s.text[s.pos] in json2.char_list {
-		tok := s.text[s.pos]
+		chr := s.text[s.pos]
+		tok := s.tokenize([]byte{}, TokenKind(int(chr)))
 		s.move_pos()
-		return s.tokenize([]byte{}, TokenKind(int(tok)))
+		return tok
 	} else if s.text[s.pos] == `"` {
 		return s.text_scan()
 	} else if s.text[s.pos].is_digit() || s.text[s.pos] == `-` {

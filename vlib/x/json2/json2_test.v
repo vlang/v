@@ -70,14 +70,13 @@ fn test_fast_raw_decode() {
 }
 
 fn test_character_unescape() {
-	// Need to test `\r`, `\b`, `\f` ??
 	message := '{
-		"newline":"new\\nline",
-		"tab":"\\ttab",
-		"backslash": "back\\\\slash",
-		"quotes": "\\"quotes\\"",
-		"slash":"\/dev\/null"
-	}'
+	"newline": "new\\nline",
+	"tab": "\\ttab",
+	"backslash": "back\\\\slash",
+	"quotes": "\\"quotes\\"",
+	"slash":"\\/dev\\/null"
+}'
 	mut obj := json2.raw_decode(message) or {
 		println(err)
 		assert false
