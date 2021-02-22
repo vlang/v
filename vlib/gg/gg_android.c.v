@@ -15,7 +15,7 @@ struct C.ANativeActivity {
 	assetManager voidptr
 }
 
-fn android_dpi() f32 {
+pub fn android_dpi_scale() f32 {
 	config := C.AConfiguration_new()
 	activity := &C.ANativeActivity(sapp.android_get_native_activity())
 	C.AConfiguration_fromAssetManager(config, activity.assetManager)
