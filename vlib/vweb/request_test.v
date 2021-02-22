@@ -1,4 +1,4 @@
-module server
+module vweb
 
 import io
 
@@ -34,24 +34,30 @@ fn test_parse_request_no_headers() {
 }
 
 fn test_parse_request_two_headers() {
-	req := parse_request(mut reader('GET / HTTP/1.1\r\nTest1: a\r\nTest2:  b\r\n\r\n')) or {
+	req := parse_request(mut reader('GET / HTTP/1.1\r\nTest1: a\r\nTest2:  B\r\n\r\n')) or {
 		panic('did not parse: $err')
 	}
 	assert req.headers == map{
 		'Test1': 'a'
-		'Test2': 'b'
+		'Test2': 'B'
+	}
+	assert req.lheaders == map{
 		'test1': 'a'
-		'test2': 'b'
+		'test2': 'B'
 	}
 }
 
 fn test_parse_request_two_header_values() {
-	req := parse_request(mut reader('GET / HTTP/1.1\r\nTest1: a; b\r\n\r\n')) or {
+	req := parse_request(mut reader('GET / HTTP/1.1\r\nTest1: a; b\r\nTest2: c\r\nTest2: d\r\n\r\n')) or {
 		panic('did not parse: $err')
 	}
 	assert req.headers == map{
 		'Test1': 'a; b'
+		'Test2': 'c; d'
+	}
+	assert req.lheaders == map{
 		'test1': 'a; b'
+		'test2': 'c; d'
 	}
 }
 

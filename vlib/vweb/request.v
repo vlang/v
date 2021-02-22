@@ -1,24 +1,10 @@
-module server
+module vweb
 
 import io
 import net.http
 import net.urllib
 
-enum HttpVersion {
-	v1_0
-	v1_1
-	v2_0
-}
-
-// HTTP request received as a server
-struct Request {
-	http.Request
-pub:
-	parsed_headers map[string][]string
-	version        HttpVersion
-}
-
-pub fn parse_request(mut reader io.BufferedReader) ?Request {
+pub fn parse_request(mut reader io.BufferedReader) ?http.Request {
 	// request line
 	mut line := reader.read_line() ?
 	method, target, version := parse_request_line(line) ?
@@ -29,52 +15,45 @@ pub fn parse_request(mut reader io.BufferedReader) ?Request {
 	for line != '' {
 		key, values := parse_header(line) ?
 		headers[key] << values
-		headers[key.to_lower()] << values
 		line = reader.read_line() ?
+	}
+
+	mut http_headers := map[string]string{}
+	mut http_lheaders := map[string]string{}
+	for k, v in headers {
+		values := v.join('; ')
+		http_headers[k] = values
+		http_lheaders[k.to_lower()] = values
 	}
 
 	// body
 	mut body := [byte(0)]
-	if 'content-length' in headers {
-		n := headers['content-length'][0].int()
+	if 'content-length' in http_lheaders {
+		n := http_lheaders['content-length'].int()
 		body = []byte{len: n, cap: n + 1}
 		reader.read(mut body) or { }
 		body << 0
 	}
 
-	mut http_headers := map[string]string{}
-	for k, v in headers {
-		http_headers[k] = v.join('; ')
-	}
-
-	return Request{
-		Request: {
-			method: method
-			url: target.str()
-			headers: http_headers
-			data: string(body)
-		}
-		parsed_headers: headers
+	return http.Request{
+		method: method
+		url: target.str()
+		headers: http_headers
+		lheaders: http_lheaders
+		data: string(body)
 		version: version
 	}
 }
 
-fn parse_request_line(s string) ?(http.Method, urllib.URL, HttpVersion) {
+fn parse_request_line(s string) ?(http.Method, urllib.URL, http.Version) {
 	words := s.split(' ')
 	if words.len != 3 {
 		return error('malformed request line')
 	}
 	method := http.method_from_str(words[0])
 	target := urllib.parse(words[1]) ?
-
-	mut version := HttpVersion.v1_0
-	if words[2] == 'HTTP/1.0' {
-		version = .v1_0
-	} else if words[2] == 'HTTP/1.1' {
-		version = .v1_1
-	} else if words[2] == 'HTTP/2.0' {
-		version = .v2_0
-	} else {
+	version := http.version_from_str(words[2])
+	if version == .unknown {
 		return error('unsupported version')
 	}
 
@@ -98,7 +77,7 @@ const token_chars = r"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ012345
 
 fn is_token(s string) bool {
 	for c in s {
-		if c !in server.token_chars {
+		if c !in vweb.token_chars {
 			return false
 		}
 	}

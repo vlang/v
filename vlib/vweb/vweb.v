@@ -10,7 +10,6 @@ import net.http
 import net.urllib
 import strings
 import time
-import vweb.server
 
 pub const (
 	methods_with_form       = [http.Method.post, .put, .patch]
@@ -45,7 +44,7 @@ mut:
 	content_type string = 'text/plain'
 	status       string = '200 OK'
 pub:
-	req server.Request
+	req http.Request
 	// TODO Response
 pub mut:
 	conn              &net.TcpConn
@@ -270,7 +269,7 @@ pub fn (mut ctx Context) add_header(key string, val string) {
 
 // Returns the header data from the key
 pub fn (ctx &Context) get_header(key string) string {
-	return ctx.req.headers[key.to_lower()]
+	return ctx.req.lheaders[key.to_lower()]
 }
 
 pub fn run<T>(port int) {
@@ -305,7 +304,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	}
 	mut reader := io.new_buffered_reader(reader: io.make_reader(conn))
 	page_gen_start := time.ticks()
-	req := server.parse_request(mut reader) or { return }
+	req := parse_request(mut reader) or { return }
 	app.Context = Context{
 		req: req
 		conn: conn
@@ -315,8 +314,8 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 		page_gen_start: page_gen_start
 	}
 	if req.method in vweb.methods_with_form {
-		if 'multipart/form-data' in req.parsed_headers['content-type'] {
-			boundary := req.parsed_headers['content-type'].filter(it.starts_with('boundary '))
+		if 'multipart/form-data' in req.lheaders['content-type'].split('; ') {
+			boundary := req.lheaders['content-type'].split('; ').filter(it.starts_with('boundary '))
 			if boundary.len != 1 {
 				// TODO: send 400 error
 				return
@@ -638,9 +637,9 @@ pub fn (mut ctx Context) serve_static(url string, file_path string, mime_type st
 
 // Returns the ip address from the current user
 pub fn (ctx &Context) ip() string {
-	mut ip := ctx.req.headers['x-forwarded-for']
+	mut ip := ctx.req.lheaders['x-forwarded-for']
 	if ip == '' {
-		ip = ctx.req.headers['x-real-ip']
+		ip = ctx.req.lheaders['x-real-ip']
 	}
 
 	if ip.contains(',') {

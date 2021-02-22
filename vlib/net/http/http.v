@@ -16,8 +16,10 @@ const (
 
 pub struct Request {
 pub mut:
+	version    Version
 	method     Method
-	headers    map[string]string
+	headers    map[string]string // original requset headers
+	lheaders   map[string]string // same as headers, but with normalized lowercased keys (for received requests)
 	cookies    map[string]string
 	data       string
 	url        string
@@ -51,6 +53,7 @@ pub fn new_request(method Method, url_ string, data string) ?Request {
 	url := if method == .get { url_ + '?' + data } else { url_ }
 	// println('new req() method=$method url="$url" dta="$data"')
 	return Request{
+		version: .v1_1 // default to HTTP/1.1
 		method: method
 		url: url
 		data: data
@@ -340,7 +343,8 @@ fn (req &Request) build_request_headers(method Method, host_name string, path st
 		uheaders << '$key: $val\r\n'
 	}
 	uheaders << req.build_request_cookies_header()
-	return '$method $path HTTP/1.1\r\n' + uheaders.join('') + 'Connection: close\r\n\r\n' + req.data
+	version := if req.version != .unknown { req.version } else { Version.v1_1 }
+	return '$method $path $version\r\n' + uheaders.join('') + 'Connection: close\r\n\r\n' + req.data
 }
 
 fn (req &Request) build_request_cookies_header() string {
