@@ -36,3 +36,16 @@ fn test_array_thread_void_wait() {
 	}
 }
 
+fn test_void_thread_decl() {
+	shared a := [2 3 9]
+	mut t1 := thread(0)
+	mut tarr := []thread{len: 2}
+	t1 = go g(shared a, 0)
+	tarr[0] = go g(shared a, 1)
+	tarr[1] = go g(shared a, 2)
+	t1.wait()
+	tarr.wait()
+	rlock a {
+		assert a == [6, 12, 90]
+	}
+}
