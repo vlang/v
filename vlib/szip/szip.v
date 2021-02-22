@@ -95,6 +95,7 @@ pub fn open(name string, level CompressionLevel, mode OpenMode) ?&Zip {
 }
 
 // close closes the zip archive, releases resources - always finalize.
+[inline]
 pub fn (mut z Zip) close() {
 	C.zip_close(z)
 }
@@ -111,6 +112,7 @@ pub fn (mut zentry Zip) open_entry(name string) ? {
 }
 
 // close_entry closes a zip entry, flushes buffer and releases resources.
+[inline]
 pub fn (mut zentry Zip) close_entry() {
 	C.zip_entry_close(zentry)
 }
@@ -149,11 +151,13 @@ pub fn (mut zentry Zip) is_dir() ?bool {
 }
 
 // size returns an uncompressed size of the current zip entry.
+[inline]
 pub fn (mut zentry Zip) size() u64 {
 	return C.zip_entry_size(zentry)
 }
 
 // crc32 returns CRC-32 checksum of the current zip entry.
+[inline]
 pub fn (mut zentry Zip) crc32() u32 {
 	return C.zip_entry_crc32(zentry)
 }
