@@ -351,6 +351,10 @@ fn (mut g Gen) write_defer_stmts_when_needed() {
 fn (mut g Gen) fn_args(args []table.Param, is_variadic bool) ([]string, []string) {
 	mut fargs := []string{}
 	mut fargtypes := []string{}
+	if args.len == 0 {
+		// in C, `()` is untyped, unlike `(void)`
+		g.write('void')
+	}
 	for i, arg in args {
 		caname := if arg.name == '_' { g.new_tmp_var() } else { c_name(arg.name) }
 		typ := g.unwrap_generic(arg.typ)
