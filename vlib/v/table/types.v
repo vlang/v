@@ -885,33 +885,33 @@ pub struct FnSignatureOpts {
 pub fn (t &Table) fn_signature(func &Fn, opts FnSignatureOpts) string {
 	mut sb := strings.new_builder(20)
 	if !opts.skip_receiver {
-		sb.write('fn ')
+		sb.write_string('fn ')
 		// TODO write receiver
 	}
 	if !opts.type_only {
-		sb.write('$func.name')
+		sb.write_string('$func.name')
 	}
-	sb.write('(')
+	sb.write_string('(')
 	start := int(opts.skip_receiver)
 	for i in start .. func.params.len {
 		if i != start {
-			sb.write(', ')
+			sb.write_string(', ')
 		}
 		param := func.params[i]
 		mut typ := param.typ
 		if param.is_mut {
 			typ = typ.deref()
-			sb.write('mut ')
+			sb.write_string('mut ')
 		}
 		if !opts.type_only {
-			sb.write('$param.name ')
+			sb.write_string('$param.name ')
 		}
 		styp := t.type_to_str(typ)
-		sb.write('$styp')
+		sb.write_string('$styp')
 	}
-	sb.write(')')
+	sb.write_string(')')
 	if func.return_type != table.void_type {
-		sb.write(' ${t.type_to_str(func.return_type)}')
+		sb.write_string(' ${t.type_to_str(func.return_type)}')
 	}
 	return sb.str()
 }

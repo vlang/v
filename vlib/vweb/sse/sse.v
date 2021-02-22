@@ -45,14 +45,14 @@ pub fn new_connection(conn &net.TcpConn) &SSEConnection {
 pub fn (mut sse SSEConnection) start() ? {
 	sse.conn.set_write_timeout(sse.write_timeout)
 	mut start_sb := strings.new_builder(512)
-	start_sb.write('HTTP/1.1 200')
-	start_sb.write('\r\nConnection: keep-alive')
-	start_sb.write('\r\nCache-Control: no-cache')
-	start_sb.write('\r\nContent-Type: text/event-stream')
+	start_sb.write_string('HTTP/1.1 200')
+	start_sb.write_string('\r\nConnection: keep-alive')
+	start_sb.write_string('\r\nCache-Control: no-cache')
+	start_sb.write_string('\r\nContent-Type: text/event-stream')
 	for k, v in sse.headers {
-		start_sb.write('\r\n$k: $v')
+		start_sb.write_string('\r\n$k: $v')
 	}
-	start_sb.write('\r\n')
+	start_sb.write_string('\r\n')
 	sse.conn.write(start_sb.buf) or { return error('could not start sse response') }
 }
 
@@ -61,17 +61,17 @@ pub fn (mut sse SSEConnection) start() ? {
 pub fn (mut sse SSEConnection) send_message(message SSEMessage) ? {
 	mut sb := strings.new_builder(512)
 	if message.id != '' {
-		sb.write('id: $message.id\n')
+		sb.write_string('id: $message.id\n')
 	}
 	if message.event != '' {
-		sb.write('event: $message.event\n')
+		sb.write_string('event: $message.event\n')
 	}
 	if message.data != '' {
-		sb.write('data: $message.data\n')
+		sb.write_string('data: $message.data\n')
 	}
 	if message.retry != 0 {
-		sb.write('retry: $message.retry\n')
+		sb.write_string('retry: $message.retry\n')
 	}
-	sb.write('\n')
+	sb.write_string('\n')
 	sse.conn.write(sb.buf) ?
 }

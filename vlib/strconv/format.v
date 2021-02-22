@@ -224,7 +224,7 @@ pub fn format_str(s string, p BF_param) string {
 			res.write_b(p.pad_ch)
 		}
 	}
-	res.write(s)
+	res.write_string(s)
 	if p.allign == .left {
 		for i1 :=0; i1 < dif; i1++ {
 			res.write_b(p.pad_ch)
@@ -267,7 +267,7 @@ pub fn format_dec(d u64, p BF_param) string {
 			res.write_b(p.pad_ch)
 		}
 	}
-	res.write(s)
+	res.write_string(s)
 	if p.allign == .left {
 		for i1 :=0; i1 < dif; i1++ {
 			res.write_b(p.pad_ch)
@@ -321,7 +321,7 @@ pub fn format_fl(f f64, p BF_param) string {
 			res.write_b(p.pad_ch)
 		}
 	}
-	res.write(s)
+	res.write_string(s)
 	if p.allign == .left {
 		for i1 :=0; i1 < dif; i1++ {
 			res.write_b(p.pad_ch)
@@ -369,7 +369,7 @@ pub fn format_es(f f64, p BF_param) string {
 			res.write_b(p.pad_ch)
 		}
 	}
-	res.write(s)
+	res.write_string(s)
 	if p.allign == .left {
 		for i1 :=0; i1 < dif; i1++ {
 			res.write_b(p.pad_ch)
@@ -484,8 +484,8 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 		// pointer, manage it here
 		if ch == `p` && status == .field_char {
 			v_sprintf_panic(p_index, pt.len)
-			res.write("0x")
-			res.write(ptr_str(unsafe {pt[p_index]}))
+			res.write_string("0x")
+			res.write_string(ptr_str(unsafe {pt[p_index]}))
 			status = .reset_params
 			p_index++
 			i++
@@ -532,7 +532,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 				mut s := unsafe {*(&string(pt[p_index]))}
 				s = s[..len]
 				p_index++
-				res.write(s)
+				res.write_string(s)
 				status = .reset_params
 				i += 3
 				continue
@@ -672,7 +672,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 					}
 
 				}
-				res.write(format_dec(d1,{pad_ch: pad_ch, len0: len0, len1: 0, positive: positive, sign_flag: sign, allign: allign}))
+				res.write_string(format_dec(d1,{pad_ch: pad_ch, len0: len0, len1: 0, positive: positive, sign_flag: sign, allign: allign}))
 				status = .reset_params
 				p_index++
 				i++
@@ -715,7 +715,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 					}
 				}
 
-				res.write(format_dec(d1,{pad_ch: pad_ch, len0: len0, len1: 0, positive: positive, sign_flag: sign, allign: allign}))
+				res.write_string(format_dec(d1,{pad_ch: pad_ch, len0: len0, len1: 0, positive: positive, sign_flag: sign, allign: allign}))
 				status = .reset_params
 				p_index++
 				i++
@@ -764,7 +764,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 					s = s.to_upper()
 				}
 
-				res.write(format_str(s,{pad_ch: pad_ch, len0: len0, len1: 0, positive: true, sign_flag: false, allign: allign}))
+				res.write_string(format_str(s,{pad_ch: pad_ch, len0: len0, len1: 0, positive: true, sign_flag: false, allign: allign}))
 				status = .reset_params
 				p_index++
 				i++
@@ -778,7 +778,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 				positive := x >= f64(0.0)
 				len1 = if len1 >= 0 { len1 } else { def_len1 }
 				s := format_fl(f64(x), {pad_ch: pad_ch, len0: len0, len1: len1, positive: positive, sign_flag: sign, allign: allign})
-				res.write(if ch == `F` {s.to_upper()} else {s})
+				res.write_string(if ch == `F` {s.to_upper()} else {s})
 				status = .reset_params
 				p_index++
 				i++
@@ -790,7 +790,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 				positive := x >= f64(0.0)
 				len1 = if len1 >= 0 { len1 } else { def_len1 }
 				s := format_es(f64(x), {pad_ch: pad_ch, len0: len0, len1: len1, positive: positive, sign_flag: sign, allign: allign})
-				res.write(if ch == `E` {s.to_upper()} else {s})
+				res.write_string(if ch == `E` {s.to_upper()} else {s})
 				status = .reset_params
 				p_index++
 				i++
@@ -810,7 +810,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 					len1 = if len1 >= 0 { len1+1 } else { def_len1 }
 					s = format_es(x, {pad_ch: pad_ch, len0: len0, len1: len1, positive: positive, sign_flag: sign, allign: allign, rm_tail_zero: true})
 				}
-				res.write(if ch == `G` {s.to_upper()} else {s})
+				res.write_string(if ch == `G` {s.to_upper()} else {s})
 				status = .reset_params
 				p_index++
 				i++
@@ -822,7 +822,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 				v_sprintf_panic(p_index, pt.len)
 				s1 := unsafe{*(&string(pt[p_index]))}
 				pad_ch = ` `
-				res.write(format_str(s1, {pad_ch: pad_ch, len0: len0, len1: 0, positive: true, sign_flag: false, allign: allign}))
+				res.write_string(format_str(s1, {pad_ch: pad_ch, len0: len0, len1: 0, positive: true, sign_flag: false, allign: allign}))
 				status = .reset_params
 				p_index++
 				i++

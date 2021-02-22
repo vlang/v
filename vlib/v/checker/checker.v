@@ -4407,18 +4407,18 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym table.TypeS
 				if expr_types.len > 1 {
 					mut agg_name := strings.new_builder(20)
 					mut agg_cname := strings.new_builder(20)
-					agg_name.write('(')
+					agg_name.write_string('(')
 					for i, expr in expr_types {
 						if i > 0 {
-							agg_name.write(' | ')
-							agg_cname.write('___')
+							agg_name.write_string(' | ')
+							agg_cname.write_string('___')
 						}
 						type_str := c.table.type_to_str(expr.typ)
 						name := if c.is_builtin_mod { type_str } else { '${c.mod}.$type_str' }
-						agg_name.write(name)
-						agg_cname.write(util.no_dots(name))
+						agg_name.write_string(name)
+						agg_cname.write_string(util.no_dots(name))
 					}
-					agg_name.write(')')
+					agg_name.write_string(')')
 					name := agg_name.str()
 					existing_idx := c.table.type_idxs[name]
 					if existing_idx > 0 {

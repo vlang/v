@@ -275,71 +275,71 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 	g.finish()
 	//
 	mut b := strings.new_builder(250000)
-	b.write(g.hashes())
+	b.write_string(g.hashes())
 	b.writeln('\n// V comptime_defines:')
-	b.write(g.comptime_defines.str())
+	b.write_string(g.comptime_defines.str())
 	b.writeln('\n// V typedefs:')
-	b.write(g.typedefs.str())
+	b.write_string(g.typedefs.str())
 	b.writeln('\n// V typedefs2:')
-	b.write(g.typedefs2.str())
+	b.write_string(g.typedefs2.str())
 	b.writeln('\n// V cheaders:')
-	b.write(g.cheaders.str())
+	b.write_string(g.cheaders.str())
 	if g.pcs_declarations.len > 0 {
 		b.writeln('\n// V profile counters:')
-		b.write(g.pcs_declarations.str())
+		b.write_string(g.pcs_declarations.str())
 	}
 	b.writeln('\n// V includes:')
-	b.write(g.includes.str())
+	b.write_string(g.includes.str())
 	b.writeln('\n// Enum definitions:')
-	b.write(g.enum_typedefs.str())
+	b.write_string(g.enum_typedefs.str())
 	b.writeln('\n// V type definitions:')
-	b.write(g.type_definitions.str())
+	b.write_string(g.type_definitions.str())
 	b.writeln('\n// V shared types:')
-	b.write(g.shared_types.str())
+	b.write_string(g.shared_types.str())
 	b.writeln('\n// V Option_xxx definitions:')
-	b.write(g.options.str())
+	b.write_string(g.options.str())
 	b.writeln('\n// V json forward decls:')
-	b.write(g.json_forward_decls.str())
+	b.write_string(g.json_forward_decls.str())
 	b.writeln('\n// V definitions:')
-	b.write(g.definitions.str())
+	b.write_string(g.definitions.str())
 	interface_table := g.interface_table()
 	if interface_table.len > 0 {
 		b.writeln('\n// V interface table:')
-		b.write(interface_table)
+		b.write_string(interface_table)
 	}
 	if g.gowrappers.len > 0 {
 		b.writeln('\n// V gowrappers:')
-		b.write(g.gowrappers.str())
+		b.write_string(g.gowrappers.str())
 	}
 	if g.hotcode_definitions.len > 0 {
 		b.writeln('\n// V hotcode definitions:')
-		b.write(g.hotcode_definitions.str())
+		b.write_string(g.hotcode_definitions.str())
 	}
 	if g.embedded_data.len > 0 {
 		b.writeln('\n// V embedded data:')
-		b.write(g.embedded_data.str())
+		b.write_string(g.embedded_data.str())
 	}
 	if g.options_typedefs.len > 0 {
 		b.writeln('\n// V option typedefs:')
-		b.write(g.options_typedefs.str())
+		b.write_string(g.options_typedefs.str())
 	}
 	if g.shared_functions.len > 0 {
 		b.writeln('\n// V shared type functions:')
-		b.write(g.shared_functions.str())
-		b.write(c_concurrency_helpers)
+		b.write_string(g.shared_functions.str())
+		b.write_string(c_concurrency_helpers)
 	}
 	if g.channel_definitions.len > 0 {
 		b.writeln('\n// V channel code:')
-		b.write(g.channel_definitions.str())
+		b.write_string(g.channel_definitions.str())
 	}
 	if g.stringliterals.len > 0 {
 		b.writeln('\n// V stringliterals:')
-		b.write(g.stringliterals.str())
+		b.write_string(g.stringliterals.str())
 	}
 	if g.auto_str_funcs.len > 0 {
 		// if g.pref.build_mode != .build_module {
 		b.writeln('\n// V auto str functions:')
-		b.write(g.auto_str_funcs.str())
+		b.write_string(g.auto_str_funcs.str())
 		// }
 	}
 	if g.auto_fn_definitions.len > 0 {
@@ -353,7 +353,7 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 		}
 	}
 	b.writeln('\n// V out')
-	b.write(g.out.str())
+	b.write_string(g.out.str())
 	b.writeln('\n// THE END.')
 	g.timers.show('cgen common')
 	return b.str()
@@ -593,7 +593,7 @@ fn (mut g Gen) register_optional(t table.Type) string {
 		} Option2_$no_ptr;')
 		// println(styp)
 		g.typedefs2.writeln('typedef struct $styp $styp;')
-		g.options.write(g.optional_type_text(styp, base))
+		g.options.write_string(g.optional_type_text(styp, base))
 		g.options.writeln(';\n')
 		g.optionals << styp.clone()
 	}
@@ -780,11 +780,11 @@ pub fn (mut g Gen) write_fn_typesymbol_declaration(sym table.TypeSymbol) {
 	not_anon := !info.is_anon
 	if !info.has_decl && (not_anon || is_fn_sig) && !func.return_type.has_flag(.generic) {
 		fn_name := sym.cname
-		g.type_definitions.write('typedef ${g.typ(func.return_type)} (*$fn_name)(')
+		g.type_definitions.write_string('typedef ${g.typ(func.return_type)} (*$fn_name)(')
 		for i, param in func.params {
-			g.type_definitions.write(g.typ(param.typ))
+			g.type_definitions.write_string(g.typ(param.typ))
 			if i < func.params.len - 1 {
-				g.type_definitions.write(',')
+				g.type_definitions.write_string(',')
 			}
 		}
 		g.type_definitions.writeln(');')
@@ -820,14 +820,14 @@ pub fn (mut g Gen) write(s string) {
 	}
 	if g.indent > 0 && g.empty_line {
 		if g.indent < c.tabs.len {
-			g.out.write(c.tabs[g.indent])
+			g.out.write_string(c.tabs[g.indent])
 		} else {
 			for _ in 0 .. g.indent {
-				g.out.write('\t')
+				g.out.write_string('\t')
 			}
 		}
 	}
-	g.out.write(s)
+	g.out.write_string(s)
 	g.empty_line = false
 }
 
@@ -837,10 +837,10 @@ pub fn (mut g Gen) writeln(s string) {
 	}
 	if g.indent > 0 && g.empty_line {
 		if g.indent < c.tabs.len {
-			g.out.write(c.tabs[g.indent])
+			g.out.write_string(c.tabs[g.indent])
 		} else {
 			for _ in 0 .. g.indent {
-				g.out.write('\t')
+				g.out.write_string('\t')
 			}
 		}
 	}
@@ -1013,20 +1013,20 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			mut cur_enum_expr := ''
 			mut cur_enum_offset := 0
 			for i, field in node.fields {
-				g.enum_typedefs.write('\t${enum_name}_$field.name')
+				g.enum_typedefs.write_string('\t${enum_name}_$field.name')
 				if field.has_expr {
-					g.enum_typedefs.write(' = ')
+					g.enum_typedefs.write_string(' = ')
 					pos := g.out.len
 					g.expr(field.expr)
 					expr_str := g.out.after(pos)
 					g.out.go_back(expr_str.len)
-					g.enum_typedefs.write(expr_str)
+					g.enum_typedefs.write_string(expr_str)
 					cur_enum_expr = expr_str
 					cur_enum_offset = 0
 				} else if is_flag {
-					g.enum_typedefs.write(' = ')
+					g.enum_typedefs.write_string(' = ')
 					cur_enum_expr = '1 << $i'
-					g.enum_typedefs.write((1 << i).str())
+					g.enum_typedefs.write_string((1 << i).str())
 					cur_enum_offset = 0
 				}
 				cur_value := if cur_enum_offset > 0 {
@@ -2039,7 +2039,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			}
 			if right_sym.kind == .function && is_decl {
 				if is_inside_ternary && is_decl {
-					g.out.write(c.tabs[g.indent - g.inside_ternary])
+					g.out.write_string(c.tabs[g.indent - g.inside_ternary])
 				}
 				func := right_sym.info as table.FnType
 				ret_styp := g.typ(func.func.return_type)
@@ -2051,7 +2051,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			} else {
 				if is_decl {
 					if is_inside_ternary {
-						g.out.write(c.tabs[g.indent - g.inside_ternary])
+						g.out.write_string(c.tabs[g.indent - g.inside_ternary])
 					}
 					g.write('$styp ')
 				}
@@ -2067,7 +2067,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			}
 			if is_inside_ternary && is_decl {
 				g.write(';\n$cur_line')
-				g.out.write(c.tabs[g.indent])
+				g.out.write_string(c.tabs[g.indent])
 				g.expr(left)
 			}
 			g.is_assign_lhs = false
@@ -2748,7 +2748,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 				is_gen_or_and_assign_rhs := gen_or && g.is_assign_rhs
 				cur_line := if is_gen_or_and_assign_rhs {
 					line := g.go_before_stmt(0)
-					g.out.write(c.tabs[g.indent])
+					g.out.write_string(c.tabs[g.indent])
 					line
 				} else {
 					''
@@ -4305,7 +4305,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					is_gen_or_and_assign_rhs := gen_or && g.is_assign_rhs
 					cur_line := if is_gen_or_and_assign_rhs {
 						line := g.go_before_stmt(0)
-						g.out.write(c.tabs[g.indent])
+						g.out.write_string(c.tabs[g.indent])
 						line
 					} else {
 						''
@@ -4471,7 +4471,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					is_gen_or_and_assign_rhs := gen_or && g.is_assign_rhs
 					cur_line := if is_gen_or_and_assign_rhs {
 						line := g.go_before_stmt(0)
-						g.out.write(c.tabs[g.indent])
+						g.out.write_string(c.tabs[g.indent])
 						line
 					} else {
 						''
@@ -4841,7 +4841,7 @@ fn (mut g Gen) const_decl_simple_define(name string, val string) {
 	// so that we don't pollute the binary with unnecessary global vars
 	// Do not do this when building a module, otherwise the consts
 	// will not be accessible.
-	g.definitions.write('#define _const_$name ')
+	g.definitions.write_string('#define _const_$name ')
 	g.definitions.writeln(val)
 }
 
@@ -5305,7 +5305,7 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 								g.typedefs2.writeln('typedef struct $styp $styp;')
 								g.type_definitions.writeln('${g.optional_type_text(styp,
 									base)};')
-								g.type_definitions.write(last_text)
+								g.type_definitions.write_string(last_text)
 							}
 						}
 						type_name := g.typ(field.typ)
@@ -5910,25 +5910,25 @@ fn (mut g Gen) go_stmt(node ast.GoStmt, joinable bool) string {
 	g.gowrappers.writeln('$thread_ret_type ${wrapper_fn_name}($wrapper_struct_name *arg) {')
 	if node.call_expr.return_type != table.void_type {
 		if g.pref.os == .windows {
-			g.gowrappers.write('\t*(($s_ret_typ*)(arg->ret_ptr)) = ')
+			g.gowrappers.write_string('\t*(($s_ret_typ*)(arg->ret_ptr)) = ')
 		} else {
 			g.gowrappers.writeln('\t$s_ret_typ* ret_ptr = malloc(sizeof($s_ret_typ));')
-			g.gowrappers.write('\t*ret_ptr = ')
+			g.gowrappers.write_string('\t*ret_ptr = ')
 		}
 	} else {
-		g.gowrappers.write('\t')
+		g.gowrappers.write_string('\t')
 	}
-	g.gowrappers.write('${name}(')
+	g.gowrappers.write_string('${name}(')
 	if expr.is_method {
-		g.gowrappers.write('arg->arg0')
+		g.gowrappers.write_string('arg->arg0')
 		if expr.args.len > 0 {
-			g.gowrappers.write(', ')
+			g.gowrappers.write_string(', ')
 		}
 	}
 	for i in 0 .. expr.args.len {
-		g.gowrappers.write('arg->arg${i + 1}')
+		g.gowrappers.write_string('arg->arg${i + 1}')
 		if i < expr.args.len - 1 {
-			g.gowrappers.write(', ')
+			g.gowrappers.write_string(', ')
 		}
 	}
 	g.gowrappers.writeln(');')
@@ -6039,11 +6039,11 @@ fn (mut g Gen) interface_table() string {
 			methodidx[method.name] = k
 			typ_name := '_${interface_name}_${method.name}_fn'
 			ret_styp := g.typ(method.return_type)
-			methods_typ_def.write('typedef $ret_styp (*$typ_name)(void* _')
+			methods_typ_def.write_string('typedef $ret_styp (*$typ_name)(void* _')
 			// the first param is the receiver, it's handled by `void*` above
 			for i in 1 .. method.params.len {
 				arg := method.params[i]
-				methods_typ_def.write(', ${g.typ(arg.typ)} $arg.name')
+				methods_typ_def.write_string(', ${g.typ(arg.typ)} $arg.name')
 			}
 			// TODO g.fn_args(method.args[1..], method.is_variadic)
 			methods_typ_def.writeln(');')
@@ -6101,7 +6101,7 @@ fn (mut g Gen) interface_table() string {
 				field_styp := g.typ(field.typ)
 				cast_struct.writeln('\t\t.$cname = ($field_styp*)((char*)x + __offsetof($cctype, $cname)),')
 			}
-			cast_struct.write('\t}')
+			cast_struct.write_string('\t}')
 			cast_struct_str := cast_struct.str()
 
 			cast_functions.writeln('
@@ -6135,8 +6135,8 @@ $staticprefix $interface_name* I_${cctype}_to_Interface_${interface_name}_ptr($c
 				mut method_call := '${cctype}_$method.name'
 				if !method.params[0].typ.is_ptr() {
 					// inline void Cat_speak_method_wrapper(Cat c) { return Cat_speak(*c); }
-					methods_wrapper.write('static inline ${g.typ(method.return_type)}')
-					methods_wrapper.write(' ${method_call}_method_wrapper(')
+					methods_wrapper.write_string('static inline ${g.typ(method.return_type)}')
+					methods_wrapper.write_string(' ${method_call}_method_wrapper(')
 					//
 					params_start_pos := g.out.len
 					mut params := method.params.clone()
@@ -6146,11 +6146,11 @@ $staticprefix $interface_name* I_${cctype}_to_Interface_${interface_name}_ptr($c
 						typ: params[0].typ.set_nr_muls(1)
 					}
 					fargs, _ := g.fn_args(params, false) // second argument is ignored anyway
-					methods_wrapper.write(g.out.cut_last(g.out.len - params_start_pos))
+					methods_wrapper.write_string(g.out.cut_last(g.out.len - params_start_pos))
 					methods_wrapper.writeln(') {')
-					methods_wrapper.write('\t')
+					methods_wrapper.write_string('\t')
 					if method.return_type != table.void_type {
-						methods_wrapper.write('return ')
+						methods_wrapper.write_string('return ')
 					}
 					methods_wrapper.writeln('${method_call}(*${fargs.join(', ')});')
 					methods_wrapper.writeln('}')

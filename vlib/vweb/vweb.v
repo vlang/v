@@ -96,15 +96,15 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 	defer {
 		unsafe { sb.free() }
 	}
-	sb.write('HTTP/1.1 $ctx.status')
-	sb.write('\r\nContent-Type: $mimetype')
-	sb.write('\r\nContent-Length: $res.len')
+	sb.write_string('HTTP/1.1 $ctx.status')
+	sb.write_string('\r\nContent-Type: $mimetype')
+	sb.write_string('\r\nContent-Length: $res.len')
 	if ctx.chunked_transfer {
-		sb.write('\r\nTransfer-Encoding: chunked')
+		sb.write_string('\r\nTransfer-Encoding: chunked')
 	}
-	sb.write(ctx.headers)
-	sb.write('\r\n')
-	sb.write(vweb.headers_close)
+	sb.write_string(ctx.headers)
+	sb.write_string('\r\n')
+	sb.write_string(vweb.headers_close)
 	if ctx.chunked_transfer {
 		mut i := 0
 		mut len := res.len
@@ -121,12 +121,12 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 				chunk = res[i..]
 				len = 0
 			}
-			sb.write(chunk.len.hex())
-			sb.write('\r\n$chunk\r\n')
+			sb.write_string(chunk.len.hex())
+			sb.write_string('\r\n$chunk\r\n')
 		}
-		sb.write('0\r\n\r\n') // End of chunks
+		sb.write_string('0\r\n\r\n') // End of chunks
 	} else {
-		sb.write(res)
+		sb.write_string(res)
 	}
 	s := sb.str()
 	defer {
