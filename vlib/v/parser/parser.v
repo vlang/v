@@ -305,7 +305,7 @@ pub fn parse_files(paths []string, table &table.Table, pref &pref.Preferences, g
 			for _ in 0 .. nr_cpus - 1 {
 				go q.run()
 			}
-			time.sleep_ms(1000)
+			time.wait(time.second)
 			println('all done')
 			return q.parsed_ast_files
 		}
