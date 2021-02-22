@@ -7,4 +7,7 @@ enum Color {
 fn main() {
 	println(Color.red > Color.green)
 	println(Color.red + Color.green)
+	println(Color.red && Color.green)
+	println(Color.red | Color.green)
+	println(Color.red & Color.green)
 }

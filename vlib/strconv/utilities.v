@@ -336,5 +336,5 @@ pub fn f64_to_str_l(f f64) string {
 		}
 	}
 	res[r_i] = 0
-	return tos(res.data,r_i)
+	return unsafe { tos(res.data,r_i) }
 }

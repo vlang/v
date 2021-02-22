@@ -20,9 +20,6 @@ fn main() {
 	u := User{
 		name: 'Peter'
 	}
-	if true {
-	}
-	// some comment after an if without else
 	n := sizeof(User)
 	// else
 	// else {
@@ -59,4 +56,16 @@ fn linebreaks_in_block_comments() {
 	Want a long line of stars?
 	no problem
 	*****/
+}
+
+fn ifs_comments_and_empty_lines() {
+	if true {
+	}
+	// some comment after an if without else
+	if false {
+	}
+
+	// this is parsed as post_comment of the if but does not really belong there
+	// thereore keep the empty line
+	something_else()
 }

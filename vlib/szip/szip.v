@@ -3,6 +3,7 @@ module szip
 #flag -I @VROOT/thirdparty/zip
 #include "zip.c"
 #include "zip.h"
+
 struct C.zip_t {
 }
 
@@ -66,13 +67,13 @@ open opens zip archive with compression level using the given mode.
 */
 pub fn open(name string, level int, mode byte) ?&Zip {
 	mut nlevel := level
-	if (nlevel & 0xF) > uber_compression {
-		nlevel = default_level
+	if (nlevel & 0xF) > szip.uber_compression {
+		nlevel = szip.default_level
 	}
 	if name.len == 0 {
 		return error('szip: name of file empty')
 	}
-	if mode !in [m_write, m_ronly, m_append] {
+	if mode !in [szip.m_write, szip.m_ronly, szip.m_append] {
 		return error('szip: invalid provided open mode')
 	}
 	p_zip := &Zip(C.zip_open(name.str, nlevel, mode))
@@ -140,7 +141,7 @@ pub fn (mut zentry Zip) name() string {
 	if name == 0 {
 		return ''
 	}
-	return tos_clone(name)
+	return unsafe { tos_clone(name) }
 }
 
 /*

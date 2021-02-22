@@ -10,7 +10,7 @@ fn (mut ws Client) handshake() ? {
 	seckey := base64.encode(nonce)
 	mut sb := strings.new_builder(1024)
 	defer {
-		sb.free()
+		unsafe { sb.free() }
 	}
 	sb.write('GET ')
 	sb.write(ws.uri.resource)
@@ -25,7 +25,7 @@ fn (mut ws Client) handshake() ? {
 	sb.write('\r\nSec-WebSocket-Version: 13\r\n\r\n')
 	handshake := sb.str()
 	defer {
-		handshake.free()
+		unsafe { handshake.free() }
 	}
 	handshake_bytes := handshake.bytes()
 	ws.debug_log('sending handshake: $handshake')

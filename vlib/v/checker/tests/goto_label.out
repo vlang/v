@@ -45,5 +45,5 @@ vlib/v/checker/tests/goto_label.vv:25:7: error: unknown label `undefined`
    24 |     goto g1 // back
    25 |     goto undefined
       |          ~~~~~~~~~
-   26 | }
+   26 | }}
    27 |

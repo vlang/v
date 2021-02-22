@@ -292,8 +292,10 @@ fn (vd VDoc) gen_html(d doc.Doc) string {
 	}
 	modules_toc_str := modules_toc.str()
 	symbols_toc_str := symbols_toc.str()
-	modules_toc.free()
-	symbols_toc.free()
+	unsafe {
+		modules_toc.free()
+		symbols_toc.free()
+	}
 	return html_content.replace('{{ title }}', d.head.name).replace('{{ head_name }}',
 		header_name).replace('{{ version }}', version).replace('{{ light_icon }}', vd.assets['light_icon']).replace('{{ dark_icon }}',
 		vd.assets['dark_icon']).replace('{{ menu_icon }}', vd.assets['menu_icon']).replace('{{ head_assets }}',
@@ -471,7 +473,7 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 	dnw.writeln('</section>')
 	dnw_str := dnw.str()
 	defer {
-		dnw.free()
+		unsafe { dnw.free() }
 	}
 	return dnw_str
 }
@@ -513,6 +515,9 @@ fn write_toc(dn doc.DocNode, mut toc strings.Builder) {
 		}
 	}
 	if is_module_readme(dn) {
+		if dn.comments.len == 0 || (dn.comments.len > 0 && dn.comments[0].text.len == 0) {
+			return
+		}
 		toc.write('<li class="open"><a href="#readme_$toc_slug">README</a>')
 	} else if dn.name != 'Constants' {
 		toc.write('<li class="open"><a href="#$toc_slug">$dn.kind $dn.name</a>')

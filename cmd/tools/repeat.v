@@ -256,7 +256,7 @@ fn (mut context Context) run() {
 				summary[k] = s
 			}
 			// merge current raw results to the previous ones
-			old_oms := context.results[icmd].oms
+			old_oms := context.results[icmd].oms.move()
 			mut new_oms := map[string][]int{}
 			for k, v in m {
 				if old_oms[k].len == 0 {
@@ -266,7 +266,7 @@ fn (mut context Context) run() {
 					new_oms[k] << v
 				}
 			}
-			context.results[icmd].oms = new_oms
+			context.results[icmd].oms = new_oms.move()
 			// println('')
 		}
 	}
@@ -276,7 +276,7 @@ fn (mut context Context) run() {
 		for k, v in context.results[icmd].oms {
 			new_full_summary[k] = new_aints(v, context.nmins, context.nmaxs)
 		}
-		context.results[icmd].summary = new_full_summary
+		context.results[icmd].summary = new_full_summary.move()
 	}
 }
 

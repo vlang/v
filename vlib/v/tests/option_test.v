@@ -372,3 +372,8 @@ fn test_optional_sum_type() {
 	}
 	assert false
 }
+
+struct MultiOptionalFieldTest {
+	a ?int
+	b ?int
+}

@@ -86,6 +86,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
 
 </td><td width=33% valign=top>
 
+* [Unions](#unions)
 * [Functions 2](#functions-2)
     * [Pure functions by default](#pure-functions-by-default)
     * [Mutable arguments](#mutable-arguments)
@@ -1587,6 +1588,45 @@ In this example, the `can_register` method has a receiver of type `User` named `
 The convention is not to use receiver names like `self` or `this`,
 but a short, preferably one letter long, name.
 
+## Unions
+
+Just like structs, unions support embedding.
+
+```v
+struct Rgba32_Component {
+	r byte
+	g byte
+	b byte
+	a byte
+}
+
+union Rgba32 {
+	Rgba32_Component
+	value u32
+}
+
+clr1 := Rgba32{
+	value: 0x008811FF
+}
+
+clr2 := Rgba32{
+	Rgba32_Component: {
+		a: 128
+	}
+}
+
+sz := sizeof(Rgba32)
+unsafe {
+	println('Size: ${sz}B,clr1.b: $clr1.b,clr2.b: $clr2.b')
+}
+```
+
+Output: `Size: 4B, clr1.b: 136, clr2.b: 0`
+
+Union member access must be performed in an `unsafe` block.
+
+Note that the embedded struct arguments are not necessarily stored in the order listed.
+
 ## Functions 2
 
 ### Pure functions by default
@@ -2091,6 +2131,25 @@ enum Color {
 color := Color.@none
 println(color)
 ```
+
+Integers may be assigned to enum fields.
+
+```v
+enum Grocery {
+	apple
+	orange = 5
+	pear
+}
+
+g1 := int(Grocery.apple)
+g2 := int(Grocery.orange)
+g3 := int(Grocery.pear)
+println('Grocery IDs: $g1, $g2, $g3')
+```
+
+Output: `Grocery IDs: 0, 5, 6`.
+
+Operations are not allowed on enum variables; they must be explicity cast to `int`.
 
 ### Sum types
 
@@ -3827,29 +3886,42 @@ The advantage of using V for this is the simplicity and predictability of the la
 cross-platform support. "V scripts" run on Unix-like systems as well as on Windows.
 
 Use the `.vsh` file extension. It will make all functions in the `os`
-module global (so that you can use `ls()` instead of `os.ls()`, for example).
+module global (so that you can use `mkdir()` instead of `os.mkdir()`, for example).
 
+An example `deploy.vsh`:
 ```v wip
-#!/usr/local/bin/v run
 // The shebang above associates the file to V on Unix-like systems,
 // so it can be run just by specifying the path to the file
 // once it's made executable using `chmod +x`.
 
-rm('build/*')?
-// Same as:
-files_build := ls('build/')?
-for file in files_build {
-    rm(file)?
-}
+// Remove if build/ exits, ignore any errors if it doesn't
+rmdir_all('build') or { }
 
-mv('*.v', 'build/')?
-// Same as:
-files := ls('.')?
-for file in files {
-    if file.ends_with('.v') {
-        mv(file, 'build/')?
-    }
+// Create build/, never fails as build/ does not exist
+mkdir('build') ?
+
+// Move *.v files to build/
+result := exec('mv *.v build/') ?
+if result.exit_code != 0 {
+	println(result.output)
 }
+// Similar to:
+// files := ls('.') ?
+// mut count := 0
+// if files.len > 0 {
+//     for file in files {
+//         if file.ends_with('.v') {
+//              mv(file, 'build/') or {
+//                  println('err: $err')
+//                  return
+//              }
+//         }
+//         count++
+//     }
+// }
+// if count == 0 {
+//     println('No files')
+// }
 ```
 
 Now you can either compile this like a normal V program and get an executable you can deploy and run
@@ -3866,8 +3938,8 @@ On Unix-like platforms, the file can be run directly after making it executable 
 
 V has several attributes that modify the behavior of functions and structs.
 
-An attribute is specified inside `[]` right before a function/struct declaration
-and applies only to the following declaration.
+An attribute is a compiler instruction specified inside `[]` right before a
+function/struct/enum declaration and applies only to the following declaration.
 
 ```v
 // Calling this function will result in a deprecation warning
@@ -3904,27 +3976,39 @@ struct C.Foo {
 // Used in Win32 API code when you need to pass callback function
 [windows_stdcall]
 fn C.DefWindowProc(hwnd int, msg int, lparam int, wparam int)
+
+// Windows only:
+// If a default graphics library is imported (ex. gg, ui), then the graphical window takes
+// priority and no console window is created, effectively disabling println() statements.
+// Use to explicity create console window. Valid before main() only.
+[console]
+fn main() {
+}
 ```
 
 ## Goto
 
 V allows unconditionally jumping to a label with `goto`. The label name must be contained
 within the same function as the `goto` statement. A program may `goto` a label outside
-or deeper than the current scope, but it must not skip a variable initialization.
+or deeper than the current scope. `goto` allows jumping past variable initialization or 
+jumping back to code that accesses memory that has already been freed, so it requires
+`unsafe`.
 
 ```v ignore
 if x {
 	// ...
 	if y {
-		goto my_label
+		unsafe {
+			goto my_label
+		}
 	}
 	// ...
 }
 my_label:
 ```
-`goto` should be avoided when `for` can be used instead. In particular,
-[labelled break](#labelled-break--continue) can be used to break out of
-a nested loop.
+`goto` should be avoided, particularly when `for` can be used instead.
+[Labelled break/continue](#labelled-break--continue) can be used to break out of
+a nested loop, and those do not risk violating memory-safety.
 
 # Appendices
 

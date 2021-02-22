@@ -50,7 +50,7 @@ struct C.timespec {
 	tv_nsec i64
 }
 
-fn C._mkgmtime(&C.tm) time_t
+fn C._mkgmtime(&C.tm) C.time_t
 
 fn C.QueryPerformanceCounter(&u64) C.BOOL
 
@@ -211,4 +211,9 @@ pub fn solaris_utc() Time {
 pub struct C.timeval {
 	tv_sec  u64
 	tv_usec u64
+}
+
+// wait makes the calling thread sleep for a given duration (in nanoseconds).
+pub fn wait(duration Duration) {
+	C.Sleep(int(duration / millisecond))
 }

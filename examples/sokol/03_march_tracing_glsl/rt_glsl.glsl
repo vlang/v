@@ -4,7 +4,7 @@
 //  NOTE: This source file also uses the '#pragma sokol' form of the
 //  custom tags.
 //------------------------------------------------------------------------------
-#pragma sokol @ctype mat4 hmm_mat4
+//#pragma sokol @ctype mat4 hmm_mat4
 
 #pragma sokol @vs vs
 uniform vs_params {

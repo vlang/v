@@ -122,12 +122,6 @@ pub enum KeyCode {
 	f24                  = 313
 }
 
-pub const (
-	shift = u32(1 << 0)
-	ctrl  = u32(1 << 1)
-	alt   = u32(1 << 2)
-)
-
 pub enum Direction {
 	unknown
 	up
@@ -154,6 +148,15 @@ pub enum EventType {
 	resized
 }
 
+[flag]
+pub enum Modifiers {
+	ctrl
+	shift
+	alt
+}
+
+[inline] pub fn (m &Modifiers) is_empty() bool { return int(m) == 0 }
+
 pub struct Event {
 pub:
 	typ       EventType
@@ -166,7 +169,7 @@ pub:
 
 	// Keyboard event info
 	code      KeyCode
-	modifiers u32
+	modifiers Modifiers
 	ascii     byte
 	utf8      string
 

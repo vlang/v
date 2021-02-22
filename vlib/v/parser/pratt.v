@@ -163,9 +163,9 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			}
 		}
 		.key_sizeof {
-			pos := p.tok.position()
 			p.next() // sizeof
 			p.check(.lpar)
+			pos := p.tok.position()
 			is_known_var := p.mark_var_as_used(p.tok.lit)
 			// assume mod. prefix leads to a type
 			if is_known_var || !(p.known_import(p.tok.lit) || p.tok.kind.is_start_of_type()) {
@@ -348,6 +348,9 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 			p.next()
 			right := p.expr(precedence - 1)
 			pos.update_last_line(p.prev_tok.line_nr)
+			if mut node is ast.IndexExpr {
+				node.recursive_mapset_is_setter(true)
+			}
 			node = ast.InfixExpr{
 				left: node
 				right: right
@@ -380,6 +383,9 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 			if p.tok.kind in [.inc, .dec] && p.prev_tok.line_nr != p.tok.line_nr {
 				p.error_with_pos('$p.tok must be on the same line as the previous token',
 					p.tok.position())
+			}
+			if mut node is ast.IndexExpr {
+				node.recursive_mapset_is_setter(true)
 			}
 			node = ast.PostfixExpr{
 				op: p.tok.kind

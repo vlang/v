@@ -51,6 +51,6 @@ pub fn (b []byte) bytestr() string {
 fn bytes2string(b []byte) string {
 	mut copy := b.clone()
 	copy << `\0`
-	res := tos(copy.data, copy.len-1)
+	res := unsafe { tos(copy.data, copy.len-1) }
 	return res
 }

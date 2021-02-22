@@ -21,8 +21,10 @@ pub fn decode(data string) string {
 	if size <= 0 {
 		return ''
 	}
-	buffer := malloc(size)
-	return tos(buffer, decode_in_buffer(data, buffer))
+	unsafe {
+		buffer := malloc(size)
+		return tos(buffer, decode_in_buffer(data, buffer))
+	}
 }
 
 // encode encodes the `string` value passed in `data` to base64.
@@ -34,8 +36,10 @@ pub fn encode(data string) string {
 	if size <= 0 {
 		return ''
 	}
-	buffer := malloc(size)
-	return tos(buffer, encode_in_buffer(data, buffer))
+	unsafe {
+		buffer := malloc(size)
+		return tos(buffer, encode_in_buffer(data, buffer))
+	}
 }
 
 // decode_url returns a decoded URL `string` version of

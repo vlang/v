@@ -65,3 +65,19 @@ fn linebreaks_in_block_comments() {
 	spaces make no difference there
 	eggs */
 }
+
+fn between_if_branches() {
+	if spam {
+	}
+
+	// remove the empty line above
+	else if eggs {
+	}
+
+	if spam2 {
+	}
+	// remove the empty line below
+
+	else {
+	}
+}

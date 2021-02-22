@@ -319,7 +319,7 @@ pub fn posix_get_error_msg(code int) string {
 	if ptr_text == 0 {
 		return ''
 	}
-	return tos3(ptr_text)
+	return unsafe { tos3(ptr_text) }
 }
 
 // vpclose will close a file pointer opened with `vpopen`.
@@ -463,7 +463,7 @@ pub fn rmdir(path string) ? {
 // print_c_errno will print the current value of `C.errno`.
 fn print_c_errno() {
 	e := C.errno
-	se := tos_clone(byteptr(C.strerror(C.errno)))
+	se := unsafe { tos_clone(byteptr(C.strerror(C.errno))) }
 	println('errno=$e err=$se')
 }
 
@@ -498,12 +498,12 @@ pub fn get_raw_line() string {
 	} $else {
 		max := size_t(0)
 		mut buf := charptr(0)
-		nr_chars := C.getline(&buf, &max, C.stdin)
+		nr_chars := unsafe { C.getline(&buf, &max, C.stdin) }
 		// defer { unsafe{ free(buf) } }
 		if nr_chars == 0 || nr_chars == -1 {
 			return ''
 		}
-		return tos3(buf)
+		return unsafe { tos3(buf) }
 		// res := tos_clone(buf)
 		// return res
 	}
@@ -551,7 +551,7 @@ pub fn read_file_array<T>(path string) []T {
 	C.rewind(fp)
 	// read the actual data from the file
 	len := fsize / tsize
-	buf := malloc(fsize)
+	buf := unsafe { malloc(fsize) }
 	C.fread(buf, fsize, 1, fp)
 	C.fclose(fp)
 	return array{
@@ -610,7 +610,7 @@ pub fn executable() string {
 				// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew
 				final_len := C.GetFinalPathNameByHandleW(file, final_path, size, 0)
 				if final_len < size {
-					ret := string_from_wide2(final_path, final_len)
+					ret := unsafe { string_from_wide2(final_path, final_len) }
 					// remove '\\?\' from beginning (see link above)
 					return ret[4..]
 				} else {
@@ -619,7 +619,7 @@ pub fn executable() string {
 			}
 			C.CloseHandle(file)
 		}
-		return string_from_wide2(result, len)
+		return unsafe { string_from_wide2(result, len) }
 	}
 	$if macos {
 		mut result := vcalloc(max_path_len)
@@ -715,21 +715,25 @@ pub fn chdir(path string) {
 pub fn getwd() string {
 	$if windows {
 		max := 512 // max_path_len * sizeof(wchar_t)
-		buf := &u16(vcalloc(max * 2))
-		if C._wgetcwd(buf, max) == 0 {
-			free(buf)
-			return ''
+		unsafe {
+			buf := &u16(vcalloc(max * 2))
+			if C._wgetcwd(buf, max) == 0 {
+				free(buf)
+				return ''
+			}
+			return string_from_wide(buf)
 		}
-		return string_from_wide(buf)
 	} $else {
 		buf := vcalloc(512)
-		if C.getcwd(charptr(buf), 512) == 0 {
+		unsafe {
+			if C.getcwd(charptr(buf), 512) == 0 {
+				free(buf)
+				return ''
+			}
+			res := buf.vstring().clone()
 			free(buf)
-			return ''
+			return res
 		}
-		res := unsafe { buf.vstring() }.clone()
-		free(buf)
-		return res
 	}
 }
 
@@ -740,23 +744,32 @@ pub fn getwd() string {
 // NB: this particular rabbit hole is *deep* ...
 [manualfree]
 pub fn real_path(fpath string) string {
-	mut fullpath := vcalloc(max_path_len)
+	mut fullpath := byteptr(0)
 	defer {
 		unsafe { free(fullpath) }
 	}
-	mut ret := charptr(0)
+
 	$if windows {
-		ret = charptr(C._fullpath(charptr(fullpath), charptr(fpath.str), max_path_len))
+		fullpath = unsafe { &u16(vcalloc(max_path_len * 2)) }
+		// TODO: check errors if path len is not enough
+		ret := C.GetFullPathName(fpath.to_wide(), max_path_len, fullpath, 0)
 		if ret == 0 {
 			return fpath
 		}
 	} $else {
-		ret = charptr(C.realpath(charptr(fpath.str), charptr(fullpath)))
+		fullpath = vcalloc(max_path_len)
+		ret := charptr(C.realpath(charptr(fpath.str), charptr(fullpath)))
 		if ret == 0 {
 			return fpath
 		}
 	}
-	res := unsafe { fullpath.vstring() }
+
+	mut res := ''
+	$if windows {
+		res = unsafe { string_from_wide(fullpath) }
+	} $else {
+		res = unsafe { fullpath.vstring() }
+	}
 	nres := normalize_drive_letter(res)
 	cres := nres.clone()
 	return cres

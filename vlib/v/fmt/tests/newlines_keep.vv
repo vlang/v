@@ -2,6 +2,11 @@
 [manualfree]
 module websocket
 
+fn C.no_body_function()
+fn C.another_one(x int)
+
+fn C.separated_from_my_body_and_the_above()
+
 fn main() {}
 
 // This should stay between both functions
@@ -15,5 +20,5 @@ fn y_with_attr() {
 
 // doc comment above an attributed struct
 [typedef]
-struct Foo {
+struct FooWithAttr {
 }

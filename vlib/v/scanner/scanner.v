@@ -4,6 +4,7 @@
 module scanner
 
 import os
+import encoding.utf8
 import v.token
 import v.pref
 import v.util
@@ -609,7 +610,7 @@ fn (mut s Scanner) text_scan() token.Token {
 			// end of `$expr`
 			// allow `'$a.b'` and `'$a.c()'`
 			if s.is_inter_start && next_char == `\\`
-				&& s.look_ahead(2) !in [`x`, `n`, `r`, `\\`, `t`, `e`, `"`] {
+				&& s.look_ahead(2) !in [`x`, `n`, `r`, `\\`, `t`, `e`, `"`, `\'`] {
 				s.warn('unknown escape sequence \\${s.look_ahead(2)}')
 			}
 			if s.is_inter_start && next_char == `(` {
@@ -1002,10 +1003,17 @@ fn (mut s Scanner) text_scan() token.Token {
 				return s.end_of_file()
 			}
 		}
-		s.error('invalid character `$c.ascii_str()`')
+		s.invalid_character()
 		break
 	}
 	return s.end_of_file()
+}
+
+fn (mut s Scanner) invalid_character() {
+	len := utf8.char_len(s.text[s.pos])
+	end := util.imin(s.pos + len, s.text.len)
+	c := s.text[s.pos..end]
+	s.error('invalid character `$c`')
 }
 
 fn (s &Scanner) current_column() int {

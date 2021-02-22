@@ -1,23 +1,29 @@
 import os
 import v.pref
+import v.util
 
 $if windows {
 	$if tinyc {
 		#flag -lAdvapi32
-
 		#flag -lUser32
 	}
 }
+
 fn main() {
+	C.atexit(cleanup_vtmp_folder)
 	vexe := os.real_path(pref.vexe_path())
 	$if windows {
 		setup_symlink_windows(vexe)
 	} $else {
-		setup_symlink(vexe)
+		setup_symlink_unix(vexe)
 	}
 }
 
-fn setup_symlink(vexe string) {
+fn cleanup_vtmp_folder() {
+	os.rmdir_all(util.get_vtmp_folder()) or { }
+}
+
+fn setup_symlink_unix(vexe string) {
 	link_dir := '/usr/local/bin'
 	if !os.exists(link_dir) {
 		os.mkdir_all(link_dir) or { panic(err) }
@@ -142,11 +148,11 @@ fn get_reg_value(reg_env_key voidptr, key string) ?string {
 	$if windows {
 		// query the value (shortcut the sizing step)
 		reg_value_size := 4095 // this is the max length (not for the registry, but for the system %PATH%)
-		mut reg_value := &u16(malloc(reg_value_size))
+		mut reg_value := unsafe { &u16(malloc(reg_value_size)) }
 		if C.RegQueryValueEx(reg_env_key, key.to_wide(), 0, 0, reg_value, &reg_value_size) != 0 {
 			return error('Unable to get registry value for "$key", try rerunning as an Administrator')
 		}
-		return string_from_wide(reg_value)
+		return unsafe { string_from_wide(reg_value) }
 	}
 	return error('not on windows')
 }
@@ -166,7 +172,8 @@ fn set_reg_value(reg_key voidptr, key string, value string) ?bool {
 // letting them know that the system environment has changed and should be reloaded
 fn send_setting_change_msg(message_data string) ?bool {
 	$if windows {
-		if C.SendMessageTimeout(os.hwnd_broadcast, os.wm_settingchange, 0, message_data.to_wide(), os.smto_abortifhung, 5000, 0) == 0 {
+		if C.SendMessageTimeout(os.hwnd_broadcast, os.wm_settingchange, 0, message_data.to_wide(),
+			os.smto_abortifhung, 5000, 0) == 0 {
 			return error('Could not broadcast WM_SETTINGCHANGE')
 		}
 		return true

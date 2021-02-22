@@ -163,13 +163,12 @@ fn fetch_with_method(method Method, url string, _config FetchConfig) ?Response {
 
 fn build_url_from_fetch(_url string, config FetchConfig) ?string {
 	mut url := urllib.parse(_url) ?
-	params := config.params
-	if params.keys().len == 0 {
+	if config.params.len == 0 {
 		return url.str()
 	}
-	mut pieces := []string{}
-	for key in params.keys() {
-		pieces << '$key=${params[key]}'
+	mut pieces := []string{cap: config.params.len}
+	for key, val in config.params {
+		pieces << '$key=$val'
 	}
 	mut query := pieces.join('&')
 	if url.raw_query.len > 1 {

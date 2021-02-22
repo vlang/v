@@ -534,11 +534,23 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	if left_sym.kind == .sum_type && node.name == 'type_name' {
 		g.write('tos3( /* $left_sym.name */ v_typeof_sumtype_${typ_sym.cname}( (')
 		g.expr(node.left)
-		g.write(').typ ))')
+		dot := if node.left_type.is_ptr() { '->' } else { '.' }
+		g.write(')${dot}typ ))')
+		return
+	}
+	if left_sym.kind == .interface_ && node.name == 'type_name' {
+		g.write('tos3( /* $left_sym.name */ v_typeof_interface_${typ_sym.cname}( (')
+		g.expr(node.left)
+		dot := if node.left_type.is_ptr() { '->' } else { '.' }
+		g.write(')${dot}_interface_idx ))')
 		return
 	}
 	if node.name == 'str' {
-		g.gen_str_for_type(node.receiver_type)
+		mut rec_type := node.receiver_type
+		if rec_type.has_flag(.shared_f) {
+			rec_type = rec_type.clear_flag(.shared_f).set_nr_muls(0)
+		}
+		g.gen_str_for_type(rec_type)
 	}
 	mut has_cast := false
 	if left_sym.kind == .map && node.name in ['clone', 'move'] {
@@ -614,7 +626,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	} else {
 		g.write('${name}(')
 	}
-	if node.receiver_type.is_ptr() && (!node.left_type.is_ptr() || node.from_embed_type != 0) {
+	if node.receiver_type.is_ptr() && (!node.left_type.is_ptr()
+		|| node.from_embed_type != 0 || (node.left_type.has_flag(.shared_f) && node.name != 'str')) {
 		// The receiver is a reference, but the caller provided a value
 		// Add `&` automatically.
 		// TODO same logic in call_args()
@@ -643,7 +656,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			}
 			g.write(embed_name)
 		}
-		if node.left_type.has_flag(.shared_f) && !node.receiver_type.is_ptr() {
+		if node.left_type.has_flag(.shared_f) {
 			g.write('->val')
 		}
 	}

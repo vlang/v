@@ -3,7 +3,6 @@ import objects
 import gg
 import gx
 import rand
-import sokol.sapp
 
 struct App {
 mut:
@@ -56,7 +55,7 @@ fn on_frame(mut app App) {
 	app.gg.end()
 }
 
-fn on_event(e &sapp.Event, mut app App) {
+fn on_event(e &gg.Event, mut app App) {
 	match e.typ {
 		.resized, .restored, .resumed { app.resize() }
 		else {}
@@ -64,15 +63,14 @@ fn on_event(e &sapp.Event, mut app App) {
 }
 
 fn (mut app App) resize() {
-	mut s := sapp.dpi_scale()
+	mut s := gg.dpi_scale()
 	if s == 0.0 {
 		s = 1.0
 	}
-	w := int(sapp.width() / s)
-	h := int(sapp.height() / s)
+	size := gg.window_size()
 	app.ui.dpi_scale = s
-	app.ui.width = w
-	app.ui.height = h
+	app.ui.width = size.width
+	app.ui.height = size.height
 }
 
 fn main() {

@@ -1,0 +1,69 @@
+module main
+
+// NB: you need to `v install pcre` to be able to compile this example.
+
+import pcre
+
+fn example() {
+	r := pcre.new_regex('Match everything after this: (.+)', 0) or {
+		println('An error occured!')
+		return
+	}
+
+	m := r.match_str('Match everything after this: "I ❤️ VLang!"', 0, 0) or {
+		println('No match!')
+		return
+	}
+
+	// m.get(0) -> Match everything after this: "I ❤️ VLang!"
+	// m.get(1) -> "I ❤️ VLang!"'
+	// m.get(2) -> Error!
+	whole_match := m.get(0) or {
+		println('We matched nothing...')
+		return
+	}
+
+	matched_str := m.get(1) or {
+		println('We matched nothing...')
+		return
+	}
+
+	println(whole_match) // Match everything after this: "I ❤️ VLang!"
+	println(matched_str) // "I ❤️ VLang!"
+}
+
+fn main() {
+	example()
+
+	mut text := '[ an s. s! ]( wi4ki:something )
+	[ an s. s! ]( wi4ki:something )
+	[ an s. s! ](wiki:something)
+	[ an s. s! ](something)dd
+	d [ an s. s! ](something ) d
+	[  more text ]( something ) s [ something b ](something)dd
+
+	'
+
+	// check the regex on https://regex101.com/r/HdYya8/1/
+
+	regex := r'(\[[a-z\.\! ]*\]\( *\w*\:*\w* *\))*'
+
+	r := pcre.new_regex(regex, 0) or {
+		println('An error occured!')
+		return
+	}
+
+	m := r.match_str(text, 0, 0) or {
+		println('No match!')
+		return
+	}
+
+	whole_match1 := m.get(0) or {
+		println('We matched nothing 0...')
+		return
+	}
+
+	println(whole_match1)
+
+	println(m.get_all())
+}

@@ -271,6 +271,10 @@ fn test_cp_all() {
 	os.cp_all('ex', './', true) or { panic(err) }
 }
 
+fn test_realpath() {
+	assert os.real_path('') == ''
+}
+
 fn test_tmpdir() {
 	t := os.temp_dir()
 	assert t.len > 0
@@ -413,6 +417,19 @@ fn test_base() {
 		assert os.base('v/vlib/os/') == 'os'
 	}
 	assert os.base('filename') == 'filename'
+}
+
+fn test_file_name() {
+	$if windows {
+		assert os.file_name('v\\vlib\\os\\os.v') == 'os.v'
+		assert os.file_name('v\\vlib\\os\\') == ''
+		assert os.file_name('v\\vlib\\os') == 'os'
+	} $else {
+		assert os.file_name('v/vlib/os/os.v') == 'os.v'
+		assert os.file_name('v/vlib/os/') == ''
+		assert os.file_name('v/vlib/os') == 'os'
+	}
+	assert os.file_name('filename') == 'filename'
 }
 
 fn test_uname() {

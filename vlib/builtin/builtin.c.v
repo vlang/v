@@ -216,7 +216,6 @@ pub fn v_realloc(b byteptr, n int) byteptr {
 
 // v_calloc dynamically allocates a zeroed `n` bytes block of memory on the heap.
 // v_calloc returns a `byteptr` pointing to the memory address of the allocated space.
-[unsafe]
 pub fn v_calloc(n int) byteptr {
 	return C.calloc(1, n)
 }
@@ -224,7 +223,6 @@ pub fn v_calloc(n int) byteptr {
 // vcalloc dynamically allocates a zeroed `n` bytes block of memory on the heap.
 // vcalloc returns a `byteptr` pointing to the memory address of the allocated space.
 // Unlike `v_calloc` vcalloc checks for negative values given in `n`.
-[unsafe]
 pub fn vcalloc(n int) byteptr {
 	if n < 0 {
 		panic('calloc(<=0)')
@@ -246,6 +244,7 @@ pub fn free(ptr voidptr) {
 // memdup dynamically allocates a `sz` bytes block of memory on the heap
 // memdup then copies the contents of `src` into the allocated space and
 // returns a pointer to the newly allocated space.
+[unsafe]
 pub fn memdup(src voidptr, sz int) voidptr {
 	if sz == 0 {
 		return vcalloc(1)

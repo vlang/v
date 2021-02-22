@@ -12,8 +12,6 @@ import v.util
 import v.vet
 import v.errors
 import os
-import runtime
-import time
 
 const (
 	builtin_functions = ['print', 'println', 'eprint', 'eprintln', 'isnil', 'panic', 'exit']
@@ -312,11 +310,6 @@ pub fn parse_files(paths []string, table &table.Table, pref &pref.Preferences, g
 			return q.parsed_ast_files
 		}
 		*/
-	}
-	if false {
-		// TODO: remove this; it just prevents warnings about unused time and runtime
-		time.sleep_ms(1)
-		println(runtime.nr_cpus())
 	}
 	// ///////////////
 	mut files := []ast.File{}
@@ -1020,13 +1013,16 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	if p.tok.kind in [.assign, .decl_assign] || p.tok.kind.is_assign() {
 		return p.partial_assign_stmt(left, left_comments)
 	} else if !p.pref.translated
-		&& tok.kind !in [.key_if, .key_match, .key_lock, .key_rlock, .key_select]
-		&& left0 !is ast.CallExpr && (is_top_level || p.tok.kind != .rcbr)
-		&& left0 !is ast.PostfixExpr && !(left0 is ast.InfixExpr
-		&& (left0 as ast.InfixExpr).op in [.left_shift, .arrow]) && left0 !is ast.ComptimeCall
-		&& left0 !is ast.SelectorExpr {
-		p.error_with_pos('expression evaluated but not used', left0.position())
-		return ast.Stmt{}
+		&& tok.kind !in [.key_if, .key_match, .key_lock, .key_rlock, .key_select] {
+		for node in left {
+			if node !is ast.CallExpr && (is_top_level || p.tok.kind != .rcbr)
+				&& node !is ast.PostfixExpr && !(node is ast.InfixExpr
+				&& (node as ast.InfixExpr).op in [.left_shift, .arrow]) && node !is ast.ComptimeCall
+				&& node !is ast.SelectorExpr {
+				p.error_with_pos('expression evaluated but not used', node.position())
+				return ast.Stmt{}
+			}
+		}
 	}
 	pos.update_last_line(p.prev_tok.line_nr)
 	if left.len == 1 {
@@ -2197,10 +2193,10 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		pubfn := if p.mod == 'main' { 'fn' } else { 'pub fn' }
 		p.scanner.codegen('
 //
-$pubfn (    e &$enum_name) has(flag $enum_name) bool { return      (int(*e) &  (int(flag))) != 0 }
-$pubfn (mut e  $enum_name) set(flag $enum_name)      { unsafe{ *e = ${enum_name}(int(*e) |  (int(flag))) } }
-$pubfn (mut e  $enum_name) clear(flag $enum_name)    { unsafe{ *e = ${enum_name}(int(*e) & ~(int(flag))) } }
-$pubfn (mut e  $enum_name) toggle(flag $enum_name)   { unsafe{ *e = ${enum_name}(int(*e) ^  (int(flag))) } }
+[inline] $pubfn (    e &$enum_name) has(flag $enum_name) bool { return      (int(*e) &  (int(flag))) != 0 }
+[inline] $pubfn (mut e  $enum_name) set(flag $enum_name)      { unsafe{ *e = ${enum_name}(int(*e) |  (int(flag))) } }
+[inline] $pubfn (mut e  $enum_name) clear(flag $enum_name)    { unsafe{ *e = ${enum_name}(int(*e) & ~(int(flag))) } }
+[inline] $pubfn (mut e  $enum_name) toggle(flag $enum_name)   { unsafe{ *e = ${enum_name}(int(*e) ^  (int(flag))) } }
 //
 ')
 	}
@@ -2214,6 +2210,7 @@ $pubfn (mut e  $enum_name) toggle(flag $enum_name)   { unsafe{ *e = ${enum_name}
 			is_flag: is_flag
 			is_multi_allowed: is_multi_allowed
 		}
+		is_public: is_pub
 	})
 	if idx == -1 {
 		p.error_with_pos('cannot register enum `$name`, another type with this name exists',

@@ -178,8 +178,8 @@ pub fn mark_used(mut the_table table.Table, pref &pref.Preferences, ast_files []
 		}
 	}
 
-	the_table.used_fns = walker.used_fns
-	the_table.used_consts = walker.used_consts
+	the_table.used_fns = walker.used_fns.move()
+	the_table.used_consts = walker.used_consts.move()
 
 	$if trace_skip_unused ? {
 		eprintln('>> the_table.used_fns: $the_table.used_fns.keys()')

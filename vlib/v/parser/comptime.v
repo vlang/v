@@ -134,7 +134,7 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 	path += '.html'
 	path = os.real_path(path)
 	if !is_html {
-		path = tmpl_path
+		path = os.join_path(dir, tmpl_path)
 	}
 	if !os.exists(path) {
 		// can be in `templates/`

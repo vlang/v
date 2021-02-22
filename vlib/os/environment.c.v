@@ -12,19 +12,21 @@ fn C.FreeEnvironmentStringsW(&u16) int
 
 // `getenv` returns the value of the environment variable named by the key.
 pub fn getenv(key string) string {
-	$if windows {
-		s := C._wgetenv(key.to_wide())
-		if s == 0 {
-			return ''
+	unsafe {
+		$if windows {
+			s := C._wgetenv(key.to_wide())
+			if s == 0 {
+				return ''
+			}
+			return string_from_wide(s)
+		} $else {
+			s := C.getenv(charptr(key.str))
+			if s == voidptr(0) {
+				return ''
+			}
+			// NB: C.getenv *requires* that the result be copied.
+			return cstring_to_vstring(byteptr(s))
 		}
-		return string_from_wide(s)
-	} $else {
-		s := C.getenv(charptr(key.str))
-		if s == voidptr(0) {
-			return ''
-		}
-		// NB: C.getenv *requires* that the result be copied.
-		return cstring_to_vstring(byteptr(s))
 	}
 }
 
@@ -70,7 +72,7 @@ pub fn environ() map[string]string {
 		mut estrings := C.GetEnvironmentStringsW()
 		mut eline := ''
 		for c := estrings; *c != 0; {
-			eline = string_from_wide(c)
+			eline = unsafe { string_from_wide(c) }
 			eq_index := eline.index_byte(`=`)
 			if eq_index > 0 {
 				res[eline[0..eq_index]] = eline[eq_index + 1..]

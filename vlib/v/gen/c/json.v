@@ -218,7 +218,7 @@ fn (mut g Gen) decode_array(value_type table.Type) string {
 		Option_$styp val2 = $fn_name (jsval);
 		if(!val2.ok) {
 			array_free(&res);
-			return *(Option_array_$styp*)&val2;
+			return *(Option_Array_$styp*)&val2;
 		}
 		$styp val = *($styp*)val2.data;
 '
@@ -226,7 +226,7 @@ fn (mut g Gen) decode_array(value_type table.Type) string {
 	return '
 	if(root && !cJSON_IsArray(root) && !cJSON_IsNull(root)) {
 		Option err = v_error( string_add(_SLIT("Json element is not an array: "), tos2(cJSON_PrintUnformatted(root))) );
-		return *(Option_array_$styp *)&err;
+		return *(Option_Array_$styp *)&err;
 	}
 	res = __new_array(0, 0, sizeof($styp));
 	const cJSON *jsval = NULL;
@@ -263,7 +263,7 @@ fn (mut g Gen) decode_map(key_type table.Type, value_type table.Type) string {
 		Option_$styp_v val2 = $fn_name_v (js_get(root, jsval->string));
 		if(!val2.ok) {
 			map_free(&res);
-			return *(Option_map_${styp}_$styp_v*)&val2;
+			return *(Option_Map_${styp}_$styp_v*)&val2;
 		}
 		$styp_v val = *($styp_v*)val2.data;
 '
@@ -271,7 +271,7 @@ fn (mut g Gen) decode_map(key_type table.Type, value_type table.Type) string {
 	return '
 	if(!cJSON_IsObject(root) && !cJSON_IsNull(root)) {
 		Option err = v_error( string_add(_SLIT("Json element is not an object: "), tos2(cJSON_PrintUnformatted(root))) );
-		return *(Option_map_${styp}_$styp_v *)&err;
+		return *(Option_Map_${styp}_$styp_v *)&err;
 	}
 	res = new_map_2(sizeof($styp), sizeof($styp_v), $hash_fn, $key_eq_fn, $clone_fn, $free_fn);
 	cJSON *jsval = NULL;
@@ -299,7 +299,7 @@ fn (mut g Gen) encode_map(key_type table.Type, value_type table.Type) string {
 	}
 	return '
 	o = cJSON_CreateObject();
-	array_$styp $keys_tmp = map_keys(&val);
+	Array_$styp $keys_tmp = map_keys(&val);
 	for (int i = 0; i < ${keys_tmp}.len; ++i) {
 		$key
 		cJSON_AddItemToObject(o, (char*) key.str, $fn_name_v ( *($styp_v*) map_get_1(&val, &key, &($styp_v[]) { $zero } ) ) );

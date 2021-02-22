@@ -75,3 +75,11 @@ fn test_byte_write() {
 	sb_final := sb.str()
 	assert sb_final == temp_str
 }
+
+fn test_strings_builder_reuse() {
+	mut sb := strings.new_builder(256)
+	sb.write('world')
+	assert sb.str() == 'world'
+	sb.write('hello')
+	assert sb.str() == 'hello'
+}
