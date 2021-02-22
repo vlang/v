@@ -1,7 +1,7 @@
 import szip
 import os
 
-fn test_compile() {
+fn test_szip() {
 	mut z := szip.open('test_compile.zip', szip.best_speed, szip.m_write) or {
 		assert false
 		return
@@ -11,3 +11,4 @@ fn test_compile() {
 		os.rm('test_compile.zip') or { }
 	}
 }
+
