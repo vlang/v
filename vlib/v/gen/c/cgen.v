@@ -619,6 +619,36 @@ fn (mut g Gen) find_or_register_shared(t table.Type, base string) string {
 	return sh_typ
 }
 
+fn (mut g Gen) register_thread_array_wait_call(eltyp string) string {
+	thread_typ := '__v_thread_$eltyp'
+	ret_typ := if eltyp == '' { 'void' } else { 'Array_$eltyp' }
+	thread_arr_typ := 'Array_$thread_typ'
+	fn_name := '${thread_arr_typ}_wait'
+	if fn_name !in g.waiter_fns {
+		g.waiter_fns << fn_name
+		if eltyp == 'void' {
+			g.gowrappers.writeln('
+void ${fn_name}($thread_arr_typ a) {
+	for (int i = 0; i < a.len; ++i) {
+		$thread_typ t = (($thread_typ*)a.data)[i];
+		__v_thread_${eltyp}_wait(t);
+	}
+}')
+		} else {
+			g.gowrappers.writeln('
+$ret_typ ${fn_name}($thread_arr_typ a) {
+	$ret_typ res = __new_array_with_default(a.len, a.len, sizeof($eltyp), 0);
+	for (int i = 0; i < a.len; ++i) {
+		$thread_typ t = (($thread_typ*)a.data)[i];
+		(($eltyp*)res.data)[i] = __v_thread_${eltyp}_wait(t);
+	}
+	return res;
+}')
+		}
+	}
+	return fn_name
+}
+
 fn (mut g Gen) register_chan_pop_optional_call(opt_el_type string, styp string) {
 	if opt_el_type !in g.chan_pop_optionals {
 		g.chan_pop_optionals << opt_el_type
@@ -3097,20 +3127,34 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			g.write(')')
 		}
 	} else if op_is_eq_or_ne && left_sym.kind == .array && right_sym.kind == .array {
-		ptr_typ := g.gen_array_equality_fn(left_type)
+		ptr_typ := g.gen_array_equality_fn(left_type.clear_flag(.shared_f))
 		if node.op == .ne {
 			g.write('!')
 		}
 		g.write('${ptr_typ}_arr_eq(')
-		if node.left_type.is_ptr() {
+		if node.left_type.is_ptr() && !node.left_type.has_flag(.shared_f) {
 			g.write('*')
 		}
 		g.expr(node.left)
+		if node.left_type.has_flag(.shared_f) {
+			if node.left_type.is_ptr() {
+				g.write('->val')
+			} else {
+				g.write('.val')
+			}
+		}
 		g.write(', ')
-		if node.right_type.is_ptr() {
+		if node.right_type.is_ptr() && !node.right_type.has_flag(.shared_f) {
 			g.write('*')
 		}
 		g.expr(node.right)
+		if node.right_type.has_flag(.shared_f) {
+			if node.right_type.is_ptr() {
+				g.write('->val')
+			} else {
+				g.write('.val')
+			}
+		}
 		g.write(')')
 	} else if op_is_eq_or_ne && left_sym.kind == .array_fixed && right_sym.kind == .array_fixed {
 		ptr_typ := g.gen_fixed_array_equality_fn(left_type)
@@ -5330,15 +5374,15 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 			table.Alias {
 				// table.Alias { TODO
 			}
-			table.GoHandle {
+			table.Thread {
 				if g.pref.os == .windows {
-					if name == 'gohandle_void' {
+					if name == '__v_thread_void' {
 						g.type_definitions.writeln('typedef HANDLE $name;')
 					} else {
 						// Windows can only return `u32` (no void*) from a thread, so the
 						// V gohandle must maintain a pointer to the return value
 						g.type_definitions.writeln('typedef struct {')
-						g.type_definitions.writeln('\tvoid*  ret_ptr;')
+						g.type_definitions.writeln('\tvoid* ret_ptr;')
 						g.type_definitions.writeln('\tHANDLE handle;')
 						g.type_definitions.writeln('} $name;')
 					}
@@ -5825,7 +5869,7 @@ fn (mut g Gen) go_stmt(node ast.GoStmt, joinable bool) string {
 	if g.pref.os == .windows && node.call_expr.return_type != table.void_type {
 		g.writeln('$arg_tmp_var->ret_ptr = malloc(sizeof($s_ret_typ));')
 	}
-	gohandle_name := 'gohandle_' +
+	gohandle_name := '__v_thread_' +
 		g.table.get_type_symbol(g.unwrap_generic(node.call_expr.return_type)).cname
 	if g.pref.os == .windows {
 		simple_handle := if joinable && node.call_expr.return_type != table.void_type {

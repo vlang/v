@@ -96,6 +96,7 @@ const (
 		'vlib/v/tests/generic_chan_test.v',
 		'vlib/v/tests/generics_method_test.v',
 		'vlib/v/tests/generics_test.v',
+		'vlib/v/tests/go_array_wait_test.v',
 		'vlib/v/tests/go_call_generic_fn_test.v',
 		'vlib/v/tests/go_wait_2_test.v',
 		'vlib/v/tests/interface_edge_cases/assign_to_interface_field_test.v',

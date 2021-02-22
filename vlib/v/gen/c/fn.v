@@ -532,6 +532,10 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				g.gen_array_index(node)
 				return
 			}
+			'wait' {
+				g.gen_array_wait(node)
+				return
+			}
 			else {}
 		}
 	}
