@@ -1970,8 +1970,13 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 		f.comment(c, level: .indent, iembed: true)
 		last_line_nr = c.pos.last_line
 	}
-	if it.exprs.len == 0 && it.pre_cmnts.len > 0 && it.pre_cmnts[0].pos.line_nr != it.pos.line_nr {
-		f.writeln('')
+	if it.pre_cmnts.len > 0 {
+		same_line := it.pre_cmnts[0].pos.line_nr == it.pos.line_nr
+		if same_line && it.exprs.len > 0 {
+			f.write(' ')
+		} else if !same_line && it.exprs.len == 0 {
+			f.writeln('')
+		}
 	}
 	for i, expr in it.exprs {
 		line_nr := expr.position().line_nr

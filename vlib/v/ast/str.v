@@ -255,7 +255,7 @@ pub fn (x Expr) str() string {
 				return '/* $lines.len lines comment */'
 			} else {
 				text := x.text.trim('\x01').trim_space()
-				return '// $text'
+				return '´// $text´'
 			}
 		}
 		ComptimeSelector {
