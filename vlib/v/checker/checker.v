@@ -1907,6 +1907,11 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		} else {
 			f.params[i]
 		}
+		if f.is_variadic && call_arg.expr is ast.ArrayDecompose {
+			if i > f.params.len - 1 {
+				c.error('too many arguments in call to `$f.name`', call_expr.pos)
+			}
+		}
 		c.expected_type = arg.typ
 		typ := c.expr(call_arg.expr)
 		call_expr.args[i].typ = typ
