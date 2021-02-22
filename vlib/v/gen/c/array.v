@@ -568,4 +568,3 @@ fn (mut g Gen) gen_array_wait(node ast.CallExpr) {
 	g.expr(node.left)
 	g.write(')')
 }
-
