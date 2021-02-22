@@ -7,7 +7,7 @@ import os
 import strings
 
 const (
-	str_start = "sb.write('"
+	str_start = "sb.write_string('"
 	str_end   = "' ) "
 )
 
@@ -58,7 +58,7 @@ footer := \' \' // TODO remove
 _ = footer
 
 ")
-	s.write(tmpl.str_start)
+	s.write_string(tmpl.str_start)
 	mut state := State.html
 	mut in_span := false
 	// for _line in lines {
@@ -87,13 +87,13 @@ _ = footer
 			i--
 		} else if line.contains('@js ') {
 			pos := line.index('@js') or { continue }
-			s.write('<script src="')
-			s.write(line[pos + 5..line.len - 1])
+			s.write_string('<script src="')
+			s.write_string(line[pos + 5..line.len - 1])
 			s.writeln('"></script>')
 		} else if line.contains('@css ') {
 			pos := line.index('@css') or { continue }
-			s.write('<link href="')
-			s.write(line[pos + 6..line.len - 1])
+			s.write_string('<link href="')
+			s.write_string(line[pos + 6..line.len - 1])
 			s.writeln('" rel="stylesheet" type="text/css">')
 		} else if line.contains('@if ') {
 			s.writeln(tmpl.str_end)

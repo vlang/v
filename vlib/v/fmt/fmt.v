@@ -96,7 +96,7 @@ pub fn (mut f Fmt) write(s string) {
 	if f.indent > 0 && f.empty_line {
 		f.write_indent()
 	}
-	f.out.write(s)
+	f.out.write_string(s)
 	f.line_len += s.len
 	f.empty_line = false
 }
@@ -112,11 +112,11 @@ pub fn (mut f Fmt) writeln(s string) {
 
 fn (mut f Fmt) write_indent() {
 	if f.indent < fmt.tabs.len {
-		f.out.write(fmt.tabs[f.indent])
+		f.out.write_string(fmt.tabs[f.indent])
 	} else {
 		// too many indents, do it the slow way:
 		for _ in 0 .. f.indent {
-			f.out.write('\t')
+			f.out.write_string('\t')
 		}
 	}
 	f.line_len += f.indent * 4
@@ -856,7 +856,7 @@ pub fn (mut f Fmt) prefix_expr_cast_expr(fexpr ast.Expr) {
 	} else if fexpr is ast.CastExpr {
 		last := f.out.cut_last(1)
 		if last != '&' {
-			f.out.write(last)
+			f.out.write_string(last)
 		}
 	}
 	if !is_pe_amp_ce {

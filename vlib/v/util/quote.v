@@ -90,7 +90,7 @@ pub fn smart_quote(str string, raw bool) string {
 				toadd = '\\n'
 			}
 		}
-		result.write(toadd)
+		result.write_string(toadd)
 		last = current
 	}
 	return result.str()

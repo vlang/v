@@ -213,11 +213,11 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 	//
 	if is_live_wrap {
 		if is_livemain {
-			g.definitions.write('$type_name (* $impl_fn_name)(')
+			g.definitions.write_string('$type_name (* $impl_fn_name)(')
 			g.write('$type_name no_impl_${name}(')
 		}
 		if is_liveshared {
-			g.definitions.write('$type_name ${impl_fn_name}(')
+			g.definitions.write_string('$type_name ${impl_fn_name}(')
 			g.write('$type_name ${impl_fn_name}(')
 		}
 	} else {
@@ -229,7 +229,7 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 				// If we are building vlib/builtin, we need all private functions like array_get
 				// to be public, so that all V programs can access them.
 				g.write('VV_LOCAL_SYMBOL ')
-				g.definitions.write('VV_LOCAL_SYMBOL ')
+				g.definitions.write_string('VV_LOCAL_SYMBOL ')
 			}
 		}
 		fn_header := if msvc_attrs.len > 0 {
@@ -237,7 +237,7 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 		} else {
 			'$type_name ${name}('
 		}
-		g.definitions.write(fn_header)
+		g.definitions.write_string(fn_header)
 		g.write(fn_header)
 	}
 	arg_start_pos := g.out.len
@@ -361,26 +361,26 @@ fn (mut g Gen) fn_args(args []table.Param, is_variadic bool) ([]string, []string
 			func := info.func
 			if !info.is_anon {
 				g.write(arg_type_name + ' ' + caname)
-				g.definitions.write(arg_type_name + ' ' + caname)
+				g.definitions.write_string(arg_type_name + ' ' + caname)
 				fargs << caname
 				fargtypes << arg_type_name
 			} else {
 				g.write('${g.typ(func.return_type)} (*$caname)(')
-				g.definitions.write('${g.typ(func.return_type)} (*$caname)(')
+				g.definitions.write_string('${g.typ(func.return_type)} (*$caname)(')
 				g.fn_args(func.params, func.is_variadic)
 				g.write(')')
-				g.definitions.write(')')
+				g.definitions.write_string(')')
 			}
 		} else {
 			s := '$arg_type_name $caname'
 			g.write(s)
-			g.definitions.write(s)
+			g.definitions.write_string(s)
 			fargs << caname
 			fargtypes << arg_type_name
 		}
 		if i < args.len - 1 {
 			g.write(', ')
-			g.definitions.write(', ')
+			g.definitions.write_string(', ')
 		}
 	}
 	return fargs, fargtypes
@@ -411,7 +411,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	is_gen_or_and_assign_rhs := gen_or && g.is_assign_rhs
 	cur_line := if is_gen_or_and_assign_rhs && !g.is_autofree {
 		line := g.go_before_stmt(0)
-		g.out.write(tabs[g.indent])
+		g.out.write_string(tabs[g.indent])
 		line
 	} else {
 		''

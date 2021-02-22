@@ -209,18 +209,18 @@ fn unescape(s_ string, mode EncodingMode) ?string {
 		x := s[i]
 		match x {
 			`%` {
-				t.write(((unhex(s[i + 1]) << byte(4)) | unhex(s[i + 2])).ascii_str())
+				t.write_string(((unhex(s[i + 1]) << byte(4)) | unhex(s[i + 2])).ascii_str())
 				i += 2
 			}
 			`+` {
 				if mode == .encode_query_component {
-					t.write(' ')
+					t.write_string(' ')
 				} else {
-					t.write('+')
+					t.write_string('+')
 				}
 			}
 			else {
-				t.write(s[i].ascii_str())
+				t.write_string(s[i].ascii_str())
 			}
 		}
 	}
@@ -715,27 +715,27 @@ fn valid_optional_port(port string) bool {
 pub fn (u URL) str() string {
 	mut buf := strings.new_builder(200)
 	if u.scheme != '' {
-		buf.write(u.scheme)
-		buf.write(':')
+		buf.write_string(u.scheme)
+		buf.write_string(':')
 	}
 	if u.opaque != '' {
-		buf.write(u.opaque)
+		buf.write_string(u.opaque)
 	} else {
 		if u.scheme != '' || u.host != '' || (u.user != 0 && !u.user.empty()) {
 			if u.host != '' || u.path != '' || !u.user.empty() {
-				buf.write('//')
+				buf.write_string('//')
 			}
 			if !u.user.empty() {
-				buf.write(u.user.str())
-				buf.write('@')
+				buf.write_string(u.user.str())
+				buf.write_string('@')
 			}
 			if u.host != '' {
-				buf.write(escape(u.host, .encode_host))
+				buf.write_string(escape(u.host, .encode_host))
 			}
 		}
 		path := u.escaped_path()
 		if path != '' && path[0] != `/` && u.host != '' {
-			buf.write('/')
+			buf.write_string('/')
 		}
 		if buf.len == 0 {
 			// RFC 3986 §4.2
@@ -746,18 +746,18 @@ pub fn (u URL) str() string {
 			// path reference.
 			i := path.index_byte(`:`)
 			if i > -1 && path[..i].index_byte(`/`) == -1 {
-				buf.write('./')
+				buf.write_string('./')
 			}
 		}
-		buf.write(path)
+		buf.write_string(path)
 	}
 	if u.force_query || u.raw_query != '' {
-		buf.write('?')
-		buf.write(u.raw_query)
+		buf.write_string('?')
+		buf.write_string(u.raw_query)
 	}
 	if u.fragment != '' {
-		buf.write('#')
-		buf.write(escape(u.fragment, .encode_fragment))
+		buf.write_string('#')
+		buf.write_string(escape(u.fragment, .encode_fragment))
 	}
 	return buf.str()
 }
@@ -845,11 +845,11 @@ pub fn (v Values) encode() string {
 		key_kscaped := query_escape(k)
 		for _, val in vs.data {
 			if buf.len > 0 {
-				buf.write('&')
+				buf.write_string('&')
 			}
-			buf.write(key_kscaped)
-			buf.write('=')
-			buf.write(query_escape(val))
+			buf.write_string(key_kscaped)
+			buf.write_string('=')
+			buf.write_string(query_escape(val))
 		}
 	}
 	return buf.str()
