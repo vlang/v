@@ -24,23 +24,17 @@ fn cleanup_vtmp_folder() {
 }
 
 fn setup_symlink_unix(vexe string) {
-	link_dir := '/usr/local/bin'
-	if !os.exists(link_dir) {
-		os.mkdir_all(link_dir) or { panic(err) }
+	mut link_path := '/data/data/com.termux/files/usr/bin/v'
+	if os.system("uname -o | grep -q '[A/a]ndroid'") == 1 {
+		link_dir := '/usr/local/bin'
+		if !os.exists(link_dir) {
+			os.mkdir_all(link_dir) or { panic(err) }
+		}
+		link_path = link_dir + '/v'
 	}
-	mut link_path := link_dir + '/v'
-	mut ret := os.exec('ln -sf $vexe $link_path') or { panic(err) }
+	ret := os.exec('ln -sf $vexe $link_path') or { panic(err) }
 	if ret.exit_code == 0 {
 		println('Symlink "$link_path" has been created')
-	} else if os.system("uname -o | grep -q '[A/a]ndroid'") == 0 {
-		println('Failed to create symlink "$link_path". Trying again with Termux path for Android.')
-		link_path = '/data/data/com.termux/files/usr/bin/v'
-		ret = os.exec('ln -sf $vexe $link_path') or { panic(err) }
-		if ret.exit_code == 0 {
-			println('Symlink "$link_path" has been created')
-		} else {
-			eprintln('Failed to create symlink "$link_path". Try again with sudo.')
-		}
 	} else {
 		eprintln('Failed to create symlink "$link_path". Try again with sudo.')
 	}
