@@ -252,10 +252,8 @@ fn (b Board) hmirror() Board {
 	return res
 }
 
-// GCC optimization bug; inlining fails when compiled with -prod
-[no_inline]
 fn (t TileLine) to_left() TileLine {
-	right_border_idx := 5
+	right_border_idx := 4
 	mut res := t
 	mut zeros := 0
 	mut nonzeros := 0
@@ -729,11 +727,11 @@ fn (mut app App) handle_tap() {
 	avgx, avgy := avg(s.pos.x, e.pos.x), avg(s.pos.y, e.pos.y)
 	// TODO: Replace "touch spots" with actual buttons
 	// bottom left -> change theme
-	if avgx < 200 && h - avgy < 200 {
+	if avgx < 50 && h - avgy < 50 {
 		app.next_theme()
 	}
 	// bottom right -> change tile format
-	if w - avgx < 200 && h - avgy < 200 {
+	if w - avgx < 50 && h - avgy < 50 {
 		app.next_tile_format()
 	}
 	if app.state == .victory {
@@ -767,7 +765,7 @@ fn (mut app App) handle_swipe() {
 	dmax := if max(adx, ady) > 0 { max(adx, ady) } else { 1 }
 	tdiff := int(e.time.unix_time_milli() - s.time.unix_time_milli())
 	// TODO: make this calculation more accurate (don't use arbitrary numbers)
-	min_swipe_distance := int(math.sqrt(min(w, h) * tdiff / 60)) + 20
+	min_swipe_distance := int(math.sqrt(min(w, h) * tdiff / 100)) + 20
 	if dmax < min_swipe_distance {
 		return
 	}
