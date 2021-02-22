@@ -654,7 +654,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			// g.write('&')
 		} else if diff > 0 {
 			g.write('/*diff=$diff*/')
-			g.write([]byte{len:diff, init:`*`}.bytestr())
+			g.write([]byte{len: diff, init: `*`}.bytestr())
 		}
 	}
 	if g.is_autofree && node.free_receiver && !g.inside_lambda && !g.is_builtin_mod {
