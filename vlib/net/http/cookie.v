@@ -277,15 +277,7 @@ fn sanitize(valid fn(byte) bool, v string) string {
 	if ok {
 		return v.clone()
 	}
-	// TODO: Use `filter` instead of this nonesense
-	buf := v.bytes()
-	mut bytes := v.bytes()
-	for i, _ in buf {
-		if !valid(buf[i]) {
-			bytes.delete(i)
-		}
-	}
-	return bytes.bytestr()
+	return v.bytes().filter(valid(it)).bytestr()
 }
 
 fn sanitize_cookie_name(name string) string {
