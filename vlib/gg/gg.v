@@ -154,6 +154,10 @@ fn gg_init_sokol_window(user_data voidptr) {
 	if g.scale < 0.1 {
 		g.scale = 1.0
 	}
+	$if android {
+		g.scale *= android_dpi()
+	}
+
 	// is_high_dpi := sapp.high_dpi()
 	// fb_w := sapp.width()
 	// fb_h := sapp.height()
@@ -764,6 +768,9 @@ pub fn window_size() Size {
 	mut s := sapp.dpi_scale()
 	if s == 0 {
 		s = 1.
+	}
+	$if android {
+		s *= android_dpi()
 	}
 	return Size{int(sapp.width() / s), int(sapp.height() / s)}
 }
