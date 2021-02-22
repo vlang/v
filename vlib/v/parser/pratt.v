@@ -45,6 +45,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 		}
 		.comment {
 			node = p.comment()
+			return node
 		}
 		.dot {
 			// .enum_val
