@@ -34,13 +34,13 @@ pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 		f.indent++
 	}
 	if options.iembed {
-		x := node.text.trim_left('\x01')
+		x := node.text.trim_left('\x01').trim_space()
 		if x.contains('\n') {
 			f.writeln('/*')
-			f.writeln(x.trim_space())
+			f.writeln(x)
 			f.write('*/')
 		} else {
-			f.write('/* ${x.trim(' ')} */')
+			f.write('/* $x */')
 		}
 	} else if !node.text.contains('\n') {
 		is_separate_line := !options.inline || node.text.starts_with('\x01')
@@ -53,7 +53,7 @@ pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 			out_s += s
 		}
 		if !is_separate_line && f.indent > 0 {
-			f.remove_new_line() // delete the generated \n
+			f.remove_new_line({}) // delete the generated \n
 			f.write(' ')
 		}
 		f.write(out_s)
@@ -70,7 +70,7 @@ pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 			f.empty_line = false
 		}
 		if no_new_lines {
-			f.remove_new_line()
+			f.remove_new_line({})
 		} else {
 			f.empty_line = true
 		}
@@ -119,13 +119,7 @@ pub fn (mut f Fmt) import_comments(comments []ast.Comment, options CommentsOptio
 		return
 	}
 	if options.inline {
-		mut i := 0
-		for i = f.out_imports.len - 1; i >= 0; i-- {
-			if !f.out_imports.buf[i].is_space() { // != `\n` {
-				break
-			}
-		}
-		f.out_imports.go_back(f.out_imports.len - i - 1)
+		f.remove_new_line(imports_buffer: true)
 	}
 	for c in comments {
 		ctext := c.text.trim_left('\x01')
