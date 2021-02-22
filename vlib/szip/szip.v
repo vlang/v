@@ -39,7 +39,7 @@ fn C.zip_entry_fread(&Zip, byteptr) int
 
 fn C.zip_total_entries(&Zip) int
 
-// CompressionLevel lists compression levels, see in "thirdparty/miniz.h"
+// CompressionLevel lists compression levels, see in "thirdparty/zip/miniz.h"
 pub enum CompressionLevel {
 	no_compression = 0
 	best_speed = 1
