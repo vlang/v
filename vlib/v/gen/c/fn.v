@@ -647,14 +647,12 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		if !node.left_type.has_flag(.shared_f) {
 			g.write('/*rec*/*')
 		}
-	} else if !is_range_slice && node.from_embed_type == 0  && node.name != 'str' {
+	} else if !is_range_slice && node.from_embed_type == 0 && node.name != 'str' {
 		diff := node.left_type.nr_muls() - node.receiver_type.nr_muls()
 		if diff < 0 {
 			// TODO
 			// g.write('&')
 		} else if diff > 0 {
-			println('${node.name}: l: ${g.typ(node.left_type)}\tr: ${g.typ(node.receiver_type)}')
-			println('${node}')
 			g.write('/*diff=$diff*/')
 			g.write([]byte{len: diff, init: `*`}.bytestr())
 		}
