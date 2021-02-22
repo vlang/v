@@ -73,7 +73,7 @@ fn (om OpenMode) to_byte() byte {
 // open opens zip archive with compression level using the given mode.
 pub fn open(name string, level CompressionLevel, mode OpenMode) ?&Zip {
 	mut nlevel := int(level)
-	// uber_compression
+	// 10 = uber_compression
 	if (nlevel & 0xF) > 10 {
 		nlevel = 6 // szip.default_level
 	}
