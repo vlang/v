@@ -252,8 +252,6 @@ fn (b Board) hmirror() Board {
 	return res
 }
 
-// GCC optimization bug; inlining fails when compiled with -prod
-[no_inline]
 fn (t TileLine) to_left() TileLine {
 	right_border_idx := 4
 	mut res := t
