@@ -1,5 +1,7 @@
 module szip
 
+import os
+
 #flag -I @VROOT/thirdparty/zip
 #include "zip.c"
 #include "zip.h"
@@ -37,40 +39,48 @@ fn C.zip_entry_fread(&Zip, byteptr) int
 
 fn C.zip_total_entries(&Zip) int
 
-// compression level - ref: miniz.h
-const (
-	no_compression      = 0
-	best_speed          = 1
-	best_compression    = 9
-	uber_compression    = 10
-	default_level       = 6
+// CompressionLevel lists compression levels - ref: miniz.h
+pub enum CompressionLevel {
+	no_compression = 0
+	best_speed = 1
+	best_compression = 9
+	uber_compression = 10
+	default_level = 6
 	default_compression = -1
-)
+}
 
-const (
-	m_write  = `w`
-	m_ronly  = `r`
-	m_append = `a`
-)
+// OpenMode lists the opening modes
+pub enum OpenMode {
+	write
+	read_only
+	append
+}
+
+fn (om OpenMode) to_byte() byte {
+	return match om {
+		.write {
+			`w`
+		}
+		.read_only {
+			`r`
+		}
+		.append {
+			`a`
+		}
+	}
+}
 
 // open opens zip archive with compression level using the given mode.
-// compression levels: 0-9 are the standard zlib-style levels.
-// modes:
-// 'r' (opens a file for reading/extracting, note: the file must exists)
-// 'w' (creates an empty file for writing)
-// 'a' (appends to an existing archive)
-pub fn open(name string, level int, mode byte) ?&Zip {
-	mut nlevel := level
-	if (nlevel & 0xF) > szip.uber_compression {
-		nlevel = szip.default_level
+pub fn open(name string, level CompressionLevel, mode OpenMode) ?&Zip {
+	mut nlevel := int(level)
+	// uber_compression
+	if (nlevel & 0xF) > 10 {
+		nlevel = 6 // szip.default_level
 	}
 	if name.len == 0 {
 		return error('szip: name of file empty')
 	}
-	if mode !in [szip.m_write, szip.m_ronly, szip.m_append] {
-		return error('szip: invalid provided open mode')
-	}
-	p_zip := &Zip(C.zip_open(name.str, nlevel, mode))
+	p_zip := &Zip(C.zip_open(name.str, nlevel, mode.to_byte()))
 	if isnil(p_zip) {
 		return error('szip: cannot open/create/append new zip archive')
 	}
@@ -176,8 +186,8 @@ pub fn (mut zentry Zip) read_entry() ?voidptr {
 
 // extract_entry extracts the current zip entry into output file.
 pub fn (mut zentry Zip) extract_entry(path string) ? {
-	if C.access(charptr(path.str), 0) == -1 {
-		return error('Cannot open file for extracting, file not exists')
+	if !os.is_file(path) {
+		return error('szip: cannot open file for extracting, "$path" not exists')
 	}
 	res := C.zip_entry_fread(zentry, path.str)
 	if res != 0 {
@@ -190,7 +200,7 @@ extract extracts the current zip entry using a callback function (on_extract).
 fn (mut zentry Zip) extract(path string) bool {
 	if C.access(path.str, 0) == -1 {
 		return false
-		// return error('Cannot open directory for extracting, directory not exists')
+		// return error('szip: cannot open directory for extracting, directory not exists')
 	}
 	res := C.zip_extract(zentry, path.str, 0, 0)
 	return res == 0
