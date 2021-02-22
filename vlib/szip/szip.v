@@ -50,6 +50,9 @@ pub enum CompressionLevel {
 }
 
 // OpenMode lists the opening modes
+// .write: opens a file for reading/extracting (the file must exists).<br>
+// .read_only: creates an empty file for writing.<br>
+// .append: appends to an existing archive.
 pub enum OpenMode {
 	write
 	read_only
@@ -71,6 +74,9 @@ fn (om OpenMode) to_byte() byte {
 }
 
 // open opens zip archive with compression level using the given mode.
+// name: the name of the zip file to open
+// level: can be any value of the CompressionLevel enum
+// mode: can be any value of the OpenMode enum
 pub fn open(name string, level CompressionLevel, mode OpenMode) ?&Zip {
 	mut nlevel := int(level)
 	// 10 = uber_compression
