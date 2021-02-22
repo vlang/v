@@ -58,10 +58,29 @@ fn linebreaks_in_block_comments() {
 	*****/
 }
 
+fn map_comments() {
+	mymap := map{
+		// pre
+		`:`: 1
+		`!`: 2 // after
+		// and between
+		`%`: 3
+		// between
+		// between second
+		`$`: 4
+		`&`: 5
+		// post
+	}
+}
+
 fn ifs_comments_and_empty_lines() {
 	if true {
 	}
-	// some comment after an if without else
+	// some comment direct after an if without else
+	if false {
+	} else {
+	}
+	// some comment direct after an else
 	if false {
 	}
 

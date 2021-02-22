@@ -83,11 +83,12 @@ pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 pub fn (mut f Fmt) comments(comments []ast.Comment, options CommentsOptions) {
 	mut prev_line := options.prev_line
 	for i, c in comments {
+		if options.prev_line > -1 && ((c.pos.line_nr > prev_line && f.out.last_n(1) != '\n')
+			|| (c.pos.line_nr > prev_line + 1 && f.out.last_n(2) != '\n\n')) {
+			f.writeln('')
+		}
 		if !f.out.last_n(1)[0].is_space() {
 			f.write(' ')
-		}
-		if options.prev_line > -1 && c.pos.line_nr > prev_line + 1 {
-			f.writeln('')
 		}
 		f.comment(c, options)
 		if !options.iembed && (i < comments.len - 1 || options.has_nl) {

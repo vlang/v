@@ -2068,6 +2068,7 @@ pub fn (mut f Fmt) map_init(it ast.MapInit) {
 	}
 	f.writeln('map{')
 	f.indent++
+	f.comments(it.pre_cmnts, {})
 	mut max_field_len := 0
 	for key in it.keys {
 		if key.str().len > max_field_len {
@@ -2079,6 +2080,7 @@ pub fn (mut f Fmt) map_init(it ast.MapInit) {
 		f.write(': ')
 		f.write(strings.repeat(` `, max_field_len - key.str().len))
 		f.expr(it.vals[i])
+		f.comments(it.comments[i], prev_line: it.vals[i].position().last_line, has_nl: false)
 		f.writeln('')
 	}
 	f.indent--
