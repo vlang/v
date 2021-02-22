@@ -3544,14 +3544,15 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		cond_var = g.new_tmp_var()
 		g.write('${g.typ(node.cond_type)} $cond_var = ')
 		g.expr(node.cond)
-		g.writeln('; ')
+		g.writeln(';')
+		g.stmt_path_pos << g.out.len
 		g.write(line)
 	}
 	if need_tmp_var {
 		g.empty_line = true
 		cur_line = g.go_before_stmt(0)
 		tmp_var = g.new_tmp_var()
-		g.writeln('\t${g.typ(node.return_type)} $tmp_var;')
+		g.writeln('${g.typ(node.return_type)} $tmp_var;')
 	}
 
 	if is_expr && !need_tmp_var {
