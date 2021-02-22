@@ -647,7 +647,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		if !node.left_type.has_flag(.shared_f) {
 			g.write('/*rec*/*')
 		}
-	} else if !is_range_slice {
+	} else if !is_range_slice && node.from_embed_type == 0 {
 		diff := node.left_type.nr_muls() - node.receiver_type.nr_muls()
 		if diff < 0 {
 			// TODO
@@ -657,6 +657,11 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			g.write([]byte{len: diff, init: `*`}.bytestr())
 		}
 	}
+
+	// if node.left_type.idx() != node.receiver_type.idx() {
+	// 	println('${g.typ(node.left_type)} ${g.typ(node.receiver_type)}')
+	// }
+
 	if g.is_autofree && node.free_receiver && !g.inside_lambda && !g.is_builtin_mod {
 		// The receiver expression needs to be freed, use the temp var.
 		fn_name := node.name.replace('.', '_')
