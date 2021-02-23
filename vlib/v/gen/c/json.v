@@ -50,7 +50,7 @@ $dec_fn_dec {
 		if (error_ptr != NULL)	{
 			// fprintf(stderr, "Error in decode() for $styp error_ptr=: %s\\n", error_ptr);
 			// printf("\\nbad js=%%s\\n", js.str);
-			Option err = v_error(tos2(error_ptr));
+			Option2 err = err2(tos2(error_ptr));
 			return *(Option_$styp *)&err;
 		}
 	}
@@ -103,7 +103,7 @@ $enc_fn_dec {
 	// cJSON_delete
 	// p.cgen.fns << '$dec return opt_ok(res); \n}'
 	dec.writeln('\tOption_$styp ret;')
-	dec.writeln('\topt_ok2(&res, (OptionBase*)&ret, sizeof(res));')
+	dec.writeln('\topt_ok(&res, (Option2*)&ret, sizeof(res));')
 	dec.writeln('\treturn ret;\n}')
 	enc.writeln('\treturn o;\n}')
 	g.definitions.writeln(dec.str())
@@ -225,7 +225,7 @@ fn (mut g Gen) decode_array(value_type table.Type) string {
 	}
 	return '
 	if(root && !cJSON_IsArray(root) && !cJSON_IsNull(root)) {
-		Option err = v_error( string_add(_SLIT("Json element is not an array: "), tos2(cJSON_PrintUnformatted(root))) );
+		Option2 err = v_error( string_add(_SLIT("Json element is not an array: "), tos2(cJSON_PrintUnformatted(root))) );
 		return *(Option_Array_$styp *)&err;
 	}
 	res = __new_array(0, 0, sizeof($styp));
@@ -270,7 +270,7 @@ fn (mut g Gen) decode_map(key_type table.Type, value_type table.Type) string {
 	}
 	return '
 	if(!cJSON_IsObject(root) && !cJSON_IsNull(root)) {
-		Option err = v_error( string_add(_SLIT("Json element is not an object: "), tos2(cJSON_PrintUnformatted(root))) );
+		Option2 err = v_error( string_add(_SLIT("Json element is not an object: "), tos2(cJSON_PrintUnformatted(root))) );
 		return *(Option_Map_${styp}_$styp_v *)&err;
 	}
 	res = new_map_2(sizeof($styp), sizeof($styp_v), $hash_fn, $key_eq_fn, $clone_fn, $free_fn);

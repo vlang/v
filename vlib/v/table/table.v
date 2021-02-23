@@ -376,7 +376,7 @@ pub fn (mut t Table) register_type_symbol(typ TypeSymbol) int {
 				// builtin
 				// this will override the already registered builtin types
 				// with the actual v struct declaration in the source
-				if existing_idx >= string_type_idx && existing_idx <= map_type_idx {
+				if (existing_idx >= string_type_idx && existing_idx <= map_type_idx) || existing_idx == error_type_idx {
 					if existing_idx == string_type_idx {
 						// existing_type := t.types[existing_idx]
 						t.types[existing_idx] = TypeSymbol{

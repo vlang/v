@@ -72,13 +72,8 @@ pub fn error_with_code(message string, code int) Option {
 	}
 }
 
+// Option2 is the the base of V's new internal optional return system.
 struct Option2 {
-	state byte
-	err   Error
-}
-
-// OptionBase is the the base of V's internal optional return system.
-struct OptionBase2 {
 	state byte
 	err   Error
 	// Data is trailing after err
@@ -90,6 +85,15 @@ struct OptionBase2 {
 struct Error {
 	msg  string
 	code int
+}
+
+// `fn foo() ?Foo { return foo }` => `fn foo() ?Foo { return opt_ok(foo); }`
+fn opt_ok(data voidptr, mut option Option2, size int) {
+	unsafe {
+		*option = Option2{}
+		// use err to get the end of OptionBase and then memcpy into it
+		C.memcpy(byteptr(&option.err) + sizeof(Error), data, size)
+	}
 }
 
 // /*

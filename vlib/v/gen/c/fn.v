@@ -728,6 +728,12 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		}
 	}
 	mut name := node.name
+	if node.name == 'error' {
+		name = 'error2'
+	}
+	if node.name == 'error_with_code' {
+		name = 'error_with_code2'
+	}
 	is_print := name in ['print', 'println', 'eprint', 'eprintln']
 	print_method := name
 	is_json_encode := name == 'json.encode'
