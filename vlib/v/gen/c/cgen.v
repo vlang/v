@@ -620,18 +620,19 @@ fn (mut g Gen) find_or_register_shared(t table.Type, base string) string {
 }
 
 fn (mut g Gen) register_thread_array_wait_call(eltyp string) string {
-	thread_typ := '__v_thread_$eltyp'
-	ret_typ := if eltyp == '' { 'void' } else { 'Array_$eltyp' }
+	is_void := eltyp == 'void'
+	thread_typ := if is_void { '__v_thread' } else { '__v_thread_$eltyp' }
+	ret_typ := if is_void { 'void' } else { 'Array_$eltyp' }
 	thread_arr_typ := 'Array_$thread_typ'
 	fn_name := '${thread_arr_typ}_wait'
 	if fn_name !in g.waiter_fns {
 		g.waiter_fns << fn_name
-		if eltyp == 'void' {
+		if is_void {
 			g.gowrappers.writeln('
 void ${fn_name}($thread_arr_typ a) {
 	for (int i = 0; i < a.len; ++i) {
 		$thread_typ t = (($thread_typ*)a.data)[i];
-		__v_thread_${eltyp}_wait(t);
+		__v_thread_wait(t);
 	}
 }')
 		} else {
@@ -5376,7 +5377,7 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 			}
 			table.Thread {
 				if g.pref.os == .windows {
-					if name == '__v_thread_void' {
+					if name == '__v_thread' {
 						g.type_definitions.writeln('typedef HANDLE $name;')
 					} else {
 						// Windows can only return `u32` (no void*) from a thread, so the
@@ -5869,8 +5870,11 @@ fn (mut g Gen) go_stmt(node ast.GoStmt, joinable bool) string {
 	if g.pref.os == .windows && node.call_expr.return_type != table.void_type {
 		g.writeln('$arg_tmp_var->ret_ptr = malloc(sizeof($s_ret_typ));')
 	}
-	gohandle_name := '__v_thread_' +
-		g.table.get_type_symbol(g.unwrap_generic(node.call_expr.return_type)).cname
+	gohandle_name := if node.call_expr.return_type == table.void_type {
+		'__v_thread'
+	} else {
+		'__v_thread_' + g.table.get_type_symbol(g.unwrap_generic(node.call_expr.return_type)).cname
+	}
 	if g.pref.os == .windows {
 		simple_handle := if joinable && node.call_expr.return_type != table.void_type {
 			'thread_handle_$tmp'

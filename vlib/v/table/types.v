@@ -540,7 +540,15 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 		cname: 'int_literal'
 		mod: 'builtin'
 	)
-	t.register_type_symbol(kind: .thread, name: 'thread', cname: '__v_thread', mod: 'builtin')
+	t.register_type_symbol(
+		kind: .thread
+		name: 'thread'
+		cname: '__v_thread'
+		mod: 'builtin'
+		info: Thread{
+			return_type: table.void_type
+		}
+	)
 }
 
 [inline]
