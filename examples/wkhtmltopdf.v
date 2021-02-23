@@ -12,6 +12,7 @@ import os
 // https://wkhtmltopdf.org/libwkhtmltox/
 #flag -lwkhtmltox
 #include "wkhtmltox/pdf.h" # You can install the C package for your system from the wkhtmltopdf.org/downloads.html page
+
 struct C.wkhtmltopdf_global_settings {}
 
 struct C.wkhtmltopdf_object_settings {}

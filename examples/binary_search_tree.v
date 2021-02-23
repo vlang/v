@@ -25,15 +25,23 @@ fn size(tree Tree) int {
 // insert a value to BST
 fn insert(tree Tree, x f64) Tree {
 	match tree {
-		Empty { return Node{x, tree, tree} }
-		Node { 
+		Empty {
+			return Node{x, tree, tree}
+		}
+		Node {
 			return if x == tree.value {
 				tree
 			} else if x < tree.value {
-				Node{...tree, left: insert(tree.left, x)}
+				Node{
+					...tree
+					left: insert(tree.left, x)
+				}
 			} else {
-				Node{...tree, right: insert(tree.right, x)}
-			} 
+				Node{
+					...tree
+					right: insert(tree.right, x)
+				}
+			}
 		}
 	}
 }
@@ -41,15 +49,17 @@ fn insert(tree Tree, x f64) Tree {
 // whether able to find a value in BST
 fn search(tree Tree, x f64) bool {
 	match tree {
-		Empty { return false }
-		Node { 
+		Empty {
+			return false
+		}
+		Node {
 			return if x == tree.value {
 				true
 			} else if x < tree.value {
 				search(tree.left, x)
 			} else {
 				search(tree.right, x)
-			} 
+			}
 		}
 	}
 }
@@ -65,20 +75,46 @@ fn min(tree Tree) f64 {
 // delete a value in BST (if nonexistant do nothing)
 fn delete(tree Tree, x f64) Tree {
 	match tree {
-		Empty { return tree }
+		Empty {
+			return tree
+		}
 		Node {
 			if tree.left is Node && tree.right is Node {
-				return if x < tree.value { 
-					Node{...tree, left: delete(tree.left, x)}
+				return if x < tree.value {
+					Node{
+						...tree
+						left: delete(tree.left, x)
+					}
 				} else if x > tree.value {
-					Node{...tree, right: delete(tree.right, x)}
+					Node{
+						...tree
+						right: delete(tree.right, x)
+					}
 				} else {
-					Node{...tree, value: min(tree.right), right: delete(tree.right, min(tree.right))}
-				}	
+					Node{
+						...tree
+						value: min(tree.right)
+						right: delete(tree.right, min(tree.right))
+					}
+				}
 			} else if tree.left is Node {
-				return if x == tree.value { tree.left } else { Node{...tree, left: delete(tree.left, x)} } 
+				return if x == tree.value {
+					tree.left
+				} else {
+					Node{
+						...tree
+						left: delete(tree.left, x)
+					}
+				}
 			} else {
-				if x == tree.value { return tree.right } else { return Node{...tree, right: delete(tree.right, x)} }  
+				if x == tree.value {
+					return tree.right
+				} else {
+					return Node{
+						...tree
+						right: delete(tree.right, x)
+					}
+				}
 			}
 		}
 	}
@@ -90,13 +126,13 @@ fn main() {
 	for i in input {
 		tree = insert(tree, i)
 	}
-	println('[1] after insertion tree size is ${size(tree)}')  // 11
+	println('[1] after insertion tree size is ${size(tree)}') // 11
 	del := [-0.3, 0.0, 0.3, 0.6, 1.0, 1.5]
 	for i in del {
 		tree = delete(tree, i)
 	}
-	print('[2] after deletion tree size is ${size(tree)}, ')  // 7
-	print('and these elements were deleted: ')  // 0.0 0.3 0.6 1.0
+	print('[2] after deletion tree size is ${size(tree)}, ') // 7
+	print('and these elements were deleted: ') // 0.0 0.3 0.6 1.0
 	for i in input {
 		if !search(tree, i) {
 			print('$i ')
