@@ -61,8 +61,8 @@ pub fn cp_all(src string, dst string, overwrite bool) ? {
 			}
 		}
 		cp_all(sp, dp, overwrite) or {
-			rmdir(dp) or { return error(err) }
-			return error(err)
+			rmdir(dp) or { return error(err.msg) }
+			return error(err.msg)
 		}
 	}
 }
@@ -138,11 +138,11 @@ pub fn rmdir_all(path string) ? {
 	for item in items {
 		fullpath := join_path(path, item)
 		if is_dir(fullpath) {
-			rmdir_all(fullpath) or { ret_err = err }
+			rmdir_all(fullpath) or { ret_err = err.msg }
 		}
-		rm(fullpath) or { ret_err = err }
+		rm(fullpath) or { ret_err = err.msg }
 	}
-	rmdir(path) or { ret_err = err }
+	rmdir(path) or { ret_err = err.msg }
 	if ret_err.len > 0 {
 		return error(ret_err)
 	}
@@ -486,7 +486,7 @@ pub fn mkdir_all(path string) ? {
 		if exists(p) && is_dir(p) {
 			continue
 		}
-		mkdir(p) or { return error('folder: $p, error: $err') }
+		mkdir(p) or { return error('folder: $p, error: $err.msg') }
 	}
 }
 
@@ -507,7 +507,7 @@ pub fn cache_dir() string {
 	}
 	cdir := join_path(home_dir(), '.cache')
 	if !is_dir(cdir) && !is_link(cdir) {
-		mkdir(cdir) or { panic(err) }
+		mkdir(cdir) or { panic(err.msg) }
 	}
 	return cdir
 }

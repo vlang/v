@@ -90,7 +90,7 @@ pub:
 
 [inline]
 fn (e Error) str() string {
-	return '$e.msg (code: $e.code)'
+	return '${e.msg} (code: ${e.code})'
 }
 
 // `fn foo() ?Foo { return foo }` => `fn foo() ?Foo { return opt_ok(foo); }`
