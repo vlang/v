@@ -7,6 +7,7 @@ import v.util.recompilation
 
 struct App {
 	is_verbose bool
+	is_prod    bool
 	vexe       string
 	vroot      string
 }
@@ -16,6 +17,7 @@ fn new_app() App {
 	vroot := os.dir(vexe)
 	return App{
 		is_verbose: '-v' in os.args
+		is_prod: '-prod' in os.args
 		vexe: vexe
 		vroot: vroot
 	}
@@ -66,7 +68,8 @@ fn (app App) update_from_master() {
 
 fn (app App) recompile_v() {
 	// NB: app.vexe is more reliable than just v (which may be a symlink)
-	vself := '"$app.vexe" self'
+	opts := if app.is_prod { '-prod' } else { '' }
+	vself := '"$app.vexe" $opts self'
 	app.vprintln('> recompiling v itself with `$vself` ...')
 	if self_result := os.exec(vself) {
 		if self_result.exit_code == 0 {
