@@ -44,7 +44,7 @@ fn (mut p Process) unix_spawn_process() int {
 		fd_close(pipeset[5])
 	}
 	execve(p.filename, p.args, p.env) or {
-		eprintln(err.msg)
+		eprintln(err)
 		exit(1)
 	}
 	return 0
