@@ -912,6 +912,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		}
 		ast.Comment {
 			if f.array_init_depth > 0 {
+				panic('never')
 				f.comment(node, iembed: true)
 			} else {
 				f.comment(node, inline: true)
@@ -1983,6 +1984,7 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 			f.writeln('')
 		}
 	}
+	mut set_comma := false
 	for i, expr in it.exprs {
 		line_nr := expr.position().line_nr
 		if i == 0 {
@@ -2012,32 +2014,41 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 		}
 		f.expr(expr)
 		if i < it.ecmnts.len && it.ecmnts[i].len > 0 {
+			expr_pos := expr.position()
 			mut last_cmt := it.ecmnts[i][0]
-			if last_cmt.pos.line_nr > expr.position().last_line {
-				f.writeln('')
-			} else {
-				f.write(' ')
-			}
+			mut last_cmt_line := expr_pos.last_line
+			// if last_cmt.pos.line_nr > expr_pos.last_line {
+			// 	f.writeln('')
+			// } else if last_cmt.pos.pos <= expr_pos.pos + expr_pos.len + 2 {
+			// 	f.write(' ')
+			// }
 			for cmt in it.ecmnts[i] {
-				if cmt.pos.line_nr > last_cmt.pos.last_line {
+				if !set_comma && cmt.pos.pos > expr_pos.pos + expr_pos.len + 2 {
+					f.write(',')
+					set_comma = true
+				}
+				if cmt.pos.line_nr > last_cmt_line {
 					f.writeln('')
+				} else {
+					f.write(' ')
 				}
 				f.comment(cmt, iembed: true)
 			}
 		}
 		if i == it.exprs.len - 1 {
 			if is_new_line {
-				if expr !is ast.Comment {
+				if !set_comma && expr !is ast.Comment {
 					f.write(',')
 				}
 				f.writeln('')
 			} else if is_same_line_comment {
 				f.writeln('')
 			}
-		} else if expr !is ast.Comment {
+		} else if !set_comma && expr !is ast.Comment {
 			f.write(',')
 		}
 		last_line_nr = line_nr
+		set_comma = false
 	}
 	f.array_init_depth--
 	if f.array_init_depth == 0 {
