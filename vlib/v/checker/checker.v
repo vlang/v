@@ -78,6 +78,7 @@ mut:
 	fn_scope                         &ast.Scope = voidptr(0)
 	used_fns                         map[string]bool // used_fns['println'] == true
 	main_fn_decl_node                ast.FnDecl
+	using_new_err_struct            bool // TODO: temporary, used for deprecations; remove soon
 }
 
 pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
@@ -2189,6 +2190,13 @@ fn is_expr_panic_or_exit(expr ast.Expr) bool {
 pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.Type {
 	prevent_sum_type_unwrapping_once := c.prevent_sum_type_unwrapping_once
 	c.prevent_sum_type_unwrapping_once = false
+
+	using_new_err_struct_save := c.using_new_err_struct
+	// TODO remove; this avoids a breaking change in syntax
+	if '$selector_expr.expr' == 'err' {
+		c.using_new_err_struct = true
+	}
+
 	// T.name, typeof(expr).name
 	mut name_type := 0
 	match mut selector_expr.expr {
@@ -2216,6 +2224,7 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 		return table.string_type
 	}
 	typ := c.expr(selector_expr.expr)
+	c.using_new_err_struct = using_new_err_struct_save
 	if typ == table.void_type_idx {
 		c.error('unknown selector expression', selector_expr.pos)
 		return table.void_type
@@ -4149,8 +4158,8 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 						typ: typ
 						is_optional: is_optional
 					}
-					if typ == table.error_type && c.expected_type == table.string_type {
-						c.error('string errors are deprecated; use `err.msg` instead', ident.pos)
+					if typ == table.error_type && c.expected_type == table.string_type && !c.using_new_err_struct {
+						c.warn('string errors are deprecated; use `err.msg` instead', ident.pos)
 					}
 					// if typ == table.t_type {
 					// sym := c.table.get_type_symbol(c.cur_generic_type)

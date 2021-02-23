@@ -83,8 +83,14 @@ struct Option2 {
 
 // Error holds information about an error instance
 struct Error {
+pub:
 	msg  string
 	code int
+}
+
+[inline]
+fn (e Error) str() string {
+	return '$e.msg (code: $e.code)'
 }
 
 // `fn foo() ?Foo { return foo }` => `fn foo() ?Foo { return opt_ok(foo); }`
@@ -104,7 +110,7 @@ pub fn (o Option2) str() string {
 	if o.state == 1 {
 		return 'Option2{ none }'
 	}
-	return 'Option2{ err: "$o.err.msg" }'
+	return 'Option2{ err: "$o.err" }'
 }
 
 // opt_none is used internally when returning `none`.
