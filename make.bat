@@ -43,7 +43,9 @@ if !shift_counter! LSS 1 (
 )
 
 REM Compiler option
-for %%g in (-gcc -msvc -tcc -clang) do (
+for %%g in (-gcc -msvc -tcc -tcc32 -clang) do (
+	if "%PROCESSOR_ARCHITECTURE%" == "x86" set "tcc_branch=thirdparty-windows-i386"
+	if "%~1" == "-tcc32" set "tcc_branch=thirdparty-windows-i386"
     if "%~1" == "%%g" set compiler=%~1& set compiler=!compiler:~1!& shift& set /a shift_counter+=1& goto :verifyopt
 )
 
@@ -282,6 +284,7 @@ if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
 
 :tcc_strap
+:tcc32_strap
 if [!compiler!] == [] set /a invalid_cc=1
 echo  ^> Attempting to build v_win.c with TCC
 if !flag_verbose! EQU 1 (
