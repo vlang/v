@@ -858,6 +858,21 @@ jobs:
           ../v -autofree .
           cd ..
 
+  vex-compiles:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install dependencies
+        run: sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev
+      - name: Build V
+        run: make
+      - name: Install Vex
+        run: ./v install nedpals.vex
+      - name: Compile the simple Vex example
+        run: ./v ~/.vmodules/nedpals/vex/examples/simple_example.v
+      - name: Run Vex Tests
+        run: ./v test ~/.vmodules/nedpals/vex
+
   parser-silent:
     name: Parser silent mode
     runs-on: ubuntu-20.04

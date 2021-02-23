@@ -3890,6 +3890,7 @@ module global (so that you can use `mkdir()` instead of `os.mkdir()`, for exampl
 
 An example `deploy.vsh`:
 ```v wip
+#!/usr/bin/env -S v run
 // The shebang above associates the file to V on Unix-like systems,
 // so it can be run just by specifying the path to the file
 // once it's made executable using `chmod +x`.
