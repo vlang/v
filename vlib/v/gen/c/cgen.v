@@ -655,7 +655,7 @@ fn (mut g Gen) register_chan_pop_optional_call(opt_el_type string, styp string) 
 	if opt_el_type !in g.chan_pop_optionals {
 		g.chan_pop_optionals << opt_el_type
 		g.channel_definitions.writeln('
-static inline $opt_el_type __Option2_${styp}_popval($styp ch) {
+static inline $opt_el_type __Option_${styp}_popval($styp ch) {
 	$opt_el_type _tmp;
 	if (sync__Channel_try_pop_priv(ch, _tmp.data, false)) {
 		Option2 _tmp2 = error2(_SLIT("channel closed"));
