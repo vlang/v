@@ -9,6 +9,7 @@ fn test_array_thread_f64_wait() {
 		r << go f(f64(i) + 0.5)
 	}
 	x := r.wait()
+	// binary fractions have precise representations and can be directly compared
 	assert x == [0.25, 2.25, 6.25, 12.25, 20.25, 30.25, 42.25, 56.25, 72.25, 90.25]
 }
 
