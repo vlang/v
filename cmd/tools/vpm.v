@@ -17,15 +17,15 @@ const (
 	excluded_dirs                = ['cache', 'vlib']
 	supported_vcs_systems        = ['git', 'hg']
 	supported_vcs_folders        = ['.git', '.hg']
-	supported_vcs_update_cmds    = {
+	supported_vcs_update_cmds    = map{
 		'git': 'git pull'
 		'hg':  'hg pull --update'
 	}
-	supported_vcs_install_cmds   = {
+	supported_vcs_install_cmds   = map{
 		'git': 'git clone --depth=1'
 		'hg':  'hg clone'
 	}
-	supported_vcs_outdated_steps = {
+	supported_vcs_outdated_steps = map{
 		'git': ['git fetch', 'git rev-parse @', 'git rev-parse @{u}']
 		'hg':  ['hg incoming']
 	}
@@ -468,7 +468,7 @@ fn resolve_dependencies(name string, module_path string, module_names []string) 
 
 fn parse_vmod(data string) Vmod {
 	keys := ['name', 'version', 'deps']
-	mut m := {
+	mut m := map{
 		'name':    ''
 		'version': ''
 		'deps':    ''
@@ -545,7 +545,7 @@ fn get_module_meta_info(name string) ?Mod {
 			errors << 'Error details: $err'
 			continue
 		}
-		if r.status_code == 404 || r.text.contains('404') {
+		if r.status_code == 404 {
 			errors << 'Skipping module "$name", since $server_url reported that "$name" does not exist.'
 			continue
 		}
