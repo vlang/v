@@ -127,7 +127,7 @@ jobs:
       - name: Test v tutorials
         run: |
           cd tutorials/building_a_simple_web_blog_with_vweb/code/blog
-          ../../../v .
+          ../../../../v .
 
   # Alpine docker pre-built container
   alpine-docker-musl-gcc:
