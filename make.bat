@@ -365,7 +365,7 @@ echo Usage:
 echo     make.bat [target] [compiler] [options]
 echo.
 echo Compiler:
-echo     -msvc ^| -gcc ^| -tcc[32] ^| -clang    Set C compiler
+echo     -msvc ^| -gcc ^| -tcc ^| -tcc32 ^| -clang    Set C compiler
 echo.
 echo Target:
 echo     build[default]                    Compiles V using the given C compiler
@@ -416,7 +416,7 @@ echo Usage:
 echo     make.bat build [compiler] [options]
 echo.
 echo Compiler:
-echo     -msvc ^| -gcc ^| -tcc[32] ^| -clang    Set C compiler
+echo     -msvc ^| -gcc ^| -tcc ^| -tcc32 ^| -clang    Set C compiler
 echo.
 echo Options:
 echo    --local                           Use the local vc repository without
