@@ -426,8 +426,10 @@ fn main() {
 				tsession.skip_files << 'vlib/sync/channel_2_test.v'
 				tsession.skip_files << 'vlib/sync/channel_3_test.v'
 				tsession.skip_files << 'vlib/sync/channel_push_or_1_test.v'
+				tsession.skip_files << 'vlib/sync/channel_push_or_2_test.v'
 				tsession.skip_files << 'vlib/builtin/array_test.v'
 				tsession.skip_files << 'vlib/v/tests/profile/profile_test.v'
+				tsession.skip_files << 'vlib/gg/m4/m4_test.v'
 			}
 		}
 	}
