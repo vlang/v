@@ -126,7 +126,7 @@ jobs:
         run: ./v build-vbinaries
       - name: Test v tutorials
         run: |
-          cd tutorials/code/blog
+          cd tutorials/building_a_simple_web_blog_with_vweb/code/blog
           ../../../v .
 
   # Alpine docker pre-built container
