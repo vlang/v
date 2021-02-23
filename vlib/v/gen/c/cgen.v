@@ -1195,6 +1195,11 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				} else {
 					g.includes.writeln('// added by module `$node.mod`:')
 					g.includes.writeln(guarded_include)
+					if node.main == '<float.h>' {
+						g.includes.writeln('#if DBL_MANT_DIG != 53 || DBL_MAX_EXP != 1024 || DBL_DIG != 15 || DBL_MAX_10_EXP != 308')
+						g.includes.writeln('#error Your system/compiler does not suport IEEE 754 floating point')
+						g.includes.writeln('#endif')
+					}
 				}
 			} else if node.kind == 'define' {
 				g.includes.writeln('// defined by module `$node.mod` in file `$node.source_file`:')
