@@ -61,6 +61,7 @@ pub mut:
 	inside_const      bool
 	inside_anon_fn    bool
 	inside_ref_lit    bool
+	in_selector_expr  bool
 	skip_flags        bool // should `#flag` and `#include` be skipped
 	cur_generic_types []table.Type
 mut:
@@ -2223,7 +2224,12 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 		selector_expr.name_type = name_type
 		return table.string_type
 	}
+	//
+	old_selector_expr := c.in_selector_expr
+	c.in_selector_expr = true
 	typ := c.expr(selector_expr.expr)
+	c.in_selector_expr = old_selector_expr
+	//
 	c.using_new_err_struct = using_new_err_struct_save
 	if typ == table.void_type_idx {
 		c.error('unknown selector expression', selector_expr.pos)
@@ -4159,7 +4165,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 						is_optional: is_optional
 					}
 					if typ == table.error_type && c.expected_type == table.string_type
-						&& !c.using_new_err_struct {
+						&& !c.using_new_err_struct && !c.in_selector_expr {
 						c.warn('string errors are deprecated; use `err.msg` instead',
 							ident.pos)
 					}
