@@ -355,9 +355,9 @@ const (
 		'vlib/sync/channel_push_or_1_test.v',
 		'vlib/sync/channel_push_or_2_test.v',
 		'vlib/sync/channel_close_test.v',
-		'vlib/builtin/array_test.v',
-		'vlib/v/tests/profile/profile_test.v',
-		'vlib/gg/m4/m4_test.v',
+		//'vlib/builtin/array_test.v',
+		//'vlib/v/tests/profile/profile_test.v',
+		//'vlib/gg/m4/m4_test.v',
 	]
 	skip_on_non_windows           = []string{}
 	skip_on_macos                 = []string{}
