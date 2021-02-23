@@ -1196,7 +1196,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					g.includes.writeln('// added by module `$node.mod`:')
 					g.includes.writeln(guarded_include)
 					if node.main == '<float.h>' {
-						g.includes.writeln('#if DBL_MANT_DIG != 53 || DBL_MAX_EXP != 1024 || DBL_DIG != 15 || DBL_MAX_10_EXP != 308')
+						g.includes.writeln('#if !defined(DBL_MANT_DIG) || DBL_MANT_DIG != 53 || !defined(DBL_MAX_EXP) || DBL_MAX_EXP != 1024 || !defined(DBL_DIG) || DBL_DIG != 15 || !defined(DBL_MAX_10_EXP) || DBL_MAX_10_EXP != 308')
 						g.includes.writeln('#error Your system/compiler does not suport IEEE 754 floating point')
 						g.includes.writeln('#endif')
 					}
