@@ -349,17 +349,6 @@ const (
 		'vlib/x/websocket/websocket_test.v',
 		'vlib/vweb/tests/vweb_test.v',
 	]
-	$if windows {
-		$if tinyc {
-			$if x32 {
-				skip_on_windows << 'vlib/sync/channel_2_test.v'
-				skip_on_windows << 'vlib/sync/channel_3_test.v'
-				skip_on_windows << 'vlib/sync/channel_push_or_1_test.v'
-				skip_on_windows << 'vlib/builtin/array_test.v'
-				skip_on_windows << 'vlib/v/tests/profile/profile_test.v'
-			}
-		}
-	}
 	skip_on_non_windows           = []string{}
 	skip_on_macos                 = []string{}
 	skip_on_non_macos             = []string{}
@@ -432,6 +421,15 @@ fn main() {
 	}
 	$if windows {
 		tsession.skip_files << skip_on_windows
+		$if tinyc {
+			$if x32 {
+				tsession.skip_files << 'vlib/sync/channel_2_test.v'
+				tsession.skip_files << 'vlib/sync/channel_3_test.v'
+				tsession.skip_files << 'vlib/sync/channel_push_or_1_test.v'
+				tsession.skip_files << 'vlib/builtin/array_test.v'
+				tsession.skip_files << 'vlib/v/tests/profile/profile_test.v'
+			}
+		}
 	}
 	$if !windows {
 		tsession.skip_files << skip_on_non_windows
