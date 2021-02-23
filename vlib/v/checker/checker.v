@@ -4149,6 +4149,9 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 						typ: typ
 						is_optional: is_optional
 					}
+					if typ == table.error_type && c.expected_type == table.string_type {
+						c.error('string errors are deprecated; use `err.msg` instead', ident.pos)
+					}
 					// if typ == table.t_type {
 					// sym := c.table.get_type_symbol(c.cur_generic_type)
 					// println('IDENT T unresolved $ident.name typ=$sym.name')
@@ -4243,6 +4246,8 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 	}
 	if ident.tok_kind == .assign {
 		c.error('undefined ident: `$ident.name` (use `:=` to declare a variable)', ident.pos)
+	} else if ident.name == 'errcode' {
+		c.error('undefined ident: `errcode`; did you mean `err.code`?', ident.pos)
 	} else {
 		c.error('undefined ident: `$ident.name`', ident.pos)
 	}
