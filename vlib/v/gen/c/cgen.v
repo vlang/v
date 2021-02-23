@@ -560,7 +560,7 @@ fn (mut g Gen) base_type(t table.Type) string {
 // if one location changes
 fn (mut g Gen) optional_type_name(t table.Type) (string, string) {
 	base := g.base_type(t)
-	mut styp := 'Option_$base'
+	mut styp := 'Option2_$base'
 	if t.is_ptr() {
 		styp = styp.replace('*', '_ptr')
 	}
@@ -570,7 +570,7 @@ fn (mut g Gen) optional_type_name(t table.Type) (string, string) {
 fn (g &Gen) optional_type_text(styp string, base string) string {
 	x := styp // .replace('*', '_ptr')			// handle option ptrs
 	// replace void with something else
-	size := if base == 'void' { 'int' } else { base }
+	size := if base == 'void' { 'byte' } else { base }
 	ret := 'struct $x {
 	byte state;
 	Error err;
@@ -585,14 +585,6 @@ fn (mut g Gen) register_optional(t table.Type) string {
 	if styp !in g.optionals {
 		no_ptr := base.replace('*', '_ptr')
 		typ := if base == 'void' { 'void*' } else { base }
-		g.options_typedefs.writeln('typedef struct {
-			$typ  data;
-			string error;
-			int    ecode;
-			bool   ok;
-			bool   is_none;
-		} Option2_$no_ptr;')
-		// println(styp)
 		g.typedefs2.writeln('typedef struct $styp $styp;')
 		g.options.write_string(g.optional_type_text(styp, base))
 		g.options.writeln(';\n')
@@ -655,7 +647,7 @@ fn (mut g Gen) register_chan_pop_optional_call(opt_el_type string, styp string) 
 	if opt_el_type !in g.chan_pop_optionals {
 		g.chan_pop_optionals << opt_el_type
 		g.channel_definitions.writeln('
-static inline $opt_el_type __Option_${styp}_popval($styp ch) {
+static inline $opt_el_type __Option2_${styp}_popval($styp ch) {
 	$opt_el_type _tmp;
 	if (sync__Channel_try_pop_priv(ch, _tmp.data, false)) {
 		Option2 _tmp2 = error2(_SLIT("channel closed"));
@@ -671,12 +663,12 @@ fn (mut g Gen) register_chan_push_optional_call(el_type string, styp string) {
 	if styp !in g.chan_push_optionals {
 		g.chan_push_optionals << styp
 		g.channel_definitions.writeln('
-static inline Option_void __Option2_${styp}_pushval($styp ch, $el_type e) {
+static inline Option2_void __Option2_${styp}_pushval($styp ch, $el_type e) {
 	if (sync__Channel_try_push_priv(ch, &e, false)) {
 		Option2 _tmp2 = error2(_SLIT("channel closed"));
 		return *(Option2_void*)&_tmp2;
 	}
-	return (Option_void){.state = 0,.err = (Error){.code=0, .msg=(string){.str=(byteptr)""}}};
+	return (Option2_void){.state = 0,.err = (Error){.code=0, .msg=(string){.str=(byteptr)""}}};
 }')
 	}
 }
@@ -1730,9 +1722,8 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	// `pos := s.index('x') or { return }`
 	// ==========>
 	// Option_int _t190 = string_index(s, _STR("x"));
-	// if (_t190.state != 0) {
-	// string err = _t190.v_error;
-	// int errcode = _t190.ecode;
+	// if (_t190.state != 2) {
+	// Error err = _t190.err;
 	// return;
 	// }
 	// int pos = *(int*)_t190.data;
@@ -2754,7 +2745,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 				if gen_or {
 					opt_elem_type := g.typ(elem_type.set_flag(.optional))
 					g.register_chan_pop_optional_call(opt_elem_type, styp)
-					g.write('$opt_elem_type $tmp_opt = __Option_${styp}_popval(')
+					g.write('$opt_elem_type $tmp_opt = __Option2_${styp}_popval(')
 				} else {
 					g.write('__${styp}_popval(')
 				}
@@ -3313,7 +3304,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		if gen_or {
 			elem_styp := g.typ(elem_type)
 			g.register_chan_push_optional_call(elem_styp, styp)
-			g.write('Option_void $tmp_opt = __Option_${styp}_pushval(')
+			g.write('Option2_void $tmp_opt = __Option2_${styp}_pushval(')
 		} else {
 			g.write('__${styp}_pushval(')
 		}
@@ -4858,7 +4849,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 				}
 			}
 			ast.CallExpr {
-				if val.starts_with('Option_') {
+				if val.starts_with('Option2_') {
 					g.inits[field.mod].writeln(val)
 					unwrap_option := field.expr.or_block.kind != .absent
 					g.const_decl_init_later(field.mod, name, g.current_tmp_var(), field.typ,

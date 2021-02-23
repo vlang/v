@@ -90,7 +90,9 @@ pub:
 
 [inline]
 fn (e Error) str() string {
-	return '$e.msg (code: $e.code)'
+	// TODO: this should probably have a better str method,
+	// but this minimizes the amount of broken code after #8924
+	return e.msg
 }
 
 // `fn foo() ?Foo { return foo }` => `fn foo() ?Foo { return opt_ok(foo); }`

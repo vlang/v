@@ -782,7 +782,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			g.is_js_call = false
 			g.writeln(');')
 			tmp2 = g.new_tmp_var()
-			g.writeln('Option_$typ $tmp2 = $fn_name ($json_obj);')
+			g.writeln('Option2_$typ $tmp2 = $fn_name ($json_obj);')
 		}
 		if !g.is_autofree {
 			g.write('cJSON_Delete($json_obj); //del')
