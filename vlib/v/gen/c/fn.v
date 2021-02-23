@@ -301,14 +301,14 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 		default_expr := g.type_default(node.return_type)
 		// TODO: perf?
 		if default_expr == '{0}' {
-			if node.return_type.idx() == 1 && node.return_type.has_flag(.optional) {
-				// The default return for anonymous functions that return `?,
-				// should have .ok = true set, otherwise calling them with
-				// optfn() or { panic(err) } will cause a panic:
-				g.writeln('\treturn (Option_void){.ok = true};')
-			} else {
-				g.writeln('\treturn ($type_name)$default_expr;')
-			}
+			// if node.return_type.idx() == 1 && node.return_type.has_flag(.optional) {
+			// 	// The default return for anonymous functions that return `?,
+			// 	// should have .ok = true set, otherwise calling them with
+			// 	// optfn() or { panic(err) } will cause a panic:
+			// 	g.writeln('\treturn (Option_void){0};')
+			// } else {
+			g.writeln('\treturn ($type_name)$default_expr;')
+			// }
 		} else {
 			g.writeln('\treturn $default_expr;')
 		}

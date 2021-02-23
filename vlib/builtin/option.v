@@ -72,7 +72,7 @@ pub fn error_with_code(message string, code int) Option {
 	}
 }
 
-// Option2 is the the base of V's new internal optional return system.
+// Option2 is the base of V's new internal optional return system.
 struct Option2 {
 	state byte
 	err   Error
