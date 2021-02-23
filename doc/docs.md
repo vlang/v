@@ -2567,8 +2567,7 @@ fn main() {
 ```
 
 If there is a large number of tasks, it might be easier to manage them
-using an array of threads. See [examples/concurrency](/examples/concurrency)
-for more examples.
+using an array of threads.
 
 ```v
 import time
@@ -2596,6 +2595,27 @@ fn main() {
 // task 1 end
 // task 2 end
 // done
+```
+
+Additionally for threads that return the same type, calling `wait()`
+on the thread array will return all computed values.
+
+```v
+fn expensive_computing(i int) int {
+	return i * i
+}
+
+fn main() {
+	mut threads := []thread int{}
+	for i in 1 .. 10 {
+		threads << go expensive_computing(i)
+	}
+	// Join all tasks
+	r := threads.wait()
+	println('All jobs finished: $r')
+}
+
+// Output: All jobs finished: [1, 4, 9, 16, 25, 36, 49, 64, 81]
 ```
 
 ### Channels
