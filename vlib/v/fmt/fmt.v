@@ -911,12 +911,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.write('`$node.val`')
 		}
 		ast.Comment {
-			if f.array_init_depth > 0 {
-				panic('never')
-				f.comment(node, iembed: true)
-			} else {
-				f.comment(node, inline: true)
-			}
+			f.comment(node, inline: true)
 		}
 		ast.ComptimeCall {
 			f.comptime_call(node)
@@ -2015,19 +2010,12 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 		f.expr(expr)
 		if i < it.ecmnts.len && it.ecmnts[i].len > 0 {
 			expr_pos := expr.position()
-			mut last_cmt := it.ecmnts[i][0]
-			mut last_cmt_line := expr_pos.last_line
-			// if last_cmt.pos.line_nr > expr_pos.last_line {
-			// 	f.writeln('')
-			// } else if last_cmt.pos.pos <= expr_pos.pos + expr_pos.len + 2 {
-			// 	f.write(' ')
-			// }
 			for cmt in it.ecmnts[i] {
 				if !set_comma && cmt.pos.pos > expr_pos.pos + expr_pos.len + 2 {
 					f.write(',')
 					set_comma = true
 				}
-				if cmt.pos.line_nr > last_cmt_line {
+				if cmt.pos.line_nr > expr_pos.last_line {
 					f.writeln('')
 				} else {
 					f.write(' ')
