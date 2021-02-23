@@ -12,17 +12,17 @@ fn (mut ws Client) handshake() ? {
 	defer {
 		unsafe { sb.free() }
 	}
-	sb.write('GET ')
-	sb.write(ws.uri.resource)
-	sb.write(ws.uri.querystring)
-	sb.write(' HTTP/1.1\r\nHost: ')
-	sb.write(ws.uri.hostname)
-	sb.write(':')
-	sb.write(ws.uri.port)
-	sb.write('\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n')
-	sb.write('Sec-WebSocket-Key: ')
-	sb.write(seckey)
-	sb.write('\r\nSec-WebSocket-Version: 13\r\n\r\n')
+	sb.write_string('GET ')
+	sb.write_string(ws.uri.resource)
+	sb.write_string(ws.uri.querystring)
+	sb.write_string(' HTTP/1.1\r\nHost: ')
+	sb.write_string(ws.uri.hostname)
+	sb.write_string(':')
+	sb.write_string(ws.uri.port)
+	sb.write_string('\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n')
+	sb.write_string('Sec-WebSocket-Key: ')
+	sb.write_string(seckey)
+	sb.write_string('\r\nSec-WebSocket-Version: 13\r\n\r\n')
 	handshake := sb.str()
 	defer {
 		unsafe { handshake.free() }

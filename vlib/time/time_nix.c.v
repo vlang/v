@@ -45,6 +45,8 @@ mut:
 // the first arg is defined in include/bits/types.h as `__S32_TYPE`, which is `int`
 fn C.clock_gettime(int, &C.timespec)
 
+fn C.nanosleep(req &C.timespec, rem &C.timespec) int
+
 // sys_mono_now returns a *monotonically increasing time*, NOT a time adjusted for daylight savings, location etc.
 pub fn sys_mono_now() u64 {
 	$if macos {
@@ -126,4 +128,10 @@ pub fn zero_timespec() C.timespec {
 		tv_nsec: 0
 	}
 	return ts
+}
+
+// wait makes the calling thread sleep for a given duration (in nanoseconds).
+pub fn wait(duration Duration) {
+	ts := &C.timespec{duration / second, duration % second}
+	C.nanosleep(ts, C.NULL)
 }

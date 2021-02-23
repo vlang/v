@@ -950,6 +950,8 @@ fn (mut s Scanner) text_scan() token.Token {
 							}
 						}
 						if is_separate_line_comment {
+							// NB: ´\x01´ is used to preserve the initial whitespace in comments
+							//     that are on a separate line
 							comment = '\x01' + comment
 						}
 						return s.new_token(.comment, comment, comment.len + 2)

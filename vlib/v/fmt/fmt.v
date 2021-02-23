@@ -96,7 +96,7 @@ pub fn (mut f Fmt) write(s string) {
 	if f.indent > 0 && f.empty_line {
 		f.write_indent()
 	}
-	f.out.write(s)
+	f.out.write_string(s)
 	f.line_len += s.len
 	f.empty_line = false
 }
@@ -112,11 +112,11 @@ pub fn (mut f Fmt) writeln(s string) {
 
 fn (mut f Fmt) write_indent() {
 	if f.indent < fmt.tabs.len {
-		f.out.write(fmt.tabs[f.indent])
+		f.out.write_string(fmt.tabs[f.indent])
 	} else {
 		// too many indents, do it the slow way:
 		for _ in 0 .. f.indent {
-			f.out.write('\t')
+			f.out.write_string('\t')
 		}
 	}
 	f.line_len += f.indent * 4
@@ -152,14 +152,19 @@ pub fn (mut f Fmt) wrap_long_line(penalty_idx int, add_indent bool) bool {
 	return true
 }
 
-pub fn (mut f Fmt) remove_new_line() {
+pub struct RemoveNewLineConfig {
+	imports_buffer bool // Work on f.out_imports instead of f.out
+}
+
+pub fn (mut f Fmt) remove_new_line(cfg RemoveNewLineConfig) {
+	mut buffer := if cfg.imports_buffer { &f.out_imports } else { &f.out }
 	mut i := 0
-	for i = f.out.len - 1; i >= 0; i-- {
-		if !f.out.buf[i].is_space() { // != `\n` {
+	for i = buffer.len - 1; i >= 0; i-- {
+		if !buffer.buf[i].is_space() { // != `\n` {
 			break
 		}
 	}
-	f.out.go_back(f.out.len - i - 1)
+	buffer.go_back(buffer.len - i - 1)
 	f.empty_line = false
 }
 
@@ -856,7 +861,7 @@ pub fn (mut f Fmt) prefix_expr_cast_expr(fexpr ast.Expr) {
 	} else if fexpr is ast.CastExpr {
 		last := f.out.cut_last(1)
 		if last != '&' {
-			f.out.write(last)
+			f.out.write_string(last)
 		}
 	}
 	if !is_pe_amp_ce {
@@ -1883,7 +1888,7 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 			}
 			f.stmts(branch.stmts)
 			if single_line {
-				f.remove_new_line()
+				f.remove_new_line({})
 				f.writeln(' }')
 			} else {
 				f.writeln('}')
@@ -1961,6 +1966,23 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 	mut inc_indent := false
 	mut last_line_nr := it.pos.line_nr // to have the same newlines between array elements
 	f.array_init_depth++
+	for i, c in it.pre_cmnts {
+		if c.pos.line_nr > last_line_nr {
+			f.writeln('')
+		} else if i > 0 {
+			f.write(' ')
+		}
+		f.comment(c, level: .indent, iembed: true)
+		last_line_nr = c.pos.last_line
+	}
+	if it.pre_cmnts.len > 0 {
+		same_line := it.pre_cmnts[0].pos.line_nr == it.pos.line_nr
+		if same_line && it.exprs.len > 0 {
+			f.write(' ')
+		} else if !same_line && it.exprs.len == 0 {
+			f.writeln('')
+		}
+	}
 	for i, expr in it.exprs {
 		line_nr := expr.position().line_nr
 		if i == 0 {
@@ -2056,6 +2078,7 @@ pub fn (mut f Fmt) map_init(it ast.MapInit) {
 	}
 	f.writeln('map{')
 	f.indent++
+	f.comments(it.pre_cmnts, {})
 	mut max_field_len := 0
 	for key in it.keys {
 		if key.str().len > max_field_len {
@@ -2067,6 +2090,7 @@ pub fn (mut f Fmt) map_init(it ast.MapInit) {
 		f.write(': ')
 		f.write(strings.repeat(` `, max_field_len - key.str().len))
 		f.expr(it.vals[i])
+		f.comments(it.comments[i], prev_line: it.vals[i].position().last_line, has_nl: false)
 		f.writeln('')
 	}
 	f.indent--
@@ -2162,7 +2186,7 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 					single_line_fields = false
 					f.out.go_back_to(fields_start)
 					f.line_len = fields_start
-					f.remove_new_line()
+					f.remove_new_line({})
 					continue fields_loop
 				}
 			}
@@ -2375,7 +2399,7 @@ pub fn (mut f Fmt) for_c_stmt(node ast.ForCStmt) {
 	f.expr(node.cond)
 	f.write('; ')
 	f.stmt(node.inc)
-	f.remove_new_line()
+	f.remove_new_line({})
 	f.write(' {')
 	if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
 		f.writeln('')

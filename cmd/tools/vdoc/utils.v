@@ -8,19 +8,6 @@ fn slug(title string) string {
 	return title.replace(' ', '-')
 }
 
-[inline]
-fn open_url(url string) {
-	$if windows {
-		os.system('start $url')
-	}
-	$if macos {
-		os.system('open $url')
-	}
-	$if linux {
-		os.system('xdg-open $url')
-	}
-}
-
 fn escape(str string) string {
 	return str.replace_each(['"', '\\"', '\r\n', '\\n', '\n', '\\n', '\t', '\\t'])
 }

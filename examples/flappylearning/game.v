@@ -206,7 +206,7 @@ fn main() {
 fn (mut app App) run() {
 	for {
 		app.update()
-		time.sleep_ms(app.timer_period_ms)
+		time.wait(app.timer_period_ms * time.millisecond)
 	}
 }
 

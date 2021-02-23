@@ -1,7 +1,7 @@
 module time
 
 fn assert_greater_time(ms int, t1 Time) {
-	sleep_ms(ms)
+	wait(ms * millisecond)
 	t2 := now()
 	assert t2 > t1
 }

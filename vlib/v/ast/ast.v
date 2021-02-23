@@ -942,6 +942,7 @@ pub:
 	elem_type_pos token.Position // `Type` in []Type{} position
 	exprs         []Expr      // `[expr, expr]` or `[expr]Type{}` for fixed array
 	ecmnts        [][]Comment // optional iembed comments after each expr
+	pre_cmnts     []Comment
 	is_fixed      bool
 	has_val       bool // fixed size literal `[expr, expr]!`
 	mod           string
@@ -978,9 +979,11 @@ pub mut:
 
 pub struct MapInit {
 pub:
-	pos  token.Position
-	keys []Expr
-	vals []Expr
+	pos       token.Position
+	keys      []Expr
+	vals      []Expr
+	comments  [][]Comment // comments after key-value pairs
+	pre_cmnts []Comment   // comments before the first key-value pair
 pub mut:
 	typ        table.Type
 	key_type   table.Type

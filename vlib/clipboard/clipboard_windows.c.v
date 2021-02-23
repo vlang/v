@@ -73,7 +73,7 @@ fn (cb &Clipboard) get_clipboard_lock() bool {
 		} else if last_error != u32(C.ERROR_ACCESS_DENIED) {
 			return false
 		}
-		time.sleep(cb.retry_delay)
+		time.wait(cb.retry_delay * time.second)
 	}
 	C.SetLastError(last_error)
 	return false

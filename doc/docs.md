@@ -2576,7 +2576,7 @@ import time
 
 fn task(id int, duration int, mut wg sync.WaitGroup) {
 	println('task $id begin')
-	time.sleep_ms(duration)
+	time.wait(duration * time.millisecond)
 	println('task $id end')
 	wg.done()
 }
@@ -3841,7 +3841,7 @@ fn print_message() {
 fn main() {
 	for {
 		print_message()
-		time.sleep_ms(500)
+		time.wait(500 * time.millisecond)
 	}
 }
 ```

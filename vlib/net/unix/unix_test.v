@@ -1,6 +1,15 @@
+import os
 import net.unix
 
-const test_port = 'unix_domain_socket'
+const test_port = os.join_path(os.temp_dir(), 'unix_domain_socket')
+
+fn testsuite_begin() {
+	os.rm(test_port) or { }
+}
+
+fn testsuite_end() {
+	os.rm(test_port) or { }
+}
 
 fn handle_conn(mut c unix.StreamConn) {
 	for {

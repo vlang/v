@@ -74,9 +74,6 @@ pub fn (ctx Context) init_once() {}
 // declaring init in your App struct is optional
 pub fn (ctx Context) init() {}
 
-// declaring uninit in your App struct is optional
-pub fn (ctx Context) uninit() {}
-
 pub struct Cookie {
 	name      string
 	value     string
@@ -89,6 +86,7 @@ pub struct Cookie {
 pub struct Result {
 }
 
+// vweb intern function
 pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bool {
 	if ctx.done {
 		return false
@@ -98,15 +96,15 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 	defer {
 		unsafe { sb.free() }
 	}
-	sb.write('HTTP/1.1 $ctx.status')
-	sb.write('\r\nContent-Type: $mimetype')
-	sb.write('\r\nContent-Length: $res.len')
+	sb.write_string('HTTP/1.1 $ctx.status')
+	sb.write_string('\r\nContent-Type: $mimetype')
+	sb.write_string('\r\nContent-Length: $res.len')
 	if ctx.chunked_transfer {
-		sb.write('\r\nTransfer-Encoding: chunked')
+		sb.write_string('\r\nTransfer-Encoding: chunked')
 	}
-	sb.write(ctx.headers)
-	sb.write('\r\n')
-	sb.write(vweb.headers_close)
+	sb.write_string(ctx.headers)
+	sb.write_string('\r\n')
+	sb.write_string(vweb.headers_close)
 	if ctx.chunked_transfer {
 		mut i := 0
 		mut len := res.len
@@ -123,12 +121,12 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 				chunk = res[i..]
 				len = 0
 			}
-			sb.write(chunk.len.hex())
-			sb.write('\r\n$chunk\r\n')
+			sb.write_string(chunk.len.hex())
+			sb.write_string('\r\n$chunk\r\n')
 		}
-		sb.write('0\r\n\r\n') // End of chunks
+		sb.write_string('0\r\n\r\n') // End of chunks
 	} else {
-		sb.write(res)
+		sb.write_string(res)
 	}
 	s := sb.str()
 	defer {
@@ -138,26 +136,31 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 	return true
 }
 
+// Response HTTP_OK with s as payload with content-type `text/html`
 pub fn (mut ctx Context) html(s string) Result {
 	ctx.send_response_to_client('text/html', s)
 	return Result{}
 }
 
+// Response HTTP_OK with s as payload with content-type `text/plain`
 pub fn (mut ctx Context) text(s string) Result {
 	ctx.send_response_to_client('text/plain', s)
 	return Result{}
 }
 
+// Response HTTP_OK with s as payload with content-type `application/json`
 pub fn (mut ctx Context) json(s string) Result {
 	ctx.send_response_to_client('application/json', s)
 	return Result{}
 }
 
+// Response HTTP_OK with s as payload
 pub fn (mut ctx Context) ok(s string) Result {
 	ctx.send_response_to_client(ctx.content_type, s)
 	return Result{}
 }
 
+// Response a server error
 pub fn (mut ctx Context) server_error(ecode int) Result {
 	$if debug {
 		eprintln('> ctx.server_error ecode: $ecode')
@@ -169,6 +172,7 @@ pub fn (mut ctx Context) server_error(ecode int) Result {
 	return Result{}
 }
 
+// Redirect to an url
 pub fn (mut ctx Context) redirect(url string) Result {
 	if ctx.done {
 		return Result{}
@@ -180,6 +184,7 @@ pub fn (mut ctx Context) redirect(url string) Result {
 	return Result{}
 }
 
+// Send an not_found response
 pub fn (mut ctx Context) not_found() Result {
 	if ctx.done {
 		return Result{}
@@ -189,11 +194,13 @@ pub fn (mut ctx Context) not_found() Result {
 	return Result{}
 }
 
+// Enables chunk transfer with max_chunk_len per chunk
 pub fn (mut ctx Context) enable_chunked_transfer(max_chunk_len int) {
 	ctx.chunked_transfer = true
 	ctx.max_chunk_len = max_chunk_len
 }
 
+// Sets a cookie
 pub fn (mut ctx Context) set_cookie(cookie Cookie) {
 	mut cookie_data := []string{}
 	mut secure := if cookie.secure { 'Secure;' } else { '' }
@@ -206,20 +213,25 @@ pub fn (mut ctx Context) set_cookie(cookie Cookie) {
 	ctx.add_header('Set-Cookie', '$cookie.name=$cookie.value; $data')
 }
 
+// Old function
+[deprecated]
 pub fn (mut ctx Context) set_cookie_old(key string, val string) {
 	// TODO support directives, escape cookie value (https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie)
 	// ctx.add_header('Set-Cookie', '${key}=${val};  Secure; HttpOnly')
 	ctx.add_header('Set-Cookie', '$key=$val; HttpOnly')
 }
 
+// Sets the response content type
 pub fn (mut ctx Context) set_content_type(typ string) {
 	ctx.content_type = typ
 }
 
+// Sets a cookie with a `expire_data`
 pub fn (mut ctx Context) set_cookie_with_expire_date(key string, val string, expire_date time.Time) {
 	ctx.add_header('Set-Cookie', '$key=$val;  Secure; HttpOnly; expires=$expire_date.utc_string()')
 }
 
+// Gets a cookie by a key
 pub fn (ctx &Context) get_cookie(key string) ?string { // TODO refactor
 	mut cookie_header := ctx.get_header('cookie')
 	if cookie_header == '' {
@@ -239,6 +251,7 @@ pub fn (ctx &Context) get_cookie(key string) ?string { // TODO refactor
 	return error('Cookie not found')
 }
 
+// Sets the response status
 pub fn (mut ctx Context) set_status(code int, desc string) {
 	if code < 100 || code > 599 {
 		ctx.status = '500 Internal Server Error'
@@ -247,12 +260,14 @@ pub fn (mut ctx Context) set_status(code int, desc string) {
 	}
 }
 
+// Adds an header to the response with key and val
 pub fn (mut ctx Context) add_header(key string, val string) {
 	// println('add_header($key, $val)')
 	ctx.headers = ctx.headers + '\r\n$key: $val'
 	// println(ctx.headers)
 }
 
+// Returns the header data from the key
 pub fn (ctx &Context) get_header(key string) string {
 	return ctx.req.headers[key]
 }
@@ -615,6 +630,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	}
 }
 
+// vweb intern function
 pub fn (mut ctx Context) parse_form(s string) {
 	if ctx.req.method !in vweb.methods_with_form {
 		return
@@ -644,6 +660,7 @@ pub fn (mut ctx Context) parse_form(s string) {
 	// ...
 }
 
+// vweb intern function
 [manualfree]
 pub fn (mut ctx Context) parse_multipart_form(s string, b string) {
 	if ctx.req.method !in vweb.methods_with_form {
@@ -712,13 +729,15 @@ fn (mut ctx Context) scan_static_directory(directory_path string, mount_path str
 	}
 }
 
-pub fn (mut ctx Context) handle_static(directory_path string) bool {
+// Handles a directory static
+// If `root` is set the mount path for the dir will be in '/' 
+pub fn (mut ctx Context) handle_static(directory_path string, root bool) bool {
 	if ctx.done || !os.exists(directory_path) {
 		return false
 	}
 	dir_path := directory_path.trim_space().trim_right('/')
 	mut mount_path := ''
-	if dir_path != '.' && os.is_dir(dir_path) {
+	if dir_path != '.' && os.is_dir(dir_path) && !root {
 		// Mount point hygene, "./assets" => "/assets".
 		mount_path = '/' + dir_path.trim_left('.').trim('/')
 	}
@@ -726,11 +745,14 @@ pub fn (mut ctx Context) handle_static(directory_path string) bool {
 	return true
 }
 
+// Serves a file static
+// `url` is the access path on the site, `file_path` is the real path to the file, `mime_type` is the file type 
 pub fn (mut ctx Context) serve_static(url string, file_path string, mime_type string) {
 	ctx.static_files[url] = file_path
 	ctx.static_mime_types[url] = mime_type
 }
 
+// Returns the ip address from the current user
 pub fn (ctx &Context) ip() string {
 	mut ip := ctx.req.headers['X-Forwarded-For']
 	if ip == '' {
@@ -745,6 +767,7 @@ pub fn (ctx &Context) ip() string {
 	return ip
 }
 
+// Set s to the form error
 pub fn (mut ctx Context) error(s string) {
 	ctx.form_error = s
 }
@@ -770,6 +793,7 @@ fn strip(s string) string {
 	return s.trim('\r\n')
 }
 
+// Returns an empty result
 pub fn not_found() Result {
 	return Result{}
 }
@@ -785,6 +809,7 @@ fn filter(s string) string {
 	])
 }
 
+// A type which don't get filtered inside templates
 pub type RawHtml = string
 
 fn send_string(mut conn net.TcpConn, s string) ? {

@@ -975,7 +975,6 @@ fn (mut v Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CF
 	all_options << moduleflags.c_options_before_target()
 	all_options << '-o "$opath"'
 	all_options << '-c "$cfile"'
-	all_options << moduleflags.c_options_after_target()
 	cc_options := v.ccoptions.thirdparty_object_args(all_options).join(' ')
 	cmd := '$v.pref.ccompiler $cc_options'
 	$if trace_thirdparty_obj_files ? {

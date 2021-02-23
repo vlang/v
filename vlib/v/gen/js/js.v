@@ -250,7 +250,7 @@ fn verror(msg string) {
 [inline]
 pub fn (mut g JsGen) gen_indent() {
 	if g.ns.indent > 0 && g.empty_line {
-		g.ns.out.write(js.tabs[g.ns.indent])
+		g.ns.out.write_string(js.tabs[g.ns.indent])
 	}
 	g.empty_line = false
 }
@@ -271,7 +271,7 @@ pub fn (mut g JsGen) write(s string) {
 		verror('g.write: not in a namespace')
 	}
 	g.gen_indent()
-	g.ns.out.write(s)
+	g.ns.out.write_string(s)
 }
 
 [inline]

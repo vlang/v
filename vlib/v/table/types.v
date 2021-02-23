@@ -16,7 +16,7 @@ import strings
 pub type Type = int
 
 pub type TypeInfo = Aggregate | Alias | Array | ArrayFixed | Chan | Enum | FnType | GenericStructInst |
-	GoHandle | Interface | Map | MultiReturn | Struct | SumType
+	Interface | Map | MultiReturn | Struct | SumType | Thread
 
 pub enum Language {
 	v
@@ -306,7 +306,7 @@ pub const (
 	any_type_idx           = 25
 	float_literal_type_idx = 26
 	int_literal_type_idx   = 27
-	gohandle_type_idx      = 28
+	thread_type_idx        = 28
 )
 
 pub const (
@@ -350,14 +350,14 @@ pub const (
 	any_type           = new_type(any_type_idx)
 	float_literal_type = new_type(float_literal_type_idx)
 	int_literal_type   = new_type(int_literal_type_idx)
-	gohandle_type      = new_type(gohandle_type_idx)
+	thread_type        = new_type(thread_type_idx)
 )
 
 pub const (
 	builtin_type_names = ['void', 'voidptr', 'charptr', 'byteptr', 'i8', 'i16', 'int', 'i64', 'u16',
 		'u32', 'u64', 'int_literal', 'f32', 'f64', 'float_literal', 'string', 'ustring', 'char',
 		'byte', 'bool', 'none', 'array', 'array_fixed', 'map', 'chan', 'any', 'struct', 'mapnode',
-		'size_t', 'rune', 'gohandle']
+		'size_t', 'rune', 'thread']
 )
 
 pub struct MultiReturn {
@@ -419,7 +419,7 @@ pub enum Kind {
 	float_literal
 	int_literal
 	aggregate
-	gohandle
+	thread
 }
 
 pub fn (t &TypeSymbol) str() string {
@@ -471,10 +471,10 @@ pub fn (t &TypeSymbol) chan_info() Chan {
 }
 
 [inline]
-pub fn (t &TypeSymbol) gohandle_info() GoHandle {
+pub fn (t &TypeSymbol) thread_info() Thread {
 	match mut t.info {
-		GoHandle { return t.info }
-		else { panic('TypeSymbol.gohandle_info(): no gohandle info for type: $t.name') }
+		Thread { return t.info }
+		else { panic('TypeSymbol.thread_info(): no thread info for type: $t.name') }
 	}
 }
 
@@ -540,7 +540,7 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 		cname: 'int_literal'
 		mod: 'builtin'
 	)
-	t.register_type_symbol(kind: .gohandle, name: 'gohandle', cname: 'gohandle', mod: 'builtin')
+	t.register_type_symbol(kind: .thread, name: 'thread', cname: '__v_thread', mod: 'builtin')
 }
 
 [inline]
@@ -619,7 +619,7 @@ pub fn (k Kind) str() string {
 		.generic_struct_inst { 'generic_struct_inst' }
 		.rune { 'rune' }
 		.aggregate { 'aggregate' }
-		.gohandle { 'gohandle' }
+		.thread { 'thread' }
 	}
 	return k_str
 }
@@ -730,7 +730,7 @@ pub mut:
 	is_mut    bool
 }
 
-pub struct GoHandle {
+pub struct Thread {
 pub mut:
 	return_type Type
 }
@@ -885,33 +885,33 @@ pub struct FnSignatureOpts {
 pub fn (t &Table) fn_signature(func &Fn, opts FnSignatureOpts) string {
 	mut sb := strings.new_builder(20)
 	if !opts.skip_receiver {
-		sb.write('fn ')
+		sb.write_string('fn ')
 		// TODO write receiver
 	}
 	if !opts.type_only {
-		sb.write('$func.name')
+		sb.write_string('$func.name')
 	}
-	sb.write('(')
+	sb.write_string('(')
 	start := int(opts.skip_receiver)
 	for i in start .. func.params.len {
 		if i != start {
-			sb.write(', ')
+			sb.write_string(', ')
 		}
 		param := func.params[i]
 		mut typ := param.typ
 		if param.is_mut {
 			typ = typ.deref()
-			sb.write('mut ')
+			sb.write_string('mut ')
 		}
 		if !opts.type_only {
-			sb.write('$param.name ')
+			sb.write_string('$param.name ')
 		}
 		styp := t.type_to_str(typ)
-		sb.write('$styp')
+		sb.write_string('$styp')
 	}
-	sb.write(')')
+	sb.write_string(')')
 	if func.return_type != table.void_type {
-		sb.write(' ${t.type_to_str(func.return_type)}')
+		sb.write_string(' ${t.type_to_str(func.return_type)}')
 	}
 	return sb.str()
 }

@@ -1,0 +1,86 @@
+name: Websockets CI
+
+on:
+  push:
+    paths-ignore:
+      - "**.md"
+  pull_request:
+    paths-ignore:
+      - "**.md"
+
+jobs:
+  websocket_tests:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 30
+    env:
+      VFLAGS: -cc tcc -no-retry-compilation
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install dependencies
+        run: sudo apt-get install --quiet -y libssl-dev
+      - name: Build v
+        run: |
+          echo $VFLAGS
+          sudo ln -s $PWD/thirdparty/tcc/tcc.exe /usr/local/bin/tcc ## TODO: remove
+          make -j4
+          ./v -g -o v cmd/v
+      - name: v doctor
+        run: ./v doctor
+      - name: Run websockets tests
+        run: ./v -g test vlib/x/websocket/
+
+  autobahn_tests:
+    name: Autobahn integrations tests
+    runs-on: ubuntu-20.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Run autobahn services
+        run: docker-compose -f ${{github.workspace}}/vlib/x/websocket/tests/autobahn/docker-compose.yml up -d
+      - name: Build client test
+        run: docker exec autobahn_client "/src/v" "/src/vlib/x/websocket/tests/autobahn/autobahn_client.v"
+      - name: Run client test
+        run: docker exec autobahn_client "/src/vlib/x/websocket/tests/autobahn/autobahn_client"
+      - name: Build client wss test
+        run: docker exec autobahn_client "/src/v" "/src/vlib/x/websocket/tests/autobahn/autobahn_client_wss.v"
+      - name: Run client wss test
+        run: docker exec autobahn_client "/src/vlib/x/websocket/tests/autobahn/autobahn_client_wss"
+      - name: Run server test
+        run: docker exec autobahn_server "wstest" "-m" "fuzzingclient" "-s" "/config/fuzzingclient.json"
+      - name: Copy reports
+        run: docker cp autobahn_server:/reports ${{github.workspace}}/reports
+      - name: Copy reports wss
+        run: docker cp autobahn_server_wss:/reports ${{github.workspace}}/reports_wss
+      - name: Test success
+        run: docker exec autobahn_server "python" "/check_results.py"
+      - name: Test success WSS
+        run: docker exec autobahn_server_wss "python" "/check_results.py"
+
+      - name: Publish all reports
+        uses: actions/upload-artifact@v2
+        with:
+          name: full report
+          path: ${{github.workspace}}/reports
+      - name: Publish report client
+        uses: actions/upload-artifact@v2
+        with:
+          name: client
+          path: ${{github.workspace}}/reports/clients/index.html
+      - name: Publish report server
+        uses: actions/upload-artifact@v2
+        with:
+          name: server
+          path: ${{github.workspace}}/reports/servers/index.html
+      - name: Publish all reports WSS
+        uses: actions/upload-artifact@v2
+        with:
+          name: full report wss
+          path: ${{github.workspace}}/reports_wss
+      - name: Publish report client wss
+        uses: actions/upload-artifact@v2
+        with:
+          name: client wss
+          path: ${{github.workspace}}/reports_wss/clients/index.html
+
