@@ -777,7 +777,7 @@ jobs:
       - uses: actions/setup-node@v1
         with:
           node-version: 12.x
-      - name: Build with make.bat -tcc
+      - name: Build with make.bat -tcc32
         run: |
           .\make.bat -tcc32
       - name: Test new v.c
