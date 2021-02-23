@@ -78,7 +78,7 @@ mut:
 	fn_scope                         &ast.Scope = voidptr(0)
 	used_fns                         map[string]bool // used_fns['println'] == true
 	main_fn_decl_node                ast.FnDecl
-	using_new_err_struct            bool // TODO: temporary, used for deprecations; remove soon
+	using_new_err_struct             bool // TODO: temporary, used for deprecations; remove soon
 }
 
 pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
@@ -4158,8 +4158,10 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 						typ: typ
 						is_optional: is_optional
 					}
-					if typ == table.error_type && c.expected_type == table.string_type && !c.using_new_err_struct {
-						c.warn('string errors are deprecated; use `err.msg` instead', ident.pos)
+					if typ == table.error_type && c.expected_type == table.string_type
+						&& !c.using_new_err_struct {
+						c.warn('string errors are deprecated; use `err.msg` instead',
+							ident.pos)
 					}
 					// if typ == table.t_type {
 					// sym := c.table.get_type_symbol(c.cur_generic_type)

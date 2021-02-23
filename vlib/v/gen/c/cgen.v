@@ -4887,7 +4887,9 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, val string, typ ta
 	// Initialize more complex consts in `void _vinit/2{}`
 	// (C doesn't allow init expressions that can't be resolved at compile time).
 	mut styp := g.typ(typ)
-	if styp == 'Option' { styp = 'Option2' }
+	if styp == 'Option' {
+		styp = 'Option2'
+	}
 	cname := '_const_$name'
 	g.definitions.writeln('$styp $cname; // inited later')
 	if cname == '_const_os__args' {
