@@ -365,18 +365,19 @@ echo Usage:
 echo     make.bat [target] [compiler] [options]
 echo.
 echo Compiler:
-echo     -msvc ^| -gcc ^| -tcc ^| -clang    Set C compiler
+echo     -msvc ^| -gcc ^| -tcc[32] ^| -clang    Set C compiler
 echo.
 echo Target:
-echo    build[default]                    Compiles V using the given C compiler
-echo    clean                             Clean build artifacts and debugging symbols
-echo    clean-all                         Cleanup entire ALL build artifacts and vc repository
-echo    help                              Display usage help for the given target
+echo     build[default]                    Compiles V using the given C compiler
+echo     clean                             Clean build artifacts and debugging symbols
+echo     clean-all                         Cleanup entire ALL build artifacts and vc repository
+echo     help                              Display usage help for the given target
 echo.
 echo Examples:
 echo     make.bat -msvc
 echo     make.bat -gcc --local --logpath output.log
-echo     make.bat build -fresh-tcc --local
+echo     make.bat build -tcc --local
+echo     make.bat -tcc32
 echo     make.bat help clean
 echo.
 echo Use "make help <target>" for more information about a target, for instance: "make help clean"
@@ -415,7 +416,7 @@ echo Usage:
 echo     make.bat build [compiler] [options]
 echo.
 echo Compiler:
-echo     -msvc ^| -gcc ^| -[fresh-]tcc ^| -clang    Set C compiler
+echo     -msvc ^| -gcc ^| -tcc[32] ^| -clang    Set C compiler
 echo.
 echo Options:
 echo    --local                           Use the local vc repository without
