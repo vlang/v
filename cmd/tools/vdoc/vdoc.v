@@ -162,7 +162,7 @@ fn (vd VDoc) work_processor(mut work sync.Channel, mut wg sync.WaitGroup) {
 		file_name, content := vd.render_doc(pdoc.d, pdoc.out)
 		output_path := os.join_path(pdoc.out.path, file_name)
 		println('Generating $pdoc.out.typ in "$output_path"')
-		os.write_file(output_path, content) or { panic(err) }
+		os.write_file(output_path, content) or { panic(err.msg) }
 	}
 	wg.done()
 }
@@ -350,15 +350,15 @@ fn (mut vd VDoc) generate_docs_from_file() {
 			out.path = os.real_path('.')
 		}
 		if !os.exists(out.path) {
-			os.mkdir(out.path) or { panic(err) }
+			os.mkdir(out.path) or { panic(err.msg) }
 		}
 		if cfg.is_multi {
 			out.path = os.join_path(out.path, '_docs')
 			if !os.exists(out.path) {
-				os.mkdir(out.path) or { panic(err) }
+				os.mkdir(out.path) or { panic(err.msg) }
 			} else {
 				for fname in css_js_assets {
-					os.rm(os.join_path(out.path, fname)) or { panic(err) }
+					os.rm(os.join_path(out.path, fname)) or { panic(err.msg) }
 				}
 			}
 		}
@@ -372,11 +372,11 @@ fn (mut vd VDoc) generate_docs_from_file() {
 			vd.render_search_index(out)
 			// move favicons to target directory
 			println('Copying favicons...')
-			favicons := os.ls(favicons_path) or { panic(err) }
+			favicons := os.ls(favicons_path) or { panic(err.msg) }
 			for favicon in favicons {
 				favicon_path := os.join_path(favicons_path, favicon)
 				destination_path := os.join_path(out.path, favicon)
-				os.cp(favicon_path, destination_path) or { panic(err) }
+				os.cp(favicon_path, destination_path) or { panic(err.msg) }
 			}
 		}
 	}

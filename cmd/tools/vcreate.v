@@ -55,10 +55,10 @@ fn gen_gitignore(name string) string {
 fn (c &Create) write_vmod(new bool) {
 	vmod_path := if new { '$c.name/v.mod' } else { 'v.mod' }
 	mut vmod := os.create(vmod_path) or {
-		cerror(err)
+		cerror(err.msg)
 		exit(1)
 	}
-	vmod.write_str(vmod_content(c.name, c.description)) or { panic(err) }
+	vmod.write_str(vmod_content(c.name, c.description)) or { panic(err.msg) }
 	vmod.close()
 }
 
@@ -68,10 +68,10 @@ fn (c &Create) write_main(new bool) {
 	}
 	main_path := if new { '$c.name/${c.name}.v' } else { '${c.name}.v' }
 	mut mainfile := os.create(main_path) or {
-		cerror(err)
+		cerror(err.msg)
 		exit(2)
 	}
-	mainfile.write_str(main_content()) or { panic(err) }
+	mainfile.write_str(main_content()) or { panic(err.msg) }
 	mainfile.close()
 }
 
@@ -87,7 +87,7 @@ fn (c &Create) create_git_repo(dir string) {
 				// We don't really need a .gitignore, it's just a nice-to-have
 				return
 			}
-			fl.write_str(gen_gitignore(c.name)) or { panic(err) }
+			fl.write_str(gen_gitignore(c.name)) or { panic(err.msg) }
 			fl.close()
 		}
 	}
@@ -110,7 +110,7 @@ fn create() {
 	}
 	c.description = os.input('Input your project description: ')
 	println('Initialising ...')
-	os.mkdir(c.name) or { panic(err) }
+	os.mkdir(c.name) or { panic(err.msg) }
 	c.write_vmod(true)
 	c.write_main(true)
 	c.create_git_repo(c.name)

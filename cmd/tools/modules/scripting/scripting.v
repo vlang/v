@@ -53,9 +53,9 @@ pub fn rmrf(path string) {
 	verbose_trace(@FN, 'rm -rf $path')
 	if os.exists(path) {
 		if os.is_dir(path) {
-			os.rmdir_all(path) or { panic(err) }
+			os.rmdir_all(path) or { panic(err.msg) }
 		} else {
-			os.rm(path) or { panic(err) }
+			os.rm(path) or { panic(err.msg) }
 		}
 	}
 }
@@ -64,7 +64,7 @@ pub fn exec(cmd string) ?os.Result {
 	verbose_trace(@FN, cmd)
 	x := os.exec(cmd) or {
 		verbose_trace(@FN, '## failed.')
-		return error(err)
+		return err
 	}
 	verbose_trace_exec_result(x)
 	return x

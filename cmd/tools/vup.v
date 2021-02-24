@@ -41,7 +41,7 @@ fn main() {
 		app.backup('cmd/tools/vup.exe')
 	}
 	app.recompile_v()
-	os.exec('"$app.vexe" cmd/tools/vup.v') or { panic(err) }
+	os.exec('"$app.vexe" cmd/tools/vup.v') or { panic(err.msg) }
 	app.show_current_v_version()
 }
 
@@ -88,7 +88,7 @@ fn (app App) make(vself string) {
 	$if windows {
 		make = 'make.bat'
 	}
-	make_result := os.exec(make) or { panic(err) }
+	make_result := os.exec(make) or { panic(err.msg) }
 	app.vprintln(make_result.output)
 }
 
@@ -121,7 +121,7 @@ fn (app App) git_command(command string) {
 	git_result := os.exec('git $command') or {
 		app.get_git()
 		// Try it again with (maybe) git installed
-		os.exec('git $command') or { panic(err) }
+		os.exec('git $command') or { panic(err.msg) }
 	}
 	if git_result.exit_code != 0 {
 		eprintln(git_result.output)
@@ -136,11 +136,11 @@ fn (app App) get_git() {
 		// We'll use 32 bit because maybe someone out there is using 32-bit windows
 		os.exec('bitsadmin.exe /transfer "vgit" https://github.com/git-for-windows/git/releases/download/v2.30.0.windows.2/Git-2.30.0.2-32-bit.exe "$os.getwd()/git32.exe"') or {
 			eprintln('Unable to install git automatically: please install git manually')
-			panic(err)
+			panic(err.msg)
 		}
 		os.exec('$os.getwd()/git32.exe') or {
 			eprintln('Unable to install git automatically: please install git manually')
-			panic(err)
+			panic(err.msg)
 		}
 	} $else { // Probably some kind of *nix, usually need to get using a package manager.
 		eprintln("error: Install `git` using your system's package manager")

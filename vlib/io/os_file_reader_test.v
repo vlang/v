@@ -3,7 +3,7 @@ import io
 
 fn read_file(file string, cap int) []string {
 	mut lines := []string{}
-	mut f := os.open(file) or { panic(err) }
+	mut f := os.open(file) or { panic(err.msg) }
 	defer {
 		f.close()
 	}

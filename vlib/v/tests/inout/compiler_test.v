@@ -49,7 +49,7 @@ fn test_all() {
 		// println(res.output)
 		// println('============')
 		mut found := res.output.trim_right('\r\n').replace('\r\n', '\n')
-		mut expected := os.read_file(program.replace('.vv', '') + '.out') or { panic(err) }
+		mut expected := os.read_file(program.replace('.vv', '') + '.out') or { panic(err.msg) }
 		expected = expected.trim_right('\r\n').replace('\r\n', '\n')
 		if expected.contains('================ V panic ================') {
 			// panic include backtraces and absolute file paths, so can't do char by char comparison

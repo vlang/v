@@ -14,7 +14,7 @@ fn new(config Config, shard_count ...int) ?&Client {
 fn test_can_compile_an_empty_var_arg() {
 	x := new(Config{
 		token: 'xyz'
-	}) or { panic(err) }
+	}) or { panic(err.msg) }
 	assert x.x == 1
 	assert x.y == 2
 }

@@ -31,5 +31,5 @@ fn on_message(mut ws websocket.Client, msg &websocket.Message) ? {
 		// We just wanna pass text and binary message back to autobahn
 		return
 	}
-	ws.write(msg.payload, msg.opcode) or { panic(err) }
+	ws.write(msg.payload, msg.opcode) or { panic(err.msg) }
 }

@@ -29,7 +29,7 @@ pub fn compile(command string, pref &pref.Preferences) {
 	}
 	os.is_writable_folder(output_folder) or {
 		// An early error here, is better than an unclear C error later:
-		verror(err)
+		verror(err.msg)
 		exit(1)
 	}
 	// Construct the V object from command line arguments
@@ -93,12 +93,12 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 	}
 	if b.pref.os == .ios {
 		device := '"iPhone SE (2nd generation)"'
-		os.exec('xcrun simctl boot $device') or { panic(err) }
+		os.exec('xcrun simctl boot $device') or { panic(err.msg) }
 		bundle_name := b.pref.out_name.split('/').last()
 		display_name := if b.pref.display_name != '' { b.pref.display_name } else { bundle_name }
-		os.exec('xcrun simctl install $device ${display_name}.app') or { panic(err) }
+		os.exec('xcrun simctl install $device ${display_name}.app') or { panic(err.msg) }
 		bundle_id := if b.pref.bundle_id != '' { b.pref.bundle_id } else { 'app.vlang.$bundle_name' }
-		os.exec('xcrun simctl launch $device $bundle_id') or { panic(err) }
+		os.exec('xcrun simctl launch $device $bundle_id') or { panic(err.msg) }
 	} else {
 		exefile := os.real_path(b.pref.out_name)
 		mut cmd := '"$exefile"'
@@ -133,7 +133,7 @@ fn (mut v Builder) cleanup_run_executable_after_exit(exefile string) {
 	}
 	if os.is_file(exefile) {
 		v.pref.vrun_elog('remove run executable: $exefile')
-		os.rm(exefile) or { panic(err) }
+		os.rm(exefile) or { panic(err.msg) }
 	}
 }
 

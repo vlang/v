@@ -41,13 +41,13 @@ pub fn new_cache_manager(opts []string) CacheManager {
 	}
 	dlog(@FN, 'vcache_basepath: $vcache_basepath | opts:\n     $opts')
 	if !os.is_dir(vcache_basepath) {
-		os.mkdir_all(vcache_basepath) or { panic(err) }
+		os.mkdir_all(vcache_basepath) or { panic(err.msg) }
 		readme_content := 'This folder contains cached build artifacts from the V build system.
 		|You can safely delete it, if it is getting too large.
 		|It will be recreated the next time you compile something with V.
 		|You can change its location with the VCACHE environment variable.
 		'.strip_margin()
-		os.write_file(os.join_path(vcache_basepath, 'README.md'), readme_content) or { panic(err) }
+		os.write_file(os.join_path(vcache_basepath, 'README.md'), readme_content) or { panic(err.msg) }
 	}
 	original_vopts := opts.join('|')
 	return CacheManager{
@@ -76,7 +76,7 @@ pub fn (mut cm CacheManager) key2cpath(key string) string {
 		cprefix_folder := os.join_path(cm.basepath, prefix)
 		cpath = os.join_path(cprefix_folder, khash)
 		if !os.is_dir(cprefix_folder) {
-			os.mkdir_all(cprefix_folder) or { panic(err) }
+			os.mkdir_all(cprefix_folder) or { panic(err.msg) }
 			os.chmod(cprefix_folder, 0o777)
 		}
 		dlog(@FN, 'new hk')

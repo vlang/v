@@ -50,10 +50,10 @@ fn test_all() {
 	vroot := os.dir(vexe)
 	valgrind_test_path := 'vlib/v/tests/valgrind'
 	dir := os.join_path(vroot, valgrind_test_path)
-	files := os.ls(dir) or { panic(err) }
+	files := os.ls(dir) or { panic(err.msg) }
 	//
 	wrkdir := os.join_path(os.temp_dir(), 'vtests', 'valgrind')
-	os.mkdir_all(wrkdir) or { panic(err) }
+	os.mkdir_all(wrkdir) or { panic(err.msg) }
 	os.chdir(wrkdir)
 	//
 	only_ordinary_v_files := files.filter(it.ends_with('.v') && !it.ends_with('_test.v'))

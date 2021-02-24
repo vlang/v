@@ -1,7 +1,7 @@
 type FnCb = fn (a string, b int) ?
 
 fn test_calling_an_anon_function_returning_question() {
-	create_and_call_anon_function() or { panic(err) }
+	create_and_call_anon_function() or { panic(err.msg) }
 }
 
 fn create_and_call_anon_function() ? {

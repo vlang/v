@@ -98,15 +98,15 @@ fn new_image(w int, h int) Image {
 // write out a .ppm file
 fn (image Image) save_as_ppm(file_name string) {
 	npixels := image.width * image.height
-	mut f_out := os.create(file_name) or { panic(err) }
-	f_out.writeln('P3') or { panic(err) }
-	f_out.writeln('$image.width $image.height') or { panic(err) }
-	f_out.writeln('255') or { panic(err) }
+	mut f_out := os.create(file_name) or { panic(err.msg) }
+	f_out.writeln('P3') or { panic(err.msg) }
+	f_out.writeln('$image.width $image.height') or { panic(err.msg) }
+	f_out.writeln('255') or { panic(err.msg) }
 	for i in 0 .. npixels {
 		c_r := to_int(unsafe { image.data[i] }.x)
 		c_g := to_int(unsafe { image.data[i] }.y)
 		c_b := to_int(unsafe { image.data[i] }.z)
-		f_out.write_str('$c_r $c_g $c_b ') or { panic(err) }
+		f_out.write_str('$c_r $c_g $c_b ') or { panic(err.msg) }
 	}
 	f_out.close()
 }

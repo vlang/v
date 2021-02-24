@@ -594,7 +594,7 @@ pub fn (mut ctx Context) parse_multipart_form(s string, b string) {
 }
 
 fn (mut ctx Context) scan_static_directory(directory_path string, mount_path string) {
-	files := os.ls(directory_path) or { panic(err) }
+	files := os.ls(directory_path) or { panic(err.msg) }
 	if files.len > 0 {
 		for file in files {
 			full_path := directory_path + '/' + file

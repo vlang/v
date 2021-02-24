@@ -7,9 +7,9 @@ const (
 )
 
 fn setup() (&net.TcpListener, &net.TcpConn, &net.TcpConn) {
-	mut server := net.listen_tcp(server_port) or { panic(err) }
-	mut client := net.dial_tcp('127.0.0.1:$server_port') or { panic(err) }
-	mut socket := server.accept() or { panic(err) }
+	mut server := net.listen_tcp(server_port) or { panic(err.msg) }
+	mut client := net.dial_tcp('127.0.0.1:$server_port') or { panic(err.msg) }
+	mut socket := server.accept() or { panic(err.msg) }
 	$if debug_peer_ip ? {
 		ip := con.peer_ip() or { '$err' }
 		eprintln('connection peer_ip: $ip')

@@ -244,7 +244,7 @@ fn (mut f MDFile) check_examples() (int, int) {
 		mut should_cleanup_vfile := true
 		// eprintln('>>> checking example $vfile ...')
 		vcontent := e.text.join('\n') + '\n'
-		os.write_file(vfile, vcontent) or { panic(err) }
+		os.write_file(vfile, vcontent) or { panic(err.msg) }
 		mut acommands := e.command.split(' ')
 		nofmt := 'nofmt' in acommands
 		for command in acommands {
@@ -331,7 +331,7 @@ fn (mut f MDFile) check_examples() (int, int) {
 			}
 		}
 		if should_cleanup_vfile {
-			os.rm(vfile) or { panic(err) }
+			os.rm(vfile) or { panic(err.msg) }
 		}
 	}
 	return errors, oks

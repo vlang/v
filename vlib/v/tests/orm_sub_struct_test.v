@@ -11,7 +11,7 @@ struct SubStruct {
 }
 
 fn test_orm_sub_structs() {
-	db := sqlite.connect(':memory:') or { panic(err) }
+	db := sqlite.connect(':memory:') or { panic(err.msg) }
 	db.exec('create table Upper (id integer primary key, sub int default 0)')
 	db.exec('create table SubStruct (id integer primary key, name string default "")')
 

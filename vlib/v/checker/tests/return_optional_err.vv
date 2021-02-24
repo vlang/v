@@ -1,7 +1,7 @@
 import os
 
 fn my_func() string {
-  return os.read_file('/some/file/that/exists.txt') or {panic(err)}
+  return os.read_file('/some/file/that/exists.txt') or { panic(err.msg) }
 }
 
 fn main() {

@@ -28,7 +28,7 @@ fn start_server() ? {
 		for i, _ in m.clients {
 			mut c := m.clients[i]
 			if c.client.state == .open && c.client.id != ws.id {
-				c.client.write(msg.payload, websocket.OPCode.text_frame) or { panic(err) }
+				c.client.write(msg.payload, websocket.OPCode.text_frame) or { panic(err.msg) }
 			}
 		}
 	}, s)

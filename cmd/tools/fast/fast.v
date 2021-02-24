@@ -81,7 +81,7 @@ fn main() {
 }
 
 fn exec(s string) string {
-	e := os.exec(s) or { panic(err) }
+	e := os.exec(s) or { panic(err.msg) }
 	return e.output.trim_right('\r\n')
 }
 
@@ -111,7 +111,7 @@ fn measure(cmd string, description string) int {
 }
 
 fn measure_steps(vdir string) (int, int, int) {
-	resp := os.exec('$vdir/vprod -o v.c -show-timings $vdir/cmd/v') or { panic(err) }
+	resp := os.exec('$vdir/vprod -o v.c -show-timings $vdir/cmd/v') or { panic(err.msg) }
 	lines := resp.output.split_into_lines()
 	if lines.len != 3 {
 		return 0, 0, 0

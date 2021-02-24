@@ -121,7 +121,7 @@ pub fn (mut ws Client) listen() ? {
 			}
 			ws.debug_log('failed to read next message: $err')
 			ws.send_error_event('failed to read next message: $err')
-			return error(err)
+			return err
 		}
 		if ws.state in [.closed, .closing] {
 			return
@@ -146,7 +146,7 @@ pub fn (mut ws Client) listen() ? {
 					ws.logger.error('error in message callback sending PONG: $err')
 					ws.send_error_event('error in message callback sending PONG: $err')
 					if ws.panic_on_callback {
-						panic(err)
+						panic(err.msg)
 					}
 					continue
 				}

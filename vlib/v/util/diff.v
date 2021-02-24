@@ -64,10 +64,10 @@ pub fn color_compare_strings(diff_cmd string, expected string, found string) str
 	ctime := time.sys_mono_now()
 	e_file := os.join_path(cdir, '${ctime}.expected.txt')
 	f_file := os.join_path(cdir, '${ctime}.found.txt')
-	os.write_file(e_file, expected) or { panic(err) }
-	os.write_file(f_file, found) or { panic(err) }
+	os.write_file(e_file, expected) or { panic(err.msg) }
+	os.write_file(f_file, found) or { panic(err.msg) }
 	res := color_compare_files(diff_cmd, e_file, f_file)
-	os.rm(e_file) or { panic(err) }
-	os.rm(f_file) or { panic(err) }
+	os.rm(e_file) or { panic(err.msg) }
+	os.rm(f_file) or { panic(err.msg) }
 	return res
 }

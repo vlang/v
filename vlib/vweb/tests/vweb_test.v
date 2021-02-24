@@ -102,14 +102,14 @@ fn assert_common_http_headers(x http.Response) {
 }
 
 fn test_http_client_index() {
-	x := http.get('http://127.0.0.1:$sport/') or { panic(err) }
+	x := http.get('http://127.0.0.1:$sport/') or { panic(err.msg) }
 	assert_common_http_headers(x)
 	assert x.headers['Content-Type'] == 'text/plain'
 	assert x.text == 'Welcome to VWeb'
 }
 
 fn test_http_client_chunk_transfer() {
-	x := http.get('http://127.0.0.1:$sport/chunk') or { panic(err) }
+	x := http.get('http://127.0.0.1:$sport/chunk') or { panic(err.msg) }
 	assert_common_http_headers(x)
 	assert x.headers['Transfer-Encoding'] == 'chunked'
 	assert x.text == 'Lorem ipsum dolor sit amet, consetetur sadipscing'
@@ -122,45 +122,45 @@ fn test_http_client_404() {
 		'http://127.0.0.1:$sport/unknown',
 	]
 	for url in url_404_list {
-		res := http.get(url) or { panic(err) }
+		res := http.get(url) or { panic(err.msg) }
 		assert res.status_code == 404
 	}
 }
 
 fn test_http_client_simple() {
-	x := http.get('http://127.0.0.1:$sport/simple') or { panic(err) }
+	x := http.get('http://127.0.0.1:$sport/simple') or { panic(err.msg) }
 	assert_common_http_headers(x)
 	assert x.headers['Content-Type'] == 'text/plain'
 	assert x.text == 'A simple result'
 }
 
 fn test_http_client_html_page() {
-	x := http.get('http://127.0.0.1:$sport/html_page') or { panic(err) }
+	x := http.get('http://127.0.0.1:$sport/html_page') or { panic(err.msg) }
 	assert_common_http_headers(x)
 	assert x.headers['Content-Type'] == 'text/html'
 	assert x.text == '<h1>ok</h1>'
 }
 
 fn test_http_client_settings_page() {
-	x := http.get('http://127.0.0.1:$sport/bilbo/settings') or { panic(err) }
+	x := http.get('http://127.0.0.1:$sport/bilbo/settings') or { panic(err.msg) }
 	assert_common_http_headers(x)
 	assert x.text == 'username: bilbo'
 	//
-	y := http.get('http://127.0.0.1:$sport/kent/settings') or { panic(err) }
+	y := http.get('http://127.0.0.1:$sport/kent/settings') or { panic(err.msg) }
 	assert_common_http_headers(y)
 	assert y.text == 'username: kent'
 }
 
 fn test_http_client_user_repo_settings_page() {
-	x := http.get('http://127.0.0.1:$sport/bilbo/gostamp/settings') or { panic(err) }
+	x := http.get('http://127.0.0.1:$sport/bilbo/gostamp/settings') or { panic(err.msg) }
 	assert_common_http_headers(x)
 	assert x.text == 'username: bilbo | repository: gostamp'
 	//
-	y := http.get('http://127.0.0.1:$sport/kent/golang/settings') or { panic(err) }
+	y := http.get('http://127.0.0.1:$sport/kent/golang/settings') or { panic(err.msg) }
 	assert_common_http_headers(y)
 	assert y.text == 'username: kent | repository: golang'
 	//
-	z := http.get('http://127.0.0.1:$sport/missing/golang/settings') or { panic(err) }
+	z := http.get('http://127.0.0.1:$sport/missing/golang/settings') or { panic(err.msg) }
 	assert z.status_code == 404
 }
 
@@ -175,7 +175,7 @@ fn test_http_client_json_post() {
 		age: 123
 	}
 	json_for_ouser := json.encode(ouser)
-	mut x := http.post_json('http://127.0.0.1:$sport/json_echo', json_for_ouser) or { panic(err) }
+	mut x := http.post_json('http://127.0.0.1:$sport/json_echo', json_for_ouser) or { panic(err.msg) }
 	$if debug_net_socket_client ? {
 		eprintln('/json_echo endpoint response: $x')
 	}
@@ -184,7 +184,7 @@ fn test_http_client_json_post() {
 	nuser := json.decode(User, x.text) or { User{} }
 	assert '$ouser' == '$nuser'
 	//
-	x = http.post_json('http://127.0.0.1:$sport/json', json_for_ouser) or { panic(err) }
+	x = http.post_json('http://127.0.0.1:$sport/json', json_for_ouser) or { panic(err.msg) }
 	$if debug_net_socket_client ? {
 		eprintln('/json endpoint response: $x')
 	}
@@ -236,7 +236,7 @@ fn simple_tcp_client(config SimpleTcpClientConfig) ?string {
 		tries++
 		client = net.dial_tcp('127.0.0.1:$sport') or {
 			if tries > config.retries {
-				return error(err)
+				return err
 			}
 			time.sleep(100 * time.millisecond)
 			continue

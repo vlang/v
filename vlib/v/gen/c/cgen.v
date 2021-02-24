@@ -5580,7 +5580,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 			}
 		} else {
 			// In ordinary functions, `opt()?` call is sugar for:
-			// `opt() or { return error(err) }`
+			// `opt() or { return err }`
 			// Since we *do* return, first we have to ensure that
 			// the defered statements are generated.
 			g.write_defer_stmts()

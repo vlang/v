@@ -156,13 +156,13 @@ fn save_raw_data_as_array(buf_bin []byte, file_name string) {
 	for x in buf_bin {
 		buf.write_string('0x${x:02x},')
 	}
-	os.write_file_array(file_name, buf.buf) or { panic(err) }
+	os.write_file_array(file_name, buf.buf) or { panic(err.msg) }
 }
 
 fn test_main() {
 	mut tf := ttf.TTF_File{}
 	$if create_data ? {
-		tf.buf = os.read_bytes(font_path) or { panic(err) }
+		tf.buf = os.read_bytes(font_path) or { panic(err.msg) }
 		println('TrueTypeFont file [$font_path] len: $tf.buf.len')
 		save_raw_data_as_array(tf.buf, 'test_ttf_Font_arr.bin')
 	} $else {
@@ -200,7 +200,7 @@ fn test_main() {
 	$if create_data ? {
 		bmp.save_as_ppm('test_ttf.ppm')
 		bmp.save_raw_data('test_ttf.bin')
-		test_buf = os.read_bytes('test_ttf.bin') or { panic(err) }
+		test_buf = os.read_bytes('test_ttf.bin') or { panic(err.msg) }
 	}
 
 	ram_buf := bmp.get_raw_bytes()

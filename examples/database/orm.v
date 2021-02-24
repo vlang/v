@@ -16,7 +16,7 @@ struct User {
 }
 
 fn main() {
-	db := sqlite.connect(':memory:') or { panic(err) }
+	db := sqlite.connect(':memory:') or { panic(err.msg) }
 	db.exec('drop table if exists User')
 	db.exec("create table Module (id integer primary key, name text default '', nr_downloads int default 0, creator int default 0);")
 	db.exec("create table User (id integer primary key, age int default 0, name text default '', is_customer int default 0);")

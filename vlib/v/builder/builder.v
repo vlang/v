@@ -43,7 +43,7 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 	}
 	msvc := find_msvc(pref.m64) or {
 		if pref.ccompiler == 'msvc' {
-			verror('Cannot find MSVC on this OS')
+			// verror('Cannot find MSVC on this OS')
 		}
 		MsvcResult{
 			valid: false
@@ -205,7 +205,7 @@ pub fn (b Builder) v_files_from_dir(dir string) []string {
 	} else if !os.is_dir(dir) {
 		verror("$dir isn't a directory!")
 	}
-	mut files := os.ls(dir) or { panic(err) }
+	mut files := os.ls(dir) or { panic(err.msg) }
 	if b.pref.is_verbose {
 		println('v_files_from_dir ("$dir")')
 	}

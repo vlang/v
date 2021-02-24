@@ -44,7 +44,7 @@ fn (mut a App) set_status(msg string, duration_ms int) {
 fn (mut a App) save() {
 	if a.cfile().len > 0 {
 		b := a.ed
-		os.write_file(a.cfile(), b.raw()) or { panic(err) }
+		os.write_file(a.cfile(), b.raw()) or { panic(err.msg) }
 		a.set_status('Saved', 2000)
 	} else {
 		a.set_status('No file loaded', 4000)
@@ -456,7 +456,7 @@ fn (mut a App) init_file() {
 			// 'vico: ' +
 			a.tui.set_window_title(a.files[a.current_file])
 			mut b := a.ed
-			content := os.read_file(a.files[a.current_file]) or { panic(err) }
+			content := os.read_file(a.files[a.current_file]) or { panic(err.msg) }
 			b.put(content)
 			a.ed.cursor.pos_x = init_x
 			a.ed.cursor.pos_y = init_y

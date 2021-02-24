@@ -49,7 +49,7 @@ fn convert_html_rgb_n(in_col string) u32 {
 
 	query := '#(?P<red>[a-fA-F0-9]{$n_digit})(?P<green>[a-fA-F0-9]{$n_digit})(?P<blue>[a-fA-F0-9]{$n_digit})'
 
-	mut re := regex.regex_opt(query) or { panic(err) }
+	mut re := regex.regex_opt(query) or { panic(err.msg) }
 	start, end := re.match_string(in_col)
 	println('start: $start, end: $end')
 	mut res := u32(0)

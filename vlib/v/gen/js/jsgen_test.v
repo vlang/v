@@ -15,7 +15,7 @@ const there_is_node_available = is_nodejs_working()
 fn test_example_compilation() {
 	vexe := os.getenv('VEXE')
 	os.chdir(os.dir(vexe))
-	os.mkdir_all(output_dir) or { panic(err) }
+	os.mkdir_all(output_dir) or { panic(err.msg) }
 	files := find_test_files()
 	for file in files {
 		path := os.join_path(test_dir, file)
@@ -40,7 +40,7 @@ fn test_example_compilation() {
 }
 
 fn find_test_files() []string {
-	files := os.ls(test_dir) or { panic(err) }
+	files := os.ls(test_dir) or { panic(err.msg) }
 	// The life example never exits, so tests would hang with it, skip
 	mut tests := files.filter(it.ends_with('.v')).filter(it != 'life.v')
 	tests.sort()

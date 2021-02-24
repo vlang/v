@@ -370,7 +370,7 @@ struct Info {
 }
 
 fn test_decode_null_object() {
-	info := json.decode(Info, '{"id": 22, "items": null, "maps": null}') or { panic(err) }
+	info := json.decode(Info, '{"id": 22, "items": null, "maps": null}') or { panic(err.msg) }
 	assert info.id == 22
 	assert '$info.items' == '[]'
 	assert '$info.maps' == '{}'

@@ -125,7 +125,7 @@ fn (mut ctx Context) termios_setup() ? {
 	os.signal(C.SIGCONT, fn () {
 		mut c := ctx_ptr
 		if c != 0 {
-			c.termios_setup() or { panic(err) }
+			c.termios_setup() or { panic(err.msg) }
 			c.window_height, c.window_width = get_terminal_size()
 			mut event := &Event{
 				typ: .resized

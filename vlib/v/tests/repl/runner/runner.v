@@ -47,22 +47,22 @@ pub fn run_repl_file(wd string, vexec string, file string) ?string {
 	output := content.all_after('===output===\n').trim_right('\n\r')
 	fname := os.file_name(file)
 	input_temporary_filename := os.real_path(os.join_path(wd, 'input_temporary_filename.txt'))
-	os.write_file(input_temporary_filename, input) or { panic(err) }
-	os.write_file(os.real_path(os.join_path(wd, 'original.txt')), fcontent) or { panic(err) }
+	os.write_file(input_temporary_filename, input) or { panic(err.msg) }
+	os.write_file(os.real_path(os.join_path(wd, 'original.txt')), fcontent) or { panic(err.msg) }
 	rcmd := '"$vexec" repl -replfolder "$wd" -replprefix "${fname}." < $input_temporary_filename'
 	r := os.exec(rcmd) or {
-		os.rm(input_temporary_filename) or { panic(err) }
+		os.rm(input_temporary_filename) or { panic(err.msg) }
 		return error('Could not execute: $rcmd')
 	}
-	os.rm(input_temporary_filename) or { panic(err) }
+	os.rm(input_temporary_filename) or { panic(err.msg) }
 	result := r.output.replace('\r', '').replace('>>> ', '').replace('>>>', '').replace('... ',
 		'').replace(wd + os.path_separator, '').replace(vexec_folder, '').replace('\\',
 		'/').trim_right('\n\r')
 	if result != output {
 		file_result := '${file}.result.txt'
 		file_expected := '${file}.expected.txt'
-		os.write_file(file_result, result) or { panic(err) }
-		os.write_file(file_expected, output) or { panic(err) }
+		os.write_file(file_result, result) or { panic(err.msg) }
+		os.write_file(file_expected, output) or { panic(err.msg) }
 		diff := diff_files(file_expected, file_result)
 		return error('Difference found in REPL file: $file
 ====> Expected :
@@ -91,7 +91,7 @@ pub fn run_prod_file(wd string, vexec string, file string) ?string {
 	result := r.output.replace('\r', '')
 	if result != expected_content {
 		file_result := '${file}.result.txt'
-		os.write_file(file_result, result) or { panic(err) }
+		os.write_file(file_result, result) or { panic(err.msg) }
 		diff := diff_files(file_result, file_expected)
 		return error('Difference found in test: $file
 ====> Got      :

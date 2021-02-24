@@ -12,11 +12,11 @@ fn test_the_v_compiler_can_be_invoked() {
 	println('vexecutable: $vexec')
 	assert vexec != ''
 	vcmd := '"$vexec" -version'
-	r := os.exec(vcmd) or { panic(err) }
+	r := os.exec(vcmd) or { panic(err.msg) }
 	// println('"$vcmd" exit_code: $r.exit_code | output: $r.output')
 	assert r.exit_code == 0
 	vcmd_error := '"$vexec" nonexisting.v'
-	r_error := os.exec(vcmd_error) or { panic(err) }
+	r_error := os.exec(vcmd_error) or { panic(err.msg) }
 	// println('"$vcmd_error" exit_code: $r_error.exit_code | output: $r_error.output')
 	assert r_error.exit_code == 1
 	actual_error := r_error.output.trim_space()
@@ -36,7 +36,7 @@ fn test_all_v_repl_files() {
 	}
 	// warmup, and ensure that the vrepl is compiled in single threaded mode if it does not exist
 	runner.run_repl_file(os.cache_dir(), session.options.vexec, 'vlib/v/tests/repl/nothing.repl') or {
-		panic(err)
+		panic(err.msg)
 	}
 	session.bmark.set_total_expected_steps(session.options.files.len)
 	mut pool_repl := pool.new_pool_processor(
@@ -64,23 +64,23 @@ fn worker_repl(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	tls_bench.cstep = idx
 	tfolder := os.join_path(cdir, 'vrepl_tests_$idx')
 	if os.is_dir(tfolder) {
-		os.rmdir_all(tfolder) or { panic(err) }
+		os.rmdir_all(tfolder) or { panic(err.msg) }
 	}
-	os.mkdir(tfolder) or { panic(err) }
+	os.mkdir(tfolder) or { panic(err.msg) }
 	file := p.get_item<string>(idx)
 	session.bmark.step()
 	tls_bench.step()
 	fres := runner.run_repl_file(tfolder, session.options.vexec, file) or {
 		session.bmark.fail()
 		tls_bench.fail()
-		os.rmdir_all(tfolder) or { panic(err) }
+		os.rmdir_all(tfolder) or { panic(err.msg) }
 		eprintln(tls_bench.step_message_fail(err))
 		assert false
 		return pool.no_result
 	}
 	session.bmark.ok()
 	tls_bench.ok()
-	os.rmdir_all(tfolder) or { panic(err) }
+	os.rmdir_all(tfolder) or { panic(err.msg) }
 	println(tls_bench.step_message_ok(fres))
 	assert true
 	return pool.no_result
