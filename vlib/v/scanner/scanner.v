@@ -1346,7 +1346,7 @@ pub fn (mut s Scanner) codegen(newtext string) {
 	// feeding code generated V code to vfmt or vdoc will
 	// cause them to output/document ephemeral stuff.
 	if s.comments_mode == .skip_comments {
-		s.all_tokens.pop() // remove .eof from end of .all_tokens
+		s.all_tokens.delete_last() // remove .eof from end of .all_tokens
 		s.text += newtext
 		old_tidx := s.tidx
 		s.tidx = s.all_tokens.len
