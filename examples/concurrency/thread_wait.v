@@ -1,7 +1,7 @@
 // test performance of []thread and wait
 // by Charles WANG, 2021
 // changrui@live.com
-/* Output:
+/* Output on my old *HP 288 Pro G4* computer
    Thread *3* is running... only time.wait(1000ms)
    Thread *2* is running... only time.wait(1000ms)
    Thread *1* is running... only time.wait(1000ms)
