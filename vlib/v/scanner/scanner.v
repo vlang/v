@@ -112,11 +112,9 @@ pub fn new_scanner_file(file_path string, comments_mode CommentsMode, pref &pref
 		is_print_rel_paths_on_error: true
 		is_fmt: pref.is_fmt
 		comments_mode: comments_mode
-		file_path: 'internal_memory'
-		file_base: 'internal_memory'
+		file_path: file_path
+		file_base: os.base(file_path)
 	}
-	s.file_path = file_path
-	s.file_base = os.base(file_path)
 	s.init_scanner()
 	return s
 }
