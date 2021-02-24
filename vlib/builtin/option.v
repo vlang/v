@@ -82,7 +82,7 @@ struct Option2 {
 }
 
 // Error holds information about an error instance
-struct Error {
+pub struct Error {
 pub:
 	msg  string
 	code int

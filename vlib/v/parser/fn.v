@@ -61,12 +61,6 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		p.inside_or_expr = true
 		p.next()
 		p.open_scope()
-		// p.scope.register(ast.Var{
-		// 	name: 'errcode'
-		// 	typ: table.int_type
-		// 	pos: p.tok.position()
-		// 	is_used: true
-		// })
 		p.scope.register(ast.Var{
 			name: 'err'
 			typ: table.error_type
