@@ -13,10 +13,11 @@
 module main 
 
 import time
+import runtime
 
 const (
    max = 1_000_000_000
-   devide = 8        // by ncpu
+	devide = runtime.nr_cpus()        // by nr_cpu
 )
 
 fn main() {
