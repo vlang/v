@@ -85,6 +85,10 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 		}
 	}
 	p.init_parse_fns()
+	util.timing_start('PARSE stmt')
+	defer {
+		util.timing_measure_cumulative('PARSE stmt')
+	}
 	p.read_first_token()
 	return p.stmt(false)
 }
@@ -118,6 +122,13 @@ pub fn parse_text(text string, path string, table &table.Table, comments_mode sc
 	}
 	p.set_path(path)
 	return p.parse()
+}
+
+[unsafe]
+pub fn (mut p Parser) free() {
+	unsafe {
+		p.scanner.free()
+	}
 }
 
 pub fn (mut p Parser) set_path(path string) {
@@ -166,7 +177,7 @@ pub fn parse_vet_file(path string, table_ &table.Table, pref &pref.Preferences) 
 		parent: 0
 	}
 	mut p := Parser{
-		scanner: scanner.new_vet_scanner_file(path, .parse_comments, pref)
+		scanner: scanner.new_scanner_file(path, .parse_comments, pref)
 		comments_mode: .parse_comments
 		table: table_
 		pref: pref
@@ -194,6 +205,10 @@ pub fn parse_vet_file(path string, table_ &table.Table, pref &pref.Preferences) 
 }
 
 pub fn (mut p Parser) parse() ast.File {
+	util.timing_start('PARSE')
+	defer {
+		util.timing_measure_cumulative('PARSE')
+	}
 	// comments_mode: comments_mode
 	p.init_parse_fns()
 	p.read_first_token()
@@ -323,9 +338,6 @@ pub fn parse_files(paths []string, table &table.Table, pref &pref.Preferences, g
 }
 
 pub fn (mut p Parser) init_parse_fns() {
-	if p.comments_mode == .toplevel_comments {
-		p.scanner.scan_all_tokens_in_buffer()
-	}
 	// p.prefix_parse_fns = make(100, 100, sizeof(PrefixParseFn))
 	// p.prefix_parse_fns[token.Kind.name] = parse_name
 }
