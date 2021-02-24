@@ -665,7 +665,7 @@ static inline Option2_void __Option2_${styp}_pushval($styp ch, $el_type e) {
 		Option2 _tmp2 = error2(_SLIT("channel closed"));
 		return *(Option2_void*)&_tmp2;
 	}
-	return (Option2_void){.state = 0,.err = (Error){.msg=_SLIT(""), .code=0};
+	return (Option2_void){.state = 0,.err = (Error){.msg=_SLIT(""), .code=0}};
 }')
 	}
 }
