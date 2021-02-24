@@ -4616,7 +4616,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 	// handle promoting none/error/function returning 'Option'
 	if fn_return_is_optional {
 		optional_none := node.exprs[0] is ast.None
-		mut is_regular_option := g.typ(node.types[0]) == 'Option'
+		mut is_regular_option := g.typ(node.types[0]) in ['Option', 'Option2']
 		if optional_none || is_regular_option {
 			tmp := g.new_tmp_var()
 			g.write('Option2 $tmp = ')
@@ -4625,7 +4625,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			styp := g.typ(g.fn_decl.return_type)
 			err_obj := g.new_tmp_var()
 			g.writeln('$styp $err_obj;')
-			g.writeln('memcpy(&$err_obj, &$tmp, sizeof(Option));')
+			g.writeln('memcpy(&$err_obj, &$tmp, sizeof(Option2));')
 			g.writeln('return $err_obj;')
 			return
 		}
