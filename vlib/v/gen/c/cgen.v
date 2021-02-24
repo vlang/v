@@ -4631,7 +4631,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			return
 		} else if node.types[0] == table.error_type_idx {
 			// foo() or { return err }
-						tmp := g.new_tmp_var()
+			tmp := g.new_tmp_var()
 			g.write('Option2 $tmp = (Option2){.state=2, .err=')
 			g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
 			g.writeln('};')
