@@ -94,7 +94,13 @@ fn (mut p Parser) decode_value() ?Any {
 			return p.decode_object()
 		}
 		.int_, .float {
-			return p.decode_number()
+			tl := p.tok.lit.bytestr()
+			kind := p.tok.kind
+			p.next_with_err() ?
+			if p.convert_type {
+				return if kind == .float { Any(tl.f64()) } else { Any(tl.i64()) }
+			}
+			return Any(tl)
 		}
 		.bool_ {
 			lit := p.tok.lit.bytestr()
@@ -106,30 +112,15 @@ fn (mut p Parser) decode_value() ?Any {
 			return if p.convert_type { Any(null) } else { Any('null') }
 		}
 		.str_ {
-			return p.decode_string()
+			str := p.tok.lit.bytestr()
+			p.next_with_err() ?
+			return Any(str)
 		}
 		else {
 			return error(p.emit_error('invalid token `$p.tok.kind`'))
 		}
 	}
 	return Any{}
-}
-
-fn (mut p Parser) decode_string() ?Any {
-	str := p.tok.lit.bytestr()
-	p.next_with_err() ?
-	return Any(str)
-}
-
-// now returns string instead of int or float
-fn (mut p Parser) decode_number() ?Any {
-	tl := p.tok.lit.bytestr()
-	kind := p.tok.kind
-	p.next_with_err() ?
-	if p.convert_type {
-		return if kind == .float { Any(tl.f64()) } else { Any(tl.i64()) }
-	}
-	return Any(tl)
 }
 
 fn (mut p Parser) decode_array() ?Any {
