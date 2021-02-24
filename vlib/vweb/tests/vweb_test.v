@@ -63,7 +63,7 @@ fn assert_common_headers(received string) {
 
 fn test_a_simple_tcp_client_can_connect_to_the_vweb_server() {
 	received := simple_tcp_client(path: '/') or {
-		assert err == ''
+		assert err.msg == ''
 		return
 	}
 	assert_common_headers(received)
@@ -74,7 +74,7 @@ fn test_a_simple_tcp_client_can_connect_to_the_vweb_server() {
 
 fn test_a_simple_tcp_client_simple_route() {
 	received := simple_tcp_client(path: '/simple') or {
-		assert err == ''
+		assert err.msg == ''
 		return
 	}
 	assert_common_headers(received)
@@ -85,7 +85,7 @@ fn test_a_simple_tcp_client_simple_route() {
 
 fn test_a_simple_tcp_client_html_page() {
 	received := simple_tcp_client(path: '/html_page') or {
-		assert err == ''
+		assert err.msg == ''
 		return
 	}
 	assert_common_headers(received)
@@ -196,7 +196,7 @@ fn test_http_client_json_post() {
 
 fn test_http_client_shutdown_does_not_work_without_a_cookie() {
 	x := http.get('http://127.0.0.1:$sport/shutdown') or {
-		assert err == ''
+		assert err.msg == ''
 		return
 	}
 	assert x.status_code == 404
@@ -206,13 +206,13 @@ fn test_http_client_shutdown_does_not_work_without_a_cookie() {
 fn testsuite_end() {
 	// This test is guaranteed to be called last.
 	// It sends a request to the server to shutdown.
-	x := http.fetch('http://127.0.0.1:$sport/shutdown', 
+	x := http.fetch('http://127.0.0.1:$sport/shutdown',
 		method: .get
 		cookies: map{
 			'skey': 'superman'
 		}
 	) or {
-		assert err == ''
+		assert err.msg == ''
 		return
 	}
 	assert x.status_code == 200
