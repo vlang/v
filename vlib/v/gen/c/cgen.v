@@ -4117,6 +4117,30 @@ fn (mut g Gen) concat_expr(node ast.ConcatExpr) {
 	}
 }
 
+fn (mut g Gen) need_tmp_var_in_if(node ast.IfExpr) bool {
+	if node.is_expr && g.inside_ternary == 0 {
+		if g.is_autofree {
+			return true
+		}
+		for branch in node.branches {
+			if branch.stmts.len == 1 {
+				if branch.stmts[0] is ast.ExprStmt {
+					stmt := branch.stmts[0] as ast.ExprStmt
+					if stmt.expr is ast.CallExpr {
+						if stmt.expr.is_method {
+							left_sym := g.table.get_type_symbol(stmt.expr.receiver_type)
+							if left_sym.kind in [.array, .array_fixed, .map] {
+								return true
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
 fn (mut g Gen) if_expr(node ast.IfExpr) {
 	if node.is_comptime {
 		g.comp_if(node)
@@ -4128,15 +4152,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	// easier to use a temp var, than do C tricks with commas, introduce special vars etc
 	// (as it used to be done).
 	// Always use this in -autofree, since ?: can have tmp expressions that have to be freed.
-	first_branch := node.branches[0]
-	needs_tmp_var := node.is_expr && (g.is_autofree || (g.pref.experimental
-		&& (first_branch.stmts.len > 1 || (first_branch.stmts[0] is ast.ExprStmt
-		&& (first_branch.stmts[0] as ast.ExprStmt).expr is ast.IfExpr))))
-	/*
-	needs_tmp_var := node.is_expr &&
-		(g.autofree || g.pref.experimental) &&
-		(node.branches[0].stmts.len > 1 || node.branches[0].stmts[0] is ast.IfExpr)
-	*/
+	needs_tmp_var := g.need_tmp_var_in_if(node)
 	tmp := if needs_tmp_var { g.new_tmp_var() } else { '' }
 	mut cur_line := ''
 	if needs_tmp_var {
