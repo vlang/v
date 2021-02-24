@@ -1,4 +1,4 @@
-import simplemodule { Data }
+import simplemodule
 
 fn test_todo() {
 }
