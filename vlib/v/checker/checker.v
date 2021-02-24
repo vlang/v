@@ -4164,10 +4164,12 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 						typ: typ
 						is_optional: is_optional
 					}
-					if typ == table.error_type && c.expected_type == table.string_type
-						&& !c.using_new_err_struct && !c.in_selector_expr {
-						c.warn('string errors are deprecated; use `err.msg` instead',
-							ident.pos)
+					if c.pref.experimental {
+						if typ == table.error_type && c.expected_type == table.string_type
+							&& !c.using_new_err_struct && !c.in_selector_expr {
+							c.warn('string errors are deprecated; use `err.msg` instead',
+								ident.pos)
+						}
 					}
 					// if typ == table.t_type {
 					// sym := c.table.get_type_symbol(c.cur_generic_type)
