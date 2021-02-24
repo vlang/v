@@ -31,7 +31,6 @@ mut:
 	prev_tok          token.Token
 	peek_tok          token.Token
 	peek_tok2         token.Token
-	peek_tok3         token.Token
 	table             &table.Table
 	language          table.Language
 	inside_if         bool
@@ -416,7 +415,6 @@ fn (mut p Parser) next() {
 	p.tok = p.peek_tok
 	p.peek_tok = p.scanner.scan()
 	p.peek_tok2 = p.peek_token(2)
-	p.peek_tok3 = p.peek_token(3)
 	/*
 	if p.tok.kind==.comment {
 		p.comments << ast.Comment{text:p.tok.lit, line_nr:p.tok.line_nr}
@@ -1129,11 +1127,11 @@ fn (p &Parser) is_generic_call() bool {
 	return !lit0_is_capital && p.peek_tok.kind == .lt && (match p.peek_tok2.kind {
 		.name {
 			// maybe `f<int>`, `f<map[`, f<string,
-			(p.peek_tok2.kind == .name && p.peek_tok3.kind in [.gt, .comma]) || (p.peek_tok2.lit == 'map' && p.peek_tok3.kind == .lsbr)
+			(p.peek_tok2.kind == .name && p.peek_token(3).kind in [.gt, .comma]) || (p.peek_tok2.lit == 'map' && p.peek_token(3).kind == .lsbr)
 		}
 		.lsbr {
 			// maybe `f<[]T>`, assume `var < []` is invalid
-			p.peek_tok3.kind == .rsbr
+			p.peek_token(3).kind == .rsbr
 		}
 		else {
 			false
@@ -2411,7 +2409,7 @@ fn (mut p Parser) top_level_statement_start() {
 		p.scanner.set_is_inside_toplevel_statement(true)
 		p.rewind_scanner_to_current_token_in_new_mode()
 		$if debugscanner ? {
-			eprintln('>> p.top_level_statement_start | tidx:${p.tok.tidx:-5} | p.tok.kind: ${p.tok.kind:-10} | p.tok.lit: $p.tok.lit $p.peek_tok.lit $p.peek_tok2.lit $p.peek_tok3.lit ...')
+			eprintln('>> p.top_level_statement_start | tidx:${p.tok.tidx:-5} | p.tok.kind: ${p.tok.kind:-10} | p.tok.lit: $p.tok.lit $p.peek_tok.lit $p.peek_tok2.lit ${p.peek_token(3).lit} ...')
 		}
 	}
 }
@@ -2421,14 +2419,14 @@ fn (mut p Parser) top_level_statement_end() {
 		p.scanner.set_is_inside_toplevel_statement(false)
 		p.rewind_scanner_to_current_token_in_new_mode()
 		$if debugscanner ? {
-			eprintln('>> p.top_level_statement_end   | tidx:${p.tok.tidx:-5} | p.tok.kind: ${p.tok.kind:-10} | p.tok.lit: $p.tok.lit $p.peek_tok.lit $p.peek_tok2.lit $p.peek_tok3.lit ...')
+			eprintln('>> p.top_level_statement_end   | tidx:${p.tok.tidx:-5} | p.tok.kind: ${p.tok.kind:-10} | p.tok.lit: $p.tok.lit $p.peek_tok.lit $p.peek_tok2.lit ${p.peek_token(3).lit} ...')
 		}
 	}
 }
 
 fn (mut p Parser) rewind_scanner_to_current_token_in_new_mode() {
 	// Go back and rescan some tokens, ensuring that the parser's
-	// lookahead buffer p.peek_tok .. p.peek_tok3, will now contain
+	// lookahead buffer p.peek_tok .. p.peek_token(3), will now contain
 	// the correct tokens (possible comments), for the new mode
 	// This refilling of the lookahead buffer is needed for the
 	// .toplevel_comments parsing mode.
@@ -2439,7 +2437,6 @@ fn (mut p Parser) rewind_scanner_to_current_token_in_new_mode() {
 	p.tok = no_token
 	p.peek_tok = no_token
 	p.peek_tok2 = no_token
-	p.peek_tok3 = no_token
 	for {
 		p.next()
 		// eprintln('rewinding to ${p.tok.tidx:5} | goal: ${tidx:5}')

@@ -31,7 +31,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		return for_stmt
 	} else if p.peek_tok.kind in [.decl_assign, .assign, .semicolon]
 		|| p.tok.kind == .semicolon || (p.peek_tok.kind == .comma && p.peek_tok2.kind != .key_mut
-		&& p.peek_tok3.kind != .key_in) {
+			&& p.peek_token(3).kind != .key_in) {
 		// `for i := 0; i < 10; i++ {` or `for a,b := 0,1; a < 10; a++ {`
 		if p.tok.kind == .key_mut {
 			p.error('`mut` is not needed in `for ;;` loops: use `for i := 0; i < n; i ++ {`')
@@ -44,7 +44,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		mut has_cond := false
 		mut has_inc := false
 		mut is_multi := p.peek_tok.kind == .comma && p.peek_tok2.kind != .key_mut
-			&& p.peek_tok3.kind != .key_in
+			&& p.peek_token(3).kind != .key_in
 		if p.peek_tok.kind in [.assign, .decl_assign] || is_multi {
 			init = p.assign_stmt()
 			has_init = true

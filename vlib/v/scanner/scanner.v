@@ -140,11 +140,9 @@ pub fn new_scanner(text string, comments_mode CommentsMode, pref &pref.Preferenc
 }
 
 fn (mut s Scanner) init_scanner() {
-	if s.comments_mode != .parse_comments {
-		util.get_timers().measure_pause('PARSE')
-		s.scan_all_tokens_in_buffer(s.comments_mode)
-		util.get_timers().measure_resume('PARSE')
-	}
+	util.get_timers().measure_pause('PARSE')
+	s.scan_all_tokens_in_buffer(s.comments_mode)
+	util.get_timers().measure_resume('PARSE')
 }
 
 [unsafe]
@@ -544,7 +542,7 @@ pub fn (mut s Scanner) scan_all_tokens_in_buffer(mode CommentsMode) {
 pub fn (mut s Scanner) scan_remaining_text() {
 	for {
 		t := s.text_scan()
-		if t.kind == .comment && s.comments_mode == .skip_comments {
+		if s.comments_mode == .skip_comments && t.kind == .comment {
 			continue
 		}
 		s.all_tokens << t
@@ -555,9 +553,6 @@ pub fn (mut s Scanner) scan_remaining_text() {
 }
 
 pub fn (mut s Scanner) scan() token.Token {
-	if s.comments_mode == .parse_comments {
-		return s.text_scan()
-	}
 	return s.buffer_scan()
 }
 

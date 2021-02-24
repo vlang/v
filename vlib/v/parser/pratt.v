@@ -149,7 +149,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			if p.expecting_type {
 				// parse json.decode type (`json.decode([]User, s)`)
 				node = p.name_expr()
-			} else if p.is_amp && p.peek_tok.kind == .rsbr && p.peek_tok3.kind != .lcbr {
+			} else if p.is_amp && p.peek_tok.kind == .rsbr && p.peek_token(3).kind != .lcbr {
 				pos := p.tok.position()
 				typ := p.parse_type().to_ptr()
 				p.check(.lpar)
