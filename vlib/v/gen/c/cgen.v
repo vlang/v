@@ -4070,7 +4070,10 @@ fn (mut g Gen) concat_expr(node ast.ConcatExpr) {
 }
 
 fn (mut g Gen) need_tmp_var_in_if(node ast.IfExpr) bool {
-	if node.is_expr && node.typ != table.void_type && node.typ != 0 && g.inside_ternary == 0 {
+	if node.is_expr && g.inside_ternary == 0 {
+		if g.is_autofree {
+			return true
+		}
 		for branch in node.branches {
 			if branch.stmts.len == 1 {
 				if branch.stmts[0] is ast.ExprStmt {
