@@ -1091,74 +1091,21 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			prev_branch_parent_pos := g.branch_parent_pos
 			g.branch_parent_pos = node.pos.pos
 			g.write_v_source_line_info(node.pos)
-			g.is_vlines_enabled = false
-			if node.label.len > 0 {
-				g.writeln('$node.label:')
-			}
-			g.write('for (')
-			if !node.has_init {
-				g.write('; ')
-			} else {
-				g.stmt(node.init)
-				// Remove excess return and add space
-				if g.out.last_n(1) == '\n' {
-					g.out.go_back(1)
-					g.empty_line = false
-					g.write(' ')
-				}
-			}
-			if node.has_cond {
-				g.expr(node.cond)
-			}
-			g.write('; ')
-			if node.has_inc {
-				g.stmt(node.inc)
-			}
-			g.writeln(') {')
-			g.is_vlines_enabled = true
-			g.stmts(node.stmts)
-			if node.label.len > 0 {
-				g.writeln('${node.label}__continue: {}')
-			}
-			g.writeln('}')
-			if node.label.len > 0 {
-				g.writeln('${node.label}__break: {}')
-			}
+			g.for_c_stmt(node)
 			g.branch_parent_pos = prev_branch_parent_pos
 		}
 		ast.ForInStmt {
 			prev_branch_parent_pos := g.branch_parent_pos
 			g.branch_parent_pos = node.pos.pos
 			g.write_v_source_line_info(node.pos)
-			g.for_in(node)
+			g.for_in_stmt(node)
 			g.branch_parent_pos = prev_branch_parent_pos
 		}
 		ast.ForStmt {
 			prev_branch_parent_pos := g.branch_parent_pos
 			g.branch_parent_pos = node.pos.pos
 			g.write_v_source_line_info(node.pos)
-			g.is_vlines_enabled = false
-			if node.label.len > 0 {
-				g.writeln('$node.label:')
-			}
-			g.writeln('for (;;) {')
-			if !node.is_inf {
-				g.indent++
-				g.stmt_path_pos << g.out.len
-				g.write('if (!(')
-				g.expr(node.cond)
-				g.writeln(')) break;')
-				g.indent--
-			}
-			g.is_vlines_enabled = true
-			g.stmts(node.stmts)
-			if node.label.len > 0 {
-				g.writeln('\t${node.label}__continue: {}')
-			}
-			g.writeln('}')
-			if node.label.len > 0 {
-				g.writeln('${node.label}__break: {}')
-			}
+			g.for_stmt(node)
 			g.branch_parent_pos = prev_branch_parent_pos
 		}
 		ast.GlobalDecl {
@@ -1286,7 +1233,108 @@ fn (mut g Gen) write_defer_stmts() {
 	}
 }
 
-fn (mut g Gen) for_in(it ast.ForInStmt) {
+fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
+	if node.is_multi {
+		g.is_vlines_enabled = false
+		if node.label.len > 0 {
+			g.writeln('$node.label:')
+		}
+		g.writeln('{')
+		g.indent++
+		if node.has_init {
+			g.stmt(node.init)
+		}
+		g.writeln('bool _is_first = true;')
+		g.writeln('while (true) {')
+		g.writeln('\tif (_is_first) {')
+		g.writeln('\t\t_is_first = false;')
+		g.writeln('\t} else {')
+		if node.has_inc {
+			g.indent++
+			g.stmt(node.inc)
+			g.writeln(';')
+			g.indent--
+		}
+		g.writeln('}')
+		if node.has_cond {
+			g.write('if (!(')
+			g.expr(node.cond)
+			g.writeln(')) break;')
+		}
+		g.is_vlines_enabled = true
+		g.stmts(node.stmts)
+		if node.label.len > 0 {
+			g.writeln('${node.label}__continue: {}')
+		}
+		g.writeln('}')
+		g.indent--
+		g.writeln('}')
+		if node.label.len > 0 {
+			g.writeln('${node.label}__break: {}')
+		}
+	} else {
+		g.is_vlines_enabled = false
+		if node.label.len > 0 {
+			g.writeln('$node.label:')
+		}
+		g.write('for (')
+		if !node.has_init {
+			g.write('; ')
+		} else {
+			g.stmt(node.init)
+			// Remove excess return and add space
+			if g.out.last_n(1) == '\n' {
+				g.out.go_back(1)
+				g.empty_line = false
+				g.write(' ')
+			}
+		}
+		if node.has_cond {
+			g.expr(node.cond)
+		}
+		g.write('; ')
+		if node.has_inc {
+			g.stmt(node.inc)
+		}
+		g.writeln(') {')
+		g.is_vlines_enabled = true
+		g.stmts(node.stmts)
+		if node.label.len > 0 {
+			g.writeln('${node.label}__continue: {}')
+		}
+		g.writeln('}')
+		if node.label.len > 0 {
+			g.writeln('${node.label}__break: {}')
+		}
+	}
+}
+
+fn (mut g Gen) for_stmt(node ast.ForStmt) {
+	g.is_vlines_enabled = false
+	if node.label.len > 0 {
+		g.writeln('$node.label:')
+	}
+	g.writeln('for (;;) {')
+	if !node.is_inf {
+		g.indent++
+		g.stmt_path_pos << g.out.len
+		g.write('if (!(')
+		g.expr(node.cond)
+		g.writeln(')) break;')
+		g.indent--
+	}
+	g.is_vlines_enabled = true
+	g.stmts(node.stmts)
+	if node.label.len > 0 {
+		g.writeln('\t${node.label}__continue: {}')
+	}
+	g.writeln('}')
+	if node.label.len > 0 {
+		g.writeln('${node.label}__break: {}')
+	}
+}
+
+fn (mut g Gen) for_in_stmt(it ast.ForInStmt) {
 	if it.label.len > 0 {
 		g.writeln('\t$it.label: {}')
 	}
@@ -2191,7 +2239,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		}
 		g.right_is_opt = false
 		g.is_assign_rhs = false
-		if g.inside_ternary == 0 && !assign_stmt.is_simple {
+		if g.inside_ternary == 0 && (assign_stmt.left.len > 1 || !assign_stmt.is_simple) {
 			g.writeln(';')
 		}
 	}
