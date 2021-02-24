@@ -1,9 +1,8 @@
 import os
 
-const (
-	vexe  = os.getenv('VEXE')
-	vroot = os.dir(vexe)
-)
+const vexe = os.getenv('VEXE')
+
+const vroot = os.dir(vexe)
 
 fn test_vexe_exists() {
 	assert vexe.len > 0
@@ -11,18 +10,14 @@ fn test_vexe_exists() {
 }
 
 fn test_v_profile_works() {
-	res := os.exec('"$vexe" -profile - run vlib/v/tests/profile/calling_http_get.v') or {
-		panic(err)
-	}
+	os.chdir(vroot)
+	program_source := os.join_path(vroot, 'vlib/v/tests/profile/calling_http_get.v')
+	res := os.exec('"$vexe" -profile - run $program_source') or { exit(1) }
 	// eprintln('res: $res')
 	assert res.exit_code == 0
 	assert res.output.len > 0
-	// assert res.output.starts_with('net: socket error')
-	// assert res.output.contains(' main__main')
-	// assert res.output.contains(' os__init_os_args')
-	// TODO: fix this. not sure whats happening here
-	if !res.output.starts_with('net: socket error') {
-		assert res.output.contains(' main__main')
-		assert res.output.contains(' os__init_os_args')
-	}
+	assert res.output.contains(' os__init_os_args')
+	assert res.output.contains(' main__main')
+	assert res.output.contains(' println')
+	assert res.output.contains(' net__http__get')
 }

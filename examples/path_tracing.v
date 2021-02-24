@@ -474,8 +474,11 @@ fn radiance(r Ray, depthi int, scene_id int) Vec {
 	mut tmp := Vec{}
 	if depth > 2 {
 		// Russian roulette
-		tmp = if rand_f64() < pp { radiance(refl_ray, depth, scene_id).mult_s(rp) } else { radiance(Ray{x, tdir},
-				depth, scene_id).mult_s(tp) }
+		tmp = if rand_f64() < pp {
+			radiance(refl_ray, depth, scene_id).mult_s(rp)
+		} else {
+			radiance(Ray{x, tdir}, depth, scene_id).mult_s(tp)
+		}
 	} else {
 		tmp = (radiance(refl_ray, depth, scene_id).mult_s(re)) +
 			(radiance(Ray{x, tdir}, depth, scene_id).mult_s(tr))

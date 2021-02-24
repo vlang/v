@@ -145,9 +145,9 @@ fn (mut c Client) send_auth() ? {
 	}
 	mut sb := strings.new_builder(100)
 	sb.write_b(0)
-	sb.write(c.username)
+	sb.write_string(c.username)
 	sb.write_b(0)
-	sb.write(c.password)
+	sb.write_string(c.password)
 	a := sb.str()
 	auth := 'AUTH PLAIN ${base64.encode(a)}\r\n'
 	c.send_str(auth) ?
@@ -173,18 +173,18 @@ fn (mut c Client) send_body(cfg Mail) ? {
 	is_html := cfg.body_type == .html
 	date := cfg.date.utc_string().trim_right(' UTC') // TODO
 	mut sb := strings.new_builder(200)
-	sb.write('From: $cfg.from\r\n')
-	sb.write('To: <$cfg.to>\r\n')
-	sb.write('Cc: <$cfg.cc>\r\n')
-	sb.write('Bcc: <$cfg.bcc>\r\n')
-	sb.write('Date: $date\r\n')
-	sb.write('Subject: $cfg.subject\r\n')
+	sb.write_string('From: $cfg.from\r\n')
+	sb.write_string('To: <$cfg.to>\r\n')
+	sb.write_string('Cc: <$cfg.cc>\r\n')
+	sb.write_string('Bcc: <$cfg.bcc>\r\n')
+	sb.write_string('Date: $date\r\n')
+	sb.write_string('Subject: $cfg.subject\r\n')
 	if is_html {
-		sb.write('Content-Type: text/html; charset=ISO-8859-1')
+		sb.write_string('Content-Type: text/html; charset=ISO-8859-1')
 	}
-	sb.write('\r\n\r\n')
-	sb.write(cfg.body)
-	sb.write('\r\n.\r\n')
+	sb.write_string('\r\n\r\n')
+	sb.write_string(cfg.body)
+	sb.write_string('\r\n.\r\n')
 	c.send_str(sb.str()) ?
 	c.expect_reply(.action_ok) ?
 }

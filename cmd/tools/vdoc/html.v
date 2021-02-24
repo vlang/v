@@ -106,22 +106,22 @@ struct SearchResult {
 fn (vd VDoc) render_search_index(out Output) {
 	mut js_search_index := strings.new_builder(200)
 	mut js_search_data := strings.new_builder(200)
-	js_search_index.write('var searchModuleIndex = [')
-	js_search_data.write('var searchModuleData = [')
+	js_search_index.write_string('var searchModuleIndex = [')
+	js_search_data.write_string('var searchModuleData = [')
 	for i, title in vd.search_module_index {
 		data := vd.search_module_data[i]
-		js_search_index.write('"$title",')
-		js_search_data.write('["$data.description","$data.link"],')
+		js_search_index.write_string('"$title",')
+		js_search_data.write_string('["$data.description","$data.link"],')
 	}
 	js_search_index.writeln('];')
-	js_search_index.write('var searchIndex = [')
+	js_search_index.write_string('var searchIndex = [')
 	js_search_data.writeln('];')
-	js_search_data.write('var searchData = [')
+	js_search_data.write_string('var searchData = [')
 	for i, title in vd.search_index {
 		data := vd.search_data[i]
-		js_search_index.write('"$title",')
+		js_search_index.write_string('"$title",')
 		// array instead of object to reduce file size
-		js_search_data.write('["$data.badge","$data.description","$data.link","$data.prefix"],')
+		js_search_data.write_string('["$data.badge","$data.description","$data.link","$data.prefix"],')
 	}
 	js_search_index.writeln('];')
 	js_search_data.writeln('];')
@@ -221,12 +221,13 @@ fn (vd VDoc) write_content(cn &doc.DocNode, d &doc.Doc, mut hw strings.Builder) 
 	}
 	src_link := get_src_link(vd.manifest.repo_url, file_path_name, cn.pos.line)
 	if cn.content.len != 0 || (cn.name == 'Constants') {
-		hw.write(doc_node_html(cn, src_link, false, cfg.include_examples, d.table))
+		hw.write_string(doc_node_html(cn, src_link, false, cfg.include_examples, d.table))
 	}
 	for child in cn.children {
 		child_file_path_name := child.file_path.replace('$base_dir/', '')
 		child_src_link := get_src_link(vd.manifest.repo_url, child_file_path_name, child.pos.line)
-		hw.write(doc_node_html(child, child_src_link, false, cfg.include_examples, d.table))
+		hw.write_string(doc_node_html(child, child_src_link, false, cfg.include_examples,
+			d.table))
 	}
 }
 
@@ -271,10 +272,10 @@ fn (vd VDoc) gen_html(d doc.Doc) string {
 			submodules := vd.docs.filter(it.head.name.starts_with(submod_prefix + '.'))
 			dropdown := if submodules.len > 0 { vd.assets['arrow_icon'] } else { '' }
 			active_class := if dc.head.name == d.head.name { ' active' } else { '' }
-			modules_toc.write('<li class="open$active_class"><div class="menu-row">$dropdown<a href="$href_name">$submod_prefix</a></div>')
+			modules_toc.write_string('<li class="open$active_class"><div class="menu-row">$dropdown<a href="$href_name">$submod_prefix</a></div>')
 			for j, cdoc in submodules {
 				if j == 0 {
-					modules_toc.write('<ul>')
+					modules_toc.write_string('<ul>')
 				}
 				submod_name := cdoc.head.name.all_after(submod_prefix + '.')
 				sub_selected_classes := if cdoc.head.name == d.head.name {
@@ -282,21 +283,17 @@ fn (vd VDoc) gen_html(d doc.Doc) string {
 				} else {
 					''
 				}
-				modules_toc.write('<li$sub_selected_classes><a href="./${cdoc.head.name}.html">$submod_name</a></li>')
+				modules_toc.write_string('<li$sub_selected_classes><a href="./${cdoc.head.name}.html">$submod_name</a></li>')
 				if j == submodules.len - 1 {
-					modules_toc.write('</ul>')
+					modules_toc.write_string('</ul>')
 				}
 			}
-			modules_toc.write('</li>')
+			modules_toc.write_string('</li>')
 		}
 	}
 	modules_toc_str := modules_toc.str()
 	symbols_toc_str := symbols_toc.str()
-	unsafe {
-		modules_toc.free()
-		symbols_toc.free()
-	}
-	return html_content.replace('{{ title }}', d.head.name).replace('{{ head_name }}',
+	result := html_content.replace('{{ title }}', d.head.name).replace('{{ head_name }}',
 		header_name).replace('{{ version }}', version).replace('{{ light_icon }}', vd.assets['light_icon']).replace('{{ dark_icon }}',
 		vd.assets['dark_icon']).replace('{{ menu_icon }}', vd.assets['menu_icon']).replace('{{ head_assets }}',
 		if cfg.inline_assets {
@@ -322,6 +319,7 @@ fn (vd VDoc) gen_html(d doc.Doc) string {
 	} else {
 		'<script src="' + vd.assets['doc_js'] + '"></script>'
 	})
+	return result
 }
 
 fn get_src_link(repo_url string, file_name string, line_nr int) string {
@@ -404,7 +402,7 @@ fn html_highlight(code string, tb &table.Table) string {
 					}
 				}
 			}
-			buf.write(highlight_code(tok, tok_typ))
+			buf.write_string(highlight_code(tok, tok_typ))
 			if next_tok.kind != .eof {
 				i = tok.pos + tok.len
 				tok = next_tok
@@ -445,14 +443,14 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 	dnw.writeln('${tabs[1]}<section id="$node_id" class="doc-node$node_class">')
 	if dn.name.len > 0 {
 		if dn.kind == .const_group {
-			dnw.write('${tabs[2]}<div class="title"><$head_tag>$sym_name$hash_link</$head_tag>')
+			dnw.write_string('${tabs[2]}<div class="title"><$head_tag>$sym_name$hash_link</$head_tag>')
 		} else {
-			dnw.write('${tabs[2]}<div class="title"><$head_tag>$dn.kind $sym_name$hash_link</$head_tag>')
+			dnw.write_string('${tabs[2]}<div class="title"><$head_tag>$dn.kind $sym_name$hash_link</$head_tag>')
 		}
 		if link.len != 0 {
-			dnw.write('<a class="link" rel="noreferrer" target="_blank" href="$link">$link_svg</a>')
+			dnw.write_string('<a class="link" rel="noreferrer" target="_blank" href="$link">$link_svg</a>')
 		}
-		dnw.write('</div>')
+		dnw.write_string('</div>')
 	}
 	if !head && dn.content.len > 0 {
 		dnw.writeln('<pre class="signature"><code>$hlighted_code</code></pre>')
@@ -472,9 +470,6 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 	}
 	dnw.writeln('</section>')
 	dnw_str := dnw.str()
-	defer {
-		unsafe { dnw.free() }
-	}
 	return dnw_str
 }
 
@@ -498,10 +493,9 @@ fn js_compress(str string) string {
 		for i in 0 .. rules.len - 1 {
 			trimmed = trimmed.replace(rules[i], clean[i])
 		}
-		js.write(trimmed)
+		js.write_string(trimmed)
 	}
 	js_str := js.str()
-	js.free()
 	return js_str
 }
 */
@@ -518,9 +512,9 @@ fn write_toc(dn doc.DocNode, mut toc strings.Builder) {
 		if dn.comments.len == 0 || (dn.comments.len > 0 && dn.comments[0].text.len == 0) {
 			return
 		}
-		toc.write('<li class="open"><a href="#readme_$toc_slug">README</a>')
+		toc.write_string('<li class="open"><a href="#readme_$toc_slug">README</a>')
 	} else if dn.name != 'Constants' {
-		toc.write('<li class="open"><a href="#$toc_slug">$dn.kind $dn.name</a>')
+		toc.write_string('<li class="open"><a href="#$toc_slug">$dn.kind $dn.name</a>')
 		toc.writeln('        <ul>')
 		for child in dn.children {
 			cname := dn.name + '.' + child.name
@@ -528,7 +522,7 @@ fn write_toc(dn doc.DocNode, mut toc strings.Builder) {
 		}
 		toc.writeln('</ul>')
 	} else {
-		toc.write('<li class="open"><a href="#$toc_slug">$dn.name</a>')
+		toc.write_string('<li class="open"><a href="#$toc_slug">$dn.name</a>')
 	}
 	toc.writeln('</li>')
 }

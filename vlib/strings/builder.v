@@ -37,9 +37,16 @@ pub fn (mut b Builder) write_b(data byte) {
 	b.len++
 }
 
+// write implements the Writer interface
+pub fn (mut b Builder) write(data []byte) ?int {
+	b.buf << data
+	b.len += data.len
+	return data.len
+}
+
 // write appends the string `s` to the buffer
 [inline]
-pub fn (mut b Builder) write(s string) {
+pub fn (mut b Builder) write_string(s string) {
 	if s == '' {
 		return
 	}

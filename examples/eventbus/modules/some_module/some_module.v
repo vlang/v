@@ -7,12 +7,12 @@ const (
 )
 
 pub struct Work {
-	pub:
+pub:
 	hours int
 }
 
-pub struct Error {
-	pub:
+pub struct MyError {
+pub:
 	message string
 }
 
@@ -21,7 +21,7 @@ pub fn do_work(){
 	for i in 0..20 {
 		println("working...")
 		if i == 15 {
-			error := &Error{"There was an error."}
+			error := &MyError{"There was an error."}
 			eb.publish("error", work, error)
 			eb.publish("error", work, error)
 			return

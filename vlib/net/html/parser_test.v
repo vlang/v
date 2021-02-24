@@ -23,11 +23,11 @@ fn test_split_parse() {
 fn test_giant_string() {
 	mut temp_html := strings.new_builder(200)
 	mut parser := Parser{}
-	temp_html.write('<!doctype html><html><head><title>Giant String</title></head><body>')
+	temp_html.write_string('<!doctype html><html><head><title>Giant String</title></head><body>')
 	for counter := 0; counter < 2000; counter++ {
-		temp_html.write("<div id='name_$counter' class='several-$counter'>Look at $counter</div>")
+		temp_html.write_string("<div id='name_$counter' class='several-$counter'>Look at $counter</div>")
 	}
-	temp_html.write('</body></html>')
+	temp_html.write_string('</body></html>')
 	parser.parse_html(temp_html.str())
 	assert parser.tags.len == 4009
 }

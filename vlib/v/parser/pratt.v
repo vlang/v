@@ -45,6 +45,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 		}
 		.comment {
 			node = p.comment()
+			return node
 		}
 		.dot {
 			// .enum_val
@@ -83,6 +84,14 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 				node = p.parse_number_literal()
 			} else {
 				node = p.prefix_expr()
+			}
+		}
+		.key_go {
+			stmt := p.stmt(false)
+			go_stmt := stmt as ast.GoStmt
+			node = ast.GoExpr{
+				go_stmt: go_stmt
+				pos: go_stmt.pos
 			}
 		}
 		.key_true, .key_false {

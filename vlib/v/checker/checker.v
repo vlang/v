@@ -29,7 +29,7 @@ const (
 	valid_comp_if_platforms = ['amd64', 'aarch64', 'x64', 'x32', 'little_endian', 'big_endian']
 	valid_comp_if_other     = ['js', 'debug', 'test', 'glibc', 'prealloc', 'no_bounds_checking']
 	array_builtin_methods   = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort',
-		'contains', 'index']
+		'contains', 'index', 'wait']
 )
 
 pub struct Checker {
@@ -1306,10 +1306,11 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		is_filter_map := method_name in ['filter', 'map']
 		is_sort := method_name == 'sort'
 		is_slice := method_name == 'slice'
+		is_wait := method_name == 'wait'
 		if is_slice && !c.is_builtin_mod {
 			c.error('.slice() is a private method, use `x[start..end]` instead', call_expr.pos)
 		}
-		if is_filter_map || is_sort {
+		if is_filter_map || is_sort || is_wait {
 			array_info := left_type_sym.info as table.Array
 			if is_filter_map {
 				// position of `it` doesn't matter
@@ -1328,6 +1329,19 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 				}
 			}
 			elem_typ = array_info.elem_type
+			if is_wait {
+				elem_sym := c.table.get_type_symbol(elem_typ)
+				if elem_sym.kind == .thread {
+					if call_expr.args.len != 0 {
+						c.error('wait() does not have any arguments', call_expr.args[0].pos)
+					}
+					thread_ret_type := elem_sym.thread_info().return_type
+					call_expr.return_type = c.table.find_or_register_array(thread_ret_type)
+				} else {
+					c.error('`$left_type_sym.name` has no method `wait()` (only thread handles and arrays of them have)',
+						call_expr.left.position())
+				}
+			}
 		}
 		// map/filter are supposed to have 1 arg only
 		mut arg_type := left_type
@@ -1409,8 +1423,8 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		if !c.check_types(arg_type, info.elem_type) && !c.check_types(left_type, arg_type) {
 			c.error('cannot $method_name `$arg_sym.name` to `$left_type_sym.name`', arg_expr.position())
 		}
-	} else if left_type_sym.kind == .gohandle && method_name == 'wait' {
-		info := left_type_sym.info as table.GoHandle
+	} else if left_type_sym.kind == .thread && method_name == 'wait' {
+		info := left_type_sym.info as table.Thread
 		if call_expr.args.len > 0 {
 			c.error('wait() does not have any arguments', call_expr.args[0].pos)
 		}
@@ -1907,6 +1921,11 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		} else {
 			f.params[i]
 		}
+		if f.is_variadic && call_arg.expr is ast.ArrayDecompose {
+			if i > f.params.len - 1 {
+				c.error('too many arguments in call to `$f.name`', call_expr.pos)
+			}
+		}
 		c.expected_type = arg.typ
 		typ := c.expr(call_arg.expr)
 		call_expr.args[i].typ = typ
@@ -2336,7 +2355,8 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 	}
 	return_stmt.types = got_types
 	// allow `none` & `error (Option)` return types for function that returns optional
-	if exp_is_optional && got_types[0].idx() in [table.none_type_idx, c.table.type_idxs['Option']] {
+	if exp_is_optional
+		&& got_types[0].idx() in [table.none_type_idx, c.table.type_idxs['Option'], c.table.type_idxs['Option2']] {
 		return
 	}
 	if expected_types.len > 0 && expected_types.len != got_types.len {
@@ -3611,7 +3631,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		}
 		ast.GoExpr {
 			ret_type := c.call_expr(mut node.go_stmt.call_expr)
-			return c.table.find_or_register_gohandle(ret_type)
+			return c.table.find_or_register_thread(ret_type)
 		}
 		ast.ChanInit {
 			return c.chan_init(mut node)
@@ -4407,18 +4427,18 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym table.TypeS
 				if expr_types.len > 1 {
 					mut agg_name := strings.new_builder(20)
 					mut agg_cname := strings.new_builder(20)
-					agg_name.write('(')
+					agg_name.write_string('(')
 					for i, expr in expr_types {
 						if i > 0 {
-							agg_name.write(' | ')
-							agg_cname.write('___')
+							agg_name.write_string(' | ')
+							agg_cname.write_string('___')
 						}
 						type_str := c.table.type_to_str(expr.typ)
 						name := if c.is_builtin_mod { type_str } else { '${c.mod}.$type_str' }
-						agg_name.write(name)
-						agg_cname.write(util.no_dots(name))
+						agg_name.write_string(name)
+						agg_cname.write_string(util.no_dots(name))
 					}
-					agg_name.write(')')
+					agg_name.write_string(')')
 					name := agg_name.str()
 					existing_idx := c.table.type_idxs[name]
 					if existing_idx > 0 {

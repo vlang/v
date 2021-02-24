@@ -8,9 +8,9 @@ import strings
 fn write_value(v Any, i int, len int, mut wr strings.Builder) {
 	str := v.str()
 	if v is string {
-		wr.write('"$str"')
+		wr.write_string('"$str"')
 	} else {
-		wr.write(str)
+		wr.write_string(str)
 	}
 	if i >= len - 1 {
 		return
@@ -24,7 +24,7 @@ pub fn (flds map[string]Any) str() string {
 	wr.write_b(`{`)
 	mut i := 0
 	for k, v in flds {
-		wr.write('"$k":')
+		wr.write_string('"$k":')
 		write_value(v, i, flds.len, mut wr)
 		i++
 	}

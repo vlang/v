@@ -155,7 +155,7 @@ fn (mut g Gen) string_inter_literal_sb_optimized(call_expr ast.CallExpr) {
 		// break
 		// continue
 		// }
-		g.write('strings__Builder_write(&')
+		g.write('strings__Builder_write_string(&')
 		g.expr(call_expr.left)
 		g.write(', _SLIT("')
 		g.write(escaped_val)
@@ -170,7 +170,7 @@ fn (mut g Gen) string_inter_literal_sb_optimized(call_expr ast.CallExpr) {
 		if is_nl && i == node.exprs.len - 1 {
 			g.write('strings__Builder_writeln(&')
 		} else {
-			g.write('strings__Builder_write(&')
+			g.write('strings__Builder_write_string(&')
 		}
 		g.expr(call_expr.left)
 		g.write(', ')

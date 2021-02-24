@@ -23,7 +23,7 @@ pub fn (mut b Builder) write_b(data byte) {
 	b.len++
 }
 
-pub fn (mut b Builder) write(s string) {
+pub fn (mut b Builder) write_string(s string) {
 	b.buf.push_many(s.str, s.len)
 	// b.buf << []byte(s)  // TODO
 	b.len += s.len

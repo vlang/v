@@ -148,12 +148,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 	gfx.setup(&desc)
 	sgl_desc := C.sgl_desc_t{}
 	sgl.setup(&sgl_desc)
-	g.scale = sapp.dpi_scale()
-	// NB: on older X11, `Xft.dpi` from ~/.Xresources, that sokol uses,
-	// may not be set which leads to sapp.dpi_scale reporting incorrectly 0.0
-	if g.scale < 0.1 {
-		g.scale = 1.0
-	}
+	g.scale = dpi_scale()
 	// is_high_dpi := sapp.high_dpi()
 	// fb_w := sapp.width()
 	// fb_h := sapp.height()
@@ -166,7 +161,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 		g.ft = new_ft(
 			font_path: g.config.font_path
 			custom_bold_font_path: g.config.custom_bold_font_path
-			scale: sapp.dpi_scale()
+			scale: dpi_scale()
 		) or { panic(err) }
 		// println('FT took ${time.ticks()-t} ms')
 		g.font_inited = true
@@ -761,12 +756,21 @@ pub fn screen_size() Size {
 
 // window_size returns the `Size` of the active window
 pub fn window_size() Size {
-	s := sapp.dpi_scale()
+	s := dpi_scale()
 	return Size{int(sapp.width() / s), int(sapp.height() / s)}
 }
 
 pub fn dpi_scale() f32 {
-	return sapp.dpi_scale()
+	mut s := sapp.dpi_scale()
+	$if android {
+		s *= android_dpi_scale()
+	}
+	// NB: on older X11, `Xft.dpi` from ~/.Xresources, that sokol uses,
+	// may not be set which leads to sapp.dpi_scale reporting incorrectly 0.0
+	if s < 0.1 {
+		s = 1.
+	}
+	return s
 }
 
 pub fn high_dpi() bool {

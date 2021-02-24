@@ -490,17 +490,17 @@ pub fn (a &array) free() {
 // => '["a", "b", "c"]'.
 pub fn (a []string) str() string {
 	mut sb := strings.new_builder(a.len * 3)
-	sb.write('[')
+	sb.write_string('[')
 	for i in 0 .. a.len {
 		val := a[i]
-		sb.write("'")
-		sb.write(val)
-		sb.write("'")
+		sb.write_string("'")
+		sb.write_string(val)
+		sb.write_string("'")
 		if i < a.len - 1 {
-			sb.write(', ')
+			sb.write_string(', ')
 		}
 	}
-	sb.write(']')
+	sb.write_string(']')
 	return sb.str()
 }
 

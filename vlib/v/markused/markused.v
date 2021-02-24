@@ -22,6 +22,7 @@ pub fn mark_used(mut the_table table.Table, pref &pref.Preferences, ast_files []
 		'__new_array_with_default',
 		'__new_array_with_array_default',
 		'new_array_from_c_array',
+		'v_fixed_index',
 		'memdup',
 		'vstrlen',
 		'__as_cast',

@@ -766,6 +766,7 @@ pub:
 	has_cond bool
 	inc      Stmt // i++; i += 2
 	has_inc  bool
+	is_multi bool // for a,b := 0,1; a < 10; a,b = a+b, a {...}
 	stmts    []Stmt
 	pos      token.Position
 pub mut:
@@ -979,9 +980,11 @@ pub mut:
 
 pub struct MapInit {
 pub:
-	pos  token.Position
-	keys []Expr
-	vals []Expr
+	pos       token.Position
+	keys      []Expr
+	vals      []Expr
+	comments  [][]Comment // comments after key-value pairs
+	pre_cmnts []Comment   // comments before the first key-value pair
 pub mut:
 	typ        table.Type
 	key_type   table.Type

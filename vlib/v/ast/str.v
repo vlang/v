@@ -22,7 +22,7 @@ pub fn (node &FnDecl) modname() string {
 pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string, m2a map[string]string) string {
 	mut f := strings.new_builder(30)
 	if node.is_pub {
-		f.write('pub ')
+		f.write_string('pub ')
 	}
 	mut receiver := ''
 	if node.is_method {
@@ -56,22 +56,22 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string, m2a map[string]s
 	// 		name = 'JS.$name'
 	// 	}
 	// }
-	f.write('fn $receiver$name')
+	f.write_string('fn $receiver$name')
 	if name in ['+', '-', '*', '/', '%', '<', '>', '==', '!=', '>=', '<='] {
-		f.write(' ')
+		f.write_string(' ')
 	}
 	if node.generic_params.len > 0 {
-		f.write('<')
+		f.write_string('<')
 		for i, param in node.generic_params {
 			is_last := i == node.generic_params.len - 1
-			f.write(param.name)
+			f.write_string(param.name)
 			if !is_last {
-				f.write(', ')
+				f.write_string(', ')
 			}
 		}
-		f.write('>')
+		f.write_string('>')
 	}
-	f.write('(')
+	f.write_string('(')
 	for i, arg in node.params {
 		// skip receiver
 		// if (node.is_method || node.is_interface) && i == 0 {
@@ -86,12 +86,12 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string, m2a map[string]s
 		should_add_type := true // is_last_arg || is_type_only || node.params[i + 1].typ != arg.typ ||
 		// (node.is_variadic && i == node.params.len - 2)
 		if arg.is_mut {
-			f.write(arg.typ.share().str() + ' ')
+			f.write_string(arg.typ.share().str() + ' ')
 		}
-		f.write(arg.name)
+		f.write_string(arg.name)
 		mut s := t.type_to_str(arg.typ.clear_flag(.shared_f))
 		if arg.is_mut {
-			// f.write(' mut')
+			// f.write_string(' mut')
 			if s.starts_with('&') {
 				s = s[1..]
 			}
@@ -102,24 +102,24 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string, m2a map[string]s
 		}
 		if should_add_type {
 			if !is_type_only {
-				f.write(' ')
+				f.write_string(' ')
 			}
 			if node.is_variadic && is_last_arg {
-				f.write('...')
+				f.write_string('...')
 			}
-			f.write(s)
+			f.write_string(s)
 		}
 		if !is_last_arg {
-			f.write(', ')
+			f.write_string(', ')
 		}
 	}
-	f.write(')')
+	f.write_string(')')
 	if node.return_type != table.void_type {
 		mut rs := util.no_cur_mod(t.type_to_str(node.return_type), cur_mod)
 		for mod, alias in m2a {
 			rs = rs.replace(mod, alias)
 		}
-		f.write(' ' + rs)
+		f.write_string(' ' + rs)
 	}
 	return f.str()
 }
@@ -255,7 +255,7 @@ pub fn (x Expr) str() string {
 				return '/* $lines.len lines comment */'
 			} else {
 				text := x.text.trim('\x01').trim_space()
-				return '// $text'
+				return '´// $text´'
 			}
 		}
 		ComptimeSelector {

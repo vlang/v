@@ -208,13 +208,13 @@ fn (mut g Gen) gen_map_equality_fn(left table.Type) string {
 		value_sym := g.table.get_type_symbol(value_typ)
 		func := value_sym.info as table.FnType
 		ret_styp := g.typ(func.func.return_type)
-		fn_builder.write('\t\t$ret_styp (*v) (')
+		fn_builder.write_string('\t\t$ret_styp (*v) (')
 		arg_len := func.func.params.len
 		for j, arg in func.func.params {
 			arg_styp := g.typ(arg.typ)
-			fn_builder.write('$arg_styp $arg.name')
+			fn_builder.write_string('$arg_styp $arg.name')
 			if j < arg_len - 1 {
-				fn_builder.write(', ')
+				fn_builder.write_string(', ')
 			}
 		}
 		fn_builder.writeln(') = *(voidptr*)map_get_1(&a, k, &(voidptr[]){ 0 });')

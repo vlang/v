@@ -160,7 +160,9 @@ fn (mut p Parser) map_init() ast.MapInit {
 	first_pos := p.prev_tok.position()
 	mut keys := []ast.Expr{}
 	mut vals := []ast.Expr{}
-	for p.tok.kind != .rcbr && p.tok.kind != .eof {
+	mut comments := [][]ast.Comment{}
+	pre_cmnts := p.eat_comments({})
+	for p.tok.kind !in [.rcbr, .eof] {
 		key := p.expr(0)
 		keys << key
 		p.check(.colon)
@@ -169,10 +171,13 @@ fn (mut p Parser) map_init() ast.MapInit {
 		if p.tok.kind == .comma {
 			p.next()
 		}
+		comments << p.eat_comments({})
 	}
 	return ast.MapInit{
 		keys: keys
 		vals: vals
 		pos: first_pos.extend_with_last_line(p.tok.position(), p.tok.line_nr)
+		comments: comments
+		pre_cmnts: pre_cmnts
 	}
 }
