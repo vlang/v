@@ -61,7 +61,6 @@ pub mut:
 	inside_const      bool
 	inside_anon_fn    bool
 	inside_ref_lit    bool
-	in_selector_expr  bool
 	skip_flags        bool // should `#flag` and `#include` be skipped
 	cur_generic_types []table.Type
 mut:
@@ -79,7 +78,10 @@ mut:
 	fn_scope                         &ast.Scope = voidptr(0)
 	used_fns                         map[string]bool // used_fns['println'] == true
 	main_fn_decl_node                ast.FnDecl
-	using_new_err_struct             bool // TODO: temporary, used for deprecations; remove soon
+	// TODO: these are here temporarily and used for deprecations; remove soon
+	using_new_err_struct bool
+	inside_selector_expr bool
+	inside_println_arg   bool
 }
 
 pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
@@ -1896,11 +1898,13 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	}
 	// println / eprintln can print anything
 	if fn_name in ['println', 'print', 'eprintln', 'eprint'] && call_expr.args.len > 0 {
+		c.inside_println_arg = true
 		c.expected_type = table.string_type
 		call_expr.args[0].typ = c.expr(call_expr.args[0].expr)
 		if call_expr.args[0].typ.has_flag(.shared_f) {
 			c.fail_if_not_rlocked(call_expr.args[0].expr, 'argument to print')
 		}
+		c.inside_println_arg = false
 		/*
 		// TODO: optimize `struct T{} fn (t &T) str() string {return 'abc'} mut a := []&T{} a << &T{} println(a[0])`
 		// It currently generates:
@@ -1916,6 +1920,15 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		*/
 		return f.return_type
 	}
+	// `return error(err)` -> `return err`
+	if fn_name == 'error' {
+		arg := call_expr.args[0]
+		call_expr.args[0].typ = c.expr(arg.expr)
+		if call_expr.args[0].typ == table.error_type {
+			c.warn('`error($arg)` can be shortened to just `$arg`', call_expr.pos)
+		}
+	}
+
 	// TODO: typ optimize.. this node can get processed more than once
 	if call_expr.expected_arg_types.len == 0 {
 		for param in f.params {
@@ -2225,10 +2238,10 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 		return table.string_type
 	}
 	//
-	old_selector_expr := c.in_selector_expr
-	c.in_selector_expr = true
+	old_selector_expr := c.inside_selector_expr
+	c.inside_selector_expr = true
 	typ := c.expr(selector_expr.expr)
-	c.in_selector_expr = old_selector_expr
+	c.inside_selector_expr = old_selector_expr
 	//
 	c.using_new_err_struct = using_new_err_struct_save
 	if typ == table.void_type_idx {
@@ -2376,7 +2389,7 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 	return_stmt.types = got_types
 	// allow `none` & `error (Option)` return types for function that returns optional
 	if exp_is_optional
-		&& got_types[0].idx() in [table.none_type_idx, c.table.type_idxs['Option'], c.table.type_idxs['Option2']] {
+		&& got_types[0].idx() in [table.none_type_idx, table.error_type_idx, c.table.type_idxs['Option'], c.table.type_idxs['Option2']] {
 		return
 	}
 	if expected_types.len > 0 && expected_types.len != got_types.len {
@@ -4164,12 +4177,10 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 						typ: typ
 						is_optional: is_optional
 					}
-					// TODO
-					// TODO
 					if typ == table.error_type && c.expected_type == table.string_type
-						&& !c.using_new_err_struct && !c.in_selector_expr
-						&& 'v.' !in c.file.mod.name && !c.is_builtin_mod {
-						// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ <- TODO: remove; this prevents a failure in the `performance-regressions` CI job
+						&& !c.using_new_err_struct && !c.inside_selector_expr
+						&& !c.inside_println_arg && 'v.' !in c.file.mod.name && !c.is_builtin_mod {
+						//                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ <- TODO: remove; this prevents a failure in the `performance-regressions` CI job
 						c.warn('string errors are deprecated; use `err.msg` instead',
 							ident.pos)
 					}

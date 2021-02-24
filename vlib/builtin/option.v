@@ -115,13 +115,6 @@ pub fn (o Option2) str() string {
 	return 'Option2{ err: "$o.err" }'
 }
 
-// opt_none is used internally when returning `none`.
-fn opt_none2() Option2 {
-	return Option2{
-		state: 1
-	}
-}
-
 // error returns an optional containing the error given in `message`.
 // `if ouch { return error('an error occurred') }`
 pub fn error2(message string) Option2 {

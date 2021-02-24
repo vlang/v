@@ -2691,7 +2691,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.map_init(node)
 		}
 		ast.None {
-			g.write('opt_none2()')
+			g.write('(Option2){.state = 1, .err = (Error){.msg = _SLIT(""), .code = 0,}}')
 		}
 		ast.OrExpr {
 			// this should never appear here
@@ -4616,12 +4616,25 @@ fn (mut g Gen) return_statement(node ast.Return) {
 	// handle promoting none/error/function returning 'Option'
 	if fn_return_is_optional {
 		optional_none := node.exprs[0] is ast.None
-		mut is_regular_option := g.typ(node.types[0]) in ['Option', 'Option2']
+		ftyp := g.typ(node.types[0])
+		mut is_regular_option := ftyp in ['Option', 'Option2']
 		if optional_none || is_regular_option {
 			tmp := g.new_tmp_var()
 			g.write('Option2 $tmp = ')
 			g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
 			g.writeln(';')
+			styp := g.typ(g.fn_decl.return_type)
+			err_obj := g.new_tmp_var()
+			g.writeln('$styp $err_obj;')
+			g.writeln('memcpy(&$err_obj, &$tmp, sizeof(Option2));')
+			g.writeln('return $err_obj;')
+			return
+		} else if node.types[0] == table.error_type_idx {
+			// foo() or { return err }
+						tmp := g.new_tmp_var()
+			g.write('Option2 $tmp = (Option2){.state=2, .err=')
+			g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
+			g.writeln('};')
 			styp := g.typ(g.fn_decl.return_type)
 			err_obj := g.new_tmp_var()
 			g.writeln('$styp $err_obj;')
@@ -5519,7 +5532,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 	cvar_name := c_name(var_name)
 	mr_styp := g.base_type(return_type)
 	is_none_ok := mr_styp == 'void'
-	g.writeln(';') // or')
+	g.writeln(';')
 	if is_none_ok {
 		g.writeln('if (${cvar_name}.state == 2) {')
 	} else {
