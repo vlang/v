@@ -1,6 +1,15 @@
 // test performance of []thread and wait
 // by Charles WANG, 2021
 // changrui@live.com
+/* Output:
+   Thread *3* is running... only time.wait(1000ms)
+   Thread *2* is running... only time.wait(1000ms)
+   Thread *1* is running... only time.wait(1000ms)
+   >>> Thread - Total time used: 1002ms.
+        Calculate `1+2+3+...+1000000000` ...
+   >>> Thread Sum  - Time used:  268ms, sum = 5e+017.          // 20% times used.
+   >>> `1+2+..max` - Time used: 1226ms, Sum = 5e+017.
+*/
 module main 
 
 import time
