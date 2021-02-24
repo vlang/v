@@ -32,6 +32,8 @@ mut:
 	peek_tok          token.Token
 	peek_tok2         token.Token
 	peek_tok3         token.Token
+	peek_tok4         token.Token
+	peek_tok5         token.Token
 	table             &table.Table
 	language          table.Language
 	inside_if         bool
@@ -331,11 +333,10 @@ pub fn (mut p Parser) init_parse_fns() {
 }
 
 pub fn (mut p Parser) read_first_token() {
-	// need to call next() 4 times to get peek token 1,2,3 and current token
-	p.next()
-	p.next()
-	p.next()
-	p.next()
+	// need to call next() 6 times to get peek token 1-5 and current token
+	for _ in 0 .. 6 {
+		p.next()
+	}
 }
 
 pub fn (mut p Parser) open_scope() {
@@ -401,7 +402,9 @@ fn (mut p Parser) next() {
 	p.tok = p.peek_tok
 	p.peek_tok = p.peek_tok2
 	p.peek_tok2 = p.peek_tok3
-	p.peek_tok3 = p.scanner.scan()
+	p.peek_tok3 = p.peek_tok4
+	p.peek_tok4 = p.peek_tok5
+	p.peek_tok5 = p.scanner.scan()
 	/*
 	if p.tok.kind==.comment {
 		p.comments << ast.Comment{text:p.tok.lit, line_nr:p.tok.line_nr}
@@ -1110,15 +1113,20 @@ fn (p &Parser) is_generic_call() bool {
 	} else {
 		false
 	}
+	kind2 := p.peek_tok2.kind
+	kind3 := p.peek_tok3.kind
+	kind4 := p.peek_tok4.kind
+	kind5 := p.peek_tok5.kind
 	// use heuristics to detect `func<T>()` from `var < expr`
-	return !lit0_is_capital && p.peek_tok.kind == .lt && (match p.peek_tok2.kind {
+	return !lit0_is_capital && p.peek_tok.kind == .lt && (match kind2 {
 		.name {
-			// maybe `f<int>`, `f<map[`, f<string,
-			(p.peek_tok2.kind == .name && p.peek_tok3.kind in [.gt, .comma]) || (p.peek_tok2.lit == 'map' && p.peek_tok3.kind == .lsbr)
+			// maybe `f<int>`, `f<map[`, `f<string, ` `f<mod.Type`
+
+			kind3 in [.gt, .comma] || (kind3 == .dot && kind4 == .name && kind5 in [.gt, .comma]) || (p.peek_tok2.lit == 'map' && kind3 == .lsbr)
 		}
 		.lsbr {
 			// maybe `f<[]T>`, assume `var < []` is invalid
-			p.peek_tok3.kind == .rsbr
+			kind3 == .rsbr
 		}
 		else {
 			false
