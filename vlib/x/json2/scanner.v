@@ -60,6 +60,7 @@ const (
 		34:  `"`
 		47:  `/`
 	}
+	exp_signs                 = [byte(`-`), `+`]
 )
 
 // move_pos proceeds to the next position.
@@ -112,6 +113,7 @@ fn (s Scanner) tokenize(lit []byte, kind TokenKind) Token {
 }
 
 // text_scan scans and returns a string token.
+[manualfree]
 fn (mut s Scanner) text_scan() Token {
 	mut has_closed := false
 	mut chrs := []byte{}
@@ -150,9 +152,10 @@ fn (mut s Scanner) text_scan() Token {
 						codepoint << s.text[s.pos]
 					}
 					if codepoint.len != 4 {
-						return s.error('unicode escape must be 4 characters')
+						return s.error('unicode escape must have 4 hex digits')
 					}
-					chrs << byte(strconv.parse_int(codepoint.bytestr(), 16, 0))
+					chrs << byte(strconv.parse_uint(codepoint.bytestr(), 16, 32))
+					unsafe { codepoint.free() }
 					continue
 				} else {
 					return s.error('incomplete unicode escape')
@@ -170,7 +173,7 @@ fn (mut s Scanner) text_scan() Token {
 	tok := s.tokenize(chrs, .str_)
 	s.move_pos()
 	if !has_closed {
-		return s.error('missing closing bracket in string')
+		return s.error('missing double quotes in string closing')
 	}
 	return tok
 }
@@ -206,20 +209,19 @@ fn (mut s Scanner) num_scan() Token {
 	if s.pos < s.text.len && (s.text[s.pos] == `e` || s.text[s.pos] == `E`) {
 		digits << s.text[s.pos]
 		s.move_pos_with_newlines()
-		if s.pos < s.text.len && s.text[s.pos] in [`-`, `+`] {
+		if s.pos < s.text.len && s.text[s.pos] in json2.exp_signs {
 			digits << s.text[s.pos]
 			s.move_pos_with_newlines()
 		}
-		mut exp_digits := []byte{}
+		mut exp_digits_count := 0
 		for s.pos < s.text.len && s.text[s.pos].is_digit() {
-			exp_digits << s.text[s.pos]
+			digits << s.text[s.pos]
+			exp_digits_count++
 			s.move_pos_with_newlines()
 		}
-		if exp_digits.len == 0 {
+		if exp_digits_count == 0 {
 			return s.error('invalid exponent')
 		}
-		digits << exp_digits
-		unsafe { exp_digits.free() }
 	}
 	kind := if is_fl { TokenKind.float } else { TokenKind.int_ }
 	return s.tokenize(digits, kind)

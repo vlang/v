@@ -55,7 +55,7 @@ fn test_str_invalid_unicode_escape_len() {
 	}
 	tok := sc.scan()
 	assert tok.kind == .error
-	assert tok.lit.bytestr() == 'unicode escape must be 4 characters'
+	assert tok.lit.bytestr() == 'unicode escape must have 4 hex digits'
 }
 
 fn test_str_invalid_uppercase_u() {
@@ -73,7 +73,7 @@ fn test_str_missing_closing_bracket() {
 	}
 	tok := sc.scan()
 	assert tok.kind == .error
-	assert tok.lit.bytestr() == 'missing closing bracket in string'
+	assert tok.lit.bytestr() == 'missing double quotes in string closing'
 }
 
 fn test_int() {
