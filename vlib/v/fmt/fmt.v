@@ -459,12 +459,10 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 }
 
 fn stmt_is_single_line(stmt ast.Stmt) bool {
-	match stmt {
-		ast.ExprStmt { return expr_is_single_line(stmt.expr) }
-		ast.Return { return true }
-		ast.AssignStmt { return true }
-		ast.BranchStmt { return true }
-		else { return false }
+	return match stmt {
+		ast.ExprStmt, ast.AssertStmt { expr_is_single_line(stmt.expr) }
+		ast.Return, ast.AssignStmt, ast.BranchStmt { true }
+		else { false }
 	}
 }
 
