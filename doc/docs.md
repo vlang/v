@@ -2566,28 +2566,24 @@ fn main() {
 }
 ```
 
-If there is a large number of tasks that do not return a value it might be easier to manage
-them using a wait group. However, for this approach the function(s) called concurrently have
-to be designed with this wait group in mind:
+If there is a large number of tasks, it might be easier to manage them
+using an array of threads.
 
 ```v
-import sync
 import time
 
-fn task(id int, duration int, mut wg sync.WaitGroup) {
+fn task(id int, duration int) {
 	println('task $id begin')
 	time.wait(duration * time.millisecond)
 	println('task $id end')
-	wg.done()
 }
 
 fn main() {
-	mut wg := sync.new_waitgroup()
-	wg.add(3)
-	go task(1, 500, mut wg)
-	go task(2, 900, mut wg)
-	go task(3, 100, mut wg)
-	wg.wait()
+	mut threads := []thread{}
+	threads << go task(1, 500)
+	threads << go task(2, 900)
+	threads << go task(3, 100)
+	threads.wait()
 	println('done')
 }
 
@@ -2599,6 +2595,27 @@ fn main() {
 // task 1 end
 // task 2 end
 // done
+```
+
+Additionally for threads that return the same type, calling `wait()`
+on the thread array will return all computed values.
+
+```v
+fn expensive_computing(i int) int {
+	return i * i
+}
+
+fn main() {
+	mut threads := []thread int{}
+	for i in 1 .. 10 {
+		threads << go expensive_computing(i)
+	}
+	// Join all tasks
+	r := threads.wait()
+	println('All jobs finished: $r')
+}
+
+// Output: All jobs finished: [1, 4, 9, 16, 25, 36, 49, 64, 81]
 ```
 
 ### Channels
