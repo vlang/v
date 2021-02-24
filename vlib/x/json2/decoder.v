@@ -131,7 +131,7 @@ fn (mut p Parser) decode_array() ?Any {
 		items << item
 		if p.tok.kind == .comma {
 			p.next_with_err() ?
-			if p.tok.kind in [.rsbr, .rcbr] {
+			if p.tok.kind == .rsbr || p.tok.kind == .rcbr {
 				return error(p.emit_error('invalid token `$p.tok.lit'))
 			}
 		} else if p.tok.kind == .rsbr {
@@ -146,14 +146,13 @@ fn (mut p Parser) decode_array() ?Any {
 
 fn (mut p Parser) decode_object() ?Any {
 	mut fields := map[string]Any{}
-	mut cur_key := ''
 	p.next_with_err() ?
 	for p.tok.kind != .rcbr {
 		is_key := p.tok.kind == .str_ && p.n_tok.kind == .colon
 		if !is_key {
 			return error(p.emit_error('invalid token `$p.tok.kind`, expecting `str_`'))
 		}
-		cur_key = p.tok.lit.bytestr()
+		cur_key := p.tok.lit.bytestr()
 		p.next_with_err() ?
 		p.next_with_err() ?
 		fields[cur_key] = p.decode_value() ?
