@@ -1526,8 +1526,8 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			got_arg_typ := c.expr(arg.expr)
 			call_expr.args[i].typ = got_arg_typ
 			if method.is_variadic && got_arg_typ.has_flag(.variadic) && call_expr.args.len - 1 > i {
-				c.error('when forwarding a varg variable, it must be the final argument',
-					call_expr.pos)
+				c.error('when forwarding a variadic variable, it must be the final argument',
+					arg.pos)
 			}
 			if exp_arg_sym.kind == .interface_ {
 				c.type_implements(got_arg_typ, exp_arg_typ, arg.expr.position())
@@ -1545,7 +1545,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 				// }
 				if got_arg_typ != table.void_type {
 					c.error('$err in argument ${i + 1} to `${left_type_sym.name}.$method_name`',
-						call_expr.pos)
+						arg.pos)
 				}
 			}
 			param := if method.is_variadic && i >= method.params.len - 1 {
@@ -1556,7 +1556,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			param_share := param.typ.share()
 			if param_share == .shared_t && (c.locked_names.len > 0 || c.rlocked_names.len > 0) {
 				c.error('method with `shared` arguments cannot be called inside `lock`/`rlock` block',
-					call_expr.pos)
+					arg.pos)
 			}
 			if arg.is_mut {
 				to_lock, pos := c.fail_if_immutable(arg.expr)
@@ -1932,13 +1932,13 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		typ_sym := c.table.get_type_symbol(typ)
 		arg_typ_sym := c.table.get_type_symbol(arg.typ)
 		if f.is_variadic && typ.has_flag(.variadic) && call_expr.args.len - 1 > i {
-			c.error('when forwarding a varg variable, it must be the final argument',
-				call_expr.pos)
+			c.error('when forwarding a variadic variable, it must be the final argument',
+				call_arg.pos)
 		}
 		arg_share := arg.typ.share()
 		if arg_share == .shared_t && (c.locked_names.len > 0 || c.rlocked_names.len > 0) {
 			c.error('function with `shared` arguments cannot be called inside `lock`/`rlock` block',
-				call_expr.pos)
+				call_arg.pos)
 		}
 		if call_arg.is_mut {
 			to_lock, pos := c.fail_if_immutable(call_arg.expr)
