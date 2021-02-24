@@ -423,11 +423,11 @@ fn (mut p Parser) fn_receiver(mut params []table.Param, mut rec ReceiverParsingI
 	if !rec.is_mut {
 		rec.is_mut = p.tok.kind == .key_mut
 		if rec.is_mut {
-			p.warn_with_pos('use `(mut f Foo)` instead of `(f mut Foo)`', lpar_pos.extend(p.peek_tok2.position()))
+			p.warn_with_pos('use `(mut f Foo)` instead of `(f mut Foo)`', lpar_pos.extend(p.peek_token(2).position()))
 		}
 	}
 	if p.tok.kind == .key_shared {
-		p.error_with_pos('use `(shared f Foo)` instead of `(f shared Foo)`', lpar_pos.extend(p.peek_tok2.position()))
+		p.error_with_pos('use `(shared f Foo)` instead of `(f shared Foo)`', lpar_pos.extend(p.peek_token(2).position()))
 	}
 	rec.pos = rec_start_pos.extend(p.tok.position())
 	is_amp := p.tok.kind == .amp

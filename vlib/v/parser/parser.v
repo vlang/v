@@ -30,7 +30,6 @@ mut:
 	tok               token.Token
 	prev_tok          token.Token
 	peek_tok          token.Token
-	peek_tok2         token.Token
 	table             &table.Table
 	language          table.Language
 	inside_if         bool
@@ -349,7 +348,7 @@ pub fn (mut p Parser) read_first_token() {
 
 [inline]
 pub fn (p &Parser) peek_token(n int) token.Token {
-	return p.scanner.peek_token(n-2)
+	return p.scanner.peek_token(n - 2)
 }
 
 pub fn (mut p Parser) open_scope() {
@@ -414,7 +413,6 @@ fn (mut p Parser) next() {
 	p.prev_tok = p.tok
 	p.tok = p.peek_tok
 	p.peek_tok = p.scanner.scan()
-	p.peek_tok2 = p.peek_token(2)
 	/*
 	if p.tok.kind==.comment {
 		p.comments << ast.Comment{text:p.tok.lit, line_nr:p.tok.line_nr}
@@ -1124,10 +1122,10 @@ fn (p &Parser) is_generic_call() bool {
 		false
 	}
 	// use heuristics to detect `func<T>()` from `var < expr`
-	return !lit0_is_capital && p.peek_tok.kind == .lt && (match p.peek_tok2.kind {
+	return !lit0_is_capital && p.peek_tok.kind == .lt && (match p.peek_token(2).kind {
 		.name {
 			// maybe `f<int>`, `f<map[`, f<string,
-			(p.peek_tok2.kind == .name && p.peek_token(3).kind in [.gt, .comma]) || (p.peek_tok2.lit == 'map' && p.peek_token(3).kind == .lsbr)
+			(p.peek_token(2).kind == .name && p.peek_token(3).kind in [.gt, .comma]) || (p.peek_token(2).lit == 'map' && p.peek_token(3).kind == .lsbr)
 		}
 		.lsbr {
 			// maybe `f<[]T>`, assume `var < []` is invalid
@@ -1218,7 +1216,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		}
 	}
 	// Raw string (`s := r'hello \n ')
-	if p.peek_tok.kind == .string && !p.inside_str_interp && p.peek_tok2.kind != .colon {
+	if p.peek_tok.kind == .string && !p.inside_str_interp && p.peek_token(2).kind != .colon {
 		if p.tok.lit in ['r', 'c', 'js'] && p.tok.kind == .name {
 			return p.string_expr()
 		} else {
@@ -1246,11 +1244,11 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			if p.tok.lit in p.imports {
 				// mark the imported module as used
 				p.register_used_import(p.tok.lit)
-				if p.peek_tok.kind == .dot && p.peek_tok2.kind != .eof && p.peek_tok2.lit.len > 0
-					&& p.peek_tok2.lit[0].is_capital() {
+				if p.peek_tok.kind == .dot && p.peek_token(2).kind != .eof
+					&& p.peek_token(2).lit.len > 0 && p.peek_token(2).lit[0].is_capital() {
 					is_mod_cast = true
-				} else if p.peek_tok.kind == .dot && p.peek_tok2.kind != .eof
-					&& p.peek_tok2.lit.len == 0 {
+				} else if p.peek_tok.kind == .dot && p.peek_token(2).kind != .eof
+					&& p.peek_token(2).lit.len == 0 {
 					// incomplete module selector must be handled by dot_expr instead
 					node = p.parse_ident(language)
 					return node
@@ -1375,7 +1373,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			pos: p.tok.position()
 			mod: mod
 		}
-	} else if language == .js && p.peek_tok.kind == .dot && p.peek_tok2.kind == .name {
+	} else if language == .js && p.peek_tok.kind == .dot && p.peek_token(2).kind == .name {
 		// JS. function call with more than 1 dot
 		node = p.call_expr(language, mod)
 	} else {
@@ -2409,7 +2407,7 @@ fn (mut p Parser) top_level_statement_start() {
 		p.scanner.set_is_inside_toplevel_statement(true)
 		p.rewind_scanner_to_current_token_in_new_mode()
 		$if debugscanner ? {
-			eprintln('>> p.top_level_statement_start | tidx:${p.tok.tidx:-5} | p.tok.kind: ${p.tok.kind:-10} | p.tok.lit: $p.tok.lit $p.peek_tok.lit $p.peek_tok2.lit ${p.peek_token(3).lit} ...')
+			eprintln('>> p.top_level_statement_start | tidx:${p.tok.tidx:-5} | p.tok.kind: ${p.tok.kind:-10} | p.tok.lit: $p.tok.lit $p.peek_tok.lit ${p.peek_token(2).lit} ${p.peek_token(3).lit} ...')
 		}
 	}
 }
@@ -2419,7 +2417,7 @@ fn (mut p Parser) top_level_statement_end() {
 		p.scanner.set_is_inside_toplevel_statement(false)
 		p.rewind_scanner_to_current_token_in_new_mode()
 		$if debugscanner ? {
-			eprintln('>> p.top_level_statement_end   | tidx:${p.tok.tidx:-5} | p.tok.kind: ${p.tok.kind:-10} | p.tok.lit: $p.tok.lit $p.peek_tok.lit $p.peek_tok2.lit ${p.peek_token(3).lit} ...')
+			eprintln('>> p.top_level_statement_end   | tidx:${p.tok.tidx:-5} | p.tok.kind: ${p.tok.kind:-10} | p.tok.lit: $p.tok.lit $p.peek_tok.lit ${p.peek_token(2).lit} ${p.peek_token(3).lit} ...')
 		}
 	}
 }
@@ -2436,7 +2434,6 @@ fn (mut p Parser) rewind_scanner_to_current_token_in_new_mode() {
 	p.prev_tok = no_token
 	p.tok = no_token
 	p.peek_tok = no_token
-	p.peek_tok2 = no_token
 	for {
 		p.next()
 		// eprintln('rewinding to ${p.tok.tidx:5} | goal: ${tidx:5}')

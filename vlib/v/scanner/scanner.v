@@ -67,8 +67,7 @@ no reason to complain about them.
 When the parser determines, that it is outside of a top level statement,
 it tells the scanner to backtrack s.tidx to the current p.tok index,
 then it changes .is_inside_toplvl_statement to false , and refills its
-lookahead buffer (i.e. p.peek_tok, p.peek_tok2, p.peek_tok3) from the
-scanner.
+lookahead buffer (i.e. p.peek_tok), from the scanner.
 
 In effect, from the parser's point of view, the next tokens, that it will
 receive with p.next(), will be the same, as if comments are not ignored
@@ -579,7 +578,7 @@ pub fn (s &Scanner) peek_token(n int) token.Token {
 	if idx >= s.all_tokens.len {
 		return s.new_eof_token()
 	}
-	t := s.all_tokens[ idx ]
+	t := s.all_tokens[idx]
 	return t
 }
 
