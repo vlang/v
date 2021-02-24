@@ -1,3 +1,9 @@
+import some_mod
+
+struct ChanFieldType {
+	c chan some_mod.Type
+}
+
 struct FSMEvent {
 	x int
 }
