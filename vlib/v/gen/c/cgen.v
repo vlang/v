@@ -568,10 +568,9 @@ fn (mut g Gen) optional_type_name(t table.Type) (string, string) {
 }
 
 fn (g &Gen) optional_type_text(styp string, base string) string {
-	x := styp // .replace('*', '_ptr')			// handle option ptrs
 	// replace void with something else
 	size := if base == 'void' { 'byte' } else { base }
-	ret := 'struct $x {
+	ret := 'struct $styp {
 	byte state;
 	Error err;
 	byte data[sizeof($size)];
@@ -583,8 +582,6 @@ fn (mut g Gen) register_optional(t table.Type) string {
 	// g.typedefs2.writeln('typedef Option $x;')
 	styp, base := g.optional_type_name(t)
 	if styp !in g.optionals {
-		no_ptr := base.replace('*', '_ptr')
-		typ := if base == 'void' { 'void*' } else { base }
 		g.typedefs2.writeln('typedef struct $styp $styp;')
 		g.options.write_string(g.optional_type_text(styp, base))
 		g.options.writeln(';\n')
