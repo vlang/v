@@ -766,6 +766,7 @@ pub:
 	has_cond bool
 	inc      Stmt // i++; i += 2
 	has_inc  bool
+	is_multi bool // for a,b := 0,1; a < 10; a,b = a+b, a {...}
 	stmts    []Stmt
 	pos      token.Position
 pub mut:

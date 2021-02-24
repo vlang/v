@@ -61,7 +61,6 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
 * [Comments](#comments)
 * [Functions](#functions)
     * [Returning multiple values](#returning-multiple-values)
-    * [Variable number of arguments](#variable-number-of-arguments)
 * [Symbol visibility](#symbol-visibility)
 * [Variables](#variables)
 * [Types](#types)
@@ -90,6 +89,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
 * [Functions 2](#functions-2)
     * [Pure functions by default](#pure-functions-by-default)
     * [Mutable arguments](#mutable-arguments)
+    * [Variable number of arguments](#variable-number-of-arguments)
     * [Anonymous & high order functions](#anonymous--high-order-functions)
 * [References](#references)
 * [Constants](#constants)
@@ -119,7 +119,8 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Profiling](#profiling)
 * [Advanced Topics](#advanced-topics)
     * [Memory-unsafe code](#memory-unsafe-code)
-	* [sizeof and __offsetof](#sizeof-and-__offsetof)
+    * [Structs with reference fields](structs-with-reference-fields)
+    * [sizeof and __offsetof](#sizeof-and-__offsetof)
     * [Calling C functions from V](#calling-c-functions-from-v)
     * [Debugging generated C code](#debugging-generated-c-code)
     * [Conditional compilation](#conditional-compilation)
@@ -233,27 +234,6 @@ a, b := foo()
 println(a) // 2
 println(b) // 3
 c, _ := foo() // ignore values using `_`
-```
-
-### Variable number of arguments
-
-```v
-fn sum(a ...int) int {
-	mut total := 0
-	for x in a {
-		total += x
-	}
-	return total
-}
-
-println(sum()) // 0
-println(sum(1)) // 1
-println(sum(2, 3)) // 5
-// using array decomposition
-a := [2, 3, 4]
-println(sum(...a)) // <-- using prefix ... here. output: 9
-b := [5, 6, 7]
-println(sum(...b)) // output: 18
 ```
 
 ## Symbol visibility
@@ -1559,7 +1539,7 @@ fn main() {
 This means that defining public readonly fields is very easy in V,
 no need in getters/setters or properties.
 
-### Methods
+## Methods
 
 ```v
 struct User {
@@ -1583,6 +1563,7 @@ println(user2.can_register()) // "true"
 V doesn't have classes, but you can define methods on types.
 A method is a function with a special receiver argument.
 The receiver appears in its own argument list between the `fn` keyword and the method name.
+Methods must be in the same module as the receiver type.
 
 In this example, the `can_register` method has a receiver of type `User` named `u`.
 The convention is not to use receiver names like `self` or `this`,
@@ -1716,6 +1697,27 @@ mut user := User{
 }
 user = register(user)
 println(user)
+```
+
+### Variable number of arguments
+
+```v
+fn sum(a ...int) int {
+	mut total := 0
+	for x in a {
+		total += x
+	}
+	return total
+}
+
+println(sum()) // 0
+println(sum(1)) // 1
+println(sum(2, 3)) // 5
+// using array decomposition
+a := [2, 3, 4]
+println(sum(...a)) // <-- using prefix ... here. output: 9
+b := [5, 6, 7]
+println(sum(...b)) // output: 18
 ```
 
 ### Anonymous & high order functions

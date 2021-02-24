@@ -1091,74 +1091,21 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			prev_branch_parent_pos := g.branch_parent_pos
 			g.branch_parent_pos = node.pos.pos
 			g.write_v_source_line_info(node.pos)
-			g.is_vlines_enabled = false
-			if node.label.len > 0 {
-				g.writeln('$node.label:')
-			}
-			g.write('for (')
-			if !node.has_init {
-				g.write('; ')
-			} else {
-				g.stmt(node.init)
-				// Remove excess return and add space
-				if g.out.last_n(1) == '\n' {
-					g.out.go_back(1)
-					g.empty_line = false
-					g.write(' ')
-				}
-			}
-			if node.has_cond {
-				g.expr(node.cond)
-			}
-			g.write('; ')
-			if node.has_inc {
-				g.stmt(node.inc)
-			}
-			g.writeln(') {')
-			g.is_vlines_enabled = true
-			g.stmts(node.stmts)
-			if node.label.len > 0 {
-				g.writeln('${node.label}__continue: {}')
-			}
-			g.writeln('}')
-			if node.label.len > 0 {
-				g.writeln('${node.label}__break: {}')
-			}
+			g.for_c_stmt(node)
 			g.branch_parent_pos = prev_branch_parent_pos
 		}
 		ast.ForInStmt {
 			prev_branch_parent_pos := g.branch_parent_pos
 			g.branch_parent_pos = node.pos.pos
 			g.write_v_source_line_info(node.pos)
-			g.for_in(node)
+			g.for_in_stmt(node)
 			g.branch_parent_pos = prev_branch_parent_pos
 		}
 		ast.ForStmt {
 			prev_branch_parent_pos := g.branch_parent_pos
 			g.branch_parent_pos = node.pos.pos
 			g.write_v_source_line_info(node.pos)
-			g.is_vlines_enabled = false
-			if node.label.len > 0 {
-				g.writeln('$node.label:')
-			}
-			g.writeln('for (;;) {')
-			if !node.is_inf {
-				g.indent++
-				g.stmt_path_pos << g.out.len
-				g.write('if (!(')
-				g.expr(node.cond)
-				g.writeln(')) break;')
-				g.indent--
-			}
-			g.is_vlines_enabled = true
-			g.stmts(node.stmts)
-			if node.label.len > 0 {
-				g.writeln('\t${node.label}__continue: {}')
-			}
-			g.writeln('}')
-			if node.label.len > 0 {
-				g.writeln('${node.label}__break: {}')
-			}
+			g.for_stmt(node)
 			g.branch_parent_pos = prev_branch_parent_pos
 		}
 		ast.GlobalDecl {
@@ -1286,7 +1233,108 @@ fn (mut g Gen) write_defer_stmts() {
 	}
 }
 
-fn (mut g Gen) for_in(it ast.ForInStmt) {
+fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
+	if node.is_multi {
+		g.is_vlines_enabled = false
+		if node.label.len > 0 {
+			g.writeln('$node.label:')
+		}
+		g.writeln('{')
+		g.indent++
+		if node.has_init {
+			g.stmt(node.init)
+		}
+		g.writeln('bool _is_first = true;')
+		g.writeln('while (true) {')
+		g.writeln('\tif (_is_first) {')
+		g.writeln('\t\t_is_first = false;')
+		g.writeln('\t} else {')
+		if node.has_inc {
+			g.indent++
+			g.stmt(node.inc)
+			g.writeln(';')
+			g.indent--
+		}
+		g.writeln('}')
+		if node.has_cond {
+			g.write('if (!(')
+			g.expr(node.cond)
+			g.writeln(')) break;')
+		}
+		g.is_vlines_enabled = true
+		g.stmts(node.stmts)
+		if node.label.len > 0 {
+			g.writeln('${node.label}__continue: {}')
+		}
+		g.writeln('}')
+		g.indent--
+		g.writeln('}')
+		if node.label.len > 0 {
+			g.writeln('${node.label}__break: {}')
+		}
+	} else {
+		g.is_vlines_enabled = false
+		if node.label.len > 0 {
+			g.writeln('$node.label:')
+		}
+		g.write('for (')
+		if !node.has_init {
+			g.write('; ')
+		} else {
+			g.stmt(node.init)
+			// Remove excess return and add space
+			if g.out.last_n(1) == '\n' {
+				g.out.go_back(1)
+				g.empty_line = false
+				g.write(' ')
+			}
+		}
+		if node.has_cond {
+			g.expr(node.cond)
+		}
+		g.write('; ')
+		if node.has_inc {
+			g.stmt(node.inc)
+		}
+		g.writeln(') {')
+		g.is_vlines_enabled = true
+		g.stmts(node.stmts)
+		if node.label.len > 0 {
+			g.writeln('${node.label}__continue: {}')
+		}
+		g.writeln('}')
+		if node.label.len > 0 {
+			g.writeln('${node.label}__break: {}')
+		}
+	}
+}
+
+fn (mut g Gen) for_stmt(node ast.ForStmt) {
+	g.is_vlines_enabled = false
+	if node.label.len > 0 {
+		g.writeln('$node.label:')
+	}
+	g.writeln('for (;;) {')
+	if !node.is_inf {
+		g.indent++
+		g.stmt_path_pos << g.out.len
+		g.write('if (!(')
+		g.expr(node.cond)
+		g.writeln(')) break;')
+		g.indent--
+	}
+	g.is_vlines_enabled = true
+	g.stmts(node.stmts)
+	if node.label.len > 0 {
+		g.writeln('\t${node.label}__continue: {}')
+	}
+	g.writeln('}')
+	if node.label.len > 0 {
+		g.writeln('${node.label}__break: {}')
+	}
+}
+
+fn (mut g Gen) for_in_stmt(it ast.ForInStmt) {
 	if it.label.len > 0 {
 		g.writeln('\t$it.label: {}')
 	}
@@ -1586,29 +1634,29 @@ fn (mut g Gen) gen_attrs(attrs []table.Attr) {
 }
 
 fn (mut g Gen) gen_assert_stmt(original_assert_statement ast.AssertStmt) {
-	mut a := original_assert_statement
+	mut node := original_assert_statement
 	g.writeln('// assert')
-	if mut a.expr is ast.InfixExpr {
-		if mut a.expr.left is ast.CallExpr {
-			a.expr.left = g.new_ctemp_var_then_gen(a.expr.left, a.expr.left_type)
+	if mut node.expr is ast.InfixExpr {
+		if mut node.expr.left is ast.CallExpr {
+			node.expr.left = g.new_ctemp_var_then_gen(node.expr.left, node.expr.left_type)
 		}
-		if mut a.expr.right is ast.CallExpr {
-			a.expr.right = g.new_ctemp_var_then_gen(a.expr.right, a.expr.right_type)
+		if mut node.expr.right is ast.CallExpr {
+			node.expr.right = g.new_ctemp_var_then_gen(node.expr.right, node.expr.right_type)
 		}
 	}
 	g.inside_ternary++
 	if g.is_test {
 		g.write('if (')
-		g.expr(a.expr)
+		g.expr(node.expr)
 		g.write(')')
 		g.decrement_inside_ternary()
 		g.writeln(' {')
 		g.writeln('\tg_test_oks++;')
-		metaname_ok := g.gen_assert_metainfo(a)
+		metaname_ok := g.gen_assert_metainfo(node)
 		g.writeln('\tmain__cb_assertion_ok(&$metaname_ok);')
 		g.writeln('} else {')
 		g.writeln('\tg_test_fails++;')
-		metaname_fail := g.gen_assert_metainfo(a)
+		metaname_fail := g.gen_assert_metainfo(node)
 		g.writeln('\tmain__cb_assertion_failed(&$metaname_fail);')
 		g.writeln('\tlongjmp(g_jump_buffer, 1);')
 		g.writeln('\t// TODO')
@@ -1616,11 +1664,11 @@ fn (mut g Gen) gen_assert_stmt(original_assert_statement ast.AssertStmt) {
 		g.writeln('}')
 	} else {
 		g.write('if (!(')
-		g.expr(a.expr)
+		g.expr(node.expr)
 		g.write('))')
 		g.decrement_inside_ternary()
 		g.writeln(' {')
-		metaname_panic := g.gen_assert_metainfo(a)
+		metaname_panic := g.gen_assert_metainfo(node)
 		g.writeln('\t__print_assert_failure(&$metaname_panic);')
 		g.writeln('\tv_panic(_SLIT("Assertion failed..."));')
 		g.writeln('}')
@@ -1631,28 +1679,28 @@ fn cnewlines(s string) string {
 	return s.replace('\n', r'\n')
 }
 
-fn (mut g Gen) gen_assert_metainfo(a ast.AssertStmt) string {
+fn (mut g Gen) gen_assert_metainfo(node ast.AssertStmt) string {
 	mod_path := cestring(g.file.path)
 	fn_name := g.fn_decl.name
-	line_nr := a.pos.line_nr
-	src := cestring(a.expr.str())
+	line_nr := node.pos.line_nr
+	src := cestring(node.expr.str())
 	metaname := 'v_assert_meta_info_$g.new_tmp_var()'
 	g.writeln('\tVAssertMetaInfo $metaname = {0};')
 	g.writeln('\t${metaname}.fpath = ${ctoslit(mod_path)};')
 	g.writeln('\t${metaname}.line_nr = $line_nr;')
 	g.writeln('\t${metaname}.fn_name = ${ctoslit(fn_name)};')
 	g.writeln('\t${metaname}.src = ${cnewlines(ctoslit(src))};')
-	match mut a.expr {
+	match mut node.expr {
 		ast.InfixExpr {
-			g.writeln('\t${metaname}.op = ${ctoslit(a.expr.op.str())};')
-			g.writeln('\t${metaname}.llabel = ${cnewlines(ctoslit(a.expr.left.str()))};')
-			g.writeln('\t${metaname}.rlabel = ${cnewlines(ctoslit(a.expr.right.str()))};')
+			g.writeln('\t${metaname}.op = ${ctoslit(node.expr.op.str())};')
+			g.writeln('\t${metaname}.llabel = ${cnewlines(ctoslit(node.expr.left.str()))};')
+			g.writeln('\t${metaname}.rlabel = ${cnewlines(ctoslit(node.expr.right.str()))};')
 			g.write('\t${metaname}.lvalue = ')
-			g.gen_assert_single_expr(a.expr.left, a.expr.left_type)
+			g.gen_assert_single_expr(node.expr.left, node.expr.left_type)
 			g.writeln(';')
 			//
 			g.write('\t${metaname}.rvalue = ')
-			g.gen_assert_single_expr(a.expr.right, a.expr.right_type)
+			g.gen_assert_single_expr(node.expr.right, node.expr.right_type)
 			g.writeln(';')
 		}
 		ast.CallExpr {
@@ -1663,31 +1711,31 @@ fn (mut g Gen) gen_assert_metainfo(a ast.AssertStmt) string {
 	return metaname
 }
 
-fn (mut g Gen) gen_assert_single_expr(e ast.Expr, t table.Type) {
+fn (mut g Gen) gen_assert_single_expr(expr ast.Expr, typ table.Type) {
 	unknown_value := '*unknown value*'
-	match e {
+	match expr {
 		ast.CastExpr, ast.IndexExpr, ast.MatchExpr {
 			g.write(ctoslit(unknown_value))
 		}
 		ast.PrefixExpr {
-			if e.right is ast.CastExpr {
+			if expr.right is ast.CastExpr {
 				// TODO: remove this check;
 				// vlib/builtin/map_test.v (a map of &int, set to &int(0)) fails
 				// without special casing ast.CastExpr here
 				g.write(ctoslit(unknown_value))
 			} else {
-				g.gen_expr_to_string(e, t)
+				g.gen_expr_to_string(expr, typ)
 			}
 		}
 		ast.Type {
-			sym := g.table.get_type_symbol(t)
+			sym := g.table.get_type_symbol(typ)
 			g.write(ctoslit('$sym.name'))
 		}
 		else {
-			g.gen_expr_to_string(e, t)
+			g.gen_expr_to_string(expr, typ)
 		}
 	}
-	g.write(' /* typeof: ' + e.type_name() + ' type: ' + t.str() + ' */ ')
+	g.write(' /* typeof: ' + expr.type_name() + ' type: ' + typ.str() + ' */ ')
 }
 
 fn (mut g Gen) write_fn_ptr_decl(func &table.FnType, ptr_name string) {
@@ -2191,7 +2239,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		}
 		g.right_is_opt = false
 		g.is_assign_rhs = false
-		if g.inside_ternary == 0 && !assign_stmt.is_simple {
+		if g.inside_ternary == 0 && (assign_stmt.left.len > 1 || !assign_stmt.is_simple) {
 			g.writeln(';')
 		}
 	}
@@ -4069,6 +4117,30 @@ fn (mut g Gen) concat_expr(node ast.ConcatExpr) {
 	}
 }
 
+fn (mut g Gen) need_tmp_var_in_if(node ast.IfExpr) bool {
+	if node.is_expr && g.inside_ternary == 0 {
+		if g.is_autofree {
+			return true
+		}
+		for branch in node.branches {
+			if branch.stmts.len == 1 {
+				if branch.stmts[0] is ast.ExprStmt {
+					stmt := branch.stmts[0] as ast.ExprStmt
+					if stmt.expr is ast.CallExpr {
+						if stmt.expr.is_method {
+							left_sym := g.table.get_type_symbol(stmt.expr.receiver_type)
+							if left_sym.kind in [.array, .array_fixed, .map] {
+								return true
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
 fn (mut g Gen) if_expr(node ast.IfExpr) {
 	if node.is_comptime {
 		g.comp_if(node)
@@ -4080,15 +4152,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	// easier to use a temp var, than do C tricks with commas, introduce special vars etc
 	// (as it used to be done).
 	// Always use this in -autofree, since ?: can have tmp expressions that have to be freed.
-	first_branch := node.branches[0]
-	needs_tmp_var := node.is_expr && (g.is_autofree || (g.pref.experimental
-		&& (first_branch.stmts.len > 1 || (first_branch.stmts[0] is ast.ExprStmt
-		&& (first_branch.stmts[0] as ast.ExprStmt).expr is ast.IfExpr))))
-	/*
-	needs_tmp_var := node.is_expr &&
-		(g.autofree || g.pref.experimental) &&
-		(node.branches[0].stmts.len > 1 || node.branches[0].stmts[0] is ast.IfExpr)
-	*/
+	needs_tmp_var := g.need_tmp_var_in_if(node)
 	tmp := if needs_tmp_var { g.new_tmp_var() } else { '' }
 	mut cur_line := ''
 	if needs_tmp_var {
