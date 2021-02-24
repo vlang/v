@@ -49,9 +49,10 @@ fn setup_symlink_windows(vexe string) {
 		vsymlinkdir := os.join_path(vdir, '.bin')
 		mut vsymlink := os.join_path(vsymlinkdir, 'v.exe')
 		if !os.exists(vsymlinkdir) {
-			os.mkdir_all(vsymlinkdir) or { panic(err) } // will panic if fails
+			os.mkdir(vsymlinkdir) or { panic(err) } // will panic if fails
 		} else {
-			os.rm(vsymlink) or { panic(err) }
+			os.rmdir(vsymlinkdir) or { panic(err) }
+			os.mkdir(vsymlinkdir) or { panic(err) }
 		}
 		// First, try to create a native symlink at .\.bin\v.exe
 		os.symlink(vsymlink, vexe) or {
