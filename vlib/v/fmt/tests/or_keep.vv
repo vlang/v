@@ -18,3 +18,11 @@ fn unwrapped_single_line_if() {
 		println('Another stmt')
 	}
 }
+
+fn or_with_one_multi_line_stmt() {
+	b := or_func() or {
+		MyStruct{
+			val: 'xyz'
+		}
+	}
+}
