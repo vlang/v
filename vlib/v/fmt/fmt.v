@@ -236,6 +236,9 @@ pub fn (mut f Fmt) mod(mod ast.Module) {
 	}
 	f.attrs(mod.attrs)
 	f.writeln('module $mod.short_name\n')
+	if f.import_pos == 0 {
+		f.import_pos = f.out.len
+	}
 }
 
 pub fn (mut f Fmt) mark_types_import_as_used(typ table.Type) {
