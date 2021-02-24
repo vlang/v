@@ -346,13 +346,11 @@ pub fn (mut p Parser) read_first_token() {
 	// need to call next() 4 times to get peek token 1,2,3 and current token
 	p.next()
 	p.next()
-	p.next()
-	p.next()
 }
 
 [inline]
 pub fn (p &Parser) peek_token(n int) token.Token {
-	return p.scanner.peek_token(n)
+	return p.scanner.peek_token(n-2)
 }
 
 pub fn (mut p Parser) open_scope() {
@@ -416,9 +414,9 @@ fn (mut p Parser) next_with_comment() {
 fn (mut p Parser) next() {
 	p.prev_tok = p.tok
 	p.tok = p.peek_tok
-	p.peek_tok = p.peek_tok2
-	p.peek_tok2 = p.peek_tok3
-	p.peek_tok3 = p.scanner.scan()
+	p.peek_tok = p.scanner.scan()
+	p.peek_tok2 = p.peek_token(2)
+	p.peek_tok3 = p.peek_token(3)
 	/*
 	if p.tok.kind==.comment {
 		p.comments << ast.Comment{text:p.tok.lit, line_nr:p.tok.line_nr}
