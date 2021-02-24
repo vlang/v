@@ -177,7 +177,7 @@ ${flag.space}to script it/run it in a restrictive vps/docker.
 		context.vc_repo_url = os.real_path(context.vc_repo_url)
 	}
 	commits := fp.finalize() or {
-		eprintln('Error: ' + err)
+		eprintln('Error: $err')
 		exit(1)
 	}
 	for commit in commits {

@@ -650,7 +650,7 @@ static inline $opt_el_type __Option2_${styp}_popval($styp ch) {
 		Option2 _tmp2 = error2(_SLIT("channel closed"));
 		return *($opt_el_type*)&_tmp2;
 	}
-	_tmp.state = 0; _tmp.err = (Error){.code=0, .msg=(string){.str=(byteptr)""}};
+	_tmp.state = 0; _tmp.err = (Error){.msg=_SLIT(""), .code=0};
 	return _tmp;
 }')
 	}
@@ -665,7 +665,7 @@ static inline Option2_void __Option2_${styp}_pushval($styp ch, $el_type e) {
 		Option2 _tmp2 = error2(_SLIT("channel closed"));
 		return *(Option2_void*)&_tmp2;
 	}
-	return (Option2_void){.state = 0,.err = (Error){.code=0, .msg=(string){.str=(byteptr)""}}};
+	return (Option2_void){.state = 0,.err = (Error){.msg=_SLIT(""), .code=0};
 }')
 	}
 }
@@ -4386,10 +4386,10 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 						opt_elem_type := g.typ(elem_type.set_flag(.optional))
 						g.writeln('$opt_elem_type $tmp_opt = {0};')
 						g.writeln('if ($tmp_opt_ptr) {')
-						g.writeln('\t${tmp_opt}.state = 0; ${tmp_opt}.err = (Error){.code=0, .msg=(string){.str=(byteptr)""}};')
+						g.writeln('\t${tmp_opt}.state = 0; ${tmp_opt}.err = (Error){.msg=_SLIT(""), .code=0};')
 						g.writeln('\t*(($elem_type_str*)&${tmp_opt}.data) = *(($elem_type_str*)$tmp_opt_ptr);')
 						g.writeln('} else {')
-						g.writeln('\t${tmp_opt}.state = 2; ${tmp_opt}.err = (Error){.code=0, .msg=(string){.str=(byteptr)"array index out of range"}};')
+						g.writeln('\t${tmp_opt}.state = 2; ${tmp_opt}.err = (Error){.msg=_SLIT("array index out of range"), .code=0};')
 						g.writeln('}')
 						g.or_block(tmp_opt, node.or_expr, elem_type)
 						g.write('\n$cur_line*($elem_type_str*)${tmp_opt}.data')
@@ -4548,10 +4548,10 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 						g.writeln('$opt_elem_type $tmp_opt = {0};')
 						g.writeln('if ($tmp_opt_ptr) {')
 
-						g.writeln('\t${tmp_opt}.state = 0; ${tmp_opt}.err = (Error){.code=0, .msg=(string){.str=(byteptr)""}};')
+						g.writeln('\t${tmp_opt}.state = 0; ${tmp_opt}.err = (Error){.msg=_SLIT(""), .code=0};')
 						g.writeln('\t*(($elem_type_str*)&${tmp_opt}.data) = *(($elem_type_str*)$tmp_opt_ptr);')
 						g.writeln('} else {')
-						g.writeln('\t${tmp_opt}.state = 2; ${tmp_opt}.err = (Error){.code=0, .msg=(string){.str=(byteptr)"array index out of range"}};')
+						g.writeln('\t${tmp_opt}.state = 2; ${tmp_opt}.err = (Error){.msg=_SLIT("array index out of range"), .code=0};')
 
 						g.writeln('}')
 						g.or_block(tmp_opt, node.or_expr, elem_type)
