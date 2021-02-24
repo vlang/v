@@ -187,6 +187,18 @@ fn (mut s Scanner) new_token(tok_kind token.Kind, lit string, len int) token.Tok
 }
 
 [inline]
+fn (s &Scanner) new_eof_token() token.Token {
+	return token.Token{
+		kind: .eof
+		lit: ''
+		line_nr: s.line_nr + 1
+		pos: s.pos
+		len: 1
+		tidx: s.tidx
+	}
+}
+
+[inline]
 fn (mut s Scanner) new_multiline_token(tok_kind token.Kind, lit string, len int, start_line int) token.Token {
 	cidx := s.tidx
 	s.tidx++
@@ -507,7 +519,7 @@ fn (mut s Scanner) end_of_file() token.Token {
 		s.inc_line_number()
 	}
 	s.pos = s.text.len
-	return s.new_token(.eof, '', 1)
+	return s.new_eof_token()
 }
 
 pub fn (mut s Scanner) scan_all_tokens_in_buffer(mode CommentsMode) {
@@ -532,6 +544,9 @@ pub fn (mut s Scanner) scan_all_tokens_in_buffer(mode CommentsMode) {
 pub fn (mut s Scanner) scan_remaining_text() {
 	for {
 		t := s.text_scan()
+		if t.kind == .comment && s.comments_mode == .skip_comments {
+			continue
+		}
 		s.all_tokens << t
 		if t.kind == .eof {
 			break
@@ -564,7 +579,17 @@ pub fn (mut s Scanner) buffer_scan() token.Token {
 }
 
 [inline]
-fn (s Scanner) look_ahead(n int) byte {
+pub fn (s &Scanner) peek_token(n int) token.Token {
+	idx := s.tidx + n
+	if idx >= s.all_tokens.len {
+		return s.new_eof_token()
+	}
+	t := s.all_tokens[ idx ]
+	return t
+}
+
+[inline]
+fn (s &Scanner) look_ahead(n int) byte {
 	if s.pos + n < s.text.len {
 		return s.text[s.pos + n]
 	} else {

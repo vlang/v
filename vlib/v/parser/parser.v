@@ -350,6 +350,11 @@ pub fn (mut p Parser) read_first_token() {
 	p.next()
 }
 
+[inline]
+pub fn (p &Parser) peek_token(n int) token.Token {
+	return p.scanner.peek_token(n)
+}
+
 pub fn (mut p Parser) open_scope() {
 	p.scope = &ast.Scope{
 		parent: p.scope
