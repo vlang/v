@@ -53,7 +53,7 @@ fn (parser Parser) builder_str() string {
 fn (mut parser Parser) print_debug(data string) {
 	$if debug {
 		if data.len > 0 {
-			parser.debug_file.writeln(data)
+			parser.debug_file.writeln(data) or { panic(err) }
 		}
 	}
 }
