@@ -7,7 +7,7 @@
    Thread *1* is running... only time.wait(1000ms)
    >>> Thread - Total time used: 1002ms.
         Calculate `1+2+3+...+1000000000` ...
-   >>> Thread Sum  - Time used:  268ms, sum = 5e+017.          // 20% times used.
+   >>> Thread Sum  - Time used:  268ms, sum = 5e+017.          // 80% time saved.
    >>> `1+2+..max` - Time used: 1226ms, Sum = 5e+017.
 */
 module main 
