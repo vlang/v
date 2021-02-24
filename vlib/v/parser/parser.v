@@ -30,8 +30,6 @@ mut:
 	tok               token.Token
 	prev_tok          token.Token
 	peek_tok          token.Token
-	peek_tok2         token.Token
-	peek_tok3         token.Token
 	table             &table.Table
 	language          table.Language
 	inside_if         bool
@@ -85,6 +83,10 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 		}
 	}
 	p.init_parse_fns()
+	util.timing_start('PARSE stmt')
+	defer {
+		util.timing_measure_cumulative('PARSE stmt')
+	}
 	p.read_first_token()
 	return p.stmt(false)
 }
@@ -118,6 +120,13 @@ pub fn parse_text(text string, path string, table &table.Table, comments_mode sc
 	}
 	p.set_path(path)
 	return p.parse()
+}
+
+[unsafe]
+pub fn (mut p Parser) free() {
+	unsafe {
+		p.scanner.free()
+	}
 }
 
 pub fn (mut p Parser) set_path(path string) {
@@ -166,7 +175,7 @@ pub fn parse_vet_file(path string, table_ &table.Table, pref &pref.Preferences) 
 		parent: 0
 	}
 	mut p := Parser{
-		scanner: scanner.new_vet_scanner_file(path, .parse_comments, pref)
+		scanner: scanner.new_scanner_file(path, .parse_comments, pref)
 		comments_mode: .parse_comments
 		table: table_
 		pref: pref
@@ -194,6 +203,10 @@ pub fn parse_vet_file(path string, table_ &table.Table, pref &pref.Preferences) 
 }
 
 pub fn (mut p Parser) parse() ast.File {
+	util.timing_start('PARSE')
+	defer {
+		util.timing_measure_cumulative('PARSE')
+	}
 	// comments_mode: comments_mode
 	p.init_parse_fns()
 	p.read_first_token()
@@ -323,9 +336,6 @@ pub fn parse_files(paths []string, table &table.Table, pref &pref.Preferences, g
 }
 
 pub fn (mut p Parser) init_parse_fns() {
-	if p.comments_mode == .toplevel_comments {
-		p.scanner.scan_all_tokens_in_buffer()
-	}
 	// p.prefix_parse_fns = make(100, 100, sizeof(PrefixParseFn))
 	// p.prefix_parse_fns[token.Kind.name] = parse_name
 }
@@ -334,8 +344,11 @@ pub fn (mut p Parser) read_first_token() {
 	// need to call next() 4 times to get peek token 1,2,3 and current token
 	p.next()
 	p.next()
-	p.next()
-	p.next()
+}
+
+[inline]
+pub fn (p &Parser) peek_token(n int) token.Token {
+	return p.scanner.peek_token(n - 2)
 }
 
 pub fn (mut p Parser) open_scope() {
@@ -399,9 +412,7 @@ fn (mut p Parser) next_with_comment() {
 fn (mut p Parser) next() {
 	p.prev_tok = p.tok
 	p.tok = p.peek_tok
-	p.peek_tok = p.peek_tok2
-	p.peek_tok2 = p.peek_tok3
-	p.peek_tok3 = p.scanner.scan()
+	p.peek_tok = p.scanner.scan()
 	/*
 	if p.tok.kind==.comment {
 		p.comments << ast.Comment{text:p.tok.lit, line_nr:p.tok.line_nr}
@@ -1111,14 +1122,14 @@ fn (p &Parser) is_generic_call() bool {
 		false
 	}
 	// use heuristics to detect `func<T>()` from `var < expr`
-	return !lit0_is_capital && p.peek_tok.kind == .lt && (match p.peek_tok2.kind {
+	return !lit0_is_capital && p.peek_tok.kind == .lt && (match p.peek_token(2).kind {
 		.name {
 			// maybe `f<int>`, `f<map[`, f<string,
-			(p.peek_tok2.kind == .name && p.peek_tok3.kind in [.gt, .comma]) || (p.peek_tok2.lit == 'map' && p.peek_tok3.kind == .lsbr)
+			(p.peek_token(2).kind == .name && p.peek_token(3).kind in [.gt, .comma]) || (p.peek_token(2).lit == 'map' && p.peek_token(3).kind == .lsbr)
 		}
 		.lsbr {
 			// maybe `f<[]T>`, assume `var < []` is invalid
-			p.peek_tok3.kind == .rsbr
+			p.peek_token(3).kind == .rsbr
 		}
 		else {
 			false
@@ -1205,7 +1216,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		}
 	}
 	// Raw string (`s := r'hello \n ')
-	if p.peek_tok.kind == .string && !p.inside_str_interp && p.peek_tok2.kind != .colon {
+	if p.peek_tok.kind == .string && !p.inside_str_interp && p.peek_token(2).kind != .colon {
 		if p.tok.lit in ['r', 'c', 'js'] && p.tok.kind == .name {
 			return p.string_expr()
 		} else {
@@ -1233,11 +1244,11 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			if p.tok.lit in p.imports {
 				// mark the imported module as used
 				p.register_used_import(p.tok.lit)
-				if p.peek_tok.kind == .dot && p.peek_tok2.kind != .eof && p.peek_tok2.lit.len > 0
-					&& p.peek_tok2.lit[0].is_capital() {
+				if p.peek_tok.kind == .dot && p.peek_token(2).kind != .eof
+					&& p.peek_token(2).lit.len > 0 && p.peek_token(2).lit[0].is_capital() {
 					is_mod_cast = true
-				} else if p.peek_tok.kind == .dot && p.peek_tok2.kind != .eof
-					&& p.peek_tok2.lit.len == 0 {
+				} else if p.peek_tok.kind == .dot && p.peek_token(2).kind != .eof
+					&& p.peek_token(2).lit.len == 0 {
 					// incomplete module selector must be handled by dot_expr instead
 					node = p.parse_ident(language)
 					return node
@@ -1362,7 +1373,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			pos: p.tok.position()
 			mod: mod
 		}
-	} else if language == .js && p.peek_tok.kind == .dot && p.peek_tok2.kind == .name {
+	} else if language == .js && p.peek_tok.kind == .dot && p.peek_token(2).kind == .name {
 		// JS. function call with more than 1 dot
 		node = p.call_expr(language, mod)
 	} else {
@@ -2396,7 +2407,7 @@ fn (mut p Parser) top_level_statement_start() {
 		p.scanner.set_is_inside_toplevel_statement(true)
 		p.rewind_scanner_to_current_token_in_new_mode()
 		$if debugscanner ? {
-			eprintln('>> p.top_level_statement_start | tidx:${p.tok.tidx:-5} | p.tok.kind: ${p.tok.kind:-10} | p.tok.lit: $p.tok.lit $p.peek_tok.lit $p.peek_tok2.lit $p.peek_tok3.lit ...')
+			eprintln('>> p.top_level_statement_start | tidx:${p.tok.tidx:-5} | p.tok.kind: ${p.tok.kind:-10} | p.tok.lit: $p.tok.lit $p.peek_tok.lit ${p.peek_token(2).lit} ${p.peek_token(3).lit} ...')
 		}
 	}
 }
@@ -2406,14 +2417,14 @@ fn (mut p Parser) top_level_statement_end() {
 		p.scanner.set_is_inside_toplevel_statement(false)
 		p.rewind_scanner_to_current_token_in_new_mode()
 		$if debugscanner ? {
-			eprintln('>> p.top_level_statement_end   | tidx:${p.tok.tidx:-5} | p.tok.kind: ${p.tok.kind:-10} | p.tok.lit: $p.tok.lit $p.peek_tok.lit $p.peek_tok2.lit $p.peek_tok3.lit ...')
+			eprintln('>> p.top_level_statement_end   | tidx:${p.tok.tidx:-5} | p.tok.kind: ${p.tok.kind:-10} | p.tok.lit: $p.tok.lit $p.peek_tok.lit ${p.peek_token(2).lit} ${p.peek_token(3).lit} ...')
 		}
 	}
 }
 
 fn (mut p Parser) rewind_scanner_to_current_token_in_new_mode() {
 	// Go back and rescan some tokens, ensuring that the parser's
-	// lookahead buffer p.peek_tok .. p.peek_tok3, will now contain
+	// lookahead buffer p.peek_tok .. p.peek_token(3), will now contain
 	// the correct tokens (possible comments), for the new mode
 	// This refilling of the lookahead buffer is needed for the
 	// .toplevel_comments parsing mode.
@@ -2423,8 +2434,6 @@ fn (mut p Parser) rewind_scanner_to_current_token_in_new_mode() {
 	p.prev_tok = no_token
 	p.tok = no_token
 	p.peek_tok = no_token
-	p.peek_tok2 = no_token
-	p.peek_tok3 = no_token
 	for {
 		p.next()
 		// eprintln('rewinding to ${p.tok.tidx:5} | goal: ${tidx:5}')

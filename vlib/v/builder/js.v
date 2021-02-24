@@ -11,7 +11,9 @@ pub fn (mut b Builder) gen_js(v_files []string) string {
 	util.timing_start('PARSE')
 	b.parsed_files = parser.parse_files(v_files, b.table, b.pref, b.global_scope)
 	b.parse_imports()
-	util.timing_measure('PARSE')
+	util.get_timers().show('SCAN')
+	util.get_timers().show('PARSE')
+	util.get_timers().show_if_exists('PARSE stmt')
 	//
 	util.timing_start('CHECK')
 	b.checker.check_files(b.parsed_files)
