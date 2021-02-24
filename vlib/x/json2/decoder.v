@@ -81,7 +81,7 @@ fn new_parser(srce string, convert_type bool) Parser {
 		}
 	}
 	return Parser{
-		scanner: scanner.new_scanner(src, .parse_comments, &pref.Preferences{})
+		scanner: scanner.new_scanner(src, .parse_comments, &pref.Preferences{output_mode: .silent})
 		convert_type: convert_type
 	}
 }
