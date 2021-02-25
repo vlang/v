@@ -35,8 +35,9 @@ pub fn get_cursor_position() Coord {
 	}
 	// TODO: use termios.h, C.tcgetattr & C.tcsetattr directly,
 	// instead of using `stty`
-	oldsettings := os.exec('stty -g') or {
-		os.Result{}
+	mut oldsettings := os.execute('stty -g')
+	if oldsettings.exit_code < 0 {
+		oldsettings = os.Result{}
 	}
 	os.system('stty -echo -icanon time 0')
 	print('\033[6n')
@@ -91,7 +92,9 @@ pub fn set_terminal_title(title string) bool {
 	if is_atty(1) <= 0 || os.getenv('TERM') == 'dumb' {
 		return true
 	}
-	print('\033]0;${title}\007')
+	print('\033]0')
+	print(title)
+	print('\007')
 	return true
 }
 

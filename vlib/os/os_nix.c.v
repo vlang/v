@@ -156,15 +156,18 @@ pub fn mkdir(path string) ?bool {
 	return true
 }
 
-// exec starts the specified command, waits for it to complete, and returns its output.
-pub fn exec(cmd string) ?Result {
+// execute starts the specified command, waits for it to complete, and returns its output.
+pub fn execute(cmd string) Result {
 	// if cmd.contains(';') || cmd.contains('&&') || cmd.contains('||') || cmd.contains('\n') {
-	// return error(';, &&, || and \\n are not allowed in shell commands')
+	// return Result{ exit_code: -1, output: ';, &&, || and \\n are not allowed in shell commands' }
 	// }
 	pcmd := '$cmd 2>&1'
 	f := vpopen(pcmd)
 	if isnil(f) {
-		return error('exec("$cmd") failed')
+		return Result{
+			exit_code: -1
+			output: 'exec("$cmd") failed'
+		}
 	}
 	buf := [4096]byte{}
 	mut res := strings.new_builder(1024)
@@ -177,9 +180,6 @@ pub fn exec(cmd string) ?Result {
 	soutput := res.str()
 	// res.free()
 	exit_code := vpclose(f)
-	if exit_code == 127 {
-		return error_with_code(soutput, 127)
-	}
 	return Result{
 		exit_code: exit_code
 		output: soutput
