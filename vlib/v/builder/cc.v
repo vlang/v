@@ -688,29 +688,6 @@ fn (mut v Builder) cc() {
 		}
 		break
 	}
-	// Link it if we are cross compiling and need an executable
-	/*
-	if v.os == .linux && !linux_host && v.pref.build_mode != .build {
-		v.out_name = v.out_name.replace('.o', '')
-		obj_file := v.out_name + '.o'
-		println('linux obj_file=$obj_file out_name=$v.out_name')
-		ress := os.execute('/usr/local/Cellar/llvm/8.0.0/bin/ld.lld --sysroot=$sysroot ' +
-		'-v -o $v.out_name ' +
-		'-m elf_x86_64 -dynamic-linker /lib64/ld-linux-x86-64.so.2 ' +
-		'/usr/lib/x86_64-linux-gnu/crt1.o ' +
-		'$sysroot/lib/x86_64-linux-gnu/libm-2.28.a ' +
-		'/usr/lib/x86_64-linux-gnu/crti.o ' +
-		obj_file +
-		' /usr/lib/x86_64-linux-gnu/libc.so ' +
-		'/usr/lib/x86_64-linux-gnu/crtn.o')
-        if ress.exit_code != 0 {
-			verror(ress.output)
-			return
-		}
-		println(ress.output)
-		println('linux cross compilation done. resulting binary: "$v.out_name"')
-	}
-	*/
 	if v.pref.compress {
 		$if windows {
 			println('-compress does not work on Windows for now')
