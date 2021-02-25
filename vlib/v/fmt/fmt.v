@@ -134,7 +134,7 @@ pub fn (mut f Fmt) wrap_long_line(penalty_idx int, add_indent bool) bool {
 	if f.buffering {
 		return false
 	}
-	if f.line_len <= fmt.max_len[penalty_idx] {
+	if penalty_idx > 0 && f.line_len <= fmt.max_len[penalty_idx] {
 		return false
 	}
 	if f.out.buf[f.out.buf.len - 1] == ` ` {
@@ -1965,29 +1965,34 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 	mut inc_indent := false
 	mut last_line_nr := node.pos.line_nr // to have the same newlines between array elements
 	f.array_init_depth++
-	for i, c in node.pre_cmnts {
-		if c.pos.line_nr > last_line_nr {
-			f.writeln('')
-		} else if i > 0 {
-			f.write(' ')
-		}
-		f.comment(c, level: .indent, iembed: true)
-		last_line_nr = c.pos.last_line
-	}
 	if node.pre_cmnts.len > 0 {
-		same_line := node.pre_cmnts[0].pos.line_nr == node.pos.line_nr
-		if same_line && node.exprs.len > 0 {
-			f.write(' ')
-		} else if !same_line && node.exprs.len == 0 {
+		if node.pre_cmnts[0].pos.line_nr > last_line_nr {
 			f.writeln('')
 		}
+	}
+	for i, c in node.pre_cmnts {
+		f.comment(c, level: .indent, iembed: true)
+		if i < node.pre_cmnts.len - 1 {
+			if c.pos.last_line < node.pre_cmnts[i + 1].pos.line_nr {
+				f.writeln('')
+			} else {
+				f.write(' ')
+			}
+		} else {
+			if c.pos.last_line < node.pos.last_line && node.exprs.len == 0 {
+				f.writeln('')
+			} else if node.exprs.len > 0 {
+				f.write(' ')
+			}
+		}
+		last_line_nr = c.pos.last_line
 	}
 	mut set_comma := false
 	for i, expr in node.exprs {
 		pos := expr.position()
 		if i == 0 {
 			if f.array_init_depth > f.array_init_break.len {
-				f.array_init_break << (last_line_nr < pos.line_nr)
+				f.array_init_break << pos.line_nr > last_line_nr
 			}
 		}
 		line_break := f.array_init_break[f.array_init_depth - 1]
