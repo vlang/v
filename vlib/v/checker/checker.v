@@ -3802,6 +3802,9 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
 	node.expr_type = c.expr(node.expr) // type to be casted
 	from_type_sym := c.table.get_type_symbol(node.expr_type)
 	to_type_sym := c.table.get_type_symbol(node.typ) // type to be used as cast
+	if to_type_sym.kind == .placeholder && to_type_sym.language != .c {
+		c.error('unknown type `$to_type_sym.name`', node.pos)
+	}
 	expr_is_ptr := node.expr_type.is_ptr() || node.expr_type.idx() in table.pointer_type_idxs
 	if expr_is_ptr && to_type_sym.kind == .string && !node.in_prexpr {
 		if node.has_arg {
