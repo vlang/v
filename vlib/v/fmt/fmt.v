@@ -1971,18 +1971,25 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 		}
 	}
 	for i, c in node.pre_cmnts {
-		f.comment(c, level: .indent, iembed: true)
 		if i < node.pre_cmnts.len - 1 {
 			if c.pos.last_line < node.pre_cmnts[i + 1].pos.line_nr {
+				f.comment(c, level: .indent)
 				f.writeln('')
 			} else {
+				f.comment(c, level: .indent, iembed: true)
 				f.write(' ')
 			}
 		} else {
-			if c.pos.last_line < node.pos.last_line && node.exprs.len == 0 {
-				f.writeln('')
-			} else if node.exprs.len > 0 {
-				f.write(' ')
+			if c.pos.last_line < node.pos.last_line {
+				f.comment(c, level: .indent)
+				if node.exprs.len == 0 {
+					f.writeln('')
+				}
+			} else {
+				f.comment(c, level: .indent, iembed: true)
+				if node.exprs.len > 0 {
+					f.write(' ')
+				}
 			}
 		}
 		last_line_nr = c.pos.last_line
@@ -2023,10 +2030,12 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 				}
 				if cmt.pos.line_nr > expr_pos.last_line {
 					f.writeln('')
+					f.comment(cmt, {})
 				} else {
 					f.write(' ')
+					f.comment(cmt, iembed: true)
 				}
-				f.comment(cmt, iembed: true)
+
 			}
 		}
 		if i == node.exprs.len - 1 {
