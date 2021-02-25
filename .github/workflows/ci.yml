@@ -754,7 +754,7 @@ jobs:
           .\cmd\tools\test_if_v_test_system_works.exe
       - name: Self tests
         run: |
-          .\v.exe test-self
+          .\v.exe -silent test-self
   #    - name: Test
   #      run: |
   #        .\v.exe -silent test-all
@@ -796,7 +796,7 @@ jobs:
           .\cmd\tools\test_if_v_test_system_works.exe
       - name: Self tests
         run: |
-          .\v.exe test-self
+          .\v.exe -silent test-self
   #    - name: Test
   #      run: |
   #        .\v.exe -silent test-all
