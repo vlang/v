@@ -1020,13 +1020,13 @@ fn (mut p Parser) reg_or_alias() ast.AsmArg {
 			p.check(.name)
 			return b
 		} else {
-			panic('parser bug: non-register ScopeObjects found in scope')
+			panic('parser bug: non-register ast.ScopeObject found in scope')
 		}
 	} else {
 		p.check(.name)
 		return ast.AsmAlias{
 			val: p.prev_tok.lit
-			pos: p.tok.position()
+			pos: p.prev_tok.position()
 		}
 	}
 }

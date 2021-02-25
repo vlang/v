@@ -1708,7 +1708,6 @@ fn (mut g Gen) gen_asm_stmt(stmt ast.AsmStmt) {
 	}
 	g.writeln(' (')
 	g.indent++
-	g.writeln('".intel_syntax noprefix;"')
 	for template in stmt.templates {
 		g.write('"$template.name')
 		if template.is_label {
@@ -1716,10 +1715,16 @@ fn (mut g Gen) gen_asm_stmt(stmt ast.AsmStmt) {
 		} else {
 			g.write(' ')
 		}
-		for i, arg in template.args {
-			g.asm_arg(arg)
-			if i + 1 < template.args.len {
-				g.write(', ')
+		if template.args.len == 2 {
+			g.asm_arg(template.args[1])
+			g.write(', ')
+			g.asm_arg(template.args[0])
+		} else {
+			for i, arg in template.args {
+				g.asm_arg(arg)
+				if i + 1 < template.args.len {
+					g.write(', ')
+				}
 			}
 		}
 		if !template.is_label {
@@ -1727,7 +1732,6 @@ fn (mut g Gen) gen_asm_stmt(stmt ast.AsmStmt) {
 		}
 		g.writeln('"')
 	}
-	g.writeln('".att_syntax;"')
 	if !stmt.is_top_level {
 		g.write(': ')
 	}
@@ -1740,7 +1744,7 @@ fn (mut g Gen) gen_asm_stmt(stmt ast.AsmStmt) {
 		g.write(': ')
 	}
 	for i, clob in stmt.clobbered {
-		g.write('"%')
+		g.write('"')
 		g.write(clob.reg)
 		g.write('"')
 		if i + 1 < stmt.clobbered.len {
@@ -1767,56 +1771,60 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg) {
 			g.write("'$arg.val'")
 		}
 		ast.IntegerLiteral, ast.FloatLiteral {
-			g.write(arg.val)
+			g.write('\$$arg.val')
 		}
 		ast.BoolLiteral {
-			g.write(arg.val.str())
+			g.write('\$$arg.val.str()')
 		}
 		ast.AsmRegister {
-			g.write(arg.name)
+			g.write('%%$arg.name')
 		}
 		ast.AsmAddressing {
-			g.write('[')
 			base := arg.base
 			index := arg.index
 			displacement := arg.displacement
 			scale := arg.scale
 			match arg.mode {
 				.base {
+					g.write('(')
 					g.asm_arg(base)
 				}
 				.displacement {
-					g.write('$displacement')
+					g.write('${displacement}(')
 				}
 				.base_plus_displacement {
+					g.write('${displacement}(')
 					g.asm_arg(base)
-					g.write(' + $displacement')
 				}
 				.index_times_scale_plus_displacement {
+					g.write('${displacement}(,')
 					g.asm_arg(index)
-					g.write(' * $scale + $displacement')
+					g.write(',')
+					g.write(scale.str())
 				}
 				.base_plus_index_plus_displacement {
+					g.write('${displacement}(')
 					g.asm_arg(base)
-					g.write(' + ')
+					g.write(',')
 					g.asm_arg(index)
-					g.write(' + $displacement')
+					g.write(',1')
 				}
 				.base_plus_index_times_scale_plus_displacement {
+					g.write('${displacement}(')
 					g.asm_arg(base)
-					g.write(' + ')
+					g.write(',')
 					g.asm_arg(index)
-					g.write(' * $scale + $displacement')
+					g.write(',$scale')
 				}
 				.rip_plus_displacement {
-					g.asm_arg(base)
-					g.write(' + $displacement')
+					g.write('${displacement}(')
+					g.asm_arg('$base')
 				}
 				.invalid {
 					g.error('invalid addressing mode', arg.pos)
 				}
 			}
-			g.write(']')
+			g.write(')')
 		}
 		string {
 			g.write('$arg')

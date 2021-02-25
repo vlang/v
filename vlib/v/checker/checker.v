@@ -3439,10 +3439,10 @@ fn (mut c Checker) asm_stmt(mut stmt ast.AsmStmt) {
 			match mut arg {
 				ast.AsmAlias {
 					if arg.is_numeric {
-						// if node.val.int() > stmt.max_idx { // TODO: get max index
-						// 	c.error('index too large. largest index is $stmt.max_idx, got $arg.val',
-						// 		node.pos)
-						// }
+						if arg.val.int() >= stmt.input.len + stmt.output.len { // TODO: get max index
+							c.error('index too large. largest index is $stmt.max_idx, got $arg.val',
+								arg.pos)
+						}
 					} else {
 						val := arg.val
 						if val !in aliases {

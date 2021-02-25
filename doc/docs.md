@@ -3831,15 +3831,21 @@ are auto generated when the operators are defined though they must return the sa
 ## Inline assembly
 
 ```v
+a := 100
+b := 20
+c := 0
 unsafe asm amd64 {
 	mov eax, a
 	add eax, b
 	mov c, eax
 	: =r (c) as c // output 
 	: r (a) as a // input 
-		r (b) as b
+	  r (b) as b
 	: eax // clobbered registers
 }
+println('a: $a') // 100
+println('b: $b') // 20
+println('c: $c') // 120
 ```
 
 For more examples, see [github.com/vlang/v/tree/master/vlib/v/tests/asm_test.v](https://github.com/vlang/v/tree/master/vlib/v/tests/asm_test.v)

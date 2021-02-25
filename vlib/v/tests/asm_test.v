@@ -18,10 +18,6 @@ fn test_inline_asm() {
 	}
 	assert c == 5
 
-	unsafe asm amd64 {
-		
-		
-	}
 	d, e, f := 10, 2, 0
 	unsafe asm amd64 {
 		mov f, d
@@ -89,7 +85,6 @@ fn test_inline_asm() {
 	assert l == 7
 
 	n := [5, 9, 0, 4]
-	o := 4
 	unsafe asm amd64 {
 		loop_start2:
 		addq [in_data + rcx * 4 + 0], 2
@@ -98,7 +93,6 @@ fn test_inline_asm() {
 		: : c (n.len - 1) // c is counter (loop) register
 		  r (n.data) as in_data
 	}
-	println(o)
 	assert n == [7, 11, 2, 6]
 
 	// m := `d`
