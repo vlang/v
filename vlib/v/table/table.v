@@ -849,3 +849,38 @@ pub fn (mytable &Table) has_deep_child_no_ref(ts &TypeSymbol, name string) bool 
 	}
 	return false
 }
+
+// bitsize_to_type returns a type corresponding to the bit_size
+// Examples:
+// 
+// `8 > i8`
+// 
+// `32 > int`
+// 
+// `123 > panic()`
+// 
+// `128 > [16]byte`
+// 
+// `608 > [76]byte`
+pub fn (mut t Table) bitsize_to_type(bit_size int) Type {
+	match bit_size {
+		8 {
+			return i8_type
+		}
+		16 {
+			return i16_type
+		}
+		32 {
+			return int_type
+		}
+		64 {
+			return i64_type
+		}
+		else {
+			if bit_size % 8 != 0 { // there is no way to do `i2131(32)` so this should never be reached
+				panic('compiler bug: bitsizes must be multiples of 8')
+			}
+			return new_type(t.find_or_register_array_fixed(byte_type, bit_size / 8))
+		}
+	}
+}

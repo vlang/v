@@ -6,6 +6,7 @@ module ast
 import v.token
 import v.table
 import v.errors
+import v.pref
 
 pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
@@ -24,7 +25,7 @@ pub type Stmt = AsmStmt | AssertStmt | AssignStmt | Block | BranchStmt | CompFor
 
 // NB: when you add a new Expr or Stmt type with a .pos field, remember to update
 // the .position() token.Position methods too.
-pub type ScopeObject = ConstField | GlobalField | Var
+pub type ScopeObject = AsmRegister | ConstField | GlobalField | Var
 
 // TOOD: replace table.Param
 pub type Node = ConstField | EnumField | Expr | Field | File | GlobalField | IfBranch |
@@ -1031,39 +1032,168 @@ pub mut:
 
 pub struct AsmStmt {
 pub:
-	is_pub    bool // false if inline
-	top_level bool
-	arch      string
-	volatile  bool
-	output    []AsmIO
-	input     []AsmIO
-	clobbered []AsmClobbered
-	pos       token.Position
+	arch         pref.Arch
+	is_top_level bool
+	is_volatile  bool
+	is_goto      bool
+	volatile     bool
+	clobbered    []AsmClobbered
+	pos          token.Position
 pub mut:
-	templates []AsmTemplate
+	templates   []AsmTemplate
+	max_idx     int
+	scope       &Scope
+	output      []AsmIO
+	input       []AsmIO
+	label_names []string
 }
 
 pub struct AsmTemplate {
 pub mut:
-	template string
+	name     string
+	is_label bool // `example_label:`
+	args     []AsmArg
 	comments []Comment
 }
 
-// represents either the template or the clobbered registers 
+// [eax+5] | j | eax | true | `a` | 0.594 | 123 | 'hi' | label_name
+pub type AsmArg = AsmAddressing | AsmAlias | AsmRegister | BoolLiteral | CharLiteral |
+	FloatLiteral | IntegerLiteral | string
+
+pub struct AsmRegister {
+pub:
+	name   string // eax or r12d
+	number int = -1 // -1 or 12 (for above examples)
+	typ    table.Type
+	size   int
+}
+
+pub struct AsmAlias {
+pub:
+	val        string // a
+	is_numeric bool
+	pos        token.Position
+}
+
+pub struct AsmAddressing {
+pub:
+	displacement u32    // 8, 16 or 32 bit literal value
+	base         AsmArg // gpr
+	index        AsmArg // gpr
+	scale        int = -1 // 1, 2, 4, or 8 literal 
+	mode         AddressingMode
+	pos          token.Position
+}
+
+// adressing modes:
+pub enum AddressingMode {
+	invalid
+	displacement // displacement
+	base // base
+	base_plus_displacement // base + displacement
+	index_times_scale_plus_displacement // (index ∗ scale) + displacement
+	base_plus_index_plus_displacement // base + (index ∗ scale) + displacement
+	base_plus_index_times_scale_plus_displacement // base + index + displacement
+	rip_plus_displacement // rip + displacement
+}
+
 pub struct AsmClobbered {
 pub mut:
-	reg_name string // eax
+	reg      string // eax
 	comments []Comment
 }
 
-// : [var_a] '=r' (a) // this is a comment
+// : [alias_a] '=r' (a) // this is a comment
 pub struct AsmIO {
 pub:
-	alias      string    // [var_a]
+	alias      string    // [alias_a]
 	constraint string    // '=r'
 	expr       Expr      // (a)
 	comments   []Comment // // this is a comment
+	typ        table.Type
+	pos        token.Position
 }
+
+pub const (
+	// reference: https://en.wikipedia.org/wiki/X86#/media/File:Table_of_x86_Registers_svg.svg
+	// map register size -> register name
+	x86_no_number_register_list   = map{
+		8:  ['al', 'ah', 'bl', 'bh', 'cl', 'ch', 'dl', 'dh', 'bpl', 'sil', 'dil', 'spl']
+		16: ['ax', 'bx', 'cx', 'dx', 'bp', 'si', 'di', 'sp', /* segment registers */ 'cs', 'ss',
+			'ds', 'es', 'fs', 'gs', 'flags', 'ip', /* task registers */ 'gdtr', 'idtr', 'tr', 'ldtr',
+			// CSR register 'msw', /* FP core registers */ 'cw', 'sw', 'tw', 'fp_ip', 'fp_dp',
+			'fp_cs', 'fp_ds', 'fp_opc']
+		32: [
+			'eax',
+			'ebx',
+			'ecx',
+			'edx',
+			'ebp',
+			'esi',
+			'edi',
+			'esp',
+			'eflags',
+			'eip', /* CSR register */
+			'mxcsr' /* 32-bit FP core registers 'fp_dp', 'fp_ip' (TODO: why are there duplicates?) */,
+		]
+		64: ['rax', 'rbx', 'rcx', 'rdx', 'rbp', 'rsi', 'rdi', 'rsp', 'rflags', 'rip']
+	}
+	// no comments because maps do not support comments
+	// r#*: gp registers added in 64-bit extensions, can only be from 8-15 actually
+	// *mm#: vector/simd registors
+	// st#: floating point numbers
+	// cr#: control/status registers
+	// dr#: debug registers
+	x86_with_number_register_list = map{
+		8:   map{
+			'r#b': 16
+		}
+		16:  map{
+			'r#w': 16
+		}
+		32:  map{
+			'r#d': 16
+		}
+		64:  map{
+			'r#':  16
+			'mm#': 16
+			'cr#': 16
+			'dr#': 16
+		}
+		80:  map{
+			'st#': 16
+		}
+		128: map{
+			'xmm#': 32
+		}
+		256: map{
+			'ymm#': 32
+		}
+		512: map{
+			'zmm#': 32
+		}
+	}
+)
+
+// TODO: saved priviled registers for arm
+const (
+	arm_no_number_register_list   = ['fp', /* not instruction pointer */ 'ip', 'sp', 'lr', 'pc',
+		'apsr',
+	]
+	arm_with_number_register_list = map{
+		'r#': 13
+	}
+)
+
+const (
+	riscv_no_number_register_list   = ['zero', 'ra', 'sp', 'gp', 'tp']
+	riscv_with_number_register_list = map{
+		'x#': 32
+		't#': 3
+		's#': 12
+		'a#': 8
+	}
+)
 
 pub struct AssertStmt {
 pub:
@@ -1434,7 +1564,17 @@ pub fn (node Node) position() token.Position {
 		}
 		ScopeObject {
 			match node {
-				ConstField, GlobalField, Var { return node.pos }
+				ConstField, GlobalField, Var {
+					return node.pos
+				}
+				AsmRegister {
+					return token.Position{
+						len: -1
+						line_nr: -1
+						pos: -1
+						last_line: -1
+					}
+				}
 			}
 		}
 		File {
@@ -1561,6 +1701,7 @@ pub fn (node Node) children() []Node {
 	} else if node is ScopeObject {
 		match node {
 			GlobalField, ConstField, Var { children << node.expr }
+			AsmRegister {}
 		}
 	} else {
 		match node {
@@ -1615,4 +1756,43 @@ pub fn (mut lx IndexExpr) recursive_mapset_is_setter(val bool) {
 			lx.left.recursive_mapset_is_setter(val)
 		}
 	}
+}
+
+// return all the registers for a give architecture
+pub fn all_registers(mut t table.Table, arch pref.Arch) map[string]ScopeObject {
+	mut res := map[string]ScopeObject{}
+	match arch {
+		.amd64 {
+			for bit_size, array in ast.x86_no_number_register_list {
+				for name in array {
+					res[name] = AsmRegister{
+						name: name
+						typ: t.bitsize_to_type(bit_size)
+						size: bit_size
+					}
+				}
+			}
+			for bit_size, array in ast.x86_with_number_register_list {
+				for name, max_num in array {
+					for i in 0 .. max_num {
+						hash_index := name.index('#') or {
+							panic('ast.all_registers: no hashtag found')
+						}
+						assembled_name := '${name[..hash_index]}$i${name[hash_index + 1..]}'
+						res[assembled_name] = AsmRegister{
+							name: assembled_name
+							number: i
+							typ: t.bitsize_to_type(bit_size)
+							size: bit_size
+						}
+					}
+				}
+			}
+		}
+		else { // TODO
+			panic('ast.all_registers: unhandled arch')
+		}
+	}
+
+	return res
 }

@@ -196,11 +196,6 @@ pub fn (mut ts TestSession) test() {
 				continue
 			}
 		}
-		$if tinyc {
-			if file.contains('asm') {
-				continue
-			}
-		}
 		remaining_files << dot_relative_file
 	}
 	remaining_files = vtest.filter_vtest_only(remaining_files, fix_slashes: false)

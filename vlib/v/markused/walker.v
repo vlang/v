@@ -49,7 +49,7 @@ pub fn (mut w Walker) mark_root_fns(all_fn_root_names []string) {
 
 pub fn (mut w Walker) stmt(node ast.Stmt) {
 	match mut node {
-		ast.AsmStmt { // TODO: look for `call` instructions
+		ast.AsmStmt {
 			w.asm_io(node.output)
 			w.asm_io(node.input)
 		}
@@ -155,13 +155,13 @@ fn (mut w Walker) expr(node ast.Expr) {
 		ast.AnonFn {
 			w.fn_decl(mut node.decl)
 		}
-		ast.Assoc {
-			w.exprs(node.exprs)
-		}
 		ast.ArrayInit {
 			w.expr(node.len_expr)
 			w.expr(node.cap_expr)
 			w.expr(node.default_expr)
+			w.exprs(node.exprs)
+		}
+		ast.Assoc {
 			w.exprs(node.exprs)
 		}
 		ast.ArrayDecompose {

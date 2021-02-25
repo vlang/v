@@ -1,0 +1,5 @@
+vlib/v/checker/tests/asm_only_unsafe_blocks.vv:1:1: error: inline assembly is only allowed in `unsafe` blocks
+    1 | asm x64 {
+      | ~~~~~~~~~
+    2 |     mov eax, ebx
+    3 | }

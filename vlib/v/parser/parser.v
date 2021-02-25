@@ -27,49 +27,51 @@ mut:
 	scanner           &scanner.Scanner
 	comments_mode     scanner.CommentsMode = .skip_comments
 	// see comment in parse_file
-	tok               token.Token
-	prev_tok          token.Token
-	peek_tok          token.Token
-	table             &table.Table
-	language          table.Language
-	inside_if         bool
-	inside_if_expr    bool
-	inside_ct_if_expr bool
-	inside_or_expr    bool
-	inside_for        bool
-	inside_fn         bool // true even with implicit main
-	inside_unsafe_fn  bool // true when in fn, marked with `[unsafe]`
-	inside_str_interp bool
-	or_is_handled     bool         // ignore `or` in this expression
-	builtin_mod       bool         // are we in the `builtin` module?
-	mod               string       // current module name
-	is_manualfree     bool         // true when `[manualfree] module abc`, makes *all* fns in the current .v file, opt out of autofree
-	attrs             []table.Attr // attributes before next decl stmt
-	expr_mod          string       // for constructing full type names in parse_type()
-	scope             &ast.Scope
-	global_scope      &ast.Scope
-	imports           map[string]string // alias => mod_name
-	ast_imports       []ast.Import      // mod_names
-	used_imports      []string // alias
-	auto_imports      []string // imports, the user does not need to specify
-	imported_symbols  map[string]string
-	is_amp            bool // for generating the right code for `&Foo{}`
-	returns           bool
-	inside_match      bool // to separate `match A { }` from `Struct{}`
-	inside_select     bool // to allow `ch <- Struct{} {` inside `select`
-	inside_match_case bool // to separate `match_expr { }` from `Struct{}`
-	inside_match_body bool // to fix eval not used TODO
-	inside_unsafe     bool
-	is_stmt_ident     bool // true while the beginning of a statement is an ident/selector
-	expecting_type    bool // `is Type`, expecting type
-	errors            []errors.Error
-	warnings          []errors.Warning
-	vet_errors        []vet.Error
-	cur_fn_name       string
-	label_names       []string
-	in_generic_params bool // indicates if parsing between `<` and `>` of a method/function
-	name_error        bool // indicates if the token is not a name or the name is on another line
-	n_asm             int  // controls assembly labels 
+	tok                 token.Token
+	prev_tok            token.Token
+	peek_tok            token.Token
+	table               &table.Table
+	language            table.Language
+	inside_if           bool
+	inside_if_expr      bool
+	inside_ct_if_expr   bool
+	inside_or_expr      bool
+	inside_for          bool
+	inside_fn           bool // true even with implicit main
+	inside_unsafe_fn    bool
+	inside_str_interp   bool
+	or_is_handled       bool         // ignore `or` in this expression
+	builtin_mod         bool         // are we in the `builtin` module?
+	mod                 string       // current module name
+	is_manualfree       bool         // true when `[manualfree] module abc`, makes *all* fns in the current .v file, opt out of autofree
+	attrs               []table.Attr // attributes before next decl stmt
+	expr_mod            string       // for constructing full type names in parse_type()
+	scope               &ast.Scope
+	global_scope        &ast.Scope
+	imports             map[string]string // alias => mod_name
+	ast_imports         []ast.Import      // mod_names
+	used_imports        []string // alias
+	auto_imports        []string // imports, the user does not need to specify
+	imported_symbols    map[string]string
+	is_amp              bool // for generating the right code for `&Foo{}`
+	returns             bool
+	inside_match        bool // to separate `match A { }` from `Struct{}`
+	inside_select       bool // to allow `ch <- Struct{} {` inside `select`
+	inside_match_case   bool // to separate `match_expr { }` from `Struct{}`
+	inside_match_body   bool // to fix eval not used TODO
+	inside_unsafe       bool
+	is_stmt_ident       bool // true while the beginning of a statement is an ident/selector
+	expecting_type      bool // `is Type`, expecting type
+	errors              []errors.Error
+	warnings            []errors.Warning
+	vet_errors          []vet.Error
+	cur_fn_name         string
+	label_names         []string
+	in_generic_params   bool // indicates if parsing between `<` and `>` of a method/function
+	name_error          bool // indicates if the token is not a name or the name is on another line
+	n_asm               int  // controls assembly labels 
+	inside_asm_template bool
+	inside_asm          bool
 }
 
 // for tests
@@ -494,9 +496,6 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 					.key_type {
 						return p.type_decl()
 					}
-					.key_asm {
-						return p.asm_stmt(true)
-					}
 					else {
 						p.error('wrong pub keyword usage')
 						return ast.Stmt{}
@@ -807,9 +806,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			return ast.Stmt{}
 		}
 		.key_asm {
-			a := p.asm_stmt(false)
-			// println(a)
-			return a
+			return p.asm_stmt(false)
 		}
 		// literals, 'if', etc. in here
 		else {
@@ -818,25 +815,40 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 	}
 }
 
-fn (mut p Parser) asm_stmt(top_level bool) ast.AsmStmt {
+fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
+	p.inside_asm = true
+	p.inside_asm_template = true
+
+	defer {
+		p.inside_asm = false
+		p.inside_asm_template = false
+	}
+
 	p.n_asm = 0
-	if top_level {
+	if is_top_level {
 		p.top_level_statement_start()
 	}
-	is_pub := p.tok.kind == .key_pub
-	if is_pub {
-		p.next()
+	backup_scope := p.scope
+	defer {
 	}
-	mut templates := []ast.AsmTemplate{}
+
 	pos := p.tok.position()
 
 	p.check(.key_asm)
-	mut arch := p.tok.lit
-	mut volatile := false
+	mut arch := pref.arch_from_string(p.tok.lit) or { pref.Arch._auto }
+	mut is_volatile := false
+	mut is_goto := false
 	if p.tok.lit == 'volatile' {
-		arch = p.peek_tok.lit
-		volatile = true
+		arch = pref.arch_from_string(p.peek_tok.lit) or { pref.Arch._auto }
+		is_volatile = true
 		p.check(.name)
+	} else if p.tok.kind == .key_goto {
+		arch = pref.arch_from_string(p.peek_tok.lit) or { pref.Arch._auto }
+		is_goto = true
+		p.check(.key_goto)
+	}
+	if arch == ._auto {
+		p.error('invalid assembly architecture')
 	}
 	if p.tok.kind != .name {
 		p.error('must specify assembly architecture')
@@ -845,29 +857,112 @@ fn (mut p Parser) asm_stmt(top_level bool) ast.AsmStmt {
 	}
 
 	p.check(.lcbr)
+	p.scope = &ast.Scope{
+		parent: 0 // you shouldn't be able to reference other variables in assembly blocks
+		detached_from_parent: true
+		start_pos: p.tok.pos
+		objects: ast.all_registers(mut p.table, arch) // 
+	}
 
-	// `in`, `lock`, `or` are v keywords that are also x86/arm/riscv instructions.
-	// NB: dots are part of instructions for some riscv extensions
+	mut label_names := []string{}
 	// riscv: https://github.com/jameslzhu/riscv-card/blob/master/riscv-card.pdf
 	// x86: https://www.felixcloutier.com/x86/
 	// arm: https://developer.arm.com/documentation/dui0068/b/arm-instruction-reference
-	// TODO: no string literals
-	for p.tok.kind == .string {
-		mut template := ast.AsmTemplate{}
+	mut templates := []ast.AsmTemplate{}
+	for p.tok.kind !in [.colon, .rcbr] {
+		mut name := ''
+		if p.tok.kind in [.key_in, .key_lock, .key_orelse] { // `in`, `lock`, `or` are v keywords that are also x86/arm/riscv instructions.
+			name = p.tok.kind.str()
+		} else {
+			name = p.tok.lit
+			p.check(.name)
+		}
+		// dots are part of instructions for some riscv extensions
+		if arch in [.rv32, .rv64] {
+			for p.tok.kind == .dot {
+				name += '.'
+				p.check(.dot)
+				name += p.tok.lit
+				p.check(.name)
+			}
+		}
+		mut is_label := false
 
-		template.template = p.tok.lit
-		p.check(.string)
+		mut args := []ast.AsmArg{}
+		args_loop: for {
+			match p.tok.kind {
+				.name {
+					args << p.reg_or_alias()
+				}
+				.number {
+					number_lit := p.parse_number_literal()
+					match number_lit {
+						ast.FloatLiteral {
+							args << ast.FloatLiteral{
+								...number_lit
+							}
+						}
+						ast.IntegerLiteral {
+							args << ast.IntegerLiteral{
+								...number_lit
+							}
+						}
+						else {
+							verror('p.parse_number_literal() invalid output: `$number_lit`')
+						}
+					}
+				}
+				.chartoken {
+					args << ast.CharLiteral{
+						val: p.tok.lit
+						pos: p.tok.position()
+					}
+					p.check(.chartoken)
+				}
+				.dollar {
+					p.check(.dollar)
+					args << ast.AsmAlias{
+						val: p.tok.lit
+						is_numeric: true
+						pos: p.tok.position()
+					}
+					p.check(.number)
+				}
+				.colon {
+					is_label = true
+					p.check(.colon)
+					label_names << name
+					break
+				}
+				.lsbr {
+					args << p.asm_addressing()
+				}
+				else {
+					p.error('invalid token in assembly block')
+				}
+			}
+			if p.tok.kind == .comma {
+				p.check(.comma)
+			} else {
+				break
+			}
+		}
 		mut comments := []ast.Comment{}
 		for p.tok.kind == .comment {
 			comments << p.comment()
 		}
-		if comments.len != 0 {
-			template.comments = comments
+		templates << ast.AsmTemplate{
+			name: name
+			args: args
+			comments: comments
+			is_label: is_label
 		}
-		templates << template
 	}
+	mut scope := p.scope
+	p.scope = backup_scope
+	p.inside_asm_template = false
 	mut output, mut input, mut clobbered := []ast.AsmIO{}, []ast.AsmIO{}, []ast.AsmClobbered{}
-	if !top_level {
+	if !is_top_level {
 		if p.tok.kind == .colon {
 			output = p.asm_ios()
 			if p.tok.kind == .colon {
@@ -875,96 +970,341 @@ fn (mut p Parser) asm_stmt(top_level bool) ast.AsmStmt {
 			}
 			if p.tok.kind == .colon {
 				p.check(.colon)
-				mut clob := ast.AsmClobbered{}
-				for p.tok.kind == .string {
-					clob.reg_name = p.tok.lit
-					p.next()
-					mut should_break := false
-					if p.tok.kind != .comma {
-						should_break = true
-					} else {
-						p.check(.comma)
-					}
+				for p.tok.kind == .name {
+					reg := p.reg_name()
 					mut comments := []ast.Comment{}
 					for p.tok.kind == .comment {
 						comments << p.comment()
 					}
-					clob.comments = comments
-					clobbered << clob
-					if should_break {
+					clobbered << ast.AsmClobbered{
+						reg: reg
+						comments: comments
+					}
+					if p.tok.kind == .rcbr {
 						break
 					}
 				}
 			}
 		}
 	} else if p.tok.kind == .colon {
-		p.error('extended assembly is not allowed in the top-level')
+		p.error('extended assembly is not allowed as a top level statement')
 	}
 	p.check(.rcbr)
-	if top_level {
+	if is_top_level {
 		p.top_level_statement_end()
 	}
+	scope.end_pos = p.prev_tok.pos
 
-	mut stmt := ast.AsmStmt{
+	return ast.AsmStmt{
 		arch: arch
+		is_goto: is_goto
+		is_volatile: is_volatile
 		templates: templates
 		output: output
 		input: input
 		clobbered: clobbered
-		pos: pos
-		top_level: top_level
+		pos: pos.extend(p.tok.position())
+		is_top_level: is_top_level
+		max_idx: p.n_asm - 1
+		scope: scope
+		label_names: label_names
 	}
-	asm_fix(mut stmt)
-	return stmt
 }
 
-fn asm_fix(mut stmt ast.AsmStmt) {
-	stmt.templates.insert(0, ast.AsmTemplate{
-		template: '.intel_syntax noprefix\\n'
-	})
-	stmt.templates << ast.AsmTemplate{
-		template: '.att_syntax noprefix\\n'
-	}
-	for i, template in stmt.templates {
-		if !template.template.contains(':') {
-			stmt.templates[i].template += if stmt.top_level { '\n' } else { ';' }
+fn (mut p Parser) reg_or_alias() ast.AsmArg {
+	assert p.tok.kind == .name
+	if p.tok.lit in p.scope.objects {
+		x := p.scope.objects[p.tok.lit]
+		if x is ast.AsmRegister {
+			b := x
+			p.check(.name)
+			return b
 		} else {
-			// TODO: register labels
+			panic('parser bug: non-register ScopeObjects found in scope')
+		}
+	} else {
+		p.check(.name)
+		return ast.AsmAlias{
+			val: p.prev_tok.lit
+			pos: p.tok.position()
 		}
 	}
+}
+
+// fn (mut p Parser) asm_addressing() ast.AsmAddressing {
+// 	pos := p.tok.position()
+// 	p.check(.lsbr)
+// 	unknown_addressing_mode := 'unknown addressing mode. supported ones are [displacement],	[base], [base + displacement] [index ∗ scale + displacement], [base + index ∗ scale + displacement], [base + index + displacement] [rip + displacement]'
+// 	mut mode := ast.AddressingMode.invalid
+// 	if p.peek_tok.kind == .rsbr {
+// 		if p.tok.kind == .name {
+// 			mode = .base
+// 		} else if p.tok.kind == .number {
+// 			mode = .displacement
+// 		} else {
+// 			p.error(unknown_addressing_mode)
+// 		}
+// 	} else if p.peek_tok.kind == .mul {
+// 		mode = .index_times_scale_plus_displacement
+// 	} else if p.tok.lit == 'rip' {
+// 		mode = .rip_plus_displacement
+// 	} else if p.peek_tok3.kind == .mul {
+// 		mode = .base_plus_index_times_scale_plus_displacement
+// 	} else if p.peek_tok.kind == .plus && p.peek_tok3.kind == .rsbr {
+// 		mode = .base_plus_displacement
+// 	} else if p.peek_tok.kind == .plus && p.peek_tok3.kind == .plus {
+// 		mode = .base_plus_index_plus_displacement
+// 	} else {
+// 		p.error(unknown_addressing_mode)
+// 	}
+// 	mut displacement, mut base, mut index, mut scale := u32(0), ast.AsmArg{}, ast.AsmArg{}, -1
+
+// 	match mode {
+// 		.base {
+// 			base = p.reg_or_alias()
+// 		}
+// 		.displacement {
+// 			displacement = p.tok.lit.u32()
+// 			p.check(.number)
+// 		}
+// 		.base_plus_displacement {
+// 			base = p.reg_or_alias()
+// 			p.check(.plus)
+// 			displacement = p.tok.lit.u32()
+// 			p.check(.number)
+// 		}
+// 		.index_times_scale_plus_displacement {
+// 			index = p.reg_or_alias()
+// 			p.check(.mul)
+// 			scale = p.tok.lit.int()
+// 			p.check(.number)
+// 			p.check(.plus)
+// 			displacement = p.tok.lit.u32()
+// 			p.check(.number)
+// 		}
+// 		.base_plus_index_times_scale_plus_displacement {
+// 			base = p.reg_or_alias()
+// 			p.check(.plus)
+// 			index = p.reg_or_alias()
+// 			p.check(.mul)
+// 			scale = p.tok.lit.int()
+// 			p.check(.number)
+// 			p.check(.plus)
+// 			displacement = p.tok.lit.u32()
+// 			p.check(.number)
+// 		}
+// 		.rip_plus_displacement {
+// 			base = p.reg_or_alias()
+// 			p.check(.plus)
+// 			displacement = p.tok.lit.u32()
+// 			p.check(.number)
+// 		}
+// 		.base_plus_index_plus_displacement {
+// 			base = p.reg_or_alias()
+// 			p.check(.plus)
+// 			index = p.reg_or_alias()
+// 			p.check(.plus)
+// 			displacement = p.tok.lit.u32()
+// 			p.check(.number)
+// 		}
+// 		.invalid {} // there was already an error above
+// 	}
+
+// 	p.check(.rsbr)
+// 	return ast.AsmAddressing{
+// 		base: base
+// 		displacement: displacement
+// 		index: index
+// 		scale: scale
+// 		mode: mode
+// 		pos: pos.extend(p.prev_tok.position())
+// 	}
+// }
+fn (mut p Parser) asm_addressing() ast.AsmAddressing {
+	pos := p.tok.position()
+	p.check(.lsbr)
+	unknown_addressing_mode := 'unknown addressing mode. supported ones are [displacement],	[base], [base + displacement], [index ∗ scale + displacement], [base + index ∗ scale + displacement], [base + index + displacement], [rip + displacement]'
+	// this mess used to look much cleaner before the removal of peek_tok3, see above
+	if p.peek_tok.kind == .rsbr { // [displacement] or [base]
+		if p.tok.kind == .name {
+			base := p.reg_or_alias()
+			p.check(.rsbr)
+			return ast.AsmAddressing{
+				mode: .base
+				base: base
+				pos: pos.extend(p.prev_tok.position())
+			}
+		} else if p.tok.kind == .number {
+			displacement := p.tok.lit.u32()
+			p.check(.name)
+			p.check(.rsbr)
+			return ast.AsmAddressing{
+				mode: .displacement
+				displacement: displacement
+				pos: pos.extend(p.prev_tok.position())
+			}
+		} else {
+			p.error(unknown_addressing_mode)
+		}
+	}
+	if p.peek_tok.kind == .plus && p.tok.kind == .name { // [base + displacement], [base + index ∗ scale + displacement], [base + index + displacement] or [rip + displacement]
+		if p.tok.lit == 'rip' {
+			p.check(.name)
+			p.check(.plus)
+			displacement := p.tok.lit.u32()
+			p.check(.number)
+			return ast.AsmAddressing{
+				mode: .rip_plus_displacement
+				base: 'rip'
+				displacement: displacement
+				pos: pos.extend(p.prev_tok.position())
+			}
+		}
+		base := p.reg_or_alias()
+		p.check(.plus)
+		if p.peek_tok.kind == .rsbr {
+			if p.tok.kind == .number {
+				displacement := p.tok.lit.u32()
+				p.check(.number)
+				p.check(.rsbr)
+				return ast.AsmAddressing{
+					mode: .base_plus_displacement
+					base: base
+					displacement: displacement
+					pos: pos.extend(p.prev_tok.position())
+				}
+			} else {
+				p.error(unknown_addressing_mode)
+			}
+		}
+		index := p.reg_or_alias()
+		if p.tok.kind == .mul {
+			p.check(.mul)
+			scale := p.tok.lit.int()
+			p.check(.number)
+			p.check(.plus)
+			displacement := p.tok.lit.u32()
+			p.check(.number)
+			p.check(.rsbr)
+			return ast.AsmAddressing{
+				mode: .base_plus_index_times_scale_plus_displacement
+				base: base
+				index: index
+				scale: scale
+				displacement: displacement
+				pos: pos.extend(p.prev_tok.position())
+			}
+		} else if p.tok.kind == .plus {
+			p.check(.plus)
+			displacement := p.tok.lit.u32()
+			p.check(.number)
+			p.check(.rsbr)
+			return ast.AsmAddressing{
+				mode: .base_plus_index_plus_displacement
+				base: base
+				index: index
+				displacement: displacement
+				pos: pos.extend(p.prev_tok.position())
+			}
+		}
+	}
+	if p.peek_tok.kind == .mul { // [index ∗ scale + displacement]
+		index := p.reg_or_alias()
+		p.check(.mul)
+		scale := p.tok.lit.int()
+		p.check(.number)
+		p.check(.plus)
+		displacement := p.tok.lit.u32()
+		p.check(.number)
+		p.check(.rsbr)
+		return ast.AsmAddressing{
+			mode: .index_times_scale_plus_displacement
+			index: index
+			scale: scale
+			displacement: displacement
+			pos: pos.extend(p.prev_tok.position())
+		}
+	}
+	p.error(unknown_addressing_mode)
+	return ast.AsmAddressing{}
+}
+
+fn (mut p Parser) reg_name() string {
+	reg := p.tok.lit
+	p.check(.name)
+
+	if true {
+		return reg
+	}
+	number_chars := [byte(`0`), `1`, `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`]
+	mut nums := map[int]int{} // position:number in string
+	for i, c in reg {
+		if c in number_chars {
+			nums[i] = c.ascii_str().int()
+		}
+	}
+	if nums.len == 0 {
+		// return ast.AsmRegister{
+		// 	pos: p.prev_tok.position()
+		// 	name: reg
+		// }
+	}
+	mut acc_pos := -1
+	mut number_str := ''
+	mut number_start := -1
+	mut number_end := -1
+	for pos, i in nums {
+		number_end = pos
+		if acc_pos == -1 {
+			acc_pos = number_end
+			number_start = acc_pos
+			number_str += i.str()
+			continue
+		}
+		if pos != acc_pos + 1 {
+			p.error('non-contiguous number in register name')
+		} else {
+			acc_pos++
+		}
+		number_str += i.str()
+	}
+
+	// return ast.AsmRegister{
+	// 	pos: p.prev_tok.position()
+	// 	name: '${reg[..number_start]}#${reg[number_end + 1..]}'
+	// 	number: number_str.int()
+	// }
+	return reg
 }
 
 fn (mut p Parser) asm_ios() []ast.AsmIO {
 	mut res := []ast.AsmIO{}
 	p.check(.colon)
-	if p.tok.kind == .rcbr {
+	if p.tok.kind in [.rcbr, .colon] {
 		return []
 	}
 	for {
-		mut alias := ''
-		if p.tok.kind == .lsbr {
-			p.check(.lsbr)
-			alias = p.tok.lit
-			p.check(.name)
+		pos := p.tok.position()
+		mut constraint := ''
 
-			p.check(.rsbr)
+		if p.tok.kind == .assign {
+			constraint += '='
+			p.check(.assign)
 		}
-		constraint := p.tok.lit
-		p.check(.string)
-
+		constraint += p.tok.lit
+		p.check(.name)
 		mut expr := p.expr(0)
 		if mut expr is ast.ParExpr {
 			expr = expr.expr
 		} else {
-			p.error('asm in/output must be incolsed in  brackets')
+			p.error('asm in/output must be incolsed in brackets $expr.type_name()')
 		}
-		mut should_break := false
-		if p.tok.kind != .comma {
-			should_break = true
-		} else {
-			p.check(.comma)
+		mut alias := ''
+		if p.tok.kind == .key_as {
+			p.check(.key_as)
+			alias = p.tok.lit
+			p.check(.name)
 		}
-
 		mut comments := []ast.Comment{}
 		for p.tok.kind == .comment {
 			comments << p.comment()
@@ -975,11 +1315,12 @@ fn (mut p Parser) asm_ios() []ast.AsmIO {
 			constraint: constraint
 			expr: expr
 			comments: comments
-		}
-		if should_break {
-			break
+			pos: pos.extend(p.prev_tok.position())
 		}
 		p.n_asm++
+		if p.tok.kind in [.colon, .rcbr] {
+			break
+		}
 	}
 	return res
 }
@@ -2655,6 +2996,16 @@ pub fn (mut p Parser) mark_var_as_used(varname string) bool {
 fn (mut p Parser) unsafe_stmt() ast.Stmt {
 	mut pos := p.tok.position()
 	p.next()
+	// unsafe asm {...}
+	if p.tok.kind == .key_asm {
+		stmt := p.asm_stmt(false)
+		pos.update_last_line(p.tok.line_nr)
+		return ast.Block{
+			stmts: [ast.Stmt(stmt)]
+			is_unsafe: true
+			pos: pos
+		}
+	}
 	if p.tok.kind != .lcbr {
 		p.error_with_pos('please use `unsafe {`', p.tok.position())
 		return ast.Stmt{}

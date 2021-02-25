@@ -6,6 +6,7 @@ import v.gen.c
 import v.table
 import v.checker
 import v.pref
+import v.scanner
 import term
 
 fn test_eval() {

@@ -43,9 +43,19 @@ pub enum CompilerType {
 	cplusplus
 }
 
+pub enum Arch {
+	_auto
+	amd64 // aka x86_64
+	aarch64 // 64-bit arm
+	arm32 // 32-bit arm
+	rv64 // 64-bit risc-v
+	rv32 // 32-bit risc-v
+	ia32
+}
+
 const (
 	list_of_flags_with_param = ['o', 'd', 'define', 'b', 'backend', 'cc', 'os', 'target-os', 'cf',
-		'cflags', 'path']
+		'cflags', 'path', 'arch']
 )
 
 [heap]
@@ -54,6 +64,7 @@ pub mut:
 	os          OS // the OS to compile for
 	backend     Backend
 	build_mode  BuildMode
+	arch        Arch
 	output_mode OutputMode = .stdout
 	// verbosity           VerboseLevel
 	is_verbose bool
@@ -161,6 +172,16 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			'-apk' {
 				res.is_apk = true
 				res.build_options << arg
+			}
+			'-arch' {
+				target_arch := cmdline.option(current_args, '-arch', '')
+				i++
+				target_arch_kind := arch_from_string(target_arch) or {
+					eprintln('unknown architercture target `$target_arch`')
+					exit(1)
+				}
+				res.arch = target_arch_kind
+				res.build_options << '$arg $target_arch'
 			}
 			'-show-timings' {
 				res.show_timings = true
@@ -522,6 +543,42 @@ pub fn (pref &Preferences) vrun_elog(s string) {
 	if pref.is_verbose {
 		eprintln('> v run -, $s')
 	}
+}
+
+pub fn arch_from_string(arch_str string) ?Arch {
+	match arch_str {
+		'amd64', 'x86_64', 'x64', 'x86' { // amd64 recommended
+
+			return Arch.amd64
+		}
+		'aarch64', 'arm64' { // aarch64 recommended
+
+			return Arch.aarch64
+		}
+		'arm32', 'aarch32', 'arm' { // aarch32 recommended
+
+			return Arch.arm32
+		}
+		'rv64', 'riscv64', 'risc-v64', 'riscv', 'risc-v' { // rv64 recommended
+
+			return Arch.rv64
+		}
+		'rv32', 'riscv32' { // rv32 recommended
+
+			return Arch.rv32
+		}
+		'x86_32', 'x32', 'i386', 'IA-32', 'ia-32', 'ia32' { // ia32 recommended
+
+			return Arch.ia32
+		}
+		'' {
+			return ._auto
+		}
+		else {
+			return error('bad OS $arch_str')
+		}
+	}
+	// return arch
 }
 
 fn must_exist(path string) {

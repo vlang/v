@@ -1708,10 +1708,27 @@ fn (mut g Gen) gen_asm_stmt(stmt ast.AsmStmt) {
 	}
 	g.writeln(' (')
 	g.indent++
+	g.writeln('".intel_syntax noprefix;"')
 	for template in stmt.templates {
-		g.writeln('"$template.template"')
+		g.write('"$template.name')
+		if template.is_label {
+			g.write(':')
+		} else {
+			g.write(' ')
+		}
+		for i, arg in template.args {
+			g.asm_arg(arg)
+			if i + 1 < template.args.len {
+				g.write(', ')
+			}
+		}
+		if !template.is_label {
+			g.write(';')
+		}
+		g.writeln('"')
 	}
-	if !stmt.top_level {
+	g.writeln('".att_syntax;"')
+	if !stmt.is_top_level {
 		g.write(': ')
 	}
 	g.gen_asm_ios(stmt.output)
@@ -1723,7 +1740,9 @@ fn (mut g Gen) gen_asm_stmt(stmt ast.AsmStmt) {
 		g.write(': ')
 	}
 	for i, clob in stmt.clobbered {
-		g.write('"$clob.reg_name"')
+		g.write('"%')
+		g.write(clob.reg)
+		g.write('"')
 		if i + 1 < stmt.clobbered.len {
 			g.writeln(',')
 		} else {
@@ -1732,6 +1751,77 @@ fn (mut g Gen) gen_asm_stmt(stmt ast.AsmStmt) {
 	}
 	g.indent--
 	g.writeln(');')
+}
+
+fn (mut g Gen) asm_arg(arg ast.AsmArg) {
+	match arg {
+		ast.AsmAlias {
+			if arg.is_numeric { // v: $0 c: %0
+				g.write('%$arg.val')
+			} else { // v: $a c: %[a]
+
+				g.write('%[$arg.val]')
+			}
+		}
+		ast.CharLiteral {
+			g.write("'$arg.val'")
+		}
+		ast.IntegerLiteral, ast.FloatLiteral {
+			g.write(arg.val)
+		}
+		ast.BoolLiteral {
+			g.write(arg.val.str())
+		}
+		ast.AsmRegister {
+			g.write(arg.name)
+		}
+		ast.AsmAddressing {
+			g.write('[')
+			base := arg.base
+			index := arg.index
+			displacement := arg.displacement
+			scale := arg.scale
+			match arg.mode {
+				.base {
+					g.asm_arg(base)
+				}
+				.displacement {
+					g.write('$displacement')
+				}
+				.base_plus_displacement {
+					g.asm_arg(base)
+					g.write(' + $displacement')
+				}
+				.index_times_scale_plus_displacement {
+					g.asm_arg(index)
+					g.write(' * $scale + $displacement')
+				}
+				.base_plus_index_plus_displacement {
+					g.asm_arg(base)
+					g.write(' + ')
+					g.asm_arg(index)
+					g.write(' + $displacement')
+				}
+				.base_plus_index_times_scale_plus_displacement {
+					g.asm_arg(base)
+					g.write(' + ')
+					g.asm_arg(index)
+					g.write(' * $scale + $displacement')
+				}
+				.rip_plus_displacement {
+					g.asm_arg(base)
+					g.write(' + $displacement')
+				}
+				.invalid {
+					g.error('invalid addressing mode', arg.pos)
+				}
+			}
+			g.write(']')
+		}
+		string {
+			g.write('$arg')
+		}
+	}
 }
 
 fn (mut g Gen) gen_asm_ios(ios []ast.AsmIO) {
@@ -1745,48 +1835,6 @@ fn (mut g Gen) gen_asm_ios(ios []ast.AsmIO) {
 		} else {
 			g.writeln('')
 		}
-	}
-}
-
-fn (mut g Gen) gen_assert_stmt(original_assert_statement ast.AssertStmt) {
-	mut node := original_assert_statement
-	g.writeln('// assert')
-	if mut node.expr is ast.InfixExpr {
-		if mut node.expr.left is ast.CallExpr {
-			node.expr.left = g.new_ctemp_var_then_gen(node.expr.left, node.expr.left_type)
-		}
-		if mut node.expr.right is ast.CallExpr {
-			node.expr.right = g.new_ctemp_var_then_gen(node.expr.right, node.expr.right_type)
-		}
-	}
-	g.inside_ternary++
-	if g.is_test {
-		g.write('if (')
-		g.expr(node.expr)
-		g.write(')')
-		g.decrement_inside_ternary()
-		g.writeln(' {')
-		g.writeln('\tg_test_oks++;')
-		metaname_ok := g.gen_assert_metainfo(node)
-		g.writeln('\tmain__cb_assertion_ok(&$metaname_ok);')
-		g.writeln('} else {')
-		g.writeln('\tg_test_fails++;')
-		metaname_fail := g.gen_assert_metainfo(node)
-		g.writeln('\tmain__cb_assertion_failed(&$metaname_fail);')
-		g.writeln('\tlongjmp(g_jump_buffer, 1);')
-		g.writeln('\t// TODO')
-		g.writeln('\t// Maybe print all vars in a test function if it fails?')
-		g.writeln('}')
-	} else {
-		g.write('if (!(')
-		g.expr(node.expr)
-		g.write('))')
-		g.decrement_inside_ternary()
-		g.writeln(' {')
-		metaname_panic := g.gen_assert_metainfo(node)
-		g.writeln('\t__print_assert_failure(&$metaname_panic);')
-		g.writeln('\tv_panic(_SLIT("Assertion failed..."));')
-		g.writeln('}')
 	}
 }
 
@@ -3163,6 +3211,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		return
 	}
 	left_type := g.unwrap_generic(node.left_type)
+	// println('>>$node')
 	left_sym := g.table.get_type_symbol(left_type)
 	left_final_sym := g.table.get_final_type_symbol(left_type)
 	unaliased_left := if left_sym.kind == .alias {

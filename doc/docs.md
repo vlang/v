@@ -3830,18 +3830,19 @@ are auto generated when the operators are defined though they must return the sa
 
 ## Inline assembly
 
-TODO: not implemented yet
-
-```v failcompile
-fn main() {
-    a := 10
-    asm x64 {
-        mov eax, [a]
-        add eax, 10
-        mov [a], eax
-    }
+```v
+unsafe asm amd64 {
+	mov eax, a
+	add eax, b
+	mov c, eax
+	: =r (c) as c // output 
+	: r (a) as a // input 
+		r (b) as b
+	: eax // clobbered registers
 }
 ```
+
+For more examples, see [github.com/vlang/v/tree/master/vlib/v/tests/asm_test.v](https://github.com/vlang/v/tree/master/vlib/v/tests/asm_test.v)
 
 ## Translating C to V
 
