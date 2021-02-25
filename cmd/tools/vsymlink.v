@@ -106,18 +106,16 @@ fn setup_symlink_windows(vexe string) {
 			println('System %PATH% was not configured.')
 			println('Adding symlink directory to system %PATH%...')
 			set_reg_value(reg_sys_env_handle, 'Path', new_sys_env_path) or {
-				warn_and_exit(err)
 				C.RegCloseKey(reg_sys_env_handle)
-				return
+				warn_and_exit(err)
 			}
 			println('done.')
 		}
 		println('Notifying running processes to update their Environment...')
 		send_setting_change_msg('Environment') or {
 			eprintln(err)
-			warn_and_exit('You might need to run this again to have the `v` command in your %PATH%')
 			C.RegCloseKey(reg_sys_env_handle)
-			return
+			warn_and_exit('You might need to run this again to have the `v` command in your %PATH%')
 		}
 		C.RegCloseKey(reg_sys_env_handle)
 		println('')
