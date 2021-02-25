@@ -1,6 +1,7 @@
 import os
 import v.pref
 import v.util
+import time
 
 $if windows {
 	$if tinyc {
@@ -51,7 +52,8 @@ fn setup_symlink_windows(vexe string) {
 		if !os.exists(vsymlinkdir) {
 			os.mkdir(vsymlinkdir) or { panic(err) } // will panic if fails
 		} else {
-			os.rmdir(vsymlinkdir) or { panic(err) }
+			os.rmdir_all(vsymlinkdir) or { panic(err) }
+			time.usleep(1000) // 1 ms
 			os.mkdir(vsymlinkdir) or { panic(err) }
 		}
 		// First, try to create a native symlink at .\.bin\v.exe
