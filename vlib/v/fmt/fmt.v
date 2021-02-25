@@ -2035,7 +2035,6 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 					f.write(' ')
 					f.comment(cmt, iembed: true)
 				}
-
 			}
 		}
 		if i == node.exprs.len - 1 {
