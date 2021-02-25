@@ -2502,12 +2502,15 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 	}
 }
 
-fn (mut g Gen) gen_anon_fn_decl(it ast.AnonFn) {
-	pos := g.out.len
-	g.stmt(it.decl)
-	fn_body := g.out.after(pos)
-	g.out.go_back(fn_body.len)
-	g.anon_fn_definitions << fn_body
+fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
+	if !node.has_gen {
+		pos := g.out.len
+		g.stmt(node.decl)
+		fn_body := g.out.after(pos)
+		g.out.go_back(fn_body.len)
+		g.anon_fn_definitions << fn_body
+		node.has_gen = true
+	}
 }
 
 fn (mut g Gen) map_fn_ptrs(key_typ table.TypeSymbol) (string, string, string, string) {
@@ -2560,10 +2563,10 @@ fn (mut g Gen) map_fn_ptrs(key_typ table.TypeSymbol) (string, string, string, st
 fn (mut g Gen) expr(node ast.Expr) {
 	// println('cgen expr() line_nr=$node.pos.line_nr')
 	// NB: please keep the type names in the match here in alphabetical order:
-	match node {
+	match mut node {
 		ast.AnonFn {
 			// TODO: dont fiddle with buffers
-			g.gen_anon_fn_decl(node)
+			g.gen_anon_fn_decl(mut node)
 			fsym := g.table.get_type_symbol(node.typ)
 			g.write(fsym.name)
 		}
@@ -5877,7 +5880,7 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 fn (mut g Gen) go_stmt(node ast.GoStmt, joinable bool) string {
 	mut handle := ''
 	tmp := g.new_tmp_var()
-	expr := node.call_expr
+	mut expr := node.call_expr
 	mut name := expr.name // util.no_dots(expr.name)
 	// TODO: fn call is duplicated. merge with fn_call().
 	for i, generic_type in expr.generic_types {
@@ -5893,8 +5896,8 @@ fn (mut g Gen) go_stmt(node ast.GoStmt, joinable bool) string {
 	if expr.is_method {
 		receiver_sym := g.table.get_type_symbol(expr.receiver_type)
 		name = receiver_sym.name + '_' + name
-	} else if expr.left is ast.AnonFn {
-		g.gen_anon_fn_decl(expr.left)
+	} else if mut expr.left is ast.AnonFn {
+		g.gen_anon_fn_decl(mut expr.left)
 		fsym := g.table.get_type_symbol(expr.left.typ)
 		name = fsym.name
 	}
