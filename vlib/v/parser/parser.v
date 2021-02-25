@@ -779,7 +779,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			}
 			return ast.GoStmt{
 				call_expr: call_expr
-				pos: spos.extend(p.tok.position())
+				pos: spos.extend(p.prev_tok.position())
 			}
 		}
 		.key_goto {
