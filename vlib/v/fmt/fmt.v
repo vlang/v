@@ -1990,10 +1990,8 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 				f.array_init_break << (last_line_nr < line_nr)
 			}
 		}
-		is_same_line_comment := i > 0
-			&& (expr is ast.Comment && line_nr == node.exprs[i - 1].position().line_nr)
 		line_break := f.array_init_break[f.array_init_depth - 1]
-		mut penalty := if line_break && !is_same_line_comment { 0 } else { 4 }
+		mut penalty := if line_break { 0 } else { 4 }
 		if penalty > 0 {
 			if i == 0 || should_decrease_arr_penalty(node.exprs[i - 1]) {
 				penalty--
@@ -2028,14 +2026,12 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 		}
 		if i == node.exprs.len - 1 {
 			if is_new_line {
-				if !set_comma && expr !is ast.Comment {
+				if !set_comma{
 					f.write(',')
 				}
 				f.writeln('')
-			} else if is_same_line_comment {
-				f.writeln('')
 			}
-		} else if !set_comma && expr !is ast.Comment {
+		} else if !set_comma {
 			f.write(',')
 		}
 		last_line_nr = line_nr
