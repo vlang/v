@@ -3109,7 +3109,12 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.branch_stmt(node)
 		}
 		ast.CompFor {
-			// node.typ = c.expr(node.expr)
+			if node.typ > table.void_type {
+				sym := c.table.get_type_symbol(node.typ)
+				if sym.kind == .placeholder {
+					c.error('unknown type `$sym.name`', node.pos)
+				}
+			}
 			c.stmts(node.stmts)
 		}
 		ast.ConstDecl {
