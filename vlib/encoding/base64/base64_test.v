@@ -118,21 +118,21 @@ fn test_decode_url_str() {
 }
 
 fn test_encode_null_byte() {
-	assert base64.encode([byte(`L`) 0 `L`]) == 'TABM'
+	assert base64.encode([byte(`A`) 0 `C`]) == 'QQBD'
 }
 
 fn test_encode_null_byte_str() {
 	// While this works, bytestr() does a memcpy
-	s := [byte(`L`) 0 `L`].bytestr()
-	assert base64.encode_str(s) == 'TABM'
+	s := [byte(`A`) 0 `C`].bytestr()
+	assert base64.encode_str(s) == 'QQBD'
 }
 
 fn test_decode_null_byte() {
-	assert base64.decode('TABM') == [byte(`L`) 0 `L`]
+	assert base64.decode('QQBD') == [byte(`A`) 0 `C`]
 }
 
 fn test_decode_null_byte_str() {
 	// While this works, bytestr() does a memcpy
-	s := [byte(`L`) 0 `L`].bytestr()
-	assert base64.decode_str('TABM') == s
+	s := [byte(`A`) 0 `C`].bytestr()
+	assert base64.decode_str('QQBD') == s
 }
