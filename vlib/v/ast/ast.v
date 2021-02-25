@@ -766,6 +766,7 @@ pub:
 	has_cond bool
 	inc      Stmt // i++; i += 2
 	has_inc  bool
+	is_multi bool // for a,b := 0,1; a < 10; a,b = a+b, a {...}
 	stmts    []Stmt
 	pos      token.Position
 pub mut:
@@ -1339,11 +1340,8 @@ pub fn (stmt Stmt) position() token.Position {
 	match stmt {
 		AssertStmt, AssignStmt, Block, BranchStmt, CompFor, ConstDecl, DeferStmt, EnumDecl, ExprStmt,
 		FnDecl, ForCStmt, ForInStmt, ForStmt, GotoLabel, GotoStmt, Import, Return, StructDecl,
-		GlobalDecl, HashStmt, InterfaceDecl, Module, SqlStmt {
+		GlobalDecl, HashStmt, InterfaceDecl, Module, SqlStmt, GoStmt {
 			return stmt.pos
-		}
-		GoStmt {
-			return stmt.call_expr.pos
 		}
 		TypeDecl {
 			match stmt {
