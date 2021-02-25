@@ -40,16 +40,16 @@ const (
 )
 
 fn test_decode() {
-	assert base64.decode(man_pair.encoded) == man_pair.decoded
+	assert base64.decode(man_pair.encoded) == man_pair.decoded.bytes()
 
 	// Test for incorrect padding.
-	assert base64.decode('aGk') == 'hi'
-	assert base64.decode('aGk=') == 'hi'
-	assert base64.decode('aGk==') == 'hi'
+	assert base64.decode('aGk') == 'hi'.bytes()
+	assert base64.decode('aGk=') == 'hi'.bytes()
+	assert base64.decode('aGk==') == 'hi'.bytes()
 
 	for i, p in pairs {
 		got := base64.decode(p.encoded)
-		if got != p.decoded {
+		if got != p.decoded.bytes() {
 			eprintln('pairs[${i}]: expected = ${p.decoded}, got = ${got}')
 			assert false
 		}
@@ -57,10 +57,10 @@ fn test_decode() {
 }
 
 fn test_encode() {
-	assert base64.encode(man_pair.decoded) == man_pair.encoded
+	assert base64.encode(man_pair.decoded.bytes()) == man_pair.encoded
 
 	for i, p in pairs {
-		got := base64.encode(p.decoded)
+		got := base64.encode(p.decoded.bytes())
 		if got != p.encoded {
 			eprintln('pairs[${i}]: expected = ${p.encoded}, got = ${got}')
 			assert false
@@ -69,11 +69,19 @@ fn test_encode() {
 }
 
 fn test_encode_url() {
-	test := base64.encode_url('Hello Base64Url encoding!')
+	test := base64.encode_url('Hello Base64Url encoding!'.bytes())
 	assert test == 'SGVsbG8gQmFzZTY0VXJsIGVuY29kaW5nIQ'
 }
 
 fn test_decode_url() {
 	test := base64.decode_url("SGVsbG8gQmFzZTY0VXJsIGVuY29kaW5nIQ")
-	assert test == 'Hello Base64Url encoding!'
+	assert test == 'Hello Base64Url encoding!'.bytes()
+}
+
+fn test_encode_null_byte() {
+	assert base64.encode([byte(`L`) 0 `L`]) == 'TABM'
+}
+
+fn test_decode_null_byte() {
+	assert base64.decode('TABM') == [byte(`L`) 0 `L`]
 }

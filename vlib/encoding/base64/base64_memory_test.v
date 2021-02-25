@@ -4,7 +4,7 @@ fn test_long_encoding() {
 	repeats := 1000
 	input_size := 3000
 
-	s_original := 'a'.repeat(input_size)
+	s_original := 'a'.repeat(input_size).bytes()
 	s_encoded := base64.encode(s_original)
 	s_decoded := base64.decode(s_encoded)
 
