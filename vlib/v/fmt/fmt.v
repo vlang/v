@@ -1984,10 +1984,10 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 	}
 	mut set_comma := false
 	for i, expr in node.exprs {
-		line_nr := expr.position().line_nr
+		pos := expr.position()
 		if i == 0 {
 			if f.array_init_depth > f.array_init_break.len {
-				f.array_init_break << (last_line_nr < line_nr)
+				f.array_init_break << (last_line_nr < pos.line_nr)
 			}
 		}
 		line_break := f.array_init_break[f.array_init_depth - 1]
@@ -2034,7 +2034,7 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 		} else if !set_comma {
 			f.write(',')
 		}
-		last_line_nr = line_nr
+		last_line_nr = pos.last_line
 		set_comma = false
 	}
 	f.array_init_depth--
