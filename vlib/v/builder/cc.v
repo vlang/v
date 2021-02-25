@@ -636,10 +636,10 @@ fn (mut v Builder) cc() {
 		ccompiler_label := 'C ${os.file_name(ccompiler):3}'
 		util.timing_start(ccompiler_label)
 		res := os.exec(cmd) or {
-			println('C compilation failed.')
-			os.chdir(original_pwd)
-			verror(err)
-			return
+			os.Result{
+				exit_code: 111
+				output: 'C compilation failed.\n$err'
+			}
 		}
 		util.timing_measure(ccompiler_label)
 		if v.pref.show_c_output {
