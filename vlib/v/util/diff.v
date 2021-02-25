@@ -60,7 +60,7 @@ pub fn color_compare_files(diff_cmd string, file1 string, file2 string) string {
 	if diff_cmd != '' {
 		full_cmd := '$diff_cmd --minimal --text --unified=2  --show-function-line="fn " "$file1" "$file2" '
 		x := os.execute(full_cmd)
-		if x.exit_code != 0 {
+		if x.exit_code < 0 {
 			return 'comparison command: `$full_cmd` not found'
 		}
 		return x.output.trim_right('\r\n')

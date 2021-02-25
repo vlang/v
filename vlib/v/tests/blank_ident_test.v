@@ -88,7 +88,9 @@ fn test_nested_for_in_array_simple() {
 
 fn test_nested_for_in_array_key() {
 	for _, v in [1, 2, 3] {
+		assert v > 0
 		for _, w in [1, 2, 3] {
+			assert w > 0
 			assert true
 		}
 	}
@@ -96,7 +98,9 @@ fn test_nested_for_in_array_key() {
 
 fn test_nested_for_in_array_val() {
 	for i, _ in [1, 2, 3] {
+		assert i > -1
 		for j, _ in [1, 2, 3] {
+			assert j > -1
 			assert true
 		}
 	}
@@ -111,7 +115,7 @@ fn test_nested_for_in_array_both() {
 }
 
 const (
-	m = {
+	m = map{
 		'key': 'value'
 	}
 )
@@ -172,12 +176,14 @@ fn fn_for_in_variadic_args_simple(arr ...string) {
 
 fn fn_for_in_variadic_args_key(arr ...string) {
 	for _, v in arr {
+		assert v > 'A'
 		assert true
 	}
 }
 
 fn fn_for_in_variadic_args_val(arr ...string) {
 	for i, _ in arr {
+		assert i > -1
 		assert true
 	}
 }
@@ -198,7 +204,9 @@ fn fn_nested_for_in_variadic_args(arr ...string) {
 
 fn fn_nested_for_in_variadic_args_key(arr ...string) {
 	for _, v in arr {
+		assert v > 'A'
 		for _, w in arr {
+			assert w > 'A'
 			assert true
 		}
 	}
@@ -206,7 +214,9 @@ fn fn_nested_for_in_variadic_args_key(arr ...string) {
 
 fn fn_nested_for_in_variadic_args_val(arr ...string) {
 	for i, _ in arr {
+		assert i > -1
 		for j, _ in arr {
+			assert j > -1
 			assert true
 		}
 	}
@@ -301,4 +311,13 @@ fn test_blank_multi_return() {
 	_, h, _ := multi_return()
 	i, _, _ := multi_return()
 	_, _, _ := multi_return()
+	assert c == 1
+	assert e == 1
+	assert i == 1
+	assert a == 2
+	assert f == 2
+	assert h == 2
+	assert b == '3'
+	assert d == '3'
+	assert g == '3'
 }
