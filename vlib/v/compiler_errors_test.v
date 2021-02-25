@@ -252,7 +252,7 @@ fn (mut task TaskDescription) execute() {
 	}
 	program := task.path
 	cli_cmd := '$task.vexe $task.voptions $program'
-	res := os.exec(cli_cmd) or { panic(err) }
+	res := os.execute(cli_cmd)
 	expected_out_path := program.replace('.vv', '') + task.result_extension
 	task.expected_out_path = expected_out_path
 	task.cli_cmd = cli_cmd
