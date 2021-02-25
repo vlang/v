@@ -43,7 +43,9 @@ if !shift_counter! LSS 1 (
 )
 
 REM Compiler option
-for %%g in (-gcc -msvc -tcc -clang) do (
+for %%g in (-gcc -msvc -tcc -tcc32 -clang) do (
+    if "%PROCESSOR_ARCHITECTURE%" == "x86" set "tcc_branch=thirdparty-windows-i386"
+    if "%~1" == "-tcc32" set "tcc_branch=thirdparty-windows-i386"
     if "%~1" == "%%g" set compiler=%~1& set compiler=!compiler:~1!& shift& set /a shift_counter+=1& goto :verifyopt
 )
 
@@ -282,6 +284,7 @@ if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
 
 :tcc_strap
+:tcc32_strap
 if [!compiler!] == [] set /a invalid_cc=1
 echo  ^> Attempting to build v_win.c with TCC
 if !flag_verbose! EQU 1 (
@@ -362,18 +365,19 @@ echo Usage:
 echo     make.bat [target] [compiler] [options]
 echo.
 echo Compiler:
-echo     -msvc ^| -gcc ^| -tcc ^| -clang    Set C compiler
+echo     -msvc ^| -gcc ^| -tcc ^| -tcc32 ^| -clang    Set C compiler
 echo.
 echo Target:
-echo    build[default]                    Compiles V using the given C compiler
-echo    clean                             Clean build artifacts and debugging symbols
-echo    clean-all                         Cleanup entire ALL build artifacts and vc repository
-echo    help                              Display usage help for the given target
+echo     build[default]                    Compiles V using the given C compiler
+echo     clean                             Clean build artifacts and debugging symbols
+echo     clean-all                         Cleanup entire ALL build artifacts and vc repository
+echo     help                              Display usage help for the given target
 echo.
 echo Examples:
 echo     make.bat -msvc
 echo     make.bat -gcc --local --logpath output.log
-echo     make.bat build -fresh-tcc --local
+echo     make.bat build -tcc --local
+echo     make.bat -tcc32
 echo     make.bat help clean
 echo.
 echo Use "make help <target>" for more information about a target, for instance: "make help clean"
@@ -412,7 +416,7 @@ echo Usage:
 echo     make.bat build [compiler] [options]
 echo.
 echo Compiler:
-echo     -msvc ^| -gcc ^| -[fresh-]tcc ^| -clang    Set C compiler
+echo     -msvc ^| -gcc ^| -tcc ^| -tcc32 ^| -clang    Set C compiler
 echo.
 echo Options:
 echo    --local                           Use the local vc repository without
