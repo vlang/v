@@ -349,9 +349,6 @@ const (
 		'vlib/x/websocket/websocket_test.v',
 		'vlib/vweb/tests/vweb_test.v',
 	]
-	skip_on_windows_with_tcc32    = [
-		'vlib/v/tests/profile/profile_test.v'
-	]
 	skip_on_non_windows           = []string{}
 	skip_on_macos                 = []string{}
 	skip_on_non_macos             = []string{}
@@ -424,11 +421,6 @@ fn main() {
 	}
 	$if windows {
 		tsession.skip_files << skip_on_windows
-		$if tinyc {
-			$if x32 {
-				tsession.skip_files << skip_on_windows_with_tcc32
-			}
-		}
 	}
 	$if !windows {
 		tsession.skip_files << skip_on_non_windows
