@@ -350,7 +350,6 @@ const (
 		'vlib/vweb/tests/vweb_test.v',
 	]
 	skip_on_windows_with_tcc32    = [
-		'vlib/builtin/array_test.v',
 		'vlib/v/tests/profile/profile_test.v',
 		'vlib/gg/m4/m4_test.v',
 	]
