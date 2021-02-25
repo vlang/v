@@ -117,7 +117,8 @@ fn main() {
 		if foptions.is_verbose {
 			eprintln('vfmt worker_cmd: $worker_cmd')
 		}
-		worker_result := os.exec(worker_cmd) or {
+		worker_result := os.execute(worker_cmd)
+		if worker_result.exit_code != 0 {
 			errors++
 			continue
 		}

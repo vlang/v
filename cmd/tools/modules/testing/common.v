@@ -287,7 +287,8 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		if testing.show_start {
 			ts.append_message(.info, '                 starting $relative_file ...')
 		}
-		r := os.exec(cmd) or {
+		r := os.execute(cmd)
+		if r.exit_code < 0 {
 			ts.failed = true
 			ts.benchmark.fail()
 			tls_bench.fail()
@@ -387,7 +388,10 @@ pub fn v_build_failing_skipped(zargs string, folder string, oskipped []string) b
 }
 
 pub fn build_v_cmd_failed(cmd string) bool {
-	res := os.exec(cmd) or { return true }
+	res := os.execute(cmd)
+	if res.exit_code < 0 {
+		return true
+	}
 	if res.exit_code != 0 {
 		eprintln('')
 		eprintln(res.output)
