@@ -2031,7 +2031,7 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 		}
 		if i == node.exprs.len - 1 {
 			if is_new_line {
-				if !set_comma{
+				if !set_comma {
 					f.write(',')
 				}
 				f.writeln('')
