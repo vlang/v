@@ -220,11 +220,11 @@ fn (mut p Parser) comp_for() ast.CompFor {
 	var_pos := p.tok.position()
 	val_var := p.check_name()
 	p.check(.key_in)
-	mut pos := p.tok.position()
+	mut typ_pos := p.tok.position()
 	lang := p.parse_language()
 	typ := p.parse_any_type(lang, false, false)
+	typ_pos = typ_pos.extend(p.prev_tok.position())
 	p.check(.dot)
-	pos = pos.extend(p.tok.position())
 	for_val := p.check_name()
 	mut kind := ast.CompForKind.methods
 	if for_val == 'methods' {
@@ -242,16 +242,18 @@ fn (mut p Parser) comp_for() ast.CompFor {
 		kind = .fields
 	} else {
 		p.error_with_pos('unknown kind `$for_val`, available are: `methods` or `fields`',
-			pos)
+			p.prev_tok.position())
 		return ast.CompFor{}
 	}
+	spos := p.tok.position()
 	stmts := p.parse_block()
 	return ast.CompFor{
 		val_var: val_var
 		stmts: stmts
 		kind: kind
 		typ: typ
-		pos: pos
+		typ_pos: typ_pos
+		pos: spos.extend(p.tok.position())
 	}
 }
 

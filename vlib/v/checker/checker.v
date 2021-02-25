@@ -3112,7 +3112,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			if node.typ > table.void_type {
 				sym := c.table.get_type_symbol(node.typ)
 				if sym.kind == .placeholder {
-					c.error('unknown type `$sym.name`', node.pos)
+					c.error('unknown type `$sym.name`', node.typ_pos)
 				}
 			}
 			c.stmts(node.stmts)
