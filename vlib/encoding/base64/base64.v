@@ -10,7 +10,7 @@ const (
 		13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 0, 0, 0, 0, 63, 0, 26, 27, 28, 29,
 		30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51]!
 	ending_table = [0, 2, 1]!
-	enc_table    = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'.bytes()
+	enc_table    = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 )
 
 // decode decodes the base64 encoded `string` value passed in `data`.
@@ -19,12 +19,19 @@ const (
 pub fn decode(data string) []byte {
 	size := data.len * 3 / 4
 	if size <= 0 {
-		return []
+		return []byte{cap: 1}
 	}
 	unsafe {
 		buffer := malloc(size)
 		n := decode_in_buffer(data, buffer)
 		return array{element_size: 1, data: buffer, len: n, cap: size}
+	}
+}
+
+pub fn decode_str(data string) string {
+	result := decode(data)
+	unsafe {
+		return tos(result.data, result.len)
 	}
 }
 
@@ -43,6 +50,13 @@ pub fn encode(data []byte) string {
 	}
 }
 
+pub fn encode_str(data string) string {
+	unsafe {
+		arr := array{element_size: 1, data: data.str, len: data.len, cap: data.len}
+		return encode(arr)
+	}
+}
+
 // decode_url returns a decoded URL `string` version of
 // the a base64 url encoded `string` passed in `data`.
 pub fn decode_url(data string) []byte {
@@ -55,10 +69,24 @@ pub fn decode_url(data string) []byte {
 	return decode(data)
 }
 
+pub fn decode_url_str(data string) string {
+	result := decode_url(data)
+	unsafe {
+		return tos(result.data, result.len)
+	}
+}
+
 // encode_url returns a base64 URL encoded `string` version
 // of the value passed in `data`.
 pub fn encode_url(data []byte) string {
 	return encode(data).replace_each(['+', '-', '/', '_', '=', ''])
+}
+
+pub fn encode_url_str(data string) string {
+	unsafe {
+		arr := array{element_size: 1, data: data.str, len: data.len, cap: data.len}
+		return encode_url(arr)
+	}
 }
 
 // decode_in_buffer decodes the base64 encoded `string` reference passed in `data` into `buffer`.
@@ -133,7 +161,7 @@ pub fn encode_in_buffer(data []byte, buffer byteptr) int {
 
 	mut d := byteptr(data.data)
 	mut b := buffer
-	mut etable := byteptr(enc_table.data)
+	mut etable := byteptr(enc_table.str)
 	for i < input_length {
 		mut octet_a := 0
 		mut octet_b := 0
