@@ -350,8 +350,7 @@ const (
 		'vlib/vweb/tests/vweb_test.v',
 	]
 	skip_on_windows_with_tcc32    = [
-		'vlib/v/tests/profile/profile_test.v',
-		'vlib/gg/m4/m4_test.v',
+		'vlib/v/tests/profile/profile_test.v'
 	]
 	skip_on_non_windows           = []string{}
 	skip_on_macos                 = []string{}
