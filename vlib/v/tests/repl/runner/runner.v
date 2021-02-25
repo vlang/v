@@ -74,7 +74,7 @@ pub fn run_repl_file(wd string, vexec string, file string) ?string {
 $diff
 		')
 	} else {
-		return 'Repl file $file is OK'
+		return file.replace('./', '')
 	}
 }
 
