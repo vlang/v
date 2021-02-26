@@ -10,9 +10,9 @@ import time
 #include <sys/ioctl.h>
 #include <signal.h>
 
-fn C.tcgetattr()
+fn C.tcgetattr(fd int, termios_p &C.termios) int
 
-fn C.tcsetattr()
+fn C.tcsetattr(fd int, optional_actions int, termios_p &C.termios) int
 
 fn C.ioctl(fd int, request u64, arg voidptr) int
 
