@@ -1,4 +1,4 @@
-lib/v/checker/tests/c_fn_surplus_args.vv:6:7: error: expected 0 arguments, but got 1
+vlib/v/checker/tests/c_fn_surplus_args.vv:6:7: error: expected 0 arguments, but got 1
     4 | 
     5 | fn main() {
     6 |     C.no(1) // allowed
