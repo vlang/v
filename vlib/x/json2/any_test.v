@@ -1,16 +1,16 @@
 import x.json2
 
 const (
-	sample_data = {
-		'int': json2.Any(int(1))
-		'i64': json2.Any(i64(128))
-		'f32': json2.Any(f32(2.0))
-		'f64': json2.Any(f64(1.283))
+	sample_data = map{
+		'int':  json2.Any(int(1))
+		'i64':  json2.Any(i64(128))
+		'f32':  json2.Any(f32(2.0))
+		'f64':  json2.Any(f64(1.283))
 		'bool': json2.Any(false)
-		'str': json2.Any('test')
+		'str':  json2.Any('test')
 		'null': json2.Any(json2.null)
-		'arr': json2.Any([json2.Any('lol')])
-		'obj': json2.Any({
+		'arr':  json2.Any([json2.Any('lol')])
+		'obj':  json2.Any(map{
 			'foo': json2.Any(10)
 		})
 	}
@@ -126,6 +126,5 @@ fn test_str() {
 	assert sample_data['str'].str() == 'test'
 	assert sample_data['null'].str() == 'null'
 	assert sample_data['arr'].str() == '["lol"]'
-	assert sample_data.str() ==
-		'{"int":1,"i64":128,"f32":2.0,"f64":1.283,"bool":false,"str":"test","null":null,"arr":["lol"],"obj":{"foo":10}}'
+	assert sample_data.str() == '{"int":1,"i64":128,"f32":2.0,"f64":1.283,"bool":false,"str":"test","null":null,"arr":["lol"],"obj":{"foo":10}}'
 }
