@@ -12,9 +12,9 @@ import os
 
 #include <termios.h>
 #include <sys/ioctl.h>
-fn C.tcgetattr(fd int, termios_p &C.termios) int
+fn C.tcgetattr(fd int, termios_p &Termios) int
 
-fn C.tcsetattr(fd int, optional_actions int, termios_p &C.termios) int
+fn C.tcsetattr(fd int, optional_actions int, termios_p &Termios) int
 
 fn C.raise(sig int)
 
