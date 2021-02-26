@@ -3109,11 +3109,10 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.branch_stmt(node)
 		}
 		ast.CompFor {
-			if node.typ > table.void_type {
-				sym := c.table.get_type_symbol(node.typ)
-				if sym.kind == .placeholder {
-					c.error('unknown type `$sym.name`', node.typ_pos)
-				}
+			typ := c.unwrap_generic(node.typ)
+			sym := c.table.get_type_symbol(typ)
+			if sym.kind == .placeholder || typ.has_flag(.generic) {
+				c.error('unknown type `$sym.name`', node.typ_pos)
 			}
 			c.stmts(node.stmts)
 		}
