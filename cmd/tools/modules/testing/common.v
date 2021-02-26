@@ -213,7 +213,7 @@ pub fn (mut ts TestSession) test() {
 	ts.nmessage_idx = 0
 	go ts.print_messages()
 	pool_of_test_runners.set_shared_context(ts)
-	pool_of_test_runners.work_on_pointers(remaining_files.pointers())
+	pool_of_test_runners.work_on_pointers(unsafe { remaining_files.pointers() })
 	ts.benchmark.stop()
 	ts.append_message(.sentinel, '') // send the sentinel
 	_ := <-ts.nprint_ended // wait for the stop of the printing thread
