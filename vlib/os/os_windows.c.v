@@ -276,7 +276,7 @@ pub fn exec(cmd string) ?Result {
 		mut result := false
 		unsafe {
 			result = C.ReadFile(child_stdout_read, buf, 1000, voidptr(&bytes_read), 0)
-			read_data.write_bytes(buf, int(bytes_read))
+			read_data.write_bytes(&buf[0], int(bytes_read))
 		}
 		if result == false || int(bytes_read) == 0 {
 			break

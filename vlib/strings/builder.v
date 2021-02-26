@@ -37,9 +37,11 @@ pub fn (mut b Builder) write_b(data byte) {
 	b.len++
 }
 
-[deprecated: 'write(string) will be changed to write([]byte)']
-pub fn (mut b Builder) write(s string) {
-	b.write_string(s)
+// write implements the Writer interface
+pub fn (mut b Builder) write(data []byte) ?int {
+	b.buf << data
+	b.len += data.len
+	return data.len
 }
 
 // write appends the string `s` to the buffer

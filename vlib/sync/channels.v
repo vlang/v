@@ -12,7 +12,14 @@ import rand
 $if linux {
 	$if tinyc {
 		// most Linux distributions have /usr/lib/libatomic.so, but Ubuntu uses gcc version specific dir
-		#flag -L/usr/lib/gcc/x86_64-linux-gnu/6 -L/usr/lib/gcc/x86_64-linux-gnu/7 -L/usr/lib/gcc/x86_64-linux-gnu/8 -L/usr/lib/gcc/x86_64-linux-gnu/9 -latomic
+		#flag -L/usr/lib/gcc/x86_64-linux-gnu/6
+		#flag -L/usr/lib/gcc/x86_64-linux-gnu/7
+		#flag -L/usr/lib/gcc/x86_64-linux-gnu/8
+		#flag -L/usr/lib/gcc/x86_64-linux-gnu/9
+		#flag -L/usr/lib/gcc/x86_64-linux-gnu/10
+		#flag -L/usr/lib/gcc/x86_64-linux-gnu/11
+		#flag -L/usr/lib/gcc/x86_64-linux-gnu/12
+		#flag -latomic
 	}
 }
 
@@ -359,7 +366,7 @@ pub fn (mut ch Channel) try_pop(dest voidptr) ChanState {
 }
 
 fn (mut ch Channel) try_pop_priv(dest voidptr, no_block bool) ChanState {
-	spinloops_sem_, spinloops_ := if no_block { 1, 1 } else { spinloops, spinloops_sem } 
+	spinloops_sem_, spinloops_ := if no_block { 1, 1 } else { spinloops, spinloops_sem }
 	mut have_swapped := false
 	mut write_in_progress := false
 	for {

@@ -487,6 +487,9 @@ pub fn (t &Table) chan_cname(elem_type Type, is_mut bool) string {
 
 [inline]
 pub fn (t &Table) thread_name(return_type Type) string {
+	if return_type == void_type {
+		return 'thread'
+	}
 	return_type_sym := t.get_type_symbol(return_type)
 	ptr := if return_type.is_ptr() { '&' } else { '' }
 	return 'thread $ptr$return_type_sym.name'
@@ -494,6 +497,9 @@ pub fn (t &Table) thread_name(return_type Type) string {
 
 [inline]
 pub fn (t &Table) thread_cname(return_type Type) string {
+	if return_type == void_type {
+		return '__v_thread'
+	}
 	return_type_sym := t.get_type_symbol(return_type)
 	suffix := if return_type.is_ptr() { '_ptr' } else { '' }
 	return '__v_thread_$return_type_sym.cname$suffix'

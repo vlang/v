@@ -75,9 +75,9 @@ fn (om OpenMode) to_byte() byte {
 }
 
 // open opens zip archive with compression level using the given mode.
-// name: the name of the zip file to open
-// level: can be any value of the CompressionLevel enum
-// mode: can be any value of the OpenMode enum
+// name: the name of the zip file to open.
+// level: can be any value of the CompressionLevel enum.
+// mode: can be any value of the OpenMode enum.
 pub fn open(name string, level CompressionLevel, mode OpenMode) ?&Zip {
 	if name.len == 0 {
 		return error('szip: name of file empty')
@@ -127,7 +127,7 @@ pub fn (mut zentry Zip) name() string {
 	return unsafe { name.vstring() }
 }
 
-/// index returns an index of the current zip entry.
+// index returns an index of the current zip entry.
 pub fn (mut zentry Zip) index() ?int {
 	index := int(C.zip_entry_index(zentry))
 	if index == -1 {

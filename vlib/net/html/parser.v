@@ -14,7 +14,7 @@ mut:
 	opened_code_type string
 	line_count       int
 	lexeme_builder   strings.Builder = strings.Builder{}
-	code_tags        map[string]bool = {
+	code_tags        map[string]bool = map{
 	'script': true
 	'style':  true
 }
@@ -25,12 +25,12 @@ pub struct Parser {
 mut:
 	dom                DocumentObjectModel
 	lexical_attributes LexicalAttributes = LexicalAttributes{
-	current_tag: &Tag{}
-}
-	filename           string = 'direct-parse'
-	initialized        bool
-	tags               []&Tag
-	debug_file         os.File
+		current_tag: &Tag{}
+	}
+	filename    string = 'direct-parse'
+	initialized bool
+	tags        []&Tag
+	debug_file  os.File
 }
 
 // This function is used to add a tag for the parser ignore it's content.
@@ -53,7 +53,7 @@ fn (parser Parser) builder_str() string {
 fn (mut parser Parser) print_debug(data string) {
 	$if debug {
 		if data.len > 0 {
-			parser.debug_file.writeln(data)
+			parser.debug_file.writeln(data) or { panic(err) }
 		}
 	}
 }
@@ -99,8 +99,8 @@ fn (mut parser Parser) generate_tag() {
 	if parser.lexical_attributes.open_tag {
 		return
 	}
-	if parser.lexical_attributes.current_tag.name.len > 0 ||
-		parser.lexical_attributes.current_tag.content.len > 0 {
+	if parser.lexical_attributes.current_tag.name.len > 0
+		|| parser.lexical_attributes.current_tag.content.len > 0 {
 		parser.tags << parser.lexical_attributes.current_tag
 	}
 	parser.lexical_attributes.current_tag = &Tag{}
@@ -119,8 +119,8 @@ pub fn (mut parser Parser) split_parse(data string) {
 		}
 		if parser.lexical_attributes.open_code { // here will verify all needed to know if open_code finishes and string in code
 			parser.lexical_attributes.lexeme_builder.write_b(chr)
-			if parser.lexical_attributes.open_string > 0 &&
-				parser.lexical_attributes.open_string == string_code {
+			if parser.lexical_attributes.open_string > 0
+				&& parser.lexical_attributes.open_string == string_code {
 				parser.lexical_attributes.open_string = 0
 			} else if is_quote {
 				parser.lexical_attributes.open_string = string_code
@@ -167,8 +167,8 @@ pub fn (mut parser Parser) split_parse(data string) {
 				parser.lexical_attributes.lexeme_builder.write_b(chr)
 			} else if chr == `>` { // close tag >
 				complete_lexeme := parser.builder_str().to_lower()
-				parser.lexical_attributes.current_tag.closed = (complete_lexeme.len > 0 &&
-					complete_lexeme[complete_lexeme.len - 1] == `/`) // if equals to /
+				parser.lexical_attributes.current_tag.closed = (complete_lexeme.len > 0
+					&& complete_lexeme[complete_lexeme.len - 1] == `/`) // if equals to /
 				if complete_lexeme.len > 0 && complete_lexeme[0] == `/` {
 					parser.dom.close_tags[complete_lexeme] = true
 				}
@@ -210,8 +210,9 @@ pub fn (mut parser Parser) split_parse(data string) {
 		} else if chr == `<` { // open tag '<'
 			temp_string := parser.builder_str()
 			if parser.lexical_attributes.lexeme_builder.len >= 1 {
-				if parser.lexical_attributes.current_tag.name.len > 1 &&
-					parser.lexical_attributes.current_tag.name[0] == 47 && !blank_string(temp_string) {
+				if parser.lexical_attributes.current_tag.name.len > 1
+					&& parser.lexical_attributes.current_tag.name[0] == 47
+					&& !blank_string(temp_string) {
 					parser.tags << &Tag{
 						name: 'text'
 						content: temp_string

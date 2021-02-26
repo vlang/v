@@ -55,7 +55,7 @@ pub fn (mut p Parser) parse_array_type() table.Type {
 	}
 	mut nr_dims := 1
 	// detect attr
-	not_attr := p.peek_tok.kind != .name && p.peek_tok2.kind !in [.semicolon, .rsbr]
+	not_attr := p.peek_tok.kind != .name && p.peek_token(2).kind !in [.semicolon, .rsbr]
 	for p.tok.kind == .lsbr && not_attr {
 		p.next()
 		p.check(.rsbr)

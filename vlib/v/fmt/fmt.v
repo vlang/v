@@ -134,7 +134,7 @@ pub fn (mut f Fmt) wrap_long_line(penalty_idx int, add_indent bool) bool {
 	if f.buffering {
 		return false
 	}
-	if f.line_len <= fmt.max_len[penalty_idx] {
+	if penalty_idx > 0 && f.line_len <= fmt.max_len[penalty_idx] {
 		return false
 	}
 	if f.out.buf[f.out.buf.len - 1] == ` ` {
@@ -236,6 +236,9 @@ pub fn (mut f Fmt) mod(mod ast.Module) {
 	}
 	f.attrs(mod.attrs)
 	f.writeln('module $mod.short_name\n')
+	if f.import_pos == 0 {
+		f.import_pos = f.out.len
+	}
 }
 
 pub fn (mut f Fmt) mark_types_import_as_used(typ table.Type) {
@@ -307,7 +310,7 @@ pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
 	return '$imp.mod$imp_alias_suffix'
 }
 
-fn (mut f Fmt) should_insert_newline_before_stmt(stmt ast.Stmt, prev_stmt ast.Stmt) bool {
+fn (f Fmt) should_insert_newline_before_stmt(stmt ast.Stmt, prev_stmt ast.Stmt) bool {
 	prev_line_nr := prev_stmt.position().last_line
 	// No need to insert a newline if there is already one
 	if f.out.last_n(2) == '\n\n' {
@@ -666,7 +669,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 	mut field_types := []string{cap: node.fields.len}
 	for i, field in node.fields {
 		mut ft := f.no_cur_mod(f.table.type_to_str(field.typ))
-		if !ft.contains('C.') && !ft.contains('JS.') && !ft.contains('fn (') {
+		if !ft.contains('C.') && !ft.contains('JS.') && !ft.contains('fn (') && !ft.contains('chan') {
 			ft = f.short_module(ft)
 		}
 		field_types << ft
@@ -911,11 +914,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.write('`$node.val`')
 		}
 		ast.Comment {
-			if f.array_init_depth > 0 {
-				f.comment(node, iembed: true)
-			} else {
-				f.comment(node, inline: true)
-			}
+			f.comment(node, inline: true)
 		}
 		ast.ComptimeCall {
 			f.comptime_call(node)
@@ -1934,29 +1933,29 @@ fn should_decrease_arr_penalty(e ast.Expr) bool {
 	return false
 }
 
-pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
-	if it.exprs.len == 0 && it.typ != 0 && it.typ != table.void_type {
+pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
+	if node.exprs.len == 0 && node.typ != 0 && node.typ != table.void_type {
 		// `x := []string{}`
-		f.mark_types_import_as_used(it.typ)
-		f.write(f.table.type_to_str_using_aliases(it.typ, f.mod2alias))
+		f.mark_types_import_as_used(node.typ)
+		f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
 		f.write('{')
-		if it.has_len {
+		if node.has_len {
 			f.write('len: ')
-			f.expr(it.len_expr)
-			if it.has_cap || it.has_default {
+			f.expr(node.len_expr)
+			if node.has_cap || node.has_default {
 				f.write(', ')
 			}
 		}
-		if it.has_cap {
+		if node.has_cap {
 			f.write('cap: ')
-			f.expr(it.cap_expr)
-			if it.has_default {
+			f.expr(node.cap_expr)
+			if node.has_default {
 				f.write(', ')
 			}
 		}
-		if it.has_default {
+		if node.has_default {
 			f.write('init: ')
-			f.expr(it.default_expr)
+			f.expr(node.default_expr)
 		}
 		f.write('}')
 		return
@@ -1964,38 +1963,42 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 	// `[1,2,3]`
 	f.write('[')
 	mut inc_indent := false
-	mut last_line_nr := it.pos.line_nr // to have the same newlines between array elements
+	mut last_line_nr := node.pos.line_nr // to have the same newlines between array elements
 	f.array_init_depth++
-	for i, c in it.pre_cmnts {
-		if c.pos.line_nr > last_line_nr {
+	if node.pre_cmnts.len > 0 {
+		if node.pre_cmnts[0].pos.line_nr > last_line_nr {
 			f.writeln('')
-		} else if i > 0 {
-			f.write(' ')
 		}
+	}
+	for i, c in node.pre_cmnts {
 		f.comment(c, level: .indent, iembed: true)
-		last_line_nr = c.pos.last_line
-	}
-	if it.pre_cmnts.len > 0 {
-		same_line := it.pre_cmnts[0].pos.line_nr == it.pos.line_nr
-		if same_line && it.exprs.len > 0 {
-			f.write(' ')
-		} else if !same_line && it.exprs.len == 0 {
-			f.writeln('')
-		}
-	}
-	for i, expr in it.exprs {
-		line_nr := expr.position().line_nr
-		if i == 0 {
-			if f.array_init_depth > f.array_init_break.len {
-				f.array_init_break << (last_line_nr < line_nr)
+		if i < node.pre_cmnts.len - 1 {
+			if c.pos.last_line < node.pre_cmnts[i + 1].pos.line_nr {
+				f.writeln('')
+			} else {
+				f.write(' ')
+			}
+		} else {
+			if c.pos.last_line < node.pos.last_line && node.exprs.len == 0 {
+				f.writeln('')
+			} else if node.exprs.len > 0 {
+				f.write(' ')
 			}
 		}
-		is_same_line_comment := i > 0
-			&& (expr is ast.Comment && line_nr == it.exprs[i - 1].position().line_nr)
+		last_line_nr = c.pos.last_line
+	}
+	mut set_comma := false
+	for i, expr in node.exprs {
+		pos := expr.position()
+		if i == 0 {
+			if f.array_init_depth > f.array_init_break.len {
+				f.array_init_break << pos.line_nr > last_line_nr
+			}
+		}
 		line_break := f.array_init_break[f.array_init_depth - 1]
-		mut penalty := if line_break && !is_same_line_comment { 0 } else { 4 }
+		mut penalty := if line_break { 0 } else { 4 }
 		if penalty > 0 {
-			if i == 0 || should_decrease_arr_penalty(it.exprs[i - 1]) {
+			if i == 0 || should_decrease_arr_penalty(node.exprs[i - 1]) {
 				penalty--
 			}
 			if should_decrease_arr_penalty(expr) {
@@ -2011,33 +2014,33 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 			f.write(' ')
 		}
 		f.expr(expr)
-		if i < it.ecmnts.len && it.ecmnts[i].len > 0 {
-			mut last_cmt := it.ecmnts[i][0]
-			if last_cmt.pos.line_nr > expr.position().last_line {
-				f.writeln('')
-			} else {
-				f.write(' ')
-			}
-			for cmt in it.ecmnts[i] {
-				if cmt.pos.line_nr > last_cmt.pos.last_line {
+		if i < node.ecmnts.len && node.ecmnts[i].len > 0 {
+			expr_pos := expr.position()
+			for cmt in node.ecmnts[i] {
+				if !set_comma && cmt.pos.pos > expr_pos.pos + expr_pos.len + 2 {
+					f.write(',')
+					set_comma = true
+				}
+				if cmt.pos.line_nr > expr_pos.last_line {
 					f.writeln('')
+				} else {
+					f.write(' ')
 				}
 				f.comment(cmt, iembed: true)
 			}
 		}
-		if i == it.exprs.len - 1 {
+		if i == node.exprs.len - 1 {
 			if is_new_line {
-				if expr !is ast.Comment {
+				if !set_comma {
 					f.write(',')
 				}
 				f.writeln('')
-			} else if is_same_line_comment {
-				f.writeln('')
 			}
-		} else if expr !is ast.Comment {
+		} else if !set_comma {
 			f.write(',')
 		}
-		last_line_nr = line_nr
+		last_line_nr = pos.last_line
+		set_comma = false
 	}
 	f.array_init_depth--
 	if f.array_init_depth == 0 {
@@ -2048,15 +2051,15 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 	}
 	f.write(']')
 	// `[100]byte`
-	if it.is_fixed {
-		if it.has_val {
+	if node.is_fixed {
+		if node.has_val {
 			f.write('!')
 			return
 		}
-		f.write(f.table.type_to_str(it.elem_type))
-		if it.has_default {
+		f.write(f.table.type_to_str(node.elem_type))
+		if node.has_default {
 			f.write('{init: ')
-			f.expr(it.default_expr)
+			f.expr(node.default_expr)
 			f.write('}')
 		} else {
 			f.write('{}')

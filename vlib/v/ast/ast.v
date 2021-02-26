@@ -300,8 +300,9 @@ pub:
 // anonymous function
 pub struct AnonFn {
 pub mut:
-	decl FnDecl
-	typ  table.Type // the type of anonymous fn. Both .typ and .decl.name are auto generated
+	decl    FnDecl
+	typ     table.Type // the type of anonymous fn. Both .typ and .decl.name are auto generated
+	has_gen bool       // has been generated
 }
 
 // function or method declaration
@@ -360,9 +361,8 @@ pub:
 // function or method call expr
 pub struct CallExpr {
 pub:
-	pos  token.Position
-	left Expr // `user` in `user.register()`
-	mod  string
+	pos token.Position
+	mod string
 pub mut:
 	name               string // left.name()
 	is_method          bool
@@ -371,6 +371,7 @@ pub mut:
 	expected_arg_types []table.Type
 	language           table.Language
 	or_block           OrExpr
+	left               Expr       // `user` in `user.register()`
 	left_type          table.Type // type of `user`
 	receiver_type      table.Type // User
 	return_type        table.Type
@@ -766,6 +767,7 @@ pub:
 	has_cond bool
 	inc      Stmt // i++; i += 2
 	has_inc  bool
+	is_multi bool // for a,b := 0,1; a < 10; a,b = a+b, a {...}
 	stmts    []Stmt
 	pos      token.Position
 pub mut:
@@ -1339,11 +1341,8 @@ pub fn (stmt Stmt) position() token.Position {
 	match stmt {
 		AssertStmt, AssignStmt, Block, BranchStmt, CompFor, ConstDecl, DeferStmt, EnumDecl, ExprStmt,
 		FnDecl, ForCStmt, ForInStmt, ForStmt, GotoLabel, GotoStmt, Import, Return, StructDecl,
-		GlobalDecl, HashStmt, InterfaceDecl, Module, SqlStmt {
+		GlobalDecl, HashStmt, InterfaceDecl, Module, SqlStmt, GoStmt {
 			return stmt.pos
-		}
-		GoStmt {
-			return stmt.call_expr.pos
 		}
 		TypeDecl {
 			match stmt {
