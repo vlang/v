@@ -121,7 +121,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Memory-unsafe code](#memory-unsafe-code)
     * [Structs with reference fields](structs-with-reference-fields)
     * [sizeof and __offsetof](#sizeof-and-__offsetof)
-    * [Calling C functions from V](#calling-c-functions-from-v)
+    * [Calling C from V](#calling-c-from-v)
     * [Debugging generated C code](#debugging-generated-c-code)
     * [Conditional compilation](#conditional-compilation)
     * [Compile time pseudo variables](#compile-time-pseudo-variables)
@@ -3210,7 +3210,9 @@ assert __offsetof(Foo, a) == 0
 assert __offsetof(Foo, b) == 4
 ```
 
-## Calling C functions from V
+## Calling C from V
+
+### Example
 
 ```v
 #flag -lsqlite3
@@ -3277,7 +3279,7 @@ fn main() {
 }
 ```
 
-### #flag
+### Passing C compilation flags
 
 Add `#flag` directives to the top of your V files to provide C compilation flags like:
 
@@ -3286,7 +3288,7 @@ Add `#flag` directives to the top of your V files to provide C compilation flags
 - `-L` for adding C library files search paths
 - `-D` for setting compile time variables
 
-You can use different flags for different targets.
+You can (optionally) use different flags for different targets.
 Currently the `linux`, `darwin` , `freebsd`, and `windows` flags are supported.
 
 NB: Each flag must go on its own line (for now)
@@ -3298,6 +3300,13 @@ NB: Each flag must go on its own line (for now)
 #flag linux -DIMGUI_DISABLE_OBSOLETE_FUNCTIONS=1
 #flag linux -DIMGUI_IMPL_API=
 ```
+
+In the console build command, you can use `-cflags` to pass custom flags to the backend C compiler.
+You can also use `-cc` to change the default C backend compiler.
+For example: `-cc gcc-9 -cflags -fsanitize=thread`.
+
+You can also define a `VFLAGS` environment variable in your terminal to store your `-cc` 
+and `cflags` settings, rather than including them in the build command each time.
 
 ### #pkgconfig
 
@@ -3360,10 +3369,6 @@ You can see a complete minimal example for using C code in a V wrapper module he
 [project_with_c_code](https://github.com/vlang/v/tree/master/vlib/v/tests/project_with_c_code).
 Another example, demonstrating passing structs from C to V and back again:
 [interoperate between C to V to C](https://github.com/vlang/v/tree/master/vlib/v/tests/project_with_c_code_2).
-
-You can use `-cflags` to pass custom flags to the backend C compiler.
-You can also use `-cc` to change the default C backend compiler.
-For example: `-cc gcc-9 -cflags -fsanitize=thread`.
 
 ### C types
 
