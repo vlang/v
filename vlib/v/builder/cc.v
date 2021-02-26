@@ -794,10 +794,12 @@ fn (mut b Builder) cc_linux_cross() {
 	if b.pref.show_cc {
 		println(cc_cmd)
 	}
-	cc_res := os.exec(cc_cmd) or { os.Result{
-		exit_code: 1
-		output: 'no `cc` command found'
-	} }
+	cc_res := os.exec(cc_cmd) or {
+		os.Result{
+			exit_code: 1
+			output: 'no `cc` command found'
+		}
+	}
 	if cc_res.exit_code != 0 {
 		println('Cross compilation for Linux failed (first step, cc). Make sure you have clang installed.')
 		verror(cc_res.output)
