@@ -65,7 +65,7 @@ fn C.SSL_CTX_free(ctx &C.SSL_CTX)
 
 fn C.SSL_new(&C.SSL_CTX) &C.SSL
 
-fn C.SSL_set_fd(&C.SSL) int
+fn C.SSL_set_fd(ssl &C.SSL, fd int) int
 
 fn C.SSL_connect(&C.SSL) int
 
