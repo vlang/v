@@ -76,10 +76,11 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			p.next()
 		}
 		.amp, .mul, .not, .bit_not, .arrow {
-			// -1, -a, !x, &x, ~x, <-a
+			// &x, *x, !x, ~x, <-x
 			node = p.prefix_expr()
 		}
 		.minus {
+			// -1, -a
 			if p.peek_tok.kind == .number {
 				node = p.parse_number_literal()
 			} else {
