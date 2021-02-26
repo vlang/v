@@ -172,7 +172,7 @@ fn C.WTERMSIG(status int) int
 
 fn C.isatty(fd int) int
 
-fn C.syscall() int
+fn C.syscall(number int, va ...voidptr) int
 
 fn C.sysctl() int
 
