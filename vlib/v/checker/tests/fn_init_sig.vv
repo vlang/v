@@ -1,0 +1,5 @@
+fn init(i int) {
+}
+fn init() int {
+    return 1
+}

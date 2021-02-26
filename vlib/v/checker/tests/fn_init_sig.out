@@ -1,0 +1,12 @@
+vlib/v/checker/tests/fn_init_sig.vv:1:1: error: fn `init` cannot have parameters
+    1 | fn init(i int) {
+      | ~~~~~~~~~~~~~~
+    2 | }
+    3 | fn init() int {
+vlib/v/checker/tests/fn_init_sig.vv:3:1: error: fn `init` cannot have a return type
+    1 | fn init(i int) {
+    2 | }
+    3 | fn init() int {
+      | ~~~~~~~~~~~~~
+    4 |     return 1
+    5 | }
