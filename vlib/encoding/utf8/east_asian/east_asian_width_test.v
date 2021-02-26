@@ -1,4 +1,4 @@
-module utf8
+module east_asian
 
 fn test_width() {
 	assert east_asian_width_property_at('A', 0) == .narrow

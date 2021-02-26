@@ -2,7 +2,9 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
-module utf8
+module east_asian
+
+import encoding.utf8
 
 // EastAsianWidthType represents East_Asian_Width informative prorperty
 pub enum EastAsianWidthProperty {
@@ -18,7 +20,7 @@ pub enum EastAsianWidthProperty {
 pub fn display_width(s string, ambiguous_width int) int {
 	mut i, mut n := 0, 0
 	for i < s.len {
-		c_len := char_len(s[i])
+		c_len := utf8.char_len(s[i])
 		n += match east_asian_width_property_at(s, i) {
 			.ambiguous { ambiguous_width }
 			.full, .wide { int(2) }
@@ -31,8 +33,8 @@ pub fn display_width(s string, ambiguous_width int) int {
 
 // width_property_at returns the East Asian Width properties at string[index]
 pub fn east_asian_width_property_at(s string, index int) EastAsianWidthProperty {
-	codepoint := get_uchar(s, index)
-	mut left, mut right := 0, utf8.east_asian_width_data.len - 1
+	codepoint := utf8.get_uchar(s, index)
+	mut left, mut right := 0, east_asian.east_asian_width_data.len - 1
 	for left <= right {
 		middle := left + ((right - left) / 2)
 		entry := east_asian_width_data[middle]
