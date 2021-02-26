@@ -4804,12 +4804,16 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 			mut comptime_field_name := ''
 			if branch.cond is ast.InfixExpr {
 				if branch.cond.op == .key_is {
-					left := branch.cond.left
+					if branch.cond.right !is ast.Type {
+						c.error('invalid `\$if` condition: expected a type', branch.cond.right.position())
+						return 0
+					}
 					got_type := c.unwrap_generic((branch.cond.right as ast.Type).typ)
 					sym := c.table.get_type_symbol(got_type)
 					if sym.kind == .placeholder || got_type.has_flag(.generic) {
 						c.error('unknown type `$sym.name`', branch.cond.right.position())
 					}
+					left := branch.cond.left
 					if left is ast.SelectorExpr {
 						comptime_field_name = left.expr.str()
 						c.comptime_fields_type[comptime_field_name] = got_type
@@ -4968,11 +4972,13 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 					return l && r // skip (return true) only if both should be skipped
 				}
 				.key_is, .not_is {
-					if (cond.left is ast.SelectorExpr || cond.left is ast.Type)
-						&& cond.right is ast.Type {
+					if cond.left is ast.SelectorExpr || cond.left is ast.Type {
 						// $if method.@type is string
+						c.expr(cond.left)
+						return false
 					} else {
-						c.error('invalid `\$if` condition: $cond.left', cond.pos)
+						c.error('invalid `\$if` condition: expected a type or selector expression',
+							cond.left.position())
 					}
 				}
 				.eq, .ne {
