@@ -217,10 +217,13 @@ fn (mut p Parser) comp_for() ast.CompFor {
 	// $for field in App(fields) {
 	p.next()
 	p.check(.key_for)
+	var_pos := p.tok.position()
 	val_var := p.check_name()
 	p.check(.key_in)
+	mut typ_pos := p.tok.position()
 	lang := p.parse_language()
 	typ := p.parse_any_type(lang, false, false)
+	typ_pos = typ_pos.extend(p.prev_tok.position())
 	p.check(.dot)
 	for_val := p.check_name()
 	mut kind := ast.CompForKind.methods
@@ -228,15 +231,18 @@ fn (mut p Parser) comp_for() ast.CompFor {
 		p.scope.register(ast.Var{
 			name: val_var
 			typ: p.table.find_type_idx('FunctionData')
+			pos: var_pos
 		})
 	} else if for_val == 'fields' {
 		p.scope.register(ast.Var{
 			name: val_var
 			typ: p.table.find_type_idx('FieldData')
+			pos: var_pos
 		})
 		kind = .fields
 	} else {
-		p.error('unknown kind `$for_val`, available are: `methods` or `fields`')
+		p.error_with_pos('unknown kind `$for_val`, available are: `methods` or `fields`',
+			p.prev_tok.position())
 		return ast.CompFor{}
 	}
 	spos := p.tok.position()
@@ -246,6 +252,7 @@ fn (mut p Parser) comp_for() ast.CompFor {
 		stmts: stmts
 		kind: kind
 		typ: typ
+		typ_pos: typ_pos
 		pos: spos.extend(p.tok.position())
 	}
 }
