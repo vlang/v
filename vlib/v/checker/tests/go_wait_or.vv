@@ -37,4 +37,5 @@ fn main() {
 	]
 	tg4.wait()
 	tg4[0].wait()
+	go g(3) or { panic('problem') }
 }

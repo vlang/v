@@ -3160,6 +3160,10 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		}
 		ast.GoStmt {
 			c.go_stmt(mut node)
+			if node.call_expr.or_block.kind != .absent {
+				c.error('optional handling cannot be done in `go` call. Do it when calling `.wait()`',
+					node.call_expr.or_block.pos)
+			}
 		}
 		ast.GotoLabel {}
 		ast.GotoStmt {
