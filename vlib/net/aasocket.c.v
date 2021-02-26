@@ -11,10 +11,14 @@ enum Select {
 pub enum SocketType {
 	udp = C.SOCK_DGRAM
 	tcp = C.SOCK_STREAM
+	dgram = C.SOCK_DGRAM
+	stream = C.SOCK_STREAM
+	seqpacket = C.SOCK_SEQPACKET
 }
 
 // SocketFamily are the available address families
 pub enum SocketFamily {
+	unix = C.AF_UNIX
 	inet = C.AF_INET
 }
 

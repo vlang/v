@@ -144,9 +144,9 @@ fn C.rand() int
 
 // C.srand seeds the internal PRNG with the given value.
 [trusted]
-fn C.srand(seed uint)
+fn C.srand(seed u32)
 
-fn C.atof() int
+fn C.atof(str charptr) f64
 
 fn C.tolower(c int) int
 

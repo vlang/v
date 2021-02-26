@@ -8,11 +8,11 @@ enum Select {
 }
 
 // SocketType are the available sockets
-enum SocketType {
-	dgram = C.SOCK_DGRAM
-	stream = C.SOCK_STREAM
-	seqpacket = C.SOCK_SEQPACKET
-}
+// enum SocketType {
+// 	dgram = C.SOCK_DGRAM
+// 	stream = C.SOCK_STREAM
+// 	seqpacket = C.SOCK_SEQPACKET
+// }
 
 struct C.sockaddr {
 	sa_family u16
