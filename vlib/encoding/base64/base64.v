@@ -28,6 +28,7 @@ pub fn decode(data string) []byte {
 	}
 }
 
+// decode_str is the string variant of decode
 pub fn decode_str(data string) string {
 	size := data.len * 3 / 4
 	if size <= 0 {
@@ -39,35 +40,35 @@ pub fn decode_str(data string) string {
 	}
 }
 
-// encode encodes the `string` value passed in `data` to base64.
+// encode encodes the `[]byte` value passed in `data` to base64.
 // Please note: base64 encoding returns a `string` that is ~ 4/3 larger than the input.
 // Please note: If you need to encode many strings repeatedly, take a look at `encode_in_buffer`.
 // Example: assert base64.encode('V in base 64') == 'ViBpbiBiYXNlIDY0'
 pub fn encode(data []byte) string {
-	size := 4 * ((data.len + 2) / 3)
-	if size <= 0 {
-		return ''
-	}
-	unsafe {
-		buffer := malloc(size)
-		return tos(buffer, encode_in_buffer(data, buffer))
-	}
+	return alloc_and_encode(data.data, data.len)
 }
 
+// encode_str is the string variant of encode
 pub fn encode_str(data string) string {
-	size := 4 * ((data.len + 2) / 3)
+	return alloc_and_encode(data.str, data.len)
+}
+
+// alloc_and_encode is a private function that allocates and encodes data into a string
+// Used by encode and encode_str
+fn alloc_and_encode(src byteptr, len int) string {
+	size := 4 * ((len + 2) / 3)
 	if size <= 0 {
 		return ''
 	}
 	unsafe {
 		buffer := malloc(size)
-		return tos(buffer, encode_from_buffer(buffer, data.str, data.len))
+		return tos(buffer, encode_from_buffer(buffer, src, len))
 	}
 }
 
-// decode_url returns a decoded URL `string` version of
+// url_decode returns a decoded URL `string` version of
 // the a base64 url encoded `string` passed in `data`.
-pub fn decode_url(data string) []byte {
+pub fn url_decode(data string) []byte {
 	mut result := data.replace_each(['-', '+', '_', '/'])
 	match result.len % 4 { // Pad with trailing '='s
 		2 { result += '==' } // 2 pad chars
@@ -77,7 +78,8 @@ pub fn decode_url(data string) []byte {
 	return decode(result)
 }
 
-pub fn decode_url_str(data string) string {
+// url_decode_str is the string variant of url_decode
+pub fn url_decode_str(data string) string {
 	mut result := data.replace_each(['-', '+', '_', '/'])
 	match result.len % 4 { // Pad with trailing '='s
 		2 { result += '==' } // 2 pad chars
@@ -87,13 +89,14 @@ pub fn decode_url_str(data string) string {
 	return decode_str(result)
 }
 
-// encode_url returns a base64 URL encoded `string` version
+// url_encode returns a base64 URL encoded `string` version
 // of the value passed in `data`.
-pub fn encode_url(data []byte) string {
+pub fn url_encode(data []byte) string {
 	return encode(data).replace_each(['+', '-', '/', '_', '=', ''])
 }
 
-pub fn encode_url_str(data string) string {
+// url_encode_str is the string variant of url_encode
+pub fn url_encode_str(data string) string {
 	return encode_str(data).replace_each(['+', '-', '/', '_', '=', ''])
 }
 
@@ -156,7 +159,7 @@ pub fn decode_in_buffer(data &string, buffer byteptr) int {
 	return output_length
 }
 
-// encode_in_buffer base64 encodes the `string` reference passed in `data` into `buffer`.
+// encode_in_buffer base64 encodes the `[]byte` passed in `data` into `buffer`.
 // encode_in_buffer returns the size of the encoded data in the buffer.
 // Please note: The buffer should be large enough (i.e. 4/3 of the data.len, or larger) to hold the encoded data.
 // Please note: The function does NOT allocate new memory, and is suitable for handling very large strings.
@@ -164,6 +167,10 @@ pub fn encode_in_buffer(data []byte, buffer byteptr) int {
 	return encode_from_buffer(buffer, data.data, data.len)
 }
 
+// encode_from_buffer will perform encoding from any type of src buffer
+// and write the bytes into `dest`.
+// Please note: The `dest` buffer should be large enough (i.e. 4/3 of the src_len, or larger) to hold the encoded data.
+// Please note: This function is for internal base64 encoding
 fn encode_from_buffer(dest byteptr, src byteptr, src_len int) int {
 	input_length := src_len
 	output_length := 4 * ((input_length + 2) / 3)
