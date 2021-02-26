@@ -1431,6 +1431,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		if call_expr.args.len > 0 {
 			c.error('wait() does not have any arguments', call_expr.args[0].pos)
 		}
+		call_expr.return_type = info.return_type
 		return info.return_type
 	}
 	mut method := table.Fn{}
