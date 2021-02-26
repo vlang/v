@@ -28,8 +28,11 @@ pub fn (mut c Checker) check_expected_call_arg(got table.Type, expected_ table.T
 		if got.is_number() && expected.idx() == table.size_t_type_idx {
 			return
 		}
-		// allow passing bool arg to C fn bool arg (int)
-		if got.idx() == table.bool_type_idx && expected.idx() == table.int_type_idx {
+		// allow bool & int to be used interchangeably for C functions
+		if (got.idx() == table.bool_type_idx
+			&& expected.idx() in [table.int_type_idx, table.int_literal_type_idx])
+			|| (expected.idx() == table.bool_type_idx
+			&& got.idx() in [table.int_type_idx, table.int_literal_type_idx]) {
 			return
 		}
 		if got.idx() == table.string_type_idx

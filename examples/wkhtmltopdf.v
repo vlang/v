@@ -72,7 +72,7 @@ fn main() {
 	println('wkhtmltopdf_http_error_code: $error_code')
 	if result {
 		data := &charptr(0)
-		size := C.wkhtmltopdf_get_output(converter, &data)
+		size := C.wkhtmltopdf_get_output(converter, data)
 		println('wkhtmltopdf_get_output: $size bytes')
 		mut file := os.open_file('./google.pdf', 'w+', 0o666) or {
 			println('ERR: $err')
