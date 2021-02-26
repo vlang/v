@@ -5938,10 +5938,12 @@ fn (mut g Gen) go_stmt(node ast.GoStmt, joinable bool) string {
 	if g.pref.os == .windows && node.call_expr.return_type != table.void_type {
 		g.writeln('$arg_tmp_var->ret_ptr = malloc(sizeof($s_ret_typ));')
 	}
+	is_opt := node.call_expr.return_type.has_flag(.optional)
 	gohandle_name := if node.call_expr.return_type == table.void_type {
-		'__v_thread'
+		if is_opt { '__v_thread_Option_void' } else { '__v_thread' }
 	} else {
-		'__v_thread_' + g.table.get_type_symbol(g.unwrap_generic(node.call_expr.return_type)).cname
+		opt := if is_opt { 'Option_' } else { '' }
+		'__v_thread_$opt${g.table.get_type_symbol(g.unwrap_generic(node.call_expr.return_type)).cname}'
 	}
 	if g.pref.os == .windows {
 		simple_handle := if joinable && node.call_expr.return_type != table.void_type {
