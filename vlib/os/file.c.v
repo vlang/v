@@ -79,10 +79,12 @@ pub fn (mut f File) write_to(pos int, buf []byte) ?int {
 	return res
 }
 
+[unsafe]
 pub fn (mut f File) write_bytes(data voidptr, size int) int {
 	return int(C.fwrite(data, 1, size, f.cfile))
 }
 
+[unsafe]
 pub fn (mut f File) write_bytes_at(data voidptr, size int, pos int) int {
 	C.fseek(f.cfile, pos, C.SEEK_SET)
 	res := int(C.fwrite(data, 1, size, f.cfile))
