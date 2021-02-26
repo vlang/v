@@ -1121,15 +1121,20 @@ fn (p &Parser) is_generic_call() bool {
 	} else {
 		false
 	}
+	tok2 := p.peek_token(2)
+	tok3 := p.peek_token(3)
+	tok4 := p.peek_token(4)
+	tok5 := p.peek_token(5)
 	// use heuristics to detect `func<T>()` from `var < expr`
-	return !lit0_is_capital && p.peek_tok.kind == .lt && (match p.peek_token(2).kind {
+	return !lit0_is_capital && p.peek_tok.kind == .lt && (match tok2.kind {
 		.name {
-			// maybe `f<int>`, `f<map[`, f<string,
-			(p.peek_token(2).kind == .name && p.peek_token(3).kind in [.gt, .comma]) || (p.peek_token(2).lit == 'map' && p.peek_token(3).kind == .lsbr)
+			// (`f<int>`, `f<string,`) || (`f<mod.Type>`, `<mod.Type,`) || `f<map[`,
+
+			tok3.kind in [.gt, .comma] || (tok3.kind == .dot && tok4.kind == .name && tok5.kind in [.gt, .comma]) || (tok2.lit == 'map' && tok3.kind == .lsbr)
 		}
 		.lsbr {
 			// maybe `f<[]T>`, assume `var < []` is invalid
-			p.peek_token(3).kind == .rsbr
+			tok3.kind == .rsbr
 		}
 		else {
 			false

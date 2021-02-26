@@ -23,6 +23,8 @@ fn test_identity() {
 
 	assert simple<[]int>([1])[0] == 1
 	assert simple<map[string]string>({'a':'b'})['a'] == 'b'
+
+	assert simple<simplemodule.Data>(simplemodule.Data{value: 0}).value == 0
 }
 
 fn test_plus() {

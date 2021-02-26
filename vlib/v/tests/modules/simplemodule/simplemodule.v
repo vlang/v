@@ -10,4 +10,9 @@ pub fn imul(x int, y int) int {
 
 pub struct ThisIsGeneric<T> {
 	msg T
-} 
+}
+
+pub struct Data {
+pub:
+	value int
+}
