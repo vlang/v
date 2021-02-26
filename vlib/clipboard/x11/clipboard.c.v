@@ -25,35 +25,35 @@ struct C.Window {
 
 fn C.XInitThreads() int
 
-fn C.XCloseDisplay(d &Display)
+fn C.XCloseDisplay(d &C.Display)
 
-fn C.XFlush(d &Display)
+fn C.XFlush(d &C.Display)
 
-fn C.XDestroyWindow(d &Display, w C.Window)
+fn C.XDestroyWindow(d &C.Display, w C.Window)
 
 fn C.XNextEvent(d C.Display, e &XEvent)
 
-fn C.XSetSelectionOwner(d &Display, a C.Atom, w C.Window, time int)
+fn C.XSetSelectionOwner(d &C.Display, a C.Atom, w C.Window, time int)
 
-fn C.XGetSelectionOwner(d &Display, a C.Atom) C.Window
+fn C.XGetSelectionOwner(d &C.Display, a C.Atom) C.Window
 
-fn C.XChangeProperty(d &Display, requestor C.Window, property C.Atom, typ C.Atom, format int, mode int, data voidptr, nelements int) int
+fn C.XChangeProperty(d &C.Display, requestor C.Window, property C.Atom, typ C.Atom, format int, mode int, data voidptr, nelements int) int
 
-fn C.XSendEvent(d &Display, requestor C.Window, propogate int, mask i64, event &XEvent)
+fn C.XSendEvent(d &C.Display, requestor C.Window, propogate int, mask i64, event &XEvent)
 
-fn C.XInternAtom(d &Display, typ byteptr, only_if_exists int) C.Atom
+fn C.XInternAtom(d &C.Display, typ byteptr, only_if_exists int) C.Atom
 
-fn C.XCreateSimpleWindow(d &Display, root C.Window, x int, y int, width u32, height u32, border_width u32, border u64, background u64) C.Window
+fn C.XCreateSimpleWindow(d &C.Display, root C.Window, x int, y int, width u32, height u32, border_width u32, border u64, background u64) C.Window
 
 fn C.XOpenDisplay(name byteptr) &C.Display
 
-fn C.XConvertSelection(d &Display, selection C.Atom, target C.Atom, property C.Atom, requestor Window, time int) int
+fn C.XConvertSelection(d &C.Display, selection C.Atom, target C.Atom, property C.Atom, requestor Window, time int) int
 
-fn C.XSync(d &Display, discard int) int
+fn C.XSync(d &C.Display, discard int) int
 
-fn C.XGetWindowProperty(d &Display, w Window, property C.Atom, offset i64, length i64, delete int, req_type C.Atom, actual_type_return &C.Atom, actual_format_return &int, nitems &u64, bytes_after_return &u64, prop_return &byteptr) int
+fn C.XGetWindowProperty(d &C.Display, w Window, property C.Atom, offset i64, length i64, delete int, req_type C.Atom, actual_type_return &C.Atom, actual_format_return &int, nitems &u64, bytes_after_return &u64, prop_return &byteptr) int
 
-fn C.XDeleteProperty(d &Display, w Window, property C.Atom) int
+fn C.XDeleteProperty(d &C.Display, w Window, property C.Atom) int
 
 fn C.DefaultScreen() int
 
