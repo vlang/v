@@ -1337,7 +1337,8 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 					}
 					thread_ret_type := elem_sym.thread_info().return_type
 					if thread_ret_type.has_flag(.optional) {
-						c.error('`.wait()` cannot be called for array when thread functions return optionals. Iterate over elements instead and handle each returned optional with `or`.', call_expr.pos)
+						c.error('`.wait()` cannot be called for array when thread functions return optionals. Iterate over elements instead and handle each returned optional with `or`.',
+							call_expr.pos)
 					}
 					call_expr.return_type = c.table.find_or_register_array(thread_ret_type)
 				} else {
@@ -3640,7 +3641,8 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		ast.GoExpr {
 			mut ret_type := c.call_expr(mut node.go_stmt.call_expr)
 			if node.go_stmt.call_expr.or_block.kind != .absent {
-				c.error('optional handling cannot be done in `go` call. Do it when calling `.wait()`', node.go_stmt.call_expr.or_block.pos)
+				c.error('optional handling cannot be done in `go` call. Do it when calling `.wait()`',
+					node.go_stmt.call_expr.or_block.pos)
 			}
 			return c.table.find_or_register_thread(ret_type)
 		}
