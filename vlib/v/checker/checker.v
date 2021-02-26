@@ -3109,11 +3109,10 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.branch_stmt(node)
 		}
 		ast.CompFor {
-			if node.typ > table.void_type {
-				sym := c.table.get_type_symbol(node.typ)
-				if sym.kind == .placeholder {
-					c.error('unknown type `$sym.name`', node.typ_pos)
-				}
+			typ := c.unwrap_generic(node.typ)
+			sym := c.table.get_type_symbol(typ)
+			if sym.kind == .placeholder || typ.has_flag(.generic) {
+				c.error('unknown type `$sym.name`', node.typ_pos)
 			}
 			c.stmts(node.stmts)
 		}
@@ -4806,7 +4805,11 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 			if branch.cond is ast.InfixExpr {
 				if branch.cond.op == .key_is {
 					left := branch.cond.left
-					got_type := (branch.cond.right as ast.Type).typ
+					got_type := c.unwrap_generic((branch.cond.right as ast.Type).typ)
+					sym := c.table.get_type_symbol(got_type)
+					if sym.kind == .placeholder || got_type.has_flag(.generic) {
+						c.error('unknown type `$sym.name`', branch.cond.right.position())
+					}
 					if left is ast.SelectorExpr {
 						comptime_field_name = left.expr.str()
 						c.comptime_fields_type[comptime_field_name] = got_type

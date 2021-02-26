@@ -227,6 +227,7 @@ fn (mut p Parser) comp_for() ast.CompFor {
 	p.check(.dot)
 	for_val := p.check_name()
 	mut kind := ast.CompForKind.methods
+	p.open_scope()
 	if for_val == 'methods' {
 		p.scope.register(ast.Var{
 			name: val_var
@@ -247,6 +248,7 @@ fn (mut p Parser) comp_for() ast.CompFor {
 	}
 	spos := p.tok.position()
 	stmts := p.parse_block()
+	p.close_scope()
 	return ast.CompFor{
 		val_var: val_var
 		stmts: stmts
