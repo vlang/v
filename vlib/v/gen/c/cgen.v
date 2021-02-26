@@ -12,14 +12,14 @@ import v.token
 import v.util
 import v.depgraph
 
-// NB: keywords after 'new' are reserved in C++
 const (
-	c_reserved = ['delete', 'exit', 'link', 'unix', 'error', 'calloc', 'malloc', 'free', 'panic',
-		'case', 'auto', 'char', 'default', 'do', 'double', 'extern', 'float', 'inline', 'int',
-		'long', 'register', 'restrict', 'short', 'signed', 'sizeof', 'static', 'switch', 'typedef',
-		'union', 'unsigned', 'void', 'volatile', 'while', 'new', 'namespace', 'class', 'typename',
-		'export',
-	]
+	// NB: some of the words in c_reserved, are not reserved in C,
+	// but are in C++, or have special meaning in V, thus need escaping too.
+	c_reserved = ['auto', 'break', 'calloc', 'case', 'char', 'class', 'const', 'continue', 'default',
+		'delete', 'do', 'double', 'else', 'enum', 'error', 'exit', 'export', 'extern', 'float',
+		'for', 'free', 'goto', 'if', 'inline', 'int', 'link', 'long', 'malloc', 'namespace', 'new',
+		'panic', 'register', 'restrict', 'return', 'short', 'signed', 'sizeof', 'static', 'struct',
+		'switch', 'typedef', 'typename', 'union', 'unix', 'unsigned', 'void', 'volatile', 'while']
 	// same order as in token.Kind
 	cmp_str    = ['eq', 'ne', 'gt', 'lt', 'ge', 'le']
 	// when operands are switched
