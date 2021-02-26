@@ -181,7 +181,7 @@ pub fn (mut a array) prepend(val voidptr) {
 // prepend_many prepends another array to this array.
 [unsafe]
 pub fn (mut a array) prepend_many(val voidptr, size int) {
-	a.insert_many(0, val, size)
+	unsafe { a.insert_many(0, val, size) }
 }
 
 // delete deletes array element at index `i`.
