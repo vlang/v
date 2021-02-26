@@ -240,12 +240,6 @@ pub fn (mut ws Client) write_ptr(bytes byteptr, payload_len int, code OPCode) ?i
 	mut header := []byte{len: header_len, init: `0`} // [`0`].repeat(header_len)
 	header[0] = byte(int(code)) | 0x80
 	masking_key := create_masking_key()
-	defer {
-		unsafe {
-			header.free()
-			masking_key.free()
-		}
-	}
 	if ws.is_server {
 		if payload_len <= 125 {
 			header[1] = byte(payload_len)
@@ -288,9 +282,6 @@ pub fn (mut ws Client) write_ptr(bytes byteptr, payload_len int, code OPCode) ?i
 	}
 	len := header.len + payload_len
 	mut frame_buf := []byte{len: len}
-	defer {
-		unsafe { frame_buf.free() }
-	}
 	unsafe {
 		C.memcpy(&frame_buf[0], byteptr(header.data), header.len)
 		if payload_len > 0 {
@@ -302,7 +293,13 @@ pub fn (mut ws Client) write_ptr(bytes byteptr, payload_len int, code OPCode) ?i
 			frame_buf[header_len + i] ^= masking_key[i % 4] & 0xff
 		}
 	}
-	return ws.socket_write(frame_buf)
+	written_len := ws.socket_write(frame_buf) ?
+	unsafe {
+		frame_buf.free()
+		masking_key.free()
+		header.free()
+	}
+	return written_len
 }
 
 // write writes a byte array with a websocket messagetype to socket
