@@ -4977,7 +4977,8 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 						c.expr(cond.left)
 						return false
 					} else {
-						c.error('invalid `\$if` condition: expected a type or selector expression', cond.left.position())
+						c.error('invalid `\$if` condition: expected a type or selector expression',
+							cond.left.position())
 					}
 				}
 				.eq, .ne {
