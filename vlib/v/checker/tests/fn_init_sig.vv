@@ -1,5 +1,6 @@
-fn init(i int) {
-}
 fn init() int {
+    return 1
+}
+pub fn init() int {
     return 1
 }
