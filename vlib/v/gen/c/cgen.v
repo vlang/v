@@ -1480,16 +1480,20 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 			return
 		}
 		ret_typ := next_fn.return_type
+		t_expr := g.new_tmp_var()
+		g.write('${g.typ(node.cond_type)} $t_expr = ')
+		g.expr(node.cond)
+		g.writeln(';')
 		g.writeln('while (1) {')
 		t := g.new_tmp_var()
-		receiver_styp := g.typ(next_fn.params[0].typ)
+		receiver_typ := next_fn.params[0].typ
+		receiver_styp := g.typ(receiver_typ)
 		fn_name := receiver_styp.replace_each(['*', '', '.', '__']) + '_next'
 		g.write('\t${g.typ(ret_typ)} $t = ${fn_name}(')
-		if !node.cond_type.is_ptr() {
+		if !node.cond_type.is_ptr() && receiver_typ.is_ptr() {
 			g.write('&')
 		}
-		g.expr(node.cond)
-		g.writeln(');')
+		g.writeln('$t_expr);')
 		g.writeln('\tif (!${t}.ok) { break; }')
 		val := if node.val_var in ['', '_'] { g.new_tmp_var() } else { node.val_var }
 		val_styp := g.typ(node.val_type)
