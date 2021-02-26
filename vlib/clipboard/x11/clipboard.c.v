@@ -404,7 +404,7 @@ fn read_property(d &C.Display, w C.Window, p C.Atom) Property {
 		if ret != 0 {
 			C.XFree(ret)
 		}
-		C.XGetWindowProperty(d, w, p, 0, read_bytes, 0, C.AnyPropertyType, &actual_type,
+		C.XGetWindowProperty(d, w, p, 0, read_bytes, 0, C.Atom(C.AnyPropertyType), &actual_type,
 			&actual_format, &nitems, &bytes_after, &ret)
 		read_bytes *= 2
 		if bytes_after == 0 {
