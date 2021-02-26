@@ -1337,7 +1337,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 					}
 					thread_ret_type := elem_sym.thread_info().return_type
 					if thread_ret_type.has_flag(.optional) {
-						c.error('`.wait()` cannot be called for array when thread functions return optionals. Iterate over elements instead and handle each returned optional with `or`.',
+						c.error('`.wait()` cannot be called for an array when thread functions return optionals. Iterate over the arrays elements instead and handle each returned optional with `or`.',
 							call_expr.pos)
 					}
 					call_expr.return_type = c.table.find_or_register_array(thread_ret_type)
