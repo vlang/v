@@ -120,14 +120,27 @@ pub fn (mut p Parser) parse_chan_type() table.Type {
 }
 
 pub fn (mut p Parser) parse_thread_type() table.Type {
+	is_opt := p.peek_tok.kind == .question
+	if is_opt {
+		p.next()
+	}
 	if p.peek_tok.kind != .name && p.peek_tok.kind != .key_mut && p.peek_tok.kind != .amp
 		&& p.peek_tok.kind != .lsbr {
 		p.next()
-		return table.thread_type
+		if is_opt {
+			mut ret_type := table.void_type
+			ret_type = ret_type.set_flag(.optional)
+			idx := p.table.find_or_register_thread(ret_type)
+			return table.new_type(idx)
+		} else {
+			return table.thread_type
+		}
 	}
-	p.next()
-	elem_type := p.parse_type()
-	idx := p.table.find_or_register_thread(elem_type)
+	if !is_opt {
+		p.next()
+	}
+	ret_type := p.parse_type()
+	idx := p.table.find_or_register_thread(ret_type)
 	return table.new_type(idx)
 }
 
