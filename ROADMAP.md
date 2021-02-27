@@ -18,8 +18,8 @@
 - [x] struct embedding
 - [ ] interface embedding
 - [x] interfaces: allow struct fields (not just methods)
-- [ ] vfmt: fix common errors automatically to save time (make vars mutable and vice versa, add missing imports etc)
-- [ ] method expressions with an explicit receiver as the first argument: `fn handle(f OnClickFn) { f() } button := Button{} handle(btn.click)`
+- [ ] vfmt: fix common errors automatically (make vars mutable and vice versa, add missing imports)
+- [ ] method expressions with an explicit receiver as the first argument
 - [x] short generics syntax (`foo(5)` instead of `foo<int>(5)`)
 - [ ] fix all remaining generics issues
 - [ ] merge v.c and v_win.c
