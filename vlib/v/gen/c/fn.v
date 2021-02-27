@@ -421,7 +421,8 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	} else {
 		''
 	}
-	if gen_or && g.pref.autofree && g.inside_return {
+	// if gen_or && g.pref.autofree && g.inside_return {
+	if gen_or && g.inside_return {
 		// TODO optional return af hack (tmp_count gets increased in .return_statement())
 		g.tmp_count--
 	}

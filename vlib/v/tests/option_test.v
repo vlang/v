@@ -364,7 +364,6 @@ struct MultiOptionalFieldTest {
 	b ?int
 }
 
-/*
 fn foo() ?int {
 	return 0
 }
@@ -380,4 +379,3 @@ fn test_return_or() {
 	x := foo2() or { return }
 	assert x == 0
 }
-*/

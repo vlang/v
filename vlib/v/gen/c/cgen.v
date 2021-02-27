@@ -4745,7 +4745,8 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			g.writeln('return $opt_tmp;')
 			return
 		}
-		free := g.is_autofree && !g.is_builtin_mod // node.exprs[0] is ast.CallExpr
+		// free := g.is_autofree && !g.is_builtin_mod // node.exprs[0] is ast.CallExpr
+		free := !g.is_builtin_mod // node.exprs[0] is ast.CallExpr
 		mut tmp := ''
 		if free {
 			// `return foo(a, b, c)`
@@ -4777,7 +4778,9 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			// autofree before `return`
 			// set free_parent_scopes to true, since all variables defined in parent
 			// scopes need to be freed before the return
-			g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
+			if g.pref.autofree {
+				g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
+			}
 			if tmp != '' {
 				g.write('return $tmp')
 			}
