@@ -1115,31 +1115,54 @@ pub fn (mut p Parser) parse_ident(language table.Language) ast.Ident {
 	}
 }
 
+fn (p &Parser) is_typename(t token.Token) bool {
+	return t.kind == .name && (t.lit.is_capital() || p.table.known_type(t.lit))
+}
+
+// heuristics to detect `func<T>()` from `var < expr`
+// 1. `f<[]` is generic(e.g. `f<[]int>`) because `var < []` is invalid
+// 2. `f<map[` is generic(e.g. `f<map[string]string>)
+// 3. `f<foo>` is generic because `v1 < foo > v2` is invalid syntax
+// 4. `f<Foo,` is generic when Foo is typename.
+//	   otherwise it is not generic because it may be multi-value (e.g. `return f < foo, 0`).
+// 5. `f<mod.Foo>` is same as case 3
+// 6. `f<mod.Foo,` is same as case 4
+// 7. otherwise, it's not generic
+// see also test_generic_detection in vlib/v/tests/generics_test.v
 fn (p &Parser) is_generic_call() bool {
 	lit0_is_capital := if p.tok.kind != .eof && p.tok.lit.len > 0 {
 		p.tok.lit[0].is_capital()
 	} else {
 		false
 	}
+	if lit0_is_capital || p.peek_tok.kind != .lt {
+		return false
+	}
 	tok2 := p.peek_token(2)
 	tok3 := p.peek_token(3)
 	tok4 := p.peek_token(4)
 	tok5 := p.peek_token(5)
-	// use heuristics to detect `func<T>()` from `var < expr`
-	return !lit0_is_capital && p.peek_tok.kind == .lt && (match tok2.kind {
-		.name {
-			// (`f<int>`, `f<string,`) || (`f<mod.Type>`, `<mod.Type,`) || `f<map[`,
+	kind2, kind3, kind4, kind5 := tok2.kind, tok3.kind, tok4.kind, tok5.kind
 
-			tok3.kind in [.gt, .comma] || (tok3.kind == .dot && tok4.kind == .name && tok5.kind in [.gt, .comma]) || (tok2.lit == 'map' && tok3.kind == .lsbr)
+	if kind2 == .lsbr {
+		// case 1
+		return tok3.kind == .rsbr
+	}
+
+	if kind2 == .name {
+		if tok2.lit == 'map' && kind3 == .lsbr {
+			// case 2
+			return true
 		}
-		.lsbr {
-			// maybe `f<[]T>`, assume `var < []` is invalid
-			tok3.kind == .rsbr
+		return match kind3 {
+			.gt { true } // case 3
+			.comma { p.is_typename(tok2) } // case 4
+			// case 5 and 6
+			.dot { kind4 == .name && (kind5 == .gt || (kind5 == .comma && p.is_typename(tok4))) }
+			else { false }
 		}
-		else {
-			false
-		}
-	})
+	}
+	return false
 }
 
 pub fn (mut p Parser) name_expr() ast.Expr {

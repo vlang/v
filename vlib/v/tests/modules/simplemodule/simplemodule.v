@@ -16,3 +16,5 @@ pub struct Data {
 pub:
 	value int
 }
+
+pub const zero = 0
