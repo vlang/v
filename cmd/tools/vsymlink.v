@@ -8,7 +8,6 @@ $if windows {
 		#flag -lUser32
 	}
 }
-
 fn main() {
 	C.atexit(cleanup_vtmp_folder)
 	vexe := os.real_path(pref.vexe_path())
@@ -161,7 +160,8 @@ fn get_reg_value(reg_env_key voidptr, key string) ?string {
 // sets the value for the given $key to the given  $value
 fn set_reg_value(reg_key voidptr, key string, value string) ?bool {
 	$if windows {
-		if C.RegSetValueEx(reg_key, key.to_wide(), 0, C.REG_EXPAND_SZ, value.to_wide(), value.len*2) != 0 {
+		if C.RegSetValueEx(reg_key, key.to_wide(), 0, C.REG_EXPAND_SZ, value.to_wide(),
+			value.len * 2) != 0 {
 			return error('Unable to set registry value for "$key". %PATH% may be too long.')
 		}
 		return true
