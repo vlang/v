@@ -37,6 +37,6 @@ fn main() {
 	audio.setup(
 		stream_cb: my_audio_stream_callback
 	)
-	time.wait(2000 * time.millisecond)
+	time.sleep(2000 * time.millisecond)
 	audio.shutdown()
 }

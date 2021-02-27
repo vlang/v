@@ -20,6 +20,6 @@ fn main() {
 	for {
 		a.update()
 		print_automaton(a)
-		time.wait(100 * time.millisecond)
+		time.sleep(100 * time.millisecond)
 	}
 }

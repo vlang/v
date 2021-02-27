@@ -72,7 +72,7 @@ fn (mut p Player) play_wav_file(fpath string) ? {
 	p.samples << samples
 	p.finished = false
 	for !p.finished {
-		time.wait(16 * time.millisecond)
+		time.sleep(16 * time.millisecond)
 	}
 	p.free()
 }

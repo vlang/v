@@ -208,7 +208,7 @@ fn test_utc() {
 
 fn test_unix_time() {
 	t1 := time.utc()
-	time.wait(50 * time.millisecond)
+	time.sleep(50 * time.millisecond)
 	t2 := time.utc()
 	ut1 := t1.unix_time()
 	ut2 := t2.unix_time()

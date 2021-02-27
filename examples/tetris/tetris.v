@@ -218,7 +218,7 @@ fn (mut g Game) run() {
 			g.delete_completed_lines()
 		}
 		// glfw.post_empty_event() // force window redraw
-		time.wait(timer_period * time.millisecond)
+		time.sleep(timer_period * time.millisecond)
 	}
 }
 
