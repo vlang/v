@@ -74,11 +74,11 @@ pub fn new() FTP {
 	return f
 }
 
-fn (mut zftp FTP) write(data string) ? {
+fn (mut zftp FTP) write(data string) ?int {
 	$if debug {
 		println('FTP.v >>> $data')
 	}
-	zftp.conn.write('$data\r\n'.bytes()) ?
+	return zftp.conn.write('$data\r\n'.bytes())
 }
 
 fn (mut zftp FTP) read() ?(int, string) {
