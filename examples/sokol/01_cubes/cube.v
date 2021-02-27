@@ -36,6 +36,23 @@ mut:
 
 /******************************************************************************
 *
+* Utilities
+*
+******************************************************************************/
+struct Ws {
+	width  int
+	height int
+}
+
+fn window_size() Ws {
+	return Ws{
+		width:  C.sapp_width(),
+		height: C.sapp_height()
+	}
+}
+
+/******************************************************************************
+*
 * Texture functions
 *
 ******************************************************************************/
@@ -268,7 +285,7 @@ fn cube_field(app App) {
 }
 
 fn frame(mut app App) {
-	ws := gg.window_size()
+	ws := window_size()
 	ratio := f32(ws.width) / ws.height
 	dw := ws.width
 	dh := ws.height

@@ -77,6 +77,23 @@ mut:
 }
 
 /******************************************************************************
+*
+* Utilities
+*
+******************************************************************************/
+struct Ws {
+	width  int
+	height int
+}
+
+fn window_size() Ws {
+	return Ws{
+		width:  C.sapp_width(),
+		height: C.sapp_height()
+	}
+}
+
+/******************************************************************************
 * GLSL Include and functions
 ******************************************************************************/
 #flag -I @VROOT/.
@@ -292,7 +309,7 @@ fn draw_cube_glsl_i(mut app App){
 		return
 	}
 
-	ws := gg.window_size()
+	ws := window_size()
 	//ratio := f32(ws.width) / ws.height
 	dw := f32(ws.width  / 2)
 	dh := f32(ws.height / 2)
@@ -356,7 +373,7 @@ fn draw_start_glsl(app App){
 		return
 	}
 
-	ws := gg.window_size()
+	ws := window_size()
 	//ratio := f32(ws.width) / ws.height
 	//dw := f32(ws.width  / 2)
 	//dh := f32(ws.height / 2)
@@ -370,7 +387,7 @@ fn draw_end_glsl(app App){
 }
 
 fn frame(mut app App) {
-	ws := gg.window_size()
+	ws := window_size()
 
 	// clear
 	mut color_action := C.sg_color_attachment_action{
