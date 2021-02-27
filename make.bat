@@ -16,7 +16,7 @@ set target=build
 REM TCC variables
 set "tcc_url=https://github.com/vlang/tccbin"
 set "tcc_dir=%~dp0thirdparty\tcc"
-set "tcc_branch=thirdparty-windows-amd64"
+if "%PROCESSOR_ARCHITECTURE%" == "x86" ( set "tcc_branch=thirdparty-windows-i386" ) else ( set "tcc_branch=thirdparty-windows-amd64" )
 
 REM VC settings
 set "vc_url=https://github.com/vlang/vc"
@@ -44,7 +44,6 @@ if !shift_counter! LSS 1 (
 
 REM Compiler option
 for %%g in (-gcc -msvc -tcc -tcc32 -clang) do (
-    if "%PROCESSOR_ARCHITECTURE%" == "x86" set "tcc_branch=thirdparty-windows-i386"
     if "%~1" == "-tcc32" set "tcc_branch=thirdparty-windows-i386"
     if "%~1" == "%%g" set compiler=%~1& set compiler=!compiler:~1!& shift& set /a shift_counter+=1& goto :verifyopt
 )
