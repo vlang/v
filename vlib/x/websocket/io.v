@@ -61,16 +61,16 @@ fn (mut ws Client) socket_write(bytes []byte) ?int {
 		if ws.is_ssl {
 			return ws.ssl_conn.write(bytes)
 		} else {
-			mut n := 0
 			for {
-				n = ws.conn.write(bytes) or {
+				n := ws.conn.write(bytes) or {
 					if errcode == net.err_timed_out_code {
 						continue
 					}
 					return error(err)
 				}
+				return n
 			}
-			return n
+			panic('reached unreachable code')
 		}
 	}
 }
