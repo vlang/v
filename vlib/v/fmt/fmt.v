@@ -517,7 +517,7 @@ fn (mut f Fmt) asm_stmt(stmt ast.AsmStmt) {
 		if i != 0 {
 			f.write('  ')
 		}
-		f.write(clob.reg)
+		f.write(clob.reg.name)
 
 		if clob.comments.len == 0 {
 			f.writeln('')

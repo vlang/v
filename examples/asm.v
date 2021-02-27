@@ -9,7 +9,6 @@ fn main() {
 		: =r (c) as c // output 
 		: r (a) as a // input 
 		  r (b) as b
-		: eax // clobbered registers
 	}
 	println('a: $a') // 100
 	println('b: $b') // 20

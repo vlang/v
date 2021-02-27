@@ -3430,37 +3430,51 @@ fn (mut c Checker) asm_stmt(mut stmt ast.AsmStmt) {
 	if !c.inside_unsafe {
 		c.error('inline assembly is only allowed in `unsafe` blocks', stmt.pos)
 	}
+	if stmt.is_goto {
+		c.warn('asm goto is not supported, it will probably not work', stmt.pos)
+	}
 	mut aliases := c.asm_ios(stmt.output, mut stmt.scope)
 	aliases2 := c.asm_ios(stmt.input, mut stmt.scope)
 	aliases << aliases2
-	for mut template in stmt.templates {
-		for mut arg in template.args {
-			argptr := &arg
-			match mut arg {
-				ast.AsmAlias {
-					if arg.is_numeric {
-						if arg.val.int() >= stmt.input.len + stmt.output.len { // TODO: get max index
-							c.error('index too large. largest index is $stmt.max_idx, got $arg.val',
-								arg.pos)
-						}
-					} else {
-						val := arg.val
-						if val !in aliases {
-							if val in stmt.label_names {
-								unsafe {
-									*argptr = val
-								}
-							} else {
-								suggestion := util.new_suggestion(val, aliases)
-								c.error(suggestion.say('alias `$arg.val` does not exist'),
-									arg.pos)
-							}
-						}
-					}
+	for template in stmt.templates {
+		for arg in template.args {
+			c.asm_arg(arg, stmt, aliases)
+		}
+	}
+	for clob in stmt.clobbered {
+		c.asm_arg(clob.reg, stmt, aliases)
+	}
+}
+
+fn (mut c Checker) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt, aliases []string) {
+	match mut arg {
+		ast.AsmAlias {
+			if arg.is_numeric {
+				if arg.val.int() >= stmt.input.len + stmt.output.len {
+					c.error('index too large. largest index is $stmt.max_idx, got $arg.val',
+						arg.pos)
 				}
-				else {}
+			} else {
+				val := arg.val
+				if val !in aliases && val !in stmt.local_labels && val !in stmt.global_labels {
+					suggestion := util.new_suggestion(val, aliases)
+					c.error(suggestion.say('alias `$arg.val` does not exist'), arg.pos)
+				}
 			}
 		}
+		ast.AsmAddressing {
+			if arg.scale !in [-1, 1, 2, 4, 8] {
+				c.error('scale must be one of 1, 2, 4, or 8', arg.pos)
+			}
+			c.asm_arg(arg.base, stmt, aliases)
+			c.asm_arg(arg.index, stmt, aliases)
+		}
+		ast.BoolLiteral {} // all of these are guarented to be correct.
+		ast.FloatLiteral {}
+		ast.CharLiteral {}
+		ast.IntegerLiteral {}
+		string {}
+		ast.AsmRegister {} // if the register is not found, the parser will register it as an alias
 	}
 }
 

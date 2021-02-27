@@ -345,7 +345,7 @@ pub fn (mut p Parser) init_parse_fns() {
 }
 
 pub fn (mut p Parser) read_first_token() {
-	// need to call next() 4 times to get peek token 1,2,3 and current token
+	// need to call next() 2 times to get peek token and current token
 	p.next()
 	p.next()
 }
@@ -430,7 +430,8 @@ fn (mut p Parser) check(expected token.Kind) {
 	// for p.tok.kind in [.line_comment, .mline_comment] {
 	// p.next()
 	// }
-	if p.tok.kind == expected {
+
+	if _likely_(p.tok.kind == expected) {
 		p.next()
 	} else {
 		if expected == .name {
@@ -818,19 +819,15 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 	p.inside_asm = true
 	p.inside_asm_template = true
-
 	defer {
 		p.inside_asm = false
 		p.inside_asm_template = false
 	}
-
 	p.n_asm = 0
 	if is_top_level {
 		p.top_level_statement_start()
 	}
 	backup_scope := p.scope
-	defer {
-	}
 
 	pos := p.tok.position()
 
@@ -864,7 +861,7 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 		objects: ast.all_registers(mut p.table, arch) // 
 	}
 
-	mut label_names := []string{}
+	mut local_labels := []string{}
 	// riscv: https://github.com/jameslzhu/riscv-card/blob/master/riscv-card.pdf
 	// x86: https://www.felixcloutier.com/x86/
 	// arm: https://developer.arm.com/documentation/dui0068/b/arm-instruction-reference
@@ -931,7 +928,7 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 				.colon {
 					is_label = true
 					p.check(.colon)
-					label_names << name
+					local_labels << name
 					break
 				}
 				.lsbr {
@@ -961,7 +958,7 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 	mut scope := p.scope
 	p.scope = backup_scope
 	p.inside_asm_template = false
-	mut output, mut input, mut clobbered := []ast.AsmIO{}, []ast.AsmIO{}, []ast.AsmClobbered{}
+	mut output, mut input, mut clobbered, mut global_labels := []ast.AsmIO{}, []ast.AsmIO{}, []ast.AsmClobbered{}, []string{}
 	if !is_top_level {
 		if p.tok.kind == .colon {
 			output = p.asm_ios()
@@ -971,17 +968,27 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 			if p.tok.kind == .colon {
 				p.check(.colon)
 				for p.tok.kind == .name {
-					reg := p.reg_name()
+					reg := p.reg_or_alias()
+
 					mut comments := []ast.Comment{}
 					for p.tok.kind == .comment {
 						comments << p.comment()
 					}
-					clobbered << ast.AsmClobbered{
-						reg: reg
-						comments: comments
+					if reg is ast.AsmRegister {
+						clobbered << ast.AsmClobbered{
+							reg: reg
+							comments: comments
+						}
 					}
-					if p.tok.kind == .rcbr {
+					if p.tok.kind in [.rcbr, .colon] {
 						break
+					}
+				}
+				if is_goto && p.tok.kind == .colon {
+					p.check(.colon)
+					for p.tok.kind == .name {
+						global_labels << p.tok.lit
+						p.check(.name)
 					}
 				}
 			}
@@ -1007,7 +1014,8 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 		is_top_level: is_top_level
 		max_idx: p.n_asm - 1
 		scope: scope
-		label_names: label_names
+		global_labels: global_labels
+		local_labels: local_labels
 	}
 }
 
@@ -1232,48 +1240,6 @@ fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 fn (mut p Parser) reg_name() string {
 	reg := p.tok.lit
 	p.check(.name)
-
-	if true {
-		return reg
-	}
-	number_chars := [byte(`0`), `1`, `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`]
-	mut nums := map[int]int{} // position:number in string
-	for i, c in reg {
-		if c in number_chars {
-			nums[i] = c.ascii_str().int()
-		}
-	}
-	if nums.len == 0 {
-		// return ast.AsmRegister{
-		// 	pos: p.prev_tok.position()
-		// 	name: reg
-		// }
-	}
-	mut acc_pos := -1
-	mut number_str := ''
-	mut number_start := -1
-	mut number_end := -1
-	for pos, i in nums {
-		number_end = pos
-		if acc_pos == -1 {
-			acc_pos = number_end
-			number_start = acc_pos
-			number_str += i.str()
-			continue
-		}
-		if pos != acc_pos + 1 {
-			p.error('non-contiguous number in register name')
-		} else {
-			acc_pos++
-		}
-		number_str += i.str()
-	}
-
-	// return ast.AsmRegister{
-	// 	pos: p.prev_tok.position()
-	// 	name: '${reg[..number_start]}#${reg[number_end + 1..]}'
-	// 	number: number_str.int()
-	// }
 	return reg
 }
 
@@ -1289,6 +1255,9 @@ fn (mut p Parser) asm_ios() []ast.AsmIO {
 
 		if p.tok.kind == .assign {
 			constraint += '='
+			p.check(.assign)
+		} else if p.tok.kind == .plus {
+			constraint += '+'
 			p.check(.assign)
 		}
 		constraint += p.tok.lit

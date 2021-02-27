@@ -1704,29 +1704,33 @@ fn (mut g Gen) gen_attrs(attrs []table.Attr) {
 fn (mut g Gen) gen_asm_stmt(stmt ast.AsmStmt) {
 	g.write('__asm__')
 	if stmt.volatile {
-		g.writeln(' volatile')
+		g.write(' volatile')
+	}
+	if stmt.is_goto {
+		g.write(' goto')
 	}
 	g.writeln(' (')
 	g.indent++
-	for template in stmt.templates {
+	for mut template in stmt.templates {
 		g.write('"$template.name')
 		if template.is_label {
 			g.write(':')
 		} else {
 			g.write(' ')
 		}
-		if template.args.len == 2 {
-			g.asm_arg(template.args[1])
-			g.write(', ')
-			g.asm_arg(template.args[0])
-		} else {
-			for i, arg in template.args {
-				g.asm_arg(arg)
-				if i + 1 < template.args.len {
-					g.write(', ')
-				}
+		// swap destionation and operands for att syntax 
+		if template.args.len != 0 {
+			template.args.prepend(template.args[template.args.len - 1])
+			template.args.delete(template.args.len - 1)
+		}
+
+		for i, arg in template.args {
+			g.asm_arg(arg, stmt)
+			if i + 1 < template.args.len {
+				g.write(', ')
 			}
 		}
+
 		if !template.is_label {
 			g.write(';')
 		}
@@ -1736,17 +1740,28 @@ fn (mut g Gen) gen_asm_stmt(stmt ast.AsmStmt) {
 		g.write(': ')
 	}
 	g.gen_asm_ios(stmt.output)
-	if stmt.input.len != 0 || stmt.clobbered.len != 0 {
+	if stmt.input.len != 0 || stmt.clobbered.len != 0 || stmt.is_goto {
 		g.write(': ')
 	}
 	g.gen_asm_ios(stmt.input)
-	if stmt.clobbered.len != 0 {
+	if stmt.clobbered.len != 0 || stmt.is_goto {
 		g.write(': ')
 	}
 	for i, clob in stmt.clobbered {
 		g.write('"')
-		g.write(clob.reg)
+		g.write(clob.reg.name)
 		g.write('"')
+		if i + 1 < stmt.clobbered.len {
+			g.writeln(',')
+		} else {
+			g.writeln('')
+		}
+	}
+	if stmt.is_goto {
+		g.write(': ')
+	}
+	for i, label in stmt.global_labels {
+		g.write(label)
 		if i + 1 < stmt.clobbered.len {
 			g.writeln(',')
 		} else {
@@ -1757,14 +1772,23 @@ fn (mut g Gen) gen_asm_stmt(stmt ast.AsmStmt) {
 	g.writeln(');')
 }
 
-fn (mut g Gen) asm_arg(arg ast.AsmArg) {
+fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 	match arg {
 		ast.AsmAlias {
-			if arg.is_numeric { // v: $0 c: %0
-				g.write('%$arg.val')
-			} else { // v: $a c: %[a]
+			val := arg.val
+			if val in stmt.local_labels || val in stmt.global_labels {
+				g.write(if val in stmt.local_labels {
+					val
+				} else { // val in stmt.global_labels
+					'%l[$val]'
+				})
+			} else {
+				if arg.is_numeric { // v: $0 c: %0
+					g.write('%$arg.val')
+				} else { // v: $a c: %[a]
 
-				g.write('%[$arg.val]')
+					g.write('%[$arg.val]')
+				}
 			}
 		}
 		ast.CharLiteral {
@@ -1787,38 +1811,38 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg) {
 			match arg.mode {
 				.base {
 					g.write('(')
-					g.asm_arg(base)
+					g.asm_arg(base, stmt)
 				}
 				.displacement {
 					g.write('${displacement}(')
 				}
 				.base_plus_displacement {
 					g.write('${displacement}(')
-					g.asm_arg(base)
+					g.asm_arg(base, stmt)
 				}
 				.index_times_scale_plus_displacement {
 					g.write('${displacement}(,')
-					g.asm_arg(index)
+					g.asm_arg(index, stmt)
 					g.write(',')
 					g.write(scale.str())
 				}
 				.base_plus_index_plus_displacement {
 					g.write('${displacement}(')
-					g.asm_arg(base)
+					g.asm_arg(base, stmt)
 					g.write(',')
-					g.asm_arg(index)
+					g.asm_arg(index, stmt)
 					g.write(',1')
 				}
 				.base_plus_index_times_scale_plus_displacement {
 					g.write('${displacement}(')
-					g.asm_arg(base)
+					g.asm_arg(base, stmt)
 					g.write(',')
-					g.asm_arg(index)
+					g.asm_arg(index, stmt)
 					g.write(',$scale')
 				}
 				.rip_plus_displacement {
 					g.write('${displacement}(')
-					g.asm_arg('$base')
+					g.asm_arg(base, stmt)
 				}
 				.invalid {
 					g.error('invalid addressing mode', arg.pos)

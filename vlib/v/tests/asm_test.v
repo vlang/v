@@ -5,7 +5,6 @@ fn test_inline_asm() {
 		mov $0, eax
 		: =r (b)
 		: r (a)
-		: rax
 	}
 	assert a == 10
 	assert b == 10
@@ -14,7 +13,7 @@ fn test_inline_asm() {
 	unsafe asm amd64 {
 		mov $0, 5
 		: =r (c)
-		
+
 	}
 	assert c == 5
 
@@ -53,27 +52,25 @@ fn test_inline_asm() {
 		loop loop_start
 		: =r (j) as j
 		: r (j)
-		: rcx
 	}
 	assert j == 5 * 3
 
-	// TODO goto
-	// k := 0
-	// loops := 0
+	// k := 0 // Wait for tcc to implement goto, and gcc has odd errors
+	// mut loops := 0
 	// outside_label:
 	// if k != 5 {
 	// 	loops++
 	// 	unsafe asm goto amd64 {
-	// 		mov $k, $1
-	// 		mov $k, 5
-	// 		jmp $outside_label
+	// 		mov k, 1
+	// 		mov k, 5
+	// 		jmp outside_label
 	// 		: =r (k) as k
 	// 		: r (k)
-	//		:
-	//		: outside_label
+	// 		:
+	// 		: outside_label
 	// 	}
 	// }
-	// assert loops == 0
+	// assert loops == 1
 	// assert k == 5
 
 	l := 5

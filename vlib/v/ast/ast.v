@@ -1040,12 +1040,13 @@ pub:
 	clobbered    []AsmClobbered
 	pos          token.Position
 pub mut:
-	templates   []AsmTemplate
-	max_idx     int
-	scope       &Scope
-	output      []AsmIO
-	input       []AsmIO
-	label_names []string
+	templates     []AsmTemplate
+	max_idx       int
+	scope         &Scope
+	output        []AsmIO
+	input         []AsmIO
+	global_labels []string // listed after clobbers, paired with is_goto == true
+	local_labels  []string // local to the assembly block
 }
 
 pub struct AsmTemplate {
@@ -1062,10 +1063,10 @@ pub type AsmArg = AsmAddressing | AsmAlias | AsmRegister | BoolLiteral | CharLit
 
 pub struct AsmRegister {
 pub:
-	name   string // eax or r12d
-	number int = -1 // -1 or 12 (for above examples)
-	typ    table.Type
-	size   int
+	name string // eax or r12d
+mut:
+	typ  table.Type
+	size int
 }
 
 pub struct AsmAlias {
@@ -1077,12 +1078,13 @@ pub:
 
 pub struct AsmAddressing {
 pub:
-	displacement u32    // 8, 16 or 32 bit literal value
-	base         AsmArg // gpr
-	index        AsmArg // gpr
+	displacement u32 // 8, 16 or 32 bit literal value
 	scale        int = -1 // 1, 2, 4, or 8 literal 
 	mode         AddressingMode
 	pos          token.Position
+pub mut:
+	base  AsmArg // gpr
+	index AsmArg // gpr
 }
 
 // adressing modes:
@@ -1098,8 +1100,9 @@ pub enum AddressingMode {
 }
 
 pub struct AsmClobbered {
+pub:
+	reg AsmRegister
 pub mut:
-	reg      string // eax
 	comments []Comment
 }
 
@@ -1781,7 +1784,6 @@ pub fn all_registers(mut t table.Table, arch pref.Arch) map[string]ScopeObject {
 						assembled_name := '${name[..hash_index]}$i${name[hash_index + 1..]}'
 						res[assembled_name] = AsmRegister{
 							name: assembled_name
-							number: i
 							typ: t.bitsize_to_type(bit_size)
 							size: bit_size
 						}
