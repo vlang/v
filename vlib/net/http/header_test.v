@@ -29,20 +29,20 @@ fn test_header_adds_multiple() {
 
 fn test_header_set() {
 	mut h := http.new_header(
-		{key: .to, value: 'one'},
-		{key: .to, value: 'two'}
+		{key: .dnt, value: 'one'},
+		{key: .dnt, value: 'two'}
 	)
-	assert h.values(.to) == ['one' 'two']
-	h.set_str('to', 'three')
-	assert h.values(.to) == ['three']
+	assert h.values(.dnt) == ['one' 'two']
+	h.set_str('dnt', 'three')
+	assert h.values(.dnt) == ['three']
 }
 
 fn test_header_delete() {
 	mut h := http.new_header(
-		{key: .to, value: 'one'},
-		{key: .to, value: 'two'}
+		{key: .dnt, value: 'one'},
+		{key: .dnt, value: 'two'}
 	)
-	assert h.values(.to) == ['one' 'two']
-	h.delete_str('to')
-	assert h.values(.to) == []
+	assert h.values(.dnt) == ['one' 'two']
+	h.delete_str('dnt')
+	assert h.values(.dnt) == []
 }
