@@ -5797,6 +5797,15 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			c.ensure_type_exists(arg.typ, node.pos) or { return }
 		}
 	}
+	if node.language == .v && node.name.after_char(`.`) == 'init' && !node.is_method
+		&& node.params.len == 0 {
+		if node.is_pub {
+			c.error('fn `init` must not be public', node.pos)
+		}
+		if node.return_type != table.void_type {
+			c.error('fn `init` cannot have a return type', node.pos)
+		}
+	}
 	if node.return_type != table.Type(0) {
 		c.ensure_type_exists(node.return_type, node.pos) or { return }
 		if node.language == .v && node.is_method && node.name == 'str' {
