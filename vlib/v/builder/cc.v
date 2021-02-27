@@ -636,10 +636,10 @@ fn (mut v Builder) cc() {
 		ccompiler_label := 'C ${os.file_name(ccompiler):3}'
 		util.timing_start(ccompiler_label)
 		res := os.exec(cmd) or {
-			println('C compilation failed.')
-			os.chdir(original_pwd)
-			verror(err)
-			return
+			os.Result{
+				exit_code: 111
+				output: 'C compilation failed.\n$err'
+			}
 		}
 		util.timing_measure(ccompiler_label)
 		if v.pref.show_c_output {
@@ -794,10 +794,12 @@ fn (mut b Builder) cc_linux_cross() {
 	if b.pref.show_cc {
 		println(cc_cmd)
 	}
-	cc_res := os.exec(cc_cmd) or { os.Result{
-		exit_code: 1
-		output: 'no `cc` command found'
-	} }
+	cc_res := os.exec(cc_cmd) or {
+		os.Result{
+			exit_code: 1
+			output: 'no `cc` command found'
+		}
+	}
 	if cc_res.exit_code != 0 {
 		println('Cross compilation for Linux failed (first step, cc). Make sure you have clang installed.')
 		verror(cc_res.output)

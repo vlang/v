@@ -47,6 +47,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 			if p.tok.kind == .comma {
 				p.next()
 			}
+			ecmnts.last() << p.eat_comments({})
 		}
 		line_nr := p.tok.line_nr
 		$if tinyc {

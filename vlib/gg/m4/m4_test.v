@@ -191,10 +191,10 @@ fn test_vec4() {
 	assert v + m4.Vec4{ e: [f32(5), 6, 7, 8]! } == m4.Vec4{ e: [f32(6), 8, 10, 12]! }
 	assert v - m4.Vec4{ e: [f32(1), 2, 3, 4]! } == m4.Vec4{ e: [f32(0), 0, 0, 0]! }
 	assert v.mul_vec4(m4.Vec4{ e: [f32(2), 2, 2, 2]! }) == m4.Vec4{	e: [f32(2), 4, 6, 8]! }
-	assert v.normalize().mod() == 1
+	assert m4.abs(v.normalize().mod() - 1) < m4.precision
 	v = m4.Vec4{[f32(1), 2, 3, 0]!}
-	assert v.normalize3().mod3() - 1 < m4.precision
-	assert v.normalize3().mod() - 1 < m4.precision
+	assert m4.abs(v.normalize3().mod3() - 1) < m4.precision
+	assert m4.abs(v.normalize3().mod() - 1) < m4.precision
 	// x y z
 	// 1 2 3 ==> -3 6 -3 0
 	// 4 5 6

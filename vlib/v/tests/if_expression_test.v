@@ -167,3 +167,16 @@ fn test_multi_if_expr_with_infix() {
 	a := if 1 == 0 { 1 } else if 1 == 0 { 2 } else { 3 } + 4
 	assert a == 7
 }
+
+fn test_if_expr_with_array_map() {
+	num_string := '2 3'
+
+	assigned := if num_string.len > 1 {
+		num_string.split(' ').map(it.int())
+	} else {
+		[789]
+	}
+
+	println(assigned)
+	assert assigned == [2, 3]
+}

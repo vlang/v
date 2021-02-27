@@ -14,10 +14,10 @@ fn main() {
 fn sleeping_line(x int, y int, size int, ch string) {
 	mut i := 0
 	for i < size {
-		term.set_cursor_position({
+		term.set_cursor_position(
 			x: x + i
 			y: y
-		})
+		)
 		print(term.bold(term.yellow(ch)))
 		i++
 	}
@@ -26,10 +26,10 @@ fn sleeping_line(x int, y int, size int, ch string) {
 fn standing_line(x int, y int, size int, ch string) {
 	mut i := 0
 	for i < size {
-		term.set_cursor_position({
+		term.set_cursor_position(
 			x: x
 			y: y + i
-		})
+		)
 		print(term.bold(term.yellow(ch)))
 		i++
 	}

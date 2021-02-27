@@ -46,13 +46,6 @@ pub fn (mut c Checker) check_basic(got table.Type, expected table.Type) bool {
 			return true
 		}
 	}
-	// e.g. [4096]byte vs byteptr
-	if got_sym.kind == .array_fixed {
-		info := got_sym.info as table.ArrayFixed
-		if c.table.type_to_str(info.elem_type) == c.table.type_to_str(expected).trim('ptr') {
-			return true
-		}
-	}
 	if exp_sym.kind in [.voidptr, .any] || got_sym.kind in [.voidptr, .any] {
 		return true
 	}

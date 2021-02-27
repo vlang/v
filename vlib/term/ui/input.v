@@ -155,8 +155,6 @@ pub enum Modifiers {
 	alt
 }
 
-[inline] pub fn (m &Modifiers) is_empty() bool { return int(m) == 0 }
-
 pub struct Event {
 pub:
 	typ       EventType

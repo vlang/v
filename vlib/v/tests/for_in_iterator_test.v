@@ -34,3 +34,11 @@ fn test_for_in_empty_iterator() {
 	}
 	assert vals == []
 }
+
+fn test_for_in_iterator_with_tmp_expr() {
+	mut vals := []int{}
+	for val in doubler(2, 64) {
+		vals << val
+	}
+	assert vals == [2, 4, 8, 16, 32, 64]
+}

@@ -67,8 +67,7 @@ no reason to complain about them.
 When the parser determines, that it is outside of a top level statement,
 it tells the scanner to backtrack s.tidx to the current p.tok index,
 then it changes .is_inside_toplvl_statement to false , and refills its
-lookahead buffer (i.e. p.peek_tok, p.peek_tok2, p.peek_tok3) from the
-scanner.
+lookahead buffer (i.e. p.peek_tok), from the scanner.
 
 In effect, from the parser's point of view, the next tokens, that it will
 receive with p.next(), will be the same, as if comments are not ignored
@@ -98,10 +97,6 @@ pub enum CommentsMode {
 
 // new scanner from file.
 pub fn new_scanner_file(file_path string, comments_mode CommentsMode, pref &pref.Preferences) &Scanner {
-	return new_vet_scanner_file(file_path, comments_mode, pref)
-}
-
-pub fn new_vet_scanner_file(file_path string, comments_mode CommentsMode, pref &pref.Preferences) &Scanner {
 	if !os.exists(file_path) {
 		verror("$file_path doesn't exist")
 	}
@@ -109,19 +104,24 @@ pub fn new_vet_scanner_file(file_path string, comments_mode CommentsMode, pref &
 		verror(err)
 		return voidptr(0)
 	}
-	mut s := new_vet_scanner(raw_text, comments_mode, pref)
-	s.file_path = file_path
-	s.file_base = os.base(file_path)
+	mut s := &Scanner{
+		pref: pref
+		text: raw_text
+		is_print_line_on_error: true
+		is_print_colored_error: true
+		is_print_rel_paths_on_error: true
+		is_fmt: pref.is_fmt
+		comments_mode: comments_mode
+		file_path: file_path
+		file_base: os.base(file_path)
+	}
+	s.init_scanner()
 	return s
 }
 
 // new scanner from string.
 pub fn new_scanner(text string, comments_mode CommentsMode, pref &pref.Preferences) &Scanner {
-	return new_vet_scanner(text, comments_mode, pref)
-}
-
-pub fn new_vet_scanner(text string, comments_mode CommentsMode, pref &pref.Preferences) &Scanner {
-	return &Scanner{
+	mut s := &Scanner{
 		pref: pref
 		text: text
 		is_print_line_on_error: true
@@ -131,6 +131,21 @@ pub fn new_vet_scanner(text string, comments_mode CommentsMode, pref &pref.Prefe
 		comments_mode: comments_mode
 		file_path: 'internal_memory'
 		file_base: 'internal_memory'
+	}
+	s.init_scanner()
+	return s
+}
+
+fn (mut s Scanner) init_scanner() {
+	util.get_timers().measure_pause('PARSE')
+	s.scan_all_tokens_in_buffer(s.comments_mode)
+	util.get_timers().measure_resume('PARSE')
+}
+
+[unsafe]
+pub fn (mut s Scanner) free() {
+	unsafe {
+		s.text.free()
 	}
 }
 
@@ -163,6 +178,18 @@ fn (mut s Scanner) new_token(tok_kind token.Kind, lit string, len int) token.Tok
 		pos: s.pos - len + 1
 		len: len
 		tidx: cidx
+	}
+}
+
+[inline]
+fn (s &Scanner) new_eof_token() token.Token {
+	return token.Token{
+		kind: .eof
+		lit: ''
+		line_nr: s.line_nr + 1
+		pos: s.pos
+		len: 1
+		tidx: s.tidx
 	}
 }
 
@@ -487,22 +514,20 @@ fn (mut s Scanner) end_of_file() token.Token {
 		s.inc_line_number()
 	}
 	s.pos = s.text.len
-	return s.new_token(.eof, '', 1)
+	return s.new_eof_token()
 }
 
-pub fn (mut s Scanner) scan_all_tokens_in_buffer() {
+pub fn (mut s Scanner) scan_all_tokens_in_buffer(mode CommentsMode) {
 	// s.scan_all_tokens_in_buffer is used mainly by vdoc,
 	// in order to implement the .toplevel_comments mode.
-	cmode := s.comments_mode
-	s.comments_mode = .parse_comments
-	for {
-		t := s.text_scan()
-		s.all_tokens << t
-		if t.kind == .eof {
-			break
-		}
+	util.timing_start('SCAN')
+	defer {
+		util.timing_measure_cumulative('SCAN')
 	}
-	s.comments_mode = cmode
+	oldmode := s.comments_mode
+	s.comments_mode = mode
+	s.scan_remaining_text()
+	s.comments_mode = oldmode
 	s.tidx = 0
 	$if debugscanner ? {
 		for t in s.all_tokens {
@@ -511,11 +536,21 @@ pub fn (mut s Scanner) scan_all_tokens_in_buffer() {
 	}
 }
 
-pub fn (mut s Scanner) scan() token.Token {
-	if s.comments_mode == .toplevel_comments {
-		return s.buffer_scan()
+pub fn (mut s Scanner) scan_remaining_text() {
+	for {
+		t := s.text_scan()
+		if s.comments_mode == .skip_comments && t.kind == .comment {
+			continue
+		}
+		s.all_tokens << t
+		if t.kind == .eof {
+			break
+		}
 	}
-	return s.text_scan()
+}
+
+pub fn (mut s Scanner) scan() token.Token {
+	return s.buffer_scan()
 }
 
 pub fn (mut s Scanner) buffer_scan() token.Token {
@@ -536,7 +571,17 @@ pub fn (mut s Scanner) buffer_scan() token.Token {
 }
 
 [inline]
-fn (s Scanner) look_ahead(n int) byte {
+pub fn (s &Scanner) peek_token(n int) token.Token {
+	idx := s.tidx + n
+	if idx >= s.all_tokens.len {
+		return s.new_eof_token()
+	}
+	t := s.all_tokens[idx]
+	return t
+}
+
+[inline]
+fn (s &Scanner) look_ahead(n int) byte {
 	if s.pos + n < s.text.len {
 		return s.text[s.pos + n]
 	} else {
@@ -1292,14 +1337,19 @@ pub fn verror(s string) {
 }
 
 pub fn (mut s Scanner) codegen(newtext string) {
+	$if debug_codegen ? {
+		eprintln('scanner.codegen:\n $newtext')
+	}
 	// codegen makes sense only during normal compilation
 	// feeding code generated V code to vfmt or vdoc will
 	// cause them to output/document ephemeral stuff.
 	if s.comments_mode == .skip_comments {
+		s.all_tokens.delete_last() // remove .eof from end of .all_tokens
 		s.text += newtext
-		$if debug_codegen ? {
-			eprintln('scanner.codegen:\n $newtext')
-		}
+		old_tidx := s.tidx
+		s.tidx = s.all_tokens.len
+		s.scan_remaining_text()
+		s.tidx = old_tidx
 	}
 }
 

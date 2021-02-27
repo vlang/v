@@ -23,6 +23,8 @@ fn test_identity() {
 
 	assert simple<[]int>([1])[0] == 1
 	assert simple<map[string]string>({'a':'b'})['a'] == 'b'
+
+	assert simple<simplemodule.Data>(simplemodule.Data{value: 0}).value == 0
 }
 
 fn test_plus() {
@@ -407,4 +409,22 @@ fn test_generic_init() {
 	mut c := new<User>()
 	c.name = 'c'
 	assert c.name == 'c'
+}
+
+fn test_generic_detection() {
+	v1, v2 := -1, 1
+
+	// not generic
+	a1, a2 := v1<v2, v2> v1
+	assert a1 && a2
+	b1, b2 := v1 <simplemodule.zero, v2> v1
+	assert b1 && b2
+
+	// generic
+	assert multi_generic_args<int, string>(0, 's')
+	assert multi_generic_args<Foo1, Foo2>(Foo1{}, Foo2{})
+	assert multi_generic_args<simplemodule.Data, int>(simplemodule.Data{}, 0)
+	assert multi_generic_args<int, simplemodule.Data>(0, simplemodule.Data{})
+	assert multi_generic_args<[]int, int>([]int{}, 0)
+	assert multi_generic_args<map[int]int, int>(map[int]int{}, 0)
 }

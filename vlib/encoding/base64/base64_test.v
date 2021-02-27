@@ -40,15 +40,32 @@ const (
 )
 
 fn test_decode() {
-	assert base64.decode(man_pair.encoded) == man_pair.decoded
+	assert base64.decode(man_pair.encoded) == man_pair.decoded.bytes()
 
 	// Test for incorrect padding.
-	assert base64.decode('aGk') == 'hi'
-	assert base64.decode('aGk=') == 'hi'
-	assert base64.decode('aGk==') == 'hi'
+	assert base64.decode('aGk') == 'hi'.bytes()
+	assert base64.decode('aGk=') == 'hi'.bytes()
+	assert base64.decode('aGk==') == 'hi'.bytes()
 
 	for i, p in pairs {
 		got := base64.decode(p.encoded)
+		if got != p.decoded.bytes() {
+			eprintln('pairs[${i}]: expected = ${p.decoded}, got = ${got}')
+			assert false
+		}
+	}
+}
+
+fn test_decode_str() {
+	assert base64.decode_str(man_pair.encoded) == man_pair.decoded
+
+	// Test for incorrect padding.
+	assert base64.decode_str('aGk') == 'hi'
+	assert base64.decode_str('aGk=') == 'hi'
+	assert base64.decode_str('aGk==') == 'hi'
+
+	for i, p in pairs {
+		got := base64.decode_str(p.encoded)
 		if got != p.decoded {
 			eprintln('pairs[${i}]: expected = ${p.decoded}, got = ${got}')
 			assert false
@@ -57,10 +74,10 @@ fn test_decode() {
 }
 
 fn test_encode() {
-	assert base64.encode(man_pair.decoded) == man_pair.encoded
+	assert base64.encode(man_pair.decoded.bytes()) == man_pair.encoded
 
 	for i, p in pairs {
-		got := base64.encode(p.decoded)
+		got := base64.encode(p.decoded.bytes())
 		if got != p.encoded {
 			eprintln('pairs[${i}]: expected = ${p.encoded}, got = ${got}')
 			assert false
@@ -68,12 +85,54 @@ fn test_encode() {
 	}
 }
 
-fn test_encode_url() {
-	test := base64.encode_url('Hello Base64Url encoding!')
+fn test_encode_str() {
+	assert base64.encode_str(man_pair.decoded) == man_pair.encoded
+
+	for i, p in pairs {
+		got := base64.encode_str(p.decoded)
+		if got != p.encoded {
+			eprintln('pairs[${i}]: expected = ${p.encoded}, got = ${got}')
+			assert false
+		}
+	}
+}
+
+fn test_url_encode() {
+	test := base64.url_encode('Hello Base64Url encoding!'.bytes())
 	assert test == 'SGVsbG8gQmFzZTY0VXJsIGVuY29kaW5nIQ'
 }
 
-fn test_decode_url() {
-	test := base64.decode_url("SGVsbG8gQmFzZTY0VXJsIGVuY29kaW5nIQ")
+fn test_url_encode_str() {
+	test := base64.url_encode_str('Hello Base64Url encoding!')
+	assert test == 'SGVsbG8gQmFzZTY0VXJsIGVuY29kaW5nIQ'
+}
+
+fn test_url_decode() {
+	test := base64.url_decode("SGVsbG8gQmFzZTY0VXJsIGVuY29kaW5nIQ")
+	assert test == 'Hello Base64Url encoding!'.bytes()
+}
+
+fn test_url_decode_str() {
+	test := base64.url_decode_str("SGVsbG8gQmFzZTY0VXJsIGVuY29kaW5nIQ")
 	assert test == 'Hello Base64Url encoding!'
+}
+
+fn test_encode_null_byte() {
+	assert base64.encode([byte(`A`) 0 `C`]) == 'QQBD'
+}
+
+fn test_encode_null_byte_str() {
+	// While this works, bytestr() does a memcpy
+	s := [byte(`A`) 0 `C`].bytestr()
+	assert base64.encode_str(s) == 'QQBD'
+}
+
+fn test_decode_null_byte() {
+	assert base64.decode('QQBD') == [byte(`A`) 0 `C`]
+}
+
+fn test_decode_null_byte_str() {
+	// While this works, bytestr() does a memcpy
+	s := [byte(`A`) 0 `C`].bytestr()
+	assert base64.decode_str('QQBD') == s
 }

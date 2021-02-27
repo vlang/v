@@ -76,10 +76,11 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			p.next()
 		}
 		.amp, .mul, .not, .bit_not, .arrow {
-			// -1, -a, !x, &x, ~x, <-a
+			// &x, *x, !x, ~x, <-x
 			node = p.prefix_expr()
 		}
 		.minus {
+			// -1, -a
 			if p.peek_tok.kind == .number {
 				node = p.parse_number_literal()
 			} else {
@@ -149,7 +150,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			if p.expecting_type {
 				// parse json.decode type (`json.decode([]User, s)`)
 				node = p.name_expr()
-			} else if p.is_amp && p.peek_tok.kind == .rsbr && p.peek_tok3.kind != .lcbr {
+			} else if p.is_amp && p.peek_tok.kind == .rsbr && p.peek_token(3).kind != .lcbr {
 				pos := p.tok.position()
 				typ := p.parse_type().to_ptr()
 				p.check(.lpar)
@@ -369,7 +370,7 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 		} else if p.tok.kind.is_infix() {
 			if p.tok.kind.is_prefix() && p.tok.line_nr != p.prev_tok.line_nr {
 				// return early for deref assign `*x = 2` goes to prefix expr
-				if p.tok.kind == .mul && p.peek_tok2.kind == .assign {
+				if p.tok.kind == .mul && p.peek_token(2).kind == .assign {
 					return node
 				}
 				// added 10/2020: LATER this will be parsed as PrefixExpr instead

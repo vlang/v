@@ -31,7 +31,7 @@ pub fn mark_used(mut the_table table.Table, pref &pref.Preferences, ast_files []
 		'tos3',
 		'isnil',
 		'opt_ok2',
-		/* utf8_str_visible_length is used by c/str.v */
+		// utf8_str_visible_length is used by c/str.v
 		'utf8_str_visible_length',
 		'compare_ints',
 		'compare_u64s',
@@ -40,14 +40,14 @@ pub fn mark_used(mut the_table table.Table, pref &pref.Preferences, ast_files []
 		'compare_u64s_reverse',
 		'compare_strings_reverse',
 		'builtin_init',
-		/* byteptr and charptr */
+		// byteptr and charptr
 		'3.vstring',
 		'3.vstring_with_len',
 		'4.vstring',
 		'4.vstring_with_len',
-		/* byte. methods */
+		// byte. methods
 		'9.str_escaped',
-		/* string. methods */
+		// string. methods
 		'18.add',
 		'18.trim_space',
 		'18.replace',
@@ -57,14 +57,14 @@ pub fn mark_used(mut the_table table.Table, pref &pref.Preferences, ast_files []
 		'18.substr',
 		'18.at',
 		'18.index_kmp',
-		/* string. ==, !=, etc... */
+		// string. ==, !=, etc...
 		'18.eq',
 		'18.ne',
 		'18.lt',
 		'18.gt',
 		'18.le',
 		'18.ge',
-		/* ustring. ==, !=, etc... */
+		// ustring. ==, !=, etc...
 		'19.eq',
 		'19.ne',
 		'19.lt',
@@ -72,7 +72,7 @@ pub fn mark_used(mut the_table table.Table, pref &pref.Preferences, ast_files []
 		'19.le',
 		'19.ge',
 		'19.add',
-		/* other array methods */
+		// other array methods
 		'21.get',
 		'21.set',
 		'21.get_unsafe',
@@ -94,7 +94,7 @@ pub fn mark_used(mut the_table table.Table, pref &pref.Preferences, ast_files []
 		'65557.reverse',
 		'65557.set',
 		'65557.set_unsafe',
-		/* TODO: process the _vinit const initializations automatically too */
+		// TODO: process the _vinit const initializations automatically too
 		'os.getwd',
 		'os.init_os_args',
 		'os.init_os_args_wide',

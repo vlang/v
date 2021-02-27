@@ -11,3 +11,32 @@ vlib/v/checker/tests/unknown_comptime_expr.vv:8:6: error: definition of `bar` is
     8 |     $if bar == 0 {}
       |         ~~~
     9 | }
+   10 |
+vlib/v/checker/tests/unknown_comptime_expr.vv:13:6: error: undefined ident: `huh`
+   11 | fn if_is() {
+   12 |     s := S1{}
+   13 |     $if huh.typ is T {}
+      |         ~~~
+   14 |     $if s is int {}
+   15 |     $if s.i is 5 {}
+vlib/v/checker/tests/unknown_comptime_expr.vv:14:6: error: invalid `$if` condition: expected a type or selector expression
+   12 |     s := S1{}
+   13 |     $if huh.typ is T {}
+   14 |     $if s is int {}
+      |         ^
+   15 |     $if s.i is 5 {}
+   16 |     $if s.i is T {}
+vlib/v/checker/tests/unknown_comptime_expr.vv:15:13: error: invalid `$if` condition: expected a type
+   13 |     $if huh.typ is T {}
+   14 |     $if s is int {}
+   15 |     $if s.i is 5 {}
+      |                ^
+   16 |     $if s.i is T {}
+   17 | }
+vlib/v/checker/tests/unknown_comptime_expr.vv:16:13: error: unknown type `T`
+   14 |     $if s is int {}
+   15 |     $if s.i is 5 {}
+   16 |     $if s.i is T {}
+      |                ^
+   17 | }
+   18 |
