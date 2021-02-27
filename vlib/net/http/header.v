@@ -90,22 +90,6 @@ pub fn (h CommonHeader) str() string {
 	}
 }
 
-// HeaderKey can be either a CommonHeader or a custom header string
-pub type HeaderKey = CommonHeader | string
-
-// canonicalize will convert the HeaderKey to its canonical form, or return
-// an error if there are invalid characters in the key.
-pub fn (h HeaderKey) canonicalize() ?string {
-	match h {
-		CommonHeader {
-			return h.str()
-		}
-		string {
-			s := canonicalize(h) or { return error('Invalid header key') }
-			return s
-		}
-	}
-}
 
 // Header represents the key-value pairs in an HTTP header
 [noinit]
@@ -115,60 +99,96 @@ mut:
 }
 
 pub struct HeaderConfig {
-	key   HeaderKey
+	key   CommonHeader
 	value string
 }
 
 // Create a new Header object
-pub fn new_header(kvs ...HeaderConfig) ?Header {
+pub fn new_header(kvs ...HeaderConfig) Header {
 	mut h := Header{
 		data: map[string][]string{}
 	}
 	for kv in kvs {
-		h.add(kv.key, kv.value) ?
+		h.add(kv.key, kv.value)
 	}
 	return h
 }
 
-// Append a value to the header key. This function will return an error
+// Append a value to the header key.
+pub fn (mut h Header) add(key CommonHeader, value string) {
+	h.data[key.str()] << value
+}
+
+// Append a value to a custom header key. This function will return an error
 // if the key contains invalid header characters.
-pub fn (mut h Header) add(key HeaderKey, value string) ? {
-	k := key.canonicalize() ?
+pub fn (mut h Header) add_str(key string, value string) ? {
+	k := canonicalize(key) ?
 	h.data[k] << value
 }
 
 // Sets the key-value pair. This function will clear any other values
-// that exist for the HeaderKey.
-pub fn (mut h Header) set(key HeaderKey, value string) {
-	k := key.canonicalize() or { return }
+// that exist for the CommonHeader.
+pub fn (mut h Header) set(key CommonHeader, value string) {
+	h.data[key.str()] = [value]
+}
+
+// Sets the key-value pair for a custom header key. This function will
+// clear any other values that exist for the CommonHeader.
+pub fn (mut h Header) set_str(key string, value string) {
+	k := canonicalize(key) or { return }
 	h.data[k] = [value]
 }
 
-// Delete all key-value pairs.
-pub fn (mut h Header) delete(key HeaderKey) {
-	k := key.canonicalize() or { return }
+// Delete all values for a key.
+pub fn (mut h Header) delete(key CommonHeader) {
+	h.data.delete(key.str())
+}
+
+// Delete all values for a custom header key.
+pub fn (mut h Header) delete_str(key string) {
+	k := canonicalize(key) or { return }
 	h.data.delete(k)
 }
 
 // Returns whether the header key exists in the map.
-pub fn (h Header) contains(key HeaderKey) bool {
-	k := key.canonicalize() or { return false }
+pub fn (h Header) contains(key CommonHeader) bool {
+	return key.str() in h.data
+}
+
+// Returns whether the custom header key exists in the map.
+pub fn (h Header) contains_str(key string) bool {
+	k := canonicalize(key) or { return false }
 	return k in h.data
 }
 
-// Gets the first value for the HeaderKey, or none if the key does
+// Gets the first value for the CommonHeader, or none if the key does
 // not exist.
-pub fn (h Header) get(key HeaderKey) ?string {
-	k := key.canonicalize() ?
+pub fn (h Header) get(key CommonHeader) ?string {
+	k := key.str()
 	if h.data[k].len == 0 {
 		return none
 	}
 	return h.data[k][0]
 }
 
-// Gets all values for the HeaderKey.
-pub fn (h Header) values(key HeaderKey) []string {
-	k := key.canonicalize() or { return [] }
+// Gets the first value for the custom header, or none if the key does
+// not exist.
+pub fn (h Header) get_str(key string) ?string {
+	k := canonicalize(key) or { return none }
+	if h.data[k].len == 0 {
+		return none
+	}
+	return h.data[k][0]
+}
+
+// Gets all values for the CommonHeader.
+pub fn (h Header) values(key CommonHeader) []string {
+	return h.data[key.str()]
+}
+
+// Gets all values for the custom header.
+pub fn (h Header) values_str(key string) []string {
+	k := canonicalize(key) or { return [] }
 	return h.data[k]
 }
 
