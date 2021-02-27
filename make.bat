@@ -315,7 +315,7 @@ pushd %tcc_dir% 2>NUL && (
 ) || (
     echo Bootstraping TCC...
     echo  ^> TCC not found
-    echo  ^> Downloading TCC from !tcc_url!
+    if "!tcc_branch!" == "thirdparty-windows-i386" ( echo  ^> Downloading TCC32 from !tcc_url! ) else ( echo  ^> Downloading TCC64 from !tcc_url! )
     if !flag_verbose! EQU 1 (
         echo [Debug] git clone --depth 1 --quiet --single-branch --branch !tcc_branch! !tcc_url! "%tcc_dir%">>"!log_file!"
         echo    git clone --depth 1 --quiet --single-branch --branch !tcc_branch! !tcc_url! "%tcc_dir%"
