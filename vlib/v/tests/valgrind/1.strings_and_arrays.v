@@ -210,15 +210,11 @@ fn if_expr() string {
 }
 
 fn return_if_expr() string {
-	return if true {
-		get_string('a' + 'b')
-	} else {
-		get_string('c' + 'd')
-	}
+	return if true { get_string('a' + 'b') } else { get_string('c' + 'd') }
 }
 
 fn loop_map() {
-	m := {
+	m := map{
 		'UK':     'London'
 		'France': 'Paris'
 	}
@@ -335,6 +331,9 @@ fn comp_if() {
 	}
 	s := 'a' + 'b'
 	println(s)
+}
+
+fn anon_fn() {
 }
 
 fn main() {

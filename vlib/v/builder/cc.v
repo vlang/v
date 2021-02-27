@@ -16,7 +16,7 @@ const (
 ==================
 C error. This should never happen.
 
-If you were not working with C interop, please raise an issue on GitHub:
+If you were not working with C interop, this is a compiler bug, please raise an issue on GitHub:
 
 https://github.com/vlang/v/issues/new/choose
 
