@@ -38,6 +38,8 @@ NB: You can also pass one of `-gcc`, `-msvc`, `-clang` to `make.bat` instead,
 if you do prefer to use a different C compiler, but -tcc is small, fast, and
 easy to install (V will download a prebuilt binary automatically).
 
+It is recommended to add this folder to the PATH  of your environment variables. Otherwise you always have to call the full path to the `v.exe`.
+
 ### Android
 Running V graphical apps on Android is also possible via [vab](https://github.com/vlang/vab).
 
