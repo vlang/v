@@ -1333,9 +1333,13 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 				elem_sym := c.table.get_type_symbol(elem_typ)
 				if elem_sym.kind == .thread {
 					if call_expr.args.len != 0 {
-						c.error('wait() does not have any arguments', call_expr.args[0].pos)
+						c.error('`.wait()` does not have any arguments', call_expr.args[0].pos)
 					}
 					thread_ret_type := elem_sym.thread_info().return_type
+					if thread_ret_type.has_flag(.optional) {
+						c.error('`.wait()` cannot be called for an array when thread functions return optionals. Iterate over the arrays elements instead and handle each returned optional with `or`.',
+							call_expr.pos)
+					}
 					call_expr.return_type = c.table.find_or_register_array(thread_ret_type)
 				} else {
 					c.error('`$left_type_sym.name` has no method `wait()` (only thread handles and arrays of them have)',
@@ -1428,6 +1432,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		if call_expr.args.len > 0 {
 			c.error('wait() does not have any arguments', call_expr.args[0].pos)
 		}
+		call_expr.return_type = info.return_type
 		return info.return_type
 	}
 	mut method := table.Fn{}
@@ -3155,6 +3160,10 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		}
 		ast.GoStmt {
 			c.go_stmt(mut node)
+			if node.call_expr.or_block.kind != .absent {
+				c.error('optional handling cannot be done in `go` call. Do it when calling `.wait()`',
+					node.call_expr.or_block.pos)
+			}
 		}
 		ast.GotoLabel {}
 		ast.GotoStmt {
@@ -3634,7 +3643,11 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			return c.call_expr(mut node)
 		}
 		ast.GoExpr {
-			ret_type := c.call_expr(mut node.go_stmt.call_expr)
+			mut ret_type := c.call_expr(mut node.go_stmt.call_expr)
+			if node.go_stmt.call_expr.or_block.kind != .absent {
+				c.error('optional handling cannot be done in `go` call. Do it when calling `.wait()`',
+					node.go_stmt.call_expr.or_block.pos)
+			}
 			return c.table.find_or_register_thread(ret_type)
 		}
 		ast.ChanInit {

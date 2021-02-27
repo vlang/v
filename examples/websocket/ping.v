@@ -64,7 +64,7 @@ fn start_client() ? {
 	// // println('type: $msg.opcode payload:\n$msg.payload ref: $r')
 	// }, &r)
 	ws.connect() or { println('error on connect: $err') }
-	go write_echo(mut ws) or { println('error on write_echo $err') }
+	go write_echo(mut ws) // or { println('error on write_echo $err') }
 	ws.listen() or { println('error on listen $err') }
 	unsafe {
 		ws.free()
