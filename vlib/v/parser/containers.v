@@ -16,6 +16,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 	mut elem_type_pos := first_pos
 	mut exprs := []ast.Expr{}
 	mut ecmnts := [][]ast.Comment{}
+	mut pre_cmnts := []ast.Comment{}
 	mut is_fixed := false
 	mut has_val := false
 	mut has_type := false
@@ -27,7 +28,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		line_nr := p.tok.line_nr
 		p.next()
 		// []string
-		if p.tok.kind in [.name, .amp, .lsbr] && p.tok.line_nr == line_nr {
+		if p.tok.kind in [.name, .amp, .lsbr, .key_shared] && p.tok.line_nr == line_nr {
 			elem_type_pos = p.tok.position()
 			elem_type = p.parse_type()
 			// this is set here because it's a known type, others could be the
@@ -39,12 +40,14 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		last_pos = p.tok.position()
 	} else {
 		// [1,2,3] or [const]byte
+		pre_cmnts = p.eat_comments({})
 		for i := 0; p.tok.kind !in [.rsbr, .eof]; i++ {
 			exprs << p.expr(0)
-			ecmnts << p.eat_comments()
+			ecmnts << p.eat_comments({})
 			if p.tok.kind == .comma {
 				p.next()
 			}
+			ecmnts.last() << p.eat_comments({})
 		}
 		line_nr := p.tok.line_nr
 		$if tinyc {
@@ -80,7 +83,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 					first_pos.extend(last_pos))
 			}
 		} else {
-			if p.tok.kind == .not && p.tok.line_nr == p.prev_tok.line_nr {
+			if p.tok.kind == .not { // && p.tok.line_nr == p.prev_tok.line_nr {
 				last_pos = p.tok.position()
 				is_fixed = true
 				has_val = true
@@ -94,7 +97,9 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		}
 	}
 	if exprs.len == 0 && p.tok.kind != .lcbr && has_type {
-		p.warn_with_pos('use `x := []Type{}` instead of `x := []Type`', first_pos.extend(last_pos))
+		if !p.pref.is_fmt {
+			p.warn_with_pos('use `x := []Type{}` instead of `x := []Type`', first_pos.extend(last_pos))
+		}
 	}
 	mut has_len := false
 	mut has_cap := false
@@ -139,6 +144,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		typ: array_type
 		exprs: exprs
 		ecmnts: ecmnts
+		pre_cmnts: pre_cmnts
 		pos: pos
 		elem_type_pos: elem_type_pos
 		has_len: has_len
@@ -150,15 +156,15 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 	}
 }
 
+// parse tokens between braces
 fn (mut p Parser) map_init() ast.MapInit {
 	first_pos := p.prev_tok.position()
 	mut keys := []ast.Expr{}
 	mut vals := []ast.Expr{}
-	for p.tok.kind != .rcbr && p.tok.kind != .eof {
+	mut comments := [][]ast.Comment{}
+	pre_cmnts := p.eat_comments({})
+	for p.tok.kind !in [.rcbr, .eof] {
 		key := p.expr(0)
-		if key is ast.FloatLiteral {
-			p.error_with_pos('maps do not support floating point keys yet', key.pos)
-		}
 		keys << key
 		p.check(.colon)
 		val := p.expr(0)
@@ -166,10 +172,13 @@ fn (mut p Parser) map_init() ast.MapInit {
 		if p.tok.kind == .comma {
 			p.next()
 		}
+		comments << p.eat_comments({})
 	}
 	return ast.MapInit{
 		keys: keys
 		vals: vals
 		pos: first_pos.extend_with_last_line(p.tok.position(), p.tok.line_nr)
+		comments: comments
+		pre_cmnts: pre_cmnts
 	}
 }

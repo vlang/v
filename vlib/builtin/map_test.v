@@ -128,13 +128,17 @@ fn test_map() {
 }
 
 fn test_map_init() {
-	m := {
-		'one': 1
+	one := 'one'
+	three := 'three'
+	m := map{
+		one:   1
 		'two': 2
+		three: 1 + 2
 	}
 	assert m['one'] == 1
 	assert m['two'] == 2
-	assert m['three'] == 0
+	assert m['three'] == 3
+	assert m['unknown'] == 0
 }
 
 fn test_string_map() {
@@ -243,7 +247,7 @@ fn test_delete_size() {
 		for i in 0 .. 10 {
 			m[arr[i]] = i
 		}
-		assert (m.len == 10)
+		assert m.len == 10
 		println(m.len)
 		for i in 0 .. 10 {
 			m.delete(arr[i])
@@ -270,25 +274,25 @@ fn test_map_assign() {
 	mut a := map[string]f64{}
 	mut b := map[string]int{}
 	mut c := map[string]u16{}
-	a = {
+	a = map{
 		'x': 12.4
 		'y': 3
 	}
-	b = {
+	b = map{
 		'u': -13
 		'v': 12
 	}
-	c = {
+	c = map{
 		's': u16(5)
 		't': 3
 	}
-	_ := Mstruct1{{
+	_ := Mstruct1{map{
 		'p': 12
 	}}
-	_ := Mstruct2{{
+	_ := Mstruct2{map{
 		'q': 1.7
 	}}
-	_ := Mstruct3{{
+	_ := Mstruct3{map{
 		'r': u16(6)
 		's': 5
 	}}
@@ -331,7 +335,7 @@ fn test_map_in_directly() {
 }
 
 fn test_plus_assign_string() {
-	mut m := {
+	mut m := map{
 		'one': ''
 	}
 	m['one'] += '1'
@@ -340,7 +344,7 @@ fn test_plus_assign_string() {
 }
 
 fn test_map_keys_to_array() {
-	m := {
+	m := map{
 		'a': 'b'
 		'c': 'd'
 	}
@@ -360,7 +364,7 @@ fn map_in_mut(mut m map[string]int) {
 }
 
 fn test_map_in_mut() {
-	mut m := {
+	mut m := map{
 		'one': 1
 	}
 	map_in_mut(mut m)
@@ -368,7 +372,7 @@ fn test_map_in_mut() {
 }
 
 fn test_map_in() {
-	m := {
+	m := map{
 		'Foo': 'bar'
 	}
 	if 'foo'.capitalize() in m {
@@ -400,7 +404,7 @@ fn mut_map_with_relation_op_in_fn(mut m map[string]int) {
 }
 
 fn test_mut_map_with_relation_op_in_fn() {
-	mut m := {
+	mut m := map{
 		'one': 1
 		'two': 2
 	}
@@ -414,7 +418,7 @@ fn test_mut_map_with_relation_op_in_fn() {
 }
 
 fn test_map_str_after_delete() {
-	mut m := {
+	mut m := map{
 		'first':  1
 		'second': 2
 		'third':  3
@@ -428,7 +432,7 @@ fn test_map_str_after_delete() {
 }
 
 fn test_modify_map_value() {
-	mut m1 := {
+	mut m1 := map{
 		'foo': 3
 		'bar': -7
 	}
@@ -439,7 +443,7 @@ fn test_modify_map_value() {
 }
 
 fn test_map_clone() {
-	mut nums := {
+	mut nums := map{
 		'foo': 1
 		'bar': 2
 	}
@@ -466,7 +470,7 @@ fn test_map_default_zero() {
 }
 
 fn test_map_or() {
-	m := {
+	m := map{
 		'first':  1
 		'second': 2
 		'third':  3
@@ -485,14 +489,18 @@ fn test_int_keys() {
 	m[5] += 24
 	m[5]++
 	assert m[5] == 25
-	m2 := {3:9 4:16 5:25}
+	m2 := map{
+		3: 9
+		4: 16
+		5: 25
+	}
 	assert m2.len == 3
 	// clone
 	mc := m.clone()
 	same := mc == m
 	assert same
 	assert mc.len == 3
-	assert mc.keys() == [3,4,5]
+	assert mc.keys() == [3, 4, 5]
 	mut all := []int{}
 	for k, v in mc {
 		assert m[k] == v
@@ -513,14 +521,17 @@ fn test_voidptr_keys() {
 }
 
 fn test_rune_keys() {
-	mut m := {`!`:2 `%`:3}
+	mut m := map{
+		`!`: 2
+		`%`: 3
+	}
 	assert typeof(m).name == 'map[rune]int'
 	assert m[`!`] == 2
 	m[`@`] = 7
 	assert m.len == 3
 	println(m)
 	assert '$m' == '{`!`: 2, `%`: 3, `@`: 7}'
-	
+
 	mut a := []rune{}
 	for k, v in m {
 		a << k
@@ -530,62 +541,62 @@ fn test_rune_keys() {
 }
 
 fn test_eq() {
-	a := {
+	a := map{
 		'a': 1
 		'b': 2
 	}
-	assert a == {
+	assert a == map{
 		'a': 1
 		'b': 2
 	}
-	b := {
+	b := map{
 		'a': [[1]]
 		'b': [[2]]
 	}
-	assert b == {
+	assert b == map{
 		'a': [[1]]
 		'b': [[2]]
 	}
-	c := {
-		'a': {
+	c := map{
+		'a': map{
 			'11': 1
 		}
-		'b': {
+		'b': map{
 			'22': 2
 		}
 	}
-	assert c == {
-		'a': {
+	assert c == map{
+		'a': map{
 			'11': 1
 		}
-		'b': {
+		'b': map{
 			'22': 2
 		}
 	}
-	d := {
+	d := map{
 		'a': MValue{
 			name: 'aa'
-			misc: {
+			misc: map{
 				'11': '1'
 			}
 		}
 		'b': MValue{
 			name: 'bb'
-			misc: {
+			misc: map{
 				'22': '2'
 			}
 		}
 	}
-	assert d == {
+	assert d == map{
 		'a': MValue{
 			name: 'aa'
-			misc: {
+			misc: map{
 				'11': '1'
 			}
 		}
 		'b': MValue{
 			name: 'bb'
-			misc: {
+			misc: map{
 				'22': '2'
 			}
 		}
@@ -593,7 +604,31 @@ fn test_eq() {
 }
 
 fn test_non_string_key_map_str() {
-	assert {23: 4}.str() == '{23: 4}'
-	assert {`a`: 12, `b`: 13}.str() == '{`a`: 12, `b`: 13}'
-	assert {23: 'foo', 25: 'bar'}.str() == "{23: 'foo', 25: 'bar'}"
+	assert map{
+		23: 4
+	}.str() == '{23: 4}'
+	assert map{
+		`a`: 12
+		`b`: 13
+	}.str() == '{`a`: 12, `b`: 13}'
+	assert map{
+		23: 'foo'
+		25: 'bar'
+	}.str() == "{23: 'foo', 25: 'bar'}"
+}
+
+fn test_map_assign_empty_map_init() {
+	mut a := map{
+		'one': 1
+	}
+	a = map{}
+	println(a)
+	assert a == map[string]int{}
+	assert '$a' == '{}'
+}
+
+fn test_in_map_literal() {
+	assert 1 in map{
+		1: 'one'
+	}
 }

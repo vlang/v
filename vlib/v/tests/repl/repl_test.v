@@ -3,7 +3,7 @@ module main
 import os
 import v.tests.repl.runner
 import benchmark
-import sync
+import sync.pool
 
 const turn_off_vcolors = os.setenv('VCOLORS', 'never', true)
 
@@ -39,7 +39,7 @@ fn test_all_v_repl_files() {
 		panic(err)
 	}
 	session.bmark.set_total_expected_steps(session.options.files.len)
-	mut pool_repl := sync.new_pool_processor(
+	mut pool_repl := pool.new_pool_processor(
 		callback: worker_repl
 	)
 	pool_repl.set_shared_context(session)
@@ -47,12 +47,12 @@ fn test_all_v_repl_files() {
 		// See: https://docs.microsoft.com/en-us/cpp/build/reference/fs-force-synchronous-pdb-writes?view=vs-2019
 		pool_repl.set_max_jobs(1)
 	}
-	pool_repl.work_on_items_s(session.options.files)
+	pool_repl.work_on_items<string>(session.options.files)
 	session.bmark.stop()
 	println(session.bmark.total_message('total time spent running REPL files'))
 }
 
-fn worker_repl(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
+fn worker_repl(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	cdir := os.cache_dir()
 	mut session := &Session(p.get_shared_context())
 	mut tls_bench := &benchmark.Benchmark(p.get_thread_context(idx))
@@ -67,7 +67,7 @@ fn worker_repl(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 		os.rmdir_all(tfolder) or { panic(err) }
 	}
 	os.mkdir(tfolder) or { panic(err) }
-	file := p.get_string_item(idx)
+	file := p.get_item<string>(idx)
 	session.bmark.step()
 	tls_bench.step()
 	fres := runner.run_repl_file(tfolder, session.options.vexec, file) or {
@@ -76,12 +76,12 @@ fn worker_repl(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 		os.rmdir_all(tfolder) or { panic(err) }
 		eprintln(tls_bench.step_message_fail(err))
 		assert false
-		return sync.no_result
+		return pool.no_result
 	}
 	session.bmark.ok()
 	tls_bench.ok()
 	os.rmdir_all(tfolder) or { panic(err) }
 	println(tls_bench.step_message_ok(fres))
 	assert true
-	return sync.no_result
+	return pool.no_result
 }

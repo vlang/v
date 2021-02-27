@@ -5,7 +5,7 @@ module musl
 
 import math.bits
 import rand.seed
-import rand.util
+import rand.constants
 
 // MuslRNG ported from https://git.musl-libc.org/cgit/musl/tree/src/prng/rand_r.c
 pub struct MuslRNG {
@@ -191,13 +191,13 @@ pub fn (mut rng MuslRNG) i64_in_range(min i64, max i64) i64 {
 // f32 returns a pseudorandom `f32` value in range `[0, 1)`.
 [inline]
 pub fn (mut rng MuslRNG) f32() f32 {
-	return f32(rng.u32()) / util.max_u32_as_f32
+	return f32(rng.u32()) / constants.max_u32_as_f32
 }
 
 // f64 returns a pseudorandom `f64` value in range `[0, 1)`.
 [inline]
 pub fn (mut rng MuslRNG) f64() f64 {
-	return f64(rng.u64()) / util.max_u64_as_f64
+	return f64(rng.u64()) / constants.max_u64_as_f64
 }
 
 // f32n returns a pseudorandom `f32` value in range `[0, max)`.

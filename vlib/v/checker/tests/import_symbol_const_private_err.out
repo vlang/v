@@ -1,0 +1,6 @@
+vlib/v/checker/tests/import_symbol_const_private_err.vv:4:19: error: constant `v.scanner.single_quote` is private
+    2 | 
+    3 | fn main() {
+    4 |   println(scanner.single_quote)
+      |                   ~~~~~~~~~~~~
+    5 | }

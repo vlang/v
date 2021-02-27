@@ -1,4 +1,4 @@
-// Copyright (c) 2020 Raúl Hernández. All rights reserved.
+// Copyright (c) 2020-2021 Raúl Hernández. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module ui
@@ -9,6 +9,7 @@ import time
 #include <termios.h>
 #include <sys/ioctl.h>
 #include <signal.h>
+
 fn C.tcgetattr()
 
 fn C.tcsetattr()
@@ -50,14 +51,14 @@ fn restore_terminal_state() {
 	mut c := ctx_ptr
 	if c != 0 {
 		c.paused = true
-		c.load_title()
+		load_title()
 	}
 	os.flush()
 }
 
 fn (mut ctx Context) termios_setup() ? {
 	// store the current title, so restore_terminal_state can get it back
-	ctx.save_title()
+	save_title()
 
 	if !ctx.cfg.skip_init_checks && !(is_atty(C.STDIN_FILENO) != 0 && is_atty(C.STDOUT_FILENO) != 0) {
 		return error('not running under a TTY')
@@ -164,12 +165,13 @@ fn (mut ctx Context) termios_setup() ? {
 
 fn get_cursor_position() (int, int) {
 	print('\033[6n')
-	buf := malloc(25)
-	len := C.read(C.STDIN_FILENO, buf, 24)
+	mut s := ''
 	unsafe {
+		buf := malloc(25)
+		len := C.read(C.STDIN_FILENO, buf, 24)
 		buf[len] = 0
+		s = tos(buf, len)
 	}
-	s := tos(buf, len)
 	a := s[2..].split(';')
 	if a.len != 2 {
 		return -1, -1
@@ -186,12 +188,13 @@ fn supports_truecolor() bool {
 	print('\x1b[48:2:1:2:3m')
 	// andquery the current color
 	print('\x1bP\$qm\x1b\\')
-	buf := malloc(25)
-	len := C.read(C.STDIN_FILENO, buf, 24)
+	mut s := ''
 	unsafe {
+		buf := malloc(25)
+		len := C.read(C.STDIN_FILENO, buf, 24)
 		buf[len] = 0
+		s = tos(buf, len)
 	}
-	s := tos(buf, len)
 	return '1:2:3' in s
 }
 
@@ -220,7 +223,7 @@ fn (mut ctx Context) termios_loop() {
 		}
 		// println('SLEEPING: $sleep_len')
 		if sleep_len > 0 {
-			time.usleep(sleep_len)
+			time.sleep(sleep_len * time.microsecond)
 		}
 		if !ctx.paused {
 			sw.restart()
@@ -281,23 +284,24 @@ fn single_char(buf string) &Event {
 	match ch {
 		// special handling for `ctrl + letter`
 		// TODO: Fix assoc in V and remove this workaround :/
-		// 1  ... 26 { event = Event{ ...event, code: KeyCode(96 | ch), modifiers: ctrl  } }
-		// 65 ... 90 { event = Event{ ...event, code: KeyCode(32 | ch), modifiers: shift } }
+		// 1  ... 26 { event = Event{ ...event, code: KeyCode(96 | ch), modifiers: .ctrl  } }
+		// 65 ... 90 { event = Event{ ...event, code: KeyCode(32 | ch), modifiers: .shift } }
 		// The bit `or`s here are really just `+`'s, just written in this way for a tiny performance improvement
 		// don't treat tab, enter as ctrl+i, ctrl+j
-		1...8, 11...26 { event = &Event{
+		1...8, 11...26 {
+			event = &Event{
 				typ: event.typ
 				ascii: event.ascii
 				utf8: event.utf8
 				code: KeyCode(96 | ch)
-				modifiers: ctrl
+				modifiers: .ctrl
 			} }
 		65...90 { event = &Event{
 				typ: event.typ
 				ascii: event.ascii
 				utf8: event.utf8
 				code: KeyCode(32 | ch)
-				modifiers: shift
+				modifiers: .shift
 			} }
 		else {}
 	}
@@ -349,13 +353,14 @@ fn escape_sequence(buf_ string) (&Event, int) {
 
 	if buf.len == 1 {
 		c := single_char(buf)
-
+		mut modifiers := c.modifiers
+		modifiers.set(.alt)
 		return &Event{
 			typ: c.typ
 			ascii: c.ascii
 			code: c.code
 			utf8: single
-			modifiers: c.modifiers | alt
+			modifiers: modifiers
 		}, 2
 	}
 	// ----------------
@@ -372,15 +377,15 @@ fn escape_sequence(buf_ string) (&Event, int) {
 		lo := typ & 0b00011
 		hi := typ & 0b11100
 
-		mut modifiers := u32(0)
+		mut modifiers := Modifiers{}
 		if hi & 4 != 0 {
-			modifiers |= shift
+			modifiers.set(.shift)
 		}
 		if hi & 8 != 0 {
-			modifiers |= alt
+			modifiers.set(.alt)
 		}
 		if hi & 16 != 0 {
-			modifiers |= ctrl
+			modifiers.set(.ctrl)
 		}
 
 		match typ {
@@ -442,7 +447,7 @@ fn escape_sequence(buf_ string) (&Event, int) {
 	// ----------------------------
 
 	mut code := KeyCode.null
-	mut modifiers := u32(0)
+	mut modifiers := Modifiers{}
 	match buf {
 		'[A', 'OA' { code = .up }
 		'[B', 'OB' { code = .down }
@@ -471,35 +476,34 @@ fn escape_sequence(buf_ string) (&Event, int) {
 
 	if buf == '[Z' {
 		code = .tab
-		modifiers |= shift
+		modifiers.set(.shift)
 	}
 
 	if buf.len == 5 && buf[0] == `[` && buf[1].is_digit() && buf[2] == `;` {
-		// code = KeyCode(buf[4] + 197)
-		modifiers = match buf[3] {
-			`2` { shift }
-			`3` { alt }
-			`4` { shift | alt }
-			`5` { ctrl }
-			`6` { ctrl | shift }
-			`7` { ctrl | alt }
-			`8` { ctrl | alt | shift }
-			else { modifiers } // probably unreachable? idk, terminal events are strange
+		match buf[3] {
+			`2` { modifiers = .shift }
+			`3` { modifiers = .alt }
+			`4` { modifiers = .shift | .alt }
+			`5` { modifiers = .ctrl }
+			`6` { modifiers = .ctrl | .shift }
+			`7` { modifiers = .ctrl | .alt }
+			`8` { modifiers = .ctrl | .alt | .shift }
+			else {}
 		}
 
 		if buf[1] == `1` {
-			code = match buf[4] {
-				`A` { KeyCode.up }
-				`B` { KeyCode.down }
-				`C` { KeyCode.right }
-				`D` { KeyCode.left }
-				`F` { KeyCode.end }
-				`H` { KeyCode.home }
-				`P` { KeyCode.f1 }
-				`Q` { KeyCode.f2 }
-				`R` { KeyCode.f3 }
-				`S` { KeyCode.f4 }
-				else { code }
+			match buf[4] {
+				`A` { code = KeyCode.up }
+				`B` { code = KeyCode.down }
+				`C` { code = KeyCode.right }
+				`D` { code = KeyCode.left }
+				`F` { code = KeyCode.end }
+				`H` { code = KeyCode.home }
+				`P` { code = KeyCode.f1 }
+				`Q` { code = KeyCode.f2 }
+				`R` { code = KeyCode.f3 }
+				`S` { code = KeyCode.f4 }
+				else {}
 			}
 		} else if buf[1] == `5` {
 			code = KeyCode.page_up

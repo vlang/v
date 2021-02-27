@@ -1,0 +1,5 @@
+vlib/v/tests/skip_unused/assert_works_test.vv:2: fn test_abc
+   > assert 'abc' == 'xyz'
+     Left value: abc
+    Right value: xyz
+

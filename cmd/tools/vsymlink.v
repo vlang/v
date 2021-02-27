@@ -1,40 +1,39 @@
 import os
 import v.pref
+import v.util
 
 $if windows {
 	$if tinyc {
 		#flag -lAdvapi32
-
 		#flag -lUser32
 	}
 }
 fn main() {
+	C.atexit(cleanup_vtmp_folder)
 	vexe := os.real_path(pref.vexe_path())
 	$if windows {
 		setup_symlink_windows(vexe)
 	} $else {
-		setup_symlink(vexe)
+		setup_symlink_unix(vexe)
 	}
 }
 
-fn setup_symlink(vexe string) {
-	link_dir := '/usr/local/bin'
-	if !os.exists(link_dir) {
-		os.mkdir_all(link_dir) or { panic(err) }
+fn cleanup_vtmp_folder() {
+	os.rmdir_all(util.get_vtmp_folder()) or { }
+}
+
+fn setup_symlink_unix(vexe string) {
+	mut link_path := '/data/data/com.termux/files/usr/bin/v'
+	if os.system("uname -o | grep -q '[A/a]ndroid'") == 1 {
+		link_dir := '/usr/local/bin'
+		if !os.exists(link_dir) {
+			os.mkdir_all(link_dir) or { panic(err) }
+		}
+		link_path = link_dir + '/v'
 	}
-	mut link_path := link_dir + '/v'
-	mut ret := os.exec('ln -sf $vexe $link_path') or { panic(err) }
+	ret := os.exec('ln -sf $vexe $link_path') or { panic(err) }
 	if ret.exit_code == 0 {
 		println('Symlink "$link_path" has been created')
-	} else if os.system("uname -o | grep -q '[A/a]ndroid'") == 0 {
-		println('Failed to create symlink "$link_path". Trying again with Termux path for Android.')
-		link_path = '/data/data/com.termux/files/usr/bin/v'
-		ret = os.exec('ln -sf $vexe $link_path') or { panic(err) }
-		if ret.exit_code == 0 {
-			println('Symlink "$link_path" has been created')
-		} else {
-			eprintln('Failed to create symlink "$link_path". Try again with sudo.')
-		}
 	} else {
 		eprintln('Failed to create symlink "$link_path". Try again with sudo.')
 	}
@@ -48,10 +47,19 @@ fn setup_symlink_windows(vexe string) {
 		vdir := os.real_path(os.dir(vexe))
 		vsymlinkdir := os.join_path(vdir, '.bin')
 		mut vsymlink := os.join_path(vsymlinkdir, 'v.exe')
+		// Remove old symlink first (v could have been moved, symlink rerun)
 		if !os.exists(vsymlinkdir) {
-			os.mkdir_all(vsymlinkdir) or { panic(err) } // will panic if fails
+			os.mkdir(vsymlinkdir) or { panic(err) }
 		} else {
-			os.rm(vsymlink) or { panic(err) }
+			if os.exists(vsymlink) {
+				os.rm(vsymlink) or { panic(err) }
+			} else {
+				vsymlink = os.join_path(vsymlinkdir, 'v.bat')
+				if os.exists(vsymlink) {
+					os.rm(vsymlink) or { panic(err) }
+				}
+				vsymlink = os.join_path(vsymlinkdir, 'v.exe')
+			}
 		}
 		// First, try to create a native symlink at .\.bin\v.exe
 		os.symlink(vsymlink, vexe) or {
@@ -98,23 +106,21 @@ fn setup_symlink_windows(vexe string) {
 			println('System %PATH% was not configured.')
 			println('Adding symlink directory to system %PATH%...')
 			set_reg_value(reg_sys_env_handle, 'Path', new_sys_env_path) or {
-				warn_and_exit(err)
 				C.RegCloseKey(reg_sys_env_handle)
-				return
+				warn_and_exit(err)
 			}
-			println('done.')
+			println('Done.')
 		}
 		println('Notifying running processes to update their Environment...')
 		send_setting_change_msg('Environment') or {
 			eprintln(err)
-			warn_and_exit('You might need to run this again to have the `v` command in your %PATH%')
 			C.RegCloseKey(reg_sys_env_handle)
-			return
+			warn_and_exit('You might need to run this again to have the `v` command in your %PATH%')
 		}
 		C.RegCloseKey(reg_sys_env_handle)
-		println('')
-		println('Note: restart your shell/IDE to load the new %PATH%.')
-		println('After restarting your shell/IDE, give `v version` a try in another dir!')
+		println('Done.')
+		println('Note: Restart your shell/IDE to load the new %PATH%.')
+		println('After restarting your shell/IDE, give `v version` a try in another directory!')
 	}
 }
 
@@ -142,11 +148,11 @@ fn get_reg_value(reg_env_key voidptr, key string) ?string {
 	$if windows {
 		// query the value (shortcut the sizing step)
 		reg_value_size := 4095 // this is the max length (not for the registry, but for the system %PATH%)
-		mut reg_value := &u16(malloc(reg_value_size))
+		mut reg_value := unsafe { &u16(malloc(reg_value_size)) }
 		if C.RegQueryValueEx(reg_env_key, key.to_wide(), 0, 0, reg_value, &reg_value_size) != 0 {
-			return error('Unable to get registry value for "$key", try rerunning as an Administrator')
+			return error('Unable to get registry value for "$key".')
 		}
-		return string_from_wide(reg_value)
+		return unsafe { string_from_wide(reg_value) }
 	}
 	return error('not on windows')
 }
@@ -154,8 +160,9 @@ fn get_reg_value(reg_env_key voidptr, key string) ?string {
 // sets the value for the given $key to the given  $value
 fn set_reg_value(reg_key voidptr, key string, value string) ?bool {
 	$if windows {
-		if C.RegSetValueEx(reg_key, key.to_wide(), 0, 1, value.to_wide(), 4095) != 0 {
-			return error('Unable to set registry value for "$key", are you running as an Administrator?')
+		if C.RegSetValueEx(reg_key, key.to_wide(), 0, C.REG_EXPAND_SZ, value.to_wide(),
+			value.len * 2) != 0 {
+			return error('Unable to set registry value for "$key". %PATH% may be too long.')
 		}
 		return true
 	}
@@ -166,7 +173,8 @@ fn set_reg_value(reg_key voidptr, key string, value string) ?bool {
 // letting them know that the system environment has changed and should be reloaded
 fn send_setting_change_msg(message_data string) ?bool {
 	$if windows {
-		if C.SendMessageTimeout(os.hwnd_broadcast, os.wm_settingchange, 0, message_data.to_wide(), os.smto_abortifhung, 5000, 0) == 0 {
+		if C.SendMessageTimeout(os.hwnd_broadcast, os.wm_settingchange, 0, message_data.to_wide(),
+			os.smto_abortifhung, 5000, 0) == 0 {
 			return error('Could not broadcast WM_SETTINGCHANGE')
 		}
 		return true

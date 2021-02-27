@@ -1,4 +1,0 @@
-fn main() {
-	a := [1,2,3,4].map(fn(a int, b int) int {return a + b})
-	println(a)
-}

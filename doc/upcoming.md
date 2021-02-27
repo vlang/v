@@ -131,12 +131,12 @@ fn i(atomic x u64) {...}
 a := St{...}
 f(a)
 
-mut b := &St{...} // reference since transferred to coroutine
+mut b := St{...}
 f(b)
 go g(mut b)
 // `b` should not be accessed here any more
 
-shared c := &St{...}
+shared c := St{...}
 h(shared c)
 
 atomic d &u64
@@ -146,7 +146,7 @@ i(atomic d)
 Inside a `lock c {...}` block `c` behaves like a `mut`,
 inside an `rlock c {...}` block like an immutable:
 ```v ignore
-shared c := &St{...}
+shared c := St{...}
 lock c {
     g(mut c)
     f(c)
@@ -166,14 +166,14 @@ block. However in simple and obvious cases the necessary lock/unlock
 can be generated automatically for `array`/`map` operations:
 
 ```v ignore
-shared a []int{...}
+shared a := []int{cap: 5}
 go h2(shared a)
 a << 3
 // keep in mind that `h2()` could change `a` between these statements
 a << 4
 x := a[1] // not necessarily `4`
 
-shared b map[string]int
+shared b := map[string]int{}
 go h3(shared b)
 b['apple'] = 3
 c['plume'] = 7

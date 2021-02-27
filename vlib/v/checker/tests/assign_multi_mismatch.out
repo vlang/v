@@ -1,0 +1,81 @@
+vlib/v/checker/tests/assign_multi_mismatch.vv:5:3: error: assignment mismatch: 1 variable(s) 2 value(s)
+    3 | }
+    4 | 
+    5 | _ := 0, 0
+      |   ~~
+    6 | _ := f()
+    7 | _, _ := f()
+vlib/v/checker/tests/assign_multi_mismatch.vv:6:3: error: assignment mismatch: 1 variable(s) but `f()` returns 2 value(s)
+    4 | 
+    5 | _ := 0, 0
+    6 | _ := f()
+      |   ~~
+    7 | _, _ := f()
+    8 | _, _ := 0, f()
+vlib/v/checker/tests/assign_multi_mismatch.vv:8:12: error: cannot use multi-value (int, int) in signle-value context
+    6 | _ := f()
+    7 | _, _ := f()
+    8 | _, _ := 0, f()
+      |            ~~~
+    9 | _, _ := f(), 0
+   10 | _, _, _ := 0, f()
+vlib/v/checker/tests/assign_multi_mismatch.vv:9:9: error: cannot use multi-value (int, int) in signle-value context
+    7 | _, _ := f()
+    8 | _, _ := 0, f()
+    9 | _, _ := f(), 0
+      |         ~~~
+   10 | _, _, _ := 0, f()
+   11 | _, _, _ := f(), 0
+vlib/v/checker/tests/assign_multi_mismatch.vv:10:15: error: cannot use multi-value (int, int) in signle-value context
+    8 | _, _ := 0, f()
+    9 | _, _ := f(), 0
+   10 | _, _, _ := 0, f()
+      |               ~~~
+   11 | _, _, _ := f(), 0
+   12 | _, _ := f(), f()
+vlib/v/checker/tests/assign_multi_mismatch.vv:11:12: error: cannot use multi-value (int, int) in signle-value context
+    9 | _, _ := f(), 0
+   10 | _, _, _ := 0, f()
+   11 | _, _, _ := f(), 0
+      |            ~~~
+   12 | _, _ := f(), f()
+   13 | _, _, _, _ := f(), f()
+vlib/v/checker/tests/assign_multi_mismatch.vv:12:9: error: cannot use multi-value (int, int) in signle-value context
+   10 | _, _, _ := 0, f()
+   11 | _, _, _ := f(), 0
+   12 | _, _ := f(), f()
+      |         ~~~
+   13 | _, _, _, _ := f(), f()
+   14 |
+vlib/v/checker/tests/assign_multi_mismatch.vv:13:15: error: cannot use multi-value (int, int) in signle-value context
+   11 | _, _, _ := f(), 0
+   12 | _, _ := f(), f()
+   13 | _, _, _, _ := f(), f()
+      |               ~~~
+   14 | 
+   15 | _, _ := 0, match 4 {
+vlib/v/checker/tests/assign_multi_mismatch.vv:19:3: error: assignment mismatch: 1 variable(s) 2 value(s)
+   17 |     else { 1 }
+   18 | }
+   19 | _ := match 4 {
+      |   ~~
+   20 |     1 { f() }
+   21 |     else { f() }
+vlib/v/checker/tests/assign_multi_mismatch.vv:23:12: error: cannot use multi-value (int, int) in signle-value context
+   21 |     else { f() }
+   22 | }
+   23 | _, _ := 0, match 4 {
+      |            ~~~~~~~~~
+   24 |     1 { f() }
+   25 |     else { f() }
+vlib/v/checker/tests/assign_multi_mismatch.vv:29:3: error: assignment mismatch: 1 variable(s) 2 value(s)
+   27 | 
+   28 | _, _ := 0, if true { 0 } else { 1 }
+   29 | _ := if true { f() } else { f() }
+      |   ~~
+   30 | _, _ := 0, if true { f() } else { f() }
+vlib/v/checker/tests/assign_multi_mismatch.vv:30:12: error: cannot use multi-value (int, int) in signle-value context
+   28 | _, _ := 0, if true { 0 } else { 1 }
+   29 | _ := if true { f() } else { f() }
+   30 | _, _ := 0, if true { f() } else { f() }
+      |            ~~

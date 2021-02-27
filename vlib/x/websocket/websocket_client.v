@@ -107,7 +107,7 @@ pub fn (mut ws Client) connect() ? {
 pub fn (mut ws Client) listen() ? {
 	mut log := 'Starting client listener, server($ws.is_server)...'
 	ws.logger.info(log)
-	log.free()
+	unsafe { log.free() }
 	defer {
 		ws.logger.info('Quit client listener, server($ws.is_server)...')
 		if ws.state == .open {
@@ -131,7 +131,7 @@ pub fn (mut ws Client) listen() ? {
 			.text_frame {
 				log = 'read: text'
 				ws.debug_log(log)
-				log.free()
+				unsafe { log.free() }
 				ws.send_message_event(msg)
 				unsafe { msg.free() }
 			}
@@ -165,7 +165,7 @@ pub fn (mut ws Client) listen() ? {
 			.close {
 				log = 'read: close'
 				ws.debug_log(log)
-				log.free()
+				unsafe { log.free() }
 				defer {
 					ws.manage_clean_close()
 				}
@@ -226,17 +226,14 @@ pub fn (mut ws Client) pong() ? {
 }
 
 // write_ptr writes len bytes provided a byteptr with a websocket messagetype
-pub fn (mut ws Client) write_ptr(bytes byteptr, payload_len int, code OPCode) ? {
+pub fn (mut ws Client) write_ptr(bytes byteptr, payload_len int, code OPCode) ?int {
 	// ws.debug_log('write_ptr code: $code')
 	if ws.state != .open || ws.conn.sock.handle < 1 {
 		// todo: send error here later
 		return error('trying to write on a closed socket!')
 	}
-	mut header_len := 2 + if payload_len > 125 { 2 } else { 0 } + if payload_len > 0xffff {
-		6
-	} else {
-		0
-	}
+	mut header_len := 2 + if payload_len > 125 { 2 } else { 0 } +
+		if payload_len > 0xffff { 6 } else { 0 }
 	if !ws.is_server {
 		header_len += 4
 	}
@@ -296,22 +293,23 @@ pub fn (mut ws Client) write_ptr(bytes byteptr, payload_len int, code OPCode) ? 
 			frame_buf[header_len + i] ^= masking_key[i % 4] & 0xff
 		}
 	}
-	ws.socket_write(frame_buf) ?
+	written_len := ws.socket_write(frame_buf) ?
 	unsafe {
 		frame_buf.free()
 		masking_key.free()
 		header.free()
 	}
+	return written_len
 }
 
 // write writes a byte array with a websocket messagetype to socket
-pub fn (mut ws Client) write(bytes []byte, code OPCode) ? {
-	ws.write_ptr(byteptr(bytes.data), bytes.len, code) ?
+pub fn (mut ws Client) write(bytes []byte, code OPCode) ?int {
+	return ws.write_ptr(byteptr(bytes.data), bytes.len, code)
 }
 
 // write_str, writes a string with a websocket texttype to socket
-pub fn (mut ws Client) write_str(str string) ? {
-	ws.write_ptr(str.str, str.len, .text_frame) ?
+pub fn (mut ws Client) write_str(str string) ?int {
+	return ws.write_ptr(str.str, str.len, .text_frame)
 }
 
 // close closes the websocket connection

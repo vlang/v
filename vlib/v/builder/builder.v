@@ -2,6 +2,7 @@ module builder
 
 import os
 import v.ast
+import v.token
 import v.table
 import v.pref
 import v.util
@@ -26,7 +27,6 @@ pub mut:
 	parsed_files        []ast.File
 	cached_msvc         MsvcResult
 	table               &table.Table
-	timers              &util.Timers = util.new_timers(false)
 	ccoptions           CcompilerOptions
 }
 
@@ -41,7 +41,7 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 	if pref.use_color == .never {
 		util.emanager.set_support_color(false)
 	}
-	msvc := find_msvc() or {
+	msvc := find_msvc(pref.m64) or {
 		if pref.ccompiler == 'msvc' {
 			verror('Cannot find MSVC on this OS')
 		}
@@ -49,6 +49,7 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 			valid: false
 		}
 	}
+	util.timing_set_should_print(pref.show_timings || pref.is_verbose)
 	return Builder{
 		pref: pref
 		table: table
@@ -57,13 +58,8 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 			parent: 0
 		}
 		compiled_dir: compiled_dir
-		max_nr_errors: if pref.error_limit > 0 {
-			pref.error_limit
-		} else {
-			100
-		}
+		max_nr_errors: if pref.error_limit > 0 { pref.error_limit } else { 100 }
 		cached_msvc: msvc
-		timers: util.new_timers(pref.show_timings || pref.is_verbose)
 	}
 	// max_nr_errors: pref.error_limit ?? 100 TODO potential syntax?
 }
@@ -97,7 +93,7 @@ pub fn (mut b Builder) parse_imports() {
 		for imp in ast_file.imports {
 			mod := imp.mod
 			if mod == 'builtin' {
-				verror('cannot import module "builtin"')
+				error_with_pos('cannot import module "builtin"', ast_file.path, imp.pos)
 				break
 			}
 			if mod in done_imports {
@@ -106,20 +102,23 @@ pub fn (mut b Builder) parse_imports() {
 			import_path := b.find_module_path(mod, ast_file.path) or {
 				// v.parsers[i].error_with_token_index('cannot import module "$mod" (not found)', v.parsers[i].import_table.get_import_tok_idx(mod))
 				// break
-				verror('cannot import module "$mod" (not found)')
+				error_with_pos('cannot import module "$mod" (not found)', ast_file.path,
+					imp.pos)
 				break
 			}
 			v_files := b.v_files_from_dir(import_path)
 			if v_files.len == 0 {
 				// v.parsers[i].error_with_token_index('cannot import module "$mod" (no .v files in "$import_path")', v.parsers[i].import_table.get_import_tok_idx(mod))
-				verror('cannot import module "$mod" (no .v files in "$import_path")')
+				error_with_pos('cannot import module "$mod" (no .v files in "$import_path")',
+					ast_file.path, imp.pos)
 			}
 			// Add all imports referenced by these libs
 			parsed_files := parser.parse_files(v_files, b.table, b.pref, b.global_scope)
 			for file in parsed_files {
 				if file.mod.name != mod {
 					// v.parsers[pidx].error_with_token_index('bad module definition: ${v.parsers[pidx].file_path} imports module "$mod" but $file is defined as module `$p_mod`', 1
-					verror('bad module definition: $ast_file.path imports module "$mod" but $file.path is defined as module `$file.mod.name`')
+					error_with_pos('bad module definition: $ast_file.path imports module "$mod" but $file.path is defined as module `$file.mod.name`',
+						ast_file.path, imp.pos)
 				}
 			}
 			b.parsed_files << parsed_files
@@ -231,7 +230,7 @@ fn module_path(mod string) string {
 	return mod.replace('.', os.path_separator)
 }
 
-// TODO: try to merge this & util.module functions to create a 
+// TODO: try to merge this & util.module functions to create a
 // reliable multi use function. see comments in util/module.v
 pub fn (b &Builder) find_module_path(mod string, fpath string) ?string {
 	// support @VROOT/v.mod relative paths:
@@ -313,7 +312,7 @@ fn (b &Builder) print_warnings_and_errors() {
 			ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
 			eprintln(ferror)
 			if err.details.len > 0 {
-				eprintln('details: $err.details')
+				eprintln('Details: $err.details')
 			}
 			// eprintln('')
 			if i > b.max_nr_errors {
@@ -335,7 +334,7 @@ fn (b &Builder) print_warnings_and_errors() {
 			ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
 			eprintln(ferror)
 			if err.details.len > 0 {
-				eprintln('details: $err.details')
+				eprintln('Details: $err.details')
 			}
 			// eprintln('')
 			if i > b.max_nr_errors {
@@ -390,14 +389,12 @@ struct FunctionRedefinition {
 	f       ast.FnDecl
 }
 
+fn error_with_pos(s string, fpath string, pos token.Position) {
+	ferror := util.formatted_error('builder error:', s, fpath, pos)
+	eprintln(ferror)
+	exit(1)
+}
+
 fn verror(s string) {
 	util.verror('builder error', s)
-}
-
-pub fn (mut b Builder) timing_start(label string) {
-	b.timers.start(label)
-}
-
-pub fn (mut b Builder) timing_measure(label string) {
-	b.timers.show(label)
 }

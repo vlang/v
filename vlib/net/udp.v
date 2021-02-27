@@ -3,9 +3,15 @@ module net
 import time
 
 const (
-	udp_default_read_timeout  = 30 * time.second
-	udp_default_write_timeout = 30 * time.second
+	udp_default_read_timeout  = time.second / 10
+	udp_default_write_timeout = time.second / 10
 )
+
+struct UdpSocket {
+	handle int
+	l      Addr
+	r      ?Addr
+}
 
 pub struct UdpConn {
 pub mut:
@@ -18,12 +24,6 @@ mut:
 }
 
 pub fn dial_udp(laddr string, raddr string) ?&UdpConn {
-	// Dont have to do this when its fixed
-	// this just allows us to store this `none` optional in a struct
-	resolve_wrapper := fn (raddr string) ?Addr {
-		x := resolve_addr(raddr, .inet, .udp) or { return none }
-		return x
-	}
 	local := resolve_addr(laddr, .inet, .udp) ?
 	sbase := new_udp_socket(local.port) ?
 	sock := UdpSocket{
@@ -38,23 +38,30 @@ pub fn dial_udp(laddr string, raddr string) ?&UdpConn {
 	}
 }
 
-pub fn (mut c UdpConn) write_ptr(b byteptr, len int) ? {
+fn resolve_wrapper(raddr string) ?Addr {
+	// Dont have to do this when its fixed
+	// this just allows us to store this `none` optional in a struct
+	x := resolve_addr(raddr, .inet, .udp) or { return none }
+	return x
+}
+
+pub fn (mut c UdpConn) write_ptr(b byteptr, len int) ?int {
 	remote := c.sock.remote() or { return err_no_udp_remote }
 	return c.write_to_ptr(remote, b, len)
 }
 
-pub fn (mut c UdpConn) write(buf []byte) ? {
+pub fn (mut c UdpConn) write(buf []byte) ?int {
 	return c.write_ptr(buf.data, buf.len)
 }
 
-pub fn (mut c UdpConn) write_str(s string) ? {
+pub fn (mut c UdpConn) write_str(s string) ?int {
 	return c.write_ptr(s.str, s.len)
 }
 
-pub fn (mut c UdpConn) write_to_ptr(addr Addr, b byteptr, len int) ? {
+pub fn (mut c UdpConn) write_to_ptr(addr Addr, b byteptr, len int) ?int {
 	res := C.sendto(c.sock.handle, b, len, 0, &addr.addr, addr.len)
 	if res >= 0 {
-		return none
+		return res
 	}
 	code := error_code()
 	if code == int(error_ewouldblock) {
@@ -67,12 +74,12 @@ pub fn (mut c UdpConn) write_to_ptr(addr Addr, b byteptr, len int) ? {
 }
 
 // write_to blocks and writes the buf to the remote addr specified
-pub fn (mut c UdpConn) write_to(addr Addr, buf []byte) ? {
+pub fn (mut c UdpConn) write_to(addr Addr, buf []byte) ?int {
 	return c.write_to_ptr(addr, buf.data, buf.len)
 }
 
 // write_to_string blocks and writes the buf to the remote addr specified
-pub fn (mut c UdpConn) write_to_string(addr Addr, s string) ? {
+pub fn (mut c UdpConn) write_to_string(addr Addr, s string) ?int {
 	return c.write_to_ptr(addr, s.str, s.len)
 }
 
@@ -165,12 +172,6 @@ pub fn listen_udp(port int) ?&UdpConn {
 		read_timeout: net.udp_default_read_timeout
 		write_timeout: net.udp_default_write_timeout
 	}
-}
-
-struct UdpSocket {
-	handle int
-	l      Addr
-	r      ?Addr
 }
 
 fn new_udp_socket(local_port int) ?&UdpSocket {

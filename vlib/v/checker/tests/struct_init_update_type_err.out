@@ -1,7 +1,35 @@
-vlib/v/checker/tests/struct_init_update_type_err.vv:11:6: error: expected struct `Foo`, found `int`
-    9 |     f3 := 2
+vlib/v/checker/tests/struct_init_update_type_err.vv:11:6: error: expected struct, found `int`
+    9 |     i := 2
    10 |     _ := Foo{
-   11 |         ...f3
-      |            ~~
+   11 |         ...i
+      |            ^
    12 |         name: 'f2'
    13 |     }
+vlib/v/checker/tests/struct_init_update_type_err.vv:16:6: error: expected struct, found `&int`
+   14 |     p := &i
+   15 |     _ = Foo{
+   16 |         ...p
+      |            ^
+   17 |     }
+   18 |     f2 := Foo2{}
+vlib/v/checker/tests/struct_init_update_type_err.vv:20:6: error: struct `Foo2` is not compatible with struct `Foo`
+   18 |     f2 := Foo2{}
+   19 |     _ = Foo{
+   20 |         ...f2
+      |            ~~
+   21 |     }
+   22 |     _ = Foo{
+vlib/v/checker/tests/struct_init_update_type_err.vv:23:6: error: expression is not an lvalue
+   21 |     }
+   22 |     _ = Foo{
+   23 |         ...Foo{}
+      |            ~~~~~
+   24 |     }
+   25 | }
+vlib/v/checker/tests/struct_init_update_type_err.vv:32:6: error: struct `Empty` is not compatible with struct `Foo`
+   30 |     e := Empty{}
+   31 |     _ = Foo{
+   32 |         ...e
+      |            ^
+   33 |     }
+   34 | }

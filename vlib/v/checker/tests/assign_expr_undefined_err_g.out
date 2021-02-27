@@ -1,0 +1,5 @@
+vlib/v/checker/tests/assign_expr_undefined_err_g.vv:2:14: error: undefined variable: `file`
+    1 | fn main() {
+    2 |     mut file := file.open_file('bees.pdf', 'rw', 0o666)
+      |                 ~~~~
+    3 | }

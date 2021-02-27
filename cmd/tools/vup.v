@@ -7,6 +7,7 @@ import v.util.recompilation
 
 struct App {
 	is_verbose bool
+	is_prod    bool
 	vexe       string
 	vroot      string
 }
@@ -16,6 +17,7 @@ fn new_app() App {
 	vroot := os.dir(vexe)
 	return App{
 		is_verbose: '-v' in os.args
+		is_prod: '-prod' in os.args
 		vexe: vexe
 		vroot: vroot
 	}
@@ -43,10 +45,14 @@ fn main() {
 	app.show_current_v_version()
 }
 
-fn (app App) update_from_master() {
+fn (app App) vprintln(s string) {
 	if app.is_verbose {
-		println('> updating from master ...')
+		println(s)
 	}
+}
+
+fn (app App) update_from_master() {
+	app.vprintln('> updating from master ...')
 	if !os.exists('.git') {
 		// initialize as if it had been cloned
 		app.git_command('init')
@@ -62,17 +68,16 @@ fn (app App) update_from_master() {
 
 fn (app App) recompile_v() {
 	// NB: app.vexe is more reliable than just v (which may be a symlink)
-	vself := '"$app.vexe" self'
-	if app.is_verbose {
-		println('> recompiling v itself with `$vself` ...')
-	}
+	opts := if app.is_prod { '-prod' } else { '' }
+	vself := '"$app.vexe" $opts self'
+	app.vprintln('> recompiling v itself with `$vself` ...')
 	if self_result := os.exec(vself) {
 		if self_result.exit_code == 0 {
 			println(self_result.output.trim_space())
 			return
-		} else if app.is_verbose {
-			println('`$vself` failed, running `make`...')
-			println(self_result.output.trim_space())
+		} else {
+			app.vprintln('`$vself` failed, running `make`...')
+			app.vprintln(self_result.output.trim_space())
 		}
 	}
 	app.make(vself)
@@ -84,9 +89,7 @@ fn (app App) make(vself string) {
 		make = 'make.bat'
 	}
 	make_result := os.exec(make) or { panic(err) }
-	if app.is_verbose {
-		println(make_result.output)
-	}
+	app.vprintln(make_result.output)
 }
 
 fn (app App) show_current_v_version() {
@@ -108,23 +111,38 @@ fn (app App) show_current_v_version() {
 fn (app App) backup(file string) {
 	backup_file := '${file}_old.exe'
 	if os.exists(backup_file) {
-		os.rm(backup_file) or { panic(err) }
+		os.rm(backup_file) or { eprintln('failed removing $backup_file: $err') }
 	}
-	os.mv(file, backup_file) or { panic(err) }
+	os.mv(file, backup_file) or { eprintln('failed moving $file: $err') }
 }
 
 fn (app App) git_command(command string) {
-	git_result := os.exec('git $command') or { panic(err) }
+	app.vprintln('git_command: git $command')
+	git_result := os.exec('git $command') or {
+		app.get_git()
+		// Try it again with (maybe) git installed
+		os.exec('git $command') or { panic(err) }
+	}
 	if git_result.exit_code != 0 {
-		if git_result.output.contains('Permission denied') {
-			eprintln('No access to `$app.vroot`: Permission denied')
-		} else {
-			eprintln(git_result.output)
-		}
+		eprintln(git_result.output)
 		exit(1)
-	} else {
-		if app.is_verbose {
-			println(git_result.output)
+	}
+	app.vprintln(git_result.output)
+}
+
+fn (app App) get_git() {
+	$if windows {
+		println('Downloading git 32 bit for Windows, please wait.')
+		// We'll use 32 bit because maybe someone out there is using 32-bit windows
+		os.exec('bitsadmin.exe /transfer "vgit" https://github.com/git-for-windows/git/releases/download/v2.30.0.windows.2/Git-2.30.0.2-32-bit.exe "$os.getwd()/git32.exe"') or {
+			eprintln('Unable to install git automatically: please install git manually')
+			panic(err)
 		}
+		os.exec('$os.getwd()/git32.exe') or {
+			eprintln('Unable to install git automatically: please install git manually')
+			panic(err)
+		}
+	} $else { // Probably some kind of *nix, usually need to get using a package manager.
+		eprintln("error: Install `git` using your system's package manager")
 	}
 }

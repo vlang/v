@@ -20,7 +20,7 @@ fn test_compiling_without_vmodules_fails() {
 	os.setenv('VMODULES', '', true)
 	res := os.exec('"$vexe" run "$mainvv"') or { panic(err) }
 	assert res.exit_code == 1
-	assert res.output.trim_space() == 'builder error: cannot import module "yyy" (not found)'
+	assert res.output.trim_space().contains('builder error: cannot import module "yyy" (not found)')
 }
 
 fn test_compiling_with_vmodules_works() {

@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module pref
 
+// import v.ast // TODO this results in a compiler bug
 import os.cmdline
 import os
 import v.vcache
@@ -47,6 +48,7 @@ const (
 		'cflags', 'path']
 )
 
+[heap]
 pub struct Preferences {
 pub mut:
 	os          OS // the OS to compile for
@@ -78,8 +80,10 @@ pub mut:
 	// NB: passing -cg instead of -g will set is_vlines to false and is_debug to true, thus making v generate cleaner C files,
 	// which are sometimes easier to debug / inspect manually than the .tmp.c files by plain -g (when/if v line number generation breaks).
 	// use cached modules to speed up compilation.
+	dump_c_flags string // `-dump-c-flags file.txt` - let V store all C flags, passed to the backend C compiler
+	// in `file.txt`, one C flag/value per line.
 	use_cache         bool // = true
-	retry_compilation bool = true
+	retry_compilation bool = true // retry the compilation with another C compiler, if tcc fails.
 	is_stats          bool // `v -stats file_test.v` will produce more detailed statistics for the tests that were run
 	// TODO Convert this into a []string
 	cflags string // Additional options which will be passed to the C compiler.
@@ -132,6 +136,7 @@ pub mut:
 	is_vweb             bool // skip _ var warning in templates
 	only_check_syntax   bool // when true, just parse the files, then stop, before running checker
 	experimental        bool // enable experimental features
+	skip_unused         bool // skip generating C code for functions, that are not used
 	show_timings        bool // show how much time each compiler stage took
 	is_ios_simulator    bool
 	is_apk              bool     // build as Android .apk format
@@ -140,7 +145,7 @@ pub mut:
 	cache_manager       vcache.CacheManager
 }
 
-pub fn parse_args(args []string) (&Preferences, string) {
+pub fn parse_args(known_external_commands []string, args []string) (&Preferences, string) {
 	mut res := &Preferences{}
 	$if x64 {
 		res.m64 = true // follow V model by default
@@ -193,6 +198,13 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				res.is_vlines = false
 				res.build_options << arg
 			}
+			'-debug-tcc' {
+				res.ccompiler = 'tcc'
+				res.build_options << '$arg "$res.ccompiler"'
+				res.retry_compilation = false
+				res.show_cc = true
+				res.show_c_output = true
+			}
 			'-repl' {
 				res.is_repl = true
 			}
@@ -216,6 +228,9 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			'-manualfree' {
 				res.autofree = false
 				res.build_options << arg
+			}
+			'-skip-unused' {
+				res.skip_unused = true
 			}
 			'-compress' {
 				res.compress = true
@@ -254,7 +269,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			'-stats' {
 				res.is_stats = true
 			}
-			'-obfuscate' {
+			'-obf', '-obfuscate' {
 				res.obfuscate = true
 			}
 			'-translated' {
@@ -275,6 +290,10 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			}
 			'-show-c-output' {
 				res.show_c_output = true
+			}
+			'-dump-c-flags' {
+				res.dump_c_flags = cmdline.option(current_args, arg, '-')
+				i++
 			}
 			'-experimental' {
 				res.experimental = true
@@ -388,7 +407,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				i++
 			}
 			else {
-				if command == 'build' && (arg.ends_with('.v') || os.exists(command)) {
+				if command == 'build' && is_source_file(arg) {
 					eprintln('Use `v $arg` instead.')
 					exit(1)
 				}
@@ -405,6 +424,10 @@ pub fn parse_args(args []string) (&Preferences, string) {
 						if command == 'run' {
 							break
 						}
+					} else if is_source_file(command) && is_source_file(arg)
+						&& command !in known_external_commands {
+						eprintln('Too many targets. Specify just one target: <target.v|target_directory>.')
+						exit(1)
 					}
 					continue
 				}
@@ -418,11 +441,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 					continue
 				}
 				eprint('Unknown argument `$arg`')
-				eprintln(if command.len == 0 {
-					''
-				} else {
-					' for command `$command`'
-				})
+				eprintln(if command.len == 0 { '' } else { ' for command `$command`' })
 				exit(1)
 			}
 		}
@@ -432,7 +451,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 		eprintln('Cannot save output binary in a .v file.')
 		exit(1)
 	}
-	if command.ends_with('.v') || os.exists(command) {
+	if is_source_file(command) {
 		res.path = command
 	} else if command == 'run' {
 		res.is_run = true
@@ -451,15 +470,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				output_option = '-o "$tmp_exe_file_path"'
 			}
 			tmp_v_file_path := '${tmp_file_path}.v'
-			mut lines := []string{}
-			for {
-				iline := os.get_raw_line()
-				if iline.len == 0 {
-					break
-				}
-				lines << iline
-			}
-			contents := lines.join('')
+			contents := os.get_raw_lines_joined()
 			os.write_file(tmp_v_file_path, contents) or {
 				panic('Failed to create temporary file $tmp_v_file_path')
 			}
@@ -513,6 +524,11 @@ fn must_exist(path string) {
 		eprintln('v expects that `$path` exists, but it does not')
 		exit(1)
 	}
+}
+
+[inline]
+fn is_source_file(path string) bool {
+	return path.ends_with('.v') || os.exists(path)
 }
 
 pub fn backend_from_string(s string) ?Backend {

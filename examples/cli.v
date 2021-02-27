@@ -32,23 +32,19 @@ fn main() {
 		description: 'Number of times the message gets printed.'
 	})
 	greet_cmd.add_flag(Flag{
-	 	flag: .string
-	 	name: 'fun'
-	 	multipe: true
-	 	description: 'Just a dumby flags to show multiple.'
+		flag: .string
+		name: 'fun'
+		multiple: true
+		description: 'Just a dumby flags to show multiple.'
 	})
 	cmd.add_command(greet_cmd)
 	cmd.setup()
 	cmd.parse(os.args)
 }
 
-fn greet_func(cmd Command) {
-	language := cmd.flags.get_string('language') or {
-		panic('Failed to get `language` flag: $err')
-	}
-	times := cmd.flags.get_int('times') or {
-		panic('Failed to get `times` flag: $err')
-	}
+fn greet_func(cmd Command) ? {
+	language := cmd.flags.get_string('language') or { panic('Failed to get `language` flag: $err') }
+	times := cmd.flags.get_int('times') or { panic('Failed to get `times` flag: $err') }
 	name := cmd.args[0]
 	for _ in 0 .. times {
 		match language {
@@ -68,18 +64,16 @@ fn greet_func(cmd Command) {
 			}
 		}
 	}
-	fun := cmd.flags.get_strings('fun') or {
-		panic('Failed to get `fun` flag: $err')
-	}
+	fun := cmd.flags.get_strings('fun') or { panic('Failed to get `fun` flag: $err') }
 	for f in fun {
-		println('fun: ${f}')
+		println('fun: $f')
 	}
 }
 
-fn greet_pre_func(cmd Command) {
+fn greet_pre_func(cmd Command) ? {
 	println('This is a function running before the main function.\n')
 }
 
-fn greet_post_func(cmd Command) {
+fn greet_post_func(cmd Command) ? {
 	println('\nThis is a function running after the main function.')
 }

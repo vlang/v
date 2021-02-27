@@ -204,12 +204,12 @@ pub fn (c &Cookie) str() string {
 	// see RFC 6265 Sec 4.1.
 	extra_cookie_length := 110
 	mut b := strings.new_builder(c.name.len + c.value.len + c.domain.len + c.path.len + extra_cookie_length)
-	b.write(c.name)
-	b.write('=')
-	b.write(sanitize_cookie_value(c.value))
+	b.write_string(c.name)
+	b.write_string('=')
+	b.write_string(sanitize_cookie_value(c.value))
 	if c.path.len > 0 {
-		b.write('; path=')
-		b.write(sanitize_cookie_path(c.path))
+		b.write_string('; path=')
+		b.write_string(sanitize_cookie_path(c.path))
 	}
 	if c.domain.len > 0 {
 		if valid_cookie_domain(c.domain) {
@@ -221,8 +221,8 @@ pub fn (c &Cookie) str() string {
 			if d[0] == `.` {
 				d = d.substr(1, d.len)
 			}
-			b.write('; domain=')
-			b.write(d)
+			b.write_string('; domain=')
+			b.write_string(d)
 		} else {
 			// TODO: Log invalid cookie domain warning
 		}
@@ -230,35 +230,35 @@ pub fn (c &Cookie) str() string {
 	if c.expires.year > 1600 {
 		e := c.expires
 		time_str := '${e.weekday_str()}, ${e.day.str()} ${e.smonth()} ${e.year} ${e.hhmmss()} GMT'
-		b.write('; expires=')
-		b.write(time_str)
+		b.write_string('; expires=')
+		b.write_string(time_str)
 	}
 	// TODO: Fix this. Techically a max age of 0 or less should be 0
 	// We need a way to not have a max age.
 	if c.max_age > 0 {
-		b.write('; Max-Age=')
-		b.write(c.max_age.str())
+		b.write_string('; Max-Age=')
+		b.write_string(c.max_age.str())
 	} else if c.max_age < 0 {
-		b.write('; Max-Age=0')
+		b.write_string('; Max-Age=0')
 	}
 	if c.http_only {
-		b.write('; HttpOnly')
+		b.write_string('; HttpOnly')
 	}
 	if c.secure {
-		b.write('; Secure')
+		b.write_string('; Secure')
 	}
 	match c.same_site {
 		.same_site_default_mode {
-			b.write('; SameSite')
+			b.write_string('; SameSite')
 		}
 		.same_site_none_mode {
-			b.write('; SameSite=None')
+			b.write_string('; SameSite=None')
 		}
 		.same_site_lax_mode {
-			b.write('; SameSite=Lax')
+			b.write_string('; SameSite=Lax')
 		}
 		.same_site_strict_mode {
-			b.write('; SameSite=Strict')
+			b.write_string('; SameSite=Strict')
 		}
 	}
 	return b.str()
@@ -277,15 +277,7 @@ fn sanitize(valid fn(byte) bool, v string) string {
 	if ok {
 		return v.clone()
 	}
-	// TODO: Use `filter` instead of this nonesense
-	buf := v.bytes()
-	mut bytes := v.bytes()
-	for i, _ in buf {
-		if !valid(buf[i]) {
-			bytes.delete(i)
-		}
-	}
-	return bytes.bytestr()
+	return v.bytes().filter(valid(it)).bytestr()
 }
 
 fn sanitize_cookie_name(name string) string {

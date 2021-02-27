@@ -1,0 +1,25 @@
+struct Aaa {
+	i int
+}
+
+type AAaa = Aaa
+
+type Arr = []int
+
+fn main() {
+	println(Aaa{} == 10)
+	println(10 == Aaa{})
+	println(Aaa{} != 10)
+	println(10 != Aaa{})
+
+	println(Aaa{0} == AAaa{0})
+	println(AAaa{0} == Aaa{0})
+	println(AAaa{1} != Aaa{1})
+	println(Aaa{1} != AAaa{1})
+
+	arr := Arr([0])
+	println(arr == [0])
+	println([1] == arr)
+	println(arr != [0])
+	println([1] != arr)
+}

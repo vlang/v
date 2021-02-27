@@ -35,7 +35,7 @@ fn main() {
 	}
 	testing.header('Testing...')
 	ts.test()
-	println(ts.benchmark.total_message('Ran all V _test.v files'))
+	println(ts.benchmark.total_message('all V _test.v files'))
 	if ts.failed {
 		exit(1)
 	}

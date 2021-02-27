@@ -98,7 +98,7 @@ fn (mut a array) ensure_cap(required int) {
 	new_size := cap * a.element_size
 	mut new_data := byteptr(0)
 	if a.cap > 0 {
-		new_data = v_realloc(a.data, new_size)
+		new_data = unsafe { v_realloc(a.data, new_size) }
 	} else {
 		new_data = vcalloc(new_size)
 	}
@@ -135,7 +135,7 @@ pub fn (a array) repeat(count int) array {
 	return arr
 }
 
-// sort sorts array in-place using given `compare` function as comparator.
+// sort_with_compare sorts array in-place using given `compare` function as comparator.
 pub fn (mut a array) sort_with_compare(compare voidptr) {
 	C.qsort(mut a.data, a.len, a.element_size, compare)
 }
@@ -156,6 +156,7 @@ pub fn (mut a array) insert(i int, val voidptr) {
 }
 
 // insert_many inserts many values into the array from index `i`.
+[unsafe]
 pub fn (mut a array) insert_many(i int, val voidptr, size int) {
 	$if !no_bounds_checking ? {
 		if i < 0 || i > a.len {
@@ -178,8 +179,9 @@ pub fn (mut a array) prepend(val voidptr) {
 }
 
 // prepend_many prepends another array to this array.
+[unsafe]
 pub fn (mut a array) prepend_many(val voidptr, size int) {
-	a.insert_many(0, val, size)
+	unsafe { a.insert_many(0, val, size) }
 }
 
 // delete deletes array element at index `i`.
@@ -274,7 +276,7 @@ pub fn (mut a array) pop() voidptr {
 	a.len = new_len
 	// NB: a.cap is not changed here *on purpose*, so that
 	// further << ops on that array will be more efficient.
-	return memdup(last_elem, a.element_size)
+	return unsafe { memdup(last_elem, a.element_size) }
 }
 
 // delete_last efficiently deletes the last element of the array.
@@ -418,8 +420,9 @@ fn (mut a array) push(val voidptr) {
 	a.len++
 }
 
-// `val` is array.data
-// TODO make private, right now it's used by strings.Builder
+// push_many implements the functionality for pushing another array.
+// `val` is array.data and user facing usage is `a << [1,2,3]`
+[unsafe]
 pub fn (mut a3 array) push_many(val voidptr, size int) {
 	if a3.data == val && !isnil(a3.data) {
 		// handle `arr << arr`
@@ -489,24 +492,24 @@ pub fn (a &array) free() {
 // => '["a", "b", "c"]'.
 pub fn (a []string) str() string {
 	mut sb := strings.new_builder(a.len * 3)
-	sb.write('[')
+	sb.write_string('[')
 	for i in 0 .. a.len {
 		val := a[i]
-		sb.write("'")
-		sb.write(val)
-		sb.write("'")
+		sb.write_string("'")
+		sb.write_string(val)
+		sb.write_string("'")
 		if i < a.len - 1 {
-			sb.write(', ')
+			sb.write_string(', ')
 		}
 	}
-	sb.write(']')
+	sb.write_string(']')
 	return sb.str()
 }
 
 // hex returns a string with the hexadecimal representation
 // of the byte elements of the array.
 pub fn (b []byte) hex() string {
-	mut hex := malloc(b.len * 2 + 1)
+	mut hex := unsafe { malloc(b.len * 2 + 1) }
 	mut dst_i := 0
 	for i in b {
 		n0 := i >> 4
@@ -599,7 +602,7 @@ fn compare_floats_reverse(a &f64, b &f64) int {
 	return 0
 }
 
-// sort sorts array of int in place in ascending order.
+// sort sorts an array of int in place in ascending order.
 pub fn (mut a []int) sort() {
 	a.sort_with_compare(compare_ints)
 }
@@ -631,6 +634,7 @@ pub fn (mut a array) grow_cap(amount int) {
 }
 
 // grow_len ensures that an array has a.len + amount of length
+[unsafe]
 pub fn (mut a array) grow_len(amount int) {
 	a.ensure_cap(a.len + amount)
 	a.len += amount
@@ -683,7 +687,7 @@ pub fn (a1 []string) eq(a2 []string) bool {
 	return true
 }
 
-// compare_i64 for []f64 sort_with_compare()
+// compare_i64 for []i64 sort_with_compare()
 // sort []i64 with quicksort
 // usage :
 // mut x := [i64(100),10,70,28,92]
@@ -727,6 +731,7 @@ pub fn compare_f32(a &f32, b &f32) int {
 
 // pointers returns a new array, where each element
 // is the address of the corresponding element in the array.
+[unsafe]
 pub fn (a array) pointers() []voidptr {
 	mut res := []voidptr{}
 	for i in 0 .. a.len {

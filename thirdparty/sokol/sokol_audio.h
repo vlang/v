@@ -487,12 +487,12 @@ inline void saudio_setup(const saudio_desc& desc) { return saudio_setup(&desc); 
     #include <synchapi.h>
     #if (defined(WINAPI_FAMILY_PARTITION) && !WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP))
         #define SOKOL_WIN32_NO_MMDEVICE
-        #pragma comment (lib, "WindowsApp.lib")
+        #pragma comment (lib, "WindowsApp")
     #else
-        #pragma comment (lib, "kernel32.lib")
-        #pragma comment (lib, "ole32.lib")
+        #pragma comment (lib, "kernel32")
+        #pragma comment (lib, "ole32")
         #if defined(SOKOL_WIN32_NO_MMDEVICE)
-            #pragma comment (lib, "mmdevapi.lib")
+            #pragma comment (lib, "mmdevapi")
         #endif
     #endif
 #endif

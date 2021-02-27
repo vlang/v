@@ -1,5 +1,5 @@
 const (
-	reserved_types = {
+	reserved_types = map{
 		'i8':   true
 		'i16':  true
 		'int':  true
@@ -8,7 +8,7 @@ const (
 	}
 )
 
-numbers := {
+numbers := map{
 	'one':                                 1
 	'two':                                 2
 	'sevenhundredseventyseven':            777

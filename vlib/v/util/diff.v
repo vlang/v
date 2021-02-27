@@ -12,7 +12,8 @@ pub fn find_working_diff_command() ?string {
 	if env_difftool.len > 0 {
 		known_diff_tools << env_difftool
 	}
-	known_diff_tools << ['colordiff', 'gdiff', 'diff', 'colordiff.exe', 'diff.exe', 'opendiff', 'code', 'code.cmd']
+	known_diff_tools << ['colordiff', 'gdiff', 'diff', 'colordiff.exe', 'diff.exe', 'opendiff',
+		'code', 'code.cmd']
 	// NOTE: code.cmd is the Windows variant of the `code` cli tool
 	for diffcmd in known_diff_tools {
 		if diffcmd == 'opendiff' { // opendiff has no `--version` option

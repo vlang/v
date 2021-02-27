@@ -57,3 +57,52 @@ fn test_map_with_fns() {
 		assert func('ccccccc', '') == 27
 	}
 }
+
+fn foo3(a string) int {
+	return 10 + a.len
+}
+
+fn foo4(a string) int {
+	return 20 + a.len
+}
+
+fn test_map_and_array_with_fns_typeof_and_direct_call() {
+	a := [foo3]
+	assert typeof(a).name == '[]fn (string) int'
+	assert a[0]('hello') == 15
+	b := {'one': foo3}
+	assert typeof(b).name == 'map[string]fn (string) int'
+	assert b['one']('hi') == 12
+}
+
+fn bar1(mut a []fn (string) int) int {
+	a[0] = foo4
+	return a[0]('hello')
+}
+
+fn bar2(a []fn (string) int) int {
+	return a[0]('hello')
+}
+
+fn test_array_of_fns_as_argument() {
+	mut a1 := [foo3]
+	assert bar1(mut a1) == 25
+	a2 := [foo3]
+	assert bar2(a2) == 15
+}
+
+fn bar3(m map[string]fn (string) int) int {
+	return m['fn']('hi')
+}
+
+fn bar4(mut m map[string]fn (string) int) int {
+	m['fn'] = foo4 
+	return m['fn']('hi')
+}
+
+fn test_map_of_fns_as_argument() {
+	m1 := {'fn': foo3}
+	assert bar3(m1) == 12
+	mut m2 := {'fn': foo3}
+	assert bar4(mut m2) == 22
+}

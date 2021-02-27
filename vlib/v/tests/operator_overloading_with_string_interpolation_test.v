@@ -27,28 +27,12 @@ fn (a Vec) % (b Vec) Vec {
 	return Vec{a.x % b.x, a.y % b.y}
 }
 
-fn (a Vec) > (b Vec) bool {
-	return a.x > b.x && a.y > b.y
-}
-
 fn (a Vec) < (b Vec) bool {
 	return a.x < b.x && a.y < b.y
 }
 
 fn (a Vec) == (b Vec) bool {
 	return a.x == b.y && a.y == b.x
-}
-
-fn (a Vec) != (b Vec) bool {
-	return !(a == b)
-}
-
-fn (a Vec) >= (b Vec) bool {
-	return a > b || a == b
-}
-
-fn (a Vec) <= (b Vec) bool {
-	return a < b || a == b
 }
 
 fn test_operator_overloading_with_string_interpolation() {

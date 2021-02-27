@@ -29,6 +29,7 @@ fn test_orm_sqlite() {
 	db.exec("insert into User (name, age) values ('Sam', 29)")
 	db.exec("insert into User (name, age) values ('Peter', 31)")
 	db.exec("insert into User (name, age, is_customer) values ('Kate', 30, 1)")
+
 	nr_all_users := sql db {
 		select count from User
 	}
@@ -213,6 +214,12 @@ fn test_orm_sqlite() {
 		select from User order by age desc limit 1
 	}
 	assert updated_oldest.age == 31
+
+	db.exec('insert into User (name, age) values (NULL, 31)')
+	null_user := sql db {
+		select from User where id == 5
+	}
+	assert null_user.name == ''
 }
 
 fn test_orm_pg() {

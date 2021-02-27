@@ -19,13 +19,13 @@ fn f(shared x St, shared y St, shared z St) {
 }
 
 fn test_shared_lock() {
-	shared x := &St{
+	shared x := St{
 		a: 5
 	}
 	shared y := &St{
 		a: 7
 	}
-	shared z := &St{
+	shared z := St{
 		a: 1
 	}
 	go f(shared x, shared y, shared z)
@@ -44,7 +44,7 @@ fn test_shared_lock() {
 		if finished {
 			break
 		}
-		time.sleep_ms(100)
+		time.sleep(100 * time.millisecond)
 	}
 	rlock x, y {
 		assert x.a == 7 && y.a == 5

@@ -48,8 +48,9 @@ fn test_simple() {
 	eprintln('Employee x: $s')
 	assert s == '{"name":"Peter","age":28,"salary":95000.5,"title":2}'
 	y := json2.decode<Employee>(s) or {
+		println(err)
 		assert false
-		Employee{}
+		return
 	}
 	eprintln('Employee y: $y')
 	assert y.name == 'Peter'
@@ -69,24 +70,24 @@ fn test_fast_raw_decode() {
 }
 
 fn test_character_unescape() {
-	// Need to test `\r`, `\b`, `\f` ??
-	message := '{
-		"newline":"new\\nline",
-		"tab":"\\ttab",
-		"backslash": "back\\\\slash",
-		"quotes": "\\"quotes\\"",
-		"slash":"\/dev\/null"
-	}'
+	message := r'{
+	"newline": "new\nline",
+	"tab": "\ttab",
+	"backslash": "back\\slash",
+	"quotes": "\"quotes\"",
+	"slash":"\/dev\/null"
+}'
 	mut obj := json2.raw_decode(message) or {
+		println(err)
 		assert false
-		json2.Any{}
+		return
 	}
 	lines := obj.as_map()
 	eprintln('$lines')
 	assert lines['newline'].str() == 'new\nline'
 	assert lines['tab'].str() == '\ttab'
 	assert lines['backslash'].str() == 'back\\slash'
-	assert lines['quotes'].str() == '\"quotes\"'
+	assert lines['quotes'].str() == '"quotes"'
 	assert lines['slash'].str() == '/dev/null'
 }
 
@@ -152,7 +153,7 @@ fn (mut u User) from_json(an json2.Any) {
 
 fn (u User) to_json() string {
 	// TODO: derive from field
-	mut mp := {
+	mut mp := map{
 		'age': json2.Any(u.age)
 	}
 	mp['nums'] = u.nums.map(json2.Any(it))
@@ -166,12 +167,15 @@ fn (u User) to_json() string {
 fn test_parse_user() {
 	s := '{"age": 10, "nums": [1,2,3], "type": 1, "lastName": "Johnson", "IsRegistered": true, "pet_animals": {"name": "Bob", "animal": "Dog"}}'
 	u2 := json2.decode<User2>(s) or {
+		println(err)
 		assert false
-		User2{}
+		return
 	}
+	println(u2)
 	u := json2.decode<User>(s) or {
+		println(err)
 		assert false
-		User{}
+		return
 	}
 	assert u.age == 10
 	assert u.last_name == 'Johnson'
@@ -248,15 +252,16 @@ fn test_struct_in_struct() {
 */
 fn test_encode_map() {
 	expected := '{"one":1,"two":2,"three":3,"four":4}'
-	numbers := {
-		'one': json2.Any(1)
-		'two': json2.Any(2)
+	numbers := map{
+		'one':   json2.Any(1)
+		'two':   json2.Any(2)
 		'three': json2.Any(3)
-		'four': json2.Any(4)
+		'four':  json2.Any(4)
 	}
 	out := numbers.str()
 	assert out == expected
 }
+
 /*
 fn test_parse_map() {
 	expected := {

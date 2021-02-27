@@ -142,14 +142,14 @@ fn print_backtrace_skipping_top_frames_msvc(skipframes int) bool {
 				nframe := frames - i - 1
 				mut lineinfo := ''
 				if C.SymGetLineFromAddr64(handle, frame_addr, &offset, &sline64) == 1 {
-					file_name := tos3(sline64.f_file_name)
+					file_name := unsafe { tos3(sline64.f_file_name) }
 					lnumber := sline64.f_line_number
 					lineinfo = '$file_name:$lnumber'
 				} else {
 					addr:
 					lineinfo = '?? : address = 0x${(&frame_addr):x}'
 				}
-				sfunc := tos3(fname)
+				sfunc := unsafe { tos3(fname) }
 				eprintln('${nframe:-2d}: ${sfunc:-25s}  $lineinfo')
 			} else {
 				// https://docs.microsoft.com/en-us/windows/win32/debug/system-error-codes

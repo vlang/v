@@ -1,6 +1,7 @@
 module time
 
 #include <mach/mach_time.h>
+
 const (
 	// start_time is needed on Darwin and Windows because of potential overflows
 	start_time = C.mach_absolute_time()

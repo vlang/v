@@ -1,0 +1,30 @@
+fn main() {
+	a1 := [1,2,3,4].map(fn(a int, b int) int {return a + b})
+	println(a1)
+
+	a2 := [1,2,3,4].map(fn(a string) string { return a })
+	println(a2)
+
+	a3 := [1,2,3,4].map(fn(a string) {})
+	println(a3)
+
+	a4 := [1,2,3,4].map(add1)
+	println(a4)
+
+	a5 := [1,2,3,4].map(add2)
+	println(a5)
+
+	a6 := [1,2,3,4].map(do_nothing)
+	println(a6)
+}
+
+fn add1(a int, b int) int {
+	return a + b
+}
+
+fn add2(a string) string {
+	return a
+}
+
+fn do_nothing(a string) {
+}

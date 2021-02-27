@@ -160,7 +160,7 @@ fn reloader(mut r live.LiveReloadInfo) {
 			}
 		}
 		if r.recheck_period_ms > 0 {
-			time.sleep_ms(r.recheck_period_ms)
+			time.sleep(r.recheck_period_ms * time.millisecond)
 		}
 	}
 }

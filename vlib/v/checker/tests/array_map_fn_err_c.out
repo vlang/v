@@ -1,7 +1,0 @@
-vlib/v/checker/tests/array_map_fn_err_c.vv:3:21: error: type mismatch, should use `fn(a int) T {...}`
-    1 | fn do_nothing(a string) {}
-    2 | fn main() {
-    3 |     a := [1,2,3,4].map(do_nothing)
-      |                        ~~~~~~~~~~
-    4 |     println(a)
-    5 | }

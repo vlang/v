@@ -10,8 +10,8 @@ pub const (
 	default_module_path = os.vmodules_dir()
 )
 
-pub fn new_preferences() Preferences {
-	mut p := Preferences{}
+pub fn new_preferences() &Preferences {
+	mut p := &Preferences{}
 	p.fill_with_defaults()
 	return p
 }
@@ -70,7 +70,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	}
 	p.find_cc_if_cross_compiling()
 	p.ccompiler_type = cc_from_string(p.ccompiler)
-	p.is_test = p.path.ends_with('_test.v')
+	p.is_test = p.path.ends_with('_test.v') || p.path.ends_with('_test.vv')
 	p.is_vsh = p.path.ends_with('.vsh')
 	p.is_script = p.is_vsh || p.path.ends_with('.v') || p.path.ends_with('.vv')
 	if p.third_party_option == '' {
@@ -85,7 +85,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	// should go into res.cache_manager.vopts, which is used as a salt for the cache hash.
 	p.cache_manager = vcache.new_cache_manager([
 		@VHASH,
-		/* ensure that different v versions use separate build artefacts */
+		// ensure that different v versions use separate build artefacts
 		'$p.backend | $p.os | $p.ccompiler | $p.is_prod | $p.sanitize',
 		p.cflags.trim_space(),
 		p.third_party_option.trim_space(),

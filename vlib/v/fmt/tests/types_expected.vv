@@ -13,6 +13,7 @@ type MyInt = int
 pub type Abc = f32
 
 // Fn type decl
+
 type EmptyFn = fn ()
 
 type OneArgFn = fn (i int)

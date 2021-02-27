@@ -22,7 +22,7 @@ pub mut:
 	// If allow multiple value.
 	// If bool, multiple has no impact, bool can only set once.
 	// If not multiple, and multiple value set at command args, raise an error.
-	multipe bool
+	multiple bool
 mut:
 	// Set true if flag found.
 	found bool
@@ -206,7 +206,7 @@ fn (mut flag Flag) parse(args []string, with_abbrev bool) ?[]string {
 			new_args := flag.parse_bool(args) ?
 			return new_args
 		} else {
-			if flag.value.len > 0 && !flag.multipe {
+			if flag.value.len > 0 && !flag.multiple {
 				return error('The argument `$flag.name` accept only one value!')
 			}
 

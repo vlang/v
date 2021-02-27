@@ -1,6 +1,0 @@
-vlib/v/checker/tests/ambiguous_function_call_a.vv:2:2: error: ambiguous call to: `foo`, may refer to fn `foo` or variable `foo` 
-    1 | fn foo(foo int) {
-    2 |     foo(foo + 1)
-      |     ~~~~~~~~~~~~
-    3 | }
-    4 |

@@ -4,7 +4,8 @@
 module time
 
 #include <time.h>
-const (
+
+pub const (
 	days_string        = 'MonTueWedThuFriSatSun'
 	month_days         = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 	months_string      = 'JanFebMarAprMayJunJulAugSepOctNovDec'
@@ -323,32 +324,24 @@ pub fn ticks() i64 {
 	// # return (double)(* (uint64_t *) &elapsedNano) / 1000000;
 }
 
+/*
 // sleep makes the calling thread sleep for a given number of seconds.
+[deprecated: 'call time.sleep(n * time.second)']
 pub fn sleep(seconds int) {
-	$if windows {
-		C.Sleep(seconds * 1000)
-	} $else {
-		C.sleep(seconds)
-	}
+	wait(seconds * time.second)
 }
+*/
 
 // sleep_ms makes the calling thread sleep for a given number of milliseconds.
+[deprecated: 'call time.sleep(n * time.millisecond)']
 pub fn sleep_ms(milliseconds int) {
-	$if windows {
-		C.Sleep(milliseconds)
-	} $else {
-		C.usleep(milliseconds * 1000)
-	}
+	wait(milliseconds * time.millisecond)
 }
 
 // usleep makes the calling thread sleep for a given number of microseconds.
+[deprecated: 'call time.sleep(n * time.microsecond)']
 pub fn usleep(microseconds int) {
-	$if windows {
-		milliseconds := microseconds / 1000
-		C.Sleep(milliseconds)
-	} $else {
-		C.usleep(microseconds)
-	}
+	wait(microseconds * time.microsecond)
 }
 
 // is_leap_year checks if a given a year is a leap year.

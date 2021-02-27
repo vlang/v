@@ -1,4 +1,3 @@
-import sync
 import time
 
 fn do_rec_i64(ch chan i64) {
@@ -57,9 +56,7 @@ fn test_select() {
 	}
 	// Use Gauß' formula for the first 2 contributions
 	// the 3rd contribution is `byte` and must be seen modulo 256
-	expected_sum :=  2 * (300 * (300 - 1) / 2) +
-		256 * (256 - 1) / 2 +
-		44 * (44 - 1) / 2
+	expected_sum := 2 * (300 * (300 - 1) / 2) + 256 * (256 - 1) / 2 + 44 * (44 - 1) / 2
 	assert sum == expected_sum
-	time.sleep_ms(20) // to give assert in coroutine enough time
+	time.sleep(20 * time.millisecond) // to give assert in coroutine enough time
 }

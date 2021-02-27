@@ -78,7 +78,7 @@ const (
 	probe_inc           = u32(0x01000000)
 )
 
-// This function is intended to be fast when
+// fast_string_eq is intended to be fast when
 // the strings are very likely to be equal
 // TODO: add branch prediction hints
 [inline]
@@ -91,7 +91,7 @@ fn fast_string_eq(a string, b string) bool {
 	}
 }
 
-// Dynamic array with very low growth factor
+// DenseArray represents a dynamic array with very low growth factor
 struct DenseArray {
 	key_bytes   int
 	value_bytes int
@@ -107,7 +107,6 @@ mut:
 }
 
 [inline]
-[unsafe]
 fn new_dense_array(key_bytes int, value_bytes int) DenseArray {
 	slot_bytes := key_bytes + value_bytes
 	cap := 8
@@ -119,7 +118,7 @@ fn new_dense_array(key_bytes int, value_bytes int) DenseArray {
 		len: 0
 		deletes: 0
 		all_deleted: 0
-		data: malloc(cap * slot_bytes)
+		data: unsafe { malloc(cap * slot_bytes) }
 	}
 }
 
@@ -166,7 +165,7 @@ fn (mut d DenseArray) expand() int {
 // Move all zeros to the end of the array and resize array
 fn (mut d DenseArray) zeros_to_end() {
 	// TODO alloca?
-	mut tmp_buf := malloc(d.slot_bytes)
+	mut tmp_buf := unsafe { malloc(d.slot_bytes) }
 	mut count := 0
 	for i in 0 .. d.len {
 		if d.has_index(i) {
@@ -179,10 +178,12 @@ fn (mut d DenseArray) zeros_to_end() {
 			count++
 		}
 	}
-	free(tmp_buf)
-	d.deletes = 0
-	// TODO: reallocate instead as more deletes are likely
-	free(d.all_deleted)
+	unsafe {
+		free(tmp_buf)
+		d.deletes = 0
+		// TODO: reallocate instead as more deletes are likely
+		free(d.all_deleted)
+	}
 	d.len = count
 	d.cap = if count < 8 { 8 } else { count }
 	unsafe {
@@ -198,6 +199,7 @@ type MapCloneFn = fn (voidptr, voidptr)
 
 type MapFreeFn = fn (voidptr)
 
+// map is the internal representation of a V `map` type.
 pub struct map {
 	// Number of bytes of a key
 	key_bytes int
@@ -206,7 +208,7 @@ pub struct map {
 mut:
 	// Highest even index in the hashtable
 	even_index u32
-	// Number of cached hashbits left for rehasing
+	// Number of cached hashbits left for rehashing
 	cached_hashbits byte
 	// Used for right-shifting out used hashbits
 	shift byte
@@ -302,7 +304,9 @@ fn map_clone_int_8(dest voidptr, pkey voidptr) {
 }
 
 fn map_free_string(pkey voidptr) {
-	(*unsafe { &string(pkey) }).free()
+	unsafe {
+		(*&string(pkey)).free()
+	}
 }
 
 fn map_free_nop(_ voidptr) {
@@ -343,6 +347,14 @@ fn new_map_init_2(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, fre
 		}
 	}
 	return out
+}
+
+pub fn (mut m map) move() map {
+	r := *m
+	unsafe {
+		C.memset(m, 0, sizeof(map))
+	}
+	return r
 }
 
 [inline]
@@ -608,10 +620,13 @@ fn (mut d DenseArray) delete(i int) {
 
 // delete this
 pub fn (mut m map) delete(key string) {
-	m.delete_1(&key)
+	unsafe {
+		m.delete_1(&key)
+	}
 }
 
 // Removes the mapping of a particular key from the map.
+[unsafe]
 pub fn (mut m map) delete_1(key voidptr) {
 	mut index, mut meta := m.key_to_index(key)
 	index, meta = m.meta_less(index, meta)
@@ -717,6 +732,7 @@ fn (d &DenseArray) clone() DenseArray {
 	return res
 }
 
+// clone returns a clone of the `map`.
 [unsafe]
 pub fn (m &map) clone() map {
 	metasize := int(sizeof(u32) * (m.even_index + 2 + m.extra_metas))
@@ -727,7 +743,7 @@ pub fn (m &map) clone() map {
 		cached_hashbits: m.cached_hashbits
 		shift: m.shift
 		key_values: unsafe { m.key_values.clone() }
-		metas: &u32(malloc(metasize))
+		metas: unsafe { &u32(malloc(metasize)) }
 		extra_metas: m.extra_metas
 		len: m.len
 		has_string_keys: m.has_string_keys
@@ -750,6 +766,7 @@ pub fn (m &map) clone() map {
 	return res
 }
 
+// free releases all memory resources occupied by the `map`.
 [unsafe]
 pub fn (m &map) free() {
 	unsafe { free(m.metas) }

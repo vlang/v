@@ -13,6 +13,9 @@ const (
 	error_missing_vexe = 1
 	error_failed_tests = 2
 	b2v_keep_path      = os.join_path('vlib', 'v', 'fmt', 'tests', 'bin2v_keep.vv')
+	fpref              = &pref.Preferences{
+		is_fmt: true
+	}
 )
 
 fn test_fmt() {
@@ -49,13 +52,10 @@ fn test_fmt() {
 			continue
 		}
 		table := table.new_table()
-		file_ast := parser.parse_file(ipath, table, .parse_comments, &pref.Preferences{
-			is_fmt: true
-			ccompiler: 'gcc'
-		}, &ast.Scope{
+		file_ast := parser.parse_file(ipath, table, .parse_comments, fpref, &ast.Scope{
 			parent: 0
 		})
-		result_ocontent := fmt.fmt(file_ast, table, false)
+		result_ocontent := fmt.fmt(file_ast, table, fpref, false)
 		if expected_ocontent != result_ocontent {
 			fmt_bench.fail()
 			eprintln(fmt_bench.step_message_fail('file $vrelpath after formatting, does not look as expected.'))

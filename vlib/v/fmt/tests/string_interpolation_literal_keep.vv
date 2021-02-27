@@ -9,5 +9,6 @@ fn main() {
 	d := 'a: ${a:5s} b: ${b:-5s} i: ${i:20d}'
 	println('a: $a $b xxx')
 	eprintln('e: $e')
-	println(d)
+	_ = ' ${foo.method(bar).str()} '
+	println('(${some_struct.@type}, $some_struct.y)')
 }

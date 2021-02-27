@@ -54,7 +54,7 @@ fn C.sqlite3_column_text(&C.sqlite3_stmt, int) byteptr
 
 fn C.sqlite3_column_int(&C.sqlite3_stmt, int) int
 
-fn C.sqlite3_column_int64(&C.sqlite3_stmt, int) int64
+fn C.sqlite3_column_int64(&C.sqlite3_stmt, int) i64
 
 fn C.sqlite3_column_double(&C.sqlite3_stmt, int) f64
 
@@ -123,7 +123,7 @@ pub fn (db DB) q_string(query string) string {
 	stmt := &C.sqlite3_stmt(0)
 	C.sqlite3_prepare_v2(db.conn, query.str, -1, &stmt, 0)
 	C.sqlite3_step(stmt)
-	res := tos_clone(C.sqlite3_column_text(stmt, 0))
+	res := unsafe { tos_clone(C.sqlite3_column_text(stmt, 0)) }
 	C.sqlite3_finalize(stmt)
 	return res
 }
@@ -145,7 +145,7 @@ pub fn (db DB) exec(query string) ([]Row, int) {
 		}
 		mut row := Row{}
 		for i in 0 .. nr_cols {
-			val := tos_clone(C.sqlite3_column_text(stmt, i))
+			val := unsafe { tos_clone(C.sqlite3_column_text(stmt, i)) }
 			row.vals << val
 		}
 		rows << row
@@ -179,6 +179,6 @@ pub fn (db DB) exec_param(query string, param string) []Row {
 pub fn (db DB) insert<T>(x T) {
 }
 
-pub fn (db DB) create_table(table_name string, rows []string) {
-	db.exec('create table $table_name (' + rows.join(',\n') + ')')
+pub fn (db DB) create_table(table_name string, columns []string) {
+	db.exec('create table $table_name (' + columns.join(',\n') + ')')
 }

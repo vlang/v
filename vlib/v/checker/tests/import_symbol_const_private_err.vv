@@ -1,0 +1,5 @@
+import v.scanner
+
+fn main() {
+  println(scanner.single_quote)
+}

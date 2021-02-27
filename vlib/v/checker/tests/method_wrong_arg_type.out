@@ -1,6 +1,13 @@
-vlib/v/checker/tests/method_wrong_arg_type.vv:8:4: error: cannot use `MyEnum` as `string` in argument 1 to `Sss.info`
-    6 |     e := MyEnum.x
-    7 |     s := Sss{}
-    8 |     s.info(e)
-      |       ~~~~~~~
-    9 | }
+vlib/v/checker/tests/method_wrong_arg_type.vv:10:9: error: cannot use `MyEnum` as `string` in argument 1 to `Sss.info`
+    8 |     e := MyEnum.x
+    9 |     s := Sss{}
+   10 |     s.info(e)
+      |            ^
+   11 | }
+   12 |
+vlib/v/checker/tests/method_wrong_arg_type.vv:18:8: error: cannot use `int` as `&Sss` in argument 1 to `Sss.ptr`
+   16 |     s := Sss{}
+   17 |     v := 4
+   18 |     s.ptr(v)
+      |           ^
+   19 | }

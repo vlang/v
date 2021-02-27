@@ -51,11 +51,13 @@ fn (mut t TestFn) tst_1() {
 
 fn (mut t TestFn) tst_2(cb fn (int)) {
 	assert @FN == 'tst_2'
+	assert @METHOD == 'TestFn.tst_2'
 	cb(1)
 }
 
 fn fn_name_mod_level() {
 	assert @FN == 'fn_name_mod_level'
+	assert @METHOD == 'fn_name_mod_level'
 }
 
 fn fn_name_mod_level_high_order(cb fn (int)) {

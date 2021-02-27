@@ -250,7 +250,7 @@ fn test_mv() {
 	assert os.exists(expected) && !is_dir(expected) == true
 }
 
-fn test_cp_r() {
+fn test_cp_all() {
 	// fileX -> dir/fileX
 	// NB: clean up of the files happens inside the cleanup_leftovers function
 	os.write_file('ex1.txt', 'wow!') or { panic(err) }
@@ -267,6 +267,12 @@ fn test_cp_r() {
 	assert old2 == new2
 	// recurring on dir -> local dir
 	os.cp_all('ex', './', true) or { panic(err) }
+	// regression test for executive runs with overwrite := true
+	os.cp_all('ex', './', true) or { panic(err) }
+}
+
+fn test_realpath() {
+	assert os.real_path('') == ''
 }
 
 fn test_tmpdir() {
@@ -274,7 +280,7 @@ fn test_tmpdir() {
 	assert t.len > 0
 	assert os.is_dir(t)
 	tfile := t + os.path_separator + 'tmpfile.txt'
-	os.rm(tfile) or { } // just in case 
+	os.rm(tfile) or { } // just in case
 	tfile_content := 'this is a temporary file'
 	os.write_file(tfile, tfile_content) or { panic(err) }
 	tfile_content_read := os.read_file(tfile) or { panic(err) }
@@ -411,6 +417,19 @@ fn test_base() {
 		assert os.base('v/vlib/os/') == 'os'
 	}
 	assert os.base('filename') == 'filename'
+}
+
+fn test_file_name() {
+	$if windows {
+		assert os.file_name('v\\vlib\\os\\os.v') == 'os.v'
+		assert os.file_name('v\\vlib\\os\\') == ''
+		assert os.file_name('v\\vlib\\os') == 'os'
+	} $else {
+		assert os.file_name('v/vlib/os/os.v') == 'os.v'
+		assert os.file_name('v/vlib/os/') == ''
+		assert os.file_name('v/vlib/os') == 'os'
+	}
+	assert os.file_name('filename') == 'filename'
 }
 
 fn test_uname() {

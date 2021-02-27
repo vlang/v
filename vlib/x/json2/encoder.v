@@ -8,9 +8,9 @@ import strings
 fn write_value(v Any, i int, len int, mut wr strings.Builder) {
 	str := v.str()
 	if v is string {
-		wr.write('"$str"')
+		wr.write_string('"$str"')
 	} else {
-		wr.write(str)
+		wr.write_string(str)
 	}
 	if i >= len - 1 {
 		return
@@ -24,13 +24,13 @@ pub fn (flds map[string]Any) str() string {
 	wr.write_b(`{`)
 	mut i := 0
 	for k, v in flds {
-		wr.write('"$k":')
+		wr.write_string('"$k":')
 		write_value(v, i, flds.len, mut wr)
 		i++
 	}
 	wr.write_b(`}`)
 	defer {
-		wr.free()
+		unsafe { wr.free() }
 	}
 	res := wr.str()
 	return res
@@ -45,7 +45,7 @@ pub fn (flds []Any) str() string {
 	}
 	wr.write_b(`]`)
 	defer {
-		wr.free()
+		unsafe { wr.free() }
 	}
 	res := wr.str()
 	return res
@@ -65,19 +65,11 @@ pub fn (f Any) str() string {
 		}
 		f32 {
 			str_f32 := f.str()
-			return if str_f32.ends_with('.') {
-				str_f32 + '0'
-			} else {
-				str_f32
-			}
+			return if str_f32.ends_with('.') { '${str_f32}0' } else { str_f32 }
 		}
 		f64 {
 			str_f64 := f.str()
-			return if str_f64.ends_with('.') {
-				str_f64 + '0'
-			} else {
-				str_f64
-			}
+			return if str_f64.ends_with('.') { '${str_f64}0' } else { str_f64 }
 		}
 		bool {
 			return f.str()
@@ -85,14 +77,11 @@ pub fn (f Any) str() string {
 		map[string]Any {
 			return f.str()
 		}
+		[]Any {
+			return f.str()
+		}
 		Null {
 			return 'null'
-		}
-		else {
-			if f is []Any {
-				return f.str()
-			}
-			return ''
 		}
 	}
 }

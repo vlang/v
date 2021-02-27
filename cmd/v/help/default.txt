@@ -35,7 +35,7 @@ V supports the following commands:
    list              List all installed modules.
    outdated          Show installed modules that need updates.
 * Others:
-   doctor            Display some usefull info about your system to help reporting bugs
+   doctor            Display some usefull info about your system to help reporting bugs.
    translate         Translate C code to V (coming soon in 0.3).
    tracev            Produce a tracing version of the v compiler.
                      Use `tracev yourfile.v` when the compiler panics.
@@ -45,4 +45,4 @@ Use "v help <command>" for more information about a command, example: `v help bu
 Use "v help other" to see less frequently used commands.
 
 Note: Help is required to write more help topics.
-Only build, doc, fmt, run, test, search, install, remove, update, bin2v are properly documented currently.
+Only build, doc, fmt, run, test, search, install, remove, update, bin2v, check-md are properly documented currently.

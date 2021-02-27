@@ -210,7 +210,7 @@ fn (mut cb Clipboard) free() {
 }
 
 fn (mut cb Clipboard) clear() {
-	cb.mutex.m_lock()
+	cb.mutex.@lock()
 	C.XSetSelectionOwner(cb.display, cb.selection, C.Window(C.None), C.CurrentTime)
 	C.XFlush(cb.display)
 	cb.is_owner = false
@@ -232,14 +232,14 @@ pub fn (mut cb Clipboard) set_text(text string) bool {
 	if cb.window == C.Window(C.None) {
 		return false
 	}
-	cb.mutex.m_lock()
+	cb.mutex.@lock()
 	cb.text = text
 	cb.is_owner = true
 	cb.take_ownership()
 	C.XFlush(cb.display)
 	cb.mutex.unlock()
 	// sleep a little bit
-	time.sleep(1)
+	time.sleep(1 * time.millisecond)
 	return cb.is_owner
 }
 
@@ -262,7 +262,7 @@ fn (mut cb Clipboard) get_text() string {
 		if cb.got_text || retries == 0 {
 			break
 		}
-		time.usleep(50000)
+		time.sleep(50 * time.millisecond)
 		retries--
 	}
 	return cb.text
@@ -276,7 +276,7 @@ fn (mut cb Clipboard) transmit_selection(xse &C.XSelectionEvent) bool {
 		C.XChangeProperty(xse.display, xse.requestor, xse.property, cb.get_atom(.xa_atom),
 			32, C.PropModeReplace, targets.data, targets.len)
 	} else if cb.is_supported_target(xse.target) && cb.is_owner && cb.text != '' {
-		cb.mutex.m_lock()
+		cb.mutex.@lock()
 		C.XChangeProperty(xse.display, xse.requestor, xse.property, xse.target, 8, C.PropModeReplace,
 			cb.text.str, cb.text.len)
 		cb.mutex.unlock()
@@ -306,9 +306,8 @@ fn (mut cb Clipboard) start_listener() {
 			C.SelectionClear {
 				if unsafe { event.xselectionclear.window == cb.window } && unsafe {
 					event.xselectionclear.selection == cb.selection
-				}
-				{
-					cb.mutex.m_lock()
+				} {
+					cb.mutex.@lock()
 					cb.is_owner = false
 					cb.text = ''
 					cb.mutex.unlock()
@@ -339,9 +338,9 @@ fn (mut cb Clipboard) start_listener() {
 			}
 			C.SelectionNotify {
 				if unsafe {
-					event.xselection.selection == cb.selection && event.xselection.property != C.Atom(C.None)
-				}
-				{
+					event.xselection.selection == cb.selection
+						&& event.xselection.property != C.Atom(C.None)
+				} {
 					if unsafe { event.xselection.target == cb.get_atom(.targets) && !sent_request } {
 						sent_request = true
 						prop := read_property(cb.display, cb.window, cb.selection)
@@ -353,7 +352,7 @@ fn (mut cb Clipboard) start_listener() {
 					} else if unsafe { event.xselection.target == to_be_requested } {
 						sent_request = false
 						to_be_requested = C.Atom(0)
-						cb.mutex.m_lock()
+						cb.mutex.@lock()
 						prop := unsafe {
 							read_property(event.xselection.display, event.xselection.requestor,
 								event.xselection.property)
@@ -385,7 +384,7 @@ fn (mut cb Clipboard) start_listener() {
 fn (mut cb Clipboard) intern_atoms() {
 	cb.atoms << C.Atom(4) // XA_ATOM
 	cb.atoms << C.Atom(31) // XA_STRING
-	for i, name in atom_names {
+	for i, name in x11.atom_names {
 		only_if_exists := if i == int(AtomType.utf8_string) { 1 } else { 0 }
 		cb.atoms << C.XInternAtom(cb.display, name.str, only_if_exists)
 		if i == int(AtomType.utf8_string) && cb.atoms[i] == C.Atom(C.None) {
@@ -419,10 +418,8 @@ fn read_property(d &C.Display, w C.Window, p C.Atom) Property {
 fn (cb &Clipboard) pick_target(prop Property) C.Atom {
 	// The list of targets is a list of atoms, so it should have type XA_ATOM
 	// but it may have the type TARGETS instead.
-	if (prop.actual_type != cb.get_atom(.xa_atom) &&
-		prop.actual_type != cb.get_atom(.targets)) ||
-		prop.actual_format != 32
-	{
+	if (prop.actual_type != cb.get_atom(.xa_atom) && prop.actual_type != cb.get_atom(.targets))
+		|| prop.actual_format != 32 {
 		// This would be really broken. Targets have to be an atom list
 		// and applications should support this. Nevertheless, some
 		// seem broken (MATLAB 7, for instance), so ask for STRING

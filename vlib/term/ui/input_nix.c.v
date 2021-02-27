@@ -1,7 +1,13 @@
-// Copyright (c) 2020 Raúl Hernández. All rights reserved.
+// Copyright (c) 2020-2021 Raúl Hernández. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module ui
+
+
+struct ExtraContext {
+mut:
+	read_buf []byte
+}
 
 const (
 	ctx_ptr = &Context(0)
@@ -10,8 +16,8 @@ const (
 pub fn init(cfg Config) &Context {
 	mut ctx := &Context{
 		cfg: cfg,
-		read_buf: []byte{ cap: cfg.buffer_size }
 	}
+	ctx.read_buf = []byte{ cap: cfg.buffer_size }
 
 	// lmao
 	unsafe {
@@ -22,11 +28,14 @@ pub fn init(cfg Config) &Context {
 	return ctx
 }
 
-pub fn (mut ctx Context) save_title() {
+[inline]
+fn save_title() {
     // restore the previously saved terminal title
     print('\x1b[22;0t')
 }
-pub fn (mut ctx Context) load_title() {
+
+[inline]
+fn load_title() {
     // restore the previously saved terminal title
     print('\x1b[23;0t')
 }
@@ -56,39 +65,4 @@ fn (mut ctx Context) shift(len int) {
 fn (mut ctx Context) resize_arr(size int) {
 	mut l := &ctx.read_buf.len
 	unsafe { *l = size }
-}
-
-[inline]
-fn (ctx &Context) init() {
-	if ctx.cfg.init_fn != voidptr(0) {
-		ctx.cfg.init_fn(ctx.cfg.user_data)
-	}
-}
-
-[inline]
-fn (ctx &Context) frame() {
-	if ctx.cfg.frame_fn != voidptr(0) {
-		ctx.cfg.frame_fn(ctx.cfg.user_data)
-	}
-}
-
-[inline]
-fn (ctx &Context) cleanup() {
-	if ctx.cfg.cleanup_fn != voidptr(0) {
-		ctx.cfg.cleanup_fn(ctx.cfg.user_data)
-	}
-}
-
-[inline]
-fn (ctx &Context) fail(error string) {
-	if ctx.cfg.fail_fn != voidptr(0) {
-		ctx.cfg.fail_fn(error)
-	}
-}
-
-[inline]
-fn (ctx &Context) event(event &Event) {
-	if ctx.cfg.event_fn != voidptr(0) {
-		ctx.cfg.event_fn(event, ctx.cfg.user_data)
-	}
 }

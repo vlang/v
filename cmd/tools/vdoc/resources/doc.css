@@ -342,7 +342,8 @@ body {
 	overflow: hidden;
 }
 .doc-content img {
-	width: 100%;
+	width: auto;
+	max-width: 100%;
 }
 .doc-content p {
 	line-height: 1.4;
@@ -592,7 +593,7 @@ pre {
 	.doc-content {
 		font-size: 0.95rem;
 		flex: 1;
-		padding: 1rem 2rem;
+		padding: 0rem 2rem 1rem 2rem;
 	}
 	.doc-toc {
 		position: relative;

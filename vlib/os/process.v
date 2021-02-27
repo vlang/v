@@ -13,7 +13,7 @@ pub enum ProcessState {
 	aborted
 }
 
-[ref_only]
+[heap]
 pub struct Process {
 pub:
 	filename string // the process's command file path
@@ -26,9 +26,9 @@ pub mut:
 	err           string   // if the process fails, contains the reason why
 	args          []string // the arguments that the command takes
 	env_is_custom bool     // true, when the environment was customized with .set_environment
-	env           []string // the environment with which the process was started
+	env           []string // the environment with which the process was started  (list of 'var=val')
 	use_stdio_ctl bool     // when true, then you can use p.stdin_write(), p.stdout_slurp() and p.stderr_slurp()
-	stdio_fd      [3]int
+	stdio_fd      [3]int   // the file descriptors	
 }
 
 // new_process - create a new process descriptor
@@ -162,16 +162,20 @@ pub fn (mut p Process) stdin_write(s string) {
 	fd_write(p.stdio_fd[0], s)
 }
 
+// will read from stdout pipe, will only return when EOF (end of file) or data
+// means this will block unless there is data
 pub fn (mut p Process) stdout_slurp() string {
 	p._check_redirection_call('stdout_slurp')
 	return fd_slurp(p.stdio_fd[1]).join('')
 }
 
+// read from stderr pipe, wait for data or EOF
 pub fn (mut p Process) stderr_slurp() string {
 	p._check_redirection_call('stderr_slurp')
 	return fd_slurp(p.stdio_fd[2]).join('')
 }
 
+// read from stdout, return if data or not
 pub fn (mut p Process) stdout_read() string {
 	p._check_redirection_call('stdout_read')
 	s, _ := fd_read(p.stdio_fd[1], 4096)

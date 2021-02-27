@@ -71,6 +71,9 @@ fn main() {
 				}
 			}
 		}
+		if os.is_file(path) {
+			vet.vet_file(path, false)
+		}
 		if os.is_dir(path) {
 			vet.vprintln("vetting folder: '$path' ...")
 			vfiles := os.walk_ext(path, '.v')

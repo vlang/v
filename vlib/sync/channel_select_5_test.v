@@ -35,7 +35,6 @@ fn test_select() {
 	go do_send_int2(chi)
 	go do_send_int3(chi)
 	mut sum := i64(0)
-	mut rl := i64(0)
 	mut sl := i64(0)
 	for _ in 0 .. 60000 + recch.cap {
 		select {

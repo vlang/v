@@ -7,5 +7,12 @@ fn (test Test) print() {
 fn main() {
 	test := Test{}
 	abc := 'print'
-	test.$abc()
+	test.$abc() // OK
+	test.$w()
+	v := 4
+	test.$v()
+	s := 'x' + 'y'
+	test.$s()
+	s2 := 'x'
+	test.$s2()
 }

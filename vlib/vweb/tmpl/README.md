@@ -6,7 +6,7 @@ Some directives begin contains a `{}` block, others only have `''` (string) para
 More on the directives itself.
 
 Newlines on the beginning and end are ignored in `{}` blocks,
-otherwise this (see [if](##if) for this syntax):
+otherwise this (see [if](#if) for this syntax):
 ```html
 @if bool_val {
     <span>This is shown if bool_val is true</span>

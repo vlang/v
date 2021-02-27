@@ -44,7 +44,7 @@ fn test_shared_receiver_lock() {
 		if finished {
 			break
 		}
-		time.sleep_ms(100)
+		time.sleep(100 * time.millisecond)
 	}
 	rlock x, y {
 		assert x.a == 7 && y.a == 5

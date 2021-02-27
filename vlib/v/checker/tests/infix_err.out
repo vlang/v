@@ -1,15 +1,15 @@
-vlib/v/checker/tests/infix_err.vv:7:8: error: mismatched types `string` and `?string`
+vlib/v/checker/tests/infix_err.vv:7:5: error: mismatched types `string` and `?string`
     5 |     return none
     6 | }
     7 | _ = '' + f()
-      |        ^
+      |     ~~~~~~~~
     8 | _ = f() + ''
     9 | _ = f() + f()
-vlib/v/checker/tests/infix_err.vv:8:9: error: mismatched types `?string` and `string`
+vlib/v/checker/tests/infix_err.vv:8:5: error: mismatched types `?string` and `string`
     6 | }
     7 | _ = '' + f()
     8 | _ = f() + ''
-      |         ^
+      |     ~~~~~~~~
     9 | _ = f() + f()
    10 |
 vlib/v/checker/tests/infix_err.vv:9:9: error: `+` cannot be used with `?string`
@@ -26,11 +26,11 @@ vlib/v/checker/tests/infix_err.vv:11:7: error: `+` cannot be used with `?int`
       |       ^
    12 | _ = int(0) + g() // FIXME not detected
    13 | _ = g() + int(3)
-vlib/v/checker/tests/infix_err.vv:12:12: error: unwrapped optional cannot be used in an infix expression
+vlib/v/checker/tests/infix_err.vv:12:5: error: unwrapped optional cannot be used in an infix expression
    10 | 
    11 | _ = 4 + g()
    12 | _ = int(0) + g() // FIXME not detected
-      |            ^
+      |     ~~~~~~~~~~~~
    13 | _ = g() + int(3)
    14 | _ = g() + 3
 vlib/v/checker/tests/infix_err.vv:13:9: error: `+` cannot be used with `?int`
@@ -53,8 +53,30 @@ vlib/v/checker/tests/infix_err.vv:17:5: error: left operand for `&&` is not a bo
    17 | _ = 1 && 2
       |     ^
    18 | _ = true || 2
+   19 |
 vlib/v/checker/tests/infix_err.vv:18:13: error: right operand for `||` is not a boolean
    16 | // binary operands
    17 | _ = 1 && 2
    18 | _ = true || 2
       |             ^
+   19 | 
+   20 | // boolean expressions
+vlib/v/checker/tests/infix_err.vv:21:22: error: use `()` to make the boolean expression clear
+   19 | 
+   20 | // boolean expressions
+   21 | _ = 1 == 1 && 2 == 2 || 3 == 3
+      |                      ~~
+   22 | _ = 1 == 1
+   23 |     && 2 == 2 || 3 == 3
+vlib/v/checker/tests/infix_err.vv:23:12: error: use `()` to make the boolean expression clear
+   21 | _ = 1 == 1 && 2 == 2 || 3 == 3
+   22 | _ = 1 == 1
+   23 |     && 2 == 2 || 3 == 3
+      |               ~~
+   24 |     && 4 == 4
+vlib/v/checker/tests/infix_err.vv:24:2: error: use `()` to make the boolean expression clear
+   22 | _ = 1 == 1
+   23 |     && 2 == 2 || 3 == 3
+   24 |     && 4 == 4
+      |     ~~
+

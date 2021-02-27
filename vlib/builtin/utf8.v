@@ -10,10 +10,13 @@ pub fn utf8_char_len(b byte) int {
 // Convert utf32 to utf8
 // utf32 == Codepoint
 pub fn utf32_to_str(code u32) string {
-	mut buffer := malloc(5)
-	return utf32_to_str_no_malloc(code, buffer)
+	unsafe {
+		mut buffer := malloc(5)
+		return utf32_to_str_no_malloc(code, buffer)
+	}
 }
 
+[unsafe]
 pub fn utf32_to_str_no_malloc(code u32, buf voidptr) string {
 	icode := int(code) // Prevents doing casts everywhere
 	mut res := ''

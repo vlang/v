@@ -1,0 +1,3 @@
+vlib/v/parser/tests/unexpected_expr.vv:1:5: error: invalid expression: unexpected keyword `break`
+    1 | _ = break
+      |     ~~~~~

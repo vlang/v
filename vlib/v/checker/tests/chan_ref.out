@@ -1,5 +1,5 @@
 vlib/v/checker/tests/chan_ref.vv:10:8: error: cannot push non-reference `St` on `chan &St`
-    8 | fn f(ch chan &St, sem sync.Semaphore) {
+    8 | fn f(ch chan &St, mut sem sync.Semaphore) {
     9 |     w := St{}
    10 |     ch <- w
       |           ^

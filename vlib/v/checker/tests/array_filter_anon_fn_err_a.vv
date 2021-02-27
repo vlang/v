@@ -1,4 +1,0 @@
-fn main() {
-	a := [1,2,3,4].filter(fn(a int, b int) bool { return a > 0 })
-	println(a)
-}

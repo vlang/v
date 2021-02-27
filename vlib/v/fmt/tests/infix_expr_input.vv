@@ -1,0 +1,11 @@
+fn grouped_cond_single_line() {
+	// fmt tries to keep grouped conditions together...
+	_ := one_condition_before && another_condition && (inside_paren || is_kept_together || if_possible) && end_cond
+}
+
+fn unwrap_grouped_conds() {
+	// ...but sometimes they have to be splitted
+	_ := one_condition && before_condition && (conds_inside_paren || are_kept_together || if_possible || but_this_is_really_too_much || for_one_line)
+	_ := (also_inside_parens || just_as_above || but_this_is_also_more || than_a_single_line_could_fit) && end_cond
+	fields = fields.filter((it.typ in [string_type, int_type, bool_type] || c.table.types[int(it.typ)].kind == .struct_) && !it.attrs.contains('skip'))
+}

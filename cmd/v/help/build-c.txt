@@ -127,3 +127,8 @@ see also `v help build`.
 
    -show-c-output
       Prints the output, that your C compiler produced, while compiling your program.
+
+   -dump-c-flags file.txt
+      Write all C flags into `file.txt`, one flag per line.
+      If `file.txt` is `-`, then write the flags to stdout, one flag per line.
+

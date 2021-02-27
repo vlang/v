@@ -1,8 +1,19 @@
-fn ptr(a byte) {}
+fn u8(a byte) {}
 fn arr(a []int) {}
 fn fun(a fn(int)) {}
 
-v := 4
-ptr(&v)
-arr([5]!)
-fun(fn(i &int){})
+fn basic() {
+	v := 4
+	u8(&v)
+	arr([5]!)
+	fun(fn(i &int){})
+}
+
+struct S1 {
+}
+fn f(p &S1) {}
+
+fn ptr() {
+	v := 4
+	f(v)
+}

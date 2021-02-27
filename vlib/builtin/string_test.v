@@ -907,3 +907,29 @@ fn test_split_by_whitespace() {
 	assert '\n xyz \t abc   def'.split_by_whitespace() == ['xyz', 'abc', 'def']
 	assert ''.split_by_whitespace() == []
 }
+
+fn test_interpolation_after_quoted_variable_still_works() {
+	rr := 'abc'
+	tt := 'xyz'
+
+	// Basic interpolation, no internal quotes
+	yy := 'Replacing $rr with $tt'
+	assert yy == 'Replacing abc with xyz'
+
+	// Interpolation after quoted variable ending with 'r'quote
+	// that may be mistaken with the start of a raw string,
+	// ensure that it is not.
+	ss := 'Replacing "$rr" with "$tt"'
+	assert ss == 'Replacing "abc" with "xyz"'
+	zz := "Replacing '$rr' with '$tt'"
+	assert zz == "Replacing 'abc' with 'xyz'"
+
+	// Interpolation after quoted variable ending with 'c'quote
+	// may be mistaken with the start of a c string, so
+	// check it is not.
+	cc := 'abc'
+	ccc := "Replacing '$cc' with '$tt'"
+	assert ccc == "Replacing 'abc' with 'xyz'"
+	cccq := 'Replacing "$cc" with "$tt"'
+	assert cccq == 'Replacing "abc" with "xyz"'
+}

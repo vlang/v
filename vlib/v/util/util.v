@@ -20,7 +20,7 @@ pub const (
 )
 
 pub const (
-	external_module_dependencies_for_tool = {
+	external_module_dependencies_for_tool = map{
 		'vdoc': ['markdown']
 	}
 )
@@ -29,8 +29,11 @@ pub const (
 pub fn vhash() string {
 	mut buf := [50]byte{}
 	buf[0] = 0
-	unsafe { C.snprintf(charptr(buf), 50, '%s', C.V_COMMIT_HASH) }
-	return tos_clone(buf)
+	unsafe {
+		bp := &buf[0]
+		C.snprintf(charptr(bp), 50, '%s', C.V_COMMIT_HASH)
+		return tos_clone(bp)
+	}
 }
 
 pub fn full_hash() string {
@@ -95,8 +98,11 @@ pub fn githash(should_get_from_filesystem bool) string {
 	}
 	mut buf := [50]byte{}
 	buf[0] = 0
-	unsafe { C.snprintf(charptr(buf), 50, '%s', C.V_CURRENT_COMMIT_HASH) }
-	return tos_clone(buf)
+	unsafe {
+		bp := &buf[0]
+		C.snprintf(charptr(bp), 50, '%s', C.V_CURRENT_COMMIT_HASH)
+		return tos_clone(bp)
+	}
 }
 
 //
@@ -118,6 +124,49 @@ pub fn resolve_vroot(str string, dir string) ?string {
 	}
 	vmod_path := vmod_file_location.vmod_folder
 	return str.replace('@VROOT', os.real_path(vmod_path))
+}
+
+// resolve_env_value replaces all occurrences of `$env('ENV_VAR_NAME')`
+// in `str` with the value of the env variable `$ENV_VAR_NAME`.
+pub fn resolve_env_value(str string, check_for_presence bool) ?string {
+	env_ident := "\$env('"
+	at := str.index(env_ident) or {
+		return error('no "$env_ident' + '...\')" could be found in "$str".')
+	}
+	mut ch := byte(`.`)
+	mut env_lit := ''
+	for i := at + env_ident.len; i < str.len && ch != `)`; i++ {
+		ch = byte(str[i])
+		if ch.is_letter() || ch.is_digit() || ch == `_` {
+			env_lit += ch.ascii_str()
+		} else {
+			if !(ch == `\'` || ch == `)`) {
+				if ch == `$` {
+					return error('cannot use string interpolation in compile time \$env() expression')
+				}
+				return error('invalid environment variable name in "$str", invalid character "$ch.ascii_str()"')
+			}
+		}
+	}
+	if env_lit == '' {
+		return error('supply an env variable name like HOME, PATH or USER')
+	}
+	mut env_value := ''
+	if check_for_presence {
+		env_value = os.environ()[env_lit] or {
+			return error('the environment variable "$env_lit" does not exist.')
+		}
+		if env_value == '' {
+			return error('the environment variable "$env_lit" is empty.')
+		}
+	} else {
+		env_value = os.getenv(env_lit)
+	}
+	rep := str.replace_once(env_ident + env_lit + "'" + ')', env_value)
+	if rep.contains(env_ident) {
+		return resolve_env_value(rep, check_for_presence)
+	}
+	return rep
 }
 
 // launch_tool - starts a V tool in a separate process, passing it the `args`.
@@ -168,6 +217,14 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 			check_module_is_installed(emodule, is_verbose) or { panic(err) }
 		}
 		mut compilation_command := '"$vexe" '
+		if tool_name in ['vself', 'vup', 'vdoctor', 'vsymlink'] {
+			// These tools will be called by users in cases where there
+			// is high chance of there being a problem somewhere. Thus
+			// it is better to always compile them with -g, so that in
+			// case these tools do crash/panic, their backtraces will have
+			// .v line numbers, to ease diagnostic in #bugs and issues.
+			compilation_command += ' -g '
+		}
 		compilation_command += '"$tool_source"'
 		if is_verbose {
 			println('Compiling $tool_name with: "$compilation_command"')
@@ -298,20 +355,12 @@ pub fn skip_bom(file_content string) string {
 
 [inline]
 pub fn imin(a int, b int) int {
-	return if a < b {
-		a
-	} else {
-		b
-	}
+	return if a < b { a } else { b }
 }
 
 [inline]
 pub fn imax(a int, b int) int {
-	return if a > b {
-		a
-	} else {
-		b
-	}
+	return if a > b { a } else { b }
 }
 
 pub fn replace_op(s string) string {
@@ -331,9 +380,6 @@ pub fn replace_op(s string) string {
 	} else {
 		suffix := match s {
 			'==' { '_eq' }
-			'!=' { '_ne' }
-			'<=' { '_le' }
-			'>=' { '_ge' }
 			else { '' }
 		}
 		return s[..s.len - 2] + suffix
@@ -465,7 +511,7 @@ pub fn prepare_tool_when_needed(source_name string) {
 	stool := os.join_path(vroot, 'cmd', 'tools', source_name)
 	tool_name, tool_exe := tool_source2name_and_exe(stool)
 	if should_recompile_tool(vexe, stool, tool_name, tool_exe) {
-		time.sleep_ms(1001) // TODO: remove this when we can get mtime with a better resolution
+		time.sleep(1001 * time.millisecond) // TODO: remove this when we can get mtime with a better resolution
 		recompile_file(vexe, stool)
 	}
 }

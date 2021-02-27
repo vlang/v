@@ -1,19 +1,28 @@
-vlib/v/checker/tests/fn_args.vv:6:5: error: cannot use `&int` as `byte` in argument 1 to `ptr`
-    4 |
-    5 | v := 4
-    6 | ptr(&v)
-      |     ~~
-    7 | arr([5]!)
-    8 | fun(fn(i &int){})
-vlib/v/checker/tests/fn_args.vv:7:5: error: cannot use `[1]int` as `[]int` in argument 1 to `arr`
-    5 | v := 4
-    6 | ptr(&v)
-    7 | arr([5]!)
-      |     ~~~~
-    8 | fun(fn(i &int){})
-vlib/v/checker/tests/fn_args.vv:8:5: error: cannot use `fn (&int)` as `fn (int)` in argument 1 to `fun`
-    6 | ptr(&v)
-    7 | arr([5]!)
-    8 | fun(fn(i &int){})
-      |     ~~~~~~~~~~~~
-details: ``'s expected fn argument: `` is NOT a pointer, but the passed fn argument: `i` is a pointer
+vlib/v/checker/tests/fn_args.vv:7:5: error: cannot use `&int` as `byte` in argument 1 to `u8`
+    5 | fn basic() {
+    6 |     v := 4
+    7 |     u8(&v)
+      |        ~~
+    8 |     arr([5]!)
+    9 |     fun(fn(i &int){})
+vlib/v/checker/tests/fn_args.vv:8:6: error: cannot use `[1]int` as `[]int` in argument 1 to `arr`
+    6 |     v := 4
+    7 |     u8(&v)
+    8 |     arr([5]!)
+      |         ~~~~
+    9 |     fun(fn(i &int){})
+   10 | }
+vlib/v/checker/tests/fn_args.vv:9:6: error: cannot use `fn (&int)` as `fn (int)` in argument 1 to `fun`
+    7 |     u8(&v)
+    8 |     arr([5]!)
+    9 |     fun(fn(i &int){})
+      |         ~~~~~~~~~~~~
+   10 | }
+   11 |
+Details: ``'s expected fn argument: `` is NOT a pointer, but the passed fn argument: `i` is a pointer
+vlib/v/checker/tests/fn_args.vv:18:4: error: cannot use `int` as `&S1` in argument 1 to `f`
+   16 | fn ptr() {
+   17 |     v := 4
+   18 |     f(v)
+      |       ^
+   19 | }

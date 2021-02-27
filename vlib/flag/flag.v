@@ -362,22 +362,21 @@ pub fn (fs FlagParser) usage() string {
 	if positive_min_arg || positive_max_arg || no_arguments {
 		if no_arguments {
 			use += 'This application does not expect any arguments\n\n'
-			goto end_of_arguments_handling
+		} else {
+			mut s := []string{}
+			if positive_min_arg {
+				s << 'at least $fs.min_free_args'
+			}
+			if positive_max_arg {
+				s << 'at most $fs.max_free_args'
+			}
+			if positive_min_arg && positive_max_arg && fs.min_free_args == fs.max_free_args {
+				s = ['exactly $fs.min_free_args']
+			}
+			sargs := s.join(' and ')
+			use += 'The arguments should be $sargs in number.\n\n'
 		}
-		mut s := []string{}
-		if positive_min_arg {
-			s << 'at least $fs.min_free_args'
-		}
-		if positive_max_arg {
-			s << 'at most $fs.max_free_args'
-		}
-		if positive_min_arg && positive_max_arg && fs.min_free_args == fs.max_free_args {
-			s = ['exactly $fs.min_free_args']
-		}
-		sargs := s.join(' and ')
-		use += 'The arguments should be $sargs in number.\n\n'
 	}
-	end_of_arguments_handling:
 	if fs.flags.len > 0 {
 		use += 'Options:\n'
 		for f in fs.flags {

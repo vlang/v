@@ -27,8 +27,7 @@ fn set_num(i int, mut n Num) {
 	println('Hi')
 	if i < 5 {
 		return
-	}
-	else {
+	} else {
 		n.val++
 	}
 }
@@ -60,15 +59,18 @@ fn test_defer_early_exit() {
 
 fn test_defer_option() {
 	mut ok := Num{0}
-	set_num_opt(mut ok) or {}
+	set_num_opt(mut ok) or { }
 	assert ok.val == 1
 }
 
 fn test_defer_with_anon_fn() {
-	mut f := &Num{val: 110}
+	mut f := &Num{
+		val: 110
+	}
 	defer {
 		assert f.add(1) == 111
 	}
+
 	go fn () {
 		defer {
 			println('deferred 1')
@@ -82,4 +84,20 @@ fn test_defer_with_anon_fn() {
 	}
 	x()
 	return
+}
+
+fn set_num_if(mut n Num, v int, cond bool) {
+	if cond {
+		defer {
+			n.val = v
+		}
+	}
+}
+
+fn test_defer_with_if() {
+	mut n := Num{0}
+	set_num_if(mut n, 10, true)
+	assert n.val == 10
+	set_num_if(mut n, 20, false)
+	assert n.val == 10
 }

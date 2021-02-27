@@ -1,0 +1,19 @@
+fn C.no() // untyped
+fn C.y1(int)
+fn C.ret()byte
+
+fn main() {
+	C.no(1) // allowed
+	C.y1()
+	C.y1(1) // ok
+	C.y1(1, 2)
+	C.ret() // ok
+	C.ret(1)
+	// avoid cgen whilst warning, later above should error
+	main()
+	C.af() // ok
+	C.af(3)
+}
+
+[trusted]
+fn C.af()int

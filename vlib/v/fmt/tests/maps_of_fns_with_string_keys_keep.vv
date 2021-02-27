@@ -1,0 +1,13 @@
+fn sqr(n int) int {
+	return n * n
+}
+
+fn main() {
+	fns := [sqr]
+	println(fns[0](10))
+	fns_map := map{
+		'sqr': sqr
+	}
+	println(fns_map['sqr'])
+	println(fns_map['sqr'](2))
+}

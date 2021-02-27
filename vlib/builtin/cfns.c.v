@@ -7,7 +7,8 @@ fn C.memcmp(byteptr, byteptr, int) int
 
 fn C.memmove(byteptr, byteptr, int) voidptr
 
-fn C.calloc(int) byteptr
+[trusted]
+fn C.calloc(int, int) byteptr
 
 fn C.malloc(int) byteptr
 
@@ -15,6 +16,7 @@ fn C.realloc(a byteptr, b int) byteptr
 
 fn C.free(ptr voidptr)
 
+[trusted]
 fn C.exit(code int)
 
 fn C.qsort(base voidptr, items size_t, item_size size_t, cb qsort_callback_func)
@@ -25,7 +27,8 @@ fn C.strlen(s charptr) int
 
 fn C.sscanf(byteptr, byteptr, ...byteptr) int
 
-fn C.isdigit(s byteptr) bool
+[trusted]
+fn C.isdigit(c int) bool
 
 // stdio.h
 fn C.popen(c charptr, t charptr) voidptr
@@ -48,16 +51,16 @@ fn C.printf(byteptr, ...byteptr) int
 
 fn C.puts(byteptr) int
 
-fn C.fputs(byteptr) int
+fn C.fputs(str byteptr, stream &C.FILE) int
 
-fn C.fflush(byteptr) int
+fn C.fflush(&C.FILE) int
 
 // TODO define args in these functions
 fn C.fseek() int
 
-fn C.fopen() voidptr
+fn C.fopen(filename charptr, mode charptr) &C.FILE
 
-fn C.fileno(voidptr) int
+fn C.fileno(&C.FILE) int
 
 fn C.fread(ptr voidptr, item_size size_t, items size_t, stream &C.FILE) size_t
 
@@ -70,7 +73,7 @@ fn C.pclose() int
 // process execution, os.process:
 fn C.getpid() int
 
-fn C.system() int
+fn C.system(cmd charptr) int
 
 fn C.posix_spawn(child_pid &int, path charptr, file_actions voidptr, attrp voidptr, argv &charptr, envp &charptr) int
 
@@ -78,6 +81,7 @@ fn C.posix_spawnp(child_pid &int, exefile charptr, file_actions voidptr, attrp v
 
 fn C.execve(cmd_path charptr, args voidptr, envs voidptr) int
 
+[trusted]
 fn C.fork() int
 
 fn C.wait(status &int) int
@@ -86,7 +90,7 @@ fn C.waitpid(pid int, status &int, options int) int
 
 fn C.kill(pid int, sig int) int
 
-fn C.setenv(charptr) int
+fn C.setenv(charptr, charptr, int) int
 
 fn C.unsetenv(charptr) int
 
@@ -100,7 +104,7 @@ fn C.chdir() int
 
 fn C.rewind() int
 
-fn C.stat(charptr) int
+fn C.stat(charptr, voidptr) int
 
 fn C.lstat() int
 
@@ -112,7 +116,7 @@ fn C.memset() int
 
 fn C.sigemptyset() int
 
-fn C.getcwd() int
+fn C.getcwd(buf charptr, size size_t) charptr
 
 fn C.signal(signal int, handlercb voidptr) voidptr
 
@@ -125,13 +129,19 @@ fn C.sleep(int) int
 
 fn C.usleep() int
 
-fn C.opendir() voidptr
+fn C.opendir(charptr) voidptr
 
 fn C.closedir() int
 
 fn C.mkdir() int
 
-fn C.srand() int
+// C.rand returns a pseudorandom integer from 0 (inclusive) to C.RAND_MAX (exclusive)
+[trusted]
+fn C.rand() int
+
+// C.srand seeds the internal PRNG with the given value.
+[trusted]
+fn C.srand(seed uint)
 
 fn C.atof() int
 
@@ -213,7 +223,7 @@ fn C.RemoveDirectory() int
 fn C.GetStdHandle(u32) voidptr
 
 // fn C.SetConsoleMode()
-fn C.SetConsoleMode(voidptr, u32)
+fn C.SetConsoleMode(voidptr, u32) int
 
 // fn C.GetConsoleMode() int
 fn C.GetConsoleMode(voidptr, &u32) int
@@ -253,7 +263,7 @@ fn C._waccess() int
 
 fn C._wremove() int
 
-fn C.ReadConsole() voidptr
+fn C.ReadConsole(in_input_handle voidptr, out_buffer voidptr, in_chars_to_read u32, out_read_chars &u32, in_input_control voidptr) bool
 
 fn C.WriteConsole() voidptr
 
@@ -264,6 +274,8 @@ fn C._wchdir()
 fn C._wgetcwd() int
 
 fn C._fullpath() int
+
+fn C.GetFullPathName(voidptr, u32, voidptr, voidptr) u32
 
 fn C.GetCommandLine() voidptr
 

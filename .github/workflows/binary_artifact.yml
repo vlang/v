@@ -38,7 +38,40 @@ jobs:
       with:
         name: linux-binary
         path: ./v
-
+  build-linux-arm64:
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        compiler: [gcc]
+    env:
+      img: quay.io/pypa/manylinux2014_aarch64
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v1
+    - name: Set up QEMU
+      id: qemu
+      uses: docker/setup-qemu-action@v1
+    - name: Compile
+      env:
+        CC: ${{ matrix.compiler }}
+      run: |
+         docker run --platform=linux/arm64 --rm -v `pwd`:`pwd` -w `pwd` ${{ env.img }} /bin/bash -c "make -j4 && ./v -cc $CC -o v -prod cmd/v && ./v -prod cmd/tools/vup.v && ./v -prod cmd/tools/vdoctor.v"
+    - name: Create artifact
+      uses: actions/upload-artifact@v2
+      with:
+        name: linux_arm64
+        path: |
+          .
+          ./cmd/tools/vup
+          ./cmd/tools/vdoctor
+          !./.git
+          !./vc
+          !./v_old
+    - name: Create binary only artifact
+      uses: actions/upload-artifact@v2
+      with:
+        name: linux_arm64-binary
+        path: ./v
   build-macos:
     runs-on: macos-latest
     strategy:
@@ -90,7 +123,7 @@ jobs:
           ./cmd/tools/vdoctor.exe
           !./.git
           !./vc
-          !./v_old
+          !./v_old.exe
     - name: Create binary only artifact
       uses: actions/upload-artifact@v2
       with:
@@ -99,7 +132,7 @@ jobs:
 
   release:
     name: Create Github Release
-    needs: [build-linux, build-windows, build-macos]
+    needs: [build-linux-arm64, build-linux, build-windows, build-macos]
     runs-on: ubuntu-20.04
     steps:
     - name: Get short tag name
@@ -124,7 +157,7 @@ jobs:
     runs-on: ubuntu-20.04
     strategy:
       matrix:
-        version: [linux, macos, windows]
+        version: [linux_arm64, linux, macos, windows]
     steps:
     - uses: actions/checkout@v1
     - name: Fetch artifacts
@@ -144,6 +177,7 @@ jobs:
            chmod 755 cmd/tools/vup.exe || true
            chmod 755 cmd/tools/vdoctor || true
            chmod 755 cmd/tools/vdoctor.exe || true
+           rm -rf v_old v_old.exe
            cd ..
            zip -r9 --symlinks ../v_${{ matrix.version }}.zip v/*
            cd ..

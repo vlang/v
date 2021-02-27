@@ -3,6 +3,7 @@ module net
 #include <unistd.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/un.h>
 #include <sys/select.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -10,6 +11,7 @@ module net
 #include <errno.h>
 #include <fcntl.h>
 #flag solaris -lsocket
+
 fn error_code() int {
 	return C.errno
 }

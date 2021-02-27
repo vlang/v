@@ -300,7 +300,7 @@ fn (mut b Buffer) free() {
 		eprintln(@MOD + '.' + @STRUCT + '::' + @FN)
 	}
 	for line in b.lines {
-		line.free()
+		unsafe {line.free()}
 	}
 	unsafe { b.lines.free() }
 }
@@ -505,6 +505,9 @@ fn event(e &tui.Event, x voidptr) {
 			.escape {
 				exit(0)
 			}
+			.enter {
+				buffer.put('\n')
+			}
 			.backspace {
 				buffer.del(-1)
 			}
@@ -512,17 +515,17 @@ fn event(e &tui.Event, x voidptr) {
 				buffer.del(1)
 			}
 			.left {
-				if e.modifiers == tui.ctrl {
+				if e.modifiers == .ctrl {
 					buffer.move_to_word(.left)
-				} else if e.modifiers == 0 {
+				} else if e.modifiers.is_empty() {
 					buffer.move_cursor(1, .left)
 				}
 				a.magnet_x = buffer.cursor.pos_x
 			}
 			.right {
-				if e.modifiers == tui.ctrl {
+				if e.modifiers == .ctrl {
 					buffer.move_to_word(.right)
-				} else if e.modifiers == 0 {
+				} else if e.modifiers.is_empty() {
 					buffer.move_cursor(1, .right)
 				}
 				a.magnet_x = buffer.cursor.pos_x
@@ -548,16 +551,16 @@ fn event(e &tui.Event, x voidptr) {
 				buffer.move_cursor(1, .end)
 			}
 			48...57, 97...122 { // 0-9a-zA-Z
-				if e.modifiers == tui.ctrl {
+				if e.modifiers == .ctrl {
 					if e.code == .s {
 						a.save()
 					}
-				} else if e.modifiers in [tui.shift, 0] {
-					buffer.put(e.ascii.str())
+				} else if !(e.modifiers.has(.ctrl | .alt) || e.code == .null) {
+					buffer.put(e.ascii.ascii_str())
 				}
 			}
 			else {
-				if e.modifiers == tui.alt {
+				if e.modifiers == .alt {
 					if e.code == .comma {
 						a.visit_prev_file()
 						return

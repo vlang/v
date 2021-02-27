@@ -3,7 +3,6 @@ import gx
 import math
 import os
 import rand
-import sokol.sapp
 import time
 
 struct App {
@@ -66,7 +65,7 @@ const (
 				gx.rgb(237, 204, 97), /* 256 */
 				gx.rgb(237, 200, 80), /* 512 */
 				gx.rgb(237, 197, 63), /* 1024 */
-				gx.rgb(237, 194, 46), /* 2048 */
+				gx.rgb(237, 194, 46),
 			]
 		},
 		&Theme{
@@ -253,10 +252,8 @@ fn (b Board) hmirror() Board {
 	return res
 }
 
-// GCC optimization bug; inlining fails when compiled with -prod
-[no_inline]
 fn (t TileLine) to_left() TileLine {
-	right_border_idx := 5
+	right_border_idx := 4
 	mut res := t
 	mut zeros := 0
 	mut nonzeros := 0
@@ -348,11 +345,10 @@ fn (mut b Board) is_game_over() bool {
 				// there are remaining zeros
 				return false
 			}
-			if (x > 0 && fidx == b.field[y][x - 1]) ||
-				(x < 4 - 1 && fidx == b.field[y][x + 1]) ||
-				(y > 0 && fidx == b.field[y - 1][x]) ||
-				(y < 4 - 1 && fidx == b.field[y + 1][x])
-			{
+			if (x > 0 && fidx == b.field[y][x - 1])
+				|| (x < 4 - 1 && fidx == b.field[y][x + 1])
+				|| (y > 0 && fidx == b.field[y - 1][x])
+				|| (y < 4 - 1 && fidx == b.field[y + 1][x]) {
 				// there are remaining merges
 				return false
 			}
@@ -530,48 +526,52 @@ fn (mut app App) ai_move() {
 
 fn (app &App) label_format(kind LabelKind) gx.TextCfg {
 	match kind {
-		.points { return {
-				color: if app.state in [.over, .victory] {
-					gx.white
-				} else {
-					app.theme.text_color
-				}
+		.points {
+			return {
+				color: if app.state in [.over, .victory] { gx.white } else { app.theme.text_color }
 				align: .left
 				size: app.ui.font_size / 2
-			} }
-		.moves { return {
-				color: if app.state in [.over, .victory] {
-					gx.white
-				} else {
-					app.theme.text_color
-				}
+			}
+		}
+		.moves {
+			return {
+				color: if app.state in [.over, .victory] { gx.white } else { app.theme.text_color }
 				align: .right
 				size: app.ui.font_size / 2
-			} }
-		.tile { return {
+			}
+		}
+		.tile {
+			return {
 				color: app.theme.text_color
 				align: .center
 				vertical_align: .middle
 				size: app.ui.font_size
-			} }
-		.victory { return {
+			}
+		}
+		.victory {
+			return {
 				color: app.theme.victory_color
 				align: .center
 				vertical_align: .middle
 				size: app.ui.font_size * 2
-			} }
-		.game_over { return {
+			}
+		}
+		.game_over {
+			return {
 				color: app.theme.game_over_color
 				align: .center
 				vertical_align: .middle
 				size: app.ui.font_size * 2
-			} }
-		.score_end { return {
+			}
+		}
+		.score_end {
+			return {
 				color: gx.white
 				align: .center
 				vertical_align: .middle
 				size: app.ui.font_size * 3 / 4
-			} }
+			}
+		}
 	}
 }
 
@@ -584,12 +584,13 @@ fn (mut app App) set_theme(idx int) {
 }
 
 fn (mut app App) resize() {
-	mut s := sapp.dpi_scale()
+	mut s := gg.dpi_scale()
 	if s == 0.0 {
 		s = 1.0
 	}
-	w := int(sapp.width() / s)
-	h := int(sapp.height() / s)
+	window_size := gg.window_size()
+	w := window_size.width
+	h := window_size.height
 	m := f32(min(w, h))
 	app.ui.dpi_scale = s
 	app.ui.window_width = w
@@ -726,11 +727,11 @@ fn (mut app App) handle_tap() {
 	avgx, avgy := avg(s.pos.x, e.pos.x), avg(s.pos.y, e.pos.y)
 	// TODO: Replace "touch spots" with actual buttons
 	// bottom left -> change theme
-	if avgx < 200 && h - avgy < 200 {
+	if avgx < 50 && h - avgy < 50 {
 		app.next_theme()
 	}
 	// bottom right -> change tile format
-	if w - avgx < 200 && h - avgy < 200 {
+	if w - avgx < 50 && h - avgy < 50 {
 		app.next_tile_format()
 	}
 	if app.state == .victory {
@@ -764,7 +765,7 @@ fn (mut app App) handle_swipe() {
 	dmax := if max(adx, ady) > 0 { max(adx, ady) } else { 1 }
 	tdiff := int(e.time.unix_time_milli() - s.time.unix_time_milli())
 	// TODO: make this calculation more accurate (don't use arbitrary numbers)
-	min_swipe_distance := int(math.sqrt(min(w, h) * tdiff / 60)) + 20
+	min_swipe_distance := int(math.sqrt(min(w, h) * tdiff / 100)) + 20
 	if dmax < min_swipe_distance {
 		return
 	}
@@ -790,11 +791,7 @@ fn (mut app App) handle_swipe() {
 
 [inline]
 fn (mut app App) next_theme() {
-	app.set_theme(if app.theme_idx == themes.len - 1 {
-		0
-	} else {
-		app.theme_idx + 1
-	})
+	app.set_theme(if app.theme_idx == themes.len - 1 { 0 } else { app.theme_idx + 1 })
 }
 
 [inline]
@@ -815,7 +812,7 @@ fn (mut app App) undo() {
 	}
 }
 
-fn (mut app App) on_key_down(key sapp.KeyCode) {
+fn (mut app App) on_key_down(key gg.KeyCode) {
 	// these keys are independent from the game state:
 	match key {
 		.a { app.is_ai_mode = !app.is_ai_mode }
@@ -843,7 +840,7 @@ fn (mut app App) on_key_down(key sapp.KeyCode) {
 	}
 }
 
-fn on_event(e &sapp.Event, mut app App) {
+fn on_event(e &gg.Event, mut app App) {
 	match e.typ {
 		.key_down {
 			app.on_key_down(e.key_code)
@@ -957,7 +954,7 @@ fn main() {
 		bg_color: app.theme.bg_color
 		width: default_window_width
 		height: default_window_height
-		sample_count: 8 // higher quality curves
+		sample_count: 4 // higher quality curves
 		create_window: true
 		window_title: window_title_
 		frame_fn: frame

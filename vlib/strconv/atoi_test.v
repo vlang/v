@@ -17,11 +17,13 @@ fn test_atoi() {
 		assert false
 	}
 	if x := strconv.atoi('str') {
+		println(x)
 		assert false
 	} else {
 		assert true
 	}
 	if x := strconv.atoi('') {
+		println(x)
 		assert false
 	} else {
 		assert true

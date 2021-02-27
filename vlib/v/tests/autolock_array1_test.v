@@ -30,7 +30,7 @@ fn test_autolocked_array() {
 		if finished_threads == 2 {
 			break
 		}
-		time.sleep_ms(100)
+		time.sleep(100 * time.millisecond)
 	}
 	// create histogram of results
 	mut result := [0, 0, 0, 0]

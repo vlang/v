@@ -87,12 +87,14 @@ fn test_format_ss() {
 }
 
 fn test_format_ss_milli() {
-	assert '11.07.1980 21:23:42.123' == time_to_test.get_fmt_str(.dot, .hhmmss24_milli, .ddmmyyyy)
+	assert '11.07.1980 21:23:42.123' == time_to_test.get_fmt_str(.dot, .hhmmss24_milli,
+		.ddmmyyyy)
 	assert '1980-07-11 21:23:42.123' == time_to_test.format_ss_milli()
 }
 
 fn test_format_ss_micro() {
-	assert '11.07.1980 21:23:42.123456' == time_to_test.get_fmt_str(.dot, .hhmmss24_micro, .ddmmyyyy)
+	assert '11.07.1980 21:23:42.123456' == time_to_test.get_fmt_str(.dot, .hhmmss24_micro,
+		.ddmmyyyy)
 	assert '1980-07-11 21:23:42.123456' == time_to_test.format_ss_micro()
 }
 
@@ -206,7 +208,7 @@ fn test_utc() {
 
 fn test_unix_time() {
 	t1 := time.utc()
-	time.sleep_ms(50)
+	time.sleep(50 * time.millisecond)
 	t2 := time.utc()
 	ut1 := t1.unix_time()
 	ut2 := t2.unix_time()
