@@ -66,6 +66,7 @@ mut:
 	is_c_call           bool // e.g. `C.printf("v")`
 	is_assign_lhs       bool // inside left part of assign expr (for array_set(), etc)
 	is_assign_rhs       bool // inside right part of assign after `=` (val expr)
+	is_void_expr_stmt   bool // ExprStmt whos result is discarded
 	is_array_set        bool
 	is_amp              bool // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&byte(0)` etc
 	is_sql              bool // Inside `sql db{}` statement, generating sql instead of C (e.g. `and` instead of `&&` etc)
@@ -201,6 +202,7 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 		indent: -1
 		module_built: module_built
 		timers: util.new_timers(timers_should_print)
+		is_assign_rhs: true
 	}
 	g.timers.start('cgen init')
 	for mod in g.table.modules {
@@ -1076,7 +1078,10 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			// if af {
 			// g.autofree_call_pregen(node.expr as ast.CallExpr)
 			// }
+			old_is_void_expr_stmt := g.is_void_expr_stmt
+			g.is_void_expr_stmt = !node.is_expr
 			g.expr(node.expr)
+			g.is_void_expr_stmt = old_is_void_expr_stmt
 			// if af {
 			// g.autofree_call_postgen()
 			// }
@@ -1760,9 +1765,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			mr_var_name := 'mr_$assign_stmt.pos.pos'
 			mr_styp := g.typ(return_type)
 			g.write('$mr_styp $mr_var_name = ')
-			g.is_assign_rhs = true
+			// g.is_assign_rhs = true
 			g.expr(assign_stmt.right[0])
-			g.is_assign_rhs = false
+			// g.is_assign_rhs = false
 			g.writeln(';')
 			for i, lx in assign_stmt.left {
 				if lx is ast.Ident {
@@ -2002,7 +2007,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					g.write(' = /*f*/string_add(')
 				}
 				g.is_assign_lhs = false
-				g.is_assign_rhs = true
+				// g.is_assign_rhs = true
 				str_add = true
 			}
 			// Assignment Operator Overloading
@@ -2055,7 +2060,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				g.expr(left)
 			}
 			g.is_assign_lhs = false
-			g.is_assign_rhs = true
+			// g.is_assign_rhs = true
 			if is_fixed_array_copy {
 				if is_decl {
 					g.writeln(';')
@@ -2082,7 +2087,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					g.write('*($styp*)')
 					g.write(tmp_opt + '.data/*FFz*/')
 					g.right_is_opt = false
-					g.is_assign_rhs = false
+					// g.is_assign_rhs = false
 					if g.inside_ternary == 0 && !assign_stmt.is_simple {
 						g.writeln(';')
 					}
@@ -2146,7 +2151,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			g.is_shared = false
 		}
 		g.right_is_opt = false
-		g.is_assign_rhs = false
+		// g.is_assign_rhs = false
 		if g.inside_ternary == 0 && (assign_stmt.left.len > 1 || !assign_stmt.is_simple) {
 			g.writeln(';')
 		}
@@ -2470,6 +2475,14 @@ fn (mut g Gen) map_fn_ptrs(key_typ table.TypeSymbol) (string, string, string, st
 
 fn (mut g Gen) expr(node ast.Expr) {
 	// println('cgen expr() line_nr=$node.pos.line_nr')
+	old_is_assign_rhs := g.is_assign_rhs
+	old_is_void_expr_stmt := g.is_void_expr_stmt
+	if g.is_void_expr_stmt {
+		g.is_assign_rhs = false
+		g.is_void_expr_stmt = false
+	} else {
+		g.is_assign_rhs = true
+	}
 	// NB: please keep the type names in the match here in alphabetical order:
 	match mut node {
 		ast.AnonFn {
@@ -2833,6 +2846,8 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.expr(node.expr)
 		}
 	}
+	g.is_assign_rhs = old_is_assign_rhs
+	g.is_void_expr_stmt = old_is_void_expr_stmt
 }
 
 // T.name, typeof(expr).name
@@ -4717,11 +4732,15 @@ fn (mut g Gen) return_statement(node ast.Return) {
 	} else if node.exprs.len >= 1 {
 		// normal return
 		return_sym := g.table.get_type_symbol(node.types[0])
-		// `return opt_ok(expr)` for functions that expect an optional
-		mut expr_type_is_opt := node.types[0].has_flag(.optional)
 		expr0 := node.exprs[0]
-		if expr0 is ast.CallExpr {
-			expr_type_is_opt = expr0.return_type.has_flag(.optional)
+		// `return opt_ok(expr)` for functions that expect an optional
+		expr_type_is_opt := match expr0 {
+			ast.CallExpr {
+				expr0.return_type.has_flag(.optional) && expr0.or_block.kind == .absent
+			}
+			else {
+				node.types[0].has_flag(.optional)
+			}
 		}
 		if fn_return_is_optional && !expr_type_is_opt && return_sym.name != 'Option' {
 			styp := g.base_type(g.fn_decl.return_type)
@@ -4756,7 +4775,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			if node.exprs[0] !is ast.Ident {
 				tmp = g.new_tmp_var()
 				g.write(g.typ(g.fn_decl.return_type))
-				g.write(' ')
+				g.write(' /*zzz*/ ')
 				g.write(tmp)
 				g.write(' = ')
 			} else {
@@ -4765,6 +4784,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		} else {
 			g.write('return ')
 		}
+		g.write('/* ppppp*/')
 		g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
 		if free {
 			expr := node.exprs[0]

@@ -424,10 +424,11 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	// if gen_or && g.pref.autofree && g.inside_return {
 	if gen_or && g.inside_return {
 		// TODO optional return af hack (tmp_count gets increased in .return_statement())
-		g.tmp_count--
+		//g.tmp_count--
 	}
 	tmp_opt := if gen_or { g.new_tmp_var() } else { '' }
-	if gen_or && !g.inside_return {
+	//&& !g.inside_return
+	if gen_or {
 		// if is_gen_or_and_assign_rhs {
 		styp := g.typ(node.return_type.set_flag(.optional))
 		g.write('$styp $tmp_opt = ')
@@ -455,7 +456,9 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			} else if g.table.get_type_symbol(node.return_type).kind == .multi_return {
 				g.write('\n $cur_line $tmp_opt /*U*/')
 			} else {
-				g.write('\n $cur_line *($unwrapped_styp*)${tmp_opt}.data')
+				if /* !g.inside_return && */ !g.inside_const {
+					g.write('\n $cur_line /*bbb*/ *($unwrapped_styp*)${tmp_opt}.data')
+				}
 			}
 			// g.write('\n /*call_expr cur_line:*/ $cur_line /*C*/ $tmp_opt /*end*/')
 			// g.insert_before_stmt('\n /* VVV */ $tmp_opt')
