@@ -49,7 +49,7 @@ pub fn get_uchar(s string, index int) int {
 	mut res := 0
 	mut ch_len := 0
 	if s.len > 0 {
-		ch_len = char_len(s[index])
+		ch_len = utf8_char_len(s[index])
 
 		if ch_len == 1 {
 			return u16(s[index])
@@ -170,7 +170,7 @@ fn up_low(s string, upper_flag bool) string {
 	mut str_res := unsafe {malloc(s.len + 1)}
 
 	for {
-		ch_len := char_len(s[index])
+		ch_len := utf8_char_len(s[index])
 
 		if ch_len == 1 {
 			if upper_flag==true {
