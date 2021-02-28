@@ -47,9 +47,7 @@ pub fn new_cache_manager(opts []string) CacheManager {
 		|It will be recreated the next time you compile something with V.
 		|You can change its location with the VCACHE environment variable.
 		'.strip_margin()
-		os.write_file(os.join_path(vcache_basepath, 'README.md'), readme_content) or {
-			panic(err)
-		}
+		os.write_file(os.join_path(vcache_basepath, 'README.md'), readme_content) or { panic(err) }
 	}
 	original_vopts := opts.join('|')
 	return CacheManager{

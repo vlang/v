@@ -175,9 +175,7 @@ fn test_http_client_json_post() {
 		age: 123
 	}
 	json_for_ouser := json.encode(ouser)
-	mut x := http.post_json('http://127.0.0.1:$sport/json_echo', json_for_ouser) or {
-		panic(err)
-	}
+	mut x := http.post_json('http://127.0.0.1:$sport/json_echo', json_for_ouser) or { panic(err) }
 	$if debug_net_socket_client ? {
 		eprintln('/json_echo endpoint response: $x')
 	}
@@ -208,7 +206,7 @@ fn test_http_client_shutdown_does_not_work_without_a_cookie() {
 fn testsuite_end() {
 	// This test is guaranteed to be called last.
 	// It sends a request to the server to shutdown.
-	x := http.fetch('http://127.0.0.1:$sport/shutdown',
+	x := http.fetch('http://127.0.0.1:$sport/shutdown', 
 		method: .get
 		cookies: map{
 			'skey': 'superman'
