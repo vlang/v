@@ -5532,11 +5532,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 	if is_none_ok {
 		g.writeln('if (${cvar_name}.state == 2) {')
 	} else {
-<<<<<<< HEAD
-		g.writeln('if (!${cvar_name}.ok) { /*or block*/ ')
-=======
-		g.writeln('if (${cvar_name}.state != 0) {')
->>>>>>> 824df12c2 (all: migrate to the new (temporary) Options)
+		g.writeln('if (${cvar_name}.state != 0) { /*or block*/ ')
 	}
 	if or_block.kind == .block {
 		if g.inside_or_block {
