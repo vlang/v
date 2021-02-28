@@ -1765,9 +1765,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			mr_var_name := 'mr_$assign_stmt.pos.pos'
 			mr_styp := g.typ(return_type)
 			g.write('$mr_styp $mr_var_name = ')
-			// g.is_assign_rhs = true
 			g.expr(assign_stmt.right[0])
-			// g.is_assign_rhs = false
 			g.writeln(';')
 			for i, lx in assign_stmt.left {
 				if lx is ast.Ident {
@@ -2007,7 +2005,6 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					g.write(' = /*f*/string_add(')
 				}
 				g.is_assign_lhs = false
-				// g.is_assign_rhs = true
 				str_add = true
 			}
 			// Assignment Operator Overloading
@@ -2060,7 +2057,6 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				g.expr(left)
 			}
 			g.is_assign_lhs = false
-			// g.is_assign_rhs = true
 			if is_fixed_array_copy {
 				if is_decl {
 					g.writeln(';')
@@ -2087,7 +2083,6 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					g.write('*($styp*)')
 					g.write(tmp_opt + '.data/*FFz*/')
 					g.right_is_opt = false
-					// g.is_assign_rhs = false
 					if g.inside_ternary == 0 && !assign_stmt.is_simple {
 						g.writeln(';')
 					}
@@ -2151,7 +2146,6 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			g.is_shared = false
 		}
 		g.right_is_opt = false
-		// g.is_assign_rhs = false
 		if g.inside_ternary == 0 && (assign_stmt.left.len > 1 || !assign_stmt.is_simple) {
 			g.writeln(';')
 		}
@@ -4775,7 +4769,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			if node.exprs[0] !is ast.Ident {
 				tmp = g.new_tmp_var()
 				g.write(g.typ(g.fn_decl.return_type))
-				g.write(' /*zzz*/ ')
+				g.write(' ')
 				g.write(tmp)
 				g.write(' = ')
 			} else {
@@ -4784,7 +4778,6 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		} else {
 			g.write('return ')
 		}
-		g.write('/* ppppp*/')
 		g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
 		if free {
 			expr := node.exprs[0]
