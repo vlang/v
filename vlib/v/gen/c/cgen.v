@@ -65,7 +65,7 @@ mut:
 	tmp_count2          int  // a separate tmp var counter for autofree fn calls
 	is_c_call           bool // e.g. `C.printf("v")`
 	is_assign_lhs       bool // inside left part of assign expr (for array_set(), etc)
-	is_assign_rhs       bool // inside right part of assign after `=` (val expr)
+	discard_or_result   bool // do not safe last ExprStmt of `or` block in tmp variable to defer ongoing expr usage
 	is_void_expr_stmt   bool // ExprStmt whos result is discarded
 	is_array_set        bool
 	is_amp              bool // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&byte(0)` etc
@@ -202,7 +202,6 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 		indent: -1
 		module_built: module_built
 		timers: util.new_timers(timers_should_print)
-		is_assign_rhs: true
 	}
 	g.timers.start('cgen init')
 	for mod in g.table.modules {
@@ -2469,13 +2468,13 @@ fn (mut g Gen) map_fn_ptrs(key_typ table.TypeSymbol) (string, string, string, st
 
 fn (mut g Gen) expr(node ast.Expr) {
 	// println('cgen expr() line_nr=$node.pos.line_nr')
-	old_is_assign_rhs := g.is_assign_rhs
+	old_discard_or_result := g.discard_or_result
 	old_is_void_expr_stmt := g.is_void_expr_stmt
 	if g.is_void_expr_stmt {
-		g.is_assign_rhs = false
+		g.discard_or_result = true
 		g.is_void_expr_stmt = false
 	} else {
-		g.is_assign_rhs = true
+		g.discard_or_result = false
 	}
 	// NB: please keep the type names in the match here in alphabetical order:
 	match mut node {
@@ -2742,7 +2741,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 				right_sym := g.table.get_type_symbol(node.right_type)
 				mut right_inf := right_sym.info as table.Chan
 				elem_type := right_inf.elem_type
-				is_gen_or_and_assign_rhs := gen_or && g.is_assign_rhs
+				is_gen_or_and_assign_rhs := gen_or && !g.discard_or_result
 				cur_line := if is_gen_or_and_assign_rhs {
 					line := g.go_before_stmt(0)
 					g.out.write_string(c.tabs[g.indent])
@@ -2840,7 +2839,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.expr(node.expr)
 		}
 	}
-	g.is_assign_rhs = old_is_assign_rhs
+	g.discard_or_result = old_discard_or_result
 	g.is_void_expr_stmt = old_is_void_expr_stmt
 }
 
@@ -4332,7 +4331,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					}
 					needs_clone := info.elem_type == table.string_type_idx && g.is_autofree
 						&& !g.is_assign_lhs
-					is_gen_or_and_assign_rhs := gen_or && g.is_assign_rhs
+					is_gen_or_and_assign_rhs := gen_or && !g.discard_or_result
 					cur_line := if is_gen_or_and_assign_rhs {
 						line := g.go_before_stmt(0)
 						g.out.write_string(c.tabs[g.indent])
@@ -4506,7 +4505,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					g.write('}, &($elem_type_str[]){ $zero }))')
 				} else {
 					zero := g.type_default(info.value_type)
-					is_gen_or_and_assign_rhs := gen_or && g.is_assign_rhs
+					is_gen_or_and_assign_rhs := gen_or && !g.discard_or_result
 					cur_line := if is_gen_or_and_assign_rhs {
 						line := g.go_before_stmt(0)
 						g.out.write_string(c.tabs[g.indent])

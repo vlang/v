@@ -410,7 +410,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		g.inside_call = false
 	}
 	gen_or := node.or_block.kind != .absent // && !g.is_autofree
-	is_gen_or_and_assign_rhs := gen_or && g.is_assign_rhs
+	is_gen_or_and_assign_rhs := gen_or && !g.discard_or_result
 	cur_line := if is_gen_or_and_assign_rhs { // && !g.is_autofree {
 		// `x := foo() or { ...}`
 		// cut everything that has been generated to prepend optional variable creation
