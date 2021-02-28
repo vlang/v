@@ -175,7 +175,9 @@ fn test_http_client_json_post() {
 		age: 123
 	}
 	json_for_ouser := json.encode(ouser)
-	mut x := http.post_json('http://127.0.0.1:$sport/json_echo', json_for_ouser) or { panic(err.msg) }
+	mut x := http.post_json('http://127.0.0.1:$sport/json_echo', json_for_ouser) or {
+		panic(err.msg)
+	}
 	$if debug_net_socket_client ? {
 		eprintln('/json_echo endpoint response: $x')
 	}

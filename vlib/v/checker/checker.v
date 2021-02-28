@@ -3519,7 +3519,9 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			}
 		}
 		// println('adding flag "$flag"')
-		c.table.parse_cflag(flag, c.mod, c.pref.compile_defines_all) or { c.error(err.msg, node.pos) }
+		c.table.parse_cflag(flag, c.mod, c.pref.compile_defines_all) or {
+			c.error(err.msg, node.pos)
+		}
 	} else {
 		if node.kind != 'define' {
 			c.error('expected `#define`, `#flag`, `#include` or `#pkgconfig` not $node.val',
