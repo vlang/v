@@ -26,7 +26,7 @@ pub fn temp_file(tfo TempFileOptions) ?(os.File, string) {
 	}
 	d = d.trim_right(os.path_separator)
 	mut rng := rand.new_default(rand.PRNGConfigStruct{})
-	prefix, suffix := prefix_and_suffix(tfo.pattern) or { return error(@FN + ' ' + err) }
+	prefix, suffix := prefix_and_suffix(tfo.pattern) or { return error(@FN + ' ' + err.msg) }
 	for retry := 0; retry < retries; retry++ {
 		path := os.join_path(d, prefix + random_number(mut rng) + suffix)
 		mut mode := 'rw+'
@@ -62,7 +62,7 @@ pub fn temp_dir(tdo TempFileOptions) ?string {
 	}
 	d = d.trim_right(os.path_separator)
 	mut rng := rand.new_default(rand.PRNGConfigStruct{})
-	prefix, suffix := prefix_and_suffix(tdo.pattern) or { return error(@FN + ' ' + err) }
+	prefix, suffix := prefix_and_suffix(tdo.pattern) or { return error(@FN + ' ' + err.msg) }
 	for retry := 0; retry < retries; retry++ {
 		path := os.join_path(d, prefix + random_number(mut rng) + suffix)
 		os.mkdir_all(path) or {

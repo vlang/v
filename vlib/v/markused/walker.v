@@ -233,7 +233,7 @@ fn (mut w Walker) expr(node ast.Expr) {
 			}
 		}
 		ast.None {
-			w.mark_fn_as_used('opt_none')
+			w.mark_fn_as_used('opt_none2')
 		}
 		ast.ParExpr {
 			w.expr(node.expr)

@@ -51,7 +51,7 @@ fn test_multiple_ret() {
 	// none case
 	wrapper1 := fn()(string, string){
 		res2_1, res2_2 := split_to_two("") or {
-			assert err == ''
+			assert err.msg == ''
 			return 'replaced', 'val'
 		}
 		return res2_1, res2_2
@@ -63,7 +63,7 @@ fn test_multiple_ret() {
 	// error case
 	wrapper2 := fn()(string, string){
 		res3_1, res3_2 := split_to_two('fishhouse') or {
-			assert err == 'error'
+			assert err.msg == 'error'
 			return 'replaced', 'val'
 		}
 		return res3_1, res3_2

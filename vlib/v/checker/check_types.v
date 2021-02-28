@@ -62,6 +62,10 @@ pub fn (mut c Checker) check_basic(got table.Type, expected table.Type) bool {
 	if got_sym.kind == .function && exp_sym.kind == .function {
 		return c.check_matching_function_symbols(got_sym, exp_sym)
 	}
+	// allow using Error as a string for now (avoid a breaking change)
+	if got == table.error_type_idx && expected == table.string_type_idx {
+		return true
+	}
 	return false
 }
 

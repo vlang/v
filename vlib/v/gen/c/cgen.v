@@ -549,6 +549,9 @@ fn (mut g Gen) base_type(t table.Type) string {
 	if nr_muls > 0 {
 		styp += strings.repeat(`*`, nr_muls)
 	}
+	// if styp == 'Option' {
+	// 	return 'Option2'
+	// }
 	return styp
 }
 
@@ -558,7 +561,7 @@ fn (mut g Gen) base_type(t table.Type) string {
 // if one location changes
 fn (mut g Gen) optional_type_name(t table.Type) (string, string) {
 	base := g.base_type(t)
-	mut styp := 'Option_$base'
+	mut styp := 'Option2_$base'
 	if t.is_ptr() {
 		styp = styp.replace('*', '_ptr')
 	}
@@ -566,14 +569,11 @@ fn (mut g Gen) optional_type_name(t table.Type) (string, string) {
 }
 
 fn (g &Gen) optional_type_text(styp string, base string) string {
-	x := styp // .replace('*', '_ptr')			// handle option ptrs
 	// replace void with something else
-	size := if base == 'void' { 'int' } else { base }
-	ret := 'struct $x {
-	bool ok;
-	bool is_none;
-	string v_error;
-	int ecode;
+	size := if base == 'void' { 'byte' } else { base }
+	ret := 'struct $styp {
+	byte state;
+	Error err;
 	byte data[sizeof($size)];
 }'
 	return ret
@@ -583,16 +583,6 @@ fn (mut g Gen) register_optional(t table.Type) string {
 	// g.typedefs2.writeln('typedef Option $x;')
 	styp, base := g.optional_type_name(t)
 	if styp !in g.optionals {
-		no_ptr := base.replace('*', '_ptr')
-		typ := if base == 'void' { 'void*' } else { base }
-		g.options_typedefs.writeln('typedef struct {
-			$typ  data;
-			string error;
-			int    ecode;
-			bool   ok;
-			bool   is_none;
-		} Option2_$no_ptr;')
-		// println(styp)
 		g.typedefs2.writeln('typedef struct $styp $styp;')
 		g.options.write_string(g.optional_type_text(styp, base))
 		g.options.writeln(';\n')
@@ -655,13 +645,12 @@ fn (mut g Gen) register_chan_pop_optional_call(opt_el_type string, styp string) 
 	if opt_el_type !in g.chan_pop_optionals {
 		g.chan_pop_optionals << opt_el_type
 		g.channel_definitions.writeln('
-static inline $opt_el_type __Option_${styp}_popval($styp ch) {
-	$opt_el_type _tmp;
+static inline $opt_el_type __Option2_${styp}_popval($styp ch) {
+	$opt_el_type _tmp = {0};
 	if (sync__Channel_try_pop_priv(ch, _tmp.data, false)) {
-		Option _tmp2 = v_error(_SLIT("channel closed"));
+		Option2 _tmp2 = error2(_SLIT("channel closed"));
 		return *($opt_el_type*)&_tmp2;
 	}
-	_tmp.ok = true; _tmp.is_none = false; _tmp.v_error = (string){.str=(byteptr)""}; _tmp.ecode = 0;
 	return _tmp;
 }')
 	}
@@ -671,13 +660,12 @@ fn (mut g Gen) register_chan_push_optional_call(el_type string, styp string) {
 	if styp !in g.chan_push_optionals {
 		g.chan_push_optionals << styp
 		g.channel_definitions.writeln('
-static inline Option_void __Option_${styp}_pushval($styp ch, $el_type e) {
+static inline Option2_void __Option2_${styp}_pushval($styp ch, $el_type e) {
 	if (sync__Channel_try_push_priv(ch, &e, false)) {
-		Option _tmp2 = v_error(_SLIT("channel closed"));
-		return *(Option_void*)&_tmp2;
+		Option2 _tmp2 = error2(_SLIT("channel closed"));
+		return *(Option2_void*)&_tmp2;
 	}
-	Option_void _tmp = {.ok = true, .is_none = false, .v_error = (string){.str=(byteptr)""}, .ecode = 0};
-	return _tmp;
+	return (Option2_void){0};
 }')
 	}
 }
@@ -1498,7 +1486,7 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 			g.write('&')
 		}
 		g.writeln('$t_expr);')
-		g.writeln('\tif (!${t}.ok) { break; }')
+		g.writeln('\tif (${t}.state != 0) break;')
 		val := if node.val_var in ['', '_'] { g.new_tmp_var() } else { node.val_var }
 		val_styp := g.typ(node.val_type)
 		g.writeln('\t$val_styp $val = *($val_styp*)${t}.data;')
@@ -1523,6 +1511,13 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw table.Type, expected_t
 	expected_is_ptr := expected_type.is_ptr()
 	got_is_ptr := got_type.is_ptr()
 	got_sym := g.table.get_type_symbol(got_type)
+	// allow using the new Error struct as a string, to avoid a breaking change
+	// TODO: temporary to allow people to migrate their code; remove soon
+	if (got_type == table.error_type_idx && expected_type == table.string_type_idx) || false {
+		g.expr(expr)
+		g.write('.msg')
+		return
+	}
 	if exp_sym.kind == .interface_ && got_type_raw.idx() != expected_type.idx()
 		&& !expected_type.has_flag(.optional) {
 		got_styp := g.cc_type(got_type)
@@ -1727,9 +1722,8 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	// `pos := s.index('x') or { return }`
 	// ==========>
 	// Option_int _t190 = string_index(s, _STR("x"));
-	// if (!_t190.ok) {
-	// string err = _t190.v_error;
-	// int errcode = _t190.ecode;
+	// if (_t190.state != 2) {
+	// Error err = _t190.err;
 	// return;
 	// }
 	// int pos = *(int*)_t190.data;
@@ -2702,7 +2696,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.map_init(node)
 		}
 		ast.None {
-			g.write('opt_none()')
+			g.write('(Option2){.state = 1, .err = (Error){.msg = _SLIT(""), .code = 0,}}')
 		}
 		ast.OrExpr {
 			// this should never appear here
@@ -2753,7 +2747,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 				if gen_or {
 					opt_elem_type := g.typ(elem_type.set_flag(.optional))
 					g.register_chan_pop_optional_call(opt_elem_type, styp)
-					g.write('$opt_elem_type $tmp_opt = __Option_${styp}_popval(')
+					g.write('$opt_elem_type $tmp_opt = __Option2_${styp}_popval(')
 				} else {
 					g.write('__${styp}_popval(')
 				}
@@ -3314,7 +3308,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		if gen_or {
 			elem_styp := g.typ(elem_type)
 			g.register_chan_push_optional_call(elem_styp, styp)
-			g.write('Option_void $tmp_opt = __Option_${styp}_pushval(')
+			g.write('Option2_void $tmp_opt = __Option2_${styp}_pushval(')
 		} else {
 			g.write('__${styp}_pushval(')
 		}
@@ -4128,8 +4122,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			// define `err` only for simple `if val := opt {...} else {`
 			if is_guard && guard_idx == i - 1 {
 				cvar_name := guard_vars[guard_idx]
-				g.writeln('\tstring err = ${cvar_name}.v_error;')
-				g.writeln('\tint errcode = ${cvar_name}.ecode;')
+				g.writeln('\tError err = ${cvar_name}.err;')
 			}
 		} else {
 			match branch.cond {
@@ -4137,7 +4130,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 					var_name := guard_vars[i]
 					g.write('if ($var_name = ')
 					g.expr(branch.cond.expr)
-					g.writeln(', ${var_name}.ok) {')
+					g.writeln(', ${var_name}.state == 0) {')
 					if branch.cond.var_name != '_' {
 						base_type := g.base_type(branch.cond.expr_type)
 						g.writeln('\t$base_type $branch.cond.var_name = *($base_type*)${var_name}.data;')
@@ -4400,10 +4393,9 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 						opt_elem_type := g.typ(elem_type.set_flag(.optional))
 						g.writeln('$opt_elem_type $tmp_opt = {0};')
 						g.writeln('if ($tmp_opt_ptr) {')
-						g.writeln('\t${tmp_opt}.ok = true; ${tmp_opt}.is_none = false; ${tmp_opt}.v_error = (string){.str=(byteptr)""}; ${tmp_opt}.ecode = 0;')
 						g.writeln('\t*(($elem_type_str*)&${tmp_opt}.data) = *(($elem_type_str*)$tmp_opt_ptr);')
 						g.writeln('} else {')
-						g.writeln('\t${tmp_opt}.ok = false; ${tmp_opt}.is_none = false; ${tmp_opt}.v_error = (string){.str=(byteptr)"array index out of range"}; ${tmp_opt}.ecode = 0;')
+						g.writeln('\t${tmp_opt}.state = 2; ${tmp_opt}.err = (Error){.msg=_SLIT("array index out of range"), .code=0};')
 						g.writeln('}')
 						g.or_block(tmp_opt, node.or_expr, elem_type)
 						g.write('\n$cur_line*($elem_type_str*)${tmp_opt}.data')
@@ -4561,10 +4553,10 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 						opt_elem_type := g.typ(elem_type.set_flag(.optional))
 						g.writeln('$opt_elem_type $tmp_opt = {0};')
 						g.writeln('if ($tmp_opt_ptr) {')
-						g.writeln('\t${tmp_opt}.ok = true; ${tmp_opt}.is_none = false; ${tmp_opt}.v_error = (string){.str=(byteptr)""}; ${tmp_opt}.ecode = 0;')
 						g.writeln('\t*(($elem_type_str*)&${tmp_opt}.data) = *(($elem_type_str*)$tmp_opt_ptr);')
 						g.writeln('} else {')
-						g.writeln('\t${tmp_opt}.ok = false; ${tmp_opt}.is_none = false; ${tmp_opt}.v_error = (string){.str=(byteptr)"array index out of range"}; ${tmp_opt}.ecode = 0;')
+						g.writeln('\t${tmp_opt}.state = 2; ${tmp_opt}.err = (Error){.msg=_SLIT("array index out of range"), .code=0};')
+
 						g.writeln('}')
 						g.or_block(tmp_opt, node.or_expr, elem_type)
 						g.write('\n$cur_line*($elem_type_str*)${tmp_opt}.data')
@@ -4614,10 +4606,8 @@ fn (mut g Gen) return_statement(node ast.Return) {
 	fn_return_is_optional := g.fn_decl.return_type.has_flag(.optional)
 	if node.exprs.len == 0 {
 		if fn_return_is_optional {
-			tmp := g.new_tmp_var()
 			styp := g.typ(g.fn_decl.return_type)
-			g.writeln('$styp $tmp = {.ok = true};')
-			g.writeln('return $tmp;')
+			g.writeln('return ($styp){0};')
 		} else {
 			if g.is_autofree && !g.is_builtin_mod {
 				g.writeln('// free before return (no values returned)')
@@ -4630,16 +4620,29 @@ fn (mut g Gen) return_statement(node ast.Return) {
 	// handle promoting none/error/function returning 'Option'
 	if fn_return_is_optional {
 		optional_none := node.exprs[0] is ast.None
-		mut is_regular_option := g.typ(node.types[0]) == 'Option'
+		ftyp := g.typ(node.types[0])
+		mut is_regular_option := ftyp in ['Option', 'Option2']
 		if optional_none || is_regular_option {
 			tmp := g.new_tmp_var()
-			g.write('Option $tmp = ')
+			g.write('Option2 $tmp = ')
 			g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
 			g.writeln(';')
 			styp := g.typ(g.fn_decl.return_type)
 			err_obj := g.new_tmp_var()
 			g.writeln('$styp $err_obj;')
-			g.writeln('memcpy(&$err_obj, &$tmp, sizeof(Option));')
+			g.writeln('memcpy(&$err_obj, &$tmp, sizeof(Option2));')
+			g.writeln('return $err_obj;')
+			return
+		} else if node.types[0] == table.error_type_idx {
+			// foo() or { return err }
+			tmp := g.new_tmp_var()
+			g.write('Option2 $tmp = (Option2){.state=2, .err=')
+			g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
+			g.writeln('};')
+			styp := g.typ(g.fn_decl.return_type)
+			err_obj := g.new_tmp_var()
+			g.writeln('$styp $err_obj;')
+			g.writeln('memcpy(&$err_obj, &$tmp, sizeof(Option2));')
 			g.writeln('return $err_obj;')
 			return
 		}
@@ -4657,7 +4660,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			opt_tmp = g.new_tmp_var()
 			g.writeln('$opt_type $opt_tmp;')
 			styp = g.base_type(g.fn_decl.return_type)
-			g.write('opt_ok2(&($styp/*X*/[]) { ')
+			g.write('opt_ok(&($styp/*X*/[]) { ')
 		} else {
 			g.write('return ')
 			styp = g.typ(g.fn_decl.return_type)
@@ -4715,7 +4718,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		}
 		g.write('}')
 		if fn_return_is_optional {
-			g.writeln(' }, (OptionBase*)(&$opt_tmp), sizeof($styp));')
+			g.writeln(' }, (Option2*)(&$opt_tmp), sizeof($styp));')
 			g.write('return $opt_tmp')
 		}
 		// Make sure to add our unpacks
@@ -4735,13 +4738,13 @@ fn (mut g Gen) return_statement(node ast.Return) {
 				node.types[0].has_flag(.optional)
 			}
 		}
-		if fn_return_is_optional && !expr_type_is_opt && return_sym.name != 'Option' {
+		if fn_return_is_optional && !expr_type_is_opt && return_sym.name !in ['Option', 'Option2'] {
 			styp := g.base_type(g.fn_decl.return_type)
 			opt_type := g.typ(g.fn_decl.return_type)
 			// Create a tmp for this option
 			opt_tmp := g.new_tmp_var()
 			g.writeln('$opt_type $opt_tmp;')
-			g.write('opt_ok2(&($styp[]) { ')
+			g.write('opt_ok(&($styp[]) { ')
 			if !g.fn_decl.return_type.is_ptr() && node.types[0].is_ptr() {
 				if !(node.exprs[0] is ast.Ident && !g.is_amp) {
 					g.write('*')
@@ -4753,7 +4756,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 					g.write(', ')
 				}
 			}
-			g.writeln(' }, (OptionBase*)(&$opt_tmp), sizeof($styp));')
+			g.writeln(' }, (Option2*)(&$opt_tmp), sizeof($styp));')
 			g.writeln('return $opt_tmp;')
 			return
 		}
@@ -4864,7 +4867,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 				}
 			}
 			ast.CallExpr {
-				if val.starts_with('Option_') {
+				if val.starts_with('Option2_') {
 					g.inits[field.mod].writeln(val)
 					unwrap_option := field.expr.or_block.kind != .absent
 					g.const_decl_init_later(field.mod, name, g.current_tmp_var(), field.typ,
@@ -4892,7 +4895,10 @@ fn (mut g Gen) const_decl_simple_define(name string, val string) {
 fn (mut g Gen) const_decl_init_later(mod string, name string, val string, typ table.Type, unwrap_option bool) {
 	// Initialize more complex consts in `void _vinit/2{}`
 	// (C doesn't allow init expressions that can't be resolved at compile time).
-	styp := g.typ(typ)
+	mut styp := g.typ(typ)
+	if styp == 'Option' {
+		styp = 'Option2'
+	}
 	cname := '_const_$name'
 	g.definitions.writeln('$styp $cname; // inited later')
 	if cname == '_const_os__args' {
@@ -5528,25 +5534,23 @@ fn (mut g Gen) write_expr_to_string(expr ast.Expr) string {
 // If user is accessing the return value eg. in assigment, pass the variable name.
 // If the user is not using the optional return value. We need to pass a temp var
 // to access its fields (`.ok`, `.error` etc)
-// `os.cp(...)` => `Option bool tmp = os__cp(...); if (!tmp.ok) { ... }`
+// `os.cp(...)` => `Option bool tmp = os__cp(...); if (tmp.state != 0) { ... }`
 // Returns the type of the last stmt
 fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.Type) {
 	cvar_name := c_name(var_name)
 	mr_styp := g.base_type(return_type)
 	is_none_ok := mr_styp == 'void'
-	g.writeln(';') // or')
+	g.writeln(';')
 	if is_none_ok {
-		g.writeln('if (!${cvar_name}.ok && !${cvar_name}.is_none) {')
+		g.writeln('if (${cvar_name}.state == 2) {')
 	} else {
-		g.writeln('if (!${cvar_name}.ok) { /*or block*/ ')
+		g.writeln('if (${cvar_name}.state != 0) { /*or block*/ ')
 	}
 	if or_block.kind == .block {
 		if g.inside_or_block {
-			g.writeln('\terr = ${cvar_name}.v_error;')
-			g.writeln('\terrcode = ${cvar_name}.ecode;')
+			g.writeln('\terr = ${cvar_name}.err;')
 		} else {
-			g.writeln('\tstring err = ${cvar_name}.v_error;')
-			g.writeln('\tint errcode = ${cvar_name}.ecode;')
+			g.writeln('\tError err = ${cvar_name}.err;')
 		}
 		g.inside_or_block = true
 		defer {
@@ -5582,9 +5586,9 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 			// In main(), an `opt()?` call is sugar for `opt() or { panic(err) }`
 			if g.pref.is_debug {
 				paline, pafile, pamod, pafn := g.panic_debug_info(or_block.pos)
-				g.writeln('panic_debug($paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"), ${cvar_name}.v_error );')
+				g.writeln('panic_debug($paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"), ${cvar_name}.err.msg );')
 			} else {
-				g.writeln('\tv_panic(_STR("optional not set (%.*s\\000)", 2, ${cvar_name}.v_error));')
+				g.writeln('\tv_panic(_STR("optional not set (%.*s\\000)", 2, ${cvar_name}.err.msg));')
 			}
 		} else {
 			// In ordinary functions, `opt()?` call is sugar for:
@@ -5599,7 +5603,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 				styp := g.typ(g.fn_decl.return_type)
 				err_obj := g.new_tmp_var()
 				g.writeln('\t$styp $err_obj;')
-				g.writeln('\tmemcpy(&$err_obj, &$cvar_name, sizeof(Option));')
+				g.writeln('\tmemcpy(&$err_obj, &$cvar_name, sizeof(Option2));')
 				g.writeln('\treturn $err_obj;')
 			}
 		}

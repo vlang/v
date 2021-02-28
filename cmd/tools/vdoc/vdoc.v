@@ -210,10 +210,10 @@ fn (vd VDoc) get_readme(path string) string {
 	return readme_contents
 }
 
-fn (vd VDoc) emit_generate_err(err string, errcode int) {
+fn (vd VDoc) emit_generate_err(err Error) {
 	cfg := vd.cfg
-	mut err_msg := err
-	if errcode == 1 {
+	mut err_msg := err.msg
+	if err.code == 1 {
 		mod_list := get_modules_list(cfg.input_path, []string{})
 		println('Available modules:\n==================')
 		for mod in mod_list {
@@ -288,12 +288,12 @@ fn (mut vd VDoc) generate_docs_from_file() {
 		vd.vprintln('Generating $out.typ docs for "$dirpath"')
 		if is_local_and_single {
 			dcs = doc.generate_with_pos(dirpath, cfg.local_filename, cfg.local_pos) or {
-				vd.emit_generate_err(err, errcode)
+				vd.emit_generate_err(err)
 				exit(1)
 			}
 		} else {
 			dcs = doc.generate(dirpath, cfg.pub_only, true) or {
-				vd.emit_generate_err(err, errcode)
+				vd.emit_generate_err(err)
 				exit(1)
 			}
 		}
