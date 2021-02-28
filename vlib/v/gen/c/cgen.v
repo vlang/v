@@ -648,7 +648,9 @@ static inline $opt_el_type __Option2_${styp}_popval($styp ch) {
 	$opt_el_type _tmp = {0};
 	if (sync__Channel_try_pop_priv(ch, _tmp.data, false)) {
 		Option2 _tmp2 = error2(_SLIT("channel closed"));
-		return *($opt_el_type*)&_tmp2;
+		$opt_el_type _tmp3;
+		memcpy(&_tmp3, &_tmp2, sizeof(Option2));
+		return _tmp3;
 	}
 	return _tmp;
 }')
@@ -662,7 +664,9 @@ fn (mut g Gen) register_chan_push_optional_call(el_type string, styp string) {
 static inline Option2_void __Option2_${styp}_pushval($styp ch, $el_type e) {
 	if (sync__Channel_try_push_priv(ch, &e, false)) {
 		Option2 _tmp2 = error2(_SLIT("channel closed"));
-		return *(Option2_void*)&_tmp2;
+		Option2_void _tmp3;
+		memcpy(&_tmp3, &_tmp2, sizeof(Option2));
+		return _tmp3;
 	}
 	return (Option2_void){0};
 }')
