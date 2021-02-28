@@ -84,7 +84,7 @@ fn for_opt_default() ?string {
 
 fn test_opt_default() {
 	a := for_opt_default() or {
-		// panic(err.msg)
+		// panic(err)
 		'default'
 	}
 	assert a == 'default'
@@ -258,7 +258,7 @@ fn multi_return_opt(err bool) (string, string) {
 
 fn test_multi_return_opt() {
 	a, b := multi_return_opt(false) or {
-		panic(err.msg)
+		panic(err)
 	}
 	assert a == 'hello' && b == 'v'
 	_, _ := multi_return_opt(true) or {

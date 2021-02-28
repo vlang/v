@@ -3656,7 +3656,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			return node.typ.to_ptr()
 		}
 		ast.Assoc {
-			v := node.scope.find_var(node.var_name) or { panic(err.msg) }
+			v := node.scope.find_var(node.var_name) or { panic(err) }
 			for i, _ in node.fields {
 				c.expr(node.exprs[i])
 			}

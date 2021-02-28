@@ -146,7 +146,7 @@ pub fn (mut ws Client) listen() ? {
 					ws.logger.error('error in message callback sending PONG: $err')
 					ws.send_error_event('error in message callback sending PONG: $err')
 					if ws.panic_on_callback {
-						panic(err.msg)
+						panic(err)
 					}
 					continue
 				}

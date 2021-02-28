@@ -16,7 +16,7 @@ fn test_all() {
 	os.chdir(vroot)
 	diff_cmd := util.find_working_diff_command() or { '' }
 	dir := 'vlib/v/tests/inout'
-	files := os.ls(dir) or { panic(err.msg) }
+	files := os.ls(dir) or { panic(err) }
 	tests := files.filter(it.ends_with('.vv'))
 	if tests.len == 0 {
 		println('no compiler tests found')
@@ -28,13 +28,13 @@ fn test_all() {
 	for path in paths {
 		print(path + ' ')
 		program := path
-		compilation := os.exec('$vexe -o test -cflags "-w" -cg $program') or { panic(err.msg) }
+		compilation := os.exec('$vexe -o test -cflags "-w" -cg $program') or { panic(err) }
 		if compilation.exit_code != 0 {
 			panic('compilation failed: $compilation.output')
 		}
 		res := os.exec('./test') or {
 			println('nope')
-			panic(err.msg)
+			panic(err)
 		}
 		$if windows {
 			os.rm('./test.exe') or { }
@@ -49,7 +49,7 @@ fn test_all() {
 		// println(res.output)
 		// println('============')
 		mut found := res.output.trim_right('\r\n').replace('\r\n', '\n')
-		mut expected := os.read_file(program.replace('.vv', '') + '.out') or { panic(err.msg) }
+		mut expected := os.read_file(program.replace('.vv', '') + '.out') or { panic(err) }
 		expected = expected.trim_right('\r\n').replace('\r\n', '\n')
 		if expected.contains('================ V panic ================') {
 			// panic include backtraces and absolute file paths, so can't do char by char comparison

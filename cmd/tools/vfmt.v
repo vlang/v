@@ -175,7 +175,7 @@ fn (foptions &FormatOptions) format_file(file string) {
 	file_name := os.file_name(file)
 	ulid := rand.ulid()
 	vfmt_output_path := os.join_path(vtmp_folder, 'vfmt_${ulid}_$file_name')
-	os.write_file(vfmt_output_path, formatted_content) or { panic(err.msg) }
+	os.write_file(vfmt_output_path, formatted_content) or { panic(err) }
 	if foptions.is_verbose {
 		eprintln('fmt.fmt worked and $formatted_content.len bytes were written to $vfmt_output_path .')
 	}
@@ -266,7 +266,7 @@ fn (foptions &FormatOptions) post_process_file(file string, formatted_file_path 
 	}
 	if foptions.is_w {
 		if is_formatted_different {
-			os.mv_by_cp(formatted_file_path, file) or { panic(err.msg) }
+			os.mv_by_cp(formatted_file_path, file) or { panic(err) }
 			eprintln('Reformatted file: $file')
 		} else {
 			eprintln('Already formatted file: $file')
@@ -277,7 +277,7 @@ fn (foptions &FormatOptions) post_process_file(file string, formatted_file_path 
 }
 
 fn (f FormatOptions) str() string {
-	return 
+	return
 		'FormatOptions{ is_l: $f.is_l, is_w: $f.is_w, is_diff: $f.is_diff, is_verbose: $f.is_verbose,' +
 		' is_all: $f.is_all, is_worker: $f.is_worker, is_debug: $f.is_debug, is_noerror: $f.is_noerror,' +
 		' is_verify: $f.is_verify" }'
@@ -312,7 +312,7 @@ fn get_compile_name_of_potential_v_project(file string) string {
 	pfolder := os.real_path(os.dir(file))
 	// a .v project has many 'module main' files in one folder
 	// if there is only one .v file, then it must be a standalone
-	all_files_in_pfolder := os.ls(pfolder) or { panic(err.msg) }
+	all_files_in_pfolder := os.ls(pfolder) or { panic(err) }
 	mut vfiles := []string{}
 	for f in all_files_in_pfolder {
 		vf := os.join_path(pfolder, f)
@@ -332,7 +332,7 @@ fn get_compile_name_of_potential_v_project(file string) string {
 	// a project folder, that should be compiled with `v pfolder`.
 	mut main_fns := 0
 	for f in vfiles {
-		slines := read_source_lines(f) or { panic(err.msg) }
+		slines := read_source_lines(f) or { panic(err) }
 		for line in slines {
 			if line.contains('fn main()') {
 				main_fns++

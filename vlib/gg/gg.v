@@ -162,7 +162,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 			font_path: g.config.font_path
 			custom_bold_font_path: g.config.custom_bold_font_path
 			scale: dpi_scale()
-		) or { panic(err.msg) }
+		) or { panic(err) }
 		// println('FT took ${time.ticks()-t} ms')
 		g.font_inited = true
 	} else {
@@ -174,7 +174,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 					bytes_mono: g.config.font_bytes_mono
 					bytes_italic: g.config.font_bytes_italic
 					scale: sapp.dpi_scale()
-				) or { panic(err.msg) }
+				) or { panic(err) }
 				g.font_inited = true
 			} else {
 				sfont := system_font_path()
@@ -183,7 +183,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 					font_path: sfont
 					custom_bold_font_path: g.config.custom_bold_font_path
 					scale: sapp.dpi_scale()
-				) or { panic(err.msg) }
+				) or { panic(err) }
 				g.font_inited = true
 			}
 		}

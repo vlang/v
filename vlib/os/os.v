@@ -507,7 +507,7 @@ pub fn cache_dir() string {
 	}
 	cdir := join_path(home_dir(), '.cache')
 	if !is_dir(cdir) && !is_link(cdir) {
-		mkdir(cdir) or { panic(err.msg) }
+		mkdir(cdir) or { panic(err) }
 	}
 	return cdir
 }

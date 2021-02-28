@@ -56,7 +56,7 @@ fn (mut dtp DTP) read() ?[]byte {
 }
 
 fn (mut dtp DTP) close() {
-	dtp.conn.close() or { panic(err.msg) }
+	dtp.conn.close() or { panic(err) }
 }
 
 struct FTP {

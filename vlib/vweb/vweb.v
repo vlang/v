@@ -594,7 +594,7 @@ pub fn (mut ctx Context) parse_multipart_form(s string, b string) {
 }
 
 fn (mut ctx Context) scan_static_directory(directory_path string, mount_path string) {
-	files := os.ls(directory_path) or { panic(err.msg) }
+	files := os.ls(directory_path) or { panic(err) }
 	if files.len > 0 {
 		for file in files {
 			full_path := directory_path + '/' + file
@@ -613,7 +613,7 @@ fn (mut ctx Context) scan_static_directory(directory_path string, mount_path str
 }
 
 // Handles a directory static
-// If `root` is set the mount path for the dir will be in '/' 
+// If `root` is set the mount path for the dir will be in '/'
 pub fn (mut ctx Context) handle_static(directory_path string, root bool) bool {
 	if ctx.done || !os.exists(directory_path) {
 		return false
@@ -629,7 +629,7 @@ pub fn (mut ctx Context) handle_static(directory_path string, root bool) bool {
 }
 
 // Serves a file static
-// `url` is the access path on the site, `file_path` is the real path to the file, `mime_type` is the file type 
+// `url` is the access path on the site, `file_path` is the real path to the file, `mime_type` is the file type
 pub fn (mut ctx Context) serve_static(url string, file_path string, mime_type string) {
 	ctx.static_files[url] = file_path
 	ctx.static_mime_types[url] = mime_type

@@ -184,7 +184,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 		}
 		if r.line.starts_with('print') {
 			source_code := r.current_source_code(false) + '\n$r.line\n'
-			os.write_file(file, source_code) or { panic(err.msg) }
+			os.write_file(file, source_code) or { panic(err) }
 			s := repl_run_vfile(file) or { return }
 			print_output(s)
 		} else {
@@ -251,7 +251,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 				}
 				temp_source_code = r.current_source_code(true) + '\n$temp_line\n'
 			}
-			os.write_file(temp_file, temp_source_code) or { panic(err.msg) }
+			os.write_file(temp_file, temp_source_code) or { panic(err) }
 			s := repl_run_vfile(temp_file) or { return }
 			if !func_call && s.exit_code == 0 && !temp_flag {
 				for r.temp_lines.len > 0 {

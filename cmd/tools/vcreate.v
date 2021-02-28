@@ -58,7 +58,7 @@ fn (c &Create) write_vmod(new bool) {
 		cerror(err.msg)
 		exit(1)
 	}
-	vmod.write_str(vmod_content(c.name, c.description)) or { panic(err.msg) }
+	vmod.write_str(vmod_content(c.name, c.description)) or { panic(err) }
 	vmod.close()
 }
 
@@ -71,7 +71,7 @@ fn (c &Create) write_main(new bool) {
 		cerror(err.msg)
 		exit(2)
 	}
-	mainfile.write_str(main_content()) or { panic(err.msg) }
+	mainfile.write_str(main_content()) or { panic(err) }
 	mainfile.close()
 }
 
@@ -87,7 +87,7 @@ fn (c &Create) create_git_repo(dir string) {
 				// We don't really need a .gitignore, it's just a nice-to-have
 				return
 			}
-			fl.write_str(gen_gitignore(c.name)) or { panic(err.msg) }
+			fl.write_str(gen_gitignore(c.name)) or { panic(err) }
 			fl.close()
 		}
 	}
@@ -110,7 +110,7 @@ fn create() {
 	}
 	c.description = os.input('Input your project description: ')
 	println('Initialising ...')
-	os.mkdir(c.name) or { panic(err.msg) }
+	os.mkdir(c.name) or { panic(err) }
 	c.write_vmod(true)
 	c.write_main(true)
 	c.create_git_repo(c.name)

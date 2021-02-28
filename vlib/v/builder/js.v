@@ -34,8 +34,8 @@ pub fn (mut b Builder) build_js(v_files []string, out_file string) {
 	b.out_name_js = out_file
 	b.info('build_js($out_file)')
 	output := b.gen_js(v_files)
-	mut f := os.create(out_file) or { panic(err.msg) }
-	f.writeln(output) or { panic(err.msg) }
+	mut f := os.create(out_file) or { panic(err) }
+	f.writeln(output) or { panic(err) }
 	f.close()
 }
 
