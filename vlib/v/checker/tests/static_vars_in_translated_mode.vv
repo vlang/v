@@ -1,6 +1,6 @@
 [unsafe]
 fn counter() int {
-	static mut icounter := 0
+	static icounter := 0
 	icounter++
 	return icounter
 }
