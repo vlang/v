@@ -298,7 +298,7 @@ fn (mut g Gen) comp_if_cond(cond ast.Expr) bool {
 
 fn (mut g Gen) comp_for(node ast.CompFor) {
 	sym := g.table.get_type_symbol(g.unwrap_generic(node.typ))
-	g.writeln('// comptime: \$for $node.val_var in ${sym.name}($node.kind.str()) {')
+	g.writeln('/* \$for $node.val_var in ${sym.name}($node.kind.str()) */ {')
 	g.indent++
 	// vweb_result_type := table.new_type(g.table.find_type_idx('vweb.Result'))
 	mut i := 0
@@ -411,7 +411,7 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 		}
 	}
 	g.indent--
-	g.writeln('// } comptime for')
+	g.writeln('}// \$for')
 }
 
 fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) ?string {
