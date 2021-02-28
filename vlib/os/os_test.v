@@ -37,13 +37,13 @@ fn test_open_file() {
 		assert err.msg == 'No such file or directory'
 		os.File{}
 	}
-	mut file := os.open_file(filename, 'w+', 0o666) or { panic(err) }
-	file.write_str(hello) or { panic(err) }
+	mut file := os.open_file(filename, 'w+', 0o666) or { panic(err.msg) }
+	file.write_str(hello) or { panic(err.msg) }
 	file.close()
 	assert hello.len == os.file_size(filename)
 	read_hello := os.read_file(filename) or { panic('error reading file $filename') }
 	assert hello == read_hello
-	os.rm(filename) or { panic(err) }
+	os.rm(filename) or { panic(err.msg) }
 }
 
 fn test_open_file_binary() {
@@ -53,14 +53,14 @@ fn test_open_file_binary() {
 		assert err.msg == 'No such file or directory'
 		os.File{}
 	}
-	mut file := os.open_file(filename, 'wb+', 0o666) or { panic(err) }
+	mut file := os.open_file(filename, 'wb+', 0o666) or { panic(err.msg) }
 	bytes := hello.bytes()
 	file.write_bytes(bytes.data, bytes.len)
 	file.close()
 	assert hello.len == os.file_size(filename)
 	read_hello := os.read_bytes(filename) or { panic('error reading file $filename') }
 	assert bytes == read_hello
-	os.rm(filename) or { panic(err) }
+	os.rm(filename) or { panic(err.msg) }
 }
 
 // fn test_file_get_line() {
@@ -189,63 +189,63 @@ fn walk_callback(file string) {
 
 fn test_walk() {
 	folder := 'test_walk'
-	os.mkdir(folder) or { panic(err) }
+	os.mkdir(folder) or { panic(err.msg) }
 	file1 := folder + os.path_separator + 'test1'
-	os.write_file(file1, 'test-1') or { panic(err) }
+	os.write_file(file1, 'test-1') or { panic(err.msg) }
 	os.walk(folder, walk_callback)
-	os.rm(file1) or { panic(err) }
-	os.rmdir(folder) or { panic(err) }
+	os.rm(file1) or { panic(err.msg) }
+	os.rmdir(folder) or { panic(err.msg) }
 }
 
 fn test_cp() {
 	old_file_name := 'cp_example.txt'
 	new_file_name := 'cp_new_example.txt'
-	os.write_file(old_file_name, 'Test data 1 2 3, V is awesome #$%^[]!~⭐') or { panic(err) }
+	os.write_file(old_file_name, 'Test data 1 2 3, V is awesome #$%^[]!~⭐') or { panic(err.msg) }
 	os.cp(old_file_name, new_file_name) or { panic('$err') }
-	old_file := os.read_file(old_file_name) or { panic(err) }
-	new_file := os.read_file(new_file_name) or { panic(err) }
+	old_file := os.read_file(old_file_name) or { panic(err.msg) }
+	new_file := os.read_file(new_file_name) or { panic(err.msg) }
 	assert old_file == new_file
-	os.rm(old_file_name) or { panic(err) }
-	os.rm(new_file_name) or { panic(err) }
+	os.rm(old_file_name) or { panic(err.msg) }
+	os.rm(new_file_name) or { panic(err.msg) }
 }
 
 fn test_mv() {
 	work_dir := os.join_path(os.getwd(), 'mv_test')
-	os.mkdir_all(work_dir) or { panic(err) }
+	os.mkdir_all(work_dir) or { panic(err.msg) }
 	// Setup test files
 	tfile1 := os.join_path(work_dir, 'file')
 	tfile2 := os.join_path(work_dir, 'file.test')
 	tfile3 := os.join_path(work_dir, 'file.3')
 	tfile_content := 'temporary file'
-	os.write_file(tfile1, tfile_content) or { panic(err) }
-	os.write_file(tfile2, tfile_content) or { panic(err) }
+	os.write_file(tfile1, tfile_content) or { panic(err.msg) }
+	os.write_file(tfile2, tfile_content) or { panic(err.msg) }
 	// Setup test dirs
 	tdir1 := os.join_path(work_dir, 'dir')
 	tdir2 := os.join_path(work_dir, 'dir2')
 	tdir3 := os.join_path(work_dir, 'dir3')
-	os.mkdir(tdir1) or { panic(err) }
-	os.mkdir(tdir2) or { panic(err) }
+	os.mkdir(tdir1) or { panic(err.msg) }
+	os.mkdir(tdir2) or { panic(err.msg) }
 	// Move file with no extension to dir
-	os.mv(tfile1, tdir1) or { panic(err) }
+	os.mv(tfile1, tdir1) or { panic(err.msg) }
 	mut expected := os.join_path(tdir1, 'file')
 	assert os.exists(expected) && !is_dir(expected) == true
 	// Move dir with contents to other dir
-	os.mv(tdir1, tdir2) or { panic(err) }
+	os.mv(tdir1, tdir2) or { panic(err.msg) }
 	expected = os.join_path(tdir2, 'dir')
 	assert os.exists(expected) && is_dir(expected) == true
 	expected = os.join_path(tdir2, 'dir', 'file')
 	assert os.exists(expected) && !is_dir(expected) == true
 	// Move dir with contents to other dir (by renaming)
-	os.mv(os.join_path(tdir2, 'dir'), tdir3) or { panic(err) }
+	os.mv(os.join_path(tdir2, 'dir'), tdir3) or { panic(err.msg) }
 	expected = tdir3
 	assert os.exists(expected) && is_dir(expected) == true
 	assert os.is_dir_empty(tdir2) == true
 	// Move file with extension to dir
-	os.mv(tfile2, tdir2) or { panic(err) }
+	os.mv(tfile2, tdir2) or { panic(err.msg) }
 	expected = os.join_path(tdir2, 'file.test')
 	assert os.exists(expected) && !is_dir(expected) == true
 	// Move file to dir (by renaming)
-	os.mv(os.join_path(tdir2, 'file.test'), tfile3) or { panic(err) }
+	os.mv(os.join_path(tdir2, 'file.test'), tfile3) or { panic(err.msg) }
 	expected = tfile3
 	assert os.exists(expected) && !is_dir(expected) == true
 }
