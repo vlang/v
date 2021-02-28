@@ -3670,7 +3670,11 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			return c.cast_expr(mut node)
 		}
 		ast.CallExpr {
-			return c.call_expr(mut node)
+			mut ret_type := c.call_expr(mut node)
+			if ret_type.has_flag(.optional) && node.or_block.kind != .absent {
+				ret_type = ret_type.clear_flag(.optional)
+			}
+			return ret_type
 		}
 		ast.GoExpr {
 			mut ret_type := c.call_expr(mut node.go_stmt.call_expr)

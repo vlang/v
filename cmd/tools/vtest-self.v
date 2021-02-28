@@ -105,6 +105,7 @@ const (
 		'vlib/v/tests/interface_edge_cases/assign_to_interface_field_test.v',
 		'vlib/v/tests/interface_fields_test.v',
 		'vlib/v/tests/interface_variadic_test.v',
+		'vlib/v/tests/option_2_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/v/tests/ref_struct_test.v',
 		'vlib/v/tests/semaphore_test.v',
