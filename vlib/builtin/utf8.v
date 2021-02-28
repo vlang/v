@@ -134,14 +134,14 @@ pub fn utf8_str_visible_length(s string) int {
 		// recognize combining characters and wide characters
 		match ul {
 			2 {
-				r := (u16(c) << 8) | unsafe { s.str[i + 1] }
+				r := u64((u16(c) << 8) | unsafe { s.str[i + 1] })
 				if r >= 0xcc80 && r < 0xcdb0 {
 					// diacritical marks
 					l--
 				}
 			}
 			3 {
-				r := (u32(c) << 16) | unsafe { (u32(s.str[i + 1]) << 8) | s.str[i + 2] }
+				r := u64((u32(c) << 16) | unsafe { (u32(s.str[i + 1]) << 8) | s.str[i + 2] })
 				// diacritical marks extended
 				// diacritical marks supplement
 				// diacritical marks for symbols
@@ -169,9 +169,9 @@ pub fn utf8_str_visible_length(s string) int {
 				}
 			}
 			4 {
-				r := (u32(c) << 24) | unsafe {
+				r := u64((u32(c) << 24) | unsafe {
 					(u32(s.str[i + 1]) << 16) | (u32(s.str[i + 2]) << 8) | s.str[i + 3]
-				}
+				})
 				// Enclosed Ideographic Supplement
 				// Emoji
 				// CJK Unified Ideographs Extension B-G
