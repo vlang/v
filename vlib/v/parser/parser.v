@@ -1575,14 +1575,8 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 			p.next()
 			p.open_scope()
 			p.scope.register(ast.Var{
-				name: 'errcode'
-				typ: table.int_type
-				pos: p.tok.position()
-				is_used: true
-			})
-			p.scope.register(ast.Var{
 				name: 'err'
-				typ: table.string_type
+				typ: table.error_type
 				pos: p.tok.position()
 				is_used: true
 			})

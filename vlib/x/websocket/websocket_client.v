@@ -318,8 +318,7 @@ pub fn (mut ws Client) close(code int, message string) ? {
 	if ws.state in [.closed, .closing] || ws.conn.sock.handle <= 1 {
 		ws.debug_log('close: Websocket allready closed ($ws.state), $message, $code handle($ws.conn.sock.handle)')
 		err_msg := 'Socket allready closed: $code'
-		ret_err := error(err_msg)
-		return ret_err
+		return error(err_msg)
 	}
 	defer {
 		ws.shutdown_socket() or { }
