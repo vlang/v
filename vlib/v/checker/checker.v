@@ -1896,6 +1896,10 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			unexpected_arguments_pos)
 		return f.return_type
 	}
+	// panic can take an Error argument
+	if fn_name == 'panic' {
+		c.inside_println_arg = true
+	}
 	// println / eprintln can print anything
 	if fn_name in ['println', 'print', 'eprintln', 'eprint'] && call_expr.args.len > 0 {
 		c.inside_println_arg = true
@@ -2006,6 +2010,9 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			}
 			c.error('$err in argument ${i + 1} to `$fn_name`', call_arg.pos)
 		}
+	}
+	if fn_name == 'panic' {
+		c.inside_println_arg = false
 	}
 	if f.generic_names.len != call_expr.generic_types.len {
 		// no type arguments given in call, attempt implicit instantiation
