@@ -12,7 +12,9 @@ pub struct JS.String {
 	length JS.Number
 }
 pub struct JS.Boolean {}
-pub struct JS.Array {}
+pub struct JS.Array {
+	length JS.Number
+}
 pub struct JS.Map {}
 
 // Type prototype functions
@@ -24,8 +26,8 @@ fn (v JS.Map) toString() JS.String
 
 // Top level functions
 fn JS.eval(string) any
-fn JS.parseInt(string, f64) f64
-fn JS.parseFloat(string) f64
+fn JS.parseInt(string, f64) JS.Number
+fn JS.parseFloat(string) JS.Number
 fn JS.isNaN(f64) bool
 fn JS.isFinite(f64) bool
 fn JS.decodeURI(string) string
@@ -85,6 +87,15 @@ fn JS.JSON.parse(string) any
 
 // String
 fn (v JS.String) slice(a int, b int) JS.String
-fn (s JS.String) indexOf(needle string) int
-fn (s JS.String) lastIndexOf(needle string) int
+fn (v JS.String) split(dot JS.String) []JS.String
+fn (s JS.String) indexOf(needle JS.String) int
+fn (s JS.String) lastIndexOf(needle JS.String) int
 
+fn (s JS.String) charAt(i int) JS.String
+fn (s JS.String) charCodeAt(i int) byte
+fn (s JS.String) toUpperCase() JS.String
+fn (s JS.String) toLowerCase() JS.String
+fn (s JS.String) concat(a JS.String) JS.String
+fn (s JS.String) includes(substr JS.String) bool
+fn (s JS.String) ends_with(substr JS.String) bool
+fn (s JS.String) starts_with(substr JS.String) bool

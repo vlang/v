@@ -19,6 +19,8 @@ const (
 	// used to generate type structs
 	v_types     = ['i8', 'i16', 'int', 'i64', 'byte', 'u16', 'u32', 'u64', 'f32', 'f64', 'int_literal',
 		'float_literal', 'size_t', 'bool', 'string', 'map', 'array']
+	shallow_equatables  = [table.Kind.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64, .int_literal,
+		.float_literal, .size_t, .bool, .string]
 	tabs        = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t',
 		'\t\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t\t']
 )
@@ -111,6 +113,9 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 	deps_resolved := graph.resolve()
 	nodes := deps_resolved.nodes
 	mut out := g.hashes() + g.definitions.str()
+	// equality check for js objects
+	mut eq_fn := $embed_file('fast_deep_equal.js')
+	out += eq_fn.data().vstring()
 	for node in nodes {
 		name := g.js_name(node.name).replace('.', '_')
 		if g.enable_doc {
@@ -906,12 +911,19 @@ fn (mut g JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 		g.inside_loop = true
 		g.write('for (let $i = 0; $i < ')
 		g.expr(it.cond)
-		g.writeln('.length; ++$i) {')
+		g.writeln('.len; ++$i) {')
 		g.inside_loop = false
 		if val !in ['', '_'] {
 			g.write('\tconst $val = ')
+			if it.kind == .string {
+				if g.file.mod.name == 'builtin' { g.write('new ') }
+				g.write('byte(')
+			}
 			g.expr(it.cond)
-			g.writeln('[$i];')
+			g.write(if it.kind == .array { '.arr' } else if it.kind == .string { '.str' } else { '.val' })
+			g.write('[$i]')
+			if it.kind == .string { g.write(')') }
+			g.writeln(';')
 		}
 		g.stmts(it.stmts)
 		g.writeln('}')
@@ -1343,19 +1355,34 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 	l_sym := g.table.get_type_symbol(it.left_type)
 	r_sym := g.table.get_type_symbol(it.right_type)
-	if l_sym.kind == .array && it.op == .left_shift { // arr << 1
+
+	is_not := it.op in [.not_in, .not_is, .ne]
+	if is_not { g.write('!(') }
+
+	if it.op == .eq || it.op == .ne {
+		// Shallow equatables
+		if l_sym.kind in shallow_equatables && r_sym.kind in shallow_equatables {
+			g.expr(it.left)
+			g.write('.eq(')
+			g.expr(it.right)
+			g.write(')')
+		} else {
+			g.write('vEq(')
+			g.expr(it.left)
+			g.write(', ')
+			g.expr(it.right)
+			g.write(')')
+		}
+	} else if l_sym.kind == .array && it.op == .left_shift { // arr << 1
 		g.expr(it.left)
 		g.write('.push(')
+		// arr << [1, 2]
 		if r_sym.kind == .array {
 			g.write('...')
 		}
-		// arr << [1, 2]
 		g.expr(it.right)
 		g.write(')')
 	} else if r_sym.kind in [.array, .map, .string] && it.op in [.key_in, .not_in] {
-		if it.op == .not_in {
-			g.write('!(')
-		}
 		g.expr(it.right)
 		g.write(if r_sym.kind == .map {
 			'.has('
@@ -1365,27 +1392,15 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 			'.includes('
 		})
 		g.expr(it.left)
-		if l_sym.kind == .string {
-			g.write('.str')
-		}
+		if l_sym.kind == .string { g.write('.str') }
 		g.write(')')
-		if it.op == .not_in {
-			g.write(')')
-		}
 	} else if it.op in [.key_is, .not_is] { // foo is Foo
-		if it.op == .not_is {
-			g.write('!(')
-		}
 		g.expr(it.left)
 		g.write(' instanceof ')
 		g.write(g.typ(it.right_type))
-		if it.op == .not_is {
-			g.write(')')
-		}
 	} else {
-		both_are_int := int(it.left_type) in table.integer_type_idxs
-			&& int(it.right_type) in table.integer_type_idxs
 		is_arithmetic := it.op in [token.Kind.plus, .minus, .mul, .div, .mod]
+
 		if is_arithmetic {
 			greater_typ := g.greater_typ(it.left_type, it.right_type)
 			if g.ns.name == 'builtin' {
@@ -1394,28 +1409,18 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 			g.write('${g.typ(greater_typ)}(')
 			g.cast_stack << greater_typ
 		}
-		if it.op == .div && both_are_int {
-			g.write('((')
-		}
+
 		g.expr(it.left)
-		// in js == is non-strict & === is strict, always do strict
-		if it.op == .eq {
-			g.write(' === ')
-		} else if it.op == .ne {
-			g.write(' !== ')
-		} else {
-			g.write(' $it.op ')
-		}
+		g.write(' $it.op ')
 		g.expr(it.right)
-		// Int division: 2.5 -> 2 by appending |0
-		if it.op == .div && both_are_int {
-			g.write(')|0)')
-		}
+
 		if is_arithmetic {
 			g.cast_stack.pop()
 			g.write(')')
 		}
 	}
+
+	if is_not { g.write(')') }
 }
 
 fn (mut g JsGen) greater_typ(left table.Type, right table.Type) table.Type {
