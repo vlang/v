@@ -361,7 +361,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	body_start_pos := p.peek_tok.position()
 	if p.tok.kind == .lcbr {
 		p.inside_fn = true
+		p.inside_unsafe_fn = is_unsafe
 		stmts = p.parse_block_no_scope(true)
+		p.inside_unsafe_fn = false
 		p.inside_fn = false
 	}
 	if !no_body && are_args_type_only {

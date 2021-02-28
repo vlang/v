@@ -38,6 +38,7 @@ mut:
 	inside_or_expr    bool
 	inside_for        bool
 	inside_fn         bool // true even with implicit main
+	inside_unsafe_fn  bool // true when in fn, marked with `[unsafe]`
 	inside_str_interp bool
 	or_is_handled     bool         // ignore `or` in this expression
 	builtin_mod       bool         // are we in the `builtin` module?
