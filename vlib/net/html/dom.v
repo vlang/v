@@ -25,7 +25,7 @@ mut:
 fn (mut dom DocumentObjectModel) print_debug(data string) {
 	$if debug {
 		if data.len > 0 {
-			dom.debug_file.writeln(data)
+			dom.debug_file.writeln(data) or { panic(err) }
 		}
 	}
 }
@@ -114,9 +114,10 @@ fn (mut dom DocumentObjectModel) construct(tag_list []&Tag) {
 		if is_close_tag(tag) {
 			temp_int = stack.peek()
 			temp_string = tag.name[1..]
-			for !is_null(temp_int) && temp_string != tag_list[temp_int].name && !tag_list[temp_int].closed {
-				dom.print_debug(temp_string + ' >> ' + tag_list[temp_int].name + ' ' + (temp_string ==
-					tag_list[temp_int].name).str())
+			for !is_null(temp_int) && temp_string != tag_list[temp_int].name
+				&& !tag_list[temp_int].closed {
+				dom.print_debug(temp_string + ' >> ' + tag_list[temp_int].name + ' ' +
+					(temp_string == tag_list[temp_int].name).str())
 				stack.pop()
 				temp_int = stack.peek()
 			}
@@ -142,7 +143,8 @@ fn (mut dom DocumentObjectModel) construct(tag_list []&Tag) {
 				dom.print_debug("Added ${tag.name} as child of '" + tag_list[temp_int].name +
 					"' which now has ${dom.btree.get_children().len} childrens")
 				*/
-				dom.print_debug("Added $tag.name as child of '" + temp_tag.name + "' which now has $temp_tag.children.len childrens")
+				dom.print_debug("Added $tag.name as child of '" + temp_tag.name +
+					"' which now has $temp_tag.children.len childrens")
 			} else { // dom.new_root(tag)
 				stack.push(root_index)
 			}
@@ -168,20 +170,12 @@ pub fn (mut dom DocumentObjectModel) get_tag_by_attribute_value(name string, val
 
 // get_tag retrieves all the tags in the document that has the given tag name.
 pub fn (dom DocumentObjectModel) get_tag(name string) []&Tag {
-	return if name in dom.tag_type {
-		dom.tag_type[name]
-	} else {
-		[]&Tag{}
-	}
+	return if name in dom.tag_type { dom.tag_type[name] } else { []&Tag{} }
 }
 
 // get_tag_by_attribute retrieves all the tags in the document that has the given attribute name.
 pub fn (dom DocumentObjectModel) get_tag_by_attribute(name string) []&Tag {
-	return if name in dom.all_attributes {
-		dom.all_attributes[name]
-	} else {
-		[]&Tag{}
-	}
+	return if name in dom.all_attributes { dom.all_attributes[name] } else { []&Tag{} }
 }
 
 // get_root returns the root of the document.

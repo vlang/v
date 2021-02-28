@@ -1,0 +1,18 @@
+vlib/v/checker/tests/fixed_array_conv.vv:3:3: error: mismatched types `voidptr` and `[2]int`
+    1 | arr := [2,3]!
+    2 | mut p := voidptr(0)
+    3 | p = arr
+      |   ^
+    4 | mut ip := &int(0)
+    5 | ip = arr
+vlib/v/checker/tests/fixed_array_conv.vv:5:4: error: mismatched types `&int` and `[2]int`
+    3 | p = arr
+    4 | mut ip := &int(0)
+    5 | ip = arr
+      |    ^
+    6 | _ = &int(arr)
+vlib/v/checker/tests/fixed_array_conv.vv:6:6: error: cannot cast a fixed array (use e.g. `&arr[0]` instead)
+    4 | mut ip := &int(0)
+    5 | ip = arr
+    6 | _ = &int(arr)
+      |      ~~~~~~~~

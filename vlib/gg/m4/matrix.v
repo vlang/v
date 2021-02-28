@@ -27,7 +27,7 @@ pub const precision = f32(10e-7)
 * Utility
 *
 *********************************************************************/
-fn abs(a f32) f32 {
+pub fn abs(a f32) f32 {
 	if a >= f32(0.0) {
 		return a
 	} else {

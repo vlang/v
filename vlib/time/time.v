@@ -324,20 +324,22 @@ pub fn ticks() i64 {
 	// # return (double)(* (uint64_t *) &elapsedNano) / 1000000;
 }
 
+/*
 // sleep makes the calling thread sleep for a given number of seconds.
-[deprecated: 'call time.wait(n * time.second)']
+[deprecated: 'call time.sleep(n * time.second)']
 pub fn sleep(seconds int) {
 	wait(seconds * time.second)
 }
+*/
 
 // sleep_ms makes the calling thread sleep for a given number of milliseconds.
-[deprecated: 'call time.wait(n * time.millisecond)']
+[deprecated: 'call time.sleep(n * time.millisecond)']
 pub fn sleep_ms(milliseconds int) {
 	wait(milliseconds * time.millisecond)
 }
 
 // usleep makes the calling thread sleep for a given number of microseconds.
-[deprecated: 'call time.wait(n * time.microsecond)']
+[deprecated: 'call time.sleep(n * time.microsecond)']
 pub fn usleep(microseconds int) {
 	wait(microseconds * time.microsecond)
 }

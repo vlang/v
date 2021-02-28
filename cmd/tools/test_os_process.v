@@ -44,7 +44,7 @@ fn (mut ctx Context) println(s string) {
 
 fn do_timeout(c &Context) {
 	mut ctx := c
-	time.wait(ctx.timeout_ms * time.millisecond)
+	time.sleep(ctx.timeout_ms * time.millisecond)
 	exit(ctx.exitcode)
 }
 
@@ -76,7 +76,7 @@ fn main() {
 	go do_timeout(&ctx)
 	for i := 1; true; i++ {
 		ctx.println('$i')
-		time.wait(ctx.period_ms * time.millisecond)
+		time.sleep(ctx.period_ms * time.millisecond)
 	}
-	time.wait(100 * time.second)
+	time.sleep(100 * time.second)
 }

@@ -7,7 +7,7 @@ import x.websocket
 fn main() {
 	println('press enter to quit...\n')
 	go start_server()
-	time.wait(100 * time.millisecond)
+	time.sleep(100 * time.millisecond)
 	go start_client()
 	os.get_line()
 }
@@ -64,7 +64,7 @@ fn start_client() ? {
 	// // println('type: $msg.opcode payload:\n$msg.payload ref: $r')
 	// }, &r)
 	ws.connect() or { println('error on connect: $err') }
-	go write_echo(mut ws) or { println('error on write_echo $err') }
+	go write_echo(mut ws) // or { println('error on write_echo $err') }
 	ws.listen() or { println('error on listen $err') }
 	unsafe {
 		ws.free()
@@ -76,7 +76,7 @@ fn write_echo(mut ws websocket.Client) ? {
 	for i := 0; i <= 10; i++ {
 		// Server will send pings every 30 seconds
 		ws.write_str(message) or { println('panicing writing $err') }
-		time.wait(100 * time.millisecond)
+		time.sleep(100 * time.millisecond)
 	}
 	ws.close(1000, 'normal') or { println('panicing $err') }
 }

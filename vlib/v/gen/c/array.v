@@ -150,11 +150,11 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	g.writeln('for (int $i = 0; $i < ${tmp}_len; ++$i) {')
 	g.writeln('\t$inp_elem_type it = (($inp_elem_type*) ${tmp}_orig.data)[$i];')
 	mut is_embed_map_filter := false
-	expr := node.args[0].expr
-	match expr {
+	mut expr := node.args[0].expr
+	match mut expr {
 		ast.AnonFn {
 			g.write('\t$ret_elem_type ti = ')
-			g.gen_anon_fn_decl(expr)
+			g.gen_anon_fn_decl(mut expr)
 			g.write('${expr.decl.name}(it)')
 		}
 		ast.Ident {
@@ -324,11 +324,11 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	g.writeln('for (int $i = 0; $i < ${tmp}_len; ++$i) {')
 	g.writeln('\t$elem_type_str it = (($elem_type_str*) ${tmp}_orig.data)[$i];')
 	mut is_embed_map_filter := false
-	expr := node.args[0].expr
-	match expr {
+	mut expr := node.args[0].expr
+	match mut expr {
 		ast.AnonFn {
 			g.write('\tif (')
-			g.gen_anon_fn_decl(expr)
+			g.gen_anon_fn_decl(mut expr)
 			g.write('${expr.decl.name}(it)')
 		}
 		ast.Ident {

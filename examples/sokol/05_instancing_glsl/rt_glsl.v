@@ -292,7 +292,7 @@ fn draw_cube_glsl_i(mut app App){
 		return
 	}
 
-	ws := gg.window_size()
+	ws := gg.window_size_real_pixels()
 	//ratio := f32(ws.width) / ws.height
 	dw := f32(ws.width  / 2)
 	dh := f32(ws.height / 2)
@@ -356,7 +356,7 @@ fn draw_start_glsl(app App){
 		return
 	}
 
-	ws := gg.window_size()
+	ws := gg.window_size_real_pixels()
 	//ratio := f32(ws.width) / ws.height
 	//dw := f32(ws.width  / 2)
 	//dh := f32(ws.height / 2)
@@ -370,7 +370,7 @@ fn draw_end_glsl(app App){
 }
 
 fn frame(mut app App) {
-	ws := gg.window_size()
+	ws := gg.window_size_real_pixels()
 
 	// clear
 	mut color_action := C.sg_color_attachment_action{

@@ -31,7 +31,7 @@ fn test_shared_array() {
 		if finished_threads == 4 {
 			break
 		}
-		time.wait(100 * time.millisecond)
+		time.sleep(100 * time.millisecond)
 	}
 	rlock foo {
 		f0 := foo[0]

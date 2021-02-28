@@ -48,7 +48,11 @@ fn (g &Gen) type_to_fmt(typ table.Type) string {
 		return "'%.*s\\000'"
 	} else if sym.kind in [.f32, .f64] {
 		return '%g\\000' // g removes trailing zeros unlike %f
+	} else if sym.kind == .u32 {
+		return '%u\\000'
 	} else if sym.kind == .u64 {
+		return '%llu\\000'
+	} else if sym.kind == .i64 {
 		return '%lld\\000'
 	}
 	return '%d\\000'

@@ -65,19 +65,11 @@ pub fn (f Any) str() string {
 		}
 		f32 {
 			str_f32 := f.str()
-			return if str_f32.ends_with('.') {
-				str_f32 + '0'
-			} else {
-				str_f32
-			}
+			return if str_f32.ends_with('.') { '${str_f32}0' } else { str_f32 }
 		}
 		f64 {
 			str_f64 := f.str()
-			return if str_f64.ends_with('.') {
-				str_f64 + '0'
-			} else {
-				str_f64
-			}
+			return if str_f64.ends_with('.') { '${str_f64}0' } else { str_f64 }
 		}
 		bool {
 			return f.str()
@@ -85,14 +77,11 @@ pub fn (f Any) str() string {
 		map[string]Any {
 			return f.str()
 		}
+		[]Any {
+			return f.str()
+		}
 		Null {
 			return 'null'
-		}
-		else {
-			if f is []Any {
-				return f.str()
-			}
-			return ''
 		}
 	}
 }

@@ -44,7 +44,7 @@ fn test_shared_lock() {
 		if finished {
 			break
 		}
-		time.wait(100 * time.millisecond)
+		time.sleep(100 * time.millisecond)
 	}
 	rlock x, y {
 		assert x.a == 7 && y.a == 5

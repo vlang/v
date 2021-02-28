@@ -269,12 +269,9 @@ pub fn (mut ctx Context) add_header(key string, val string) {
 
 // Returns the header data from the key
 pub fn (ctx &Context) get_header(key string) string {
-	return ctx.req.headers[key]
+	return ctx.req.lheaders[key.to_lower()]
 }
 
-// fn handle_conn(conn net.Socket) {
-// println('handle')
-// }
 pub fn run<T>(port int) {
 	mut app := T{}
 	run_app<T>(mut app, port)
@@ -292,31 +289,10 @@ pub fn run_app<T>(mut app T, port int) {
 			// check routes for validity
 		}
 	}
-	// app.reset()
 	for {
 		mut conn := l.accept() or { panic('accept() failed') }
-		go handle_conn<T>(mut conn, mut app)
-		// app.vweb.page_gen_time = time.ticks() - t
-		// eprintln('handle conn() took ${time.ticks()-t}ms')
-		// message := readall(conn)
-		// println(message)
-		/*
-		if message.len > max_http_post_size {
-			println('message.len = $message.len > max_http_post_size')
-			conn.send_string(http_500) or {}
-			conn.close() or {}
-			continue
-		}
-		*/
-		// lines := message.split_into_lines()
-		// println(lines)
-		/*
-		if lines.len < 2 {
-			conn.send_string(http_500) or {}
-			conn.close() or {}
-			continue
-		}
-		*/
+		// TODO: running handle_conn concurrently results in a race-condition
+		handle_conn<T>(mut conn, mut app)
 	}
 }
 
@@ -326,98 +302,9 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	defer {
 		conn.close() or { }
 	}
-	// fn handle_conn<T>(conn net.Socket, app_ T) T {
-	// mut app := app_
-	// first_line := strip(lines[0])
 	mut reader := io.new_buffered_reader(reader: io.make_reader(conn))
 	page_gen_start := time.ticks()
-	first_line := reader.read_line() or {
-		$if debug {
-			eprintln('Failed to read first_line') // show this only in debug mode, because it always would be shown after a chromium user visits the site
-		}
-		return
-	}
-	$if debug {
-		eprintln('firstline="$first_line"')
-	}
-	// Parse the first line
-	// "GET / HTTP/1.1"
-	// first_line := s.all_before('\n')
-	vals := first_line.split(' ')
-	if vals.len < 2 {
-		println('no vals for http')
-		send_string(mut conn, vweb.http_500) or { }
-		return
-	}
-	mut headers := []string{}
-	mut body := ''
-	mut in_headers := true
-	mut len := 0
-	// File receive stuff
-	mut ct := 'text/plain'
-	mut boundary := ''
-	// for line in lines[1..] {
-	for lindex in 0 .. 100 {
-		// println(j)
-		line := reader.read_line() or {
-			println('Failed read_line $lindex')
-			break
-		}
-		sline := strip(line)
-		// Parse content type
-		if sline.len >= 14 && sline[..14].to_lower() == 'content-type: ' {
-			args := sline[14..].split('; ')
-			ct = args[0]
-			if args.len > 1 {
-				boundary = args[1][9..]
-			}
-		}
-		if sline == '' {
-			// if in_headers {
-			// End of headers, no body => exit
-			if len == 0 {
-				break
-			}
-			//} //else {
-			// End of body
-			// break
-			//}
-			// read body
-			mut read_body := []byte{len: len}
-			// read just the amount of content len if there is no content there is nothing more to read here
-			reader.read(mut read_body) or { println('reader.read failed with err: $err') }
-			body += read_body.bytestr()
-			break
-		}
-		if ct == 'multipart/form-data' && sline == boundary {
-			body += boundary
-			read_body := io.read_all(reader: reader) or { []byte{} }
-			body += read_body.bytestr()
-			break
-		}
-		if in_headers {
-			headers << sline
-			if sline.to_lower().starts_with('content-length') {
-				len = sline.all_after(': ').int()
-				// println('GOT CL=$len')
-			}
-		}
-	}
-	req := http.Request{
-		headers: http.parse_headers(headers) // s.split_into_lines())
-		data: strip(body)
-		ws_func: 0
-		user_ptr: 0
-		method: http.method_from_str(vals[0])
-		url: vals[1]
-	}
-	$if debug {
-		println('req.headers = ')
-		println(req.headers)
-		println('req.data="$req.data"')
-		// println('vweb action = "$action"')
-	}
-	// mut app := T{
+	req := parse_request(mut reader) or { return }
 	app.Context = Context{
 		req: req
 		conn: conn
@@ -426,23 +313,22 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 		static_mime_types: app.static_mime_types
 		page_gen_start: page_gen_start
 	}
-	// }
 	if req.method in vweb.methods_with_form {
-		if ct == 'multipart/form-data' {
-			app.parse_multipart_form(body, boundary)
+		if 'multipart/form-data' in req.lheaders['content-type'].split('; ') {
+			boundary := req.lheaders['content-type'].split('; ').filter(it.starts_with('boundary '))
+			if boundary.len != 1 {
+				// TODO: send 400 error
+				return
+			}
+			app.parse_multipart_form(req.data, boundary[0][9..])
 		} else {
 			app.parse_form(req.data)
 		}
 	}
-	if vals.len < 2 {
-		$if debug {
-			println('no vals for http')
-		}
-		return
-	}
 	// Serve a static file if it is one
 	// TODO: handle url parameters properly - for now, ignore them
 	mut static_file_name := app.req.url
+	// TODO: use urllib methods instead of manually parsing
 	if static_file_name.contains('?') {
 		static_file_name = static_file_name.all_before('?')
 	}
@@ -462,12 +348,9 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	$if debug {
 		println('route matching...')
 	}
-	// t := time.ticks()
-	// mut action := ''
 	mut route_words_a := [][]string{}
-	// mut url_words := vals[1][1..].split('/').filter(it != '')
-	x := vals[1][1..].split('/')
-	mut url_words := x.filter(it != '')
+	// TODO: use urllib methods instead of manually parsing
+	mut url_words := req.url.split('/').filter(it != '')
 	// Parse URL query
 	if url_words.len > 0 && url_words.last().contains('?') {
 		words := url_words.last().after('?').split('&')
@@ -754,10 +637,11 @@ pub fn (mut ctx Context) serve_static(url string, file_path string, mime_type st
 
 // Returns the ip address from the current user
 pub fn (ctx &Context) ip() string {
-	mut ip := ctx.req.headers['X-Forwarded-For']
+	mut ip := ctx.req.lheaders['x-forwarded-for']
 	if ip == '' {
-		ip = ctx.req.headers['X-Real-IP']
+		ip = ctx.req.lheaders['x-real-ip']
 	}
+
 	if ip.contains(',') {
 		ip = ip.all_before(',')
 	}
@@ -772,22 +656,6 @@ pub fn (mut ctx Context) error(s string) {
 	ctx.form_error = s
 }
 
-/*
-fn readall(conn net.Socket) string {
-	// read all message from socket
-	//printf("waitall=%d\n", C.MSG_WAITALL)
-	mut message := ''
-	buf := [1024]byte
-	for {
-		n := C.recv(conn.sockfd, buf, 1024, 0)
-		m := conn.crecv(buf, 1024)
-		message += unsafe { byteptr(buf).vstring_with_len(m) }
-		if message.len > max_http_post_size { break }
-		if n == m { break }
-	}
-	return message
-}
-*/
 fn strip(s string) string {
 	// strip('\nabc\r\n') => 'abc'
 	return s.trim('\r\n')

@@ -38,6 +38,9 @@ NB: You can also pass one of `-gcc`, `-msvc`, `-clang` to `make.bat` instead,
 if you do prefer to use a different C compiler, but -tcc is small, fast, and
 easy to install (V will download a prebuilt binary automatically).
 
+It is recommended to add this folder to the PATH of your environment variables.
+This can be done with the command `v.exe symlink`.
+
 ### Android
 Running V graphical apps on Android is also possible via [vab](https://github.com/vlang/vab).
 
@@ -61,7 +64,6 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
 * [Comments](#comments)
 * [Functions](#functions)
     * [Returning multiple values](#returning-multiple-values)
-    * [Variable number of arguments](#variable-number-of-arguments)
 * [Symbol visibility](#symbol-visibility)
 * [Variables](#variables)
 * [Types](#types)
@@ -90,6 +92,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
 * [Functions 2](#functions-2)
     * [Pure functions by default](#pure-functions-by-default)
     * [Mutable arguments](#mutable-arguments)
+    * [Variable number of arguments](#variable-number-of-arguments)
     * [Anonymous & high order functions](#anonymous--high-order-functions)
 * [References](#references)
 * [Constants](#constants)
@@ -119,8 +122,9 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Profiling](#profiling)
 * [Advanced Topics](#advanced-topics)
     * [Memory-unsafe code](#memory-unsafe-code)
-	* [sizeof and __offsetof](#sizeof-and-__offsetof)
-    * [Calling C functions from V](#calling-c-functions-from-v)
+    * [Structs with reference fields](structs-with-reference-fields)
+    * [sizeof and __offsetof](#sizeof-and-__offsetof)
+    * [Calling C from V](#calling-c-from-v)
     * [Debugging generated C code](#debugging-generated-c-code)
     * [Conditional compilation](#conditional-compilation)
     * [Compile time pseudo variables](#compile-time-pseudo-variables)
@@ -233,27 +237,6 @@ a, b := foo()
 println(a) // 2
 println(b) // 3
 c, _ := foo() // ignore values using `_`
-```
-
-### Variable number of arguments
-
-```v
-fn sum(a ...int) int {
-	mut total := 0
-	for x in a {
-		total += x
-	}
-	return total
-}
-
-println(sum()) // 0
-println(sum(1)) // 1
-println(sum(2, 3)) // 5
-// using array decomposition
-a := [2, 3, 4]
-println(sum(...a)) // <-- using prefix ... here. output: 9
-b := [5, 6, 7]
-println(sum(...b)) // output: 18
 ```
 
 ## Symbol visibility
@@ -1559,7 +1542,7 @@ fn main() {
 This means that defining public readonly fields is very easy in V,
 no need in getters/setters or properties.
 
-### Methods
+## Methods
 
 ```v
 struct User {
@@ -1583,6 +1566,7 @@ println(user2.can_register()) // "true"
 V doesn't have classes, but you can define methods on types.
 A method is a function with a special receiver argument.
 The receiver appears in its own argument list between the `fn` keyword and the method name.
+Methods must be in the same module as the receiver type.
 
 In this example, the `can_register` method has a receiver of type `User` named `u`.
 The convention is not to use receiver names like `self` or `this`,
@@ -1716,6 +1700,27 @@ mut user := User{
 }
 user = register(user)
 println(user)
+```
+
+### Variable number of arguments
+
+```v
+fn sum(a ...int) int {
+	mut total := 0
+	for x in a {
+		total += x
+	}
+	return total
+}
+
+println(sum()) // 0
+println(sum(1)) // 1
+println(sum(2, 3)) // 5
+// using array decomposition
+a := [2, 3, 4]
+println(sum(...a)) // <-- using prefix ... here. output: 9
+b := [5, 6, 7]
+println(sum(...b)) // output: 18
 ```
 
 ### Anonymous & high order functions
@@ -2566,28 +2571,24 @@ fn main() {
 }
 ```
 
-If there is a large number of tasks that do not return a value it might be easier to manage
-them using a wait group. However, for this approach the function(s) called concurrently have
-to be designed with this wait group in mind:
+If there is a large number of tasks, it might be easier to manage them
+using an array of threads.
 
 ```v
-import sync
 import time
 
-fn task(id int, duration int, mut wg sync.WaitGroup) {
+fn task(id int, duration int) {
 	println('task $id begin')
 	time.wait(duration * time.millisecond)
 	println('task $id end')
-	wg.done()
 }
 
 fn main() {
-	mut wg := sync.new_waitgroup()
-	wg.add(3)
-	go task(1, 500, mut wg)
-	go task(2, 900, mut wg)
-	go task(3, 100, mut wg)
-	wg.wait()
+	mut threads := []thread{}
+	threads << go task(1, 500)
+	threads << go task(2, 900)
+	threads << go task(3, 100)
+	threads.wait()
 	println('done')
 }
 
@@ -2599,6 +2600,27 @@ fn main() {
 // task 1 end
 // task 2 end
 // done
+```
+
+Additionally for threads that return the same type, calling `wait()`
+on the thread array will return all computed values.
+
+```v
+fn expensive_computing(i int) int {
+	return i * i
+}
+
+fn main() {
+	mut threads := []thread int{}
+	for i in 1 .. 10 {
+		threads << go expensive_computing(i)
+	}
+	// Join all tasks
+	r := threads.wait()
+	println('All jobs finished: $r')
+}
+
+// Output: All jobs finished: [1, 4, 9, 16, 25, 36, 49, 64, 81]
 ```
 
 ### Channels
@@ -3191,7 +3213,9 @@ assert __offsetof(Foo, a) == 0
 assert __offsetof(Foo, b) == 4
 ```
 
-## Calling C functions from V
+## Calling C from V
+
+### Example
 
 ```v
 #flag -lsqlite3
@@ -3258,7 +3282,7 @@ fn main() {
 }
 ```
 
-### #flag
+### Passing C compilation flags
 
 Add `#flag` directives to the top of your V files to provide C compilation flags like:
 
@@ -3267,7 +3291,7 @@ Add `#flag` directives to the top of your V files to provide C compilation flags
 - `-L` for adding C library files search paths
 - `-D` for setting compile time variables
 
-You can use different flags for different targets.
+You can (optionally) use different flags for different targets.
 Currently the `linux`, `darwin` , `freebsd`, and `windows` flags are supported.
 
 NB: Each flag must go on its own line (for now)
@@ -3279,6 +3303,13 @@ NB: Each flag must go on its own line (for now)
 #flag linux -DIMGUI_DISABLE_OBSOLETE_FUNCTIONS=1
 #flag linux -DIMGUI_IMPL_API=
 ```
+
+In the console build command, you can use `-cflags` to pass custom flags to the backend C compiler.
+You can also use `-cc` to change the default C backend compiler.
+For example: `-cc gcc-9 -cflags -fsanitize=thread`.
+
+You can also define a `VFLAGS` environment variable in your terminal to store your `-cc` 
+and `cflags` settings, rather than including them in the build command each time.
 
 ### #pkgconfig
 
@@ -3341,10 +3372,6 @@ You can see a complete minimal example for using C code in a V wrapper module he
 [project_with_c_code](https://github.com/vlang/v/tree/master/vlib/v/tests/project_with_c_code).
 Another example, demonstrating passing structs from C to V and back again:
 [interoperate between C to V to C](https://github.com/vlang/v/tree/master/vlib/v/tests/project_with_c_code_2).
-
-You can use `-cflags` to pass custom flags to the backend C compiler.
-You can also use `-cc` to change the default C backend compiler.
-For example: `-cc gcc-9 -cflags -fsanitize=thread`.
 
 ### C types
 

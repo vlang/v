@@ -7,7 +7,7 @@ import strings
 // handshake manages the websocket handshake process
 fn (mut ws Client) handshake() ? {
 	nonce := get_nonce(ws.nonce_size)
-	seckey := base64.encode(nonce)
+	seckey := base64.encode_str(nonce)
 	mut sb := strings.new_builder(1024)
 	defer {
 		unsafe { sb.free() }

@@ -39,7 +39,7 @@ fn test_run() {
 		$if trace_process_output ? {
 			os.system('ps -opid= -oppid= -ouser= -onice= -of= -ovsz= -orss= -otime= -oargs= -p $p.pid')
 		}
-		time.wait(50 * time.millisecond)
+		time.sleep(50 * time.millisecond)
 		i++
 	}
 	p.wait()

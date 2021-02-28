@@ -268,7 +268,7 @@ fn cube_field(app App) {
 }
 
 fn frame(mut app App) {
-	ws := gg.window_size()
+	ws := gg.window_size_real_pixels()
 	ratio := f32(ws.width) / ws.height
 	dw := ws.width
 	dh := ws.height
