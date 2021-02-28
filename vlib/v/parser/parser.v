@@ -916,15 +916,6 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 					}
 					p.check(.chartoken)
 				}
-				.dollar {
-					p.check(.dollar)
-					args << ast.AsmAlias{
-						val: p.tok.lit
-						is_numeric: true
-						pos: p.tok.position()
-					}
-					p.check(.number)
-				}
 				.colon {
 					is_label = true
 					p.check(.colon)
@@ -961,9 +952,9 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 	mut output, mut input, mut clobbered, mut global_labels := []ast.AsmIO{}, []ast.AsmIO{}, []ast.AsmClobbered{}, []string{}
 	if !is_top_level {
 		if p.tok.kind == .colon {
-			output = p.asm_ios()
+			output = p.asm_ios(true)
 			if p.tok.kind == .colon {
-				input = p.asm_ios()
+				input = p.asm_ios(false)
 			}
 			if p.tok.kind == .colon {
 				p.check(.colon)
@@ -1012,7 +1003,6 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 		clobbered: clobbered
 		pos: pos.extend(p.tok.position())
 		is_top_level: is_top_level
-		max_idx: p.n_asm - 1
 		scope: scope
 		global_labels: global_labels
 		local_labels: local_labels
@@ -1033,7 +1023,7 @@ fn (mut p Parser) reg_or_alias() ast.AsmArg {
 	} else {
 		p.check(.name)
 		return ast.AsmAlias{
-			val: p.prev_tok.lit
+			name: p.prev_tok.lit
 			pos: p.prev_tok.position()
 		}
 	}
@@ -1237,13 +1227,7 @@ fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 	return ast.AsmAddressing{}
 }
 
-fn (mut p Parser) reg_name() string {
-	reg := p.tok.lit
-	p.check(.name)
-	return reg
-}
-
-fn (mut p Parser) asm_ios() []ast.AsmIO {
+fn (mut p Parser) asm_ios(output bool) []ast.AsmIO {
 	mut res := []ast.AsmIO{}
 	p.check(.colon)
 	if p.tok.kind in [.rcbr, .colon] {
@@ -1251,17 +1235,21 @@ fn (mut p Parser) asm_ios() []ast.AsmIO {
 	}
 	for {
 		pos := p.tok.position()
-		mut constraint := ''
 
-		if p.tok.kind == .assign {
-			constraint += '='
-			p.check(.assign)
-		} else if p.tok.kind == .plus {
-			constraint += '+'
-			p.check(.assign)
+		mut constraint := ''
+		if p.tok.kind == .lpar {
+			constraint = if output { '+r' } else { 'r' } // default constraint
+		} else {
+			if p.tok.kind == .assign {
+				constraint += '='
+				p.check(.assign)
+			} else if p.tok.kind == .plus {
+				constraint += '+'
+				p.check(.plus)
+			}
+			constraint += p.tok.lit
+			p.check(.name)
 		}
-		constraint += p.tok.lit
-		p.check(.name)
 		mut expr := p.expr(0)
 		if mut expr is ast.ParExpr {
 			expr = expr.expr
@@ -1273,7 +1261,10 @@ fn (mut p Parser) asm_ios() []ast.AsmIO {
 			p.check(.key_as)
 			alias = p.tok.lit
 			p.check(.name)
+		} else if mut expr is ast.Ident {
+			alias = expr.name
 		}
+		// for constraints like `a`, no alias is needed, it is reffered to as rcx
 		mut comments := []ast.Comment{}
 		for p.tok.kind == .comment {
 			comments << p.comment()
@@ -2965,16 +2956,6 @@ pub fn (mut p Parser) mark_var_as_used(varname string) bool {
 fn (mut p Parser) unsafe_stmt() ast.Stmt {
 	mut pos := p.tok.position()
 	p.next()
-	// unsafe asm {...}
-	if p.tok.kind == .key_asm {
-		stmt := p.asm_stmt(false)
-		pos.update_last_line(p.tok.line_nr)
-		return ast.Block{
-			stmts: [ast.Stmt(stmt)]
-			is_unsafe: true
-			pos: pos
-		}
-	}
 	if p.tok.kind != .lcbr {
 		p.error_with_pos('please use `unsafe {`', p.tok.position())
 		return ast.Stmt{}

@@ -535,11 +535,7 @@ fn (mut f Fmt) asm_arg(arg ast.AsmArg) {
 			f.asm_reg(arg)
 		}
 		ast.AsmAlias {
-			if arg.is_numeric {
-				f.write('$$arg.val')
-			} else {
-				f.write('$arg.val')
-			}
+			f.write('$arg.name')
 		}
 		ast.IntegerLiteral, ast.FloatLiteral, ast.CharLiteral {
 			f.write(arg.val)
@@ -822,7 +818,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.as_cast(node)
 		}
 		ast.AsmAlias {
-			f.write('$node.val')
+			f.write('$node.name')
 		}
 		ast.Assoc {
 			f.assoc(node)
@@ -2207,13 +2203,6 @@ pub fn (mut f Fmt) assert_stmt(node ast.AssertStmt) {
 pub fn (mut f Fmt) block(node ast.Block) {
 	if node.is_unsafe {
 		f.write('unsafe ')
-		if node.stmts.len == 1 && node.stmts[0] is ast.AsmStmt {
-			x := node.stmts[0]
-			if x is ast.AsmStmt {
-				f.asm_stmt(x)
-				return
-			}
-		}
 	}
 	f.write('{')
 	if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {

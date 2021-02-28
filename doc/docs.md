@@ -3834,7 +3834,7 @@ are auto generated when the operators are defined though they must return the sa
 a := 100
 b := 20
 c := 0
-unsafe asm amd64 {
+asm amd64 {
     mov eax, a
     add eax, b
     mov c, eax

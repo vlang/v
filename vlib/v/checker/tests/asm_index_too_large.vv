@@ -1,7 +1,0 @@
-unsafe asm amd64 {
-	mov eax, $1
-	mov $0, eax
-	: 
-	: 
-	: eax
-}

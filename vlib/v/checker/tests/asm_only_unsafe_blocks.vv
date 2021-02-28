@@ -1,3 +1,0 @@
-asm x64 {
-    mov eax, ebx
-}

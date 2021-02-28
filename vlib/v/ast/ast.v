@@ -1041,7 +1041,6 @@ pub:
 	pos          token.Position
 pub mut:
 	templates     []AsmTemplate
-	max_idx       int
 	scope         &Scope
 	output        []AsmIO
 	input         []AsmIO
@@ -1071,9 +1070,8 @@ mut:
 
 pub struct AsmAlias {
 pub:
-	val        string // a
-	is_numeric bool
-	pos        token.Position
+	name string // a
+	pos  token.Position
 }
 
 pub struct AsmAddressing {

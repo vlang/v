@@ -3427,9 +3427,6 @@ fn (mut c Checker) go_stmt(mut node ast.GoStmt) {
 }
 
 fn (mut c Checker) asm_stmt(mut stmt ast.AsmStmt) {
-	if !c.inside_unsafe {
-		c.error('inline assembly is only allowed in `unsafe` blocks', stmt.pos)
-	}
 	if stmt.is_goto {
 		c.warn('asm goto is not supported, it will probably not work', stmt.pos)
 	}
@@ -3449,17 +3446,10 @@ fn (mut c Checker) asm_stmt(mut stmt ast.AsmStmt) {
 fn (mut c Checker) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt, aliases []string) {
 	match mut arg {
 		ast.AsmAlias {
-			if arg.is_numeric {
-				if arg.val.int() >= stmt.input.len + stmt.output.len {
-					c.error('index too large. largest index is $stmt.max_idx, got $arg.val',
-						arg.pos)
-				}
-			} else {
-				val := arg.val
-				if val !in aliases && val !in stmt.local_labels && val !in stmt.global_labels {
-					suggestion := util.new_suggestion(val, aliases)
-					c.error(suggestion.say('alias `$arg.val` does not exist'), arg.pos)
-				}
+			name := arg.name
+			if name !in aliases && name !in stmt.local_labels && name !in stmt.global_labels {
+				suggestion := util.new_suggestion(name, aliases)
+				c.error(suggestion.say('alias or label `$arg.name` does not exist'), arg.pos)
 			}
 		}
 		ast.AsmAddressing {

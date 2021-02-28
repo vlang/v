@@ -1775,20 +1775,15 @@ fn (mut g Gen) gen_asm_stmt(stmt ast.AsmStmt) {
 fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 	match arg {
 		ast.AsmAlias {
-			val := arg.val
-			if val in stmt.local_labels || val in stmt.global_labels {
-				g.write(if val in stmt.local_labels {
-					val
+			name := arg.name
+			if name in stmt.local_labels || name in stmt.global_labels {
+				g.write(if name in stmt.local_labels {
+					name
 				} else { // val in stmt.global_labels
-					'%l[$val]'
+					'%l[$name]'
 				})
 			} else {
-				if arg.is_numeric { // v: $0 c: %0
-					g.write('%$arg.val')
-				} else { // v: $a c: %[a]
-
-					g.write('%[$arg.val]')
-				}
+				g.write('%[$name]')
 			}
 		}
 		ast.CharLiteral {
