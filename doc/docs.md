@@ -22,8 +22,8 @@ It is __easy__, and it usually takes __only a few seconds__.
 ### Linux, macOS, FreeBSD, etc:
 You need `git`, and a C compiler like `tcc`, `gcc` or `clang`, and `make`:
 ```bash
-git clone https://github.com/vlang/v 
-cd v 
+git clone https://github.com/vlang/v
+cd v
 make
 ```
 
@@ -1090,7 +1090,7 @@ V has only one looping keyword: `for`, with several forms.
 
 #### `for`/`in`
 
-This is the most common form. You can use it with an array, map or 
+This is the most common form. You can use it with an array, map or
 numeric range.
 
 ##### Array `for`
@@ -1824,7 +1824,7 @@ println(world)
 
 Constants are declared with `const`. They can only be defined
 at the module level (outside of functions).
-Constant values can never be changed. You can also declare a single 
+Constant values can never be changed. You can also declare a single
 constant separately:
 
 ```v
@@ -2579,7 +2579,7 @@ import time
 
 fn task(id int, duration int) {
 	println('task $id begin')
-	time.wait(duration * time.millisecond)
+	time.sleep(duration * time.millisecond)
 	println('task $id end')
 }
 
@@ -3308,7 +3308,7 @@ In the console build command, you can use `-cflags` to pass custom flags to the 
 You can also use `-cc` to change the default C backend compiler.
 For example: `-cc gcc-9 -cflags -fsanitize=thread`.
 
-You can also define a `VFLAGS` environment variable in your terminal to store your `-cc` 
+You can also define a `VFLAGS` environment variable in your terminal to store your `-cc`
 and `cflags` settings, rather than including them in the build command each time.
 
 ### #pkgconfig
@@ -3868,7 +3868,7 @@ fn print_message() {
 fn main() {
 	for {
 		print_message()
-		time.wait(500 * time.millisecond)
+		time.sleep(500 * time.millisecond)
 	}
 }
 ```
@@ -3980,7 +3980,7 @@ fn old_function() {
 fn inlined_function() {
 }
 
-// The following struct must be allocated on the heap. Therefore, it can only be used as a 
+// The following struct must be allocated on the heap. Therefore, it can only be used as a
 // reference (`&Window`) or inside another reference (`&OuterStruct{ Window{...} }`).
 [heap]
 struct Window {
@@ -4018,7 +4018,7 @@ fn main() {
 
 V allows unconditionally jumping to a label with `goto`. The label name must be contained
 within the same function as the `goto` statement. A program may `goto` a label outside
-or deeper than the current scope. `goto` allows jumping past variable initialization or 
+or deeper than the current scope. `goto` allows jumping past variable initialization or
 jumping back to code that accesses memory that has already been freed, so it requires
 `unsafe`.
 
