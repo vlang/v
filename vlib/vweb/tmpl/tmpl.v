@@ -75,8 +75,26 @@ _ = footer
 		}
 		if line.contains('@include ') {
 			lines.delete(i)
-			file_name := line.split("'")[1]
-			file_path := os.join_path('templates', '${file_name}.html')
+			mut file_name := line.split("'")[1]
+			mut file_ext := os.file_ext(file_name)
+			if file_ext == '' {
+				file_ext = '.html'
+			}
+			file_name = file_name.replace(file_ext, '')
+			mut templates_folder := 'templates'
+			if file_name.contains('/') {
+				if file_name.starts_with('/') {
+					// absolute path
+					templates_folder = ''
+				} else {
+					// relative path, starting with the current folder
+					templates_folder = './'
+				}
+			}
+			file_path := os.real_path(os.join_path(templates_folder, '$file_name$file_ext'))
+			$if trace_tmpl ? {
+				eprintln('>>> @include line: "$line" , file_name: "$file_name" , file_ext: "$file_ext" , templates_folder: "$templates_folder" , file_path: "$file_path"')
+			}
 			file_content := os.read_file(file_path) or {
 				panic('Vweb: Reading file $file_name failed.')
 			}
