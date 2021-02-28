@@ -3671,7 +3671,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		}
 		ast.CallExpr {
 			mut ret_type := c.call_expr(mut node)
-			if ret_type.has_flag(.optional) && node.or_block.kind != .absent  {
+			if ret_type.has_flag(.optional) && node.or_block.kind != .absent {
 				ret_type = ret_type.clear_flag(.optional)
 			}
 			return ret_type
