@@ -104,7 +104,7 @@ pub fn merge<T>(a []T, b []T) []T {
 
 // group n arrays into a single array of arrays with n elements
 pub fn group<T>(lists ...[]T) [][]T {
-	mut length := lists[0].len
+	mut length := if lists.len > 0 { lists[0].len } else { 0 }
 	// calculate length of output by finding shortest input array
 	for ndx in 1 .. lists.len {
 		if lists[ndx].len < length {
