@@ -4407,15 +4407,15 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym table.TypeS
 		for expr in branch.exprs {
 			mut key := ''
 			if expr is ast.RangeExpr {
-				mut low := 0
-				mut high := 0
+				mut low := i64(0)
+				mut high := i64(0)
 				c.expected_type = node.expected_type
 				low_expr := expr.low
 				high_expr := expr.high
 				if low_expr is ast.IntegerLiteral {
 					if high_expr is ast.IntegerLiteral {
-						low = low_expr.val.int()
-						high = high_expr.val.int()
+						low = low_expr.val.i64()
+						high = high_expr.val.i64()
 					} else {
 						c.error('mismatched range types', low_expr.pos)
 					}
@@ -4429,6 +4429,11 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym table.TypeS
 				} else {
 					typ := c.table.type_to_str(c.expr(expr.low))
 					c.error('cannot use type `$typ` in match range', branch.pos)
+				}
+				high_low_cutoff := 1000
+				if high - low > high_low_cutoff {
+					c.warn('more than $high_low_cutoff possibilities ($low ... $high) in match range',
+						branch.pos)
 				}
 				for i in low .. high + 1 {
 					key = i.str()
