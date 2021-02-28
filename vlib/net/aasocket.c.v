@@ -69,7 +69,9 @@ fn C.htonl(hostlong u32) int
 fn C.htons(netshort u16) int
 
 // fn C.bind(sockfd int, addr &C.sockaddr, addrlen C.socklen_t) int
-fn C.bind(sockfd int, addr &C.sockaddr, addrlen u32) int
+// use voidptr for arg 2 becasue sockaddr is a generic descriptor for any kind of socket operation,
+// it can also take sockaddr_in depending on the type of socket used in arg 1
+fn C.bind(sockfd int, addr voidptr, addrlen u32) int
 
 fn C.listen(sockfd int, backlog int) int
 

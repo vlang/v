@@ -40,7 +40,7 @@ struct C.sockaddr_storage {
 
 fn C.atoi() int
 
-fn C.strncasecmp() int
+fn C.strncasecmp(s1 charptr, s2 charptr, n size_t) int
 
 fn C.socket(domain int, typ int, protocol int) int
 
@@ -52,7 +52,9 @@ fn C.htonl(hostlong u32) int
 fn C.htons(netshort u16) int
 
 // fn C.bind(sockfd int, addr &C.sockaddr, addrlen C.socklen_t) int
-fn C.bind(sockfd int, addr &C.sockaddr, addrlen u32) int
+// use voidptr for arg 2 becasue sockaddr is a generic descriptor for any kind of socket operation,
+// it can also take sockaddr_in depending on the type of socket used in arg 1
+fn C.bind(sockfd int, addr voidptr, addrlen u32) int
 
 fn C.listen(sockfd int, backlog int) int
 
@@ -100,7 +102,11 @@ fn C.picoev_del(&C.picoev_loop, int) int
 
 fn C.picoev_set_timeout(&C.picoev_loop, int, int)
 
-fn C.picoev_add(&C.picoev_loop, int, int, int, &C.picoev_handler, voidptr) int
+// fn C.picoev_handler(loop &C.picoev_loop, fd int, revents int, cb_arg voidptr)
+// TODO: (sponge) update to C.picoev_handler with C type def update
+type Cpicoev_handler = fn(loop &C.picoev_loop, fd int, revents int, cb_arg voidptr)
+
+fn C.picoev_add(&C.picoev_loop, int, int, int, &Cpicoev_handler, voidptr) int
 
 fn C.picoev_init(int) int
 
