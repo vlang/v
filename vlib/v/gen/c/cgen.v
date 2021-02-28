@@ -1949,7 +1949,10 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		}
 		if blank_assign {
 			if is_call {
+				old_is_void_expr_stmt := g.is_void_expr_stmt
+				g.is_void_expr_stmt = true
 				g.expr(val)
+				g.is_void_expr_stmt = old_is_void_expr_stmt
 			} else {
 				g.write('{$styp _ = ')
 				g.expr(val)
