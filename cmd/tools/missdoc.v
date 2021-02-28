@@ -55,7 +55,7 @@ fn report_undocumented_functions_in_path(opt Options, path string) {
 }
 
 fn report_undocumented_functions_in_file(opt Options, file string) {
-	contents := os.read_file(file) or { panic(err) }
+	contents := os.read_file(file) or { panic(err.msg) }
 	lines := contents.split('\n')
 	mut info := []UndocumentedFN{}
 	for i, line in lines {

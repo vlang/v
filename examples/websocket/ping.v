@@ -25,7 +25,7 @@ fn start_server() ? {
 		return true
 	}) ?
 	s.on_message(fn (mut ws websocket.Client, msg &websocket.Message) ? {
-		ws.write(msg.payload, msg.opcode) or { panic(err) }
+		ws.write(msg.payload, msg.opcode) or { panic(err.msg) }
 	})
 	s.on_close(fn (mut ws websocket.Client, code int, reason string) ? {
 		// println('client ($ws.id) closed connection')

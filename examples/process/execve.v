@@ -5,7 +5,7 @@ import os
 fn exec(args []string) {
 	os.execve('/bin/bash', args, []) or {
 		// eprintln(err)
-		panic(err)
+		panic(err.msg)
 	}
 }
 

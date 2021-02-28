@@ -8,14 +8,14 @@ fn test_ftp_cleint() {
 	// that is why it is not a very good idea to run it in CI.
 	// If you want to run it manually, use:
 	// `v -d network vlib/net/ftp/ftp_test.v`
-	ftp_client_test_inside() or { panic(err) }
+	ftp_client_test_inside() or { panic(err.msg) }
 }
 
 fn ftp_client_test_inside() ? {
 	mut zftp := ftp.new()
 	// eprintln(zftp)
 	defer {
-		zftp.close() or { panic(err) }
+		zftp.close() or { panic(err.msg) }
 	}
 	connect_result := zftp.connect('ftp.redhat.com') ?
 	assert connect_result

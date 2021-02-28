@@ -15,10 +15,10 @@ fn test_x64() {
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
 	dir := os.join_path(vroot, 'vlib/v/gen/x64/tests')
-	files := os.ls(dir) or { panic(err) }
+	files := os.ls(dir) or { panic(err.msg) }
 	//
 	wrkdir := os.join_path(os.temp_dir(), 'vtests', 'x64')
-	os.mkdir_all(wrkdir) or { panic(err) }
+	os.mkdir_all(wrkdir) or { panic(err.msg) }
 	os.chdir(wrkdir)
 	tests := files.filter(it.ends_with('.vv'))
 	if tests.len == 0 {
@@ -46,7 +46,7 @@ fn test_x64() {
 			eprintln(res.output)
 			continue
 		}
-		mut expected := os.read_file('$dir/${test}.out') or { panic(err) }
+		mut expected := os.read_file('$dir/${test}.out') or { panic(err.msg) }
 		expected = expected.trim_right('\r\n').replace('\r\n', '\n')
 		mut found := res.output.trim_right('\r\n').replace('\r\n', '\n')
 		found = found.trim_space()

@@ -237,7 +237,7 @@ fn (mut g Gen) comp_if_cond(cond ast.Expr) bool {
 		}
 		ast.PostfixExpr {
 			ifdef := g.comp_if_to_ifdef((cond.expr as ast.Ident).name, true) or {
-				verror(err)
+				verror(err.msg)
 				return false
 			}
 			g.write('defined($ifdef)')

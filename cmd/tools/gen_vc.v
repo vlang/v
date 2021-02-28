@@ -210,7 +210,7 @@ fn (mut gen_vc GenVC) generate() {
 	// check if gen_vc dir exists
 	if !os.is_dir(gen_vc.options.work_dir) {
 		// try create
-		os.mkdir(gen_vc.options.work_dir) or { panic(err) }
+		os.mkdir(gen_vc.options.work_dir) or { panic(err.msg) }
 		// still dosen't exist... we have a problem
 		if !os.is_dir(gen_vc.options.work_dir) {
 			gen_vc.logger.error('error creating directory: $gen_vc.options.work_dir')
@@ -246,8 +246,8 @@ fn (mut gen_vc GenVC) generate() {
 	ts_v := git_log_v.find_between('Date:', '\n').trim_space()
 	ts_vc := git_log_vc.find_between('Date:', '\n').trim_space()
 	// parse time as string to time.Time
-	last_commit_time_v := time.parse(ts_v) or { panic(err) }
-	last_commit_time_vc := time.parse(ts_vc) or { panic(err) }
+	last_commit_time_v := time.parse(ts_v) or { panic(err.msg) }
+	last_commit_time_vc := time.parse(ts_vc) or { panic(err.msg) }
 	// git dates are in users local timezone and v time.parse does not parse
 	// timezones at the moment, so for now get unix timestamp from output also
 	t_unix_v := git_log_v.find_between('Date Unix:', '\n').trim_space().int()
@@ -320,7 +320,7 @@ fn (mut gen_vc GenVC) command_execute(cmd string, dry bool) string {
 	gen_vc.logger.info('cmd: $cmd')
 	r := os.exec(cmd) or {
 		gen_vc.logger.error('$err_msg_cmd_x: "$cmd" could not start.')
-		gen_vc.logger.error(err)
+		gen_vc.logger.error(err.msg)
 		// something went wrong, better start fresh next time
 		gen_vc.purge_repos()
 		gen_vc.gen_error = true

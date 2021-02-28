@@ -44,8 +44,8 @@ fn echo() ? {
 }
 
 fn test_tcp() {
-	mut l := net.listen_tcp(test_port) or { panic(err) }
+	mut l := net.listen_tcp(test_port) or { panic(err.msg) }
 	go echo_server(mut l)
-	echo() or { panic(err) }
+	echo() or { panic(err.msg) }
 	l.close() or { }
 }

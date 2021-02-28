@@ -55,11 +55,11 @@ fn main() {
 		//
 		tpath := os.join_path(session.vtmp_dir, texe)
 		if tname in tools_in_subfolders {
-			os.mv_by_cp(tpath, os.join_path(tfolder, tname, texe)) or { panic(err) }
+			os.mv_by_cp(tpath, os.join_path(tfolder, tname, texe)) or { panic(err.msg) }
 			continue
 		}
 		os.mv_by_cp(tpath, os.join_path(tfolder, texe)) or {
-			if !err.contains('vbuild-tools') {
+			if !err.msg.contains('vbuild-tools') {
 				eprintln(err)
 			}
 			continue

@@ -93,17 +93,17 @@ pub fn (mut bmp BitMap) save_as_ppm(file_name string) {
 
 	bmp.format_texture()
 	npixels := bmp.width * bmp.height
-	mut f_out := os.create(file_name) or { panic(err) }
-	f_out.writeln('P3') or { panic(err) }
-	f_out.writeln('$bmp.width $bmp.height') or { panic(err) }
-	f_out.writeln('255') or { panic(err) }
+	mut f_out := os.create(file_name) or { panic(err.msg) }
+	f_out.writeln('P3') or { panic(err.msg) }
+	f_out.writeln('$bmp.width $bmp.height') or { panic(err.msg) }
+	f_out.writeln('255') or { panic(err.msg) }
 	for i in 0 .. npixels {
 		pos := i * bmp.bp
 		unsafe {
 			c_r := bmp.buf[pos]
 			c_g := bmp.buf[pos + 1]
 			c_b := bmp.buf[pos + 2]
-			f_out.write_str('$c_r $c_g $c_b ') or { panic(err) }
+			f_out.write_str('$c_r $c_g $c_b ') or { panic(err.msg) }
 		}
 	}
 	f_out.close()
@@ -127,7 +127,7 @@ pub fn (mut bmp BitMap) get_raw_bytes() []byte {
 }
 
 pub fn (mut bmp BitMap) save_raw_data(file_name string) {
-	os.write_file_array(file_name, bmp.get_raw_bytes()) or { panic(err) }
+	os.write_file_array(file_name, bmp.get_raw_bytes()) or { panic(err.msg) }
 }
 
 //

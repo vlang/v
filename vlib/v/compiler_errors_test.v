@@ -239,14 +239,14 @@ fn (mut task TaskDescription) execute() {
 	}
 	program := task.path
 	cli_cmd := '$task.vexe $task.voptions $program'
-	res := os.exec(cli_cmd) or { panic(err) }
+	res := os.exec(cli_cmd) or { panic(err.msg) }
 	expected_out_path := program.replace('.vv', '') + task.result_extension
 	task.expected_out_path = expected_out_path
 	task.cli_cmd = cli_cmd
 	if should_autofix && !os.exists(expected_out_path) {
-		os.write_file(expected_out_path, '') or { panic(err) }
+		os.write_file(expected_out_path, '') or { panic(err.msg) }
 	}
-	mut expected := os.read_file(expected_out_path) or { panic(err) }
+	mut expected := os.read_file(expected_out_path) or { panic(err.msg) }
 	task.expected = clean_line_endings(expected)
 	task.found___ = clean_line_endings(res.output)
 	$if windows {
@@ -257,7 +257,7 @@ fn (mut task TaskDescription) execute() {
 	if task.expected != task.found___ {
 		task.is_error = true
 		if should_autofix {
-			os.write_file(expected_out_path, res.output) or { panic(err) }
+			os.write_file(expected_out_path, res.output) or { panic(err.msg) }
 		}
 	}
 }
@@ -279,7 +279,7 @@ fn diff_content(s1 string, s2 string) {
 }
 
 fn get_tests_in_dir(dir string, is_module bool) []string {
-	files := os.ls(dir) or { panic(err) }
+	files := os.ls(dir) or { panic(err.msg) }
 	mut tests := files.clone()
 	if !is_module {
 		tests = files.filter(it.ends_with('.vv'))

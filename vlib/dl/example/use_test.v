@@ -40,7 +40,7 @@ fn test_can_compile_main_program() {
 fn v_compile(vopts string) os.Result {
 	cmd := '"$vexe" -showcc $vopts'
 	eprintln('>>> v_compile cmd: $cmd')
-	res := os.exec(cmd) or { panic(err) }
+	res := os.exec(cmd) or { panic(err.msg) }
 	eprintln('>>> v_compile res: $res')
 	// assert res.exit_code == 0
 	$if !windows {

@@ -281,7 +281,7 @@ pub fn (t &Table) find_field(s &TypeSymbol, name string) ?Field {
 			if field := ts.info.find_field(name) {
 				return field
 			}
-			field := t.register_aggregate_field(mut ts, name) or { return error(err) }
+			field := t.register_aggregate_field(mut ts, name) or { return err }
 			return field
 		} else if mut ts.info is Interface {
 			if field := ts.info.find_field(name) {

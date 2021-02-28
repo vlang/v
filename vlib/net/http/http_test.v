@@ -16,7 +16,7 @@ fn test_http_get_from_vlang_utc_now() {
 	for url in urls {
 		println('Test getting current time from $url by http.get')
 		res := http.get(url) or {
-			panic(err)
+			panic(err.msg)
 		}
 		assert 200 == res.status_code
 		assert res.text.len > 0
@@ -40,7 +40,7 @@ fn test_public_servers() {
 	for url in urls {
 		println('Testing http.get on public url: $url ')
 		res := http.get(url) or {
-			panic(err)
+			panic(err.msg)
 		}
 		assert 200 == res.status_code
 		assert res.text.len > 0
@@ -54,7 +54,7 @@ fn test_relative_redirects() {
 		return
 	} // tempfix periodic: httpbin relative redirects are broken
 	res := http.get('https://httpbin.org/relative-redirect/3?abc=xyz') or {
-		panic(err)
+		panic(err.msg)
 	}
 	assert 200 == res.status_code
 	assert res.text.len > 0

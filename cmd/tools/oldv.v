@@ -101,7 +101,7 @@ fn main() {
 	scripting.cprintln('#   checkout folder: $context.path_v')
 	if context.cmd_to_run.len > 0 {
 		cmdres := os.exec(context.cmd_to_run) or {
-			panic(err)
+			panic(err.msg)
 		}
 		scripting.cprintln('#           command: ${context.cmd_to_run:-34s} exit code: ${cmdres.exit_code:-4d}  result:')
 		println(cmdres.output)

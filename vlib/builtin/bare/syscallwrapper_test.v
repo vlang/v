@@ -13,7 +13,7 @@ fn test_syscallwrappers() {
 				os.chdir(dot_checks)
 				checks_v := "checks.v"
 				assert os.exists(checks_v)
-				rc := os.exec("v run $checks_v") or { panic(err) }
+				rc := os.exec("v run $checks_v") or { panic(err.msg) }
 				assert !rc.output.contains("V panic: An assertion failed.")
 				assert !rc.output.contains("failed")
 				assert rc.exit_code == 0

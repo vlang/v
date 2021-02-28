@@ -171,12 +171,12 @@ fn data_get() []SiteConfig {
 
 fn data_dump(data []SiteConfig) {
 	a := json.encode_pretty(data)
-	os.write_file(os.resource_abs_path('data.json'), a) or { panic(err) }
+	os.write_file(os.resource_abs_path('data.json'), a) or { panic(err.msg) }
 }
 
 fn data_load() []SiteConfig {
-	data := os.read_file(os.resource_abs_path('data.json')) or { panic(err) }
-	a := json.decode([]SiteConfig, data) or { panic(err) }
+	data := os.read_file(os.resource_abs_path('data.json')) or { panic(err.msg) }
+	a := json.decode([]SiteConfig, data) or { panic(err.msg) }
 	return a
 }
 
@@ -192,5 +192,5 @@ fn main() {
 	// data_dump(data)
 	b := filled_in_template()
 	println(b)
-	os.write_file('result.md', b) or { panic(err) }
+	os.write_file('result.md', b) or { panic(err.msg) }
 }

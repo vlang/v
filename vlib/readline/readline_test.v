@@ -7,7 +7,7 @@ fn no_lines(s string) string {
 fn test_struct_readline() {
 	// mut rl := Readline{}
 	// eprintln('rl: $rl')
-	// line := rl.read_line('Please, enter your name: ') or { panic(err) }
+	// line := rl.read_line('Please, enter your name: ') or { panic(err.msg) }
 	// eprintln('line: $line')
 	mut methods := []string{}
 	$for method in Readline.methods {

@@ -71,7 +71,7 @@ fn main() {
 		'install' {
 			if module_names.len == 0 && os.exists('./v.mod') {
 				println('Detected v.mod file inside the project directory. Using it...')
-				manifest := vmod.from_file('./v.mod') or { panic(err) }
+				manifest := vmod.from_file('./v.mod') or { panic(err.msg) }
 				module_names = manifest.dependencies
 			}
 			vpm_install(module_names)
@@ -331,13 +331,13 @@ fn vpm_remove(module_names []string) {
 		final_module_path := valid_final_path_of_existing_module(name) or { continue }
 		println('Removing module "$name"...')
 		verbose_println('removing folder $final_module_path')
-		os.rmdir_all(final_module_path) or { panic(err) }
+		os.rmdir_all(final_module_path) or { panic(err.msg) }
 		// delete author directory if it is empty
 		author := name.split('.')[0]
 		author_dir := os.real_path(os.join_path(settings.vmodules_path, author))
 		if os.is_dir_empty(author_dir) {
 			verbose_println('removing author folder $author_dir')
-			os.rmdir(author_dir) or { panic(err) }
+			os.rmdir(author_dir) or { panic(err.msg) }
 		}
 	}
 }
@@ -364,7 +364,7 @@ fn valid_final_path_of_existing_module(name string) ?string {
 fn ensure_vmodules_dir_exist() {
 	if !os.is_dir(settings.vmodules_path) {
 		println('Creating $settings.vmodules_path/ ...')
-		os.mkdir(settings.vmodules_path) or { panic(err) }
+		os.mkdir(settings.vmodules_path) or { panic(err.msg) }
 	}
 }
 
@@ -411,7 +411,7 @@ fn get_installed_modules() []string {
 
 fn get_all_modules() []string {
 	url := get_working_server_url()
-	r := http.get(url) or { panic(err) }
+	r := http.get(url) or { panic(err.msg) }
 	if r.status_code != 200 {
 		println('Failed to search vpm.vlang.io. Status code: $r.status_code')
 		exit(1)

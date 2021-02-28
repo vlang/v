@@ -27,12 +27,12 @@ fn main() {
 		// The user just wants an independent copy of v, and so we are done.
 		return
 	}
-	backup_old_version_and_rename_newer() or { panic(err) }
+	backup_old_version_and_rename_newer() or { panic(err.msg) }
 	println('V built successfully!')
 }
 
 fn compile(vroot string, cmd string) {
-	result := os.exec(cmd) or { panic(err) }
+	result := os.exec(cmd) or { panic(err.msg) }
 	if result.exit_code != 0 {
 		eprintln('cannot compile to `$vroot`: \n$result.output')
 		exit(1)
@@ -76,7 +76,7 @@ fn backup_old_version_and_rename_newer() ?bool {
 	os.rm(v_file) or { }
 
 	list_folder('', 'moving $v2_file to $v_file ...')
-	os.mv_by_cp(v2_file, v_file) or { panic(err) }
+	os.mv_by_cp(v2_file, v_file) or { panic(err.msg) }
 
 	list_folder('after:', '')
 

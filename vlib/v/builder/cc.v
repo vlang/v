@@ -90,7 +90,7 @@ fn (mut v Builder) post_process_c_compiler_output(res os.Result) {
 				if v.pref.is_verbose {
 					eprintln('>> remove tmp file: $tmpfile')
 				}
-				os.rm(tmpfile) or { panic(err) }
+				os.rm(tmpfile) or { panic(err.msg) }
 			}
 		}
 		return
@@ -418,7 +418,7 @@ fn (mut v Builder) setup_output_name() {
 			println('Building $v.pref.path to $v.pref.out_name ...')
 		}
 		v.pref.cache_manager.save('.description.txt', v.pref.path, '${v.pref.path:-30} @ $v.pref.cache_manager.vopts\n') or {
-			panic(err)
+			panic(err.msg)
 		}
 		// println('v.table.imports:')
 		// println(v.table.imports)
@@ -469,7 +469,7 @@ fn (mut v Builder) vjs_cc() bool {
 			}
 		}
 		// v.out_name_c may be on a different partition than v.out_name
-		os.mv_by_cp(v.out_name_c, v.pref.out_name) or { panic(err) }
+		os.mv_by_cp(v.out_name_c, v.pref.out_name) or { panic(err.msg) }
 		return true
 	}
 	return false
@@ -481,7 +481,7 @@ fn (mut v Builder) dump_c_options(all_args []string) {
 		if v.pref.dump_c_flags == '-' {
 			print(non_empty_args)
 		} else {
-			os.write_file(v.pref.dump_c_flags, non_empty_args) or { panic(err) }
+			os.write_file(v.pref.dump_c_flags, non_empty_args) or { panic(err.msg) }
 		}
 	}
 }
@@ -638,7 +638,7 @@ fn (mut v Builder) cc() {
 		res := os.exec(cmd) or {
 			os.Result{
 				exit_code: 111
-				output: 'C compilation failed.\n$err'
+				output: 'C compilation failed.\n$err.msg'
 			}
 		}
 		util.timing_measure(ccompiler_label)
@@ -709,7 +709,7 @@ fn (mut v Builder) cc() {
 		obj_file +
 		' /usr/lib/x86_64-linux-gnu/libc.so ' +
 		'/usr/lib/x86_64-linux-gnu/crtn.o') or {
-			verror(err)
+			verror(err.msg)
 			return
 		}
 		println(ress.output)
@@ -759,7 +759,7 @@ fn (mut b Builder) cc_linux_cross() {
 	b.setup_output_name()
 	parent_dir := os.vmodules_dir()
 	if !os.exists(parent_dir) {
-		os.mkdir(parent_dir) or { panic(err) }
+		os.mkdir(parent_dir) or { panic(err.msg) }
 	}
 	sysroot := os.join_path(os.vmodules_dir(), 'linuxroot')
 	if !os.is_dir(sysroot) {
@@ -819,7 +819,7 @@ fn (mut b Builder) cc_linux_cross() {
 	}
 	res := os.exec(linker_cmd) or {
 		println('Cross compilation for Linux failed (second step, lld).')
-		verror(err)
+		verror(err.msg)
 		return
 	}
 	if res.exit_code != 0 {
@@ -963,7 +963,7 @@ fn (mut v Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CF
 		// for example thirdparty\tcc\lib\openlibm.o
 		// the best we can do for them is just copy them,
 		// and hope that they work with any compiler...
-		os.cp(obj_path, opath) or { panic(err) }
+		os.cp(obj_path, opath) or { panic(err.msg) }
 		return
 	}
 	println('$obj_path not found, building it in $opath ...')
@@ -984,7 +984,7 @@ fn (mut v Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CF
 	}
 	res := os.exec(cmd) or {
 		eprintln('exec failed for thirdparty object build cmd:\n$cmd')
-		verror(err)
+		verror(err.msg)
 		return
 	}
 	os.chdir(current_folder)
@@ -994,7 +994,7 @@ fn (mut v Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CF
 		return
 	}
 	v.pref.cache_manager.save('.description.txt', obj_path, '${obj_path:-30} @ $cmd\n') or {
-		panic(err)
+		panic(err.msg)
 	}
 	println(res.output)
 }

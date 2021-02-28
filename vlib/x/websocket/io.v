@@ -18,7 +18,7 @@ fn (mut ws Client) socket_read(mut buffer []byte) ?int {
 					if err.code == net.err_timed_out_code {
 						continue
 					}
-					return error(err)
+					return err
 				}
 				return r
 			}
@@ -42,7 +42,7 @@ fn (mut ws Client) socket_read_ptr(buf_ptr byteptr, len int) ?int {
 					if err.code == net.err_timed_out_code {
 						continue
 					}
-					return error(err)
+					return err
 				}
 				return r
 			}
@@ -66,7 +66,7 @@ fn (mut ws Client) socket_write(bytes []byte) ?int {
 					if err.code == net.err_timed_out_code {
 						continue
 					}
-					return error(err)
+					return err
 				}
 				return n
 			}
