@@ -135,7 +135,7 @@ fn main() {
 	// load TTF fonts
 	for font_path in font_paths {
 		mut tf := ttf.TTF_File{}
-		tf.buf = os.read_bytes(font_path) or { panic(err) }
+		tf.buf = os.read_bytes(font_path) or { panic(err.msg) }
 		println('TrueTypeFont file [$font_path] len: $tf.buf.len')
 		tf.init()
 		println('Unit per EM: $tf.units_per_em')

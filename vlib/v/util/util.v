@@ -214,7 +214,7 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 	if should_compile {
 		emodules := util.external_module_dependencies_for_tool[tool_name]
 		for emodule in emodules {
-			check_module_is_installed(emodule, is_verbose) or { panic(err) }
+			check_module_is_installed(emodule, is_verbose) or { panic(err.msg) }
 		}
 		mut compilation_command := '"$vexe" '
 		if tool_name in ['vself', 'vup', 'vdoctor', 'vsymlink'] {
@@ -229,7 +229,7 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 		if is_verbose {
 			println('Compiling $tool_name with: "$compilation_command"')
 		}
-		tool_compilation := os.exec(compilation_command) or { panic(err) }
+		tool_compilation := os.exec(compilation_command) or { panic(err.msg) }
 		if tool_compilation.exit_code != 0 {
 			eprintln('cannot compile `$tool_source`: \n$tool_compilation.output')
 			exit(1)
@@ -462,7 +462,7 @@ pub fn ensure_modules_for_all_tools_are_installed(is_verbose bool) {
 			eprintln('Installing modules for tool: $tool_name ...')
 		}
 		for emodule in tool_modules {
-			check_module_is_installed(emodule, is_verbose) or { panic(err) }
+			check_module_is_installed(emodule, is_verbose) or { panic(err.msg) }
 		}
 	}
 }
@@ -535,7 +535,7 @@ pub fn get_vtmp_folder() string {
 	}
 	vtmp = os.join_path(os.temp_dir(), 'v')
 	if !os.exists(vtmp) || !os.is_dir(vtmp) {
-		os.mkdir_all(vtmp) or { panic(err) }
+		os.mkdir_all(vtmp) or { panic(err.msg) }
 	}
 	os.setenv('VTMP', vtmp, true)
 	return vtmp

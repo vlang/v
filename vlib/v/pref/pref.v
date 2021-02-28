@@ -488,7 +488,7 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 				os.rm(tmp_exe_file_path) or { }
 			}
 			res.vrun_elog('remove tmp v file: $tmp_v_file_path')
-			os.rm(tmp_v_file_path) or { panic(err) }
+			os.rm(tmp_v_file_path) or { panic(err.msg) }
 			exit(tmp_result)
 		}
 		must_exist(res.path)

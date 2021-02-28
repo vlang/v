@@ -28,16 +28,16 @@ fn get_vexe_path() string {
 fn new_tdir() string {
 	tdir_ := os.join_path(os.temp_dir(), rand.ulid())
 	if os.exists(tdir_) {
-		os.rmdir(tdir_) or { panic(err) }
+		os.rmdir(tdir_) or { panic(err.msg) }
 	}
-	os.mkdir(tdir_) or { panic(err) }
+	os.mkdir(tdir_) or { panic(err.msg) }
 	C.atexit(cleanup_tdir)
 	return tdir_
 }
 
 fn cleanup_tdir() {
 	println('... removing tdir: $tdir')
-	os.rmdir_all(tdir) or { panic(err) }
+	os.rmdir_all(tdir) or { panic(err.msg) }
 }
 
 fn main() {
@@ -55,7 +55,7 @@ fn main() {
 
 fn check_ok(cmd string) string {
 	println('>   check_ok cmd: $cmd')
-	res := os.exec(cmd) or { panic(err) }
+	res := os.exec(cmd) or { panic(err.msg) }
 	if res.exit_code != 0 {
 		eprintln('>   check_ok failed.\n$res.output')
 		exit(1)
@@ -65,7 +65,7 @@ fn check_ok(cmd string) string {
 
 fn check_fail(cmd string) string {
 	println('> check_fail cmd: $cmd')
-	res := os.exec(cmd) or { panic(err) }
+	res := os.exec(cmd) or { panic(err.msg) }
 	if res.exit_code == 0 {
 		eprintln('> check_fail succeeded, but it should have failed.\n$res.output')
 		exit(1)

@@ -649,7 +649,9 @@ static inline $opt_el_type __Option2_${styp}_popval($styp ch) {
 	$opt_el_type _tmp = {0};
 	if (sync__Channel_try_pop_priv(ch, _tmp.data, false)) {
 		Option2 _tmp2 = error2(_SLIT("channel closed"));
-		return *($opt_el_type*)&_tmp2;
+		$opt_el_type _tmp3;
+		memcpy(&_tmp3, &_tmp2, sizeof(Option2));
+		return _tmp3;
 	}
 	return _tmp;
 }')
@@ -663,7 +665,9 @@ fn (mut g Gen) register_chan_push_optional_call(el_type string, styp string) {
 static inline Option2_void __Option2_${styp}_pushval($styp ch, $el_type e) {
 	if (sync__Channel_try_push_priv(ch, &e, false)) {
 		Option2 _tmp2 = error2(_SLIT("channel closed"));
-		return *(Option2_void*)&_tmp2;
+		Option2_void _tmp3;
+		memcpy(&_tmp3, &_tmp2, sizeof(Option2));
+		return _tmp3;
 	}
 	return (Option2_void){0};
 }')
@@ -5583,7 +5587,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 		}
 	} else if or_block.kind == .propagate {
 		if g.file.mod.name == 'main' && (isnil(g.fn_decl) || g.fn_decl.name == 'main.main') {
-			// In main(), an `opt()?` call is sugar for `opt() or { panic(err) }`
+			// In main(), an `opt()?` call is sugar for `opt() or { panic(err.msg) }`
 			if g.pref.is_debug {
 				paline, pafile, pamod, pafn := g.panic_debug_info(or_block.pos)
 				g.writeln('panic_debug($paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"), ${cvar_name}.err.msg );')
@@ -5592,7 +5596,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 			}
 		} else {
 			// In ordinary functions, `opt()?` call is sugar for:
-			// `opt() or { return error(err) }`
+			// `opt() or { return err }`
 			// Since we *do* return, first we have to ensure that
 			// the defered statements are generated.
 			g.write_defer_stmts()

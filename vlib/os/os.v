@@ -61,8 +61,8 @@ pub fn cp_all(src string, dst string, overwrite bool) ? {
 			}
 		}
 		cp_all(sp, dp, overwrite) or {
-			rmdir(dp) or { return error(err) }
-			return error(err)
+			rmdir(dp) or { return err }
+			return err
 		}
 	}
 }
@@ -507,7 +507,7 @@ pub fn cache_dir() string {
 	}
 	cdir := join_path(home_dir(), '.cache')
 	if !is_dir(cdir) && !is_link(cdir) {
-		mkdir(cdir) or { panic(err) }
+		mkdir(cdir) or { panic(err.msg) }
 	}
 	return cdir
 }

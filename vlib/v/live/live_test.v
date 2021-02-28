@@ -44,7 +44,7 @@ const (
 )
 
 fn get_source_template() string {
-	src := os.read_file(os.join_path(os.dir(@FILE), 'live_test_template.vv')) or { panic(err) }
+	src := os.read_file(os.join_path(os.dir(@FILE), 'live_test_template.vv')) or { panic(err.msg) }
 	return src.replace('#OUTPUT_FILE#', output_file)
 }
 
@@ -60,8 +60,8 @@ fn atomic_write_source(source string) {
 	// NB: here wrtiting is done in 2 steps, since os.write_file can take some time,
 	// during which the file will be modified, but it will still be not completely written.
 	// The os.mv after that, guarantees that the reloader will see a complete valid V program.
-	os.write_file(tmp_file, source) or { panic(err) }
-	os.mv(tmp_file, source_file) or { panic(err) }
+	os.write_file(tmp_file, source) or { panic(err.msg) }
+	os.mv(tmp_file, source_file) or { panic(err.msg) }
 }
 
 //

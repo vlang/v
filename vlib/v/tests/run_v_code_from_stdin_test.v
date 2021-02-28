@@ -19,10 +19,10 @@ fn pipe_to_v_run() ? {
 	// eprintln('>> cmd: $cmd | res: $res')
 	assert res.exit_code == 0
 	assert res.output.replace('\r', '').trim_space().split('\n') == ['4', 'hello']
-	os.rm(tmp_v_file) or { panic(err) }
+	os.rm(tmp_v_file) or { panic(err.msg) }
 	assert !os.exists(tmp_v_file)
 }
 
 fn test_pipe_to_v_run() {
-	pipe_to_v_run() or { panic(err) }
+	pipe_to_v_run() or { panic(err.msg) }
 }

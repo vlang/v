@@ -47,7 +47,7 @@ echo redirect 1 to 2  1>&2
 echo line 3
 '
 
-	os.write_file('/tmp/test.sh', script) or { panic(err) }
+	os.write_file('/tmp/test.sh', script) or { panic(err.msg) }
 	// os.chmod("/tmp/test.sh",0o700) //make executable
 
 	// this will work because stderr/stdout are smaller than 4096 chars, once larger there can be deadlocks

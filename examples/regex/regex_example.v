@@ -20,12 +20,12 @@ fn convert_html_rgb(in_col string) u32 {
 	mut col_mul := if in_col.len == 4 { 4 } else { 0 }
 
 	// this is the regex query, it uses V string interpolation to customize the regex query
-	// NOTE: if you want use escaped code you must use the r"" (raw) strings, 
+	// NOTE: if you want use escaped code you must use the r"" (raw) strings,
 	//       *** please remember that V interpoaltion doesn't work on raw strings. ***
 
 	query := '#([a-fA-F0-9]{$n_digit})([a-fA-F0-9]{$n_digit})([a-fA-F0-9]{$n_digit})'
 
-	mut re := regex.regex_opt(query) or { panic(err) }
+	mut re := regex.regex_opt(query) or { panic(err.msg) }
 	start, end := re.match_string(in_col)
 	println('start: $start, end: $end')
 	mut res := u32(0)
@@ -49,7 +49,7 @@ fn convert_html_rgb_n(in_col string) u32 {
 
 	query := '#(?P<red>[a-fA-F0-9]{$n_digit})(?P<green>[a-fA-F0-9]{$n_digit})(?P<blue>[a-fA-F0-9]{$n_digit})'
 
-	mut re := regex.regex_opt(query) or { panic(err) }
+	mut re := regex.regex_opt(query) or { panic(err.msg) }
 	start, end := re.match_string(in_col)
 	println('start: $start, end: $end')
 	mut res := u32(0)

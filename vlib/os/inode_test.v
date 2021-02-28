@@ -11,14 +11,14 @@ fn testsuite_begin() {
 	eprintln('testsuite_begin, tfolder = $tfolder')
 	os.rmdir_all(tfolder) or { }
 	assert !os.is_dir(tfolder)
-	os.mkdir_all(tfolder) or { panic(err) }
+	os.mkdir_all(tfolder) or { panic(err.msg) }
 	os.chdir(tfolder)
 	assert os.is_dir(tfolder)
 }
 
 fn testsuite_end() {
 	os.chdir(os.wd_at_startup)
-	os.rmdir_all(tfolder) or { panic(err) }
+	os.rmdir_all(tfolder) or { panic(err.msg) }
 	assert !os.is_dir(tfolder)
 }
 
@@ -27,7 +27,7 @@ fn test_inode_file_type() {
 	mut file := os.open_file(filename, 'w', 0o600) or { return }
 	file.close()
 	mode := os.inode(filename)
-	os.rm(filename) or { panic(err) }
+	os.rm(filename) or { panic(err.msg) }
 	assert mode.typ == .regular
 }
 

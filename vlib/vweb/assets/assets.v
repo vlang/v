@@ -96,10 +96,10 @@ fn (am AssetManager) combine(asset_type string, to_file bool) string {
 		return out
 	}
 	if !os.is_dir(am.cache_dir) {
-		os.mkdir(am.cache_dir) or { panic(err) }
+		os.mkdir(am.cache_dir) or { panic(err.msg) }
 	}
-	mut file := os.create(out_file) or { panic(err) }
-	file.write(out.bytes()) or { panic(err) }
+	mut file := os.create(out_file) or { panic(err.msg) }
+	file.write(out.bytes()) or { panic(err.msg) }
 	file.close()
 	return out_file
 }

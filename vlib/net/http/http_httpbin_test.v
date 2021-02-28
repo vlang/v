@@ -34,7 +34,7 @@ fn http_fetch_mock(_methods []string, _config FetchConfig) ?[]Response {
 fn test_http_fetch_bare() {
 	$if !network ? { return }
 	responses := http_fetch_mock([], FetchConfig{}) or {
-		panic(err)
+		panic(err.msg)
 	}
 	for response in responses {
 		assert response.status_code == 200
@@ -46,11 +46,11 @@ fn test_http_fetch_with_data() {
 	responses := http_fetch_mock(['POST', 'PUT', 'PATCH', 'DELETE'], {
 		data: 'hello world'
 	}) or {
-		panic(err)
+		panic(err.msg)
 	}
 	for response in responses {
 		payload := json.decode(HttpbinResponseBody,response.text) or {
-			panic(err)
+			panic(err.msg)
 		}
 		assert payload.data == 'hello world'
 	}
@@ -64,11 +64,11 @@ fn test_http_fetch_with_params() {
 			'c': 'd'
 		}
 	}) or {
-		panic(err)
+		panic(err.msg)
 	}
 	for response in responses {
 		// payload := json.decode(HttpbinResponseBody,response.text) or {
-		// panic(err)
+		// panic(err.msg)
 		// }
 		assert response.status_code == 200
 		// TODO
@@ -84,11 +84,11 @@ fn test_http_fetch_with_headers() {
 			'Test-Header': 'hello world'
 		}
 	}) or {
-		panic(err)
+		panic(err.msg)
 	}
 	for response in responses {
 		// payload := json.decode(HttpbinResponseBody,response.text) or {
-		// panic(err)
+		// panic(err.msg)
 		// }
 		assert response.status_code == 200
 		// TODO

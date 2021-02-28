@@ -6,7 +6,7 @@ import x.websocket
 fn main() {
 	mut s := websocket.new_server(9002, '/')
 	s.on_message(on_message)
-	s.listen() or { panic(err) }
+	s.listen() or { panic(err.msg) }
 }
 
 fn handle_case(case_nr int) ? {
@@ -23,5 +23,5 @@ fn on_message(mut ws websocket.Client, msg &websocket.Message) ? {
 		// We just wanna pass text and binary message back to autobahn
 		return
 	}
-	ws.write(msg.payload, msg.opcode) or { panic(err) }
+	ws.write(msg.payload, msg.opcode) or { panic(err.msg) }
 }

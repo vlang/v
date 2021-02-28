@@ -22,7 +22,7 @@ struct Foo {
 }
 
 fn test_orm_sqlite() {
-	db := sqlite.connect(':memory:') or { panic(err) }
+	db := sqlite.connect(':memory:') or { panic(err.msg) }
 	db.exec('drop table if exists User')
 	db.exec("create table User (id integer primary key, age int default 0, name text default '', is_customer int default 0);")
 	name := 'Peter'
@@ -230,7 +230,7 @@ fn test_orm_pg() {
 		eprintln(term.red('NB: this test requires VDB_NAME and VDB_USER env variables to be set'))
 		return
 	}
-	db := pg.connect(dbname: dbname, user: dbuser) or { panic(err) }
+	db := pg.connect(dbname: dbname, user: dbuser) or { panic(err.msg) }
 	_ = db
 	nr_modules := db.select count from modules
 	//nr_modules := db.select count from Modules where id == 1

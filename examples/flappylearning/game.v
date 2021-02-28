@@ -212,13 +212,13 @@ fn (mut app App) run() {
 
 fn init_images(mut app App) {
 	$if android {
-		background := os.read_apk_asset('img/background.png') or { panic(err) }
+		background := os.read_apk_asset('img/background.png') or { panic(err.msg) }
 		app.background = app.gg.create_image_from_byte_array(background)
-		bird := os.read_apk_asset('img/bird.png') or { panic(err) }
+		bird := os.read_apk_asset('img/bird.png') or { panic(err.msg) }
 		app.bird = app.gg.create_image_from_byte_array(bird)
-		pipetop := os.read_apk_asset('img/pipetop.png') or { panic(err) }
+		pipetop := os.read_apk_asset('img/pipetop.png') or { panic(err.msg) }
 		app.pipetop = app.gg.create_image_from_byte_array(pipetop)
-		pipebottom := os.read_apk_asset('img/pipebottom.png') or { panic(err) }
+		pipebottom := os.read_apk_asset('img/pipebottom.png') or { panic(err.msg) }
 		app.pipebottom = app.gg.create_image_from_byte_array(pipebottom)
 	} $else {
 		app.background = app.gg.create_image(os.resource_abs_path('assets/img/background.png'))

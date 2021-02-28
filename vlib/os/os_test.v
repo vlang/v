@@ -15,7 +15,7 @@ fn testsuite_begin() {
 	eprintln('testsuite_begin, tfolder = $tfolder')
 	os.rmdir_all(tfolder) or { }
 	assert !os.is_dir(tfolder)
-	os.mkdir_all(tfolder) or { panic(err) }
+	os.mkdir_all(tfolder) or { panic(err.msg) }
 	os.chdir(tfolder)
 	assert os.is_dir(tfolder)
 	// println('args_at_start: $args_at_start')
@@ -37,13 +37,13 @@ fn test_open_file() {
 		assert err.msg == 'No such file or directory'
 		os.File{}
 	}
-	mut file := os.open_file(filename, 'w+', 0o666) or { panic(err) }
-	file.write_str(hello) or { panic(err) }
+	mut file := os.open_file(filename, 'w+', 0o666) or { panic(err.msg) }
+	file.write_str(hello) or { panic(err.msg) }
 	file.close()
 	assert hello.len == os.file_size(filename)
 	read_hello := os.read_file(filename) or { panic('error reading file $filename') }
 	assert hello == read_hello
-	os.rm(filename) or { panic(err) }
+	os.rm(filename) or { panic(err.msg) }
 }
 
 fn test_open_file_binary() {
@@ -53,14 +53,14 @@ fn test_open_file_binary() {
 		assert err.msg == 'No such file or directory'
 		os.File{}
 	}
-	mut file := os.open_file(filename, 'wb+', 0o666) or { panic(err) }
+	mut file := os.open_file(filename, 'wb+', 0o666) or { panic(err.msg) }
 	bytes := hello.bytes()
 	file.write_bytes(bytes.data, bytes.len)
 	file.close()
 	assert hello.len == os.file_size(filename)
 	read_hello := os.read_bytes(filename) or { panic('error reading file $filename') }
 	assert bytes == read_hello
-	os.rm(filename) or { panic(err) }
+	os.rm(filename) or { panic(err.msg) }
 }
 
 // fn test_file_get_line() {
@@ -86,24 +86,24 @@ fn test_open_file_binary() {
 fn test_create_file() {
 	filename := './test1.txt'
 	hello := 'hello world!'
-	mut f := os.create(filename) or { panic(err) }
-	f.write_str(hello) or { panic(err) }
+	mut f := os.create(filename) or { panic(err.msg) }
+	f.write_str(hello) or { panic(err.msg) }
 	f.close()
 	assert hello.len == os.file_size(filename)
-	os.rm(filename) or { panic(err) }
+	os.rm(filename) or { panic(err.msg) }
 }
 
 fn test_is_file() {
 	// Setup
 	work_dir := os.join_path(os.getwd(), 'is_file_test')
-	os.mkdir_all(work_dir) or { panic(err) }
+	os.mkdir_all(work_dir) or { panic(err.msg) }
 	tfile := os.join_path(work_dir, 'tmp_file')
 	// Test things that shouldn't be a file
 	assert os.is_file(work_dir) == false
 	assert os.is_file('non-existent_file.tmp') == false
 	// Test file
 	tfile_content := 'temporary file'
-	os.write_file(tfile, tfile_content) or { panic(err) }
+	os.write_file(tfile, tfile_content) or { panic(err.msg) }
 	assert os.is_file(tfile)
 	// Test dir symlinks
 	$if windows {
@@ -126,11 +126,11 @@ fn test_is_file() {
 fn test_write_and_read_string_to_file() {
 	filename := './test1.txt'
 	hello := 'hello world!'
-	os.write_file(filename, hello) or { panic(err) }
+	os.write_file(filename, hello) or { panic(err.msg) }
 	assert hello.len == os.file_size(filename)
 	read_hello := os.read_file(filename) or { panic('error reading file $filename') }
 	assert hello == read_hello
-	os.rm(filename) or { panic(err) }
+	os.rm(filename) or { panic(err.msg) }
 }
 
 // test_write_and_read_bytes checks for regressions made in the functions
@@ -166,16 +166,16 @@ fn test_write_and_read_bytes() {
 	assert nread == 0
 	file_read.close()
 	// We finally delete the test file.
-	os.rm(file_name) or { panic(err) }
+	os.rm(file_name) or { panic(err.msg) }
 }
 
 fn test_create_and_delete_folder() {
 	folder := './test1'
-	os.mkdir(folder) or { panic(err) }
+	os.mkdir(folder) or { panic(err.msg) }
 	assert os.is_dir(folder)
-	folder_contents := os.ls(folder) or { panic(err) }
+	folder_contents := os.ls(folder) or { panic(err.msg) }
 	assert folder_contents.len == 0
-	os.rmdir(folder) or { panic(err) }
+	os.rmdir(folder) or { panic(err.msg) }
 	folder_exists := os.is_dir(folder)
 	assert folder_exists == false
 }
@@ -189,63 +189,63 @@ fn walk_callback(file string) {
 
 fn test_walk() {
 	folder := 'test_walk'
-	os.mkdir(folder) or { panic(err) }
+	os.mkdir(folder) or { panic(err.msg) }
 	file1 := folder + os.path_separator + 'test1'
-	os.write_file(file1, 'test-1') or { panic(err) }
+	os.write_file(file1, 'test-1') or { panic(err.msg) }
 	os.walk(folder, walk_callback)
-	os.rm(file1) or { panic(err) }
-	os.rmdir(folder) or { panic(err) }
+	os.rm(file1) or { panic(err.msg) }
+	os.rmdir(folder) or { panic(err.msg) }
 }
 
 fn test_cp() {
 	old_file_name := 'cp_example.txt'
 	new_file_name := 'cp_new_example.txt'
-	os.write_file(old_file_name, 'Test data 1 2 3, V is awesome #$%^[]!~⭐') or { panic(err) }
+	os.write_file(old_file_name, 'Test data 1 2 3, V is awesome #$%^[]!~⭐') or { panic(err.msg) }
 	os.cp(old_file_name, new_file_name) or { panic('$err') }
-	old_file := os.read_file(old_file_name) or { panic(err) }
-	new_file := os.read_file(new_file_name) or { panic(err) }
+	old_file := os.read_file(old_file_name) or { panic(err.msg) }
+	new_file := os.read_file(new_file_name) or { panic(err.msg) }
 	assert old_file == new_file
-	os.rm(old_file_name) or { panic(err) }
-	os.rm(new_file_name) or { panic(err) }
+	os.rm(old_file_name) or { panic(err.msg) }
+	os.rm(new_file_name) or { panic(err.msg) }
 }
 
 fn test_mv() {
 	work_dir := os.join_path(os.getwd(), 'mv_test')
-	os.mkdir_all(work_dir) or { panic(err) }
+	os.mkdir_all(work_dir) or { panic(err.msg) }
 	// Setup test files
 	tfile1 := os.join_path(work_dir, 'file')
 	tfile2 := os.join_path(work_dir, 'file.test')
 	tfile3 := os.join_path(work_dir, 'file.3')
 	tfile_content := 'temporary file'
-	os.write_file(tfile1, tfile_content) or { panic(err) }
-	os.write_file(tfile2, tfile_content) or { panic(err) }
+	os.write_file(tfile1, tfile_content) or { panic(err.msg) }
+	os.write_file(tfile2, tfile_content) or { panic(err.msg) }
 	// Setup test dirs
 	tdir1 := os.join_path(work_dir, 'dir')
 	tdir2 := os.join_path(work_dir, 'dir2')
 	tdir3 := os.join_path(work_dir, 'dir3')
-	os.mkdir(tdir1) or { panic(err) }
-	os.mkdir(tdir2) or { panic(err) }
+	os.mkdir(tdir1) or { panic(err.msg) }
+	os.mkdir(tdir2) or { panic(err.msg) }
 	// Move file with no extension to dir
-	os.mv(tfile1, tdir1) or { panic(err) }
+	os.mv(tfile1, tdir1) or { panic(err.msg) }
 	mut expected := os.join_path(tdir1, 'file')
 	assert os.exists(expected) && !is_dir(expected) == true
 	// Move dir with contents to other dir
-	os.mv(tdir1, tdir2) or { panic(err) }
+	os.mv(tdir1, tdir2) or { panic(err.msg) }
 	expected = os.join_path(tdir2, 'dir')
 	assert os.exists(expected) && is_dir(expected) == true
 	expected = os.join_path(tdir2, 'dir', 'file')
 	assert os.exists(expected) && !is_dir(expected) == true
 	// Move dir with contents to other dir (by renaming)
-	os.mv(os.join_path(tdir2, 'dir'), tdir3) or { panic(err) }
+	os.mv(os.join_path(tdir2, 'dir'), tdir3) or { panic(err.msg) }
 	expected = tdir3
 	assert os.exists(expected) && is_dir(expected) == true
 	assert os.is_dir_empty(tdir2) == true
 	// Move file with extension to dir
-	os.mv(tfile2, tdir2) or { panic(err) }
+	os.mv(tfile2, tdir2) or { panic(err.msg) }
 	expected = os.join_path(tdir2, 'file.test')
 	assert os.exists(expected) && !is_dir(expected) == true
 	// Move file to dir (by renaming)
-	os.mv(os.join_path(tdir2, 'file.test'), tfile3) or { panic(err) }
+	os.mv(os.join_path(tdir2, 'file.test'), tfile3) or { panic(err.msg) }
 	expected = tfile3
 	assert os.exists(expected) && !is_dir(expected) == true
 }
@@ -253,22 +253,22 @@ fn test_mv() {
 fn test_cp_all() {
 	// fileX -> dir/fileX
 	// NB: clean up of the files happens inside the cleanup_leftovers function
-	os.write_file('ex1.txt', 'wow!') or { panic(err) }
-	os.mkdir('ex') or { panic(err) }
-	os.cp_all('ex1.txt', 'ex', false) or { panic(err) }
-	old := os.read_file('ex1.txt') or { panic(err) }
-	new := os.read_file('ex/ex1.txt') or { panic(err) }
+	os.write_file('ex1.txt', 'wow!') or { panic(err.msg) }
+	os.mkdir('ex') or { panic(err.msg) }
+	os.cp_all('ex1.txt', 'ex', false) or { panic(err.msg) }
+	old := os.read_file('ex1.txt') or { panic(err.msg) }
+	new := os.read_file('ex/ex1.txt') or { panic(err.msg) }
 	assert old == new
-	os.mkdir('ex/ex2') or { panic(err) }
-	os.write_file('ex2.txt', 'great!') or { panic(err) }
-	os.cp_all('ex2.txt', 'ex/ex2', false) or { panic(err) }
-	old2 := os.read_file('ex2.txt') or { panic(err) }
-	new2 := os.read_file('ex/ex2/ex2.txt') or { panic(err) }
+	os.mkdir('ex/ex2') or { panic(err.msg) }
+	os.write_file('ex2.txt', 'great!') or { panic(err.msg) }
+	os.cp_all('ex2.txt', 'ex/ex2', false) or { panic(err.msg) }
+	old2 := os.read_file('ex2.txt') or { panic(err.msg) }
+	new2 := os.read_file('ex/ex2/ex2.txt') or { panic(err.msg) }
 	assert old2 == new2
 	// recurring on dir -> local dir
-	os.cp_all('ex', './', true) or { panic(err) }
+	os.cp_all('ex', './', true) or { panic(err.msg) }
 	// regression test for executive runs with overwrite := true
-	os.cp_all('ex', './', true) or { panic(err) }
+	os.cp_all('ex', './', true) or { panic(err.msg) }
 }
 
 fn test_realpath() {
@@ -282,10 +282,10 @@ fn test_tmpdir() {
 	tfile := t + os.path_separator + 'tmpfile.txt'
 	os.rm(tfile) or { } // just in case
 	tfile_content := 'this is a temporary file'
-	os.write_file(tfile, tfile_content) or { panic(err) }
-	tfile_content_read := os.read_file(tfile) or { panic(err) }
+	os.write_file(tfile, tfile_content) or { panic(err.msg) }
+	tfile_content_read := os.read_file(tfile) or { panic(err.msg) }
 	assert tfile_content_read == tfile_content
-	os.rm(tfile) or { panic(err) }
+	os.rm(tfile) or { panic(err.msg) }
 }
 
 fn test_is_writable_folder() {
@@ -307,13 +307,13 @@ fn test_make_symlink_check_is_link_and_remove_symlink() {
 	symlink := 'tsymlink'
 	os.rm(symlink) or { }
 	os.rm(folder) or { }
-	os.mkdir(folder) or { panic(err) }
-	folder_contents := os.ls(folder) or { panic(err) }
+	os.mkdir(folder) or { panic(err.msg) }
+	folder_contents := os.ls(folder) or { panic(err.msg) }
 	assert folder_contents.len == 0
 	os.system('ln -s $folder $symlink')
 	assert os.is_link(symlink) == true
-	os.rm(symlink) or { panic(err) }
-	os.rm(folder) or { panic(err) }
+	os.rm(symlink) or { panic(err.msg) }
+	os.rm(folder) or { panic(err.msg) }
 	folder_exists := os.is_dir(folder)
 	assert folder_exists == false
 	symlink_exists := os.is_link(symlink)
@@ -345,12 +345,12 @@ fn test_symlink() {
 	$if windows {
 		return
 	}
-	os.mkdir('symlink') or { panic(err) }
-	os.symlink('symlink', 'symlink2') or { panic(err) }
+	os.mkdir('symlink') or { panic(err.msg) }
+	os.symlink('symlink', 'symlink2') or { panic(err.msg) }
 	assert os.exists('symlink2')
 	// cleanup
-	os.rm('symlink') or { panic(err) }
-	os.rm('symlink2') or { panic(err) }
+	os.rm('symlink') or { panic(err.msg) }
+	os.rm('symlink2') or { panic(err.msg) }
 }
 
 fn test_is_executable_writable_readable() {
@@ -373,7 +373,7 @@ fn test_is_executable_writable_readable() {
 		assert os.is_executable(file_name)
 	}
 	// We finally delete the test file.
-	os.rm(file_name) or { panic(err) }
+	os.rm(file_name) or { panic(err.msg) }
 }
 
 fn test_ext() {
@@ -457,8 +457,8 @@ fn test_write_file_array_bytes() {
 	for i in 0 .. maxn {
 		arr[i] = 65 + byte(i)
 	}
-	os.write_file_array(fpath, arr) or { panic(err) }
-	rarr := os.read_bytes(fpath) or { panic(err) }
+	os.write_file_array(fpath, arr) or { panic(err.msg) }
+	rarr := os.read_bytes(fpath) or { panic(err.msg) }
 	assert arr == rarr
 	// eprintln(arr.str())
 	// eprintln(rarr.str())
@@ -470,7 +470,7 @@ fn test_write_file_array_structs() {
 	for i in 0 .. maxn {
 		arr[i] = IntPoint{65 + i, 65 + i + 10}
 	}
-	os.write_file_array(fpath, arr) or { panic(err) }
+	os.write_file_array(fpath, arr) or { panic(err.msg) }
 	rarr := os.read_file_array<IntPoint>(fpath)
 	assert rarr == arr
 	assert rarr.len == maxn

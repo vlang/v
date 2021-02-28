@@ -5,16 +5,16 @@ fn test_if_string_flag_parses() {
 		flag: .string
 		name: 'flag'
 	}
-	flag.parse(['-flag', 'value1'], false) or { panic(err) }
-	mut value := flag.get_string() or { panic(err) }
+	flag.parse(['-flag', 'value1'], false) or { panic(err.msg) }
+	mut value := flag.get_string() or { panic(err.msg) }
 	assert value == 'value1'
 
 	flag = cli.Flag{
 		flag: .string
 		name: 'flag'
 	}
-	flag.parse(['-flag=value2'], false) or { panic(err) }
-	value = flag.get_string() or { panic(err) }
+	flag.parse(['-flag=value2'], false) or { panic(err.msg) }
+	value = flag.get_string() or { panic(err.msg) }
 	assert value == 'value2'
 
 	flag = cli.Flag{
@@ -22,9 +22,9 @@ fn test_if_string_flag_parses() {
 		name: 'flag'
 		multiple: true
 	}
-	flag.parse(['-flag=value1'], false) or { panic(err) }
-	flag.parse(['-flag=value2'], false) or { panic(err) }
-	mut values := flag.get_strings() or { panic(err) }
+	flag.parse(['-flag=value1'], false) or { panic(err.msg) }
+	flag.parse(['-flag=value2'], false) or { panic(err.msg) }
+	mut values := flag.get_strings() or { panic(err.msg) }
 	assert values == ['value1', 'value2']
 
 	flags := [
@@ -40,7 +40,7 @@ fn test_if_string_flag_parses() {
 		},
 	]
 
-	values = flags.get_strings('flag') or { panic(err) }
+	values = flags.get_strings('flag') or { panic(err.msg) }
 	assert values == ['a', 'b', 'c']
 }
 
@@ -50,20 +50,20 @@ fn test_if_bool_flag_parses() {
 		name: 'flag'
 	}
 	mut value := false
-	flag.parse(['-flag'], false) or { panic(err) }
-	value = flag.get_bool() or { panic(err) }
+	flag.parse(['-flag'], false) or { panic(err.msg) }
+	value = flag.get_bool() or { panic(err.msg) }
 	assert value == true
-	flag.parse(['-flag', 'false'], false) or { panic(err) }
-	value = flag.get_bool() or { panic(err) }
+	flag.parse(['-flag', 'false'], false) or { panic(err.msg) }
+	value = flag.get_bool() or { panic(err.msg) }
 	assert value == false
-	flag.parse(['-flag', 'true'], false) or { panic(err) }
-	value = flag.get_bool() or { panic(err) }
+	flag.parse(['-flag', 'true'], false) or { panic(err.msg) }
+	value = flag.get_bool() or { panic(err.msg) }
 	assert value == true
-	flag.parse(['-flag=false'], false) or { panic(err) }
-	value = flag.get_bool() or { panic(err) }
+	flag.parse(['-flag=false'], false) or { panic(err.msg) }
+	value = flag.get_bool() or { panic(err.msg) }
 	assert value == false
-	flag.parse(['-flag=true'], false) or { panic(err) }
-	value = flag.get_bool() or { panic(err) }
+	flag.parse(['-flag=true'], false) or { panic(err.msg) }
+	value = flag.get_bool() or { panic(err.msg) }
 	assert value == true
 }
 
@@ -74,8 +74,8 @@ fn test_if_int_flag_parses() {
 	}
 
 	mut value := 0
-	flag.parse(['-flag', '42'], false) or { panic(err) }
-	value = flag.get_int() or { panic(err) }
+	flag.parse(['-flag', '42'], false) or { panic(err.msg) }
+	value = flag.get_int() or { panic(err.msg) }
 	assert value == 42
 
 	flag = cli.Flag{
@@ -83,8 +83,8 @@ fn test_if_int_flag_parses() {
 		name: 'flag'
 	}
 
-	flag.parse(['-flag=45'], false) or { panic(err) }
-	value = flag.get_int() or { panic(err) }
+	flag.parse(['-flag=45'], false) or { panic(err.msg) }
+	value = flag.get_int() or { panic(err.msg) }
 	assert value == 45
 
 	flag = cli.Flag{
@@ -93,9 +93,9 @@ fn test_if_int_flag_parses() {
 		multiple: true
 	}
 
-	flag.parse(['-flag=42'], false) or { panic(err) }
-	flag.parse(['-flag=45'], false) or { panic(err) }
-	mut values := flag.get_ints() or { panic(err) }
+	flag.parse(['-flag=42'], false) or { panic(err.msg) }
+	flag.parse(['-flag=45'], false) or { panic(err.msg) }
+	mut values := flag.get_ints() or { panic(err.msg) }
 	assert values == [42, 45]
 
 	flags := [
@@ -111,7 +111,7 @@ fn test_if_int_flag_parses() {
 		},
 	]
 
-	values = flags.get_ints('flag') or { panic(err) }
+	values = flags.get_ints('flag') or { panic(err.msg) }
 	assert values == [1, 2, 3]
 }
 
@@ -121,8 +121,8 @@ fn test_if_float_flag_parses() {
 		name: 'flag'
 	}
 	mut value := f64(0)
-	flag.parse(['-flag', '3.14158'], false) or { panic(err) }
-	value = flag.get_float() or { panic(err) }
+	flag.parse(['-flag', '3.14158'], false) or { panic(err.msg) }
+	value = flag.get_float() or { panic(err.msg) }
 	assert value == 3.14158
 
 	flag = cli.Flag{
@@ -130,9 +130,9 @@ fn test_if_float_flag_parses() {
 		name: 'flag'
 	}
 
-	flag.parse(['-flag=3.14159'], false) or { panic(err) }
+	flag.parse(['-flag=3.14159'], false) or { panic(err.msg) }
 	assert flag.value[0].f64() == 3.14159
-	value = flag.get_float() or { panic(err) }
+	value = flag.get_float() or { panic(err.msg) }
 	assert value == 3.14159
 
 	flag = cli.Flag{
@@ -141,9 +141,9 @@ fn test_if_float_flag_parses() {
 		multiple: true
 	}
 
-	flag.parse(['-flag=3.1'], false) or { panic(err) }
-	flag.parse(['-flag=1.3'], false) or { panic(err) }
-	mut values := flag.get_floats() or { panic(err) }
+	flag.parse(['-flag=3.1'], false) or { panic(err.msg) }
+	flag.parse(['-flag=1.3'], false) or { panic(err.msg) }
+	mut values := flag.get_floats() or { panic(err.msg) }
 	assert values == [3.1, 1.3]
 
 	flags := [
@@ -159,7 +159,7 @@ fn test_if_float_flag_parses() {
 		},
 	]
 
-	values = flags.get_floats('flag') or { panic(err) }
+	values = flags.get_floats('flag') or { panic(err.msg) }
 	assert values == [1.1, 2.2, 3.3]
 }
 
@@ -170,8 +170,8 @@ fn test_if_flag_parses_with_abbrev() {
 		abbrev: 'f'
 	}
 	mut value := false
-	flag.parse(['--flag'], true) or { panic(err) }
-	value = flag.get_bool() or { panic(err) }
+	flag.parse(['--flag'], true) or { panic(err.msg) }
+	value = flag.get_bool() or { panic(err.msg) }
 	assert value == true
 
 	value = false
@@ -180,8 +180,8 @@ fn test_if_flag_parses_with_abbrev() {
 		name: 'flag'
 		abbrev: 'f'
 	}
-	flag.parse(['-f'], true) or { panic(err) }
-	value = flag.get_bool() or { panic(err) }
+	flag.parse(['-f'], true) or { panic(err.msg) }
+	value = flag.get_bool() or { panic(err.msg) }
 	assert value == true
 }
 
@@ -191,7 +191,7 @@ fn test_if_multiple_value_on_single_value() {
 		name: 'flag'
 	}
 
-	flag.parse(['-flag', '3.14158'], false) or { panic(err) }
+	flag.parse(['-flag', '3.14158'], false) or { panic(err.msg) }
 
 	if _ := flag.parse(['-flag', '3.222'], false) {
 		panic("No multiple value flag don't raise an error!")

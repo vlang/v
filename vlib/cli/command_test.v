@@ -135,7 +135,7 @@ fn test_if_required_flags_get_set() {
 }
 
 fn flag_is_set_in_subcommand(cmd cli.Command) ? {
-	flag := cmd.flags.get_string('flag') or { panic(err) }
+	flag := cmd.flags.get_string('flag') or { panic(err.msg) }
 	assert flag == 'value'
 }
 

@@ -12,7 +12,7 @@ fn main() {
 			println('Thirdparty "freetype" is already installed.')
 		} else {
 			s := os.exec('git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries ./thirdparty/freetype/') or {
-				panic(err)
+				panic(err.msg)
 			}
 			println(s.output)
 			println('Thirdparty "freetype" installed successfully.')

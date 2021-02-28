@@ -106,7 +106,7 @@ pub fn (mut l Log) close() {
 fn (mut l Log) log_file(s string, level Level) {
 	timestamp := time.now().format_ss()
 	e := tag_to_file(level)
-	l.ofile.writeln('$timestamp [$e] $s') or { panic(err) }
+	l.ofile.writeln('$timestamp [$e] $s') or { panic(err.msg) }
 }
 
 // log_cli writes log line `s` with `level` to stdout.

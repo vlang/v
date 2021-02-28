@@ -41,7 +41,7 @@ fn main() {
 
 	// by adding `limit 1` we tell V that there will be only one object
 	println(dash)
-	existing := db.select from Customer where id == 1 limit 1 or { panic(err) }
+	existing := db.select from Customer where id == 1 limit 1 or { panic(err.msg) }
 	println('Existing customer name: $existing.name')
 	println('Existing customer full information:')
 	println(existing)
