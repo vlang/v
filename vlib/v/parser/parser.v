@@ -152,7 +152,7 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 	// for handling them, and should be removed when we do (the general solution is also needed for vfmt)
 	// println('parse_file("$path")')
 	// text := os.read_file(path) or {
-	// panic(err.msg)
+	// panic(err)
 	// }
 	mut p := Parser{
 		scanner: scanner.new_scanner_file(path, comments_mode, pref)

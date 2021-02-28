@@ -10,7 +10,7 @@ fn exec(path string) string {
 	mut cmd := os.Command{
 		path: path
 	}
-	cmd.start() or { panic(err.msg) }
+	cmd.start() or { panic(err) }
 
 	for {
 		line = cmd.read_line()

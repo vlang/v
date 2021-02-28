@@ -53,9 +53,9 @@ pub fn rmrf(path string) {
 	verbose_trace(@FN, 'rm -rf $path')
 	if os.exists(path) {
 		if os.is_dir(path) {
-			os.rmdir_all(path) or { panic(err.msg) }
+			os.rmdir_all(path) or { panic(err) }
 		} else {
-			os.rm(path) or { panic(err.msg) }
+			os.rm(path) or { panic(err) }
 		}
 	}
 }

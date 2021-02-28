@@ -5590,7 +5590,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 		}
 	} else if or_block.kind == .propagate {
 		if g.file.mod.name == 'main' && (isnil(g.fn_decl) || g.fn_decl.name == 'main.main') {
-			// In main(), an `opt()?` call is sugar for `opt() or { panic(err.msg) }`
+			// In main(), an `opt()?` call is sugar for `opt() or { panic(err) }`
 			if g.pref.is_debug {
 				paline, pafile, pamod, pafn := g.panic_debug_info(or_block.pos)
 				g.writeln('panic_debug($paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"), ${cvar_name}.err.msg );')

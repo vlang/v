@@ -51,8 +51,8 @@ fn echo() ? {
 }
 
 fn test_tcp() {
-	mut l := unix.listen_stream(test_port) or { panic(err.msg) }
+	mut l := unix.listen_stream(test_port) or { panic(err) }
 	go echo_server(mut l)
-	echo() or { panic(err.msg) }
+	echo() or { panic(err) }
 	l.close() or { }
 }

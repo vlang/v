@@ -25,7 +25,7 @@ mut:
 fn (mut dom DocumentObjectModel) print_debug(data string) {
 	$if debug {
 		if data.len > 0 {
-			dom.debug_file.writeln(data) or { panic(err.msg) }
+			dom.debug_file.writeln(data) or { panic(err) }
 		}
 	}
 }

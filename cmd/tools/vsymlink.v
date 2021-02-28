@@ -27,11 +27,11 @@ fn setup_symlink_unix(vexe string) {
 	if os.system("uname -o | grep -q '[A/a]ndroid'") == 1 {
 		link_dir := '/usr/local/bin'
 		if !os.exists(link_dir) {
-			os.mkdir_all(link_dir) or { panic(err.msg) }
+			os.mkdir_all(link_dir) or { panic(err) }
 		}
 		link_path = link_dir + '/v'
 	}
-	ret := os.exec('ln -sf $vexe $link_path') or { panic(err.msg) }
+	ret := os.exec('ln -sf $vexe $link_path') or { panic(err) }
 	if ret.exit_code == 0 {
 		println('Symlink "$link_path" has been created')
 	} else {
@@ -49,14 +49,14 @@ fn setup_symlink_windows(vexe string) {
 		mut vsymlink := os.join_path(vsymlinkdir, 'v.exe')
 		// Remove old symlink first (v could have been moved, symlink rerun)
 		if !os.exists(vsymlinkdir) {
-			os.mkdir(vsymlinkdir) or { panic(err.msg) }
+			os.mkdir(vsymlinkdir) or { panic(err) }
 		} else {
 			if os.exists(vsymlink) {
-				os.rm(vsymlink) or { panic(err.msg) }
+				os.rm(vsymlink) or { panic(err) }
 			} else {
 				vsymlink = os.join_path(vsymlinkdir, 'v.bat')
 				if os.exists(vsymlink) {
-					os.rm(vsymlink) or { panic(err.msg) }
+					os.rm(vsymlink) or { panic(err) }
 				}
 				vsymlink = os.join_path(vsymlinkdir, 'v.exe')
 			}
@@ -69,9 +69,9 @@ fn setup_symlink_windows(vexe string) {
 			eprintln('Creating a batch file instead...')
 			vsymlink = os.join_path(vsymlinkdir, 'v.bat')
 			if os.exists(vsymlink) {
-				os.rm(vsymlink) or { panic(err.msg) }
+				os.rm(vsymlink) or { panic(err) }
 			}
-			os.write_file(vsymlink, '@echo off\n$vexe %*') or { panic(err.msg) }
+			os.write_file(vsymlink, '@echo off\n$vexe %*') or { panic(err) }
 			eprintln('$vsymlink file written.')
 		}
 		if !os.exists(vsymlink) {
