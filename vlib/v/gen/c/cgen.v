@@ -1513,7 +1513,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw table.Type, expected_t
 	got_sym := g.table.get_type_symbol(got_type)
 	// allow using the new Error struct as a string, to avoid a breaking change
 	// TODO: temporary to allow people to migrate their code; remove soon
-	if (got_type == table.error_type_idx && expected_type == table.string_type_idx) || false {
+	if got_type == table.error_type_idx && expected_type == table.string_type_idx {
 		g.expr(expr)
 		g.write('.msg')
 		return

@@ -734,7 +734,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	if node.name == 'error_with_code' {
 		name = 'error_with_code2'
 	}
-	is_print := name in ['print', 'println', 'eprint', 'eprintln']
+	is_print := name in ['print', 'println', 'eprint', 'eprintln', 'panic']
 	print_method := name
 	is_json_encode := name == 'json.encode'
 	is_json_encode_pretty := name == 'json.encode_pretty'
@@ -840,7 +840,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				g.gen_expr_to_string(expr, typ)
 				g.writeln('; ${print_method}($tmp); string_free(&$tmp);')
 			} else {
-				g.write('${print_method}(')
+				g.write('${c_name(print_method)}(')
 				g.gen_expr_to_string(expr, typ)
 				g.write(')')
 			}
