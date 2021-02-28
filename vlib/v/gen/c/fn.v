@@ -838,7 +838,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				// tmps << tmp
 				g.write('string $tmp = ')
 				g.gen_expr_to_string(expr, typ)
-				g.writeln('; ${print_method}($tmp); string_free(&$tmp);')
+				g.writeln('; ${c_name(print_method)}($tmp); string_free(&$tmp);')
 			} else {
 				g.write('${c_name(print_method)}(')
 				g.gen_expr_to_string(expr, typ)
