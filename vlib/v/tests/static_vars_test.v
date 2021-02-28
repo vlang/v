@@ -1,6 +1,6 @@
 [unsafe]
 fn foo() int {
-	static x := 42
+	mut static x := 42
 	x++
 	return x
 }
