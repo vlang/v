@@ -760,6 +760,11 @@ pub fn window_size() Size {
 	return Size{int(sapp.width() / s), int(sapp.height() / s)}
 }
 
+// window_size_real_pixels returns the `Size` of the active window without scale
+pub fn window_size_real_pixels() Size {
+	return Size{sapp.width(), sapp.height()}
+}
+
 pub fn dpi_scale() f32 {
 	mut s := sapp.dpi_scale()
 	$if android {

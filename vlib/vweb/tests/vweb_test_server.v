@@ -15,7 +15,7 @@ struct App {
 }
 
 fn exit_after_timeout(timeout_in_ms int) {
-	time.wait(timeout_in_ms * time.millisecond)
+	time.sleep(timeout_in_ms * time.millisecond)
 	// eprintln('webserver is exiting ...')
 	exit(0)
 }
@@ -105,6 +105,6 @@ pub fn (mut app App) shutdown() vweb.Result {
 
 fn (mut app App) gracefull_exit() {
 	eprintln('>> webserver: gracefull_exit')
-	time.wait(100 * time.millisecond)
+	time.sleep(100 * time.millisecond)
 	exit(0)
 }

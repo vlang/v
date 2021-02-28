@@ -30,7 +30,7 @@ fn (l Lander) open_parachutes(n int) {
 
 fn wait() {
 	println('waiting...')
-	time.wait(1 * time.second)
+	time.sleep(1 * time.second)
 }
 
 fn (l Lander) land(w World) {

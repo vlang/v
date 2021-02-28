@@ -223,7 +223,7 @@ fn (mut ctx Context) termios_loop() {
 		}
 		// println('SLEEPING: $sleep_len')
 		if sleep_len > 0 {
-			time.wait(sleep_len * time.microsecond)
+			time.sleep(sleep_len * time.microsecond)
 		}
 		if !ctx.paused {
 			sw.restart()

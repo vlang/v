@@ -476,14 +476,20 @@ pub fn get_raw_line() string {
 			h_input := C.GetStdHandle(C.STD_INPUT_HANDLE)
 			mut bytes_read := 0
 			if is_atty(0) > 0 {
-				C.ReadConsole(h_input, buf, max_line_chars * 2, C.LPDWORD(&bytes_read),
+				x := C.ReadConsole(h_input, buf, max_line_chars * 2, C.LPDWORD(&bytes_read),
 					0)
+				if !x {
+					return tos(buf, 0)
+				}
 				return string_from_wide2(&u16(buf), bytes_read)
 			}
 			mut offset := 0
 			for {
 				pos := buf + offset
 				res := C.ReadFile(h_input, pos, 1, C.LPDWORD(&bytes_read), 0)
+				if !res && offset == 0 {
+					return tos(buf, 0)
+				}
 				if !res || bytes_read == 0 {
 					break
 				}
@@ -497,15 +503,9 @@ pub fn get_raw_line() string {
 		}
 	} $else {
 		max := size_t(0)
-		mut buf := charptr(0)
+		buf := charptr(0)
 		nr_chars := unsafe { C.getline(&buf, &max, C.stdin) }
-		// defer { unsafe{ free(buf) } }
-		if nr_chars == 0 || nr_chars == -1 {
-			return ''
-		}
-		return unsafe { tos3(buf) }
-		// res := tos_clone(buf)
-		// return res
+		return unsafe { tos(byteptr(buf), if nr_chars < 0 { 0 } else { nr_chars }) }
 	}
 }
 
@@ -527,7 +527,6 @@ pub fn get_raw_stdin() []byte {
 				}
 				buf = v_realloc(buf, offset + block_bytes + (block_bytes - bytes_read))
 			}
-			C.CloseHandle(h_input)
 			return array{
 				element_size: 1
 				data: voidptr(buf)
@@ -536,7 +535,15 @@ pub fn get_raw_stdin() []byte {
 			}
 		}
 	} $else {
-		panic('get_raw_stdin not implemented on this platform...')
+		max := size_t(0)
+		buf := charptr(0)
+		nr_chars := unsafe { C.getline(&buf, &max, C.stdin) }
+		return array{
+			element_size: 1
+			data: voidptr(buf)
+			len: if nr_chars < 0 { 0 } else { nr_chars }
+			cap: int(max)
+		}
 	}
 }
 

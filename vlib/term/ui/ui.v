@@ -29,7 +29,7 @@ pub fn (mut ctx Context) write(s string) {
 	if s == '' {
 		return
 	}
-	ctx.print_buf.push_many(s.str, s.len)
+	unsafe { ctx.print_buf.push_many(s.str, s.len) }
 }
 
 [inline]

@@ -12,14 +12,14 @@ pub struct IResult {
 fn worker_s(p &pool.PoolProcessor, idx int, worker_id int) &SResult {
 	item := p.get_item<string>(idx)
 	println('worker_s worker_id: $worker_id | idx: $idx | item: $item')
-	time.wait(3 * time.millisecond)
+	time.sleep(3 * time.millisecond)
 	return &SResult{'$item $item'}
 }
 
 fn worker_i(p &pool.PoolProcessor, idx int, worker_id int) &IResult {
 	item := p.get_item<int>(idx)
 	println('worker_i worker_id: $worker_id | idx: $idx | item: $item')
-	time.wait(5 * time.millisecond)
+	time.sleep(5 * time.millisecond)
 	return &IResult{item * 1000}
 }
 

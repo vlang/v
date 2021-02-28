@@ -391,6 +391,7 @@ fn (mut g Gen) fn_args(args []table.Param, is_variadic bool) ([]string, []string
 }
 
 fn (mut g Gen) call_expr(node ast.CallExpr) {
+	// g.write('/*call expr*/')
 	// NOTE: everything could be done this way
 	// see my comment in parser near anon_fn
 	if node.left is ast.AnonFn {
@@ -408,20 +409,26 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	defer {
 		g.inside_call = false
 	}
-	gen_or := node.or_block.kind != .absent && !g.is_autofree
-	// if gen_or {
-	// g.writeln('/*start*/')
-	// }
+	gen_or := node.or_block.kind != .absent // && !g.is_autofree
 	is_gen_or_and_assign_rhs := gen_or && g.is_assign_rhs
-	cur_line := if is_gen_or_and_assign_rhs && !g.is_autofree {
+	cur_line := if is_gen_or_and_assign_rhs { // && !g.is_autofree {
+		// `x := foo() or { ...}`
+		// cut everything that has been generated to prepend optional variable creation
 		line := g.go_before_stmt(0)
 		g.out.write_string(tabs[g.indent])
+		// g.write('/*is_gen_or_and_assign_rhs*/')
 		line
 	} else {
 		''
 	}
+	// if gen_or && g.pref.autofree && g.inside_return {
+	if gen_or && g.inside_return {
+		// TODO optional return af hack (tmp_count gets increased in .return_statement())
+		g.tmp_count--
+	}
 	tmp_opt := if gen_or { g.new_tmp_var() } else { '' }
-	if gen_or {
+	if gen_or && !g.inside_return {
+		// if is_gen_or_and_assign_rhs {
 		styp := g.typ(node.return_type.set_flag(.optional))
 		g.write('$styp $tmp_opt = ')
 	}
@@ -437,16 +444,16 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		g.fn_call(node)
 	}
 	if gen_or { // && !g.autofree {
-		if !g.is_autofree {
-			g.or_block(tmp_opt, node.or_block, node.return_type)
-		}
+		// if !g.is_autofree {
+		g.or_block(tmp_opt, node.or_block, node.return_type)
+		//}
 		if is_gen_or_and_assign_rhs {
 			unwrapped_typ := node.return_type.clear_flag(.optional)
 			unwrapped_styp := g.typ(unwrapped_typ)
 			if unwrapped_typ == table.void_type {
 				g.write('\n $cur_line')
 			} else if g.table.get_type_symbol(node.return_type).kind == .multi_return {
-				g.write('\n $cur_line $tmp_opt')
+				g.write('\n $cur_line $tmp_opt /*U*/')
 			} else {
 				g.write('\n $cur_line *($unwrapped_styp*)${tmp_opt}.data')
 			}

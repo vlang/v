@@ -487,22 +487,32 @@ pub fn (t &Table) chan_cname(elem_type Type, is_mut bool) string {
 
 [inline]
 pub fn (t &Table) thread_name(return_type Type) string {
-	if return_type == void_type {
-		return 'thread'
+	if return_type.idx() == void_type_idx {
+		if return_type.has_flag(.optional) {
+			return 'thread ?'
+		} else {
+			return 'thread'
+		}
 	}
 	return_type_sym := t.get_type_symbol(return_type)
 	ptr := if return_type.is_ptr() { '&' } else { '' }
-	return 'thread $ptr$return_type_sym.name'
+	opt := if return_type.has_flag(.optional) { '?' } else { '' }
+	return 'thread $opt$ptr$return_type_sym.name'
 }
 
 [inline]
 pub fn (t &Table) thread_cname(return_type Type) string {
 	if return_type == void_type {
-		return '__v_thread'
+		if return_type.has_flag(.optional) {
+			return '__v_thread_Option_void'
+		} else {
+			return '__v_thread'
+		}
 	}
 	return_type_sym := t.get_type_symbol(return_type)
 	suffix := if return_type.is_ptr() { '_ptr' } else { '' }
-	return '__v_thread_$return_type_sym.cname$suffix'
+	prefix := if return_type.has_flag(.optional) { 'Option_' } else { '' }
+	return '__v_thread_$prefix$return_type_sym.cname$suffix'
 }
 
 // map_source_name generates the original name for the v source.

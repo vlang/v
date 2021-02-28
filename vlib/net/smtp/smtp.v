@@ -149,7 +149,7 @@ fn (mut c Client) send_auth() ? {
 	sb.write_b(0)
 	sb.write_string(c.password)
 	a := sb.str()
-	auth := 'AUTH PLAIN ${base64.encode(a)}\r\n'
+	auth := 'AUTH PLAIN ${base64.encode_str(a)}\r\n'
 	c.send_str(auth) ?
 	c.expect_reply(.auth_ok) ?
 }

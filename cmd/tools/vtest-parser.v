@@ -60,7 +60,7 @@ fn main() {
 		source = source[..context.cut_index]
 
 		go fn (ms int) {
-			time.wait(ms * time.millisecond)
+			time.sleep(ms * time.millisecond)
 			exit(ecode_timeout)
 		}(context.timeout_ms)
 		_ := parser.parse_text(source, context.path, context.table, .skip_comments, context.pref,
@@ -259,7 +259,7 @@ fn (mut context Context) start_printing() {
 
 fn (mut context Context) stop_printing() {
 	context.stop_print = true
-	time.wait(time.millisecond * context.period_ms / 5)
+	time.sleep(time.millisecond * context.period_ms / 5)
 }
 
 fn (mut context Context) print_status() {
@@ -284,7 +284,7 @@ fn (mut context Context) print_periodic_status() {
 	for !context.stop_print {
 		context.print_status()
 		for i := 0; i < 10 && !context.stop_print; i++ {
-			time.wait(time.millisecond * context.period_ms / 10)
+			time.sleep(time.millisecond * context.period_ms / 10)
 			if context.cut_index > 50 && !printed_at_least_once {
 				context.print_status()
 				printed_at_least_once = true

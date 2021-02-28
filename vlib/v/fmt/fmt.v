@@ -459,11 +459,10 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 }
 
 fn stmt_is_single_line(stmt ast.Stmt) bool {
-	match stmt {
-		ast.ExprStmt { return expr_is_single_line(stmt.expr) }
-		ast.Return { return true }
-		ast.AssignStmt { return true }
-		else { return false }
+	return match stmt {
+		ast.ExprStmt, ast.AssertStmt { expr_is_single_line(stmt.expr) }
+		ast.Return, ast.AssignStmt, ast.BranchStmt { true }
+		else { false }
 	}
 }
 
@@ -1065,7 +1064,7 @@ pub fn (mut f Fmt) or_expr(node ast.OrExpr) {
 			if node.stmts.len == 0 {
 				f.write(' or { }')
 				return
-			} else if node.stmts.len == 1 {
+			} else if node.stmts.len == 1 && stmt_is_single_line(node.stmts[0]) {
 				// the control stmts (return/break/continue...) print a newline inside them,
 				// so, since this'll all be on one line, trim any possible whitespace
 				str := f.stmt_str(node.stmts[0]).trim_space()
@@ -1971,18 +1970,25 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 		}
 	}
 	for i, c in node.pre_cmnts {
-		f.comment(c, level: .indent, iembed: true)
 		if i < node.pre_cmnts.len - 1 {
 			if c.pos.last_line < node.pre_cmnts[i + 1].pos.line_nr {
+				f.comment(c, level: .indent)
 				f.writeln('')
 			} else {
+				f.comment(c, level: .indent, iembed: true)
 				f.write(' ')
 			}
 		} else {
-			if c.pos.last_line < node.pos.last_line && node.exprs.len == 0 {
-				f.writeln('')
-			} else if node.exprs.len > 0 {
-				f.write(' ')
+			if c.pos.last_line < node.pos.last_line {
+				f.comment(c, level: .indent)
+				if node.exprs.len == 0 {
+					f.writeln('')
+				}
+			} else {
+				f.comment(c, level: .indent, iembed: true)
+				if node.exprs.len > 0 {
+					f.write(' ')
+				}
 			}
 		}
 		last_line_nr = c.pos.last_line
@@ -2023,10 +2029,11 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 				}
 				if cmt.pos.line_nr > expr_pos.last_line {
 					f.writeln('')
+					f.comment(cmt, {})
 				} else {
 					f.write(' ')
+					f.comment(cmt, iembed: true)
 				}
-				f.comment(cmt, iembed: true)
 			}
 		}
 		if i == node.exprs.len - 1 {

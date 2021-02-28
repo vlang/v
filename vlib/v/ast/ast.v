@@ -723,6 +723,7 @@ pub:
 	stmts   []Stmt
 	kind    CompForKind
 	pos     token.Position
+	typ_pos token.Position
 pub mut:
 	// expr    Expr
 	typ table.Type

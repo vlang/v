@@ -56,7 +56,7 @@ pub fn new() &Digest {
 
 // write writes the contents of `p_` to the internal hash representation.
 [manualfree]
-pub fn (mut d Digest) write(p_ []byte) int {
+pub fn (mut d Digest) write(p_ []byte) ?int {
 	nn := p_.len
 	unsafe {
 		mut p := p_
@@ -109,14 +109,14 @@ fn (mut d Digest) checksum() []byte {
 	mut tmp := []byte{len: (64)}
 	tmp[0] = 0x80
 	if int(len) % 64 < 56 {
-		d.write(tmp[..56 - int(len) % 64])
+		d.write(tmp[..56 - int(len) % 64]) or { panic(err) }
 	} else {
-		d.write(tmp[..64 + 56 - int(len) % 64])
+		d.write(tmp[..64 + 56 - int(len) % 64]) or { panic(err) }
 	}
 	// Length in bits.
 	len <<= 3
 	binary.big_endian_put_u64(mut tmp, len)
-	d.write(tmp[..8])
+	d.write(tmp[..8]) or { panic(err) }
 	mut digest := []byte{len: (size)}
 	binary.big_endian_put_u32(mut digest, d.h[0])
 	binary.big_endian_put_u32(mut digest[4..], d.h[1])
@@ -129,7 +129,7 @@ fn (mut d Digest) checksum() []byte {
 // sum returns the SHA-1 checksum of the bytes passed in `data`.
 pub fn sum(data []byte) []byte {
 	mut d := new()
-	d.write(data)
+	d.write(data) or { panic(err) }
 	return d.checksum()
 }
 

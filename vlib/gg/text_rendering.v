@@ -135,7 +135,7 @@ fn new_ft(c FTConfig) ?&FT {
 	}
 }
 
-fn (ctx &Context) set_cfg(cfg gx.TextCfg) {
+pub fn (ctx &Context) set_cfg(cfg gx.TextCfg) {
 	if !ctx.font_inited {
 		return
 	}

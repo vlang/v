@@ -7,3 +7,16 @@ fn main() {
 	bar := unknown_at_ct()
 	$if bar == 0 {}
 }
+
+fn if_is() {
+	s := S1{}
+	$if huh.typ is T {}
+	$if s is int {}
+	$if s.i is 5 {}
+	$if s.i is T {}
+}
+
+struct S1 {
+	i int
+}
+

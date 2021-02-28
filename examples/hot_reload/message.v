@@ -13,6 +13,6 @@ fn print_message() {
 fn main() {
 	for {
 		print_message()
-		time.wait(500 * time.millisecond)
+		time.sleep(500 * time.millisecond)
 	}
 }

@@ -359,7 +359,7 @@ fn draw_cube_glsl(app App) {
 
 	rot := [f32(app.mouse_y), f32(app.mouse_x)]
 
-	ws := gg.window_size()
+	ws := gg.window_size_real_pixels()
 	// ratio := f32(ws.width)/ws.height
 	dw := f32(ws.width / 2)
 	dh := f32(ws.height / 2)
@@ -428,7 +428,7 @@ fn draw_texture_cubes(app App) {
 }
 
 fn frame(mut app App) {
-	ws := gg.window_size()
+	ws := gg.window_size_real_pixels()
 	ratio := f32(ws.width) / ws.height
 	dw := ws.width
 	dh := ws.height

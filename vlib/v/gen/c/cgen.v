@@ -12,14 +12,14 @@ import v.token
 import v.util
 import v.depgraph
 
-// NB: keywords after 'new' are reserved in C++
 const (
-	c_reserved = ['delete', 'exit', 'link', 'unix', 'error', 'calloc', 'malloc', 'free', 'panic',
-		'case', 'auto', 'char', 'default', 'do', 'double', 'extern', 'float', 'inline', 'int',
-		'long', 'register', 'restrict', 'short', 'signed', 'sizeof', 'static', 'switch', 'typedef',
-		'union', 'unsigned', 'void', 'volatile', 'while', 'new', 'namespace', 'class', 'typename',
-		'export',
-	]
+	// NB: some of the words in c_reserved, are not reserved in C,
+	// but are in C++, or have special meaning in V, thus need escaping too.
+	c_reserved = ['auto', 'break', 'calloc', 'case', 'char', 'class', 'const', 'continue', 'default',
+		'delete', 'do', 'double', 'else', 'enum', 'error', 'exit', 'export', 'extern', 'float',
+		'for', 'free', 'goto', 'if', 'inline', 'int', 'link', 'long', 'malloc', 'namespace', 'new',
+		'panic', 'register', 'restrict', 'return', 'short', 'signed', 'sizeof', 'static', 'struct',
+		'switch', 'typedef', 'typename', 'union', 'unix', 'unsigned', 'void', 'volatile', 'while']
 	// same order as in token.Kind
 	cmp_str    = ['eq', 'ne', 'gt', 'lt', 'ge', 'le']
 	// when operands are switched
@@ -1480,16 +1480,20 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 			return
 		}
 		ret_typ := next_fn.return_type
+		t_expr := g.new_tmp_var()
+		g.write('${g.typ(node.cond_type)} $t_expr = ')
+		g.expr(node.cond)
+		g.writeln(';')
 		g.writeln('while (1) {')
 		t := g.new_tmp_var()
-		receiver_styp := g.typ(next_fn.params[0].typ)
+		receiver_typ := next_fn.params[0].typ
+		receiver_styp := g.typ(receiver_typ)
 		fn_name := receiver_styp.replace_each(['*', '', '.', '__']) + '_next'
 		g.write('\t${g.typ(ret_typ)} $t = ${fn_name}(')
-		if !node.cond_type.is_ptr() {
+		if !node.cond_type.is_ptr() && receiver_typ.is_ptr() {
 			g.write('&')
 		}
-		g.expr(node.cond)
-		g.writeln(');')
+		g.writeln('$t_expr);')
 		g.writeln('\tif (!${t}.ok) { break; }')
 		val := if node.val_var in ['', '_'] { g.new_tmp_var() } else { node.val_var }
 		val_styp := g.typ(node.val_type)
@@ -1633,109 +1637,8 @@ fn (mut g Gen) gen_attrs(attrs []table.Attr) {
 	}
 }
 
-fn (mut g Gen) gen_assert_stmt(original_assert_statement ast.AssertStmt) {
-	mut node := original_assert_statement
-	g.writeln('// assert')
-	if mut node.expr is ast.InfixExpr {
-		if mut node.expr.left is ast.CallExpr {
-			node.expr.left = g.new_ctemp_var_then_gen(node.expr.left, node.expr.left_type)
-		}
-		if mut node.expr.right is ast.CallExpr {
-			node.expr.right = g.new_ctemp_var_then_gen(node.expr.right, node.expr.right_type)
-		}
-	}
-	g.inside_ternary++
-	if g.is_test {
-		g.write('if (')
-		g.expr(node.expr)
-		g.write(')')
-		g.decrement_inside_ternary()
-		g.writeln(' {')
-		g.writeln('\tg_test_oks++;')
-		metaname_ok := g.gen_assert_metainfo(node)
-		g.writeln('\tmain__cb_assertion_ok(&$metaname_ok);')
-		g.writeln('} else {')
-		g.writeln('\tg_test_fails++;')
-		metaname_fail := g.gen_assert_metainfo(node)
-		g.writeln('\tmain__cb_assertion_failed(&$metaname_fail);')
-		g.writeln('\tlongjmp(g_jump_buffer, 1);')
-		g.writeln('\t// TODO')
-		g.writeln('\t// Maybe print all vars in a test function if it fails?')
-		g.writeln('}')
-	} else {
-		g.write('if (!(')
-		g.expr(node.expr)
-		g.write('))')
-		g.decrement_inside_ternary()
-		g.writeln(' {')
-		metaname_panic := g.gen_assert_metainfo(node)
-		g.writeln('\t__print_assert_failure(&$metaname_panic);')
-		g.writeln('\tv_panic(_SLIT("Assertion failed..."));')
-		g.writeln('}')
-	}
-}
-
 fn cnewlines(s string) string {
 	return s.replace('\n', r'\n')
-}
-
-fn (mut g Gen) gen_assert_metainfo(node ast.AssertStmt) string {
-	mod_path := cestring(g.file.path)
-	fn_name := g.fn_decl.name
-	line_nr := node.pos.line_nr
-	src := cestring(node.expr.str())
-	metaname := 'v_assert_meta_info_$g.new_tmp_var()'
-	g.writeln('\tVAssertMetaInfo $metaname = {0};')
-	g.writeln('\t${metaname}.fpath = ${ctoslit(mod_path)};')
-	g.writeln('\t${metaname}.line_nr = $line_nr;')
-	g.writeln('\t${metaname}.fn_name = ${ctoslit(fn_name)};')
-	g.writeln('\t${metaname}.src = ${cnewlines(ctoslit(src))};')
-	match mut node.expr {
-		ast.InfixExpr {
-			g.writeln('\t${metaname}.op = ${ctoslit(node.expr.op.str())};')
-			g.writeln('\t${metaname}.llabel = ${cnewlines(ctoslit(node.expr.left.str()))};')
-			g.writeln('\t${metaname}.rlabel = ${cnewlines(ctoslit(node.expr.right.str()))};')
-			g.write('\t${metaname}.lvalue = ')
-			g.gen_assert_single_expr(node.expr.left, node.expr.left_type)
-			g.writeln(';')
-			//
-			g.write('\t${metaname}.rvalue = ')
-			g.gen_assert_single_expr(node.expr.right, node.expr.right_type)
-			g.writeln(';')
-		}
-		ast.CallExpr {
-			g.writeln('\t${metaname}.op = _SLIT("call");')
-		}
-		else {}
-	}
-	return metaname
-}
-
-fn (mut g Gen) gen_assert_single_expr(expr ast.Expr, typ table.Type) {
-	unknown_value := '*unknown value*'
-	match expr {
-		ast.CastExpr, ast.IndexExpr, ast.MatchExpr {
-			g.write(ctoslit(unknown_value))
-		}
-		ast.PrefixExpr {
-			if expr.right is ast.CastExpr {
-				// TODO: remove this check;
-				// vlib/builtin/map_test.v (a map of &int, set to &int(0)) fails
-				// without special casing ast.CastExpr here
-				g.write(ctoslit(unknown_value))
-			} else {
-				g.gen_expr_to_string(expr, typ)
-			}
-		}
-		ast.Type {
-			sym := g.table.get_type_symbol(typ)
-			g.write(ctoslit('$sym.name'))
-		}
-		else {
-			g.gen_expr_to_string(expr, typ)
-		}
-	}
-	g.write(' /* typeof: ' + expr.type_name() + ' type: ' + typ.str() + ' */ ')
 }
 
 fn (mut g Gen) write_fn_ptr_decl(func &table.FnType, ptr_name string) {
@@ -1826,8 +1729,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	// return;
 	// }
 	// int pos = *(int*)_t190.data;
-	mut tmp_opt := ''
-	is_optional := g.is_autofree && (assign_stmt.op in [.decl_assign, .assign])
+	// mut tmp_opt := ''
+	/*
+	is_optional := false && g.is_autofree && (assign_stmt.op in [.decl_assign, .assign])
 		&& assign_stmt.left_types.len == 1 && assign_stmt.right[0] is ast.CallExpr
 	if is_optional {
 		// g.write('/* optional assignment */')
@@ -1845,6 +1749,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			// return
 		}
 	}
+	*/
 	// json_test failed w/o this check
 	if return_type != table.void_type && return_type != 0 {
 		sym := g.table.get_type_symbol(return_type)
@@ -2171,7 +2076,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				// Unwrap the optional now that the testing code has been prepended.
 				// `pos := s.index(...
 				// `int pos = *(int)_t10.data;`
-				if g.is_autofree {
+				// if g.is_autofree {
+				/*
+				if is_optional {
 					g.write('*($styp*)')
 					g.write(tmp_opt + '.data/*FFz*/')
 					g.right_is_opt = false
@@ -2181,6 +2088,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					}
 					return
 				}
+				*/
 			}
 			g.is_shared = var_type.has_flag(.shared_f)
 			if !cloned {
@@ -4837,7 +4745,8 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			g.writeln('return $opt_tmp;')
 			return
 		}
-		free := g.is_autofree && !g.is_builtin_mod // node.exprs[0] is ast.CallExpr
+		// free := g.is_autofree && !g.is_builtin_mod // node.exprs[0] is ast.CallExpr
+		free := !g.is_builtin_mod // node.exprs[0] is ast.CallExpr
 		mut tmp := ''
 		if free {
 			// `return foo(a, b, c)`
@@ -4869,7 +4778,9 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			// autofree before `return`
 			// set free_parent_scopes to true, since all variables defined in parent
 			// scopes need to be freed before the return
-			g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
+			if g.pref.autofree {
+				g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
+			}
 			if tmp != '' {
 				g.write('return $tmp')
 			}
@@ -5615,7 +5526,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 	if is_none_ok {
 		g.writeln('if (!${cvar_name}.ok && !${cvar_name}.is_none) {')
 	} else {
-		g.writeln('if (!${cvar_name}.ok) {')
+		g.writeln('if (!${cvar_name}.ok) { /*or block*/ ')
 	}
 	if or_block.kind == .block {
 		if g.inside_or_block {
@@ -5938,10 +5849,12 @@ fn (mut g Gen) go_stmt(node ast.GoStmt, joinable bool) string {
 	if g.pref.os == .windows && node.call_expr.return_type != table.void_type {
 		g.writeln('$arg_tmp_var->ret_ptr = malloc(sizeof($s_ret_typ));')
 	}
+	is_opt := node.call_expr.return_type.has_flag(.optional)
 	gohandle_name := if node.call_expr.return_type == table.void_type {
-		'__v_thread'
+		if is_opt { '__v_thread_Option_void' } else { '__v_thread' }
 	} else {
-		'__v_thread_' + g.table.get_type_symbol(g.unwrap_generic(node.call_expr.return_type)).cname
+		opt := if is_opt { 'Option_' } else { '' }
+		'__v_thread_$opt${g.table.get_type_symbol(g.unwrap_generic(node.call_expr.return_type)).cname}'
 	}
 	if g.pref.os == .windows {
 		simple_handle := if joinable && node.call_expr.return_type != table.void_type {
