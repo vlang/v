@@ -23,7 +23,7 @@ pub fn len(s string) int {
 	mut index := 0
 
 	for {
-		ch_len := char_len(s[index])
+		ch_len := utf8_char_len(s[index])
 		index += ch_len
 		count++
 		if index >= s.len {
@@ -39,6 +39,7 @@ pub fn u_len(s ustring) int {
 }
 
 // char_len calculate the length in bytes of a utf8 char
+[deprecated: 'use builtin utf8_char_len']
 pub fn char_len(b byte) int {
 	return ((0xe5000000 >> ((b >> 3) & 0x1e)) & 3) + 1
 }
