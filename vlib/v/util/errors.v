@@ -4,6 +4,7 @@
 module util
 
 import os
+import strings
 import term
 import v.token
 
@@ -132,14 +133,22 @@ pub fn source_context(kind string, source string, column int, pos token.Position
 			// line, so that it prints the ^ character exactly on the *same spot*
 			// where it is needed. That is the reason we can not just
 			// use strings.repeat(` `, col) to form it.
-			mut pointerline := ''
-			for bchar in sline[..start_column] {
-				x := if bchar.is_space() { bchar } else { ` ` }
-				pointerline += x.ascii_str()
+			mut pointerline_builder := strings.new_builder(sline.len)
+			for i := 0; i < start_column; {
+				if sline[i].is_space() {
+					pointerline_builder.write_b(sline[i])
+					i++
+				} else {
+					char_len := utf8_char_len(sline[i])
+					spaces := ' '.repeat(utf8_str_visible_length(sline[i..i + char_len]))
+					pointerline_builder.write_string(spaces)
+					i += char_len
+				}
 			}
-			underline := if pos.len > 1 { '~'.repeat(end_column - start_column) } else { '^' }
-			pointerline += bold(color(kind, underline))
-			clines << '      | ' + pointerline.replace('\t', tab_spaces)
+			underline_len := utf8_str_visible_length(sline[start_column..end_column])
+			underline := if underline_len > 1 { '~'.repeat(underline_len) } else { '^' }
+			pointerline_builder.write_string(bold(color(kind, underline)))
+			clines << '      | ' + pointerline_builder.str().replace('\t', tab_spaces)
 		}
 	}
 	return clines

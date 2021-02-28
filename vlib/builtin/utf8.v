@@ -114,7 +114,9 @@ fn utf8_str_len(s string) int {
 }
 
 // Calculate string length for formatting, i.e. number of "characters"
-fn utf8_str_visible_length(s string) int {
+// This is simplified implementation. if you need specification compliant width,
+// use utf8.east_asian.display_width.
+pub fn utf8_str_visible_length(s string) int {
 	mut l := 0
 	mut ul := 1
 	for i := 0; i < s.len; i+=ul {
@@ -129,24 +131,56 @@ fn utf8_str_visible_length(s string) int {
 			return l
 		}
 		l++
-		// recognize combining characters
-		if c == 0xcc || c == 0xcd {
-			r := (u16(c) << 8) | unsafe {s.str[i+1]}
-			if r >= 0xcc80 && r < 0xcdb0 { // diacritical marks
-				l--
+		// recognize combining characters and wide characters
+		match ul {
+			2 {
+				r := (u16(c) << 8) | unsafe {s.str[i+1]}
+				if r >= 0xcc80 && r < 0xcdb0 { // diacritical marks
+					l--
+				}
 			}
-		} else if c == 0xe1 || c == 0xe2 || c == 0xef {
-			r := (u32(c) << 16) | unsafe {(u32(s.str[i+1]) << 8) | s.str[i+2]}
-			// diacritical marks extended 0xe1aab0 - 0xe1ac80
-			// diacritical marks supplement 0xe1b780 - 0xe1b880
-			// diacritical marks for symbols 0xe28390 - 0xe28480
-			// half marks 0xefb8a0 - 0xefb8b0
-			if (r >= 0xe1aab0 && r < 0xe1ac80)
-			|| (r >= 0xe1b780 && r < 0xe1b880)
-			|| (r >= 0xe28390 && r < 0xe28480)
-			|| (r >= 0xefb8a0 && r < 0xefb8b0) {
-				l--
+			3 {
+				r := (u32(c) << 16) | unsafe {(u32(s.str[i+1]) << 8) | s.str[i+2]}
+				match r {
+					// diacritical marks extended
+					0xe1aab0...0xe1ac7f,
+					// diacritical marks supplement
+					0xe1b780...0xe1b87f,
+					// diacritical marks for symbols
+					0xe28390...0xe2847f,
+					// half marks
+					0xefb8a0...0xefb8af { l-- }
+
+					// Hangru
+					0xe18480...0xe1859f,
+					// CJK Unified Ideographics
+					0xe2ba80...0xe2bf95,
+					0xe38080...0xe4b77f,
+					0xe4b880...0xea807f,
+					// Hangru
+					0xeaa5a0...0xeaa79f,
+					0xeab080...0xed9eaf,
+					// CJK
+					0xefa480...0xefac7f,
+					0xefb8b8...0xefb9af { l++ }
+					else {}
+				}
 			}
+			4 {
+				r := (u32(c) << 24) | unsafe {(u32(s.str[i+1]) << 16) | (u32(s.str[i+2]) << 8) | s.str[i+3]}
+				match r {
+					// Enclosed Ideographic Supplement
+					0x0f9f8880...0xf09f8a8f,
+					// Emoji
+					0xf09f8c80...0xf09f9c90,
+					0xf09fa490...0xf09fa7af,
+					// CJK Unified Ideographs Extension B-G
+					0xff0a08080...0xf180807f { l++ }
+					// Emoji
+					else {}
+				}
+			}
+			else { }
 		}
 	}
 	return l
