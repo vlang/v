@@ -1221,6 +1221,10 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 		if node.info.is_mut {
 			f.write(node.info.share.str() + ' ')
 		}
+		var_info := node.var_info()
+		if var_info.is_static {
+			f.write('static ')
+		}
 	}
 	f.write_language_prefix(node.language)
 	if node.name == 'it' && f.it_name != '' && !f.inside_lambda { // allow `it` in lambdas
@@ -2315,10 +2319,6 @@ pub fn (mut f Fmt) assign_stmt(node ast.AssignStmt) {
 	f.comments(node.comments, {})
 	for i, left in node.left {
 		if left is ast.Ident {
-			var_info := left.var_info()
-			if var_info.is_static {
-				f.write('static ')
-			}
 			f.expr(left)
 		} else {
 			f.expr(left)
