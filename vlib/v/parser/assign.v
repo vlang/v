@@ -141,7 +141,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 						iv := lx.info as ast.IdentVar
 						share = iv.share
 						if iv.is_static {
-							if !p.pref.translated {
+							if !p.pref.translated && !p.pref.is_fmt {
 								p.error_with_pos('static variables are supported only in -translated mode',
 									lx.pos)
 								return ast.Stmt{}
