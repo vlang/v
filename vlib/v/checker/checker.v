@@ -1896,8 +1896,8 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			unexpected_arguments_pos)
 		return f.return_type
 	}
-	// println / eprintln can print anything
-	if fn_name in ['println', 'print', 'eprintln', 'eprint'] && call_expr.args.len > 0 {
+	// println / eprintln / panic can print anything
+	if fn_name in ['println', 'print', 'eprintln', 'eprint', 'panic'] && call_expr.args.len > 0 {
 		c.inside_println_arg = true
 		c.expected_type = table.string_type
 		call_expr.args[0].typ = c.expr(call_expr.args[0].expr)
