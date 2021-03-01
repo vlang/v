@@ -3996,6 +3996,16 @@ fn bar() {
 	foo() // will not be called if `-d debug` is not passed
 }
 
+// Calls to this function must be in unsafe{} blocks
+[unsafe]
+fn risky_business() {
+}
+
+// V's autofree engine will not take care of memory management in this function
+[manualfree]
+fn custom_allocations() {
+}
+
 // For C interop only, tells V that the following struct is defined with `typedef struct` in C
 [typedef]
 struct C.Foo {
