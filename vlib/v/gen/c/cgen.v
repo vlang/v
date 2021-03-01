@@ -549,9 +549,6 @@ fn (mut g Gen) base_type(t table.Type) string {
 	if nr_muls > 0 {
 		styp += strings.repeat(`*`, nr_muls)
 	}
-	// if styp == 'Option' {
-	// 	return 'Option2'
-	// }
 	return styp
 }
 
@@ -580,7 +577,6 @@ fn (g &Gen) optional_type_text(styp string, base string) string {
 }
 
 fn (mut g Gen) register_optional(t table.Type) string {
-	// g.typedefs2.writeln('typedef Option $x;')
 	styp, base := g.optional_type_name(t)
 	if styp !in g.optionals {
 		g.typedefs2.writeln('typedef struct $styp $styp;')
@@ -725,6 +721,7 @@ fn (g &Gen) type_sidx(t table.Type) string {
 //
 pub fn (mut g Gen) write_typedef_types() {
 	for typ in g.table.types {
+		if typ.name in builtins { continue }
 		match typ.kind {
 			.alias {
 				parent := unsafe { &g.table.types[typ.parent_idx] }
@@ -744,16 +741,7 @@ pub fn (mut g Gen) write_typedef_types() {
 				g.type_definitions.writeln('typedef array $typ.cname;')
 			}
 			.interface_ {
-				info := typ.info as table.Interface
-				g.type_definitions.writeln('typedef struct {')
-				g.type_definitions.writeln('\tvoid* _object;')
-				g.type_definitions.writeln('\tint _interface_idx;')
-				for field in info.fields {
-					styp := g.typ(field.typ)
-					cname := c_name(field.name)
-					g.type_definitions.writeln('\t$styp* $cname;')
-				}
-				g.type_definitions.writeln('} ${c_name(typ.name)};')
+				g.write_interface_typesymbol_declaration(typ)
 			}
 			.chan {
 				if typ.name != 'chan' {
@@ -786,6 +774,19 @@ static inline void __${typ.cname}_pushval($typ.cname ch, $el_stype val) {
 			}
 		}
 	}
+}
+
+pub fn (mut g Gen) write_interface_typesymbol_declaration(sym table.TypeSymbol) {
+	info := sym.info as table.Interface
+	g.type_definitions.writeln('typedef struct {')
+	g.type_definitions.writeln('\tvoid* _object;')
+	g.type_definitions.writeln('\tint _interface_idx;')
+	for field in info.fields {
+		styp := g.typ(field.typ)
+		cname := c_name(field.name)
+		g.type_definitions.writeln('\t$styp* $cname;')
+	}
+	g.type_definitions.writeln('} ${c_name(sym.name)};\n')
 }
 
 pub fn (mut g Gen) write_fn_typesymbol_declaration(sym table.TypeSymbol) {
@@ -909,7 +910,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 				g.skip_stmt_pos = true
 				if stmt is ast.ExprStmt {
 					sym := g.table.get_type_symbol(stmt.typ)
-					if sym.name in ['Option', 'Option2'] || stmt.expr is ast.None {
+					if sym.name in ['Option2', 'Option3'] || stmt.expr is ast.None {
 						tmp := g.new_tmp_var()
 						g.write('Option2 $tmp = ')
 						g.expr(stmt.expr)
@@ -4267,7 +4268,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 	if fn_return_is_optional {
 		optional_none := node.exprs[0] is ast.None
 		ftyp := g.typ(node.types[0])
-		mut is_regular_option := ftyp in ['Option', 'Option2']
+		mut is_regular_option := ftyp in ['Option2', 'Option3']
 		if optional_none || is_regular_option {
 			tmp := g.new_tmp_var()
 			g.write('Option2 $tmp = ')
@@ -4384,7 +4385,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 				node.types[0].has_flag(.optional)
 			}
 		}
-		if fn_return_is_optional && !expr_type_is_opt && return_sym.name !in ['Option', 'Option2'] {
+		if fn_return_is_optional && !expr_type_is_opt && return_sym.name !in ['Option2', 'Option3'] {
 			styp := g.base_type(g.fn_decl.return_type)
 			opt_type := g.typ(g.fn_decl.return_type)
 			// Create a tmp for this option
@@ -4542,9 +4543,6 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, val string, typ ta
 	// Initialize more complex consts in `void _vinit/2{}`
 	// (C doesn't allow init expressions that can't be resolved at compile time).
 	mut styp := g.typ(typ)
-	if styp == 'Option' {
-		styp = 'Option2'
-	}
 	cname := '_const_$name'
 	g.definitions.writeln('$styp $cname; // inited later')
 	if cname == '_const_os__args' {
@@ -4930,7 +4928,7 @@ fn (mut g Gen) write_init_function() {
 }
 
 const (
-	builtins = ['string', 'array', 'KeyValue', 'DenseArray', 'map', 'Option', 'Error', 'Option2']
+	builtins = ['string', 'array', 'DenseArray', 'map', 'Error', 'Option2', 'Error3', 'Option3']
 )
 
 fn (mut g Gen) write_builtin_types() {
@@ -4938,7 +4936,12 @@ fn (mut g Gen) write_builtin_types() {
 	// builtin types need to be on top
 	// everything except builtin will get sorted
 	for builtin_name in c.builtins {
-		builtin_types << g.table.types[g.table.type_idxs[builtin_name]]
+		sym := g.table.types[g.table.type_idxs[builtin_name]]
+		if sym.kind == .interface_ {
+			g.write_interface_typesymbol_declaration(sym)
+		} else {
+			builtin_types << sym
+		}
 	}
 	g.write_types(builtin_types)
 }
