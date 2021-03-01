@@ -335,8 +335,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		} else {
 			name = p.prepend_mod(name)
 		}
-		if _ := p.table.find_fn(name) {
-			p.fn_redefinition_error(name)
+		if !p.pref.translated && language == .v && p.table.fns.exists_1(name) {
+			p.table.redefined_fns << name
 		}
 		// p.warn('reg functn $name ()')
 		p.table.register_fn(table.Fn{
@@ -811,21 +811,6 @@ fn (mut p Parser) check_fn_atomic_arguments(typ table.Type, pos token.Position) 
 			'use shared arguments instead: `fn foo(atomic n $sym.name) {` => `fn foo(shared n $sym.name) {`',
 			pos)
 	}
-}
-
-fn (mut p Parser) fn_redefinition_error(name string) {
-	if p.pref.translated {
-		return
-	}
-	// Find where this function was already declared
-	// TODO
-	/*
-	for file in p.ast_files {
-
-	}
-	*/
-	p.table.redefined_fns << name
-	// p.error('redefinition of function `$name`')
 }
 
 fn have_fn_main(stmts []ast.Stmt) bool {
