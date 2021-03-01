@@ -30,16 +30,16 @@ pub fn compile_template(basepath string, html_ string, fn_name string) string {
 	mut html := html_.trim_space()
 	mut header := ''
 	mut footer := ''
-	if os.exists('templates/header.html') && html.contains('@header') {
-		h := os.read_file('templates/header.html') or {
-			panic('reading file templates/header.html failed')
+	if os.exists(os.join_path(basepath, 'header.html')) && html.contains('@header') {
+		h := os.read_file(os.join_path(basepath, 'header.html')) or {
+			panic('reading file ${os.join_path(basepath, 'header.html')} failed')
 		}
 		header = h.trim_space().replace("'", '"')
 		html = header + html
 	}
-	if os.exists('templates/footer.html') && html.contains('@footer') {
-		f := os.read_file('templates/footer.html') or {
-			panic('reading file templates/footer.html failed')
+	if os.exists(os.join_path(basepath, 'footer.html')) && html.contains('@footer') {
+		f := os.read_file(os.join_path(basepath, 'footer.html')) or {
+			panic('reading file ${os.join_path(basepath, 'footer.html')} failed')
 		}
 		footer = f.trim_space().replace("'", '"')
 		html += footer
@@ -82,7 +82,7 @@ _ = footer
 				file_ext = '.html'
 			}
 			file_name = file_name.replace(file_ext, '')
-			mut templates_folder := os.join_path(basepath, 'templates')
+			mut templates_folder := basepath
 			if file_name.contains('/') {
 				if file_name.starts_with('/') {
 					// absolute path
