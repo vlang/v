@@ -1,6 +1,7 @@
 module main
 
 import vweb
+import rand
 
 const (
 	port = 8082
@@ -21,8 +22,13 @@ pub fn (mut app App) init_once() {
 	app.handle_static('.', false)
 }
 
-pub fn (mut app App) json_endpoint() vweb.Result {
-	return app.json('{"a": 3}')
+// 'q1' describes the query key to get the value for the 'v1' argument
+// any name can be used and will match the argument order
+// path params will be passed to your function first, followed by query params
+['/users/:user']
+pub fn (mut app App) user_endpoint(user string) vweb.Result {
+	id := rand.intn(100)
+	return app.json('{"$user": $id}')
 }
 
 pub fn (mut app App) index() vweb.Result {
