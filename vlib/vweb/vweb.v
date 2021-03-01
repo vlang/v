@@ -389,7 +389,6 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 			}
 		}
 	}
-
 	// site not found
 	send_string(mut conn, vweb.http_404) or { }
 }
@@ -415,11 +414,11 @@ fn route_matches(url_words []string, route_words []string) ?[]string {
 	}
 
 	// The last route can end with ... indicating an array
-	if !route_words[route_words.len-1].ends_with('...') {
+	if !route_words[route_words.len - 1].ends_with('...') {
 		return none
 	}
 
-	for i in 0 .. route_words.len-1 {
+	for i in 0 .. route_words.len - 1 {
 		if route_words[i].starts_with(':') {
 			// We found a path paramater
 			params << url_words[i]
@@ -428,7 +427,7 @@ fn route_matches(url_words []string, route_words []string) ?[]string {
 			return none
 		}
 	}
-	params << url_words[route_words.len-1 .. url_words.len].join('/')
+	params << url_words[route_words.len - 1..url_words.len].join('/')
 	return params
 }
 
@@ -473,7 +472,6 @@ fn parse_attrs(name string, attrs []string) ?([]http.Method, string) {
 	// Make path lowercase for case-insensitive comparisons
 	return methods, path.to_lower()
 }
-
 
 // check if request is for a static file and serves it
 // returns true if we served a static file, false otherwise
