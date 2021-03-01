@@ -296,6 +296,32 @@ pub fn (t &Table) find_field(s &TypeSymbol, name string) ?Field {
 	return none
 }
 
+// search for a given field, looking through embedded fields
+pub fn (t &Table) find_field_with_embeds(sym &TypeSymbol, field_name string) ?Field {
+	if f := t.find_field(sym, field_name) {
+		return f
+	} else {
+		// look for embedded field
+		if sym.info is Struct {
+			mut found_fields := []Field{}
+			mut embed_of_found_fields := []Type{}
+			for embed in sym.info.embeds {
+				embed_sym := t.get_type_symbol(embed)
+				if f := t.find_field(embed_sym, field_name) {
+					found_fields << f
+					embed_of_found_fields << embed
+				}
+			}
+			if found_fields.len == 1 {
+				return found_fields[0]
+			} else if found_fields.len > 1 {
+				return error('ambiguous field `$field_name`')
+			}
+		}
+		return err
+	}
+}
+
 [inline]
 pub fn (t &Table) find_type_idx(name string) int {
 	return t.type_idxs[name]
