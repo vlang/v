@@ -335,7 +335,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		} else {
 			name = p.prepend_mod(name)
 		}
-		if !p.pref.translated && language == .v && p.table.fns.exists_1(name) {
+		if !p.pref.translated && language == .v && name in p.table.fns {
 			p.table.redefined_fns << name
 		}
 		// p.warn('reg functn $name ()')
