@@ -6164,13 +6164,14 @@ fn (mut g Gen) interface_table() string {
 		iinidx_minimum_base := 1000 // NB: NOT 0, to avoid map entries set to 0 later, so `if already_generated_mwrappers[name] > 0 {` works.
 		mut current_iinidx := iinidx_minimum_base
 		for st in inter_info.types {
+			st_sym := g.table.get_type_symbol(st)
 			// cctype is the Cleaned Concrete Type name, *without ptr*,
 			// i.e. cctype is always just Cat, not Cat_ptr:
 			cctype := g.cc_type(st, true)
 			$if debug_interface_table ? {
 				eprintln(
 					'>> interface name: $ityp.name | concrete type: $st.debug() | st symname: ' +
-					g.table.get_type_symbol(st).name)
+					st_sym.name)
 			}
 			// Speaker_Cat_index = 0
 			interface_index_name := '_${interface_name}_${cctype}_index'
@@ -6189,7 +6190,20 @@ fn (mut g Gen) interface_table() string {
 			for field in inter_info.fields {
 				cname := c_name(field.name)
 				field_styp := g.typ(field.typ)
-				cast_struct.writeln('\t\t.$cname = ($field_styp*)((char*)x + __offsetof($cctype, $cname)),')
+				if _ := st_sym.find_field(field.name) {
+					cast_struct.writeln('\t\t.$cname = ($field_styp*)((char*)x + __offsetof($cctype, $cname)),')
+				} else {
+					// the field is embedded in another struct
+					cast_struct.write_string('\t\t.$cname = ($field_styp*)((char*)x')
+					for embed_type in st_sym.struct_info().embeds {
+						embed_sym := g.table.get_type_symbol(embed_type)
+						if _ := embed_sym.find_field(field.name) {
+							cast_struct.write_string(' + __offsetof($cctype, $embed_sym.embed_name()) + __offsetof($embed_sym.cname, $cname)')
+							break
+						}
+					}
+					cast_struct.writeln('),')
+				}
 			}
 			cast_struct.write_string('\t}')
 			cast_struct_str := cast_struct.str()
@@ -6208,7 +6222,6 @@ $staticprefix $interface_name* I_${cctype}_to_Interface_${interface_name}_ptr($c
 			if g.pref.build_mode != .build_module {
 				methods_struct.writeln('\t{')
 			}
-			st_sym := g.table.get_type_symbol(st)
 			mut method := table.Fn{}
 			for _, m in ityp.methods {
 				for mm in st_sym.methods {

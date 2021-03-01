@@ -2060,7 +2060,7 @@ fn (mut c Checker) type_implements(typ table.Type, inter_typ table.Type, pos tok
 	}
 	if mut inter_sym.info is table.Interface {
 		for ifield in inter_sym.info.fields {
-			if field := typ_sym.find_field(ifield.name) {
+			if field := c.table.find_field_with_embeds(typ_sym, ifield.name) {
 				if ifield.typ != field.typ {
 					exp := c.table.type_to_str(ifield.typ)
 					got := c.table.type_to_str(field.typ)
