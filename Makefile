@@ -77,9 +77,9 @@ all: latest_vc latest_tcc
 ifdef WIN32
 	$(CC) $(CFLAGS) -g -std=c99 -municode -w -o $(V) $(VC)/$(VCFILE) $(LDFLAGS)
 ifdef prod
-	$(V) -prod self
+	$(V) -prod -cflags "$(CFLAGS)" self
 else
-	$(V) self
+	$(V) -cflags "$(CFLAGS)" self
 endif
 else
 	$(CC) $(CFLAGS) -g -std=gnu99 -w -o $(V) $(VC)/$(VCFILE) -lm -lpthread $(LDFLAGS)
@@ -88,9 +88,9 @@ ifdef ANDROID
 endif
 
 ifdef prod
-	$(V) -prod self
+	$(V) -prod -cflags "$(CFLAGS)" self
 else
-	$(V) self
+	$(V) -cflags "$(CFLAGS)" self
 endif
 
 ifndef ANDROID
@@ -142,6 +142,9 @@ $(TMPTCC)/.git/config:
 
 $(VC)/.git/config:
 	$(MAKE) fresh_vc
+
+asan:
+	$(MAKE) all CFLAGS='-fsanitize=address,undefined'
 
 selfcompile:
 	$(V) -cg -o v cmd/v
