@@ -925,7 +925,12 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 						g.writeln(';')
 						g.writeln('memcpy(&$tmp_var, &$tmp, sizeof(Option2));')
 					} else {
-						styp := g.base_type(stmt.typ).replace('_literal', '')
+						mut styp := g.base_type(stmt.typ)
+						if stmt.typ == table.int_literal_type {
+							styp = 'int'
+						} else if stmt.typ == table.float_literal_type {
+							styp = 'f64'
+						}
 						g.write('opt_ok(&($styp[]) { ')
 						g.stmt(stmt)
 						g.writeln(' }, (Option2*)(&$tmp_var), sizeof($styp));')
