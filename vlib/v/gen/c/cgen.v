@@ -925,7 +925,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 						g.writeln(';')
 						g.writeln('memcpy(&$tmp_var, &$tmp, sizeof(Option2));')
 					} else {
-						styp := g.base_type(stmt.typ)
+						styp := g.base_type(stmt.typ).replace('_literal', '')
 						g.write('opt_ok(&($styp[]) { ')
 						g.stmt(stmt)
 						g.writeln(' }, (Option2*)(&$tmp_var), sizeof($styp));')
