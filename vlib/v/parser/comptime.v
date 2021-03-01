@@ -127,19 +127,22 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 	// Compile vweb html template to V code, parse that V code and embed the resulting V function
 	// that returns an html string.
 	fn_path := p.cur_fn_name.split('_')
+	fn_path_joined := fn_path.join(os.path_separator)
+	compiled_vfile_path := os.real_path(p.scanner.file_path.replace('/', os.path_separator))
 	tmpl_path := if is_html { '${fn_path.last()}.html' } else { s }
 	// Looking next to the vweb program
-	dir := os.dir(p.scanner.file_path.replace('/', os.path_separator))
-	mut path := os.join_path(dir, fn_path.join(os.path_separator))
+	dir := os.dir(compiled_vfile_path)
+	mut path := os.join_path(dir, fn_path_joined)
 	path += '.html'
 	path = os.real_path(path)
 	if !is_html {
 		path = os.join_path(dir, tmpl_path)
 	}
+	eprintln('> path: $path')
 	if !os.exists(path) {
 		// can be in `templates/`
 		if is_html {
-			path = os.join_path(dir, 'templates', fn_path.join('/'))
+			path = os.join_path(dir, 'templates', fn_path_joined)
 			path += '.html'
 		}
 		if !os.exists(path) {
