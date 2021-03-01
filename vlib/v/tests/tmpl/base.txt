@@ -5,3 +5,5 @@ numbers: @numbers
 @for number in numbers
 @number
 @end
+
+@include 'inner.txt'
