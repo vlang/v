@@ -1,21 +1,23 @@
 // Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-module tmpl
+module parser
 
+import v.token
+import v.errors
 import os
 import strings
 
 const (
-	str_start = "sb.write_string('"
-	str_end   = "' ) "
+	tmpl_str_start = "sb.write_string('"
+	tmpl_str_end   = "' ) "
 )
 
 // compile_file compiles the content of a file by the given path as a template
-pub fn compile_file(path string, fn_name string) string {
+pub fn (mut p Parser) compile_template_file(path string, fn_name string) string {
 	basepath := os.dir(path)
 	html := os.read_file(path) or { panic('html failed') }
-	return compile_template(basepath, html, fn_name)
+	return p.compile_template(basepath, path, html, fn_name)
 }
 
 enum State {
@@ -25,44 +27,20 @@ enum State {
 	// span // span.{
 }
 
-pub fn compile_template(basepath string, html_ string, fn_name string) string {
-	// lines := os.read_lines(path)
-	mut html := html_.trim_space()
-	mut header := ''
-	mut footer := ''
-	if os.exists(os.join_path(basepath, 'header.html')) && html.contains('@header') {
-		h := os.read_file(os.join_path(basepath, 'header.html')) or {
-			panic('reading file ${os.join_path(basepath, 'header.html')} failed')
-		}
-		header = h.trim_space().replace("'", '"')
-		html = header + html
-	}
-	if os.exists(os.join_path(basepath, 'footer.html')) && html.contains('@footer') {
-		f := os.read_file(os.join_path(basepath, 'footer.html')) or {
-			panic('reading file ${os.join_path(basepath, 'footer.html')} failed')
-		}
-		footer = f.trim_space().replace("'", '"')
-		html += footer
-	}
-	mut lines := html.split_into_lines()
+pub fn (mut p Parser) compile_template(basepath string, path string, html_ string, fn_name string) string {
+	mut lines := html_.trim_space().split_into_lines()
 	lstartlength := lines.len * 30
 	mut s := strings.new_builder(1000)
-	// base := path.all_after_last('/').replace('.html', '')
 	s.writeln("
 import strings
 // === vweb html template ===
 fn vweb_tmpl_${fn_name}() {
 mut sb := strings.new_builder($lstartlength)\n
-header := \' \' // TODO remove
-_ = header
-footer := \' \' // TODO remove
-_ = footer
 
 ")
-	s.write_string(tmpl.str_start)
+	s.write_string(tmpl_str_start)
 	mut state := State.html
 	mut in_span := false
-	// for _line in lines {
 	for i := 0; i < lines.len; i++ {
 		line := lines[i].trim_space()
 		if line == '<style>' {
@@ -73,6 +51,33 @@ _ = footer
 			state = .js
 		} else if line == '</script>' {
 			state = .html
+		}
+		if line.contains('@header') {
+			position := line.index('@header') or { 0 }
+			p.error_with_error(errors.Error{
+				message: "Please use @include 'header' instead of @header (deprecated)"
+				file_path: path
+				pos: token.Position{
+					len: '@header'.len
+					line_nr: i
+					pos: position
+					last_line: lines.len
+				}
+				reporter: .parser
+			})
+		} else if line.contains('@footer') {
+			position := line.index('@footer') or { 0 }
+			p.error_with_error(errors.Error{
+				message: "Please use @include 'footer' instead of @footer (deprecated)"
+				file_path: path
+				pos: token.Position{
+					len: '@footer'.len
+					line_nr: i
+					pos: position
+					last_line: lines.len
+				}
+				reporter: .parser
+			})
 		}
 		if line.contains('@include ') {
 			lines.delete(i)
@@ -93,7 +98,20 @@ _ = footer
 				eprintln('>>> basepath: "$basepath" , fn_name: "$fn_name" , @include line: "$line" , file_name: "$file_name" , file_ext: "$file_ext" , templates_folder: "$templates_folder" , file_path: "$file_path"')
 			}
 			file_content := os.read_file(file_path) or {
-				panic('Vweb: reading file $file_name from path: $file_path failed.')
+				position := line.index('@include ') or { 0 }
+				p.error_with_error(errors.Error{
+					message: "Reading file $file_name from path: $file_path failed"
+					details: "Failed to @include '$file_name'"
+					file_path: path
+					pos: token.Position{
+						len: '@include '.len + file_name.len 
+						line_nr: i
+						pos: position
+						last_line: lines.len
+					}
+					reporter: .parser
+				})
+				''
 			}
 			file_splitted := file_content.split_into_lines().reverse()
 			for f in file_splitted {
@@ -111,29 +129,29 @@ _ = footer
 			s.write_string(line[pos + 6..line.len - 1])
 			s.writeln('" rel="stylesheet" type="text/css">')
 		} else if line.contains('@if ') {
-			s.writeln(tmpl.str_end)
+			s.writeln(tmpl_str_end)
 			pos := line.index('@if') or { continue }
 			s.writeln('if ' + line[pos + 4..] + '{')
-			s.writeln(tmpl.str_start)
+			s.writeln(tmpl_str_start)
 		} else if line.contains('@end') {
 			// Remove new line byte
 			s.go_back(1)
 
-			s.writeln(tmpl.str_end)
+			s.writeln(tmpl_str_end)
 			s.writeln('}')
-			s.writeln(tmpl.str_start)
+			s.writeln(tmpl_str_start)
 		} else if line.contains('@else') {
 			// Remove new line byte
 			s.go_back(1)
 
-			s.writeln(tmpl.str_end)
+			s.writeln(tmpl_str_end)
 			s.writeln(' } else { ')
-			s.writeln(tmpl.str_start)
+			s.writeln(tmpl_str_start)
 		} else if line.contains('@for') {
-			s.writeln(tmpl.str_end)
+			s.writeln(tmpl_str_end)
 			pos := line.index('@for') or { continue }
 			s.writeln('for ' + line[pos + 4..] + '{')
-			s.writeln(tmpl.str_start)
+			s.writeln(tmpl_str_start)
 		} else if state == .html && line.contains('span.') && line.ends_with('{') {
 			// `span.header {` => `<span class='header'>`
 			class := line.find_between('span.', '{').trim_space()
@@ -157,12 +175,13 @@ _ = footer
 		} else {
 			// HTML, may include `@var`
 			// escaped by cgen, unless it's a `vweb.RawHtml` string
-			s.writeln(line.replace('@', '$').replace('$$', '@').replace("'", "\\'"))
+			s.writeln(line.replace('@', '$').replace('$$', '@').replace('.$', '.@').replace("'", "\\'"))
 		}
 	}
-	s.writeln(tmpl.str_end)
+	s.writeln(tmpl_str_end)
 	s.writeln('_tmpl_res_$fn_name := sb.str() ')
 	s.writeln('}')
 	s.writeln('// === end of vweb html template ===')
-	return s.str()
+	result := s.str()
+	return result
 }
