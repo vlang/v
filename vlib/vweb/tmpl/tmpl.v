@@ -120,10 +120,16 @@ _ = footer
 			s.writeln('if ' + line[pos + 4..] + '{')
 			s.writeln(tmpl.str_start)
 		} else if line.contains('@end') {
+			// Remove new line byte
+			s.go_back(1)
+
 			s.writeln(tmpl.str_end)
 			s.writeln('}')
 			s.writeln(tmpl.str_start)
 		} else if line.contains('@else') {
+			// Remove new line byte
+			s.go_back(1)
+			
 			s.writeln(tmpl.str_end)
 			s.writeln(' } else { ')
 			s.writeln(tmpl.str_start)
