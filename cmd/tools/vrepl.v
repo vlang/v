@@ -382,7 +382,7 @@ fn repl_run_vfile(file string) ?os.Result {
 		eprintln('>> repl_run_vfile file: $file')
 	}
 	s := os.execute('"$vexe" -repl run "$file"')
-	if s.exit_code != 0 {
+	if s.exit_code < 0 {
 		rerror(s.output)
 		return error(s.output)
 	}
