@@ -926,10 +926,12 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 						g.writeln('memcpy(&$tmp_var, &$tmp, sizeof(Option2));')
 					} else {
 						mut styp := g.base_type(stmt.typ)
-						if stmt.typ == table.int_literal_type {
-							styp = 'int'
-						} else if stmt.typ == table.float_literal_type {
-							styp = 'f64'
+						$if tinyc && x32 && windows {
+							if stmt.typ == table.int_literal_type {
+								styp = 'int'
+							} else if stmt.typ == table.float_literal_type {
+								styp = 'f64'
+							}
 						}
 						g.write('opt_ok(&($styp[]) { ')
 						g.stmt(stmt)
