@@ -85,7 +85,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	// should go into res.cache_manager.vopts, which is used as a salt for the cache hash.
 	p.cache_manager = vcache.new_cache_manager([
 		@VHASH,
-		/* ensure that different v versions use separate build artefacts */
+		// ensure that different v versions use separate build artefacts
 		'$p.backend | $p.os | $p.ccompiler | $p.is_prod | $p.sanitize',
 		p.cflags.trim_space(),
 		p.third_party_option.trim_space(),

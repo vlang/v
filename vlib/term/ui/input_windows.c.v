@@ -107,7 +107,7 @@ pub fn (mut ctx Context) run() ? {
 			init_called = true
 		}
 		if sleep_len > 0 {
-			time.wait(sleep_len * time.microsecond)
+			time.sleep(sleep_len * time.microsecond)
 		}
 		if !ctx.paused {
 			sw.restart()

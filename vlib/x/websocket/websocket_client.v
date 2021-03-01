@@ -121,7 +121,7 @@ pub fn (mut ws Client) listen() ? {
 			}
 			ws.debug_log('failed to read next message: $err')
 			ws.send_error_event('failed to read next message: $err')
-			return error(err)
+			return err
 		}
 		if ws.state in [.closed, .closing] {
 			return
@@ -226,7 +226,7 @@ pub fn (mut ws Client) pong() ? {
 }
 
 // write_ptr writes len bytes provided a byteptr with a websocket messagetype
-pub fn (mut ws Client) write_ptr(bytes byteptr, payload_len int, code OPCode) ? {
+pub fn (mut ws Client) write_ptr(bytes byteptr, payload_len int, code OPCode) ?int {
 	// ws.debug_log('write_ptr code: $code')
 	if ws.state != .open || ws.conn.sock.handle < 1 {
 		// todo: send error here later
@@ -293,22 +293,23 @@ pub fn (mut ws Client) write_ptr(bytes byteptr, payload_len int, code OPCode) ? 
 			frame_buf[header_len + i] ^= masking_key[i % 4] & 0xff
 		}
 	}
-	ws.socket_write(frame_buf) ?
+	written_len := ws.socket_write(frame_buf) ?
 	unsafe {
 		frame_buf.free()
 		masking_key.free()
 		header.free()
 	}
+	return written_len
 }
 
 // write writes a byte array with a websocket messagetype to socket
-pub fn (mut ws Client) write(bytes []byte, code OPCode) ? {
-	ws.write_ptr(byteptr(bytes.data), bytes.len, code) ?
+pub fn (mut ws Client) write(bytes []byte, code OPCode) ?int {
+	return ws.write_ptr(byteptr(bytes.data), bytes.len, code)
 }
 
 // write_str, writes a string with a websocket texttype to socket
-pub fn (mut ws Client) write_str(str string) ? {
-	ws.write_ptr(str.str, str.len, .text_frame) ?
+pub fn (mut ws Client) write_str(str string) ?int {
+	return ws.write_ptr(str.str, str.len, .text_frame)
 }
 
 // close closes the websocket connection
@@ -317,8 +318,7 @@ pub fn (mut ws Client) close(code int, message string) ? {
 	if ws.state in [.closed, .closing] || ws.conn.sock.handle <= 1 {
 		ws.debug_log('close: Websocket allready closed ($ws.state), $message, $code handle($ws.conn.sock.handle)')
 		err_msg := 'Socket allready closed: $code'
-		ret_err := error(err_msg)
-		return ret_err
+		return error(err_msg)
 	}
 	defer {
 		ws.shutdown_socket() or { }

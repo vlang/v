@@ -27,7 +27,7 @@ pub fn new_builder(initial_size int) Builder {
 // write_bytes appends `bytes` to the accumulated buffer
 [unsafe]
 pub fn (mut b Builder) write_bytes(bytes byteptr, howmany int) {
-	b.buf.push_many(bytes, howmany)
+	unsafe { b.buf.push_many(bytes, howmany) }
 	b.len += howmany
 }
 
@@ -50,7 +50,7 @@ pub fn (mut b Builder) write_string(s string) {
 	if s == '' {
 		return
 	}
-	b.buf.push_many(s.str, s.len)
+	unsafe { b.buf.push_many(s.str, s.len) }
 	// for c in s {
 	// b.buf << c
 	// }
@@ -99,7 +99,7 @@ pub fn (mut b Builder) writeln(s string) {
 	// for c in s {
 	// b.buf << c
 	// }
-	b.buf.push_many(s.str, s.len)
+	unsafe { b.buf.push_many(s.str, s.len) }
 	// b.buf << []byte(s)  // TODO
 	b.buf << `\n`
 	b.len += s.len + 1

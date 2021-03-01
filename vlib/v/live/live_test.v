@@ -110,14 +110,14 @@ fn testsuite_end() {
 }
 
 fn change_source(new string) {
-	time.wait(100 * time.millisecond)
+	time.sleep(100 * time.millisecond)
 	vprintln('> change ORIGINAL to: $new')
 	atomic_write_source(live_program_source.replace('ORIGINAL', new))
 	wait_for_file(new)
 }
 
 fn wait_for_file(new string) {
-	time.wait(100 * time.millisecond)
+	time.sleep(100 * time.millisecond)
 	expected_file := os.join_path(os.temp_dir(), new + '.txt')
 	eprintln('waiting for $expected_file ...')
 	max_wait_cycles := edefault('WAIT_CYCLES', '1').int()
@@ -128,10 +128,10 @@ fn wait_for_file(new string) {
 		if os.exists(expected_file) {
 			assert true
 			vprintln('> done.')
-			time.wait(100 * time.millisecond)
+			time.sleep(100 * time.millisecond)
 			break
 		}
-		time.wait(5 * time.millisecond)
+		time.sleep(5 * time.millisecond)
 	}
 }
 

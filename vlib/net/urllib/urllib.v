@@ -53,7 +53,7 @@ fn should_escape(c byte, mode EncodingMode) bool {
 		// we could possibly allow, and parse will reject them if we
 		// escape them (because hosts can`t use %-encoding for
 		// ASCII bytes).
-		if 
+		if
 			c in [`!`, `$`, `&`, `\\`, `(`, `)`, `*`, `+`, `,`, `;`, `=`, `:`, `[`, `]`, `<`, `>`, `"`] {
 			return false
 		}
@@ -401,7 +401,7 @@ fn split_by_scheme(rawurl string) ?[]string {
 }
 
 fn get_scheme(rawurl string) ?string {
-	split := split_by_scheme(rawurl) or { return err }
+	split := split_by_scheme(rawurl) or { return err.msg }
 	return split[0]
 }
 
@@ -584,9 +584,9 @@ fn parse_host(host string) ?string {
 		// We do impose some restrictions on the zone, to avoid stupidity
 		// like newlines.
 		if zone := host[..i].index('%25') {
-			host1 := unescape(host[..zone], .encode_host) or { return err }
-			host2 := unescape(host[zone..i], .encode_zone) or { return err }
-			host3 := unescape(host[i..], .encode_host) or { return err }
+			host1 := unescape(host[..zone], .encode_host) or { return err.msg }
+			host2 := unescape(host[zone..i], .encode_zone) or { return err.msg }
+			host3 := unescape(host[i..], .encode_host) or { return err.msg }
 			return host1 + host2 + host3
 		}
 		if idx := host.last_index(':') {
@@ -597,7 +597,7 @@ fn parse_host(host string) ?string {
 			}
 		}
 	}
-	h := unescape(host, .encode_host) or { return err }
+	h := unescape(host, .encode_host) or { return err.msg }
 	return h
 	// host = h
 	// return host

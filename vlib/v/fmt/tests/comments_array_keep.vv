@@ -1,0 +1,70 @@
+fn main() {
+	_ := [
+		// pre comment
+		6,
+		// and after
+	]
+	_ := [
+		7,
+		// below expr
+	]
+	_ := [
+		8, /* I don't know why this still is a block comment */
+		9,
+	]
+	arr := [
+		// test 0
+		1,
+		// test 1
+		2,
+		// test 2
+		3, /* 3 */
+		4, /* 4-1 */ /* 4-2 */
+	]
+}
+
+fn only_comments_array() {
+	_ := [/* on a single line */ /* too */]
+	_ := [
+		// 1,
+		// 2,
+		// 3,
+	]
+	_ := [
+		/* whatever */ /* this is */ // 3,
+		// 4,
+	]
+}
+
+fn single_line_array_pre_comments() {
+	_ := [/* 2, */ 3]
+	_ := [/* 4, */ /* 5, */ 6]
+	_ := [/* cmt */ -4]
+}
+
+fn single_line_array_iembed_comments() {
+	_ := [1, /* betw single line */ 2]
+	// This caused a bug where the ´-´ was parsed as InfixExpr and not as part of an IntegerLiteral
+	_ := [1, /* cmt */ -4]
+}
+
+fn mixed_comments() {
+	_ := [
+		3 /* iembed */,
+		// keep line comment here
+		// and here
+		5,
+	]
+}
+
+fn keep_real_block_comment() {
+	_ := [
+		'foo',
+		/*
+		'bar',
+		'baz',
+		'spam',
+		*/
+		'eggs',
+	]
+}

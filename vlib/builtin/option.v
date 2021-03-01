@@ -72,13 +72,8 @@ pub fn error_with_code(message string, code int) Option {
 	}
 }
 
+// Option2 is the base of V's new internal optional return system.
 struct Option2 {
-	state byte
-	err   Error
-}
-
-// OptionBase is the the base of V's internal optional return system.
-struct OptionBase2 {
 	state byte
 	err   Error
 	// Data is trailing after err
@@ -87,9 +82,26 @@ struct OptionBase2 {
 }
 
 // Error holds information about an error instance
-struct Error {
+pub struct Error {
+pub:
 	msg  string
 	code int
+}
+
+[inline]
+fn (e Error) str() string {
+	// TODO: this should probably have a better str method,
+	// but this minimizes the amount of broken code after #8924
+	return e.msg
+}
+
+// `fn foo() ?Foo { return foo }` => `fn foo() ?Foo { return opt_ok(foo); }`
+fn opt_ok(data voidptr, mut option Option2, size int) {
+	unsafe {
+		*option = Option2{}
+		// use err to get the end of OptionBase and then memcpy into it
+		C.memcpy(byteptr(&option.err) + sizeof(Error), data, size)
+	}
 }
 
 // /*
@@ -100,14 +112,7 @@ pub fn (o Option2) str() string {
 	if o.state == 1 {
 		return 'Option2{ none }'
 	}
-	return 'Option2{ err: "$o.err.msg" }'
-}
-
-// opt_none is used internally when returning `none`.
-fn opt_none2() Option2 {
-	return Option2{
-		state: 1
-	}
+	return 'Option2{ err: "$o.err" }'
 }
 
 // error returns an optional containing the error given in `message`.

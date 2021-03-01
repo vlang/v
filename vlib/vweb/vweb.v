@@ -269,12 +269,9 @@ pub fn (mut ctx Context) add_header(key string, val string) {
 
 // Returns the header data from the key
 pub fn (ctx &Context) get_header(key string) string {
-	return ctx.req.headers[key]
+	return ctx.req.lheaders[key.to_lower()]
 }
 
-// fn handle_conn(conn net.Socket) {
-// println('handle')
-// }
 pub fn run<T>(port int) {
 	mut app := T{}
 	run_app<T>(mut app, port)
@@ -292,31 +289,10 @@ pub fn run_app<T>(mut app T, port int) {
 			// check routes for validity
 		}
 	}
-	// app.reset()
 	for {
 		mut conn := l.accept() or { panic('accept() failed') }
-		go handle_conn<T>(mut conn, mut app)
-		// app.vweb.page_gen_time = time.ticks() - t
-		// eprintln('handle conn() took ${time.ticks()-t}ms')
-		// message := readall(conn)
-		// println(message)
-		/*
-		if message.len > max_http_post_size {
-			println('message.len = $message.len > max_http_post_size')
-			conn.send_string(http_500) or {}
-			conn.close() or {}
-			continue
-		}
-		*/
-		// lines := message.split_into_lines()
-		// println(lines)
-		/*
-		if lines.len < 2 {
-			conn.send_string(http_500) or {}
-			conn.close() or {}
-			continue
-		}
-		*/
+		// TODO: running handle_conn concurrently results in a race-condition
+		handle_conn<T>(mut conn, mut app)
 	}
 }
 
@@ -326,98 +302,12 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	defer {
 		conn.close() or { }
 	}
-	// fn handle_conn<T>(conn net.Socket, app_ T) T {
-	// mut app := app_
-	// first_line := strip(lines[0])
 	mut reader := io.new_buffered_reader(reader: io.make_reader(conn))
 	page_gen_start := time.ticks()
-	first_line := reader.read_line() or {
-		$if debug {
-			eprintln('Failed to read first_line') // show this only in debug mode, because it always would be shown after a chromium user visits the site
-		}
+	req := parse_request(mut reader) or {
+		eprintln('error parsing request: $err')
 		return
 	}
-	$if debug {
-		eprintln('firstline="$first_line"')
-	}
-	// Parse the first line
-	// "GET / HTTP/1.1"
-	// first_line := s.all_before('\n')
-	vals := first_line.split(' ')
-	if vals.len < 2 {
-		println('no vals for http')
-		send_string(mut conn, vweb.http_500) or { }
-		return
-	}
-	mut headers := []string{}
-	mut body := ''
-	mut in_headers := true
-	mut len := 0
-	// File receive stuff
-	mut ct := 'text/plain'
-	mut boundary := ''
-	// for line in lines[1..] {
-	for lindex in 0 .. 100 {
-		// println(j)
-		line := reader.read_line() or {
-			println('Failed read_line $lindex')
-			break
-		}
-		sline := strip(line)
-		// Parse content type
-		if sline.len >= 14 && sline[..14].to_lower() == 'content-type: ' {
-			args := sline[14..].split('; ')
-			ct = args[0]
-			if args.len > 1 {
-				boundary = args[1][9..]
-			}
-		}
-		if sline == '' {
-			// if in_headers {
-			// End of headers, no body => exit
-			if len == 0 {
-				break
-			}
-			//} //else {
-			// End of body
-			// break
-			//}
-			// read body
-			mut read_body := []byte{len: len}
-			// read just the amount of content len if there is no content there is nothing more to read here
-			reader.read(mut read_body) or { println('reader.read failed with err: $err') }
-			body += read_body.bytestr()
-			break
-		}
-		if ct == 'multipart/form-data' && sline == boundary {
-			body += boundary
-			read_body := io.read_all(reader: reader) or { []byte{} }
-			body += read_body.bytestr()
-			break
-		}
-		if in_headers {
-			headers << sline
-			if sline.to_lower().starts_with('content-length') {
-				len = sline.all_after(': ').int()
-				// println('GOT CL=$len')
-			}
-		}
-	}
-	req := http.Request{
-		headers: http.parse_headers(headers) // s.split_into_lines())
-		data: strip(body)
-		ws_func: 0
-		user_ptr: 0
-		method: http.method_from_str(vals[0])
-		url: vals[1]
-	}
-	$if debug {
-		println('req.headers = ')
-		println(req.headers)
-		println('req.data="$req.data"')
-		// println('vweb action = "$action"')
-	}
-	// mut app := T{
 	app.Context = Context{
 		req: req
 		conn: conn
@@ -426,208 +316,179 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 		static_mime_types: app.static_mime_types
 		page_gen_start: page_gen_start
 	}
-	// }
 	if req.method in vweb.methods_with_form {
-		if ct == 'multipart/form-data' {
-			app.parse_multipart_form(body, boundary)
+		if 'multipart/form-data' in req.lheaders['content-type'].split('; ') {
+			boundary := req.lheaders['content-type'].split('; ').filter(it.starts_with('boundary '))
+			if boundary.len != 1 {
+				// TODO: send 400 error
+				return
+			}
+			app.parse_multipart_form(req.data, boundary[0][9..])
 		} else {
 			app.parse_form(req.data)
 		}
 	}
-	if vals.len < 2 {
-		$if debug {
-			println('no vals for http')
-		}
-		return
-	}
 	// Serve a static file if it is one
-	// TODO: handle url parameters properly - for now, ignore them
-	mut static_file_name := app.req.url
-	if static_file_name.contains('?') {
-		static_file_name = static_file_name.all_before('?')
-	}
-	static_file := app.static_files[static_file_name]
-	mime_type := app.static_mime_types[static_file_name]
-	if static_file != '' && mime_type != '' {
-		data := os.read_file(static_file) or {
-			send_string(mut conn, vweb.http_404) or { }
-			return
-		}
-		app.send_response_to_client(mime_type, data)
-		unsafe { data.free() }
+	// TODO: get the real path
+	url := urllib.parse(app.req.url.to_lower()) or {
+		eprintln('error parsing path: $err')
 		return
 	}
+	if serve_static<T>(mut app, url) {
+		// successfully served a static file
+		return
+	}
+
 	app.init()
 	// Call the right action
 	$if debug {
 		println('route matching...')
 	}
-	// t := time.ticks()
-	// mut action := ''
-	mut route_words_a := [][]string{}
-	// mut url_words := vals[1][1..].split('/').filter(it != '')
-	x := vals[1][1..].split('/')
-	mut url_words := x.filter(it != '')
-	// Parse URL query
-	if url_words.len > 0 && url_words.last().contains('?') {
-		words := url_words.last().after('?').split('&')
-		tmp_query := words.map(it.split('='))
-		url_words[url_words.len - 1] = url_words.last().all_before('?')
-		for data in tmp_query {
-			if data.len == 2 {
-				app.query[data[0]] = data[1]
-			}
-		}
+	url_words := url.path.split('/').filter(it != '')
+	// copy query args to app.query
+	for k, v in url.query().data {
+		app.query[k] = v.data[0]
 	}
-	mut vars := []string{cap: route_words_a.len}
-	mut action := ''
+
 	$for method in T.methods {
 		$if method.return_type is Result {
-			attrs := method.attrs
-			route_words_a = [][]string{}
-			// Get methods
-			// Get is default
-			mut req_method_str := '$req.method'
-			if req.method == .post {
-				if 'post' in attrs {
-					route_words_a = attrs.filter(it.to_lower() != 'post').map(it[1..].split('/'))
-				}
-			} else if req.method == .put {
-				if 'put' in attrs {
-					route_words_a = attrs.filter(it.to_lower() != 'put').map(it[1..].split('/'))
-				}
-			} else if req.method == .patch {
-				if 'patch' in attrs {
-					route_words_a = attrs.filter(it.to_lower() != 'patch').map(it[1..].split('/'))
-				}
-			} else if req.method == .delete {
-				if 'delete' in attrs {
-					route_words_a = attrs.filter(it.to_lower() != 'delete').map(it[1..].split('/'))
-				}
-			} else if req.method == .head {
-				if 'head' in attrs {
-					route_words_a = attrs.filter(it.to_lower() != 'head').map(it[1..].split('/'))
-				}
-			} else if req.method == .options {
-				if 'options' in attrs {
-					route_words_a = attrs.filter(it.to_lower() != 'options').map(it[1..].split('/'))
-				}
-			} else {
-				route_words_a = attrs.filter(it.to_lower() != 'get').map(it[1..].split('/'))
+			mut method_args := []string{}
+			// TODO: move to server start
+			http_methods, route_path := parse_attrs(method.name, method.attrs) or {
+				eprintln('error parsing method attributes: $err')
+				return
 			}
-			if attrs.len == 0 || (attrs.len == 1 && route_words_a.len == 0) {
-				if url_words.len > 0 {
-					// No routing for this method. If it matches, call it and finish matching
-					// since such methods have a priority.
-					// For example URL `/register` matches route `/:user`, but `fn register()`
-					// should be called first.
-					if (req_method_str == '' && url_words[0] == method.name && url_words.len == 1)
-						|| (req_method_str == req.method.str() && url_words[0] == method.name
-						&& url_words.len == 1) {
-						$if debug {
-							println('easy match method=$method.name')
-						}
-						app.$method(vars)
 
-						return
-					}
-				} else if method.name == 'index' {
-					// handle / to .index()
-					$if debug {
-						println('route to .index()')
-					}
-					app.$method(vars)
+			// Used for route matching
+			route_words := route_path.split('/').filter(it != '')
 
+			// Skip if the HTTP request method does not match the attributes
+			if app.req.method in http_methods {
+				// Route immediate matches first
+				// For example URL `/register` matches route `/:user`, but `fn register()`
+				// should be called first.
+				if !route_path.contains('/:') && url_words == route_words {
+					// We found a match
+					app.$method(method_args)
 					return
 				}
-			} else {
-				mut req_method := []string{}
-				if route_words_a.len > 0 {
-					for route_words_ in route_words_a {
-						// cannot move to line initialize line because of C error with map(it.filter(it != ''))
-						route_words := route_words_.filter(it != '')
-						if route_words.len == 1 && route_words[0] in vweb.methods_without_first {
-							req_method << route_words[0]
-						}
-						if url_words.len == route_words.len || (url_words.len >= route_words.len - 1
-							&& route_words.len > 0 && route_words.last().ends_with('...')) {
-							if req_method.len > 0 {
-								if req_method_str.to_lower()[1..] !in req_method {
-									continue
-								}
-							}
-							// match `/:user/:repo/tree` to `/vlang/v/tree`
-							mut matching := false
-							mut unknown := false
-							mut variables := []string{cap: route_words.len}
-							if route_words.len == 0 && url_words.len == 0 {
-								// index route
-								matching = true
-							}
-							for i in 0 .. route_words.len {
-								if url_words.len == i {
-									variables << ''
-									matching = true
-									unknown = true
-									break
-								}
-								if url_words[i] == route_words[i] {
-									// no parameter
-									matching = true
-									continue
-								} else if route_words[i].starts_with(':') {
-									// is parameter
-									if i < route_words.len && !route_words[i].ends_with('...') {
-										// normal parameter
-										variables << url_words[i]
-									} else {
-										// array parameter only in the end
-										variables << url_words[i..].join('/')
-									}
-									matching = true
-									unknown = true
-									continue
-								} else {
-									matching = false
-									break
-								}
-							}
-							if matching && !unknown {
-								// absolute router words like `/test/site`
-								app.$method(vars)
 
-								return
-							} else if matching && unknown {
-								// router words with paramter like `/:test/site`
-								action = method.name
-								vars = variables.clone()
-							}
-							req_method = []string{}
-						}
+				if url_words.len == 0 && route_words == ['index'] && method.name == 'index' {
+					app.$method(method_args)
+					return
+				}
+
+				if params := route_matches(url_words, route_words) {
+					method_args = params.clone()
+					if method_args.len != method.args.len {
+						eprintln('warning: uneven parameters count ($method.args.len) in `$method.name`, compared to the vweb route `$method.attrs` ($method_args.len)')
 					}
+					app.$method(method_args)
+					return
 				}
 			}
 		}
 	}
-	if action == '' {
-		// site not found
-		send_string(mut conn, vweb.http_404) or { }
-		return
+	// site not found
+	send_string(mut conn, vweb.http_404) or { }
+}
+
+fn route_matches(url_words []string, route_words []string) ?[]string {
+	// URL path should be at least as long as the route path
+	if url_words.len < route_words.len {
+		return none
 	}
-	$for method in T.methods {
-		$if method.return_type is Result {
-			// search again for method
-			if action == method.name && method.attrs.len > 0 {
-				// call action method
-				if method.args.len == vars.len {
-					app.$method(vars)
-					return
-				} else {
-					eprintln('warning: uneven parameters count ($method.args.len) in `$method.name`, compared to the vweb route `$method.attrs` ($vars.len)')
-				}
+
+	mut params := []string{cap: url_words.len}
+	if url_words.len == route_words.len {
+		for i in 0 .. url_words.len {
+			if route_words[i].starts_with(':') {
+				// We found a path paramater
+				params << url_words[i]
+			} else if route_words[i] != url_words[i] {
+				// This url does not match the route
+				return none
 			}
 		}
+		return params
 	}
+
+	// The last route can end with ... indicating an array
+	if !route_words[route_words.len - 1].ends_with('...') {
+		return none
+	}
+
+	for i in 0 .. route_words.len - 1 {
+		if route_words[i].starts_with(':') {
+			// We found a path paramater
+			params << url_words[i]
+		} else if route_words[i] != url_words[i] {
+			// This url does not match the route
+			return none
+		}
+	}
+	params << url_words[route_words.len - 1..url_words.len].join('/')
+	return params
+}
+
+// parse function attribute list for methods and a path
+fn parse_attrs(name string, attrs []string) ?([]http.Method, string) {
+	if attrs.len == 0 {
+		return [http.Method.get], '/$name'
+	}
+
+	mut x := attrs.clone()
+	mut methods := []http.Method{}
+	mut path := ''
+
+	for i := 0; i < x.len; {
+		attr := x[i]
+		attru := attr.to_upper()
+		m := http.method_from_str(attru)
+		if attru == 'GET' || m != .get {
+			methods << m
+			x.delete(i)
+			continue
+		}
+		if attr.starts_with('/') {
+			if path != '' {
+				return error('Expected at most one path attribute')
+			}
+			path = attr
+			x.delete(i)
+			continue
+		}
+		i++
+	}
+	if x.len > 0 {
+		return error('Encountered unexpected extra attributes: $x')
+	}
+	if methods.len == 0 {
+		methods = [http.Method.get]
+	}
+	if path == '' {
+		path = '/$name'
+	}
+	// Make path lowercase for case-insensitive comparisons
+	return methods, path.to_lower()
+}
+
+// check if request is for a static file and serves it
+// returns true if we served a static file, false otherwise
+fn serve_static<T>(mut app T, url urllib.URL) bool {
+	// TODO: handle url parameters properly - for now, ignore them
+	static_file := app.static_files[url.path]
+	mime_type := app.static_mime_types[url.path]
+	if static_file == '' || mime_type == '' {
+		return false
+	}
+	data := os.read_file(static_file) or {
+		send_string(mut app.conn, vweb.http_404) or { }
+		return true
+	}
+	app.send_response_to_client(mime_type, data)
+	unsafe { data.free() }
+	return true
 }
 
 // vweb intern function
@@ -730,7 +591,7 @@ fn (mut ctx Context) scan_static_directory(directory_path string, mount_path str
 }
 
 // Handles a directory static
-// If `root` is set the mount path for the dir will be in '/' 
+// If `root` is set the mount path for the dir will be in '/'
 pub fn (mut ctx Context) handle_static(directory_path string, root bool) bool {
 	if ctx.done || !os.exists(directory_path) {
 		return false
@@ -746,7 +607,7 @@ pub fn (mut ctx Context) handle_static(directory_path string, root bool) bool {
 }
 
 // Serves a file static
-// `url` is the access path on the site, `file_path` is the real path to the file, `mime_type` is the file type 
+// `url` is the access path on the site, `file_path` is the real path to the file, `mime_type` is the file type
 pub fn (mut ctx Context) serve_static(url string, file_path string, mime_type string) {
 	ctx.static_files[url] = file_path
 	ctx.static_mime_types[url] = mime_type
@@ -754,10 +615,11 @@ pub fn (mut ctx Context) serve_static(url string, file_path string, mime_type st
 
 // Returns the ip address from the current user
 pub fn (ctx &Context) ip() string {
-	mut ip := ctx.req.headers['X-Forwarded-For']
+	mut ip := ctx.req.lheaders['x-forwarded-for']
 	if ip == '' {
-		ip = ctx.req.headers['X-Real-IP']
+		ip = ctx.req.lheaders['x-real-ip']
 	}
+
 	if ip.contains(',') {
 		ip = ip.all_before(',')
 	}
@@ -772,22 +634,6 @@ pub fn (mut ctx Context) error(s string) {
 	ctx.form_error = s
 }
 
-/*
-fn readall(conn net.Socket) string {
-	// read all message from socket
-	//printf("waitall=%d\n", C.MSG_WAITALL)
-	mut message := ''
-	buf := [1024]byte
-	for {
-		n := C.recv(conn.sockfd, buf, 1024, 0)
-		m := conn.crecv(buf, 1024)
-		message += unsafe { byteptr(buf).vstring_with_len(m) }
-		if message.len > max_http_post_size { break }
-		if n == m { break }
-	}
-	return message
-}
-*/
 fn strip(s string) string {
 	// strip('\nabc\r\n') => 'abc'
 	return s.trim('\r\n')

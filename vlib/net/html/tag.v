@@ -54,11 +54,7 @@ pub fn (tag &Tag) str() string {
 			html_str.write_string('="$value"')
 		}
 	}
-	html_str.write_string(if tag.closed && tag.close_type == .in_name {
-		'/>'
-	} else {
-		'>'
-	})
+	html_str.write_string(if tag.closed && tag.close_type == .in_name { '/>' } else { '>' })
 	html_str.write_string(tag.content)
 	if tag.children.len > 0 {
 		for child in tag.children {

@@ -94,7 +94,7 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ? {
 
 	// TODO: Fix option to enable/disable checks for valid
 	//		 certificates to allow both secure and self signed
-	//		 for now the checks are not done at all to comply 
+	//		 for now the checks are not done at all to comply
 	// 		 to current autobahn tests
 
 	// C.SSL_CTX_set_verify_depth(s.sslctx, 4)
@@ -186,7 +186,7 @@ pub fn (mut s SSLConn) read_into(mut buffer []byte) ?int {
 }
 
 // write number of bytes to SSL connection
-pub fn (mut s SSLConn) write(bytes []byte) ? {
+pub fn (mut s SSLConn) write(bytes []byte) ?int {
 	unsafe {
 		mut ptr_base := byteptr(bytes.data)
 		mut total_sent := 0
@@ -218,6 +218,7 @@ pub fn (mut s SSLConn) write(bytes []byte) ? {
 			}
 			total_sent += sent
 		}
+		return total_sent
 	}
 }
 

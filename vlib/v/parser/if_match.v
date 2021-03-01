@@ -51,15 +51,9 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 				// only declare `err` if previous branch was an `if` guard
 				if prev_guard {
 					p.scope.register(ast.Var{
-						name: 'errcode'
-						typ: table.int_type
-						pos: body_pos
-						is_used: true
-					})
-					p.scope.register(ast.Var{
 						name: 'err'
-						typ: table.string_type
-						pos: body_pos
+						typ: table.error_type
+						pos: p.tok.position()
 						is_used: true
 					})
 				}
@@ -182,8 +176,8 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 			p.next()
 		} else if (p.tok.kind == .name && !(p.tok.lit == 'C' && p.peek_tok.kind == .dot)
 			&& (p.tok.lit in table.builtin_type_names || p.tok.lit[0].is_capital()
-			|| (p.peek_tok.kind == .dot && p.peek_tok2.lit.len > 0
-			&& p.peek_tok2.lit[0].is_capital()))) || p.tok.kind == .lsbr {
+			|| (p.peek_tok.kind == .dot && p.peek_token(2).lit.len > 0
+			&& p.peek_token(2).lit[0].is_capital()))) || p.tok.kind == .lsbr {
 			mut types := []table.Type{}
 			for {
 				// Sum type match

@@ -30,8 +30,9 @@ pub fn vhash() string {
 	mut buf := [50]byte{}
 	buf[0] = 0
 	unsafe {
-		C.snprintf(charptr(&buf[0]), 50, '%s', C.V_COMMIT_HASH)
-		return tos_clone(buf)
+		bp := &buf[0]
+		C.snprintf(charptr(bp), 50, '%s', C.V_COMMIT_HASH)
+		return tos_clone(bp)
 	}
 }
 
@@ -98,8 +99,9 @@ pub fn githash(should_get_from_filesystem bool) string {
 	mut buf := [50]byte{}
 	buf[0] = 0
 	unsafe {
-		C.snprintf(charptr(&buf[0]), 50, '%s', C.V_CURRENT_COMMIT_HASH)
-		return tos_clone(buf)
+		bp := &buf[0]
+		C.snprintf(charptr(bp), 50, '%s', C.V_CURRENT_COMMIT_HASH)
+		return tos_clone(bp)
 	}
 }
 
@@ -509,7 +511,7 @@ pub fn prepare_tool_when_needed(source_name string) {
 	stool := os.join_path(vroot, 'cmd', 'tools', source_name)
 	tool_name, tool_exe := tool_source2name_and_exe(stool)
 	if should_recompile_tool(vexe, stool, tool_name, tool_exe) {
-		time.wait(1001 * time.millisecond) // TODO: remove this when we can get mtime with a better resolution
+		time.sleep(1001 * time.millisecond) // TODO: remove this when we can get mtime with a better resolution
 		recompile_file(vexe, stool)
 	}
 }

@@ -263,7 +263,7 @@ fn C._waccess() int
 
 fn C._wremove() int
 
-fn C.ReadConsole() voidptr
+fn C.ReadConsole(in_input_handle voidptr, out_buffer voidptr, in_chars_to_read u32, out_read_chars &u32, in_input_control voidptr) bool
 
 fn C.WriteConsole() voidptr
 

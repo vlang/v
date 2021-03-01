@@ -22,8 +22,8 @@ It is __easy__, and it usually takes __only a few seconds__.
 ### Linux, macOS, FreeBSD, etc:
 You need `git`, and a C compiler like `tcc`, `gcc` or `clang`, and `make`:
 ```bash
-git clone https://github.com/vlang/v 
-cd v 
+git clone https://github.com/vlang/v
+cd v
 make
 ```
 
@@ -37,6 +37,9 @@ make.bat -tcc
 NB: You can also pass one of `-gcc`, `-msvc`, `-clang` to `make.bat` instead,
 if you do prefer to use a different C compiler, but -tcc is small, fast, and
 easy to install (V will download a prebuilt binary automatically).
+
+It is recommended to add this folder to the PATH of your environment variables.
+This can be done with the command `v.exe symlink`.
 
 ### Android
 Running V graphical apps on Android is also possible via [vab](https://github.com/vlang/vab).
@@ -61,7 +64,6 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
 * [Comments](#comments)
 * [Functions](#functions)
     * [Returning multiple values](#returning-multiple-values)
-    * [Variable number of arguments](#variable-number-of-arguments)
 * [Symbol visibility](#symbol-visibility)
 * [Variables](#variables)
 * [Types](#types)
@@ -90,6 +92,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
 * [Functions 2](#functions-2)
     * [Pure functions by default](#pure-functions-by-default)
     * [Mutable arguments](#mutable-arguments)
+    * [Variable number of arguments](#variable-number-of-arguments)
     * [Anonymous & high order functions](#anonymous--high-order-functions)
 * [References](#references)
 * [Constants](#constants)
@@ -119,8 +122,9 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Profiling](#profiling)
 * [Advanced Topics](#advanced-topics)
     * [Memory-unsafe code](#memory-unsafe-code)
-	* [sizeof and __offsetof](#sizeof-and-__offsetof)
-    * [Calling C functions from V](#calling-c-functions-from-v)
+    * [Structs with reference fields](structs-with-reference-fields)
+    * [sizeof and __offsetof](#sizeof-and-__offsetof)
+    * [Calling C from V](#calling-c-from-v)
     * [Debugging generated C code](#debugging-generated-c-code)
     * [Conditional compilation](#conditional-compilation)
     * [Compile time pseudo variables](#compile-time-pseudo-variables)
@@ -233,27 +237,6 @@ a, b := foo()
 println(a) // 2
 println(b) // 3
 c, _ := foo() // ignore values using `_`
-```
-
-### Variable number of arguments
-
-```v
-fn sum(a ...int) int {
-	mut total := 0
-	for x in a {
-		total += x
-	}
-	return total
-}
-
-println(sum()) // 0
-println(sum(1)) // 1
-println(sum(2, 3)) // 5
-// using array decomposition
-a := [2, 3, 4]
-println(sum(...a)) // <-- using prefix ... here. output: 9
-b := [5, 6, 7]
-println(sum(...b)) // output: 18
 ```
 
 ## Symbol visibility
@@ -1107,7 +1090,7 @@ V has only one looping keyword: `for`, with several forms.
 
 #### `for`/`in`
 
-This is the most common form. You can use it with an array, map or 
+This is the most common form. You can use it with an array, map or
 numeric range.
 
 ##### Array `for`
@@ -1338,7 +1321,7 @@ import os
 
 fn read_log() {
 	mut ok := false
-	mut f := os.open('log.txt') or { panic(err) }
+	mut f := os.open('log.txt') or { panic(err.msg) }
 	defer {
 		f.close()
 	}
@@ -1559,7 +1542,7 @@ fn main() {
 This means that defining public readonly fields is very easy in V,
 no need in getters/setters or properties.
 
-### Methods
+## Methods
 
 ```v
 struct User {
@@ -1583,6 +1566,7 @@ println(user2.can_register()) // "true"
 V doesn't have classes, but you can define methods on types.
 A method is a function with a special receiver argument.
 The receiver appears in its own argument list between the `fn` keyword and the method name.
+Methods must be in the same module as the receiver type.
 
 In this example, the `can_register` method has a receiver of type `User` named `u`.
 The convention is not to use receiver names like `self` or `this`,
@@ -1718,6 +1702,27 @@ user = register(user)
 println(user)
 ```
 
+### Variable number of arguments
+
+```v
+fn sum(a ...int) int {
+	mut total := 0
+	for x in a {
+		total += x
+	}
+	return total
+}
+
+println(sum()) // 0
+println(sum(1)) // 1
+println(sum(2, 3)) // 5
+// using array decomposition
+a := [2, 3, 4]
+println(sum(...a)) // <-- using prefix ... here. output: 9
+b := [5, 6, 7]
+println(sum(...b)) // output: 18
+```
+
 ### Anonymous & high order functions
 
 ```v
@@ -1819,7 +1824,7 @@ println(world)
 
 Constants are declared with `const`. They can only be defined
 at the module level (outside of functions).
-Constant values can never be changed. You can also declare a single 
+Constant values can never be changed. You can also declare a single
 constant separately:
 
 ```v
@@ -2396,7 +2401,7 @@ any further.
 The body of `f` is essentially a condensed version of:
 
 ```v ignore
-    resp := http.get(url) or { return error(err) }
+    resp := http.get(url) or { return err }
     return resp.text
 ```
 
@@ -2413,7 +2418,7 @@ to break from the current block.
 Note that `break` and `continue` can only be used inside a `for` loop.
 
 V does not have a way to forcibly "unwrap" an optional (as other languages do,
-for instance Rust's `unwrap()` or Swift's `!`). To do this, use `or { panic(err) }` instead.
+for instance Rust's `unwrap()` or Swift's `!`). To do this, use `or { panic(err.msg) }` instead.
 
 ---
 The third method is to provide a default value at the end of the `or` block.
@@ -2566,28 +2571,24 @@ fn main() {
 }
 ```
 
-If there is a large number of tasks that do not return a value it might be easier to manage
-them using a wait group. However, for this approach the function(s) called concurrently have
-to be designed with this wait group in mind:
+If there is a large number of tasks, it might be easier to manage them
+using an array of threads.
 
 ```v
-import sync
 import time
 
-fn task(id int, duration int, mut wg sync.WaitGroup) {
+fn task(id int, duration int) {
 	println('task $id begin')
-	time.wait(duration * time.millisecond)
+	time.sleep(duration * time.millisecond)
 	println('task $id end')
-	wg.done()
 }
 
 fn main() {
-	mut wg := sync.new_waitgroup()
-	wg.add(3)
-	go task(1, 500, mut wg)
-	go task(2, 900, mut wg)
-	go task(3, 100, mut wg)
-	wg.wait()
+	mut threads := []thread{}
+	threads << go task(1, 500)
+	threads << go task(2, 900)
+	threads << go task(3, 100)
+	threads.wait()
 	println('done')
 }
 
@@ -2599,6 +2600,27 @@ fn main() {
 // task 1 end
 // task 2 end
 // done
+```
+
+Additionally for threads that return the same type, calling `wait()`
+on the thread array will return all computed values.
+
+```v
+fn expensive_computing(i int) int {
+	return i * i
+}
+
+fn main() {
+	mut threads := []thread int{}
+	for i in 1 .. 10 {
+		threads << go expensive_computing(i)
+	}
+	// Join all tasks
+	r := threads.wait()
+	println('All jobs finished: $r')
+}
+
+// Output: All jobs finished: [1, 4, 9, 16, 25, 36, 49, 64, 81]
 ```
 
 ### Channels
@@ -3191,7 +3213,9 @@ assert __offsetof(Foo, a) == 0
 assert __offsetof(Foo, b) == 4
 ```
 
-## Calling C functions from V
+## Calling C from V
+
+### Example
 
 ```v
 #flag -lsqlite3
@@ -3258,7 +3282,7 @@ fn main() {
 }
 ```
 
-### #flag
+### Passing C compilation flags
 
 Add `#flag` directives to the top of your V files to provide C compilation flags like:
 
@@ -3267,7 +3291,7 @@ Add `#flag` directives to the top of your V files to provide C compilation flags
 - `-L` for adding C library files search paths
 - `-D` for setting compile time variables
 
-You can use different flags for different targets.
+You can (optionally) use different flags for different targets.
 Currently the `linux`, `darwin` , `freebsd`, and `windows` flags are supported.
 
 NB: Each flag must go on its own line (for now)
@@ -3279,6 +3303,13 @@ NB: Each flag must go on its own line (for now)
 #flag linux -DIMGUI_DISABLE_OBSOLETE_FUNCTIONS=1
 #flag linux -DIMGUI_IMPL_API=
 ```
+
+In the console build command, you can use `-cflags` to pass custom flags to the backend C compiler.
+You can also use `-cc` to change the default C backend compiler.
+For example: `-cc gcc-9 -cflags -fsanitize=thread`.
+
+You can also define a `VFLAGS` environment variable in your terminal to store your `-cc`
+and `cflags` settings, rather than including them in the build command each time.
 
 ### #pkgconfig
 
@@ -3341,10 +3372,6 @@ You can see a complete minimal example for using C code in a V wrapper module he
 [project_with_c_code](https://github.com/vlang/v/tree/master/vlib/v/tests/project_with_c_code).
 Another example, demonstrating passing structs from C to V and back again:
 [interoperate between C to V to C](https://github.com/vlang/v/tree/master/vlib/v/tests/project_with_c_code_2).
-
-You can use `-cflags` to pass custom flags to the backend C compiler.
-You can also use `-cc` to change the default C backend compiler.
-For example: `-cc gcc-9 -cflags -fsanitize=thread`.
 
 ### C types
 
@@ -3468,7 +3495,7 @@ Full list of builtin options:
 module main
 fn main() {
 	embedded_file := $embed_file('v.png')
-	mut fw := os.create('exported.png') or { panic(err) }
+	mut fw := os.create('exported.png') or { panic(err.msg) }
 	fw.write_bytes(embedded_file.data(), embedded_file.len)
 	fw.close()
 }
@@ -3631,7 +3658,7 @@ eprintln('file: ' + @FILE + ' | line: ' + @LINE + ' | fn: ' + @MOD + '.' + @FN)
 Another example, is if you want to embed the version/name from v.mod *inside* your executable:
 ```v ignore
 import v.vmod
-vm := vmod.decode( @VMOD_FILE ) or { panic(err) }
+vm := vmod.decode( @VMOD_FILE ) or { panic(err.msg) }
 eprintln('$vm.name $vm.version\n $vm.description')
 ```
 
@@ -3841,7 +3868,7 @@ fn print_message() {
 fn main() {
 	for {
 		print_message()
-		time.wait(500 * time.millisecond)
+		time.sleep(500 * time.millisecond)
 	}
 }
 ```
@@ -3890,6 +3917,7 @@ module global (so that you can use `mkdir()` instead of `os.mkdir()`, for exampl
 
 An example `deploy.vsh`:
 ```v wip
+#!/usr/bin/env -S v run
 // The shebang above associates the file to V on Unix-like systems,
 // so it can be run just by specifying the path to the file
 // once it's made executable using `chmod +x`.
@@ -3952,7 +3980,7 @@ fn old_function() {
 fn inlined_function() {
 }
 
-// The following struct must be allocated on the heap. Therefore, it can only be used as a 
+// The following struct must be allocated on the heap. Therefore, it can only be used as a
 // reference (`&Window`) or inside another reference (`&OuterStruct{ Window{...} }`).
 [heap]
 struct Window {
@@ -3990,7 +4018,7 @@ fn main() {
 
 V allows unconditionally jumping to a label with `goto`. The label name must be contained
 within the same function as the `goto` statement. A program may `goto` a label outside
-or deeper than the current scope. `goto` allows jumping past variable initialization or 
+or deeper than the current scope. `goto` allows jumping past variable initialization or
 jumping back to code that accesses memory that has already been freed, so it requires
 `unsafe`.
 

@@ -43,7 +43,7 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 	}
 	msvc := find_msvc(pref.m64) or {
 		if pref.ccompiler == 'msvc' {
-			verror('Cannot find MSVC on this OS')
+			// verror('Cannot find MSVC on this OS')
 		}
 		MsvcResult{
 			valid: false

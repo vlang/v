@@ -63,13 +63,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		p.open_scope()
 		p.scope.register(ast.Var{
 			name: 'err'
-			typ: table.string_type
-			pos: p.tok.position()
-			is_used: true
-		})
-		p.scope.register(ast.Var{
-			name: 'errcode'
-			typ: table.int_type
+			typ: table.error_type
 			pos: p.tok.position()
 			is_used: true
 		})
@@ -361,7 +355,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	body_start_pos := p.peek_tok.position()
 	if p.tok.kind == .lcbr {
 		p.inside_fn = true
+		p.inside_unsafe_fn = is_unsafe
 		stmts = p.parse_block_no_scope(true)
+		p.inside_unsafe_fn = false
 		p.inside_fn = false
 	}
 	if !no_body && are_args_type_only {
@@ -423,11 +419,13 @@ fn (mut p Parser) fn_receiver(mut params []table.Param, mut rec ReceiverParsingI
 	if !rec.is_mut {
 		rec.is_mut = p.tok.kind == .key_mut
 		if rec.is_mut {
-			p.warn_with_pos('use `(mut f Foo)` instead of `(f mut Foo)`', lpar_pos.extend(p.peek_tok2.position()))
+			ptoken2 := p.peek_token(2) // needed to prevent codegen bug, where .position() expects &Token
+			p.warn_with_pos('use `(mut f Foo)` instead of `(f mut Foo)`', lpar_pos.extend(ptoken2.position()))
 		}
 	}
 	if p.tok.kind == .key_shared {
-		p.error_with_pos('use `(shared f Foo)` instead of `(f shared Foo)`', lpar_pos.extend(p.peek_tok2.position()))
+		ptoken2 := p.peek_token(2) // needed to prevent codegen bug, where .position() expects &Token
+		p.error_with_pos('use `(shared f Foo)` instead of `(f shared Foo)`', lpar_pos.extend(ptoken2.position()))
 	}
 	rec.pos = rec_start_pos.extend(p.tok.position())
 	is_amp := p.tok.kind == .amp

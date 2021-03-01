@@ -54,8 +54,16 @@ fn test_raw_decode_null() {
 
 fn test_raw_decode_invalid() {
 	json2.raw_decode('1z') or {
-		assert err == '[json] invalid JSON. (0:0)'
+		assert err.msg == '[x.json2] invalid token `z` (0:17)'
 		return
 	}
 	assert false
+}
+
+fn test_raw_decode_string_with_dollarsign() {
+	str := json2.raw_decode(r'"Hello $world"') or {
+		assert false
+		json2.Any{}
+	}
+	assert str.str() == r'Hello $world'
 }
