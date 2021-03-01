@@ -82,22 +82,18 @@ _ = footer
 				file_ext = '.html'
 			}
 			file_name = file_name.replace(file_ext, '')
-			mut templates_folder := basepath
-			if file_name.contains('/') {
-				if file_name.starts_with('/') {
-					// absolute path
-					templates_folder = ''
-				} else {
-					// relative path, starting with the current folder
-					templates_folder = os.real_path(basepath)
-				}
+			// relative path, starting with the current folder
+			mut templates_folder := os.real_path(basepath)
+			if file_name.contains('/') && file_name.starts_with('/') {
+				// an absolute path
+				templates_folder = ''
 			}
 			file_path := os.real_path(os.join_path(templates_folder, '$file_name$file_ext'))
 			$if trace_tmpl ? {
 				eprintln('>>> basepath: "$basepath" , fn_name: "$fn_name" , @include line: "$line" , file_name: "$file_name" , file_ext: "$file_ext" , templates_folder: "$templates_folder" , file_path: "$file_path"')
 			}
 			file_content := os.read_file(file_path) or {
-				panic('Vweb: Reading file $file_name failed.')
+				panic('Vweb: reading file $file_name from path: $file_path failed.')
 			}
 			file_splitted := file_content.split_into_lines().reverse()
 			for f in file_splitted {
