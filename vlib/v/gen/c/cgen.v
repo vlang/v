@@ -721,7 +721,9 @@ fn (g &Gen) type_sidx(t table.Type) string {
 //
 pub fn (mut g Gen) write_typedef_types() {
 	for typ in g.table.types {
-		if typ.name in builtins { continue }
+		if typ.name in c.builtins {
+			continue
+		}
 		match typ.kind {
 			.alias {
 				parent := unsafe { &g.table.types[typ.parent_idx] }
