@@ -14,6 +14,7 @@ const (
 // compile_file compiles the content of a file by the given path as a template
 pub fn compile_file(path string, fn_name string) string {
 	basepath := os.dir(path)
+	eprintln('> compile_file: $path | fn_name: $fn_name | basepath: $basepath')
 	html := os.read_file(path) or { panic('html failed') }
 	return compile_template(basepath, html, fn_name)
 }
