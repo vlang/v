@@ -87,8 +87,7 @@ pub fn (f Any) str() string {
 }
 
 // char_len_list is a modified version of builtin.utf8_str_len
-// that returns an array of char length to be used for escaping
-// the characters
+// that returns an array of character lengths. (e.g "t✔" => [1,2])
 fn char_len_list(s string) []int {
 	mut l := 1
 	mut ls := []int{}
@@ -108,7 +107,7 @@ fn char_len_list(s string) []int {
 
 const escaped_chars = [r'\b', r'\f', r'\n', r'\r', r'\t']
 
-// json_string returns the valid JSON version of the string.
+// json_string returns the JSON spec-compliant version of the string.
 [manualfree]
 fn json_string(s string) string {
 	// not the best implementation but will revisit it soon
