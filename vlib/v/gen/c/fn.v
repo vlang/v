@@ -158,7 +158,7 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 		name = util.replace_op(name)
 	}
 	if node.is_method {
-		name = g.cc_type2(node.receiver.typ) + '_' + name
+		name = g.cc_type(node.receiver.typ, false) + '_' + name
 		// name = g.table.get_type_symbol(node.receiver.typ).name + '_' + name
 	}
 	if node.language == .c {
@@ -477,11 +477,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	if node.receiver_type == 0 {
 		g.checker_bug('CallExpr.receiver_type is 0 in method_call', node.pos)
 	}
-	// mut receiver_type_name := g.cc_type(node.receiver_type)
-	// mut receiver_type_name := g.typ(node.receiver_type)
 	typ_sym := g.table.get_type_symbol(g.unwrap_generic(node.receiver_type))
-	// mut receiver_type_name := util.no_dots(typ_sym.name)
-	mut receiver_type_name := util.no_dots(g.cc_type2(g.unwrap_generic(node.receiver_type)))
+	mut receiver_type_name := util.no_dots(g.cc_type(g.unwrap_generic(node.receiver_type),
+		false))
 	if typ_sym.kind == .interface_ && (typ_sym.info as table.Interface).defines_method(node.name) {
 		// Speaker_name_table[s._interface_idx].speak(s._object)
 		$if debug_interface_method_call ? {
@@ -591,7 +589,6 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__')
 		&& node.name != 'str' {
 		sym := g.table.get_type_symbol(node.receiver_type)
-		// key = g.cc_type2(node.receiver.typ) + '.' + node.name
 		key := sym.name + '.' + node.name
 		g.write('/* obf method call: $key */')
 		name = g.obf_table[key] or {
