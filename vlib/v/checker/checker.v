@@ -4914,8 +4914,14 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 				mut last_expr := branch.stmts[branch.stmts.len - 1] as ast.ExprStmt
 				c.expected_type = former_expected_type
 				last_expr.typ = c.expr(last_expr.expr)
-				// if last_expr.typ != node.typ {
-				// if !c.check_types(node.typ, last_expr.typ) {
+				if c.expected_type.has_flag(.optional) && node.typ == table.void_type {
+					node.is_expr = true
+					node.typ = c.expected_type
+					continue
+				}
+				if node.typ.has_flag(.optional) {
+					continue
+				}
 				if !c.check_types(last_expr.typ, node.typ) {
 					if node.typ == table.void_type {
 						// first branch of if expression
