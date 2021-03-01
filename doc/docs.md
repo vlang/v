@@ -2933,7 +2933,8 @@ You can take advantage of V's autofree engine and define a `free()` method on cu
 data types:
 
 ```v
-fn (data MyType) free() {
+[unsafe]
+fn (data &MyType) free() {
 	// ...
 }
 ```
@@ -2943,7 +2944,7 @@ Just as the compiler frees C data types with C's `free()`, it will statically in
 
 For developers willing to have more low level control, autofree can be disabled with
 `-manualfree`, or by adding a `[manualfree]` on each function that wants manage its
-memory manually.
+memory manually. (See [attributes](#attributes)).
 
 _Note: right now autofree is hidden behind the -autofree flag. It will be enabled by
 default in V 0.3. If autofree is not used, V programs will leak memory._
@@ -2971,7 +2972,7 @@ fn draw_scene() {
 The strings don't escape `draw_text`, so they are cleaned up when
 the function exits.
 
-In fact, the first two calls won't result in any allocations at all.
+In fact, with the `-prealloc` flag, the first two calls won't result in any allocations at all.
 These two strings are small, so V will use a preallocated buffer for them.
 
 ```v
