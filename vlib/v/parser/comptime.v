@@ -155,10 +155,10 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 		}
 		// println('path is now "$path"')
 	}
+	tmp_fn_name := p.cur_fn_name.replace('.', '__')
 	$if trace_comptime ? {
 		println('>>> compiling comptime template file "$path" for $tmp_fn_name')
 	}
-	tmp_fn_name := p.cur_fn_name.replace('.', '__')
 	v_code := tmpl.compile_file(path, tmp_fn_name)
 	$if print_vweb_template_expansions ? {
 		lines := v_code.split('\n')
