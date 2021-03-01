@@ -14,7 +14,6 @@ const (
 // compile_file compiles the content of a file by the given path as a template
 pub fn compile_file(path string, fn_name string) string {
 	basepath := os.dir(path)
-	eprintln('> compile_file: $path | fn_name: $fn_name | basepath: $basepath')
 	html := os.read_file(path) or { panic('html failed') }
 	return compile_template(basepath, html, fn_name)
 }
@@ -94,7 +93,6 @@ _ = footer
 				eprintln('>>> basepath: "$basepath" , fn_name: "$fn_name" , @include line: "$line" , file_name: "$file_name" , file_ext: "$file_ext" , templates_folder: "$templates_folder" , file_path: "$file_path"')
 			}
 			file_content := os.read_file(file_path) or {
-				eprintln('>>> basepath: "$basepath" , fn_name: "$fn_name" , @include line: "$line" , file_name: "$file_name" , file_ext: "$file_ext" , templates_folder: "$templates_folder" , file_path: "$file_path"')
 				panic('Vweb: reading file $file_name from path: $file_path failed.')
 			}
 			file_splitted := file_content.split_into_lines().reverse()

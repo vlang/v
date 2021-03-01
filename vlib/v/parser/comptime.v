@@ -139,7 +139,6 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 	if !is_html {
 		path = os.join_path(dir, tmpl_path)
 	}
-	eprintln('> path: $path')
 	if !os.exists(path) {
 		// can be in `templates/`
 		if is_html {
@@ -156,8 +155,8 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 		}
 		// println('path is now "$path"')
 	}
-	if p.pref.is_verbose {
-		println('>>> compiling comptime template file "$path"')
+	$if trace_comptime ? {
+		println('>>> compiling comptime template file "$path" for $tmp_fn_name')
 	}
 	tmp_fn_name := p.cur_fn_name.replace('.', '__')
 	v_code := tmpl.compile_file(path, tmp_fn_name)
@@ -171,12 +170,12 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 		start_pos: 0
 		parent: p.global_scope
 	}
-	if p.pref.is_verbose {
-		println('\n\n')
+	$if trace_comptime ? {
+		println('')
 		println('>>> vweb template for $path:')
 		println(v_code)
 		println('>>> end of vweb template END')
-		println('\n\n')
+		println('')
 	}
 	mut file := parse_comptime(v_code, p.table, p.pref, scope, p.global_scope)
 	file = ast.File{
