@@ -937,6 +937,9 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 			}
 		} else {
 			g.stmt(stmt)
+			if g.inside_if_optional && stmt is ast.ExprStmt {
+				g.writeln(';')
+			}
 		}
 		g.skip_stmt_pos = false
 		if g.inside_ternary > 0 && i < stmts.len - 1 {

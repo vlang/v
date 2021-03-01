@@ -23,3 +23,23 @@ fn test_if_expr_of_optional() {
 	println(a3)
 	assert a3 == 2
 }
+
+fn foo_complex() ?int {
+	a := 2
+	return if a > 1 {
+		mut b := 1
+		b *= 10
+		b
+	} else {
+		mut c := 0
+		c += 2
+		println(c)
+		none
+	}
+}
+
+fn test_if_expr_of_optional_complex() {
+	a := foo_complex() or { panic('error') }
+	println(a)
+	assert a == 10
+}
