@@ -80,14 +80,15 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 	}
 	p.check(.lpar)
 	spos := p.tok.position()
-	s := if is_html { '' } else { p.tok.lit }
+	literal_string_param := if is_html { '' } else { p.tok.lit }
+	path_of_literal_string_param := literal_string_param.replace('/', os.path_separator)
 	if !is_html {
 		p.check(.string)
 	}
 	p.check(.rpar)
 	// $embed_file('/path/to/file')
 	if is_embed_file {
-		mut epath := s
+		mut epath := path_of_literal_string_param
 		// Validate that the epath exists, and that it is actually a file.
 		if epath == '' {
 			p.error_with_pos('supply a valid relative or absolute file path to the file to embed',
@@ -119,7 +120,7 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 			scope: 0
 			is_embed: true
 			embed_file: ast.EmbeddedFile{
-				rpath: s
+				rpath: literal_string_param
 				apath: epath
 			}
 		}
@@ -129,7 +130,7 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 	fn_path := p.cur_fn_name.split('_')
 	fn_path_joined := fn_path.join(os.path_separator)
 	compiled_vfile_path := os.real_path(p.scanner.file_path.replace('/', os.path_separator))
-	tmpl_path := if is_html { '${fn_path.last()}.html' } else { s }
+	tmpl_path := if is_html { '${fn_path.last()}.html' } else { path_of_literal_string_param }
 	// Looking next to the vweb program
 	dir := os.dir(compiled_vfile_path)
 	mut path := os.join_path(dir, fn_path_joined)
@@ -210,7 +211,7 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 		is_vweb: true
 		vweb_tmpl: file
 		method_name: n
-		args_var: s
+		args_var: literal_string_param
 	}
 }
 
