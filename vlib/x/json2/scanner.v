@@ -154,8 +154,15 @@ fn (mut s Scanner) text_scan() Token {
 					if codepoint.len != 4 {
 						return s.error('unicode escape must have 4 hex digits')
 					}
-					chrs << byte(strconv.parse_uint(codepoint.bytestr(), 16, 32))
-					unsafe { codepoint.free() }
+					val := u32(strconv.parse_uint(codepoint.bytestr(), 16, 32))
+					converted := utf32_to_str(val)
+					converted_bytes := converted.bytes()
+					chrs << converted_bytes
+					unsafe {
+						converted.free()
+						converted_bytes.free()
+						codepoint.free()
+					}
 					continue
 				} else {
 					return s.error('incomplete unicode escape')
