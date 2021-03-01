@@ -51,8 +51,18 @@ pub fn (flds []Any) str() string {
 	return res
 }
 
-// str returns the string representation of the `Any` type.
+// str returns the string representation of the `Any` type. If you want to
+// use the escaped string version of the `Any` type. Use the `json_str` method instead.
 pub fn (f Any) str() string {
+	if f is string {
+		return f
+	} else {
+		return f.json_str()
+	}
+}
+
+// json_str returns the JSON string representation of the `Any` type.
+pub fn (f Any) json_str() string {
 	match f {
 		string {
 			return json_string(f)
