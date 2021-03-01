@@ -6160,8 +6160,6 @@ fn (mut g Gen) interface_table() string {
 			for field in inter_info.fields {
 				cname := c_name(field.name)
 				field_styp := g.typ(field.typ)
-				// cast_struct.write_string('/* $field */')
-				// cast_struct.writeln('\t\t.$cname = ($field_styp*)((char*)x + __offsetof($cctype, $cname)),')
 				if _ := st_sym.find_field(field.name) {
 					cast_struct.writeln('\t\t.$cname = ($field_styp*)((char*)x + __offsetof($cctype, $cname)),')
 				} else {
@@ -6170,7 +6168,7 @@ fn (mut g Gen) interface_table() string {
 					for embed_type in st_sym.struct_info().embeds {
 						embed_sym := g.table.get_type_symbol(embed_type)
 						if _ := embed_sym.find_field(field.name) {
-							cast_struct.write_string(' + __offsetof($cctype, ${embed_sym.embed_name()}) + __offsetof($embed_sym.cname, $cname)')
+							cast_struct.write_string(' + __offsetof($cctype, $embed_sym.embed_name()) + __offsetof($embed_sym.cname, $cname)')
 							break
 						}
 					}
