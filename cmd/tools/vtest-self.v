@@ -177,9 +177,7 @@ const (
 		'vlib/net/http/http_httpbin_test.v',
 		'vlib/net/http/header_test.v',
 	]
-	skip_on_linux                 = [
-		'vlib/v/gen/js/jsgen_test.v',
-	]
+	skip_on_linux                 = []string{}
 	skip_on_non_linux             = [
 		'vlib/net/websocket/ws_test.v',
 	]
