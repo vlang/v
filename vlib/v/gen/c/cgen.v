@@ -541,7 +541,7 @@ fn (mut g Gen) typ(t table.Type) string {
 
 fn (mut g Gen) base_type(t table.Type) string {
 	share := t.share()
-	mut styp := if share == .atomic_t { t.atomic_typename() } else { g.cc_type(t) }
+	mut styp := if share == .atomic_t { t.atomic_typename() } else { g.cc_type(t, true) }
 	if t.has_flag(.shared_f) {
 		styp = g.find_or_register_shared(t, styp)
 	}
@@ -674,10 +674,9 @@ static inline Option2_void __Option2_${styp}_pushval($styp ch, $el_type e) {
 	}
 }
 
-// TODO: merge cc_type and cc_type2
-// cc_type but without the `struct` prefix
-fn (g &Gen) cc_type2(t table.Type) string {
-	sym := g.table.get_type_symbol(g.unwrap_generic(t))
+// cc_type whether to prefix 'struct' or not (C__Foo -> struct Foo)
+fn (g &Gen) cc_type(typ table.Type, is_prefix_struct bool) string {
+	sym := g.table.get_type_symbol(g.unwrap_generic(typ))
 	mut styp := sym.cname
 	// TODO: this needs to be removed; cgen shouldn't resolve generic types (job of checker)
 	if mut sym.info is table.Struct {
@@ -702,15 +701,7 @@ fn (g &Gen) cc_type2(t table.Type) string {
 		}
 		return cname
 	}
-	return styp
-}
-
-// cc_type returns the Cleaned Concrete Type name, *without ptr*,
-// i.e. it's always just Cat, not Cat_ptr:
-fn (g &Gen) cc_type(t table.Type) string {
-	sym := g.table.get_type_symbol(g.unwrap_generic(t))
-	mut styp := g.cc_type2(t)
-	if styp.starts_with('C__') {
+	if is_prefix_struct && styp.starts_with('C__') {
 		styp = styp[3..]
 		if sym.kind == .struct_ {
 			info := sym.info as table.Struct
@@ -1554,8 +1545,8 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw table.Type, expected_t
 	}
 	if exp_sym.kind == .interface_ && got_type_raw.idx() != expected_type.idx()
 		&& !expected_type.has_flag(.optional) {
-		got_styp := g.cc_type(got_type)
-		exp_styp := g.cc_type(expected_type)
+		got_styp := g.cc_type(got_type, true)
+		exp_styp := g.cc_type(expected_type, true)
 		g.write('I_${got_styp}_to_Interface_$exp_styp')
 		if expected_type.is_ptr() {
 			g.write('_ptr')
@@ -6172,7 +6163,7 @@ fn (mut g Gen) interface_table() string {
 		for st in inter_info.types {
 			// cctype is the Cleaned Concrete Type name, *without ptr*,
 			// i.e. cctype is always just Cat, not Cat_ptr:
-			cctype := g.cc_type(st)
+			cctype := g.cc_type(st, true)
 			$if debug_interface_table ? {
 				eprintln(
 					'>> interface name: $ityp.name | concrete type: $st.debug() | st symname: ' +
