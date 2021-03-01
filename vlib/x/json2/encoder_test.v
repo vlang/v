@@ -1,7 +1,7 @@
 import x.json2
 
 fn test_json_string_characters() {
-	text := json2.Any('\n\r\b\f\t\\\"\/')
+	text := json2.raw_decode(r'"\n\r\b\f\t\\\"\/"') or { '' }
 	assert text.json_str() == '\\n\\r\\b\\f\\t\\\\\\"\\/'
 }
 
