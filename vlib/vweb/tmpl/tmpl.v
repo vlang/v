@@ -161,7 +161,7 @@ _ = footer
 		} else {
 			// HTML, may include `@var`
 			// escaped by cgen, unless it's a `vweb.RawHtml` string
-			s.writeln(line.replace('@', '$').replace("'", '"'))
+			s.writeln(line.replace('@', '$').replace('$$', '@').replace("'", "\\'"))
 		}
 	}
 	s.writeln(tmpl.str_end)
