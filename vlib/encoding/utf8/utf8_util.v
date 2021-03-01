@@ -23,7 +23,7 @@ pub fn len(s string) int {
 	mut index := 0
 
 	for {
-		ch_len := char_len(s[index])
+		ch_len := utf8_char_len(s[index])
 		index += ch_len
 		count++
 		if index >= s.len {
@@ -39,6 +39,7 @@ pub fn u_len(s ustring) int {
 }
 
 // char_len calculate the length in bytes of a utf8 char
+[deprecated: 'use builtin utf8_char_len']
 pub fn char_len(b byte) int {
 	return ((0xe5000000 >> ((b >> 3) & 0x1e)) & 3) + 1
 }
@@ -48,7 +49,7 @@ pub fn get_uchar(s string, index int) int {
 	mut res := 0
 	mut ch_len := 0
 	if s.len > 0 {
-		ch_len = char_len(s[index])
+		ch_len = utf8_char_len(s[index])
 
 		if ch_len == 1 {
 			return u16(s[index])
@@ -169,7 +170,7 @@ fn up_low(s string, upper_flag bool) string {
 	mut str_res := unsafe {malloc(s.len + 1)}
 
 	for {
-		ch_len := char_len(s[index])
+		ch_len := utf8_char_len(s[index])
 
 		if ch_len == 1 {
 			if upper_flag==true {
