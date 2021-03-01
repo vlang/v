@@ -6,7 +6,7 @@ module json2
 import strings
 
 fn write_value(v Any, i int, len int, mut wr strings.Builder) {
-	str := v.str()
+	str := v.json_str()
 	if v is string {
 		wr.write_string('"$str"')
 	} else {
