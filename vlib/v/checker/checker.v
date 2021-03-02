@@ -2445,7 +2445,11 @@ pub fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 	for i, field in node.fields {
 		// TODO Check const name once the syntax is decided
 		if field.name in c.const_names {
-			c.error('duplicate const `$field.name`', field.pos)
+			name_pos := token.Position{
+				...field.pos
+				len: util.no_cur_mod(field.name, c.mod).len
+			}
+			c.error('duplicate const `$field.name`', name_pos)
 		}
 		c.const_names << field.name
 		field_names << field.name
