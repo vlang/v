@@ -1956,6 +1956,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					g.assign_op = assign_stmt.op
 					g.expr(left)
 					g.is_assign_lhs = false
+					if g.is_array_set {
+						g.is_array_set = false
+					}
 					if left is ast.IndexExpr {
 						sym := g.table.get_type_symbol(left.left_type)
 						if sym.kind in [.map, .array] {
