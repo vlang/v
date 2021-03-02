@@ -6222,14 +6222,7 @@ $staticprefix $interface_name* I_${cctype}_to_Interface_${interface_name}_ptr($c
 			if g.pref.build_mode != .build_module {
 				methods_struct.writeln('\t{')
 			}
-			mut method := table.Fn{}
-			for _, m in ityp.methods {
-				for mm in st_sym.methods {
-					if mm.name == m.name {
-						method = mm
-						break
-					}
-				}
+			for _, method in st_sym.methods {
 				if method.name !in imethods {
 					// a method that is not part of the interface should be just skipped
 					continue
