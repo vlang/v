@@ -147,6 +147,14 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 			path += '.html'
 		}
 		if !os.exists(path) {
+			if p.pref.is_fmt {
+				return ast.ComptimeCall{
+					scope: 0
+					is_vweb: true
+					method_name: n
+					pos: start_pos.extend(p.prev_tok.position())
+				}
+			}
 			if is_html {
 				p.error('vweb HTML template "$path" not found')
 			} else {
