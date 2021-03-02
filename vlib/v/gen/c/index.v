@@ -287,7 +287,7 @@ fn (mut g Gen) index_of_fixed_array(node ast.IndexExpr, sym table.TypeSymbol) {
 }
 
 fn (mut g Gen) index_of_map(node ast.IndexExpr, sym table.TypeSymbol) {
-	gen_or := node.or_expr.kind != .absent
+	gen_or := node.or_expr.kind != .absent || node.is_option
 	left_is_ptr := node.left_type.is_ptr()
 	info := sym.info as table.Map
 	key_type_str := g.typ(info.key_type)
@@ -414,7 +414,9 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym table.TypeSymbol) {
 			g.writeln('\t${tmp_opt}.state = 2; ${tmp_opt}.err = (Error){.msg=_SLIT("array index out of range"), .code=0};')
 
 			g.writeln('}')
-			g.or_block(tmp_opt, node.or_expr, elem_type)
+			if !node.is_option {
+				g.or_block(tmp_opt, node.or_expr, elem_type)
+			}
 			g.write('\n$cur_line*($elem_type_str*)${tmp_opt}.data')
 		}
 	}
