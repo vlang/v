@@ -575,7 +575,7 @@ fn (mut ctx Context) scan_static_directory(directory_path string, mount_path str
 	files := os.ls(directory_path) or { panic(err) }
 	if files.len > 0 {
 		for file in files {
-			full_path := directory_path + '/' + file
+			full_path := os.join_path(directory_path, file)
 			if os.is_dir(full_path) {
 				ctx.scan_static_directory(full_path, mount_path + '/' + file)
 			} else if file.contains('.') && !file.starts_with('.') && !file.ends_with('.') {
@@ -603,6 +603,19 @@ pub fn (mut ctx Context) handle_static(directory_path string, root bool) bool {
 		mount_path = '/' + dir_path.trim_left('.').trim('/')
 	}
 	ctx.scan_static_directory(dir_path, mount_path)
+	return true
+}
+
+// mount_static_folder_at - makes all static files in `directory_path` and inside it, available at http://server/mount_path
+// For example: suppose you have called .mount_static_folder_at('/var/share/myassets', '/assets'),
+// and you have a file /var/share/myassets/main.css .
+// => That file will be available at URL: http://server/assets/main.css .
+pub fn (mut ctx Context) mount_static_folder_at(directory_path string, mount_path string) bool {
+	if ctx.done || mount_path.len < 1 || mount_path[0] != `/` || !os.exists(directory_path) {
+		return false
+	}
+	dir_path := directory_path.trim_right('/')
+	ctx.scan_static_directory(dir_path, mount_path[1..])
 	return true
 }
 
