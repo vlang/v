@@ -310,40 +310,49 @@ pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
 	return '$imp.mod$imp_alias_suffix'
 }
 
-fn (f Fmt) should_insert_newline_before_stmt(stmt ast.Stmt, prev_stmt ast.Stmt) bool {
-	prev_line_nr := prev_stmt.position().last_line
+fn (f Fmt) should_insert_newline_before_node(node ast.Node, prev_node ast.Node) bool {
 	// No need to insert a newline if there is already one
 	if f.out.last_n(2) == '\n\n' {
 		return false
 	}
-	// Force a newline after a block of HashStmts
-	if prev_stmt is ast.HashStmt && stmt !is ast.HashStmt && stmt !is ast.ExprStmt {
-		return true
-	}
-	// Force a newline after a block of function declarations
-	if prev_stmt is ast.FnDecl {
-		if prev_stmt.no_body && stmt !is ast.FnDecl {
+	prev_line_nr := prev_node.position().last_line
+	// The nodes are Stmts
+	if node is ast.Stmt && prev_node is ast.Stmt {
+		stmt := node as ast.Stmt
+		prev_stmt := prev_node as ast.Stmt
+		// Force a newline after a block of HashStmts
+		if prev_stmt is ast.HashStmt && stmt !is ast.HashStmt && stmt !is ast.ExprStmt {
 			return true
 		}
-	}
-	// The stmt shouldn't have a newline before
-	if stmt.position().line_nr - prev_line_nr <= 1 {
-		return false
-	}
-	// Imports are handled special hence they are ignored here
-	if stmt is ast.Import || prev_stmt is ast.Import {
-		return false
-	}
-	// Attributes are not respected in the stmts position, so this requires a manual check
-	if stmt is ast.StructDecl {
-		if stmt.attrs.len > 0 && stmt.attrs[0].pos.line_nr - prev_line_nr <= 1 {
+		// Force a newline after a block of function declarations
+		if prev_stmt is ast.FnDecl {
+			if prev_stmt.no_body && stmt !is ast.FnDecl {
+				return true
+			}
+		}
+		// The stmt shouldn't have a newline before
+		// if stmt.position().line_nr - prev_line_nr <= 1 {
+		// 	return false
+		// }
+		// Imports are handled special hence they are ignored here
+		if stmt is ast.Import || prev_stmt is ast.Import {
 			return false
 		}
-	}
-	if stmt is ast.FnDecl {
-		if stmt.attrs.len > 0 && stmt.attrs[0].pos.line_nr - prev_line_nr <= 1 {
-			return false
+		// Attributes are not respected in the stmts position, so this requires a manual check
+		if stmt is ast.StructDecl {
+			if stmt.attrs.len > 0 && stmt.attrs[0].pos.line_nr - prev_line_nr <= 1 {
+				return false
+			}
 		}
+		if stmt is ast.FnDecl {
+			if stmt.attrs.len > 0 && stmt.attrs[0].pos.line_nr - prev_line_nr <= 1 {
+				return false
+			}
+		}
+	}
+	// The node shouldn't have a newline before
+	if node.position().line_nr - prev_line_nr <= 1 {
+		return false
 	}
 	return true
 }
@@ -352,7 +361,7 @@ pub fn (mut f Fmt) stmts(stmts []ast.Stmt) {
 	mut prev_stmt := if stmts.len > 0 { stmts[0] } else { ast.Stmt{} }
 	f.indent++
 	for stmt in stmts {
-		if !f.pref.building_v && f.should_insert_newline_before_stmt(stmt, prev_stmt) {
+		if !f.pref.building_v && f.should_insert_newline_before_node(stmt, prev_stmt) {
 			f.out.writeln('')
 		}
 		f.stmt(stmt)
