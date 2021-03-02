@@ -112,7 +112,8 @@ fn parse_multipart_form(body string, boundary string) (map[string]string, map[st
 			if lines.len == 1 || !lines[1].to_lower().starts_with('content-type:') {
 				continue
 			}
-			ct := lines[1].split_nth(': ', 2)[1].trim_left(' \t')
+			mut ct := lines[1].split_nth(':', 2)[1]
+			ct = ct.trim_left(' \t')
 			mut sb := strings.new_builder(field.len)
 			for i in 3 .. lines.len - 1 {
 				sb.writeln(lines[i])
