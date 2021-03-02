@@ -1360,13 +1360,10 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			// check fn
 			c.check_map_and_filter(true, elem_typ, call_expr)
 			arg_sym := c.table.get_type_symbol(arg_type)
-			// FIXME: match expr failed for now
-			mut ret_type := 0
-			match mut arg_sym.info {
-				table.FnType { ret_type = arg_sym.info.func.return_type }
-				else { ret_type = arg_type }
-			}
-			call_expr.return_type = c.table.find_or_register_array(ret_type)
+			call_expr.return_type = c.table.find_or_register_array(match arg_sym.info {
+				table.FnType { arg_sym.info.func.return_type }
+				else { arg_type }
+			})
 		} else if method_name == 'filter' {
 			// check fn
 			c.check_map_and_filter(false, elem_typ, call_expr)
