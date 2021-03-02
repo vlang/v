@@ -71,6 +71,9 @@ fn main() {
 	}
 	args_and_flags := util.join_env_vflags_and_os_args()[1..]
 	prefs, command := pref.parse_args(external_tools, args_and_flags)
+	if prefs.is_help {
+		invoke_help_and_exit(args)
+	}
 	if prefs.is_verbose {
 		// println('args= ')
 		// println(args) // QTODO
@@ -145,7 +148,7 @@ fn invoke_help_and_exit(remaining []string) {
 		2 { help.print_and_exit(remaining[1]) }
 		else {}
 	}
-	println('V Error: Expected only one help topic to be provided.')
+	println('`v help`: provide only one help topic.')
 	println('For usage information, use `v help`.')
 	exit(1)
 }
