@@ -1,3 +1,16 @@
+// Keep empty lines in const blocks
+const (
+	a = 1
+
+	b = 2
+	c = SomeStruct{
+		val: 3
+	}
+	d = 4
+	// Comment before a field
+	e = 5
+)
+
 fn keep_single_empty_line() {
 	println('a')
 	println('b')

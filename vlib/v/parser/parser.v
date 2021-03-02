@@ -2052,7 +2052,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 			mod: p.mod
 			is_pub: is_pub
 			expr: expr
-			pos: pos
+			pos: pos.extend(expr.position())
 			comments: comments
 		}
 		fields << field
