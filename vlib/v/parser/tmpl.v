@@ -8,17 +8,9 @@ import v.errors
 import os
 import strings
 
-const (
-	tmpl_str_start = "sb.write_string('"
-	tmpl_str_end   = "' ) "
-)
+const tmpl_str_start = "sb.write_string('"
 
-// compile_file compiles the content of a file by the given path as a template
-pub fn (mut p Parser) compile_template_file(path string, fn_name string) string {
-	basepath := os.dir(path)
-	html := os.read_file(path) or { panic('html failed') }
-	return p.compile_template(basepath, path, html, fn_name)
-}
+const tmpl_str_end = "' ) "
 
 enum State {
 	html
@@ -27,22 +19,37 @@ enum State {
 	// span // span.{
 }
 
-pub fn (mut p Parser) compile_template(basepath string, path string, html_ string, fn_name string) string {
-	mut lines := html_.trim_space().split_into_lines()
+// compile_file compiles the content of a file by the given path as a template
+pub fn (mut p Parser) compile_template_file(template_file string, fn_name string) string {
+	mut lines := os.read_lines(template_file) or {
+		p.error('reading from $template_file failed')
+		return ''
+	}
+	basepath := os.dir(template_file)
 	lstartlength := lines.len * 30
-	mut s := strings.new_builder(1000)
-	s.writeln('
+	mut source := strings.new_builder(1000)
+	source.writeln('
 import strings
 // === vweb html template ===
 fn vweb_tmpl_${fn_name}() {
 mut sb := strings.new_builder($lstartlength)\n
 
 ')
-	s.write_string(parser.tmpl_str_start)
+	source.write_string(parser.tmpl_str_start)
 	mut state := State.html
 	mut in_span := false
+	mut end_of_line_pos := 0
+	mut start_of_line_pos := 0
+	mut tline_number := -1 // keep the original line numbers, even after insert/delete ops on lines; `i` changes
 	for i := 0; i < lines.len; i++ {
-		line := lines[i].trim_space()
+		oline := lines[i]
+		tline_number++
+		start_of_line_pos = end_of_line_pos
+		end_of_line_pos += oline.len + 1
+		$if trace_tmpl ? {
+			eprintln('>>> tfile: $template_file, spos: ${start_of_line_pos:6}, epos:${end_of_line_pos:6}, fi: ${tline_number:5}, i: ${i:5}, line: $oline')
+		}
+		line := oline.trim_space()
 		if line == '<style>' {
 			state = .css
 		} else if line == '</style>' {
@@ -56,11 +63,11 @@ mut sb := strings.new_builder($lstartlength)\n
 			position := line.index('@header') or { 0 }
 			p.error_with_error(errors.Error{
 				message: "Please use @include 'header' instead of @header (deprecated)"
-				file_path: path
+				file_path: template_file
 				pos: token.Position{
 					len: '@header'.len
-					line_nr: i
-					pos: position
+					line_nr: tline_number
+					pos: start_of_line_pos + position
 					last_line: lines.len
 				}
 				reporter: .parser
@@ -69,11 +76,11 @@ mut sb := strings.new_builder($lstartlength)\n
 			position := line.index('@footer') or { 0 }
 			p.error_with_error(errors.Error{
 				message: "Please use @include 'footer' instead of @footer (deprecated)"
-				file_path: path
+				file_path: template_file
 				pos: token.Position{
 					len: '@footer'.len
-					line_nr: i
-					pos: position
+					line_nr: tline_number
+					pos: start_of_line_pos + position
 					last_line: lines.len
 				}
 				reporter: .parser
@@ -95,18 +102,18 @@ mut sb := strings.new_builder($lstartlength)\n
 			}
 			file_path := os.real_path(os.join_path(templates_folder, '$file_name$file_ext'))
 			$if trace_tmpl ? {
-				eprintln('>>> basepath: "$basepath" , fn_name: "$fn_name" , @include line: "$line" , file_name: "$file_name" , file_ext: "$file_ext" , templates_folder: "$templates_folder" , file_path: "$file_path"')
+				eprintln('>>> basepath: "$basepath" , template_file: "$template_file" , fn_name: "$fn_name" , @include line: "$line" , file_name: "$file_name" , file_ext: "$file_ext" , templates_folder: "$templates_folder" , file_path: "$file_path"')
 			}
 			file_content := os.read_file(file_path) or {
-				position := line.index('@include ') or { 0 }
+				position := line.index('@include ') or { 0 } + '@include '.len
 				p.error_with_error(errors.Error{
 					message: 'Reading file $file_name from path: $file_path failed'
 					details: "Failed to @include '$file_name'"
-					file_path: path
+					file_path: template_file
 					pos: token.Position{
 						len: '@include '.len + file_name.len
-						line_nr: i
-						pos: position
+						line_nr: tline_number
+						pos: start_of_line_pos + position
 						last_line: lines.len
 					}
 					reporter: .parser
@@ -115,74 +122,73 @@ mut sb := strings.new_builder($lstartlength)\n
 			}
 			file_splitted := file_content.split_into_lines().reverse()
 			for f in file_splitted {
+				tline_number--
 				lines.insert(i, f)
 			}
 			i--
 		} else if line.contains('@js ') {
 			pos := line.index('@js') or { continue }
-			s.write_string('<script src="')
-			s.write_string(line[pos + 5..line.len - 1])
-			s.writeln('"></script>')
+			source.write_string('<script src="')
+			source.write_string(line[pos + 5..line.len - 1])
+			source.writeln('"></script>')
 		} else if line.contains('@css ') {
 			pos := line.index('@css') or { continue }
-			s.write_string('<link href="')
-			s.write_string(line[pos + 6..line.len - 1])
-			s.writeln('" rel="stylesheet" type="text/css">')
+			source.write_string('<link href="')
+			source.write_string(line[pos + 6..line.len - 1])
+			source.writeln('" rel="stylesheet" type="text/css">')
 		} else if line.contains('@if ') {
-			s.writeln(parser.tmpl_str_end)
+			source.writeln(parser.tmpl_str_end)
 			pos := line.index('@if') or { continue }
-			s.writeln('if ' + line[pos + 4..] + '{')
-			s.writeln(parser.tmpl_str_start)
+			source.writeln('if ' + line[pos + 4..] + '{')
+			source.writeln(parser.tmpl_str_start)
 		} else if line.contains('@end') {
 			// Remove new line byte
-			s.go_back(1)
-
-			s.writeln(parser.tmpl_str_end)
-			s.writeln('}')
-			s.writeln(parser.tmpl_str_start)
+			source.go_back(1)
+			source.writeln(parser.tmpl_str_end)
+			source.writeln('}')
+			source.writeln(parser.tmpl_str_start)
 		} else if line.contains('@else') {
 			// Remove new line byte
-			s.go_back(1)
-
-			s.writeln(parser.tmpl_str_end)
-			s.writeln(' } else { ')
-			s.writeln(parser.tmpl_str_start)
+			source.go_back(1)
+			source.writeln(parser.tmpl_str_end)
+			source.writeln(' } else { ')
+			source.writeln(parser.tmpl_str_start)
 		} else if line.contains('@for') {
-			s.writeln(parser.tmpl_str_end)
+			source.writeln(parser.tmpl_str_end)
 			pos := line.index('@for') or { continue }
-			s.writeln('for ' + line[pos + 4..] + '{')
-			s.writeln(parser.tmpl_str_start)
+			source.writeln('for ' + line[pos + 4..] + '{')
+			source.writeln(parser.tmpl_str_start)
 		} else if state == .html && line.contains('span.') && line.ends_with('{') {
 			// `span.header {` => `<span class='header'>`
 			class := line.find_between('span.', '{').trim_space()
-			s.writeln('<span class="$class">')
+			source.writeln('<span class="$class">')
 			in_span = true
 		} else if state == .html && line.contains('.') && line.ends_with('{') {
 			// `.header {` => `<div class='header'>`
 			class := line.find_between('.', '{').trim_space()
-			s.writeln('<div class="$class">')
+			source.writeln('<div class="$class">')
 		} else if state == .html && line.contains('#') && line.ends_with('{') {
 			// `#header {` => `<div id='header'>`
 			class := line.find_between('#', '{').trim_space()
-			s.writeln('<div id="$class">')
+			source.writeln('<div id="$class">')
 		} else if state == .html && line == '}' {
 			if in_span {
-				s.writeln('</span>')
+				source.writeln('</span>')
 				in_span = false
 			} else {
-				s.writeln('</div>')
+				source.writeln('</div>')
 			}
 		} else {
 			// HTML, may include `@var`
 			// escaped by cgen, unless it's a `vweb.RawHtml` string
-			s.writeln(line.replace('@', '$').replace('$$', '@').replace('.$', '.@').replace("'",
+			source.writeln(line.replace('@', '$').replace('$$', '@').replace('.$', '.@').replace("'",
 				"\\'"))
 		}
 	}
-	s.writeln(parser.tmpl_str_end)
-	s.writeln('_tmpl_res_$fn_name := sb.str() ')
-	s.writeln('}')
-	s.writeln('// === end of vweb html template ===')
-	result := s.str()
+	source.writeln(parser.tmpl_str_end)
+	source.writeln('_tmpl_res_$fn_name := sb.str() ')
+	source.writeln('}')
+	source.writeln('// === end of vweb html template ===')
+	result := source.str()
 	return result
 }
