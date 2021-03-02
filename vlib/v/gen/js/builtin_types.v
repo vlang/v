@@ -288,7 +288,7 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 					typ_name: typ_name
 					val_name: 'str'
 					default_value: 'new String("")'
-					constructor: 'this.str = str; this.len = str.length'
+					constructor: 'this.str = str.toString(); this.len = this.str.length'
 					value_of: 'this.str'
 					to_string: 'this.str'
 					eq: 'this.str === other.str'
