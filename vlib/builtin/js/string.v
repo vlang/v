@@ -94,14 +94,6 @@ pub fn (s string) starts_with(p string) bool {
 	return s.str.starts_with(p.str)
 }
 
-pub fn (s string) f32() f32 {
-	return f32(JS.parseFloat(s.str))
-}
-
-pub fn (s string) f64() f64 {
-	return f64(JS.parseFloat(s.str))
-}
-
 pub fn (s string) fields() []string {
 	return []// s.str.split()
 }
@@ -121,4 +113,50 @@ pub fn (s string) hash () int {
 		}
 	}
 	return int(h)
+}
+
+// int returns the value of the string as an integer `'1'.int() == 1`.
+pub fn (s string) int() int {
+	return int(JS.parseInt(s))
+}
+
+// i64 returns the value of the string as i64 `'1'.i64() == i64(1)`.
+pub fn (s string) i64() i64 {
+	return i64(JS.parseInt(s))
+}
+
+// i8 returns the value of the string as i8 `'1'.i8() == i8(1)`.
+pub fn (s string) i8() i8 {
+	return i8(JS.parseInt(s))
+}
+
+// i16 returns the value of the string as i16 `'1'.i16() == i16(1)`.
+pub fn (s string) i16() i16 {
+	return i16(JS.parseInt(s))
+}
+
+// f32 returns the value of the string as f32 `'1.0'.f32() == f32(1)`.
+pub fn (s string) f32() f32 {
+	// return C.atof(charptr(s.str))
+	return f32(JS.parseFloat(s))
+}
+
+// f64 returns the value of the string as f64 `'1.0'.f64() == f64(1)`.
+pub fn (s string) f64() f64 {
+	return f64(JS.parseFloat(s))
+}
+
+// u16 returns the value of the string as u16 `'1'.u16() == u16(1)`.
+pub fn (s string) u16() u16 {
+	return u16(JS.parseInt(s))
+}
+
+// u32 returns the value of the string as u32 `'1'.u32() == u32(1)`.
+pub fn (s string) u32() u32 {
+	return u32(JS.parseInt(s))
+}
+
+// u64 returns the value of the string as u64 `'1'.u64() == u64(1)`.
+pub fn (s string) u64() u64 {
+	return u64(JS.parseInt(s))
 }

@@ -1,6 +1,7 @@
 module js
 
 import strings
+import math
 import v.ast
 import v.table
 import v.token
@@ -1400,8 +1401,9 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		g.write(g.typ(it.right_type))
 	} else {
 		is_arithmetic := it.op in [token.Kind.plus, .minus, .mul, .div, .mod]
+		needs_cast := it.left_type != it.right_type
 
-		if is_arithmetic {
+		if is_arithmetic && needs_cast {
 			greater_typ := g.greater_typ(it.left_type, it.right_type)
 			if g.ns.name == 'builtin' {
 				g.write('new ')
@@ -1409,12 +1411,11 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 			g.write('${g.typ(greater_typ)}(')
 			g.cast_stack << greater_typ
 		}
-
 		g.expr(it.left)
-		g.write(' $it.op ')
+		g.write(' ${it.op} ')
 		g.expr(it.right)
 
-		if is_arithmetic {
+		if is_arithmetic && needs_cast {
 			g.cast_stack.pop()
 			g.write(')')
 		}
@@ -1614,12 +1615,13 @@ fn (mut g JsGen) gen_integer_literal_expr(it ast.IntegerLiteral) {
 	typ := table.Type(table.int_type)
 
 	// Don't wrap integers for use in JS.foo functions.
+	// TODO: call.language always seems to be "v", parser bug?
 	if g.call_stack.len > 0 {
 		call := g.call_stack[g.call_stack.len - 1]
 		//if call.language == .js {
 			for t in call.args {
 				if t.expr is ast.IntegerLiteral {
-					if ast.IntegerLiteral(t.expr) == it {
+					if t.expr == it {
 						g.write(it.val)
 						return
 					}
@@ -1630,7 +1632,7 @@ fn (mut g JsGen) gen_integer_literal_expr(it ast.IntegerLiteral) {
 
 	// Skip cast if type is the same as the parrent caster
 	if g.cast_stack.len > 0 {
-		if typ == g.cast_stack[g.cast_stack.len - 1] {
+		if g.cast_stack[g.cast_stack.len - 1] in table.integer_type_idxs {
 			g.write('$it.val')
 			return
 		}
@@ -1647,6 +1649,7 @@ fn (mut g JsGen) gen_float_literal_expr(it ast.FloatLiteral) {
 	typ := table.Type(table.f32_type)
 	
 	// Don't wrap integers for use in JS.foo functions.
+	// TODO: call.language always seems to be "v", parser bug?
 	if g.call_stack.len > 0 {
 		call := g.call_stack[g.call_stack.len - 1]
 		//if call.language == .js {
@@ -1654,7 +1657,7 @@ fn (mut g JsGen) gen_float_literal_expr(it ast.FloatLiteral) {
 				if t.expr is ast.FloatLiteral {
 					if ast.FloatLiteral(t.expr) == it {
 						if call.expected_arg_types[i] in table.integer_type_idxs {
-							g.write('($it.val|0)')
+							g.write(math.floor(it.val.f64()).str())
 						} else {
 							g.write(it.val)
 						}
@@ -1667,12 +1670,11 @@ fn (mut g JsGen) gen_float_literal_expr(it ast.FloatLiteral) {
 
 	// Skip cast if type is the same as the parrent caster
 	if g.cast_stack.len > 0 {
-		if typ == g.cast_stack[g.cast_stack.len - 1] {
-			if g.cast_stack[g.cast_stack.len - 1] in table.integer_type_idxs {
-				g.write('($it.val|0)')
-			} else {
-				g.write('$it.val')
-			}
+		if g.cast_stack[g.cast_stack.len - 1] in table.float_type_idxs {
+			g.write('$it.val')
+			return
+		} else if g.cast_stack[g.cast_stack.len - 1] in table.integer_type_idxs {
+			g.write(math.floor(it.val.f64()).str())
 			return
 		}
 	}
