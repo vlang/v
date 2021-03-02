@@ -688,12 +688,17 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt) {
 			} else {
 				g.write(' $op ')
 				// TODO: Multiple types??
-				g.cast_stack << stmt.left_types.first()
-				if g.file.mod.name == 'builtin' { g.write('new ') }
-				g.write('${g.typ(stmt.left_types.first())}(')
+				is_struct_init := val is ast.StructInit 
+				if !is_struct_init {
+					g.cast_stack << stmt.left_types.first()
+					if g.file.mod.name == 'builtin' { g.write('new ') }
+					g.write('${g.typ(stmt.left_types.first())}(')
+				}
 				g.expr(val)
-				g.write(')')
-				g.cast_stack.pop()
+				if !is_struct_init {
+					g.write(')')
+					g.cast_stack.pop()
+				}
 			}
 			if g.inside_loop {
 				g.write('; ')
