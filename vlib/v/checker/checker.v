@@ -3754,6 +3754,13 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 						node.expr_type = node.expr_type.set_flag(.optional)
 						node.expr.is_option = true
 					}
+					ast.PrefixExpr {
+						if node.expr.op == .arrow {
+							no_opt = false
+							node.expr_type = node.expr_type.set_flag(.optional)
+							node.expr.is_option = true
+						}
+					}
 					else {}
 				}
 				if no_opt {

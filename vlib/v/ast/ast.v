@@ -600,11 +600,12 @@ pub mut:
 pub struct PrefixExpr {
 pub:
 	op    token.Kind
-	right Expr
 	pos   token.Position
 pub mut:
 	right_type table.Type
+	right      Expr
 	or_block   OrExpr
+	is_option  bool // IfGuard
 }
 
 pub struct IndexExpr {
