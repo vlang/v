@@ -4,7 +4,6 @@
 module scanner
 
 import os
-import encoding.utf8
 import v.token
 import v.pref
 import v.util
@@ -1057,7 +1056,7 @@ fn (mut s Scanner) text_scan() token.Token {
 }
 
 fn (mut s Scanner) invalid_character() {
-	len := utf8.char_len(s.text[s.pos])
+	len := utf8_char_len(s.text[s.pos])
 	end := util.imin(s.pos + len, s.text.len)
 	c := s.text[s.pos..end]
 	s.error('invalid character `$c`')

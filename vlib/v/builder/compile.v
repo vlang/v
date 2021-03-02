@@ -29,7 +29,7 @@ pub fn compile(command string, pref &pref.Preferences) {
 	}
 	os.is_writable_folder(output_folder) or {
 		// An early error here, is better than an unclear C error later:
-		verror(err)
+		verror(err.msg)
 		exit(1)
 	}
 	// Construct the V object from command line arguments

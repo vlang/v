@@ -1280,7 +1280,9 @@ pub fn (expr Expr) is_lvalue() bool {
 pub fn (expr Expr) is_expr() bool {
 	match expr {
 		IfExpr { return expr.is_expr }
+		LockExpr { return expr.is_expr }
 		MatchExpr { return expr.is_expr }
+		SelectExpr { return expr.is_expr }
 		else {}
 	}
 	return true

@@ -96,7 +96,7 @@ fn ws_test(uri string) ? {
 	}
 	// sleep to give time to recieve response before asserts
 	time.sleep(1500 * time.millisecond)
-	// We expect at least 2 pongs, one sent directly and one indirectly 
+	// We expect at least 2 pongs, one sent directly and one indirectly
 	assert test_results.nr_pong_received >= 2
 	assert test_results.nr_messages == 2
 }

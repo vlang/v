@@ -304,7 +304,10 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	}
 	mut reader := io.new_buffered_reader(reader: io.make_reader(conn))
 	page_gen_start := time.ticks()
-	req := parse_request(mut reader) or { return }
+	req := parse_request(mut reader) or {
+		eprintln('error parsing request: $err')
+		return
+	}
 	app.Context = Context{
 		req: req
 		conn: conn
@@ -326,191 +329,166 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 		}
 	}
 	// Serve a static file if it is one
-	// TODO: handle url parameters properly - for now, ignore them
-	mut static_file_name := app.req.url
-	// TODO: use urllib methods instead of manually parsing
-	if static_file_name.contains('?') {
-		static_file_name = static_file_name.all_before('?')
-	}
-	static_file := app.static_files[static_file_name]
-	mime_type := app.static_mime_types[static_file_name]
-	if static_file != '' && mime_type != '' {
-		data := os.read_file(static_file) or {
-			send_string(mut conn, vweb.http_404) or { }
-			return
-		}
-		app.send_response_to_client(mime_type, data)
-		unsafe { data.free() }
+	// TODO: get the real path
+	url := urllib.parse(app.req.url.to_lower()) or {
+		eprintln('error parsing path: $err')
 		return
 	}
+	if serve_static<T>(mut app, url) {
+		// successfully served a static file
+		return
+	}
+
 	app.init()
 	// Call the right action
 	$if debug {
 		println('route matching...')
 	}
-	mut route_words_a := [][]string{}
-	// TODO: use urllib methods instead of manually parsing
-	mut url_words := req.url.split('/').filter(it != '')
-	// Parse URL query
-	if url_words.len > 0 && url_words.last().contains('?') {
-		words := url_words.last().after('?').split('&')
-		tmp_query := words.map(it.split('='))
-		url_words[url_words.len - 1] = url_words.last().all_before('?')
-		for data in tmp_query {
-			if data.len == 2 {
-				app.query[data[0]] = data[1]
-			}
-		}
+	url_words := url.path.split('/').filter(it != '')
+	// copy query args to app.query
+	for k, v in url.query().data {
+		app.query[k] = v.data[0]
 	}
-	mut vars := []string{cap: route_words_a.len}
-	mut action := ''
+
 	$for method in T.methods {
 		$if method.return_type is Result {
-			attrs := method.attrs
-			route_words_a = [][]string{}
-			// Get methods
-			// Get is default
-			mut req_method_str := '$req.method'
-			if req.method == .post {
-				if 'post' in attrs {
-					route_words_a = attrs.filter(it.to_lower() != 'post').map(it[1..].split('/'))
-				}
-			} else if req.method == .put {
-				if 'put' in attrs {
-					route_words_a = attrs.filter(it.to_lower() != 'put').map(it[1..].split('/'))
-				}
-			} else if req.method == .patch {
-				if 'patch' in attrs {
-					route_words_a = attrs.filter(it.to_lower() != 'patch').map(it[1..].split('/'))
-				}
-			} else if req.method == .delete {
-				if 'delete' in attrs {
-					route_words_a = attrs.filter(it.to_lower() != 'delete').map(it[1..].split('/'))
-				}
-			} else if req.method == .head {
-				if 'head' in attrs {
-					route_words_a = attrs.filter(it.to_lower() != 'head').map(it[1..].split('/'))
-				}
-			} else if req.method == .options {
-				if 'options' in attrs {
-					route_words_a = attrs.filter(it.to_lower() != 'options').map(it[1..].split('/'))
-				}
-			} else {
-				route_words_a = attrs.filter(it.to_lower() != 'get').map(it[1..].split('/'))
+			mut method_args := []string{}
+			// TODO: move to server start
+			http_methods, route_path := parse_attrs(method.name, method.attrs) or {
+				eprintln('error parsing method attributes: $err')
+				return
 			}
-			if attrs.len == 0 || (attrs.len == 1 && route_words_a.len == 0) {
-				if url_words.len > 0 {
-					// No routing for this method. If it matches, call it and finish matching
-					// since such methods have a priority.
-					// For example URL `/register` matches route `/:user`, but `fn register()`
-					// should be called first.
-					if (req_method_str == '' && url_words[0] == method.name && url_words.len == 1)
-						|| (req_method_str == req.method.str() && url_words[0] == method.name
-						&& url_words.len == 1) {
-						$if debug {
-							println('easy match method=$method.name')
-						}
-						app.$method(vars)
 
-						return
-					}
-				} else if method.name == 'index' {
-					// handle / to .index()
-					$if debug {
-						println('route to .index()')
-					}
-					app.$method(vars)
+			// Used for route matching
+			route_words := route_path.split('/').filter(it != '')
 
+			// Skip if the HTTP request method does not match the attributes
+			if app.req.method in http_methods {
+				// Route immediate matches first
+				// For example URL `/register` matches route `/:user`, but `fn register()`
+				// should be called first.
+				if !route_path.contains('/:') && url_words == route_words {
+					// We found a match
+					app.$method(method_args)
 					return
 				}
-			} else {
-				mut req_method := []string{}
-				if route_words_a.len > 0 {
-					for route_words_ in route_words_a {
-						// cannot move to line initialize line because of C error with map(it.filter(it != ''))
-						route_words := route_words_.filter(it != '')
-						if route_words.len == 1 && route_words[0] in vweb.methods_without_first {
-							req_method << route_words[0]
-						}
-						if url_words.len == route_words.len || (url_words.len >= route_words.len - 1
-							&& route_words.len > 0 && route_words.last().ends_with('...')) {
-							if req_method.len > 0 {
-								if req_method_str.to_lower()[1..] !in req_method {
-									continue
-								}
-							}
-							// match `/:user/:repo/tree` to `/vlang/v/tree`
-							mut matching := false
-							mut unknown := false
-							mut variables := []string{cap: route_words.len}
-							if route_words.len == 0 && url_words.len == 0 {
-								// index route
-								matching = true
-							}
-							for i in 0 .. route_words.len {
-								if url_words.len == i {
-									variables << ''
-									matching = true
-									unknown = true
-									break
-								}
-								if url_words[i] == route_words[i] {
-									// no parameter
-									matching = true
-									continue
-								} else if route_words[i].starts_with(':') {
-									// is parameter
-									if i < route_words.len && !route_words[i].ends_with('...') {
-										// normal parameter
-										variables << url_words[i]
-									} else {
-										// array parameter only in the end
-										variables << url_words[i..].join('/')
-									}
-									matching = true
-									unknown = true
-									continue
-								} else {
-									matching = false
-									break
-								}
-							}
-							if matching && !unknown {
-								// absolute router words like `/test/site`
-								app.$method(vars)
 
-								return
-							} else if matching && unknown {
-								// router words with paramter like `/:test/site`
-								action = method.name
-								vars = variables.clone()
-							}
-							req_method = []string{}
-						}
+				if url_words.len == 0 && route_words == ['index'] && method.name == 'index' {
+					app.$method(method_args)
+					return
+				}
+
+				if params := route_matches(url_words, route_words) {
+					method_args = params.clone()
+					if method_args.len != method.args.len {
+						eprintln('warning: uneven parameters count ($method.args.len) in `$method.name`, compared to the vweb route `$method.attrs` ($method_args.len)')
 					}
+					app.$method(method_args)
+					return
 				}
 			}
 		}
 	}
-	if action == '' {
-		// site not found
-		send_string(mut conn, vweb.http_404) or { }
-		return
+	// site not found
+	send_string(mut conn, vweb.http_404) or { }
+}
+
+fn route_matches(url_words []string, route_words []string) ?[]string {
+	// URL path should be at least as long as the route path
+	if url_words.len < route_words.len {
+		return none
 	}
-	$for method in T.methods {
-		$if method.return_type is Result {
-			// search again for method
-			if action == method.name && method.attrs.len > 0 {
-				// call action method
-				if method.args.len == vars.len {
-					app.$method(vars)
-					return
-				} else {
-					eprintln('warning: uneven parameters count ($method.args.len) in `$method.name`, compared to the vweb route `$method.attrs` ($vars.len)')
-				}
+
+	mut params := []string{cap: url_words.len}
+	if url_words.len == route_words.len {
+		for i in 0 .. url_words.len {
+			if route_words[i].starts_with(':') {
+				// We found a path paramater
+				params << url_words[i]
+			} else if route_words[i] != url_words[i] {
+				// This url does not match the route
+				return none
 			}
 		}
+		return params
 	}
+
+	// The last route can end with ... indicating an array
+	if !route_words[route_words.len - 1].ends_with('...') {
+		return none
+	}
+
+	for i in 0 .. route_words.len - 1 {
+		if route_words[i].starts_with(':') {
+			// We found a path paramater
+			params << url_words[i]
+		} else if route_words[i] != url_words[i] {
+			// This url does not match the route
+			return none
+		}
+	}
+	params << url_words[route_words.len - 1..url_words.len].join('/')
+	return params
+}
+
+// parse function attribute list for methods and a path
+fn parse_attrs(name string, attrs []string) ?([]http.Method, string) {
+	if attrs.len == 0 {
+		return [http.Method.get], '/$name'
+	}
+
+	mut x := attrs.clone()
+	mut methods := []http.Method{}
+	mut path := ''
+
+	for i := 0; i < x.len; {
+		attr := x[i]
+		attru := attr.to_upper()
+		m := http.method_from_str(attru)
+		if attru == 'GET' || m != .get {
+			methods << m
+			x.delete(i)
+			continue
+		}
+		if attr.starts_with('/') {
+			if path != '' {
+				return error('Expected at most one path attribute')
+			}
+			path = attr
+			x.delete(i)
+			continue
+		}
+		i++
+	}
+	if x.len > 0 {
+		return error('Encountered unexpected extra attributes: $x')
+	}
+	if methods.len == 0 {
+		methods = [http.Method.get]
+	}
+	if path == '' {
+		path = '/$name'
+	}
+	// Make path lowercase for case-insensitive comparisons
+	return methods, path.to_lower()
+}
+
+// check if request is for a static file and serves it
+// returns true if we served a static file, false otherwise
+fn serve_static<T>(mut app T, url urllib.URL) bool {
+	// TODO: handle url parameters properly - for now, ignore them
+	static_file := app.static_files[url.path]
+	mime_type := app.static_mime_types[url.path]
+	if static_file == '' || mime_type == '' {
+		return false
+	}
+	data := os.read_file(static_file) or {
+		send_string(mut app.conn, vweb.http_404) or { }
+		return true
+	}
+	app.send_response_to_client(mime_type, data)
+	unsafe { data.free() }
+	return true
 }
 
 // vweb intern function
@@ -613,7 +591,7 @@ fn (mut ctx Context) scan_static_directory(directory_path string, mount_path str
 }
 
 // Handles a directory static
-// If `root` is set the mount path for the dir will be in '/' 
+// If `root` is set the mount path for the dir will be in '/'
 pub fn (mut ctx Context) handle_static(directory_path string, root bool) bool {
 	if ctx.done || !os.exists(directory_path) {
 		return false
@@ -629,7 +607,7 @@ pub fn (mut ctx Context) handle_static(directory_path string, root bool) bool {
 }
 
 // Serves a file static
-// `url` is the access path on the site, `file_path` is the real path to the file, `mime_type` is the file type 
+// `url` is the access path on the site, `file_path` is the real path to the file, `mime_type` is the file type
 pub fn (mut ctx Context) serve_static(url string, file_path string, mime_type string) {
 	ctx.static_files[url] = file_path
 	ctx.static_mime_types[url] = mime_type

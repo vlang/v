@@ -12,14 +12,14 @@ mkdir('v_script_dir')
 
 println("\nEntering into v_script_dir and listing it's files.")
 chdir('v_script_dir')
-files := ls('.') or { panic(err) }
+files := ls('.') or { panic(err.msg) }
 println(files)
 
 println('\nCreating foo.txt')
 create('foo.txt')?
 
 println('\nFiles:')
-again_ls := ls('.') or { panic(err) }
+again_ls := ls('.') or { panic(err.msg) }
 println(again_ls)
 
 println('\nRemoving foo.txt and v_script_dir')

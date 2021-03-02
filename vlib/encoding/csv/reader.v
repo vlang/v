@@ -46,10 +46,10 @@ pub fn (mut r Reader) read() ?[]string {
 // 	mut records := []string{}
 // 	for {
 // 		record := r.read_record() or {
-// 			if error(err).error == err_eof.error {
+// 			if err.error == err_eof.error {
 // 				return records
 // 			} else {
-// 				return error(err)
+// 				return err
 // 			}
 // 		}
 // 		records << record

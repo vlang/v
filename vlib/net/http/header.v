@@ -419,6 +419,11 @@ pub fn (h Header) values_str(key string) []string {
 	return h.data[k]
 }
 
+// Gets all header keys as strings
+pub fn (h Header) keys() []string {
+	return h.data.keys()
+}
+
 // Validate and canonicalize an HTTP header key
 // A canonical header is all lowercase except for the first character
 // and any character after a `-`. Example: `Example-Header-Key`

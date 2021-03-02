@@ -237,7 +237,7 @@ fn (mut g Gen) comp_if_cond(cond ast.Expr) bool {
 		}
 		ast.PostfixExpr {
 			ifdef := g.comp_if_to_ifdef((cond.expr as ast.Ident).name, true) or {
-				verror(err)
+				verror(err.msg)
 				return false
 			}
 			g.write('defined($ifdef)')
@@ -298,7 +298,8 @@ fn (mut g Gen) comp_if_cond(cond ast.Expr) bool {
 
 fn (mut g Gen) comp_for(node ast.CompFor) {
 	sym := g.table.get_type_symbol(g.unwrap_generic(node.typ))
-	g.writeln('{ // 2comptime: \$for $node.val_var in ${sym.name}($node.kind.str()) {')
+	g.writeln('/* \$for $node.val_var in ${sym.name}($node.kind.str()) */ {')
+	g.indent++
 	// vweb_result_type := table.new_type(g.table.find_type_idx('vweb.Result'))
 	mut i := 0
 	// g.writeln('string method = _SLIT("");')
@@ -307,7 +308,7 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 		methods_with_attrs := sym.methods.filter(it.attrs.len > 0) // methods with attrs second
 		methods << methods_with_attrs
 		if methods.len > 0 {
-			g.writeln('\tFunctionData $node.val_var = {0};')
+			g.writeln('FunctionData $node.val_var = {0};')
 		}
 		for method in methods { // sym.methods {
 			/*
@@ -316,7 +317,7 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 			}
 			*/
 			g.comp_for_method = method.name
-			g.writeln('\t// method $i')
+			g.writeln('/* method $i */ {')
 			g.writeln('\t${node.val_var}.name = _SLIT("$method.name");')
 			if method.attrs.len == 0 {
 				g.writeln('\t${node.val_var}.attrs = __new_array_with_default(0, 0, sizeof(string), 0);')
@@ -366,7 +367,7 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 			g.comptime_var_type_map['${node.val_var}.typ'] = styp
 			g.stmts(node.stmts)
 			i++
-			g.writeln('')
+			g.writeln('}')
 			for key, _ in g.comptime_var_type_map {
 				if key.starts_with(node.val_var) {
 					g.comptime_var_type_map.delete(key)
@@ -385,7 +386,7 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 			for field in fields {
 				g.comp_for_field_var = node.val_var
 				g.comp_for_field_value = field
-				g.writeln('\t// field $i')
+				g.writeln('/* field $i */ {')
 				g.writeln('\t${node.val_var}.name = _SLIT("$field.name");')
 				if field.attrs.len == 0 {
 					g.writeln('\t${node.val_var}.attrs = __new_array_with_default(0, 0, sizeof(string), 0);')
@@ -404,12 +405,13 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 				g.comptime_var_type_map['${node.val_var}.typ'] = styp
 				g.stmts(node.stmts)
 				i++
-				g.writeln('')
+				g.writeln('}')
 			}
 			g.comptime_var_type_map.delete(node.val_var)
 		}
 	}
-	g.writeln('} // } comptime for')
+	g.indent--
+	g.writeln('}// \$for')
 }
 
 fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) ?string {

@@ -307,6 +307,7 @@ pub const (
 	float_literal_type_idx = 26
 	int_literal_type_idx   = 27
 	thread_type_idx        = 28
+	error_type_idx         = 29
 )
 
 pub const (
@@ -351,13 +352,14 @@ pub const (
 	float_literal_type = new_type(float_literal_type_idx)
 	int_literal_type   = new_type(int_literal_type_idx)
 	thread_type        = new_type(thread_type_idx)
+	error_type         = new_type(error_type_idx)
 )
 
 pub const (
 	builtin_type_names = ['void', 'voidptr', 'charptr', 'byteptr', 'i8', 'i16', 'int', 'i64', 'u16',
 		'u32', 'u64', 'int_literal', 'f32', 'f64', 'float_literal', 'string', 'ustring', 'char',
 		'byte', 'bool', 'none', 'array', 'array_fixed', 'map', 'chan', 'any', 'struct', 'mapnode',
-		'size_t', 'rune', 'thread']
+		'size_t', 'rune', 'thread', 'Error']
 )
 
 pub struct MultiReturn {
@@ -549,6 +551,7 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 			return_type: table.void_type
 		}
 	)
+	t.register_type_symbol(kind: .struct_, name: 'Error', cname: 'Error', mod: 'builtin')
 }
 
 [inline]
