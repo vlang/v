@@ -83,6 +83,16 @@ fn test_a_simple_tcp_client_simple_route() {
 	assert received.ends_with('A simple result')
 }
 
+fn test_a_simple_tcp_client_zero_content_length() {
+	// tests that sending a content-length header of 0 doesn't hang on a read timeout
+	watch := time.new_stopwatch(auto_start: true)
+	simple_tcp_client(path: '/', headers: 'Content-Length: 0\r\n\r\n') or {
+		assert err.msg == ''
+		return
+	}
+	assert watch.elapsed() < 1 * time.second
+}
+
 fn test_a_simple_tcp_client_html_page() {
 	received := simple_tcp_client(path: '/html_page') or {
 		assert err.msg == ''
