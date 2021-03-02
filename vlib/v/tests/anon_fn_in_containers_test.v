@@ -1,23 +1,13 @@
-import sync
-
-fn test_go_anon_fn() {
-	mut wg := sync.new_waitgroup()
-	wg.add(1)    
-	go fn (mut wg sync.WaitGroup) {
-		wg.done()
-	}(mut wg)
-	wg.wait()
-}
-
-struct AnonFnWrapper {
-mut:
-	fn_ fn () bool
-}
-
-fn test_anon_assign_struct() {
-	mut w := AnonFnWrapper{}
-	w.fn_ = fn () bool {
-		return true
+fn test_anon_fn_in_map() {
+	mut woop := map{
+		'what': fn() string {
+			return 'whoopity whoop'
+		}
 	}
-	assert w.fn_()
+	assert woop['what']() == 'whoopity whoop'
+
+	woop['shat'] = fn() string {
+		return 'shoopity shoop'
+	}
+	assert woop['shat']() == 'shoopity shoop'
 }
