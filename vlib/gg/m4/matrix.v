@@ -160,9 +160,9 @@ pub fn (mut x Mat4) set_f32(value f32) {
 //-------------------------------------
 // Set the row as the input vec4
 [direct_array_access]
+[unsafe]
 pub fn (mut x Mat4) set_row(row int, v3 Vec4) {
 	unsafe {
-		assert row * 4 + 3 < x.e.len
 		x.e[row * 4] = v3.e[0]
 		x.e[row * 4 + 1] = v3.e[1]
 		x.e[row * 4 + 2] = v3.e[2]
@@ -172,9 +172,9 @@ pub fn (mut x Mat4) set_row(row int, v3 Vec4) {
 
 // Get a row from a matrix
 [direct_array_access]
+[unsafe]
 pub fn (x Mat4) get_row(row int) Vec4 {
 	unsafe {
-		assert row >= 0 && row * 4 + 3 < x.e.len
 		return Vec4{
 			e: [
 				x.e[row * 4],
@@ -188,9 +188,9 @@ pub fn (x Mat4) get_row(row int) Vec4 {
 
 // Set the column as the input vec4
 [direct_array_access]
+[unsafe]
 pub fn (mut x Mat4) set_col(col int, v3 Vec4) {
 	unsafe {
-		assert col >= 0 && col + 12 < x.e.len
 		x.e[col] = v3.e[0]
 		x.e[col + 4] = v3.e[1]
 		x.e[col + 8] = v3.e[2]
@@ -200,9 +200,9 @@ pub fn (mut x Mat4) set_col(col int, v3 Vec4) {
 
 // Get a column from a matrix
 [direct_array_access]
+[unsafe]
 pub fn (x Mat4) get_col(col int) Vec4 {
 	unsafe {
-		assert col >= 0 && col + 12 < x.e.len
 		return Vec4{
 			e: [
 				x.e[col],
@@ -216,11 +216,9 @@ pub fn (x Mat4) get_col(col int) Vec4 {
 
 // Swap two columns in the matrix
 [direct_array_access]
+[unsafe]
 pub fn (mut x Mat4) swap_col(col1 int, col2 int) {
 	unsafe {
-		assert col1 >= 0 && col1 + 12 < x.e.len
-		assert col2 >= 0 && col2 + 12 < x.e.len
-
 		v0 := x.e[col1]
 		v1 := x.e[col1 + 4]
 		v2 := x.e[col1 + 8]
@@ -240,11 +238,9 @@ pub fn (mut x Mat4) swap_col(col1 int, col2 int) {
 
 // Swap two rows in the matrix
 [direct_array_access]
+[unsafe]
 pub fn (mut x Mat4) swap_row(row1 int, row2 int) {
 	unsafe {
-		assert row1 >= 0 && row1 * 4 + 3 < x.e.len
-		assert row2 >= 0 && row2 * 4 + 3 < x.e.len
-
 		v0 := x.e[row1 * 4]
 		v1 := x.e[row1 * 4 + 1]
 		v2 := x.e[row1 * 4 + 2]
