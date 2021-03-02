@@ -81,9 +81,9 @@ pub fn (s string) contains_any_substr(chars []string) bool {
 }
 
 pub fn (s string) count(substr string) int {
-	// TODO: error: `[]JS.String` is not a struct
-	//arr := s.str.split(substr.str)
-	return 0//arr.length
+	// TODO: "error: `[]JS.String` is not a struct" when returning arr.length or arr.len
+	arr := s.str.split(substr.str)
+	return native_str_arr_len(arr)
 }
 
 pub fn (s string) ends_with(p string) bool {

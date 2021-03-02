@@ -24,6 +24,14 @@ fn (v JS.Boolean) toString() JS.String
 fn (v JS.Array) toString() JS.String
 fn (v JS.Map) toString() JS.String
 
+// Hack for "`[]JS.String` is not a struct" when returning arr.length or arr.len
+// TODO: Fix []JS.String not a struct error
+fn native_str_arr_len(arr []JS.String) int {
+	len := 0
+	#len = arr.length
+	return len
+}
+
 // Top level functions
 fn JS.eval(string) any
 fn JS.parseInt(string, f64) JS.Number

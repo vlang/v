@@ -115,8 +115,10 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 	nodes := deps_resolved.nodes
 	mut out := g.hashes() + g.definitions.str()
 	// equality check for js objects
-	mut eq_fn := $embed_file('fast_deep_equal.js')
-	out += eq_fn.data().vstring()
+	unsafe {
+		mut eq_fn := $embed_file('fast_deep_equal.js')
+		out += eq_fn.data().vstring()
+	}
 	for node in nodes {
 		name := g.js_name(node.name).replace('.', '_')
 		if g.enable_doc {
@@ -834,12 +836,11 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
 		args = args[1..]
 	}
 	g.fn_args(args, it.is_variadic)
-	g.writeln(') {')
 	if it.is_method {
-		g.inc_indent()
-		g.writeln('const ${it.params[0].name} = this;')
-		g.dec_indent()
+		if args.len > 0 { g.write(', ') }
+		g.write('${it.params[0].name} = this')
 	}
+	g.writeln(') {')
 	g.stmts(it.stmts)
 	g.write('}')
 	if is_main {
@@ -1655,7 +1656,7 @@ fn (mut g JsGen) gen_float_literal_expr(it ast.FloatLiteral) {
 		//if call.language == .js {
 			for i, t in call.args {
 				if t.expr is ast.FloatLiteral {
-					if ast.FloatLiteral(t.expr) == it {
+					if t.expr == it {
 						if call.expected_arg_types[i] in table.integer_type_idxs {
 							g.write(math.floor(it.val.f64()).str())
 						} else {
