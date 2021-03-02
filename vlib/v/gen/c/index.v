@@ -12,11 +12,11 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 	} else {
 		sym := g.table.get_final_type_symbol(node.left_type)
 		if sym.kind == .array {
-			g.index_of_array(node)
+			g.index_of_array(node, sym)
 		} else if sym.kind == .array_fixed {
-			g.index_of_fixed_array(node)
+			g.index_of_fixed_array(node, sym)
 		} else if sym.kind == .map {
-			g.index_of_map(node)
+			g.index_of_map(node, sym)
 		} else if sym.kind == .string && !node.left_type.is_ptr() {
 			g.write('string_at(')
 			g.expr(node.left)
@@ -91,9 +91,8 @@ fn (mut g Gen) range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 	g.write(')')
 }
 
-fn (mut g Gen) index_of_array(node ast.IndexExpr) {
+fn (mut g Gen) index_of_array(node ast.IndexExpr, sym table.TypeSymbol) {
 	gen_or := node.or_expr.kind != .absent
-	sym := g.table.get_final_type_symbol(node.left_type)
 	left_is_ptr := node.left_type.is_ptr()
 	info := sym.info as table.Array
 	elem_type_str := g.typ(info.elem_type)
@@ -255,8 +254,7 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr) {
 	}
 }
 
-fn (mut g Gen) index_of_fixed_array(node ast.IndexExpr) {
-	sym := g.table.get_final_type_symbol(node.left_type)
+fn (mut g Gen) index_of_fixed_array(node ast.IndexExpr, sym table.TypeSymbol) {
 	info := sym.info as table.ArrayFixed
 	elem_type := info.elem_type
 	elem_sym := g.table.get_type_symbol(elem_type)
@@ -288,9 +286,8 @@ fn (mut g Gen) index_of_fixed_array(node ast.IndexExpr) {
 	}
 }
 
-fn (mut g Gen) index_of_map(node ast.IndexExpr) {
+fn (mut g Gen) index_of_map(node ast.IndexExpr, sym table.TypeSymbol) {
 	gen_or := node.or_expr.kind != .absent
-	sym := g.table.get_final_type_symbol(node.left_type)
 	left_is_ptr := node.left_type.is_ptr()
 	info := sym.info as table.Map
 	key_type_str := g.typ(info.key_type)
