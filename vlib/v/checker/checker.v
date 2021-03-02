@@ -1823,7 +1823,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 				call_expr.pos)
 		}
 	}
-	if !f.is_pub && f.language == .v && (f.name.len > 0 && f.mod.len > 0) && f.mod != c.mod {
+	if !f.is_pub && f.language == .v && f.name.len > 0 && f.mod.len > 0 && f.mod != c.mod {
 		c.error('function `$f.name` is private, so you can not import it in module `$c.mod`',
 			call_expr.pos)
 	}
