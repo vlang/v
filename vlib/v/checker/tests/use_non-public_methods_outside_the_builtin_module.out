@@ -1,0 +1,6 @@
+vlib/v/checker/tests/use_non-public_methods_outside_the_builtin_module.vv:5:13: error: method `map[string]string.exists_1` is private
+    3 | fn main() {
+    4 |     mp := map{'key': 'value'}
+    5 |     println(mp.exists_1('key'))
+      |                ~~~~~~~~~~~~~~~
+    6 | }

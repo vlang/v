@@ -1,0 +1,6 @@
+module main
+
+fn main() {
+	mp := map{'key': 'value'}
+	println(mp.exists_1('key'))
+}
