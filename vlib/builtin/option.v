@@ -3,8 +3,64 @@
 // that can be found in the LICENSE file.
 module builtin
 
-// these are just here temporarily to avoid breaking the compiler;
-// they will be removed soon
+// IError holds information about an error instance
+pub interface IError {
+	msg  string
+	code int
+}
+
+// Error is the default implementation of IError, that is returned by e.g. `error()`
+pub struct Error {
+pub:
+	msg  string
+	code int
+}
+
+pub struct Option3 {
+	state byte
+	err   IError
+}
+
+[inline]
+fn (e IError) str() string {
+	return e.msg
+}
+
+fn opt_ok3(data voidptr, mut option Option3, size int) {
+	unsafe {
+		*option = Option3{}
+		// use err to get the end of Option3 and then memcpy into it
+		C.memcpy(byteptr(&option.err) + sizeof(IError), data, size)
+	}
+}
+
+pub fn (o Option3) str() string {
+	if o.state == 0 {
+		return 'Option{ ok }'
+	}
+	if o.state == 1 {
+		return 'Option{ none }'
+	}
+	return 'Option{ err: "$o.err" }'
+}
+
+[inline]
+pub fn error3(message string) IError {
+	return &Error{
+		msg: message
+	}
+}
+
+pub fn error_with_code3(message string, code int) IError {
+	return &Error {
+		msg: message
+		code: code
+	}
+}
+
+////////////////////////////////////////
+
+// these are just here temporarily to avoid breaking the compiler; they will be removed soon
 pub fn error(a string) Option2 { return {} }
 pub fn error_with_code(a string, b int) Option2 { return {} }
 
@@ -15,13 +71,6 @@ struct Option2 {
 	// Data is trailing after err
 	// and is not included in here but in the
 	// derived Option2_xxx types
-}
-
-// Error holds information about an error instance
-pub struct Error {
-pub:
-	msg  string
-	code int
 }
 
 [inline]
@@ -70,59 +119,5 @@ pub fn error_with_code2(message string, code int) Option2 {
 			msg: message
 			code: code
 		}
-	}
-}
-
-////////////////////////////////////////
-
-pub struct Option3 {
-	state byte
-	err   Error3
-}
-
-pub interface Error3 {
-	msg  string
-	code int
-}
-
-pub struct DefaultError {
-	msg  string
-	code int
-}
-
-[inline]
-fn (e Error3) str() string {
-	return e.msg
-}
-
-fn opt_ok3(data voidptr, mut option Option3, size int) {
-	unsafe {
-		*option = Option3{}
-		// use err to get the end of Option3 and then memcpy into it
-		C.memcpy(byteptr(&option.err) + sizeof(Error3), data, size)
-	}
-}
-
-pub fn (o Option3) str() string {
-	if o.state == 0 {
-		return 'Option{ ok }'
-	}
-	if o.state == 1 {
-		return 'Option{ none }'
-	}
-	return 'Option{ err: "$o.err" }'
-}
-
-[inline]
-pub fn error3(message string) Error3 {
-	return &DefaultError{
-		msg: message
-	}
-}
-
-pub fn error_with_code3(message string, code int) Error3 {
-	return &DefaultError {
-		msg: message
-		code: code
 	}
 }

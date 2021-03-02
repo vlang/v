@@ -4930,7 +4930,7 @@ fn (mut g Gen) write_init_function() {
 }
 
 const (
-	builtins = ['string', 'array', 'DenseArray', 'map', 'Error', 'Option2', 'Error3', 'Option3']
+	builtins = ['string', 'array', 'DenseArray', 'map', 'Error', 'IError', 'Option2', 'Option3']
 )
 
 fn (mut g Gen) write_builtin_types() {
