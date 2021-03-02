@@ -4181,6 +4181,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 					if var_name == '' {
 						short_opt = true // we don't need a further tmp, so use the one we'll get later
 						var_name = g.new_tmp_var()
+						guard_vars[i] = var_name // for `else`
 						g.tmp_count--
 						g.writeln('if (${var_name}.state == 0) {')
 					} else {
