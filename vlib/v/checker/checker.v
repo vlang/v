@@ -1901,6 +1901,9 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		c.inside_println_arg = true
 		c.expected_type = table.string_type
 		call_expr.args[0].typ = c.expr(call_expr.args[0].expr)
+		if call_expr.args[0].typ.is_void() {
+			c.error('`$fn_name` can not print void expressions', call_expr.pos)
+		}
 		if call_expr.args[0].typ.has_flag(.shared_f) {
 			c.fail_if_not_rlocked(call_expr.args[0].expr, 'argument to print')
 		}
