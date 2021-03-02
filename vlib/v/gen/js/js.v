@@ -565,11 +565,7 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.gen_string_inter_literal(node)
 		}
 		ast.StringLiteral {
-			text := node.val.replace("'", "\\'")
-			if g.file.mod.name == 'builtin' {
-				g.write('new ')
-			}
-			g.write("string('$text')")
+			g.gen_string_literal(node)
 		}
 		ast.StructInit {
 			// TODO: once generic fns/unwrap_generic is implemented
@@ -691,7 +687,13 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt) {
 				g.write(')')
 			} else {
 				g.write(' $op ')
+				// TODO: Multiple types??
+				g.cast_stack << stmt.left_types.first()
+				if g.file.mod.name == 'builtin' { g.write('new ') }
+				g.write('${g.typ(stmt.left_types.first())}(')
 				g.expr(val)
+				g.write(')')
+				g.cast_stack.pop()
 			}
 			if g.inside_loop {
 				g.write('; ')
@@ -1506,10 +1508,14 @@ fn (mut g JsGen) gen_selector_expr(it ast.SelectorExpr) {
 }
 
 fn (mut g JsGen) gen_string_inter_literal(it ast.StringInterLiteral) {
-	if g.file.mod.name == 'builtin' {
-		g.write('new ')
+	should_cast := !(g.cast_stack.len > 0 && g.cast_stack.last() == table.string_type_idx)
+	if should_cast {
+		if g.file.mod.name == 'builtin' {
+			g.write('new ')
+		}
+		g.write('string(')
 	}
-	g.write('string(`')
+	g.write('`')
 	for i, val in it.vals {
 		escaped_val := val.replace('`', '\\`')
 		g.write(escaped_val)
@@ -1533,7 +1539,25 @@ fn (mut g JsGen) gen_string_inter_literal(it ast.StringInterLiteral) {
 		}
 		g.write('}')
 	}
-	g.write('`)')
+	g.write('`')
+	if should_cast {
+		g.write(')')
+	}
+}
+
+fn (mut g JsGen) gen_string_literal(it ast.StringLiteral) {
+	text := it.val.replace("'", "\\'")
+	should_cast := !(g.cast_stack.len > 0 && g.cast_stack.last() == table.string_type_idx)
+	if should_cast {
+		if g.file.mod.name == 'builtin' {
+			g.write('new ')
+		}
+		g.write("string(")
+	}
+	g.write("'$text'")
+	if should_cast {
+		g.write(')')
+	}
 }
 
 fn (mut g JsGen) gen_struct_init(it ast.StructInit) {
