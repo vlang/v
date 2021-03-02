@@ -1,7 +1,6 @@
 module js
 
 import strings
-import math
 import v.ast
 import v.table
 import v.token
@@ -1689,7 +1688,7 @@ fn (mut g JsGen) gen_float_literal_expr(it ast.FloatLiteral) {
 				if t.expr is ast.FloatLiteral {
 					if t.expr == it {
 						if call.expected_arg_types[i] in table.integer_type_idxs {
-							g.write(math.floor(it.val.f64()).str())
+							g.write(int(it.val.f64()).str())
 						} else {
 							g.write(it.val)
 						}
@@ -1706,7 +1705,7 @@ fn (mut g JsGen) gen_float_literal_expr(it ast.FloatLiteral) {
 			g.write('$it.val')
 			return
 		} else if g.cast_stack[g.cast_stack.len - 1] in table.integer_type_idxs {
-			g.write(math.floor(it.val.f64()).str())
+			g.write(int(it.val.f64()).str())
 			return
 		}
 	}
