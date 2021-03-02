@@ -1952,9 +1952,21 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					g.definitions.go_back(g.definitions.len - def_pos)
 					g.write(') = ')
 				} else {
+					g.is_assign_lhs = true
+					g.assign_op = assign_stmt.op
 					g.expr(left)
+					if left is ast.IndexExpr {
+						sym := g.table.get_type_symbol(left.left_type)
+						g.is_assign_lhs = false
+						if sym.kind in [.map, .array] {
+							g.expr(val)
+							g.writeln('});')
+							continue
+						}
+					}
 					g.write(' = ')
 				}
+				g.is_assign_lhs = false
 				g.expr(val)
 				g.writeln(';')
 				if blank_assign {
