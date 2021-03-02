@@ -12,11 +12,22 @@ pub struct PRNGConfigStruct {
 	seed []u32 = seed.time_seed_array(2)
 }
 
-__global ( default_rng &wyrand.WyRandRNG )
-
 // init initializes the default RNG.
 fn init() {
-	default_rng = new_default({})
+	mut srng := unsafe { static_srng() }
+	(*srng) = new_default({})
+}
+
+[unsafe]
+[inline]
+fn static_srng() &&wyrand.WyRandRNG {
+	static srng := &wyrand.WyRandRNG(0)
+	return &srng
+}
+
+[inline]
+fn get_default() &wyrand.WyRandRNG {
+	return unsafe { *static_srng() }
 }
 
 // new_default returns a new instance of the default RNG. If the seed is not provided, the current time will be used to seed the instance.
@@ -26,115 +37,115 @@ pub fn new_default(config PRNGConfigStruct) &wyrand.WyRandRNG {
 	return rng
 }
 
-// seed sets the given array of `u32` values as the seed for the `default_rng`.
+// seed sets the given array of `u32` values as the seed for the `get_default()`.
 pub fn seed(seed []u32) {
-	default_rng.seed(seed)
+	get_default().seed(seed)
 }
 
 // u32 returns a uniformly distributed `u32` in range `[0, 2³²)`.
 pub fn u32() u32 {
-	return default_rng.u32()
+	return get_default().u32()
 }
 
 // u64 returns a uniformly distributed `u64` in range `[0, 2⁶⁴)`.
 pub fn u64() u64 {
-	return default_rng.u64()
+	return get_default().u64()
 }
 
 // u32n returns a uniformly distributed pseudorandom 32-bit signed positive `u32` in range `[0, max)`.
 pub fn u32n(max u32) u32 {
-	return default_rng.u32n(max)
+	return get_default().u32n(max)
 }
 
 // u64n returns a uniformly distributed pseudorandom 64-bit signed positive `u64` in range `[0, max)`.
 pub fn u64n(max u64) u64 {
-	return default_rng.u64n(max)
+	return get_default().u64n(max)
 }
 
 // u32_in_range returns a uniformly distributed pseudorandom 32-bit unsigned `u32` in range `[min, max)`.
 pub fn u32_in_range(min u32, max u32) u32 {
-	return default_rng.u32_in_range(min, max)
+	return get_default().u32_in_range(min, max)
 }
 
 // u64_in_range returns a uniformly distributed pseudorandom 64-bit unsigned `u64` in range `[min, max)`.
 pub fn u64_in_range(min u64, max u64) u64 {
-	return default_rng.u64_in_range(min, max)
+	return get_default().u64_in_range(min, max)
 }
 
 // int returns a uniformly distributed pseudorandom 32-bit signed (possibly negative) `int`.
 pub fn int() int {
-	return default_rng.int()
+	return get_default().int()
 }
 
 // intn returns a uniformly distributed pseudorandom 32-bit signed positive `int` in range `[0, max)`.
 pub fn intn(max int) int {
-	return default_rng.intn(max)
+	return get_default().intn(max)
 }
 
 // byte returns a uniformly distributed pseudorandom 8-bit unsigned positive `byte`.
 pub fn byte() byte {
-	return byte(default_rng.u32() & 0xff)
+	return byte(get_default().u32() & 0xff)
 }
 
 // int_in_range returns a uniformly distributed pseudorandom  32-bit signed int in range `[min, max)`.
 // Both `min` and `max` can be negative, but we must have `min < max`.
 pub fn int_in_range(min int, max int) int {
-	return default_rng.int_in_range(min, max)
+	return get_default().int_in_range(min, max)
 }
 
 // int31 returns a uniformly distributed pseudorandom 31-bit signed positive `int`.
 pub fn int31() int {
-	return default_rng.int31()
+	return get_default().int31()
 }
 
 // i64 returns a uniformly distributed pseudorandom 64-bit signed (possibly negative) `i64`.
 pub fn i64() i64 {
-	return default_rng.i64()
+	return get_default().i64()
 }
 
 // i64n returns a uniformly distributed pseudorandom 64-bit signed positive `i64` in range `[0, max)`.
 pub fn i64n(max i64) i64 {
-	return default_rng.i64n(max)
+	return get_default().i64n(max)
 }
 
 // i64_in_range returns a uniformly distributed pseudorandom 64-bit signed `i64` in range `[min, max)`.
 pub fn i64_in_range(min i64, max i64) i64 {
-	return default_rng.i64_in_range(min, max)
+	return get_default().i64_in_range(min, max)
 }
 
 // int63 returns a uniformly distributed pseudorandom 63-bit signed positive `i64`.
 pub fn int63() i64 {
-	return default_rng.int63()
+	return get_default().int63()
 }
 
 // f32 returns a uniformly distributed 32-bit floating point in range `[0, 1)`.
 pub fn f32() f32 {
-	return default_rng.f32()
+	return get_default().f32()
 }
 
 // f64 returns a uniformly distributed 64-bit floating point in range `[0, 1)`.
 pub fn f64() f64 {
-	return default_rng.f64()
+	return get_default().f64()
 }
 
 // f32n returns a uniformly distributed 32-bit floating point in range `[0, max)`.
 pub fn f32n(max f32) f32 {
-	return default_rng.f32n(max)
+	return get_default().f32n(max)
 }
 
 // f64n returns a uniformly distributed 64-bit floating point in range `[0, max)`.
 pub fn f64n(max f64) f64 {
-	return default_rng.f64n(max)
+	return get_default().f64n(max)
 }
 
 // f32_in_range returns a uniformly distributed 32-bit floating point in range `[min, max)`.
 pub fn f32_in_range(min f32, max f32) f32 {
-	return default_rng.f32_in_range(min, max)
+	return get_default().f32_in_range(min, max)
 }
 
 // f64_in_range returns a uniformly distributed 64-bit floating point in range `[min, max)`.
 pub fn f64_in_range(min f64, max f64) f64 {
-	return default_rng.f64_in_range(min, max)
+	return get_default().f64_in_range(min, max)
 }
 
 const (
@@ -182,7 +193,7 @@ pub fn uuid_v4() string {
 	mut d := byte(0)
 	for i_buf < buflen {
 		mut c := 0
-		x = default_rng.u64()
+		x = get_default().u64()
 		// do most of the bit manipulation at once:
 		x &= 0x0F0F0F0F0F0F0F0F
 		x += 0x3030303030303030
@@ -240,7 +251,7 @@ pub fn ulid_at_millisecond(unix_time_milli u64) string {
 		i--
 	}
 	// first rand set
-	mut x := default_rng.u64()
+	mut x := get_default().u64()
 	i = 10
 	for i < 19 {
 		unsafe {
@@ -250,7 +261,7 @@ pub fn ulid_at_millisecond(unix_time_milli u64) string {
 		i++
 	}
 	// second rand set
-	x = default_rng.u64()
+	x = get_default().u64()
 	for i < 26 {
 		unsafe {
 			buf[i] = rand.ulid_encoding[x & 0x1F]
