@@ -2250,7 +2250,7 @@ pub fn (mut f Fmt) const_decl(it ast.ConstDecl) {
 		}
 	}
 	f.indent++
-	mut prev_field := if it.fields.len > 0 { ast.Node(it.fields[0])} else{ast.Node{}}
+	mut prev_field := if it.fields.len > 0 { ast.Node(it.fields[0]) } else { ast.Node{} }
 	for field in it.fields {
 		if field.comments.len > 0 {
 			if f.should_insert_newline_before_node(ast.Expr(field.comments[0]), prev_field) {
@@ -2262,7 +2262,6 @@ pub fn (mut f Fmt) const_decl(it ast.ConstDecl) {
 		if f.should_insert_newline_before_node(field, prev_field) {
 			f.writeln('')
 		}
-		// println(field.pos)
 		name := field.name.after('.')
 		f.write('$name ')
 		f.write(strings.repeat(` `, max - field.name.len))

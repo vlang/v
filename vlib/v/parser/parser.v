@@ -1772,7 +1772,7 @@ fn (mut p Parser) string_expr() ast.Expr {
 		fills: fills
 		fmts: fmts
 		fmt_poss: fposs
-		pos: pos
+		pos: pos.extend(p.prev_tok.position())
 	}
 	// need_fmts: prelimery - until checker finds out if really needed
 	p.inside_str_interp = false
@@ -2012,12 +2012,6 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 	const_pos := p.tok.position()
 	p.check(.key_const)
 	is_block := p.tok.kind == .lpar
-	/*
-	if p.tok.kind != .lpar {
-		p.error_with_pos('const declaration is missing parentheses `( ... )`', const_pos)
-		return ast.ConstDecl{}
-	}
-	*/
 	if is_block {
 		p.next() // (
 	}
@@ -2039,8 +2033,6 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 				pos)
 		}
 		full_name := p.prepend_mod(name)
-		// name := p.check_name()
-		// println('!!const: $name')
 		p.check(.assign)
 		if p.tok.kind == .key_fn {
 			p.error('const initializer fn literal is not a constant')
