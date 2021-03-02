@@ -532,13 +532,11 @@ pub fn (b []byte) hex() string {
 // Returns the number of elements copied.
 // TODO: implement for all types
 pub fn copy(dst []byte, src []byte) int {
-	if dst.len > 0 && src.len > 0 {
-		mut min := 0
-		min = if dst.len < src.len { dst.len } else { src.len }
-		unsafe { C.memcpy(byteptr(dst.data), src[..min].data, dst.element_size * min) }
-		return min
+	min := if dst.len < src.len { dst.len } else { src.len }
+	if min > 0 {
+		unsafe { C.memcpy(byteptr(dst.data), src.data, min) }
 	}
-	return 0
+	return min
 }
 
 // Private function. Comparator for int type.

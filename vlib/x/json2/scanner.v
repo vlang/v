@@ -41,12 +41,12 @@ const (
 	// list of characters commonly used in JSON.
 	char_list                 = [`{`, `}`, `[`, `]`, `,`, `:`]
 	// list of newlines to check when moving to a new position.
-	newlines                  = [`\r`, `\n`, byte(9), `\t`]
+	newlines                  = [`\r`, `\n`, `\t`]
 	// list of escapable that needs to be escaped inside a JSON string.
 	// double quotes and forward slashes are excluded intentionally since
 	// they have their own separate checks for it in order to pass the
 	// JSON test suite (https://github.com/nst/JSONTestSuite/).
-	important_escapable_chars = [byte(9), 10, 0, `\b`, `\f`, `\n`, `\r`, `\t`]
+	important_escapable_chars = [`\b`, `\f`, `\n`, `\r`, `\t`]
 	// list of valid unicode escapes aside from \u{4-hex digits}
 	valid_unicode_escapes     = [`b`, `f`, `n`, `r`, `t`, `\\`, `"`, `/`]
 	// used for transforming escapes into valid unicode (eg. n => \n)
@@ -129,7 +129,7 @@ fn (mut s Scanner) text_scan() Token {
 		} else if (s.pos - 1 >= 0 && s.text[s.pos - 1] != `\\`)
 			&& ch in json2.important_escapable_chars {
 			return s.error('character must be escaped with a backslash')
-		} else if s.pos == s.text.len - 1 && ch == `\\` {
+		} else if (s.pos == s.text.len - 1 && ch == `\\`) || ch == byte(0) {
 			return s.error('invalid backslash escape')
 		} else if s.pos + 1 < s.text.len && ch == `\\` {
 			peek := s.text[s.pos + 1]
@@ -154,8 +154,15 @@ fn (mut s Scanner) text_scan() Token {
 					if codepoint.len != 4 {
 						return s.error('unicode escape must have 4 hex digits')
 					}
-					chrs << byte(strconv.parse_uint(codepoint.bytestr(), 16, 32))
-					unsafe { codepoint.free() }
+					val := u32(strconv.parse_uint(codepoint.bytestr(), 16, 32))
+					converted := utf32_to_str(val)
+					converted_bytes := converted.bytes()
+					chrs << converted_bytes
+					unsafe {
+						converted.free()
+						converted_bytes.free()
+						codepoint.free()
+					}
 					continue
 				} else {
 					return s.error('incomplete unicode escape')

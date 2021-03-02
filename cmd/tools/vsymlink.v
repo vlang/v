@@ -80,7 +80,7 @@ fn setup_symlink_windows(vexe string) {
 		println('Symlink $vsymlink to $vexe created.')
 		println('Checking system %PATH%...')
 		reg_sys_env_handle := get_reg_sys_env_handle() or {
-			warn_and_exit(err)
+			warn_and_exit(err.msg)
 			return
 		}
 		// TODO: Fix defers inside ifs
@@ -107,7 +107,7 @@ fn setup_symlink_windows(vexe string) {
 			println('Adding symlink directory to system %PATH%...')
 			set_reg_value(reg_sys_env_handle, 'Path', new_sys_env_path) or {
 				C.RegCloseKey(reg_sys_env_handle)
-				warn_and_exit(err)
+				warn_and_exit(err.msg)
 			}
 			println('Done.')
 		}

@@ -59,7 +59,7 @@ fn main() {
 			continue
 		}
 		os.mv_by_cp(tpath, os.join_path(tfolder, texe)) or {
-			if !err.contains('vbuild-tools') {
+			if !err.msg.contains('vbuild-tools') {
 				eprintln(err)
 			}
 			continue

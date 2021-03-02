@@ -34,7 +34,7 @@ fn test_open_file() {
 	filename := './test1.txt'
 	hello := 'hello world!'
 	os.open_file(filename, 'r+', 0o666) or {
-		assert err == 'No such file or directory'
+		assert err.msg == 'No such file or directory'
 		os.File{}
 	}
 	mut file := os.open_file(filename, 'w+', 0o666) or { panic(err) }
@@ -50,7 +50,7 @@ fn test_open_file_binary() {
 	filename := './test1.dat'
 	hello := 'hello \n world!'
 	os.open_file(filename, 'r+', 0o666) or {
-		assert err == 'No such file or directory'
+		assert err.msg == 'No such file or directory'
 		os.File{}
 	}
 	mut file := os.open_file(filename, 'wb+', 0o666) or { panic(err) }
@@ -201,7 +201,7 @@ fn test_cp() {
 	old_file_name := 'cp_example.txt'
 	new_file_name := 'cp_new_example.txt'
 	os.write_file(old_file_name, 'Test data 1 2 3, V is awesome #$%^[]!~⭐') or { panic(err) }
-	os.cp(old_file_name, new_file_name) or { panic('$err: errcode: $errcode') }
+	os.cp(old_file_name, new_file_name) or { panic('$err') }
 	old_file := os.read_file(old_file_name) or { panic(err) }
 	new_file := os.read_file(new_file_name) or { panic(err) }
 	assert old_file == new_file

@@ -64,7 +64,7 @@ pub fn exec(cmd string) ?os.Result {
 	verbose_trace(@FN, cmd)
 	x := os.exec(cmd) or {
 		verbose_trace(@FN, '## failed.')
-		return error(err)
+		return err
 	}
 	verbose_trace_exec_result(x)
 	return x

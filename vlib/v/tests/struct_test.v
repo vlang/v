@@ -361,7 +361,7 @@ fn test_fields_anon_fn_with_optional_void_return_type() {
 	}
 
 	foo.f() or {
-		assert err == "oops"
+		assert err.msg == "oops"
 	}
 
 	foo.g() or {

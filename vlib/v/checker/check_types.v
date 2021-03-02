@@ -62,6 +62,10 @@ pub fn (mut c Checker) check_basic(got table.Type, expected table.Type) bool {
 	if got_sym.kind == .function && exp_sym.kind == .function {
 		return c.check_matching_function_symbols(got_sym, exp_sym)
 	}
+	// allow using Error as a string for now (avoid a breaking change)
+	if got == table.error_type_idx && expected == table.string_type_idx {
+		return true
+	}
 	return false
 }
 
@@ -314,6 +318,8 @@ pub fn (mut c Checker) fail_if_not_rlocked(expr ast.Expr, what string) {
 }
 
 pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) table.Type {
+	inside_println_arg_save := c.inside_println_arg
+	c.inside_println_arg = true
 	for i, expr in node.exprs {
 		ftyp := c.expr(expr)
 		if ftyp.has_flag(.shared_f) {
@@ -361,6 +367,7 @@ pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) table.T
 			c.error('cannot call `str()` method recursively', expr.position())
 		}
 	}
+	c.inside_println_arg = inside_println_arg_save
 	return table.string_type
 }
 

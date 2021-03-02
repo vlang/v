@@ -108,7 +108,7 @@ fn main() {
 		exit(0)
 	}
 	files := fp.finalize() or {
-		eprintln('Error: ' + err)
+		eprintln('Error: $err')
 		exit(1)
 	}
 	real_files := files.filter(it != 'bin2v')

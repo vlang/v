@@ -148,7 +148,7 @@ fn (mut context Context) parse_options() {
 		scripting.set_verbose(true)
 	}
 	commands := fp.finalize() or {
-		eprintln('Error: ' + err)
+		eprintln('Error: $err')
 		exit(1)
 	}
 	context.commands = context.expand_all_commands(commands)

@@ -44,8 +44,8 @@ pub fn exit(c int) {
 
 pub fn unwrap(opt any) any {
 	o := &Option(opt)
-	if o.not_ok {
-		js_throw(o.error)
+	if o.state != 0 {
+		js_throw(o.err)
 	}
 	return opt
 }
@@ -55,38 +55,44 @@ pub fn panic(s string) {
 	exit(1)
 }
 
+struct Option<T> {
+	state byte
+	err   Error
+	data  T
+}
 
-struct Option {
-	not_ok  bool
-	is_none bool
-	error   string
-	ecode   int
-	data    any
+pub struct Error {
+pub:
+	msg  string
+	code int
 }
 
 pub fn (o Option) str() string {
-   if !o.not_ok {
+   if o.state == 0 {
 	  return 'Option{ ok }'
    }
-   if o.is_none {
+   if o.state == 1 {
 	  return 'Option{ none }'
    }
-   return 'Option{ error: "${o.error}" }'
+   return 'Option{ error: "${o.err}" }'
 }
 
 pub fn error(s string) Option {
 	return Option{
-		not_ok: true
-		is_none: false
-		error: s
+		state: 2
+		err: {
+			msg: s
+		}
 	}
 }
 
 pub fn error_with_code(s string, code int) Option {
 	return Option{
-		not_ok: true
-		is_none: false
-		error: s
-		ecode: code
+		state: 2
+		err: {
+			msg: s
+			code: code
+		}
 	}
+
 }
