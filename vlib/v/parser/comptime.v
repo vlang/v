@@ -47,6 +47,7 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 		scope: 0
 	}
 	p.check(.dollar)
+	start_pos := p.prev_tok.position()
 	error_msg := 'only `\$tmpl()`, `\$env()`, `\$embed_file()` and `\$vweb.html()` comptime functions are supported right now'
 	if p.peek_tok.kind == .dot {
 		n := p.check_name() // skip `vweb.html()` TODO
@@ -211,6 +212,7 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 		vweb_tmpl: file
 		method_name: n
 		args_var: literal_string_param
+		pos: start_pos.extend(p.prev_tok.position())
 	}
 }
 
@@ -288,6 +290,7 @@ fn (mut p Parser) at() ast.AtExpr {
 
 fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 	p.check(.dollar)
+	start_pos := p.prev_tok.position()
 	if p.peek_tok.kind == .lpar {
 		method_pos := p.tok.position()
 		method_name := p.check_name()
@@ -311,6 +314,7 @@ fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 			method_pos: method_pos
 			scope: p.scope
 			args_var: args_var
+			pos: start_pos.extend(p.prev_tok.position())
 		}
 	}
 	mut has_parens := false
@@ -328,5 +332,6 @@ fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 		has_parens: has_parens
 		left: left
 		field_expr: expr
+		pos: start_pos.extend(p.prev_tok.position())
 	}
 }
