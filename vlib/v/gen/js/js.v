@@ -1230,7 +1230,7 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 		g.dec_indent()
 		g.write('})()')
 	}
-	g.call_stack.pop()
+	g.call_stack.delete_last()
 }
 
 fn (mut g JsGen) gen_ident(node ast.Ident) {
