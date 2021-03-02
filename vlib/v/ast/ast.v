@@ -1036,9 +1036,9 @@ pub mut:
 pub struct IfGuardExpr {
 pub:
 	var_name string
-	expr     Expr
 	pos      token.Position
 pub mut:
+	expr      Expr
 	expr_type table.Type
 }
 

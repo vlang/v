@@ -3747,7 +3747,18 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		ast.IfGuardExpr {
 			node.expr_type = c.expr(node.expr)
 			if !node.expr_type.has_flag(.optional) {
-				c.error('expression should return an option', node.expr.position())
+				mut no_opt := true
+				match mut node.expr {
+					ast.IndexExpr {
+						no_opt = false
+						node.expr_type = node.expr_type.set_flag(.optional)
+						node.expr.is_option = true
+					}
+					else {}
+				}
+				if no_opt {
+					c.error('expression should return an option', node.expr.position())
+				}
 			}
 			return table.bool_type
 		}
