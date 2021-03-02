@@ -1235,10 +1235,11 @@ pub fn (expr Expr) position() token.Position {
 			return expr.decl.pos
 		}
 		ArrayDecompose, ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr, CastExpr, ChanInit,
-		CharLiteral, ConcatExpr, Comment, ComptimeCall, ComptimeSelector, EnumVal, FloatLiteral, GoExpr, Ident, IfExpr, IndexExpr,
-		IntegerLiteral, Likely, LockExpr, MapInit, MatchExpr, None, OffsetOf, OrExpr, ParExpr,
-		PostfixExpr, PrefixExpr, RangeExpr, SelectExpr, SelectorExpr, SizeOf, SqlExpr, StringInterLiteral,
-		StringLiteral, StructInit, Type, TypeOf, UnsafeExpr {
+		CharLiteral, ConcatExpr, Comment, ComptimeCall, ComptimeSelector, EnumVal, FloatLiteral,
+		GoExpr, Ident, IfExpr, IndexExpr, IntegerLiteral, Likely, LockExpr, MapInit, MatchExpr,
+		None, OffsetOf, OrExpr, ParExpr, PostfixExpr, PrefixExpr, RangeExpr, SelectExpr, SelectorExpr,
+		SizeOf, SqlExpr, StringInterLiteral, StringLiteral, StructInit, Type, TypeOf, UnsafeExpr
+		 {
 			return expr.pos
 		}
 		IfGuardExpr {
