@@ -31,14 +31,14 @@ pub fn (mut p Parser) compile_template(basepath string, path string, html_ strin
 	mut lines := html_.trim_space().split_into_lines()
 	lstartlength := lines.len * 30
 	mut s := strings.new_builder(1000)
-	s.writeln("
+	s.writeln('
 import strings
 // === vweb html template ===
 fn vweb_tmpl_${fn_name}() {
 mut sb := strings.new_builder($lstartlength)\n
 
-")
-	s.write_string(tmpl_str_start)
+')
+	s.write_string(parser.tmpl_str_start)
 	mut state := State.html
 	mut in_span := false
 	for i := 0; i < lines.len; i++ {
@@ -100,11 +100,11 @@ mut sb := strings.new_builder($lstartlength)\n
 			file_content := os.read_file(file_path) or {
 				position := line.index('@include ') or { 0 }
 				p.error_with_error(errors.Error{
-					message: "Reading file $file_name from path: $file_path failed"
+					message: 'Reading file $file_name from path: $file_path failed'
 					details: "Failed to @include '$file_name'"
 					file_path: path
 					pos: token.Position{
-						len: '@include '.len + file_name.len 
+						len: '@include '.len + file_name.len
 						line_nr: i
 						pos: position
 						last_line: lines.len
@@ -129,29 +129,29 @@ mut sb := strings.new_builder($lstartlength)\n
 			s.write_string(line[pos + 6..line.len - 1])
 			s.writeln('" rel="stylesheet" type="text/css">')
 		} else if line.contains('@if ') {
-			s.writeln(tmpl_str_end)
+			s.writeln(parser.tmpl_str_end)
 			pos := line.index('@if') or { continue }
 			s.writeln('if ' + line[pos + 4..] + '{')
-			s.writeln(tmpl_str_start)
+			s.writeln(parser.tmpl_str_start)
 		} else if line.contains('@end') {
 			// Remove new line byte
 			s.go_back(1)
 
-			s.writeln(tmpl_str_end)
+			s.writeln(parser.tmpl_str_end)
 			s.writeln('}')
-			s.writeln(tmpl_str_start)
+			s.writeln(parser.tmpl_str_start)
 		} else if line.contains('@else') {
 			// Remove new line byte
 			s.go_back(1)
 
-			s.writeln(tmpl_str_end)
+			s.writeln(parser.tmpl_str_end)
 			s.writeln(' } else { ')
-			s.writeln(tmpl_str_start)
+			s.writeln(parser.tmpl_str_start)
 		} else if line.contains('@for') {
-			s.writeln(tmpl_str_end)
+			s.writeln(parser.tmpl_str_end)
 			pos := line.index('@for') or { continue }
 			s.writeln('for ' + line[pos + 4..] + '{')
-			s.writeln(tmpl_str_start)
+			s.writeln(parser.tmpl_str_start)
 		} else if state == .html && line.contains('span.') && line.ends_with('{') {
 			// `span.header {` => `<span class='header'>`
 			class := line.find_between('span.', '{').trim_space()
@@ -175,10 +175,11 @@ mut sb := strings.new_builder($lstartlength)\n
 		} else {
 			// HTML, may include `@var`
 			// escaped by cgen, unless it's a `vweb.RawHtml` string
-			s.writeln(line.replace('@', '$').replace('$$', '@').replace('.$', '.@').replace("'", "\\'"))
+			s.writeln(line.replace('@', '$').replace('$$', '@').replace('.$', '.@').replace("'",
+				"\\'"))
 		}
 	}
-	s.writeln(tmpl_str_end)
+	s.writeln(parser.tmpl_str_end)
 	s.writeln('_tmpl_res_$fn_name := sb.str() ')
 	s.writeln('}')
 	s.writeln('// === end of vweb html template ===')
