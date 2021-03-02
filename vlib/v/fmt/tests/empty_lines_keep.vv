@@ -1,14 +1,16 @@
 // Keep empty lines in const blocks
 const (
-	a = 1
-
-	b = 2
-	c = SomeStruct{
-		val: 3
+	_ = SomeStruct{
+		val: 'Multiline field exprs should cause no problems'
 	}
-	d = 4
+	_ = 456
+
+	_ = 'Keep this empty line before'
 	// Comment before a field
-	e = 5
+	_ = 123
+
+	// The empty line above should stay too
+	_ = 789
 )
 
 fn keep_single_empty_line() {
