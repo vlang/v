@@ -115,17 +115,18 @@ pub fn (mut c Checker) check(ast_file &ast.File) {
 
 pub fn (mut c Checker) check_scope_vars(sc &ast.Scope) {
 	for _, obj in sc.objects {
-		match obj {
+		match mut obj {
 			ast.Var {
+				if (obj.is_mut && !obj.is_arg) && !obj.is_changed && !c.is_builtin_mod && obj.name != 'it' {
+					c.warn('`$obj.name` is declared as mutable, but it was never changed', obj.pos)
+					if !obj.is_used {
+						obj.is_used = true // obj is marked as used to avoid the warning below
+					}
+				}
 				if !c.pref.is_repl {
 					if !obj.is_used && obj.name[0] != `_` {
 						c.warn('unused variable: `$obj.name`', obj.pos)
 					}
-				}
-				if obj.is_mut && !obj.is_changed && !c.is_builtin_mod && obj.name != 'it' {
-					// if obj.is_mut && !obj.is_changed && !c.is_builtin {  //TODO C error bad field not checked
-					// c.warn('`$obj.name` is declared as mutable, but it was never changed',
-					// obj.pos)
 				}
 			}
 			else {}
