@@ -697,7 +697,7 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt) {
 				g.expr(val)
 				if should_cast {
 					g.write(')')
-					g.cast_stack.pop()
+					g.cast_stack.delete_last()
 				}
 			}
 			if g.inside_loop {
@@ -1424,7 +1424,7 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		g.expr(it.right)
 
 		if is_arithmetic && needs_cast {
-			g.cast_stack.pop()
+			g.cast_stack.delete_last()
 			g.write(')')
 		}
 	}
@@ -1638,7 +1638,7 @@ fn (mut g JsGen) gen_type_cast_expr(it ast.CastExpr) {
 	if !is_literal {
 		g.write(')')
 	}
-	g.cast_stack.pop()
+	g.cast_stack.delete_last()
 }
 
 fn (mut g JsGen) gen_integer_literal_expr(it ast.IntegerLiteral) {
