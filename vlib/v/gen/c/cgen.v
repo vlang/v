@@ -4152,9 +4152,13 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				guard_vars = []string{len: node.branches.len}
 				g.writeln('{ /* if guard */ ')
 			}
-			var_name := g.new_tmp_var()
-			guard_vars[i] = var_name
-			g.writeln('${g.typ(cond.expr_type)} $var_name;')
+			if cond.expr !is ast.IndexExpr {
+				var_name := g.new_tmp_var()
+				guard_vars[i] = var_name
+				g.writeln('${g.typ(cond.expr_type)} $var_name;')
+			} else {
+				guard_vars[i] = ''
+			}
 		}
 	}
 	for i, branch in node.branches {
@@ -4172,13 +4176,27 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		} else {
 			match branch.cond {
 				ast.IfGuardExpr {
-					var_name := guard_vars[i]
-					g.write('if ($var_name = ')
-					g.expr(branch.cond.expr)
-					g.writeln(', ${var_name}.state == 0) {')
+					mut var_name := guard_vars[i]
+					mut short_opt := false
+					if var_name == '' {
+						short_opt = true // we don't need a further tmp, so use the one we'll get later
+						var_name = g.new_tmp_var()
+						g.tmp_count--
+						g.writeln('if (${var_name}.state == 0) {')
+					} else {
+						g.write('if ($var_name = ')
+						g.expr(branch.cond.expr)
+						g.writeln(', ${var_name}.state == 0) {')
+					}
 					if branch.cond.var_name != '_' {
 						base_type := g.base_type(branch.cond.expr_type)
-						g.writeln('\t$base_type $branch.cond.var_name = *($base_type*)${var_name}.data;')
+						if short_opt {
+							g.write('\t$base_type $branch.cond.var_name = ')
+							g.expr(branch.cond.expr)
+							g.writeln(';')
+						} else {
+							g.writeln('\t$base_type $branch.cond.var_name = *($base_type*)${var_name}.data;')
+						}
 					}
 				}
 				else {
