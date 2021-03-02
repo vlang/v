@@ -1356,7 +1356,9 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 		// TODO Does this cover all cases?
 		g.expr(expr.left)
 		g.write('[')
+		g.cast_stack << table.int_type_idx
 		g.expr(expr.index)
+		g.cast_stack.delete_last()
 		g.write(']')
 	}
 }
