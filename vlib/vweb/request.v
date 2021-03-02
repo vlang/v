@@ -29,12 +29,13 @@ pub fn parse_request(mut reader io.BufferedReader) ?http.Request {
 	}
 
 	// body
-	mut body := [byte(0)]
+	mut body := []byte{}
 	if length := h.get(.content_length) {
 		n := length.int()
-		body = []byte{len: n, cap: n + 1}
-		reader.read(mut body) or { }
-		body << 0
+		if n > 0 {
+			body = []byte{len: n}
+			reader.read(mut body) or { }
+		}
 	}
 
 	return http.Request{
@@ -42,7 +43,7 @@ pub fn parse_request(mut reader io.BufferedReader) ?http.Request {
 		url: target.str()
 		headers: headers
 		lheaders: lheaders
-		data: string(body)
+		data: body.bytestr()
 		version: version
 	}
 }
