@@ -19,7 +19,6 @@ fn init() {
 }
 
 [unsafe]
-[inline]
 fn static_srng() &&wyrand.WyRandRNG {
 	static srng := &wyrand.WyRandRNG(0)
 	return &srng
