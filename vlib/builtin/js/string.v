@@ -50,7 +50,8 @@ pub fn (s string) bytes() []byte {
 }
 
 pub fn (s string) capitalize() string {
-	return string(s.str.charAt(0).toUpperCase().concat(JS.String(s.str.slice(1, int(s.str.length)))))
+	part := string(s.str.slice(1, int(s.str.length)))
+	return string(s.str.charAt(0).toUpperCase().concat(part.str))
 }
 
 pub fn (s string) clone() string {
