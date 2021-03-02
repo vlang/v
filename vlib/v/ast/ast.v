@@ -599,8 +599,8 @@ pub mut:
 // See: token.Kind.is_prefix
 pub struct PrefixExpr {
 pub:
-	op    token.Kind
-	pos   token.Position
+	op  token.Kind
+	pos token.Position
 pub mut:
 	right_type table.Type
 	right      Expr
