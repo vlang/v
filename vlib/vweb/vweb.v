@@ -13,10 +13,11 @@ import time
 
 pub const (
 	methods_with_form       = [http.Method.post, .put, .patch]
-	methods_without_first   = ['ost', 'ut', 'et', 'atch', 'ptions', 'elete', 'ead'] // needed for method checking as method parameter
 	header_server           = 'Server: VWeb\r\n'
 	header_connection_close = 'Connection: close\r\n'
 	headers_close           = '$header_server$header_connection_close\r\n'
+	// TODO: use http.response structs
+	http_400                = 'HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\nContent-Length: 15\r\n${headers_close}400 Bad Request'
 	http_404                = 'HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 13\r\n${headers_close}404 Not Found'
 	http_500                = 'HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\n${headers_close}500 Internal Server Error'
 	mime_types              = map{
@@ -318,14 +319,23 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	}
 	if req.method in vweb.methods_with_form {
 		if 'multipart/form-data' in req.lheaders['content-type'].split('; ') {
-			boundary := req.lheaders['content-type'].split('; ').filter(it.starts_with('boundary '))
+			boundary := req.lheaders['content-type'].split('; ').filter(it.starts_with('boundary='))
 			if boundary.len != 1 {
-				// TODO: send 400 error
+				send_string(mut conn, vweb.http_400) or { }
 				return
 			}
-			app.parse_multipart_form(req.data, boundary[0][9..])
+			form, files := parse_multipart_form(req.data, boundary[0][9..])
+			for k, v in form {
+				app.form[k] = v
+			}
+			for k, v in files {
+				app.files[k] = v
+			}
 		} else {
-			app.parse_form(req.data)
+			form := parse_form(req.data)
+			for k, v in form {
+				app.form[k] = v
+			}
 		}
 	}
 	// Serve a static file if it is one
@@ -491,86 +501,6 @@ fn serve_static<T>(mut app T, url urllib.URL) bool {
 	return true
 }
 
-// vweb intern function
-pub fn (mut ctx Context) parse_form(s string) {
-	if ctx.req.method !in vweb.methods_with_form {
-		return
-	}
-	// pos := s.index('\r\n\r\n')
-	// if pos > -1 {
-	mut str_form := s // [pos..s.len]
-	str_form = str_form.replace('+', ' ')
-	words := str_form.split('&')
-	for word in words {
-		$if debug {
-			println('parse form keyval="$word"')
-		}
-		keyval := word.trim_space().split('=')
-		if keyval.len != 2 {
-			continue
-		}
-		key := urllib.query_unescape(keyval[0]) or { continue }
-		val := urllib.query_unescape(keyval[1]) or { continue }
-		$if debug {
-			println('http form "$key" => "$val"')
-		}
-		ctx.form[key] = val
-	}
-	// }
-	// todo: parse form-data and application/json
-	// ...
-}
-
-// vweb intern function
-[manualfree]
-pub fn (mut ctx Context) parse_multipart_form(s string, b string) {
-	if ctx.req.method !in vweb.methods_with_form {
-		return
-	}
-	a := s.split('$b')[1..]
-	fields := a[..a.len - 1]
-	for field in fields {
-		lines := field.split_into_lines()[1..]
-		mut l := 0
-		// Parse name
-		disposition_data := lines[l].split('; ')[1..]
-		l++
-		name := disposition_data[0][6..disposition_data[0].len - 1]
-		// Parse files
-		if disposition_data.len > 1 {
-			filename := disposition_data[1][10..disposition_data[1].len - 1]
-			ct := lines[l].split(': ')[1]
-			l++
-			if name !in ctx.files {
-				ctx.files[name] = []FileData{}
-			}
-			mut sb := strings.new_builder(field.len)
-			for i in l + 1 .. lines.len - 1 {
-				sb.writeln(lines[i])
-			}
-			ctx.files[name] << FileData{
-				filename: filename
-				content_type: ct
-				data: sb.str()
-			}
-			unsafe {
-				sb.free()
-			}
-			continue
-		}
-		mut sb := strings.new_builder(field.len)
-		for i in l + 1 .. lines.len - 1 {
-			sb.writeln(lines[i])
-		}
-		ctx.form[name] = sb.str()
-		unsafe {
-			disposition_data.free()
-			name.free()
-			sb.free()
-		}
-	}
-}
-
 fn (mut ctx Context) scan_static_directory(directory_path string, mount_path string) {
 	files := os.ls(directory_path) or { panic(err) }
 	if files.len > 0 {
@@ -645,11 +575,6 @@ pub fn (ctx &Context) ip() string {
 // Set s to the form error
 pub fn (mut ctx Context) error(s string) {
 	ctx.form_error = s
-}
-
-fn strip(s string) string {
-	// strip('\nabc\r\n') => 'abc'
-	return s.trim('\r\n')
 }
 
 // Returns an empty result
