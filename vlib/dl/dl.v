@@ -13,7 +13,7 @@ pub fn get_shared_library_extension() string {
 		'.so'
 	} $else $if macos {
 		'.dylib'
-	} $else {
+	} $else { // windows
 		'.dll'
 	}
 }
