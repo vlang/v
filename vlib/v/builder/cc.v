@@ -638,7 +638,7 @@ fn (mut v Builder) cc() {
 		res := os.exec(cmd) or {
 			os.Result{
 				exit_code: 111
-				output: 'C compilation failed.\n$err'
+				output: 'C compilation failed.\n$err.msg'
 			}
 		}
 		util.timing_measure(ccompiler_label)
@@ -709,7 +709,7 @@ fn (mut v Builder) cc() {
 		obj_file +
 		' /usr/lib/x86_64-linux-gnu/libc.so ' +
 		'/usr/lib/x86_64-linux-gnu/crtn.o') or {
-			verror(err)
+			verror(err.msg)
 			return
 		}
 		println(ress.output)
@@ -819,7 +819,7 @@ fn (mut b Builder) cc_linux_cross() {
 	}
 	res := os.exec(linker_cmd) or {
 		println('Cross compilation for Linux failed (second step, lld).')
-		verror(err)
+		verror(err.msg)
 		return
 	}
 	if res.exit_code != 0 {
@@ -984,7 +984,7 @@ fn (mut v Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CF
 	}
 	res := os.exec(cmd) or {
 		eprintln('exec failed for thirdparty object build cmd:\n$cmd')
-		verror(err)
+		verror(err.msg)
 		return
 	}
 	os.chdir(current_folder)

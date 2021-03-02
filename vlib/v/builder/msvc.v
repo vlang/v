@@ -369,7 +369,7 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(path string, moduleflags 
 	}
 	res := os.exec(cmd) or {
 		println('msvc: failed to execute msvc compiler (to build a thirdparty object); cmd: $cmd')
-		verror(err)
+		verror(err.msg)
 		return
 	}
 	if res.exit_code != 0 {

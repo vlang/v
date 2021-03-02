@@ -124,7 +124,7 @@ fn process_cli_args() &Context {
 		exit(0)
 	}
 	context.all_paths = fp.finalize() or {
-		context.error(err)
+		context.error(err.msg)
 		exit(1)
 	}
 	if !context.is_worker && context.all_paths.len == 0 {
@@ -218,7 +218,7 @@ fn (mut context Context) process_whole_file_in_worker(path string) (int, int) {
 		cmd := '"$context.myself" $verbosity --worker --timeout_ms ${context.timeout_ms:5} --cut_index ${i:5} --path "$path" '
 		context.log(cmd)
 		res := os.exec(cmd) or { os.Result{
-			output: err
+			output: err.msg
 			exit_code: ecode_exec
 		} }
 		context.log('worker exit_code: $res.exit_code | worker output:\n$res.output')

@@ -58,7 +58,7 @@ fn (mut b Builder) run_js() {
 	cmd := 'node ' + b.pref.out_name + '.js'
 	res := os.exec(cmd) or {
 		println('JS compilation failed.')
-		verror(err)
+		verror(err.msg)
 		return
 	}
 	println(res.output)

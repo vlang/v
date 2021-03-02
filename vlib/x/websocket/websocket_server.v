@@ -120,8 +120,8 @@ fn (mut s Server) serve_client(mut c Client) ? {
 	}
 	s.setup_callbacks(mut server_client)
 	c.listen() or {
-		s.logger.error(err)
-		return error(err)
+		s.logger.error(err.msg)
+		return err
 	}
 }
 

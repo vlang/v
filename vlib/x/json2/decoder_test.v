@@ -54,7 +54,7 @@ fn test_raw_decode_null() {
 
 fn test_raw_decode_invalid() {
 	json2.raw_decode('1z') or {
-		assert err == '[x.json2] invalid token `z` (0:17)'
+		assert err.msg == '[x.json2] invalid token `z` (0:17)'
 		return
 	}
 	assert false

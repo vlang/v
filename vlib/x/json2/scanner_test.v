@@ -20,6 +20,16 @@ fn test_str_valid_unicode_escape() {
 	assert tok.lit.bytestr() == 'H'
 }
 
+fn test_str_valid_unicode_escape_2() {
+	mut sc := Scanner{
+		text: r'"\u2714"'.bytes()
+	}
+	tok := sc.scan()
+	assert tok.kind == .str_
+	assert tok.lit.len == 3
+	assert tok.lit.bytestr() == '✔'
+}
+
 fn test_str_invalid_escape() {
 	mut sc := Scanner{
 		text: r'"\z"'.bytes()

@@ -137,7 +137,7 @@ fn test_finalize_returns_error_for_unknown_flags() {
 	mut fp := flag.new_flag_parser(['--known', '--unknown'])
 	fp.bool('known', 0, false, '')
 	finalized := fp.finalize() or {
-		assert err == "Unknown argument 'unknown'"
+		assert err.msg == "Unknown argument 'unknown'"
 		return
 	}
 	assert finalized.len < 0 // expect error to be returned
@@ -199,7 +199,7 @@ fn test_error_for_to_few_free_args() {
 	mut fp1 := flag.new_flag_parser(['a', 'b', 'c'])
 	fp1.limit_free_args(5, 6)
 	args := fp1.finalize() or {
-		assert err.starts_with('Expected at least 5 arguments')
+		assert err.msg.starts_with('Expected at least 5 arguments')
 		return
 	}
 	assert args.len < 0 // expect an error and need to use args
@@ -209,7 +209,7 @@ fn test_error_for_to_much_free_args() {
 	mut fp1 := flag.new_flag_parser(['a', 'b', 'c'])
 	fp1.limit_free_args(1, 2)
 	args := fp1.finalize() or {
-		assert err.starts_with('Expected at most 2 arguments')
+		assert err.msg.starts_with('Expected at most 2 arguments')
 		return
 	}
 	assert args.len < 0 // expect an error and need to use args
@@ -219,7 +219,7 @@ fn test_could_expect_no_free_args() {
 	mut fp1 := flag.new_flag_parser(['a'])
 	fp1.limit_free_args(0, 0)
 	args := fp1.finalize() or {
-		assert err.starts_with('Expected no arguments')
+		assert err.msg.starts_with('Expected no arguments')
 		return
 	}
 	assert args.len < 0 // expect an error and need to use args

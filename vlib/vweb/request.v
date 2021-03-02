@@ -10,37 +10,40 @@ pub fn parse_request(mut reader io.BufferedReader) ?http.Request {
 	method, target, version := parse_request_line(line) ?
 
 	// headers
-	mut headers := map[string][]string{}
+	mut h := http.new_header()
 	line = reader.read_line() ?
 	for line != '' {
-		key, values := parse_header(line) ?
-		headers[key] << values
+		key, value := parse_header(line) ?
+		h.add_str(key, value) ?
 		line = reader.read_line() ?
 	}
 
-	mut http_headers := map[string]string{}
-	mut http_lheaders := map[string]string{}
-	for k, v in headers {
-		values := v.join('; ')
-		http_headers[k] = values
-		http_lheaders[k.to_lower()] = values
+	// create map[string]string from headers
+	// TODO: replace headers and lheaders with http.Header type
+	mut headers := map[string]string{}
+	mut lheaders := map[string]string{}
+	for key in h.keys() {
+		values := h.values_str(key).join('; ')
+		headers[key] = values
+		lheaders[key.to_lower()] = values
 	}
 
 	// body
-	mut body := [byte(0)]
-	if 'content-length' in http_lheaders {
-		n := http_lheaders['content-length'].int()
-		body = []byte{len: n, cap: n + 1}
-		reader.read(mut body) or { }
-		body << 0
+	mut body := []byte{}
+	if length := h.get(.content_length) {
+		n := length.int()
+		if n > 0 {
+			body = []byte{len: n}
+			reader.read(mut body) or { }
+		}
 	}
 
 	return http.Request{
 		method: method
 		url: target.str()
-		headers: http_headers
-		lheaders: http_lheaders
-		data: string(body)
+		headers: headers
+		lheaders: lheaders
+		data: body.bytestr()
 		version: version
 	}
 }
@@ -60,7 +63,7 @@ fn parse_request_line(s string) ?(http.Method, urllib.URL, http.Version) {
 	return method, target, version
 }
 
-fn parse_header(s string) ?(string, []string) {
+fn parse_header(s string) ?(string, string) {
 	if ':' !in s {
 		return error('missing colon in header')
 	}
@@ -69,7 +72,7 @@ fn parse_header(s string) ?(string, []string) {
 		return error('invalid character in header name')
 	}
 	// TODO: parse quoted text according to the RFC
-	return words[0], words[1].trim_left(' \t').split(';').map(it.trim_space())
+	return words[0], words[1].trim_left(' \t')
 }
 
 // TODO: use map for faster lookup (untested)

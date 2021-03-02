@@ -143,6 +143,7 @@ pub mut:
 	cleanup_files       []string // list of temporary *.tmp.c and *.tmp.c.rsp files. Cleaned up on successfull builds.
 	build_options       []string // list of options, that should be passed down to `build-module`, if needed for -usecache
 	cache_manager       vcache.CacheManager
+	is_help             bool // -h, -help or --help was passed
 }
 
 pub fn parse_args(known_external_commands []string, args []string) (&Preferences, string) {
@@ -166,6 +167,10 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			}
 			'-check-syntax' {
 				res.only_check_syntax = true
+			}
+			'-h', '-help', '--help' {
+				// NB: help is *very important*, just respond to all variations:
+				res.is_help = true
 			}
 			'-v' {
 				// `-v` flag is for setting verbosity, but without any args it prints the version, like Clang
