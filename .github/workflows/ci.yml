@@ -740,7 +740,7 @@ jobs:
         run: |
           .\make.bat -tcc
       - name: Test new v.c
-        run: .\v.exe -o v.c cmd/v && .\thirdparty\tcc\tcc.exe -Werror -w -ladvapi32 -bt10 v.c -lm
+        run: .\v.exe -o v.c cmd/v && .\thirdparty\tcc\tcc.exe -Werror -w -ladvapi32 -bt10 v.c
       - name: Install dependencies
         run: |
           .\v.exe setup-freetype
@@ -785,7 +785,7 @@ jobs:
         run: |
           .\make.bat -tcc32
       - name: Test new v.c
-        run: .\v.exe -o v.c cmd/v && .\thirdparty\tcc\tcc.exe -Werror -w -ladvapi32 -bt10 v.c -lm
+        run: .\v.exe -o v.c cmd/v && .\thirdparty\tcc\tcc.exe -Werror -w -ladvapi32 -bt10 v.c
       - name: Install dependencies
         run: |
           .\v.exe setup-freetype
