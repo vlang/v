@@ -1472,8 +1472,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		}
 	}
 	if has_method {
-		if !method.is_pub && !c.is_builtin_mod && !c.pref.is_test && left_type_sym.mod != c.mod
-			&& left_type_sym.mod != '' { // method.mod != c.mod {
+		if !method.is_pub && !c.pref.is_test && method.mod != c.mod {
 			// If a private method is called outside of the module
 			// its receiver type is defined in, show an error.
 			// println('warn $method_name lef.mod=$left_type_sym.mod c.mod=$c.mod')
@@ -1825,8 +1824,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		}
 	}
 	if !f.is_pub && f.language == .v && f.name.len > 0 && f.mod.len > 0 && f.mod != c.mod {
-		c.error('function `$f.name` is private, so you can not import it in module `$c.mod`',
-			call_expr.pos)
+		c.error('function `$f.name` is private', call_expr.pos)
 	}
 	if !c.cur_fn.is_deprecated && f.is_deprecated {
 		mut deprecation_message := 'function `$f.name` has been deprecated'
