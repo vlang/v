@@ -989,7 +989,8 @@ pub fn (mut p Parser) error_with_error(error errors.Error) {
 			print_backtrace()
 			kind = 'parser error:'
 		}
-		ferror := util.formatted_error(kind, error.message, os.file_name(error.file_path), error.pos)
+		ferror := util.formatted_error(kind, error.message, os.file_name(error.file_path),
+			error.pos)
 		eprintln(ferror)
 		exit(1)
 	} else {
