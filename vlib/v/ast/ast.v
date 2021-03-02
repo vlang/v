@@ -619,6 +619,7 @@ pub mut:
 	is_map    bool
 	is_array  bool
 	is_farray bool
+	is_option bool // IfGuard
 }
 
 pub struct IfExpr {
