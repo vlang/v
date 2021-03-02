@@ -2768,7 +2768,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			}
 		}
 		ast.PrefixExpr {
-			gen_or := node.op == .arrow && node.or_block.kind != .absent
+			gen_or := node.op == .arrow && (node.or_block.kind != .absent || node.is_option)
 			if node.op == .amp {
 				g.is_amp = true
 			}
@@ -2796,7 +2796,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.expr(node.right)
 				g.write(')')
 				if gen_or {
-					g.or_block(tmp_opt, node.or_block, elem_type)
+					if !node.is_option {
+						g.or_block(tmp_opt, node.or_block, elem_type)
+					}
 					if is_gen_or_and_assign_rhs {
 						elem_styp := g.typ(elem_type)
 						g.write('\n$cur_line*($elem_styp*)${tmp_opt}.data')
@@ -4150,9 +4152,10 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				is_guard = true
 				guard_idx = i
 				guard_vars = []string{len: node.branches.len}
+				g.writeln(';')
 				g.writeln('{ /* if guard */ ')
 			}
-			if cond.expr !is ast.IndexExpr {
+			if cond.expr !is ast.IndexExpr && cond.expr !is ast.PrefixExpr {
 				var_name := g.new_tmp_var()
 				guard_vars[i] = var_name
 				g.writeln('${g.typ(cond.expr_type)} $var_name;')
