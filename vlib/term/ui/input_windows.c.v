@@ -69,6 +69,7 @@ pub fn init(cfg Config) &Context {
 
 	if ctx.cfg.hide_cursor {
 		ctx.hide_cursor()
+		ctx.flush()
 	}
 
 	if ctx.cfg.window_title != '' {
