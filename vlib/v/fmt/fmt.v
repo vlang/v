@@ -2163,7 +2163,7 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 		}
 		f.write('}')
 	} else {
-		use_short_args := f.use_short_fn_args
+		use_short_args := f.use_short_fn_args && !node.has_update_expr
 		f.use_short_fn_args = false
 		mut single_line_fields := f.single_line_fields
 		f.single_line_fields = false
@@ -2187,7 +2187,13 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 			if node.has_update_expr {
 				f.write('...')
 				f.expr(node.update_expr)
-				f.writeln('')
+				if single_line_fields {
+					if node.fields.len > 0 {
+						f.write(', ')
+					}
+				} else {
+					f.writeln('')
+				}
 				f.comments(node.update_expr_comments, inline: true, has_nl: true, level: .keep)
 			}
 			for i, field in node.fields {
