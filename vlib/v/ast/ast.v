@@ -599,12 +599,13 @@ pub mut:
 // See: token.Kind.is_prefix
 pub struct PrefixExpr {
 pub:
-	op    token.Kind
-	right Expr
-	pos   token.Position
+	op  token.Kind
+	pos token.Position
 pub mut:
 	right_type table.Type
+	right      Expr
 	or_block   OrExpr
+	is_option  bool // IfGuard
 }
 
 pub struct IndexExpr {
@@ -619,6 +620,7 @@ pub mut:
 	is_map    bool
 	is_array  bool
 	is_farray bool
+	is_option bool // IfGuard
 }
 
 pub struct IfExpr {
@@ -1035,9 +1037,9 @@ pub mut:
 pub struct IfGuardExpr {
 pub:
 	var_name string
-	expr     Expr
 	pos      token.Position
 pub mut:
+	expr      Expr
 	expr_type table.Type
 }
 
