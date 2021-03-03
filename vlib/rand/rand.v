@@ -7,12 +7,18 @@ import rand.seed
 import rand.wyrand
 import time
 
-// PRNGConfigStruct is a configuration struct for creating a new instance of the default RNG. Note that the RNGs may have a different number of u32s required for seeding. The default generator WyRand used 64 bits, ie. 2 u32s so that is the default. In case your desired generator uses a different number of u32s, use the `seed.time_seed_array()` method with the correct number of u32s.
+// PRNGConfigStruct is a configuration struct for creating a new instance of the default RNG.
+// Note that the RNGs may have a different number of u32s required for seeding. The default
+// generator WyRand used 64 bits, ie. 2 u32s so that is the default. In case your desired generator
+// uses a different number of u32s, use the `seed.time_seed_array()` method with the correct
+// number of u32s.
 pub struct PRNGConfigStruct {
 	seed []u32 = seed.time_seed_array(2)
 }
 
-// PRNG is a common interface for all PRNGs that can be used seamlessly with the rand modules's API. It defines all the methods that a PRNG (in the vlib or custom made) must implement in order to ensure that _all_ functions can be used with the generator.
+// PRNG is a common interface for all PRNGs that can be used seamlessly with the rand
+// modules's API. It defines all the methods that a PRNG (in the vlib or custom made) must
+// implement in order to ensure that _all_ functions can be used with the generator.
 pub interface PRNG {
 	seed(seed_data []u32)
 	u32() u32
@@ -56,7 +62,11 @@ pub fn get_current_rng() &PRNG {
 	return default_rng
 }
 
-// set_rng changes the default RNG from wyrand.WyRandRNG (or whatever the last RNG was) to the one provided by the user. Note that this new RNG must be seeded manually with a constant seed or the `seed.time_seed_array()` method. Also, it is recommended to store the old RNG in a variable and should be restored if work with the custom RNG is complete. It is not necessary to restore if the program terminates soon afterwards.
+// set_rng changes the default RNG from wyrand.WyRandRNG (or whatever the last RNG was) to the one
+// provided by the user. Note that this new RNG must be seeded manually with a constant seed or the 
+// `seed.time_seed_array()` method. Also, it is recommended to store the old RNG in a variable and
+// should be restored if work with the custom RNG is complete. It is not necessary to restore if the
+// program terminates soon afterwards.
 pub fn set_rng(rng &PRNG) {
 	default_rng = rng
 }
