@@ -64,10 +64,10 @@ Everything, including HTML templates, is in one binary file. That's all you need
 
 ## Getting Started
 
-To start with vweb, you have to import the module `vweb` first.
-After it, it's recommended to define a struct to access `vweb.Context`.
+To start with vweb, you have to import the module `vweb`.
+After the import, define a struct to hold vweb.Context 
+(and any other variables your program will need).
 The web server can be started by calling `vweb.run<App>(port)`.
-A complete
 
 **Example:**
 ```v ignore
@@ -84,17 +84,22 @@ fn main() {
 
 ### Defining endpoints
 To add endpoints to your web server, you have to extend the `App` struct.
-The function names are automatically mapped to the URL path and a return 
-value of `vweb.Result` is expected.
+For routing you can either use auto-mapping of function names or specify the path as an attribute.
+The function expects a response of the type `vweb.Result`.
 
 **Example:**
 ```v ignore
+// This endpoint can be accessed via http://localhost:port/hello
 fn (mut app App) hello() vweb.Result {
 	return app.text('Hello')
 }
-```
 
-This endpoint can be accessed via `http://localhost:port/hello`.
+// This endpoint can be accessed via http://localhost:port/foo
+["/foo"]
+fn (mut app App) world() vweb.Result {
+	return app.text('World')
+}
+```
 
 To create an HTTP POST endpoint, you simply add a `[post]` attribute before the function definition.
 
@@ -106,21 +111,9 @@ fn (mut app App) world() vweb.Result {
 }
 ```
 
-Instead of using the auto-mapping, you can 
-also use an attribute
-to define a different path to the endpoint.
-
-**Example:**
-```v ignore
-[post]
-["/foo"]
-fn (mut app App) world() vweb.Result {
-	return app.text('World')
-}
-```
-
-To pass a param to an endpoint, you simply define it inside an attribute, e. g. `['/hello/:user]`.
-After it, you have to add it as a function parameter.
+To pass a parameter to an endpoint, you simply define it inside 
+an attribute, e. g. `['/hello/:user]`.
+After it is defined in the attribute, you have to add it as a function parameter.
 
 **Example:**
 ```v ignore
@@ -130,7 +123,7 @@ fn (mut app App) hello_user(user string) vweb.Result {
 }
 ```
 
-You can read several request data like the request headers 
+You have access to the raw request data such as headers 
 or the request body by accessing `app` (which is `vweb.Context`).
 If you want to read the request body, you can do that by calling `app.req.data`.
 To read the request headers, you just call `app.req.headers` and access the header you want, 
