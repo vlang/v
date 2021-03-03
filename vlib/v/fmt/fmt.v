@@ -2282,8 +2282,7 @@ fn (mut f Fmt) global_decl(it ast.GlobalDecl) {
 	if single {
 		f.write('__global ( ')
 	} else {
-		f.write('__global (')
-		f.writeln('')
+		f.writeln('__global (')
 		f.indent++
 	}
 	mut max := 0
@@ -2297,11 +2296,7 @@ fn (mut f Fmt) global_decl(it ast.GlobalDecl) {
 		}
 	}
 	for field in it.fields {
-		comments := field.comments
-		for comment in comments {
-			f.comment(comment, inline: true)
-			f.writeln('')
-		}
+		f.comments(field.comments, inline: true)
 		f.write('$field.name ')
 		f.write(strings.repeat(` `, max - field.name.len))
 		if field.has_expr {
