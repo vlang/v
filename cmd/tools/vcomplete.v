@@ -248,7 +248,14 @@ _v() {
 }
 compdef _v v
 ' }
-				// 'powershell' {} //TODO
+				'powershell' { setup = '
+Register-ArgumentCompleter -Native -CommandName ./v -ScriptBlock {
+	param(\$commandName, \$wordToComplete, \$cursorPosition)
+		$vexe complete powershell "\$wordToComplete" | ForEach-Object {
+			[System.Management.Automation.CompletionResult]::new(\$_, \$_, \'ParameterValue\', \$_)
+		}
+}
+' }
 				else {}
 			}
 			println(setup)
@@ -264,7 +271,7 @@ compdef _v v
 			}
 			println(lines.join('\n'))
 		}
-		'fish' {
+		'fish', 'powershell' {
 			if sub_args.len <= 1 {
 				exit(0)
 			}
@@ -286,7 +293,6 @@ compdef _v v
 			}
 			println(lines.join('\n'))
 		}
-		// 'powershell' {} //TODO
 		else {}
 	}
 	exit(0)
