@@ -295,7 +295,7 @@ pub fn (c &Checker) get_default_fmt(ftyp table.Type, typ table.Type) byte {
 			return `s`
 		}
 		if ftyp in [table.string_type, table.bool_type]
-			|| sym.kind in [.enum_, .array, .array_fixed, .struct_, .map, .multi_return, .sum_type, .none_]
+			|| sym.kind in [.enum_, .array, .array_fixed, .struct_, .map, .multi_return, .sum_type, .interface_, .none_]
 			|| ftyp.has_flag(.optional) || sym.has_method('str') {
 			return `s`
 		} else {
