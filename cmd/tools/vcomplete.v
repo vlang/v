@@ -30,7 +30,7 @@
 // Please note that you should let v load the zsh completions after the call to compinit
 //
 // # powershell
-// To install auto-complete for V in PowerShell, simply add this code to your `$PROFILE`
+// To install auto-complete for V in PowerShell, simply do this
 // `v complete setup powershell >> $PROFILE`
 // and reload prifile
 // `& $PROFILE`
