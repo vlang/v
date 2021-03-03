@@ -477,7 +477,7 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp string, str_fn_name st
 	if clean_struct_v_type_name.contains('_T_') {
 		// TODO: this is a bit hacky. styp shouldn't be even parsed with _T_
 		// use something different than g.typ for styp
-		clean_struct_v_type_name =
+		clean_struct_v_type_name = 
 			clean_struct_v_type_name.replace('_T_', '<').replace('_', ', ').replace('Array', 'array') +
 			'>'
 	}
@@ -648,7 +648,7 @@ fn (mut g Gen) gen_str_for_interface(info table.Interface, styp string, str_fn_n
 
 		g.auto_str_funcs.write_string('\tif (x._interface_idx == _${styp}_${subtype.cname}_index)')
 		g.auto_str_funcs.write_string(' return _STR("${clean_interface_v_type_name}($value_fmt)", 2, ')
-		g.auto_str_funcs.write_string('${func_name}(${deref}(${subtype.cname}*)x._object')
+		g.auto_str_funcs.write_string('${func_name}(${deref}($subtype.cname*)x._object')
 		if should_use_indent_func(subtype.kind) && !sym_has_str_method {
 			g.auto_str_funcs.write_string(', indent_count')
 		}
