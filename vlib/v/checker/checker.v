@@ -4824,7 +4824,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 				left_sym := c.table.get_type_symbol(infix.left_type)
 				expr_type := c.expr(infix.left)
 				if left_sym.kind == .interface_ {
-					c.type_implements(right_expr.typ, expr_type, branch.pos)
+					c.type_implements(right_expr.typ, expr_type, branch.cond.position())
 				} else if !c.check_types(right_expr.typ, expr_type) {
 					expect_str := c.table.type_to_str(right_expr.typ)
 					expr_str := c.table.type_to_str(expr_type)
