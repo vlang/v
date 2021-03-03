@@ -34,6 +34,8 @@
 // `v complete setup powershell >> $PROFILE`
 // and reload prifile
 // `& $PROFILE`
+// If `$PROFILE` didn't exist yet, create it before
+// `New-Item -Type File -Force $PROFILE`
 //
 module main
 
