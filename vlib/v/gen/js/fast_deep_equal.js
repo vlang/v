@@ -11,7 +11,7 @@ function vEq(a, b) {
 			length = a.length;
 			if (length != b.length) return false;
 			for (i = length; i-- !== 0;)
-				if (!equal(a[i], b[i])) return false;
+				if (!vEq(a[i], b[i])) return false;
 			return true;
 		}
 
@@ -21,7 +21,7 @@ function vEq(a, b) {
 			for (i of a.entries())
 				if (!b.has(i[0])) return false;
 			for (i of a.entries())
-				if (!equal(i[1], b.get(i[0]))) return false;
+				if (!vEq(i[1], b.get(i[0]))) return false;
 			return true;
 		}
 
@@ -55,7 +55,7 @@ function vEq(a, b) {
 		for (i = length; i-- !== 0;) {
 			var key = keys[i];
 
-			if (!equal(a[key], b[key])) return false;
+			if (!vEq(a[key], b[key])) return false;
 		}
 
 		return true;
