@@ -32,7 +32,7 @@
 // # powershell
 // To install auto-complete for V in PowerShell, simply do this
 // `v complete setup powershell >> $PROFILE`
-// and reload prifile
+// and reload profile
 // `& $PROFILE`
 // If `$PROFILE` didn't exist yet, create it before
 // `New-Item -Type File -Force $PROFILE`
