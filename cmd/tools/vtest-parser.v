@@ -60,7 +60,7 @@ fn main() {
 		source = source[..context.cut_index]
 
 		go fn (ms int) {
-			time.wait(ms * time.millisecond)
+			time.sleep(ms * time.millisecond)
 			exit(ecode_timeout)
 		}(context.timeout_ms)
 		_ := parser.parse_text(source, context.path, context.table, .skip_comments, context.pref,
@@ -124,7 +124,7 @@ fn process_cli_args() &Context {
 		exit(0)
 	}
 	context.all_paths = fp.finalize() or {
-		context.error(err)
+		context.error(err.msg)
 		exit(1)
 	}
 	if !context.is_worker && context.all_paths.len == 0 {
@@ -218,7 +218,7 @@ fn (mut context Context) process_whole_file_in_worker(path string) (int, int) {
 		cmd := '"$context.myself" $verbosity --worker --timeout_ms ${context.timeout_ms:5} --cut_index ${i:5} --path "$path" '
 		context.log(cmd)
 		res := os.exec(cmd) or { os.Result{
-			output: err
+			output: err.msg
 			exit_code: ecode_exec
 		} }
 		context.log('worker exit_code: $res.exit_code | worker output:\n$res.output')
@@ -259,7 +259,7 @@ fn (mut context Context) start_printing() {
 
 fn (mut context Context) stop_printing() {
 	context.stop_print = true
-	time.wait(time.millisecond * context.period_ms / 5)
+	time.sleep(time.millisecond * context.period_ms / 5)
 }
 
 fn (mut context Context) print_status() {
@@ -284,7 +284,7 @@ fn (mut context Context) print_periodic_status() {
 	for !context.stop_print {
 		context.print_status()
 		for i := 0; i < 10 && !context.stop_print; i++ {
-			time.wait(time.millisecond * context.period_ms / 10)
+			time.sleep(time.millisecond * context.period_ms / 10)
 			if context.cut_index > 50 && !printed_at_least_once {
 				context.print_status()
 				printed_at_least_once = true

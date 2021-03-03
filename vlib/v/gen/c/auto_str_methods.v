@@ -48,7 +48,11 @@ fn (g &Gen) type_to_fmt(typ table.Type) string {
 		return "'%.*s\\000'"
 	} else if sym.kind in [.f32, .f64] {
 		return '%g\\000' // g removes trailing zeros unlike %f
+	} else if sym.kind == .u32 {
+		return '%u\\000'
 	} else if sym.kind == .u64 {
+		return '%llu\\000'
+	} else if sym.kind == .i64 {
 		return '%lld\\000'
 	}
 	return '%d\\000'
@@ -135,9 +139,9 @@ fn (mut g Gen) gen_str_for_option(typ table.Type, styp string, str_fn_name strin
 	g.type_definitions.writeln('string indent_${str_fn_name}($styp it, int indent_count); // auto')
 	g.auto_str_funcs.writeln('string indent_${str_fn_name}($styp it, int indent_count) {')
 	g.auto_str_funcs.writeln('\tstring res;')
-	g.auto_str_funcs.writeln('\tif (it.is_none) {')
+	g.auto_str_funcs.writeln('\tif (it.state == 1) {')
 	g.auto_str_funcs.writeln('\t\tres = _SLIT("none");')
-	g.auto_str_funcs.writeln('\t} else if (it.ok) {')
+	g.auto_str_funcs.writeln('\t} else if (it.state == 0) {')
 	if sym.kind == .string {
 		g.auto_str_funcs.writeln('\t\tres = _STR("\'%.*s\\000\'", 2, ${parent_str_fn_name}(*($sym.cname*)it.data));')
 	} else if sym.kind == .struct_ && !sym_has_str_method {
@@ -146,7 +150,7 @@ fn (mut g Gen) gen_str_for_option(typ table.Type, styp string, str_fn_name strin
 		g.auto_str_funcs.writeln('\t\tres = ${parent_str_fn_name}(*($sym.cname*)it.data);')
 	}
 	g.auto_str_funcs.writeln('\t} else {')
-	g.auto_str_funcs.writeln('\t\tres = _STR("error: \'%.*s\\000\'", 2, it.v_error);')
+	g.auto_str_funcs.writeln('\t\tres = _STR("error: \'%.*s\\000\'", 2, it.err.msg);')
 	g.auto_str_funcs.writeln('\t}')
 	g.auto_str_funcs.writeln('\treturn _STR("Option(%.*s\\000)", 2, res);')
 	g.auto_str_funcs.writeln('}')

@@ -57,7 +57,7 @@ fn main() {
 		if s == 'STOP' {
 			break
 		}
-		time.wait(delay * time.millisecond)
+		time.sleep(delay * time.millisecond)
 	}
 	pmessage()
 	pmessage()

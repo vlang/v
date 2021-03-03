@@ -305,3 +305,28 @@ fn animal_match(a Animal) {
 	}
 }
 */
+
+interface II {
+mut:
+    my_field int
+}
+
+struct AA {
+    BB
+}
+
+struct BB {
+	pad [10]byte
+mut:
+    my_field int
+}
+
+fn main() {
+	mut aa := AA{}
+	mut ii := II(aa)
+	assert ii.my_field == 0
+	aa.my_field = 123
+	assert ii.my_field == 123
+	ii.my_field = 1234
+	assert aa.my_field == 1234
+}

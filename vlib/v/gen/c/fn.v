@@ -158,7 +158,7 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 		name = util.replace_op(name)
 	}
 	if node.is_method {
-		name = g.cc_type2(node.receiver.typ) + '_' + name
+		name = g.cc_type(node.receiver.typ, false) + '_' + name
 		// name = g.table.get_type_symbol(node.receiver.typ).name + '_' + name
 	}
 	if node.language == .c {
@@ -301,14 +301,14 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 		default_expr := g.type_default(node.return_type)
 		// TODO: perf?
 		if default_expr == '{0}' {
-			if node.return_type.idx() == 1 && node.return_type.has_flag(.optional) {
-				// The default return for anonymous functions that return `?,
-				// should have .ok = true set, otherwise calling them with
-				// optfn() or { panic(err) } will cause a panic:
-				g.writeln('\treturn (Option_void){.ok = true};')
-			} else {
-				g.writeln('\treturn ($type_name)$default_expr;')
-			}
+			// if node.return_type.idx() == 1 && node.return_type.has_flag(.optional) {
+			// 	// The default return for anonymous functions that return `?,
+			// 	// should have .ok = true set, otherwise calling them with
+			// 	// optfn() or { panic(err) } will cause a panic:
+			// 	g.writeln('\treturn (Option_void){0};')
+			// } else {
+			g.writeln('\treturn ($type_name)$default_expr;')
+			// }
 		} else {
 			g.writeln('\treturn $default_expr;')
 		}
@@ -391,6 +391,7 @@ fn (mut g Gen) fn_args(args []table.Param, is_variadic bool) ([]string, []string
 }
 
 fn (mut g Gen) call_expr(node ast.CallExpr) {
+	// g.write('/*call expr*/')
 	// NOTE: everything could be done this way
 	// see my comment in parser near anon_fn
 	if node.left is ast.AnonFn {
@@ -408,14 +409,14 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	defer {
 		g.inside_call = false
 	}
-	gen_or := node.or_block.kind != .absent && !g.is_autofree
-	// if gen_or {
-	// g.writeln('/*start*/')
-	// }
-	is_gen_or_and_assign_rhs := gen_or && g.is_assign_rhs
-	cur_line := if is_gen_or_and_assign_rhs && !g.is_autofree {
+	gen_or := node.or_block.kind != .absent // && !g.is_autofree
+	is_gen_or_and_assign_rhs := gen_or && !g.discard_or_result
+	cur_line := if is_gen_or_and_assign_rhs { // && !g.is_autofree {
+		// `x := foo() or { ...}`
+		// cut everything that has been generated to prepend optional variable creation
 		line := g.go_before_stmt(0)
 		g.out.write_string(tabs[g.indent])
+		// g.write('/*is_gen_or_and_assign_rhs*/')
 		line
 	} else {
 		''
@@ -437,21 +438,21 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		g.fn_call(node)
 	}
 	if gen_or { // && !g.autofree {
-		if !g.is_autofree {
-			g.or_block(tmp_opt, node.or_block, node.return_type)
-		}
+		// if !g.is_autofree {
+		g.or_block(tmp_opt, node.or_block, node.return_type)
+		//}
 		if is_gen_or_and_assign_rhs {
 			unwrapped_typ := node.return_type.clear_flag(.optional)
 			unwrapped_styp := g.typ(unwrapped_typ)
 			if unwrapped_typ == table.void_type {
 				g.write('\n $cur_line')
 			} else if g.table.get_type_symbol(node.return_type).kind == .multi_return {
-				g.write('\n $cur_line $tmp_opt')
+				g.write('\n $cur_line $tmp_opt /*U*/')
 			} else {
-				g.write('\n $cur_line *($unwrapped_styp*)${tmp_opt}.data')
+				if !g.inside_const {
+					g.write('\n $cur_line *($unwrapped_styp*)${tmp_opt}.data')
+				}
 			}
-			// g.write('\n /*call_expr cur_line:*/ $cur_line /*C*/ $tmp_opt /*end*/')
-			// g.insert_before_stmt('\n /* VVV */ $tmp_opt')
 		}
 	}
 }
@@ -476,11 +477,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	if node.receiver_type == 0 {
 		g.checker_bug('CallExpr.receiver_type is 0 in method_call', node.pos)
 	}
-	// mut receiver_type_name := g.cc_type(node.receiver_type)
-	// mut receiver_type_name := g.typ(node.receiver_type)
 	typ_sym := g.table.get_type_symbol(g.unwrap_generic(node.receiver_type))
-	// mut receiver_type_name := util.no_dots(typ_sym.name)
-	mut receiver_type_name := util.no_dots(g.cc_type2(g.unwrap_generic(node.receiver_type)))
+	mut receiver_type_name := util.no_dots(g.cc_type(g.unwrap_generic(node.receiver_type),
+		false))
 	if typ_sym.kind == .interface_ && (typ_sym.info as table.Interface).defines_method(node.name) {
 		// Speaker_name_table[s._interface_idx].speak(s._object)
 		$if debug_interface_method_call ? {
@@ -590,7 +589,6 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__')
 		&& node.name != 'str' {
 		sym := g.table.get_type_symbol(node.receiver_type)
-		// key = g.cc_type2(node.receiver.typ) + '.' + node.name
 		key := sym.name + '.' + node.name
 		g.write('/* obf method call: $key */')
 		name = g.obf_table[key] or {
@@ -721,7 +719,13 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		}
 	}
 	mut name := node.name
-	is_print := name in ['print', 'println', 'eprint', 'eprintln']
+	if node.name == 'error' {
+		name = 'error2'
+	}
+	if node.name == 'error_with_code' {
+		name = 'error_with_code2'
+	}
+	is_print := name in ['print', 'println', 'eprint', 'eprintln', 'panic']
 	print_method := name
 	is_json_encode := name == 'json.encode'
 	is_json_encode_pretty := name == 'json.encode_pretty'
@@ -769,7 +773,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			g.is_js_call = false
 			g.writeln(');')
 			tmp2 = g.new_tmp_var()
-			g.writeln('Option_$typ $tmp2 = $fn_name ($json_obj);')
+			g.writeln('Option2_$typ $tmp2 = $fn_name ($json_obj);')
 		}
 		if !g.is_autofree {
 			g.write('cJSON_Delete($json_obj); //del')
@@ -825,9 +829,9 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				// tmps << tmp
 				g.write('string $tmp = ')
 				g.gen_expr_to_string(expr, typ)
-				g.writeln('; ${print_method}($tmp); string_free(&$tmp);')
+				g.writeln('; ${c_name(print_method)}($tmp); string_free(&$tmp);')
 			} else {
-				g.write('${print_method}(')
+				g.write('${c_name(print_method)}(')
 				g.gen_expr_to_string(expr, typ)
 				g.write(')')
 			}

@@ -281,7 +281,7 @@ pub fn (t &Table) find_field(s &TypeSymbol, name string) ?Field {
 			if field := ts.info.find_field(name) {
 				return field
 			}
-			field := t.register_aggregate_field(mut ts, name) or { return error(err) }
+			field := t.register_aggregate_field(mut ts, name) or { return err }
 			return field
 		} else if mut ts.info is Interface {
 			if field := ts.info.find_field(name) {
@@ -294,6 +294,32 @@ pub fn (t &Table) find_field(s &TypeSymbol, name string) ?Field {
 		ts = unsafe { &t.types[ts.parent_idx] }
 	}
 	return none
+}
+
+// search for a given field, looking through embedded fields
+pub fn (t &Table) find_field_with_embeds(sym &TypeSymbol, field_name string) ?Field {
+	if f := t.find_field(sym, field_name) {
+		return f
+	} else {
+		// look for embedded field
+		if sym.info is Struct {
+			mut found_fields := []Field{}
+			mut embed_of_found_fields := []Type{}
+			for embed in sym.info.embeds {
+				embed_sym := t.get_type_symbol(embed)
+				if f := t.find_field(embed_sym, field_name) {
+					found_fields << f
+					embed_of_found_fields << embed
+				}
+			}
+			if found_fields.len == 1 {
+				return found_fields[0]
+			} else if found_fields.len > 1 {
+				return error('ambiguous field `$field_name`')
+			}
+		}
+		return err
+	}
 }
 
 [inline]
@@ -376,7 +402,8 @@ pub fn (mut t Table) register_type_symbol(typ TypeSymbol) int {
 				// builtin
 				// this will override the already registered builtin types
 				// with the actual v struct declaration in the source
-				if existing_idx >= string_type_idx && existing_idx <= map_type_idx {
+				if (existing_idx >= string_type_idx && existing_idx <= map_type_idx)
+					|| existing_idx == error_type_idx {
 					if existing_idx == string_type_idx {
 						// existing_type := t.types[existing_idx]
 						t.types[existing_idx] = TypeSymbol{
@@ -487,22 +514,32 @@ pub fn (t &Table) chan_cname(elem_type Type, is_mut bool) string {
 
 [inline]
 pub fn (t &Table) thread_name(return_type Type) string {
-	if return_type == void_type {
-		return 'thread'
+	if return_type.idx() == void_type_idx {
+		if return_type.has_flag(.optional) {
+			return 'thread ?'
+		} else {
+			return 'thread'
+		}
 	}
 	return_type_sym := t.get_type_symbol(return_type)
 	ptr := if return_type.is_ptr() { '&' } else { '' }
-	return 'thread $ptr$return_type_sym.name'
+	opt := if return_type.has_flag(.optional) { '?' } else { '' }
+	return 'thread $opt$ptr$return_type_sym.name'
 }
 
 [inline]
 pub fn (t &Table) thread_cname(return_type Type) string {
 	if return_type == void_type {
-		return '__v_thread'
+		if return_type.has_flag(.optional) {
+			return '__v_thread_Option_void'
+		} else {
+			return '__v_thread'
+		}
 	}
 	return_type_sym := t.get_type_symbol(return_type)
 	suffix := if return_type.is_ptr() { '_ptr' } else { '' }
-	return '__v_thread_$return_type_sym.cname$suffix'
+	prefix := if return_type.has_flag(.optional) { 'Option_' } else { '' }
+	return '__v_thread_$prefix$return_type_sym.cname$suffix'
 }
 
 // map_source_name generates the original name for the v source.

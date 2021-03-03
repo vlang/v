@@ -300,8 +300,9 @@ pub:
 // anonymous function
 pub struct AnonFn {
 pub mut:
-	decl FnDecl
-	typ  table.Type // the type of anonymous fn. Both .typ and .decl.name are auto generated
+	decl    FnDecl
+	typ     table.Type // the type of anonymous fn. Both .typ and .decl.name are auto generated
+	has_gen bool       // has been generated
 }
 
 // function or method declaration
@@ -360,9 +361,8 @@ pub:
 // function or method call expr
 pub struct CallExpr {
 pub:
-	pos  token.Position
-	left Expr // `user` in `user.register()`
-	mod  string
+	pos token.Position
+	mod string
 pub mut:
 	name               string // left.name()
 	is_method          bool
@@ -371,6 +371,7 @@ pub mut:
 	expected_arg_types []table.Type
 	language           table.Language
 	or_block           OrExpr
+	left               Expr       // `user` in `user.register()`
 	left_type          table.Type // type of `user`
 	receiver_type      table.Type // User
 	return_type        table.Type
@@ -598,12 +599,13 @@ pub mut:
 // See: token.Kind.is_prefix
 pub struct PrefixExpr {
 pub:
-	op    token.Kind
-	right Expr
-	pos   token.Position
+	op  token.Kind
+	pos token.Position
 pub mut:
 	right_type table.Type
+	right      Expr
 	or_block   OrExpr
+	is_option  bool // IfGuard
 }
 
 pub struct IndexExpr {
@@ -618,6 +620,7 @@ pub mut:
 	is_map    bool
 	is_array  bool
 	is_farray bool
+	is_option bool // IfGuard
 }
 
 pub struct IfExpr {
@@ -722,6 +725,7 @@ pub:
 	stmts   []Stmt
 	kind    CompForKind
 	pos     token.Position
+	typ_pos token.Position
 pub mut:
 	// expr    Expr
 	typ table.Type
@@ -1033,9 +1037,9 @@ pub mut:
 pub struct IfGuardExpr {
 pub:
 	var_name string
-	expr     Expr
 	pos      token.Position
 pub mut:
+	expr      Expr
 	expr_type table.Type
 }
 
@@ -1138,6 +1142,7 @@ pub:
 	has_parens bool // if $() is used, for vfmt
 	left       Expr
 	field_expr Expr
+	pos        token.Position
 pub mut:
 	left_type table.Type
 	typ       table.Type
@@ -1145,6 +1150,7 @@ pub mut:
 
 pub struct ComptimeCall {
 pub:
+	pos         token.Position
 	has_parens  bool // if $() is used, for vfmt
 	method_name string
 	method_pos  token.Position
@@ -1231,17 +1237,15 @@ pub fn (expr Expr) position() token.Position {
 			return expr.decl.pos
 		}
 		ArrayDecompose, ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr, CastExpr, ChanInit,
-		CharLiteral, ConcatExpr, Comment, EnumVal, FloatLiteral, GoExpr, Ident, IfExpr, IndexExpr,
-		IntegerLiteral, Likely, LockExpr, MapInit, MatchExpr, None, OffsetOf, OrExpr, ParExpr,
-		PostfixExpr, PrefixExpr, RangeExpr, SelectExpr, SelectorExpr, SizeOf, SqlExpr, StringInterLiteral,
-		StringLiteral, StructInit, Type, TypeOf, UnsafeExpr {
+		CharLiteral, ConcatExpr, Comment, ComptimeCall, ComptimeSelector, EnumVal, FloatLiteral,
+		GoExpr, Ident, IfExpr, IndexExpr, IntegerLiteral, Likely, LockExpr, MapInit, MatchExpr,
+		None, OffsetOf, OrExpr, ParExpr, PostfixExpr, PrefixExpr, RangeExpr, SelectExpr, SelectorExpr,
+		SizeOf, SqlExpr, StringInterLiteral, StringLiteral, StructInit, Type, TypeOf, UnsafeExpr
+		 {
 			return expr.pos
 		}
 		IfGuardExpr {
 			return expr.expr.position()
-		}
-		ComptimeCall, ComptimeSelector {
-			return expr.left.position()
 		}
 		InfixExpr {
 			left_pos := expr.left.position()
@@ -1278,7 +1282,9 @@ pub fn (expr Expr) is_lvalue() bool {
 pub fn (expr Expr) is_expr() bool {
 	match expr {
 		IfExpr { return expr.is_expr }
+		LockExpr { return expr.is_expr }
 		MatchExpr { return expr.is_expr }
+		SelectExpr { return expr.is_expr }
 		else {}
 	}
 	return true
@@ -1340,11 +1346,8 @@ pub fn (stmt Stmt) position() token.Position {
 	match stmt {
 		AssertStmt, AssignStmt, Block, BranchStmt, CompFor, ConstDecl, DeferStmt, EnumDecl, ExprStmt,
 		FnDecl, ForCStmt, ForInStmt, ForStmt, GotoLabel, GotoStmt, Import, Return, StructDecl,
-		GlobalDecl, HashStmt, InterfaceDecl, Module, SqlStmt {
+		GlobalDecl, HashStmt, InterfaceDecl, Module, SqlStmt, GoStmt {
 			return stmt.pos
-		}
-		GoStmt {
-			return stmt.call_expr.pos
 		}
 		TypeDecl {
 			match stmt {

@@ -38,6 +38,7 @@ mut:
 	inside_or_expr    bool
 	inside_for        bool
 	inside_fn         bool // true even with implicit main
+	inside_unsafe_fn  bool // true when in fn, marked with `[unsafe]`
 	inside_str_interp bool
 	or_is_handled     bool         // ignore `or` in this expression
 	builtin_mod       bool         // are we in the `builtin` module?
@@ -318,7 +319,7 @@ pub fn parse_files(paths []string, table &table.Table, pref &pref.Preferences, g
 			for _ in 0 .. nr_cpus - 1 {
 				go q.run()
 			}
-			time.wait(time.second)
+			time.sleep(time.second)
 			println('all done')
 			return q.parsed_ast_files
 		}
@@ -779,7 +780,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			}
 			return ast.GoStmt{
 				call_expr: call_expr
-				pos: spos.extend(p.tok.position())
+				pos: spos.extend(p.prev_tok.position())
 			}
 		}
 		.key_goto {
@@ -1115,26 +1116,54 @@ pub fn (mut p Parser) parse_ident(language table.Language) ast.Ident {
 	}
 }
 
+fn (p &Parser) is_typename(t token.Token) bool {
+	return t.kind == .name && (t.lit.is_capital() || p.table.known_type(t.lit))
+}
+
+// heuristics to detect `func<T>()` from `var < expr`
+// 1. `f<[]` is generic(e.g. `f<[]int>`) because `var < []` is invalid
+// 2. `f<map[` is generic(e.g. `f<map[string]string>)
+// 3. `f<foo>` is generic because `v1 < foo > v2` is invalid syntax
+// 4. `f<Foo,` is generic when Foo is typename.
+//	   otherwise it is not generic because it may be multi-value (e.g. `return f < foo, 0`).
+// 5. `f<mod.Foo>` is same as case 3
+// 6. `f<mod.Foo,` is same as case 4
+// 7. otherwise, it's not generic
+// see also test_generic_detection in vlib/v/tests/generics_test.v
 fn (p &Parser) is_generic_call() bool {
 	lit0_is_capital := if p.tok.kind != .eof && p.tok.lit.len > 0 {
 		p.tok.lit[0].is_capital()
 	} else {
 		false
 	}
-	// use heuristics to detect `func<T>()` from `var < expr`
-	return !lit0_is_capital && p.peek_tok.kind == .lt && (match p.peek_token(2).kind {
-		.name {
-			// maybe `f<int>`, `f<map[`, f<string,
-			(p.peek_token(2).kind == .name && p.peek_token(3).kind in [.gt, .comma]) || (p.peek_token(2).lit == 'map' && p.peek_token(3).kind == .lsbr)
+	if lit0_is_capital || p.peek_tok.kind != .lt {
+		return false
+	}
+	tok2 := p.peek_token(2)
+	tok3 := p.peek_token(3)
+	tok4 := p.peek_token(4)
+	tok5 := p.peek_token(5)
+	kind2, kind3, kind4, kind5 := tok2.kind, tok3.kind, tok4.kind, tok5.kind
+
+	if kind2 == .lsbr {
+		// case 1
+		return tok3.kind == .rsbr
+	}
+
+	if kind2 == .name {
+		if tok2.lit == 'map' && kind3 == .lsbr {
+			// case 2
+			return true
 		}
-		.lsbr {
-			// maybe `f<[]T>`, assume `var < []` is invalid
-			p.peek_token(3).kind == .rsbr
+		return match kind3 {
+			.gt { true } // case 3
+			.comma { p.is_typename(tok2) } // case 4
+			// case 5 and 6
+			.dot { kind4 == .name && (kind5 == .gt || (kind5 == .comma && p.is_typename(tok4))) }
+			else { false }
 		}
-		else {
-			false
-		}
-	})
+	}
+	return false
 }
 
 pub fn (mut p Parser) name_expr() ast.Expr {
@@ -1546,14 +1575,8 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 			p.next()
 			p.open_scope()
 			p.scope.register(ast.Var{
-				name: 'errcode'
-				typ: table.int_type
-				pos: p.tok.position()
-				is_used: true
-			})
-			p.scope.register(ast.Var{
 				name: 'err'
-				typ: table.string_type
+				typ: table.error_type
 				pos: p.tok.position()
 				is_used: true
 			})
@@ -1749,7 +1772,7 @@ fn (mut p Parser) string_expr() ast.Expr {
 		fills: fills
 		fmts: fmts
 		fmt_poss: fposs
-		pos: pos
+		pos: pos.extend(p.prev_tok.position())
 	}
 	// need_fmts: prelimery - until checker finds out if really needed
 	p.inside_str_interp = false
@@ -1989,12 +2012,6 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 	const_pos := p.tok.position()
 	p.check(.key_const)
 	is_block := p.tok.kind == .lpar
-	/*
-	if p.tok.kind != .lpar {
-		p.error_with_pos('const declaration is missing parentheses `( ... )`', const_pos)
-		return ast.ConstDecl{}
-	}
-	*/
 	if is_block {
 		p.next() // (
 	}
@@ -2016,8 +2033,6 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 				pos)
 		}
 		full_name := p.prepend_mod(name)
-		// name := p.check_name()
-		// println('!!const: $name')
 		p.check(.assign)
 		if p.tok.kind == .key_fn {
 			p.error('const initializer fn literal is not a constant')
@@ -2029,7 +2044,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 			mod: p.mod
 			is_pub: is_pub
 			expr: expr
-			pos: pos
+			pos: pos.extend(expr.position())
 			comments: comments
 		}
 		fields << field
@@ -2204,7 +2219,8 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		pubfn := if p.mod == 'main' { 'fn' } else { 'pub fn' }
 		p.scanner.codegen('
 //
-[inline] $pubfn (    e &$enum_name) has(flag $enum_name) bool { return      (int(*e) &  (int(flag))) != 0 }
+[inline] $pubfn (    e &$enum_name) is_empty() bool           { return  int(*e) == 0 }
+[inline] $pubfn (    e &$enum_name) has(flag $enum_name) bool { return  (int(*e) &  (int(flag))) != 0 }
 [inline] $pubfn (mut e  $enum_name) set(flag $enum_name)      { unsafe{ *e = ${enum_name}(int(*e) |  (int(flag))) } }
 [inline] $pubfn (mut e  $enum_name) clear(flag $enum_name)    { unsafe{ *e = ${enum_name}(int(*e) & ~(int(flag))) } }
 [inline] $pubfn (mut e  $enum_name) toggle(flag $enum_name)   { unsafe{ *e = ${enum_name}(int(*e) ^  (int(flag))) } }

@@ -134,7 +134,7 @@ pub fn (mut f Fmt) wrap_long_line(penalty_idx int, add_indent bool) bool {
 	if f.buffering {
 		return false
 	}
-	if f.line_len <= fmt.max_len[penalty_idx] {
+	if penalty_idx > 0 && f.line_len <= fmt.max_len[penalty_idx] {
 		return false
 	}
 	if f.out.buf[f.out.buf.len - 1] == ` ` {
@@ -310,40 +310,49 @@ pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
 	return '$imp.mod$imp_alias_suffix'
 }
 
-fn (mut f Fmt) should_insert_newline_before_stmt(stmt ast.Stmt, prev_stmt ast.Stmt) bool {
-	prev_line_nr := prev_stmt.position().last_line
+fn (f Fmt) should_insert_newline_before_node(node ast.Node, prev_node ast.Node) bool {
 	// No need to insert a newline if there is already one
 	if f.out.last_n(2) == '\n\n' {
 		return false
 	}
-	// Force a newline after a block of HashStmts
-	if prev_stmt is ast.HashStmt && stmt !is ast.HashStmt && stmt !is ast.ExprStmt {
-		return true
-	}
-	// Force a newline after a block of function declarations
-	if prev_stmt is ast.FnDecl {
-		if prev_stmt.no_body && stmt !is ast.FnDecl {
+	prev_line_nr := prev_node.position().last_line
+	// The nodes are Stmts
+	if node is ast.Stmt && prev_node is ast.Stmt {
+		stmt := node as ast.Stmt
+		prev_stmt := prev_node as ast.Stmt
+		// Force a newline after a block of HashStmts
+		if prev_stmt is ast.HashStmt && stmt !is ast.HashStmt && stmt !is ast.ExprStmt {
 			return true
 		}
-	}
-	// The stmt shouldn't have a newline before
-	if stmt.position().line_nr - prev_line_nr <= 1 {
-		return false
-	}
-	// Imports are handled special hence they are ignored here
-	if stmt is ast.Import || prev_stmt is ast.Import {
-		return false
-	}
-	// Attributes are not respected in the stmts position, so this requires a manual check
-	if stmt is ast.StructDecl {
-		if stmt.attrs.len > 0 && stmt.attrs[0].pos.line_nr - prev_line_nr <= 1 {
+		// Force a newline after a block of function declarations
+		if prev_stmt is ast.FnDecl {
+			if prev_stmt.no_body && stmt !is ast.FnDecl {
+				return true
+			}
+		}
+		// The stmt shouldn't have a newline before
+		// if stmt.position().line_nr - prev_line_nr <= 1 {
+		// 	return false
+		// }
+		// Imports are handled special hence they are ignored here
+		if stmt is ast.Import || prev_stmt is ast.Import {
 			return false
 		}
-	}
-	if stmt is ast.FnDecl {
-		if stmt.attrs.len > 0 && stmt.attrs[0].pos.line_nr - prev_line_nr <= 1 {
-			return false
+		// Attributes are not respected in the stmts position, so this requires a manual check
+		if stmt is ast.StructDecl {
+			if stmt.attrs.len > 0 && stmt.attrs[0].pos.line_nr - prev_line_nr <= 1 {
+				return false
+			}
 		}
+		if stmt is ast.FnDecl {
+			if stmt.attrs.len > 0 && stmt.attrs[0].pos.line_nr - prev_line_nr <= 1 {
+				return false
+			}
+		}
+	}
+	// The node shouldn't have a newline before
+	if node.position().line_nr - prev_line_nr <= 1 {
+		return false
 	}
 	return true
 }
@@ -352,7 +361,7 @@ pub fn (mut f Fmt) stmts(stmts []ast.Stmt) {
 	mut prev_stmt := if stmts.len > 0 { stmts[0] } else { ast.Stmt{} }
 	f.indent++
 	for stmt in stmts {
-		if !f.pref.building_v && f.should_insert_newline_before_stmt(stmt, prev_stmt) {
+		if !f.pref.building_v && f.should_insert_newline_before_node(stmt, prev_stmt) {
 			f.out.writeln('')
 		}
 		f.stmt(stmt)
@@ -459,11 +468,10 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 }
 
 fn stmt_is_single_line(stmt ast.Stmt) bool {
-	match stmt {
-		ast.ExprStmt { return expr_is_single_line(stmt.expr) }
-		ast.Return { return true }
-		ast.AssignStmt { return true }
-		else { return false }
+	return match stmt {
+		ast.ExprStmt, ast.AssertStmt { expr_is_single_line(stmt.expr) }
+		ast.Return, ast.AssignStmt, ast.BranchStmt { true }
+		else { false }
 	}
 }
 
@@ -1065,7 +1073,7 @@ pub fn (mut f Fmt) or_expr(node ast.OrExpr) {
 			if node.stmts.len == 0 {
 				f.write(' or { }')
 				return
-			} else if node.stmts.len == 1 {
+			} else if node.stmts.len == 1 && stmt_is_single_line(node.stmts[0]) {
 				// the control stmts (return/break/continue...) print a newline inside them,
 				// so, since this'll all be on one line, trim any possible whitespace
 				str := f.stmt_str(node.stmts[0]).trim_space()
@@ -1221,6 +1229,10 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 	if mut node.info is ast.IdentVar {
 		if node.info.is_mut {
 			f.write(node.info.share.str() + ' ')
+		}
+		var_info := node.var_info()
+		if var_info.is_static {
+			f.write('static ')
 		}
 	}
 	f.write_language_prefix(node.language)
@@ -1965,35 +1977,45 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 	mut inc_indent := false
 	mut last_line_nr := node.pos.line_nr // to have the same newlines between array elements
 	f.array_init_depth++
-	for i, c in node.pre_cmnts {
-		if c.pos.line_nr > last_line_nr {
-			f.writeln('')
-		} else if i > 0 {
-			f.write(' ')
-		}
-		f.comment(c, level: .indent, iembed: true)
-		last_line_nr = c.pos.last_line
-	}
 	if node.pre_cmnts.len > 0 {
-		same_line := node.pre_cmnts[0].pos.line_nr == node.pos.line_nr
-		if same_line && node.exprs.len > 0 {
-			f.write(' ')
-		} else if !same_line && node.exprs.len == 0 {
+		if node.pre_cmnts[0].pos.line_nr > last_line_nr {
 			f.writeln('')
 		}
+	}
+	for i, c in node.pre_cmnts {
+		if i < node.pre_cmnts.len - 1 {
+			if c.pos.last_line < node.pre_cmnts[i + 1].pos.line_nr {
+				f.comment(c, level: .indent)
+				f.writeln('')
+			} else {
+				f.comment(c, level: .indent, iembed: true)
+				f.write(' ')
+			}
+		} else {
+			if c.pos.last_line < node.pos.last_line {
+				f.comment(c, level: .indent)
+				if node.exprs.len == 0 {
+					f.writeln('')
+				}
+			} else {
+				f.comment(c, level: .indent, iembed: true)
+				if node.exprs.len > 0 {
+					f.write(' ')
+				}
+			}
+		}
+		last_line_nr = c.pos.last_line
 	}
 	mut set_comma := false
 	for i, expr in node.exprs {
-		line_nr := expr.position().line_nr
+		pos := expr.position()
 		if i == 0 {
 			if f.array_init_depth > f.array_init_break.len {
-				f.array_init_break << (last_line_nr < line_nr)
+				f.array_init_break << pos.line_nr > last_line_nr
 			}
 		}
-		is_same_line_comment := i > 0
-			&& (expr is ast.Comment && line_nr == node.exprs[i - 1].position().line_nr)
 		line_break := f.array_init_break[f.array_init_depth - 1]
-		mut penalty := if line_break && !is_same_line_comment { 0 } else { 4 }
+		mut penalty := if line_break { 0 } else { 4 }
 		if penalty > 0 {
 			if i == 0 || should_decrease_arr_penalty(node.exprs[i - 1]) {
 				penalty--
@@ -2020,25 +2042,24 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 				}
 				if cmt.pos.line_nr > expr_pos.last_line {
 					f.writeln('')
+					f.comment(cmt, {})
 				} else {
 					f.write(' ')
+					f.comment(cmt, iembed: true)
 				}
-				f.comment(cmt, iembed: true)
 			}
 		}
 		if i == node.exprs.len - 1 {
 			if is_new_line {
-				if !set_comma && expr !is ast.Comment {
+				if !set_comma {
 					f.write(',')
 				}
 				f.writeln('')
-			} else if is_same_line_comment {
-				f.writeln('')
 			}
-		} else if !set_comma && expr !is ast.Comment {
+		} else if !set_comma {
 			f.write(',')
 		}
-		last_line_nr = line_nr
+		last_line_nr = pos.last_line
 		set_comma = false
 	}
 	f.array_init_depth--
@@ -2229,13 +2250,17 @@ pub fn (mut f Fmt) const_decl(it ast.ConstDecl) {
 		}
 	}
 	f.indent++
+	mut prev_field := if it.fields.len > 0 { ast.Node(it.fields[0]) } else { ast.Node{} }
 	for field in it.fields {
-		comments := field.comments
-		mut j := 0
-		for j < comments.len && comments[j].pos.pos < field.pos.pos {
-			f.comment(comments[j], inline: true)
+		if field.comments.len > 0 {
+			if f.should_insert_newline_before_node(ast.Expr(field.comments[0]), prev_field) {
+				f.writeln('')
+			}
+			f.comments(field.comments, inline: true)
+			prev_field = ast.Expr(field.comments.last())
+		}
+		if f.should_insert_newline_before_node(field, prev_field) {
 			f.writeln('')
-			j++
 		}
 		name := field.name.after('.')
 		f.write('$name ')
@@ -2243,6 +2268,7 @@ pub fn (mut f Fmt) const_decl(it ast.ConstDecl) {
 		f.write('= ')
 		f.expr(field.expr)
 		f.writeln('')
+		prev_field = field
 	}
 	f.comments_after_last_field(it.end_comments)
 	f.indent--
@@ -2307,10 +2333,6 @@ pub fn (mut f Fmt) assign_stmt(node ast.AssignStmt) {
 	f.comments(node.comments, {})
 	for i, left in node.left {
 		if left is ast.Ident {
-			var_info := left.var_info()
-			if var_info.is_static {
-				f.write('static ')
-			}
 			f.expr(left)
 		} else {
 			f.expr(left)

@@ -214,6 +214,12 @@ pub struct C.timeval {
 }
 
 // wait makes the calling thread sleep for a given duration (in nanoseconds).
+[deprecated: 'call time.sleep(n * time.second)']
 pub fn wait(duration Duration) {
+	C.Sleep(int(duration / millisecond))
+}
+
+// sleep makes the calling thread sleep for a given duration (in nanoseconds).
+pub fn sleep(duration Duration) {
 	C.Sleep(int(duration / millisecond))
 }

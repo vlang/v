@@ -23,16 +23,19 @@ mut:
 	functions_name []string // all the user function names
 	lines          []string // all the other lines/statements
 	temp_lines     []string // all the temporary expressions/printlns
+	vstartup_lines []string // lines in the `VSTARTUP` file
 }
 
 const is_stdin_a_pipe = (is_atty(0) == 0)
 
 const vexe = os.getenv('VEXE')
+const vstartup = os.getenv('VSTARTUP')
 
 fn new_repl() Repl {
 	return Repl{
 		readline: readline.Readline{}
 		modules: ['os', 'time', 'math']
+		vstartup_lines: os.read_file(vstartup) or { '' }.trim_right('\n\r').split_into_lines()
 	}
 }
 
@@ -73,14 +76,24 @@ fn (r &Repl) function_call(line string) bool {
 	return false
 }
 
-fn (r &Repl) current_source_code(should_add_temp_lines bool) string {
+fn (r &Repl) current_source_code(should_add_temp_lines bool, not_add_print bool) string {
 	mut all_lines := []string{}
 	for mod in r.modules {
 		all_lines << 'import $mod\n'
 	}
+	if vstartup != '' {
+		mut lines := []string{}
+		if !not_add_print {
+			lines = r.vstartup_lines.filter(!it.starts_with('print'))
+		} else {
+			lines = r.vstartup_lines	
+		}
+		all_lines << lines
+	}
 	all_lines << r.includes
 	all_lines << r.functions
 	all_lines << r.lines
+
 	if should_add_temp_lines {
 		all_lines << r.temp_lines
 	}
@@ -103,6 +116,13 @@ fn run_repl(workdir string, vrepl_prefix string) {
 		println(util.full_v_version(false))
 		println('Use Ctrl-C or `exit` to exit, or `help` to see other available commands')
 	}
+
+	if vstartup != '' {
+		result := repl_run_vfile(vstartup) or { os.Result{output: '$vstartup file not found'} }
+		print('\n')
+		print_output(result)
+	}
+	
 	file := os.join_path(workdir, '.${vrepl_prefix}vrepl.v')
 	temp_file := os.join_path(workdir, '.${vrepl_prefix}vrepl_temp.v')
 	mut prompt := '>>> '
@@ -170,7 +190,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 			continue
 		}
 		if r.line == 'list' {
-			source_code := r.current_source_code(true)
+			source_code := r.current_source_code(true, true)
 			println('//////////////////////////////////////////////////////////////////////////////////////')
 			println(source_code)
 			println('//////////////////////////////////////////////////////////////////////////////////////')
@@ -183,7 +203,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 			r.line = 'println(' + r.line[1..] + ')'
 		}
 		if r.line.starts_with('print') {
-			source_code := r.current_source_code(false) + '\n$r.line\n'
+			source_code := r.current_source_code(false, false) + '\n$r.line\n'
 			os.write_file(file, source_code) or { panic(err) }
 			s := repl_run_vfile(file) or { return }
 			print_output(s)
@@ -238,10 +258,10 @@ fn run_repl(workdir string, vrepl_prefix string) {
 			if temp_line.starts_with('import ') {
 				mod := r.line.fields()[1]
 				if mod !in r.modules {
-					temp_source_code = '$temp_line\n' + r.current_source_code(false)
+					temp_source_code = '$temp_line\n' + r.current_source_code(false, true)
 				}
 			} else if temp_line.starts_with('#include ') {
-				temp_source_code = '$temp_line\n' + r.current_source_code(false)
+				temp_source_code = '$temp_line\n' + r.current_source_code(false, false)
 			} else {
 				for i, l in r.lines {
 					if (l.starts_with('for ') || l.starts_with('if ')) && l.contains('println') {
@@ -249,7 +269,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 						break
 					}
 				}
-				temp_source_code = r.current_source_code(true) + '\n$temp_line\n'
+				temp_source_code = r.current_source_code(true, false) + '\n$temp_line\n'
 			}
 			os.write_file(temp_file, temp_source_code) or { panic(err) }
 			s := repl_run_vfile(temp_file) or { return }
@@ -355,8 +375,8 @@ fn repl_run_vfile(file string) ?os.Result {
 		eprintln('>> repl_run_vfile file: $file')
 	}
 	s := os.exec('"$vexe" -repl run "$file"') or {
-		rerror(err)
-		return error(err)
+		rerror(err.msg)
+		return err
 	}
 	return s
 }

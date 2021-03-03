@@ -239,7 +239,7 @@ pub fn (mut cb Clipboard) set_text(text string) bool {
 	C.XFlush(cb.display)
 	cb.mutex.unlock()
 	// sleep a little bit
-	time.wait(1 * time.millisecond)
+	time.sleep(1 * time.millisecond)
 	return cb.is_owner
 }
 
@@ -262,7 +262,7 @@ fn (mut cb Clipboard) get_text() string {
 		if cb.got_text || retries == 0 {
 			break
 		}
-		time.wait(50 * time.millisecond)
+		time.sleep(50 * time.millisecond)
 		retries--
 	}
 	return cb.text

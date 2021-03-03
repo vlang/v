@@ -13,7 +13,7 @@ import strings
 * Note:
 * use `v -d create_data vlib/x/ttf/ttf_test.v` to generate binary data for this test file
 *
-* TODO: 
+* TODO:
 * - manage text directions R to L
 **********************************************************************/
 const font_path = 'Qarmic_sans_Abridged.ttf'

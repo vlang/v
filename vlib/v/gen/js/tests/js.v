@@ -88,7 +88,7 @@ fn main() {
 		println(message)
 	})
 	hl.raw_js_log()
-	propagation() or { println(err) }
+	propagation() or { println(err.msg) }
 }
 
 fn anon_consumer(greeting string, anon fn (message string)) {

@@ -2,3 +2,7 @@ import time { now, since }
 fn main() {
   since(now())
 }
+
+fn method() {
+    _ = map{'h':2}.exists_1('h')
+}

@@ -16,7 +16,7 @@ const (
 ==================
 C error. This should never happen.
 
-If you were not working with C interop, please raise an issue on GitHub:
+If you were not working with C interop, this is a compiler bug, please raise an issue on GitHub:
 
 https://github.com/vlang/v/issues/new/choose
 
@@ -636,10 +636,10 @@ fn (mut v Builder) cc() {
 		ccompiler_label := 'C ${os.file_name(ccompiler):3}'
 		util.timing_start(ccompiler_label)
 		res := os.exec(cmd) or {
-			println('C compilation failed.')
-			os.chdir(original_pwd)
-			verror(err)
-			return
+			os.Result{
+				exit_code: 111
+				output: 'C compilation failed.\n$err.msg'
+			}
 		}
 		util.timing_measure(ccompiler_label)
 		if v.pref.show_c_output {
@@ -709,7 +709,7 @@ fn (mut v Builder) cc() {
 		obj_file +
 		' /usr/lib/x86_64-linux-gnu/libc.so ' +
 		'/usr/lib/x86_64-linux-gnu/crtn.o') or {
-			verror(err)
+			verror(err.msg)
 			return
 		}
 		println(ress.output)
@@ -794,10 +794,12 @@ fn (mut b Builder) cc_linux_cross() {
 	if b.pref.show_cc {
 		println(cc_cmd)
 	}
-	cc_res := os.exec(cc_cmd) or { os.Result{
-		exit_code: 1
-		output: 'no `cc` command found'
-	} }
+	cc_res := os.exec(cc_cmd) or {
+		os.Result{
+			exit_code: 1
+			output: 'no `cc` command found'
+		}
+	}
 	if cc_res.exit_code != 0 {
 		println('Cross compilation for Linux failed (first step, cc). Make sure you have clang installed.')
 		verror(cc_res.output)
@@ -817,7 +819,7 @@ fn (mut b Builder) cc_linux_cross() {
 	}
 	res := os.exec(linker_cmd) or {
 		println('Cross compilation for Linux failed (second step, lld).')
-		verror(err)
+		verror(err.msg)
 		return
 	}
 	if res.exit_code != 0 {
@@ -982,7 +984,7 @@ fn (mut v Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CF
 	}
 	res := os.exec(cmd) or {
 		eprintln('exec failed for thirdparty object build cmd:\n$cmd')
-		verror(err)
+		verror(err.msg)
 		return
 	}
 	os.chdir(current_folder)

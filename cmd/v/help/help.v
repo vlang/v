@@ -5,7 +5,7 @@ import os
 import v.pref
 
 const (
-	unknown_topic = 'V Error: Unknown help topic provided. Use `v help` for usage information.'
+	unknown_topic = '`v help`: unknown help topic provided. Use `v help` for usage information.'
 )
 
 pub fn print_and_exit(topic string) {
@@ -15,12 +15,12 @@ pub fn print_and_exit(topic string) {
 		if (b >= `a` && b <= `z`) || b == `-` || (b >= `0` && b <= `9`) {
 			continue
 		}
-		eprintln(unknown_topic)
+		eprintln(help.unknown_topic)
 		exit(1)
 	}
 	target_topic := os.join_path(vroot, 'cmd', 'v', 'help', '${topic}.txt')
 	content := os.read_file(target_topic) or {
-		eprintln(unknown_topic)
+		eprintln(help.unknown_topic)
 		exit(1)
 	}
 	println(content)

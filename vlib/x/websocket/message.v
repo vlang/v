@@ -148,7 +148,7 @@ pub fn (mut ws Client) read_next_message() ?Message {
 			ws.validate_utf_8(frame.opcode, frame_payload) or {
 				ws.logger.error('UTF8 validation error: $err, len of payload($frame_payload.len)')
 				ws.send_error_event('UTF8 validation error: $err, len of payload($frame_payload.len)')
-				return error(err)
+				return err
 			}
 			msg := Message{
 				opcode: OPCode(frame.opcode)

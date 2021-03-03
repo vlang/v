@@ -61,8 +61,8 @@ pub fn cp_all(src string, dst string, overwrite bool) ? {
 			}
 		}
 		cp_all(sp, dp, overwrite) or {
-			rmdir(dp) or { return error(err) }
-			return error(err)
+			rmdir(dp) or { return err }
+			return err
 		}
 	}
 }
@@ -200,11 +200,23 @@ pub fn file_name(path string) string {
 	return path.all_after_last(path_separator)
 }
 
-// input returns a one-line string from stdin, after printing a prompt.
-pub fn input(prompt string) string {
+// input_opt returns a one-line string from stdin, after printing a prompt.
+// In the event of error (end of input), it returns `none`.
+pub fn input_opt(prompt string) ?string {
 	print(prompt)
 	flush()
-	return get_line()
+	res := get_raw_line()
+	if res.len > 0 {
+		return res.trim_right('\r\n')
+	}
+	return none
+}
+
+// input returns a one-line string from stdin, after printing a prompt.
+// In the event of error (end of input), it returns '<EOF>'.
+pub fn input(prompt string) string {
+	res := input_opt(prompt) or { return '<EOF>' }
+	return res
 }
 
 // get_line returns a one-line string from stdin
@@ -212,9 +224,8 @@ pub fn get_line() string {
 	str := get_raw_line()
 	$if windows {
 		return str.trim_right('\r\n')
-	} $else {
-		return str.trim_right('\n')
 	}
+	return str.trim_right('\n')
 }
 
 // get_lines returns an array of strings read from from stdin.
@@ -325,7 +336,7 @@ pub fn write_file(path string, text string) ? {
 // write_file_array writes the data in `buffer` to a file in `path`.
 pub fn write_file_array(path string, buffer array) ? {
 	mut f := create(path) ?
-	f.write_bytes_at(buffer.data, (buffer.len * buffer.element_size), 0)
+	unsafe { f.write_bytes_at(buffer.data, (buffer.len * buffer.element_size), 0) }
 	f.close()
 }
 

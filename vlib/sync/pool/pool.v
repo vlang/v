@@ -74,7 +74,7 @@ pub fn (mut pool PoolProcessor) set_max_jobs(njobs int) {
 // work_on_items returns *after* all threads finish.
 // You can optionally call get_results after that.
 pub fn (mut pool PoolProcessor) work_on_items<T>(items []T) {
-	pool.work_on_pointers( items.pointers() )
+	pool.work_on_pointers( unsafe { items.pointers() } )
 }
 
 pub fn (mut pool PoolProcessor) work_on_pointers(items []voidptr) {

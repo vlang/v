@@ -72,7 +72,7 @@ fn (mut s Server) close() {
 fn (mut s Server) handle_ping() {
 	mut clients_to_remove := []string{}
 	for s.state == .open {
-		time.wait(s.ping_interval * time.second)
+		time.sleep(s.ping_interval * time.second)
 		for i, _ in s.clients {
 			mut c := s.clients[i]
 			if c.client.state == .open {
@@ -120,8 +120,8 @@ fn (mut s Server) serve_client(mut c Client) ? {
 	}
 	s.setup_callbacks(mut server_client)
 	c.listen() or {
-		s.logger.error(err)
-		return error(err)
+		s.logger.error(err.msg)
+		return err
 	}
 }
 

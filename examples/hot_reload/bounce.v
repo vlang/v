@@ -80,6 +80,6 @@ fn (mut game Game) update_model() {
 fn (mut game Game) run() {
 	for {
 		game.update_model()
-		time.wait(16 * time.millisecond) // 60fps
+		time.sleep(16 * time.millisecond) // 60fps
 	}
 }

@@ -14,10 +14,13 @@ const (
 	bufsize              = 1536
 )
 
+// Request holds information about an HTTP request
 pub struct Request {
 pub mut:
+	version    Version = .v1_1
 	method     Method
-	headers    map[string]string
+	headers    map[string]string // original requset headers
+	lheaders   map[string]string // same as headers, but with normalized lowercased keys (for received requests)
 	cookies    map[string]string
 	data       string
 	url        string
@@ -27,6 +30,7 @@ pub mut:
 	ws_func    voidptr
 }
 
+// FetchConfig holds configurations of fetch
 pub struct FetchConfig {
 pub mut:
 	method     Method
@@ -38,6 +42,7 @@ pub mut:
 	verbose    bool
 }
 
+// Response represents the result of the request
 pub struct Response {
 pub:
 	text        string
@@ -62,10 +67,12 @@ pub fn new_request(method Method, url_ string, data string) ?Request {
 	}
 }
 
+// get sends a GET HTTP request to the URL
 pub fn get(url string) ?Response {
 	return fetch_with_method(.get, url, FetchConfig{})
 }
 
+// post sends a POST HTTP request to the URL with a string data
 pub fn post(url string, data string) ?Response {
 	return fetch_with_method(.post, url, 
 		data: data
@@ -75,6 +82,7 @@ pub fn post(url string, data string) ?Response {
 	)
 }
 
+// post_json sends a POST HTTP request to the URL with a JSON data
 pub fn post_json(url string, data string) ?Response {
 	return fetch_with_method(.post, url, 
 		data: data
@@ -84,6 +92,7 @@ pub fn post_json(url string, data string) ?Response {
 	)
 }
 
+// post_form sends a POST HTTP request to the URL with X-WWW-FORM-URLENCODED data
 pub fn post_form(url string, data map[string]string) ?Response {
 	return fetch_with_method(.post, url, 
 		headers: {
@@ -93,6 +102,7 @@ pub fn post_form(url string, data map[string]string) ?Response {
 	)
 }
 
+// put sends a PUT HTTP request to the URL with a string data
 pub fn put(url string, data string) ?Response {
 	return fetch_with_method(.put, url, 
 		data: data
@@ -102,6 +112,7 @@ pub fn put(url string, data string) ?Response {
 	)
 }
 
+// patch sends a PATCH HTTP request to the URL with a string data
 pub fn patch(url string, data string) ?Response {
 	return fetch_with_method(.patch, url, 
 		data: data
@@ -111,14 +122,17 @@ pub fn patch(url string, data string) ?Response {
 	)
 }
 
+// head sends a HEAD HTTP request to the URL
 pub fn head(url string) ?Response {
 	return fetch_with_method(.head, url, FetchConfig{})
 }
 
+// delete sends a DELETE HTTP request to the URL
 pub fn delete(url string) ?Response {
 	return fetch_with_method(.delete, url, FetchConfig{})
 }
 
+// fetch sends an HTTP request to the URL with the given method and configurations
 pub fn fetch(_url string, config FetchConfig) ?Response {
 	if _url == '' {
 		return error('http.fetch: empty url')
@@ -140,11 +154,13 @@ pub fn fetch(_url string, config FetchConfig) ?Response {
 	return res
 }
 
+// get_text sends a GET HTTP request to the URL and returns the text content of the response
 pub fn get_text(url string) string {
 	resp := fetch(url, method: .get) or { return '' }
 	return resp.text
 }
 
+// url_encode_form_data converts mapped data to an URL encoded string
 pub fn url_encode_form_data(data map[string]string) string {
 	mut pieces := []string{}
 	for key_, value_ in data {
@@ -191,6 +207,7 @@ pub fn (mut req Request) add_header(key string, val string) {
 	req.headers[key] = val
 }
 
+// parse_headers parses HTTP header strings to mapped data
 pub fn parse_headers(lines []string) map[string]string {
 	mut headers := map[string]string{}
 	for i, line in lines {
@@ -340,7 +357,8 @@ fn (req &Request) build_request_headers(method Method, host_name string, path st
 		uheaders << '$key: $val\r\n'
 	}
 	uheaders << req.build_request_cookies_header()
-	return '$method $path HTTP/1.1\r\n' + uheaders.join('') + 'Connection: close\r\n\r\n' + req.data
+	version := if req.version == .unknown { Version.v1_1 } else { req.version }
+	return '$method $path $version\r\n' + uheaders.join('') + 'Connection: close\r\n\r\n' + req.data
 }
 
 fn (req &Request) build_request_cookies_header() string {
@@ -357,18 +375,22 @@ fn (req &Request) build_request_cookies_header() string {
 	return 'Cookie: ' + cookie.join('; ') + '\r\n'
 }
 
+// unescape_url is deprecated, use urllib.query_unescape() instead
 pub fn unescape_url(s string) string {
 	panic('http.unescape_url() was replaced with urllib.query_unescape()')
 }
 
+// escape_url is deprecated, use urllib.query_escape() instead
 pub fn escape_url(s string) string {
 	panic('http.escape_url() was replaced with urllib.query_escape()')
 }
 
+// unescape is deprecated, use urllib.query_escape() instead
 pub fn unescape(s string) string {
 	panic('http.unescape() was replaced with http.unescape_url()')
 }
 
+// escape is deprecated, use urllib.query_unescape() instead
 pub fn escape(s string) string {
 	panic('http.escape() was replaced with http.escape_url()')
 }
@@ -384,6 +406,7 @@ fn (req &Request) http_do(host string, method Method, path string) ?Response {
 	return parse_response(bytes.bytestr())
 }
 
+// referer returns 'Referer' header value of the given request
 pub fn (req &Request) referer() string {
 	return req.headers['Referer']
 }

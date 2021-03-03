@@ -15,10 +15,10 @@ fn (mut ws Client) socket_read(mut buffer []byte) ?int {
 		} else {
 			for {
 				r := ws.conn.read(mut buffer) or {
-					if errcode == net.err_timed_out_code {
+					if err.code == net.err_timed_out_code {
 						continue
 					}
-					return error(err)
+					return err
 				}
 				return r
 			}
@@ -39,10 +39,10 @@ fn (mut ws Client) socket_read_ptr(buf_ptr byteptr, len int) ?int {
 		} else {
 			for {
 				r := ws.conn.read_ptr(buf_ptr, len) or {
-					if errcode == net.err_timed_out_code {
+					if err.code == net.err_timed_out_code {
 						continue
 					}
-					return error(err)
+					return err
 				}
 				return r
 			}
@@ -52,24 +52,25 @@ fn (mut ws Client) socket_read_ptr(buf_ptr byteptr, len int) ?int {
 }
 
 // socket_write writes the provided byte array to the socket
-fn (mut ws Client) socket_write(bytes []byte) ? {
+fn (mut ws Client) socket_write(bytes []byte) ?int {
 	lock  {
 		if ws.state == .closed || ws.conn.sock.handle <= 1 {
 			ws.debug_log('socket_write: Socket allready closed')
 			return error('socket_write: trying to write on a closed socket')
 		}
 		if ws.is_ssl {
-			ws.ssl_conn.write(bytes) ?
+			return ws.ssl_conn.write(bytes)
 		} else {
 			for {
-				ws.conn.write(bytes) or {
-					if errcode == net.err_timed_out_code {
+				n := ws.conn.write(bytes) or {
+					if err.code == net.err_timed_out_code {
 						continue
 					}
-					return error(err)
+					return err
 				}
-				return
+				return n
 			}
+			panic('reached unreachable code')
 		}
 	}
 }

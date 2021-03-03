@@ -8,7 +8,6 @@ $if windows {
 		#flag -lUser32
 	}
 }
-
 fn main() {
 	C.atexit(cleanup_vtmp_folder)
 	vexe := os.real_path(pref.vexe_path())
@@ -48,11 +47,19 @@ fn setup_symlink_windows(vexe string) {
 		vdir := os.real_path(os.dir(vexe))
 		vsymlinkdir := os.join_path(vdir, '.bin')
 		mut vsymlink := os.join_path(vsymlinkdir, 'v.exe')
+		// Remove old symlink first (v could have been moved, symlink rerun)
 		if !os.exists(vsymlinkdir) {
-			os.mkdir(vsymlinkdir) or { panic(err) } // will panic if fails
-		} else {
-			os.rmdir(vsymlinkdir) or { panic(err) }
 			os.mkdir(vsymlinkdir) or { panic(err) }
+		} else {
+			if os.exists(vsymlink) {
+				os.rm(vsymlink) or { panic(err) }
+			} else {
+				vsymlink = os.join_path(vsymlinkdir, 'v.bat')
+				if os.exists(vsymlink) {
+					os.rm(vsymlink) or { panic(err) }
+				}
+				vsymlink = os.join_path(vsymlinkdir, 'v.exe')
+			}
 		}
 		// First, try to create a native symlink at .\.bin\v.exe
 		os.symlink(vsymlink, vexe) or {
@@ -73,7 +80,7 @@ fn setup_symlink_windows(vexe string) {
 		println('Symlink $vsymlink to $vexe created.')
 		println('Checking system %PATH%...')
 		reg_sys_env_handle := get_reg_sys_env_handle() or {
-			warn_and_exit(err)
+			warn_and_exit(err.msg)
 			return
 		}
 		// TODO: Fix defers inside ifs
@@ -99,23 +106,21 @@ fn setup_symlink_windows(vexe string) {
 			println('System %PATH% was not configured.')
 			println('Adding symlink directory to system %PATH%...')
 			set_reg_value(reg_sys_env_handle, 'Path', new_sys_env_path) or {
-				warn_and_exit(err)
 				C.RegCloseKey(reg_sys_env_handle)
-				return
+				warn_and_exit(err.msg)
 			}
-			println('done.')
+			println('Done.')
 		}
 		println('Notifying running processes to update their Environment...')
 		send_setting_change_msg('Environment') or {
 			eprintln(err)
-			warn_and_exit('You might need to run this again to have the `v` command in your %PATH%')
 			C.RegCloseKey(reg_sys_env_handle)
-			return
+			warn_and_exit('You might need to run this again to have the `v` command in your %PATH%')
 		}
 		C.RegCloseKey(reg_sys_env_handle)
-		println('')
-		println('Note: restart your shell/IDE to load the new %PATH%.')
-		println('After restarting your shell/IDE, give `v version` a try in another dir!')
+		println('Done.')
+		println('Note: Restart your shell/IDE to load the new %PATH%.')
+		println('After restarting your shell/IDE, give `v version` a try in another directory!')
 	}
 }
 
@@ -145,7 +150,7 @@ fn get_reg_value(reg_env_key voidptr, key string) ?string {
 		reg_value_size := 4095 // this is the max length (not for the registry, but for the system %PATH%)
 		mut reg_value := unsafe { &u16(malloc(reg_value_size)) }
 		if C.RegQueryValueEx(reg_env_key, key.to_wide(), 0, 0, reg_value, &reg_value_size) != 0 {
-			return error('Unable to get registry value for "$key", try rerunning as an Administrator')
+			return error('Unable to get registry value for "$key".')
 		}
 		return unsafe { string_from_wide(reg_value) }
 	}
@@ -155,8 +160,9 @@ fn get_reg_value(reg_env_key voidptr, key string) ?string {
 // sets the value for the given $key to the given  $value
 fn set_reg_value(reg_key voidptr, key string, value string) ?bool {
 	$if windows {
-		if C.RegSetValueEx(reg_key, key.to_wide(), 0, 1, value.to_wide(), 4095) != 0 {
-			return error('Unable to set registry value for "$key", are you running as an Administrator?')
+		if C.RegSetValueEx(reg_key, key.to_wide(), 0, C.REG_EXPAND_SZ, value.to_wide(),
+			value.len * 2) != 0 {
+			return error('Unable to set registry value for "$key". %PATH% may be too long.')
 		}
 		return true
 	}

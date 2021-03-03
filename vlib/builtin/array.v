@@ -156,6 +156,7 @@ pub fn (mut a array) insert(i int, val voidptr) {
 }
 
 // insert_many inserts many values into the array from index `i`.
+[unsafe]
 pub fn (mut a array) insert_many(i int, val voidptr, size int) {
 	$if !no_bounds_checking ? {
 		if i < 0 || i > a.len {
@@ -178,8 +179,9 @@ pub fn (mut a array) prepend(val voidptr) {
 }
 
 // prepend_many prepends another array to this array.
+[unsafe]
 pub fn (mut a array) prepend_many(val voidptr, size int) {
-	a.insert_many(0, val, size)
+	unsafe { a.insert_many(0, val, size) }
 }
 
 // delete deletes array element at index `i`.
@@ -420,7 +422,7 @@ fn (mut a array) push(val voidptr) {
 
 // push_many implements the functionality for pushing another array.
 // `val` is array.data and user facing usage is `a << [1,2,3]`
-// TODO make private, right now it's used by strings.Builder
+[unsafe]
 pub fn (mut a3 array) push_many(val voidptr, size int) {
 	if a3.data == val && !isnil(a3.data) {
 		// handle `arr << arr`
@@ -530,13 +532,11 @@ pub fn (b []byte) hex() string {
 // Returns the number of elements copied.
 // TODO: implement for all types
 pub fn copy(dst []byte, src []byte) int {
-	if dst.len > 0 && src.len > 0 {
-		mut min := 0
-		min = if dst.len < src.len { dst.len } else { src.len }
-		unsafe { C.memcpy(byteptr(dst.data), src[..min].data, dst.element_size * min) }
-		return min
+	min := if dst.len < src.len { dst.len } else { src.len }
+	if min > 0 {
+		unsafe { C.memcpy(byteptr(dst.data), src.data, min) }
 	}
-	return 0
+	return min
 }
 
 // Private function. Comparator for int type.
@@ -632,6 +632,7 @@ pub fn (mut a array) grow_cap(amount int) {
 }
 
 // grow_len ensures that an array has a.len + amount of length
+[unsafe]
 pub fn (mut a array) grow_len(amount int) {
 	a.ensure_cap(a.len + amount)
 	a.len += amount
@@ -728,6 +729,7 @@ pub fn compare_f32(a &f32, b &f32) int {
 
 // pointers returns a new array, where each element
 // is the address of the corresponding element in the array.
+[unsafe]
 pub fn (a array) pointers() []voidptr {
 	mut res := []voidptr{}
 	for i in 0 .. a.len {

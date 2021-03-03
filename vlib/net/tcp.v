@@ -33,7 +33,7 @@ pub fn (mut c TcpConn) close() ? {
 }
 
 // write_ptr blocks and attempts to write all data
-pub fn (mut c TcpConn) write_ptr(b byteptr, len int) ? {
+pub fn (mut c TcpConn) write_ptr(b byteptr, len int) ?int {
 	$if trace_tcp ? {
 		eprintln(
 			'>>> TcpConn.write_ptr | c.sock.handle: $c.sock.handle | b: ${ptr_str(b)} len: $len |\n' +
@@ -57,17 +57,17 @@ pub fn (mut c TcpConn) write_ptr(b byteptr, len int) ? {
 			}
 			total_sent += sent
 		}
+		return total_sent
 	}
-	return none
 }
 
 // write blocks and attempts to write all data
-pub fn (mut c TcpConn) write(bytes []byte) ? {
+pub fn (mut c TcpConn) write(bytes []byte) ?int {
 	return c.write_ptr(bytes.data, bytes.len)
 }
 
 // write_str blocks and attempts to write all data
-pub fn (mut c TcpConn) write_str(s string) ? {
+pub fn (mut c TcpConn) write_str(s string) ?int {
 	return c.write_ptr(s.str, s.len)
 }
 
