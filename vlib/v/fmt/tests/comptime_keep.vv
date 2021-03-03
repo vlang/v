@@ -1,3 +1,5 @@
+import vweb
+
 struct App {
 	a string
 	b string
@@ -57,8 +59,7 @@ fn comptime_for_fields() {
 	}
 }
 
-struct Result {
-}
+struct Result {}
 
 fn (mut a App) my_method(p string) Result {
 	println('>>>> ${@FN} | p: $p')
@@ -79,6 +80,10 @@ fn handle_conn<T>(mut app T) {
 fn comptime_call_dollar_method() {
 	mut app := App{}
 	handle_conn<App>(mut app)
+}
+
+fn (mut app App) create() vweb.Result {
+	return $vweb.html()
 }
 
 fn main() {
