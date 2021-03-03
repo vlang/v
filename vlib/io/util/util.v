@@ -24,15 +24,16 @@ pub fn temp_file(tfo TempFileOptions) ?(os.File, string) {
 			' could not create temporary file in "$d". Please ensure write permissions.')
 	}
 	d = d.trim_right(os.path_separator)
+	mut rng := rand.new_default({})
 	prefix, suffix := prefix_and_suffix(tfo.pattern) or { return error(@FN + ' ' + err.msg) }
 	for retry := 0; retry < retries; retry++ {
-		path := os.join_path(d, prefix + random_number() + suffix)
+		path := os.join_path(d, prefix + random_number(mut rng) + suffix)
 		mut mode := 'rw+'
 		$if windows {
 			mode = 'w+'
 		}
 		mut file := os.open_file(path, mode, 0o600) or {
-			rand.seed(rseed.time_seed_array(2))
+			rng.seed(rseed.time_seed_array(2))
 			continue
 		}
 		if os.exists(path) && os.is_file(path) {
@@ -59,11 +60,12 @@ pub fn temp_dir(tdo TempFileOptions) ?string {
 			' could not create temporary directory "$d". Please ensure write permissions.')
 	}
 	d = d.trim_right(os.path_separator)
+	mut rng := rand.new_default({})
 	prefix, suffix := prefix_and_suffix(tdo.pattern) or { return error(@FN + ' ' + err.msg) }
 	for retry := 0; retry < retries; retry++ {
-		path := os.join_path(d, prefix + random_number() + suffix)
+		path := os.join_path(d, prefix + random_number(mut rng) + suffix)
 		os.mkdir_all(path) or {
-			rand.seed(rseed.time_seed_array(2))
+			rng.seed(rseed.time_seed_array(2))
 			continue
 		}
 		if os.is_dir(path) && os.exists(path) {
@@ -79,8 +81,8 @@ pub fn temp_dir(tdo TempFileOptions) ?string {
 }
 
 // * Utility functions
-fn random_number() string {
-	s := (u32(1e9) + (u32(os.getpid()) + rand.u32() % u32(1e9))).str()
+fn random_number(mut rng rand.PRNG) string {
+	s := (u32(1e9) + (u32(os.getpid()) + rng.u32() % u32(1e9))).str()
 	return s.substr(1, s.len)
 }
 
