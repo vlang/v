@@ -29,7 +29,11 @@
 // ```
 // Please note that you should let v load the zsh completions after the call to compinit
 //
-// # powershell //TODO
+// # powershell
+// To install auto-complete for V in PowerShell, simply add this code to your `$PROFILE`
+// `v complete setup powershell >> $PROFILE`
+// and reload prifile
+// `& $PROFILE`
 //
 module main
 
@@ -249,7 +253,7 @@ _v() {
 compdef _v v
 ' }
 				'powershell' { setup = '
-Register-ArgumentCompleter -Native -CommandName ./v -ScriptBlock {
+Register-ArgumentCompleter -Native -CommandName v -ScriptBlock {
 	param(\$commandName, \$wordToComplete, \$cursorPosition)
 		$vexe complete powershell "\$wordToComplete" | ForEach-Object {
 			[System.Management.Automation.CompletionResult]::new(\$_, \$_, \'ParameterValue\', \$_)
