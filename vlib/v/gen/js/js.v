@@ -114,10 +114,12 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 	nodes := deps_resolved.nodes
 	mut out := g.hashes() + g.definitions.str()
 	// equality check for js objects
-	unsafe {
-		mut eq_fn := $embed_file('fast_deep_equal.js')
-		out += eq_fn.data().vstring()
-	}
+	// TODO: Fix msvc bug that's preventing $embed_file('fast_deep_equal.js')
+	//unsafe {
+	//	mut eq_fn := $embed_file('fast_deep_equal.js')
+	//	out += eq_fn.data().vstring()
+	//}
+	out += fast_deep_eq_fn
 	for node in nodes {
 		name := g.js_name(node.name).replace('.', '_')
 		if g.enable_doc {
