@@ -1768,6 +1768,9 @@ fn (mut f Fmt) write_generic_if_require(node ast.CallExpr) {
 
 pub fn (mut f Fmt) call_args(args []ast.CallArg) {
 	f.single_line_fields = true
+	defer {
+		f.single_line_fields = false
+	}
 	for i, arg in args {
 		if arg.is_mut {
 			f.write(arg.share.str() + ' ')
@@ -1780,7 +1783,6 @@ pub fn (mut f Fmt) call_args(args []ast.CallArg) {
 			f.write(', ')
 		}
 	}
-	f.single_line_fields = false
 }
 
 pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
