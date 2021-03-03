@@ -324,21 +324,22 @@ fn (f Fmt) should_insert_newline_before_node(node ast.Node, prev_node ast.Node) 
 		if prev_stmt is ast.HashStmt && stmt !is ast.HashStmt && stmt !is ast.ExprStmt {
 			return true
 		}
-		// Force a newline after a block of function declarations
+		// Force a newline after function declarations
+		// The only exception is inside an block of no_body functions
 		if prev_stmt is ast.FnDecl {
-			if prev_stmt.no_body && stmt !is ast.FnDecl {
+			if stmt !is ast.FnDecl || !prev_stmt.no_body {
 				return true
 			}
 		}
-		// The stmt shouldn't have a newline before
-		// if stmt.position().line_nr - prev_line_nr <= 1 {
-		// 	return false
-		// }
+		// Force a newline after struct declarations
+		if prev_stmt is ast.StructDecl {
+			return true
+		}
 		// Imports are handled special hence they are ignored here
 		if stmt is ast.Import || prev_stmt is ast.Import {
 			return false
 		}
-		// Attributes are not respected in the stmts position, so this requires a manual check
+		// Attributes are not respected in the stmts position, so this requires manual checking
 		if stmt is ast.StructDecl {
 			if stmt.attrs.len > 0 && stmt.attrs[0].pos.line_nr - prev_line_nr <= 1 {
 				return false
