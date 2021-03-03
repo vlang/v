@@ -314,6 +314,6 @@ fn test_new_global_rng() {
 	rand.seed(seed3)
 	rng3b.seed(seed3)
 	ensure_same_output(mut rng3b)
-	
+
 	rand.set_rng(old)
 }

@@ -37,7 +37,7 @@ pub interface PRNG {
 	f64_in_range(min f64, max f64) f64
 }
 
-__global ( default_rng &PRNG)
+__global ( default_rng &PRNG )
 
 // init initializes the default RNG.
 fn init() {
@@ -45,7 +45,7 @@ fn init() {
 }
 
 // new_default returns a new instance of the default RNG. If the seed is not provided, the current time will be used to seed the instance.
-pub fn new_default(config PRNGConfigStruct) &PRNG{
+pub fn new_default(config PRNGConfigStruct) &PRNG {
 	mut rng := &wyrand.WyRandRNG{}
 	rng.seed(config.seed)
 	return rng
