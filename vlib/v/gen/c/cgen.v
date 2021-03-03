@@ -4793,7 +4793,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	}
 
 	if !initialized {
-		g.write('\n#ifndef __cplusplus\n0\n#endif\n')
+		g.write('0')
 	}
 
 	g.write('}')
