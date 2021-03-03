@@ -4117,14 +4117,12 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		if node.typ.has_flag(.optional) {
 			g.inside_if_optional = true
 		}
-		g.write('/*experimental if expr*/')
 		styp := g.typ(node.typ)
-		// g.insert_before_stmt('$styp $tmp;')
 		cur_line = g.go_before_stmt(0)
+		g.empty_line = true
 		g.writeln('$styp $tmp; /* if prepend */')
 	} else if node.is_expr || g.inside_ternary != 0 {
 		g.inside_ternary++
-		// g.inside_if_expr = true
 		g.write('(')
 		for i, branch in node.branches {
 			if i > 0 {
@@ -4239,8 +4237,8 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	}
 	g.writeln('}')
 	if needs_tmp_var {
-		// g.writeln('$cur_line $tmp; /*Z*/')
-		g.write('$cur_line $tmp /*Z*/')
+		g.empty_line = false
+		g.write('$cur_line $tmp')
 	}
 	if node.typ.has_flag(.optional) {
 		g.inside_if_optional = false
@@ -4454,9 +4452,6 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			expr := node.exprs[0]
 			if expr is ast.Ident {
 				g.returned_var_name = expr.name
-			}
-			if tmp != '' {
-				g.writeln('; // free tmp exprs + all vars before return')
 			}
 			g.writeln(';')
 			// autofree before `return`
