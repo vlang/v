@@ -175,7 +175,7 @@ fn (mut p Parser) map_init() ast.MapInit {
 		comments << p.eat_comments({})
 	}
 	if keys.len == 0 {
-		p.error_with_pos("empty maps cannot be declared, use `map[K]V{}` instead", first_pos.extend(p.tok.position()))
+		p.error_with_pos('empty maps cannot be declared, use `map[K]V{}` instead', first_pos.extend(p.tok.position()))
 	}
 	return ast.MapInit{
 		keys: keys
