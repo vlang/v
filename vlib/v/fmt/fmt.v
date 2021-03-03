@@ -1560,8 +1560,7 @@ pub fn (mut f Fmt) lock_expr(lex ast.LockExpr) {
 			}
 		}
 	}
-	f.write(' {')
-	f.writeln('')
+	f.writeln(' {')
 	f.stmts(lex.stmts)
 	f.write('}')
 }
