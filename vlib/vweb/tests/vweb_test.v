@@ -50,7 +50,11 @@ fn test_a_simple_vweb_app_runs_in_the_background() {
 		res := os.system(server_exec_cmd)
 		assert res == 0
 	}
-	time.sleep(100 * time.millisecond)
+	$if macos {
+		time.sleep(1000 * time.millisecond)
+	} $else {
+		time.sleep(100 * time.millisecond)
+	}
 }
 
 // web client tests follow
