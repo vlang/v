@@ -68,7 +68,7 @@ pub fn init(cfg Config) &Context {
 	}
 
 	if ctx.cfg.hide_cursor {
-		print('\x1b[?25l')
+		ctx.hide_cursor()
 	}
 
 	if ctx.cfg.window_title != '' {
