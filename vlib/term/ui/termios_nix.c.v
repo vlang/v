@@ -78,9 +78,7 @@ fn (mut ctx Context) termios_setup() ? {
 
 	if ctx.cfg.hide_cursor {
 		ctx.hide_cursor()
-		ctx.flush() Member
-
-these should have a ctx.flush() call after them - otherwise they w
+		ctx.flush()
 	}
 
 	if ctx.cfg.window_title != '' {
