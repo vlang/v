@@ -5841,9 +5841,17 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			c.error('unknown type `$sym.name`', node.receiver_pos)
 			return
 		}
-		// if sym.has_method(node.name) {
-		// c.warn('duplicate method `$node.name`', node.pos)
-		// }
+		// make sure interface does not implement its own interface methods
+		if sym.kind == .interface_ && sym.has_method(node.name) {
+			if sym.info is table.Interface {
+				info := sym.info as table.Interface
+				// if the method is in info.methods then it is an interface method
+				if info.has_method(node.name) {
+					c.error('interface `$sym.name` cannot implement its own interface method `$node.name`',
+						node.pos)
+				}
+			}
+		}
 		// needed for proper error reporting during vweb route checking
 		sym.methods[node.method_idx].source_fn = voidptr(node)
 	}
