@@ -1873,9 +1873,7 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 				f.expr(expr)
 				if j < branch.ecmnts.len && branch.ecmnts[j].len > 0 {
 					f.write(' ')
-					for cmnt in branch.ecmnts[j] {
-						f.comment(cmnt, iembed: true)
-					}
+					f.comments(branch.ecmnts[j], iembed: true)
 				}
 				if j < branch.exprs.len - 1 {
 					f.write(', ')
@@ -1903,9 +1901,7 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 				f.writeln('}')
 			}
 		}
-		if branch.post_comments.len > 0 {
-			f.comments(branch.post_comments, inline: true)
-		}
+		f.comments(branch.post_comments, inline: true)
 	}
 	f.indent--
 	f.write('}')
