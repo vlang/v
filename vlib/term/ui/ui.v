@@ -66,7 +66,7 @@ pub fn (mut ctx Context) show_cursor() {
 
 // hide_cursor will make the cursor invisible
 [inline]
-pub fn hide_cursor() {
+pub fn (mut ctx Context) hide_cursor() {
 	ctx.write('\x1b[?25l')
 }
 
