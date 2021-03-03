@@ -11,7 +11,10 @@ fn test_fixed_array_alias_string() {
 }
 
 fn test_map_alias_string() {
-	m := {'one': Literal('1'), 'two': Literal('2')}
+	m := map{
+		'one': Literal('1')
+		'two': Literal('2')
+	}
 	assert '$m'.contains("'one': '1'")
 	assert '$m'.contains("'two': '2'")
 }

@@ -33,15 +33,13 @@ fn test_for_methods() {
 		$if method.return_type is string {
 			v := test.$method()
 			r += v.str()
-		}
-		$else $if method.return_type is int {
+		} $else $if method.return_type is int {
 			// TODO
-			//v := test.$method()
+			// v := test.$method()
 			v := '?'
 			r += v.str()
 			assert method.name == 'i'
-		}
-		$else {
+		} $else {
 			// no return type
 			test.$method()
 			assert method.name == 'v'
@@ -64,4 +62,3 @@ fn test_methods_arg() {
 		assert r == '!!!'
 	}
 }
-

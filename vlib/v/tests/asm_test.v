@@ -25,5 +25,5 @@ fn test_inline_asm() {
 		}
 	}
 	assert e == 5
-*/
+	*/
 }
