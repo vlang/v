@@ -68,14 +68,13 @@ pub fn fmt(file ast.File, table &table.Table, pref &pref.Preferences, is_debug b
 	f.indent--
 	f.stmts(file.stmts)
 	f.indent++
-	// for comment in file.comments { println('$comment.line_nr $comment.text')	}
 	f.imports(f.file.imports) // now that we have all autoimports, handle them
 	res := f.out.str().trim_space() + '\n'
 	if res.len == 1 {
 		return f.out_imports.str().trim_space() + '\n'
 	}
 	bounded_import_pos := util.imin(res.len, f.import_pos)
-	return res[..bounded_import_pos] + f.out_imports.str() + res[bounded_import_pos..] // + '\n'
+	return res[..bounded_import_pos] + f.out_imports.str() + res[bounded_import_pos..]
 }
 
 pub fn (mut f Fmt) process_file_imports(file &ast.File) {
@@ -1855,7 +1854,6 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 	mut single_line := true
 	for branch in it.branches {
 		if branch.stmts.len > 1 || branch.pos.line_nr < branch.pos.last_line {
-			// println(branch)
 			single_line = false
 			break
 		}
@@ -2332,11 +2330,7 @@ fn (mut f Fmt) global_decl(it ast.GlobalDecl) {
 pub fn (mut f Fmt) assign_stmt(node ast.AssignStmt) {
 	f.comments(node.comments, {})
 	for i, left in node.left {
-		if left is ast.Ident {
-			f.expr(left)
-		} else {
-			f.expr(left)
-		}
+		f.expr(left)
 		if i < node.left.len - 1 {
 			f.write(', ')
 		}
