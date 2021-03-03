@@ -26,7 +26,7 @@ pub fn temp_file(tfo TempFileOptions) ?(os.File, string) {
 	d = d.trim_right(os.path_separator)
 	mut rng := rand.new_default({})
 	prefix, suffix := prefix_and_suffix(tfo.pattern) or { return error(@FN + ' ' + err.msg) }
-	for retry := 0; retry < retries; retry++ {
+	for retry := 0; retry < util.retries; retry++ {
 		path := os.join_path(d, prefix + random_number(mut rng) + suffix)
 		mut mode := 'rw+'
 		$if windows {
@@ -41,7 +41,7 @@ pub fn temp_file(tfo TempFileOptions) ?(os.File, string) {
 		}
 	}
 	return error(@FN +
-		' could not create temporary file in "$d". Retry limit ($retries) exhausted. Please ensure write permissions.')
+		' could not create temporary file in "$d". Retry limit ($util.retries) exhausted. Please ensure write permissions.')
 }
 
 pub struct TempDirOptions {
@@ -62,7 +62,7 @@ pub fn temp_dir(tdo TempFileOptions) ?string {
 	d = d.trim_right(os.path_separator)
 	mut rng := rand.new_default({})
 	prefix, suffix := prefix_and_suffix(tdo.pattern) or { return error(@FN + ' ' + err.msg) }
-	for retry := 0; retry < retries; retry++ {
+	for retry := 0; retry < util.retries; retry++ {
 		path := os.join_path(d, prefix + random_number(mut rng) + suffix)
 		os.mkdir_all(path) or {
 			rng.seed(rseed.time_seed_array(2))
@@ -77,7 +77,7 @@ pub fn temp_dir(tdo TempFileOptions) ?string {
 		}
 	}
 	return error(@FN +
-		' could not create temporary directory "$d". Retry limit ($retries) exhausted. Please ensure write permissions.')
+		' could not create temporary directory "$d". Retry limit ($util.retries) exhausted. Please ensure write permissions.')
 }
 
 // * Utility functions
