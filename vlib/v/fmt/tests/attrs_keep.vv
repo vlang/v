@@ -1,7 +1,6 @@
-[inline]
-[if debug]
-[foo: bar]
 [deprecated: 'use bar() instead']
+[foo: bar]
+[if debug; inline]
 fn keep_attributes() {
 	println('hi !')
 }
@@ -12,7 +11,7 @@ struct User {
 	last_name     string [json: lastName]
 	is_registered bool   [json: IsRegistered]
 	typ           int    [json: 'type']
-	pets          string [raw; json: 'pet_animals']
+	pets          string [json: 'pet_animals'; raw]
 }
 
 [_allow_multiple_values]
