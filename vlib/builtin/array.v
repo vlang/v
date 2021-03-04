@@ -211,8 +211,7 @@ pub fn (mut a array) trim(index int) {
 }
 
 // we manually inline this for single operations for performance without -prod
-[inline]
-[unsafe]
+[inline; unsafe]
 fn (a array) get_unsafe(i int) voidptr {
 	unsafe {
 		return byteptr(a.data) + i * a.element_size
@@ -398,8 +397,7 @@ fn (a &array) slice_clone(start int, _end int) array {
 }
 
 // we manually inline this for single operations for performance without -prod
-[inline]
-[unsafe]
+[inline; unsafe]
 fn (mut a array) set_unsafe(i int, val voidptr) {
 	unsafe { C.memcpy(byteptr(a.data) + a.element_size * i, val, a.element_size) }
 }
