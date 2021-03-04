@@ -689,7 +689,8 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt) {
 			} else {
 				g.write(' $op ')
 				// TODO: Multiple types??
-				should_cast := g.table.type_kind(stmt.left_types.first()) in shallow_equatables
+				should_cast := (g.table.type_kind(stmt.left_types.first()) in shallow_equatables)
+							&& (g.cast_stack.len <= 0 || stmt.left_types.first() != g.cast_stack.last())
 				if should_cast {
 					g.cast_stack << stmt.left_types.first()
 					if g.file.mod.name == 'builtin' { g.write('new ') }
@@ -1376,7 +1377,9 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		if l_sym.kind in shallow_equatables && r_sym.kind in shallow_equatables {
 			g.expr(it.left)
 			g.write('.eq(')
+			g.cast_stack << int(l_sym.kind)
 			g.expr(it.right)
+			g.cast_stack.delete_last()
 			g.write(')')
 		} else {
 			g.write('vEq(')
@@ -1412,10 +1415,16 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		g.write(g.typ(it.right_type))
 	} else {
 		is_arithmetic := it.op in [token.Kind.plus, .minus, .mul, .div, .mod]
-		needs_cast := it.left_type != it.right_type
-
-		if is_arithmetic && needs_cast {
-			greater_typ := g.greater_typ(it.left_type, it.right_type)
+		mut needs_cast := is_arithmetic && it.left_type != it.right_type
+		mut greater_typ := 0
+		if needs_cast {
+			greater_typ = g.greater_typ(it.left_type, it.right_type)
+			if g.cast_stack.len > 0 {
+				needs_cast = g.cast_stack.last() != greater_typ
+			}
+		}
+		
+		if needs_cast {
 			if g.ns.name == 'builtin' {
 				g.write('new ')
 			}
@@ -1426,7 +1435,7 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		g.write(' ${it.op} ')
 		g.expr(it.right)
 
-		if is_arithmetic && needs_cast {
+		if needs_cast {
 			g.cast_stack.delete_last()
 			g.write(')')
 		}

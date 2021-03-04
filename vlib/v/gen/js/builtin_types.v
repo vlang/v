@@ -219,7 +219,7 @@ struct BuiltinPrototypeCongig {
 	to_string 		string	= 'this.val.toString()'
 	eq				string	= 'this.val === other.val'
 	extras			string
-	has_strfn		bool	= false
+	has_strfn		bool
 }
 
 // ugly arguments but not sure a config struct would be worth it
