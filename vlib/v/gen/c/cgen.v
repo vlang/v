@@ -3028,15 +3028,12 @@ fn (mut g Gen) enum_expr(node ast.Expr) {
 }
 
 fn (mut g Gen) infix_expr(node ast.InfixExpr) {
-	// println('infix_expr() op="$node.op.str()" line_nr=$node.pos.line_nr')
-	// g.write('/*infix*/')
-	// if it.left_type == table.string_type_idx {
-	// g.write('/*$node.left_type str*/')
-	// }
-	// string + string, string == string etc
-	// g.infix_op = node.op
 	if node.auto_locked != '' {
 		g.writeln('sync__RwMutex_lock(&$node.auto_locked->mtx);')
+	}
+	if node.op in [.key_is, .not_is] {
+		g.is_expr(node)
+		return
 	}
 	left_type := g.unwrap_generic(node.left_type)
 	left_sym := g.table.get_type_symbol(left_type)
@@ -3045,11 +3042,6 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		(left_sym.info as table.Alias).parent_type
 	} else {
 		left_type
-	}
-	op_is_key_is_or_not_is := node.op in [.key_is, .not_is]
-	if op_is_key_is_or_not_is {
-		g.is_expr(node)
-		return
 	}
 	op_is_key_in_or_not_in := node.op in [.key_in, .not_in]
 	op_is_eq_or_ne := node.op in [.eq, .ne]
