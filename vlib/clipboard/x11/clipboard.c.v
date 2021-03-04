@@ -198,18 +198,18 @@ fn new_x11_clipboard(selection AtomType) &Clipboard {
 	return cb
 }
 
-fn (cb &Clipboard) check_availability() bool {
+pub fn (cb &Clipboard) check_availability() bool {
 	return cb.display != C.NULL
 }
 
-fn (mut cb Clipboard) free() {
+pub fn (mut cb Clipboard) free() {
 	C.XDestroyWindow(cb.display, cb.window)
 	cb.window = C.Window(C.None)
 	// FIX ME: program hangs when closing display
 	// XCloseDisplay(cb.display)
 }
 
-fn (mut cb Clipboard) clear() {
+pub fn (mut cb Clipboard) clear() {
 	cb.mutex.@lock()
 	C.XSetSelectionOwner(cb.display, cb.selection, C.Window(C.None), C.CurrentTime)
 	C.XFlush(cb.display)
@@ -218,7 +218,7 @@ fn (mut cb Clipboard) clear() {
 	cb.mutex.unlock()
 }
 
-fn (cb &Clipboard) has_ownership() bool {
+pub fn (cb &Clipboard) has_ownership() bool {
 	return cb.is_owner
 }
 
@@ -243,7 +243,7 @@ pub fn (mut cb Clipboard) set_text(text string) bool {
 	return cb.is_owner
 }
 
-fn (mut cb Clipboard) get_text() string {
+pub fn (mut cb Clipboard) get_text() string {
 	if cb.window == C.Window(C.None) {
 		return ''
 	}

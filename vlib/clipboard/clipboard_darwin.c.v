@@ -24,22 +24,22 @@ fn new_clipboard() &Clipboard {
 	return cb
 }
 
-fn (cb &Clipboard) check_availability() bool {
+pub fn (cb &Clipboard) check_availability() bool {
 	return cb.pb != C.NULL
 }
 
-fn (mut cb Clipboard) clear() {
+pub fn (mut cb Clipboard) clear() {
 	cb.foo = 0
 	cb.set_text('')
 	//#[cb->pb clearContents];
 }
 
-fn (mut cb Clipboard) free() {
+pub fn (mut cb Clipboard) free() {
 	cb.foo = 0
 	// nothing to free
 }
 
-fn (cb &Clipboard) has_ownership() bool {
+pub fn (cb &Clipboard) has_ownership() bool {
 	if cb.last_cb_serial == 0 {
 		return false
 	}
@@ -49,11 +49,11 @@ fn (cb &Clipboard) has_ownership() bool {
 
 fn C.OSAtomicCompareAndSwapLong()
 
-fn (mut cb Clipboard) set_text(text string) bool {
+pub fn (mut cb Clipboard) set_text(text string) bool {
 	return C.darwin_set_pasteboard_text(cb.pb, text)
 }
 
-fn (mut cb Clipboard) get_text() string {
+pub fn (mut cb Clipboard) get_text() string {
 	cb.foo = 0
 	if isnil(cb.pb) {
 		return ''
