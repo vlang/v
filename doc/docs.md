@@ -2462,6 +2462,18 @@ struct Repo<T> {
     db DB
 }
 
+struct User {
+	id   int
+	name string
+}
+
+struct Post {
+	id   int
+	user_id int
+	title string
+	body string
+}
+
 fn new_repo<T>(db DB) Repo<T> {
     return Repo<T>{db: db}
 }
