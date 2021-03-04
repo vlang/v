@@ -114,28 +114,16 @@ fn parse_multipart_form(body string, boundary string) (map[string]string, map[st
 			}
 			mut ct := lines[1].split_nth(':', 2)[1]
 			ct = ct.trim_left(' \t')
-			mut sb := strings.new_builder(field.len)
-			for i in 3 .. lines.len - 1 {
-				sb.writeln(lines[i])
-			}
+			data := lines_to_string(field.len, lines, 3, lines.len - 1)
 			files[name] << FileData{
 				filename: filename
 				content_type: ct
-				data: sb.str()
-			}
-			unsafe {
-				sb.free()
+				data: data
 			}
 			continue
 		}
-		mut sb := strings.new_builder(field.len)
-		for i in 2 .. lines.len - 1 {
-			sb.writeln(lines[i])
-		}
-		form[name] = sb.str()
-		unsafe {
-			sb.free()
-		}
+		data := lines_to_string(field.len, lines, 2, lines.len - 1)
+		form[name] = data
 	}
 	return form, files
 }
@@ -158,4 +146,15 @@ fn parse_disposition(line string) map[string]string {
 		}
 	}
 	return data
+}
+
+[manualfree]
+fn lines_to_string(len int, lines []string, start int, end int) string {
+	mut sb := strings.new_builder(len)
+	for i in start .. end {
+		sb.writeln(lines[i])
+	}
+	res := sb.str()
+	unsafe { sb.free() }
+	return res
 }
