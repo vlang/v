@@ -2116,14 +2116,14 @@ pub fn (mut f Fmt) map_init(it ast.MapInit) {
 	f.write('}')
 }
 
-pub fn (mut f Fmt) struct_init(it ast.StructInit) {
+pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 	struct_init_save := f.is_struct_init
 	f.is_struct_init = true
 	defer {
 		f.is_struct_init = struct_init_save
 	}
 
-	type_sym := f.table.get_type_symbol(it.typ)
+	type_sym := f.table.get_type_symbol(node.typ)
 	// f.write('<old name: $type_sym.name>')
 	mut name := type_sym.name
 	if !name.starts_with('C.') {
@@ -2132,38 +2132,38 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 	if name == 'void' {
 		name = ''
 	}
-	if it.fields.len == 0 && !it.has_update_expr {
+	if node.fields.len == 0 && !node.has_update_expr {
 		// `Foo{}` on one line if there are no fields or comments
-		if it.pre_comments.len == 0 {
+		if node.pre_comments.len == 0 {
 			f.write('$name{}')
 		} else {
 			f.writeln('$name{')
-			f.comments(it.pre_comments, inline: true, has_nl: true, level: .indent)
+			f.comments(node.pre_comments, inline: true, has_nl: true, level: .indent)
 			f.write('}')
 		}
 		f.mark_import_as_used(name)
-	} else if it.is_short {
+	} else if node.is_short {
 		// `Foo{1,2,3}` (short syntax )
 		f.write('$name{')
 		f.mark_import_as_used(name)
-		if it.has_update_expr {
+		if node.has_update_expr {
 			f.write('...')
-			f.expr(it.update_expr)
+			f.expr(node.update_expr)
 			f.write(', ')
 		}
-		for i, field in it.fields {
+		for i, field in node.fields {
 			f.prefix_expr_cast_expr(field.expr)
-			if i < it.fields.len - 1 {
+			if i < node.fields.len - 1 {
 				f.write(', ')
 			}
 		}
 		f.write('}')
 	} else {
-		use_short_args := f.use_short_fn_args
+		use_short_args := f.use_short_fn_args && !node.has_update_expr
 		f.use_short_fn_args = false
 		mut single_line_fields := f.single_line_fields
 		f.single_line_fields = false
-		if it.pos.line_nr < it.pos.last_line || it.pre_comments.len > 0 {
+		if node.pos.line_nr < node.pos.last_line || node.pre_comments.len > 0 {
 			single_line_fields = false
 		}
 		if !use_short_args {
@@ -2179,19 +2179,25 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 				f.writeln('')
 				f.indent++
 			}
-			f.comments(it.pre_comments, inline: true, has_nl: true, level: .keep)
-			if it.has_update_expr {
+			f.comments(node.pre_comments, inline: true, has_nl: true, level: .keep)
+			if node.has_update_expr {
 				f.write('...')
-				f.expr(it.update_expr)
-				f.writeln('')
-				f.comments(it.update_expr_comments, inline: true, has_nl: true, level: .keep)
+				f.expr(node.update_expr)
+				if single_line_fields {
+					if node.fields.len > 0 {
+						f.write(', ')
+					}
+				} else {
+					f.writeln('')
+				}
+				f.comments(node.update_expr_comments, inline: true, has_nl: true, level: .keep)
 			}
-			for i, field in it.fields {
+			for i, field in node.fields {
 				f.write('$field.name: ')
 				f.prefix_expr_cast_expr(field.expr)
 				f.comments(field.comments, inline: true, has_nl: false, level: .indent)
 				if single_line_fields {
-					if i < it.fields.len - 1 {
+					if i < node.fields.len - 1 {
 						f.write(', ')
 					}
 				} else {
