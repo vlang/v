@@ -1323,6 +1323,10 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 				c.fail_if_immutable(call_expr.left)
 				// position of `a` and `b` doesn't matter, they're the same
 				scope_register_ab(mut call_expr.scope, call_expr.pos, array_info.elem_type)
+
+				if call_expr.args.len > 1 {
+					c.error('expected 0 or 1 argument, but got $call_expr.args.len', call_expr.pos)
+				}
 				// Verify `.sort(a < b)`
 				if call_expr.args.len > 0 {
 					if call_expr.args[0].expr !is ast.InfixExpr {
