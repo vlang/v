@@ -12,6 +12,7 @@ struct Baz {
 }
 
 fn bar_func(bar Bar) {}
+
 fn foo_func(f Foo) {}
 
 fn main() {
