@@ -79,7 +79,7 @@ fn test_inline_asm() {
 	m := &l
 	asm amd64 {
 		movq [m], 7 // have to specify size with q
-		; ; =r (m)
+		; ; r (m)
 	}
 	assert l == 7
 
