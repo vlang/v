@@ -1,3 +1,4 @@
+import v.tests.assembly.util
 // rename this file to asm_test.amd64.v (and make more for other architectures) once pure v code is enforced
 
 fn test_inline_asm() {
