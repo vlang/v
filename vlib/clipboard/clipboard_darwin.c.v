@@ -4,6 +4,7 @@ module clipboard
 #include <Cocoa/Cocoa.h>
 #flag -framework Cocoa
 #include "@VROOT/vlib/clipboard/clipboard_darwin.m"
+
 pub struct Clipboard {
 	pb             voidptr
 	last_cb_serial i64
