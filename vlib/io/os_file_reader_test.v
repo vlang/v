@@ -20,7 +20,7 @@ fn read_file(file string, cap int) []string {
 }
 
 fn test_file_reader() {
-	for cap := 64; cap <= 10000; cap += 256 {
+	for cap := 1; cap <= 10000; cap += 256 {
 		lines := read_file(@FILE, cap)
 		assert lines.last() == '// my last line'
 	}
