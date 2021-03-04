@@ -92,7 +92,7 @@ Running a Vweb app on http://localhost:8081 ...
 
 Vweb helpfully provided a link, open http://localhost:8081/ in your browser:
 
-<img width=662 src="https://github.com/vlang/v/blob/master/tutorials/img/hello.png?raw=true">
+<img width=662 src="https://github.com/vlang/v/blob/master/tutorials/building_a_simple_web_blog_with_vweb/img/hello.png?raw=true">
 
 The `App` struct is an entry point of our web application. If you have experience
 with an MVC web framework, you can think of it as a controller. (Vweb is
@@ -114,7 +114,7 @@ fn (mut app App) time() vweb.Result {
 ```
 
 
-<img width=662 src="https://github.com/vlang/v/blob/master/tutorials/img/time.png?raw=true">
+<img width=662 src="https://github.com/vlang/v/blob/master/tutorials/building_a_simple_web_blog_with_vweb/img/time.png?raw=true">
 
 >You have to rebuild and restart the website every time you change the code.
 In the future, Vweb will detect changes and recompile the website in the background
@@ -150,7 +150,7 @@ pub fn (mut app App) index() vweb.Result {
 }
 ```
 
-<img width=662 src="https://github.com/vlang/v/blob/master/tutorials/img/hello_html.png?raw=true">
+<img width=662 src="https://github.com/vlang/v/blob/master/tutorials/building_a_simple_web_blog_with_vweb/img/hello_html.png?raw=true">
 
 Good, now we have an actual HTML page.
 
@@ -290,7 +290,7 @@ Finally, let's update our view:
 v run .
 ```
 
-<img width=662 src="https://github.com/vlang/v/blob/master/tutorials/img/articles1.png?raw=true">
+<img width=662 src="https://github.com/vlang/v/blob/master/tutorials/building_a_simple_web_blog_with_vweb/img/articles1.png?raw=true">
 
 That was very simple, wasn't it?
 
@@ -391,7 +391,7 @@ pub fn (mut app App) articles() vweb.Result {
 }
 ```
 
-<img width=662 src="https://github.com/vlang/v/blob/master/tutorials/img/articles_json.png?raw=true">
+<img width=662 src="https://github.com/vlang/v/blob/master/tutorials/building_a_simple_web_blog_with_vweb/img/articles_json.png?raw=true">
 
 
 
