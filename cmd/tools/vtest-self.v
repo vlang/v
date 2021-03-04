@@ -108,6 +108,7 @@ const (
 		'vlib/v/tests/go_call_generic_fn_test.v',
 		'vlib/v/tests/generics_test.v',
 		'vlib/v/tests/go_wait_2_test.v',
+		'vlib/v/tests/if_guard_test.v',
 		'vlib/v/tests/in_expression_test.v',
 		'vlib/v/tests/interface_edge_cases/assign_to_interface_field_test.v',
 		'vlib/v/tests/interface_fields_test.v',

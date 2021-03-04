@@ -3,9 +3,16 @@ vlib/v/checker/tests/import_symbol_fn_private_err.vv:1:20: error: module `time` 
       |                    ~~~~~
     2 | fn main() {
     3 |   since(now())
-vlib/v/checker/tests/import_symbol_fn_private_err.vv:3:3: error: function `time.since` is private, so you can not import it in module `main`
+vlib/v/checker/tests/import_symbol_fn_private_err.vv:3:3: error: function `time.since` is private
     1 | import time { now, since }
     2 | fn main() {
     3 |   since(now())
       |   ~~~~~~~~~~~~
     4 | }
+    5 |
+vlib/v/checker/tests/import_symbol_fn_private_err.vv:7:20: error: method `map[string]int.exists_1` is private
+    5 | 
+    6 | fn method() {
+    7 |     _ = map{'h':2}.exists_1('h')
+      |                    ~~~~~~~~~~~~~
+    8 | }
