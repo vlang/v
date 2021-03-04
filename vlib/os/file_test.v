@@ -57,12 +57,12 @@ fn test_read_struct() {
 
 fn test_read_struct_at() {
 	mut f := os.open_file(tfile, 'w') or { panic(err) }
+	f.write([byte(1), 2, 3]) or { panic(err) }
 	f.write_struct(another_point) or { panic(err) }
 	f.close()
-
 	f = os.open_file(tfile, 'r') or { panic(err) }
 	mut p := Point{}
-	f.read_struct_at(mut p, 0) or { panic(err) }
+	f.read_struct_at(mut p, 3) or { panic(err) }
 	f.close()
 
 	assert p == another_point
