@@ -49,15 +49,15 @@ fn test_mut_2() {
 }
 
 fn test_mut_3() {
-    mut indices := []int{len: 3}
+	mut indices := []int{len: 3}
 	mut results := []string{}
 
-    for i, mut v in indices {
-        v = i
-        a := v
-        println('$i $v $a')
+	for i, mut v in indices {
+		v = i
+		a := v
+		println('$i $v $a')
 		results << '$i $v $a'
-    }
+	}
 	assert results[0] == '0 0 0'
 	assert results[1] == '1 1 1'
 	assert results[2] == '2 2 2'
@@ -65,42 +65,46 @@ fn test_mut_3() {
 
 struct St {
 mut:
-    n int
+	n int
 }
 
 fn f(mut x St) {
-    mut y := St{n: 2}
-    a := x
-    b := y
-    x.n = 3
-    y.n = 4
-    println('$a.n $b.n')
+	mut y := St{
+		n: 2
+	}
+	a := x
+	b := y
+	x.n = 3
+	y.n = 4
+	println('$a.n $b.n')
 	assert '$a.n $b.n' == '1 2'
 }
 
 fn test_mut_4() {
-    mut x := St{ n: 1 }
-    f(mut x)
+	mut x := St{
+		n: 1
+	}
+	f(mut x)
 }
 
 fn test_mut_5() {
-    mut arr1 := []int{len:2}
-    mut arr2 := []int{len:2}
+	mut arr1 := []int{len: 2}
+	mut arr2 := []int{len: 2}
 	mut results := []string{}
 
-    for i, mut v in arr1 {
-        for ii, mut vv in arr2 {
-            v = i
-            a := v
-            println('$i $v $a')
+	for i, mut v in arr1 {
+		for ii, mut vv in arr2 {
+			v = i
+			a := v
+			println('$i $v $a')
 			results << '$i $v $a'
 
-            vv = ii
-            aa := vv
-            println('$ii $vv $aa')
-			results << "$ii $vv $aa"
-        }
-    }
+			vv = ii
+			aa := vv
+			println('$ii $vv $aa')
+			results << '$ii $vv $aa'
+		}
+	}
 
 	assert results[0] == '0 0 0'
 	assert results[1] == '0 0 0'
@@ -114,21 +118,21 @@ fn test_mut_5() {
 
 fn test_mut_6() {
 	mut results := []int{}
-    mut arr := []int{len:3}
-    for _, mut v in arr {
+	mut arr := []int{len: 3}
+	for _, mut v in arr {
 		v = v + 1
 		println(v)
 		results << v
-    }
+	}
 	assert results[0] == 1
 	assert results[1] == 1
 	assert results[2] == 1
 }
 
 fn test_mut_7() {
-    mut arr := []int{len:3}
+	mut arr := []int{len: 3}
 	mut results := []int{}
-    for _, mut v in arr {
+	for _, mut v in arr {
 		v = v + 1 // v: 1
 		mut vv := v // vv: 1, v: 1
 		vv = vv + v // vv: 2, v: 1
@@ -136,7 +140,7 @@ fn test_mut_7() {
 		println(vv)
 		results << v
 		results << vv
-    }
+	}
 	assert results[0] == 1
 	assert results[1] == 2
 	assert results[2] == 1
@@ -146,37 +150,40 @@ fn test_mut_7() {
 }
 
 fn test_mut_8() {
-    mut indices := []int{len: 1}
-    for i, mut v in indices {
-        v = i
-        mut b := v
-        println(typeof(i).name)
-        println(typeof(v).name)
-        println(typeof(b).name)
-        u := [v, 5, 6]
-        println(typeof(u).name)
+	mut indices := []int{len: 1}
+	for i, mut v in indices {
+		v = i
+		mut b := v
+		println(typeof(i).name)
+		println(typeof(v).name)
+		println(typeof(b).name)
+		u := [v, 5, 6]
+		println(typeof(u).name)
 		println(u)
 		assert typeof(b).name == 'int'
 		assert typeof(u).name == '[]int'
 		assert u == [0, 5, 6]
-    }
+	}
 }
 
 fn test_mut_9() {
-    mut arr := [0,0,0]
+	mut arr := [0, 0, 0]
 	mut results := []string{}
 	for _, mut v in arr {
 		v = v + 1 // v: 1
 		mut vv := v // vv: 1, v: 1
 		vv = vv + v // vv: 2, v: 1
-		foo := {'a': v, 'b': vv} // or use new syntax foo := map{'a': v, 'b': vv}, results are the same
+		foo := map{
+			'a': v
+			'b': vv
+		}
 		println(v)
 		println(vv)
 		println(foo)
 		results << '$v'
 		results << '$vv'
 		results << '$foo'
-    }
+	}
 	assert results[0] == '1'
 	assert results[1] == '2'
 	assert results[2] == "{'a': 1, 'b': 2}"
@@ -210,7 +217,7 @@ fn foo1(mut arr [][]int) {
 }
 
 fn test_mut_10() {
-    mut arr := [[0,0]]
+	mut arr := [[0, 0]]
 	foo1(mut arr)
 }
 
@@ -236,7 +243,7 @@ fn foo2(mut arr [][]int) {
 }
 
 fn test_mut_11() {
-    mut arr := [[0,0]]
+	mut arr := [[0, 0]]
 	foo2(mut arr)
 }
 
@@ -251,7 +258,7 @@ fn foo3(mut arr [][]int) {
 }
 
 fn test_mut_12() {
-    mut arr := [[0, 0]]
+	mut arr := [[0, 0]]
 	foo3(mut arr)
 }
 
@@ -270,7 +277,9 @@ fn foo4(mut f Foo) {
 }
 
 fn test_mut_13() {
-	mut f := Foo{foo: 1}
+	mut f := Foo{
+		foo: 1
+	}
 	foo4(mut f)
 }
 
@@ -286,7 +295,7 @@ fn foo5(mut arr []int) {
 }
 
 fn test_mut_14() {
-	mut arr := [1,2,3]
+	mut arr := [1, 2, 3]
 	foo5(mut arr)
 }
 
@@ -302,7 +311,7 @@ fn foo6(mut arr [3]int) {
 }
 
 fn test_mut_15() {
-	mut arr := [1,2,3]!
+	mut arr := [1, 2, 3]!
 	foo6(mut arr)
 }
 
@@ -318,20 +327,31 @@ fn foo7(mut m map[string]int) {
 }
 
 fn test_mut_16() {
-	mut m := map{'one': 100, 'two': 2}
+	mut m := map{
+		'one': 100
+		'two': 2
+	}
 	foo7(mut m)
 }
 
 fn test_mut_17() {
-	mut arr := [map{'foo':1}]
+	mut arr := [map{
+		'foo': 1
+	}]
 	for _, mut j in arr {
 		mut k := j.clone()
 		j['foo'] = 0
-		unsafe {k['foo'] = 10}
+		unsafe {
+			k['foo'] = 10
+		}
 		println(j)
 		println(k)
-		assert j == {'foo': 0}
-		assert k == {'foo': 10}
+		assert j == map{
+			'foo': 0
+		}
+		assert k == map{
+			'foo': 10
+		}
 	}
 }
 
