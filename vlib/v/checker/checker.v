@@ -1845,10 +1845,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		c.error('cannot call a function that does not have a body', call_expr.pos)
 	}
 	for generic_type in call_expr.generic_types {
-		sym := c.table.get_type_symbol(generic_type)
-		if sym.kind == .placeholder {
-			c.error('unknown type `$sym.name`', call_expr.generic_list_pos)
-		}
+		c.ensure_type_exists(generic_type, call_expr.generic_list_pos) or { }
 	}
 	if f.generic_names.len > 0 && f.return_type.has_flag(.generic) {
 		rts := c.table.get_type_symbol(f.return_type)
@@ -2986,9 +2983,7 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 				c.error('cannot initalize sum type array without default value', array_init.elem_type_pos)
 			}
 		}
-		if sym.kind == .placeholder {
-			c.error('unknown type `$sym.name`', array_init.elem_type_pos)
-		}
+		c.ensure_type_exists(array_init.elem_type, array_init.elem_type_pos) or { }
 		return array_init.typ
 	}
 	// a = []
@@ -3641,10 +3636,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			expr_type_sym := c.table.get_type_symbol(node.expr_type)
 			type_sym := c.table.get_type_symbol(node.typ)
 			if expr_type_sym.kind == .sum_type {
-				if type_sym.kind == .placeholder {
-					// Unknown type used in the right part of `as`
-					c.error('unknown type `$type_sym.name`', node.pos)
-				}
+				c.ensure_type_exists(node.typ, node.pos) or { }
 				if !c.table.sumtype_has_variant(node.expr_type, node.typ) {
 					c.error('cannot cast `$expr_type_sym.name` to `$type_sym.name`', node.pos)
 					// c.error('only $info.variants can be casted to `$typ`', node.pos)
@@ -3877,8 +3869,8 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
 	node.expr_type = c.expr(node.expr) // type to be casted
 	from_type_sym := c.table.get_type_symbol(node.expr_type)
 	to_type_sym := c.table.get_type_symbol(node.typ) // type to be used as cast
-	if to_type_sym.kind == .placeholder && to_type_sym.language != .c {
-		c.error('unknown type `$to_type_sym.name`', node.pos)
+	if to_type_sym.language != .c {
+		c.ensure_type_exists(node.typ, node.pos) or { }
 	}
 	expr_is_ptr := node.expr_type.is_ptr() || node.expr_type.idx() in table.pointer_type_idxs
 	if expr_is_ptr && to_type_sym.kind == .string && !node.in_prexpr {
@@ -5516,14 +5508,8 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) table.Type {
 	// `x := map[string]string` - set in parser
 	if node.typ != 0 {
 		info := c.table.get_type_symbol(node.typ).map_info()
-		key_sym := c.table.get_type_symbol(info.key_type)
-		value_sym := c.table.get_type_symbol(info.value_type)
-		if key_sym.kind == .placeholder {
-			c.error('unknown type `$key_sym.name`', node.pos)
-		}
-		if value_sym.kind == .placeholder {
-			c.error('unknown type `$value_sym.name`', node.pos)
-		}
+		c.ensure_type_exists(info.key_type, node.pos) or { }
+		c.ensure_type_exists(info.value_type, node.pos) or { }
 		node.key_type = info.key_type
 		node.value_type = info.value_type
 		return node.typ
@@ -5673,10 +5659,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) table.Type {
 		c.inside_sql = false
 	}
 	sym := c.table.get_type_symbol(node.table_expr.typ)
-	if sym.kind == .placeholder {
-		c.error('orm: unknown type `$sym.name`', node.pos)
-		return table.void_type
-	}
+	c.ensure_type_exists(node.table_expr.typ, node.pos) or { return table.void_type }
 	c.cur_orm_ts = sym
 	info := sym.info as table.Struct
 	fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, sym.name)

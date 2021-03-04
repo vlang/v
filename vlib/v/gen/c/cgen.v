@@ -61,18 +61,18 @@ mut:
 	file                  ast.File
 	fn_decl               &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
 	last_fn_c_name        string
-	tmp_count             int  // counter for unique tmp vars (_tmp1, tmp2 etc)
-	tmp_count2            int  // a separate tmp var counter for autofree fn calls
-	is_c_call             bool // e.g. `C.printf("v")`
-	is_assign_lhs         bool // inside left part of assign expr (for array_set(), etc)
-	discard_or_result     bool // do not safe last ExprStmt of `or` block in tmp variable to defer ongoing expr usage
-	is_void_expr_stmt     bool // ExprStmt whos result is discarded
-	is_array_set          bool
-	is_amp                bool // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&byte(0)` etc
-	is_sql                bool // Inside `sql db{}` statement, generating sql instead of C (e.g. `and` instead of `&&` etc)
-	is_shared             bool // for initialization of hidden mutex in `[rw]shared` literals
-	is_vlines_enabled     bool // is it safe to generate #line directives when -g is passed
-	array_set_pos         int
+	tmp_count             int      // counter for unique tmp vars (_tmp1, tmp2 etc)
+	tmp_count2            int      // a separate tmp var counter for autofree fn calls
+	is_c_call             bool     // e.g. `C.printf("v")`
+	is_assign_lhs         bool     // inside left part of assign expr (for array_set(), etc)
+	discard_or_result     bool     // do not safe last ExprStmt of `or` block in tmp variable to defer ongoing expr usage
+	is_void_expr_stmt     bool     // ExprStmt whos result is discarded
+	is_arraymap_set       bool     // map or array set value state
+	is_amp                bool     // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&byte(0)` etc
+	is_sql                bool     // Inside `sql db{}` statement, generating sql instead of C (e.g. `and` instead of `&&` etc)
+	is_shared             bool     // for initialization of hidden mutex in `[rw]shared` literals
+	is_vlines_enabled     bool     // is it safe to generate #line directives when -g is passed
+	arraymap_set_pos      int      // map or array set value position
 	vlines_path           string   // set to the proper path for generating #line directives
 	optionals             []string // to avoid duplicates TODO perf, use map
 	chan_pop_optionals    []string // types for `x := <-ch or {...}`
@@ -1385,6 +1385,10 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 				g.write('\t')
 				g.write_fn_ptr_decl(val_sym.info as table.FnType, c_name(node.val_var))
 				g.writeln(' = ((voidptr*)$tmp${op_field}data)[$i];')
+			} else if val_sym.kind == .array_fixed && !node.val_is_mut {
+				right := '(($styp*)$tmp${op_field}data)[$i]'
+				g.writeln('\t$styp ${c_name(node.val_var)};')
+				g.writeln('\tmemcpy(*($styp*)${c_name(node.val_var)}, (byte*)$right, sizeof($styp));')
 			} else {
 				// If val is mutable (pointer behind the scenes), we need to generate
 				// `int* val = ((int*)arr.data) + i;`
@@ -1956,7 +1960,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					g.assign_op = assign_stmt.op
 					g.expr(left)
 					g.is_assign_lhs = false
-					g.is_array_set = false
+					g.is_arraymap_set = false
 					if left is ast.IndexExpr {
 						sym := g.table.get_type_symbol(left.left_type)
 						if sym.kind in [.map, .array] {
@@ -2004,11 +2008,11 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			pos := g.out.len
 			g.expr(left)
 
-			if g.is_array_set && g.array_set_pos > 0 {
-				g.out.go_back_to(g.array_set_pos)
+			if g.is_arraymap_set && g.arraymap_set_pos > 0 {
+				g.out.go_back_to(g.arraymap_set_pos)
 				g.write(', &$v_var)')
-				g.is_array_set = false
-				g.array_set_pos = 0
+				g.is_arraymap_set = false
+				g.arraymap_set_pos = 0
 			} else {
 				g.out.go_back_to(pos)
 				is_var_mut := !is_decl && left.is_auto_deref_var()
@@ -2097,7 +2101,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				if is_decl {
 					g.writeln(';')
 				}
-			} else if !g.is_array_set && !str_add && !op_overloaded {
+			} else if !g.is_arraymap_set && !str_add && !op_overloaded {
 				g.write(' $op ')
 			} else if str_add || op_overloaded {
 				g.write(', ')
@@ -2175,9 +2179,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			if str_add || op_overloaded {
 				g.write(')')
 			}
-			if g.is_array_set {
+			if g.is_arraymap_set {
 				g.write(' })')
-				g.is_array_set = false
+				g.is_arraymap_set = false
 			}
 			g.is_shared = false
 		}
@@ -3024,15 +3028,12 @@ fn (mut g Gen) enum_expr(node ast.Expr) {
 }
 
 fn (mut g Gen) infix_expr(node ast.InfixExpr) {
-	// println('infix_expr() op="$node.op.str()" line_nr=$node.pos.line_nr')
-	// g.write('/*infix*/')
-	// if it.left_type == table.string_type_idx {
-	// g.write('/*$node.left_type str*/')
-	// }
-	// string + string, string == string etc
-	// g.infix_op = node.op
 	if node.auto_locked != '' {
 		g.writeln('sync__RwMutex_lock(&$node.auto_locked->mtx);')
+	}
+	if node.op in [.key_is, .not_is] {
+		g.is_expr(node)
+		return
 	}
 	left_type := g.unwrap_generic(node.left_type)
 	left_sym := g.table.get_type_symbol(left_type)
@@ -3041,11 +3042,6 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		(left_sym.info as table.Alias).parent_type
 	} else {
 		left_type
-	}
-	op_is_key_is_or_not_is := node.op in [.key_is, .not_is]
-	if op_is_key_is_or_not_is {
-		g.is_expr(node)
-		return
 	}
 	op_is_key_in_or_not_in := node.op in [.key_in, .not_in]
 	op_is_eq_or_ne := node.op in [.eq, .ne]
@@ -4623,7 +4619,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	if is_amp {
 		g.out.go_back(1) // delete the `&` already generated in `prefix_expr()
 	}
-	if g.is_shared && !g.inside_opt_data && !g.is_array_set {
+	if g.is_shared && !g.inside_opt_data && !g.is_arraymap_set {
 		mut shared_typ := struct_init.typ.set_flag(.shared_f)
 		shared_styp = g.typ(shared_typ)
 		g.writeln('($shared_styp*)__dup${shared_styp}(&($shared_styp){.val = ($styp){')
@@ -4797,7 +4793,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	}
 
 	g.write('}')
-	if g.is_shared && !g.inside_opt_data && !g.is_array_set {
+	if g.is_shared && !g.inside_opt_data && !g.is_arraymap_set {
 		g.write('}, sizeof($shared_styp))')
 	} else if is_amp {
 		g.write(', sizeof($styp))')
