@@ -1734,7 +1734,7 @@ pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 	f.single_line_if = false
 	if node.post_comments.len > 0 {
 		f.writeln('')
-		f.comments(node.post_comments, 
+		f.comments(node.post_comments,
 			has_nl: false
 			prev_line: node.branches.last().body_pos.last_line
 		)
@@ -2176,6 +2176,14 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 		fields_start := f.out.len
 		fields_loop: for {
 			if !single_line_fields {
+				if use_short_args && f.out.buf[f.out.buf.len - 1] == ` ` {
+					//           v Remove space at tail of line
+					// f(a, b, c, \n
+					//     f1: 0\n
+					//     f2: 1\n
+					// )
+					f.out.go_back(1)
+				}
 				f.writeln('')
 				f.indent++
 			}
