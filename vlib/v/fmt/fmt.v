@@ -68,14 +68,13 @@ pub fn fmt(file ast.File, table &table.Table, pref &pref.Preferences, is_debug b
 	f.indent--
 	f.stmts(file.stmts)
 	f.indent++
-	// for comment in file.comments { println('$comment.line_nr $comment.text')	}
 	f.imports(f.file.imports) // now that we have all autoimports, handle them
 	res := f.out.str().trim_space() + '\n'
 	if res.len == 1 {
 		return f.out_imports.str().trim_space() + '\n'
 	}
 	bounded_import_pos := util.imin(res.len, f.import_pos)
-	return res[..bounded_import_pos] + f.out_imports.str() + res[bounded_import_pos..] // + '\n'
+	return res[..bounded_import_pos] + f.out_imports.str() + res[bounded_import_pos..]
 }
 
 pub fn (mut f Fmt) process_file_imports(file &ast.File) {
@@ -1562,8 +1561,7 @@ pub fn (mut f Fmt) lock_expr(lex ast.LockExpr) {
 			}
 		}
 	}
-	f.write(' {')
-	f.writeln('')
+	f.writeln(' {')
 	f.stmts(lex.stmts)
 	f.write('}')
 }
@@ -1770,6 +1768,9 @@ fn (mut f Fmt) write_generic_if_require(node ast.CallExpr) {
 
 pub fn (mut f Fmt) call_args(args []ast.CallArg) {
 	f.single_line_fields = true
+	defer {
+		f.single_line_fields = false
+	}
 	for i, arg in args {
 		if arg.is_mut {
 			f.write(arg.share.str() + ' ')
@@ -1782,7 +1783,6 @@ pub fn (mut f Fmt) call_args(args []ast.CallArg) {
 			f.write(', ')
 		}
 	}
-	f.single_line_fields = false
 }
 
 pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
@@ -1856,7 +1856,6 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 	mut single_line := true
 	for branch in it.branches {
 		if branch.stmts.len > 1 || branch.pos.line_nr < branch.pos.last_line {
-			// println(branch)
 			single_line = false
 			break
 		}
@@ -1876,9 +1875,7 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 				f.expr(expr)
 				if j < branch.ecmnts.len && branch.ecmnts[j].len > 0 {
 					f.write(' ')
-					for cmnt in branch.ecmnts[j] {
-						f.comment(cmnt, iembed: true)
-					}
+					f.comments(branch.ecmnts[j], iembed: true)
 				}
 				if j < branch.exprs.len - 1 {
 					f.write(', ')
@@ -1906,9 +1903,7 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 				f.writeln('}')
 			}
 		}
-		if branch.post_comments.len > 0 {
-			f.comments(branch.post_comments, inline: true)
-		}
+		f.comments(branch.post_comments, inline: true)
 	}
 	f.indent--
 	f.write('}')
@@ -2285,8 +2280,7 @@ fn (mut f Fmt) global_decl(it ast.GlobalDecl) {
 	if single {
 		f.write('__global ( ')
 	} else {
-		f.write('__global (')
-		f.writeln('')
+		f.writeln('__global (')
 		f.indent++
 	}
 	mut max := 0
@@ -2300,11 +2294,7 @@ fn (mut f Fmt) global_decl(it ast.GlobalDecl) {
 		}
 	}
 	for field in it.fields {
-		comments := field.comments
-		for comment in comments {
-			f.comment(comment, inline: true)
-			f.writeln('')
-		}
+		f.comments(field.comments, inline: true)
 		f.write('$field.name ')
 		f.write(strings.repeat(` `, max - field.name.len))
 		if field.has_expr {
@@ -2333,11 +2323,7 @@ fn (mut f Fmt) global_decl(it ast.GlobalDecl) {
 pub fn (mut f Fmt) assign_stmt(node ast.AssignStmt) {
 	f.comments(node.comments, {})
 	for i, left in node.left {
-		if left is ast.Ident {
-			f.expr(left)
-		} else {
-			f.expr(left)
-		}
+		f.expr(left)
 		if i < node.left.len - 1 {
 			f.write(', ')
 		}
