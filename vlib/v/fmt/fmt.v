@@ -817,7 +817,10 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 		f.writeln('')
 	}
 	f.comments_after_last_field(node.pre_comments)
-	for field in node.fields {
+	for i, field in node.fields {
+		if i == node.mut_pos {
+			f.writeln('mut:')
+		}
 		// TODO: alignment, comments, etc.
 		mut ft := f.no_cur_mod(f.table.type_to_str(field.typ))
 		if !ft.contains('C.') && !ft.contains('JS.') && !ft.contains('fn (') {
