@@ -77,7 +77,8 @@ fn (mut ctx Context) termios_setup() ? {
 	}
 
 	if ctx.cfg.hide_cursor {
-		print('\x1b[?25l')
+		ctx.hide_cursor()
+		ctx.flush()
 	}
 
 	if ctx.cfg.window_title != '' {
