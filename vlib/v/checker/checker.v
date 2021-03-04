@@ -1029,13 +1029,13 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 			return '', pos
 		}
 		ast.Ident {
-			if expr.obj is ast.Var {
-				mut v := expr.obj as ast.Var
+			if mut expr.obj is ast.Var {
+				mut v := expr.obj
 				if !v.is_mut && !c.pref.translated && !c.inside_unsafe {
 					c.error('`$expr.name` is immutable, declare it with `mut` to make it mutable',
 						expr.pos)
 				}
-				v.is_changed = true
+				expr.obj.is_changed = true
 				if v.typ.share() == .shared_t {
 					if expr.name !in c.locked_names {
 						if c.locked_names.len > 0 || c.rlocked_names.len > 0 {
