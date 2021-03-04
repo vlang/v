@@ -1325,7 +1325,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 				scope_register_ab(mut call_expr.scope, call_expr.pos, array_info.elem_type)
 
 				if call_expr.args.len > 1 {
-					c.error('too many arguments in call to `.sort()`', call_expr.pos)
+					c.error('expected 0 or 1 argument, but got $call_expr.args.len', call_expr.pos)
 				}
 				// Verify `.sort(a < b)`
 				if call_expr.args.len > 0 {
