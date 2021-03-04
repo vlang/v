@@ -49,7 +49,7 @@ const (
 	// create a .c file for these os's
 	vc_build_oses        = [
 		'nix',
-		/* all nix based os */
+		// all nix based os
 		'windows',
 	]
 )

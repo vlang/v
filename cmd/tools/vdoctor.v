@@ -30,9 +30,9 @@ fn (mut a App) collect_info() {
 		arch_details << 'little endian'
 	}
 	if os_kind == 'macos' {
-		arch_details << a.cmd({
+		arch_details << a.cmd(
 			command: 'sysctl -n machdep.cpu.brand_string'
-		})
+		)
 	}
 	if os_kind == 'linux' {
 		mut cpu_details := ''
@@ -48,16 +48,16 @@ fn (mut a App) collect_info() {
 		arch_details << cpu_details
 	}
 	if os_kind == 'windows' {
-		arch_details << a.cmd({
+		arch_details << a.cmd(
 			command: 'wmic cpu get name /format:table'
 			line: 1
-		})
+		)
 	}
 	//
 	mut os_details := ''
-	wsl_check := a.cmd({
+	wsl_check := a.cmd(
 		command: 'cat /proc/sys/kernel/osrelease'
-	})
+	)
 	if os_kind == 'linux' {
 		os_details = a.get_linux_os_name()
 		if 'hypervisor' in a.cpu_info('flags') {
@@ -75,26 +75,27 @@ fn (mut a App) collect_info() {
 			os_details += ' (WSL)'
 		}
 		// From https://unix.stackexchange.com/a/14346
-		if a.cmd(command: '[ "$(awk \'\$5=="/" {print \$1}\' </proc/1/mountinfo)" != "$(awk \'\$5=="/" {print \$1}\' </proc/$$/mountinfo)" ] ; echo \$?') == '0' {
+		awk_cmd := '[ "$(awk \'\$5=="/" {print \$1}\' </proc/1/mountinfo)" != "$(awk \'\$5=="/" {print \$1}\' </proc/$$/mountinfo)" ] ; echo \$?'
+		if a.cmd(command: awk_cmd) == '0' {
 			os_details += ' (chroot)'
 		}
 	} else if os_kind == 'macos' {
 		mut details := []string{}
-		details << a.cmd({
+		details << a.cmd(
 			command: 'sw_vers -productName'
-		})
-		details << a.cmd({
+		)
+		details << a.cmd(
 			command: 'sw_vers -productVersion'
-		})
-		details << a.cmd({
+		)
+		details << a.cmd(
 			command: 'sw_vers -buildVersion'
-		})
+		)
 		os_details = details.join(', ')
 	} else if os_kind == 'windows' {
-		wmic_info := a.cmd({
+		wmic_info := a.cmd(
 			command: 'wmic os get * /format:value'
 			line: -1
-		})
+		)
 		p := a.parse(wmic_info, '=')
 		caption, build_number, os_arch := p['caption'], p['buildnumber'], p['osarchitecture']
 		os_details = '$caption v$build_number $os_arch'
@@ -104,15 +105,15 @@ fn (mut a App) collect_info() {
 	}
 	a.line('OS', '$os_kind, $os_details')
 	a.line('Processor', arch_details.join(', '))
-	a.line('CC version', a.cmd({
+	a.line('CC version', a.cmd(
 		command: 'cc --version'
-	}))
+	))
 	a.println('')
 	getwd := os.getwd()
 	vmodules := os.vmodules_dir()
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
-	os.chdir(vroot)	
+	os.chdir(vroot)
 	a.line('getwd', getwd)
 	a.line('vmodules', vmodules)
 	a.line('vroot', vroot)
@@ -130,9 +131,9 @@ fn (mut a App) collect_info() {
 		a.line('env VFLAGS', '"$vflags"')
 	}
 	a.println('')
-	a.line('Git version', a.cmd({
+	a.line('Git version', a.cmd(
 		command: 'git --version'
-	}))
+	))
 	a.line('Git vroot status', a.git_info())
 	a.line('.git/config present', os.is_file('.git/config').str())
 	//
@@ -145,7 +146,8 @@ struct CmdConfig {
 }
 
 fn (mut a App) cmd(c CmdConfig) string {
-	x := os.exec(c.command) or {
+	x := os.execute(c.command)
+	if x.exit_code < 0 {
 		return 'N/A'
 	}
 	if x.exit_code == 0 {
@@ -189,9 +191,7 @@ fn (mut a App) get_linux_os_name() string {
 				if !os.is_file('/etc/os-release') {
 					continue
 				}
-				lines := os.read_file('/etc/os-release') or {
-					continue
-				}
+				lines := os.read_file('/etc/os-release') or { continue }
 				vals := a.parse(lines, '=')
 				if vals['PRETTY_NAME'] == '' {
 					continue
@@ -200,24 +200,24 @@ fn (mut a App) get_linux_os_name() string {
 				break
 			}
 			'lsb_release' {
-				exists := a.cmd({
+				exists := a.cmd(
 					command: 'type lsb_release'
-				})
+				)
 				if exists.starts_with('Error') {
 					continue
 				}
-				os_details = a.cmd({
+				os_details = a.cmd(
 					command: 'lsb_release -d -s'
-				})
+				)
 				break
 			}
 			'kernel' {
 				if !os.is_file('/proc/version') {
 					continue
 				}
-				os_details = a.cmd({
+				os_details = a.cmd(
 					command: 'cat /proc/version'
-				})
+				)
 				break
 			}
 			'uname' {
@@ -235,22 +235,23 @@ fn (mut a App) cpu_info(key string) string {
 	if a.cached_cpuinfo.len > 0 {
 		return a.cached_cpuinfo[key]
 	}
-	info := os.exec('cat /proc/cpuinfo') or {
-		return a.cached_cpuinfo[key]
+	info := os.execute('cat /proc/cpuinfo')
+	if info.exit_code != 0 {
+		return '`cat /proc/cpuinfo` could not run'
 	}
 	a.cached_cpuinfo = a.parse(info.output, ':')
 	return a.cached_cpuinfo[key]
 }
 
 fn (mut a App) git_info() string {
-	mut out := a.cmd({
+	mut out := a.cmd(
 		command: 'git -C . describe --abbrev=8 --dirty --always --tags'
-	}).trim_space()
-	os.exec('git -C . remote add V_REPO https://github.com/vlang/v') or { } // ignore failure (i.e. remote exists)
-	os.exec('git -C . fetch V_REPO') or { }
-	commit_count := a.cmd({
+	).trim_space()
+	os.execute('git -C . remote add V_REPO https://github.com/vlang/v') // ignore failure (i.e. remote exists)
+	os.execute('git -C . fetch V_REPO')
+	commit_count := a.cmd(
 		command: 'git rev-list @{0}...V_REPO/master --right-only --count'
-	}).int()
+	).int()
 	if commit_count > 0 {
 		out += ' ($commit_count commit(s) behind V master)'
 	}
@@ -262,12 +263,12 @@ fn (mut a App) report_tcc_version(tccfolder string) {
 		a.line(tccfolder, 'N/A')
 		return
 	}
-	tcc_branch_name := a.cmd({
+	tcc_branch_name := a.cmd(
 		command: 'git -C $tccfolder rev-parse --abbrev-ref HEAD'
-	})
-	tcc_commit := a.cmd({
+	)
+	tcc_commit := a.cmd(
 		command: 'git -C $tccfolder describe --abbrev=8 --dirty --always --tags'
-	})
+	)
 	a.line('$tccfolder status', '$tcc_branch_name $tcc_commit')
 }
 
@@ -278,9 +279,7 @@ fn (mut a App) report_info() {
 }
 
 fn is_writable_dir(path string) bool {
-	res := os.is_writable_folder(path) or {
-		false
-	}
+	res := os.is_writable_folder(path) or { false }
 	return res
 }
 

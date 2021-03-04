@@ -233,14 +233,16 @@ fn test_array_init_with_sumtype() {
 fn test_array_init_inferred_from_optional() {
 	a := read() or { [] }
 	x := 1
-	b := read() or { match x {
-		1 {
-			[]
+	b := read() or {
+		match x {
+			1 {
+				[]
+			}
+			else {
+				[]
+			}
 		}
-		else {
-			[]
-		}
-	} }
+	}
 	println(a)
 	println(b)
 }
