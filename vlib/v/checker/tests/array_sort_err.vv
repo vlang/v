@@ -1,0 +1,4 @@
+fn main() {
+	mut arr := [3, 2, 1]
+	arr.sort(a < b, a)
+}
