@@ -83,19 +83,10 @@ ifdef WIN32
 	$(V) self
 else
 	$(CC) $(CFLAGS) -g -std=gnu99 -w -o $(V) $(VC)/$(VCFILE) -lm -lpthread $(LDFLAGS)
-ifdef ANDROID
-	chmod 755 v
-endif
 	$(V) self
-ifndef ANDROID
-	$(MAKE) modules
-endif
 endif
 	@echo "V has been successfully built"
 	@$(V) -version
-
-#clean: clean_tmp
-#git clean -xf
 
 clean:
 	rm -rf $(TMPTCC)
@@ -145,11 +136,3 @@ selfcompile:
 
 selfcompile-static:
 	$(V) -cg -cflags '--static' -o v-static cmd/v
-
-modules: module_builtin module_strings module_strconv
-module_builtin:
-	#$(V) build module vlib/builtin > /dev/null
-module_strings:
-	#$(V) build module vlib/strings > /dev/null
-module_strconv:
-	#$(V) build module vlib/strconv > /dev/null
