@@ -1064,6 +1064,13 @@ fn expr_is_single_line(expr ast.Expr) bool {
 				return expr_is_single_line(expr.exprs[0])
 			}
 		}
+		ast.ConcatExpr {
+			for e in expr.vals {
+				if !expr_is_single_line(e) {
+					return false
+				}
+			}
+		}
 		else {}
 	}
 	return true
@@ -1673,6 +1680,13 @@ pub fn (mut f Fmt) wrap_infix(start_pos int, start_len int, ignore_paren bool) {
 	}
 }
 
+fn branch_is_single_line(b ast.IfBranch) bool {
+	if b.stmts.len == 1 && b.comments.len == 0 && stmt_is_single_line(b.stmts[0]) {
+		return true
+	}
+	return false
+}
+
 pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 	dollar := if node.is_comptime { '$' } else { '' }
 	mut is_ternary := node.branches.len == 2 && node.has_else
@@ -1742,13 +1756,6 @@ pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 			prev_line: node.branches.last().body_pos.last_line
 		)
 	}
-}
-
-fn branch_is_single_line(b ast.IfBranch) bool {
-	if b.stmts.len == 1 && b.comments.len == 0 && stmt_is_single_line(b.stmts[0]) {
-		return true
-	}
-	return false
 }
 
 pub fn (mut f Fmt) at_expr(node ast.AtExpr) {

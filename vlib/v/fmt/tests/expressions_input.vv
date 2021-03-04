@@ -91,3 +91,12 @@ fn set_nr_muls(t table.Type, nr_muls int) table.Type {
 	return int(t) &
 		0xff00ffff | (nr_muls << 16)
 }
+
+// Test what exprs are treated as multiline. The ternary if only functions as a wrapper.
+// When one expr in a branch doesn't fit a single line, the whole if will be unwrapped.
+fn multiline_exprs() {
+	// StructInit with at least one field
+	_ := if true { Foo{} } else { Foo{ val: 123} }
+	// ConcatExpr with a multiline child expr
+	_, _ := if true { 1, Foo{val: 123} } else { 2, Foo{} }
+}
