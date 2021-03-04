@@ -256,7 +256,7 @@ With V's `vab` tool, building V UI and graphical apps for Android can become as 
 
 ## Developing web applications
 
-Check out the [Building a simple web blog](https://github.com/vlang/v/blob/master/tutorials/building-a-simple-web-blog-with-vweb.md)
+Check out the [Building a simple web blog](https://github.com/vlang/v/blob/master/tutorials/building_a_simple_web_blog_with_vweb/README.md)
 tutorial and Gitly, a light and fast alternative to GitHub/GitLab:
 
 https://github.com/vlang/gitly
