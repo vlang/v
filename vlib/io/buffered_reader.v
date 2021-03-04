@@ -22,7 +22,9 @@ pub struct BufferedReaderConfig {
 
 // new_buffered_reader creates new BufferedReader
 pub fn new_buffered_reader(o BufferedReaderConfig) &BufferedReader {
-	assert o.cap >= 2
+	if o.cap <= 0 {
+		panic('new_buffered_reader should be called with a positive `cap`')
+	}
 	// create
 	r := &BufferedReader{
 		reader: o.reader
@@ -35,6 +37,9 @@ pub fn new_buffered_reader(o BufferedReaderConfig) &BufferedReader {
 
 // read fufills the Reader interface
 pub fn (mut r BufferedReader) read(mut buf []byte) ?int {
+	if r.end_of_stream {
+		return none
+	}
 	// read data out of the buffer if we dont have any
 	if r.needs_fill() {
 		if !r.fill_buffer() {
@@ -43,6 +48,9 @@ pub fn (mut r BufferedReader) read(mut buf []byte) ?int {
 		}
 	}
 	read := copy(buf, r.buf[r.offset..r.len])
+	if read == 0 {
+		return none
+	}
 	r.offset += read
 	return read
 }
@@ -79,7 +87,7 @@ fn (mut r BufferedReader) fill_buffer() bool {
 
 // needs_fill returns whether the buffer needs refilling
 fn (r BufferedReader) needs_fill() bool {
-	return r.offset >= r.len - 1
+	return r.offset >= r.len
 }
 
 // end_of_stream returns whether the end of the stream was reached
