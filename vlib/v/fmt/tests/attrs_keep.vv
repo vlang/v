@@ -5,6 +5,12 @@ fn keep_attributes() {
 	println('hi !')
 }
 
+[bar: 'foo']
+fn attr_with_arg() {}
+
+['a_string_name']
+fn name_only_attr() {}
+
 struct User {
 	age           int
 	nums          []int
