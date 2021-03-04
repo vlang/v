@@ -103,13 +103,13 @@ NB: the build flags are shared with the run command too:
    -v
       Enable verbosity in the V compiler while compiling
 
-   -print_v_files
+   -print-v-files
       Just print the list of all parsed .v files, then stop processing further.
       This is useful for running external processing tools:
-        ./v -print_v_files cmd/v | etags -L -
+        ./v -print-v-files cmd/v | etags -L -
       ... will generate a TAGS file, that emacs can then use to jump
       to the definition of functions used by v itself. For vim:
-        ./v -print_v_files cmd/v | ctags -L -
+        ./v -print-v-files cmd/v | ctags -L -
       ... will generate a simillar tags file, that vi compatible editors can use.
       NB: an useful, although not entirely accurate regexp based Universal Ctags options file
       for V is located in `.ctags.d/v.ctags` . If you use https://ctags.io/ , it will be used

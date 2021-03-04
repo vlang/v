@@ -329,7 +329,7 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			'-w' {
 				res.skip_warnings = true
 			}
-			'-print_v_files' {
+			'-print-v-files' {
 				res.print_v_files = true
 			}
 			'-error-limit' {
