@@ -401,7 +401,7 @@ pub fn join_env_vflags_and_os_args() []string {
 		}
 		return non_empty(args)
 	}
-	return non_empty(os.args)
+	return os.args
 }
 
 fn non_empty(arg []string) []string {
