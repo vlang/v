@@ -1157,13 +1157,13 @@ pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
 }
 
 pub fn (mut f Fmt) as_cast(node ast.AsCast) {
-	type_str := f.table.type_to_str(node.typ)
+	type_str := f.table.type_to_str_using_aliases(node.typ, f.mod2alias)
 	f.expr(node.expr)
 	f.write(' as $type_str')
 }
 
 pub fn (mut f Fmt) cast_expr(node ast.CastExpr) {
-	f.write(f.table.type_to_str(node.typ) + '(')
+	f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias) + '(')
 	f.expr(node.expr)
 	if node.has_arg {
 		f.write(', ')
