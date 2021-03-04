@@ -14,7 +14,9 @@ fn test_fn_multiple_returns() {
 
 fn fn_mr_get_user() (string, int, []string, UserData) {
 	groups := ['admins', 'users']
-	data := UserData{test: 'Test Data'}
+	data := UserData{
+		test: 'Test Data'
+	}
 	return 'joe', 34, groups, data
 }
 
@@ -30,9 +32,7 @@ fn split_to_two(s string) ?(string, string) {
 }
 
 fn returnable_fail() string {
-	_,_ := split_to_two('bad') or {
-		return 'ok'
-	}
+	_, _ := split_to_two('bad') or { return 'ok' }
 	return 'nok'
 }
 
@@ -41,7 +41,7 @@ fn test_multiple_ret() {
 	assert returnable_fail() == 'ok'
 
 	// good case
-	res1_1, res1_2 := split_to_two("fish house") or {
+	res1_1, res1_2 := split_to_two('fish house') or {
 		assert false
 		return
 	}
@@ -49,8 +49,8 @@ fn test_multiple_ret() {
 	assert res1_2 == 'house'
 
 	// none case
-	wrapper1 := fn()(string, string){
-		res2_1, res2_2 := split_to_two("") or {
+	wrapper1 := fn () (string, string) {
+		res2_1, res2_2 := split_to_two('') or {
 			assert err.msg == ''
 			return 'replaced', 'val'
 		}
@@ -61,7 +61,7 @@ fn test_multiple_ret() {
 	assert res2_2 == 'val'
 
 	// error case
-	wrapper2 := fn()(string, string){
+	wrapper2 := fn () (string, string) {
 		res3_1, res3_2 := split_to_two('fishhouse') or {
 			assert err.msg == 'error'
 			return 'replaced', 'val'

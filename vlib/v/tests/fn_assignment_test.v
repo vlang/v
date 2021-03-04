@@ -9,9 +9,9 @@ fn test1() int {
 fn test_fn_assignment_var() {
 	mut a := 0
 	mut b := 0
-	a , b = test(), test1()
-	
-	assert a == 10 
+	a, b = test(), test1()
+
+	assert a == 10
 	assert b == 11
 
 	a, b = test(), test()
@@ -20,13 +20,13 @@ fn test_fn_assignment_var() {
 
 	a, b = test(), 12
 
-	assert a == 10 
+	assert a == 10
 	assert b == 12
 
 	a, b = 12, test()
 
 	assert a == 12
-	assert b == 10 
+	assert b == 10
 }
 
 fn test_fn_assignment_array() {
@@ -34,22 +34,20 @@ fn test_fn_assignment_array() {
 
 	a[0], a[1] = test(), test1()
 
-	assert a[0] == 10 
+	assert a[0] == 10
 	assert a[1] == 11
 
-	a[0], a[1] = test() , test()
+	a[0], a[1] = test(), test()
 
-	assert a[0] == 10 
-	assert a[1] == 10 
+	assert a[0] == 10
+	assert a[1] == 10
 
 	a[0], a[1] = test(), 12
 
-	assert a[0] == 10 
-	assert a[1] == 12 
+	assert a[0] == 10
+	assert a[1] == 12
 
-	a[0], a[1] = 12 , test() 
-	assert a[0] == 12 
+	a[0], a[1] = 12, test()
+	assert a[0] == 12
 	assert a[1] == 10
 }
-
-

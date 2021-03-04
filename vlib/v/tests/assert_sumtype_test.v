@@ -1,4 +1,5 @@
 struct Moon {}
+
 struct Mars {}
 
 type World = Mars | Moon

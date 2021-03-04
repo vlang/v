@@ -3,12 +3,15 @@ struct Test {}
 fn (test Test) v() {
 	println('Test.v()')
 }
+
 fn (test Test) i() int {
 	return 4
 }
+
 fn (test Test) s() string {
 	return 'test'
 }
+
 fn (test Test) s2() string {
 	return 'Two'
 }

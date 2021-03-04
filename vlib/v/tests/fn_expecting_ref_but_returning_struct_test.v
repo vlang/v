@@ -2,10 +2,12 @@ struct Foo {
 	x int
 }
 
-pub fn (f Foo) str() string { return 'Foo{}' }
+pub fn (f Foo) str() string {
+	return 'Foo{}'
+}
 
 fn process_foo(foo &Foo) {
-	println('>process_foo, called for ${foo} === ${*foo}')
+	println('>process_foo, called for $foo === ${*foo}')
 }
 
 fn get_foo() Foo {

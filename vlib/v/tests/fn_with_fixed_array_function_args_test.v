@@ -7,7 +7,7 @@ fn foo2(a string) int {
 }
 
 fn bar1(mut a [1]fn (string) int) int {
-        a[0] = foo2
+	a[0] = foo2
 	return a[0]('hello')
 }
 
