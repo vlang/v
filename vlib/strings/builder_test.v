@@ -30,15 +30,14 @@ fn test_sb() {
 	sb = strings.new_builder(10)
 	sb.write_string('x = $x y = $y')
 	assert sb.str() == 'x = 10 y = 20'
-	$if !windows {
-		// TODO msvc bug
-		sb = strings.new_builder(10)
-		sb.write_string('123456')
-		last_2 := sb.cut_last(2)
-		assert last_2 == '56'
-		final_sb := sb.str()
-		assert final_sb == '1234'
-	}
+	//$if !windows {
+	sb = strings.new_builder(10)
+	sb.write_string('123456')
+	last_2 := sb.cut_last(2)
+	assert last_2 == '56'
+	final_sb := sb.str()
+	assert final_sb == '1234'
+	//}
 }
 
 const (
