@@ -231,10 +231,12 @@ pub:
 	field_names  []string
 	is_pub       bool
 	methods      []FnDecl
-	mut_pos      int // mut:
 	fields       []StructField
 	pos          token.Position
 	pre_comments []Comment
+	// `mut:` member markers
+	field_mut_pos  int
+	method_mut_pos int
 }
 
 pub struct StructInitField {

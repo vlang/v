@@ -274,7 +274,7 @@ pub fn (f &File) read_bytes_into(pos int, mut buf []byte) ?int {
 }
 
 // read implements the Reader interface.
-pub fn (f &File) read(mut buf []byte) ?int {
+pub fn (mut f File) read(mut buf []byte) ?int {
 	if buf.len == 0 {
 		return 0
 	}

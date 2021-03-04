@@ -190,6 +190,7 @@ interface Speaker2 {
 	name() string
 	speak()
 	return_speaker() Speaker2
+mut:
 	return_speaker2() ?Speaker2
 }
 
@@ -244,6 +245,7 @@ interface Animal {
 	name() string
 	name_detailed(pet_name string) string
 	speak(s string)
+mut:
 	set_breed(s string)
 }
 

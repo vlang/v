@@ -2045,12 +2045,20 @@ fn (mut c Checker) type_implements(typ table.Type, inter_typ table.Type, pos tok
 	}
 	for imethod in imethods {
 		if method := typ_sym.find_method(imethod.name) {
+			err_start := '`$styp` incorrectly implements method `$imethod.name` of interface `$inter_sym.name`'
 			msg := c.table.is_same_method(imethod, method)
 			if msg.len > 0 {
 				sig := c.table.fn_signature(imethod, skip_receiver: true)
 				c.add_error_detail('$inter_sym.name has `$sig`')
-				c.error('`$styp` incorrectly implements method `$imethod.name` of interface `$inter_sym.name`: $msg',
-					pos)
+				c.error('$err_start: $msg', pos)
+				return false
+			}
+			if method.params[0].is_mut && !imethod.params[0].is_mut {
+				c.error('$err_start: expected an immutable receiver', pos)
+				return false
+			}
+			if !method.params[0].is_mut && imethod.params[0].is_mut {
+				c.error('$err_start: expected a mutable receiver', pos)
 				return false
 			}
 			continue

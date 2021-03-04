@@ -20,6 +20,7 @@ pub struct PRNGConfigStruct {
 // modules's API. It defines all the methods that a PRNG (in the vlib or custom made) must
 // implement in order to ensure that _all_ functions can be used with the generator.
 pub interface PRNG {
+mut:
 	seed(seed_data []u32)
 	u32() u32
 	u64() u64
@@ -63,7 +64,7 @@ pub fn get_current_rng() &PRNG {
 }
 
 // set_rng changes the default RNG from wyrand.WyRandRNG (or whatever the last RNG was) to the one
-// provided by the user. Note that this new RNG must be seeded manually with a constant seed or the 
+// provided by the user. Note that this new RNG must be seeded manually with a constant seed or the
 // `seed.time_seed_array()` method. Also, it is recommended to store the old RNG in a variable and
 // should be restored if work with the custom RNG is complete. It is not necessary to restore if the
 // program terminates soon afterwards.

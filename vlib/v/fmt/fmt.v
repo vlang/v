@@ -817,10 +817,17 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 		f.writeln('')
 	}
 	f.comments_after_last_field(node.pre_comments)
-	for i, field in node.fields {
-		if i == node.mut_pos {
-			f.writeln('mut:')
-		}
+
+	immut_fields := if node.field_mut_pos > -1 {
+		node.fields[..node.field_mut_pos]
+	} else {
+		node.fields
+	}
+	immut_methods := if node.method_mut_pos > -1 { node.methods[..node.method_mut_pos] } else { node.methods }
+	mut_fields := if immut_fields.len < node.fields.len { node.fields[immut_fields.len..] } else { []ast.StructField{} }
+	mut_methods := if immut_methods.len < node.methods.len { node.methods[immut_methods.len..] } else { []ast.FnDecl{} }
+
+	for field in immut_fields {
 		// TODO: alignment, comments, etc.
 		mut ft := f.no_cur_mod(f.table.type_to_str(field.typ))
 		if !ft.contains('C.') && !ft.contains('JS.') && !ft.contains('fn (') {
@@ -828,12 +835,30 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 		}
 		f.writeln('\t$field.name $ft')
 	}
-	for method in node.methods {
+	for method in immut_methods {
 		f.write('\t')
 		f.write(method.stringify(f.table, f.cur_mod, f.mod2alias).after('fn '))
 		f.comments(method.comments, inline: true, has_nl: false, level: .indent)
 		f.writeln('')
 		f.comments(method.next_comments, inline: false, has_nl: true, level: .indent)
+	}
+	if mut_fields.len + mut_methods.len > 0 {
+		f.writeln('mut:')
+		for field in mut_fields {
+			// TODO: alignment, comments, etc.
+			mut ft := f.no_cur_mod(f.table.type_to_str(field.typ))
+			if !ft.contains('C.') && !ft.contains('JS.') && !ft.contains('fn (') {
+				ft = f.short_module(ft)
+			}
+			f.writeln('\t$field.name $ft')
+		}
+		for method in mut_methods {
+			f.write('\t')
+			f.write(method.stringify(f.table, f.cur_mod, f.mod2alias).after('fn '))
+			f.comments(method.comments, inline: true, has_nl: false, level: .indent)
+			f.writeln('')
+			f.comments(method.next_comments, inline: false, has_nl: true, level: .indent)
+		}
 	}
 	f.writeln('}\n')
 }

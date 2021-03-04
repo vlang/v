@@ -6,6 +6,7 @@ pub interface Reader {
 	// them into buf.
 	// A type that implements this should return
 	// `none` on end of stream (EOF) instead of just returning 0
+mut:
 	read(mut buf []byte) ?int
 }
 
@@ -32,7 +33,7 @@ pub struct ReadAllConfig {
 // read_all reads all bytes from a reader until either a 0 length read
 // or if read_to_end_of_stream is true then the end of the stream (`none`)
 pub fn read_all(config ReadAllConfig) ?[]byte {
-	r := config.reader
+	mut r := config.reader
 	read_till_eof := config.read_to_end_of_stream
 
 	mut b := []byte{len: read_all_len}
@@ -52,9 +53,15 @@ pub fn read_all(config ReadAllConfig) ?[]byte {
 	return b[..read]
 }
 
+[deprecated: 'use `Reader.read_any()` instead']
+pub fn read_any(r Reader) ?[]byte {
+	mut r_ := r
+	return r_.read_any()
+}
+
 // read_any reads any available bytes from a reader
 // (until the reader returns a read of 0 length)
-pub fn read_any(r Reader) ?[]byte {
+pub fn (mut r Reader) read_any() ?[]byte {
 	mut b := []byte{len: read_all_len}
 	mut read := 0
 	for {
