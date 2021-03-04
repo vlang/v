@@ -73,26 +73,20 @@ endif
 
 .PHONY: all clean fresh_vc fresh_tcc
 
+ifdef prod
+VFLAGS+=-prod
+endif
+
 all: latest_vc latest_tcc
 ifdef WIN32
 	$(CC) $(CFLAGS) -g -std=c99 -municode -w -o $(V) $(VC)/$(VCFILE) $(LDFLAGS)
-ifdef prod
-	$(V) -prod -cflags "$(CFLAGS)" self
-else
-	$(V) -cflags "$(CFLAGS)" self
-endif
+	$(V) self
 else
 	$(CC) $(CFLAGS) -g -std=gnu99 -w -o $(V) $(VC)/$(VCFILE) -lm -lpthread $(LDFLAGS)
 ifdef ANDROID
 	chmod 755 v
 endif
-
-ifdef prod
-	$(V) -prod -cflags "$(CFLAGS)" self
-else
-	$(V) -cflags "$(CFLAGS)" self
-endif
-
+	$(V) self
 ifndef ANDROID
 	$(MAKE) modules
 endif
