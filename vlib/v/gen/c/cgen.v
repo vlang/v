@@ -1385,6 +1385,14 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 				g.write('\t')
 				g.write_fn_ptr_decl(val_sym.info as table.FnType, c_name(node.val_var))
 				g.writeln(' = ((voidptr*)$tmp${op_field}data)[$i];')
+			} else if val_sym.kind == .array_fixed {
+				right := if node.val_is_mut {
+					'(($styp)$tmp${op_field}data) + $i'
+				} else {
+					'(($styp*)$tmp${op_field}data)[$i]'
+				}
+				g.writeln('\t$styp ${c_name(node.val_var)};')
+				g.writeln('\tmemcpy(*($styp*)${c_name(node.val_var)}, (byte*)$right, sizeof($styp));')
 			} else {
 				// If val is mutable (pointer behind the scenes), we need to generate
 				// `int* val = ((int*)arr.data) + i;`
