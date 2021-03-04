@@ -1036,24 +1036,26 @@ pub:
 	is_top_level bool
 	is_volatile  bool
 	is_goto      bool
-	volatile     bool
 	clobbered    []AsmClobbered
 	pos          token.Position
 pub mut:
-	templates     []AsmTemplate
-	scope         &Scope
-	output        []AsmIO
-	input         []AsmIO
-	global_labels []string // listed after clobbers, paired with is_goto == true
-	local_labels  []string // local to the assembly block
+	templates        []AsmTemplate
+	scope            &Scope
+	output           []AsmIO
+	input            []AsmIO
+	global_labels    []string // listed after clobbers, paired with is_goto == true
+	local_labels     []string // local to the assembly block
+	exported_symbols []string // functions defined in assembly block, exported with `.globl`
 }
 
 pub struct AsmTemplate {
 pub mut:
-	name     string
-	is_label bool // `example_label:`
-	args     []AsmArg
-	comments []Comment
+	name         string
+	is_label     bool // `example_label:`
+	is_directive bool // .globl assembly_function
+	args         []AsmArg
+	comments     []Comment
+	pos          token.Position
 }
 
 // [eax+5] | j | eax | true | `a` | 0.594 | 123 | 'hi' | label_name
@@ -1178,11 +1180,12 @@ pub const (
 
 // TODO: saved priviled registers for arm
 const (
-	arm_no_number_register_list   = ['fp', /* not instruction pointer */ 'ip', 'sp', 'lr', 'pc',
-		'apsr',
-	]
+	arm_no_number_register_list   = ['fp' /* aka r11 */, /* not instruction pointer: */ 'ip' /* aka r12 */,
+		'sp' /* aka r13 */, 'lr' /* aka r14 */, /* this is instruction pointer ('program counter'): */
+		'pc' /* aka r15 */,
+	] // 'cpsr' and 'apsr' are special flags registers, but cannot be referred to directly
 	arm_with_number_register_list = map{
-		'r#': 13
+		'r#': 16
 	}
 )
 
@@ -1763,7 +1766,7 @@ pub fn (mut lx IndexExpr) recursive_mapset_is_setter(val bool) {
 pub fn all_registers(mut t table.Table, arch pref.Arch) map[string]ScopeObject {
 	mut res := map[string]ScopeObject{}
 	match arch {
-		.amd64 {
+		.amd64, .i386 {
 			for bit_size, array in ast.x86_no_number_register_list {
 				for name in array {
 					res[name] = AsmRegister{
@@ -1789,10 +1792,62 @@ pub fn all_registers(mut t table.Table, arch pref.Arch) map[string]ScopeObject {
 				}
 			}
 		}
+		.aarch32 {
+			aarch32 := gen_all_registers(mut t, ast.arm_no_number_register_list, ast.arm_with_number_register_list,
+				32)
+			for k, v in aarch32 {
+				res[k] = v
+			}
+		}
+		.aarch64 {
+			aarch64 := gen_all_registers(mut t, ast.arm_no_number_register_list, ast.arm_with_number_register_list,
+				64)
+			for k, v in aarch64 {
+				res[k] = v
+			}
+		}
+		.rv32 {
+			rv32 := gen_all_registers(mut t, ast.riscv_no_number_register_list, ast.riscv_with_number_register_list,
+				32)
+			for k, v in rv32 {
+				res[k] = v
+			}
+		}
+		.rv64 {
+			rv64 := gen_all_registers(mut t, ast.riscv_no_number_register_list, ast.riscv_with_number_register_list,
+				64)
+			for k, v in rv64 {
+				res[k] = v
+			}
+		}
 		else { // TODO
 			panic('ast.all_registers: unhandled arch')
 		}
 	}
 
+	return res
+}
+
+// only for arm and riscv because x86 has different sized registers
+fn gen_all_registers(mut t table.Table, without_numbers []string, with_numbers map[string]int, bit_size int) map[string]ScopeObject {
+	mut res := map[string]ScopeObject{}
+	for name in without_numbers {
+		res[name] = AsmRegister{
+			name: name
+			typ: t.bitsize_to_type(bit_size)
+			size: bit_size
+		}
+	}
+	for name, max_num in with_numbers {
+		for i in 0 .. max_num {
+			hash_index := name.index('#') or { panic('ast.all_registers: no hashtag found') }
+			assembled_name := '${name[..hash_index]}$i${name[hash_index + 1..]}'
+			res[assembled_name] = AsmRegister{
+				name: assembled_name
+				typ: t.bitsize_to_type(bit_size)
+				size: bit_size
+			}
+		}
+	}
 	return res
 }

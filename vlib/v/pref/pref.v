@@ -47,10 +47,10 @@ pub enum Arch {
 	_auto
 	amd64 // aka x86_64
 	aarch64 // 64-bit arm
-	arm32 // 32-bit arm
+	aarch32 // 32-bit arm
 	rv64 // 64-bit risc-v
 	rv32 // 32-bit risc-v
-	ia32
+	i386
 }
 
 const (
@@ -557,7 +557,7 @@ pub fn arch_from_string(arch_str string) ?Arch {
 		}
 		'arm32', 'aarch32', 'arm' { // aarch32 recommended
 
-			return Arch.arm32
+			return Arch.aarch32
 		}
 		'rv64', 'riscv64', 'risc-v64', 'riscv', 'risc-v' { // rv64 recommended
 
@@ -567,18 +567,17 @@ pub fn arch_from_string(arch_str string) ?Arch {
 
 			return Arch.rv32
 		}
-		'x86_32', 'x32', 'i386', 'IA-32', 'ia-32', 'ia32' { // ia32 recommended
+		'x86_32', 'x32', 'i386', 'IA-32', 'ia-32', 'ia32' { // i386 recommended
 
-			return Arch.ia32
+			return Arch.i386
 		}
 		'' {
 			return ._auto
 		}
 		else {
-			return error('bad OS $arch_str')
+			return error('invalid arch: $arch_str')
 		}
 	}
-	// return arch
 }
 
 fn must_exist(path string) {

@@ -9,15 +9,34 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 	mut all_v_files := []string{}
 	for file in files {
 		if !file.ends_with('.v') && !file.ends_with('.vh') {
+			if file.ends_with('amd64.v') {
+				println('asd')
+			}
 			continue
 		}
 		if file.ends_with('_test.v') {
+			if file.ends_with('amd64.v') {
+				println('asd2')
+			}
 			continue
 		}
+
 		if prefs.backend == .c && !prefs.should_compile_c(file) {
+			if file.ends_with('amd64.v') {
+				println('as3')
+			}
 			continue
 		}
 		if prefs.backend == .js && !prefs.should_compile_js(file) {
+			if file.ends_with('amd64.v') {
+				println('asd4')
+			}
+			continue
+		}
+		if prefs.backend != .js && !prefs.should_compile_asm(file) {
+			if file.ends_with('amd64.v') {
+				println('asd5')
+			}
 			continue
 		}
 		if file.contains('_d_') {
@@ -99,7 +118,7 @@ fn fname_without_platform_postfix(file string) string {
 }
 
 pub fn (prefs &Preferences) should_compile_c(file string) bool {
-	if !file.ends_with('.c.v') && file.split('.').len > 2 {
+	if file.ends_with('.js.v') {
 		// Probably something like `a.js.v`.
 		return false
 	}
@@ -137,6 +156,24 @@ pub fn (prefs &Preferences) should_compile_c(file string) bool {
 		return false
 	}
 	if file.ends_with('_x64.v') && prefs.backend != .x64 {
+		return false
+	}
+	return true
+}
+
+pub fn (prefs &Preferences) should_compile_asm(path string) bool {
+	if path.count('.') != 2 || path.ends_with('c.v') || path.ends_with('js.v') {
+		return true
+	}
+	file := path.all_before_last('.v')
+	arch := arch_from_string(file.all_after_last('.')) or { Arch._auto }
+
+	if arch != prefs.arch && prefs.arch != ._auto && arch != ._auto {
+		return false
+	}
+	os := os_from_string(file.all_after_last('_').all_before('.')) or { OS._auto }
+
+	if os != prefs.os && prefs.os != ._auto && os != ._auto {
 		return false
 	}
 	return true

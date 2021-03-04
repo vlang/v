@@ -1,5 +1,5 @@
 vlib/v/checker/tests/asm_alias_does_not_exist.vv:2:11: error: alias or label `a` does not exist
-    1 | unsafe asm amd64 {
+    1 | asm amd64 {
     2 |     mov ebx, a
       |              ^
     3 | }

@@ -6,9 +6,9 @@ fn main() {
 		mov eax, a
 		add eax, b
 		mov c, eax
-		: =r (c) as c // output 
-		: r (a) as a // input 
-		  r (b) as b
+		; =r (c) // output 
+		; r (a) // input 
+		  r (b)
 	}
 	println('a: $a') // 100
 	println('b: $b') // 20

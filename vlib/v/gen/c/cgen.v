@@ -1703,7 +1703,7 @@ fn (mut g Gen) gen_attrs(attrs []table.Attr) {
 
 fn (mut g Gen) gen_asm_stmt(stmt ast.AsmStmt) {
 	g.write('__asm__')
-	if stmt.volatile {
+	if stmt.is_volatile {
 		g.write(' volatile')
 	}
 	if stmt.is_goto {
@@ -1712,7 +1712,11 @@ fn (mut g Gen) gen_asm_stmt(stmt ast.AsmStmt) {
 	g.writeln(' (')
 	g.indent++
 	for mut template in stmt.templates {
-		g.write('"$template.name')
+		g.write('"')
+		if template.is_directive {
+			g.write('.')
+		}
+		g.write(template.name)
 		if template.is_label {
 			g.write(':')
 		} else {
@@ -1796,7 +1800,10 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 			g.write('\$$arg.val.str()')
 		}
 		ast.AsmRegister {
-			g.write('%%$arg.name')
+			if !stmt.is_top_level {
+				g.write('%') // escape percent in extended assembly
+			}
+			g.write('%$arg.name')
 		}
 		ast.AsmAddressing {
 			base := arg.base

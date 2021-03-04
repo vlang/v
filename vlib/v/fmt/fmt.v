@@ -478,6 +478,9 @@ fn (mut f Fmt) asm_stmt(stmt ast.AsmStmt) {
 	f.writeln('asm $stmt.arch {')
 	f.indent++
 	for template in stmt.templates {
+		if template.is_directive {
+			f.write('.')
+		}
 		f.write('$template.name')
 		if template.is_label {
 			f.write(':')
@@ -497,21 +500,17 @@ fn (mut f Fmt) asm_stmt(stmt ast.AsmStmt) {
 		}
 	}
 	if stmt.output.len != 0 || stmt.input.len != 0 || stmt.clobbered.len != 0 {
-		f.write(': ')
-	} else if stmt.output.len == 0 {
-		f.writeln('')
+		f.write('; ')
 	}
 	f.asm_ios(stmt.output)
 
 	if stmt.input.len != 0 || stmt.clobbered.len != 0 {
-		f.write(': ')
-	} else if stmt.input.len == 0 {
-		f.writeln('')
+		f.write('; ')
 	}
 	f.asm_ios(stmt.input)
 
 	if stmt.clobbered.len != 0 {
-		f.write(': ')
+		f.write('; ')
 	}
 	for i, clob in stmt.clobbered {
 		if i != 0 {
@@ -603,7 +602,13 @@ fn (mut f Fmt) asm_ios(ios []ast.AsmIO) {
 		}
 
 		f.write('$io.constraint ($io.expr)')
-		if io.alias != '' {
+		mut as_block := true
+		if io.expr is ast.Ident {
+			if io.expr.name == io.alias {
+				as_block = false
+			}
+		}
+		if as_block && io.alias != '' {
 			f.write(' as $io.alias')
 		}
 		if io.comments.len == 0 {

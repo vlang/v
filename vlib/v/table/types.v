@@ -12,6 +12,7 @@
 module table
 
 import strings
+import v.pref
 
 pub type Type = int
 
@@ -22,6 +23,38 @@ pub enum Language {
 	v
 	c
 	js
+	amd64 // aka x86_64
+	i386
+	aarch64 // 64-bit arm
+	aarch32 // 32-bit arm
+	rv64 // 64-bit risc-v
+	rv32 // 32-bit risc-v
+}
+
+pub fn pref_arch_to_table_language(pref_arch pref.Arch) Language {
+	return match pref_arch {
+		.amd64 {
+			Language.amd64
+		}
+		.aarch64 {
+			Language.aarch64
+		}
+		.aarch32 {
+			Language.aarch32
+		}
+		.rv64 {
+			Language.rv64
+		}
+		.rv32 {
+			Language.rv32
+		}
+		.i386 {
+			Language.i386
+		}
+		._auto {
+			Language.v
+		}
+	}
 }
 
 // Represents a type that only needs an identifier, e.g. int, array_int.

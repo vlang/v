@@ -23,7 +23,7 @@ mut:
 	file_base         string // "hello.v"
 	file_name         string // "/home/user/hello.v"
 	file_name_dir     string // "/home/user"
-	file_backend_mode table.Language // .c for .c.v|.c.vv|.c.vsh files; .js for .js.v files, .v otherwise.
+	file_backend_mode table.Language // .c for .c.v|.c.vv|.c.vsh files; .js for .js.v files, .amd64/.rv32/other arches for .amd64.v/.rv32.v/etc. files, .v otherwise.
 	scanner           &scanner.Scanner
 	comments_mode     scanner.CommentsMode = .skip_comments
 	// see comment in parse_file
@@ -137,14 +137,28 @@ pub fn (mut p Parser) set_path(path string) {
 	p.file_name = path
 	p.file_base = os.base(path)
 	p.file_name_dir = os.dir(path)
-	if path.ends_with('_c.v') || path.ends_with('.c.v') || path.ends_with('.c.vv')
-		|| path.ends_with('.c.vsh') {
-		p.file_backend_mode = .c
-	} else if path.ends_with('_js.v') || path.ends_with('.js.v') || path.ends_with('.js.vv')
-		|| path.ends_with('.js.vsh') {
-		p.file_backend_mode = .js
-	} else {
+	before_dot_v := path.before('.v') // also works for .vv and .vsh
+	language := before_dot_v.all_after_last('.')
+	langauge_with_underscore := before_dot_v.all_after_last('_')
+	if language == before_dot_v && langauge_with_underscore == before_dot_v {
 		p.file_backend_mode = .v
+		return
+	}
+	actual_language := if language == before_dot_v { langauge_with_underscore } else { language }
+	match actual_language {
+		'c' {
+			p.file_backend_mode = .c
+		}
+		'js' {
+			p.file_backend_mode = .js
+		}
+		else {
+			arch := pref.arch_from_string(actual_language) or { pref.Arch._auto }
+			p.file_backend_mode = table.pref_arch_to_table_language(arch)
+			if arch == ._auto {
+				p.file_backend_mode = .v
+			}
+		}
 	}
 }
 
@@ -827,7 +841,7 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 	if is_top_level {
 		p.top_level_statement_start()
 	}
-	backup_scope := p.scope
+	mut backup_scope := p.scope
 
 	pos := p.tok.position()
 
@@ -835,7 +849,7 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 	mut arch := pref.arch_from_string(p.tok.lit) or { pref.Arch._auto }
 	mut is_volatile := false
 	mut is_goto := false
-	if p.tok.lit == 'volatile' {
+	if p.tok.lit == 'volatile' && p.tok.kind == .name {
 		arch = pref.arch_from_string(p.peek_tok.lit) or { pref.Arch._auto }
 		is_volatile = true
 		p.check(.name)
@@ -853,6 +867,8 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 		p.check(.name)
 	}
 
+	p.check_for_impure_v(table.pref_arch_to_table_language(arch), p.prev_tok.position())
+
 	p.check(.lcbr)
 	p.scope = &ast.Scope{
 		parent: 0 // you shouldn't be able to reference other variables in assembly blocks
@@ -862,14 +878,21 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 	}
 
 	mut local_labels := []string{}
+	mut exported_symbols := []string{}
 	// riscv: https://github.com/jameslzhu/riscv-card/blob/master/riscv-card.pdf
 	// x86: https://www.felixcloutier.com/x86/
 	// arm: https://developer.arm.com/documentation/dui0068/b/arm-instruction-reference
 	mut templates := []ast.AsmTemplate{}
-	for p.tok.kind !in [.colon, .rcbr] {
+	for p.tok.kind !in [.semicolon, .rcbr] {
+		template_pos := p.tok.position()
 		mut name := ''
+		is_directive := p.tok.kind == .dot
+		if is_directive {
+			p.check(.dot)
+		}
 		if p.tok.kind in [.key_in, .key_lock, .key_orelse] { // `in`, `lock`, `or` are v keywords that are also x86/arm/riscv instructions.
 			name = p.tok.kind.str()
+			p.next()
 		} else {
 			name = p.tok.lit
 			p.check(.name)
@@ -925,6 +948,12 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 				.lsbr {
 					args << p.asm_addressing()
 				}
+				.rcbr {
+					break
+				}
+				.semicolon {
+					break
+				}
 				else {
 					p.error('invalid token in assembly block')
 				}
@@ -939,11 +968,16 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 		for p.tok.kind == .comment {
 			comments << p.comment()
 		}
+		if is_directive && name in ['globl', 'global'] {
+			exported_symbols << args
+		}
 		templates << ast.AsmTemplate{
 			name: name
 			args: args
 			comments: comments
 			is_label: is_label
+			is_directive: is_directive
+			pos: template_pos.extend(p.tok.position())
 		}
 	}
 	mut scope := p.scope
@@ -951,13 +985,16 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 	p.inside_asm_template = false
 	mut output, mut input, mut clobbered, mut global_labels := []ast.AsmIO{}, []ast.AsmIO{}, []ast.AsmClobbered{}, []string{}
 	if !is_top_level {
-		if p.tok.kind == .colon {
+		if p.tok.kind == .semicolon {
 			output = p.asm_ios(true)
-			if p.tok.kind == .colon {
+			if p.tok.kind == .semicolon {
 				input = p.asm_ios(false)
 			}
-			if p.tok.kind == .colon {
-				p.check(.colon)
+			if p.tok.kind == .semicolon {
+				// because p.reg_or_alias() requires the scope with registers to recognize registers.
+				backup_scope = p.scope
+				p.scope = scope
+				p.check(.semicolon)
 				for p.tok.kind == .name {
 					reg := p.reg_or_alias()
 
@@ -970,13 +1007,16 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 							reg: reg
 							comments: comments
 						}
+					} else {
+						p.error('not a register: $reg')
 					}
-					if p.tok.kind in [.rcbr, .colon] {
+					if p.tok.kind in [.rcbr, .semicolon] {
 						break
 					}
 				}
-				if is_goto && p.tok.kind == .colon {
-					p.check(.colon)
+
+				if is_goto && p.tok.kind == .semicolon {
+					p.check(.semicolon)
 					for p.tok.kind == .name {
 						global_labels << p.tok.lit
 						p.check(.name)
@@ -984,9 +1024,10 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 				}
 			}
 		}
-	} else if p.tok.kind == .colon {
+	} else if p.tok.kind == .semicolon {
 		p.error('extended assembly is not allowed as a top level statement')
 	}
+	p.scope = backup_scope
 	p.check(.rcbr)
 	if is_top_level {
 		p.top_level_statement_end()
@@ -1006,6 +1047,7 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 		scope: scope
 		global_labels: global_labels
 		local_labels: local_labels
+		exported_symbols: exported_symbols
 	}
 }
 
@@ -1229,8 +1271,8 @@ fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 
 fn (mut p Parser) asm_ios(output bool) []ast.AsmIO {
 	mut res := []ast.AsmIO{}
-	p.check(.colon)
-	if p.tok.kind in [.rcbr, .colon] {
+	p.check(.semicolon)
+	if p.tok.kind in [.rcbr, .semicolon] {
 		return []
 	}
 	for {
@@ -1240,6 +1282,26 @@ fn (mut p Parser) asm_ios(output bool) []ast.AsmIO {
 		if p.tok.kind == .lpar {
 			constraint = if output { '+r' } else { 'r' } // default constraint
 		} else {
+			constraint += match p.tok.kind {
+				.assign {
+					'='
+				}
+				.plus {
+					'+'
+				}
+				.mod {
+					'%'
+				}
+				.amp {
+					'&'
+				}
+				else {
+					''
+				}
+			}
+			if constraint != '' {
+				p.next()
+			}
 			if p.tok.kind == .assign {
 				constraint += '='
 				p.check(.assign)
@@ -1278,7 +1340,7 @@ fn (mut p Parser) asm_ios(output bool) []ast.AsmIO {
 			pos: pos.extend(p.prev_tok.position())
 		}
 		p.n_asm++
-		if p.tok.kind in [.colon, .rcbr] {
+		if p.tok.kind in [.semicolon, .rcbr] {
 			break
 		}
 	}

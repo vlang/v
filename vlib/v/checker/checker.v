@@ -1842,7 +1842,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		// builtin C.m*, C.s* only - temp
 		c.warn('function `$f.name` must be called from an `unsafe` block', call_expr.pos)
 	}
-	if f.mod != 'builtin' && f.language == .v && f.no_body && !c.pref.translated {
+	if f.mod != 'builtin' && f.language == .v && f.no_body && !c.pref.translated && !f.is_unsafe {
 		c.error('cannot call a function that does not have a body', call_expr.pos)
 	}
 	for generic_type in call_expr.generic_types {
@@ -3434,6 +3434,39 @@ fn (mut c Checker) asm_stmt(mut stmt ast.AsmStmt) {
 	aliases2 := c.asm_ios(stmt.input, mut stmt.scope)
 	aliases << aliases2
 	for template in stmt.templates {
+		if template.is_directive {
+			/*
+			align n[,value]
+			.skip n[,value]
+			.space n[,value]
+			.byte value1[,...]
+			.word value1[,...]
+			.short value1[,...]
+			.int value1[,...]
+			.long value1[,...]
+			.quad immediate_value1[,...]
+			.globl symbol
+			.global symbol
+			.section section
+			.text
+			.data
+			.bss
+			.fill repeat[,size[,value]]
+			.org n
+			.previous
+			.string string[,...]
+			.asciz string[,...]
+			.ascii string[,...]
+			*/
+			if template.name !in ['skip', 'space', 'byte', 'word', 'short', 'int', 'long', 'quad',
+				'globl', 'global', 'section', 'text', 'data', 'bss', 'fill', 'org', 'previous',
+				'string', 'asciz', 'ascii'] { // all tcc supported assembler directive
+				c.error('unknown assembler directive: `$template.name`', template.pos)
+			}
+			// if c.file in  {
+
+			// }
+		}
 		for arg in template.args {
 			c.asm_arg(arg, stmt, aliases)
 		}
