@@ -1118,11 +1118,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type table.Type, lang 
 		g.write('->val')
 		return
 	}
-	// if lang == .v {
 	g.expr_with_cast(arg.expr, arg.typ, expected_type)
-	//} else {
-	//	g.expr(arg.expr)
-	//}
 }
 
 fn (mut g Gen) is_gui_app() bool {
