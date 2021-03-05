@@ -1,6 +1,6 @@
 module os
 
-struct C.AAset {
+struct C.AAsset {
 }
 
 struct C.AAssetManager {
@@ -10,11 +10,11 @@ struct C.ANativeActivity {
 	assetManager voidptr
 }
 
-fn C.AAssetManager_open(&C.AAsetManager, charptr, int) &C.AAset
+fn C.AAssetManager_open(&C.AAssetManager, charptr, int) &C.AAsset
 
-fn C.AAsset_getLength(&C.AAset) int
+fn C.AAsset_getLength(&C.AAsset) int
 
-fn C.AAsset_read(&C.AAset, voidptr, int) int
+fn C.AAsset_read(&C.AAsset, voidptr, int) int
 
 fn C.AAsset_close(&C.AAsset)
 
