@@ -180,11 +180,11 @@ fn C._fileno(int) int
 
 fn C._get_osfhandle(fd int) C.intptr_t
 
-fn C.GetModuleFileName() int
+fn C.GetModuleFileName(hModule voidptr, lpFilename &u16, nSize u32) int
 
 fn C.GetModuleFileNameW(hModule voidptr, lpFilename &u16, nSize u32) u32
 
-fn C.CreateFile() voidptr
+fn C.CreateFile(lpFilename &u16, dwDesiredAccess u32, dwShareMode u32, lpSecurityAttributes &u16, dwCreationDisposition u32, dwFlagsAndAttributes u32, hTemplateFile voidptr) voidptr
 
 fn C.CreateFileW(lpFilename &u16, dwDesiredAccess u32, dwShareMode u32, lpSecurityAttributes &u16, dwCreationDisposition u32, dwFlagsAndAttributes u32, hTemplateFile voidptr) u32
 
@@ -206,7 +206,7 @@ fn C.ReadFile(hFile voidptr, lpBuffer voidptr, nNumberOfBytesToRead u32, lpNumbe
 
 fn C.GetFileAttributesW(lpFileName byteptr) u32
 
-fn C.RegQueryValueEx() voidptr
+fn C.RegQueryValueEx(hKey voidptr, lpValueName &u16, lp_reserved &u32, lpType &u32, lpData byteptr, lpcbData &u32) voidptr
 
 fn C.RegQueryValueExW(hKey voidptr, lpValueName &u16, lp_reserved &u32, lpType &u32, lpData byteptr, lpcbData &u32) int
 
@@ -218,9 +218,9 @@ fn C.RegSetValueEx() voidptr
 
 fn C.RegSetValueExW(hKey voidptr, lpValueName &u16, Reserved u32, dwType u32, lpData byteptr, lpcbData u32) int
 
-fn C.RegCloseKey()
+fn C.RegCloseKey(hKey voidptr`)
 
-fn C.RemoveDirectory() int
+fn C.RemoveDirectory(lpPathName charptr) int
 
 // fn C.GetStdHandle() voidptr
 fn C.GetStdHandle(u32) voidptr
@@ -240,31 +240,31 @@ fn C.setbuf(voidptr, charptr)
 
 fn C.SymCleanup()
 
-fn C.MultiByteToWideChar() int
+fn C.MultiByteToWideChar(codePage u32, dwFlags u32, lpMultiMyteStr charptr, cbMultiByte int, lpWideCharStr &u16, cchWideChar int) int
 
-fn C.wcslen() int
+fn C.wcslen(str &u16) int
 
-fn C.WideCharToMultiByte() int
+fn C.WideCharToMultiByte(codePage u32, dwFlags u32, lpWideCharStr &u16, cchWideChar int, lpMultiByteStr charptr, cbMultiByte int, lpDefaultChar charptr, lpUsedDefaultChar &int) int
 
-fn C._wstat()
+fn C._wstat(path &u16, buffer &C._stat)
 
-fn C._wrename() int
+fn C._wrename(oldname &u16, newname &u16) int
 
-fn C._wfopen() voidptr
+fn C._wfopen(filename &u16, mode &u16) voidptr
 
-fn C._wpopen() voidptr
+fn C._wpopen(command &u16, mode &u16) voidptr
 
-fn C._pclose() int
+fn C._pclose(stream &C.FILE) int
 
-fn C._wsystem() int
+fn C._wsystem(command &u16) int
 
-fn C._wgetenv() voidptr
+fn C._wgetenv(varname &u16) voidptr
 
-fn C._putenv() int
+fn C._putenv(envstring charptr) int
 
-fn C._waccess() int
+fn C._waccess(path &u16, mode int) int
 
-fn C._wremove() int
+fn C._wremove(path &u16) int
 
 fn C.ReadConsole(in_input_handle voidptr, out_buffer voidptr, in_chars_to_read u32, out_read_chars &u32, in_input_control voidptr) bool
 
@@ -272,9 +272,9 @@ fn C.WriteConsole() voidptr
 
 fn C.WriteFile() voidptr
 
-fn C._wchdir()
+fn C._wchdir(dirname &u16)
 
-fn C._wgetcwd() int
+fn C._wgetcwd(buffer &u16, maxlen int) int
 
 fn C._fullpath() int
 
@@ -284,13 +284,13 @@ fn C.GetCommandLine() voidptr
 
 fn C.LocalFree()
 
-fn C.FindFirstFileW() voidptr
+fn C.FindFirstFileW(lpFileName &u16, lpFindFileData voidptr) voidptr
 
-fn C.FindFirstFile() voidptr
+fn C.FindFirstFile(lpFileName byteptr, lpFindFileData voidptr) voidptr
 
-fn C.FindNextFile() int
+fn C.FindNextFile(hFindFile voidptr, lpFindFileData voidptr) int
 
-fn C.FindClose()
+fn C.FindClose(hFindFile voidptr)
 
 fn C.MAKELANGID() int
 
@@ -298,11 +298,11 @@ fn C.FormatMessage() voidptr
 
 fn C.CloseHandle(voidptr) int
 
-fn C.GetExitCodeProcess()
+fn C.GetExitCodeProcess(hProcess voidptr, lpExitCode &u32)
 
 fn C.GetTickCount() i64
 
-fn C.Sleep()
+fn C.Sleep(dwMilliseconds u32)
 
 fn C.WSAStartup(u16, &voidptr) int
 
