@@ -174,7 +174,7 @@ fn C.isatty(fd int) int
 
 fn C.syscall(number int, va ...voidptr) int
 
-fn C.sysctl(name &int. namelen u32, oldp voidptr, oldlenp voidptr, newp voidptr, newlen size_t) int
+fn C.sysctl(name &int, namelen u32, oldp voidptr, oldlenp voidptr, newp voidptr, newlen size_t) int
 
 fn C._fileno(int) int
 
