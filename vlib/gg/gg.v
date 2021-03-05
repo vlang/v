@@ -23,10 +23,9 @@ pub type FNMove = fn (x f32, y f32, z voidptr)
 
 pub type FNChar = fn (c u32, x voidptr)
 
-pub type FNCKJInputPending = fn(text string, length int, first int, caret int, x voidptr)
+pub type FNCKJInputPending = fn (text string, length int, first int, caret int, x voidptr)
 
-pub type FNCKJInputConfirm = fn(text string, x voidptr)
-
+pub type FNCKJInputConfirm = fn (text string, x voidptr)
 
 pub struct Event {
 pub:
@@ -81,11 +80,9 @@ pub:
 	fail_fn           FNFail    = voidptr(0)
 	event_fn          FNEvent   = voidptr(0)
 	keydown_fn        FNKeyDown = voidptr(0)
-
-    // ckj input
-    ckj_input_pending FNCKJInputPending = voidptr(0)
-    ckj_input_confirm FNCKJInputConfirm = voidptr(0)
-
+	// ckj input
+	ckj_input_pending FNCKJInputPending = voidptr(0)
+	ckj_input_confirm FNCKJInputConfirm = voidptr(0)
 	// special case of event_fn
 	char_fn FNChar = voidptr(0)
 	// special case of event_fn
@@ -293,27 +290,26 @@ fn gg_event_fn(ce &C.sapp_event, user_data voidptr) {
 				cfn(e.mouse_x / g.scale, e.mouse_y / g.scale, g.config.user_data)
 			}
 		}
-        else {
-            // FIXME
-            match ce.ckj_input_mode {
-                1 {
-                    jpp := string(ce.ckj_pending)
-                    if g.config.ckj_input_pending != voidptr(0) {
-                        jpfn := g.config.ckj_input_pending
-                        jpfn(jpp, ce.ckj_length, ce.ckj_first, ce.ckj_caret, g.config.user_data)
-                    }
-                }
-                2 {
-                    jpc := string(ce.ckj_confirm)
-                    if g.config.ckj_input_confirm != voidptr(0) {
-                        jpfn := g.config.ckj_input_confirm
-                        jpfn(jpc, g.config.user_data)
-                    }
-                }
-                else{}
-            }
-        }
-
+		else {
+			// FIXME
+			match ce.ckj_input_mode {
+				1 {
+					jpp := string(ce.ckj_pending)
+					if g.config.ckj_input_pending != voidptr(0) {
+						jpfn := g.config.ckj_input_pending
+						jpfn(jpp, ce.ckj_length, ce.ckj_first, ce.ckj_caret, g.config.user_data)
+					}
+				}
+				2 {
+					jpc := string(ce.ckj_confirm)
+					if g.config.ckj_input_confirm != voidptr(0) {
+						jpfn := g.config.ckj_input_confirm
+						jpfn(jpc, g.config.user_data)
+					}
+				}
+				else {}
+			}
+		}
 	}
 }
 
