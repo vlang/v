@@ -376,3 +376,24 @@ pub fn (mut f File) write_struct<T>(t &T) ? {
 		return error_with_code('incomplete struct write', nbytes)
 	}
 }
+
+// write_struct_at writes a single struct of type `T` at position specified in file
+pub fn (mut f File) write_struct_at<T>(t &T, pos int) ? {
+	if !f.is_opened {
+		return error('file is not opened')
+	}
+	tsize := int(sizeof(*t))
+	if tsize == 0 {
+		return error('struct size is 0')
+	}
+	C.errno = 0
+	C.fseek(f.cfile, pos, C.SEEK_SET)
+	nbytes := int(C.fwrite(t, 1, tsize, f.cfile))
+	C.fseek(f.cfile, 0, C.SEEK_END)
+	if C.errno != 0 {
+		return error(posix_get_error_msg(C.errno))
+	}
+	if nbytes != tsize {
+		return error_with_code('incomplete struct write', nbytes)
+	}
+}
