@@ -761,7 +761,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		has_attrs := field.attrs.len > 0
 		if has_attrs {
 			f.write(strings.repeat(` `, field_align.max_type_len - field_types[i].len))
-			f.inline_attrs(field.attrs)
+			f.single_line_attrs(field.attrs, inline: true)
 		}
 		if field.has_default_expr {
 			mut align := default_expr_aligns[default_expr_align_i]
@@ -1098,24 +1098,43 @@ pub fn (mut f Fmt) or_expr(node ast.OrExpr) {
 	}
 }
 
-fn (mut f Fmt) attrs(attrs []table.Attr) {
-	for attr in attrs {
+pub fn (mut f Fmt) attrs(attrs []table.Attr) {
+	mut sorted_attrs := attrs.clone()
+	// Sort the attributes. The ones with arguments come first.
+	sorted_attrs.sort(a.arg.len > b.arg.len)
+	for i, attr in sorted_attrs {
+		if attr.arg.len == 0 {
+			f.single_line_attrs(sorted_attrs[i..], {})
+			break
+		}
 		f.writeln('[$attr]')
 	}
 }
 
-fn (mut f Fmt) inline_attrs(attrs []table.Attr) {
+pub struct AttrsOptions {
+	inline bool
+}
+
+pub fn (mut f Fmt) single_line_attrs(attrs []table.Attr, options AttrsOptions) {
 	if attrs.len == 0 {
 		return
 	}
-	f.write(' [')
-	for i, attr in attrs {
+	mut sorted_attrs := attrs.clone()
+	sorted_attrs.sort(a.name < b.name)
+	if options.inline {
+		f.write(' ')
+	}
+	f.write('[')
+	for i, attr in sorted_attrs {
 		if i > 0 {
 			f.write('; ')
 		}
 		f.write('$attr')
 	}
 	f.write(']')
+	if !options.inline {
+		f.writeln('')
+	}
 }
 
 fn inline_attrs_len(attrs []table.Attr) int {
