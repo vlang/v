@@ -78,6 +78,14 @@ pub:
 	window_height      int
 	framebuffer_width  int
 	framebuffer_height int
+
+    ckj_pending charptr
+    ckj_confirm charptr
+    ckj_input_mode int
+
+    ckj_length int
+    ckj_first  int
+    ckj_caret  int
 }
 
 pub fn (e &C.sapp_event) str() string {
