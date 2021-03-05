@@ -11,4 +11,5 @@ fn main() {
 	eprintln('e: $e')
 	_ = ' ${foo.method(bar).str()} '
 	println('(${some_struct.@type}, $some_struct.y)')
+	_ := 'CastExpr ${int(d.e).str()}'
 }
