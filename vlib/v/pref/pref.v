@@ -329,7 +329,7 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			'-w' {
 				res.skip_warnings = true
 			}
-			'-print_v_files' {
+			'-print-v-files' {
 				res.print_v_files = true
 			}
 			'-error-limit' {
@@ -350,7 +350,7 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 				res.build_options << '$arg $target_os'
 			}
 			'-printfn' {
-				res.printfn_list << cmdline.option(current_args, '-printfn', '')
+				res.printfn_list << cmdline.option(current_args, '-printfn', '').split(',')
 				i++
 			}
 			'-cflags' {

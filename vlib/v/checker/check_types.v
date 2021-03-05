@@ -7,13 +7,46 @@ import v.table
 import v.token
 import v.ast
 
-pub fn (mut c Checker) check_expected_call_arg(got table.Type, expected_ table.Type) ? {
+pub fn (mut c Checker) check_expected_call_arg(got table.Type, expected_ table.Type, language table.Language) ? {
 	mut expected := expected_
 	// variadic
 	if expected.has_flag(.variadic) {
 		exp_type_sym := c.table.get_type_symbol(expected_)
 		exp_info := exp_type_sym.info as table.Array
 		expected = exp_info.elem_type
+	}
+	if language == .c {
+		// allow number types to be used interchangeably
+		if got.is_number() && expected.is_number() {
+			return
+		}
+		// mode_t - currently using u32 as mode_t for C fns
+		// if got.idx() in [table.int_type_idx, table.u32_type_idx] && expected.idx() in [table.int_type_idx, table.u32_type_idx] {
+		// 	return
+		// }
+		// allow number to be used as size_t
+		if got.is_number() && expected.idx() == table.size_t_type_idx {
+			return
+		}
+		// allow bool & int to be used interchangeably for C functions
+		if (got.idx() == table.bool_type_idx
+			&& expected.idx() in [table.int_type_idx, table.int_literal_type_idx])
+			|| (expected.idx() == table.bool_type_idx
+			&& got.idx() in [table.int_type_idx, table.int_literal_type_idx]) {
+			return
+		}
+		if got.idx() == table.string_type_idx
+			&& expected in [table.byteptr_type_idx, table.charptr_type_idx] {
+			return
+		}
+		exp_sym := c.table.get_type_symbol(expected)
+		// unknown C types are set to int, allow int to be used for types like `&C.FILE`
+		// eg. `C.fflush(C.stderr)` - error: cannot use `int` as `&C.FILE` in argument 1 to `C.fflush`
+		if expected.is_ptr() && exp_sym.language == .c && exp_sym.kind == .placeholder
+			&& got == table.int_type_idx {
+			return
+		}
+		// return
 	}
 	if c.check_types(got, expected) {
 		return
@@ -43,6 +76,17 @@ pub fn (mut c Checker) check_basic(got table.Type, expected table.Type) bool {
 	// array/map as argument
 	if got_sym.kind in [.array, .map, .array_fixed] && exp_sym.kind == got_sym.kind {
 		if c.table.type_to_str(got) == c.table.type_to_str(expected).trim('&') {
+			return true
+		}
+	}
+	// e.g. [4096]byte vs byteptr || [4096]char vs charptr
+	// should charptr be allowed as byteptr etc?
+	// TODO: clean this up (why was it removed?)
+	if got_sym.kind == .array_fixed {
+		info := got_sym.info as table.ArrayFixed
+		if !info.elem_type.is_ptr() && (info.elem_type.idx() == expected.idx()
+			|| (info.elem_type.idx() in [table.byte_type_idx, table.char_type_idx]
+			&& expected.idx() in [table.byteptr_type_idx, table.charptr_type_idx])) {
 			return true
 		}
 	}
@@ -157,7 +201,7 @@ fn (c &Checker) promote_num(left_type table.Type, right_type table.Type) table.T
 	}
 	idx_hi := type_hi.idx()
 	idx_lo := type_lo.idx()
-	// the following comparisons rely on the order of the indices in atypes.v
+	// the following comparisons rely on the order of the indices in table/types.v
 	if idx_hi == table.int_literal_type_idx {
 		return type_lo
 	} else if idx_hi == table.float_literal_type_idx {
@@ -295,7 +339,7 @@ pub fn (c &Checker) get_default_fmt(ftyp table.Type, typ table.Type) byte {
 			return `s`
 		}
 		if ftyp in [table.string_type, table.bool_type]
-			|| sym.kind in [.enum_, .array, .array_fixed, .struct_, .map, .multi_return, .sum_type, .none_]
+			|| sym.kind in [.enum_, .array, .array_fixed, .struct_, .map, .multi_return, .sum_type, .interface_, .none_]
 			|| ftyp.has_flag(.optional) || sym.has_method('str') {
 			return `s`
 		} else {

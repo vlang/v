@@ -61,6 +61,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     <tr><td width=33% valign=top>
 
 * [Hello world](#hello-world)
+* [Running a project folder](#running-a-project-folder-with-several-files)
 * [Comments](#comments)
 * [Functions](#functions)
     * [Returning multiple values](#returning-multiple-values)
@@ -188,6 +189,40 @@ This means that a "hello world" program in V is as simple as
 ```v
 println('hello world')
 ```
+
+## Running a project folder with several files
+
+Suppose you have a folder with several .v files in it, where one of them
+contains your `main()` function, and the other files have other helper 
+functions. They may be organized by topic, but still *not yet* structured
+enough to be their own separate reusable modules, and you want to compile
+them all into one program.
+
+In other languages, you would have to use includes or a build system
+to enumerate all files, compile them separately to object files,
+then link them into one final executable.
+
+In V however, you can compile and run the whole folder of .v files together,
+using just `v run .`. Passing parameters also works, so you can
+do: `v run . --yourparam some_other_stuff`
+
+The above will first compile your files into a single program (named
+after your folder/project), and then it will execute the program with
+`--yourparam some_other_stuff` passed to it as CLI parameters.
+
+Your program can then use the CLI parameters like this:
+```v
+import os
+
+println(os.args)
+```
+NB: after a successful run, V will delete the generated executable.
+If you want to keep it, use `v -keepc run .` instead, or just compile
+manually with `v .` .
+
+NB: any V compiler flags should be passed *before* the `run` command.
+Everything after the source file/folder, will be passed to the program 
+as is - it will not be processed by V.
 
 ## Comments
 
@@ -2462,6 +2497,18 @@ struct Repo<T> {
     db DB
 }
 
+struct User {
+	id   int
+	name string
+}
+
+struct Post {
+	id   int
+	user_id int
+	title string
+	body string
+}
+
 fn new_repo<T>(db DB) Repo<T> {
     return Repo<T>{db: db}
 }
@@ -3236,13 +3283,13 @@ fn C.sqlite3_close(&C.sqlite3) int
 fn C.sqlite3_column_int(stmt &C.sqlite3_stmt, n int) int
 
 // ... you can also just define the type of parameter and leave out the C. prefix
-fn C.sqlite3_prepare_v2(&sqlite3, charptr, int, &&sqlite3_stmt, &charptr) int
+fn C.sqlite3_prepare_v2(&C.sqlite3, charptr, int, &&C.sqlite3_stmt, &charptr) int
 
-fn C.sqlite3_step(&sqlite3_stmt)
+fn C.sqlite3_step(&C.sqlite3_stmt)
 
-fn C.sqlite3_finalize(&sqlite3_stmt)
+fn C.sqlite3_finalize(&C.sqlite3_stmt)
 
-fn C.sqlite3_exec(db &sqlite3, sql charptr, cb FnSqlite3Callback, cb_arg voidptr, emsg &charptr) int
+fn C.sqlite3_exec(db &C.sqlite3, sql charptr, cb FnSqlite3Callback, cb_arg voidptr, emsg &charptr) int
 
 fn C.sqlite3_free(voidptr)
 

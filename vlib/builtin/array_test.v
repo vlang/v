@@ -807,6 +807,18 @@ fn test_sort() {
 	// assert users.map(it.name).join(' ') == 'Alice Bob Peter'
 }
 
+fn test_sort_by_different_order_of_a_b() {
+	mut x := [1, 2, 3]
+	x.sort(a < b)
+	println(x)
+	assert x == [1, 2, 3]
+
+	mut y := [1, 2, 3]
+	y.sort(b < a)
+	println(y)
+	assert y == [3, 2, 1]
+}
+
 fn test_f32_sort() {
 	mut f := [f32(50.0), 15, 1, 79, 38, 0, 27]
 	f.sort_with_compare(compare_f32)

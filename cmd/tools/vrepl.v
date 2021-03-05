@@ -29,6 +29,7 @@ mut:
 const is_stdin_a_pipe = (is_atty(0) == 0)
 
 const vexe = os.getenv('VEXE')
+
 const vstartup = os.getenv('VSTARTUP')
 
 fn new_repl() Repl {
@@ -86,7 +87,7 @@ fn (r &Repl) current_source_code(should_add_temp_lines bool, not_add_print bool)
 		if !not_add_print {
 			lines = r.vstartup_lines.filter(!it.starts_with('print'))
 		} else {
-			lines = r.vstartup_lines	
+			lines = r.vstartup_lines
 		}
 		all_lines << lines
 	}
@@ -118,11 +119,15 @@ fn run_repl(workdir string, vrepl_prefix string) {
 	}
 
 	if vstartup != '' {
-		result := repl_run_vfile(vstartup) or { os.Result{output: '$vstartup file not found'} }
+		result := repl_run_vfile(vstartup) or {
+			os.Result{
+				output: '$vstartup file not found'
+			}
+		}
 		print('\n')
 		print_output(result)
 	}
-	
+
 	file := os.join_path(workdir, '.${vrepl_prefix}vrepl.v')
 	temp_file := os.join_path(workdir, '.${vrepl_prefix}vrepl_temp.v')
 	mut prompt := '>>> '
@@ -214,7 +219,6 @@ fn run_repl(workdir string, vrepl_prefix string) {
 			filter_line := r.line.replace(r.line.find_between("'", "'"), '').replace(r.line.find_between('"',
 				'"'), '')
 			possible_statement_patterns := [
-				'=',
 				'++',
 				'--',
 				'<<',
@@ -229,7 +233,6 @@ fn run_repl(workdir string, vrepl_prefix string) {
 				'interface ',
 				'import ',
 				'#include ',
-				':=',
 				'for ',
 				'or ',
 				'insert',
@@ -240,10 +243,14 @@ fn run_repl(workdir string, vrepl_prefix string) {
 				'trim',
 			]
 			mut is_statement := false
-			for pattern in possible_statement_patterns {
-				if filter_line.contains(pattern) {
-					is_statement = true
-					break
+			if filter_line.count('=') % 2 == 1 {
+				is_statement = true
+			} else {
+				for pattern in possible_statement_patterns {
+					if filter_line.contains(pattern) {
+						is_statement = true
+						break
+					}
 				}
 			}
 			// NB: starting a line with 2 spaces escapes the println heuristic

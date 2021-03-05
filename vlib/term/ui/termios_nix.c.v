@@ -10,9 +10,9 @@ import time
 #include <sys/ioctl.h>
 #include <signal.h>
 
-fn C.tcgetattr()
+fn C.tcgetattr(fd int, termios_p &C.termios) int
 
-fn C.tcsetattr()
+fn C.tcsetattr(fd int, optional_actions int, termios_p &C.termios) int
 
 fn C.ioctl(fd int, request u64, arg voidptr) int
 
@@ -77,7 +77,8 @@ fn (mut ctx Context) termios_setup() ? {
 	}
 
 	if ctx.cfg.hide_cursor {
-		print('\x1b[?25l')
+		ctx.hide_cursor()
+		ctx.flush()
 	}
 
 	if ctx.cfg.window_title != '' {

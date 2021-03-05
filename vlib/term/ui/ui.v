@@ -59,6 +59,18 @@ pub fn (mut ctx Context) set_cursor_position(x int, y int) {
 }
 
 [inline]
+// show_cursor will make the cursor appear if it is not already visible
+pub fn (mut ctx Context) show_cursor() {
+	ctx.write('\x1b[?25h')
+}
+
+// hide_cursor will make the cursor invisible
+[inline]
+pub fn (mut ctx Context) hide_cursor() {
+	ctx.write('\x1b[?25l')
+}
+
+[inline]
 // set_color sets the current foreground color used by any succeeding `draw_*` calls.
 pub fn (mut ctx Context) set_color(c Color) {
 	if ctx.enable_rgb {

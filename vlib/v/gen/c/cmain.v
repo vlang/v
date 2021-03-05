@@ -1,6 +1,7 @@
 module c
 
 import v.util
+import v.ast
 
 pub fn (mut g Gen) gen_c_main() {
 	if !g.has_main {
@@ -135,6 +136,16 @@ pub fn (mut g Gen) write_tests_definitions() {
 	g.definitions.writeln('jmp_buf g_jump_buffer;')
 }
 
+pub fn (mut g Gen) gen_failing_error_propagation_for_test_fn(or_block ast.OrExpr, cvar_name string) {
+	// in test_() functions, an `opt()?` call is sugar for
+	// `or { cb_propagate_test_error(@LINE, @FILE, @MOD, @FN, err.msg) }`
+	// and the test is considered failed
+	paline, pafile, pamod, pafn := g.panic_debug_info(or_block.pos)
+	g.writeln('\tmain__cb_propagate_test_error($paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"), ${cvar_name}.err.msg );')
+	g.writeln('\tg_test_fails++;')
+	g.writeln('\tlongjmp(g_jump_buffer, 1);')
+}
+
 pub fn (mut g Gen) gen_c_main_for_tests() {
 	main_fn_start_pos := g.out.len
 	g.writeln('')
@@ -145,11 +156,12 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 		g.writeln('\tmain__BenchedTests bt = main__start_testing($all_tfuncs.len, _SLIT("$g.pref.path"));')
 	}
 	g.writeln('')
-	for t in all_tfuncs {
+	for tname in all_tfuncs {
+		tcname := util.no_dots(tname)
 		if g.pref.is_stats {
-			g.writeln('\tmain__BenchedTests_testing_step_start(&bt, _SLIT("$t"));')
+			g.writeln('\tmain__BenchedTests_testing_step_start(&bt, _SLIT("$tcname"));')
 		}
-		g.writeln('\tif (!setjmp(g_jump_buffer)) ${t}();')
+		g.writeln('\tif (!setjmp(g_jump_buffer)) ${tcname}();')
 		if g.pref.is_stats {
 			g.writeln('\tmain__BenchedTests_testing_step_end(&bt);')
 		}

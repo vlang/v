@@ -129,7 +129,7 @@ const (
 		'-W',
 		'-keepc',
 		'-w',
-		'-print_v_files',
+		'-print-v-files',
 		'-error-limit',
 		'-os',
 		'-printfn',

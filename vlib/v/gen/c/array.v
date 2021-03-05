@@ -219,8 +219,10 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 		is_default = true
 	} else {
 		infix_expr := node.args[0].expr as ast.InfixExpr
-		is_default = '$infix_expr.left' in ['a', 'b'] && '$infix_expr.right' in ['a', 'b']
-		is_reverse = infix_expr.op == .gt
+		left_name := '$infix_expr.left'
+		is_default = left_name in ['a', 'b'] && '$infix_expr.right' in ['a', 'b']
+		is_reverse = (left_name.starts_with('a') && infix_expr.op == .gt)
+			|| (left_name.starts_with('b') && infix_expr.op == .lt)
 	}
 	if is_default {
 		// users.sort() or users.sort(a > b)

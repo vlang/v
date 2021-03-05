@@ -181,7 +181,7 @@ fn new_udp_socket(local_port int) ?&UdpSocket {
 	}
 	s.set_option_bool(.reuse_addr, true) ?
 	$if windows {
-		t := true
+		t := u32(1) // true
 		socket_error(C.ioctlsocket(sockfd, fionbio, &t)) ?
 	} $else {
 		socket_error(C.fcntl(sockfd, C.F_SETFD, C.O_NONBLOCK)) ?

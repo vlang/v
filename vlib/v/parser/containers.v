@@ -105,7 +105,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 	mut has_cap := false
 	mut len_expr := ast.Expr{}
 	mut cap_expr := ast.Expr{}
-	if p.tok.kind == .lcbr && exprs.len == 0 {
+	if p.tok.kind == .lcbr && exprs.len == 0 && !p.inside_if {
 		// `[]int{ len: 10, cap: 100}` syntax
 		p.next()
 		for p.tok.kind != .rcbr {

@@ -34,7 +34,7 @@ struct C.MYSQL_FIELD {
 
 fn C.mysql_init(mysql &C.MYSQL) &C.MYSQL
 
-fn C.mysql_real_connect(mysql &C.MYSQL, host byteptr, user byteptr, passwd byteptr, db byteptr, port u32, unix_socket byteptr, clientflag u64) &C.MYSQL
+fn C.mysql_real_connect(mysql &C.MYSQL, host charptr, user charptr, passwd charptr, db charptr, port u32, unix_socket charptr, client_flag ConnectionFlag) &C.MYSQL
 
 fn C.mysql_query(mysql &C.MYSQL, q byteptr) int
 
@@ -56,13 +56,13 @@ fn C.mysql_num_fields(res &C.MYSQL_RES) int
 
 fn C.mysql_num_rows(res &C.MYSQL_RES) u64
 
-fn C.mysql_autocommit(mysql MYSQL, mode bool)
+fn C.mysql_autocommit(mysql &C.MYSQL, mode bool)
 
-fn C.mysql_refresh(mysql MYSQL, options u32) int
+fn C.mysql_refresh(mysql &C.MYSQL, options u32) int
 
-fn C.mysql_reset_connection(mysql MYSQL) int
+fn C.mysql_reset_connection(mysql &C.MYSQL) int
 
-fn C.mysql_ping(mysql MYSQL) int
+fn C.mysql_ping(mysql &C.MYSQL) int
 
 fn C.mysql_store_result(mysql &C.MYSQL) &C.MYSQL_RES
 

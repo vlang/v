@@ -106,10 +106,10 @@ fn test_sort_reverse() {
 	len := vals.len
 	vals.sort(b>a)
 	assert len == vals.len
-	assert vals[3] == 'a'
-	assert vals[2] == 'an'
-	assert vals[1] == 'any'
-	assert vals[0] == 'arr'
+	assert vals[0] == 'a'
+	assert vals[1] == 'an'
+	assert vals[2] == 'any'
+	assert vals[3] == 'arr'
 }
 
 fn test_split_nth() {
