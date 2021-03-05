@@ -5252,7 +5252,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 			g.stmts(stmts)
 		}
 	} else if or_block.kind == .propagate {
-		if g.file.mod.name == 'main' && (isnil(g.fn_decl) || g.fn_decl.name == 'main.main') {
+		if g.file.mod.name == 'main' && (isnil(g.fn_decl) || g.fn_decl.is_main) {
 			// In main(), an `opt()?` call is sugar for `opt() or { panic(err) }`
 			if g.pref.is_debug {
 				paline, pafile, pamod, pafn := g.panic_debug_info(or_block.pos)
@@ -5260,6 +5260,8 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 			} else {
 				g.writeln('\tv_panic(_STR("optional not set (%.*s\\000)", 2, ${cvar_name}.err.msg));')
 			}
+		} else if !isnil(g.fn_decl) && g.fn_decl.is_test {
+			g.gen_failing_error_propagation_for_test_fn(or_block, cvar_name)
 		} else {
 			// In ordinary functions, `opt()?` call is sugar for:
 			// `opt() or { return err }`
@@ -5455,11 +5457,7 @@ fn (g &Gen) get_all_test_function_names() []string {
 	if tsuite_end.len > 0 {
 		all_tfuncs << tsuite_end
 	}
-	mut all_tfuncs_c := []string{}
-	for f in all_tfuncs {
-		all_tfuncs_c << util.no_dots(f)
-	}
-	return all_tfuncs_c
+	return all_tfuncs
 }
 
 fn (g &Gen) is_importing_os() bool {

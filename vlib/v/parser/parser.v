@@ -556,6 +556,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 					return ast.FnDecl{
 						name: 'main.main'
 						mod: 'main'
+						is_main: true
 						stmts: stmts
 						file: p.file_name
 						return_type: table.void_type

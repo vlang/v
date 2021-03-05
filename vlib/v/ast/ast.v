@@ -317,6 +317,8 @@ pub:
 	is_variadic     bool
 	is_anon         bool
 	is_manualfree   bool // true, when [manualfree] is used on a fn
+	is_main         bool // true for `fn main()`
+	is_test         bool // true for `fn test_abcde`
 	receiver        Field
 	receiver_pos    token.Position // `(u User)` in `fn (u User) name()` position
 	is_method       bool
