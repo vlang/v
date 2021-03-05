@@ -45,11 +45,6 @@ fn main() {
 					continue
 				}
 				.ignore {}
-				.error {
-					eprintln('\nUnrecognized test file `$targ`.\n `v test` can only be used with folders and/or _test.v files.\n')
-					show_usage()
-					exit(1)
-				}
 			}
 		} else {
 			eprintln('\nUnrecognized test file `$targ`.\n `v test` can only be used with folders and/or _test.v files.\n')
@@ -101,11 +96,6 @@ pub fn should_test_dir(path string, backend string) ([]string, []string) { // re
 					skip_files << p
 				}
 				.ignore {}
-				.error {
-					eprintln('\nUnrecognized test file `$p`.\n `v test` can only be used with folders and/or _test.v files.\n')
-					show_usage()
-					exit(1)
-				}
 			}
 		}
 	}
@@ -115,7 +105,6 @@ pub fn should_test_dir(path string, backend string) ([]string, []string) { // re
 enum ShouldTestStatus {
 	test // do test
 	skip
-	error
 	ignore
 }
 
@@ -142,5 +131,5 @@ fn should_test(path string, backend string) ShouldTestStatus {
 			return .skip
 		}
 	}
-	return .error
+	return .ignore
 }
