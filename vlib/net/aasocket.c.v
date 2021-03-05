@@ -104,7 +104,7 @@ fn C.getpeername(sockfd int, addr &C.sockaddr, addlen &u32) int
 
 fn C.inet_ntop(af SocketFamily, src voidptr, dst charptr, dst_size int) charptr
 
-fn C.WSAAddressToStringA() int
+fn C.WSAAddressToStringA(lpsaAddress &C.sockaddr, dwAddressLength u32, lpProtocolInfo voidptr, lpszAddressString charptr, lpdwAddressStringLength &u32) int
 
 // fn C.getsockname(sockfd int, addr &C.sockaddr, addrlen &C.socklen_t) int
 fn C.getsockname(sockfd int, addr &C.sockaddr, addrlen &u32) int
@@ -113,7 +113,7 @@ fn C.getsockname(sockfd int, addr &C.sockaddr, addrlen &u32) int
 // fn C.read() int
 // fn C.close() int
 
-fn C.ioctlsocket() int
+fn C.ioctlsocket(s int, cmd int, argp &u32) int
 
 fn C.fcntl(fd int, cmd int, arg ...voidptr) int
 
