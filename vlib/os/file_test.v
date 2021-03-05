@@ -15,7 +15,7 @@ const tfile = os.join_path(tfolder, 'test_file')
 const another_point = Point{0.25, 2.25, 6.25}
 
 fn testsuite_begin() {
-	os.rmdir_all(tfolder) or { }
+	os.rmdir_all(tfolder) or {}
 	assert !os.is_dir(tfolder)
 	os.mkdir_all(tfolder) or { panic(err) }
 	os.chdir(tfolder)
