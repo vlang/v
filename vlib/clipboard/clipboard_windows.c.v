@@ -20,7 +20,7 @@ struct WndClassEx {
 	h_icon_sm       &u16
 }
 
-fn C.RegisterClassEx(class WndClassEx) int
+fn C.RegisterClassEx(class &WndClassEx) int
 
 fn C.GetClipboardOwner() &C.HWND
 
