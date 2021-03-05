@@ -476,87 +476,93 @@ fn stmt_is_single_line(stmt ast.Stmt) bool {
 }
 
 pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
-	mut comments := []ast.Comment{}
 	match node {
-		ast.AliasTypeDecl {
-			if node.is_pub {
-				f.write('pub ')
-			}
-			ptype := f.table.type_to_str(node.parent_type)
-			f.write('type $node.name = $ptype')
-			comments << node.comments
+		ast.AliasTypeDecl { f.alias_type_decl(node) }
+		ast.FnTypeDecl { f.fn_type_decl(node) }
+		ast.SumTypeDecl { f.sum_type_decl(node) }
+	}
+}
+
+pub fn (mut f Fmt) alias_type_decl(node ast.AliasTypeDecl) {
+	if node.is_pub {
+		f.write('pub ')
+	}
+	ptype := f.table.type_to_str(node.parent_type)
+	f.write('type $node.name = $ptype')
+
+	f.comments(node.comments, has_nl: false)
+	f.writeln('\n')
+}
+
+pub fn (mut f Fmt) fn_type_decl(node ast.FnTypeDecl) {
+	if node.is_pub {
+		f.write('pub ')
+	}
+	typ_sym := f.table.get_type_symbol(node.typ)
+	fn_typ_info := typ_sym.info as table.FnType
+	fn_info := fn_typ_info.func
+	fn_name := f.no_cur_mod(node.name)
+	f.write('type $fn_name = fn (')
+	for i, arg in fn_info.params {
+		if arg.is_mut {
+			f.write(arg.typ.share().str() + ' ')
 		}
-		ast.FnTypeDecl {
-			if node.is_pub {
-				f.write('pub ')
+		f.write(arg.name)
+		mut s := f.no_cur_mod(f.table.type_to_str(arg.typ))
+		if arg.is_mut {
+			if s.starts_with('&') {
+				s = s[1..]
 			}
-			typ_sym := f.table.get_type_symbol(node.typ)
-			fn_typ_info := typ_sym.info as table.FnType
-			fn_info := fn_typ_info.func
-			fn_name := f.no_cur_mod(node.name)
-			f.write('type $fn_name = fn (')
-			for i, arg in fn_info.params {
-				if arg.is_mut {
-					f.write(arg.typ.share().str() + ' ')
-				}
-				f.write(arg.name)
-				mut s := f.no_cur_mod(f.table.type_to_str(arg.typ))
-				if arg.is_mut {
-					if s.starts_with('&') {
-						s = s[1..]
-					}
-				}
-				is_last_arg := i == fn_info.params.len - 1
-				should_add_type := true || is_last_arg
-					|| fn_info.params[i + 1].typ != arg.typ
-					|| (fn_info.is_variadic && i == fn_info.params.len - 2)
-				if should_add_type {
-					ns := if arg.name == '' { '' } else { ' ' }
-					if fn_info.is_variadic && is_last_arg {
-						f.write(ns + '...' + s)
-					} else {
-						f.write(ns + s)
-					}
-				}
-				if !is_last_arg {
-					f.write(', ')
-				}
-			}
-			f.write(')')
-			if fn_info.return_type.idx() != table.void_type_idx {
-				ret_str := f.no_cur_mod(f.table.type_to_str(fn_info.return_type))
-				f.write(' $ret_str')
-			} else if fn_info.return_type.has_flag(.optional) {
-				f.write(' ?')
-			}
-			comments << node.comments
 		}
-		ast.SumTypeDecl {
-			if node.is_pub {
-				f.write('pub ')
+		is_last_arg := i == fn_info.params.len - 1
+		should_add_type := true || is_last_arg
+			|| fn_info.params[i + 1].typ != arg.typ
+			|| (fn_info.is_variadic && i == fn_info.params.len - 2)
+		if should_add_type {
+			ns := if arg.name == '' { '' } else { ' ' }
+			if fn_info.is_variadic && is_last_arg {
+				f.write(ns + '...' + s)
+			} else {
+				f.write(ns + s)
 			}
-			f.write('type $node.name = ')
-			mut sum_type_names := []string{}
-			for t in node.variants {
-				sum_type_names << f.table.type_to_str(t.typ)
-			}
-			sum_type_names.sort()
-			for i, name in sum_type_names {
-				f.write(name)
-				if i < sum_type_names.len - 1 {
-					f.write(' | ')
-				}
-				if i < sum_type_names.len - 1 {
-					f.wrap_long_line(3, true)
-				}
-			}
-			comments << node.comments
+		}
+		if !is_last_arg {
+			f.write(', ')
 		}
 	}
-	if comments.len > 0 {
-		f.write(' ')
-		f.comments(comments, has_nl: false)
+	f.write(')')
+	if fn_info.return_type.idx() != table.void_type_idx {
+		ret_str := f.no_cur_mod(f.table.type_to_str(fn_info.return_type))
+		f.write(' $ret_str')
+	} else if fn_info.return_type.has_flag(.optional) {
+		f.write(' ?')
 	}
+
+	f.comments(node.comments, has_nl: false)
+	f.writeln('\n')
+}
+
+pub fn (mut f Fmt) sum_type_decl(node ast.SumTypeDecl) {
+	if node.is_pub {
+		f.write('pub ')
+	}
+	f.write('type $node.name = ')
+	mut sum_type_names := []string{}
+	for t in node.variants {
+		sum_type_names << f.table.type_to_str(t.typ)
+	}
+	sum_type_names.sort()
+	for i, name in sum_type_names {
+		f.write(name)
+		if i < sum_type_names.len - 1 {
+			f.write(' | ')
+		}
+		if i < sum_type_names.len - 1 {
+			f.wrap_long_line(3, true)
+		}
+	}
+
+	f.comments(node.comments, has_nl: false)
 	f.writeln('\n')
 }
 
