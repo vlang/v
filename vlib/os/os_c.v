@@ -408,8 +408,7 @@ pub fn get_raw_line() string {
 			h_input := C.GetStdHandle(C.STD_INPUT_HANDLE)
 			mut bytes_read := 0
 			if is_atty(0) > 0 {
-				x := C.ReadConsole(h_input, buf, max_line_chars * 2, &bytes_read,
-					0)
+				x := C.ReadConsole(h_input, buf, max_line_chars * 2, &bytes_read, 0)
 				if !x {
 					return tos(buf, 0)
 				}
