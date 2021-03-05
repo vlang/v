@@ -210,7 +210,7 @@ fn C.RegQueryValueEx(hKey voidptr, lpValueName &u16, lp_reserved &u32, lpType &u
 
 fn C.RegQueryValueExW(hKey voidptr, lpValueName &u16, lp_reserved &u32, lpType &u32, lpData byteptr, lpcbData &u32) int
 
-fn C.RegOpenKeyEx() voidptr
+fn C.RegOpenKeyEx(hKey voidptr, lpSubKey &u16, ulOptions u32, samDesired u32, phkResult voidptr) voidptr
 
 fn C.RegOpenKeyExW(hKey voidptr, lpSubKey &u16, ulOptions u32, samDesired u32, phkResult voidptr) int
 
@@ -238,7 +238,7 @@ fn C.wprintf()
 // fn C.setbuf()
 fn C.setbuf(voidptr, charptr)
 
-fn C.SymCleanup()
+fn C.SymCleanup(hProcess voidptr)
 
 fn C.MultiByteToWideChar(codePage u32, dwFlags u32, lpMultiMyteStr charptr, cbMultiByte int, lpWideCharStr &u16, cchWideChar int) int
 
@@ -292,7 +292,8 @@ fn C.FindNextFile(hFindFile voidptr, lpFindFileData voidptr) int
 
 fn C.FindClose(hFindFile voidptr)
 
-fn C.MAKELANGID() int
+// macro
+fn C.MAKELANGID(lgid voidptr, srtid voidptr) int
 
 fn C.FormatMessage(dwFlags u32, lpSource voidptr, dwMessageId u32, dwLanguageId u32, lpBuffer voidptr, nSize int, Arguments ...voidptr) voidptr
 
