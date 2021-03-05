@@ -2030,10 +2030,11 @@ fn (mut c Checker) type_implements(typ table.Type, inter_typ table.Type, pos tok
 	$if debug_interface_type_implements ? {
 		eprintln('> type_implements typ: $typ.debug() | inter_typ: $inter_typ.debug()')
 	}
-	typ_sym := c.table.get_type_symbol(typ)
+	utyp := c.unwrap_generic(typ)
+	typ_sym := c.table.get_type_symbol(utyp)
 	mut inter_sym := c.table.get_type_symbol(inter_typ)
-	styp := c.table.type_to_str(typ)
-	same_base_type := typ.idx() == inter_typ.idx()
+	styp := c.table.type_to_str(utyp)
+	same_base_type := utyp.idx() == inter_typ.idx()
 	if typ_sym.kind == .interface_ && inter_sym.kind == .interface_ && !same_base_type {
 		c.error('cannot implement interface `$inter_sym.name` with a different interface `$styp`',
 			pos)
@@ -2077,8 +2078,8 @@ fn (mut c Checker) type_implements(typ table.Type, inter_typ table.Type, pos tok
 			c.error("`$styp` doesn't implement field `$ifield.name` of interface `$inter_sym.name`",
 				pos)
 		}
-		if typ !in inter_sym.info.types && typ_sym.kind != .interface_ {
-			inter_sym.info.types << typ
+		if utyp !in inter_sym.info.types && typ_sym.kind != .interface_ {
+			inter_sym.info.types << utyp
 		}
 	}
 	return true
