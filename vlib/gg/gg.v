@@ -24,14 +24,13 @@ pub type FNMove = fn (x f32, y f32, z voidptr)
 pub type FNChar = fn (c u32, x voidptr)
 
 pub struct Event {
-pub:
-	frame_count u64
-	typ         sapp.EventType
-	key_code    KeyCode
-	char_code   u32
-	key_repeat  bool
-	modifiers   u32
 pub mut:
+	frame_count        u64
+	typ                sapp.EventType
+	key_code           KeyCode
+	char_code          u32
+	key_repeat         bool
+	modifiers          u32
 	mouse_button       sapp.MouseButton
 	mouse_x            f32
 	mouse_y            f32
