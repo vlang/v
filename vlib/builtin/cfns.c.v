@@ -48,7 +48,7 @@ fn C.realpath(charptr, charptr) &char
 // fn C.chmod(byteptr, mode_t) int
 fn C.chmod(byteptr, u32) int
 
-fn C.printf(byteptr, ...byteptr) int
+fn C.printf(byteptr, ...voidptr) int
 
 fn C.puts(byteptr) int
 
@@ -174,7 +174,7 @@ fn C.isatty(fd int) int
 
 fn C.syscall(number int, va ...voidptr) int
 
-fn C.sysctl() int
+fn C.sysctl(name &int. namelen u32, oldp voidptr, oldlenp voidptr, newp voidptr, newlen size_t) int
 
 fn C._fileno(int) int
 
