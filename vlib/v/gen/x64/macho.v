@@ -6,15 +6,15 @@ module x64
 import os
 
 const (
-	S_ATTR_SOME_INSTRUCTIONS = 0x00000400
-	S_ATTR_PURE_INSTRUCTIONS = 0x80000000
-	S_ATTR_EXT_RELOC         = 0x00000200
-	S_ATTR_LOC_RELOC         = 0x00000100
+	s_attr_some_instructions = 0x00000400
+	s_attr_pure_instructions = 0x80000000
+	s_attr_ext_reloc         = 0x00000200
+	s_attr_loc_reloc         = 0x00000100
 	//
-	MACHO_SYMCMD_SIZE        = 0x18
-	MACHO_D_SIZE             = 0x50
-	LC_SYMTAB                = 0x2
-	LC_DYMSYMTAB             = 0xB
+	macho_symcmd_size        = 0x18
+	macho_d_size             = 0x50
+	lc_symtab                = 0x2
+	lc_dymsymtab             = 0xB
 )
 
 struct Symbol {
@@ -67,7 +67,7 @@ pub fn (mut g Gen) generate_macho_header() {
 	g.write32(0x4) // alignment
 	g.write32(0x160) // relocation offset
 	g.write32(0x1) // # of relocations
-	g.write32(x64.S_ATTR_SOME_INSTRUCTIONS | x64.S_ATTR_PURE_INSTRUCTIONS)
+	g.write32(x64.s_attr_some_instructions | x64.s_attr_pure_instructions)
 	g.write32(0)
 	g.write32(0)
 	g.write32(0)
@@ -79,11 +79,11 @@ pub fn (mut g Gen) generate_macho_header() {
 	g.write32(0x000b0000)
 	g.write32(0)
 	g.write32(0)
-	// LC_SYMTAB
+	// lc_symtab
 	g.sym_table_command()
 	//
-	g.write32(x64.LC_DYMSYMTAB)
-	g.write32(x64.MACHO_D_SIZE)
+	g.write32(x64.lc_dymsymtab)
+	g.write32(x64.macho_d_size)
 	g.write32(0)
 	g.write32(2)
 	g.write32(2)
@@ -116,7 +116,7 @@ pub fn (mut g Gen) generate_macho_footer() {
 	// Create the binary
 	mut f := os.create(g.out_name) or { panic(err) }
 	os.chmod(g.out_name, 0o775) // make it an executable
-	f.write_bytes(g.buf.data, g.buf.len)
+	unsafe { f.write_bytes(g.buf.data, g.buf.len) }
 	f.close()
 	// println('\narm64 mach-o binary has been successfully generated')
 }
@@ -159,8 +159,8 @@ fn (mut g Gen) sym_table_command() {
 		name: 'ltmp1'
 		is_ext: false
 	}
-	g.write32(x64.LC_SYMTAB)
-	g.write32(x64.MACHO_SYMCMD_SIZE)
+	g.write32(x64.lc_symtab)
+	g.write32(x64.macho_symcmd_size)
 	sym_table_offset := 0x168
 	g.write32(sym_table_offset)
 	g_syms_len := 4
@@ -198,8 +198,8 @@ enum Register2 {
 }
 
 fn (mut g Gen) mov_arm(reg Register2, val u64) {
-	m := u64(0xffff)
-	x := u64(val)
+	// m := u64(0xffff)
+	// x := u64(val)
 	// println('========')
 	// println(x & ~m)
 	// println(x & ~(m << 16))
