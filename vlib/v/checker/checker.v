@@ -1882,16 +1882,19 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	// 	}
 	// 	return f.return_type
 	// }
-	min_required_args := if f.is_variadic { f.params.len - 1 } else { f.params.len }
-	if call_expr.args.len < min_required_args {
-		c.error('expected $min_required_args arguments, but got $call_expr.args.len',
-			call_expr.pos)
-	} else if !f.is_variadic && call_expr.args.len > f.params.len {
-		unexpected_arguments := call_expr.args[min_required_args..]
-		unexpected_arguments_pos := unexpected_arguments[0].pos.extend(unexpected_arguments.last().pos)
-		c.error('expected $min_required_args arguments, but got $call_expr.args.len',
-			unexpected_arguments_pos)
-		return f.return_type
+	// dont check number of args for JS functions since arguments are not required 
+	if call_expr.language != .js {
+		min_required_args := if f.is_variadic { f.params.len - 1 } else { f.params.len }
+		if call_expr.args.len < min_required_args {
+			c.error('expected $min_required_args arguments, but got $call_expr.args.len',
+				call_expr.pos)
+		} else if !f.is_variadic && call_expr.args.len > f.params.len {
+			unexpected_arguments := call_expr.args[min_required_args..]
+			unexpected_arguments_pos := unexpected_arguments[0].pos.extend(unexpected_arguments.last().pos)
+			c.error('expected $min_required_args arguments, but got $call_expr.args.len',
+				unexpected_arguments_pos)
+			return f.return_type
+		}
 	}
 	// println / eprintln / panic can print anything
 	if fn_name in ['println', 'print', 'eprintln', 'eprint', 'panic'] && call_expr.args.len > 0 {
