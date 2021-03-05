@@ -1,13 +1,34 @@
+struct Axx {
+mut:
+	v int
+}
 
-struct Axx { mut: v int }
-struct Bxx {      a Axx }
-struct Cxx { mut: b Bxx }
-struct Dxx { mut: c Cxx }
-struct Exx { mut: v []int }
-struct Fxx { e []Exx }
+struct Bxx {
+	a Axx
+}
+
+struct Cxx {
+mut:
+	b Bxx
+}
+
+struct Dxx {
+mut:
+	c Cxx
+}
+
+struct Exx {
+mut:
+	v []int
+}
+
+struct Fxx {
+	e []Exx
+}
 
 fn test_chained_string() {
-	mut b := Bxx{} b = Bxx{Axx{2}}
+	mut b := Bxx{}
+	b = Bxx{Axx{2}}
 	assert 'b is: ' + b.a.v.str() == 'b is: 2'
 }
 

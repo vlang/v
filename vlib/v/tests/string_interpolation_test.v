@@ -38,11 +38,11 @@ fn test_excape_dollar_in_string() {
 	assert !'(\\$i)'.contains('i') && '(\\$i)'.contains('42') && '(\\$i)'.contains('\\')
 	assert '(\\\$i)'.contains('i') && !'(\\\$i)'.contains('42') && '(\\$i)'.contains('\\')
 	assert !'(\\\\$i)'.contains('i') && '(\\\\$i)'.contains('42') && '(\\\\$i)'.contains('\\\\')
-	assert '(${i})' == '(42)'
+	assert '($i)' == '(42)'
 	assert '(\${i})'.contains('i') && !'(\${i})'.contains('42')
-	assert !'(\\${i})'.contains('i') && '(\\${i})'.contains('42') && '(\\${i})'.contains('\\')
-	assert '(\\\${i})'.contains('i') && !'(\\\${i})'.contains('42') && '(\\${i})'.contains('\\')
-	assert !'(\\\\${i})'.contains('i') && '(\\\\${i})'.contains('42') && '(\\\\${i})'.contains('\\\\')
+	assert !'(\\$i)'.contains('i') && '(\\$i)'.contains('42') && '(\\$i)'.contains('\\')
+	assert '(\\\${i})'.contains('i') && !'(\\\${i})'.contains('42') && '(\\$i)'.contains('\\')
+	assert !'(\\\\$i)'.contains('i') && '(\\\\$i)'.contains('42') && '(\\\\$i)'.contains('\\\\')
 	assert i == 42
 }
 
@@ -80,9 +80,9 @@ fn test_interpolation_string_prefix_expr() {
 	r := 1
 	c := 2
 	js := 1
-	assert '>${3+r}<' == '>4<'
+	assert '>${3 + r}<' == '>4<'
 	assert '${r == js} $js' == 'true 1'
-	assert '>${js+c} ${js+r==c}<' == '>3 true<'
+	assert '>${js + c} ${js + r == c}<' == '>3 true<'
 }
 
 fn test_inttypes_string_interpolation() {
@@ -97,8 +97,7 @@ fn test_inttypes_string_interpolation() {
 	mut bp := byteptr(0)
 	$if x64 {
 		bp = byteptr(15541149836)
-	}
-	$else {
+	} $else {
 		bp = byteptr(3541149836)
 	}
 	l := i64(-7694555558525237396)
@@ -116,15 +115,12 @@ fn test_inttypes_string_interpolation() {
 	// default pointer format is platform dependent, so try a few
 	eprintln("platform pointer format: '${vp:p}:$bp'")
 	$if x64 {
-		assert '${vp:p}:$bp' == '0xcbf6efc7:0x39e53208c' ||
-			'${vp:p}:$bp' == 'CBF6EFC7:39E53208C' ||
-			'${vp:p}:$bp' == 'cbf6efc7:39e53208c' ||
-			'${vp:p}:$bp' == '00000000CBF6EFC7:000000039E53208C'
-	}
-	$else {
-		assert '${vp:p}:$bp' == 'CBF6EFC7:D311A88C' ||
-			'${vp:p}:$bp' == 'cbf6efc7:d311a88c' ||
-			'${vp:p}:$bp' == '0xcbf6efc7:0xd311a88c'
+		assert '${vp:p}:$bp' == '0xcbf6efc7:0x39e53208c' || '${vp:p}:$bp' == 'CBF6EFC7:39E53208C'
+			|| '${vp:p}:$bp' == 'cbf6efc7:39e53208c'
+			|| '${vp:p}:$bp' == '00000000CBF6EFC7:000000039E53208C'
+	} $else {
+		assert '${vp:p}:$bp' == 'CBF6EFC7:D311A88C' || '${vp:p}:$bp' == 'cbf6efc7:d311a88c'
+			|| '${vp:p}:$bp' == '0xcbf6efc7:0xd311a88c'
 	}
 }
 
@@ -154,14 +150,13 @@ struct Sss {
 }
 
 fn (s Sss) str() string {
-	return '[${s.v1}, ${s.v2:.3f}]'
+	return '[$s.v1, ${s.v2:.3f}]'
 }
 
 fn test_string_interpolation_str_evaluation() {
 	mut x := Sss{17, 13.455893}
 	assert '$x' == '[17, 13.456]'
 }
-
 
 fn test_string_interpolation_with_negative_format_width_should_compile_and_run_without_segfaulting() {
 	// discovered during debugging VLS
@@ -192,7 +187,7 @@ fn test_method_interpolation() {
 			a: 2
 		}
 	}
-	assert '>${y.f().a}<' == '>2<'
+	assert '>$y.f().a<' == '>2<'
 	assert '>$y.f().a<' == '>2<'
 }
 

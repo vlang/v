@@ -4,7 +4,9 @@ fn test_match_with_array_map_in_branches() {
 	arr := Arr([0, 1])
 	ret := match arr {
 		[]int {
-			arr.map(fn(s int) string { return s.str() }).str()
+			arr.map(fn (s int) string {
+				return s.str()
+			}).str()
 		}
 		else {
 			''

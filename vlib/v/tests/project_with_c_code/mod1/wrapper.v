@@ -12,6 +12,6 @@ struct C.MyStruct {
 fn C.cadd(int, int) int
 
 pub fn vadd(a int, b int) int {
-	x := C.MyStruct{ 100 }
+	x := C.MyStruct{100}
 	return 900 + x.UppercaseField + C.cadd(a, b)
 }

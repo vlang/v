@@ -1,5 +1,4 @@
-[direct_array_access]
-[unsafe]
+[direct_array_access; unsafe]
 fn memcpy(mut dest voidptr, src voidptr, len u32) voidptr {
 	mut d := byteptr(dest)
 	s := byteptr(src)
