@@ -1087,7 +1087,11 @@ pub fn (mut f Fmt) or_expr(node ast.OrExpr) {
 		.absent {}
 		.block {
 			if node.stmts.len == 0 {
-				f.write(' or { }')
+				f.write(' or {')
+				if node.pos.line_nr != node.pos.last_line {
+					f.writeln('')
+				}
+				f.write('}')
 				return
 			} else if node.stmts.len == 1 && stmt_is_single_line(node.stmts[0]) {
 				// the control stmts (return/break/continue...) print a newline inside them,
