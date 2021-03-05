@@ -82,7 +82,7 @@ pub fn eprintln(s string) {
 	// eprintln is used in panics, so it should not fail at all
 	$if android {
 		if s.str == 0 {
-			C.fprintf(C.stderr, c'%s', c'eprintln(NIL)\n')
+			C.fprintf(C.stderr, c'eprintln(NIL)\n')
 		} else {
 			C.fprintf(C.stderr, c'%.*s\n', s.len, s.str)
 		}
@@ -103,13 +103,13 @@ pub fn eprint(s string) {
 	C.fflush(C.stderr)
 	$if android {
 		if s.str == 0 {
-			C.fprintf(C.stderr, c'%s', c'eprintln(NIL)\n')
+			C.fprintf(C.stderr, c'eprint(NIL)')
 		} else {
 			C.fprintf(C.stderr, c'%.*s', s.len, s.str)
 		}
 	} $else {
 		if s.str == 0 {
-			C.write(2, c'eprint(NIL)\n', 12)
+			C.write(2, c'eprint(NIL)', 11)
 		} else {
 			C.write(2, s.str, s.len)
 		}
@@ -121,7 +121,7 @@ pub fn eprint(s string) {
 // A call to `flush()` will flush the output buffer to stdout.
 pub fn print(s string) {
 	$if android {
-		C.fprintf(C.stdout, c'%s', s.str)
+		C.fprintf(C.stdout, c'%.*s', s.len, s.str)
 	} $else {
 		C.write(1, s.str, s.len)
 	}
