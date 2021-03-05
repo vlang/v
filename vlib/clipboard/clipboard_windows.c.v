@@ -175,7 +175,7 @@ pub fn (mut cb Clipboard) get_text() string {
 		return ''
 	}
 	str := unsafe { string_from_wide(&u16(C.GlobalLock(C.HGLOBAL(h_data)))) }
-	C.GlobalUnlock(h_data)
+	C.GlobalUnlock(C.HGLOBAL(h_data))
 	return str
 }
 
