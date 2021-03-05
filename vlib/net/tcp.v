@@ -264,7 +264,7 @@ fn new_tcp_socket() ?TcpSocket {
 	// s.set_option_bool(.reuse_addr, true)?
 	s.set_option_int(.reuse_addr, 1) ?
 	$if windows {
-		t := true
+		t := u32(1) // true
 		socket_error(C.ioctlsocket(sockfd, fionbio, &t)) ?
 	} $else {
 		socket_error(C.fcntl(sockfd, C.F_SETFL, C.fcntl(sockfd, C.F_GETFL) | C.O_NONBLOCK)) ?
@@ -279,7 +279,7 @@ fn tcp_socket_from_handle(sockfd int) ?TcpSocket {
 	// s.set_option_bool(.reuse_addr, true)?
 	s.set_option_int(.reuse_addr, 1) ?
 	$if windows {
-		t := true
+		t := u32(1) // true
 		socket_error(C.ioctlsocket(sockfd, fionbio, &t)) ?
 	} $else {
 		socket_error(C.fcntl(sockfd, C.F_SETFL, C.fcntl(sockfd, C.F_GETFL) | C.O_NONBLOCK)) ?
