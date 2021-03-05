@@ -1371,22 +1371,32 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 		g.writeln('// FOR IN array')
 		styp := g.typ(node.val_type)
 		val_sym := g.table.get_type_symbol(node.val_type)
-		tmp := g.new_tmp_var()
-		g.write(g.typ(node.cond_type))
-		g.write(' $tmp = ')
-		g.expr(node.cond)
-		g.writeln(';')
+		mut cond_var := ''
+		if node.cond is ast.Ident || node.cond is ast.SelectorExpr {
+			pos := g.out.len
+			g.expr(node.cond)
+			cond_var = g.out.after(pos)
+			g.out.go_back(cond_var.len)
+			cond_var = cond_var.trim_space()
+		} else {
+			cond_var = g.new_tmp_var()
+			g.write(g.typ(node.cond_type))
+			g.write(' $cond_var = ')
+			g.expr(node.cond)
+			g.writeln(';')
+		}
 		i := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
 		op_field := if node.cond_type.is_ptr() { '->' } else { '.' } +
 			if node.cond_type.share() == .shared_t { 'val.' } else { '' }
-		g.writeln('for (int $i = 0; $i < $tmp${op_field}len; ++$i) {')
+		g.empty_line = true
+		g.writeln('for (int $i = 0; $i < $cond_var${op_field}len; ++$i) {')
 		if node.val_var != '_' {
 			if val_sym.kind == .function {
 				g.write('\t')
 				g.write_fn_ptr_decl(val_sym.info as table.FnType, c_name(node.val_var))
-				g.writeln(' = ((voidptr*)$tmp${op_field}data)[$i];')
+				g.writeln(' = ((voidptr*)$cond_var${op_field}data)[$i];')
 			} else if val_sym.kind == .array_fixed && !node.val_is_mut {
-				right := '(($styp*)$tmp${op_field}data)[$i]'
+				right := '(($styp*)$cond_var${op_field}data)[$i]'
 				g.writeln('\t$styp ${c_name(node.val_var)};')
 				g.writeln('\tmemcpy(*($styp*)${c_name(node.val_var)}, (byte*)$right, sizeof($styp));')
 			} else {
@@ -1396,9 +1406,9 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 				// `int* val = ((int**)arr.data)[i];`
 				// right := if node.val_is_mut { styp } else { styp + '*' }
 				right := if node.val_is_mut {
-					'(($styp)$tmp${op_field}data) + $i'
+					'(($styp)$cond_var${op_field}data) + $i'
 				} else {
-					'(($styp*)$tmp${op_field}data)[$i]'
+					'(($styp*)$cond_var${op_field}data)[$i]'
 				}
 				g.writeln('\t$styp ${c_name(node.val_var)} = $right;')
 			}
