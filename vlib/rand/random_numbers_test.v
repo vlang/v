@@ -1,4 +1,7 @@
 import rand
+import rand.splitmix64
+import rand.musl
+import rand.mt19937
 
 const (
 	rnd_count = 40
@@ -267,4 +270,50 @@ fn test_rand_ascii() {
 	for output in outputs {
 		assert rand.ascii(25) == output
 	}
+}
+
+fn ensure_same_output(mut rng rand.PRNG) {
+	for _ in 0 .. 100 {
+		assert rand.int() == rng.int()
+		assert rand.intn(45) == rng.intn(45)
+		assert rand.u64() == rng.u64()
+		assert rand.f64() == rng.f64()
+		assert rand.u32n(25) == rng.u32n(25)
+	}
+}
+
+fn test_new_global_rng() {
+	old := rand.get_current_rng()
+
+	// MuslRNG	
+	mut rng1a := musl.MuslRNG{}
+	mut rng1b := musl.MuslRNG{}
+	seed1 := [u32(1234)]
+
+	rand.set_rng(rng1a)
+	rand.seed(seed1)
+	rng1b.seed(seed1)
+	ensure_same_output(mut rng1b)
+
+	// SplitMix64RNG
+	mut rng2a := splitmix64.SplitMix64RNG{}
+	mut rng2b := splitmix64.SplitMix64RNG{}
+	seed2 := [u32(2325), 14]
+
+	rand.set_rng(rng2a)
+	rand.seed(seed2)
+	rng2b.seed(seed2)
+	ensure_same_output(mut rng2b)
+
+	// MT19937RNG
+	mut rng3a := mt19937.MT19937RNG{}
+	mut rng3b := mt19937.MT19937RNG{}
+	seed3 := [u32(0xcafe), 234]
+
+	rand.set_rng(rng3a)
+	rand.seed(seed3)
+	rng3b.seed(seed3)
+	ensure_same_output(mut rng3b)
+
+	rand.set_rng(old)
 }

@@ -993,6 +993,22 @@ pub fn (i &Interface) find_field(name string) ?Field {
 	return none
 }
 
+pub fn (i &Interface) find_method(name string) ?Fn {
+	for method in i.methods {
+		if method.name == name {
+			return method
+		}
+	}
+	return none
+}
+
+pub fn (i &Interface) has_method(name string) bool {
+	if _ := i.find_method(name) {
+		return true
+	}
+	return false
+}
+
 pub fn (s Struct) find_field(name string) ?Field {
 	for field in s.fields {
 		if field.name == name {

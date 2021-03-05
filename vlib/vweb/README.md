@@ -61,3 +61,70 @@ That means that the template automatically has access to that action's entire en
 ### Deploying vweb apps
 
 Everything, including HTML templates, is in one binary file. That's all you need to deploy.
+
+## Getting Started
+
+To start with vweb, you have to import the module `vweb`.
+After the import, define a struct to hold vweb.Context 
+(and any other variables your program will need).
+The web server can be started by calling `vweb.run<App>(port)`.
+
+**Example:**
+```v ignore
+import vweb
+
+struct App {
+    vweb.Context
+}
+
+fn main() {
+	vweb.run<App>(8080)
+}
+```
+
+### Defining endpoints
+To add endpoints to your web server, you have to extend the `App` struct.
+For routing you can either use auto-mapping of function names or specify the path as an attribute.
+The function expects a response of the type `vweb.Result`.
+
+**Example:**
+```v ignore
+// This endpoint can be accessed via http://localhost:port/hello
+fn (mut app App) hello() vweb.Result {
+	return app.text('Hello')
+}
+
+// This endpoint can be accessed via http://localhost:port/foo
+["/foo"]
+fn (mut app App) world() vweb.Result {
+	return app.text('World')
+}
+```
+
+To create an HTTP POST endpoint, you simply add a `[post]` attribute before the function definition.
+
+**Example:**
+```v ignore
+[post]
+fn (mut app App) world() vweb.Result {
+	return app.text('World')
+}
+```
+
+To pass a parameter to an endpoint, you simply define it inside 
+an attribute, e. g. `['/hello/:user]`.
+After it is defined in the attribute, you have to add it as a function parameter.
+
+**Example:**
+```v ignore
+['/hello/:user']
+fn (mut app App) hello_user(user string) vweb.Result {
+	return app.text('Hello $user')
+}
+```
+
+You have access to the raw request data such as headers 
+or the request body by accessing `app` (which is `vweb.Context`).
+If you want to read the request body, you can do that by calling `app.req.data`.
+To read the request headers, you just call `app.req.headers` and access the header you want, 
+e.g. `app.req.headers['Content-Type']`

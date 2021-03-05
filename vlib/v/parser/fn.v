@@ -221,11 +221,20 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			}
 		}
 		type_sym := p.table.get_type_symbol(rec.typ)
-		// interfaces are handled in the checker, methods can not be defined on them this way
-		if is_method && (type_sym.has_method(name) && type_sym.kind != .interface_) {
-			p.error_with_pos('duplicate method `$name`', pos)
-			return ast.FnDecl{
-				scope: 0
+		if is_method {
+			mut is_duplicate := type_sym.has_method(name)
+			// make sure this is a normal method and not an interface method
+			if type_sym.kind == .interface_ && is_duplicate {
+				if type_sym.info is table.Interface {
+					// if the method is in info then its an interface method
+					is_duplicate = !type_sym.info.has_method(name)
+				}
+			}
+			if is_duplicate {
+				p.error_with_pos('duplicate method `$name`', pos)
+				return ast.FnDecl{
+					scope: 0
+				}
 			}
 		}
 		// cannot redefine buildin function
@@ -276,7 +285,6 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			})
 		}
 	}
-	mut end_pos := p.prev_tok.position()
 	// Return type
 	mut return_type := table.void_type
 	// don't confuse token on the next line: fn decl, [attribute]
@@ -287,6 +295,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	}
 	mut type_sym_method_idx := 0
 	no_body := p.tok.kind != .lcbr
+	end_pos := p.prev_tok.position()
 	// Register
 	if is_method {
 		mut type_sym := p.table.get_type_symbol(rec.typ)
@@ -348,7 +357,6 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			language: language
 		})
 	}
-	end_pos = p.prev_tok.position()
 	// Body
 	p.cur_fn_name = name
 	mut stmts := []ast.Stmt{}

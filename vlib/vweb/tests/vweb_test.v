@@ -50,7 +50,11 @@ fn test_a_simple_vweb_app_runs_in_the_background() {
 		res := os.system(server_exec_cmd)
 		assert res == 0
 	}
-	time.sleep(100 * time.millisecond)
+	$if macos {
+		time.sleep(1000 * time.millisecond)
+	} $else {
+		time.sleep(100 * time.millisecond)
+	}
 }
 
 // web client tests follow
@@ -81,6 +85,16 @@ fn test_a_simple_tcp_client_simple_route() {
 	assert received.contains('Content-Type: text/plain')
 	assert received.contains('Content-Length: 15')
 	assert received.ends_with('A simple result')
+}
+
+fn test_a_simple_tcp_client_zero_content_length() {
+	// tests that sending a content-length header of 0 doesn't hang on a read timeout
+	watch := time.new_stopwatch(auto_start: true)
+	simple_tcp_client(path: '/', headers: 'Content-Length: 0\r\n\r\n') or {
+		assert err.msg == ''
+		return
+	}
+	assert watch.elapsed() < 1 * time.second
 }
 
 fn test_a_simple_tcp_client_html_page() {
@@ -206,7 +220,7 @@ fn test_http_client_shutdown_does_not_work_without_a_cookie() {
 fn testsuite_end() {
 	// This test is guaranteed to be called last.
 	// It sends a request to the server to shutdown.
-	x := http.fetch('http://127.0.0.1:$sport/shutdown', 
+	x := http.fetch('http://127.0.0.1:$sport/shutdown',
 		method: .get
 		cookies: map{
 			'skey': 'superman'

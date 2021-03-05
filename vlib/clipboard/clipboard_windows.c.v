@@ -104,15 +104,15 @@ fn new_clipboard() &Clipboard {
 	return cb
 }
 
-fn (cb &Clipboard) check_availability() bool {
+pub fn (cb &Clipboard) check_availability() bool {
 	return cb.hwnd != C.HWND(C.NULL)
 }
 
-fn (cb &Clipboard) has_ownership() bool {
+pub fn (cb &Clipboard) has_ownership() bool {
 	return C.GetClipboardOwner() == cb.hwnd
 }
 
-fn (mut cb Clipboard) clear() {
+pub fn (mut cb Clipboard) clear() {
 	if !cb.get_clipboard_lock() {
 		return
 	}
@@ -121,7 +121,7 @@ fn (mut cb Clipboard) clear() {
 	cb.foo = 0
 }
 
-fn (mut cb Clipboard) free() {
+pub fn (mut cb Clipboard) free() {
 	C.DestroyWindow(cb.hwnd)
 	cb.foo = 0
 }
@@ -143,7 +143,7 @@ fn to_wide(text string) C.HGLOBAL {
 	return buf
 }
 
-fn (mut cb Clipboard) set_text(text string) bool {
+pub fn (mut cb Clipboard) set_text(text string) bool {
 	cb.foo = 0
 	buf := to_wide(text)
 	if !cb.get_clipboard_lock() {
@@ -164,7 +164,7 @@ fn (mut cb Clipboard) set_text(text string) bool {
 	return true
 }
 
-fn (mut cb Clipboard) get_text() string {
+pub fn (mut cb Clipboard) get_text() string {
 	cb.foo = 0
 	if !cb.get_clipboard_lock() {
 		return ''

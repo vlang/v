@@ -76,3 +76,62 @@ fn test_parse_request_line() {
 	assert target.str() == '/target'
 	assert version == .v1_1
 }
+
+fn test_parse_form() {
+	assert parse_form('foo=bar&bar=baz') == map{
+		'foo': 'bar'
+		'bar': 'baz'
+	}
+	assert parse_form('foo=bar=&bar=baz') == map{
+		'foo': 'bar='
+		'bar': 'baz'
+	}
+	assert parse_form('foo=bar%3D&bar=baz') == map{
+		'foo': 'bar='
+		'bar': 'baz'
+	}
+	assert parse_form('foo=b%26ar&bar=baz') == map{
+		'foo': 'b&ar'
+		'bar': 'baz'
+	}
+	assert parse_form('a=b& c=d') == map{
+		'a':  'b'
+		' c': 'd'
+	}
+	assert parse_form('a=b&c= d ') == map{
+		'a': 'b'
+		'c': ' d '
+	}
+}
+
+fn test_parse_multipart_form() {
+	boundary := '6844a625b1f0b299'
+	names := ['foo', 'fooz']
+	file := 'bar.v'
+	ct := 'application/octet-stream'
+	contents := ['baz', 'buzz']
+	data := '--------------------------$boundary
+Content-Disposition: form-data; name=\"${names[0]}\"; filename=\"$file\"
+Content-Type: $ct
+
+${contents[0]}
+--------------------------$boundary
+Content-Disposition: form-data; name=\"${names[1]}\"
+
+${contents[1]}
+--------------------------$boundary--
+'
+	form, files := parse_multipart_form(data, boundary)
+	// TODO: remove newlines
+	assert files == map{
+		names[0]: [FileData{
+			filename: file
+			content_type: ct
+			data: contents[0] + '\n'
+		}]
+	}
+
+	assert form == map{
+		names[1]: contents[1] + '\n'
+	}
+}

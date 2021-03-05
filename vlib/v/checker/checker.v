@@ -1323,6 +1323,10 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 				c.fail_if_immutable(call_expr.left)
 				// position of `a` and `b` doesn't matter, they're the same
 				scope_register_ab(mut call_expr.scope, call_expr.pos, array_info.elem_type)
+
+				if call_expr.args.len > 1 {
+					c.error('expected 0 or 1 argument, but got $call_expr.args.len', call_expr.pos)
+				}
 				// Verify `.sort(a < b)`
 				if call_expr.args.len > 0 {
 					if call_expr.args[0].expr !is ast.InfixExpr {
@@ -1360,11 +1364,9 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			// check fn
 			c.check_map_and_filter(true, elem_typ, call_expr)
 			arg_sym := c.table.get_type_symbol(arg_type)
-			// FIXME: match expr failed for now
-			mut ret_type := 0
-			match mut arg_sym.info {
-				table.FnType { ret_type = arg_sym.info.func.return_type }
-				else { ret_type = arg_type }
+			ret_type := match arg_sym.info {
+				table.FnType { arg_sym.info.func.return_type }
+				else { arg_type }
 			}
 			call_expr.return_type = c.table.find_or_register_array(ret_type)
 		} else if method_name == 'filter' {
@@ -1472,8 +1474,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		}
 	}
 	if has_method {
-		if !method.is_pub && !c.is_builtin_mod && !c.pref.is_test && left_type_sym.mod != c.mod
-			&& left_type_sym.mod != '' { // method.mod != c.mod {
+		if !method.is_pub && !c.pref.is_test && method.mod != c.mod {
 			// If a private method is called outside of the module
 			// its receiver type is defined in, show an error.
 			// println('warn $method_name lef.mod=$left_type_sym.mod c.mod=$c.mod')
@@ -1825,8 +1826,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		}
 	}
 	if !f.is_pub && f.language == .v && f.name.len > 0 && f.mod.len > 0 && f.mod != c.mod {
-		c.error('function `$f.name` is private, so you can not import it in module `$c.mod`',
-			call_expr.pos)
+		c.error('function `$f.name` is private', call_expr.pos)
 	}
 	if !c.cur_fn.is_deprecated && f.is_deprecated {
 		mut deprecation_message := 'function `$f.name` has been deprecated'
@@ -1846,10 +1846,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		c.error('cannot call a function that does not have a body', call_expr.pos)
 	}
 	for generic_type in call_expr.generic_types {
-		sym := c.table.get_type_symbol(generic_type)
-		if sym.kind == .placeholder {
-			c.error('unknown type `$sym.name`', call_expr.generic_list_pos)
-		}
+		c.ensure_type_exists(generic_type, call_expr.generic_list_pos) or { }
 	}
 	if f.generic_names.len > 0 && f.return_type.has_flag(.generic) {
 		rts := c.table.get_type_symbol(f.return_type)
@@ -1901,6 +1898,9 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		c.inside_println_arg = true
 		c.expected_type = table.string_type
 		call_expr.args[0].typ = c.expr(call_expr.args[0].expr)
+		if call_expr.args[0].typ.is_void() {
+			c.error('`$fn_name` can not print void expressions', call_expr.pos)
+		}
 		if call_expr.args[0].typ.has_flag(.shared_f) {
 			c.fail_if_not_rlocked(call_expr.args[0].expr, 'argument to print')
 		}
@@ -2445,7 +2445,11 @@ pub fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 	for i, field in node.fields {
 		// TODO Check const name once the syntax is decided
 		if field.name in c.const_names {
-			c.error('duplicate const `$field.name`', field.pos)
+			name_pos := token.Position{
+				...field.pos
+				len: util.no_cur_mod(field.name, c.mod).len
+			}
+			c.error('duplicate const `$field.name`', name_pos)
 		}
 		c.const_names << field.name
 		field_names << field.name
@@ -2980,9 +2984,7 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 				c.error('cannot initalize sum type array without default value', array_init.elem_type_pos)
 			}
 		}
-		if sym.kind == .placeholder {
-			c.error('unknown type `$sym.name`', array_init.elem_type_pos)
-		}
+		c.ensure_type_exists(array_init.elem_type, array_init.elem_type_pos) or { }
 		return array_init.typ
 	}
 	// a = []
@@ -3635,10 +3637,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			expr_type_sym := c.table.get_type_symbol(node.expr_type)
 			type_sym := c.table.get_type_symbol(node.typ)
 			if expr_type_sym.kind == .sum_type {
-				if type_sym.kind == .placeholder {
-					// Unknown type used in the right part of `as`
-					c.error('unknown type `$type_sym.name`', node.pos)
-				}
+				c.ensure_type_exists(node.typ, node.pos) or { }
 				if !c.table.sumtype_has_variant(node.expr_type, node.typ) {
 					c.error('cannot cast `$expr_type_sym.name` to `$type_sym.name`', node.pos)
 					// c.error('only $info.variants can be casted to `$typ`', node.pos)
@@ -3747,7 +3746,25 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		ast.IfGuardExpr {
 			node.expr_type = c.expr(node.expr)
 			if !node.expr_type.has_flag(.optional) {
-				c.error('expression should return an option', node.expr.position())
+				mut no_opt := true
+				match mut node.expr {
+					ast.IndexExpr {
+						no_opt = false
+						node.expr_type = node.expr_type.set_flag(.optional)
+						node.expr.is_option = true
+					}
+					ast.PrefixExpr {
+						if node.expr.op == .arrow {
+							no_opt = false
+							node.expr_type = node.expr_type.set_flag(.optional)
+							node.expr.is_option = true
+						}
+					}
+					else {}
+				}
+				if no_opt {
+					c.error('expression should return an option', node.expr.position())
+				}
 			}
 			return table.bool_type
 		}
@@ -3853,8 +3870,8 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
 	node.expr_type = c.expr(node.expr) // type to be casted
 	from_type_sym := c.table.get_type_symbol(node.expr_type)
 	to_type_sym := c.table.get_type_symbol(node.typ) // type to be used as cast
-	if to_type_sym.kind == .placeholder && to_type_sym.language != .c {
-		c.error('unknown type `$to_type_sym.name`', node.pos)
+	if to_type_sym.language != .c {
+		c.ensure_type_exists(node.typ, node.pos) or { }
 	}
 	expr_is_ptr := node.expr_type.is_ptr() || node.expr_type.idx() in table.pointer_type_idxs
 	if expr_is_ptr && to_type_sym.kind == .string && !node.in_prexpr {
@@ -4817,7 +4834,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 				left_sym := c.table.get_type_symbol(infix.left_type)
 				expr_type := c.expr(infix.left)
 				if left_sym.kind == .interface_ {
-					c.type_implements(right_expr.typ, expr_type, branch.pos)
+					c.type_implements(right_expr.typ, expr_type, branch.cond.position())
 				} else if !c.check_types(right_expr.typ, expr_type) {
 					expect_str := c.table.type_to_str(right_expr.typ)
 					expr_str := c.table.type_to_str(expr_type)
@@ -5492,14 +5509,8 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) table.Type {
 	// `x := map[string]string` - set in parser
 	if node.typ != 0 {
 		info := c.table.get_type_symbol(node.typ).map_info()
-		key_sym := c.table.get_type_symbol(info.key_type)
-		value_sym := c.table.get_type_symbol(info.value_type)
-		if key_sym.kind == .placeholder {
-			c.error('unknown type `$key_sym.name`', node.pos)
-		}
-		if value_sym.kind == .placeholder {
-			c.error('unknown type `$value_sym.name`', node.pos)
-		}
+		c.ensure_type_exists(info.key_type, node.pos) or { }
+		c.ensure_type_exists(info.value_type, node.pos) or { }
 		node.key_type = info.key_type
 		node.value_type = info.value_type
 		return node.typ
@@ -5649,10 +5660,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) table.Type {
 		c.inside_sql = false
 	}
 	sym := c.table.get_type_symbol(node.table_expr.typ)
-	if sym.kind == .placeholder {
-		c.error('orm: unknown type `$sym.name`', node.pos)
-		return table.void_type
-	}
+	c.ensure_type_exists(node.table_expr.typ, node.pos) or { return table.void_type }
 	c.cur_orm_ts = sym
 	info := sym.info as table.Struct
 	fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, sym.name)
@@ -5838,9 +5846,17 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			c.error('unknown type `$sym.name`', node.receiver_pos)
 			return
 		}
-		// if sym.has_method(node.name) {
-		// c.warn('duplicate method `$node.name`', node.pos)
-		// }
+		// make sure interface does not implement its own interface methods
+		if sym.kind == .interface_ && sym.has_method(node.name) {
+			if sym.info is table.Interface {
+				info := sym.info as table.Interface
+				// if the method is in info.methods then it is an interface method
+				if info.has_method(node.name) {
+					c.error('interface `$sym.name` cannot implement its own interface method `$node.name`',
+						node.pos)
+				}
+			}
+		}
 		// needed for proper error reporting during vweb route checking
 		sym.methods[node.method_idx].source_fn = voidptr(node)
 	}

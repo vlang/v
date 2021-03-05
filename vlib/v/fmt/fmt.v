@@ -68,14 +68,13 @@ pub fn fmt(file ast.File, table &table.Table, pref &pref.Preferences, is_debug b
 	f.indent--
 	f.stmts(file.stmts)
 	f.indent++
-	// for comment in file.comments { println('$comment.line_nr $comment.text')	}
 	f.imports(f.file.imports) // now that we have all autoimports, handle them
 	res := f.out.str().trim_space() + '\n'
 	if res.len == 1 {
 		return f.out_imports.str().trim_space() + '\n'
 	}
 	bounded_import_pos := util.imin(res.len, f.import_pos)
-	return res[..bounded_import_pos] + f.out_imports.str() + res[bounded_import_pos..] // + '\n'
+	return res[..bounded_import_pos] + f.out_imports.str() + res[bounded_import_pos..]
 }
 
 pub fn (mut f Fmt) process_file_imports(file &ast.File) {
@@ -310,40 +309,50 @@ pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
 	return '$imp.mod$imp_alias_suffix'
 }
 
-fn (f Fmt) should_insert_newline_before_stmt(stmt ast.Stmt, prev_stmt ast.Stmt) bool {
-	prev_line_nr := prev_stmt.position().last_line
+fn (f Fmt) should_insert_newline_before_node(node ast.Node, prev_node ast.Node) bool {
 	// No need to insert a newline if there is already one
 	if f.out.last_n(2) == '\n\n' {
 		return false
 	}
-	// Force a newline after a block of HashStmts
-	if prev_stmt is ast.HashStmt && stmt !is ast.HashStmt && stmt !is ast.ExprStmt {
-		return true
-	}
-	// Force a newline after a block of function declarations
-	if prev_stmt is ast.FnDecl {
-		if prev_stmt.no_body && stmt !is ast.FnDecl {
+	prev_line_nr := prev_node.position().last_line
+	// The nodes are Stmts
+	if node is ast.Stmt && prev_node is ast.Stmt {
+		stmt := node as ast.Stmt
+		prev_stmt := prev_node as ast.Stmt
+		// Force a newline after a block of HashStmts
+		if prev_stmt is ast.HashStmt && stmt !is ast.HashStmt && stmt !is ast.ExprStmt {
 			return true
 		}
-	}
-	// The stmt shouldn't have a newline before
-	if stmt.position().line_nr - prev_line_nr <= 1 {
-		return false
-	}
-	// Imports are handled special hence they are ignored here
-	if stmt is ast.Import || prev_stmt is ast.Import {
-		return false
-	}
-	// Attributes are not respected in the stmts position, so this requires a manual check
-	if stmt is ast.StructDecl {
-		if stmt.attrs.len > 0 && stmt.attrs[0].pos.line_nr - prev_line_nr <= 1 {
+		// Force a newline after function declarations
+		// The only exception is inside an block of no_body functions
+		if prev_stmt is ast.FnDecl {
+			if stmt !is ast.FnDecl || !prev_stmt.no_body {
+				return true
+			}
+		}
+		// Force a newline after struct declarations
+		if prev_stmt is ast.StructDecl {
+			return true
+		}
+		// Imports are handled special hence they are ignored here
+		if stmt is ast.Import || prev_stmt is ast.Import {
 			return false
 		}
-	}
-	if stmt is ast.FnDecl {
-		if stmt.attrs.len > 0 && stmt.attrs[0].pos.line_nr - prev_line_nr <= 1 {
-			return false
+		// Attributes are not respected in the stmts position, so this requires manual checking
+		if stmt is ast.StructDecl {
+			if stmt.attrs.len > 0 && stmt.attrs[0].pos.line_nr - prev_line_nr <= 1 {
+				return false
+			}
 		}
+		if stmt is ast.FnDecl {
+			if stmt.attrs.len > 0 && stmt.attrs[0].pos.line_nr - prev_line_nr <= 1 {
+				return false
+			}
+		}
+	}
+	// The node shouldn't have a newline before
+	if node.position().line_nr - prev_line_nr <= 1 {
+		return false
 	}
 	return true
 }
@@ -352,7 +361,7 @@ pub fn (mut f Fmt) stmts(stmts []ast.Stmt) {
 	mut prev_stmt := if stmts.len > 0 { stmts[0] } else { ast.Stmt{} }
 	f.indent++
 	for stmt in stmts {
-		if !f.pref.building_v && f.should_insert_newline_before_stmt(stmt, prev_stmt) {
+		if !f.pref.building_v && f.should_insert_newline_before_node(stmt, prev_stmt) {
 			f.out.writeln('')
 		}
 		f.stmt(stmt)
@@ -808,7 +817,10 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 		f.writeln('')
 	}
 	f.comments_after_last_field(node.pre_comments)
-	for field in node.fields {
+	for i, field in node.fields {
+		if i == node.mut_pos {
+			f.writeln('mut:')
+		}
 		// TODO: alignment, comments, etc.
 		mut ft := f.no_cur_mod(f.table.type_to_str(field.typ))
 		if !ft.contains('C.') && !ft.contains('JS.') && !ft.contains('fn (') {
@@ -1147,13 +1159,13 @@ pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
 }
 
 pub fn (mut f Fmt) as_cast(node ast.AsCast) {
-	type_str := f.table.type_to_str(node.typ)
+	type_str := f.table.type_to_str_using_aliases(node.typ, f.mod2alias)
 	f.expr(node.expr)
 	f.write(' as $type_str')
 }
 
 pub fn (mut f Fmt) cast_expr(node ast.CastExpr) {
-	f.write(f.table.type_to_str(node.typ) + '(')
+	f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias) + '(')
 	f.expr(node.expr)
 	if node.has_arg {
 		f.write(', ')
@@ -1552,8 +1564,7 @@ pub fn (mut f Fmt) lock_expr(lex ast.LockExpr) {
 			}
 		}
 	}
-	f.write(' {')
-	f.writeln('')
+	f.writeln(' {')
 	f.stmts(lex.stmts)
 	f.write('}')
 }
@@ -1726,7 +1737,7 @@ pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 	f.single_line_if = false
 	if node.post_comments.len > 0 {
 		f.writeln('')
-		f.comments(node.post_comments, 
+		f.comments(node.post_comments,
 			has_nl: false
 			prev_line: node.branches.last().body_pos.last_line
 		)
@@ -1760,6 +1771,9 @@ fn (mut f Fmt) write_generic_if_require(node ast.CallExpr) {
 
 pub fn (mut f Fmt) call_args(args []ast.CallArg) {
 	f.single_line_fields = true
+	defer {
+		f.single_line_fields = false
+	}
 	for i, arg in args {
 		if arg.is_mut {
 			f.write(arg.share.str() + ' ')
@@ -1772,7 +1786,6 @@ pub fn (mut f Fmt) call_args(args []ast.CallArg) {
 			f.write(', ')
 		}
 	}
-	f.single_line_fields = false
 }
 
 pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
@@ -1846,7 +1859,6 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 	mut single_line := true
 	for branch in it.branches {
 		if branch.stmts.len > 1 || branch.pos.line_nr < branch.pos.last_line {
-			// println(branch)
 			single_line = false
 			break
 		}
@@ -1866,9 +1878,7 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 				f.expr(expr)
 				if j < branch.ecmnts.len && branch.ecmnts[j].len > 0 {
 					f.write(' ')
-					for cmnt in branch.ecmnts[j] {
-						f.comment(cmnt, iembed: true)
-					}
+					f.comments(branch.ecmnts[j], iembed: true)
 				}
 				if j < branch.exprs.len - 1 {
 					f.write(', ')
@@ -1896,9 +1906,7 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 				f.writeln('}')
 			}
 		}
-		if branch.post_comments.len > 0 {
-			f.comments(branch.post_comments, inline: true)
-		}
+		f.comments(branch.post_comments, inline: true)
 	}
 	f.indent--
 	f.write('}')
@@ -2111,14 +2119,14 @@ pub fn (mut f Fmt) map_init(it ast.MapInit) {
 	f.write('}')
 }
 
-pub fn (mut f Fmt) struct_init(it ast.StructInit) {
+pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 	struct_init_save := f.is_struct_init
 	f.is_struct_init = true
 	defer {
 		f.is_struct_init = struct_init_save
 	}
 
-	type_sym := f.table.get_type_symbol(it.typ)
+	type_sym := f.table.get_type_symbol(node.typ)
 	// f.write('<old name: $type_sym.name>')
 	mut name := type_sym.name
 	if !name.starts_with('C.') {
@@ -2127,38 +2135,38 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 	if name == 'void' {
 		name = ''
 	}
-	if it.fields.len == 0 && !it.has_update_expr {
+	if node.fields.len == 0 && !node.has_update_expr {
 		// `Foo{}` on one line if there are no fields or comments
-		if it.pre_comments.len == 0 {
+		if node.pre_comments.len == 0 {
 			f.write('$name{}')
 		} else {
 			f.writeln('$name{')
-			f.comments(it.pre_comments, inline: true, has_nl: true, level: .indent)
+			f.comments(node.pre_comments, inline: true, has_nl: true, level: .indent)
 			f.write('}')
 		}
 		f.mark_import_as_used(name)
-	} else if it.is_short {
+	} else if node.is_short {
 		// `Foo{1,2,3}` (short syntax )
 		f.write('$name{')
 		f.mark_import_as_used(name)
-		if it.has_update_expr {
+		if node.has_update_expr {
 			f.write('...')
-			f.expr(it.update_expr)
+			f.expr(node.update_expr)
 			f.write(', ')
 		}
-		for i, field in it.fields {
+		for i, field in node.fields {
 			f.prefix_expr_cast_expr(field.expr)
-			if i < it.fields.len - 1 {
+			if i < node.fields.len - 1 {
 				f.write(', ')
 			}
 		}
 		f.write('}')
 	} else {
-		use_short_args := f.use_short_fn_args
+		use_short_args := f.use_short_fn_args && !node.has_update_expr
 		f.use_short_fn_args = false
 		mut single_line_fields := f.single_line_fields
 		f.single_line_fields = false
-		if it.pos.line_nr < it.pos.last_line || it.pre_comments.len > 0 {
+		if node.pos.line_nr < node.pos.last_line || node.pre_comments.len > 0 {
 			single_line_fields = false
 		}
 		if !use_short_args {
@@ -2171,22 +2179,36 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 		fields_start := f.out.len
 		fields_loop: for {
 			if !single_line_fields {
+				if use_short_args && f.out.buf[f.out.buf.len - 1] == ` ` {
+					//           v Remove space at tail of line
+					// f(a, b, c, \n
+					//     f1: 0\n
+					//     f2: 1\n
+					// )
+					f.out.go_back(1)
+				}
 				f.writeln('')
 				f.indent++
 			}
-			f.comments(it.pre_comments, inline: true, has_nl: true, level: .keep)
-			if it.has_update_expr {
+			f.comments(node.pre_comments, inline: true, has_nl: true, level: .keep)
+			if node.has_update_expr {
 				f.write('...')
-				f.expr(it.update_expr)
-				f.writeln('')
-				f.comments(it.update_expr_comments, inline: true, has_nl: true, level: .keep)
+				f.expr(node.update_expr)
+				if single_line_fields {
+					if node.fields.len > 0 {
+						f.write(', ')
+					}
+				} else {
+					f.writeln('')
+				}
+				f.comments(node.update_expr_comments, inline: true, has_nl: true, level: .keep)
 			}
-			for i, field in it.fields {
+			for i, field in node.fields {
 				f.write('$field.name: ')
 				f.prefix_expr_cast_expr(field.expr)
 				f.comments(field.comments, inline: true, has_nl: false, level: .indent)
 				if single_line_fields {
-					if i < it.fields.len - 1 {
+					if i < node.fields.len - 1 {
 						f.write(', ')
 					}
 				} else {
@@ -2241,13 +2263,17 @@ pub fn (mut f Fmt) const_decl(it ast.ConstDecl) {
 		}
 	}
 	f.indent++
+	mut prev_field := if it.fields.len > 0 { ast.Node(it.fields[0]) } else { ast.Node{} }
 	for field in it.fields {
-		comments := field.comments
-		mut j := 0
-		for j < comments.len && comments[j].pos.pos < field.pos.pos {
-			f.comment(comments[j], inline: true)
+		if field.comments.len > 0 {
+			if f.should_insert_newline_before_node(ast.Expr(field.comments[0]), prev_field) {
+				f.writeln('')
+			}
+			f.comments(field.comments, inline: true)
+			prev_field = ast.Expr(field.comments.last())
+		}
+		if f.should_insert_newline_before_node(field, prev_field) {
 			f.writeln('')
-			j++
 		}
 		name := field.name.after('.')
 		f.write('$name ')
@@ -2255,6 +2281,7 @@ pub fn (mut f Fmt) const_decl(it ast.ConstDecl) {
 		f.write('= ')
 		f.expr(field.expr)
 		f.writeln('')
+		prev_field = field
 	}
 	f.comments_after_last_field(it.end_comments)
 	f.indent--
@@ -2270,8 +2297,7 @@ fn (mut f Fmt) global_decl(it ast.GlobalDecl) {
 	if single {
 		f.write('__global ( ')
 	} else {
-		f.write('__global (')
-		f.writeln('')
+		f.writeln('__global (')
 		f.indent++
 	}
 	mut max := 0
@@ -2285,11 +2311,7 @@ fn (mut f Fmt) global_decl(it ast.GlobalDecl) {
 		}
 	}
 	for field in it.fields {
-		comments := field.comments
-		for comment in comments {
-			f.comment(comment, inline: true)
-			f.writeln('')
-		}
+		f.comments(field.comments, inline: true)
 		f.write('$field.name ')
 		f.write(strings.repeat(` `, max - field.name.len))
 		if field.has_expr {
@@ -2318,11 +2340,7 @@ fn (mut f Fmt) global_decl(it ast.GlobalDecl) {
 pub fn (mut f Fmt) assign_stmt(node ast.AssignStmt) {
 	f.comments(node.comments, {})
 	for i, left in node.left {
-		if left is ast.Ident {
-			f.expr(left)
-		} else {
-			f.expr(left)
-		}
+		f.expr(left)
 		if i < node.left.len - 1 {
 			f.write(', ')
 		}

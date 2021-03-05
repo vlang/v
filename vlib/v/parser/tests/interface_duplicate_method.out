@@ -1,6 +1,5 @@
-vlib/v/parser/tests/interface_duplicate_method.vv:3:2: error: duplicate method `fun`
-    1 | interface Abc {
-    2 |     fun()
-    3 |     fun()
-      |     ~~~
-    4 | }
+vlib/v/parser/tests/interface_duplicate_method.vv:5:12: error: duplicate method `foo`
+    3 | // duplicate normal method definitions on interface
+    4 | fn (a Abc) foo() {}
+    5 | fn (a Abc) foo() {}
+      |            ~~~
