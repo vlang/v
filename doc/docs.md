@@ -3283,13 +3283,13 @@ fn C.sqlite3_close(&C.sqlite3) int
 fn C.sqlite3_column_int(stmt &C.sqlite3_stmt, n int) int
 
 // ... you can also just define the type of parameter and leave out the C. prefix
-fn C.sqlite3_prepare_v2(&sqlite3, charptr, int, &&sqlite3_stmt, &charptr) int
+fn C.sqlite3_prepare_v2(&C.sqlite3, charptr, int, &&C.sqlite3_stmt, &charptr) int
 
-fn C.sqlite3_step(&sqlite3_stmt)
+fn C.sqlite3_step(&C.sqlite3_stmt)
 
-fn C.sqlite3_finalize(&sqlite3_stmt)
+fn C.sqlite3_finalize(&C.sqlite3_stmt)
 
-fn C.sqlite3_exec(db &sqlite3, sql charptr, cb FnSqlite3Callback, cb_arg voidptr, emsg &charptr) int
+fn C.sqlite3_exec(db &C.sqlite3, sql charptr, cb FnSqlite3Callback, cb_arg voidptr, emsg &charptr) int
 
 fn C.sqlite3_free(voidptr)
 

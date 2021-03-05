@@ -20,7 +20,7 @@ struct WndClassEx {
 	h_icon_sm       &u16
 }
 
-fn C.RegisterClassEx(class WndClassEx) int
+fn C.RegisterClassEx(class &WndClassEx) int
 
 fn C.GetClipboardOwner() &C.HWND
 
@@ -35,9 +35,9 @@ fn C.GlobalAlloc(uFlag u32, size i64) C.HGLOBAL
 
 fn C.GlobalFree(buf C.HGLOBAL)
 
-fn C.GlobalLock(buf C.HGLOBAL)
+fn C.GlobalLock(buf C.HGLOBAL) voidptr
 
-fn C.GlobalUnlock(buf C.HGLOBAL)
+fn C.GlobalUnlock(buf C.HGLOBAL) bool
 
 fn C.SetClipboardData(uFormat u32, data voidptr) C.HANDLE
 
@@ -174,8 +174,8 @@ pub fn (mut cb Clipboard) get_text() string {
 		C.CloseClipboard()
 		return ''
 	}
-	str := unsafe { string_from_wide(&u16(C.GlobalLock(h_data))) }
-	C.GlobalUnlock(h_data)
+	str := unsafe { string_from_wide(&u16(C.GlobalLock(C.HGLOBAL(h_data)))) }
+	C.GlobalUnlock(C.HGLOBAL(h_data))
 	return str
 }
 

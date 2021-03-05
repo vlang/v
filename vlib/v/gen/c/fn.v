@@ -1000,8 +1000,9 @@ fn (mut g Gen) autofree_call_postgen(node_pos int) {
 fn (mut g Gen) call_args(node ast.CallExpr) {
 	args := if g.is_js_call { node.args[1..] } else { node.args }
 	expected_types := node.expected_arg_types
+	// only v variadic, C variadic args will be appeneded like normal args
 	is_variadic := expected_types.len > 0
-		&& expected_types[expected_types.len - 1].has_flag(.variadic)
+		&& expected_types[expected_types.len - 1].has_flag(.variadic) && node.language == .v
 	for i, arg in args {
 		if is_variadic && i == expected_types.len - 1 {
 			break
@@ -1024,7 +1025,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 					g.write('/*af arg*/' + name)
 				}
 			} else {
-				g.ref_or_deref_arg(arg, expected_types[i])
+				g.ref_or_deref_arg(arg, expected_types[i], node.language)
 			}
 		} else {
 			if use_tmp_var_autofree {
@@ -1054,7 +1055,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 			if variadic_count > 0 {
 				g.write('new_array_from_c_array($variadic_count, $variadic_count, sizeof($elem_type), _MOV(($elem_type[$variadic_count]){')
 				for j in arg_nr .. args.len {
-					g.ref_or_deref_arg(args[j], arr_info.elem_type)
+					g.ref_or_deref_arg(args[j], arr_info.elem_type, node.language)
 					if j < args.len - 1 {
 						g.write(', ')
 					}
@@ -1068,7 +1069,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 }
 
 [inline]
-fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type table.Type) {
+fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type table.Type, lang table.Language) {
 	arg_is_ptr := expected_type.is_ptr() || expected_type.idx() in table.pointer_type_idxs
 	expr_is_ptr := arg.typ.is_ptr() || arg.typ.idx() in table.pointer_type_idxs
 	if expected_type == 0 {
@@ -1104,7 +1105,8 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type table.Type) {
 				expected_type
 			}
 			deref_sym := g.table.get_type_symbol(expected_deref_type)
-			if !((arg_typ_sym.kind == .function) || deref_sym.kind in [.sum_type, .interface_]) {
+			if !((arg_typ_sym.kind == .function)
+				|| deref_sym.kind in [.sum_type, .interface_]) && lang != .c {
 				g.write('(voidptr)&/*qq*/')
 			}
 		}

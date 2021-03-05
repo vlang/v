@@ -8,11 +8,11 @@ enum Select {
 }
 
 // SocketType are the available sockets
-enum SocketType {
-	dgram = C.SOCK_DGRAM
-	stream = C.SOCK_STREAM
-	seqpacket = C.SOCK_SEQPACKET
-}
+// enum SocketType {
+// 	dgram = C.SOCK_DGRAM
+// 	stream = C.SOCK_STREAM
+// 	seqpacket = C.SOCK_SEQPACKET
+// }
 
 struct C.sockaddr {
 	sa_family u16
@@ -44,43 +44,43 @@ mut:
 struct C.sockaddr_storage {
 }
 
-fn C.socket() int
+// fn C.socket() int
 
-fn C.setsockopt() int
+// fn C.setsockopt() int
 
-fn C.htonl() int
+// fn C.htonl() int
 
-fn C.htons() int
+// fn C.htons() int
 
-fn C.bind() int
+// fn C.bind() int
 
-fn C.listen() int
+// fn C.listen() int
 
-fn C.accept() int
+// fn C.accept() int
 
-fn C.getaddrinfo() int
+// fn C.getaddrinfo() int
 
-fn C.connect() int
+// fn C.connect() int
 
-fn C.send() int
+// fn C.send() int
 
-fn C.sendto() int
+// fn C.sendto() int
 
-fn C.recv() int
+// fn C.recv() int
 
-fn C.recvfrom() int
+// fn C.recvfrom() int
 
-fn C.shutdown() int
+// fn C.shutdown() int
 
-fn C.ntohs() int
+// fn C.ntohs() int
 
-fn C.getpeername() int
+// fn C.getpeername() int
 
-fn C.inet_ntop(af int, src voidptr, dst charptr, dst_size int) charptr
+// fn C.inet_ntop(af int, src voidptr, dst charptr, dst_size int) charptr
 
 fn C.WSAAddressToStringA() int
 
-fn C.getsockname() int
+// fn C.getsockname() int
 
 // defined in builtin
 // fn C.read() int
@@ -88,15 +88,15 @@ fn C.getsockname() int
 
 fn C.ioctlsocket() int
 
-fn C.fcntl() int
+// fn C.fcntl() int
 
-fn C.@select() int
+// fn C.@select() int
 
-fn C.FD_ZERO()
+// fn C.FD_ZERO()
 
-fn C.FD_SET()
+// fn C.FD_SET()
 
-fn C.FD_ISSET() bool
+// fn C.FD_ISSET() bool
 
 [typedef]
 struct C.fd_set {}
