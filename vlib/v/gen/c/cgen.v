@@ -1414,37 +1414,52 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 			}
 		}
 	} else if node.kind == .array_fixed {
-		atmp := g.new_tmp_var()
-		atmp_type := g.typ(node.cond_type).trim('*')
-		if node.cond_type.is_ptr() || node.cond is ast.ArrayInit {
+		mut cond_var := ''
+		needs_tmp_var := node.cond_type.is_ptr() || node.cond is ast.ArrayInit
+		if needs_tmp_var {
+			cond_var = g.new_tmp_var()
+			cond_var_type := g.typ(node.cond_type).trim('*')
 			if !node.cond.is_lvalue() {
-				g.write('$atmp_type *$atmp = (($atmp_type)')
+				g.write('$cond_var_type *$cond_var = (($cond_var_type)')
 			} else {
-				g.write('$atmp_type *$atmp = (')
+				g.write('$cond_var_type *$cond_var = (')
 			}
 			g.expr(node.cond)
 			g.writeln(');')
+		} else {
+			pos := g.out.len
+			g.expr(node.cond)
+			cond_var = g.out.after(pos)
+			g.out.go_back(cond_var.len)
+			cond_var = cond_var.trim_space()
 		}
-		i := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
+		idx := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
 		cond_sym := g.table.get_type_symbol(node.cond_type)
 		info := cond_sym.info as table.ArrayFixed
-		g.writeln('for (int $i = 0; $i != $info.size; ++$i) {')
+		g.writeln('for (int $idx = 0; $idx != $info.size; ++$idx) {')
 		if node.val_var != '_' {
 			val_sym := g.table.get_type_symbol(node.val_type)
+			is_fixed_array := val_sym.kind == .array_fixed && !node.val_is_mut
 			if val_sym.kind == .function {
 				g.write('\t')
 				g.write_fn_ptr_decl(val_sym.info as table.FnType, c_name(node.val_var))
+			} else if is_fixed_array {
+				styp := g.typ(node.val_type)
+				g.writeln('\t$styp ${c_name(node.val_var)};')
+				g.writeln('\tmemcpy(*($styp*)${c_name(node.val_var)}, (byte*)$cond_var[$idx], sizeof($styp));')
 			} else {
 				styp := g.typ(node.val_type)
 				g.write('\t$styp ${c_name(node.val_var)}')
 			}
-			addr := if node.val_is_mut { '&' } else { '' }
-			if node.cond_type.is_ptr() || node.cond is ast.ArrayInit {
-				g.writeln(' = ${addr}(*$atmp)[$i];')
-			} else {
-				g.write(' = $addr')
-				g.expr(node.cond)
-				g.writeln('[$i];')
+			if !is_fixed_array {
+				addr := if node.val_is_mut { '&' } else { '' }
+				if needs_tmp_var {
+					g.writeln(' = ${addr}(*$cond_var)[$idx];')
+				} else {
+					g.write(' = $addr')
+					g.expr(node.cond)
+					g.writeln('[$idx];')
+				}
 			}
 		}
 	} else if node.kind == .map {
