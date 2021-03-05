@@ -408,7 +408,7 @@ pub fn get_raw_line() string {
 			h_input := C.GetStdHandle(C.STD_INPUT_HANDLE)
 			mut bytes_read := 0
 			if is_atty(0) > 0 {
-				x := C.ReadConsole(h_input, buf, max_line_chars * 2, C.LPDWORD(&bytes_read),
+				x := C.ReadConsole(h_input, buf, max_line_chars * 2, &bytes_read,
 					0)
 				if !x {
 					return tos(buf, 0)
@@ -418,7 +418,7 @@ pub fn get_raw_line() string {
 			mut offset := 0
 			for {
 				pos := buf + offset
-				res := C.ReadFile(h_input, pos, 1, C.LPDWORD(&bytes_read), 0)
+				res := C.ReadFile(h_input, pos, 1, &bytes_read, 0)
 				if !res && offset == 0 {
 					return tos(buf, 0)
 				}
@@ -452,7 +452,7 @@ pub fn get_raw_stdin() []byte {
 			mut offset := 0
 			for {
 				pos := buf + offset
-				res := C.ReadFile(h_input, pos, block_bytes, C.LPDWORD(&bytes_read), 0)
+				res := C.ReadFile(h_input, pos, block_bytes, &bytes_read, 0)
 				offset += bytes_read
 				if !res {
 					break

@@ -15,7 +15,7 @@ struct C.tm {
 	tm_sec  int
 }
 
-struct C._FILETIME {
+struct C.FILETIME {
 }
 
 struct SystemTime {
@@ -29,11 +29,11 @@ struct SystemTime {
 	millisecond u16
 }
 
-fn C.GetSystemTimeAsFileTime(lpSystemTimeAsFileTime C._FILETIME)
+fn C.GetSystemTimeAsFileTime(lpSystemTimeAsFileTime C.FILETIME)
 
 fn C.FileTimeToSystemTime(lpFileTime &C.FILETIME, lpSystemTime C.LPSYSTEMTIME)
 
-fn C.SystemTimeToTzSpecificLocalTime(lpTimeZoneInformation &C.TIME_ZONE_INFORMATION, lpUniversalTime &C.SYSTEMTIME, lpLocalTime C.LPSYSTEMTIME)
+fn C.SystemTimeToTzSpecificLocalTime(lpTimeZoneInformation &C.TIME_ZONE_INFORMATION, lpUniversalTime &SystemTime, lpLocalTime C.LPSYSTEMTIME)
 
 fn C.localtime_s(t &C.time_t, tm &C.tm)
 
@@ -124,7 +124,7 @@ pub fn (t Time) local() Time {
 // GetSystemTimeAsFileTime is used and converted to local time. It can resolve time
 // down to millisecond. Other more precice methods can be implemented in the future
 fn win_now() Time {
-	ft_utc := C._FILETIME{}
+	ft_utc := C.FILETIME{}
 	C.GetSystemTimeAsFileTime(&ft_utc)
 	st_utc := SystemTime{}
 	C.FileTimeToSystemTime(&ft_utc, &st_utc)
@@ -147,7 +147,7 @@ fn win_now() Time {
 // GetSystemTimeAsFileTime is used. It can resolve time down to millisecond
 // other more precice methods can be implemented in the future
 fn win_utc() Time {
-	ft_utc := C._FILETIME{}
+	ft_utc := C.FILETIME{}
 	C.GetSystemTimeAsFileTime(&ft_utc)
 	st_utc := SystemTime{}
 	C.FileTimeToSystemTime(&ft_utc, &st_utc)
