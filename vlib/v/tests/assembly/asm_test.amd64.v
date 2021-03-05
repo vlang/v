@@ -1,14 +1,13 @@
 import v.tests.assembly.util
-// rename this file to asm_test.amd64.v (and make more for other architectures) once pure v code is enforced
 
 fn test_inline_asm() {
 	a, b := 10, 0
 	asm amd64 {
-		mov eax, a
-		mov b, eax
+		mov rax, a
+		mov b, rax
 		; +r (b)
 		; r (a)
-		; eax
+		; rax
 	}
 	assert a == 10
 	assert b == 10
@@ -27,7 +26,7 @@ fn test_inline_asm() {
 		add f, 5
 		; +r (f) // output 
 		; r (d)
-		  r (e) // input 
+		  r (e) // input
 	}
 	assert d == 10
 	assert e == 2
@@ -46,7 +45,7 @@ fn test_inline_asm() {
 
 	mut j := 0
 	// do 5*3
-	// adding three, five times
+	// adding three, five times 
 	asm amd64 {
 		mov rcx, 5 // loop 5 times
 		loop_start:

@@ -629,6 +629,22 @@ pub fn cc_from_string(cc_str string) CompilerType {
 	return .gcc
 }
 
+pub fn get_host_arch() Arch {
+	$if amd64 {
+		return .amd64
+	}
+	// $if i386 {
+	// 	return .amd64
+	// }
+	$if aarch64 {
+		return .aarch64
+	}
+	// $if aarch32 {
+	// 	return .aarch32
+	// }
+	panic('unknown host OS')
+}
+
 fn parse_define(mut prefs Preferences, define string) {
 	define_parts := define.split('=')
 	prefs.build_options << '-d $define'

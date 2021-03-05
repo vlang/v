@@ -9,34 +9,19 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 	mut all_v_files := []string{}
 	for file in files {
 		if !file.ends_with('.v') && !file.ends_with('.vh') {
-			if file.ends_with('amd64.v') {
-				println('asd')
-			}
 			continue
 		}
-		if file.ends_with('_test.v') {
-			if file.ends_with('amd64.v') {
-				println('asd2')
-			}
+		if file.ends_with('_test.v')
+			|| file.all_before_last('.v').all_before_last('.').ends_with('_test') {
 			continue
 		}
-
 		if prefs.backend == .c && !prefs.should_compile_c(file) {
-			if file.ends_with('amd64.v') {
-				println('as3')
-			}
 			continue
 		}
 		if prefs.backend == .js && !prefs.should_compile_js(file) {
-			if file.ends_with('amd64.v') {
-				println('asd4')
-			}
 			continue
 		}
 		if prefs.backend != .js && !prefs.should_compile_asm(file) {
-			if file.ends_with('amd64.v') {
-				println('asd5')
-			}
 			continue
 		}
 		if file.contains('_d_') {

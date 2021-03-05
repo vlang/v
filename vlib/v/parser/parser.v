@@ -858,8 +858,8 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 		is_goto = true
 		p.check(.key_goto)
 	}
-	if arch == ._auto {
-		p.error('invalid assembly architecture')
+	if arch == ._auto && !p.pref.is_fmt {
+		p.error('unknown assembly architecture')
 	}
 	if p.tok.kind != .name {
 		p.error('must specify assembly architecture')
