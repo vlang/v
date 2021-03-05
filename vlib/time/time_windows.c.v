@@ -29,7 +29,7 @@ struct SystemTime {
 	millisecond u16
 }
 
-fn C.GetSystemTimeAsFileTime(lpSystemTimeAsFileTime C._FILETIME)
+fn C.GetSystemTimeAsFileTime(lpSystemTimeAsFileTime &C._FILETIME)
 
 fn C.FileTimeToSystemTime(lpFileTime &C._FILETIME, lpSystemTime &SystemTime)
 
