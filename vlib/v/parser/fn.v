@@ -296,6 +296,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut type_sym_method_idx := 0
 	no_body := p.tok.kind != .lcbr
 	end_pos := p.prev_tok.position()
+	short_fn_name := name
+	is_main := short_fn_name == 'main' && p.mod == 'main'
+	is_test := short_fn_name.starts_with('test_') || short_fn_name.starts_with('testsuite_')
 	// Register
 	if is_method {
 		mut type_sym := p.table.get_type_symbol(rec.typ)
@@ -326,6 +329,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			is_pub: is_pub
 			is_deprecated: is_deprecated
 			is_unsafe: is_unsafe
+			is_main: is_main
+			is_test: is_test
 			no_body: no_body
 			mod: p.mod
 			attrs: p.attrs
@@ -351,6 +356,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			is_pub: is_pub
 			is_deprecated: is_deprecated
 			is_unsafe: is_unsafe
+			is_main: is_main
+			is_test: is_test
 			no_body: no_body
 			mod: p.mod
 			attrs: p.attrs
@@ -388,6 +395,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		is_direct_arr: is_direct_arr
 		is_pub: is_pub
 		is_variadic: is_variadic
+		is_main: is_main
+		is_test: is_test
 		receiver: ast.Field{
 			name: rec.name
 			typ: rec.typ

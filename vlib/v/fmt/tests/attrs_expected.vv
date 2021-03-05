@@ -1,0 +1,4 @@
+[export: 'JNICALL Java_io_vlang_V_callStaticMethods']
+[tom: 'jerry']
+[direct_array_access; inline; unsafe]
+fn heavily_tagged() {}

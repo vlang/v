@@ -170,6 +170,7 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 			the_main_file.stmts << ast.FnDecl{
 				name: 'main.main'
 				mod: 'main'
+				is_main: true
 				file: the_main_file.path
 				return_type: table.void_type
 				scope: &ast.Scope{
@@ -205,7 +206,7 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 	if c.pref.is_test {
 		mut n_test_fns := 0
 		for _, f in c.table.fns {
-			if f.name.contains('.test_') {
+			if f.is_test {
 				n_test_fns++
 			}
 		}
@@ -1213,8 +1214,7 @@ pub fn (mut c Checker) call_expr(mut call_expr ast.CallExpr) table.Type {
 	c.expected_or_type = table.void_type
 	if call_expr.or_block.kind == .propagate && !c.cur_fn.return_type.has_flag(.optional)
 		&& !c.inside_const {
-		cur_names := c.cur_fn.name.split('.')
-		if cur_names[cur_names.len - 1] != 'main' {
+		if !c.cur_fn.is_main {
 			c.error('to propagate the optional call, `$c.cur_fn.name` must return an optional',
 				call_expr.or_block.pos)
 		}
@@ -2017,10 +2017,11 @@ fn (mut c Checker) type_implements(typ table.Type, inter_typ table.Type, pos tok
 	$if debug_interface_type_implements ? {
 		eprintln('> type_implements typ: $typ.debug() | inter_typ: $inter_typ.debug()')
 	}
-	typ_sym := c.table.get_type_symbol(typ)
+	utyp := c.unwrap_generic(typ)
+	typ_sym := c.table.get_type_symbol(utyp)
 	mut inter_sym := c.table.get_type_symbol(inter_typ)
-	styp := c.table.type_to_str(typ)
-	same_base_type := typ.idx() == inter_typ.idx()
+	styp := c.table.type_to_str(utyp)
+	same_base_type := utyp.idx() == inter_typ.idx()
 	if typ_sym.kind == .interface_ && inter_sym.kind == .interface_ && !same_base_type {
 		c.error('cannot implement interface `$inter_sym.name` with a different interface `$styp`',
 			pos)
@@ -2064,8 +2065,8 @@ fn (mut c Checker) type_implements(typ table.Type, inter_typ table.Type, pos tok
 			c.error("`$styp` doesn't implement field `$ifield.name` of interface `$inter_sym.name`",
 				pos)
 		}
-		if typ !in inter_sym.info.types && typ_sym.kind != .interface_ {
-			inter_sym.info.types << typ
+		if utyp !in inter_sym.info.types && typ_sym.kind != .interface_ {
+			inter_sym.info.types << utyp
 		}
 	}
 	return true
@@ -5426,7 +5427,9 @@ pub fn (mut c Checker) enum_val(mut node ast.EnumVal) table.Type {
 	// rintln('checker: x = $info.x enum val $c.expected_type $typ_sym.name')
 	// println(info.vals)
 	if node.val !in info.vals {
-		c.error('enum `$typ_sym.name` does not have a value `$node.val`', node.pos)
+		suggestion := util.new_suggestion(node.val, info.vals)
+		c.error(suggestion.say('enum `$typ_sym.name` does not have a value `$node.val`'),
+			node.pos)
 	}
 	node.typ = typ
 	return typ
@@ -5902,8 +5905,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 	}
 	// TODO c.pref.is_vet
-	if node.language == .v && !node.is_method && node.params.len == 0
-		&& node.name.after('.').starts_with('test_') {
+	if node.language == .v && !node.is_method && node.params.len == 0 && node.is_test {
 		if !c.pref.is_test {
 			// simple heuristic
 			for st in node.stmts {
@@ -5914,9 +5916,10 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				}
 			}
 		}
-		// eprintln('> node.name: $node.name | node.return_type: $node.return_type')
-		if node.return_type != table.void_type_idx {
-			c.error('test functions should not return anything', node.pos)
+		if node.return_type != table.void_type_idx
+			&& node.return_type.clear_flag(.optional) != table.void_type_idx {
+			c.error('test functions should either return nothing at all, or be marked to return `?`',
+				node.pos)
 		}
 	}
 	c.expected_type = table.void_type
