@@ -334,6 +334,10 @@ fn (f Fmt) should_insert_newline_before_node(node ast.Node, prev_node ast.Node) 
 		if prev_stmt is ast.StructDecl {
 			return true
 		}
+		// Empty line after an block of type declarations
+		if prev_stmt is ast.TypeDecl && stmt !is ast.TypeDecl {
+			return true
+		}
 		// Imports are handled special hence they are ignored here
 		if stmt is ast.Import || prev_stmt is ast.Import {
 			return false
@@ -481,6 +485,7 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 		ast.FnTypeDecl { f.fn_type_decl(node) }
 		ast.SumTypeDecl { f.sum_type_decl(node) }
 	}
+	f.writeln('')
 }
 
 pub fn (mut f Fmt) alias_type_decl(node ast.AliasTypeDecl) {
@@ -491,7 +496,6 @@ pub fn (mut f Fmt) alias_type_decl(node ast.AliasTypeDecl) {
 	f.write('type $node.name = $ptype')
 
 	f.comments(node.comments, has_nl: false)
-	f.writeln('\n')
 }
 
 pub fn (mut f Fmt) fn_type_decl(node ast.FnTypeDecl) {
@@ -539,7 +543,6 @@ pub fn (mut f Fmt) fn_type_decl(node ast.FnTypeDecl) {
 	}
 
 	f.comments(node.comments, has_nl: false)
-	f.writeln('\n')
 }
 
 pub fn (mut f Fmt) sum_type_decl(node ast.SumTypeDecl) {
@@ -563,7 +566,6 @@ pub fn (mut f Fmt) sum_type_decl(node ast.SumTypeDecl) {
 	}
 
 	f.comments(node.comments, has_nl: false)
-	f.writeln('\n')
 }
 
 [inline]
