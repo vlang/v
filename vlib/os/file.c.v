@@ -337,6 +337,27 @@ pub fn (mut f File) read_struct<T>(mut t T) ? {
 	}
 }
 
+// read_struct_at reads a single struct of type `T` at position specified in file
+pub fn (mut f File) read_struct_at<T>(mut t T, pos int) ? {
+	if !f.is_opened {
+		return none
+	}
+	tsize := int(sizeof(*t))
+	if tsize == 0 {
+		return none
+	}
+	C.errno = 0
+	C.fseek(f.cfile, pos, C.SEEK_SET)
+	nbytes := int(C.fread(t, 1, tsize, f.cfile))
+	C.fseek(f.cfile, 0, C.SEEK_END)
+	if C.errno != 0 {
+		return error(posix_get_error_msg(C.errno))
+	}
+	if nbytes != tsize {
+		return error_with_code('incomplete struct read', nbytes)
+	}
+}
+
 // write_struct writes a single struct of type `T`
 pub fn (mut f File) write_struct<T>(t &T) ? {
 	if !f.is_opened {
@@ -348,6 +369,27 @@ pub fn (mut f File) write_struct<T>(t &T) ? {
 	}
 	C.errno = 0
 	nbytes := int(C.fwrite(t, 1, tsize, f.cfile))
+	if C.errno != 0 {
+		return error(posix_get_error_msg(C.errno))
+	}
+	if nbytes != tsize {
+		return error_with_code('incomplete struct write', nbytes)
+	}
+}
+
+// write_struct_at writes a single struct of type `T` at position specified in file
+pub fn (mut f File) write_struct_at<T>(t &T, pos int) ? {
+	if !f.is_opened {
+		return error('file is not opened')
+	}
+	tsize := int(sizeof(*t))
+	if tsize == 0 {
+		return error('struct size is 0')
+	}
+	C.errno = 0
+	C.fseek(f.cfile, pos, C.SEEK_SET)
+	nbytes := int(C.fwrite(t, 1, tsize, f.cfile))
+	C.fseek(f.cfile, 0, C.SEEK_END)
 	if C.errno != 0 {
 		return error(posix_get_error_msg(C.errno))
 	}
