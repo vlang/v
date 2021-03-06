@@ -1781,7 +1781,7 @@ pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 	f.single_line_if = false
 	if node.post_comments.len > 0 {
 		f.writeln('')
-		f.comments(node.post_comments, 
+		f.comments(node.post_comments,
 			has_nl: false
 			prev_line: node.branches.last().body_pos.last_line
 		)
