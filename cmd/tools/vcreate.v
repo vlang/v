@@ -93,9 +93,9 @@ fn (c &Create) create_git_repo(dir string) {
 	}
 }
 
-fn create() {
+fn create(args []string) {
 	mut c := Create{}
-	c.name = os.input('Input your project name: ')
+	c.name = if args.len > 0 { args[0] } else { os.input('Input your project name: ') }
 	if c.name == '' {
 		cerror('project name cannot be empty')
 		exit(1)
@@ -108,7 +108,7 @@ fn create() {
 		cerror('$c.name folder already exists')
 		exit(3)
 	}
-	c.description = os.input('Input your project description: ')
+	c.description = if args.len > 1 { args[1] } else { os.input('Input your project description: ') }
 	println('Initialising ...')
 	os.mkdir(c.name) or { panic(err) }
 	c.write_vmod(true)
@@ -132,7 +132,7 @@ fn init_project() {
 
 fn main() {
 	if os.args[1] == 'new' {
-		create()
+		create(os.args[2..])
 	} else if os.args[1] == 'init' {
 		init_project()
 	} else {
