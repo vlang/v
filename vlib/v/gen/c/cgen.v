@@ -2970,10 +2970,9 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		g.write('(*(')
 	}
 	if sym.kind == .array_fixed {
-		if node.field_name == 'len' {
+		if node.field_name != 'len' {
 			g.error('field_name should be `len`', node.pos)
 		}
-		assert node.field_name == 'len'
 		info := sym.info as table.ArrayFixed
 		g.write('$info.size')
 		return

@@ -1,0 +1,7 @@
+[vlib/v/tests/inout/dump_expression.vv:2] 1: 1
+[vlib/v/tests/inout/dump_expression.vv:7] 'a': a
+[vlib/v/tests/inout/dump_expression.vv:20] point: Point{
+    x: 1
+    y: 2
+    z: 3
+}
