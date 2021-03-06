@@ -358,6 +358,50 @@ pub fn (mut f File) read_struct_at<T>(mut t T, pos int) ? {
 	}
 }
 
+// read_any reads and returns a single instance of type `T`
+pub fn (mut f File) read_any<T>() ?T {
+	if !f.is_opened {
+		return none
+	}
+	tsize := int(sizeof(T))
+	if tsize == 0 {
+		return none
+	}
+	C.errno = 0
+	mut t := T{}
+	nbytes := int(C.fread(&t, 1, tsize, f.cfile))
+	if C.errno != 0 {
+		return error(posix_get_error_msg(C.errno))
+	}
+	if nbytes != tsize {
+		return error_with_code('incomplete struct read', nbytes)
+	}
+	return t
+}
+
+// read_any_at reads and returns a single instance of type `T` starting at file byte offset `pos`
+pub fn (mut f File) read_any_at<T>(pos int) ?T {
+	if !f.is_opened {
+		return none
+	}
+	tsize := int(sizeof(T))
+	if tsize == 0 {
+		return none
+	}
+	C.errno = 0
+	C.fseek(f.cfile, pos, C.SEEK_SET)
+	mut t := T{}
+	nbytes := int(C.fread(&t, 1, tsize, f.cfile))
+	C.fseek(f.cfile, 0, C.SEEK_END)
+	if C.errno != 0 {
+		return error(posix_get_error_msg(C.errno))
+	}
+	if nbytes != tsize {
+		return error_with_code('incomplete struct read', nbytes)
+	}
+	return t
+}
+
 // write_struct writes a single struct of type `T`
 pub fn (mut f File) write_struct<T>(t &T) ? {
 	if !f.is_opened {
@@ -382,7 +426,7 @@ pub fn (mut f File) write_struct_at<T>(t &T, pos int) ? {
 	if !f.is_opened {
 		return error('file is not opened')
 	}
-	tsize := int(sizeof(*t))
+	tsize := int(sizeof(T))
 	if tsize == 0 {
 		return error('struct size is 0')
 	}
@@ -397,3 +441,17 @@ pub fn (mut f File) write_struct_at<T>(t &T, pos int) ? {
 		return error_with_code('incomplete struct write', nbytes)
 	}
 }
+
+/*
+There seem to be bug in generics that prevent that
+
+// write_struct writes a single instance of type `T`
+pub fn (mut f File) write_any<T>(t &T) ? {
+	return f.write_struct<T>(t)
+}
+
+// write_struct_at writes a single instance of type `T` starting at file byte offset `pos`
+pub fn (mut f File) write_any_at<T>(t &T, pos int) ? {
+	return f.write_struct_at<T>(t, pos)
+}
+*/
