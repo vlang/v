@@ -77,14 +77,14 @@ pub fn panic(s string) {
 
 // eprintln prints a message with a line end, to stderr. Both stderr and stdout are flushed.
 pub fn eprintln(s string) {
-	C.fflush(C.stdout)
-	C.fflush(C.stderr)
+	C.fflush(1) // C.stdout
+	C.fflush(2) // C.stderr
 	// eprintln is used in panics, so it should not fail at all
 	$if android {
 		if s.str == 0 {
-			C.fprintf(C.stderr, c'eprintln(NIL)\n')
+			C.fprintf(2, c'eprintln(NIL)\n')
 		} else {
-			C.fprintf(C.stderr, c'%.*s\n', s.len, s.str)
+			C.fprintf(2, c'%.*s\n', s.len, s.str)
 		}
 	} $else {
 		if s.str == 0 {
@@ -94,18 +94,18 @@ pub fn eprintln(s string) {
 			C.write(2, c'\n', 1)
 		}
 	}
-	C.fflush(C.stderr)
+	C.fflush(2) // C.stderr
 }
 
 // eprint prints a message to stderr. Both stderr and stdout are flushed.
 pub fn eprint(s string) {
-	C.fflush(C.stdout)
-	C.fflush(C.stderr)
+	C.fflush(1) // C.stdout
+	C.fflush(2) // C.stderr
 	$if android {
 		if s.str == 0 {
-			C.fprintf(C.stderr, c'eprint(NIL)')
+			C.fprintf(2, c'eprint(NIL)')
 		} else {
-			C.fprintf(C.stderr, c'%.*s', s.len, s.str)
+			C.fprintf(2, c'%.*s', s.len, s.str)
 		}
 	} $else {
 		if s.str == 0 {
@@ -114,14 +114,14 @@ pub fn eprint(s string) {
 			C.write(2, s.str, s.len)
 		}
 	}
-	C.fflush(C.stderr)
+	C.fflush(2)
 }
 
 // print prints a message to stdout. Unlike `println` stdout is not automatically flushed.
 // A call to `flush()` will flush the output buffer to stdout.
 pub fn print(s string) {
 	$if android {
-		C.fprintf(C.stdout, c'%.*s', s.len, s.str)
+		C.fprintf(1, c'%.*s', s.len, s.str)
 	} $else {
 		C.write(1, s.str, s.len)
 	}
@@ -174,7 +174,7 @@ pub fn malloc(n int) byteptr {
 	}
 	$if trace_malloc ? {
 		total_m += n
-		C.fprintf(C.stderr, c'v_malloc %d total %d\n', n, total_m)
+		C.fprintf(2, c'v_malloc %d total %d\n', n, total_m) // C.stderr
 		// print_backtrace()
 	}
 	mut res := byteptr(0)
