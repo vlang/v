@@ -1063,6 +1063,9 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 			to_lock, pos = c.fail_if_immutable(expr.right)
 		}
 		ast.SelectorExpr {
+			if expr.expr_type == 0 {
+				return '', pos
+			}
 			// retrieve table.Field
 			c.ensure_type_exists(expr.expr_type, expr.pos) or { return '', pos }
 			mut typ_sym := c.table.get_final_type_symbol(c.unwrap_generic(expr.expr_type))
