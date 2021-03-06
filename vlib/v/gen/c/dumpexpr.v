@@ -6,6 +6,10 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 	sexpr := ctoslit(node.expr.str())
 	fpath := cestring(g.file.path)
 	line := node.pos.line_nr + 1
+	if 'nop_dump' in g.pref.compile_defines {
+		g.expr(node.expr)
+		return
+	}
 	g.write(' _v_dump_expr_${node.cname}(${ctoslit(fpath)}, $line, $sexpr, ')
 	g.expr(node.expr)
 	g.write(' )')
