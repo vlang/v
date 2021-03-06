@@ -900,6 +900,11 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		ast.CTempVar {
 			eprintln('ast.CTempVar of $node.orig.str() should be generated/used only in cgen')
 		}
+		ast.DumpExpr {
+			f.write('dump(')
+			f.expr(node.expr)
+			f.write(')')
+		}
 		ast.AnonFn {
 			f.fn_decl(node.decl)
 		}

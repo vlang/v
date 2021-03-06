@@ -1866,7 +1866,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		&& f.ctdefine !in c.pref.compile_defines {
 		call_expr.should_be_skipped = true
 	}
-	// dont check number of args for JS functions since arguments are not required 
+	// dont check number of args for JS functions since arguments are not required
 	if call_expr.language != .js {
 		min_required_args := if f.is_variadic { f.params.len - 1 } else { f.params.len }
 		if call_expr.args.len < min_required_args {
@@ -3715,6 +3715,17 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		}
 		ast.ConcatExpr {
 			return c.concat_expr(mut node)
+		}
+		ast.DumpExpr {
+			node.expr_type = c.expr(node.expr)
+			if node.expr_type.idx() == table.void_type_idx {
+				c.error('dump expression can not be void', node.expr.position())
+				return table.void_type
+			}
+			tsym := c.table.get_type_symbol(node.expr_type)
+			c.table.dumps[int(node.expr_type)] = tsym.cname
+			node.cname = tsym.cname
+			return node.expr_type
 		}
 		ast.EnumVal {
 			return c.enum_val(mut node)
