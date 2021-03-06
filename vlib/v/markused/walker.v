@@ -180,6 +180,9 @@ fn (mut w Walker) expr(node ast.Expr) {
 				w.stmts(node.vweb_tmpl.stmts)
 			}
 		}
+		ast.DumpExpr {
+			w.expr(node.expr)
+		}
 		ast.GoExpr {
 			w.expr(node.go_stmt.call_expr)
 		}

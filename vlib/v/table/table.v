@@ -12,8 +12,9 @@ pub mut:
 	types         []TypeSymbol
 	type_idxs     map[string]int
 	fns           map[string]Fn
-	imports       []string // List of all imports
-	modules       []string // Topologically sorted list of all modules registered by the application
+	dumps         map[int]string // needed for efficiently generating all _v_dump_expr_TNAME() functions
+	imports       []string       // List of all imports
+	modules       []string       // Topologically sorted list of all modules registered by the application
 	cflags        []cflag.CFlag
 	redefined_fns []string
 	fn_gen_types  map[string][][]Type // for generic functions

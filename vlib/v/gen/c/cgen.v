@@ -266,6 +266,8 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 			g.definitions.writeln('int _v_type_idx_${typ.cname}() { return $idx; };')
 		}
 	}
+	//
+	g.dump_expr_definitions()
 	// v files are finished, what remains is pure C code
 	g.gen_vlines_reset()
 	if g.pref.build_mode != .build_module {
@@ -2698,6 +2700,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.write("L'$node.val'")
 			}
 		}
+		ast.DumpExpr {
+			g.dump_expr(node)
+		}
 		ast.AtExpr {
 			g.comp_at(node)
 		}
@@ -2965,6 +2970,9 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		g.write('(*(')
 	}
 	if sym.kind == .array_fixed {
+		if node.field_name == 'len' {
+			g.error('field_name should be `len`', node.pos)
+		}
 		assert node.field_name == 'len'
 		info := sym.info as table.ArrayFixed
 		g.write('$info.size')
