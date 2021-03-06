@@ -3718,6 +3718,10 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		}
 		ast.DumpExpr {
 			node.expr_type = c.expr(node.expr)
+			if node.expr_type.idx() == table.void_type_idx {
+				c.error('dump expression can not be void', node.expr.position())
+				return table.void_type
+			}
 			tsym := c.table.get_type_symbol(node.expr_type)
 			c.table.dumps[int(node.expr_type)] = tsym.cname
 			node.cname = tsym.cname
