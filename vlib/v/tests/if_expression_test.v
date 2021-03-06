@@ -180,3 +180,14 @@ fn test_if_expr_with_array_map() {
 	println(assigned)
 	assert assigned == [2, 3]
 }
+
+fn test_if_epxr_with_array_conditions() {
+	num_arr := [1, 2, 3]
+	if num_arr == [] {
+		assert false
+	}
+	str_arr := [['foo'], ['bar']]
+	if str_arr == [][]string{} {
+		assert false
+	}
+}
