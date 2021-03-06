@@ -2082,10 +2082,7 @@ pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type table.Type) t
 			} else {
 				c.check_or_expr(expr.or_block, ret_type, expr.return_type.clear_flag(.optional))
 			}
-			// remove optional flag
-			// return ret_type.clear_flag(.optional)
-			// TODO: currently unwrapped in assign, would need to refactor assign to unwrap here
-			return ret_type
+			return ret_type.clear_flag(.optional)
 		} else if expr.or_block.kind == .block {
 			c.error('unexpected `or` block, the function `$expr.name` does not return an optional',
 				expr.or_block.pos)
@@ -2629,10 +2626,6 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 							right.pos)
 					}
 				}
-			}
-			// we are unwrapping here instead if check_expr_opt_call currently
-			if left_type.has_flag(.optional) {
-				left_type = left_type.clear_flag(.optional)
 			}
 		} else {
 			// Make sure the variable is mutable
