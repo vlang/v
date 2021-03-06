@@ -1,0 +1,5 @@
+Usage:
+  v new [name] [description]
+  v init
+
+Setup file structure for a V project.
