@@ -173,8 +173,8 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 		timers_should_print = true
 	}
 	mut g := Gen{
-		out: strings.new_builder(1000)
-		cheaders: strings.new_builder(8192)
+		out: strings.new_builder(512000)
+		cheaders: strings.new_builder(15000)
 		includes: strings.new_builder(100)
 		typedefs: strings.new_builder(100)
 		typedefs2: strings.new_builder(100)
@@ -272,10 +272,10 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 		// no init in builtin.o
 		g.write_init_function()
 	}
-	//
+
 	g.finish()
-	//
-	mut b := strings.new_builder(250000)
+
+	mut b := strings.new_builder(640000)
 	b.write_string(g.hashes())
 	b.writeln('\n// V comptime_defines:')
 	b.write_string(g.comptime_defines.str())
