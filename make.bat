@@ -23,9 +23,11 @@ REM VC settings
 set "vc_url=https://github.com/vlang/vc"
 set "vc_dir=%~dp0vc"
 
-REM Let a particular environment specify their own TCC repo
+REM Let a particular environment specify their own TCC and VC repos (to help mirrors)
 if /I not ["%TCC_GIT%"] == [""] set "tcc_url=%TCC_GIT%"
 if /I not ["%TCC_BRANCH%"] == [""] set "tcc_branch=%TCC_BRANCH%"
+
+if /I not ["%VC_GIT%"] == [""] set "vc_url=%VC_GIT%"
 
 pushd %~dp0
 
