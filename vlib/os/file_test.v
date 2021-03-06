@@ -29,7 +29,7 @@ const another_point = Point{0.25, 2.25, 6.25}
 const extended_point = Extended_Point{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0}
 
 fn testsuite_begin() {
-	os.rmdir_all(tfolder) or { }
+	os.rmdir_all(tfolder) or {}
 	assert !os.is_dir(tfolder)
 	os.mkdir_all(tfolder) or { panic(err) }
 	os.chdir(tfolder)

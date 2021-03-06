@@ -75,7 +75,7 @@ fn testsuite_begin() {
 	for f in [tmp_file, source_file, output_file, res_original_file, res_changed_file, res_another_file,
 		res_stop_file,
 	] {
-		os.rm(f) or { }
+		os.rm(f) or {}
 	}
 	atomic_write_source(live_program_source)
 }
@@ -105,7 +105,7 @@ fn testsuite_end() {
 	assert histogram['CHANGED'] + histogram['ANOTHER'] > 0
 	// assert histogram['END'] > 0
 	for tfile in cleanup_files {
-		os.rm(tfile) or { }
+		os.rm(tfile) or {}
 	}
 }
 

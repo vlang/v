@@ -169,7 +169,7 @@ pub fn (mut ctx Context) server_error(ecode int) Result {
 	if ctx.done {
 		return Result{}
 	}
-	send_string(mut ctx.conn, vweb.http_500) or { }
+	send_string(mut ctx.conn, vweb.http_500) or {}
 	return Result{}
 }
 
@@ -191,7 +191,7 @@ pub fn (mut ctx Context) not_found() Result {
 		return Result{}
 	}
 	ctx.done = true
-	send_string(mut ctx.conn, vweb.http_404) or { }
+	send_string(mut ctx.conn, vweb.http_404) or {}
 	return Result{}
 }
 
@@ -301,7 +301,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	conn.set_read_timeout(30 * time.second)
 	conn.set_write_timeout(30 * time.second)
 	defer {
-		conn.close() or { }
+		conn.close() or {}
 	}
 	mut reader := io.new_buffered_reader(reader: io.make_reader(conn))
 	page_gen_start := time.ticks()
@@ -321,7 +321,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 		if 'multipart/form-data' in req.lheaders['content-type'].split('; ') {
 			boundary := req.lheaders['content-type'].split('; ').filter(it.starts_with('boundary='))
 			if boundary.len != 1 {
-				send_string(mut conn, vweb.http_400) or { }
+				send_string(mut conn, vweb.http_400) or {}
 				return
 			}
 			form, files := parse_multipart_form(req.data, boundary[0][9..])
@@ -400,7 +400,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 		}
 	}
 	// site not found
-	send_string(mut conn, vweb.http_404) or { }
+	send_string(mut conn, vweb.http_404) or {}
 }
 
 fn route_matches(url_words []string, route_words []string) ?[]string {
@@ -493,7 +493,7 @@ fn serve_static<T>(mut app T, url urllib.URL) bool {
 		return false
 	}
 	data := os.read_file(static_file) or {
-		send_string(mut app.conn, vweb.http_404) or { }
+		send_string(mut app.conn, vweb.http_404) or {}
 		return true
 	}
 	app.send_response_to_client(mime_type, data)
