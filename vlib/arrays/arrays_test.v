@@ -85,3 +85,19 @@ fn test_group() {
 	assert z2 == [[8, 2], [9, 1]]
 	assert group<int>(x, []int{}) == [][]int{}
 }
+
+fn test_intersect_int() {
+	x := [1, 3, 5, 7, 9, 1, 3, 5]
+	y := [1, 2, 3, 4, 5]
+
+	z := intersect<int>(x, y)
+	assert z == [1, 3, 5]
+}
+
+fn test_intersect_string() {
+	x := ['test', '-d']
+	y := ['-d', '--dry-run']
+
+	z := intersect<string>(x, y)
+	assert z == ['-d']
+}
