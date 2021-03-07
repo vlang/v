@@ -13,18 +13,21 @@ struct Create {
 mut:
 	name        string
 	description string
+	version     string
+	license     string
 }
 
 fn cerror(e string) {
 	eprintln('\nerror: $e')
 }
 
-fn vmod_content(name string, desc string) string {
+fn vmod_content(c Create) string {
 	return [
 		'Module {',
-		"	name: '$name'",
-		"	description: '$desc'",
-		"	version: '0.0.0'",
+		"	name: '$c.name'",
+		"	description: '$c.description'",
+		"	version: '$c.version'",
+		"	license: '$c.license'",
 		'	dependencies: []',
 		'}',
 	].join('\n')
@@ -58,7 +61,7 @@ fn (c &Create) write_vmod(new bool) {
 		cerror(err.msg)
 		exit(1)
 	}
-	vmod.write_str(vmod_content(c.name, c.description)) or { panic(err) }
+	vmod.write_str(vmod_content(c)) or { panic(err) }
 	vmod.close()
 }
 
@@ -109,6 +112,16 @@ fn create(args []string) {
 		exit(3)
 	}
 	c.description = if args.len > 1 { args[1] } else { os.input('Input your project description: ') }
+	default_version := '0.0.0'
+	c.version = os.input('Input your project version: ($default_version) ')
+	if c.version == '' {
+		c.version = default_version
+	}
+	default_license := 'MIT'
+	c.license = os.input('Input your project license: ($default_license) ')
+	if c.license == '' {
+		c.license = default_license
+	}
 	println('Initialising ...')
 	os.mkdir(c.name) or { panic(err) }
 	c.write_vmod(true)
