@@ -166,6 +166,7 @@ fn (mut tasks Tasks) run() {
 	}
 	$if msvc {
 		m_skip_files << 'vlib/v/checker/tests/asm_alias_does_not_exist.vv'
+		m_skip_files << 'vlib/v/checker/tests/asm_immutable_err.vv'	
 	}
 	for i in 0 .. tasks.all.len {
 		if tasks.all[i].path in m_skip_files {
