@@ -15,7 +15,7 @@ fn test_imported_symbols_types() {
 
 fn test_imported_symbols_functions() {
 	p0 := Point{x: 20 y: 40}
-	// method 
+	// method
 	assert p0.str() == '20 40'
 	// function
     assert point_str(p0) == '20 40'
@@ -35,4 +35,5 @@ fn vertex_count(s Shape) int {
 
 fn test_imported_symbols_enums() {
 	assert vertex_count(.triangle) == 3
+	assert vertex_count(Shape.triangle) == 3
 }
