@@ -125,6 +125,26 @@ pub fn group<T>(lists ...[]T) [][]T {
 	return [][]T{}
 }
 
+// Get a new array with all common elements
+pub fn intersect<T>(a []T, b []T) []T {
+	mut intersection_array := []T{}
+	// Iterate over all elements from the first array
+	for element_a in a {
+		// To avoid multiple identical values
+		if !(element_a in intersection_array) {
+			// Iterate over the second element and check for an intersection
+			for element_b in b {
+				if element_a == element_b  {
+					intersection_array << element_b
+					// If there is a match, we skip to the next iteration of a
+					continue
+				}
+			}
+		}
+	}
+	return intersection_array
+}
+
 [deprecated]
 pub fn shuffle<T>(mut a []T, n int) {
 	panic('Please use rand.util.shuffle() instead')
