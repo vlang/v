@@ -13,8 +13,8 @@ import v.pref
 const (
 	vexe    = pref.vexe_path()
 	options = Options{
-		yes: ['-y', '--yes']
-		dry_run: ['-d', '--dry-run']
+		yes: ['-y', '-yes']
+		dry_run: ['-d', '-dry-run']
 	}
 )
 
@@ -159,7 +159,7 @@ fn init_project() {
 }
 
 fn main() {
-	help_options := ['-h', '--help', 'help']
+	help_options := ['-help', '--help', 'help']
 	if os.args[1] == 'new' {
 		if os.args[2] in help_options {
 			os.system('$vexe help new')

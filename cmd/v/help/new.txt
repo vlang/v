@@ -9,5 +9,5 @@ Examples:
 Setup the file structure for a V project (in a sub folder).
 
 Options:
-  -d, --dry-run   Just output the files which should be created.
-  -y, --yes       Skip the questionnaire altogether and use default values.
+  -d, -dry-run   Just output the files which should be created.
+  -y, -yes       Skip the questionnaire altogether and use default values.
