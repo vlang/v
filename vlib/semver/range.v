@@ -61,10 +61,10 @@ fn parse_range(input string) ?Range {
 	mut comparator_sets := []ComparatorSet{}
 	for raw_comp_set in raw_comparator_sets {
 		if can_expand(raw_comp_set) {
-			s := expand_comparator_set(raw_comp_set) or { return error(err) }
+			s := expand_comparator_set(raw_comp_set) or { return err }
 			comparator_sets << s
 		} else {
-			s := parse_comparator_set(raw_comp_set) or { return error(err) }
+			s := parse_comparator_set(raw_comp_set) or { return err }
 			comparator_sets << s
 		}
 	}

@@ -29,8 +29,11 @@ pub const (
 pub fn vhash() string {
 	mut buf := [50]byte{}
 	buf[0] = 0
-	unsafe { C.snprintf(charptr(buf), 50, '%s', C.V_COMMIT_HASH) }
-	return tos_clone(buf)
+	unsafe {
+		bp := &buf[0]
+		C.snprintf(charptr(bp), 50, '%s', C.V_COMMIT_HASH)
+		return tos_clone(bp)
+	}
 }
 
 pub fn full_hash() string {
@@ -95,8 +98,11 @@ pub fn githash(should_get_from_filesystem bool) string {
 	}
 	mut buf := [50]byte{}
 	buf[0] = 0
-	unsafe { C.snprintf(charptr(buf), 50, '%s', C.V_CURRENT_COMMIT_HASH) }
-	return tos_clone(buf)
+	unsafe {
+		bp := &buf[0]
+		C.snprintf(charptr(bp), 50, '%s', C.V_CURRENT_COMMIT_HASH)
+		return tos_clone(bp)
+	}
 }
 
 //
@@ -357,6 +363,11 @@ pub fn imax(a int, b int) int {
 	return if a > b { a } else { b }
 }
 
+[inline]
+pub fn iabs(v int) int {
+	return if v > 0 { v } else { -v }
+}
+
 pub fn replace_op(s string) string {
 	if s.len == 1 {
 		last_char := s[s.len - 1]
@@ -505,7 +516,7 @@ pub fn prepare_tool_when_needed(source_name string) {
 	stool := os.join_path(vroot, 'cmd', 'tools', source_name)
 	tool_name, tool_exe := tool_source2name_and_exe(stool)
 	if should_recompile_tool(vexe, stool, tool_name, tool_exe) {
-		time.sleep_ms(1001) // TODO: remove this when we can get mtime with a better resolution
+		time.sleep(1001 * time.millisecond) // TODO: remove this when we can get mtime with a better resolution
 		recompile_file(vexe, stool)
 	}
 }

@@ -44,16 +44,16 @@ fn (mut g Gen) gen_embedded_data() {
 	*/
 	for i, emfile in g.embedded_files {
 		fbytes := os.read_bytes(emfile.apath) or { panic('Error while embedding file: $err') }
-		g.embedded_data.write('static const unsigned char _v_embed_blob_$i[$fbytes.len] = {\n    ')
+		g.embedded_data.write_string('static const unsigned char _v_embed_blob_$i[$fbytes.len] = {\n    ')
 		for j := 0; j < fbytes.len; j++ {
 			b := fbytes[j].hex()
 			if j < fbytes.len - 1 {
-				g.embedded_data.write('0x$b,')
+				g.embedded_data.write_string('0x$b,')
 			} else {
-				g.embedded_data.write('0x$b')
+				g.embedded_data.write_string('0x$b')
 			}
 			if 0 == ((j + 1) % 16) {
-				g.embedded_data.write('\n    ')
+				g.embedded_data.write_string('\n    ')
 			}
 		}
 		g.embedded_data.writeln('\n};')

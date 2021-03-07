@@ -45,6 +45,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 		}
 		.comment {
 			node = p.comment()
+			return node
 		}
 		.dot {
 			// .enum_val
@@ -75,14 +76,23 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			p.next()
 		}
 		.amp, .mul, .not, .bit_not, .arrow {
-			// -1, -a, !x, &x, ~x, <-a
+			// &x, *x, !x, ~x, <-x
 			node = p.prefix_expr()
 		}
 		.minus {
+			// -1, -a
 			if p.peek_tok.kind == .number {
 				node = p.parse_number_literal()
 			} else {
 				node = p.prefix_expr()
+			}
+		}
+		.key_go {
+			stmt := p.stmt(false)
+			go_stmt := stmt as ast.GoStmt
+			node = ast.GoExpr{
+				go_stmt: go_stmt
+				pos: go_stmt.pos
 			}
 		}
 		.key_true, .key_false {
@@ -140,7 +150,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			if p.expecting_type {
 				// parse json.decode type (`json.decode([]User, s)`)
 				node = p.name_expr()
-			} else if p.is_amp && p.peek_tok.kind == .rsbr && p.peek_tok3.kind != .lcbr {
+			} else if p.is_amp && p.peek_tok.kind == .rsbr && p.peek_token(3).kind != .lcbr {
 				pos := p.tok.position()
 				typ := p.parse_type().to_ptr()
 				p.check(.lpar)
@@ -163,9 +173,9 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			}
 		}
 		.key_sizeof {
-			pos := p.tok.position()
 			p.next() // sizeof
 			p.check(.lpar)
+			pos := p.tok.position()
 			is_known_var := p.mark_var_as_used(p.tok.lit)
 			// assume mod. prefix leads to a type
 			if is_known_var || !(p.known_import(p.tok.lit) || p.tok.kind.is_start_of_type()) {
@@ -200,6 +210,17 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 					spos)
 			}
 			node = ast.TypeOf{
+				expr: expr
+				pos: spos.extend(p.tok.position())
+			}
+		}
+		.key_dump {
+			spos := p.tok.position()
+			p.next()
+			p.check(.lpar)
+			expr := p.expr(0)
+			p.check(.rpar)
+			node = ast.DumpExpr{
 				expr: expr
 				pos: spos.extend(p.tok.position())
 			}
@@ -348,6 +369,9 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 			p.next()
 			right := p.expr(precedence - 1)
 			pos.update_last_line(p.prev_tok.line_nr)
+			if mut node is ast.IndexExpr {
+				node.recursive_mapset_is_setter(true)
+			}
 			node = ast.InfixExpr{
 				left: node
 				right: right
@@ -357,7 +381,7 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 		} else if p.tok.kind.is_infix() {
 			if p.tok.kind.is_prefix() && p.tok.line_nr != p.prev_tok.line_nr {
 				// return early for deref assign `*x = 2` goes to prefix expr
-				if p.tok.kind == .mul && p.peek_tok2.kind == .assign {
+				if p.tok.kind == .mul && p.peek_token(2).kind == .assign {
 					return node
 				}
 				// added 10/2020: LATER this will be parsed as PrefixExpr instead
@@ -380,6 +404,9 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 			if p.tok.kind in [.inc, .dec] && p.prev_tok.line_nr != p.tok.line_nr {
 				p.error_with_pos('$p.tok must be on the same line as the previous token',
 					p.tok.position())
+			}
+			if mut node is ast.IndexExpr {
+				node.recursive_mapset_is_setter(true)
 			}
 			node = ast.PostfixExpr{
 				op: p.tok.kind
@@ -424,14 +451,8 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 			p.next()
 			p.open_scope()
 			p.scope.register(ast.Var{
-				name: 'errcode'
-				typ: table.int_type
-				pos: p.tok.position()
-				is_used: true
-			})
-			p.scope.register(ast.Var{
 				name: 'err'
-				typ: table.string_type
+				typ: table.error_type
 				pos: p.tok.position()
 				is_used: true
 			})
@@ -492,14 +513,8 @@ fn (mut p Parser) prefix_expr() ast.PrefixExpr {
 			p.next()
 			p.open_scope()
 			p.scope.register(ast.Var{
-				name: 'errcode'
-				typ: table.int_type
-				pos: p.tok.position()
-				is_used: true
-			})
-			p.scope.register(ast.Var{
 				name: 'err'
-				typ: table.string_type
+				typ: table.error_type
 				pos: p.tok.position()
 				is_used: true
 			})

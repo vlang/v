@@ -29,11 +29,11 @@ struct SystemTime {
 	millisecond u16
 }
 
-fn C.GetSystemTimeAsFileTime(lpSystemTimeAsFileTime C._FILETIME)
+fn C.GetSystemTimeAsFileTime(lpSystemTimeAsFileTime &C._FILETIME)
 
-fn C.FileTimeToSystemTime()
+fn C.FileTimeToSystemTime(lpFileTime &C._FILETIME, lpSystemTime &SystemTime)
 
-fn C.SystemTimeToTzSpecificLocalTime()
+fn C.SystemTimeToTzSpecificLocalTime(lpTimeZoneInformation &C.TIME_ZONE_INFORMATION, lpUniversalTime &SystemTime, lpLocalTime &SystemTime)
 
 fn C.localtime_s(t &C.time_t, tm &C.tm)
 
@@ -50,7 +50,7 @@ struct C.timespec {
 	tv_nsec i64
 }
 
-fn C._mkgmtime(&C.tm) time_t
+fn C._mkgmtime(&C.tm) C.time_t
 
 fn C.QueryPerformanceCounter(&u64) C.BOOL
 
@@ -211,4 +211,15 @@ pub fn solaris_utc() Time {
 pub struct C.timeval {
 	tv_sec  u64
 	tv_usec u64
+}
+
+// wait makes the calling thread sleep for a given duration (in nanoseconds).
+[deprecated: 'call time.sleep(n * time.second)']
+pub fn wait(duration Duration) {
+	C.Sleep(int(duration / millisecond))
+}
+
+// sleep makes the calling thread sleep for a given duration (in nanoseconds).
+pub fn sleep(duration Duration) {
+	C.Sleep(int(duration / millisecond))
 }

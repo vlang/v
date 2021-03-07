@@ -33,12 +33,12 @@ fn main() {
 	sql db {
 		insert mod into Module
 	}
-	
+
 	modul := sql db {
 		select from Module where id == 1
 	}
 
 	println(modul.name)
 	println(modul.creator.name)
-	
+
 }

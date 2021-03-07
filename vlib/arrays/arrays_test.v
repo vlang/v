@@ -1,7 +1,5 @@
 module arrays
 
-import rand
-
 fn test_min() {
 	a := [8, 2, 6, 4]
 	assert min<int>(a) == 2

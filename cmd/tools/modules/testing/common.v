@@ -4,7 +4,7 @@ import os
 import time
 import term
 import benchmark
-import sync
+import sync.pool
 import v.pref
 import v.util.vtest
 
@@ -128,6 +128,14 @@ pub fn new_test_session(_vargs string) TestSession {
 			skip_files << 'examples/database/orm.v' // try fix it
 		}
 	}
+	if testing.github_job != 'sokol-shaders-can-be-compiled' {
+		// These examples need .h files that are produced from the supplied .glsl files,
+		// using by the shader compiler tools in https://github.com/floooh/sokol-tools-bin/archive/pre-feb2021-api-changes.tar.gz
+		skip_files << 'examples/sokol/02_cubes_glsl/cube_glsl.v'
+		skip_files << 'examples/sokol/03_march_tracing_glsl/rt_glsl.v'
+		skip_files << 'examples/sokol/04_multi_shader_glsl/rt_glsl.v'
+		skip_files << 'examples/sokol/05_instancing_glsl/rt_glsl.v'
+	}
 	if testing.github_job != 'ubuntu-tcc' {
 		skip_files << 'examples/wkhtmltopdf.v' // needs installation of wkhtmltopdf from https://github.com/wkhtmltopdf/packaging/releases
 		// the ttf_test.v is not interactive, but needs X11 headers to be installed, which is done only on ubuntu-tcc for now
@@ -198,14 +206,14 @@ pub fn (mut ts TestSession) test() {
 	remaining_files = vtest.filter_vtest_only(remaining_files, fix_slashes: false)
 	ts.files = remaining_files
 	ts.benchmark.set_total_expected_steps(remaining_files.len)
-	mut pool_of_test_runners := sync.new_pool_processor(callback: worker_trunner)
+	mut pool_of_test_runners := pool.new_pool_processor(callback: worker_trunner)
 	// for handling messages across threads
 	ts.nmessages = chan LogMessage{cap: 10000}
 	ts.nprint_ended = chan int{cap: 0}
 	ts.nmessage_idx = 0
 	go ts.print_messages()
 	pool_of_test_runners.set_shared_context(ts)
-	pool_of_test_runners.work_on_pointers(remaining_files.pointers())
+	pool_of_test_runners.work_on_pointers(unsafe { remaining_files.pointers() })
 	ts.benchmark.stop()
 	ts.append_message(.sentinel, '') // send the sentinel
 	_ := <-ts.nprint_ended // wait for the stop of the printing thread
@@ -218,7 +226,7 @@ pub fn (mut ts TestSession) test() {
 	}
 }
 
-fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
+fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	mut ts := &TestSession(p.get_shared_context())
 	tmpd := ts.vtmp_dir
 	show_stats := '-stats' in ts.vargs.split(' ')
@@ -230,7 +238,7 @@ fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 		p.set_thread_context(idx, tls_bench)
 	}
 	tls_bench.no_cstep = true
-	dot_relative_file := p.get_string_item(idx)
+	dot_relative_file := p.get_item<string>(idx)
 	mut relative_file := dot_relative_file.replace('./', '')
 	if ts.root_relative {
 		relative_file = relative_file.replace(ts.vroot + os.path_separator, '')
@@ -239,8 +247,11 @@ fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 	// Ensure that the generated binaries will be stored in the temporary folder.
 	// Remove them after a test passes/fails.
 	fname := os.file_name(file)
-	generated_binary_fname := if os.user_os() == 'windows' { fname.replace('.v', '.exe') } else { fname.replace('.v',
-			'') }
+	generated_binary_fname := if os.user_os() == 'windows' {
+		fname.replace('.v', '.exe')
+	} else {
+		fname.replace('.v', '')
+	}
 	generated_binary_fpath := os.join_path(tmpd, generated_binary_fname)
 	if os.exists(generated_binary_fpath) {
 		if ts.rm_binaries {
@@ -258,7 +269,7 @@ fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 		ts.benchmark.skip()
 		tls_bench.skip()
 		ts.append_message(.skip, tls_bench.step_message_skip(relative_file))
-		return sync.no_result
+		return pool.no_result
 	}
 	if show_stats {
 		ts.append_message(.ok, term.h_divider('-'))
@@ -270,7 +281,7 @@ fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 			ts.failed = true
 			ts.benchmark.fail()
 			tls_bench.fail()
-			return sync.no_result
+			return pool.no_result
 		}
 	} else {
 		if testing.show_start {
@@ -281,7 +292,7 @@ fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 			ts.benchmark.fail()
 			tls_bench.fail()
 			ts.append_message(.fail, tls_bench.step_message_fail(relative_file))
-			return sync.no_result
+			return pool.no_result
 		}
 		if r.exit_code != 0 {
 			ts.failed = true
@@ -300,7 +311,7 @@ fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 			os.rm(generated_binary_fpath) or { panic(err) }
 		}
 	}
-	return sync.no_result
+	return pool.no_result
 }
 
 pub fn vlib_should_be_present(parent_dir string) {
@@ -343,8 +354,7 @@ pub fn prepare_test_session(zargs string, folder string, oskipped []string, main
 		}
 		$if windows {
 			// skip pico and process/command examples on windows
-			if f.ends_with('examples\\pico\\pico.v')
-				|| f.ends_with('examples\\process\\command.v') {
+			if f.ends_with('examples\\pico\\pico.v') || f.ends_with('examples\\process\\command.v') {
 				continue
 			}
 		}

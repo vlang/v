@@ -155,7 +155,7 @@ fn (mut g Gen) string_inter_literal_sb_optimized(call_expr ast.CallExpr) {
 		// break
 		// continue
 		// }
-		g.write('strings__Builder_write(&')
+		g.write('strings__Builder_write_string(&')
 		g.expr(call_expr.left)
 		g.write(', _SLIT("')
 		g.write(escaped_val)
@@ -170,7 +170,7 @@ fn (mut g Gen) string_inter_literal_sb_optimized(call_expr ast.CallExpr) {
 		if is_nl && i == node.exprs.len - 1 {
 			g.write('strings__Builder_writeln(&')
 		} else {
-			g.write('strings__Builder_write(&')
+			g.write('strings__Builder_write_string(&')
 		}
 		g.expr(call_expr.left)
 		g.write(', ')
@@ -264,9 +264,15 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		if typ == table.string_type {
 			if g.inside_vweb_tmpl {
 				g.write('vweb__filter(')
+				if expr.is_auto_deref_var() {
+					g.write('*')
+				}
 				g.expr(expr)
 				g.write(')')
 			} else {
+				if expr.is_auto_deref_var() {
+					g.write('*')
+				}
 				g.expr(expr)
 			}
 		} else if node.fmts[i] == `s` || typ.has_flag(.variadic) {
@@ -283,12 +289,21 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 				} else {
 					g.write('(u64)(')
 				}
+				if expr.is_auto_deref_var() {
+					g.write('*')
+				}
 				g.expr(expr)
 				g.write(')')
 			} else {
+				if expr.is_auto_deref_var() {
+					g.write('*')
+				}
 				g.expr(expr)
 			}
 		} else {
+			if expr.is_auto_deref_var() {
+				g.write('*')
+			}
 			g.expr(expr)
 		}
 		if node.fmts[i] == `s` && node.fwidths[i] != 0 {
@@ -302,7 +317,11 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 }
 
 fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) {
+	is_shared := etype.has_flag(.shared_f)
 	mut typ := etype
+	if is_shared {
+		typ = typ.clear_flag(.shared_f).set_nr_muls(0)
+	}
 	mut sym := g.table.get_type_symbol(typ)
 	// when type is alias, print the aliased value
 	if mut sym.info is table.Alias {
@@ -343,8 +362,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) {
 	} else if sym_has_str_method
 		|| sym.kind in [.array, .array_fixed, .map, .struct_, .multi_return, .sum_type, .interface_] {
 		is_ptr := typ.is_ptr()
-		is_var_mut := expr is ast.Ident && ((expr as ast.Ident).name == g.for_in_mut_val_name
-			|| (expr as ast.Ident).name in g.fn_mut_arg_names)
+		is_var_mut := expr.is_auto_deref_var()
 		str_fn_name := g.gen_str_for_type(typ)
 		if is_ptr && !is_var_mut {
 			g.write('_STR("&%.*s\\000", 2, ')
@@ -352,7 +370,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) {
 		g.write('${str_fn_name}(')
 		if str_method_expects_ptr && !is_ptr {
 			g.write('&')
-		} else if (!str_method_expects_ptr && is_ptr) || is_var_mut {
+		} else if (!str_method_expects_ptr && is_ptr && !is_shared) || is_var_mut {
 			g.write('*')
 		}
 		if expr is ast.ArrayInit {
@@ -362,6 +380,9 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) {
 			}
 		}
 		g.expr(expr)
+		if is_shared {
+			g.write('->val')
+		}
 		g.write(')')
 		if is_ptr && !is_var_mut {
 			g.write(')')

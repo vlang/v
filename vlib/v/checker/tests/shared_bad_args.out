@@ -5,7 +5,7 @@ vlib/v/checker/tests/shared_bad_args.vv:43:8: error: r is `shared` and must be `
       |              ^
    44 |         println(u)
    45 |     }
-vlib/v/checker/tests/shared_bad_args.vv:47:16: error: s is `shared` and must be `rlock`ed or `locked` to be passed as non-mut argument
+vlib/v/checker/tests/shared_bad_args.vv:47:16: error: s is `shared` and must be `rlock`ed or `lock`ed to be passed as non-mut argument
    45 |     }
    46 |     lock r {
    47 |         v := r.s_val(s)
@@ -53,3 +53,31 @@ vlib/v/checker/tests/shared_bad_args.vv:67:12: error: a is `shared` and must be 
    67 |     a_mut(mut a)
       |               ^
    68 | }
+   69 |
+vlib/v/checker/tests/shared_bad_args.vv:76:10: error: y is `shared` and must be `rlock`ed or `lock`ed to be used as non-mut argument to print
+   74 | fn main() {
+   75 |     shared y := St{ a: 5 }
+   76 |     println(y)
+      |             ^
+   77 |     println('$y')
+   78 |     a := Ab{ s: St{ a: 3 } }
+vlib/v/checker/tests/shared_bad_args.vv:77:12: error: y is `shared` and must be `rlock`ed or `lock`ed to be used as non-mut interpolation object
+   75 |     shared y := St{ a: 5 }
+   76 |     println(y)
+   77 |     println('$y')
+      |               ^
+   78 |     a := Ab{ s: St{ a: 3 } }
+   79 |     println(a.s)
+vlib/v/checker/tests/shared_bad_args.vv:79:12: error: you have to create a handle and `rlock` it to use a `shared` element as non-mut argument to print
+   77 |     println('$y')
+   78 |     a := Ab{ s: St{ a: 3 } }
+   79 |     println(a.s)
+      |               ^
+   80 |     println('$a.s')
+   81 | }
+vlib/v/checker/tests/shared_bad_args.vv:80:14: error: you have to create a handle and `rlock` it to use a `shared` element as non-mut interpolation object
+   78 |     a := Ab{ s: St{ a: 3 } }
+   79 |     println(a.s)
+   80 |     println('$a.s')
+      |                 ^
+   81 | }

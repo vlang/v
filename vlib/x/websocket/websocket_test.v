@@ -1,5 +1,7 @@
+import os
 import x.websocket
 import time
+import rand
 
 struct WebsocketTestResults {
 pub mut:
@@ -7,15 +9,23 @@ pub mut:
 	nr_pong_received int
 }
 
+const github_job = os.getenv('GITHUB_JOB')
+
 // tests with internal ws servers
 fn test_ws() {
-	go start_server()
-	time.sleep_ms(100)
-	ws_test('ws://localhost:30000') or { assert false }
+	if github_job != '' && github_job != 'websocket_tests' {
+		// Do not run these tests everytime, since they are flaky.
+		// They have their own specialized CI runner.
+		return
+	}
+	port := 30000 + rand.intn(1024)
+	go start_server(port)
+	time.sleep(500 * time.millisecond)
+	ws_test('ws://localhost:$port') or { assert false }
 }
 
-fn start_server() ? {
-	mut s := websocket.new_server(30000, '')
+fn start_server(listen_port int) ? {
+	mut s := websocket.new_server(listen_port, '')
 	// make that in execution test time give time to execute at least one time
 	s.ping_interval = 1
 
@@ -38,7 +48,7 @@ fn start_server() ? {
 	s.on_close(fn (mut ws websocket.Client, code int, reason string) ? {
 		// not used
 	})
-	s.listen() or { }
+	s.listen() or {}
 }
 
 // ws_test tests connect to the websocket server from websocket client
@@ -82,11 +92,11 @@ fn ws_test(uri string) ? {
 	for msg in text {
 		ws.write(msg.bytes(), .text_frame) or { panic('fail to write to websocket') }
 		// sleep to give time to recieve response before send a new one
-		time.sleep_ms(100)
+		time.sleep(100 * time.millisecond)
 	}
 	// sleep to give time to recieve response before asserts
-	time.sleep_ms(1500)
-	// We expect at least 2 pongs, one sent directly and one indirectly 
+	time.sleep(1500 * time.millisecond)
+	// We expect at least 2 pongs, one sent directly and one indirectly
 	assert test_results.nr_pong_received >= 2
 	assert test_results.nr_messages == 2
 }

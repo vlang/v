@@ -44,7 +44,7 @@ fn (mut ctx Context) println(s string) {
 
 fn do_timeout(c &Context) {
 	mut ctx := c
-	time.sleep_ms(ctx.timeout_ms)
+	time.sleep(ctx.timeout_ms * time.millisecond)
 	exit(ctx.exitcode)
 }
 
@@ -53,19 +53,20 @@ fn main() {
 	args := os.args[1..]
 	if '-h' in args || '--help' in args {
 		println("Usage:
-	test_os_process [-v] [-h] [-target stderr/stdout/both/alternate] [-exitcode 0] [-timeout_ms 1000] [-period_ms 100]
+	test_os_process [-v] [-h] [-target stderr/stdout/both/alternate] [-exitcode 0] [-timeout_ms 200] [-period_ms 50]
 		Prints lines periodically (-period_ms), to stdout/stderr (-target). 
 		After a while (-timeout_ms), exit with (-exitcode).
 		This program is useful for platform independent testing
 		of child process/standart input/output control.
-		It is used in V\'s `os` module tests.
+		It is used in V's `os` module tests.
 ")
+		return
 	}
 	ctx.is_verbose = '-v' in args
 	ctx.target = s2target(cmdline.option(args, '-target', 'both'))
 	ctx.exitcode = cmdline.option(args, '-exitcode', '0').int()
-	ctx.timeout_ms = cmdline.option(args, '-timeout_ms', '1000').int()
-	ctx.period_ms = cmdline.option(args, '-period_ms', '100').int()
+	ctx.timeout_ms = cmdline.option(args, '-timeout_ms', '200').int()
+	ctx.period_ms = cmdline.option(args, '-period_ms', '50').int()
 	if ctx.target == .alternate {
 		ctx.omode = .stdout
 	}
@@ -75,7 +76,7 @@ fn main() {
 	go do_timeout(&ctx)
 	for i := 1; true; i++ {
 		ctx.println('$i')
-		time.sleep_ms(ctx.period_ms)
+		time.sleep(ctx.period_ms * time.millisecond)
 	}
-	time.sleep(100000)
+	time.sleep(100 * time.second)
 }

@@ -12,7 +12,14 @@ import rand
 $if linux {
 	$if tinyc {
 		// most Linux distributions have /usr/lib/libatomic.so, but Ubuntu uses gcc version specific dir
-		#flag -L/usr/lib/gcc/x86_64-linux-gnu/6 -L/usr/lib/gcc/x86_64-linux-gnu/7 -L/usr/lib/gcc/x86_64-linux-gnu/8 -L/usr/lib/gcc/x86_64-linux-gnu/9 -latomic
+		#flag -L/usr/lib/gcc/x86_64-linux-gnu/6
+		#flag -L/usr/lib/gcc/x86_64-linux-gnu/7
+		#flag -L/usr/lib/gcc/x86_64-linux-gnu/8
+		#flag -L/usr/lib/gcc/x86_64-linux-gnu/9
+		#flag -L/usr/lib/gcc/x86_64-linux-gnu/10
+		#flag -L/usr/lib/gcc/x86_64-linux-gnu/11
+		#flag -L/usr/lib/gcc/x86_64-linux-gnu/12
+		#flag -latomic
 	}
 }
 
@@ -111,7 +118,7 @@ pub fn new_channel<T>(n u32) &Channel {
 fn new_channel_st(n u32, st u32) &Channel {
 	wsem := if n > 0 { n } else { 1 }
 	rsem := if n > 0 { u32(0) } else { 1 }
-	rbuf := if n > 0 { malloc(int(n * st)) } else { byteptr(0) }
+	rbuf := if n > 0 { unsafe {malloc(int(n * st))} } else { byteptr(0) }
 	sbuf := if n > 0 { vcalloc(int(n * 2)) } else { byteptr(0) }
 	mut ch := &Channel{
 		objsize: st
@@ -359,7 +366,7 @@ pub fn (mut ch Channel) try_pop(dest voidptr) ChanState {
 }
 
 fn (mut ch Channel) try_pop_priv(dest voidptr, no_block bool) ChanState {
-	spinloops_sem_, spinloops_ := if no_block { 1, 1 } else { spinloops, spinloops_sem } 
+	spinloops_sem_, spinloops_ := if no_block { 1, 1 } else { spinloops, spinloops_sem }
 	mut have_swapped := false
 	mut write_in_progress := false
 	for {
@@ -529,7 +536,7 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 	assert channels.len == dir.len
 	assert dir.len == objrefs.len
 	mut subscr := []Subscription{len: channels.len}
-	mut sem := Semaphore{}
+	mut sem := unsafe { Semaphore{} }
 	sem.init(0)
 	for i, ch in channels {
 		subscr[i].sem = &sem

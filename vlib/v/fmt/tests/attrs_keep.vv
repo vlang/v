@@ -1,10 +1,20 @@
-[inline]
-[if debug]
-[foo: bar]
+struct AttrsWithEscpaedStringArgs {
+	dollar    string [foo: '\$var']
+	double_bs string [bar: '\\baz']
+}
+
 [deprecated: 'use bar() instead']
+[foo: bar]
+[if debug; inline]
 fn keep_attributes() {
 	println('hi !')
 }
+
+[bar: 'foo']
+fn attr_with_arg() {}
+
+['a_string_name']
+fn name_only_attr() {}
 
 struct User {
 	age           int
@@ -12,7 +22,7 @@ struct User {
 	last_name     string [json: lastName]
 	is_registered bool   [json: IsRegistered]
 	typ           int    [json: 'type']
-	pets          string [raw; json: 'pet_animals']
+	pets          string [json: 'pet_animals'; raw]
 }
 
 [_allow_multiple_values]

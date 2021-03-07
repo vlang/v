@@ -9,7 +9,7 @@ struct C.dirent {
 
 fn C.readdir(voidptr) &C.dirent
 
-fn C.readlink() int
+fn C.readlink(pathname charptr, buf charptr, bufsiz size_t) int
 
 fn C.getline(voidptr, voidptr, voidptr) int
 
@@ -19,7 +19,7 @@ fn C.sigaction(int, voidptr, int)
 
 fn C.open(charptr, int, ...int) int
 
-fn C.fdopen(int, string) voidptr
+fn C.fdopen(fd int, mode charptr) &C.FILE
 
 fn C.CopyFile(&u32, &u32, int) int
 
@@ -214,74 +214,6 @@ pub fn fileno(cfile voidptr) int {
 	}
 }
 
-// open_append opens `path` file for appending.
-pub fn open_append(path string) ?File {
-	mut file := File{}
-	$if windows {
-		wpath := path.replace('/', '\\').to_wide()
-		mode := 'ab'
-		file = File{
-			cfile: C._wfopen(wpath, mode.to_wide())
-		}
-	} $else {
-		cpath := path.str
-		file = File{
-			cfile: C.fopen(charptr(cpath), 'ab')
-		}
-	}
-	if isnil(file.cfile) {
-		return error('failed to create(append) file "$path"')
-	}
-	file.is_opened = true
-	return file
-}
-
-// open_file can be used to open or create a file with custom flags and permissions and returns a `File` object.
-pub fn open_file(path string, mode string, options ...int) ?File {
-	mut flags := 0
-	for m in mode {
-		match m {
-			`r` { flags |= o_rdonly }
-			`w` { flags |= o_create | o_trunc }
-			`b` { flags |= o_binary }
-			`a` { flags |= o_create | o_append }
-			`s` { flags |= o_sync }
-			`n` { flags |= o_nonblock }
-			`c` { flags |= o_noctty }
-			`+` { flags |= o_rdwr }
-			else {}
-		}
-	}
-	mut permission := 0o666
-	if options.len > 0 {
-		permission = options[0]
-	}
-	$if windows {
-		if permission < 0o600 {
-			permission = 0x0100
-		} else {
-			permission = 0x0100 | 0x0080
-		}
-	}
-	mut p := path
-	$if windows {
-		p = path.replace('/', '\\')
-	}
-	fd := C.open(charptr(p.str), flags, permission)
-	if fd == -1 {
-		return error(posix_get_error_msg(C.errno))
-	}
-	cfile := C.fdopen(fd, charptr(mode.str))
-	if isnil(cfile) {
-		return error('Failed to open or create file "$path"')
-	}
-	return File{
-		cfile: cfile
-		fd: fd
-		is_opened: true
-	}
-}
-
 // vpopen system starts the specified command, waits for it to complete, and returns its code.
 fn vpopen(path string) voidptr {
 	// *C.FILE {
@@ -319,7 +251,7 @@ pub fn posix_get_error_msg(code int) string {
 	if ptr_text == 0 {
 		return ''
 	}
-	return tos3(ptr_text)
+	return unsafe { tos3(ptr_text) }
 }
 
 // vpclose will close a file pointer opened with `vpopen`.
@@ -432,17 +364,14 @@ pub fn is_readable(path string) bool {
 
 // rm removes file in `path`.
 pub fn rm(path string) ? {
+	mut rc := 0
 	$if windows {
-		rc := C._wremove(path.to_wide())
-		if rc == -1 {
-			// TODO: proper error as soon as it's supported on windows
-			return error('Failed to remove "$path"')
-		}
+		rc = C._wremove(path.to_wide())
 	} $else {
-		rc := C.remove(charptr(path.str))
-		if rc == -1 {
-			return error(posix_get_error_msg(C.errno))
-		}
+		rc = C.remove(charptr(path.str))
+	}
+	if rc == -1 {
+		return error('Failed to remove "$path": ' + posix_get_error_msg(C.errno))
 	}
 	// C.unlink(path.cstr())
 }
@@ -466,7 +395,7 @@ pub fn rmdir(path string) ? {
 // print_c_errno will print the current value of `C.errno`.
 fn print_c_errno() {
 	e := C.errno
-	se := tos_clone(byteptr(C.strerror(C.errno)))
+	se := unsafe { tos_clone(byteptr(C.strerror(C.errno))) }
 	println('errno=$e err=$se')
 }
 
@@ -479,14 +408,19 @@ pub fn get_raw_line() string {
 			h_input := C.GetStdHandle(C.STD_INPUT_HANDLE)
 			mut bytes_read := 0
 			if is_atty(0) > 0 {
-				C.ReadConsole(h_input, buf, max_line_chars * 2, C.LPDWORD(&bytes_read),
-					0)
+				x := C.ReadConsole(h_input, buf, max_line_chars * 2, &bytes_read, 0)
+				if !x {
+					return tos(buf, 0)
+				}
 				return string_from_wide2(&u16(buf), bytes_read)
 			}
 			mut offset := 0
 			for {
 				pos := buf + offset
 				res := C.ReadFile(h_input, pos, 1, C.LPDWORD(&bytes_read), 0)
+				if !res && offset == 0 {
+					return tos(buf, 0)
+				}
 				if !res || bytes_read == 0 {
 					break
 				}
@@ -500,15 +434,9 @@ pub fn get_raw_line() string {
 		}
 	} $else {
 		max := size_t(0)
-		mut buf := charptr(0)
-		nr_chars := C.getline(&buf, &max, C.stdin)
-		// defer { unsafe{ free(buf) } }
-		if nr_chars == 0 || nr_chars == -1 {
-			return ''
-		}
-		return tos3(buf)
-		// res := tos_clone(buf)
-		// return res
+		buf := charptr(0)
+		nr_chars := unsafe { C.getline(&buf, &max, C.stdin) }
+		return unsafe { tos(byteptr(buf), if nr_chars < 0 { 0 } else { nr_chars }) }
 	}
 }
 
@@ -530,7 +458,6 @@ pub fn get_raw_stdin() []byte {
 				}
 				buf = v_realloc(buf, offset + block_bytes + (block_bytes - bytes_read))
 			}
-			C.CloseHandle(h_input)
 			return array{
 				element_size: 1
 				data: voidptr(buf)
@@ -539,7 +466,15 @@ pub fn get_raw_stdin() []byte {
 			}
 		}
 	} $else {
-		panic('get_raw_stdin not implemented on this platform...')
+		max := size_t(0)
+		buf := charptr(0)
+		nr_chars := unsafe { C.getline(&buf, &max, C.stdin) }
+		return array{
+			element_size: 1
+			data: voidptr(buf)
+			len: if nr_chars < 0 { 0 } else { nr_chars }
+			cap: int(max)
+		}
 	}
 }
 
@@ -554,7 +489,7 @@ pub fn read_file_array<T>(path string) []T {
 	C.rewind(fp)
 	// read the actual data from the file
 	len := fsize / tsize
-	buf := malloc(fsize)
+	buf := unsafe { malloc(fsize) }
 	C.fread(buf, fsize, 1, fp)
 	C.fclose(fp)
 	return array{
@@ -613,7 +548,7 @@ pub fn executable() string {
 				// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew
 				final_len := C.GetFinalPathNameByHandleW(file, final_path, size, 0)
 				if final_len < size {
-					ret := string_from_wide2(final_path, final_len)
+					ret := unsafe { string_from_wide2(final_path, final_len) }
 					// remove '\\?\' from beginning (see link above)
 					return ret[4..]
 				} else {
@@ -622,7 +557,7 @@ pub fn executable() string {
 			}
 			C.CloseHandle(file)
 		}
-		return string_from_wide2(result, len)
+		return unsafe { string_from_wide2(result, len) }
 	}
 	$if macos {
 		mut result := vcalloc(max_path_len)
@@ -718,21 +653,25 @@ pub fn chdir(path string) {
 pub fn getwd() string {
 	$if windows {
 		max := 512 // max_path_len * sizeof(wchar_t)
-		buf := &u16(vcalloc(max * 2))
-		if C._wgetcwd(buf, max) == 0 {
-			free(buf)
-			return ''
+		unsafe {
+			buf := &u16(vcalloc(max * 2))
+			if C._wgetcwd(buf, max) == 0 {
+				free(buf)
+				return ''
+			}
+			return string_from_wide(buf)
 		}
-		return string_from_wide(buf)
 	} $else {
 		buf := vcalloc(512)
-		if C.getcwd(charptr(buf), 512) == 0 {
+		unsafe {
+			if C.getcwd(charptr(buf), 512) == 0 {
+				free(buf)
+				return ''
+			}
+			res := buf.vstring().clone()
 			free(buf)
-			return ''
+			return res
 		}
-		res := unsafe { buf.vstring() }.clone()
-		free(buf)
-		return res
 	}
 }
 
@@ -743,23 +682,32 @@ pub fn getwd() string {
 // NB: this particular rabbit hole is *deep* ...
 [manualfree]
 pub fn real_path(fpath string) string {
-	mut fullpath := vcalloc(max_path_len)
+	mut fullpath := byteptr(0)
 	defer {
 		unsafe { free(fullpath) }
 	}
-	mut ret := charptr(0)
+
 	$if windows {
-		ret = charptr(C._fullpath(charptr(fullpath), charptr(fpath.str), max_path_len))
+		fullpath = unsafe { &u16(vcalloc(max_path_len * 2)) }
+		// TODO: check errors if path len is not enough
+		ret := C.GetFullPathName(fpath.to_wide(), max_path_len, fullpath, 0)
 		if ret == 0 {
 			return fpath
 		}
 	} $else {
-		ret = charptr(C.realpath(charptr(fpath.str), charptr(fullpath)))
+		fullpath = vcalloc(max_path_len)
+		ret := charptr(C.realpath(charptr(fpath.str), charptr(fullpath)))
 		if ret == 0 {
 			return fpath
 		}
 	}
-	res := unsafe { fullpath.vstring() }
+
+	mut res := ''
+	$if windows {
+		res = unsafe { string_from_wide(fullpath) }
+	} $else {
+		res = unsafe { fullpath.vstring() }
+	}
 	nres := normalize_drive_letter(res)
 	cres := nres.clone()
 	return cres
@@ -833,63 +781,26 @@ pub fn chmod(path string, mode int) {
 	C.chmod(charptr(path.str), mode)
 }
 
-// open tries to open a file for reading and returns back a read-only `File` object.
-pub fn open(path string) ?File {
-	/*
-	$if linux {
-		$if !android {
-			fd := C.syscall(sys_open, path.str, 511)
-			if fd == -1 {
-				return error('failed to open file "$path"')
-			}
-			return File{
-				fd: fd
-				is_opened: true
-			}
+// open_append opens `path` file for appending.
+pub fn open_append(path string) ?File {
+	mut file := File{}
+	$if windows {
+		wpath := path.replace('/', '\\').to_wide()
+		mode := 'ab'
+		file = File{
+			cfile: C._wfopen(wpath, mode.to_wide())
+		}
+	} $else {
+		cpath := path.str
+		file = File{
+			cfile: C.fopen(charptr(cpath), 'ab')
 		}
 	}
-	*/
-	cfile := vfopen(path, 'rb') ?
-	fd := fileno(cfile)
-	return File{
-		cfile: cfile
-		fd: fd
-		is_opened: true
+	if isnil(file.cfile) {
+		return error('failed to create(append) file "$path"')
 	}
-}
-
-// create creates or opens a file at a specified location and returns a write-only `File` object.
-pub fn create(path string) ?File {
-	/*
-	// NB: android/termux/bionic is also a kind of linux,
-	// but linux syscalls there sometimes fail,
-	// while the libc version should work.
-	$if linux {
-		$if !android {
-			//$if macos {
-			//	fd = C.syscall(398, path.str, 0x601, 0x1b6)
-			//}
-			//$if linux {
-			fd = C.syscall(sys_creat, path.str, 511)
-			//}
-			if fd == -1 {
-				return error('failed to create file "$path"')
-			}
-			file = File{
-				fd: fd
-				is_opened: true
-			}
-			return file
-		}
-	}
-	*/
-	cfile := vfopen(path, 'wb') ?
-	fd := fileno(cfile)
-	return File{
-		cfile: cfile
-		fd: fd
-		is_opened: true
-	}
+	file.is_opened = true
+	return file
 }
 
 // execvp - loads and executes a new child process, *in place* of the current process.

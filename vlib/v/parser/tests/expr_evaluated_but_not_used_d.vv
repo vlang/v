@@ -1,6 +1,5 @@
 fn main() {
     a := 1
     b := 2
-    a+b
-    println(a*b)
+    println(a*b), a+b
 }

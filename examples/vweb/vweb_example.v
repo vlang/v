@@ -1,6 +1,7 @@
 module main
 
 import vweb
+import rand
 
 const (
 	port = 8082
@@ -18,11 +19,13 @@ fn main() {
 }
 
 pub fn (mut app App) init_once() {
-	app.handle_static('.')
+	app.handle_static('.', false)
 }
 
-pub fn (mut app App) json_endpoint() vweb.Result {
-	return app.json('{"a": 3}')
+['/users/:user']
+pub fn (mut app App) user_endpoint(user string) vweb.Result {
+	id := rand.intn(100)
+	return app.json('{"$user": $id}')
 }
 
 pub fn (mut app App) index() vweb.Result {
@@ -42,4 +45,9 @@ pub fn (mut app App) show_text() vweb.Result {
 pub fn (mut app App) cookie() vweb.Result {
 	app.set_cookie(name: 'cookie', value: 'test')
 	return app.text('Headers: $app.headers')
+}
+
+[post]
+pub fn (mut app App) post() vweb.Result {
+	return app.text('Post body: $app.req.data')
 }

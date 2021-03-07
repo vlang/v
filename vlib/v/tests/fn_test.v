@@ -44,6 +44,11 @@ type F6 = fn (int, int)
 type F7 = fn (time.Time, int)
 
 fn C.atoi(byteptr) int
+fn C.freec(ptr voidptr)
+
+[trusted]
+fn C.exitc(code int)
+// above checks attribute doesn't conflict with `freec` return type
 
 fn foo() {
 }

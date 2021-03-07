@@ -40,39 +40,48 @@ struct C.sockaddr_storage {
 
 fn C.atoi() int
 
-fn C.strncasecmp() int
+fn C.strncasecmp(s1 charptr, s2 charptr, n size_t) int
 
-fn C.socket() int
+fn C.socket(domain int, typ int, protocol int) int
 
-fn C.setsockopt() int
+// fn C.setsockopt(sockfd int, level int, optname int, optval voidptr, optlen C.socklen_t) int
+fn C.setsockopt(sockfd int, level int, optname int, optval voidptr, optlen u32) int
 
-fn C.htonl() int
+fn C.htonl(hostlong u32) int
 
-fn C.htons() int
+fn C.htons(netshort u16) int
 
-fn C.bind() int
+// fn C.bind(sockfd int, addr &C.sockaddr, addrlen C.socklen_t) int
+// use voidptr for arg 2 becasue sockaddr is a generic descriptor for any kind of socket operation,
+// it can also take sockaddr_in depending on the type of socket used in arg 1
+fn C.bind(sockfd int, addr voidptr, addrlen u32) int
 
-fn C.listen() int
+fn C.listen(sockfd int, backlog int) int
 
-fn C.accept() int
+// fn C.accept(sockfd int, addr &C.sockaddr, addrlen &C.socklen_t) int
+fn C.accept(sockfd int, addr &C.sockaddr, addrlen &u32) int
 
-fn C.getaddrinfo() int
+fn C.getaddrinfo(node charptr, service charptr, hints &C.addrinfo, res &&C.addrinfo) int
 
-fn C.connect() int
+// fn C.connect(sockfd int, addr &C.sockaddr, addrlen C.socklen_t) int
+fn C.connect(sockfd int, addr &C.sockaddr, addrlen u32) int
 
-fn C.send() int
+// fn C.send(sockfd int, buf voidptr, len size_t, flags int) size_t
+fn C.send(sockfd int, buf voidptr, len size_t, flags int) int
 
-fn C.recv() int
+// fn C.recv(sockfd int, buf voidptr, len size_t, flags int) size_t
+fn C.recv(sockfd int, buf voidptr, len size_t, flags int) int
 
 // fn C.read() int
-fn C.shutdown() int
+fn C.shutdown(socket int, how int) int
 
 // fn C.close() int
-fn C.ntohs() int
+fn C.ntohs(netshort u16) int
 
-fn C.getsockname() int
+// fn C.getsockname(sockfd int, addr &C.sockaddr, addrlen &C.socklen_t) int
+fn C.getsockname(sockfd int, addr &C.sockaddr, addrlen &u32) int
 
-fn C.fcntl() int
+fn C.fcntl(fd int, cmd int, arg ...voidptr) int
 
 // fn C.write() int
 struct C.picoev_loop {
@@ -93,7 +102,11 @@ fn C.picoev_del(&C.picoev_loop, int) int
 
 fn C.picoev_set_timeout(&C.picoev_loop, int, int)
 
-fn C.picoev_add(&C.picoev_loop, int, int, int, &C.picoev_handler, voidptr) int
+// fn C.picoev_handler(loop &C.picoev_loop, fd int, revents int, cb_arg voidptr)
+// TODO: (sponge) update to C.picoev_handler with C type def update
+type Cpicoev_handler = fn(loop &C.picoev_loop, fd int, revents int, cb_arg voidptr)
+
+fn C.picoev_add(&C.picoev_loop, int, int, int, &Cpicoev_handler, voidptr) int
 
 fn C.picoev_init(int) int
 
@@ -104,12 +117,6 @@ fn C.picoev_loop_once(&C.picoev_loop, int) int
 fn C.picoev_destroy_loop(&C.picoev_loop) int
 
 fn C.picoev_deinit() int
-
-fn C.phr_parse_request() int
-
-fn C.phr_parse_request_path_pipeline() int
-
-fn C.phr_parse_request_path() int
 
 [inline]
 fn setup_sock(fd int) {
@@ -170,7 +177,7 @@ fn rw_callback(loop &C.picoev_loop, fd int, events int, cb_arg voidptr) {
 			}
 		} else {
 			r += idx
-			mut s := tos(buf, r)
+			mut s := unsafe { tos(buf, r) }
 			mut out := p.out
 			unsafe {
 				out += fd * max_write
@@ -262,8 +269,8 @@ pub fn new(port int, cb voidptr) &Picoev {
 		loop: loop
 		cb: cb
 		date: C.get_date()
-		buf: malloc(max_fds * max_read + 1)
-		out: malloc(max_fds * max_write + 1)
+		buf: unsafe { malloc(max_fds * max_read + 1) }
+		out: unsafe { malloc(max_fds * max_write + 1) }
 	}
 	C.picoev_add(loop, fd, C.PICOEV_READ, 0, accept_callback, pv)
 	go update_date(mut pv)

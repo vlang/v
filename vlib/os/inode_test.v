@@ -9,7 +9,7 @@ const (
 
 fn testsuite_begin() {
 	eprintln('testsuite_begin, tfolder = $tfolder')
-	os.rmdir_all(tfolder) or { }
+	os.rmdir_all(tfolder) or {}
 	assert !os.is_dir(tfolder)
 	os.mkdir_all(tfolder) or { panic(err) }
 	os.chdir(tfolder)
@@ -36,7 +36,7 @@ fn test_inode_file_owner_permission() {
 	mut file := os.open_file(filename, 'w', 0o600) or { return }
 	file.close()
 	mode := os.inode(filename)
-	os.rm(filename) or { }
+	os.rm(filename) or {}
 	assert mode.owner.read
 	assert mode.owner.write
 	assert !mode.owner.execute

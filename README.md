@@ -137,7 +137,6 @@ git clone https://github.com/vlang/v
 cd v
 docker build -t vlang .
 docker run --rm -it vlang:latest
-v
 ```
 
 ### Docker with Alpine/musl
@@ -147,7 +146,6 @@ git clone https://github.com/vlang/v
 cd v
 docker build -t vlang --file=Dockerfile.alpine .
 docker run --rm -it vlang:latest
-/usr/local/v/v
 ```
 
 </details>
@@ -244,9 +242,21 @@ Hello from V.js
 ```
 -->
 
+## Android graphical apps
+
+With V's `vab` tool, building V UI and graphical apps for Android can become as easy as:
+
+```
+./vab /path/to/v/examples/2048
+```
+
+[https://github.com/vlang/vab](https://github.com/vlang/vab).
+
+<img src="https://user-images.githubusercontent.com/768942/107622846-c13f3900-6c58-11eb-8a66-55db12979b73.png">
+
 ## Developing web applications
 
-Check out the [Building a simple web blog](https://github.com/vlang/v/blob/master/tutorials/building-a-simple-web-blog-with-vweb.md)
+Check out the [Building a simple web blog](https://github.com/vlang/v/blob/master/tutorials/building_a_simple_web_blog_with_vweb/README.md)
 tutorial and Gitly, a light and fast alternative to GitHub/GitLab:
 
 https://github.com/vlang/gitly

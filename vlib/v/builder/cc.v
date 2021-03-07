@@ -16,7 +16,7 @@ const (
 ==================
 C error. This should never happen.
 
-If you were not working with C interop, please raise an issue on GitHub:
+If you were not working with C interop, this is a compiler bug, please raise an issue on GitHub:
 
 https://github.com/vlang/v/issues/new/choose
 
@@ -51,7 +51,7 @@ fn (mut v Builder) find_win_cc() ? {
 		if v.pref.is_verbose {
 			println('$v.pref.ccompiler not found, looking for msvc...')
 		}
-		find_msvc() or {
+		find_msvc(v.pref.m64) or {
 			if v.pref.is_verbose {
 				println('msvc not found, looking for thirdparty/tcc...')
 			}
@@ -520,6 +520,7 @@ fn (mut v Builder) cc() {
 	vexe := pref.vexe_path()
 	vdir := os.dir(vexe)
 	mut tried_compilation_commands := []string{}
+	mut tcc_output := os.Result{}
 	original_pwd := os.getwd()
 	for {
 		// try to compile with the choosen compiler
@@ -635,10 +636,10 @@ fn (mut v Builder) cc() {
 		ccompiler_label := 'C ${os.file_name(ccompiler):3}'
 		util.timing_start(ccompiler_label)
 		res := os.exec(cmd) or {
-			println('C compilation failed.')
-			os.chdir(original_pwd)
-			verror(err)
-			return
+			os.Result{
+				exit_code: 111
+				output: 'C compilation failed.\n$err.msg'
+			}
 		}
 		util.timing_measure(ccompiler_label)
 		if v.pref.show_c_output {
@@ -659,6 +660,7 @@ fn (mut v Builder) cc() {
 					exit(101)
 				}
 				if v.pref.retry_compilation {
+					tcc_output = res
 					v.pref.ccompiler = pref.default_c_compiler()
 					if v.pref.is_verbose {
 						eprintln('Compilation with tcc failed. Retrying with $v.pref.ccompiler ...')
@@ -676,7 +678,14 @@ fn (mut v Builder) cc() {
 			}
 		}
 		if !v.pref.show_c_output {
-			v.post_process_c_compiler_output(res)
+			// if tcc failed once, and the system C compiler has failed as well,
+			// print the tcc error instead since it may contain more useful information
+			// see https://discord.com/channels/592103645835821068/592115457029308427/811956304314761228
+			if res.exit_code != 0 && tcc_output.output != '' {
+				v.post_process_c_compiler_output(tcc_output)
+			} else {
+				v.post_process_c_compiler_output(res)
+			}
 		}
 		// Print the C command
 		if v.pref.is_verbose {
@@ -700,7 +709,7 @@ fn (mut v Builder) cc() {
 		obj_file +
 		' /usr/lib/x86_64-linux-gnu/libc.so ' +
 		'/usr/lib/x86_64-linux-gnu/crtn.o') or {
-			verror(err)
+			verror(err.msg)
 			return
 		}
 		println(ress.output)
@@ -785,10 +794,12 @@ fn (mut b Builder) cc_linux_cross() {
 	if b.pref.show_cc {
 		println(cc_cmd)
 	}
-	cc_res := os.exec(cc_cmd) or { os.Result{
-		exit_code: 1
-		output: 'no `cc` command found'
-	} }
+	cc_res := os.exec(cc_cmd) or {
+		os.Result{
+			exit_code: 1
+			output: 'no `cc` command found'
+		}
+	}
 	if cc_res.exit_code != 0 {
 		println('Cross compilation for Linux failed (first step, cc). Make sure you have clang installed.')
 		verror(cc_res.output)
@@ -808,7 +819,7 @@ fn (mut b Builder) cc_linux_cross() {
 	}
 	res := os.exec(linker_cmd) or {
 		println('Cross compilation for Linux failed (second step, lld).')
-		verror(err)
+		verror(err.msg)
 		return
 	}
 	if res.exit_code != 0 {
@@ -966,7 +977,6 @@ fn (mut v Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CF
 	all_options << moduleflags.c_options_before_target()
 	all_options << '-o "$opath"'
 	all_options << '-c "$cfile"'
-	all_options << moduleflags.c_options_after_target()
 	cc_options := v.ccoptions.thirdparty_object_args(all_options).join(' ')
 	cmd := '$v.pref.ccompiler $cc_options'
 	$if trace_thirdparty_obj_files ? {
@@ -974,7 +984,7 @@ fn (mut v Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CF
 	}
 	res := os.exec(cmd) or {
 		eprintln('exec failed for thirdparty object build cmd:\n$cmd')
-		verror(err)
+		verror(err.msg)
 		return
 	}
 	os.chdir(current_folder)

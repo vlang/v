@@ -12,6 +12,7 @@ import os
 // https://wkhtmltopdf.org/libwkhtmltox/
 #flag -lwkhtmltox
 #include "wkhtmltox/pdf.h" # You can install the C package for your system from the wkhtmltopdf.org/downloads.html page
+
 struct C.wkhtmltopdf_global_settings {}
 
 struct C.wkhtmltopdf_object_settings {}
@@ -71,13 +72,13 @@ fn main() {
 	println('wkhtmltopdf_http_error_code: $error_code')
 	if result {
 		data := &charptr(0)
-		size := C.wkhtmltopdf_get_output(converter, &data)
+		size := C.wkhtmltopdf_get_output(converter, data)
 		println('wkhtmltopdf_get_output: $size bytes')
 		mut file := os.open_file('./google.pdf', 'w+', 0o666) or {
 			println('ERR: $err')
 			return
 		}
-		wrote := file.write_bytes(data, size)
+		wrote := unsafe { file.write_bytes(data, size) }
 		println('write_bytes: $wrote [./google.pdf]')
 		file.flush()
 		file.close()

@@ -1,6 +1,6 @@
 module main
 
-import geometry { Point, Line, point_str, module_name }
+import geometry { Point, Line, Shape, point_str, module_name }
 
 fn test_imported_symbols_types() {
     // struct init
@@ -23,4 +23,16 @@ fn test_imported_symbols_functions() {
 
 fn test_imported_symbols_constants() {
 	assert module_name == 'geometry'
+}
+
+fn vertex_count(s Shape) int {
+	return match s {
+		.circle { 0 }
+		.triangle { 3 }
+		.rectangle { 4 }
+	}
+}
+
+fn test_imported_symbols_enums() {
+	assert vertex_count(.triangle) == 3
 }

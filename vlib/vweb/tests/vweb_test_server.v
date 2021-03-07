@@ -15,7 +15,7 @@ struct App {
 }
 
 fn exit_after_timeout(timeout_in_ms int) {
-	time.sleep_ms(timeout_in_ms)
+	time.sleep(timeout_in_ms * time.millisecond)
 	// eprintln('webserver is exiting ...')
 	exit(0)
 }
@@ -78,10 +78,9 @@ pub fn (mut app App) user_repo_settings(username string, repository string) vweb
 	return app.html('username: $username | repository: $repository')
 }
 
-[post]
-['/json_echo']
+['/json_echo'; post]
 pub fn (mut app App) json_echo() vweb.Result {
-	eprintln('>>>>> received http request at /json_echo is: $app.req')
+	// eprintln('>>>>> received http request at /json_echo is: $app.req')
 	app.set_content_type(app.req.headers['Content-Type'])
 	return app.ok(app.req.data)
 }
@@ -89,7 +88,7 @@ pub fn (mut app App) json_echo() vweb.Result {
 // Make sure [post] works without the path
 [post]
 pub fn (mut app App) json() vweb.Result {
-	eprintln('>>>>> received http request at /json is: $app.req')
+	// eprintln('>>>>> received http request at /json is: $app.req')
 	app.set_content_type(app.req.headers['Content-Type'])
 	return app.ok(app.req.data)
 }
@@ -105,6 +104,6 @@ pub fn (mut app App) shutdown() vweb.Result {
 
 fn (mut app App) gracefull_exit() {
 	eprintln('>> webserver: gracefull_exit')
-	time.sleep_ms(100)
+	time.sleep(100 * time.millisecond)
 	exit(0)
 }

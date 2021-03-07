@@ -13,7 +13,7 @@ pub enum ProcessState {
 	aborted
 }
 
-[ref_only]
+[heap]
 pub struct Process {
 pub:
 	filename string // the process's command file path

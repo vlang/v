@@ -23,12 +23,6 @@ const (
 	r_ok = 4
 )
 
-[deprecated]
-pub fn cp_r(osource_path string, odest_path string, overwrite bool) ? {
-	eprintln('warning: `os.cp_r` has been deprecated, use `os.cp_all` instead')
-	return cp_all(osource_path, odest_path, overwrite)
-}
-
 // cp_all will recursively copy `src` to `dst`,
 // optionally overwriting files or dirs in `dst`.
 pub fn cp_all(src string, dst string, overwrite bool) ? {
@@ -62,11 +56,13 @@ pub fn cp_all(src string, dst string, overwrite bool) ? {
 		sp := join_path(source_path, file)
 		dp := join_path(dest_path, file)
 		if is_dir(sp) {
-			mkdir(dp) ?
+			if !exists(dp) {
+				mkdir(dp) ?
+			}
 		}
 		cp_all(sp, dp, overwrite) or {
-			rmdir(dp) or { return error(err) }
-			return error(err)
+			rmdir(dp) or { return err }
+			return err
 		}
 	}
 }
@@ -133,18 +129,6 @@ pub fn sigint_to_signal_name(si int) string {
 		}
 	}
 	return 'unknown'
-}
-
-[deprecated]
-pub fn file_exists(_path string) bool {
-	eprintln('warning: `os.file_exists` has been deprecated, use `os.exists` instead')
-	return exists(_path)
-}
-
-[deprecated]
-pub fn rmdir_recursive(path string) {
-	eprintln('warning: `os.rmdir_recursive` has been deprecated, use `os.rmdir_all` instead')
-	rmdir_all(path) or { panic(err) }
 }
 
 // rmdir_all recursively removes the specified directory.
@@ -216,11 +200,23 @@ pub fn file_name(path string) string {
 	return path.all_after_last(path_separator)
 }
 
-// input returns a one-line string from stdin, after printing a prompt.
-pub fn input(prompt string) string {
+// input_opt returns a one-line string from stdin, after printing a prompt.
+// In the event of error (end of input), it returns `none`.
+pub fn input_opt(prompt string) ?string {
 	print(prompt)
 	flush()
-	return get_line()
+	res := get_raw_line()
+	if res.len > 0 {
+		return res.trim_right('\r\n')
+	}
+	return none
+}
+
+// input returns a one-line string from stdin, after printing a prompt.
+// In the event of error (end of input), it returns '<EOF>'.
+pub fn input(prompt string) string {
+	res := input_opt(prompt) or { return '<EOF>' }
+	return res
 }
 
 // get_line returns a one-line string from stdin
@@ -228,9 +224,8 @@ pub fn get_line() string {
 	str := get_raw_line()
 	$if windows {
 		return str.trim_right('\r\n')
-	} $else {
-		return str.trim_right('\n')
 	}
+	return str.trim_right('\n')
 }
 
 // get_lines returns an array of strings read from from stdin.
@@ -341,7 +336,7 @@ pub fn write_file(path string, text string) ? {
 // write_file_array writes the data in `buffer` to a file in `path`.
 pub fn write_file_array(path string, buffer array) ? {
 	mut f := create(path) ?
-	f.write_bytes_at(buffer.data, (buffer.len * buffer.element_size), 0)
+	unsafe { f.write_bytes_at(buffer.data, (buffer.len * buffer.element_size), 0) }
 	f.close()
 }
 
@@ -399,12 +394,6 @@ pub fn find_abs_path_of_executable(exepath string) ?string {
 pub fn exists_in_system_path(prog string) bool {
 	find_abs_path_of_executable(prog) or { return false }
 	return true
-}
-
-[deprecated]
-pub fn dir_exists(path string) bool {
-	eprintln('warning: `os.dir_exists` has been deprecated, use `os.is_dir` instead')
-	return is_dir(path)
 }
 
 // is_file returns a `bool` indicating whether the given `path` is a file.
@@ -486,12 +475,6 @@ pub fn log(s string) {
 	//} $else {
 	println('os.log: ' + s)
 	//}
-}
-
-[deprecated]
-pub fn flush_stdout() {
-	eprintln('warning: `os.flush_stdout` has been deprecated, use `os.flush` instead')
-	flush()
 }
 
 // mkdir_all will create a valid full path of all directories given in `path`.
@@ -598,8 +581,10 @@ pub fn resource_abs_path(path string) string {
 	}
 	fp := join_path(base_path, path)
 	res := real_path(fp)
-	fp.free()
-	base_path.free()
+	unsafe {
+		fp.free()
+		base_path.free()
+	}
 	return res
 }
 

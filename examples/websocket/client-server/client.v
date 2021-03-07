@@ -49,6 +49,6 @@ fn start_client() ?&websocket.Client {
 
 	ws.connect() or { println(term.red('error on connect: $err')) }
 
-	go ws.listen() or { println(term.red('error on listen $err')) }
+	go ws.listen() // or { println(term.red('error on listen $err')) }
 	return ws
 }

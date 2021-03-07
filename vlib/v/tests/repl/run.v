@@ -13,7 +13,7 @@ fn main() {
 		bmark.step()
 		fres := runner.run_repl_file(options.wd, options.vexec, file) or {
 			bmark.fail()
-			logger.error(bmark.step_message_fail(err))
+			logger.error(bmark.step_message_fail(err.msg))
 			continue
 		}
 		bmark.ok()

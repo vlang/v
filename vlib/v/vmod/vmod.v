@@ -30,7 +30,7 @@ pub:
 	vmod_folder string
 }
 
-[ref_only]
+[heap]
 pub struct ModFileCacher {
 mut:
 	cache map[string]ModFileAndFolder
@@ -42,7 +42,7 @@ pub fn new_mod_file_cacher() &ModFileCacher {
 	return &ModFileCacher{}
 }
 
-pub fn (mcache &ModFileCacher) dump() {
+pub fn (mcache &ModFileCacher) debug() {
 	$if debug {
 		eprintln('ModFileCacher DUMP:')
 		eprintln('	 ModFileCacher.cache:')

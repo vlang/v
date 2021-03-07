@@ -13,7 +13,7 @@ import strings
 * Note:
 * use `v -d create_data vlib/x/ttf/ttf_test.v` to generate binary data for this test file
 *
-* TODO: 
+* TODO:
 * - manage text directions R to L
 **********************************************************************/
 const font_path = 'Qarmic_sans_Abridged.ttf'
@@ -154,7 +154,7 @@ ffbf ffff bf00 0000 0000 0000 0000 0000
 fn save_raw_data_as_array(buf_bin []byte, file_name string) {
 	mut buf := strings.new_builder(buf_bin.len * 5)
 	for x in buf_bin {
-		buf.write('0x${x:02x},')
+		buf.write_string('0x${x:02x},')
 	}
 	os.write_file_array(file_name, buf.buf) or { panic(err) }
 }

@@ -8,6 +8,7 @@ struct Moon {
 
 struct Mars {
 }
+
 fn (m Mars) dust_storm() bool {
 	return rand.int() >= 0
 }
@@ -15,10 +16,11 @@ fn (m Mars) dust_storm() bool {
 struct Venus {
 }
 
-type World = Moon | Mars | Venus
+type World = Mars | Moon | Venus
 
 struct Lander {
 }
+
 fn (l Lander) deorbit() {
 	println('leaving orbit')
 }
@@ -28,7 +30,7 @@ fn (l Lander) open_parachutes(n int) {
 
 fn wait() {
 	println('waiting...')
-	time.sleep(1)
+	time.sleep(1 * time.second)
 }
 
 fn (l Lander) land(w World) {
@@ -53,7 +55,7 @@ fn (l Lander) land(w World) {
 }
 
 fn main() {
-	l := Lander {}
+	l := Lander{}
 	l.land(Venus{})
 	l.land(Mars{})
 }

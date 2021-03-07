@@ -7,14 +7,15 @@ import os
 import strings
 
 const (
-	str_start = "sb.write('"
+	str_start = "sb.write_string('"
 	str_end   = "' ) "
 )
 
 // compile_file compiles the content of a file by the given path as a template
 pub fn compile_file(path string, fn_name string) string {
+	basepath := os.dir(path)
 	html := os.read_file(path) or { panic('html failed') }
-	return compile_template(html, fn_name)
+	return compile_template(basepath, html, fn_name)
 }
 
 enum State {
@@ -24,21 +25,21 @@ enum State {
 	// span // span.{
 }
 
-pub fn compile_template(html_ string, fn_name string) string {
+pub fn compile_template(basepath string, html_ string, fn_name string) string {
 	// lines := os.read_lines(path)
 	mut html := html_.trim_space()
 	mut header := ''
 	mut footer := ''
-	if os.exists('templates/header.html') && html.contains('@header') {
-		h := os.read_file('templates/header.html') or {
-			panic('reading file templates/header.html failed')
+	if os.exists(os.join_path(basepath, 'header.html')) && html.contains('@header') {
+		h := os.read_file(os.join_path(basepath, 'header.html')) or {
+			panic('reading file ${os.join_path(basepath, 'header.html')} failed')
 		}
 		header = h.trim_space().replace("'", '"')
 		html = header + html
 	}
-	if os.exists('templates/footer.html') && html.contains('@footer') {
-		f := os.read_file('templates/footer.html') or {
-			panic('reading file templates/footer.html failed')
+	if os.exists(os.join_path(basepath, 'footer.html')) && html.contains('@footer') {
+		f := os.read_file(os.join_path(basepath, 'footer.html')) or {
+			panic('reading file ${os.join_path(basepath, 'footer.html')} failed')
 		}
 		footer = f.trim_space().replace("'", '"')
 		html += footer
@@ -58,7 +59,7 @@ footer := \' \' // TODO remove
 _ = footer
 
 ")
-	s.write(tmpl.str_start)
+	s.write_string(tmpl.str_start)
 	mut state := State.html
 	mut in_span := false
 	// for _line in lines {
@@ -75,10 +76,24 @@ _ = footer
 		}
 		if line.contains('@include ') {
 			lines.delete(i)
-			file_name := line.split("'")[1]
-			file_path := os.join_path('templates', '${file_name}.html')
+			mut file_name := line.split("'")[1]
+			mut file_ext := os.file_ext(file_name)
+			if file_ext == '' {
+				file_ext = '.html'
+			}
+			file_name = file_name.replace(file_ext, '')
+			// relative path, starting with the current folder
+			mut templates_folder := os.real_path(basepath)
+			if file_name.contains('/') && file_name.starts_with('/') {
+				// an absolute path
+				templates_folder = ''
+			}
+			file_path := os.real_path(os.join_path(templates_folder, '$file_name$file_ext'))
+			$if trace_tmpl ? {
+				eprintln('>>> basepath: "$basepath" , fn_name: "$fn_name" , @include line: "$line" , file_name: "$file_name" , file_ext: "$file_ext" , templates_folder: "$templates_folder" , file_path: "$file_path"')
+			}
 			file_content := os.read_file(file_path) or {
-				panic('Vweb: Reading file $file_name failed.')
+				panic('Vweb: reading file $file_name from path: $file_path failed.')
 			}
 			file_splitted := file_content.split_into_lines().reverse()
 			for f in file_splitted {
@@ -87,13 +102,13 @@ _ = footer
 			i--
 		} else if line.contains('@js ') {
 			pos := line.index('@js') or { continue }
-			s.write('<script src="')
-			s.write(line[pos + 5..line.len - 1])
+			s.write_string('<script src="')
+			s.write_string(line[pos + 5..line.len - 1])
 			s.writeln('"></script>')
 		} else if line.contains('@css ') {
 			pos := line.index('@css') or { continue }
-			s.write('<link href="')
-			s.write(line[pos + 6..line.len - 1])
+			s.write_string('<link href="')
+			s.write_string(line[pos + 6..line.len - 1])
 			s.writeln('" rel="stylesheet" type="text/css">')
 		} else if line.contains('@if ') {
 			s.writeln(tmpl.str_end)
@@ -101,10 +116,16 @@ _ = footer
 			s.writeln('if ' + line[pos + 4..] + '{')
 			s.writeln(tmpl.str_start)
 		} else if line.contains('@end') {
+			// Remove new line byte
+			s.go_back(1)
+
 			s.writeln(tmpl.str_end)
 			s.writeln('}')
 			s.writeln(tmpl.str_start)
 		} else if line.contains('@else') {
+			// Remove new line byte
+			s.go_back(1)
+
 			s.writeln(tmpl.str_end)
 			s.writeln(' } else { ')
 			s.writeln(tmpl.str_start)
@@ -136,7 +157,7 @@ _ = footer
 		} else {
 			// HTML, may include `@var`
 			// escaped by cgen, unless it's a `vweb.RawHtml` string
-			s.writeln(line.replace('@', '$').replace("'", '"'))
+			s.writeln(line.replace('@', '$').replace('$$', '@').replace("'", "\\'"))
 		}
 	}
 	s.writeln(tmpl.str_end)

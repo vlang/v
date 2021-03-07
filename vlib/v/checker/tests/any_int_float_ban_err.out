@@ -9,16 +9,14 @@ vlib/v/checker/tests/any_int_float_ban_err.vv:2:1: error: type `int_literal` doe
       | ~~~~~~~~
     3 | 
     4 | struct Int {
-vlib/v/checker/tests/any_int_float_ban_err.vv:5:7: error: unknown type `int_literal`.
-Did you mean `float_literal`?
+vlib/v/checker/tests/any_int_float_ban_err.vv:5:7: error: unknown type `int_literal`
     3 | 
     4 | struct Int {
     5 |     i int_literal
       |       ~~~~~~~~~~~
     6 |     f float_literal
     7 | }
-vlib/v/checker/tests/any_int_float_ban_err.vv:6:7: error: unknown type `float_literal`.
-Did you mean `int_literal`?
+vlib/v/checker/tests/any_int_float_ban_err.vv:6:7: error: unknown type `float_literal`
     4 | struct Int {
     5 |     i int_literal
     6 |     f float_literal

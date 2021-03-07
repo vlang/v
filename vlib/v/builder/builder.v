@@ -41,9 +41,9 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 	if pref.use_color == .never {
 		util.emanager.set_support_color(false)
 	}
-	msvc := find_msvc() or {
+	msvc := find_msvc(pref.m64) or {
 		if pref.ccompiler == 'msvc' {
-			verror('Cannot find MSVC on this OS')
+			// verror('Cannot find MSVC on this OS')
 		}
 		MsvcResult{
 			valid: false
@@ -58,11 +58,7 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 			parent: 0
 		}
 		compiled_dir: compiled_dir
-		max_nr_errors: if pref.error_limit > 0 {
-			pref.error_limit
-		} else {
-			100
-		}
+		max_nr_errors: if pref.error_limit > 0 { pref.error_limit } else { 100 }
 		cached_msvc: msvc
 	}
 	// max_nr_errors: pref.error_limit ?? 100 TODO potential syntax?
@@ -370,7 +366,7 @@ fn (b &Builder) print_warnings_and_errors() {
 					}
 				}
 			}
-			if redefine_conflicts.len > 1 {
+			if redefines.len > 0 {
 				eprintln('redefinition of function `$fn_name`')
 				for redefine in redefines {
 					eprintln(util.formatted_error('conflicting declaration:', redefine.fheader,

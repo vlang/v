@@ -7,7 +7,7 @@ import io
 
 const (
 	sport           = 12380
-	exit_after_time = 7000 // milliseconds
+	exit_after_time = 9000 // milliseconds
 	vexe            = os.getenv('VEXE')
 	vweb_logfile    = os.getenv('VWEB_LOGFILE')
 	vroot           = os.dir(vexe)
@@ -20,7 +20,7 @@ const (
 fn testsuite_begin() {
 	os.chdir(vroot)
 	if os.exists(serverexe) {
-		os.rm(serverexe) or { }
+		os.rm(serverexe) or {}
 	}
 }
 
@@ -50,7 +50,11 @@ fn test_a_simple_vweb_app_runs_in_the_background() {
 		res := os.system(server_exec_cmd)
 		assert res == 0
 	}
-	time.sleep_ms(100)
+	$if macos {
+		time.sleep(1000 * time.millisecond)
+	} $else {
+		time.sleep(100 * time.millisecond)
+	}
 }
 
 // web client tests follow
@@ -63,7 +67,7 @@ fn assert_common_headers(received string) {
 
 fn test_a_simple_tcp_client_can_connect_to_the_vweb_server() {
 	received := simple_tcp_client(path: '/') or {
-		assert err == ''
+		assert err.msg == ''
 		return
 	}
 	assert_common_headers(received)
@@ -74,7 +78,7 @@ fn test_a_simple_tcp_client_can_connect_to_the_vweb_server() {
 
 fn test_a_simple_tcp_client_simple_route() {
 	received := simple_tcp_client(path: '/simple') or {
-		assert err == ''
+		assert err.msg == ''
 		return
 	}
 	assert_common_headers(received)
@@ -83,9 +87,19 @@ fn test_a_simple_tcp_client_simple_route() {
 	assert received.ends_with('A simple result')
 }
 
+fn test_a_simple_tcp_client_zero_content_length() {
+	// tests that sending a content-length header of 0 doesn't hang on a read timeout
+	watch := time.new_stopwatch(auto_start: true)
+	simple_tcp_client(path: '/', headers: 'Content-Length: 0\r\n\r\n') or {
+		assert err.msg == ''
+		return
+	}
+	assert watch.elapsed() < 1 * time.second
+}
+
 fn test_a_simple_tcp_client_html_page() {
 	received := simple_tcp_client(path: '/html_page') or {
-		assert err == ''
+		assert err.msg == ''
 		return
 	}
 	assert_common_headers(received)
@@ -196,7 +210,7 @@ fn test_http_client_json_post() {
 
 fn test_http_client_shutdown_does_not_work_without_a_cookie() {
 	x := http.get('http://127.0.0.1:$sport/shutdown') or {
-		assert err == ''
+		assert err.msg == ''
 		return
 	}
 	assert x.status_code == 404
@@ -206,13 +220,13 @@ fn test_http_client_shutdown_does_not_work_without_a_cookie() {
 fn testsuite_end() {
 	// This test is guaranteed to be called last.
 	// It sends a request to the server to shutdown.
-	x := http.fetch('http://127.0.0.1:$sport/shutdown', 
+	x := http.fetch('http://127.0.0.1:$sport/shutdown',
 		method: .get
 		cookies: map{
 			'skey': 'superman'
 		}
 	) or {
-		assert err == ''
+		assert err.msg == ''
 		return
 	}
 	assert x.status_code == 200
@@ -236,9 +250,9 @@ fn simple_tcp_client(config SimpleTcpClientConfig) ?string {
 		tries++
 		client = net.dial_tcp('127.0.0.1:$sport') or {
 			if tries > config.retries {
-				return error(err)
+				return err
 			}
-			time.sleep_ms(100)
+			time.sleep(100 * time.millisecond)
 			continue
 		}
 		break
@@ -246,7 +260,7 @@ fn simple_tcp_client(config SimpleTcpClientConfig) ?string {
 	client.set_read_timeout(tcp_r_timeout)
 	client.set_write_timeout(tcp_w_timeout)
 	defer {
-		client.close() or { }
+		client.close() or {}
 	}
 	message := 'GET $config.path HTTP/1.1
 Host: $config.host

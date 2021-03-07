@@ -34,8 +34,7 @@ pub fn (mut con TcpConn) read_line() string {
 				break
 			}
 		}
-		bufbp := byteptr(buf)
-		line = tos_clone(bufbp)
+		line = unsafe { tos_clone(&buf[0]) }
 		if eol_idx > 0 {
 			// At this point, we are sure that recv returned valid data,
 			// that contains *at least* one line.

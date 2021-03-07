@@ -3,15 +3,7 @@
 // that can be found in the LICENSE file.
 module math
 
-// NOTE
-// When adding a new function, please make sure it's in the right place.
-// All functions are sorted alphabetically, separated by wrapped functions vs
-// backend specific functions.
-// If using System/Backend dependent functions, put them in their respective
-// .c.v or .js.v or other files
-// Below are functions that are not wrappers for built-in system functions, but
-// native V functions. They are still sorted alphabetically
-// Faster approximate sin() and cos() implemented from lolremez
+// aprox_sin returns an approximation of sin(a) made using lolremez
 pub fn aprox_sin(a f64) f64 {
 	a0 := 1.91059300966915117e-31
 	a1 := 1.00086760103908896
@@ -24,6 +16,7 @@ pub fn aprox_sin(a f64) f64 {
 	return a0 + a * (a1 + a * (a2 + a * (a3 + a * (a4 + a * (a5 + a * (a6 + a * a7))))))
 }
 
+// aprox_cos returns an approximation of sin(a) made using lolremez
 pub fn aprox_cos(a f64) f64 {
 	a0 := 9.9995999154986614e-1
 	a1 := 1.2548995793001028e-3

@@ -121,7 +121,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 						return ast.StructDecl{}
 					}
 					p.next()
-					pub_mut_pos = fields.len
+					pub_mut_pos = ast_fields.len
 					is_field_pub = true
 					is_field_mut = true
 					is_field_global = false
@@ -130,7 +130,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 						p.error('redefinition of `pub` section')
 						return ast.StructDecl{}
 					}
-					pub_pos = fields.len
+					pub_pos = ast_fields.len
 					is_field_pub = true
 					is_field_mut = false
 					is_field_global = false
@@ -143,7 +143,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				}
 				p.next()
 				p.check(.colon)
-				mut_pos = fields.len
+				mut_pos = ast_fields.len
 				is_field_pub = false
 				is_field_mut = true
 				is_field_global = false
@@ -154,7 +154,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				}
 				p.next()
 				p.check(.colon)
-				global_pos = fields.len
+				global_pos = ast_fields.len
 				is_field_pub = true
 				is_field_mut = true
 				is_field_global = true
@@ -165,7 +165,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				}
 				p.next()
 				p.check(.colon)
-				module_pos = fields.len
+				module_pos = ast_fields.len
 				is_field_pub = false
 				is_field_mut = false
 				is_field_global = false
@@ -178,7 +178,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			}
 			field_start_pos := p.tok.position()
 			is_embed := ((p.tok.lit.len > 1 && p.tok.lit[0].is_capital())
-				|| p.peek_tok.kind == .dot) && language == .v
+				|| p.peek_tok.kind == .dot) && language == .v && p.peek_tok.kind != .key_fn
 			is_on_top := ast_fields.len == 0 && !(is_field_mut || is_field_mut || is_field_global)
 			mut field_name := ''
 			mut typ := table.Type(0)
@@ -295,7 +295,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			fields: fields
 			is_typedef: attrs.contains('typedef')
 			is_union: is_union
-			is_ref_only: attrs.contains('ref_only')
+			is_heap: attrs.contains('heap')
 			generic_types: generic_types
 			attrs: attrs
 		}
@@ -320,11 +320,11 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		is_pub: is_pub
 		fields: ast_fields
 		pos: start_pos.extend_with_last_line(name_pos, last_line)
-		mut_pos: mut_pos - embeds.len
-		pub_pos: pub_pos - embeds.len
-		pub_mut_pos: pub_mut_pos - embeds.len
-		global_pos: global_pos - embeds.len
-		module_pos: module_pos - embeds.len
+		mut_pos: mut_pos
+		pub_pos: pub_pos
+		pub_mut_pos: pub_mut_pos
+		global_pos: global_pos
+		module_pos: module_pos
 		language: language
 		is_union: is_union
 		attrs: attrs
@@ -461,6 +461,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	mut fields := []ast.StructField{cap: 20}
 	mut methods := []ast.FnDecl{cap: 20}
 	mut is_mut := false
+	mut mut_pos := -1
 	for p.tok.kind != .rcbr && p.tok.kind != .eof {
 		if p.tok.kind == .key_mut {
 			if is_mut {
@@ -470,11 +471,16 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			p.next()
 			p.check(.colon)
 			is_mut = true
+			mut_pos = fields.len
 		}
 		if p.peek_tok.kind == .lpar {
 			method_start_pos := p.tok.position()
 			line_nr := p.tok.line_nr
 			name := p.check_name()
+			if name == 'type_name' {
+				p.error_with_pos('cannot override built-in method `type_name`', method_start_pos)
+				return ast.InterfaceDecl{}
+			}
 			if ts.has_method(name) {
 				p.error_with_pos('duplicate method `$name`', method_start_pos)
 				return ast.InterfaceDecl{}
@@ -562,5 +568,6 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		is_pub: is_pub
 		pos: pos
 		pre_comments: pre_comments
+		mut_pos: mut_pos
 	}
 }

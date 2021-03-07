@@ -48,7 +48,7 @@ const (
 		'cflags', 'path']
 )
 
-[ref_only]
+[heap]
 pub struct Preferences {
 pub mut:
 	os          OS // the OS to compile for
@@ -143,9 +143,10 @@ pub mut:
 	cleanup_files       []string // list of temporary *.tmp.c and *.tmp.c.rsp files. Cleaned up on successfull builds.
 	build_options       []string // list of options, that should be passed down to `build-module`, if needed for -usecache
 	cache_manager       vcache.CacheManager
+	is_help             bool // -h, -help or --help was passed
 }
 
-pub fn parse_args(args []string) (&Preferences, string) {
+pub fn parse_args(known_external_commands []string, args []string) (&Preferences, string) {
 	mut res := &Preferences{}
 	$if x64 {
 		res.m64 = true // follow V model by default
@@ -166,6 +167,10 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			}
 			'-check-syntax' {
 				res.only_check_syntax = true
+			}
+			'-h', '-help', '--help' {
+				// NB: help is *very important*, just respond to all variations:
+				res.is_help = true
 			}
 			'-v' {
 				// `-v` flag is for setting verbosity, but without any args it prints the version, like Clang
@@ -197,6 +202,13 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				res.is_debug = true
 				res.is_vlines = false
 				res.build_options << arg
+			}
+			'-debug-tcc' {
+				res.ccompiler = 'tcc'
+				res.build_options << '$arg "$res.ccompiler"'
+				res.retry_compilation = false
+				res.show_cc = true
+				res.show_c_output = true
 			}
 			'-repl' {
 				res.is_repl = true
@@ -317,7 +329,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			'-w' {
 				res.skip_warnings = true
 			}
-			'-print_v_files' {
+			'-print-v-files' {
 				res.print_v_files = true
 			}
 			'-error-limit' {
@@ -338,7 +350,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				res.build_options << '$arg $target_os'
 			}
 			'-printfn' {
-				res.printfn_list << cmdline.option(current_args, '-printfn', '')
+				res.printfn_list << cmdline.option(current_args, '-printfn', '').split(',')
 				i++
 			}
 			'-cflags' {
@@ -400,7 +412,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				i++
 			}
 			else {
-				if command == 'build' && (arg.ends_with('.v') || os.exists(command)) {
+				if command == 'build' && is_source_file(arg) {
 					eprintln('Use `v $arg` instead.')
 					exit(1)
 				}
@@ -417,6 +429,10 @@ pub fn parse_args(args []string) (&Preferences, string) {
 						if command == 'run' {
 							break
 						}
+					} else if is_source_file(command) && is_source_file(arg)
+						&& command !in known_external_commands {
+						eprintln('Too many targets. Specify just one target: <target.v|target_directory>.')
+						exit(1)
 					}
 					continue
 				}
@@ -440,7 +456,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 		eprintln('Cannot save output binary in a .v file.')
 		exit(1)
 	}
-	if command.ends_with('.v') || os.exists(command) {
+	if is_source_file(command) {
 		res.path = command
 	} else if command == 'run' {
 		res.is_run = true
@@ -474,7 +490,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			//
 			if output_option.len != 0 {
 				res.vrun_elog('remove tmp exe file: $tmp_exe_file_path')
-				os.rm(tmp_exe_file_path) or { }
+				os.rm(tmp_exe_file_path) or {}
 			}
 			res.vrun_elog('remove tmp v file: $tmp_v_file_path')
 			os.rm(tmp_v_file_path) or { panic(err) }
@@ -513,6 +529,11 @@ fn must_exist(path string) {
 		eprintln('v expects that `$path` exists, but it does not')
 		exit(1)
 	}
+}
+
+[inline]
+fn is_source_file(path string) bool {
+	return path.ends_with('.v') || os.exists(path)
 }
 
 pub fn backend_from_string(s string) ?Backend {

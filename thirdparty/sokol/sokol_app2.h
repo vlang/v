@@ -17,11 +17,11 @@
     return YES;
 }
 
-- (void)mouseExited:(NSEvent*)event {
-}
+// - (void)mouseExited:(NSEvent*)event {
+// }
 
-- (void)mouseDown:(NSEvent*)event {
-	}
+// - (void)mouseDown:(NSEvent*)event {
+// }
 
 - (BOOL)acceptsFirstMouse:(NSEvent *)event {
 	return YES;

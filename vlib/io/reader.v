@@ -46,7 +46,7 @@ pub fn read_all(config ReadAllConfig) ?[]byte {
 			break
 		}
 		if b.len == read {
-			b.grow_len(read_all_grow_len)
+			unsafe { b.grow_len(read_all_grow_len) }
 		}
 	}
 	return b[..read]
@@ -66,7 +66,7 @@ pub fn read_any(r Reader) ?[]byte {
 			break
 		}
 		if b.len == read {
-			b.grow_len(read_all_grow_len)
+			unsafe { b.grow_len(read_all_grow_len) }
 		}
 	}
 	return b[..read]

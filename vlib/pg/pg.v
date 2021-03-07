@@ -92,7 +92,7 @@ fn res_to_rows(res voidptr) []Row {
 	return rows
 }
 
-// close frees the underlaying resource allocated by the database connection
+// close frees the underlying resource allocated by the database connection
 pub fn (db DB) close() {
 	C.PQfinish(db.conn)
 }

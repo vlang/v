@@ -29,7 +29,7 @@ pub fn (mut ctx Context) write(s string) {
 	if s == '' {
 		return
 	}
-	ctx.print_buf.push_many(s.str, s.len)
+	unsafe { ctx.print_buf.push_many(s.str, s.len) }
 }
 
 [inline]
@@ -56,6 +56,18 @@ pub fn (mut ctx Context) bold() {
 // set_cursor_position positions the cusor at the given coordinates `x`,`y`.
 pub fn (mut ctx Context) set_cursor_position(x int, y int) {
 	ctx.write('\x1b[$y;${x}H')
+}
+
+[inline]
+// show_cursor will make the cursor appear if it is not already visible
+pub fn (mut ctx Context) show_cursor() {
+	ctx.write('\x1b[?25h')
+}
+
+// hide_cursor will make the cursor invisible
+[inline]
+pub fn (mut ctx Context) hide_cursor() {
+	ctx.write('\x1b[?25l')
 }
 
 [inline]

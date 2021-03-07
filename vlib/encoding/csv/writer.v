@@ -29,33 +29,33 @@ pub fn (mut w Writer) write(record []string) ?bool {
 	for n, field_ in record {
 		mut field := field_
 		if n > 0 {
-			w.sb.write(w.delimiter.ascii_str())
+			w.sb.write_string(w.delimiter.ascii_str())
 		}
 		if !w.field_needs_quotes(field) {
-			w.sb.write(field)
+			w.sb.write_string(field)
 			continue
 		}
-		w.sb.write('"')
+		w.sb.write_string('"')
 		for field.len > 0 {
 			mut i := field.index_any('"\r\n')
 			if i < 0 {
 				i = field.len
 			}
-			w.sb.write(field[..i])
+			w.sb.write_string(field[..i])
 			field = field[i..]
 			if field.len > 0 {
 				z := field[0]
 				match z {
-					`"` { w.sb.write('""') }
-					`\r`, `\n` { w.sb.write(le) }
+					`"` { w.sb.write_string('""') }
+					`\r`, `\n` { w.sb.write_string(le) }
 					else {}
 				}
 				field = field[1..]
 			}
 		}
-		w.sb.write('"')
+		w.sb.write_string('"')
 	}
-	w.sb.write(le)
+	w.sb.write_string(le)
 	return true
 }
 

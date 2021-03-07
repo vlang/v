@@ -204,7 +204,7 @@ fn (mut f MDFile) parse_line(lnumber int, line string) {
 	}
 }
 
-fn (mut f MDFile) dump() {
+fn (mut f MDFile) debug() {
 	for e in f.examples {
 		eprintln('f.path: $f.path | example: $e')
 	}

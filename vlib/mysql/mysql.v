@@ -125,9 +125,11 @@ pub fn (conn &Connection) tables(wildcard string) ?[]string {
 // The `s` argument is encoded to produce an escaped SQL string, 
 // taking into account the current character set of the connection. 
 pub fn (conn &Connection) escape_string(s string) string {
-	to := malloc(2 * s.len + 1)
-	C.mysql_real_escape_string_quote(conn.conn, to, s.str, s.len, `\'`)
-	return unsafe { to.vstring() }
+	unsafe {
+		to := malloc(2 * s.len + 1)
+		C.mysql_real_escape_string_quote(conn.conn, to, s.str, s.len, `\'`)
+		return to.vstring() 
+	}
 }
 
 // set_option - sets extra connect options that affect the behavior of

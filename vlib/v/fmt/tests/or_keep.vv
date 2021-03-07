@@ -1,3 +1,9 @@
+fn main() {
+	empty_or_block() or {}
+	empty_or_block() or {
+	}
+}
+
 fn fn_with_or() int {
 	fn_with_optional() or { return 10 }
 	return 20
@@ -6,4 +12,23 @@ fn fn_with_or() int {
 fn (f Foo) method_with_or() int {
 	f.fn_with_optional() or { return 10 }
 	return 20
+}
+
+fn unwrapped_single_line_if() {
+	namefound := publisher.name_fix_check(name_to_find, state.site.id, ispage) or {
+		if err.contains('Could not find') {
+			state.error('cannot find link: $name_to_find')
+		} else {
+			state.error('cannot find link: $name_to_find\n$err')
+		}
+		println('Another stmt')
+	}
+}
+
+fn or_with_one_multi_line_stmt() {
+	b := or_func() or {
+		MyStruct{
+			val: 'xyz'
+		}
+	}
 }

@@ -131,7 +131,7 @@ fn test_map_init() {
 	one := 'one'
 	three := 'three'
 	m := map{
-		one: 1
+		one:   1
 		'two': 2
 		three: 1 + 2
 	}
@@ -625,4 +625,10 @@ fn test_map_assign_empty_map_init() {
 	println(a)
 	assert a == map[string]int{}
 	assert '$a' == '{}'
+}
+
+fn test_in_map_literal() {
+	assert 1 in map{
+		1: 'one'
+	}
 }

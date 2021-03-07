@@ -7,13 +7,20 @@ pub const (
 
 // get_shared_library_extension returns the platform dependent shared library extension
 // i.e. .dll on windows, .so on most unixes, .dylib on macos.
+[inline]
 pub fn get_shared_library_extension() string {
-	mut res := '.so'
-	$if macos {
-		res = '.dylib'
+	return $if windows {
+		'.dll'
+	} $else $if macos {
+		'.dylib'
+	} $else {
+		'.so'
 	}
-	$if windows {
-		res = '.dll'
-	}
-	return res
+}
+
+// get_libname returns a library name with the operating system specific extension for
+// shared libraries.
+[inline]
+pub fn get_libname(libname string) string {
+	return '$libname$dl.dl_ext'
 }

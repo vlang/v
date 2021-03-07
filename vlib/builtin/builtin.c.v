@@ -80,11 +80,19 @@ pub fn eprintln(s string) {
 	C.fflush(C.stdout)
 	C.fflush(C.stderr)
 	// eprintln is used in panics, so it should not fail at all
-	if s.str == 0 {
-		C.write(2, c'eprintln(NIL)\n', 14)
-	} else {
-		C.write(2, s.str, s.len)
-		C.write(2, c'\n', 1)
+	$if android {
+		if s.str == 0 {
+			C.fprintf(C.stderr, c'eprintln(NIL)\n')
+		} else {
+			C.fprintf(C.stderr, c'%.*s\n', s.len, s.str)
+		}
+	} $else {
+		if s.str == 0 {
+			C.write(2, c'eprintln(NIL)\n', 14)
+		} else {
+			C.write(2, s.str, s.len)
+			C.write(2, c'\n', 1)
+		}
 	}
 	C.fflush(C.stderr)
 }
@@ -93,10 +101,18 @@ pub fn eprintln(s string) {
 pub fn eprint(s string) {
 	C.fflush(C.stdout)
 	C.fflush(C.stderr)
-	if s.str == 0 {
-		C.write(2, c'eprint(NIL)\n', 12)
-	} else {
-		C.write(2, s.str, s.len)
+	$if android {
+		if s.str == 0 {
+			C.fprintf(C.stderr, c'eprint(NIL)')
+		} else {
+			C.fprintf(C.stderr, c'%.*s', s.len, s.str)
+		}
+	} $else {
+		if s.str == 0 {
+			C.write(2, c'eprint(NIL)', 11)
+		} else {
+			C.write(2, s.str, s.len)
+		}
 	}
 	C.fflush(C.stderr)
 }
@@ -104,7 +120,11 @@ pub fn eprint(s string) {
 // print prints a message to stdout. Unlike `println` stdout is not automatically flushed.
 // A call to `flush()` will flush the output buffer to stdout.
 pub fn print(s string) {
-	C.write(1, s.str, s.len)
+	$if android {
+		C.fprintf(C.stdout, c'%.*s', s.len, s.str)
+	} $else {
+		C.write(1, s.str, s.len)
+	}
 }
 
 /*
@@ -216,7 +236,6 @@ pub fn v_realloc(b byteptr, n int) byteptr {
 
 // v_calloc dynamically allocates a zeroed `n` bytes block of memory on the heap.
 // v_calloc returns a `byteptr` pointing to the memory address of the allocated space.
-[unsafe]
 pub fn v_calloc(n int) byteptr {
 	return C.calloc(1, n)
 }
@@ -224,7 +243,6 @@ pub fn v_calloc(n int) byteptr {
 // vcalloc dynamically allocates a zeroed `n` bytes block of memory on the heap.
 // vcalloc returns a `byteptr` pointing to the memory address of the allocated space.
 // Unlike `v_calloc` vcalloc checks for negative values given in `n`.
-[unsafe]
 pub fn vcalloc(n int) byteptr {
 	if n < 0 {
 		panic('calloc(<=0)')
@@ -246,6 +264,7 @@ pub fn free(ptr voidptr) {
 // memdup dynamically allocates a `sz` bytes block of memory on the heap
 // memdup then copies the contents of `src` into the allocated space and
 // returns a pointer to the newly allocated space.
+[unsafe]
 pub fn memdup(src voidptr, sz int) voidptr {
 	if sz == 0 {
 		return vcalloc(1)
@@ -274,4 +293,15 @@ pub fn is_atty(fd int) int {
 	} $else {
 		return C.isatty(fd)
 	}
+}
+
+[inline]
+fn v_fixed_index(i int, len int) int {
+	$if !no_bounds_checking ? {
+		if i < 0 || i >= len {
+			s := 'fixed array index out of range (index: $i, len: $len)'
+			panic(s)
+		}
+	}
+	return i
 }

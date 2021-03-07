@@ -5,12 +5,15 @@ import v.parser
 import v.pref
 import v.util
 import v.gen.c
+import v.markused
 
 pub fn (mut b Builder) gen_c(v_files []string) string {
 	util.timing_start('PARSE')
 	b.parsed_files = parser.parse_files(v_files, b.table, b.pref, b.global_scope)
 	b.parse_imports()
-	util.timing_measure('PARSE')
+	util.get_timers().show('SCAN')
+	util.get_timers().show('PARSE')
+	util.get_timers().show_if_exists('PARSE stmt')
 	if b.pref.only_check_syntax {
 		return ''
 	}
@@ -20,6 +23,10 @@ pub fn (mut b Builder) gen_c(v_files []string) string {
 	b.checker.check_files(b.parsed_files)
 	util.timing_measure('CHECK')
 	//
+	if b.pref.skip_unused {
+		markused.mark_used(mut b.table, b.pref, b.parsed_files)
+	}
+
 	b.print_warnings_and_errors()
 	// TODO: move gen.cgen() to c.gen()
 	util.timing_start('C GEN')
@@ -39,7 +46,7 @@ pub fn (mut b Builder) build_c(v_files []string, out_file string) {
 	f.writeln(output2) or { panic(err) }
 	f.close()
 	if b.pref.is_stats {
-		println('generated C source code size: ${util.bold(output2.len.str())} bytes')
+		println('generated C source code size: ${util.bold((output2.count('\n') + 1).str())} lines, ${util.bold(output2.len.str())} bytes')
 	}
 	// os.write_file(out_file, b.gen_c(v_files))
 }

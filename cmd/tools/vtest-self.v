@@ -11,51 +11,48 @@ const (
 		'vlib/net/http/http_test.v',
 		'vlib/net/http/status_test.v',
 		'vlib/net/http/http_httpbin_test.v',
+		'vlib/net/http/header_test.v',
 		'vlib/net/udp_test.v',
 		'vlib/net/tcp_test.v',
 		'vlib/orm/orm_test.v',
 		'vlib/sqlite/sqlite_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/vweb/tests/vweb_test.v',
+		'vlib/vweb/request_test.v',
+		'vlib/vweb/route_test.v',
 		'vlib/x/websocket/websocket_test.v',
 	]
 	skip_with_fsanitize_address   = [
-		'vlib/encoding/csv/reader_test.v',
 		'vlib/encoding/base64/base64_test.v',
 		'vlib/json/json_test.v',
 		'vlib/regex/regex_test.v',
-		'vlib/sync/channel_opt_propagate_test.v',
 		'vlib/v/tests/ptr_arithmetic_test.v',
 		'vlib/v/tests/unsafe_test.v',
 		'vlib/x/websocket/websocket_test.v',
 	]
-	skip_with_fsanitize_undefined = [
-		'vlib/encoding/csv/reader_test.v',
-	]
+	skip_with_fsanitize_undefined = []string{}
 	skip_with_werror              = [
 		'vlib/builtin/array_test.v',
 		'vlib/clipboard/clipboard_test.v',
-		'vlib/cli/command_test.v',
-		'vlib/cli/flag_test.v',
+		'vlib/dl/dl_test.v',
 		'vlib/dl/example/use_test.v',
 		'vlib/eventbus/eventbus_test.v',
 		'vlib/gx/color_test.v',
-		'vlib/io/reader_test.v',
 		'vlib/json/json_test.v',
 		'vlib/math/big/big_test.v',
 		'vlib/net/ftp/ftp_test.v',
 		'vlib/net/http/cookie_test.v',
 		'vlib/net/http/http_httpbin_test.v',
+		'vlib/net/http/header_test.v',
+		'vlib/net/tcp_test.v',
+		'vlib/net/tcp_simple_client_server_test.v',
 		'vlib/net/smtp/smtp_test.v',
+		'vlib/net/udp_test.v',
+		'vlib/net/unix/unix_test.v',
 		'vlib/net/http/http_test.v',
 		'vlib/net/http/status_test.v',
-		'vlib/net/tcp_simple_client_server_test.v',
-		'vlib/net/tcp_test.v',
-		'vlib/net/udp_test.v',
-		'vlib/net/unix_test.v',
 		'vlib/orm/orm_test.v',
 		'vlib/os/os_test.v',
-		'vlib/dl/dl_test.v',
 		'vlib/rand/mt19937/mt19937_test.v',
 		'vlib/readline/readline_test.v',
 		'vlib/regex/regex_test.v',
@@ -63,38 +60,38 @@ const (
 		'vlib/strconv/atof_test.v',
 		'vlib/strconv/f32_f64_to_string_test.v',
 		'vlib/strconv/number_to_base_test.v',
-		'vlib/sync/channel_1_test.v',
-		'vlib/sync/channel_2_test.v',
 		'vlib/sync/atomic2/atomic_test.v',
+		'vlib/sync/channel_2_test.v',
+		'vlib/sync/channel_1_test.v',
 		'vlib/sync/channel_3_test.v',
 		'vlib/sync/channel_4_test.v',
 		'vlib/sync/channel_array_mut_test.v',
 		'vlib/sync/channel_close_test.v',
 		'vlib/sync/channel_fill_test.v',
-		'vlib/sync/channel_push_or_1_test.v',
 		'vlib/sync/channel_polling_test.v',
 		'vlib/sync/channel_opt_propagate_test.v',
+		'vlib/sync/channel_push_or_1_test.v',
 		'vlib/sync/channel_push_or_2_test.v',
 		'vlib/sync/channel_select_2_test.v',
 		'vlib/sync/channel_select_3_test.v',
 		'vlib/sync/channel_select_4_test.v',
 		'vlib/sync/channel_select_5_test.v',
-		'vlib/sync/channel_select_test.v',
 		'vlib/sync/channel_select_6_test.v',
-		'vlib/sync/channel_try_unbuf_test.v',
+		'vlib/sync/channel_select_test.v',
 		'vlib/sync/channel_try_buf_test.v',
 		'vlib/sync/select_close_test.v',
 		'vlib/sync/struct_chan_init_test.v',
-		'vlib/sync/pool_test.v',
+		'vlib/sync/pool/pool_test.v',
+		'vlib/sync/channel_try_unbuf_test.v',
 		'vlib/szip/szip_test.v',
 		'vlib/v/compiler_errors_test.v',
-		'vlib/v/ast/walker/walker_test.v',
+		'vlib/v/gen/js/jsgen_test.v',
 		'vlib/v/tests/anon_fn_test.v',
 		'vlib/v/tests/array_map_ref_test.v',
 		'vlib/v/tests/array_test.v',
 		'vlib/v/tests/assert_sumtype_test.v',
-		'vlib/v/tests/autolock_array1_test.v',
 		'vlib/v/tests/autolock_array2_test.v',
+		'vlib/v/tests/autolock_array1_test.v',
 		'vlib/v/tests/blank_ident_test.v',
 		'vlib/v/tests/comptime_at_test.v',
 		'vlib/v/tests/comptime_call_test.v',
@@ -103,52 +100,46 @@ const (
 		'vlib/v/tests/enum_test.v',
 		'vlib/v/tests/fixed_array_test.v',
 		'vlib/v/tests/fn_shared_return_test.v',
-		'vlib/v/tests/for_loops_2_test.v',
 		'vlib/v/tests/fn_variadic_test.v',
+		'vlib/v/tests/for_loops_2_test.v',
 		'vlib/v/tests/generic_chan_test.v',
 		'vlib/v/tests/generics_method_test.v',
-		'vlib/v/tests/go_wait_1_test.v',
+		'vlib/v/tests/go_array_wait_test.v',
 		'vlib/v/tests/go_call_generic_fn_test.v',
 		'vlib/v/tests/generics_test.v',
 		'vlib/v/tests/go_wait_2_test.v',
-		'vlib/v/tests/go_wait_3_test.v',
-		'vlib/v/tests/interface_edge_cases/array_of_interfaces_test.v',
+		'vlib/v/tests/if_guard_test.v',
 		'vlib/v/tests/in_expression_test.v',
-		'vlib/v/tests/interface_edge_cases/array_of_interfaces_with_utility_fn_test.v',
 		'vlib/v/tests/interface_edge_cases/assign_to_interface_field_test.v',
-		'vlib/v/tests/interface_edge_cases/i1_test.v',
-		'vlib/v/tests/interface_edge_cases/i3_test.v',
-		'vlib/v/tests/interface_edge_cases/i2_test.v',
-		'vlib/v/tests/interface_edge_cases/i7_test.v',
-		'vlib/v/tests/interface_struct_test.v',
 		'vlib/v/tests/interface_fields_test.v',
 		'vlib/v/tests/interface_variadic_test.v',
-		'vlib/v/tests/interface_test.v',
-		'vlib/v/tests/module_test.v',
+		'vlib/v/tests/option_2_test.v',
 		'vlib/v/tests/operator_overloading_with_string_interpolation_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
+		'vlib/v/tests/ref_struct_test.v',
 		'vlib/v/tests/repl/repl_test.v',
 		'vlib/v/tests/semaphore_test.v',
-		'vlib/v/tests/shared_arg_test.v',
 		'vlib/v/tests/semaphore_timed_test.v',
+		'vlib/v/tests/shared_arg_test.v',
 		'vlib/v/tests/shared_array_test.v',
 		'vlib/v/tests/shared_autolock_test.v',
-		'vlib/v/tests/shared_elem_test.v',
-		'vlib/v/tests/shared_lock_2_test.v',
-		'vlib/v/tests/shared_lock_3_test.v',
 		'vlib/v/tests/shared_fn_return_test.v',
+		'vlib/v/tests/shared_lock_2_test.v',
+		'vlib/v/tests/shared_elem_test.v',
 		'vlib/v/tests/shared_lock_4_test.v',
-		'vlib/v/tests/shared_lock_5_test.v',
+		'vlib/v/tests/shared_lock_3_test.v',
 		'vlib/v/tests/shared_lock_6_test.v',
 		'vlib/v/tests/shared_lock_expr_test.v',
+		'vlib/v/tests/shared_lock_5_test.v',
 		'vlib/v/tests/shared_lock_test.v',
 		'vlib/v/tests/shared_map_test.v',
 		'vlib/v/tests/shared_unordered_mixed_test.v',
 		'vlib/v/tests/shift_test.v',
 		'vlib/v/tests/str_gen_test.v',
 		'vlib/v/tests/string_interpolation_multi_return_test.v',
-		'vlib/v/tests/struct_allow_both_field_defaults_and_skip_flag_test.v',
+		'vlib/v/tests/string_interpolation_shared_test.v',
 		'vlib/v/tests/string_interpolation_test.v',
+		'vlib/v/tests/struct_allow_both_field_defaults_and_skip_flag_test.v',
 		'vlib/v/tests/struct_test.v',
 		'vlib/v/tests/sum_type_test.v',
 		'vlib/v/tests/type_name_test.v',
@@ -157,18 +148,21 @@ const (
 		'vlib/v/tests/voidptr_to_u64_cast_b_test.v',
 		'vlib/v/tests/working_with_an_empty_struct_test.v',
 		'vlib/vweb/tests/vweb_test.v',
-		'vlib/x/json2/any_test.v',
-		'vlib/x/json2/json2_test.v',
-		'vlib/x/json2/decoder_test.v',
+		'vlib/vweb/request_test.v',
+		'vlib/vweb/route_test.v',
 		'vlib/x/websocket/websocket_test.v',
 		'vlib/x/ttf/ttf_test.v',
+	]
+	skip_with_asan_compiler       = [
+		'vlib/readline/readline_test.v',
+		'vlib/vweb/tests/vweb_test.v',
 	]
 	skip_test_files               = []string{}
 	skip_on_musl                  = [
 		'vlib/v/tests/profile/profile_test.v',
 	]
 	skip_on_ubuntu_musl           = [
-		/* 'vlib/v/gen/js/jsgen_test.v', */
+		//'vlib/v/gen/js/jsgen_test.v',
 		'vlib/net/http/cookie_test.v',
 		'vlib/net/http/http_test.v',
 		'vlib/net/http/status_test.v',
@@ -178,8 +172,11 @@ const (
 		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/clipboard/clipboard_test.v',
 		'vlib/vweb/tests/vweb_test.v',
+		'vlib/vweb/request_test.v',
+		'vlib/vweb/route_test.v',
 		'vlib/x/websocket/websocket_test.v',
 		'vlib/net/http/http_httpbin_test.v',
+		'vlib/net/http/header_test.v',
 	]
 	skip_on_linux                 = []string{}
 	skip_on_non_linux             = [
@@ -189,8 +186,11 @@ const (
 		'vlib/orm/orm_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/net/websocket/ws_test.v',
+		'vlib/net/unix/unix_test.v',
 		'vlib/x/websocket/websocket_test.v',
 		'vlib/vweb/tests/vweb_test.v',
+		'vlib/vweb/request_test.v',
+		'vlib/vweb/route_test.v',
 	]
 	skip_on_non_windows           = []string{}
 	skip_on_macos                 = []string{}
@@ -212,11 +212,16 @@ fn main() {
 	mut tsession := testing.new_test_session(cmd_prefix)
 	tsession.files << all_test_files
 	tsession.skip_files << skip_test_files
+	tsession.skip_files << 'vlib/v/tests/option_print_errors_test.v'
 	mut werror := false
 	mut sanitize_memory := false
 	mut sanitize_address := false
 	mut sanitize_undefined := false
+	mut asan_compiler := false
 	for arg in args {
+		if '-asan-compiler' in arg {
+			asan_compiler = true
+		}
 		if '-Werror' in arg {
 			werror = true
 		}
@@ -241,6 +246,9 @@ fn main() {
 	}
 	if sanitize_undefined {
 		tsession.skip_files << skip_with_fsanitize_undefined
+	}
+	if asan_compiler {
+		tsession.skip_files << skip_with_asan_compiler
 	}
 	// println(tsession.skip_files)
 	if os.getenv('V_CI_MUSL').len > 0 {

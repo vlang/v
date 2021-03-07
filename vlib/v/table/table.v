@@ -12,8 +12,9 @@ pub mut:
 	types         []TypeSymbol
 	type_idxs     map[string]int
 	fns           map[string]Fn
-	imports       []string // List of all imports
-	modules       []string // Topologically sorted list of all modules registered by the application
+	dumps         map[int]string // needed for efficiently generating all _v_dump_expr_TNAME() functions
+	imports       []string       // List of all imports
+	modules       []string       // Topologically sorted list of all modules registered by the application
 	cflags        []cflag.CFlag
 	redefined_fns []string
 	fn_gen_types  map[string][][]Type // for generic functions
@@ -34,6 +35,8 @@ pub:
 	is_deprecated  bool
 	is_unsafe      bool
 	is_placeholder bool
+	is_main        bool
+	is_test        bool
 	no_body        bool
 	mod            string
 	ctdefine       string // compile time define. "myflag", when [if myflag] tag
@@ -86,7 +89,9 @@ mut:
 }
 
 pub fn new_table() &Table {
-	mut t := &Table{}
+	mut t := &Table{
+		types: []TypeSymbol{cap: 64000}
+	}
 	t.register_builtin_type_symbols()
 	t.is_fmt = true
 	return t
@@ -98,16 +103,16 @@ pub fn (t &Table) fn_type_signature(f &Fn) string {
 	for i, arg in f.params {
 		// TODO: for now ignore mut/pts in sig for now
 		typ := arg.typ.set_nr_muls(0)
-		// if arg.is_mut {
-		// sig += 'mut_'
-		// }
-		// sig += '$arg.typ'
-		sig += '$typ'
+		arg_type_sym := t.get_type_symbol(typ)
+		sig += '$arg_type_sym.kind'
 		if i < f.params.len - 1 {
 			sig += '_'
 		}
 	}
-	sig += '_$f.return_type'
+	if f.return_type != 0 && f.return_type != void_type {
+		sym := t.get_type_symbol(f.return_type)
+		sig += '__$sym.kind'
+	}
 	return sig
 }
 
@@ -279,7 +284,7 @@ pub fn (t &Table) find_field(s &TypeSymbol, name string) ?Field {
 			if field := ts.info.find_field(name) {
 				return field
 			}
-			field := t.register_aggregate_field(mut ts, name) or { return error(err) }
+			field := t.register_aggregate_field(mut ts, name) or { return err }
 			return field
 		} else if mut ts.info is Interface {
 			if field := ts.info.find_field(name) {
@@ -292,6 +297,32 @@ pub fn (t &Table) find_field(s &TypeSymbol, name string) ?Field {
 		ts = unsafe { &t.types[ts.parent_idx] }
 	}
 	return none
+}
+
+// search for a given field, looking through embedded fields
+pub fn (t &Table) find_field_with_embeds(sym &TypeSymbol, field_name string) ?Field {
+	if f := t.find_field(sym, field_name) {
+		return f
+	} else {
+		// look for embedded field
+		if sym.info is Struct {
+			mut found_fields := []Field{}
+			mut embed_of_found_fields := []Type{}
+			for embed in sym.info.embeds {
+				embed_sym := t.get_type_symbol(embed)
+				if f := t.find_field(embed_sym, field_name) {
+					found_fields << f
+					embed_of_found_fields << embed
+				}
+			}
+			if found_fields.len == 1 {
+				return found_fields[0]
+			} else if found_fields.len > 1 {
+				return error('ambiguous field `$field_name`')
+			}
+		}
+		return err
+	}
 }
 
 [inline]
@@ -374,7 +405,8 @@ pub fn (mut t Table) register_type_symbol(typ TypeSymbol) int {
 				// builtin
 				// this will override the already registered builtin types
 				// with the actual v struct declaration in the source
-				if existing_idx >= string_type_idx && existing_idx <= map_type_idx {
+				if (existing_idx >= string_type_idx && existing_idx <= map_type_idx)
+					|| existing_idx == error_type_idx {
 					if existing_idx == string_type_idx {
 						// existing_type := t.types[existing_idx]
 						t.types[existing_idx] = TypeSymbol{
@@ -397,7 +429,27 @@ pub fn (mut t Table) register_type_symbol(typ TypeSymbol) int {
 }
 
 pub fn (t &Table) known_type(name string) bool {
-	t.find_type(name) or { return false }
+	return t.find_type_idx(name) != 0
+}
+
+pub fn (t &Table) known_type_idx(typ Type) bool {
+	if typ == 0 {
+		return false
+	}
+	sym := t.get_type_symbol(typ)
+	match sym.kind {
+		.placeholder {
+			return sym.language != .v || sym.name.starts_with('C.')
+		}
+		.array {
+			return t.known_type_idx((sym.info as Array).elem_type)
+		}
+		.map {
+			info := sym.info as Map
+			return t.known_type_idx(info.key_type) && t.known_type_idx(info.value_type)
+		}
+		else {}
+	}
 	return true
 }
 
@@ -417,7 +469,7 @@ pub fn (t &Table) array_cname(elem_type Type) string {
 	if elem_type.is_ptr() {
 		res = '_ptr'.repeat(elem_type.nr_muls())
 	}
-	return 'array_$elem_type_sym.cname' + res
+	return 'Array_$elem_type_sym.cname' + res
 }
 
 // array_fixed_source_name generates the original name for the v source.
@@ -436,7 +488,7 @@ pub fn (t &Table) array_fixed_cname(elem_type Type, size int) string {
 	if elem_type.is_ptr() {
 		res = '_ptr'
 	}
-	return 'array_fixed_${elem_type_sym.cname}_$size' + res
+	return 'Array_fixed_${elem_type_sym.cname}_$size' + res
 }
 
 [inline]
@@ -464,17 +516,33 @@ pub fn (t &Table) chan_cname(elem_type Type, is_mut bool) string {
 }
 
 [inline]
-pub fn (t &Table) gohandle_name(return_type Type) string {
+pub fn (t &Table) thread_name(return_type Type) string {
+	if return_type.idx() == void_type_idx {
+		if return_type.has_flag(.optional) {
+			return 'thread ?'
+		} else {
+			return 'thread'
+		}
+	}
 	return_type_sym := t.get_type_symbol(return_type)
 	ptr := if return_type.is_ptr() { '&' } else { '' }
-	return 'gohandle[$ptr$return_type_sym.name]'
+	opt := if return_type.has_flag(.optional) { '?' } else { '' }
+	return 'thread $opt$ptr$return_type_sym.name'
 }
 
 [inline]
-pub fn (t &Table) gohandle_cname(return_type Type) string {
+pub fn (t &Table) thread_cname(return_type Type) string {
+	if return_type == void_type {
+		if return_type.has_flag(.optional) {
+			return '__v_thread_Option_void'
+		} else {
+			return '__v_thread'
+		}
+	}
 	return_type_sym := t.get_type_symbol(return_type)
 	suffix := if return_type.is_ptr() { '_ptr' } else { '' }
-	return 'gohandle_$return_type_sym.cname$suffix'
+	prefix := if return_type.has_flag(.optional) { 'Option_' } else { '' }
+	return '__v_thread_$prefix$return_type_sym.cname$suffix'
 }
 
 // map_source_name generates the original name for the v source.
@@ -492,7 +560,7 @@ pub fn (t &Table) map_cname(key_type Type, value_type Type) string {
 	key_type_sym := t.get_type_symbol(key_type)
 	value_type_sym := t.get_type_symbol(value_type)
 	suffix := if value_type.is_ptr() { '_ptr' } else { '' }
-	return 'map_${key_type_sym.cname}_$value_type_sym.cname' + suffix
+	return 'Map_${key_type_sym.cname}_$value_type_sym.cname' + suffix
 	// return 'map_${value_type_sym.name}' + suffix
 }
 
@@ -540,25 +608,25 @@ pub fn (mut t Table) find_or_register_map(key_type Type, value_type Type) int {
 	return t.register_type_symbol(map_typ)
 }
 
-pub fn (mut t Table) find_or_register_gohandle(return_type Type) int {
-	name := t.gohandle_name(return_type)
-	cname := t.gohandle_cname(return_type)
+pub fn (mut t Table) find_or_register_thread(return_type Type) int {
+	name := t.thread_name(return_type)
+	cname := t.thread_cname(return_type)
 	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 {
 		return existing_idx
 	}
 	// register
-	gohandle_typ := TypeSymbol{
-		parent_idx: gohandle_type_idx
-		kind: .gohandle
+	thread_typ := TypeSymbol{
+		parent_idx: thread_type_idx
+		kind: .thread
 		name: name
 		cname: cname
-		info: GoHandle{
+		info: Thread{
 			return_type: return_type
 		}
 	}
-	return t.register_type_symbol(gohandle_typ)
+	return t.register_type_symbol(thread_typ)
 }
 
 pub fn (mut t Table) find_or_register_array(elem_type Type) int {
@@ -756,14 +824,13 @@ pub fn (mytable &Table) sumtype_has_variant(parent Type, variant Type) bool {
 	return false
 }
 
-pub fn (mytable &Table) known_type_names() []string {
-	mut res := []string{}
-	for _, idx in mytable.type_idxs {
+pub fn (t &Table) known_type_names() []string {
+	mut res := []string{cap: t.type_idxs.len}
+	for _, idx in t.type_idxs {
 		// Skip `int_literal_type_idx` and `float_literal_type_idx` because they shouldn't be visible to the User.
-		if idx in [0, int_literal_type_idx, float_literal_type_idx] {
-			continue
+		if idx !in [0, int_literal_type_idx, float_literal_type_idx] && t.known_type_idx(idx) {
+			res << t.type_to_str(idx)
 		}
-		res << mytable.type_to_str(idx)
 	}
 	return res
 }
@@ -773,7 +840,7 @@ pub fn (mytable &Table) known_type_names() []string {
 // it doesn't care about childs that are references
 pub fn (mytable &Table) has_deep_child_no_ref(ts &TypeSymbol, name string) bool {
 	if ts.info is Struct {
-		for _, field in ts.info.fields {
+		for field in ts.info.fields {
 			sym := mytable.get_type_symbol(field.typ)
 			if !field.typ.is_ptr() && (sym.name == name || mytable.has_deep_child_no_ref(sym, name)) {
 				return true

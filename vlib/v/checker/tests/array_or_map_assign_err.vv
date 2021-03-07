@@ -8,4 +8,7 @@ fn main() {
 	m2 := m1
 	mut m3 := map[string]int{}
 	m3 = m1
+	
+	_ = a2
+	_ = m2
 }

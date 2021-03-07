@@ -66,3 +66,16 @@ fn test_shared_as_mut() {
 	m_mut(mut m)
 	a_mut(mut a)
 }
+
+struct Ab {
+	s shared St
+}
+
+fn main() {
+	shared y := St{ a: 5 }
+	println(y)
+	println('$y')
+	a := Ab{ s: St{ a: 3 } }
+	println(a.s)
+	println('$a.s')
+}

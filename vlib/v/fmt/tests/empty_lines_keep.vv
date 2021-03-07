@@ -1,3 +1,32 @@
+// Keep empty lines between types
+type Expr = IfExpr | IntegerLiteral
+
+type Node2 = Expr | string
+type MyInt = int
+
+// Keep empty lines in const blocks
+const (
+	_ = SomeStruct{
+		val: 'Multiline field exprs should cause no problems'
+	}
+	_ = 1
+
+	_ = 'Keep this empty line before'
+	// Comment before a field
+	_ = 2
+
+	// The empty line above should stay too
+	_ = 3
+
+	// This comment doesn't really belong anywhere
+
+	_ = 'A multiline string with a StringInterLiteral...
+	$foo
+	...and the ending brace on a newline had a wrong pos.last_line.
+	'
+	_ = 4
+)
+
 fn keep_single_empty_line() {
 	println('a')
 	println('b')

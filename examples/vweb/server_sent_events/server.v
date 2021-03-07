@@ -1,5 +1,6 @@
 module main
 
+import os
 import rand
 import time
 import vweb
@@ -15,7 +16,7 @@ fn main() {
 
 pub fn (mut app App) init_once() {
 	app.serve_static('/favicon.ico', 'favicon.ico', 'img/x-icon')
-	app.handle_static('.')
+	app.mount_static_folder_at(os.resource_abs_path('.'), '/')
 }
 
 pub fn (mut app App) index() vweb.Result {
@@ -32,7 +33,7 @@ fn (mut app App) sse() vweb.Result {
 		data := '{"time": "$time.now().str()", "random_id": "$rand.ulid()"}'
 		session.send_message(event: 'ping', data: data) or { return app.server_error(501) }
 		println('> sent event: $data')
-		time.sleep_ms(1000)
+		time.sleep(1 * time.second)
 	}
 	return app.server_error(501)
 }

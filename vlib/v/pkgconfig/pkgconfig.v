@@ -245,7 +245,7 @@ pub fn load(pkgname string, options Options) ?&PkgConfig {
 		options: options
 	}
 	pc.load_paths()
-	file := pc.resolve(pkgname) or { return error(err) }
+	file := pc.resolve(pkgname) or { return err }
 	if !pc.parse(file) {
 		return error('file "$file" could not be parsed')
 	}

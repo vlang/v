@@ -1,5 +1,4 @@
 // This program displays the fibonacci sequence
-
 import os
 
 fn main() {
@@ -10,7 +9,7 @@ fn main() {
 		// Exit
 		return
 	}
-	
+
 	// Parse first argument and cast it to int
 	stop := os.args[1].int()
 
@@ -25,7 +24,7 @@ fn main() {
 	mut b := u64(0)
 	mut c := u64(1)
 
-	for _ in 0..stop {
+	for _ in 0 .. stop {
 		// Set a and b to the next term
 		a = b
 		b = c

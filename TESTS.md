@@ -18,6 +18,11 @@ Tip: use `v -cc tcc` when compiling tests for speed.
 
 General runnable tests for different features of the V compiler.
 
+* `vlib/v/tests/inout/compiler_test.v`
+
+Test output of running a V program matches an expected .out file.
+Check the source for how to test panics.
+
 ## Test building of actual V programs (examples, tools, V itself)
 
 * `v build-tools`
@@ -41,10 +46,11 @@ This verifies that `_keep.v` files would be unchanged by `vfmt -w`.
 This checks all source files are formatted and prints a summary.
 This is not required.
 
-## Other
 * `v test-fmt`
 
 Test all files in the current directory are formatted.
+
+## Markdown
 
 * `v check-md -hide-warnings .`
 

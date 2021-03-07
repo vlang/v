@@ -165,8 +165,8 @@ pub fn (mut g JsGen) typ(t table.Type) string {
 		.aggregate {
 			panic('TODO: unhandled aggregate in JS')
 		}
-		.gohandle {
-			panic('TODO: unhandled gohandle in JS')
+		.thread {
+			panic('TODO: unhandled thread in JS')
 		}
 	}
 	/*
@@ -210,23 +210,36 @@ fn (mut g JsGen) struct_typ(s string) string {
 	return styp + '["prototype"]'
 }
 
+struct BuiltinPrototypeCongig {
+	typ_name 		string
+	val_name 		string = 'val'
+	default_value 	string
+	constructor 	string = 'this.val = val'
+	value_of 		string = 'this.val'
+	to_string 		string = 'this.val.toString()'
+	eq				string = 'this.val === other.val'
+	extras			string
+}
+
 // ugly arguments but not sure a config struct would be worth it
-fn (mut g JsGen) gen_builtin_prototype(typ_name string, val_name string, default_value string, constructor string, value_of string, to_string string, extras string) {
-	g.writeln('function ${typ_name}($val_name = ${default_value}) { $constructor }')
-	g.writeln('${typ_name}.prototype = {')
+fn (mut g JsGen) gen_builtin_prototype(c BuiltinPrototypeCongig) {
+	g.writeln('function ${c.typ_name}(${c.val_name} = ${c.default_value}) { ${c.constructor} }')
+	g.writeln('${c.typ_name}.prototype = {')
 	g.inc_indent()
-	g.writeln('val: $default_value,')
-	if extras.len > 0 {
-		g.writeln('$extras,')
+	g.writeln('val: ${c.default_value},')
+	if c.extras.len > 0 {
+		g.writeln('${c.extras},')
 	}
-	for method in g.method_fn_decls[typ_name] {
+	for method in g.method_fn_decls[c.typ_name] {
 		g.inside_def_typ_decl = true
 		g.gen_method_decl(method)
 		g.inside_def_typ_decl = false
 		g.writeln(',')
 	}
-	g.writeln('valueOf() { return $value_of },')
-	g.writeln('toString() { return $to_string }')
+	g.writeln('valueOf() { return ${c.value_of} },')
+	g.writeln('toString() { return ${c.to_string} },')
+	g.writeln('eq(other) { return ${c.eq} },')
+	g.writeln('str() { return new string(this.toString()) }')
 	g.dec_indent()
 	g.writeln('};\n')
 }
@@ -237,24 +250,71 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 	for typ_name in v_types {
 		// TODO: JsDoc
 		match typ_name {
-			'i8', 'i16', 'int', 'i64', 'byte', 'u16', 'u32', 'u64', 'int_literal', 'size_t' {
+			'i8', 'i16', 'int', 'i64', 'u16', 'u32', 'u64', 'int_literal', 'size_t' {
 				// TODO: Bounds checking
-				g.gen_builtin_prototype(typ_name, 'val', 'new Number(0)', 'this.val = val | 0;', 'this.val | 0', '(this.val | 0).toString()', '')
+				g.gen_builtin_prototype({
+					typ_name: typ_name
+					default_value: 'new Number(0)'
+					constructor: 'this.val = val | 0'
+					value_of: 'this.val | 0'
+					to_string: 'this.valueOf().toString()'
+					eq: 'this.valueOf() === other.valueOf()'
+				})
+			}
+			'byte' {
+				g.gen_builtin_prototype({
+					typ_name: typ_name
+					default_value: 'new Number(0)'
+					constructor: 'this.val = typeof(val) == "string" ? val.charCodeAt() : (val | 0)'
+					value_of: 'this.val | 0'
+					to_string: 'String.fromCharCode(this.val)'
+					eq: 'this.valueOf() === other.valueOf()'
+				})
 			}
 			'f32', 'f64', 'float_literal' {
-				g.gen_builtin_prototype(typ_name, 'val', 'new Number(0)', 'this.val = val;', 'this.val', 'this.val.toString()', '')
+				g.gen_builtin_prototype({
+					typ_name: typ_name
+					default_value: 'new Number(0)'
+				})
 			}
 			'bool' {
-				g.gen_builtin_prototype(typ_name, 'val', 'new Boolean(false)', 'this.val = val;', 'this.val', 'this.val.toString()', '')
+				g.gen_builtin_prototype({
+					typ_name: typ_name
+					default_value: 'new Boolean(false)'
+				})
 			}
 			'string' {
-				g.gen_builtin_prototype(typ_name, 'str', 'new String("")', 'this.str = str;', 'this.str', 'this.str.toString()', 'get length() { return this.str.length }')
+				g.gen_builtin_prototype({
+					typ_name: typ_name
+					val_name: 'str'
+					default_value: 'new String("")'
+					constructor: 'this.str = str.toString(); this.len = this.str.length'
+					value_of: 'this.str'
+					to_string: 'this.str'
+					eq: 'this.str === other.str'
+				})
 			}
 			'map' {
-				g.gen_builtin_prototype(typ_name, 'val', 'new Map()', 'this.val = val;', 'this.val', 'this.val.toString()', '')
+				g.gen_builtin_prototype({
+					typ_name: typ_name
+					val_name: 'map'
+					default_value: 'new Map()'
+					constructor: 'this.map = map'
+					value_of: 'this.map'
+					to_string: 'this.map.toString()'
+					eq: 'vEq(this, other)'
+				})
 			}
 			'array' {
-				g.gen_builtin_prototype(typ_name, 'val', 'new Array()', 'this.val = val;', 'this.val', 'this.val.toString()', '')
+				g.gen_builtin_prototype({
+					typ_name: typ_name
+					val_name: 'arr'
+					default_value: 'new Array()'
+					constructor: 'this.arr = arr'
+					value_of: 'this.arr'
+					to_string: 'JSON.stringify(this.arr.map(it => it.valueOf()))'
+					eq: 'vEq(this, other)'
+				})
 			}
 			else {}
 		}

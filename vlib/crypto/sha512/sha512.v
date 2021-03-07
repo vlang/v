@@ -149,7 +149,7 @@ fn new384() &Digest {
 }
 
 // write writes the contents of `p_` to the internal hash representation.
-fn (mut d Digest) write(p_ []byte) int {
+fn (mut d Digest) write(p_ []byte) ?int {
 	unsafe {
 		mut p := p_
 		nn := p.len
@@ -219,15 +219,15 @@ fn (mut d Digest) checksum() []byte {
 	mut tmp := []byte{len: (128)}
 	tmp[0] = 0x80
 	if int(len) % 128 < 112 {
-		d.write(tmp[..112 - int(len) % 128])
+		d.write(tmp[..112 - int(len) % 128]) or { panic(err) }
 	} else {
-		d.write(tmp[..128 + 112 - int(len) % 128])
+		d.write(tmp[..128 + 112 - int(len) % 128]) or { panic(err) }
 	}
 	// Length in bits.
 	len <<= u64(3)
 	binary.big_endian_put_u64(mut tmp, u64(0)) // upper 64 bits are always zero, because len variable has type u64
 	binary.big_endian_put_u64(mut tmp[8..], len)
-	d.write(tmp[..16])
+	d.write(tmp[..16]) or { panic(err) }
 	if d.nx != 0 {
 		panic('d.nx != 0')
 	}
@@ -248,14 +248,14 @@ fn (mut d Digest) checksum() []byte {
 // sum512 returns the SHA512 checksum of the data.
 pub fn sum512(data []byte) []byte {
 	mut d := new_digest(.sha512)
-	d.write(data)
+	d.write(data) or { panic(err) }
 	return d.checksum()
 }
 
 // sum384 returns the SHA384 checksum of the data.
 pub fn sum384(data []byte) []byte {
 	mut d := new_digest(.sha384)
-	d.write(data)
+	d.write(data) or { panic(err) }
 	sum := d.checksum()
 	sum384 := []byte{len: (size384)}
 	copy(sum384, sum[..size384])
@@ -265,7 +265,7 @@ pub fn sum384(data []byte) []byte {
 // sum512_224 returns the Sum512/224 checksum of the data.
 pub fn sum512_224(data []byte) []byte {
 	mut d := new_digest(.sha512_224)
-	d.write(data)
+	d.write(data) or { panic(err) }
 	sum := d.checksum()
 	sum224 := []byte{len: (size224)}
 	copy(sum224, sum[..size224])
@@ -275,7 +275,7 @@ pub fn sum512_224(data []byte) []byte {
 // sum512_256 returns the Sum512/256 checksum of the data.
 pub fn sum512_256(data []byte) []byte {
 	mut d := new_digest(.sha512_256)
-	d.write(data)
+	d.write(data) or { panic(err) }
 	sum := d.checksum()
 	sum256 := []byte{len: (size256)}
 	copy(sum256, sum[..size256])

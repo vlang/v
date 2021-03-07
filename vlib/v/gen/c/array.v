@@ -26,6 +26,9 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 		g.write('{')
 		if node.has_val {
 			for i, expr in node.exprs {
+				if expr.is_auto_deref_var() {
+					g.write('*')
+				}
 				g.expr(expr)
 				if i != node.exprs.len - 1 {
 					g.write(', ')
@@ -147,11 +150,11 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	g.writeln('for (int $i = 0; $i < ${tmp}_len; ++$i) {')
 	g.writeln('\t$inp_elem_type it = (($inp_elem_type*) ${tmp}_orig.data)[$i];')
 	mut is_embed_map_filter := false
-	expr := node.args[0].expr
-	match expr {
+	mut expr := node.args[0].expr
+	match mut expr {
 		ast.AnonFn {
 			g.write('\t$ret_elem_type ti = ')
-			g.gen_anon_fn_decl(expr)
+			g.gen_anon_fn_decl(mut expr)
 			g.write('${expr.decl.name}(it)')
 		}
 		ast.Ident {
@@ -216,8 +219,10 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 		is_default = true
 	} else {
 		infix_expr := node.args[0].expr as ast.InfixExpr
-		is_default = '$infix_expr.left' in ['a', 'b'] && '$infix_expr.right' in ['a', 'b']
-		is_reverse = infix_expr.op == .gt
+		left_name := '$infix_expr.left'
+		is_default = left_name in ['a', 'b'] && '$infix_expr.right' in ['a', 'b']
+		is_reverse = (left_name.starts_with('a') && infix_expr.op == .gt)
+			|| (left_name.starts_with('b') && infix_expr.op == .lt)
 	}
 	if is_default {
 		// users.sort() or users.sort(a > b)
@@ -321,11 +326,11 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	g.writeln('for (int $i = 0; $i < ${tmp}_len; ++$i) {')
 	g.writeln('\t$elem_type_str it = (($elem_type_str*) ${tmp}_orig.data)[$i];')
 	mut is_embed_map_filter := false
-	expr := node.args[0].expr
-	match expr {
+	mut expr := node.args[0].expr
+	match mut expr {
 		ast.AnonFn {
 			g.write('\tif (')
-			g.gen_anon_fn_decl(expr)
+			g.gen_anon_fn_decl(mut expr)
 			g.write('${expr.decl.name}(it)')
 		}
 		ast.Ident {
@@ -437,7 +442,7 @@ fn (mut g Gen) gen_array_contains_method(left_type table.Type) string {
 		mut elem_type_str := g.typ(left_info.elem_type)
 		elem_sym := g.table.get_type_symbol(left_info.elem_type)
 		if elem_sym.kind == .function {
-			left_type_str = 'array_voidptr'
+			left_type_str = 'Array_voidptr'
 			elem_type_str = 'voidptr'
 		}
 		g.type_definitions.writeln('static bool ${fn_name}($left_type_str a, $elem_type_str v); // auto')
@@ -500,7 +505,7 @@ fn (mut g Gen) gen_array_index_method(left_type table.Type) string {
 		mut elem_type_str := g.typ(info.elem_type)
 		elem_sym := g.table.get_type_symbol(info.elem_type)
 		if elem_sym.kind == .function {
-			left_type_str = 'array_voidptr'
+			left_type_str = 'Array_voidptr'
 			elem_type_str = 'voidptr'
 		}
 		g.type_definitions.writeln('static int ${fn_name}($left_type_str a, $elem_type_str v); // auto')
@@ -551,5 +556,17 @@ fn (mut g Gen) gen_array_index(node ast.CallExpr) {
 	g.expr(node.left)
 	g.write(', ')
 	g.expr(node.args[0].expr)
+	g.write(')')
+}
+
+fn (mut g Gen) gen_array_wait(node ast.CallExpr) {
+	arr := g.table.get_type_symbol(node.receiver_type)
+	thread_type := arr.array_info().elem_type
+	thread_sym := g.table.get_type_symbol(thread_type)
+	thread_ret_type := thread_sym.thread_info().return_type
+	eltyp := g.table.get_type_symbol(thread_ret_type).cname
+	fn_name := g.register_thread_array_wait_call(eltyp)
+	g.write('${fn_name}(')
+	g.expr(node.left)
 	g.write(')')
 }

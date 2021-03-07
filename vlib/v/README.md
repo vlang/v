@@ -34,7 +34,7 @@ a new preference is created:
 ```v
 import v.pref
 
-pref := pref.Preferences{}
+pref := &pref.Preferences{}
 ```
 
 and a new scope is created:

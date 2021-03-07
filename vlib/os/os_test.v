@@ -13,7 +13,7 @@ const args_at_start = os.args.clone()
 
 fn testsuite_begin() {
 	eprintln('testsuite_begin, tfolder = $tfolder')
-	os.rmdir_all(tfolder) or { }
+	os.rmdir_all(tfolder) or {}
 	assert !os.is_dir(tfolder)
 	os.mkdir_all(tfolder) or { panic(err) }
 	os.chdir(tfolder)
@@ -25,7 +25,7 @@ fn testsuite_begin() {
 
 fn testsuite_end() {
 	os.chdir(os.wd_at_startup)
-	os.rmdir_all(tfolder) or { }
+	os.rmdir_all(tfolder) or {}
 	assert !os.is_dir(tfolder)
 	// eprintln('testsuite_end  , tfolder = $tfolder removed.')
 }
@@ -34,7 +34,7 @@ fn test_open_file() {
 	filename := './test1.txt'
 	hello := 'hello world!'
 	os.open_file(filename, 'r+', 0o666) or {
-		assert err == 'No such file or directory'
+		assert err.msg == 'No such file or directory'
 		os.File{}
 	}
 	mut file := os.open_file(filename, 'w+', 0o666) or { panic(err) }
@@ -50,7 +50,7 @@ fn test_open_file_binary() {
 	filename := './test1.dat'
 	hello := 'hello \n world!'
 	os.open_file(filename, 'r+', 0o666) or {
-		assert err == 'No such file or directory'
+		assert err.msg == 'No such file or directory'
 		os.File{}
 	}
 	mut file := os.open_file(filename, 'wb+', 0o666) or { panic(err) }
@@ -201,7 +201,7 @@ fn test_cp() {
 	old_file_name := 'cp_example.txt'
 	new_file_name := 'cp_new_example.txt'
 	os.write_file(old_file_name, 'Test data 1 2 3, V is awesome #$%^[]!~⭐') or { panic(err) }
-	os.cp(old_file_name, new_file_name) or { panic('$err: errcode: $errcode') }
+	os.cp(old_file_name, new_file_name) or { panic('$err') }
 	old_file := os.read_file(old_file_name) or { panic(err) }
 	new_file := os.read_file(new_file_name) or { panic(err) }
 	assert old_file == new_file
@@ -250,7 +250,7 @@ fn test_mv() {
 	assert os.exists(expected) && !is_dir(expected) == true
 }
 
-fn test_cp_r() {
+fn test_cp_all() {
 	// fileX -> dir/fileX
 	// NB: clean up of the files happens inside the cleanup_leftovers function
 	os.write_file('ex1.txt', 'wow!') or { panic(err) }
@@ -267,6 +267,12 @@ fn test_cp_r() {
 	assert old2 == new2
 	// recurring on dir -> local dir
 	os.cp_all('ex', './', true) or { panic(err) }
+	// regression test for executive runs with overwrite := true
+	os.cp_all('ex', './', true) or { panic(err) }
+}
+
+fn test_realpath() {
+	assert os.real_path('') == ''
 }
 
 fn test_tmpdir() {
@@ -274,7 +280,7 @@ fn test_tmpdir() {
 	assert t.len > 0
 	assert os.is_dir(t)
 	tfile := t + os.path_separator + 'tmpfile.txt'
-	os.rm(tfile) or { } // just in case 
+	os.rm(tfile) or {} // just in case
 	tfile_content := 'this is a temporary file'
 	os.write_file(tfile, tfile_content) or { panic(err) }
 	tfile_content_read := os.read_file(tfile) or { panic(err) }
@@ -299,8 +305,8 @@ fn test_make_symlink_check_is_link_and_remove_symlink() {
 	}
 	folder := 'tfolder'
 	symlink := 'tsymlink'
-	os.rm(symlink) or { }
-	os.rm(folder) or { }
+	os.rm(symlink) or {}
+	os.rm(folder) or {}
 	os.mkdir(folder) or { panic(err) }
 	folder_contents := os.ls(folder) or { panic(err) }
 	assert folder_contents.len == 0
@@ -413,6 +419,19 @@ fn test_base() {
 	assert os.base('filename') == 'filename'
 }
 
+fn test_file_name() {
+	$if windows {
+		assert os.file_name('v\\vlib\\os\\os.v') == 'os.v'
+		assert os.file_name('v\\vlib\\os\\') == ''
+		assert os.file_name('v\\vlib\\os') == 'os'
+	} $else {
+		assert os.file_name('v/vlib/os/os.v') == 'os.v'
+		assert os.file_name('v/vlib/os/') == ''
+		assert os.file_name('v/vlib/os') == 'os'
+	}
+	assert os.file_name('filename') == 'filename'
+}
+
 fn test_uname() {
 	u := os.uname()
 	assert u.sysname.len > 0
@@ -519,6 +538,6 @@ fn test_posix_set_bit() {
 		}
 		mode = u32(s.st_mode) & 0o7777
 		assert mode == 0o0755
-		rm(fpath) or { }
+		rm(fpath) or {}
 	}
 }
