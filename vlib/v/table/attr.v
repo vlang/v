@@ -29,9 +29,7 @@ pub fn (attr Attr) str() string {
 		if attr.arg.len > 0 {
 			s += ': '
 			if attr.is_string_arg {
-				mut a := attr.arg.replace('\\', '\\\\')
-				// FIXME: other escapes e.g. \r\n
-				a = a.replace("'", "\\'")
+				a := attr.arg.replace("'", "\\'")
 				s += "'$a'"
 			} else {
 				s += attr.arg
