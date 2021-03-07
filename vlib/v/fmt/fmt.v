@@ -822,9 +822,6 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		ast.AsCast {
 			f.as_cast(node)
 		}
-		ast.AsmAlias {
-			f.write('$node.name')
-		}
 		ast.Assoc {
 			f.assoc(node)
 		}
