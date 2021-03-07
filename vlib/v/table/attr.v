@@ -47,3 +47,12 @@ pub fn (attrs []Attr) contains(str string) bool {
 	}
 	return false
 }
+
+pub fn (attrs []Attr) has_comptime_define() (bool, string) {
+	for a in attrs {
+		if a.is_comptime_define {
+			return true, a.name
+		}
+	}
+	return false, ''
+}
