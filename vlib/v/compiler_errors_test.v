@@ -164,6 +164,9 @@ fn (mut tasks Tasks) run() {
 		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_1.vv'
 		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_with_explanation_2.vv'
 	}
+	$if msvc {
+		m_skip_files << 'vlib/v/checker/tests/asm_alias_does_not_exist.vv'
+	}
 	for i in 0 .. tasks.all.len {
 		if tasks.all[i].path in m_skip_files {
 			tasks.all[i].is_skipped = true

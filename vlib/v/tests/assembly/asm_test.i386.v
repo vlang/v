@@ -2,7 +2,7 @@ import v.tests.assembly.util
 // rename this file to asm_test.amd64.v (and make more for other architectures) once pure v code is enforced
 
 fn test_inline_asm() {
-	a, b := 10, 0
+	a, mut b := 10, 0
 	asm i386 {
 		mov eax, a
 		mov b, eax
@@ -13,14 +13,14 @@ fn test_inline_asm() {
 	assert a == 10
 	assert b == 10
 
-	c := 0
+	mut c := 0
 	asm i386 {
 		mov c, 5
 		; +r (c)
 	}
 	assert c == 5
 
-	d, e, f := 10, 2, 0
+	d, e, mut f := 10, 2, 0
 	asm i386 {
 		mov f, d
 		add f, e
@@ -75,6 +75,7 @@ fn test_inline_asm() {
 	// assert loops == 1
 	// assert k == 5
 
+	// not marked as mut because we derefernce m to change l
 	l := 5
 	m := &l
 	asm i386 {
@@ -83,6 +84,7 @@ fn test_inline_asm() {
 	}
 	assert l == 7
 
+	// same as above
 	n := [5, 9, 0, 4]
 	asm i386 {
 		loop_start2:
@@ -93,6 +95,4 @@ fn test_inline_asm() {
 		  r (n.data) as in_data
 	}
 	assert n == [7, 11, 2, 6]
-
-	assert util.add(8, 9, 34, 7) == 58 // test .amd64.v files
 }

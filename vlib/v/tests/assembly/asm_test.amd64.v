@@ -1,7 +1,7 @@
 import v.tests.assembly.util
 
 fn test_inline_asm() {
-	a, b := 10, 0
+	a, mut b := 10, 0
 	asm amd64 {
 		mov rax, a
 		mov b, rax
@@ -12,14 +12,14 @@ fn test_inline_asm() {
 	assert a == 10
 	assert b == 10
 
-	c := 0
+	mut c := 0
 	asm amd64 {
 		mov c, 5
 		; +r (c)
 	}
 	assert c == 5
 
-	d, e, f := 10, 2, 0
+	d, e, mut f := 10, 2, 0
 	asm amd64 {
 		mov f, d
 		add f, e
@@ -74,6 +74,7 @@ fn test_inline_asm() {
 	// assert loops == 1
 	// assert k == 5
 
+	// not marked as mut because we derefernce m to change l
 	l := 5
 	m := &l
 	asm amd64 {
@@ -82,6 +83,7 @@ fn test_inline_asm() {
 	}
 	assert l == 7
 
+	// same as above
 	n := [5, 9, 0, 4]
 	asm amd64 {
 		loop_start2:

@@ -3437,8 +3437,8 @@ fn (mut c Checker) asm_stmt(mut stmt ast.AsmStmt) {
 	if c.pref.backend == .c && c.pref.ccompiler_type == .msvc {
 		c.error('msvc compiler does not support inline assembly', stmt.pos)
 	}
-	mut aliases := c.asm_ios(stmt.output, mut stmt.scope)
-	aliases2 := c.asm_ios(stmt.input, mut stmt.scope)
+	mut aliases := c.asm_ios(stmt.output, mut stmt.scope, true)
+	aliases2 := c.asm_ios(stmt.input, mut stmt.scope, false)
 	aliases << aliases2
 	for template in stmt.templates {
 		if template.is_directive {
@@ -3503,15 +3503,18 @@ fn (mut c Checker) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt, aliases []string) {
 		ast.FloatLiteral {}
 		ast.CharLiteral {}
 		ast.IntegerLiteral {}
-		string {}
 		ast.AsmRegister {} // if the register is not found, the parser will register it as an alias
+		string {}
 	}
 }
 
-fn (mut c Checker) asm_ios(ios []ast.AsmIO, mut scope ast.Scope) []string {
+fn (mut c Checker) asm_ios(ios []ast.AsmIO, mut scope ast.Scope, output bool) []string {
 	mut aliases := []string{}
 	for io in ios {
 		typ := c.expr(io.expr)
+		if output {
+			c.fail_if_immutable(io.expr)
+		}
 		if io.alias != '' {
 			aliases << io.alias
 			if io.alias in scope.objects {
