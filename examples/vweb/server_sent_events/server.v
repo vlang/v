@@ -1,5 +1,6 @@
 module main
 
+import os
 import rand
 import time
 import vweb
@@ -15,7 +16,7 @@ fn main() {
 
 pub fn (mut app App) init_once() {
 	app.serve_static('/favicon.ico', 'favicon.ico', 'img/x-icon')
-	app.handle_static('.', false)
+	app.mount_static_folder_at(os.resource_abs_path('.'), '/')
 }
 
 pub fn (mut app App) index() vweb.Result {

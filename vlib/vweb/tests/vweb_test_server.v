@@ -78,10 +78,9 @@ pub fn (mut app App) user_repo_settings(username string, repository string) vweb
 	return app.html('username: $username | repository: $repository')
 }
 
-[post]
-['/json_echo']
+['/json_echo'; post]
 pub fn (mut app App) json_echo() vweb.Result {
-	eprintln('>>>>> received http request at /json_echo is: $app.req')
+	// eprintln('>>>>> received http request at /json_echo is: $app.req')
 	app.set_content_type(app.req.headers['Content-Type'])
 	return app.ok(app.req.data)
 }
@@ -89,7 +88,7 @@ pub fn (mut app App) json_echo() vweb.Result {
 // Make sure [post] works without the path
 [post]
 pub fn (mut app App) json() vweb.Result {
-	eprintln('>>>>> received http request at /json is: $app.req')
+	// eprintln('>>>>> received http request at /json is: $app.req')
 	app.set_content_type(app.req.headers['Content-Type'])
 	return app.ok(app.req.data)
 }

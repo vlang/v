@@ -30,16 +30,16 @@ pub fn compile_template(basepath string, html_ string, fn_name string) string {
 	mut html := html_.trim_space()
 	mut header := ''
 	mut footer := ''
-	if os.exists('templates/header.html') && html.contains('@header') {
-		h := os.read_file('templates/header.html') or {
-			panic('reading file templates/header.html failed')
+	if os.exists(os.join_path(basepath, 'header.html')) && html.contains('@header') {
+		h := os.read_file(os.join_path(basepath, 'header.html')) or {
+			panic('reading file ${os.join_path(basepath, 'header.html')} failed')
 		}
 		header = h.trim_space().replace("'", '"')
 		html = header + html
 	}
-	if os.exists('templates/footer.html') && html.contains('@footer') {
-		f := os.read_file('templates/footer.html') or {
-			panic('reading file templates/footer.html failed')
+	if os.exists(os.join_path(basepath, 'footer.html')) && html.contains('@footer') {
+		f := os.read_file(os.join_path(basepath, 'footer.html')) or {
+			panic('reading file ${os.join_path(basepath, 'footer.html')} failed')
 		}
 		footer = f.trim_space().replace("'", '"')
 		html += footer
@@ -82,22 +82,18 @@ _ = footer
 				file_ext = '.html'
 			}
 			file_name = file_name.replace(file_ext, '')
-			mut templates_folder := os.join_path(basepath, 'templates')
-			if file_name.contains('/') {
-				if file_name.starts_with('/') {
-					// absolute path
-					templates_folder = ''
-				} else {
-					// relative path, starting with the current folder
-					templates_folder = os.real_path(basepath)
-				}
+			// relative path, starting with the current folder
+			mut templates_folder := os.real_path(basepath)
+			if file_name.contains('/') && file_name.starts_with('/') {
+				// an absolute path
+				templates_folder = ''
 			}
 			file_path := os.real_path(os.join_path(templates_folder, '$file_name$file_ext'))
 			$if trace_tmpl ? {
 				eprintln('>>> basepath: "$basepath" , fn_name: "$fn_name" , @include line: "$line" , file_name: "$file_name" , file_ext: "$file_ext" , templates_folder: "$templates_folder" , file_path: "$file_path"')
 			}
 			file_content := os.read_file(file_path) or {
-				panic('Vweb: Reading file $file_name failed.')
+				panic('Vweb: reading file $file_name from path: $file_path failed.')
 			}
 			file_splitted := file_content.split_into_lines().reverse()
 			for f in file_splitted {
@@ -120,10 +116,16 @@ _ = footer
 			s.writeln('if ' + line[pos + 4..] + '{')
 			s.writeln(tmpl.str_start)
 		} else if line.contains('@end') {
+			// Remove new line byte
+			s.go_back(1)
+
 			s.writeln(tmpl.str_end)
 			s.writeln('}')
 			s.writeln(tmpl.str_start)
 		} else if line.contains('@else') {
+			// Remove new line byte
+			s.go_back(1)
+
 			s.writeln(tmpl.str_end)
 			s.writeln(' } else { ')
 			s.writeln(tmpl.str_start)
@@ -155,7 +157,7 @@ _ = footer
 		} else {
 			// HTML, may include `@var`
 			// escaped by cgen, unless it's a `vweb.RawHtml` string
-			s.writeln(line.replace('@', '$').replace("'", '"'))
+			s.writeln(line.replace('@', '$').replace('$$', '@').replace("'", "\\'"))
 		}
 	}
 	s.writeln(tmpl.str_end)

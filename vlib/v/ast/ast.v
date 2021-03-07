@@ -11,10 +11,10 @@ pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
 pub type Expr = AnonFn | ArrayDecompose | ArrayInit | AsCast | Assoc | AtExpr | BoolLiteral |
 	CTempVar | CallExpr | CastExpr | ChanInit | CharLiteral | Comment | ComptimeCall |
-	ComptimeSelector | ConcatExpr | EnumVal | FloatLiteral | GoExpr | Ident | IfExpr |
-	IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | Likely | LockExpr | MapInit |
-	MatchExpr | None | OffsetOf | OrExpr | ParExpr | PostfixExpr | PrefixExpr | RangeExpr |
-	SelectExpr | SelectorExpr | SizeOf | SqlExpr | StringInterLiteral | StringLiteral |
+	ComptimeSelector | ConcatExpr | DumpExpr | EnumVal | FloatLiteral | GoExpr | Ident |
+	IfExpr | IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | Likely | LockExpr |
+	MapInit | MatchExpr | None | OffsetOf | OrExpr | ParExpr | PostfixExpr | PrefixExpr |
+	RangeExpr | SelectExpr | SelectorExpr | SizeOf | SqlExpr | StringInterLiteral | StringLiteral |
 	StructInit | Type | TypeOf | UnsafeExpr
 
 pub type Stmt = AssertStmt | AssignStmt | Block | BranchStmt | CompFor | ConstDecl | DeferStmt |
@@ -231,6 +231,7 @@ pub:
 	field_names  []string
 	is_pub       bool
 	methods      []FnDecl
+	mut_pos      int // mut:
 	fields       []StructField
 	pos          token.Position
 	pre_comments []Comment
@@ -316,6 +317,8 @@ pub:
 	is_variadic     bool
 	is_anon         bool
 	is_manualfree   bool // true, when [manualfree] is used on a fn
+	is_main         bool // true for `fn main()`
+	is_test         bool // true for `fn test_abcde`
 	receiver        Field
 	receiver_pos    token.Position // `(u User)` in `fn (u User) name()` position
 	is_method       bool
@@ -599,12 +602,13 @@ pub mut:
 // See: token.Kind.is_prefix
 pub struct PrefixExpr {
 pub:
-	op    token.Kind
-	right Expr
-	pos   token.Position
+	op  token.Kind
+	pos token.Position
 pub mut:
 	right_type table.Type
+	right      Expr
 	or_block   OrExpr
+	is_option  bool // IfGuard
 }
 
 pub struct IndexExpr {
@@ -619,6 +623,7 @@ pub mut:
 	is_map    bool
 	is_array  bool
 	is_farray bool
+	is_option bool // IfGuard
 }
 
 pub struct IfExpr {
@@ -1035,9 +1040,9 @@ pub mut:
 pub struct IfGuardExpr {
 pub:
 	var_name string
-	expr     Expr
 	pos      token.Position
 pub mut:
+	expr      Expr
 	expr_type table.Type
 }
 
@@ -1109,6 +1114,15 @@ pub mut:
 	expr_type table.Type
 }
 
+pub struct DumpExpr {
+pub:
+	expr Expr
+	pos  token.Position
+pub mut:
+	expr_type table.Type
+	cname     string // filled in the checker
+}
+
 pub struct Comment {
 pub:
 	text     string
@@ -1140,6 +1154,7 @@ pub:
 	has_parens bool // if $() is used, for vfmt
 	left       Expr
 	field_expr Expr
+	pos        token.Position
 pub mut:
 	left_type table.Type
 	typ       table.Type
@@ -1147,6 +1162,7 @@ pub mut:
 
 pub struct ComptimeCall {
 pub:
+	pos         token.Position
 	has_parens  bool // if $() is used, for vfmt
 	method_name string
 	method_pos  token.Position
@@ -1233,17 +1249,15 @@ pub fn (expr Expr) position() token.Position {
 			return expr.decl.pos
 		}
 		ArrayDecompose, ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr, CastExpr, ChanInit,
-		CharLiteral, ConcatExpr, Comment, EnumVal, FloatLiteral, GoExpr, Ident, IfExpr, IndexExpr,
-		IntegerLiteral, Likely, LockExpr, MapInit, MatchExpr, None, OffsetOf, OrExpr, ParExpr,
-		PostfixExpr, PrefixExpr, RangeExpr, SelectExpr, SelectorExpr, SizeOf, SqlExpr, StringInterLiteral,
-		StringLiteral, StructInit, Type, TypeOf, UnsafeExpr {
+		CharLiteral, ConcatExpr, Comment, ComptimeCall, ComptimeSelector, EnumVal, DumpExpr, FloatLiteral,
+		GoExpr, Ident, IfExpr, IndexExpr, IntegerLiteral, Likely, LockExpr, MapInit, MatchExpr,
+		None, OffsetOf, OrExpr, ParExpr, PostfixExpr, PrefixExpr, RangeExpr, SelectExpr, SelectorExpr,
+		SizeOf, SqlExpr, StringInterLiteral, StringLiteral, StructInit, Type, TypeOf, UnsafeExpr
+		 {
 			return expr.pos
 		}
 		IfGuardExpr {
 			return expr.expr.position()
-		}
-		ComptimeCall, ComptimeSelector {
-			return expr.left.position()
 		}
 		InfixExpr {
 			left_pos := expr.left.position()

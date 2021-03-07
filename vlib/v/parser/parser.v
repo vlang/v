@@ -556,6 +556,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 					return ast.FnDecl{
 						name: 'main.main'
 						mod: 'main'
+						is_main: true
 						stmts: stmts
 						file: p.file_name
 						return_type: table.void_type
@@ -669,6 +670,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				p.label_names << name
 				p.next()
 				if p.tok.kind == .key_for {
+					for_pos := p.tok.position()
 					mut stmt := p.stmt(is_top_level)
 					match mut stmt {
 						ast.ForStmt {
@@ -684,7 +686,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 							return stmt
 						}
 						else {
-							assert false
+							p.error_with_pos('unknown kind of For statement', for_pos)
 						}
 					}
 				}
@@ -1030,7 +1032,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 			if node !is ast.CallExpr && (is_top_level || p.tok.kind != .rcbr)
 				&& node !is ast.PostfixExpr && !(node is ast.InfixExpr
 				&& (node as ast.InfixExpr).op in [.left_shift, .arrow]) && node !is ast.ComptimeCall
-				&& node !is ast.SelectorExpr {
+				&& node !is ast.SelectorExpr && node !is ast.DumpExpr {
 				p.error_with_pos('expression evaluated but not used', node.position())
 				return ast.Stmt{}
 			}
@@ -1772,7 +1774,7 @@ fn (mut p Parser) string_expr() ast.Expr {
 		fills: fills
 		fmts: fmts
 		fmt_poss: fposs
-		pos: pos
+		pos: pos.extend(p.prev_tok.position())
 	}
 	// need_fmts: prelimery - until checker finds out if really needed
 	p.inside_str_interp = false
@@ -2012,12 +2014,6 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 	const_pos := p.tok.position()
 	p.check(.key_const)
 	is_block := p.tok.kind == .lpar
-	/*
-	if p.tok.kind != .lpar {
-		p.error_with_pos('const declaration is missing parentheses `( ... )`', const_pos)
-		return ast.ConstDecl{}
-	}
-	*/
 	if is_block {
 		p.next() // (
 	}
@@ -2039,8 +2035,6 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 				pos)
 		}
 		full_name := p.prepend_mod(name)
-		// name := p.check_name()
-		// println('!!const: $name')
 		p.check(.assign)
 		if p.tok.kind == .key_fn {
 			p.error('const initializer fn literal is not a constant')
@@ -2052,7 +2046,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 			mod: p.mod
 			is_pub: is_pub
 			expr: expr
-			pos: pos
+			pos: pos.extend(expr.position())
 			comments: comments
 		}
 		fields << field

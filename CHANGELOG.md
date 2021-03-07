@@ -28,6 +28,7 @@ from local variables.
 - vfmt now preserves empty lines, like gofmt.
 - Support for compile time environment variables via `$env('ENV_VAR')`.
 - Allow method declaration of `==` and `<` operators and auto generate `!=`, `>`, `<=` and `>=`.
+- support `dump(expr)`, i.e. tracing of both the location, name and value of an expression
 
 ## V 0.2.1
 *30 Dec 2020*
@@ -156,7 +157,7 @@ files with compilation errors.
 - os: `is_link()`, `is_dir()`, `exists()`.
 - Ranging through fixed size arrays.
 - Lots of fixes in ORM and vweb.
-- The first tutorial: [building a simple web application with vweb](https://github.com/vlang/v/blob/master/tutorials/building-a-simple-web-blog-with-vweb.md)
+- The first tutorial: [building a simple web application with vweb](https://github.com/vlang/v/blob/master/tutorials/building_a_simple_web_blog_with_vweb/README.md)
 - Match expressions now must be exhaustive.
 - freestanding: `malloc()`/`free()`.
 - `++` is now required instead of `+= 1` for consistency.

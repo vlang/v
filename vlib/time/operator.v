@@ -3,19 +3,13 @@ module time
 // operator `==` returns true if provided time is equal to time
 [inline]
 pub fn (t1 Time) == (t2 Time) bool {
-	if t1.unix == t2.unix && t1.microsecond == t2.microsecond {
-		return true
-	}
-	return false
+	return t1.unix == t2.unix && t1.microsecond == t2.microsecond
 }
 
 // operator `<` returns true if provided time is less than time
 [inline]
 pub fn (t1 Time) < (t2 Time) bool {
-	if t1.unix < t2.unix || (t1.unix == t2.unix && t1.microsecond < t2.microsecond) {
-		return true
-	}
-	return false
+	return t1.unix < t2.unix || (t1.unix == t2.unix && t1.microsecond < t2.microsecond)
 }
 
 // Time subtract using operator overloading.

@@ -12,8 +12,9 @@ pub mut:
 	types         []TypeSymbol
 	type_idxs     map[string]int
 	fns           map[string]Fn
-	imports       []string // List of all imports
-	modules       []string // Topologically sorted list of all modules registered by the application
+	dumps         map[int]string // needed for efficiently generating all _v_dump_expr_TNAME() functions
+	imports       []string       // List of all imports
+	modules       []string       // Topologically sorted list of all modules registered by the application
 	cflags        []cflag.CFlag
 	redefined_fns []string
 	fn_gen_types  map[string][][]Type // for generic functions
@@ -34,6 +35,8 @@ pub:
 	is_deprecated  bool
 	is_unsafe      bool
 	is_placeholder bool
+	is_main        bool
+	is_test        bool
 	no_body        bool
 	mod            string
 	ctdefine       string // compile time define. "myflag", when [if myflag] tag
@@ -294,6 +297,32 @@ pub fn (t &Table) find_field(s &TypeSymbol, name string) ?Field {
 		ts = unsafe { &t.types[ts.parent_idx] }
 	}
 	return none
+}
+
+// search for a given field, looking through embedded fields
+pub fn (t &Table) find_field_with_embeds(sym &TypeSymbol, field_name string) ?Field {
+	if f := t.find_field(sym, field_name) {
+		return f
+	} else {
+		// look for embedded field
+		if sym.info is Struct {
+			mut found_fields := []Field{}
+			mut embed_of_found_fields := []Type{}
+			for embed in sym.info.embeds {
+				embed_sym := t.get_type_symbol(embed)
+				if f := t.find_field(embed_sym, field_name) {
+					found_fields << f
+					embed_of_found_fields << embed
+				}
+			}
+			if found_fields.len == 1 {
+				return found_fields[0]
+			} else if found_fields.len > 1 {
+				return error('ambiguous field `$field_name`')
+			}
+		}
+		return err
+	}
 }
 
 [inline]

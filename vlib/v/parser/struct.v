@@ -461,6 +461,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	mut fields := []ast.StructField{cap: 20}
 	mut methods := []ast.FnDecl{cap: 20}
 	mut is_mut := false
+	mut mut_pos := -1
 	for p.tok.kind != .rcbr && p.tok.kind != .eof {
 		if p.tok.kind == .key_mut {
 			if is_mut {
@@ -470,6 +471,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			p.next()
 			p.check(.colon)
 			is_mut = true
+			mut_pos = fields.len
 		}
 		if p.peek_tok.kind == .lpar {
 			method_start_pos := p.tok.position()
@@ -566,5 +568,6 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		is_pub: is_pub
 		pos: pos
 		pre_comments: pre_comments
+		mut_pos: mut_pos
 	}
 }

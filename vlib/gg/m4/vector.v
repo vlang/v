@@ -23,39 +23,39 @@ pub mut:
 *
 *********************************************************************/
 pub fn (x Vec4) str() string {
-	return '|${x.e[0]:-6.3},${x.e[1]:-6.3},${x.e[2]:-6.3},${x.e[3]:-6.3}|\n'
+	return '|${x.e[0]:-6.3},${x.e[1]:-6.3},${x.e[2]:-6.3},${x.e[3]:-6.3}|'
+}
+
+// create a Vec4 function passing x,y,z as parameteres. w is set to 1
+pub fn vec3(x f32, y f32, z f32) Vec4 {
+	return m4.Vec4{e:[x, y, z, 1]!}
 }
 
 // Remove all the raw zeros
 [direct_array_access]
 pub fn (a Vec4) clean() Vec4 {
-	unsafe {
-		x := Vec4{}
-		for c, value in a.e {
-			if abs(value) < precision {
-				x.e[c] = 0
-			} else {
-				x.e[c] = value
-			}
+	mut x := Vec4{}
+	for c, value in a.e {
+		if abs(value) < precision {
+			x.e[c] = 0
+		} else {
+			x.e[c] = value
 		}
-		return x
 	}
+	return x
 }
 
 // Set all elements to value
-[direct_array_access]
 pub fn (mut x Vec4) copy(value f32) {
 	x.e = [ value, value, value, value,	]!
 }
 
 // Scale the vector using a scalar
-[direct_array_access]
 pub fn (x Vec4) mul_scalar(value f32) Vec4 {
 	return Vec4{ e: [ x.e[0] * value, x.e[1] * value,  x.e[2] * value, x.e[3] * value, ]! }
 }
 
 // Reciprocal of the vector
-[direct_array_access]
 pub fn (x Vec4) inv() Vec4 {
 	return Vec4{
 		e: [
@@ -68,7 +68,6 @@ pub fn (x Vec4) inv() Vec4 {
 }
 
 // Normalize the vector
-[direct_array_access]
 pub fn (x Vec4) normalize() Vec4 {
 	m := x.mod()
 	if m == 0 {
@@ -85,7 +84,6 @@ pub fn (x Vec4) normalize() Vec4 {
 }
 
 // Normalize only xyz, w set to 0
-[direct_array_access]
 pub fn (x Vec4) normalize3() Vec4 {
 	m := x.mod3()
 	if m == 0 {
@@ -102,13 +100,11 @@ pub fn (x Vec4) normalize3() Vec4 {
 }
 
 // Module of the vector xyzw
-[direct_array_access]
 pub fn (x Vec4) mod() f32 {
 	return f32(math.sqrt(x.e[0] * x.e[0] + x.e[1] * x.e[1] + x.e[2] * x.e[2] + x.e[3] * x.e[3]))
 }
 
 // Module for 3d vector xyz, w ignored
-[direct_array_access]
 pub fn (x Vec4) mod3() f32 {
 	return f32(math.sqrt(x.e[0] * x.e[0] + x.e[1] * x.e[1] + x.e[2] * x.e[2]))
 }
@@ -119,7 +115,6 @@ pub fn (x Vec4) mod3() f32 {
 *
 *********************************************************************/
 // Return a zero vector
-[direct_array_access]
 pub fn zero_v4() Vec4 {
 	return Vec4{
 		e: [
@@ -132,7 +127,6 @@ pub fn zero_v4() Vec4 {
 }
 
 // Return all one vector
-[direct_array_access]
 pub fn one_v4() Vec4 {
 	return Vec4{
 		e: [
@@ -145,7 +139,6 @@ pub fn one_v4() Vec4 {
 }
 
 // Return a blank vector
-[direct_array_access]
 pub fn blank_v4() Vec4 {
 	return Vec4{
 		e: [
@@ -158,7 +151,6 @@ pub fn blank_v4() Vec4 {
 }
 
 // Set all elements to value
-[direct_array_access]
 pub fn set_v4(value f32) Vec4 {
 	return Vec4{
 		e: [
@@ -171,7 +163,6 @@ pub fn set_v4(value f32) Vec4 {
 }
 
 // Sum of all the elements
-[direct_array_access]
 pub fn (x Vec4) sum() f32 {
 	return x.e[0] + x.e[1] + x.e[2] + x.e[3]
 }
@@ -182,7 +173,6 @@ pub fn (x Vec4) sum() f32 {
 *
 *********************************************************************/
 // Addition
-[direct_array_access]
 pub fn (a Vec4) + (b Vec4) Vec4 {
 	return Vec4{
 		e: [
@@ -195,7 +185,6 @@ pub fn (a Vec4) + (b Vec4) Vec4 {
 }
 
 // Subtraction
-[direct_array_access]
 pub fn (a Vec4) - (b Vec4) Vec4 {
 	return Vec4{
 		e: [
@@ -208,13 +197,11 @@ pub fn (a Vec4) - (b Vec4) Vec4 {
 }
 
 // Dot product
-[direct_array_access]
 pub fn (a Vec4) * (b Vec4) f32 {
 	return a.e[0] * b.e[0] + a.e[1] * b.e[1] + a.e[2] * b.e[2] + a.e[3] * b.e[3]
 }
 
 // Cross product
-[direct_array_access]
 pub fn (a Vec4) % (b Vec4) Vec4 {
 	return Vec4{
 		e: [
@@ -227,7 +214,6 @@ pub fn (a Vec4) % (b Vec4) Vec4 {
 }
 
 // Components multiplication
-[direct_array_access]
 pub fn (x Vec4) mul_vec4(y Vec4) Vec4 {
 	return Vec4{
 		e: [

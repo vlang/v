@@ -80,11 +80,19 @@ pub fn eprintln(s string) {
 	C.fflush(C.stdout)
 	C.fflush(C.stderr)
 	// eprintln is used in panics, so it should not fail at all
-	if s.str == 0 {
-		C.write(2, c'eprintln(NIL)\n', 14)
-	} else {
-		C.write(2, s.str, s.len)
-		C.write(2, c'\n', 1)
+	$if android {
+		if s.str == 0 {
+			C.fprintf(C.stderr, c'eprintln(NIL)\n')
+		} else {
+			C.fprintf(C.stderr, c'%.*s\n', s.len, s.str)
+		}
+	} $else {
+		if s.str == 0 {
+			C.write(2, c'eprintln(NIL)\n', 14)
+		} else {
+			C.write(2, s.str, s.len)
+			C.write(2, c'\n', 1)
+		}
 	}
 	C.fflush(C.stderr)
 }
@@ -93,10 +101,18 @@ pub fn eprintln(s string) {
 pub fn eprint(s string) {
 	C.fflush(C.stdout)
 	C.fflush(C.stderr)
-	if s.str == 0 {
-		C.write(2, c'eprint(NIL)\n', 12)
-	} else {
-		C.write(2, s.str, s.len)
+	$if android {
+		if s.str == 0 {
+			C.fprintf(C.stderr, c'eprint(NIL)')
+		} else {
+			C.fprintf(C.stderr, c'%.*s', s.len, s.str)
+		}
+	} $else {
+		if s.str == 0 {
+			C.write(2, c'eprint(NIL)', 11)
+		} else {
+			C.write(2, s.str, s.len)
+		}
 	}
 	C.fflush(C.stderr)
 }
@@ -104,7 +120,11 @@ pub fn eprint(s string) {
 // print prints a message to stdout. Unlike `println` stdout is not automatically flushed.
 // A call to `flush()` will flush the output buffer to stdout.
 pub fn print(s string) {
-	C.write(1, s.str, s.len)
+	$if android {
+		C.fprintf(C.stdout, c'%.*s', s.len, s.str)
+	} $else {
+		C.write(1, s.str, s.len)
+	}
 }
 
 /*

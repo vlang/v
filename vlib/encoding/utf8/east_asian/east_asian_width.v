@@ -20,7 +20,7 @@ pub enum EastAsianWidthProperty {
 pub fn display_width(s string, ambiguous_width int) int {
 	mut i, mut n := 0, 0
 	for i < s.len {
-		c_len := utf8.char_len(s[i])
+		c_len := utf8_char_len(s[i])
 		n += match east_asian_width_property_at(s, i) {
 			.ambiguous { ambiguous_width }
 			.full, .wide { int(2) }

@@ -1,0 +1,6 @@
+vlib/v/checker/tests/array_sort_err.vv:3:6: error: expected 0 or 1 argument, but got 2
+    1 | fn main() {
+    2 |     mut arr := [3, 2, 1]
+    3 |     arr.sort(a < b, a)
+      |         ~~~~~~~~~~~~~~
+    4 | }

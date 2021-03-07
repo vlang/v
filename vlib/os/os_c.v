@@ -9,7 +9,7 @@ struct C.dirent {
 
 fn C.readdir(voidptr) &C.dirent
 
-fn C.readlink() int
+fn C.readlink(pathname charptr, buf charptr, bufsiz size_t) int
 
 fn C.getline(voidptr, voidptr, voidptr) int
 
@@ -19,7 +19,7 @@ fn C.sigaction(int, voidptr, int)
 
 fn C.open(charptr, int, ...int) int
 
-fn C.fdopen(int, string) voidptr
+fn C.fdopen(fd int, mode charptr) &C.FILE
 
 fn C.CopyFile(&u32, &u32, int) int
 
@@ -211,74 +211,6 @@ pub fn fileno(cfile voidptr) int {
 		// Required on FreeBSD/OpenBSD/NetBSD as stdio.h defines fileno(..) with a macro
 		// that performs a field access on its argument without casting from void*.
 		return C.fileno(cfile_casted)
-	}
-}
-
-// open_append opens `path` file for appending.
-pub fn open_append(path string) ?File {
-	mut file := File{}
-	$if windows {
-		wpath := path.replace('/', '\\').to_wide()
-		mode := 'ab'
-		file = File{
-			cfile: C._wfopen(wpath, mode.to_wide())
-		}
-	} $else {
-		cpath := path.str
-		file = File{
-			cfile: C.fopen(charptr(cpath), 'ab')
-		}
-	}
-	if isnil(file.cfile) {
-		return error('failed to create(append) file "$path"')
-	}
-	file.is_opened = true
-	return file
-}
-
-// open_file can be used to open or create a file with custom flags and permissions and returns a `File` object.
-pub fn open_file(path string, mode string, options ...int) ?File {
-	mut flags := 0
-	for m in mode {
-		match m {
-			`r` { flags |= o_rdonly }
-			`w` { flags |= o_create | o_trunc }
-			`b` { flags |= o_binary }
-			`a` { flags |= o_create | o_append }
-			`s` { flags |= o_sync }
-			`n` { flags |= o_nonblock }
-			`c` { flags |= o_noctty }
-			`+` { flags |= o_rdwr }
-			else {}
-		}
-	}
-	mut permission := 0o666
-	if options.len > 0 {
-		permission = options[0]
-	}
-	$if windows {
-		if permission < 0o600 {
-			permission = 0x0100
-		} else {
-			permission = 0x0100 | 0x0080
-		}
-	}
-	mut p := path
-	$if windows {
-		p = path.replace('/', '\\')
-	}
-	fd := C.open(charptr(p.str), flags, permission)
-	if fd == -1 {
-		return error(posix_get_error_msg(C.errno))
-	}
-	cfile := C.fdopen(fd, charptr(mode.str))
-	if isnil(cfile) {
-		return error('Failed to open or create file "$path"')
-	}
-	return File{
-		cfile: cfile
-		fd: fd
-		is_opened: true
 	}
 }
 
@@ -476,8 +408,7 @@ pub fn get_raw_line() string {
 			h_input := C.GetStdHandle(C.STD_INPUT_HANDLE)
 			mut bytes_read := 0
 			if is_atty(0) > 0 {
-				x := C.ReadConsole(h_input, buf, max_line_chars * 2, C.LPDWORD(&bytes_read),
-					0)
+				x := C.ReadConsole(h_input, buf, max_line_chars * 2, &bytes_read, 0)
 				if !x {
 					return tos(buf, 0)
 				}
@@ -850,63 +781,26 @@ pub fn chmod(path string, mode int) {
 	C.chmod(charptr(path.str), mode)
 }
 
-// open tries to open a file for reading and returns back a read-only `File` object.
-pub fn open(path string) ?File {
-	/*
-	$if linux {
-		$if !android {
-			fd := C.syscall(sys_open, path.str, 511)
-			if fd == -1 {
-				return error('failed to open file "$path"')
-			}
-			return File{
-				fd: fd
-				is_opened: true
-			}
+// open_append opens `path` file for appending.
+pub fn open_append(path string) ?File {
+	mut file := File{}
+	$if windows {
+		wpath := path.replace('/', '\\').to_wide()
+		mode := 'ab'
+		file = File{
+			cfile: C._wfopen(wpath, mode.to_wide())
+		}
+	} $else {
+		cpath := path.str
+		file = File{
+			cfile: C.fopen(charptr(cpath), 'ab')
 		}
 	}
-	*/
-	cfile := vfopen(path, 'rb') ?
-	fd := fileno(cfile)
-	return File{
-		cfile: cfile
-		fd: fd
-		is_opened: true
+	if isnil(file.cfile) {
+		return error('failed to create(append) file "$path"')
 	}
-}
-
-// create creates or opens a file at a specified location and returns a write-only `File` object.
-pub fn create(path string) ?File {
-	/*
-	// NB: android/termux/bionic is also a kind of linux,
-	// but linux syscalls there sometimes fail,
-	// while the libc version should work.
-	$if linux {
-		$if !android {
-			//$if macos {
-			//	fd = C.syscall(398, path.str, 0x601, 0x1b6)
-			//}
-			//$if linux {
-			fd = C.syscall(sys_creat, path.str, 511)
-			//}
-			if fd == -1 {
-				return error('failed to create file "$path"')
-			}
-			file = File{
-				fd: fd
-				is_opened: true
-			}
-			return file
-		}
-	}
-	*/
-	cfile := vfopen(path, 'wb') ?
-	fd := fileno(cfile)
-	return File{
-		cfile: cfile
-		fd: fd
-		is_opened: true
-	}
+	file.is_opened = true
+	return file
 }
 
 // execvp - loads and executes a new child process, *in place* of the current process.

@@ -143,6 +143,7 @@ pub mut:
 	cleanup_files       []string // list of temporary *.tmp.c and *.tmp.c.rsp files. Cleaned up on successfull builds.
 	build_options       []string // list of options, that should be passed down to `build-module`, if needed for -usecache
 	cache_manager       vcache.CacheManager
+	is_help             bool // -h, -help or --help was passed
 }
 
 pub fn parse_args(known_external_commands []string, args []string) (&Preferences, string) {
@@ -166,6 +167,10 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			}
 			'-check-syntax' {
 				res.only_check_syntax = true
+			}
+			'-h', '-help', '--help' {
+				// NB: help is *very important*, just respond to all variations:
+				res.is_help = true
 			}
 			'-v' {
 				// `-v` flag is for setting verbosity, but without any args it prints the version, like Clang
@@ -324,7 +329,7 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			'-w' {
 				res.skip_warnings = true
 			}
-			'-print_v_files' {
+			'-print-v-files' {
 				res.print_v_files = true
 			}
 			'-error-limit' {
@@ -345,7 +350,7 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 				res.build_options << '$arg $target_os'
 			}
 			'-printfn' {
-				res.printfn_list << cmdline.option(current_args, '-printfn', '')
+				res.printfn_list << cmdline.option(current_args, '-printfn', '').split(',')
 				i++
 			}
 			'-cflags' {
@@ -485,7 +490,7 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			//
 			if output_option.len != 0 {
 				res.vrun_elog('remove tmp exe file: $tmp_exe_file_path')
-				os.rm(tmp_exe_file_path) or { }
+				os.rm(tmp_exe_file_path) or {}
 			}
 			res.vrun_elog('remove tmp v file: $tmp_v_file_path')
 			os.rm(tmp_v_file_path) or { panic(err) }

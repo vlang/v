@@ -1,8 +1,13 @@
+import v.ast
+import v.table
+
 fn test_as() {
-	a := sum_expr() as Bar
-	_ := a
+	_ := sum_expr() as InfixExpr
+	_ := sum_expr() as ast.PrefixExpr
 }
 
 fn test_cast() {
 	_ := f32(0)
+	_ := Type(0)
+	_ := ast.Expr(sum_expr())
 }

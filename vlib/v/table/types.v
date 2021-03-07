@@ -302,7 +302,7 @@ pub const (
 	array_type_idx         = 21
 	map_type_idx           = 22
 	chan_type_idx          = 23
-	sizet_type_idx         = 24
+	size_t_type_idx        = 24
 	any_type_idx           = 25
 	float_literal_type_idx = 26
 	int_literal_type_idx   = 27
@@ -991,6 +991,22 @@ pub fn (i &Interface) find_field(name string) ?Field {
 		}
 	}
 	return none
+}
+
+pub fn (i &Interface) find_method(name string) ?Fn {
+	for method in i.methods {
+		if method.name == name {
+			return method
+		}
+	}
+	return none
+}
+
+pub fn (i &Interface) has_method(name string) bool {
+	if _ := i.find_method(name) {
+		return true
+	}
+	return false
 }
 
 pub fn (s Struct) find_field(name string) ?Field {

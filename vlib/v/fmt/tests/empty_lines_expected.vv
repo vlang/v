@@ -1,3 +1,10 @@
+type MyInt = int
+type EmptyLineAfterLastType = fn () int
+
+struct EmptyLineAfterStructs {}
+
+fn empty_line_after_functions() {}
+
 fn squash_multiple_empty_lines() {
 	println('a')
 

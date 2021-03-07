@@ -111,7 +111,7 @@ pub fn (mut ws Client) listen() ? {
 	defer {
 		ws.logger.info('Quit client listener, server($ws.is_server)...')
 		if ws.state == .open {
-			ws.close(1000, 'closed by client') or { }
+			ws.close(1000, 'closed by client') or {}
 		}
 	}
 	for ws.state == .open {
@@ -321,7 +321,7 @@ pub fn (mut ws Client) close(code int, message string) ? {
 		return error(err_msg)
 	}
 	defer {
-		ws.shutdown_socket() or { }
+		ws.shutdown_socket() or {}
 		ws.reset_state()
 	}
 	ws.set_state(.closing)

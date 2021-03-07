@@ -41,7 +41,7 @@ fn error_code() int {
 }
 
 fn new_stream_socket() ?StreamSocket {
-	sockfd := net.socket_error(C.socket(C.AF_UNIX, SocketType.stream, 0)) ?
+	sockfd := net.socket_error(C.socket(net.SocketFamily.unix, net.SocketType.stream, 0)) ?
 	mut s := StreamSocket{
 		handle: sockfd
 	}

@@ -10,7 +10,7 @@ const test_os_process = os.join_path(os.temp_dir(), 'v', 'test_os_process.exe')
 const test_os_process_source = os.join_path(vroot, 'cmd/tools/test_os_process.v')
 
 fn testsuite_begin() {
-	os.rm(test_os_process) or { }
+	os.rm(test_os_process) or {}
 	assert os.system('$vexe -o $test_os_process $test_os_process_source') == 0
 }
 

@@ -47,6 +47,7 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 		scope: 0
 	}
 	p.check(.dollar)
+	start_pos := p.prev_tok.position()
 	error_msg := 'only `\$tmpl()`, `\$env()`, `\$embed_file()` and `\$vweb.html()` comptime functions are supported right now'
 	if p.peek_tok.kind == .dot {
 		n := p.check_name() // skip `vweb.html()` TODO
@@ -80,14 +81,15 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 	}
 	p.check(.lpar)
 	spos := p.tok.position()
-	s := if is_html { '' } else { p.tok.lit }
+	literal_string_param := if is_html { '' } else { p.tok.lit }
+	path_of_literal_string_param := literal_string_param.replace('/', os.path_separator)
 	if !is_html {
 		p.check(.string)
 	}
 	p.check(.rpar)
 	// $embed_file('/path/to/file')
 	if is_embed_file {
-		mut epath := s
+		mut epath := path_of_literal_string_param
 		// Validate that the epath exists, and that it is actually a file.
 		if epath == '' {
 			p.error_with_pos('supply a valid relative or absolute file path to the file to embed',
@@ -119,7 +121,7 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 			scope: 0
 			is_embed: true
 			embed_file: ast.EmbeddedFile{
-				rpath: s
+				rpath: literal_string_param
 				apath: epath
 			}
 		}
@@ -127,10 +129,12 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 	// Compile vweb html template to V code, parse that V code and embed the resulting V function
 	// that returns an html string.
 	fn_path := p.cur_fn_name.split('_')
-	tmpl_path := if is_html { '${fn_path.last()}.html' } else { s }
+	fn_path_joined := fn_path.join(os.path_separator)
+	compiled_vfile_path := os.real_path(p.scanner.file_path.replace('/', os.path_separator))
+	tmpl_path := if is_html { '${fn_path.last()}.html' } else { path_of_literal_string_param }
 	// Looking next to the vweb program
-	dir := os.dir(p.scanner.file_path.replace('/', os.path_separator))
-	mut path := os.join_path(dir, fn_path.join(os.path_separator))
+	dir := os.dir(compiled_vfile_path)
+	mut path := os.join_path(dir, fn_path_joined)
 	path += '.html'
 	path = os.real_path(path)
 	if !is_html {
@@ -139,10 +143,18 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 	if !os.exists(path) {
 		// can be in `templates/`
 		if is_html {
-			path = os.join_path(dir, 'templates', fn_path.join('/'))
+			path = os.join_path(dir, 'templates', fn_path_joined)
 			path += '.html'
 		}
 		if !os.exists(path) {
+			if p.pref.is_fmt {
+				return ast.ComptimeCall{
+					scope: 0
+					is_vweb: true
+					method_name: n
+					pos: start_pos.extend(p.prev_tok.position())
+				}
+			}
 			if is_html {
 				p.error('vweb HTML template "$path" not found')
 			} else {
@@ -152,10 +164,10 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 		}
 		// println('path is now "$path"')
 	}
-	if p.pref.is_verbose {
-		println('>>> compiling comptime template file "$path"')
-	}
 	tmp_fn_name := p.cur_fn_name.replace('.', '__')
+	$if trace_comptime ? {
+		println('>>> compiling comptime template file "$path" for $tmp_fn_name')
+	}
 	v_code := tmpl.compile_file(path, tmp_fn_name)
 	$if print_vweb_template_expansions ? {
 		lines := v_code.split('\n')
@@ -167,12 +179,12 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 		start_pos: 0
 		parent: p.global_scope
 	}
-	if p.pref.is_verbose {
-		println('\n\n')
+	$if trace_comptime ? {
+		println('')
 		println('>>> vweb template for $path:')
 		println(v_code)
 		println('>>> end of vweb template END')
-		println('\n\n')
+		println('')
 	}
 	mut file := parse_comptime(v_code, p.table, p.pref, scope, p.global_scope)
 	file = ast.File{
@@ -207,7 +219,8 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 		is_vweb: true
 		vweb_tmpl: file
 		method_name: n
-		args_var: s
+		args_var: literal_string_param
+		pos: start_pos.extend(p.prev_tok.position())
 	}
 }
 
@@ -285,6 +298,7 @@ fn (mut p Parser) at() ast.AtExpr {
 
 fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 	p.check(.dollar)
+	start_pos := p.prev_tok.position()
 	if p.peek_tok.kind == .lpar {
 		method_pos := p.tok.position()
 		method_name := p.check_name()
@@ -308,6 +322,7 @@ fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 			method_pos: method_pos
 			scope: p.scope
 			args_var: args_var
+			pos: start_pos.extend(p.prev_tok.position())
 		}
 	}
 	mut has_parens := false
@@ -325,5 +340,6 @@ fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 		has_parens: has_parens
 		left: left
 		field_expr: expr
+		pos: start_pos.extend(p.prev_tok.position())
 	}
 }

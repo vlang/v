@@ -41,7 +41,7 @@ pub fn (x Mat4) str() string {
 		return '|${x.e[0]:-6.3},${x.e[1]:-6.3},${x.e[2]:-6.3},${x.e[3]:-6.3}|\n' +
 			'|${x.e[4]:-6.3},${x.e[5]:-6.3},${x.e[6]:-6.3},${x.e[7]:-6.3}|\n' +
 			'|${x.e[8]:-6.3},${x.e[9]:-6.3},${x.e[10]:-6.3},${x.e[11]:-6.3}|\n' +
-			'|${x.e[12]:-6.3},${x.e[13]:-6.3},${x.e[14]:-6.3},${x.e[15]:-6.3}|\n'
+			'|${x.e[12]:-6.3},${x.e[13]:-6.3},${x.e[14]:-6.3},${x.e[15]:-6.3}|'
 	}
 }
 
@@ -62,15 +62,12 @@ pub fn (a Mat4) clean() Mat4 {
 }
 
 // Sum all the elements of the matrix
-[direct_array_access]
 pub fn (x Mat4) sum_all() f32 {
-	unsafe {
-		res := f32(0)
-		for v in x.e {
-			res += v
-		}
-		return res
+	mut res := f32(0)
+	for v in unsafe { x.e } {
+		res += v
 	}
+	return res
 }
 
 // Check if two matrix are equal using module precision
@@ -118,7 +115,6 @@ pub fn (mut x Mat4) set_f(index_col int, index_row int, value f32) {
 }
 
 // Copy a matrix elements from another matrix
-[direct_array_access]
 pub fn (mut x Mat4) copy(y Mat4) {
 	unsafe {
 		x.e = [
@@ -131,7 +127,6 @@ pub fn (mut x Mat4) copy(y Mat4) {
 }
 
 // Set the trace of the matrix using a vec4
-[direct_array_access]
 pub fn (mut x Mat4) set_trace(v3 Vec4) {
 	unsafe {
 		x.e[0] = v3.e[0]
@@ -142,7 +137,6 @@ pub fn (mut x Mat4) set_trace(v3 Vec4) {
 }
 
 // Get the trace of the matrix
-[direct_array_access]
 pub fn (x Mat4) get_trace() Vec4 {
 	unsafe {
 		return Vec4{ e: [ x.e[0], x.e[5], x.e[10], x.e[15],	]! }
@@ -150,7 +144,6 @@ pub fn (x Mat4) get_trace() Vec4 {
 }
 
 // Set all the matrix elements to value
-[direct_array_access]
 pub fn (mut x Mat4) set_f32(value f32) {
 	unsafe {
 		x.e = [
@@ -167,6 +160,7 @@ pub fn (mut x Mat4) set_f32(value f32) {
 //-------------------------------------
 // Set the row as the input vec4
 [direct_array_access]
+[unsafe]
 pub fn (mut x Mat4) set_row(row int, v3 Vec4) {
 	unsafe {
 		x.e[row * 4] = v3.e[0]
@@ -178,6 +172,7 @@ pub fn (mut x Mat4) set_row(row int, v3 Vec4) {
 
 // Get a row from a matrix
 [direct_array_access]
+[unsafe]
 pub fn (x Mat4) get_row(row int) Vec4 {
 	unsafe {
 		return Vec4{
@@ -193,6 +188,7 @@ pub fn (x Mat4) get_row(row int) Vec4 {
 
 // Set the column as the input vec4
 [direct_array_access]
+[unsafe]
 pub fn (mut x Mat4) set_col(col int, v3 Vec4) {
 	unsafe {
 		x.e[col] = v3.e[0]
@@ -204,6 +200,7 @@ pub fn (mut x Mat4) set_col(col int, v3 Vec4) {
 
 // Get a column from a matrix
 [direct_array_access]
+[unsafe]
 pub fn (x Mat4) get_col(col int) Vec4 {
 	unsafe {
 		return Vec4{
@@ -219,6 +216,7 @@ pub fn (x Mat4) get_col(col int) Vec4 {
 
 // Swap two columns in the matrix
 [direct_array_access]
+[unsafe]
 pub fn (mut x Mat4) swap_col(col1 int, col2 int) {
 	unsafe {
 		v0 := x.e[col1]
@@ -240,6 +238,7 @@ pub fn (mut x Mat4) swap_col(col1 int, col2 int) {
 
 // Swap two rows in the matrix
 [direct_array_access]
+[unsafe]
 pub fn (mut x Mat4) swap_row(row1 int, row2 int) {
 	unsafe {
 		v0 := x.e[row1 * 4]
@@ -263,7 +262,6 @@ pub fn (mut x Mat4) swap_row(row1 int, row2 int) {
 // Modify data
 //-------------------------------------
 // Transpose the matrix
-[direct_array_access]
 pub fn (x Mat4) transpose() Mat4 {
 	unsafe {
 		return Mat4{ e: [
@@ -277,7 +275,6 @@ pub fn (x Mat4) transpose() Mat4 {
 }
 
 // Multiply the all the elements of the matrix by a scalar
-[direct_array_access]
 pub fn (x Mat4) mul_scalar(s f32) Mat4 {
 	unsafe {
 		return Mat4{ e: [
@@ -296,35 +293,28 @@ pub fn (x Mat4) mul_scalar(s f32) Mat4 {
 *
 *********************************************************************/
 // Return a zero matrix
-[direct_array_access]
 pub fn zero_m4() Mat4 {
-	unsafe {
-		return Mat4{ e: [
-			f32(0),	0,	0,	0,
-				0,	0,	0,	0,
-				0,	0,	0,	0,
-				0,	0,	0,	0,
-				]!
-		}
+	return Mat4{ e: [
+		f32(0),	0,	0,	0,
+			0,	0,	0,	0,
+			0,	0,	0,	0,
+			0,	0,	0,	0,
+			]!
 	}
 }
 
 // Return a unity matrix
-[direct_array_access]
 pub fn unit_m4() Mat4 {
-	unsafe {
-		return Mat4{ e: [
-				f32(1),	0,	0,	0,
-					0,	1,	0,	0,
-					0,	0,	1,	0,
-					0,	0,	0,	1,
-					]!
-		}
+	return Mat4{ e: [
+			f32(1),	0,	0,	0,
+				0,	1,	0,	0,
+				0,	0,	1,	0,
+				0,	0,	0,	1,
+				]!
 	}
 }
 
 // Return a matrix initialized with value
-[direct_array_access]
 pub fn set_m4(value f32) Mat4 {
 	return Mat4{ e: [
 			value, value, value, value,
@@ -342,7 +332,6 @@ pub fn set_m4(value f32) Mat4 {
 *********************************************************************/
 
 // Sum of matrix, operator +
-[direct_array_access]
 pub fn (a Mat4) + (b Mat4) Mat4 {
 	unsafe {
 		return Mat4{ e: [
@@ -356,7 +345,6 @@ pub fn (a Mat4) + (b Mat4) Mat4 {
 }
 
 // Subtraction of matrix, operator -
-[direct_array_access]
 pub fn (a Mat4) - (b Mat4) Mat4 {
 	unsafe {
 		return Mat4{ e: [
@@ -370,7 +358,6 @@ pub fn (a Mat4) - (b Mat4) Mat4 {
 }
 
 // Multiplication of matrix, operator *
-[direct_array_access]
 pub fn (a Mat4) * (b Mat4) Mat4 {
 	unsafe {
 		return Mat4{
@@ -421,9 +408,9 @@ pub fn mul(a Mat4, b Mat4) Mat4 {
 }
 
 // Multiply a Matrix by a vector
-[direct_array_access]
 pub fn mul_vec(a Mat4, v Vec4) Vec4 {
 	unsafe {
+/*
 		return Vec4{ e: [
 				a.e[0] * v.e[0] + a.e[4] * v.e[1] + a.e[8] * v.e[2] + a.e[12] * v.e[3],
 				a.e[1] * v.e[0] + a.e[5] * v.e[1] + a.e[9] * v.e[2] + a.e[13] * v.e[3],
@@ -431,11 +418,18 @@ pub fn mul_vec(a Mat4, v Vec4) Vec4 {
 				a.e[3] * v.e[0] + a.e[7] * v.e[1] + a.e[11] * v.e[2] + a.e[15] * v.e[3],
 				]!
 		}
+*/
+		return Vec4{ e: [
+				a.e[0] * v.e[0] + a.e[1] * v.e[1] + a.e[2] * v.e[2] + a.e[3] * v.e[3],
+				a.e[4] * v.e[0] + a.e[5] * v.e[1] + a.e[6] * v.e[2] + a.e[7] * v.e[3],
+				a.e[8] * v.e[0] + a.e[9] * v.e[1] + a.e[10] * v.e[2] + a.e[11] * v.e[3],
+				a.e[12] * v.e[0] + a.e[13] * v.e[1] + a.e[14] * v.e[2] + a.e[15] * v.e[3],
+				]!
+		}
 	}
 }
 
 // Calculate the determinant of the Matrix
-[direct_array_access]
 pub fn det(x Mat4) f32 {
 	unsafe {
 		mut t := [6]f32{}
@@ -472,7 +466,6 @@ pub fn det(x Mat4) f32 {
 }
 
 // Calculate the inverse of the Matrix
-[direct_array_access]
 pub fn (x Mat4) inverse() Mat4 {
 	unsafe {
 		mut t := [6]f32{}
@@ -538,11 +531,9 @@ pub fn (x Mat4) inverse() Mat4 {
 		dest.f[3][3] = a * t[2] - b * t[4] + c * t[5]
 
 		tmp := (a * dest.f[0][0] + b * dest.f[0][1] + c * dest.f[0][2] + d * dest.f[0][3])
-
 		if tmp != 0 {
 			det = f32(1.0) / tmp
 		}
-
 		return dest.mul_scalar(det)
 	}
 }
@@ -554,13 +545,12 @@ pub fn (x Mat4) inverse() Mat4 {
 *********************************************************************/
 
 // Get a rotation matrix using w as rotation axis vector, the angle is in radians
-[direct_array_access]
 pub fn rotate(angle f32, w Vec4) Mat4 {
+	cs := f32(math.cos(angle))
+	sn := f32(math.sin(angle))
+	cv := f32(1.0) - cs
+	axis := w.normalize3()
 	unsafe {
-		cs := f32(math.cos(angle))
-		sn := f32(math.sin(angle))
-		cv := f32(1.0) - cs
-		axis := w.normalize3()
 		ax := axis.e[0]
 		ay := axis.e[1]
 		az := axis.e[2]
@@ -596,7 +586,6 @@ pub fn rotate(angle f32, w Vec4) Mat4 {
 *
 *********************************************************************/
 // Get a matrix translated by a vector w
-[direct_array_access]
 pub fn (x Mat4) translate(w Vec4) Mat4 {
 	unsafe {
 		return Mat4{ e: [
@@ -610,7 +599,6 @@ pub fn (x Mat4) translate(w Vec4) Mat4 {
 }
 
 // Get a scale matrix, the scale vector is w, only xyz are evaluated.
-[direct_array_access]
 pub fn scale(w Vec4) Mat4 {
 	unsafe {
 		return Mat4{ e: [
