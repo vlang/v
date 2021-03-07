@@ -214,6 +214,17 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 				pos: spos.extend(p.tok.position())
 			}
 		}
+		.key_dump {
+			spos := p.tok.position()
+			p.next()
+			p.check(.lpar)
+			expr := p.expr(0)
+			p.check(.rpar)
+			node = ast.DumpExpr{
+				expr: expr
+				pos: spos.extend(p.tok.position())
+			}
+		}
 		.key_offsetof {
 			pos := p.tok.position()
 			p.next() // __offsetof

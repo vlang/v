@@ -9,7 +9,7 @@ struct C.dirent {
 
 fn C.readdir(voidptr) &C.dirent
 
-fn C.readlink() int
+fn C.readlink(pathname charptr, buf charptr, bufsiz size_t) int
 
 fn C.getline(voidptr, voidptr, voidptr) int
 
@@ -19,7 +19,7 @@ fn C.sigaction(int, voidptr, int)
 
 fn C.open(charptr, int, ...int) int
 
-fn C.fdopen(int, string) voidptr
+fn C.fdopen(fd int, mode charptr) &C.FILE
 
 fn C.CopyFile(&u32, &u32, int) int
 
@@ -408,8 +408,7 @@ pub fn get_raw_line() string {
 			h_input := C.GetStdHandle(C.STD_INPUT_HANDLE)
 			mut bytes_read := 0
 			if is_atty(0) > 0 {
-				x := C.ReadConsole(h_input, buf, max_line_chars * 2, C.LPDWORD(&bytes_read),
-					0)
+				x := C.ReadConsole(h_input, buf, max_line_chars * 2, &bytes_read, 0)
 				if !x {
 					return tos(buf, 0)
 				}

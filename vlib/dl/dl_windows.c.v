@@ -5,9 +5,9 @@ pub const (
 	rtld_lazy = 0
 )
 
-fn C.LoadLibrary(libfilename C.LPCWSTR) voidptr
+fn C.LoadLibrary(libfilename &u16) voidptr
 
-fn C.GetProcAddress(handle voidptr, procname C.LPCSTR) voidptr
+fn C.GetProcAddress(handle voidptr, procname byteptr) voidptr
 
 fn C.FreeLibrary(handle voidptr) bool
 
