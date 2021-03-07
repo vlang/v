@@ -358,8 +358,8 @@ pub fn (mut f File) read_struct_at<T>(mut t T, pos int) ? {
 	}
 }
 
-// read_any reads and returns a single instance of type `T`
-pub fn (mut f File) read_any<T>() ?T {
+// read_raw reads and returns a single instance of type `T`
+pub fn (mut f File) read_raw<T>() ?T {
 	if !f.is_opened {
 		return none
 	}
@@ -379,8 +379,8 @@ pub fn (mut f File) read_any<T>() ?T {
 	return t
 }
 
-// read_any_at reads and returns a single instance of type `T` starting at file byte offset `pos`
-pub fn (mut f File) read_any_at<T>(pos int) ?T {
+// read_raw_at reads and returns a single instance of type `T` starting at file byte offset `pos`
+pub fn (mut f File) read_raw_at<T>(pos int) ?T {
 	if !f.is_opened {
 		return none
 	}
@@ -407,7 +407,7 @@ pub fn (mut f File) write_struct<T>(t &T) ? {
 	if !f.is_opened {
 		return error('file is not opened')
 	}
-	tsize := int(sizeof(*t))
+	tsize := int(sizeof(T))
 	if tsize == 0 {
 		return error('struct size is 0')
 	}
@@ -442,16 +442,44 @@ pub fn (mut f File) write_struct_at<T>(t &T, pos int) ? {
 	}
 }
 
-/*
-There seem to be bug in generics that prevent that
+// TODO `write_raw[_at]` implementations are copy-pasted from `write_struct[_at]`
 
-// write_struct writes a single instance of type `T`
-pub fn (mut f File) write_any<T>(t &T) ? {
-	return f.write_struct<T>(t)
+// write_raw writes a single instance of type `T`
+pub fn (mut f File) write_raw<T>(t &T) ? {
+	if !f.is_opened {
+		return error('file is not opened')
+	}
+	tsize := int(sizeof(T))
+	if tsize == 0 {
+		return error('struct size is 0')
+	}
+	C.errno = 0
+	nbytes := int(C.fwrite(t, 1, tsize, f.cfile))
+	if C.errno != 0 {
+		return error(posix_get_error_msg(C.errno))
+	}
+	if nbytes != tsize {
+		return error_with_code('incomplete struct write', nbytes)
+	}
 }
 
-// write_struct_at writes a single instance of type `T` starting at file byte offset `pos`
-pub fn (mut f File) write_any_at<T>(t &T, pos int) ? {
-	return f.write_struct_at<T>(t, pos)
+// write_raw_at writes a single instance of type `T` starting at file byte offset `pos`
+pub fn (mut f File) write_raw_at<T>(t &T, pos int) ? {
+	if !f.is_opened {
+		return error('file is not opened')
+	}
+	tsize := int(sizeof(T))
+	if tsize == 0 {
+		return error('struct size is 0')
+	}
+	C.errno = 0
+	C.fseek(f.cfile, pos, C.SEEK_SET)
+	nbytes := int(C.fwrite(t, 1, tsize, f.cfile))
+	C.fseek(f.cfile, 0, C.SEEK_END)
+	if C.errno != 0 {
+		return error(posix_get_error_msg(C.errno))
+	}
+	if nbytes != tsize {
+		return error_with_code('incomplete struct write', nbytes)
+	}
 }
-*/
