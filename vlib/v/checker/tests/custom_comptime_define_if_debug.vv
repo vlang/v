@@ -1,0 +1,18 @@
+[if debug]
+fn foo(x int) {
+	println('foo, x: $x')
+}
+
+[if bar]
+fn bar(x int) {
+	println('bar, x: $x')
+}
+
+fn main() {
+	$if debug {
+		println('main with debug')
+	}
+	foo(123) // will not be called if `-d debug` is not passed
+	bar(456) // will not be called if `-d bar` is not passed
+	println('done')
+}
