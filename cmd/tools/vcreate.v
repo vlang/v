@@ -9,6 +9,19 @@ module main
 // functionality is essentially the same.
 import os
 
+const (
+	options = Options{
+		yes: ['-y', '--yes']
+		dry_run: ['-d', '--dry-run']
+	}
+)
+
+struct Options {
+mut:
+	yes     []string
+	dry_run []string
+}
+
 struct Create {
 mut:
 	name        string
