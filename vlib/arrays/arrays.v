@@ -134,7 +134,7 @@ pub fn intersect<T>(a []T, b []T) []T {
 		if !(element_a in intersection_array) {
 			// Iterate over the second element and check for an intersection
 			for element_b in b {
-				if element_a == element_b  {
+				if element_a == element_b {
 					intersection_array << element_b
 					// If there is a match, we skip to the next iteration of a
 					continue
