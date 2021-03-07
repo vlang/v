@@ -8,8 +8,10 @@ module main
 // makes the program structure in a _sub_ directory. Besides that, the
 // functionality is essentially the same.
 import os
+import v.pref
 
 const (
+	vexe    = pref.vexe_path()
 	options = Options{
 		yes: ['-y', '--yes']
 		dry_run: ['-d', '--dry-run']
@@ -157,10 +159,21 @@ fn init_project() {
 }
 
 fn main() {
+	help_options := ['-h', '--help', 'help']
 	if os.args[1] == 'new' {
-		create(os.args[2..])
+		if os.args[2] in help_options {
+			os.system('$vexe help new')
+			exit(0)
+		} else {
+			create(os.args[2..])
+		}
 	} else if os.args[1] == 'init' {
-		init_project()
+		if os.args[2] in help_options {
+			os.system('$vexe help init')
+			exit(0)
+		} else {
+			init_project()
+		}
 	} else {
 		cerror('Unknown command: ${os.args[1]}')
 		exit(1)

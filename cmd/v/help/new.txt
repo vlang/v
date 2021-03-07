@@ -1,5 +1,13 @@
 Usage:
-  v new [name] [description]
-  v init
+  v new [flags] [name] [description]
 
-Setup file structure for a V project.
+Examples:
+  v new
+  v new -d
+  v new MyProject
+
+Setup the file structure for a V project (in a sub folder).
+
+Options:
+  -d, --dry-run   Just output the files which should be created.
+  -y, --yes       Skip the questionnaire altogether and use default values.
