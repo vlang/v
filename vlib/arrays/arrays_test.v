@@ -98,7 +98,7 @@ fn test_intersect_float() {
 	x := [1.1, 1.15, 1.2, 1.25, 1.3, 1.25, 1.2, 1.15]
 	y := [1.0, 1.05, 1.1, 1.2, 1.1]
 
-	z := intersect<int>(x, y)
+	z := intersect<f64>(x, y)
 	assert z == [1.1, 1.2]
 }
 
