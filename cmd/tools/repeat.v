@@ -42,7 +42,7 @@ mut:
 }
 
 struct Aints {
-	values  []int
+	values []int
 mut:
 	imin    int
 	imax    int
@@ -206,7 +206,10 @@ fn (mut context Context) run() {
 				for i in 1 .. context.warmup + 1 {
 					print('${context.cgoback}warming up run: ${i:4}/${context.warmup:-4} for ${cmd:-50s} took ${duration:6} ms ...')
 					mut sw := time.new_stopwatch({})
-					os.exec(cmd) or { continue }
+					res := os.execute(cmd)
+					if res.exit_code != 0 {
+						continue
+					}
 					duration = int(sw.elapsed().milliseconds())
 				}
 				run_warmups++
@@ -225,8 +228,8 @@ fn (mut context Context) run() {
 					eprintln('${i:10} non 0 exit code for cmd: $cmd')
 					continue
 				}
-				context.results[icmd].outputs <<
-					res.output.trim_right('\r\n').replace('\r\n', '\n').split('\n')
+				context.results[icmd].outputs << res.output.trim_right('\r\n').replace('\r\n',
+					'\n').split('\n')
 				context.results[icmd].timings << duration
 				sum += duration
 				runs++

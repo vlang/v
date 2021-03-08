@@ -40,13 +40,13 @@ fn test_can_compile_main_program() {
 fn v_compile(vopts string) os.Result {
 	cmd := '"$vexe" -showcc $vopts'
 	dump(cmd)
-	res := os.exec(cmd) or { panic(err) }
+	res := os.execute_or_panic(cmd)
 	dump(res)
 	// assert res.exit_code == 0
-	$if !windows {
-		os.system('ls -al $cfolder')
-	} $else {
+	$if windows {
 		os.system('dir $cfolder /a')
+	} $else {
+		os.system('ls -al $cfolder')
 	}
 	return res
 }

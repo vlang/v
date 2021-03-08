@@ -13,11 +13,10 @@ const (
 	support_color = term.can_show_color_on_stderr() && term.can_show_color_on_stdout()
 	ecode_timeout = 101
 	ecode_memout  = 102
-	ecode_exec    = 103
 	ecode_details = map{
-		'101': 'too slow'
-		'102': 'too memory hungry'
-		'103': 'worker executable not found'
+		-1:  'worker executable not found'
+		101: 'too slow'
+		102: 'too memory hungry'
 	}
 )
 
@@ -217,10 +216,7 @@ fn (mut context Context) process_whole_file_in_worker(path string) (int, int) {
 		context.cut_index = i // needed for the progress bar
 		cmd := '"$context.myself" $verbosity --worker --timeout_ms ${context.timeout_ms:5} --cut_index ${i:5} --path "$path" '
 		context.log(cmd)
-		res := os.exec(cmd) or { os.Result{
-			output: err.msg
-			exit_code: ecode_exec
-		} }
+		mut res := os.execute(cmd)
 		context.log('worker exit_code: $res.exit_code | worker output:\n$res.output')
 		if res.exit_code != 0 {
 			fails++
@@ -236,7 +232,7 @@ fn (mut context Context) process_whole_file_in_worker(path string) (int, int) {
 			err := if is_panic {
 				red('parser failure: panic')
 			} else {
-				red('parser failure: crash, ${ecode_details[res.exit_code.str()]}')
+				red('parser failure: crash, ${ecode_details[res.exit_code]}')
 			}
 			path_to_line := bold('$path:$line:$col:')
 			err_line := last_line.trim_left('\t')

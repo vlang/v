@@ -56,9 +56,10 @@ pub fn (mut b Builder) compile_js() {
 
 fn (mut b Builder) run_js() {
 	cmd := 'node ' + b.pref.out_name + '.js'
-	res := os.exec(cmd) or {
-		println('JS compilation failed.')
-		verror(err.msg)
+	res := os.execute(cmd)
+	if res.exit_code != 0 {
+		eprintln('JS compilation failed:')
+		verror(res.output)
 		return
 	}
 	println(res.output)

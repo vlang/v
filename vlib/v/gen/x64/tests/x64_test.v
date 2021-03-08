@@ -28,18 +28,17 @@ fn test_x64() {
 	bench.set_total_expected_steps(tests.len)
 	for test in tests {
 		bench.step()
-		full_test_path := os.real_path(test)
-		println('x.v: $wrkdir/x.v')
-		os.system('cp $dir/$test $wrkdir/x.v') // cant run .vv file
-		os.exec('$vexe -o exe -x64 $wrkdir/x.v') or {
+		full_test_path := os.real_path(os.join_path(dir, test))
+		relative_test_path := full_test_path.replace(vroot + '/', '')
+		work_test_path := '$wrkdir/x.v'
+		os.cp(full_test_path, work_test_path) or {}
+		res_x64 := os.execute('$vexe -o exe -x64 $work_test_path')
+		if res_x64.exit_code != 0 {
 			bench.fail()
 			eprintln(bench.step_message_fail('x64 $test failed'))
 			continue
 		}
-		res := os.exec('./exe') or {
-			bench.fail()
-			continue
-		}
+		res := os.execute('./exe')
 		if res.exit_code != 0 {
 			bench.fail()
 			eprintln(bench.step_message_fail('$full_test_path failed to run'))
@@ -61,7 +60,7 @@ fn test_x64() {
 			continue
 		}
 		bench.ok()
-		eprintln(bench.step_message_ok('testing file: $test'))
+		eprintln(bench.step_message_ok(relative_test_path))
 	}
 	bench.stop()
 	eprintln(term.h_divider('-'))

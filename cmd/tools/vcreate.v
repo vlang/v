@@ -81,7 +81,8 @@ fn (c &Create) write_main(new bool) {
 fn (c &Create) create_git_repo(dir string) {
 	// Create Git Repo and .gitignore file
 	if !os.is_dir('$dir/.git') {
-		os.exec('git init $dir') or {
+		res := os.execute('git init $dir')
+		if res.exit_code != 0 {
 			cerror('Unable to create git repo')
 			exit(4)
 		}

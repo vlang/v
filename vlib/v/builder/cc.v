@@ -47,7 +47,8 @@ fn (mut v Builder) find_win_cc() ? {
 	$if !windows {
 		return none
 	}
-	os.exec('$v.pref.ccompiler -v') or {
+	ccompiler_version_res := os.execute('$v.pref.ccompiler -v')
+	if ccompiler_version_res.exit_code != 0 {
 		if v.pref.is_verbose {
 			println('$v.pref.ccompiler not found, looking for msvc...')
 		}
@@ -57,7 +58,8 @@ fn (mut v Builder) find_win_cc() ? {
 			}
 			vpath := os.dir(pref.vexe_path())
 			thirdparty_tcc := os.join_path(vpath, 'thirdparty', 'tcc', 'tcc.exe')
-			os.exec('$thirdparty_tcc -v') or {
+			tcc_version_res := os.execute('$thirdparty_tcc -v')
+			if tcc_version_res.exit_code != 0 {
 				if v.pref.is_verbose {
 					println('tcc not found')
 				}
@@ -209,15 +211,14 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	ccoptions.guessed_compiler = v.pref.ccompiler
 	if ccoptions.guessed_compiler == 'cc' && v.pref.is_prod {
 		// deliberately guessing only for -prod builds for performance reasons
-		if ccversion := os.exec('cc --version') {
-			if ccversion.exit_code == 0 {
-				if ccversion.output.contains('This is free software;')
-					&& ccversion.output.contains('Free Software Foundation, Inc.') {
-					ccoptions.guessed_compiler = 'gcc'
-				}
-				if ccversion.output.contains('clang version ') {
-					ccoptions.guessed_compiler = 'clang'
-				}
+		ccversion := os.execute('cc --version')
+		if ccversion.exit_code == 0 {
+			if ccversion.output.contains('This is free software;')
+				&& ccversion.output.contains('Free Software Foundation, Inc.') {
+				ccoptions.guessed_compiler = 'gcc'
+			}
+			if ccversion.output.contains('clang version ') {
+				ccoptions.guessed_compiler = 'clang'
 			}
 		}
 	}
@@ -528,9 +529,7 @@ fn (mut v Builder) cc() {
 		mut ccompiler := v.pref.ccompiler
 		if v.pref.os == .ios {
 			ios_sdk := if v.pref.is_ios_simulator { 'iphonesimulator' } else { 'iphoneos' }
-			ios_sdk_path_res := os.exec('xcrun --sdk $ios_sdk --show-sdk-path') or {
-				panic("Couldn't find iphonesimulator")
-			}
+			ios_sdk_path_res := os.execute_or_panic('xcrun --sdk $ios_sdk --show-sdk-path')
 			mut isysroot := ios_sdk_path_res.output.replace('\n', '')
 			ccompiler = 'xcrun --sdk iphoneos clang -isysroot $isysroot'
 		}
@@ -635,12 +634,7 @@ fn (mut v Builder) cc() {
 		// Run
 		ccompiler_label := 'C ${os.file_name(ccompiler):3}'
 		util.timing_start(ccompiler_label)
-		res := os.exec(cmd) or {
-			os.Result{
-				exit_code: 111
-				output: 'C compilation failed.\n$err.msg'
-			}
-		}
+		res := os.execute(cmd)
 		util.timing_measure(ccompiler_label)
 		if v.pref.show_c_output {
 			v.show_c_compiler_output(res)
@@ -694,28 +688,6 @@ fn (mut v Builder) cc() {
 		}
 		break
 	}
-	// Link it if we are cross compiling and need an executable
-	/*
-	if v.os == .linux && !linux_host && v.pref.build_mode != .build {
-		v.out_name = v.out_name.replace('.o', '')
-		obj_file := v.out_name + '.o'
-		println('linux obj_file=$obj_file out_name=$v.out_name')
-		ress := os.exec('/usr/local/Cellar/llvm/8.0.0/bin/ld.lld --sysroot=$sysroot ' +
-		'-v -o $v.out_name ' +
-		'-m elf_x86_64 -dynamic-linker /lib64/ld-linux-x86-64.so.2 ' +
-		'/usr/lib/x86_64-linux-gnu/crt1.o ' +
-		'$sysroot/lib/x86_64-linux-gnu/libm-2.28.a ' +
-		'/usr/lib/x86_64-linux-gnu/crti.o ' +
-		obj_file +
-		' /usr/lib/x86_64-linux-gnu/libc.so ' +
-		'/usr/lib/x86_64-linux-gnu/crtn.o') or {
-			verror(err.msg)
-			return
-		}
-		println(ress.output)
-		println('linux cross compilation done. resulting binary: "$v.out_name"')
-	}
-	*/
 	if v.pref.compress {
 		$if windows {
 			println('-compress does not work on Windows for now')
@@ -794,12 +766,7 @@ fn (mut b Builder) cc_linux_cross() {
 	if b.pref.show_cc {
 		println(cc_cmd)
 	}
-	cc_res := os.exec(cc_cmd) or {
-		os.Result{
-			exit_code: 1
-			output: 'no `cc` command found'
-		}
-	}
+	cc_res := os.execute(cc_cmd)
 	if cc_res.exit_code != 0 {
 		println('Cross compilation for Linux failed (first step, cc). Make sure you have clang installed.')
 		verror(cc_res.output)
@@ -817,14 +784,11 @@ fn (mut b Builder) cc_linux_cross() {
 	if b.pref.show_cc {
 		println(linker_cmd)
 	}
-	res := os.exec(linker_cmd) or {
-		println('Cross compilation for Linux failed (second step, lld).')
-		verror(err.msg)
-		return
-	}
+	res := os.execute(linker_cmd)
 	if res.exit_code != 0 {
 		println('Cross compilation for Linux failed (second step, lld).')
 		verror(res.output)
+		return
 	}
 	println(b.pref.out_name + ' has been successfully compiled')
 }
@@ -982,11 +946,7 @@ fn (mut v Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CF
 	$if trace_thirdparty_obj_files ? {
 		println('>>> build_thirdparty_obj_files cmd: $cmd')
 	}
-	res := os.exec(cmd) or {
-		eprintln('exec failed for thirdparty object build cmd:\n$cmd')
-		verror(err.msg)
-		return
-	}
+	res := os.execute(cmd)
 	os.chdir(current_folder)
 	if res.exit_code != 0 {
 		eprintln('failed thirdparty object build cmd:\n$cmd')

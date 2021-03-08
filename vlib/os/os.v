@@ -596,3 +596,22 @@ pub mut:
 	version  string
 	machine  string
 }
+
+[deprecated: 'use os.execute or os.execute_or_panic instead']
+pub fn exec(cmd string) ?Result {
+	res := execute(cmd)
+	if res.exit_code < 0 {
+		return error_with_code(res.output, -1)
+	}
+	return res
+}
+
+pub fn execute_or_panic(cmd string) Result {
+	res := execute(cmd)
+	if res.exit_code != 0 {
+		eprintln('failed    cmd: $cmd')
+		eprintln('failed   code: $res.exit_code')
+		panic(res.output)
+	}
+	return res
+}
