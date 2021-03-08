@@ -125,6 +125,7 @@ fn test_last_field_empty() {
 			assert row[1] == 'second'
 		}
 	}
+	assert row_count == 3
 }
 
 fn test_empty_line() {
@@ -149,12 +150,13 @@ fn test_empty_line() {
 			assert row[1] == 'second'
 		}
 	}
+	assert row_count == 3
 }
 
 fn test_field_multiple_line() {
 	data := '"name","multiple
 
- line","value"\n"one","first","1"'
+ line","value"\n"one","first","1"\n'
 	mut csv_reader := csv.new_reader(data)
 	mut row_count := 0
 	for {
@@ -172,6 +174,7 @@ fn test_field_multiple_line() {
 			assert row[2] == '1'
 		}
 	}
+	assert row_count == 2
 }
 
 fn test_field_quotes_for_parts() {
@@ -201,4 +204,5 @@ fn test_field_quotes_for_parts() {
 			assert row[2] == 'c4'
 		}
 	}
+	assert row_count == 4
 }
