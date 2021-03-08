@@ -365,6 +365,7 @@ pub fn (t &Table) resolve_common_sumtype_fields(sym_ &TypeSymbol) {
 			info.fields << field_map[field]
 		}
 	}
+	info.found_fields = true
 	sym.info = info
 }
 

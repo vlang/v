@@ -2972,7 +2972,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		expr := g.expr_string(node.expr)
 		for v in (sym.info as table.SumType).variants {
 			vsym := g.table.get_type_symbol(v)
-			g.write('/* branch */ $expr${dot}typ == $v ? $expr${dot}_$vsym.cname->$node.field_name : ')
+			g.write('$expr${dot}typ == $v ? $expr${dot}_$vsym.cname->$node.field_name : ')
 		}
 		g.write('(v_panic(_SLIT("got invalid sumtype variant")), ${g.type_default(node.typ)}))')
 		return
