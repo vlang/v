@@ -173,3 +173,32 @@ fn test_field_multiple_line() {
 		}
 	}
 }
+
+fn test_field_quotes_for_parts() {
+	data := 'a1,"b1",c1\n"a2",b2,c2\na3,b3,"c3"\na4,b4,c4\n'
+	mut csv_reader := csv.new_reader(data)
+	mut row_count := 0
+	for {
+		row := csv_reader.read() or {
+			break
+		}
+		row_count++
+		if row_count == 1 {
+			assert row[0] == 'a1'
+			assert row[1] == 'b1'
+			assert row[2] == 'c1'
+		} else if row_count == 2 {
+			assert row[0] == 'a2'
+			assert row[1] == 'b2'
+			assert row[2] == 'c2'
+		} else if row_count == 3 {
+			assert row[0] == 'a3'
+			assert row[1] == 'b3'
+			assert row[2] == 'c3'
+		} else if row_count == 4 {
+			assert row[0] == 'a4'
+			assert row[1] == 'b4'
+			assert row[2] == 'c4'
+		}
+	}
+}
