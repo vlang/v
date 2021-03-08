@@ -5502,7 +5502,7 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) table.Type {
 			node.value_type = info.value_type
 			return node.typ
 		} else {
-			c.error('invalid empty map initilization syntax, use i.e. `map[string]int{}`',
+			c.error('invalid empty map initilization syntax, use e.g. map[string]int{} instead',
 				node.pos)
 		}
 	}
