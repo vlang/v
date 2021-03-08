@@ -3,8 +3,9 @@ Usage:
 
 Examples:
   v new
-  v new -d
+  v new -y
   v new MyProject
+  v new MyProject "This is my great project."
 
 Setup the file structure for a V project (in a sub folder).
 
