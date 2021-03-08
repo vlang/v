@@ -366,8 +366,6 @@ pub fn (t &Table) resolve_common_sumtype_fields(sym_ &TypeSymbol) {
 		}
 	}
 	sym.info = info
-	x := info.fields.map('$it.name: ${t.get_type_name(it.typ)}')
-	println('$sym.name - $x')
 }
 
 [inline]
