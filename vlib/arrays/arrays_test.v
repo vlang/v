@@ -94,6 +94,14 @@ fn test_intersect_int() {
 	assert z == [1, 3, 5]
 }
 
+fn test_intersect_float() {
+	x := [1.1, 1.15, 1.2, 1.25, 1.3, 1.25, 1.2, 1.15]
+	y := [1.0, 1.05, 1.1, 1.2, 1.1]
+
+	z := intersect<int>(x, y)
+	assert z == [1.1, 1.2]
+}
+
 fn test_intersect_string() {
 	x := ['test', '-d']
 	y := ['-d', '--dry-run']
