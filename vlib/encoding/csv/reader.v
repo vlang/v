@@ -17,7 +17,7 @@ struct Reader {
 	// not used yet
 	// has_header        bool
 	// headings          []string
-	data              string
+	data string
 pub mut:
 	delimiter         byte
 	comment           byte
@@ -59,7 +59,7 @@ pub fn (mut r Reader) read() ?[]string {
 fn (mut r Reader) read_line() ?string {
 	// last record
 	if r.row_pos == r.data.len {
-		return err_eof
+		return csv.err_eof
 	}
 	le := if r.is_mac_pre_osx_le { '\r' } else { '\n' }
 	mut i := r.data.index_after(le, r.row_pos)
@@ -71,7 +71,7 @@ fn (mut r Reader) read_line() ?string {
 				r.is_mac_pre_osx_le = true
 			} else {
 				// no valid line endings found
-				return err_invalid_le
+				return csv.err_invalid_le
 			}
 		} else {
 			// No line ending on file
@@ -89,10 +89,10 @@ fn (mut r Reader) read_line() ?string {
 
 fn (mut r Reader) read_record() ?[]string {
 	if r.delimiter == r.comment {
-		return err_comment_is_delim
+		return csv.err_comment_is_delim
 	}
 	if !valid_delim(r.delimiter) {
-		return err_invalid_delim
+		return csv.err_invalid_delim
 	}
 	mut need_read := true
 	mut keep_raw := false
@@ -146,13 +146,15 @@ fn (mut r Reader) read_record() ?[]string {
 			next := line[j + 1]
 			if next == r.delimiter {
 				fields << line[..j]
-				line = line[j..]
+				if j + 2 == line.len {
+					break
+				}
+				line = line[j + 2..]
 				continue
 			}
-			line = line[1..]
 		}
 		if i <= -1 && fields.len == 0 {
-			return err_invalid_delim
+			return csv.err_invalid_delim
 		}
 	}
 	return fields
