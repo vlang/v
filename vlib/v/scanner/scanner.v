@@ -894,7 +894,7 @@ fn (mut s Scanner) text_scan() token.Token {
 					return s.new_token(.comment, comment, comment.len + 2)
 				}
 				hash := s.text[start..s.pos].trim_space()
-				return s.new_token(.hash, s.exec_cmd(hash), hash.len)
+				return s.new_token(.hash, hash, hash.len)
 			}
 			`>` {
 				if nextc == `=` {
@@ -1053,20 +1053,6 @@ fn (mut s Scanner) text_scan() token.Token {
 		break
 	}
 	return s.end_of_file()
-}
-
-fn (mut s Scanner) exec_cmd(cmd string) string {
-	mut cmd_ := cmd
-	for cmd_.contains('$(') {
-		cmd_to_exec := cmd_.find_between('$(', ')')
-		res := os.execute(cmd_to_exec)
-		if res.exit_code != 0 {
-			s.error('cmd `$cmd_to_exec` failed: $res.output')
-		}
-		res_ts := res.output.trim_space()
-		cmd_ = cmd_.replace('$($cmd_to_exec)', res_ts)
-	}
-	return cmd_
 }
 
 fn (mut s Scanner) invalid_character() {
