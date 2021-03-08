@@ -879,6 +879,7 @@ pub:
 	is_pub   bool
 	pos      token.Position
 	comments []Comment
+	typ      table.Type
 pub mut:
 	variants []SumTypeVariant
 }

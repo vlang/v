@@ -2962,6 +2962,21 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		opt_base_typ := g.base_type(node.expr_type)
 		g.writeln('(*($opt_base_typ*)')
 	}
+	dot := if (node.expr_type.is_ptr() || sym.kind == .chan) && node.from_embed_type == 0 {
+		'->'
+	} else {
+		'.'
+	}
+	if sym.kind == .sum_type {
+		g.write('(')
+		expr := g.expr_string(node.expr)
+		for v in (sym.info as table.SumType).variants {
+			vsym := g.table.get_type_symbol(v)
+			g.write('/* branch */ $expr${dot}typ == $v ? $expr${dot}_$vsym.cname->$node.field_name : ')
+		}
+		g.write('(v_panic(_SLIT("got invalid sumtype variant")), ${g.type_default(node.typ)}))')
+		return
+	}
 	if sym.kind == .interface_ {
 		g.write('(*(')
 	}
@@ -2996,8 +3011,8 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 						g.write('(*')
 						cast_sym := g.table.get_type_symbol(typ)
 						if i != 0 {
-							dot := if field.typ.is_ptr() { '->' } else { '.' }
-							sum_type_deref_field += ')$dot'
+							fdot := if field.typ.is_ptr() { '->' } else { '.' }
+							sum_type_deref_field += ')$fdot'
 						}
 						if mut cast_sym.info is table.Aggregate {
 							agg_sym := g.table.get_type_symbol(cast_sym.info.types[g.aggregate_type_idx])
@@ -3027,12 +3042,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			g.write(embed_name)
 		}
 	}
-	if (node.expr_type.is_ptr() || sym.kind == .chan) && node.from_embed_type == 0 {
-		g.write('->')
-	} else {
-		// g.write('. /*typ=  $it.expr_type */') // ${g.typ(it.expr_type)} /')
-		g.write('.')
-	}
+	g.write(dot)
 	if node.expr_type.has_flag(.shared_f) {
 		g.write('val.')
 	}
