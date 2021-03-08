@@ -31,7 +31,7 @@ fn test_x64() {
 		full_test_path := os.real_path(os.join_path(dir, test))
 		relative_test_path := full_test_path.replace(vroot + '/', '')
 		work_test_path := '$wrkdir/x.v'
-		os.cp(full_test_path, work_test_path) or { }
+		os.cp(full_test_path, work_test_path) or {}
 		res_x64 := os.execute('$vexe -o exe -x64 $work_test_path')
 		if res_x64.exit_code != 0 {
 			bench.fail()
