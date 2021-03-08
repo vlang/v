@@ -300,6 +300,7 @@ pub fn (t &Table) find_field(s &TypeSymbol, name string) ?Field {
 				if field := ts.info.find_field(name) {
 					return field
 				}
+				return error('field `$name` does not exist or have the same type in all sumtype variants')
 			}
 			else {}
 		}

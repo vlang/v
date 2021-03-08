@@ -2293,7 +2293,7 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 					c.error('ambiguous field `$field_name`', selector_expr.pos)
 				}
 			}
-			if sym.kind == .aggregate {
+			if sym.kind in [.aggregate, .sum_type] {
 				unknown_field_msg = err
 			}
 		}
