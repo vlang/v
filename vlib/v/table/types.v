@@ -1029,7 +1029,6 @@ pub fn (s Struct) get_field(name string) Field {
 	panic('unknown field `$name`')
 }
 
-
 pub fn (s &SumType) find_field(name string) ?Field {
 	for field in s.fields {
 		if field.name == name {
