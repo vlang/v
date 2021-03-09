@@ -3441,6 +3441,10 @@ fn (mut c Checker) exec_cmd(cmd string, pos token.Position) string {
 			return cmd_
 		}
 		cmd_to_exec := cmd_.find_between('$(', ')')
+		if cmd_to_exec.contains('$(') {
+			c.error('command substitution within another substitution is not allowed', pos)
+			return cmd_
+		}
 		res := os.execute(cmd_to_exec)
 		if res.exit_code != 0 {
 			c.error('there was a failure when executing `$cmd_to_exec`: $res.output',
