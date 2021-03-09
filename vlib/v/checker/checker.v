@@ -3063,6 +3063,11 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 					c.error('non-constant array bound `$init_expr.name`', init_expr.pos)
 				}
 			}
+			ast.InfixExpr {
+				if cint := eval_int_expr(init_expr, 0) {
+					fixed_size = cint
+				}
+			}
 			else {
 				c.error('expecting `int` for fixed size', array_init.pos)
 			}

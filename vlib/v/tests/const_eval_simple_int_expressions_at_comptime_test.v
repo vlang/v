@@ -9,13 +9,18 @@ fn test_consts() {
 	println(buf_siz)
 }
 
-fn test_fixed_size_arrays_can_use_known_comptime_consts_as_their_size() {
+fn test_fixed_size_array_can_use_a_known_comptime_const_as_its_size() {
 	buf := [buf_siz]byte{}
 	println(buf.len)
 	assert buf.len == 1048576
 }
 
-// zbuf := [1024*1024]byte{}
-// error: fixed size cannot be zero or negative
+fn test_fixed_size_array_using_a_known_int_expression_directly_as_its_size() {
+	zbuf := [5 + 20 * 10]byte{}
+	assert zbuf.len == 205
+}
 
-// buf := [1048576]byte{}
+fn test_fixed_size_array_using_a_known_int_expression_with_const_as_its_size() {
+	zbuf := [2 * kb]byte{}
+	assert zbuf.len == 2048
+}
