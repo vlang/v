@@ -229,7 +229,7 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 		if is_verbose {
 			println('Compiling $tool_name with: "$compilation_command"')
 		}
-		tool_compilation := os.exec(compilation_command) or { panic(err) }
+		tool_compilation := os.execute_or_panic(compilation_command)
 		if tool_compilation.exit_code != 0 {
 			eprintln('cannot compile `$tool_source`: \n$tool_compilation.output')
 			exit(1)
@@ -428,8 +428,9 @@ pub fn check_module_is_installed(modulename string, is_verbose bool) ?bool {
 		if is_verbose {
 			eprintln('check_module_is_installed: updating with $update_cmd ...')
 		}
-		update_res := os.exec(update_cmd) or {
-			return error('can not start $update_cmd, error: $err')
+		update_res := os.execute(update_cmd)
+		if update_res.exit_code < 0 {
+			return error('can not start $update_cmd, error: $update_res.output')
 		}
 		if update_res.exit_code != 0 {
 			eprintln('Warning: `$modulename` exists, but is not updated.
@@ -446,11 +447,12 @@ and the existing module `$modulename` may still work.')
 	if is_verbose {
 		eprintln('check_module_is_installed: cloning from $murl ...')
 	}
-	cloning_res := os.exec('git clone $murl $mpath') or {
-		return error('git is not installed, error: $err')
+	cloning_res := os.execute('git clone $murl $mpath')
+	if cloning_res.exit_code < 0 {
+		return error_with_code('git is not installed, error: $cloning_res.output', cloning_res.exit_code)
 	}
 	if cloning_res.exit_code != 0 {
-		return error('cloning failed, details: $cloning_res.output')
+		return error_with_code('cloning failed, details: $cloning_res.output', cloning_res.exit_code)
 	}
 	if !os.exists(mod_v_file) {
 		return error('even after cloning, $mod_v_file is still missing')

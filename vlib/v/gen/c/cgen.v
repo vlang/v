@@ -557,6 +557,14 @@ fn (mut g Gen) base_type(t table.Type) string {
 	return styp
 }
 
+fn (mut g Gen) expr_string(expr ast.Expr) string {
+	pos := g.out.len
+	g.expr(expr)
+	expr_str := g.out.after(pos)
+	g.out.go_back(expr_str.len)
+	return expr_str.trim_space()
+}
+
 // TODO this really shouldnt be seperate from typ
 // but I(emily) would rather have this generation
 // all unified in one place so that it doesnt break
@@ -1065,10 +1073,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				g.enum_typedefs.write_string('\t${enum_name}_$field.name')
 				if field.has_expr {
 					g.enum_typedefs.write_string(' = ')
-					pos := g.out.len
-					g.expr(field.expr)
-					expr_str := g.out.after(pos)
-					g.out.go_back(expr_str.len)
+					expr_str := g.expr_string(field.expr)
 					g.enum_typedefs.write_string(expr_str)
 					cur_enum_expr = expr_str
 					cur_enum_offset = 0
@@ -1375,11 +1380,7 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 		val_sym := g.table.get_type_symbol(node.val_type)
 		mut cond_var := ''
 		if node.cond is ast.Ident || node.cond is ast.SelectorExpr {
-			pos := g.out.len
-			g.expr(node.cond)
-			cond_var = g.out.after(pos)
-			g.out.go_back(cond_var.len)
-			cond_var = cond_var.trim_space()
+			cond_var = g.expr_string(node.cond)
 		} else {
 			cond_var = g.new_tmp_var()
 			g.write(g.typ(node.cond_type))
@@ -1429,11 +1430,7 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 			g.expr(node.cond)
 			g.writeln(');')
 		} else {
-			pos := g.out.len
-			g.expr(node.cond)
-			cond_var = g.out.after(pos)
-			g.out.go_back(cond_var.len)
-			cond_var = cond_var.trim_space()
+			cond_var = g.expr_string(node.cond)
 		}
 		idx := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
 		cond_sym := g.table.get_type_symbol(node.cond_type)
@@ -1469,11 +1466,7 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 		g.writeln('// FOR IN map')
 		mut cond_var := ''
 		if node.cond is ast.Ident {
-			pos := g.out.len
-			g.expr(node.cond)
-			cond_var = g.out.after(pos)
-			g.out.go_back(cond_var.len)
-			cond_var = cond_var.trim_space()
+			cond_var = g.expr_string(node.cond)
 		} else {
 			cond_var = g.new_tmp_var()
 			g.write(g.typ(node.cond_type))
@@ -3611,11 +3604,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	}
 	if node.cond is ast.Ident || node.cond is ast.SelectorExpr || node.cond is ast.IntegerLiteral
 		|| node.cond is ast.StringLiteral || node.cond is ast.FloatLiteral {
-		pos := g.out.len
-		g.expr(node.cond)
-		cond_var = g.out.after(pos)
-		g.out.go_back(cond_var.len)
-		cond_var = cond_var.trim_space()
+		cond_var = g.expr_string(node.cond)
 	} else {
 		line := if is_expr {
 			g.empty_line = true
@@ -5392,10 +5381,7 @@ fn (mut g Gen) type_default(typ_ table.Type) string {
 			field_sym := g.table.get_type_symbol(field.typ)
 			if field_sym.kind in [.array, .map] || field.has_default_expr {
 				if field.has_default_expr {
-					pos := g.out.len
-					g.expr(ast.fe2ex(field.default_expr))
-					expr_str := g.out.after(pos)
-					g.out.go_back(expr_str.len)
+					expr_str := g.expr_string(ast.fe2ex(field.default_expr))
 					init_str += '.$field.name = $expr_str,'
 				} else {
 					init_str += '.$field.name = ${g.type_default(field.typ)},'

@@ -43,13 +43,13 @@ const (
 	// version
 	app_version          = '0.1.2'
 	// description
-	app_description      = "This tool regenerates V\'s bootstrap .c files every time the V master branch is updated."
+	app_description      = "This tool regenerates V's bootstrap .c files every time the V master branch is updated."
 	// assume something went wrong if file size less than this
 	too_short_file_limit = 5000
 	// create a .c file for these os's
 	vc_build_oses        = [
 		'nix',
-		/* all nix based os */
+		// all nix based os
 		'windows',
 	]
 )
@@ -188,8 +188,8 @@ fn parse_flags(mut fp flag.FlagParser) FlagOptions {
 		work_dir: fp.string('work-dir', 0, work_dir, 'gen_vc working directory')
 		purge: fp.bool('purge', 0, false, 'force purge the local repositories')
 		port: fp.int('port', 0, server_port, 'port for web server to listen on')
-		log_to: fp.string('log-to', 0, log_to, "log to is \'file\' or \'terminal\'")
-		log_file: fp.string('log-file', 0, log_file, "log file to use when log-to is \'file\'")
+		log_to: fp.string('log-to', 0, log_to, "log to is 'file' or 'terminal'")
+		log_file: fp.string('log-file', 0, log_file, "log file to use when log-to is 'file'")
 		dry_run: fp.bool('dry-run', 0, dry_run, 'when specified dont push anything to remote repo')
 		force: fp.bool('force', 0, false, 'force update even if already up to date')
 	}
@@ -318,9 +318,10 @@ fn (mut gen_vc GenVC) command_execute(cmd string, dry bool) string {
 		return gen_vc.command_execute_dry(cmd)
 	}
 	gen_vc.logger.info('cmd: $cmd')
-	r := os.exec(cmd) or {
+	r := os.execute(cmd)
+	if r.exit_code < 0 {
 		gen_vc.logger.error('$err_msg_cmd_x: "$cmd" could not start.')
-		gen_vc.logger.error(err.msg)
+		gen_vc.logger.error(r.output)
 		// something went wrong, better start fresh next time
 		gen_vc.purge_repos()
 		gen_vc.gen_error = true
