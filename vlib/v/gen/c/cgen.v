@@ -1656,7 +1656,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw table.Type, expected_t
 					g.write(')')
 				}
 				if expected_is_ptr {
-					g.write('})')
+					g.write('}, sizeof($exp_sym.cname))')
 				}
 			}
 			return
