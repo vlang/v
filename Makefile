@@ -80,10 +80,10 @@ endif
 all: latest_vc latest_tcc
 ifdef WIN32
 	$(CC) $(CFLAGS) -g -std=c99 -municode -w -o $(V) $(VC)/$(VCFILE) $(LDFLAGS)
-	$(V) self
+	$(V) $(VFLAGS) self
 else
 	$(CC) $(CFLAGS) -g -std=gnu99 -w -o $(V) $(VC)/$(VCFILE) -lm -lpthread $(LDFLAGS)
-	$(V) self
+	$(V) $(VFLAGS) self
 endif
 	@echo "V has been successfully built"
 	@$(V) -version
@@ -132,10 +132,10 @@ asan:
 	$(MAKE) all CFLAGS='-fsanitize=address,undefined'
 
 selfcompile:
-	$(V) -cg -o v cmd/v
+	$(V) $(VFLAGS) -cg -o v cmd/v
 
 selfcompile-static:
-	$(V) -cg -cflags '--static' -o v-static cmd/v
+	$(V) $(VFLAGS) -cg -cflags '--static' -o v-static cmd/v
 
 install: all
 	$(V) symlink
