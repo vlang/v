@@ -2293,7 +2293,7 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 					c.error('ambiguous field `$field_name`', selector_expr.pos)
 				}
 			}
-			if sym.kind == .aggregate {
+			if sym.kind in [.aggregate, .sum_type] {
 				unknown_field_msg = err
 			}
 		}
@@ -2321,7 +2321,7 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 		selector_expr.typ = field.typ
 		return field.typ
 	}
-	if sym.kind !in [.struct_, .aggregate, .interface_] {
+	if sym.kind !in [.struct_, .aggregate, .interface_, .sum_type] {
 		if sym.kind != .placeholder {
 			c.error('`$sym.name` is not a struct', selector_expr.pos)
 		}

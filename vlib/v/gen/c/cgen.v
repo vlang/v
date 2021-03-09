@@ -94,15 +94,16 @@ mut:
 	defer_stmts           []ast.DeferStmt
 	defer_ifdef           string
 	defer_profile_code    string
-	str_types             []string // types that need automatic str() generation
-	threaded_fns          []string // for generating unique wrapper types and fns for `go xxx()`
-	waiter_fns            []string // functions that wait for `go xxx()` to finish
-	array_fn_definitions  []string // array equality functions that have been defined
-	map_fn_definitions    []string // map equality functions that have been defined
-	struct_fn_definitions []string // struct equality functions that have been defined
-	alias_fn_definitions  []string // alias equality functions that have been defined
-	auto_fn_definitions   []string // auto generated functions defination list
-	anon_fn_definitions   []string // anon generated functions defination list
+	str_types             []string     // types that need automatic str() generation
+	threaded_fns          []string     // for generating unique wrapper types and fns for `go xxx()`
+	waiter_fns            []string     // functions that wait for `go xxx()` to finish
+	array_fn_definitions  []string     // array equality functions that have been defined
+	map_fn_definitions    []string     // map equality functions that have been defined
+	struct_fn_definitions []string     // struct equality functions that have been defined
+	alias_fn_definitions  []string     // alias equality functions that have been defined
+	auto_fn_definitions   []string     // auto generated functions defination list
+	anon_fn_definitions   []string     // anon generated functions defination list
+	sumtype_definitions   map[int]bool // `_TypeA_to_sumtype_TypeB()` fns that have been generated
 	is_json_fn            bool     // inside json.encode()
 	json_types            []string // to avoid json gen duplicates
 	pcs                   []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
@@ -1553,6 +1554,33 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 	}
 }
 
+fn (mut g Gen) write_sumtype_casting_fn(got_ table.Type, exp_ table.Type) {
+	got, exp := got_.idx(), exp_.idx()
+	i := got | (exp << 16)
+	if got == exp || g.sumtype_definitions[i] {
+		return
+	}
+	g.sumtype_definitions[i] = true
+	got_sym := g.table.get_type_symbol(got)
+	exp_sym := g.table.get_type_symbol(exp)
+	mut sb := strings.new_builder(128)
+	got_cname, exp_cname := got_sym.cname, exp_sym.cname
+	sb.writeln('static inline $exp_cname ${got_cname}_to_sumtype_${exp_cname}($got_cname* x) {')
+	sb.writeln('\t$got_cname* ptr = memdup(x, sizeof($got_cname));')
+	sb.write_string('\treturn ($exp_cname){ ._$got_cname = ptr, ._typ = ${g.type_sidx(got)}')
+	for field in (exp_sym.info as table.SumType).fields {
+		field_styp := g.typ(field.typ)
+		if got_sym.kind in [.sum_type, .interface_] {
+			// the field is already a wrapped pointer; we shouldn't wrap it once again
+			sb.write_string(', .$field.name = ptr->$field.name')
+		} else {
+			sb.write_string(', .$field.name = ($field_styp*)((char*)ptr + __offsetof($got_cname, $field.name))')
+		}
+	}
+	sb.writeln('};\n}')
+	g.auto_fn_definitions << sb.str()
+}
+
 // use instead of expr() when you need to cast to a different type
 fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw table.Type, expected_type table.Type) {
 	got_type := g.table.mktyp(got_type_raw)
@@ -1590,45 +1618,39 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw table.Type, expected_t
 		expected_deref_type := if expected_is_ptr { expected_type.deref() } else { expected_type }
 		got_deref_type := if got_is_ptr { got_type.deref() } else { got_type }
 		if g.table.sumtype_has_variant(expected_deref_type, got_deref_type) {
-			// got_idx := got_type.idx()
-			got_sidx := g.type_sidx(got_type)
-			// TODO: do we need 1-3?
-			if expected_is_ptr && got_is_ptr {
-				exp_der_styp := g.typ(expected_deref_type)
-				g.write('/* sum type cast 1 */ ($exp_styp) memdup(&($exp_der_styp){._$got_sym.cname = ')
-				g.expr(expr)
-				g.write(', .typ = $got_sidx /* $got_sym.name */}, sizeof($exp_der_styp))')
-			} else if expected_is_ptr {
-				exp_der_styp := g.typ(expected_deref_type)
-				g.write('/* sum type cast 2 */ ($exp_styp) memdup(&($exp_der_styp){._$got_sym.cname = memdup(&($got_styp[]){')
-				g.expr(expr)
-				g.write('}, sizeof($got_styp)), .typ = $got_sidx /* $got_sym.name */}, sizeof($exp_der_styp))')
-			} else if got_is_ptr {
-				g.write('/* sum type cast 3 */ ($exp_styp){._$got_sym.cname = ')
-				g.expr(expr)
-				g.write(', .typ = $got_sidx /* $got_sym.name */}')
-			} else {
-				mut is_already_sum_type := false
-				scope := g.file.scope.innermost(expr.position().pos)
-				if expr is ast.Ident {
-					if v := scope.find_var(expr.name) {
-						if v.sum_type_casts.len > 0 {
-							is_already_sum_type = true
-						}
-					}
-				} else if expr is ast.SelectorExpr {
-					if _ := scope.find_struct_field(expr.expr_type, expr.field_name) {
+			mut is_already_sum_type := false
+			scope := g.file.scope.innermost(expr.position().pos)
+			if expr is ast.Ident {
+				if v := scope.find_var(expr.name) {
+					if v.sum_type_casts.len > 0 {
 						is_already_sum_type = true
 					}
 				}
-				if is_already_sum_type {
-					// Don't create a new sum type wrapper if there is already one
-					g.prevent_sum_type_unwrapping_once = true
+			} else if expr is ast.SelectorExpr {
+				if _ := scope.find_struct_field(expr.expr_type, expr.field_name) {
+					is_already_sum_type = true
+				}
+			}
+			if is_already_sum_type {
+				// Don't create a new sum type wrapper if there is already one
+				g.prevent_sum_type_unwrapping_once = true
+				g.expr(expr)
+			} else {
+				g.write_sumtype_casting_fn(got_type, expected_type)
+				if expected_is_ptr {
+					g.write('memdup(&($exp_sym.cname[]){')
+				}
+				g.write('${got_sym.cname}_to_sumtype_${exp_sym.cname}(')
+				if !got_is_ptr {
+					g.write('(&(($got_styp[]){')
 					g.expr(expr)
+					g.write('}[0])))')
 				} else {
-					g.write('/* sum type cast 4 */ ($exp_styp){._$got_sym.cname = memdup(&($got_styp[]){')
 					g.expr(expr)
-					g.write('}, sizeof($got_styp)), .typ = $got_sidx /* $got_sym.name */}')
+					g.write(')')
+				}
+				if expected_is_ptr {
+					g.write('}, sizeof($exp_sym.cname))')
 				}
 			}
 			return
@@ -2707,7 +2729,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.concat_expr(node)
 		}
 		ast.CTempVar {
-			// g.write('/*ctmp .orig: $node.orig.str() , .typ: $node.typ, .is_ptr: $node.is_ptr */ ')
+			// g.write('/*ctmp .orig: $node.orig.str() , ._typ: $node.typ, .is_ptr: $node.is_ptr */ ')
 			g.write(node.name)
 		}
 		ast.EnumVal {
@@ -2923,7 +2945,7 @@ fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 		// because the subtype of the expression may change:
 		g.write('tos3( /* $sym.name */ v_typeof_sumtype_${sym.cname}( (')
 		g.expr(node.expr)
-		g.write(').typ ))')
+		g.write(')._typ ))')
 	} else if sym.kind == .array_fixed {
 		fixed_info := sym.info as table.ArrayFixed
 		typ_name := g.table.get_type_name(fixed_info.elem_type)
@@ -2956,7 +2978,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		opt_base_typ := g.base_type(node.expr_type)
 		g.writeln('(*($opt_base_typ*)')
 	}
-	if sym.kind == .interface_ {
+	if sym.kind in [.interface_, .sum_type] {
 		g.write('(*(')
 	}
 	if sym.kind == .array_fixed {
@@ -3037,7 +3059,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	if sum_type_deref_field != '' {
 		g.write('$sum_type_dot$sum_type_deref_field)')
 	}
-	if sym.kind == .interface_ {
+	if sym.kind in [.interface_, .sum_type] {
 		g.write('))')
 	}
 }
@@ -3678,7 +3700,7 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 				g.write(cond_var)
 				dot_or_ptr := if node.cond_type.is_ptr() { '->' } else { '.' }
 				if sym.kind == .sum_type {
-					g.write('${dot_or_ptr}typ == ')
+					g.write('${dot_or_ptr}_typ == ')
 					g.expr(branch.exprs[sumtype_index])
 				} else if sym.kind == .interface_ {
 					typ := branch.exprs[sumtype_index] as ast.Type
@@ -5074,13 +5096,19 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 					g.type_definitions.writeln('//          | ${variant:4d} = ${g.typ(variant.idx()):-20s}')
 				}
 				g.type_definitions.writeln('struct $name {')
-				g.type_definitions.writeln('    union {')
+				g.type_definitions.writeln('\tunion {')
 				for variant in typ.info.variants {
 					variant_sym := g.table.get_type_symbol(variant)
-					g.type_definitions.writeln('        ${g.typ(variant.to_ptr())} _$variant_sym.cname;')
+					g.type_definitions.writeln('\t\t${g.typ(variant.to_ptr())} _$variant_sym.cname;')
 				}
-				g.type_definitions.writeln('    };')
-				g.type_definitions.writeln('    int typ;')
+				g.type_definitions.writeln('\t};')
+				g.type_definitions.writeln('\tint _typ;')
+				if typ.info.fields.len > 0 {
+					g.writeln('\t// pointers to common sumtype fields')
+					for field in typ.info.fields {
+						g.type_definitions.writeln('\t${g.typ(field.typ.to_ptr())} $field.name;')
+					}
+				}
 				g.type_definitions.writeln('};')
 				g.type_definitions.writeln('')
 			}
@@ -5691,7 +5719,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		// g.write('typ, /*expected:*/$node.typ)')
 		sidx := g.type_sidx(node.typ)
 		expected_sym := g.table.get_type_symbol(node.typ)
-		g.write('typ, $sidx) /*expected idx: $sidx, name: $expected_sym.name */ ')
+		g.write('_typ, $sidx) /*expected idx: $sidx, name: $expected_sym.name */ ')
 
 		// fill as cast name table
 		for variant in expr_type_sym.info.variants {
@@ -5739,7 +5767,7 @@ fn (mut g Gen) is_expr(node ast.InfixExpr) {
 		g.write('_${c_name(sym.name)}_${c_name(sub_sym.name)}_index')
 		return
 	} else if sym.kind == .sum_type {
-		g.write('typ $eq ')
+		g.write('_typ $eq ')
 	}
 	g.expr(node.right)
 }
