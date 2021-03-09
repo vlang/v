@@ -41,7 +41,7 @@ fn main() {
 		app.backup('cmd/tools/vup.exe')
 	}
 	app.recompile_v()
-	os.execute_or_panic('"$app.vexe" cmd/tools/vup.v')
+	app.recompile_vup()
 	app.show_current_v_version()
 }
 
@@ -82,12 +82,26 @@ fn (app App) recompile_v() {
 	app.make(vself)
 }
 
+fn (app App) recompile_vup() {
+	vup_result := os.execute('"$app.vexe" -g cmd/tools/vup.v')
+	if vup_result.exit_code != 0 {
+		eprintln('recompiling vup.v failed:')
+		eprintln(vup_result.output)
+	}
+}
+
 fn (app App) make(vself string) {
 	mut make := 'make'
 	$if windows {
 		make = 'make.bat'
 	}
-	make_result := os.execute_or_panic(make)
+	make_result := os.execute(make)
+	if make_result.exit_code != 0 {
+		eprintln('> $make failed:')
+		eprintln('> make output:')
+		eprintln(make_result.output)
+		return
+	}
 	app.vprintln(make_result.output)
 }
 
