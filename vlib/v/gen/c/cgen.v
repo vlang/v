@@ -1573,14 +1573,14 @@ fn (mut g Gen) write_sumtype_casting_fn(got_ table.Type, exp_ table.Type) {
 	got_cname, exp_cname := got_sym.cname, exp_sym.cname
 	sb.writeln('static inline $exp_cname ${got_cname}_to_sumtype_${exp_cname}($got_cname* x) {')
 	sb.writeln('\t$got_cname* ptr = memdup(x, sizeof($got_cname));')
-	sb.write_string('\treturn ($exp_cname){ _$got_cname: ptr, _typ: ${g.type_sidx(got)}')
+	sb.write_string('\treturn ($exp_cname){ ._$got_cname = ptr, ._typ = ${g.type_sidx(got)}')
 	for field in (exp_sym.info as table.SumType).fields {
 		field_styp := g.typ(field.typ)
 		if got_sym.kind in [.sum_type, .interface_] {
 			// the field is already a wrapped pointer; we shouldn't wrap it once again
-			sb.write_string(', $field.name: ptr->$field.name')
+			sb.write_string(', .$field.name = ptr->$field.name')
 		} else {
-			sb.write_string(', $field.name: ($field_styp*)((char*)ptr + __offsetof($got_cname, $field.name))')
+			sb.write_string(', .$field.name = ($field_styp*)((char*)ptr + __offsetof($got_cname, $field.name))')
 		}
 	}
 	sb.writeln('};\n}')
