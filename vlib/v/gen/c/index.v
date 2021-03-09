@@ -5,6 +5,7 @@ module c
 
 import v.ast
 import v.table
+import v.util
 
 fn (mut g Gen) index_expr(node ast.IndexExpr) {
 	if node.index is ast.RangeExpr {
@@ -178,7 +179,7 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym table.TypeSymbol) {
 		is_gen_or_and_assign_rhs := gen_or && !g.discard_or_result
 		cur_line := if is_gen_or_and_assign_rhs {
 			line := g.go_before_stmt(0)
-			g.out.write_string(tabs[g.indent])
+			g.out.write_string(util.tabs(g.indent))
 			line
 		} else {
 			''
@@ -358,7 +359,7 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym table.TypeSymbol) {
 		is_gen_or_and_assign_rhs := gen_or && !g.discard_or_result
 		cur_line := if is_gen_or_and_assign_rhs {
 			line := g.go_before_stmt(0)
-			g.out.write_string(tabs[g.indent])
+			g.out.write_string(util.tabs(g.indent))
 			line
 		} else {
 			''
