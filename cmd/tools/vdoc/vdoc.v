@@ -443,6 +443,8 @@ fn parse_arguments(args []string) Config {
 				if cfg.input_path.len < 1 {
 					cfg.input_path = arg
 				} else if !cfg.is_multi {
+					// Symbol name filtering should not be enabled
+					// in multi-module documentation mode.
 					cfg.symbol_name = arg
 				}
 				if i == args.len - 1 {
