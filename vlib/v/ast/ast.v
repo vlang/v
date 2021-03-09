@@ -1357,7 +1357,21 @@ pub:
 }
 
 pub fn (stmt Stmt) position() token.Position {
-	return stmt.pos
+	match stmt {
+		AssertStmt, AssignStmt, Block, BranchStmt, CompFor, ConstDecl, DeferStmt, EnumDecl, ExprStmt,
+		FnDecl, ForCStmt, ForInStmt, ForStmt, GotoLabel, GotoStmt, Import, Return, StructDecl,
+		GlobalDecl, HashStmt, InterfaceDecl, Module, SqlStmt, GoStmt {
+			return stmt.pos
+		}
+		TypeDecl {
+			match stmt {
+				AliasTypeDecl, FnTypeDecl, SumTypeDecl { return stmt.pos }
+			}
+		}
+		// Please, do NOT use else{} here.
+		// This match is exhaustive *on purpose*, to help force
+		// maintaining/implementing proper .pos fields.
+	}
 }
 
 pub fn (node Node) position() token.Position {

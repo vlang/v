@@ -97,15 +97,15 @@ mut:
 	defer_stmts           []ast.DeferStmt
 	defer_ifdef           string
 	defer_profile_code    string
-	str_types             []string // types that need automatic str() generation
-	threaded_fns          []string // for generating unique wrapper types and fns for `go xxx()`
-	waiter_fns            []string // functions that wait for `go xxx()` to finish
-	array_fn_definitions  []string // array equality functions that have been defined
-	map_fn_definitions    []string // map equality functions that have been defined
-	struct_fn_definitions []string // struct equality functions that have been defined
-	alias_fn_definitions  []string // alias equality functions that have been defined
-	auto_fn_definitions   []string // auto generated functions defination list
-	anon_fn_definitions   []string // anon generated functions defination list
+	str_types             []string     // types that need automatic str() generation
+	threaded_fns          []string     // for generating unique wrapper types and fns for `go xxx()`
+	waiter_fns            []string     // functions that wait for `go xxx()` to finish
+	array_fn_definitions  []string     // array equality functions that have been defined
+	map_fn_definitions    []string     // map equality functions that have been defined
+	struct_fn_definitions []string     // struct equality functions that have been defined
+	alias_fn_definitions  []string     // alias equality functions that have been defined
+	auto_fn_definitions   []string     // auto generated functions defination list
+	anon_fn_definitions   []string     // anon generated functions defination list
 	sumtype_definitions   map[int]bool // `_TypeA_to_sumtype_TypeB()` fns that have been generated
 	is_json_fn            bool     // inside json.encode()
 	json_types            []string // to avoid json gen duplicates
@@ -1562,9 +1562,10 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 
 fn (mut g Gen) write_sumtype_casting_fn(got_ table.Type, exp_ table.Type) {
 	got, exp := got_.idx(), exp_.idx()
-	if got == exp { return }
 	i := got | (exp << 16)
-	if g.sumtype_definitions[i] { return }
+	if got == exp || g.sumtype_definitions[i] {
+		return
+	}
 	g.sumtype_definitions[i] = true
 	got_sym := g.table.get_type_symbol(got)
 	exp_sym := g.table.get_type_symbol(exp)
