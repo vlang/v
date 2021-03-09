@@ -25,6 +25,25 @@ pub const (
 	}
 )
 
+const (
+	const_tabs = [
+		'',
+		'\t',
+		'\t\t',
+		'\t\t\t',
+		'\t\t\t\t',
+		'\t\t\t\t\t',
+		'\t\t\t\t\t\t',
+		'\t\t\t\t\t\t\t',
+		'\t\t\t\t\t\t\t\t',
+		'\t\t\t\t\t\t\t\t\t',
+	]
+)
+
+pub fn tabs(n int) string {
+	return if n < util.const_tabs.len { util.const_tabs[n] } else { '\t'.repeat(n) }
+}
+
 // vhash() returns the build string C.V_COMMIT_HASH . See cmd/tools/gen_vc.v .
 pub fn vhash() string {
 	mut buf := [50]byte{}

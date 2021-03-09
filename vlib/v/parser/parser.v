@@ -2318,7 +2318,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		}
 		variant_types := sum_variants.map(it.typ)
 		prepend_mod_name := p.prepend_mod(name)
-		p.table.register_type_symbol(table.TypeSymbol{
+		typ := p.table.register_type_symbol(table.TypeSymbol{
 			kind: .sum_type
 			name: prepend_mod_name
 			cname: util.no_dots(prepend_mod_name)
@@ -2331,6 +2331,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		comments = p.eat_comments(same_line: true)
 		return ast.SumTypeDecl{
 			name: name
+			typ: typ
 			is_pub: is_pub
 			variants: sum_variants
 			pos: decl_pos

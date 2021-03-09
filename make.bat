@@ -2,7 +2,6 @@
 setlocal EnableDelayedExpansion EnableExtensions
 
 REM Option flags
-set /a invalid_cc=0
 set /a shift_counter=0
 set /a flag_local=0
 set /a flag_verbose=0
@@ -16,6 +15,7 @@ set target=build
 REM TCC variables
 set "tcc_url=https://github.com/vlang/tccbin"
 set "tcc_dir=%~dp0thirdparty\tcc"
+set "tcc_exe=%~dp0thirdparty\tcc\tcc.exe"
 if "%PROCESSOR_ARCHITECTURE%" == "x86" ( set "tcc_branch=thirdparty-windows-i386" ) else ( set "tcc_branch=thirdparty-windows-amd64" )
 if "%~1" == "-tcc32" set "tcc_branch=thirdparty-windows-i386"
 
@@ -182,7 +182,6 @@ if not [!compiler!] == [] goto :!compiler!_strap
 REM By default, use tcc, since we have it prebuilt:
 :tcc_strap
 :tcc32_strap
-if [!compiler!] == [] set /a invalid_cc=1
 echo  ^> Attempting to build v_win.c with TCC
 if !flag_verbose! EQU 1 (
     echo [Debug] "!tcc_exe!" -ladvapi32 -bt10 -w -o v.exe vc\v_win.c>>"!log_file!"
@@ -348,19 +347,12 @@ goto :error
 :error
 echo.
 echo Exiting from error
+echo ERROR: please follow the instructions in https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows
 exit /b 1
 
 :success
 echo  ^> V built successfully!
 echo  ^> To add V to your PATH, run `.\v.exe symlink`.
-if !invalid_cc! EQU 1 (
-    echo.
-    echo WARNING:  No C compiler was detected in your PATH. `tcc` was used temporarily
-    echo           to build V, but it may have some bugs and may not work in all cases.
-    echo           A more advanced C compiler like GCC or MSVC is recommended.
-    echo           https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows
-    echo.
-)
 
 :version
 echo.
