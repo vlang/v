@@ -11,6 +11,13 @@ struct Sub2 {
 	val  int
 }
 
+struct Sub3 {
+	name string
+	val  int
+}
+
+type Master2 = Master | Sub3
+
 fn test_common_sumtype_field_access() {
 	mut out := []Master{}
 	out << Sub1{
@@ -33,5 +40,9 @@ fn test_common_sumtype_field_access() {
 
 	assert out[2].val == 3
 	assert out[2].name == 'three'
+
+	mut out0 := Master2(out[0]) // common fields on a doubly-wrapped sumtype
+	assert out0.val == 1
+	assert out0.name == 'one'
 }
 
