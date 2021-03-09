@@ -76,11 +76,25 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 		for val in vals {
 		}
 		*/
+		// TODO: check args length and types
 		if m.params.len-1 != node.args.len {
-			verror('expected ${m.params.len-1} arguments to method ${node.sym.name}.$m.name, but got $node.args.len')
+			// we cannot differentiate between method calls,
+			// so if we get a mis-matched argument list, do
+			// not generate anything
+			return
+			// verror('expected ${m.params.len-1} arguments to method ${node.sym.name}.$m.name, but got $node.args.len')
 		}
-		// TODO: check method argument types
 		g.write('${util.no_dots(node.sym.name)}_${g.comp_for_method}(')
+
+		// try to see if we need to pass a pointer
+		if node.left is ast.Ident {
+			scope := g.file.scope.innermost(node.pos.pos)
+			if v := scope.find_var(node.left.name) {
+				if m.params[0].typ.is_ptr() && !v.typ.is_ptr() {
+					g.write('&')
+				}
+			}
+		}
 		g.expr(node.left)
 		if m.params.len > 1 {
 			g.write(', ')
@@ -91,9 +105,11 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 					continue
 				}
 			}
-			g.expr(node.args[i-1].expr)
-			if i < m.params.len - 1 {
-				g.write(', ')
+			if i-1 < node.args.len {
+				g.expr(node.args[i-1].expr)
+				if i < m.params.len - 1 {
+					g.write(', ')
+				}
 			}
 		}
 		g.write(' ); // vweb action call with args')
