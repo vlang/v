@@ -1619,6 +1619,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw table.Type, expected_t
 	}
 	// cast to sum type
 	exp_styp := g.typ(expected_type)
+	got_styp := g.typ(got_type)
 	if expected_type != table.void_type {
 		expected_deref_type := if expected_is_ptr { expected_type.deref() } else { expected_type }
 		got_deref_type := if got_is_ptr { got_type.deref() } else { got_type }
@@ -1647,10 +1648,13 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw table.Type, expected_t
 				}
 				g.write('${got_sym.cname}_to_sumtype_${exp_sym.cname}(')
 				if !got_is_ptr {
-					g.write('&')
+					g.write('(&(($got_styp[]){')
+					g.expr(expr)
+					g.write('}[0])))')
+				} else {
+					g.expr(expr)
+					g.write(')')
 				}
-				g.expr(expr)
-				g.write(')')
 				if expected_is_ptr {
 					g.write('})')
 				}
