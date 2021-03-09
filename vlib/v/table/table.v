@@ -356,7 +356,9 @@ pub fn (t &Table) resolve_common_sumtype_fields(sym_ &TypeSymbol) {
 				t.resolve_common_sumtype_fields(v_sym)
 				v_sym.info.fields
 			}
-			else { []Field{} }
+			else {
+				[]Field{}
+			}
 		}
 		for field in fields {
 			if field.name !in field_map {
