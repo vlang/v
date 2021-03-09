@@ -292,7 +292,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 				exit(1)
 			}
 		} else {
-			dcs = doc.generate(dirpath, cfg.pub_only, true) or {
+			dcs = doc.generate(dirpath, cfg.pub_only, true, cfg.symbol_name) or {
 				vd.emit_generate_err(err)
 				exit(1)
 			}
@@ -313,13 +313,6 @@ fn (mut vd VDoc) generate_docs_from_file() {
 					dcs.contents[name].content = dc.content.all_after('pub ')
 					for i, cc in dc.children {
 						dcs.contents[name].children[i].content = cc.content.all_after('pub ')
-					}
-				}
-			}
-			if !cfg.is_multi && cfg.symbol_name.len > 0 {
-				if cfg.symbol_name in dcs.contents {
-					for _, c in dcs.contents[cfg.symbol_name].children {
-						dcs.contents[c.name] = c
 					}
 				}
 			}
