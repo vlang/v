@@ -1015,5 +1015,3 @@ jobs:
         run: git clone --depth 1 https://github.com/vlang/vab
       - name: Build vab
         run: cd vab; ../v ./vab.v ; cd ..
-      - name: Build vab with
-        run: cd vab; ../v ./vab.v ; cd ..
