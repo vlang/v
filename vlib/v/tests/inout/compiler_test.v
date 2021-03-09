@@ -1,7 +1,6 @@
 // .out file:
 // To test a panic, remove everything after the long `===` line
 // You can also remove the line with 'line:' e.g. for a builtin fn
-
 import os
 import term
 import v.util
@@ -22,19 +21,23 @@ fn test_all() {
 		println('no compiler tests found')
 		assert false
 	}
-	paths := vtest.filter_vtest_only(tests,
+	paths := vtest.filter_vtest_only(tests, 
 		basepath: dir
 	)
 	for path in paths {
 		print(path + ' ')
 		program := path
-		compilation := os.exec('$vexe -o test -cflags "-w" -cg $program') or { panic(err) }
+		compilation := os.execute('$vexe -o test -cflags "-w" -cg $program')
+		if compilation.exit_code < 0 {
+			panic(compilation.output)
+		}
 		if compilation.exit_code != 0 {
 			panic('compilation failed: $compilation.output')
 		}
-		res := os.exec('./test') or {
+		res := os.execute('./test')
+		if res.exit_code < 0 {
 			println('nope')
-			panic(err)
+			panic(res.output)
 		}
 		$if windows {
 			os.rm('./test.exe') or { }

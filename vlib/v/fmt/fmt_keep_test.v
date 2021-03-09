@@ -87,7 +87,10 @@ fn fill_bin2v_keep() ? {
 	img0 := os.join_path('tutorials', 'img', 'hello.png')
 	img1 := os.join_path('tutorials', 'img', 'time.png')
 	os.rm(b2v_keep_path) ?
-	os.exec('v bin2v -w $b2v_keep_path $img0 $img1') ?
+	res := os.execute('v bin2v -w $b2v_keep_path $img0 $img1')
+	if res.exit_code < 0 {
+		return error_with_code(res.output, res.exit_code)
+	}
 }
 
 fn restore_bin2v_placeholder() ? {

@@ -1063,6 +1063,9 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 			to_lock, pos = c.fail_if_immutable(expr.right)
 		}
 		ast.SelectorExpr {
+			if expr.expr_type == 0 {
+				return '', pos
+			}
 			// retrieve table.Field
 			c.ensure_type_exists(expr.expr_type, expr.pos) or { return '', pos }
 			mut typ_sym := c.table.get_final_type_symbol(c.unwrap_generic(expr.expr_type))
@@ -5498,6 +5501,9 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) table.Type {
 			node.key_type = info.key_type
 			node.value_type = info.value_type
 			return node.typ
+		} else {
+			c.error('invalid empty map initilization syntax, use e.g. map[string]int{} instead',
+				node.pos)
 		}
 	}
 	// `x := map[string]string` - set in parser
@@ -5509,44 +5515,47 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) table.Type {
 		node.value_type = info.value_type
 		return node.typ
 	}
-	// `{'age': 20}`
-	mut key0_type := c.table.mktyp(c.expr(node.keys[0]))
-	if node.keys[0].is_auto_deref_var() {
-		key0_type = key0_type.deref()
-	}
-	mut val0_type := c.table.mktyp(c.expr(node.vals[0]))
-	if node.vals[0].is_auto_deref_var() {
-		val0_type = val0_type.deref()
-	}
-	mut same_key_type := true
-	for i, key in node.keys {
-		if i == 0 {
-			continue
+	if node.keys.len > 0 && node.vals.len > 0 {
+		// `{'age': 20}`
+		mut key0_type := c.table.mktyp(c.expr(node.keys[0]))
+		if node.keys[0].is_auto_deref_var() {
+			key0_type = key0_type.deref()
 		}
-		val := node.vals[i]
-		key_type := c.expr(key)
-		c.expected_type = val0_type
-		val_type := c.expr(val)
-		if !c.check_types(key_type, key0_type) {
-			msg := c.expected_msg(key_type, key0_type)
-			c.error('invalid map key: $msg', key.position())
-			same_key_type = false
+		mut val0_type := c.table.mktyp(c.expr(node.vals[0]))
+		if node.vals[0].is_auto_deref_var() {
+			val0_type = val0_type.deref()
 		}
-		if !c.check_types(val_type, val0_type) {
-			msg := c.expected_msg(val_type, val0_type)
-			c.error('invalid map value: $msg', val.position())
+		mut same_key_type := true
+		for i, key in node.keys {
+			if i == 0 {
+				continue
+			}
+			val := node.vals[i]
+			key_type := c.expr(key)
+			c.expected_type = val0_type
+			val_type := c.expr(val)
+			if !c.check_types(key_type, key0_type) {
+				msg := c.expected_msg(key_type, key0_type)
+				c.error('invalid map key: $msg', key.position())
+				same_key_type = false
+			}
+			if !c.check_types(val_type, val0_type) {
+				msg := c.expected_msg(val_type, val0_type)
+				c.error('invalid map value: $msg', val.position())
+			}
 		}
+		if same_key_type {
+			for i in 1 .. node.keys.len {
+				c.check_dup_keys(node, i)
+			}
+		}
+		map_type := table.new_type(c.table.find_or_register_map(key0_type, val0_type))
+		node.typ = map_type
+		node.key_type = key0_type
+		node.value_type = val0_type
+		return map_type
 	}
-	if same_key_type {
-		for i in 1 .. node.keys.len {
-			c.check_dup_keys(node, i)
-		}
-	}
-	map_type := table.new_type(c.table.find_or_register_map(key0_type, val0_type))
-	node.typ = map_type
-	node.key_type = key0_type
-	node.value_type = val0_type
-	return map_type
+	return node.typ
 }
 
 // call this *before* calling error or warn

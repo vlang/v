@@ -69,10 +69,7 @@ fn compile_lib(mut r live.LiveReloadInfo) ?string {
 	cmd := '$r.vexe $r.vopts -o $new_lib_path $r.original'
 	elog(r, '>       compilation cmd: $cmd')
 	cwatch := time.new_stopwatch({})
-	recompilation_result := os.exec(cmd) or {
-		eprintln('recompilation failed')
-		return none
-	}
+	recompilation_result := os.execute(cmd)
 	elog(r, 'compilation took: ${cwatch.elapsed().milliseconds()}ms')
 	if recompilation_result.exit_code != 0 {
 		eprintln('recompilation error:')

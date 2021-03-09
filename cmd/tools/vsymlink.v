@@ -19,7 +19,7 @@ fn main() {
 }
 
 fn cleanup_vtmp_folder() {
-	os.rmdir_all(util.get_vtmp_folder()) or { }
+	os.rmdir_all(util.get_vtmp_folder()) or {}
 }
 
 fn setup_symlink_unix(vexe string) {
@@ -31,7 +31,7 @@ fn setup_symlink_unix(vexe string) {
 		}
 		link_path = link_dir + '/v'
 	}
-	ret := os.exec('ln -sf $vexe $link_path') or { panic(err) }
+	ret := os.execute_or_panic('ln -sf $vexe $link_path')
 	if ret.exit_code == 0 {
 		println('Symlink "$link_path" has been created')
 	} else {
@@ -149,7 +149,7 @@ fn get_reg_value(reg_env_key voidptr, key string) ?string {
 		// query the value (shortcut the sizing step)
 		reg_value_size := 4095 // this is the max length (not for the registry, but for the system %PATH%)
 		mut reg_value := unsafe { &u16(malloc(reg_value_size)) }
-		if C.RegQueryValueEx(reg_env_key, key.to_wide(), 0, 0, reg_value, &reg_value_size) != 0 {
+		if C.RegQueryValueExW(reg_env_key, key.to_wide(), 0, 0, reg_value, &reg_value_size) != 0 {
 			return error('Unable to get registry value for "$key".')
 		}
 		return unsafe { string_from_wide(reg_value) }
@@ -160,7 +160,7 @@ fn get_reg_value(reg_env_key voidptr, key string) ?string {
 // sets the value for the given $key to the given  $value
 fn set_reg_value(reg_key voidptr, key string, value string) ?bool {
 	$if windows {
-		if C.RegSetValueEx(reg_key, key.to_wide(), 0, C.REG_EXPAND_SZ, value.to_wide(),
+		if C.RegSetValueExW(reg_key, key.to_wide(), 0, C.REG_EXPAND_SZ, value.to_wide(),
 			value.len * 2) != 0 {
 			return error('Unable to set registry value for "$key". %PATH% may be too long.')
 		}
@@ -173,7 +173,7 @@ fn set_reg_value(reg_key voidptr, key string, value string) ?bool {
 // letting them know that the system environment has changed and should be reloaded
 fn send_setting_change_msg(message_data string) ?bool {
 	$if windows {
-		if C.SendMessageTimeout(os.hwnd_broadcast, os.wm_settingchange, 0, message_data.to_wide(),
+		if C.SendMessageTimeoutW(os.hwnd_broadcast, os.wm_settingchange, 0, message_data.to_wide(),
 			os.smto_abortifhung, 5000, 0) == 0 {
 			return error('Could not broadcast WM_SETTINGCHANGE')
 		}

@@ -137,7 +137,10 @@ fn find_vs(vswhere_dir string, host_arch string, target_arch string) ?VsInstalla
 	// VSWhere is guaranteed to be installed at this location now
 	// If its not there then end user needs to update their visual studio
 	// installation!
-	res := os.exec('"$vswhere_dir\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath') ?
+	res := os.execute('"$vswhere_dir\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath')
+	if res.exit_code != 0 {
+		return error_with_code(res.output, res.exit_code)
+	}
 	res_output := res.output.trim_right('\r\n')
 	// println('res: "$res"')
 	version := os.read_file('$res_output\\VC\\Auxiliary\\Build\\Microsoft.VCToolsVersion.default.txt') or {
@@ -315,8 +318,9 @@ pub fn (mut v Builder) cc_msvc() {
 	// Also the double quotes at the start ARE needed.
 	v.show_cc(cmd, out_name_cmd_line, args)
 	util.timing_start('C msvc')
-	res := os.exec(cmd) or {
-		println(err)
+	res := os.execute(cmd)
+	if res.exit_code != 0 {
+		eprintln(res.output)
 		verror('msvc error')
 		return
 	}
@@ -367,11 +371,7 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(path string, moduleflags 
 	$if trace_thirdparty_obj_files ? {
 		println('>>> build_thirdparty_obj_file_with_msvc cmd: $cmd')
 	}
-	res := os.exec(cmd) or {
-		println('msvc: failed to execute msvc compiler (to build a thirdparty object); cmd: $cmd')
-		verror(err.msg)
-		return
-	}
+	res := os.execute(cmd)
 	if res.exit_code != 0 {
 		println('msvc: failed to build a thirdparty object; cmd: $cmd')
 		verror(res.output)

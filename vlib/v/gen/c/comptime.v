@@ -154,7 +154,7 @@ fn (mut g Gen) comp_at(node ast.AtExpr) {
 fn (mut g Gen) comp_if(node ast.IfExpr) {
 	line := if node.is_expr {
 		stmt_str := g.go_before_stmt(0)
-		g.write(tabs[g.indent])
+		g.write(util.tabs(g.indent))
 		stmt_str.trim_space()
 	} else {
 		''
@@ -336,7 +336,7 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 				// Skip receiver arg
 				for j, arg in method.params[1..] {
 					typ := arg.typ.idx()
-					g.write(typ.str())
+					g.write('{$typ.str(), _SLIT("$arg.name")}')
 					if j < len - 1 {
 						g.write(', ')
 					}

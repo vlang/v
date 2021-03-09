@@ -24,9 +24,6 @@ const (
 	cmp_str    = ['eq', 'ne', 'gt', 'lt', 'ge', 'le']
 	// when operands are switched
 	cmp_rev    = ['eq', 'ne', 'lt', 'gt', 'le', 'ge']
-	tabs       = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t',
-		'\t\t\t\t\t\t\t\t',
-	]
 )
 
 struct Gen {
@@ -557,6 +554,14 @@ fn (mut g Gen) base_type(t table.Type) string {
 	return styp
 }
 
+fn (mut g Gen) expr_string(expr ast.Expr) string {
+	pos := g.out.len
+	g.expr(expr)
+	expr_str := g.out.after(pos)
+	g.out.go_back(expr_str.len)
+	return expr_str.trim_space()
+}
+
 // TODO this really shouldnt be seperate from typ
 // but I(emily) would rather have this generation
 // all unified in one place so that it doesnt break
@@ -836,13 +841,7 @@ pub fn (mut g Gen) write(s string) {
 		eprintln('gen file: ${g.file.path:-30} | last_fn_c_name: ${g.last_fn_c_name:-45} | write: $s')
 	}
 	if g.indent > 0 && g.empty_line {
-		if g.indent < c.tabs.len {
-			g.out.write_string(c.tabs[g.indent])
-		} else {
-			for _ in 0 .. g.indent {
-				g.out.write_string('\t')
-			}
-		}
+		g.out.write_string(util.tabs(g.indent))
 	}
 	g.out.write_string(s)
 	g.empty_line = false
@@ -853,13 +852,7 @@ pub fn (mut g Gen) writeln(s string) {
 		eprintln('gen file: ${g.file.path:-30} | last_fn_c_name: ${g.last_fn_c_name:-45} | writeln: $s')
 	}
 	if g.indent > 0 && g.empty_line {
-		if g.indent < c.tabs.len {
-			g.out.write_string(c.tabs[g.indent])
-		} else {
-			for _ in 0 .. g.indent {
-				g.out.write_string('\t')
-			}
-		}
+		g.out.write_string(util.tabs(g.indent))
 	}
 	g.out.writeln(s)
 	g.empty_line = true
@@ -1065,10 +1058,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				g.enum_typedefs.write_string('\t${enum_name}_$field.name')
 				if field.has_expr {
 					g.enum_typedefs.write_string(' = ')
-					pos := g.out.len
-					g.expr(field.expr)
-					expr_str := g.out.after(pos)
-					g.out.go_back(expr_str.len)
+					expr_str := g.expr_string(field.expr)
 					g.enum_typedefs.write_string(expr_str)
 					cur_enum_expr = expr_str
 					cur_enum_offset = 0
@@ -1375,11 +1365,7 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 		val_sym := g.table.get_type_symbol(node.val_type)
 		mut cond_var := ''
 		if node.cond is ast.Ident || node.cond is ast.SelectorExpr {
-			pos := g.out.len
-			g.expr(node.cond)
-			cond_var = g.out.after(pos)
-			g.out.go_back(cond_var.len)
-			cond_var = cond_var.trim_space()
+			cond_var = g.expr_string(node.cond)
 		} else {
 			cond_var = g.new_tmp_var()
 			g.write(g.typ(node.cond_type))
@@ -1417,8 +1403,15 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 		}
 	} else if node.kind == .array_fixed {
 		mut cond_var := ''
-		needs_tmp_var := node.cond_type.is_ptr() || node.cond is ast.ArrayInit
-		if needs_tmp_var {
+		cond_type_is_ptr := node.cond_type.is_ptr()
+		cond_is_literal := node.cond is ast.ArrayInit
+		if cond_is_literal {
+			cond_var = g.new_tmp_var()
+			g.write(g.typ(node.cond_type))
+			g.write(' $cond_var = ')
+			g.expr(node.cond)
+			g.writeln(';')
+		} else if cond_type_is_ptr {
 			cond_var = g.new_tmp_var()
 			cond_var_type := g.typ(node.cond_type).trim('*')
 			if !node.cond.is_lvalue() {
@@ -1429,11 +1422,7 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 			g.expr(node.cond)
 			g.writeln(');')
 		} else {
-			pos := g.out.len
-			g.expr(node.cond)
-			cond_var = g.out.after(pos)
-			g.out.go_back(cond_var.len)
-			cond_var = cond_var.trim_space()
+			cond_var = g.expr_string(node.cond)
 		}
 		idx := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
 		cond_sym := g.table.get_type_symbol(node.cond_type)
@@ -1455,8 +1444,10 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 			}
 			if !is_fixed_array {
 				addr := if node.val_is_mut { '&' } else { '' }
-				if needs_tmp_var {
+				if cond_type_is_ptr {
 					g.writeln(' = ${addr}(*$cond_var)[$idx];')
+				} else if cond_is_literal {
+					g.writeln(' = $addr$cond_var[$idx];')
 				} else {
 					g.write(' = $addr')
 					g.expr(node.cond)
@@ -1467,20 +1458,26 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 	} else if node.kind == .map {
 		// `for key, val in map {
 		g.writeln('// FOR IN map')
-		idx := g.new_tmp_var()
-		atmp := g.new_tmp_var()
+		mut cond_var := ''
+		if node.cond is ast.Ident {
+			cond_var = g.expr_string(node.cond)
+		} else {
+			cond_var = g.new_tmp_var()
+			g.write(g.typ(node.cond_type))
+			g.write(' $cond_var = ')
+			g.expr(node.cond)
+			g.writeln(';')
+		}
 		arw_or_pt := if node.cond_type.is_ptr() { '->' } else { '.' }
-		g.write(g.typ(node.cond_type))
-		g.write(' $atmp = ')
-		g.expr(node.cond)
-		g.writeln(';')
-		g.writeln('for (int $idx = 0; $idx < $atmp${arw_or_pt}key_values.len; ++$idx) {')
+		idx := g.new_tmp_var()
+		g.empty_line = true
+		g.writeln('for (int $idx = 0; $idx < $cond_var${arw_or_pt}key_values.len; ++$idx) {')
 		// TODO: don't have this check when the map has no deleted elements
-		g.writeln('\tif (!DenseArray_has_index(&$atmp${arw_or_pt}key_values, $idx)) {continue;}')
+		g.writeln('\tif (!DenseArray_has_index(&$cond_var${arw_or_pt}key_values, $idx)) {continue;}')
 		if node.key_var != '_' {
 			key_styp := g.typ(node.key_type)
 			key := c_name(node.key_var)
-			g.writeln('\t$key_styp $key = /*key*/ *($key_styp*)DenseArray_key(&$atmp${arw_or_pt}key_values, $idx);')
+			g.writeln('\t$key_styp $key = /*key*/ *($key_styp*)DenseArray_key(&$cond_var${arw_or_pt}key_values, $idx);')
 			// TODO: analyze whether node.key_type has a .clone() method and call .clone() for all types:
 			if node.key_type == table.string_type {
 				g.writeln('\t$key = string_clone($key);')
@@ -1492,6 +1489,11 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 				g.write('\t')
 				g.write_fn_ptr_decl(val_sym.info as table.FnType, c_name(node.val_var))
 				g.write(' = (*(voidptr*)')
+				g.writeln('DenseArray_value(&$cond_var${arw_or_pt}key_values, $idx));')
+			} else if val_sym.kind == .array_fixed && !node.val_is_mut {
+				val_styp := g.typ(node.val_type)
+				g.writeln('\t$val_styp ${c_name(node.val_var)};')
+				g.writeln('\tmemcpy(*($val_styp*)${c_name(node.val_var)}, (byte*)DenseArray_value(&$cond_var${arw_or_pt}key_values, $idx), sizeof($val_styp));')
 			} else {
 				val_styp := g.typ(node.val_type)
 				if node.val_type.is_ptr() {
@@ -1499,21 +1501,9 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 				} else {
 					g.write('\t$val_styp ${c_name(node.val_var)} = (*($val_styp*)')
 				}
+				g.writeln('DenseArray_value(&$cond_var${arw_or_pt}key_values, $idx));')
 			}
-			g.writeln('DenseArray_value(&$atmp${arw_or_pt}key_values, $idx));')
 		}
-		g.stmts(node.stmts)
-		if node.key_type == table.string_type && !g.is_builtin_mod {
-			// g.writeln('string_free(&$key);')
-		}
-		if node.label.len > 0 {
-			g.writeln('\t${node.label}__continue: {}')
-		}
-		g.writeln('}')
-		if node.label.len > 0 {
-			g.writeln('\t${node.label}__break: {}')
-		}
-		return
 	} else if node.kind == .string {
 		i := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
 		g.write('for (int $i = 0; $i < ')
@@ -2092,7 +2082,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			}
 			if right_sym.kind == .function && is_decl {
 				if is_inside_ternary && is_decl {
-					g.out.write_string(c.tabs[g.indent - g.inside_ternary])
+					g.out.write_string(util.tabs(g.indent - g.inside_ternary))
 				}
 				func := right_sym.info as table.FnType
 				ret_styp := g.typ(func.func.return_type)
@@ -2104,7 +2094,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			} else {
 				if is_decl {
 					if is_inside_ternary {
-						g.out.write_string(c.tabs[g.indent - g.inside_ternary])
+						g.out.write_string(util.tabs(g.indent - g.inside_ternary))
 					}
 					g.write('$styp ')
 				}
@@ -2120,7 +2110,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			}
 			if is_inside_ternary && is_decl {
 				g.write(';\n$cur_line')
-				g.out.write_string(c.tabs[g.indent])
+				g.out.write_string(util.tabs(g.indent))
 				g.expr(left)
 			}
 			g.is_assign_lhs = false
@@ -2815,7 +2805,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 				is_gen_or_and_assign_rhs := gen_or && !g.discard_or_result
 				cur_line := if is_gen_or_and_assign_rhs {
 					line := g.go_before_stmt(0)
-					g.out.write_string(c.tabs[g.indent])
+					g.out.write_string(util.tabs(g.indent))
 					line
 				} else {
 					''
@@ -3608,11 +3598,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	}
 	if node.cond is ast.Ident || node.cond is ast.SelectorExpr || node.cond is ast.IntegerLiteral
 		|| node.cond is ast.StringLiteral || node.cond is ast.FloatLiteral {
-		pos := g.out.len
-		g.expr(node.cond)
-		cond_var = g.out.after(pos)
-		g.out.go_back(cond_var.len)
-		cond_var = cond_var.trim_space()
+		cond_var = g.expr_string(node.cond)
 	} else {
 		line := if is_expr {
 			g.empty_line = true
@@ -5389,10 +5375,7 @@ fn (mut g Gen) type_default(typ_ table.Type) string {
 			field_sym := g.table.get_type_symbol(field.typ)
 			if field_sym.kind in [.array, .map] || field.has_default_expr {
 				if field.has_default_expr {
-					pos := g.out.len
-					g.expr(ast.fe2ex(field.default_expr))
-					expr_str := g.out.after(pos)
-					g.out.go_back(expr_str.len)
+					expr_str := g.expr_string(ast.fe2ex(field.default_expr))
 					init_str += '.$field.name = $expr_str,'
 				} else {
 					init_str += '.$field.name = ${g.type_default(field.typ)},'

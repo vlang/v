@@ -60,19 +60,23 @@ pub fn rmrf(path string) {
 	}
 }
 
+// execute a command, and return a result, or an error, if it failed in any way.
 pub fn exec(cmd string) ?os.Result {
 	verbose_trace(@FN, cmd)
-	x := os.exec(cmd) or {
+	x := os.execute(cmd)
+	if x.exit_code != 0 {
 		verbose_trace(@FN, '## failed.')
-		return err
+		return error(x.output)
 	}
 	verbose_trace_exec_result(x)
 	return x
 }
 
+// run a command, tracing its results, and returning ONLY its output
 pub fn run(cmd string) string {
 	verbose_trace(@FN, cmd)
-	x := os.exec(cmd) or {
+	x := os.execute(cmd)
+	if x.exit_code < 0 {
 		verbose_trace(@FN, '## failed.')
 		return ''
 	}
@@ -85,7 +89,8 @@ pub fn run(cmd string) string {
 
 pub fn exit_0_status(cmd string) bool {
 	verbose_trace(@FN, cmd)
-	x := os.exec(cmd) or {
+	x := os.execute(cmd)
+	if x.exit_code < 0 {
 		verbose_trace(@FN, '## failed.')
 		return false
 	}

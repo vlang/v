@@ -52,3 +52,36 @@ fn test_merge() {
 	assert merge<int>(a, c) == a
 	assert merge<int>(d, b) == b
 }
+
+fn test_fixed_array_assignment() {
+	mut a := [2]int{}
+	a[0] = 111
+	a[1] = 222
+	b := a
+	assert b[0] == a[0]
+	assert b[1] == a[1]
+	mut c := [2]int{}
+	c = a
+	assert c[0] == a[0]
+	assert c[1] == a[1]
+	d := [3]int{init: 333}
+	for val in d {
+		assert val == 333
+	}
+	e := [3]string{init: 'vlang'}
+	for val in e {
+		assert val == 'vlang'
+	}
+}
+
+fn test_group() {
+	x := [4, 5, 6]
+	y := [2, 1, 3]
+
+	z := group<int>(x, y)
+	assert z == [[4, 2], [5, 1], [6, 3]]
+	x2 := [8, 9]
+	z2 := group<int>(x2, y)
+	assert z2 == [[8, 2], [9, 1]]
+	assert group<int>(x, []int{}) == [][]int{}
+}

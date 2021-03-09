@@ -12,9 +12,6 @@ import v.pref
 
 const (
 	bs      = '\\'
-	tabs    = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t',
-		'\t\t\t\t\t\t\t\t',
-	]
 	// when to break a line dependant on penalty
 	max_len = [0, 35, 60, 85, 93, 100]
 )
@@ -111,14 +108,7 @@ pub fn (mut f Fmt) writeln(s string) {
 }
 
 fn (mut f Fmt) write_indent() {
-	if f.indent < fmt.tabs.len {
-		f.out.write_string(fmt.tabs[f.indent])
-	} else {
-		// too many indents, do it the slow way:
-		for _ in 0 .. f.indent {
-			f.out.write_string('\t')
-		}
-	}
+	f.out.write_string(util.tabs(f.indent))
 	f.line_len += f.indent * 4
 }
 
