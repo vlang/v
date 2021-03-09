@@ -349,7 +349,13 @@ pub fn (t &Table) resolve_common_sumtype_fields(sym_ &TypeSymbol) {
 	for variant in info.variants {
 		mut v_sym := t.get_type_symbol(variant)
 		fields := match mut v_sym.info {
-			Struct, SumType { v_sym.info.fields }
+			Struct {
+				v_sym.info.fields
+			}
+			SumType {
+				t.resolve_common_sumtype_fields(v_sym)
+				v_sym.info.fields
+			}
 			else { []Field{} }
 		}
 		for field in fields {
