@@ -3442,11 +3442,12 @@ fn (mut c Checker) exec_cmd(cmd string, pos token.Position) string {
 		}
 		cmd_to_exec := cmd_.find_between('$(', ')')
 		res := os.execute(cmd_to_exec)
-    		if res.exit_code != 0 {
-    			c.error('there was a failure when executing `$cmd_to_exec`: $res.output', pos)
-    		}
-    		res_ts := res.output.trim_space()
-    		cmd_ = cmd_.replace('$($cmd_to_exec)', res_ts)
+		if res.exit_code != 0 {
+			c.error('there was a failure when executing `$cmd_to_exec`: $res.output',
+				pos)
+		}
+		res_ts := res.output.trim_space()
+		cmd_ = cmd_.replace('$($cmd_to_exec)', res_ts)
 	}
 	return cmd_
 }
