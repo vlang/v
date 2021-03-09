@@ -894,7 +894,7 @@ fn (mut s Scanner) text_scan() token.Token {
 					return s.new_token(.comment, comment, comment.len + 2)
 				}
 				hash := s.text[start..s.pos].trim_space()
-				return s.new_token(.hash, hash, hash.len)
+				return s.new_token(.hash, hash, hash.len + 2)
 			}
 			`>` {
 				if nextc == `=` {
