@@ -1418,8 +1418,15 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 		}
 	} else if node.kind == .array_fixed {
 		mut cond_var := ''
-		needs_tmp_var := node.cond_type.is_ptr() || node.cond is ast.ArrayInit
-		if needs_tmp_var {
+		cond_type_is_ptr := node.cond_type.is_ptr()
+		cond_is_literal := node.cond is ast.ArrayInit
+		if cond_is_literal {
+			cond_var = g.new_tmp_var()
+			g.write(g.typ(node.cond_type))
+			g.write(' $cond_var = ')
+			g.expr(node.cond)
+			g.writeln(';')
+		} else if cond_type_is_ptr {
 			cond_var = g.new_tmp_var()
 			cond_var_type := g.typ(node.cond_type).trim('*')
 			if !node.cond.is_lvalue() {
@@ -1452,8 +1459,10 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 			}
 			if !is_fixed_array {
 				addr := if node.val_is_mut { '&' } else { '' }
-				if needs_tmp_var {
+				if cond_type_is_ptr {
 					g.writeln(' = ${addr}(*$cond_var)[$idx];')
+				} else if cond_is_literal {
+					g.writeln(' = $addr$cond_var[$idx];')
 				} else {
 					g.write(' = $addr')
 					g.expr(node.cond)
