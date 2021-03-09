@@ -5,43 +5,43 @@ type Main = Sub1 | Sub2 | Sub3 | Sub4
 // different subtypes => accessing `m[0].name` is fine, but *not* `m[0].val`
 struct Sub1 {
 mut:
-	val int
+	val  int
 	name string
 }
 
 struct Sub2 {
 mut:
-	val f32
+	val  f32
 	name string
 }
 
 struct Sub3 {
 mut:
-	val i64
+	val  i64
 	name string
 }
 
 struct Sub4 {
 mut:
-	val string
+	val  string
 	name string
 }
 
 fn main() {
 	mut m := []Main{}
-	m << Sub1 {
+	m << Sub1{
 		val: 123
 		name: 'integer'
 	}
-	m << Sub2 {
+	m << Sub2{
 		val: 3.14
 		name: 'float'
 	}
-	m << Sub3 {
+	m << Sub3{
 		val: 9_876_543_210
 		name: '64bit integer'
 	}
-	m << Sub4 {
+	m << Sub4{
 		val: 'abcd'
 		name: 'string'
 	}
