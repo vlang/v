@@ -3429,13 +3429,24 @@ fn (mut c Checker) go_stmt(mut node ast.GoStmt) {
 fn (mut c Checker) exec_cmd(cmd string, pos token.Position) string {
 	mut cmd_ := cmd
 	for cmd_.contains('$(') {
+		index := cmd_.index('$(') or { 0 }
+		mut complete := false
+		for i := index; i < cmd_.len; i++ {
+			if cmd_[i] == `)` {
+				complete = true
+			}
+		}
+		if !complete {
+			c.error('incomplete command substitution, missing a `)`', pos)
+			return cmd_
+		}
 		cmd_to_exec := cmd_.find_between('$(', ')')
 		res := os.execute(cmd_to_exec)
-		if res.exit_code != 0 {
-			c.error('there was a failure when executing `$cmd_to_exec`: $res.output', pos)
-		}
-		res_ts := res.output.trim_space()
-		cmd_ = cmd_.replace('$($cmd_to_exec)', res_ts)
+    		if res.exit_code != 0 {
+    			c.error('there was a failure when executing `$cmd_to_exec`: $res.output', pos)
+    		}
+    		res_ts := res.output.trim_space()
+    		cmd_ = cmd_.replace('$($cmd_to_exec)', res_ts)
 	}
 	return cmd_
 }
