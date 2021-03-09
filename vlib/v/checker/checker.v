@@ -4070,6 +4070,10 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) table.Type {
 				c.error('expected `[]string`, not s', node.method_pos)
 			}
 		}
+		for arg in node.args {
+			// check each arg expression
+			c.expr(arg.expr)
+		}
 		// assume string for now
 		return table.string_type
 	}

@@ -1171,6 +1171,7 @@ pub:
 	scope       &Scope
 	left        Expr
 	args_var    string
+	args        []CallArg
 	//
 	is_vweb   bool
 	vweb_tmpl File

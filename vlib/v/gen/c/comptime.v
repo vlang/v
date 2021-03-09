@@ -76,6 +76,10 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 		for val in vals {
 		}
 		*/
+		if m.params.len-1 != node.args.len {
+			verror('expected ${m.params.len-1} arguments to method ${node.sym.name}.$m.name, but got $node.args.len')
+		}
+		// TODO: check method argument types
 		g.write('${util.no_dots(node.sym.name)}_${g.comp_for_method}(')
 		g.expr(node.left)
 		if m.params.len > 1 {
@@ -87,13 +91,7 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 					continue
 				}
 			}
-			if m.params[i].typ.is_int() || m.params[i].typ.idx() == table.bool_type_idx {
-				// Gets the type name and cast the string to the type with the string_<type> function
-				type_name := g.table.types[int(m.params[i].typ)].str()
-				g.write('string_${type_name}(((string*)${node.args_var}.data) [${i - 1}])')
-			} else {
-				g.write('((string*)${node.args_var}.data) [${i - 1}] ')
-			}
+			g.expr(node.args[i-1].expr)
 			if i < m.params.len - 1 {
 				g.write(', ')
 			}
