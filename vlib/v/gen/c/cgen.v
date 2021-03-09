@@ -24,9 +24,6 @@ const (
 	cmp_str    = ['eq', 'ne', 'gt', 'lt', 'ge', 'le']
 	// when operands are switched
 	cmp_rev    = ['eq', 'ne', 'lt', 'gt', 'le', 'ge']
-	tabs       = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t',
-		'\t\t\t\t\t\t\t\t',
-	]
 )
 
 struct Gen {
@@ -844,13 +841,7 @@ pub fn (mut g Gen) write(s string) {
 		eprintln('gen file: ${g.file.path:-30} | last_fn_c_name: ${g.last_fn_c_name:-45} | write: $s')
 	}
 	if g.indent > 0 && g.empty_line {
-		if g.indent < c.tabs.len {
-			g.out.write_string(c.tabs[g.indent])
-		} else {
-			for _ in 0 .. g.indent {
-				g.out.write_string('\t')
-			}
-		}
+		g.out.write_string(util.tabs(g.indent))
 	}
 	g.out.write_string(s)
 	g.empty_line = false
@@ -861,13 +852,7 @@ pub fn (mut g Gen) writeln(s string) {
 		eprintln('gen file: ${g.file.path:-30} | last_fn_c_name: ${g.last_fn_c_name:-45} | writeln: $s')
 	}
 	if g.indent > 0 && g.empty_line {
-		if g.indent < c.tabs.len {
-			g.out.write_string(c.tabs[g.indent])
-		} else {
-			for _ in 0 .. g.indent {
-				g.out.write_string('\t')
-			}
-		}
+		g.out.write_string(util.tabs(g.indent))
 	}
 	g.out.writeln(s)
 	g.empty_line = true
@@ -2088,7 +2073,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			}
 			if right_sym.kind == .function && is_decl {
 				if is_inside_ternary && is_decl {
-					g.out.write_string(c.tabs[g.indent - g.inside_ternary])
+					g.out.write_string(util.tabs(g.indent - g.inside_ternary))
 				}
 				func := right_sym.info as table.FnType
 				ret_styp := g.typ(func.func.return_type)
@@ -2100,7 +2085,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			} else {
 				if is_decl {
 					if is_inside_ternary {
-						g.out.write_string(c.tabs[g.indent - g.inside_ternary])
+						g.out.write_string(util.tabs(g.indent - g.inside_ternary))
 					}
 					g.write('$styp ')
 				}
@@ -2116,7 +2101,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			}
 			if is_inside_ternary && is_decl {
 				g.write(';\n$cur_line')
-				g.out.write_string(c.tabs[g.indent])
+				g.out.write_string(util.tabs(g.indent))
 				g.expr(left)
 			}
 			g.is_assign_lhs = false
@@ -2811,7 +2796,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 				is_gen_or_and_assign_rhs := gen_or && !g.discard_or_result
 				cur_line := if is_gen_or_and_assign_rhs {
 					line := g.go_before_stmt(0)
-					g.out.write_string(c.tabs[g.indent])
+					g.out.write_string(util.tabs(g.indent))
 					line
 				} else {
 					''

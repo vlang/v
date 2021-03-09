@@ -415,7 +415,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		// `x := foo() or { ...}`
 		// cut everything that has been generated to prepend optional variable creation
 		line := g.go_before_stmt(0)
-		g.out.write_string(tabs[g.indent])
+		g.out.write_string(util.tabs(g.indent))
 		// g.write('/*is_gen_or_and_assign_rhs*/')
 		line
 	} else {
