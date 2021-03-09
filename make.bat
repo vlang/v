@@ -16,6 +16,7 @@ set target=build
 REM TCC variables
 set "tcc_url=https://github.com/vlang/tccbin"
 set "tcc_dir=%~dp0thirdparty\tcc"
+set "tcc_exe=%~dp0thirdparty\tcc\tcc.exe"
 if "%PROCESSOR_ARCHITECTURE%" == "x86" ( set "tcc_branch=thirdparty-windows-i386" ) else ( set "tcc_branch=thirdparty-windows-amd64" )
 if "%~1" == "-tcc32" set "tcc_branch=thirdparty-windows-i386"
 
