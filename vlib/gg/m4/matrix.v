@@ -11,6 +11,7 @@
 module m4
 
 import math
+import math.mathutil
 
 pub union Mat4 {
 pub mut:
@@ -27,14 +28,6 @@ pub const precision = f32(10e-7)
 * Utility
 *
 *********************************************************************/
-pub fn abs(a f32) f32 {
-	if a >= f32(0.0) {
-		return a
-	} else {
-		return -a
-	}
-}
-
 // String representation of the matrix
 pub fn (x Mat4) str() string {
 	unsafe {
@@ -51,7 +44,7 @@ pub fn (a Mat4) clean() Mat4 {
 	unsafe {
 		x := Mat4{}
 		for c, value in a.e {
-			if abs(value) < m4.precision {
+			if util.fabs_32(value) < m4.precision {
 				x.e[c] = 0
 			} else {
 				x.e[c] = value
@@ -75,7 +68,7 @@ pub fn (x Mat4) sum_all() f32 {
 pub fn (x Mat4) is_equal(y Mat4) bool {
 	unsafe {
 		for c, value in x.e {
-			if abs(value - y.e[c]) > m4.precision {
+			if util.fabs_32(value - y.e[c]) > m4.precision {
 				return false
 			}
 		}
