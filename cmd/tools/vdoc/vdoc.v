@@ -442,7 +442,7 @@ fn parse_arguments(args []string) Config {
 			else {
 				if cfg.input_path.len < 1 {
 					cfg.input_path = arg
-				} else {
+				} else if !cfg.is_multi {
 					cfg.symbol_name = arg
 				}
 				if i == args.len - 1 {
