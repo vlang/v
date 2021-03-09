@@ -3056,7 +3056,7 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 			}
 			ast.Ident {
 				if init_expr.obj is ast.ConstField {
-					if cint := const_int_value(init_expr.obj) {
+					if cint := eval_int_expr(init_expr.obj.expr, 0) {
 						fixed_size = cint
 					}
 				} else {
@@ -3080,17 +3080,43 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 	return array_init.typ
 }
 
-fn const_int_value(cfield ast.ConstField) ?int {
-	if cint := is_const_integer(cfield) {
-		return cint.val.int()
+fn eval_int_expr(expr ast.Expr, nlevel int) ?int {
+	if nlevel > 100 {
+		// protect against a too deep comptime eval recursion:
+		return none
 	}
-	return none
-}
-
-fn is_const_integer(cfield ast.ConstField) ?ast.IntegerLiteral {
-	match cfield.expr {
-		ast.IntegerLiteral { return cfield.expr }
-		else {}
+	match expr {
+		ast.IntegerLiteral {
+			return expr.val.int()
+		}
+		ast.InfixExpr {
+			left := eval_int_expr(expr.left, nlevel + 1) ?
+			right := eval_int_expr(expr.right, nlevel + 1) ?
+			match expr.op {
+				.plus { return left + right }
+				.minus { return left - right }
+				.mul { return left * right }
+				.div { return left / right }
+				.mod { return left % right }
+				.xor { return left ^ right }
+				.pipe { return left | right }
+				.amp { return left & right }
+				.left_shift { return left << right }
+				.right_shift { return left >> right }
+				else { return none }
+			}
+		}
+		ast.Ident {
+			if expr.obj is ast.ConstField {
+				// an int constant?
+				cint := eval_int_expr(expr.obj.expr, nlevel + 1) ?
+				return cint
+			}
+		}
+		else {
+			// dump(expr)
+			return none
+		}
 	}
 	return none
 }
