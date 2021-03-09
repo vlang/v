@@ -19,7 +19,7 @@ fn main() {
 }
 
 fn cleanup_vtmp_folder() {
-	os.rmdir_all(util.get_vtmp_folder()) or { }
+	os.rmdir_all(util.get_vtmp_folder()) or {}
 }
 
 fn setup_symlink_unix(vexe string) {
