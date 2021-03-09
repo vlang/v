@@ -77,12 +77,12 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 		}
 		*/
 		// TODO: check args length and types
-		if m.params.len-1 != node.args.len {
+		if m.params.len - 1 != node.args.len {
 			// we cannot differentiate between method calls,
 			// so if we get a mis-matched argument list, do
 			// not generate anything
-			return
 			// verror('expected ${m.params.len-1} arguments to method ${node.sym.name}.$m.name, but got $node.args.len')
+			return
 		}
 		g.write('${util.no_dots(node.sym.name)}_${g.comp_for_method}(')
 
@@ -105,8 +105,8 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 					continue
 				}
 			}
-			if i-1 < node.args.len {
-				g.expr(node.args[i-1].expr)
+			if i - 1 < node.args.len {
+				g.expr(node.args[i - 1].expr)
 				if i < m.params.len - 1 {
 					g.write(', ')
 				}
