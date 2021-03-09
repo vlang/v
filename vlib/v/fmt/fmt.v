@@ -716,11 +716,6 @@ pub fn (mut f Fmt) sum_type_decl(node ast.SumTypeDecl) {
 	f.comments(node.comments, has_nl: false)
 }
 
-[inline]
-fn abs(v int) int {
-	return if v >= 0 { v } else { -v }
-}
-
 pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 	if node.is_pub {
 		f.write('pub ')

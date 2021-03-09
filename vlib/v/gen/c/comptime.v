@@ -336,7 +336,7 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 				// Skip receiver arg
 				for j, arg in method.params[1..] {
 					typ := arg.typ.idx()
-					g.write(typ.str())
+					g.write('{$typ.str(), _SLIT("$arg.name")}')
 					if j < len - 1 {
 						g.write(', ')
 					}

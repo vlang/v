@@ -123,7 +123,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Profiling](#profiling)
 * [Advanced Topics](#advanced-topics)
     * [Memory-unsafe code](#memory-unsafe-code)
-    * [Structs with reference fields](structs-with-reference-fields)
+    * [Structs with reference fields](#structs-with-reference-fields)
     * [sizeof and __offsetof](#sizeof-and-__offsetof)
     * [Calling C from V](#calling-c-from-v)
     * [Debugging generated C code](#debugging-generated-c-code)
@@ -2525,7 +2525,6 @@ posts_repo := new_repo<Post>(db) // returns Repo<Post>
 user := users_repo.find_by_id(1)? // find_by_id<User>
 post := posts_repo.find_by_id(1)? // find_by_id<Post>
 ```
-At the moment only one type parameter named `T` is supported.
 
 Currently generic function definitions must declare their type parameters, but in
 future V will infer generic type parameters from single-letter type names in
@@ -4049,12 +4048,28 @@ fn bar() {
 	foo() // will not be called if `-d debug` is not passed
 }
 
-// Calls to this function must be in unsafe{} blocks
+// Calls to following function must be in unsafe{} blocks.
+// Note that the code in the body of `risky_business()` will still be
+// checked, unless you also wrap it in `unsafe {}` blocks.
+// This is usefull, when you want to have an `[unsafe]` function that
+// has checks before/after a certain unsafe operation, that will still
+// benefit from V's safety features.
 [unsafe]
 fn risky_business() {
+	// code that will be checked, perhaps checking pre conditions
+	unsafe {
+		// code that *will not be* checked, like pointer arithmetic,
+		// accessing union fields, calling other `[unsafe]` fns, etc...
+		// Usually, it is a good idea to try minimizing code wrapped
+		// in unsafe{} as much as possible.
+		// See also [Memory-unsafe code](#memory-unsafe-code)
+	}
+	// code that will be checked, perhaps checking post conditions and/or
+	// keeping invariants
 }
 
-// V's autofree engine will not take care of memory management in this function
+// V's autofree engine will not take care of memory management in this function.
+// You will have the responsibility to free memory manually yourself in it.
 [manualfree]
 fn custom_allocations() {
 }

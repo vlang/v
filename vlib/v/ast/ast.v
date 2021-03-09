@@ -320,6 +320,7 @@ pub:
 	is_manualfree   bool // true, when [manualfree] is used on a fn
 	is_main         bool // true for `fn main()`
 	is_test         bool // true for `fn test_abcde`
+	is_conditional  bool // true for `[if abc] fn abc(){}`
 	receiver        Field
 	receiver_pos    token.Position // `(u User)` in `fn (u User) name()` position
 	is_method       bool

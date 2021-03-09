@@ -31,7 +31,7 @@ fn setup_symlink_unix(vexe string) {
 		}
 		link_path = link_dir + '/v'
 	}
-	ret := os.exec('ln -sf $vexe $link_path') or { panic(err) }
+	ret := os.execute_or_panic('ln -sf $vexe $link_path')
 	if ret.exit_code == 0 {
 		println('Symlink "$link_path" has been created')
 	} else {

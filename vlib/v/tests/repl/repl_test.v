@@ -12,11 +12,14 @@ fn test_the_v_compiler_can_be_invoked() {
 	println('vexecutable: $vexec')
 	assert vexec != ''
 	vcmd := '"$vexec" -version'
-	r := os.exec(vcmd) or { panic(err) }
-	// println('"$vcmd" exit_code: $r.exit_code | output: $r.output')
+	r := os.execute_or_panic(vcmd)
 	assert r.exit_code == 0
+	// println('"$vcmd" exit_code: $r.exit_code | output: $r.output')
 	vcmd_error := '"$vexec" nonexisting.v'
-	r_error := os.exec(vcmd_error) or { panic(err) }
+	r_error := os.execute(vcmd_error)
+	if r_error.exit_code < 0 {
+		panic(r_error.output)
+	}
 	// println('"$vcmd_error" exit_code: $r_error.exit_code | output: $r_error.output')
 	assert r_error.exit_code == 1
 	actual_error := r_error.output.trim_space()

@@ -71,15 +71,6 @@ fn main() {
 	}
 	args_and_flags := util.join_env_vflags_and_os_args()[1..]
 	prefs, command := pref.parse_args(external_tools, args_and_flags)
-	if prefs.is_help {
-		invoke_help_and_exit(args)
-	}
-	if prefs.is_verbose {
-		// println('args= ')
-		// println(args) // QTODO
-		// println('prefs= ')
-		// println(prefs) // QTODO
-	}
 	if prefs.use_cache && os.user_os() == 'windows' {
 		eprintln('-usecache is currently disabled on windows')
 		exit(1)
@@ -137,6 +128,9 @@ fn main() {
 		// println(prefs.path)
 		builder.compile(command, prefs)
 		return
+	}
+	if prefs.is_help {
+		invoke_help_and_exit(args)
 	}
 	eprintln('v $command: unknown command\nRun "v help" for usage.')
 	exit(1)

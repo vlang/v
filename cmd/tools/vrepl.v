@@ -381,9 +381,10 @@ fn repl_run_vfile(file string) ?os.Result {
 	$if trace_repl_temp_files ? {
 		eprintln('>> repl_run_vfile file: $file')
 	}
-	s := os.exec('"$vexe" -repl run "$file"') or {
-		rerror(err.msg)
-		return err
+	s := os.execute('"$vexe" -repl run "$file"')
+	if s.exit_code < 0 {
+		rerror(s.output)
+		return error(s.output)
 	}
 	return s
 }

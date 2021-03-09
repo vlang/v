@@ -32,12 +32,13 @@ pub:
 	language       Language
 	generic_names  []string
 	is_pub         bool
-	is_deprecated  bool
-	is_unsafe      bool
+	is_deprecated  bool // `[deprecated] fn abc(){}`
+	is_unsafe      bool // `[unsafe] fn abc(){}`
 	is_placeholder bool
-	is_main        bool
-	is_test        bool
-	no_body        bool
+	is_main        bool // `fn main(){}`
+	is_test        bool // `fn test_abc(){}`
+	is_conditional bool // `[if abc]fn(){}`
+	no_body        bool // a pure declaration like `fn abc(x int)`; used in .vh files, C./JS. fns.
 	mod            string
 	ctdefine       string // compile time define. "myflag", when [if myflag] tag
 	attrs          []Attr

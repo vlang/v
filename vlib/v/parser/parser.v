@@ -1932,7 +1932,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		if mod != '' {
 			enum_name = mod + '.' + enum_name
 		} else {
-			enum_name = p.prepend_mod(enum_name)
+			enum_name = p.imported_symbols[enum_name] or { p.prepend_mod(enum_name) }
 		}
 		// p.warn('Color.green $enum_name ' + p.prepend_mod(enum_name) + 'mod=$mod')
 		p.check(.dot)

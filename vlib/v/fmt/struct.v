@@ -75,7 +75,8 @@ fn (mut list []CommentAndExprAlignInfo) add_info(attrs_len int, type_len int, li
 		list.add_new_info(attrs_len, type_len, line)
 		return
 	}
-	d_len := abs(list[i].max_attrs_len - attrs_len) + abs(list[i].max_type_len - type_len)
+	d_len := util.iabs(list[i].max_attrs_len - attrs_len) +
+		util.iabs(list[i].max_type_len - type_len)
 	if !(d_len < fmt.threshold_to_align_struct) {
 		list.add_new_info(attrs_len, type_len, line)
 		return
