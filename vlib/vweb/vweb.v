@@ -379,12 +379,12 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 				// should be called first.
 				if !route_path.contains('/:') && url_words == route_words {
 					// We found a match
-					app.$method(method_args)
+					app.$method()
 					return
 				}
 
 				if url_words.len == 0 && route_words == ['index'] && method.name == 'index' {
-					app.$method(method_args)
+					app.$method()
 					return
 				}
 
@@ -393,7 +393,21 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 					if method_args.len != method.args.len {
 						eprintln('warning: uneven parameters count ($method.args.len) in `$method.name`, compared to the vweb route `$method.attrs` ($method_args.len)')
 					}
-					app.$method(method_args)
+					// FIXME: add ellipses to expand []string params
+					// e.g. app.$method(c, method_args...)
+					a := method_args.clone()
+					match method_args.len {
+						0 { app.$method() }
+						1 { app.$method(a[0]) }
+						2 { app.$method(a[0], a[1]) }
+						3 { app.$method(a[0], a[1], a[2]) }
+						4 { app.$method(a[0], a[1], a[2], a[3]) }
+						5 { app.$method(a[0], a[1], a[2], a[3], a[4]) }
+						6 { app.$method(a[0], a[1], a[2], a[3], a[4], a[5]) }
+						7 { app.$method(a[0], a[1], a[2], a[3], a[4], a[5], a[6]) }
+						8 { app.$method(a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]) }
+						else { eprintln('warning: methods are currently limited to 8 arguments') }
+					}
 					return
 				}
 			}
