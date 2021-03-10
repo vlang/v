@@ -76,7 +76,7 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 		for val in vals {
 		}
 		*/
-		expand_strs := if node.args.len > 0 && m.params.len - 1 > node.args.len {
+		expand_strs := if node.args.len > 0 && m.params.len - 1 >= node.args.len {
 			arg := node.args[node.args.len - 1]
 			param := m.params[node.args.len]
 
