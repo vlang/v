@@ -382,7 +382,7 @@ pub fn rmdir(path string) ? {
 		rc := C.RemoveDirectory(path.to_wide())
 		if rc == 0 {
 			// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-removedirectorya - 0 is failure
-			return error('Failed to remove "$path"')
+			return error('Failed to remove "$path": ' + posix_get_error_msg(C.errno))
 		}
 	} $else {
 		rc := C.rmdir(charptr(path.str))
