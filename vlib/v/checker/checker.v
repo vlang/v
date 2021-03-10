@@ -2943,6 +2943,13 @@ fn (mut c Checker) check_array_init_para_type(para string, expr ast.Expr, pos to
 	}
 }
 
+pub fn (mut c Checker) ensure_sumtype_array_has_default_value(array_init ast.ArrayInit) {
+	sym := c.table.get_type_symbol(array_init.elem_type)
+	if sym.kind == .sum_type && !array_init.has_default {
+		c.error('cannot initialize sum type array without default value', array_init.pos)
+	}
+}
+
 pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 	// println('checker: array init $array_init.pos.line_nr $c.file.path')
 	mut elem_type := table.void_type
@@ -2956,20 +2963,21 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 				c.check_array_init_para_type('len', array_init.len_expr, array_init.pos)
 			}
 		}
-		sym := c.table.get_type_symbol(array_init.elem_type)
 		if array_init.has_default {
 			default_typ := c.expr(array_init.default_expr)
 			c.check_expected(default_typ, array_init.elem_type) or {
 				c.error(err.msg, array_init.default_expr.position())
 			}
 		}
-		if sym.kind == .sum_type {
-			if array_init.has_len && !array_init.has_default {
-				c.error('cannot initalize sum type array without default value', array_init.elem_type_pos)
-			}
+		if array_init.has_len {
+			c.ensure_sumtype_array_has_default_value(array_init)
 		}
 		c.ensure_type_exists(array_init.elem_type, array_init.elem_type_pos) or {}
 		return array_init.typ
+	}
+	if array_init.is_fixed {
+		c.ensure_sumtype_array_has_default_value(array_init)
+		c.ensure_type_exists(array_init.elem_type, array_init.elem_type_pos) or {}
 	}
 	// a = []
 	if array_init.exprs.len == 0 {
