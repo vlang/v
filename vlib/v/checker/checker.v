@@ -3693,6 +3693,15 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		}
 		ast.CallExpr {
 			mut ret_type := c.call_expr(mut node)
+			if !ret_type.has_flag(.optional) {
+				if node.or_block.kind == .block {
+					c.error('unexpected `or` block, the function `$node.name` does not return an optional',
+						node.or_block.pos)
+				} else if node.or_block.kind == .propagate {
+					c.error('unexpected `?`, the function `$node.name` does not return an optional',
+						node.or_block.pos)
+				}
+			}
 			if ret_type.has_flag(.optional) && node.or_block.kind != .absent {
 				ret_type = ret_type.clear_flag(.optional)
 			}
