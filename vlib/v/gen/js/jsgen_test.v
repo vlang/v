@@ -48,7 +48,7 @@ fn find_test_files() []string {
 }
 
 fn is_nodejs_working() bool {
-	node_res := os.exec('node --version') or { return false }
+	node_res := os.execute('node --version')
 	if node_res.exit_code != 0 {
 		return false
 	}

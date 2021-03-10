@@ -211,7 +211,10 @@ fn (mut f MDFile) debug() {
 }
 
 fn cmdexecute(cmd string) int {
-	res := os.exec(cmd) or { return 1 }
+	res := os.execute(cmd)
+	if res.exit_code < 0 {
+		return 1
+	}
 	if res.exit_code != 0 {
 		eprint(res.output)
 	}
@@ -219,7 +222,7 @@ fn cmdexecute(cmd string) int {
 }
 
 fn silent_cmdexecute(cmd string) int {
-	res := os.exec(cmd) or { return 1 }
+	res := os.execute(cmd)
 	return res.exit_code
 }
 

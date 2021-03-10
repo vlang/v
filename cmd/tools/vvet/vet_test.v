@@ -34,7 +34,10 @@ fn check_path(vexe string, dir string, tests []string) int {
 		program := path
 		print(path + ' ')
 		// -force is needed so that `v vet` would not skip the regression files
-		res := os.exec('$vexe vet -force $program') or { panic(err) }
+		res := os.execute('$vexe vet -force $program')
+		if res.exit_code < 0 {
+			panic(res.output)
+		}
 		mut expected := os.read_file(program.replace('.vv', '') + '.out') or { panic(err) }
 		expected = clean_line_endings(expected)
 		found := clean_line_endings(res.output)

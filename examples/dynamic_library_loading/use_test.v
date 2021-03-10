@@ -11,20 +11,20 @@ const (
 )
 
 fn test_vexe() {
-	eprintln('vexe: $vexe')
+	dump(vexe)
 	assert vexe != ''
-	eprintln('os.executable: ' + os.executable())
-	eprintln('@FILE: ' + @FILE)
-	eprintln('cfolder: $cfolder')
-	eprintln('so_ext: $so_ext')
-	eprintln('library_file_name: $library_file_name')
+	dump(os.executable())
+	dump(@FILE)
+	dump(cfolder)
+	dump(so_ext)
+	dump(library_file_name)
 }
 
 fn test_can_compile_library() {
 	os.chdir(cfolder)
 	os.rm(library_file_name) or { }
-	res := v_compile('-d no_backtrace -o library -shared library.v')
-	eprintln('res: $res')
+	res := v_compile('-d no_backtrace -o library -shared modules/library/library.v')
+	dump(res)
 	assert os.is_file(library_file_name)
 }
 
@@ -32,21 +32,21 @@ fn test_can_compile_main_program() {
 	os.chdir(cfolder)
 	assert os.is_file(library_file_name)
 	result := v_compile('run use.v')
-	eprintln('result: $result')
+	dump(result)
 	assert result.output.contains('res: 4')
 	os.rm(library_file_name) or { }
 }
 
 fn v_compile(vopts string) os.Result {
 	cmd := '"$vexe" -showcc $vopts'
-	eprintln('>>> v_compile cmd: $cmd')
-	res := os.exec(cmd) or { panic(err) }
-	eprintln('>>> v_compile res: $res')
+	dump(cmd)
+	res := os.execute_or_panic(cmd)
+	dump(res)
 	// assert res.exit_code == 0
-	$if !windows {
-		os.system('ls -al $cfolder')
-	} $else {
+	$if windows {
 		os.system('dir $cfolder /a')
+	} $else {
+		os.system('ls -al $cfolder')
 	}
 	return res
 }

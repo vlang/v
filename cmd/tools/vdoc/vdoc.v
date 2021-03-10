@@ -292,7 +292,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 				exit(1)
 			}
 		} else {
-			dcs = doc.generate(dirpath, cfg.pub_only, true) or {
+			dcs = doc.generate(dirpath, cfg.pub_only, true, cfg.symbol_name) or {
 				vd.emit_generate_err(err)
 				exit(1)
 			}
@@ -313,13 +313,6 @@ fn (mut vd VDoc) generate_docs_from_file() {
 					dcs.contents[name].content = dc.content.all_after('pub ')
 					for i, cc in dc.children {
 						dcs.contents[name].children[i].content = cc.content.all_after('pub ')
-					}
-				}
-			}
-			if !cfg.is_multi && cfg.symbol_name.len > 0 {
-				if cfg.symbol_name in dcs.contents {
-					for _, c in dcs.contents[cfg.symbol_name].children {
-						dcs.contents[c.name] = c
 					}
 				}
 			}
@@ -449,7 +442,9 @@ fn parse_arguments(args []string) Config {
 			else {
 				if cfg.input_path.len < 1 {
 					cfg.input_path = arg
-				} else {
+				} else if !cfg.is_multi {
+					// Symbol name filtering should not be enabled
+					// in multi-module documentation mode.
 					cfg.symbol_name = arg
 				}
 				if i == args.len - 1 {
@@ -485,7 +480,8 @@ fn parse_arguments(args []string) Config {
 }
 
 fn main() {
-	if os.args.len < 2 || '-h' in os.args || '--help' in os.args || os.args[1..] == ['doc', 'help'] {
+	if os.args.len < 2 || '-h' in os.args || '-help' in os.args || '--help' in os.args
+		|| os.args[1..] == ['doc', 'help'] {
 		os.system('$vexe help doc')
 		exit(0)
 	}

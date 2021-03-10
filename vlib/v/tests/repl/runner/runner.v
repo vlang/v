@@ -50,7 +50,8 @@ pub fn run_repl_file(wd string, vexec string, file string) ?string {
 	os.write_file(input_temporary_filename, input) or { panic(err) }
 	os.write_file(os.real_path(os.join_path(wd, 'original.txt')), fcontent) or { panic(err) }
 	rcmd := '"$vexec" repl -replfolder "$wd" -replprefix "${fname}." < $input_temporary_filename'
-	r := os.exec(rcmd) or {
+	r := os.execute(rcmd)
+	if r.exit_code < 0 {
 		os.rm(input_temporary_filename) or { panic(err) }
 		return error('Could not execute: $rcmd')
 	}
@@ -73,7 +74,7 @@ pub fn run_repl_file(wd string, vexec string, file string) ?string {
 $diff
 		')
 	} else {
-		return 'Repl file $file is OK'
+		return file.replace('./', '')
 	}
 }
 
@@ -84,7 +85,10 @@ pub fn run_prod_file(wd string, vexec string, file string) ?string {
 	}
 	expected_content := f_expected_content.replace('\r', '')
 	cmd := '"$vexec" -prod run "$file"'
-	r := os.exec(cmd) or { return error('Could not execute: $cmd') }
+	r := os.execute(cmd)
+	if r.exit_code < 0 {
+		return error('Could not execute: $cmd')
+	}
 	if r.exit_code != 0 {
 		return error('$cmd return exit code: $r.exit_code')
 	}

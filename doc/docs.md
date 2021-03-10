@@ -123,7 +123,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Profiling](#profiling)
 * [Advanced Topics](#advanced-topics)
     * [Memory-unsafe code](#memory-unsafe-code)
-    * [Structs with reference fields](structs-with-reference-fields)
+    * [Structs with reference fields](#structs-with-reference-fields)
     * [sizeof and __offsetof](#sizeof-and-__offsetof)
     * [Calling C from V](#calling-c-from-v)
     * [Debugging generated C code](#debugging-generated-c-code)
@@ -193,7 +193,7 @@ println('hello world')
 ## Running a project folder with several files
 
 Suppose you have a folder with several .v files in it, where one of them
-contains your `main()` function, and the other files have other helper 
+contains your `main()` function, and the other files have other helper
 functions. They may be organized by topic, but still *not yet* structured
 enough to be their own separate reusable modules, and you want to compile
 them all into one program.
@@ -221,7 +221,7 @@ If you want to keep it, use `v -keepc run .` instead, or just compile
 manually with `v .` .
 
 NB: any V compiler flags should be passed *before* the `run` command.
-Everything after the source file/folder, will be passed to the program 
+Everything after the source file/folder, will be passed to the program
 as is - it will not be processed by V.
 
 ## Comments
@@ -2525,7 +2525,6 @@ posts_repo := new_repo<Post>(db) // returns Repo<Post>
 user := users_repo.find_by_id(1)? // find_by_id<User>
 post := posts_repo.find_by_id(1)? // find_by_id<Post>
 ```
-At the moment only one type parameter named `T` is supported.
 
 Currently generic function definitions must declare their type parameters, but in
 future V will infer generic type parameters from single-letter type names in
@@ -4021,6 +4020,10 @@ function/struct/enum declaration and applies only to the following declaration.
 [deprecated]
 fn old_function() {
 }
+
+// It can also display a custom deprecation message
+[deprecated: 'use new_function() instead']
+fn legacy_function() {}
 
 // This function's calls will be inlined.
 [inline]

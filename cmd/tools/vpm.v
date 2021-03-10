@@ -193,13 +193,7 @@ fn vpm_install(module_names []string) {
 		vcs_install_cmd := supported_vcs_install_cmds[vcs]
 		cmd := '$vcs_install_cmd "$mod.url" "$final_module_path"'
 		verbose_println('      command: $cmd')
-		cmdres := os.exec(cmd) or {
-			errors++
-			println('Could not install module "$name" to "$final_module_path" .')
-			verbose_println('Error command: $cmd')
-			verbose_println('Error details: $err')
-			continue
-		}
+		cmdres := os.execute(cmd)
 		if cmdres.exit_code != 0 {
 			errors++
 			println('Failed installing module "$name" to "$final_module_path" .')
@@ -232,13 +226,7 @@ fn vpm_update(m []string) {
 		vcs := vcs_used_in_dir(final_module_path) or { continue }
 		vcs_cmd := supported_vcs_update_cmds[vcs[0]]
 		verbose_println('    command: $vcs_cmd')
-		vcs_res := os.exec('$vcs_cmd') or {
-			errors++
-			println('Could not update module "$name".')
-			verbose_println('Error command: $vcs_cmd')
-			verbose_println('Error details:\n$err')
-			continue
-		}
+		vcs_res := os.execute('$vcs_cmd')
 		if vcs_res.exit_code != 0 {
 			errors++
 			println('Failed updating module "$name".')
@@ -265,9 +253,10 @@ fn get_outdated() ?[]string {
 		vcs_cmd_steps := supported_vcs_outdated_steps[vcs[0]]
 		mut outputs := []string{}
 		for step in vcs_cmd_steps {
-			res := os.exec(step) or {
+			res := os.execute(step)
+			if res.exit_code < 0 {
 				verbose_println('Error command: $step')
-				verbose_println('Error details:\n$err')
+				verbose_println('Error details:\n$res.output')
 				return error('Error while checking latest commits for "$name".')
 			}
 			if vcs[0] == 'hg' {
