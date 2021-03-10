@@ -119,6 +119,9 @@ fn main() {
 		}
 		worker_result := os.execute(worker_cmd)
 		if worker_result.exit_code != 0 {
+			if foptions.is_debug {
+				eprintln(worker_result.output)
+			}
 			errors++
 			continue
 		}
@@ -126,7 +129,7 @@ fn main() {
 		if worker_result.exit_code != 0 {
 			eprintln(worker_result.output)
 			if worker_result.exit_code == 1 {
-				eprintln('vfmt error while formatting file: $file .')
+				eprintln('Internal vfmt error while formatting file: ${file}.')
 			}
 			errors++
 			continue
