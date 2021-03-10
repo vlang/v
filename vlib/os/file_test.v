@@ -60,6 +60,7 @@ fn testsuite_end() ? {
 }
 
 fn test_write_struct() ? {
+	os.rm(tfile) or {}
 	size_of_point := int(sizeof(Point))
 	mut f := os.open_file(tfile, 'w') ?
 	f.write_struct(another_point) ?
@@ -113,6 +114,7 @@ fn test_read_struct_at() ? {
 }
 
 fn test_write_raw() ? {
+	os.rm(tfile) or {}
 	size_of_point := int(sizeof(Point))
 	mut f := os.open_file(tfile, 'w') ?
 	f.write_raw(another_point) ?
