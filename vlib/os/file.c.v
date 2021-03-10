@@ -457,6 +457,7 @@ pub fn (mut f File) write_raw<T>(t &T) ? {
 	if tsize == 0 {
 		return error('struct size is 0')
 	}
+	C.errno = 0
 	nbytes := int(C.fwrite(t, 1, tsize, f.cfile))
 	if C.errno != 0 {
 		return error(posix_get_error_msg(C.errno))
