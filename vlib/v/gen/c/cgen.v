@@ -423,6 +423,9 @@ pub fn (mut g Gen) init() {
 	if g.pref.is_debug || 'debug' in g.pref.compile_defines {
 		g.comptime_defines.writeln('#define _VDEBUG (1)')
 	}
+	if g.pref.is_prod || 'prod' in g.pref.compile_defines {
+		g.comptime_defines.writeln('#define _VPROD (1)')
+	}
 	if g.pref.is_test || 'test' in g.pref.compile_defines {
 		g.comptime_defines.writeln('#define _VTEST (1)')
 	}

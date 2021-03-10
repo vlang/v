@@ -17,4 +17,11 @@ fn get_st() MyStruct {
 fn main() {
 	s := get_st()
 	println(s)
+	$if prod {
+		println('prod mode is on')
+		assert true
+	} $else {
+		println('prod mode is off')
+		assert false
+	}
 }
