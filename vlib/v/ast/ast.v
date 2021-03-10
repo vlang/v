@@ -1171,7 +1171,6 @@ pub:
 	scope       &Scope
 	left        Expr
 	args_var    string
-	args        []CallArg
 	//
 	is_vweb   bool
 	vweb_tmpl File
@@ -1185,6 +1184,7 @@ pub mut:
 	sym         table.TypeSymbol
 	result_type table.Type
 	env_value   string
+	args        []CallArg
 }
 
 pub struct None {

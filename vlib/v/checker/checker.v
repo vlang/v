@@ -4060,19 +4060,9 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) table.Type {
 		return rtyp
 	}
 	if node.method_name == 'method' {
-		if node.args_var.len > 0 {
-			v := node.scope.find_var(node.args_var) or {
-				c.error('unknown identifier `$node.args_var`', node.method_pos)
-				return table.void_type
-			}
-			s := c.table.type_to_str(c.expr(v.expr))
-			if s != '[]string' {
-				c.error('expected `[]string`, not s', node.method_pos)
-			}
-		}
-		for arg in node.args {
+		for i, arg in node.args {
 			// check each arg expression
-			c.expr(arg.expr)
+			node.args[i].typ = c.expr(arg.expr)
 		}
 		// assume string for now
 		return table.string_type

@@ -76,11 +76,18 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 		for val in vals {
 		}
 		*/
+		expand_strs := if node.args.len > 0 {
+			typ := node.args[node.args.len - 1].typ
+			g.table.type_to_str(typ) == '[]string'
+		} else {
+			false
+		}
 		// TODO: check args length and types
-		if m.params.len - 1 != node.args.len {
+		if m.params.len - 1 != node.args.len && !expand_strs {
 			// we cannot differentiate between method calls,
 			// so if we get a mis-matched argument list, do
 			// not generate anything
+			g.writeln('/* skipping ${node.sym.name}.$m.name due to mismatched arguments list */')
 			// verror('expected ${m.params.len-1} arguments to method ${node.sym.name}.$m.name, but got $node.args.len')
 			return
 		}
@@ -105,8 +112,22 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 					continue
 				}
 			}
-			if i - 1 < node.args.len {
+			if i - 1 < node.args.len - 1 {
 				g.expr(node.args[i - 1].expr)
+				g.write(', ')
+			} else if !expand_strs && i == node.args.len {
+				g.expr(node.args[i - 1].expr)
+				break
+			} else {
+				// last argument; try to expand if it's []string
+				idx := i - node.args.len
+				if m.params[i].typ.is_int() || m.params[i].typ.idx() == table.bool_type_idx {
+					// Gets the type name and cast the string to the type with the string_<type> function
+					type_name := g.table.types[int(m.params[i].typ)].str()
+					g.write('string_${type_name}(((string*)${node.args[node.args.len - 1]}.data) [$idx])')
+				} else {
+					g.write('((string*)${node.args[node.args.len - 1]}.data) [$idx] ')
+				}
 				if i < m.params.len - 1 {
 					g.write(', ')
 				}
