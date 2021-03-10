@@ -60,7 +60,7 @@ fn testsuite_end() ? {
 }
 
 fn test_write_struct() ? {
-	os.rm(tfile) or {}
+	os.rm(tfile) or {} // FIXME This is a workaround for macos, because the file isn't truncated when open with 'w'
 	size_of_point := int(sizeof(Point))
 	mut f := os.open_file(tfile, 'w') ?
 	f.write_struct(another_point) ?
@@ -114,7 +114,7 @@ fn test_read_struct_at() ? {
 }
 
 fn test_write_raw() ? {
-	os.rm(tfile) or {}
+	os.rm(tfile) or {} // FIXME This is a workaround for macos, because the file isn't truncated when open with 'w'
 	size_of_point := int(sizeof(Point))
 	mut f := os.open_file(tfile, 'w') ?
 	f.write_raw(another_point) ?
