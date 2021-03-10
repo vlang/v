@@ -389,11 +389,15 @@ pub fn (mut f File) read_raw_at<T>(pos int) ?T {
 		return none
 	}
 	C.errno = 0
-	C.fseek(f.cfile, pos, C.SEEK_SET)
+	if C.fseek(f.cfile, pos, C.SEEK_SET) != 0 {
+		return error(posix_get_error_msg(C.errno))
+	}
 	mut t := T{}
 	nbytes := int(C.fread(&t, 1, tsize, f.cfile))
-	C.fseek(f.cfile, 0, C.SEEK_END)
 	if C.errno != 0 {
+		return error(posix_get_error_msg(C.errno))
+	}
+	if C.fseek(f.cfile, 0, C.SEEK_END) != 0 {
 		return error(posix_get_error_msg(C.errno))
 	}
 	if nbytes != tsize {
@@ -453,7 +457,6 @@ pub fn (mut f File) write_raw<T>(t &T) ? {
 	if tsize == 0 {
 		return error('struct size is 0')
 	}
-	C.errno = 0
 	nbytes := int(C.fwrite(t, 1, tsize, f.cfile))
 	if C.errno != 0 {
 		return error(posix_get_error_msg(C.errno))
@@ -472,11 +475,14 @@ pub fn (mut f File) write_raw_at<T>(t &T, pos int) ? {
 	if tsize == 0 {
 		return error('struct size is 0')
 	}
-	C.errno = 0
-	C.fseek(f.cfile, pos, C.SEEK_SET)
+	if C.fseek(f.cfile, pos, C.SEEK_SET) != 0 {
+		return error(posix_get_error_msg(C.errno))
+	}
 	nbytes := int(C.fwrite(t, 1, tsize, f.cfile))
-	C.fseek(f.cfile, 0, C.SEEK_END)
 	if C.errno != 0 {
+		return error(posix_get_error_msg(C.errno))
+	}
+	if C.fseek(f.cfile, 0, C.SEEK_END) != 0 {
 		return error(posix_get_error_msg(C.errno))
 	}
 	if nbytes != tsize {
