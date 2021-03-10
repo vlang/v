@@ -14,6 +14,7 @@ struct C.AAssetManager {}
 
 // See https://developer.android.com/ndk/reference/struct/a-native-activity for more info.
 struct C.ANativeActivity {
+pub:
 	assetManager     voidptr // Pointer to the Asset Manager instance for the application. (AAssetManager *)
 	callbacks        voidptr // Pointer to the callback function table of the native application. (struct ANativeActivityCallbacks *)
 	clazz            voidptr // The NativeActivity object handle.
