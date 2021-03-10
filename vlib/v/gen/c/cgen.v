@@ -1599,16 +1599,18 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw table.Type, expected_t
 		&& !expected_type.has_flag(.optional) {
 		got_styp := g.cc_type(got_type, true)
 		exp_styp := g.cc_type(expected_type, true)
-		g.write('I_${got_styp}_to_Interface_$exp_styp')
-		if expected_type.is_ptr() {
-			g.write('_ptr')
+		if expected_is_ptr {
+			g.write('HEAP($exp_styp, ')
 		}
-		g.write('(')
-		if !got_type.is_ptr() {
+		g.write('I_${got_styp}_to_Interface_${exp_styp}(')
+		if !got_is_ptr {
 			g.write('&')
 		}
 		g.expr(expr)
 		g.write(')')
+		if expected_is_ptr {
+			g.write(')')
+		}
 		return
 	}
 	// cast to sum type
@@ -1638,19 +1640,19 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw table.Type, expected_t
 			} else {
 				g.write_sumtype_casting_fn(got_type, expected_type)
 				if expected_is_ptr {
-					g.write('memdup(&($exp_sym.cname[]){')
+					g.write('HEAP($exp_sym.cname, ')
 				}
 				g.write('${got_sym.cname}_to_sumtype_${exp_sym.cname}(')
 				if !got_is_ptr {
-					g.write('(&(($got_styp[]){')
+					g.write('ADDR($got_styp, (')
 					g.expr(expr)
-					g.write('}[0])))')
+					g.write(')))')
 				} else {
 					g.expr(expr)
 					g.write(')')
 				}
 				if expected_is_ptr {
-					g.write('}, sizeof($exp_sym.cname))')
+					g.write(')')
 				}
 			}
 			return
@@ -5846,7 +5848,6 @@ fn (mut g Gen) interface_table() string {
 			current_iinidx++
 			// eprintln('>>> current_iinidx: ${current_iinidx-iinidx_minimum_base} | interface_index_name: $interface_index_name')
 			sb.writeln('$staticprefix $interface_name I_${cctype}_to_Interface_${interface_name}($cctype* x);')
-			sb.writeln('$staticprefix $interface_name* I_${cctype}_to_Interface_${interface_name}_ptr($cctype* x);')
 			mut cast_struct := strings.new_builder(100)
 			cast_struct.writeln('($interface_name) {')
 			cast_struct.writeln('\t\t._object = (void*) (x),')
@@ -5876,11 +5877,6 @@ fn (mut g Gen) interface_table() string {
 // Casting functions for converting "$cctype" to interface "$interface_name"
 $staticprefix inline $interface_name I_${cctype}_to_Interface_${interface_name}($cctype* x) {
 	return $cast_struct_str;
-}
-
-$staticprefix $interface_name* I_${cctype}_to_Interface_${interface_name}_ptr($cctype* x) {
-	// TODO Remove memdup
-	return ($interface_name*) memdup(&$cast_struct_str, sizeof($interface_name));
 }')
 
 			if g.pref.build_mode != .build_module {
