@@ -285,57 +285,63 @@ fn (mut c Checker) check_valid_pascal_case(name string, identifier string, pos t
 
 pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
 	match node {
-		ast.AliasTypeDecl {
-			// TODO Replace `c.file.mod.name != 'time'` by `it.language != .v` once available
-			if c.file.mod.name != 'time' && c.file.mod.name != 'builtin' {
-				c.check_valid_pascal_case(node.name, 'type alias', node.pos)
-			}
-			typ_sym := c.table.get_type_symbol(node.parent_type)
-			if typ_sym.kind in [.placeholder, .int_literal, .float_literal] {
-				c.error("type `$typ_sym.name` doesn't exist", node.pos)
-			} else if typ_sym.kind == .alias {
-				orig_sym := c.table.get_type_symbol((typ_sym.info as table.Alias).parent_type)
-				c.error('type `$typ_sym.str()` is an alias, use the original alias type `$orig_sym.name` instead',
-					node.pos)
-			} else if typ_sym.kind == .chan {
-				c.error('aliases of `chan` types are not allowed.', node.pos)
-			}
+		ast.AliasTypeDecl { c.alias_type_decl(node) }
+		ast.FnTypeDecl { c.fn_type_decl(node) }
+		ast.SumTypeDecl { c.sum_type_decl(node) }
+	}
+}
+
+pub fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
+	// TODO Replace `c.file.mod.name != 'time'` by `it.language != .v` once available
+	if c.file.mod.name != 'time' && c.file.mod.name != 'builtin' {
+		c.check_valid_pascal_case(node.name, 'type alias', node.pos)
+	}
+	typ_sym := c.table.get_type_symbol(node.parent_type)
+	if typ_sym.kind in [.placeholder, .int_literal, .float_literal] {
+		c.error("type `$typ_sym.name` doesn't exist", node.pos)
+	} else if typ_sym.kind == .alias {
+		orig_sym := c.table.get_type_symbol((typ_sym.info as table.Alias).parent_type)
+		c.error('type `$typ_sym.str()` is an alias, use the original alias type `$orig_sym.name` instead',
+			node.pos)
+	} else if typ_sym.kind == .chan {
+		c.error('aliases of `chan` types are not allowed.', node.pos)
+	}
+}
+
+pub fn (mut c Checker) fn_type_decl(node ast.FnTypeDecl) {
+	c.check_valid_pascal_case(node.name, 'fn type', node.pos)
+	typ_sym := c.table.get_type_symbol(node.typ)
+	fn_typ_info := typ_sym.info as table.FnType
+	fn_info := fn_typ_info.func
+	ret_sym := c.table.get_type_symbol(fn_info.return_type)
+	if ret_sym.kind == .placeholder {
+		c.error("type `$ret_sym.name` doesn't exist", node.pos)
+	}
+	for arg in fn_info.params {
+		arg_sym := c.table.get_type_symbol(arg.typ)
+		if arg_sym.kind == .placeholder {
+			c.error("type `$arg_sym.name` doesn't exist", node.pos)
 		}
-		ast.FnTypeDecl {
-			c.check_valid_pascal_case(node.name, 'fn type', node.pos)
-			typ_sym := c.table.get_type_symbol(node.typ)
-			fn_typ_info := typ_sym.info as table.FnType
-			fn_info := fn_typ_info.func
-			ret_sym := c.table.get_type_symbol(fn_info.return_type)
-			if ret_sym.kind == .placeholder {
-				c.error("type `$ret_sym.name` doesn't exist", node.pos)
-			}
-			for arg in fn_info.params {
-				arg_sym := c.table.get_type_symbol(arg.typ)
-				if arg_sym.kind == .placeholder {
-					c.error("type `$arg_sym.name` doesn't exist", node.pos)
-				}
-			}
+	}
+}
+
+pub fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
+	c.check_valid_pascal_case(node.name, 'sum type', node.pos)
+	mut names_used := []string{}
+	for variant in node.variants {
+		if variant.typ.is_ptr() {
+			c.error('sum type cannot hold a reference type', variant.pos)
 		}
-		ast.SumTypeDecl {
-			c.check_valid_pascal_case(node.name, 'sum type', node.pos)
-			mut names_used := []string{}
-			for variant in node.variants {
-				if variant.typ.is_ptr() {
-					c.error('sum type cannot hold a reference type', variant.pos)
-				}
-				mut sym := c.table.get_type_symbol(variant.typ)
-				if sym.name in names_used {
-					c.error('sum type $node.name cannot hold the type `$sym.name` more than once',
-						variant.pos)
-				} else if sym.kind in [.placeholder, .int_literal, .float_literal] {
-					c.error("type `$sym.name` doesn't exist", variant.pos)
-				} else if sym.kind == .interface_ {
-					c.error('sum type cannot hold an interface', variant.pos)
-				}
-				names_used << sym.name
-			}
+		mut sym := c.table.get_type_symbol(variant.typ)
+		if sym.name in names_used {
+			c.error('sum type $node.name cannot hold the type `$sym.name` more than once',
+				variant.pos)
+		} else if sym.kind in [.placeholder, .int_literal, .float_literal] {
+			c.error("type `$sym.name` doesn't exist", variant.pos)
+		} else if sym.kind == .interface_ {
+			c.error('sum type cannot hold an interface', variant.pos)
 		}
+		names_used << sym.name
 	}
 }
 
@@ -455,7 +461,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 		}
 	}
 	utyp := c.unwrap_generic(struct_init.typ)
-	c.ensure_type_exists(utyp, struct_init.pos) or {}
+	c.ensure_type_exists(utyp, struct_init.pos) or { }
 	type_sym := c.table.get_type_symbol(utyp)
 	if type_sym.kind == .sum_type && struct_init.fields.len == 1 {
 		sexpr := struct_init.fields[0].expr.str()
@@ -1849,7 +1855,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		c.error('cannot call a function that does not have a body', call_expr.pos)
 	}
 	for generic_type in call_expr.generic_types {
-		c.ensure_type_exists(generic_type, call_expr.generic_list_pos) or {}
+		c.ensure_type_exists(generic_type, call_expr.generic_list_pos) or { }
 	}
 	if f.generic_names.len > 0 && f.return_type.has_flag(.generic) {
 		rts := c.table.get_type_symbol(f.return_type)
@@ -1858,7 +1864,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 				gts := c.table.get_type_symbol(call_expr.generic_types[0])
 				nrt := '$rts.name<$gts.name>'
 				idx := c.table.type_idxs[nrt]
-				c.ensure_type_exists(idx, call_expr.pos) or {}
+				c.ensure_type_exists(idx, call_expr.pos) or { }
 				call_expr.return_type = table.new_type(idx).derive(f.return_type)
 			}
 		}
@@ -2972,7 +2978,7 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 		if array_init.has_len {
 			c.ensure_sumtype_array_has_default_value(array_init)
 		}
-		c.ensure_type_exists(array_init.elem_type, array_init.elem_type_pos) or {}
+		c.ensure_type_exists(array_init.elem_type, array_init.elem_type_pos) or { }
 		return array_init.typ
 	}
 	if array_init.is_fixed {
@@ -3660,7 +3666,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			expr_type_sym := c.table.get_type_symbol(node.expr_type)
 			type_sym := c.table.get_type_symbol(node.typ)
 			if expr_type_sym.kind == .sum_type {
-				c.ensure_type_exists(node.typ, node.pos) or {}
+				c.ensure_type_exists(node.typ, node.pos) or { }
 				if !c.table.sumtype_has_variant(node.expr_type, node.typ) {
 					c.error('cannot cast `$expr_type_sym.name` to `$type_sym.name`', node.pos)
 					// c.error('only $info.variants can be casted to `$typ`', node.pos)
@@ -3914,7 +3920,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
 	from_type_sym := c.table.get_type_symbol(node.expr_type)
 	to_type_sym := c.table.get_type_symbol(node.typ) // type to be used as cast
 	if to_type_sym.language != .c {
-		c.ensure_type_exists(node.typ, node.pos) or {}
+		c.ensure_type_exists(node.typ, node.pos) or { }
 	}
 	expr_is_ptr := node.expr_type.is_ptr() || node.expr_type.idx() in table.pointer_type_idxs
 	if expr_is_ptr && to_type_sym.kind == .string && !node.in_prexpr {
@@ -5557,8 +5563,8 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) table.Type {
 	// `x := map[string]string` - set in parser
 	if node.typ != 0 {
 		info := c.table.get_type_symbol(node.typ).map_info()
-		c.ensure_type_exists(info.key_type, node.pos) or {}
-		c.ensure_type_exists(info.value_type, node.pos) or {}
+		c.ensure_type_exists(info.key_type, node.pos) or { }
+		c.ensure_type_exists(info.value_type, node.pos) or { }
 		node.key_type = info.key_type
 		node.value_type = info.value_type
 		return node.typ
