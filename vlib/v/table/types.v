@@ -713,7 +713,7 @@ pub mut:
 	is_global        bool
 }
 
-fn (f &Field) equals(o &Field) bool {
+pub fn (f &Field) equals(o &Field) bool {
 	// TODO: f.is_mut == o.is_mut was removed here to allow read only access
 	// to (mut/not mut), but otherwise equal fields; some other new checks are needed:
 	// - if node is declared mut, and we mutate node.stmts, all stmts fields must be mutable
@@ -755,6 +755,9 @@ pub mut:
 pub struct SumType {
 pub:
 	variants []Type
+pub mut:
+	fields       []Field
+	found_fields bool
 }
 
 // human readable type name
@@ -971,6 +974,7 @@ pub fn (t &TypeSymbol) find_field(name string) ?Field {
 		Aggregate { return t.info.find_field(name) }
 		Struct { return t.info.find_field(name) }
 		Interface { return t.info.find_field(name) }
+		SumType { return t.info.find_field(name) }
 		else { return none }
 	}
 }
@@ -1023,6 +1027,15 @@ pub fn (s Struct) get_field(name string) Field {
 		return field
 	}
 	panic('unknown field `$name`')
+}
+
+pub fn (s &SumType) find_field(name string) ?Field {
+	for field in s.fields {
+		if field.name == name {
+			return field
+		}
+	}
+	return none
 }
 
 pub fn (i Interface) defines_method(name string) bool {

@@ -27,7 +27,7 @@ const (
 	]
 	valid_comp_if_compilers = ['gcc', 'tinyc', 'clang', 'mingw', 'msvc', 'cplusplus']
 	valid_comp_if_platforms = ['amd64', 'aarch64', 'x64', 'x32', 'little_endian', 'big_endian']
-	valid_comp_if_other     = ['js', 'debug', 'test', 'glibc', 'prealloc', 'no_bounds_checking']
+	valid_comp_if_other     = ['js', 'debug', 'prod', 'test', 'glibc', 'prealloc', 'no_bounds_checking']
 	array_builtin_methods   = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort',
 		'contains', 'index', 'wait']
 )
@@ -2293,7 +2293,7 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 					c.error('ambiguous field `$field_name`', selector_expr.pos)
 				}
 			}
-			if sym.kind == .aggregate {
+			if sym.kind in [.aggregate, .sum_type] {
 				unknown_field_msg = err
 			}
 		}
@@ -2321,7 +2321,7 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 		selector_expr.typ = field.typ
 		return field.typ
 	}
-	if sym.kind !in [.struct_, .aggregate, .interface_] {
+	if sym.kind !in [.struct_, .aggregate, .interface_, .sum_type] {
 		if sym.kind != .placeholder {
 			c.error('`$sym.name` is not a struct', selector_expr.pos)
 		}
@@ -2943,6 +2943,13 @@ fn (mut c Checker) check_array_init_para_type(para string, expr ast.Expr, pos to
 	}
 }
 
+pub fn (mut c Checker) ensure_sumtype_array_has_default_value(array_init ast.ArrayInit) {
+	sym := c.table.get_type_symbol(array_init.elem_type)
+	if sym.kind == .sum_type && !array_init.has_default {
+		c.error('cannot initialize sum type array without default value', array_init.pos)
+	}
+}
+
 pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 	// println('checker: array init $array_init.pos.line_nr $c.file.path')
 	mut elem_type := table.void_type
@@ -2956,20 +2963,21 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 				c.check_array_init_para_type('len', array_init.len_expr, array_init.pos)
 			}
 		}
-		sym := c.table.get_type_symbol(array_init.elem_type)
 		if array_init.has_default {
 			default_typ := c.expr(array_init.default_expr)
 			c.check_expected(default_typ, array_init.elem_type) or {
 				c.error(err.msg, array_init.default_expr.position())
 			}
 		}
-		if sym.kind == .sum_type {
-			if array_init.has_len && !array_init.has_default {
-				c.error('cannot initalize sum type array without default value', array_init.elem_type_pos)
-			}
+		if array_init.has_len {
+			c.ensure_sumtype_array_has_default_value(array_init)
 		}
 		c.ensure_type_exists(array_init.elem_type, array_init.elem_type_pos) or {}
 		return array_init.typ
+	}
+	if array_init.is_fixed {
+		c.ensure_sumtype_array_has_default_value(array_init)
+		c.ensure_type_exists(array_init.elem_type, array_init.elem_type_pos) or {}
 	}
 	// a = []
 	if array_init.exprs.len == 0 {
@@ -3056,11 +3064,16 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 			}
 			ast.Ident {
 				if init_expr.obj is ast.ConstField {
-					if cint := const_int_value(init_expr.obj) {
+					if cint := eval_int_expr(init_expr.obj.expr, 0) {
 						fixed_size = cint
 					}
 				} else {
 					c.error('non-constant array bound `$init_expr.name`', init_expr.pos)
+				}
+			}
+			ast.InfixExpr {
+				if cint := eval_int_expr(init_expr, 0) {
+					fixed_size = cint
 				}
 			}
 			else {
@@ -3080,17 +3093,43 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 	return array_init.typ
 }
 
-fn const_int_value(cfield ast.ConstField) ?int {
-	if cint := is_const_integer(cfield) {
-		return cint.val.int()
+fn eval_int_expr(expr ast.Expr, nlevel int) ?int {
+	if nlevel > 100 {
+		// protect against a too deep comptime eval recursion:
+		return none
 	}
-	return none
-}
-
-fn is_const_integer(cfield ast.ConstField) ?ast.IntegerLiteral {
-	match cfield.expr {
-		ast.IntegerLiteral { return cfield.expr }
-		else {}
+	match expr {
+		ast.IntegerLiteral {
+			return expr.val.int()
+		}
+		ast.InfixExpr {
+			left := eval_int_expr(expr.left, nlevel + 1) ?
+			right := eval_int_expr(expr.right, nlevel + 1) ?
+			match expr.op {
+				.plus { return left + right }
+				.minus { return left - right }
+				.mul { return left * right }
+				.div { return left / right }
+				.mod { return left % right }
+				.xor { return left ^ right }
+				.pipe { return left | right }
+				.amp { return left & right }
+				.left_shift { return left << right }
+				.right_shift { return left >> right }
+				else { return none }
+			}
+		}
+		ast.Ident {
+			if expr.obj is ast.ConstField {
+				// an int constant?
+				cint := eval_int_expr(expr.obj.expr, nlevel + 1) ?
+				return cint
+			}
+		}
+		else {
+			// dump(expr)
+			return none
+		}
 	}
 	return none
 }
@@ -3654,6 +3693,15 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		}
 		ast.CallExpr {
 			mut ret_type := c.call_expr(mut node)
+			if !ret_type.has_flag(.optional) {
+				if node.or_block.kind == .block {
+					c.error('unexpected `or` block, the function `$node.name` does not return an optional',
+						node.or_block.pos)
+				} else if node.or_block.kind == .propagate {
+					c.error('unexpected `?`, the function `$node.name` does not return an optional',
+						node.or_block.pos)
+				}
+			}
 			if ret_type.has_flag(.optional) && node.or_block.kind != .absent {
 				ret_type = ret_type.clear_flag(.optional)
 			}
@@ -5102,6 +5150,7 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 				match cond.name {
 					'js' { return c.pref.backend != .js }
 					'debug' { return !c.pref.is_debug }
+					'prod' { return !c.pref.is_prod }
 					'test' { return !c.pref.is_test }
 					'glibc' { return false } // TODO
 					'prealloc' { return !c.pref.prealloc }

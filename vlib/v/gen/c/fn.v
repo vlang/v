@@ -542,7 +542,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.write('tos3( /* $left_sym.name */ v_typeof_sumtype_${typ_sym.cname}( (')
 		g.expr(node.left)
 		dot := if node.left_type.is_ptr() { '->' } else { '.' }
-		g.write(')${dot}typ ))')
+		g.write(')${dot}_typ ))')
 		return
 	}
 	if left_sym.kind == .interface_ && node.name == 'type_name' {
