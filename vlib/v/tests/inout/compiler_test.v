@@ -21,7 +21,7 @@ fn test_all() {
 		println('no compiler tests found')
 		assert false
 	}
-	paths := vtest.filter_vtest_only(tests, 
+	paths := vtest.filter_vtest_only(tests,
 		basepath: dir
 	)
 	for path in paths {
@@ -40,13 +40,13 @@ fn test_all() {
 			panic(res.output)
 		}
 		$if windows {
-			os.rm('./test.exe') or { }
+			os.rm('./test.exe') or {}
 			$if msvc {
-				os.rm('./test.ilk') or { }
-				os.rm('./test.pdb') or { }
+				os.rm('./test.ilk') or {}
+				os.rm('./test.pdb') or {}
 			}
 		} $else {
-			os.rm('./test') or { }
+			os.rm('./test') or {}
 		}
 		// println('============')
 		// println(res.output)

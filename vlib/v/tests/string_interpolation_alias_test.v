@@ -22,7 +22,7 @@ fn test_map_alias_string() {
 type Duration = i64
 
 fn test_i64_number_alias_string() {
-    x := i64(9_123_456_789)
-    y := Duration(x)
-    assert '$x' == '$y'
+	x := i64(9_123_456_789)
+	y := Duration(x)
+	assert '$x' == '$y'
 }

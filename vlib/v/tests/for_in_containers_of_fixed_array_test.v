@@ -64,7 +64,11 @@ fn test_for_in_fixed_array_of_fixed_array_literal() {
 
 fn test_for_in_map_of_fixed_array() {
 	mut rets := []string{}
-	m := map{'aa': [1, 2]!, 'bb': [3, 4]!, 'cc': [5, 6]!}
+	m := map{
+		'aa': [1, 2]!
+		'bb': [3, 4]!
+		'cc': [5, 6]!
+	}
 
 	for k, v in m {
 		println('$k, $v')
@@ -77,7 +81,11 @@ fn test_for_in_map_of_fixed_array() {
 
 fn test_for_mut_in_map_of_fixed_array() {
 	mut rets := []string{}
-	mut m := map{'aa': [1, 2]!, 'bb': [3, 4]!, 'cc': [5, 6]!}
+	mut m := map{
+		'aa': [1, 2]!
+		'bb': [3, 4]!
+		'cc': [5, 6]!
+	}
 
 	for k, mut v in m {
 		println('$k, $v')

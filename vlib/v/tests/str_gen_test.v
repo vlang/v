@@ -305,7 +305,7 @@ fn test_alias_struct() {
 	assert '$t' == 'TestAlias(TestStruct{\n    x: 0\n})'
 }
 
-struct GenericStruct <T> {
+struct GenericStruct<T> {
 	x T
 }
 
@@ -315,7 +315,7 @@ fn test_generic_struct() {
 	assert x.str() == 'GenericStruct<TestStruct>{\n    x: TestStruct{\n        x: 0\n    }\n}'
 }
 
-struct MultiGenericStruct <T, X> {
+struct MultiGenericStruct<T, X> {
 	t T
 	x X
 }

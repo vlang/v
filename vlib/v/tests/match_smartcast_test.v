@@ -2,6 +2,7 @@ type Node = Expr | string
 type Expr = IfExpr | IntegerLiteral
 
 struct IntegerLiteral {}
+
 struct IfExpr {
 	pos int
 }
@@ -11,7 +12,9 @@ struct NodeWrapper {
 }
 
 fn test_nested_sumtype_match_selector() {
-	c := NodeWrapper{Node(Expr(IfExpr{pos: 1}))}
+	c := NodeWrapper{Node(Expr(IfExpr{
+		pos: 1
+	}))}
 	match c.node {
 		Expr {
 			match c.node {
@@ -30,7 +33,9 @@ fn test_nested_sumtype_match_selector() {
 }
 
 fn test_nested_sumtype_match() {
-	c := Node(Expr(IfExpr{pos: 1}))
+	c := Node(Expr(IfExpr{
+		pos: 1
+	}))
 	match c {
 		Expr {
 			match c {
@@ -58,7 +63,7 @@ mut:
 	name string
 }
 
-type Food = Milk | Eggs
+type Food = Eggs | Milk
 
 struct FoodWrapper {
 mut:
