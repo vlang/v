@@ -378,7 +378,7 @@ pub fn (mut f Fmt) stmt_str(node ast.Stmt) string {
 
 pub fn (mut f Fmt) stmt(node ast.Stmt) {
 	if f.is_debug {
-		eprintln('stmt: ${node.position():-42} | node: ${node.type_name():-20}')
+		eprintln('stmt: ${node.pos:-42} | node: ${node.type_name():-20}')
 	}
 	match node {
 		ast.AssignStmt {

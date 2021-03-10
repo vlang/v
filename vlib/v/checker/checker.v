@@ -3602,7 +3602,7 @@ fn (mut c Checker) stmts(stmts []ast.Stmt) {
 	for stmt in stmts {
 		if c.scope_returns {
 			if unreachable.line_nr == -1 {
-				unreachable = stmt.position()
+				unreachable = stmt.pos
 			}
 		}
 		c.stmt(stmt)
@@ -4411,7 +4411,7 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 			for st in branch.stmts[0..branch.stmts.len - 1] {
 				// must not contain C statements
 				st.check_c_expr() or {
-					c.error('`match` expression branch has $err', st.position())
+					c.error('`match` expression branch has $err', st.pos)
 				}
 			}
 		}
@@ -4791,7 +4791,7 @@ pub fn (mut c Checker) select_expr(mut node ast.SelectExpr) table.Type {
 			}
 			else {
 				if !branch.is_else {
-					c.error('receive or send statement expected as `select` key', branch.stmt.position())
+					c.error('receive or send statement expected as `select` key', branch.stmt.pos)
 				}
 			}
 		}
@@ -5031,7 +5031,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 			}
 			for st in branch.stmts {
 				// must not contain C statements
-				st.check_c_expr() or { c.error('`if` expression branch has $err', st.position()) }
+				st.check_c_expr() or { c.error('`if` expression branch has $err', st.pos) }
 			}
 		}
 		// Also check for returns inside a comp.if's statements, even if its contents aren't parsed
