@@ -104,7 +104,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 	name := node.name.after('.')
 	f.write(name)
 	if node.gen_types.len > 0 {
-		f.write(' <')
+		f.write('<')
 		gtypes := node.gen_types.map(f.table.type_to_str(it)).join(', ')
 		f.write(gtypes)
 		f.write('>')
