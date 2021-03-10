@@ -4410,9 +4410,7 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 			// probably any mismatch will be caught by not producing a value instead
 			for st in branch.stmts[0..branch.stmts.len - 1] {
 				// must not contain C statements
-				st.check_c_expr() or {
-					c.error('`match` expression branch has $err', st.pos)
-				}
+				st.check_c_expr() or { c.error('`match` expression branch has $err', st.pos) }
 			}
 		}
 		// If the last statement is an expression, return its type
