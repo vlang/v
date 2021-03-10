@@ -670,6 +670,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				p.label_names << name
 				p.next()
 				if p.tok.kind == .key_for {
+					for_pos := p.tok.position()
 					mut stmt := p.stmt(is_top_level)
 					match mut stmt {
 						ast.ForStmt {
@@ -685,7 +686,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 							return stmt
 						}
 						else {
-							assert false
+							p.error_with_pos('unknown kind of For statement', for_pos)
 						}
 					}
 				}
@@ -1031,7 +1032,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 			if node !is ast.CallExpr && (is_top_level || p.tok.kind != .rcbr)
 				&& node !is ast.PostfixExpr && !(node is ast.InfixExpr
 				&& (node as ast.InfixExpr).op in [.left_shift, .arrow]) && node !is ast.ComptimeCall
-				&& node !is ast.SelectorExpr {
+				&& node !is ast.SelectorExpr && node !is ast.DumpExpr {
 				p.error_with_pos('expression evaluated but not used', node.position())
 				return ast.Stmt{}
 			}
@@ -1390,7 +1391,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		if mod != '' {
 			enum_name = mod + '.' + enum_name
 		} else {
-			enum_name = p.prepend_mod(enum_name)
+			enum_name = p.imported_symbols[enum_name] or { p.prepend_mod(enum_name) }
 		}
 		// p.warn('Color.green $enum_name ' + p.prepend_mod(enum_name) + 'mod=$mod')
 		p.check(.dot)
@@ -2317,7 +2318,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		}
 		variant_types := sum_variants.map(it.typ)
 		prepend_mod_name := p.prepend_mod(name)
-		p.table.register_type_symbol(table.TypeSymbol{
+		typ := p.table.register_type_symbol(table.TypeSymbol{
 			kind: .sum_type
 			name: prepend_mod_name
 			cname: util.no_dots(prepend_mod_name)
@@ -2330,6 +2331,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		comments = p.eat_comments(same_line: true)
 		return ast.SumTypeDecl{
 			name: name
+			typ: typ
 			is_pub: is_pub
 			variants: sum_variants
 			pos: decl_pos

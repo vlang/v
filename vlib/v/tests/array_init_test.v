@@ -243,6 +243,8 @@ fn test_array_init_inferred_from_optional() {
 			}
 		}
 	}
+	println(a)
+	println(b)
 }
 
 fn read() ?[]string {

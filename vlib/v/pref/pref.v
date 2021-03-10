@@ -451,6 +451,9 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			}
 		}
 	}
+	if res.is_debug {
+		parse_define(mut res, 'debug')
+	}
 	// res.use_cache = true
 	if command != 'doc' && res.out_name.ends_with('.v') {
 		eprintln('Cannot save output binary in a .v file.')
@@ -490,7 +493,7 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			//
 			if output_option.len != 0 {
 				res.vrun_elog('remove tmp exe file: $tmp_exe_file_path')
-				os.rm(tmp_exe_file_path) or { }
+				os.rm(tmp_exe_file_path) or {}
 			}
 			res.vrun_elog('remove tmp v file: $tmp_v_file_path')
 			os.rm(tmp_v_file_path) or { panic(err) }

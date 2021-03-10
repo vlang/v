@@ -13,7 +13,8 @@ or Markdown format.
 
 Options:
   -all            Includes private and public functions/methods/structs/consts/enums.
-  -f              Specifies the output format to be used.
+  -f              Specifies the output format to be used. Available formats are:
+                  md/markdown, json, text, stdout and html/htm
   -h, -help       Prints this help text.
   -m              Generate docs for modules listed in that folder.
   -o              Specifies the output file/folder path where to store the generated docs.

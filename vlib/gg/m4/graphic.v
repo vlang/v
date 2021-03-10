@@ -24,14 +24,40 @@ pub fn deg(grad f32) f32 {
 	return (180.0 / math.pi) * grad
 }
 
-// Calculate the perspective matrix
+// calculate the Orthographic projection matrix
+pub fn ortho(left f32, right f32, bottom f32, top f32, z_near f32, z_far f32) Mat4 {
+	rml := right - left
+	rpl := right + left
+	tmb := top - bottom
+	tpb := top + bottom
+	fmn := z_far - z_near
+	fpn := z_far + z_near
+	if fmn != 0 {
+		return Mat4{ e: [
+				2 / rml, 0      ,       0, -(rpl / rml),
+				0      , 2 / tmb,       0, -(tpb / tmb),
+				0      ,       0, 2 / fmn, -(fpn / fmn),
+				0      ,       0,       0,            1,
+			]!
+		}
+	} 
+	return Mat4{ e: [
+			2 / rml, 0      ,       0, -(rpl / rml),
+			0      , 2 / tmb,       0, -(tpb / tmb),
+			0      ,       0,       0,            0,
+			0      ,       0,       0,            1,
+		]!
+	}
+}
+
+// Calculate the perspective matrix using (fov:fov, ar:aspect_ratio ,n:near_pane, f:far_plane) as parameters
 pub fn perspective(fov f32, ar f32, n f32, f f32) Mat4 {
 	ctan := f32(1.0 / math.tan(fov * (f32(math.pi) / 360.0))) // for the FOV we use 360 instead 180
 	return Mat4{ e: [
-		ctan / ar, 	0,		0, 							0,
-			0,		ctan, 	0, 							0,
-			0,		0,		(n + f) / (n - f), 			-1.0,
-			0,		0, 		(2.0 * n * f) / (n - f), 	0,
+		  ctan / ar, 	  0,		                   0, 							0,
+			0,		     ctan, 	                     0, 							0,
+			0,		        0,		   (n + f) / (n - f), 			     -1.0,
+			0,		        0, (2.0 * n * f) / (n - f), 	            0,
 		]!
 	}
 }
@@ -66,21 +92,6 @@ pub fn look_at(eye Vec4, center Vec4, up Vec4) Mat4 {
 	}
 }
 
-/*
-hmm_mat4 proj = HMM_Perspective(60.0f, w/h, 0.01f, 10.0f);
-	hmm_mat4 view = HMM_LookAt(HMM_Vec3(0.0f, 1.5f, 6.0f), HMM_Vec3(0.0f, 0.0f, 0.0f), HMM_Vec3(0.0f, 1.0f, 0.0f));
-	hmm_mat4 view_proj = HMM_MultiplyMat4(proj, view);
-	//state.rx += 1.0f; state.ry += 2.0f;
-
-
-	hmm_mat4 rxm = HMM_Rotate(rx, HMM_Vec3(1.0f, 0.0f, 0.0f));
-	hmm_mat4 rym = HMM_Rotate(ry, HMM_Vec3(0.0f, 1.0f, 0.0f));
-
-	hmm_mat4 model = HMM_MultiplyMat4(rxm, rym);
-	hmm_mat4 scale_mx = HMM_Scale(HMM_Vec3(scale, scale, scale));
-	model = HMM_MultiplyMat4(model, scale_mx);
-	hmm_mat4 tmp_res = HMM_MultiplyMat4(view_proj, model);
-*/
 
 // Get the complete transformation matrix for GLSL demos
 pub fn calc_tr_matrices(w f32, h f32, rx f32, ry f32, in_scale f32) Mat4 {

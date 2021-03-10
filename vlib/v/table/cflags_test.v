@@ -54,7 +54,7 @@ fn test_parse_invalid_cflags() {
 }
 
 fn parse_valid_flag(mut t table.Table, flag string) {
-	t.parse_cflag(flag, module_name, cdefines) or { }
+	t.parse_cflag(flag, module_name, cdefines) or {}
 }
 
 fn assert_parse_invalid_flag(mut t table.Table, flag string) {

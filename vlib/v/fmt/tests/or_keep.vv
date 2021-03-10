@@ -1,3 +1,9 @@
+fn main() {
+	empty_or_block() or {}
+	empty_or_block() or {
+	}
+}
+
 fn fn_with_or() int {
 	fn_with_optional() or { return 10 }
 	return 20

@@ -1,3 +1,9 @@
+// Keep empty lines between types
+type Expr = IfExpr | IntegerLiteral
+
+type Node2 = Expr | string
+type MyInt = int
+
 // Keep empty lines in const blocks
 const (
 	_ = SomeStruct{

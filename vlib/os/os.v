@@ -138,11 +138,11 @@ pub fn rmdir_all(path string) ? {
 	for item in items {
 		fullpath := join_path(path, item)
 		if is_dir(fullpath) {
-			rmdir_all(fullpath) or { ret_err = err }
+			rmdir_all(fullpath) or { ret_err = err.msg }
 		}
-		rm(fullpath) or { ret_err = err }
+		rm(fullpath) or { ret_err = err.msg }
 	}
-	rmdir(path) or { ret_err = err }
+	rmdir(path) or { ret_err = err.msg }
 	if ret_err.len > 0 {
 		return error(ret_err)
 	}
@@ -595,4 +595,23 @@ pub mut:
 	release  string
 	version  string
 	machine  string
+}
+
+[deprecated: 'use os.execute or os.execute_or_panic instead']
+pub fn exec(cmd string) ?Result {
+	res := execute(cmd)
+	if res.exit_code < 0 {
+		return error_with_code(res.output, -1)
+	}
+	return res
+}
+
+pub fn execute_or_panic(cmd string) Result {
+	res := execute(cmd)
+	if res.exit_code != 0 {
+		eprintln('failed    cmd: $cmd')
+		eprintln('failed   code: $res.exit_code')
+		panic(res.output)
+	}
+	return res
 }

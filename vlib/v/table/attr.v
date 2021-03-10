@@ -29,9 +29,7 @@ pub fn (attr Attr) str() string {
 		if attr.arg.len > 0 {
 			s += ': '
 			if attr.is_string_arg {
-				mut a := attr.arg.replace('\\', '\\\\')
-				// FIXME: other escapes e.g. \r\n
-				a = a.replace("'", "\\'")
+				a := attr.arg.replace("'", "\\'")
 				s += "'$a'"
 			} else {
 				s += attr.arg
@@ -48,4 +46,13 @@ pub fn (attrs []Attr) contains(str string) bool {
 		}
 	}
 	return false
+}
+
+pub fn (attrs []Attr) has_comptime_define() (bool, string) {
+	for a in attrs {
+		if a.is_comptime_define {
+			return true, a.name
+		}
+	}
+	return false, ''
 }

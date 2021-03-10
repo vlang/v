@@ -107,8 +107,11 @@ fn new_ft(c FTConfig) ?&FT {
 			return none
 		}
 	}
-	bold_path := if c.custom_bold_font_path != '' { c.custom_bold_font_path } else { get_font_path_variant(c.font_path,
-			.bold) }
+	bold_path := if c.custom_bold_font_path != '' {
+		c.custom_bold_font_path
+	} else {
+		get_font_path_variant(c.font_path, .bold)
+	}
 	bytes_bold := os.read_bytes(bold_path) or {
 		debug_font_println('failed to load font "$bold_path"')
 		bytes
@@ -290,7 +293,10 @@ pub fn system_font_path() string {
 			}
 		}
 	}
-	s := os.exec('fc-list') or { panic('failed to fetch system fonts') }
+	s := os.execute('fc-list')
+	if s.exit_code != 0 {
+		panic('failed to fetch system fonts')
+	}
 	system_fonts := s.output.split('\n')
 	for line in system_fonts {
 		for font in fonts {

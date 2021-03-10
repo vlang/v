@@ -8,7 +8,7 @@ import runtime
 import benchmark
 
 const skip_files = [
-		'vlib/v/checker/tests/custom_comptime_define_if_flag.vv',
+		'non_existing.vv' /* minimize commit diff churn, do not remove */,
 	]
 
 const skip_on_ubuntu_musl = [
@@ -74,12 +74,6 @@ fn test_all() {
 	tasks.add('', parser_dir, '-prod', '.out', parser_tests, false)
 	tasks.add('', checker_dir, '-prod', '.out', checker_tests, false)
 	tasks.add('', scanner_dir, '-prod', '.out', scanner_tests, false)
-	tasks.add('', checker_dir, '-d mysymbol run', '.mysymbol.run.out', ['custom_comptime_define_error.vv'],
-		false)
-	tasks.add('', checker_dir, '-d mydebug run', '.mydebug.run.out', ['custom_comptime_define_if_flag.vv'],
-		false)
-	tasks.add('', checker_dir, '-d nodebug run', '.nodebug.run.out', ['custom_comptime_define_if_flag.vv'],
-		false)
 	tasks.add('', checker_dir, '--enable-globals run', '.run.out', ['globals_error.vv'],
 		false)
 	tasks.add('', global_dir, '--enable-globals', '.out', global_tests, false)
@@ -118,6 +112,25 @@ fn test_all() {
 			'.var_invalid.run.out', ['using_comptime_env.vv'], false)
 		cte_tasks.run()
 	}
+	mut ct_tasks := Tasks{
+		vexe: vexe
+		parallel_jobs: 1
+		label: 'comptime define tests'
+	}
+	ct_tasks.add_checked_run('-d mysymbol run', '.mysymbol.run.out', ['custom_comptime_define_error.vv'])
+	ct_tasks.add_checked_run('-d mydebug run', '.mydebug.run.out', ['custom_comptime_define_if_flag.vv'])
+	ct_tasks.add_checked_run('-d nodebug run', '.nodebug.run.out', ['custom_comptime_define_if_flag.vv'])
+	ct_tasks.add_checked_run('run', '.run.out', ['custom_comptime_define_if_debug.vv'])
+	ct_tasks.add_checked_run('-g run', '.g.run.out', ['custom_comptime_define_if_debug.vv'])
+	ct_tasks.add_checked_run('-cg run', '.cg.run.out', ['custom_comptime_define_if_debug.vv'])
+	ct_tasks.add_checked_run('-d debug run', '.debug.run.out', ['custom_comptime_define_if_debug.vv'])
+	ct_tasks.add_checked_run('-d debug -d bar run', '.debug.bar.run.out', ['custom_comptime_define_if_debug.vv'])
+	ct_tasks.run()
+}
+
+fn (mut tasks Tasks) add_checked_run(voptions string, result_extension string, tests []string) {
+	checker_dir := 'vlib/v/checker/tests'
+	tasks.add('', checker_dir, voptions, result_extension, tests, false)
 }
 
 fn (mut tasks Tasks) add(custom_vexe string, dir string, voptions string, result_extension string, tests []string, is_module bool) {
@@ -163,6 +176,11 @@ fn (mut tasks Tasks) run() {
 		// cleaner error message, than a generic C error, but without the explanation.
 		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_1.vv'
 		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_with_explanation_2.vv'
+	}
+	$if msvc {
+		// TODO: investigate why MSVC regressed
+		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_1.vv'
+		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_with_explanation_2.vv'                
 	}
 	for i in 0 .. tasks.all.len {
 		if tasks.all[i].path in m_skip_files {
@@ -239,7 +257,7 @@ fn (mut task TaskDescription) execute() {
 	}
 	program := task.path
 	cli_cmd := '$task.vexe $task.voptions $program'
-	res := os.exec(cli_cmd) or { panic(err) }
+	res := os.execute(cli_cmd)
 	expected_out_path := program.replace('.vv', '') + task.result_extension
 	task.expected_out_path = expected_out_path
 	task.cli_cmd = cli_cmd

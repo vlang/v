@@ -12,8 +12,9 @@ pub mut:
 	types         []TypeSymbol
 	type_idxs     map[string]int
 	fns           map[string]Fn
-	imports       []string // List of all imports
-	modules       []string // Topologically sorted list of all modules registered by the application
+	dumps         map[int]string // needed for efficiently generating all _v_dump_expr_TNAME() functions
+	imports       []string       // List of all imports
+	modules       []string       // Topologically sorted list of all modules registered by the application
 	cflags        []cflag.CFlag
 	redefined_fns []string
 	fn_gen_types  map[string][][]Type // for generic functions
@@ -31,12 +32,13 @@ pub:
 	language       Language
 	generic_names  []string
 	is_pub         bool
-	is_deprecated  bool
-	is_unsafe      bool
+	is_deprecated  bool // `[deprecated] fn abc(){}`
+	is_unsafe      bool // `[unsafe] fn abc(){}`
 	is_placeholder bool
-	is_main        bool
-	is_test        bool
-	no_body        bool
+	is_main        bool // `fn main(){}`
+	is_test        bool // `fn test_abc(){}`
+	is_conditional bool // `[if abc]fn(){}`
+	no_body        bool // a pure declaration like `fn abc(x int)`; used in .vh files, C./JS. fns.
 	mod            string
 	ctdefine       string // compile time define. "myflag", when [if myflag] tag
 	attrs          []Attr
@@ -275,20 +277,32 @@ pub fn (t &Table) find_field(s &TypeSymbol, name string) ?Field {
 	// println('find_field($s.name, $name) types.len=$t.types.len s.parent_idx=$s.parent_idx')
 	mut ts := s
 	for {
-		if mut ts.info is Struct {
-			if field := ts.info.find_field(name) {
+		match mut ts.info {
+			Struct {
+				if field := ts.info.find_field(name) {
+					return field
+				}
+			}
+			Aggregate {
+				if field := ts.info.find_field(name) {
+					return field
+				}
+				field := t.register_aggregate_field(mut ts, name) or { return err }
 				return field
 			}
-		} else if mut ts.info is Aggregate {
-			if field := ts.info.find_field(name) {
-				return field
+			Interface {
+				if field := ts.info.find_field(name) {
+					return field
+				}
 			}
-			field := t.register_aggregate_field(mut ts, name) or { return err }
-			return field
-		} else if mut ts.info is Interface {
-			if field := ts.info.find_field(name) {
-				return field
+			SumType {
+				t.resolve_common_sumtype_fields(s)
+				if field := ts.info.find_field(name) {
+					return field
+				}
+				return error('field `$name` does not exist or have the same type in all sumtype variants')
 			}
+			else {}
 		}
 		if ts.parent_idx == 0 {
 			break
@@ -322,6 +336,46 @@ pub fn (t &Table) find_field_with_embeds(sym &TypeSymbol, field_name string) ?Fi
 		}
 		return err
 	}
+}
+
+pub fn (t &Table) resolve_common_sumtype_fields(sym_ &TypeSymbol) {
+	mut sym := sym_
+	mut info := sym.info as SumType
+	if info.found_fields {
+		return
+	}
+	mut field_map := map[string]Field{}
+	mut field_usages := map[string]int{}
+	for variant in info.variants {
+		mut v_sym := t.get_type_symbol(variant)
+		fields := match mut v_sym.info {
+			Struct {
+				v_sym.info.fields
+			}
+			SumType {
+				t.resolve_common_sumtype_fields(v_sym)
+				v_sym.info.fields
+			}
+			else {
+				[]Field{}
+			}
+		}
+		for field in fields {
+			if field.name !in field_map {
+				field_map[field.name] = field
+				field_usages[field.name]++
+			} else if field.equals(field_map[field.name]) {
+				field_usages[field.name]++
+			}
+		}
+	}
+	for field, nr_definitions in field_usages {
+		if nr_definitions == info.variants.len {
+			info.fields << field_map[field]
+		}
+	}
+	info.found_fields = true
+	sym.info = info
 }
 
 [inline]

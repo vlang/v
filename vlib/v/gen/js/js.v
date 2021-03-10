@@ -10,19 +10,17 @@ import v.depgraph
 
 const (
 	// https://ecma-international.org/ecma-262/#sec-reserved-words
-	js_reserved = ['await', 'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger',
+	js_reserved        = ['await', 'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger',
 		'default', 'delete', 'do', 'else', 'enum', 'export', 'extends', 'finally', 'for', 'function',
 		'if', 'implements', 'import', 'in', 'instanceof', 'interface', 'let', 'new', 'package',
 		'private', 'protected', 'public', 'return', 'static', 'super', 'switch', 'this', 'throw',
 		'try', 'typeof', 'var', 'void', 'while', 'with', 'yield', 'Number', 'String', 'Boolean',
 		'Array', 'Map']
 	// used to generate type structs
-	v_types     = ['i8', 'i16', 'int', 'i64', 'byte', 'u16', 'u32', 'u64', 'f32', 'f64', 'int_literal',
-		'float_literal', 'size_t', 'bool', 'string', 'map', 'array']
-	shallow_equatables  = [table.Kind.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64, .int_literal,
-		.float_literal, .size_t, .bool, .string]
-	tabs        = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t',
-		'\t\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t\t']
+	v_types            = ['i8', 'i16', 'int', 'i64', 'byte', 'u16', 'u32', 'u64', 'f32', 'f64',
+		'int_literal', 'float_literal', 'size_t', 'bool', 'string', 'map', 'array']
+	shallow_equatables = [table.Kind.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64,
+		.int_literal, .float_literal, .size_t, .bool, .string]
 )
 
 struct Namespace {
@@ -60,8 +58,8 @@ mut:
 	method_fn_decls     map[string][]ast.FnDecl
 	builtin_fns         []string // Functions defined in `builtin`
 	empty_line          bool
-	cast_stack					[]table.Type
-	call_stack					[]ast.CallExpr
+	cast_stack          []table.Type
+	call_stack          []ast.CallExpr
 }
 
 pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string {
@@ -115,7 +113,7 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 	mut out := g.hashes() + g.definitions.str()
 	// equality check for js objects
 	// TODO: Fix msvc bug that's preventing $embed_file('fast_deep_equal.js')
-	//unsafe {
+	// unsafe {
 	//	mut eq_fn := $embed_file('fast_deep_equal.js')
 	//	out += eq_fn.data().vstring()
 	//}
@@ -261,7 +259,7 @@ fn verror(msg string) {
 [inline]
 pub fn (mut g JsGen) gen_indent() {
 	if g.ns.indent > 0 && g.empty_line {
-		g.ns.out.write_string(js.tabs[g.ns.indent])
+		g.ns.out.write_string(util.tabs(g.ns.indent))
 	}
 	g.empty_line = false
 }
@@ -446,6 +444,9 @@ fn (mut g JsGen) expr(node ast.Expr) {
 	match node {
 		ast.CTempVar {
 			g.write('/* ast.CTempVar: node.name */')
+		}
+		ast.DumpExpr {
+			g.write('/* ast.DumpExpr: $node.expr */')
 		}
 		ast.AnonFn {
 			g.gen_fn_decl(node.decl)
@@ -689,10 +690,12 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt) {
 			} else {
 				g.write(' $op ')
 				// TODO: Multiple types??
-				should_cast := g.table.type_kind(stmt.left_types.first()) in shallow_equatables
+				should_cast := g.table.type_kind(stmt.left_types.first()) in js.shallow_equatables
 				if should_cast {
 					g.cast_stack << stmt.left_types.first()
-					if g.file.mod.name == 'builtin' { g.write('new ') }
+					if g.file.mod.name == 'builtin' {
+						g.write('new ')
+					}
 					g.write('${g.typ(stmt.left_types.first())}(')
 				}
 				g.expr(val)
@@ -845,7 +848,9 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
 	}
 	g.fn_args(args, it.is_variadic)
 	if it.is_method {
-		if args.len > 0 { g.write(', ') }
+		if args.len > 0 {
+			g.write(', ')
+		}
 		g.write('${it.params[0].name} = this')
 	}
 	g.writeln(') {')
@@ -926,13 +931,23 @@ fn (mut g JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 		if val !in ['', '_'] {
 			g.write('\tconst $val = ')
 			if it.kind == .string {
-				if g.file.mod.name == 'builtin' { g.write('new ') }
+				if g.file.mod.name == 'builtin' {
+					g.write('new ')
+				}
 				g.write('byte(')
 			}
 			g.expr(it.cond)
-			g.write(if it.kind == .array { '.arr' } else if it.kind == .string { '.str' } else { '.val' })
+			g.write(if it.kind == .array {
+				'.arr'
+			} else if it.kind == .string {
+				'.str'
+			} else {
+				'.val'
+			})
 			g.write('[$i]')
-			if it.kind == .string { g.write(')') }
+			if it.kind == .string {
+				g.write(')')
+			}
 			g.writeln(';')
 		}
 		g.stmts(it.stmts)
@@ -1369,11 +1384,13 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 	r_sym := g.table.get_type_symbol(it.right_type)
 
 	is_not := it.op in [.not_in, .not_is, .ne]
-	if is_not { g.write('!(') }
+	if is_not {
+		g.write('!(')
+	}
 
 	if it.op == .eq || it.op == .ne {
 		// Shallow equatables
-		if l_sym.kind in shallow_equatables && r_sym.kind in shallow_equatables {
+		if l_sym.kind in js.shallow_equatables && r_sym.kind in js.shallow_equatables {
 			g.expr(it.left)
 			g.write('.eq(')
 			g.expr(it.right)
@@ -1404,7 +1421,9 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 			'.includes('
 		})
 		g.expr(it.left)
-		if l_sym.kind == .string { g.write('.str') }
+		if l_sym.kind == .string {
+			g.write('.str')
+		}
 		g.write(')')
 	} else if it.op in [.key_is, .not_is] { // foo is Foo
 		g.expr(it.left)
@@ -1423,7 +1442,7 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 			g.cast_stack << greater_typ
 		}
 		g.expr(it.left)
-		g.write(' ${it.op} ')
+		g.write(' $it.op ')
 		g.expr(it.right)
 
 		if is_arithmetic && needs_cast {
@@ -1432,7 +1451,9 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		}
 	}
 
-	if is_not { g.write(')') }
+	if is_not {
+		g.write(')')
+	}
 }
 
 fn (mut g JsGen) greater_typ(left table.Type, right table.Type) table.Type {
@@ -1560,7 +1581,7 @@ fn (mut g JsGen) gen_string_literal(it ast.StringLiteral) {
 		if g.file.mod.name == 'builtin' {
 			g.write('new ')
 		}
-		g.write("string(")
+		g.write('string(')
 	}
 	g.write("'$text'")
 	if should_cast {
@@ -1651,15 +1672,15 @@ fn (mut g JsGen) gen_integer_literal_expr(it ast.IntegerLiteral) {
 	// TODO: call.language always seems to be "v", parser bug?
 	if g.call_stack.len > 0 {
 		call := g.call_stack[g.call_stack.len - 1]
-		//if call.language == .js {
-			for t in call.args {
-				if t.expr is ast.IntegerLiteral {
-					if t.expr == it {
-						g.write(it.val)
-						return
-					}
+		// if call.language == .js {
+		for t in call.args {
+			if t.expr is ast.IntegerLiteral {
+				if t.expr == it {
+					g.write(it.val)
+					return
 				}
 			}
+		}
 		//}
 	}
 
@@ -1680,24 +1701,24 @@ fn (mut g JsGen) gen_integer_literal_expr(it ast.IntegerLiteral) {
 
 fn (mut g JsGen) gen_float_literal_expr(it ast.FloatLiteral) {
 	typ := table.Type(table.f32_type)
-	
+
 	// Don't wrap integers for use in JS.foo functions.
 	// TODO: call.language always seems to be "v", parser bug?
 	if g.call_stack.len > 0 {
 		call := g.call_stack[g.call_stack.len - 1]
-		//if call.language == .js {
-			for i, t in call.args {
-				if t.expr is ast.FloatLiteral {
-					if t.expr == it {
-						if call.expected_arg_types[i] in table.integer_type_idxs {
-							g.write(int(it.val.f64()).str())
-						} else {
-							g.write(it.val)
-						}
-						return
+		// if call.language == .js {
+		for i, t in call.args {
+			if t.expr is ast.FloatLiteral {
+				if t.expr == it {
+					if call.expected_arg_types[i] in table.integer_type_idxs {
+						g.write(int(it.val.f64()).str())
+					} else {
+						g.write(it.val)
 					}
+					return
 				}
 			}
+		}
 		//}
 	}
 
