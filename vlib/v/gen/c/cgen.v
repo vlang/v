@@ -3808,7 +3808,7 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 			}
 		}
 		g.stmts_with_tmp_var(branch.stmts, tmp_var)
-		if g.inside_ternary == 0 && node.branches.len > 1 {
+		if g.inside_ternary == 0 && node.branches.len >= 1 {
 			g.write('}')
 		}
 	}
