@@ -25,10 +25,12 @@ pub mut:
 	oks      int
 }
 
-fn (mut res CheckResult) merge(v CheckResult) {
-	res.warnings += v.warnings
-	res.errors += v.errors
-	res.oks += v.oks
+fn (v1 CheckResult) + (v2 CheckResult) CheckResult {
+	return CheckResult{
+		warnings: v1.warnings + v2.warnings
+		errors: v1.errors + v2.errors
+		oks: v1.oks + v2.oks
+	}
 }
 
 fn main() {
@@ -61,7 +63,7 @@ fn main() {
 			path: file_path
 			lines: lines
 		}
-		res.merge(mdfile.check())
+		res += mdfile.check()
 	}
 	if res.warnings > 0 || res.errors > 0 || res.oks > 0 {
 		println('\nWarnings: $res.warnings | Errors: $res.errors | OKs: $res.oks')
@@ -172,7 +174,7 @@ fn (mut f MDFile) check() CheckResult {
 		}
 		f.parse_line(j, line)
 	}
-	res.merge(f.check_examples())
+	res += f.check_examples()
 	return res
 }
 
