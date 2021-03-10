@@ -27,7 +27,7 @@ const (
 	]
 	valid_comp_if_compilers = ['gcc', 'tinyc', 'clang', 'mingw', 'msvc', 'cplusplus']
 	valid_comp_if_platforms = ['amd64', 'aarch64', 'x64', 'x32', 'little_endian', 'big_endian']
-	valid_comp_if_other     = ['js', 'debug', 'test', 'glibc', 'prealloc', 'no_bounds_checking']
+	valid_comp_if_other     = ['js', 'debug', 'prod', 'test', 'glibc', 'prealloc', 'no_bounds_checking']
 	array_builtin_methods   = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort',
 		'contains', 'index', 'wait']
 )
@@ -5150,6 +5150,7 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 				match cond.name {
 					'js' { return c.pref.backend != .js }
 					'debug' { return !c.pref.is_debug }
+					'prod' { return !c.pref.is_prod }
 					'test' { return !c.pref.is_test }
 					'glibc' { return false } // TODO
 					'prealloc' { return !c.pref.prealloc }
