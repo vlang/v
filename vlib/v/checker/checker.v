@@ -285,57 +285,63 @@ fn (mut c Checker) check_valid_pascal_case(name string, identifier string, pos t
 
 pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
 	match node {
-		ast.AliasTypeDecl {
-			// TODO Replace `c.file.mod.name != 'time'` by `it.language != .v` once available
-			if c.file.mod.name != 'time' && c.file.mod.name != 'builtin' {
-				c.check_valid_pascal_case(node.name, 'type alias', node.pos)
-			}
-			typ_sym := c.table.get_type_symbol(node.parent_type)
-			if typ_sym.kind in [.placeholder, .int_literal, .float_literal] {
-				c.error("type `$typ_sym.name` doesn't exist", node.pos)
-			} else if typ_sym.kind == .alias {
-				orig_sym := c.table.get_type_symbol((typ_sym.info as table.Alias).parent_type)
-				c.error('type `$typ_sym.str()` is an alias, use the original alias type `$orig_sym.name` instead',
-					node.pos)
-			} else if typ_sym.kind == .chan {
-				c.error('aliases of `chan` types are not allowed.', node.pos)
-			}
+		ast.AliasTypeDecl { c.alias_type_decl(node) }
+		ast.FnTypeDecl { c.fn_type_decl(node) }
+		ast.SumTypeDecl { c.sum_type_decl(node) }
+	}
+}
+
+pub fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
+	// TODO Replace `c.file.mod.name != 'time'` by `it.language != .v` once available
+	if c.file.mod.name != 'time' && c.file.mod.name != 'builtin' {
+		c.check_valid_pascal_case(node.name, 'type alias', node.pos)
+	}
+	typ_sym := c.table.get_type_symbol(node.parent_type)
+	if typ_sym.kind in [.placeholder, .int_literal, .float_literal] {
+		c.error("type `$typ_sym.name` doesn't exist", node.pos)
+	} else if typ_sym.kind == .alias {
+		orig_sym := c.table.get_type_symbol((typ_sym.info as table.Alias).parent_type)
+		c.error('type `$typ_sym.str()` is an alias, use the original alias type `$orig_sym.name` instead',
+			node.pos)
+	} else if typ_sym.kind == .chan {
+		c.error('aliases of `chan` types are not allowed.', node.pos)
+	}
+}
+
+pub fn (mut c Checker) fn_type_decl(node ast.FnTypeDecl) {
+	c.check_valid_pascal_case(node.name, 'fn type', node.pos)
+	typ_sym := c.table.get_type_symbol(node.typ)
+	fn_typ_info := typ_sym.info as table.FnType
+	fn_info := fn_typ_info.func
+	ret_sym := c.table.get_type_symbol(fn_info.return_type)
+	if ret_sym.kind == .placeholder {
+		c.error("type `$ret_sym.name` doesn't exist", node.pos)
+	}
+	for arg in fn_info.params {
+		arg_sym := c.table.get_type_symbol(arg.typ)
+		if arg_sym.kind == .placeholder {
+			c.error("type `$arg_sym.name` doesn't exist", node.pos)
 		}
-		ast.FnTypeDecl {
-			c.check_valid_pascal_case(node.name, 'fn type', node.pos)
-			typ_sym := c.table.get_type_symbol(node.typ)
-			fn_typ_info := typ_sym.info as table.FnType
-			fn_info := fn_typ_info.func
-			ret_sym := c.table.get_type_symbol(fn_info.return_type)
-			if ret_sym.kind == .placeholder {
-				c.error("type `$ret_sym.name` doesn't exist", node.pos)
-			}
-			for arg in fn_info.params {
-				arg_sym := c.table.get_type_symbol(arg.typ)
-				if arg_sym.kind == .placeholder {
-					c.error("type `$arg_sym.name` doesn't exist", node.pos)
-				}
-			}
+	}
+}
+
+pub fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
+	c.check_valid_pascal_case(node.name, 'sum type', node.pos)
+	mut names_used := []string{}
+	for variant in node.variants {
+		if variant.typ.is_ptr() {
+			c.error('sum type cannot hold a reference type', variant.pos)
 		}
-		ast.SumTypeDecl {
-			c.check_valid_pascal_case(node.name, 'sum type', node.pos)
-			mut names_used := []string{}
-			for variant in node.variants {
-				if variant.typ.is_ptr() {
-					c.error('sum type cannot hold a reference type', variant.pos)
-				}
-				mut sym := c.table.get_type_symbol(variant.typ)
-				if sym.name in names_used {
-					c.error('sum type $node.name cannot hold the type `$sym.name` more than once',
-						variant.pos)
-				} else if sym.kind in [.placeholder, .int_literal, .float_literal] {
-					c.error("type `$sym.name` doesn't exist", variant.pos)
-				} else if sym.kind == .interface_ {
-					c.error('sum type cannot hold an interface', variant.pos)
-				}
-				names_used << sym.name
-			}
+		mut sym := c.table.get_type_symbol(variant.typ)
+		if sym.name in names_used {
+			c.error('sum type $node.name cannot hold the type `$sym.name` more than once',
+				variant.pos)
+		} else if sym.kind in [.placeholder, .int_literal, .float_literal] {
+			c.error("type `$sym.name` doesn't exist", variant.pos)
+		} else if sym.kind == .interface_ {
+			c.error('sum type cannot hold an interface', variant.pos)
 		}
+		names_used << sym.name
 	}
 }
 
@@ -1309,89 +1315,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	// TODO: remove this for actual methods, use only for compiler magic
 	// FIXME: Argument count != 1 will break these
 	if left_type_sym.kind == .array && method_name in checker.array_builtin_methods {
-		mut elem_typ := table.void_type
-		is_filter_map := method_name in ['filter', 'map']
-		is_sort := method_name == 'sort'
-		is_slice := method_name == 'slice'
-		is_wait := method_name == 'wait'
-		if is_slice && !c.is_builtin_mod {
-			c.error('.slice() is a private method, use `x[start..end]` instead', call_expr.pos)
-		}
-		if is_filter_map || is_sort || is_wait {
-			array_info := left_type_sym.info as table.Array
-			if is_filter_map {
-				// position of `it` doesn't matter
-				scope_register_it(mut call_expr.scope, call_expr.pos, array_info.elem_type)
-			} else if is_sort {
-				c.fail_if_immutable(call_expr.left)
-				// position of `a` and `b` doesn't matter, they're the same
-				scope_register_ab(mut call_expr.scope, call_expr.pos, array_info.elem_type)
-
-				if call_expr.args.len > 1 {
-					c.error('expected 0 or 1 argument, but got $call_expr.args.len', call_expr.pos)
-				}
-				// Verify `.sort(a < b)`
-				if call_expr.args.len > 0 {
-					if call_expr.args[0].expr !is ast.InfixExpr {
-						c.error(
-							'`.sort()` requires a `<` or `>` comparison as the first and only argument' +
-							'\ne.g. `users.sort(a.id < b.id)`', call_expr.pos)
-					}
-				}
-			}
-			elem_typ = array_info.elem_type
-			if is_wait {
-				elem_sym := c.table.get_type_symbol(elem_typ)
-				if elem_sym.kind == .thread {
-					if call_expr.args.len != 0 {
-						c.error('`.wait()` does not have any arguments', call_expr.args[0].pos)
-					}
-					thread_ret_type := elem_sym.thread_info().return_type
-					if thread_ret_type.has_flag(.optional) {
-						c.error('`.wait()` cannot be called for an array when thread functions return optionals. Iterate over the arrays elements instead and handle each returned optional with `or`.',
-							call_expr.pos)
-					}
-					call_expr.return_type = c.table.find_or_register_array(thread_ret_type)
-				} else {
-					c.error('`$left_type_sym.name` has no method `wait()` (only thread handles and arrays of them have)',
-						call_expr.left.position())
-				}
-			}
-		}
-		// map/filter are supposed to have 1 arg only
-		mut arg_type := left_type
-		for arg in call_expr.args {
-			arg_type = c.expr(arg.expr)
-		}
-		if method_name == 'map' {
-			// check fn
-			c.check_map_and_filter(true, elem_typ, call_expr)
-			arg_sym := c.table.get_type_symbol(arg_type)
-			ret_type := match arg_sym.info {
-				table.FnType { arg_sym.info.func.return_type }
-				else { arg_type }
-			}
-			call_expr.return_type = c.table.find_or_register_array(ret_type)
-		} else if method_name == 'filter' {
-			// check fn
-			c.check_map_and_filter(false, elem_typ, call_expr)
-		} else if method_name == 'clone' {
-			// need to return `array_xxx` instead of `array`
-			// in ['clone', 'str'] {
-			call_expr.receiver_type = left_type.to_ptr()
-			if call_expr.left.is_auto_deref_var() {
-				call_expr.return_type = left_type.deref()
-			} else {
-				call_expr.return_type = call_expr.receiver_type.set_nr_muls(0)
-			}
-		} else if method_name == 'sort' {
-			call_expr.return_type = table.void_type
-		} else if method_name == 'contains' {
-			call_expr.return_type = table.bool_type
-		} else if method_name == 'index' {
-			call_expr.return_type = table.int_type
-		}
-		return call_expr.return_type
+		return c.call_array_builtin_method(mut call_expr, left_type, left_type_sym)
 	} else if left_type_sym.kind == .map && method_name in ['clone', 'keys', 'move'] {
 		mut ret_type := table.void_type
 		match method_name {
@@ -1688,6 +1612,93 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		c.error(suggestion.say(unknown_method_msg), call_expr.pos)
 	}
 	return table.void_type
+}
+
+fn (mut c Checker) call_array_builtin_method(mut call_expr ast.CallExpr, left_type table.Type, left_type_sym table.TypeSymbol) table.Type {
+	method_name := call_expr.name
+	mut elem_typ := table.void_type
+	is_filter_map := method_name in ['filter', 'map']
+	is_sort := method_name == 'sort'
+	is_slice := method_name == 'slice'
+	is_wait := method_name == 'wait'
+	if is_slice && !c.is_builtin_mod {
+		c.error('.slice() is a private method, use `x[start..end]` instead', call_expr.pos)
+	}
+	if is_filter_map || is_sort || is_wait {
+		array_info := left_type_sym.info as table.Array
+		if is_filter_map {
+			// position of `it` doesn't matter
+			scope_register_it(mut call_expr.scope, call_expr.pos, array_info.elem_type)
+		} else if is_sort {
+			c.fail_if_immutable(call_expr.left)
+			// position of `a` and `b` doesn't matter, they're the same
+			scope_register_ab(mut call_expr.scope, call_expr.pos, array_info.elem_type)
+
+			if call_expr.args.len > 1 {
+				c.error('expected 0 or 1 argument, but got $call_expr.args.len', call_expr.pos)
+			}
+			// Verify `.sort(a < b)`
+			if call_expr.args.len > 0 {
+				if call_expr.args[0].expr !is ast.InfixExpr {
+					c.error(
+						'`.sort()` requires a `<` or `>` comparison as the first and only argument' +
+						'\ne.g. `users.sort(a.id < b.id)`', call_expr.pos)
+				}
+			}
+		}
+		elem_typ = array_info.elem_type
+		if is_wait {
+			elem_sym := c.table.get_type_symbol(elem_typ)
+			if elem_sym.kind == .thread {
+				if call_expr.args.len != 0 {
+					c.error('`.wait()` does not have any arguments', call_expr.args[0].pos)
+				}
+				thread_ret_type := elem_sym.thread_info().return_type
+				if thread_ret_type.has_flag(.optional) {
+					c.error('`.wait()` cannot be called for an array when thread functions return optionals. Iterate over the arrays elements instead and handle each returned optional with `or`.',
+						call_expr.pos)
+				}
+				call_expr.return_type = c.table.find_or_register_array(thread_ret_type)
+			} else {
+				c.error('`$left_type_sym.name` has no method `wait()` (only thread handles and arrays of them have)',
+					call_expr.left.position())
+			}
+		}
+	}
+	// map/filter are supposed to have 1 arg only
+	mut arg_type := left_type
+	for arg in call_expr.args {
+		arg_type = c.expr(arg.expr)
+	}
+	if method_name == 'map' {
+		// check fn
+		c.check_map_and_filter(true, elem_typ, call_expr)
+		arg_sym := c.table.get_type_symbol(arg_type)
+		ret_type := match arg_sym.info {
+			table.FnType { arg_sym.info.func.return_type }
+			else { arg_type }
+		}
+		call_expr.return_type = c.table.find_or_register_array(ret_type)
+	} else if method_name == 'filter' {
+		// check fn
+		c.check_map_and_filter(false, elem_typ, call_expr)
+	} else if method_name == 'clone' {
+		// need to return `array_xxx` instead of `array`
+		// in ['clone', 'str'] {
+		call_expr.receiver_type = left_type.to_ptr()
+		if call_expr.left.is_auto_deref_var() {
+			call_expr.return_type = left_type.deref()
+		} else {
+			call_expr.return_type = call_expr.receiver_type.set_nr_muls(0)
+		}
+	} else if method_name == 'sort' {
+		call_expr.return_type = table.void_type
+	} else if method_name == 'contains' {
+		call_expr.return_type = table.bool_type
+	} else if method_name == 'index' {
+		call_expr.return_type = table.int_type
+	}
+	return call_expr.return_type
 }
 
 pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {

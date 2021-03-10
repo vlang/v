@@ -11,7 +11,6 @@
 module m4
 
 import math
-import math.mathutil as mu
 
 pub union Mat4 {
 pub mut:
@@ -44,7 +43,7 @@ pub fn (a Mat4) clean() Mat4 {
 	unsafe {
 		x := Mat4{}
 		for c, value in a.e {
-			if mu.abs(value) < m4.precision {
+			if f32_abs(value) < m4.precision {
 				x.e[c] = 0
 			} else {
 				x.e[c] = value
@@ -68,7 +67,7 @@ pub fn (x Mat4) sum_all() f32 {
 pub fn (x Mat4) is_equal(y Mat4) bool {
 	unsafe {
 		for c, value in x.e {
-			if mu.abs(value - y.e[c]) > m4.precision {
+			if f32_abs(value - y.e[c]) > m4.precision {
 				return false
 			}
 		}
@@ -111,9 +110,9 @@ pub fn (mut x Mat4) set_f(index_col int, index_row int, value f32) {
 pub fn (mut x Mat4) copy(y Mat4) {
 	unsafe {
 		x.e = [
-			y.e[0],  y.e[1],  y.e[2],  y.e[3],
-			y.e[4],	 y.e[5],  y.e[6],  y.e[7],
-			y.e[8],  y.e[9],  y.e[10], y.e[11],
+			y.e[0 ], y.e[1 ], y.e[2 ], y.e[3 ],
+			y.e[4 ], y.e[5 ], y.e[6 ], y.e[7 ],
+			y.e[8 ], y.e[9 ], y.e[10], y.e[11],
 			y.e[12], y.e[13], y.e[14], y.e[15],
 		]!
 	}
@@ -122,8 +121,8 @@ pub fn (mut x Mat4) copy(y Mat4) {
 // Set the trace of the matrix using a vec4
 pub fn (mut x Mat4) set_trace(v3 Vec4) {
 	unsafe {
-		x.e[0] = v3.e[0]
-		x.e[5] = v3.e[1]
+		x.e[0 ] = v3.e[0]
+		x.e[5 ] = v3.e[1]
 		x.e[10] = v3.e[2]
 		x.e[15] = v3.e[3]
 	}
@@ -156,7 +155,7 @@ pub fn (mut x Mat4) set_f32(value f32) {
 [unsafe]
 pub fn (mut x Mat4) set_row(row int, v3 Vec4) {
 	unsafe {
-		x.e[row * 4] = v3.e[0]
+		x.e[row * 4 + 0] = v3.e[0]
 		x.e[row * 4 + 1] = v3.e[1]
 		x.e[row * 4 + 2] = v3.e[2]
 		x.e[row * 4 + 3] = v3.e[3]
@@ -170,7 +169,7 @@ pub fn (x Mat4) get_row(row int) Vec4 {
 	unsafe {
 		return Vec4{
 			e: [
-				x.e[row * 4],
+				x.e[row * 4 + 0],
 				x.e[row * 4 + 1],
 				x.e[row * 4 + 2],
 				x.e[row * 4 + 3],
@@ -185,8 +184,8 @@ pub fn (x Mat4) get_row(row int) Vec4 {
 pub fn (mut x Mat4) set_col(col int, v3 Vec4) {
 	unsafe {
 		x.e[col] = v3.e[0]
-		x.e[col + 4] = v3.e[1]
-		x.e[col + 8] = v3.e[2]
+		x.e[col + 4 ] = v3.e[1]
+		x.e[col + 8 ] = v3.e[2]
 		x.e[col + 12] = v3.e[3]
 	}
 }
@@ -199,8 +198,8 @@ pub fn (x Mat4) get_col(col int) Vec4 {
 		return Vec4{
 			e: [
 				x.e[col],
-				x.e[col + 4],
-				x.e[col + 8],
+				x.e[col + 4 ],
+				x.e[col + 8 ],
 				x.e[col + 12],
 			]!
 		}
@@ -213,18 +212,18 @@ pub fn (x Mat4) get_col(col int) Vec4 {
 pub fn (mut x Mat4) swap_col(col1 int, col2 int) {
 	unsafe {
 		v0 := x.e[col1]
-		v1 := x.e[col1 + 4]
-		v2 := x.e[col1 + 8]
+		v1 := x.e[col1 + 4 ]
+		v2 := x.e[col1 + 8 ]
 		v3 := x.e[col1 + 12]
 
 		x.e[col1] = x.e[col2]
-		x.e[col1 + 4] = x.e[col2 + 4]
-		x.e[col1 + 8] = x.e[col2 + 8]
+		x.e[col1 + 4 ] = x.e[col2 + 4 ]
+		x.e[col1 + 8 ] = x.e[col2 + 8 ]
 		x.e[col1 + 12] = x.e[col2 + 12]
 
 		x.e[col2] = v0
-		x.e[col2 + 4] = v1
-		x.e[col2 + 8] = v2
+		x.e[col2 + 4 ] = v1
+		x.e[col2 + 8 ] = v2
 		x.e[col2 + 12] = v3
 	}
 }
@@ -234,17 +233,17 @@ pub fn (mut x Mat4) swap_col(col1 int, col2 int) {
 [unsafe]
 pub fn (mut x Mat4) swap_row(row1 int, row2 int) {
 	unsafe {
-		v0 := x.e[row1 * 4]
+		v0 := x.e[row1 * 4 + 0]
 		v1 := x.e[row1 * 4 + 1]
 		v2 := x.e[row1 * 4 + 2]
 		v3 := x.e[row1 * 4 + 3]
 
-		x.e[row1 * 4] = x.e[row2 * 4]
+		x.e[row1 * 4 + 0] = x.e[row2 * 4 + 0]
 		x.e[row1 * 4 + 1] = x.e[row2 * 4 + 1]
 		x.e[row1 * 4 + 2] = x.e[row2 * 4 + 2]
 		x.e[row1 * 4 + 3] = x.e[row2 * 4 + 3]
 
-		x.e[row2 * 4] = v0
+		x.e[row2 * 4 + 0] = v0
 		x.e[row2 * 4 + 1] = v1
 		x.e[row2 * 4 + 2] = v2
 		x.e[row2 * 4 + 3] = v3
@@ -258,10 +257,10 @@ pub fn (mut x Mat4) swap_row(row1 int, row2 int) {
 pub fn (x Mat4) transpose() Mat4 {
 	unsafe {
 		return Mat4{ e: [
-				x.e[0], x.e[4], x.e[8],  x.e[12],
-				x.e[1], x.e[5], x.e[9],  x.e[13],
-				x.e[2], x.e[6], x.e[10], x.e[14],
-				x.e[3], x.e[7], x.e[11], x.e[15],
+				x.e[0 ], x.e[4 ], x.e[8 ], x.e[12],
+				x.e[1 ], x.e[5 ], x.e[9 ], x.e[13],
+				x.e[2 ], x.e[6 ], x.e[10], x.e[14],
+				x.e[3 ], x.e[7 ], x.e[11], x.e[15],
 			]!
 		}
 	}
@@ -271,10 +270,10 @@ pub fn (x Mat4) transpose() Mat4 {
 pub fn (x Mat4) mul_scalar(s f32) Mat4 {
 	unsafe {
 		return Mat4{ e: [
-				x.e[0] * s,		x.e[1] * s,		x.e[2] * s,		x.e[3] * s,
-				x.e[4] * s,		x.e[5] * s,		x.e[6] * s,		x.e[7] * s,
-				x.e[8] * s,		x.e[9] * s,		x.e[10] * s,	x.e[11] * s,
-				x.e[12] * s,	x.e[13] * s,	x.e[14] * s,	x.e[15] * s,
+				x.e[0 ] * s, x.e[1 ] * s, x.e[2 ] * s, x.e[3 ] * s,
+				x.e[4 ] * s, x.e[5 ] * s, x.e[6 ] * s, x.e[7 ] * s,
+				x.e[8 ] * s, x.e[9 ] * s, x.e[10] * s, x.e[11] * s,
+				x.e[12] * s, x.e[13] * s, x.e[14] * s, x.e[15] * s,
 			]!
 		}
 	}
@@ -328,9 +327,9 @@ pub fn set_m4(value f32) Mat4 {
 pub fn (a Mat4) + (b Mat4) Mat4 {
 	unsafe {
 		return Mat4{ e: [
-				a.e[0] + b.e[0], 	a.e[1] + b.e[1], 	a.e[2] + b.e[2],	a.e[3] + b.e[3],
-				a.e[4] + b.e[4],	a.e[5] + b.e[5],	a.e[6] + b.e[6],	a.e[7] + b.e[7],
-				a.e[8] + b.e[8],	a.e[9] + b.e[9],	a.e[10] + b.e[10],	a.e[11] + b.e[11],
+				a.e[0 ] + b.e[0 ], 	a.e[1 ] + b.e[1 ], 	a.e[2 ] + b.e[2 ],	a.e[3 ] + b.e[3 ],
+				a.e[4 ] + b.e[4 ],	a.e[5 ] + b.e[5 ],	a.e[6 ] + b.e[6 ],	a.e[7 ] + b.e[7 ],
+				a.e[8 ] + b.e[8 ],	a.e[9 ] + b.e[9 ],	a.e[10] + b.e[10],	a.e[11] + b.e[11],
 				a.e[12] + b.e[12],	a.e[13] + b.e[13],	a.e[14] + b.e[14],	a.e[15] + b.e[15],
 			]!
 		}
@@ -341,9 +340,9 @@ pub fn (a Mat4) + (b Mat4) Mat4 {
 pub fn (a Mat4) - (b Mat4) Mat4 {
 	unsafe {
 		return Mat4{ e: [
-				a.e[0] - b.e[0], 	a.e[1] - b.e[1],	a.e[2] - b.e[2],	a.e[3] - b.e[3],
-				a.e[4] - b.e[4],	a.e[5] - b.e[5],	a.e[6] - b.e[6],	a.e[7] - b.e[7],
-				a.e[8] - b.e[8],	a.e[9] - b.e[9],	a.e[10] - b.e[10],	a.e[11] - b.e[11],
+				a.e[0 ] - b.e[0 ], 	a.e[1 ] - b.e[1 ],	a.e[2 ] - b.e[2 ],	a.e[3 ] - b.e[3 ],
+				a.e[4 ] - b.e[4 ],	a.e[5 ] - b.e[5 ],	a.e[6 ] - b.e[6 ],	a.e[7 ] - b.e[7 ],
+				a.e[8 ] - b.e[8 ],	a.e[9 ] - b.e[9 ],	a.e[10] - b.e[10],	a.e[11] - b.e[11],
 				a.e[12] - b.e[12],	a.e[13] - b.e[13],	a.e[14] - b.e[14],	a.e[15] - b.e[15],
 			]!
 		}
@@ -403,19 +402,10 @@ pub fn mul(a Mat4, b Mat4) Mat4 {
 // Multiply a Matrix by a vector
 pub fn mul_vec(a Mat4, v Vec4) Vec4 {
 	unsafe {
-/*
 		return Vec4{ e: [
-				a.e[0] * v.e[0] + a.e[4] * v.e[1] + a.e[8] * v.e[2] + a.e[12] * v.e[3],
-				a.e[1] * v.e[0] + a.e[5] * v.e[1] + a.e[9] * v.e[2] + a.e[13] * v.e[3],
-				a.e[2] * v.e[0] + a.e[6] * v.e[1] + a.e[10] * v.e[2] + a.e[14] * v.e[3],
-				a.e[3] * v.e[0] + a.e[7] * v.e[1] + a.e[11] * v.e[2] + a.e[15] * v.e[3],
-				]!
-		}
-*/
-		return Vec4{ e: [
-				a.e[0] * v.e[0] + a.e[1] * v.e[1] + a.e[2] * v.e[2] + a.e[3] * v.e[3],
-				a.e[4] * v.e[0] + a.e[5] * v.e[1] + a.e[6] * v.e[2] + a.e[7] * v.e[3],
-				a.e[8] * v.e[0] + a.e[9] * v.e[1] + a.e[10] * v.e[2] + a.e[11] * v.e[3],
+				a.e[0 ] * v.e[0] + a.e[1 ] * v.e[1] + a.e[2 ] * v.e[2] + a.e[3 ] * v.e[3],
+				a.e[4 ] * v.e[0] + a.e[5 ] * v.e[1] + a.e[6 ] * v.e[2] + a.e[7 ] * v.e[3],
+				a.e[8 ] * v.e[0] + a.e[9 ] * v.e[1] + a.e[10] * v.e[2] + a.e[11] * v.e[3],
 				a.e[12] * v.e[0] + a.e[13] * v.e[1] + a.e[14] * v.e[2] + a.e[15] * v.e[3],
 				]!
 		}
@@ -582,10 +572,10 @@ pub fn rotate(angle f32, w Vec4) Mat4 {
 pub fn (x Mat4) translate(w Vec4) Mat4 {
 	unsafe {
 		return Mat4{ e: [
-				x.e[0],		x.e[1], 	x.e[2], 	x.e[3]  + w.e[0],
-				x.e[4], 	x.e[5],		x.e[6], 	x.e[7]  + w.e[1],
-				x.e[8], 	x.e[9], 	x.e[10], 	x.e[11] + w.e[2],
-				x.e[12], 	x.e[13],  	x.e[14], 	x.e[15],
+				x.e[0],	x.e[1], x.e[2 ], 	x.e[3 ] ,
+				x.e[4], x.e[5],	x.e[6 ], 	x.e[7 ] ,
+				x.e[8], x.e[9], x.e[10], 	x.e[11] ,
+				x.e[12] + w.e[0], 	x.e[13] + w.e[1], x.e[14] + w.e[2], x.e[15],
 				]!
 		}
 	}
