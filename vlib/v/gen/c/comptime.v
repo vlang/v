@@ -76,21 +76,23 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 		for val in vals {
 		}
 		*/
-		expand_strs := if node.args.len > 0 {
-			typ := node.args[node.args.len - 1].typ
-			g.table.type_to_str(typ) == '[]string'
+		expand_strs := if node.args.len > 0 && m.params.len - 1 > node.args.len {
+			arg := node.args[node.args.len - 1]
+			param := m.params[node.args.len]
+
+			arg.expr is ast.Ident && g.table.type_to_str(arg.typ) == '[]string'
+				&& g.table.type_to_str(param.typ) != '[]string'
 		} else {
 			false
 		}
-		// TODO: check args length and types
+		// check argument length and types
 		if m.params.len - 1 != node.args.len && !expand_strs {
-			// we cannot differentiate between method calls,
-			// so if we get a mis-matched argument list, do
-			// not generate anything
+			// do not generate anything if the argument lengths don't match
 			g.writeln('/* skipping ${node.sym.name}.$m.name due to mismatched arguments list */')
 			// verror('expected ${m.params.len-1} arguments to method ${node.sym.name}.$m.name, but got $node.args.len')
 			return
 		}
+		// TODO: check argument types
 		g.write('${util.no_dots(node.sym.name)}_${g.comp_for_method}(')
 
 		// try to see if we need to pass a pointer
