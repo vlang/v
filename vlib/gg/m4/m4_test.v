@@ -1,5 +1,5 @@
-import math.mathutil
 import gg.m4
+import math.mathutil as mu
 
 pub fn test_m4() {
 	unsafe {
@@ -193,10 +193,10 @@ fn test_vec4() {
 	assert v + m4.Vec4{ e: [f32(5), 6, 7, 8]! } == m4.Vec4{ e: [f32(6), 8, 10, 12]! }
 	assert v - m4.Vec4{ e: [f32(1), 2, 3, 4]! } == m4.Vec4{ e: [f32(0), 0, 0, 0]! }
 	assert v.mul_vec4(m4.Vec4{ e: [f32(2), 2, 2, 2]! }) == m4.Vec4{	e: [f32(2), 4, 6, 8]! }
-	assert util.fabs_32(v.normalize().mod() - 1) < m4.precision
+	assert mu.abs(v.normalize().mod() - 1) < m4.precision
 	v = m4.Vec4{[f32(1), 2, 3, 0]!}
-	assert util.fabs_32(v.normalize3().mod3() - 1) < m4.precision
-	assert util.fabs_32(v.normalize3().mod() - 1) < m4.precision
+	assert mu.abs(v.normalize3().mod3() - 1) < m4.precision
+	assert mu.abs(v.normalize3().mod() - 1) < m4.precision
 	// cross product
 	// x y z
 	// 1 2 3 ==> -3 6 -3 0

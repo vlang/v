@@ -11,7 +11,7 @@
 module m4
 
 import math
-import math.mathutil
+import math.mathutil as mu
 
 pub union Mat4 {
 pub mut:
@@ -44,7 +44,7 @@ pub fn (a Mat4) clean() Mat4 {
 	unsafe {
 		x := Mat4{}
 		for c, value in a.e {
-			if util.fabs_32(value) < m4.precision {
+			if mu.abs(value) < m4.precision {
 				x.e[c] = 0
 			} else {
 				x.e[c] = value
@@ -68,7 +68,7 @@ pub fn (x Mat4) sum_all() f32 {
 pub fn (x Mat4) is_equal(y Mat4) bool {
 	unsafe {
 		for c, value in x.e {
-			if util.fabs_32(value - y.e[c]) > m4.precision {
+			if mu.abs(value - y.e[c]) > m4.precision {
 				return false
 			}
 		}

@@ -71,7 +71,7 @@ pub fn fmt(file ast.File, table &table.Table, pref &pref.Preferences, is_debug b
 	if res.len == 1 {
 		return f.out_imports.str().trim_space() + '\n'
 	}
-	bounded_import_pos := mu.imin(res.len, f.import_pos)
+	bounded_import_pos := mu.min(res.len, f.import_pos)
 	return res[..bounded_import_pos] + f.out_imports.str() + res[bounded_import_pos..]
 }
 
