@@ -1150,15 +1150,11 @@ Note, that the value is read-only.
 If you need to modify the array while looping, you need to declare the element as mutable:
 
 ```v
-module main
-
-fn main() {
-	mut numbers := [0, 1, 2]
-	for mut num in numbers {
-		num++
-	}
-	println(numbers) // [1, 2, 3]
+mut numbers := [0, 1, 2]
+for mut num in numbers {
+	num++
 }
+println(numbers) // [1, 2, 3]
 ```
 When an identifier is just a single underscore, it is ignored.
 
