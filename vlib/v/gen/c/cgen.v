@@ -1509,28 +1509,18 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 			}
 		}
 	} else if node.kind == .string {
-		require_tmp := node.cond is ast.StringLiteral || node.cond is ast.StringInterLiteral
-		tmpvar := if require_tmp { g.new_tmp_var() } else { '' }
-		if require_tmp {
-			g.write('string $tmpvar = ')
-			g.expr(node.cond)
-			g.writeln(';')
+		cond := if node.cond is ast.StringLiteral || node.cond is ast.StringInterLiteral {
+			ast.Expr(g.new_ctemp_var_then_gen(node.cond, table.string_type))
+		} else {
+			node.cond
 		}
 		i := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
 		g.write('for (int $i = 0; $i < ')
-		if require_tmp {
-			g.write('$tmpvar')
-		} else {
-			g.expr(node.cond)
-		}
+		g.expr(cond)
 		g.writeln('.len; ++$i) {')
 		if node.val_var != '_' {
 			g.write('\tbyte ${c_name(node.val_var)} = ')
-			if require_tmp {
-				g.write('$tmpvar')
-			} else {
-				g.expr(node.cond)
-			}
+			g.expr(cond)
 			g.writeln('.str[$i];')
 		}
 	} else if node.kind == .struct_ {
