@@ -84,8 +84,8 @@ fn main() {
 		exit(1)
 	}
 	if command == 'test-vet' {
-		println('Please use `v test-cleancode` instead.')
-		return
+		eprintln('Please use `v test-cleancode` instead.')
+		exit(1)
 	}
 	// Start calling the correct functions/external tools
 	// Note for future contributors: Please add new subcommands in the `match` block below.
@@ -103,8 +103,8 @@ fn main() {
 			return
 		}
 		'translate' {
-			println('Translating C to V will be available in V 0.3')
-			return
+			eprintln('Translating C to V will be available in V 0.3')
+			exit(1)
 		}
 		'search', 'install', 'update', 'upgrade', 'outdated', 'list', 'remove' {
 			util.launch_tool(prefs.is_verbose, 'vpm', os.args[1..])
@@ -114,7 +114,7 @@ fn main() {
 			util.launch_tool(prefs.is_verbose, 'vdoc', ['doc', 'vlib'])
 		}
 		'get' {
-			println('V Error: Use `v install` to install modules from vpm.vlang.io')
+			eprintln('V Error: Use `v install` to install modules from vpm.vlang.io')
 			exit(1)
 		}
 		'version' {
