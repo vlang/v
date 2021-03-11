@@ -8,7 +8,17 @@ fn main() {
 	m2 := m1
 	mut m3 := map[string]int{}
 	m3 = m1
-	
+
 	_ = a2
 	_ = m2
+
+	mut m := {'foo':1}
+	foo(mut m)
+}
+
+fn foo(mut m map[string]int) {
+	m2 := m
+	m['foo'] = 100
+	println(m)
+	println(m2)
 }
