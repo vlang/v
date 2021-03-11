@@ -84,8 +84,8 @@ fn main() {
 		exit(1)
 	}
 	if command == 'test-vet' {
-		println('Please use `v test-cleancode` instead.')
-		return
+		eprintln('Please use `v test-cleancode` instead.')
+		exit(1)
 	}
 	// Start calling the correct functions/external tools
 	// Note for future contributors: Please add new subcommands in the `match` block below.
