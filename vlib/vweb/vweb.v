@@ -88,6 +88,7 @@ pub struct Result {
 }
 
 // vweb intern function
+[manualfree]
 pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bool {
 	if ctx.done {
 		return false
