@@ -1577,7 +1577,7 @@ fn (mut g Gen) write_sumtype_casting_fn(got_ table.Type, exp_ table.Type) {
 			// the field is already a wrapped pointer; we shouldn't wrap it once again
 			sb.write_string(', .$field.name = ptr->$field.name')
 		} else {
-			sb.write_string(', .$field.name = ($field_styp*)((char*)ptr + __offsetof($got_cname, $field.name))')
+			sb.write_string(', .$field.name = ($field_styp*)((char*)ptr + __offsetof_ptr(ptr, $got_cname, $field.name))')
 		}
 	}
 	sb.writeln('};\n}')
@@ -5859,14 +5859,14 @@ fn (mut g Gen) interface_table() string {
 				cname := c_name(field.name)
 				field_styp := g.typ(field.typ)
 				if _ := st_sym.find_field(field.name) {
-					cast_struct.writeln('\t\t.$cname = ($field_styp*)((char*)x + __offsetof($cctype, $cname)),')
+					cast_struct.writeln('\t\t.$cname = ($field_styp*)((char*)x + __offsetof_ptr(x, $cctype, $cname)),')
 				} else {
 					// the field is embedded in another struct
 					cast_struct.write_string('\t\t.$cname = ($field_styp*)((char*)x')
 					for embed_type in st_sym.struct_info().embeds {
 						embed_sym := g.table.get_type_symbol(embed_type)
 						if _ := embed_sym.find_field(field.name) {
-							cast_struct.write_string(' + __offsetof($cctype, $embed_sym.embed_name()) + __offsetof($embed_sym.cname, $cname)')
+							cast_struct.write_string(' + __offsetof_ptr(x, $cctype, $embed_sym.embed_name()) + __offsetof_ptr(x, $embed_sym.cname, $cname)')
 							break
 						}
 					}
