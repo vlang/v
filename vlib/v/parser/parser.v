@@ -1835,12 +1835,14 @@ fn (mut p Parser) module_decl() ast.Module {
 		// as it creates a wrong position when extended
 		// to module_pos
 		n_pos := p.tok.position()
-		if module_pos.line_nr == n_pos.line_nr && p.tok.kind != .comment {
-			if p.tok.kind != .name {
-				p.error_with_pos('`module x` syntax error', n_pos)
+		if module_pos.line_nr == n_pos.line_nr && p.tok.kind != .comment && p.tok.kind != .eof {
+			if p.tok.kind == .name {
+				p.error_with_pos('`module $name`, you can only declare one module, unexpected `$p.tok.lit`',
+					n_pos)
 				return mod_node
 			} else {
-				p.error_with_pos('`module x` can only declare one module', n_pos)
+				p.error_with_pos('`module $name`, unexpected `$p.tok.kind` after module name',
+					n_pos)
 				return mod_node
 			}
 		}
