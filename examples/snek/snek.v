@@ -164,7 +164,8 @@ fn on_frame(mut app App) {
 	app.gg.end()
 }
 
-const font = $embed_file('../assets/fonts/RobotoMono-Regular.ttf')
+const 
+	font = $embed_file('../assets/fonts/RobotoMono-Regular.ttf')
 
 // setup
 fn main() {

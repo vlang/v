@@ -165,7 +165,7 @@ fn (sp Sphere) intersect(r Ray) f64 {
 const (
 	cen     = Vec{50, 40.8, -860} // used by scene 1
 	spheres = [
-		[/* scene 0 cornnel box */ Sphere{
+		[// scene 0 cornnel boxSphere{
 			rad: 1e+5
 			p: Vec{1e+5 + 1, 40.8, 81.6}
 			e: Vec{}
@@ -220,7 +220,7 @@ const (
 			c: Vec{}
 			refl: .diff
 		} /* Lite */],
-		[/* scene 1 sunset */ Sphere{
+		[// scene 1 sunsetSphere{
 			rad: 1600
 			p: Vec{1.0, 0.0, 2.0}.mult_s(3000)
 			e: Vec{1.0, .9, .8}.mult_s(1.2e+1 * 1.56 * 2)
@@ -275,7 +275,7 @@ const (
 			c: Vec{.6, .6, .6}.mult_s(.696)
 			refl: .refr
 		} /* Glas2 */],
-		[/* scene 3 Psychedelic */ Sphere{
+		[// scene 3 PsychedelicSphere{
 			rad: 150
 			p: Vec{50 + 75, 28, 62}
 			e: Vec{1, 1, 1}.mult_s(0e-3)

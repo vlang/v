@@ -5,7 +5,7 @@ fn main() {
 	// Make a new connection
 	mut conn := net.dial_tcp('google.com:80') ?
 	defer {
-		conn.close() or { }
+		conn.close() or {}
 	}
 	// Simple http HEAD request for a file
 	conn.write_str('HEAD /index.html HTTP/1.0\r\n\r\n') ?
