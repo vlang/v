@@ -687,8 +687,8 @@ pub:
 	body_pos token.Position
 	comments []Comment
 pub mut:
-	stmts     []Stmt
-	scope     &Scope
+	stmts []Stmt
+	scope &Scope
 }
 
 pub struct UnsafeExpr {

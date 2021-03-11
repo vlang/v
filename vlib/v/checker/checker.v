@@ -3698,8 +3698,7 @@ fn (mut c Checker) for_stmt(mut node ast.ForStmt) {
 				left_sym := c.table.get_type_symbol(left_type)
 				if is_variable {
 					if left_sym.kind in [.sum_type, .interface_] {
-						c.smartcast(infix.left, infix.left_type, right_expr.typ, mut
-							node.scope)
+						c.smartcast(infix.left, infix.left_type, right_expr.typ, mut node.scope)
 					}
 				}
 			}
