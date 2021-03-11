@@ -12,7 +12,7 @@ vlib/v/checker/tests/mut_arg.vv:8:3: error: `f` parameter `par` is `mut`, you ne
       |   ^
     9 |
    10 | g(mut [3,4])
-vlib/v/checker/tests/mut_arg.vv:10:7: error: `g` parameter `par` is not `mut`, `mut` is not needed`
+vlib/v/checker/tests/mut_arg.vv:10:7: error: array literal can not be modified
     8 | f(a)
     9 |
    10 | g(mut [3,4])

@@ -1151,6 +1151,7 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 			}
 		}
 		ast.ArrayInit {
+			c.error('array literal can not be modified', expr.pos)
 			return '', pos
 		}
 		ast.StructInit {
