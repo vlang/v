@@ -21,6 +21,10 @@ fn cerror(e string) {
 	eprintln('\nerror: $e')
 }
 
+fn cwarn(e string) {
+	eprintln('warning: $e')
+}
+
 fn vmod_content(c Create) string {
 	return [
 		'Module {',
@@ -108,6 +112,11 @@ fn create(args []string) {
 		cerror('"$c.name" should not contain hyphens')
 		exit(1)
 	}
+	if c.name.contains(' ') {
+		cname := c.name.replace(' ', '_')
+		cwarn('the project name cannot contain spaces, the name will be changed to `$cname`')
+		c.name = cname
+	}
 	if os.is_dir(c.name) {
 		cerror('$c.name folder already exists')
 		exit(3)
@@ -137,6 +146,11 @@ fn init_project() {
 	}
 	mut c := Create{}
 	c.name = os.file_name(os.getwd())
+	if c.name.contains(' ') {
+		cname := c.name.replace(' ', '_')
+		cwarn('the project name cannot contain spaces, the name will be changed to `$cname`')
+		c.name = cname
+	}
 	c.description = ''
 	c.write_vmod(false)
 	c.write_main(false)
