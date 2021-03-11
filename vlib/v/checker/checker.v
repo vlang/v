@@ -3483,86 +3483,91 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 	}
 	if c.pref.backend == .js {
 		if !c.file.path.ends_with('.js.v') {
-			c.error('Hash statements are only allowed in backend specific files such "x.js.v"',
+			c.error('hash statements are only allowed in backend specific files such "x.js.v"',
 				node.pos)
 		}
 		if c.mod == 'main' {
-			c.error('Hash statements are not allowed in the main module. Please place them in a separate module.',
+			c.error('hash statements are not allowed in the main module. Please place them in a separate module.',
 				node.pos)
 		}
 		return
 	}
-	if node.kind == 'include' {
-		mut flag := node.main
-		if flag.contains('@VROOT') {
-			vroot := util.resolve_vroot(flag, c.file.path) or {
+	match node.kind {
+		'include' {
+			mut flag := node.main
+			if flag.contains('@VROOT') {
+				vroot := util.resolve_vroot(flag, c.file.path) or {
+					c.error(err.msg, node.pos)
+					return
+				}
+				node.val = 'include $vroot'
+				node.main = vroot
+				flag = vroot
+			}
+			if flag.contains('\$env(') {
+				env := util.resolve_env_value(flag, true) or {
+					c.error(err.msg, node.pos)
+					return
+				}
+				node.main = env
+			}
+			flag_no_comment := flag.all_before('//').trim_space()
+			if !((flag_no_comment.starts_with('"') && flag_no_comment.ends_with('"'))
+				|| (flag_no_comment.starts_with('<') && flag_no_comment.ends_with('>'))) {
+				c.error('including C files should use either `"header_file.h"` or `<header_file.h>` quoting',
+					node.pos)
+			}
+		}
+		'pkgconfig' {
+			args := if node.main.contains('--') {
+				node.main.split(' ')
+			} else {
+				'--cflags --libs $node.main'.split(' ')
+			}
+			mut m := pkgconfig.main(args) or {
 				c.error(err.msg, node.pos)
 				return
 			}
-			node.val = 'include $vroot'
-			node.main = vroot
-			flag = vroot
-		}
-		if flag.contains('\$env(') {
-			env := util.resolve_env_value(flag, true) or {
+			cflags := m.run() or {
 				c.error(err.msg, node.pos)
 				return
 			}
-			node.main = env
-		}
-		flag_no_comment := flag.all_before('//').trim_space()
-		if !((flag_no_comment.starts_with('"') && flag_no_comment.ends_with('"'))
-			|| (flag_no_comment.starts_with('<') && flag_no_comment.ends_with('>'))) {
-			c.error('including C files should use either `"header_file.h"` or `<header_file.h>` quoting',
-				node.pos)
-		}
-	} else if node.kind == 'pkgconfig' {
-		args := if node.main.contains('--') {
-			node.main.split(' ')
-		} else {
-			'--cflags --libs $node.main'.split(' ')
-		}
-		mut m := pkgconfig.main(args) or {
-			c.error(err.msg, node.pos)
-			return
-		}
-		cflags := m.run() or {
-			c.error(err.msg, node.pos)
-			return
-		}
-		c.table.parse_cflag(cflags, c.mod, c.pref.compile_defines_all) or {
-			c.error(err.msg, node.pos)
-			return
-		}
-	} else if node.kind == 'flag' {
-		// #flag linux -lm
-		mut flag := node.main
-		// expand `@VROOT` to its absolute path
-		if flag.contains('@VROOT') {
-			flag = util.resolve_vroot(flag, c.file.path) or {
+			c.table.parse_cflag(cflags, c.mod, c.pref.compile_defines_all) or {
 				c.error(err.msg, node.pos)
 				return
 			}
 		}
-		if flag.contains('\$env(') {
-			flag = util.resolve_env_value(flag, true) or {
+		'flag' {
+			// #flag linux -lm
+			mut flag := node.main
+			// expand `@VROOT` to its absolute path
+			if flag.contains('@VROOT') {
+				flag = util.resolve_vroot(flag, c.file.path) or {
+					c.error(err.msg, node.pos)
+					return
+				}
+			}
+			if flag.contains('\$env(') {
+				flag = util.resolve_env_value(flag, true) or {
+					c.error(err.msg, node.pos)
+					return
+				}
+			}
+			for deprecated in ['@VMOD', '@VMODULE', '@VPATH', '@VLIB_PATH'] {
+				if flag.contains(deprecated) {
+					c.error('$deprecated had been deprecated, use @VROOT instead.', node.pos)
+				}
+			}
+			// println('adding flag "$flag"')
+			c.table.parse_cflag(flag, c.mod, c.pref.compile_defines_all) or {
 				c.error(err.msg, node.pos)
-				return
 			}
 		}
-		for deprecated in ['@VMOD', '@VMODULE', '@VPATH', '@VLIB_PATH'] {
-			if flag.contains(deprecated) {
-				c.error('$deprecated had been deprecated, use @VROOT instead.', node.pos)
+		else {
+			if node.kind != 'define' {
+				c.error('expected `#define`, `#flag`, `#include` or `#pkgconfig` not $node.val',
+					node.pos)
 			}
-		}
-		// println('adding flag "$flag"')
-		c.table.parse_cflag(flag, c.mod, c.pref.compile_defines_all) or {
-			c.error(err.msg, node.pos)
-		}
-	} else {
-		if node.kind != 'define' {
-			c.error('expected `#define`, `#flag`, `#include` or `#pkgconfig` not $node.val',
-				node.pos)
 		}
 	}
 }
