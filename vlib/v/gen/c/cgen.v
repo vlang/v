@@ -956,11 +956,11 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 		// stmt := stmts[stmts.len-1]
 		if stmt !is ast.FnDecl && g.inside_ternary == 0 {
 			// g.writeln('// autofree scope')
-			// g.writeln('// autofree_scope_vars($stmt.position().pos) | ${typeof(stmt)}')
+			// g.writeln('// autofree_scope_vars($stmt.pos.pos) | ${typeof(stmt)}')
 			// go back 1 position is important so we dont get the
 			// internal scope of for loops and possibly other nodes
-			// g.autofree_scope_vars(stmt.position().pos - 1)
-			mut stmt_pos := stmt.position()
+			// g.autofree_scope_vars(stmt.pos.pos - 1)
+			mut stmt_pos := stmt.pos
 			if stmt_pos.pos == 0 {
 				// Do not autofree if the position is 0, since the correct scope won't be found.
 				// Report a bug, since position shouldn't be 0 for most nodes.

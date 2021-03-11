@@ -130,7 +130,7 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 	mut node := DocNode{
 		name: d.stmt_name(stmt)
 		content: d.stmt_signature(stmt)
-		pos: d.convert_pos(filename, stmt.position())
+		pos: d.convert_pos(filename, stmt.pos)
 		file_path: os.join_path(d.base_path, filename)
 		is_pub: d.stmt_pub(stmt)
 	}

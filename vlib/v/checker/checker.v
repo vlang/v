@@ -3160,7 +3160,7 @@ fn (mut c Checker) check_loop_label(label string, pos token.Position) {
 
 fn (mut c Checker) stmt(node ast.Stmt) {
 	$if trace_checker ? {
-		stmt_pos := node.position()
+		stmt_pos := node.pos
 		eprintln('checking file: ${c.file.path:-30} | stmt pos: ${stmt_pos.str():-45} | stmt')
 	}
 	// c.expected_type = table.void_type
@@ -3602,7 +3602,7 @@ fn (mut c Checker) stmts(stmts []ast.Stmt) {
 	for stmt in stmts {
 		if c.scope_returns {
 			if unreachable.line_nr == -1 {
-				unreachable = stmt.position()
+				unreachable = stmt.pos
 			}
 		}
 		c.stmt(stmt)
@@ -4410,9 +4410,7 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 			// probably any mismatch will be caught by not producing a value instead
 			for st in branch.stmts[0..branch.stmts.len - 1] {
 				// must not contain C statements
-				st.check_c_expr() or {
-					c.error('`match` expression branch has $err', st.position())
-				}
+				st.check_c_expr() or { c.error('`match` expression branch has $err', st.pos) }
 			}
 		}
 		// If the last statement is an expression, return its type
@@ -4791,7 +4789,7 @@ pub fn (mut c Checker) select_expr(mut node ast.SelectExpr) table.Type {
 			}
 			else {
 				if !branch.is_else {
-					c.error('receive or send statement expected as `select` key', branch.stmt.position())
+					c.error('receive or send statement expected as `select` key', branch.stmt.pos)
 				}
 			}
 		}
@@ -5031,7 +5029,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 			}
 			for st in branch.stmts {
 				// must not contain C statements
-				st.check_c_expr() or { c.error('`if` expression branch has $err', st.position()) }
+				st.check_c_expr() or { c.error('`if` expression branch has $err', st.pos) }
 			}
 		}
 		// Also check for returns inside a comp.if's statements, even if its contents aren't parsed
