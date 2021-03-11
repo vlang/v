@@ -379,12 +379,12 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 				// should be called first.
 				if !route_path.contains('/:') && url_words == route_words {
 					// We found a match
-					app.$method(method_args)
+					app.$method()
 					return
 				}
 
 				if url_words.len == 0 && route_words == ['index'] && method.name == 'index' {
-					app.$method(method_args)
+					app.$method()
 					return
 				}
 

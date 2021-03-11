@@ -2,7 +2,6 @@
 setlocal EnableDelayedExpansion EnableExtensions
 
 REM Option flags
-set /a invalid_cc=0
 set /a shift_counter=0
 set /a flag_local=0
 set /a flag_verbose=0
@@ -16,6 +15,7 @@ set target=build
 REM TCC variables
 set "tcc_url=https://github.com/vlang/tccbin"
 set "tcc_dir=%~dp0thirdparty\tcc"
+set "tcc_exe=%~dp0thirdparty\tcc\tcc.exe"
 if "%PROCESSOR_ARCHITECTURE%" == "x86" ( set "tcc_branch=thirdparty-windows-i386" ) else ( set "tcc_branch=thirdparty-windows-amd64" )
 if "%~1" == "-tcc32" set "tcc_branch=thirdparty-windows-i386"
 
@@ -177,6 +177,30 @@ if !flag_local! NEQ 1 (
 echo Building V...
 if not [!compiler!] == [] goto :!compiler!_strap
 
+
+
+REM By default, use tcc, since we have it prebuilt:
+:tcc_strap
+:tcc32_strap
+echo  ^> Attempting to build v_win.c with TCC
+if !flag_verbose! EQU 1 (
+    echo [Debug] "!tcc_exe!" -ladvapi32 -bt10 -w -o v.exe vc\v_win.c>>"!log_file!"
+    echo    "!tcc_exe!" -ladvapi32 -bt10 -w -o v.exe vc\v_win.c
+)
+"!tcc_exe!" -ladvapi32 -bt10 -w -o v.exe vc\v_win.c>>"!log_file!" 2>NUL
+if %ERRORLEVEL% NEQ 0 goto :compile_error
+
+echo  ^> Compiling with .\v.exe self
+if !flag_verbose! EQU 1 (
+    echo [Debug] v.exe -cc "!tcc_exe!" self>>"!log_file!"
+    echo    v.exe -cc "!tcc_exe!" self
+)
+v.exe -cc "!tcc_exe!" self>>"!log_file!" 2>NUL
+if %ERRORLEVEL% NEQ 0 goto :clang_strap
+goto :success
+
+
+
 :clang_strap
 where /q clang
 if %ERRORLEVEL% NEQ 0 (
@@ -247,7 +271,7 @@ if "%PROCESSOR_ARCHITECTURE%" == "x86" (
 if not exist "%VsWhereDir%\Microsoft Visual Studio\Installer\vswhere.exe" (
 	echo  ^> MSVC not found
 	if not [!compiler!] == [] goto :error
-	goto :tcc_strap
+	goto :compile_error
 )
 
 for /f "usebackq tokens=*" %%i in (`"%VsWhereDir%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do (
@@ -284,25 +308,7 @@ del %ObjFile%>>"!log_file!" 2>>&1
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
 
-:tcc_strap
-:tcc32_strap
-if [!compiler!] == [] set /a invalid_cc=1
-echo  ^> Attempting to build v_win.c with TCC
-if !flag_verbose! EQU 1 (
-    echo [Debug] "!tcc_exe!" -ladvapi32 -bt10 -w -o v.exe vc\v_win.c>>"!log_file!"
-    echo    "!tcc_exe!" -ladvapi32 -bt10 -w -o v.exe vc\v_win.c
-)
-"!tcc_exe!" -ladvapi32 -bt10 -w -o v.exe vc\v_win.c>>"!log_file!" 2>NUL
-if %ERRORLEVEL% NEQ 0 goto :compile_error
 
-echo  ^> Compiling with .\v.exe self
-if !flag_verbose! EQU 1 (
-    echo [Debug] v.exe -cc "!tcc_exe!" self>>"!log_file!"
-    echo    v.exe -cc "!tcc_exe!" self
-)
-v.exe -cc "!tcc_exe!" self>>"!log_file!" 2>NUL
-if %ERRORLEVEL% NEQ 0 goto :compile_error
-goto :success
 
 :download_tcc
 pushd %tcc_dir% 2>NUL && (
@@ -341,19 +347,12 @@ goto :error
 :error
 echo.
 echo Exiting from error
+echo ERROR: please follow the instructions in https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows
 exit /b 1
 
 :success
 echo  ^> V built successfully!
 echo  ^> To add V to your PATH, run `.\v.exe symlink`.
-if !invalid_cc! EQU 1 (
-    echo.
-    echo WARNING:  No C compiler was detected in your PATH. `tcc` was used temporarily
-    echo           to build V, but it may have some bugs and may not work in all cases.
-    echo           A more advanced C compiler like GCC or MSVC is recommended.
-    echo           https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows
-    echo.
-)
 
 :version
 echo.

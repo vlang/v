@@ -71,15 +71,6 @@ fn main() {
 	}
 	args_and_flags := util.join_env_vflags_and_os_args()[1..]
 	prefs, command := pref.parse_args(external_tools, args_and_flags)
-	if prefs.is_help {
-		invoke_help_and_exit(args)
-	}
-	if prefs.is_verbose {
-		// println('args= ')
-		// println(args) // QTODO
-		// println('prefs= ')
-		// println(prefs) // QTODO
-	}
 	if prefs.use_cache && os.user_os() == 'windows' {
 		eprintln('-usecache is currently disabled on windows')
 		exit(1)
@@ -93,8 +84,8 @@ fn main() {
 		exit(1)
 	}
 	if command == 'test-vet' {
-		println('Please use `v test-cleancode` instead.')
-		return
+		eprintln('Please use `v test-cleancode` instead.')
+		exit(1)
 	}
 	// Start calling the correct functions/external tools
 	// Note for future contributors: Please add new subcommands in the `match` block below.
@@ -112,8 +103,8 @@ fn main() {
 			return
 		}
 		'translate' {
-			println('Translating C to V will be available in V 0.3')
-			return
+			eprintln('Translating C to V will be available in V 0.3')
+			exit(1)
 		}
 		'search', 'install', 'update', 'upgrade', 'outdated', 'list', 'remove' {
 			util.launch_tool(prefs.is_verbose, 'vpm', os.args[1..])
@@ -123,7 +114,7 @@ fn main() {
 			util.launch_tool(prefs.is_verbose, 'vdoc', ['doc', 'vlib'])
 		}
 		'get' {
-			println('V Error: Use `v install` to install modules from vpm.vlang.io')
+			eprintln('V Error: Use `v install` to install modules from vpm.vlang.io')
 			exit(1)
 		}
 		'version' {
@@ -137,6 +128,9 @@ fn main() {
 		// println(prefs.path)
 		builder.compile(command, prefs)
 		return
+	}
+	if prefs.is_help {
+		invoke_help_and_exit(args)
 	}
 	eprintln('v $command: unknown command\nRun "v help" for usage.')
 	exit(1)

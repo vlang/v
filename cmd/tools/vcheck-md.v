@@ -18,6 +18,21 @@ const (
 	non_option_args      = cmdline.only_non_options(os.args[2..])
 )
 
+struct CheckResult {
+pub mut:
+	warnings int
+	errors   int
+	oks      int
+}
+
+fn (v1 CheckResult) + (v2 CheckResult) CheckResult {
+	return CheckResult{
+		warnings: v1.warnings + v2.warnings
+		errors: v1.errors + v2.errors
+		oks: v1.oks + v2.oks
+	}
+}
+
 fn main() {
 	if non_option_args.len == 0 || '-help' in os.args {
 		vhelp.show_topic('check-md')
@@ -28,10 +43,7 @@ fn main() {
 		exit(1)
 	}
 	mut files_paths := non_option_args.clone()
-	mut warnings := 0
-	mut errors := 0
-	mut oks := 0
-	mut all_md_files := []MDFile{}
+	mut res := CheckResult{}
 	if term_colors {
 		os.setenv('VCOLORS', 'always', true)
 	}
@@ -44,49 +56,19 @@ fn main() {
 		real_path := os.real_path(file_path)
 		lines := os.read_lines(real_path) or {
 			println('"$file_path" does not exist')
-			warnings++
+			res.warnings++
 			continue
 		}
 		mut mdfile := MDFile{
 			path: file_path
+			lines: lines
 		}
-		for j, line in lines {
-			if line.len > too_long_line_length {
-				if mdfile.state == .vexample {
-					wprintln(wline(file_path, j, line.len, 'long V example line'))
-					wprintln(line)
-					warnings++
-				} else if mdfile.state == .codeblock {
-					wprintln(wline(file_path, j, line.len, 'long code block line'))
-					wprintln(line)
-					warnings++
-				} else if line.starts_with('|') {
-					wprintln(wline(file_path, j, line.len, 'long table'))
-					wprintln(line)
-					warnings++
-				} else if line.contains('https') {
-					wprintln(wline(file_path, j, line.len, 'long link'))
-					wprintln(line)
-					warnings++
-				} else {
-					eprintln(eline(file_path, j, line.len, 'line too long'))
-					eprintln(line)
-					errors++
-				}
-			}
-			mdfile.parse_line(j, line)
-		}
-		all_md_files << mdfile
+		res += mdfile.check()
 	}
-	for mut mdfile in all_md_files {
-		new_errors, new_oks := mdfile.check_examples()
-		errors += new_errors
-		oks += new_oks
+	if res.warnings > 0 || res.errors > 0 || res.oks > 0 {
+		println('\nWarnings: $res.warnings | Errors: $res.errors | OKs: $res.oks')
 	}
-	if warnings > 0 || errors > 0 || oks > 0 {
-		println('\nWarnings: $warnings | Errors: $errors | OKs: $oks')
-	}
-	if errors > 0 {
+	if res.errors > 0 {
 		exit(1)
 	}
 }
@@ -156,11 +138,44 @@ enum MDFileParserState {
 }
 
 struct MDFile {
-	path string
+	path  string
+	lines []string
 mut:
 	examples []VCodeExample
 	current  VCodeExample
 	state    MDFileParserState = .markdown
+}
+
+fn (mut f MDFile) check() CheckResult {
+	mut res := CheckResult{}
+	for j, line in f.lines {
+		if line.len > too_long_line_length {
+			if f.state == .vexample {
+				wprintln(wline(f.path, j, line.len, 'long V example line'))
+				wprintln(line)
+				res.warnings++
+			} else if f.state == .codeblock {
+				wprintln(wline(f.path, j, line.len, 'long code block line'))
+				wprintln(line)
+				res.warnings++
+			} else if line.starts_with('|') {
+				wprintln(wline(f.path, j, line.len, 'long table'))
+				wprintln(line)
+				res.warnings++
+			} else if line.contains('https') {
+				wprintln(wline(f.path, j, line.len, 'long link'))
+				wprintln(line)
+				res.warnings++
+			} else {
+				eprintln(eline(f.path, j, line.len, 'line too long'))
+				eprintln(line)
+				res.errors++
+			}
+		}
+		f.parse_line(j, line)
+	}
+	res += f.check_examples()
+	return res
 }
 
 fn (mut f MDFile) parse_line(lnumber int, line string) {
@@ -211,7 +226,10 @@ fn (mut f MDFile) debug() {
 }
 
 fn cmdexecute(cmd string) int {
-	res := os.exec(cmd) or { return 1 }
+	res := os.execute(cmd)
+	if res.exit_code < 0 {
+		return 1
+	}
 	if res.exit_code != 0 {
 		eprint(res.output)
 	}
@@ -219,7 +237,7 @@ fn cmdexecute(cmd string) int {
 }
 
 fn silent_cmdexecute(cmd string) int {
-	res := os.exec(cmd) or { return 1 }
+	res := os.execute(cmd)
 	return res.exit_code
 }
 
@@ -227,7 +245,7 @@ fn get_fmt_exit_code(vfile string, vexe string) int {
 	return silent_cmdexecute('"$vexe" fmt -verify $vfile')
 }
 
-fn (mut f MDFile) check_examples() (int, int) {
+fn (mut f MDFile) check_examples() CheckResult {
 	mut errors := 0
 	mut oks := 0
 	vexe := pref.vexe_path()
@@ -252,7 +270,7 @@ fn (mut f MDFile) check_examples() (int, int) {
 			match command {
 				'compile' {
 					res := cmdexecute('"$vexe" -w -Wfatal-errors -o x.c $vfile')
-					os.rm('x.c') or { }
+					os.rm('x.c') or {}
 					if res != 0 || fmt_res != 0 {
 						if res != 0 {
 							eprintln(eline(f.path, e.sline, 0, 'example failed to compile'))
@@ -285,7 +303,7 @@ fn (mut f MDFile) check_examples() (int, int) {
 				}
 				'failcompile' {
 					res := silent_cmdexecute('"$vexe" -w -Wfatal-errors -o x.c $vfile')
-					os.rm('x.c') or { }
+					os.rm('x.c') or {}
 					if res == 0 {
 						eprintln(eline(f.path, e.sline, 0, '`failcompile` example compiled'))
 						eprintln(vcontent)
@@ -334,5 +352,8 @@ fn (mut f MDFile) check_examples() (int, int) {
 			os.rm(vfile) or { panic(err) }
 		}
 	}
-	return errors, oks
+	return CheckResult{
+		errors: errors
+		oks: oks
+	}
 }

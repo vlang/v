@@ -36,7 +36,7 @@ pub fn vec3(x f32, y f32, z f32) Vec4 {
 pub fn (a Vec4) clean() Vec4 {
 	mut x := Vec4{}
 	for c, value in a.e {
-		if abs(value) < precision {
+		if f32_abs(value) < precision {
 			x.e[c] = 0
 		} else {
 			x.e[c] = value

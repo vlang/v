@@ -67,12 +67,9 @@ fn (mut a App) my_method(p string) Result {
 }
 
 fn handle_conn<T>(mut app T) {
-	mut vars := []string{cap: 123}
-	vars << 'abc'
-	vars << 'def'
 	$for method in T.methods {
 		$if method.return_type is Result {
-			app.$method(vars)
+			app.$method('abc', 'def')
 		}
 	}
 }

@@ -65,7 +65,7 @@ jobs:
       - name: Repeat -o hw.c examples/hello_world.v
         run: cmd/tools/repeat --max_time 150 --series 3 --count 10 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -show-timings -o hw.c examples/hello_world.v' . ./vmaster
       - name: Repeat -o v.c cmd/v
-        run: cmd/tools/repeat --max_time 750 --series 3 --count 15 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -show-timings -o v.c cmd/v' . ./vmaster
+        run: cmd/tools/repeat --max_time 850 --series 3 --count 15 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -show-timings -o v.c cmd/v' . ./vmaster
 
   ubuntu-tcc:
     runs-on: ubuntu-20.04
@@ -1015,5 +1015,3 @@ jobs:
         run: git clone --depth 1 https://github.com/vlang/vab
       - name: Build vab
         run: cd vab; ../v ./vab.v ; cd ..
-      - name: Build vab with -prod
-        run: cd vab; ../v -prod ./vab.v ; cd ..

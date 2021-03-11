@@ -20,7 +20,7 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 		shared_styp = g.typ(shared_typ)
 		g.writeln('($shared_styp*)__dup_shared_array(&($shared_styp){.val = ')
 	} else if is_amp {
-		g.write('($styp*)memdup(ADDR($styp, ')
+		g.write('HEAP($styp, ')
 	}
 	if type_sym.kind == .array_fixed {
 		g.write('{')
@@ -95,7 +95,7 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 		if g.is_shared {
 			g.write('}, sizeof($shared_styp))')
 		} else if is_amp {
-			g.write('), sizeof($styp))')
+			g.write(')')
 		}
 		return
 	}

@@ -29,6 +29,7 @@ from local variables.
 - Support for compile time environment variables via `$env('ENV_VAR')`.
 - Allow method declaration of `==` and `<` operators and auto generate `!=`, `>`, `<=` and `>=`.
 - support `dump(expr)`, i.e. tracing of both the location, name and value of an expression
+- deprecate os.exec in favour of os.executable() which does *NOT* return an option, when the command was not found
 
 ## V 0.2.1
 *30 Dec 2020*

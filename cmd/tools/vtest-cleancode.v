@@ -43,7 +43,6 @@ const (
 		'vlib/v/fmt/',
 		'vlib/v/gen/c/',
 		/* 'vlib/v/gen/js/', */
-		'vlib/v/gen/tests/',
 		'vlib/v/gen/x64/',
 		'vlib/v/live/',
 		'vlib/v/markused/',

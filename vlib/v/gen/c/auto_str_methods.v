@@ -45,8 +45,7 @@ fn (g &Gen) type_to_fmt(typ table.Type) string {
 	if typ.is_ptr() && (typ.is_int() || typ.is_float()) {
 		return '%.*s\\000'
 	} else if sym.kind in [.struct_, .array, .array_fixed, .map, .bool, .enum_, .interface_, .sum_type,
-		.function,
-	] {
+		.function, .alias] {
 		return '%.*s\\000'
 	} else if sym.kind == .string {
 		return "'%.*s\\000'"
@@ -678,7 +677,7 @@ fn (mut g Gen) gen_str_for_union_sum_type(info table.SumType, styp string, str_f
 		clean_sum_type_v_type_name = '&' + clean_sum_type_v_type_name.replace('*', '')
 	}
 	clean_sum_type_v_type_name = util.strip_main_name(clean_sum_type_v_type_name)
-	g.auto_str_funcs.writeln('\tswitch(x.typ) {')
+	g.auto_str_funcs.writeln('\tswitch(x._typ) {')
 	for typ in info.variants {
 		mut value_fmt := '%.*s\\000'
 		if typ == table.string_type {

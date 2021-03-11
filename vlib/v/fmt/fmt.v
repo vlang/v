@@ -11,9 +11,6 @@ import v.pref
 
 const (
 	bs      = '\\'
-	tabs    = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t',
-		'\t\t\t\t\t\t\t\t',
-	]
 	// when to break a line dependant on penalty
 	max_len = [0, 35, 60, 85, 93, 100]
 )
@@ -110,14 +107,7 @@ pub fn (mut f Fmt) writeln(s string) {
 }
 
 fn (mut f Fmt) write_indent() {
-	if f.indent < fmt.tabs.len {
-		f.out.write_string(fmt.tabs[f.indent])
-	} else {
-		// too many indents, do it the slow way:
-		for _ in 0 .. f.indent {
-			f.out.write_string('\t')
-		}
-	}
+	f.out.write_string(util.tabs(f.indent))
 	f.line_len += f.indent * 4
 }
 
@@ -388,7 +378,7 @@ pub fn (mut f Fmt) stmt_str(node ast.Stmt) string {
 
 pub fn (mut f Fmt) stmt(node ast.Stmt) {
 	if f.is_debug {
-		eprintln('stmt: ${node.position():-42} | node: ${node.type_name():-20}')
+		eprintln('stmt: ${node.pos:-42} | node: ${node.type_name():-20}')
 	}
 	match node {
 		ast.AssignStmt {
@@ -996,10 +986,15 @@ pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 		} else if node.is_env {
 			f.write("\$env('$node.args_var')")
 		} else {
-			method_expr := if node.has_parens {
-				'(${node.method_name}($node.args_var))'
+			inner_args := if node.args_var != '' {
+				node.args_var
 			} else {
-				'${node.method_name}($node.args_var)'
+				node.args.map(it.str()).join(', ')
+			}
+			method_expr := if node.has_parens {
+				'(${node.method_name}($inner_args))'
+			} else {
+				'${node.method_name}($inner_args)'
 			}
 			f.write('${node.left}.$$method_expr')
 		}
