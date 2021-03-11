@@ -1147,12 +1147,12 @@ The `for value in arr` form is used for going through elements of an array.
 If an index is required, an alternative form `for index, value in arr` can be used.
 
 Note, that the value is read-only.
-If you need to modify the array while looping, you have to use indexing:
+If you need to modify the array while looping, you need to declare the element as mutable:
 
 ```v
 mut numbers := [0, 1, 2]
-for i, _ in numbers {
-	numbers[i]++
+for mut num in numbers {
+	num++
 }
 println(numbers) // [1, 2, 3]
 ```
