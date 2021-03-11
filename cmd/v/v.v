@@ -103,7 +103,7 @@ fn main() {
 			return
 		}
 		'translate' {
-			println('Translating C to V will be available in V 0.3')
+			eprintln('Translating C to V will be available in V 0.3')
 			return
 		}
 		'search', 'install', 'update', 'upgrade', 'outdated', 'list', 'remove' {
@@ -114,7 +114,7 @@ fn main() {
 			util.launch_tool(prefs.is_verbose, 'vdoc', ['doc', 'vlib'])
 		}
 		'get' {
-			println('V Error: Use `v install` to install modules from vpm.vlang.io')
+			eprintln('V Error: Use `v install` to install modules from vpm.vlang.io')
 			exit(1)
 		}
 		'version' {
