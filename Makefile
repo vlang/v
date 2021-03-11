@@ -137,5 +137,4 @@ selfcompile:
 selfcompile-static:
 	$(V) -cg -cflags '--static' -o v-static cmd/v
 
-install: all
-	$(V) symlink
+### NB: There is DELIBERATELY no `make install` target. Please keep this Makefile and make.bat simple.
