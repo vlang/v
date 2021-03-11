@@ -204,7 +204,11 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			break
 		}
 		g.write(escaped_val)
-		typ := g.unwrap_generic(node.expr_types[i])
+		mut typ := g.unwrap_generic(node.expr_types[i])
+		sym := g.table.get_type_symbol(typ)
+		if sym.kind == .alias {
+			typ = (sym.info as table.Alias).parent_type
+		}
 		// write correct format specifier to intermediate string
 		g.write('%')
 		fspec := node.fmts[i]

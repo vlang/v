@@ -138,11 +138,11 @@ pub fn rmdir_all(path string) ? {
 	for item in items {
 		fullpath := join_path(path, item)
 		if is_dir(fullpath) {
-			rmdir_all(fullpath) or { ret_err = err }
+			rmdir_all(fullpath) or { ret_err = err.msg }
 		}
-		rm(fullpath) or { ret_err = err }
+		rm(fullpath) or { ret_err = err.msg }
 	}
-	rmdir(path) or { ret_err = err }
+	rmdir(path) or { ret_err = err.msg }
 	if ret_err.len > 0 {
 		return error(ret_err)
 	}

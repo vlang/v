@@ -10,10 +10,10 @@ vlib/v/checker/tests/array_or_map_assign_err.vv:5:5: error: use `array2 = array1
     4 |     mut a3 := []int{}
     5 |     a3 = a1
       |        ^
-    6 | 
+    6 |
     7 |     m1 := {'one': 1}
 vlib/v/checker/tests/array_or_map_assign_err.vv:8:8: error: cannot copy map: call `move` or `clone` method (or use a reference)
-    6 | 
+    6 |
     7 |     m1 := {'one': 1}
     8 |     m2 := m1
       |           ~~
@@ -24,5 +24,12 @@ vlib/v/checker/tests/array_or_map_assign_err.vv:10:7: error: cannot copy map: ca
     9 |     mut m3 := map[string]int{}
    10 |     m3 = m1
       |          ~~
-   11 |     
+   11 |
    12 |     _ = a2
+vlib/v/checker/tests/array_or_map_assign_err.vv:20:8: error: cannot copy map: call `move` or `clone` method (or use a reference)
+   18 |
+   19 | fn foo(mut m map[string]int) {
+   20 |     m2 := m
+      |           ^
+   21 |     m['foo'] = 100
+   22 |     println(m)

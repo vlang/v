@@ -415,7 +415,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		// `x := foo() or { ...}`
 		// cut everything that has been generated to prepend optional variable creation
 		line := g.go_before_stmt(0)
-		g.out.write_string(tabs[g.indent])
+		g.out.write_string(util.tabs(g.indent))
 		// g.write('/*is_gen_or_and_assign_rhs*/')
 		line
 	} else {
@@ -542,7 +542,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.write('tos3( /* $left_sym.name */ v_typeof_sumtype_${typ_sym.cname}( (')
 		g.expr(node.left)
 		dot := if node.left_type.is_ptr() { '->' } else { '.' }
-		g.write(')${dot}typ ))')
+		g.write(')${dot}_typ ))')
 		return
 	}
 	if left_sym.kind == .interface_ && node.name == 'type_name' {

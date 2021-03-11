@@ -21,8 +21,6 @@ const (
 		'int_literal', 'float_literal', 'size_t', 'bool', 'string', 'map', 'array']
 	shallow_equatables = [table.Kind.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64,
 		.int_literal, .float_literal, .size_t, .bool, .string]
-	tabs               = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t',
-		'\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t\t']
 )
 
 struct Namespace {
@@ -261,7 +259,7 @@ fn verror(msg string) {
 [inline]
 pub fn (mut g JsGen) gen_indent() {
 	if g.ns.indent > 0 && g.empty_line {
-		g.ns.out.write_string(js.tabs[g.ns.indent])
+		g.ns.out.write_string(util.tabs(g.ns.indent))
 	}
 	g.empty_line = false
 }

@@ -2376,12 +2376,14 @@ fn (mut p Parser) module_decl() ast.Module {
 		// as it creates a wrong position when extended
 		// to module_pos
 		n_pos := p.tok.position()
-		if module_pos.line_nr == n_pos.line_nr && p.tok.kind != .comment {
-			if p.tok.kind != .name {
-				p.error_with_pos('`module x` syntax error', n_pos)
+		if module_pos.line_nr == n_pos.line_nr && p.tok.kind != .comment && p.tok.kind != .eof {
+			if p.tok.kind == .name {
+				p.error_with_pos('`module $name`, you can only declare one module, unexpected `$p.tok.lit`',
+					n_pos)
 				return mod_node
 			} else {
-				p.error_with_pos('`module x` can only declare one module', n_pos)
+				p.error_with_pos('`module $name`, unexpected `$p.tok.kind` after module name',
+					n_pos)
 				return mod_node
 			}
 		}
@@ -2859,7 +2861,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		}
 		variant_types := sum_variants.map(it.typ)
 		prepend_mod_name := p.prepend_mod(name)
-		p.table.register_type_symbol(table.TypeSymbol{
+		typ := p.table.register_type_symbol(table.TypeSymbol{
 			kind: .sum_type
 			name: prepend_mod_name
 			cname: util.no_dots(prepend_mod_name)
@@ -2872,6 +2874,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		comments = p.eat_comments(same_line: true)
 		return ast.SumTypeDecl{
 			name: name
+			typ: typ
 			is_pub: is_pub
 			variants: sum_variants
 			pos: decl_pos
