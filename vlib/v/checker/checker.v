@@ -2443,7 +2443,7 @@ pub fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 	mut field_names := []string{}
 	mut field_order := []int{}
 	if node.fields.len == 0 {
-		c.warn('empty const block', node.pos)
+		c.warn('const block must have at least 1 declaration', node.pos)
 	}
 	for i, field in node.fields {
 		// TODO Check const name once the syntax is decided
