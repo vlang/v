@@ -103,9 +103,14 @@ static inline void __sort_ptr(uintptr_t a[], bool b[], int l)
 	#endif
 #endif
 
+// Use __offsetof_ptr instead of __offset_of, when you *do* have a valid pointer, to avoid UB:
+#ifndef __offsetof_ptr
+	#define __offsetof_ptr(ptr,PTYPE,FIELDNAME) ((size_t)((byte *)&((PTYPE *)ptr)->FIELDNAME - (byte *)ptr))
+#endif
+
 // for __offset_of
 #ifndef __offsetof
-	#define __offsetof(s,memb) ((size_t)((char *)&((s *)0)->memb - (char *)0))
+	#define __offsetof(PTYPE,FIELDNAME) ((size_t)((char *)&((PTYPE *)0)->FIELDNAME - (char *)0))
 #endif
 
 #define OPTION_CAST(x) (x)
