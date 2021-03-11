@@ -240,9 +240,12 @@ pub fn (mut p Parser) parse() ast.File {
 			break
 		}
 		// println('stmt at ' + p.tok.str())
-		stmts << p.top_stmt()
+		stmt := p.top_stmt()
 		// clear the attributes after each statement
-		p.attrs = []
+		if !(stmt is ast.ExprStmt && (stmt as ast.ExprStmt).expr is ast.Comment) {
+			p.attrs = []
+		}
+		stmts << stmt
 	}
 	// println('nr stmts = $stmts.len')
 	// println(stmts[0])
