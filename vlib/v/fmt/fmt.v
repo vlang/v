@@ -986,10 +986,15 @@ pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 		} else if node.is_env {
 			f.write("\$env('$node.args_var')")
 		} else {
-			method_expr := if node.has_parens {
-				'(${node.method_name}($node.args_var))'
+			inner_args := if node.args_var != '' {
+				node.args_var
 			} else {
-				'${node.method_name}($node.args_var)'
+				node.args.map(it.str()).join(', ')
+			}
+			method_expr := if node.has_parens {
+				'(${node.method_name}($inner_args))'
+			} else {
+				'${node.method_name}($inner_args)'
 			}
 			f.write('${node.left}.$$method_expr')
 		}

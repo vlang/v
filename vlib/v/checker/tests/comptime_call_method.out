@@ -1,14 +1,7 @@
-vlib/v/checker/tests/comptime_call_method.vv:10:7: error: unknown identifier `wrong`
+vlib/v/checker/tests/comptime_call_method.vv:10:14: error: undefined ident: `wrong`
     8 |     s1 := S1{}
     9 |     $for method in S1.methods {
    10 |         s1.$method(wrong)
-      |             ~~~~~~
-   11 |         arg := 7
-   12 |         s1.$method(arg)
-vlib/v/checker/tests/comptime_call_method.vv:12:7: error: expected `[]string`, not s
-   10 |         s1.$method(wrong)
-   11 |         arg := 7
-   12 |         s1.$method(arg)
-      |             ~~~~~~
-   13 |     }
-   14 | }
+      |                    ~~~~~
+   11 |     }
+   12 | }

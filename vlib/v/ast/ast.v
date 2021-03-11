@@ -1184,6 +1184,7 @@ pub mut:
 	sym         table.TypeSymbol
 	result_type table.Type
 	env_value   string
+	args        []CallArg
 }
 
 pub struct None {
