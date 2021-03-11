@@ -21,8 +21,13 @@ fn cerror(e string) {
 	eprintln('\nerror: $e')
 }
 
-fn cwarn(e string) {
-	eprintln('warning: $e')
+fn check_name(name string) string {
+	if name.contains(' ') {
+		cname := name.replace(' ', '_')
+		eprintln('warning: the project name cannot contain spaces, the name will be changed to `$cname`')
+		return cname
+	}
+	return name
 }
 
 fn vmod_content(c Create) string {
@@ -103,7 +108,7 @@ fn (c &Create) create_git_repo(dir string) {
 
 fn create(args []string) {
 	mut c := Create{}
-	c.name = if args.len > 0 { args[0] } else { os.input('Input your project name: ') }
+	c.name = check_name(if args.len > 0 { args[0] } else { os.input('Input your project name: ') })
 	if c.name == '' {
 		cerror('project name cannot be empty')
 		exit(1)
@@ -111,11 +116,6 @@ fn create(args []string) {
 	if c.name.contains('-') {
 		cerror('"$c.name" should not contain hyphens')
 		exit(1)
-	}
-	if c.name.contains(' ') {
-		cname := c.name.replace(' ', '_')
-		cwarn('the project name cannot contain spaces, the name will be changed to `$cname`')
-		c.name = cname
 	}
 	if os.is_dir(c.name) {
 		cerror('$c.name folder already exists')
@@ -145,12 +145,7 @@ fn init_project() {
 		exit(3)
 	}
 	mut c := Create{}
-	c.name = os.file_name(os.getwd())
-	if c.name.contains(' ') {
-		cname := c.name.replace(' ', '_')
-		cwarn('the project name cannot contain spaces, the name will be changed to `$cname`')
-		c.name = cname
-	}
+	c.name = check_name(os.file_name(os.getwd()))
 	c.description = ''
 	c.write_vmod(false)
 	c.write_main(false)
