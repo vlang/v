@@ -477,12 +477,12 @@ pub:
 	is_arg          bool // fn args should not be autofreed
 	is_auto_deref   bool
 pub mut:
-	typ            Type
-	orig_type      Type   // original sumtype type; 0 if it's not a sumtype
-	sum_type_casts []Type // nested sum types require nested smart casting, for that a list of types is needed
+	typ        Type
+	orig_type  Type   // original sumtype type; 0 if it's not a sumtype
+	smartcasts []Type // nested sum types require nested smart casting, for that a list of types is needed
 	// TODO: move this to a real docs site later
 	// 10 <- original type (orig_type)
-	//   [11, 12, 13] <- cast order (sum_type_casts)
+	//   [11, 12, 13] <- cast order (smartcasts)
 	//        12 <- the current casted type (typ)
 	pos        token.Position
 	is_used    bool
@@ -497,15 +497,15 @@ pub mut:
 // struct fields change type in scopes
 pub struct ScopeStructField {
 pub:
-	struct_type    Type // type of struct
-	name           string
-	pos            token.Position
-	typ            Type
-	sum_type_casts []Type // nested sum types require nested smart casting, for that a list of types is needed
-	orig_type      Type   // original sumtype type; 0 if it's not a sumtype
+	struct_type Type // type of struct
+	name        string
+	pos         token.Position
+	typ         Type
+	smartcasts  []Type // nested sum types require nested smart casting, for that a list of types is needed
+	orig_type   table.Type   // original sumtype type; 0 if it's not a sumtype
 	// TODO: move this to a real docs site later
 	// 10 <- original type (orig_type)
-	//   [11, 12, 13] <- cast order (sum_type_casts)
+	//   [11, 12, 13] <- cast order (smartcasts)
 	//        12 <- the current casted type (typ)
 }
 
@@ -688,7 +688,6 @@ pub:
 	comments []Comment
 pub mut:
 	stmts     []Stmt
-	smartcast bool // true when cond is `x is SumType`, set in checker.if_expr // no longer needed with union sum types TODO: remove
 	scope     &Scope
 }
 

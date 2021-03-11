@@ -824,14 +824,20 @@ static inline void __${typ.cname}_pushval($typ.cname ch, $el_stype val) {
 pub fn (mut g Gen) write_interface_typesymbol_declaration(sym ast.TypeSymbol) {
 	info := sym.info as ast.Interface
 	g.type_definitions.writeln('typedef struct {')
-	g.type_definitions.writeln('\tvoid* _object;')
-	g.type_definitions.writeln('\tint _interface_idx;')
+	g.type_definitions.writeln('\tunion {')
+	g.type_definitions.writeln('\t\tvoid* _object;')
+	for variant in info.types {
+		vcname := g.table.get_type_symbol(variant).cname
+		g.type_definitions.writeln('\t\t$vcname* _$vcname;')
+	}
+	g.type_definitions.writeln('\t};')
+	g.type_definitions.writeln('\tint _typ;')
 	for field in info.fields {
 		styp := g.typ(field.typ)
 		cname := c_name(field.name)
 		g.type_definitions.writeln('\t$styp* $cname;')
 	}
-	g.type_definitions.writeln('} ${c_name(sym.name)};\n')
+	g.type_definitions.writeln('} ${c_name(sym.name)};')
 }
 
 pub fn (mut g Gen) write_fn_typesymbol_declaration(sym ast.TypeSymbol) {
@@ -1696,7 +1702,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 			scope := g.file.scope.innermost(expr.position().pos)
 			if expr is ast.Ident {
 				if v := scope.find_var(expr.name) {
-					if v.sum_type_casts.len > 0 {
+					if v.smartcasts.len > 0 {
 						is_already_sum_type = true
 					}
 				}
@@ -3215,7 +3221,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	mut sum_type_dot := '.'
 	if f := g.table.find_field(sym, node.field_name) {
 		field_sym := g.table.get_type_symbol(f.typ)
-		if field_sym.kind == .sum_type {
+		if field_sym.kind in [.sum_type, .interface_] {
 			if !prevent_sum_type_unwrapping_once {
 				// check first if field is sum type because scope searching is expensive
 				scope := g.file.scope.innermost(node.pos.pos)
@@ -3224,7 +3230,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 						sum_type_dot = '->'
 					}
 					// union sum type deref
-					for i, typ in field.sum_type_casts {
+					for i, typ in field.smartcasts {
 						g.write('(*')
 						cast_sym := g.table.get_type_symbol(typ)
 						if i != 0 {
@@ -3957,9 +3963,9 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 					if branch.exprs[sumtype_index] is ast.TypeNode {
 						typ := branch.exprs[sumtype_index] as ast.TypeNode
 						branch_sym := g.table.get_type_symbol(typ.typ)
-						g.write('${dot_or_ptr}_interface_idx == _${sym.cname}_${branch_sym.cname}_index')
+						g.write('${dot_or_ptr}_typ == _${sym.cname}_${branch_sym.cname}_index')
 					} else if branch.exprs[sumtype_index] is ast.None && sym.name == 'IError' {
-						g.write('${dot_or_ptr}_interface_idx == _IError_None___index')
+						g.write('${dot_or_ptr}_typ == _IError_None___index')
 					}
 				}
 				if is_expr && tmp_var.len == 0 {
@@ -4314,12 +4320,12 @@ fn (mut g Gen) ident(node ast.Ident) {
 		}
 		scope := g.file.scope.innermost(node.pos.pos)
 		if v := scope.find_var(node.name) {
-			if v.sum_type_casts.len > 0 {
+			if v.smartcasts.len > 0 {
 				if !prevent_sum_type_unwrapping_once {
-					for _ in v.sum_type_casts {
+					for _ in v.smartcasts {
 						g.write('(*')
 					}
-					for i, typ in v.sum_type_casts {
+					for i, typ in v.smartcasts {
 						cast_sym := g.table.get_type_symbol(typ)
 						mut is_ptr := false
 						if i == 0 {
@@ -4565,23 +4571,6 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 					g.expr(branch.cond)
 					g.writeln(') {')
 				}
-			}
-		}
-		if branch.smartcast && branch.stmts.len > 0 {
-			infix := branch.cond as ast.InfixExpr
-			if mut infix.left is ast.Ident {
-				right_type := infix.right as ast.TypeNode
-				left_type := infix.left_type
-				it_type := g.typ(right_type.typ)
-				g.write('\t$it_type* _sc_tmp_$branch.pos.pos = ($it_type*)')
-				g.expr(infix.left)
-				if left_type.is_ptr() {
-					g.write('->')
-				} else {
-					g.write('.')
-				}
-				g.writeln('_object;')
-				g.writeln('\t$it_type* $infix.left.name = _sc_tmp_$branch.pos.pos;')
 			}
 		}
 		if needs_tmp_var {
@@ -6106,7 +6095,7 @@ fn (mut g Gen) is_expr(node ast.InfixExpr) {
 	}
 	sym := g.table.get_type_symbol(node.left_type)
 	if sym.kind == .interface_ {
-		g.write('_interface_idx $eq ')
+		g.write('_typ $eq ')
 		// `_Animal_Dog_index`
 		sub_type := match mut node.right {
 			ast.TypeNode { node.right.typ }
@@ -6198,8 +6187,8 @@ fn (mut g Gen) interface_table() string {
 			sb.writeln('$staticprefix $interface_name I_${cctype}_to_Interface_${interface_name}($cctype* x);')
 			mut cast_struct := strings.new_builder(100)
 			cast_struct.writeln('($interface_name) {')
-			cast_struct.writeln('\t\t._object = (void*) (x),')
-			cast_struct.writeln('\t\t._interface_idx = $interface_index_name,')
+			cast_struct.writeln('\t\t._$cctype = (void*) (x),')
+			cast_struct.writeln('\t\t._typ = $interface_index_name,')
 			for field in inter_info.fields {
 				cname := c_name(field.name)
 				field_styp := g.typ(field.typ)

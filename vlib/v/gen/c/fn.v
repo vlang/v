@@ -494,7 +494,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.expr(node.left)
 		dot := if node.left_type.is_ptr() { '->' } else { '.' }
 		mname := c_name(node.name)
-		g.write('${dot}_interface_idx]._method_${mname}(')
+		g.write('${dot}_typ]._method_${mname}(')
 		g.expr(node.left)
 		g.write('${dot}_object')
 		if node.args.len > 0 {
@@ -561,7 +561,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.write('tos3( /* $left_sym.name */ v_typeof_interface_${typ_sym.cname}( (')
 		g.expr(node.left)
 		dot := if node.left_type.is_ptr() { '->' } else { '.' }
-		g.write(')${dot}_interface_idx ))')
+		g.write(')${dot}_typ ))')
 		return
 	}
 	if node.name == 'str' {
