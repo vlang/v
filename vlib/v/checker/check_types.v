@@ -365,7 +365,8 @@ pub fn (mut c Checker) fail_if_not_rlocked(expr ast.Expr, typ table.Type, what s
 		}
 		ast.IndexExpr {
 			c.fail_if_not_rlocked(expr.left, expr.left_type, what)
-		} else {
+		}
+		else {
 			return
 		}
 	}
