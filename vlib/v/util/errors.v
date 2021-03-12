@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module util
 
+import math.mathutil as mu
 import os
 import strings
 import term
@@ -81,7 +82,7 @@ pub fn formatted_error(kind string, omsg string, filepath string, pos token.Posi
 	}
 	//
 	source, column := filepath_pos_to_source_and_column(filepath, pos)
-	position := '$path:${pos.line_nr + 1}:${imax(1, column + 1)}:'
+	position := '$path:${pos.line_nr + 1}:${mu.max(1, column + 1)}:'
 	scontext := source_context(kind, source, column, pos).join('\n')
 	final_position := bold(position)
 	final_kind := bold(color(kind, kind))
@@ -95,7 +96,7 @@ pub fn filepath_pos_to_source_and_column(filepath string, pos token.Position) (s
 	// TODO: optimize this; may be use a cache.
 	// The column should not be so computationally hard to get.
 	source := read_file(filepath) or { '' }
-	mut p := imax(0, imin(source.len - 1, pos.pos))
+	mut p := mu.max(0, mu.min(source.len - 1, pos.pos))
 	if source.len > 0 {
 		for ; p >= 0; p-- {
 			if source[p] == `\n` || source[p] == `\r` {
@@ -103,7 +104,7 @@ pub fn filepath_pos_to_source_and_column(filepath string, pos token.Position) (s
 			}
 		}
 	}
-	column := imax(0, pos.pos - p - 1)
+	column := mu.max(0, pos.pos - p - 1)
 	return source, column
 }
 
@@ -113,13 +114,13 @@ pub fn source_context(kind string, source string, column int, pos token.Position
 		return clines
 	}
 	source_lines := source.split_into_lines()
-	bline := imax(0, pos.line_nr - util.error_context_before)
-	aline := imax(0, imin(source_lines.len - 1, pos.line_nr + util.error_context_after))
+	bline := mu.max(0, pos.line_nr - util.error_context_before)
+	aline := mu.max(0, mu.min(source_lines.len - 1, pos.line_nr + util.error_context_after))
 	tab_spaces := '    '
 	for iline := bline; iline <= aline; iline++ {
 		sline := source_lines[iline]
-		start_column := imax(0, imin(column, sline.len))
-		end_column := imax(0, imin(column + imax(0, pos.len), sline.len))
+		start_column := mu.max(0, mu.min(column, sline.len))
+		end_column := mu.max(0, mu.min(column + mu.max(0, pos.len), sline.len))
 		cline := if iline == pos.line_nr {
 			sline[..start_column] + color(kind, sline[start_column..end_column]) +
 				sline[end_column..]

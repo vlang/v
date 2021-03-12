@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module fmt
 
+import math.mathutil as mu
 import v.ast
 import v.table
 import strings
@@ -70,7 +71,7 @@ pub fn fmt(file ast.File, table &table.Table, pref &pref.Preferences, is_debug b
 	if res.len == 1 {
 		return f.out_imports.str().trim_space() + '\n'
 	}
-	bounded_import_pos := util.imin(res.len, f.import_pos)
+	bounded_import_pos := mu.min(res.len, f.import_pos)
 	return res[..bounded_import_pos] + f.out_imports.str() + res[bounded_import_pos..]
 }
 
@@ -1910,11 +1911,11 @@ pub fn (mut f Fmt) map_init(it ast.MapInit) {
 	f.write('}')
 }
 
-pub fn (mut f Fmt) const_decl(it ast.ConstDecl) {
-	if it.is_pub {
+pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
+	if node.is_pub {
 		f.write('pub ')
 	}
-	if it.fields.len == 0 && it.pos.line_nr == it.pos.last_line {
+	if node.fields.len == 0 && node.pos.line_nr == node.pos.last_line {
 		f.writeln('const ()\n')
 		return
 	}
@@ -1923,18 +1924,18 @@ pub fn (mut f Fmt) const_decl(it ast.ConstDecl) {
 		f.inside_const = false
 	}
 	f.write('const ')
-	if it.is_block {
-		f.writeln('(')
-	}
 	mut max := 0
-	for field in it.fields {
-		if field.name.len > max {
-			max = field.name.len
+	if node.is_block {
+		f.writeln('(')
+		for field in node.fields {
+			if field.name.len > max {
+				max = field.name.len
+			}
 		}
+		f.indent++
 	}
-	f.indent++
-	mut prev_field := if it.fields.len > 0 { ast.Node(it.fields[0]) } else { ast.Node{} }
-	for field in it.fields {
+	mut prev_field := if node.fields.len > 0 { ast.Node(node.fields[0]) } else { ast.Node{} }
+	for field in node.fields {
 		if field.comments.len > 0 {
 			if f.should_insert_newline_before_node(ast.Expr(field.comments[0]), prev_field) {
 				f.writeln('')
@@ -1942,7 +1943,7 @@ pub fn (mut f Fmt) const_decl(it ast.ConstDecl) {
 			f.comments(field.comments, inline: true)
 			prev_field = ast.Expr(field.comments.last())
 		}
-		if f.should_insert_newline_before_node(field, prev_field) {
+		if node.is_block && f.should_insert_newline_before_node(field, prev_field) {
 			f.writeln('')
 		}
 		name := field.name.after('.')
@@ -1953,9 +1954,9 @@ pub fn (mut f Fmt) const_decl(it ast.ConstDecl) {
 		f.writeln('')
 		prev_field = field
 	}
-	f.comments_after_last_field(it.end_comments)
-	f.indent--
-	if it.is_block {
+	f.comments_after_last_field(node.end_comments)
+	if node.is_block {
+		f.indent--
 		f.writeln(')\n')
 	} else {
 		f.writeln('')

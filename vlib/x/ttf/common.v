@@ -133,24 +133,6 @@ pub fn (mut bmp BitMap) save_raw_data(file_name string) {
 //
 // Math functions
 //
-[inline]
-fn abs(a int) int {
-	if a < 0 {
-		return -a
-	} else {
-		return a
-	}
-}
-
-[inline]
-fn fabs(a f32) f32 {
-	if a < 0 {
-		return -a
-	} else {
-		return a
-	}
-}
-
 // integer part of x
 [inline]
 fn ipart(x f32) f32 {

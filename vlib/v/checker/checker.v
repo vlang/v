@@ -875,6 +875,9 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 		}
 		.left_shift {
 			if left_final.kind == .array {
+				if !infix_expr.is_stmt {
+					c.error('array append cannot be used in an expression', infix_expr.pos)
+				}
 				// `array << elm`
 				infix_expr.auto_locked, _ = c.fail_if_immutable(infix_expr.left)
 				left_value_type := c.table.value_type(left_type)
@@ -1421,9 +1424,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 					pos)
 			}
 		} else {
-			if left_type.has_flag(.shared_f) {
-				c.fail_if_not_rlocked(call_expr.left, 'receiver')
-			}
+			c.fail_if_unreadable(call_expr.left, left_type, 'receiver')
 		}
 		if (!left_type_sym.is_builtin() && method.mod != 'builtin') && method.language == .v
 			&& method.no_body {
@@ -1517,9 +1518,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 					c.error('`$call_expr.name` parameter `$param.name` is `$tok`, you need to provide `$tok` e.g. `$tok arg${
 						i + 1}`', arg.expr.position())
 				} else {
-					if got_arg_typ.has_flag(.shared_f) {
-						c.fail_if_not_rlocked(arg.expr, 'argument')
-					}
+					c.fail_if_unreadable(arg.expr, got_arg_typ, 'argument')
 				}
 			}
 		}
@@ -1584,9 +1583,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		if call_expr.args.len > 0 {
 			c.error('.str() method calls should have no arguments', call_expr.pos)
 		}
-		if left_type.has_flag(.shared_f) {
-			c.fail_if_not_rlocked(call_expr.left, 'receiver')
-		}
+		c.fail_if_unreadable(call_expr.left, left_type, 'receiver')
 		return table.string_type
 	}
 	// call struct field fn type
@@ -1731,6 +1728,11 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	}
 	if fn_name == 'json.encode' {
 	} else if fn_name == 'json.decode' && call_expr.args.len > 0 {
+		if call_expr.args.len != 2 {
+			c.error("json.decode expects 2 arguments, a type and a string (e.g `json.decode(T, '')`)",
+				call_expr.pos)
+			return table.void_type
+		}
 		expr := call_expr.args[0].expr
 		if expr !is ast.Type {
 			typ := expr.type_name()
@@ -1903,9 +1905,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		if call_expr.args[0].typ.is_void() {
 			c.error('`$fn_name` can not print void expressions', call_expr.pos)
 		}
-		if call_expr.args[0].typ.has_flag(.shared_f) {
-			c.fail_if_not_rlocked(call_expr.args[0].expr, 'argument to print')
-		}
+		c.fail_if_unreadable(call_expr.args[0].expr, call_expr.args[0].typ, 'argument to print')
 		c.inside_println_arg = false
 		/*
 		// TODO: optimize `struct T{} fn (t &T) str() string {return 'abc'} mut a := []&T{} a << &T{} println(a[0])`
@@ -1983,9 +1983,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 				c.error('`$call_expr.name` parameter `$arg.name` is `$tok`, you need to provide `$tok` e.g. `$tok arg${
 					i + 1}`', call_arg.expr.position())
 			} else {
-				if typ.has_flag(.shared_f) {
-					c.fail_if_not_rlocked(call_arg.expr, 'argument')
-				}
+				c.fail_if_unreadable(call_arg.expr, typ, 'argument')
 			}
 		}
 		// Handle expected interface
@@ -2335,7 +2333,7 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 	}
 	if sym.kind !in [.struct_, .aggregate, .interface_, .sum_type] {
 		if sym.kind != .placeholder {
-			c.error('`$sym.name` is not a struct', selector_expr.pos)
+			c.error('`$sym.name` has no property `$selector_expr.field_name`', selector_expr.pos)
 		}
 	} else {
 		if sym.info is table.Struct {
@@ -2389,7 +2387,7 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 	return_stmt.types = got_types
 	// allow `none` & `error (Option)` return types for function that returns optional
 	if exp_is_optional
-		&& got_types[0].idx() in [table.none_type_idx, table.error_type_idx, c.table.type_idxs['Option'], c.table.type_idxs['Option2']] {
+		&& got_types[0].idx() in [table.none_type_idx, table.error_type_idx, c.table.type_idxs['Option'], c.table.type_idxs['Option2'], c.table.type_idxs['Option3']] {
 		return
 	}
 	if expected_types.len > 0 && expected_types.len != got_types.len {
@@ -4881,57 +4879,6 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 				}
 			}
 		}
-		// smartcast sumtypes and interfaces when using `is`
-		if !node.is_comptime && branch.cond is ast.InfixExpr {
-			infix := branch.cond as ast.InfixExpr
-			if infix.op == .key_is {
-				right_expr := infix.right as ast.Type
-				left_sym := c.table.get_type_symbol(infix.left_type)
-				expr_type := c.expr(infix.left)
-				if left_sym.kind == .interface_ {
-					c.type_implements(right_expr.typ, expr_type, branch.cond.position())
-				} else if !c.check_types(right_expr.typ, expr_type) {
-					expect_str := c.table.type_to_str(right_expr.typ)
-					expr_str := c.table.type_to_str(expr_type)
-					c.error('cannot use type `$expect_str` as type `$expr_str`', branch.pos)
-				}
-				if (infix.left is ast.Ident || infix.left is ast.SelectorExpr)
-					&& infix.right is ast.Type {
-					is_variable := if mut infix.left is ast.Ident {
-						infix.left.kind == .variable
-					} else {
-						true
-					}
-					if is_variable {
-						if left_sym.kind in [.interface_, .sum_type] {
-							if infix.left is ast.Ident && left_sym.kind == .interface_ {
-								// TODO: rewrite interface smartcast
-								left := infix.left as ast.Ident
-								mut is_mut := false
-								mut sum_type_casts := []table.Type{}
-								if v := branch.scope.find_var(left.name) {
-									is_mut = v.is_mut
-									sum_type_casts << v.sum_type_casts
-								}
-								branch.scope.register(ast.Var{
-									name: left.name
-									typ: right_expr.typ.to_ptr()
-									sum_type_casts: sum_type_casts
-									pos: left.pos
-									is_used: true
-									is_mut: is_mut
-								})
-								// TODO: needs to be removed
-								node.branches[i].smartcast = true
-							} else {
-								c.smartcast_sumtype(infix.left, infix.left_type, right_expr.typ, mut
-									branch.scope)
-							}
-						}
-					}
-				}
-			}
-		}
 		if node.is_comptime { // Skip checking if needed
 			// smartcast field type on comptime if
 			mut comptime_field_name := ''
@@ -4979,6 +4926,57 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 			}
 			c.skip_flags = cur_skip_flags
 		} else {
+			// smartcast sumtypes and interfaces when using `is`
+			pos := branch.cond.position()
+			if branch.cond is ast.InfixExpr {
+				if branch.cond.op == .key_is {
+					right_expr := branch.cond.right as ast.Type
+					left_sym := c.table.get_type_symbol(branch.cond.left_type)
+					expr_type := c.expr(branch.cond.left)
+					if left_sym.kind == .interface_ {
+						c.type_implements(right_expr.typ, expr_type, pos)
+					} else if !c.check_types(right_expr.typ, expr_type) {
+						expect_str := c.table.type_to_str(right_expr.typ)
+						expr_str := c.table.type_to_str(expr_type)
+						c.error('cannot use type `$expect_str` as type `$expr_str`', pos)
+					}
+					if (branch.cond.left is ast.Ident || branch.cond.left is ast.SelectorExpr)
+						&& branch.cond.right is ast.Type {
+						is_variable := if mut branch.cond.left is ast.Ident {
+							branch.cond.left.kind == .variable
+						} else {
+							true
+						}
+						if is_variable {
+							if left_sym.kind in [.interface_, .sum_type] {
+								if branch.cond.left is ast.Ident && left_sym.kind == .interface_ {
+									// TODO: rewrite interface smartcast
+									left := branch.cond.left as ast.Ident
+									mut is_mut := false
+									mut sum_type_casts := []table.Type{}
+									if v := branch.scope.find_var(left.name) {
+										is_mut = v.is_mut
+										sum_type_casts << v.sum_type_casts
+									}
+									branch.scope.register(ast.Var{
+										name: left.name
+										typ: right_expr.typ.to_ptr()
+										sum_type_casts: sum_type_casts
+										pos: left.pos
+										is_used: true
+										is_mut: is_mut
+									})
+									// TODO: needs to be removed
+									node.branches[i].smartcast = true
+								} else {
+									c.smartcast_sumtype(branch.cond.left, branch.cond.left_type,
+										right_expr.typ, mut branch.scope)
+								}
+							}
+						}
+					}
+				}
+			}
 			c.stmts(branch.stmts)
 		}
 		if expr_required {

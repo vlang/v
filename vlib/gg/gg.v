@@ -9,6 +9,7 @@ import sokol.sapp
 import sokol.sgl
 import sokol.gfx
 import math
+import math.mathutil as mu
 
 // import time
 pub type FNCb = fn (x voidptr)
@@ -538,13 +539,6 @@ pub fn (gg &Context) end() {
 	*/
 }
 
-fn abs(a f32) f32 {
-	if a >= 0 {
-		return a
-	}
-	return -a
-}
-
 pub fn (mut ctx Context) resize(width int, height int) {
 	ctx.width = width
 	ctx.height = height
@@ -556,8 +550,8 @@ pub fn (ctx &Context) draw_line(x f32, y f32, x2 f32, y2 f32, c gx.Color) {
 	}
 	if ctx.scale > 1 {
 		// Make the line more clear on hi dpi screens: draw a rectangle
-		mut width := abs(x2 - x)
-		mut height := abs(y2 - y)
+		mut width := mu.abs(x2 - x)
+		mut height := mu.abs(y2 - y)
 		if width == 0 {
 			width = 1
 		} else if height == 0 {

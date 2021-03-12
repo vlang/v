@@ -155,7 +155,7 @@ fn (mut c Checker) check_shift(left_type table.Type, right_type table.Type, left
 			// allow `bool << 2` in translated C code
 			return table.int_type
 		}
-		c.error('invalid operation: shift of type `$sym.name`', left_pos)
+		c.error('invalid operation: shift on type `$sym.name`', left_pos)
 		return table.void_type
 	} else if !right_type.is_int() {
 		c.error('cannot shift non-integer type `${c.table.get_type_symbol(right_type).name}` into type `${c.table.get_type_symbol(left_type).name}`',
@@ -348,14 +348,27 @@ pub fn (c &Checker) get_default_fmt(ftyp table.Type, typ table.Type) byte {
 	}
 }
 
-pub fn (mut c Checker) fail_if_not_rlocked(expr ast.Expr, what string) {
-	if expr is ast.Ident {
-		if expr.name !in c.rlocked_names && expr.name !in c.locked_names {
-			action := if what == 'argument' { 'passed' } else { 'used' }
-			c.error('$expr.name is `shared` and must be `rlock`ed or `lock`ed to be $action as non-mut $what',
-				expr.pos)
+pub fn (mut c Checker) fail_if_unreadable(expr ast.Expr, typ table.Type, what string) {
+	match expr {
+		ast.Ident {
+			if typ.has_flag(.shared_f) {
+				if expr.name !in c.rlocked_names && expr.name !in c.locked_names {
+					action := if what == 'argument' { 'passed' } else { 'used' }
+					c.error('$expr.name is `shared` and must be `rlock`ed or `lock`ed to be $action as non-mut $what',
+						expr.pos)
+				}
+			}
+			return
 		}
-	} else {
+		ast.SelectorExpr {
+			c.fail_if_unreadable(expr.expr, expr.expr_type, what)
+		}
+		ast.IndexExpr {
+			c.fail_if_unreadable(expr.left, expr.left_type, what)
+		}
+		else {}
+	}
+	if typ.has_flag(.shared_f) {
 		c.error('you have to create a handle and `rlock` it to use a `shared` element as non-mut $what',
 			expr.position())
 	}
@@ -366,9 +379,7 @@ pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) table.T
 	c.inside_println_arg = true
 	for i, expr in node.exprs {
 		ftyp := c.expr(expr)
-		if ftyp.has_flag(.shared_f) {
-			c.fail_if_not_rlocked(expr, 'interpolation object')
-		}
+		c.fail_if_unreadable(expr, ftyp, 'interpolation object')
 		node.expr_types << ftyp
 		typ := c.table.unalias_num_type(ftyp)
 		mut fmt := node.fmts[i]

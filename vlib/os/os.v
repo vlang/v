@@ -48,6 +48,9 @@ pub fn cp_all(src string, dst string, overwrite bool) ? {
 		cp(source_path, adjusted_path) ?
 		return
 	}
+	if !exists(dest_path) {
+		mkdir(dest_path) ?
+	}
 	if !is_dir(dest_path) {
 		return error('Destination path is not a valid directory')
 	}
@@ -373,6 +376,9 @@ fn executable_fallback() string {
 // find_exe_path walks the environment PATH, just like most shell do, it returns
 // the absolute path of the executable if found
 pub fn find_abs_path_of_executable(exepath string) ?string {
+	if exepath == '' {
+		return error('expected non empty `exepath`')
+	}
 	if is_abs_path(exepath) {
 		return real_path(exepath)
 	}
