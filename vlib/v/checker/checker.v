@@ -875,6 +875,9 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 		}
 		.left_shift {
 			if left_final.kind == .array {
+				if !infix_expr.is_stmt {
+					c.error('array append cannot be used in an expression', infix_expr.pos)
+				}
 				// `array << elm`
 				infix_expr.auto_locked, _ = c.fail_if_immutable(infix_expr.left)
 				left_value_type := c.table.value_type(left_type)
