@@ -45,7 +45,7 @@ pub fn normal_pair(config NormalConfigStruct) (f64, f64) {
 	// This is an implementation of the Marsaglia polar method
 	// See: https://doi.org/10.1137%2F1006063
 	// Also: https://en.wikipedia.org/wiki/Marsaglia_polar_method
-	for true {
+	for {
 		u := rand.f64_in_range(-1, 1)
 		v := rand.f64_in_range(-1, 1)
 
