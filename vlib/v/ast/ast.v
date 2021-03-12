@@ -579,8 +579,9 @@ pub fn (i &Ident) var_info() IdentVar {
 // See: token.Kind.is_infix
 pub struct InfixExpr {
 pub:
-	op  token.Kind
-	pos token.Position
+	op      token.Kind
+	pos     token.Position
+	is_stmt bool
 pub mut:
 	left        Expr
 	right       Expr
