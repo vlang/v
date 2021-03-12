@@ -2933,6 +2933,8 @@ You can take advantage of V's autofree engine and define a `free()` method on cu
 data types:
 
 ```v
+struct MyType {}
+
 [unsafe]
 fn (data &MyType) free() {
 	// ...
