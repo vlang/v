@@ -547,7 +547,7 @@ fn test_posix_set_bit() {
 fn test_exists_in_system_path() {
 	assert os.exists_in_system_path('') == false
 	$if windows {
-		assert os.exists_in_system_path('cmd') == true
+		assert os.exists_in_system_path('cmd.exe') == true
 		return
 	}
 	assert os.exists_in_system_path('ls') == true
