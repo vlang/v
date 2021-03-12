@@ -1942,7 +1942,7 @@ pub fn (mut f Fmt) const_decl(it ast.ConstDecl) {
 			f.comments(field.comments, inline: true)
 			prev_field = ast.Expr(field.comments.last())
 		}
-		if f.should_insert_newline_before_node(field, prev_field) {
+		if it.is_block && f.should_insert_newline_before_node(field, prev_field) {
 			f.writeln('')
 		}
 		name := field.name.after('.')
