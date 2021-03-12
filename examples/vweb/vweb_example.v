@@ -1,53 +1,49 @@
 module main
 
 import vweb
-import rand
-
-const (
-	port = 8082
-)
 
 struct App {
-	vweb.Context
 mut:
 	cnt int
 }
 
 fn main() {
 	println('vweb example')
-	vweb.run<App>(port)
-}
 
-pub fn (mut app App) init_once() {
-	app.handle_static('.', false)
+	mut conf := vweb.Config{
+		port: 8082
+	}
+	conf.handle_static('.', true)
+
+	mut app := App{cnt: 100}
+	vweb.run_app(mut app, conf)
 }
 
 ['/users/:user']
-pub fn (mut app App) user_endpoint(user string) vweb.Result {
-	id := rand.intn(100)
-	return app.json('{"$user": $id}')
+pub fn (mut app App) user_endpoint(mut c vweb.Context, user string) vweb.Result {
+	return c.json('{"$user": $app.cnt}')
 }
 
-pub fn (mut app App) index() vweb.Result {
+pub fn (mut app App) index(mut c vweb.Context) vweb.Result {
 	app.cnt++
 	show := true
 	// app.text('Hello world from vweb')
 	hello := 'Hello world from vweb'
 	numbers := [1, 2, 3]
-	app.enable_chunked_transfer(40)
+	c.enable_chunked_transfer(40)
 	return $vweb.html()
 }
 
-pub fn (mut app App) show_text() vweb.Result {
-	return app.text('Hello world from vweb')
+pub fn (mut app App) show_text(mut c vweb.Context) vweb.Result {
+	return c.text('Hello world from vweb')
 }
 
-pub fn (mut app App) cookie() vweb.Result {
-	app.set_cookie(name: 'cookie', value: 'test')
-	return app.text('Headers: $app.headers')
+pub fn (mut app App) cookie(mut c vweb.Context) vweb.Result {
+	c.set_cookie(name: 'cookie', value: 'test')
+	return c.text('Headers: $c.headers')
 }
 
 [post]
-pub fn (mut app App) post() vweb.Result {
-	return app.text('Post body: $app.req.data')
+pub fn (mut app App) post(mut c vweb.Context) vweb.Result {
+	return c.text('Post body: $c.req.data')
 }

@@ -57,7 +57,16 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 		}
 		if is_html {
 			// return vweb html template
-			g.writeln('vweb__Context_html(&app->Context, _tmpl_res_$g.fn_decl.name); strings__Builder_free(&sb); string_free(&_tmpl_res_$g.fn_decl.name);')
+			// search for the Context object
+			scope := g.file.scope.innermost(node.pos.pos)
+			for k, v in scope.objects {
+				if v is ast.Var {
+					if g.table.type_to_str(v.typ) == '&vweb.Context' {
+						g.writeln('vweb__Context_html($k, _tmpl_res_$g.fn_decl.name); strings__Builder_free(&sb); string_free(&_tmpl_res_$g.fn_decl.name);')
+						break
+					}
+				}
+			}
 		} else {
 			// return $tmpl string
 			fn_name := g.fn_decl.name.replace('.', '__')
@@ -115,9 +124,17 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 				}
 			}
 			if i - 1 < node.args.len - 1 {
+				// TODO: make mut required?
+				if m.params[i].typ.is_ptr() && !node.args[i - 1].typ.is_ptr() {
+					g.write('&')
+				}
 				g.expr(node.args[i - 1].expr)
 				g.write(', ')
 			} else if !expand_strs && i == node.args.len {
+				// TODO: make mut required?
+				if m.params[i].typ.is_ptr() && !node.args[i - 1].typ.is_ptr() {
+					g.write('&')
+				}
 				g.expr(node.args[i - 1].expr)
 				break
 			} else {
