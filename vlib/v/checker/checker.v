@@ -6484,7 +6484,10 @@ fn has_top_return(stmts []ast.Stmt) bool {
 }
 
 fn (mut c Checker) verify_vweb_params_for_method(m ast.Fn) (bool, int, int) {
-	margs := m.params.len - 1 // first arg is the receiver/this
+	margs := m.params.len - 2 // first arg is the receiver/this; second is the Context
+	if margs == -1 || m.params[1].typ.idx() != c.table.find_type_idx('vweb.Context') {
+		return false, -1, margs
+	}
 	if m.attrs.len == 0 {
 		// allow non custom routed methods, with 1:1 mapping
 		return true, -1, margs
@@ -6516,8 +6519,13 @@ fn (mut c Checker) verify_all_vweb_routes() {
 					if f.return_type == typ_vweb_result && f.receiver.typ == m.params[0].typ
 						&& f.name == m.name {
 						c.file = f.source_file // setup of file path for the warning
-						c.warn('mismatched parameters count between vweb method `${sym_app.name}.$m.name` ($nargs) and route attribute $m.attrs ($nroute_attributes)',
+						if nroute_attributes == -1 {
+							c.error('parameter `mut c vweb.Context` expected as the first argument in vweb method `${sym_app.name}.$m.name`',
 							f.pos)
+						} else {
+							c.warn('mismatched parameters count between vweb method `${sym_app.name}.$m.name` ($nargs) and route attribute $m.attrs ($nroute_attributes)',
+							f.pos)
+						}
 					}
 				}
 			}
