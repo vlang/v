@@ -2335,7 +2335,7 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 	}
 	if sym.kind !in [.struct_, .aggregate, .interface_, .sum_type] {
 		if sym.kind != .placeholder {
-			c.error('`$sym.name` is not a struct', selector_expr.pos)
+			c.error('`$sym.name` has no property `$selector_expr.field_name`', selector_expr.pos)
 		}
 	} else {
 		if sym.info is table.Struct {
