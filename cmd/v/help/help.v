@@ -18,7 +18,9 @@ pub fn print_and_exit(topic string) {
 		eprintln(help.unknown_topic)
 		exit(1)
 	}
-	target_topic := os.join_path(vroot, 'cmd', 'v', 'help', '${topic}.txt')
+	// `init` has the same help topic as `new`
+	name := if topic == "init" { "new" } else { topic }
+	target_topic := os.join_path(vroot, 'cmd', 'v', 'help', '${name}.txt')
 	content := os.read_file(target_topic) or {
 		eprintln(help.unknown_topic)
 		exit(1)
