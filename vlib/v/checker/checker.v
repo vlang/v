@@ -5070,8 +5070,10 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 }
 
 // smartcast takes the expression with the current type which should be smartcasted to the target type in the given scope
-fn (c Checker) smartcast(expr ast.Expr, cur_type ast.Type, to_type ast.Type, mut scope ast.Scope) {
-	match mut expr {
+fn (c Checker) smartcast(expr ast.Expr, cur_type ast.Type, to_type_ ast.Type, mut scope ast.Scope) {
+	sym := c.table.get_type_symbol(cur_type)
+	to_type := if sym.kind == .interface_ { to_type_.to_ptr() } else { to_type_ }
+	match expr {
 		ast.SelectorExpr {
 			mut is_mut := false
 			mut smartcasts := []ast.Type{}

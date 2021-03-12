@@ -3229,9 +3229,11 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 					if field.orig_type.is_ptr() {
 						sum_type_dot = '->'
 					}
-					// union sum type deref
 					for i, typ in field.smartcasts {
-						g.write('(*')
+						g.write('(')
+						if field_sym.kind == .sum_type {
+							g.write('*')
+						}
 						cast_sym := g.table.get_type_symbol(typ)
 						if i != 0 {
 							dot := if field.typ.is_ptr() { '->' } else { '.' }
@@ -4321,9 +4323,13 @@ fn (mut g Gen) ident(node ast.Ident) {
 		scope := g.file.scope.innermost(node.pos.pos)
 		if v := scope.find_var(node.name) {
 			if v.smartcasts.len > 0 {
+				v_sym := g.table.get_type_symbol(v.typ)
 				if !prevent_sum_type_unwrapping_once {
 					for _ in v.smartcasts {
-						g.write('(*')
+						g.write('(')
+						if v_sym.kind == .sum_type {
+							g.write('*')
+						}
 					}
 					for i, typ in v.smartcasts {
 						cast_sym := g.table.get_type_symbol(typ)
