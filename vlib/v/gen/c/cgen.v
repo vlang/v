@@ -3808,7 +3808,9 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 				} else {
 					g.write(cond_var)
 					g.write(' == ')
+					g.write('(')
 					g.expr(expr)
+					g.write(')')
 				}
 			}
 			if is_expr && tmp_var.len == 0 {
