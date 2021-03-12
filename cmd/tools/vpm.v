@@ -313,7 +313,7 @@ fn vpm_remove(module_names []string) {
 		exit(0)
 	}
 	if module_names.len == 0 {
-		println('  v update requires *at least one* module name')
+		println('´v remove´ requires *at least one* module name.')
 		exit(2)
 	}
 	for name in module_names {
