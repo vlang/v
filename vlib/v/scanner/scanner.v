@@ -1154,7 +1154,8 @@ fn (mut s Scanner) ident_string() string {
 					|| !s.text[s.pos + 3].is_hex_digit() || !s.text[s.pos + 4].is_hex_digit() {
 					s.error(r'`\u` incomplete unicode character value')
 				} else if s.text[s.pos + 1] == `0` && s.text[s.pos + 2] == `0`
-					&& (`0` <= s.text[s.pos + 3] && s.text[s.pos + 3] <= `9`) {
+					&& (`0` <= s.text[s.pos + 3] && s.text[s.pos + 3] < `8`) {
+					// ascii
 					u_to_x_pos << s.pos - 1
 				}
 			}
