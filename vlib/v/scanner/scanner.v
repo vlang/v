@@ -1184,6 +1184,7 @@ fn (mut s Scanner) ident_string() string {
 	}
 	if start <= s.pos {
 		mut string_so_far := s.text[start..end]
+		/*
 		if u_to_x_pos.len > 0 {
 			mut ss := []string{cap: u_to_x_pos.len + 1}
 			ss << string_so_far[..u_to_x_pos[0] - start]
@@ -1193,6 +1194,7 @@ fn (mut s Scanner) ident_string() string {
 			ss << r'\x' + string_so_far[u_to_x_pos.last() + 4 - start..]
 			string_so_far = ss.join('')
 		}
+		*/
 		if n_cr_chars > 0 {
 			string_so_far = string_so_far.replace('\r', '')
 		}
