@@ -1923,16 +1923,16 @@ pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
 		f.inside_const = false
 	}
 	f.write('const ')
+	mut max := 0
 	if node.is_block {
 		f.writeln('(')
-	}
-	mut max := 0
-	for field in node.fields {
-		if field.name.len > max {
-			max = field.name.len
+		for field in node.fields {
+			if field.name.len > max {
+				max = field.name.len
+			}
 		}
+		f.indent++
 	}
-	f.indent++
 	mut prev_field := if node.fields.len > 0 { ast.Node(node.fields[0]) } else { ast.Node{} }
 	for field in node.fields {
 		if field.comments.len > 0 {
@@ -1954,8 +1954,8 @@ pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
 		prev_field = field
 	}
 	f.comments_after_last_field(node.end_comments)
-	f.indent--
 	if node.is_block {
+		f.indent--
 		f.writeln(')\n')
 	} else {
 		f.writeln('')
