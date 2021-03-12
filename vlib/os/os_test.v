@@ -408,9 +408,7 @@ fn test_rmdir_all() {
 		os.mkdir_all(d) or { panic(err) }
 		assert os.is_dir(d)
 	}
-	os.rmdir_all('some') or {
-		assert false
-	}
+	os.rmdir_all('some') or { assert false }
 	assert !os.exists('some')
 }
 
