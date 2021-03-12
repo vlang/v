@@ -1728,6 +1728,11 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	}
 	if fn_name == 'json.encode' {
 	} else if fn_name == 'json.decode' && call_expr.args.len > 0 {
+		if call_expr.args.len != 2 {
+			c.error("json.decode expects 2 arguments, a type and a string (e.g `json.decode(T, '')`)",
+				call_expr.pos)
+			return table.void_type
+		}
 		expr := call_expr.args[0].expr
 		if expr !is ast.Type {
 			typ := expr.type_name()
