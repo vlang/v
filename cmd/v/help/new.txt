@@ -1,5 +1,12 @@
 Usage:
   v new [name] [description]
-  v init
 
-Setup file structure for a V project.
+Examples:
+  v new
+  v new MyProject
+  v new MyProject "This is my great project."
+
+Setup the file structure for a V project (in a sub folder).
+
+NOTE: If the project name contains spaces or is capitalized,
+you will receive a warning, showing you the new name to be used instead.
