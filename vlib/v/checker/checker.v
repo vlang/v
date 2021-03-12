@@ -4929,17 +4929,18 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 			c.skip_flags = cur_skip_flags
 		} else {
 			// smartcast sumtypes and interfaces when using `is`
+			pos := branch.cond.position()
 			if branch.cond is ast.InfixExpr {
 				if branch.cond.op == .key_is {
 					right_expr := branch.cond.right as ast.Type
 					left_sym := c.table.get_type_symbol(branch.cond.left_type)
 					expr_type := c.expr(branch.cond.left)
 					if left_sym.kind == .interface_ {
-						c.type_implements(right_expr.typ, expr_type, branch.cond.pos)
+						c.type_implements(right_expr.typ, expr_type, pos)
 					} else if !c.check_types(right_expr.typ, expr_type) {
 						expect_str := c.table.type_to_str(right_expr.typ)
 						expr_str := c.table.type_to_str(expr_type)
-						c.error('cannot use type `$expect_str` as type `$expr_str`', branch.cond.pos)
+						c.error('cannot use type `$expect_str` as type `$expr_str`', pos)
 					}
 					if (branch.cond.left is ast.Ident || branch.cond.left is ast.SelectorExpr)
 						&& branch.cond.right is ast.Type {
