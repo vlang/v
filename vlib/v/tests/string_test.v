@@ -21,6 +21,7 @@ fn test_raw_string() {
 
 fn test_escape() {
 	assert '\x20' == ' '
+	assert '\u00c0'.bytes() == 'À'.bytes()
 	assert '\u00c0' == 'À'
 	assert '\u00C0' == 'À'
 	assert '\u0020' == ' '
