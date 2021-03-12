@@ -544,6 +544,9 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	// TODO generics
 	args, _, is_variadic := p.fn_args()
 	for arg in args {
+		if arg.name.len == 0 {
+			p.error_with_pos('use `_` to name an unused parameter', arg.pos)
+		}
 		p.scope.register(ast.Var{
 			name: arg.name
 			typ: arg.typ
