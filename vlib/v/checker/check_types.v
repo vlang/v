@@ -366,9 +366,7 @@ pub fn (mut c Checker) fail_if_unreadable(expr ast.Expr, typ table.Type, what st
 		ast.IndexExpr {
 			c.fail_if_unreadable(expr.left, expr.left_type, what)
 		}
-		else {
-			return
-		}
+		else {}
 	}
 	if typ.has_flag(.shared_f) {
 		c.error('you have to create a handle and `rlock` it to use a `shared` element as non-mut $what',
