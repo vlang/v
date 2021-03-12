@@ -96,7 +96,7 @@ pub fn (o Option2) str() string {
 	if o.state == 1 {
 		return 'Option{ none }'
 	}
-	return 'Option{ err: "$o.err" }'
+	return 'Option{ error: "$o.err" }'
 }
 
 // error returns an optional containing the error given in `message`.
