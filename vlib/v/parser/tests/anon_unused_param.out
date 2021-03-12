@@ -1,0 +1,4 @@
+vlib/v/parser/tests/anon_unused_param.vv:1:9: error: use `_` to name an unused parameter
+    1 | _ = fn (int){}
+      |         ~~~
+    2 |
