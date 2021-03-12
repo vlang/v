@@ -1,7 +1,27 @@
-vlib/v/checker/tests/lock_needed.vv:10:2: error: `abc` is `shared` and needs explicit lock for `v.ast.SelectorExpr` 
+vlib/v/checker/tests/lock_needed.vv:10:2: error: `abc` is `shared` and needs explicit lock for `v.ast.SelectorExpr`
     8 |         x: 5
     9 |     }
    10 |     abc.x++
       |     ~~~
    11 |     println(abc.x)
    12 | }
+vlib/v/checker/tests/lock_needed.vv:11:10: error: abc is `shared` and must be `rlock`ed or `lock`ed to be used as non-mut argument to print
+    9 |     }
+   10 |     abc.x++
+   11 |     println(abc.x)
+      |             ~~~
+   12 | }
+   13 |
+vlib/v/checker/tests/lock_needed.vv:25:12: error: you have to create a handle and `rlock` it to use a `shared` element as non-mut argument to print
+   23 |         }
+   24 |     }
+   25 |     println(a.st.x)
+      |               ~~
+   26 | }
+   27 |
+vlib/v/checker/tests/lock_needed.vv:30:10: error: a is `shared` and must be `rlock`ed or `lock`ed to be used as non-mut argument to print
+   28 | fn g() {
+   29 |     shared a := []f64{len: 10, init: 7.5}
+   30 |     println(a[3])
+      |             ^
+   31 | }
