@@ -48,6 +48,9 @@ pub fn cp_all(src string, dst string, overwrite bool) ? {
 		cp(source_path, adjusted_path) ?
 		return
 	}
+	if !exists(dest_path) {
+		mkdir(dest_path) ?
+	}
 	if !is_dir(dest_path) {
 		return error('Destination path is not a valid directory')
 	}
