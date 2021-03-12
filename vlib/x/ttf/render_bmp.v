@@ -10,11 +10,12 @@ module ttf
 *
 * Note:
 *
-* TODO: 
-* - manage text directions R to L 
+* TODO:
+* - manage text directions R to L
 **********************************************************************/
 import encoding.utf8
 import math
+import math.mathutil as mu
 
 pub struct BitMap {
 pub mut:
@@ -226,7 +227,7 @@ pub fn (mut bmp BitMap) aline(in_x0 int, in_y0 int, in_x1 int, in_y1 int, c u32)
 
 	dist := f32(0.4)
 
-	if fabs(dx) > fabs(dy) {
+	if mu.abs(dx) > mu.abs(dy) {
 		if x1 < x0 {
 			tmp = x0
 			x0 = x1
@@ -246,18 +247,18 @@ pub fn (mut bmp BitMap) aline(in_x0 int, in_y0 int, in_x1 int, in_y1 int, c u32)
 		mut x := x0
 		for x <= x1 + 0.5 {
 			y := m * (x - x0) + y0
-			e := 1 - fabs(y - 0.5 - int(y))
+			e := 1 - mu.abs(y - 0.5 - int(y))
 			bmp.plot(int(x), int(y), color_multiply_alpha(c, e * 0.75))
 
 			ys1 := y + dist
 			if int(ys1) != int(y) {
-				v1 := fabs(ys1 - y) / dist * (1 - e)
+				v1 := mu.abs(ys1 - y) / dist * (1 - e)
 				bmp.plot(int(x), int(ys1), color_multiply_alpha(c, v1))
 			}
 
 			ys2 := y - dist
 			if int(ys2) != int(y) {
-				v2 := fabs(y - ys2) / dist * (1 - e)
+				v2 := mu.abs(y - ys2) / dist * (1 - e)
 				bmp.plot(int(x), int(ys2), color_multiply_alpha(c, v2))
 			}
 
@@ -283,18 +284,18 @@ pub fn (mut bmp BitMap) aline(in_x0 int, in_y0 int, in_x1 int, in_y1 int, c u32)
 		mut y := y0
 		for y <= y1 + 0.5 {
 			x := n * (y - y0) + x0
-			e := f32(1 - fabs(x - 0.5 - int(x)))
+			e := f32(1 - mu.abs(x - 0.5 - int(x)))
 			bmp.plot(int(x), int(y), color_multiply_alpha(c, f32(e * 0.75)))
 
 			xs1 := x + dist
 			if int(xs1) != int(x) {
-				v1 := fabs(xs1 - x) / dist * (1 - e)
+				v1 := mu.abs(xs1 - x) / dist * (1 - e)
 				bmp.plot(int(xs1), int(y), color_multiply_alpha(c, f32(v1)))
 			}
 
 			xs2 := x - dist
 			if int(xs2) != int(x) {
-				v2 := fabs(x - xs1) / dist * (1 - e)
+				v2 := mu.abs(x - xs1) / dist * (1 - e)
 				bmp.plot(int(xs2), int(y), color_multiply_alpha(c, f32(v2)))
 			}
 			y += 1.0
@@ -335,9 +336,9 @@ pub fn (mut bmp BitMap) line(in_x0 int, in_y0 int, in_x1 int, in_y1 int, c u32) 
 	mut x := x0
 	mut y := y0
 
-	dx := abs(x1 - x0)
+	dx := mu.abs(x1 - x0)
 	sx := if x0 < x1 { 1 } else { -1 }
-	dy := -abs(y1 - y0)
+	dy := -mu.abs(y1 - y0)
 	sy := if y0 < y1 { 1 } else { -1 }
 
 	// verical line
@@ -411,8 +412,8 @@ pub fn (mut bmp BitMap) quadratic(in_x0 int, in_y0 int, in_x1 int, in_y1 int, in
 	cy := int(in_cy)
 
 	mut division := f64(1.0)
-	dx := abs(x0 - x1)
-	dy := abs(y0 - y1)
+	dx := mu.abs(x0 - x1)
+	dy := mu.abs(y0 - y1)
 
 	// if few pixel draw a simple line
 	// if dx == 0 && dy == 0 {
@@ -520,10 +521,10 @@ pub fn (mut bmp BitMap) get_chars_bbox(in_string string) []int {
 		x_min, x_max, _, _ := bmp.tf.read_glyph_dim(c_index)
 		//-----------------
 
-		width := int((abs(x_max + x_min) + ax) * bmp.scale)
+		width := int((mu.abs(x_max + x_min) + ax) * bmp.scale)
 		// width := int((cw+ax) * bmp.scale)
 		w += width + div_space_cw
-		h := int(abs(int(bmp.tf.y_max - bmp.tf.y_min)) * bmp.scale)
+		h := int(mu.abs(int(bmp.tf.y_max - bmp.tf.y_min)) * bmp.scale)
 		res << w
 		res << h
 
@@ -591,7 +592,7 @@ pub fn (mut bmp BitMap) get_bbox(in_string string) (int, int) {
 		// x_max := 2
 		//-----------------
 
-		width := int((abs(x_max + x_min) + ax) * bmp.scale)
+		width := int((mu.abs(x_max + x_min) + ax) * bmp.scale)
 		// width := int((cw+ax) * bmp.scale)
 		w += width + div_space_cw
 
@@ -600,7 +601,7 @@ pub fn (mut bmp BitMap) get_bbox(in_string string) (int, int) {
 
 	// dprintln("y_min: $bmp.tf.y_min y_max: $bmp.tf.y_max res: ${int((bmp.tf.y_max - bmp.tf.y_min)*buf.scale)} width: ${int( (cw) * buf.scale)}")
 	// buf.box(0,y_base - int((bmp.tf.y_min)*buf.scale), int( (x_max) * buf.scale), y_base-int((bmp.tf.y_max)*buf.scale), u32(0xFF00_0000) )
-	return w, int(abs(int(bmp.tf.y_max - bmp.tf.y_min)) * bmp.scale)
+	return w, int(mu.abs(int(bmp.tf.y_max - bmp.tf.y_min)) * bmp.scale)
 }
 
 /******************************************************************************
@@ -620,7 +621,7 @@ fn (mut bmp BitMap) draw_notdef_glyph(in_x int, in_w int) {
 	bmp.ch_matrix[7] = int(y1)
 	x, y := bmp.trf_ch(p)
 
-	y_h := fabs(bmp.tf.y_max - bmp.tf.y_min) * bmp.scale * 0.5
+	y_h := mu.abs(bmp.tf.y_max - bmp.tf.y_min) * bmp.scale * 0.5
 
 	bmp.box(int(x), int(y), int(x - in_w), int(y - y_h), bmp.color)
 	bmp.line(int(x), int(y), int(x - in_w), int(y - y_h), bmp.color)
@@ -689,7 +690,7 @@ pub fn (mut bmp BitMap) draw_text(in_string string) (int, int) {
 		// x_max := 2
 		//-----------------
 
-		mut width := int((abs(x_max + x_min) + ax) * bmp.scale)
+		mut width := int((mu.abs(x_max + x_min) + ax) * bmp.scale)
 		if bmp.use_font_metrics {
 			width = int((cw + ax) * bmp.scale)
 		}
@@ -699,7 +700,7 @@ pub fn (mut bmp BitMap) draw_text(in_string string) (int, int) {
 
 	// dprintln("y_min: $bmp.tf.y_min y_max: $bmp.tf.y_max res: ${int((bmp.tf.y_max - bmp.tf.y_min)*buf.scale)} width: ${int( (cw) * buf.scale)}")
 	// buf.box(0,y_base - int((bmp.tf.y_min)*buf.scale), int( (x_max) * buf.scale), y_base-int((bmp.tf.y_max)*buf.scale), u32(0xFF00_0000) )
-	return w, int(abs(int(bmp.tf.y_max - bmp.tf.y_min)) * bmp.scale)
+	return w, int(mu.abs(int(bmp.tf.y_max - bmp.tf.y_min)) * bmp.scale)
 }
 
 pub fn (mut bmp BitMap) draw_glyph(index u16) (int, int) {
@@ -798,7 +799,7 @@ pub fn (mut bmp BitMap) draw_glyph(index u16) (int, int) {
 					//        (prev.y + point.y) / 2 + y);
 
 					// bmp.line(x0, y0, start_point.x, start_point.y, u32(0x00FF0000)
-					// u32(0xFF000000))              
+					// u32(0xFF000000))
 					bmp.quadratic(x0, y0, start_point.x, start_point.y, (point.x +
 						start_point.x) / 2, (point.y + start_point.y) / 2, color)
 				}

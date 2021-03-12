@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module scanner
 
+import math.mathutil as mu
 import os
 import v.token
 import v.pref
@@ -1057,7 +1058,7 @@ fn (mut s Scanner) text_scan() token.Token {
 
 fn (mut s Scanner) invalid_character() {
 	len := utf8_char_len(s.text[s.pos])
-	end := util.imin(s.pos + len, s.text.len)
+	end := mu.min(s.pos + len, s.text.len)
 	c := s.text[s.pos..end]
 	s.error('invalid character `$c`')
 }
