@@ -170,7 +170,7 @@ fn main() {
 			init_project()
 		}
 		else {
-			cerror('unknown command: ${cmd}')
+			cerror('unknown command: $cmd')
 			exit(1)
 		}
 	}
