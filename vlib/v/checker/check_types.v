@@ -348,7 +348,7 @@ pub fn (c &Checker) get_default_fmt(ftyp table.Type, typ table.Type) byte {
 	}
 }
 
-pub fn (mut c Checker) fail_if_not_rlocked(expr ast.Expr, typ table.Type, what string) {
+pub fn (mut c Checker) fail_if_unreadable(expr ast.Expr, typ table.Type, what string) {
 	match expr {
 		ast.Ident {
 			if typ.has_flag(.shared_f) {
@@ -361,10 +361,10 @@ pub fn (mut c Checker) fail_if_not_rlocked(expr ast.Expr, typ table.Type, what s
 			return
 		}
 		ast.SelectorExpr {
-			c.fail_if_not_rlocked(expr.expr, expr.expr_type, what)
+			c.fail_if_unreadable(expr.expr, expr.expr_type, what)
 		}
 		ast.IndexExpr {
-			c.fail_if_not_rlocked(expr.left, expr.left_type, what)
+			c.fail_if_unreadable(expr.left, expr.left_type, what)
 		}
 		else {
 			return
@@ -381,7 +381,7 @@ pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) table.T
 	c.inside_println_arg = true
 	for i, expr in node.exprs {
 		ftyp := c.expr(expr)
-		c.fail_if_not_rlocked(expr, ftyp, 'interpolation object')
+		c.fail_if_unreadable(expr, ftyp, 'interpolation object')
 		node.expr_types << ftyp
 		typ := c.table.unalias_num_type(ftyp)
 		mut fmt := node.fmts[i]

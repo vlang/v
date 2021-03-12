@@ -1421,7 +1421,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 					pos)
 			}
 		} else {
-			c.fail_if_not_rlocked(call_expr.left, left_type, 'receiver')
+			c.fail_if_unreadable(call_expr.left, left_type, 'receiver')
 		}
 		if (!left_type_sym.is_builtin() && method.mod != 'builtin') && method.language == .v
 			&& method.no_body {
@@ -1515,7 +1515,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 					c.error('`$call_expr.name` parameter `$param.name` is `$tok`, you need to provide `$tok` e.g. `$tok arg${
 						i + 1}`', arg.expr.position())
 				} else {
-					c.fail_if_not_rlocked(arg.expr, got_arg_typ, 'argument')
+					c.fail_if_unreadable(arg.expr, got_arg_typ, 'argument')
 				}
 			}
 		}
@@ -1580,7 +1580,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		if call_expr.args.len > 0 {
 			c.error('.str() method calls should have no arguments', call_expr.pos)
 		}
-		c.fail_if_not_rlocked(call_expr.left, left_type, 'receiver')
+		c.fail_if_unreadable(call_expr.left, left_type, 'receiver')
 		return table.string_type
 	}
 	// call struct field fn type
@@ -1897,7 +1897,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		if call_expr.args[0].typ.is_void() {
 			c.error('`$fn_name` can not print void expressions', call_expr.pos)
 		}
-		c.fail_if_not_rlocked(call_expr.args[0].expr, call_expr.args[0].typ, 'argument to print')
+		c.fail_if_unreadable(call_expr.args[0].expr, call_expr.args[0].typ, 'argument to print')
 		c.inside_println_arg = false
 		/*
 		// TODO: optimize `struct T{} fn (t &T) str() string {return 'abc'} mut a := []&T{} a << &T{} println(a[0])`
@@ -1975,7 +1975,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 				c.error('`$call_expr.name` parameter `$arg.name` is `$tok`, you need to provide `$tok` e.g. `$tok arg${
 					i + 1}`', call_arg.expr.position())
 			} else {
-				c.fail_if_not_rlocked(call_arg.expr, typ, 'argument')
+				c.fail_if_unreadable(call_arg.expr, typ, 'argument')
 			}
 		}
 		// Handle expected interface
