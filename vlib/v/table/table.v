@@ -57,12 +57,13 @@ fn (f &Fn) method_equals(o &Fn) bool {
 
 pub struct Param {
 pub:
-	pos       token.Position
-	name      string
-	is_mut    bool
-	typ       Type
-	type_pos  token.Position
-	is_hidden bool // interface first arg
+	pos         token.Position
+	name        string
+	is_mut      bool
+	is_auto_rec bool
+	typ         Type
+	type_pos    token.Position
+	is_hidden   bool // interface first arg
 }
 
 fn (p &Param) equals(o &Param) bool {

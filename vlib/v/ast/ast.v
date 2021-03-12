@@ -320,7 +320,6 @@ pub:
 	is_main         bool // true for `fn main()`
 	is_test         bool // true for `fn test_abcde`
 	is_conditional  bool // true for `[if abc] fn abc(){}`
-	receiver        Field
 	receiver_pos    token.Position // `(u User)` in `fn (u User) name()` position
 	is_method       bool
 	method_type_pos token.Position // `User` in ` fn (u User)` position
@@ -338,6 +337,7 @@ pub:
 	attrs           []table.Attr
 	skip_gen        bool // this function doesn't need to be generated (for example [if foo])
 pub mut:
+	receiver      Field
 	stmts         []Stmt
 	defer_stmts   []DeferStmt
 	return_type   table.Type

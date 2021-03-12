@@ -28,7 +28,7 @@ pub mut:
 	env_is_custom bool     // true, when the environment was customized with .set_environment
 	env           []string // the environment with which the process was started  (list of 'var=val')
 	use_stdio_ctl bool     // when true, then you can use p.stdin_write(), p.stdout_slurp() and p.stderr_slurp()
-	stdio_fd      [3]int   // the file descriptors	
+	stdio_fd      [3]int   // the file descriptors
 }
 
 // new_process - create a new process descriptor
@@ -45,62 +45,62 @@ pub fn new_process(filename string) &Process {
 // set_args - set the arguments for the new process
 pub fn (mut p Process) set_args(pargs []string) &Process {
 	if p.status != .not_started {
-		return p
+		return &p
 	}
 	p.args = pargs
-	return p
+	return &p
 }
 
 // set_environment - set a custom environment variable mapping for the new process
 pub fn (mut p Process) set_environment(envs map[string]string) &Process {
 	if p.status != .not_started {
-		return p
+		return &p
 	}
 	p.env_is_custom = true
 	p.env = []string{}
 	for k, v in envs {
 		p.env << '$k=$v'
 	}
-	return p
+	return &p
 }
 
 // run - starts the new process
 pub fn (mut p Process) run() &Process {
 	if p.status != .not_started {
-		return p
+		return &p
 	}
 	p._spawn()
-	return p
+	return &p
 }
 
 // signal_kill - kills the process, after that it is no longer running
 pub fn (mut p Process) signal_kill() &Process {
 	if p.status !in [.running, .stopped] {
-		return p
+		return &p
 	}
 	p._signal_kill()
 	p.status = .aborted
-	return p
+	return &p
 }
 
 // signal_stop - stops the process, you can resume it with p.signal_continue()
 pub fn (mut p Process) signal_stop() &Process {
 	if p.status != .running {
-		return p
+		return &p
 	}
 	p._signal_stop()
 	p.status = .stopped
-	return p
+	return &p
 }
 
 // signal_continue - tell a stopped process to continue/resume its work
 pub fn (mut p Process) signal_continue() &Process {
 	if p.status != .stopped {
-		return p
+		return &p
 	}
 	p._signal_continue()
 	p.status = .running
-	return p
+	return &p
 }
 
 // wait - wait for a process to finish.
@@ -114,10 +114,10 @@ pub fn (mut p Process) wait() &Process {
 		p._spawn()
 	}
 	if p.status !in [.running, .stopped] {
-		return p
+		return &p
 	}
 	p._wait()
-	return p
+	return &p
 }
 
 //
@@ -154,7 +154,7 @@ pub fn (mut p Process) is_alive() bool {
 //
 pub fn (mut p Process) set_redirect_stdio() &Process {
 	p.use_stdio_ctl = true
-	return p
+	return &p
 }
 
 pub fn (mut p Process) stdin_write(s string) {
