@@ -5,9 +5,6 @@ import os.cmdline
 import testing
 import v.pref
 
-const (
-)
-
 fn main() {
 	args := os.args.clone()
 	if os.args.last() == 'test' {
