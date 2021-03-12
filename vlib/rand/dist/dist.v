@@ -50,7 +50,7 @@ pub fn normal_pair(config NormalConfigStruct) (f64, f64) {
 		v := rand.f64_in_range(-1, 1)
 
 		s := u * u + v * v
-		if s >= 1 {
+		if s >= 1 || s == 0 {
 			continue
 		}
 		t := math.sqrt(-2 * math.log(s) / s)
