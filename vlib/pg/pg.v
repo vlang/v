@@ -7,6 +7,9 @@ import io
 #flag darwin -I/opt/local/include/postgresql11
 #flag windows -I @VROOT/thirdparty/pg/include
 #flag windows -L @VROOT/thirdparty/pg/win64
+
+// PostgreSQL Source Code
+// https://doxygen.postgresql.org/libpq-fe_8h.html
 #include <libpq-fe.h>
 
 pub struct DB {
@@ -47,13 +50,18 @@ fn C.PQnfields(&C.PGResult) int
 
 fn C.PQexec(voidptr, byteptr) &C.PGResult
 
-fn C.PQexecParams(voidptr, byteptr, int, int, byteptr, int, int, int) &C.PGResult
+// Params:
+// const Oid *paramTypes
+// const char *const *paramValues
+// const int *paramLengths
+// const int *paramFormats
+fn C.PQexecParams(conn voidptr, command byteptr, nParams int, paramTypes int, paramValues byteptr, paramLengths int, paramFormats int, resultFormat int) &C.PGResult
 
-fn C.PQputCopyData(voidptr, byteptr, int) int
+fn C.PQputCopyData(conn voidptr, buffer byteptr, nbytes int) int
 
 fn C.PQputCopyEnd(voidptr, int) int
 
-fn C.PQgetCopyData(voidptr, &byteptr, int) int
+fn C.PQgetCopyData(conn voidptr, buffer &byteptr, async int) int
 
 fn C.PQclear(&C.PGResult) voidptr
 
