@@ -33,6 +33,9 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string, m2a map[string]s
 			styp = styp[1..] // remove &
 		}
 		styp = util.no_cur_mod(styp, cur_mod)
+		if node.params[0].is_auto_rec {
+			styp = styp.trim('&')
+		}
 		receiver = '($m$node.receiver.name $styp) '
 		/*
 		sym := t.get_type_symbol(node.receiver.typ)
