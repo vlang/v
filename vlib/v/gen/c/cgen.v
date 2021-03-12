@@ -4500,8 +4500,9 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		}
 		if expr0.is_auto_deref_var() {
 			if g.fn_decl.return_type.is_ptr() {
-				expr_str := g.expr_string(expr0)
-				g.write(expr_str.trim('&'))
+				g.write('&(*')
+				g.expr(expr0)
+				g.write(')')
 			} else {
 				g.write('*')
 				g.expr(expr0)
@@ -5760,7 +5761,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 	}
 }
 
-fn (g &Gen) as_cast_name_table() string {
+fn (g Gen) as_cast_name_table() string {
 	if g.as_cast_type_names.len == 0 {
 		return 'new_array_from_c_array(1, 1, sizeof(VCastTypeIndexName), _MOV((VCastTypeIndexName[1]){(VCastTypeIndexName){.tindex = 0,.tname = _SLIT("unknown")}}));'
 	}
