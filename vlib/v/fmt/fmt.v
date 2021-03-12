@@ -1910,11 +1910,11 @@ pub fn (mut f Fmt) map_init(it ast.MapInit) {
 	f.write('}')
 }
 
-pub fn (mut f Fmt) const_decl(it ast.ConstDecl) {
-	if it.is_pub {
+pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
+	if node.is_pub {
 		f.write('pub ')
 	}
-	if it.fields.len == 0 && it.pos.line_nr == it.pos.last_line {
+	if node.fields.len == 0 && node.pos.line_nr == node.pos.last_line {
 		f.writeln('const ()\n')
 		return
 	}
@@ -1923,18 +1923,18 @@ pub fn (mut f Fmt) const_decl(it ast.ConstDecl) {
 		f.inside_const = false
 	}
 	f.write('const ')
-	if it.is_block {
+	if node.is_block {
 		f.writeln('(')
 	}
 	mut max := 0
-	for field in it.fields {
+	for field in node.fields {
 		if field.name.len > max {
 			max = field.name.len
 		}
 	}
 	f.indent++
-	mut prev_field := if it.fields.len > 0 { ast.Node(it.fields[0]) } else { ast.Node{} }
-	for field in it.fields {
+	mut prev_field := if node.fields.len > 0 { ast.Node(node.fields[0]) } else { ast.Node{} }
+	for field in node.fields {
 		if field.comments.len > 0 {
 			if f.should_insert_newline_before_node(ast.Expr(field.comments[0]), prev_field) {
 				f.writeln('')
@@ -1942,7 +1942,7 @@ pub fn (mut f Fmt) const_decl(it ast.ConstDecl) {
 			f.comments(field.comments, inline: true)
 			prev_field = ast.Expr(field.comments.last())
 		}
-		if it.is_block && f.should_insert_newline_before_node(field, prev_field) {
+		if node.is_block && f.should_insert_newline_before_node(field, prev_field) {
 			f.writeln('')
 		}
 		name := field.name.after('.')
@@ -1953,9 +1953,9 @@ pub fn (mut f Fmt) const_decl(it ast.ConstDecl) {
 		f.writeln('')
 		prev_field = field
 	}
-	f.comments_after_last_field(it.end_comments)
+	f.comments_after_last_field(node.end_comments)
 	f.indent--
-	if it.is_block {
+	if node.is_block {
 		f.writeln(')\n')
 	} else {
 		f.writeln('')
