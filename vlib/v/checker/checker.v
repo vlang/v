@@ -4881,57 +4881,6 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 				}
 			}
 		}
-		// smartcast sumtypes and interfaces when using `is`
-		if !node.is_comptime && branch.cond is ast.InfixExpr {
-			infix := branch.cond as ast.InfixExpr
-			if infix.op == .key_is {
-				right_expr := infix.right as ast.Type
-				left_sym := c.table.get_type_symbol(infix.left_type)
-				expr_type := c.expr(infix.left)
-				if left_sym.kind == .interface_ {
-					c.type_implements(right_expr.typ, expr_type, branch.cond.position())
-				} else if !c.check_types(right_expr.typ, expr_type) {
-					expect_str := c.table.type_to_str(right_expr.typ)
-					expr_str := c.table.type_to_str(expr_type)
-					c.error('cannot use type `$expect_str` as type `$expr_str`', branch.pos)
-				}
-				if (infix.left is ast.Ident || infix.left is ast.SelectorExpr)
-					&& infix.right is ast.Type {
-					is_variable := if mut infix.left is ast.Ident {
-						infix.left.kind == .variable
-					} else {
-						true
-					}
-					if is_variable {
-						if left_sym.kind in [.interface_, .sum_type] {
-							if infix.left is ast.Ident && left_sym.kind == .interface_ {
-								// TODO: rewrite interface smartcast
-								left := infix.left as ast.Ident
-								mut is_mut := false
-								mut sum_type_casts := []table.Type{}
-								if v := branch.scope.find_var(left.name) {
-									is_mut = v.is_mut
-									sum_type_casts << v.sum_type_casts
-								}
-								branch.scope.register(ast.Var{
-									name: left.name
-									typ: right_expr.typ.to_ptr()
-									sum_type_casts: sum_type_casts
-									pos: left.pos
-									is_used: true
-									is_mut: is_mut
-								})
-								// TODO: needs to be removed
-								node.branches[i].smartcast = true
-							} else {
-								c.smartcast_sumtype(infix.left, infix.left_type, right_expr.typ, mut
-									branch.scope)
-							}
-						}
-					}
-				}
-			}
-		}
 		if node.is_comptime { // Skip checking if needed
 			// smartcast field type on comptime if
 			mut comptime_field_name := ''
@@ -4979,6 +4928,57 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 			}
 			c.skip_flags = cur_skip_flags
 		} else {
+			// smartcast sumtypes and interfaces when using `is`
+			pos := branch.cond.position()
+			if branch.cond is ast.InfixExpr {
+				if branch.cond.op == .key_is {
+					right_expr := branch.cond.right as ast.Type
+					left_sym := c.table.get_type_symbol(branch.cond.left_type)
+					expr_type := c.expr(branch.cond.left)
+					if left_sym.kind == .interface_ {
+						c.type_implements(right_expr.typ, expr_type, pos)
+					} else if !c.check_types(right_expr.typ, expr_type) {
+						expect_str := c.table.type_to_str(right_expr.typ)
+						expr_str := c.table.type_to_str(expr_type)
+						c.error('cannot use type `$expect_str` as type `$expr_str`', pos)
+					}
+					if (branch.cond.left is ast.Ident || branch.cond.left is ast.SelectorExpr)
+						&& branch.cond.right is ast.Type {
+						is_variable := if mut branch.cond.left is ast.Ident {
+							branch.cond.left.kind == .variable
+						} else {
+							true
+						}
+						if is_variable {
+							if left_sym.kind in [.interface_, .sum_type] {
+								if branch.cond.left is ast.Ident && left_sym.kind == .interface_ {
+									// TODO: rewrite interface smartcast
+									left := branch.cond.left as ast.Ident
+									mut is_mut := false
+									mut sum_type_casts := []table.Type{}
+									if v := branch.scope.find_var(left.name) {
+										is_mut = v.is_mut
+										sum_type_casts << v.sum_type_casts
+									}
+									branch.scope.register(ast.Var{
+										name: left.name
+										typ: right_expr.typ.to_ptr()
+										sum_type_casts: sum_type_casts
+										pos: left.pos
+										is_used: true
+										is_mut: is_mut
+									})
+									// TODO: needs to be removed
+									node.branches[i].smartcast = true
+								} else {
+									c.smartcast_sumtype(branch.cond.left, branch.cond.left_type,
+										right_expr.typ, mut branch.scope)
+								}
+							}
+						}
+					}
+				}
+			}
 			c.stmts(branch.stmts)
 		}
 		if expr_required {
