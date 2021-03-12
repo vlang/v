@@ -543,3 +543,12 @@ fn test_posix_set_bit() {
 		rm(fpath) or {}
 	}
 }
+
+fn test_exists_in_system_path() {
+	assert os.exists_in_system_path('') == false
+	$if windows {
+		assert os.exists_in_system_path('cmd') == true
+		return
+	}
+	assert os.exists_in_system_path('ls') == true
+}
