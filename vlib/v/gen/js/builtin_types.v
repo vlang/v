@@ -227,7 +227,7 @@ fn (mut g JsGen) gen_builtin_prototype(c BuiltinPrototypeCongig) {
 	g.writeln('function ${c.typ_name}(${c.val_name} = ${c.default_value}) { ${c.constructor} }')
 	g.writeln('${c.typ_name}.prototype = {')
 	g.inc_indent()
-	g.writeln('val: ${c.default_value},')
+	g.writeln('${c.val_name}: ${c.default_value},')
 	if c.extras.len > 0 {
 		g.writeln('${c.extras},')
 	}
