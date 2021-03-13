@@ -286,7 +286,7 @@ fn (mut g Gen) comp_if_cond(cond ast.Expr) bool {
 					l := g.comp_if_cond(cond.left)
 					g.write(' $cond.op ')
 					r := g.comp_if_cond(cond.right)
-					return l && r
+					return if cond.op == .and { l && r } else { l || r }
 				}
 				.key_is, .not_is {
 					left := cond.left
