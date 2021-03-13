@@ -6193,7 +6193,7 @@ fn (mut g Gen) interface_table() string {
 			sb.writeln('$staticprefix $interface_name I_${cctype}_to_Interface_${interface_name}($cctype* x);')
 			mut cast_struct := strings.new_builder(100)
 			cast_struct.writeln('($interface_name) {')
-			cast_struct.writeln('\t\t._$cctype = (void*) (x),')
+			cast_struct.writeln('\t\t._$cctype = x,')
 			cast_struct.writeln('\t\t._typ = $interface_index_name,')
 			for field in inter_info.fields {
 				cname := c_name(field.name)
