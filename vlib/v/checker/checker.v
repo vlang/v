@@ -5345,8 +5345,8 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						}
 						if is_variable {
 							if left_sym.kind in [.interface_, .sum_type] {
-								c.smartcast(branch.cond.left, branch.cond.left_type,
-									right_expr.typ, mut branch.scope)
+								c.smartcast(branch.cond.left, branch.cond.left_type, right_expr.typ, mut
+									branch.scope)
 							}
 						}
 					}
