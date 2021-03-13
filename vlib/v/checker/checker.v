@@ -915,8 +915,12 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 		.key_is, .not_is {
 			right_expr := infix_expr.right
 			mut typ := match right_expr {
-				ast.Type { right_expr.typ }
-				ast.None { table.none_type_idx }
+				ast.Type {
+					right_expr.typ
+				}
+				ast.None {
+					table.none_type_idx
+				}
 				else {
 					c.error('invalid type `$right_expr`', right_expr.position())
 					table.Type(0)
@@ -928,8 +932,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 				c.error('$op: type `$typ_sym.name` does not exist', right_expr.position())
 			}
 			if left.kind !in [.interface_, .sum_type] {
-				c.error('`$op` can only be used with interfaces and sum types',
-					infix_expr.pos)
+				c.error('`$op` can only be used with interfaces and sum types', infix_expr.pos)
 			} else if mut left.info is table.SumType {
 				if typ !in left.info.variants {
 					c.error('`$left.name` has no variant `$right.name`', infix_expr.pos)

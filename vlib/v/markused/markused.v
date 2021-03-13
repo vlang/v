@@ -32,7 +32,7 @@ pub fn mark_used(mut the_table table.Table, pref &pref.Preferences, ast_files []
 		'isnil',
 		'opt_ok3',
 		'error3'
-		// utf8_str_visible_length is used by c/str.v
+		// utf8_str_visible_length is used by c/str.v,,
 		'utf8_str_visible_length',
 		'compare_ints',
 		'compare_u64s',

@@ -207,7 +207,7 @@ fn (vd VDoc) get_readme(path string) string {
 	return readme_contents
 }
 
-fn (vd VDoc) emit_generate_err(err Error) {
+fn (vd VDoc) emit_generate_err(err IError) {
 	cfg := vd.cfg
 	mut err_msg := err.msg
 	if err.code == 1 {
