@@ -16,11 +16,6 @@ pub:
 	code int
 }
 
-struct Option3 {
-	state byte
-	err   IError = none__
-}
-
 const none__ = IError(&None__{})
 
 struct None__ {
@@ -29,28 +24,6 @@ struct None__ {
 }
 
 fn (_ None__) str() string { return 'none' }
-
-fn opt_ok3(data voidptr, mut option Option3, size int) {
-	unsafe {
-		*option = Option3{}
-		// use err to get the end of Option3 and then memcpy into it
-		C.memcpy(byteptr(&option.err) + sizeof(IError), data, size)
-	}
-}
-
-[inline]
-pub fn error3(message string) IError {
-	return &Error{
-		msg: message
-	}
-}
-
-pub fn error_with_code3(message string, code int) IError {
-	return &Error {
-		msg: message
-		code: code
-	}
-}
 
 ////////////////////////////////////////
 
