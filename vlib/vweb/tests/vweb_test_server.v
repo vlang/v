@@ -9,7 +9,6 @@ const (
 )
 
 struct App {
-	vweb.Context
 	port    int
 	timeout int
 }
@@ -34,72 +33,66 @@ fn main() {
 		port: http_port
 		timeout: timeout
 	}
-	vweb.run_app<App>(mut app, http_port)
-}
-
-pub fn (mut app App) init() {
-}
-
-pub fn (mut app App) init_once() {
 	eprintln('>> webserver: started on http://127.0.0.1:$app.port/ , with maximum runtime of $app.timeout milliseconds.')
+	vweb.run_app<App>(mut app, port: http_port)
 }
 
-pub fn (mut app App) index() vweb.Result {
-	return app.text('Welcome to VWeb')
+pub fn (mut app App) index(mut c vweb.Context) vweb.Result {
+	return c.text('Welcome to VWeb')
 }
 
-pub fn (mut app App) simple() vweb.Result {
-	return app.text('A simple result')
+pub fn (mut app App) simple(mut c vweb.Context) vweb.Result {
+	return c.text('A simple result')
 }
 
-pub fn (mut app App) html_page() vweb.Result {
-	return app.html('<h1>ok</h1>')
+pub fn (mut app App) html_page(mut c vweb.Context) vweb.Result {
+	return c.html('<h1>ok</h1>')
 }
 
-pub fn (mut app App) chunk() vweb.Result {
-	app.enable_chunked_transfer(20)
-	return app.html('Lorem ipsum dolor sit amet, consetetur sadipscing')
+pub fn (mut app App) chunk(mut c vweb.Context) vweb.Result {
+	c.enable_chunked_transfer(20)
+	return c.html('Lorem ipsum dolor sit amet, consetetur sadipscing')
 }
 
 // the following serve custom routes
 ['/:user/settings']
-pub fn (mut app App) settings(username string) vweb.Result {
+pub fn (mut app App) settings(mut c vweb.Context, username string) vweb.Result {
 	if username !in known_users {
-		return app.not_found()
+		return c.not_found()
 	}
-	return app.html('username: $username')
+	return c.html('username: $username')
 }
 
 ['/:user/:repo/settings']
-pub fn (mut app App) user_repo_settings(username string, repository string) vweb.Result {
+pub fn (mut app App) user_repo_settings(mut c vweb.Context, username string, repository string) vweb.Result {
 	if username !in known_users {
-		return app.not_found()
+		return c.not_found()
 	}
-	return app.html('username: $username | repository: $repository')
+	return c.html('username: $username | repository: $repository')
 }
 
 ['/json_echo'; post]
-pub fn (mut app App) json_echo() vweb.Result {
-	// eprintln('>>>>> received http request at /json_echo is: $app.req')
-	app.set_content_type(app.req.headers['Content-Type'])
-	return app.ok(app.req.data)
+pub fn (mut app App) json_echo(mut c vweb.Context) vweb.Result {
+	// eprintln('>>>>> received http request at /json_echo is: $c.req')
+	c.set_content_type(c.req.headers['Content-Type'])
+	return c.ok(c.req.data)
 }
 
 // Make sure [post] works without the path
 [post]
-pub fn (mut app App) json() vweb.Result {
-	// eprintln('>>>>> received http request at /json is: $app.req')
-	app.set_content_type(app.req.headers['Content-Type'])
-	return app.ok(app.req.data)
+pub fn (mut app App) json(mut c vweb.Context) vweb.Result {
+	// eprintln('>>>>> received http request at /json is: $c.req')
+	c.set_content_type(c.req.headers['Content-Type'])
+	return c.ok(c.req.data)
 }
 
-pub fn (mut app App) shutdown() vweb.Result {
-	session_key := app.get_cookie('skey') or { return app.not_found() }
+pub fn (mut app App) shutdown(mut c vweb.Context) vweb.Result {
+	session_key := c.get_cookie('skey') or { return c.not_found() }
 	if session_key != 'superman' {
-		return app.not_found()
+		return c.not_found()
 	}
 	go app.gracefull_exit()
-	return app.ok('good bye')
+	return c.ok('good bye')
 }
 
 fn (mut app App) gracefull_exit() {

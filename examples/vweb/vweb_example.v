@@ -1,6 +1,7 @@
 module main
 
 import vweb
+import json
 
 struct App {
 mut:
@@ -21,7 +22,7 @@ fn main() {
 
 ['/users/:user']
 pub fn (mut app App) user_endpoint(mut c vweb.Context, user string) vweb.Result {
-	return c.json('{"$user": $app.cnt}')
+	return c.json(json.encode(map{user: app.cnt}))
 }
 
 pub fn (mut app App) index(mut c vweb.Context) vweb.Result {

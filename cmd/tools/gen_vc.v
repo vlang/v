@@ -89,7 +89,6 @@ mut:
 
 // webhook server
 struct WebhookServer {
-	vweb.Context
 mut:
 	gen_vc &GenVC = 0 // initialized in init_once
 }
@@ -125,7 +124,9 @@ fn main() {
 	}
 	// webhook server mode
 	if flag_options.serve {
-		vweb.run<WebhookServer>(flag_options.port)
+		mut ws := WebHookServer{}
+		ws.init_once()
+		vweb.run_app<WebhookServer>(mut ws, port: flag_options.port)
 	} else {
 		// cmd mode
 		mut gen_vc := new_gen_vc(flag_options)
@@ -154,10 +155,6 @@ pub fn (mut ws WebhookServer) init_once() {
 	ws.gen_vc = new_gen_vc(flag_options)
 	ws.gen_vc.init()
 	// ws.gen_vc = new_gen_vc(flag_options)
-}
-
-pub fn (mut ws WebhookServer) init() {
-	// ws.init_once()
 }
 
 pub fn (mut ws WebhookServer) index() {

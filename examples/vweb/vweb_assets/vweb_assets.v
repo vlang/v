@@ -4,32 +4,23 @@ import vweb
 //import vweb.assets
 import time
 
-const (
-	port = 8081
-)
-
-struct App {
-	vweb.Context
-}
+struct App {}
 
 fn main() {
-	vweb.run<App>(port)
-}
-
-pub fn (mut app App) init_once() {
+	mut conf := vweb.Config{
+		port: 8081
+	}
 	// Arbitary mime type.
-	app.serve_static('/favicon.ico', 'favicon.ico', 'img/x-icon')
+	conf.serve_static('/favicon.ico', 'favicon.ico', 'img/x-icon')
 	// Automatically make available known static mime types found in given directory.
 	// app.handle_static('assets')
 	// This would make available all known static mime types from current
 	// directory and below.
-	app.handle_static('.', false)
+	conf.handle_static('.', false)
+	vweb.run<App>(conf)
 }
 
-pub fn (mut app App) init() {
-}
-
-pub fn (mut app App) index() vweb.Result {
+pub fn (mut app App) index(mut c vweb.Context) vweb.Result {
 	// We can dynamically specify which assets are to be used in template.
 	// 	mut am := assets.new_manager()
 	// 	am.add_css('assets/index.css')
@@ -40,10 +31,10 @@ pub fn (mut app App) index() vweb.Result {
 	return $vweb.html()
 }
 
-fn (mut app App) text() vweb.Result {
-	return app.Context.text('Hello, world from vweb!')
+fn (mut app App) text(mut c vweb.Context) vweb.Result {
+	return c.text('Hello, world from vweb!')
 }
 
-fn (mut app App) time() vweb.Result {
-	return app.Context.text(time.now().format())
+fn (mut app App) time(mut c vweb.Context) vweb.Result {
+	return c.text(time.now().format())
 }

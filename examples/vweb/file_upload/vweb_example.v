@@ -2,26 +2,20 @@ module main
 
 import vweb
 
-const (
-	port = 8082
-)
-
-struct App {
-	vweb.Context
-}
+struct App {}
 
 fn main() {
-	vweb.run<App>(port)
+	vweb.run<App>(port: 8082)
 }
 
-pub fn (mut app App) index() vweb.Result {
+pub fn (mut app App) index(mut c vweb.Context) vweb.Result {
 	return $vweb.html()
 }
 
 [post]
 ['/upload']
-pub fn (mut app App) upload() vweb.Result {
-	fdata := app.files['upfile']
+pub fn (mut app App) upload(mut c vweb.Context) vweb.Result {
+	fdata := c.files['upfile']
 
 	mut files := []vweb.RawHtml{}
 

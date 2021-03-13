@@ -1,30 +1,28 @@
 import vweb
 
-struct App {
-	vweb.Context
-}
+struct App {}
 
-pub fn (mut app App) no_attributes(a string) vweb.Result {
-	return app.text('ok')
+pub fn (mut app App) no_attributes(mut c vweb.Context, a string) vweb.Result {
+	return c.text('ok')
 }
 
 // works fine, as long as fcn gets 1 arg and route takes 1 var
 ['/foo/:bar']
-pub fn (mut app App) foo(a string) vweb.Result {
+pub fn (mut app App) foo(mut c vweb.Context, a string) vweb.Result {
 	eprintln('foo')
-	return app.html('works')
+	return c.html('works')
 }
 
 // segfault because path taks 0 vars and fcn takes 1 arg
 ['/bar']
-pub fn (mut app App) bar(a string) vweb.Result {
-	return app.html('works')
+pub fn (mut app App) bar(mut c vweb.Context, a string) vweb.Result {
+	return c.html('works')
 }
 
 // no segfault, but it shouldnt compile
 ['/cow/:low']
-pub fn (mut app App) cow() vweb.Result {
-	return app.html('works')
+pub fn (mut app App) cow(mut c vweb.Context) vweb.Result {
+	return c.html('works')
 }
 
 pub fn (app App) init_once() {
@@ -35,12 +33,11 @@ pub fn (app App) init() {
 	//
 }
 
-pub fn (mut app App) index() {
-	app.html('hello')
+pub fn (mut app App) index(mut c vweb.Context) {
+	c.html('hello')
 }
 
 fn main() {
-	port := 8181
 	mut app := App{}
-	vweb.run_app<App>(mut app, port)
+	vweb.run_app<App>(mut app, port: 8181)
 }
