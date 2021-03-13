@@ -1,14 +1,14 @@
 These are utility commands that you can also launch through v,
 but which are used less frequently by users:
 
-   bin2v             Convert a binary file to a v source file,
-                     that can be later embedded in a module or program.
+   bin2v              Convert a binary file to a v source file,
+                      that can be later embedded in a module or program.
 
    build-examples     Test if all examples can be built.
    build-tools        Test if all tools can be built.
    build-vbinaries    Test if V can be built with different configuration.
 
-   check-md          Check that V examples in markdown files are formatted and can compile.
+   check-md           Check that V examples in markdown files are formatted and can compile.
 
    test-all           Run most checks, that the CI does locally.
                       It may take over 2 minutes, and it needs internet connectivity too,
@@ -16,7 +16,7 @@ but which are used less frequently by users:
 
    test-fmt           Test if all files in the current directory are formatted properly.
 
-   test-self Test if V is working properly by running all tests, including the compiler ones.
+   test-self          Test if V is working properly by running all tests, including the compiler ones.
                       NB: this can 1-2 minutes to run.
 
    test-parser        Test that the V parser works with the given files, as if

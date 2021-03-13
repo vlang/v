@@ -1,8 +1,9 @@
 Usage:
- a) v update module [module] [module] [...]
-    ^^^^^^^^^^^^ will update the listed modules to their latest versions.
- b) v update
-    ^^^^^^^^^^^^ will update ALL installed modules to their latest versions.
+  v update [MODULE]...
+	Updates each MODULE.
+
+	With no MODULE, ALL installed modules are updated to their latest versions.
+
 Options:
   -help        - Show usage info.
   -v           - Print more details about the performed operation.
