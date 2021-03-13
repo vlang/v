@@ -1248,7 +1248,6 @@ pub fn (expr Expr) is_blank_ident() bool {
 pub fn (expr Expr) position() token.Position {
 	// all uncommented have to be implemented
 	match expr {
-		// KEKW2
 		AnonFn {
 			return expr.decl.pos
 		}

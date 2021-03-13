@@ -483,7 +483,7 @@ pub fn read_file_array<T>(path string) []T {
 	a := T{}
 	tsize := int(sizeof(a))
 	// prepare for reading, get current file size
-	mut fp := vfopen(path, 'rb') or { return array{} }
+	mut fp := vfopen(path, 'rb') or { return []T{} }
 	C.fseek(fp, 0, C.SEEK_END)
 	fsize := C.ftell(fp)
 	C.rewind(fp)
@@ -492,11 +492,13 @@ pub fn read_file_array<T>(path string) []T {
 	buf := unsafe { malloc(fsize) }
 	C.fread(buf, fsize, 1, fp)
 	C.fclose(fp)
-	return array{
-		element_size: tsize
-		data: buf
-		len: len
-		cap: len
+	return unsafe {
+		array{
+			element_size: tsize
+			data: buf
+			len: len
+			cap: len
+		}
 	}
 }
 

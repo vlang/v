@@ -463,6 +463,16 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 	utyp := c.unwrap_generic(struct_init.typ)
 	c.ensure_type_exists(utyp, struct_init.pos) or {}
 	type_sym := c.table.get_type_symbol(utyp)
+	// Make sure the first letter is capital, do not allow e.g. `x := string{}`,
+	// but `x := T{}` is ok.
+	if !c.is_builtin_mod && !c.inside_unsafe && type_sym.language == .v
+		&& c.cur_generic_types.len == 0 {
+		pos := type_sym.name.last_index('.') or { -1 }
+		first_letter := type_sym.name[pos + 1]
+		if !first_letter.is_capital() {
+			c.error('cannot initialize builtin type `$type_sym.name`', struct_init.pos)
+		}
+	}
 	if type_sym.kind == .sum_type && struct_init.fields.len == 1 {
 		sexpr := struct_init.fields[0].expr.str()
 		c.error('cast to sum type using `${type_sym.name}($sexpr)` not `$type_sym.name{$sexpr}`',

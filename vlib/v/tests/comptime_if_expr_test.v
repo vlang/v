@@ -31,7 +31,7 @@ fn test_ct_expressions() {
 
 fn generic_t_is<O>() O {
 	$if O is string {
-		return 'It\'s a string!'
+		return "It's a string!"
 	} $else {
 		return O{}
 	}
@@ -41,17 +41,17 @@ fn generic_t_is<O>() O {
 struct GenericTIsTest {}
 
 fn test_generic_t_is() {
-	assert generic_t_is<string>() == 'It\'s a string!'
+	assert generic_t_is<string>() == "It's a string!"
 	assert generic_t_is<GenericTIsTest>() == GenericTIsTest{}
 }
 
 fn generic_t_is2<T>() ?T {
 	$if T is string {
-		return 'It\'s a string!'
+		return "It's a string!"
 	} $else {
 		return T{}
 	}
- }
+}
 
 fn test_generic_t_is2() {
 	res := generic_t_is2<string>() or {
@@ -62,7 +62,7 @@ fn test_generic_t_is2() {
 		assert false
 		GenericTIsTest{}
 	}
-	assert res == 'It\'s a string!'
+	assert res == "It's a string!"
 	assert res2 == GenericTIsTest{}
 }
 
@@ -123,4 +123,3 @@ fn test_generic_t_is_with_else_if() {
 	x := generic_t_is_with_else_if<User>()
 	assert x == ['name', 'age']
 }
-
