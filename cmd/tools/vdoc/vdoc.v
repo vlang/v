@@ -43,9 +43,6 @@ mut:
 struct Config {
 mut:
 	pub_only         bool = true
-	is_local         bool
-	local_filename   string
-	local_pos        int
 	show_loc         bool // for plaintext
 	is_multi         bool
 	is_vlib          bool
@@ -282,38 +279,27 @@ fn (mut vd VDoc) generate_docs_from_file() {
 	} else {
 		[cfg.input_path]
 	}
-	is_local_and_single := cfg.is_local && !cfg.is_multi
 	for dirpath in dirs {
-		mut dcs := doc.Doc{}
 		vd.vprintln('Generating $out.typ docs for "$dirpath"')
-		if is_local_and_single {
-			dcs = doc.generate_with_pos(dirpath, cfg.local_filename, cfg.local_pos) or {
-				vd.emit_generate_err(err)
-				exit(1)
-			}
-		} else {
-			dcs = doc.generate(dirpath, cfg.pub_only, true, cfg.symbol_name) or {
-				vd.emit_generate_err(err)
-				exit(1)
-			}
+		mut dcs := doc.generate(dirpath, cfg.pub_only, true, cfg.symbol_name) or {
+			vd.emit_generate_err(err)
+			exit(1)
 		}
 		if dcs.contents.len == 0 {
 			continue
 		}
-		if !is_local_and_single {
-			if cfg.is_multi || (!cfg.is_multi && cfg.include_readme) {
-				readme_contents := vd.get_readme(dirpath)
-				comment := doc.DocComment{
-					text: readme_contents
-				}
-				dcs.head.comments = [comment]
+		if cfg.is_multi || (!cfg.is_multi && cfg.include_readme) {
+			readme_contents := vd.get_readme(dirpath)
+			comment := doc.DocComment{
+				text: readme_contents
 			}
-			if cfg.pub_only {
-				for name, dc in dcs.contents {
-					dcs.contents[name].content = dc.content.all_after('pub ')
-					for i, cc in dc.children {
-						dcs.contents[name].children[i].content = cc.content.all_after('pub ')
-					}
+			dcs.head.comments = [comment]
+		}
+		if cfg.pub_only {
+			for name, dc in dcs.contents {
+				dcs.contents[name].content = dc.content.all_after('pub ')
+				for i, cc in dc.children {
+					dcs.contents[name].children[i].content = cc.content.all_after('pub ')
 				}
 			}
 		}
@@ -390,11 +376,6 @@ fn parse_arguments(args []string) Config {
 			'-all' {
 				cfg.pub_only = false
 			}
-			'-filename' {
-				cfg.is_local = true
-				cfg.local_filename = cmdline.option(current_args, '-filename', '')
-				i++
-			}
 			'-f' {
 				format := cmdline.option(current_args, '-f', '')
 				if format !in allowed_formats {
@@ -417,14 +398,6 @@ fn parse_arguments(args []string) Config {
 			'-o' {
 				opath := cmdline.option(current_args, '-o', '')
 				cfg.output_path = if opath == 'stdout' { opath } else { os.real_path(opath) }
-				i++
-			}
-			'-pos' {
-				if !cfg.is_local {
-					eprintln('vdoc: `-pos` is only allowed with `-filename` flag.')
-					exit(1)
-				}
-				cfg.local_pos = cmdline.option(current_args, '-pos', '').int()
 				i++
 			}
 			'-no-timestamp' {

@@ -1750,6 +1750,11 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	}
 	if fn_name == 'json.encode' {
 	} else if fn_name == 'json.decode' && call_expr.args.len > 0 {
+		if call_expr.args.len != 2 {
+			c.error("json.decode expects 2 arguments, a type and a string (e.g `json.decode(T, '')`)",
+				call_expr.pos)
+			return table.void_type
+		}
 		expr := call_expr.args[0].expr
 		if expr !is ast.Type {
 			typ := expr.type_name()
@@ -2404,7 +2409,7 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 	return_stmt.types = got_types
 	// allow `none` & `error (Option)` return types for function that returns optional
 	if exp_is_optional
-		&& got_types[0].idx() in [table.none_type_idx, table.error_type_idx, c.table.type_idxs['Option'], c.table.type_idxs['Option2']] {
+		&& got_types[0].idx() in [table.none_type_idx, table.error_type_idx, c.table.type_idxs['Option'], c.table.type_idxs['Option2'], c.table.type_idxs['Option3']] {
 		return
 	}
 	if expected_types.len > 0 && expected_types.len != got_types.len {

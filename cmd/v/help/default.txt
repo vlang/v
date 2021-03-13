@@ -13,6 +13,7 @@ V supports the following commands:
 * New project scaffolding:
    new               Setup the file structure for a V project (in a sub folder).
    init              Setup the file structure for an already existing V project.
+
 * Ordinary development:
    run               Compile and run a V program.
    test              Run all test files in the provided directory.
@@ -21,11 +22,13 @@ V supports the following commands:
    doc               Generate the documentation for a V module.
    vlib-docs         Generate and open the documentation of all the vlib modules.
    repl              Run the REPL.
+
 * Installation/self updating:
    symlink           Create a symbolic link for V.
    up                Run the V self-updater.
    self [-prod]      Run the V self-compiler, use -prod to optimize compilation.
    version           Print the version text and exits.
+
 * Module/package management:
    install           Install a module from VPM.
    remove            Remove a module that was installed from VPM.
@@ -34,8 +37,9 @@ V supports the following commands:
    upgrade           Upgrade all the outdated modules.
    list              List all installed modules.
    outdated          Show installed modules that need updates.
+
 * Others:
-   doctor            Display some usefull info about your system to help reporting bugs.
+   doctor            Display some useful info about your system to help reporting bugs.
    translate         Translate C code to V (coming soon in 0.3).
    tracev            Produce a tracing version of the v compiler.
                      Use `tracev yourfile.v` when the compiler panics.
@@ -45,4 +49,4 @@ Use "v help <command>" for more information about a command, example: `v help bu
 Use "v help other" to see less frequently used commands.
 
 Note: Help is required to write more help topics.
-Only build, doc, fmt, run, test, search, install, remove, update, bin2v, check-md are properly documented currently.
+Only build, new, init, doc, fmt, run, test, search, install, remove, update, bin2v, check-md are properly documented currently.

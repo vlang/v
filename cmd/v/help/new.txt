@@ -1,5 +1,18 @@
 Usage:
-  v new [name] [description]
-  v init
+  v new [NAME] [DESCRIPTION]
+	Sets up a new V project with a 'v.mod' file, and a 'main.v' "Hello World"
+	file, and performs 'git init' (if git is installed on the system).
 
-Setup file structure for a V project.
+	If NAME is given, the project will be setup in a new directory with that
+	name, and that name will be added to the 'v.mod' file. If no name is given,
+	the user will be prompted for a name.
+
+	If DESCRIPTION is given, the 'v.mod' file is updated with said description.
+
+  v init
+	Sets up a V project within the current directory.
+
+	If no '.v' file exists, then will create a 'main.v' file.
+	If no 'v.mod' file exists, one will be created.
+	If the current directory is not already controlled with 'git', will perform
+	'git init' (if git is installed on the system).

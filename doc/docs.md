@@ -2976,14 +2976,31 @@ The developer doesn't need to change anything in their code. "It just works", li
 Python, Go, or Java, except there's no heavy GC tracing everything or expensive RC for
 each object.
 
+### Control
+
+You can take advantage of V's autofree engine and define a `free()` method on custom 
+data types:
+
+```v
+struct MyType {}
+
+[unsafe]
+fn (data &MyType) free() {
+	// ...
+}
+```
+
+Just as the compiler frees C data types with C's `free()`, it will statically insert 
+`free()` calls for your data type at the end of each variable's lifetime.
+
 For developers willing to have more low level control, autofree can be disabled with
 `-manualfree`, or by adding a `[manualfree]` on each function that wants manage its
-memory manually.
+memory manually. (See [attributes](#attributes)).
 
-Note: right now autofree is hidden behind the -autofree flag. It will be enabled by
-default in V 0.3. If autofree is not used, V programs will leak memory.
+_Note: right now autofree is hidden behind the -autofree flag. It will be enabled by
+default in V 0.3. If autofree is not used, V programs will leak memory._
 
-For example:
+### Examples
 
 ```v
 import strings
@@ -3006,9 +3023,8 @@ fn draw_scene() {
 The strings don't escape `draw_text`, so they are cleaned up when
 the function exits.
 
-In fact, the first two calls won't result in any allocations at all.
-These two strings are small,
-V will use a preallocated buffer for them.
+In fact, with the `-prealloc` flag, the first two calls won't result in any allocations at all.
+These two strings are small, so V will use a preallocated buffer for them.
 
 ```v
 struct User {
