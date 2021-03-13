@@ -413,7 +413,7 @@ pub fn (mut c Checker) struct_decl(mut decl ast.StructDecl) {
 				c.check_expected(field_expr_type, field.typ) or {
 					if !(sym.kind == .interface_
 						&& c.type_implements(field_expr_type, field.typ, field.pos)) {
-						c.error('incompatible initializer for field `$field.name`: $err',
+						c.error('incompatible initializer for field `$field.name`: $err.msg',
 							field.default_expr.position())
 					}
 				}
@@ -592,7 +592,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 					expr_type_sym := c.table.get_type_symbol(expr_type)
 					if expr_type != table.void_type && expr_type_sym.kind != .placeholder {
 						c.check_expected(expr_type, embed_type) or {
-							c.error('cannot assign to field `$info_field.name`: $err',
+							c.error('cannot assign to field `$info_field.name`: $err.msg',
 								field.pos)
 						}
 					}
@@ -608,7 +608,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 						c.type_implements(expr_type, info_field.typ, field.pos)
 					} else if expr_type != table.void_type && expr_type_sym.kind != .placeholder {
 						c.check_expected(expr_type, info_field.typ) or {
-							c.error('cannot assign to field `$info_field.name`: $err',
+							c.error('cannot assign to field `$info_field.name`: $err.msg',
 								field.pos)
 						}
 					}
@@ -762,21 +762,21 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 					elem_type := right.array_info().elem_type
 					// if left_default.kind != right_sym.kind {
 					c.check_expected(left_type, elem_type) or {
-						c.error('left operand to `$infix_expr.op` does not match the array element type: $err',
+						c.error('left operand to `$infix_expr.op` does not match the array element type: $err.msg',
 							left_right_pos)
 					}
 				}
 				.map {
 					map_info := right.map_info()
 					c.check_expected(left_type, map_info.key_type) or {
-						c.error('left operand to `$infix_expr.op` does not match the map key type: $err',
+						c.error('left operand to `$infix_expr.op` does not match the map key type: $err.msg',
 							left_right_pos)
 					}
 					infix_expr.left_type = map_info.key_type
 				}
 				.string {
 					c.check_expected(left_type, right_type) or {
-						c.error('left operand to `$infix_expr.op` does not match: $err',
+						c.error('left operand to `$infix_expr.op` does not match: $err.msg',
 							left_right_pos)
 					}
 				}
@@ -923,16 +923,28 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 			return c.check_shift(left_type, right_type, left_pos, right_pos)
 		}
 		.key_is, .not_is {
-			type_expr := infix_expr.right as ast.Type
-			typ_sym := c.table.get_type_symbol(type_expr.typ)
+			right_expr := infix_expr.right
+			mut typ := match right_expr {
+				ast.Type {
+					right_expr.typ
+				}
+				ast.None {
+					table.none_type_idx
+				}
+				else {
+					c.error('invalid type `$right_expr`', right_expr.position())
+					table.Type(0)
+				}
+			}
+			typ_sym := c.table.get_type_symbol(typ)
+			op := infix_expr.op.str()
 			if typ_sym.kind == .placeholder {
-				c.error('$infix_expr.op.str(): type `$typ_sym.name` does not exist', type_expr.pos)
+				c.error('$op: type `$typ_sym.name` does not exist', right_expr.position())
 			}
 			if left.kind !in [.interface_, .sum_type] {
-				c.error('`$infix_expr.op.str()` can only be used with interfaces and sum types',
-					infix_expr.pos)
+				c.error('`$op` can only be used with interfaces and sum types', infix_expr.pos)
 			} else if mut left.info is table.SumType {
-				if type_expr.typ !in left.info.variants {
+				if typ !in left.info.variants {
 					c.error('`$left.name` has no variant `$right.name`', infix_expr.pos)
 				}
 			}
@@ -1411,7 +1423,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		}
 		if left_type_sym.kind == .aggregate {
 			// the error message contains the problematic type
-			unknown_method_msg = err
+			unknown_method_msg = err.msg
 		}
 	}
 	if has_method {
@@ -1493,7 +1505,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 				// continue
 				// }
 				if got_arg_typ != table.void_type {
-					c.error('$err in argument ${i + 1} to `${left_type_sym.name}.$method_name`',
+					c.error('$err.msg in argument ${i + 1} to `${left_type_sym.name}.$method_name`',
 						arg.pos)
 				}
 			}
@@ -2014,7 +2026,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			if f.generic_names.len > 0 {
 				continue
 			}
-			c.error('$err in argument ${i + 1} to `$fn_name`', call_arg.pos)
+			c.error('$err.msg in argument ${i + 1} to `$fn_name`', call_arg.pos)
 		}
 	}
 	if f.generic_names.len != call_expr.generic_types.len {
@@ -2043,9 +2055,24 @@ fn (mut c Checker) type_implements(typ table.Type, inter_typ table.Type, pos tok
 	utyp := c.unwrap_generic(typ)
 	typ_sym := c.table.get_type_symbol(utyp)
 	mut inter_sym := c.table.get_type_symbol(inter_typ)
+	// do not check the same type more than once
+	if mut inter_sym.info is table.Interface {
+		for t in inter_sym.info.types {
+			if t.idx() == utyp.idx() {
+				return true
+			}
+		}
+	}
 	styp := c.table.type_to_str(utyp)
-	same_base_type := utyp.idx() == inter_typ.idx()
-	if typ_sym.kind == .interface_ && inter_sym.kind == .interface_ && !same_base_type {
+	if utyp.idx() == inter_typ.idx() {
+		// same type -> already casted to the interface
+		return true
+	}
+	if inter_typ.idx() == table.error_type_idx && utyp.idx() == table.none_type_idx {
+		// `none` "implements" the Error interface
+		return true
+	}
+	if typ_sym.kind == .interface_ && inter_sym.kind == .interface_ {
 		c.error('cannot implement interface `$inter_sym.name` with a different interface `$styp`',
 			pos)
 	}
@@ -2314,7 +2341,7 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 				}
 			}
 			if sym.kind in [.aggregate, .sum_type] {
-				unknown_field_msg = err
+				unknown_field_msg = err.msg
 			}
 		}
 		if !c.inside_unsafe {
@@ -2884,7 +2911,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			&& left_sym.kind != .interface_ {
 			// Dual sides check (compatibility check)
 			c.check_expected(right_type_unwrapped, left_type_unwrapped) or {
-				c.error('cannot assign to `$left`: $err', right.position())
+				c.error('cannot assign to `$left`: $err.msg', right.position())
 			}
 		}
 		if left_sym.kind == .interface_ {
@@ -3064,7 +3091,7 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 				continue
 			}
 			c.check_expected(typ, elem_type) or {
-				c.error('invalid array element: $err', expr.position())
+				c.error('invalid array element: $err.msg', expr.position())
 			}
 		}
 		if array_init.is_fixed {
@@ -4421,7 +4448,7 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 			// probably any mismatch will be caught by not producing a value instead
 			for st in branch.stmts[0..branch.stmts.len - 1] {
 				// must not contain C statements
-				st.check_c_expr() or { c.error('`match` expression branch has $err', st.pos) }
+				st.check_c_expr() or { c.error('`match` expression branch has $err.msg', st.pos) }
 			}
 		}
 		// If the last statement is an expression, return its type
@@ -5040,7 +5067,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 			}
 			for st in branch.stmts {
 				// must not contain C statements
-				st.check_c_expr() or { c.error('`if` expression branch has $err', st.pos) }
+				st.check_c_expr() or { c.error('`if` expression branch has $err.msg', st.pos) }
 			}
 		}
 		// Also check for returns inside a comp.if's statements, even if its contents aren't parsed

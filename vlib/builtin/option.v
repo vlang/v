@@ -16,15 +16,19 @@ pub:
 	code int
 }
 
-pub struct Option3 {
+struct Option3 {
 	state byte
-	err   IError
+	err   IError = none__
 }
 
-[inline]
-fn (e IError) str() string {
-	return e.msg
+const none__ = IError(&None__{})
+
+struct None__ {
+	msg  string
+	code int
 }
+
+fn (_ None__) str() string { return 'none' }
 
 fn opt_ok3(data voidptr, mut option Option3, size int) {
 	unsafe {
@@ -32,16 +36,6 @@ fn opt_ok3(data voidptr, mut option Option3, size int) {
 		// use err to get the end of Option3 and then memcpy into it
 		C.memcpy(byteptr(&option.err) + sizeof(IError), data, size)
 	}
-}
-
-pub fn (o Option3) str() string {
-	if o.state == 0 {
-		return 'Option{ ok }'
-	}
-	if o.state == 1 {
-		return 'Option{ none }'
-	}
-	return 'Option{ err: "$o.err" }'
 }
 
 [inline]
@@ -73,13 +67,6 @@ struct Option2 {
 	// derived Option2_xxx types
 }
 
-[inline]
-fn (e Error) str() string {
-	// TODO: this should probably have a better str method,
-	// but this minimizes the amount of broken code after #8924
-	return e.msg
-}
-
 // `fn foo() ?Foo { return foo }` => `fn foo() ?Foo { return opt_ok(foo); }`
 fn opt_ok(data voidptr, mut option Option2, size int) {
 	unsafe {
@@ -87,16 +74,6 @@ fn opt_ok(data voidptr, mut option Option2, size int) {
 		// use err to get the end of OptionBase and then memcpy into it
 		C.memcpy(byteptr(&option.err) + sizeof(Error), data, size)
 	}
-}
-
-pub fn (o Option2) str() string {
-	if o.state == 0 {
-		return 'Option{ ok }'
-	}
-	if o.state == 1 {
-		return 'Option{ none }'
-	}
-	return 'Option{ error: "$o.err" }'
 }
 
 // error returns an optional containing the error given in `message`.
