@@ -399,6 +399,21 @@ fn test_join() {
 	}
 }
 
+fn test_rmdir_all() {
+	mut dirs := ['some/dir', 'some/.hidden/directory']
+	$if windows {
+		for mut d in dirs {
+			d = d.replace('/', '\\')
+		}
+	}
+	for d in dirs {
+		os.mkdir_all(d) or { panic(err) }
+		assert os.is_dir(d)
+	}
+	os.rmdir_all('some') or { assert false }
+	assert !os.exists('some')
+}
+
 fn test_dir() {
 	$if windows {
 		assert os.dir('C:\\a\\b\\c') == 'C:\\a\\b'
