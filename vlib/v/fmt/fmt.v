@@ -1832,8 +1832,10 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 					set_comma = true
 				}
 				if cmt.pos.line_nr > expr_pos.last_line {
+					embed := i + 1 < node.exprs.len
+						&& node.exprs[i + 1].position().line_nr == cmt.pos.last_line
 					f.writeln('')
-					f.comment(cmt, {})
+					f.comment(cmt, iembed: embed)
 				} else {
 					f.write(' ')
 					f.comment(cmt, iembed: true)
