@@ -699,7 +699,7 @@ fn test_large_cos() {
 	for i := 0; i < math.vf_.len; i++ {
 		f1 := math.cos_large_[i]
 		f2 := cos(math.vf_[i] + large)
-		assert soclose(f1, f2, 4e-10)
+		assert soclose(f1, f2, 4e-9)
 	}
 }
 
