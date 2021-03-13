@@ -19,6 +19,15 @@ fn test_explicit_calls_should_also_work() {
 	assert true
 }
 
+fn get_type_name<T>(x T) string {
+	return T.name
+}
+
+fn test_literal() {
+	assert get_type_name(1) == 'int'
+	assert get_type_name(1.0) == 'f64'
+}
+
 //
 fn choose4<T>(a T, b T, c T, d T) T {
 	// NB: a similar construct is used in prime31's via engine
