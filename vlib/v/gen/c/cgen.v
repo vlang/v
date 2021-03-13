@@ -2487,6 +2487,9 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 	if g.is_builtin_mod {
 		return
 	}
+	if !g.is_autofree {
+		return
+	}
 	// if v.is_autofree_tmp && !g.doing_autofree_tmp {
 	// return
 	// }
