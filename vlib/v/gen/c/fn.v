@@ -720,10 +720,10 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	}
 	mut name := node.name
 	if node.name == 'error' {
-		name = 'error2'
+		name = 'error3'
 	}
 	if node.name == 'error_with_code' {
-		name = 'error_with_code2'
+		name = 'error_with_code3'
 	}
 	is_print := name in ['print', 'println', 'eprint', 'eprintln', 'panic']
 	print_method := name
@@ -773,7 +773,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			g.is_js_call = false
 			g.writeln(');')
 			tmp2 = g.new_tmp_var()
-			g.writeln('Option2_$typ $tmp2 = $fn_name ($json_obj);')
+			g.writeln('Option3_$typ $tmp2 = $fn_name ($json_obj);')
 		}
 		if !g.is_autofree {
 			g.write('cJSON_Delete($json_obj); //del')

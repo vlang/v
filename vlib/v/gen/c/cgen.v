@@ -569,7 +569,7 @@ fn (mut g Gen) expr_string(expr ast.Expr) string {
 // if one location changes
 fn (mut g Gen) optional_type_name(t table.Type) (string, string) {
 	base := g.base_type(t)
-	mut styp := 'Option2_$base'
+	mut styp := 'Option3_$base'
 	if t.is_ptr() {
 		styp = styp.replace('*', '_ptr')
 	}
@@ -581,7 +581,7 @@ fn (g &Gen) optional_type_text(styp string, base string) string {
 	size := if base == 'void' { 'byte' } else { base }
 	ret := 'struct $styp {
 	byte state;
-	Error err;
+	IError err;
 	byte data[sizeof($size)];
 }'
 	return ret
@@ -652,13 +652,10 @@ fn (mut g Gen) register_chan_pop_optional_call(opt_el_type string, styp string) 
 	if opt_el_type !in g.chan_pop_optionals {
 		g.chan_pop_optionals << opt_el_type
 		g.channel_definitions.writeln('
-static inline $opt_el_type __Option2_${styp}_popval($styp ch) {
+static inline $opt_el_type __Option3_${styp}_popval($styp ch) {
 	$opt_el_type _tmp = {0};
 	if (sync__Channel_try_pop_priv(ch, _tmp.data, false)) {
-		Option2 _tmp2 = error2(_SLIT("channel closed"));
-		$opt_el_type _tmp3;
-		memcpy(&_tmp3, &_tmp2, sizeof(Option2));
-		return _tmp3;
+		return ($opt_el_type){ .state = 2, .err = error3(_SLIT("channel closed")) };
 	}
 	return _tmp;
 }')
@@ -669,14 +666,11 @@ fn (mut g Gen) register_chan_push_optional_call(el_type string, styp string) {
 	if styp !in g.chan_push_optionals {
 		g.chan_push_optionals << styp
 		g.channel_definitions.writeln('
-static inline Option2_void __Option2_${styp}_pushval($styp ch, $el_type e) {
+static inline Option3_void __Option3_${styp}_pushval($styp ch, $el_type e) {
 	if (sync__Channel_try_push_priv(ch, &e, false)) {
-		Option2 _tmp2 = error2(_SLIT("channel closed"));
-		Option2_void _tmp3;
-		memcpy(&_tmp3, &_tmp2, sizeof(Option2));
-		return _tmp3;
+		return (Option3_void){ .state = 2, .err = error3(_SLIT("channel closed")) };
 	}
-	return (Option2_void){0};
+	return (Option3_void){0};
 }')
 	}
 }
@@ -913,10 +907,10 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 					sym := g.table.get_type_symbol(stmt.typ)
 					if sym.name in ['Option2', 'Option3'] || stmt.expr is ast.None {
 						tmp := g.new_tmp_var()
-						g.write('Option2 $tmp = ')
+						g.write('Option3 $tmp = (Option3){.state = 0,.err = ')
 						g.expr(stmt.expr)
-						g.writeln(';')
-						g.writeln('memcpy(&$tmp_var, &$tmp, sizeof(Option2));')
+						g.writeln('};')
+						g.writeln('memcpy(&$tmp_var, &$tmp, sizeof(Option3));')
 					} else {
 						mut styp := g.base_type(stmt.typ)
 						$if tinyc && x32 && windows {
@@ -926,9 +920,9 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 								styp = 'f64'
 							}
 						}
-						g.write('opt_ok(&($styp[]) { ')
+						g.write('opt_ok3(&($styp[]) { ')
 						g.stmt(stmt)
-						g.writeln(' }, (Option2*)(&$tmp_var), sizeof($styp));')
+						g.writeln(' }, (Option3*)(&$tmp_var), sizeof($styp));')
 					}
 				}
 			} else {
@@ -1602,8 +1596,9 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw table.Type, expected_t
 	// allow using the new Error struct as a string, to avoid a breaking change
 	// TODO: temporary to allow people to migrate their code; remove soon
 	if got_type == table.error_type_idx && expected_type == table.string_type_idx {
+		g.write('(*(')
 		g.expr(expr)
-		g.write('.msg')
+		g.write('.msg))')
 		return
 	}
 	if exp_sym.kind == .interface_ && got_type_raw.idx() != expected_type.idx()
@@ -2798,7 +2793,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.map_init(node)
 		}
 		ast.None {
-			g.write('(Option2){.state = 1, .err = (Error){.msg = _SLIT(""), .code = 0,}}')
+			g.write('_const___none')
 		}
 		ast.OrExpr {
 			// this should never appear here
@@ -2849,7 +2844,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 				if gen_or {
 					opt_elem_type := g.typ(elem_type.set_flag(.optional))
 					g.register_chan_pop_optional_call(opt_elem_type, styp)
-					g.write('$opt_elem_type $tmp_opt = __Option2_${styp}_popval(')
+					g.write('$opt_elem_type $tmp_opt = __Option3_${styp}_popval(')
 				} else {
 					g.write('__${styp}_popval(')
 				}
@@ -3406,7 +3401,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		if gen_or {
 			elem_styp := g.typ(elem_type)
 			g.register_chan_push_optional_call(elem_styp, styp)
-			g.write('Option2_void $tmp_opt = __Option2_${styp}_pushval(')
+			g.write('Option3_void $tmp_opt = __Option3_${styp}_pushval(')
 		} else {
 			g.write('__${styp}_pushval(')
 		}
@@ -3716,9 +3711,13 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 					g.write('${dot_or_ptr}_typ == ')
 					g.expr(branch.exprs[sumtype_index])
 				} else if sym.kind == .interface_ {
-					typ := branch.exprs[sumtype_index] as ast.Type
-					branch_sym := g.table.get_type_symbol(typ.typ)
-					g.write('${dot_or_ptr}_interface_idx == _${sym.cname}_${branch_sym.cname}_index')
+					if branch.exprs[sumtype_index] is ast.Type {
+						typ := branch.exprs[sumtype_index] as ast.Type
+						branch_sym := g.table.get_type_symbol(typ.typ)
+						g.write('${dot_or_ptr}_interface_idx == _${sym.cname}_${branch_sym.cname}_index')
+					} else if branch.exprs[sumtype_index] is ast.None && sym.name == 'IError' {
+						g.write('${dot_or_ptr}_interface_idx == _IError_None___index')
+					}
 				}
 				if is_expr && tmp_var.len == 0 {
 					g.write(') ? ')
@@ -4224,7 +4223,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			// define `err` only for simple `if val := opt {...} else {`
 			if is_guard && guard_idx == i - 1 {
 				cvar_name := guard_vars[guard_idx]
-				g.writeln('\tError err = ${cvar_name}.err;')
+				g.writeln('\tIError err = ${cvar_name}.err;')
 			}
 		} else {
 			match branch.cond {
@@ -4341,27 +4340,17 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		ftyp := g.typ(node.types[0])
 		mut is_regular_option := ftyp in ['Option2', 'Option3']
 		if optional_none || is_regular_option {
-			tmp := g.new_tmp_var()
-			g.write('Option2 $tmp = ')
-			g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
-			g.writeln(';')
 			styp := g.typ(g.fn_decl.return_type)
-			err_obj := g.new_tmp_var()
-			g.writeln('$styp $err_obj;')
-			g.writeln('memcpy(&$err_obj, &$tmp, sizeof(Option2));')
-			g.writeln('return $err_obj;')
+			g.write('return ($styp){ .state=2, .err=')
+			g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
+			g.writeln(' };')
 			return
 		} else if node.types[0] == table.error_type_idx {
 			// foo() or { return err }
-			tmp := g.new_tmp_var()
-			g.write('Option2 $tmp = (Option2){.state=2, .err=')
-			g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
-			g.writeln('};')
 			styp := g.typ(g.fn_decl.return_type)
-			err_obj := g.new_tmp_var()
-			g.writeln('$styp $err_obj;')
-			g.writeln('memcpy(&$err_obj, &$tmp, sizeof(Option2));')
-			g.writeln('return $err_obj;')
+			g.write('return ($styp){.state=2, .err=')
+			g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
+			g.writeln(' };')
 			return
 		}
 	}
@@ -4378,7 +4367,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			opt_tmp = g.new_tmp_var()
 			g.writeln('$opt_type $opt_tmp;')
 			styp = g.base_type(g.fn_decl.return_type)
-			g.write('opt_ok(&($styp/*X*/[]) { ')
+			g.write('opt_ok3(&($styp/*X*/[]) { ')
 		} else {
 			g.write('return ')
 			styp = g.typ(g.fn_decl.return_type)
@@ -4436,7 +4425,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		}
 		g.write('}')
 		if fn_return_is_optional {
-			g.writeln(' }, (Option2*)(&$opt_tmp), sizeof($styp));')
+			g.writeln(' }, (Option3*)(&$opt_tmp), sizeof($styp));')
 			g.write('return $opt_tmp')
 		}
 		// Make sure to add our unpacks
@@ -4462,7 +4451,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			// Create a tmp for this option
 			opt_tmp := g.new_tmp_var()
 			g.writeln('$opt_type $opt_tmp;')
-			g.write('opt_ok(&($styp[]) { ')
+			g.write('opt_ok3(&($styp[]) { ')
 			if !g.fn_decl.return_type.is_ptr() && node.types[0].is_ptr() {
 				if !(node.exprs[0] is ast.Ident && !g.is_amp) {
 					g.write('*')
@@ -4474,7 +4463,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 					g.write(', ')
 				}
 			}
-			g.writeln(' }, (Option2*)(&$opt_tmp), sizeof($styp));')
+			g.writeln(' }, (Option3*)(&$opt_tmp), sizeof($styp));')
 			g.writeln('return $opt_tmp;')
 			return
 		}
@@ -4582,7 +4571,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 				}
 			}
 			ast.CallExpr {
-				if val.starts_with('Option2_') {
+				if val.starts_with('Option3_') {
 					g.inits[field.mod].writeln(val)
 					unwrap_option := field.expr.or_block.kind != .absent
 					g.const_decl_init_later(field.mod, name, g.current_tmp_var(), field.typ,
@@ -4611,6 +4600,9 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, val string, typ ta
 	// Initialize more complex consts in `void _vinit/2{}`
 	// (C doesn't allow init expressions that can't be resolved at compile time).
 	mut styp := g.typ(typ)
+	if styp == 'Option2' {
+		styp = 'IError'
+	}
 	cname := '_const_$name'
 	g.definitions.writeln('$styp $cname; // inited later')
 	if cname == '_const_os__args' {
@@ -5265,7 +5257,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 	is_none_ok := mr_styp == 'void'
 	g.writeln(';')
 	if is_none_ok {
-		g.writeln('if (${cvar_name}.state == 2) {')
+		g.writeln('if (${cvar_name}.state != 0 && ${cvar_name}.err._interface_idx != _IError_None___index) {')
 	} else {
 		g.writeln('if (${cvar_name}.state != 0) { /*or block*/ ')
 	}
@@ -5273,7 +5265,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 		if g.inside_or_block {
 			g.writeln('\terr = ${cvar_name}.err;')
 		} else {
-			g.writeln('\tError err = ${cvar_name}.err;')
+			g.writeln('\tIError err = ${cvar_name}.err;')
 		}
 		g.inside_or_block = true
 		defer {
@@ -5328,7 +5320,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 				styp := g.typ(g.fn_decl.return_type)
 				err_obj := g.new_tmp_var()
 				g.writeln('\t$styp $err_obj;')
-				g.writeln('\tmemcpy(&$err_obj, &$cvar_name, sizeof(Option2));')
+				g.writeln('\tmemcpy(&$err_obj, &$cvar_name, sizeof(Option3));')
 				g.writeln('\treturn $err_obj;')
 			}
 		}
@@ -5779,8 +5771,12 @@ fn (mut g Gen) is_expr(node ast.InfixExpr) {
 	if sym.kind == .interface_ {
 		g.write('_interface_idx $eq ')
 		// `_Animal_Dog_index`
-		sub_type := node.right as ast.Type
-		sub_sym := g.table.get_type_symbol(sub_type.typ)
+		sub_type := match mut node.right {
+			ast.Type { node.right.typ }
+			ast.None { g.table.type_idxs['None__'] }
+			else { table.Type(0) }
+		}
+		sub_sym := g.table.get_type_symbol(sub_type)
 		g.write('_${c_name(sym.name)}_${c_name(sub_sym.name)}_index')
 		return
 	} else if sym.kind == .sum_type {
