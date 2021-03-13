@@ -118,3 +118,8 @@ pub fn min(a f64, b f64) f64 {
 pub fn radians(degrees f64) f64 {
 	return degrees * (pi / 180.0)
 }
+
+// signbit returns a value with the boolean representation of the sign for x
+pub fn signbit(x f64) bool {
+	return f64_bits(x) & sign_mask != 0
+}
