@@ -88,7 +88,8 @@ fn __print_assert_failure(i &VAssertMetaInfo) {
 // MethodArgs holds type information for function and/or method arguments.
 pub struct MethodArgs {
 pub:
-	typ int
+	typ  int
+	name string
 }
 
 // FunctionData holds information about a parsed function.

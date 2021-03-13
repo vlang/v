@@ -220,9 +220,9 @@ import sqlite
 import vweb
 
 struct App {
-pub mut:
-	vweb vweb.Context
-	db   sqlite.DB
+	vweb.Context
+mut:
+	db sqlite.DB
 }
 ```
 

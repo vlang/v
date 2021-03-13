@@ -214,6 +214,17 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 				pos: spos.extend(p.tok.position())
 			}
 		}
+		.key_dump {
+			spos := p.tok.position()
+			p.next()
+			p.check(.lpar)
+			expr := p.expr(0)
+			p.check(.rpar)
+			node = ast.DumpExpr{
+				expr: expr
+				pos: spos.extend(p.tok.position())
+			}
+		}
 		.key_offsetof {
 			pos := p.tok.position()
 			p.next() // __offsetof
@@ -366,6 +377,7 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 				right: right
 				op: tok.kind
 				pos: pos
+				is_stmt: true
 			}
 		} else if p.tok.kind.is_infix() {
 			if p.tok.kind.is_prefix() && p.tok.line_nr != p.prev_tok.line_nr {
@@ -462,6 +474,7 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 		right: right
 		op: op
 		pos: pos
+		is_stmt: p.is_stmt_ident
 		or_block: ast.OrExpr{
 			stmts: or_stmts
 			kind: or_kind

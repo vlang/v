@@ -162,6 +162,8 @@ pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
 					} else if sub_expr.left is CallExpr {
 						sub_expr = sub_expr.left
 						continue
+					} else if sub_expr.left is CastExpr {
+						needs_braces = true
 					}
 					break
 				}

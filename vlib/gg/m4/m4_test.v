@@ -185,23 +185,33 @@ fn test_det() {
 fn test_vec4() {
 	// Test Vec4
 	// println("*** Vector4 ****")
+	assert m4.vec3(1,2,3) == m4.Vec4{[f32(1), 2, 3, 1]!}
 	mut v := m4.Vec4{[f32(1), 2, 3, 4]!}
 	assert v * v.inv() == 4
 	assert v.mul_scalar(1.0 / v.mod()).mod() == 1
 	assert v + m4.Vec4{ e: [f32(5), 6, 7, 8]! } == m4.Vec4{ e: [f32(6), 8, 10, 12]! }
 	assert v - m4.Vec4{ e: [f32(1), 2, 3, 4]! } == m4.Vec4{ e: [f32(0), 0, 0, 0]! }
 	assert v.mul_vec4(m4.Vec4{ e: [f32(2), 2, 2, 2]! }) == m4.Vec4{	e: [f32(2), 4, 6, 8]! }
-	assert m4.abs(v.normalize().mod() - 1) < m4.precision
+	assert f32_abs(v.normalize().mod() - 1) < m4.precision
 	v = m4.Vec4{[f32(1), 2, 3, 0]!}
-	assert m4.abs(v.normalize3().mod3() - 1) < m4.precision
-	assert m4.abs(v.normalize3().mod() - 1) < m4.precision
+	assert f32_abs(v.normalize3().mod3() - 1) < m4.precision
+	assert f32_abs(v.normalize3().mod() - 1) < m4.precision
+	// cross product
 	// x y z
 	// 1 2 3 ==> -3 6 -3 0
 	// 4 5 6
 	// println(m4.Vec4{[f32(1),2,3,2]!} % m4.Vec4{[f32(4),5,6,2]!})
 	assert m4.Vec4{[f32(1), 2, 3, 0]!} % m4.Vec4{[f32(4), 5, 6, 0]!} == m4.Vec4{[ f32(-3),	6,	-3,	0, ]!}
 	assert m4.Vec4{[f32(1), 2, 3, 13]!} % m4.Vec4{[f32(4), 5, 6, 11]!} == m4.Vec4{[	f32(-3), 6,	-3,	0, ]!}
-
+	// matrix * vector
+	a := m4.Mat4{ e: [
+		f32(1),2,3,4
+		5,6,7,8
+		9,10,11,12
+		13,14,15,16
+		]!
+	}
+	assert m4.mul_vec(a, m4.Vec4{[f32(1), 2, 3, 4]!}) == m4.Vec4{[ f32(30),	70,	110,150, ]!}
 	// Rotation
 	// println("*** Rotation ****")
 	rotx := m4.rotate(m4.rad(-90), m4.Vec4{	e: [f32(1.0), 0, 0, 0]!	}).clean()
@@ -211,8 +221,15 @@ fn test_vec4() {
 	// println( roty )
 	// println( rotz )
 	// println( m4.mul_vec(rotx, m4.Vec4{e:[f32(0),0,1,0]!}).clean())
-	assert m4.mul_vec(roty, m4.Vec4{ e: [f32(1.0), 0.0, 0, 0]! }).clean() == m4.Vec4{ e: [f32(0), 0.0, 1, 0]! }
-	assert m4.mul_vec(rotz, m4.Vec4{ e: [f32(1.0), 0.0, 0, 0]! }).clean() == m4.Vec4{ e: [f32(0), -1, 0, 0]! }
-	assert m4.mul_vec(rotx, m4.Vec4{ e: [f32(0), 0, 1, 0]! }).clean() == m4.Vec4{ e: [f32(0), 1, 0, 0]! }
+	assert m4.mul_vec(roty, m4.Vec4{ e: [f32(1.0), 0.0, 0, 0]! }).clean() == m4.Vec4{ e: [f32(0), 0.0, -1, 0]! }
+	assert m4.mul_vec(rotz, m4.Vec4{ e: [f32(1.0), 0.0, 0, 0]! }).clean() == m4.Vec4{ e: [f32(0), 1, 0, 0]! }
+	assert m4.mul_vec(rotx, m4.Vec4{ e: [f32(0), 0, 1, 0]! }).clean() == m4.Vec4{ e: [f32(0), -1, 0, 0]! }
 	// println("****************")
+}
+
+fn test_proj() {
+	ort := m4.ortho(0,300,0,200,0,0)
+	assert m4.mul_vec(ort, m4.Vec4{[ f32(150),	100,	0, 1]!}) == m4.Vec4{[ f32(0),	0,	0, 1]!}
+	assert m4.mul_vec(ort, m4.Vec4{[ f32(0),	0,	0, 1]!}) == m4.Vec4{[ f32(-1),	-1,	0, 1]!}
+	assert m4.mul_vec(ort, m4.Vec4{[ f32(300),	200,	0, 1]!}) == m4.Vec4{[ f32(1),	1,	0, 1]!}
 }

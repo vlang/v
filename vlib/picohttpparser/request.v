@@ -21,8 +21,8 @@ pub fn (mut r Request) parse_request(s string, max_headers int) int {
 
 	pret := C.phr_parse_request(
 		s.str, s.len,
-		&r.method, &method_len,
-		&r.path, &path_len,
+		&r.method.str, &method_len,
+		&r.path.str, &path_len,
 		&minor_version,
 		r.headers, &num_headers,
 		0
@@ -44,8 +44,8 @@ pub fn (mut r Request) parse_request_path(s string) int {
 
 	pret := C.phr_parse_request_path(
 		s.str, s.len,
-		&r.method, &method_len,
-		&r.path, &path_len
+		&r.method.str, &method_len,
+		&r.path.str, &path_len
 	)
 	if pret > 0 {
 		unsafe {
@@ -63,8 +63,8 @@ pub fn (mut r Request) parse_request_path_pipeline(s string) int {
 
 	pret := C.phr_parse_request_path_pipeline(
 		s.str, s.len,
-		&r.method, &method_len,
-		&r.path, &path_len
+		&r.method.str, &method_len,
+		&r.path.str, &path_len
 	)
 	if pret > 0 {
 		unsafe {

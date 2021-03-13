@@ -31,6 +31,8 @@ mut:
 	debug_pos            int
 	errors               []errors.Error
 	warnings             []errors.Warning
+	syms                 []Symbol
+	relocs               []Reloc
 }
 
 // string_addr map[string]i64
@@ -170,6 +172,15 @@ fn (mut g Gen) write32_at(at i64, n int) {
 fn (mut g Gen) write_string(s string) {
 	for c in s {
 		g.write8(int(c))
+	}
+}
+
+fn (mut g Gen) write_string_with_padding(s string, max int) {
+	for c in s {
+		g.write8(int(c))
+	}
+	for _ in 0 .. max - s.len {
+		g.write8(0)
 	}
 }
 
@@ -672,7 +683,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 	}
 }
 
-fn C.strtol() int
+fn C.strtol(str charptr, endptr &&char, base int) int
 
 fn (mut g Gen) expr(node ast.Expr) {
 	// println('cgen expr()')

@@ -125,6 +125,7 @@ fn test_last_field_empty() {
 			assert row[1] == 'second'
 		}
 	}
+	assert row_count == 3
 }
 
 fn test_empty_line() {
@@ -149,12 +150,13 @@ fn test_empty_line() {
 			assert row[1] == 'second'
 		}
 	}
+	assert row_count == 3
 }
 
 fn test_field_multiple_line() {
 	data := '"name","multiple
 
- line","value"\n"one","first","1"'
+ line","value"\n"one","first","1"\n'
 	mut csv_reader := csv.new_reader(data)
 	mut row_count := 0
 	for {
@@ -172,4 +174,35 @@ fn test_field_multiple_line() {
 			assert row[2] == '1'
 		}
 	}
+	assert row_count == 2
+}
+
+fn test_field_quotes_for_parts() {
+	data := 'a1,"b1",c1\n"a2",b2,c2\na3,b3,"c3"\na4,b4,c4\n'
+	mut csv_reader := csv.new_reader(data)
+	mut row_count := 0
+	for {
+		row := csv_reader.read() or {
+			break
+		}
+		row_count++
+		if row_count == 1 {
+			assert row[0] == 'a1'
+			assert row[1] == 'b1'
+			assert row[2] == 'c1'
+		} else if row_count == 2 {
+			assert row[0] == 'a2'
+			assert row[1] == 'b2'
+			assert row[2] == 'c2'
+		} else if row_count == 3 {
+			assert row[0] == 'a3'
+			assert row[1] == 'b3'
+			assert row[2] == 'c3'
+		} else if row_count == 4 {
+			assert row[0] == 'a4'
+			assert row[1] == 'b4'
+			assert row[2] == 'c4'
+		}
+	}
+	assert row_count == 4
 }

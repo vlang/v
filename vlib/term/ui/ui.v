@@ -254,9 +254,3 @@ pub fn (mut ctx Context) horizontal_separator(y int) {
 	ctx.set_cursor_position(0, y)
 	ctx.write(strings.repeat(/* `⎽` */`-`, ctx.window_width))
 }
-
-
-[inline]
-fn abs(a int) int {
-	return if a < 0 { -a } else { a }
-}

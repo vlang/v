@@ -41,7 +41,7 @@ fn C.sqlite3_open(charptr, &&C.sqlite3) int
 fn C.sqlite3_close(&C.sqlite3) int
 
 //
-fn C.sqlite3_prepare_v2(&C.sqlite3, charptr, int, &&sqlite3_stmt, &charptr) int
+fn C.sqlite3_prepare_v2(&C.sqlite3, charptr, int, &&C.sqlite3_stmt, &charptr) int
 
 fn C.sqlite3_step(&C.sqlite3_stmt) int
 

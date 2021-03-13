@@ -23,7 +23,12 @@ pub mut:
 *
 *********************************************************************/
 pub fn (x Vec4) str() string {
-	return '|${x.e[0]:-6.3},${x.e[1]:-6.3},${x.e[2]:-6.3},${x.e[3]:-6.3}|\n'
+	return '|${x.e[0]:-6.3},${x.e[1]:-6.3},${x.e[2]:-6.3},${x.e[3]:-6.3}|'
+}
+
+// create a Vec4 function passing x,y,z as parameteres. w is set to 1
+pub fn vec3(x f32, y f32, z f32) Vec4 {
+	return m4.Vec4{e:[x, y, z, 1]!}
 }
 
 // Remove all the raw zeros
@@ -31,7 +36,7 @@ pub fn (x Vec4) str() string {
 pub fn (a Vec4) clean() Vec4 {
 	mut x := Vec4{}
 	for c, value in a.e {
-		if abs(value) < precision {
+		if f32_abs(value) < precision {
 			x.e[c] = 0
 		} else {
 			x.e[c] = value

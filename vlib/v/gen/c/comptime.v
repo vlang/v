@@ -76,7 +76,34 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 		for val in vals {
 		}
 		*/
+		expand_strs := if node.args.len > 0 && m.params.len - 1 >= node.args.len {
+			arg := node.args[node.args.len - 1]
+			param := m.params[node.args.len]
+
+			arg.expr is ast.Ident && g.table.type_to_str(arg.typ) == '[]string'
+				&& g.table.type_to_str(param.typ) != '[]string'
+		} else {
+			false
+		}
+		// check argument length and types
+		if m.params.len - 1 != node.args.len && !expand_strs {
+			// do not generate anything if the argument lengths don't match
+			g.writeln('/* skipping ${node.sym.name}.$m.name due to mismatched arguments list */')
+			// verror('expected ${m.params.len-1} arguments to method ${node.sym.name}.$m.name, but got $node.args.len')
+			return
+		}
+		// TODO: check argument types
 		g.write('${util.no_dots(node.sym.name)}_${g.comp_for_method}(')
+
+		// try to see if we need to pass a pointer
+		if node.left is ast.Ident {
+			scope := g.file.scope.innermost(node.pos.pos)
+			if v := scope.find_var(node.left.name) {
+				if m.params[0].typ.is_ptr() && !v.typ.is_ptr() {
+					g.write('&')
+				}
+			}
+		}
 		g.expr(node.left)
 		if m.params.len > 1 {
 			g.write(', ')
@@ -87,15 +114,25 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 					continue
 				}
 			}
-			if m.params[i].typ.is_int() || m.params[i].typ.idx() == table.bool_type_idx {
-				// Gets the type name and cast the string to the type with the string_<type> function
-				type_name := g.table.types[int(m.params[i].typ)].str()
-				g.write('string_${type_name}(((string*)${node.args_var}.data) [${i - 1}])')
-			} else {
-				g.write('((string*)${node.args_var}.data) [${i - 1}] ')
-			}
-			if i < m.params.len - 1 {
+			if i - 1 < node.args.len - 1 {
+				g.expr(node.args[i - 1].expr)
 				g.write(', ')
+			} else if !expand_strs && i == node.args.len {
+				g.expr(node.args[i - 1].expr)
+				break
+			} else {
+				// last argument; try to expand if it's []string
+				idx := i - node.args.len
+				if m.params[i].typ.is_int() || m.params[i].typ.idx() == table.bool_type_idx {
+					// Gets the type name and cast the string to the type with the string_<type> function
+					type_name := g.table.types[int(m.params[i].typ)].str()
+					g.write('string_${type_name}(((string*)${node.args[node.args.len - 1]}.data) [$idx])')
+				} else {
+					g.write('((string*)${node.args[node.args.len - 1]}.data) [$idx] ')
+				}
+				if i < m.params.len - 1 {
+					g.write(', ')
+				}
 			}
 		}
 		g.write(' ); // vweb action call with args')
@@ -154,7 +191,7 @@ fn (mut g Gen) comp_at(node ast.AtExpr) {
 fn (mut g Gen) comp_if(node ast.IfExpr) {
 	line := if node.is_expr {
 		stmt_str := g.go_before_stmt(0)
-		g.write(tabs[g.indent])
+		g.write(util.tabs(g.indent))
 		stmt_str.trim_space()
 	} else {
 		''
@@ -249,7 +286,7 @@ fn (mut g Gen) comp_if_cond(cond ast.Expr) bool {
 					l := g.comp_if_cond(cond.left)
 					g.write(' $cond.op ')
 					r := g.comp_if_cond(cond.right)
-					return l && r
+					return if cond.op == .and { l && r } else { l || r }
 				}
 				.key_is, .not_is {
 					left := cond.left
@@ -336,7 +373,7 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 				// Skip receiver arg
 				for j, arg in method.params[1..] {
 					typ := arg.typ.idx()
-					g.write(typ.str())
+					g.write('{$typ.str(), _SLIT("$arg.name")}')
 					if j < len - 1 {
 						g.write(', ')
 					}
@@ -497,6 +534,9 @@ fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) ?string 
 		// other:
 		'debug' {
 			return '_VDEBUG'
+		}
+		'prod' {
+			return '_VPROD'
 		}
 		'test' {
 			return '_VTEST'

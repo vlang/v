@@ -20,7 +20,7 @@ const (
 fn testsuite_begin() {
 	os.chdir(vroot)
 	if os.exists(serverexe) {
-		os.rm(serverexe) or { }
+		os.rm(serverexe) or {}
 	}
 }
 
@@ -260,7 +260,7 @@ fn simple_tcp_client(config SimpleTcpClientConfig) ?string {
 	client.set_read_timeout(tcp_r_timeout)
 	client.set_write_timeout(tcp_w_timeout)
 	defer {
-		client.close() or { }
+		client.close() or {}
 	}
 	message := 'GET $config.path HTTP/1.1
 Host: $config.host

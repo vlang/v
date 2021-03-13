@@ -1,6 +1,7 @@
 import gg
 import gx
 import math
+import math.mathutil as mu
 import os
 import rand
 import time
@@ -200,33 +201,6 @@ enum Direction {
 }
 
 // Utility functions
-[inline]
-fn min(a int, b int) int {
-	if a < b {
-		return a
-	} else {
-		return b
-	}
-}
-
-[inline]
-fn max(a int, b int) int {
-	if a > b {
-		return a
-	} else {
-		return b
-	}
-}
-
-[inline]
-fn abs(a int) int {
-	if a < 0 {
-		return -a
-	} else {
-		return a
-	}
-}
-
 [inline]
 fn avg(a int, b int) int {
 	return (a + b) / 2
@@ -591,7 +565,7 @@ fn (mut app App) resize() {
 	window_size := gg.window_size()
 	w := window_size.width
 	h := window_size.height
-	m := f32(min(w, h))
+	m := f32(mu.min(w, h))
 	app.ui.dpi_scale = s
 	app.ui.window_width = w
 	app.ui.window_height = h
@@ -615,7 +589,7 @@ fn (app &App) draw() {
 	xpad, ypad := app.ui.x_padding, app.ui.y_padding
 	ww := app.ui.window_width
 	wh := app.ui.window_height
-	m := min(ww, wh)
+	m := mu.min(ww, wh)
 	labelx := xpad + app.ui.border_size
 	labely := ypad + app.ui.border_size / 2
 	app.draw_tiles()
@@ -649,7 +623,7 @@ fn (app &App) draw_tiles() {
 	xstart := app.ui.x_padding + app.ui.border_size
 	ystart := app.ui.y_padding + app.ui.border_size + app.ui.header_size
 	toffset := app.ui.tile_size + app.ui.padding_size
-	tiles_size := min(app.ui.window_width, app.ui.window_height) - app.ui.border_size * 2
+	tiles_size := mu.min(app.ui.window_width, app.ui.window_height) - app.ui.border_size * 2
 	// Draw the padding around the tiles
 	app.gg.draw_rounded_rect(xstart, ystart, tiles_size / 2, tiles_size / 2, tiles_size / 24,
 		app.theme.padding_color)
@@ -711,8 +685,8 @@ fn (app &App) draw_tiles() {
 
 fn (mut app App) handle_touches() {
 	s, e := app.touch.start, app.touch.end
-	adx, ady := abs(e.pos.x - s.pos.x), abs(e.pos.y - s.pos.y)
-	if max(adx, ady) < 10 {
+	adx, ady := mu.abs(e.pos.x - s.pos.x), mu.abs(e.pos.y - s.pos.y)
+	if mu.max(adx, ady) < 10 {
 		app.handle_tap()
 	} else {
 		app.handle_swipe()
@@ -722,7 +696,7 @@ fn (mut app App) handle_touches() {
 fn (mut app App) handle_tap() {
 	_, ypad := app.ui.x_padding, app.ui.y_padding
 	w, h := app.ui.window_width, app.ui.window_height
-	m := min(w, h)
+	m := mu.min(w, h)
 	s, e := app.touch.start, app.touch.end
 	avgx, avgy := avg(s.pos.x, e.pos.x), avg(s.pos.y, e.pos.y)
 	// TODO: Replace "touch spots" with actual buttons
@@ -760,12 +734,12 @@ fn (mut app App) handle_swipe() {
 	s, e := app.touch.start, app.touch.end
 	w, h := app.ui.window_width, app.ui.window_height
 	dx, dy := e.pos.x - s.pos.x, e.pos.y - s.pos.y
-	adx, ady := abs(dx), abs(dy)
-	dmin := if min(adx, ady) > 0 { min(adx, ady) } else { 1 }
-	dmax := if max(adx, ady) > 0 { max(adx, ady) } else { 1 }
+	adx, ady := mu.abs(dx), mu.abs(dy)
+	dmin := if mu.min(adx, ady) > 0 { mu.min(adx, ady) } else { 1 }
+	dmax := if mu.max(adx, ady) > 0 { mu.max(adx, ady) } else { 1 }
 	tdiff := int(e.time.unix_time_milli() - s.time.unix_time_milli())
 	// TODO: make this calculation more accurate (don't use arbitrary numbers)
-	min_swipe_distance := int(math.sqrt(min(w, h) * tdiff / 100)) + 20
+	min_swipe_distance := int(math.sqrt(mu.min(w, h) * tdiff / 100)) + 20
 	if dmax < min_swipe_distance {
 		return
 	}

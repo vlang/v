@@ -384,7 +384,7 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 					}
 				}
 				else {
-					p.error_with_pos('select: transmission statement expected', stmt.position())
+					p.error_with_pos('select: transmission statement expected', stmt.pos)
 					return ast.SelectExpr{}
 				}
 			}

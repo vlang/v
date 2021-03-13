@@ -13,7 +13,7 @@ const args_at_start = os.args.clone()
 
 fn testsuite_begin() {
 	eprintln('testsuite_begin, tfolder = $tfolder')
-	os.rmdir_all(tfolder) or { }
+	os.rmdir_all(tfolder) or {}
 	assert !os.is_dir(tfolder)
 	os.mkdir_all(tfolder) or { panic(err) }
 	os.chdir(tfolder)
@@ -25,7 +25,7 @@ fn testsuite_begin() {
 
 fn testsuite_end() {
 	os.chdir(os.wd_at_startup)
-	os.rmdir_all(tfolder) or { }
+	os.rmdir_all(tfolder) or {}
 	assert !os.is_dir(tfolder)
 	// eprintln('testsuite_end  , tfolder = $tfolder removed.')
 }
@@ -55,7 +55,7 @@ fn test_open_file_binary() {
 	}
 	mut file := os.open_file(filename, 'wb+', 0o666) or { panic(err) }
 	bytes := hello.bytes()
-	file.write_bytes(bytes.data, bytes.len)
+	unsafe { file.write_bytes(bytes.data, bytes.len) }
 	file.close()
 	assert hello.len == os.file_size(filename)
 	read_hello := os.read_bytes(filename) or { panic('error reading file $filename') }
@@ -144,7 +144,7 @@ fn test_write_and_read_bytes() {
 	}
 	// We use the standard write_bytes function to write the payload and
 	// compare the length of the array with the file size (have to match).
-	file_write.write_bytes(payload.data, 5)
+	unsafe { file_write.write_bytes(payload.data, 5) }
 	file_write.close()
 	assert payload.len == os.file_size(file_name)
 	mut file_read := os.open(os.real_path(file_name)) or {
@@ -269,6 +269,8 @@ fn test_cp_all() {
 	os.cp_all('ex', './', true) or { panic(err) }
 	// regression test for executive runs with overwrite := true
 	os.cp_all('ex', './', true) or { panic(err) }
+	os.cp_all('ex', 'nonexisting', true) or { panic(err) }
+	assert os.exists(os.join_path('nonexisting', 'ex1.txt'))
 }
 
 fn test_realpath() {
@@ -280,7 +282,7 @@ fn test_tmpdir() {
 	assert t.len > 0
 	assert os.is_dir(t)
 	tfile := t + os.path_separator + 'tmpfile.txt'
-	os.rm(tfile) or { } // just in case
+	os.rm(tfile) or {} // just in case
 	tfile_content := 'this is a temporary file'
 	os.write_file(tfile, tfile_content) or { panic(err) }
 	tfile_content_read := os.read_file(tfile) or { panic(err) }
@@ -305,8 +307,8 @@ fn test_make_symlink_check_is_link_and_remove_symlink() {
 	}
 	folder := 'tfolder'
 	symlink := 'tsymlink'
-	os.rm(symlink) or { }
-	os.rm(folder) or { }
+	os.rm(symlink) or {}
+	os.rm(folder) or {}
 	os.mkdir(folder) or { panic(err) }
 	folder_contents := os.ls(folder) or { panic(err) }
 	assert folder_contents.len == 0
@@ -395,6 +397,21 @@ fn test_join() {
 	} $else {
 		assert os.join_path('v', 'vlib', 'os') == 'v/vlib/os'
 	}
+}
+
+fn test_rmdir_all() {
+	mut dirs := ['some/dir', 'some/.hidden/directory']
+	$if windows {
+		for mut d in dirs {
+			d = d.replace('/', '\\')
+		}
+	}
+	for d in dirs {
+		os.mkdir_all(d) or { panic(err) }
+		assert os.is_dir(d)
+	}
+	os.rmdir_all('some') or { assert false }
+	assert !os.exists('some')
 }
 
 fn test_dir() {
@@ -538,6 +555,15 @@ fn test_posix_set_bit() {
 		}
 		mode = u32(s.st_mode) & 0o7777
 		assert mode == 0o0755
-		rm(fpath) or { }
+		rm(fpath) or {}
 	}
+}
+
+fn test_exists_in_system_path() {
+	assert os.exists_in_system_path('') == false
+	$if windows {
+		assert os.exists_in_system_path('cmd.exe') == true
+		return
+	}
+	assert os.exists_in_system_path('ls') == true
 }

@@ -11,10 +11,10 @@ pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
 pub type Expr = AnonFn | ArrayDecompose | ArrayInit | AsCast | Assoc | AtExpr | BoolLiteral |
 	CTempVar | CallExpr | CastExpr | ChanInit | CharLiteral | Comment | ComptimeCall |
-	ComptimeSelector | ConcatExpr | EnumVal | FloatLiteral | GoExpr | Ident | IfExpr |
-	IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | Likely | LockExpr | MapInit |
-	MatchExpr | None | OffsetOf | OrExpr | ParExpr | PostfixExpr | PrefixExpr | RangeExpr |
-	SelectExpr | SelectorExpr | SizeOf | SqlExpr | StringInterLiteral | StringLiteral |
+	ComptimeSelector | ConcatExpr | DumpExpr | EnumVal | FloatLiteral | GoExpr | Ident |
+	IfExpr | IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | Likely | LockExpr |
+	MapInit | MatchExpr | None | OffsetOf | OrExpr | ParExpr | PostfixExpr | PrefixExpr |
+	RangeExpr | SelectExpr | SelectorExpr | SizeOf | SqlExpr | StringInterLiteral | StringLiteral |
 	StructInit | Type | TypeOf | UnsafeExpr
 
 pub type Stmt = AssertStmt | AssignStmt | Block | BranchStmt | CompFor | ConstDecl | DeferStmt |
@@ -317,6 +317,9 @@ pub:
 	is_variadic     bool
 	is_anon         bool
 	is_manualfree   bool // true, when [manualfree] is used on a fn
+	is_main         bool // true for `fn main()`
+	is_test         bool // true for `fn test_abcde`
+	is_conditional  bool // true for `[if abc] fn abc(){}`
 	receiver        Field
 	receiver_pos    token.Position // `(u User)` in `fn (u User) name()` position
 	is_method       bool
@@ -576,8 +579,9 @@ pub fn (i &Ident) var_info() IdentVar {
 // See: token.Kind.is_infix
 pub struct InfixExpr {
 pub:
-	op  token.Kind
-	pos token.Position
+	op      token.Kind
+	pos     token.Position
+	is_stmt bool
 pub mut:
 	left        Expr
 	right       Expr
@@ -876,6 +880,7 @@ pub:
 	is_pub   bool
 	pos      token.Position
 	comments []Comment
+	typ      table.Type
 pub mut:
 	variants []SumTypeVariant
 }
@@ -1112,6 +1117,15 @@ pub mut:
 	expr_type table.Type
 }
 
+pub struct DumpExpr {
+pub:
+	expr Expr
+	pos  token.Position
+pub mut:
+	expr_type table.Type
+	cname     string // filled in the checker
+}
+
 pub struct Comment {
 pub:
 	text     string
@@ -1171,6 +1185,7 @@ pub mut:
 	sym         table.TypeSymbol
 	result_type table.Type
 	env_value   string
+	args        []CallArg
 }
 
 pub struct None {
@@ -1233,12 +1248,11 @@ pub fn (expr Expr) is_blank_ident() bool {
 pub fn (expr Expr) position() token.Position {
 	// all uncommented have to be implemented
 	match expr {
-		// KEKW2
 		AnonFn {
 			return expr.decl.pos
 		}
 		ArrayDecompose, ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr, CastExpr, ChanInit,
-		CharLiteral, ConcatExpr, Comment, ComptimeCall, ComptimeSelector, EnumVal, FloatLiteral,
+		CharLiteral, ConcatExpr, Comment, ComptimeCall, ComptimeSelector, EnumVal, DumpExpr, FloatLiteral,
 		GoExpr, Ident, IfExpr, IndexExpr, IntegerLiteral, Likely, LockExpr, MapInit, MatchExpr,
 		None, OffsetOf, OrExpr, ParExpr, PostfixExpr, PrefixExpr, RangeExpr, SelectExpr, SelectorExpr,
 		SizeOf, SqlExpr, StringInterLiteral, StringLiteral, StructInit, Type, TypeOf, UnsafeExpr
@@ -1343,28 +1357,10 @@ pub:
 	is_ptr bool       // whether the type is a pointer
 }
 
-pub fn (stmt Stmt) position() token.Position {
-	match stmt {
-		AssertStmt, AssignStmt, Block, BranchStmt, CompFor, ConstDecl, DeferStmt, EnumDecl, ExprStmt,
-		FnDecl, ForCStmt, ForInStmt, ForStmt, GotoLabel, GotoStmt, Import, Return, StructDecl,
-		GlobalDecl, HashStmt, InterfaceDecl, Module, SqlStmt, GoStmt {
-			return stmt.pos
-		}
-		TypeDecl {
-			match stmt {
-				AliasTypeDecl, FnTypeDecl, SumTypeDecl { return stmt.pos }
-			}
-		}
-		// Please, do NOT use else{} here.
-		// This match is exhaustive *on purpose*, to help force
-		// maintaining/implementing proper .pos fields.
-	}
-}
-
 pub fn (node Node) position() token.Position {
 	match node {
 		Stmt {
-			mut pos := node.position()
+			mut pos := node.pos
 			if node is Import {
 				for sym in node.syms {
 					pos = pos.extend(sym.pos)
@@ -1393,8 +1389,8 @@ pub fn (node Node) position() token.Position {
 		File {
 			mut pos := token.Position{}
 			if node.stmts.len > 0 {
-				first_pos := node.stmts.first().position()
-				last_pos := node.stmts.last().position()
+				first_pos := node.stmts.first().pos
+				last_pos := node.stmts.last().pos
 				pos = first_pos.extend_with_last_line(last_pos, last_pos.line_nr)
 			}
 			return pos

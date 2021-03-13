@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module scanner
 
+import math.mathutil as mu
 import os
 import v.token
 import v.pref
@@ -894,7 +895,7 @@ fn (mut s Scanner) text_scan() token.Token {
 					return s.new_token(.comment, comment, comment.len + 2)
 				}
 				hash := s.text[start..s.pos].trim_space()
-				return s.new_token(.hash, hash, hash.len)
+				return s.new_token(.hash, hash, hash.len + 2)
 			}
 			`>` {
 				if nextc == `=` {
@@ -1057,7 +1058,7 @@ fn (mut s Scanner) text_scan() token.Token {
 
 fn (mut s Scanner) invalid_character() {
 	len := utf8_char_len(s.text[s.pos])
-	end := util.imin(s.pos + len, s.text.len)
+	end := mu.min(s.pos + len, s.text.len)
 	c := s.text[s.pos..end]
 	s.error('invalid character `$c`')
 }
@@ -1100,6 +1101,7 @@ fn (mut s Scanner) ident_string() string {
 		start++
 	}
 	s.is_inside_string = false
+	mut u_to_x_pos := []int{} // pos list to replace \u0020 -> \x20
 	slash := `\\`
 	for {
 		s.pos++
@@ -1145,13 +1147,17 @@ fn (mut s Scanner) ident_string() string {
 				s.error(r'`\x` used with no following hex digits')
 			}
 			// Escape `\u`
-			if c == `u` && (s.text[s.pos + 1] == s.quote
-				|| s.text[s.pos + 2] == s.quote || s.text[s.pos + 3] == s.quote
-				|| s.text[s.pos + 4] == s.quote || !s.text[s.pos + 1].is_hex_digit()
-				|| !s.text[s.pos + 2].is_hex_digit()
-				|| !s.text[s.pos + 3].is_hex_digit()
-				|| !s.text[s.pos + 4].is_hex_digit()) {
-				s.error(r'`\u` incomplete unicode character value')
+			if c == `u` {
+				if s.text[s.pos + 1] == s.quote || s.text[s.pos + 2] == s.quote
+					|| s.text[s.pos + 3] == s.quote || s.text[s.pos + 4] == s.quote
+					|| !s.text[s.pos + 1].is_hex_digit() || !s.text[s.pos + 2].is_hex_digit()
+					|| !s.text[s.pos + 3].is_hex_digit() || !s.text[s.pos + 4].is_hex_digit() {
+					s.error(r'`\u` incomplete unicode character value')
+				} else if s.text[s.pos + 1] == `0` && s.text[s.pos + 2] == `0`
+					&& (`0` <= s.text[s.pos + 3] && s.text[s.pos + 3] < `8`) {
+					// ascii
+					u_to_x_pos << s.pos - 1
+				}
 			}
 		}
 		// ${var} (ignore in vfmt mode) (skip \$)
@@ -1178,6 +1184,15 @@ fn (mut s Scanner) ident_string() string {
 	}
 	if start <= s.pos {
 		mut string_so_far := s.text[start..end]
+		if u_to_x_pos.len > 0 {
+			mut ss := []string{cap: u_to_x_pos.len + 1}
+			ss << string_so_far[..u_to_x_pos[0] - start]
+			for i in 0 .. u_to_x_pos.len - 1 {
+				ss << r'\x' + string_so_far[u_to_x_pos[i] - start + 4..u_to_x_pos[i + 1] - start]
+			}
+			ss << r'\x' + string_so_far[u_to_x_pos.last() + 4 - start..]
+			string_so_far = ss.join('')
+		}
 		if n_cr_chars > 0 {
 			string_so_far = string_so_far.replace('\r', '')
 		}

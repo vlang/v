@@ -73,35 +73,20 @@ endif
 
 .PHONY: all clean fresh_vc fresh_tcc
 
+ifdef prod
+VFLAGS+=-prod
+endif
+
 all: latest_vc latest_tcc
 ifdef WIN32
 	$(CC) $(CFLAGS) -g -std=c99 -municode -w -o $(V) $(VC)/$(VCFILE) $(LDFLAGS)
-ifdef prod
-	$(V) -prod self
-else
 	$(V) self
-endif
 else
 	$(CC) $(CFLAGS) -g -std=gnu99 -w -o $(V) $(VC)/$(VCFILE) -lm -lpthread $(LDFLAGS)
-ifdef ANDROID
-	chmod 755 v
-endif
-
-ifdef prod
-	$(V) -prod self
-else
 	$(V) self
-endif
-
-ifndef ANDROID
-	$(MAKE) modules
-endif
 endif
 	@echo "V has been successfully built"
 	@$(V) -version
-
-#clean: clean_tmp
-#git clean -xf
 
 clean:
 	rm -rf $(TMPTCC)
@@ -143,16 +128,16 @@ $(TMPTCC)/.git/config:
 $(VC)/.git/config:
 	$(MAKE) fresh_vc
 
+asan:
+	$(MAKE) all CFLAGS='-fsanitize=address,undefined'
+
 selfcompile:
 	$(V) -cg -o v cmd/v
 
 selfcompile-static:
 	$(V) -cg -cflags '--static' -o v-static cmd/v
 
-modules: module_builtin module_strings module_strconv
-module_builtin:
-	#$(V) build module vlib/builtin > /dev/null
-module_strings:
-	#$(V) build module vlib/strings > /dev/null
-module_strconv:
-	#$(V) build module vlib/strconv > /dev/null
+### NB: Please keep this Makefile and make.bat simple.
+install:
+	@echo 'Please use `sudo v symlink` instead.'
+    

@@ -4,6 +4,7 @@ import os
 
 #include <sys/ioctl.h>
 #include <termios.h> // TIOCGWINSZ
+
 pub struct C.winsize {
 pub:
 	ws_row    u16
@@ -20,7 +21,7 @@ pub fn get_terminal_size() (int, int) {
 		return default_columns_size, default_rows_size
 	}
 	w := C.winsize{}
-	C.ioctl(1, C.TIOCGWINSZ, &w)
+	C.ioctl(1, u64(C.TIOCGWINSZ), &w)
 	return int(w.ws_col), int(w.ws_row)
 }
 
@@ -34,8 +35,9 @@ pub fn get_cursor_position() Coord {
 	}
 	// TODO: use termios.h, C.tcgetattr & C.tcsetattr directly,
 	// instead of using `stty`
-	oldsettings := os.exec('stty -g') or {
-		os.Result{}
+	mut oldsettings := os.execute('stty -g')
+	if oldsettings.exit_code < 0 {
+		oldsettings = os.Result{}
 	}
 	os.system('stty -echo -icanon time 0')
 	print('\033[6n')
@@ -52,7 +54,7 @@ pub fn get_cursor_position() Coord {
 		i++
 		if i >= 15 {
 			panic('C.getchar() called too many times')
-		}        
+		}
 		// state management:
 		if b == `R` {
 			break
@@ -90,7 +92,9 @@ pub fn set_terminal_title(title string) bool {
 	if is_atty(1) <= 0 || os.getenv('TERM') == 'dumb' {
 		return true
 	}
-	print('\033]0;${title}\007')
+	print('\033]0')
+	print(title)
+	print('\007')
 	return true
 }
 

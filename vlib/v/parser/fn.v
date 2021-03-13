@@ -171,6 +171,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	is_manualfree := p.is_manualfree || p.attrs.contains('manualfree')
 	is_deprecated := p.attrs.contains('deprecated')
 	is_direct_arr := p.attrs.contains('direct_array_access')
+	is_conditional, conditional_ctdefine := p.attrs.has_comptime_define()
 	mut is_unsafe := p.attrs.contains('unsafe')
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
@@ -296,6 +297,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut type_sym_method_idx := 0
 	no_body := p.tok.kind != .lcbr
 	end_pos := p.prev_tok.position()
+	short_fn_name := name
+	is_main := short_fn_name == 'main' && p.mod == 'main'
+	is_test := short_fn_name.starts_with('test_') || short_fn_name.starts_with('testsuite_')
 	// Register
 	if is_method {
 		mut type_sym := p.table.get_type_symbol(rec.typ)
@@ -326,6 +330,10 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			is_pub: is_pub
 			is_deprecated: is_deprecated
 			is_unsafe: is_unsafe
+			is_main: is_main
+			is_test: is_test
+			is_conditional: is_conditional
+			ctdefine: conditional_ctdefine
 			no_body: no_body
 			mod: p.mod
 			attrs: p.attrs
@@ -351,6 +359,10 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			is_pub: is_pub
 			is_deprecated: is_deprecated
 			is_unsafe: is_unsafe
+			is_main: is_main
+			is_test: is_test
+			is_conditional: is_conditional
+			ctdefine: conditional_ctdefine
 			no_body: no_body
 			mod: p.mod
 			attrs: p.attrs
@@ -388,6 +400,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		is_direct_arr: is_direct_arr
 		is_pub: is_pub
 		is_variadic: is_variadic
+		is_main: is_main
+		is_test: is_test
+		is_conditional: is_conditional
 		receiver: ast.Field{
 			name: rec.name
 			typ: rec.typ
@@ -529,6 +544,9 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	// TODO generics
 	args, _, is_variadic := p.fn_args()
 	for arg in args {
+		if arg.name.len == 0 {
+			p.error_with_pos('use `_` to name an unused parameter', arg.pos)
+		}
 		p.scope.register(ast.Var{
 			name: arg.name
 			typ: arg.typ
