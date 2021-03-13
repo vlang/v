@@ -280,9 +280,8 @@ fn (mut vd VDoc) generate_docs_from_file() {
 		[cfg.input_path]
 	}
 	for dirpath in dirs {
-		mut dcs := doc.Doc{}
 		vd.vprintln('Generating $out.typ docs for "$dirpath"')
-		dcs = doc.generate(dirpath, cfg.pub_only, true, cfg.symbol_name) or {
+		mut dcs := doc.generate(dirpath, cfg.pub_only, true, cfg.symbol_name) or {
 			vd.emit_generate_err(err)
 			exit(1)
 		}
