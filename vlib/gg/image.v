@@ -206,7 +206,6 @@ pub fn (ctx &Context) draw_image(x f32, y f32, width f32, height f32, img_ &Imag
 			eprintln('gg: draw_image() bad img id $img_.id (img cache len = $ctx.image_cache.len)')
 			return
 		}
-		img := ctx.image_cache[img_.id] // fetch the image from cache
 		if ctx.native_rendering {
 			if img_.width == 0 {
 				return
