@@ -195,7 +195,7 @@ fn close(a f64, b f64) bool {
 }
 
 fn veryclose(a f64, b f64) bool {
-	return tolerance(a, b, 4e-6)
+	return tolerance(a, b, 4e-16)
 }
 
 fn soclose(a f64, b f64, e f64) bool {
@@ -699,7 +699,7 @@ fn test_large_cos() {
 	for i := 0; i < math.vf_.len; i++ {
 		f1 := math.cos_large_[i]
 		f2 := cos(math.vf_[i] + large)
-		assert veryclose(f1, f2)
+		assert soclose(f1, f2, 4e-10)
 	}
 }
 
@@ -708,7 +708,7 @@ fn test_large_sin() {
 	for i := 0; i < math.vf_.len; i++ {
 		f1 := math.sin_large_[i]
 		f2 := sin(math.vf_[i] + large)
-		assert veryclose(f1, f2)
+		assert soclose(f1, f2, 4e-9)
 	}
 }
 
@@ -717,6 +717,6 @@ fn test_large_tan() {
 	for i := 0; i < vf_.len; i++ {
                 f1 := tan_large_[i]
                 f2 := tan(vf_[i] + large)
-                assert veryclose(f1, f2)
+                assert soclose(f1, f2, 4e-9)
 	}
 }
