@@ -2793,7 +2793,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.map_init(node)
 		}
 		ast.None {
-			g.write('_const___none')
+			g.write('_const_none__')
 		}
 		ast.OrExpr {
 			// this should never appear here

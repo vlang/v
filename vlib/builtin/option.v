@@ -18,8 +18,10 @@ pub:
 
 struct Option3 {
 	state byte
-	err   IError = __none
+	err   IError = none__
 }
+
+const none__ = IError(&None__{})
 
 struct None__ {
 	msg  string
@@ -27,8 +29,6 @@ struct None__ {
 }
 
 fn (_ None__) str() string { return 'none' }
-
-const __none = IError(&None__{})
 
 fn opt_ok3(data voidptr, mut option Option3, size int) {
 	unsafe {
@@ -67,13 +67,6 @@ struct Option2 {
 	// derived Option2_xxx types
 }
 
-// [inline]
-// fn (e Error) str() string {
-// 	// TODO: this should probably have a better str method,
-// 	// but this minimizes the amount of broken code after #8924
-// 	return e.msg
-// }
-
 // `fn foo() ?Foo { return foo }` => `fn foo() ?Foo { return opt_ok(foo); }`
 fn opt_ok(data voidptr, mut option Option2, size int) {
 	unsafe {
@@ -82,8 +75,6 @@ fn opt_ok(data voidptr, mut option Option2, size int) {
 		C.memcpy(byteptr(&option.err) + sizeof(Error), data, size)
 	}
 }
-
-pub fn yeet() Option3 { return Option3{} }
 
 // error returns an optional containing the error given in `message`.
 // `if ouch { return error('an error occurred') }`
