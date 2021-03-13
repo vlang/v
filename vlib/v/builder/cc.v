@@ -259,6 +259,9 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		// }
 	}
 	if v.pref.is_prod {
+		if ccoptions.is_cc_tcc {
+			eprintln('Note: tcc is not recommended for -prod builds')
+		}
 		ccoptions.args << optimization_options
 	}
 	if v.pref.is_prod && !ccoptions.debug_mode {
