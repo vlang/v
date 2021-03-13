@@ -447,6 +447,7 @@ fn test_gamma() {
 		if is_nan(g[1]) || is_inf(g[1], 0) || g[1] == 0 || f == 0 {
 			assert alike(g[1], f)
 		} else if g[0] > -50 && g[0] <= 171 {
+			assert veryclose(g[1], f)
 		} else {
 			assert soclose(g[1], f, 1e-9)
 		}
