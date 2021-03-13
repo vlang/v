@@ -168,8 +168,8 @@ const (
 )
 
 fn tolerance(a f64, b f64, tol f64) bool {
-	mut e := tol
-	// Multiplying by e here can underflow denormal values to zero.
+	mut ee := tol
+	// Multiplying by ee here can underflow denormal values to zero.
 	// Check a==b so that at least if a and b are small and identical
 	// we say they match.
 	if a == b {
@@ -182,12 +182,12 @@ fn tolerance(a f64, b f64, tol f64) bool {
 	// note: b is correct (expected) value, a is actual value.
 	// make error tolerance a fraction of b, not a.
 	if b != 0 {
-		e = e * b
-		if e < 0 {
-			e = -e
+		ee = ee * b
+		if ee < 0 {
+			ee = -ee
 		}
 	}
-	return d < e
+	return d < ee
 }
 
 fn close(a f64, b f64) bool {
@@ -438,6 +438,7 @@ fn test_gamma() {
 		[f64(-201.0001), 0], [f64(-202.9999), -0.0], [f64(-1000.5), -0.0],
 		[f64(-1.0000000003e+09), -0.0], [f64(-4.5035996273704955e+15), 0],
 		[f64(-63.349078729022985), 4.177797167776188e-88], [f64(-127.45117632943295), 1.183111089623681e-214]]
+	_ := vfgamma_[0][0]
 	// for i := 0; i < math.vf_.len; i++ {
 	// 	f := gamma(math.vf_[i])
 	// 	assert veryclose(math.gamma_[i], f)
@@ -575,6 +576,7 @@ fn test_round() {
 		[f64(4503599627370495.5), 4503599627370496], /* 1 bit fraction, rounding to 0 bit fractian */
 		[f64(4503599627370497), 4503599627370497], /* large integer */
 	]
+	_ := vfround_even_sc_[0][0]    
 	for i := 0; i < vfround_sc_.len; i++ {
 		f := round(vfround_sc_[i][0])
 		assert alike(vfround_sc_[i][1], f)
