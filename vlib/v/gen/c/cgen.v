@@ -2861,7 +2861,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 					}
 					if is_gen_or_and_assign_rhs {
 						elem_styp := g.typ(elem_type)
-						g.write('\n$cur_line*($elem_styp*)${tmp_opt}.data')
+						g.write(';\n$cur_line*($elem_styp*)${tmp_opt}.data')
 					}
 				}
 			} else {
@@ -3705,7 +3705,7 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 					g.write('(')
 				} else {
 					if j == 0 && sumtype_index == 0 {
-						g.writeln('')
+						g.empty_line = true
 					}
 					g.write_v_source_line_info(branch.pos)
 					g.write('if (')
@@ -4202,8 +4202,6 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				is_guard = true
 				guard_idx = i
 				guard_vars = []string{len: node.branches.len}
-				g.writeln(';')
-				g.writeln('{ /* if guard */ ')
 			}
 			if cond.expr !is ast.IndexExpr && cond.expr !is ast.PrefixExpr {
 				var_name := g.new_tmp_var()
@@ -4282,9 +4280,6 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		} else {
 			g.stmts(branch.stmts)
 		}
-	}
-	if is_guard {
-		g.write('}')
 	}
 	g.writeln('}')
 	if needs_tmp_var {
