@@ -156,7 +156,7 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 	// for i, arg in args {
 	for i := 0; i < args.len; i++ {
 		arg := args[i]
-		current_args := args[i..]
+		current_args := args[i..].clone()
 		match arg {
 			'-apk' {
 				res.is_apk = true
@@ -441,12 +441,12 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 					command_pos = i
 					continue
 				}
-				if command !in ['', 'build-module'] {
+				if command != '' && command != 'build-module' {
 					// arguments for e.g. fmt should be checked elsewhere
 					continue
 				}
-				eprint('Unknown argument `$arg`')
-				eprintln(if command.len == 0 { '' } else { ' for command `$command`' })
+				extension := if command.len == 0 { '' } else { ' for command `$command`' }
+				eprintln('Unknown argument `$arg`$extension')
 				exit(1)
 			}
 		}
@@ -554,7 +554,10 @@ pub fn cc_from_string(cc_str string) CompilerType {
 		return .gcc
 	}
 	// TODO
-	cc := cc_str.replace('\\', '/').split('/').last().all_before('.')
+	normalized_cc := cc_str.replace('\\', '/')
+	normalized_cc_array := normalized_cc.split('/')
+	last_elem := normalized_cc_array.last()
+	cc := last_elem.all_before('.')
 	if '++' in cc {
 		return .cplusplus
 	}

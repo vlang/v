@@ -267,14 +267,16 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 					is_public: is_field_pub
 				}
 			}
+			is_pub_field := is_embed || is_field_pub
+			is_mut_field := is_embed || is_field_mut
 			// save embeds as table fields too, it will be used in generation phase
 			fields << table.Field{
 				name: field_name
 				typ: typ
 				default_expr: ast.ex2fe(default_expr)
 				has_default_expr: has_default_expr
-				is_pub: if is_embed { true } else { is_field_pub }
-				is_mut: if is_embed { true } else { is_field_mut }
+				is_pub: is_pub_field
+				is_mut: is_mut_field
 				is_global: is_field_global
 				attrs: p.attrs
 			}

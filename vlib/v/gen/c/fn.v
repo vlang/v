@@ -127,7 +127,8 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 		for gen_types in g.table.fn_gen_types[node.name] {
 			if g.pref.is_verbose {
 				syms := gen_types.map(g.table.get_type_symbol(it))
-				println('gen fn `$node.name` for type `${syms.map(node.name).join(', ')}`')
+				the_type := syms.map(node.name).join(', ')
+				println('gen fn `$node.name` for type `$the_type`')
 			}
 			g.cur_generic_types = gen_types
 			g.gen_fn_decl(node, skip)
@@ -719,12 +720,6 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		}
 	}
 	mut name := node.name
-	if node.name == 'error' {
-		name = 'error3'
-	}
-	if node.name == 'error_with_code' {
-		name = 'error_with_code3'
-	}
 	is_print := name in ['print', 'println', 'eprint', 'eprintln', 'panic']
 	print_method := name
 	is_json_encode := name == 'json.encode'
@@ -773,7 +768,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			g.is_js_call = false
 			g.writeln(');')
 			tmp2 = g.new_tmp_var()
-			g.writeln('Option3_$typ $tmp2 = $fn_name ($json_obj);')
+			g.writeln('Option_$typ $tmp2 = $fn_name ($json_obj);')
 		}
 		if !g.is_autofree {
 			g.write('cJSON_Delete($json_obj); //del')
