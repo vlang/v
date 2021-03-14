@@ -402,7 +402,8 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr, typ SqlType) {
 			// true/false literals were added to Sqlite 3.23 (2018-04-02)
 			// but lots of apps/distros use older sqlite (e.g. Ubuntu 18.04 LTS )
 			g.inc_sql_i()
-			g.sql_bind_int(if expr.val { '1' } else { '0' }, typ)
+			eval := if expr.val { '1' } else { '0' }
+			g.sql_bind_int(eval, typ)
 		}
 		ast.Ident {
 			// `name == user_name` => `name == ?1`

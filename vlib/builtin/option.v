@@ -5,7 +5,7 @@ module builtin
 
 // IError holds information about an error instance
 pub interface IError {
-	msg  string
+	msg string
 	code int
 }
 
@@ -16,11 +16,6 @@ pub:
 	code int
 }
 
-struct Option3 {
-	state byte
-	err   IError = none__
-}
-
 const none__ = IError(&None__{})
 
 struct None__ {
@@ -28,73 +23,42 @@ struct None__ {
 	code int
 }
 
-fn (_ None__) str() string { return 'none' }
-
-fn opt_ok3(data voidptr, mut option Option3, size int) {
-	unsafe {
-		*option = Option3{}
-		// use err to get the end of Option3 and then memcpy into it
-		C.memcpy(byteptr(&option.err) + sizeof(IError), data, size)
-	}
+fn (_ None__) str() string {
+	return 'none'
 }
 
+// error returns a default error instance containing the error given in `message`.
+// Example: `if ouch { return error('an error occurred') }`
 [inline]
-pub fn error3(message string) IError {
+pub fn error(message string) IError {
 	return &Error{
 		msg: message
 	}
 }
 
-pub fn error_with_code3(message string, code int) IError {
-	return &Error {
+// error_with_code returns a default error instance containing the given `message` and error `code`.
+// `if ouch { return error_with_code('an error occurred', 1) }`
+[inline]
+pub fn error_with_code(message string, code int) IError {
+	return &Error{
 		msg: message
 		code: code
 	}
 }
 
-////////////////////////////////////////
-
-// these are just here temporarily to avoid breaking the compiler; they will be removed soon
-pub fn error(a string) Option2 { return {} }
-pub fn error_with_code(a string, b int) Option2 { return {} }
-
-// Option2 is the base of V's new internal optional return system.
-struct Option2 {
+// Option is the base of V's internal optional return system.
+struct Option {
 	state byte
-	err   Error
+	err   IError = none__
 	// Data is trailing after err
 	// and is not included in here but in the
-	// derived Option2_xxx types
+	// derived Option_xxx types
 }
 
-// `fn foo() ?Foo { return foo }` => `fn foo() ?Foo { return opt_ok(foo); }`
-fn opt_ok(data voidptr, mut option Option2, size int) {
+fn opt_ok(data voidptr, mut option Option, size int) {
 	unsafe {
-		*option = Option2{}
+		*option = Option{}
 		// use err to get the end of OptionBase and then memcpy into it
-		C.memcpy(byteptr(&option.err) + sizeof(Error), data, size)
-	}
-}
-
-// error returns an optional containing the error given in `message`.
-// `if ouch { return error('an error occurred') }`
-pub fn error2(message string) Option2 {
-	return Option2{
-		state: 2
-		err: {
-			msg: message
-		}
-	}
-}
-
-// error_with_code returns an optional containing both error `message` and error `code`.
-// `if ouch { return error_with_code('an error occurred',1) }`
-pub fn error_with_code2(message string, code int) Option2 {
-	return Option2{
-		state: 2
-		err: {
-			msg: message
-			code: code
-		}
+		C.memcpy(byteptr(&option.err) + sizeof(IError), data, size)
 	}
 }

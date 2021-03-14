@@ -209,29 +209,53 @@ pub fn v_realloc(b byteptr, n int) byteptr {
 			C.memcpy(new_ptr, b, n)
 		}
 	} $else {
-		$if debug_realloc ? {
-			// NB: this is slower, but helps debugging memory problems.
-			// The main idea is to always force reallocating:
-			// 1) allocate a new memory block
-			// 2) copy the old to the new
-			// 3) fill the old with 0x57 (`W`)
-			// 4) free the old block
-			// => if there is still a pointer to the old block somewhere
-			//    it will point to memory that is now filled with 0x57.
-			unsafe {
-				new_ptr = malloc(n)
-				C.memcpy(new_ptr, b, n)
-				C.memset(b, 0x57, n)
-				C.free(b)
-			}
-		} $else {
-			new_ptr = unsafe { C.realloc(b, n) }
-			if new_ptr == 0 {
-				panic('realloc($n) failed')
-			}
+		new_ptr = unsafe { C.realloc(b, n) }
+		if new_ptr == 0 {
+			panic('realloc($n) failed')
 		}
 	}
 	return new_ptr
+}
+
+// realloc_data resizes the memory block pointed by `old_data` to `new_size`
+// bytes. `old_data` must be a pointer to an existing memory block, previously
+// allocated with `malloc`, `v_calloc` or `vcalloc`, of size `old_data`.
+// realloc_data returns a pointer to the new location of the block.
+// NB: if you know the old data size, it is preferable to call `realloc_data`,
+// instead of `v_realloc`, at least during development, because `realloc_data`
+// can make debugging easier, when you compile your program with
+// `-d debug_realloc`.
+[unsafe]
+pub fn realloc_data(old_data byteptr, old_size int, new_size int) byteptr {
+	$if prealloc {
+		unsafe {
+			new_ptr := malloc(new_size)
+			C.memcpy(new_ptr, old_data, old_size)
+			return new_ptr
+		}
+	}
+	$if debug_realloc ? {
+		// NB: this is slower, but helps debugging memory problems.
+		// The main idea is to always force reallocating:
+		// 1) allocate a new memory block
+		// 2) copy the old to the new
+		// 3) fill the old with 0x57 (`W`)
+		// 4) free the old block
+		// => if there is still a pointer to the old block somewhere
+		//    it will point to memory that is now filled with 0x57.
+		unsafe {
+			new_ptr := malloc(new_size)
+			C.memcpy(new_ptr, old_data, old_size)
+			C.memset(old_data, 0x57, old_size)
+			C.free(old_data)
+			return new_ptr
+		}
+	}
+	nptr := unsafe { C.realloc(old_data, new_size) }
+	if nptr == 0 {
+		panic('realloc_data($new_size) failed')
+	}
+	return nptr
 }
 
 // v_calloc dynamically allocates a zeroed `n` bytes block of memory on the heap.

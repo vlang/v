@@ -408,9 +408,7 @@ pub fn (node Stmt) str() string {
 			return node.str()
 		}
 		ConstDecl {
-			fields := node.fields.map(fn (f ConstField) string {
-				return '${f.name.trim_prefix(f.mod + '.')} = $f.expr'
-			})
+			fields := node.fields.map(field_to_string)
 			return 'const (${fields.join(' ')})'
 		}
 		ExprStmt {
@@ -439,6 +437,10 @@ pub fn (node Stmt) str() string {
 			return '[unhandled stmt str type: $node.type_name() ]'
 		}
 	}
+}
+
+fn field_to_string(f ConstField) string {
+	return '${f.name.trim_prefix(f.mod + '.')} = $f.expr'
 }
 
 pub fn (e CompForKind) str() string {

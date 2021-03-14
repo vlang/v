@@ -46,7 +46,9 @@ pub fn (mut b Builder) build_c(v_files []string, out_file string) {
 	f.writeln(output2) or { panic(err) }
 	f.close()
 	if b.pref.is_stats {
-		println('generated C source code size: ${util.bold((output2.count('\n') + 1).str())} lines, ${util.bold(output2.len.str())} bytes')
+		slines := util.bold((output2.count('\n') + 1).str())
+		sbytes := util.bold(output2.len.str())
+		println('generated C source code size: $slines lines, $sbytes bytes')
 	}
 	// os.write_file(out_file, b.gen_c(v_files))
 }

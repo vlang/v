@@ -212,13 +212,14 @@ fn (mut g JsGen) struct_typ(s string) string {
 
 struct BuiltinPrototypeCongig {
 	typ_name 		string
-	val_name 		string = 'val'
+	val_name 		string	= 'val'
 	default_value 	string
-	constructor 	string = 'this.val = val'
-	value_of 		string = 'this.val'
-	to_string 		string = 'this.val.toString()'
-	eq				string = 'this.val === other.val'
+	constructor 	string	= 'this.val = val'
+	value_of 		string	= 'this.val'
+	to_string 		string	= 'this.val.toString()'
+	eq				string	= 'this.val === other.val'
 	extras			string
+	has_strfn		bool
 }
 
 // ugly arguments but not sure a config struct would be worth it
@@ -226,7 +227,7 @@ fn (mut g JsGen) gen_builtin_prototype(c BuiltinPrototypeCongig) {
 	g.writeln('function ${c.typ_name}(${c.val_name} = ${c.default_value}) { ${c.constructor} }')
 	g.writeln('${c.typ_name}.prototype = {')
 	g.inc_indent()
-	g.writeln('val: ${c.default_value},')
+	g.writeln('${c.val_name}: ${c.default_value},')
 	if c.extras.len > 0 {
 		g.writeln('${c.extras},')
 	}
@@ -239,7 +240,7 @@ fn (mut g JsGen) gen_builtin_prototype(c BuiltinPrototypeCongig) {
 	g.writeln('valueOf() { return ${c.value_of} },')
 	g.writeln('toString() { return ${c.to_string} },')
 	g.writeln('eq(other) { return ${c.eq} },')
-	g.writeln('str() { return new string(this.toString()) }')
+	if c.has_strfn { g.writeln('str() { return new string(this.toString()) }') }
 	g.dec_indent()
 	g.writeln('};\n')
 }
@@ -292,6 +293,7 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 					value_of: 'this.str'
 					to_string: 'this.str'
 					eq: 'this.str === other.str'
+					has_strfn: false
 				})
 			}
 			'map' {

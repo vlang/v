@@ -443,11 +443,7 @@ pub fn (mut c Checker) infer_fn_types(f table.Fn, mut call_expr ast.CallExpr) {
 			arg := call_expr.args[arg_i]
 			param_type_sym := c.table.get_type_symbol(param.typ)
 			if param.typ.has_flag(.generic) && param_type_sym.name == gt_name {
-				typ = match arg.typ {
-					table.int_literal_type { table.int_type }
-					table.float_literal_type { table.f64_type }
-					else { arg.typ }
-				}
+				typ = c.table.mktyp(arg.typ)
 				break
 			}
 			arg_sym := c.table.get_type_symbol(arg.typ)
