@@ -1,6 +1,7 @@
 module builtin
 
 pub struct string {
+pub:
 	str JS.String
 	len u32
 }
