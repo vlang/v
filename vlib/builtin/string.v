@@ -877,6 +877,7 @@ pub fn (s string) to_lower() string {
 		for i in 0 .. s.len {
 			b[i] = byte(C.tolower(s.str[i]))
 		}
+		b[s.len] = 0
 		return tos(b, s.len)
 	}
 }
@@ -900,6 +901,7 @@ pub fn (s string) to_upper() string {
 		for i in 0 .. s.len {
 			b[i] = byte(C.toupper(s.str[i]))
 		}
+		b[s.len] = 0
 		return tos(b, s.len)
 	}
 }

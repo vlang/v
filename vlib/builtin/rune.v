@@ -35,8 +35,8 @@ pub fn (c byte) is_capital() bool {
 
 pub fn (b []byte) clone() []byte {
 	mut res := []byte{len: b.len}
-	//mut res := make([]byte, {repeat:b.len})
-	for i in 0..b.len {
+	// mut res := make([]byte, {repeat:b.len})
+	for i in 0 .. b.len {
 		res[i] = b[i]
 	}
 	return res
@@ -49,8 +49,10 @@ pub fn (b []byte) bytestr() string {
 
 // TODO copy pasted from builder.v
 fn bytes2string(b []byte) string {
-	mut copy := b.clone()
-	copy << `\0`
-	res := unsafe { tos(copy.data, copy.len-1) }
-	return res
+	unsafe {
+		buf := malloc(b.len + 1)
+		C.memcpy(buf, b.data, b.len)
+		buf[b.len] = 0
+		return tos(buf, b.len)
+	}
 }

@@ -25,17 +25,20 @@ pub fn utf32_to_str_no_malloc(code u32, buf voidptr) string {
 		if icode <= 127 {
 			// 0x7F
 			buffer[0] = byte(icode)
+			buffer[1] = 0
 			res = tos(buffer, 1)
 		} else if icode <= 2047 {
 			// 0x7FF
 			buffer[0] = 192 | byte(icode >> 6) // 0xC0 - 110xxxxx
 			buffer[1] = 128 | byte(icode & 63) // 0x80 - 0x3F - 10xxxxxx
+			buffer[2] = 0
 			res = tos(buffer, 2)
 		} else if icode <= 65535 {
 			// 0xFFFF
 			buffer[0] = 224 | byte(icode >> 12) // 0xE0 - 1110xxxx
 			buffer[1] = 128 | (byte(icode >> 6) & 63) // 0x80 - 0x3F - 10xxxxxx
 			buffer[2] = 128 | byte(icode & 63) // 0x80 - 0x3F - 10xxxxxx
+			buffer[3] = 0
 			res = tos(buffer, 3)
 		}
 		// 0x10FFFF
@@ -44,6 +47,7 @@ pub fn utf32_to_str_no_malloc(code u32, buf voidptr) string {
 			buffer[1] = 128 | (byte(icode >> 12) & 63) // 0x80 - 0x3F - 10xxxxxx
 			buffer[2] = 128 | (byte(icode >> 6) & 63) // 0x80 - 0x3F - 10xxxxxx
 			buffer[3] = 128 | byte(icode & 63) // 0x80 - 0x3F - 10xxxxxx
+			buffer[4] = 0
 			res = tos(buffer, 4)
 		}
 	}
