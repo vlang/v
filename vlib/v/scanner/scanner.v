@@ -1198,8 +1198,6 @@ fn (mut s Scanner) ident_string() string {
 }
 
 fn decode_u_escapes(s string, start int, escapes_pos []int) string {
-	return s
-	/*
 	if escapes_pos.len == 0 {
 		return s
 	}
@@ -1216,7 +1214,6 @@ fn decode_u_escapes(s string, start int, escapes_pos []int) string {
 		}
 	}
 	return ss.join('')
-	*/
 }
 
 fn trim_slash_line_break(s string) string {
