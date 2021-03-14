@@ -113,6 +113,21 @@ jobs:
           ./v  -o v2 cmd/v
           ./v2 -o v3 cmd/v
 
+      - name: Shader examples can be build
+        run: |
+          wget https://github.com/floooh/sokol-tools-bin/archive/pre-feb2021-api-changes.tar.gz
+          tar -xf pre-feb2021-api-changes.tar.gz
+          for f in examples/sokol/02_cubes_glsl/cube_glsl \
+              examples/sokol/03_march_tracing_glsl/rt_glsl \
+              examples/sokol/04_multi_shader_glsl/rt_glsl_puppy \
+              examples/sokol/04_multi_shader_glsl/rt_glsl_march \
+              examples/sokol/05_instancing_glsl/rt_glsl_instancing \
+              ; do \
+                 echo "compiling shader $f.glsl ..."; \
+                 sokol-tools-bin-pre-feb2021-api-changes/bin/linux/sokol-shdc --input $f.glsl --output $f.h --slang glsl330 ; \
+          done
+          for vfile in examples/sokol/0?*/*.v; do echo "compiling $vfile ..."; ./v $vfile ; done
+
   ## C++
       - name: Install C++ dependencies
         run: |
