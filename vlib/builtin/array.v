@@ -86,7 +86,6 @@ fn new_array_from_c_array_no_alloc(len int, cap int, elm_size int, c_array voidp
 }
 
 // Private function. Doubles array capacity if needed.
-[inline]
 fn (mut a array) ensure_cap(required int) {
 	if required <= a.cap {
 		return
@@ -98,7 +97,7 @@ fn (mut a array) ensure_cap(required int) {
 	new_size := cap * a.element_size
 	mut new_data := byteptr(0)
 	if a.cap > 0 {
-		new_data = unsafe { v_realloc(a.data, new_size) }
+		new_data = unsafe { realloc_data(a.data, a.cap * a.element_size, new_size) }
 	} else {
 		new_data = vcalloc(new_size)
 	}

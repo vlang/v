@@ -445,6 +445,7 @@ pub fn get_raw_stdin() []byte {
 	$if windows {
 		unsafe {
 			block_bytes := 512
+			mut old_size := block_bytes
 			mut buf := malloc(block_bytes)
 			h_input := C.GetStdHandle(C.STD_INPUT_HANDLE)
 			mut bytes_read := 0
@@ -456,7 +457,9 @@ pub fn get_raw_stdin() []byte {
 				if !res {
 					break
 				}
-				buf = v_realloc(buf, offset + block_bytes + (block_bytes - bytes_read))
+				new_size := offset + block_bytes + (block_bytes - bytes_read)
+				buf = realloc_data(buf, old_size, new_size)
+				old_size = new_size
 			}
 			return array{
 				element_size: 1
