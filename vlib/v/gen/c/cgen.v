@@ -4496,7 +4496,18 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		} else {
 			g.write('return ')
 		}
-		g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
+		if expr0.is_auto_deref_var() {
+			if g.fn_decl.return_type.is_ptr() {
+				g.write('&(*')
+				g.expr(expr0)
+				g.write(')')
+			} else {
+				g.write('*')
+				g.expr(expr0)
+			}
+		} else {
+			g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
+		}
 		if free {
 			expr := node.exprs[0]
 			if expr is ast.Ident {
