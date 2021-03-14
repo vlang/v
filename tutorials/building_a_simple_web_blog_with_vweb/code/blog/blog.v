@@ -6,53 +6,33 @@ import sqlite
 import json
 
 struct App {
-	vweb.Context
 mut:
 	db sqlite.DB
 }
 
 fn main() {
-	vweb.run<App>(8081)
-}
-
-/*
-pub fn (mut app App) index_text() vweb.Result {
-	app.vweb.text('Hello, world from vweb!')
-	return vweb.Result{}
-}
-
-pub fn (app &App) index_html() vweb.Result {
-	message := 'Hello, world from Vweb!'
-	return $vweb.html()
-}
-*/
-pub fn (app &App) index() vweb.Result {
-	articles := app.find_all_articles()
-	return $vweb.html()
-}
-
-pub fn (mut app App) init_once() {
-	app.db = sqlite.connect('blog.db') or { panic(err) }
+	mut app := App{
+		db: sqlite.connect('blog.db') or { panic(err) }
+	}
 	app.db.create_table('article', [
 		'id integer primary key',
 		"title text default ''",
 		"text text default ''",
 	])
+
+	vweb.run_app<App>(mut app, port: 8081)
 }
 
-pub fn (mut app App) init() {
-}
-
-pub fn (mut app App) new() vweb.Result {
+pub fn (mut app App) new(mut c vweb.Context) vweb.Result {
 	return $vweb.html()
 }
 
 ['/new_article'; post]
-pub fn (mut app App) new_article() vweb.Result {
-	title := app.form['title']
-	text := app.form['text']
+pub fn (mut app App) new_article(mut c vweb.Context) vweb.Result {
+	title := c.form['title']
+	text := c.form['text']
 	if title == '' || text == '' {
-		return app.text('Empty text/title')
+		return c.text('Empty text/title')
 	}
 	article := Article{
 		title: title
@@ -63,15 +43,15 @@ pub fn (mut app App) new_article() vweb.Result {
 	sql app.db {
 		insert article into Article
 	}
-	return app.redirect('/')
+	return c.redirect('/')
 }
 
-pub fn (mut app App) articles() {
+pub fn (mut app App) articles(mut c vweb.Context) {
 	articles := app.find_all_articles()
 	x := json.encode(articles)
-	app.json(x)
+	c.json(x)
 }
 
-fn (mut app App) time() {
-	app.text(time.now().format())
+fn (mut app App) time(mut c vweb.Context) {
+	c.text(time.now().format())
 }

@@ -61,22 +61,14 @@ module main
 
 import vweb
 
-struct App {
-	vweb.Context
-}
+struct App {}
 
 fn main() {
-	vweb.run<App>(8081)
+	vweb.run<App>(port: 8081)
 }
 
-pub fn (mut app App) index() vweb.Result {
-	return app.text('Hello world from vweb!')
-}
-
-pub fn (app &App) init() {
-}
-
-pub fn (app &App) init_once() {
+pub fn (mut app App) index(mut c vweb.Context) vweb.Result {
+	return c.text('Hello world from vweb!')
 }
 ```
 
@@ -96,8 +88,7 @@ Vweb helpfully provided a link, open http://localhost:8081/ in your browser:
 
 The `App` struct is an entry point of our web application. If you have experience
 with an MVC web framework, you can think of it as a controller. (Vweb is
-not an MVC framework however.) It embeds the vweb Context object, that's why we get access
-to methods like `.text()`.
+not an MVC framework however.)
 
 
 As you can see, there are no routing rules. The `index()` action handles the `/` request by default.
@@ -108,8 +99,8 @@ no routing rules either:
 import vweb
 import time
 
-fn (mut app App) time() vweb.Result {
-	return app.text(time.now().format())
+fn (mut app App) time(mut c vweb.Context) vweb.Result {
+	return c.text(time.now().format())
 }
 ```
 
@@ -144,7 +135,7 @@ Let's return an HTML view instead. Create `index.html` in the same directory:
 and update our `index()` action so that it returns the HTML view we just created:
 
 ```v ignore
-pub fn (mut app App) index() vweb.Result {
+pub fn (mut app App) index(mut c vweb.Context) vweb.Result {
 	message := 'Hello, world from Vweb!'
 	return $vweb.html()
 }
@@ -220,7 +211,6 @@ import sqlite
 import vweb
 
 struct App {
-	vweb.Context
 mut:
 	db sqlite.DB
 }
@@ -228,20 +218,24 @@ mut:
 
 
 
-Modify the `init_once()` method we created earlier to connect to a database:
+Modify the `main()` method we created earlier to connect to a database before starting the server:
 
 ```v oksyntax
-pub fn (mut app App) init_once() {
+fn main() {
 	db := sqlite.connect(':memory:') or { panic(err) }
 	db.exec('create table `Article` (id integer primary key, title text default "", text text default "")')
 	db.exec('insert into Article (title, text) values ("Hello, world!", "V is great.")')
 	db.exec('insert into Article (title, text) values ("Second post.", "Hm... what should I write about?")')
-	app.db = db
+	mut app := App{
+		db: db
+	}
+
+	vweb.run_app<App>(app, port: 8081)
 }
 ```
 
-Code in the `init_once()` function is run only once during app's startup, so we are going
-to have one DB connection for all requests.
+This allows us to provide an initial state for the server, so we are going to have
+one DB connection for all requests.
 
 Create a new file `article.v`:
 
@@ -266,7 +260,7 @@ pub fn (app &App) find_all_articles() []Article {
 Let's fetch the articles in the `index()` action:
 
 ```v ignore
-pub fn (app &App) index() vweb.Result {
+pub fn (mut app App) index(mut c vweb.Context) vweb.Result {
 	articles := app.find_all_articles()
 	return $vweb.html()
 }
@@ -346,11 +340,11 @@ Create `new.html`:
 ```v oksyntax
 import vweb
 
-pub fn (mut app App) new_article() vweb.Result {
-	title := app.form['title']
-	text := app.form['text']
+pub fn (mut app App) new_article(mut c vweb.Context) vweb.Result {
+	title := c.form['title']
+	text := c.form['text']
 	if title == '' || text == '' {
-		return app.text('Empty text/title')
+		return c.text('Empty text/title')
 	}
 	article := Article{
 		title: title
@@ -360,7 +354,7 @@ pub fn (mut app App) new_article() vweb.Result {
 	sql app.db {
 		insert article into Article
 	}
-	return app.redirect('/')
+	return c.redirect('/')
 }
 ```
 
@@ -385,9 +379,9 @@ in V is very simple:
 import vweb
 import json
 
-pub fn (mut app App) articles() vweb.Result {
+pub fn (mut app App) articles(mut c vweb.Context) vweb.Result {
 	articles := app.find_all_articles()
-	return app.json(json.encode(articles))
+	return c.json(json.encode(articles))
 }
 ```
 
