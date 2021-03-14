@@ -4,6 +4,7 @@ module arrays
 // - min / max - return the value of the minumum / maximum
 // - idx_min / idx_max - return the index of the first minumum / maximum
 // - merge - combine two sorted arrays and maintain sorted order
+// - remove_at return the array without the value at a fixed position
 
 // min returns the minimum
 pub fn min<T>(a []T) T {
@@ -123,6 +124,17 @@ pub fn group<T>(lists ...[]T) [][]T {
 	}
 
 	return [][]T{}
+}
+
+// remove element at a fixed position
+pub fn remove_at<T>(a []T, pos int) []T {
+	mut res := []T{}
+	for i, e in a {
+		if i != pos {
+			res << e
+		}
+	}
+	return res
 }
 
 [deprecated]
