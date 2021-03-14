@@ -190,6 +190,11 @@ pub fn malloc(n int) byteptr {
 			panic('malloc($n) failed')
 		}
 	}
+	$if debug_malloc ? {
+		// Fill in the memory with something != 0, so it is easier to spot
+		// when the calling code wrongly relies on it being zeroed.
+		C.memset(res, 0x88, n)
+	}
 	return res
 }
 
@@ -200,6 +205,7 @@ fn malloc_size(b byteptr) int
 // v_realloc resizes the memory block `b` with `n` bytes.
 // The `b byteptr` must be a pointer to an existing memory block
 // previously allocated with `malloc`, `v_calloc` or `vcalloc`.
+// Please, see also realloc_data, and use it instead if possible.
 [unsafe]
 pub fn v_realloc(b byteptr, n int) byteptr {
 	mut new_ptr := byteptr(0)
