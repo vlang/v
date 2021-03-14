@@ -85,3 +85,10 @@ fn test_group() {
 	assert z2 == [[8, 2], [9, 1]]
 	assert group<int>(x, []int{}) == [][]int{}
 }
+
+fn test_remove_at() {
+	x := [1, 2, 3]
+
+	y := remove_at<int>(x, 1)
+	assert y == [1, 3]
+}
