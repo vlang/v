@@ -283,7 +283,7 @@ fn u64_to_hex(nn u64, len byte) string {
 		n = n >> 4
 	}
 	return string{
-		str: unsafe { memdup(buf, len + 1) }
+		str: unsafe { memdup(&buf[0], len + 1) }
 		len: len
 	}
 }
