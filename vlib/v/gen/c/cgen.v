@@ -4501,14 +4501,17 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			if expr is ast.Ident {
 				g.returned_var_name = expr.name
 			}
+			tmp_is_not_empty := tmp != ''
+			if tmp_is_not_empty {
+				g.writeln(';')
+			}
 			// autofree before `return`
 			// set free_parent_scopes to true, since all variables defined in parent
 			// scopes need to be freed before the return
 			if g.pref.autofree {
 				g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 			}
-			if tmp != '' {
-				g.writeln(';')
+			if tmp_is_not_empty {
 				g.write('return $tmp')
 			}
 		}
