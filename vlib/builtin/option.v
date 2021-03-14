@@ -25,6 +25,15 @@ struct None__ {
 
 fn (_ None__) str() string { return 'none' }
 
+// error returns a default error instance containing the error given in `message`.
+// Example: `if ouch { return error('an error occurred') }`
+[inline]
+pub fn error(message string) IError {
+	return &Error{
+		msg: message
+	}
+}
+
 // error_with_code returns a default error instance containing the given `message` and error `code`.
 // `if ouch { return error_with_code('an error occurred', 1) }`
 [inline]
