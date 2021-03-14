@@ -190,6 +190,11 @@ pub fn malloc(n int) byteptr {
 			panic('malloc($n) failed')
 		}
 	}
+	$if debug_malloc ? {
+		// Fill in the memory with something != 0, so it is easier to spot
+		// when the calling code wrongly relies on it being zeroed.
+		C.memset(res, 0x88, n)
+	}
 	return res
 }
 
@@ -200,6 +205,7 @@ fn malloc_size(b byteptr) int
 // v_realloc resizes the memory block `b` with `n` bytes.
 // The `b byteptr` must be a pointer to an existing memory block
 // previously allocated with `malloc`, `v_calloc` or `vcalloc`.
+// Please, see also realloc_data, and use it instead if possible.
 [unsafe]
 pub fn v_realloc(b byteptr, n int) byteptr {
 	mut new_ptr := byteptr(0)
@@ -230,7 +236,8 @@ pub fn realloc_data(old_data byteptr, old_size int, new_size int) byteptr {
 	$if prealloc {
 		unsafe {
 			new_ptr := malloc(new_size)
-			C.memcpy(new_ptr, old_data, old_size)
+			min_size := if old_size < new_size { old_size } else { new_size }
+			C.memcpy(new_ptr, old_data, min_size)
 			return new_ptr
 		}
 	}
@@ -245,7 +252,8 @@ pub fn realloc_data(old_data byteptr, old_size int, new_size int) byteptr {
 		//    it will point to memory that is now filled with 0x57.
 		unsafe {
 			new_ptr := malloc(new_size)
-			C.memcpy(new_ptr, old_data, old_size)
+			min_size := if old_size < new_size { old_size } else { new_size }
+			C.memcpy(new_ptr, old_data, min_size)
 			C.memset(old_data, 0x57, old_size)
 			C.free(old_data)
 			return new_ptr
@@ -253,7 +261,7 @@ pub fn realloc_data(old_data byteptr, old_size int, new_size int) byteptr {
 	}
 	nptr := unsafe { C.realloc(old_data, new_size) }
 	if nptr == 0 {
-		panic('realloc_data($new_size) failed')
+		panic('realloc_data($old_data, $old_size, $new_size) failed')
 	}
 	return nptr
 }

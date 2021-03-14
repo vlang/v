@@ -141,7 +141,8 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	if inp_sym.kind != .array {
 		verror('map() requires an array')
 	}
-	g.write('\t${g.typ(node.left_type)} ${tmp}_orig = ')
+	g.empty_line = true
+	g.write('${g.typ(node.left_type)} ${tmp}_orig = ')
 	g.expr(node.left)
 	g.writeln(';')
 	g.writeln('int ${tmp}_len = ${tmp}_orig.len;')
@@ -296,13 +297,14 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	//
 	deref := if node.left_type.is_ptr() || node.left_type.is_pointer() { '->' } else { '.' }
 	// eprintln('> qsort: pointer $node.left_type | deref: `$deref`')
+	g.empty_line = true
 	g.write('qsort(')
 	g.expr(node.left)
 	g.write('${deref}data, ')
 	g.expr(node.left)
 	g.write('${deref}len, ')
 	g.expr(node.left)
-	g.writeln('${deref}element_size, (int (*)(const void *, const void *))&$compare_fn);')
+	g.write('${deref}element_size, (int (*)(const void *, const void *))&$compare_fn)')
 }
 
 // `nums.filter(it % 2 == 0)`
@@ -317,7 +319,8 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	info := sym.info as table.Array
 	styp := g.typ(node.return_type)
 	elem_type_str := g.typ(info.elem_type)
-	g.write('\t${g.typ(node.left_type)} ${tmp}_orig = ')
+	g.empty_line = true
+	g.write('${g.typ(node.left_type)} ${tmp}_orig = ')
 	g.expr(node.left)
 	g.writeln(';')
 	g.writeln('int ${tmp}_len = ${tmp}_orig.len;')

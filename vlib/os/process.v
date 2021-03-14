@@ -28,7 +28,7 @@ pub mut:
 	env_is_custom bool     // true, when the environment was customized with .set_environment
 	env           []string // the environment with which the process was started  (list of 'var=val')
 	use_stdio_ctl bool     // when true, then you can use p.stdin_write(), p.stdout_slurp() and p.stderr_slurp()
-	stdio_fd      [3]int   // the file descriptors	
+	stdio_fd      [3]int   // the file descriptors
 }
 
 // new_process - create a new process descriptor

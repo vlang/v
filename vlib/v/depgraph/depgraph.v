@@ -31,7 +31,7 @@ pub fn (mut o OrderedDepMap) set(name string, deps []string) {
 }
 
 pub fn (mut o OrderedDepMap) add(name string, deps []string) {
-	mut d := o.data[name]
+	mut d := o.get(name)
 	for dep in deps {
 		if dep !in d {
 			d << dep
@@ -42,7 +42,8 @@ pub fn (mut o OrderedDepMap) add(name string, deps []string) {
 }
 
 pub fn (o &OrderedDepMap) get(name string) []string {
-	return o.data[name]
+	res := o.data[name] or { []string{} }
+	return res
 }
 
 pub fn (mut o OrderedDepMap) delete(name string) {
@@ -60,7 +61,8 @@ pub fn (mut o OrderedDepMap) delete(name string) {
 
 pub fn (mut o OrderedDepMap) apply_diff(name string, deps []string) {
 	mut diff := []string{}
-	for dep in o.data[name] {
+	deps_of_name := o.get(name)
+	for dep in deps_of_name {
 		if dep !in deps {
 			diff << dep
 		}
@@ -75,14 +77,16 @@ pub fn (o &OrderedDepMap) size() int {
 pub fn new_dep_graph() &DepGraph {
 	return &DepGraph{
 		acyclic: true
+		nodes: []DepGraphNode{cap: 1024}
 	}
 }
 
 pub fn (mut graph DepGraph) add(mod string, deps []string) {
-	graph.nodes << DepGraphNode{
+	new_node := DepGraphNode{
 		name: mod
 		deps: deps.clone()
 	}
+	graph.nodes << new_node
 }
 
 pub fn (graph &DepGraph) resolve() &DepGraph {
@@ -96,7 +100,7 @@ pub fn (graph &DepGraph) resolve() &DepGraph {
 	for node_deps.size() != 0 {
 		mut ready_set := []string{}
 		for name in node_deps.keys {
-			deps := node_deps.data[name]
+			deps := node_deps.get(name)
 			if deps.len == 0 {
 				ready_set << name
 			}
@@ -105,13 +109,14 @@ pub fn (graph &DepGraph) resolve() &DepGraph {
 			mut g := new_dep_graph()
 			g.acyclic = false
 			for name in node_deps.keys {
-				g.add(name, node_names.data[name])
+				g.add(name, node_names.get(name))
 			}
 			return g
 		}
 		for name in ready_set {
 			node_deps.delete(name)
-			resolved.add(name, node_names.data[name])
+			resolved_deps := node_names.get(name)
+			resolved.add(name, resolved_deps)
 		}
 		for name in node_deps.keys {
 			node_deps.apply_diff(name, ready_set)

@@ -2444,6 +2444,9 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 			got_typ_sym := c.table.get_type_symbol(got_typ)
 			mut exp_typ_sym := c.table.get_type_symbol(exp_type)
 			pos := return_stmt.exprs[i].position()
+			if return_stmt.exprs[i].is_auto_deref_var() {
+				continue
+			}
 			if exp_typ_sym.kind == .interface_ {
 				c.type_implements(got_typ, exp_type, return_stmt.pos)
 				continue
@@ -2454,12 +2457,18 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 		if (got_typ.is_ptr() || got_typ.is_pointer())
 			&& (!exp_type.is_ptr() && !exp_type.is_pointer()) {
 			pos := return_stmt.exprs[i].position()
+			if return_stmt.exprs[i].is_auto_deref_var() {
+				continue
+			}
 			c.error('fn `$c.cur_fn.name` expects you to return a non reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
 				pos)
 		}
 		if (exp_type.is_ptr() || exp_type.is_pointer())
 			&& (!got_typ.is_ptr() && !got_typ.is_pointer()) && got_typ != table.int_literal_type {
 			pos := return_stmt.exprs[i].position()
+			if return_stmt.exprs[i].is_auto_deref_var() {
+				continue
+			}
 			c.error('fn `$c.cur_fn.name` expects you to return a reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
 				pos)
 		}
@@ -4713,7 +4722,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym table.TypeS
 }
 
 // smartcast takes the expression with the current type which should be smartcasted to the target type in the given scope
-fn (c Checker) smartcast_sumtype(expr ast.Expr, cur_type table.Type, to_type table.Type, mut scope ast.Scope) {
+fn (c &Checker) smartcast_sumtype(expr ast.Expr, cur_type table.Type, to_type table.Type, mut scope ast.Scope) {
 	match mut expr {
 		ast.SelectorExpr {
 			mut is_mut := false
@@ -5024,6 +5033,13 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 					if node.typ == table.void_type {
 						node.is_expr = true
 						node.typ = c.expected_type
+					}
+					continue
+				}
+				if c.expected_type.has_flag(.generic) {
+					if node.typ == table.void_type {
+						node.is_expr = true
+						node.typ = c.unwrap_generic(c.expected_type)
 					}
 					continue
 				}
@@ -5677,7 +5693,7 @@ pub fn (mut c Checker) error(message string, pos token.Position) {
 }
 
 // check `to` has all fields of `from`
-fn (c Checker) check_struct_signature(from table.Struct, to table.Struct) bool {
+fn (c &Checker) check_struct_signature(from table.Struct, to table.Struct) bool {
 	// Note: `to` can have extra fields
 	if from.fields.len == 0 {
 		return false
