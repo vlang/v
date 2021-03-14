@@ -817,6 +817,7 @@ jobs:
       - name: Build with make.bat -tcc32
         run: |
           Remove-Item -Recurse -Force .\thirdparty\tcc
+          .\v.exe wipe-cache
           .\make.bat -tcc32
       - name: Test new v.c
         run: .\v.exe -o v.c cmd/v && .\thirdparty\tcc\tcc.exe -Werror -w -ladvapi32 -bt10 v.c
