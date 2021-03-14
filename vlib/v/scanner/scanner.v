@@ -5,6 +5,7 @@ module scanner
 
 import math.mathutil as mu
 import os
+import strconv
 import v.token
 import v.pref
 import v.util
@@ -1101,7 +1102,7 @@ fn (mut s Scanner) ident_string() string {
 		start++
 	}
 	s.is_inside_string = false
-	mut u_to_x_pos := []int{} // pos list to replace \u0020 -> \x20
+	mut u_escapes_pos := []int{} // pos list of \uXXXX
 	slash := `\\`
 	for {
 		s.pos++
@@ -1153,11 +1154,8 @@ fn (mut s Scanner) ident_string() string {
 					|| !s.text[s.pos + 1].is_hex_digit() || !s.text[s.pos + 2].is_hex_digit()
 					|| !s.text[s.pos + 3].is_hex_digit() || !s.text[s.pos + 4].is_hex_digit() {
 					s.error(r'`\u` incomplete unicode character value')
-				} else if s.text[s.pos + 1] == `0` && s.text[s.pos + 2] == `0`
-					&& (`0` <= s.text[s.pos + 3] && s.text[s.pos + 3] < `8`) {
-					// ascii
-					u_to_x_pos << s.pos - 1
 				}
+				u_escapes_pos << s.pos - 1
 			}
 		}
 		// ${var} (ignore in vfmt mode) (skip \$)
@@ -1184,14 +1182,8 @@ fn (mut s Scanner) ident_string() string {
 	}
 	if start <= s.pos {
 		mut string_so_far := s.text[start..end]
-		if u_to_x_pos.len > 0 {
-			mut ss := []string{cap: u_to_x_pos.len + 1}
-			ss << string_so_far[..u_to_x_pos[0] - start]
-			for i in 0 .. u_to_x_pos.len - 1 {
-				ss << r'\x' + string_so_far[u_to_x_pos[i] - start + 4..u_to_x_pos[i + 1] - start]
-			}
-			ss << r'\x' + string_so_far[u_to_x_pos.last() + 4 - start..]
-			string_so_far = ss.join('')
+		if !s.is_fmt && u_escapes_pos.len > 0 {
+			string_so_far = decode_u_escapes(string_so_far, start, u_escapes_pos)
 		}
 		if n_cr_chars > 0 {
 			string_so_far = string_so_far.replace('\r', '')
@@ -1203,6 +1195,25 @@ fn (mut s Scanner) ident_string() string {
 		}
 	}
 	return lit
+}
+
+fn decode_u_escapes(s string, start int, escapes_pos []int) string {
+	if escapes_pos.len == 0 {
+		return s
+	}
+	mut ss := []string{cap: escapes_pos.len * 2 + 1}
+	ss << s[..escapes_pos.first() - start]
+	for i, pos in escapes_pos {
+		idx := pos - start
+		end_idx := idx + 6 // "\uXXXX".len == 6
+		ss << utf32_to_str(u32(strconv.parse_uint(s[idx + 2..end_idx], 16, 32)))
+		if i + 1 < escapes_pos.len {
+			ss << s[end_idx..escapes_pos[i + 1] - start]
+		} else {
+			ss << s[end_idx..]
+		}
+	}
+	return ss.join('')
 }
 
 fn trim_slash_line_break(s string) string {
