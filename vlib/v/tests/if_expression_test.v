@@ -191,3 +191,13 @@ fn test_if_epxr_with_array_conditions() {
 		assert false
 	}
 }
+
+fn min<T>(a T, b T) T {
+    return if a < b { a } else { b }
+}
+
+fn test_if_expr_with_fn_generic() {
+    assert min(42, 13) == 13
+}
+
+
