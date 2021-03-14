@@ -737,10 +737,13 @@ pub fn (mut g Gen) write_typedef_types() {
 				if parent.info is table.Struct {
 					is_typedef = parent.info.is_typedef
 				}
-				parent_styp := if is_c_parent {
-					if !is_typedef { 'struct ' + parent.cname[3..] } else { parent.cname[3..] }
-				} else {
-					parent.cname
+				mut parent_styp := parent.cname
+				if is_c_parent {
+					if !is_typedef {
+						parent_styp = 'struct ' + parent.cname[3..]
+					} else {
+						parent_styp = parent.cname[3..]
+					}
 				}
 				g.type_definitions.writeln('typedef $parent_styp $typ.cname;')
 			}
@@ -1375,8 +1378,9 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 			g.writeln(';')
 		}
 		i := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
-		op_field := if node.cond_type.is_ptr() { '->' } else { '.' } +
-			if node.cond_type.share() == .shared_t { 'val.' } else { '' }
+		field_accessor := if node.cond_type.is_ptr() { '->' } else { '.' }
+		share_accessor := if node.cond_type.share() == .shared_t { 'val.' } else { '' }
+		op_field := field_accessor + share_accessor
 		g.empty_line = true
 		g.writeln('for (int $i = 0; $i < $cond_var${op_field}len; ++$i) {')
 		if node.val_var != '_' {
@@ -3454,7 +3458,8 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		e := right_sym.kind !in [.voidptr, .int_literal, .int]
 		if node.op in [.plus, .minus, .mul, .div, .mod, .lt, .eq] && ((a && b && e) || c || d) {
 			// Overloaded operators
-			g.write(g.typ(if !d { left_type } else { (left_sym.info as table.Alias).parent_type }))
+			the_left_type := if !d { left_type } else { (left_sym.info as table.Alias).parent_type }
+			g.write(g.typ(the_left_type))
 			g.write('_')
 			g.write(util.replace_op(node.op.str()))
 			g.write('(')
@@ -3463,7 +3468,8 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			g.expr(node.right)
 			g.write(')')
 		} else if node.op in [.ne, .gt, .ge, .le] && ((a && b && e) || c || d) {
-			typ := g.typ(if !d { left_type } else { (left_sym.info as table.Alias).parent_type })
+			the_left_type := if !d { left_type } else { (left_sym.info as table.Alias).parent_type }
+			typ := g.typ(the_left_type)
 			if node.op == .gt {
 				g.write('$typ')
 			} else {
@@ -3987,7 +3993,11 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 	objs_array := g.new_tmp_var()
 	g.write('Array_voidptr $objs_array = new_array_from_c_array($n_channels, $n_channels, sizeof(voidptr), _MOV((voidptr[$n_channels]){')
 	for i in 0 .. n_channels {
-		g.write(if i > 0 { ', &' } else { '&' })
+		if i > 0 {
+			g.write(', &')
+		} else {
+			g.write('&')
+		}
 		if tmp_objs[i] == '' {
 			g.expr(objs[i])
 		} else {
@@ -5574,11 +5584,12 @@ fn (mut g Gen) go_stmt(node ast.GoStmt, joinable bool) string {
 		g.writeln('$arg_tmp_var->ret_ptr = malloc(sizeof($s_ret_typ));')
 	}
 	is_opt := node.call_expr.return_type.has_flag(.optional)
-	gohandle_name := if node.call_expr.return_type == table.void_type {
-		if is_opt { '__v_thread_Option_void' } else { '__v_thread' }
+	mut gohandle_name := ''
+	if node.call_expr.return_type == table.void_type {
+		gohandle_name = if is_opt { '__v_thread_Option_void' } else { '__v_thread' }
 	} else {
 		opt := if is_opt { 'Option_' } else { '' }
-		'__v_thread_$opt${g.table.get_type_symbol(g.unwrap_generic(node.call_expr.return_type)).cname}'
+		gohandle_name = '__v_thread_$opt${g.table.get_type_symbol(g.unwrap_generic(node.call_expr.return_type)).cname}'
 	}
 	if g.pref.os == .windows {
 		simple_handle := if joinable && node.call_expr.return_type != table.void_type {

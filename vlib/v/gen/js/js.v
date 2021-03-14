@@ -690,8 +690,9 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt) {
 			} else {
 				g.write(' $op ')
 				// TODO: Multiple types??
-				should_cast := (g.table.type_kind(stmt.left_types.first()) in shallow_equatables)
-							&& (g.cast_stack.len <= 0 || stmt.left_types.first() != g.cast_stack.last())
+				should_cast := 
+					(g.table.type_kind(stmt.left_types.first()) in js.shallow_equatables)
+					&& (g.cast_stack.len <= 0 || stmt.left_types.first() != g.cast_stack.last())
 
 				if should_cast {
 					g.cast_stack << stmt.left_types.first()
@@ -929,26 +930,28 @@ fn (mut g JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 			if it.kind == .string {
 				g.write('Array.from(')
 				g.expr(it.cond)
-				g.write('.str.split(\'\').entries(), ([$it.key_var, $val]) => [$it.key_var, ')
-				if g.ns.name == 'builtin' { g.write('new ') }
+				g.write(".str.split(\'\').entries(), ([$it.key_var, $val]) => [$it.key_var, ")
+				if g.ns.name == 'builtin' {
+					g.write('new ')
+				}
 				g.write('byte($val)])')
 			} else {
 				g.expr(it.cond)
 				g.write('.entries()')
 			}
-			
 		} else {
 			g.write('for (const $val of ')
 			g.expr(it.cond)
 			if it.kind == .string {
-				g.write('.str.split(\'\')')
+				g.write(".str.split('')")
 			}
 			// cast characters to bytes
 			if val !in ['', '_'] && it.kind == .string {
 				g.write('.map(c => ')
-				if g.ns.name == 'builtin' { g.write('new ') }
+				if g.ns.name == 'builtin' {
+					g.write('new ')
+				}
 				g.write('byte(c))')
-				
 			}
 		}
 		g.writeln(') {')
@@ -1089,7 +1092,11 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 		g.inc_indent()
 		g.write('return `$js_name {')
 		for i, field in node.fields {
-			g.write(if i == 0 { ' ' } else { ', ' })
+			if i == 0 {
+				g.write(' ')
+			} else {
+				g.write(', ')
+			}
 			match g.typ(field.typ).split('.').last() {
 				'string' { g.write('$field.name: "\${this["$field.name"].toString()}"') }
 				else { g.write('$field.name: \${this["$field.name"].toString()} ') }
@@ -1417,13 +1424,13 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		g.write(')')
 	} else if r_sym.kind in [.array, .map, .string] && it.op in [.key_in, .not_in] {
 		g.expr(it.right)
-		g.write(if r_sym.kind == .map {
-			'.has('
+		if r_sym.kind == .map {
+			g.write('.has(')
 		} else if r_sym.kind == .string {
-			'.str.includes('
+			g.write('.str.includes(')
 		} else {
-			'.includes('
-		})
+			g.write('.includes(')
+		}
 		g.expr(it.left)
 		if l_sym.kind == .string {
 			g.write('.str')
@@ -1443,7 +1450,7 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 				needs_cast = g.cast_stack.last() != greater_typ
 			}
 		}
-		
+
 		if needs_cast {
 			if g.ns.name == 'builtin' {
 				g.write('new ')
