@@ -4329,6 +4329,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 	sym := g.table.get_type_symbol(g.fn_decl.return_type)
 	fn_return_is_multi := sym.kind == .multi_return
 	fn_return_is_optional := g.fn_decl.return_type.has_flag(.optional)
+	mut has_semicolon := false
 	if node.exprs.len == 0 {
 		if fn_return_is_optional {
 			styp := g.typ(g.fn_decl.return_type)
@@ -4502,6 +4503,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 				g.returned_var_name = expr.name
 			}
 			g.writeln(';')
+			has_semicolon = true
 			// autofree before `return`
 			// set free_parent_scopes to true, since all variables defined in parent
 			// scopes need to be freed before the return
@@ -4510,13 +4512,16 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			}
 			if tmp != '' {
 				g.write('return $tmp')
+				has_semicolon = false
 			}
 		}
 	} else { // if node.exprs.len == 0 {
 		println('this should never happen')
 		g.write('/*F*/return')
 	}
-	g.writeln(';')
+	if !has_semicolon {
+		g.writeln(';')
+	}
 }
 
 fn (mut g Gen) const_decl(node ast.ConstDecl) {
