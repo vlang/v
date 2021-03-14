@@ -5027,6 +5027,13 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 					}
 					continue
 				}
+				if c.expected_type.has_flag(.generic) {
+					if node.typ == table.void_type {
+						node.is_expr = true
+						node.typ = c.unwrap_generic(c.expected_type)
+					}
+					continue
+				}
 				last_expr.typ = c.expr(last_expr.expr)
 				if !c.check_types(last_expr.typ, node.typ) {
 					if node.typ == table.void_type {
