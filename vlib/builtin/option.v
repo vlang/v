@@ -5,7 +5,7 @@ module builtin
 
 // IError holds information about an error instance
 pub interface IError {
-	msg  string
+	msg string
 	code int
 }
 
@@ -23,7 +23,9 @@ struct None__ {
 	code int
 }
 
-fn (_ None__) str() string { return 'none' }
+fn (_ None__) str() string {
+	return 'none'
+}
 
 // error returns a default error instance containing the error given in `message`.
 // Example: `if ouch { return error('an error occurred') }`
@@ -38,7 +40,7 @@ pub fn error(message string) IError {
 // `if ouch { return error_with_code('an error occurred', 1) }`
 [inline]
 pub fn error_with_code(message string, code int) IError {
-	return &Error {
+	return &Error{
 		msg: message
 		code: code
 	}
