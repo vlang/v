@@ -131,7 +131,7 @@ fn print_backtrace_skipping_top_frames_msvc(skipframes int) bool {
 			return false
 		}
 
-		frames := int(C.CaptureStackBackTrace(skipframes + 1, 100, backtraces, 0))
+		frames := int(C.CaptureStackBackTrace(skipframes + 1, 100, &backtraces[0], 0))
 		if frames < 2 {
 			eprintln('C.CaptureStackBackTrace returned less than 2 frames')
 			return false
