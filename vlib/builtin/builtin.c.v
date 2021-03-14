@@ -230,7 +230,8 @@ pub fn realloc_data(old_data byteptr, old_size int, new_size int) byteptr {
 	$if prealloc {
 		unsafe {
 			new_ptr := malloc(new_size)
-			C.memcpy(new_ptr, old_data, old_size)
+			min_size := if old_size < new_size { old_size } else { new_size }
+			C.memcpy(new_ptr, old_data, min_size)
 			return new_ptr
 		}
 	}
@@ -245,7 +246,8 @@ pub fn realloc_data(old_data byteptr, old_size int, new_size int) byteptr {
 		//    it will point to memory that is now filled with 0x57.
 		unsafe {
 			new_ptr := malloc(new_size)
-			C.memcpy(new_ptr, old_data, old_size)
+			min_size := if old_size < new_size { old_size } else { new_size }
+			C.memcpy(new_ptr, old_data, min_size)
 			C.memset(old_data, 0x57, old_size)
 			C.free(old_data)
 			return new_ptr
@@ -253,7 +255,7 @@ pub fn realloc_data(old_data byteptr, old_size int, new_size int) byteptr {
 	}
 	nptr := unsafe { C.realloc(old_data, new_size) }
 	if nptr == 0 {
-		panic('realloc_data($new_size) failed')
+		panic('realloc_data($old_data, $old_size, $new_size) failed')
 	}
 	return nptr
 }

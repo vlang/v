@@ -87,8 +87,8 @@ jobs:
       - name: Build v
         run: |
           echo $VFLAGS
-          sudo ln -s $PWD/thirdparty/tcc/tcc.exe /usr/local/bin/tcc ## TODO: remove
-          make -j4
+          make
+          ./v -d debug_realloc -o v cmd/v
           ./v -cg -cflags -Werror -o v cmd/v
       - name: Test v->c
         run: |
