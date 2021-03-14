@@ -64,7 +64,7 @@ fn (mut s StreamSocket) connect(a string) ? {
 	mut addr := C.sockaddr_un{}
 	unsafe { C.memset(&addr, 0, sizeof(C.sockaddr_un)) }
 	addr.sun_family = C.AF_UNIX
-	unsafe { C.strncpy(addr.sun_path, a.str, max_sun_path) }
+	unsafe { C.strncpy(&addr.sun_path[0], a.str, max_sun_path) }
 	size := C.SUN_LEN(&addr)
 	sockaddr := unsafe { &C.sockaddr(&addr) }
 	res := C.connect(s.handle, sockaddr, size)
@@ -97,7 +97,7 @@ pub fn listen_stream(sock string) ?&StreamListener {
 	mut addr := C.sockaddr_un{}
 	unsafe { C.memset(&addr, 0, sizeof(C.sockaddr_un)) }
 	addr.sun_family = C.AF_UNIX
-	unsafe { C.strncpy(addr.sun_path, sock.str, max_sun_path) }
+	unsafe { C.strncpy(&addr.sun_path[0], sock.str, max_sun_path) }
 	size := C.SUN_LEN(&addr)
 	sockaddr := unsafe { &C.sockaddr(&addr) }
 	net.socket_error(C.bind(s.handle, sockaddr, size)) ?
