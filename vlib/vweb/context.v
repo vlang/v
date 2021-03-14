@@ -16,17 +16,17 @@ pub:
 	static_files      map[string]string
 	static_mime_types map[string]string
 pub mut:
-	conn              &net.TcpConn
+	conn &net.TcpConn
 	// TODO: make form, query, and files read-only
-	form              map[string]string
-	query             map[string]string
-	files             map[string][]FileData
-	headers           string // response headers
-	done              bool
-	page_gen_start    i64
-	form_error        string
-	chunked_transfer  bool
-	max_chunk_len     int = 20
+	form             map[string]string
+	query            map[string]string
+	files            map[string][]FileData
+	headers          string // response headers
+	done             bool
+	page_gen_start   i64
+	form_error       string
+	chunked_transfer bool
+	max_chunk_len    int = 20
 }
 
 struct FileData {
@@ -55,7 +55,7 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 	}
 	sb.write_string(ctx.headers)
 	sb.write_string('\r\n')
-	sb.write_string(vweb.headers_close)
+	sb.write_string(headers_close)
 	if ctx.chunked_transfer {
 		mut i := 0
 		mut len := res.len
@@ -119,7 +119,7 @@ pub fn (mut ctx Context) server_error(ecode int) Result {
 	if ctx.done {
 		return Result{}
 	}
-	send_string(mut ctx.conn, vweb.http_500) or {}
+	send_string(mut ctx.conn, http_500) or {}
 	return Result{}
 }
 
@@ -129,7 +129,7 @@ pub fn (mut ctx Context) redirect(url string) Result {
 		return Result{}
 	}
 	ctx.done = true
-	send_string(mut ctx.conn, 'HTTP/1.1 302 Found\r\nLocation: $url$ctx.headers\r\n$vweb.headers_close') or {
+	send_string(mut ctx.conn, 'HTTP/1.1 302 Found\r\nLocation: $url$ctx.headers\r\n$headers_close') or {
 		return Result{}
 	}
 	return Result{}
@@ -141,7 +141,7 @@ pub fn (mut ctx Context) not_found() Result {
 		return Result{}
 	}
 	ctx.done = true
-	send_string(mut ctx.conn, vweb.http_404) or {}
+	send_string(mut ctx.conn, http_404) or {}
 	return Result{}
 }
 
@@ -248,4 +248,3 @@ pub fn (ctx &Context) ip() string {
 pub fn (mut ctx Context) error(s string) {
 	ctx.form_error = s
 }
-

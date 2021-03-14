@@ -124,7 +124,7 @@ fn main() {
 	}
 	// webhook server mode
 	if flag_options.serve {
-		mut ws := WebHookServer{}
+		mut ws := WebhookServer{}
 		ws.init_once()
 		vweb.run_app<WebhookServer>(mut ws, port: flag_options.port)
 	} else {
@@ -162,7 +162,7 @@ pub fn (mut ws WebhookServer) index() {
 }
 
 // gen webhook
-pub fn (mut ws WebhookServer) genhook() {
+pub fn (mut ws WebhookServer) genhook(mut c vweb.Context) {
 	// request data
 	// println(ws.vweb.req.data)
 	// TODO: parse request. json or urlencoded
@@ -170,10 +170,10 @@ pub fn (mut ws WebhookServer) genhook() {
 	ws.gen_vc.generate()
 	// error in generate
 	if ws.gen_vc.gen_error {
-		ws.json('{status: "failed"}')
+		c.json('{status: "failed"}')
 		return
 	}
-	ws.json('{status: "ok"}')
+	c.json('{status: "ok"}')
 }
 
 pub fn (ws &WebhookServer) reset() {

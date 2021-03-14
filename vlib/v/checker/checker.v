@@ -6521,10 +6521,10 @@ fn (mut c Checker) verify_all_vweb_routes() {
 						c.file = f.source_file // setup of file path for the warning
 						if nroute_attributes == -1 {
 							c.error('parameter `mut c vweb.Context` expected as the first argument in vweb method `${sym_app.name}.$m.name`',
-							f.pos)
+								f.pos)
 						} else {
 							c.warn('mismatched parameters count between vweb method `${sym_app.name}.$m.name` ($nargs) and route attribute $m.attrs ($nroute_attributes)',
-							f.pos)
+								f.pos)
 						}
 					}
 				}

@@ -12,7 +12,6 @@ pub mut:
 	port int
 }
 
-
 // TODO: these Config methods may be removed
 
 // Handles a directory static
@@ -62,8 +61,8 @@ fn (mut c Config) scan_static_directory(directory_path string, mount_path string
 				ext := os.file_ext(file)
 				// Rudimentary guard against adding files not in mime_types.
 				// Use serve_static directly to add non-standard mime types.
-				if ext in vweb.mime_types {
-					c.serve_static(mount_path + '/' + file, full_path, vweb.mime_types[ext])
+				if ext in mime_types {
+					c.serve_static(mount_path + '/' + file, full_path, mime_types[ext])
 				}
 			}
 		}
