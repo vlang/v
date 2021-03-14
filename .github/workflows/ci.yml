@@ -788,30 +788,30 @@ jobs:
           .\v.exe setup-freetype
           .\.github\workflows\windows-install-sqlite.bat
           ## .\.github\workflows\windows-install-sdl.bat
-  #     - name: v doctor
-  #       run: |
-  #         ./v doctor
-  #     - name: Verify `v test` works
-  #       run: |
-  #         .\v.exe cmd/tools/test_if_v_test_system_works.v
-  #         .\cmd\tools\test_if_v_test_system_works.exe
-  #     - name: Make sure running TCC64 instead of TCC32
-  #       run : |
-  #         .\v.exe test .github\workflows\make_sure_ci_run_with_64bit_compiler_test.v
-  #     - name: Self tests
-  #       run: |
-  #         .\v.exe -silent test-self
-  # #    - name: Test
-  # #      run: |
-  # #        .\v.exe -silent test-all
-  #     - name: Test v->js
-  #       run: ./v -o hi.js examples/hello_v_js.v && node hi.js
-  #     - name: Test v binaries
-  #       run: ./v build-vbinaries
-  #     - name: Build examples
-  #       run: ./v build-examples
-  #     - name: v2 self compilation
-  #       run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
+      - name: v doctor
+        run: |
+          ./v doctor
+      - name: Verify `v test` works
+        run: |
+          .\v.exe cmd/tools/test_if_v_test_system_works.v
+          .\cmd\tools\test_if_v_test_system_works.exe
+      - name: Make sure running TCC64 instead of TCC32
+        run : |
+          .\v.exe test .github\workflows\make_sure_ci_run_with_64bit_compiler_test.v
+      - name: Self tests
+        run: |
+          .\v.exe -silent test-self
+  #    - name: Test
+  #      run: |
+  #        .\v.exe -silent test-all
+      - name: Test v->js
+        run: ./v -o hi.js examples/hello_v_js.v && node hi.js
+      - name: Test v binaries
+        run: ./v build-vbinaries
+      - name: Build examples
+        run: ./v build-examples
+      - name: v2 self compilation
+        run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
 
   ## tcc32
       - name: Build with make.bat -tcc32
