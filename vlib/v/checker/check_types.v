@@ -259,6 +259,9 @@ pub fn (mut c Checker) check_types(got table.Type, expected table.Type) bool {
 			return true
 		}
 	}
+	if expected == table.charptr_type && got == table.char_type.to_ptr() {
+		return true
+	}
 	if !c.check_basic(got, expected) { // TODO: this should go away...
 		return false
 	}
