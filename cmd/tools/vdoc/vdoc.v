@@ -11,9 +11,10 @@ import v.doc
 import v.pref
 import v.vmod
 import json
+import term
 
 const (
-	allowed_formats = ['md', 'markdown', 'json', 'text', 'stdout', 'html', 'htm']
+	allowed_formats = ['md', 'markdown', 'json', 'text', 'stdout', 'html', 'htm', 'color']
 	vexe            = pref.vexe_path()
 	vroot           = os.dir(vexe)
 	tabs            = ['\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t']
@@ -26,6 +27,7 @@ enum OutputType {
 	json
 	plaintext
 	stdout
+	color
 }
 
 struct VDoc {
@@ -47,6 +49,7 @@ mut:
 	is_multi         bool
 	is_vlib          bool
 	is_verbose       bool
+	is_color 		 bool
 	include_readme   bool
 	include_examples bool = true
 	inline_assets    bool
@@ -86,7 +89,12 @@ fn (vd VDoc) gen_json(d doc.Doc) string {
 fn (vd VDoc) gen_plaintext(d doc.Doc) string {
 	cfg := vd.cfg
 	mut pw := strings.new_builder(200)
-	pw.writeln('$d.head.content\n')
+	if cfg.is_color {
+		content_arr := d.head.content.split(' ')
+		pw.writeln('${term.blue(content_arr[0])} ${term.green(content_arr[1])}\n')
+	} else {
+		pw.writeln('$d.head.content\n')
+	}
 	comments := if cfg.include_examples {
 		d.head.merge_comments()
 	} else {
@@ -103,7 +111,11 @@ fn (vd VDoc) write_plaintext_content(contents []doc.DocNode, mut pw strings.Buil
 	cfg := vd.cfg
 	for cn in contents {
 		if cn.content.len > 0 {
-			pw.writeln(cn.content)
+			if cfg.is_color {
+				pw.writeln(color_highlight(cn.content, vd.docs[0].table))
+			} else {
+				pw.writeln(cn.content)
+			}
 			if cn.comments.len > 0 && !cfg.pub_only {
 				comments := if cfg.include_examples {
 					cn.merge_comments()
@@ -385,6 +397,9 @@ fn parse_arguments(args []string) Config {
 				}
 				cfg.output_type = set_output_type_from_str(format)
 				i++
+			}
+			'-color' {
+				cfg.is_color = true 
 			}
 			'-inline-assets' {
 				cfg.inline_assets = true
