@@ -51,7 +51,6 @@ mut:
 	is_multi         bool
 	is_vlib          bool
 	is_verbose       bool
-	is_color         bool = true
 	include_readme   bool
 	include_examples bool = true
 	inline_assets    bool
@@ -113,7 +112,7 @@ fn (vd VDoc) write_plaintext_content(contents []doc.DocNode, mut pw strings.Buil
 	cfg := vd.cfg
 	for cn in contents {
 		if cn.content.len > 0 {
-			if use_colors || cfg.is_color {
+			if use_colors {
 				pw.writeln(color_highlight(cn.content, vd.docs[0].table))
 			} else {
 				pw.writeln(cn.content)
@@ -400,11 +399,8 @@ fn parse_arguments(args []string) Config {
 				cfg.output_type = set_output_type_from_str(format)
 				i++
 			}
-			'-color' {
-				cfg.is_color = true
-			}
-			'-no-color' {
-				cfg.is_color = false
+			'-color', '-no-color' {
+				// Detect the above flags and do nothing here as the work is done in const `use_colors`.
 			}
 			'-inline-assets' {
 				cfg.inline_assets = true
