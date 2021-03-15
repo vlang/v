@@ -9,7 +9,6 @@ import v.token
 import strings
 import v.pref
 
-
 [inline]
 fn slug(title string) string {
 	return title.replace(' ', '-')
@@ -66,6 +65,7 @@ fn set_output_type_from_str(format string) OutputType {
 		'md', 'markdown' { OutputType.markdown }
 		'json' { OutputType.json }
 		'stdout' { OutputType.stdout }
+		'color' { OutputType.color }
 		else { OutputType.plaintext }
 	}
 	return output_type
@@ -145,16 +145,24 @@ fn color_highlight(code string, tb &table.Table) string {
 		lit := if typ in [.unone, .operator, .punctuation] {
 			tok.kind.str()
 		} else if typ == .string {
-			"${term.yellow("'")}${term.magenta(tok.lit)}${term.yellow("'")}"
+			//'${term.yellow("'")}${term.magenta(tok.lit)}${term.yellow("'")}' is not working
+			// due to a vfmt bug.
+			term.yellow("'") + term.magenta(tok.lit) + term.yellow("'")
 		} else if typ == .char {
-			"${term.yellow("`")}${term.magenta(tok.lit)}${term.yellow("`")}"
+			'${term.yellow('`')}${term.magenta(tok.lit)}${term.yellow('`')}'
 		} else if typ in [.keyword, .operator] {
 			term.blue(tok.lit)
-		} else if typ in [.builtin, .symbol] { term.green(tok.lit) }
-		else if typ == .function { term.cyan(tok.lit) }
-		else if typ == .number { term.bright_blue(tok.lit) }
-		else if typ == .name {term.white(tok.lit) }
-		else { tok.lit }
+		} else if typ in [.builtin, .symbol] {
+			term.green(tok.lit)
+		} else if typ == .function {
+			term.cyan(tok.lit)
+		} else if typ == .number {
+			term.bright_blue(tok.lit)
+		} else if typ == .name {
+			term.white(tok.lit)
+		} else {
+			tok.lit
+		}
 		return lit
 	}
 	mut s := scanner.new_scanner(code, .parse_comments, &pref.Preferences{})
@@ -171,7 +179,7 @@ fn color_highlight(code string, tb &table.Table) string {
 						tok_typ = .builtin
 					} else if next_tok.kind in [.lcbr, .rpar, .eof] {
 						tok_typ = .symbol
-					} else if next_tok.kind in [.lpar, .lt, .plus, .minus, .mul, .div, .mod]  {
+					} else if next_tok.kind in [.lpar, .lt, .plus, .minus, .mul, .div, .mod] {
 						tok_typ = .function
 					} else {
 						tok_typ = .name

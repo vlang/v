@@ -49,7 +49,7 @@ mut:
 	is_multi         bool
 	is_vlib          bool
 	is_verbose       bool
-	is_color 		 bool
+	is_color         bool
 	include_readme   bool
 	include_examples bool = true
 	inline_assets    bool
@@ -90,8 +90,12 @@ fn (vd VDoc) gen_plaintext(d doc.Doc) string {
 	cfg := vd.cfg
 	mut pw := strings.new_builder(200)
 	if cfg.is_color {
-		content_arr := d.head.content.split(' ')
-		pw.writeln('${term.blue(content_arr[0])} ${term.green(content_arr[1])}\n')
+		if term.can_show_color_on_stdout() {
+			content_arr := d.head.content.split(' ')
+			pw.writeln('${term.blue(content_arr[0])} ${term.green(content_arr[1])}\n')
+		} else {
+			pw.writeln('$d.head.content\n')
+		}
 	} else {
 		pw.writeln('$d.head.content\n')
 	}
@@ -112,7 +116,11 @@ fn (vd VDoc) write_plaintext_content(contents []doc.DocNode, mut pw strings.Buil
 	for cn in contents {
 		if cn.content.len > 0 {
 			if cfg.is_color {
-				pw.writeln(color_highlight(cn.content, vd.docs[0].table))
+				if term.can_show_color_on_stdout() {
+					pw.writeln(color_highlight(cn.content, vd.docs[0].table))
+				} else {
+					pw.writeln(cn.content)
+				}
 			} else {
 				pw.writeln(cn.content)
 			}
@@ -396,10 +404,13 @@ fn parse_arguments(args []string) Config {
 					exit(1)
 				}
 				cfg.output_type = set_output_type_from_str(format)
+				if format == 'color' {
+					cfg.is_color = true
+				}
 				i++
 			}
 			'-color' {
-				cfg.is_color = true 
+				cfg.is_color = true
 			}
 			'-inline-assets' {
 				cfg.inline_assets = true
