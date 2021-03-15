@@ -18,8 +18,6 @@ const (
 	vexe            = pref.vexe_path()
 	vroot           = os.dir(vexe)
 	tabs            = ['\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t']
-	use_colors      = ('-color' in os.args || term.can_show_color_on_stdout())
-		&& ('-no-color' !in os.args)
 )
 
 enum OutputType {
@@ -29,7 +27,6 @@ enum OutputType {
 	json
 	plaintext
 	stdout
-	color
 }
 
 struct VDoc {
@@ -48,6 +45,7 @@ struct Config {
 mut:
 	pub_only         bool = true
 	show_loc         bool // for plaintext
+	is_color         bool
 	is_multi         bool
 	is_vlib          bool
 	is_verbose       bool
@@ -90,7 +88,7 @@ fn (vd VDoc) gen_json(d doc.Doc) string {
 fn (vd VDoc) gen_plaintext(d doc.Doc) string {
 	cfg := vd.cfg
 	mut pw := strings.new_builder(200)
-	if use_colors {
+	if cfg.is_color {
 		content_arr := d.head.content.split(' ')
 		pw.writeln('${term.blue(content_arr[0])} ${term.green(content_arr[1])}\n')
 	} else {
@@ -112,7 +110,7 @@ fn (vd VDoc) write_plaintext_content(contents []doc.DocNode, mut pw strings.Buil
 	cfg := vd.cfg
 	for cn in contents {
 		if cn.content.len > 0 {
-			if use_colors {
+			if cfg.is_color {
 				pw.writeln(color_highlight(cn.content, vd.docs[0].table))
 			} else {
 				pw.writeln(cn.content)
@@ -382,6 +380,7 @@ fn (vd VDoc) vprintln(str string) {
 
 fn parse_arguments(args []string) Config {
 	mut cfg := Config{}
+	cfg.is_color = term.can_show_color_on_stdout()
 	for i := 0; i < args.len; i++ {
 		arg := args[i]
 		current_args := args[i..]
@@ -399,8 +398,11 @@ fn parse_arguments(args []string) Config {
 				cfg.output_type = set_output_type_from_str(format)
 				i++
 			}
-			'-color', '-no-color' {
-				// Detect the above flags and do nothing here as the work is done in const `use_colors`.
+			'-color' {
+				cfg.is_color = true
+			}
+			'-no-color' {
+				cfg.is_color = false
 			}
 			'-inline-assets' {
 				cfg.inline_assets = true

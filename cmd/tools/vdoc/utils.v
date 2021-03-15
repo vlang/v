@@ -141,24 +141,31 @@ fn color_highlight(code string, tb &table.Table) string {
 	builtin := ['bool', 'string', 'i8', 'i16', 'int', 'i64', 'i128', 'byte', 'u16', 'u32', 'u64',
 		'u128', 'rune', 'f32', 'f64', 'int_literal', 'float_literal', 'byteptr', 'voidptr', 'any']
 	highlight_code := fn (tok token.Token, typ HighlightTokenTyp) string {
-		lit := if typ in [.unone, .operator, .punctuation] {
-			tok.kind.str()
-		} else if typ == .string {
-			//'${term.yellow("'")}${term.magenta(tok.lit)}${term.yellow("'")}' is not working
-			// due to a vfmt bug.
-			term.yellow("'") + term.magenta(tok.lit) + term.yellow("'")
-		} else if typ == .char {
-			'${term.yellow('`')}${term.magenta(tok.lit)}${term.yellow('`')}'
-		} else if typ == .keyword {
-			term.blue(tok.lit)
-		} else if typ in [.builtin, .symbol] {
-			term.green(tok.lit)
-		} else if typ == .function {
-			term.cyan(tok.lit)
-		} else if typ == .number {
-			term.bright_blue(tok.lit)
-		} else {
-			tok.lit
+		lit := match typ {
+			.unone, .operator, .punctuation {
+				tok.kind.str()
+			}
+			.string {
+				term.yellow("'$tok.lit'")
+			}
+			.char {
+				term.yellow('`$tok.lit`')
+			}
+			.keyword {
+				term.blue(tok.lit)
+			}
+			.builtin, .symbol {
+				term.green(tok.lit)
+			}
+			.function {
+				term.cyan(tok.lit)
+			}
+			.number {
+				term.bright_blue(tok.lit)
+			}
+			else {
+				tok.lit
+			}
 		}
 		return lit
 	}
@@ -177,7 +184,7 @@ fn color_highlight(code string, tb &table.Table) string {
 						&& (next_tok.kind != .lpar || prev.kind != .key_fn) {
 						tok_typ = .builtin
 					} else if next_tok.kind in [.lcbr, .rpar, .eof]
-						&& (next_tok.kind != .rpar || prev.kind == .name) {
+						&& (next_tok.kind != .rpar || prev.kind in [.name, .amp]) {
 						tok_typ = .symbol
 					} else if next_tok.kind in [.lpar, .lt] {
 						tok_typ = .function
