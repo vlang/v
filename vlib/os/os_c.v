@@ -163,11 +163,11 @@ pub fn cp(src string, dst string) ? {
 		for {
 			// FIXME: use sizeof, bug: 'os__buf' undeclared
 			// count = C.read(fp_from, buf, sizeof(buf))
-			count = C.read(fp_from, buf, 1024)
+			count = C.read(fp_from, &buf[0], 1024)
 			if count == 0 {
 				break
 			}
-			if C.write(fp_to, buf, count) < 0 {
+			if C.write(fp_to, &buf[0], count) < 0 {
 				return error_with_code('cp: failed to write to $dst', int(-1))
 			}
 		}

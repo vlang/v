@@ -79,16 +79,9 @@ pub fn (mut c Checker) check_basic(got table.Type, expected table.Type) bool {
 			return true
 		}
 	}
-	// e.g. [4096]byte vs byteptr || [4096]char vs charptr
-	// should charptr be allowed as byteptr etc?
-	// TODO: clean this up (why was it removed?)
-	if got_sym.kind == .array_fixed {
-		info := got_sym.info as table.ArrayFixed
-		if !info.elem_type.is_ptr() && (info.elem_type.idx() == expected.idx()
-			|| (info.elem_type.idx() in [table.byte_type_idx, table.char_type_idx]
-			&& expected.idx() in [table.byteptr_type_idx, table.charptr_type_idx])) {
-			return true
-		}
+	if !got_.is_ptr() && got_sym.kind == .array_fixed && (exp_.is_pointer() || exp_.is_ptr()) {
+		// fixed array needs to be a struct, not a pointer
+		return false
 	}
 	if exp_sym.kind in [.voidptr, .any] || got_sym.kind in [.voidptr, .any] {
 		return true
@@ -265,6 +258,9 @@ pub fn (mut c Checker) check_types(got table.Type, expected table.Type) bool {
 		if expected.is_ptr() || expected.is_pointer() {
 			return true
 		}
+	}
+	if expected == table.charptr_type && got == table.char_type.to_ptr() {
+		return true
 	}
 	if !c.check_basic(got, expected) { // TODO: this should go away...
 		return false

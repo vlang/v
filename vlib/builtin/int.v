@@ -283,7 +283,7 @@ fn u64_to_hex(nn u64, len byte) string {
 		buf[i] = x
 		n = n >> 4
 	}
-	return unsafe { tos(memdup(buf, len + 1), len) }
+	return unsafe { tos(memdup(&buf[0], len + 1), len) }
 }
 
 // u64_to_hex_no_leading_zeros converts the number `nn` to hexadecimal `string`.
