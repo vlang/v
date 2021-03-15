@@ -75,6 +75,18 @@ fn test_for_in_map_of_fixed_array() {
 	assert rets[2] == 'cc, [5, 6]'
 }
 
+fn test_for_in_map_of_fixed_array_literal() {
+	mut rets := []string{}
+
+	for k, v in map{'aa': [1, 2]!, 'bb': [3, 4]!, 'cc': [5, 6]!} {
+		println('$k, $v')
+		rets << '$k, $v'
+	}
+	assert rets[0] == 'aa, [1, 2]'
+	assert rets[1] == 'bb, [3, 4]'
+	assert rets[2] == 'cc, [5, 6]'
+}
+
 fn test_for_mut_in_map_of_fixed_array() {
 	mut rets := []string{}
 	mut m := map{'aa': [1, 2]!, 'bb': [3, 4]!, 'cc': [5, 6]!}
