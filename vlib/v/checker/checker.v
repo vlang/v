@@ -1101,7 +1101,8 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 				else {}
 			}
 			if elem_type.has_flag(.shared_f) {
-				c.error('you have to create a handle and `lock` it to modify `shared` $kind element', expr.left.position().extend(expr.pos))
+				c.error('you have to create a handle and `lock` it to modify `shared` $kind element',
+					expr.left.position().extend(expr.pos))
 			}
 			to_lock, pos = c.fail_if_immutable(expr.left)
 		}
@@ -1149,7 +1150,8 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 					}
 					if field_info.typ.has_flag(.shared_f) {
 						type_str := c.table.type_to_str(expr.expr_type)
-						c.error('you have to create a handle and `lock` it to modify `shared` field `$expr.field_name` of struct `$type_str`', expr.pos)
+						c.error('you have to create a handle and `lock` it to modify `shared` field `$expr.field_name` of struct `$type_str`',
+							expr.pos)
 					}
 					to_lock, pos = c.fail_if_immutable(expr.expr)
 					if to_lock != '' {
