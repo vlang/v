@@ -531,7 +531,11 @@ fn (mut v Builder) cc() {
 			ios_sdk := if v.pref.is_ios_simulator { 'iphonesimulator' } else { 'iphoneos' }
 			ios_sdk_path_res := os.execute_or_panic('xcrun --sdk $ios_sdk --show-sdk-path')
 			mut isysroot := ios_sdk_path_res.output.replace('\n', '')
-			arch := if v.pref.is_ios_simulator { '-arch x86_64' } else { '-arch armv7 -arch armv7s -arch arm64' }
+			arch := if v.pref.is_ios_simulator {
+				'-arch x86_64'
+			} else {
+				'-arch armv7 -arch armv7s -arch arm64'
+			}
 			ccompiler = 'xcrun --sdk iphoneos clang -isysroot $isysroot $arch'
 		}
 		v.setup_ccompiler_options(ccompiler)
