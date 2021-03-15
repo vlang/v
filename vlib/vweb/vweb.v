@@ -305,6 +305,9 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 		conn.close() or {}
 	}
 	mut reader := io.new_buffered_reader(reader: io.make_reader(conn))
+	defer {
+		reader.free()
+	}
 	page_gen_start := time.ticks()
 	req := parse_request(mut reader) or {
 		eprintln('error parsing request: $err')
