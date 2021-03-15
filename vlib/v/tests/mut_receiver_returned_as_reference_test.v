@@ -10,13 +10,14 @@ fn (mut p Player) set_name(name string) &Player {
 	return p // because of automatic (de)reference of return values
 }
 
+// NB: `p` is declared as a `mut` parameter, 
+// which now only affects its mutability.
 fn (mut p Player) set_position(x int, y int) &Player {
 	p.x = x
 	p.y = y
-	// NB: `p` is declared as a `mut` parameter,
-	// returning &p here just ignores `&` for now.
-	// TODO: this should be a checker error.
-	// `&p` should be of type `&&Player`
+	// TODO: from the point of view of the V programmer,
+	// `p` has still type &Player.
+	// assert typeof(p).name == 'Player'
 	return &p
 }
 
