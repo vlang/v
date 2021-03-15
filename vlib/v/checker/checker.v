@@ -1086,19 +1086,19 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 		}
 		ast.IndexExpr {
 			left_sym := c.table.get_type_symbol(expr.left_type)
-			elem_type, kind := match left_sym.info {
+			mut elem_type := table.Type(0)
+			mut kind := ''
+			match left_sym.info {
 				table.Array {
-					left_sym.info.elem_type, 'array'
+					elem_type, kind = left_sym.info.elem_type, 'array'
 				}
 				table.ArrayFixed {
-					left_sym.info.elem_type, 'fixed array'
+					elem_type, kind = left_sym.info.elem_type, 'fixed array'
 				}
 				table.Map {
-					left_sym.info.value_type, 'map'
+					elem_type, kind = left_sym.info.value_type, 'map'
 				}
-				else {
-					table.byte_type, '' // byteptr
-				}
+				else {}
 			}
 			if elem_type.has_flag(.shared_f) {
 				c.error('you have to create a handle and `lock` it to modify `shared` $kind element', expr.left.position().extend(expr.pos))
