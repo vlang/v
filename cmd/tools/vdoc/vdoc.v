@@ -18,6 +18,8 @@ const (
 	vexe            = pref.vexe_path()
 	vroot           = os.dir(vexe)
 	tabs            = ['\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t']
+	use_colors      = ('-color' in os.args || term.can_show_color_on_stdout())
+		&& ('-no-color' !in os.args)
 )
 
 enum OutputType {
@@ -89,16 +91,9 @@ fn (vd VDoc) gen_json(d doc.Doc) string {
 fn (vd VDoc) gen_plaintext(d doc.Doc) string {
 	cfg := vd.cfg
 	mut pw := strings.new_builder(200)
-	if !term.can_show_color_on_stdout() {
-		eprintln("terminal doesn't support colors, using normal output format")
-	}
-	if cfg.is_color {
-		if term.can_show_color_on_stdout() {
-			content_arr := d.head.content.split(' ')
-			pw.writeln('${term.blue(content_arr[0])} ${term.green(content_arr[1])}\n')
-		} else {
-			pw.writeln('$d.head.content\n')
-		}
+	if use_colors {
+		content_arr := d.head.content.split(' ')
+		pw.writeln('${term.blue(content_arr[0])} ${term.green(content_arr[1])}\n')
 	} else {
 		pw.writeln('$d.head.content\n')
 	}
@@ -118,12 +113,8 @@ fn (vd VDoc) write_plaintext_content(contents []doc.DocNode, mut pw strings.Buil
 	cfg := vd.cfg
 	for cn in contents {
 		if cn.content.len > 0 {
-			if cfg.is_color {
-				if term.can_show_color_on_stdout() {
-					pw.writeln(color_highlight(cn.content, vd.docs[0].table))
-				} else {
-					pw.writeln(cn.content)
-				}
+			if use_colors || cfg.is_color {
+				pw.writeln(color_highlight(cn.content, vd.docs[0].table))
 			} else {
 				pw.writeln(cn.content)
 			}
@@ -411,6 +402,9 @@ fn parse_arguments(args []string) Config {
 			}
 			'-color' {
 				cfg.is_color = true
+			}
+			'-no-color' {
+				cfg.is_color = false
 			}
 			'-inline-assets' {
 				cfg.inline_assets = true
