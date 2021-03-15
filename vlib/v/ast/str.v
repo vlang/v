@@ -209,6 +209,12 @@ pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
 // string representation of expr
 pub fn (x Expr) str() string {
 	match x {
+		AnonFn {
+			return 'anon_fn'
+		}
+		DumpExpr {
+			return 'dump($x.expr.str())'
+		}
 		ArrayInit {
 			mut fields := []string{}
 			if x.has_len {
@@ -226,6 +232,12 @@ pub fn (x Expr) str() string {
 				return x.exprs.str()
 			}
 		}
+		AsCast {
+			return '$x.expr.str() as Type($x.typ)'
+		}
+		AtExpr {
+			return '$x.val'
+		}
 		CTempVar {
 			return x.orig.str()
 		}
@@ -234,9 +246,6 @@ pub fn (x Expr) str() string {
 		}
 		CastExpr {
 			return '${x.typname}($x.expr.str())'
-		}
-		AtExpr {
-			return '$x.val'
 		}
 		CallExpr {
 			sargs := args2str(x.args)

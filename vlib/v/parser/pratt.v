@@ -31,6 +31,12 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 				p.inside_match = true // reuse the same var for perf instead of inside_sql TODO rename
 				node = p.sql_expr()
 				p.inside_match = false
+			} else if p.tok.lit == 'map' && p.peek_tok.kind == .lcbr && !(p.builtin_mod
+				&& p.file_base == 'map.v') {
+				p.next() // `map`
+				p.next() // `{`
+				node = p.map_init()
+				p.check(.rcbr) // `}`
 			} else {
 				if p.inside_if && p.is_generic_name() {
 					// $if T is string {}
