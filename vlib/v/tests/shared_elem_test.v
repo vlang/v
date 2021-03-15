@@ -78,10 +78,13 @@ fn test_shared_map_in_struct() {
 }
 
 fn test_array_of_shared() {
-	mut a := []shared Xyz{len: 3}
-	a[0] = Xyz{ n: 3 }
-	a[1] = Xyz{ n: 7 }
-	a[2] = Xyz{ n: 13 }
+	mut a := []shared Xyz{cap: 3}
+	a0 := Xyz{ n: 3 }
+	a << a0
+	a1 := Xyz{ n: 7 }
+	a << a1
+	a2 := Xyz{ n: 13 }
+	a << a2
 	shared p := a[0]
 	shared q := a[2]
 	lock q {
