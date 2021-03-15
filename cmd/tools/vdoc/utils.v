@@ -65,7 +65,6 @@ fn set_output_type_from_str(format string) OutputType {
 		'md', 'markdown' { OutputType.markdown }
 		'json' { OutputType.json }
 		'stdout' { OutputType.stdout }
-		'color' { OutputType.color }
 		else { OutputType.plaintext }
 	}
 	return output_type
@@ -150,7 +149,7 @@ fn color_highlight(code string, tb &table.Table) string {
 			term.yellow("'") + term.magenta(tok.lit) + term.yellow("'")
 		} else if typ == .char {
 			'${term.yellow('`')}${term.magenta(tok.lit)}${term.yellow('`')}'
-		} else if typ in [.keyword, .operator] {
+		} else if typ == .keyword {
 			term.blue(tok.lit)
 		} else if typ in [.builtin, .symbol] {
 			term.green(tok.lit)
@@ -166,6 +165,7 @@ fn color_highlight(code string, tb &table.Table) string {
 		return lit
 	}
 	mut s := scanner.new_scanner(code, .parse_comments, &pref.Preferences{})
+	mut prev := token.Token{}
 	mut tok := s.scan()
 	mut next_tok := s.scan()
 	mut buf := strings.new_builder(200)
@@ -175,11 +175,13 @@ fn color_highlight(code string, tb &table.Table) string {
 			mut tok_typ := HighlightTokenTyp.unone
 			match tok.kind {
 				.name {
-					if (tok.lit in builtin || tb.known_type(tok.lit)) && next_tok.kind != .lpar {
+					if (tok.lit in builtin || tb.known_type(tok.lit))
+						&& (next_tok.kind != .lpar || prev.kind != .key_fn) {
 						tok_typ = .builtin
-					} else if next_tok.kind in [.lcbr, .rpar, .eof] {
+					} else if next_tok.kind in [.lcbr, .rpar, .eof]
+						&& (next_tok.kind != .rpar || prev.kind == .name) {
 						tok_typ = .symbol
-					} else if next_tok.kind in [.lpar, .lt, .plus, .minus, .mul, .div, .mod] {
+					} else if next_tok.kind in [.lpar, .lt] {
 						tok_typ = .function
 					} else {
 						tok_typ = .name
@@ -213,6 +215,11 @@ fn color_highlight(code string, tb &table.Table) string {
 				}
 			}
 			buf.write_string(highlight_code(tok, tok_typ))
+			if prev.kind != .eof {
+				prev = tok
+			} else {
+				break
+			}
 			if next_tok.kind != .eof {
 				i = tok.pos + tok.len
 				tok = next_tok

@@ -14,7 +14,7 @@ import json
 import term
 
 const (
-	allowed_formats = ['md', 'markdown', 'json', 'text', 'stdout', 'html', 'htm', 'color']
+	allowed_formats = ['md', 'markdown', 'json', 'text', 'stdout', 'html']
 	vexe            = pref.vexe_path()
 	vroot           = os.dir(vexe)
 	tabs            = ['\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t']
@@ -89,6 +89,9 @@ fn (vd VDoc) gen_json(d doc.Doc) string {
 fn (vd VDoc) gen_plaintext(d doc.Doc) string {
 	cfg := vd.cfg
 	mut pw := strings.new_builder(200)
+	if !term.can_show_color_on_stdout() {
+		eprintln("terminal doesn't support colors, using normal output format")
+	}
 	if cfg.is_color {
 		if term.can_show_color_on_stdout() {
 			content_arr := d.head.content.split(' ')
@@ -404,9 +407,6 @@ fn parse_arguments(args []string) Config {
 					exit(1)
 				}
 				cfg.output_type = set_output_type_from_str(format)
-				if format == 'color' {
-					cfg.is_color = true
-				}
 				i++
 			}
 			'-color' {
