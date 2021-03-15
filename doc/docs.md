@@ -763,10 +763,10 @@ If a right-side index is absent, it is assumed to be the array length. If a
 left-side index is absent, it is assumed to be 0.
 
 ```v
-nums := [1, 2, 3, 4, 5]
-println(nums[1..4]) // [2, 3, 4]
-println(nums[..4]) // [1, 2, 3, 4]
-println(nums[1..]) // [2, 3, 4, 5]
+nums := [0, 10, 20, 30, 40]
+println(nums[1..4]) // [10, 20, 30]
+println(nums[..4]) // [0, 10, 20, 30]
+println(nums[1..]) // [10, 20, 30, 40]
 ```
 
 All array operations may be performed on slices.

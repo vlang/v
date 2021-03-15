@@ -5,6 +5,6 @@ fn test_raw_string() {
 fn test_escape() {
 	assert '\x20' == ' '
 	assert '\u0020' == ' '
-	// assert '\u00c4' == 'Ä'
+	assert '\u00c4' == 'Ä'
 	assert '\r\n'.bytes() == [byte(0x0d), 0x0a]
 }

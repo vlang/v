@@ -690,7 +690,10 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt) {
 			} else {
 				g.write(' $op ')
 				// TODO: Multiple types??
-				should_cast := g.table.type_kind(stmt.left_types.first()) in js.shallow_equatables
+				should_cast := 
+					(g.table.type_kind(stmt.left_types.first()) in js.shallow_equatables)
+					&& (g.cast_stack.len <= 0 || stmt.left_types.first() != g.cast_stack.last())
+
 				if should_cast {
 					g.cast_stack << stmt.left_types.first()
 					if g.file.mod.name == 'builtin' {
@@ -920,36 +923,38 @@ fn (mut g JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 		g.writeln('}')
 	} else if it.kind in [.array, .string] || it.cond_type.has_flag(.variadic) {
 		// `for num in nums {`
-		i := if it.key_var in ['', '_'] { g.new_tmp_var() } else { it.key_var }
-		val := if it.val_var in ['', '_'] { '' } else { it.val_var }
+		val := if it.val_var in ['', '_'] { '_' } else { it.val_var }
 		// styp := g.typ(it.val_type)
-		g.inside_loop = true
-		g.write('for (let $i = 0; $i < ')
-		g.expr(it.cond)
-		g.writeln('.len; ++$i) {')
-		g.inside_loop = false
-		if val !in ['', '_'] {
-			g.write('\tconst $val = ')
+		if it.key_var.len > 0 {
+			g.write('for (const [$it.key_var, $val] of ')
 			if it.kind == .string {
-				if g.file.mod.name == 'builtin' {
+				g.write('Array.from(')
+				g.expr(it.cond)
+				g.write(".str.split(\'\').entries(), ([$it.key_var, $val]) => [$it.key_var, ")
+				if g.ns.name == 'builtin' {
 					g.write('new ')
 				}
-				g.write('byte(')
-			}
-			g.expr(it.cond)
-			g.write(if it.kind == .array {
-				'.arr'
-			} else if it.kind == .string {
-				'.str'
+				g.write('byte($val)])')
 			} else {
-				'.val'
-			})
-			g.write('[$i]')
-			if it.kind == .string {
-				g.write(')')
+				g.expr(it.cond)
+				g.write('.entries()')
 			}
-			g.writeln(';')
+		} else {
+			g.write('for (const $val of ')
+			g.expr(it.cond)
+			if it.kind == .string {
+				g.write(".str.split('')")
+			}
+			// cast characters to bytes
+			if val !in ['', '_'] && it.kind == .string {
+				g.write('.map(c => ')
+				if g.ns.name == 'builtin' {
+					g.write('new ')
+				}
+				g.write('byte(c))')
+			}
 		}
+		g.writeln(') {')
 		g.stmts(it.stmts)
 		g.writeln('}')
 	} else if it.kind == .map {
@@ -1087,7 +1092,11 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 		g.inc_indent()
 		g.write('return `$js_name {')
 		for i, field in node.fields {
-			g.write(if i == 0 { ' ' } else { ', ' })
+			if i == 0 {
+				g.write(' ')
+			} else {
+				g.write(', ')
+			}
 			match g.typ(field.typ).split('.').last() {
 				'string' { g.write('$field.name: "\${this["$field.name"].toString()}"') }
 				else { g.write('$field.name: \${this["$field.name"].toString()} ') }
@@ -1393,7 +1402,9 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		if l_sym.kind in js.shallow_equatables && r_sym.kind in js.shallow_equatables {
 			g.expr(it.left)
 			g.write('.eq(')
+			g.cast_stack << int(l_sym.kind)
 			g.expr(it.right)
+			g.cast_stack.delete_last()
 			g.write(')')
 		} else {
 			g.write('vEq(')
@@ -1413,13 +1424,13 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		g.write(')')
 	} else if r_sym.kind in [.array, .map, .string] && it.op in [.key_in, .not_in] {
 		g.expr(it.right)
-		g.write(if r_sym.kind == .map {
-			'.has('
+		if r_sym.kind == .map {
+			g.write('.has(')
 		} else if r_sym.kind == .string {
-			'.str.includes('
+			g.write('.str.includes(')
 		} else {
-			'.includes('
-		})
+			g.write('.includes(')
+		}
 		g.expr(it.left)
 		if l_sym.kind == .string {
 			g.write('.str')
@@ -1431,10 +1442,16 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		g.write(g.typ(it.right_type))
 	} else {
 		is_arithmetic := it.op in [token.Kind.plus, .minus, .mul, .div, .mod]
-		needs_cast := it.left_type != it.right_type
+		mut needs_cast := is_arithmetic && it.left_type != it.right_type
+		mut greater_typ := 0
+		if needs_cast {
+			greater_typ = g.greater_typ(it.left_type, it.right_type)
+			if g.cast_stack.len > 0 {
+				needs_cast = g.cast_stack.last() != greater_typ
+			}
+		}
 
-		if is_arithmetic && needs_cast {
-			greater_typ := g.greater_typ(it.left_type, it.right_type)
+		if needs_cast {
 			if g.ns.name == 'builtin' {
 				g.write('new ')
 			}
@@ -1445,7 +1462,7 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		g.write(' $it.op ')
 		g.expr(it.right)
 
-		if is_arithmetic && needs_cast {
+		if needs_cast {
 			g.cast_stack.delete_last()
 			g.write(')')
 		}

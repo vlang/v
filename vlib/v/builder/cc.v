@@ -259,6 +259,11 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		// }
 	}
 	if v.pref.is_prod {
+		// don't warn for vlib tests
+		if ccoptions.is_cc_tcc && !(v.parsed_files.len > 0
+			&& v.parsed_files.last().path.contains('vlib')) {
+			eprintln('Note: tcc is not recommended for -prod builds')
+		}
 		ccoptions.args << optimization_options
 	}
 	if v.pref.is_prod && !ccoptions.debug_mode {

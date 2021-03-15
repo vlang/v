@@ -33,6 +33,9 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string, m2a map[string]s
 			styp = styp[1..] // remove &
 		}
 		styp = util.no_cur_mod(styp, cur_mod)
+		if node.params[0].is_auto_rec {
+			styp = styp.trim('&')
+		}
 		receiver = '($m$node.receiver.name $styp) '
 		/*
 		sym := t.get_type_symbol(node.receiver.typ)
@@ -408,9 +411,7 @@ pub fn (node Stmt) str() string {
 			return node.str()
 		}
 		ConstDecl {
-			fields := node.fields.map(fn (f ConstField) string {
-				return '${f.name.trim_prefix(f.mod + '.')} = $f.expr'
-			})
+			fields := node.fields.map(field_to_string)
 			return 'const (${fields.join(' ')})'
 		}
 		ExprStmt {
@@ -439,6 +440,10 @@ pub fn (node Stmt) str() string {
 			return '[unhandled stmt str type: $node.type_name() ]'
 		}
 	}
+}
+
+fn field_to_string(f ConstField) string {
+	return '${f.name.trim_prefix(f.mod + '.')} = $f.expr'
 }
 
 pub fn (e CompForKind) str() string {

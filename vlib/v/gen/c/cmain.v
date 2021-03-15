@@ -141,7 +141,7 @@ pub fn (mut g Gen) gen_failing_error_propagation_for_test_fn(or_block ast.OrExpr
 	// `or { cb_propagate_test_error(@LINE, @FILE, @MOD, @FN, err.msg) }`
 	// and the test is considered failed
 	paline, pafile, pamod, pafn := g.panic_debug_info(or_block.pos)
-	g.writeln('\tmain__cb_propagate_test_error($paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"), ${cvar_name}.err.msg );')
+	g.writeln('\tmain__cb_propagate_test_error($paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"), *(${cvar_name}.err.msg) );')
 	g.writeln('\tg_test_fails++;')
 	g.writeln('\tlongjmp(g_jump_buffer, 1);')
 }

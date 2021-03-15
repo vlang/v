@@ -41,7 +41,7 @@ fn (mut g Gen) gen_json_for_type(typ table.Type) {
 	dec_fn_name := js_dec_name(styp)
 	// Make sure that this optional type actually exists
 	g.register_optional(utyp)
-	dec_fn_dec := 'Option2_$styp ${dec_fn_name}(cJSON* root)'
+	dec_fn_dec := 'Option_$styp ${dec_fn_name}(cJSON* root)'
 	dec.writeln('
 $dec_fn_dec {
 	$styp res;
@@ -50,8 +50,7 @@ $dec_fn_dec {
 		if (error_ptr != NULL)	{
 			// fprintf(stderr, "Error in decode() for $styp error_ptr=: %s\\n", error_ptr);
 			// printf("\\nbad js=%%s\\n", js.str);
-			Option2 err = error2(tos2(error_ptr));
-			return *(Option2_$styp *)&err;
+			return (Option_$styp){.state = 2,.err = v_error(tos2(error_ptr))};
 		}
 	}
 ')
@@ -102,8 +101,8 @@ $enc_fn_dec {
 	}
 	// cJSON_delete
 	// p.cgen.fns << '$dec return opt_ok(res); \n}'
-	dec.writeln('\tOption2_$styp ret;')
-	dec.writeln('\topt_ok(&res, (Option2*)&ret, sizeof(res));')
+	dec.writeln('\tOption_$styp ret;')
+	dec.writeln('\topt_ok(&res, (Option*)&ret, sizeof(res));')
 	dec.writeln('\treturn ret;\n}')
 	enc.writeln('\treturn o;\n}')
 	g.definitions.writeln(dec.str())
@@ -152,18 +151,18 @@ fn (mut g Gen) gen_struct_enc_dec(type_info table.TypeInfo, styp string, mut enc
 				} else {
 					g.gen_json_for_type(field.typ)
 					tmp := g.new_tmp_var()
-					dec.writeln('\tOption2_$field_type $tmp = $dec_name (js_get(root,"$name"));')
+					dec.writeln('\tOption_$field_type $tmp = $dec_name (js_get(root,"$name"));')
 					dec.writeln('\tif(${tmp}.state != 0) {')
-					dec.writeln('\t\treturn *(Option2_$styp*) &$tmp;')
+					dec.writeln('\t\treturn *(Option_$styp*) &$tmp;')
 					dec.writeln('\t}')
 					dec.writeln('\tres.${c_name(field.name)} = *($field_type*) ${tmp}.data;')
 				}
 			} else {
 				// dec.writeln(' $dec_name (js_get(root, "$name"), & (res . $field.name));')
 				tmp := g.new_tmp_var()
-				dec.writeln('\tOption2_$field_type $tmp = $dec_name (js_get(root,"$name"));')
+				dec.writeln('\tOption_$field_type $tmp = $dec_name (js_get(root,"$name"));')
 				dec.writeln('\tif(${tmp}.state != 0) {')
-				dec.writeln('\t\treturn *(Option2_$styp*) &$tmp;')
+				dec.writeln('\t\treturn *(Option_$styp*) &$tmp;')
 				dec.writeln('\t}')
 				dec.writeln('\tres.${c_name(field.name)} = *($field_type*) ${tmp}.data;')
 			}
@@ -215,18 +214,17 @@ fn (mut g Gen) decode_array(value_type table.Type) string {
 		s = '$styp val = ${fn_name}(jsval); '
 	} else {
 		s = '
-		Option2_$styp val2 = $fn_name (jsval);
+		Option_$styp val2 = $fn_name (jsval);
 		if(val2.state != 0) {
 			array_free(&res);
-			return *(Option2_Array_$styp*)&val2;
+			return *(Option_Array_$styp*)&val2;
 		}
 		$styp val = *($styp*)val2.data;
 '
 	}
 	return '
 	if(root && !cJSON_IsArray(root) && !cJSON_IsNull(root)) {
-		Option2 err = error2( string_add(_SLIT("Json element is not an array: "), tos2(cJSON_PrintUnformatted(root))) );
-		return *(Option2_Array_$styp *)&err;
+		return (Option_Array_$styp){.state = 2, .err = v_error(string_add(_SLIT("Json element is not an array: "), tos2(cJSON_PrintUnformatted(root))))};
 	}
 	res = __new_array(0, 0, sizeof($styp));
 	const cJSON *jsval = NULL;
@@ -260,18 +258,17 @@ fn (mut g Gen) decode_map(key_type table.Type, value_type table.Type) string {
 		s = '$styp_v val = $fn_name_v (js_get(root, jsval->string));'
 	} else {
 		s = '
-		Option2_$styp_v val2 = $fn_name_v (js_get(root, jsval->string));
+		Option_$styp_v val2 = $fn_name_v (js_get(root, jsval->string));
 		if(val2.state != 0) {
 			map_free(&res);
-			return *(Option2_Map_${styp}_$styp_v*)&val2;
+			return *(Option_Map_${styp}_$styp_v*)&val2;
 		}
 		$styp_v val = *($styp_v*)val2.data;
 '
 	}
 	return '
 	if(!cJSON_IsObject(root) && !cJSON_IsNull(root)) {
-		Option2 err = error2( string_add(_SLIT("Json element is not an object: "), tos2(cJSON_PrintUnformatted(root))) );
-		return *(Option2_Map_${styp}_$styp_v *)&err;
+		return (Option_Map_${styp}_$styp_v){ .state = 2, .err = v_error( string_add(_SLIT("Json element is not an object: "), tos2(cJSON_PrintUnformatted(root))) )};
 	}
 	res = new_map_2(sizeof($styp), sizeof($styp_v), $hash_fn, $key_eq_fn, $clone_fn, $free_fn);
 	cJSON *jsval = NULL;

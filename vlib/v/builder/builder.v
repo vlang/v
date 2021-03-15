@@ -285,7 +285,9 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) ?string {
 
 fn (b &Builder) show_total_warns_and_errors_stats() {
 	if b.pref.is_stats {
-		println('checker summary: ${util.bold(b.checker.nr_errors.str())} V errors, ${util.bold(b.checker.nr_warnings.str())} V warnings')
+		estring := util.bold(b.checker.nr_errors.str())
+		wstring := util.bold(b.checker.nr_warnings.str())
+		println('checker summary: $estring V errors, $wstring V warnings')
 	}
 }
 

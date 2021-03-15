@@ -279,7 +279,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 				name: param.name
 				typ: param.typ
 				is_mut: param.is_mut
-				is_auto_deref: param.is_mut
+				is_auto_deref: param.is_mut || param.is_auto_rec
 				pos: param.pos
 				is_used: true
 				is_arg: true
@@ -478,10 +478,22 @@ fn (mut p Parser) fn_receiver(mut params []table.Param, mut rec ReceiverParsingI
 	if is_atomic {
 		rec.typ = rec.typ.set_flag(.atomic_f)
 	}
+	// optimize method `automatic use fn (a &big_foo) instead of fn (a big_foo)`
+	type_sym := p.table.get_type_symbol(rec.typ)
+	mut is_auto_rec := false
+	if type_sym.kind == .struct_ {
+		info := type_sym.info as table.Struct
+		if !rec.is_mut && !rec.typ.is_ptr() && info.fields.len > 8 {
+			rec.typ = rec.typ.to_ptr()
+			is_auto_rec = true
+		}
+	}
+
 	params << table.Param{
 		pos: rec_start_pos
 		name: rec.name
 		is_mut: rec.is_mut
+		is_auto_rec: is_auto_rec
 		typ: rec.typ
 	}
 	p.check(.rpar)
