@@ -483,7 +483,7 @@ pub fn (mut f Fmt) alias_type_decl(node ast.AliasTypeDecl) {
 	if node.is_pub {
 		f.write('pub ')
 	}
-	ptype := f.table.type_to_str(node.parent_type)
+	ptype := f.table.type_to_str_using_aliases(node.parent_type, f.mod2alias)
 	f.write('type $node.name = $ptype')
 
 	f.comments(node.comments, has_nl: false)
@@ -503,7 +503,7 @@ pub fn (mut f Fmt) fn_type_decl(node ast.FnTypeDecl) {
 			f.write(arg.typ.share().str() + ' ')
 		}
 		f.write(arg.name)
-		mut s := f.no_cur_mod(f.table.type_to_str(arg.typ))
+		mut s := f.no_cur_mod(f.table.type_to_str_using_aliases(arg.typ, f.mod2alias))
 		if arg.is_mut {
 			if s.starts_with('&') {
 				s = s[1..]
@@ -527,7 +527,8 @@ pub fn (mut f Fmt) fn_type_decl(node ast.FnTypeDecl) {
 	}
 	f.write(')')
 	if fn_info.return_type.idx() != table.void_type_idx {
-		ret_str := f.no_cur_mod(f.table.type_to_str(fn_info.return_type))
+		ret_str := f.no_cur_mod(f.table.type_to_str_using_aliases(fn_info.return_type,
+			f.mod2alias))
 		f.write(' $ret_str')
 	} else if fn_info.return_type.has_flag(.optional) {
 		f.write(' ?')
@@ -543,7 +544,7 @@ pub fn (mut f Fmt) sum_type_decl(node ast.SumTypeDecl) {
 	f.write('type $node.name = ')
 	mut sum_type_names := []string{}
 	for t in node.variants {
-		sum_type_names << f.table.type_to_str(t.typ)
+		sum_type_names << f.table.type_to_str_using_aliases(t.typ, f.mod2alias)
 	}
 	sum_type_names.sort()
 	for i, name in sum_type_names {
@@ -574,7 +575,7 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 			f.writeln('mut:')
 		}
 		// TODO: alignment, comments, etc.
-		mut ft := f.no_cur_mod(f.table.type_to_str(field.typ))
+		mut ft := f.no_cur_mod(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
 		if !ft.contains('C.') && !ft.contains('JS.') && !ft.contains('fn (') {
 			ft = f.short_module(ft)
 		}
@@ -1168,7 +1169,7 @@ pub fn (mut f Fmt) size_of(node ast.SizeOf) {
 				f.write(f.short_module(sym.name))
 			}
 		} else {
-			f.write(f.table.type_to_str(node.typ))
+			f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
 		}
 	} else {
 		f.expr(node.expr)
@@ -1720,7 +1721,7 @@ pub fn (mut f Fmt) chan_init(mut it ast.ChanInit) {
 	if is_mut {
 		f.write('mut ')
 	}
-	f.write(f.table.type_to_str(el_typ))
+	f.write(f.table.type_to_str_using_aliases(el_typ, f.mod2alias))
 	f.write('{')
 	if it.has_cap {
 		f.write('cap: ')
@@ -1869,7 +1870,7 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 			f.write('!')
 			return
 		}
-		f.write(f.table.type_to_str(node.elem_type))
+		f.write(f.table.type_to_str_using_aliases(node.elem_type, f.mod2alias))
 		if node.has_default {
 			f.write('{init: ')
 			f.expr(node.default_expr)
@@ -1884,7 +1885,7 @@ pub fn (mut f Fmt) map_init(it ast.MapInit) {
 	if it.keys.len == 0 {
 		if it.typ > table.void_type {
 			f.mark_types_import_as_used(it.typ)
-			f.write(f.table.type_to_str(it.typ))
+			f.write(f.table.type_to_str_using_aliases(it.typ, f.mod2alias))
 		} else {
 			// m = map{}
 			f.write('map')
@@ -1989,7 +1990,7 @@ fn (mut f Fmt) global_decl(it ast.GlobalDecl) {
 		f.write(strings.repeat(` `, max - field.name.len))
 		if field.has_expr {
 			f.write('= ')
-			f.write(f.table.type_to_str(field.typ))
+			f.write(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
 			f.write('(')
 			f.expr(field.expr)
 			f.write(')')
@@ -1997,7 +1998,7 @@ fn (mut f Fmt) global_decl(it ast.GlobalDecl) {
 			if !single && has_assign {
 				f.write('  ')
 			}
-			f.write('${f.table.type_to_str(field.typ)} ')
+			f.write('${f.table.type_to_str_using_aliases(field.typ, f.mod2alias)} ')
 		}
 		if !single {
 			f.writeln('')
@@ -2060,7 +2061,7 @@ pub fn (mut f Fmt) block(node ast.Block) {
 }
 
 pub fn (mut f Fmt) comp_for(node ast.CompFor) {
-	typ := f.no_cur_mod(f.table.type_to_str(node.typ))
+	typ := f.no_cur_mod(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
 	f.write('\$for $node.val_var in ${typ}.$node.kind.str() {')
 	if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
 		f.writeln('')
