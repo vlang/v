@@ -4498,9 +4498,8 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		}
 		if expr0.is_auto_deref_var() {
 			if g.fn_decl.return_type.is_ptr() {
-				g.write('&(*')
-				g.expr(expr0)
-				g.write(')')
+				var_str := g.expr_string(expr0)
+				g.write(var_str.trim('&'))
 			} else {
 				g.write('*')
 				g.expr(expr0)
