@@ -4101,7 +4101,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) table.Type {
 		c2.check(node.vweb_tmpl)
 		mut i := 0 // tmp counter var for skipping first three tmpl vars
 		for k, _ in c2.file.scope.children[0].objects {
-			if i < 4 {
+			if i < 2 {
 				// Skip first three because they are tmpl vars see vlib/vweb/tmpl/tmpl.v
 				i++
 				continue
