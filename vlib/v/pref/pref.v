@@ -144,6 +144,8 @@ pub mut:
 	build_options       []string // list of options, that should be passed down to `build-module`, if needed for -usecache
 	cache_manager       vcache.CacheManager
 	is_help             bool // -h, -help or --help was passed
+	// checker settings:
+	checker_match_exhaustive_cutoff_limit int = 10
 }
 
 pub fn parse_args(known_external_commands []string, args []string) (&Preferences, string) {
@@ -368,6 +370,11 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			'-cc' {
 				res.ccompiler = cmdline.option(current_args, '-cc', 'cc')
 				res.build_options << '$arg "$res.ccompiler"'
+				i++
+			}
+			'-checker-match-exhaustive-cutoff-limit' {
+				res.checker_match_exhaustive_cutoff_limit = cmdline.option(current_args,
+					arg, '10').int()
 				i++
 			}
 			'-o' {

@@ -13,12 +13,9 @@ import v.util
 import v.errors
 import v.pkgconfig
 
-const (
-	max_nr_errors                 = 300
-	match_exhaustive_cutoff_limit = 10
-	int_min                       = int(0x80000000)
-	int_max                       = 0x7FFFFFFF
-)
+const int_min = int(0x80000000)
+
+const int_max = int(0x7FFFFFFF)
 
 const (
 	valid_comp_if_os        = ['windows', 'ios', 'macos', 'mach', 'darwin', 'hpux', 'gnu', 'qnx',
@@ -78,6 +75,7 @@ mut:
 	fn_scope                         &ast.Scope = voidptr(0)
 	used_fns                         map[string]bool // used_fns['println'] == true
 	main_fn_decl_node                ast.FnDecl
+	match_exhaustive_cutoff_limit    int = 10
 	// TODO: these are here temporarily and used for deprecations; remove soon
 	using_new_err_struct bool
 	inside_selector_expr bool
@@ -94,6 +92,7 @@ pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
 		pref: pref
 		cur_fn: 0
 		timers: util.new_timers(timers_should_print)
+		match_exhaustive_cutoff_limit: pref.checker_match_exhaustive_cutoff_limit
 	}
 }
 
@@ -4707,11 +4706,11 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym table.TypeS
 	mut err_details := 'match must be exhaustive'
 	if unhandled.len > 0 {
 		err_details += ' (add match branches for: '
-		if unhandled.len < checker.match_exhaustive_cutoff_limit {
+		if unhandled.len < c.match_exhaustive_cutoff_limit {
 			err_details += unhandled.join(', ')
 		} else {
-			remaining := unhandled.len - checker.match_exhaustive_cutoff_limit
-			err_details += unhandled[0..checker.match_exhaustive_cutoff_limit].join(', ')
+			remaining := unhandled.len - c.match_exhaustive_cutoff_limit
+			err_details += unhandled[0..c.match_exhaustive_cutoff_limit].join(', ')
 			err_details += ', and $remaining others ...'
 		}
 		err_details += ' or `else {}` at the end)'
