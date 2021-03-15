@@ -604,9 +604,17 @@ fn (s string) substr2(start int, _end int, end_max bool) string {
 // Example: assert 'ABCD'.substr(1,3) == 'BC'
 pub fn (s string) substr(start int, end int) string {
 	$if !no_bounds_checking ? {
-		if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
-			panic('substr($start, $end) out of bounds (len=$s.len)')
+		/*
+		$if debug {
+			if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
+				println('substr($start, $end) out of bounds (len=$s.len)')
+				println('s="$s"')
+				print_backtrace()
+				return ''
+			}
 		}
+		*/
+		panic('substr($start, $end) out of bounds (len=$s.len)')
 	}
 	len := end - start
 	if len == s.len {
