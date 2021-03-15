@@ -86,43 +86,33 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 	if b.pref.only_check_syntax {
 		return
 	}
-	if b.pref.os == .ios && b.pref.is_ios_simulator == false {
-		panic('Running iOS apps on physical devices is not yet supported. Please run in the simulator using the -simulator flag.')
+	if b.pref.os == .ios {
+		panic('Running iOS apps is not supported yet.')
 	}
 	if b.pref.is_verbose {
 		println('============ running $b.pref.out_name ============')
 	}
-	if b.pref.os == .ios {
-		device := '"iPhone SE (2nd generation)"'
-		os.execute_or_panic('xcrun simctl boot $device')
-		bundle_name := b.pref.out_name.split('/').last()
-		display_name := if b.pref.display_name != '' { b.pref.display_name } else { bundle_name }
-		os.execute_or_panic('xcrun simctl install $device ${display_name}.app')
-		bundle_id := if b.pref.bundle_id != '' { b.pref.bundle_id } else { 'app.vlang.$bundle_name' }
-		os.execute_or_panic('xcrun simctl launch $device $bundle_id')
-	} else {
-		exefile := os.real_path(b.pref.out_name)
-		mut cmd := '"$exefile"'
-		if b.pref.backend == .js {
-			jsfile := os.real_path('${b.pref.out_name}.js')
-			cmd = 'node "$jsfile"'
+	exefile := os.real_path(b.pref.out_name)
+	mut cmd := '"$exefile"'
+	if b.pref.backend == .js {
+		jsfile := os.real_path('${b.pref.out_name}.js')
+		cmd = 'node "$jsfile"'
+	}
+	for arg in b.pref.run_args {
+		// Determine if there are spaces in the parameters
+		if arg.index_byte(` `) > 0 {
+			cmd += ' "' + arg + '"'
+		} else {
+			cmd += ' ' + arg
 		}
-		for arg in b.pref.run_args {
-			// Determine if there are spaces in the parameters
-			if arg.index_byte(` `) > 0 {
-				cmd += ' "' + arg + '"'
-			} else {
-				cmd += ' ' + arg
-			}
-		}
-		if b.pref.is_verbose {
-			println('command to run executable: $cmd')
-		}
-		if b.pref.is_test || b.pref.is_run {
-			ret := os.system(cmd)
-			b.cleanup_run_executable_after_exit(exefile)
-			exit(ret)
-		}
+	}
+	if b.pref.is_verbose {
+		println('command to run executable: $cmd')
+	}
+	if b.pref.is_test || b.pref.is_run {
+		ret := os.system(cmd)
+		b.cleanup_run_executable_after_exit(exefile)
+		exit(ret)
 	}
 	exit(0)
 }

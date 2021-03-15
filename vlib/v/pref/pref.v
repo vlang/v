@@ -115,8 +115,6 @@ pub mut:
 	vroot          string
 	out_name_c     string // full os.real_path to the generated .tmp.c file; set by builder.
 	out_name       string
-	display_name   string
-	bundle_id      string
 	path           string // Path to file/folder to compile
 	// -d vfmt and -d another=0 for `$if vfmt { will execute }` and `$if another ? { will NOT get here }`
 	compile_defines     []string    // just ['vfmt']
@@ -408,14 +406,6 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 					exit(1)
 				}
 				res.custom_prelude = prelude
-				i++
-			}
-			'-name' {
-				res.display_name = cmdline.option(current_args, '-name', '')
-				i++
-			}
-			'-bundle' {
-				res.bundle_id = cmdline.option(current_args, '-bundle', '')
 				i++
 			}
 			else {

@@ -12,7 +12,7 @@ pub fn (mut g Gen) gen_c_main() {
 	}
 	g.out.writeln('')
 	main_fn_start_pos := g.out.len
-	if g.pref.os == .android && g.pref.is_apk {
+	if (g.pref.os == .android && g.pref.is_apk) || g.pref.os == .ios {
 		g.gen_c_android_sokol_main()
 	} else {
 		g.gen_c_main_header()

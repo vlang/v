@@ -432,12 +432,7 @@ fn (mut v Builder) setup_output_name() {
 	if os.is_dir(v.pref.out_name) {
 		verror("'$v.pref.out_name' is a directory")
 	}
-	if v.pref.os == .ios {
-		bundle_name := v.pref.out_name.split('/').last()
-		v.ccoptions.o_args << '-o "${v.pref.out_name}.app/$bundle_name"'
-	} else {
-		v.ccoptions.o_args << '-o "$v.pref.out_name"'
-	}
+	v.ccoptions.o_args << '-o "$v.pref.out_name"'
 }
 
 fn (mut v Builder) vjs_cc() bool {
@@ -536,7 +531,12 @@ fn (mut v Builder) cc() {
 			ios_sdk := if v.pref.is_ios_simulator { 'iphonesimulator' } else { 'iphoneos' }
 			ios_sdk_path_res := os.execute_or_panic('xcrun --sdk $ios_sdk --show-sdk-path')
 			mut isysroot := ios_sdk_path_res.output.replace('\n', '')
-			ccompiler = 'xcrun --sdk iphoneos clang -isysroot $isysroot'
+			arch := if v.pref.is_ios_simulator {
+				'-arch x86_64'
+			} else {
+				'-arch armv7 -arch armv7s -arch arm64'
+			}
+			ccompiler = 'xcrun --sdk iphoneos clang -isysroot $isysroot $arch'
 		}
 		v.setup_ccompiler_options(ccompiler)
 		v.build_thirdparty_obj_files()
