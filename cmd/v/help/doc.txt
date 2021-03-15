@@ -4,6 +4,7 @@ Usage:
 Examples:
   v doc os
   v doc os File
+  v doc -no-color os
   v doc -o math.html math
   v doc -m -f html vlib/
 
@@ -20,6 +21,8 @@ Options:
   -o              Specifies the output file/folder path where to store the generated docs.
                   Set it to "stdout" to print the output instead of saving the contents
                   to a file.
+  -color          Force stdout colorize output.
+  -no-color       Force plain text output, without ANSI colors.
   -readme         Include README.md to docs if present.
   -v              Enables verbose logging. For debugging purposes.
   -no-timestamp   Omits the timestamp in the output file.
