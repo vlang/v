@@ -1084,6 +1084,25 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 			}
 		}
 		ast.IndexExpr {
+			left_sym := c.table.get_type_symbol(expr.left_type)
+			mut elem_type := table.Type(0)
+			mut kind := ''
+			match left_sym.info {
+				table.Array {
+					elem_type, kind = left_sym.info.elem_type, 'array'
+				}
+				table.ArrayFixed {
+					elem_type, kind = left_sym.info.elem_type, 'fixed array'
+				}
+				table.Map {
+					elem_type, kind = left_sym.info.value_type, 'map'
+				}
+				else {}
+			}
+			if elem_type.has_flag(.shared_f) {
+				c.error('you have to create a handle and `lock` it to modify `shared` $kind element',
+					expr.left.position().extend(expr.pos))
+			}
 			to_lock, pos = c.fail_if_immutable(expr.left)
 		}
 		ast.ParExpr {
@@ -1126,6 +1145,11 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 					if !field_info.is_mut && !c.pref.translated {
 						type_str := c.table.type_to_str(expr.expr_type)
 						c.error('field `$expr.field_name` of struct `$type_str` is immutable',
+							expr.pos)
+					}
+					if field_info.typ.has_flag(.shared_f) {
+						type_str := c.table.type_to_str(expr.expr_type)
+						c.error('you have to create a handle and `lock` it to modify `shared` field `$expr.field_name` of struct `$type_str`',
 							expr.pos)
 					}
 					to_lock, pos = c.fail_if_immutable(expr.expr)

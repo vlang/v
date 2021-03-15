@@ -349,6 +349,7 @@ pub fn (c &Checker) get_default_fmt(ftyp table.Type, typ table.Type) byte {
 }
 
 pub fn (mut c Checker) fail_if_unreadable(expr ast.Expr, typ table.Type, what string) {
+	mut pos := token.Position{}
 	match expr {
 		ast.Ident {
 			if typ.has_flag(.shared_f) {
@@ -361,16 +362,18 @@ pub fn (mut c Checker) fail_if_unreadable(expr ast.Expr, typ table.Type, what st
 			return
 		}
 		ast.SelectorExpr {
+			pos = expr.pos
 			c.fail_if_unreadable(expr.expr, expr.expr_type, what)
 		}
 		ast.IndexExpr {
+			pos = expr.left.position().extend(expr.pos)
 			c.fail_if_unreadable(expr.left, expr.left_type, what)
 		}
 		else {}
 	}
 	if typ.has_flag(.shared_f) {
 		c.error('you have to create a handle and `rlock` it to use a `shared` element as non-mut $what',
-			expr.position())
+			pos)
 	}
 }
 
