@@ -14,7 +14,7 @@ import json
 import term
 
 const (
-	allowed_formats = ['md', 'markdown', 'json', 'text', 'stdout', 'html']
+	allowed_formats = ['md', 'markdown', 'json', 'text', 'stdout', 'html', 'htm']
 	vexe            = pref.vexe_path()
 	vroot           = os.dir(vexe)
 	tabs            = ['\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t']
