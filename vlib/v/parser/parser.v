@@ -979,6 +979,31 @@ pub fn (mut p Parser) error_with_pos(s string, pos token.Position) {
 	}
 }
 
+pub fn (mut p Parser) error_with_error(error errors.Error) {
+	if p.pref.fatal_errors {
+		exit(1)
+	}
+	mut kind := 'error:'
+	if p.pref.output_mode == .stdout {
+		if p.pref.is_verbose {
+			print_backtrace()
+			kind = 'parser error:'
+		}
+		ferror := util.formatted_error(kind, error.message, error.file_path, error.pos)
+		eprintln(ferror)
+		exit(1)
+	} else {
+		p.errors << error
+	}
+	if p.pref.output_mode == .silent {
+		// Normally, parser errors mean that the parser exits immediately, so there can be only 1 parser error.
+		// In the silent mode however, the parser continues to run, even though it would have stopped. Some
+		// of the parser logic does not expect that, and may loop forever.
+		// The p.next() here is needed, so the parser is more robust, and *always* advances, even in the -silent mode.
+		p.next()
+	}
+}
+
 pub fn (mut p Parser) warn_with_pos(s string, pos token.Position) {
 	if p.pref.warns_are_errors {
 		p.error_with_pos(s, pos)
