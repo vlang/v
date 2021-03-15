@@ -193,7 +193,7 @@ pub fn malloc(n int) byteptr {
 	$if debug_malloc ? {
 		// Fill in the memory with something != 0, so it is easier to spot
 		// when the calling code wrongly relies on it being zeroed.
-		C.memset(res, 0x88, n)
+		unsafe { C.memset(res, 0x88, n) }
 	}
 	return res
 }
