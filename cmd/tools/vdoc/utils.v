@@ -157,8 +157,6 @@ fn color_highlight(code string, tb &table.Table) string {
 			term.cyan(tok.lit)
 		} else if typ == .number {
 			term.bright_blue(tok.lit)
-		} else if typ == .name {
-			term.white(tok.lit)
 		} else {
 			tok.lit
 		}

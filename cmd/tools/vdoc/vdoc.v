@@ -49,7 +49,7 @@ mut:
 	is_multi         bool
 	is_vlib          bool
 	is_verbose       bool
-	is_color         bool
+	is_color         bool = true
 	include_readme   bool
 	include_examples bool = true
 	inline_assets    bool
