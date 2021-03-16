@@ -405,10 +405,15 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 			g.stmts(node.stmts)
 			i++
 			g.writeln('}')
+			//
+			mut delete_keys := []string{}
 			for key, _ in g.comptime_var_type_map {
 				if key.starts_with(node.val_var) {
-					g.comptime_var_type_map.delete(key)
+					delete_keys << key
 				}
+			}
+			for key in delete_keys {
+				g.comptime_var_type_map.delete(key)
 			}
 		}
 	} else if node.kind == .fields {
