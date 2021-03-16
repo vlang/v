@@ -915,10 +915,11 @@ fn test_sorter() {
 	assert arr[2].i == 102
 }
 
-fn test_split_by_whitespace() {
+fn test_fields() {
 	assert 'a bcde'.fields() == ['a', 'bcde']
 	assert '  sss \t  ssss '.fields() == ['sss', 'ssss']
 	assert '\n xyz \t abc   def'.fields() == ['xyz', 'abc', 'def']
+	assert 'hello'.fields() == ['hello']
 	assert ''.fields() == []
 }
 

@@ -61,3 +61,13 @@ fn prevent_empty_line_after_multi_line_statements() {
 		println('s')
 	}
 }
+
+fn between_orm_blocks() {
+	sql db {
+		insert upper_1 into Upper
+	}
+
+	upper_s := sql db {
+		select from Upper where id == 1
+	}
+}

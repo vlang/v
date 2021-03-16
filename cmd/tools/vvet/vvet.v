@@ -32,6 +32,8 @@ const vet_options = cmdline.options_after(os.args, ['vet'])
 
 const is_force = '-force' in vet_options
 
+const is_werror = '-W' in vet_options
+
 const is_verbose = '-verbose' in vet_options || '-v' in vet_options
 
 const show_warnings = '-hide-warnings' !in vet_options
@@ -104,7 +106,7 @@ fn main() {
 	if errors_vfmt.len > 0 {
 		eprintln('NB: You can run `v fmt -w file.v` to fix these automatically')
 	}
-	if errors.len > 0 {
+	if errors.len > 0 || (is_werror && warnings.len > 0) {
 		exit(1)
 	}
 }
