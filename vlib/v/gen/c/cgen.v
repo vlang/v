@@ -1483,6 +1483,7 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 		diff := g.new_tmp_var()
 		g.indent++
 		g.writeln('int $diff = $cond_var${arw_or_pt}key_values.len - $map_len;')
+		// TODO: optimize this
 		g.writeln('if ($diff < 0) {')
 		g.writeln('\t$idx = -1;')
 		g.writeln('\t$map_len = $cond_var${arw_or_pt}key_values.len;')
