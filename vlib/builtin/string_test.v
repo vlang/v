@@ -905,6 +905,7 @@ fn test_split_by_whitespace() {
 	assert 'a bcde'.split_by_whitespace() == ['a', 'bcde']
 	assert '  sss \t  ssss '.split_by_whitespace() == ['sss', 'ssss']
 	assert '\n xyz \t abc   def'.split_by_whitespace() == ['xyz', 'abc', 'def']
+	assert 'hello'.split_by_whitespace() == ['hello']
 	assert ''.split_by_whitespace() == []
 }
 

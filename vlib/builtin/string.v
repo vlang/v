@@ -1682,9 +1682,11 @@ pub fn (s string) split_by_whitespace() []string {
 	mut is_space := false
 	for i, c in s {
 		is_space = c in [` `, `\t`, `\n`]
+		if !is_space {
+			word_len++
+		}
 		if !is_in_word && !is_space {
 			word_start = i
-			word_len++
 			is_in_word = true
 			continue
 		}
