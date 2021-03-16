@@ -255,6 +255,23 @@ fn test_delete_size() {
 	}
 }
 
+fn test_nested_for_in() {
+	mut m := map[string]int{}
+	for i in 0..1000 {
+		m[i.str()] = i
+	}
+	mut i := 0
+	for key1, _ in m {
+		assert key1 == i.str()
+		i++
+    mut j := 0
+		for key2, _ in m {
+      assert key2 == j.str()
+			j++
+    }
+	}
+}
+
 fn test_delete_in_for_in() {
 	mut m := map[string]string{}
 	for i in 0..1000 {
