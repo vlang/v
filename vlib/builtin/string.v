@@ -834,7 +834,21 @@ pub fn (s string) count(substr string) int {
 	if substr.len > s.len {
 		return 0
 	}
+
 	mut n := 0
+
+	if substr.len == 1 {
+		target := substr[0]
+
+		for letter in s {
+			if letter == target {
+				n++
+			}
+		}
+
+		return n
+	}
+	
 	mut i := 0
 	for {
 		i = s.index_after(substr, i)
