@@ -49,4 +49,4 @@ Use "v help <command>" for more information about a command, example: `v help bu
 Use "v help other" to see less frequently used commands.
 
 Note: Help is required to write more help topics.
-Only build, new, init, doc, fmt, run, test, search, install, remove, update, bin2v, check-md are properly documented currently.
+Only build, new, init, doc, fmt, vet, run, test, search, install, remove, update, bin2v, check-md are properly documented currently.
