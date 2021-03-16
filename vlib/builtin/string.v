@@ -1632,7 +1632,7 @@ pub fn (s string) fields() []string {
 			continue
 		}
 		if is_space && is_in_word {
-			res << s[word_start..word_start+word_len]
+			res << s[word_start..word_start + word_len]
 			is_in_word = false
 			word_len = 0
 			word_start = 0
