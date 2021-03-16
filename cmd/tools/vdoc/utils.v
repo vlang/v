@@ -163,6 +163,18 @@ fn color_highlight(code string, tb &table.Table) string {
 			.number {
 				term.bright_blue(tok.lit)
 			}
+			.boolean {
+				term.bright_magenta(tok.lit)
+			}
+			.none_ {
+				term.red(tok.lit)
+			}
+			.module_ {
+				term.yellow(tok.lit)
+			}
+			.prefix {
+				term.magenta(tok.lit)
+			}
 			else {
 				tok.lit
 			}
@@ -170,6 +182,7 @@ fn color_highlight(code string, tb &table.Table) string {
 		return lit
 	}
 	mut s := scanner.new_scanner(code, .parse_comments, &pref.Preferences{})
+	mut prev_prev := token.Token{}
 	mut prev := token.Token{}
 	mut tok := s.scan()
 	mut next_tok := s.scan()
@@ -181,13 +194,23 @@ fn color_highlight(code string, tb &table.Table) string {
 			match tok.kind {
 				.name {
 					if (tok.lit in builtin || tb.known_type(tok.lit))
-						&& (next_tok.kind != .lpar || prev.kind != .key_fn) {
+						&& (next_tok.kind != .lpar || prev.kind !in [.key_fn, .rpar]) {
 						tok_typ = .builtin
-					} else if next_tok.kind in [.lcbr, .rpar, .eof]
-						&& (next_tok.kind != .rpar || prev.kind in [.name, .amp]) {
+					} else if 
+						next_tok.kind in [.lcbr, .rpar, .eof, .comma, .pipe, .name, .rcbr, .assign, .key_pub, .key_mut, .pipe]
+						&& prev.kind in [.name, .amp, .rsbr, .key_type, .assign, .dot, .question, .rpar, .key_struct, .key_enum, .pipe]
+						&& (tok.lit[0].ascii_str().is_upper() || prev_prev.lit in ['C', 'JS']) {
 						tok_typ = .symbol
 					} else if next_tok.kind in [.lpar, .lt] {
 						tok_typ = .function
+					} else if next_tok.kind == .dot {
+						if tok.lit in ['C', 'JS'] {
+							tok_typ = .prefix
+						} else {
+							tok_typ = .module_
+						}
+					} else if tok.lit in ['r', 'c'] && next_tok.kind == .string {
+						tok_typ = .prefix
 					} else {
 						tok_typ = .name
 					}
@@ -210,6 +233,9 @@ fn color_highlight(code string, tb &table.Table) string {
 				.lpar, .lcbr, .rpar, .rcbr, .lsbr, .rsbr, .semicolon, .colon, .comma, .dot {
 					tok_typ = .punctuation
 				}
+				.key_none {
+					tok_typ = .none_
+				}
 				else {
 					if token.is_key(tok.lit) || token.is_decl(tok.kind) {
 						tok_typ = .keyword
@@ -220,6 +246,11 @@ fn color_highlight(code string, tb &table.Table) string {
 				}
 			}
 			buf.write_string(highlight_code(tok, tok_typ))
+			if prev_prev.kind != .eof {
+				prev_prev = prev
+			} else {
+				break
+			}
 			if prev.kind != .eof {
 				prev = tok
 			} else {
