@@ -550,13 +550,11 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 
 			for i < s.len {
 				if s[i] == delim_byte {
-					val := s.substr(start, i)
 					was_last := nth > 0 && res.len == nth - 1
-
 					if was_last {
 						break
 					}
-
+					val := s.substr(start, i)
 					res << val
 					start = i + delim.len
 					i = start
@@ -577,11 +575,11 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 			for i <= s.len {
 				is_delim := i + delim.len <= s.len && s.substr(i, i + delim.len) == delim
 				if is_delim {
-					val := s.substr(start, i)
 					was_last := nth > 0 && res.len == nth - 1
 					if was_last {
 						break
 					}
+					val := s.substr(start, i)
 					res << val
 					start = i + delim.len
 					i = start
