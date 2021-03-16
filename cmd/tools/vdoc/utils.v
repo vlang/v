@@ -160,7 +160,7 @@ fn color_highlight(code string, tb &table.Table) string {
 			.function {
 				term.cyan(tok.lit)
 			}
-			.number {
+			.number, .module_ {
 				term.bright_blue(tok.lit)
 			}
 			.boolean {
@@ -168,9 +168,6 @@ fn color_highlight(code string, tb &table.Table) string {
 			}
 			.none_ {
 				term.red(tok.lit)
-			}
-			.module_ {
-				term.yellow(tok.lit)
 			}
 			.prefix {
 				term.magenta(tok.lit)
@@ -246,23 +243,20 @@ fn color_highlight(code string, tb &table.Table) string {
 				}
 			}
 			buf.write_string(highlight_code(tok, tok_typ))
-			if prev_prev.kind != .eof {
-				prev_prev = prev
-			} else {
+			if prev_prev.kind == .eof {
 				break
 			}
-			if prev.kind != .eof {
-				prev = tok
-			} else {
+			prev_prev = prev
+			if prev.kind == .eof {
 				break
 			}
-			if next_tok.kind != .eof {
-				i = tok.pos + tok.len
-				tok = next_tok
-				next_tok = s.scan()
-			} else {
+			prev = tok
+			if next_tok.kind == .eof {
 				break
 			}
+			i = tok.pos + tok.len
+			tok = next_tok
+			next_tok = s.scan()
 		} else {
 			buf.write_b(code[i])
 			i++
