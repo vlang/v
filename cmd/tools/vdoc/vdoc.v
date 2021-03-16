@@ -90,7 +90,7 @@ fn (vd VDoc) gen_plaintext(d doc.Doc) string {
 	mut pw := strings.new_builder(200)
 	if cfg.is_color {
 		content_arr := d.head.content.split(' ')
-		pw.writeln('${term.blue(content_arr[0])} ${term.green(content_arr[1])}\n')
+		pw.writeln('${term.bright_blue(content_arr[0])} ${term.green(content_arr[1])}\n')
 	} else {
 		pw.writeln('$d.head.content\n')
 	}

@@ -152,7 +152,7 @@ fn color_highlight(code string, tb &table.Table) string {
 				term.yellow('`$tok.lit`')
 			}
 			.keyword {
-				term.blue(tok.lit)
+				term.bright_blue(tok.lit)
 			}
 			.builtin, .symbol {
 				term.green(tok.lit)
@@ -243,17 +243,11 @@ fn color_highlight(code string, tb &table.Table) string {
 				}
 			}
 			buf.write_string(highlight_code(tok, tok_typ))
-			if prev_prev.kind == .eof {
+			if prev_prev.kind == .eof || prev.kind == .eof || next_tok.kind == .eof {
 				break
 			}
 			prev_prev = prev
-			if prev.kind == .eof {
-				break
-			}
 			prev = tok
-			if next_tok.kind == .eof {
-				break
-			}
 			i = tok.pos + tok.len
 			tok = next_tok
 			next_tok = s.scan()
