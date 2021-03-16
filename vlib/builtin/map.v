@@ -102,6 +102,7 @@ mut:
 	deletes u32 // count
 	// array allocated (with `cap` bytes) on first deletion
 	// has non-zero element when key deleted
+	iter_index  int
 	all_deleted &byte
 	data        byteptr // array of interleaved key data and value data
 }
@@ -117,6 +118,7 @@ fn new_dense_array(key_bytes int, value_bytes int) DenseArray {
 		cap: cap
 		len: 0
 		deletes: 0
+		iter_index: 0
 		all_deleted: 0
 		data: unsafe { malloc(cap * slot_bytes) }
 	}
@@ -186,6 +188,8 @@ fn (mut d DenseArray) zeros_to_end() {
 		// TODO: reallocate instead as more deletes are likely
 		free(d.all_deleted)
 	}
+	// Set to -1 in because it is incremented to 0 in the for-in loop
+	d.iter_index = -1
 	d.len = count
 	old_cap := d.cap
 	d.cap = if count < 8 { 8 } else { count }

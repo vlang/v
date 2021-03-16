@@ -255,6 +255,21 @@ fn test_delete_size() {
 	}
 }
 
+fn test_delete_in_for_in() {
+	mut m := map[string]string{}
+	for i in 0..1000 {
+			m[i.str()] = i.str()
+	}
+	mut i := 0
+	for key, _ in m {
+		assert key == i.str()
+		m.delete(key)
+		i++
+	}
+	assert m.str() == '{}'
+	assert m.len == 0
+}
+
 struct Mstruct1 {
 pub mut:
 	mymap map[string]int

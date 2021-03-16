@@ -1474,9 +1474,10 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 			g.writeln(';')
 		}
 		arw_or_pt := if node.cond_type.is_ptr() { '->' } else { '.' }
-		idx := g.new_tmp_var()
+		idx := '$cond_var${arw_or_pt}key_values.iter_index'
 		g.empty_line = true
-		g.writeln('for (int $idx = 0; $idx < $cond_var${arw_or_pt}key_values.len; ++$idx) {')
+		g.writeln('$idx = 0;')
+		g.writeln('for (; $idx < $cond_var${arw_or_pt}key_values.len; ++$idx) {')
 		// TODO: don't have this check when the map has no deleted elements
 		g.writeln('\tif (!DenseArray_has_index(&$cond_var${arw_or_pt}key_values, $idx)) {continue;}')
 		if node.key_var != '_' {
