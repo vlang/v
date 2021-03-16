@@ -47,7 +47,7 @@ pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 		mut s := node.text.trim_left('\x01')
 		mut out_s := '//'
 		if s != '' {
-			if is_first_char_alphanumeric(s) {
+			if is_char_alphanumeric(s[0]) {
 				out_s += ' '
 			}
 			out_s += s
@@ -59,20 +59,21 @@ pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 		f.write(out_s)
 	} else {
 		lines := node.text.trim_space().split_into_lines()
-		expected_line_count := node.pos.last_line - node.pos.line_nr
-		no_new_lines := lines.len > expected_line_count && !is_first_char_alphanumeric(lines[0])
+		start_break := is_char_alphanumeric(node.text[0]) || node.text[0].is_space()
+		end_break := is_char_alphanumeric(node.text.trim('\t').bytes().last())
+			|| node.text.bytes().last().is_space()
 		f.write('/*')
-		if !no_new_lines {
+		if start_break {
 			f.writeln('')
 		}
 		for line in lines {
 			f.writeln(line)
 			f.empty_line = false
 		}
-		if no_new_lines {
-			f.remove_new_line({})
-		} else {
+		if end_break {
 			f.empty_line = true
+		} else {
+			f.remove_new_line({})
 		}
 		f.write('*/')
 	}
@@ -127,7 +128,7 @@ pub fn (mut f Fmt) import_comments(comments []ast.Comment, options CommentsOptio
 			continue
 		}
 		mut out_s := if options.inline { ' ' } else { '' } + '//'
-		if is_first_char_alphanumeric(ctext) {
+		if is_char_alphanumeric(ctext[0]) {
 			out_s += ' '
 		}
 		out_s += ctext
@@ -135,9 +136,6 @@ pub fn (mut f Fmt) import_comments(comments []ast.Comment, options CommentsOptio
 	}
 }
 
-fn is_first_char_alphanumeric(s string) bool {
-	return match s[0] {
-		`a`...`z`, `A`...`Z`, `0`...`9` { true }
-		else { false }
-	}
+fn is_char_alphanumeric(c byte) bool {
+	return c.is_letter() || c.is_digit()
 }
