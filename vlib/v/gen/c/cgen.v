@@ -1480,13 +1480,13 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 		g.writeln('int $map_len = $cond_var${arw_or_pt}key_values.len;')
 		g.writeln('for (int $idx = 0; $idx < $map_len; ++$idx ) {')
 		// TODO: don't have this check when the map has no deleted elements
-		diff := g.new_tmp_var()
 		g.indent++
+		diff := g.new_tmp_var()
 		g.writeln('int $diff = $cond_var${arw_or_pt}key_values.len - $map_len;')
+		g.writeln('$map_len = $cond_var${arw_or_pt}key_values.len;')
 		// TODO: optimize this
 		g.writeln('if ($diff < 0) {')
 		g.writeln('\t$idx = -1;')
-		g.writeln('\t$map_len = $cond_var${arw_or_pt}key_values.len;')
 		g.writeln('\tcontinue;')
 		g.writeln('}')
 		g.writeln('if (!DenseArray_has_index(&$cond_var${arw_or_pt}key_values, $idx)) {continue;}')
