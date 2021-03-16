@@ -1,0 +1,11 @@
+Usage:
+  v vet [options] path_to_source.v [path_to_other_source.v]
+  v vet [options] path/to/dir [path/to/other_dir]
+
+Reports suspicious code constructs.
+
+Options:
+  -W               Exit with code 1, even if vet only reported warnings. Useful for checks in CI.
+  -hide-warnings   Do not print warnings to stderr.
+  -v, -verbose     Enable verbose logging.
+  -force           (NB: vet development only!) Do not skip the vet regression tests.
