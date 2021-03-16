@@ -89,6 +89,9 @@ enum HighlightTokenTyp {
 	punctuation
 	string
 	symbol
+	none_
+	module_
+	prefix
 }
 
 struct SearchModuleResult {
