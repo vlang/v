@@ -848,7 +848,7 @@ pub fn (s string) count(substr string) int {
 
 		return n
 	}
-	
+
 	mut i := 0
 	for {
 		i = s.index_after(substr, i)
