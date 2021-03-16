@@ -1764,12 +1764,8 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		}
 	}
 	if has_generic_generic {
-		if c.mod != '' {
-			// Need to prepend the module when adding a generic type to a function
-			c.table.register_fn_gen_type(c.mod + '.' + fn_name, generic_types)
-		} else {
-			c.table.register_fn_gen_type(fn_name, generic_types)
-		}
+		// Need to prepend the module when adding a generic type to a function
+		c.table.register_fn_gen_type(if c.mod == '' { fn_name } else { c.mod + '.' + fn_name }, generic_types)
 	}
 	if fn_name == 'json.encode' {
 	} else if fn_name == 'json.decode' && call_expr.args.len > 0 {
@@ -1975,7 +1971,6 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			c.warn('`error($arg)` can be shortened to just `$arg`', call_expr.pos)
 		}
 	}
-
 	// TODO: typ optimize.. this node can get processed more than once
 	if call_expr.expected_arg_types.len == 0 {
 		for param in f.params {

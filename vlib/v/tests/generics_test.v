@@ -44,7 +44,7 @@ fn test_array() {
 	assert sum(b) == 6
 }
 
-fn max<T>(a ...T) T {
+fn max<T>(brug string, a ...T) T {
 	mut max := a[0]
 	for item in a[1..] {
 		if max < item {
@@ -55,10 +55,10 @@ fn max<T>(a ...T) T {
 }
 
 fn test_generic_variadic() {
-	assert max(1, 2, 3, 4) == 4
+	assert max('krkr', 1, 2, 3, 4) == 4
 	a := [f64(1.2), 3.2, 0.1, 2.2]
-	assert max(...a) == 3.2
-	assert max([byte(4), 3, 2, 1]) == 4
+	assert max('krkr', ...a) == 3.2
+	assert max('krkr', ...[byte(4), 3, 2, 1]) == 4
 }
 
 fn create<T>() {
