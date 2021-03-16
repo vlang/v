@@ -46,8 +46,6 @@ jobs:
       VFLAGS: -cc tcc -no-retry-compilation
     steps:
       - uses: actions/checkout@v2
-        with:
-          fetch-depth: 10
       - name: Install dependencies
         run: |
           sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update;
@@ -62,7 +60,7 @@ jobs:
         run: |
           echo $VFLAGS
           make
-          ./v -d debug_realloc -o v cmd/v
+          ./v -d debug_malloc -d debug_realloc -o v cmd/v
           ./v -cg -cflags -Werror -o v cmd/v
       - name: Test v->c
         run: |
@@ -102,6 +100,22 @@ jobs:
         run: |
           ./v tutorials/building_a_simple_web_blog_with_vweb/code/blog
 
+  misc-tooling:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 30
+    env:
+      VFLAGS: -cc tcc -no-retry-compilation
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 10
+      - name: Install dependencies
+        run: |
+          sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind
+          sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
+          sudo apt-get install --quiet -y xfonts-75dpi xfonts-base
+      - name: Build v
+        run: make
       - name: ensure v up works
         run: |
           ./v cmd/tools/oldv.v
@@ -112,7 +126,6 @@ jobs:
           ./v version
           ./v  -o v2 cmd/v
           ./v2 -o v3 cmd/v
-
       - name: Shader examples can be build
         run: |
           wget https://github.com/floooh/sokol-tools-bin/archive/pre-feb2021-api-changes.tar.gz
