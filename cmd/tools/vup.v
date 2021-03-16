@@ -124,9 +124,9 @@ fn (app App) show_current_v_version() {
 fn (app App) backup(file string) {
 	backup_file := '${file}_old.exe'
 	if os.exists(backup_file) {
-		os.rm(backup_file) or { eprintln('failed removing $backup_file: $err') }
+		os.rm(backup_file) or { eprintln('failed removing $backup_file: $err.msg') }
 	}
-	os.mv(file, backup_file) or { eprintln('failed moving $file: $err') }
+	os.mv(file, backup_file) or { eprintln('failed moving $file: $err.msg') }
 }
 
 fn (app App) git_command(command string) {
