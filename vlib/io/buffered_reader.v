@@ -55,6 +55,12 @@ pub fn (mut r BufferedReader) read(mut buf []byte) ?int {
 	return read
 }
 
+pub fn (mut r BufferedReader) free() {
+	unsafe {
+		r.buf.free()
+	}
+}
+
 // fill_buffer attempts to refill the internal buffer
 // and returns whether it got any data
 fn (mut r BufferedReader) fill_buffer() bool {

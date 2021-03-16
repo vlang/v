@@ -33,8 +33,8 @@ pub fn (app &App) index() vweb.Result {
 
 pub fn (mut app App) init_once() {
 	app.db = sqlite.connect('blog.db') or { panic(err) }
-	app.db.exec('create table if not exists article (' + 'id integer primary key, ' + "title text default ''," +
-		"text text default ''" + ');')
+	app.db.exec('create table if not exists article (' + 'id integer primary key, ' +
+		"title text default ''," + "text text default ''" + ');')
 }
 
 pub fn (mut app App) init() {
@@ -44,8 +44,7 @@ pub fn (mut app App) new() vweb.Result {
 	return $vweb.html()
 }
 
-[post]
-['/new_article']
+['/new_article'; post]
 pub fn (mut app App) new_article() vweb.Result {
 	title := app.form['title']
 	text := app.form['text']
@@ -66,7 +65,8 @@ pub fn (mut app App) new_article() vweb.Result {
 
 pub fn (mut app App) articles() {
 	articles := app.find_all_articles()
-	app.json(json.encode(articles))
+	x := json.encode(articles)
+	app.json(x)
 }
 
 fn (mut app App) time() {

@@ -88,6 +88,7 @@ pub struct Result {
 }
 
 // vweb intern function
+[manualfree]
 pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bool {
 	if ctx.done {
 		return false
@@ -304,6 +305,9 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 		conn.close() or {}
 	}
 	mut reader := io.new_buffered_reader(reader: io.make_reader(conn))
+	defer {
+		reader.free()
+	}
 	page_gen_start := time.ticks()
 	req := parse_request(mut reader) or {
 		eprintln('error parsing request: $err')
@@ -379,12 +383,12 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 				// should be called first.
 				if !route_path.contains('/:') && url_words == route_words {
 					// We found a match
-					app.$method(method_args)
+					app.$method()
 					return
 				}
 
 				if url_words.len == 0 && route_words == ['index'] && method.name == 'index' {
-					app.$method(method_args)
+					app.$method()
 					return
 				}
 

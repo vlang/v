@@ -142,12 +142,14 @@ fn (d &DenseArray) has_index(i int) bool {
 // The growth-factor is roughly 1.125 `(x + (x >> 3))`
 [inline]
 fn (mut d DenseArray) expand() int {
+	old_cap := d.cap
+	old_size := d.slot_bytes * old_cap
 	if d.cap == d.len {
 		d.cap += d.cap >> 3
 		unsafe {
-			d.data = v_realloc(d.data, d.slot_bytes * d.cap)
+			d.data = realloc_data(d.data, old_size, d.slot_bytes * d.cap)
 			if d.deletes != 0 {
-				d.all_deleted = v_realloc(d.all_deleted, d.cap)
+				d.all_deleted = realloc_data(d.all_deleted, old_cap, d.cap)
 				C.memset(d.all_deleted + d.len, 0, d.cap - d.len)
 			}
 		}
@@ -185,9 +187,10 @@ fn (mut d DenseArray) zeros_to_end() {
 		free(d.all_deleted)
 	}
 	d.len = count
+	old_cap := d.cap
 	d.cap = if count < 8 { 8 } else { count }
 	unsafe {
-		d.data = v_realloc(d.data, d.slot_bytes * d.cap)
+		d.data = realloc_data(d.data, d.slot_bytes * old_cap, d.slot_bytes * d.cap)
 	}
 }
 
@@ -406,10 +409,12 @@ fn (mut m map) meta_greater(_index u32, _metas u32, kvi u32) {
 [inline]
 fn (mut m map) ensure_extra_metas(probe_count u32) {
 	if (probe_count << 1) == m.extra_metas {
+		size_of_u32 := sizeof(u32)
+		old_mem_size := (m.even_index + 2 + m.extra_metas)
 		m.extra_metas += extra_metas_inc
 		mem_size := (m.even_index + 2 + m.extra_metas)
 		unsafe {
-			x := v_realloc(byteptr(m.metas), int(sizeof(u32) * mem_size))
+			x := realloc_data(byteptr(m.metas), int(size_of_u32 * old_mem_size), int(size_of_u32 * mem_size))
 			m.metas = &u32(x)
 			C.memset(m.metas + mem_size - extra_metas_inc, 0, int(sizeof(u32) * extra_metas_inc))
 		}
@@ -477,6 +482,7 @@ fn (mut m map) expand() {
 fn (mut m map) rehash() {
 	meta_bytes := sizeof(u32) * (m.even_index + 2 + m.extra_metas)
 	unsafe {
+		// TODO: use realloc_data here too
 		x := v_realloc(byteptr(m.metas), int(meta_bytes))
 		m.metas = &u32(x)
 		C.memset(m.metas, 0, meta_bytes)

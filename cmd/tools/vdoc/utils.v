@@ -2,6 +2,12 @@ module main
 
 import os
 import v.doc
+import term
+import v.table
+import v.scanner
+import v.token
+import strings
+import v.pref
 
 [inline]
 fn slug(title string) string {
@@ -129,4 +135,126 @@ fn gen_footer_text(d &doc.Doc, include_timestamp bool) string {
 	generated_time := d.time_generated
 	time_str := '$generated_time.day $generated_time.smonth() $generated_time.year $generated_time.hhmmss()'
 	return '$footer_text Generated on: $time_str'
+}
+
+fn color_highlight(code string, tb &table.Table) string {
+	builtin := ['bool', 'string', 'i8', 'i16', 'int', 'i64', 'i128', 'byte', 'u16', 'u32', 'u64',
+		'u128', 'rune', 'f32', 'f64', 'int_literal', 'float_literal', 'byteptr', 'voidptr', 'any']
+	highlight_code := fn (tok token.Token, typ HighlightTokenTyp) string {
+		lit := match typ {
+			.unone, .operator, .punctuation {
+				tok.kind.str()
+			}
+			.string {
+				term.yellow("'$tok.lit'")
+			}
+			.char {
+				term.yellow('`$tok.lit`')
+			}
+			.keyword {
+				term.bright_blue(tok.lit)
+			}
+			.builtin, .symbol {
+				term.green(tok.lit)
+			}
+			.function {
+				term.cyan(tok.lit)
+			}
+			.number, .module_ {
+				term.bright_blue(tok.lit)
+			}
+			.boolean {
+				term.bright_magenta(tok.lit)
+			}
+			.none_ {
+				term.red(tok.lit)
+			}
+			.prefix {
+				term.magenta(tok.lit)
+			}
+			else {
+				tok.lit
+			}
+		}
+		return lit
+	}
+	mut s := scanner.new_scanner(code, .parse_comments, &pref.Preferences{})
+	mut prev_prev := token.Token{}
+	mut prev := token.Token{}
+	mut tok := s.scan()
+	mut next_tok := s.scan()
+	mut buf := strings.new_builder(200)
+	mut i := 0
+	for i < code.len {
+		if i == tok.pos {
+			mut tok_typ := HighlightTokenTyp.unone
+			match tok.kind {
+				.name {
+					if (tok.lit in builtin || tb.known_type(tok.lit))
+						&& (next_tok.kind != .lpar || prev.kind !in [.key_fn, .rpar]) {
+						tok_typ = .builtin
+					} else if 
+						next_tok.kind in [.lcbr, .rpar, .eof, .comma, .pipe, .name, .rcbr, .assign, .key_pub, .key_mut, .pipe, .comma]
+						&& prev.kind in [.name, .amp, .rsbr, .key_type, .assign, .dot, .question, .rpar, .key_struct, .key_enum, .pipe, .key_interface]
+						&& (tok.lit[0].ascii_str().is_upper() || prev_prev.lit in ['C', 'JS']) {
+						tok_typ = .symbol
+					} else if next_tok.kind in [.lpar, .lt] {
+						tok_typ = .function
+					} else if next_tok.kind == .dot {
+						if tok.lit in ['C', 'JS'] {
+							tok_typ = .prefix
+						} else {
+							tok_typ = .module_
+						}
+					} else if tok.lit in ['r', 'c'] && next_tok.kind == .string {
+						tok_typ = .prefix
+					} else {
+						tok_typ = .name
+					}
+				}
+				.comment {
+					tok_typ = .comment
+				}
+				.chartoken {
+					tok_typ = .char
+				}
+				.string {
+					tok_typ = .string
+				}
+				.number {
+					tok_typ = .number
+				}
+				.key_true, .key_false {
+					tok_typ = .boolean
+				}
+				.lpar, .lcbr, .rpar, .rcbr, .lsbr, .rsbr, .semicolon, .colon, .comma, .dot {
+					tok_typ = .punctuation
+				}
+				.key_none {
+					tok_typ = .none_
+				}
+				else {
+					if token.is_key(tok.lit) || token.is_decl(tok.kind) {
+						tok_typ = .keyword
+					} else if tok.kind == .decl_assign || tok.kind.is_assign() || tok.is_unary()
+						|| tok.kind.is_relational() || tok.kind.is_infix() {
+						tok_typ = .operator
+					}
+				}
+			}
+			buf.write_string(highlight_code(tok, tok_typ))
+			if prev_prev.kind == .eof || prev.kind == .eof || next_tok.kind == .eof {
+				break
+			}
+			prev_prev = prev
+			prev = tok
+			i = tok.pos + tok.len
+			tok = next_tok
+			next_tok = s.scan()
+		} else {
+			buf.write_b(code[i])
+			i++
+		}
+	}
+	return buf.str()
 }

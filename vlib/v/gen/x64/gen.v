@@ -284,7 +284,9 @@ fn (mut g Gen) println(comment string) {
 		if s.len == 1 {
 			print(term.blue('0'))
 		}
-		print(term.blue(g.buf[i].hex()) + ' ')
+		gbihex := g.buf[i].hex()
+		hexstr := term.blue(gbihex) + ' '
+		print(hexstr)
 	}
 	g.debug_pos = g.buf.len
 	print(' ' + comment)

@@ -1,5 +1,6 @@
 module doc
 
+import math.mathutil as mu
 import strings
 import v.ast
 import v.util
@@ -93,11 +94,11 @@ fn (mut d Doc) convert_pos(filename string, pos token.Position) DocPos {
 		d.sources[filename] = util.read_file(os.join_path(d.base_path, filename)) or { '' }
 	}
 	source := d.sources[filename]
-	mut p := util.imax(0, util.imin(source.len - 1, pos.pos))
-	column := util.imax(0, pos.pos - p - 1)
+	mut p := mu.max(0, mu.min(source.len - 1, pos.pos))
+	column := mu.max(0, pos.pos - p - 1)
 	return DocPos{
 		line: pos.line_nr + 1
-		col: util.imax(1, column + 1)
+		col: mu.max(1, column + 1)
 		len: pos.len
 	}
 }

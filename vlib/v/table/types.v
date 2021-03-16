@@ -551,7 +551,7 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 			return_type: table.void_type
 		}
 	)
-	t.register_type_symbol(kind: .struct_, name: 'Error', cname: 'Error', mod: 'builtin')
+	t.register_type_symbol(kind: .interface_, name: 'IError', cname: 'IError', mod: 'builtin')
 }
 
 [inline]

@@ -115,8 +115,6 @@ pub mut:
 	vroot          string
 	out_name_c     string // full os.real_path to the generated .tmp.c file; set by builder.
 	out_name       string
-	display_name   string
-	bundle_id      string
 	path           string // Path to file/folder to compile
 	// -d vfmt and -d another=0 for `$if vfmt { will execute }` and `$if another ? { will NOT get here }`
 	compile_defines     []string    // just ['vfmt']
@@ -144,6 +142,8 @@ pub mut:
 	build_options       []string // list of options, that should be passed down to `build-module`, if needed for -usecache
 	cache_manager       vcache.CacheManager
 	is_help             bool // -h, -help or --help was passed
+	// checker settings:
+	checker_match_exhaustive_cutoff_limit int = 10
 }
 
 pub fn parse_args(known_external_commands []string, args []string) (&Preferences, string) {
@@ -156,7 +156,7 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 	// for i, arg in args {
 	for i := 0; i < args.len; i++ {
 		arg := args[i]
-		current_args := args[i..]
+		current_args := args[i..].clone()
 		match arg {
 			'-apk' {
 				res.is_apk = true
@@ -370,6 +370,11 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 				res.build_options << '$arg "$res.ccompiler"'
 				i++
 			}
+			'-checker-match-exhaustive-cutoff-limit' {
+				res.checker_match_exhaustive_cutoff_limit = cmdline.option(current_args,
+					arg, '10').int()
+				i++
+			}
 			'-o' {
 				res.out_name = cmdline.option(current_args, '-o', '')
 				if res.out_name.ends_with('.js') {
@@ -403,14 +408,6 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 				res.custom_prelude = prelude
 				i++
 			}
-			'-name' {
-				res.display_name = cmdline.option(current_args, '-name', '')
-				i++
-			}
-			'-bundle' {
-				res.bundle_id = cmdline.option(current_args, '-bundle', '')
-				i++
-			}
 			else {
 				if command == 'build' && is_source_file(arg) {
 					eprintln('Use `v $arg` instead.')
@@ -441,12 +438,12 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 					command_pos = i
 					continue
 				}
-				if command !in ['', 'build-module'] {
+				if command != '' && command != 'build-module' {
 					// arguments for e.g. fmt should be checked elsewhere
 					continue
 				}
-				eprint('Unknown argument `$arg`')
-				eprintln(if command.len == 0 { '' } else { ' for command `$command`' })
+				extension := if command.len == 0 { '' } else { ' for command `$command`' }
+				eprintln('Unknown argument `$arg`$extension')
 				exit(1)
 			}
 		}
@@ -554,7 +551,10 @@ pub fn cc_from_string(cc_str string) CompilerType {
 		return .gcc
 	}
 	// TODO
-	cc := cc_str.replace('\\', '/').split('/').last().all_before('.')
+	normalized_cc := cc_str.replace('\\', '/')
+	normalized_cc_array := normalized_cc.split('/')
+	last_elem := normalized_cc_array.last()
+	cc := last_elem.all_before('.')
 	if '++' in cc {
 		return .cplusplus
 	}

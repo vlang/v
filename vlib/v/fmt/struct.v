@@ -3,9 +3,9 @@
 // that can be found in the LICENSE file.
 module fmt
 
+import math.mathutil as mu
 import strings
 import v.ast
-import v.util
 
 const (
 	threshold_to_align_struct = 8
@@ -75,8 +75,7 @@ fn (mut list []CommentAndExprAlignInfo) add_info(attrs_len int, type_len int, li
 		list.add_new_info(attrs_len, type_len, line)
 		return
 	}
-	d_len := util.iabs(list[i].max_attrs_len - attrs_len) +
-		util.iabs(list[i].max_type_len - type_len)
+	d_len := mu.abs(list[i].max_attrs_len - attrs_len) + mu.abs(list[i].max_type_len - type_len)
 	if !(d_len < fmt.threshold_to_align_struct) {
 		list.add_new_info(attrs_len, type_len, line)
 		return
@@ -104,7 +103,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 	name := node.name.after('.')
 	f.write(name)
 	if node.gen_types.len > 0 {
-		f.write(' <')
+		f.write('<')
 		gtypes := node.gen_types.map(f.table.type_to_str(it)).join(', ')
 		f.write(gtypes)
 		f.write('>')
@@ -167,15 +166,15 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 			// keep one empty line between fields (exclude one after mut:, pub:, ...)
 			mut before_last_line := node.fields[i - 1].pos.line_nr
 			if node.fields[i - 1].comments.len > 0 {
-				before_last_line = util.imax(before_last_line, node.fields[i - 1].comments.last().pos.last_line)
+				before_last_line = mu.max(before_last_line, node.fields[i - 1].comments.last().pos.last_line)
 			}
 			if node.fields[i - 1].has_default_expr {
-				before_last_line = util.imax(before_last_line, node.fields[i - 1].default_expr.position().last_line)
+				before_last_line = mu.max(before_last_line, node.fields[i - 1].default_expr.position().last_line)
 			}
 
 			mut next_first_line := field.pos.line_nr
 			if field.comments.len > 0 {
-				next_first_line = util.imin(next_first_line, field.comments[0].pos.line_nr)
+				next_first_line = mu.min(next_first_line, field.comments[0].pos.line_nr)
 			}
 			if next_first_line - before_last_line > 1 {
 				f.writeln('')

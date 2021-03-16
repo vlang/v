@@ -33,6 +33,9 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string, m2a map[string]s
 			styp = styp[1..] // remove &
 		}
 		styp = util.no_cur_mod(styp, cur_mod)
+		if node.params[0].is_auto_rec {
+			styp = styp.trim('&')
+		}
 		receiver = '($m$node.receiver.name $styp) '
 		/*
 		sym := t.get_type_symbol(node.receiver.typ)
@@ -206,6 +209,12 @@ pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
 // string representation of expr
 pub fn (x Expr) str() string {
 	match x {
+		AnonFn {
+			return 'anon_fn'
+		}
+		DumpExpr {
+			return 'dump($x.expr.str())'
+		}
 		ArrayInit {
 			mut fields := []string{}
 			if x.has_len {
@@ -223,6 +232,12 @@ pub fn (x Expr) str() string {
 				return x.exprs.str()
 			}
 		}
+		AsCast {
+			return '$x.expr.str() as Type($x.typ)'
+		}
+		AtExpr {
+			return '$x.val'
+		}
 		CTempVar {
 			return x.orig.str()
 		}
@@ -231,9 +246,6 @@ pub fn (x Expr) str() string {
 		}
 		CastExpr {
 			return '${x.typname}($x.expr.str())'
-		}
-		AtExpr {
-			return '$x.val'
 		}
 		CallExpr {
 			sargs := args2str(x.args)
@@ -408,9 +420,7 @@ pub fn (node Stmt) str() string {
 			return node.str()
 		}
 		ConstDecl {
-			fields := node.fields.map(fn (f ConstField) string {
-				return '${f.name.trim_prefix(f.mod + '.')} = $f.expr'
-			})
+			fields := node.fields.map(field_to_string)
 			return 'const (${fields.join(' ')})'
 		}
 		ExprStmt {
@@ -439,6 +449,10 @@ pub fn (node Stmt) str() string {
 			return '[unhandled stmt str type: $node.type_name() ]'
 		}
 	}
+}
+
+fn field_to_string(f ConstField) string {
+	return '${f.name.trim_prefix(f.mod + '.')} = $f.expr'
 }
 
 pub fn (e CompForKind) str() string {

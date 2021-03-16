@@ -4,7 +4,6 @@
 module mt19937
 
 import math.bits
-import rand.seed
 
 /*
 C++ functions for MT19937, with initialization improved 2002/2/10.
@@ -57,9 +56,10 @@ const (
 )
 
 // MT19937RNG is generator that uses the Mersenne Twister algorithm with period 2^19937.
+// **NOTE**: The RNG is not seeded when instantiated so remember to seed it before use.
 pub struct MT19937RNG {
 mut:
-	state    []u64 = calculate_state(seed.time_seed_array(2), mut []u64{len: mt19937.nn})
+	state    []u64 = []u64{len: mt19937.nn}
 	mti      int   = mt19937.nn
 	next_rnd u32
 	has_next bool
@@ -83,6 +83,8 @@ pub fn (mut rng MT19937RNG) seed(seed_data []u32) {
 		eprintln('mt19937 needs only two 32bit integers as seed: [lower, higher]')
 		exit(1)
 	}
+	// calculate 2 times because MT19937RNG init didn't call calculate_state.
+	rng.state = calculate_state(seed_data, mut rng.state)
 	rng.state = calculate_state(seed_data, mut rng.state)
 	rng.mti = mt19937.nn
 	rng.next_rnd = 0

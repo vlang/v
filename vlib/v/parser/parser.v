@@ -240,9 +240,12 @@ pub fn (mut p Parser) parse() ast.File {
 			break
 		}
 		// println('stmt at ' + p.tok.str())
-		stmts << p.top_stmt()
+		stmt := p.top_stmt()
 		// clear the attributes after each statement
-		p.attrs = []
+		if !(stmt is ast.ExprStmt && (stmt as ast.ExprStmt).expr is ast.Comment) {
+			p.attrs = []
+		}
+		stmts << stmt
 	}
 	// println('nr stmts = $stmts.len')
 	// println(stmts[0])
@@ -966,6 +969,31 @@ pub fn (mut p Parser) error_with_pos(s string, pos token.Position) {
 			reporter: .parser
 			message: s
 		}
+	}
+	if p.pref.output_mode == .silent {
+		// Normally, parser errors mean that the parser exits immediately, so there can be only 1 parser error.
+		// In the silent mode however, the parser continues to run, even though it would have stopped. Some
+		// of the parser logic does not expect that, and may loop forever.
+		// The p.next() here is needed, so the parser is more robust, and *always* advances, even in the -silent mode.
+		p.next()
+	}
+}
+
+pub fn (mut p Parser) error_with_error(error errors.Error) {
+	if p.pref.fatal_errors {
+		exit(1)
+	}
+	mut kind := 'error:'
+	if p.pref.output_mode == .stdout {
+		if p.pref.is_verbose {
+			print_backtrace()
+			kind = 'parser error:'
+		}
+		ferror := util.formatted_error(kind, error.message, error.file_path, error.pos)
+		eprintln(ferror)
+		exit(1)
+	} else {
+		p.errors << error
 	}
 	if p.pref.output_mode == .silent {
 		// Normally, parser errors mean that the parser exits immediately, so there can be only 1 parser error.
@@ -1835,12 +1863,14 @@ fn (mut p Parser) module_decl() ast.Module {
 		// as it creates a wrong position when extended
 		// to module_pos
 		n_pos := p.tok.position()
-		if module_pos.line_nr == n_pos.line_nr && p.tok.kind != .comment {
-			if p.tok.kind != .name {
-				p.error_with_pos('`module x` syntax error', n_pos)
+		if module_pos.line_nr == n_pos.line_nr && p.tok.kind != .comment && p.tok.kind != .eof {
+			if p.tok.kind == .name {
+				p.error_with_pos('`module $name`, you can only declare one module, unexpected `$p.tok.lit`',
+					n_pos)
 				return mod_node
 			} else {
-				p.error_with_pos('`module x` can only declare one module', n_pos)
+				p.error_with_pos('`module $name`, unexpected `$p.tok.kind` after module name',
+					n_pos)
 				return mod_node
 			}
 		}

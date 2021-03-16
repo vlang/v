@@ -9490,8 +9490,7 @@ _SOKOL_PRIVATE void _sg_mtl_copy_image_content(const _sg_image_t* img, __unsafe_
             for (int slice_index = 0; slice_index < num_slices; slice_index++) {
                 const int mtl_slice_index = (img->cmn.type == SG_IMAGETYPE_CUBE) ? face_index : slice_index;
                 const int slice_offset = slice_index * bytes_per_slice;
-//                SOKOL_ASSERT((slice_offset + bytes_per_slice) <= (int)content->subimage[face_index][mip_index].size);
-                if (!((slice_offset + bytes_per_slice) <= (int)content->subimage[face_index][mip_index].size)) continue;
+                SOKOL_ASSERT((slice_offset + bytes_per_slice) <= (int)content->subimage[face_index][mip_index].size);
                 [mtl_tex replaceRegion:region
                     mipmapLevel:mip_index
                     slice:mtl_slice_index

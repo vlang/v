@@ -39,8 +39,13 @@ pub fn load(path string) ?Image {
 		ext: ext
 		data: 0
 	}
-	flag := if ext == 'png' { C.STBI_rgb_alpha } else { 0 }
-	res.data = C.stbi_load(path.str, &res.width, &res.height, &res.nr_channels, flag)
+	// flag := if ext == 'png' { C.STBI_rgb_alpha } else { 0 }
+	desired_channels := if ext == 'png' { 4 } else { 0 }
+	res.data = C.stbi_load(path.str, &res.width, &res.height, &res.nr_channels, desired_channels)
+	if desired_channels == 4 && res.nr_channels == 3 {
+		// Fix an alpha png bug
+		res.nr_channels = 4
+	}
 	if isnil(res.data) {
 		return error('stbi image failed to load from "$path"')
 	}

@@ -5,3 +5,9 @@ vlib/v/checker/tests/lock_already_rlocked.vv:11:3: error: nested `lock`/`rlock` 
       |         ~~~~
    12 |             a.x++
    13 |         }
+vlib/v/checker/tests/lock_already_rlocked.vv:15:10: error: a is `shared` and must be `rlock`ed or `lock`ed to be used as non-mut argument to print
+   13 |         }
+   14 |     }
+   15 |     println(a.x)
+      |             ^
+   16 | }

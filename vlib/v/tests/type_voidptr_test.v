@@ -1,4 +1,4 @@
-[direct_array_access; unsafe]
+[unsafe]
 fn memcpy(mut dest voidptr, src voidptr, len u32) voidptr {
 	mut d := byteptr(dest)
 	s := byteptr(src)
@@ -15,6 +15,7 @@ fn memcpy(mut dest voidptr, src voidptr, len u32) voidptr {
 fn test_mut_voidptr_arg() {
 	mut a := [1, 2]!
 	b := [3, 4]!
-	unsafe { memcpy(mut a, b, sizeof(int)) }
+	mut aptr := voidptr(&a[0])
+	unsafe { memcpy(mut aptr, &b[0], sizeof(int)) }
 	assert a == [3, 2]!
 }

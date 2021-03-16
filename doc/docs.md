@@ -763,10 +763,10 @@ If a right-side index is absent, it is assumed to be the array length. If a
 left-side index is absent, it is assumed to be 0.
 
 ```v
-nums := [1, 2, 3, 4, 5]
-println(nums[1..4]) // [2, 3, 4]
-println(nums[..4]) // [1, 2, 3, 4]
-println(nums[1..]) // [2, 3, 4, 5]
+nums := [0, 10, 20, 30, 40]
+println(nums[1..4]) // [10, 20, 30]
+println(nums[..4]) // [0, 10, 20, 30]
+println(nums[1..]) // [10, 20, 30, 40]
 ```
 
 All array operations may be performed on slices.
@@ -1147,12 +1147,12 @@ The `for value in arr` form is used for going through elements of an array.
 If an index is required, an alternative form `for index, value in arr` can be used.
 
 Note, that the value is read-only.
-If you need to modify the array while looping, you have to use indexing:
+If you need to modify the array while looping, you need to declare the element as mutable:
 
 ```v
 mut numbers := [0, 1, 2]
-for i, _ in numbers {
-	numbers[i]++
+for mut num in numbers {
+	num++
 }
 println(numbers) // [1, 2, 3]
 ```
@@ -2976,14 +2976,31 @@ The developer doesn't need to change anything in their code. "It just works", li
 Python, Go, or Java, except there's no heavy GC tracing everything or expensive RC for
 each object.
 
+### Control
+
+You can take advantage of V's autofree engine and define a `free()` method on custom 
+data types:
+
+```v
+struct MyType {}
+
+[unsafe]
+fn (data &MyType) free() {
+	// ...
+}
+```
+
+Just as the compiler frees C data types with C's `free()`, it will statically insert 
+`free()` calls for your data type at the end of each variable's lifetime.
+
 For developers willing to have more low level control, autofree can be disabled with
 `-manualfree`, or by adding a `[manualfree]` on each function that wants manage its
-memory manually.
+memory manually. (See [attributes](#attributes)).
 
-Note: right now autofree is hidden behind the -autofree flag. It will be enabled by
-default in V 0.3. If autofree is not used, V programs will leak memory.
+_Note: right now autofree is hidden behind the -autofree flag. It will be enabled by
+default in V 0.3. If autofree is not used, V programs will leak memory._
 
-For example:
+### Examples
 
 ```v
 import strings
@@ -3006,9 +3023,8 @@ fn draw_scene() {
 The strings don't escape `draw_text`, so they are cleaned up when
 the function exits.
 
-In fact, the first two calls won't result in any allocations at all.
-These two strings are small,
-V will use a preallocated buffer for them.
+In fact, with the `-prealloc` flag, the first two calls won't result in any allocations at all.
+These two strings are small, so V will use a preallocated buffer for them.
 
 ```v
 struct User {

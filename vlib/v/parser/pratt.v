@@ -31,6 +31,12 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 				p.inside_match = true // reuse the same var for perf instead of inside_sql TODO rename
 				node = p.sql_expr()
 				p.inside_match = false
+			} else if p.tok.lit == 'map' && p.peek_tok.kind == .lcbr && !(p.builtin_mod
+				&& p.file_base == 'map.v') {
+				p.next() // `map`
+				p.next() // `{`
+				node = p.map_init()
+				p.check(.rcbr) // `}`
 			} else {
 				if p.inside_if && p.is_generic_name() {
 					// $if T is string {}
@@ -377,6 +383,7 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 				right: right
 				op: tok.kind
 				pos: pos
+				is_stmt: true
 			}
 		} else if p.tok.kind.is_infix() {
 			if p.tok.kind.is_prefix() && p.tok.line_nr != p.prev_tok.line_nr {
@@ -473,6 +480,7 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 		right: right
 		op: op
 		pos: pos
+		is_stmt: p.is_stmt_ident
 		or_block: ast.OrExpr{
 			stmts: or_stmts
 			kind: or_kind

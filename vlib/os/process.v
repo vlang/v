@@ -28,7 +28,7 @@ pub mut:
 	env_is_custom bool     // true, when the environment was customized with .set_environment
 	env           []string // the environment with which the process was started  (list of 'var=val')
 	use_stdio_ctl bool     // when true, then you can use p.stdin_write(), p.stdout_slurp() and p.stderr_slurp()
-	stdio_fd      [3]int   // the file descriptors	
+	stdio_fd      [3]int   // the file descriptors
 }
 
 // new_process - create a new process descriptor
@@ -43,64 +43,64 @@ pub fn new_process(filename string) &Process {
 }
 
 // set_args - set the arguments for the new process
-pub fn (mut p Process) set_args(pargs []string) &Process {
+pub fn (mut p Process) set_args(pargs []string) {
 	if p.status != .not_started {
-		return p
+		return
 	}
 	p.args = pargs
-	return p
+	return
 }
 
 // set_environment - set a custom environment variable mapping for the new process
-pub fn (mut p Process) set_environment(envs map[string]string) &Process {
+pub fn (mut p Process) set_environment(envs map[string]string) {
 	if p.status != .not_started {
-		return p
+		return
 	}
 	p.env_is_custom = true
 	p.env = []string{}
 	for k, v in envs {
 		p.env << '$k=$v'
 	}
-	return p
+	return
 }
 
 // run - starts the new process
-pub fn (mut p Process) run() &Process {
+pub fn (mut p Process) run() {
 	if p.status != .not_started {
-		return p
+		return
 	}
 	p._spawn()
-	return p
+	return
 }
 
 // signal_kill - kills the process, after that it is no longer running
-pub fn (mut p Process) signal_kill() &Process {
+pub fn (mut p Process) signal_kill() {
 	if p.status !in [.running, .stopped] {
-		return p
+		return
 	}
 	p._signal_kill()
 	p.status = .aborted
-	return p
+	return
 }
 
 // signal_stop - stops the process, you can resume it with p.signal_continue()
-pub fn (mut p Process) signal_stop() &Process {
+pub fn (mut p Process) signal_stop() {
 	if p.status != .running {
-		return p
+		return
 	}
 	p._signal_stop()
 	p.status = .stopped
-	return p
+	return
 }
 
 // signal_continue - tell a stopped process to continue/resume its work
-pub fn (mut p Process) signal_continue() &Process {
+pub fn (mut p Process) signal_continue() {
 	if p.status != .stopped {
-		return p
+		return
 	}
 	p._signal_continue()
 	p.status = .running
-	return p
+	return
 }
 
 // wait - wait for a process to finish.
@@ -109,15 +109,15 @@ pub fn (mut p Process) signal_continue() &Process {
 // released fully, until its parent process exits.
 // NB: This call will block the calling process until the child
 // process is finished.
-pub fn (mut p Process) wait() &Process {
+pub fn (mut p Process) wait() {
 	if p.status == .not_started {
 		p._spawn()
 	}
 	if p.status !in [.running, .stopped] {
-		return p
+		return
 	}
 	p._wait()
-	return p
+	return
 }
 
 //
@@ -152,9 +152,9 @@ pub fn (mut p Process) is_alive() bool {
 }
 
 //
-pub fn (mut p Process) set_redirect_stdio() &Process {
+pub fn (mut p Process) set_redirect_stdio() {
 	p.use_stdio_ctl = true
-	return p
+	return
 }
 
 pub fn (mut p Process) stdin_write(s string) {

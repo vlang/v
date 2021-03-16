@@ -4,8 +4,8 @@
 module builtin
 
 __global (
-	g_m2_buf byteptr
-	g_m2_ptr byteptr
+	g_m2_buf byteptr 
+	g_m2_ptr byteptr 
 )
 
 // isnil returns true if an object is nil (only for C objects).
@@ -38,19 +38,19 @@ __global (
 	total_m              = i64(0)
 	nr_mallocs           = int(0)
 	// will be filled in cgen
-	as_cast_type_indexes   []VCastTypeIndexName
+	as_cast_type_indexes   []VCastTypeIndexName 
 )
 
 fn __as_cast(obj voidptr, obj_type int, expected_type int) voidptr {
 	if obj_type != expected_type {
-		mut obj_name := as_cast_type_indexes[0].tname
-		mut expected_name := as_cast_type_indexes[0].tname
+		mut obj_name := as_cast_type_indexes[0].tname.clone()
+		mut expected_name := as_cast_type_indexes[0].tname.clone()
 		for x in as_cast_type_indexes {
 			if x.tindex == obj_type {
-				obj_name = x.tname
+				obj_name = x.tname.clone()
 			}
 			if x.tindex == expected_type {
-				expected_name = x.tname
+				expected_name = x.tname.clone()
 			}
 		}
 		panic('as cast: cannot cast `$obj_name` to `$expected_name`')

@@ -1,3 +1,5 @@
+import strings
+
 // Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
@@ -11,7 +13,7 @@ mut:
 fn test_add() {
 	mut a := 'a'
 	a += 'b'
-	assert a==('ab')
+	assert a == ('ab')
 	a = 'a'
 	for i := 1; i < 1000; i++ {
 		a += 'b'
@@ -34,14 +36,14 @@ fn test_ends_with() {
 }
 
 fn test_between() {
-	 s := 'hello [man] how you doing'
+	s := 'hello [man] how you doing'
 	assert s.find_between('[', ']') == 'man'
 }
 
 fn test_compare() {
 	a := 'Music'
 	b := 'src'
-	assert b>=(a)
+	assert b >= (a)
 }
 
 fn test_lt() {
@@ -88,7 +90,10 @@ fn test_compare_strings() {
 
 fn test_sort() {
 	mut vals := [
-		'arr', 'an', 'a', 'any'
+		'arr',
+		'an',
+		'a',
+		'any',
 	]
 	len := vals.len
 	vals.sort()
@@ -101,10 +106,13 @@ fn test_sort() {
 
 fn test_sort_reverse() {
 	mut vals := [
-		'arr', 'an', 'a', 'any'
+		'arr',
+		'an',
+		'a',
+		'any',
 	]
 	len := vals.len
-	vals.sort(b>a)
+	vals.sort(b > a)
 	assert len == vals.len
 	assert vals[0] == 'a'
 	assert vals[1] == 'an'
@@ -113,35 +121,35 @@ fn test_sort_reverse() {
 }
 
 fn test_split_nth() {
-	a := "1,2,3"
-	assert (a.split(',').len == 3)
-	assert (a.split_nth(',', -1).len == 3)
-	assert (a.split_nth(',', 0).len == 3)
-	assert (a.split_nth(',', 1).len == 1)
-	assert (a.split_nth(',', 2).len == 2)
-	assert (a.split_nth(',', 10).len == 3)
-	b := "1::2::3"
-	assert (b.split('::').len == 3)
-	assert (b.split_nth('::', -1).len == 3)
-	assert (b.split_nth('::', 0).len == 3)
-	assert (b.split_nth('::', 1).len == 1)
-	assert (b.split_nth('::', 2).len == 2)
-	assert (b.split_nth('::', 10).len == 3)
-	c := "ABCDEF"
+	a := '1,2,3'
+	assert a.split(',').len == 3
+	assert a.split_nth(',', -1).len == 3
+	assert a.split_nth(',', 0).len == 3
+	assert a.split_nth(',', 1).len == 1
+	assert a.split_nth(',', 2).len == 2
+	assert a.split_nth(',', 10).len == 3
+	b := '1::2::3'
+	assert b.split('::').len == 3
+	assert b.split_nth('::', -1).len == 3
+	assert b.split_nth('::', 0).len == 3
+	assert b.split_nth('::', 1).len == 1
+	assert b.split_nth('::', 2).len == 2
+	assert b.split_nth('::', 10).len == 3
+	c := 'ABCDEF'
 	println(c.split('').len)
-	assert (c.split('').len == 6)
-	assert (c.split_nth('', 3).len == 3)
-	assert (c.split_nth('BC', -1).len == 2)
-	d := ","
-	assert (d.split(',').len == 2)
-	assert (d.split_nth('', 3).len == 1)
-	assert (d.split_nth(',', -1).len == 2)
-	assert (d.split_nth(',', 3).len == 2)
-	e := ",,,0,,,,,a,,b,"
-	assert (e.split(',,').len == 5)
-	assert (e.split_nth(',,', 3).len == 3)
-	assert (e.split_nth(',', -1).len == 12)
-	assert (e.split_nth(',', 3).len == 3)
+	assert c.split('').len == 6
+	assert c.split_nth('', 3).len == 3
+	assert c.split_nth('BC', -1).len == 2
+	d := ','
+	assert d.split(',').len == 2
+	assert d.split_nth('', 3).len == 1
+	assert d.split_nth(',', -1).len == 2
+	assert d.split_nth(',', 3).len == 2
+	e := ',,,0,,,,,a,,b,'
+	assert e.split(',,').len == 5
+	assert e.split_nth(',,', 3).len == 3
+	assert e.split_nth(',', -1).len == 12
+	assert e.split_nth(',', 3).len == 3
 }
 
 fn test_split_nth_values() {
@@ -185,15 +193,15 @@ fn test_split() {
 	s = '2018-01-01z13:01:02'
 	vals = s.split('z')
 	assert vals.len == 2
-	assert vals[0] =='2018-01-01'
+	assert vals[0] == '2018-01-01'
 	assert vals[1] == '13:01:02'
 	// //////////
 	s = '4627a862c3dec29fb3182a06b8965e0025759e18___1530207969___blue'
 	vals = s.split('___')
 	assert vals.len == 3
-	assert vals[0]== '4627a862c3dec29fb3182a06b8965e0025759e18'
-	assert vals[1]=='1530207969'
-	assert vals[2]== 'blue'
+	assert vals[0] == '4627a862c3dec29fb3182a06b8965e0025759e18'
+	assert vals[1] == '1530207969'
+	assert vals[2] == 'blue'
 	// /////////
 	s = 'lalala'
 	vals = s.split('a')
@@ -238,16 +246,18 @@ fn main() {
 }
 
 fn test_join() {
-	mut strings := [ 'a', 'b', 'c' ]
+	mut strings := ['a', 'b', 'c']
 	mut s := strings.join(' ')
 	assert s == 'a b c'
-	strings = ['one
+	strings = [
+		'one
 two ',
-	'three!
-four!']
+		'three!
+four!',
+	]
 	s = strings.join(' ')
 	assert s.contains('one') && s.contains('two ') && s.contains('four')
-	empty :=  []string{len:0}
+	empty := []string{len: 0}
 	assert empty.join('A') == ''
 }
 
@@ -265,13 +275,13 @@ fn test_clone() {
 fn test_replace() {
 	a := 'hello man!'
 	mut b := a.replace('man', 'world')
-	assert b==('hello world!')
+	assert b == ('hello world!')
 	b = b.replace('!', '')
-	assert b==('hello world')
+	assert b == ('hello world')
 	b = b.replace('h', 'H')
-	assert b==('Hello world')
+	assert b == ('Hello world')
 	b = b.replace('foo', 'bar')
-	assert b==('Hello world')
+	assert b == ('Hello world')
 	s := 'hey man how are you'
 	assert s.replace('man ', '') == 'hey how are you'
 	lol := 'lol lol lol'
@@ -280,35 +290,43 @@ fn test_replace() {
 	assert b.replace('B', '') == 'onetwothree'
 	b = '*charptr'
 	assert b.replace('charptr', 'byteptr') == '*byteptr'
-	c :='abc'
-	assert c.replace('','-') == c
-	v :='a   b c d'
-	assert v.replace('  ',' ') == 'a  b c d'
-
+	c := 'abc'
+	assert c.replace('', '-') == c
+	v := 'a   b c d'
+	assert v.replace('  ', ' ') == 'a  b c d'
 }
 
 fn test_replace_each() {
 	s := 'hello man man :)'
 	q := s.replace_each([
-		'man', 'dude',
-		'hello', 'hey'
+		'man',
+		'dude',
+		'hello',
+		'hey',
 	])
 	assert q == 'hey dude dude :)'
 	bb := '[b]bold[/b] [code]code[/code]'
 	assert bb.replace_each([
-		'[b]', '<b>',
-		'[/b]', '</b>',
-		'[code]', '<code>',
-		'[/code]', '</code>'
+		'[b]',
+		'<b>',
+		'[/b]',
+		'</b>',
+		'[code]',
+		'<code>',
+		'[/code]',
+		'</code>',
 	]) == '<b>bold</b> <code>code</code>'
 	bb2 := '[b]cool[/b]'
 	assert bb2.replace_each([
-		'[b]', '<b>',
-		'[/b]', '</b>',
+		'[b]',
+		'<b>',
+		'[/b]',
+		'</b>',
 	]) == '<b>cool</b>'
 	t := 'aaaaaaaa'
 	y := t.replace_each([
-		'aa', 'b'
+		'aa',
+		'b',
 	])
 	assert y == 'bbbb'
 }
@@ -369,7 +387,7 @@ fn test_left_right() {
 	assert s[..0] == ''
 	assert s[..5] == s
 	assert s[3..] == 'HA'
-	//assert s.right(6) == ''
+	// assert s.right(6) == ''
 	u := s.ustring()
 	assert u.left(3) == 'ALO'
 	assert u.left(0) == ''
@@ -425,7 +443,7 @@ fn test_to_num() {
 
 fn test_inter_format_string() {
 	float_num := 1.52345
-	float_num_string := '-${float_num:.03f}-'
+	float_num_string := '-${float_num:.3f}-'
 	assert float_num_string == '-1.523-'
 	int_num := 7
 	int_num_string := '-${int_num:03d}-'
@@ -455,8 +473,8 @@ fn test_hash() {
 	assert s4.hash() == -346636507
 	s5 := '24640'
 	// From a map collision test
-	assert s5.hash() % ((1 << 20) -1) == s.hash() % ((1 << 20) -1)
-	assert s5.hash() % ((1 << 20) -1) == 592861
+	assert s5.hash() % ((1 << 20) - 1) == s.hash() % ((1 << 20) - 1)
+	assert s5.hash() % ((1 << 20) - 1) == 592861
 }
 
 fn test_trim() {
@@ -599,7 +617,7 @@ fn test_capitalize() {
 	s = 'test'
 	assert !s.is_capital()
 	assert s.capitalize() == 'Test'
-    s = 'i am ray'
+	s = 'i am ray'
 	assert !s.is_capital()
 	assert s.capitalize() == 'I am ray'
 	s = ''
@@ -645,13 +663,12 @@ fn test_for_loop_two() {
 }
 
 fn test_quote() {
-	a := `'`
-	println("testing double quotes")
-	b := "hi"
+	a := `\'`
+	println('testing double quotes')
+	b := 'hi'
 	assert b == 'hi'
-	assert a.str() == '\''
+	assert a.str() == "'"
 }
-
 
 fn test_ustring_comparisons() {
 	/*
@@ -773,8 +790,8 @@ fn test_raw_with_quotes() {
 
 fn test_escape() {
 	a := 10
-	println("\"$a")
-	assert "\"$a" == "\"10"
+	println('\"$a')
+	assert '\"$a' == '"10'
 }
 
 fn test_atoi() {
@@ -815,9 +832,9 @@ fn test_inter_before_comp_if() {
 fn test_double_quote_inter() {
 	a := 1
 	b := 2
-	println("${a} ${b}")
-	assert "${a} ${b}" == "1 2"
-	assert '${a} ${b}' == "1 2"
+	println('$a $b')
+	assert '$a $b' == '1 2'
+	assert '$a $b' == '1 2'
 }
 
 fn foo(b byte) byte {
@@ -830,7 +847,7 @@ fn filter(b byte) bool {
 
 fn test_split_into_lines() {
 	line_content := 'Line'
-	text_crlf := '${line_content}\r\n${line_content}\r\n${line_content}'
+	text_crlf := '$line_content\r\n$line_content\r\n$line_content'
 	lines_crlf := text_crlf.split_into_lines()
 
 	assert lines_crlf.len == 3
@@ -838,7 +855,7 @@ fn test_split_into_lines() {
 		assert line == line_content
 	}
 
-	text_lf := '${line_content}\n${line_content}\n${line_content}'
+	text_lf := '$line_content\n$line_content\n$line_content'
 	lines_lf := text_lf.split_into_lines()
 
 	assert lines_lf.len == 3
@@ -847,14 +864,11 @@ fn test_split_into_lines() {
 	}
 }
 
-fn test_string_literal_with_backslash(){
-    a := 'Hello\
-          World'
-    assert a == 'HelloWorld'
+fn test_string_literal_with_backslash() {
+	a := 'HelloWorld'
+	assert a == 'HelloWorld'
 
-	b := 'One\
-		  Two\
-		  Three'
+	b := 'OneTwoThree'
 	assert b == 'OneTwoThree'
 }
 
@@ -887,7 +901,7 @@ fn test_sorter() {
 		Ka{
 			s: 'ccc'
 			i: 102
-		}
+		},
 	]
 	cmp := fn (a &Ka, b &Ka) int {
 		return compare_strings(a.s, b.s)
@@ -901,11 +915,12 @@ fn test_sorter() {
 	assert arr[2].i == 102
 }
 
-fn test_split_by_whitespace() {
-	assert 'a bcde'.split_by_whitespace() == ['a', 'bcde']
-	assert '  sss \t  ssss '.split_by_whitespace() == ['sss', 'ssss']
-	assert '\n xyz \t abc   def'.split_by_whitespace() == ['xyz', 'abc', 'def']
-	assert ''.split_by_whitespace() == []
+fn test_fields() {
+	assert 'a bcde'.fields() == ['a', 'bcde']
+	assert '  sss \t  ssss '.fields() == ['sss', 'ssss']
+	assert '\n xyz \t abc   def'.fields() == ['xyz', 'abc', 'def']
+	assert 'hello'.fields() == ['hello']
+	assert ''.fields() == []
 }
 
 fn test_interpolation_after_quoted_variable_still_works() {

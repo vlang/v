@@ -372,21 +372,6 @@ pub fn skip_bom(file_content string) string {
 	return raw_text
 }
 
-[inline]
-pub fn imin(a int, b int) int {
-	return if a < b { a } else { b }
-}
-
-[inline]
-pub fn imax(a int, b int) int {
-	return if a > b { a } else { b }
-}
-
-[inline]
-pub fn iabs(v int) int {
-	return if v > 0 { v } else { -v }
-}
-
 pub fn replace_op(s string) string {
 	if s.len == 1 {
 		last_char := s[s.len - 1]

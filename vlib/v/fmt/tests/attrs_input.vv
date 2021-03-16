@@ -4,3 +4,7 @@
 [unsafe]
 [tom: 'jerry']
 fn heavily_tagged() {}
+
+[console] // console attribute for easier diagnostics on windows
+[unsafe] // also it's not safe to use
+fn dangerous_console() {}

@@ -31,3 +31,14 @@ fn test_match_expr_of_multi_expr_stmts() {
 	println(ret)
 	assert ret == 2
 }
+
+fn test_match_expression_on_complex_bool_conditions() {
+	s := 'hello'
+	x := match true {
+		s[1] == `e` { 'first' }
+		(s[1] == `e`) { 'second' }
+		else { 'not found' }
+	}
+	println(x)
+	assert x == 'first'
+}

@@ -137,5 +137,7 @@ selfcompile:
 selfcompile-static:
 	$(V) -cg -cflags '--static' -o v-static cmd/v
 
-install: all
-	$(V) symlink
+### NB: Please keep this Makefile and make.bat simple.
+install:
+	@echo 'Please use `sudo v symlink` instead.'
+    

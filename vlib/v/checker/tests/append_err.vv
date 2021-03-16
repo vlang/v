@@ -1,4 +1,7 @@
 fn main() {
 	mut l := []int{}
 	l << 'test'
+	
+	_ = l << 3
+	_ = (l << 3).len
 }

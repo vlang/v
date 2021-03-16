@@ -71,7 +71,9 @@ pub fn set_rng(rng &PRNG) {
 	default_rng = rng
 }
 
-// seed sets the given array of `u32` values as the seed for the `default_rng`. It is recommended to use
+// seed sets the given array of `u32` values as the seed for the `default_rng`. The default_rng is
+// an instance of WyRandRNG which takes 2 u32 values. When using a custom RNG, make sure to use
+// the correct number of u32s.
 pub fn seed(seed []u32) {
 	default_rng.seed(seed)
 }

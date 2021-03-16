@@ -68,3 +68,9 @@ fn keep_real_block_comment() {
 		'eggs',
 	]
 }
+
+fn comment_at_line_start_with_expressions_after() {
+	arr := [123456789012345, 234567890123456, 678901234567890, 789012345678901, /* at the end */
+		345678901234567, /* in between */ 456789012345678,
+		/* line start */ 567890123456789, 890123456789012]
+}

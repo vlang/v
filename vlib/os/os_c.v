@@ -163,11 +163,11 @@ pub fn cp(src string, dst string) ? {
 		for {
 			// FIXME: use sizeof, bug: 'os__buf' undeclared
 			// count = C.read(fp_from, buf, sizeof(buf))
-			count = C.read(fp_from, buf, 1024)
+			count = C.read(fp_from, &buf[0], 1024)
 			if count == 0 {
 				break
 			}
-			if C.write(fp_to, buf, count) < 0 {
+			if C.write(fp_to, &buf[0], count) < 0 {
 				return error_with_code('cp: failed to write to $dst', int(-1))
 			}
 		}
@@ -445,6 +445,7 @@ pub fn get_raw_stdin() []byte {
 	$if windows {
 		unsafe {
 			block_bytes := 512
+			mut old_size := block_bytes
 			mut buf := malloc(block_bytes)
 			h_input := C.GetStdHandle(C.STD_INPUT_HANDLE)
 			mut bytes_read := 0
@@ -456,7 +457,9 @@ pub fn get_raw_stdin() []byte {
 				if !res {
 					break
 				}
-				buf = v_realloc(buf, offset + block_bytes + (block_bytes - bytes_read))
+				new_size := offset + block_bytes + (block_bytes - bytes_read)
+				buf = realloc_data(buf, old_size, new_size)
+				old_size = new_size
 			}
 			return array{
 				element_size: 1
@@ -483,7 +486,7 @@ pub fn read_file_array<T>(path string) []T {
 	a := T{}
 	tsize := int(sizeof(a))
 	// prepare for reading, get current file size
-	mut fp := vfopen(path, 'rb') or { return array{} }
+	mut fp := vfopen(path, 'rb') or { return []T{} }
 	C.fseek(fp, 0, C.SEEK_END)
 	fsize := C.ftell(fp)
 	C.rewind(fp)
@@ -492,11 +495,13 @@ pub fn read_file_array<T>(path string) []T {
 	buf := unsafe { malloc(fsize) }
 	C.fread(buf, fsize, 1, fp)
 	C.fclose(fp)
-	return array{
-		element_size: tsize
-		data: buf
-		len: len
-		cap: len
+	return unsafe {
+		array{
+			element_size: tsize
+			data: buf
+			len: len
+			cap: len
+		}
 	}
 }
 

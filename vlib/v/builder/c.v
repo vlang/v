@@ -46,7 +46,9 @@ pub fn (mut b Builder) build_c(v_files []string, out_file string) {
 	f.writeln(output2) or { panic(err) }
 	f.close()
 	if b.pref.is_stats {
-		println('generated C source code size: ${util.bold((output2.count('\n') + 1).str())} lines, ${util.bold(output2.len.str())} bytes')
+		slines := util.bold((output2.count('\n') + 1).str())
+		sbytes := util.bold(output2.len.str())
+		println('generated C source code size: $slines lines, $sbytes bytes')
 	}
 	// os.write_file(out_file, b.gen_c(v_files))
 }
@@ -82,13 +84,5 @@ pub fn (mut b Builder) compile_c() {
 		out_name_c = b.get_vtmp_filename(b.pref.out_name, '.tmp.so.c')
 	}
 	b.build_c(files, out_name_c)
-	if b.pref.os == .ios {
-		bundle_name := b.pref.out_name.split('/').last()
-		bundle_id := if b.pref.bundle_id != '' { b.pref.bundle_id } else { 'app.vlang.$bundle_name' }
-		display_name := if b.pref.display_name != '' { b.pref.display_name } else { bundle_name }
-		os.mkdir('${display_name}.app') or { panic(err) }
-		os.write_file('${display_name}.app/Info.plist', make_ios_plist(display_name, bundle_id,
-			bundle_name, 1)) or { panic(err) }
-	}
 	b.cc()
 }

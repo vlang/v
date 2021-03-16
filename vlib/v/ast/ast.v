@@ -579,8 +579,9 @@ pub fn (i &Ident) var_info() IdentVar {
 // See: token.Kind.is_infix
 pub struct InfixExpr {
 pub:
-	op  token.Kind
-	pos token.Position
+	op      token.Kind
+	pos     token.Position
+	is_stmt bool
 pub mut:
 	left        Expr
 	right       Expr
@@ -1184,6 +1185,7 @@ pub mut:
 	sym         table.TypeSymbol
 	result_type table.Type
 	env_value   string
+	args        []CallArg
 }
 
 pub struct None {
@@ -1246,7 +1248,6 @@ pub fn (expr Expr) is_blank_ident() bool {
 pub fn (expr Expr) position() token.Position {
 	// all uncommented have to be implemented
 	match expr {
-		// KEKW2
 		AnonFn {
 			return expr.decl.pos
 		}
@@ -1356,28 +1357,10 @@ pub:
 	is_ptr bool       // whether the type is a pointer
 }
 
-pub fn (stmt Stmt) position() token.Position {
-	match stmt {
-		AssertStmt, AssignStmt, Block, BranchStmt, CompFor, ConstDecl, DeferStmt, EnumDecl, ExprStmt,
-		FnDecl, ForCStmt, ForInStmt, ForStmt, GotoLabel, GotoStmt, Import, Return, StructDecl,
-		GlobalDecl, HashStmt, InterfaceDecl, Module, SqlStmt, GoStmt {
-			return stmt.pos
-		}
-		TypeDecl {
-			match stmt {
-				AliasTypeDecl, FnTypeDecl, SumTypeDecl { return stmt.pos }
-			}
-		}
-		// Please, do NOT use else{} here.
-		// This match is exhaustive *on purpose*, to help force
-		// maintaining/implementing proper .pos fields.
-	}
-}
-
 pub fn (node Node) position() token.Position {
 	match node {
 		Stmt {
-			mut pos := node.position()
+			mut pos := node.pos
 			if node is Import {
 				for sym in node.syms {
 					pos = pos.extend(sym.pos)
@@ -1406,8 +1389,8 @@ pub fn (node Node) position() token.Position {
 		File {
 			mut pos := token.Position{}
 			if node.stmts.len > 0 {
-				first_pos := node.stmts.first().position()
-				last_pos := node.stmts.last().position()
+				first_pos := node.stmts.first().pos
+				last_pos := node.stmts.last().pos
 				pos = first_pos.extend_with_last_line(last_pos, last_pos.line_nr)
 			}
 			return pos

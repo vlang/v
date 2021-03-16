@@ -8,7 +8,6 @@ import v.ast
 import v.pref
 import v.table
 import v.token
-import vweb.tmpl
 
 const (
 	supported_comptime_calls = ['html', 'tmpl', 'env', 'embed_file']
@@ -168,7 +167,7 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 	$if trace_comptime ? {
 		println('>>> compiling comptime template file "$path" for $tmp_fn_name')
 	}
-	v_code := tmpl.compile_file(path, tmp_fn_name)
+	v_code := p.compile_template_file(path, tmp_fn_name)
 	$if print_vweb_template_expansions ? {
 		lines := v_code.split('\n')
 		for i, line in lines {
@@ -181,9 +180,9 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 	}
 	$if trace_comptime ? {
 		println('')
-		println('>>> vweb template for $path:')
+		println('>>> template for $path:')
 		println(v_code)
-		println('>>> end of vweb template END')
+		println('>>> end of template END')
 		println('')
 	}
 	mut file := parse_comptime(v_code, p.table, p.pref, scope, p.global_scope)
@@ -305,12 +304,7 @@ fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 		p.mark_var_as_used(method_name)
 		// `app.$action()` (`action` is a string)
 		p.check(.lpar)
-		mut args_var := ''
-		if p.tok.kind == .name {
-			args_var = p.tok.lit
-			p.mark_var_as_used(args_var)
-			p.next()
-		}
+		args := p.call_args()
 		p.check(.rpar)
 		if p.tok.kind == .key_orelse {
 			p.check(.key_orelse)
@@ -321,7 +315,8 @@ fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 			method_name: method_name
 			method_pos: method_pos
 			scope: p.scope
-			args_var: args_var
+			args_var: ''
+			args: args
 			pos: start_pos.extend(p.prev_tok.position())
 		}
 	}
