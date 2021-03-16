@@ -1,18 +1,7 @@
 import simplemodule
 
-fn test_todo() {
-}
-
 fn simple<T>(p T) T {
 	return p
-}
-
-fn plus<T>(xxx T, b T) T {
-	// x := a
-	// y := b
-	// ww := ww
-	// q := xx + 1
-	return xxx + b
 }
 
 fn test_identity() {
@@ -27,7 +16,15 @@ fn test_identity() {
 	assert simple<simplemodule.Data>(simplemodule.Data{value: 0}).value == 0
 }
 
-fn test_plus() {
+fn plus<T>(xxx T, b T) T {
+	// x := a
+	// y := b
+	// ww := ww
+	// q := xx + 1
+	return xxx + b
+}
+
+fn test_infix_expr() {
 	a := plus<int>(2, 3)
 	assert a == 5
 	assert plus<int>(10, 1) == 11
@@ -42,9 +39,26 @@ fn sum<T>(l []T) T {
 	return r
 }
 
-fn test_foo() {
+fn test_array() {
 	b := [1, 2, 3]
-	assert sum<int>(b) == 6
+	assert sum(b) == 6
+}
+
+fn max<T>(brug string, a ...T) T {
+	mut max := a[0]
+	for item in a[1..] {
+		if max < item {
+			max = item
+		}
+	}
+	return max
+}
+
+fn test_generic_variadic() {
+	assert max('krkr', 1, 2, 3, 4) == 4
+	a := [f64(1.2), 3.2, 0.1, 2.2]
+	assert max('krkr', ...a) == 3.2
+	assert max('krkr', ...[byte(4), 3, 2, 1]) == 4
 }
 
 fn create<T>() {

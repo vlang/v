@@ -1550,12 +1550,6 @@ pub fn ex2fe(x Expr) table.FExpr {
 	return res
 }
 
-// experimental ast.Table
-pub struct Table {
-	// pub mut:
-	// main_fn_decl_node FnDecl
-}
-
 // helper for dealing with `m[k1][k2][k3][k3] = value`
 pub fn (mut lx IndexExpr) recursive_mapset_is_setter(val bool) {
 	lx.is_setter = val

@@ -464,6 +464,9 @@ pub fn (mut c Checker) infer_fn_types(f table.Fn, mut call_expr ast.CallExpr) {
 					}
 				}
 				break
+			} else if param.typ.has_flag(.variadic) {
+				typ = c.table.mktyp(arg.typ)
+				break
 			}
 		}
 		if typ == table.void_type {

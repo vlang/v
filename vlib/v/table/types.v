@@ -425,11 +425,7 @@ pub enum Kind {
 }
 
 pub fn (t &TypeSymbol) str() string {
-	if t.kind in [.array, .array_fixed] {
-		return t.name.replace('array_', '[]')
-	} else {
-		return t.name
-	}
+	return t.name
 }
 
 [inline]

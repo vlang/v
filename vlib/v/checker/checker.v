@@ -1975,7 +1975,6 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			c.warn('`error($arg)` can be shortened to just `$arg`', call_expr.pos)
 		}
 	}
-
 	// TODO: typ optimize.. this node can get processed more than once
 	if call_expr.expected_arg_types.len == 0 {
 		for param in f.params {

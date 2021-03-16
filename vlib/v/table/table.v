@@ -854,13 +854,13 @@ pub fn (t &Table) mktyp(typ Type) Type {
 	}
 }
 
-pub fn (mut mytable Table) register_fn_gen_type(fn_name string, types []Type) {
-	mut a := mytable.fn_gen_types[fn_name]
+pub fn (mut t Table) register_fn_gen_type(fn_name string, types []Type) {
+	mut a := t.fn_gen_types[fn_name]
 	if types in a {
 		return
 	}
 	a << types
-	mytable.fn_gen_types[fn_name] = a
+	t.fn_gen_types[fn_name] = a
 }
 
 // TODO: there is a bug when casting sumtype the other way if its pointer
