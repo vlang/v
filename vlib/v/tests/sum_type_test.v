@@ -44,11 +44,15 @@ fn test_sum_type_match() {
 	assert as_string(int(1)) == 'This is the string representation of "1"'
 	assert as_string(f64(3.14)) == 'This is the string representation of "3.14"'
 	assert as_string('String') == 'This is the string representation of "String"'
-	assert as_string(IntAndStr{ foo: 2, bar: 'hi', baz: &IntAndStr{
-		foo: 3
-		bar: 'hello'
-		baz: 0
-	} }) == 'This is the string representation of "5_hi_hello"'
+	assert as_string(IntAndStr{
+		foo: 2
+		bar: 'hi'
+		baz: &IntAndStr{
+			foo: 3
+			bar: 'hello'
+			baz: 0
+		}
+	}) == 'This is the string representation of "5_hi_hello"'
 	assert as_string(true) == 'This is the string representation of "true"'
 	assert as_string(CommonType(Color.red)) == 'This is the string representation of "enum1_red"'
 	assert as_string(CommonType(Color.green)) == 'This is the string representation of "enum2_green"'
