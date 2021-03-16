@@ -21,6 +21,7 @@ const (
 		'vlib/vweb/request_test.v',
 		'vlib/vweb/route_test.v',
 		'vlib/x/websocket/websocket_test.v',
+		'vlib/crypto/rand/crypto_rand_read_test.v',
 	]
 	skip_with_fsanitize_address   = [
 		'vlib/encoding/base64/base64_test.v',
