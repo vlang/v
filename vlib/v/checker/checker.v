@@ -1764,9 +1764,12 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		}
 	}
 	if has_generic_generic {
-		// Need to prepend the module when adding a generic type to a function
-		c.table.register_fn_gen_type(if c.mod == '' { fn_name } else { c.mod + '.' + fn_name },
-			generic_types)
+		if c.mod != '' {
+			// Need to prepend the module when adding a generic type to a function
+			c.table.register_fn_gen_type(c.mod + '.' + fn_name, generic_types)
+		} else {
+			c.table.register_fn_gen_type(fn_name, generic_types)
+		}
 	}
 	if fn_name == 'json.encode' {
 	} else if fn_name == 'json.decode' && call_expr.args.len > 0 {
