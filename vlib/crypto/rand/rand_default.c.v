@@ -5,5 +5,5 @@ module rand
 
 // read returns an array of `bytes_needed` random bytes read from the OS.
 pub fn read(bytes_needed int) ?[]byte {
-	return error('crypto.read is not implemented on this platform')
+	return error('rand.read is not implemented on this platform')
 }
