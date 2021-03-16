@@ -92,6 +92,7 @@ enum HighlightTokenTyp {
 	none_
 	module_
 	prefix
+	str_intr
 }
 
 struct SearchModuleResult {

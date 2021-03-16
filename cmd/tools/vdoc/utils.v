@@ -141,39 +141,53 @@ fn color_highlight(code string, tb &table.Table) string {
 	builtin := ['bool', 'string', 'i8', 'i16', 'int', 'i64', 'i128', 'byte', 'u16', 'u32', 'u64',
 		'u128', 'rune', 'f32', 'f64', 'int_literal', 'float_literal', 'byteptr', 'voidptr', 'any']
 	highlight_code := fn (tok token.Token, typ HighlightTokenTyp) string {
-		lit := match typ {
+		mut lit := ''
+		match typ {
 			.unone, .operator, .punctuation {
-				tok.kind.str()
+				lit = tok.kind.str()
 			}
 			.string {
-				term.yellow("'$tok.lit'")
+				use_double_quote := tok.lit.contains("'") && !tok.lit.contains('"')
+				unescaped_val := tok.lit.replace('\\\\', '\x01').replace_each(["\\'", "'", '\\"',
+					'"',
+				])
+				if use_double_quote {
+					s := unescaped_val.replace_each(['\x01', '\\\\', '"', '\\"'])
+					lit = term.yellow('"$s"')
+				} else {
+					s := unescaped_val.replace_each(['\x01', '\\\\', "'", "\\'"])
+					lit = term.yellow("'$s'")
+				}
 			}
 			.char {
-				term.yellow('`$tok.lit`')
+				lit = term.yellow('`$tok.lit`')
 			}
 			.keyword {
-				term.bright_blue(tok.lit)
+				lit = term.bright_blue(tok.lit)
 			}
 			.builtin, .symbol {
-				term.green(tok.lit)
+				lit = term.green(tok.lit)
 			}
 			.function {
-				term.cyan(tok.lit)
+				lit = term.cyan(tok.lit)
 			}
 			.number, .module_ {
-				term.bright_blue(tok.lit)
+				lit = term.bright_blue(tok.lit)
 			}
 			.boolean {
-				term.bright_magenta(tok.lit)
+				lit = term.bright_magenta(tok.lit)
 			}
 			.none_ {
-				term.red(tok.lit)
+				lit = term.red(tok.lit)
 			}
 			.prefix {
-				term.magenta(tok.lit)
+				lit = term.magenta(tok.lit)
+			}
+			.str_intr {
+				lit = term.red(tok.lit)
 			}
 			else {
-				tok.lit
+				lit = tok.lit
 			}
 		}
 		return lit
@@ -223,6 +237,9 @@ fn color_highlight(code string, tb &table.Table) string {
 				}
 				.number {
 					tok_typ = .number
+				}
+				.str_dollar, .str_inter {
+					tok_typ = .str_intr
 				}
 				.key_true, .key_false {
 					tok_typ = .boolean
