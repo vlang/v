@@ -1677,26 +1677,26 @@ pub fn (s string) strip_margin_custom(del byte) string {
 pub fn (s string) split_by_whitespace() []string {
 	mut res := []string{}
 	mut word_start := 0
-	mut word_end := 0
+	mut word_len := 0
 	mut is_in_word := false
 	mut is_space := false
 	for i, c in s {
 		is_space = c in [` `, `\t`, `\n`]
 		if !is_in_word && !is_space {
 			word_start = i
+			word_len++
 			is_in_word = true
 			continue
 		}
 		if is_space && is_in_word {
-			word_end = i
-			res << s[word_start..word_end]
+			res << s[word_start..word_start+word_len]
 			is_in_word = false
-			word_end = 0
+			word_len = 0
 			word_start = 0
 			continue
 		}
 	}
-	if is_in_word && word_start > 0 {
+	if is_in_word && word_len > 0 {
 		// collect the remainder word at the end
 		res << s[word_start..s.len]
 	}
