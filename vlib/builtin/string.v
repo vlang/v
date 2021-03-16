@@ -530,40 +530,72 @@ pub fn (s string) split(delim string) []string {
 pub fn (s string) split_nth(delim string, nth int) []string {
 	mut res := []string{}
 	mut i := 0
-	if delim.len == 0 {
-		i = 1
-		for ch in s {
-			if nth > 0 && i >= nth {
-				res << s[i..]
-				break
+
+	match delim.len {
+		0 {
+			i = 1
+			for ch in s {
+				if nth > 0 && i >= nth {
+					res << s[i..]
+					break
+				}
+				res << ch.ascii_str()
+				i++
 			}
-			res << ch.ascii_str()
-			i++
+			return res
 		}
-		return res
-	}
-	mut start := 0
-	// Take the left part for each delimiter occurence
-	for i <= s.len {
-		is_delim := i + delim.len <= s.len && s.substr(i, i + delim.len) == delim
-		if is_delim {
-			val := s.substr(start, i)
-			was_last := nth > 0 && res.len == nth - 1
-			if was_last {
-				break
+		1 {
+			mut start := 0
+			delim_byte := delim[0]
+
+			for i < s.len {
+				if s[i] == delim_byte {
+					val := s.substr(start, i)
+					was_last := nth > 0 && res.len == nth - 1
+
+					if was_last {
+						break
+					}
+
+					res << val
+					start = i + delim.len
+					i = start
+				} else {
+					i++
+				}
 			}
-			res << val
-			start = i + delim.len
-			i = start
-		} else {
-			i++
+
+			// Then the remaining right part of the string
+			if nth < 1 || res.len < nth {
+				res << s[start..]
+			}
+			return res
+		}
+		else {
+			mut start := 0
+			// Take the left part for each delimiter occurence
+			for i <= s.len {
+				is_delim := i + delim.len <= s.len && s.substr(i, i + delim.len) == delim
+				if is_delim {
+					val := s.substr(start, i)
+					was_last := nth > 0 && res.len == nth - 1
+					if was_last {
+						break
+					}
+					res << val
+					start = i + delim.len
+					i = start
+				} else {
+					i++
+				}
+			}
+			// Then the remaining right part of the string
+			if nth < 1 || res.len < nth {
+				res << s[start..]
+			}
+			return res
 		}
 	}
-	// Then the remaining right part of the string
-	if nth < 1 || res.len < nth {
-		res << s[start..]
-	}
-	return res
 }
 
 // split_into_lines splits the string by newline characters.
