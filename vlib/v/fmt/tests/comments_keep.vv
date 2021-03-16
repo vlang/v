@@ -48,14 +48,19 @@ fn assign_comments() {
 	// at the end
 }
 
-fn linebreaks_in_block_comments() {
+fn linebreaks_in_ascii_art_block_comments() {
 	/*
-	block
+	+++
 	*/
 	/*****
-	Want a long line of stars?
-	no problem
+	+++
 	*****/
+	/****
+	+++
+	*/
+	/*
+	+++
+	****/
 }
 
 fn map_comments() {

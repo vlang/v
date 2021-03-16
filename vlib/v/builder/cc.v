@@ -138,7 +138,7 @@ fn (mut v Builder) rebuild_cached_module(vexe string, imp_path string) string {
 		vcache.dlog('| Builder.' + @FN, 'vexe: $vexe | imp_path: $imp_path | rebuild_cmd: $rebuild_cmd')
 		os.system(rebuild_cmd)
 		rebuilded_o := v.pref.cache_manager.exists('.o', imp_path) or {
-			panic('could not rebuild cache module for $imp_path, error: $err')
+			panic('could not rebuild cache module for $imp_path, error: $err.msg')
 		}
 		os.chdir(pwd)
 		return rebuilded_o

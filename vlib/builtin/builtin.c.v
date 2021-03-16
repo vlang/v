@@ -22,8 +22,7 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 	eprintln('   module: $mod')
 	eprintln(' function: ${fn_name}()')
 	eprintln('  message: $s')
-	eprintln('     file: $file')
-	eprintln('     line: ' + line_no.str())
+	eprintln('     file: $file:$line_no')
 	eprintln('=========================================')
 	$if exit_after_panic_message ? {
 		C.exit(1)

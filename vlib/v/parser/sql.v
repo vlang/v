@@ -100,7 +100,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		order_expr: order_expr
 		has_desc: has_desc
 		is_array: !query_one
-		pos: pos
+		pos: pos.extend(p.prev_tok.position())
 		table_expr: ast.Type{
 			typ: table_type
 			pos: table_pos
@@ -195,7 +195,7 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 			pos: table_pos
 		}
 		object_var_name: inserted_var_name
-		pos: pos
+		pos: pos.extend(p.prev_tok.position())
 		updated_columns: updated_columns
 		update_exprs: update_exprs
 		kind: kind

@@ -320,7 +320,6 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 				scope: 0
 			}
 		}
-		// p.warn('reg method $type_sym.name . $name ()')
 		type_sym_method_idx = type_sym.register_method(table.Fn{
 			name: name
 			params: params
@@ -349,7 +348,6 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		if !p.pref.translated && language == .v && name in p.table.fns {
 			p.table.redefined_fns << name
 		}
-		// p.warn('reg functn $name ()')
 		p.table.register_fn(table.Fn{
 			name: name
 			params: params
@@ -644,7 +642,6 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 		|| p.peek_tok.kind == .dot || p.peek_tok.kind == .rpar
 	// TODO copy pasta, merge 2 branches
 	if types_only {
-		// p.warn('types only')
 		mut arg_no := 1
 		for p.tok.kind != .rpar {
 			if p.tok.kind == .eof {
@@ -789,7 +786,7 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 				}
 			}
 			if is_variadic {
-				typ = table.new_type(p.table.find_or_register_array(typ)).set_flag(.variadic)
+				typ = table.new_type(p.table.find_or_register_array(typ)).derive(typ).set_flag(.variadic)
 			}
 			for i, arg_name in arg_names {
 				args << table.Param{
