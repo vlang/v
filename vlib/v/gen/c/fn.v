@@ -986,8 +986,8 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 	args := if g.is_js_call { node.args[1..] } else { node.args }
 	expected_types := node.expected_arg_types
 	// only v variadic, C variadic args will be appeneded like normal args
-	is_variadic := expected_types.len > 0
-		&& expected_types.last().has_flag(.variadic) && node.language == .v
+	is_variadic := expected_types.len > 0 && expected_types.last().has_flag(.variadic)
+		&& node.language == .v
 	for i, arg in args {
 		if is_variadic && i == expected_types.len - 1 {
 			break
