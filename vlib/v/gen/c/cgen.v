@@ -975,8 +975,9 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 					stmt_pos = stmt.expr.position()
 				}
 				if stmt_pos.pos == 0 {
-					print('autofree: first stmt pos = 0. ')
-					println(stmt.type_name())
+					$if trace_autofree ? {
+						println('autofree: first stmt pos = 0. $stmt.type_name()')
+					}
 					return
 				}
 			}
@@ -4849,6 +4850,8 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, val string, typ ta
 			g.cleanups[mod].writeln('\tstring_free(&$cname);')
 		} else if sym.kind == .map {
 			g.cleanups[mod].writeln('\tmap_free(&$cname);')
+		} else if styp == 'IError' {
+			g.cleanups[mod].writeln('\tIError_free(&$cname);')
 		}
 	}
 }
