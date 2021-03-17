@@ -1826,11 +1826,12 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 		ast.AsmAlias {
 			name := arg.name
 			if name in stmt.local_labels || name in stmt.global_labels {
-				g.write(if name in stmt.local_labels {
+				asm_formatted_name := if name in stmt.local_labels {
 					name
 				} else { // val in stmt.global_labels
 					'%l[$name]'
-				})
+				}
+				g.write(asm_formatted_name)
 			} else {
 				g.write('%[$name]')
 			}
