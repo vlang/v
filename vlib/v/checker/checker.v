@@ -1660,52 +1660,55 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 fn (mut c Checker) call_array_builtin_method(mut call_expr ast.CallExpr, left_type table.Type, left_type_sym table.TypeSymbol) table.Type {
 	method_name := call_expr.name
 	mut elem_typ := table.void_type
-	is_filter_map := method_name in ['filter', 'map']
-	is_sort := method_name == 'sort'
-	is_slice := method_name == 'slice'
-	is_wait := method_name == 'wait'
-	if is_slice && !c.is_builtin_mod {
+	if method_name == 'slice' && !c.is_builtin_mod {
 		c.error('.slice() is a private method, use `x[start..end]` instead', call_expr.pos)
 	}
-	if is_filter_map || is_sort || is_wait {
-		array_info := left_type_sym.info as table.Array
-		if is_filter_map {
-			// position of `it` doesn't matter
-			scope_register_it(mut call_expr.scope, call_expr.pos, array_info.elem_type)
-		} else if is_sort {
-			c.fail_if_immutable(call_expr.left)
-			// position of `a` and `b` doesn't matter, they're the same
-			scope_register_ab(mut call_expr.scope, call_expr.pos, array_info.elem_type)
+	array_info := left_type_sym.info as table.Array
+	elem_typ = array_info.elem_type
+	if method_name in ['filter', 'map'] {
+		// position of `it` doesn't matter
+		scope_register_it(mut call_expr.scope, call_expr.pos, elem_typ)
+	} else if method_name == 'sort' {
+		c.fail_if_immutable(call_expr.left)
+		// position of `a` and `b` doesn't matter, they're the same
+		scope_register_a_b(mut call_expr.scope, call_expr.pos, elem_typ)
 
-			if call_expr.args.len > 1 {
-				c.error('expected 0 or 1 argument, but got $call_expr.args.len', call_expr.pos)
-			}
-			// Verify `.sort(a < b)`
-			if call_expr.args.len > 0 {
-				if call_expr.args[0].expr !is ast.InfixExpr {
-					c.error(
-						'`.sort()` requires a `<` or `>` comparison as the first and only argument' +
-						'\ne.g. `users.sort(a.id < b.id)`', call_expr.pos)
+		if call_expr.args.len > 1 {
+			c.error('expected 0 or 1 argument, but got $call_expr.args.len', call_expr.pos)
+		} else if call_expr.args.len == 1 {
+			if call_expr.args[0].expr is ast.InfixExpr {
+				if call_expr.args[0].expr.op !in [.gt, .lt] {
+					c.error('`.sort()` can only use `<` or `>` comparison', call_expr.pos)
 				}
+				left_name := '${call_expr.args[0].expr.left}'[0]
+				right_name := '${call_expr.args[0].expr.right}'[0]
+				if left_name !in [`a`, `b`] || right_name !in [`a`, `b`] {
+					c.error('`.sort()` can only use `a` or `b` as argument, e.g. `arr.sort(a < b)`',
+						call_expr.pos)
+				} else if left_name == right_name {
+					c.error('`.sort()` cannot use same argument', call_expr.pos)
+				}
+			} else {
+				c.error(
+					'`.sort()` requires a `<` or `>` comparison as the first and only argument' +
+					'\ne.g. `users.sort(a.id < b.id)`', call_expr.pos)
 			}
 		}
-		elem_typ = array_info.elem_type
-		if is_wait {
-			elem_sym := c.table.get_type_symbol(elem_typ)
-			if elem_sym.kind == .thread {
-				if call_expr.args.len != 0 {
-					c.error('`.wait()` does not have any arguments', call_expr.args[0].pos)
-				}
-				thread_ret_type := elem_sym.thread_info().return_type
-				if thread_ret_type.has_flag(.optional) {
-					c.error('`.wait()` cannot be called for an array when thread functions return optionals. Iterate over the arrays elements instead and handle each returned optional with `or`.',
-						call_expr.pos)
-				}
-				call_expr.return_type = c.table.find_or_register_array(thread_ret_type)
-			} else {
-				c.error('`$left_type_sym.name` has no method `wait()` (only thread handles and arrays of them have)',
-					call_expr.left.position())
+	} else if method_name == 'wait' {
+		elem_sym := c.table.get_type_symbol(elem_typ)
+		if elem_sym.kind == .thread {
+			if call_expr.args.len != 0 {
+				c.error('`.wait()` does not have any arguments', call_expr.args[0].pos)
 			}
+			thread_ret_type := elem_sym.thread_info().return_type
+			if thread_ret_type.has_flag(.optional) {
+				c.error('`.wait()` cannot be called for an array when thread functions return optionals. Iterate over the arrays elements instead and handle each returned optional with `or`.',
+					call_expr.pos)
+			}
+			call_expr.return_type = c.table.find_or_register_array(thread_ret_type)
+		} else {
+			c.error('`$left_type_sym.name` has no method `wait()` (only thread handles and arrays of them have)',
+				call_expr.left.position())
 		}
 	}
 	// map/filter are supposed to have 1 arg only
@@ -1904,7 +1907,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		// builtin C.m*, C.s* only - temp
 		c.warn('function `$f.name` must be called from an `unsafe` block', call_expr.pos)
 	}
-	if f.mod != 'builtin' && f.language == .v && f.no_body && !c.pref.translated {
+	if f.mod != 'builtin' && f.language == .v && f.no_body && !c.pref.translated && !f.is_unsafe {
 		c.error('cannot call a function that does not have a body', call_expr.pos)
 	}
 	for generic_type in call_expr.generic_types {
@@ -3002,7 +3005,7 @@ fn scope_register_it(mut s ast.Scope, pos token.Position, typ table.Type) {
 	})
 }
 
-fn scope_register_ab(mut s ast.Scope, pos token.Position, typ table.Type) {
+fn scope_register_a_b(mut s ast.Scope, pos token.Position, typ table.Type) {
 	s.register(ast.Var{
 		name: 'a'
 		pos: pos
@@ -3235,6 +3238,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 	}
 	// c.expected_type = table.void_type
 	match mut node {
+		ast.AsmStmt {
+			c.asm_stmt(mut node)
+		}
 		ast.AssertStmt {
 			c.assert_stmt(node)
 		}
@@ -3544,6 +3550,113 @@ fn (mut c Checker) go_stmt(mut node ast.GoStmt) {
 		c.error('method in `go` statement cannot have non-reference mutable receiver',
 			node.call_expr.left.position())
 	}
+}
+
+fn (mut c Checker) asm_stmt(mut stmt ast.AsmStmt) {
+	if stmt.is_goto {
+		c.warn('inline assembly goto is not supported, it will most likely not work',
+			stmt.pos)
+	}
+	if c.pref.backend == .js {
+		c.error('inline assembly is not supported in js backend', stmt.pos)
+	}
+	if c.pref.backend == .c && c.pref.ccompiler_type == .msvc {
+		c.error('msvc compiler does not support inline assembly', stmt.pos)
+	}
+	mut aliases := c.asm_ios(stmt.output, mut stmt.scope, true)
+	aliases2 := c.asm_ios(stmt.input, mut stmt.scope, false)
+	aliases << aliases2
+	for template in stmt.templates {
+		if template.is_directive {
+			/*
+			align n[,value]
+			.skip n[,value]
+			.space n[,value]
+			.byte value1[,...]
+			.word value1[,...]
+			.short value1[,...]
+			.int value1[,...]
+			.long value1[,...]
+			.quad immediate_value1[,...]
+			.globl symbol
+			.global symbol
+			.section section
+			.text
+			.data
+			.bss
+			.fill repeat[,size[,value]]
+			.org n
+			.previous
+			.string string[,...]
+			.asciz string[,...]
+			.ascii string[,...]
+			*/
+			if template.name !in ['skip', 'space', 'byte', 'word', 'short', 'int', 'long', 'quad',
+				'globl', 'global', 'section', 'text', 'data', 'bss', 'fill', 'org', 'previous',
+				'string', 'asciz', 'ascii'] { // all tcc supported assembler directive
+				c.error('unknown assembler directive: `$template.name`', template.pos)
+			}
+			// if c.file in  {
+
+			// }
+		}
+		for arg in template.args {
+			c.asm_arg(arg, stmt, aliases)
+		}
+	}
+	for clob in stmt.clobbered {
+		c.asm_arg(clob.reg, stmt, aliases)
+	}
+}
+
+fn (mut c Checker) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt, aliases []string) {
+	match mut arg {
+		ast.AsmAlias {
+			name := arg.name
+			if name !in aliases && name !in stmt.local_labels && name !in stmt.global_labels {
+				suggestion := util.new_suggestion(name, aliases)
+				c.error(suggestion.say('alias or label `$arg.name` does not exist'), arg.pos)
+			}
+		}
+		ast.AsmAddressing {
+			if arg.scale !in [-1, 1, 2, 4, 8] {
+				c.error('scale must be one of 1, 2, 4, or 8', arg.pos)
+			}
+			c.asm_arg(arg.base, stmt, aliases)
+			c.asm_arg(arg.index, stmt, aliases)
+		}
+		ast.BoolLiteral {} // all of these are guarented to be correct.
+		ast.FloatLiteral {}
+		ast.CharLiteral {}
+		ast.IntegerLiteral {}
+		ast.AsmRegister {} // if the register is not found, the parser will register it as an alias
+		string {}
+	}
+}
+
+fn (mut c Checker) asm_ios(ios []ast.AsmIO, mut scope ast.Scope, output bool) []string {
+	mut aliases := []string{}
+	for io in ios {
+		typ := c.expr(io.expr)
+		if output {
+			c.fail_if_immutable(io.expr)
+		}
+		if io.alias != '' {
+			aliases << io.alias
+			if io.alias in scope.objects {
+				scope.objects[io.alias] = ast.Var{
+					name: io.alias
+					expr: io.expr
+					is_arg: true
+					typ: typ
+					orig_type: typ
+					pos: io.pos
+				}
+			}
+		}
+	}
+
+	return aliases
 }
 
 fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
@@ -3994,6 +4107,23 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 	}
 	return table.void_type
 }
+
+// pub fn (mut c Checker) asm_reg(mut node ast.AsmRegister) table.Type {
+// 	name := node.name
+
+// 	for bit_size, array in ast.x86_no_number_register_list {
+// 		if name in array {
+// 			return c.table.bitsize_to_type(bit_size)
+// 		}
+// 	}
+// 	for bit_size, array in ast.x86_with_number_register_list {
+// 		if name in array {
+// 			return c.table.bitsize_to_type(bit_size)
+// 		}
+// 	}
+// 	c.error('invalid register name: `$name`', node.pos)
+// 	return table.void_type
+// }
 
 pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
 	node.expr_type = c.expr(node.expr) // type to be casted
@@ -5283,7 +5413,7 @@ fn (mut c Checker) find_obj_definition(obj ast.ScopeObject) ?ast.Expr {
 	// TODO: remove once we have better type inference
 	mut name := ''
 	match obj {
-		ast.Var, ast.ConstField, ast.GlobalField { name = obj.name }
+		ast.Var, ast.ConstField, ast.GlobalField, ast.AsmRegister { name = obj.name }
 	}
 	mut expr := ast.Expr{}
 	if obj is ast.Var {

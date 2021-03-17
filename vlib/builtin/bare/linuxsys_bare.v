@@ -4,17 +4,17 @@ pub enum Linux_mem {
 	page_size = 4096
 }
 
-pub enum Wp_sys {
-	wnohang = 0x00000001
-	wuntraced = 0x00000002
-	wstopped = 0x00000002
-	wexited	= 0x00000004
-	wcontinued = 0x00000008
-	wnowait = 0x01000000 // don't reap, just poll status.
-	__wnothread = 0x20000000 // don't wait on children of other threads in this group
-	__wall = 0x40000000 // wait on all children, regardless of type
-	__wclone = 0x80000000 // wait only on non-sigchld children
-}
+pub const (
+	wp_sys_wnohang     = u64(0x00000001)
+	wp_sys_wuntraced   = u64(0x00000002)
+	wp_sys_wstopped    = u64(0x00000002)
+	wp_sys_wexited     = u64(0x00000004)
+	wp_sys_wcontinued  = u64(0x00000008)
+	wp_sys_wnowait     = u64(0x01000000) // don't reap, just poll status.
+	wp_sys___wnothread = u64(0x20000000) // don't wait on children of other threads in this group
+	wp_sys___wall      = u64(0x40000000) // wait on all children, regardless of type
+	wp_sys___wclone    = u64(0x80000000) // wait only on non-sigchld children
+)
 
 // First argument to waitid:
 pub enum Wi_which {
@@ -32,7 +32,8 @@ pub enum Wi_si_code {
 	cld_continued = 6 // stopped child has continued
 }
 
-/* Paraphrased from "man 2 waitid" on Linux
+/*
+Paraphrased from "man 2 waitid" on Linux
 
 	Upon successful return, waitid() fills in the
 	following fields of the siginfo_t structure
@@ -74,98 +75,96 @@ pub enum Sig_index {
 }
 
 pub enum Signo {
-	sighup =  1	// Hangup.
-	sigint = 2	// Interactive attention signal.
-	sigquit = 3	// Quit.
-	sigill = 4	// Illegal instruction.
-	sigtrap = 5	// Trace/breakpoint trap.
-	sigabrt = 6	// Abnormal termination.
+	sighup = 1 // Hangup.
+	sigint = 2 // Interactive attention signal.
+	sigquit = 3 // Quit.
+	sigill = 4 // Illegal instruction.
+	sigtrap = 5 // Trace/breakpoint trap.
+	sigabrt = 6 // Abnormal termination.
 	sigbus = 7
-	sigfpe = 8	// Erroneous arithmetic operation.
-	sigkill = 9	// Killed.
+	sigfpe = 8 // Erroneous arithmetic operation.
+	sigkill = 9 // Killed.
 	sigusr1 = 10
-	sigsegv = 11	// Invalid access to storage.
+	sigsegv = 11 // Invalid access to storage.
 	sigusr2 = 12
-	sigpipe = 13	// Broken pipe.
-	sigalrm = 14	// Alarm clock.
-	sigterm = 15	// Termination request.
+	sigpipe = 13 // Broken pipe.
+	sigalrm = 14 // Alarm clock.
+	sigterm = 15 // Termination request.
 	sigstkflt = 16
 	sigchld = 17
 	sigcont = 18
 	sigstop = 19
 	sigtstp = 20
-	sigttin = 21	// Background read from control terminal.
-	sigttou = 22	// Background write to control terminal.
+	sigttin = 21 // Background read from control terminal.
+	sigttou = 22 // Background write to control terminal.
 	sigurg = 23
-	sigxcpu = 24	// CPU time limit exceeded.
-	sigxfsz = 25	// File size limit exceeded.
-	sigvtalrm = 26	// Virtual timer expired.
-	sigprof = 27	// Profiling timer expired.
+	sigxcpu = 24 // CPU time limit exceeded.
+	sigxfsz = 25 // File size limit exceeded.
+	sigvtalrm = 26 // Virtual timer expired.
+	sigprof = 27 // Profiling timer expired.
 	sigwinch = 28
 	sigpoll = 29
 	sigsys = 31
 }
 
-
-pub enum Fcntl {
-	fd_cloexec = 0x00000001
-	f_dupfd = 0x00000000
-	f_exlck = 0x00000004
-	f_getfd = 0x00000001
-	f_getfl = 0x00000003
-	f_getlk = 0x00000005
-	f_getlk64 = 0x0000000c
-	f_getown = 0x00000009
-	f_getowner_uids = 0x00000011
-	f_getown_ex = 0x00000010
-	f_getsig = 0x0000000b
-	f_ofd_getlk = 0x00000024
-	f_ofd_setlk = 0x00000025
-	f_ofd_setlkw = 0x00000026
-	f_owner_pgrp = 0x00000002
-	f_owner_pid = 0x00000001
-	f_owner_tid = 0x00000000
-	f_rdlck = 0x00000000
-	f_setfd = 0x00000002
-	f_setfl = 0x00000004
-	f_setlk = 0x00000006
-	f_setlk64 = 0x0000000d
-	f_setlkw = 0x00000007
-	f_setlkw64 = 0x0000000e
-	f_setown = 0x00000008
-	f_setown_ex = 0x0000000f
-	f_setsig = 0x0000000a
-	f_shlck = 0x00000008
-	f_unlck = 0x00000002
-	f_wrlck = 0x00000001
-	lock_ex = 0x00000002
-	lock_mand = 0x00000020
-	lock_nb = 0x00000004
-	lock_read = 0x00000040
-	lock_rw = 0x000000c0
-	lock_sh = 0x00000001
-	lock_un = 0x00000008
-	lock_write = 0x00000080
-	o_accmode = 0x00000003
-	o_append = 0x00000400
-	o_cloexec = 0x00080000
-	o_creat = 0x00000040
-	o_direct = 0x00004000
-	o_directory = 0x00010000
-	o_dsync = 0x00001000
-	o_excl = 0x00000080
-	o_largefile = 0x00008000
-	o_ndelay = 0x00000800
-	o_noatime = 0x00040000
-	o_noctty = 0x00000100
-	o_nofollow = 0x00020000
-	o_nonblock = 0x00000800
-	o_path = 0x00200000
-	o_rdonly = 0x00000000
-	o_rdwr = 0x00000002
-	o_trunc = 0x00000200
-	o_wronly = 0x00000001
-}
+pub const (
+	fcntlf_dupfd         = 0x00000000
+	fcntlf_exlck         = 0x00000004
+	fcntlf_getfd         = 0x00000001
+	fcntlf_getfl         = 0x00000003
+	fcntlf_getlk         = 0x00000005
+	fcntlf_getlk64       = 0x0000000c
+	fcntlf_getown        = 0x00000009
+	fcntlf_getowner_uids = 0x00000011
+	fcntlf_getown_ex     = 0x00000010
+	fcntlf_getsig        = 0x0000000b
+	fcntlf_ofd_getlk     = 0x00000024
+	fcntlf_ofd_setlk     = 0x00000025
+	fcntlf_ofd_setlkw    = 0x00000026
+	fcntlf_owner_pgrp    = 0x00000002
+	fcntlf_owner_pid     = 0x00000001
+	fcntlf_owner_tid     = 0x00000000
+	fcntlf_rdlck         = 0x00000000
+	fcntlf_setfd         = 0x00000002
+	fcntlf_setfl         = 0x00000004
+	fcntlf_setlk         = 0x00000006
+	fcntlf_setlk64       = 0x0000000d
+	fcntlf_setlkw        = 0x00000007
+	fcntlf_setlkw64      = 0x0000000e
+	fcntlf_setown        = 0x00000008
+	fcntlf_setown_ex     = 0x0000000f
+	fcntlf_setsig        = 0x0000000a
+	fcntlf_shlck         = 0x00000008
+	fcntlf_unlck         = 0x00000002
+	fcntlf_wrlck         = 0x00000001
+	fcntllock_ex         = 0x00000002
+	fcntllock_mand       = 0x00000020
+	fcntllock_nb         = 0x00000004
+	fcntllock_read       = 0x00000040
+	fcntllock_rw         = 0x000000c0
+	fcntllock_sh         = 0x00000001
+	fcntllock_un         = 0x00000008
+	fcntllock_write      = 0x00000080
+	fcntlo_accmode       = 0x00000003
+	fcntlo_append        = 0x00000400
+	fcntlo_cloexec       = 0x00080000
+	fcntlo_creat         = 0x00000040
+	fcntlo_direct        = 0x00004000
+	fcntlo_directory     = 0x00010000
+	fcntlo_dsync         = 0x00001000
+	fcntlo_excl          = 0x00000080
+	fcntlo_largefile     = 0x00008000
+	fcntlo_ndelay        = 0x00000800
+	fcntlo_noatime       = 0x00040000
+	fcntlo_noctty        = 0x00000100
+	fcntlo_nofollow      = 0x00020000
+	fcntlo_nonblock      = 0x00000800
+	fcntlo_path          = 0x00200000
+	fcntlo_rdonly        = 0x00000000
+	fcntlo_rdwr          = 0x00000002
+	fcntlo_trunc         = 0x00000200
+	fcntlo_wronly        = 0x00000001
+)
 
 pub enum Errno {
 	enoerror = 0x00000000
@@ -222,104 +221,106 @@ pub enum Map_flags {
 	map_fixed = 0x10
 	map_file = 0x00
 	map_anonymous = 0x20
-	map_anon = 0x20
 	map_huge_shift = 26
 	map_huge_mask = 0x3f
 }
 
-fn do_not_call_me_asm_keeper0() {
-	unsafe {
-		asm {
-			"\n"
-			"ret\n"
-			""
-			".intel_syntax noprefix\n"
-			".globl _start, sys_call0\n"
-			".globl sys_call1, sys_call2, sys_call3\n"
-			".globl sys_call4, sys_call5, sys_call6\n"
-			""
-			"_start:\n"
-				"xor rbp,rbp\n"
-				"pop rdi\n"
-				"mov rsi,rsp\n"
-				"and rsp,-16\n"
-				"call main\n"
-				"mov rdi,rax\n" /* syscall param 1 = rax (ret value of main) */
-				"mov rax,60\n"  /* SYS_exit */
-				"syscall\n"
-				""
-				// should never be reached, but if the OS somehow fails to kill us,
-				// it will cause a segmentation fault
-				"ret\n"
-			"sys_call0:\n"
-				"mov rax,rdi\n"
-				"syscall\n"
-				"ret\n"
-			""
-			"sys_call1:\n"
-				"mov rax,rdi\n"
-				"mov rdi,rsi\n"
-				"syscall\n"
-				"ret\n"
-			""
-			"sys_call2:\n"
-				"mov rax,rdi\n"
-				"mov rdi,rsi\n"
-				"mov rsi,rdx\n"
-				"syscall\n"
-				"ret\n"
-			""
-			"sys_call3:\n"
-				"mov rax,rdi\n"
-				"mov rdi,rsi\n"
-				"mov rsi,rdx\n"
-				"mov rdx,rcx\n"
-				"syscall\n"
-				"ret\n"
-			""
-			"sys_call4:\n"
-				"mov rax,rdi\n"
-				"mov rdi,rsi\n"
-				"mov rsi,rdx\n"
-				"mov rdx,rcx\n"
-				"mov r10,r8\n"
-				"syscall\n"
-				"ret\n"
-			""
-			"sys_call5:\n"
-				"mov rax,rdi\n"
-				"mov rdi,rsi\n"
-				"mov rsi,rdx\n"
-				"mov rdx,rcx\n"
-				"mov r10,r8\n"
-				"mov r8,r9\n"
-				"syscall\n"
-				"ret\n"
-			""
-			"sys_call6:\n"
-				"mov rax,rdi\n"
-				"mov rdi,rsi\n"
-				"mov rsi,rdx\n"
-				"mov rdx,rcx\n"
-				"mov r10,r8\n"
-				"mov r8,r9\n"
-				"mov r9, [rsp+8]\n"
-				"syscall\n"
-				"ret\n"
-			""
-			".att_syntax \n"
-		}
+fn sys_call0(scn u64) u64 {
+	res := u64(0)
+	asm amd64 {
+		syscall 
+		; =a (res)
+		; a (scn)
 	}
+	return res
 }
 
-fn sys_call0(scn u64) u64
-fn sys_call1(scn, arg1 u64) u64
-fn sys_call2(scn, arg1, arg2 u64) u64
-fn sys_call3(scn, arg1, arg2, arg3 u64) u64
-fn sys_call4(scn, arg1, arg2, arg3, arg4 u64) u64
-fn sys_call5(scn, arg1, arg2, arg3, arg4, arg5 u64) u64
-fn sys_call6(scn, arg1, arg2, arg3, arg4, arg5, arg6 u64) u64
+fn sys_call1(scn u64, arg1 u64) u64 {
+	res := u64(0)
+	asm amd64 {
+		syscall 
+		; =a (res)
+		; a (scn)
+		  D (arg1)
+	}
+	return res
+}
 
+fn sys_call2(scn u64, arg1 u64, arg2 u64) u64 {
+	res := u64(0)
+	asm amd64 {
+		syscall 
+		; =a (res)
+		; a (scn)
+		  D (arg1)
+		  S (arg2)
+	}
+	return res
+}
+fn sys_call3(scn u64, arg1 u64, arg2 u64, arg3 u64) u64 {
+	res := u64(0)
+	asm amd64 {
+		syscall 
+		; =a (res)
+		; a (scn)
+		  D (arg1)
+		  S (arg2)
+		  d (arg3)
+	}
+	return res
+}
+fn sys_call4(scn u64, arg1 u64, arg2 u64, arg3 u64, arg4 u64) u64 {
+	res := u64(0)
+	asm amd64 {
+		mov r10, arg4
+		syscall 
+		; =a (res)
+		; a (scn)
+		  D (arg1)
+		  S (arg2)
+		  d (arg3)
+		  r (arg4)
+		  ; r10
+	}
+	return res
+}
+
+fn sys_call5(scn u64, arg1 u64, arg2 u64, arg3 u64, arg4 u64, arg5 u64) u64 {
+	res := u64(0)
+	asm amd64 {
+		mov r10, arg4
+		mov r8, arg5
+		syscall 
+		; =a (res)
+		; a (scn)
+		  D (arg1)
+		  S (arg2)
+		  d (arg3)
+		  r (arg4)
+		  r (arg5)
+		  ; r10 r8
+	}
+	return res
+}
+fn sys_call6(scn u64, arg1 u64, arg2 u64, arg3 u64, arg4 u64, arg5 u64, arg6 u64) u64 {
+	res := u64(0)
+	asm amd64 {
+		mov r10, arg4
+		mov r8, arg5
+		mov r9, arg6
+		syscall 
+		; =a (res)
+		; a (scn)
+		  D (arg1)
+		  S (arg2)
+		  d (arg3)
+		  r (arg4)
+		  r (arg5)
+		  r (arg6)
+		  ; r10 r8 r9
+	}
+	return res
+}
 
 fn split_int_errno(rc_in u64) (i64, Errno) {
 	rc := i64(rc_in)
@@ -330,7 +331,7 @@ fn split_int_errno(rc_in u64) (i64, Errno) {
 }
 
 // 0 sys_read unsigned int fd char *buf size_t count
-pub fn sys_read (fd i64, buf byteptr, count u64) (i64, Errno) {
+pub fn sys_read(fd i64, buf byteptr, count u64) (i64, Errno) {
 	return split_int_errno(sys_call3(0, u64(fd), u64(buf), count))
 }
 
@@ -339,8 +340,8 @@ pub fn sys_write(fd i64, buf byteptr, count u64) (i64, Errno) {
 	return split_int_errno(sys_call3(1, u64(fd), u64(buf), count))
 }
 
-pub fn sys_open(filename byteptr, flags Fcntl, mode int) (i64, Errno) {
-	//2 sys_open  const char *filename  int flags int mode
+pub fn sys_open(filename byteptr, flags i64, mode int) (i64, Errno) {
+	// 2 sys_open  const char *filename  int flags int mode
 	return split_int_errno(sys_call3(2, u64(filename), u64(flags), u64(mode)))
 }
 
@@ -392,19 +393,17 @@ pub fn sys_vfork() int {
 }
 
 // 33  sys_dup2  unsigned int oldfd  unsigned int newfd
-pub fn sys_dup2 (oldfd, newfd int) (i64, Errno) {
-	return split_int_errno(sys_call2(33, u64(oldfd),u64(newfd)))
+pub fn sys_dup2(oldfd int, newfd int) (i64, Errno) {
+	return split_int_errno(sys_call2(33, u64(oldfd), u64(newfd)))
 }
 
-
-//59  sys_execve  const char *filename  const char *const argv[]  const char *const envp[]
-//pub fn sys_execve(filename byteptr, argv []byteptr, envp []byteptr) int {
+// 59  sys_execve  const char *filename  const char *const argv[]  const char *const envp[]
+// pub fn sys_execve(filename byteptr, argv []byteptr, envp []byteptr) int {
 //  return sys_call3(59, filename, argv, envp)
 //}
 
-
 // 60 sys_exit  int error_code
-pub fn sys_exit (ec int) {
+pub fn sys_exit(ec int) {
 	sys_call1(60, u64(ec))
 }
 
@@ -414,11 +413,9 @@ pub fn sys_getuid() int {
 }
 
 // 247 sys_waitid  int which pid_t upid  struct siginfo *infop int options struct rusage *ru
-pub fn sys_waitid (which Wi_which, pid int, infop &int, options Wp_sys, ru voidptr) Errno {
+pub fn sys_waitid(which Wi_which, pid int, infop &int, options int, ru voidptr) Errno {
 	return Errno(sys_call5(247, u64(which), u64(pid), u64(infop), u64(options), u64(ru)))
 }
-
-
 
 /*
 A few years old, but still relevant

@@ -62,3 +62,27 @@ fn opt_ok(data voidptr, mut option Option, size int) {
 		C.memcpy(byteptr(&option.err) + sizeof(IError), data, size)
 	}
 }
+
+[unsafe]
+pub fn (e &Error) free() {
+	unsafe { e.msg.free() }
+}
+
+[unsafe]
+pub fn (n &None__) free() {
+	unsafe { n.msg.free() }
+}
+
+[typedef]
+struct C.IError {
+	_object voidptr
+}
+
+[unsafe]
+pub fn (ie &IError) free() {
+	unsafe {
+		ie.msg.free()
+		cie := &C.IError(ie)
+		C.free(cie._object)
+	}
+}

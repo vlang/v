@@ -19,7 +19,9 @@ const (
 		'delete', 'do', 'double', 'else', 'enum', 'error', 'exit', 'export', 'extern', 'float',
 		'for', 'free', 'goto', 'if', 'inline', 'int', 'link', 'long', 'malloc', 'namespace', 'new',
 		'panic', 'register', 'restrict', 'return', 'short', 'signed', 'sizeof', 'static', 'struct',
-		'switch', 'typedef', 'typename', 'union', 'unix', 'unsigned', 'void', 'volatile', 'while']
+		'switch', 'typedef', 'typename', 'union', 'unix', 'unsigned', 'void', 'volatile', 'while',
+		'template',
+	]
 	// same order as in token.Kind
 	cmp_str    = ['eq', 'ne', 'gt', 'lt', 'ge', 'le']
 	// when operands are switched
@@ -973,8 +975,9 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 					stmt_pos = stmt.expr.position()
 				}
 				if stmt_pos.pos == 0 {
-					print('autofree: first stmt pos = 0. ')
-					println(stmt.type_name())
+					$if trace_autofree ? {
+						println('autofree: first stmt pos = 0. $stmt.type_name()')
+					}
 					return
 				}
 			}
@@ -1001,6 +1004,10 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 	// println('g.stmt()')
 	// g.writeln('//// stmt start')
 	match node {
+		ast.AsmStmt {
+			g.write_v_source_line_info(node.pos)
+			g.gen_asm_stmt(node)
+		}
 		ast.AssertStmt {
 			g.write_v_source_line_info(node.pos)
 			g.gen_assert_stmt(node)
@@ -1475,40 +1482,51 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 		}
 		arw_or_pt := if node.cond_type.is_ptr() { '->' } else { '.' }
 		idx := g.new_tmp_var()
+		map_len := g.new_tmp_var()
 		g.empty_line = true
-		g.writeln('for (int $idx = 0; $idx < $cond_var${arw_or_pt}key_values.len; ++$idx) {')
+		g.writeln('int $map_len = $cond_var${arw_or_pt}key_values.len;')
+		g.writeln('for (int $idx = 0; $idx < $map_len; ++$idx ) {')
 		// TODO: don't have this check when the map has no deleted elements
-		g.writeln('\tif (!DenseArray_has_index(&$cond_var${arw_or_pt}key_values, $idx)) {continue;}')
+		g.indent++
+		diff := g.new_tmp_var()
+		g.writeln('int $diff = $cond_var${arw_or_pt}key_values.len - $map_len;')
+		g.writeln('$map_len = $cond_var${arw_or_pt}key_values.len;')
+		// TODO: optimize this
+		g.writeln('if ($diff < 0) {')
+		g.writeln('\t$idx = -1;')
+		g.writeln('\tcontinue;')
+		g.writeln('}')
+		g.writeln('if (!DenseArray_has_index(&$cond_var${arw_or_pt}key_values, $idx)) {continue;}')
 		if node.key_var != '_' {
 			key_styp := g.typ(node.key_type)
 			key := c_name(node.key_var)
-			g.writeln('\t$key_styp $key = /*key*/ *($key_styp*)DenseArray_key(&$cond_var${arw_or_pt}key_values, $idx);')
+			g.writeln('$key_styp $key = /*key*/ *($key_styp*)DenseArray_key(&$cond_var${arw_or_pt}key_values, $idx);')
 			// TODO: analyze whether node.key_type has a .clone() method and call .clone() for all types:
 			if node.key_type == table.string_type {
-				g.writeln('\t$key = string_clone($key);')
+				g.writeln('$key = string_clone($key);')
 			}
 		}
 		if node.val_var != '_' {
 			val_sym := g.table.get_type_symbol(node.val_type)
 			if val_sym.kind == .function {
-				g.write('\t')
 				g.write_fn_ptr_decl(val_sym.info as table.FnType, c_name(node.val_var))
 				g.write(' = (*(voidptr*)')
 				g.writeln('DenseArray_value(&$cond_var${arw_or_pt}key_values, $idx));')
 			} else if val_sym.kind == .array_fixed && !node.val_is_mut {
 				val_styp := g.typ(node.val_type)
-				g.writeln('\t$val_styp ${c_name(node.val_var)};')
-				g.writeln('\tmemcpy(*($val_styp*)${c_name(node.val_var)}, (byte*)DenseArray_value(&$cond_var${arw_or_pt}key_values, $idx), sizeof($val_styp));')
+				g.writeln('$val_styp ${c_name(node.val_var)};')
+				g.writeln('memcpy(*($val_styp*)${c_name(node.val_var)}, (byte*)DenseArray_value(&$cond_var${arw_or_pt}key_values, $idx), sizeof($val_styp));')
 			} else {
 				val_styp := g.typ(node.val_type)
 				if node.val_type.is_ptr() {
-					g.write('\t$val_styp ${c_name(node.val_var)} = &(*($val_styp)')
+					g.write('$val_styp ${c_name(node.val_var)} = &(*($val_styp)')
 				} else {
-					g.write('\t$val_styp ${c_name(node.val_var)} = (*($val_styp*)')
+					g.write('$val_styp ${c_name(node.val_var)} = (*($val_styp*)')
 				}
 				g.writeln('DenseArray_value(&$cond_var${arw_or_pt}key_values, $idx));')
 			}
 		}
+		g.indent--
 	} else if node.kind == .string {
 		cond := if node.cond is ast.StringLiteral || node.cond is ast.StringInterLiteral {
 			ast.Expr(g.new_ctemp_var_then_gen(node.cond, table.string_type))
@@ -1557,6 +1575,16 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 	if node.label.len > 0 {
 		g.writeln('\t${node.label}__continue: {}')
 	}
+
+	if node.kind == .map {
+		// diff := g.new_tmp_var()
+		// g.writeln('int $diff = $cond_var${arw_or_pt}key_values.len - $map_len;')
+		// g.writeln('if ($diff < 0) {')
+		// g.writeln('\t$idx = -1;')
+		// g.writeln('\t$map_len = $cond_var${arw_or_pt}key_values.len;')
+		// g.writeln('}')
+	}
+
 	g.writeln('}')
 	if node.label.len > 0 {
 		g.writeln('\t${node.label}__break: {}')
@@ -1716,6 +1744,178 @@ fn ctoslit(s string) string {
 fn (mut g Gen) gen_attrs(attrs []table.Attr) {
 	for attr in attrs {
 		g.writeln('// Attr: [$attr.name]')
+	}
+}
+
+fn (mut g Gen) gen_asm_stmt(stmt ast.AsmStmt) {
+	g.write('__asm__')
+	if stmt.is_volatile {
+		g.write(' volatile')
+	}
+	if stmt.is_goto {
+		g.write(' goto')
+	}
+	g.writeln(' (')
+	g.indent++
+	for mut template in stmt.templates {
+		g.write('"')
+		if template.is_directive {
+			g.write('.')
+		}
+		g.write(template.name)
+		if template.is_label {
+			g.write(':')
+		} else {
+			g.write(' ')
+		}
+		// swap destionation and operands for att syntax 
+		if template.args.len != 0 {
+			template.args.prepend(template.args[template.args.len - 1])
+			template.args.delete(template.args.len - 1)
+		}
+
+		for i, arg in template.args {
+			g.asm_arg(arg, stmt)
+			if i + 1 < template.args.len {
+				g.write(', ')
+			}
+		}
+
+		if !template.is_label {
+			g.write(';')
+		}
+		g.writeln('"')
+	}
+	if !stmt.is_top_level {
+		g.write(': ')
+	}
+	g.gen_asm_ios(stmt.output)
+	if stmt.input.len != 0 || stmt.clobbered.len != 0 || stmt.is_goto {
+		g.write(': ')
+	}
+	g.gen_asm_ios(stmt.input)
+	if stmt.clobbered.len != 0 || stmt.is_goto {
+		g.write(': ')
+	}
+	for i, clob in stmt.clobbered {
+		g.write('"')
+		g.write(clob.reg.name)
+		g.write('"')
+		if i + 1 < stmt.clobbered.len {
+			g.writeln(',')
+		} else {
+			g.writeln('')
+		}
+	}
+	if stmt.is_goto {
+		g.write(': ')
+	}
+	for i, label in stmt.global_labels {
+		g.write(label)
+		if i + 1 < stmt.clobbered.len {
+			g.writeln(',')
+		} else {
+			g.writeln('')
+		}
+	}
+	g.indent--
+	g.writeln(');')
+}
+
+fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
+	match arg {
+		ast.AsmAlias {
+			name := arg.name
+			if name in stmt.local_labels || name in stmt.global_labels {
+				asm_formatted_name := if name in stmt.local_labels {
+					name
+				} else { // val in stmt.global_labels
+					'%l[$name]'
+				}
+				g.write(asm_formatted_name)
+			} else {
+				g.write('%[$name]')
+			}
+		}
+		ast.CharLiteral {
+			g.write("'$arg.val'")
+		}
+		ast.IntegerLiteral, ast.FloatLiteral {
+			g.write('\$$arg.val')
+		}
+		ast.BoolLiteral {
+			g.write('\$$arg.val.str()')
+		}
+		ast.AsmRegister {
+			if !stmt.is_top_level {
+				g.write('%') // escape percent in extended assembly
+			}
+			g.write('%$arg.name')
+		}
+		ast.AsmAddressing {
+			base := arg.base
+			index := arg.index
+			displacement := arg.displacement
+			scale := arg.scale
+			match arg.mode {
+				.base {
+					g.write('(')
+					g.asm_arg(base, stmt)
+				}
+				.displacement {
+					g.write('${displacement}(')
+				}
+				.base_plus_displacement {
+					g.write('${displacement}(')
+					g.asm_arg(base, stmt)
+				}
+				.index_times_scale_plus_displacement {
+					g.write('${displacement}(,')
+					g.asm_arg(index, stmt)
+					g.write(',')
+					g.write(scale.str())
+				}
+				.base_plus_index_plus_displacement {
+					g.write('${displacement}(')
+					g.asm_arg(base, stmt)
+					g.write(',')
+					g.asm_arg(index, stmt)
+					g.write(',1')
+				}
+				.base_plus_index_times_scale_plus_displacement {
+					g.write('${displacement}(')
+					g.asm_arg(base, stmt)
+					g.write(',')
+					g.asm_arg(index, stmt)
+					g.write(',$scale')
+				}
+				.rip_plus_displacement {
+					g.write('${displacement}(')
+					g.asm_arg(base, stmt)
+				}
+				.invalid {
+					g.error('invalid addressing mode', arg.pos)
+				}
+			}
+			g.write(')')
+		}
+		string {
+			g.write('$arg')
+		}
+	}
+}
+
+fn (mut g Gen) gen_asm_ios(ios []ast.AsmIO) {
+	for i, io in ios {
+		if io.alias != '' {
+			g.write('[$io.alias] ')
+		}
+		g.write('"$io.constraint" ($io.expr)')
+		if i + 1 < ios.len {
+			g.writeln(',')
+		} else {
+			g.writeln('')
+		}
 	}
 }
 
@@ -2499,6 +2699,9 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 	if v.typ.is_ptr() {
 		g.writeln('\t${free_fn_name}(${c_name(v.name)}); // autofreed ptr var')
 	} else {
+		if v.typ == table.error_type && !v.is_autofree_tmp {
+			return
+		}
 		g.writeln('\t${free_fn_name}(&${c_name(v.name)}); // autofreed var $g.cur_mod.name $g.is_builtin_mod')
 	}
 }
@@ -3095,6 +3298,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		return
 	}
 	left_type := g.unwrap_generic(node.left_type)
+	// println('>>$node')
 	left_sym := g.table.get_type_symbol(left_type)
 	left_final_sym := g.table.get_final_type_symbol(left_type)
 	unaliased_left := if left_sym.kind == .alias {
@@ -4642,11 +4846,15 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, val string, typ ta
 		}
 	}
 	if g.is_autofree {
+		sym := g.table.get_type_symbol(typ)
 		if styp.starts_with('Array_') {
 			g.cleanups[mod].writeln('\tarray_free(&$cname);')
-		}
-		if styp == 'string' {
+		} else if styp == 'string' {
 			g.cleanups[mod].writeln('\tstring_free(&$cname);')
+		} else if sym.kind == .map {
+			g.cleanups[mod].writeln('\tmap_free(&$cname);')
+		} else if styp == 'IError' {
+			g.cleanups[mod].writeln('\tIError_free(&$cname);')
 		}
 	}
 }
