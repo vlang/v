@@ -17,15 +17,15 @@ const turn_off_vcolors = os.setenv('VCOLORS', 'never', true)
 // Use: `./v -d noskipcompile -d noskip vlib/v/tests/valgrind/valgrind_test.v` to ignore both
 //
 const skip_compile_files = [
-		'vlib/v/tests/valgrind/option_reassigned.v',
-	]
+	'vlib/v/tests/valgrind/option_reassigned.v',
+]
 
 const skip_valgrind_files = [
-		'vlib/v/tests/valgrind/struct_field.v',
-		'vlib/v/tests/valgrind/fn_returning_string_param.v',
-		'vlib/v/tests/valgrind/fn_with_return_should_free_local_vars.v',
-		'vlib/v/tests/valgrind/option_simple.v',
-	]
+	'vlib/v/tests/valgrind/struct_field.v',
+	'vlib/v/tests/valgrind/fn_returning_string_param.v',
+	'vlib/v/tests/valgrind/fn_with_return_should_free_local_vars.v',
+	'vlib/v/tests/valgrind/option_simple.v',
+]
 
 fn vprintln(s string) {
 	$if verbose ? {

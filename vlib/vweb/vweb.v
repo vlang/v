@@ -298,7 +298,6 @@ pub fn run_app<T>(mut app T, port int) {
 	}
 }
 
-
 [manualfree]
 fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	conn.set_read_timeout(30 * time.second)
