@@ -104,3 +104,20 @@ fn test_assign_multi_expr() {
 	assert s.value == 555
 	assert s.name == 'initial'
 }
+
+fn test_issue_9330() {
+	arr := "0.1".split('.')
+	a0, a1 := arr[0], arr[1].int()
+	assert a0 == '0'
+	assert a1 == 1
+	b0, b1 := arr[0].int(), arr[1]
+	assert b0 == 0
+	assert b1 == '1'
+	c0, c1 := arr[0], arr[1]
+	assert c0 == '0'
+	assert c1 == '1'
+	d0, d1 := arr[0].int(), arr[1].f64()
+	assert d0 == 0
+	assert d1 == 1.0
+
+}
