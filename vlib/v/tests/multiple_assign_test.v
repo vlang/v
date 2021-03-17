@@ -64,3 +64,10 @@ fn test_multiple_assign_complex_expr() {
 	assert b == -66
 	assert c == 11
 }
+
+fn test_multiple_assign_last_call_expr() {
+	arr := "string.1".split('.')
+	_, num := arr[0], arr[1].int()
+	println("$num + $num = ${num * 2}")
+	assert num == 1
+}
