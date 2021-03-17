@@ -764,23 +764,23 @@ pub fn (mut f Fmt) enum_decl(node ast.EnumDecl) {
 	f.writeln('}\n')
 }
 
-pub fn (mut f Fmt) prefix_expr_cast_expr(fexpr ast.Expr) {
+pub fn (mut f Fmt) prefix_expr_cast_expr(node ast.Expr) {
 	mut is_pe_amp_ce := false
-	if fexpr is ast.PrefixExpr {
-		if fexpr.right is ast.CastExpr && fexpr.op == .amp {
-			mut ce := fexpr.right as ast.CastExpr
+	if node is ast.PrefixExpr {
+		if node.right is ast.CastExpr && node.op == .amp {
+			mut ce := node.right as ast.CastExpr
 			ce.typname = f.table.get_type_symbol(ce.typ).name
 			is_pe_amp_ce = true
 			f.expr(ce)
 		}
-	} else if fexpr is ast.CastExpr {
+	} else if node is ast.CastExpr {
 		last := f.out.cut_last(1)
 		if last != '&' {
 			f.out.write_string(last)
 		}
 	}
 	if !is_pe_amp_ce {
-		f.expr(fexpr)
+		f.expr(node)
 	}
 }
 
