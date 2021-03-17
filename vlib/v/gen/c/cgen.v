@@ -1475,40 +1475,51 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 		}
 		arw_or_pt := if node.cond_type.is_ptr() { '->' } else { '.' }
 		idx := g.new_tmp_var()
+		map_len := g.new_tmp_var()
 		g.empty_line = true
-		g.writeln('for (int $idx = 0; $idx < $cond_var${arw_or_pt}key_values.len; ++$idx) {')
+		g.writeln('int $map_len = $cond_var${arw_or_pt}key_values.len;')
+		g.writeln('for (int $idx = 0; $idx < $map_len; ++$idx ) {')
 		// TODO: don't have this check when the map has no deleted elements
-		g.writeln('\tif (!DenseArray_has_index(&$cond_var${arw_or_pt}key_values, $idx)) {continue;}')
+		g.indent++
+		diff := g.new_tmp_var()
+		g.writeln('int $diff = $cond_var${arw_or_pt}key_values.len - $map_len;')
+		g.writeln('$map_len = $cond_var${arw_or_pt}key_values.len;')
+		// TODO: optimize this
+		g.writeln('if ($diff < 0) {')
+		g.writeln('\t$idx = -1;')
+		g.writeln('\tcontinue;')
+		g.writeln('}')
+		g.writeln('if (!DenseArray_has_index(&$cond_var${arw_or_pt}key_values, $idx)) {continue;}')
 		if node.key_var != '_' {
 			key_styp := g.typ(node.key_type)
 			key := c_name(node.key_var)
-			g.writeln('\t$key_styp $key = /*key*/ *($key_styp*)DenseArray_key(&$cond_var${arw_or_pt}key_values, $idx);')
+			g.writeln('$key_styp $key = /*key*/ *($key_styp*)DenseArray_key(&$cond_var${arw_or_pt}key_values, $idx);')
 			// TODO: analyze whether node.key_type has a .clone() method and call .clone() for all types:
 			if node.key_type == table.string_type {
-				g.writeln('\t$key = string_clone($key);')
+				g.writeln('$key = string_clone($key);')
 			}
 		}
 		if node.val_var != '_' {
 			val_sym := g.table.get_type_symbol(node.val_type)
 			if val_sym.kind == .function {
-				g.write('\t')
 				g.write_fn_ptr_decl(val_sym.info as table.FnType, c_name(node.val_var))
 				g.write(' = (*(voidptr*)')
 				g.writeln('DenseArray_value(&$cond_var${arw_or_pt}key_values, $idx));')
 			} else if val_sym.kind == .array_fixed && !node.val_is_mut {
 				val_styp := g.typ(node.val_type)
-				g.writeln('\t$val_styp ${c_name(node.val_var)};')
-				g.writeln('\tmemcpy(*($val_styp*)${c_name(node.val_var)}, (byte*)DenseArray_value(&$cond_var${arw_or_pt}key_values, $idx), sizeof($val_styp));')
+				g.writeln('$val_styp ${c_name(node.val_var)};')
+				g.writeln('memcpy(*($val_styp*)${c_name(node.val_var)}, (byte*)DenseArray_value(&$cond_var${arw_or_pt}key_values, $idx), sizeof($val_styp));')
 			} else {
 				val_styp := g.typ(node.val_type)
 				if node.val_type.is_ptr() {
-					g.write('\t$val_styp ${c_name(node.val_var)} = &(*($val_styp)')
+					g.write('$val_styp ${c_name(node.val_var)} = &(*($val_styp)')
 				} else {
-					g.write('\t$val_styp ${c_name(node.val_var)} = (*($val_styp*)')
+					g.write('$val_styp ${c_name(node.val_var)} = (*($val_styp*)')
 				}
 				g.writeln('DenseArray_value(&$cond_var${arw_or_pt}key_values, $idx));')
 			}
 		}
+		g.indent--
 	} else if node.kind == .string {
 		cond := if node.cond is ast.StringLiteral || node.cond is ast.StringInterLiteral {
 			ast.Expr(g.new_ctemp_var_then_gen(node.cond, table.string_type))
@@ -1557,6 +1568,16 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 	if node.label.len > 0 {
 		g.writeln('\t${node.label}__continue: {}')
 	}
+
+	if node.kind == .map {
+		// diff := g.new_tmp_var()
+		// g.writeln('int $diff = $cond_var${arw_or_pt}key_values.len - $map_len;')
+		// g.writeln('if ($diff < 0) {')
+		// g.writeln('\t$idx = -1;')
+		// g.writeln('\t$map_len = $cond_var${arw_or_pt}key_values.len;')
+		// g.writeln('}')
+	}
+
 	g.writeln('}')
 	if node.label.len > 0 {
 		g.writeln('\t${node.label}__break: {}')
