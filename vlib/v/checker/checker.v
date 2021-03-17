@@ -1319,6 +1319,24 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ table.Type, call_e
 						arg_expr.pos)
 				}
 			} else if arg_expr.kind == .variable {
+				if arg_expr.obj is ast.Var {
+					expr := arg_expr.obj.expr
+					if expr is ast.AnonFn {
+						// copied from above
+						if expr.decl.params.len > 1 {
+							c.error('function needs exactly 1 argument', expr.decl.pos)
+						} else if is_map && (expr.decl.return_type == table.void_type
+							|| expr.decl.params[0].typ != elem_typ) {
+							c.error('type mismatch, should use `fn(a $elem_sym.name) T {...}`',
+								expr.decl.pos)
+						} else if !is_map && (expr.decl.return_type != table.bool_type
+							|| expr.decl.params[0].typ != elem_typ) {
+							c.error('type mismatch, should use `fn(a $elem_sym.name) bool {...}`',
+								expr.decl.pos)
+						}
+						return
+					}
+				}
 				if !is_map && arg_expr.info.typ != table.bool_type {
 					c.error('type mismatch, should be bool', arg_expr.pos)
 				}
