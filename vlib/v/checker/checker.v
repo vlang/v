@@ -1660,52 +1660,55 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 fn (mut c Checker) call_array_builtin_method(mut call_expr ast.CallExpr, left_type table.Type, left_type_sym table.TypeSymbol) table.Type {
 	method_name := call_expr.name
 	mut elem_typ := table.void_type
-	is_filter_map := method_name in ['filter', 'map']
-	is_sort := method_name == 'sort'
-	is_slice := method_name == 'slice'
-	is_wait := method_name == 'wait'
-	if is_slice && !c.is_builtin_mod {
+	if method_name == 'slice' && !c.is_builtin_mod {
 		c.error('.slice() is a private method, use `x[start..end]` instead', call_expr.pos)
 	}
-	if is_filter_map || is_sort || is_wait {
-		array_info := left_type_sym.info as table.Array
-		if is_filter_map {
-			// position of `it` doesn't matter
-			scope_register_it(mut call_expr.scope, call_expr.pos, array_info.elem_type)
-		} else if is_sort {
-			c.fail_if_immutable(call_expr.left)
-			// position of `a` and `b` doesn't matter, they're the same
-			scope_register_ab(mut call_expr.scope, call_expr.pos, array_info.elem_type)
+	array_info := left_type_sym.info as table.Array
+	elem_typ = array_info.elem_type
+	if method_name in ['filter', 'map'] {
+		// position of `it` doesn't matter
+		scope_register_it(mut call_expr.scope, call_expr.pos, elem_typ)
+	} else if method_name == 'sort' {
+		c.fail_if_immutable(call_expr.left)
+		// position of `a` and `b` doesn't matter, they're the same
+		scope_register_a_b(mut call_expr.scope, call_expr.pos, elem_typ)
 
-			if call_expr.args.len > 1 {
-				c.error('expected 0 or 1 argument, but got $call_expr.args.len', call_expr.pos)
-			}
-			// Verify `.sort(a < b)`
-			if call_expr.args.len > 0 {
-				if call_expr.args[0].expr !is ast.InfixExpr {
-					c.error(
-						'`.sort()` requires a `<` or `>` comparison as the first and only argument' +
-						'\ne.g. `users.sort(a.id < b.id)`', call_expr.pos)
+		if call_expr.args.len > 1 {
+			c.error('expected 0 or 1 argument, but got $call_expr.args.len', call_expr.pos)
+		} else if call_expr.args.len == 1 {
+			if call_expr.args[0].expr is ast.InfixExpr {
+				if call_expr.args[0].expr.op !in [.gt, .lt] {
+					c.error('`.sort()` can only use `<` or `>` comparison', call_expr.pos)
 				}
+				left_name := '${call_expr.args[0].expr.left}'[0]
+				right_name := '${call_expr.args[0].expr.right}'[0]
+				if left_name !in [`a`, `b`] || right_name !in [`a`, `b`] {
+					c.error('`.sort()` can only use `a` or `b` as argument, e.g. `arr.sort(a < b)`',
+						call_expr.pos)
+				} else if left_name == right_name {
+					c.error('`.sort()` cannot use same argument', call_expr.pos)
+				}
+			} else {
+				c.error(
+					'`.sort()` requires a `<` or `>` comparison as the first and only argument' +
+					'\ne.g. `users.sort(a.id < b.id)`', call_expr.pos)
 			}
 		}
-		elem_typ = array_info.elem_type
-		if is_wait {
-			elem_sym := c.table.get_type_symbol(elem_typ)
-			if elem_sym.kind == .thread {
-				if call_expr.args.len != 0 {
-					c.error('`.wait()` does not have any arguments', call_expr.args[0].pos)
-				}
-				thread_ret_type := elem_sym.thread_info().return_type
-				if thread_ret_type.has_flag(.optional) {
-					c.error('`.wait()` cannot be called for an array when thread functions return optionals. Iterate over the arrays elements instead and handle each returned optional with `or`.',
-						call_expr.pos)
-				}
-				call_expr.return_type = c.table.find_or_register_array(thread_ret_type)
-			} else {
-				c.error('`$left_type_sym.name` has no method `wait()` (only thread handles and arrays of them have)',
-					call_expr.left.position())
+	} else if method_name == 'wait' {
+		elem_sym := c.table.get_type_symbol(elem_typ)
+		if elem_sym.kind == .thread {
+			if call_expr.args.len != 0 {
+				c.error('`.wait()` does not have any arguments', call_expr.args[0].pos)
 			}
+			thread_ret_type := elem_sym.thread_info().return_type
+			if thread_ret_type.has_flag(.optional) {
+				c.error('`.wait()` cannot be called for an array when thread functions return optionals. Iterate over the arrays elements instead and handle each returned optional with `or`.',
+					call_expr.pos)
+			}
+			call_expr.return_type = c.table.find_or_register_array(thread_ret_type)
+		} else {
+			c.error('`$left_type_sym.name` has no method `wait()` (only thread handles and arrays of them have)',
+				call_expr.left.position())
 		}
 	}
 	// map/filter are supposed to have 1 arg only
@@ -3002,7 +3005,7 @@ fn scope_register_it(mut s ast.Scope, pos token.Position, typ table.Type) {
 	})
 }
 
-fn scope_register_ab(mut s ast.Scope, pos token.Position, typ table.Type) {
+fn scope_register_a_b(mut s ast.Scope, pos token.Position, typ table.Type) {
 	s.register(ast.Var{
 		name: 'a'
 		pos: pos
