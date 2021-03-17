@@ -26,7 +26,7 @@ const (
 	valid_comp_if_platforms = ['amd64', 'aarch64', 'x64', 'x32', 'little_endian', 'big_endian']
 	valid_comp_if_other     = ['js', 'debug', 'prod', 'test', 'glibc', 'prealloc', 'no_bounds_checking']
 	array_builtin_methods   = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort',
-		'contains', 'index', 'wait']
+		'contains', 'index', 'wait', 'any', 'all']
 )
 
 pub struct Checker {
@@ -1318,6 +1318,10 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ table.Type, call_e
 					c.error('type mismatch, should use `fn(a $elem_sym.name) bool {...}`',
 						arg_expr.pos)
 				}
+			} else if arg_expr.kind == .variable {
+				if !is_map && arg_expr.info.typ != table.bool_type {
+					c.error('type mismatch, should be bool', arg_expr.pos)
+				}
 			}
 		}
 		else {}
@@ -1665,7 +1669,7 @@ fn (mut c Checker) call_array_builtin_method(mut call_expr ast.CallExpr, left_ty
 	}
 	array_info := left_type_sym.info as table.Array
 	elem_typ = array_info.elem_type
-	if method_name in ['filter', 'map'] {
+	if method_name in ['filter', 'map', 'any', 'all'] {
 		// position of `it` doesn't matter
 		scope_register_it(mut call_expr.scope, call_expr.pos, elem_typ)
 	} else if method_name == 'sort' {
@@ -1728,6 +1732,9 @@ fn (mut c Checker) call_array_builtin_method(mut call_expr ast.CallExpr, left_ty
 	} else if method_name == 'filter' {
 		// check fn
 		c.check_map_and_filter(false, elem_typ, call_expr)
+	} else if method_name in ['any', 'all'] {
+		c.check_map_and_filter(false, elem_typ, call_expr)
+		call_expr.return_type = table.bool_type
 	} else if method_name == 'clone' {
 		// need to return `array_xxx` instead of `array`
 		// in ['clone', 'str'] {

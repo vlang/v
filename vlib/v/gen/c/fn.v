@@ -535,6 +535,14 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				g.gen_array_wait(node)
 				return
 			}
+			'any' {
+				g.gen_array_any(node)
+				return
+			}
+			'all' {
+				g.gen_array_all(node)
+				return
+			}
 			else {}
 		}
 	}
