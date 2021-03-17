@@ -363,10 +363,10 @@ jobs:
         run: ./v -cc gcc -cflags "-Werror" test-self
       - name: Build examples
         run: ./v build-examples
-      - name: Build examples/certain tests with -autofree
-        run: |
-          ./v -autofree -experimental -o tetris examples/tetris/tetris.v
-          ./v -autofree vlib/v/tests/option_test.v
+      - name: Build tetris.v with -autofree
+        run: ./v -autofree -experimental -o tetris examples/tetris/tetris.v
+      - name: Build option_test.v with -autofree
+        run: ./v -autofree vlib/v/tests/option_test.v
       - name: Build modules
         run: |
           ./v build-module vlib/os
