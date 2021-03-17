@@ -4642,11 +4642,15 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, val string, typ ta
 		}
 	}
 	if g.is_autofree {
+		sym := g.table.get_type_symbol(typ)
 		if styp.starts_with('Array_') {
 			g.cleanups[mod].writeln('\tarray_free(&$cname);')
 		}
-		if styp == 'string' {
+		else if styp == 'string' {
 			g.cleanups[mod].writeln('\tstring_free(&$cname);')
+		}
+		else if sym.kind == .map {
+			g.cleanups[mod].writeln('\tmap_free(&$cname);')
 		}
 	}
 }

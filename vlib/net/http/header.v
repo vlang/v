@@ -325,6 +325,12 @@ mut:
 	data map[string][]string
 }
 
+pub fn (mut h Header) free() {
+	unsafe {
+		h.data.free()
+	}
+}
+
 pub struct HeaderConfig {
 	key   CommonHeader
 	value string
