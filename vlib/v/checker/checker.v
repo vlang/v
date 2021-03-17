@@ -3103,7 +3103,7 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 		// println('ex $c.expected_type')
 		// }
 		for i, expr in array_init.exprs {
-			typ := c.expr(expr)
+			typ := c.check_expr_opt_call(expr, c.expr(expr))
 			array_init.expr_types << typ
 			// The first element's type
 			if expecting_interface_array {
