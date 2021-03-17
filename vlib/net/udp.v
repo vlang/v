@@ -211,7 +211,8 @@ pub fn (mut s UdpSocket) set_option_bool(opt SocketOption, value bool) ? {
 	// if opt !in opts_bool {
 	// 	return err_option_wrong_type
 	// }
-	socket_error(C.setsockopt(s.handle, C.SOL_SOCKET, int(opt), &value, sizeof(bool))) ?
+	x := int(value)
+	socket_error(C.setsockopt(s.handle, C.SOL_SOCKET, int(opt), &x, sizeof(int))) ?
 	return none
 }
 
