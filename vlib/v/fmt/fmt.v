@@ -781,9 +781,6 @@ pub fn (mut f Fmt) prefix_expr_cast_expr(fexpr ast.Expr) {
 	}
 	if !is_pe_amp_ce {
 		f.expr(fexpr)
-		if fexpr is ast.PrefixExpr {
-			f.or_expr(fexpr.or_block)
-		}
 	}
 }
 
@@ -1253,6 +1250,7 @@ pub fn (mut f Fmt) postfix_expr(node ast.PostfixExpr) {
 pub fn (mut f Fmt) prefix_expr(node ast.PrefixExpr) {
 	f.write(node.op.str())
 	f.prefix_expr_cast_expr(node.right)
+	f.or_expr(node.or_block)
 }
 
 pub fn (mut f Fmt) range_expr(node ast.RangeExpr) {
