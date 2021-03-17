@@ -183,9 +183,6 @@ fn color_highlight(code string, tb &table.Table) string {
 			.prefix {
 				lit = term.magenta(tok.lit)
 			}
-			.str_intr {
-				lit = term.red(tok.lit)
-			}
 			else {
 				lit = tok.lit
 			}
@@ -237,9 +234,6 @@ fn color_highlight(code string, tb &table.Table) string {
 				}
 				.number {
 					tok_typ = .number
-				}
-				.str_dollar, .str_inter {
-					tok_typ = .str_intr
 				}
 				.key_true, .key_false {
 					tok_typ = .boolean
