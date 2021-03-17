@@ -100,6 +100,7 @@ pub fn new_vdoc_preferences() &pref.Preferences {
 	// so its preferences should be permissive:
 	return &pref.Preferences{
 		enable_globals: true
+		is_fmt: true
 	}
 }
 
