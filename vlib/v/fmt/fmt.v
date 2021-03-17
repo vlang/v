@@ -382,6 +382,9 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 		eprintln('stmt: ${node.pos:-42} | node: ${node.type_name():-20}')
 	}
 	match node {
+		ast.AsmStmt {
+			f.asm_stmt(node)
+		}
 		ast.AssignStmt {
 			f.assign_stmt(node)
 		}
@@ -458,6 +461,151 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 		}
 		ast.TypeDecl {
 			f.type_decl(node)
+		}
+	}
+}
+
+fn (mut f Fmt) asm_stmt(stmt ast.AsmStmt) {
+	f.writeln('asm $stmt.arch {')
+	f.indent++
+	for template in stmt.templates {
+		if template.is_directive {
+			f.write('.')
+		}
+		f.write('$template.name')
+		if template.is_label {
+			f.write(':')
+		} else {
+			f.write(' ')
+		}
+		for i, arg in template.args {
+			f.asm_arg(arg)
+			if i + 1 < template.args.len {
+				f.write(', ')
+			}
+		}
+		if template.comments.len == 0 {
+			f.writeln('')
+		} else {
+			f.comments(template.comments, inline: false)
+		}
+	}
+	if stmt.output.len != 0 || stmt.input.len != 0 || stmt.clobbered.len != 0 {
+		f.write('; ')
+	}
+	f.asm_ios(stmt.output)
+
+	if stmt.input.len != 0 || stmt.clobbered.len != 0 {
+		f.write('; ')
+	}
+	f.asm_ios(stmt.input)
+
+	if stmt.clobbered.len != 0 {
+		f.write('; ')
+	}
+	for i, clob in stmt.clobbered {
+		if i != 0 {
+			f.write('  ')
+		}
+		f.write(clob.reg.name)
+
+		if clob.comments.len == 0 {
+			f.writeln('')
+		} else {
+			f.comments(clob.comments, inline: false)
+		}
+	}
+	f.indent--
+	f.writeln('}')
+}
+
+fn (mut f Fmt) asm_arg(arg ast.AsmArg) {
+	match arg {
+		ast.AsmRegister {
+			f.asm_reg(arg)
+		}
+		ast.AsmAlias {
+			f.write('$arg.name')
+		}
+		ast.IntegerLiteral, ast.FloatLiteral, ast.CharLiteral {
+			f.write(arg.val)
+		}
+		ast.BoolLiteral {
+			f.write(arg.val.str())
+		}
+		string {
+			f.write(arg)
+		}
+		ast.AsmAddressing {
+			f.write('[')
+			base := arg.base
+			index := arg.index
+			displacement := arg.displacement
+			scale := arg.scale
+			match arg.mode {
+				.base {
+					f.asm_arg(base)
+				}
+				.displacement {
+					f.write('$displacement')
+				}
+				.base_plus_displacement {
+					f.asm_arg(base)
+					f.write(' + $displacement')
+				}
+				.index_times_scale_plus_displacement {
+					f.asm_arg(index)
+					f.write(' * $scale + $displacement')
+				}
+				.base_plus_index_plus_displacement {
+					f.asm_arg(base)
+					f.write(' + ')
+					f.asm_arg(index)
+					f.write(' + $displacement')
+				}
+				.base_plus_index_times_scale_plus_displacement {
+					f.asm_arg(base)
+					f.write(' + ')
+					f.asm_arg(index)
+					f.write(' * $scale + $displacement')
+				}
+				.rip_plus_displacement {
+					f.asm_arg(base)
+					f.write(' + $displacement')
+				}
+				.invalid {
+					panic('fmt: invalid addressing mode')
+				}
+			}
+			f.write(']')
+		}
+	}
+}
+
+fn (mut f Fmt) asm_reg(reg ast.AsmRegister) {
+	f.write(reg.name)
+}
+
+fn (mut f Fmt) asm_ios(ios []ast.AsmIO) {
+	for i, io in ios {
+		if i != 0 {
+			f.write('  ')
+		}
+
+		f.write('$io.constraint ($io.expr)')
+		mut as_block := true
+		if io.expr is ast.Ident {
+			if io.expr.name == io.alias {
+				as_block = false
+			}
+		}
+		if as_block && io.alias != '' {
+			f.write(' as $io.alias')
+		}
+		if io.comments.len == 0 {
+			f.writeln('')
+		} else {
+			f.comments(io.comments, inline: false)
 		}
 	}
 }
@@ -734,8 +882,8 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.write('none')
 		}
 		ast.OrExpr {
-			// shouldn't happen, an or expression is always linked to a call expr
-			panic('fmt: OrExpr should be linked to CallExpr')
+			// shouldn't happen, an or expression is always linked to a call expr or index expr
+			panic('fmt: OrExpr should be linked to ast.CallExpr or ast.IndexExpr')
 		}
 		ast.ParExpr {
 			f.par_expr(node)

@@ -1907,7 +1907,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		// builtin C.m*, C.s* only - temp
 		c.warn('function `$f.name` must be called from an `unsafe` block', call_expr.pos)
 	}
-	if f.mod != 'builtin' && f.language == .v && f.no_body && !c.pref.translated {
+	if f.mod != 'builtin' && f.language == .v && f.no_body && !c.pref.translated && !f.is_unsafe {
 		c.error('cannot call a function that does not have a body', call_expr.pos)
 	}
 	for generic_type in call_expr.generic_types {
@@ -3238,6 +3238,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 	}
 	// c.expected_type = table.void_type
 	match mut node {
+		ast.AsmStmt {
+			c.asm_stmt(mut node)
+		}
 		ast.AssertStmt {
 			c.assert_stmt(node)
 		}
@@ -3547,6 +3550,113 @@ fn (mut c Checker) go_stmt(mut node ast.GoStmt) {
 		c.error('method in `go` statement cannot have non-reference mutable receiver',
 			node.call_expr.left.position())
 	}
+}
+
+fn (mut c Checker) asm_stmt(mut stmt ast.AsmStmt) {
+	if stmt.is_goto {
+		c.warn('inline assembly goto is not supported, it will most likely not work',
+			stmt.pos)
+	}
+	if c.pref.backend == .js {
+		c.error('inline assembly is not supported in js backend', stmt.pos)
+	}
+	if c.pref.backend == .c && c.pref.ccompiler_type == .msvc {
+		c.error('msvc compiler does not support inline assembly', stmt.pos)
+	}
+	mut aliases := c.asm_ios(stmt.output, mut stmt.scope, true)
+	aliases2 := c.asm_ios(stmt.input, mut stmt.scope, false)
+	aliases << aliases2
+	for template in stmt.templates {
+		if template.is_directive {
+			/*
+			align n[,value]
+			.skip n[,value]
+			.space n[,value]
+			.byte value1[,...]
+			.word value1[,...]
+			.short value1[,...]
+			.int value1[,...]
+			.long value1[,...]
+			.quad immediate_value1[,...]
+			.globl symbol
+			.global symbol
+			.section section
+			.text
+			.data
+			.bss
+			.fill repeat[,size[,value]]
+			.org n
+			.previous
+			.string string[,...]
+			.asciz string[,...]
+			.ascii string[,...]
+			*/
+			if template.name !in ['skip', 'space', 'byte', 'word', 'short', 'int', 'long', 'quad',
+				'globl', 'global', 'section', 'text', 'data', 'bss', 'fill', 'org', 'previous',
+				'string', 'asciz', 'ascii'] { // all tcc supported assembler directive
+				c.error('unknown assembler directive: `$template.name`', template.pos)
+			}
+			// if c.file in  {
+
+			// }
+		}
+		for arg in template.args {
+			c.asm_arg(arg, stmt, aliases)
+		}
+	}
+	for clob in stmt.clobbered {
+		c.asm_arg(clob.reg, stmt, aliases)
+	}
+}
+
+fn (mut c Checker) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt, aliases []string) {
+	match mut arg {
+		ast.AsmAlias {
+			name := arg.name
+			if name !in aliases && name !in stmt.local_labels && name !in stmt.global_labels {
+				suggestion := util.new_suggestion(name, aliases)
+				c.error(suggestion.say('alias or label `$arg.name` does not exist'), arg.pos)
+			}
+		}
+		ast.AsmAddressing {
+			if arg.scale !in [-1, 1, 2, 4, 8] {
+				c.error('scale must be one of 1, 2, 4, or 8', arg.pos)
+			}
+			c.asm_arg(arg.base, stmt, aliases)
+			c.asm_arg(arg.index, stmt, aliases)
+		}
+		ast.BoolLiteral {} // all of these are guarented to be correct.
+		ast.FloatLiteral {}
+		ast.CharLiteral {}
+		ast.IntegerLiteral {}
+		ast.AsmRegister {} // if the register is not found, the parser will register it as an alias
+		string {}
+	}
+}
+
+fn (mut c Checker) asm_ios(ios []ast.AsmIO, mut scope ast.Scope, output bool) []string {
+	mut aliases := []string{}
+	for io in ios {
+		typ := c.expr(io.expr)
+		if output {
+			c.fail_if_immutable(io.expr)
+		}
+		if io.alias != '' {
+			aliases << io.alias
+			if io.alias in scope.objects {
+				scope.objects[io.alias] = ast.Var{
+					name: io.alias
+					expr: io.expr
+					is_arg: true
+					typ: typ
+					orig_type: typ
+					pos: io.pos
+				}
+			}
+		}
+	}
+
+	return aliases
 }
 
 fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
@@ -3997,6 +4107,23 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 	}
 	return table.void_type
 }
+
+// pub fn (mut c Checker) asm_reg(mut node ast.AsmRegister) table.Type {
+// 	name := node.name
+
+// 	for bit_size, array in ast.x86_no_number_register_list {
+// 		if name in array {
+// 			return c.table.bitsize_to_type(bit_size)
+// 		}
+// 	}
+// 	for bit_size, array in ast.x86_with_number_register_list {
+// 		if name in array {
+// 			return c.table.bitsize_to_type(bit_size)
+// 		}
+// 	}
+// 	c.error('invalid register name: `$name`', node.pos)
+// 	return table.void_type
+// }
 
 pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
 	node.expr_type = c.expr(node.expr) // type to be casted
@@ -5286,7 +5413,7 @@ fn (mut c Checker) find_obj_definition(obj ast.ScopeObject) ?ast.Expr {
 	// TODO: remove once we have better type inference
 	mut name := ''
 	match obj {
-		ast.Var, ast.ConstField, ast.GlobalField { name = obj.name }
+		ast.Var, ast.ConstField, ast.GlobalField, ast.AsmRegister { name = obj.name }
 	}
 	mut expr := ast.Expr{}
 	if obj is ast.Var {
