@@ -407,7 +407,6 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 			}
 		}
 	}
-	last_pos := p.tok.position()
 	if !short_syntax {
 		p.check(.rcbr)
 	}
@@ -419,7 +418,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 		update_expr: update_expr
 		update_expr_comments: update_expr_comments
 		has_update_expr: has_update_expr
-		pos: first_pos.extend_with_last_line(last_pos, p.tok.line_nr)
+		pos: first_pos.extend(p.prev_tok.position())
 		is_short: no_keys
 		pre_comments: pre_comments
 	}

@@ -322,7 +322,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			}
 		}
 		else {
-			if p.tok.kind != .eof {
+			if p.tok.kind != .eof && !(p.tok.kind == .rsbr && p.inside_asm) {
 				// eof should be handled where it happens
 				p.error_with_pos('invalid expression: unexpected $p.tok', p.tok.position())
 				return ast.Expr{}
@@ -360,13 +360,17 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 			}
 		} else if p.tok.kind == .key_as {
 			// sum type as cast `x := SumType as Variant`
-			pos := p.tok.position()
-			p.next()
-			typ := p.parse_type()
-			node = ast.AsCast{
-				expr: node
-				typ: typ
-				pos: pos
+			if !p.inside_asm {
+				pos := p.tok.position()
+				p.next()
+				typ := p.parse_type()
+				node = ast.AsCast{
+					expr: node
+					typ: typ
+					pos: pos
+				}
+			} else {
+				return node
 			}
 		} else if p.tok.kind == .left_shift && p.is_stmt_ident {
 			// arr << elem

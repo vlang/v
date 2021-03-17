@@ -356,6 +356,9 @@ fn (mut g JsGen) stmts(stmts []ast.Stmt) {
 fn (mut g JsGen) stmt(node ast.Stmt) {
 	g.stmt_start_pos = g.ns.out.len
 	match node {
+		ast.AsmStmt {
+			panic('inline asm is not supported by js')
+		}
 		ast.AssertStmt {
 			g.gen_assert_stmt(node)
 		}

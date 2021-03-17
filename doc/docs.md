@@ -3848,19 +3848,25 @@ To improve safety and maintainability, operator overloading is limited:
 are auto generated when the operators are defined though they must return the same type.
 
 ## Inline assembly
-
-TODO: not implemented yet
-
-```v failcompile
-fn main() {
-    a := 10
-    asm x64 {
-        mov eax, [a]
-        add eax, 10
-        mov [a], eax
-    }
+<!-- ignore because it doesn't pass fmt test (why?) --> 
+```v ignore
+a := 100
+b := 20
+mut c := 0
+asm amd64 {
+    mov eax, a
+    add eax, b
+    mov c, eax
+    ; =r (c) as c // output 
+    ; r (a) as a // input 
+      r (b) as b
 }
+println('a: $a') // 100 
+println('b: $b') // 20 
+println('c: $c') // 120
 ```
+
+For more examples, see [github.com/vlang/v/tree/master/vlib/v/tests/assembly/asm_test.amd64.v](https://github.com/vlang/v/tree/master/vlib/v/tests/assembly/asm_test.amd64.v)
 
 ## Translating C to V
 

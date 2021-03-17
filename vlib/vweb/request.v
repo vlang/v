@@ -38,6 +38,7 @@ fn parse_request(mut reader io.BufferedReader) ?http.Request {
 			reader.read(mut body) or {}
 		}
 	}
+	h.free()
 
 	return http.Request{
 		method: method

@@ -32,3 +32,9 @@ fn or_with_one_multi_line_stmt() {
 		}
 	}
 }
+
+fn channel_pop() {
+	var_init := <-ch or { -1.25 }
+	var_assign = <-ch or { -2.5 }
+	arr_push << <-ch or { -3.75 }
+}

@@ -321,7 +321,7 @@ fn (mut g Game) generate_tetro() {
 // Get the right tetro from cache
 fn (mut g Game) get_tetro() {
 	idx := g.tetro_idx * tetro_size * tetro_size + g.rotation_idx * tetro_size
-	g.tetro = g.tetros_cache[idx..idx + tetro_size]
+	g.tetro = g.tetros_cache[idx..idx + tetro_size].clone()
 }
 
 // TODO mut
