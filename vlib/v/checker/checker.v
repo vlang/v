@@ -2871,15 +2871,6 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					&& left_sym.kind !in [.byteptr, .charptr, .struct_, .alias] {
 					c.error('invalid right operand: $left_sym.name $assign_stmt.op $right_sym.name',
 						right.position())
-				} else if right is ast.IntegerLiteral {
-					if right.val == '1' {
-						op := if assign_stmt.op == .plus_assign {
-							token.Kind.inc
-						} else {
-							token.Kind.dec
-						}
-						c.error('use `$op` instead of `$assign_stmt.op 1`', assign_stmt.pos)
-					}
 				}
 			}
 			.mult_assign, .div_assign {
