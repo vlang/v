@@ -1063,8 +1063,8 @@ pub fn (mut f Fmt) for_stmt(node ast.ForStmt) {
 	f.writeln('}')
 }
 
-pub fn (mut f Fmt) global_decl(it ast.GlobalDecl) {
-	single := it.fields.len == 1
+pub fn (mut f Fmt) global_decl(node ast.GlobalDecl) {
+	single := node.fields.len == 1
 	if single {
 		f.write('__global ( ')
 	} else {
@@ -1073,7 +1073,7 @@ pub fn (mut f Fmt) global_decl(it ast.GlobalDecl) {
 	}
 	mut max := 0
 	mut has_assign := false
-	for field in it.fields {
+	for field in node.fields {
 		if field.name.len > max {
 			max = field.name.len
 		}
@@ -1081,7 +1081,7 @@ pub fn (mut f Fmt) global_decl(it ast.GlobalDecl) {
 			has_assign = true
 		}
 	}
-	for field in it.fields {
+	for field in node.fields {
 		f.comments(field.comments, inline: true)
 		f.write('$field.name ')
 		f.write(strings.repeat(` `, max - field.name.len))
@@ -1104,7 +1104,7 @@ pub fn (mut f Fmt) global_decl(it ast.GlobalDecl) {
 	if !single {
 		f.indent--
 	}
-	f.comments_after_last_field(it.end_comments)
+	f.comments_after_last_field(node.end_comments)
 	f.writeln(')\n')
 }
 
@@ -1596,16 +1596,16 @@ pub fn (mut f Fmt) cast_expr(node ast.CastExpr) {
 	f.write(')')
 }
 
-pub fn (mut f Fmt) chan_init(mut it ast.ChanInit) {
-	info := f.table.get_type_symbol(it.typ).chan_info()
-	if it.elem_type == 0 && it.typ > 0 {
-		it.elem_type = info.elem_type
+pub fn (mut f Fmt) chan_init(mut node ast.ChanInit) {
+	info := f.table.get_type_symbol(node.typ).chan_info()
+	if node.elem_type == 0 && node.typ > 0 {
+		node.elem_type = info.elem_type
 	}
 	is_mut := info.is_mut
 	el_typ := if is_mut {
-		it.elem_type.set_nr_muls(it.elem_type.nr_muls() - 1)
+		node.elem_type.set_nr_muls(node.elem_type.nr_muls() - 1)
 	} else {
-		it.elem_type
+		node.elem_type
 	}
 	f.write('chan ')
 	if is_mut {
@@ -1613,9 +1613,9 @@ pub fn (mut f Fmt) chan_init(mut it ast.ChanInit) {
 	}
 	f.write(f.table.type_to_str_using_aliases(el_typ, f.mod2alias))
 	f.write('{')
-	if it.has_cap {
+	if node.has_cap {
 		f.write('cap: ')
-		f.expr(it.cap_expr)
+		f.expr(node.cap_expr)
 	}
 	f.write('}')
 }
@@ -1928,10 +1928,10 @@ pub fn (mut f Fmt) likely(node ast.Likely) {
 	f.write(')')
 }
 
-pub fn (mut f Fmt) lock_expr(lex ast.LockExpr) {
+pub fn (mut f Fmt) lock_expr(node ast.LockExpr) {
 	mut num_locked := 0
 	mut num_rlocked := 0
-	for is_rlock in lex.is_rlock {
+	for is_rlock in node.is_rlock {
 		if is_rlock {
 			num_rlocked++
 		} else {
@@ -1941,8 +1941,8 @@ pub fn (mut f Fmt) lock_expr(lex ast.LockExpr) {
 	if num_locked > 0 || num_rlocked == 0 {
 		f.write('lock ')
 		mut n := 0
-		for i, v in lex.lockeds {
-			if !lex.is_rlock[i] {
+		for i, v in node.lockeds {
+			if !node.is_rlock[i] {
 				if n > 0 {
 					f.write(', ')
 				}
@@ -1957,8 +1957,8 @@ pub fn (mut f Fmt) lock_expr(lex ast.LockExpr) {
 		}
 		f.write('rlock ')
 		mut n := 0
-		for i, v in lex.lockeds {
-			if lex.is_rlock[i] {
+		for i, v in node.lockeds {
+			if node.is_rlock[i] {
 				if n > 0 {
 					f.write(', ')
 				}
@@ -1968,15 +1968,15 @@ pub fn (mut f Fmt) lock_expr(lex ast.LockExpr) {
 		}
 	}
 	f.writeln(' {')
-	f.stmts(lex.stmts)
+	f.stmts(node.stmts)
 	f.write('}')
 }
 
-pub fn (mut f Fmt) map_init(it ast.MapInit) {
-	if it.keys.len == 0 {
-		if it.typ > table.void_type {
-			f.mark_types_import_as_used(it.typ)
-			f.write(f.table.type_to_str_using_aliases(it.typ, f.mod2alias))
+pub fn (mut f Fmt) map_init(node ast.MapInit) {
+	if node.keys.len == 0 {
+		if node.typ > table.void_type {
+			f.mark_types_import_as_used(node.typ)
+			f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
 		} else {
 			// m = map{}
 			f.write('map')
@@ -1986,36 +1986,36 @@ pub fn (mut f Fmt) map_init(it ast.MapInit) {
 	}
 	f.writeln('map{')
 	f.indent++
-	f.comments(it.pre_cmnts, {})
+	f.comments(node.pre_cmnts, {})
 	mut max_field_len := 0
-	for key in it.keys {
+	for key in node.keys {
 		if key.str().len > max_field_len {
 			max_field_len = key.str().len
 		}
 	}
-	for i, key in it.keys {
+	for i, key in node.keys {
 		f.expr(key)
 		f.write(': ')
 		f.write(strings.repeat(` `, max_field_len - key.str().len))
-		f.expr(it.vals[i])
-		f.comments(it.comments[i], prev_line: it.vals[i].position().last_line, has_nl: false)
+		f.expr(node.vals[i])
+		f.comments(node.comments[i], prev_line: node.vals[i].position().last_line, has_nl: false)
 		f.writeln('')
 	}
 	f.indent--
 	f.write('}')
 }
 
-pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
+pub fn (mut f Fmt) match_expr(node ast.MatchExpr) {
 	f.write('match ')
-	f.expr(it.cond)
-	if it.cond is ast.Ident {
-		f.it_name = it.cond.name
+	f.expr(node.cond)
+	if node.cond is ast.Ident {
+		f.it_name = node.cond.name
 	}
 	f.writeln(' {')
 	f.indent++
-	f.comments(it.comments, {})
+	f.comments(node.comments, {})
 	mut single_line := true
-	for branch in it.branches {
+	for branch in node.branches {
 		if branch.stmts.len > 1 || branch.pos.line_nr < branch.pos.last_line {
 			single_line = false
 			break
@@ -2028,7 +2028,7 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 			break
 		}
 	}
-	for branch in it.branches {
+	for branch in node.branches {
 		if !branch.is_else {
 			// normal branch
 			f.is_mbranch_expr = true
