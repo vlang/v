@@ -1768,7 +1768,7 @@ fn (mut g Gen) gen_asm_stmt(stmt ast.AsmStmt) {
 		} else {
 			g.write(' ')
 		}
-		// swap destionation and operands for att syntax 
+		// swap destionation and operands for att syntax
 		if template.args.len != 0 {
 			template.args.prepend(template.args[template.args.len - 1])
 			template.args.delete(template.args.len - 1)
@@ -4539,7 +4539,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			styp := g.typ(g.fn_decl.return_type)
 			g.writeln('return ($styp){0};')
 		} else {
-			if g.is_autofree && !g.is_builtin_mod {
+			if g.is_autofree {
 				g.writeln('// free before return (no values returned)')
 				g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 			}
@@ -4680,13 +4680,24 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			g.writeln('return $opt_tmp;')
 			return
 		}
+		// autofree before `return`
+		// set free_parent_scopes to true, since all variables defined in parent
+		// scopes need to be freed before the return
+		if g.is_autofree {
+			expr := node.exprs[0]
+			if expr is ast.Ident {
+				g.returned_var_name = expr.name
+			}
+			g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
+		}
 		// free := g.is_autofree && !g.is_builtin_mod // node.exprs[0] is ast.CallExpr
+		// Create a temporary variable for the return expression
 		free := !g.is_builtin_mod // node.exprs[0] is ast.CallExpr
 		mut tmp := ''
 		if free {
 			// `return foo(a, b, c)`
 			// `tmp := foo(a, b, c); free(a); free(b); free(c); return tmp;`
-			// Save return value in a temp var so that it all args (a,b,c) can be freed
+			// Save return value in a temp var so that all args (a,b,c) can be freed
 			// Don't use a tmp var if a variable is simply returned: `return x`
 			if node.exprs[0] !is ast.Ident {
 				tmp = g.new_tmp_var()
@@ -4712,18 +4723,8 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
 		}
 		if free {
-			expr := node.exprs[0]
-			if expr is ast.Ident {
-				g.returned_var_name = expr.name
-			}
 			g.writeln(';')
 			has_semicolon = true
-			// autofree before `return`
-			// set free_parent_scopes to true, since all variables defined in parent
-			// scopes need to be freed before the return
-			if g.pref.autofree {
-				g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
-			}
 			if tmp != '' {
 				g.write('return $tmp')
 				has_semicolon = false

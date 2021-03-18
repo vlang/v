@@ -40,6 +40,9 @@ fn keep_single_empty_line() {
 	}
 
 	f := 0
+	arr << MyStruct{}
+
+	arr2 := [1, 2]
 }
 
 fn prevent_empty_line_after_multi_line_statements() {

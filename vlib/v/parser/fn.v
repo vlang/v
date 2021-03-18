@@ -25,9 +25,15 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 	mut or_kind := ast.OrKind.absent
 	if fn_name == 'json.decode' {
 		p.expecting_type = true // Makes name_expr() parse the type `User` in `json.decode(User, txt)`
-		p.expr_mod = ''
 		or_kind = .block
 	}
+	//
+	old_expr_mod := p.expr_mod
+	defer {
+		p.expr_mod = old_expr_mod
+	}
+	p.expr_mod = ''
+	//
 	mut generic_types := []table.Type{}
 	mut generic_list_pos := p.tok.position()
 	if p.tok.kind == .lt {

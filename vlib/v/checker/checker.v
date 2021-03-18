@@ -2626,22 +2626,25 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 	right_first := assign_stmt.right[0]
 	mut right_len := assign_stmt.right.len
 	mut right_type0 := table.void_type
-	for right in assign_stmt.right {
+	for i, right in assign_stmt.right {
 		if right is ast.CallExpr || right is ast.IfExpr || right is ast.LockExpr
 			|| right is ast.MatchExpr {
-			right_type0 = c.expr(right)
-			assign_stmt.right_types = [
-				c.check_expr_opt_call(right, right_type0),
-			]
-			right_type_sym0 := c.table.get_type_symbol(right_type0)
-			if right_type_sym0.kind == .multi_return {
+			right_type := c.expr(right)
+			if i == 0 {
+				right_type0 = right_type
+				assign_stmt.right_types = [
+					c.check_expr_opt_call(right, right_type0),
+				]
+			}
+			right_type_sym := c.table.get_type_symbol(right_type)
+			if right_type_sym.kind == .multi_return {
 				if assign_stmt.right.len > 1 {
-					c.error('cannot use multi-value $right_type_sym0.name in signle-value context',
+					c.error('cannot use multi-value $right_type_sym.name in single-value context',
 						right.position())
 				}
-				assign_stmt.right_types = right_type_sym0.mr_info().types
+				assign_stmt.right_types = right_type_sym.mr_info().types
 				right_len = assign_stmt.right_types.len
-			} else if right_type0 == table.void_type {
+			} else if right_type == table.void_type {
 				right_len = 0
 			}
 		}
@@ -2868,15 +2871,6 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					&& left_sym.kind !in [.byteptr, .charptr, .struct_, .alias] {
 					c.error('invalid right operand: $left_sym.name $assign_stmt.op $right_sym.name',
 						right.position())
-				} else if right is ast.IntegerLiteral {
-					if right.val == '1' {
-						op := if assign_stmt.op == .plus_assign {
-							token.Kind.inc
-						} else {
-							token.Kind.dec
-						}
-						c.error('use `$op` instead of `$assign_stmt.op 1`', assign_stmt.pos)
-					}
 				}
 			}
 			.mult_assign, .div_assign {
