@@ -99,8 +99,8 @@ fn prepare_bin2v_file(mut fmt_bench benchmark.Benchmark) {
 }
 
 fn write_bin2v_keep_content() ? {
-	img0 := os.join_path('tutorials', 'img', 'hello.png')
-	img1 := os.join_path('tutorials', 'img', 'time.png')
+	img0 := os.join_path('vlib', 'v', 'embed_file', 'v.png')
+	img1 := os.join_path('tutorials', 'building_a_simple_web_blog_with_vweb', 'img', 'time.png')
 	os.rm(b2v_keep_path) ?
 	res := os.execute('v bin2v -w $b2v_keep_path $img0 $img1')
 	if res.exit_code != 0 {
