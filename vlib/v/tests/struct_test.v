@@ -285,9 +285,7 @@ fn test_struct_literal_args() {
 	assert c.n == 10
 	assert c.def == 10
 
-	foo_user(
-		name: 'Peter'
-	)
+	foo_user(name: 'Peter')
 	foo_user(name: 'Peter')
 	foo_user(age: 7)
 	foo_user(name: 'Stew', age: 50)

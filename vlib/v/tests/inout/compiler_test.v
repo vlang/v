@@ -21,9 +21,7 @@ fn test_all() {
 		println('no compiler tests found')
 		assert false
 	}
-	paths := vtest.filter_vtest_only(tests,
-		basepath: dir
-	)
+	paths := vtest.filter_vtest_only(tests, basepath: dir)
 	for path in paths {
 		print(path + ' ')
 		program := path

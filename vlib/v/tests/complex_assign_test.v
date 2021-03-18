@@ -99,7 +99,7 @@ fn test_assign_multi_expr() {
 }
 
 fn test_issue_9330() {
-	arr := "0.1".split('.')
+	arr := '0.1'.split('.')
 	a0, a1 := arr[0], arr[1].int()
 	assert a0 == '0'
 	assert a1 == 1
@@ -112,5 +112,4 @@ fn test_issue_9330() {
 	d0, d1 := arr[0].int(), arr[1].f64()
 	assert d0 == 0
 	assert d1 == 1.0
-
 }
