@@ -1499,7 +1499,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			}
 			exp_arg_sym := c.table.get_type_symbol(exp_arg_typ)
 			c.expected_type = exp_arg_typ
-			got_arg_typ := c.expr(arg.expr)
+			got_arg_typ := c.check_expr_opt_call(arg.expr, c.expr(arg.expr))
 			call_expr.args[i].typ = got_arg_typ
 			if method.is_variadic && got_arg_typ.has_flag(.variadic) && call_expr.args.len - 1 > i {
 				c.error('when forwarding a variadic variable, it must be the final argument',
@@ -1634,7 +1634,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			call_expr.return_type = info.func.return_type
 			mut earg_types := []table.Type{}
 			for mut arg in call_expr.args {
-				targ := c.expr(arg.expr)
+				targ := c.check_expr_opt_call(arg.expr, c.expr(arg.expr))
 				arg.typ = targ
 				earg_types << targ
 			}
@@ -1732,7 +1732,7 @@ fn (mut c Checker) call_array_builtin_method(mut call_expr ast.CallExpr, left_ty
 	// map/filter are supposed to have 1 arg only
 	mut arg_type := left_type
 	for arg in call_expr.args {
-		arg_type = c.expr(arg.expr)
+		arg_type = c.check_expr_opt_call(arg.expr, c.expr(arg.expr))
 	}
 	if method_name == 'map' {
 		// check fn
@@ -2024,7 +2024,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			}
 		}
 		c.expected_type = arg.typ
-		typ := c.expr(call_arg.expr)
+		typ := c.check_expr_opt_call(call_arg.expr, c.expr(call_arg.expr))
 		call_expr.args[i].typ = typ
 		typ_sym := c.table.get_type_symbol(typ)
 		arg_typ_sym := c.table.get_type_symbol(arg.typ)

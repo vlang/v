@@ -1,20 +1,116 @@
-vlib/v/checker/tests/optional_fn_err.vv:11:2: error: foo() returns an option, so it should have either an `or {}` block, or `?` at the end
-    9 | fn main() {
-   10 |     // Calling foo() without ? or an or block, should be an error.
-   11 |     foo()
+vlib/v/checker/tests/optional_fn_err.vv:1:8: warning: module 'json' is imported but never used
+    1 | import json
+      |        ~~~~
+    2 | 
+    3 | fn foo() ? {
+vlib/v/checker/tests/optional_fn_err.vv:27:2: error: foo() returns an option, so it should have either an `or {}` block, or `?` at the end
+   25 | fn main() {
+   26 |     // Callingd foo() without ? or an or block, should be an error.
+   27 |     foo()
       |     ~~~~~
-   12 | 
-   13 |     _ := bar()
-vlib/v/checker/tests/optional_fn_err.vv:13:7: error: bar() returns an option, so it should have either an `or {}` block, or `?` at the end
-   11 |     foo()
-   12 | 
-   13 |     _ := bar()
-      |          ~~~~~
-   14 |     _ := [bar()]
-   15 | }
-vlib/v/checker/tests/optional_fn_err.vv:14:8: error: bar() returns an option, so it should have either an `or {}` block, or `?` at the end
-   12 | 
-   13 |     _ := bar()
-   14 |     _ := [bar()]
-      |           ~~~~~
-   15 | }
+   28 | 
+   29 |     _ := bar(0)
+vlib/v/checker/tests/optional_fn_err.vv:29:7: error: bar() returns an option, so it should have either an `or {}` block, or `?` at the end
+   27 |     foo()
+   28 | 
+   29 |     _ := bar(0)
+      |          ~~~~~~
+   30 |     _ := [bar(0)]
+   31 |
+vlib/v/checker/tests/optional_fn_err.vv:30:8: error: bar() returns an option, so it should have either an `or {}` block, or `?` at the end
+   28 | 
+   29 |     _ := bar(0)
+   30 |     _ := [bar(0)]
+      |           ~~~~~~
+   31 | 
+   32 |     // Calling fn with optional argument
+vlib/v/checker/tests/optional_fn_err.vv:33:16: error: bar() returns an option, so it should have either an `or {}` block, or `?` at the end
+   31 | 
+   32 |     // Calling fn with optional argument
+   33 |     println(twice(bar(0)))
+      |                   ~~~~~~
+   34 |     // method and fn field
+   35 |     mut v := Data{1, fn (_ int) {}}
+vlib/v/checker/tests/optional_fn_err.vv:35:16: error: cannot assign to field `f`: expected `fn (int)`, not `int literal`
+   33 |     println(twice(bar(0)))
+   34 |     // method and fn field
+   35 |     mut v := Data{1, fn (_ int) {}}
+      |                   ^
+   36 |     v.add(bar(0))
+   37 |     v.f(bar(0))
+vlib/v/checker/tests/optional_fn_err.vv:36:8: error: bar() returns an option, so it should have either an `or {}` block, or `?` at the end
+   34 |     // method and fn field
+   35 |     mut v := Data{1, fn (_ int) {}}
+   36 |     v.add(bar(0))
+      |           ~~~~~~
+   37 |     v.f(bar(0))
+   38 |     // anon fn
+vlib/v/checker/tests/optional_fn_err.vv:37:6: error: bar() returns an option, so it should have either an `or {}` block, or `?` at the end
+   35 |     mut v := Data{1, fn (_ int) {}}
+   36 |     v.add(bar(0))
+   37 |     v.f(bar(0))
+      |         ~~~~~~
+   38 |     // anon fn
+   39 |     fn (_ int) {}(bar(0))
+vlib/v/checker/tests/optional_fn_err.vv:39:16: error: bar() returns an option, so it should have either an `or {}` block, or `?` at the end
+   37 |     v.f(bar(0))
+   38 |     // anon fn
+   39 |     fn (_ int) {}(bar(0))
+      |                   ~~~~~~
+   40 |     // array builtin methods
+   41 |     mut arr := [1, 2]
+vlib/v/checker/tests/optional_fn_err.vv:42:16: error: bar() returns an option, so it should have either an `or {}` block, or `?` at the end
+   40 |     // array builtin methods
+   41 |     mut arr := [1, 2]
+   42 |     arr.insert(0, bar(0))
+      |                   ~~~~~~
+   43 |     arr.prepend(bar(0))
+   44 |     arr.contains(bar(0))
+vlib/v/checker/tests/optional_fn_err.vv:43:14: error: bar() returns an option, so it should have either an `or {}` block, or `?` at the end
+   41 |     mut arr := [1, 2]
+   42 |     arr.insert(0, bar(0))
+   43 |     arr.prepend(bar(0))
+      |                 ~~~~~~
+   44 |     arr.contains(bar(0))
+   45 |     arr.index(bar(0))
+vlib/v/checker/tests/optional_fn_err.vv:44:15: error: bar() returns an option, so it should have either an `or {}` block, or `?` at the end
+   42 |     arr.insert(0, bar(0))
+   43 |     arr.prepend(bar(0))
+   44 |     arr.contains(bar(0))
+      |                  ~~~~~~
+   45 |     arr.index(bar(0))
+   46 |     println(arr.map(bar(0)))
+vlib/v/checker/tests/optional_fn_err.vv:45:12: error: bar() returns an option, so it should have either an `or {}` block, or `?` at the end
+   43 |     arr.prepend(bar(0))
+   44 |     arr.contains(bar(0))
+   45 |     arr.index(bar(0))
+      |               ~~~~~~
+   46 |     println(arr.map(bar(0)))
+   47 |     println(arr.filter(bar(true)))
+vlib/v/checker/tests/optional_fn_err.vv:46:18: error: bar() returns an option, so it should have either an `or {}` block, or `?` at the end
+   44 |     arr.contains(bar(0))
+   45 |     arr.index(bar(0))
+   46 |     println(arr.map(bar(0)))
+      |                     ~~~~~~
+   47 |     println(arr.filter(bar(true)))
+   48 |     println(arr.any(bar(true)))
+vlib/v/checker/tests/optional_fn_err.vv:47:21: error: bar() returns an option, so it should have either an `or {}` block, or `?` at the end
+   45 |     arr.index(bar(0))
+   46 |     println(arr.map(bar(0)))
+   47 |     println(arr.filter(bar(true)))
+      |                        ~~~~~~~~~
+   48 |     println(arr.any(bar(true)))
+   49 |     println(arr.all(bar(true)))
+vlib/v/checker/tests/optional_fn_err.vv:48:18: error: bar() returns an option, so it should have either an `or {}` block, or `?` at the end
+   46 |     println(arr.map(bar(0)))
+   47 |     println(arr.filter(bar(true)))
+   48 |     println(arr.any(bar(true)))
+      |                     ~~~~~~~~~
+   49 |     println(arr.all(bar(true)))
+   50 | }
+vlib/v/checker/tests/optional_fn_err.vv:49:18: error: bar() returns an option, so it should have either an `or {}` block, or `?` at the end
+   47 |     println(arr.filter(bar(true)))
+   48 |     println(arr.any(bar(true)))
+   49 |     println(arr.all(bar(true)))
+      |                     ~~~~~~~~~
+   50 | }
