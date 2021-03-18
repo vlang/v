@@ -215,7 +215,11 @@ fn color_highlight(code string, tb &table.Table) string {
 						if tok.lit in ['C', 'JS'] {
 							tok_typ = .prefix
 						} else {
-							tok_typ = .module_
+							if tok.lit[0].ascii_str().is_upper() {
+								tok_typ = .symbol
+							} else {
+								tok_typ = .module_
+							}
 						}
 					} else if tok.lit in ['r', 'c'] && next_tok.kind == .string {
 						tok_typ = .prefix
