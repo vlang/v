@@ -1066,19 +1066,24 @@ pub fn (s string) trim(cutset string) string {
 	if s.len < 1 || cutset.len < 1 {
 		return s
 	}
-	cs_arr := cutset.bytes()
 	mut pos_left := 0
 	mut pos_right := s.len - 1
 	mut cs_match := true
 	for pos_left <= s.len && pos_right >= -1 && cs_match {
 		cs_match = false
-		if s[pos_left] in cs_arr {
-			pos_left++
-			cs_match = true
+		for cs in cutset {
+			if s[pos_left] == cs {
+				pos_left++
+				cs_match = true
+				break
+			}
 		}
-		if s[pos_right] in cs_arr {
-			pos_right--
-			cs_match = true
+		for cs in cutset {
+			if s[pos_right] == cs {
+				pos_right--
+				cs_match = true
+				break
+			}
 		}
 		if pos_left > pos_right {
 			return ''
@@ -1093,9 +1098,18 @@ pub fn (s string) trim_left(cutset string) string {
 	if s.len < 1 || cutset.len < 1 {
 		return s
 	}
-	cs_arr := cutset.bytes()
 	mut pos := 0
-	for pos < s.len && s[pos] in cs_arr {
+	for pos < s.len {
+		mut found := false
+		for cs in cutset {
+			if s[pos] == cs {
+				found = true
+				break
+			}
+		}
+		if !found {
+			break
+		}
 		pos++
 	}
 	return s[pos..]
@@ -1107,9 +1121,17 @@ pub fn (s string) trim_right(cutset string) string {
 	if s.len < 1 || cutset.len < 1 {
 		return s
 	}
-	cs_arr := cutset.bytes()
 	mut pos := s.len - 1
-	for pos >= 0 && s[pos] in cs_arr {
+	for pos >= 0 {
+		mut found := false
+		for cs in cutset {
+			if s[pos] == cs {
+				found = true
+			}
+		}
+		if !found {
+			break
+		}
 		pos--
 	}
 	return if pos < 0 { '' } else { s[..pos + 1] }
