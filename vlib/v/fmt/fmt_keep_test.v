@@ -77,7 +77,9 @@ fn test_fmt() {
 		fmt_bench.ok()
 		eprintln(fmt_bench.step_message_ok(vrelpath))
 	}
-	restore_bin2v_placeholder() or { eprintln('failed restoring vbin2v_keep.vv placeholder: $err.msg') }
+	restore_bin2v_placeholder() or {
+		eprintln('failed restoring vbin2v_keep.vv placeholder: $err.msg')
+	}
 	fmt_bench.stop()
 	eprintln(term.h_divider('-'))
 	eprintln(fmt_bench.total_message(fmt_message))
