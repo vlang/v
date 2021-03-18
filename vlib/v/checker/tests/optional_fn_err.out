@@ -1,0 +1,20 @@
+vlib/v/checker/tests/optional_fn_err.vv:11:2: error: foo() returns an option, so it should have either an `or {}` block, or `?` at the end
+    9 | fn main() {
+   10 |     // Calling foo() without ? or an or block, should be an error.
+   11 |     foo()
+      |     ~~~~~
+   12 | 
+   13 |     _ := bar()
+vlib/v/checker/tests/optional_fn_err.vv:13:7: error: bar() returns an option, so it should have either an `or {}` block, or `?` at the end
+   11 |     foo()
+   12 | 
+   13 |     _ := bar()
+      |          ~~~~~
+   14 |     _ := [bar()]
+   15 | }
+vlib/v/checker/tests/optional_fn_err.vv:14:8: error: bar() returns an option, so it should have either an `or {}` block, or `?` at the end
+   12 | 
+   13 |     _ := bar()
+   14 |     _ := [bar()]
+      |           ~~~~~
+   15 | }
