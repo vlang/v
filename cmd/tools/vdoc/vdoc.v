@@ -330,7 +330,8 @@ fn (mut vd VDoc) generate_docs_from_file() {
 		}
 		outputs := vd.render(out)
 		if outputs.len == 0 {
-			println('No documentation for $dirs')
+			eprintln('vdoc: No documentation found for ${dirs[0]}')
+			exit(1)
 		} else {
 			first := outputs.keys()[0]
 			println(outputs[first])
