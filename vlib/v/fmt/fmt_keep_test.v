@@ -19,12 +19,12 @@ const (
 	fpref              = &pref.Preferences{
 		is_fmt: true
 	}
+	vexe               = os.getenv('VEXE')
 )
 
 fn test_fmt() {
 	fmt_message := 'checking that v fmt keeps already formatted files *unchanged*'
 	eprintln(term.header(fmt_message, '-'))
-	vexe := os.getenv('VEXE')
 	if vexe.len == 0 || !os.exists(vexe) {
 		eprintln('VEXE must be set')
 		exit(error_missing_vexe)
@@ -104,7 +104,7 @@ fn write_bin2v_keep_content() ? {
 	img0 := os.join_path('vlib', 'v', 'embed_file', 'v.png')
 	img1 := os.join_path('tutorials', 'building_a_simple_web_blog_with_vweb', 'img', 'time.png')
 	os.rm(b2v_keep_path) ?
-	res := os.execute('v bin2v -w $b2v_keep_path $img0 $img1')
+	res := os.execute('$vexe bin2v -w $b2v_keep_path $img0 $img1')
 	if res.exit_code != 0 {
 		restore_bin2v_placeholder() or {}
 		return error_with_code(res.output.trim_space(), res.exit_code)
