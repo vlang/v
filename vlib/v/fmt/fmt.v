@@ -860,6 +860,57 @@ pub fn (mut f Fmt) comp_for(node ast.CompFor) {
 	}
 	f.writeln('}')
 }
+pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
+	if node.is_pub {
+		f.write('pub ')
+	}
+	if node.fields.len == 0 && node.pos.line_nr == node.pos.last_line {
+		f.writeln('const ()\n')
+		return
+	}
+	f.inside_const = true
+	defer {
+		f.inside_const = false
+	}
+	f.write('const ')
+	mut max := 0
+	if node.is_block {
+		f.writeln('(')
+		for field in node.fields {
+			if field.name.len > max {
+				max = field.name.len
+			}
+		}
+		f.indent++
+	}
+	mut prev_field := if node.fields.len > 0 { ast.Node(node.fields[0]) } else { ast.Node{} }
+	for field in node.fields {
+		if field.comments.len > 0 {
+			if f.should_insert_newline_before_node(ast.Expr(field.comments[0]), prev_field) {
+				f.writeln('')
+			}
+			f.comments(field.comments, inline: true)
+			prev_field = ast.Expr(field.comments.last())
+		}
+		if node.is_block && f.should_insert_newline_before_node(field, prev_field) {
+			f.writeln('')
+		}
+		name := field.name.after('.')
+		f.write('$name ')
+		f.write(strings.repeat(` `, max - field.name.len))
+		f.write('= ')
+		f.expr(field.expr)
+		f.writeln('')
+		prev_field = field
+	}
+	f.comments_after_last_field(node.end_comments)
+	if node.is_block {
+		f.indent--
+		f.writeln(')\n')
+	} else {
+		f.writeln('')
+	}
+}
 
 pub fn (mut f Fmt) defer_stmt(node ast.DeferStmt) {
 	f.write('defer {')
@@ -1398,6 +1449,13 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 	}
 }
 
+fn should_decrease_arr_penalty(e ast.Expr) bool {
+	if e is ast.ArrayInit || e is ast.StructInit || e is ast.MapInit || e is ast.CallExpr {
+		return true
+	}
+	return false
+}
+
 pub fn (mut f Fmt) as_cast(node ast.AsCast) {
 	type_str := f.table.type_to_str_using_aliases(node.typ, f.mod2alias)
 	f.expr(node.expr)
@@ -1718,6 +1776,13 @@ pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 	}
 }
 
+fn branch_is_single_line(b ast.IfBranch) bool {
+	if b.stmts.len == 1 && b.comments.len == 0 && stmt_is_single_line(b.stmts[0]) {
+		return true
+	}
+	return false
+}
+
 pub fn (mut f Fmt) if_guard_expr(node ast.IfGuardExpr) {
 	f.write(node.var_name + ' := ')
 	f.expr(node.expr)
@@ -1995,6 +2060,39 @@ pub fn (mut f Fmt) offset_of(node ast.OffsetOf) {
 	f.write('__offsetof(${f.table.type_to_str(node.struct_type)}, $node.field)')
 }
 
+pub fn (mut f Fmt) or_expr(node ast.OrExpr) {
+	match node.kind {
+		.absent {}
+		.block {
+			if node.stmts.len == 0 {
+				f.write(' or {')
+				if node.pos.line_nr != node.pos.last_line {
+					f.writeln('')
+				}
+				f.write('}')
+				return
+			} else if node.stmts.len == 1 && stmt_is_single_line(node.stmts[0]) {
+				// the control stmts (return/break/continue...) print a newline inside them,
+				// so, since this'll all be on one line, trim any possible whitespace
+				str := f.stmt_str(node.stmts[0]).trim_space()
+				single_line := ' or { $str }'
+				if single_line.len + f.line_len <= fmt.max_len.last() {
+					f.write(single_line)
+					return
+				}
+			}
+			// Make it multiline if the blocks has at least two stmts
+			// or a single line would be too long
+			f.writeln(' or {')
+			f.stmts(node.stmts)
+			f.write('}')
+		}
+		.propagate {
+			f.write(' ?')
+		}
+	}
+}
+
 pub fn (mut f Fmt) par_expr(node ast.ParExpr) {
 	f.write('(')
 	f.par_level++
@@ -2241,158 +2339,5 @@ pub fn (mut f Fmt) prefix_expr_cast_expr(node ast.Expr) {
 	}
 	if !is_pe_amp_ce {
 		f.expr(node)
-	}
-}
-
-pub fn (mut f Fmt) or_expr(node ast.OrExpr) {
-	match node.kind {
-		.absent {}
-		.block {
-			if node.stmts.len == 0 {
-				f.write(' or {')
-				if node.pos.line_nr != node.pos.last_line {
-					f.writeln('')
-				}
-				f.write('}')
-				return
-			} else if node.stmts.len == 1 && stmt_is_single_line(node.stmts[0]) {
-				// the control stmts (return/break/continue...) print a newline inside them,
-				// so, since this'll all be on one line, trim any possible whitespace
-				str := f.stmt_str(node.stmts[0]).trim_space()
-				single_line := ' or { $str }'
-				if single_line.len + f.line_len <= fmt.max_len.last() {
-					f.write(single_line)
-					return
-				}
-			}
-			// Make it multiline if the blocks has at least two stmts
-			// or a single line would be too long
-			f.writeln(' or {')
-			f.stmts(node.stmts)
-			f.write('}')
-		}
-		.propagate {
-			f.write(' ?')
-		}
-	}
-}
-
-pub fn (mut f Fmt) attrs(attrs []table.Attr) {
-	mut sorted_attrs := attrs.clone()
-	// Sort the attributes. The ones with arguments come first.
-	sorted_attrs.sort(a.arg.len > b.arg.len)
-	for i, attr in sorted_attrs {
-		if attr.arg.len == 0 {
-			f.single_line_attrs(sorted_attrs[i..], {})
-			break
-		}
-		f.writeln('[$attr]')
-	}
-}
-
-pub struct AttrsOptions {
-	inline bool
-}
-
-pub fn (mut f Fmt) single_line_attrs(attrs []table.Attr, options AttrsOptions) {
-	if attrs.len == 0 {
-		return
-	}
-	mut sorted_attrs := attrs.clone()
-	sorted_attrs.sort(a.name < b.name)
-	if options.inline {
-		f.write(' ')
-	}
-	f.write('[')
-	for i, attr in sorted_attrs {
-		if i > 0 {
-			f.write('; ')
-		}
-		f.write('$attr')
-	}
-	f.write(']')
-	if !options.inline {
-		f.writeln('')
-	}
-}
-
-fn inline_attrs_len(attrs []table.Attr) int {
-	if attrs.len == 0 {
-		return 0
-	}
-	mut n := 2 // ' ['.len
-	for i, attr in attrs {
-		if i > 0 {
-			n += 2 // '; '.len
-		}
-		n += '$attr'.len
-	}
-	n++ // ']'.len
-	return n
-}
-
-fn branch_is_single_line(b ast.IfBranch) bool {
-	if b.stmts.len == 1 && b.comments.len == 0 && stmt_is_single_line(b.stmts[0]) {
-		return true
-	}
-	return false
-}
-
-fn should_decrease_arr_penalty(e ast.Expr) bool {
-	if e is ast.ArrayInit || e is ast.StructInit || e is ast.MapInit || e is ast.CallExpr {
-		return true
-	}
-	return false
-}
-
-pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
-	if node.is_pub {
-		f.write('pub ')
-	}
-	if node.fields.len == 0 && node.pos.line_nr == node.pos.last_line {
-		f.writeln('const ()\n')
-		return
-	}
-	f.inside_const = true
-	defer {
-		f.inside_const = false
-	}
-	f.write('const ')
-	mut max := 0
-	if node.is_block {
-		f.writeln('(')
-		for field in node.fields {
-			if field.name.len > max {
-				max = field.name.len
-			}
-		}
-		f.indent++
-	}
-	mut prev_field := if node.fields.len > 0 { ast.Node(node.fields[0]) } else { ast.Node{} }
-	for field in node.fields {
-		if field.comments.len > 0 {
-			if f.should_insert_newline_before_node(ast.Expr(field.comments[0]), prev_field) {
-				f.writeln('')
-			}
-			f.comments(field.comments, inline: true)
-			prev_field = ast.Expr(field.comments.last())
-		}
-		if node.is_block && f.should_insert_newline_before_node(field, prev_field) {
-			f.writeln('')
-		}
-		name := field.name.after('.')
-		f.write('$name ')
-		f.write(strings.repeat(` `, max - field.name.len))
-		f.write('= ')
-		f.expr(field.expr)
-		f.writeln('')
-		prev_field = field
-	}
-	f.comments_after_last_field(node.end_comments)
-	if node.is_block {
-		f.indent--
-		f.writeln(')\n')
-	} else {
-		f.writeln('')
 	}
 }
