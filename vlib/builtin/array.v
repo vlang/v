@@ -485,6 +485,17 @@ pub fn (a &array) free() {
 	C.free(a.data)
 }
 
+[unsafe]
+pub fn (mut a []string) free() {
+	$if prealloc {
+		return
+	}
+	for s in a {
+		unsafe { s.free() }
+	}
+	C.free(a.data)
+}
+
 // str returns a string representation of the array of strings
 // => '["a", "b", "c"]'.
 pub fn (a []string) str() string {
