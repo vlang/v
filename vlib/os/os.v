@@ -333,7 +333,7 @@ pub fn home_dir() string {
 // write_file writes `text` data to a file in `path`.
 pub fn write_file(path string, text string) ? {
 	mut f := create(path) ?
-	f.write(text.bytes()) ?
+	f.write_str(text) ?
 	f.close()
 }
 

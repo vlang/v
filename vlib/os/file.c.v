@@ -315,7 +315,10 @@ pub fn (mut f File) write_str(s string) ? {
 	if !f.is_opened {
 		return error('file is closed')
 	}
-	f.write(s.bytes()) ?
+	written := int(C.fwrite(voidptr(s.str), s.len, 1, f.cfile))
+	if written == 0 && s.len != 0 {
+		return error('0 bytes written')
+	}
 }
 
 // read_struct reads a single struct of type `T`

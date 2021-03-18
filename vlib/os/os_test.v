@@ -228,26 +228,32 @@ fn test_mv() {
 	// Move file with no extension to dir
 	os.mv(tfile1, tdir1) or { panic(err) }
 	mut expected := os.join_path(tdir1, 'file')
-	assert os.exists(expected) && !is_dir(expected) == true
+	assert os.exists(expected)
+	assert !is_dir(expected)
 	// Move dir with contents to other dir
 	os.mv(tdir1, tdir2) or { panic(err) }
 	expected = os.join_path(tdir2, 'dir')
-	assert os.exists(expected) && is_dir(expected) == true
+	assert os.exists(expected)
+	assert is_dir(expected)
 	expected = os.join_path(tdir2, 'dir', 'file')
-	assert os.exists(expected) && !is_dir(expected) == true
+	assert os.exists(expected)
+	assert !is_dir(expected)
 	// Move dir with contents to other dir (by renaming)
 	os.mv(os.join_path(tdir2, 'dir'), tdir3) or { panic(err) }
 	expected = tdir3
-	assert os.exists(expected) && is_dir(expected) == true
-	assert os.is_dir_empty(tdir2) == true
+	assert os.exists(expected)
+	assert is_dir(expected)
+	assert os.is_dir_empty(tdir2)
 	// Move file with extension to dir
 	os.mv(tfile2, tdir2) or { panic(err) }
 	expected = os.join_path(tdir2, 'file.test')
-	assert os.exists(expected) && !is_dir(expected) == true
+	assert os.exists(expected)
+	assert !is_dir(expected)
 	// Move file to dir (by renaming)
 	os.mv(os.join_path(tdir2, 'file.test'), tfile3) or { panic(err) }
 	expected = tfile3
-	assert os.exists(expected) && !is_dir(expected) == true
+	assert os.exists(expected)
+	assert !is_dir(expected)
 }
 
 fn test_cp_all() {
@@ -313,7 +319,7 @@ fn test_make_symlink_check_is_link_and_remove_symlink() {
 	folder_contents := os.ls(folder) or { panic(err) }
 	assert folder_contents.len == 0
 	os.system('ln -s $folder $symlink')
-	assert os.is_link(symlink) == true
+	assert os.is_link(symlink)
 	os.rm(symlink) or { panic(err) }
 	os.rm(folder) or { panic(err) }
 	folder_exists := os.is_dir(folder)
@@ -384,10 +390,10 @@ fn test_ext() {
 }
 
 fn test_is_abs() {
-	assert os.is_abs_path('/home/user') == true
+	assert os.is_abs_path('/home/user')
 	assert os.is_abs_path('v/vlib') == false
 	$if windows {
-		assert os.is_abs_path('C:\\Windows\\') == true
+		assert os.is_abs_path('C:\\Windows\\')
 	}
 }
 
@@ -562,8 +568,8 @@ fn test_posix_set_bit() {
 fn test_exists_in_system_path() {
 	assert os.exists_in_system_path('') == false
 	$if windows {
-		assert os.exists_in_system_path('cmd.exe') == true
+		assert os.exists_in_system_path('cmd.exe')
 		return
 	}
-	assert os.exists_in_system_path('ls') == true
+	assert os.exists_in_system_path('ls')
 }
