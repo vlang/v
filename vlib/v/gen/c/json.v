@@ -50,7 +50,7 @@ $dec_fn_dec {
 		if (error_ptr != NULL)	{
 			// fprintf(stderr, "Error in decode() for $styp error_ptr=: %s\\n", error_ptr);
 			// printf("\\nbad js=%%s\\n", js.str);
-			return (Option_$styp){.state = 2,.err = v_error(tos2(error_ptr))};
+			return (Option_$styp){.state = 2,.err = v_error(tos2((byteptr)error_ptr))};
 		}
 	}
 ')
@@ -211,10 +211,10 @@ fn (mut g Gen) decode_array(value_type table.Type) string {
 	fn_name := js_dec_name(styp)
 	mut s := ''
 	if is_js_prim(styp) {
-		s = '$styp val = ${fn_name}(jsval); '
+		s = '$styp val = ${fn_name}((cJSON *)jsval); '
 	} else {
 		s = '
-		Option_$styp val2 = $fn_name (jsval);
+		Option_$styp val2 = $fn_name ((cJSON *)jsval);
 		if(val2.state != 0) {
 			array_free(&res);
 			return *(Option_Array_$styp*)&val2;
@@ -224,7 +224,7 @@ fn (mut g Gen) decode_array(value_type table.Type) string {
 	}
 	return '
 	if(root && !cJSON_IsArray(root) && !cJSON_IsNull(root)) {
-		return (Option_Array_$styp){.state = 2, .err = v_error(string_add(_SLIT("Json element is not an array: "), tos2(cJSON_PrintUnformatted(root))))};
+		return (Option_Array_$styp){.state = 2, .err = v_error(string_add(_SLIT("Json element is not an array: "), tos2((byteptr)cJSON_PrintUnformatted(root))))};
 	}
 	res = __new_array(0, 0, sizeof($styp));
 	const cJSON *jsval = NULL;
@@ -268,14 +268,14 @@ fn (mut g Gen) decode_map(key_type table.Type, value_type table.Type) string {
 	}
 	return '
 	if(!cJSON_IsObject(root) && !cJSON_IsNull(root)) {
-		return (Option_Map_${styp}_$styp_v){ .state = 2, .err = v_error( string_add(_SLIT("Json element is not an object: "), tos2(cJSON_PrintUnformatted(root))) )};
+		return (Option_Map_${styp}_$styp_v){ .state = 2, .err = v_error( string_add(_SLIT("Json element is not an object: "), tos2((byteptr)cJSON_PrintUnformatted(root))) )};
 	}
 	res = new_map_2(sizeof($styp), sizeof($styp_v), $hash_fn, $key_eq_fn, $clone_fn, $free_fn);
 	cJSON *jsval = NULL;
 	cJSON_ArrayForEach(jsval, root)
 	{
 		$s
-		string key = tos2( (byteptr) jsval->string );
+		string key = tos2((byteptr)jsval->string);
 		map_set_1(&res, &key, &val);
 	}
 '
