@@ -89,6 +89,8 @@ pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 	f.auto_imports = file.auto_imports
 }
 
+//=== Basic buffer write operations ===//
+
 pub fn (mut f Fmt) write(s string) {
 	if f.indent > 0 && f.empty_line {
 		f.write_indent()
@@ -158,6 +160,8 @@ pub fn (mut f Fmt) remove_new_line(cfg RemoveNewLineConfig) {
 	f.empty_line = false
 }
 
+//=== Module handling helper methods ===//
+
 pub fn (mut f Fmt) set_current_module_name(cmodname string) {
 	f.cur_mod = cmodname
 	f.table.cmod_prefix = cmodname + '.'
@@ -217,6 +221,8 @@ pub fn (mut f Fmt) short_module(name string) string {
 	}
 	return '$tprefix${aname}.$symname'
 }
+
+//=== Import-related methods ===//
 
 pub fn (mut f Fmt) mark_types_import_as_used(typ table.Type) {
 	sym := f.table.get_type_symbol(typ)
@@ -339,6 +345,8 @@ fn (f Fmt) should_insert_newline_before_node(node ast.Node, prev_node ast.Node) 
 	return true
 }
 
+//=== General Stmt-related methods and helpers ===//
+
 pub fn (mut f Fmt) stmts(stmts []ast.Stmt) {
 	mut prev_stmt := if stmts.len > 0 { stmts[0] } else { ast.Stmt{} }
 	f.indent++
@@ -459,6 +467,8 @@ pub fn (mut f Fmt) stmt_str(node ast.Stmt) string {
 	f.line_len = prev_line_len
 	return str
 }
+
+//=== General Expr-related methods and helpers ===//
 
 pub fn (mut f Fmt) expr(node ast.Expr) {
 	if f.is_debug {
@@ -652,6 +662,8 @@ fn expr_is_single_line(expr ast.Expr) bool {
 	}
 	return true
 }
+
+//=== Specific Stmt methods ===//
 
 fn (mut f Fmt) asm_stmt(stmt ast.AsmStmt) {
 	f.writeln('asm $stmt.arch {')
@@ -860,6 +872,7 @@ pub fn (mut f Fmt) comp_for(node ast.CompFor) {
 	}
 	f.writeln('}')
 }
+
 pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
 	if node.is_pub {
 		f.write('pub ')
@@ -1299,6 +1312,8 @@ pub fn (mut f Fmt) sum_type_decl(node ast.SumTypeDecl) {
 
 	f.comments(node.comments, has_nl: false)
 }
+
+//=== Specific Expr methods ===//
 
 pub fn (mut f Fmt) array_decompose(node ast.ArrayDecompose) {
 	f.write('...')
@@ -2315,12 +2330,6 @@ pub fn (mut f Fmt) unsafe_expr(node ast.UnsafeExpr) {
 	}
 	f.write('}')
 }
-
-
-
-
-
-
 
 pub fn (mut f Fmt) prefix_expr_cast_expr(node ast.Expr) {
 	mut is_pe_amp_ce := false
