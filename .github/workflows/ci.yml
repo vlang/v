@@ -34,6 +34,10 @@ jobs:
           .\cmd\tools\test_if_v_test_system_works.exe
       - name: Make sure running TCC64 instead of TCC32
         run : .\v.exe test .github\workflows\make_sure_ci_run_with_64bit_compiler_test.v
+        
+      - name: Test ./v doc -v clipboard *BEFORE building tools*
+        run: ./v doc -v clipboard
+        
       - name: Test v build-tools
         run: ./v -W build-tools
         
