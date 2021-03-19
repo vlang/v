@@ -25,8 +25,8 @@ pub fn new_builder(initial_size int) Builder {
 }
 
 // write_bytes appends `bytes` to the accumulated buffer
-[unsafe]
 [deprecated: 'use Builder.write_ptr() instead']
+[unsafe]
 pub fn (mut b Builder) write_bytes(bytes byteptr, len int) {
 	unsafe { b.write_ptr(bytes, len) }
 }
