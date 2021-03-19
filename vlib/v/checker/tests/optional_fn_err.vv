@@ -1,5 +1,3 @@
-import json
-
 fn foo() ? {
 	println('foo is called')
 }
@@ -23,7 +21,7 @@ fn twice(n int) int {
 }
 
 fn main() {
-	// Callingd foo() without ? or an or block, should be an error.
+	// Calling foo() without ? or an or block, should be an error.
 	foo()
 
 	_ := bar(0)
