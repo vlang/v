@@ -2150,9 +2150,8 @@ fn (mut c Checker) type_implements(typ table.Type, inter_typ table.Type, pos tok
 			pos)
 	}
 	if mut inter_sym.info is table.Interface {
-		if !typ.is_ptr() && !same_base_type {
-			c.error('cannot cast non-reference type `$styp` to interface `$inter_sym.name`',
-				pos)
+		if !typ.is_ptr() {
+			c.warn('casting non-reference types to interfaces is potentially memory-unsafe', pos)
 		}
 		for ifield in inter_sym.info.fields {
 			if field := c.table.find_field_with_embeds(typ_sym, ifield.name) {
