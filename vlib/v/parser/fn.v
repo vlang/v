@@ -769,6 +769,14 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 				// error is added in parse_type
 				return []table.Param{}, false, false
 			}
+			// default argument value
+			mut default_expr := ast.Expr{}
+			mut has_default_expr := false
+			if p.tok.kind == .assign {
+				p.next()
+				default_expr = p.expr(0)
+				has_default_expr = true
+			}
 			if is_mut {
 				if !typ.has_flag(.generic) {
 					if is_shared {
@@ -798,6 +806,8 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 				args << table.Param{
 					pos: arg_pos[i]
 					name: arg_name
+					default_arg: ast.ex2fe(default_expr)
+					has_default_arg: has_default_expr
 					is_mut: is_mut
 					typ: typ
 					type_pos: type_pos[i]

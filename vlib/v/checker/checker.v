@@ -1478,8 +1478,21 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			1
 		}
 		if call_expr.args.len < min_required_args {
-			c.error('expected $min_required_args arguments, but got $call_expr.args.len',
-				call_expr.pos)
+			mut is_args_enough := true
+			for i in call_expr.args.len + 1 .. min_required_args + 1 {
+				if method.params[i].has_default_arg {
+					call_expr.args << ast.CallArg{
+						expr: ast.fe2ex(method.params[i].default_arg)
+					}
+				} else {
+					is_args_enough = false
+					break
+				}
+			}
+			if !is_args_enough {
+				c.error('expected $min_required_args arguments, but got $call_expr.args.len',
+					call_expr.pos)
+			}
 		} else if !method.is_variadic && call_expr.args.len > nr_args {
 			unexpected_arguments := call_expr.args[min_required_args..]
 			unexpected_arguments_pos := unexpected_arguments[0].pos.extend(unexpected_arguments.last().pos)
@@ -1963,8 +1976,21 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	if call_expr.language != .js {
 		min_required_args := if f.is_variadic { f.params.len - 1 } else { f.params.len }
 		if call_expr.args.len < min_required_args {
-			c.error('expected $min_required_args arguments, but got $call_expr.args.len',
-				call_expr.pos)
+			mut is_args_enough := true
+			for i in call_expr.args.len .. min_required_args {
+				if f.params[i].has_default_arg {
+					call_expr.args << ast.CallArg{
+						expr: ast.fe2ex(f.params[i].default_arg)
+					}
+				} else {
+					is_args_enough = false
+					break
+				}
+			}
+			if !is_args_enough {
+				c.error('expected $min_required_args arguments, but got $call_expr.args.len',
+					call_expr.pos)
+			}
 		} else if !f.is_variadic && call_expr.args.len > f.params.len {
 			unexpected_arguments := call_expr.args[min_required_args..]
 			unexpected_arguments_pos := unexpected_arguments[0].pos.extend(unexpected_arguments.last().pos)
