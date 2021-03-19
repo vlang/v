@@ -4353,6 +4353,9 @@ fn (mut g Gen) need_tmp_var_in_if(node ast.IfExpr) bool {
 			return true
 		}
 		for branch in node.branches {
+			if branch.cond is ast.IfGuardExpr {
+				return true
+			}
 			if branch.stmts.len == 1 {
 				if branch.stmts[0] is ast.ExprStmt {
 					stmt := branch.stmts[0] as ast.ExprStmt
