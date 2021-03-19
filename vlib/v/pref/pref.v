@@ -153,6 +153,7 @@ pub mut:
 	build_options       []string // list of options, that should be passed down to `build-module`, if needed for -usecache
 	cache_manager       vcache.CacheManager
 	is_help             bool // -h, -help or --help was passed
+	libgc               bool // -d libgc sets this; use C.GC_MALLOC instead of C.malloc etc, and link -lgc
 	// checker settings:
 	checker_match_exhaustive_cutoff_limit int = 10
 }
@@ -471,6 +472,9 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 	}
 	if res.is_debug {
 		parse_define(mut res, 'debug')
+	}
+	if res.compile_defines.contains('libgc') {
+		res.libgc = true
 	}
 	// res.use_cache = true
 	if command != 'doc' && res.out_name.ends_with('.v') {
