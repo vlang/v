@@ -78,7 +78,7 @@ fn main() {
 			println('ERR: $err')
 			return
 		}
-		wrote := unsafe { file.write_bytes(data, size) }
+		wrote := unsafe { file.write_ptr(data, size) }
 		println('write_bytes: $wrote [./google.pdf]')
 		file.flush()
 		file.close()
