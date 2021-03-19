@@ -16,6 +16,14 @@ pub:
 	code int
 }
 
+pub fn (err IError) str() string {
+	return match err {
+		None__ { 'none' }
+		Error { err.msg }
+		else { '$err.type_name(): $err.msg' }
+	}
+}
+
 const none__ = IError(&None__{})
 
 struct None__ {
