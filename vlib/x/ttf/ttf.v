@@ -519,8 +519,8 @@ fn (mut tf TTF_File) get_fword() i16 {
 }
 
 fn (mut tf TTF_File) get_u32() u32 {
-	x := (u32(tf.buf[tf.pos]) << u32(24)) | (u32(tf.buf[tf.pos +
-		1]) << u32(16)) | (u32(tf.buf[tf.pos + 2]) << u32(8)) | u32(tf.buf[tf.pos + 3])
+	x := (u32(tf.buf[tf.pos]) << u32(24)) | (u32(tf.buf[tf.pos + 1]) << u32(16)) | (u32(tf.buf[
+		tf.pos + 2]) << u32(8)) | u32(tf.buf[tf.pos + 3])
 	tf.pos += 4
 	return x
 }
