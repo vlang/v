@@ -28,7 +28,8 @@ const (
 	valid_comptime_if_platforms      = ['amd64', 'i386', 'aarch64', 'arm64', 'arm32', 'rv64', 'rv32']
 	valid_comptime_if_cpu_features   = ['x64', 'x32', 'little_endian', 'big_endian']
 	valid_comptime_if_other          = ['js', 'debug', 'prod', 'test', 'glibc', 'prealloc',
-		'no_bounds_checking', 'freestanding', 'threads', 'js_node', 'js_browser', 'js_freestanding']
+		'no_bounds_checking', 'freestanding', 'threads', 'js_node', 'js_browser', 'js_freestanding',
+		'interpreter']
 	valid_comptime_not_user_defined  = all_valid_comptime_idents()
 	array_builtin_methods            = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice',
 		'sort', 'contains', 'index', 'wait', 'any', 'all', 'first', 'last', 'pop']
@@ -4876,11 +4877,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 		} else if typ_idx == ast.string_type_idx || high_type_idx == ast.string_type_idx {
 			c.error('range type can not be string', node.cond.position())
 		}
-		if high_type in [ast.int_type, ast.int_literal_type] {
-			node.val_type = typ
-		} else {
-			node.val_type = high_type
-		}
+		node.high_type = high_type
 		node.scope.update_var_type(node.val_var, node.val_type)
 	} else {
 		sym := c.table.get_final_type_symbol(typ)
@@ -7208,6 +7205,7 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Position) bool {
 					'prealloc' { return !c.pref.prealloc }
 					'no_bounds_checking' { return cname !in c.pref.compile_defines_all }
 					'freestanding' { return !c.pref.is_bare || c.pref.output_cross_c }
+					'interpreter' { c.pref.backend != .interpret }
 					else { return false }
 				}
 			} else if cname !in c.pref.compile_defines_all {

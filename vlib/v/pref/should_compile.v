@@ -15,7 +15,7 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 			|| file.all_before_last('.v').all_before_last('.').ends_with('_test') {
 			continue
 		}
-		if prefs.backend == .c && !prefs.should_compile_c(file) {
+		if prefs.backend in [.c, .interpret] && !prefs.should_compile_c(file) {
 			continue
 		}
 		if prefs.backend.is_js() && !prefs.should_compile_js(file) {
