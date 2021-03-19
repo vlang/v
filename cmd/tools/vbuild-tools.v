@@ -39,8 +39,8 @@ fn main() {
 	for stool in tools_in_subfolders {
 		session.add(os.join_path(tfolder, stool))
 	}
-	eprintln('> session.files: $session.files')
-	eprintln('> session.skip_files: $session.skip_files')
+	// eprintln('> session.files: $session.files')
+	// eprintln('> session.skip_files: $session.skip_files')
 	session.test()
 	eprintln(session.benchmark.total_message(finish_label))
 	if session.failed {
