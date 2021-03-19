@@ -36,6 +36,9 @@ jobs:
         run : .\v.exe test .github\workflows\make_sure_ci_run_with_64bit_compiler_test.v
       - name: Test v build-tools
         run: ./v -W build-tools
+        
+      - name: Test ./v doc -v clipboard
+        run: ./v doc -v clipboard
 
   ## tcc32
       - name: Build with make.bat -tcc32
@@ -53,3 +56,6 @@ jobs:
         run : .\v.exe test .github\workflows\make_sure_ci_run_with_32bit_compiler_test.v
       - name: Test v build-tools
         run: ./v -W build-tools
+
+      - name: Test ./v doc -v clipboard
+        run: ./v doc -v clipboard
