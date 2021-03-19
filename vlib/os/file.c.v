@@ -219,8 +219,9 @@ pub fn (mut f File) write_to(pos int, buf []byte) ?int {
 // NB: write_bytes is unsafe and should be used carefully, since if you pass invalid
 // pointers to it, it will cause your programs to segfault.
 [unsafe]
+[deprecated: 'use File.write_ptr()']
 pub fn (mut f File) write_bytes(data voidptr, size int) int {
-	return int(C.fwrite(data, 1, size, f.cfile))
+	return unsafe { f.write_ptr(data, size) }
 }
 
 // write_bytes_at writes `size` bytes to the file, starting from the address in `data`,
@@ -228,12 +229,31 @@ pub fn (mut f File) write_bytes(data voidptr, size int) int {
 // NB: write_bytes_at is unsafe and should be used carefully, since if you pass invalid
 // pointers to it, it will cause your programs to segfault.
 [unsafe]
+[deprecated: 'use File.write_ptr_at() instead']
 pub fn (mut f File) write_bytes_at(data voidptr, size int, pos int) int {
+	return unsafe { f.write_ptr_at(data, size, pos) }
+}
+
+// write_ptr writes `size` bytes to the file, starting from the address in `data`.
+// NB: write_ptr is unsafe and should be used carefully, since if you pass invalid
+// pointers to it, it will cause your programs to segfault.
+[unsafe]
+pub fn (mut f File) write_ptr(data voidptr, size int) int {
+	return int(C.fwrite(data, 1, size, f.cfile))
+}
+
+// write_ptr_at writes `size` bytes to the file, starting from the address in `data`,
+// at byte offset `pos`, counting from the start of the file (pos 0).
+// NB: write_ptr_at is unsafe and should be used carefully, since if you pass invalid
+// pointers to it, it will cause your programs to segfault.
+[unsafe]
+pub fn (mut f File) write_ptr_at(data voidptr, size int, pos int) int {
 	C.fseek(f.cfile, pos, C.SEEK_SET)
 	res := int(C.fwrite(data, 1, size, f.cfile))
 	C.fseek(f.cfile, 0, C.SEEK_END)
 	return res
 }
+
 
 // **************************** Read ops  ***************************
 // read_bytes reads bytes from the beginning of the file.
