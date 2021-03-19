@@ -381,8 +381,10 @@ pub fn (mut re RE) replace_by_fn(in_txt string, repl_fn FnReplace) string {
 			last_end = e
 			i = e
 		} else {
-			i++
+			break
+			//i++
 		}
+		println(i)
 	}
 	if last_end >= 0 && last_end < in_txt.len {
 		res.write_string(in_txt[last_end..])
