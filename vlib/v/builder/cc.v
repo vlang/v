@@ -286,9 +286,6 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		ccoptions.linker_flags << '-shared'
 		ccoptions.args << '-fPIC' // -Wl,-z,defs'
 	}
-	if v.pref.libgc {
-		ccoptions.linker_flags << '-lgc'
-	}
 	if v.pref.is_bare {
 		ccoptions.args << '-fno-stack-protector'
 		ccoptions.args << '-ffreestanding'

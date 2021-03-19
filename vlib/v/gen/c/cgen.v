@@ -422,7 +422,7 @@ pub fn (mut g Gen) init() {
 		}
 		g.comptime_defines.writeln('')
 	}
-	if g.pref.libgc || 'libgc' in g.pref.compile_defines {
+	if 'libgc' in g.pref.compile_defines {
 		g.comptime_defines.writeln('#define _VLIBGC (1)')
 	}
 	if g.pref.is_debug || 'debug' in g.pref.compile_defines {
