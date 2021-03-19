@@ -266,7 +266,12 @@ pub fn realloc_data(old_data byteptr, old_size int, new_size int) byteptr {
 			return new_ptr
 		}
 	}
-	nptr := unsafe { C.realloc(old_data, new_size) }
+	mut nptr := byteptr(0)
+	$if libgc ? {
+		nptr = unsafe { C.GC_REALLOC(old_data, new_size) }
+	} $else {
+		nptr = unsafe { C.realloc(old_data, new_size) }
+	}
 	if nptr == 0 {
 		panic('realloc_data($old_data, $old_size, $new_size) failed')
 	}
