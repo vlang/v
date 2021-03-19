@@ -185,6 +185,22 @@ typedef int (*qsort_callback_func)(const void*, const void*);
 #include <stdarg.h> // for va_list
 #include <string.h> // memcpy
 
+// This must be placed after include of <stdlib.h> and <string.h>
+#if defined(__V_USE_GC)
+#define GC_THREADS 1
+#if defined(__V_GC_LEAK_DETECTION)
+#include <gc/leak_detector.h>
+#else
+#include "gc.h"
+#define malloc(SZ) GC_MALLOC((size_t)(SZ))
+#define calloc(NMEMB, SZ) GC_MALLOC((NMEMB)*((size_t)(SZ)))
+#define realloc(PTR, SZ) GC_REALLOC(PTR, (size_t)(SZ))
+#define strdup(PTR) GC_STRDUP(PTR)
+#define strndup(PTR, SZ) GC_STRNDUP(PTR, (size_t)(SZ))
+#define free(PTR) GC_FREE(PTR)
+#endif
+#endif
+
 #if INTPTR_MAX == INT32_MAX
 	#define TARGET_IS_32BIT 1
 #elif INTPTR_MAX == INT64_MAX
