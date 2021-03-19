@@ -828,6 +828,8 @@ jobs:
         run: ./v build-vbinaries
       - name: Build examples
         run: ./v build-examples
+      - name: Test building V tools
+        run: ./v -W build-tools
       - name: v2 self compilation
         run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
 
