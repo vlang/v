@@ -1,0 +1,18 @@
+name: vlib modules CI
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  build-module-docs:
+    runs-on: ubuntu-18.04
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build V
+      run: make
+    - name: Build module documentation
+      run: ./v doc -m -f html vlib/
+    - name: Deploy docs to vercel
+      run: npx vercel --confirm --prod --name vmodules --token ${{ secrets.VERCEL_TOKEN }} vlib/_docs/ || true
