@@ -26,7 +26,7 @@ const (
 	valid_comp_if_platforms = ['amd64', 'aarch64', 'x64', 'x32', 'little_endian', 'big_endian']
 	valid_comp_if_other     = ['js', 'debug', 'prod', 'test', 'glibc', 'prealloc', 'no_bounds_checking']
 	array_builtin_methods   = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort',
-		'contains', 'index', 'wait']
+		'contains', 'index', 'wait', 'any', 'all', 'first', 'last', 'pop']
 )
 
 pub struct Checker {
@@ -1318,6 +1318,28 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ table.Type, call_e
 					c.error('type mismatch, should use `fn(a $elem_sym.name) bool {...}`',
 						arg_expr.pos)
 				}
+			} else if arg_expr.kind == .variable {
+				if arg_expr.obj is ast.Var {
+					expr := arg_expr.obj.expr
+					if expr is ast.AnonFn {
+						// copied from above
+						if expr.decl.params.len > 1 {
+							c.error('function needs exactly 1 argument', expr.decl.pos)
+						} else if is_map && (expr.decl.return_type == table.void_type
+							|| expr.decl.params[0].typ != elem_typ) {
+							c.error('type mismatch, should use `fn(a $elem_sym.name) T {...}`',
+								expr.decl.pos)
+						} else if !is_map && (expr.decl.return_type != table.bool_type
+							|| expr.decl.params[0].typ != elem_typ) {
+							c.error('type mismatch, should use `fn(a $elem_sym.name) bool {...}`',
+								expr.decl.pos)
+						}
+						return
+					}
+				}
+				if !is_map && arg_expr.info.typ != table.bool_type {
+					c.error('type mismatch, should be bool', arg_expr.pos)
+				}
 			}
 		}
 		else {}
@@ -1366,37 +1388,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	if left_type_sym.kind == .array && method_name in checker.array_builtin_methods {
 		return c.call_array_builtin_method(mut call_expr, left_type, left_type_sym)
 	} else if left_type_sym.kind == .map && method_name in ['clone', 'keys', 'move'] {
-		mut ret_type := table.void_type
-		match method_name {
-			'clone', 'move' {
-				if method_name[0] == `m` {
-					c.fail_if_immutable(call_expr.left)
-				}
-				if call_expr.left.is_auto_deref_var() {
-					ret_type = left_type.deref()
-				} else {
-					ret_type = left_type
-				}
-			}
-			'keys' {
-				info := left_type_sym.info as table.Map
-				typ := c.table.find_or_register_array(info.key_type)
-				ret_type = table.Type(typ)
-			}
-			else {}
-		}
-		call_expr.receiver_type = left_type.to_ptr()
-		call_expr.return_type = ret_type
-		return call_expr.return_type
-	} else if left_type_sym.kind == .array && method_name in ['first', 'last', 'pop'] {
-		info := left_type_sym.info as table.Array
-		call_expr.return_type = info.elem_type
-		if method_name == 'pop' {
-			call_expr.receiver_type = left_type.to_ptr()
-		} else {
-			call_expr.receiver_type = left_type
-		}
-		return call_expr.return_type
+		return c.call_map_builtin_method(mut call_expr, left_type, left_type_sym)
 	} else if left_type_sym.kind == .array && method_name in ['insert', 'prepend'] {
 		info := left_type_sym.info as table.Array
 		arg_expr := if method_name == 'insert' {
@@ -1657,6 +1649,32 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	return table.void_type
 }
 
+fn (mut c Checker) call_map_builtin_method(mut call_expr ast.CallExpr, left_type table.Type, left_type_sym table.TypeSymbol) table.Type {
+	method_name := call_expr.name
+	mut ret_type := table.void_type
+	match method_name {
+		'clone', 'move' {
+			if method_name[0] == `m` {
+				c.fail_if_immutable(call_expr.left)
+			}
+			if call_expr.left.is_auto_deref_var() {
+				ret_type = left_type.deref()
+			} else {
+				ret_type = left_type
+			}
+		}
+		'keys' {
+			info := left_type_sym.info as table.Map
+			typ := c.table.find_or_register_array(info.key_type)
+			ret_type = table.Type(typ)
+		}
+		else {}
+	}
+	call_expr.receiver_type = left_type.to_ptr()
+	call_expr.return_type = ret_type
+	return call_expr.return_type
+}
+
 fn (mut c Checker) call_array_builtin_method(mut call_expr ast.CallExpr, left_type table.Type, left_type_sym table.TypeSymbol) table.Type {
 	method_name := call_expr.name
 	mut elem_typ := table.void_type
@@ -1665,7 +1683,7 @@ fn (mut c Checker) call_array_builtin_method(mut call_expr ast.CallExpr, left_ty
 	}
 	array_info := left_type_sym.info as table.Array
 	elem_typ = array_info.elem_type
-	if method_name in ['filter', 'map'] {
+	if method_name in ['filter', 'map', 'any', 'all'] {
 		// position of `it` doesn't matter
 		scope_register_it(mut call_expr.scope, call_expr.pos, elem_typ)
 	} else if method_name == 'sort' {
@@ -1728,6 +1746,9 @@ fn (mut c Checker) call_array_builtin_method(mut call_expr ast.CallExpr, left_ty
 	} else if method_name == 'filter' {
 		// check fn
 		c.check_map_and_filter(false, elem_typ, call_expr)
+	} else if method_name in ['any', 'all'] {
+		c.check_map_and_filter(false, elem_typ, call_expr)
+		call_expr.return_type = table.bool_type
 	} else if method_name == 'clone' {
 		// need to return `array_xxx` instead of `array`
 		// in ['clone', 'str'] {
@@ -1743,6 +1764,13 @@ fn (mut c Checker) call_array_builtin_method(mut call_expr ast.CallExpr, left_ty
 		call_expr.return_type = table.bool_type
 	} else if method_name == 'index' {
 		call_expr.return_type = table.int_type
+	} else if method_name in ['first', 'last', 'pop'] {
+		call_expr.return_type = array_info.elem_type
+		if method_name == 'pop' {
+			call_expr.receiver_type = left_type.to_ptr()
+		} else {
+			call_expr.receiver_type = left_type
+		}
 	}
 	return call_expr.return_type
 }
@@ -3097,7 +3125,7 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 		// println('ex $c.expected_type')
 		// }
 		for i, expr in array_init.exprs {
-			typ := c.expr(expr)
+			typ := c.check_expr_opt_call(expr, c.expr(expr))
 			array_init.expr_types << typ
 			// The first element's type
 			if expecting_interface_array {

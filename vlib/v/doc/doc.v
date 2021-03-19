@@ -100,6 +100,7 @@ pub fn new_vdoc_preferences() &pref.Preferences {
 	// so its preferences should be permissive:
 	return &pref.Preferences{
 		enable_globals: true
+		is_fmt: true
 	}
 }
 
@@ -230,10 +231,6 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 		else {
 			return error('invalid stmt type to document')
 		}
-	}
-	included := node.name in d.filter_symbol_names || node.parent_name in d.filter_symbol_names
-	if d.filter_symbol_names.len != 0 && !included {
-		return error('not included in the list of symbol names')
 	}
 	return node
 }
@@ -425,6 +422,13 @@ pub fn (mut d Doc) file_asts(file_asts []ast.File) ? {
 				d.contents[name].children << node.children
 				d.contents[name].children.sort_by_name()
 				d.contents[name].children.sort_by_kind()
+			}
+		}
+	}
+	if d.filter_symbol_names.len != 0 && d.contents.len != 0 {
+		for filter_name in d.filter_symbol_names {
+			if filter_name !in d.contents {
+				return error('vdoc: `$filter_name` symbol in module `$d.orig_mod_name` not found')
 			}
 		}
 	}

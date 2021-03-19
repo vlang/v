@@ -249,11 +249,7 @@ fn (mut g Gen) comp_if(node ast.IfExpr) {
 		}
 		g.defer_ifdef = ''
 	}
-	if node.is_expr {
-		g.write('#endif')
-	} else {
-		g.writeln('#endif')
-	}
+	g.writeln('#endif')
 }
 
 fn (mut g Gen) comp_if_cond(cond ast.Expr) bool {

@@ -2,7 +2,14 @@ fn foo() ? {
 	println('foo is called')
 }
 
+fn bar() ?int {
+	return none
+}
+
 fn main() {
 	// Calling foo() without ? or an or block, should be an error.
 	foo()
+
+	_ := bar()
+	_ := [bar()]
 }

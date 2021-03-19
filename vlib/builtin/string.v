@@ -316,11 +316,11 @@ fn (a RepIndex) < (b RepIndex) bool {
 // Example: assert 'ABCD'.replace_each(['B','C/','C','D','D','C']) == 'AC/DC'
 pub fn (s string) replace_each(vals []string) string {
 	if s.len == 0 || vals.len == 0 {
-		return s
+		return s.clone()
 	}
 	if vals.len % 2 != 0 {
 		println('string.replace_each(): odd number of strings')
-		return s
+		return s.clone()
 	}
 	// `rep` - string to replace
 	// `with` - string to replace with
@@ -350,7 +350,7 @@ pub fn (s string) replace_each(vals []string) string {
 	}
 	// Dont change the string if there's nothing to replace
 	if idxs.len == 0 {
-		return s
+		return s.clone()
 	}
 	idxs.sort2()
 	mut b := unsafe { malloc(new_len + 1) } // add a \0 just in case
@@ -1064,21 +1064,26 @@ pub fn (s string) trim_space() string {
 // Example: assert ' ffHello V ffff'.trim(' f') == 'Hello V'
 pub fn (s string) trim(cutset string) string {
 	if s.len < 1 || cutset.len < 1 {
-		return s
+		return s.clone()
 	}
-	cs_arr := cutset.bytes()
 	mut pos_left := 0
 	mut pos_right := s.len - 1
 	mut cs_match := true
 	for pos_left <= s.len && pos_right >= -1 && cs_match {
 		cs_match = false
-		if s[pos_left] in cs_arr {
-			pos_left++
-			cs_match = true
+		for cs in cutset {
+			if s[pos_left] == cs {
+				pos_left++
+				cs_match = true
+				break
+			}
 		}
-		if s[pos_right] in cs_arr {
-			pos_right--
-			cs_match = true
+		for cs in cutset {
+			if s[pos_right] == cs {
+				pos_right--
+				cs_match = true
+				break
+			}
 		}
 		if pos_left > pos_right {
 			return ''
@@ -1091,11 +1096,20 @@ pub fn (s string) trim(cutset string) string {
 // Example: assert 'd Hello V developer'.trim_left(' d') == 'Hello V developer'
 pub fn (s string) trim_left(cutset string) string {
 	if s.len < 1 || cutset.len < 1 {
-		return s
+		return s.clone()
 	}
-	cs_arr := cutset.bytes()
 	mut pos := 0
-	for pos < s.len && s[pos] in cs_arr {
+	for pos < s.len {
+		mut found := false
+		for cs in cutset {
+			if s[pos] == cs {
+				found = true
+				break
+			}
+		}
+		if !found {
+			break
+		}
 		pos++
 	}
 	return s[pos..]
@@ -1105,11 +1119,19 @@ pub fn (s string) trim_left(cutset string) string {
 // Example: assert ' Hello V d'.trim_right(' d') == ' Hello V'
 pub fn (s string) trim_right(cutset string) string {
 	if s.len < 1 || cutset.len < 1 {
-		return s
+		return s.clone()
 	}
-	cs_arr := cutset.bytes()
 	mut pos := s.len - 1
-	for pos >= 0 && s[pos] in cs_arr {
+	for pos >= 0 {
+		mut found := false
+		for cs in cutset {
+			if s[pos] == cs {
+				found = true
+			}
+		}
+		if !found {
+			break
+		}
 		pos--
 	}
 	return if pos < 0 { '' } else { s[..pos + 1] }
@@ -1121,7 +1143,7 @@ pub fn (s string) trim_prefix(str string) string {
 	if s.starts_with(str) {
 		return s[str.len..]
 	}
-	return s
+	return s.clone()
 }
 
 // trim_suffix strips `str` from the end of the string.
@@ -1130,7 +1152,7 @@ pub fn (s string) trim_suffix(str string) string {
 	if s.ends_with(str) {
 		return s[..s.len - str.len]
 	}
-	return s
+	return s.clone()
 }
 
 // compare_strings returns `-1` if `a < b`, `1` if `a > b` else `0`.
@@ -1188,9 +1210,9 @@ pub fn (mut s []string) sort_by_len() {
 	s.sort_with_compare(compare_strings_by_len)
 }
 
-// str returns the string itself.
+// str returns a copy of the string
 pub fn (s string) str() string {
-	return s
+	return s.clone()
 }
 
 // str returns the string itself.
@@ -1466,7 +1488,7 @@ pub fn (s &string) free() {
 pub fn (s string) before(dot string) string {
 	pos := s.index_(dot)
 	if pos == -1 {
-		return s
+		return s.clone()
 	}
 	return s[..pos]
 }
@@ -1477,7 +1499,7 @@ pub fn (s string) all_before(dot string) string {
 	// TODO remove dup method
 	pos := s.index_(dot)
 	if pos == -1 {
-		return s
+		return s.clone()
 	}
 	return s[..pos]
 }
@@ -1487,7 +1509,7 @@ pub fn (s string) all_before(dot string) string {
 pub fn (s string) all_before_last(dot string) string {
 	pos := s.last_index_(dot)
 	if pos == -1 {
-		return s
+		return s.clone()
 	}
 	return s[..pos]
 }
@@ -1497,7 +1519,7 @@ pub fn (s string) all_before_last(dot string) string {
 pub fn (s string) all_after(dot string) string {
 	pos := s.index_(dot)
 	if pos == -1 {
-		return s
+		return s.clone()
 	}
 	return s[pos + dot.len..]
 }
@@ -1507,7 +1529,7 @@ pub fn (s string) all_after(dot string) string {
 pub fn (s string) all_after_last(dot string) string {
 	pos := s.last_index_(dot)
 	if pos == -1 {
-		return s
+		return s.clone()
 	}
 	return s[pos + dot.len..]
 }
@@ -1529,7 +1551,7 @@ pub fn (s string) after_char(dot byte) string {
 		}
 	}
 	if pos == 0 {
-		return s
+		return s.clone()
 	}
 	return s[pos + 1..]
 }
@@ -1586,7 +1608,7 @@ pub fn (s []string) join_lines() string {
 // Example: assert 'Hello V'.reverse() == 'V olleH'
 pub fn (s string) reverse() string {
 	if s.len == 0 || s.len == 1 {
-		return s
+		return s.clone()
 	}
 	mut res := string{
 		str: unsafe { malloc(s.len) }
@@ -1606,7 +1628,7 @@ pub fn (s string) reverse() string {
 pub fn (s string) limit(max int) string {
 	u := s.ustring()
 	if u.len <= max {
-		return s
+		return s.clone()
 	}
 	return u.substr(0, max)
 }
@@ -1640,7 +1662,7 @@ pub fn (s string) repeat(count int) string {
 	} else if count == 0 {
 		return ''
 	} else if count == 1 {
-		return s
+		return s.clone()
 	}
 	mut ret := unsafe { malloc(s.len * count + 1) }
 	for i in 0 .. count {

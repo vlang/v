@@ -128,21 +128,21 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 			p.next()
 			array_decompose = true
 		}
-		mut e := ast.Expr{}
+		mut expr := ast.Expr{}
 		if p.tok.kind == .name && p.peek_tok.kind == .colon {
 			// `foo(key:val, key2:val2)`
-			e = p.struct_init(true) // short_syntax:true
+			expr = p.struct_init(true) // short_syntax:true
 		} else {
-			e = p.expr(0)
+			expr = p.expr(0)
 		}
 		if array_decompose {
-			e = ast.ArrayDecompose{
-				expr: e
+			expr = ast.ArrayDecompose{
+				expr: expr
 				pos: p.tok.position()
 			}
 		}
-		if mut e is ast.StructInit {
-			e.pre_comments << comments
+		if mut expr is ast.StructInit {
+			expr.pre_comments << comments
 			comments = []ast.Comment{}
 		}
 		pos := arg_start_pos.extend(p.prev_tok.position())
@@ -150,7 +150,7 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 		args << ast.CallArg{
 			is_mut: is_mut
 			share: table.sharetype_from_flags(is_shared, is_atomic)
-			expr: e
+			expr: expr
 			comments: comments
 			pos: pos
 		}

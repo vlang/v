@@ -2642,6 +2642,11 @@ fn (mut g Gen) autofree_variable(v ast.Var) {
 	// eprintln('   > var name: ${v.name:-20s} | is_arg: ${v.is_arg.str():6} | var type: ${int(v.typ):8} | type_name: ${sym.name:-33s}')
 	// }
 	if sym.kind == .array {
+		if sym.has_method('free') {
+			free_method_name := g.typ(v.typ) + '_free'
+			g.autofree_var_call(free_method_name, v)
+			return
+		}
 		g.autofree_var_call('array_free', v)
 		return
 	}

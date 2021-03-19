@@ -287,7 +287,13 @@ pub fn (f &File) read(mut buf []byte) ?int {
 }
 
 // read_at reads `buf.len` bytes starting at file byte offset `pos`, in `buf`.
+[deprecated: 'use File.read_from() instead']
 pub fn (f &File) read_at(pos int, mut buf []byte) ?int {
+	return f.read_from(pos, mut buf)
+}
+
+// read_from implements the RandomReader interface.
+pub fn (f &File) read_from(pos int, mut buf []byte) ?int {
 	if buf.len == 0 {
 		return 0
 	}
@@ -311,11 +317,9 @@ pub fn (mut f File) flush() {
 
 // write_str writes the bytes of a string into a file,
 // *including* the terminating 0 byte.
+[deprecated: 'use File.write_string() instead']
 pub fn (mut f File) write_str(s string) ? {
-	if !f.is_opened {
-		return error('file is closed')
-	}
-	f.write(s.bytes()) ?
+	f.write_string(s) or { return err }
 }
 
 // read_struct reads a single struct of type `T`

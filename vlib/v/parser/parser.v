@@ -2111,7 +2111,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	} else {
 		p.name_error = true
 	}
-	is_filter := field_name in ['filter', 'map']
+	is_filter := field_name in ['filter', 'map', 'any', 'all']
 	if is_filter || field_name == 'sort' {
 		p.open_scope()
 	}
