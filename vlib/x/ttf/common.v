@@ -87,7 +87,7 @@ fn (mut bmp BitMap) format_texture() {
 // write out a .ppm file
 pub fn (mut bmp BitMap) save_as_ppm(file_name string) {
 	tmp_buf := bmp.buf
-	mut buf := unsafe {malloc(bmp.buf_size)}
+	mut buf := unsafe { malloc(bmp.buf_size) }
 	unsafe { C.memcpy(buf, tmp_buf, bmp.buf_size) }
 	bmp.buf = buf
 
@@ -103,7 +103,7 @@ pub fn (mut bmp BitMap) save_as_ppm(file_name string) {
 			c_r := bmp.buf[pos]
 			c_g := bmp.buf[pos + 1]
 			c_b := bmp.buf[pos + 2]
-			f_out.write_str('$c_r $c_g $c_b ') or { panic(err) }
+			f_out.write_string('$c_r $c_g $c_b ') or { panic(err) }
 		}
 	}
 	f_out.close()

@@ -9,6 +9,7 @@ const (
 	vet_folders                     = [
 		'vlib/sqlite',
 		'vlib/v',
+		'vlib/x/ttf/',
 		'cmd/v',
 		'cmd/tools',
 		'examples/2048',

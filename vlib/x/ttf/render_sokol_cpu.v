@@ -53,10 +53,10 @@ pub fn (mut tf_skl TTF_render_Sokol) create_text(in_txt string, in_font_size f32
 	// RAM buffer
 	if sz > tf_skl.bmp.buf_size {
 		if sz > 0 {
-			unsafe {free(tf_skl.bmp.buf)}
+			unsafe { free(tf_skl.bmp.buf) }
 		}
 		dprintln('create_text Alloc: $sz bytes')
-		tf_skl.bmp.buf = unsafe {malloc(sz)}
+		tf_skl.bmp.buf = unsafe { malloc(sz) }
 		tf_skl.bmp.buf_size = sz
 	}
 
@@ -91,10 +91,10 @@ pub fn (mut tf_skl TTF_render_Sokol) create_text_block(in_txt string, in_w int, 
 	// RAM buffer
 	if sz > tf_skl.bmp.buf_size {
 		if sz > 0 {
-			unsafe {free(tf_skl.bmp.buf)}
+			unsafe { free(tf_skl.bmp.buf) }
 		}
 		dprintln('Alloc: $sz bytes')
-		tf_skl.bmp.buf = unsafe {malloc(sz)}
+		tf_skl.bmp.buf = unsafe { malloc(sz) }
 		tf_skl.bmp.buf_size = sz
 	}
 
