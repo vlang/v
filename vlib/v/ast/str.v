@@ -318,6 +318,9 @@ pub fn (x Expr) str() string {
 			return '${x.expr.str()}.$x.field_name'
 		}
 		SizeOf {
+			if x.is_type {
+				return 'sizeof(Type($x.typ))'
+			}
 			return 'sizeof($x.expr)'
 		}
 		OffsetOf {
