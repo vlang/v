@@ -311,14 +311,9 @@ pub fn (mut f File) flush() {
 
 // write_str writes the bytes of a string into a file,
 // *including* the terminating 0 byte.
+[deprecated: 'use File.write_string() instead']
 pub fn (mut f File) write_str(s string) ? {
-	if !f.is_opened {
-		return error('file is closed')
-	}
-	written := int(C.fwrite(voidptr(s.str), s.len, 1, f.cfile))
-	if written == 0 && s.len != 0 {
-		return error('0 bytes written')
-	}
+	f.write_string(s) or { return err }
 }
 
 // read_struct reads a single struct of type `T`
