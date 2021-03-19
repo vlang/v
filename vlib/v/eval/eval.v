@@ -29,7 +29,10 @@ pub mut:
 	returning              bool
 	return_values          []Object
 	cur_mod                string
+<<<<<<< HEAD
 	cur_file               string
+=======
+>>>>>>> 2b2b5cc64... interpret hello world with builtin
 	back_trace             []string
 }
 
