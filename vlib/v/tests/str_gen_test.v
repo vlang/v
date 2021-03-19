@@ -296,12 +296,7 @@ fn create_option_err() ?string {
 }
 
 fn test_option_err() {
-	assert '$create_option_err()' == "
-Option(error: IError(Error{
-    msg: 'this is an error'
-    code: 0
-}))
-".trim_space()
+	assert '$create_option_err()' == "Option(error: this is an error)"
 }
 
 fn create_option_none() ?string {
@@ -309,7 +304,7 @@ fn create_option_none() ?string {
 }
 
 fn test_option_none() {
-	assert '$create_option_none()' == 'Option(error: IError(none))'
+	assert '$create_option_none()' == 'Option(error: none)'
 }
 
 fn create_option_string() ?string {
