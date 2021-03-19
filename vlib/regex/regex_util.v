@@ -60,17 +60,6 @@ pub fn (re RE) get_group_by_name(in_txt string, group_name string) string {
 }
 
 // get_group_by_id get a group string by its id
-pub fn (re RE) get_group_by_id_old(in_txt string, group_id int) string {
-	if group_id < (re.groups.len >> 1) {
-		index := group_id << 1
-		start := re.groups[index]
-		end   := re.groups[index + 1]
-		return in_txt[start..end]
-	}
-	return ""
-}
-
-// get_group_by_id get a group string by its id
 pub fn (re RE) get_group_by_id(in_txt string, group_id int) string {
 	if group_id < (re.groups.len >> 1) {
 		index := group_id << 1
@@ -80,8 +69,6 @@ pub fn (re RE) get_group_by_id(in_txt string, group_id int) string {
 	}
 	return ""
 }
-
-
 
 // get_group_by_id get a group boundaries by its id
 pub fn (re RE) get_group_bounds_by_id(group_id int) (int,int) {
