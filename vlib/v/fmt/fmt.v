@@ -2186,16 +2186,7 @@ pub fn (mut f Fmt) selector_expr(node ast.SelectorExpr) {
 pub fn (mut f Fmt) size_of(node ast.SizeOf) {
 	f.write('sizeof(')
 	if node.is_type {
-		sym := f.table.get_type_symbol(node.typ)
-		if sym.name != '' {
-			if f.is_external_name(sym.name) {
-				f.write(sym.name)
-			} else {
-				f.write(f.short_module(sym.name))
-			}
-		} else {
-			f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
-		}
+		f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
 	} else {
 		f.expr(node.expr)
 	}
@@ -2348,5 +2339,11 @@ pub fn (mut f Fmt) prefix_expr_cast_expr(node ast.Expr) {
 	}
 	if !is_pe_amp_ce {
 		f.expr(node)
+	}
+}
+
+fn (mut f Fmt) trace(fbase string, message string) {
+	if f.file.path_base == fbase {
+		println('> f.trace | ${fbase:-10s} | $message')
 	}
 }

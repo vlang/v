@@ -727,13 +727,13 @@ fn (g &Gen) type_sidx(t table.Type) string {
 
 //
 pub fn (mut g Gen) write_typedef_types() {
-	for typ in g.table.types {
+	for typ in g.table.type_symbols {
 		if typ.name in c.builtins {
 			continue
 		}
 		match typ.kind {
 			.alias {
-				parent := unsafe { &g.table.types[typ.parent_idx] }
+				parent := unsafe { &g.table.type_symbols[typ.parent_idx] }
 				is_c_parent := parent.name.len > 2 && parent.name[0] == `C` && parent.name[1] == `.`
 				mut is_typedef := false
 				if parent.info is table.Struct {
@@ -745,6 +745,10 @@ pub fn (mut g Gen) write_typedef_types() {
 						parent_styp = 'struct ' + parent.cname[3..]
 					} else {
 						parent_styp = parent.cname[3..]
+					}
+				} else {
+					if typ.info is table.Alias {
+						parent_styp = g.typ(typ.info.parent_type)
 					}
 				}
 				g.type_definitions.writeln('typedef $parent_styp $typ.cname;')
@@ -822,7 +826,7 @@ pub fn (mut g Gen) write_fn_typesymbol_declaration(sym table.TypeSymbol) {
 pub fn (mut g Gen) write_multi_return_types() {
 	g.typedefs.writeln('\n// BEGIN_multi_return_typedefs')
 	g.type_definitions.writeln('\n// BEGIN_multi_return_structs')
-	for sym in g.table.types {
+	for sym in g.table.type_symbols {
 		if sym.kind != .multi_return {
 			continue
 		}
@@ -2745,9 +2749,9 @@ fn (mut g Gen) map_fn_ptrs(key_typ table.TypeSymbol) (string, string, string, st
 		}
 		.voidptr {
 			ts := if g.pref.m64 {
-				&g.table.types[table.u64_type_idx]
+				&g.table.type_symbols[table.u64_type_idx]
 			} else {
-				&g.table.types[table.u32_type_idx]
+				&g.table.type_symbols[table.u32_type_idx]
 			}
 			return g.map_fn_ptrs(ts)
 		}
@@ -5233,7 +5237,7 @@ fn (mut g Gen) write_builtin_types() {
 	// builtin types need to be on top
 	// everything except builtin will get sorted
 	for builtin_name in c.builtins {
-		sym := g.table.types[g.table.type_idxs[builtin_name]]
+		sym := g.table.type_symbols[g.table.type_idxs[builtin_name]]
 		if sym.kind == .interface_ {
 			g.write_interface_typesymbol_declaration(sym)
 		} else {
@@ -5248,7 +5252,7 @@ fn (mut g Gen) write_builtin_types() {
 // are added before them.
 fn (mut g Gen) write_sorted_types() {
 	mut types := []table.TypeSymbol{} // structs that need to be sorted
-	for typ in g.table.types {
+	for typ in g.table.type_symbols {
 		if typ.name !in c.builtins {
 			types << typ
 		}
@@ -5447,7 +5451,7 @@ fn (g &Gen) sort_structs(typesa []table.TypeSymbol) []table.TypeSymbol {
 	// sort types
 	mut types_sorted := []table.TypeSymbol{}
 	for node in dep_graph_sorted.nodes {
-		types_sorted << g.table.types[g.table.type_idxs[node.name]]
+		types_sorted << g.table.type_symbols[g.table.type_idxs[node.name]]
 	}
 	return types_sorted
 }
@@ -6026,7 +6030,7 @@ fn (mut g Gen) is_expr(node ast.InfixExpr) {
 // Generates interface table and interface indexes
 fn (mut g Gen) interface_table() string {
 	mut sb := strings.new_builder(100)
-	for ityp in g.table.types {
+	for ityp in g.table.type_symbols {
 		if ityp.kind != .interface_ {
 			continue
 		}
