@@ -125,7 +125,7 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 				idx := i - node.args.len
 				if m.params[i].typ.is_int() || m.params[i].typ.idx() == table.bool_type_idx {
 					// Gets the type name and cast the string to the type with the string_<type> function
-					type_name := g.table.types[int(m.params[i].typ)].str()
+					type_name := g.table.type_symbols[int(m.params[i].typ)].str()
 					g.write('string_${type_name}(((string*)${node.args[node.args.len - 1]}.data) [$idx])')
 				} else {
 					g.write('((string*)${node.args[node.args.len - 1]}.data) [$idx] ')

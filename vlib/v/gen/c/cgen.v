@@ -252,14 +252,14 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 	}
 	// to make sure type idx's are the same in cached mods
 	if g.pref.build_mode == .build_module {
-		for idx, typ in g.table.types {
+		for idx, typ in g.table.type_symbols {
 			if idx == 0 {
 				continue
 			}
 			g.definitions.writeln('int _v_type_idx_${typ.cname}();')
 		}
 	} else if g.pref.use_cache {
-		for idx, typ in g.table.types {
+		for idx, typ in g.table.type_symbols {
 			if idx == 0 {
 				continue
 			}
@@ -454,7 +454,7 @@ pub fn (mut g Gen) init() {
 			i++
 		}
 		// methods
-		for type_sym in g.table.types {
+		for type_sym in g.table.type_symbols {
 			if type_sym.mod != 'main' {
 				continue
 			}
@@ -491,7 +491,7 @@ pub fn (mut g Gen) finish() {
 pub fn (mut g Gen) write_typeof_functions() {
 	g.writeln('')
 	g.writeln('// >> typeof() support for sum types / interfaces')
-	for typ in g.table.types {
+	for typ in g.table.type_symbols {
 		if typ.kind == .sum_type {
 			sum_info := typ.info as table.SumType
 			g.writeln('static char * v_typeof_sumtype_${typ.cname}(int sidx) { /* $typ.name */ ')

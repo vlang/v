@@ -69,7 +69,7 @@ mut:
 	label_names         []string
 	in_generic_params   bool // indicates if parsing between `<` and `>` of a method/function
 	name_error          bool // indicates if the token is not a name or the name is on another line
-	n_asm               int  // controls assembly labels 
+	n_asm               int  // controls assembly labels
 	inside_asm_template bool
 	inside_asm          bool
 }
@@ -877,7 +877,7 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 		parent: 0 // you shouldn't be able to reference other variables in assembly blocks
 		detached_from_parent: true
 		start_pos: p.tok.pos
-		objects: ast.all_registers(mut p.table, arch) // 
+		objects: ast.all_registers(mut p.table, arch) //
 	}
 
 	mut local_labels := []string{}
