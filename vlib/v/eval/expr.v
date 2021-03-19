@@ -69,8 +69,11 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 					}
 					e.error('unknown function: ${mod}.$name at line $expr.pos.line_nr')
 				}
-				.js {
-					e.error('js is not supported')
+				// .js {
+				// 	e.error('js is not supported')
+				// }
+				else {
+					e.error('$expr.language is not supported as a call expression language')
 				}
 			}
 		}
