@@ -1,4 +1,5 @@
 import regex
+import rand
 
 /******************************************************************************
 *
@@ -288,7 +289,7 @@ find_all_test_suite = [
 )
 
 const (
-	debug = false // true for debug println 
+	debug = true // true for debug println 
 )
 
 fn test_regex(){
@@ -496,4 +497,36 @@ fn test_regex_func(){
 		eprintln("Error: ${re.get_parse_error_string(re_err)}")
 		assert false
 	}
+}
+
+fn my_repl(re regex.RE, in_txt string, start int, end int) string {
+	s0 := re.get_group_by_id(in_txt,0)[0..1] + "X"
+	s1 := re.get_group_by_id(in_txt,1)[0..1] + "X"
+	s2 := re.get_group_by_id(in_txt,2)[0..1] + "X"
+	return "${s0}${s1}${s2}"
+}
+
+
+// test regex replace function
+fn test_regex_func_replace(){
+	filler := "E il primo dei tre regni dell'Oltretomba cristiano visitato da Dante nel corso del viaggio, con la guida di Virgilio."
+	txt    := r'"content": "They dont necessarily flag "you will be buying these shares on margin!"", "channel_id"'
+	query := r'"(content":\s+")(.*)(, "channel_id")'
+	mut re := regex.regex_opt(query) or { panic(err) }
+	
+	mut txt1 := ""
+	mut txt2 := ""
+	
+	for _ in 0..3 {
+		rnd := int(10+rand.u32() % 20)
+		txt1 += txt      + filler[0..rnd] + "\n"
+		txt2 += "cXTX,X" + filler[0..rnd] + "\n"
+	}
+
+	result := re.replace_by_fn(txt1, my_repl)
+	if debug {
+		eprintln(result)
+		eprintln(txt2)
+	}
+	assert result == txt2
 }
