@@ -2151,7 +2151,8 @@ fn (mut c Checker) type_implements(typ table.Type, inter_typ table.Type, pos tok
 	}
 	if mut inter_sym.info is table.Interface {
 		if !typ.is_ptr() {
-			c.warn('casting non-reference types to interfaces is potentially memory-unsafe', pos)
+			c.warn('casting non-reference types to interfaces is potentially memory-unsafe',
+				pos)
 		}
 		for ifield in inter_sym.info.fields {
 			if field := c.table.find_field_with_embeds(typ_sym, ifield.name) {
@@ -5162,7 +5163,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 						if !right_typ.is_ptr() {
 							right_typ = right_typ.to_ptr()
 						}
-						c.type_implements(right_typ, expr_type, branch.pos)
+						c.type_implements(right_typ, expr_type, pos)
 					} else if !c.check_types(right_expr.typ, expr_type) {
 						expect_str := c.table.type_to_str(right_expr.typ)
 						expr_str := c.table.type_to_str(expr_type)
