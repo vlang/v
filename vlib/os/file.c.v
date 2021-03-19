@@ -287,7 +287,13 @@ pub fn (f &File) read(mut buf []byte) ?int {
 }
 
 // read_at reads `buf.len` bytes starting at file byte offset `pos`, in `buf`.
+[deprecated: 'use File.read_from() instead']
 pub fn (f &File) read_at(pos int, mut buf []byte) ?int {
+	return f.read_from(pos, mut buf)
+}
+
+// read_from implements the RandomReader interface.
+pub fn (f &File) read_from(pos int, mut buf []byte) ?int {
 	if buf.len == 0 {
 		return 0
 	}
