@@ -19,7 +19,7 @@ fn echo() ? {
 	}
 	data := 'Hello from vlib/net!'
 
-	c.write_str(data) ?
+	c.write_string(data) ?
 
 	mut buf := []byte{len: 100, init: 0}
 	read, addr := c.read(mut buf) ?
