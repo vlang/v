@@ -57,6 +57,7 @@ mut:
 	output_type      OutputType = .unset
 	input_path       string
 	symbol_name      string
+	os               string
 }
 
 //
@@ -292,7 +293,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 	}
 	for dirpath in dirs {
 		vd.vprintln('Generating $out.typ docs for "$dirpath"')
-		mut dcs := doc.generate(dirpath, cfg.pub_only, true, cfg.symbol_name) or {
+		mut dcs := doc.generate(dirpath, cfg.pub_only, true, cfg.os, cfg.symbol_name) or {
 			vd.emit_generate_err(err)
 			exit(1)
 		}
@@ -417,6 +418,11 @@ fn parse_arguments(args []string) Config {
 			'-o' {
 				opath := cmdline.option(current_args, '-o', '')
 				cfg.output_path = if opath == 'stdout' { opath } else { os.real_path(opath) }
+				i++
+			}
+			'-os' {
+				os := cmdline.option(current_args, '-os', '')
+				cfg.os = os
 				i++
 			}
 			'-no-timestamp' {

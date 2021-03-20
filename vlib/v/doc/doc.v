@@ -41,8 +41,8 @@ pub fn (sk SymbolKind) str() string {
 }
 
 pub struct Doc {
-	prefs &pref.Preferences = new_vdoc_preferences()
 pub mut:
+	prefs     &pref.Preferences = new_vdoc_preferences()
 	base_path string
 	table     &table.Table    = &table.Table{}
 	checker   checker.Checker = checker.Checker{
@@ -66,6 +66,7 @@ pub mut:
 	orig_mod_name       string
 	extract_vars        bool
 	filter_symbol_names []string
+	os                  string
 }
 
 pub struct DocNode {
@@ -89,10 +90,12 @@ pub mut:
 pub fn new_vdoc_preferences() &pref.Preferences {
 	// vdoc should be able to parse as much user code as possible
 	// so its preferences should be permissive:
-	return &pref.Preferences{
+	mut pref := &pref.Preferences{
 		enable_globals: true
 		is_fmt: true
 	}
+	pref.fill_with_defaults()
+	return pref
 }
 
 // new creates a new instance of a `Doc` struct.
@@ -221,6 +224,10 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 		else {
 			return error('invalid stmt type to document')
 		}
+	}
+	included := node.name in d.filter_symbol_names || node.parent_name in d.filter_symbol_names
+	if d.filter_symbol_names.len != 0 && !included {
+		return error('not included in the list of symbol names')
 	}
 	return node
 }
@@ -425,11 +432,16 @@ pub fn (mut d Doc) file_asts(file_asts []ast.File) ? {
 
 // generate documents a certain file directory and returns an
 // instance of `Doc` if it is successful. Otherwise, it will  throw an error.
-pub fn generate(input_path string, pub_only bool, with_comments bool, filter_symbol_names ...string) ?Doc {
+pub fn generate(input_path string, pub_only bool, with_comments bool, os string, filter_symbol_names ...string) ?Doc {
 	mut doc := new(input_path)
 	doc.pub_only = pub_only
 	doc.with_comments = with_comments
 	doc.filter_symbol_names = filter_symbol_names.filter(it.len != 0)
+	if os == '' {
+		doc.prefs.os = pref.get_host_os()
+	} else {
+		doc.prefs.os = pref.os_from_string(os) or { pref.get_host_os() }
+	}
 	doc.generate() ?
 	return doc
 }
