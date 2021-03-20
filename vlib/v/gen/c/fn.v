@@ -1019,7 +1019,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 				}
 			} else {
 				if node.generic_types.len > 0 && arg.expr.is_auto_deref_var() && !arg.is_mut
-					&& (!node.is_method || (node.is_method && i != 0)) {
+					&& !arg.typ.is_ptr() {
 					g.write('*')
 				}
 				g.ref_or_deref_arg(arg, expected_types[i], node.language)
