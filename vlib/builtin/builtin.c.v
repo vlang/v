@@ -184,7 +184,7 @@ pub fn malloc(n int) byteptr {
 		}
 		nr_mallocs++
 	} $else {
-		$if libgc ? {
+		$if gcboehm ? {
 			res = unsafe { C.GC_MALLOC(n) }
 		} $else {
 			res = unsafe { C.malloc(n) }
@@ -218,7 +218,7 @@ pub fn v_realloc(b byteptr, n int) byteptr {
 			C.memcpy(new_ptr, b, n)
 		}
 	} $else {
-		$if libgc ? {
+		$if gcboehm ? {
 			new_ptr = unsafe { C.GC_REALLOC(b, n) }
 		} $else {
 			new_ptr = unsafe { C.realloc(b, n) }
@@ -267,7 +267,7 @@ pub fn realloc_data(old_data byteptr, old_size int, new_size int) byteptr {
 		}
 	}
 	mut nptr := byteptr(0)
-	$if libgc ? {
+	$if gcboehm ? {
 		nptr = unsafe { C.GC_REALLOC(old_data, new_size) }
 	} $else {
 		nptr = unsafe { C.realloc(old_data, new_size) }
@@ -281,7 +281,7 @@ pub fn realloc_data(old_data byteptr, old_size int, new_size int) byteptr {
 // v_calloc dynamically allocates a zeroed `n` bytes block of memory on the heap.
 // v_calloc returns a `byteptr` pointing to the memory address of the allocated space.
 pub fn v_calloc(n int) byteptr {
-	$if libgc ? {
+	$if gcboehm ? {
 		return C.GC_MALLOC(n)
 	} $else {
 		return C.calloc(1, n)
@@ -297,7 +297,7 @@ pub fn vcalloc(n int) byteptr {
 	} else if n == 0 {
 		return byteptr(0)
 	}
-	$if libgc ? {
+	$if gcboehm ? {
 		return C.GC_MALLOC(n)
 	} $else {
 		return C.calloc(1, n)
@@ -310,7 +310,7 @@ pub fn free(ptr voidptr) {
 	$if prealloc {
 		return
 	}
-	$if libgc ? {
+	$if gcboehm ? {
 		C.GC_FREE(ptr)
 		return
 	}

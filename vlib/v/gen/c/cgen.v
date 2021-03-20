@@ -422,8 +422,8 @@ pub fn (mut g Gen) init() {
 		}
 		g.comptime_defines.writeln('')
 	}
-	if 'libgc' in g.pref.compile_defines {
-		g.comptime_defines.writeln('#define _VLIBGC (1)')
+	if g.pref.gc_mode == .boehm {
+		g.comptime_defines.writeln('#define _VGCBOEHM (1)')
 	}
 	if g.pref.is_debug || 'debug' in g.pref.compile_defines {
 		g.comptime_defines.writeln('#define _VDEBUG (1)')
