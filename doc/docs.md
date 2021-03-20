@@ -3698,7 +3698,7 @@ If you do need a custom flag file, that has platform dependent code, use the
 postfix `_d_customflag.v`, and then use plaftorm dependent compile time
 conditional blocks inside it, i.e. `$if linux {}` etc.
 
-- `_notd_customflag.v` => simillar to _d_customflag.v, but will be used 
+- `_notd_customflag.v` => similar to _d_customflag.v, but will be used 
 *only* if you do NOT pass `-d customflag` to V.
 
 ## Compile time pseudo variables
