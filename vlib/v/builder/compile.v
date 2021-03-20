@@ -122,7 +122,7 @@ fn (mut v Builder) cleanup_run_executable_after_exit(exefile string) {
 		v.pref.vrun_elog('keeping executable: $exefile , because -keepc was passed')
 		return
 	}
-	if os.is_file(exefile) {
+	if os.is_executable(exefile) {
 		v.pref.vrun_elog('remove run executable: $exefile')
 		os.rm(exefile) or { panic(err) }
 	}
@@ -273,8 +273,10 @@ pub fn (v &Builder) get_user_files() []string {
 		exit(1)
 	}
 	is_real_file := does_exist && !os.is_dir(dir)
-	if is_real_file && (dir.ends_with('.v') || dir.ends_with('.vsh') || dir.ends_with('.vv')) {
-		single_v_file := dir
+	resolved_link := if is_real_file && os.is_link(dir) { os.real_path(dir) } else { dir }
+	if is_real_file && (dir.ends_with('.v') || resolved_link.ends_with('.vsh')
+		|| dir.ends_with('.vv')) {
+		single_v_file := if resolved_link.ends_with('.vsh') { resolved_link } else { dir }
 		// Just compile one file and get parent dir
 		user_files << single_v_file
 		if v.pref.is_verbose {
