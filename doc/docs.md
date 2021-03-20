@@ -3558,12 +3558,10 @@ Full list of builtin options:
 #### $embed_file
 
 ```v ignore
-module main
+import os
 fn main() {
 	embedded_file := $embed_file('v.png')
-	mut fw := os.create('exported.png') or { panic(err.msg) }
-	fw.write_bytes(embedded_file.data(), embedded_file.len)
-	fw.close()
+	os.write_file('exported.png', embedded_file.to_string()) ?
 }
 ```
 

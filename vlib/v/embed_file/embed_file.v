@@ -36,6 +36,22 @@ pub fn (mut ed EmbedFileData) free() {
 	}
 }
 
+pub fn (original &EmbedFileData) to_string() string {
+	unsafe {
+		mut ed := &EmbedFileData(original)
+		the_copy := memdup(ed.data(), ed.len)
+		return byteptr(the_copy).vstring_with_len(ed.len)
+	}
+}
+
+pub fn (original &EmbedFileData) to_bytes() []byte {
+	unsafe {
+		mut ed := &EmbedFileData(original)
+		the_copy := memdup(ed.data(), ed.len)
+		return the_copy.vbytes(ed.len)
+	}
+}
+
 pub fn (mut ed EmbedFileData) data() byteptr {
 	if !isnil(ed.uncompressed) {
 		return ed.uncompressed
