@@ -174,7 +174,7 @@ pub fn execute(cmd string) Result {
 	unsafe {
 		bufbp := &buf[0]
 		for C.fgets(charptr(bufbp), 4096, f) != 0 {
-			res.write_bytes(bufbp, vstrlen(bufbp))
+			res.write_ptr(bufbp, vstrlen(bufbp))
 		}
 	}
 	soutput := res.str()
@@ -215,11 +215,11 @@ pub fn (mut c Command) read_line() string {
 			len := vstrlen(bufbp)
 			for i in 0 .. len {
 				if bufbp[i] == `\n` {
-					res.write_bytes(bufbp, i)
+					res.write_ptr(bufbp, i)
 					return res.str()
 				}
 			}
-			res.write_bytes(bufbp, len)
+			res.write_ptr(bufbp, len)
 		}
 	}
 	c.eof = true

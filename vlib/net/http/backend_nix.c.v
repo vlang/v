@@ -55,7 +55,7 @@ fn (req &Request) ssl_do(port int, method Method, host_name string, path string)
 			eprintln(unsafe { tos(bp, len) })
 			eprintln('-'.repeat(20))
 		}
-		unsafe { content.write_bytes(bp, len) }
+		unsafe { content.write_ptr(bp, len) }
 	}
 	if web != 0 {
 		C.BIO_free_all(web)

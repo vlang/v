@@ -55,7 +55,7 @@ fn test_open_file_binary() {
 	}
 	mut file := os.open_file(filename, 'wb+', 0o666) or { panic(err) }
 	bytes := hello.bytes()
-	unsafe { file.write_bytes(bytes.data, bytes.len) }
+	unsafe { file.write_ptr(bytes.data, bytes.len) }
 	file.close()
 	assert hello.len == os.file_size(filename)
 	read_hello := os.read_bytes(filename) or { panic('error reading file $filename') }
@@ -144,7 +144,7 @@ fn test_write_and_read_bytes() {
 	}
 	// We use the standard write_bytes function to write the payload and
 	// compare the length of the array with the file size (have to match).
-	unsafe { file_write.write_bytes(payload.data, 5) }
+	unsafe { file_write.write_ptr(payload.data, 5) }
 	file_write.close()
 	assert payload.len == os.file_size(file_name)
 	mut file_read := os.open(os.real_path(file_name)) or {
