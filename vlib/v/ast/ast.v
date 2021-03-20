@@ -367,6 +367,7 @@ pub:
 pub struct CallExpr {
 pub:
 	pos token.Position
+	name_pos token.Position
 	mod string
 pub mut:
 	name               string // left.name()
