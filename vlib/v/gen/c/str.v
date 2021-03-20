@@ -92,10 +92,10 @@ string _STR(const char *fmt, int nfmts, ...) {
 	}
 	va_end(argptr);
 	buf[nbytes] = 0;
-    
-#ifdef _VLIBGC     
+
+#ifdef _VLIBGC
 	buf = (char*)GC_REALLOC((void*)buf, nbytes+1);
-#else    
+#else
 	buf = (char*)realloc((void*)buf, nbytes+1);
 #endif
 
