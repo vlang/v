@@ -184,7 +184,11 @@ pub fn malloc(n int) byteptr {
 		}
 		nr_mallocs++
 	} $else {
-		res = unsafe { C.malloc(n) }
+		$if gcboehm ? {
+			res = unsafe { C.GC_MALLOC(n) }
+		} $else {
+			res = unsafe { C.malloc(n) }
+		}
 		if res == 0 {
 			panic('malloc($n) failed')
 		}
@@ -214,7 +218,11 @@ pub fn v_realloc(b byteptr, n int) byteptr {
 			C.memcpy(new_ptr, b, n)
 		}
 	} $else {
-		new_ptr = unsafe { C.realloc(b, n) }
+		$if gcboehm ? {
+			new_ptr = unsafe { C.GC_REALLOC(b, n) }
+		} $else {
+			new_ptr = unsafe { C.realloc(b, n) }
+		}
 		if new_ptr == 0 {
 			panic('realloc($n) failed')
 		}
@@ -254,11 +262,16 @@ pub fn realloc_data(old_data byteptr, old_size int, new_size int) byteptr {
 			min_size := if old_size < new_size { old_size } else { new_size }
 			C.memcpy(new_ptr, old_data, min_size)
 			C.memset(old_data, 0x57, old_size)
-			C.free(old_data)
+			free(old_data)
 			return new_ptr
 		}
 	}
-	nptr := unsafe { C.realloc(old_data, new_size) }
+	mut nptr := byteptr(0)
+	$if gcboehm ? {
+		nptr = unsafe { C.GC_REALLOC(old_data, new_size) }
+	} $else {
+		nptr = unsafe { C.realloc(old_data, new_size) }
+	}
 	if nptr == 0 {
 		panic('realloc_data($old_data, $old_size, $new_size) failed')
 	}
@@ -268,7 +281,11 @@ pub fn realloc_data(old_data byteptr, old_size int, new_size int) byteptr {
 // v_calloc dynamically allocates a zeroed `n` bytes block of memory on the heap.
 // v_calloc returns a `byteptr` pointing to the memory address of the allocated space.
 pub fn v_calloc(n int) byteptr {
-	return C.calloc(1, n)
+	$if gcboehm ? {
+		return C.GC_MALLOC(n)
+	} $else {
+		return C.calloc(1, n)
+	}
 }
 
 // vcalloc dynamically allocates a zeroed `n` bytes block of memory on the heap.
@@ -280,13 +297,21 @@ pub fn vcalloc(n int) byteptr {
 	} else if n == 0 {
 		return byteptr(0)
 	}
-	return C.calloc(1, n)
+	$if gcboehm ? {
+		return C.GC_MALLOC(n)
+	} $else {
+		return C.calloc(1, n)
+	}
 }
 
 // free allows for manually freeing memory allocated at the address `ptr`.
 [unsafe]
 pub fn free(ptr voidptr) {
 	$if prealloc {
+		return
+	}
+	$if gcboehm ? {
+		C.GC_FREE(ptr)
 		return
 	}
 	C.free(ptr)
@@ -304,14 +329,6 @@ pub fn memdup(src voidptr, sz int) voidptr {
 		mem := malloc(sz)
 		return C.memcpy(mem, src, sz)
 	}
-}
-
-// v_ptr_free is used internally to manually free up memory allocated at the address `ptr`.
-fn v_ptr_free(ptr voidptr) {
-	$if prealloc {
-		return
-	}
-	C.free(ptr)
 }
 
 // is_atty returns 1 if the `fd` file descriptor is open and refers to a terminal
