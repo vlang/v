@@ -231,7 +231,7 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 						parse_define(mut res, 'gcboehm')
 					}
 					else {
-						eprintln('unknown garbage collection mode, onlye `-gc boehm` is supported')
+						eprintln('unknown garbage collection mode, only `-gc boehm` is supported')
 						exit(1)
 					}
 				}
