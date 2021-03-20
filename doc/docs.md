@@ -713,6 +713,15 @@ println(upper_fn) // ['HELLO', 'WORLD']
 
 `it` is a builtin variable which refers to element currently being processed in filter/map methods.
 
+Additionally, `.any()` and `.all()` can be used to conveniently test
+for elements that satisfy a condition.
+
+```v
+nums := [1, 2, 3]
+println(nums.any(it == 2)) // true
+println(nums.all(it >= 2)) // false
+```
+
 #### Multidimensional Arrays
 
 Arrays can have more than one dimension.
