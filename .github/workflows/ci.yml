@@ -116,7 +116,7 @@ jobs:
           sudo apt-get install --quiet -y xfonts-75dpi xfonts-base
       - name: Build v
         run: make
-        
+
       - name: Ensure v up works
         run: |
           ./v cmd/tools/oldv.v
@@ -127,10 +127,10 @@ jobs:
           ./v version
           ./v  -o v2 cmd/v
           ./v2 -o v3 cmd/v
-      
+
       - name: Ensure V can be compiled with -autofree
         run: ./v -autofree -o v2 cmd/v  ## NB: this does not mean it runs, but at least keeps it from regressing
-        
+
       - name: Shader examples can be build
         run: |
           wget https://github.com/floooh/sokol-tools-bin/archive/pre-feb2021-api-changes.tar.gz
@@ -280,6 +280,7 @@ jobs:
       - name: Build examples with -autofree
         run: |
           ./v -autofree -o tetris examples/tetris/tetris.v
+          ./v -autofree -o blog tutorials/building_a_simple_web_blog_with_vweb/code/blog
       - name: v doctor
         run: |
           ./v doctor
