@@ -40,6 +40,19 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 				continue
 			}
 		}
+		if file.contains('_notd_') {
+			mut allowed := true
+			for cdefine in prefs.compile_defines {
+				file_postfix := '_notd_${cdefine}.v'
+				if file.ends_with(file_postfix) {
+					allowed = false
+					break
+				}
+			}
+			if !allowed {
+				continue
+			}
+		}
 		all_v_files << os.join_path(dir, file)
 	}
 	//

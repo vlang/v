@@ -26,7 +26,11 @@ void _STR_PRINT_ARG(const char *fmt, char** refbufp, int *nbytes, int *memsize, 
 		}
 		// increase buffer (somewhat exponentially)
 		*memsize += (*memsize + *memsize) / 3 + guess;
+#ifdef _VGCBOEHM     
+		*refbufp = (char*)GC_REALLOC((void*)*refbufp, *memsize);
+#else
 		*refbufp = (char*)realloc((void*)*refbufp, *memsize);
+#endif
 	}
 	va_end(args);
 }
@@ -35,7 +39,11 @@ string _STR(const char *fmt, int nfmts, ...) {
 	va_list argptr;
 	int memsize = 128;
 	int nbytes = 0;
+#ifdef _VGCBOEHM     
+	char* buf = (char*)GC_MALLOC(memsize);
+#else
 	char* buf = (char*)malloc(memsize);
+#endif
 	va_start(argptr, nfmts);
 	for (int i=0; i<nfmts; ++i) {
 		int k = strlen(fmt);
@@ -84,11 +92,18 @@ string _STR(const char *fmt, int nfmts, ...) {
 	}
 	va_end(argptr);
 	buf[nbytes] = 0;
+
+#ifdef _VGCBOEHM
+	buf = (char*)GC_REALLOC((void*)buf, nbytes+1);
+#else
 	buf = (char*)realloc((void*)buf, nbytes+1);
+#endif
+
 #ifdef DEBUG_ALLOC
 	//puts('_STR:');
 	puts(buf);
 #endif
+
 #if _VAUTOFREE
 	//g_cur_str = (byteptr)buf;
 #endif

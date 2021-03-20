@@ -91,6 +91,6 @@ pub fn (ie &IError) free() {
 	unsafe {
 		ie.msg.free()
 		cie := &C.IError(ie)
-		C.free(cie._object)
+		free(cie._object)
 	}
 }
