@@ -9,7 +9,7 @@ import v.util
 
 pub struct Table {
 pub mut:
-	types         []TypeSymbol
+	type_symbols  []TypeSymbol
 	type_idxs     map[string]int
 	fns           map[string]Fn
 	dumps         map[int]string // needed for efficiently generating all _v_dump_expr_TNAME() functions
@@ -92,7 +92,7 @@ mut:
 
 pub fn new_table() &Table {
 	mut t := &Table{
-		types: []TypeSymbol{cap: 64000}
+		type_symbols: []TypeSymbol{cap: 64000}
 	}
 	t.register_builtin_type_symbols()
 	t.is_fmt = true
@@ -235,7 +235,7 @@ pub fn (t &Table) type_find_method(s &TypeSymbol, name string) ?Fn {
 		if ts.parent_idx == 0 {
 			break
 		}
-		ts = unsafe { &t.types[ts.parent_idx] }
+		ts = unsafe { &t.type_symbols[ts.parent_idx] }
 	}
 	return none
 }
@@ -308,7 +308,7 @@ pub fn (t &Table) find_field(s &TypeSymbol, name string) ?Field {
 		if ts.parent_idx == 0 {
 			break
 		}
-		ts = unsafe { &t.types[ts.parent_idx] }
+		ts = unsafe { &t.type_symbols[ts.parent_idx] }
 	}
 	return none
 }
@@ -388,7 +388,7 @@ pub fn (t &Table) find_type_idx(name string) int {
 pub fn (t &Table) find_type(name string) ?TypeSymbol {
 	idx := t.type_idxs[name]
 	if idx > 0 {
-		return t.types[idx]
+		return t.type_symbols[idx]
 	}
 	return none
 }
@@ -398,7 +398,7 @@ pub fn (t &Table) get_type_symbol(typ Type) &TypeSymbol {
 	// println('get_type_symbol $typ')
 	idx := typ.idx()
 	if idx > 0 {
-		return unsafe { &t.types[idx] }
+		return unsafe { &t.type_symbols[idx] }
 	}
 	// this should never happen
 	panic('get_type_symbol: invalid type (typ=$typ idx=$idx). Compiler bug. This should never happen. Please create a GitHub issue.
@@ -410,12 +410,12 @@ pub fn (t &Table) get_type_symbol(typ Type) &TypeSymbol {
 pub fn (t &Table) get_final_type_symbol(typ Type) &TypeSymbol {
 	idx := typ.idx()
 	if idx > 0 {
-		current_type := t.types[idx]
+		current_type := t.type_symbols[idx]
 		if current_type.kind == .alias {
 			alias_info := current_type.info as Alias
 			return t.get_final_type_symbol(alias_info.parent_type)
 		}
-		return unsafe { &t.types[idx] }
+		return unsafe { &t.type_symbols[idx] }
 	}
 	// this should never happen
 	panic('get_final_type_symbol: invalid type (typ=$typ idx=$idx). Compiler bug. This should never happen. Please create a GitHub issue.')
@@ -444,12 +444,12 @@ pub fn (mut t Table) register_type_symbol(typ TypeSymbol) int {
 	// println('register_type_symbol( $typ.name )')
 	existing_idx := t.type_idxs[typ.name]
 	if existing_idx > 0 {
-		ex_type := t.types[existing_idx]
+		ex_type := t.type_symbols[existing_idx]
 		match ex_type.kind {
 			.placeholder {
 				// override placeholder
 				// println('overriding type placeholder `$typ.name`')
-				t.types[existing_idx] = TypeSymbol{
+				t.type_symbols[existing_idx] = TypeSymbol{
 					...typ
 					methods: ex_type.methods
 				}
@@ -462,13 +462,13 @@ pub fn (mut t Table) register_type_symbol(typ TypeSymbol) int {
 				if (existing_idx >= string_type_idx && existing_idx <= map_type_idx)
 					|| existing_idx == error_type_idx {
 					if existing_idx == string_type_idx {
-						// existing_type := t.types[existing_idx]
-						t.types[existing_idx] = TypeSymbol{
+						// existing_type := t.type_symbols[existing_idx]
+						t.type_symbols[existing_idx] = TypeSymbol{
 							...typ
 							kind: ex_type.kind
 						}
 					} else {
-						t.types[existing_idx] = typ
+						t.type_symbols[existing_idx] = typ
 					}
 					return existing_idx
 				}
@@ -476,8 +476,8 @@ pub fn (mut t Table) register_type_symbol(typ TypeSymbol) int {
 			}
 		}
 	}
-	typ_idx := t.types.len
-	t.types << typ
+	typ_idx := t.type_symbols.len
+	t.type_symbols << typ
 	t.type_idxs[typ.name] = typ_idx
 	return typ_idx
 }
@@ -772,7 +772,7 @@ pub fn (mut t Table) find_or_register_fn_type(mod string, f Fn, is_anon bool, ha
 	anon := f.name.len == 0 || is_anon
 	// existing
 	existing_idx := t.type_idxs[name]
-	if existing_idx > 0 && t.types[existing_idx].kind != .placeholder {
+	if existing_idx > 0 && t.type_symbols[existing_idx].kind != .placeholder {
 		return existing_idx
 	}
 	return t.register_type_symbol(
@@ -906,15 +906,15 @@ pub fn (mytable &Table) has_deep_child_no_ref(ts &TypeSymbol, name string) bool 
 
 // bitsize_to_type returns a type corresponding to the bit_size
 // Examples:
-// 
+//
 // `8 > i8`
-// 
+//
 // `32 > int`
-// 
+//
 // `123 > panic()`
-// 
+//
 // `128 > [16]byte`
-// 
+//
 // `608 > [76]byte`
 pub fn (mut t Table) bitsize_to_type(bit_size int) Type {
 	match bit_size {

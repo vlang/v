@@ -35,8 +35,6 @@ const (
 	skip_with_werror              = [
 		'vlib/sync/array_rlock_test.v',
 		'vlib/clipboard/clipboard_test.v',
-		'vlib/dl/dl_test.v',
-		'vlib/dl/example/use_test.v',
 		'vlib/eventbus/eventbus_test.v',
 		'vlib/gx/color_test.v',
 		'vlib/json/json_test.v',
