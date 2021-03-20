@@ -79,10 +79,10 @@ see also `v help build`.
       Note, this option is complementary to -autofree. The Boehm garbage
       collector is conservative, and it may make your program significantly
       slower if it does many small allocations in a loop. This option
-      is indended mainly for reducing the memory usage of programs, that
-      process large amounts of text in batch mode on low/limited memory 
+      is intended *mainly* for reducing the memory usage of programs, that
+      process large amounts of text in *batch mode* on low/limited memory 
       environments like small VPSes, and for which a few ms of garbage
-      collection pauses from time to time do not matter much.
+      collection pauses from time to time *do not matter much*.
 
 # Miscellaneous:
    -printfn <fn_name>
