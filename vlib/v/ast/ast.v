@@ -30,7 +30,7 @@ pub type ScopeObject = AsmRegister | ConstField | GlobalField | Var
 // TOOD: replace table.Param
 pub type Node = ConstField | EnumField | Expr | Field | File | GlobalField | IfBranch |
 	MatchBranch | ScopeObject | SelectBranch | Stmt | StructField | StructInitField |
-	table.Param
+	table.Param | CallArg
 
 pub struct Type {
 pub:
@@ -1082,7 +1082,7 @@ pub:
 pub struct AsmAddressing {
 pub:
 	displacement u32 // 8, 16 or 32 bit literal value
-	scale        int = -1 // 1, 2, 4, or 8 literal 
+	scale        int = -1 // 1, 2, 4, or 8 literal
 	mode         AddressingMode
 	pos          token.Position
 pub mut:
@@ -1575,6 +1575,9 @@ pub fn (node Node) position() token.Position {
 			}
 			return pos
 		}
+		CallArg {
+			return node.pos
+		}
 	}
 }
 
@@ -1600,6 +1603,7 @@ pub fn (node Node) children() []Node {
 			}
 			CallExpr {
 				children << node.left
+				children << node.args.map(Node(it))
 				children << Expr(node.or_block)
 			}
 			InfixExpr {
