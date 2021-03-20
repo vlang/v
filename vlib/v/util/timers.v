@@ -43,7 +43,7 @@ pub fn timing_set_should_print(should_print bool) {
 }
 
 pub fn (mut t Timers) start(name string) {
-	mut sw := t.swatches[name] or { time.new_stopwatch({}) }
+	mut sw := t.swatches[name] or { time.new_stopwatch() }
 	sw.start()
 	t.swatches[name] = sw
 }

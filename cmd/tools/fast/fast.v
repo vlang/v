@@ -54,7 +54,7 @@ fn main() {
 	date := time.unix(commit_date.int())
 	mut out := os.create('table.html') ?
 	// Place the new row on top
-	table = 
+	table =
 		'<tr>
 		<td>$date.format()</td>
 		<td><a target=_blank href="https://github.com/vlang/v/commit/$commit">$commit</a></td>
@@ -100,7 +100,7 @@ fn measure(cmd string, description string) int {
 	mut runs := []int{}
 	for r in 0 .. 5 {
 		println('  Sample ${r + 1}/5')
-		sw := time.new_stopwatch({})
+		sw := time.new_stopwatch()
 		exec(cmd)
 		runs << int(sw.elapsed().milliseconds())
 	}

@@ -127,8 +127,8 @@ struct Perf {
 mut:
 	frame     int
 	frame_old int
-	frame_sw  time.StopWatch = time.new_stopwatch({})
-	second_sw time.StopWatch = time.new_stopwatch({})
+	frame_sw  time.StopWatch = time.new_stopwatch()
+	second_sw time.StopWatch = time.new_stopwatch()
 }
 
 struct Pos {
@@ -450,7 +450,7 @@ fn (p Prediction) str() string {
 fn (mut app App) ai_move() {
 	mut predictions := [4]Prediction{}
 	mut is_valid := false
-	think_watch := time.new_stopwatch({})
+	think_watch := time.new_stopwatch()
 	for move in possible_moves {
 		move_idx := int(move)
 		predictions[move_idx].move = move

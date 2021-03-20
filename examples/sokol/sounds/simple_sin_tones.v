@@ -3,7 +3,7 @@ import math
 import sokol.audio
 
 const (
-	sw          = time.new_stopwatch({})
+	sw          = time.new_stopwatch()
 	sw_start_ms = sw.elapsed().milliseconds()
 )
 

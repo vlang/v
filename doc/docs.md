@@ -2978,7 +2978,7 @@ each object.
 
 ### Control
 
-You can take advantage of V's autofree engine and define a `free()` method on custom 
+You can take advantage of V's autofree engine and define a `free()` method on custom
 data types:
 
 ```v
@@ -2990,7 +2990,7 @@ fn (data &MyType) free() {
 }
 ```
 
-Just as the compiler frees C data types with C's `free()`, it will statically insert 
+Just as the compiler frees C data types with C's `free()`, it will statically insert
 `free()` calls for your data type at the end of each variable's lifetime.
 
 For developers willing to have more low level control, autofree can be disabled with
@@ -3170,7 +3170,7 @@ You can also use stopwatches to measure just portions of your code explicitly:
 import time
 
 fn main() {
-	sw := time.new_stopwatch({})
+	sw := time.new_stopwatch()
 	println('Hello world')
 	println('Greeting the world took: ${sw.elapsed().nanoseconds()}ns')
 }
@@ -3846,7 +3846,7 @@ To improve safety and maintainability, operator overloading is limited:
 are auto generated when the operators are defined though they must return the same type.
 
 ## Inline assembly
-<!-- ignore because it doesn't pass fmt test (why?) --> 
+<!-- ignore because it doesn't pass fmt test (why?) -->
 ```v ignore
 a := 100
 b := 20
@@ -3855,12 +3855,12 @@ asm amd64 {
     mov eax, a
     add eax, b
     mov c, eax
-    ; =r (c) as c // output 
-    ; r (a) as a // input 
+    ; =r (c) as c // output
+    ; r (a) as a // input
       r (b) as b
 }
-println('a: $a') // 100 
-println('b: $b') // 20 
+println('a: $a') // 100
+println('b: $b') // 20
 println('c: $c') // 120
 ```
 

@@ -179,10 +179,10 @@ fn (mut tasks Tasks) run() {
 	}
 	$if msvc {
 		m_skip_files << 'vlib/v/checker/tests/asm_alias_does_not_exist.vv'
-		m_skip_files << 'vlib/v/checker/tests/asm_immutable_err.vv'	
+		m_skip_files << 'vlib/v/checker/tests/asm_immutable_err.vv'
 		// TODO: investigate why MSVC regressed
 		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_1.vv'
-		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_with_explanation_2.vv'        
+		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_with_explanation_2.vv'
 	}
 	for i in 0 .. tasks.all.len {
 		if tasks.all[i].path in m_skip_files {
@@ -245,7 +245,7 @@ fn work_processor(mut work sync.Channel, mut results sync.Channel) {
 		if !work.pop(&task) {
 			break
 		}
-		sw := time.new_stopwatch({})
+		sw := time.new_stopwatch()
 		task.execute()
 		task.took = sw.elapsed()
 		results.push(&task)
