@@ -3474,9 +3474,10 @@ To cast a `voidptr` to a V reference, use `user := &User(user_void_ptr)`.
 
 ### C Declarations
 
-C identifiers are accessed with the `C` prefix similarly to how module-specific identifiers are accessed.
-Functions must be redeclared in V before they can be used. Any C types may be used behind the `C` prefix, but types
-must be redeclared in V in order to access type members.
+C identifiers are accessed with the `C` prefix similarly to how module-specific 
+identifiers are accessed. Functions must be redeclared in V before they can be used. 
+Any C types may be used behind the `C` prefix, but types must be redeclared in V in 
+order to access type members.
 
 To redeclare complex types, such as in the following C code:
 
@@ -3484,7 +3485,6 @@ To redeclare complex types, such as in the following C code:
 struct SomeCStruct {
 	uint8_t implTraits;
 	uint16_t memPoolData;
-
 	union {
 		struct {
 			void* data;
@@ -3500,9 +3500,8 @@ members of sub-data-structures may be directly declared in the containing struct
 
 ```v
 struct C.SomeCStruct {
-	implTraits byte
+	implTraits  byte
 	memPoolData u16
-
 	// These members are part of sub data structures that can't currently be represented in V.
 	// Declaring them directly like this is sufficient for access.
 	// union {
@@ -3515,9 +3514,11 @@ struct C.SomeCStruct {
 }
 ```
 
-The existence of the data members is made known to V, and they may be used without re-creating the original structure exactly.
+The existence of the data members is made known to V, and they may be used without 
+re-creating the original structure exactly.
 
-Alternatively, you may [embed](#embedded-structs) the sub-data-structures to maintain a parallel code structure.
+Alternatively, you may [embed](#embedded-structs) the sub-data-structures to maintain 
+a parallel code structure.
 
 ## Debugging generated C code
 
