@@ -1018,7 +1018,8 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 					g.write('/*af arg*/' + name)
 				}
 			} else {
-				if node.generic_types.len > 0 && arg.expr.is_auto_deref_var() && !arg.is_mut {
+				if node.generic_types.len > 0 && arg.expr.is_auto_deref_var() && !arg.is_mut
+					&& (!node.is_method || (node.is_method && i != 0)) {
 					g.write('*')
 				}
 				g.ref_or_deref_arg(arg, expected_types[i], node.language)
