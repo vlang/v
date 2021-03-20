@@ -1,5 +1,7 @@
 module builtin
 
+#define GC_THREADS 1
+
 #include <gc.h>
 
 #flag -lgc
