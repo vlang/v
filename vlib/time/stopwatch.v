@@ -17,7 +17,7 @@ pub mut:
 }
 
 // new_stopwatch initializes a new StopWatch with the current time as start.
-pub fn new_stopwatch(opts StopWatchOptions = StopWatchOptions{}) StopWatch {
+pub fn new_stopwatch(opts StopWatchOptions) StopWatch {
 	mut initial := u64(0)
 	if opts.auto_start {
 		initial = sys_mono_now()
