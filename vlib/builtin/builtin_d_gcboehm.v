@@ -2,6 +2,11 @@ module builtin
 
 #define GC_THREADS 1
 
+$if windows {
+	#flag -I@VROOT/thirdparty/libgc/include
+	#flag -L@VROOT/thirdparty/libgc
+}
+
 #include <gc.h>
 
 #flag -lgc
