@@ -2,14 +2,47 @@ fn foo() ? {
 	println('foo is called')
 }
 
-fn bar() ?int {
+fn bar<T>(v T) ?T {
 	return none
+}
+
+struct Data {
+	f fn (int)
+mut:
+	value int
+}
+
+fn (mut v Data) add(n int) {
+	v.value += n
+}
+
+fn twice(n int) int {
+	return n * 2
 }
 
 fn main() {
 	// Calling foo() without ? or an or block, should be an error.
 	foo()
 
-	_ := bar()
-	_ := [bar()]
+	_ := bar(0)
+	_ := [bar(0)]
+
+	// Calling fn with optional argument
+	println(twice(bar(0)))
+	// method and fn field
+	mut v := Data{fn (_ int) {}, 1}
+	v.add(bar(0))
+	v.f(bar(0))
+	// anon fn
+	fn (_ int) {}(bar(0))
+	// array builtin methods
+	mut arr := [1, 2]
+	arr.insert(0, bar(0))
+	arr.prepend(bar(0))
+	arr.contains(bar(0))
+	arr.index(bar(0))
+	println(arr.map(bar(0)))
+	println(arr.filter(bar(true)))
+	println(arr.any(bar(true)))
+	println(arr.all(bar(true)))
 }
