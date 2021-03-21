@@ -109,3 +109,26 @@ fn test_normal() {
 		}
 	}
 }
+
+fn test_exponential() {
+	lambdas := [1.0, 10, 1 / 20.0, 1 / 10000.0, 1 / 524.0, 200]
+
+	for seed in seeds {
+		rand.seed(seed)
+		for lambda in lambdas {
+			mu := 1 / lambda
+			variance := mu * mu
+			mut sum := 0.0
+			mut var := 0.0
+			for _ in 0 .. count {
+				x := dist.exponential(lambda)
+				sum += x
+				dist := x - mu
+				var += dist * dist
+			}
+
+			assert math.abs((f64(sum / count) - mu) / mu) < error
+			assert math.abs((f64(var / count) - variance) / variance) < 2 * error
+		}
+	}
+}
