@@ -319,3 +319,32 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 	}
 	return struct_init.typ
 }
+
+// check `to` has all fields of `from`
+fn (c &Checker) check_struct_signature(from table.Struct, to table.Struct) bool {
+	// Note: `to` can have extra fields
+	if from.fields.len == 0 {
+		return false
+	}
+	for field in from.fields {
+		filtered := to.fields.filter(it.name == field.name)
+		if filtered.len != 1 {
+			// field doesn't exist
+			return false
+		}
+		counterpart := filtered[0]
+		if field.typ != counterpart.typ {
+			// field has different tye
+			return false
+		}
+		if field.is_pub != counterpart.is_pub {
+			// field is not public while the other one is
+			return false
+		}
+		if field.is_mut != counterpart.is_mut {
+			// field is not mutable while the other one is
+			return false
+		}
+	}
+	return true
+}

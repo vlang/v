@@ -1045,3 +1045,24 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ table.Type, call_e
 		else {}
 	}
 }
+
+fn (mut c Checker) post_process_generic_fns() {
+	// Loop thru each generic function concrete type.
+	// Check each specific fn instantiation.
+	for i in 0 .. c.file.generic_fns.len {
+		if c.table.fn_gen_types.len == 0 {
+			// no concrete types, so just skip:
+			continue
+		}
+		mut node := c.file.generic_fns[i]
+		c.mod = node.mod
+		for gen_types in c.table.fn_gen_types[node.name] {
+			c.cur_generic_types = gen_types
+			c.fn_decl(mut node)
+			if node.name in ['vweb.run_app', 'vweb.run'] {
+				c.vweb_gen_types << gen_types
+			}
+		}
+		c.cur_generic_types = []
+	}
+}
