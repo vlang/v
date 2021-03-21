@@ -38,7 +38,7 @@ fn test_open_file() {
 		os.File{}
 	}
 	mut file := os.open_file(filename, 'w+', 0o666) or { panic(err) }
-	file.write_str(hello) or { panic(err) }
+	file.write_string(hello) or { panic(err) }
 	file.close()
 	assert hello.len == os.file_size(filename)
 	read_hello := os.read_file(filename) or { panic('error reading file $filename') }
@@ -87,7 +87,7 @@ fn test_create_file() {
 	filename := './test1.txt'
 	hello := 'hello world!'
 	mut f := os.create(filename) or { panic(err) }
-	f.write_str(hello) or { panic(err) }
+	f.write_string(hello) or { panic(err) }
 	f.close()
 	assert hello.len == os.file_size(filename)
 	os.rm(filename) or { panic(err) }

@@ -54,7 +54,12 @@ pub fn (mut c UdpConn) write(buf []byte) ?int {
 	return c.write_ptr(buf.data, buf.len)
 }
 
+[deprecated: 'use UdpConn.write_string() instead']
 pub fn (mut c UdpConn) write_str(s string) ?int {
+	return c.write_string(s)
+}
+
+pub fn (mut c UdpConn) write_string(s string) ?int {
 	return c.write_ptr(s.str, s.len)
 }
 

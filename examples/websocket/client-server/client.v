@@ -4,7 +4,7 @@ import os
 import x.websocket
 import term
 
-// This client should be compiled an run in different konsoles 
+// This client should be compiled an run in different konsoles
 // it connects to the server who will broadcast your messages
 // to all other connected clients
 fn main() {
@@ -16,7 +16,7 @@ fn main() {
 		if line == '' {
 			break
 		}
-		ws.write_str(line) ?
+		ws.write_string(line) ?
 	}
 	ws.close(1000, 'normal') or { println(term.red('panicing $err')) }
 	unsafe {
