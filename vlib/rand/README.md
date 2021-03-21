@@ -22,10 +22,11 @@ sampling from non-uniform distributions. These functions make use of the global 
 separate threads in multi-threaded applications. If you need to use non-uniform sampling functions,
 it is recommended to generate them before use in a multi-threaded context.
 
-For sampling functions and generating random strings, see `string_from_set()` and other related functions
-defined in this top-level module.
+For sampling functions and generating random strings, see `string_from_set()` and other related
+functions defined in this top-level module.
 
 For arrays, see `rand.util`.
+
 # General Background
 
 A PRNG is a Pseudo Random Number Generator. 
