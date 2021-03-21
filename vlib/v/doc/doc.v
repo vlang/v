@@ -432,15 +432,13 @@ pub fn (mut d Doc) file_asts(file_asts []ast.File) ? {
 
 // generate documents a certain file directory and returns an
 // instance of `Doc` if it is successful. Otherwise, it will  throw an error.
-pub fn generate(input_path string, pub_only bool, with_comments bool, os string, filter_symbol_names ...string) ?Doc {
+pub fn generate(input_path string, pub_only bool, with_comments bool, os_ string, filter_symbol_names ...string) ?Doc {
 	mut doc := new(input_path)
 	doc.pub_only = pub_only
 	doc.with_comments = with_comments
 	doc.filter_symbol_names = filter_symbol_names.filter(it.len != 0)
-	if os == '' {
-		doc.prefs.os = pref.get_host_os()
-	} else {
-		doc.prefs.os = pref.os_from_string(os) or { pref.get_host_os() }
+	if os_ != '' {
+		doc.prefs.os = pref.os_from_string(os_) or { pref.get_host_os() }
 	}
 	doc.generate() ?
 	return doc
