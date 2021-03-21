@@ -9,10 +9,16 @@ $if windows {
 
 #include <gc.h>
 
-#flag -lgc
+#flag linux -lgc
+#flag darwin @VROOT/thirdparty/bdwgc/extra/.libs/gc.o
 
 fn C.GC_MALLOC(n size_t) voidptr
 
 fn C.GC_REALLOC(ptr voidptr, n size_t) voidptr
 
 fn C.GC_FREE(ptr voidptr)
+
+fn C.GC_set_find_leak(int)
+
+// fn C.CHECK_LEAKS()
+fn C.GC_gcollect()
