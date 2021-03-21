@@ -5,6 +5,59 @@ module c
 import strings
 import v.table
 
+fn (mut g Gen) gen_sumtype_equality_fn(left table.Type) string {
+	ptr_typ := g.typ(left).trim('*')
+	if ptr_typ in g.sumtype_fn_definitions {
+		return ptr_typ
+	}
+	g.sumtype_fn_definitions << ptr_typ
+	left_sym := g.table.get_type_symbol(left)
+	info := left_sym.sumtype_info()
+	g.type_definitions.writeln('static bool ${ptr_typ}_sumtype_eq($ptr_typ a, $ptr_typ b); // auto')
+	mut fn_builder := strings.new_builder(512)
+	fn_builder.writeln('static bool ${ptr_typ}_sumtype_eq($ptr_typ a, $ptr_typ b) {')
+
+	fn_builder.writeln('\tif (a._typ != b._typ) { return false; } ')
+	for typ in info.variants {
+		sym := g.table.get_type_symbol(typ)
+		fn_builder.writeln('\tif (a._typ == $typ) {')
+		name := '_$sym.cname'
+		if sym.kind == .string {
+			fn_builder.writeln('\t\tif (string_ne(*a.$name, *b.$name)) {')
+		} else if sym.kind == .sum_type && !typ.is_ptr() {
+			eq_fn := g.gen_sumtype_equality_fn(typ)
+			fn_builder.writeln('\t\tif (!${eq_fn}_sumtype_eq(*a.$name, *b.$name)) {')
+		} else if sym.kind == .struct_ && !typ.is_ptr() {
+			eq_fn := g.gen_struct_equality_fn(typ)
+			fn_builder.writeln('\t\tif (!${eq_fn}_struct_eq(*a.$name, *b.$name)) {')
+		} else if sym.kind == .array && !typ.is_ptr() {
+			eq_fn := g.gen_array_equality_fn(typ)
+			fn_builder.writeln('\t\tif (!${eq_fn}_arr_eq(*a.$name, *b.$name)) {')
+		} else if sym.kind == .array_fixed && !typ.is_ptr() {
+			eq_fn := g.gen_fixed_array_equality_fn(typ)
+			fn_builder.writeln('\t\tif (!${eq_fn}_arr_eq(*a.$name, *b.$name)) {')
+		} else if sym.kind == .map && !typ.is_ptr() {
+			eq_fn := g.gen_map_equality_fn(typ)
+			fn_builder.writeln('\t\tif (!${eq_fn}_map_eq(*a.$name, *b.$name)) {')
+		} else if sym.kind == .alias && !typ.is_ptr() {
+			eq_fn := g.gen_alias_equality_fn(typ)
+			fn_builder.writeln('\t\tif (!${eq_fn}_alias_eq(*a.$name, *b.$name)) {')
+		} else if sym.kind == .function {
+			fn_builder.writeln('\t\tif (*((voidptr*)(*a.$name)) != *((voidptr*)(*b.$name))) {')
+		} else {
+			fn_builder.writeln('\t\tif (*a.$name != *b.$name) {')
+		}
+		fn_builder.writeln('\t\t\treturn false;')
+		fn_builder.writeln('\t\t}')
+		fn_builder.writeln('\t\treturn true;')
+		fn_builder.writeln('\t}')
+	}
+	fn_builder.writeln('\treturn false;')
+	fn_builder.writeln('}')
+	g.auto_fn_definitions << fn_builder.str()
+	return ptr_typ
+}
+
 fn (mut g Gen) gen_struct_equality_fn(left table.Type) string {
 	ptr_typ := g.typ(left).trim('*')
 	if ptr_typ in g.struct_fn_definitions {
@@ -20,6 +73,9 @@ fn (mut g Gen) gen_struct_equality_fn(left table.Type) string {
 		sym := g.table.get_type_symbol(field.typ)
 		if sym.kind == .string {
 			fn_builder.writeln('\tif (string_ne(a.$field.name, b.$field.name)) {')
+		} else if sym.kind == .sum_type && !field.typ.is_ptr() {
+			eq_fn := g.gen_sumtype_equality_fn(field.typ)
+			fn_builder.writeln('\tif (!${eq_fn}_sumtype_eq(a.$field.name, b.$field.name)) {')
 		} else if sym.kind == .struct_ && !field.typ.is_ptr() {
 			eq_fn := g.gen_struct_equality_fn(field.typ)
 			fn_builder.writeln('\tif (!${eq_fn}_struct_eq(a.$field.name, b.$field.name)) {')
@@ -63,6 +119,9 @@ fn (mut g Gen) gen_alias_equality_fn(left table.Type) string {
 	sym := g.table.get_type_symbol(info.parent_type)
 	if sym.kind == .string {
 		fn_builder.writeln('\tif (string_ne(a, b)) {')
+	} else if sym.kind == .sum_type && !left.is_ptr() {
+		eq_fn := g.gen_sumtype_equality_fn(info.parent_type)
+		fn_builder.writeln('\tif (!${eq_fn}_sumtype_eq(a, b)) {')
 	} else if sym.kind == .struct_ && !left.is_ptr() {
 		eq_fn := g.gen_struct_equality_fn(info.parent_type)
 		fn_builder.writeln('\tif (!${eq_fn}_struct_eq(a, b)) {')
@@ -108,6 +167,9 @@ fn (mut g Gen) gen_array_equality_fn(left table.Type) string {
 	// compare every pair of elements of the two arrays
 	if elem_sym.kind == .string {
 		fn_builder.writeln('\t\tif (string_ne(*(($ptr_elem_typ*)((byte*)a.data+(i*a.element_size))), *(($ptr_elem_typ*)((byte*)b.data+(i*b.element_size))))) {')
+	} else if elem_sym.kind == .sum_type && !elem_typ.is_ptr() {
+		eq_fn := g.gen_sumtype_equality_fn(elem_typ)
+		fn_builder.writeln('\t\tif (!${eq_fn}_sumtype_eq((($ptr_elem_typ*)a.data)[i], (($ptr_elem_typ*)b.data)[i])) {')
 	} else if elem_sym.kind == .struct_ && !elem_typ.is_ptr() {
 		eq_fn := g.gen_struct_equality_fn(elem_typ)
 		fn_builder.writeln('\t\tif (!${eq_fn}_struct_eq((($ptr_elem_typ*)a.data)[i], (($ptr_elem_typ*)b.data)[i])) {')
@@ -155,6 +217,9 @@ fn (mut g Gen) gen_fixed_array_equality_fn(left table.Type) string {
 	// compare every pair of elements of the two fixed arrays
 	if elem_sym.kind == .string {
 		fn_builder.writeln('\t\tif (string_ne(a[i], b[i])) {')
+	} else if elem_sym.kind == .sum_type && !elem_typ.is_ptr() {
+		eq_fn := g.gen_sumtype_equality_fn(elem_typ)
+		fn_builder.writeln('\t\tif (!${eq_fn}_sumtype_eq(a[i], b[i])) {')
 	} else if elem_sym.kind == .struct_ && !elem_typ.is_ptr() {
 		eq_fn := g.gen_struct_equality_fn(elem_typ)
 		fn_builder.writeln('\t\tif (!${eq_fn}_struct_eq(a[i], b[i])) {')
@@ -225,6 +290,10 @@ fn (mut g Gen) gen_map_equality_fn(left table.Type) string {
 		.string {
 			fn_builder.writeln('\t\tif (!fast_string_eq(*(string*)map_get_1(&b, k, &(string[]){_SLIT("")}), v)) {')
 		}
+		.sum_type {
+			eq_fn := g.gen_sumtype_equality_fn(value_typ)
+			fn_builder.writeln('\t\tif (!${eq_fn}_sumtype_eq(*($ptr_value_typ*)map_get_1(&b, k, &($ptr_value_typ[]){ 0 }), v)) {')
+		}
 		.struct_ {
 			eq_fn := g.gen_struct_equality_fn(value_typ)
 			fn_builder.writeln('\t\tif (!${eq_fn}_struct_eq(*($ptr_value_typ*)map_get_1(&b, k, &($ptr_value_typ[]){ 0 }), v)) {')
@@ -249,6 +318,7 @@ fn (mut g Gen) gen_map_equality_fn(left table.Type) string {
 			fn_builder.writeln('\t\tif (*(voidptr*)map_get_1(&b, k, &(voidptr[]){ 0 }) != v) {')
 		}
 		else {
+			println(kind)
 			fn_builder.writeln('\t\tif (*($ptr_value_typ*)map_get_1(&b, k, &($ptr_value_typ[]){ 0 }) != v) {')
 		}
 	}
