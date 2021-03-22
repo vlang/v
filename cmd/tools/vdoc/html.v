@@ -356,7 +356,10 @@ fn html_highlight(code string, tb &table.Table) string {
 		} else {
 			tok.lit
 		}
-		return if typ in [.unone, .name] { lit } else { '<span class="token $typ">$lit</span>' }
+		if typ in [.unone, .name] {
+			return lit
+		}
+		return '<span class="token $typ">$lit</span>'
 	}
 	mut s := scanner.new_scanner(code, .parse_comments, &pref.Preferences{})
 	mut tok := s.scan()

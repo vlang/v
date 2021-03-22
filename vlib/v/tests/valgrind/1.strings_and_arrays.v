@@ -318,6 +318,11 @@ fn get_user() User {
 	return user
 }
 
+fn get_user2() User {
+	users := [User{'Peter', 25}, User{'Alice', 21}]
+	return users[0] // has to be cloned, since `users` are going to be freed at the end of the function
+}
+
 fn string_array_get() {
 	s := ['a', 'b', 'c']
 	x := s[0]
@@ -361,7 +366,7 @@ fn main() {
 	free_before_break()
 	// free_map()
 	// loop_map()
-	// free_array_except_returned_element()
+	free_array_except_returned_element()
 	println('end')
 }
 

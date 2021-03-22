@@ -1,6 +1,0 @@
-vlib/v/checker/tests/optional_void_called_as_normal.vv:7:2: error: foo() returns an option, so it should have either an `or {}` block, or `?` at the end
-    5 | fn main() {
-    6 |     // Calling foo() without ? or an or block, should be an error.
-    7 |     foo()
-      |     ~~~~~
-    8 | }

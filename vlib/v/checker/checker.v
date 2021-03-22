@@ -26,7 +26,7 @@ const (
 	valid_comp_if_platforms = ['amd64', 'aarch64', 'x64', 'x32', 'little_endian', 'big_endian']
 	valid_comp_if_other     = ['js', 'debug', 'prod', 'test', 'glibc', 'prealloc', 'no_bounds_checking']
 	array_builtin_methods   = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort',
-		'contains', 'index', 'wait']
+		'contains', 'index', 'wait', 'any', 'all', 'first', 'last', 'pop']
 )
 
 pub struct Checker {
@@ -741,6 +741,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 			else {}
 		}
 	}
+	eq_ne := infix_expr.op in [.eq, .ne]
 	// Single side check
 	// Place these branches according to ops' usage frequency to accelerate.
 	// TODO: First branch includes ops where single side check is not needed, or needed but hasn't been implemented.
@@ -748,8 +749,8 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 	match infix_expr.op {
 		// .eq, .ne, .gt, .lt, .ge, .le, .and, .logical_or, .dot, .key_as, .right_shift {}
 		.eq, .ne {
-			is_mismatch := (left.kind == .alias && right.kind in [.struct_, .array])
-				|| (right.kind == .alias && left.kind in [.struct_, .array])
+			is_mismatch := (left.kind == .alias && right.kind in [.struct_, .array, .sum_type])
+				|| (right.kind == .alias && left.kind in [.struct_, .array, .sum_type])
 			if is_mismatch {
 				c.error('possible type mismatch of compared values of `$infix_expr.op` operation',
 					left_right_pos)
@@ -996,7 +997,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 		// TODO broken !in
 		c.error('string types only have the following operators defined: `==`, `!=`, `<`, `>`, `<=`, `>=`, and `+`',
 			infix_expr.pos)
-	} else if left.kind == .enum_ && right.kind == .enum_ && infix_expr.op !in [.ne, .eq] {
+	} else if left.kind == .enum_ && right.kind == .enum_ && !eq_ne {
 		left_enum := left.info as table.Enum
 		right_enum := right.info as table.Enum
 		if left_enum.is_flag && right_enum.is_flag {
@@ -1011,10 +1012,11 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 				infix_expr.pos)
 		}
 	}
-	// sum types can't have any infix operation except of "is", is is checked before and doesn't reach this
-	if c.table.type_kind(left_type) == .sum_type {
+	// sum types can't have any infix operation except of `is`, `eq`, `ne`.
+	// `is` is checked before and doesn't reach this.
+	if c.table.type_kind(left_type) == .sum_type && !eq_ne {
 		c.error('cannot use operator `$infix_expr.op` with `$left.name`', infix_expr.pos)
-	} else if c.table.type_kind(right_type) == .sum_type {
+	} else if c.table.type_kind(right_type) == .sum_type && !eq_ne {
 		c.error('cannot use operator `$infix_expr.op` with `$right.name`', infix_expr.pos)
 	}
 	// TODO move this to symmetric_check? Right now it would break `return 0` for `fn()?int `
@@ -1318,6 +1320,28 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ table.Type, call_e
 					c.error('type mismatch, should use `fn(a $elem_sym.name) bool {...}`',
 						arg_expr.pos)
 				}
+			} else if arg_expr.kind == .variable {
+				if arg_expr.obj is ast.Var {
+					expr := arg_expr.obj.expr
+					if expr is ast.AnonFn {
+						// copied from above
+						if expr.decl.params.len > 1 {
+							c.error('function needs exactly 1 argument', expr.decl.pos)
+						} else if is_map && (expr.decl.return_type == table.void_type
+							|| expr.decl.params[0].typ != elem_typ) {
+							c.error('type mismatch, should use `fn(a $elem_sym.name) T {...}`',
+								expr.decl.pos)
+						} else if !is_map && (expr.decl.return_type != table.bool_type
+							|| expr.decl.params[0].typ != elem_typ) {
+							c.error('type mismatch, should use `fn(a $elem_sym.name) bool {...}`',
+								expr.decl.pos)
+						}
+						return
+					}
+				}
+				if !is_map && arg_expr.info.typ != table.bool_type {
+					c.error('type mismatch, should be bool', arg_expr.pos)
+				}
 			}
 		}
 		else {}
@@ -1366,37 +1390,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	if left_type_sym.kind == .array && method_name in checker.array_builtin_methods {
 		return c.call_array_builtin_method(mut call_expr, left_type, left_type_sym)
 	} else if left_type_sym.kind == .map && method_name in ['clone', 'keys', 'move'] {
-		mut ret_type := table.void_type
-		match method_name {
-			'clone', 'move' {
-				if method_name[0] == `m` {
-					c.fail_if_immutable(call_expr.left)
-				}
-				if call_expr.left.is_auto_deref_var() {
-					ret_type = left_type.deref()
-				} else {
-					ret_type = left_type
-				}
-			}
-			'keys' {
-				info := left_type_sym.info as table.Map
-				typ := c.table.find_or_register_array(info.key_type)
-				ret_type = table.Type(typ)
-			}
-			else {}
-		}
-		call_expr.receiver_type = left_type.to_ptr()
-		call_expr.return_type = ret_type
-		return call_expr.return_type
-	} else if left_type_sym.kind == .array && method_name in ['first', 'last', 'pop'] {
-		info := left_type_sym.info as table.Array
-		call_expr.return_type = info.elem_type
-		if method_name == 'pop' {
-			call_expr.receiver_type = left_type.to_ptr()
-		} else {
-			call_expr.receiver_type = left_type
-		}
-		return call_expr.return_type
+		return c.call_map_builtin_method(mut call_expr, left_type, left_type_sym)
 	} else if left_type_sym.kind == .array && method_name in ['insert', 'prepend'] {
 		info := left_type_sym.info as table.Array
 		arg_expr := if method_name == 'insert' {
@@ -1507,7 +1501,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			}
 			exp_arg_sym := c.table.get_type_symbol(exp_arg_typ)
 			c.expected_type = exp_arg_typ
-			got_arg_typ := c.expr(arg.expr)
+			got_arg_typ := c.check_expr_opt_call(arg.expr, c.expr(arg.expr))
 			call_expr.args[i].typ = got_arg_typ
 			if method.is_variadic && got_arg_typ.has_flag(.variadic) && call_expr.args.len - 1 > i {
 				c.error('when forwarding a variadic variable, it must be the final argument',
@@ -1642,7 +1636,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			call_expr.return_type = info.func.return_type
 			mut earg_types := []table.Type{}
 			for mut arg in call_expr.args {
-				targ := c.expr(arg.expr)
+				targ := c.check_expr_opt_call(arg.expr, c.expr(arg.expr))
 				arg.typ = targ
 				earg_types << targ
 			}
@@ -1657,6 +1651,32 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	return table.void_type
 }
 
+fn (mut c Checker) call_map_builtin_method(mut call_expr ast.CallExpr, left_type table.Type, left_type_sym table.TypeSymbol) table.Type {
+	method_name := call_expr.name
+	mut ret_type := table.void_type
+	match method_name {
+		'clone', 'move' {
+			if method_name[0] == `m` {
+				c.fail_if_immutable(call_expr.left)
+			}
+			if call_expr.left.is_auto_deref_var() {
+				ret_type = left_type.deref()
+			} else {
+				ret_type = left_type
+			}
+		}
+		'keys' {
+			info := left_type_sym.info as table.Map
+			typ := c.table.find_or_register_array(info.key_type)
+			ret_type = table.Type(typ)
+		}
+		else {}
+	}
+	call_expr.receiver_type = left_type.to_ptr()
+	call_expr.return_type = ret_type
+	return call_expr.return_type
+}
+
 fn (mut c Checker) call_array_builtin_method(mut call_expr ast.CallExpr, left_type table.Type, left_type_sym table.TypeSymbol) table.Type {
 	method_name := call_expr.name
 	mut elem_typ := table.void_type
@@ -1665,7 +1685,7 @@ fn (mut c Checker) call_array_builtin_method(mut call_expr ast.CallExpr, left_ty
 	}
 	array_info := left_type_sym.info as table.Array
 	elem_typ = array_info.elem_type
-	if method_name in ['filter', 'map'] {
+	if method_name in ['filter', 'map', 'any', 'all'] {
 		// position of `it` doesn't matter
 		scope_register_it(mut call_expr.scope, call_expr.pos, elem_typ)
 	} else if method_name == 'sort' {
@@ -1714,7 +1734,7 @@ fn (mut c Checker) call_array_builtin_method(mut call_expr ast.CallExpr, left_ty
 	// map/filter are supposed to have 1 arg only
 	mut arg_type := left_type
 	for arg in call_expr.args {
-		arg_type = c.expr(arg.expr)
+		arg_type = c.check_expr_opt_call(arg.expr, c.expr(arg.expr))
 	}
 	if method_name == 'map' {
 		// check fn
@@ -1728,6 +1748,9 @@ fn (mut c Checker) call_array_builtin_method(mut call_expr ast.CallExpr, left_ty
 	} else if method_name == 'filter' {
 		// check fn
 		c.check_map_and_filter(false, elem_typ, call_expr)
+	} else if method_name in ['any', 'all'] {
+		c.check_map_and_filter(false, elem_typ, call_expr)
+		call_expr.return_type = table.bool_type
 	} else if method_name == 'clone' {
 		// need to return `array_xxx` instead of `array`
 		// in ['clone', 'str'] {
@@ -1743,6 +1766,13 @@ fn (mut c Checker) call_array_builtin_method(mut call_expr ast.CallExpr, left_ty
 		call_expr.return_type = table.bool_type
 	} else if method_name == 'index' {
 		call_expr.return_type = table.int_type
+	} else if method_name in ['first', 'last', 'pop'] {
+		call_expr.return_type = array_info.elem_type
+		if method_name == 'pop' {
+			call_expr.receiver_type = left_type.to_ptr()
+		} else {
+			call_expr.receiver_type = left_type
+		}
 	}
 	return call_expr.return_type
 }
@@ -1996,7 +2026,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			}
 		}
 		c.expected_type = arg.typ
-		typ := c.expr(call_arg.expr)
+		typ := c.check_expr_opt_call(call_arg.expr, c.expr(call_arg.expr))
 		call_expr.args[i].typ = typ
 		typ_sym := c.table.get_type_symbol(typ)
 		arg_typ_sym := c.table.get_type_symbol(arg.typ)
@@ -2871,15 +2901,6 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					&& left_sym.kind !in [.byteptr, .charptr, .struct_, .alias] {
 					c.error('invalid right operand: $left_sym.name $assign_stmt.op $right_sym.name',
 						right.position())
-				} else if right is ast.IntegerLiteral {
-					if right.val == '1' {
-						op := if assign_stmt.op == .plus_assign {
-							token.Kind.inc
-						} else {
-							token.Kind.dec
-						}
-						c.error('use `$op` instead of `$assign_stmt.op 1`', assign_stmt.pos)
-					}
 				}
 			}
 			.mult_assign, .div_assign {
@@ -3106,7 +3127,7 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 		// println('ex $c.expected_type')
 		// }
 		for i, expr in array_init.exprs {
-			typ := c.expr(expr)
+			typ := c.check_expr_opt_call(expr, c.expr(expr))
 			array_init.expr_types << typ
 			// The first element's type
 			if expecting_interface_array {
@@ -5935,7 +5956,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) table.Type {
 	info := sym.info as table.Struct
 	fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, sym.name)
 	mut sub_structs := map[int]ast.SqlExpr{}
-	for f in fields.filter(c.table.types[int(it.typ)].kind == .struct_) {
+	for f in fields.filter(c.table.type_symbols[int(it.typ)].kind == .struct_) {
 		mut n := ast.SqlExpr{
 			pos: node.pos
 			has_where: true
@@ -6011,7 +6032,7 @@ fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) table.Type {
 	info := table_sym.info as table.Struct
 	fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, table_sym.name)
 	mut sub_structs := map[int]ast.SqlStmt{}
-	for f in fields.filter(c.table.types[int(it.typ)].kind == .struct_) {
+	for f in fields.filter(c.table.type_symbols[int(it.typ)].kind == .struct_) {
 		mut n := ast.SqlStmt{
 			pos: node.pos
 			db_expr: node.db_expr
@@ -6042,7 +6063,7 @@ fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) table.Type {
 
 fn (mut c Checker) fetch_and_verify_orm_fields(info table.Struct, pos token.Position, table_name string) []table.Field {
 	fields := info.fields.filter((it.typ in [table.string_type, table.int_type, table.bool_type]
-		|| c.table.types[int(it.typ)].kind == .struct_) && !it.attrs.contains('skip'))
+		|| c.table.type_symbols[int(it.typ)].kind == .struct_) && !it.attrs.contains('skip'))
 	if fields.len == 0 {
 		c.error('V orm: select: empty fields in `$table_name`', pos)
 		return []table.Field{}

@@ -12,6 +12,7 @@ import os
 
 #include <termios.h>
 #include <sys/ioctl.h>
+
 fn C.tcgetattr(fd int, termios_p &Termios) int
 
 fn C.tcsetattr(fd int, optional_actions int, termios_p &Termios) int
@@ -172,19 +173,36 @@ pub fn read_line(prompt string) ?string {
 // analyse returns an `Action` based on the type of input byte given in `c`.
 fn (r Readline) analyse(c int) Action {
 	match byte(c) {
-		`\0`, 0x3, 0x4, 255 { return .eof } // NUL, End of Text, End of Transmission
-		`\n`, `\r` { return .commit_line }
-		`\f` { return .clear_screen } // CTRL + L
-		`\b`, 127 { return .delete_left } // BS, DEL
-		27 { return r.analyse_control() } // ESC
-		1 { return .move_cursor_begining } // ^A
-		5 { return .move_cursor_end } // ^E
-		26 { return .suspend } // CTRL + Z, SUB
-		else { return if c >= ` ` {
-				Action.insert_character
-			} else {
-				Action.nothing
-			} }
+		`\0`, 0x3, 0x4, 255 {
+			return .eof
+		} // NUL, End of Text, End of Transmission
+		`\n`, `\r` {
+			return .commit_line
+		}
+		`\f` {
+			return .clear_screen
+		} // CTRL + L
+		`\b`, 127 {
+			return .delete_left
+		} // BS, DEL
+		27 {
+			return r.analyse_control()
+		} // ESC
+		1 {
+			return .move_cursor_begining
+		} // ^A
+		5 {
+			return .move_cursor_end
+		} // ^E
+		26 {
+			return .suspend
+		} // CTRL + Z, SUB
+		else {
+			if c >= ` ` {
+				return Action.insert_character
+			}
+			return Action.nothing
+		}
 	}
 }
 
@@ -318,8 +336,11 @@ fn calculate_screen_position(x_in int, y_in int, screen_columns int, char_count 
 	out[0] = x
 	out[1] = y
 	for chars_remaining := char_count; chars_remaining > 0; {
-		chars_this_row := if (x + chars_remaining) < screen_columns { chars_remaining } else { screen_columns -
-				x }
+		chars_this_row := if (x + chars_remaining) < screen_columns {
+			chars_remaining
+		} else {
+			screen_columns - x
+		}
 		out[0] = x + chars_this_row
 		out[1] = y
 		chars_remaining -= chars_this_row
@@ -382,8 +403,8 @@ fn (mut r Readline) insert_character(c int) {
 	if !r.overwrite || r.cursor == r.current.len {
 		r.current = r.current.left(r.cursor).ustring().add(utf32_to_str(u32(c)).ustring()).add(r.current.right(r.cursor).ustring())
 	} else {
-		r.current = r.current.left(r.cursor).ustring().add(utf32_to_str(u32(c)).ustring()).add(r.current.right(r.cursor +
-			1).ustring())
+		r.current = r.current.left(r.cursor).ustring().add(utf32_to_str(u32(c)).ustring()).add(r.current.right(
+			r.cursor + 1).ustring())
 	}
 	r.cursor++
 	// Refresh the line to add the new character
@@ -445,6 +466,7 @@ fn (mut r Readline) move_cursor_begining() {
 	r.cursor = 0
 	r.refresh_line()
 }
+
 // move_cursor_end moves the cursor to the end of the current line.
 fn (mut r Readline) move_cursor_end() {
 	r.cursor = r.current.len

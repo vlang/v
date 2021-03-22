@@ -329,6 +329,8 @@ fn test_replace_each() {
 		'b',
 	])
 	assert y == 'bbbb'
+	s2 := 'hello_world hello'
+	assert s2.replace_each(['hello_world', 'aaa', 'hello', 'bbb']) == 'aaa bbb'
 }
 
 fn test_itoa() {

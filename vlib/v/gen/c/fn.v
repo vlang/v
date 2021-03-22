@@ -535,6 +535,14 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				g.gen_array_wait(node)
 				return
 			}
+			'any' {
+				g.gen_array_any(node)
+				return
+			}
+			'all' {
+				g.gen_array_all(node)
+				return
+			}
 			else {}
 		}
 	}
@@ -1010,6 +1018,10 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 					g.write('/*af arg*/' + name)
 				}
 			} else {
+				if node.generic_types.len > 0 && arg.expr.is_auto_deref_var() && !arg.is_mut
+					&& !expected_types[i].is_ptr() {
+					g.write('*')
+				}
 				g.ref_or_deref_arg(arg, expected_types[i], node.language)
 			}
 		} else {

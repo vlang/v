@@ -7,11 +7,11 @@ import v.table
 //
 // generic struct instantiations to concrete types
 pub fn (b &Builder) generic_struct_insts_to_concrete() {
-	for idx, _ in b.table.types {
-		mut typ := unsafe { &b.table.types[idx] }
+	for idx, _ in b.table.type_symbols {
+		mut typ := unsafe { &b.table.type_symbols[idx] }
 		if typ.kind == .generic_struct_inst {
 			info := typ.info as table.GenericStructInst
-			parent := b.table.types[info.parent_idx]
+			parent := b.table.type_symbols[info.parent_idx]
 			if parent.kind == .placeholder {
 				typ.kind = .placeholder
 				continue

@@ -25,9 +25,15 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 	mut or_kind := ast.OrKind.absent
 	if fn_name == 'json.decode' {
 		p.expecting_type = true // Makes name_expr() parse the type `User` in `json.decode(User, txt)`
-		p.expr_mod = ''
 		or_kind = .block
 	}
+	//
+	old_expr_mod := p.expr_mod
+	defer {
+		p.expr_mod = old_expr_mod
+	}
+	p.expr_mod = ''
+	//
 	mut generic_types := []table.Type{}
 	mut generic_list_pos := p.tok.position()
 	if p.tok.kind == .lt {
@@ -122,21 +128,21 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 			p.next()
 			array_decompose = true
 		}
-		mut e := ast.Expr{}
+		mut expr := ast.Expr{}
 		if p.tok.kind == .name && p.peek_tok.kind == .colon {
 			// `foo(key:val, key2:val2)`
-			e = p.struct_init(true) // short_syntax:true
+			expr = p.struct_init(true) // short_syntax:true
 		} else {
-			e = p.expr(0)
+			expr = p.expr(0)
 		}
 		if array_decompose {
-			e = ast.ArrayDecompose{
-				expr: e
+			expr = ast.ArrayDecompose{
+				expr: expr
 				pos: p.tok.position()
 			}
 		}
-		if mut e is ast.StructInit {
-			e.pre_comments << comments
+		if mut expr is ast.StructInit {
+			expr.pre_comments << comments
 			comments = []ast.Comment{}
 		}
 		pos := arg_start_pos.extend(p.prev_tok.position())
@@ -144,7 +150,7 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 		args << ast.CallArg{
 			is_mut: is_mut
 			share: table.sharetype_from_flags(is_shared, is_atomic)
-			expr: e
+			expr: expr
 			comments: comments
 			pos: pos
 		}
@@ -637,7 +643,7 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 	} else {
 		p.tok.lit
 	}
-	types_only := p.tok.kind in [.amp, .ellipsis, .key_fn]
+	types_only := p.tok.kind in [.amp, .ellipsis, .key_fn, .lsbr]
 		|| (p.peek_tok.kind == .comma && p.table.known_type(argname))
 		|| p.peek_tok.kind == .dot || p.peek_tok.kind == .rpar
 	// TODO copy pasta, merge 2 branches

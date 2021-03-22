@@ -116,7 +116,7 @@ pub fn (mut g Gen) generate_macho_footer() {
 	// Create the binary
 	mut f := os.create(g.out_name) or { panic(err) }
 	os.chmod(g.out_name, 0o775) // make it an executable
-	unsafe { f.write_bytes(g.buf.data, g.buf.len) }
+	unsafe { f.write_ptr(g.buf.data, g.buf.len) }
 	f.close()
 	// println('\narm64 mach-o binary has been successfully generated')
 }

@@ -125,7 +125,7 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 				idx := i - node.args.len
 				if m.params[i].typ.is_int() || m.params[i].typ.idx() == table.bool_type_idx {
 					// Gets the type name and cast the string to the type with the string_<type> function
-					type_name := g.table.types[int(m.params[i].typ)].str()
+					type_name := g.table.type_symbols[int(m.params[i].typ)].str()
 					g.write('string_${type_name}(((string*)${node.args[node.args.len - 1]}.data) [$idx])')
 				} else {
 					g.write('((string*)${node.args[node.args.len - 1]}.data) [$idx] ')
@@ -249,11 +249,7 @@ fn (mut g Gen) comp_if(node ast.IfExpr) {
 		}
 		g.defer_ifdef = ''
 	}
-	if node.is_expr {
-		g.write('#endif')
-	} else {
-		g.writeln('#endif')
-	}
+	g.writeln('#endif')
 }
 
 fn (mut g Gen) comp_if_cond(cond ast.Expr) bool {
@@ -537,6 +533,9 @@ fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) ?string 
 			return '__cplusplus'
 		}
 		// other:
+		'gcboehm' {
+			return '_VGCBOEHM'
+		}
 		'debug' {
 			return '_VDEBUG'
 		}

@@ -454,9 +454,10 @@ void _vcleanup();
 	}
 #endif
 
+void v_free(voidptr ptr);
 voidptr memdup(voidptr src, int sz);
 static voidptr memfreedup(voidptr ptr, voidptr src, int sz) {
-	free(ptr);
+	v_free(ptr);
 	return memdup(src, sz);
 }
 '
@@ -483,7 +484,7 @@ typedef struct sync__Channel* chan;
 
 #ifndef __cplusplus
 	#ifndef bool
-		typedef int bool;
+		typedef byte bool;
 		#define true 1
 		#define false 0
 	#endif

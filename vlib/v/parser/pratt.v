@@ -192,7 +192,9 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 					pos: pos
 				}
 			} else {
-				p.register_used_import(p.tok.lit)
+				if p.tok.kind == .name {
+					p.register_used_import(p.tok.lit)
+				}
 				save_expr_mod := p.expr_mod
 				p.expr_mod = ''
 				sizeof_type := p.parse_type()

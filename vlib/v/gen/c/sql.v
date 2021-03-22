@@ -135,7 +135,7 @@ fn (mut g Gen) sqlite3_stmt(node ast.SqlStmt, typ SqlType) {
 			x := '${node.object_var_name}.$field.name'
 			if field.typ == table.string_type {
 				g.writeln('sqlite3_bind_text($g.sql_stmt_name, ${i + 0}, ${x}.str, ${x}.len, 0);')
-			} else if g.table.types[int(field.typ)].kind == .struct_ {
+			} else if g.table.type_symbols[int(field.typ)].kind == .struct_ {
 				// insert again
 				expr := node.sub_structs[int(field.typ)]
 				tmp_sql_stmt_name := g.sql_stmt_name
@@ -300,7 +300,7 @@ fn (mut g Gen) sqlite3_select_expr(node ast.SqlExpr, sub bool, line string, sql_
 				g.writeln('if ($string_data != NULL) {')
 				g.writeln('\t${tmp}.$field.name = tos_clone($string_data);')
 				g.writeln('}')
-			} else if g.table.types[int(field.typ)].kind == .struct_ {
+			} else if g.table.type_symbols[int(field.typ)].kind == .struct_ {
 				id_name := g.new_tmp_var()
 				g.writeln('//parse struct start')
 				g.writeln('int $id_name = ${func}($g.sql_stmt_name, $i);')

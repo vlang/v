@@ -38,7 +38,7 @@ fn test_open_file() {
 		os.File{}
 	}
 	mut file := os.open_file(filename, 'w+', 0o666) or { panic(err) }
-	file.write_str(hello) or { panic(err) }
+	file.write_string(hello) or { panic(err) }
 	file.close()
 	assert hello.len == os.file_size(filename)
 	read_hello := os.read_file(filename) or { panic('error reading file $filename') }
@@ -55,7 +55,7 @@ fn test_open_file_binary() {
 	}
 	mut file := os.open_file(filename, 'wb+', 0o666) or { panic(err) }
 	bytes := hello.bytes()
-	unsafe { file.write_bytes(bytes.data, bytes.len) }
+	unsafe { file.write_ptr(bytes.data, bytes.len) }
 	file.close()
 	assert hello.len == os.file_size(filename)
 	read_hello := os.read_bytes(filename) or { panic('error reading file $filename') }
@@ -87,7 +87,7 @@ fn test_create_file() {
 	filename := './test1.txt'
 	hello := 'hello world!'
 	mut f := os.create(filename) or { panic(err) }
-	f.write_str(hello) or { panic(err) }
+	f.write_string(hello) or { panic(err) }
 	f.close()
 	assert hello.len == os.file_size(filename)
 	os.rm(filename) or { panic(err) }
@@ -144,7 +144,7 @@ fn test_write_and_read_bytes() {
 	}
 	// We use the standard write_bytes function to write the payload and
 	// compare the length of the array with the file size (have to match).
-	unsafe { file_write.write_bytes(payload.data, 5) }
+	unsafe { file_write.write_ptr(payload.data, 5) }
 	file_write.close()
 	assert payload.len == os.file_size(file_name)
 	mut file_read := os.open(os.real_path(file_name)) or {
@@ -228,26 +228,32 @@ fn test_mv() {
 	// Move file with no extension to dir
 	os.mv(tfile1, tdir1) or { panic(err) }
 	mut expected := os.join_path(tdir1, 'file')
-	assert os.exists(expected) && !is_dir(expected) == true
+	assert os.exists(expected)
+	assert !is_dir(expected)
 	// Move dir with contents to other dir
 	os.mv(tdir1, tdir2) or { panic(err) }
 	expected = os.join_path(tdir2, 'dir')
-	assert os.exists(expected) && is_dir(expected) == true
+	assert os.exists(expected)
+	assert is_dir(expected)
 	expected = os.join_path(tdir2, 'dir', 'file')
-	assert os.exists(expected) && !is_dir(expected) == true
+	assert os.exists(expected)
+	assert !is_dir(expected)
 	// Move dir with contents to other dir (by renaming)
 	os.mv(os.join_path(tdir2, 'dir'), tdir3) or { panic(err) }
 	expected = tdir3
-	assert os.exists(expected) && is_dir(expected) == true
-	assert os.is_dir_empty(tdir2) == true
+	assert os.exists(expected)
+	assert is_dir(expected)
+	assert os.is_dir_empty(tdir2)
 	// Move file with extension to dir
 	os.mv(tfile2, tdir2) or { panic(err) }
 	expected = os.join_path(tdir2, 'file.test')
-	assert os.exists(expected) && !is_dir(expected) == true
+	assert os.exists(expected)
+	assert !is_dir(expected)
 	// Move file to dir (by renaming)
 	os.mv(os.join_path(tdir2, 'file.test'), tfile3) or { panic(err) }
 	expected = tfile3
-	assert os.exists(expected) && !is_dir(expected) == true
+	assert os.exists(expected)
+	assert !is_dir(expected)
 }
 
 fn test_cp_all() {
@@ -313,7 +319,7 @@ fn test_make_symlink_check_is_link_and_remove_symlink() {
 	folder_contents := os.ls(folder) or { panic(err) }
 	assert folder_contents.len == 0
 	os.system('ln -s $folder $symlink')
-	assert os.is_link(symlink) == true
+	assert os.is_link(symlink)
 	os.rm(symlink) or { panic(err) }
 	os.rm(folder) or { panic(err) }
 	folder_exists := os.is_dir(folder)
@@ -384,10 +390,10 @@ fn test_ext() {
 }
 
 fn test_is_abs() {
-	assert os.is_abs_path('/home/user') == true
+	assert os.is_abs_path('/home/user')
 	assert os.is_abs_path('v/vlib') == false
 	$if windows {
-		assert os.is_abs_path('C:\\Windows\\') == true
+		assert os.is_abs_path('C:\\Windows\\')
 	}
 }
 
@@ -562,8 +568,8 @@ fn test_posix_set_bit() {
 fn test_exists_in_system_path() {
 	assert os.exists_in_system_path('') == false
 	$if windows {
-		assert os.exists_in_system_path('cmd.exe') == true
+		assert os.exists_in_system_path('cmd.exe')
 		return
 	}
-	assert os.exists_in_system_path('ls') == true
+	assert os.exists_in_system_path('ls')
 }

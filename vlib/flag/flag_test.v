@@ -133,11 +133,21 @@ fn test_finalize_returns_none_flag_arguments_ordered() {
 	}
 }
 
-fn test_finalize_returns_error_for_unknown_flags() {
+fn test_finalize_returns_error_for_unknown_flags_long() {
 	mut fp := flag.new_flag_parser(['--known', '--unknown'])
 	fp.bool('known', 0, false, '')
 	finalized := fp.finalize() or {
-		assert err.msg == "Unknown argument 'unknown'"
+		assert err.msg == 'Unknown flag `--unknown`'
+		return
+	}
+	assert finalized.len < 0 // expect error to be returned
+}
+
+fn test_finalize_returns_error_for_unknown_flags_short() {
+	mut fp := flag.new_flag_parser(['--known', '-x'])
+	fp.bool('known', 0, false, '')
+	finalized := fp.finalize() or {
+		assert err.msg == 'Unknown flag `-x`'
 		return
 	}
 	assert finalized.len < 0 // expect error to be returned

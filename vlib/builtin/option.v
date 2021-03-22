@@ -16,6 +16,14 @@ pub:
 	code int
 }
 
+pub fn (err IError) str() string {
+	return match err {
+		None__ { 'none' }
+		Error { err.msg }
+		else { '$err.type_name(): $err.msg' }
+	}
+}
+
 const none__ = IError(&None__{})
 
 struct None__ {
@@ -83,6 +91,6 @@ pub fn (ie &IError) free() {
 	unsafe {
 		ie.msg.free()
 		cie := &C.IError(ie)
-		C.free(cie._object)
+		free(cie._object)
 	}
 }
