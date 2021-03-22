@@ -525,6 +525,14 @@ pub fn (t &TypeSymbol) struct_info() Struct {
 	}
 }
 
+[inline]
+pub fn (t &TypeSymbol) sumtype_info() SumType {
+	match mut t.info {
+		SumType { return t.info }
+		else { panic('TypeSymbol.sumtype_info(): no sumtype info for type: $t.name') }
+	}
+}
+
 /*
 pub fn (t TypeSymbol) str() string {
 	return t.name

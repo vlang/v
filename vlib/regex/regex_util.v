@@ -8,6 +8,7 @@ that can be found in the LICENSE file.
 
 */
 module regex
+import strings
 
 /******************************************************************************
 *
@@ -71,7 +72,7 @@ pub fn (re RE) get_group_by_id(in_txt string, group_id int) string {
 
 // get_group_by_id get a group boundaries by its id
 pub fn (re RE) get_group_bounds_by_id(group_id int) (int,int) {
-	if group_id < (re.groups.len >> 1) {
+	if group_id < re.group_count {
 		index := group_id << 1
 		return re.groups[index], re.groups[index + 1]
 	}
@@ -146,7 +147,7 @@ pub fn (mut re RE) match_string(in_txt string) (int,int) {
 *
 ******************************************************************************/
 /*
-// find internal implementation
+// find internal implementation HERE for reference do not remove!!
 [direct_array_access]
 fn (mut re RE) find_imp(in_txt string) (int,int) {
 	old_flag := re.flag
@@ -169,6 +170,9 @@ fn (mut re RE) find_imp(in_txt string) (int,int) {
 // find try to find the first match in the input string
 [direct_array_access]
 pub fn (mut re RE) find(in_txt string) (int,int) {
+	//old_flag := re.flag
+	//re.flag |= f_src  // enable search mode
+
 	mut i := 0
 	for i < in_txt.len {
 		//--- speed references ---
@@ -183,18 +187,59 @@ pub fn (mut re RE) find(in_txt string) (int,int) {
 		//------------------------
 		if s >= 0 && e > s {
 			//println("find match in: ${i+s},${i+e} [${in_txt[i+s..i+e]}]")
+			//re.flag = old_flag
 			return i+s, i+e
 		} else {
 			i++
 		}
 
 	}
+	//re.flag = old_flag
+	return -1, -1
+}
+
+// find try to find the first match in the input string strarting from start index
+[direct_array_access]
+pub fn (mut re RE) find_from(in_txt string, start int) (int,int) {
+	old_flag := re.flag
+	re.flag |= f_src  // enable search mode
+
+	mut i := start
+	if i < 0 {
+		return -1, -1
+	}
+	for i < in_txt.len {
+		//--- speed references ---
+				
+		mut s := -1
+		mut e := -1
+		
+		unsafe {
+			tmp_str := tos(in_txt.str+i, in_txt.len-i)
+			s,e = re.match_string(tmp_str)
+		}
+		//------------------------
+		//s,e = re.find_imp(in_txt[i..])
+		//------------------------
+		if s >= 0 && e > s {
+			//println("find match in: ${i+s},${i+e} [${in_txt[i+s..i+e]}]")
+			re.flag = old_flag
+			return i+s, i+e
+		} else {
+			i++
+		}
+
+	}
+	re.flag = old_flag
 	return -1, -1
 }
 
 // find_all find all the non overlapping occurrences of the match pattern
 [direct_array_access]
 pub fn (mut re RE) find_all(in_txt string) []int {
+	//old_flag := re.flag
+	//re.flag |= f_src  // enable search mode
+
 	mut i := 0
 	mut res := []int{}
 	mut ls := -1
@@ -222,6 +267,7 @@ pub fn (mut re RE) find_all(in_txt string) []int {
 		}
 
 	}
+	//re.flag = old_flag
 	return res
 }
 
@@ -295,34 +341,40 @@ pub type FnReplace = fn (re RE, in_txt string, start int, end int) string
 // replace_by_fn return a string where the matches are replaced with the string from the repl_fn callback function
 pub fn (mut re RE) replace_by_fn(in_txt string, repl_fn FnReplace) string {
 	mut i   := 0
-	mut res := ""
-	mut ls  := -1
-	mut s1  := 0
+	mut res := strings.new_builder(in_txt.len)
+	mut last_end    := 0
 
 	for i < in_txt.len {
-		s,e := re.find(in_txt[i..])
-		if s >= 0 && e > s && i+s > ls {
-			//println("find match in: ${i+s},${i+e} [${in_txt[i+s..i+e]}] ls:$ls")
-			start := i + s
-			end   := i + e
-			// update grups index diplacement
-			mut gi := 0
-			for gi < re.groups.len {
-				re.groups[gi] += i
-				gi++
+		//println("Find Start. $i [${in_txt[i..]}]")
+		s, e := re.find_from(in_txt,i)
+		//println("Find End.")
+		if s >= 0 && e > s  {
+			//println("find match in: ${s},${e} [${in_txt[s..e]}]")
+			
+			if last_end < s {
+				res.write_string(in_txt[last_end..s])
 			}
-			repl  := repl_fn(re, in_txt, start, end)
 
-			res += in_txt[s1..start] + repl
-			s1 = end
-
-			ls = i + s
-			i  = i + e
-			continue
+			for g_i in 0..re.group_count {
+				re.groups[g_i << 1      ] += i
+				re.groups[(g_i << 1) + 1] += i
+			}
+			
+			repl := repl_fn(re, in_txt, s, e)
+			//println("repl res: $repl")
+			res.write_string(repl)
+			//res.write_string("[[${in_txt[s..e]}]]")
+			
+			last_end = e
+			i = e
 		} else {
-			i++
+			break
+			//i++
 		}
+		//println(i)
 	}
-	res += in_txt[s1..]
-	return res
+	if last_end >= 0 && last_end < in_txt.len {
+		res.write_string(in_txt[last_end..])
+	}
+	return res.str()
 }

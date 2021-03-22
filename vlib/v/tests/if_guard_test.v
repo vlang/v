@@ -59,3 +59,22 @@ fn test_chan_pop() {
 	assert res == [6.75, -3.25, -37.5]
 }
 
+struct Thing {
+	name string
+}
+
+fn test_return_if_guard() {
+	ret := option_check('zoo')
+	println(ret)
+	assert ret == 'zs'
+}
+
+fn option_check(name string) string {
+	return if thing := find_thing_by_name(name) { thing.name } else { 'safename' }
+}
+
+fn find_thing_by_name(name string) ?&Thing {
+	return &Thing{
+		name: 'zs'
+	}
+}

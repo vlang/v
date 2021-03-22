@@ -218,17 +218,36 @@ pub fn (mut f File) write_to(pos int, buf []byte) ?int {
 // write_bytes writes `size` bytes to the file, starting from the address in `data`.
 // NB: write_bytes is unsafe and should be used carefully, since if you pass invalid
 // pointers to it, it will cause your programs to segfault.
+[deprecated: 'use File.write_ptr()']
 [unsafe]
 pub fn (mut f File) write_bytes(data voidptr, size int) int {
-	return int(C.fwrite(data, 1, size, f.cfile))
+	return unsafe { f.write_ptr(data, size) }
 }
 
 // write_bytes_at writes `size` bytes to the file, starting from the address in `data`,
 // at byte offset `pos`, counting from the start of the file (pos 0).
 // NB: write_bytes_at is unsafe and should be used carefully, since if you pass invalid
 // pointers to it, it will cause your programs to segfault.
+[deprecated: 'use File.write_ptr_at() instead']
 [unsafe]
 pub fn (mut f File) write_bytes_at(data voidptr, size int, pos int) int {
+	return unsafe { f.write_ptr_at(data, size, pos) }
+}
+
+// write_ptr writes `size` bytes to the file, starting from the address in `data`.
+// NB: write_ptr is unsafe and should be used carefully, since if you pass invalid
+// pointers to it, it will cause your programs to segfault.
+[unsafe]
+pub fn (mut f File) write_ptr(data voidptr, size int) int {
+	return int(C.fwrite(data, 1, size, f.cfile))
+}
+
+// write_ptr_at writes `size` bytes to the file, starting from the address in `data`,
+// at byte offset `pos`, counting from the start of the file (pos 0).
+// NB: write_ptr_at is unsafe and should be used carefully, since if you pass invalid
+// pointers to it, it will cause your programs to segfault.
+[unsafe]
+pub fn (mut f File) write_ptr_at(data voidptr, size int, pos int) int {
 	C.fseek(f.cfile, pos, C.SEEK_SET)
 	res := int(C.fwrite(data, 1, size, f.cfile))
 	C.fseek(f.cfile, 0, C.SEEK_END)
@@ -287,7 +306,13 @@ pub fn (f &File) read(mut buf []byte) ?int {
 }
 
 // read_at reads `buf.len` bytes starting at file byte offset `pos`, in `buf`.
+[deprecated: 'use File.read_from() instead']
 pub fn (f &File) read_at(pos int, mut buf []byte) ?int {
+	return f.read_from(pos, mut buf)
+}
+
+// read_from implements the RandomReader interface.
+pub fn (f &File) read_from(pos int, mut buf []byte) ?int {
 	if buf.len == 0 {
 		return 0
 	}
@@ -311,11 +336,9 @@ pub fn (mut f File) flush() {
 
 // write_str writes the bytes of a string into a file,
 // *including* the terminating 0 byte.
+[deprecated: 'use File.write_string() instead']
 pub fn (mut f File) write_str(s string) ? {
-	if !f.is_opened {
-		return error('file is closed')
-	}
-	f.write(s.bytes()) ?
+	f.write_string(s) or { return err }
 }
 
 // read_struct reads a single struct of type `T`

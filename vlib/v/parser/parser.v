@@ -69,7 +69,7 @@ mut:
 	label_names         []string
 	in_generic_params   bool // indicates if parsing between `<` and `>` of a method/function
 	name_error          bool // indicates if the token is not a name or the name is on another line
-	n_asm               int  // controls assembly labels 
+	n_asm               int  // controls assembly labels
 	inside_asm_template bool
 	inside_asm          bool
 }
@@ -877,7 +877,7 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 		parent: 0 // you shouldn't be able to reference other variables in assembly blocks
 		detached_from_parent: true
 		start_pos: p.tok.pos
-		objects: ast.all_registers(mut p.table, arch) // 
+		objects: ast.all_registers(mut p.table, arch) //
 	}
 
 	mut local_labels := []string{}
@@ -1694,7 +1694,7 @@ fn (p &Parser) is_typename(t token.Token) bool {
 // heuristics to detect `func<T>()` from `var < expr`
 // 1. `f<[]` is generic(e.g. `f<[]int>`) because `var < []` is invalid
 // 2. `f<map[` is generic(e.g. `f<map[string]string>)
-// 3. `f<foo>` is generic because `v1 < foo > v2` is invalid syntax
+// 3. `f<foo>` and `f<foo<` are generic because `v1 < foo > v2` and `v1 < foo < v2` are invalid syntax
 // 4. `f<Foo,` is generic when Foo is typename.
 //	   otherwise it is not generic because it may be multi-value (e.g. `return f < foo, 0`).
 // 5. `f<mod.Foo>` is same as case 3
@@ -1727,7 +1727,7 @@ fn (p &Parser) is_generic_call() bool {
 			return true
 		}
 		return match kind3 {
-			.gt { true } // case 3
+			.gt, .lt { true } // case 3
 			.comma { p.is_typename(tok2) } // case 4
 			// case 5 and 6
 			.dot { kind4 == .name && (kind5 == .gt || (kind5 == .comma && p.is_typename(tok4))) }

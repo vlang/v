@@ -69,6 +69,20 @@ see also `v help build`.
       and unsafe{free(x)} calls manually in this mode).
       Some short lived applications, like compilers and other CLI tools are
       more performant without autofree.
+      
+   -gc <mode>
+      Use and link an optional garbage collector. 
+      Only `-gc boehm` is supported currently. You need to install a
+      `libgc-dev` package first, or install it manually from source: 
+          https://github.com/ivmai/bdwgc
+          
+      Note, this option is complementary to -autofree. The Boehm garbage
+      collector is conservative, and it may make your program significantly
+      slower if it does many small allocations in a loop. This option
+      is intended *mainly* for reducing the memory usage of programs, that
+      process large amounts of text in *batch mode* on low/limited memory 
+      environments like small VPSes, and for which a few ms of garbage
+      collection pauses from time to time *do not matter much*.
 
 # Miscellaneous:
    -printfn <fn_name>

@@ -75,7 +75,7 @@ fn write_echo(mut ws websocket.Client) ? {
 	message := 'echo this'
 	for i := 0; i <= 10; i++ {
 		// Server will send pings every 30 seconds
-		ws.write_str(message) or { println('panicing writing $err') }
+		ws.write_string(message) or { println('panicing writing $err') }
 		time.sleep(100 * time.millisecond)
 	}
 	ws.close(1000, 'normal') or { println('panicing $err') }

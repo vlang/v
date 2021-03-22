@@ -1262,7 +1262,10 @@ fn (mut s Scanner) ident_char() string {
 		}
 	}
 	// Escapes a `'` character
-	return if c == "'" { '\\' + c } else { c }
+	if c == "'" {
+		return '\\' + c
+	}
+	return c
 }
 
 [inline]

@@ -17,6 +17,11 @@ pub enum BuildMode {
 	build_module
 }
 
+pub enum GarbageCollectionMode {
+	no_gc
+	boehm
+}
+
 pub enum OutputMode {
 	stdout
 	silent
@@ -153,6 +158,7 @@ pub mut:
 	build_options       []string // list of options, that should be passed down to `build-module`, if needed for -usecache
 	cache_manager       vcache.CacheManager
 	is_help             bool // -h, -help or --help was passed
+	gc_mode             GarbageCollectionMode = .no_gc // .no_gc, .boehm
 	// checker settings:
 	checker_match_exhaustive_cutoff_limit int = 10
 }
@@ -177,7 +183,7 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 				target_arch := cmdline.option(current_args, '-arch', '')
 				i++
 				target_arch_kind := arch_from_string(target_arch) or {
-					eprintln('unknown architercture target `$target_arch`')
+					eprintln('unknown architecture target `$target_arch`')
 					exit(1)
 				}
 				res.arch = target_arch_kind
@@ -213,6 +219,23 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			}
 			'-silent' {
 				res.output_mode = .silent
+			}
+			'-gc' {
+				gc_mode := cmdline.option(current_args, '-gc', '')
+				match gc_mode {
+					'' {
+						res.gc_mode = .no_gc
+					}
+					'boehm' {
+						res.gc_mode = .boehm
+						parse_define(mut res, 'gcboehm')
+					}
+					else {
+						eprintln('unknown garbage collection mode, only `-gc boehm` is supported')
+						exit(1)
+					}
+				}
+				i++
 			}
 			'-g' {
 				res.is_debug = true

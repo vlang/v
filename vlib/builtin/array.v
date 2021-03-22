@@ -482,7 +482,18 @@ pub fn (a &array) free() {
 	// if a.is_slice {
 	// return
 	// }
-	C.free(a.data)
+	unsafe { free(a.data) }
+}
+
+[unsafe]
+pub fn (mut a []string) free() {
+	$if prealloc {
+		return
+	}
+	for s in a {
+		unsafe { s.free() }
+	}
+	unsafe { free(a.data) }
 }
 
 // str returns a string representation of the array of strings

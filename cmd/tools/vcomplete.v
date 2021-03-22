@@ -315,11 +315,10 @@ Register-ArgumentCompleter -Native -CommandName v -ScriptBlock {
 // append_separator_if_dir is a utility function.that returns the input `path` appended an
 // OS dependant path separator if the `path` is a directory.
 fn append_separator_if_dir(path string) string {
-	return if os.is_dir(path) && !path.ends_with(os.path_separator) {
-		path + os.path_separator
-	} else {
-		path
+	if os.is_dir(path) && !path.ends_with(os.path_separator) {
+		return path + os.path_separator
 	}
+	return path
 }
 
 // auto_complete_request retuns a list of completions resolved from a full argument list.

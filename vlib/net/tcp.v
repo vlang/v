@@ -67,7 +67,13 @@ pub fn (mut c TcpConn) write(bytes []byte) ?int {
 }
 
 // write_str blocks and attempts to write all data
+[deprecated: 'use TcpConn.write_string() instead']
 pub fn (mut c TcpConn) write_str(s string) ?int {
+	return c.write_ptr(s.str, s.len)
+}
+
+// write_string blocks and attempts to write all data
+pub fn (mut c TcpConn) write_string(s string) ?int {
 	return c.write_ptr(s.str, s.len)
 }
 
