@@ -80,7 +80,9 @@ pub fn mv_by_cp(source string, target string) ? {
 // read_lines reads the file in `path` into an array of lines.
 pub fn read_lines(path string) ?[]string {
 	buf := read_file(path) ?
-	return buf.split_into_lines()
+	res := buf.split_into_lines()
+	unsafe { buf.free() }
+	return res
 }
 
 // read_ulines reads the file in `path` into an array of ustring lines.
