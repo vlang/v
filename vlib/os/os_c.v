@@ -25,7 +25,7 @@ fn C.CopyFile(&u32, &u32, int) int
 
 fn C.execvp(file charptr, argv &charptr) int
 
-fn C.lstat64(charptr, voidptr) u64
+fn C.lstat(charptr, voidptr) u64
 
 fn C._wstat64(charptr, voidptr) u64
 
@@ -121,7 +121,7 @@ pub fn file_size(path string) u64 {
 				return swin.st_size
 			} $else {
 				// lstat64 returns integer with 64 bit on 64 bit OSes, 32 bit ints on 32 bit OSes
-				C.lstat64(charptr(path.str), &s)
+				C.lstat(charptr(path.str), &s)
 				return u64(s.st_size)
 			}
 		}
@@ -196,7 +196,7 @@ pub fn cp(src string, dst string) ? {
 		from_attr := C.stat{}
 		unsafe {
 			$if x64 {
-				C.lstat64(charptr(src.str), &from_attr)
+				C.lstat(charptr(src.str), &from_attr)
 			}
 			$if x32 {
 				C.lstat(charptr(src.str), &from_attr)
