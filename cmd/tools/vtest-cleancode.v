@@ -17,9 +17,7 @@ const (
 	]
 	verify_known_failing_exceptions = []string{}
 	vfmt_verify_list                = [
-		'cmd/v/v.v',
-		'cmd/tools/vdoc/',
-		'cmd/tools/vvet/',
+		'cmd/',
 		'vlib/arrays/',
 		'vlib/benchmark/',
 		'vlib/bitfield/',
