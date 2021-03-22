@@ -404,17 +404,15 @@ pub fn (fs FlagParser) usage() string {
 	return use.replace('- ,', '   ')
 }
 
-// finalize argument parsing -> call after all arguments are defined
-//
-// all remaining arguments are returned in the same order they are defined on
-// command line
-//
-// if additional flag are found (things starting with '--') an error is returned
-// error handling is up to the application developer
+// finalize - return all remaining arguments (non options).
+// Call .finalize() after all arguments are defined.
+// The remaining arguments are returned in the same order they are
+// defined on the command line. If additional flags are found, i.e.
+// (things starting with '--' or '-'), it returns an error.
 pub fn (fs FlagParser) finalize() ?[]string {
 	for a in fs.args {
-		if a.len >= 2 && a[..2] == '--' {
-			return error("Unknown argument \'${a[2..]}\'")
+		if (a.len >= 2 && a[..2] == '--') || (a.len == 2 && a[0] == `-`) {
+			return error('Unknown flag `$a`')
 		}
 	}
 	if fs.args.len < fs.min_free_args && fs.min_free_args > 0 {
