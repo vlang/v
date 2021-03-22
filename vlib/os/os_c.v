@@ -25,12 +25,33 @@ fn C.CopyFile(&u32, &u32, int) int
 
 fn C.execvp(file charptr, argv &charptr) int
 
+
+fn C.lstat64(charptr, voidptr) u64
+
+fn C._wstat64(charptr, voidptr) u64
+
+fn C._ftelli64(voidptr) u64
+
+fn C.ftello64(voidptr) u64
+
+
+
 // fn C.proc_pidpath(int, byteptr, int) int
 struct C.stat {
-	st_size  int
+	st_size  u64
 	st_mode  u32
 	st_mtime int
 }
+
+
+
+struct C.__stat64 {
+	st_size  u64
+	st_mode  u32
+	st_mtime int
+}
+
+
 
 struct C.DIR {
 }
@@ -49,7 +70,7 @@ struct C.dirent {
 // read_bytes returns all bytes read from file in `path`.
 [manualfree]
 pub fn read_bytes(path string) ?[]byte {
-	mut fp := vfopen(path, 'rb') ?
+	mut fp := vfopen(path, 'rb') ? 	
 	cseek := C.fseek(fp, 0, C.SEEK_END)
 	if cseek != 0 {
 		return error('fseek failed')
@@ -101,20 +122,33 @@ pub fn read_file(path string) ?string {
 
 // ***************************** OS ops ************************
 // file_size returns the size of the file located in `path`.
-pub fn file_size(path string) int {
+pub fn file_size(path string) u64 {
 	mut s := C.stat{}
 	unsafe {
-		$if windows {
-			$if tinyc {
-				C.stat(charptr(path.str), &s)
+		$if x64{
+			$if windows {
+				mut swin := C.__stat64{}
+				C._wstat64(path.to_wide(), voidptr(&swin))
+				return swin.st_size
 			} $else {
-				C._wstat(path.to_wide(), voidptr(&s))
+				// lstat64 returns integer with 64 bit on 64 bit OSes, 32 bit ints on 32 bit OSes
+				C.lstat64(charptr(path.str), &s)
+				return u64(s.st_size)
 			}
-		} $else {
-			C.stat(charptr(path.str), &s)
 		}
+		$if x32{
+			$if windows {
+				C._wstat(path.to_wide(), voidptr(&s))
+				return u64(s.st_size)
+			} $else {
+				// lstat64 returns integer with 64 bit on 64 bit OSes, 32 bit ints on 32 bit OSes
+				C.lstat(charptr(path.str), &s)
+				return u64(s.st_size)
+			}
+		}
+		
 	}
-	return s.st_size
+	return 0
 }
 
 // mv moves files or folders from `src` to `dst`.
@@ -172,7 +206,14 @@ pub fn cp(src string, dst string) ? {
 			}
 		}
 		from_attr := C.stat{}
-		unsafe { C.stat(charptr(src.str), &from_attr) }
+		unsafe{
+			$if x64{
+				C.lstat64(charptr(src.str), &from_attr)
+			}
+			$if x32{
+				C.lstat(charptr(src.str), &from_attr)
+			}
+		}
 		if C.chmod(charptr(dst.str), from_attr.st_mode) < 0 {
 			return error_with_code('failed to set permissions for $dst', int(-1))
 		}
