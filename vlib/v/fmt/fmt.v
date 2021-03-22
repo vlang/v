@@ -353,6 +353,7 @@ pub fn (mut f Fmt) node_str(node ast.Node) string {
 	pos := f.out.len
 	match node {
 		ast.Stmt { f.stmt(node) }
+		ast.Expr { f.expr(node) }
 		else { panic('´f.node_str()´ is not implemented for ${node}.') }
 	}
 	str := f.out.after(pos).trim_space()
@@ -627,19 +628,13 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 
 fn expr_is_single_line(expr ast.Expr) bool {
 	match expr {
+		ast.Comment, ast.IfExpr, ast.MapInit, ast.MatchExpr {
+			return false
+		}
 		ast.AnonFn {
 			if !expr.decl.no_body {
 				return false
 			}
-		}
-		ast.IfExpr {
-			return false
-		}
-		ast.Comment {
-			return false
-		}
-		ast.MatchExpr {
-			return false
 		}
 		ast.StructInit {
 			if !expr.is_short && (expr.fields.len > 0 || expr.pre_comments.len > 0) {
@@ -1404,15 +1399,32 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 				penalty--
 			}
 		}
-		is_new_line := f.wrap_long_line(penalty, !inc_indent)
+		mut is_new_line := f.wrap_long_line(penalty, !inc_indent)
 		if is_new_line && !inc_indent {
 			f.indent++
 			inc_indent = true
 		}
-		if !is_new_line && i > 0 {
-			f.write(' ')
+		single_line_expr := expr_is_single_line(expr)
+		if single_line_expr {
+			estr := f.node_str(expr)
+			if !is_new_line && !f.buffering && f.line_len + estr.len > fmt.max_len.last() {
+				f.writeln('')
+				is_new_line = true
+				if !inc_indent {
+					f.indent++
+					inc_indent = true
+				}
+			}
+			if !is_new_line && i > 0 {
+				f.write(' ')
+			}
+			f.write(estr)
+		} else {
+			if !is_new_line && i > 0 {
+				f.write(' ')
+			}
+			f.expr(expr)
 		}
-		f.expr(expr)
 		if i < node.ecmnts.len && node.ecmnts[i].len > 0 {
 			expr_pos := expr.position()
 			for cmt in node.ecmnts[i] {
