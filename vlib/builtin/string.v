@@ -329,14 +329,21 @@ pub fn (s string) replace_each(vals []string) string {
 	mut new_len := s.len
 	mut idxs := []RepIndex{}
 	mut idx := 0
+	s_ := s.clone()
 	for rep_i := 0; rep_i < vals.len; rep_i += 2 {
 		// vals: ['rep1, 'with1', 'rep2', 'with2']
 		rep := vals[rep_i]
 		with := vals[rep_i + 1]
 		for {
-			idx = s.index_after(rep, idx)
+			idx = s_.index_after(rep, idx)
 			if idx == -1 {
 				break
+			}
+			// The string already found is set to `/del`, to avoid duplicate searches.
+			for i in 0 .. rep.len {
+				unsafe {
+					s_.str[idx + i] = 127
+				}
 			}
 			// We need to remember both the position in the string,
 			// and which rep/with pair it refers to.
