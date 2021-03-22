@@ -25,16 +25,9 @@ fn C.CopyFile(&u32, &u32, int) int
 
 fn C.execvp(file charptr, argv &charptr) int
 
-
 fn C.lstat64(charptr, voidptr) u64
 
 fn C._wstat64(charptr, voidptr) u64
-
-fn C._ftelli64(voidptr) u64
-
-fn C.ftello64(voidptr) u64
-
-
 
 // fn C.proc_pidpath(int, byteptr, int) int
 struct C.stat {
@@ -43,15 +36,11 @@ struct C.stat {
 	st_mtime int
 }
 
-
-
 struct C.__stat64 {
 	st_size  u64
 	st_mode  u32
 	st_mtime int
 }
-
-
 
 struct C.DIR {
 }
@@ -70,7 +59,7 @@ struct C.dirent {
 // read_bytes returns all bytes read from file in `path`.
 [manualfree]
 pub fn read_bytes(path string) ?[]byte {
-	mut fp := vfopen(path, 'rb') ? 	
+	mut fp := vfopen(path, 'rb') ?
 	cseek := C.fseek(fp, 0, C.SEEK_END)
 	if cseek != 0 {
 		return error('fseek failed')
@@ -125,7 +114,7 @@ pub fn read_file(path string) ?string {
 pub fn file_size(path string) u64 {
 	mut s := C.stat{}
 	unsafe {
-		$if x64{
+		$if x64 {
 			$if windows {
 				mut swin := C.__stat64{}
 				C._wstat64(path.to_wide(), voidptr(&swin))
@@ -136,7 +125,7 @@ pub fn file_size(path string) u64 {
 				return u64(s.st_size)
 			}
 		}
-		$if x32{
+		$if x32 {
 			$if windows {
 				C._wstat(path.to_wide(), voidptr(&s))
 				return u64(s.st_size)
@@ -146,7 +135,6 @@ pub fn file_size(path string) u64 {
 				return u64(s.st_size)
 			}
 		}
-		
 	}
 	return 0
 }
@@ -206,11 +194,11 @@ pub fn cp(src string, dst string) ? {
 			}
 		}
 		from_attr := C.stat{}
-		unsafe{
-			$if x64{
+		unsafe {
+			$if x64 {
 				C.lstat64(charptr(src.str), &from_attr)
 			}
-			$if x32{
+			$if x32 {
 				C.lstat(charptr(src.str), &from_attr)
 			}
 		}
