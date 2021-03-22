@@ -6,22 +6,22 @@ import v.pref
 
 const (
 	skip_with_fsanitize_memory    = [
-		'vlib/crypto/rand/crypto_rand_read_test.v'
-		'vlib/net/http/cookie_test.v'
-		'vlib/net/http/header_test.v'
-		'vlib/net/http/http_httpbin_test.v'
-		'vlib/net/http/http_test.v'
-		'vlib/net/http/status_test.v'
-		'vlib/net/tcp_simple_client_server_test.v'
-		'vlib/net/tcp_test.v'
-		'vlib/net/udp_test.v'
-		'vlib/orm/orm_test.v'
-		'vlib/sqlite/sqlite_test.v'
-		'vlib/v/tests/orm_sub_struct_test.v'
-		'vlib/vweb/request_test.v'
-		'vlib/vweb/route_test.v'
-		'vlib/vweb/tests/vweb_test.v'
-		'vlib/x/websocket/websocket_test.v'
+		'vlib/crypto/rand/crypto_rand_read_test.v',
+		'vlib/net/http/cookie_test.v',
+		'vlib/net/http/header_test.v',
+		'vlib/net/http/http_httpbin_test.v',
+		'vlib/net/http/http_test.v',
+		'vlib/net/http/status_test.v',
+		'vlib/net/tcp_simple_client_server_test.v',
+		'vlib/net/tcp_test.v',
+		'vlib/net/udp_test.v',
+		'vlib/orm/orm_test.v',
+		'vlib/sqlite/sqlite_test.v',
+		'vlib/v/tests/orm_sub_struct_test.v',
+		'vlib/vweb/request_test.v',
+		'vlib/vweb/route_test.v',
+		'vlib/vweb/tests/vweb_test.v',
+		'vlib/x/websocket/websocket_test.v',
 	]
 	skip_with_fsanitize_address   = [
 		'vlib/encoding/base64/base64_test.v',
@@ -157,7 +157,7 @@ const (
 		'vlib/vweb/tests/vweb_test.v',
 	]
 	skip_with_msan_compiler       = [
-		''
+		'',
 	]
 	skip_test_files               = []string{}
 	skip_on_musl                  = [
