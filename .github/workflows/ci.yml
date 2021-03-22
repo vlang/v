@@ -62,6 +62,8 @@ jobs:
           make
           ./v -d debug_malloc -d debug_realloc -o v cmd/v
           ./v -cg -cflags -Werror -o v cmd/v
+          # Test v -realloc arena allocation
+          ./v -o vrealloc -prealloc cmd/v && ./vrealloc -o v3 cmd/v && ./v3 -o v4 cmd/v
       - name: Test v->c
         run: |
           thirdparty/tcc/tcc.exe -version
@@ -816,16 +818,16 @@ jobs:
           .\cmd\tools\test_if_v_test_system_works.exe
       - name: Make sure running TCC64 instead of TCC32
         run : .\v.exe test .github\workflows\make_sure_ci_run_with_64bit_compiler_test.v
-        
+
       - name: Test ./v doc -v clipboard *BEFORE building tools*
         run: ./v doc -v clipboard
-        
+
       - name: Test v build-tools
         run: ./v -W build-tools
-        
+
       - name: Test ./v doc clipboard
         run: ./v doc clipboard
-        
+
       - name: Self tests
         run: |
           .\v.exe -silent test-self
@@ -856,16 +858,16 @@ jobs:
         run: |
           .\v.exe cmd/tools/test_if_v_test_system_works.v
           .\cmd\tools\test_if_v_test_system_works.exe
-          
-      - name: Make sure running TCC32 instead of TCC64      
+
+      - name: Make sure running TCC32 instead of TCC64
         run : .\v.exe test .github\workflows\make_sure_ci_run_with_32bit_compiler_test.v
-        
+
       - name: Test v build-tools
         run: ./v -W build-tools
 
       - name: Test ./v doc clipboard
         run: ./v doc clipboard
-        
+
       - name: Self tests
         run: |
           .\v.exe -silent test-self
