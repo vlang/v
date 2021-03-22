@@ -13,7 +13,7 @@ struct FileInfo {
 	size int
 }
 
-fn C.fseeko64(voidptr, u64, int) int
+fn C.fseeko(voidptr, u64, int) int
 
 fn C._fseeki64(voidptr, u64, int) int
 
@@ -220,12 +220,12 @@ pub fn (mut f File) write_to(pos int, buf []byte) ?int {
 			C._fseeki64(f.cfile, 0, C.SEEK_END)
 			return res
 		} $else {
-			C.fseeko64(f.cfile, pos, C.SEEK_SET)
+			C.fseeko(f.cfile, pos, C.SEEK_SET)
 			res := int(C.fwrite(buf.data, 1, buf.len, f.cfile))
 			if res == 0 && buf.len != 0 {
 				return error('0 bytes written')
 			}
-			C.fseeko64(f.cfile, 0, C.SEEK_END)
+			C.fseeko(f.cfile, 0, C.SEEK_END)
 			return res
 		}
 	}
@@ -281,9 +281,9 @@ pub fn (mut f File) write_ptr_at(data voidptr, size int, pos int) int {
 			C._fseeki64(f.cfile, 0, C.SEEK_END)
 			return res
 		} $else {
-			C.fseeko64(f.cfile, pos, C.SEEK_SET)
+			C.fseeko(f.cfile, pos, C.SEEK_SET)
 			res := int(C.fwrite(data, 1, size, f.cfile))
-			C.fseeko64(f.cfile, 0, C.SEEK_END)
+			C.fseeko(f.cfile, 0, C.SEEK_END)
 			return res
 		}
 	}
@@ -338,7 +338,7 @@ pub fn (f &File) read_bytes_into(pos int, mut buf []byte) ?int {
 			return nbytes
 		} $else {
 			// Note: fseek errors if pos == os.file_size, which we accept
-			C.fseeko64(f.cfile, pos, C.SEEK_SET)
+			C.fseeko(f.cfile, pos, C.SEEK_SET)
 			// errno is only set if fread fails, so clear it first to tell
 			C.errno = 0
 			nbytes := int(C.fread(buf.data, 1, buf.len, f.cfile))
@@ -346,7 +346,7 @@ pub fn (f &File) read_bytes_into(pos int, mut buf []byte) ?int {
 				return error(posix_get_error_msg(C.errno))
 			}
 			$if debug {
-				C.fseeko64(f.cfile, 0, C.SEEK_SET)
+				C.fseeko(f.cfile, 0, C.SEEK_SET)
 			}
 			return nbytes
 		}
@@ -402,7 +402,7 @@ pub fn (f &File) read_from(pos int, mut buf []byte) ?int {
 			}
 			return nbytes
 		} $else {
-			C.fseeko64(f.cfile, pos, C.SEEK_SET)
+			C.fseeko(f.cfile, pos, C.SEEK_SET)
 			C.errno = 0
 			nbytes := int(C.fread(buf.data, 1, buf.len, f.cfile))
 			if C.errno != 0 {
