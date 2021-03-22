@@ -293,6 +293,8 @@ pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
 	return '$imp.mod$imp_alias_suffix'
 }
 
+//=== Node helpers ===//
+
 fn (f Fmt) should_insert_newline_before_node(node ast.Node, prev_node ast.Node) bool {
 	// No need to insert a newline if there is already one
 	if f.out.last_n(2) == '\n\n' {
@@ -343,6 +345,21 @@ fn (f Fmt) should_insert_newline_before_node(node ast.Node, prev_node ast.Node) 
 		return false
 	}
 	return true
+}
+
+pub fn (mut f Fmt) node_str(node ast.Node) string {
+	was_empty_line := f.empty_line
+	prev_line_len := f.line_len
+	pos := f.out.len
+	match node {
+		ast.Stmt { f.stmt(node) }
+		else { panic('´f.node_str()´ is not implemented for ${node}.') }
+	}
+	str := f.out.after(pos).trim_space()
+	f.out.go_back_to(pos)
+	f.empty_line = was_empty_line
+	f.line_len = prev_line_len
+	return str
 }
 
 //=== General Stmt-related methods and helpers ===//
@@ -454,18 +471,6 @@ fn stmt_is_single_line(stmt ast.Stmt) bool {
 		ast.Return, ast.AssignStmt, ast.BranchStmt { true }
 		else { false }
 	}
-}
-
-pub fn (mut f Fmt) stmt_str(node ast.Stmt) string {
-	was_empty_line := f.empty_line
-	prev_line_len := f.line_len
-	pos := f.out.len
-	f.stmt(node)
-	str := f.out.after(pos).trim_space()
-	f.out.go_back_to(pos)
-	f.empty_line = was_empty_line
-	f.line_len = prev_line_len
-	return str
 }
 
 //=== General Expr-related methods and helpers ===//
@@ -2089,7 +2094,7 @@ pub fn (mut f Fmt) or_expr(node ast.OrExpr) {
 			} else if node.stmts.len == 1 && stmt_is_single_line(node.stmts[0]) {
 				// the control stmts (return/break/continue...) print a newline inside them,
 				// so, since this'll all be on one line, trim any possible whitespace
-				str := f.stmt_str(node.stmts[0]).trim_space()
+				str := f.node_str(node.stmts[0]).trim_space()
 				single_line := ' or { $str }'
 				if single_line.len + f.line_len <= fmt.max_len.last() {
 					f.write(single_line)
