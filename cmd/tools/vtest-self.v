@@ -6,22 +6,23 @@ import v.pref
 
 const (
 	skip_with_fsanitize_memory    = [
-		'vlib/net/tcp_simple_client_server_test.v',
-		'vlib/net/http/cookie_test.v',
-		'vlib/net/http/http_test.v',
-		'vlib/net/http/status_test.v',
-		'vlib/net/http/http_httpbin_test.v',
-		'vlib/net/http/header_test.v',
-		'vlib/net/udp_test.v',
-		'vlib/net/tcp_test.v',
-		'vlib/orm/orm_test.v',
-		'vlib/sqlite/sqlite_test.v',
-		'vlib/v/tests/orm_sub_struct_test.v',
-		'vlib/vweb/tests/vweb_test.v',
-		'vlib/vweb/request_test.v',
-		'vlib/vweb/route_test.v',
-		'vlib/x/websocket/websocket_test.v',
-		'vlib/crypto/rand/crypto_rand_read_test.v',
+		''
+		// 'vlib/net/tcp_simple_client_server_test.v',
+		// 'vlib/net/http/cookie_test.v',
+		// 'vlib/net/http/http_test.v',
+		// 'vlib/net/http/status_test.v',
+		// 'vlib/net/http/http_httpbin_test.v',
+		// 'vlib/net/http/header_test.v',
+		// 'vlib/net/udp_test.v',
+		// 'vlib/net/tcp_test.v',
+		// 'vlib/orm/orm_test.v',
+		// 'vlib/sqlite/sqlite_test.v',
+		// 'vlib/v/tests/orm_sub_struct_test.v',
+		// 'vlib/vweb/tests/vweb_test.v',
+		// 'vlib/vweb/request_test.v',
+		// 'vlib/vweb/route_test.v',
+		// 'vlib/x/websocket/websocket_test.v',
+		// 'vlib/crypto/rand/crypto_rand_read_test.v',
 	]
 	skip_with_fsanitize_address   = [
 		'vlib/encoding/base64/base64_test.v',
@@ -156,6 +157,9 @@ const (
 		'vlib/readline/readline_test.v',
 		'vlib/vweb/tests/vweb_test.v',
 	]
+	skip_with_msan_compiler       = [
+		''
+	]
 	skip_test_files               = []string{}
 	skip_on_musl                  = [
 		'vlib/v/tests/profile/profile_test.v',
@@ -217,9 +221,13 @@ fn main() {
 	mut sanitize_address := false
 	mut sanitize_undefined := false
 	mut asan_compiler := false
+	mut msan_compiler := false
 	for arg in args {
 		if '-asan-compiler' in arg {
 			asan_compiler = true
+		}
+		if '-msan-compiler' in arg {
+			msan_compiler = true
 		}
 		if '-Werror' in arg {
 			werror = true
@@ -248,6 +256,9 @@ fn main() {
 	}
 	if asan_compiler {
 		tsession.skip_files << skip_with_asan_compiler
+	}
+	if msan_compiler {
+		tsession.skip_files << skip_with_msan_compiler
 	}
 	// println(tsession.skip_files)
 	if os.getenv('V_CI_MUSL').len > 0 {
