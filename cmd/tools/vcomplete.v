@@ -49,7 +49,7 @@ const (
 // Snooped from cmd/v/v.v, vlib/v/pref/pref.v
 const (
 	auto_complete_commands    = [
-		/* simple_cmd */
+		// simple_cmd
 		'fmt',
 		'up',
 		'vet',
@@ -69,7 +69,7 @@ const (
 		'setup-freetype',
 		'doc',
 		'doctor',
-		/* commands */
+		// commands
 		'help',
 		'new',
 		'init',
@@ -219,7 +219,8 @@ fn auto_complete(args []string) {
 			shell := sub_args[1]
 			mut setup := ''
 			match shell {
-				'bash' { setup = '
+				'bash' {
+					setup = '
 _v_completions() {
 	local src
 	local limit
@@ -233,15 +234,19 @@ _v_completions() {
 }
 
 complete -o nospace -F _v_completions v
-' }
-				'fish' { setup = '
+'
+				}
+				'fish' {
+					setup = '
 function __v_completions
 	# Send all words up to the one before the cursor
 	$vexe complete fish (commandline -cop)
 end
 complete -f -c v -a "(__v_completions)"
-' }
-				'zsh' { setup = '
+'
+				}
+				'zsh' {
+					setup = '
 #compdef v
 _v() {
 	local src
@@ -253,15 +258,18 @@ _v() {
 	fi
 }
 compdef _v v
-' }
-				'powershell' { setup = '
+'
+				}
+				'powershell' {
+					setup = '
 Register-ArgumentCompleter -Native -CommandName v -ScriptBlock {
 	param(\$commandName, \$wordToComplete, \$cursorPosition)
 		$vexe complete powershell "\$wordToComplete" | ForEach-Object {
 			[System.Management.Automation.CompletionResult]::new(\$_, \$_, \'ParameterValue\', \$_)
 		}
 }
-' }
+'
+				}
 				else {}
 			}
 			println(setup)
