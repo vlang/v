@@ -64,6 +64,7 @@ mut:
 	expecting_type      bool // `is Type`, expecting type
 	errors              []errors.Error
 	warnings            []errors.Warning
+	notices             []errors.Notice
 	vet_errors          []vet.Error
 	cur_fn_name         string
 	label_names         []string
@@ -1490,6 +1491,10 @@ pub fn (mut p Parser) warn(s string) {
 	p.warn_with_pos(s, p.tok.position())
 }
 
+pub fn (mut p Parser) note(s string) {
+	p.note_with_pos(s, p.tok.position())
+}
+
 pub fn (mut p Parser) error_with_pos(s string, pos token.Position) {
 	if p.pref.fatal_errors {
 		exit(1)
@@ -1558,6 +1563,23 @@ pub fn (mut p Parser) warn_with_pos(s string, pos token.Position) {
 		eprintln(ferror)
 	} else {
 		p.warnings << errors.Warning{
+			file_path: p.file_name
+			pos: pos
+			reporter: .parser
+			message: s
+		}
+	}
+}
+
+pub fn (mut p Parser) note_with_pos(s string, pos token.Position) {
+	if p.pref.skip_warnings {
+		return
+	}
+	if p.pref.output_mode == .stdout {
+		ferror := util.formatted_error('notice:', s, p.file_name, pos)
+		eprintln(ferror)
+	} else {
+		p.notices << errors.Notice{
 			file_path: p.file_name
 			pos: pos
 			reporter: .parser

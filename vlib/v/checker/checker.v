@@ -4,6 +4,7 @@ module checker
 
 import os
 import strings
+import time
 import v.ast
 import v.vmod
 import v.table
@@ -36,8 +37,10 @@ pub mut:
 	file             &ast.File = 0
 	nr_errors        int
 	nr_warnings      int
+	nr_notices       int
 	errors           []errors.Error
 	warnings         []errors.Warning
+	notices          []errors.Notice
 	error_lines      []int // to avoid printing multiple errors for the same line
 	expected_type    table.Type
 	expected_or_type table.Type  // fn() or { 'this type' } eg. string. expected or block type
@@ -1566,13 +1569,8 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 				call_expr.pos)
 		}
 		if !c.cur_fn.is_deprecated && method.is_deprecated {
-			mut deprecation_message := 'method `${left_type_sym.name}.$method.name` has been deprecated'
-			for attr in method.attrs {
-				if attr.name == 'deprecated' && attr.arg != '' {
-					deprecation_message += '; $attr.arg'
-				}
-			}
-			c.warn(deprecation_message, call_expr.pos)
+			c.deprecate_fnmethod('method', '${left_type_sym.name}.$method.name', method,
+				call_expr)
 		}
 		// TODO: typ optimize.. this node can get processed more than once
 		if call_expr.expected_arg_types.len == 0 {
@@ -1924,13 +1922,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		c.error('function `$f.name` is private', call_expr.pos)
 	}
 	if !c.cur_fn.is_deprecated && f.is_deprecated {
-		mut deprecation_message := 'function `$f.name` has been deprecated'
-		for d in f.attrs {
-			if d.name == 'deprecated' && d.arg != '' {
-				deprecation_message += '; $d.arg'
-			}
-		}
-		c.warn(deprecation_message, call_expr.pos)
+		c.deprecate_fnmethod('function', f.name, f, call_expr)
 	}
 	if f.is_unsafe && !c.inside_unsafe
 		&& (f.language != .c || (f.name[2] in [`m`, `s`] && f.mod == 'builtin')) {
@@ -2101,6 +2093,41 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		return call_expr.return_type
 	}
 	return f.return_type
+}
+
+fn (mut c Checker) deprecate_fnmethod(kind string, name string, the_fn table.Fn, call_expr ast.CallExpr) {
+	start_message := '$kind `$name`'
+	mut deprecation_message := ''
+	now := time.now()
+	mut after_time := now
+	for attr in the_fn.attrs {
+		if attr.name == 'deprecated' && attr.arg != '' {
+			deprecation_message = attr.arg
+		}
+		if attr.name == 'deprecated_after' && attr.arg != '' {
+			after_time = time.parse_iso8601(attr.arg) or {
+				c.error('invalid time format', attr.pos)
+				time.now()
+			}
+		}
+	}
+	if after_time < now {
+		c.warn(semicolonize('$start_message has been deprecated since $after_time.ymmdd()',
+			deprecation_message), call_expr.pos)
+	} else if after_time == now {
+		c.warn(semicolonize('$start_message has been deprecated', deprecation_message),
+			call_expr.pos)
+	} else {
+		c.note(semicolonize('$start_message will be deprecated after $after_time.ymmdd()',
+			deprecation_message), call_expr.pos)
+	}
+}
+
+fn semicolonize(main string, details string) string {
+	if details == '' {
+		return main
+	}
+	return '$main; $details'
 }
 
 fn (mut c Checker) type_implements(typ table.Type, inter_typ table.Type, pos token.Position) bool {
@@ -4291,8 +4318,10 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) table.Type {
 		}
 		c.warnings << c2.warnings
 		c.errors << c2.errors
+		c.notices << c2.notices
 		c.nr_warnings += c2.nr_warnings
 		c.nr_errors += c2.nr_errors
+		c.nr_notices += c2.nr_notices
 	}
 	if node.method_name == 'html' {
 		rtyp := c.table.find_type_idx('vweb.Result')
@@ -5853,7 +5882,7 @@ pub fn (mut c Checker) add_error_detail(s string) {
 
 pub fn (mut c Checker) warn(s string, pos token.Position) {
 	allow_warnings := !(c.pref.is_prod || c.pref.warns_are_errors) // allow warnings only in dev builds
-	c.warn_or_error(s, pos, allow_warnings) // allow warnings only in dev builds
+	c.warn_or_error(s, pos, allow_warnings)
 }
 
 pub fn (mut c Checker) error(message string, pos token.Position) {
@@ -5895,6 +5924,24 @@ fn (c &Checker) check_struct_signature(from table.Struct, to table.Struct) bool 
 		}
 	}
 	return true
+}
+
+pub fn (mut c Checker) note(message string, pos token.Position) {
+	mut details := ''
+	if c.error_details.len > 0 {
+		details = c.error_details.join('\n')
+		c.error_details = []
+	}
+	wrn := errors.Notice{
+		reporter: errors.Reporter.checker
+		pos: pos
+		file_path: c.file.path
+		message: message
+		details: details
+	}
+	c.file.notices << wrn
+	c.notices << wrn
+	c.nr_notices++
 }
 
 fn (mut c Checker) warn_or_error(message string, pos token.Position, warn bool) {

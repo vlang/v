@@ -516,7 +516,8 @@ pub mut:
 	embedded_files   []EmbeddedFile    // list of files to embed in the binary
 	imported_symbols map[string]string // used for `import {symbol}`, it maps symbol => module.symbol
 	errors           []errors.Error    // all the checker errors in the file
-	warnings         []errors.Warning  // all the checker warings in the file
+	warnings         []errors.Warning  // all the checker warnings in the file
+	notices          []errors.Notice   // all the checker notices in the file
 	generic_fns      []&FnDecl
 }
 

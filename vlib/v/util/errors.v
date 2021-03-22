@@ -61,9 +61,11 @@ fn color(kind string, msg string) string {
 	}
 	if kind.contains('error') {
 		return term.red(msg)
-	} else {
-		return term.magenta(msg)
 	}
+	if kind.contains('notice') {
+		return term.yellow(msg)
+	}
+	return term.magenta(msg)
 }
 
 // formatted_error - `kind` may be 'error' or 'warn'

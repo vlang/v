@@ -51,6 +51,7 @@ pub mut:
 	pref                        &pref.Preferences
 	errors                      []errors.Error
 	warnings                    []errors.Warning
+	notices                     []errors.Notice
 	vet_errors                  []vet.Error
 }
 
@@ -1302,6 +1303,23 @@ fn (mut s Scanner) inc_line_number() {
 	s.line_ends << s.pos
 	if s.line_nr > s.nr_lines {
 		s.nr_lines = s.line_nr
+	}
+}
+
+pub fn (mut s Scanner) note(msg string) {
+	pos := token.Position{
+		line_nr: s.line_nr
+		pos: s.pos
+	}
+	if s.pref.output_mode == .stdout {
+		eprintln(util.formatted_error('notice:', msg, s.file_path, pos))
+	} else {
+		s.notices << errors.Notice{
+			file_path: s.file_path
+			pos: pos
+			reporter: .scanner
+			message: msg
+		}
 	}
 }
 

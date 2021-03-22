@@ -287,7 +287,8 @@ fn (b &Builder) show_total_warns_and_errors_stats() {
 	if b.pref.is_stats {
 		estring := util.bold(b.checker.nr_errors.str())
 		wstring := util.bold(b.checker.nr_warnings.str())
-		println('checker summary: $estring V errors, $wstring V warnings')
+		nstring := util.bold(b.checker.nr_notices.str())
+		println('checker summary: $estring V errors, $wstring V warnings, $nstring V notices')
 	}
 }
 
@@ -303,6 +304,26 @@ fn (b &Builder) print_warnings_and_errors() {
 	}
 	if b.pref.is_verbose && b.checker.nr_warnings > 1 {
 		println('$b.checker.nr_warnings warnings')
+	}
+	if b.pref.is_verbose && b.checker.nr_notices > 1 {
+		println('$b.checker.nr_notices notices')
+	}
+	if b.checker.nr_notices > 0 && !b.pref.skip_warnings {
+		for i, err in b.checker.notices {
+			kind := if b.pref.is_verbose {
+				'$err.reporter notice #$b.checker.nr_notices:'
+			} else {
+				'notice:'
+			}
+			ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
+			eprintln(ferror)
+			if err.details.len > 0 {
+				eprintln('Details: $err.details')
+			}
+			if i > b.max_nr_errors {
+				return
+			}
+		}
 	}
 	if b.checker.nr_warnings > 0 && !b.pref.skip_warnings {
 		for i, err in b.checker.warnings {
