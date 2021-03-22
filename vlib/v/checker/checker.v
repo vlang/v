@@ -25,7 +25,9 @@ const (
 	]
 	valid_comp_if_compilers = ['gcc', 'tinyc', 'clang', 'mingw', 'msvc', 'cplusplus']
 	valid_comp_if_platforms = ['amd64', 'aarch64', 'x64', 'x32', 'little_endian', 'big_endian']
-	valid_comp_if_other     = ['js', 'debug', 'prod', 'test', 'glibc', 'prealloc', 'no_bounds_checking']
+	valid_comp_if_other     = ['js', 'debug', 'prod', 'test', 'glibc', 'prealloc',
+		'no_bounds_checking',
+	]
 	array_builtin_methods   = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort',
 		'contains', 'index', 'wait', 'any', 'all', 'first', 'last', 'pop']
 )
