@@ -125,8 +125,8 @@ pub fn file_size(path string) u64 {
 			}
 		}
 		$if x32 {
-			$if debug{
-				println("Using os.file_size() on 32bit systems may not work on big files.")
+			$if debug {
+				println('Using os.file_size() on 32bit systems may not work on big files.')
 			}
 			$if windows {
 				C._wstat(path.to_wide(), voidptr(&s))
