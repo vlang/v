@@ -434,7 +434,7 @@ jobs:
           ./v -o v2 cmd/v -cflags -fsanitize=memory
           ./v -o v3 cmd/v -cflags -fsanitize=thread
           ./v -o v4 cmd/v -cflags -fsanitize=undefined
-          ./v -o v5 cmd/v -cflags -fsanitize=address
+          ./v -o v5 cmd/v -cflags -fsanitize=address,pointer-compare,pointer-subtract
           UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v2 -o v.c cmd/v
           UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v3 -o v.c cmd/v
           UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v4 -o v.c cmd/v
@@ -553,7 +553,7 @@ jobs:
       - name: Build V
         run: make -j4 && ./v -cg -cflags -Werror -o v cmd/v
       - name: Self tests (-fsanitize=address)
-        run: ASAN_OPTIONS=detect_leaks=0 ./v -cflags -fsanitize=address test-self
+        run: ASAN_OPTIONS=detect_leaks=0 ./v -cflags "-fsanitize=address,pointer-compare,pointer-subtract" test-self
       - name: Self tests (V compiled with -fsanitize=address)
         run:
           ./v -cflags -fsanitize=address -o v cmd/v &&
@@ -582,7 +582,7 @@ jobs:
           ## .\.github\workflows\windows-install-sdl.bat
       - name: Self tests (-fsanitize=address)
         run: |
-          .\v.exe -cflags "-fsanitize=address" test-self
+          .\v.exe -cflags -fsanitize=address test-self
 
   tests-sanitize-address-gcc:
     runs-on: ubuntu-20.04
@@ -608,7 +608,7 @@ jobs:
         run: ASAN_OPTIONS=detect_leaks=0 ./v -cflags -fsanitize=address test-self
       - name: Self tests (V compiled with -fsanitize=address)
         run:
-          ./v -cflags -fsanitize=address -o v cmd/v &&
+          ./v -cflags -fsanitize=address,pointer-compare,pointer-subtract -o v cmd/v &&
           ASAN_OPTIONS=detect_leaks=0 ./v -cc tcc test-self -asan-compiler
 
   tests-sanitize-memory-clang:
@@ -633,7 +633,9 @@ jobs:
         run: make -j4 && ./v -cc clang -cg -cflags -Werror -o v cmd/v
       - name: Self tests (-fsanitize=memory)
         run: ./v -cflags -fsanitize=memory test-self
-
+      - name: Self tests (V compiled with -fsanitize=memory)
+        run:
+          ./v -cflags -fsanitize=memory -o v cmd/v && ./v -cc tcc test-self -msan-compiler
   #  ubuntu-autofree-selfcompile:
   #    runs-on: ubuntu-20.04
   #    timeout-minutes: 30

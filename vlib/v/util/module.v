@@ -61,7 +61,7 @@ pub fn mod_path_to_full_name(mod string, path string) ?string {
 	vmod_folders := ['vlib', '.vmodules', 'modules']
 	mut in_vmod_path := false
 	for vmod_folder in vmod_folders {
-		if vmod_folder + os.path_separator in path {
+		if path.contains(vmod_folder + os.path_separator) {
 			in_vmod_path = true
 			break
 		}

@@ -293,6 +293,8 @@ pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
 	return '$imp.mod$imp_alias_suffix'
 }
 
+//=== Node helpers ===//
+
 fn (f Fmt) should_insert_newline_before_node(node ast.Node, prev_node ast.Node) bool {
 	// No need to insert a newline if there is already one
 	if f.out.last_n(2) == '\n\n' {
@@ -343,6 +345,22 @@ fn (f Fmt) should_insert_newline_before_node(node ast.Node, prev_node ast.Node) 
 		return false
 	}
 	return true
+}
+
+pub fn (mut f Fmt) node_str(node ast.Node) string {
+	was_empty_line := f.empty_line
+	prev_line_len := f.line_len
+	pos := f.out.len
+	match node {
+		ast.Stmt { f.stmt(node) }
+		ast.Expr { f.expr(node) }
+		else { panic('´f.node_str()´ is not implemented for ${node}.') }
+	}
+	str := f.out.after(pos).trim_space()
+	f.out.go_back_to(pos)
+	f.empty_line = was_empty_line
+	f.line_len = prev_line_len
+	return str
 }
 
 //=== General Stmt-related methods and helpers ===//
@@ -454,18 +472,6 @@ fn stmt_is_single_line(stmt ast.Stmt) bool {
 		ast.Return, ast.AssignStmt, ast.BranchStmt { true }
 		else { false }
 	}
-}
-
-pub fn (mut f Fmt) stmt_str(node ast.Stmt) string {
-	was_empty_line := f.empty_line
-	prev_line_len := f.line_len
-	pos := f.out.len
-	f.stmt(node)
-	str := f.out.after(pos).trim_space()
-	f.out.go_back_to(pos)
-	f.empty_line = was_empty_line
-	f.line_len = prev_line_len
-	return str
 }
 
 //=== General Expr-related methods and helpers ===//
@@ -622,19 +628,13 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 
 fn expr_is_single_line(expr ast.Expr) bool {
 	match expr {
+		ast.Comment, ast.IfExpr, ast.MapInit, ast.MatchExpr {
+			return false
+		}
 		ast.AnonFn {
 			if !expr.decl.no_body {
 				return false
 			}
-		}
-		ast.IfExpr {
-			return false
-		}
-		ast.Comment {
-			return false
-		}
-		ast.MatchExpr {
-			return false
 		}
 		ast.StructInit {
 			if !expr.is_short && (expr.fields.len > 0 || expr.pre_comments.len > 0) {
@@ -1399,15 +1399,32 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 				penalty--
 			}
 		}
-		is_new_line := f.wrap_long_line(penalty, !inc_indent)
+		mut is_new_line := f.wrap_long_line(penalty, !inc_indent)
 		if is_new_line && !inc_indent {
 			f.indent++
 			inc_indent = true
 		}
-		if !is_new_line && i > 0 {
-			f.write(' ')
+		single_line_expr := expr_is_single_line(expr)
+		if single_line_expr {
+			estr := f.node_str(expr)
+			if !is_new_line && !f.buffering && f.line_len + estr.len > fmt.max_len.last() {
+				f.writeln('')
+				is_new_line = true
+				if !inc_indent {
+					f.indent++
+					inc_indent = true
+				}
+			}
+			if !is_new_line && i > 0 {
+				f.write(' ')
+			}
+			f.write(estr)
+		} else {
+			if !is_new_line && i > 0 {
+				f.write(' ')
+			}
+			f.expr(expr)
 		}
-		f.expr(expr)
 		if i < node.ecmnts.len && node.ecmnts[i].len > 0 {
 			expr_pos := expr.position()
 			for cmt in node.ecmnts[i] {
@@ -1750,7 +1767,7 @@ pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 				cond_len := f.out.len - cur_pos
 				is_cond_wrapped := cond_len > 0
 					&& (branch.cond is ast.IfGuardExpr || branch.cond is ast.CallExpr)
-					&& '\n' in f.out.last_n(cond_len)
+					&& f.out.last_n(cond_len).contains('\n')
 				if is_cond_wrapped {
 					f.writeln('')
 				} else {
@@ -2089,7 +2106,7 @@ pub fn (mut f Fmt) or_expr(node ast.OrExpr) {
 			} else if node.stmts.len == 1 && stmt_is_single_line(node.stmts[0]) {
 				// the control stmts (return/break/continue...) print a newline inside them,
 				// so, since this'll all be on one line, trim any possible whitespace
-				str := f.stmt_str(node.stmts[0]).trim_space()
+				str := f.node_str(node.stmts[0]).trim_space()
 				single_line := ' or { $str }'
 				if single_line.len + f.line_len <= fmt.max_len.last() {
 					f.write(single_line)

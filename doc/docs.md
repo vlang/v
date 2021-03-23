@@ -434,9 +434,10 @@ These are the allowed possibilities:
    i8 → i16 → int → i64 ⬏
 ```
 An `int` value for example can be automatically promoted to `f64`
-or `i64` but not to `f32` or `u32`. (`f32` would mean precision
-loss for large values and `u32` would mean loss of the sign for
+or `i64` but not to `u32`. (`u32` would mean loss of the sign for
 negative values).
+Promotion from `int` to `f32`, however, is currently done automatically
+(but can lead to precision loss for large values).
 
 Literals like `123` or `4.56` are treated in a special way. They do
 not lead to type promotions, however they default to `int` and `f64`
