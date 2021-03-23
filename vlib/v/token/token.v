@@ -329,12 +329,11 @@ pub fn (t Kind) str() string {
 
 pub fn (t Token) str() string {
 	mut s := t.kind.str()
-	pos := '{ line_nr: $t.line_nr | col: $t.col | pos: $t.pos | len: $t.len }'
 	if s.len == 0 {
 		eprintln('missing token kind string')
 	} else if !s[0].is_letter() {
 		// punctuation, operators
-		return 'token `$s` $pos'
+		return 'token `$s`'
 	}
 	if is_key(t.lit) {
 		s = 'keyword'
@@ -343,7 +342,6 @@ pub fn (t Token) str() string {
 		// string contents etc
 		s += ' `$t.lit`'
 	}
-	s += pos
 	return s
 }
 

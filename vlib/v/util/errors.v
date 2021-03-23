@@ -93,7 +93,6 @@ pub fn formatted_error(kind string, omsg string, filepath string, pos token.Posi
 }
 
 pub fn source_context(kind string, source string, pos token.Position) []string {
-	// println(pos)
 	mut clines := []string{}
 	if source.len == 0 {
 		return clines

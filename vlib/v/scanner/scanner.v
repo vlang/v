@@ -26,7 +26,6 @@ pub mut:
 	text              string // the whole text of the file
 	pos               int    // current position in the file, first character is s.text[0]
 	line_nr           int    // current line number
-	last_nl_pos       int    // for calculating column
 	is_inside_string  bool   // set to true in a string, *at the start* of an $var or ${expr}
 	is_inter_start    bool   // for hacky string interpolation TODO simplify
 	is_inter_end      bool
@@ -52,7 +51,6 @@ pub mut:
 	errors                      []errors.Error
 	warnings                    []errors.Warning
 	vet_errors                  []vet.Error
-	whitespace_count            int // for counting whitespaces
 }
 
 /*
@@ -173,17 +171,15 @@ fn (mut s Scanner) new_token(tok_kind token.Kind, lit string, len int) token.Tok
 	cidx := s.tidx
 	s.tidx++
 	line_offset := if tok_kind == .hash { 0 } else { 1 }
-	tok := token.Token{
+	return token.Token{
 		kind: tok_kind
 		lit: lit
 		line_nr: s.line_nr + line_offset
-		col: s.current_column() - len + 2
+		col: s.current_column() - len + 1
 		pos: s.pos - len + 1
 		len: len
 		tidx: cidx
 	}
-	s.whitespace_count = 0
-	return tok
 }
 
 [inline]
@@ -207,7 +203,7 @@ fn (mut s Scanner) new_multiline_token(tok_kind token.Kind, lit string, len int,
 		kind: tok_kind
 		lit: lit
 		line_nr: start_line + 1
-		col: s.current_column() - len + 2
+		col: s.current_column() - len + 1
 		pos: s.pos - len + 1
 		len: len
 		tidx: cidx
@@ -507,7 +503,6 @@ fn (mut s Scanner) skip_whitespace() {
 			continue
 		}
 		s.pos++
-		s.whitespace_count++
 	}
 }
 
@@ -1061,7 +1056,16 @@ fn (mut s Scanner) invalid_character() {
 }
 
 fn (s &Scanner) current_column() int {
-	return s.pos - s.last_nl_pos + s.whitespace_count
+	mut p := mu.max(0, mu.min(s.text.len - 1, s.pos))
+	if s.text.len > 0 {
+		for ; p >= 0; p-- {
+			if s.text[p] == `\n` || s.text[p] == `\r` {
+				break
+			}
+		}
+	}
+	column := mu.max(0, s.pos - p)
+	return column
 }
 
 fn (s &Scanner) count_symbol_before(p int, sym byte) int {
@@ -1290,7 +1294,6 @@ fn (mut s Scanner) eat_to_end_of_line() {
 
 [inline]
 fn (mut s Scanner) inc_line_number() {
-	s.last_nl_pos = s.pos
 	s.line_nr++
 	s.line_ends << s.pos
 	if s.line_nr > s.nr_lines {
@@ -1306,7 +1309,7 @@ pub fn (mut s Scanner) warn(msg string) {
 	pos := token.Position{
 		line_nr: s.line_nr
 		pos: s.pos
-		col: s.current_column()
+		col: s.current_column() - 1
 	}
 	if s.pref.output_mode == .stdout {
 		eprintln(util.formatted_error('warning:', msg, s.file_path, pos))
@@ -1324,7 +1327,7 @@ pub fn (mut s Scanner) error(msg string) {
 	pos := token.Position{
 		line_nr: s.line_nr
 		pos: s.pos
-		col: s.current_column()
+		col: s.current_column() - 1
 	}
 	if s.pref.output_mode == .stdout {
 		eprintln(util.formatted_error('error:', msg, s.file_path, pos))
@@ -1348,7 +1351,7 @@ fn (mut s Scanner) vet_error(msg string, fix vet.FixKind) {
 		file_path: s.file_path
 		pos: token.Position{
 			line_nr: s.line_nr
-			col: s.current_column()
+			col: s.current_column() - 1
 		}
 		kind: .error
 		fix: fix
