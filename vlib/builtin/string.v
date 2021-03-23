@@ -1576,7 +1576,7 @@ pub fn (a []string) join(del string) string {
 	}
 	len -= del.len
 	// Allocate enough memory
-	mut res := ''
+	mut res := string{}
 	res.len = len
 	res.str = unsafe { malloc(res.len + 1) }
 	mut idx := 0
