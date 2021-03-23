@@ -329,14 +329,21 @@ pub fn (s string) replace_each(vals []string) string {
 	mut new_len := s.len
 	mut idxs := []RepIndex{}
 	mut idx := 0
+	s_ := s.clone()
 	for rep_i := 0; rep_i < vals.len; rep_i += 2 {
 		// vals: ['rep1, 'with1', 'rep2', 'with2']
 		rep := vals[rep_i]
 		with := vals[rep_i + 1]
 		for {
-			idx = s.index_after(rep, idx)
+			idx = s_.index_after(rep, idx)
 			if idx == -1 {
 				break
+			}
+			// The string already found is set to `/del`, to avoid duplicate searches.
+			for i in 0 .. rep.len {
+				unsafe {
+					s_.str[idx + i] = 127
+				}
 			}
 			// We need to remember both the position in the string,
 			// and which rep/with pair it refers to.
@@ -975,10 +982,15 @@ pub fn (s string) capitalize() string {
 	if s.len == 0 {
 		return ''
 	}
-	return s[0].ascii_str().to_upper() + s[1..]
-	// sl := s.to_lower()
-	// cap := sl[0].str().to_upper() + sl[1..]
-	// return cap
+	s0 := s[0]
+	letter := s0.ascii_str()
+	uletter := letter.to_upper()
+	if s.len == 1 {
+		return uletter
+	}
+	srest := s[1..]
+	res := uletter + srest
+	return res
 }
 
 // is_capital returns `true` if the first character in the string is a capital letter.
@@ -1035,16 +1047,6 @@ pub fn (s string) find_between(start string, end string) string {
 	return val[..end_pos]
 }
 
-/*
-pub fn (a []string) to_c() voidptr {
-	mut res := malloc(sizeof(byteptr) * a.len)
-	for i in 0..a.len {
-		val := a[i]
-		res[i] = val.str
-	}
-	return res
-}
-*/
 // is_space returns `true` if the byte is a white space character.
 // The following list is considered white space characters: ` `, `\n`, `\t`, `\v`, `\f`, `\r`, 0x85, 0xa0
 // Example: assert byte(` `).is_space() == true
@@ -1134,7 +1136,10 @@ pub fn (s string) trim_right(cutset string) string {
 		}
 		pos--
 	}
-	return if pos < 0 { '' } else { s[..pos + 1] }
+	if pos < 0 {
+		return ''
+	}
+	return s[..pos + 1]
 }
 
 // trim_prefix strips `str` from the start of the string.

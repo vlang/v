@@ -32,95 +32,96 @@ struct Gen {
 	pref         &pref.Preferences
 	module_built string
 mut:
-	table                 &table.Table
-	out                   strings.Builder
-	cheaders              strings.Builder
-	includes              strings.Builder // all C #includes required by V modules
-	typedefs              strings.Builder
-	typedefs2             strings.Builder
-	type_definitions      strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
-	definitions           strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
-	inits                 map[string]strings.Builder // contents of `void _vinit/2{}`
-	cleanups              map[string]strings.Builder // contents of `void _vcleanup(){}`
-	gowrappers            strings.Builder // all go callsite wrappers
-	stringliterals        strings.Builder // all string literals (they depend on tos3() beeing defined
-	auto_str_funcs        strings.Builder // function bodies of all auto generated _str funcs
-	comptime_defines      strings.Builder // custom defines, given by -d/-define flags on the CLI
-	pcs_declarations      strings.Builder // -prof profile counter declarations for each function
-	hotcode_definitions   strings.Builder // -live declarations & functions
-	embedded_data         strings.Builder // data to embed in the executable/binary
-	shared_types          strings.Builder // shared/lock types
-	shared_functions      strings.Builder // shared constructors
-	channel_definitions   strings.Builder // channel related code
-	options_typedefs      strings.Builder // Option typedefs
-	options               strings.Builder // `Option_xxxx` types
-	json_forward_decls    strings.Builder // json type forward decls
-	enum_typedefs         strings.Builder // enum types
-	sql_buf               strings.Builder // for writing exprs to args via `sqlite3_bind_int()` etc
-	file                  ast.File
-	fn_decl               &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
-	last_fn_c_name        string
-	tmp_count             int      // counter for unique tmp vars (_tmp1, tmp2 etc)
-	tmp_count2            int      // a separate tmp var counter for autofree fn calls
-	is_c_call             bool     // e.g. `C.printf("v")`
-	is_assign_lhs         bool     // inside left part of assign expr (for array_set(), etc)
-	discard_or_result     bool     // do not safe last ExprStmt of `or` block in tmp variable to defer ongoing expr usage
-	is_void_expr_stmt     bool     // ExprStmt whos result is discarded
-	is_arraymap_set       bool     // map or array set value state
-	is_amp                bool     // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&byte(0)` etc
-	is_sql                bool     // Inside `sql db{}` statement, generating sql instead of C (e.g. `and` instead of `&&` etc)
-	is_shared             bool     // for initialization of hidden mutex in `[rw]shared` literals
-	is_vlines_enabled     bool     // is it safe to generate #line directives when -g is passed
-	arraymap_set_pos      int      // map or array set value position
-	vlines_path           string   // set to the proper path for generating #line directives
-	optionals             []string // to avoid duplicates TODO perf, use map
-	chan_pop_optionals    []string // types for `x := <-ch or {...}`
-	chan_push_optionals   []string // types for `ch <- x or {...}`
-	shareds               []int    // types with hidden mutex for which decl has been emitted
-	inside_ternary        int      // ?: comma separated statements on a single line
-	inside_map_postfix    bool     // inside map++/-- postfix expr
-	inside_map_infix      bool     // inside map<</+=/-= infix expr
-	inside_map_index      bool
-	inside_opt_data       bool
-	inside_if_optional    bool
-	ternary_names         map[string]string
-	ternary_level_names   map[string][]string
-	stmt_path_pos         []int // positions of each statement start, for inserting C statements before the current statement
-	skip_stmt_pos         bool  // for handling if expressions + autofree (since both prepend C statements)
-	right_is_opt          bool
-	is_autofree           bool // false, inside the bodies of fns marked with [manualfree], otherwise === g.pref.autofree
-	indent                int
-	empty_line            bool
-	is_test               bool
-	assign_op             token.Kind // *=, =, etc (for array_set)
-	defer_stmts           []ast.DeferStmt
-	defer_ifdef           string
-	defer_profile_code    string
-	str_types             []string     // types that need automatic str() generation
-	threaded_fns          []string     // for generating unique wrapper types and fns for `go xxx()`
-	waiter_fns            []string     // functions that wait for `go xxx()` to finish
-	array_fn_definitions  []string     // array equality functions that have been defined
-	map_fn_definitions    []string     // map equality functions that have been defined
-	struct_fn_definitions []string     // struct equality functions that have been defined
-	alias_fn_definitions  []string     // alias equality functions that have been defined
-	auto_fn_definitions   []string     // auto generated functions defination list
-	anon_fn_definitions   []string     // anon generated functions defination list
-	sumtype_definitions   map[int]bool // `_TypeA_to_sumtype_TypeB()` fns that have been generated
-	is_json_fn            bool     // inside json.encode()
-	json_types            []string // to avoid json gen duplicates
-	pcs                   []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
-	is_builtin_mod        bool
-	hotcode_fn_names      []string
-	embedded_files        []ast.EmbeddedFile
-	cur_fn                ast.FnDecl
-	cur_generic_types     []table.Type // `int`, `string`, etc in `foo<T>()`
-	sql_i                 int
-	sql_stmt_name         string
-	sql_side              SqlExprSide // left or right, to distinguish idents in `name == name`
-	inside_vweb_tmpl      bool
-	inside_return         bool
-	inside_or_block       bool
-	strs_to_free0         []string // strings.Builder
+	table                  &table.Table
+	out                    strings.Builder
+	cheaders               strings.Builder
+	includes               strings.Builder // all C #includes required by V modules
+	typedefs               strings.Builder
+	typedefs2              strings.Builder
+	type_definitions       strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
+	definitions            strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
+	inits                  map[string]strings.Builder // contents of `void _vinit/2{}`
+	cleanups               map[string]strings.Builder // contents of `void _vcleanup(){}`
+	gowrappers             strings.Builder // all go callsite wrappers
+	stringliterals         strings.Builder // all string literals (they depend on tos3() beeing defined
+	auto_str_funcs         strings.Builder // function bodies of all auto generated _str funcs
+	comptime_defines       strings.Builder // custom defines, given by -d/-define flags on the CLI
+	pcs_declarations       strings.Builder // -prof profile counter declarations for each function
+	hotcode_definitions    strings.Builder // -live declarations & functions
+	embedded_data          strings.Builder // data to embed in the executable/binary
+	shared_types           strings.Builder // shared/lock types
+	shared_functions       strings.Builder // shared constructors
+	channel_definitions    strings.Builder // channel related code
+	options_typedefs       strings.Builder // Option typedefs
+	options                strings.Builder // `Option_xxxx` types
+	json_forward_decls     strings.Builder // json type forward decls
+	enum_typedefs          strings.Builder // enum types
+	sql_buf                strings.Builder // for writing exprs to args via `sqlite3_bind_int()` etc
+	file                   ast.File
+	fn_decl                &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
+	last_fn_c_name         string
+	tmp_count              int      // counter for unique tmp vars (_tmp1, tmp2 etc)
+	tmp_count2             int      // a separate tmp var counter for autofree fn calls
+	is_c_call              bool     // e.g. `C.printf("v")`
+	is_assign_lhs          bool     // inside left part of assign expr (for array_set(), etc)
+	discard_or_result      bool     // do not safe last ExprStmt of `or` block in tmp variable to defer ongoing expr usage
+	is_void_expr_stmt      bool     // ExprStmt whos result is discarded
+	is_arraymap_set        bool     // map or array set value state
+	is_amp                 bool     // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&byte(0)` etc
+	is_sql                 bool     // Inside `sql db{}` statement, generating sql instead of C (e.g. `and` instead of `&&` etc)
+	is_shared              bool     // for initialization of hidden mutex in `[rw]shared` literals
+	is_vlines_enabled      bool     // is it safe to generate #line directives when -g is passed
+	arraymap_set_pos       int      // map or array set value position
+	vlines_path            string   // set to the proper path for generating #line directives
+	optionals              []string // to avoid duplicates TODO perf, use map
+	chan_pop_optionals     []string // types for `x := <-ch or {...}`
+	chan_push_optionals    []string // types for `ch <- x or {...}`
+	shareds                []int    // types with hidden mutex for which decl has been emitted
+	inside_ternary         int      // ?: comma separated statements on a single line
+	inside_map_postfix     bool     // inside map++/-- postfix expr
+	inside_map_infix       bool     // inside map<</+=/-= infix expr
+	inside_map_index       bool
+	inside_opt_data        bool
+	inside_if_optional     bool
+	ternary_names          map[string]string
+	ternary_level_names    map[string][]string
+	stmt_path_pos          []int // positions of each statement start, for inserting C statements before the current statement
+	skip_stmt_pos          bool  // for handling if expressions + autofree (since both prepend C statements)
+	right_is_opt           bool
+	is_autofree            bool // false, inside the bodies of fns marked with [manualfree], otherwise === g.pref.autofree
+	indent                 int
+	empty_line             bool
+	is_test                bool
+	assign_op              token.Kind // *=, =, etc (for array_set)
+	defer_stmts            []ast.DeferStmt
+	defer_ifdef            string
+	defer_profile_code     string
+	str_types              []string     // types that need automatic str() generation
+	threaded_fns           []string     // for generating unique wrapper types and fns for `go xxx()`
+	waiter_fns             []string     // functions that wait for `go xxx()` to finish
+	array_fn_definitions   []string     // array equality functions that have been defined
+	map_fn_definitions     []string     // map equality functions that have been defined
+	struct_fn_definitions  []string     // struct equality functions that have been defined
+	sumtype_fn_definitions []string     // sumtype equality functions that have been defined
+	alias_fn_definitions   []string     // alias equality functions that have been defined
+	auto_fn_definitions    []string     // auto generated functions defination list
+	anon_fn_definitions    []string     // anon generated functions defination list
+	sumtype_definitions    map[int]bool // `_TypeA_to_sumtype_TypeB()` fns that have been generated
+	is_json_fn             bool     // inside json.encode()
+	json_types             []string // to avoid json gen duplicates
+	pcs                    []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
+	is_builtin_mod         bool
+	hotcode_fn_names       []string
+	embedded_files         []ast.EmbeddedFile
+	cur_fn                 ast.FnDecl
+	cur_generic_types      []table.Type // `int`, `string`, etc in `foo<T>()`
+	sql_i                  int
+	sql_stmt_name          string
+	sql_side               SqlExprSide // left or right, to distinguish idents in `name == name`
+	inside_vweb_tmpl       bool
+	inside_return          bool
+	inside_or_block        bool
+	strs_to_free0          []string // strings.Builder
 	// strs_to_free          []string // strings.Builder
 	inside_call           bool
 	has_main              bool
@@ -3518,6 +3519,23 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		}
 		g.expr(node.right)
 		g.write(')')
+	} else if op_is_eq_or_ne && left_sym.kind == .sum_type && right_sym.kind == .sum_type {
+		ptr_typ := g.gen_sumtype_equality_fn(left_type)
+		if node.op == .eq {
+			g.write('${ptr_typ}_sumtype_eq(')
+		} else if node.op == .ne {
+			g.write('!${ptr_typ}_sumtype_eq(')
+		}
+		if node.left_type.is_ptr() {
+			g.write('*')
+		}
+		g.expr(node.left)
+		g.write(', ')
+		if node.right_type.is_ptr() {
+			g.write('*')
+		}
+		g.expr(node.right)
+		g.write(')')
 	} else if op_is_key_in_or_not_in {
 		if node.op == .not_in {
 			g.write('!')
@@ -5168,7 +5186,7 @@ fn (mut g Gen) write_init_function() {
 		// g.writeln('g_str_buf = malloc( ${mb_size} * 1024 * 1000 );')
 	}
 	if g.pref.prealloc {
-		g.writeln('g_m2_buf = malloc(50 * 1000 * 1000);')
+		g.writeln('g_m2_buf = malloc(150 * 1000 * 1000);')
 		g.writeln('g_m2_ptr = g_m2_buf;')
 	}
 	// NB: the as_cast table should be *before* the other constant initialize calls,

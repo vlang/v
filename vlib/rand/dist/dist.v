@@ -42,6 +42,9 @@ pub struct NormalConfigStruct {
 // and standard deviation sigma. If not specified, mu is 0 and sigma is 1. Intended usage is
 // `x, y := normal_pair(mu: mean, sigma: stdev)`, or `x, y := normal_pair({})`.
 pub fn normal_pair(config NormalConfigStruct) (f64, f64) {
+	if config.sigma <= 0 {
+		panic('The standard deviation has to be positive.')
+	}
 	// This is an implementation of the Marsaglia polar method
 	// See: https://doi.org/10.1137%2F1006063
 	// Also: https://en.wikipedia.org/wiki/Marsaglia_polar_method
@@ -69,4 +72,14 @@ pub fn normal_pair(config NormalConfigStruct) (f64, f64) {
 pub fn normal(config NormalConfigStruct) f64 {
 	x, _ := normal_pair(config)
 	return x
+}
+
+// exponential returns an exponentially distributed random number with the rate paremeter
+// lambda. It is expected that lambda is positive.
+pub fn exponential(lambda f64) f64 {
+	if lambda <= 0 {
+		panic('The rate (lambda) must be positive.')
+	}
+	// Use the inverse transform sampling method
+	return -math.log(rand.f64()) / lambda
 }

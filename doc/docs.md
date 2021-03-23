@@ -3375,12 +3375,13 @@ NB: Each flag must go on its own line (for now)
 #flag linux -DIMGUI_IMPL_API=
 ```
 
-In the console build command, you can use `-cflags` to pass custom flags to the backend C compiler.
-You can also use `-cc` to change the default C backend compiler.
-For example: `-cc gcc-9 -cflags -fsanitize=thread`.
+In the console build command, you can use:
+* `-cflags` to pass custom flags to the backend C compiler.
+* `-cc` to change the default C backend compiler.
+* For example: `-cc gcc-9 -cflags -fsanitize=thread`.
 
-You can also define a `VFLAGS` environment variable in your terminal to store your `-cc`
-and `cflags` settings, rather than including them in the build command each time.
+You can define a `VFLAGS` environment variable in your terminal to store your `-cc`
+and `-cflags` settings, rather than including them in the build command each time.
 
 ### #pkgconfig
 
@@ -3470,6 +3471,54 @@ To cast a `voidptr` to a V reference, use `user := &User(user_void_ptr)`.
 `voidptr` can also be dereferenced into a V struct through casting: `user := User(user_void_ptr)`.
 
 [an example of a module that calls C code from V](https://github.com/vlang/v/blob/master/vlib/v/tests/project_with_c_code/mod1/wrapper.v)
+
+### C Declarations
+
+C identifiers are accessed with the `C` prefix similarly to how module-specific 
+identifiers are accessed. Functions must be redeclared in V before they can be used. 
+Any C types may be used behind the `C` prefix, but types must be redeclared in V in 
+order to access type members.
+
+To redeclare complex types, such as in the following C code:
+
+```c
+struct SomeCStruct {
+	uint8_t implTraits;
+	uint16_t memPoolData;
+	union {
+		struct {
+			void* data;
+			size_t size;
+		};
+
+		DataView view;
+	};
+};
+```
+
+members of sub-data-structures may be directly declared in the containing struct as below:
+
+```v
+struct C.SomeCStruct {
+	implTraits  byte
+	memPoolData u16
+	// These members are part of sub data structures that can't currently be represented in V.
+	// Declaring them directly like this is sufficient for access.
+	// union {
+	// struct {
+	data voidptr
+	size size_t
+	// }
+	view C.DataView
+	// }
+}
+```
+
+The existence of the data members is made known to V, and they may be used without 
+re-creating the original structure exactly.
+
+Alternatively, you may [embed](#embedded-structs) the sub-data-structures to maintain 
+a parallel code structure.
 
 ## Debugging generated C code
 

@@ -62,6 +62,8 @@ jobs:
           make
           ./v -d debug_malloc -d debug_realloc -o v cmd/v
           ./v -cg -cflags -Werror -o v cmd/v
+          # Test v -realloc arena allocation
+          ./v -o vrealloc -prealloc cmd/v && ./vrealloc -o v3 cmd/v && ./v3 -o v4 cmd/v
       - name: Test v->c
         run: |
           thirdparty/tcc/tcc.exe -version
@@ -432,7 +434,7 @@ jobs:
           ./v -o v2 cmd/v -cflags -fsanitize=memory
           ./v -o v3 cmd/v -cflags -fsanitize=thread
           ./v -o v4 cmd/v -cflags -fsanitize=undefined
-          ./v -o v5 cmd/v -cflags -fsanitize=address
+          ./v -o v5 cmd/v -cflags -fsanitize=address,pointer-compare,pointer-subtract
           UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v2 -o v.c cmd/v
           UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v3 -o v.c cmd/v
           UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v4 -o v.c cmd/v
@@ -551,7 +553,7 @@ jobs:
       - name: Build V
         run: make -j4 && ./v -cg -cflags -Werror -o v cmd/v
       - name: Self tests (-fsanitize=address)
-        run: ASAN_OPTIONS=detect_leaks=0 ./v -cflags -fsanitize=address test-self
+        run: ASAN_OPTIONS=detect_leaks=0 ./v -cflags "-fsanitize=address,pointer-compare,pointer-subtract" test-self
       - name: Self tests (V compiled with -fsanitize=address)
         run:
           ./v -cflags -fsanitize=address -o v cmd/v &&
@@ -580,7 +582,7 @@ jobs:
           ## .\.github\workflows\windows-install-sdl.bat
       - name: Self tests (-fsanitize=address)
         run: |
-          .\v.exe -cflags "-fsanitize=address" test-self
+          .\v.exe -cflags -fsanitize=address test-self
 
   tests-sanitize-address-gcc:
     runs-on: ubuntu-20.04
@@ -606,7 +608,7 @@ jobs:
         run: ASAN_OPTIONS=detect_leaks=0 ./v -cflags -fsanitize=address test-self
       - name: Self tests (V compiled with -fsanitize=address)
         run:
-          ./v -cflags -fsanitize=address -o v cmd/v &&
+          ./v -cflags -fsanitize=address,pointer-compare,pointer-subtract -o v cmd/v &&
           ASAN_OPTIONS=detect_leaks=0 ./v -cc tcc test-self -asan-compiler
 
   tests-sanitize-memory-clang:
@@ -631,7 +633,9 @@ jobs:
         run: make -j4 && ./v -cc clang -cg -cflags -Werror -o v cmd/v
       - name: Self tests (-fsanitize=memory)
         run: ./v -cflags -fsanitize=memory test-self
-
+      - name: Self tests (V compiled with -fsanitize=memory)
+        run:
+          ./v -cflags -fsanitize=memory -o v cmd/v && ./v -cc tcc test-self -msan-compiler
   #  ubuntu-autofree-selfcompile:
   #    runs-on: ubuntu-20.04
   #    timeout-minutes: 30
@@ -816,16 +820,16 @@ jobs:
           .\cmd\tools\test_if_v_test_system_works.exe
       - name: Make sure running TCC64 instead of TCC32
         run : .\v.exe test .github\workflows\make_sure_ci_run_with_64bit_compiler_test.v
-        
+
       - name: Test ./v doc -v clipboard *BEFORE building tools*
         run: ./v doc -v clipboard
-        
+
       - name: Test v build-tools
         run: ./v -W build-tools
-        
+
       - name: Test ./v doc clipboard
         run: ./v doc clipboard
-        
+
       - name: Self tests
         run: |
           .\v.exe -silent test-self
@@ -856,16 +860,16 @@ jobs:
         run: |
           .\v.exe cmd/tools/test_if_v_test_system_works.v
           .\cmd\tools\test_if_v_test_system_works.exe
-          
-      - name: Make sure running TCC32 instead of TCC64      
+
+      - name: Make sure running TCC32 instead of TCC64
         run : .\v.exe test .github\workflows\make_sure_ci_run_with_32bit_compiler_test.v
-        
+
       - name: Test v build-tools
         run: ./v -W build-tools
 
       - name: Test ./v doc clipboard
         run: ./v doc clipboard
-        
+
       - name: Self tests
         run: |
           .\v.exe -silent test-self

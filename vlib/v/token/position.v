@@ -8,12 +8,13 @@ pub:
 	len     int // length of the literal in the source
 	line_nr int // the line number in the source where the token occured
 	pos     int // the position of the token in scanner text
+	col     int // the column in the source where the token occured
 pub mut:
 	last_line int // the line number where the ast object ends (used by vfmt)
 }
 
 pub fn (pos Position) str() string {
-	return 'Position{ line_nr: $pos.line_nr, last_line: $pos.last_line, pos: $pos.pos, len: $pos.len }'
+	return 'Position{ line_nr: $pos.line_nr, last_line: $pos.last_line, pos: $pos.pos, col: $pos.col, len: $pos.len }'
 }
 
 pub fn (pos Position) extend(end Position) Position {
@@ -30,6 +31,7 @@ pub fn (pos Position) extend_with_last_line(end Position, last_line int) Positio
 		line_nr: pos.line_nr
 		last_line: last_line - 1
 		pos: pos.pos
+		col: pos.col
 	}
 }
 
@@ -44,5 +46,6 @@ pub fn (tok &Token) position() Position {
 		line_nr: tok.line_nr - 1
 		pos: tok.pos
 		last_line: tok.line_nr - 1
+		col: tok.col - 1
 	}
 }

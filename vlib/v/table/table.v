@@ -705,11 +705,10 @@ pub fn (mut t Table) find_or_register_array(elem_type Type) int {
 }
 
 pub fn (mut t Table) find_or_register_array_with_dims(elem_type Type, nr_dims int) int {
-	return if nr_dims == 1 {
-		t.find_or_register_array(elem_type)
-	} else {
-		t.find_or_register_array(t.find_or_register_array_with_dims(elem_type, nr_dims - 1))
+	if nr_dims == 1 {
+		return t.find_or_register_array(elem_type)
 	}
+	return t.find_or_register_array(t.find_or_register_array_with_dims(elem_type, nr_dims - 1))
 }
 
 pub fn (mut t Table) find_or_register_array_fixed(elem_type Type, size int) int {
