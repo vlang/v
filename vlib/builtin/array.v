@@ -498,6 +498,7 @@ pub fn (mut a []string) free() {
 
 // str returns a string representation of the array of strings
 // => '["a", "b", "c"]'.
+[manualfree]
 pub fn (a []string) str() string {
 	mut sb := strings.new_builder(a.len * 3)
 	sb.write_string('[')
@@ -511,7 +512,9 @@ pub fn (a []string) str() string {
 		}
 	}
 	sb.write_string(']')
-	return sb.str()
+	res := sb.str()
+	unsafe { sb.free() }
+	return res
 }
 
 // hex returns a string with the hexadecimal representation
