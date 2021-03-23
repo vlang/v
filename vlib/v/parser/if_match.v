@@ -257,6 +257,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		line_nr: match_first_pos.line_nr
 		pos: match_first_pos.pos
 		len: match_last_pos.pos - match_first_pos.pos + match_last_pos.len
+		col: match_first_pos.col
 	}
 	if p.tok.kind == .rcbr {
 		p.check(.rcbr)
@@ -401,6 +402,7 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 			line_nr: branch_first_pos.line_nr
 			pos: branch_first_pos.pos
 			len: branch_last_pos.pos - branch_first_pos.pos + branch_last_pos.len
+			col: branch_first_pos.col
 		}
 		post_comments := p.eat_comments({})
 		pos.update_last_line(p.prev_tok.line_nr)
@@ -425,6 +427,7 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 		line_nr: match_first_pos.line_nr
 		pos: match_first_pos.pos
 		len: match_last_pos.pos - match_first_pos.pos + match_last_pos.len
+		col: match_first_pos.col
 	}
 	if p.tok.kind == .rcbr {
 		p.check(.rcbr)

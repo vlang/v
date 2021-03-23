@@ -1440,6 +1440,7 @@ pub fn (expr Expr) position() token.Position {
 				line_nr: expr.pos.line_nr
 				pos: left_pos.pos
 				len: right_pos.pos - left_pos.pos + right_pos.len
+				col: left_pos.col
 				last_line: right_pos.last_line
 			}
 		}
@@ -1563,6 +1564,7 @@ pub fn (node Node) position() token.Position {
 						line_nr: -1
 						pos: -1
 						last_line: -1
+						col: -1
 					}
 				}
 			}
