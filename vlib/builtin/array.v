@@ -685,8 +685,12 @@ pub fn (a1 []string) eq(a2 []string) bool {
 	if a1.len != a2.len {
 		return false
 	}
+	size_of_string := int(sizeof(string))
 	for i in 0 .. a1.len {
-		if a1[i] != a2[i] {
+		offset := i * size_of_string
+		s1 := &string(unsafe { byteptr(a1.data) + offset })
+		s2 := &string(unsafe { byteptr(a2.data) + offset })
+		if *s1 != *s2 {
 			return false
 		}
 	}
