@@ -87,6 +87,9 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 			is_guard = true
 			var_pos := p.tok.position()
 			var_name := p.check_name()
+			if p.scope.known_var(var_name) {
+				p.error_with_pos('redefinition of `$var_name`', var_pos)
+			}
 			comments << p.eat_comments({})
 			p.check(.decl_assign)
 			comments << p.eat_comments({})
