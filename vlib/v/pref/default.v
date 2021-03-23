@@ -46,7 +46,9 @@ pub fn (mut p Preferences) fill_with_defaults() {
 			// The file name is just `.v` or `.vsh` or `.*`
 			base = filename
 		}
-		// target_dir := if os.is_dir(rpath) { rpath } else { os.dir(rpath) }
+		target_dir := if os.is_dir(rpath) { rpath } else { os.dir(rpath) }
+		p.out_name = os.join_path(target_dir, base)
+		// TODO (maybe)
 		// If no "-o" was supplied, create the binary in the current
 		// directory. This is the behavior of Go, Clang, GCC, etc.
 		p.out_name = os.join_path(os.getwd(), base)
