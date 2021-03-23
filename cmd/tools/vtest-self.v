@@ -220,22 +220,22 @@ fn main() {
 	mut asan_compiler := false
 	mut msan_compiler := false
 	for arg in args {
-		if '-asan-compiler' in arg {
+		if arg.contains('-asan-compiler') {
 			asan_compiler = true
 		}
-		if '-msan-compiler' in arg {
+		if arg.contains('-msan-compiler') {
 			msan_compiler = true
 		}
-		if '-Werror' in arg {
+		if arg.contains('-Werror') {
 			werror = true
 		}
-		if '-fsanitize=memory' in arg {
+		if arg.contains('-fsanitize=memory') {
 			sanitize_memory = true
 		}
-		if '-fsanitize=address' in arg {
+		if arg.contains('-fsanitize=address') {
 			sanitize_address = true
 		}
-		if '-fsanitize=undefined' in arg {
+		if arg.contains('-fsanitize=undefined') {
 			sanitize_undefined = true
 		}
 	}

@@ -344,7 +344,7 @@ pub fn (mut d Doc) generate() ? {
 	} else {
 		os.real_path(os.dir(d.base_path))
 	}
-	d.is_vlib = 'vlib' !in d.base_path
+	d.is_vlib = !d.base_path.contains('vlib')
 	project_files := os.ls(d.base_path) or { return err }
 	v_files := d.prefs.should_compile_filtered_files(d.base_path, project_files)
 	if v_files.len == 0 {
@@ -374,7 +374,7 @@ pub fn (mut d Doc) file_asts(file_asts []ast.File) ? {
 	mut fname_has_set := false
 	d.orig_mod_name = file_asts[0].mod.name
 	for i, file_ast in file_asts {
-		if d.filename.len > 0 && d.filename in file_ast.path && !fname_has_set {
+		if d.filename.len > 0 && file_ast.path.contains(d.filename) && !fname_has_set {
 			d.filename = file_ast.path
 			fname_has_set = true
 		}
