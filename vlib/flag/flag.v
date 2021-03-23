@@ -38,6 +38,18 @@ pub mut:
 	args_description        string
 }
 
+[unsafe]
+fn (mut f FlagParser) free() {
+	unsafe {
+		f.args.free()
+		f.flags.free()
+		f.application_name.free()
+		f.application_version.free()
+		f.application_description.free()
+		f.args_description.free()
+	}
+}
+
 pub const (
 	// used for formating usage message
 	space           = '                            '
