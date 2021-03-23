@@ -1,4 +1,5 @@
 import os
+import strings
 
 // This program is built and run via Valgrind to ensure there are no leaks with -autofree
 fn simple() {
@@ -341,6 +342,12 @@ fn comp_if() {
 fn anon_fn() {
 }
 
+fn return_sb_str() string {
+	mut sb := strings.new_builder(100)
+	sb.write_string('hello')
+	return sb.str() // sb should be freed, but only after .str() is called
+}
+
 fn main() {
 	println('start')
 	simple()
@@ -364,6 +371,7 @@ fn main() {
 	free_before_return()
 	free_before_return_bool()
 	free_before_break()
+	s := return_sb_str()
 	// free_map()
 	// loop_map()
 	free_array_except_returned_element()
