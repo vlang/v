@@ -162,7 +162,7 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 	mut module_built := ''
 	if pref.build_mode == .build_module {
 		for file in files {
-			if pref.path in file.path
+			if file.path.contains(pref.path)
 				&& file.mod.short_name == pref.path.all_after_last(os.path_separator).trim_right(os.path_separator) {
 				module_built = file.mod.name
 				break
@@ -4721,27 +4721,30 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			if expr is ast.Ident {
 				g.returned_var_name = expr.name
 			}
-			g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 		}
 		// free := g.is_autofree && !g.is_builtin_mod // node.exprs[0] is ast.CallExpr
 		// Create a temporary variable for the return expression
-		free := !g.is_builtin_mod // node.exprs[0] is ast.CallExpr
+		mut gen_tmp_var := !g.is_builtin_mod // node.exprs[0] is ast.CallExpr
 		mut tmp := ''
-		if free {
+		if gen_tmp_var {
 			// `return foo(a, b, c)`
 			// `tmp := foo(a, b, c); free(a); free(b); free(c); return tmp;`
 			// Save return value in a temp var so that all args (a,b,c) can be freed
 			// Don't use a tmp var if a variable is simply returned: `return x`
 			if node.exprs[0] !is ast.Ident {
 				tmp = g.new_tmp_var()
+				g.write('/*tmp return var*/ ')
 				g.write(g.typ(g.fn_decl.return_type))
 				g.write(' ')
 				g.write(tmp)
 				g.write(' = ')
 			} else {
+				gen_tmp_var = false
+				g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 				g.write('return ')
 			}
 		} else {
+			g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 			g.write('return ')
 		}
 		if expr0.is_auto_deref_var() {
@@ -4755,10 +4758,11 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		} else {
 			g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
 		}
-		if free {
+		if gen_tmp_var {
 			g.writeln(';')
 			has_semicolon = true
 			if tmp != '' {
+				g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 				g.write('return $tmp')
 				has_semicolon = false
 			}

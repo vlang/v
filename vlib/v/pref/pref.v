@@ -634,22 +634,19 @@ pub fn cc_from_string(cc_str string) CompilerType {
 	normalized_cc_array := normalized_cc.split('/')
 	last_elem := normalized_cc_array.last()
 	cc := last_elem.all_before('.')
-	if '++' in cc {
+	if cc.contains('++') {
 		return .cplusplus
 	}
-	if 'tcc' in cc {
+	if cc.contains('tcc') || cc.contains('tinyc') {
 		return .tinyc
 	}
-	if 'tinyc' in cc {
-		return .tinyc
-	}
-	if 'clang' in cc {
+	if cc.contains('clang') {
 		return .clang
 	}
-	if 'mingw' in cc {
+	if cc.contains('mingw') {
 		return .mingw
 	}
-	if 'msvc' in cc {
+	if cc.contains('msvc') {
 		return .msvc
 	}
 	return .gcc
