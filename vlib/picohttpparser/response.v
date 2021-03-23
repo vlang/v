@@ -10,7 +10,13 @@ pub mut:
 }
 
 [inline]
-fn (mut r Response) write_str(s string) {
+[deprecated: 'use Response.write_string() instead']
+pub fn (mut r Response) write_str(s string) {
+	r.write_string(s)
+}
+
+[inline]
+fn (mut r Response) write_string(s string) {
 	unsafe {
 		C.memcpy(r.buf, s.str, s.len)
 		r.buf += s.len
@@ -19,89 +25,89 @@ fn (mut r Response) write_str(s string) {
 
 [inline]
 pub fn (mut r Response) http_ok() &Response {
-	r.write_str('HTTP/1.1 200 OK\r\n')
+	r.write_string('HTTP/1.1 200 OK\r\n')
 	return r
 }
 
 [inline]
 pub fn (mut r Response) header(k string, v string) &Response {
-	r.write_str(k)
-	r.write_str(': ')
-	r.write_str(v)
-	r.write_str('\r\n')
+	r.write_string(k)
+	r.write_string(': ')
+	r.write_string(v)
+	r.write_string('\r\n')
 	return r
 }
 
 [inline]
 pub fn (mut r Response) header_date() &Response {
-	r.write_str('Date: ')
+	r.write_string('Date: ')
 	unsafe {
 		r.buf += cpy(r.buf, r.date, 29)
 	}
-	r.write_str('\r\n')
+	r.write_string('\r\n')
 	return r
 }
 
 [inline]
 pub fn (mut r Response) header_server() &Response {
-	r.write_str('Server: V\r\n')
+	r.write_string('Server: V\r\n')
 	return r
 }
 
 [inline]
 pub fn (mut r Response) content_type(s string) &Response {
-	r.write_str('Content-Type: ')
-	r.write_str(s)
-	r.write_str('\r\n')
+	r.write_string('Content-Type: ')
+	r.write_string(s)
+	r.write_string('\r\n')
 	return r
 }
 
 [inline]
 pub fn (mut r Response) html() &Response {
-	r.write_str('Content-Type: text/html\r\n')
+	r.write_string('Content-Type: text/html\r\n')
 	return r
 }
 
 [inline]
 pub fn (mut r Response) plain() &Response {
-	r.write_str('Content-Type: text/plain\r\n')
+	r.write_string('Content-Type: text/plain\r\n')
 	return r
 }
 
 [inline]
 pub fn (mut r Response) json() &Response {
-	r.write_str('Content-Type: application/json\r\n')
+	r.write_string('Content-Type: application/json\r\n')
 	return r
 }
 
 [inline]
 pub fn (mut r Response) body(body string) {
-	r.write_str('Content-Length: ')
+	r.write_string('Content-Length: ')
 	unsafe {
 		r.buf += C.u64toa(r.buf, body.len)
 	}
-	r.write_str('\r\n\r\n')
-	r.write_str(body)
+	r.write_string('\r\n\r\n')
+	r.write_string(body)
 }
 
 [inline]
 pub fn (mut r Response) http_404() {
-	r.write_str('HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n')
+	r.write_string('HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n')
 }
 
 [inline]
 pub fn (mut r Response) http_405() {
-	r.write_str('HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 0\r\n\r\n')
+	r.write_string('HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 0\r\n\r\n')
 }
 
 [inline]
 pub fn (mut r Response) http_500() {
-	r.write_str('HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n')
+	r.write_string('HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n')
 }
 
 [inline]
 pub fn (mut r Response) raw(response string) {
-	r.write_str(response)
+	r.write_string(response)
 }
 
 [inline]

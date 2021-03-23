@@ -29,19 +29,28 @@ pub fn can_show_color_on_stderr() bool {
 // ok_message returns a colored string with green color.
 // If colors are not allowed, returns a given string.
 pub fn ok_message(s string) string {
-	return if can_show_color_on_stdout() { green(' $s ') } else { s }
+	if can_show_color_on_stdout() {
+		return green(' $s ')
+	}
+	return s
 }
 
 // fail_message returns a colored string with red color.
 // If colors are not allowed, returns a given string.
 pub fn fail_message(s string) string {
-	return if can_show_color_on_stdout() { inverse(bg_white(bold(red(' $s ')))) } else { s }
+	if can_show_color_on_stdout() {
+		return inverse(bg_white(bold(red(' $s '))))
+	}
+	return s
 }
 
 // warn_message returns a colored string with yellow color.
 // If colors are not allowed, returns a given string.
 pub fn warn_message(s string) string {
-	return if can_show_color_on_stdout() { bright_yellow(' $s ') } else { s }
+	if can_show_color_on_stdout() {
+		return bright_yellow(' $s ')
+	}
+	return s
 }
 
 // colorize returns a colored string by running the specified `cfn` over
@@ -59,10 +68,11 @@ pub fn colorize(cfn fn (string) string, s string) string {
 // If an empty string is passed in, print enough spaces to make a new line
 pub fn h_divider(divider string) string {
 	cols, _ := get_terminal_size()
-	result := if divider.len > 0 {
-		divider.repeat(1 + (cols / divider.len))
+	mut result := ''
+	if divider.len > 0 {
+		result = divider.repeat(1 + (cols / divider.len))
 	} else {
-		' '.repeat(1 + cols)
+		result = ' '.repeat(1 + cols)
 	}
 	return result[0..cols]
 }
@@ -83,10 +93,11 @@ pub fn header(text string, divider string) string {
 	})
 	tlimit_alligned := if (tlimit % 2) != (cols % 2) { tlimit + 1 } else { tlimit }
 	tstart := imax(0, (cols - tlimit_alligned) / 2)
-	ln := if divider.len > 0 {
-		divider.repeat(1 + cols / divider.len)[0..cols]
+	mut ln := ''
+	if divider.len > 0 {
+		ln = divider.repeat(1 + cols / divider.len)[0..cols]
 	} else {
-		' '.repeat(1 + cols)
+		ln = ' '.repeat(1 + cols)
 	}
 	if ln.len == 1 {
 		return ln + ' ' + text[0..tlimit] + ' ' + ln

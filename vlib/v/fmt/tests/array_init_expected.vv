@@ -6,3 +6,11 @@ fn main() {
 		println("oh no :'(")
 	}
 }
+
+fn wrapping_tests() {
+	my_arr := ['Lorem ipsum dolor sit amet, consectetur adipiscing',
+		'elit. Donec varius purus leo, vel maximus diam',
+		'finibus sed. Etiam eu urna ante. Nunc quis vehicula',
+		'velit. Sed at mauris et quam ornare tristique.',
+	]
+}

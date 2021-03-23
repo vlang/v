@@ -4,6 +4,7 @@
 module time
 
 #include <time.h>
+#include <errno.h>
 
 struct C.tm {
 	tm_sec   int
@@ -139,6 +140,14 @@ pub fn wait(duration Duration) {
 
 // sleep makes the calling thread sleep for a given duration (in nanoseconds).
 pub fn sleep(duration Duration) {
-	ts := &C.timespec{duration / second, duration % second}
-	C.nanosleep(ts, C.NULL)
+	mut req := C.timespec{duration / second, duration % second}
+	rem := C.timespec{}
+	for C.nanosleep(&req, &rem) < 0 {
+		if C.errno == C.EINTR {
+			// Interrupted by a signal handler
+			req = rem
+		} else {
+			break
+		}
+	}
 }
