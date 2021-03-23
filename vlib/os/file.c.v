@@ -313,8 +313,6 @@ pub fn (f &File) read_bytes_at(size int, pos u64) []byte {
 	return arr[0..nreadbytes]
 }
 
-// https://stackoverflow.com/questions/21647735/reading-and-writing-64bits-by-64-bits-in-c
-
 // read_bytes_into fills `buf` with bytes at the given position in the file.
 // `buf` *must* have length greater than zero.
 // Returns the number of read bytes, or an error.
@@ -337,9 +335,7 @@ pub fn (f &File) read_bytes_into(pos u64, mut buf []byte) ?int {
 			}
 			return nbytes
 		} $else {
-			// Note: fseek errors if pos == os.file_size, which we accept
 			C.fseeko(f.cfile, pos, C.SEEK_SET)
-			// errno is only set if fread fails, so clear it first to tell
 			C.errno = 0
 			nbytes := int(C.fread(buf.data, 1, buf.len, f.cfile))
 			if C.errno != 0 {
@@ -352,9 +348,7 @@ pub fn (f &File) read_bytes_into(pos u64, mut buf []byte) ?int {
 		}
 	}
 	$if x32 {
-		// Note: fseek errors if pos == os.file_size, which we accept
 		C.fseek(f.cfile, pos, C.SEEK_SET)
-		// errno is only set if fread fails, so clear it first to tell
 		C.errno = 0
 		nbytes := int(C.fread(buf.data, 1, buf.len, f.cfile))
 		if C.errno != 0 {
@@ -395,21 +389,16 @@ pub fn (f &File) read_from(pos u64, mut buf []byte) ?int {
 	$if x64 {
 		$if windows {
 			C._fseeki64(f.cfile, pos, C.SEEK_SET)
-			C.errno = 0
-			nbytes := int(C.fread(buf.data, 1, buf.len, f.cfile))
-			if C.errno != 0 {
-				return error(posix_get_error_msg(C.errno))
-			}
-			return nbytes
 		} $else {
 			C.fseeko(f.cfile, pos, C.SEEK_SET)
-			C.errno = 0
-			nbytes := int(C.fread(buf.data, 1, buf.len, f.cfile))
-			if C.errno != 0 {
-				return error(posix_get_error_msg(C.errno))
-			}
-			return nbytes
 		}
+
+		C.errno = 0
+		nbytes := int(C.fread(buf.data, 1, buf.len, f.cfile))
+		if C.errno != 0 {
+			return error(posix_get_error_msg(C.errno))
+		}
+		return nbytes
 	}
 	$if x32 {
 		C.fseek(f.cfile, pos, C.SEEK_SET)
