@@ -191,7 +191,7 @@ fn (s &Scanner) new_eof_token() token.Token {
 		kind: .eof
 		lit: ''
 		line_nr: s.line_nr + 1
-		col: 1
+		col: s.current_column()
 		pos: s.pos
 		len: 1
 		tidx: s.tidx
@@ -576,7 +576,7 @@ pub fn (mut s Scanner) buffer_scan() token.Token {
 		}
 		return s.all_tokens[cidx]
 	}
-	return s.new_token(.eof, '', 1)
+	return s.new_eof_token()
 }
 
 [inline]
