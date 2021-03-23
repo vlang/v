@@ -7,6 +7,10 @@ fn foo2() ?int {
 }
 
 fn foo3() ?int {
+    return if false { 1 } else { error('foo3 error') }
+}
+
+fn foo4() ?int {
 	return if true { 2 } else { 0 }
 }
 
@@ -19,9 +23,15 @@ fn test_if_expr_of_optional() {
 	println(a2)
 	assert a2 == 1
 
-	a3 := foo3() or { panic('error') }
-	println(a3)
-	assert a3 == 2
+	if _ := foo3() {
+		assert false
+	} else {
+		assert err.msg == 'foo3 error'
+	}
+
+	a4 := foo4() or { panic('error') }
+	println(a4)
+	assert a4 == 2
 }
 
 fn foo_complex() ?int {

@@ -917,13 +917,11 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 				g.stmt_path_pos << g.out.len
 				g.skip_stmt_pos = true
 				if stmt is ast.ExprStmt {
-					sym := g.table.get_type_symbol(stmt.typ)
-					if sym.name in ['Option2', 'Option'] || stmt.expr is ast.None {
-						tmp := g.new_tmp_var()
-						g.write('Option $tmp = (Option){.state = 0,.err = ')
+					if stmt.typ == table.error_type_idx || stmt.expr is ast.None {
+						g.writeln('${tmp_var}.state = 2;')
+						g.write('${tmp_var}.err = ')
 						g.expr(stmt.expr)
-						g.writeln('};')
-						g.writeln('memcpy(&$tmp_var, &$tmp, sizeof(Option));')
+						g.writeln(';')
 					} else {
 						mut styp := g.base_type(stmt.typ)
 						$if tinyc && x32 && windows {
