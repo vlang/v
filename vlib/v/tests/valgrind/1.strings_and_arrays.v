@@ -371,7 +371,7 @@ fn main() {
 	free_before_return()
 	free_before_return_bool()
 	free_before_break()
-	s := return_sb_str()
+	s2 := return_sb_str()
 	// free_map()
 	// loop_map()
 	free_array_except_returned_element()
