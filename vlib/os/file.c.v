@@ -206,7 +206,7 @@ pub fn (mut f File) write_string(s string) ?int {
 // write_to implements the RandomWriter interface.
 // It returns how many bytes were actually written.
 // It resets the seek position to the end of the file.
-pub fn (mut f File) write_to(pos int, buf []byte) ?int {
+pub fn (mut f File) write_to(pos u64, buf []byte) ?int {
 	if !f.is_opened {
 		return error('file is not opened')
 	}
@@ -256,7 +256,7 @@ pub fn (mut f File) write_bytes(data voidptr, size int) int {
 // pointers to it, it will cause your programs to segfault.
 [deprecated: 'use File.write_ptr_at() instead']
 [unsafe]
-pub fn (mut f File) write_bytes_at(data voidptr, size int, pos int) int {
+pub fn (mut f File) write_bytes_at(data voidptr, size int, pos u64) int {
 	return unsafe { f.write_ptr_at(data, size, pos) }
 }
 
@@ -273,7 +273,7 @@ pub fn (mut f File) write_ptr(data voidptr, size int) int {
 // NB: write_ptr_at is unsafe and should be used carefully, since if you pass invalid
 // pointers to it, it will cause your programs to segfault.
 [unsafe]
-pub fn (mut f File) write_ptr_at(data voidptr, size int, pos int) int {
+pub fn (mut f File) write_ptr_at(data voidptr, size int, pos u64) int {
 	$if x64 {
 		$if windows {
 			C._fseeki64(f.cfile, pos, C.SEEK_SET)
@@ -304,7 +304,7 @@ pub fn (f &File) read_bytes(size int) []byte {
 }
 
 // read_bytes_at reads `size` bytes at the given position in the file.
-pub fn (f &File) read_bytes_at(size int, pos int) []byte {
+pub fn (f &File) read_bytes_at(size int, pos u64) []byte {
 	mut arr := []byte{len: size}
 	nreadbytes := f.read_bytes_into(pos, mut arr) or {
 		// return err
@@ -318,7 +318,7 @@ pub fn (f &File) read_bytes_at(size int, pos int) []byte {
 // read_bytes_into fills `buf` with bytes at the given position in the file.
 // `buf` *must* have length greater than zero.
 // Returns the number of read bytes, or an error.
-pub fn (f &File) read_bytes_into(pos int, mut buf []byte) ?int {
+pub fn (f &File) read_bytes_into(pos u64, mut buf []byte) ?int {
 	if buf.len == 0 {
 		panic(@FN + ': `buf.len` == 0')
 	}
@@ -383,12 +383,12 @@ pub fn (f &File) read(mut buf []byte) ?int {
 
 // read_at reads `buf.len` bytes starting at file byte offset `pos`, in `buf`.
 [deprecated: 'use File.read_from() instead']
-pub fn (f &File) read_at(pos int, mut buf []byte) ?int {
+pub fn (f &File) read_at(pos u64, mut buf []byte) ?int {
 	return f.read_from(pos, mut buf)
 }
 
 // read_from implements the RandomReader interface.
-pub fn (f &File) read_from(pos int, mut buf []byte) ?int {
+pub fn (f &File) read_from(pos u64, mut buf []byte) ?int {
 	if buf.len == 0 {
 		return 0
 	}
