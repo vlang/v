@@ -145,6 +145,8 @@ pub fn tos_lit(s charptr) string {
 }
 
 // vstring converts a C style string to a V string. NB: the string data is reused, NOT copied.
+// strings returned from this function will be normal V strings beside that (i.e. they would be
+// freed by V's -autofree mechanism, when they are no longer used).
 [unsafe]
 pub fn (bp byteptr) vstring() string {
 	return string{
@@ -153,30 +155,87 @@ pub fn (bp byteptr) vstring() string {
 	}
 }
 
-// vstring_with_len converts a C style string to a V string. NB: the string data is reused, NOT copied.
+// vstring_with_len converts a C style string to a V string.
+// NB: the string data is reused, NOT copied.
 [unsafe]
 pub fn (bp byteptr) vstring_with_len(len int) string {
 	return string{
 		str: bp
 		len: len
+		is_lit: 0
 	}
 }
 
-// vstring converts C char* to V string. NB: the string data is reused, NOT copied.
+// vstring converts C char* to V string.
+// NB: the string data is reused, NOT copied.
 [unsafe]
 pub fn (cp charptr) vstring() string {
 	return string{
 		str: byteptr(cp)
 		len: unsafe { C.strlen(cp) }
+		is_lit: 0
 	}
 }
 
-// vstring_with_len converts C char* to V string. NB: the string data is reused, NOT copied.
+// vstring_with_len converts C char* to V string.
+// NB: the string data is reused, NOT copied.
 [unsafe]
 pub fn (cp charptr) vstring_with_len(len int) string {
 	return string{
 		str: byteptr(cp)
 		len: len
+		is_lit: 0
+	}
+}
+
+// vstring_literal converts a C style string to a V string.
+// NB: the string data is reused, NOT copied.
+// NB2: unlike vstring, vstring_literal will mark the string
+// as a literal, so it will not be freed by autofree.
+// This is suitable for readonly strings, C string literals etc, 
+// that can be read by the V program, but that should not be
+// managed by it, for example `os.args` is implemented using it.
+[unsafe]
+pub fn (bp byteptr) vstring_literal() string {
+	return string{
+		str: bp
+		len: unsafe { C.strlen(charptr(bp)) }
+		is_lit: 1
+	}
+}
+
+// vstring_with_len converts a C style string to a V string.
+// NB: the string data is reused, NOT copied.
+[unsafe]
+pub fn (bp byteptr) vstring_literal_with_len(len int) string {
+	return string{
+		str: bp
+		len: len
+		is_lit: 1
+	}
+}
+
+// vstring_literal converts C char* to V string.
+// See also vstring_literal defined on byteptr for more details.
+// NB: the string data is reused, NOT copied.
+[unsafe]
+pub fn (cp charptr) vstring_literal() string {
+	return string{
+		str: byteptr(cp)
+		len: unsafe { C.strlen(cp) }
+		is_lit: 1
+	}
+}
+
+// vstring_literal_with_len converts C char* to V string. 
+// See also vstring_literal_with_len defined on byteptr.
+// NB: the string data is reused, NOT copied.
+[unsafe]
+pub fn (cp charptr) vstring_literal_with_len(len int) string {
+	return string{
+		str: byteptr(cp)
+		len: len
+		is_lit: 1
 	}
 }
 

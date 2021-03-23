@@ -75,7 +75,7 @@ fn init_os_args(argc int, argv &&byte) []string {
 	// mut args := []string{len:argc}
 	for i in 0 .. argc {
 		// args [i] = argv[i].vstring()
-		unsafe { args_ << byteptr(argv[i]).vstring() }
+		unsafe { args_ << byteptr(argv[i]).vstring_literal() }
 	}
 	return args_
 }
