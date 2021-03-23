@@ -5715,7 +5715,7 @@ fn (mut g Gen) type_default(typ_ table.Type) string {
 	}
 	*/
 	match sym.name {
-		'string' { return '(string){.str=(byteptr)""}' }
+		'string' { return '(string){.str=(byteptr)"", .is_lit=1}' }
 		'rune' { return '0' }
 		else {}
 	}
