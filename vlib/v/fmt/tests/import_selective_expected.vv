@@ -7,7 +7,11 @@ import os {
 }
 
 struct App {
-	command Command
+	command &Command
+}
+
+struct MyCommand {
+	Command
 }
 
 fn imaginary(im f64) Complex {
