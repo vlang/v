@@ -26,8 +26,10 @@ pub mut:
 	text              string // the whole text of the file
 	pos               int    // current position in the file, first character is s.text[0]
 	line_nr           int    // current line number
-	is_inside_string  bool   // set to true in a string, *at the start* of an $var or ${expr}
-	is_inter_start    bool   // for hacky string interpolation TODO simplify
+	last_nl_pos       int    // for calculating column
+	is_crlf           bool
+	is_inside_string  bool // set to true in a string, *at the start* of an $var or ${expr}
+	is_inter_start    bool // for hacky string interpolation TODO simplify
 	is_inter_end      bool
 	is_enclosed_inter bool
 	line_comment      string
@@ -496,11 +498,12 @@ fn (mut s Scanner) skip_whitespace() {
 		if util.is_nl(s.text[s.pos]) && s.is_vh {
 			return
 		}
+		if s.pos + 1 < s.text.len && s.text[s.pos] == `\r` && s.text[s.pos + 1] == `\n` {
+			s.is_crlf = true
+		}
 		// Count \r\n as one line
 		if util.is_nl(s.text[s.pos]) && !s.expect('\r\n', s.pos - 1) {
 			s.inc_line_number()
-			s.pos++
-			continue
 		}
 		s.pos++
 	}
@@ -1056,16 +1059,14 @@ fn (mut s Scanner) invalid_character() {
 }
 
 fn (s &Scanner) current_column() int {
-	mut p := mu.max(0, mu.min(s.text.len - 1, s.pos))
-	if s.text.len > 0 {
-		for ; p >= 0; p-- {
-			if s.text[p] == `\n` || s.text[p] == `\r` {
-				break
-			}
-		}
+	last_nl_pos := if s.line_nr == 0 {
+		-1
+	} else if s.is_crlf {
+		s.last_nl_pos + 1
+	} else {
+		s.last_nl_pos
 	}
-	column := mu.max(0, s.pos - p)
-	return column
+	return mu.max(0, s.pos - last_nl_pos)
 }
 
 fn (s &Scanner) count_symbol_before(p int, sym byte) int {
@@ -1294,6 +1295,7 @@ fn (mut s Scanner) eat_to_end_of_line() {
 
 [inline]
 fn (mut s Scanner) inc_line_number() {
+	s.last_nl_pos = mu.max(0, mu.min(s.text.len - 1, s.pos))
 	s.line_nr++
 	s.line_ends << s.pos
 	if s.line_nr > s.nr_lines {
