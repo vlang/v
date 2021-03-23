@@ -712,11 +712,15 @@ pub fn (s string) index(p string) ?int {
 }
 
 // index_kmp does KMP search.
+[manualfree]
 fn (s string) index_kmp(p string) int {
 	if p.len > s.len {
 		return -1
 	}
 	mut prefix := []int{len: p.len}
+	defer {
+		unsafe { prefix.free() }
+	}
 	mut j := 0
 	for i := 1; i < p.len; i++ {
 		for unsafe { p.str[j] != p.str[i] } && j > 0 {
