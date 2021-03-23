@@ -162,7 +162,7 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 	mut module_built := ''
 	if pref.build_mode == .build_module {
 		for file in files {
-			if pref.path in file.path
+			if file.path.contains(pref.path)
 				&& file.mod.short_name == pref.path.all_after_last(os.path_separator).trim_right(os.path_separator) {
 				module_built = file.mod.name
 				break

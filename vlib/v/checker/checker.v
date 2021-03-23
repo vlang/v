@@ -780,6 +780,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 					infix_expr.left_type = map_info.key_type
 				}
 				.string {
+					c.warn('use `str.contains(substr)` instead of `substr in str`', left_right_pos)
 					c.check_expected(left_type, right_type) or {
 						c.error('left operand to `$infix_expr.op` does not match: $err.msg',
 							left_right_pos)
@@ -4509,7 +4510,8 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 					}
 					if typ == table.error_type && c.expected_type == table.string_type
 						&& !c.using_new_err_struct && !c.inside_selector_expr
-						&& !c.inside_println_arg && 'v.' !in c.file.mod.name && !c.is_builtin_mod {
+						&& !c.inside_println_arg && !c.file.mod.name.contains('v.')
+						&& !c.is_builtin_mod {
 						//                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ <- TODO: remove; this prevents a failure in the `performance-regressions` CI job
 						c.warn('string errors are deprecated; use `err.msg` instead',
 							ident.pos)

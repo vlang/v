@@ -972,7 +972,7 @@ pub fn (t &TypeSymbol) embed_name() string {
 	mut embed_name := t.name.split('.').last()
 	// remove generic part from name
 	// Abc<int> => Abc
-	if '<' in embed_name {
+	if embed_name.contains('<') {
 		embed_name = embed_name.split('<')[0]
 	}
 	return embed_name
