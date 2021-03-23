@@ -500,7 +500,7 @@ fn (s string) ge(a string) bool {
 
 // TODO `fn (s string) + (a string)` ? To be consistent with operator overloading syntax.
 // add concatenates string with the string given in `s`.
-fn (s string) add(a string) string {
+pub fn (s string) add(a string) string {
 	new_len := a.len + s.len
 	mut res := string{
 		str: unsafe { malloc(new_len + 1) }
