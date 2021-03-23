@@ -175,7 +175,7 @@ fn (mut s Scanner) new_token(tok_kind token.Kind, lit string, len int) token.Tok
 		kind: tok_kind
 		lit: lit
 		line_nr: s.line_nr + line_offset
-		col: s.current_column() - len + 1
+		col: mu.max(1, s.current_column() - len + 1)
 		pos: s.pos - len + 1
 		len: len
 		tidx: cidx
@@ -203,7 +203,7 @@ fn (mut s Scanner) new_multiline_token(tok_kind token.Kind, lit string, len int,
 		kind: tok_kind
 		lit: lit
 		line_nr: start_line + 1
-		col: s.current_column() - len + 1
+		col: mu.max(1, s.current_column() - len + 1)
 		pos: s.pos - len + 1
 		len: len
 		tidx: cidx
