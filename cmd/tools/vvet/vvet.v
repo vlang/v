@@ -41,30 +41,13 @@ fn main() {
 		// `v test-cleancode` passes also `-o tmpfolder` as well as all options in VFLAGS
 		paths = paths.filter(!it.starts_with(vtmp))
 	}
-	//
 	for path in paths {
 		if !os.exists(path) {
 			eprintln('File/folder $path does not exist')
 			continue
 		}
-		if path.ends_with('.v') || path.ends_with('.vv') {
-			if path.contains('cmd/tools/vvet/tests/') {
-				if vt.opt.is_force || paths.len == 1 {
-					vt.vet_file(path, true)
-					continue
-				} else {
-					// The .vv files in that folder, are regression tests
-					// for `v vet` itself and thus are known to fail in
-					// a predictable way. They are run 1 by 1 by vet_test.v.
-					// They *should be skipped*, when run by more general
-					// invocations like for example `v vet cmd/tools`
-					eprintln("skipping vvet regression file: '$path' ...")
-					continue
-				}
-			}
-		}
 		if os.is_file(path) {
-			vt.vet_file(path, false)
+			vt.vet_file(path)
 		}
 		if os.is_dir(path) {
 			vt.vprintln("vetting folder: '$path' ...")
@@ -74,10 +57,7 @@ fn main() {
 			files << vfiles
 			files << vvfiles
 			for file in files {
-				if !vt.opt.is_force && file.ends_with('.vv') && file.contains('cmd/tools/vvet/tests/') {
-					continue
-				}
-				vt.vet_file(file, false)
+				vt.vet_file(file)
 			}
 		}
 	}
@@ -99,8 +79,8 @@ fn main() {
 }
 
 // vet_file vets the file read from `path`.
-fn (mut vt Vet) vet_file(path string, is_regression_test bool) {
-	if path.contains('/tests/') && !is_regression_test {
+fn (mut vt Vet) vet_file(path string) {
+	if path.contains('/tests/') && !vt.opt.is_force {
 		// skip all /tests/ files, since usually their content is not
 		// important enough to be documented/vetted, and they may even
 		// contain intentionally invalid code.
