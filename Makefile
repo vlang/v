@@ -83,6 +83,7 @@ ifdef WIN32
 	$(V) -o v2.exe cmd/v
 	move /y v2.exe v.exe
 else
+	sed -i '9350s@^.*@u64 _t9 = wyhash(key, len, seed, _wyp);@' v.c
 	$(CC) $(CFLAGS) -g -std=gnu99 -w -o $(V) $(VC)/$(VCFILE) -lm -lpthread $(LDFLAGS)
 	$(V) -o v2.exe cmd/v
 	mv -f v2.exe v  
