@@ -38,7 +38,7 @@ pub mut:
 }
 
 // base object parts struct
-pub struct Obj_part {
+pub struct ObjPart {
 pub mut:
 	v    []m4.Vec4  // position
 	vn   []m4.Vec4  // normals
@@ -46,21 +46,21 @@ pub mut:
 	vt   []m4.Vec4  // textures
 	
 	name    string
-	part    []Part                // parts of the Obj_part
-	mat     []Material            // list of the materials of the Obj_part
+	part    []Part                // parts of the ObjPart
+	mat     []Material            // list of the materials of the ObjPart
 	mat_map map[string]int        // maping material name to its material index
 	texture map[string]C.sg_image // GPU loaded texture map
 	material_file string          // .mtl file name for the .obj
 		
 	rend_data []Render_data       // render data used for the rendering
 	
-	t_m  m4.Mat4 = m4.unit_m4() // transform matrix for this Obj_part
-	//child []Obj_part           // childs
+	t_m  m4.Mat4 = m4.unit_m4() // transform matrix for this ObjPart
+	//child []ObjPart           // childs
 	
 	// stats
-	min    m4.Vec4   // min 3d position in the Obj_part
-	max    m4.Vec4   // max 3d position in the Obj_part
-	radius f32       // bounding circle radius of the Obj_part
+	min    m4.Vec4   // min 3d position in the ObjPart
+	max    m4.Vec4   // max 3d position in the ObjPart
+	radius f32       // bounding circle radius of the ObjPart
 }
 
 // used in to pass the matrices to the shader

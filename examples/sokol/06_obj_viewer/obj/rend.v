@@ -60,7 +60,7 @@ pub fn load_texture(file_name string) C.sg_image {
 /******************************************************************************
 * Pipeline
 ******************************************************************************/
-pub fn (mut obj_part Obj_part) create_pipeline(in_part []int, shader C.sg_shader, texture C.sg_image) Render_data {
+pub fn (mut obj_part ObjPart) create_pipeline(in_part []int, shader C.sg_shader, texture C.sg_image) Render_data {
 	mut res := Render_data{}
 	obj_buf := obj_part.get_buffer(in_part)
 	res.n_vert = obj_buf.n_vertex
@@ -125,7 +125,7 @@ pub fn (mut obj_part Obj_part) create_pipeline(in_part []int, shader C.sg_shader
 * Render functions
 ******************************************************************************/
 // agregate all the part by materials
-pub fn (mut obj_part Obj_part) init_render_data(texture C.sg_image) {
+pub fn (mut obj_part ObjPart) init_render_data(texture C.sg_image) {
 	// create shader
 	// One shader for all the model
 	shader := gfx.make_shader(C.gouraud_shader_desc())
@@ -169,7 +169,7 @@ pub fn (mut obj_part Obj_part) init_render_data(texture C.sg_image) {
 	println("init_render_data DONE!")
 }
 
-pub fn (obj_part Obj_part) bind_and_draw(rend_data_index int, in_data Shader_data) u32 {
+pub fn (obj_part ObjPart) bind_and_draw(rend_data_index int, in_data Shader_data) u32 {
 	// apply the pipline and bindings
 	mut part_render_data := obj_part.rend_data[rend_data_index]
 	
@@ -221,7 +221,7 @@ pub fn (obj_part Obj_part) bind_and_draw(rend_data_index int, in_data Shader_dat
 	return part_render_data.n_vert
 }
 
-pub fn (obj_part Obj_part) bind_and_draw_all(in_data Shader_data) u32 {
+pub fn (obj_part ObjPart) bind_and_draw_all(in_data Shader_data) u32 {
 	mut n_vert := u32(0)
 	//println("Parts: ${obj_part.rend_data.len}")
 	for i, _ in obj_part.rend_data {
@@ -230,7 +230,7 @@ pub fn (obj_part Obj_part) bind_and_draw_all(in_data Shader_data) u32 {
 	return n_vert
 }
 
-pub fn (mut obj_part Obj_part) calc_bbox() {
+pub fn (mut obj_part ObjPart) calc_bbox() {
 	obj_part.max = m4.Vec4{e:[f32(-math.max_f32), -math.max_f32, -math.max_f32, 0]!}
 	obj_part.min = m4.Vec4{e:[f32( math.max_f32),  math.max_f32,  math.max_f32, 0]!}
 	for v in obj_part.v {

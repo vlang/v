@@ -114,7 +114,7 @@ fn parse_3f(row string, start_index int) m4.Vec4 {
 }
 
 // reas a sequence of f32 from a string
-fn (mut m Obj_part) parse_floats(row string, start_index int) m4.Vec4 {
+fn (mut m ObjPart) parse_floats(row string, start_index int) m4.Vec4 {
 	mut i       := start_index //+ 1
 	mut res_f   := f64(0)
 	mut res     := m4.Vec4{e:[f32(0), 0, 0, 1]!}
@@ -132,7 +132,7 @@ fn (mut m Obj_part) parse_floats(row string, start_index int) m4.Vec4 {
 }
 
 // read and manage all the faes from an .obj file data
-fn (mut p Part) parse_faces(row string, start_index int, obj Obj_part) {
+fn (mut p Part) parse_faces(row string, start_index int, obj ObjPart) {
 	mut i       := start_index + 1
 	mut res     := [][3]int{}
 	mut v       := 0
@@ -185,7 +185,7 @@ fn (mut p Part) parse_faces(row string, start_index int, obj Obj_part) {
 }
 
 // parse the obj file, if single_material is true it use only one default material
-pub fn (mut obj_part Obj_part) parse_obj_buffer(rows []string, single_material bool){
+pub fn (mut obj_part ObjPart) parse_obj_buffer(rows []string, single_material bool){
 	mut mat_count := 0
 	mut row_count := 0
 	default_part := Part{name:"default part"}
@@ -294,7 +294,7 @@ pub fn (mut obj_part Obj_part) parse_obj_buffer(rows []string, single_material b
 }
 
 // load the materials if found the .mtl file
-fn (mut obj_part Obj_part) load_materials() {
+fn (mut obj_part ObjPart) load_materials() {
 	rows := obj.read_lines_from_file(obj_part.material_file)
 	println("Material file [${obj_part.material_file}] ${rows.len} Rows.")
 	for row in rows {
@@ -408,7 +408,7 @@ pub mut:
 }
 
 // transforms data from .obj format to buffer ready to be used in the render
-pub fn (mut obj_part Obj_part) get_buffer(in_part_list []int) Skl_buffer {
+pub fn (mut obj_part ObjPart) get_buffer(in_part_list []int) Skl_buffer {
 	//in_part           := 0
 	mut v_count_index := 0
 	mut out_buf       := Skl_buffer{}
@@ -519,7 +519,7 @@ pub fn (mut obj_part Obj_part) get_buffer(in_part_list []int) Skl_buffer {
 // Utility
 //==============================================================================
 // print on the console the summary of the .obj model loaded
-pub fn (obj_part Obj_part) summary() {
+pub fn (obj_part ObjPart) summary() {
 	println("---- Stats     ----")
 	println("vertices: ${obj_part.v.len}")
 	println("normals : ${obj_part.vn.len}")
@@ -553,9 +553,9 @@ pub fn tst(){
 	//fname := "capsule.obj"
 	//fname := "Forklift.obj"
 	fname := "cube.obj"
-	//fname := "Orange Robot 3D Obj_part.obj"
+	//fname := "Orange Robot 3D ObjPart.obj"
 	
-	mut obj := Obj_part{}
+	mut obj := ObjPart{}
 	buf := os.read_lines(fname) or { panic(err.msg) }
 	obj.parse_obj_buffer(buf)
 	obj.summary()
