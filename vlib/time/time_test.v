@@ -223,3 +223,11 @@ fn test_unix_time() {
 	assert utm2 - utm1 > 2
 	assert utm2 - utm1 < 999
 }
+
+fn test_offset() {
+	u := time.utc()
+	n := time.now()
+	//
+	diff_seconds := ((n.hour * 60 + n.minute) - (u.hour * 60 + u.minute)) * 60
+	assert diff_seconds == time.offset()	
+}
