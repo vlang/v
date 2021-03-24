@@ -14,14 +14,14 @@ struct Vet {
 	opt Options
 mut:
 	errors []vet.Error
-	warns []vet.Error
+	warns  []vet.Error
 	file   string
 }
 
 struct Options {
-	is_force bool
-	is_werror bool
-	is_verbose bool
+	is_force      bool
+	is_werror     bool
+	is_verbose    bool
 	show_warnings bool
 }
 
@@ -71,7 +71,7 @@ fn main() {
 		eprintln('$err.file_path:$err.pos.line_nr: error: $err.message')
 	}
 	if vfmt_err_count > 0 {
-		eprintln('NB: You can run `v fmt -w file.v` to fix these automatically')
+		eprintln('NB: You can run `v fmt -w file.v` to fix the errors automatically')
 	}
 	if vt.errors.len > 0 || (vt.opt.is_werror && vt.warns.len > 0) {
 		exit(1)
