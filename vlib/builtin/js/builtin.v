@@ -15,7 +15,7 @@ pub fn println(s any) {
 pub fn print(s any) {
 	// TODO
 	// $if js.node {
-		JS.process.stdout.write(s.toString())
+	JS.process.stdout.write(s.toString())
 	// } $else {
 	//	panic('Cannot `print` in a browser, use `println` instead')
 	// }
@@ -28,7 +28,7 @@ pub fn eprintln(s any) {
 pub fn eprint(s any) {
 	// TODO
 	// $if js.node {
-		JS.process.stderr.write(s.toString())
+	JS.process.stderr.write(s.toString())
 	// } $else {
 	//	panic('Cannot `eprint` in a browser, use `eprintln` instead')
 	// }
@@ -68,13 +68,13 @@ pub:
 }
 
 pub fn (o Option) str() string {
-   if o.state == 0 {
-	  return 'Option{ ok }'
-   }
-   if o.state == 1 {
-	  return 'Option{ none }'
-   }
-   return 'Option{ error: "${o.err}" }'
+	if o.state == 0 {
+		return 'Option{ ok }'
+	}
+	if o.state == 1 {
+		return 'Option{ none }'
+	}
+	return 'Option{ error: "$o.err" }'
 }
 
 pub fn error(s string) Option {
@@ -94,5 +94,4 @@ pub fn error_with_code(s string, code int) Option {
 			code: code
 		}
 	}
-
 }

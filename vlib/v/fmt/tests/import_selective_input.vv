@@ -8,7 +8,11 @@ import os {
 	input, user_os, file_ext }
 
 struct App {
-	command Command
+	command &Command
+}
+
+struct MyCommand {
+	Command
 }
 
 fn imaginary(im f64) Complex {
