@@ -222,13 +222,14 @@ fn (vd VDoc) write_content(cn &doc.DocNode, d &doc.Doc, mut hw strings.Builder) 
 	} else {
 		os.file_name(cn.file_path)
 	}
-	src_link := get_src_link(vd.manifest.repo_url, file_path_name, cn.pos.line)
+	src_link := get_src_link(vd.manifest.repo_url, file_path_name, cn.pos.line_nr + 1)
 	if cn.content.len != 0 || (cn.name == 'Constants') {
 		hw.write_string(doc_node_html(cn, src_link, false, cfg.include_examples, d.table))
 	}
 	for child in cn.children {
 		child_file_path_name := child.file_path.replace('$base_dir/', '')
-		child_src_link := get_src_link(vd.manifest.repo_url, child_file_path_name, child.pos.line)
+		child_src_link := get_src_link(vd.manifest.repo_url, child_file_path_name, 
+			child.pos.line_nr + 1)
 		hw.write_string(doc_node_html(child, child_src_link, false, cfg.include_examples,
 			d.table))
 	}
@@ -356,7 +357,10 @@ fn html_highlight(code string, tb &table.Table) string {
 		} else {
 			tok.lit
 		}
-		return if typ in [.unone, .name] { lit } else { '<span class="token $typ">$lit</span>' }
+		if typ in [.unone, .name] {
+			return lit
+		}
+		return '<span class="token $typ">$lit</span>'
 	}
 	mut s := scanner.new_scanner(code, .parse_comments, &pref.Preferences{})
 	mut tok := s.scan()

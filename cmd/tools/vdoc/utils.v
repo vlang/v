@@ -49,7 +49,7 @@ fn trim_doc_node_description(description string) string {
 	if dn_description.len > 80 {
 		dn_description = dn_description[..80]
 	}
-	if '\n' in dn_description {
+	if dn_description.contains('\n') {
 		dn_description = dn_description.split('\n')[0]
 	}
 	// if \ is last character, it ends with \" which leads to a JS error
@@ -99,7 +99,7 @@ fn is_included(path string, ignore_paths []string) bool {
 		return true
 	}
 	for ignore_path in ignore_paths {
-		if ignore_path !in path {
+		if !path.contains(ignore_path) {
 			continue
 		}
 		return false
@@ -189,7 +189,7 @@ fn color_highlight(code string, tb &table.Table) string {
 		}
 		return lit
 	}
-	mut s := scanner.new_scanner(code, .parse_comments, &pref.Preferences{})
+	mut s := scanner.new_scanner(code, .parse_comments, &pref.Preferences{ is_fmt: true })
 	mut prev_prev := token.Token{}
 	mut prev := token.Token{}
 	mut tok := s.scan()
@@ -215,7 +215,11 @@ fn color_highlight(code string, tb &table.Table) string {
 						if tok.lit in ['C', 'JS'] {
 							tok_typ = .prefix
 						} else {
-							tok_typ = .module_
+							if tok.lit[0].ascii_str().is_upper() {
+								tok_typ = .symbol
+							} else {
+								tok_typ = .module_
+							}
 						}
 					} else if tok.lit in ['r', 'c'] && next_tok.kind == .string {
 						tok_typ = .prefix

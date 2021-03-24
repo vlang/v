@@ -64,12 +64,13 @@ mut:
 	expecting_type      bool // `is Type`, expecting type
 	errors              []errors.Error
 	warnings            []errors.Warning
+	notices             []errors.Notice
 	vet_errors          []vet.Error
 	cur_fn_name         string
 	label_names         []string
 	in_generic_params   bool // indicates if parsing between `<` and `>` of a method/function
 	name_error          bool // indicates if the token is not a name or the name is on another line
-	n_asm               int  // controls assembly labels 
+	n_asm               int  // controls assembly labels
 	inside_asm_template bool
 	inside_asm          bool
 }
@@ -877,7 +878,7 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 		parent: 0 // you shouldn't be able to reference other variables in assembly blocks
 		detached_from_parent: true
 		start_pos: p.tok.pos
-		objects: ast.all_registers(mut p.table, arch) // 
+		objects: ast.all_registers(mut p.table, arch) //
 	}
 
 	mut local_labels := []string{}
@@ -1490,6 +1491,10 @@ pub fn (mut p Parser) warn(s string) {
 	p.warn_with_pos(s, p.tok.position())
 }
 
+pub fn (mut p Parser) note(s string) {
+	p.note_with_pos(s, p.tok.position())
+}
+
 pub fn (mut p Parser) error_with_pos(s string, pos token.Position) {
 	if p.pref.fatal_errors {
 		exit(1)
@@ -1558,6 +1563,23 @@ pub fn (mut p Parser) warn_with_pos(s string, pos token.Position) {
 		eprintln(ferror)
 	} else {
 		p.warnings << errors.Warning{
+			file_path: p.file_name
+			pos: pos
+			reporter: .parser
+			message: s
+		}
+	}
+}
+
+pub fn (mut p Parser) note_with_pos(s string, pos token.Position) {
+	if p.pref.skip_warnings {
+		return
+	}
+	if p.pref.output_mode == .stdout {
+		ferror := util.formatted_error('notice:', s, p.file_name, pos)
+		eprintln(ferror)
+	} else {
+		p.notices << errors.Notice{
 			file_path: p.file_name
 			pos: pos
 			reporter: .parser
@@ -1694,7 +1716,7 @@ fn (p &Parser) is_typename(t token.Token) bool {
 // heuristics to detect `func<T>()` from `var < expr`
 // 1. `f<[]` is generic(e.g. `f<[]int>`) because `var < []` is invalid
 // 2. `f<map[` is generic(e.g. `f<map[string]string>)
-// 3. `f<foo>` is generic because `v1 < foo > v2` is invalid syntax
+// 3. `f<foo>` and `f<foo<` are generic because `v1 < foo > v2` and `v1 < foo < v2` are invalid syntax
 // 4. `f<Foo,` is generic when Foo is typename.
 //	   otherwise it is not generic because it may be multi-value (e.g. `return f < foo, 0`).
 // 5. `f<mod.Foo>` is same as case 3
@@ -1727,7 +1749,7 @@ fn (p &Parser) is_generic_call() bool {
 			return true
 		}
 		return match kind3 {
-			.gt { true } // case 3
+			.gt, .lt { true } // case 3
 			.comma { p.is_typename(tok2) } // case 4
 			// case 5 and 6
 			.dot { kind4 == .name && (kind5 == .gt || (kind5 == .comma && p.is_typename(tok4))) }
@@ -2111,7 +2133,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	} else {
 		p.name_error = true
 	}
-	is_filter := field_name in ['filter', 'map']
+	is_filter := field_name in ['filter', 'map', 'any', 'all']
 	if is_filter || field_name == 'sort' {
 		p.open_scope()
 	}

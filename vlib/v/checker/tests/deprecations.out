@@ -1,0 +1,48 @@
+vlib/v/checker/tests/deprecations.vv:54:2: notice: function `future` will be deprecated after 9999-12-30; custom message 4
+   52 | 
+   53 | fn main() {
+   54 |     future()
+      |     ~~~~~~~~
+   55 |     past()
+   56 |     simply_deprecated()
+vlib/v/checker/tests/deprecations.vv:60:4: notice: method `Abc.future` will be deprecated after 9999-11-01; custom message 1
+   58 |     //
+   59 |     a := Abc{}
+   60 |     a.future()
+      |       ~~~~~~~~
+   61 |     a.past()
+   62 |     a.simply_deprecated()
+vlib/v/checker/tests/deprecations.vv:55:2: error: function `past` has been deprecated since 2021-03-01; custom message 5
+   53 | fn main() {
+   54 |     future()
+   55 |     past()
+      |     ~~~~~~
+   56 |     simply_deprecated()
+   57 |     just_deprecated()
+vlib/v/checker/tests/deprecations.vv:56:2: error: function `simply_deprecated` has been deprecated; custom message 6
+   54 |     future()
+   55 |     past()
+   56 |     simply_deprecated()
+      |     ~~~~~~~~~~~~~~~~~~~
+   57 |     just_deprecated()
+   58 |     //
+vlib/v/checker/tests/deprecations.vv:57:2: error: function `just_deprecated` has been deprecated
+   55 |     past()
+   56 |     simply_deprecated()
+   57 |     just_deprecated()
+      |     ~~~~~~~~~~~~~~~~~
+   58 |     //
+   59 |     a := Abc{}
+vlib/v/checker/tests/deprecations.vv:61:4: error: method `Abc.past` has been deprecated since 2021-03-01; custom message 2
+   59 |     a := Abc{}
+   60 |     a.future()
+   61 |     a.past()
+      |       ~~~~~~
+   62 |     a.simply_deprecated()
+   63 | }
+vlib/v/checker/tests/deprecations.vv:62:4: error: method `Abc.simply_deprecated` has been deprecated; custom message 3
+   60 |     a.future()
+   61 |     a.past()
+   62 |     a.simply_deprecated()
+      |       ~~~~~~~~~~~~~~~~~~~
+   63 | }

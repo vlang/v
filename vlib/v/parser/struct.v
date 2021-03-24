@@ -389,6 +389,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 				line_nr: first_field_pos.line_nr
 				pos: first_field_pos.pos
 				len: field_len
+				col: first_field_pos.col
 			}
 		}
 		i++

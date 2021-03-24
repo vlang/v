@@ -516,7 +516,8 @@ pub mut:
 	embedded_files   []EmbeddedFile    // list of files to embed in the binary
 	imported_symbols map[string]string // used for `import {symbol}`, it maps symbol => module.symbol
 	errors           []errors.Error    // all the checker errors in the file
-	warnings         []errors.Warning  // all the checker warings in the file
+	warnings         []errors.Warning  // all the checker warnings in the file
+	notices          []errors.Notice   // all the checker notices in the file
 	generic_fns      []&FnDecl
 }
 
@@ -1439,6 +1440,7 @@ pub fn (expr Expr) position() token.Position {
 				line_nr: expr.pos.line_nr
 				pos: left_pos.pos
 				len: right_pos.pos - left_pos.pos + right_pos.len
+				col: left_pos.col
 				last_line: right_pos.last_line
 			}
 		}
@@ -1562,6 +1564,7 @@ pub fn (node Node) position() token.Position {
 						line_nr: -1
 						pos: -1
 						last_line: -1
+						col: -1
 					}
 				}
 			}

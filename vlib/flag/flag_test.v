@@ -133,11 +133,21 @@ fn test_finalize_returns_none_flag_arguments_ordered() {
 	}
 }
 
-fn test_finalize_returns_error_for_unknown_flags() {
+fn test_finalize_returns_error_for_unknown_flags_long() {
 	mut fp := flag.new_flag_parser(['--known', '--unknown'])
 	fp.bool('known', 0, false, '')
 	finalized := fp.finalize() or {
-		assert err.msg == "Unknown argument 'unknown'"
+		assert err.msg == 'Unknown flag `--unknown`'
+		return
+	}
+	assert finalized.len < 0 // expect error to be returned
+}
+
+fn test_finalize_returns_error_for_unknown_flags_short() {
+	mut fp := flag.new_flag_parser(['--known', '-x'])
+	fp.bool('known', 0, false, '')
+	finalized := fp.finalize() or {
+		assert err.msg == 'Unknown flag `-x`'
 		return
 	}
 	assert finalized.len < 0 // expect error to be returned
@@ -157,9 +167,10 @@ fn test_allow_to_build_usage_message() {
 	usage := fp.usage()
 	mut all_strings_found := true
 	for s in ['flag_tool', 'v0.0.0', 'an_int <int>', 'a_bool', 'bool_without', 'a_float <float>',
-		'a_string <string>', 'some int to define', 'some bool to define', 'this should appear on the next line',
-		'some float as well', 'your credit card number', 'The arguments should be at least 1 and at most 4 in number.',
-		'Usage', 'Options:', 'Description:', 'some short information about this tool'] {
+		'a_string <string>', 'some int to define', 'some bool to define',
+		'this should appear on the next line', 'some float as well', 'your credit card number',
+		'The arguments should be at least 1 and at most 4 in number.', 'Usage', 'Options:',
+		'Description:', 'some short information about this tool'] {
 		if !usage.contains(s) {
 			eprintln(" missing '$s' in usage message")
 			all_strings_found = false

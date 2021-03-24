@@ -118,7 +118,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 	mut default_expr_aligns := []CommentAndExprAlignInfo{}
 	mut field_types := []string{cap: node.fields.len}
 	for i, field in node.fields {
-		mut ft := f.no_cur_mod(f.table.type_to_str(field.typ))
+		mut ft := f.no_cur_mod(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
 		if !ft.contains('C.') && !ft.contains('JS.') && !ft.contains('fn (') && !ft.contains('chan') {
 			ft = f.short_module(ft)
 		}
@@ -144,7 +144,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 	}
 	for embed in node.embeds {
 		f.mark_types_import_as_used(embed.typ)
-		styp := f.table.type_to_str(embed.typ)
+		styp := f.table.type_to_str_using_aliases(embed.typ, f.mod2alias)
 		f.writeln('\t$styp')
 	}
 	mut field_align_i := 0

@@ -19,7 +19,7 @@ fn JS.clearTimeout(int)
 // TODO: js async attribute
 // [js_async]
 // fn JS.fetch(RequestInfo, RequestInit) Promise<Response>
-fn JS.queueMicrotask(fn())
+fn JS.queueMicrotask(fn ())
 fn JS.setInterval(any, int, ...any) int
 fn JS.setTimeout(any, int, ...any) int
 
@@ -28,8 +28,10 @@ fn JS.blur()
 fn JS.captureEvents()
 fn JS.close()
 fn JS.confirm(string) bool
+
 // fn JS.departFocus(NavigationReason, FocusNavigationOrigin)
 fn JS.focus()
+
 // fn JS.getComputedStyle(Element, string | null) CSSStyleDeclaration
 // fn JS.getMatchedCSSRules(Element, string | null) CSSRuleList
 // fn JS.getSelection() Selection | null
@@ -37,6 +39,7 @@ fn JS.focus()
 fn JS.moveBy(int, int)
 fn JS.moveTo(int, int)
 fn JS.msWriteProfilerMark(string)
+
 // fn JS.open(string, string, string, bool) ?Window
 // fn JS.postMessage(any, string, []Transferable)
 fn JS.print()
@@ -44,10 +47,13 @@ fn JS.prompt(string, string) ?string
 fn JS.releaseEvents()
 fn JS.resizeBy(int, int)
 fn JS.resizeTo(int, int)
+
 // fn JS.scroll(ScrollToOptions)
 fn JS.scroll(int, int)
-//fn JS.scrollBy(ScrollToOptions)
+
+// fn JS.scrollBy(ScrollToOptions)
 fn JS.scrollBy(int, int)
+
 // fn JS.scrollTo(ScrollToOptions)
 fn JS.scrollTo(int, int)
 fn JS.stop()

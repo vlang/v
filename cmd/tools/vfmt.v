@@ -77,22 +77,9 @@ fn main() {
 		eprintln('vfmt env_vflags_and_os_args: ' + args.str())
 		eprintln('vfmt possible_files: ' + possible_files.str())
 	}
-	mut files := []string{}
-	for file in possible_files {
-		if os.is_dir(file) {
-			files << os.walk_ext(file, '.v')
-			files << os.walk_ext(file, '.vsh')
-			continue
-		}
-		if !file.ends_with('.v') && !file.ends_with('.vv') && !file.ends_with('.vsh') {
-			verror('v fmt can only be used on .v files.\nOffending file: "$file"')
-			continue
-		}
-		if !os.exists(file) {
-			verror('"$file" does not exist')
-			continue
-		}
-		files << file
+	files := util.find_all_v_files(possible_files) or {
+		verror(err.msg)
+		return
 	}
 	if is_atty(0) == 0 && files.len == 0 {
 		foptions.format_pipe()

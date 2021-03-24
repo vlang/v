@@ -75,7 +75,7 @@ fn init_os_args(argc int, argv &&byte) []string {
 	// mut args := []string{len:argc}
 	for i in 0 .. argc {
 		// args [i] = argv[i].vstring()
-		unsafe { args_ << byteptr(argv[i]).vstring() }
+		unsafe { args_ << byteptr(argv[i]).vstring_literal() }
 	}
 	return args_
 }
@@ -157,6 +157,7 @@ pub fn mkdir(path string) ?bool {
 }
 
 // execute starts the specified command, waits for it to complete, and returns its output.
+[manualfree]
 pub fn execute(cmd string) Result {
 	// if cmd.contains(';') || cmd.contains('&&') || cmd.contains('||') || cmd.contains('\n') {
 	// return Result{ exit_code: -1, output: ';, &&, || and \\n are not allowed in shell commands' }
@@ -171,14 +172,16 @@ pub fn execute(cmd string) Result {
 	}
 	buf := [4096]byte{}
 	mut res := strings.new_builder(1024)
+	defer {
+		unsafe { res.free() }
+	}
 	unsafe {
 		bufbp := &buf[0]
 		for C.fgets(charptr(bufbp), 4096, f) != 0 {
-			res.write_bytes(bufbp, vstrlen(bufbp))
+			res.write_ptr(bufbp, vstrlen(bufbp))
 		}
 	}
 	soutput := res.str()
-	// res.free()
 	exit_code := vpclose(f)
 	return Result{
 		exit_code: exit_code
@@ -196,34 +199,42 @@ pub:
 	redirect_stdout bool
 }
 
-// pub fn command(cmd Command) Command {
-//}
+[manualfree]
 pub fn (mut c Command) start() ? {
-	pcmd := '$c.path 2>&1'
+	pcmd := c.path + ' 2>&1'
+	defer {
+		unsafe { pcmd.free() }
+	}
 	c.f = vpopen(pcmd)
 	if isnil(c.f) {
 		return error('exec("$c.path") failed')
 	}
 }
 
+[manualfree]
 pub fn (mut c Command) read_line() string {
 	buf := [4096]byte{}
 	mut res := strings.new_builder(1024)
+	defer {
+		unsafe { res.free() }
+	}
 	unsafe {
 		bufbp := &buf[0]
 		for C.fgets(charptr(bufbp), 4096, c.f) != 0 {
 			len := vstrlen(bufbp)
 			for i in 0 .. len {
 				if bufbp[i] == `\n` {
-					res.write_bytes(bufbp, i)
-					return res.str()
+					res.write_ptr(bufbp, i)
+					final := res.str()
+					return final
 				}
 			}
-			res.write_bytes(bufbp, len)
+			res.write_ptr(bufbp, len)
 		}
 	}
 	c.eof = true
-	return res.str()
+	final := res.str()
+	return final
 }
 
 pub fn (c &Command) close() ? {

@@ -27,3 +27,12 @@ pub:
 	pos       token.Position
 	reporter  Reporter
 }
+
+pub struct Notice {
+pub:
+	message   string
+	details   string
+	file_path string
+	pos       token.Position
+	reporter  Reporter
+}

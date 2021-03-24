@@ -98,18 +98,27 @@ fn (mut p Parser) decode_value() ?Any {
 			kind := p.tok.kind
 			p.next_with_err() ?
 			if p.convert_type {
-				return if kind == .float { Any(tl.f64()) } else { Any(tl.i64()) }
+				if kind == .float {
+					return Any(tl.f64())
+				}
+				return Any(tl.i64())
 			}
 			return Any(tl)
 		}
 		.bool_ {
 			lit := p.tok.lit.bytestr()
 			p.next_with_err() ?
-			return if p.convert_type { Any(lit.bool()) } else { Any(lit) }
+			if p.convert_type {
+				return Any(lit.bool())
+			}
+			return Any(lit)
 		}
 		.null {
 			p.next_with_err() ?
-			return if p.convert_type { Any(null) } else { Any('null') }
+			if p.convert_type {
+				return Any(null)
+			}
+			return Any('null')
 		}
 		.str_ {
 			str := p.tok.lit.bytestr()

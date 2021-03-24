@@ -18,7 +18,7 @@ const (
 // Example: assert base64.decode('ViBpbiBiYXNlIDY0') == 'V in base 64'
 pub fn decode(data string) []byte {
 	size := data.len * 3 / 4
-	if size <= 0 {
+	if size <= 0 || data.len % 4 != 0 {
 		return []
 	}
 	unsafe {
@@ -31,7 +31,7 @@ pub fn decode(data string) []byte {
 // decode_str is the string variant of decode
 pub fn decode_str(data string) string {
 	size := data.len * 3 / 4
-	if size <= 0 {
+	if size <= 0 || data.len % 4 != 0 {
 		return ''
 	}
 	unsafe {

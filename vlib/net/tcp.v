@@ -67,7 +67,13 @@ pub fn (mut c TcpConn) write(bytes []byte) ?int {
 }
 
 // write_str blocks and attempts to write all data
+[deprecated: 'use TcpConn.write_string() instead']
 pub fn (mut c TcpConn) write_str(s string) ?int {
+	return c.write_ptr(s.str, s.len)
+}
+
+// write_string blocks and attempts to write all data
+pub fn (mut c TcpConn) write_string(s string) ?int {
 	return c.write_ptr(s.str, s.len)
 }
 
@@ -295,7 +301,8 @@ pub fn (mut s TcpSocket) set_option_bool(opt SocketOption, value bool) ? {
 	// if opt !in opts_bool {
 	// 	return err_option_wrong_type
 	// }
-	socket_error(C.setsockopt(s.handle, C.SOL_SOCKET, int(opt), &value, sizeof(bool))) ?
+	x := int(value)
+	socket_error(C.setsockopt(s.handle, C.SOL_SOCKET, int(opt), &x, sizeof(int))) ?
 	return none
 }
 

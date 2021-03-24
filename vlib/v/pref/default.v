@@ -48,6 +48,29 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		}
 		target_dir := if os.is_dir(rpath) { rpath } else { os.dir(rpath) }
 		p.out_name = os.join_path(target_dir, base)
+		// Do *NOT* be tempted to generate binaries in the current work folder,
+		// when -o is not given by default, like Go, Clang, GCC etc do.
+		//
+		// These compilers also are frequently used with an external build system,
+		// in part because of that shortcoming, to ensure that they work in a
+		// predictable work folder/environment.
+		//
+		// In comparison, with V, building an executable by default places it
+		// next to its source code, so that it can be used directly with
+		// functions like `os.resource_abs_path()` and `os.executable()` to
+		// locate resources relative to it. That enables running examples like
+		// this:
+		// `./v run examples/flappylearning/`
+		// instead of: 
+		// `./v -o examples/flappylearning/flappylearning run examples/flappylearning/`
+		// This topic comes up periodically from time to time on Discord, and
+		// many CI breakages already happened, when someone decides to make V
+		// behave in this aspect similarly to the dumb behaviour of other
+		// compilers.
+		//
+		// If you do decide to break it, please *at the very least*, test it 
+		// extensively, and make a PR about it, instead of commiting directly 
+		// and breaking the CI, VC, and users doing `v up`.
 		if rpath == '$p.vroot/cmd/v' && os.is_dir('vlib/compiler') {
 			// Building V? Use v2, since we can't overwrite a running
 			// executable on Windows + the precompiled V is more

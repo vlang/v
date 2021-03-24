@@ -77,7 +77,7 @@ fn (context Context) bname_and_bytes(file string) ?(string, []byte) {
 	fname := os.file_name(file)
 	fname_escaped := fname.replace_each(['.', '_', '-', '_'])
 	byte_name := '$context.prefix$fname_escaped'.to_lower()
-	fbytes := os.read_bytes(file) or { return error('Error: $err') }
+	fbytes := os.read_bytes(file) or { return error('Error: $err.msg') }
 	return byte_name, fbytes
 }
 
@@ -108,7 +108,7 @@ fn main() {
 		exit(0)
 	}
 	files := fp.finalize() or {
-		eprintln('Error: $err')
+		eprintln('Error: $err.msg')
 		exit(1)
 	}
 	real_files := files.filter(it != 'bin2v')
@@ -123,19 +123,19 @@ fn main() {
 	mut file_byte_map := map[string][]byte{}
 	for file in real_files {
 		bname, fbytes := context.bname_and_bytes(file) or {
-			eprintln(err)
-			continue
+			eprintln(err.msg)
+			exit(1)
 		}
 		file_byte_map[bname] = fbytes
 	}
 	max_bname := context.max_bname_len(file_byte_map.keys())
 	if context.write_file.len > 0 {
 		mut out_file := os.create(context.write_file) ?
-		out_file.write_str(context.header()) ?
+		out_file.write_string(context.header()) ?
 		for bname, fbytes in file_byte_map {
-			out_file.write_str(context.file2v(bname, fbytes, max_bname)) ?
+			out_file.write_string(context.file2v(bname, fbytes, max_bname)) ?
 		}
-		out_file.write_str(context.footer()) ?
+		out_file.write_string(context.footer()) ?
 	} else {
 		print(context.header())
 		for bname, fbytes in file_byte_map {

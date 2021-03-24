@@ -9,6 +9,7 @@ import v.pref
 import v.parser
 import v.table
 import v.token
+import term
 
 struct Vet {
 	opt Options
@@ -19,6 +20,7 @@ mut:
 
 struct Options {
 	is_verbose bool
+	use_color  bool
 }
 
 fn (vet &Vet) vprintln(s string) {
@@ -38,9 +40,23 @@ const is_verbose = '-verbose' in vet_options || '-v' in vet_options
 
 const show_warnings = '-hide-warnings' !in vet_options
 
+const use_color = should_use_color()
+
+fn should_use_color() bool {
+	mut color := term.can_show_color_on_stderr()
+	if '-nocolor' in vet_options {
+		color = false
+	}
+	if '-color' in vet_options {
+		color = true
+	}
+	return color
+}
+
 fn main() {
-	opt := Options{
+	mut opt := Options{
 		is_verbose: is_verbose
+		use_color: use_color
 	}
 	mut vet := Vet{
 		opt: opt
@@ -97,11 +113,11 @@ fn main() {
 	errors_vfmt := vet.errors.filter(it.kind == .error && it.fix == .vfmt)
 	if show_warnings {
 		for err in warnings {
-			eprintln('$err.file_path:$err.pos.line_nr: warning: $err.message')
+			eprintln(e2string(err))
 		}
 	}
 	for err in errors {
-		eprintln('$err.file_path:$err.pos.line_nr: error: $err.message')
+		eprintln(e2string(err))
 	}
 	if errors_vfmt.len > 0 {
 		eprintln('NB: You can run `v fmt -w file.v` to fix these automatically')
@@ -109,6 +125,20 @@ fn main() {
 	if errors.len > 0 || (is_werror && warnings.len > 0) {
 		exit(1)
 	}
+}
+
+fn e2string(err vet.Error) string {
+	mut kind := '$err.kind:'
+	mut location := '$err.file_path:$err.pos.line_nr:'
+	if use_color {
+		kind = match err.kind {
+			.warning { term.magenta(kind) }
+			.error { term.red(kind) }
+		}
+		kind = term.bold(kind)
+		location = term.bold(location)
+	}
+	return '$location $kind $err.message'
 }
 
 fn (mut v Vet) error(msg string, line int, fix vet.FixKind) {

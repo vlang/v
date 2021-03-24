@@ -257,6 +257,7 @@ fn sys_call2(scn u64, arg1 u64, arg2 u64) u64 {
 	}
 	return res
 }
+
 fn sys_call3(scn u64, arg1 u64, arg2 u64, arg3 u64) u64 {
 	res := u64(0)
 	asm amd64 {
@@ -269,6 +270,7 @@ fn sys_call3(scn u64, arg1 u64, arg2 u64, arg3 u64) u64 {
 	}
 	return res
 }
+
 fn sys_call4(scn u64, arg1 u64, arg2 u64, arg3 u64, arg4 u64) u64 {
 	res := u64(0)
 	asm amd64 {
@@ -280,7 +282,7 @@ fn sys_call4(scn u64, arg1 u64, arg2 u64, arg3 u64, arg4 u64) u64 {
 		  S (arg2)
 		  d (arg3)
 		  r (arg4)
-		  ; r10
+		; r10
 	}
 	return res
 }
@@ -298,10 +300,12 @@ fn sys_call5(scn u64, arg1 u64, arg2 u64, arg3 u64, arg4 u64, arg5 u64) u64 {
 		  d (arg3)
 		  r (arg4)
 		  r (arg5)
-		  ; r10 r8
+		; r10
+		  r8
 	}
 	return res
 }
+
 fn sys_call6(scn u64, arg1 u64, arg2 u64, arg3 u64, arg4 u64, arg5 u64, arg6 u64) u64 {
 	res := u64(0)
 	asm amd64 {
@@ -317,7 +321,9 @@ fn sys_call6(scn u64, arg1 u64, arg2 u64, arg3 u64, arg4 u64, arg5 u64, arg6 u64
 		  r (arg4)
 		  r (arg5)
 		  r (arg6)
-		  ; r10 r8 r9
+		; r10
+		  r8
+		  r9
 	}
 	return res
 }

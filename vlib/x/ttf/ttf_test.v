@@ -183,7 +183,7 @@ fn test_main() {
 
 	mut bmp := ttf.BitMap{
 		tf: &tf
-		buf: malloc(sz)
+		buf: unsafe { malloc(sz) }
 		buf_size: sz
 		scale: scale
 		width: w

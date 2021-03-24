@@ -44,8 +44,8 @@ fn (g &Gen) type_to_fmt(typ table.Type) string {
 	sym := g.table.get_type_symbol(typ)
 	if typ.is_ptr() && (typ.is_int() || typ.is_float()) {
 		return '%.*s\\000'
-	} else if sym.kind in [.struct_, .array, .array_fixed, .map, .bool, .enum_, .interface_, .sum_type,
-		.function, .alias] {
+	} else if sym.kind in [.struct_, .array, .array_fixed, .map, .bool, .enum_, .interface_,
+		.sum_type, .function, .alias] {
 		return '%.*s\\000'
 	} else if sym.kind == .string {
 		return "'%.*s\\000'"
@@ -151,7 +151,7 @@ fn (mut g Gen) gen_str_for_option(typ table.Type, styp string, str_fn_name strin
 		g.auto_str_funcs.writeln('\t\tres = ${parent_str_fn_name}(*($sym.cname*)it.data);')
 	}
 	g.auto_str_funcs.writeln('\t} else {')
-	g.auto_str_funcs.writeln('\t\tres = _STR("error: %.*s\\000", 2, indent_IError_str(it.err, indent_count));')
+	g.auto_str_funcs.writeln('\t\tres = _STR("error: %.*s\\000", 2, IError_str(it.err));')
 	g.auto_str_funcs.writeln('\t}')
 	g.auto_str_funcs.writeln('\treturn _STR("Option(%.*s\\000)", 2, res);')
 	g.auto_str_funcs.writeln('}')

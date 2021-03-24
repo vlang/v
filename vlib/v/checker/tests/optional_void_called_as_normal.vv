@@ -1,8 +1,0 @@
-fn foo() ? {
-	println('foo is called')
-}
-
-fn main() {
-	// Calling foo() without ? or an or block, should be an error.
-	foo()
-}

@@ -124,7 +124,7 @@ fn (vd VDoc) write_plaintext_content(contents []doc.DocNode, mut pw strings.Buil
 				pw.writeln(comments.trim_space().split_into_lines().map('    ' + it).join('\n'))
 			}
 			if cfg.show_loc {
-				pw.writeln('Location: $cn.file_path:$cn.pos.line\n')
+				pw.writeln('Location: $cn.file_path:${cn.pos.line_nr + 1}\n')
 			}
 		}
 		vd.write_plaintext_content(cn.children, mut pw)
@@ -330,7 +330,8 @@ fn (mut vd VDoc) generate_docs_from_file() {
 		}
 		outputs := vd.render(out)
 		if outputs.len == 0 {
-			println('No documentation for $dirs')
+			eprintln('vdoc: No documentation found for ${dirs[0]}')
+			exit(1)
 		} else {
 			first := outputs.keys()[0]
 			println(outputs[first])
