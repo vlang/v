@@ -68,13 +68,13 @@ pub:
 }
 
 pub fn (o Option) str() string {
-   if o.state == 0 {
-	  return 'Option{ ok }'
-   }
-   if o.state == 1 {
-	  return 'Option{ none }'
-   }
-   return 'Option{ error: "${o.err}" }'
+	if o.state == 0 {
+		return 'Option{ ok }'
+	}
+	if o.state == 1 {
+		return 'Option{ none }'
+	}
+	return 'Option{ error: "$o.err" }'
 }
 
 pub fn error(s string) Option {
@@ -94,5 +94,4 @@ pub fn error_with_code(s string, code int) Option {
 			code: code
 		}
 	}
-
 }
