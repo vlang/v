@@ -7,8 +7,8 @@ const (
 pub fn (_str string) to_wide() &u16 {
 	$if windows {
 		unsafe {
-			num_chars := (C.MultiByteToWideChar(cp_utf8, 0, charptr(_str.str), _str.len, 0,
-				0))
+			num_chars := (C.MultiByteToWideChar(cp_utf8, 0, charptr(_str.str), _str.len,
+				0, 0))
 			mut wstr := &u16(malloc((num_chars + 1) * 2)) // sizeof(wchar_t)
 			if wstr != 0 {
 				C.MultiByteToWideChar(cp_utf8, 0, charptr(_str.str), _str.len, wstr, num_chars)
