@@ -229,5 +229,5 @@ fn test_offset() {
 	n := time.now()
 	//
 	diff_seconds := ((n.hour * 60 + n.minute) - (u.hour * 60 + u.minute)) * 60
-	assert diff_seconds == time.offset()	
+	assert diff_seconds == time.offset()
 }
