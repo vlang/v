@@ -495,6 +495,22 @@ typedef bool (*MapEqFn)(voidptr, voidptr);
 typedef void (*MapCloneFn)(voidptr, voidptr);
 typedef void (*MapFreeFn)(voidptr);
 '
+	c_gc_types               = '
+//========================= types for garbage collection ============================*/
+typedef struct { i64* prt; i64* base; } i64_ptr;
+typedef struct { i16* prt; i16* base; } i16_ptr;
+typedef struct { i8* prt; i8* base; } i8_ptr;
+typedef struct { u64* prt; u64* base; } u64_ptr;
+typedef struct { u32* prt; u32* base; } u32_ptr;
+typedef struct { u16* prt; u16* base; } u16_ptr;
+typedef struct { byte* prt; byte* base; } byte_ptr;
+typedef struct { rune* prt; rune* base; } rune_ptr;
+typedef struct { f32* prt; f32* base; } f32_ptr;
+typedef struct { f64* prt; f64* base; } f64_ptr;
+typedef struct { voidptr* prt; voidptr* base; } voidptr_ptr;
+typedef struct { charptr* prt; charptr* base; } charptr_ptr;
+typedef struct { string* prt; string* base; } string_ptr;
+'
 	bare_c_headers                = '
 $c_common_macros
 
