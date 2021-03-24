@@ -8,13 +8,17 @@
 module builtin
 
 pub struct JS.Number {}
+
 pub struct JS.String {
 	length JS.Number
 }
+
 pub struct JS.Boolean {}
+
 pub struct JS.Array {
 	length JS.Number
 }
+
 pub struct JS.Map {}
 
 // Type prototype functions
@@ -29,6 +33,7 @@ fn (v JS.Map) toString() JS.String
 fn native_str_arr_len(arr []JS.String) int {
 	len := 0
 	#len = arr.length
+
 	return len
 }
 
@@ -41,7 +46,9 @@ fn JS.isFinite(f64) bool
 fn JS.decodeURI(string) string
 fn JS.decodeURIComponent(string) string
 fn JS.encodeURI(string) string
-type EncodeURIComponentArg = string | f64 | bool
+
+type EncodeURIComponentArg = bool | f64 | string
+
 fn JS.encodeURIComponent(EncodeURIComponentArg) string
 fn JS.escape(string) string
 fn JS.unescape(string) string
