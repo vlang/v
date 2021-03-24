@@ -30,29 +30,29 @@ const (
 		'vlib/bitfield/',
 		'vlib/builtin/array.v',
 		'vlib/builtin/array_test.v',
-		'vlib/builtin/builtin.v'
-		'vlib/builtin/builtin.c.v'
-		'vlib/builtin/builtin_d_gcboehm.v'
-		'vlib/builtin/builtin_nix.c.v'
-		'vlib/builtin/builtin_notd_gcboehm.v'
-		'vlib/builtin/builtin_windows.c.v'
-		'vlib/builtin/byte_test.v'
-		'vlib/builtin/cfns.c.v'
-		'vlib/builtin/chan.v'
-		'vlib/builtin/float.v'
-		'vlib/builtin/float_x64.v'
+		'vlib/builtin/builtin.v',
+		'vlib/builtin/builtin.c.v',
+		'vlib/builtin/builtin_d_gcboehm.v',
+		'vlib/builtin/builtin_nix.c.v',
+		'vlib/builtin/builtin_notd_gcboehm.v',
+		'vlib/builtin/builtin_windows.c.v',
+		'vlib/builtin/byte_test.v',
+		'vlib/builtin/cfns.c.v',
+		'vlib/builtin/chan.v',
+		'vlib/builtin/float.v',
+		'vlib/builtin/float_x64.v',
 		'vlib/builtin/int.v',
-		'vlib/builtin/isnil_test.v'
-		'vlib/builtin/js/string.v'
+		'vlib/builtin/isnil_test.v',
+		'vlib/builtin/js/string.v',
 		'vlib/builtin/map.v',
 		'vlib/builtin/option.v',
-		'vlib/builtin/rune.v'
-		'vlib/builtin/sorted_map.v'
+		'vlib/builtin/rune.v',
+		'vlib/builtin/sorted_map.v',
 		'vlib/builtin/string.v',
-		'vlib/builtin/string_int_test.v'
-		'vlib/builtin/utf8.c.v'
-		'vlib/builtin/utf8.v'
-		'vlib/builtin/utf8_test.v'
+		'vlib/builtin/string_int_test.v',
+		'vlib/builtin/utf8.c.v',
+		'vlib/builtin/utf8.v',
+		'vlib/builtin/utf8_test.v',
 		'vlib/cli/',
 		'vlib/dl/',
 		'vlib/flag/',

@@ -15,7 +15,7 @@ pub fn println(s any) {
 pub fn print(s any) {
 	// TODO
 	// $if js.node {
-		JS.process.stdout.write(s.toString())
+	JS.process.stdout.write(s.toString())
 	// } $else {
 	//	panic('Cannot `print` in a browser, use `println` instead')
 	// }
@@ -28,7 +28,7 @@ pub fn eprintln(s any) {
 pub fn eprint(s any) {
 	// TODO
 	// $if js.node {
-		JS.process.stderr.write(s.toString())
+	JS.process.stderr.write(s.toString())
 	// } $else {
 	//	panic('Cannot `eprint` in a browser, use `eprintln` instead')
 	// }
