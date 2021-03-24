@@ -29,7 +29,6 @@ fn (mut p Parser) hash() ast.HashStmt {
 		main_str = content.trim_space()
 		msg = ''
 	}
-	// p.trace('a.v', 'kind: ${kind:-10s} | pos: ${pos:-45s} | hash: $val')
 	return ast.HashStmt{
 		mod: p.mod
 		source_file: p.file_name

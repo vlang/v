@@ -196,7 +196,7 @@ fn supports_truecolor() bool {
 		buf[len] = 0
 		s = tos(buf, len)
 	}
-	return '1:2:3' in s
+	return s.contains('1:2:3')
 }
 
 fn termios_reset() {
@@ -296,14 +296,17 @@ fn single_char(buf string) &Event {
 				utf8: event.utf8
 				code: KeyCode(96 | ch)
 				modifiers: .ctrl
-			} }
-		65...90 { event = &Event{
+			}
+		}
+		65...90 {
+			event = &Event{
 				typ: event.typ
 				ascii: event.ascii
 				utf8: event.utf8
 				code: KeyCode(32 | ch)
 				modifiers: .shift
-			} }
+			}
+		}
 		else {}
 	}
 
