@@ -70,7 +70,7 @@ pub fn (f Any) json_str() string {
 		int {
 			return f.str()
 		}
-		i64 {
+		u64, i64 {
 			return f.str()
 		}
 		f32 {
