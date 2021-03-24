@@ -1767,7 +1767,7 @@ pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 				cond_len := f.out.len - cur_pos
 				is_cond_wrapped := cond_len > 0
 					&& (branch.cond is ast.IfGuardExpr || branch.cond is ast.CallExpr)
-					&& '\n' in f.out.last_n(cond_len)
+					&& f.out.last_n(cond_len).contains('\n')
 				if is_cond_wrapped {
 					f.writeln('')
 				} else {

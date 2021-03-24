@@ -478,9 +478,10 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	if node.receiver_type == 0 {
 		g.checker_bug('CallExpr.receiver_type is 0 in method_call', node.pos)
 	}
-	typ_sym := g.table.get_type_symbol(g.unwrap_generic(node.receiver_type))
-	mut receiver_type_name := util.no_dots(g.cc_type(g.unwrap_generic(node.receiver_type),
-		false))
+	unwrapped_rec_type := g.unwrap_generic(node.receiver_type)
+	typ_sym := g.table.get_type_symbol(unwrapped_rec_type)
+	rec_cc_type := g.cc_type(unwrapped_rec_type, false)
+	mut receiver_type_name := util.no_dots(rec_cc_type)
 	if typ_sym.kind == .interface_ && (typ_sym.info as table.Interface).defines_method(node.name) {
 		// Speaker_name_table[s._interface_idx].speak(s._object)
 		$if debug_interface_method_call ? {
@@ -578,6 +579,10 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		// && rec_sym.name == 'array' && receiver_name.starts_with('array') {
 		// `array_byte_clone` => `array_clone`
 		receiver_type_name = 'array'
+		if false && node.name == 'free' && typ_sym.has_method(node.name) {
+			// TODO: allow for more specific overrides of array .free() like `pub fn (x []string) free() {`
+			receiver_type_name = g.typ(unwrapped_rec_type).trim('*')
+		}
 		if node.name in ['last', 'first', 'pop'] {
 			return_type_str := g.typ(node.return_type)
 			has_cast = true

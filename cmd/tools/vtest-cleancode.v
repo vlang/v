@@ -16,7 +16,11 @@ const (
 		'examples/tetris',
 		'examples/term.ui',
 	]
-	verify_known_failing_exceptions = []string{}
+	verify_known_failing_exceptions = [
+		'vlib/gg/m4/graphic.v' /* has hand crafted meaningful formatting of matrices */,
+		'vlib/gg/m4/m4_test.v' /* has hand crafted meaningful formatting of matrices */,
+		'vlib/gg/m4/matrix.v' /* has hand crafted meaningful formatting of matrices */,
+	]
 	vfmt_verify_list                = [
 		'cmd/v/v.v',
 		'cmd/tools/vdoc/',
@@ -30,8 +34,13 @@ const (
 		'vlib/builtin/map.v',
 		'vlib/builtin/int.v',
 		'vlib/builtin/option.v',
+		'vlib/cli/',
+		'vlib/dl/',
+		'vlib/flag/',
+		'vlib/gg/',
 		'vlib/math/bits/bits.v',
 		'vlib/orm/',
+		'vlib/runtime/',
 		'vlib/term/colors.v',
 		'vlib/term/term.v',
 		'vlib/v/ast/',
@@ -88,7 +97,8 @@ fn main() {
 
 fn tsession(vargs string, tool_source string, tool_cmd string, tool_args string, flist []string, slist []string) testing.TestSession {
 	os.chdir(vroot)
-	testing.eheader('Run `$tool_cmd` over most .v files')
+	title_message := 'running $tool_cmd over most .v files'
+	testing.eheader(title_message)
 	mut test_session := testing.new_test_session('$vargs $tool_args')
 	test_session.files << flist
 	test_session.skip_files << slist
@@ -97,14 +107,16 @@ fn tsession(vargs string, tool_source string, tool_cmd string, tool_args string,
 	// in the VTMP from the test session too, so they will be cleaned up
 	// at the end
 	test_session.test()
-	eprintln(test_session.benchmark.total_message('running `$tool_cmd` over most .v files'))
+	eprintln(test_session.benchmark.total_message(title_message))
 	return test_session
 }
 
 fn v_test_vetting(vargs string) {
 	vet_session := tsession(vargs, 'vvet', 'v vet', 'vet', vet_folders, vet_known_failing_exceptions)
 	fmt_cmd, fmt_args := if is_fix { 'v fmt -w', 'fmt -w' } else { 'v fmt -verify', 'fmt -verify' }
-	verify_session := tsession(vargs, 'vfmt.v', fmt_cmd, fmt_args, vfmt_verify_list, verify_known_failing_exceptions)
+	expanded_vfmt_list := util.find_all_v_files(vfmt_verify_list) or { return }
+	verify_session := tsession(vargs, 'vfmt.v', fmt_cmd, fmt_args, expanded_vfmt_list,
+		verify_known_failing_exceptions)
 	//
 	if vet_session.benchmark.nfail > 0 || verify_session.benchmark.nfail > 0 {
 		eprintln('\n')

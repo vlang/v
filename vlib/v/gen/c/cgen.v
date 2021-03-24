@@ -162,7 +162,7 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 	mut module_built := ''
 	if pref.build_mode == .build_module {
 		for file in files {
-			if pref.path in file.path
+			if file.path.contains(pref.path)
 				&& file.mod.short_name == pref.path.all_after_last(os.path_separator).trim_right(os.path_separator) {
 				module_built = file.mod.name
 				break
@@ -917,13 +917,11 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 				g.stmt_path_pos << g.out.len
 				g.skip_stmt_pos = true
 				if stmt is ast.ExprStmt {
-					sym := g.table.get_type_symbol(stmt.typ)
-					if sym.name in ['Option2', 'Option'] || stmt.expr is ast.None {
-						tmp := g.new_tmp_var()
-						g.write('Option $tmp = (Option){.state = 0,.err = ')
+					if stmt.typ == table.error_type_idx || stmt.expr is ast.None {
+						g.writeln('${tmp_var}.state = 2;')
+						g.write('${tmp_var}.err = ')
 						g.expr(stmt.expr)
-						g.writeln('};')
-						g.writeln('memcpy(&$tmp_var, &$tmp, sizeof(Option));')
+						g.writeln(';')
 					} else {
 						mut styp := g.base_type(stmt.typ)
 						$if tinyc && x32 && windows {
@@ -4721,27 +4719,30 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			if expr is ast.Ident {
 				g.returned_var_name = expr.name
 			}
-			g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 		}
 		// free := g.is_autofree && !g.is_builtin_mod // node.exprs[0] is ast.CallExpr
 		// Create a temporary variable for the return expression
-		free := !g.is_builtin_mod // node.exprs[0] is ast.CallExpr
+		mut gen_tmp_var := !g.is_builtin_mod // node.exprs[0] is ast.CallExpr
 		mut tmp := ''
-		if free {
+		if gen_tmp_var {
 			// `return foo(a, b, c)`
 			// `tmp := foo(a, b, c); free(a); free(b); free(c); return tmp;`
 			// Save return value in a temp var so that all args (a,b,c) can be freed
 			// Don't use a tmp var if a variable is simply returned: `return x`
 			if node.exprs[0] !is ast.Ident {
 				tmp = g.new_tmp_var()
+				g.write('/*tmp return var*/ ')
 				g.write(g.typ(g.fn_decl.return_type))
 				g.write(' ')
 				g.write(tmp)
 				g.write(' = ')
 			} else {
+				gen_tmp_var = false
+				g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 				g.write('return ')
 			}
 		} else {
+			g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 			g.write('return ')
 		}
 		if expr0.is_auto_deref_var() {
@@ -4755,10 +4756,11 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		} else {
 			g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
 		}
-		if free {
+		if gen_tmp_var {
 			g.writeln(';')
 			has_semicolon = true
 			if tmp != '' {
+				g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 				g.write('return $tmp')
 				has_semicolon = false
 			}
@@ -5568,7 +5570,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 				paline, pafile, pamod, pafn := g.panic_debug_info(or_block.pos)
 				g.writeln('panic_debug($paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"), *${cvar_name}.err.msg );')
 			} else {
-				g.writeln('\tv_panic(_STR("optional not set (%.*s\\000)", 2, ${cvar_name}.err.msg));')
+				g.writeln('\tpanic_optional_not_set(*${cvar_name}.err.msg);')
 			}
 		} else if !isnil(g.fn_decl) && g.fn_decl.is_test {
 			g.gen_failing_error_propagation_for_test_fn(or_block, cvar_name)
@@ -5711,7 +5713,7 @@ fn (mut g Gen) type_default(typ_ table.Type) string {
 	}
 	*/
 	match sym.name {
-		'string' { return '(string){.str=(byteptr)""}' }
+		'string' { return '(string){.str=(byteptr)"", .is_lit=1}' }
 		'rune' { return '0' }
 		else {}
 	}

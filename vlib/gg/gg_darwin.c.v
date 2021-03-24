@@ -1,6 +1,7 @@
 module gg
 
 #include "@VROOT/vlib/gg/gg_darwin.m"
+
 fn C.gg_get_screen_size() Size
 
 fn C.darwin_draw_string(x int, y int, s string, cfg voidptr)
