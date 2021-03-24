@@ -5570,7 +5570,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 				paline, pafile, pamod, pafn := g.panic_debug_info(or_block.pos)
 				g.writeln('panic_debug($paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"), *${cvar_name}.err.msg );')
 			} else {
-				g.writeln('\tv_panic(_STR("optional not set (%.*s\\000)", 2, ${cvar_name}.err.msg));')
+				g.writeln('\tpanic_optional_not_set(*${cvar_name}.err.msg);')
 			}
 		} else if !isnil(g.fn_decl) && g.fn_decl.is_test {
 			g.gen_failing_error_propagation_for_test_fn(or_block, cvar_name)
