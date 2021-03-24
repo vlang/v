@@ -18,32 +18,21 @@ mut:
 }
 
 struct Options {
+	is_force bool
+	is_werror bool
 	is_verbose bool
+	show_warnings bool
 }
-
-fn (vet &Vet) vprintln(s string) {
-	if !vet.opt.is_verbose {
-		return
-	}
-	println(s)
-}
-
-const vet_options = cmdline.options_after(os.args, ['vet'])
-
-const is_force = '-force' in vet_options
-
-const is_werror = '-W' in vet_options
-
-const is_verbose = '-verbose' in vet_options || '-v' in vet_options
-
-const show_warnings = '-hide-warnings' !in vet_options
 
 fn main() {
-	opt := Options{
-		is_verbose: is_verbose
-	}
-	mut vet := Vet{
-		opt: opt
+	vet_options := cmdline.options_after(os.args, ['vet'])
+	mut vt := Vet{
+		opt: Options{
+			is_force: '-force' in vet_options
+			is_werror: '-W' in vet_options
+			is_verbose: '-verbose' in vet_options || '-v' in vet_options
+			show_warnings: '-hide-warnings' !in vet_options
+		}
 	}
 	mut paths := cmdline.only_non_options(vet_options)
 	vtmp := os.getenv('VTMP')
@@ -59,8 +48,8 @@ fn main() {
 		}
 		if path.ends_with('.v') || path.ends_with('.vv') {
 			if path.contains('cmd/tools/vvet/tests/') {
-				if is_force || paths.len == 1 {
-					vet.vet_file(path, true)
+				if vt.opt.is_force || paths.len == 1 {
+					vt.vet_file(path, true)
 					continue
 				} else {
 					// The .vv files in that folder, are regression tests
@@ -74,28 +63,28 @@ fn main() {
 			}
 		}
 		if os.is_file(path) {
-			vet.vet_file(path, false)
+			vt.vet_file(path, false)
 		}
 		if os.is_dir(path) {
-			vet.vprintln("vetting folder: '$path' ...")
+			vt.vprintln("vetting folder: '$path' ...")
 			vfiles := os.walk_ext(path, '.v')
 			vvfiles := os.walk_ext(path, '.vv')
 			mut files := []string{}
 			files << vfiles
 			files << vvfiles
 			for file in files {
-				if !is_force && file.ends_with('.vv') && file.contains('cmd/tools/vvet/tests/') {
+				if !vt.opt.is_force && file.ends_with('.vv') && file.contains('cmd/tools/vvet/tests/') {
 					continue
 				}
-				vet.vet_file(file, false)
+				vt.vet_file(file, false)
 			}
 		}
 	}
 	//
-	warnings := vet.errors.filter(it.kind == .warning)
-	errors := vet.errors.filter(it.kind == .error)
-	errors_vfmt := vet.errors.filter(it.kind == .error && it.fix == .vfmt)
-	if show_warnings {
+	warnings := vt.errors.filter(it.kind == .warning)
+	errors := vt.errors.filter(it.kind == .error)
+	errors_vfmt := vt.errors.filter(it.kind == .error && it.fix == .vfmt)
+	if vt.opt.show_warnings {
 		for err in warnings {
 			eprintln('$err.file_path:$err.pos.line_nr: warning: $err.message')
 		}
@@ -106,34 +95,8 @@ fn main() {
 	if errors_vfmt.len > 0 {
 		eprintln('NB: You can run `v fmt -w file.v` to fix these automatically')
 	}
-	if errors.len > 0 || (is_werror && warnings.len > 0) {
+	if errors.len > 0 || (vt.opt.is_werror && warnings.len > 0) {
 		exit(1)
-	}
-}
-
-fn (mut v Vet) error(msg string, line int, fix vet.FixKind) {
-	pos := token.Position{
-		line_nr: line + 1
-	}
-	v.errors << vet.Error{
-		message: msg
-		file_path: v.file
-		pos: pos
-		kind: .error
-		fix: fix
-	}
-}
-
-fn (mut v Vet) warn(msg string, line int, fix vet.FixKind) {
-	pos := token.Position{
-		line_nr: line + 1
-	}
-	v.errors << vet.Error{
-		message: msg
-		file_path: v.file
-		pos: pos
-		kind: .warning
-		fix: fix
 	}
 }
 
@@ -162,7 +125,7 @@ fn (mut vt Vet) vet_file(path string, is_regression_test bool) {
 }
 
 // vet_line vets the contents of `line` from `vet.file`.
-fn (mut vet Vet) vet_line(lines []string, line string, lnumber int) {
+fn (mut vt Vet) vet_line(lines []string, line string, lnumber int) {
 	// Vet public functions
 	if line.starts_with('pub fn') || (line.starts_with('fn ') && !(line.starts_with('fn C.')
 		|| line.starts_with('fn main'))) {
@@ -212,7 +175,7 @@ fn (mut vet Vet) vet_line(lines []string, line string, lnumber int) {
 				if grab {
 					clean_line := line.all_before_last('{').trim(' ')
 					if is_pub_fn {
-						vet.warn('Function documentation seems to be missing for "$clean_line".',
+						vt.warn('Function documentation seems to be missing for "$clean_line".',
 							lnumber, .doc)
 					}
 				}
@@ -230,7 +193,7 @@ fn (mut vet Vet) vet_line(lines []string, line string, lnumber int) {
 						grab = false
 						if is_pub_fn {
 							clean_line := line.all_before_last('{').trim(' ')
-							vet.warn('The documentation for "$clean_line" seems incomplete.',
+							vt.warn('The documentation for "$clean_line" seems incomplete.',
 								lnumber, .doc)
 						}
 						break
@@ -244,11 +207,44 @@ fn (mut vet Vet) vet_line(lines []string, line string, lnumber int) {
 				if grab {
 					clean_line := line.all_before_last('{').trim(' ')
 					if is_pub_fn {
-						vet.warn('A function name is missing from the documentation of "$clean_line".',
+						vt.warn('A function name is missing from the documentation of "$clean_line".',
 							lnumber, .doc)
 					}
 				}
 			}
 		}
+	}
+}
+
+fn (vt &Vet) vprintln(s string) {
+	if !vt.opt.is_verbose {
+		return
+	}
+	println(s)
+}
+
+fn (mut vt Vet) error(msg string, line int, fix vet.FixKind) {
+	pos := token.Position{
+		line_nr: line + 1
+	}
+	vt.errors << vet.Error{
+		message: msg
+		file_path: vt.file
+		pos: pos
+		kind: .error
+		fix: fix
+	}
+}
+
+fn (mut vt Vet) warn(msg string, line int, fix vet.FixKind) {
+	pos := token.Position{
+		line_nr: line + 1
+	}
+	vt.errors << vet.Error{
+		message: msg
+		file_path: vt.file
+		pos: pos
+		kind: .warning
+		fix: fix
 	}
 }
