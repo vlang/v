@@ -24,11 +24,12 @@ struct Options {
 	is_werror     bool
 	is_verbose    bool
 	show_warnings bool
-	use_color  bool
+	use_color     bool
 }
 
+const vet_options = cmdline.options_after(os.args, ['vet'])
+
 fn main() {
-	vet_options := cmdline.options_after(os.args, ['vet'])
 	mut vt := Vet{
 		opt: Options{
 			is_force: '-force' in vet_options
@@ -67,14 +68,14 @@ fn main() {
 	vfmt_err_count := vt.errors.filter(it.fix == .vfmt).len
 	if vt.opt.show_warnings {
 		for w in vt.warns {
-			eprintln(e2string(err))
+			eprintln(vt.e2string(w))
 		}
 	}
 	for err in vt.errors {
-		eprintln(e2string(err))
+		eprintln(vt.e2string(err))
 	}
 	if vfmt_err_count > 0 {
-		eprintln('NB: You can run `v fmt -w file.v` to fix the errors automatically')
+		eprintln('NB: You can run `v fmt -w file.v` to fix these errors automatically')
 	}
 	if vt.errors.len > 0 || (vt.opt.is_werror && vt.warns.len > 0) {
 		exit(1)
@@ -204,10 +205,10 @@ fn (vt &Vet) vprintln(s string) {
 	println(s)
 }
 
-fn e2string(err vet.Error) string {
+fn (vt &Vet) e2string(err vet.Error) string {
 	mut kind := '$err.kind:'
 	mut location := '$err.file_path:$err.pos.line_nr:'
-	if use_color {
+	if vt.opt.use_color {
 		kind = match err.kind {
 			.warning { term.magenta(kind) }
 			.error { term.red(kind) }

@@ -34,7 +34,7 @@ fn check_path(vexe string, dir string, tests []string) int {
 		program := path
 		print(path + ' ')
 		// -force is needed so that `v vet` would not skip the regression files
-		res := os.execute('$vexe vet -force $program')
+		res := os.execute('$vexe vet -force -nocolor $program')
 		if res.exit_code < 0 {
 			panic(res.output)
 		}
