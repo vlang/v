@@ -14,6 +14,7 @@ struct Vet {
 	opt Options
 mut:
 	errors []vet.Error
+	warns []vet.Error
 	file   string
 }
 
@@ -80,22 +81,19 @@ fn main() {
 			}
 		}
 	}
-	//
-	warnings := vt.errors.filter(it.kind == .warning)
-	errors := vt.errors.filter(it.kind == .error)
-	errors_vfmt := vt.errors.filter(it.kind == .error && it.fix == .vfmt)
+	vfmt_err_count := vt.errors.filter(it.fix == .vfmt).len
 	if vt.opt.show_warnings {
-		for err in warnings {
-			eprintln('$err.file_path:$err.pos.line_nr: warning: $err.message')
+		for w in vt.warns {
+			eprintln('$w.file_path:$w.pos.line_nr: warning: $w.message')
 		}
 	}
-	for err in errors {
+	for err in vt.errors {
 		eprintln('$err.file_path:$err.pos.line_nr: error: $err.message')
 	}
-	if errors_vfmt.len > 0 {
+	if vfmt_err_count > 0 {
 		eprintln('NB: You can run `v fmt -w file.v` to fix these automatically')
 	}
-	if errors.len > 0 || (vt.opt.is_werror && warnings.len > 0) {
+	if vt.errors.len > 0 || (vt.opt.is_werror && vt.warns.len > 0) {
 		exit(1)
 	}
 }
@@ -240,7 +238,7 @@ fn (mut vt Vet) warn(msg string, line int, fix vet.FixKind) {
 	pos := token.Position{
 		line_nr: line + 1
 	}
-	vt.errors << vet.Error{
+	vt.warns << vet.Error{
 		message: msg
 		file_path: vt.file
 		pos: pos
