@@ -28,9 +28,9 @@ pub type Stmt = AsmStmt | AssertStmt | AssignStmt | Block | BranchStmt | CompFor
 pub type ScopeObject = AsmRegister | ConstField | GlobalField | Var
 
 // TOOD: replace table.Param
-pub type Node = ConstField | EnumField | Expr | Field | File | GlobalField | IfBranch |
-	MatchBranch | ScopeObject | SelectBranch | Stmt | StructField | StructInitField |
-	table.Param | CallArg
+pub type Node = CallArg | ConstField | EnumField | Expr | Field | File | GlobalField |
+	IfBranch | MatchBranch | ScopeObject | SelectBranch | Stmt | StructField | StructInitField |
+	table.Param
 
 pub struct Type {
 pub:
@@ -265,6 +265,7 @@ pub mut:
 pub struct StructInit {
 pub:
 	pos      token.Position
+	name_pos token.Position
 	is_short bool
 pub mut:
 	unresolved           bool
@@ -366,9 +367,9 @@ pub:
 // function or method call expr
 pub struct CallExpr {
 pub:
-	pos token.Position
+	pos      token.Position
 	name_pos token.Position
-	mod string
+	mod      string
 pub mut:
 	name               string // left.name()
 	is_method          bool
