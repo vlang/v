@@ -102,6 +102,45 @@ jobs:
         run: |
           ./v tutorials/building_a_simple_web_blog_with_vweb/code/blog
 
+  ubuntu-tcc-boehm-gc:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 30
+    env:
+      VFLAGS: -cc tcc -no-retry-compilation
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install dependencies
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update;
+          sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind
+          sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
+		  sudo apt-get install --quiet -y libgc-dev
+          ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
+          ## The following is needed for examples/wkhtmltopdf.v
+          wget https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.focal_amd64.deb
+          sudo apt-get install xfonts-75dpi xfonts-base
+          sudo dpkg -i wkhtmltox_0.12.6-1.focal_amd64.deb
+      - name: Build v
+        run: |
+          echo $VFLAGS
+          make
+      - name: Test v->c
+        run: |
+          thirdparty/tcc/tcc.exe -version
+          ./v -cg -o v cmd/v # Make sure vtcc can build itself twice
+      - name: v self compilation with -gc boehm
+        run: ./v -gc boehm -o v2 cmd/v && ./v2 -gc boehm -o v3 cmd/v && ./v3 -gc boehm -o v4 cmd/v
+      - name: v doctor
+        run: |
+          ./v doctor
+      - name: Verify `v -gc boehm test` works
+        run: |
+          ./v -gc boehm cmd/tools/test_if_v_test_system_works.v
+          ./cmd/tools/test_if_v_test_system_works
+      - name: Self tests with `-gc boehm`
+	    ## The test cases are run with non-gc `v` for now
+        run: ./v -gc boehm -silent test-self
+
   misc-tooling:
     runs-on: ubuntu-20.04
     timeout-minutes: 30
