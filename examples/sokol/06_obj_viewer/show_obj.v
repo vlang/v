@@ -76,7 +76,7 @@ mut:
 	ticks       i64
 	
 	// model
-	obj_part    &obj.ObjPart
+	obj_part    &obj.Obj_part
 	n_vertex    u32
 	
 	// init parameters
@@ -213,7 +213,7 @@ fn draw_end_glsl(app App){
 * Init / Cleanup
 ******************************************************************************/
 fn my_init(mut app App) {
-	mut object := &obj.ObjPart{}
+	mut object := &obj.Obj_part{}
 	obj_file_lines := obj.read_lines_from_file(app.file_name)
 	object.parse_obj_buffer(obj_file_lines, app.single_material_flag)
 	object.summary()
