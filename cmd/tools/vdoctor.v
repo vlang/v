@@ -56,8 +56,8 @@ fn (mut a App) collect_info() {
 	wsl_check := a.cmd(command: 'cat /proc/sys/kernel/osrelease')
 	if os_kind == 'linux' {
 		os_details = a.get_linux_os_name()
-		if 'hypervisor' in a.cpu_info('flags') {
-			if 'microsoft' in wsl_check {
+		if a.cpu_info('flags').contains('hypervisor') {
+			if wsl_check.contains('microsoft') {
 				// WSL 2 is a Managed VM and Full Linux Kernel
 				// See https://docs.microsoft.com/en-us/windows/wsl/compare-versions
 				os_details += ' (WSL 2)'
@@ -67,7 +67,7 @@ fn (mut a App) collect_info() {
 		}
 		// WSL 1 is NOT a Managed VM and Full Linux Kernel
 		// See https://docs.microsoft.com/en-us/windows/wsl/compare-versions
-		if 'Microsoft' in wsl_check {
+		if wsl_check.contains('Microsoft') {
 			os_details += ' (WSL)'
 		}
 		// From https://unix.stackexchange.com/a/14346
@@ -154,7 +154,8 @@ fn (mut a App) line(label string, value string) {
 
 fn (app &App) parse(config string, sep string) map[string]string {
 	mut m := map[string]string{}
-	for line in config.split_into_lines() {
+	lines := config.split_into_lines()
+	for line in lines {
 		sline := line.trim_space()
 		if sline.len == 0 || sline[0] == `#` {
 			continue

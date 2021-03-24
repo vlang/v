@@ -47,6 +47,10 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 	}
 }
 
+pub fn panic_optional_not_set(s string) {
+	panic('optional not set ($s)')
+}
+
 // panic prints a nice error message, then exits the process with exit code of 1.
 // It also shows a backtrace on most platforms.
 pub fn panic(s string) {
