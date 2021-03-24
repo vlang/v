@@ -28,7 +28,9 @@ pub fn (x Vec4) str() string {
 
 // create a Vec4 function passing x,y,z as parameteres. w is set to 1
 pub fn vec3(x f32, y f32, z f32) Vec4 {
-	return m4.Vec4{e:[x, y, z, 1]!}
+	return Vec4{
+		e: [x, y, z, 1]!
+	}
 }
 
 // Remove all the raw zeros
@@ -47,12 +49,14 @@ pub fn (a Vec4) clean() Vec4 {
 
 // Set all elements to value
 pub fn (mut x Vec4) copy(value f32) {
-	x.e = [ value, value, value, value,	]!
+	x.e = [value, value, value, value]!
 }
 
 // Scale the vector using a scalar
 pub fn (x Vec4) mul_scalar(value f32) Vec4 {
-	return Vec4{ e: [ x.e[0] * value, x.e[1] * value,  x.e[2] * value, x.e[3] * value, ]! }
+	return Vec4{
+		e: [x.e[0] * value, x.e[1] * value, x.e[2] * value, x.e[3] * value]!
+	}
 }
 
 // Reciprocal of the vector
