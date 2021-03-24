@@ -110,11 +110,7 @@ mut:
 fn new_dense_array(key_bytes int, value_bytes int) DenseArray {
 	mut slot_bytes := key_bytes + value_bytes
 	$if gcboehm ? {
-		align, mask := $if x64 {
-			7, int(0xfffffff8)
-		} $else {
-			3, int(0xfffffffc)
-		}
+		align, mask := $if x64 { 7, int(0xfffffff8) } $else { 3, int(0xfffffffc) }
 		slot_bytes = (slot_bytes + align) & mask
 	}
 	cap := 8
