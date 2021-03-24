@@ -114,8 +114,10 @@ pub fn (t Time) local() Time {
 		hour: st_local.hour
 		minute: st_local.minute
 		second: st_local.second // These are the same
-		microsecond: t.microsecond
-		unix: t.unix
+		// microsecond: t.microsecond
+		microsecond: st_local.millisecond * 1000
+		// unix: t.unix
+		unix: u64(st_local.unix_time())
 	}
 	return t_local
 }
