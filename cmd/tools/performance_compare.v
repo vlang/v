@@ -50,13 +50,18 @@ fn (c Context) compare_versions() {
 	// The first is the baseline, against which all the others will be compared.
 	// It is the fastest, since hello_world.v has only a single println in it,
 	mut perf_files := []string{}
-	perf_files << c.compare_v_performance('source_hello', ['vprod @DEBUG@ -o source.c examples/hello_world.v',
-		'vprod         -o source.c examples/hello_world.v', 'v     @DEBUG@ -o source.c examples/hello_world.v',
+	perf_files << c.compare_v_performance('source_hello', [
+		'vprod @DEBUG@ -o source.c examples/hello_world.v',
+		'vprod         -o source.c examples/hello_world.v',
+		'v     @DEBUG@ -o source.c examples/hello_world.v',
 		'v             -o source.c examples/hello_world.v',
 	])
 	perf_files << c.compare_v_performance('source_v', ['vprod @DEBUG@ -o source.c @COMPILER@',
-		'vprod         -o source.c @COMPILER@', 'v     @DEBUG@ -o source.c @COMPILER@', 'v             -o source.c @COMPILER@'])
-	perf_files << c.compare_v_performance('binary_hello', ['vprod         -o hello    examples/hello_world.v',
+		'vprod         -o source.c @COMPILER@', 'v     @DEBUG@ -o source.c @COMPILER@',
+		'v             -o source.c @COMPILER@',
+	])
+	perf_files << c.compare_v_performance('binary_hello', [
+		'vprod         -o hello    examples/hello_world.v',
 		'v             -o hello    examples/hello_world.v',
 	])
 	perf_files << c.compare_v_performance('binary_v', ['vprod         -o binary   @COMPILER@',
@@ -101,7 +106,9 @@ fn (c &Context) prepare_v(cdir string, commit string) {
 	scripting.run('upx -qqq --lzma vprod_stripped_upxed')
 	scripting.show_sizes_of_files(['$cdir/cv', '$cdir/cv_stripped', '$cdir/cv_stripped_upxed'])
 	scripting.show_sizes_of_files(['$cdir/v', '$cdir/v_stripped', '$cdir/v_stripped_upxed'])
-	scripting.show_sizes_of_files(['$cdir/vprod', '$cdir/vprod_stripped', '$cdir/vprod_stripped_upxed'])
+	scripting.show_sizes_of_files(['$cdir/vprod', '$cdir/vprod_stripped',
+		'$cdir/vprod_stripped_upxed',
+	])
 	vversion := scripting.run('$cdir/v -version')
 	vcommit := scripting.run('git rev-parse --short  --verify HEAD')
 	println('V version is: $vversion , local source commit: $vcommit')
