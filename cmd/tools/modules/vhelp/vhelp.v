@@ -12,4 +12,3 @@ pub fn show_topic(topic string) {
 	}
 	println(content)
 }
-

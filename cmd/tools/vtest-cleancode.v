@@ -23,9 +23,7 @@ const (
 		'vlib/gg/m4/matrix.v' /* has hand crafted meaningful formatting of matrices */,
 	]
 	vfmt_verify_list                = [
-		'cmd/v/v.v',
-		'cmd/tools/vdoc/',
-		'cmd/tools/vvet/',
+		'cmd/',
 		'vlib/arrays/',
 		'vlib/benchmark/',
 		'vlib/bitfield/',
