@@ -153,6 +153,9 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 	main_fn_start_pos := g.out.len
 	g.writeln('')
 	g.gen_c_main_function_header()
+	if g.pref.gc_mode == .boehm {
+		g.writeln('\tGC_INIT();')
+	}
 	g.writeln('\t_vinit(___argc, (voidptr)___argv);')
 	all_tfuncs := g.get_all_test_function_names()
 	if g.pref.is_stats {
