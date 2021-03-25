@@ -86,7 +86,7 @@ see also `v help build`.
       collection pauses from time to time *do not matter much*.
 
       The option `-gc boehm_leak` is intended for leak detection in
-      manual memory management. The function `gcboehm_check_leaks()`
+      manual memory management. The function `gc_check_leaks()`
       can be called to get detection results. This function is a no-op
       when `-gc boehm_leak` is not supplied.
 

@@ -8,5 +8,5 @@ fn main() {
 	mut y := unsafe { malloc(1000) }
 	// unsafe { free(y) } // leak if commented out
 	y = voidptr(0)
-	gcboehm_check_leaks()
+	gc_check_leaks()
 }

@@ -39,7 +39,7 @@ fn C.GC_enable()
 fn C.GC_is_disabled() int
 
 // for leak detection it is advisable to do explicit garbage collections
-pub fn gcboehm_check_leaks() {
+pub fn gc_check_leaks() {
 	$if gcboehm_leak ? {
 		C.GC_gcollect()
 	}
