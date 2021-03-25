@@ -6,11 +6,13 @@ $if windows {
 	#flag -I@VROOT/thirdparty/libgc/include
 	#flag -L@VROOT/thirdparty/libgc
 }
+$if macos {
+	#pkgconfig bdw-gc
+}
 
 #include <gc.h>
 
-#flag linux -lgc
-#flag darwin @VROOT/thirdparty/bdwgc/extra/.libs/gc.o
+#flag -lgc
 
 fn C.GC_MALLOC(n size_t) voidptr
 
