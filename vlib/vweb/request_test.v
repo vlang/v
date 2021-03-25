@@ -37,28 +37,16 @@ fn test_parse_request_two_headers() {
 	req := parse_request(mut reader('GET / HTTP/1.1\r\nTest1: a\r\nTest2:  B\r\n\r\n')) or {
 		panic('did not parse: $err')
 	}
-	assert req.headers == map{
-		'Test1': 'a'
-		'Test2': 'B'
-	}
-	assert req.lheaders == map{
-		'test1': 'a'
-		'test2': 'B'
-	}
+	assert req.headers.values_str('Test1') == ['a']
+	assert req.headers.values_str('Test2') == ['B']
 }
 
 fn test_parse_request_two_header_values() {
 	req := parse_request(mut reader('GET / HTTP/1.1\r\nTest1: a; b\r\nTest2: c\r\nTest2: d\r\n\r\n')) or {
 		panic('did not parse: $err')
 	}
-	assert req.headers == map{
-		'Test1': 'a; b'
-		'Test2': 'c; d'
-	}
-	assert req.lheaders == map{
-		'test1': 'a; b'
-		'test2': 'c; d'
-	}
+	assert req.headers.values_str('Test1') == ['a; b']
+	assert req.headers.values_str('Test2') == ['c', 'd']
 }
 
 fn test_parse_request_body() {

@@ -77,12 +77,12 @@ fn test_http_fetch_with_params() {
 	}
 }
 
-fn test_http_fetch_with_headers() {
+fn test_http_fetch_with_headers() ? {
 	$if !network ? { return }
+	mut headers := new_header()
+	headers.add_str('Test-Header', 'hello world') ?
 	responses := http_fetch_mock([], {
-		headers: {
-			'Test-Header': 'hello world'
-		}
+		headers: headers
 	}) or {
 		panic(err)
 	}
