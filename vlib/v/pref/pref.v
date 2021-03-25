@@ -159,7 +159,7 @@ pub mut:
 	build_options       []string // list of options, that should be passed down to `build-module`, if needed for -usecache
 	cache_manager       vcache.CacheManager
 	is_help             bool // -h, -help or --help was passed
-	gc_mode             GarbageCollectionMode = .no_gc // .no_gc, .boehm
+	gc_mode             GarbageCollectionMode = .no_gc // .no_gc, .boehm, .boehm_leak
 	// checker settings:
 	checker_match_exhaustive_cutoff_limit int = 10
 }
