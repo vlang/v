@@ -24,11 +24,8 @@ const (
 		'vlib/crypto/rand/crypto_rand_read_test.v',
 	]
 	skip_with_fsanitize_address   = [
-		'vlib/encoding/base64/base64_test.v',
 		'vlib/json/json_test.v',
 		'vlib/regex/regex_test.v',
-		'vlib/v/tests/ptr_arithmetic_test.v',
-		'vlib/v/tests/unsafe_test.v',
 		'vlib/x/websocket/websocket_test.v',
 	]
 	skip_with_fsanitize_undefined = []string{}
@@ -220,22 +217,22 @@ fn main() {
 	mut asan_compiler := false
 	mut msan_compiler := false
 	for arg in args {
-		if '-asan-compiler' in arg {
+		if arg.contains('-asan-compiler') {
 			asan_compiler = true
 		}
-		if '-msan-compiler' in arg {
+		if arg.contains('-msan-compiler') {
 			msan_compiler = true
 		}
-		if '-Werror' in arg {
+		if arg.contains('-Werror') {
 			werror = true
 		}
-		if '-fsanitize=memory' in arg {
+		if arg.contains('-fsanitize=memory') {
 			sanitize_memory = true
 		}
-		if '-fsanitize=address' in arg {
+		if arg.contains('-fsanitize=address') {
 			sanitize_address = true
 		}
-		if '-fsanitize=undefined' in arg {
+		if arg.contains('-fsanitize=undefined') {
 			sanitize_undefined = true
 		}
 	}

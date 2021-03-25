@@ -66,7 +66,7 @@ fn parse_request_line(s string) ?(http.Method, urllib.URL, http.Version) {
 }
 
 fn parse_header(s string) ?(string, string) {
-	if ':' !in s {
+	if !s.contains(':') {
 		return error('missing colon in header')
 	}
 	words := s.split_nth(':', 2)

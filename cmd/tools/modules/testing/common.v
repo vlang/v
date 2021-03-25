@@ -404,7 +404,9 @@ pub fn building_any_v_binaries_failed() bool {
 	os.chdir(parent_dir)
 	mut failed := false
 	v_build_commands := ['$vexe -o v_g             -g  cmd/v', '$vexe -o v_prod_g  -prod -g  cmd/v',
-		'$vexe -o v_cg            -cg cmd/v', '$vexe -o v_prod_cg -prod -cg cmd/v', '$vexe -o v_prod    -prod     cmd/v']
+		'$vexe -o v_cg            -cg cmd/v', '$vexe -o v_prod_cg -prod -cg cmd/v',
+		'$vexe -o v_prod    -prod     cmd/v',
+	]
 	mut bmark := benchmark.new_benchmark()
 	for cmd in v_build_commands {
 		bmark.step()

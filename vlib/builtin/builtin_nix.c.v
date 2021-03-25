@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module builtin
 
-//pub fn vsyscall(id int
+// pub fn vsyscall(id int
 //
 
 /*
@@ -16,7 +16,6 @@ const (
 	stdout_value = 1
 	stderr_value  = 2
 )
-
 */
 
 fn builtin_init() {
@@ -87,7 +86,7 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 		return false
 	} $else {
 		$if tinyc {
-			C.tcc_backtrace("Backtrace")
+			C.tcc_backtrace('Backtrace')
 			return false
 		}
 		buffer := [100]voidptr{}
@@ -101,7 +100,7 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 		//////csymbols := backtrace_symbols(*voidptr(&buffer[skipframes]), nr_actual_frames)
 		csymbols := C.backtrace_symbols(voidptr(&buffer[skipframes]), nr_actual_frames)
 		for i in 0 .. nr_actual_frames {
-			sframes << unsafe {tos2( byteptr(csymbols[i]) )}
+			sframes << unsafe { tos2(byteptr(csymbols[i])) }
 		}
 		for sframe in sframes {
 			executable := sframe.all_before('(')

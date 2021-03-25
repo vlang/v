@@ -49,7 +49,7 @@ fn trim_doc_node_description(description string) string {
 	if dn_description.len > 80 {
 		dn_description = dn_description[..80]
 	}
-	if '\n' in dn_description {
+	if dn_description.contains('\n') {
 		dn_description = dn_description.split('\n')[0]
 	}
 	// if \ is last character, it ends with \" which leads to a JS error
@@ -99,7 +99,7 @@ fn is_included(path string, ignore_paths []string) bool {
 		return true
 	}
 	for ignore_path in ignore_paths {
-		if ignore_path !in path {
+		if !path.contains(ignore_path) {
 			continue
 		}
 		return false

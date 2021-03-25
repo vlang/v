@@ -364,15 +364,15 @@ fn (mut r Repl) get_one_line(prompt string) ?string {
 
 fn cleanup_files(files []string) {
 	for file in files {
-		os.rm(file) or { }
+		os.rm(file) or {}
 		$if windows {
-			os.rm(file[..file.len - 2] + '.exe') or { }
+			os.rm(file[..file.len - 2] + '.exe') or {}
 			$if msvc {
-				os.rm(file[..file.len - 2] + '.ilk') or { }
-				os.rm(file[..file.len - 2] + '.pdb') or { }
+				os.rm(file[..file.len - 2] + '.ilk') or {}
+				os.rm(file[..file.len - 2] + '.pdb') or {}
 			}
 		} $else {
-			os.rm(file[..file.len - 2]) or { }
+			os.rm(file[..file.len - 2]) or {}
 		}
 	}
 }

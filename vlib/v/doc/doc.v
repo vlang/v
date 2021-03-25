@@ -9,7 +9,7 @@ import v.parser
 import v.pref
 import v.scanner
 import v.table
-import v.util
+import v.token
 
 // SymbolKind categorizes the symbols it documents.
 // The names are intentionally not in order as a guide when sorting the nodes.
@@ -50,31 +50,22 @@ pub mut:
 		cur_fn: 0
 		pref: 0
 	}
-	fmt             fmt.Fmt
-	filename        string
-	pos             int
-	pub_only        bool = true
-	with_comments   bool = true
-	with_pos        bool
-	with_head       bool = true
-	is_vlib         bool
-	time_generated  time.Time
-	head            DocNode
-	contents        map[string]DocNode
-	scoped_contents map[string]DocNode
-	// for storing the contents of the file.
-	sources             map[string]string
+	fmt                 fmt.Fmt
+	filename            string
+	pos                 int
+	pub_only            bool = true
+	with_comments       bool = true
+	with_pos            bool
+	with_head           bool = true
+	is_vlib             bool
+	time_generated      time.Time
+	head                DocNode
+	contents            map[string]DocNode
+	scoped_contents     map[string]DocNode
 	parent_mod_name     string
 	orig_mod_name       string
 	extract_vars        bool
 	filter_symbol_names []string
-}
-
-pub struct DocPos {
-pub:
-	line int
-	col  int
-	len  int
 }
 
 pub struct DocNode {
@@ -82,7 +73,7 @@ pub mut:
 	name        string
 	content     string
 	comments    []DocComment
-	pos         DocPos = DocPos{-1, -1, 0}
+	pos         token.Position
 	file_path   string
 	kind        SymbolKind
 	deprecated  bool
@@ -111,7 +102,6 @@ pub fn new(input_path string) Doc {
 		table: table.new_table()
 		head: DocNode{}
 		contents: map[string]DocNode{}
-		sources: map[string]string{}
 		time_generated: time.now()
 	}
 	d.fmt = fmt.Fmt{
@@ -131,7 +121,7 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 	mut node := DocNode{
 		name: d.stmt_name(stmt)
 		content: d.stmt_signature(stmt)
-		pos: d.convert_pos(filename, stmt.pos)
+		pos: stmt.pos
 		file_path: os.join_path(d.base_path, filename)
 		is_pub: d.stmt_pub(stmt)
 	}
@@ -158,7 +148,7 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 					node.children << DocNode{
 						name: field.name.all_after(d.orig_mod_name + '.')
 						kind: .constant
-						pos: d.convert_pos(filename, field.pos)
+						pos: field.pos
 						return_type: ret_type
 					}
 				}
@@ -173,7 +163,7 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 						name: field.name
 						kind: .enum_field
 						parent_name: node.name
-						pos: d.convert_pos(filename, field.pos)
+						pos: field.pos
 						return_type: ret_type
 					}
 				}
@@ -195,7 +185,7 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 						name: field.name
 						kind: .struct_field
 						parent_name: node.name
-						pos: d.convert_pos(filename, field.pos)
+						pos: field.pos
 						return_type: ret_type
 					}
 				}
@@ -219,7 +209,7 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 						name: param.name
 						kind: .variable
 						parent_name: node.name
-						pos: d.convert_pos(filename, param.pos)
+						pos: param.pos
 						attrs: map{
 							'mut': param.is_mut.str()
 						}
@@ -334,7 +324,7 @@ pub fn (mut d Doc) file_ast_with_pos(file_ast ast.File, pos int) map[string]DocN
 		vr_data := val as ast.Var
 		l_node := DocNode{
 			name: name
-			pos: d.convert_pos(os.base(file_ast.path), vr_data.pos)
+			pos: vr_data.pos
 			file_path: file_ast.path
 			from_scope: true
 			kind: .variable
@@ -354,7 +344,7 @@ pub fn (mut d Doc) generate() ? {
 	} else {
 		os.real_path(os.dir(d.base_path))
 	}
-	d.is_vlib = 'vlib' !in d.base_path
+	d.is_vlib = !d.base_path.contains('vlib')
 	project_files := os.ls(d.base_path) or { return err }
 	v_files := d.prefs.should_compile_filtered_files(d.base_path, project_files)
 	if v_files.len == 0 {
@@ -373,8 +363,6 @@ pub fn (mut d Doc) generate() ? {
 		if i == 0 {
 			d.parent_mod_name = get_parent_mod(d.base_path) or { '' }
 		}
-		filename := os.base(file_path)
-		d.sources[filename] = util.read_file(file_path) or { '' }
 		file_asts << parser.parse_file(file_path, d.table, comments_mode, d.prefs, global_scope)
 	}
 	return d.file_asts(file_asts)
@@ -386,7 +374,7 @@ pub fn (mut d Doc) file_asts(file_asts []ast.File) ? {
 	mut fname_has_set := false
 	d.orig_mod_name = file_asts[0].mod.name
 	for i, file_ast in file_asts {
-		if d.filename.len > 0 && d.filename in file_ast.path && !fname_has_set {
+		if d.filename.len > 0 && file_ast.path.contains(d.filename) && !fname_has_set {
 			d.filename = file_ast.path
 			fname_has_set = true
 		}
