@@ -315,7 +315,9 @@ pub fn free(ptr voidptr) {
 		return
 	}
 	$if gcboehm ? {
-		C.GC_FREE(ptr)
+		// It is better to leave it to Boehm's gc to free things.
+		// Calling C.GC_FREE(ptr) was tried initially, but does not work
+		// well with programs that do manual management themselves.
 		return
 	}
 	C.free(ptr)
