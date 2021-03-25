@@ -232,12 +232,12 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 						parse_define(mut res, 'gcboehm')
 					}
 					'boehm_leak' {
-						res.gc_mode = .boehm
+						res.gc_mode = .boehm_leak
 						parse_define(mut res, 'gcboehm')
 						parse_define(mut res, 'gcboehm_leak')
 					}
 					else {
-						eprintln('unknown garbage collection mode, only `-gc boehm` is supported')
+						eprintln('unknown garbage collection mode, only `-gc boehm` and `-gc boehm_leak` are supported')
 						exit(1)
 					}
 				}
