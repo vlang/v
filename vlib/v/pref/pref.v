@@ -20,6 +20,7 @@ pub enum BuildMode {
 pub enum GarbageCollectionMode {
 	no_gc
 	boehm
+	boehm_leak
 }
 
 pub enum OutputMode {
@@ -229,6 +230,11 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 					'boehm' {
 						res.gc_mode = .boehm
 						parse_define(mut res, 'gcboehm')
+					}
+					'boehm_leak' {
+						res.gc_mode = .boehm
+						parse_define(mut res, 'gcboehm')
+						parse_define(mut res, 'gcboehm_leak')
 					}
 					else {
 						eprintln('unknown garbage collection mode, only `-gc boehm` is supported')
