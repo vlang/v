@@ -135,7 +135,7 @@ pub fn new_test_session(_vargs string) TestSession {
 		skip_files << 'examples/sokol/03_march_tracing_glsl/rt_glsl.v'
 		skip_files << 'examples/sokol/04_multi_shader_glsl/rt_glsl.v'
 		skip_files << 'examples/sokol/05_instancing_glsl/rt_glsl.v'
-		// Skil obj_viewer code in the CI
+		// Skip obj_viewer code in the CI
 		skip_files << 'examples/sokol/06_obj_viewer/show_obj.v'
 		skip_files << 'examples/sokol/06_obj_viewer/obj/obj.v'
 		skip_files << 'examples/sokol/06_obj_viewer/obj/rend.v'
