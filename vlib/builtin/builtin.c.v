@@ -315,9 +315,14 @@ pub fn free(ptr voidptr) {
 		return
 	}
 	$if gcboehm ? {
-		// It is better to leave it to Boehm's gc to free things.
+		// It is generally better to leave it to Boehm's gc to free things.
 		// Calling C.GC_FREE(ptr) was tried initially, but does not work
 		// well with programs that do manual management themselves.
+		//
+		// The exception is doing leak detection for manual memory management:
+		$if gcboehm_leak ? {
+			C.GC_FREE(ptr)
+		}
 		return
 	}
 	C.free(ptr)
