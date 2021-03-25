@@ -12,4 +12,10 @@ fn C.GC_FREE(ptr voidptr)
 
 fn C.GC_gcollect()
 
+fn C.GC_disable()
+
+fn C.GC_is_disabled() int
+
+fn C.GC_enable()
+
 fn gcboehm_check_leaks() {}

@@ -24,6 +24,12 @@ fn C.GC_set_find_leak(int)
 
 fn C.GC_gcollect()
 
+fn C.GC_disable()
+
+fn C.GC_is_disabled() int
+
+fn C.GC_enable()
+
 fn gcboehm_check_leaks() {
 	$if gcboehm_leak ? {
 		C.GC_gcollect()
