@@ -9,7 +9,9 @@ $if windows {
 $if macos {
 	#pkgconfig bdw-gc
 }
-
+$if gcboehm_leak ? {
+	#define GC_DEBUG
+}
 #include <gc.h>
 
 #flag -lgc
