@@ -13,4 +13,4 @@ fn C.GC_FREE(ptr voidptr)
 // provide an empty function when manual memory management is used
 // to simplify leak detection
 //
-fn gcboehm_check_leaks() {}
+pub fn gcboehm_check_leaks() {}
