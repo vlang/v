@@ -67,8 +67,11 @@ fn (mut g Gen) gen_c_main_function_header() {
 
 fn (mut g Gen) gen_c_main_header() {
 	g.gen_c_main_function_header()
-	if g.pref.gc_mode == .boehm {
+	if g.pref.gc_mode in [.boehm, .boehm_leak] {
 		g.writeln('#if defined(_VGCBOEHM)')
+		if g.pref.gc_mode == .boehm_leak {
+			g.writeln('\tGC_set_find_leak(1);')
+		}
 		g.writeln('\tGC_INIT();')
 		g.writeln('#endif')
 	}
@@ -155,8 +158,11 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 	main_fn_start_pos := g.out.len
 	g.writeln('')
 	g.gen_c_main_function_header()
-	if g.pref.gc_mode == .boehm {
+	if g.pref.gc_mode in [.boehm, .boehm_leak] {
 		g.writeln('#if defined(_VGCBOEHM)')
+		if g.pref.gc_mode == .boehm_leak {
+			g.writeln('\tGC_set_find_leak(1);')
+		}
 		g.writeln('\tGC_INIT();')
 		g.writeln('#endif')
 	}
