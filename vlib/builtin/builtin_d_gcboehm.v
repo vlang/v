@@ -22,5 +22,10 @@ fn C.GC_FREE(ptr voidptr)
 
 fn C.GC_set_find_leak(int)
 
-// fn C.CHECK_LEAKS()
 fn C.GC_gcollect()
+
+fn gcboehm_check_leaks() {
+	$if gcboehm_leak ? {
+		C.GC_gcollect()
+	}
+}
