@@ -125,7 +125,7 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 				idx := i - node.args.len
 				if m.params[i].typ.is_int() || m.params[i].typ.idx() == table.bool_type_idx {
 					// Gets the type name and cast the string to the type with the string_<type> function
-					type_name := g.table.types[int(m.params[i].typ)].str()
+					type_name := g.table.type_symbols[int(m.params[i].typ)].str()
 					g.write('string_${type_name}(((string*)${node.args[node.args.len - 1]}.data) [$idx])')
 				} else {
 					g.write('((string*)${node.args[node.args.len - 1]}.data) [$idx] ')
@@ -249,11 +249,7 @@ fn (mut g Gen) comp_if(node ast.IfExpr) {
 		}
 		g.defer_ifdef = ''
 	}
-	if node.is_expr {
-		g.write('#endif')
-	} else {
-		g.writeln('#endif')
-	}
+	g.writeln('#endif')
 }
 
 fn (mut g Gen) comp_if_cond(cond ast.Expr) bool {
@@ -286,7 +282,7 @@ fn (mut g Gen) comp_if_cond(cond ast.Expr) bool {
 					l := g.comp_if_cond(cond.left)
 					g.write(' $cond.op ')
 					r := g.comp_if_cond(cond.right)
-					return l && r
+					return if cond.op == .and { l && r } else { l || r }
 				}
 				.key_is, .not_is {
 					left := cond.left
@@ -405,10 +401,15 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 			g.stmts(node.stmts)
 			i++
 			g.writeln('}')
+			//
+			mut delete_keys := []string{}
 			for key, _ in g.comptime_var_type_map {
 				if key.starts_with(node.val_var) {
-					g.comptime_var_type_map.delete(key)
+					delete_keys << key
 				}
+			}
+			for key in delete_keys {
+				g.comptime_var_type_map.delete(key)
 			}
 		}
 	} else if node.kind == .fields {
@@ -532,6 +533,9 @@ fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) ?string 
 			return '__cplusplus'
 		}
 		// other:
+		'gcboehm' {
+			return '_VGCBOEHM'
+		}
 		'debug' {
 			return '_VDEBUG'
 		}

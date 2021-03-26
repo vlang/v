@@ -138,7 +138,7 @@ fn (mut v Builder) rebuild_cached_module(vexe string, imp_path string) string {
 		vcache.dlog('| Builder.' + @FN, 'vexe: $vexe | imp_path: $imp_path | rebuild_cmd: $rebuild_cmd')
 		os.system(rebuild_cmd)
 		rebuilded_o := v.pref.cache_manager.exists('.o', imp_path) or {
-			panic('could not rebuild cache module for $imp_path, error: $err')
+			panic('could not rebuild cache module for $imp_path, error: $err.msg')
 		}
 		os.chdir(pwd)
 		return rebuilded_o
@@ -196,9 +196,11 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	ccoptions.args = [v.pref.cflags, '-std=gnu99']
 	ccoptions.wargs = ['-Wall', '-Wextra', '-Wno-unused', '-Wno-missing-braces', '-Walloc-zero',
 		'-Wcast-qual', '-Wdate-time', '-Wduplicated-branches', '-Wduplicated-cond', '-Wformat=2',
-		'-Winit-self', '-Winvalid-pch', '-Wjump-misses-init', '-Wlogical-op', '-Wmultichar', '-Wnested-externs',
-		'-Wnull-dereference', '-Wpacked', '-Wpointer-arith', '-Wshadow', '-Wswitch-default', '-Wswitch-enum',
-		'-Wno-unused-parameter', '-Wno-unknown-warning-option', '-Wno-format-nonliteral']
+		'-Winit-self', '-Winvalid-pch', '-Wjump-misses-init', '-Wlogical-op', '-Wmultichar',
+		'-Wnested-externs', '-Wnull-dereference', '-Wpacked', '-Wpointer-arith', '-Wshadow',
+		'-Wswitch-default', '-Wswitch-enum', '-Wno-unused-parameter', '-Wno-unknown-warning-option',
+		'-Wno-format-nonliteral',
+	]
 	if v.pref.os == .ios {
 		ccoptions.args << '-framework Foundation'
 		ccoptions.args << '-framework UIKit'
@@ -259,6 +261,11 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		// }
 	}
 	if v.pref.is_prod {
+		// don't warn for vlib tests
+		if ccoptions.is_cc_tcc && !(v.parsed_files.len > 0
+			&& v.parsed_files.last().path.contains('vlib')) {
+			eprintln('Note: tcc is not recommended for -prod builds')
+		}
 		ccoptions.args << optimization_options
 	}
 	if v.pref.is_prod && !ccoptions.debug_mode {
@@ -376,7 +383,9 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	}
 	v.ccoptions = ccoptions
 	// setup the cache too, so that different compilers/options do not interfere:
-	v.pref.cache_manager.set_temporary_options(ccoptions.thirdparty_object_args([ccoptions.guessed_compiler]))
+	v.pref.cache_manager.set_temporary_options(ccoptions.thirdparty_object_args([
+		ccoptions.guessed_compiler,
+	]))
 }
 
 fn (ccoptions CcompilerOptions) all_args() []string {
@@ -427,12 +436,7 @@ fn (mut v Builder) setup_output_name() {
 	if os.is_dir(v.pref.out_name) {
 		verror("'$v.pref.out_name' is a directory")
 	}
-	if v.pref.os == .ios {
-		bundle_name := v.pref.out_name.split('/').last()
-		v.ccoptions.o_args << '-o "${v.pref.out_name}.app/$bundle_name"'
-	} else {
-		v.ccoptions.o_args << '-o "$v.pref.out_name"'
-	}
+	v.ccoptions.o_args << '-o "$v.pref.out_name"'
 }
 
 fn (mut v Builder) vjs_cc() bool {
@@ -531,7 +535,12 @@ fn (mut v Builder) cc() {
 			ios_sdk := if v.pref.is_ios_simulator { 'iphonesimulator' } else { 'iphoneos' }
 			ios_sdk_path_res := os.execute_or_panic('xcrun --sdk $ios_sdk --show-sdk-path')
 			mut isysroot := ios_sdk_path_res.output.replace('\n', '')
-			ccompiler = 'xcrun --sdk iphoneos clang -isysroot $isysroot'
+			arch := if v.pref.is_ios_simulator {
+				'-arch x86_64'
+			} else {
+				'-arch armv7 -arch armv7s -arch arm64'
+			}
+			ccompiler = 'xcrun --sdk iphoneos clang -isysroot $isysroot $arch'
 		}
 		v.setup_ccompiler_options(ccompiler)
 		v.build_thirdparty_obj_files()
@@ -772,9 +781,12 @@ fn (mut b Builder) cc_linux_cross() {
 		verror(cc_res.output)
 		return
 	}
-	mut linker_args := ['-L $sysroot/usr/lib/x86_64-linux-gnu/', '--sysroot=$sysroot', '-v', '-o $b.pref.out_name',
-		'-m elf_x86_64', '-dynamic-linker /lib/x86_64-linux-gnu/ld-linux-x86-64.so.2', '$sysroot/crt1.o $sysroot/crti.o $obj_file',
-		'-lc', '-lcrypto', '-lssl', '-lpthread', '$sysroot/crtn.o']
+	mut linker_args := ['-L $sysroot/usr/lib/x86_64-linux-gnu/', '--sysroot=$sysroot', '-v',
+		'-o $b.pref.out_name', '-m elf_x86_64',
+		'-dynamic-linker /lib/x86_64-linux-gnu/ld-linux-x86-64.so.2',
+		'$sysroot/crt1.o $sysroot/crti.o $obj_file', '-lc', '-lcrypto', '-lssl', '-lpthread',
+		'$sysroot/crtn.o',
+	]
 	linker_args << cflags.c_options_only_object_files()
 	// -ldl
 	b.dump_c_options(linker_args)

@@ -745,8 +745,12 @@ pub fn (u URL) str() string {
 			// preceded by a dot-segment (e.g., './this:that') to make a relative-
 			// path reference.
 			i := path.index_byte(`:`)
-			if i > -1 && path[..i].index_byte(`/`) == -1 {
-				buf.write_string('./')
+			if i > -1 {
+				// TODO remove this when autofree handles tmp
+				// expressions like this
+				if i > -1 && path[..i].index_byte(`/`) == -1 {
+					buf.write_string('./')
+				}
 			}
 		}
 		buf.write_string(path)

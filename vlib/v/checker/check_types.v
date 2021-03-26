@@ -79,16 +79,9 @@ pub fn (mut c Checker) check_basic(got table.Type, expected table.Type) bool {
 			return true
 		}
 	}
-	// e.g. [4096]byte vs byteptr || [4096]char vs charptr
-	// should charptr be allowed as byteptr etc?
-	// TODO: clean this up (why was it removed?)
-	if got_sym.kind == .array_fixed {
-		info := got_sym.info as table.ArrayFixed
-		if !info.elem_type.is_ptr() && (info.elem_type.idx() == expected.idx()
-			|| (info.elem_type.idx() in [table.byte_type_idx, table.char_type_idx]
-			&& expected.idx() in [table.byteptr_type_idx, table.charptr_type_idx])) {
-			return true
-		}
+	if !got_.is_ptr() && got_sym.kind == .array_fixed && (exp_.is_pointer() || exp_.is_ptr()) {
+		// fixed array needs to be a struct, not a pointer
+		return false
 	}
 	if exp_sym.kind in [.voidptr, .any] || got_sym.kind in [.voidptr, .any] {
 		return true
@@ -266,6 +259,9 @@ pub fn (mut c Checker) check_types(got table.Type, expected table.Type) bool {
 			return true
 		}
 	}
+	if expected == table.charptr_type && got == table.char_type.to_ptr() {
+		return true
+	}
 	if !c.check_basic(got, expected) { // TODO: this should go away...
 		return false
 	}
@@ -349,6 +345,7 @@ pub fn (c &Checker) get_default_fmt(ftyp table.Type, typ table.Type) byte {
 }
 
 pub fn (mut c Checker) fail_if_unreadable(expr ast.Expr, typ table.Type, what string) {
+	mut pos := token.Position{}
 	match expr {
 		ast.Ident {
 			if typ.has_flag(.shared_f) {
@@ -361,16 +358,18 @@ pub fn (mut c Checker) fail_if_unreadable(expr ast.Expr, typ table.Type, what st
 			return
 		}
 		ast.SelectorExpr {
+			pos = expr.pos
 			c.fail_if_unreadable(expr.expr, expr.expr_type, what)
 		}
 		ast.IndexExpr {
+			pos = expr.left.position().extend(expr.pos)
 			c.fail_if_unreadable(expr.left, expr.left_type, what)
 		}
 		else {}
 	}
 	if typ.has_flag(.shared_f) {
 		c.error('you have to create a handle and `rlock` it to use a `shared` element as non-mut $what',
-			expr.position())
+			pos)
 	}
 }
 
@@ -443,7 +442,10 @@ pub fn (mut c Checker) infer_fn_types(f table.Fn, mut call_expr ast.CallExpr) {
 			arg := call_expr.args[arg_i]
 			param_type_sym := c.table.get_type_symbol(param.typ)
 			if param.typ.has_flag(.generic) && param_type_sym.name == gt_name {
-				typ = arg.typ
+				typ = c.table.mktyp(arg.typ)
+				if arg.expr.is_auto_deref_var() {
+					typ = typ.deref()
+				}
 				break
 			}
 			arg_sym := c.table.get_type_symbol(arg.typ)
@@ -464,6 +466,9 @@ pub fn (mut c Checker) infer_fn_types(f table.Fn, mut call_expr ast.CallExpr) {
 						break
 					}
 				}
+				break
+			} else if param.typ.has_flag(.variadic) {
+				typ = c.table.mktyp(arg.typ)
 				break
 			}
 		}

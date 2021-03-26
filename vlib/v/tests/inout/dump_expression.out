@@ -1,6 +1,16 @@
 [vlib/v/tests/inout/dump_expression.vv:2] 1: 1
 [vlib/v/tests/inout/dump_expression.vv:7] 'a': a
-[vlib/v/tests/inout/dump_expression.vv:20] point: Point{
+[vlib/v/tests/inout/dump_expression.vv:23] p: Point{
+    x: 1
+    y: 2
+    z: 3
+}
+[vlib/v/tests/inout/dump_expression.vv:24] p_mut: Point{
+    x: 1
+    y: 2
+    z: 3
+}
+[vlib/v/tests/inout/dump_expression.vv:25] p_ptr: &Point{
     x: 1
     y: 2
     z: 3

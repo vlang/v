@@ -255,6 +255,78 @@ fn test_delete_size() {
 	}
 }
 
+fn test_nested_for_in() {
+	mut m := map[string]int{}
+	for i in 0 .. 1000 {
+		m[i.str()] = i
+	}
+	mut i := 0
+	for key1, _ in m {
+		assert key1 == i.str()
+		i++
+		mut j := 0
+		for key2, _ in m {
+			assert key2 == j.str()
+			j++
+		}
+	}
+}
+
+fn test_delete_in_for_in() {
+	mut m := map[string]string{}
+	for i in 0 .. 1000 {
+		m[i.str()] = i.str()
+	}
+	mut i := 0
+	for key, _ in m {
+		assert key == i.str()
+		m.delete(key)
+		i++
+	}
+	assert m.str() == '{}'
+	assert m.len == 0
+}
+
+fn test_set_in_for_in() {
+	mut m := map[string]string{}
+	for i in 0 .. 10 {
+		m[i.str()] = i.str()
+	}
+	mut last_key := ''
+	mut i := 0
+	for key, _ in m {
+		m['10'] = '10'
+		assert key == i.str()
+		last_key = key
+		i++
+	}
+	assert last_key == '10'
+}
+
+fn test_delete_and_set_in_for_in() {
+	mut m := map[string]string{}
+	for i in 0 .. 1000 {
+		m[i.str()] = i.str()
+	}
+	mut i := 0
+	for key, _ in m {
+		assert key == i.str()
+		m.delete(key)
+		m[key] = i.str()
+		if i == 999 {
+			break
+		}
+		i++
+	}
+	assert m.len == 1000
+	i = 0
+	for key, _ in m {
+		assert m[key] == i.str()
+		i++
+	}
+	assert i == 1000
+}
+
 struct Mstruct1 {
 pub mut:
 	mymap map[string]int
@@ -326,7 +398,7 @@ fn test_assign_directly() {
 }
 
 fn test_map_in_directly() {
-	for k, v in {
+	for k, v in map{
 		'aa': 1
 	} {
 		assert k == 'aa'

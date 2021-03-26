@@ -72,9 +72,8 @@ fn testsuite_begin() {
 		eprintln('You can still do it by setting FORCE_LIVE_TEST=1 .')
 		exit(0)
 	}
-	for f in [tmp_file, source_file, output_file, res_original_file, res_changed_file, res_another_file,
-		res_stop_file,
-	] {
+	for f in [tmp_file, source_file, output_file, res_original_file, res_changed_file,
+		res_another_file, res_stop_file] {
 		os.rm(f) or {}
 	}
 	atomic_write_source(live_program_source)

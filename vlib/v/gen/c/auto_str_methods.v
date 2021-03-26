@@ -44,8 +44,8 @@ fn (g &Gen) type_to_fmt(typ table.Type) string {
 	sym := g.table.get_type_symbol(typ)
 	if typ.is_ptr() && (typ.is_int() || typ.is_float()) {
 		return '%.*s\\000'
-	} else if sym.kind in [.struct_, .array, .array_fixed, .map, .bool, .enum_, .interface_, .sum_type,
-		.function, .alias] {
+	} else if sym.kind in [.struct_, .array, .array_fixed, .map, .bool, .enum_, .interface_,
+		.sum_type, .function, .alias] {
 		return '%.*s\\000'
 	} else if sym.kind == .string {
 		return "'%.*s\\000'"
@@ -142,9 +142,7 @@ fn (mut g Gen) gen_str_for_option(typ table.Type, styp string, str_fn_name strin
 	g.type_definitions.writeln('string indent_${str_fn_name}($styp it, int indent_count); // auto')
 	g.auto_str_funcs.writeln('string indent_${str_fn_name}($styp it, int indent_count) {')
 	g.auto_str_funcs.writeln('\tstring res;')
-	g.auto_str_funcs.writeln('\tif (it.state == 1) {')
-	g.auto_str_funcs.writeln('\t\tres = _SLIT("none");')
-	g.auto_str_funcs.writeln('\t} else if (it.state == 0) {')
+	g.auto_str_funcs.writeln('\tif (it.state == 0) {')
 	if sym.kind == .string {
 		g.auto_str_funcs.writeln('\t\tres = _STR("\'%.*s\\000\'", 2, ${parent_str_fn_name}(*($sym.cname*)it.data));')
 	} else if should_use_indent_func(sym.kind) && !sym_has_str_method {
@@ -153,7 +151,7 @@ fn (mut g Gen) gen_str_for_option(typ table.Type, styp string, str_fn_name strin
 		g.auto_str_funcs.writeln('\t\tres = ${parent_str_fn_name}(*($sym.cname*)it.data);')
 	}
 	g.auto_str_funcs.writeln('\t} else {')
-	g.auto_str_funcs.writeln('\t\tres = _STR("error: \'%.*s\\000\'", 2, it.err.msg);')
+	g.auto_str_funcs.writeln('\t\tres = _STR("error: %.*s\\000", 2, IError_str(it.err));')
 	g.auto_str_funcs.writeln('\t}')
 	g.auto_str_funcs.writeln('\treturn _STR("Option(%.*s\\000)", 2, res);')
 	g.auto_str_funcs.writeln('}')
@@ -536,7 +534,7 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp string, str_fn_name st
 	g.auto_str_funcs.writeln('}')
 }
 
-fn struct_auto_str_func(sym table.TypeSymbol, field_type table.Type, fn_name string, field_name string) string {
+fn struct_auto_str_func(sym &table.TypeSymbol, field_type table.Type, fn_name string, field_name string) string {
 	has_custom_str, expects_ptr, _ := sym.str_method_info()
 	if sym.kind == .enum_ {
 		return '${fn_name}(it.${c_name(field_name)})'

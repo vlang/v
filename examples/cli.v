@@ -28,14 +28,13 @@ fn main() {
 	greet_cmd.add_flag(Flag{
 		flag: .int
 		name: 'times'
-		value: ['3']
+		default_value: ['3']
 		description: 'Number of times the message gets printed.'
 	})
 	greet_cmd.add_flag(Flag{
-		flag: .string
-		name: 'fun'
-		multiple: true
-		description: 'Just a dumby flags to show multiple.'
+	 	flag: .string_array
+	 	name: 'fun'
+	 	description: 'Just a dumby flags to show multiple.'
 	})
 	cmd.add_command(greet_cmd)
 	cmd.setup()

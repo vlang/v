@@ -1,0 +1,27 @@
+vlib/v/checker/tests/shared_element_lock.vv:36:5: error: you have to create a handle and `lock` it to modify `shared` field `pe` of struct `Programmer`
+   34 |         }
+   35 |     }
+   36 |     pr.pe.color = 3
+      |        ~~
+   37 |     shared y := pr.pe
+   38 |     rlock y {
+vlib/v/checker/tests/shared_element_lock.vv:42:2: error: `g` is `shared` and needs explicit lock for `v.ast.SelectorExpr`
+   40 |     }
+   41 |     shared g := Pro{}
+   42 |     g.pers.age = 42
+      |     ^
+   43 |     mut h := []shared Pro{len: 3}
+   44 |     h[2].pers.age = 42
+vlib/v/checker/tests/shared_element_lock.vv:44:2: error: you have to create a handle and `lock` it to modify `shared` array element
+   42 |     g.pers.age = 42
+   43 |     mut h := []shared Pro{len: 3}
+   44 |     h[2].pers.age = 42
+      |     ~~~~
+   45 |     println(h[2].pers.age)
+   46 | }
+vlib/v/checker/tests/shared_element_lock.vv:45:10: error: you have to create a handle and `rlock` it to use a `shared` element as non-mut argument to print
+   43 |     mut h := []shared Pro{len: 3}
+   44 |     h[2].pers.age = 42
+   45 |     println(h[2].pers.age)
+      |             ~~~~
+   46 | }

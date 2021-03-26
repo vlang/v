@@ -7,19 +7,19 @@ import v.util
 const (
 	known_failing_exceptions = [
 		'vlib/crypto/aes/const.v',
-		/* multiple narrow columns of []string turned to 1 long single column, otherwise works */
+		// multiple narrow columns of []string turned to 1 long single column, otherwise works
 		'vlib/v/gen/js/tests/life.v',
-		/* error: unexpected `,`, expecting ), on JS.setInterval(fn () { show(game) game = step(game) }, 500) */
+		// error: unexpected `,`, expecting ), on JS.setInterval(fn () { show(game) game = step(game) }, 500)
 		'vlib/builtin/js/builtin.v',
-		/* JS.console.error(s) => JS.error(s), JS.process.exit(c) => JS.exit(c) */
+		// JS.console.error(s) => JS.error(s), JS.process.exit(c) => JS.exit(c)
 		'vlib/builtin/js/jsfns_node.js.v',
 		'vlib/builtin/js/jsfns.js.v',
 		'vlib/builtin/js/jsfns_browser.js.v',
-		/* error: expr(): bad token `asm`, on `asm {}` */
+		// error: expr(): bad token `asm`, on `asm {}`
 		'vlib/builtin/bare/linuxsys_bare.v',
-		/* total chaos (duplicated code several times) in array_eq_test.v */
+		// total chaos (duplicated code several times) in array_eq_test.v
 		'vlib/builtin/array_eq_test.v',
-		/* the fn args are removed, then `cb fn (picohttpparser.Request, mut picohttpparser.Response)` can not be reparsed */
+		// the fn args are removed, then `cb fn (picohttpparser.Request, mut picohttpparser.Response)` can not be reparsed
 		'vlib/picoev/picoev.v',
 	]
 )

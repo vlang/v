@@ -145,6 +145,8 @@ pub fn tos_lit(s charptr) string {
 }
 
 // vstring converts a C style string to a V string. NB: the string data is reused, NOT copied.
+// strings returned from this function will be normal V strings beside that (i.e. they would be
+// freed by V's -autofree mechanism, when they are no longer used).
 [unsafe]
 pub fn (bp byteptr) vstring() string {
 	return string{
@@ -153,30 +155,87 @@ pub fn (bp byteptr) vstring() string {
 	}
 }
 
-// vstring_with_len converts a C style string to a V string. NB: the string data is reused, NOT copied.
+// vstring_with_len converts a C style string to a V string.
+// NB: the string data is reused, NOT copied.
 [unsafe]
 pub fn (bp byteptr) vstring_with_len(len int) string {
 	return string{
 		str: bp
 		len: len
+		is_lit: 0
 	}
 }
 
-// vstring converts C char* to V string. NB: the string data is reused, NOT copied.
+// vstring converts C char* to V string.
+// NB: the string data is reused, NOT copied.
 [unsafe]
 pub fn (cp charptr) vstring() string {
 	return string{
 		str: byteptr(cp)
 		len: unsafe { C.strlen(cp) }
+		is_lit: 0
 	}
 }
 
-// vstring_with_len converts C char* to V string. NB: the string data is reused, NOT copied.
+// vstring_with_len converts C char* to V string.
+// NB: the string data is reused, NOT copied.
 [unsafe]
 pub fn (cp charptr) vstring_with_len(len int) string {
 	return string{
 		str: byteptr(cp)
 		len: len
+		is_lit: 0
+	}
+}
+
+// vstring_literal converts a C style string to a V string.
+// NB: the string data is reused, NOT copied.
+// NB2: unlike vstring, vstring_literal will mark the string
+// as a literal, so it will not be freed by autofree.
+// This is suitable for readonly strings, C string literals etc,
+// that can be read by the V program, but that should not be
+// managed by it, for example `os.args` is implemented using it.
+[unsafe]
+pub fn (bp byteptr) vstring_literal() string {
+	return string{
+		str: bp
+		len: unsafe { C.strlen(charptr(bp)) }
+		is_lit: 1
+	}
+}
+
+// vstring_with_len converts a C style string to a V string.
+// NB: the string data is reused, NOT copied.
+[unsafe]
+pub fn (bp byteptr) vstring_literal_with_len(len int) string {
+	return string{
+		str: bp
+		len: len
+		is_lit: 1
+	}
+}
+
+// vstring_literal converts C char* to V string.
+// See also vstring_literal defined on byteptr for more details.
+// NB: the string data is reused, NOT copied.
+[unsafe]
+pub fn (cp charptr) vstring_literal() string {
+	return string{
+		str: byteptr(cp)
+		len: unsafe { C.strlen(cp) }
+		is_lit: 1
+	}
+}
+
+// vstring_literal_with_len converts C char* to V string.
+// See also vstring_literal_with_len defined on byteptr.
+// NB: the string data is reused, NOT copied.
+[unsafe]
+pub fn (cp charptr) vstring_literal_with_len(len int) string {
+	return string{
+		str: byteptr(cp)
+		len: len
+		is_lit: 1
 	}
 }
 
@@ -316,11 +375,11 @@ fn (a RepIndex) < (b RepIndex) bool {
 // Example: assert 'ABCD'.replace_each(['B','C/','C','D','D','C']) == 'AC/DC'
 pub fn (s string) replace_each(vals []string) string {
 	if s.len == 0 || vals.len == 0 {
-		return s
+		return s.clone()
 	}
 	if vals.len % 2 != 0 {
 		println('string.replace_each(): odd number of strings')
-		return s
+		return s.clone()
 	}
 	// `rep` - string to replace
 	// `with` - string to replace with
@@ -329,14 +388,21 @@ pub fn (s string) replace_each(vals []string) string {
 	mut new_len := s.len
 	mut idxs := []RepIndex{}
 	mut idx := 0
+	s_ := s.clone()
 	for rep_i := 0; rep_i < vals.len; rep_i += 2 {
 		// vals: ['rep1, 'with1', 'rep2', 'with2']
 		rep := vals[rep_i]
 		with := vals[rep_i + 1]
 		for {
-			idx = s.index_after(rep, idx)
+			idx = s_.index_after(rep, idx)
 			if idx == -1 {
 				break
+			}
+			// The string already found is set to `/del`, to avoid duplicate searches.
+			for i in 0 .. rep.len {
+				unsafe {
+					s_.str[idx + i] = 127
+				}
 			}
 			// We need to remember both the position in the string,
 			// and which rep/with pair it refers to.
@@ -350,7 +416,7 @@ pub fn (s string) replace_each(vals []string) string {
 	}
 	// Dont change the string if there's nothing to replace
 	if idxs.len == 0 {
-		return s
+		return s.clone()
 	}
 	idxs.sort2()
 	mut b := unsafe { malloc(new_len + 1) } // add a \0 just in case
@@ -493,7 +559,7 @@ fn (s string) ge(a string) bool {
 
 // TODO `fn (s string) + (a string)` ? To be consistent with operator overloading syntax.
 // add concatenates string with the string given in `s`.
-fn (s string) add(a string) string {
+pub fn (s string) add(a string) string {
 	new_len := a.len + s.len
 	mut res := string{
 		str: unsafe { malloc(new_len + 1) }
@@ -530,40 +596,70 @@ pub fn (s string) split(delim string) []string {
 pub fn (s string) split_nth(delim string, nth int) []string {
 	mut res := []string{}
 	mut i := 0
-	if delim.len == 0 {
-		i = 1
-		for ch in s {
-			if nth > 0 && i >= nth {
-				res << s[i..]
-				break
+
+	match delim.len {
+		0 {
+			i = 1
+			for ch in s {
+				if nth > 0 && i >= nth {
+					res << s[i..]
+					break
+				}
+				res << ch.ascii_str()
+				i++
 			}
-			res << ch.ascii_str()
-			i++
+			return res
 		}
-		return res
-	}
-	mut start := 0
-	// Take the left part for each delimiter occurence
-	for i <= s.len {
-		is_delim := i + delim.len <= s.len && s.substr(i, i + delim.len) == delim
-		if is_delim {
-			val := s.substr(start, i)
-			was_last := nth > 0 && res.len == nth - 1
-			if was_last {
-				break
+		1 {
+			mut start := 0
+			delim_byte := delim[0]
+
+			for i < s.len {
+				if s[i] == delim_byte {
+					was_last := nth > 0 && res.len == nth - 1
+					if was_last {
+						break
+					}
+					val := s.substr(start, i)
+					res << val
+					start = i + delim.len
+					i = start
+				} else {
+					i++
+				}
 			}
-			res << val
-			start = i + delim.len
-			i = start
-		} else {
-			i++
+
+			// Then the remaining right part of the string
+			if nth < 1 || res.len < nth {
+				res << s[start..]
+			}
+			return res
+		}
+		else {
+			mut start := 0
+			// Take the left part for each delimiter occurence
+			for i <= s.len {
+				is_delim := i + delim.len <= s.len && s.substr(i, i + delim.len) == delim
+				if is_delim {
+					was_last := nth > 0 && res.len == nth - 1
+					if was_last {
+						break
+					}
+					val := s.substr(start, i)
+					res << val
+					start = i + delim.len
+					i = start
+				} else {
+					i++
+				}
+			}
+			// Then the remaining right part of the string
+			if nth < 1 || res.len < nth {
+				res << s[start..]
+			}
+			return res
 		}
 	}
-	// Then the remaining right part of the string
-	if nth < 1 || res.len < nth {
-		res << s[start..]
-	}
-	return res
 }
 
 // split_into_lines splits the string by newline characters.
@@ -605,6 +701,14 @@ fn (s string) substr2(start int, _end int, end_max bool) string {
 pub fn (s string) substr(start int, end int) string {
 	$if !no_bounds_checking ? {
 		if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
+			/*
+			$if debug {
+					println('substr($start, $end) out of bounds (len=$s.len)')
+					println('s="$s"')
+					print_backtrace()
+					return ''
+			}
+			*/
 			panic('substr($start, $end) out of bounds (len=$s.len)')
 		}
 	}
@@ -667,11 +771,15 @@ pub fn (s string) index(p string) ?int {
 }
 
 // index_kmp does KMP search.
+[manualfree]
 fn (s string) index_kmp(p string) int {
 	if p.len > s.len {
 		return -1
 	}
 	mut prefix := []int{len: p.len}
+	defer {
+		unsafe { prefix.free() }
+	}
 	mut j := 0
 	for i := 1; i < p.len; i++ {
 		for unsafe { p.str[j] != p.str[i] } && j > 0 {
@@ -796,7 +904,21 @@ pub fn (s string) count(substr string) int {
 	if substr.len > s.len {
 		return 0
 	}
+
 	mut n := 0
+
+	if substr.len == 1 {
+		target := substr[0]
+
+		for letter in s {
+			if letter == target {
+				n++
+			}
+		}
+
+		return n
+	}
+
 	mut i := 0
 	for {
 		i = s.index_after(substr, i)
@@ -823,7 +945,7 @@ pub fn (s string) contains(substr string) bool {
 // contains_any returns `true` if the string contains any chars in `chars`.
 pub fn (s string) contains_any(chars string) bool {
 	for c in chars {
-		if c.ascii_str() in s {
+		if s.contains(c.ascii_str()) {
 			return true
 		}
 	}
@@ -877,6 +999,7 @@ pub fn (s string) to_lower() string {
 		for i in 0 .. s.len {
 			b[i] = byte(C.tolower(s.str[i]))
 		}
+		b[s.len] = 0
 		return tos(b, s.len)
 	}
 }
@@ -900,6 +1023,7 @@ pub fn (s string) to_upper() string {
 		for i in 0 .. s.len {
 			b[i] = byte(C.toupper(s.str[i]))
 		}
+		b[s.len] = 0
 		return tos(b, s.len)
 	}
 }
@@ -921,10 +1045,15 @@ pub fn (s string) capitalize() string {
 	if s.len == 0 {
 		return ''
 	}
-	return s[0].ascii_str().to_upper() + s[1..]
-	// sl := s.to_lower()
-	// cap := sl[0].str().to_upper() + sl[1..]
-	// return cap
+	s0 := s[0]
+	letter := s0.ascii_str()
+	uletter := letter.to_upper()
+	if s.len == 1 {
+		return uletter
+	}
+	srest := s[1..]
+	res := uletter + srest
+	return res
 }
 
 // is_capital returns `true` if the first character in the string is a capital letter.
@@ -981,16 +1110,6 @@ pub fn (s string) find_between(start string, end string) string {
 	return val[..end_pos]
 }
 
-/*
-pub fn (a []string) to_c() voidptr {
-	mut res := malloc(sizeof(byteptr) * a.len)
-	for i in 0..a.len {
-		val := a[i]
-		res[i] = val.str
-	}
-	return res
-}
-*/
 // is_space returns `true` if the byte is a white space character.
 // The following list is considered white space characters: ` `, `\n`, `\t`, `\v`, `\f`, `\r`, 0x85, 0xa0
 // Example: assert byte(` `).is_space() == true
@@ -1010,21 +1129,26 @@ pub fn (s string) trim_space() string {
 // Example: assert ' ffHello V ffff'.trim(' f') == 'Hello V'
 pub fn (s string) trim(cutset string) string {
 	if s.len < 1 || cutset.len < 1 {
-		return s
+		return s.clone()
 	}
-	cs_arr := cutset.bytes()
 	mut pos_left := 0
 	mut pos_right := s.len - 1
 	mut cs_match := true
 	for pos_left <= s.len && pos_right >= -1 && cs_match {
 		cs_match = false
-		if s[pos_left] in cs_arr {
-			pos_left++
-			cs_match = true
+		for cs in cutset {
+			if s[pos_left] == cs {
+				pos_left++
+				cs_match = true
+				break
+			}
 		}
-		if s[pos_right] in cs_arr {
-			pos_right--
-			cs_match = true
+		for cs in cutset {
+			if s[pos_right] == cs {
+				pos_right--
+				cs_match = true
+				break
+			}
 		}
 		if pos_left > pos_right {
 			return ''
@@ -1037,11 +1161,20 @@ pub fn (s string) trim(cutset string) string {
 // Example: assert 'd Hello V developer'.trim_left(' d') == 'Hello V developer'
 pub fn (s string) trim_left(cutset string) string {
 	if s.len < 1 || cutset.len < 1 {
-		return s
+		return s.clone()
 	}
-	cs_arr := cutset.bytes()
 	mut pos := 0
-	for pos < s.len && s[pos] in cs_arr {
+	for pos < s.len {
+		mut found := false
+		for cs in cutset {
+			if s[pos] == cs {
+				found = true
+				break
+			}
+		}
+		if !found {
+			break
+		}
 		pos++
 	}
 	return s[pos..]
@@ -1051,14 +1184,25 @@ pub fn (s string) trim_left(cutset string) string {
 // Example: assert ' Hello V d'.trim_right(' d') == ' Hello V'
 pub fn (s string) trim_right(cutset string) string {
 	if s.len < 1 || cutset.len < 1 {
-		return s
+		return s.clone()
 	}
-	cs_arr := cutset.bytes()
 	mut pos := s.len - 1
-	for pos >= 0 && s[pos] in cs_arr {
+	for pos >= 0 {
+		mut found := false
+		for cs in cutset {
+			if s[pos] == cs {
+				found = true
+			}
+		}
+		if !found {
+			break
+		}
 		pos--
 	}
-	return if pos < 0 { '' } else { s[..pos + 1] }
+	if pos < 0 {
+		return ''
+	}
+	return s[..pos + 1]
 }
 
 // trim_prefix strips `str` from the start of the string.
@@ -1067,7 +1211,7 @@ pub fn (s string) trim_prefix(str string) string {
 	if s.starts_with(str) {
 		return s[str.len..]
 	}
-	return s
+	return s.clone()
 }
 
 // trim_suffix strips `str` from the end of the string.
@@ -1076,7 +1220,7 @@ pub fn (s string) trim_suffix(str string) string {
 	if s.ends_with(str) {
 		return s[..s.len - str.len]
 	}
-	return s
+	return s.clone()
 }
 
 // compare_strings returns `-1` if `a < b`, `1` if `a > b` else `0`.
@@ -1116,7 +1260,7 @@ fn compare_strings_by_len(a &string, b &string) int {
 fn compare_lower_strings(a &string, b &string) int {
 	aa := a.to_lower()
 	bb := b.to_lower()
-	return compare_strings(aa, bb)
+	return compare_strings(&aa, &bb)
 }
 
 // sort sorts the string array.
@@ -1134,9 +1278,9 @@ pub fn (mut s []string) sort_by_len() {
 	s.sort_with_compare(compare_strings_by_len)
 }
 
-// str returns the string itself.
+// str returns a copy of the string
 pub fn (s string) str() string {
-	return s
+	return s.clone()
 }
 
 // str returns the string itself.
@@ -1412,7 +1556,7 @@ pub fn (s &string) free() {
 pub fn (s string) before(dot string) string {
 	pos := s.index_(dot)
 	if pos == -1 {
-		return s
+		return s.clone()
 	}
 	return s[..pos]
 }
@@ -1423,7 +1567,7 @@ pub fn (s string) all_before(dot string) string {
 	// TODO remove dup method
 	pos := s.index_(dot)
 	if pos == -1 {
-		return s
+		return s.clone()
 	}
 	return s[..pos]
 }
@@ -1433,7 +1577,7 @@ pub fn (s string) all_before(dot string) string {
 pub fn (s string) all_before_last(dot string) string {
 	pos := s.last_index_(dot)
 	if pos == -1 {
-		return s
+		return s.clone()
 	}
 	return s[..pos]
 }
@@ -1443,7 +1587,7 @@ pub fn (s string) all_before_last(dot string) string {
 pub fn (s string) all_after(dot string) string {
 	pos := s.index_(dot)
 	if pos == -1 {
-		return s
+		return s.clone()
 	}
 	return s[pos + dot.len..]
 }
@@ -1453,7 +1597,7 @@ pub fn (s string) all_after(dot string) string {
 pub fn (s string) all_after_last(dot string) string {
 	pos := s.last_index_(dot)
 	if pos == -1 {
-		return s
+		return s.clone()
 	}
 	return s[pos + dot.len..]
 }
@@ -1475,7 +1619,7 @@ pub fn (s string) after_char(dot byte) string {
 		}
 	}
 	if pos == 0 {
-		return s
+		return s.clone()
 	}
 	return s[pos + 1..]
 }
@@ -1495,7 +1639,7 @@ pub fn (a []string) join(del string) string {
 	}
 	len -= del.len
 	// Allocate enough memory
-	mut res := ''
+	mut res := string{}
 	res.len = len
 	res.str = unsafe { malloc(res.len + 1) }
 	mut idx := 0
@@ -1532,7 +1676,7 @@ pub fn (s []string) join_lines() string {
 // Example: assert 'Hello V'.reverse() == 'V olleH'
 pub fn (s string) reverse() string {
 	if s.len == 0 || s.len == 1 {
-		return s
+		return s.clone()
 	}
 	mut res := string{
 		str: unsafe { malloc(s.len) }
@@ -1552,7 +1696,7 @@ pub fn (s string) reverse() string {
 pub fn (s string) limit(max int) string {
 	u := s.ustring()
 	if u.len <= max {
-		return s
+		return s.clone()
 	}
 	return u.substr(0, max)
 }
@@ -1586,7 +1730,7 @@ pub fn (s string) repeat(count int) string {
 	} else if count == 0 {
 		return ''
 	} else if count == 1 {
-		return s
+		return s.clone()
 	}
 	mut ret := unsafe { malloc(s.len * count + 1) }
 	for i in 0 .. count {
@@ -1606,8 +1750,34 @@ pub fn (s string) repeat(count int) string {
 // fields returns a string array of the string split by `\t` and ` `
 // Example: assert '\t\tv = v'.fields() == ['', '', 'v', '=', 'v']
 pub fn (s string) fields() []string {
-	// TODO do this in a better way
-	return s.replace('\t', ' ').split(' ')
+	mut res := []string{}
+	mut word_start := 0
+	mut word_len := 0
+	mut is_in_word := false
+	mut is_space := false
+	for i, c in s {
+		is_space = c in [` `, `\t`, `\n`]
+		if !is_space {
+			word_len++
+		}
+		if !is_in_word && !is_space {
+			word_start = i
+			is_in_word = true
+			continue
+		}
+		if is_space && is_in_word {
+			res << s[word_start..word_start + word_len]
+			is_in_word = false
+			word_len = 0
+			word_start = 0
+			continue
+		}
+	}
+	if is_in_word && word_len > 0 {
+		// collect the remainder word at the end
+		res << s[word_start..s.len]
+	}
+	return res
 }
 
 // strip_margin allows multi-line strings to be formatted in a way that removes white-space
@@ -1674,31 +1844,8 @@ pub fn (s string) strip_margin_custom(del byte) string {
 
 // split_by_whitespace - extract only the non whitespace tokens/words from the given string `s`.
 // example: '  sss   ssss'.split_by_whitespace() => ['sss', 'ssss']
+
+[deprecated: 'use string.fields() instead']
 pub fn (s string) split_by_whitespace() []string {
-	mut res := []string{}
-	mut word_start := 0
-	mut word_end := 0
-	mut is_in_word := false
-	mut is_space := false
-	for i, c in s {
-		is_space = c in [` `, `\t`, `\n`]
-		if !is_in_word && !is_space {
-			word_start = i
-			is_in_word = true
-			continue
-		}
-		if is_space && is_in_word {
-			word_end = i
-			res << s[word_start..word_end]
-			is_in_word = false
-			word_end = 0
-			word_start = 0
-			continue
-		}
-	}
-	if is_in_word && word_start > 0 {
-		// collect the remainder word at the end
-		res << s[word_start..s.len]
-	}
-	return res
+	return s.fields()
 }

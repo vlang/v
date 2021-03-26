@@ -141,7 +141,8 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	if inp_sym.kind != .array {
 		verror('map() requires an array')
 	}
-	g.write('\t${g.typ(node.left_type)} ${tmp}_orig = ')
+	g.empty_line = true
+	g.write('${g.typ(node.left_type)} ${tmp}_orig = ')
 	g.expr(node.left)
 	g.writeln(';')
 	g.writeln('int ${tmp}_len = ${tmp}_orig.len;')
@@ -296,13 +297,14 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	//
 	deref := if node.left_type.is_ptr() || node.left_type.is_pointer() { '->' } else { '.' }
 	// eprintln('> qsort: pointer $node.left_type | deref: `$deref`')
+	g.empty_line = true
 	g.write('qsort(')
 	g.expr(node.left)
 	g.write('${deref}data, ')
 	g.expr(node.left)
 	g.write('${deref}len, ')
 	g.expr(node.left)
-	g.writeln('${deref}element_size, (int (*)(const void *, const void *))&$compare_fn);')
+	g.write('${deref}element_size, (int (*)(const void *, const void *))&$compare_fn)')
 }
 
 // `nums.filter(it % 2 == 0)`
@@ -317,7 +319,8 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	info := sym.info as table.Array
 	styp := g.typ(node.return_type)
 	elem_type_str := g.typ(info.elem_type)
-	g.write('\t${g.typ(node.left_type)} ${tmp}_orig = ')
+	g.empty_line = true
+	g.write('${g.typ(node.left_type)} ${tmp}_orig = ')
 	g.expr(node.left)
 	g.writeln(';')
 	g.writeln('int ${tmp}_len = ${tmp}_orig.len;')
@@ -569,4 +572,132 @@ fn (mut g Gen) gen_array_wait(node ast.CallExpr) {
 	g.write('${fn_name}(')
 	g.expr(node.left)
 	g.write(')')
+}
+
+fn (mut g Gen) gen_array_any(node ast.CallExpr) {
+	tmp := g.new_tmp_var()
+	s := g.go_before_stmt(0)
+	sym := g.table.get_type_symbol(node.left_type)
+	info := sym.info as table.Array
+	// styp := g.typ(node.return_type)
+	elem_type_str := g.typ(info.elem_type)
+	g.empty_line = true
+	g.write('${g.typ(node.left_type)} ${tmp}_orig = ')
+	g.expr(node.left)
+	g.writeln(';')
+	g.writeln('int ${tmp}_len = ${tmp}_orig.len;')
+	g.writeln('bool $tmp = false;')
+	i := g.new_tmp_var()
+	g.writeln('for (int $i = 0; $i < ${tmp}_len; ++$i) {')
+	g.writeln('\t$elem_type_str it = (($elem_type_str*) ${tmp}_orig.data)[$i];')
+	mut is_embed_map_filter := false
+	mut expr := node.args[0].expr
+	match mut expr {
+		ast.AnonFn {
+			g.write('\tif (')
+			g.gen_anon_fn_decl(mut expr)
+			g.write('${expr.decl.name}(it)')
+		}
+		ast.Ident {
+			g.write('\tif (')
+			if expr.kind == .function {
+				g.write('${c_name(expr.name)}(it)')
+			} else if expr.kind == .variable {
+				var_info := expr.var_info()
+				sym_t := g.table.get_type_symbol(var_info.typ)
+				if sym_t.kind == .function {
+					g.write('${c_name(expr.name)}(it)')
+				} else {
+					g.expr(node.args[0].expr)
+				}
+			} else {
+				g.expr(node.args[0].expr)
+			}
+		}
+		ast.CallExpr {
+			if expr.name in ['map', 'filter'] {
+				is_embed_map_filter = true
+				g.stmt_path_pos << g.out.len
+			}
+			g.write('\tif (')
+			g.expr(node.args[0].expr)
+		}
+		else {
+			g.write('\tif (')
+			g.expr(node.args[0].expr)
+		}
+	}
+	g.writeln(') {')
+	g.writeln('\t\t$tmp = true;\n\t\t\tbreak;\n\t\t}')
+	g.writeln('}')
+	if !is_embed_map_filter {
+		g.stmt_path_pos << g.out.len
+	}
+	g.write('\n')
+	g.write(s)
+	g.write(tmp)
+}
+
+fn (mut g Gen) gen_array_all(node ast.CallExpr) {
+	tmp := g.new_tmp_var()
+	s := g.go_before_stmt(0)
+	sym := g.table.get_type_symbol(node.left_type)
+	info := sym.info as table.Array
+	// styp := g.typ(node.return_type)
+	elem_type_str := g.typ(info.elem_type)
+	g.empty_line = true
+	g.write('${g.typ(node.left_type)} ${tmp}_orig = ')
+	g.expr(node.left)
+	g.writeln(';')
+	g.writeln('int ${tmp}_len = ${tmp}_orig.len;')
+	g.writeln('bool $tmp = true;')
+	i := g.new_tmp_var()
+	g.writeln('for (int $i = 0; $i < ${tmp}_len; ++$i) {')
+	g.writeln('\t$elem_type_str it = (($elem_type_str*) ${tmp}_orig.data)[$i];')
+	mut is_embed_map_filter := false
+	mut expr := node.args[0].expr
+	match mut expr {
+		ast.AnonFn {
+			g.write('\tif (!(')
+			g.gen_anon_fn_decl(mut expr)
+			g.write('${expr.decl.name}(it)')
+		}
+		ast.Ident {
+			g.write('\tif (!(')
+			if expr.kind == .function {
+				g.write('${c_name(expr.name)}(it)')
+			} else if expr.kind == .variable {
+				var_info := expr.var_info()
+				sym_t := g.table.get_type_symbol(var_info.typ)
+				if sym_t.kind == .function {
+					g.write('${c_name(expr.name)}(it)')
+				} else {
+					g.expr(node.args[0].expr)
+				}
+			} else {
+				g.expr(node.args[0].expr)
+			}
+		}
+		ast.CallExpr {
+			if expr.name in ['map', 'filter'] {
+				is_embed_map_filter = true
+				g.stmt_path_pos << g.out.len
+			}
+			g.write('\tif (!(')
+			g.expr(node.args[0].expr)
+		}
+		else {
+			g.write('\tif (!(')
+			g.expr(node.args[0].expr)
+		}
+	}
+	g.writeln(')) {')
+	g.writeln('\t\t$tmp = false;\n\t\t\tbreak;\n\t\t}')
+	g.writeln('}')
+	if !is_embed_map_filter {
+		g.stmt_path_pos << g.out.len
+	}
+	g.write('\n')
+	g.write(s)
+	g.write(tmp)
 }

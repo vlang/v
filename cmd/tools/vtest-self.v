@@ -21,21 +21,17 @@ const (
 		'vlib/vweb/request_test.v',
 		'vlib/vweb/route_test.v',
 		'vlib/x/websocket/websocket_test.v',
+		'vlib/crypto/rand/crypto_rand_read_test.v',
 	]
 	skip_with_fsanitize_address   = [
-		'vlib/encoding/base64/base64_test.v',
 		'vlib/json/json_test.v',
 		'vlib/regex/regex_test.v',
-		'vlib/v/tests/ptr_arithmetic_test.v',
-		'vlib/v/tests/unsafe_test.v',
 		'vlib/x/websocket/websocket_test.v',
 	]
 	skip_with_fsanitize_undefined = []string{}
 	skip_with_werror              = [
-		'vlib/builtin/array_test.v',
+		'vlib/sync/array_rlock_test.v',
 		'vlib/clipboard/clipboard_test.v',
-		'vlib/dl/dl_test.v',
-		'vlib/dl/example/use_test.v',
 		'vlib/eventbus/eventbus_test.v',
 		'vlib/gx/color_test.v',
 		'vlib/json/json_test.v',
@@ -157,6 +153,7 @@ const (
 		'vlib/readline/readline_test.v',
 		'vlib/vweb/tests/vweb_test.v',
 	]
+	skip_with_msan_compiler       = []string{}
 	skip_test_files               = []string{}
 	skip_on_musl                  = [
 		'vlib/v/tests/profile/profile_test.v',
@@ -206,7 +203,7 @@ fn main() {
 	args := os.args.clone()
 	args_string := args[1..].join(' ')
 	cmd_prefix := args_string.all_before('test-self')
-	title := 'testing all tests'
+	title := 'testing vlib'
 	all_test_files := os.walk_ext(os.join_path(vroot, 'vlib'), '_test.v')
 	testing.eheader(title)
 	mut tsession := testing.new_test_session(cmd_prefix)
@@ -218,20 +215,24 @@ fn main() {
 	mut sanitize_address := false
 	mut sanitize_undefined := false
 	mut asan_compiler := false
+	mut msan_compiler := false
 	for arg in args {
-		if '-asan-compiler' in arg {
+		if arg.contains('-asan-compiler') {
 			asan_compiler = true
 		}
-		if '-Werror' in arg {
+		if arg.contains('-msan-compiler') {
+			msan_compiler = true
+		}
+		if arg.contains('-Werror') {
 			werror = true
 		}
-		if '-fsanitize=memory' in arg {
+		if arg.contains('-fsanitize=memory') {
 			sanitize_memory = true
 		}
-		if '-fsanitize=address' in arg {
+		if arg.contains('-fsanitize=address') {
 			sanitize_address = true
 		}
-		if '-fsanitize=undefined' in arg {
+		if arg.contains('-fsanitize=undefined') {
 			sanitize_undefined = true
 		}
 	}
@@ -249,6 +250,9 @@ fn main() {
 	}
 	if asan_compiler {
 		tsession.skip_files << skip_with_asan_compiler
+	}
+	if msan_compiler {
+		tsession.skip_files << skip_with_msan_compiler
 	}
 	// println(tsession.skip_files)
 	if os.getenv('V_CI_MUSL').len > 0 {

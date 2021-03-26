@@ -4,7 +4,7 @@
 module json2
 
 // `Any` is a sum type that lists the possible types to be decoded and used.
-pub type Any = Null | []Any | bool | f32 | f64 | i64 | int | map[string]Any | string
+pub type Any = Null | []Any | bool | f32 | f64 | i64 | u64 | int | map[string]Any | string
 
 // `Null` struct is a simple representation of the `null` value in JSON.
 pub struct Null {
@@ -98,18 +98,27 @@ fn (mut p Parser) decode_value() ?Any {
 			kind := p.tok.kind
 			p.next_with_err() ?
 			if p.convert_type {
-				return if kind == .float { Any(tl.f64()) } else { Any(tl.i64()) }
+				if kind == .float {
+					return Any(tl.f64())
+				}
+				return Any(tl.i64())
 			}
 			return Any(tl)
 		}
 		.bool_ {
 			lit := p.tok.lit.bytestr()
 			p.next_with_err() ?
-			return if p.convert_type { Any(lit.bool()) } else { Any(lit) }
+			if p.convert_type {
+				return Any(lit.bool())
+			}
+			return Any(lit)
 		}
 		.null {
 			p.next_with_err() ?
-			return if p.convert_type { Any(null) } else { Any('null') }
+			if p.convert_type {
+				return Any(null)
+			}
+			return Any('null')
 		}
 		.str_ {
 			str := p.tok.lit.bytestr()

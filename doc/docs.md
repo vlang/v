@@ -86,10 +86,10 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Short struct literal syntax](#short-struct-initialization-syntax)
     * [Access modifiers](#access-modifiers)
     * [Methods](#methods)
+* [Unions](#unions)
 
 </td><td width=33% valign=top>
 
-* [Unions](#unions)
 * [Functions 2](#functions-2)
     * [Pure functions by default](#pure-functions-by-default)
     * [Mutable arguments](#mutable-arguments)
@@ -104,6 +104,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Interfaces](#interfaces)
     * [Enums](#enums)
     * [Sum types](#sum-types)
+    * [Type aliases](#type-aliases)
     * [Option/Result types & error handling](#optionresult-types-and-error-handling)
 * [Generics](#generics)
 * [Concurrency](#concurrency)
@@ -434,9 +435,10 @@ These are the allowed possibilities:
    i8 → i16 → int → i64 ⬏
 ```
 An `int` value for example can be automatically promoted to `f64`
-or `i64` but not to `f32` or `u32`. (`f32` would mean precision
-loss for large values and `u32` would mean loss of the sign for
+or `i64` but not to `u32`. (`u32` would mean loss of the sign for
 negative values).
+Promotion from `int` to `f32`, however, is currently done automatically
+(but can lead to precision loss for large values).
 
 Literals like `123` or `4.56` are treated in a special way. They do
 not lead to type promotions, however they default to `int` and `f64`
@@ -713,6 +715,15 @@ println(upper_fn) // ['HELLO', 'WORLD']
 
 `it` is a builtin variable which refers to element currently being processed in filter/map methods.
 
+Additionally, `.any()` and `.all()` can be used to conveniently test
+for elements that satisfy a condition.
+
+```v
+nums := [1, 2, 3]
+println(nums.any(it == 2)) // true
+println(nums.all(it >= 2)) // false
+```
+
 #### Multidimensional Arrays
 
 Arrays can have more than one dimension.
@@ -763,10 +774,10 @@ If a right-side index is absent, it is assumed to be the array length. If a
 left-side index is absent, it is assumed to be 0.
 
 ```v
-nums := [1, 2, 3, 4, 5]
-println(nums[1..4]) // [2, 3, 4]
-println(nums[..4]) // [1, 2, 3, 4]
-println(nums[1..]) // [2, 3, 4, 5]
+nums := [0, 10, 20, 30, 40]
+println(nums[1..4]) // [10, 20, 30]
+println(nums[..4]) // [0, 10, 20, 30]
+println(nums[1..]) // [10, 20, 30, 40]
 ```
 
 All array operations may be performed on slices.
@@ -2355,6 +2366,12 @@ fn pass_time(w World) {
 }
 ```
 
+### Type aliases
+
+To define a new type `NewType` as an alias for `ExistingType`,
+do `type NewType = ExistingType`.<br/>
+This is a special case of a [sum type](#sum-types) declaration.
+
 ### Option/Result types and error handling
 
 Option types are declared with `?Type`:
@@ -2976,14 +2993,31 @@ The developer doesn't need to change anything in their code. "It just works", li
 Python, Go, or Java, except there's no heavy GC tracing everything or expensive RC for
 each object.
 
+### Control
+
+You can take advantage of V's autofree engine and define a `free()` method on custom 
+data types:
+
+```v
+struct MyType {}
+
+[unsafe]
+fn (data &MyType) free() {
+	// ...
+}
+```
+
+Just as the compiler frees C data types with C's `free()`, it will statically insert 
+`free()` calls for your data type at the end of each variable's lifetime.
+
 For developers willing to have more low level control, autofree can be disabled with
 `-manualfree`, or by adding a `[manualfree]` on each function that wants manage its
-memory manually.
+memory manually. (See [attributes](#attributes)).
 
-Note: right now autofree is hidden behind the -autofree flag. It will be enabled by
-default in V 0.3. If autofree is not used, V programs will leak memory.
+_Note: right now autofree is hidden behind the -autofree flag. It will be enabled by
+default in V 0.3. If autofree is not used, V programs will leak memory._
 
-For example:
+### Examples
 
 ```v
 import strings
@@ -3006,9 +3040,8 @@ fn draw_scene() {
 The strings don't escape `draw_text`, so they are cleaned up when
 the function exits.
 
-In fact, the first two calls won't result in any allocations at all.
-These two strings are small,
-V will use a preallocated buffer for them.
+In fact, with the `-prealloc` flag, the first two calls won't result in any allocations at all.
+These two strings are small, so V will use a preallocated buffer for them.
 
 ```v
 struct User {
@@ -3350,12 +3383,13 @@ NB: Each flag must go on its own line (for now)
 #flag linux -DIMGUI_IMPL_API=
 ```
 
-In the console build command, you can use `-cflags` to pass custom flags to the backend C compiler.
-You can also use `-cc` to change the default C backend compiler.
-For example: `-cc gcc-9 -cflags -fsanitize=thread`.
+In the console build command, you can use:
+* `-cflags` to pass custom flags to the backend C compiler.
+* `-cc` to change the default C backend compiler.
+* For example: `-cc gcc-9 -cflags -fsanitize=thread`.
 
-You can also define a `VFLAGS` environment variable in your terminal to store your `-cc`
-and `cflags` settings, rather than including them in the build command each time.
+You can define a `VFLAGS` environment variable in your terminal to store your `-cc`
+and `-cflags` settings, rather than including them in the build command each time.
 
 ### #pkgconfig
 
@@ -3445,6 +3479,54 @@ To cast a `voidptr` to a V reference, use `user := &User(user_void_ptr)`.
 `voidptr` can also be dereferenced into a V struct through casting: `user := User(user_void_ptr)`.
 
 [an example of a module that calls C code from V](https://github.com/vlang/v/blob/master/vlib/v/tests/project_with_c_code/mod1/wrapper.v)
+
+### C Declarations
+
+C identifiers are accessed with the `C` prefix similarly to how module-specific 
+identifiers are accessed. Functions must be redeclared in V before they can be used. 
+Any C types may be used behind the `C` prefix, but types must be redeclared in V in 
+order to access type members.
+
+To redeclare complex types, such as in the following C code:
+
+```c
+struct SomeCStruct {
+	uint8_t implTraits;
+	uint16_t memPoolData;
+	union {
+		struct {
+			void* data;
+			size_t size;
+		};
+
+		DataView view;
+	};
+};
+```
+
+members of sub-data-structures may be directly declared in the containing struct as below:
+
+```v
+struct C.SomeCStruct {
+	implTraits  byte
+	memPoolData u16
+	// These members are part of sub data structures that can't currently be represented in V.
+	// Declaring them directly like this is sufficient for access.
+	// union {
+	// struct {
+	data voidptr
+	size size_t
+	// }
+	view C.DataView
+	// }
+}
+```
+
+The existence of the data members is made known to V, and they may be used without 
+re-creating the original structure exactly.
+
+Alternatively, you may [embed](#embedded-structs) the sub-data-structures to maintain 
+a parallel code structure.
 
 ## Debugging generated C code
 
@@ -3542,12 +3624,10 @@ Full list of builtin options:
 #### $embed_file
 
 ```v ignore
-module main
+import os
 fn main() {
 	embedded_file := $embed_file('v.png')
-	mut fw := os.create('exported.png') or { panic(err.msg) }
-	fw.write_bytes(embedded_file.data(), embedded_file.len)
-	fw.close()
+	os.write_file('exported.png', embedded_file.to_string()) ?
 }
 ```
 
@@ -3683,6 +3763,9 @@ NB: a combinatorial `_d_customflag_linux.c.v` postfix will not work.
 If you do need a custom flag file, that has platform dependent code, use the
 postfix `_d_customflag.v`, and then use plaftorm dependent compile time
 conditional blocks inside it, i.e. `$if linux {}` etc.
+
+- `_notd_customflag.v` => similar to _d_customflag.v, but will be used 
+*only* if you do NOT pass `-d customflag` to V.
 
 ## Compile time pseudo variables
 
@@ -3832,19 +3915,25 @@ To improve safety and maintainability, operator overloading is limited:
 are auto generated when the operators are defined though they must return the same type.
 
 ## Inline assembly
-
-TODO: not implemented yet
-
-```v failcompile
-fn main() {
-    a := 10
-    asm x64 {
-        mov eax, [a]
-        add eax, 10
-        mov [a], eax
-    }
+<!-- ignore because it doesn't pass fmt test (why?) --> 
+```v ignore
+a := 100
+b := 20
+mut c := 0
+asm amd64 {
+    mov eax, a
+    add eax, b
+    mov c, eax
+    ; =r (c) as c // output 
+    ; r (a) as a // input 
+      r (b) as b
 }
+println('a: $a') // 100 
+println('b: $b') // 20 
+println('c: $c') // 120
 ```
+
+For more examples, see [github.com/vlang/v/tree/master/vlib/v/tests/assembly/asm_test.amd64.v](https://github.com/vlang/v/tree/master/vlib/v/tests/assembly/asm_test.amd64.v)
 
 ## Translating C to V
 

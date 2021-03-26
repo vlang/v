@@ -24,7 +24,7 @@ fn main() {
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
 	os.chdir(vroot)
-	folder := 'cmd/tools'
+	folder := os.join_path('cmd', 'tools')
 	tfolder := os.join_path(vroot, 'cmd', 'tools')
 	main_label := 'Building $folder ...'
 	finish_label := 'building $folder'
@@ -39,6 +39,8 @@ fn main() {
 	for stool in tools_in_subfolders {
 		session.add(os.join_path(tfolder, stool))
 	}
+	// eprintln('> session.files: $session.files')
+	// eprintln('> session.skip_files: $session.skip_files')
 	session.test()
 	eprintln(session.benchmark.total_message(finish_label))
 	if session.failed {
@@ -58,9 +60,10 @@ fn main() {
 			os.mv_by_cp(tpath, os.join_path(tfolder, tname, texe)) or { panic(err) }
 			continue
 		}
-		os.mv_by_cp(tpath, os.join_path(tfolder, texe)) or {
-			if !err.msg.contains('vbuild-tools') {
-				eprintln(err)
+		target_path := os.join_path(tfolder, texe)
+		os.mv_by_cp(tpath, target_path) or {
+			if !err.msg.contains('vbuild-tools') && !err.msg.contains('vtest-all') {
+				eprintln('error while moving $tpath to $target_path: $err.msg')
 			}
 			continue
 		}

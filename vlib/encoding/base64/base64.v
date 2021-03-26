@@ -18,20 +18,20 @@ const (
 // Example: assert base64.decode('ViBpbiBiYXNlIDY0') == 'V in base 64'
 pub fn decode(data string) []byte {
 	size := data.len * 3 / 4
-	if size <= 0 {
+	if size <= 0 || data.len % 4 != 0 {
 		return []
 	}
 	unsafe {
 		buffer := malloc(size)
 		n := decode_in_buffer(data, buffer)
-		return array{element_size: 1, data: buffer, len: n, cap: size}
+		return buffer.vbytes(n)
 	}
 }
 
 // decode_str is the string variant of decode
 pub fn decode_str(data string) string {
 	size := data.len * 3 / 4
-	if size <= 0 {
+	if size <= 0 || data.len % 4 != 0 {
 		return ''
 	}
 	unsafe {
@@ -70,7 +70,8 @@ fn alloc_and_encode(src byteptr, len int) string {
 // the a base64 url encoded `string` passed in `data`.
 pub fn url_decode(data string) []byte {
 	mut result := data.replace_each(['-', '+', '_', '/'])
-	match result.len % 4 { // Pad with trailing '='s
+	match result.len % 4 {
+		// Pad with trailing '='s
 		2 { result += '==' } // 2 pad chars
 		3 { result += '=' } // 1 pad char
 		else {} // no padding
@@ -81,7 +82,8 @@ pub fn url_decode(data string) []byte {
 // url_decode_str is the string variant of url_decode
 pub fn url_decode_str(data string) string {
 	mut result := data.replace_each(['-', '+', '_', '/'])
-	match result.len % 4 { // Pad with trailing '='s
+	match result.len % 4 {
+		// Pad with trailing '='s
 		2 { result += '==' } // 2 pad chars
 		3 { result += '=' } // 1 pad char
 		else {} // no padding
@@ -132,19 +134,19 @@ pub fn decode_in_buffer(data &string, buffer byteptr) int {
 		mut char_c := 0
 		mut char_d := 0
 		if i < input_length {
-			char_a = index[unsafe { d[i] }]
+			char_a = base64.index[unsafe { d[i] }]
 			i++
 		}
 		if i < input_length {
-			char_b = index[unsafe { d[i] }]
+			char_b = base64.index[unsafe { d[i] }]
 			i++
 		}
 		if i < input_length {
-			char_c = index[unsafe { d[i] }]
+			char_c = base64.index[unsafe { d[i] }]
 			i++
 		}
 		if i < input_length {
-			char_d = index[unsafe { d[i] }]
+			char_d = base64.index[unsafe { d[i] }]
 			i++
 		}
 
@@ -180,7 +182,7 @@ fn encode_from_buffer(dest byteptr, src byteptr, src_len int) int {
 
 	mut d := src
 	mut b := dest
-	mut etable := byteptr(enc_table.str)
+	mut etable := byteptr(base64.enc_table.str)
 	for i < input_length {
 		mut octet_a := 0
 		mut octet_b := 0
@@ -210,7 +212,7 @@ fn encode_from_buffer(dest byteptr, src byteptr, src_len int) int {
 		j += 4
 	}
 
-	padding_length := ending_table[input_length % 3]
+	padding_length := base64.ending_table[input_length % 3]
 	for i = 0; i < padding_length; i++ {
 		unsafe {
 			b[output_length - 1 - i] = `=`

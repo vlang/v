@@ -3,4 +3,25 @@ vlib/v/checker/tests/array_sort_err.vv:3:6: error: expected 0 or 1 argument, but
     2 |     mut arr := [3, 2, 1]
     3 |     arr.sort(a < b, a)
       |         ~~~~~~~~~~~~~~
-    4 | }
+    4 |     arr.sort(a == b)
+    5 |     arr.sort(a > a)
+vlib/v/checker/tests/array_sort_err.vv:4:9: error: `.sort()` can only use `<` or `>` comparison
+    2 |     mut arr := [3, 2, 1]
+    3 |     arr.sort(a < b, a)
+    4 |     arr.sort(a == b)
+      |         ~~~~~~~~~~~~
+    5 |     arr.sort(a > a)
+    6 |     arr.sort(c > d)
+vlib/v/checker/tests/array_sort_err.vv:5:9: error: `.sort()` cannot use same argument
+    3 |     arr.sort(a < b, a)
+    4 |     arr.sort(a == b)
+    5 |     arr.sort(a > a)
+      |         ~~~~~~~~~~~
+    6 |     arr.sort(c > d)
+    7 | }
+vlib/v/checker/tests/array_sort_err.vv:6:9: error: `.sort()` can only use `a` or `b` as argument, e.g. `arr.sort(a < b)`
+    4 |     arr.sort(a == b)
+    5 |     arr.sort(a > a)
+    6 |     arr.sort(c > d)
+      |         ~~~~~~~~~~~
+    7 | }

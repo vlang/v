@@ -135,6 +135,12 @@ pub fn new_test_session(_vargs string) TestSession {
 		skip_files << 'examples/sokol/03_march_tracing_glsl/rt_glsl.v'
 		skip_files << 'examples/sokol/04_multi_shader_glsl/rt_glsl.v'
 		skip_files << 'examples/sokol/05_instancing_glsl/rt_glsl.v'
+		// Skip obj_viewer code in the CI
+		skip_files << 'examples/sokol/06_obj_viewer/show_obj.v'
+		skip_files << 'examples/sokol/06_obj_viewer/obj/obj.v'
+		skip_files << 'examples/sokol/06_obj_viewer/obj/rend.v'
+		skip_files << 'examples/sokol/06_obj_viewer/obj/struct.v'
+		skip_files << 'examples/sokol/06_obj_viewer/obj/util.v'
 	}
 	if testing.github_job != 'ubuntu-tcc' {
 		skip_files << 'examples/wkhtmltopdf.v' // needs installation of wkhtmltopdf from https://github.com/wkhtmltopdf/packaging/releases
@@ -192,11 +198,6 @@ pub fn (mut ts TestSession) test() {
 			}
 		}
 		$if msvc {
-			if file.contains('asm') {
-				continue
-			}
-		}
-		$if tinyc {
 			if file.contains('asm') {
 				continue
 			}
@@ -409,7 +410,9 @@ pub fn building_any_v_binaries_failed() bool {
 	os.chdir(parent_dir)
 	mut failed := false
 	v_build_commands := ['$vexe -o v_g             -g  cmd/v', '$vexe -o v_prod_g  -prod -g  cmd/v',
-		'$vexe -o v_cg            -cg cmd/v', '$vexe -o v_prod_cg -prod -cg cmd/v', '$vexe -o v_prod    -prod     cmd/v']
+		'$vexe -o v_cg            -cg cmd/v', '$vexe -o v_prod_cg -prod -cg cmd/v',
+		'$vexe -o v_prod    -prod     cmd/v',
+	]
 	mut bmark := benchmark.new_benchmark()
 	for cmd in v_build_commands {
 		bmark.step()

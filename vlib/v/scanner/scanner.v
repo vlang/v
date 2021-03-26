@@ -5,6 +5,7 @@ module scanner
 
 import math.mathutil as mu
 import os
+import strconv
 import v.token
 import v.pref
 import v.util
@@ -25,7 +26,8 @@ pub mut:
 	text              string // the whole text of the file
 	pos               int    // current position in the file, first character is s.text[0]
 	line_nr           int    // current line number
-	last_nl_pos       int    // for calculating column
+	last_nl_pos       int = -1 // for calculating column
+	is_crlf           bool   // special check when computing columns
 	is_inside_string  bool   // set to true in a string, *at the start* of an $var or ${expr}
 	is_inter_start    bool   // for hacky string interpolation TODO simplify
 	is_inter_end      bool
@@ -50,6 +52,7 @@ pub mut:
 	pref                        &pref.Preferences
 	errors                      []errors.Error
 	warnings                    []errors.Warning
+	notices                     []errors.Notice
 	vet_errors                  []vet.Error
 }
 
@@ -175,6 +178,7 @@ fn (mut s Scanner) new_token(tok_kind token.Kind, lit string, len int) token.Tok
 		kind: tok_kind
 		lit: lit
 		line_nr: s.line_nr + line_offset
+		col: mu.max(1, s.current_column() - len + 1)
 		pos: s.pos - len + 1
 		len: len
 		tidx: cidx
@@ -187,6 +191,7 @@ fn (s &Scanner) new_eof_token() token.Token {
 		kind: .eof
 		lit: ''
 		line_nr: s.line_nr + 1
+		col: s.current_column()
 		pos: s.pos
 		len: 1
 		tidx: s.tidx
@@ -201,6 +206,7 @@ fn (mut s Scanner) new_multiline_token(tok_kind token.Kind, lit string, len int,
 		kind: tok_kind
 		lit: lit
 		line_nr: start_line + 1
+		col: mu.max(1, s.current_column() - len + 1)
 		pos: s.pos - len + 1
 		len: len
 		tidx: cidx
@@ -493,6 +499,9 @@ fn (mut s Scanner) skip_whitespace() {
 		if util.is_nl(s.text[s.pos]) && s.is_vh {
 			return
 		}
+		if s.pos + 1 < s.text.len && s.text[s.pos] == `\r` && s.text[s.pos + 1] == `\n` {
+			s.is_crlf = true
+		}
 		// Count \r\n as one line
 		if util.is_nl(s.text[s.pos]) && !s.expect('\r\n', s.pos - 1) {
 			s.inc_line_number()
@@ -567,7 +576,7 @@ pub fn (mut s Scanner) buffer_scan() token.Token {
 		}
 		return s.all_tokens[cidx]
 	}
-	return s.new_token(.eof, '', 1)
+	return s.new_eof_token()
 }
 
 [inline]
@@ -861,19 +870,6 @@ fn (mut s Scanner) text_scan() token.Token {
 				}
 				return s.new_token(.name, name, name.len)
 			}
-			/*
-			case `\r`:
-		if nextc == `\n` {
-			s.pos++
-			s.last_nl_pos = s.pos
-			return s.new_token(.nl, '')
-		}
-	 }
-	case `\n`:
-		s.last_nl_pos = s.pos
-		return s.new_token(.nl, '')
-	 }
-			*/
 			`.` {
 				if nextc == `.` {
 					s.pos++
@@ -1101,6 +1097,7 @@ fn (mut s Scanner) ident_string() string {
 		start++
 	}
 	s.is_inside_string = false
+	mut u_escapes_pos := []int{} // pos list of \uXXXX
 	slash := `\\`
 	for {
 		s.pos++
@@ -1146,13 +1143,14 @@ fn (mut s Scanner) ident_string() string {
 				s.error(r'`\x` used with no following hex digits')
 			}
 			// Escape `\u`
-			if c == `u` && (s.text[s.pos + 1] == s.quote
-				|| s.text[s.pos + 2] == s.quote || s.text[s.pos + 3] == s.quote
-				|| s.text[s.pos + 4] == s.quote || !s.text[s.pos + 1].is_hex_digit()
-				|| !s.text[s.pos + 2].is_hex_digit()
-				|| !s.text[s.pos + 3].is_hex_digit()
-				|| !s.text[s.pos + 4].is_hex_digit()) {
-				s.error(r'`\u` incomplete unicode character value')
+			if c == `u` {
+				if s.text[s.pos + 1] == s.quote || s.text[s.pos + 2] == s.quote
+					|| s.text[s.pos + 3] == s.quote || s.text[s.pos + 4] == s.quote
+					|| !s.text[s.pos + 1].is_hex_digit() || !s.text[s.pos + 2].is_hex_digit()
+					|| !s.text[s.pos + 3].is_hex_digit() || !s.text[s.pos + 4].is_hex_digit() {
+					s.error(r'`\u` incomplete unicode character value')
+				}
+				u_escapes_pos << s.pos - 1
 			}
 		}
 		// ${var} (ignore in vfmt mode) (skip \$)
@@ -1179,6 +1177,9 @@ fn (mut s Scanner) ident_string() string {
 	}
 	if start <= s.pos {
 		mut string_so_far := s.text[start..end]
+		if !s.is_fmt && u_escapes_pos.len > 0 {
+			string_so_far = decode_u_escapes(string_so_far, start, u_escapes_pos)
+		}
 		if n_cr_chars > 0 {
 			string_so_far = string_so_far.replace('\r', '')
 		}
@@ -1189,6 +1190,25 @@ fn (mut s Scanner) ident_string() string {
 		}
 	}
 	return lit
+}
+
+fn decode_u_escapes(s string, start int, escapes_pos []int) string {
+	if escapes_pos.len == 0 {
+		return s
+	}
+	mut ss := []string{cap: escapes_pos.len * 2 + 1}
+	ss << s[..escapes_pos.first() - start]
+	for i, pos in escapes_pos {
+		idx := pos - start
+		end_idx := idx + 6 // "\uXXXX".len == 6
+		ss << utf32_to_str(u32(strconv.parse_uint(s[idx + 2..end_idx], 16, 32)))
+		if i + 1 < escapes_pos.len {
+			ss << s[end_idx..escapes_pos[i + 1] - start]
+		} else {
+			ss << s[end_idx..]
+		}
+	}
+	return ss.join('')
 }
 
 fn trim_slash_line_break(s string) string {
@@ -1237,7 +1257,10 @@ fn (mut s Scanner) ident_char() string {
 		}
 	}
 	// Escapes a `'` character
-	return if c == "'" { '\\' + c } else { c }
+	if c == "'" {
+		return '\\' + c
+	}
+	return c
 }
 
 [inline]
@@ -1269,11 +1292,31 @@ fn (mut s Scanner) eat_to_end_of_line() {
 
 [inline]
 fn (mut s Scanner) inc_line_number() {
-	s.last_nl_pos = s.pos
+	s.last_nl_pos = mu.min(s.text.len - 1, s.pos)
+	if s.is_crlf {
+		s.last_nl_pos++
+	}
 	s.line_nr++
 	s.line_ends << s.pos
 	if s.line_nr > s.nr_lines {
 		s.nr_lines = s.line_nr
+	}
+}
+
+pub fn (mut s Scanner) note(msg string) {
+	pos := token.Position{
+		line_nr: s.line_nr
+		pos: s.pos
+	}
+	if s.pref.output_mode == .stdout {
+		eprintln(util.formatted_error('notice:', msg, s.file_path, pos))
+	} else {
+		s.notices << errors.Notice{
+			file_path: s.file_path
+			pos: pos
+			reporter: .scanner
+			message: msg
+		}
 	}
 }
 
@@ -1285,6 +1328,7 @@ pub fn (mut s Scanner) warn(msg string) {
 	pos := token.Position{
 		line_nr: s.line_nr
 		pos: s.pos
+		col: s.current_column() - 1
 	}
 	if s.pref.output_mode == .stdout {
 		eprintln(util.formatted_error('warning:', msg, s.file_path, pos))
@@ -1302,6 +1346,7 @@ pub fn (mut s Scanner) error(msg string) {
 	pos := token.Position{
 		line_nr: s.line_nr
 		pos: s.pos
+		col: s.current_column() - 1
 	}
 	if s.pref.output_mode == .stdout {
 		eprintln(util.formatted_error('error:', msg, s.file_path, pos))
@@ -1325,6 +1370,7 @@ fn (mut s Scanner) vet_error(msg string, fix vet.FixKind) {
 		file_path: s.file_path
 		pos: token.Position{
 			line_nr: s.line_nr
+			col: s.current_column() - 1
 		}
 		kind: .error
 		fix: fix

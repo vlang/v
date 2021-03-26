@@ -135,7 +135,7 @@ fn (mut g Gen) sqlite3_stmt(node ast.SqlStmt, typ SqlType) {
 			x := '${node.object_var_name}.$field.name'
 			if field.typ == table.string_type {
 				g.writeln('sqlite3_bind_text($g.sql_stmt_name, ${i + 0}, ${x}.str, ${x}.len, 0);')
-			} else if g.table.types[int(field.typ)].kind == .struct_ {
+			} else if g.table.type_symbols[int(field.typ)].kind == .struct_ {
 				// insert again
 				expr := node.sub_structs[int(field.typ)]
 				tmp_sql_stmt_name := g.sql_stmt_name
@@ -300,7 +300,7 @@ fn (mut g Gen) sqlite3_select_expr(node ast.SqlExpr, sub bool, line string, sql_
 				g.writeln('if ($string_data != NULL) {')
 				g.writeln('\t${tmp}.$field.name = tos_clone($string_data);')
 				g.writeln('}')
-			} else if g.table.types[int(field.typ)].kind == .struct_ {
+			} else if g.table.type_symbols[int(field.typ)].kind == .struct_ {
 				id_name := g.new_tmp_var()
 				g.writeln('//parse struct start')
 				g.writeln('int $id_name = ${func}($g.sql_stmt_name, $i);')
@@ -402,7 +402,8 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr, typ SqlType) {
 			// true/false literals were added to Sqlite 3.23 (2018-04-02)
 			// but lots of apps/distros use older sqlite (e.g. Ubuntu 18.04 LTS )
 			g.inc_sql_i()
-			g.sql_bind_int(if expr.val { '1' } else { '0' }, typ)
+			eval := if expr.val { '1' } else { '0' }
+			g.sql_bind_int(eval, typ)
 		}
 		ast.Ident {
 			// `name == user_name` => `name == ?1`

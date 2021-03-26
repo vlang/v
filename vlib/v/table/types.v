@@ -12,6 +12,7 @@
 module table
 
 import strings
+import v.pref
 
 pub type Type = int
 
@@ -22,6 +23,38 @@ pub enum Language {
 	v
 	c
 	js
+	amd64 // aka x86_64
+	i386
+	aarch64 // 64-bit arm
+	aarch32 // 32-bit arm
+	rv64 // 64-bit risc-v
+	rv32 // 32-bit risc-v
+}
+
+pub fn pref_arch_to_table_language(pref_arch pref.Arch) Language {
+	return match pref_arch {
+		.amd64 {
+			Language.amd64
+		}
+		.aarch64 {
+			Language.aarch64
+		}
+		.aarch32 {
+			Language.aarch32
+		}
+		.rv64 {
+			Language.rv64
+		}
+		.rv32 {
+			Language.rv32
+		}
+		.i386 {
+			Language.i386
+		}
+		._auto {
+			Language.v
+		}
+	}
 }
 
 // Represents a type that only needs an identifier, e.g. int, array_int.
@@ -311,14 +344,14 @@ pub const (
 )
 
 pub const (
-	integer_type_idxs          = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx, byte_type_idx,
-		u16_type_idx, u32_type_idx, u64_type_idx, int_literal_type_idx, rune_type_idx]
+	integer_type_idxs          = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx,
+		byte_type_idx, u16_type_idx, u32_type_idx, u64_type_idx, int_literal_type_idx, rune_type_idx]
 	signed_integer_type_idxs   = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx]
 	unsigned_integer_type_idxs = [byte_type_idx, u16_type_idx, u32_type_idx, u64_type_idx]
 	float_type_idxs            = [f32_type_idx, f64_type_idx, float_literal_type_idx]
-	number_type_idxs           = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx, byte_type_idx,
-		u16_type_idx, u32_type_idx, u64_type_idx, f32_type_idx, f64_type_idx, int_literal_type_idx,
-		float_literal_type_idx, rune_type_idx]
+	number_type_idxs           = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx,
+		byte_type_idx, u16_type_idx, u32_type_idx, u64_type_idx, f32_type_idx, f64_type_idx,
+		int_literal_type_idx, float_literal_type_idx, rune_type_idx]
 	pointer_type_idxs          = [voidptr_type_idx, byteptr_type_idx, charptr_type_idx]
 	string_type_idxs           = [string_type_idx, ustring_type_idx]
 )
@@ -425,11 +458,7 @@ pub enum Kind {
 }
 
 pub fn (t &TypeSymbol) str() string {
-	if t.kind in [.array, .array_fixed] {
-		return t.name.replace('array_', '[]')
-	} else {
-		return t.name
-	}
+	return t.name
 }
 
 [inline]
@@ -496,6 +525,14 @@ pub fn (t &TypeSymbol) struct_info() Struct {
 	}
 }
 
+[inline]
+pub fn (t &TypeSymbol) sumtype_info() SumType {
+	match mut t.info {
+		SumType { return t.info }
+		else { panic('TypeSymbol.sumtype_info(): no sumtype info for type: $t.name') }
+	}
+}
+
 /*
 pub fn (t TypeSymbol) str() string {
 	return t.name
@@ -551,7 +588,7 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 			return_type: table.void_type
 		}
 	)
-	t.register_type_symbol(kind: .struct_, name: 'Error', cname: 'Error', mod: 'builtin')
+	t.register_type_symbol(kind: .interface_, name: 'IError', cname: 'IError', mod: 'builtin')
 }
 
 [inline]
@@ -935,7 +972,7 @@ pub fn (t &TypeSymbol) embed_name() string {
 	mut embed_name := t.name.split('.').last()
 	// remove generic part from name
 	// Abc<int> => Abc
-	if '<' in embed_name {
+	if embed_name.contains('<') {
 		embed_name = embed_name.split('<')[0]
 	}
 	return embed_name

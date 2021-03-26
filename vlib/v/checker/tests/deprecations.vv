@@ -1,0 +1,63 @@
+// methods using [deprecated_after]:
+struct Abc {
+	x int
+}
+
+fn (a Abc) str() string {
+	return 'Abc { x: $a.x }'
+}
+
+[deprecated: 'custom message 1']
+[deprecated_after: '9999-11-01']
+fn (a Abc) future() {
+	dump(@METHOD)
+	dump(a)
+}
+
+[deprecated: 'custom message 2']
+[deprecated_after: '2021-03-01']
+fn (a Abc) past() {
+	dump(@METHOD)
+	dump(a)
+}
+
+[deprecated: 'custom message 3']
+fn (a Abc) simply_deprecated() {
+	dump(@METHOD)
+	dump(a)
+}
+
+// functions using [deprecated_after]:
+[deprecated: 'custom message 4']
+[deprecated_after: '9999-12-30']
+fn future() {
+	dump(@FN)
+}
+
+[deprecated: 'custom message 5']
+[deprecated_after: '2021-03-01']
+fn past() {
+	dump(@FN)
+}
+
+[deprecated: 'custom message 6']
+fn simply_deprecated() {
+	dump(@FN)
+}
+
+[deprecated]
+fn just_deprecated() {
+	dump(@FN)
+}
+
+fn main() {
+	future()
+	past()
+	simply_deprecated()
+	just_deprecated()
+	//
+	a := Abc{}
+	a.future()
+	a.past()
+	a.simply_deprecated()
+}

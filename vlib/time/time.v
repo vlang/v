@@ -35,7 +35,9 @@ pub const (
 		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30,
 		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30 + 31,
 	]
-	long_days          = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+	long_days          = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
+		'Sunday',
+	]
 )
 
 // Time contains various time units for a point in time.
@@ -112,7 +114,7 @@ pub fn now() Time {
 	// in this API call
 	t := C.time(0)
 	now := C.localtime(&t)
-	return convert_ctime(now, 0)
+	return convert_ctime(*now, 0)
 }
 
 // utc returns the current UTC time.

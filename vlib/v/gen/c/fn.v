@@ -33,6 +33,10 @@ fn (mut g Gen) process_fn_decl(node ast.FnDecl) {
 	if !g.is_used_by_main(node) {
 		return
 	}
+	if g.is_builtin_mod && g.pref.gc_mode == .boehm_leak && node.name == 'malloc' {
+		g.definitions.write_string('#define v_malloc GC_MALLOC\n')
+		return
+	}
 	g.gen_attrs(node.attrs)
 	// g.tmp_count = 0 TODO
 	mut skip := false
@@ -127,7 +131,8 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 		for gen_types in g.table.fn_gen_types[node.name] {
 			if g.pref.is_verbose {
 				syms := gen_types.map(g.table.get_type_symbol(it))
-				println('gen fn `$node.name` for type `${syms.map(node.name).join(', ')}`')
+				the_type := syms.map(node.name).join(', ')
+				println('gen fn `$node.name` for type `$the_type`')
 			}
 			g.cur_generic_types = gen_types
 			g.gen_fn_decl(node, skip)
@@ -477,9 +482,10 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	if node.receiver_type == 0 {
 		g.checker_bug('CallExpr.receiver_type is 0 in method_call', node.pos)
 	}
-	typ_sym := g.table.get_type_symbol(g.unwrap_generic(node.receiver_type))
-	mut receiver_type_name := util.no_dots(g.cc_type(g.unwrap_generic(node.receiver_type),
-		false))
+	unwrapped_rec_type := g.unwrap_generic(node.receiver_type)
+	typ_sym := g.table.get_type_symbol(unwrapped_rec_type)
+	rec_cc_type := g.cc_type(unwrapped_rec_type, false)
+	mut receiver_type_name := util.no_dots(rec_cc_type)
 	if typ_sym.kind == .interface_ && (typ_sym.info as table.Interface).defines_method(node.name) {
 		// Speaker_name_table[s._interface_idx].speak(s._object)
 		$if debug_interface_method_call ? {
@@ -494,7 +500,6 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.write('${dot}_object')
 		if node.args.len > 0 {
 			g.write(', ')
-			// g.call_args(node.args, node.expected_arg_types) // , [])
 			g.call_args(node)
 		}
 		g.write(')')
@@ -535,6 +540,14 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				g.gen_array_wait(node)
 				return
 			}
+			'any' {
+				g.gen_array_any(node)
+				return
+			}
+			'all' {
+				g.gen_array_all(node)
+				return
+			}
 			else {}
 		}
 	}
@@ -570,6 +583,10 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		// && rec_sym.name == 'array' && receiver_name.starts_with('array') {
 		// `array_byte_clone` => `array_clone`
 		receiver_type_name = 'array'
+		if false && node.name == 'free' && typ_sym.has_method(node.name) {
+			// TODO: allow for more specific overrides of array .free() like `pub fn (x []string) free() {`
+			receiver_type_name = g.typ(unwrapped_rec_type).trim('*')
+		}
 		if node.name in ['last', 'first', 'pop'] {
 			return_type_str := g.typ(node.return_type)
 			has_cast = true
@@ -700,7 +717,6 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 }
 	*/
 	// ///////
-	// g.call_args(node.args, node.expected_arg_types) // , [])
 	g.call_args(node)
 	g.write(')')
 }
@@ -719,12 +735,6 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		}
 	}
 	mut name := node.name
-	if node.name == 'error' {
-		name = 'error2'
-	}
-	if node.name == 'error_with_code' {
-		name = 'error_with_code2'
-	}
 	is_print := name in ['print', 'println', 'eprint', 'eprintln', 'panic']
 	print_method := name
 	is_json_encode := name == 'json.encode'
@@ -745,7 +755,6 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			encode_name := js_enc_name(json_type_str)
 			g.writeln('// json.encode')
 			g.write('cJSON* $json_obj = ${encode_name}(')
-			// g.call_args(node.args, node.expected_arg_types) // , [])
 			if node.args[0].typ.is_ptr() {
 				g.write('*')
 			}
@@ -767,13 +776,12 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			g.write('cJSON* $json_obj = json__json_parse(')
 			// Skip the first argument in json.decode which is a type
 			// its name was already used to generate the function call
-			// g.call_args(node.args[1..], node.expected_arg_types) // , [])
 			g.is_js_call = true
 			g.call_args(node)
 			g.is_js_call = false
 			g.writeln(');')
 			tmp2 = g.new_tmp_var()
-			g.writeln('Option2_$typ $tmp2 = $fn_name ($json_obj);')
+			g.writeln('Option_$typ $tmp2 = $fn_name ($json_obj);')
 		}
 		if !g.is_autofree {
 			g.write('cJSON_Delete($json_obj); //del')
@@ -842,7 +850,6 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		if g.pref.is_debug && node.name == 'panic' {
 			paline, pafile, pamod, pafn := g.panic_debug_info(node.pos)
 			g.write('panic_debug($paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"),  ')
-			// g.call_args(node.args, node.expected_arg_types) // , [])
 			g.call_args(node)
 			g.write(')')
 		} else {
@@ -855,7 +862,6 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			if g.is_json_fn {
 				g.write(json_obj)
 			} else {
-				// g.call_args(node.args, node.expected_arg_types) // , tmp_arg_vars_to_free)
 				g.call_args(node)
 			}
 			g.write(')')
@@ -940,17 +946,13 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 }
 
 fn (mut g Gen) autofree_call_postgen(node_pos int) {
-	/*
-	if g.strs_to_free.len == 0 {
-		return
-	}
-	*/
-	/*
-	g.writeln('\n/* strs_to_free3: $g.nr_vars_to_free */')
-	if g.nr_vars_to_free <= 0 {
-		return
-	}
-	*/
+	// if g.strs_to_free.len == 0 {
+	// 	return
+	// }
+	// g.writeln('\n/* strs_to_free3: $g.nr_vars_to_free */')
+	// if g.nr_vars_to_free <= 0 {
+	// 	return
+	// }
 	/*
 	for s in g.strs_to_free {
 		g.writeln('string_free(&$s);')
@@ -1001,8 +1003,8 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 	args := if g.is_js_call { node.args[1..] } else { node.args }
 	expected_types := node.expected_arg_types
 	// only v variadic, C variadic args will be appeneded like normal args
-	is_variadic := expected_types.len > 0
-		&& expected_types[expected_types.len - 1].has_flag(.variadic) && node.language == .v
+	is_variadic := expected_types.len > 0 && expected_types.last().has_flag(.variadic)
+		&& node.language == .v
 	for i, arg in args {
 		if is_variadic && i == expected_types.len - 1 {
 			break
@@ -1025,6 +1027,10 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 					g.write('/*af arg*/' + name)
 				}
 			} else {
+				if node.generic_types.len > 0 && arg.expr.is_auto_deref_var() && !arg.is_mut
+					&& !expected_types[i].is_ptr() {
+					g.write('*')
+				}
 				g.ref_or_deref_arg(arg, expected_types[i], node.language)
 			}
 		} else {
@@ -1044,10 +1050,23 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 	}
 	arg_nr := expected_types.len - 1
 	if is_variadic {
-		varg_type := expected_types[expected_types.len - 1]
+		varg_type := expected_types.last()
 		variadic_count := args.len - arg_nr
 		arr_sym := g.table.get_type_symbol(varg_type)
-		arr_info := arr_sym.info as table.Array
+		mut arr_info := arr_sym.info as table.Array
+		if varg_type.has_flag(.generic) {
+			if fn_def := g.table.find_fn(node.name) {
+				varg_type_name := g.table.type_to_str(varg_type)
+				for i, fn_gen_name in fn_def.generic_names {
+					if fn_gen_name == varg_type_name {
+						arr_info.elem_type = node.generic_types[i]
+						break
+					}
+				}
+			} else {
+				g.error('unable to find function $node.name', node.pos)
+			}
+		}
 		elem_type := g.typ(arr_info.elem_type)
 		if args.len > 0 && args[args.len - 1].expr is ast.ArrayDecompose {
 			g.expr(args[args.len - 1].expr)

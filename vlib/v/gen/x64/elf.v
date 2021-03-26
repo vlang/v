@@ -101,7 +101,7 @@ pub fn (mut g Gen) generate_elf_footer() {
 	// Create the binary
 	mut f := os.create(g.out_name) or { panic(err) }
 	os.chmod(g.out_name, 0o775) // make it an executable
-	unsafe { f.write_bytes(g.buf.data, g.buf.len) }
+	unsafe { f.write_ptr(g.buf.data, g.buf.len) }
 	f.close()
 	println('\nx64 elf binary has been successfully generated')
 }

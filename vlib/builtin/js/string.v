@@ -1,6 +1,7 @@
 module builtin
 
 pub struct string {
+pub:
 	str JS.String
 	len u32
 }
@@ -12,7 +13,6 @@ pub fn (s string) slice(a int, b int) string {
 pub fn (s string) after(dot string) string {
 	return string(s.str.slice(s.str.lastIndexOf(dot.str) + 1, int(s.str.length)))
 }
-
 
 pub fn (s string) after_char(dot byte) string {
 	// TODO: Implement after byte
@@ -96,7 +96,7 @@ pub fn (s string) starts_with(p string) bool {
 }
 
 pub fn (s string) fields() []string {
-	return []// s.str.split()
+	return [] // s.str.split()
 }
 
 pub fn (s string) find_between(start string, end string) string {
@@ -104,9 +104,9 @@ pub fn (s string) find_between(start string, end string) string {
 }
 
 // unnecessary in the JS backend, implemented for api parity.
-pub fn (s string) free () {}
+pub fn (s string) free() {}
 
-pub fn (s string) hash () int {
+pub fn (s string) hash() int {
 	mut h := u32(0)
 	if h == 0 && s.len > 0 {
 		for c in s {

@@ -1,3 +1,6 @@
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
 import os
 import term
 import benchmark
@@ -16,12 +19,12 @@ const (
 	fpref              = &pref.Preferences{
 		is_fmt: true
 	}
+	vexe               = os.getenv('VEXE')
 )
 
 fn test_fmt() {
 	fmt_message := 'checking that v fmt keeps already formatted files *unchanged*'
 	eprintln(term.header(fmt_message, '-'))
-	vexe := os.getenv('VEXE')
 	if vexe.len == 0 || !os.exists(vexe) {
 		eprintln('VEXE must be set')
 		exit(error_missing_vexe)
@@ -32,16 +35,16 @@ fn test_fmt() {
 	tmpfolder := os.temp_dir()
 	diff_cmd := util.find_working_diff_command() or { '' }
 	mut fmt_bench := benchmark.new_benchmark()
-	fill_bin2v_keep() or { eprintln('failed creating vbin2v_keep.vv: $err') }
 	keep_input_files := os.walk_ext('vlib/v/fmt/tests', '_keep.vv')
 	expected_input_files := os.walk_ext('vlib/v/fmt/tests', '_expected.vv')
 	mut input_files := []string{}
 	input_files << keep_input_files
 	input_files << expected_input_files
 	input_files = vtest.filter_vtest_only(input_files, basepath: vroot)
-	fmt_bench.set_total_expected_steps(input_files.len)
+	fmt_bench.set_total_expected_steps(input_files.len + 1)
+	prepare_bin2v_file(mut fmt_bench)
 	for istep, ipath in input_files {
-		fmt_bench.cstep = istep
+		fmt_bench.cstep = istep + 1
 		fmt_bench.step()
 		ifilename := os.file_name(ipath)
 		vrelpath := ipath.replace(basepath, '')
@@ -67,14 +70,16 @@ fn test_fmt() {
 				continue
 			}
 			vfmt_result_file := os.join_path(tmpfolder, 'vfmt_run_over_$ifilename')
-			os.write_file(vfmt_result_file, result_ocontent) or { panic(err) }
+			os.write_file(vfmt_result_file, result_ocontent) or { panic(err.msg) }
 			eprintln(util.color_compare_files(diff_cmd, opath, vfmt_result_file))
 			continue
 		}
 		fmt_bench.ok()
-		eprintln(fmt_bench.step_message_ok('$vrelpath'))
+		eprintln(fmt_bench.step_message_ok(vrelpath))
 	}
-	restore_bin2v_placeholder() or { eprintln('failed restoring vbin2v_keep.vv placeholder: $err') }
+	restore_bin2v_placeholder() or {
+		eprintln('failed restoring vbin2v_keep.vv placeholder: $err.msg')
+	}
 	fmt_bench.stop()
 	eprintln(term.h_divider('-'))
 	eprintln(fmt_bench.total_message(fmt_message))
@@ -83,13 +88,26 @@ fn test_fmt() {
 	}
 }
 
-fn fill_bin2v_keep() ? {
-	img0 := os.join_path('tutorials', 'img', 'hello.png')
-	img1 := os.join_path('tutorials', 'img', 'time.png')
+fn prepare_bin2v_file(mut fmt_bench benchmark.Benchmark) {
+	fmt_bench.cstep = 0
+	fmt_bench.step()
+	write_bin2v_keep_content() or {
+		fmt_bench.fail()
+		eprintln(fmt_bench.step_message_fail('Failed preparing bin2v_keep.vv: $err.msg'))
+		return
+	}
+	fmt_bench.ok()
+	eprintln(fmt_bench.step_message_ok('Prepared bin2v_keep.vv'))
+}
+
+fn write_bin2v_keep_content() ? {
+	img0 := os.join_path('vlib', 'v', 'embed_file', 'v.png')
+	img1 := os.join_path('tutorials', 'building_a_simple_web_blog_with_vweb', 'img', 'time.png')
 	os.rm(b2v_keep_path) ?
-	res := os.execute('v bin2v -w $b2v_keep_path $img0 $img1')
-	if res.exit_code < 0 {
-		return error_with_code(res.output, res.exit_code)
+	res := os.execute('$vexe bin2v -w $b2v_keep_path $img0 $img1')
+	if res.exit_code != 0 {
+		restore_bin2v_placeholder() or {}
+		return error_with_code(res.output.trim_space(), res.exit_code)
 	}
 }
 

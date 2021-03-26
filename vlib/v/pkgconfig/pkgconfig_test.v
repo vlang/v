@@ -1,5 +1,5 @@
 import os
-import pkgconfig
+import v.pkgconfig
 
 const vexe = os.getenv('VEXE')
 
@@ -49,12 +49,13 @@ fn test_samples() {
 			assert x.url == ''
 			assert x.version == '2.64.3'
 			assert x.description == 'Dynamic module loader for GLib'
-			assert x.libs ==
-				['-Wl,--export-dynamic', '-L/usr/lib/x86_64-linux-gnu', '-lgmodule-2.0', '-pthread', '-lglib-2.0', '-lpcre']
+			assert x.libs == ['-Wl,--export-dynamic', '-L/usr/lib/x86_64-linux-gnu', '-lgmodule-2.0',
+				'-pthread', '-lglib-2.0', '-lpcre']
 			assert x.libs_private == ['-ldl', '-pthread']
-			assert x.cflags ==
-				['-I/usr/include', '-pthread', '-I/usr/include/glib-2.0', '-I/usr/lib/x86_64-linux-gnu/glib-2.0/include']
-			assert x.vars == {
+			assert x.cflags == ['-I/usr/include', '-pthread', '-I/usr/include/glib-2.0',
+				'-I/usr/lib/x86_64-linux-gnu/glib-2.0/include',
+			]
+			assert x.vars == map{
 				'prefix':            '/usr'
 				'libdir':            '/usr/lib/x86_64-linux-gnu'
 				'includedir':        '/usr/include'
@@ -71,9 +72,9 @@ fn test_samples() {
 			assert x.modname == 'glib-2.0'
 			assert x.libs == ['-L/usr/lib/x86_64-linux-gnu', '-lglib-2.0', '-lpcre']
 			assert x.libs_private == ['-pthread']
-			assert x.cflags ==
-				['-I/usr/include/glib-2.0', '-I/usr/lib/x86_64-linux-gnu/glib-2.0/include', '-I/usr/include']
-			assert x.vars == {
+			assert x.cflags == ['-I/usr/include/glib-2.0',
+				'-I/usr/lib/x86_64-linux-gnu/glib-2.0/include', '-I/usr/include']
+			assert x.vars == map{
 				'prefix':          '/usr'
 				'libdir':          '/usr/lib/x86_64-linux-gnu'
 				'includedir':      '/usr/include'

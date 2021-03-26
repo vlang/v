@@ -298,6 +298,7 @@ pub fn run_app<T>(mut app T, port int) {
 	}
 }
 
+[manualfree]
 fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	conn.set_read_timeout(30 * time.second)
 	conn.set_write_timeout(30 * time.second)
@@ -305,6 +306,9 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 		conn.close() or {}
 	}
 	mut reader := io.new_buffered_reader(reader: io.make_reader(conn))
+	defer {
+		reader.free()
+	}
 	page_gen_start := time.ticks()
 	req := parse_request(mut reader) or {
 		eprintln('error parsing request: $err')

@@ -40,6 +40,9 @@ fn keep_single_empty_line() {
 	}
 
 	f := 0
+	arr << MyStruct{}
+
+	arr2 := [1, 2]
 }
 
 fn prevent_empty_line_after_multi_line_statements() {
@@ -59,5 +62,15 @@ fn prevent_empty_line_after_multi_line_statements() {
 	}
 	c := fn (s string) {
 		println('s')
+	}
+}
+
+fn between_orm_blocks() {
+	sql db {
+		insert upper_1 into Upper
+	}
+
+	upper_s := sql db {
+		select from Upper where id == 1
 	}
 }

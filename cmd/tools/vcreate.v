@@ -1,8 +1,7 @@
-module main
-
 // Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
-//
+module main
+
 // This module follows a similar convention to Rust: `init` makes the
 // structure of the program in the _current_ directory, while `new`
 // makes the program structure in a _sub_ directory. Besides that, the
@@ -22,6 +21,14 @@ fn cerror(e string) {
 }
 
 fn check_name(name string) string {
+	if name.is_title() {
+		mut cname := name.to_lower()
+		if cname.contains(' ') {
+			cname = cname.replace(' ', '_')
+		}
+		eprintln('warning: the project name cannot be capitalized, the name will be changed to `$cname`')
+		return cname
+	}
 	if name.contains(' ') {
 		cname := name.replace(' ', '_')
 		eprintln('warning: the project name cannot contain spaces, the name will be changed to `$cname`')
@@ -70,7 +77,7 @@ fn (c &Create) write_vmod(new bool) {
 		cerror(err.msg)
 		exit(1)
 	}
-	vmod.write_str(vmod_content(c)) or { panic(err) }
+	vmod.write_string(vmod_content(c)) or { panic(err) }
 	vmod.close()
 }
 
@@ -83,7 +90,7 @@ fn (c &Create) write_main(new bool) {
 		cerror(err.msg)
 		exit(2)
 	}
-	mainfile.write_str(main_content()) or { panic(err) }
+	mainfile.write_string(main_content()) or { panic(err) }
 	mainfile.close()
 }
 
@@ -100,7 +107,7 @@ fn (c &Create) create_git_repo(dir string) {
 				// We don't really need a .gitignore, it's just a nice-to-have
 				return
 			}
-			fl.write_str(gen_gitignore(c.name)) or { panic(err) }
+			fl.write_string(gen_gitignore(c.name)) or { panic(err) }
 			fl.close()
 		}
 	}
@@ -154,13 +161,18 @@ fn init_project() {
 }
 
 fn main() {
-	if os.args[1] == 'new' {
-		create(os.args[2..])
-	} else if os.args[1] == 'init' {
-		init_project()
-	} else {
-		cerror('Unknown command: ${os.args[1]}')
-		exit(1)
+	cmd := os.args[1]
+	match cmd {
+		'new' {
+			create(os.args[2..])
+		}
+		'init' {
+			init_project()
+		}
+		else {
+			cerror('unknown command: $cmd')
+			exit(1)
+		}
 	}
 	println('Complete!')
 }

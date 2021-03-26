@@ -31,6 +31,12 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 				p.inside_match = true // reuse the same var for perf instead of inside_sql TODO rename
 				node = p.sql_expr()
 				p.inside_match = false
+			} else if p.tok.lit == 'map' && p.peek_tok.kind == .lcbr && !(p.builtin_mod
+				&& p.file_base == 'map.v') {
+				p.next() // `map`
+				p.next() // `{`
+				node = p.map_init()
+				p.check(.rcbr) // `}`
 			} else {
 				if p.inside_if && p.is_generic_name() {
 					// $if T is string {}
@@ -186,7 +192,9 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 					pos: pos
 				}
 			} else {
-				p.register_used_import(p.tok.lit)
+				if p.tok.kind == .name {
+					p.register_used_import(p.tok.lit)
+				}
 				save_expr_mod := p.expr_mod
 				p.expr_mod = ''
 				sizeof_type := p.parse_type()
@@ -316,7 +324,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			}
 		}
 		else {
-			if p.tok.kind != .eof {
+			if p.tok.kind != .eof && !(p.tok.kind == .rsbr && p.inside_asm) {
 				// eof should be handled where it happens
 				p.error_with_pos('invalid expression: unexpected $p.tok', p.tok.position())
 				return ast.Expr{}
@@ -354,13 +362,17 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 			}
 		} else if p.tok.kind == .key_as {
 			// sum type as cast `x := SumType as Variant`
-			pos := p.tok.position()
-			p.next()
-			typ := p.parse_type()
-			node = ast.AsCast{
-				expr: node
-				typ: typ
-				pos: pos
+			if !p.inside_asm {
+				pos := p.tok.position()
+				p.next()
+				typ := p.parse_type()
+				node = ast.AsCast{
+					expr: node
+					typ: typ
+					pos: pos
+				}
+			} else {
+				return node
 			}
 		} else if p.tok.kind == .left_shift && p.is_stmt_ident {
 			// arr << elem

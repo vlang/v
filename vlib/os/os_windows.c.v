@@ -268,8 +268,8 @@ pub fn execute(cmd string) Result {
 	}
 	command_line := [32768]u16{}
 	C.ExpandEnvironmentStringsW(cmd.to_wide(), voidptr(&command_line), 32768)
-	create_process_ok := C.CreateProcessW(0, command_line, 0, 0, C.TRUE, 0, 0, 0, voidptr(&start_info),
-		voidptr(&proc_info))
+	create_process_ok := C.CreateProcessW(0, &command_line[0], 0, 0, C.TRUE, 0, 0, 0,
+		voidptr(&start_info), voidptr(&proc_info))
 	if !create_process_ok {
 		error_num := int(C.GetLastError())
 		error_msg := get_error_msg(error_num)
@@ -286,8 +286,9 @@ pub fn execute(cmd string) Result {
 	for {
 		mut result := false
 		unsafe {
-			result = C.ReadFile(child_stdout_read, buf, 1000, voidptr(&bytes_read), 0)
-			read_data.write_bytes(&buf[0], int(bytes_read))
+			result = C.ReadFile(child_stdout_read, &buf[0], 1000, voidptr(&bytes_read),
+				0)
+			read_data.write_ptr(&buf[0], int(bytes_read))
 		}
 		if result == false || int(bytes_read) == 0 {
 			break

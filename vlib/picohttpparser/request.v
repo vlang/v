@@ -24,7 +24,7 @@ pub fn (mut r Request) parse_request(s string, max_headers int) int {
 		&r.method.str, &method_len,
 		&r.path.str, &path_len,
 		&minor_version,
-		r.headers, &num_headers,
+		&r.headers[0], &num_headers,
 		0
 	)
 	if pret > 0 {

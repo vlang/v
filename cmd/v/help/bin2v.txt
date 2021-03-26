@@ -1,11 +1,11 @@
 Usage:
-v bin2v [options] FILE [FILE]...
+  v bin2v [options] FILE[...]
 
-Converts a list of arbitrary files into a single v module file.
+  Converts a list of arbitrary files into a single v module file.
 
-You can use this tool to embed binary files, like pictures or fonts inside
-the executable of a v program, such that it would not need access to external
-resources during runtime, and it would be as self-contained as possible.
+  You can use this tool to embed binary files, like pictures or fonts inside
+  the executable of a v program, such that it would not need access to external
+  resources during runtime, and it would be as self-contained as possible.
 
 Options:
   -h, --help                Show this help screen.

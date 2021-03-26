@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module builtin
 
-//pub fn vsyscall(id int
+// pub fn vsyscall(id int
 //
 
 /*
@@ -16,7 +16,6 @@ const (
 	stdout_value = 1
 	stderr_value  = 2
 )
-
 */
 
 fn builtin_init() {
@@ -49,7 +48,7 @@ fn print_backtrace_skipping_top_frames(xskipframes int) bool {
 fn print_backtrace_skipping_top_frames_mac(skipframes int) bool {
 	$if macos {
 		buffer := [100]voidptr{}
-		nr_ptrs := C.backtrace(buffer, 100)
+		nr_ptrs := C.backtrace(&buffer[0], 100)
 		if nr_ptrs < 2 {
 			eprintln('C.backtrace returned less than 2 frames')
 			return false
@@ -62,7 +61,7 @@ fn print_backtrace_skipping_top_frames_mac(skipframes int) bool {
 fn print_backtrace_skipping_top_frames_freebsd(skipframes int) bool {
 	$if freebsd {
 		buffer := [100]voidptr{}
-		nr_ptrs := C.backtrace(buffer, 100)
+		nr_ptrs := C.backtrace(&buffer[0], 100)
 		if nr_ptrs < 2 {
 			eprintln('C.backtrace returned less than 2 frames')
 			return false
@@ -87,7 +86,7 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 		return false
 	} $else {
 		$if tinyc {
-			C.tcc_backtrace("Backtrace")
+			C.tcc_backtrace('Backtrace')
 			return false
 		}
 		buffer := [100]voidptr{}
@@ -101,7 +100,7 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 		//////csymbols := backtrace_symbols(*voidptr(&buffer[skipframes]), nr_actual_frames)
 		csymbols := C.backtrace_symbols(voidptr(&buffer[skipframes]), nr_actual_frames)
 		for i in 0 .. nr_actual_frames {
-			sframes << unsafe {tos2( byteptr(csymbols[i]) )}
+			sframes << unsafe { tos2(byteptr(csymbols[i])) }
 		}
 		for sframe in sframes {
 			executable := sframe.all_before('(')

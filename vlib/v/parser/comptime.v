@@ -8,7 +8,6 @@ import v.ast
 import v.pref
 import v.table
 import v.token
-import vweb.tmpl
 
 const (
 	supported_comptime_calls = ['html', 'tmpl', 'env', 'embed_file']
@@ -30,7 +29,6 @@ fn (mut p Parser) hash() ast.HashStmt {
 		main_str = content.trim_space()
 		msg = ''
 	}
-	// p.trace('a.v', 'kind: ${kind:-10s} | pos: ${pos:-45s} | hash: $val')
 	return ast.HashStmt{
 		mod: p.mod
 		source_file: p.file_name
@@ -168,7 +166,7 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 	$if trace_comptime ? {
 		println('>>> compiling comptime template file "$path" for $tmp_fn_name')
 	}
-	v_code := tmpl.compile_file(path, tmp_fn_name)
+	v_code := p.compile_template_file(path, tmp_fn_name)
 	$if print_vweb_template_expansions ? {
 		lines := v_code.split('\n')
 		for i, line in lines {
@@ -181,9 +179,9 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 	}
 	$if trace_comptime ? {
 		println('')
-		println('>>> vweb template for $path:')
+		println('>>> template for $path:')
 		println(v_code)
-		println('>>> end of vweb template END')
+		println('>>> end of template END')
 		println('')
 	}
 	mut file := parse_comptime(v_code, p.table, p.pref, scope, p.global_scope)

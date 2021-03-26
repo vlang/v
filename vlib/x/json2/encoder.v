@@ -70,16 +70,22 @@ pub fn (f Any) json_str() string {
 		int {
 			return f.str()
 		}
-		i64 {
+		u64, i64 {
 			return f.str()
 		}
 		f32 {
 			str_f32 := f.str()
-			return if str_f32.ends_with('.') { '${str_f32}0' } else { str_f32 }
+			if str_f32.ends_with('.') {
+				return '${str_f32}0'
+			}
+			return str_f32
 		}
 		f64 {
 			str_f64 := f.str()
-			return if str_f64.ends_with('.') { '${str_f64}0' } else { str_f64 }
+			if str_f64.ends_with('.') {
+				return '${str_f64}0'
+			}
+			return str_f64
 		}
 		bool {
 			return f.str()
@@ -135,10 +141,10 @@ fn json_string(s string) string {
 	for char_len in char_lens {
 		if char_len == 1 {
 			chr := s[i]
-			if chr in json2.important_escapable_chars {
-				for j := 0 ; j < json2.important_escapable_chars.len; j++ {
-					if chr == json2.important_escapable_chars[j] {
-						sb.write_string(escaped_chars[j])
+			if chr in important_escapable_chars {
+				for j := 0; j < important_escapable_chars.len; j++ {
+					if chr == important_escapable_chars[j] {
+						sb.write_string(json2.escaped_chars[j])
 						break
 					}
 				}
@@ -148,7 +154,7 @@ fn json_string(s string) string {
 				sb.write_b(chr)
 			}
 		} else {
-			slice := s[i .. i + char_len]
+			slice := s[i..i + char_len]
 			hex_code := slice.utf32_code().hex()
 			if hex_code.len == 4 {
 				sb.write_string('\\u$hex_code')

@@ -25,9 +25,19 @@ fn C.CopyFile(&u32, &u32, int) int
 
 fn C.execvp(file charptr, argv &charptr) int
 
+// fn C.lstat(charptr, voidptr) u64
+
+fn C._wstat64(charptr, voidptr) u64
+
 // fn C.proc_pidpath(int, byteptr, int) int
 struct C.stat {
-	st_size  int
+	st_size  u64
+	st_mode  u32
+	st_mtime int
+}
+
+struct C.__stat64 {
+	st_size  u64
 	st_mode  u32
 	st_mtime int
 }
@@ -101,20 +111,33 @@ pub fn read_file(path string) ?string {
 
 // ***************************** OS ops ************************
 // file_size returns the size of the file located in `path`.
-pub fn file_size(path string) int {
+pub fn file_size(path string) u64 {
 	mut s := C.stat{}
 	unsafe {
-		$if windows {
-			$if tinyc {
-				C.stat(charptr(path.str), &s)
+		$if x64 {
+			$if windows {
+				mut swin := C.__stat64{}
+				C._wstat64(path.to_wide(), voidptr(&swin))
+				return swin.st_size
 			} $else {
-				C._wstat(path.to_wide(), voidptr(&s))
+				C.stat(charptr(path.str), &s)
+				return u64(s.st_size)
 			}
-		} $else {
-			C.stat(charptr(path.str), &s)
+		}
+		$if x32 {
+			$if debug {
+				println('Using os.file_size() on 32bit systems may not work on big files.')
+			}
+			$if windows {
+				C._wstat(path.to_wide(), voidptr(&s))
+				return u64(s.st_size)
+			} $else {
+				C.stat(charptr(path.str), &s)
+				return u64(s.st_size)
+			}
 		}
 	}
-	return s.st_size
+	return 0
 }
 
 // mv moves files or folders from `src` to `dst`.
@@ -163,16 +186,18 @@ pub fn cp(src string, dst string) ? {
 		for {
 			// FIXME: use sizeof, bug: 'os__buf' undeclared
 			// count = C.read(fp_from, buf, sizeof(buf))
-			count = C.read(fp_from, buf, 1024)
+			count = C.read(fp_from, &buf[0], 1024)
 			if count == 0 {
 				break
 			}
-			if C.write(fp_to, buf, count) < 0 {
+			if C.write(fp_to, &buf[0], count) < 0 {
 				return error_with_code('cp: failed to write to $dst', int(-1))
 			}
 		}
 		from_attr := C.stat{}
-		unsafe { C.stat(charptr(src.str), &from_attr) }
+		unsafe {
+			C.stat(charptr(src.str), &from_attr)
+		}
 		if C.chmod(charptr(dst.str), from_attr.st_mode) < 0 {
 			return error_with_code('failed to set permissions for $dst', int(-1))
 		}
@@ -445,6 +470,7 @@ pub fn get_raw_stdin() []byte {
 	$if windows {
 		unsafe {
 			block_bytes := 512
+			mut old_size := block_bytes
 			mut buf := malloc(block_bytes)
 			h_input := C.GetStdHandle(C.STD_INPUT_HANDLE)
 			mut bytes_read := 0
@@ -456,7 +482,9 @@ pub fn get_raw_stdin() []byte {
 				if !res {
 					break
 				}
-				buf = v_realloc(buf, offset + block_bytes + (block_bytes - bytes_read))
+				new_size := offset + block_bytes + (block_bytes - bytes_read)
+				buf = realloc_data(buf, old_size, new_size)
+				old_size = new_size
 			}
 			return array{
 				element_size: 1
@@ -483,7 +511,7 @@ pub fn read_file_array<T>(path string) []T {
 	a := T{}
 	tsize := int(sizeof(a))
 	// prepare for reading, get current file size
-	mut fp := vfopen(path, 'rb') or { return array{} }
+	mut fp := vfopen(path, 'rb') or { return []T{} }
 	C.fseek(fp, 0, C.SEEK_END)
 	fsize := C.ftell(fp)
 	C.rewind(fp)
@@ -492,11 +520,13 @@ pub fn read_file_array<T>(path string) []T {
 	buf := unsafe { malloc(fsize) }
 	C.fread(buf, fsize, 1, fp)
 	C.fclose(fp)
-	return array{
-		element_size: tsize
-		data: buf
-		len: len
-		cap: len
+	return unsafe {
+		array{
+			element_size: tsize
+			data: buf
+			len: len
+			cap: len
+		}
 	}
 }
 

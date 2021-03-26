@@ -65,7 +65,7 @@ fn (nn int) str_l(max int) string {
 	if n == 0 {
 		return '0'
 	}
-	mut buf := unsafe {malloc(max + 1)}
+	mut buf := unsafe { malloc(max + 1) }
 	mut is_neg := false
 	if n < 0 {
 		n = -n
@@ -136,7 +136,7 @@ pub fn (nn u32) str() string {
 		return '0'
 	}
 	max := 12
-	mut buf := unsafe {malloc(max + 1)}
+	mut buf := unsafe { malloc(max + 1) }
 	mut index := max
 	unsafe {
 		buf[index--] = `\0`
@@ -266,6 +266,7 @@ pub fn (n int) hex1() string {
 	len := if n >= 0 { n.str().len + 3 } else { 11 }
 	hex := malloc(len) // 0x + \n
 	count := C.sprintf((hex), '0x%x', n)
+    hex[count] = 0
 	return tos(hex, count)
 }
 */
@@ -282,10 +283,7 @@ fn u64_to_hex(nn u64, len byte) string {
 		buf[i] = x
 		n = n >> 4
 	}
-	return string{
-		str: unsafe {memdup(buf, len + 1)}
-		len: len
-	}
+	return unsafe { tos(memdup(&buf[0], len + 1), len) }
 }
 
 // u64_to_hex_no_leading_zeros converts the number `nn` to hexadecimal `string`.
@@ -305,10 +303,7 @@ fn u64_to_hex_no_leading_zeros(nn u64, len byte) string {
 		}
 	}
 	res_len := len - i
-	return string{
-		str: unsafe {memdup(&buf[i], res_len + 1)}
-		len: res_len
-	}
+	return unsafe { tos(memdup(&buf[i], res_len + 1), res_len) }
 }
 
 // hex returns the value of the `byte` as a hexadecimal `string`.
@@ -448,7 +443,7 @@ pub fn (b byte) str() string {
 // Example: assert byte(97).ascii_str() == 'a'
 pub fn (b byte) ascii_str() string {
 	mut str := string{
-		str: unsafe {malloc(2)}
+		str: unsafe { malloc(2) }
 		len: 1
 	}
 	unsafe {

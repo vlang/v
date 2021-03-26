@@ -86,7 +86,6 @@ fn new_array_from_c_array_no_alloc(len int, cap int, elm_size int, c_array voidp
 }
 
 // Private function. Doubles array capacity if needed.
-[inline]
 fn (mut a array) ensure_cap(required int) {
 	if required <= a.cap {
 		return
@@ -98,7 +97,7 @@ fn (mut a array) ensure_cap(required int) {
 	new_size := cap * a.element_size
 	mut new_data := byteptr(0)
 	if a.cap > 0 {
-		new_data = unsafe { v_realloc(a.data, new_size) }
+		new_data = unsafe { realloc_data(a.data, a.cap * a.element_size, new_size) }
 	} else {
 		new_data = vcalloc(new_size)
 	}
@@ -483,11 +482,23 @@ pub fn (a &array) free() {
 	// if a.is_slice {
 	// return
 	// }
-	C.free(a.data)
+	unsafe { free(a.data) }
+}
+
+[unsafe]
+pub fn (mut a []string) free() {
+	$if prealloc {
+		return
+	}
+	for s in a {
+		unsafe { s.free() }
+	}
+	unsafe { free(a.data) }
 }
 
 // str returns a string representation of the array of strings
 // => '["a", "b", "c"]'.
+[manualfree]
 pub fn (a []string) str() string {
 	mut sb := strings.new_builder(a.len * 3)
 	sb.write_string('[')
@@ -501,7 +512,9 @@ pub fn (a []string) str() string {
 		}
 	}
 	sb.write_string(']')
-	return sb.str()
+	res := sb.str()
+	unsafe { sb.free() }
+	return res
 }
 
 // hex returns a string with the hexadecimal representation
@@ -675,8 +688,12 @@ pub fn (a1 []string) eq(a2 []string) bool {
 	if a1.len != a2.len {
 		return false
 	}
+	size_of_string := int(sizeof(string))
 	for i in 0 .. a1.len {
-		if a1[i] != a2[i] {
+		offset := i * size_of_string
+		s1 := &string(unsafe { byteptr(a1.data) + offset })
+		s2 := &string(unsafe { byteptr(a2.data) + offset })
+		if *s1 != *s2 {
 			return false
 		}
 	}
