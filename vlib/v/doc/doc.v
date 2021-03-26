@@ -42,7 +42,7 @@ pub enum Platform {
 	android
 	solaris
 	haiku
-	cross
+	cross // TODO: add functionality for v doc -os cross whenever possible
 }
 
 // copy of pref.os_from_string
