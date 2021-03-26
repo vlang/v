@@ -77,7 +77,9 @@ fn (mut g Gen) gen_c_main_header() {
 	}
 	g.writeln('\t_vinit(___argc, (voidptr)___argv);')
 	if g.pref.gc_mode in [.boehm, .boehm_leak] {
+		g.writeln('#if defined(_VGCBOEHM)')
 		g.writeln('\t__v_inside_init = 0;')
+		g.writeln('#endif')
 	}
 	if g.pref.is_prof {
 		g.writeln('')
@@ -171,7 +173,9 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 	}
 	g.writeln('\t_vinit(___argc, (voidptr)___argv);')
 	if g.pref.gc_mode in [.boehm, .boehm_leak] {
+		g.writeln('#if defined(_VGCBOEHM)')
 		g.writeln('\t__v_inside_init = 0;')
+		g.writeln('#endif')
 	}
 	all_tfuncs := g.get_all_test_function_names()
 	if g.pref.is_stats {
