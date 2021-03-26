@@ -50,7 +50,6 @@ mut:
 	is_vlib          bool
 	is_verbose       bool
 	include_readme   bool
-	has_provided_platform bool
 	include_examples bool = true
 	inline_assets    bool
 	no_timestamp     bool
@@ -125,21 +124,8 @@ fn (vd VDoc) write_plaintext_content(contents []doc.DocNode, mut pw strings.Buil
 				}
 				pw.writeln(comments.trim_space().split_into_lines().map('    ' + it).join('\n'))
 			}
-			if cfg.show_loc && !cfg.has_provided_platform {
-				pw.writeln('Location: $cn.file_path:$cn.pos.line\n')
-			}
-			if cfg.has_provided_platform && cfg.show_loc  {
-				if cn.platform != .cross {
-					pw.writeln('Location: $cn.file_path:$cn.pos.line')
-					pw.writeln('Platform: $cn.platform\n')
-				} else {
-					pw.writeln('Location: $cn.file_path:$cn.pos.line\n')
-				}
-			}
-			if cfg.has_provided_platform && !cfg.show_loc {
-				if cn.platform != .cross {
-					pw.writeln('Platform: $cn.platform\n')
-				}
+			if cfg.show_loc {
+				pw.writeln('Location: $cn.file_path:${cn.pos.line_nr + 1}\n')
 			}
 		}
 		vd.write_plaintext_content(cn.children, mut pw)
@@ -436,12 +422,15 @@ fn parse_arguments(args []string) Config {
 			}
 			'-os' {
 				platform_str := cmdline.option(current_args, '-os', '')
+				if platform_str == 'cross' {
+					eprintln('`v doc -os cross` is not supported yet.')
+					exit(1)
+				}
 				selected_platform := doc.platform_from_string(platform_str) or {
 					eprintln(err.msg)
 					exit(1)
 				}
 				cfg.platform = selected_platform
-				cfg.has_provided_platform = true
 				i++
 			}
 			'-no-timestamp' {
