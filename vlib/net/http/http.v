@@ -19,7 +19,7 @@ pub struct Request {
 pub mut:
 	version    Version = .v1_1
 	method     Method
-	headers    Header
+	header     Header
 	cookies    map[string]string
 	data       string
 	url        string
@@ -33,7 +33,7 @@ pub mut:
 pub struct FetchConfig {
 pub mut:
 	method     Method
-	headers    Header
+	header     Header
 	data       string
 	params     map[string]string
 	cookies    map[string]string
@@ -45,7 +45,7 @@ pub mut:
 pub struct Response {
 pub:
 	text        string
-	headers     Header
+	header      Header
 	cookies     map[string]string
 	status_code int
 }
@@ -74,7 +74,7 @@ pub fn get(url string) ?Response {
 pub fn post(url string, data string) ?Response {
 	return fetch_with_method(.post, url,
 		data: data
-		headers: new_header({key: .content_type, value: http.content_type_default})
+		header: new_header({key: .content_type, value: http.content_type_default})
 	)
 }
 
@@ -82,14 +82,14 @@ pub fn post(url string, data string) ?Response {
 pub fn post_json(url string, data string) ?Response {
 	return fetch_with_method(.post, url,
 		data: data
-		headers: new_header({key: .content_type, value: 'application/json'})
+		header: new_header({key: .content_type, value: 'application/json'})
 	)
 }
 
 // post_form sends a POST HTTP request to the URL with X-WWW-FORM-URLENCODED data
 pub fn post_form(url string, data map[string]string) ?Response {
 	return fetch_with_method(.post, url, 
-		headers: new_header({key: .content_type, value: 'application/x-www-form-urlencoded'})
+		header: new_header({key: .content_type, value: 'application/x-www-form-urlencoded'})
 		data: url_encode_form_data(data)
 	)
 }
@@ -98,7 +98,7 @@ pub fn post_form(url string, data map[string]string) ?Response {
 pub fn put(url string, data string) ?Response {
 	return fetch_with_method(.put, url,
 		data: data
-		headers: new_header({key: .content_type, value: http.content_type_default})
+		header: new_header({key: .content_type, value: http.content_type_default})
 	)
 }
 
@@ -106,7 +106,7 @@ pub fn put(url string, data string) ?Response {
 pub fn patch(url string, data string) ?Response {
 	return fetch_with_method(.patch, url,
 		data: data
-		headers: new_header({key: .content_type, value: http.content_type_default})
+		header: new_header({key: .content_type, value: http.content_type_default})
 	)
 }
 
@@ -131,7 +131,7 @@ pub fn fetch(_url string, config FetchConfig) ?Response {
 		method: config.method
 		url: url
 		data: data
-		headers: config.headers
+		header: config.header
 		cookies: config.cookies
 		user_agent: config.user_agent
 		ws_func: 0
@@ -183,17 +183,17 @@ fn build_url_from_fetch(_url string, config FetchConfig) ?string {
 }
 
 fn (mut req Request) free() {
-	unsafe { req.headers.free() }
+	unsafe { req.header.free() }
 }
 
 fn (mut resp Response) free() {
-	unsafe { resp.headers.data.free() }
+	unsafe { resp.header.data.free() }
 }
 
 // add_header adds the key and value of an HTTP request header
-// to add a custom header, use req.headers.add_str
+// to add a custom header, use req.header.add_str
 pub fn (mut req Request) add_header(key CommonHeader, val string) {
-	req.headers.add(key, val)
+	req.header.add(key, val)
 }
 
 // do will send the HTTP request and returns `http.Response` as soon as the response is recevied
@@ -212,7 +212,7 @@ pub fn (req &Request) do() ?Response {
 			break
 		}
 		// follow any redirects
-		mut redirect_url := resp.headers.get(.location) or { '' }
+		mut redirect_url := resp.header.get(.location) or { '' }
 		if redirect_url.len > 0 && redirect_url[0] == `/` {
 			url.set_path(redirect_url) or {
 				return error('http.request.do: invalid path in redirect: "$redirect_url"')
@@ -256,7 +256,7 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) ?Res
 }
 
 fn parse_response(resp string) Response {
-	mut headers := new_header()
+	mut header := new_header()
 	// TODO: Cookie data type
 	mut cookies := map[string]string{}
 	first_header := resp.all_before('\n')
@@ -266,7 +266,7 @@ fn parse_response(resp string) Response {
 		status_code = val.int()
 	}
 	mut text := ''
-	// Build resp headers map and separate the body
+	// Build resp header map and separate the body
 	mut nl_pos := 3
 	mut i := 1
 	for {
@@ -285,19 +285,19 @@ fn parse_response(resp string) Response {
 		pos := h.index(':') or { continue }
 		mut key := h[..pos]
 		val := h[pos + 2..].trim_space()
-		headers.add_str(key, val) or { eprintln('error parsing header: $err') }
+		header.add_str(key, val) or { eprintln('error parsing header: $err') }
 	}
 	// set cookies
-	for cookie in headers.values(.set_cookie) {
+	for cookie in header.values(.set_cookie) {
 		parts := cookie.split_nth('=', 2)
 		cookies[parts[0]] = parts[1]
 	}
-	if headers.get(.transfer_encoding) or { '' } == 'chunked' || headers.get(.content_length) or { '' } == '' {
+	if header.get(.transfer_encoding) or { '' } == 'chunked' || header.get(.content_length) or { '' } == '' {
 		text = chunked.decode(text)
 	}
 	return Response{
 		status_code: status_code
-		headers: headers
+		header: header
 		cookies: cookies
 		text: text
 	}
@@ -306,20 +306,20 @@ fn parse_response(resp string) Response {
 fn (req &Request) build_request_headers(method Method, host_name string, path string) string {
 	ua := req.user_agent
 	mut uheaders := []string{}
-	if !req.headers.contains(.host) {
+	if !req.header.contains(.host) {
 		uheaders << 'Host: $host_name\r\n'
 	}
-	if !req.headers.contains(.user_agent) {
+	if !req.header.contains(.user_agent) {
 		uheaders << 'User-Agent: $ua\r\n'
 	}
-	if req.data.len > 0 && !req.headers.contains(.content_length) {
+	if req.data.len > 0 && !req.header.contains(.content_length) {
 		uheaders << 'Content-Length: $req.data.len\r\n'
 	}
-	for key in req.headers.keys() {
+	for key in req.header.keys() {
 		if key == CommonHeader.cookie.str() {
 			continue
 		}
-		val := req.headers.values_str(key).join('; ')
+		val := req.header.values_str(key).join('; ')
 		uheaders << '$key: $val\r\n'
 	}
 	uheaders << req.build_request_cookies_header()
@@ -335,7 +335,7 @@ fn (req &Request) build_request_cookies_header() string {
 	for key, val in req.cookies {
 		cookie << '$key=$val'
 	}
-	cookie << req.headers.values(.cookie)
+	cookie << req.header.values(.cookie)
 	return 'Cookie: ' + cookie.join('; ') + '\r\n'
 }
 
@@ -379,5 +379,5 @@ fn (req &Request) http_do(host string, method Method, path string) ?Response {
 
 // referer returns 'Referer' header value of the given request
 pub fn (req &Request) referer() string {
-	return req.headers.get(.referer) or { '' }
+	return req.header.get(.referer) or { '' }
 }

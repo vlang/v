@@ -11,18 +11,18 @@ fn parse_request(mut reader io.BufferedReader) ?http.Request {
 	method, target, version := parse_request_line(line) ?
 
 	// headers
-	mut headers := http.new_header()
+	mut header := http.new_header()
 	line = reader.read_line() ?
 	for line != '' {
 		key, value := parse_header(line) ?
-		headers.add_custom(key, value) ?
+		header.add_custom(key, value) ?
 		line = reader.read_line() ?
 	}
 	h.coerce(canonicalize: true)
 
 	// body
 	mut body := []byte{}
-	if length := headers.get(.content_length) {
+	if length := header.get(.content_length) {
 		n := length.int()
 		if n > 0 {
 			body = []byte{len: n}
@@ -33,7 +33,7 @@ fn parse_request(mut reader io.BufferedReader) ?http.Request {
 	return http.Request{
 		method: method
 		url: target.str()
-		headers: headers
+		header: header
 		data: body.bytestr()
 		version: version
 	}

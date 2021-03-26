@@ -281,7 +281,7 @@ pub fn (mut ctx Context) add_header(key string, val string) {
 
 // Returns the header data from the key
 pub fn (ctx &Context) get_header(key string) string {
-	return ctx.req.headers.get_str(key) or { '' }
+	return ctx.req.header.get_str(key) or { '' }
 }
 
 pub fn run<T>(port int) {
@@ -333,8 +333,8 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 		page_gen_start: page_gen_start
 	}
 	if req.method in vweb.methods_with_form {
-		if 'multipart/form-data' in req.headers.values(.content_type) {
-			boundary := req.headers.values(.content_type).filter(it.starts_with('boundary='))
+		if 'multipart/form-data' in req.header.values(.content_type) {
+			boundary := req.header.values(.content_type).filter(it.starts_with('boundary='))
 			if boundary.len != 1 {
 				send_string(mut conn, vweb.http_400) or {}
 				return
@@ -575,9 +575,9 @@ pub fn (mut ctx Context) serve_static(url string, file_path string, mime_type st
 
 // Returns the ip address from the current user
 pub fn (ctx &Context) ip() string {
-	mut ip := ctx.req.headers.get(.x_forwarded_for) or { '' }
+	mut ip := ctx.req.header.get(.x_forwarded_for) or { '' }
 	if ip == '' {
-		ip = ctx.req.headers.get_str('X-Real-Ip') or { '' }
+		ip = ctx.req.header.get_str('X-Real-Ip') or { '' }
 	}
 
 	if ip.contains(',') {

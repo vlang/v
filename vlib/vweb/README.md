@@ -65,7 +65,7 @@ Everything, including HTML templates, is in one binary file. That's all you need
 ## Getting Started
 
 To start with vweb, you have to import the module `vweb`.
-After the import, define a struct to hold vweb.Context 
+After the import, define a struct to hold vweb.Context
 (and any other variables your program will need).
 The web server can be started by calling `vweb.run<App>(port)`.
 
@@ -111,7 +111,7 @@ fn (mut app App) world() vweb.Result {
 }
 ```
 
-To pass a parameter to an endpoint, you simply define it inside 
+To pass a parameter to an endpoint, you simply define it inside
 an attribute, e. g. `['/hello/:user]`.
 After it is defined in the attribute, you have to add it as a function parameter.
 
@@ -123,8 +123,9 @@ fn (mut app App) hello_user(user string) vweb.Result {
 }
 ```
 
-You have access to the raw request data such as headers 
+You have access to the raw request data such as headers
 or the request body by accessing `app` (which is `vweb.Context`).
 If you want to read the request body, you can do that by calling `app.req.data`.
-To read the request headers, you just call `app.req.headers` and access the header you want, 
-e.g. `app.req.headers['Content-Type']`
+To read the request headers, you just call `app.req.header` and access the header you want,
+e.g. `app.req.header.get(.content_type)`. See `struct Header` for all
+available methods (`v doc net.http Header`).
