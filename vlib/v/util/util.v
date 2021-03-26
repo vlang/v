@@ -556,3 +556,25 @@ pub fn should_bundle_module(mod string) bool {
 	return mod in util.bundle_modules
 		|| (mod.contains('.') && mod.all_before('.') in util.bundle_modules)
 }
+
+// find_all_v_files - given a list of files/folders, finds all .v/.vsh files
+// if some of the files/folders on the list does not exist, or a file is not
+// a .v or .vsh file, returns an error instead.
+pub fn find_all_v_files(roots []string) ?[]string {
+	mut files := []string{}
+	for file in roots {
+		if os.is_dir(file) {
+			files << os.walk_ext(file, '.v')
+			files << os.walk_ext(file, '.vsh')
+			continue
+		}
+		if !file.ends_with('.v') && !file.ends_with('.vv') && !file.ends_with('.vsh') {
+			return error('v fmt can only be used on .v files.\nOffending file: "$file"')
+		}
+		if !os.exists(file) {
+			return error('"$file" does not exist')
+		}
+		files << file
+	}
+	return files
+}

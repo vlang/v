@@ -41,6 +41,30 @@ mut:
 	nmaxs                   int // number of maximums to discard
 }
 
+[unsafe]
+fn (mut result CmdResult) free() {
+	unsafe {
+		result.cmd.free()
+		result.outputs.free()
+		result.oms.free()
+		result.summary.free()
+		result.timings.free()
+		result.atiming.free()
+	}
+}
+
+[unsafe]
+fn (mut context Context) free() {
+	unsafe {
+		context.commands.free()
+		context.results.free()
+		context.cmd_template.free()
+		context.cmd_params.free()
+		context.cline.free()
+		context.cgoback.free()
+	}
+}
+
 struct Aints {
 	values []int
 mut:
@@ -50,6 +74,11 @@ mut:
 	stddev  f64
 	nmins   int // number of discarded fastest results
 	nmaxs   int // number of discarded slowest results
+}
+
+[unsafe]
+fn (mut a Aints) free() {
+	unsafe { a.values.free() }
 }
 
 fn new_aints(ovals []int, extreme_mins int, extreme_maxs int) Aints {
@@ -155,9 +184,9 @@ fn (mut context Context) parse_options() {
 		exit(1)
 	}
 	context.commands = context.expand_all_commands(commands)
-	context.results = []CmdResult{len: context.commands.len, cap: 100, init: CmdResult{
-		outputs: []string{cap: 1000}
-		timings: []int{cap: 1000}
+	context.results = []CmdResult{len: context.commands.len, cap: 10, init: CmdResult{
+		outputs: []string{cap: 200}
+		timings: []int{cap: 200}
 	}}
 	if context.use_newline {
 		context.cline = '\n'
@@ -242,7 +271,9 @@ fn (mut context Context) run() {
 				trimed_output := res.output.trim_right('\r\n')
 				trimed_normalized := trimed_output.replace('\r\n', '\n')
 				lines := trimed_normalized.split('\n')
-				context.results[icmd].outputs << lines
+				for line in lines {
+					context.results[icmd].outputs << line
+				}
 				context.results[icmd].timings << duration
 				sum += duration
 				runs++

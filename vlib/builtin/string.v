@@ -145,6 +145,8 @@ pub fn tos_lit(s charptr) string {
 }
 
 // vstring converts a C style string to a V string. NB: the string data is reused, NOT copied.
+// strings returned from this function will be normal V strings beside that (i.e. they would be
+// freed by V's -autofree mechanism, when they are no longer used).
 [unsafe]
 pub fn (bp byteptr) vstring() string {
 	return string{
@@ -153,30 +155,87 @@ pub fn (bp byteptr) vstring() string {
 	}
 }
 
-// vstring_with_len converts a C style string to a V string. NB: the string data is reused, NOT copied.
+// vstring_with_len converts a C style string to a V string.
+// NB: the string data is reused, NOT copied.
 [unsafe]
 pub fn (bp byteptr) vstring_with_len(len int) string {
 	return string{
 		str: bp
 		len: len
+		is_lit: 0
 	}
 }
 
-// vstring converts C char* to V string. NB: the string data is reused, NOT copied.
+// vstring converts C char* to V string.
+// NB: the string data is reused, NOT copied.
 [unsafe]
 pub fn (cp charptr) vstring() string {
 	return string{
 		str: byteptr(cp)
 		len: unsafe { C.strlen(cp) }
+		is_lit: 0
 	}
 }
 
-// vstring_with_len converts C char* to V string. NB: the string data is reused, NOT copied.
+// vstring_with_len converts C char* to V string.
+// NB: the string data is reused, NOT copied.
 [unsafe]
 pub fn (cp charptr) vstring_with_len(len int) string {
 	return string{
 		str: byteptr(cp)
 		len: len
+		is_lit: 0
+	}
+}
+
+// vstring_literal converts a C style string to a V string.
+// NB: the string data is reused, NOT copied.
+// NB2: unlike vstring, vstring_literal will mark the string
+// as a literal, so it will not be freed by autofree.
+// This is suitable for readonly strings, C string literals etc,
+// that can be read by the V program, but that should not be
+// managed by it, for example `os.args` is implemented using it.
+[unsafe]
+pub fn (bp byteptr) vstring_literal() string {
+	return string{
+		str: bp
+		len: unsafe { C.strlen(charptr(bp)) }
+		is_lit: 1
+	}
+}
+
+// vstring_with_len converts a C style string to a V string.
+// NB: the string data is reused, NOT copied.
+[unsafe]
+pub fn (bp byteptr) vstring_literal_with_len(len int) string {
+	return string{
+		str: bp
+		len: len
+		is_lit: 1
+	}
+}
+
+// vstring_literal converts C char* to V string.
+// See also vstring_literal defined on byteptr for more details.
+// NB: the string data is reused, NOT copied.
+[unsafe]
+pub fn (cp charptr) vstring_literal() string {
+	return string{
+		str: byteptr(cp)
+		len: unsafe { C.strlen(cp) }
+		is_lit: 1
+	}
+}
+
+// vstring_literal_with_len converts C char* to V string.
+// See also vstring_literal_with_len defined on byteptr.
+// NB: the string data is reused, NOT copied.
+[unsafe]
+pub fn (cp charptr) vstring_literal_with_len(len int) string {
+	return string{
+		str: byteptr(cp)
+		len: len
+		is_lit: 1
 	}
 }
 
@@ -500,7 +559,7 @@ fn (s string) ge(a string) bool {
 
 // TODO `fn (s string) + (a string)` ? To be consistent with operator overloading syntax.
 // add concatenates string with the string given in `s`.
-fn (s string) add(a string) string {
+pub fn (s string) add(a string) string {
 	new_len := a.len + s.len
 	mut res := string{
 		str: unsafe { malloc(new_len + 1) }
@@ -712,11 +771,15 @@ pub fn (s string) index(p string) ?int {
 }
 
 // index_kmp does KMP search.
+[manualfree]
 fn (s string) index_kmp(p string) int {
 	if p.len > s.len {
 		return -1
 	}
 	mut prefix := []int{len: p.len}
+	defer {
+		unsafe { prefix.free() }
+	}
 	mut j := 0
 	for i := 1; i < p.len; i++ {
 		for unsafe { p.str[j] != p.str[i] } && j > 0 {
@@ -1197,7 +1260,7 @@ fn compare_strings_by_len(a &string, b &string) int {
 fn compare_lower_strings(a &string, b &string) int {
 	aa := a.to_lower()
 	bb := b.to_lower()
-	return compare_strings(aa, bb)
+	return compare_strings(&aa, &bb)
 }
 
 // sort sorts the string array.
@@ -1576,7 +1639,7 @@ pub fn (a []string) join(del string) string {
 	}
 	len -= del.len
 	// Allocate enough memory
-	mut res := ''
+	mut res := string{}
 	res.len = len
 	res.str = unsafe { malloc(res.len + 1) }
 	mut idx := 0

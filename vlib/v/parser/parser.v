@@ -1710,7 +1710,7 @@ pub fn (mut p Parser) parse_ident(language table.Language) ast.Ident {
 }
 
 fn (p &Parser) is_typename(t token.Token) bool {
-	return t.kind == .name && (t.lit.is_capital() || p.table.known_type(t.lit))
+	return t.kind == .name && (t.lit[0].is_capital() || p.table.known_type(t.lit))
 }
 
 // heuristics to detect `func<T>()` from `var < expr`

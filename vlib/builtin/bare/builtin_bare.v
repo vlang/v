@@ -14,7 +14,7 @@ pub fn print(s string) {
 
 pub fn println(s string) {
 	print(s)
-	print("\n")
+	print('\n')
 }
 
 pub fn panic(s string) {
@@ -24,7 +24,7 @@ pub fn panic(s string) {
 }
 
 // replaces panic when -debug arg is passed
-fn panic_debug(line_no int, file,  mod, fn_name, s string) {
+fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 	eprintln('================ V panic ================')
 	eprint('   module: ')
 	eprintln('mod')
@@ -33,12 +33,13 @@ fn panic_debug(line_no int, file,  mod, fn_name, s string) {
 	eprintln('()')
 	eprintln('     file: ')
 	eprintln(file)
-	//println('     line: ${line_no}')
+	// println('     line: ${line_no}')
 	eprint('  message: ')
 	eprintln(s)
 	eprintln('=========================================')
 	sys_exit(1)
 }
+
 pub fn eprint(s string) {
 	if isnil(s.str) {
 		panic('eprint(NIL)')
@@ -48,7 +49,7 @@ pub fn eprint(s string) {
 
 pub fn eprint_ln(s string) {
 	eprint(s)
-	eprint("\n")
+	eprint('\n')
 }
 
 pub fn eprintln(s string) {

@@ -1944,9 +1944,39 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			if rts.info.generic_types.len > 0 {
 				gts := c.table.get_type_symbol(call_expr.generic_types[0])
 				nrt := '$rts.name<$gts.name>'
+				c_nrt := '${rts.name}_T_$gts.name'
 				idx := c.table.type_idxs[nrt]
-				c.ensure_type_exists(idx, call_expr.pos) or {}
-				call_expr.return_type = table.new_type(idx).derive(f.return_type)
+				if idx != 0 {
+					c.ensure_type_exists(idx, call_expr.pos) or {}
+					call_expr.return_type = table.new_type(idx).derive(f.return_type)
+				} else {
+					mut fields := rts.info.fields.clone()
+					if rts.info.generic_types.len == generic_types.len {
+						for i, _ in fields {
+							mut field := fields[i]
+							if field.typ.has_flag(.generic) {
+								for j, gp in rts.info.generic_types {
+									if gp == field.typ {
+										field.typ = generic_types[j].derive(field.typ).clear_flag(.generic)
+										break
+									}
+								}
+							}
+							fields[i] = field
+						}
+						mut info := rts.info
+						info.generic_types = []
+						info.fields = fields
+						stru_idx := c.table.register_type_symbol(table.TypeSymbol{
+							kind: .struct_
+							name: nrt
+							cname: util.no_dots(c_nrt)
+							mod: c.mod
+							info: info
+						})
+						call_expr.return_type = table.new_type(stru_idx)
+					}
+				}
 			}
 		}
 	} else {
@@ -2010,7 +2040,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		}
 	}
 	for i, call_arg in call_expr.args {
-		arg := if f.is_variadic && i >= f.params.len - 1 {
+		param := if f.is_variadic && i >= f.params.len - 1 {
 			f.params[f.params.len - 1]
 		} else {
 			f.params[i]
@@ -2020,39 +2050,39 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 				c.error('too many arguments in call to `$f.name`', call_expr.pos)
 			}
 		}
-		c.expected_type = arg.typ
+		c.expected_type = param.typ
 		typ := c.check_expr_opt_call(call_arg.expr, c.expr(call_arg.expr))
 		call_expr.args[i].typ = typ
 		typ_sym := c.table.get_type_symbol(typ)
-		arg_typ_sym := c.table.get_type_symbol(arg.typ)
+		arg_typ_sym := c.table.get_type_symbol(param.typ)
 		if f.is_variadic && typ.has_flag(.variadic) && call_expr.args.len - 1 > i {
 			c.error('when forwarding a variadic variable, it must be the final argument',
 				call_arg.pos)
 		}
-		arg_share := arg.typ.share()
+		arg_share := param.typ.share()
 		if arg_share == .shared_t && (c.locked_names.len > 0 || c.rlocked_names.len > 0) {
 			c.error('function with `shared` arguments cannot be called inside `lock`/`rlock` block',
 				call_arg.pos)
 		}
 		if call_arg.is_mut && f.language == .v {
 			to_lock, pos := c.fail_if_immutable(call_arg.expr)
-			if !arg.is_mut {
+			if !param.is_mut {
 				tok := call_arg.share.str()
-				c.error('`$call_expr.name` parameter `$arg.name` is not `$tok`, `$tok` is not needed`',
+				c.error('`$call_expr.name` parameter `$param.name` is not `$tok`, `$tok` is not needed`',
 					call_arg.expr.position())
 			} else {
-				if arg.typ.share() != call_arg.share {
+				if param.typ.share() != call_arg.share {
 					c.error('wrong shared type', call_arg.expr.position())
 				}
-				if to_lock != '' && !arg.typ.has_flag(.shared_f) {
+				if to_lock != '' && !param.typ.has_flag(.shared_f) {
 					c.error('$to_lock is `shared` and must be `lock`ed to be passed as `mut`',
 						pos)
 				}
 			}
 		} else {
-			if arg.is_mut {
+			if param.is_mut {
 				tok := call_arg.share.str()
-				c.error('`$call_expr.name` parameter `$arg.name` is `$tok`, you need to provide `$tok` e.g. `$tok arg${
+				c.error('`$call_expr.name` parameter `$param.name` is `$tok`, you need to provide `$tok` e.g. `$tok arg${
 					i + 1}`', call_arg.expr.position())
 			} else {
 				c.fail_if_unreadable(call_arg.expr, typ, 'argument')
@@ -2060,10 +2090,10 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		}
 		// Handle expected interface
 		if arg_typ_sym.kind == .interface_ {
-			c.type_implements(typ, arg.typ, call_arg.expr.position())
+			c.type_implements(typ, param.typ, call_arg.expr.position())
 			continue
 		}
-		c.check_expected_call_arg(typ, arg.typ, call_expr.language) or {
+		c.check_expected_call_arg(typ, param.typ, call_expr.language) or {
 			// str method, allow type with str method if fn arg is string
 			// Passing an int or a string array produces a c error here
 			// Deleting this condition results in propper V error messages
@@ -2077,6 +2107,14 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 				continue
 			}
 			c.error('$err.msg in argument ${i + 1} to `$fn_name`', call_arg.pos)
+		}
+		// Warn about automatic (de)referencing, which will be removed soon.
+		if f.language != .c && !c.inside_unsafe && typ.nr_muls() != param.typ.nr_muls()
+			&& !(call_arg.is_mut && param.is_mut) && !(!call_arg.is_mut && !param.is_mut)
+			&& param.typ !in [table.byteptr_type, table.charptr_type, table.voidptr_type] {
+			// sym := c.table.get_type_symbol(typ)
+			c.warn('automatic referencing/dereferencing is deprecated and will be removed soon (got: $typ.nr_muls() references, expected: $param.typ.nr_muls() references)',
+				call_arg.pos)
 		}
 	}
 	if f.generic_names.len != call_expr.generic_types.len {

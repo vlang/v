@@ -534,7 +534,7 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp string, str_fn_name st
 	g.auto_str_funcs.writeln('}')
 }
 
-fn struct_auto_str_func(sym table.TypeSymbol, field_type table.Type, fn_name string, field_name string) string {
+fn struct_auto_str_func(sym &table.TypeSymbol, field_type table.Type, fn_name string, field_name string) string {
 	has_custom_str, expects_ptr, _ := sym.str_method_info()
 	if sym.kind == .enum_ {
 		return '${fn_name}(it.${c_name(field_name)})'

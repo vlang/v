@@ -9,41 +9,35 @@ import v.pref
 import v.parser
 import v.table
 import v.token
+import term
 
 struct Vet {
 	opt Options
 mut:
 	errors []vet.Error
+	warns  []vet.Error
 	file   string
 }
 
 struct Options {
-	is_verbose bool
-}
-
-fn (vet &Vet) vprintln(s string) {
-	if !vet.opt.is_verbose {
-		return
-	}
-	println(s)
+	is_force      bool
+	is_werror     bool
+	is_verbose    bool
+	show_warnings bool
+	use_color     bool
 }
 
 const vet_options = cmdline.options_after(os.args, ['vet'])
 
-const is_force = '-force' in vet_options
-
-const is_werror = '-W' in vet_options
-
-const is_verbose = '-verbose' in vet_options || '-v' in vet_options
-
-const show_warnings = '-hide-warnings' !in vet_options
-
 fn main() {
-	opt := Options{
-		is_verbose: is_verbose
-	}
-	mut vet := Vet{
-		opt: opt
+	mut vt := Vet{
+		opt: Options{
+			is_force: '-force' in vet_options
+			is_werror: '-W' in vet_options
+			is_verbose: '-verbose' in vet_options || '-v' in vet_options
+			show_warnings: '-hide-warnings' !in vet_options
+			use_color: should_use_color()
+		}
 	}
 	mut paths := cmdline.only_non_options(vet_options)
 	vtmp := os.getenv('VTMP')
@@ -51,95 +45,46 @@ fn main() {
 		// `v test-cleancode` passes also `-o tmpfolder` as well as all options in VFLAGS
 		paths = paths.filter(!it.starts_with(vtmp))
 	}
-	//
 	for path in paths {
 		if !os.exists(path) {
 			eprintln('File/folder $path does not exist')
 			continue
 		}
-		if path.ends_with('.v') || path.ends_with('.vv') {
-			if path.contains('cmd/tools/vvet/tests/') {
-				if is_force || paths.len == 1 {
-					vet.vet_file(path, true)
-					continue
-				} else {
-					// The .vv files in that folder, are regression tests
-					// for `v vet` itself and thus are known to fail in
-					// a predictable way. They are run 1 by 1 by vet_test.v.
-					// They *should be skipped*, when run by more general
-					// invocations like for example `v vet cmd/tools`
-					eprintln("skipping vvet regression file: '$path' ...")
-					continue
-				}
-			}
-		}
 		if os.is_file(path) {
-			vet.vet_file(path, false)
+			vt.vet_file(path)
 		}
 		if os.is_dir(path) {
-			vet.vprintln("vetting folder: '$path' ...")
+			vt.vprintln("vetting folder: '$path' ...")
 			vfiles := os.walk_ext(path, '.v')
 			vvfiles := os.walk_ext(path, '.vv')
 			mut files := []string{}
 			files << vfiles
 			files << vvfiles
 			for file in files {
-				if !is_force && file.ends_with('.vv') && file.contains('cmd/tools/vvet/tests/') {
-					continue
-				}
-				vet.vet_file(file, false)
+				vt.vet_file(file)
 			}
 		}
 	}
-	//
-	warnings := vet.errors.filter(it.kind == .warning)
-	errors := vet.errors.filter(it.kind == .error)
-	errors_vfmt := vet.errors.filter(it.kind == .error && it.fix == .vfmt)
-	if show_warnings {
-		for err in warnings {
-			eprintln('$err.file_path:$err.pos.line_nr: warning: $err.message')
+	vfmt_err_count := vt.errors.filter(it.fix == .vfmt).len
+	if vt.opt.show_warnings {
+		for w in vt.warns {
+			eprintln(vt.e2string(w))
 		}
 	}
-	for err in errors {
-		eprintln('$err.file_path:$err.pos.line_nr: error: $err.message')
+	for err in vt.errors {
+		eprintln(vt.e2string(err))
 	}
-	if errors_vfmt.len > 0 {
-		eprintln('NB: You can run `v fmt -w file.v` to fix these automatically')
+	if vfmt_err_count > 0 {
+		eprintln('NB: You can run `v fmt -w file.v` to fix these errors automatically')
 	}
-	if errors.len > 0 || (is_werror && warnings.len > 0) {
+	if vt.errors.len > 0 || (vt.opt.is_werror && vt.warns.len > 0) {
 		exit(1)
 	}
 }
 
-fn (mut v Vet) error(msg string, line int, fix vet.FixKind) {
-	pos := token.Position{
-		line_nr: line + 1
-	}
-	v.errors << vet.Error{
-		message: msg
-		file_path: v.file
-		pos: pos
-		kind: .error
-		fix: fix
-	}
-}
-
-fn (mut v Vet) warn(msg string, line int, fix vet.FixKind) {
-	pos := token.Position{
-		line_nr: line + 1
-	}
-	v.errors << vet.Error{
-		message: msg
-		file_path: v.file
-		pos: pos
-		kind: .warning
-		fix: fix
-	}
-}
-
 // vet_file vets the file read from `path`.
-fn (mut vt Vet) vet_file(path string, is_regression_test bool) {
-	if path.contains('/tests/') && !is_regression_test {
+fn (mut vt Vet) vet_file(path string) {
+	if path.contains('/tests/') && !vt.opt.is_force {
 		// skip all /tests/ files, since usually their content is not
 		// important enough to be documented/vetted, and they may even
 		// contain intentionally invalid code.
@@ -162,7 +107,7 @@ fn (mut vt Vet) vet_file(path string, is_regression_test bool) {
 }
 
 // vet_line vets the contents of `line` from `vet.file`.
-fn (mut vet Vet) vet_line(lines []string, line string, lnumber int) {
+fn (mut vt Vet) vet_line(lines []string, line string, lnumber int) {
 	// Vet public functions
 	if line.starts_with('pub fn') || (line.starts_with('fn ') && !(line.starts_with('fn C.')
 		|| line.starts_with('fn main'))) {
@@ -212,7 +157,7 @@ fn (mut vet Vet) vet_line(lines []string, line string, lnumber int) {
 				if grab {
 					clean_line := line.all_before_last('{').trim(' ')
 					if is_pub_fn {
-						vet.warn('Function documentation seems to be missing for "$clean_line".',
+						vt.warn('Function documentation seems to be missing for "$clean_line".',
 							lnumber, .doc)
 					}
 				}
@@ -230,7 +175,7 @@ fn (mut vet Vet) vet_line(lines []string, line string, lnumber int) {
 						grab = false
 						if is_pub_fn {
 							clean_line := line.all_before_last('{').trim(' ')
-							vet.warn('The documentation for "$clean_line" seems incomplete.',
+							vt.warn('The documentation for "$clean_line" seems incomplete.',
 								lnumber, .doc)
 						}
 						break
@@ -244,11 +189,69 @@ fn (mut vet Vet) vet_line(lines []string, line string, lnumber int) {
 				if grab {
 					clean_line := line.all_before_last('{').trim(' ')
 					if is_pub_fn {
-						vet.warn('A function name is missing from the documentation of "$clean_line".',
+						vt.warn('A function name is missing from the documentation of "$clean_line".',
 							lnumber, .doc)
 					}
 				}
 			}
 		}
 	}
+}
+
+fn (vt &Vet) vprintln(s string) {
+	if !vt.opt.is_verbose {
+		return
+	}
+	println(s)
+}
+
+fn (vt &Vet) e2string(err vet.Error) string {
+	mut kind := '$err.kind:'
+	mut location := '$err.file_path:$err.pos.line_nr:'
+	if vt.opt.use_color {
+		kind = match err.kind {
+			.warning { term.magenta(kind) }
+			.error { term.red(kind) }
+		}
+		kind = term.bold(kind)
+		location = term.bold(location)
+	}
+	return '$location $kind $err.message'
+}
+
+fn (mut vt Vet) error(msg string, line int, fix vet.FixKind) {
+	pos := token.Position{
+		line_nr: line + 1
+	}
+	vt.errors << vet.Error{
+		message: msg
+		file_path: vt.file
+		pos: pos
+		kind: .error
+		fix: fix
+	}
+}
+
+fn (mut vt Vet) warn(msg string, line int, fix vet.FixKind) {
+	pos := token.Position{
+		line_nr: line + 1
+	}
+	vt.warns << vet.Error{
+		message: msg
+		file_path: vt.file
+		pos: pos
+		kind: .warning
+		fix: fix
+	}
+}
+
+fn should_use_color() bool {
+	mut color := term.can_show_color_on_stderr()
+	if '-nocolor' in vet_options {
+		color = false
+	}
+	if '-color' in vet_options {
+		color = true
+	}
+	return color
 }

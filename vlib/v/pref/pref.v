@@ -20,6 +20,7 @@ pub enum BuildMode {
 pub enum GarbageCollectionMode {
 	no_gc
 	boehm
+	boehm_leak
 }
 
 pub enum OutputMode {
@@ -158,7 +159,7 @@ pub mut:
 	build_options       []string // list of options, that should be passed down to `build-module`, if needed for -usecache
 	cache_manager       vcache.CacheManager
 	is_help             bool // -h, -help or --help was passed
-	gc_mode             GarbageCollectionMode = .no_gc // .no_gc, .boehm
+	gc_mode             GarbageCollectionMode = .no_gc // .no_gc, .boehm, .boehm_leak
 	// checker settings:
 	checker_match_exhaustive_cutoff_limit int = 10
 }
@@ -230,8 +231,13 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 						res.gc_mode = .boehm
 						parse_define(mut res, 'gcboehm')
 					}
+					'boehm_leak' {
+						res.gc_mode = .boehm_leak
+						parse_define(mut res, 'gcboehm')
+						parse_define(mut res, 'gcboehm_leak')
+					}
 					else {
-						eprintln('unknown garbage collection mode, only `-gc boehm` is supported')
+						eprintln('unknown garbage collection mode, only `-gc boehm` and `-gc boehm_leak` are supported')
 						exit(1)
 					}
 				}

@@ -13,8 +13,9 @@ const (
 		'/usr/lib64/pkgconfig',
 		'/usr/lib/pkgconfig',
 		'/usr/share/pkgconfig',
+		'/opt/homebrew/lib/pkgconfig',
 	]
-	version       = '0.3.0'
+	version       = '0.3.1'
 )
 
 pub struct Options {

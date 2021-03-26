@@ -43,9 +43,9 @@ fn test_decode() {
 	assert base64.decode(man_pair.encoded) == man_pair.decoded.bytes()
 
 	// Test for incorrect padding.
-	assert base64.decode('aGk') == 'hi'.bytes()
+	assert base64.decode('aGk') == ''.bytes()
 	assert base64.decode('aGk=') == 'hi'.bytes()
-	assert base64.decode('aGk==') == 'hi'.bytes()
+	assert base64.decode('aGk==') == ''.bytes()
 
 	for i, p in pairs {
 		got := base64.decode(p.encoded)
@@ -60,9 +60,9 @@ fn test_decode_str() {
 	assert base64.decode_str(man_pair.encoded) == man_pair.decoded
 
 	// Test for incorrect padding.
-	assert base64.decode_str('aGk') == 'hi'
+	assert base64.decode_str('aGk') == ''
 	assert base64.decode_str('aGk=') == 'hi'
-	assert base64.decode_str('aGk==') == 'hi'
+	assert base64.decode_str('aGk==') == ''
 
 	for i, p in pairs {
 		got := base64.decode_str(p.encoded)

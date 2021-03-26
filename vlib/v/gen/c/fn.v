@@ -33,6 +33,10 @@ fn (mut g Gen) process_fn_decl(node ast.FnDecl) {
 	if !g.is_used_by_main(node) {
 		return
 	}
+	if g.is_builtin_mod && g.pref.gc_mode == .boehm_leak && node.name == 'malloc' {
+		g.definitions.write_string('#define v_malloc GC_MALLOC\n')
+		return
+	}
 	g.gen_attrs(node.attrs)
 	// g.tmp_count = 0 TODO
 	mut skip := false

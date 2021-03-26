@@ -320,13 +320,20 @@ fn vpm_remove(module_names []string) {
 		final_module_path := valid_final_path_of_existing_module(name) or { continue }
 		println('Removing module "$name"...')
 		verbose_println('removing folder $final_module_path')
-		os.rmdir_all(final_module_path) or { panic(err) }
+		os.rmdir_all(final_module_path) or {
+			verbose_println('error while removing "$final_module_path": $err.msg')
+		}
 		// delete author directory if it is empty
 		author := name.split('.')[0]
 		author_dir := os.real_path(os.join_path(settings.vmodules_path, author))
+		if !os.exists(author_dir) {
+			continue
+		}
 		if os.is_dir_empty(author_dir) {
 			verbose_println('removing author folder $author_dir')
-			os.rmdir(author_dir) or { panic(err) }
+			os.rmdir(author_dir) or {
+				verbose_println('error while removing "$author_dir": $err.msg')
+			}
 		}
 	}
 }
