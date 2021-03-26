@@ -1,6 +1,10 @@
-struct XX {}
+struct XX {
+	x int
+}
 
-struct YY {}
+struct YY {
+	y int
+}
 
 fn show_result<T, U>(x T, y U) bool {
 	return true
