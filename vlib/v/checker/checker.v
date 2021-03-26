@@ -1944,9 +1944,39 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			if rts.info.generic_types.len > 0 {
 				gts := c.table.get_type_symbol(call_expr.generic_types[0])
 				nrt := '$rts.name<$gts.name>'
+				c_nrt := '${rts.name}_T_$gts.name'
 				idx := c.table.type_idxs[nrt]
-				c.ensure_type_exists(idx, call_expr.pos) or {}
-				call_expr.return_type = table.new_type(idx).derive(f.return_type)
+				if idx != 0 {
+					c.ensure_type_exists(idx, call_expr.pos) or {}
+					call_expr.return_type = table.new_type(idx).derive(f.return_type)
+				} else {
+					mut fields := rts.info.fields.clone()
+					if rts.info.generic_types.len == generic_types.len {
+						for i, _ in fields {
+							mut field := fields[i]
+							if field.typ.has_flag(.generic) {
+								for j, gp in rts.info.generic_types {
+									if gp == field.typ {
+										field.typ = generic_types[j].derive(field.typ).clear_flag(.generic)
+										break
+									}
+								}
+							}
+							fields[i] = field
+						}
+						mut info := rts.info
+						info.generic_types = []
+						info.fields = fields
+						stru_idx := c.table.register_type_symbol(table.TypeSymbol{
+							kind: .struct_
+							name: nrt
+							cname: util.no_dots(c_nrt)
+							mod: c.mod
+							info: info
+						})
+						call_expr.return_type = table.new_type(stru_idx)
+					}
+				}
 			}
 		}
 	} else {
