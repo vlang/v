@@ -37,3 +37,38 @@ fn test_alias_of_pointer_types() {
 	assert sizeof(PPZZInt) == sizeof(voidptr)
 	assert sizeof(PPZZMyStructInt) == sizeof(voidptr)
 }
+
+fn test_calling_a_function_expecting_a_mut_alias() {
+	eprintln('------------------------')
+	mut s := &MyStructInt{456}
+	mut ps := PZZMyStructInt(s)
+	dump(voidptr(s))
+	dump(voidptr(ps))
+	eprintln('------------------------')
+	dump(&MyStructInt(ps))
+	res := mut_alias(mut ps)
+	dump(&MyStructInt(ps))
+	// the alias `ps` is now changed and points to another object
+	assert res == 123
+	assert s.x == 456 // should remain the same
+	assert (&MyStructInt(ps)).x == 789
+	assert u64(voidptr(s)) != u64(voidptr(ps))
+	dump(voidptr(s))
+	dump(voidptr(ps))
+	eprintln('------------------------')
+}
+
+// do not delete this, its generated code eases comparisons with mut_alias
+fn mut_struct(mut p ZZMyStructInt) int {
+	dump(ptr_str(voidptr(p)))
+	return 999
+}
+
+fn mut_alias(mut ps PZZMyStructInt) int {
+	//	dump(ptr_str(voidptr(ps)))
+	another := &MyStructInt{789}
+	//	dump(ptr_str(voidptr(another)))
+	ps = PZZMyStructInt(another)
+	//	dump(ptr_str(voidptr(ps)))
+	return 123
+}
