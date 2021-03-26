@@ -2110,7 +2110,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		}
 		// Warn about automatic (de)referencing, which will be removed soon.
 		if f.language != .c && !c.inside_unsafe && typ.nr_muls() != param.typ.nr_muls()
-			&& !(call_arg.is_mut && param.is_mut)
+			&& !(call_arg.is_mut && param.is_mut) && !(!call_arg.is_mut && !param.is_mut)
 			&& param.typ !in [table.byteptr_type, table.charptr_type, table.voidptr_type] {
 			// sym := c.table.get_type_symbol(typ)
 			c.warn('automatic referencing/dereferencing is deprecated and will be removed soon (got: $typ.nr_muls() references, expected: $param.typ.nr_muls() references)',
