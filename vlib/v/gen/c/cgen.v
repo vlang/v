@@ -1560,22 +1560,22 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 		g.expr(node.cond)
 		g.writeln(';')
 		g.writeln('while (1) {')
-		t := g.new_tmp_var()
+		t_var := g.new_tmp_var()
 		receiver_typ := next_fn.params[0].typ
 		receiver_styp := g.typ(receiver_typ)
 		fn_name := receiver_styp.replace_each(['*', '', '.', '__']) + '_next'
-		g.write('\t${g.typ(ret_typ)} $t = ${fn_name}(')
+		g.write('\t${g.typ(ret_typ)} $t_var = ${fn_name}(')
 		if !node.cond_type.is_ptr() && receiver_typ.is_ptr() {
 			g.write('&')
 		}
 		g.writeln('$t_expr);')
-		g.writeln('\tif (${t}.state != 0) break;')
+		g.writeln('\tif (${t_var}.state != 0) break;')
 		val := if node.val_var in ['', '_'] { g.new_tmp_var() } else { node.val_var }
 		val_styp := g.typ(node.val_type)
-		g.writeln('\t$val_styp $val = *($val_styp*)${t}.data;')
+		g.writeln('\t$val_styp $val = *($val_styp*)${t_var}.data;')
 	} else {
-		s := g.table.type_to_str(node.cond_type)
-		g.error('for in: unhandled symbol `$node.cond` of type `$s`', node.pos)
+		typ_str := g.table.type_to_str(node.cond_type)
+		g.error('for in: unhandled symbol `$node.cond` of type `$typ_str`', node.pos)
 	}
 	g.stmts(node.stmts)
 	if node.label.len > 0 {
