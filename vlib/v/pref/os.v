@@ -17,6 +17,7 @@ pub enum OS {
 	android
 	solaris
 	haiku
+	all
 }
 
 // Helper function to convert string names to OS enum
@@ -55,6 +56,7 @@ pub fn (o OS) str() string {
 		.android { return 'Android' }
 		.solaris { return 'Solaris' }
 		.haiku { return 'Haiku' }
+		.all { return 'all' }
 	}
 }
 

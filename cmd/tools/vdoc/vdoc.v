@@ -50,6 +50,7 @@ mut:
 	is_vlib          bool
 	is_verbose       bool
 	include_readme   bool
+	has_provided_platform bool
 	include_examples bool = true
 	inline_assets    bool
 	no_timestamp     bool
@@ -57,7 +58,7 @@ mut:
 	output_type      OutputType = .unset
 	input_path       string
 	symbol_name      string
-	os               string
+	platform         doc.Platform
 }
 
 //
@@ -124,8 +125,21 @@ fn (vd VDoc) write_plaintext_content(contents []doc.DocNode, mut pw strings.Buil
 				}
 				pw.writeln(comments.trim_space().split_into_lines().map('    ' + it).join('\n'))
 			}
-			if cfg.show_loc {
-				pw.writeln('Location: $cn.file_path:${cn.pos.line_nr + 1}\n')
+			if cfg.show_loc && !cfg.has_provided_platform {
+				pw.writeln('Location: $cn.file_path:$cn.pos.line\n')
+			}
+			if cfg.has_provided_platform && cfg.show_loc  {
+				if cn.platform != .cross {
+					pw.writeln('Location: $cn.file_path:$cn.pos.line')
+					pw.writeln('Platform: $cn.platform\n')
+				} else {
+					pw.writeln('Location: $cn.file_path:$cn.pos.line\n')
+				}
+			}
+			if cfg.has_provided_platform && !cfg.show_loc {
+				if cn.platform != .cross {
+					pw.writeln('Platform: $cn.platform\n')
+				}
 			}
 		}
 		vd.write_plaintext_content(cn.children, mut pw)
@@ -293,7 +307,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 	}
 	for dirpath in dirs {
 		vd.vprintln('Generating $out.typ docs for "$dirpath"')
-		mut dcs := doc.generate(dirpath, cfg.pub_only, true, cfg.os, cfg.symbol_name) or {
+		mut dcs := doc.generate(dirpath, cfg.pub_only, true, cfg.platform, cfg.symbol_name) or {
 			vd.emit_generate_err(err)
 			exit(1)
 		}
@@ -421,8 +435,13 @@ fn parse_arguments(args []string) Config {
 				i++
 			}
 			'-os' {
-				os := cmdline.option(current_args, '-os', '')
-				cfg.os = os
+				platform_str := cmdline.option(current_args, '-os', '')
+				selected_platform := doc.platform_from_string(platform_str) or {
+					eprintln(err.msg)
+					exit(1)
+				}
+				cfg.platform = selected_platform
+				cfg.has_provided_platform = true
 				i++
 			}
 			'-no-timestamp' {

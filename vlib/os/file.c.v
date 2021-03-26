@@ -600,3 +600,12 @@ pub fn (mut f File) write_raw_at<T>(t &T, pos int) ? {
 		return error_with_code('incomplete struct write', nbytes)
 	}
 }
+
+pub fn (mut f File) close() {
+	if !f.is_opened {
+		return
+	}
+	f.is_opened = false
+	C.fflush(f.cfile)
+	C.fclose(f.cfile)
+}
