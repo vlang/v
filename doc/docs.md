@@ -86,10 +86,10 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Short struct literal syntax](#short-struct-initialization-syntax)
     * [Access modifiers](#access-modifiers)
     * [Methods](#methods)
+* [Unions](#unions)
 
 </td><td width=33% valign=top>
 
-* [Unions](#unions)
 * [Functions 2](#functions-2)
     * [Pure functions by default](#pure-functions-by-default)
     * [Mutable arguments](#mutable-arguments)
@@ -104,6 +104,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Interfaces](#interfaces)
     * [Enums](#enums)
     * [Sum types](#sum-types)
+    * [Type aliases](#type-aliases)
     * [Option/Result types & error handling](#optionresult-types-and-error-handling)
 * [Generics](#generics)
 * [Concurrency](#concurrency)
@@ -2364,6 +2365,12 @@ fn pass_time(w World) {
     }
 }
 ```
+
+### Type aliases
+
+To define a new type `NewType` as an alias for `ExistingType`,
+do `type NewType = ExistingType`.<br/>
+This is a special case of a [sum type](#sum-types) declaration.
 
 ### Option/Result types and error handling
 
