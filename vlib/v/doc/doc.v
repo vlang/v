@@ -27,6 +27,7 @@ pub enum SymbolKind {
 	struct_
 	struct_field
 }
+
 pub enum Platform {
 	auto
 	ios
@@ -174,7 +175,6 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 	if name in d.common_symbols {
 		return error('already documented')
 	}
-	//println('mod: $d.orig_mod_name')
 	if name.starts_with(d.orig_mod_name + '.') {
 		name = name.all_after(d.orig_mod_name + '.')
 	}
@@ -495,17 +495,13 @@ pub fn (mut d Doc) file_asts(file_asts []ast.File) ? {
 // instance of `Doc` if it is successful. Otherwise, it will  throw an error.
 pub fn generate(input_path string, pub_only bool, with_comments bool, platform Platform, filter_symbol_names ...string) ?Doc {
 	if platform == .js {
-		return error('vdoc: Platform `${platform}` is not supported.')
+		return error('vdoc: Platform `$platform` is not supported.')
 	}
 	mut doc := new(input_path)
 	doc.pub_only = pub_only
 	doc.with_comments = with_comments
 	doc.filter_symbol_names = filter_symbol_names.filter(it.len != 0)
-	doc.prefs.os = if platform == .auto {
-		pref.get_host_os()
-	} else {
-		pref.OS(int(platform))
- 	}
+	doc.prefs.os = if platform == .auto { pref.get_host_os() } else { pref.OS(int(platform)) }
 	doc.generate() ?
 	return doc
 }
