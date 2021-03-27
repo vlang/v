@@ -1,6 +1,6 @@
 module fontstash
 
-#define FONS_USE_FREETYPE
+#define FONS_USE_FREETYPE 1
 #flag windows -I @VROOT/thirdparty/freetype/include
 #flag windows -L @VROOT/thirdparty/freetype/win64
 #flag linux -I/usr/include/freetype2

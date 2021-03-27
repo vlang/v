@@ -264,33 +264,33 @@ fn init_cube_glsl(mut app App) {
 		// Face 0
 		Vertex_t{-1.0, -1.0, -1.0, c,  0, 0},
 		Vertex_t{ 1.0, -1.0, -1.0, c,  d, 0},
-    Vertex_t{ 1.0,  1.0, -1.0, c,  d, d},
-    Vertex_t{-1.0,  1.0, -1.0, c,  0, d},
+		Vertex_t{ 1.0,  1.0, -1.0, c,  d, d},
+		Vertex_t{-1.0,  1.0, -1.0, c,  0, d},
 		// Face 1
 		Vertex_t{-1.0, -1.0,  1.0, c,  0, 0},
-    Vertex_t{ 1.0, -1.0,  1.0, c,  d, 0},
-    Vertex_t{ 1.0,  1.0,  1.0, c,  d, d},
-    Vertex_t{-1.0,  1.0,  1.0, c,  0, d},
+		Vertex_t{ 1.0, -1.0,  1.0, c,  d, 0},
+		Vertex_t{ 1.0,  1.0,  1.0, c,  d, d},
+		Vertex_t{-1.0,  1.0,  1.0, c,  0, d},
 		// Face 2
 		Vertex_t{-1.0, -1.0, -1.0, c,  0, 0},
-    Vertex_t{-1.0,  1.0, -1.0, c,  d, 0},
-    Vertex_t{-1.0,  1.0,  1.0, c,  d, d},
-    Vertex_t{-1.0, -1.0,  1.0, c,  0, d},
+		Vertex_t{-1.0,  1.0, -1.0, c,  d, 0},
+		Vertex_t{-1.0,  1.0,  1.0, c,  d, d},
+		Vertex_t{-1.0, -1.0,  1.0, c,  0, d},
 		// Face 3
 		Vertex_t{ 1.0, -1.0, -1.0, c,  0, 0},
-    Vertex_t{ 1.0,  1.0, -1.0, c,  d, 0},
-    Vertex_t{ 1.0,  1.0,  1.0, c,  d, d},
-    Vertex_t{ 1.0, -1.0,  1.0, c,  0, d},
+		Vertex_t{ 1.0,  1.0, -1.0, c,  d, 0},
+		Vertex_t{ 1.0,  1.0,  1.0, c,  d, d},
+		Vertex_t{ 1.0, -1.0,  1.0, c,  0, d},
 		// Face 4
 		Vertex_t{-1.0, -1.0, -1.0, c,  0, 0},
-    Vertex_t{-1.0, -1.0,  1.0, c,  d, 0},
-    Vertex_t{ 1.0, -1.0,  1.0, c,  d, d},
-    Vertex_t{ 1.0, -1.0, -1.0, c,  0, d},
+		Vertex_t{-1.0, -1.0,  1.0, c,  d, 0},
+		Vertex_t{ 1.0, -1.0,  1.0, c,  d, d},
+		Vertex_t{ 1.0, -1.0, -1.0, c,  0, d},
 		// Face 5
 		Vertex_t{-1.0,  1.0, -1.0, c,  0, 0},
-    Vertex_t{-1.0,  1.0,  1.0, c,  d, 0},
-    Vertex_t{ 1.0,  1.0,  1.0, c,  d, d},
-    Vertex_t{ 1.0,  1.0, -1.0, c,  0, d},
+		Vertex_t{-1.0,  1.0,  1.0, c,  d, 0},
+		Vertex_t{ 1.0,  1.0,  1.0, c,  d, d},
+		Vertex_t{ 1.0,  1.0, -1.0, c,  0, d},
 	]
 
 	mut vert_buffer_desc := C.sg_buffer_desc{}

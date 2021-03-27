@@ -35,9 +35,9 @@ jobs:
       - name: Build the repeat tool
         run: ./v cmd/tools/repeat.v
       - name: Repeat -o hw.c examples/hello_world.v
-        run: cmd/tools/repeat --max_time 150 --series 3 --count 10 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -show-timings -o hw.c examples/hello_world.v' . ./vmaster
+        run: cmd/tools/repeat --max_time 201 --series 3 --count 10 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -show-timings -o hw.c examples/hello_world.v' . ./vmaster
       - name: Repeat -o v.c cmd/v
-        run: cmd/tools/repeat --max_time 850 --series 3 --count 15 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -show-timings -o v.c cmd/v' . ./vmaster
+        run: cmd/tools/repeat --max_time 1001 --series 3 --count 15 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -show-timings -o v.c cmd/v' . ./vmaster
 
   ubuntu-tcc:
     runs-on: ubuntu-20.04
@@ -129,7 +129,9 @@ jobs:
           thirdparty/tcc/tcc.exe -version
           ./v -cg -o v cmd/v # Make sure vtcc can build itself twice
       - name: v self compilation with -gc boehm
-        run: ./v -gc boehm -o v2 cmd/v && ./v2 -gc boehm -o v3 cmd/v && ./v3 -gc boehm -o v4 cmd/v
+        run: |
+          ./v -gc boehm -o v2 cmd/v && ./v2 -gc boehm -o v3 cmd/v && ./v3 -gc boehm -o v4 cmd/v
+          mv v4 v
       - name: v doctor
         run: |
           ./v doctor
@@ -137,9 +139,23 @@ jobs:
         run: |
           ./v -gc boehm cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
-      - name: Self tests with `-gc boehm`
-        ## The test cases are run with non-gc `v` for now
+      - name: Self tests with `-gc boehm` with V compiler using Boehm-GC itself
         run: ./v -gc boehm -silent test-self
+      - name: Test leak detector
+        run: |
+          ./v -gc boehm_leak -o testcase_leak vlib/v/tests/testcase_leak.v
+          ./testcase_leak 2>leaks.txt
+          grep "Found 1 leaked object" leaks.txt && grep ", sz=1000," leaks.txt
+      - name: Test leak detector not being active for `-gc boehm`
+        run: |
+          ./v -gc boehm -o testcase_leak vlib/v/tests/testcase_leak.v
+          ./testcase_leak 2>leaks.txt
+          [ "$(stat -c %s leaks.txt)" = "0" ]
+      - name: Test leak detector not being active for normal compile
+        run: |
+          ./v -o testcase_leak vlib/v/tests/testcase_leak.v
+          ./testcase_leak 2>leaks.txt
+          [ "$(stat -c %s leaks.txt)" = "0" ]
 
   misc-tooling:
     runs-on: ubuntu-20.04
@@ -181,6 +197,7 @@ jobs:
               examples/sokol/04_multi_shader_glsl/rt_glsl_puppy \
               examples/sokol/04_multi_shader_glsl/rt_glsl_march \
               examples/sokol/05_instancing_glsl/rt_glsl_instancing \
+              examples/sokol/06_obj_viewer/gouraud \
               ; do \
                  echo "compiling shader $f.glsl ..."; \
                  sokol-tools-bin-pre-feb2021-api-changes/bin/linux/sokol-shdc --input $f.glsl --output $f.h --slang glsl330 ; \

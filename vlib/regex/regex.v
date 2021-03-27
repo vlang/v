@@ -390,7 +390,7 @@ const(
 	]
 
 	// these chars are escape if preceded by a \
-	bsls_escape_list = [`\\`, `|`, `.`, `:`, `*`, `+`, `-`, `{`, `}`, `[`, `]`, `(`, `)`, `?`]
+	bsls_escape_list = [`\\`, `|`, `.`, `:`, `*`, `+`, `-`, `{`, `}`, `[`, `]`, `(`, `)`, `?`, `^`, `!`]
 )
 
 enum BSLS_parse_state {
@@ -613,8 +613,15 @@ fn (mut re RE) parse_char_class(in_txt string, in_i int) (int, int, rune) {
 				}
 			}
 			if status == .in_bsls {
+				// manage as a simple char
 				//println("CC bsls not found [${ch:c}]")
+				re.cc[tmp_index].cc_type = cc_char
+				re.cc[tmp_index].ch0     = char_tmp
+				re.cc[tmp_index].ch1     = char_tmp
+				i += char_len
+				tmp_index++
 				status = .in_char
+				continue
 			}else {
 				continue
 			}

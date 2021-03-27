@@ -13,6 +13,10 @@ struct FileInfo {
 	size int
 }
 
+fn C.fseeko(voidptr, u64, int) int
+
+fn C._fseeki64(voidptr, u64, int) int
+
 // open_file can be used to open or create a file with custom flags and permissions and returns a `File` object.
 pub fn open_file(path string, mode string, options ...int) ?File {
 	mut flags := 0
@@ -202,17 +206,39 @@ pub fn (mut f File) write_string(s string) ?int {
 // write_to implements the RandomWriter interface.
 // It returns how many bytes were actually written.
 // It resets the seek position to the end of the file.
-pub fn (mut f File) write_to(pos int, buf []byte) ?int {
+pub fn (mut f File) write_to(pos u64, buf []byte) ?int {
 	if !f.is_opened {
 		return error('file is not opened')
 	}
-	C.fseek(f.cfile, pos, C.SEEK_SET)
-	res := int(C.fwrite(buf.data, 1, buf.len, f.cfile))
-	if res == 0 && buf.len != 0 {
-		return error('0 bytes written')
+	$if x64 {
+		$if windows {
+			C._fseeki64(f.cfile, pos, C.SEEK_SET)
+			res := int(C.fwrite(buf.data, 1, buf.len, f.cfile))
+			if res == 0 && buf.len != 0 {
+				return error('0 bytes written')
+			}
+			C._fseeki64(f.cfile, 0, C.SEEK_END)
+			return res
+		} $else {
+			C.fseeko(f.cfile, pos, C.SEEK_SET)
+			res := int(C.fwrite(buf.data, 1, buf.len, f.cfile))
+			if res == 0 && buf.len != 0 {
+				return error('0 bytes written')
+			}
+			C.fseeko(f.cfile, 0, C.SEEK_END)
+			return res
+		}
 	}
-	C.fseek(f.cfile, 0, C.SEEK_END)
-	return res
+	$if x32 {
+		C.fseek(f.cfile, pos, C.SEEK_SET)
+		res := int(C.fwrite(buf.data, 1, buf.len, f.cfile))
+		if res == 0 && buf.len != 0 {
+			return error('0 bytes written')
+		}
+		C.fseek(f.cfile, 0, C.SEEK_END)
+		return res
+	}
+	return error('Could not write to file')
 }
 
 // write_bytes writes `size` bytes to the file, starting from the address in `data`.
@@ -230,7 +256,7 @@ pub fn (mut f File) write_bytes(data voidptr, size int) int {
 // pointers to it, it will cause your programs to segfault.
 [deprecated: 'use File.write_ptr_at() instead']
 [unsafe]
-pub fn (mut f File) write_bytes_at(data voidptr, size int, pos int) int {
+pub fn (mut f File) write_bytes_at(data voidptr, size int, pos u64) int {
 	return unsafe { f.write_ptr_at(data, size, pos) }
 }
 
@@ -247,11 +273,27 @@ pub fn (mut f File) write_ptr(data voidptr, size int) int {
 // NB: write_ptr_at is unsafe and should be used carefully, since if you pass invalid
 // pointers to it, it will cause your programs to segfault.
 [unsafe]
-pub fn (mut f File) write_ptr_at(data voidptr, size int, pos int) int {
-	C.fseek(f.cfile, pos, C.SEEK_SET)
-	res := int(C.fwrite(data, 1, size, f.cfile))
-	C.fseek(f.cfile, 0, C.SEEK_END)
-	return res
+pub fn (mut f File) write_ptr_at(data voidptr, size int, pos u64) int {
+	$if x64 {
+		$if windows {
+			C._fseeki64(f.cfile, pos, C.SEEK_SET)
+			res := int(C.fwrite(data, 1, size, f.cfile))
+			C._fseeki64(f.cfile, 0, C.SEEK_END)
+			return res
+		} $else {
+			C.fseeko(f.cfile, pos, C.SEEK_SET)
+			res := int(C.fwrite(data, 1, size, f.cfile))
+			C.fseeko(f.cfile, 0, C.SEEK_END)
+			return res
+		}
+	}
+	$if x32 {
+		C.fseek(f.cfile, pos, C.SEEK_SET)
+		res := int(C.fwrite(data, 1, size, f.cfile))
+		C.fseek(f.cfile, 0, C.SEEK_END)
+		return res
+	}
+	return 0
 }
 
 // **************************** Read ops  ***************************
@@ -262,7 +304,7 @@ pub fn (f &File) read_bytes(size int) []byte {
 }
 
 // read_bytes_at reads `size` bytes at the given position in the file.
-pub fn (f &File) read_bytes_at(size int, pos int) []byte {
+pub fn (f &File) read_bytes_at(size int, pos u64) []byte {
 	mut arr := []byte{len: size}
 	nreadbytes := f.read_bytes_into(pos, mut arr) or {
 		// return err
@@ -274,22 +316,50 @@ pub fn (f &File) read_bytes_at(size int, pos int) []byte {
 // read_bytes_into fills `buf` with bytes at the given position in the file.
 // `buf` *must* have length greater than zero.
 // Returns the number of read bytes, or an error.
-pub fn (f &File) read_bytes_into(pos int, mut buf []byte) ?int {
+pub fn (f &File) read_bytes_into(pos u64, mut buf []byte) ?int {
 	if buf.len == 0 {
 		panic(@FN + ': `buf.len` == 0')
 	}
-	// Note: fseek errors if pos == os.file_size, which we accept
-	C.fseek(f.cfile, pos, C.SEEK_SET)
-	// errno is only set if fread fails, so clear it first to tell
-	C.errno = 0
-	nbytes := int(C.fread(buf.data, 1, buf.len, f.cfile))
-	if C.errno != 0 {
-		return error(posix_get_error_msg(C.errno))
+	$if x64 {
+		$if windows {
+			// Note: fseek errors if pos == os.file_size, which we accept
+			C._fseeki64(f.cfile, pos, C.SEEK_SET)
+			// errno is only set if fread fails, so clear it first to tell
+			C.errno = 0
+			nbytes := int(C.fread(buf.data, 1, buf.len, f.cfile))
+			if C.errno != 0 {
+				return error(posix_get_error_msg(C.errno))
+			}
+			$if debug {
+				C._fseeki64(f.cfile, 0, C.SEEK_SET)
+			}
+			return nbytes
+		} $else {
+			C.fseeko(f.cfile, pos, C.SEEK_SET)
+			C.errno = 0
+			nbytes := int(C.fread(buf.data, 1, buf.len, f.cfile))
+			if C.errno != 0 {
+				return error(posix_get_error_msg(C.errno))
+			}
+			$if debug {
+				C.fseeko(f.cfile, 0, C.SEEK_SET)
+			}
+			return nbytes
+		}
 	}
-	$if debug {
-		C.fseek(f.cfile, 0, C.SEEK_SET)
+	$if x32 {
+		C.fseek(f.cfile, pos, C.SEEK_SET)
+		C.errno = 0
+		nbytes := int(C.fread(buf.data, 1, buf.len, f.cfile))
+		if C.errno != 0 {
+			return error(posix_get_error_msg(C.errno))
+		}
+		$if debug {
+			C.fseek(f.cfile, 0, C.SEEK_SET)
+		}
+		return nbytes
 	}
-	return nbytes
+	return error('Could not read file')
 }
 
 // read implements the Reader interface.
@@ -307,22 +377,39 @@ pub fn (f &File) read(mut buf []byte) ?int {
 
 // read_at reads `buf.len` bytes starting at file byte offset `pos`, in `buf`.
 [deprecated: 'use File.read_from() instead']
-pub fn (f &File) read_at(pos int, mut buf []byte) ?int {
+pub fn (f &File) read_at(pos u64, mut buf []byte) ?int {
 	return f.read_from(pos, mut buf)
 }
 
 // read_from implements the RandomReader interface.
-pub fn (f &File) read_from(pos int, mut buf []byte) ?int {
+pub fn (f &File) read_from(pos u64, mut buf []byte) ?int {
 	if buf.len == 0 {
 		return 0
 	}
-	C.fseek(f.cfile, pos, C.SEEK_SET)
-	C.errno = 0
-	nbytes := int(C.fread(buf.data, 1, buf.len, f.cfile))
-	if C.errno != 0 {
-		return error(posix_get_error_msg(C.errno))
+	$if x64 {
+		$if windows {
+			C._fseeki64(f.cfile, pos, C.SEEK_SET)
+		} $else {
+			C.fseeko(f.cfile, pos, C.SEEK_SET)
+		}
+
+		C.errno = 0
+		nbytes := int(C.fread(buf.data, 1, buf.len, f.cfile))
+		if C.errno != 0 {
+			return error(posix_get_error_msg(C.errno))
+		}
+		return nbytes
 	}
-	return nbytes
+	$if x32 {
+		C.fseek(f.cfile, pos, C.SEEK_SET)
+		C.errno = 0
+		nbytes := int(C.fread(buf.data, 1, buf.len, f.cfile))
+		if C.errno != 0 {
+			return error(posix_get_error_msg(C.errno))
+		}
+		return nbytes
+	}
+	return error('Could not read file')
 }
 
 // **************************** Utility  ops ***********************

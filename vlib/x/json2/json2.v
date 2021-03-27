@@ -71,6 +71,15 @@ pub fn (f Any) i64() i64 {
 	}
 }
 
+// u64 uses `Any` as a 64-bit unsigned integer.
+pub fn (f Any) u64() u64 {
+	match f {
+		u64 { return f }
+		int, i64, f32, f64, bool { return u64(f) }
+		else { return 0 }
+	}
+}
+
 // f32 uses `Any` as a 32-bit float.
 pub fn (f Any) f32() f32 {
 	match f {

@@ -6,6 +6,13 @@ module builtin
 
 fn C.GC_MALLOC(n size_t) voidptr
 
+fn C.GC_MALLOC_UNCOLLECTABLE(n size_t) voidptr
+
 fn C.GC_REALLOC(ptr voidptr, n size_t) voidptr
 
 fn C.GC_FREE(ptr voidptr)
+
+// provide an empty function when manual memory management is used
+// to simplify leak detection
+//
+pub fn gc_check_leaks() {}

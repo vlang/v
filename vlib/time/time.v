@@ -114,7 +114,7 @@ pub fn now() Time {
 	// in this API call
 	t := C.time(0)
 	now := C.localtime(&t)
-	return convert_ctime(now, 0)
+	return convert_ctime(*now, 0)
 }
 
 // utc returns the current UTC time.

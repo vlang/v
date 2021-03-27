@@ -192,7 +192,7 @@ pub fn (cp charptr) vstring_with_len(len int) string {
 // NB: the string data is reused, NOT copied.
 // NB2: unlike vstring, vstring_literal will mark the string
 // as a literal, so it will not be freed by autofree.
-// This is suitable for readonly strings, C string literals etc, 
+// This is suitable for readonly strings, C string literals etc,
 // that can be read by the V program, but that should not be
 // managed by it, for example `os.args` is implemented using it.
 [unsafe]
@@ -227,7 +227,7 @@ pub fn (cp charptr) vstring_literal() string {
 	}
 }
 
-// vstring_literal_with_len converts C char* to V string. 
+// vstring_literal_with_len converts C char* to V string.
 // See also vstring_literal_with_len defined on byteptr.
 // NB: the string data is reused, NOT copied.
 [unsafe]
@@ -1260,7 +1260,7 @@ fn compare_strings_by_len(a &string, b &string) int {
 fn compare_lower_strings(a &string, b &string) int {
 	aa := a.to_lower()
 	bb := b.to_lower()
-	return compare_strings(aa, bb)
+	return compare_strings(&aa, &bb)
 }
 
 // sort sorts the string array.

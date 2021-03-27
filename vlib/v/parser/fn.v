@@ -824,13 +824,21 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 
 fn (mut p Parser) check_fn_mutable_arguments(typ table.Type, pos token.Position) {
 	sym := p.table.get_type_symbol(typ)
-	if sym.kind !in [.array, .array_fixed, .interface_, .map, .placeholder, .struct_, .sum_type]
-		&& !typ.is_ptr() && !typ.is_pointer() {
-		p.error_with_pos(
-			'mutable arguments are only allowed for arrays, interfaces, maps, pointers and structs\n' +
-			'return values instead: `fn foo(mut n $sym.name) {` => `fn foo(n $sym.name) $sym.name {`',
-			pos)
+	if sym.kind in [.array, .array_fixed, .interface_, .map, .placeholder, .struct_, .sum_type] {
+		return
 	}
+	if typ.is_ptr() || typ.is_pointer() {
+		return
+	}
+	if sym.kind == .alias {
+		atyp := (sym.info as table.Alias).parent_type
+		p.check_fn_mutable_arguments(atyp, pos)
+		return
+	}
+	p.error_with_pos(
+		'mutable arguments are only allowed for arrays, interfaces, maps, pointers, structs or their aliases\n' +
+		'return values instead: `fn foo(mut n $sym.name) {` => `fn foo(n $sym.name) $sym.name {`',
+		pos)
 }
 
 fn (mut p Parser) check_fn_shared_arguments(typ table.Type, pos token.Position) {

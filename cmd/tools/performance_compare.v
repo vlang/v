@@ -6,13 +6,13 @@ import vgit
 const (
 	tool_version     = '0.0.5'
 	tool_description = "  Compares V executable size and performance,
-|  between 2 commits from V\'s local git history.
+|  between 2 commits from V's local git history.
 |  When only one commit is given, it is compared to master.
 |  ".strip_margin()
 )
 
 struct Context {
-	cwd           string // current working folder
+	cwd string // current working folder
 mut:
 	vgo           vgit.VGitOptions
 	a             string // the full path to the 'after' folder inside workdir
@@ -20,7 +20,7 @@ mut:
 	vc            string // the full path to the vc folder inside workdir. It is used during bootstrapping v from the C source.
 	commit_before string // the git commit for the 'before' state
 	commit_after  string // the git commit for the 'after' state
-	warmups       int // how many times to execute a command before gathering stats
+	warmups       int    // how many times to execute a command before gathering stats
 	hyperfineopts string // use for additional CLI options that will be given to the hyperfine command
 	vflags        string // other v options to pass to compared v commands
 }
@@ -50,14 +50,23 @@ fn (c Context) compare_versions() {
 	// The first is the baseline, against which all the others will be compared.
 	// It is the fastest, since hello_world.v has only a single println in it,
 	mut perf_files := []string{}
-	perf_files <<
-		c.compare_v_performance('source_hello', ['vprod @DEBUG@ -o source.c examples/hello_world.v', 'vprod         -o source.c examples/hello_world.v', 'v     @DEBUG@ -o source.c examples/hello_world.v', 'v             -o source.c examples/hello_world.v'])
-	perf_files <<
-		c.compare_v_performance('source_v', ['vprod @DEBUG@ -o source.c @COMPILER@', 'vprod         -o source.c @COMPILER@', 'v     @DEBUG@ -o source.c @COMPILER@', 'v             -o source.c @COMPILER@'])
-	perf_files <<
-		c.compare_v_performance('binary_hello', ['vprod         -o hello    examples/hello_world.v', 'v             -o hello    examples/hello_world.v'])
-	perf_files <<
-		c.compare_v_performance('binary_v', ['vprod         -o binary   @COMPILER@', 'v             -o binary   @COMPILER@'])
+	perf_files << c.compare_v_performance('source_hello', [
+		'vprod @DEBUG@ -o source.c examples/hello_world.v',
+		'vprod         -o source.c examples/hello_world.v',
+		'v     @DEBUG@ -o source.c examples/hello_world.v',
+		'v             -o source.c examples/hello_world.v',
+	])
+	perf_files << c.compare_v_performance('source_v', ['vprod @DEBUG@ -o source.c @COMPILER@',
+		'vprod         -o source.c @COMPILER@', 'v     @DEBUG@ -o source.c @COMPILER@',
+		'v             -o source.c @COMPILER@',
+	])
+	perf_files << c.compare_v_performance('binary_hello', [
+		'vprod         -o hello    examples/hello_world.v',
+		'v             -o hello    examples/hello_world.v',
+	])
+	perf_files << c.compare_v_performance('binary_v', ['vprod         -o binary   @COMPILER@',
+		'v             -o binary   @COMPILER@',
+	])
 	println('All performance files:')
 	for f in perf_files {
 		println('   $f')
@@ -97,7 +106,9 @@ fn (c &Context) prepare_v(cdir string, commit string) {
 	scripting.run('upx -qqq --lzma vprod_stripped_upxed')
 	scripting.show_sizes_of_files(['$cdir/cv', '$cdir/cv_stripped', '$cdir/cv_stripped_upxed'])
 	scripting.show_sizes_of_files(['$cdir/v', '$cdir/v_stripped', '$cdir/v_stripped_upxed'])
-	scripting.show_sizes_of_files(['$cdir/vprod', '$cdir/vprod_stripped', '$cdir/vprod_stripped_upxed'])
+	scripting.show_sizes_of_files(['$cdir/vprod', '$cdir/vprod_stripped',
+		'$cdir/vprod_stripped_upxed',
+	])
 	vversion := scripting.run('$cdir/v -version')
 	vcommit := scripting.run('git rev-parse --short  --verify HEAD')
 	println('V version is: $vversion , local source commit: $vcommit')
@@ -110,7 +121,8 @@ fn (c &Context) prepare_v(cdir string, commit string) {
 				scripting.run('wc cmd/v/*.v vlib/compiler/*.v | tail -n -1'))
 		}
 	} else if vgit_context.vvlocation == 'v.v' {
-		println('Source lines of the compiler: ' + scripting.run('wc v.v vlib/compiler/*.v | tail -n -1'))
+		println('Source lines of the compiler: ' +
+			scripting.run('wc v.v vlib/compiler/*.v | tail -n -1'))
 	} else {
 		println('Source lines of the compiler: ' + scripting.run('wc compiler/*.v | tail -n -1'))
 	}
@@ -140,17 +152,26 @@ fn (c Context) compare_v_performance(label string, commands []string) string {
 		println(cmd)
 	}
 	for cmd in commands {
-		hyperfine_commands_arguments <<
-			" \'cd ${c.b:-34s} ; ./$cmd \' ".replace_each(['@COMPILER@', source_location_b, '@DEBUG@', debug_option_b])
+		hyperfine_commands_arguments << " \'cd ${c.b:-34s} ; ./$cmd \' ".replace_each([
+			'@COMPILER@',
+			source_location_b,
+			'@DEBUG@',
+			debug_option_b,
+		])
 	}
 	for cmd in commands {
-		hyperfine_commands_arguments <<
-			" \'cd ${c.a:-34s} ; ./$cmd \' ".replace_each(['@COMPILER@', source_location_a, '@DEBUG@', debug_option_a])
+		hyperfine_commands_arguments << " \'cd ${c.a:-34s} ; ./$cmd \' ".replace_each([
+			'@COMPILER@',
+			source_location_a,
+			'@DEBUG@',
+			debug_option_a,
+		])
 	}
 	// /////////////////////////////////////////////////////////////////////////////
 	cmd_stats_file := os.real_path([c.vgo.workdir, 'v_performance_stats_${label}.json'].join(os.path_separator))
-	comparison_cmd := 'hyperfine $c.hyperfineopts ' + '--export-json $cmd_stats_file ' + '--time-unit millisecond ' +
-		'--style full --warmup $c.warmups ' + hyperfine_commands_arguments.join(' ')
+	comparison_cmd := 'hyperfine $c.hyperfineopts ' + '--export-json $cmd_stats_file ' +
+		'--time-unit millisecond ' + '--style full --warmup $c.warmups ' +
+		hyperfine_commands_arguments.join(' ')
 	// /////////////////////////////////////////////////////////////////////////////
 	if c.vgo.verbose {
 		println(comparison_cmd)

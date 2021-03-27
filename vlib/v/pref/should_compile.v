@@ -120,6 +120,9 @@ pub fn (prefs &Preferences) should_compile_c(file string) bool {
 		// Probably something like `a.js.v`.
 		return false
 	}
+	if prefs.os == .all {
+		return true
+	}
 	if (file.ends_with('_windows.c.v') || file.ends_with('_windows.v')) && prefs.os != .windows {
 		return false
 	}

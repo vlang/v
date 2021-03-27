@@ -12,9 +12,13 @@ mut:
 	frames  [][]objects.Rocket
 	// i thought about using a fixed fifo queue for the frames but the array
 	// seemed to work fine, if you'd like a challenge try implementing it with the queue :)
+	draw_flag bool = true
 }
 
 fn on_frame(mut app App) {
+	if !app.draw_flag {
+		return
+	}
 	app.gg.begin()
 
 	// drawing previous frames
@@ -57,22 +61,35 @@ fn on_frame(mut app App) {
 
 fn on_event(e &gg.Event, mut app App) {
 	match e.typ {
-		.resized, .restored, .resumed { app.resize() }
-		else {}
+		.resized, .resumed { app.resize() }
+		.iconified { app.draw_flag = false }
+		.restored { 
+			app.draw_flag = true
+			app.resize()
+		} 
+		else {
+			//println("Type ${e.typ}")
+		}
 	}
 }
 
 fn (mut app App) resize() {
+	size := gg.window_size()
+	// avoid calls when minimized
+	if size.width < 2 && size.height < 2 {
+		return
+	}
 	mut s := gg.dpi_scale()
+	
 	if s == 0.0 {
 		s = 1.0
-	}
-	size := gg.window_size()
+	}	
 	app.ui.dpi_scale = s
 	app.ui.width = size.width
 	app.ui.height = size.height
 }
 
+[console] // is needed for easier diagnostics on windows
 fn main() {
 	mut font_path := os.resource_abs_path(os.join_path('../assets/fonts/', 'RobotoMono-Regular.ttf'))
 	$if android {
