@@ -1,6 +1,7 @@
 module eval
 
 import v.ast
+import v.util
 import math
 import strconv
 
@@ -11,12 +12,12 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 			// is_method := expr.left.type_name() != 'unknown v.ast.Expr'
 			// println(is_method)
 			if expr.name == 'int' {
-				panic('plz stop')
+				e.error('methods not supported')
 			}
 			mut args := expr.args.map(e.expr(it.expr, it.typ))
-			// if is_method {
-			// args.prepend(e.expr(expr.left, expr.receiver_type))
-			// }
+			if expr.is_method {
+				args.prepend(e.expr(expr.left, expr.receiver_type))
+			}
 			match expr.language {
 				.c {
 					match expr.name.all_after('C.') {
@@ -294,6 +295,9 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 						}
 					}
 				}
+			} else if e.table.get_type_symbol(expr.typ).kind in [.interface_, .sum_type] {
+				eprintln(util.formatted_error('warning:', 'sumtype or interface casts return void currently',
+					e.cur_file, expr.pos))
 			} else {
 				e.error('unknown cast: ${e.table.get_type_symbol(expr.expr_type).str()} to ${e.table.get_type_symbol(expr.typ).str()}')
 			}
@@ -390,6 +394,19 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 		}
 		ast.ParExpr {
 			return e.expr(expr.expr, expecting)
+		}
+		ast.PrefixExpr {
+			match expr.op {
+				.amp {
+					x := e.expr(expr.right, expr.right_type)
+					return Ptr{
+						val: &x
+					}
+				}
+				else {
+					panic(expr.op)
+				}
+			}
 		}
 		else {
 			e.error('unhandled expression $expr.type_name()')

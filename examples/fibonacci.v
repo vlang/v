@@ -1,5 +1,5 @@
 // This program displays the fibonacci sequence
-// import os
+import os
 
 fn main() {
 	// Check for user input

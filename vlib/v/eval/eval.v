@@ -29,6 +29,7 @@ pub mut:
 	returning              bool
 	return_values          []Object
 	cur_mod                string
+	cur_file               string
 	back_trace             []string
 }
 
@@ -43,13 +44,17 @@ pub fn (mut e Eval) run_func(func ast.FnDecl, _args ...Object) {
 	e.back_trace << func.name
 	old_mod := e.cur_mod
 	e.cur_mod = func.mod
+
+	old_file := e.cur_file
+	e.cur_file = func.file
 	defer {
 		e.cur_mod = old_mod
+		e.cur_file = old_file
 		e.back_trace.pop()
 	}
 	mut args := _args.clone()
 	if func.params.len != args.len && !func.is_variadic {
-		e.error('mismatched parameter length for func.: got `$args.len`, expected `$func.params.len`')
+		e.error('mismatched parameter length for $func.name: got `$args.len`, expected `$func.params.len`')
 	}
 
 	if func.name in ['print', 'println', 'eprint', 'eprintln'] {
@@ -103,13 +108,15 @@ pub fn (mut e Eval) register_symbols(files []ast.File) {
 	for file in files {
 		// eprintln('registering file: $file.path_base')
 		mod := file.mod.name
-		e.register_symbol_stmts(file.stmts[1..], mod, file.path_base)
+		e.register_symbol_stmts(file.stmts[1..], mod, file.path)
 
 		// eprintln('registered file: $file.path_base')
 	}
 	for mod, const_files in e.future_register_consts {
 		e.cur_mod = mod
-		for _, fields in const_files {
+
+		for file, fields in const_files {
+			e.cur_file = file
 			for _, field in fields {
 				e.mods[mod][field.name.all_after_last('.')] = e.expr(field.expr, field.typ)
 				if mod == 'os' && field.name.all_after_last('.') == 'args' {
