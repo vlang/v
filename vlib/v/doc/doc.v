@@ -28,6 +28,54 @@ pub enum SymbolKind {
 	struct_field
 }
 
+pub enum Platform {
+	auto
+	ios
+	macos
+	linux
+	windows
+	freebsd
+	openbsd
+	netbsd
+	dragonfly
+	js // for interoperability in prefs.OS
+	android
+	solaris
+	haiku
+	cross // TODO: add functionality for v doc -os cross whenever possible
+}
+
+// copy of pref.os_from_string
+pub fn platform_from_string(platform_str string) ?Platform {
+	match platform_str {
+		'all', 'cross' { return .cross }
+		'linux' { return .linux }
+		'windows' { return .windows }
+		'ios' { return .ios }
+		'macos' { return .macos }
+		'freebsd' { return .freebsd }
+		'openbsd' { return .openbsd }
+		'netbsd' { return .netbsd }
+		'dragonfly' { return .dragonfly }
+		'js' { return .js }
+		'solaris' { return .solaris }
+		'android' { return .android }
+		'haiku' { return .haiku }
+		'linux_or_macos', 'nix' { return .linux }
+		'' { return .auto }
+		else { return error('vdoc: invalid platform `$platform_str`') }
+	}
+}
+
+pub fn platform_from_filename(filename string) Platform {
+	suffix := filename.all_after_last('_').all_before('.c.v')
+	mut platform := platform_from_string(suffix) or { Platform.cross }
+	if platform == .auto {
+		platform = .cross
+	}
+	return platform
+}
+
 pub fn (sk SymbolKind) str() string {
 	return match sk {
 		.const_group { 'Constants' }
@@ -41,8 +89,8 @@ pub fn (sk SymbolKind) str() string {
 }
 
 pub struct Doc {
-	prefs &pref.Preferences = new_vdoc_preferences()
 pub mut:
+	prefs     &pref.Preferences = new_vdoc_preferences()
 	base_path string
 	table     &table.Table    = &table.Table{}
 	checker   checker.Checker = checker.Checker{
@@ -66,6 +114,8 @@ pub mut:
 	orig_mod_name       string
 	extract_vars        bool
 	filter_symbol_names []string
+	common_symbols      []string
+	platform            Platform
 }
 
 pub struct DocNode {
@@ -83,16 +133,19 @@ pub mut:
 	attrs       map[string]string [json: attributes]
 	from_scope  bool
 	is_pub      bool              [json: public]
+	platform    Platform
 }
 
 // new_vdoc_preferences creates a new instance of pref.Preferences tailored for v.doc.
 pub fn new_vdoc_preferences() &pref.Preferences {
 	// vdoc should be able to parse as much user code as possible
 	// so its preferences should be permissive:
-	return &pref.Preferences{
+	mut pref := &pref.Preferences{
 		enable_globals: true
 		is_fmt: true
 	}
+	pref.fill_with_defaults()
+	return pref
 }
 
 // new creates a new instance of a `Doc` struct.
@@ -118,12 +171,20 @@ pub fn new(input_path string) Doc {
 // An option error is thrown if the symbol is not exposed to the public
 // (when `pub_only` is enabled) or the content's of the AST node is empty.
 pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
+	mut name := d.stmt_name(stmt)
+	if name in d.common_symbols {
+		return error('already documented')
+	}
+	if name.starts_with(d.orig_mod_name + '.') {
+		name = name.all_after(d.orig_mod_name + '.')
+	}
 	mut node := DocNode{
-		name: d.stmt_name(stmt)
+		name: name
 		content: d.stmt_signature(stmt)
 		pos: stmt.pos
 		file_path: os.join_path(d.base_path, filename)
 		is_pub: d.stmt_pub(stmt)
+		platform: platform_from_filename(filename)
 	}
 	if (!node.is_pub && d.pub_only) || stmt is ast.GlobalDecl {
 		return error('symbol $node.name not public')
@@ -221,6 +282,13 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 		else {
 			return error('invalid stmt type to document')
 		}
+	}
+	included := node.name in d.filter_symbol_names || node.parent_name in d.filter_symbol_names
+	if d.filter_symbol_names.len != 0 && !included {
+		return error('not included in the list of symbol names')
+	}
+	if d.prefs.os == .all {
+		d.common_symbols << node.name
 	}
 	return node
 }
@@ -425,11 +493,15 @@ pub fn (mut d Doc) file_asts(file_asts []ast.File) ? {
 
 // generate documents a certain file directory and returns an
 // instance of `Doc` if it is successful. Otherwise, it will  throw an error.
-pub fn generate(input_path string, pub_only bool, with_comments bool, filter_symbol_names ...string) ?Doc {
+pub fn generate(input_path string, pub_only bool, with_comments bool, platform Platform, filter_symbol_names ...string) ?Doc {
+	if platform == .js {
+		return error('vdoc: Platform `$platform` is not supported.')
+	}
 	mut doc := new(input_path)
 	doc.pub_only = pub_only
 	doc.with_comments = with_comments
 	doc.filter_symbol_names = filter_symbol_names.filter(it.len != 0)
+	doc.prefs.os = if platform == .auto { pref.get_host_os() } else { pref.OS(int(platform)) }
 	doc.generate() ?
 	return doc
 }
