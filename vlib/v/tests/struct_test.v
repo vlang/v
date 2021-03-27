@@ -18,9 +18,9 @@ mut:
 }
 
 struct Lol {
-	b    []string [json:lol]
-	c    string   [json:cc]
-	d    int
+	b []string [json: lol]
+	c string   [json: cc]
+	d int
 }
 
 struct User {
@@ -68,10 +68,10 @@ fn test_empty_struct() {
 	d := &Empty{}
 	d2 := Empty{}
 	println('&empty:')
-	println(d)	// != voidptr(0)
+	println(d) // != voidptr(0)
 	println('empty:')
-	println(d2)	// empty struct print
-	println(sizeof(Empty))	// == 0
+	println(d2) // empty struct print
+	println(sizeof(Empty)) // == 0
 }
 
 fn test_struct_levels() {
@@ -106,7 +106,7 @@ fn test_struct_levels() {
 
 fn test_struct_str() {
 	u := User{'Bob', 30}
-	println(u)	// make sure the struct is printable
+	println(u) // make sure the struct is printable
 	// assert u.str() == '{name:"Bob", age:30}'  // QTODO
 }
 
@@ -132,7 +132,7 @@ fn test_reserved_keywords() {
 	// Make sure partial initialization works too.
 	assert rk_holder2.inline == 9
 	assert rk_holder2.volatile == 11
-	assert rk_holder2.while == 0	// Zero value as not specified.
+	assert rk_holder2.while == 0 // Zero value as not specified.
 }
 
 struct User2 {
@@ -170,12 +170,19 @@ fn test_assoc_with_vars() {
 	}
 	assert merged.a == 42
 	assert merged.b == 7
-	merged = {...def2, b: 9}
+	merged = {
+		...def2
+		b: 9
+	}
 	assert merged == Def{12, 9}
 
-	def3 := &Def{ 100, 200 }
-	merged1 := Def{...(*def3)}
-	merged2 := &Def{...(*def3)}
+	def3 := &Def{100, 200}
+	merged1 := Def{
+		...(*def3)
+	}
+	merged2 := &Def{
+		...(*def3)
+	}
 	assert merged1.a == 100
 	assert merged1.b == 200
 	assert merged2.a == 100
@@ -199,7 +206,7 @@ fn test_assoc_with_constants() {
 	again := { const_def | b: 22 }
 	assert again.a == 100
 	assert again.b == 22
-*/
+	*/
 }
 
 struct AttrTest {
@@ -249,9 +256,11 @@ mut:
 fn foo_config(def int, c Config) {
 	assert c.def == def
 }
+
 fn bar_config(c Config, def int) {
 	assert c.def == def
 }
+
 fn mut_bar_config(mut c Config, def int) &Config {
 	c.n = c.def
 	assert c.n == def
@@ -261,24 +270,22 @@ fn mut_bar_config(mut c Config, def int) &Config {
 fn foo_user(u User) {}
 
 fn test_struct_literal_args() {
-	foo_config(20, {
+	foo_config(20,
 		n: 10
 		def: 20
-	})
+	)
 	foo_config(10, {})
 	foo_config(10, n: 40)
 	foo_config(40, n: 30, def: 40)
 
 	bar_config({}, 10)
-	bar_config({def:4}, 4)
+	bar_config({ def: 4 }, 4)
 
-	c := mut_bar_config(mut {def: 10}, 10)
+	c := mut_bar_config(mut { def: 10 }, 10)
 	assert c.n == 10
 	assert c.def == 10
 
-	foo_user({
-		name: 'Peter'
-	})
+	foo_user(name: 'Peter')
 	foo_user(name: 'Peter')
 	foo_user(age: 7)
 	foo_user(name: 'Stew', age: 50)
@@ -312,8 +319,8 @@ struct StructWithDefaultValues1 {
 
 // Struct where an inizialized field is before a non-initilized field.
 struct StructWithDefaultValues2 {
-	field_optional  int = 3
-	field_required  int
+	field_optional int = 3
+	field_required int
 }
 
 // Struct where an inizialized field is before several non-initilized fields.
@@ -324,10 +331,16 @@ struct StructWithDefaultValues3 {
 }
 
 fn test_struct_with_default_values_init() {
-	s1 := StructWithDefaultValues1{ field_required: 5 }
-	s2 := StructWithDefaultValues2{ field_required: 5 }
+	s1 := StructWithDefaultValues1{
+		field_required: 5
+	}
+	s2 := StructWithDefaultValues2{
+		field_required: 5
+	}
 	// Partially initialized
-	s3 := StructWithDefaultValues3{ field_required: 5 }
+	s3 := StructWithDefaultValues3{
+		field_required: 5
+	}
 
 	assert s1.field_optional == 5
 	assert s2.field_optional == 3
@@ -346,49 +359,49 @@ fn test_struct_with_default_values_no_init() {
 }
 
 struct FieldsWithOptionalVoidReturnType {
-	f fn() ?
-	g fn() ?
+	f fn () ?
+	g fn () ?
 }
 
 fn test_fields_anon_fn_with_optional_void_return_type() {
-	foo := FieldsWithOptionalVoidReturnType {
-		f: fn() ? {
-			return error("oops")
+	foo := FieldsWithOptionalVoidReturnType{
+		f: fn () ? {
+			return error('oops')
 		}
-		g: fn() ? {
+		g: fn () ? {
 			return
 		}
 	}
 
-	foo.f() or {
-		assert err.msg == "oops"
-	}
+	foo.f() or { assert err.msg == 'oops' }
 
-	foo.g() or {
-		assert false
-	}
+	foo.g() or { assert false }
 }
 
 struct Commands {
-    show []fn() string
+	show []fn () string
 }
 
 fn a() string {
-    return 'HELLOW'
+	return 'HELLOW'
 }
 
 fn b() string {
-    return 'WOLLEH'
+	return 'WOLLEH'
 }
 
 fn test_fields_array_of_fn() {
-    commands := Commands{show: [a, b]}
-    println(commands.show)
+	commands := Commands{
+		show: [a, b]
+	}
+	println(commands.show)
 	assert '$commands.show' == '[fn () string, fn () string]'
 }
 
 fn test_struct_update() {
-	c := Country{name: 'test'}
+	c := Country{
+		name: 'test'
+	}
 	c2 := Country{
 		...c
 		capital: City{

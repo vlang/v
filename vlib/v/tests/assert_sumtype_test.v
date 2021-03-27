@@ -1,7 +1,8 @@
 struct Moon {}
+
 struct Mars {}
 
-type World = Moon | Mars
+type World = Mars | Moon
 
 fn test_assert_sumtype() {
 	w := World(Moon{})

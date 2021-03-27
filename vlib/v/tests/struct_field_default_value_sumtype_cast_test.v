@@ -4,10 +4,12 @@ struct Foo {
 
 struct Bar {}
 
-type FooBar = Foo | Bar
+type FooBar = Bar | Foo
 
 struct Abc {
-    foobar FooBar = Foo { x: 123 }
+	foobar FooBar = Foo{
+		x: 123
+	}
 }
 
 fn test_struct_field_default_value_sumtype_cast() {

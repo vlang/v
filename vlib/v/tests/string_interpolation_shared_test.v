@@ -8,7 +8,9 @@ struct Qwe {
 }
 
 fn test_shared_struct_interpolation() {
-	shared s := Abc{ x: 6.25 }
+	shared s := Abc{
+		x: 6.25
+	}
 	astr := rlock s {
 		'$s'
 	}
@@ -26,17 +28,27 @@ fn test_shared_array_interpolation() {
 }
 
 fn test_shared_map_interpolation() {
-	shared m := {'xy': 12.125, 'qwe': -6.0625, 'foo': 0.5}
+	shared m := map{
+		'xy':  12.125
+		'qwe': -6.0625
+		'foo': 0.5
+	}
 	mstr := rlock m {
 		'$m'
 	}
 	assert mstr == "{'xy': 12.125, 'qwe': -6.0625, 'foo': 0.5}"
-}	
+}
 
 fn test_print_shared() {
-	shared s := Abc{ x: 6.25 }
+	shared s := Abc{
+		x: 6.25
+	}
 	shared a := [0.25, -6.125, 12.5]
-	shared m := {'xy': 12.125, 'qwe': -6.0625, 'foo': 0.5}
+	shared m := map{
+		'xy':  12.125
+		'qwe': -6.0625
+		'foo': 0.5
+	}
 	x, y := rlock a, s {
 		println(s)
 		println(a)
@@ -52,4 +64,3 @@ fn test_print_shared() {
 	assert y == '[0.25, -6.125, 12.5]'
 	assert z == "{'xy': 12.125, 'qwe': -6.0625, 'foo': 0.5}"
 }
-

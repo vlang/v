@@ -10,7 +10,10 @@ fn incr(shared foo map[string]int, key string, mut sem sync.Semaphore) {
 }
 
 fn test_shared_array() {
-	shared foo := {'p': 10, 'q': 0}
+	shared foo := map{
+		'p': 10
+		'q': 0
+	}
 	lock foo {
 		foo['q'] = 20
 	}
@@ -25,7 +28,7 @@ fn test_shared_array() {
 			foo['q'] += 3
 		}
 	}
-	for _ in 0..4 {
+	for _ in 0 .. 4 {
 		sem.wait()
 	}
 	rlock foo {
@@ -37,8 +40,16 @@ fn test_shared_array() {
 }
 
 fn test_shared_init_syntax() {
-	shared foo := &{'p': 17, 'q': -3, 'qwertz': 10}
-	shared bar := {'wer': 13.75, 'cvbn': -7.25, 'asd': -0.0625}
+	shared foo := &map{
+		'p':      17
+		'q':      -3
+		'qwertz': 10
+	}
+	shared bar := map{
+		'wer':  13.75
+		'cvbn': -7.25
+		'asd':  -0.0625
+	}
 	shared baz := &map[string]int{}
 	shared qux := map[string]f64{}
 	shared quux := new_map()
@@ -64,6 +75,10 @@ fn test_shared_init_syntax() {
 }
 
 fn new_map() map[string]f64 {
-	m := { 'qwe': 34.25, 'yxc': 9.125, 'tzu': -7.5 }
+	m := map{
+		'qwe': 34.25
+		'yxc': 9.125
+		'tzu': -7.5
+	}
 	return m
 }

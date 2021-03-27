@@ -1,9 +1,9 @@
 const (
 	alpha = 'a'
-	beta = 'b'
-	m = map{
-		alpha : 'Alpha'
-		beta : 'Beta'
+	beta  = 'b'
+	m     = map{
+		alpha: 'Alpha'
+		beta:  'Beta'
 	}
 )
 
@@ -13,13 +13,14 @@ fn test_const_keys() {
 }
 
 enum Enum {
-	a b
+	a
+	b
 }
 
 const (
 	m2 = map{
-		Enum.a.str() : 'first'
-		Enum.b.str() : 'second'
+		Enum.a.str(): 'first'
+		Enum.b.str(): 'second'
 	}
 )
 

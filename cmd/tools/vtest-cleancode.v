@@ -21,6 +21,13 @@ const (
 		'vlib/gg/m4/graphic.v' /* has hand crafted meaningful formatting of matrices */,
 		'vlib/gg/m4/m4_test.v' /* has hand crafted meaningful formatting of matrices */,
 		'vlib/gg/m4/matrix.v' /* has hand crafted meaningful formatting of matrices */,
+		'vlib/v/tests/array_append_short_struct_test.v', /* extra empty line */
+		'vlib/v/tests/fixed_array_const_size_test.v', /* fixed arr type is changed */
+		'vlib/v/tests/fn_high_test.v', /* param name removed */
+		'vlib/v/tests/fn_test.v', /* bad comment formatting */
+		'vlib/v/tests/generics_return_generics_struct_test.v', /* generic fn param removed */
+		'vlib/v/tests/interop_test.v', /* bad comment formatting */
+		'vlib/v/tests/generics_test.v', /* some silent error */
 	]
 	vfmt_verify_list                = [
 		'cmd/',
@@ -58,7 +65,7 @@ const (
 		'vlib/v/preludes',
 		'vlib/v/scanner/',
 		'vlib/v/table/',
-		//'vlib/v/tests/',
+		'vlib/v/tests/',
 		'vlib/v/token/',
 		'vlib/v/util/',
 		'vlib/v/vcache/',

@@ -269,7 +269,7 @@ fn test_multi_return_opt() {
 */
 
 fn test_optional_val_with_empty_or() {
-	ret_none() or { }
+	ret_none() or {}
 	assert true
 }
 

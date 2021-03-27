@@ -6,7 +6,7 @@ fn f(n int) ?f64 {
 }
 
 fn test_fn_return() {
-	mut res := []f64{cap:2}
+	mut res := []f64{cap: 2}
 	for m in [-3, 5] {
 		if x := f(m) {
 			res << x
@@ -18,8 +18,11 @@ fn test_fn_return() {
 }
 
 fn test_map_get() {
-	mut m := {'xy': 5, 'zu': 7}
-	mut res := []int{cap:2}
+	mut m := map{
+		'xy': 5
+		'zu': 7
+	}
+	mut res := []int{cap: 2}
 	for k in ['jk', 'zu'] {
 		if x := m[k] {
 			res << x
@@ -32,7 +35,7 @@ fn test_map_get() {
 
 fn test_array_get() {
 	mut a := [12.5, 6.5, -17.25]
-	mut res := []f64{cap:2}
+	mut res := []f64{cap: 2}
 	for i in [1, 4] {
 		if x := a[i] {
 			res << x
@@ -44,13 +47,13 @@ fn test_array_get() {
 }
 
 fn test_chan_pop() {
-	mut res := []f64{cap:3}
+	mut res := []f64{cap: 3}
 	ch := chan f64{cap: 10}
 	ch <- 6.75
 	ch <- -3.25
 	ch.close()
 	for _ in 0 .. 3 {
-		if x:= <-ch {
+		if x := <-ch {
 			res << x
 		} else {
 			res << -37.5

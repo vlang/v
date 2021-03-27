@@ -1,13 +1,13 @@
 fn foo1() ?int {
-    return if true { 0 } else { none }
+	return if true { 0 } else { none }
 }
 
 fn foo2() ?int {
-    return if true { 1 } else { error('foo2 error') }
+	return if true { 1 } else { error('foo2 error') }
 }
 
 fn foo3() ?int {
-    return if false { 1 } else { error('foo3 error') }
+	return if false { 1 } else { error('foo3 error') }
 }
 
 fn foo4() ?int {

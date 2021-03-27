@@ -1,7 +1,11 @@
 fn test_match_in_map_init() {
 	ret := foo()
 	println(ret)
-	assert ret == map{'token': 'a', 'sleep': '30', 'every': '1'}
+	assert ret == map{
+		'token': 'a'
+		'sleep': '30'
+		'every': '1'
+	}
 }
 
 fn foo() map[string]string {

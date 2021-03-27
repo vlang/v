@@ -45,7 +45,6 @@ so, it's basically true"
 
 fn test_tmpl_in_anon_fn() {
 	anon := fn (name string, age int, numbers []int, downloads map[string]string, ignored bool) string {
-
 		return $tmpl('tmpl/base.txt')
 	}
 

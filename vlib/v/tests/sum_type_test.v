@@ -44,16 +44,24 @@ fn test_sum_type_match() {
 	assert as_string(int(1)) == 'This is the string representation of "1"'
 	assert as_string(f64(3.14)) == 'This is the string representation of "3.14"'
 	assert as_string('String') == 'This is the string representation of "String"'
-	assert as_string(IntAndStr{foo: 2, bar: 'hi', baz: &IntAndStr{foo: 3, bar: 'hello', baz: 0}}) == 'This is the string representation of "5_hi_hello"'
+	assert as_string(IntAndStr{
+		foo: 2
+		bar: 'hi'
+		baz: &IntAndStr{
+			foo: 3
+			bar: 'hello'
+			baz: 0
+		}
+	}) == 'This is the string representation of "5_hi_hello"'
 	assert as_string(true) == 'This is the string representation of "true"'
 	assert as_string(CommonType(Color.red)) == 'This is the string representation of "enum1_red"'
 	assert as_string(CommonType(Color.green)) == 'This is the string representation of "enum2_green"'
 	assert as_string(CommonType(Color.blue)) == 'This is the string representation of "enum3_blue"'
 	assert sumtype_match_with_string_interpolation(1) == "it's an int: 5"
 	assert sumtype_match_with_string_interpolation(2) == "it's a string: hello"
-	assert sumtype_match_with_string_interpolation(3) == "green_green"
+	assert sumtype_match_with_string_interpolation(3) == 'green_green'
 	assert sumtype_match_with_string_interpolation(4) == "it's a f64: 1.5"
-	assert sumtype_match_with_string_interpolation(5) == "it's a bool: false" 
+	assert sumtype_match_with_string_interpolation(5) == "it's a bool: false"
 	assert sumtype_match_with_string_interpolation(6) == "it's an IntAndStr: 2_hi_3_hello"
 }
 
@@ -98,7 +106,6 @@ fn test_converting_down() {
 	assert res[1].name == 'three'
 }
 
-
 fn test_assignment_and_push() {
 	mut expr1 := Expr{}
 	mut arr1 := []Expr{}
@@ -132,11 +139,11 @@ fn test_zero_value_init() {
 	_ := Outer2{}
 }
 
-type Bar = string | Test
+type Bar = Test | string
 type Xyz = int | string
 
 struct Test {
-	x string
+	x   string
 	xyz Xyz
 }
 
@@ -164,11 +171,11 @@ fn test_as_cast() {
 }
 
 fn test_typeof() {
-    x := Expr(IfExpr{})
+	x := Expr(IfExpr{})
 	assert x.type_name() == 'IfExpr'
 }
 
-type Food = Milk | Eggs
+type Food = Eggs | Milk
 
 struct FoodWrapper {
 mut:
@@ -242,7 +249,6 @@ fn test_non_mut_ident_mut_selector_cast_if() {
 	if w is FoodWrapper {
 		if w.food is Eggs {
 			assert w.food.name + '2' == 'test2'
-			
 		} else {
 			assert false
 		}
@@ -289,7 +295,7 @@ fn test_int_cast_to_sumtype() {
 	}
 }
 
-type Number = int | f64
+type Number = f64 | int
 
 fn is_gt_simple(val string, dst Number) bool {
 	match dst {
@@ -397,16 +403,20 @@ struct IntAndStr {
 	baz &IntAndStr
 }
 
-enum Color { red green blue }
+enum Color {
+	red
+	green
+	blue
+}
 
-type CommonType = int | f64 | string | IntAndStr | bool | Color
+type CommonType = Color | IntAndStr | bool | f64 | int | string
 
 fn as_string(val CommonType) string {
 	return 'This is the string representation of "' + val.str() + '"'
 }
 
 fn (c CommonType) str() string {
-	match c {		
+	match c {
 		string {
 			d := c.int()
 			_ := d
@@ -441,7 +451,7 @@ fn (c CommonType) str() string {
 fn sumtype_match_with_string_interpolation(code int) string {
 	match code {
 		1 {
-		    bar := CommonType(5)
+			bar := CommonType(5)
 			match bar {
 				f64 { return "shouldn't happen" }
 				bool { return "shouldn't happen" }
@@ -465,14 +475,24 @@ fn sumtype_match_with_string_interpolation(code int) string {
 		3 {
 			bar := CommonType(Color.green)
 			match bar {
-				string { return "shouldn't happen" }
-				int { return "shouldn't happen" }
-				f64 { return "shouldn't happen" }
-				bool { return "shouldn't happen" }
-				IntAndStr { return "shouldn't happen" }
+				string {
+					return "shouldn't happen"
+				}
+				int {
+					return "shouldn't happen"
+				}
+				f64 {
+					return "shouldn't happen"
+				}
+				bool {
+					return "shouldn't happen"
+				}
+				IntAndStr {
+					return "shouldn't happen"
+				}
 				Color {
 					match bar {
-						.red { return 'red_$bar'}
+						.red { return 'red_$bar' }
 						.green { return 'green_$bar' }
 						.blue { return 'blue_$bar' }
 					}
@@ -506,17 +526,27 @@ fn sumtype_match_with_string_interpolation(code int) string {
 			// TODO: this should work
 			// mut bar := CommonType(100)
 			// bar = CommonType(IntAndStr{foo: 2, bar: 'hi', baz: &IntAndStr{foo: 3, bar: 'hello', baz: 0}})
-			bar := CommonType(IntAndStr{foo: 2, bar: 'hi', baz: &IntAndStr{foo: 3, bar: 'hello', baz: 0}})
+			bar := CommonType(IntAndStr{
+				foo: 2
+				bar: 'hi'
+				baz: &IntAndStr{
+					foo: 3
+					bar: 'hello'
+					baz: 0
+				}
+			})
 			match bar {
 				string { return "shouldn't happen" }
 				int { return "shouldn't happen" }
 				Color { return "shouldn't happen" }
 				f64 { return "shouldn't happen" }
 				bool { return "shouldn't happen" }
-				IntAndStr { return "it's an IntAndStr: ${bar.foo}_${bar.bar}_${bar.baz.foo}_${bar.baz.bar}" }
+				IntAndStr { return "it's an IntAndStr: ${bar.foo}_${bar.bar}_${bar.baz.foo}_$bar.baz.bar" }
 			}
 		}
-		else { return 'wrong' }
+		else {
+			return 'wrong'
+		}
 	}
 }
 
@@ -566,15 +596,23 @@ fn size(tree Tree) int {
 // insert a value to BST
 fn insert(tree Tree, x f64) Tree {
 	match tree {
-		Empty { return Node{x, tree, tree} }
-		Node { 
+		Empty {
+			return Node{x, tree, tree}
+		}
+		Node {
 			return if x == tree.value {
 				tree
 			} else if x < tree.value {
-				Node{...tree, left: insert(tree.left, x)}
+				Node{
+					...tree
+					left: insert(tree.left, x)
+				}
 			} else {
-				Node{...tree, right: insert(tree.right, x)}
-			} 
+				Node{
+					...tree
+					right: insert(tree.right, x)
+				}
+			}
 		}
 	}
 }
@@ -582,15 +620,17 @@ fn insert(tree Tree, x f64) Tree {
 // whether able to find a value in BST
 fn search(tree Tree, x f64) bool {
 	match tree {
-		Empty { return false }
-		Node { 
+		Empty {
+			return false
+		}
+		Node {
 			return if x == tree.value {
 				true
 			} else if x < tree.value {
 				search(tree.left, x)
 			} else {
 				search(tree.right, x)
-			} 
+			}
 		}
 	}
 }
@@ -606,20 +646,46 @@ fn min(tree Tree) f64 {
 // delete a value in BST (if nonexist do nothing)
 fn delete(tree Tree, x f64) Tree {
 	match tree {
-		Empty { return tree }
+		Empty {
+			return tree
+		}
 		Node {
 			if tree.left is Node && tree.right is Node {
-				return if x < tree.value { 
-					Node{...tree, left: delete(tree.left, x)}
+				return if x < tree.value {
+					Node{
+						...tree
+						left: delete(tree.left, x)
+					}
 				} else if x > tree.value {
-					Node{...tree, right: delete(tree.right, x)}
+					Node{
+						...tree
+						right: delete(tree.right, x)
+					}
 				} else {
-					Node{...tree, value: min(tree.right), right: delete(tree.right, min(tree.right))}
-				}	
+					Node{
+						...tree
+						value: min(tree.right)
+						right: delete(tree.right, min(tree.right))
+					}
+				}
 			} else if tree.left is Node {
-				return if x == tree.value { tree.left } else { Node{...tree, left: delete(tree.left, x)} } 
+				return if x == tree.value {
+					tree.left
+				} else {
+					Node{
+						...tree
+						left: delete(tree.left, x)
+					}
+				}
 			} else {
-				if x == tree.value { return tree.right } else { return Node{...tree, right: delete(tree.right, x)} }  
+				if x == tree.value {
+					return tree.right
+				} else {
+					return Node{
+						...tree
+						right: delete(tree.right, x)
+					}
+				}
 			}
 		}
 	}
@@ -637,7 +703,7 @@ fn test_binary_search_tree() {
 		tree = delete(tree, i)
 	}
 	assert size(tree) == 7
-	mut deleted := []f64{ }
+	mut deleted := []f64{}
 	for i in input {
 		if !search(tree, i) {
 			deleted << i

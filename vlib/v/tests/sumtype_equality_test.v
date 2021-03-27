@@ -8,7 +8,7 @@ struct Bar {
 	v int
 }
 
-type FooBar = Foo | Bar
+type FooBar = Bar | Foo
 
 fn test_sumtype_equality() {
 	s1 := Str('s')
@@ -22,8 +22,12 @@ fn test_sumtype_equality() {
 	assert u1 != s1
 
 	// Same value, defferent type
-	foo := FooBar(Foo{v: 0})
-	bar := FooBar(Bar{v: 0})
+	foo := FooBar(Foo{
+		v: 0
+	})
+	bar := FooBar(Bar{
+		v: 0
+	})
 	assert foo.v == bar.v
 	assert foo != bar
 }
