@@ -190,11 +190,7 @@ pub fn malloc(n int) byteptr {
 	} $else {
 		$if gcboehm ? {
 			unsafe {
-				if C.__v_inside_init == 0 {
-					res = C.GC_MALLOC(n)
-				} else {
-					res = C.GC_MALLOC_UNCOLLECTABLE(n)
-				}
+				res = C.GC_MALLOC(n)
 			}
 		} $else {
 			res = unsafe { C.malloc(n) }
@@ -298,11 +294,7 @@ pub fn vcalloc(n int) byteptr {
 		return byteptr(0)
 	}
 	$if gcboehm ? {
-		return if C.__v_inside_init == 0 {
-			byteptr(C.GC_MALLOC(n))
-		} else {
-			byteptr(C.GC_MALLOC_UNCOLLECTABLE(n))
-		}
+		return byteptr(C.GC_MALLOC(n))
 	} $else {
 		return C.calloc(1, n)
 	}

@@ -94,6 +94,7 @@ fn fast_string_eq(a string, b string) bool {
 // DenseArray represents a dynamic array with very low growth factor
 struct DenseArray {
 	key_bytes   int
+	key_bytes_  int
 	value_bytes int
 	slot_bytes  int // sum of 2 fields above
 mut:
@@ -108,14 +109,18 @@ mut:
 
 [inline]
 fn new_dense_array(key_bytes int, value_bytes int) DenseArray {
-	mut slot_bytes := key_bytes + value_bytes
+	mut key_bytes_ := key_bytes
+	mut value_bytes_ := value_bytes
 	$if gcboehm ? {
 		align, mask := $if x64 { 7, int(0xfffffff8) } $else { 3, int(0xfffffffc) }
-		slot_bytes = (slot_bytes + align) & mask
+		key_bytes_ = (key_bytes + align) & mask
+		value_bytes_ = (value_bytes + align) & mask
 	}
+	slot_bytes := key_bytes_ + value_bytes_
 	cap := 8
 	return DenseArray{
 		key_bytes: key_bytes
+		key_bytes_: key_bytes_
 		value_bytes: value_bytes
 		slot_bytes: slot_bytes
 		cap: cap
@@ -134,7 +139,7 @@ fn (d &DenseArray) key(i int) voidptr {
 // for cgen
 [inline]
 fn (d &DenseArray) value(i int) voidptr {
-	return unsafe { d.data + i * d.slot_bytes + d.key_bytes }
+	return unsafe { d.data + i * d.slot_bytes + d.key_bytes_ }
 }
 
 [inline]
@@ -209,7 +214,8 @@ type MapFreeFn = fn (voidptr)
 // map is the internal representation of a V `map` type.
 pub struct map {
 	// Number of bytes of a key
-	key_bytes int
+	key_bytes  int
+	key_bytes_ int
 	// Number of bytes of a value
 	value_bytes int
 mut:
@@ -323,8 +329,14 @@ fn new_map_2(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn MapEqF
 	metasize := int(sizeof(u32) * (init_capicity + extra_metas_inc))
 	// for now assume anything bigger than a pointer is a string
 	has_string_keys := key_bytes > sizeof(voidptr)
+	mut key_bytes_ := key_bytes
+	$if gcboehm ? {
+		align, mask := $if x64 { 7, int(0xfffffff8) } $else { 3, int(0xfffffffc) }
+		key_bytes_ = (key_bytes + align) & mask
+	}
 	return map{
 		key_bytes: key_bytes
+		key_bytes_: key_bytes_
 		value_bytes: value_bytes
 		even_index: init_even_index
 		cached_hashbits: max_cached_hashbits
@@ -445,7 +457,7 @@ fn (mut m map) set_1(key voidptr, value voidptr) {
 		pkey := unsafe { m.key_values.key(kv_index) }
 		if m.key_eq_fn(key, pkey) {
 			unsafe {
-				pval := byteptr(pkey) + m.key_bytes
+				pval := byteptr(pkey) + m.key_bytes_
 				C.memcpy(pval, value, m.value_bytes)
 			}
 			return
@@ -457,7 +469,7 @@ fn (mut m map) set_1(key voidptr, value voidptr) {
 	unsafe {
 		pkey := m.key_values.key(kv_index)
 		m.clone_fn(pkey, key)
-		C.memcpy(byteptr(pkey) + m.key_bytes, value, m.value_bytes)
+		C.memcpy(byteptr(pkey) + m.key_bytes_, value, m.value_bytes)
 	}
 	m.meta_greater(index, meta, u32(kv_index))
 	m.len++
@@ -536,7 +548,7 @@ fn (mut m map) get_and_set_1(key voidptr, zero voidptr) voidptr {
 				kv_index := int(unsafe { m.metas[index + 1] })
 				pkey := unsafe { m.key_values.key(kv_index) }
 				if m.key_eq_fn(key, pkey) {
-					return unsafe { byteptr(pkey) + m.key_values.key_bytes }
+					return unsafe { byteptr(pkey) + m.key_values.key_bytes_ }
 				}
 			}
 			index += 2
@@ -562,7 +574,7 @@ fn (m &map) get_1(key voidptr, zero voidptr) voidptr {
 			kv_index := int(unsafe { m.metas[index + 1] })
 			pkey := unsafe { m.key_values.key(kv_index) }
 			if m.key_eq_fn(key, pkey) {
-				return unsafe { byteptr(pkey) + m.key_values.key_bytes }
+				return unsafe { byteptr(pkey) + m.key_values.key_bytes_ }
 			}
 		}
 		index += 2
@@ -585,7 +597,7 @@ fn (m &map) get_1_check(key voidptr) voidptr {
 			kv_index := int(unsafe { m.metas[index + 1] })
 			pkey := unsafe { m.key_values.key(kv_index) }
 			if m.key_eq_fn(key, pkey) {
-				return unsafe { byteptr(pkey) + m.key_values.key_bytes }
+				return unsafe { byteptr(pkey) + m.key_values.key_bytes_ }
 			}
 		}
 		index += 2
@@ -725,6 +737,7 @@ fn (m &map) keys_1() array {
 fn (d &DenseArray) clone() DenseArray {
 	res := DenseArray{
 		key_bytes: d.key_bytes
+		key_bytes_: d.key_bytes_
 		value_bytes: d.value_bytes
 		slot_bytes: d.slot_bytes
 		cap: d.cap
@@ -748,6 +761,7 @@ pub fn (m &map) clone() map {
 	metasize := int(sizeof(u32) * (m.even_index + 2 + m.extra_metas))
 	res := map{
 		key_bytes: m.key_bytes
+		key_bytes_: m.key_bytes_
 		value_bytes: m.value_bytes
 		even_index: m.even_index
 		cached_hashbits: m.cached_hashbits

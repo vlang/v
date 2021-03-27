@@ -335,9 +335,6 @@ static inline bool _us64_lt(uint64_t a, int64_t b) { return a < INT64_MAX && (in
 #endif
 
 //================================== GLOBALS =================================*/
-#if defined(_VGCBOEHM)
-	int __v_inside_init = 1;
-#endif
 //byte g_str_buf[1024];
 byte* g_str_buf;
 int load_so(byteptr);
