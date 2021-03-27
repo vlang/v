@@ -598,7 +598,7 @@ fn (mut re RE) parse_char_class(in_txt string, in_i int) (int, int, rune) {
 		}
 
 		if status == .in_bsls {
-			println("CC bsls validation.")
+			//println("CC bsls validation.")
 			for c,x in bsls_validator_array {
 				if x.ch == ch {
 					//println("CC bsls found [${ch:c}]")
