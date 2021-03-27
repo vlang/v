@@ -69,11 +69,11 @@ pub fn platform_from_string(platform_str string) ?Platform {
 
 pub fn platform_from_filename(filename string) Platform {
 	suffix := filename.all_after_last('_').all_before('.c.v')
-	mut plf := platform_from_string(suffix) or { Platform.cross }
-	if plf == .auto {
-		plf = .cross
+	mut platform := platform_from_string(suffix) or { Platform.cross }
+	if platform == .auto {
+		platform = .cross
 	}
-	return plf
+	return platform
 }
 
 pub fn (sk SymbolKind) str() string {
