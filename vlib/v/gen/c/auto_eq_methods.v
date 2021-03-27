@@ -68,7 +68,18 @@ fn (mut g Gen) gen_struct_equality_fn(left table.Type) string {
 	info := left_sym.struct_info()
 	g.type_definitions.writeln('static bool ${ptr_typ}_struct_eq($ptr_typ a, $ptr_typ b); // auto')
 	mut fn_builder := strings.new_builder(512)
+	defer {
+		g.auto_fn_definitions << fn_builder.str()
+	}
 	fn_builder.writeln('static bool ${ptr_typ}_struct_eq($ptr_typ a, $ptr_typ b) {')
+
+	// orverloaded
+	if left_sym.has_method('==') {
+		fn_builder.writeln('\treturn ${ptr_typ}__eq(a, b);')
+		fn_builder.writeln('}')
+		return ptr_typ
+	}
+
 	for field in info.fields {
 		sym := g.table.get_type_symbol(field.typ)
 		if sym.kind == .string {
@@ -101,7 +112,6 @@ fn (mut g Gen) gen_struct_equality_fn(left table.Type) string {
 	}
 	fn_builder.writeln('\treturn true;')
 	fn_builder.writeln('}')
-	g.auto_fn_definitions << fn_builder.str()
 	return ptr_typ
 }
 
