@@ -7,7 +7,7 @@ fn foo2() ?int {
 }
 
 fn foo3() ?int {
-    return if false { 1 } else { error('foo3 error') }
+	return if false { 1 } else { error('foo3 error') }
 }
 
 fn foo4() ?int {

@@ -331,7 +331,7 @@ fn create_option_err() ?string {
 }
 
 fn test_option_err() {
-	assert '$create_option_err()' == "Option(error: this is an error)"
+	assert '$create_option_err()' == 'Option(error: this is an error)'
 }
 
 fn create_option_none() ?string {
