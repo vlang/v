@@ -30,7 +30,6 @@ pub mut:
 	array_init_depth   int    // current level of hierarchie in array init
 	single_line_if     bool
 	cur_mod            string
-	cur_short_mod      string // TODO clean this up
 	file               ast.File
 	did_imports        bool
 	is_assign          bool
@@ -46,7 +45,7 @@ pub mut:
 	it_name            string // the name to replace `it` with
 	inside_lambda      bool
 	inside_const       bool
-	is_mbranch_expr    bool // math a { x...y { } }
+	is_mbranch_expr    bool // match a { x...y { } }
 	pref               &pref.Preferences
 }
 
@@ -1161,7 +1160,6 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 
 pub fn (mut f Fmt) mod(mod ast.Module) {
 	f.set_current_module_name(mod.name)
-	f.cur_short_mod = mod.short_name
 	if mod.is_skipped {
 		return
 	}
@@ -1711,7 +1709,7 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 		// (since V's conts are no longer ALL_CAP).
 		// ^^^ except for `main`, where consts are allowed to not have a `main.` prefix.
 		if !node.name.contains('.') && !f.inside_const {
-			mod := if f.cur_mod == '' { f.cur_short_mod } else { f.cur_mod } // TODO why is this needed?
+			mod := f.cur_mod
 			full_name := mod + '.' + node.name
 			if obj := f.file.global_scope.find(full_name) {
 				if obj is ast.ConstField {
