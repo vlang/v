@@ -236,12 +236,12 @@ fn test_offset() {
 		} else {
 			diff_seconds = 86400 - int(math.abs(((u.hour * 60 + u.minute) - (n.hour * 60 + n.minute)) * 60))
 		}
-		if math.abs(u.day - n.day) > 1 {  // different month
+		if math.abs(u.day - n.day) > 1 { // different month
 			diff_seconds = diff_seconds * -1
 		}
-	} else {  // same day
+	} else { // same day
 		diff_seconds = ((n.hour * 60 + n.minute) - (u.hour * 60 + u.minute)) * 60
 	}
 
-	assert diff_seconds == time.offset()	
+	assert diff_seconds == time.offset()
 }
