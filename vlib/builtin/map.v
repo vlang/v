@@ -93,18 +93,18 @@ fn fast_string_eq(a string, b string) bool {
 
 // DenseArray represents a dynamic array with very low growth factor
 struct DenseArray {
-	key_bytes	int
-	key_bytes_	int
+	key_bytes   int
+	key_bytes_  int
 	value_bytes int
-	slot_bytes	int // sum of 2 fields above
+	slot_bytes  int // sum of 2 fields above
 mut:
-	cap		int
-	len		int
+	cap     int
+	len     int
 	deletes u32 // count
 	// array allocated (with `cap` bytes) on first deletion
 	// has non-zero element when key deleted
 	all_deleted &byte
-	data		byteptr // array of interleaved key data and value data
+	data        byteptr // array of interleaved key data and value data
 }
 
 [inline]
@@ -214,7 +214,7 @@ type MapFreeFn = fn (voidptr)
 // map is the internal representation of a V `map` type.
 pub struct map {
 	// Number of bytes of a key
-	key_bytes int
+	key_bytes  int
 	key_bytes_ int
 	// Number of bytes of a value
 	value_bytes int
@@ -233,12 +233,12 @@ mut:
 	metas &u32
 	// Extra metas that allows for no ranging when incrementing
 	// index in the hashmap
-	extra_metas		u32
+	extra_metas     u32
 	has_string_keys bool
-	hash_fn			MapHashFn
-	key_eq_fn		MapEqFn
-	clone_fn		MapCloneFn
-	free_fn			MapFreeFn
+	hash_fn         MapHashFn
+	key_eq_fn       MapEqFn
+	clone_fn        MapCloneFn
+	free_fn         MapFreeFn
 pub mut:
 	// Number of key-values currently in the hashmap
 	len int
