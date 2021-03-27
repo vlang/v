@@ -29,6 +29,16 @@ struct Range {
 	comparator_sets []ComparatorSet
 }
 
+struct InvalidComparatorCountError {
+	msg  string
+	code int
+}
+
+struct InvalidComparatorFormatError {
+	msg  string
+	code int
+}
+
 fn (r Range) satisfies(ver Version) bool {
 	mut final_result := false
 	for set in r.comparator_sets {
@@ -74,12 +84,16 @@ fn parse_range(input string) ?Range {
 fn parse_comparator_set(input string) ?ComparatorSet {
 	raw_comparators := input.split(semver.comparator_sep)
 	if raw_comparators.len > 2 {
-		return error('Invalid format of comparator set for input "$input"')
+		return IError(&InvalidComparatorFormatError{
+			msg: 'Invalid format of comparator set for input "$input"'
+		})
 	}
 	mut comparators := []Comparator{}
 	for raw_comp in raw_comparators {
 		c := parse_comparator(raw_comp) or {
-			return error('Invalid comparator "$raw_comp" in input "$input"')
+			return IError(&InvalidComparatorFormatError{
+				msg: 'Invalid comparator "$raw_comp" in input "$input"'
+			})
 		}
 		comparators << c
 	}
