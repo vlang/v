@@ -27,7 +27,7 @@ fn test_enum_non_default_value() {
 	assert 't.e: $t.e | int(t.e): ${int(t.e).str()}' == 't.e: third | int(t.e): 22'
 }
 
-fn test_generation_of_string_interpolation_method_for_pointer_to_struct_containing_enum_fields(){
+fn test_generation_of_string_interpolation_method_for_pointer_to_struct_containing_enum_fields() {
 	t := &MyStruct{
 		e: .third
 	}

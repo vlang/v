@@ -118,10 +118,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 	mut default_expr_aligns := []CommentAndExprAlignInfo{}
 	mut field_types := []string{cap: node.fields.len}
 	for i, field in node.fields {
-		mut ft := f.no_cur_mod(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
-		if !ft.contains('C.') && !ft.contains('JS.') && !ft.contains('fn (') && !ft.contains('chan') {
-			ft = f.short_module(ft)
-		}
+		ft := f.no_cur_mod(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
 		field_types << ft
 		attrs_len := inline_attrs_len(field.attrs)
 		end_pos := field.pos.pos + field.pos.len

@@ -1,8 +1,8 @@
 fn test_cstring() {
 	w := c'world'
-	hlen := unsafe{ C.strlen(c'hello') }
-	hlen2 := unsafe{ C.strlen('hello') }
-	wlen := unsafe{ C.strlen(w) }
+	hlen := unsafe { C.strlen(c'hello') }
+	hlen2 := unsafe { C.strlen('hello') }
+	wlen := unsafe { C.strlen(w) }
 	assert hlen == 5
 	assert hlen2 == 5
 	assert wlen == 5

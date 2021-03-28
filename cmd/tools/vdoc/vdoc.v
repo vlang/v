@@ -57,6 +57,7 @@ mut:
 	output_type      OutputType = .unset
 	input_path       string
 	symbol_name      string
+	platform         doc.Platform
 }
 
 //
@@ -292,7 +293,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 	}
 	for dirpath in dirs {
 		vd.vprintln('Generating $out.typ docs for "$dirpath"')
-		mut dcs := doc.generate(dirpath, cfg.pub_only, true, cfg.symbol_name) or {
+		mut dcs := doc.generate(dirpath, cfg.pub_only, true, cfg.platform, cfg.symbol_name) or {
 			vd.emit_generate_err(err)
 			exit(1)
 		}
@@ -417,6 +418,19 @@ fn parse_arguments(args []string) Config {
 			'-o' {
 				opath := cmdline.option(current_args, '-o', '')
 				cfg.output_path = if opath == 'stdout' { opath } else { os.real_path(opath) }
+				i++
+			}
+			'-os' {
+				platform_str := cmdline.option(current_args, '-os', '')
+				if platform_str == 'cross' {
+					eprintln('`v doc -os cross` is not supported yet.')
+					exit(1)
+				}
+				selected_platform := doc.platform_from_string(platform_str) or {
+					eprintln(err.msg)
+					exit(1)
+				}
+				cfg.platform = selected_platform
 				i++
 			}
 			'-no-timestamp' {

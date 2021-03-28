@@ -1,4 +1,5 @@
 module yyy
-pub fn f() string { 
+
+pub fn f() string {
 	return 'y'
 }

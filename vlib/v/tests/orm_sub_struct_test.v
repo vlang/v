@@ -1,12 +1,12 @@
 import sqlite
 
 struct Upper {
-	id int
+	id  int
 	sub SubStruct
 }
 
 struct SubStruct {
-	id int
+	id   int
 	name string
 }
 

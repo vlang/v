@@ -1,12 +1,12 @@
 struct Foo {
-	age int
+	age  int
 	name string
 }
 
 // different order
 struct Bar {
 	name string
-	age int
+	age  int
 }
 
 fn test_order() {
@@ -17,7 +17,7 @@ fn test_order() {
 	b := Bar{
 		...f
 	}
-	assert b == Bar{'f',4}
+	assert b == Bar{'f', 4}
 	b2 := Bar{
 		...f
 		name: 'b2'
@@ -27,13 +27,13 @@ fn test_order() {
 }
 
 struct Qux {
-	name string
-	age int
+	name  string
+	age   int
 	extra bool
 }
 
 fn test_extra() {
-	f := Foo{4,'f'}
+	f := Foo{4, 'f'}
 	q := Qux{
 		...f
 		extra: true

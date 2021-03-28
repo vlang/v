@@ -62,7 +62,14 @@ fn test_for_in_fixed_array_label_continue_break() {
 
 fn test_for_in_map_label_continue_break() {
 	mut rets := []string{}
-	m := map{'a': 4, 'b': 5, 'c': 6, 'd': 7, 'e': 8, 'f': 9}
+	m := map{
+		'a': 4
+		'b': 5
+		'c': 6
+		'd': 7
+		'e': 8
+		'f': 9
+	}
 	outer: for k, v in m {
 		println('$k, $v')
 		rets << '$k, $v'

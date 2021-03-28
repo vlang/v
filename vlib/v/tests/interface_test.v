@@ -308,17 +308,17 @@ fn animal_match(a Animal) {
 
 interface II {
 mut:
-    my_field int
+	my_field int
 }
 
 struct AA {
-    BB
+	BB
 }
 
 struct BB {
 	pad [10]byte
 mut:
-    my_field int
+	my_field int
 }
 
 fn main() {

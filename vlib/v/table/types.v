@@ -922,8 +922,16 @@ fn (t Table) shorten_user_defined_typenames(originalname string, import_aliases 
 	} else {
 		// types defined by the user
 		// mod.submod.submod2.Type => submod2.Type
-		parts := res.split('.')
-		res = if parts.len > 1 { parts[parts.len - 2..].join('.') } else { parts[0] }
+		mut parts := res.split('.')
+		if parts.len > 1 {
+			ind := parts.len - 2
+			if parts[ind] in import_aliases {
+				parts[ind] = import_aliases[parts[ind]]
+			}
+			res = parts[ind..].join('.')
+		} else {
+			res = parts[0]
+		}
 	}
 	return res
 }

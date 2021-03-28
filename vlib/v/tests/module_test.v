@@ -3,7 +3,7 @@ import crypto.sha256
 import term { white }
 import crypto.md5 { sum }
 import log as l
-import time as t { now, utc, Time }
+import time as t { Time, utc }
 import math
 import crypto.sha512
 import cli { Command }

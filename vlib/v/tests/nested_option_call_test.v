@@ -62,8 +62,6 @@ fn test_nested_propagation_method() {
 	mut x := St{
 		z: 2.25
 	}
-	x.aa_propagate() or {
-		x.z = 13.0625
-	}
+	x.aa_propagate() or { x.z = 13.0625 }
 	assert x.z == 13.0625
 }

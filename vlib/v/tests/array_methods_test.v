@@ -5,7 +5,9 @@ mut:
 
 // if this is called more than once, the test'll fail
 fn (mut c Counter) new_arr(msg string) []int {
-	if c.val > 0 { panic(msg) }
+	if c.val > 0 {
+		panic(msg)
+	}
 	c.val++
 	return [1, 3, 2]
 }

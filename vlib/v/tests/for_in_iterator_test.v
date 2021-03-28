@@ -1,6 +1,6 @@
 struct Doubler {
 mut:
-	val int
+	val   int
 	until int
 }
 

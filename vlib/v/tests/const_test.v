@@ -1,4 +1,4 @@
-pub const  (
+pub const (
 	a = b
 	c = a + b
 	b = 1
@@ -26,7 +26,7 @@ fn foo_decode(name string) ?Foo {
 	return Foo{name}
 }
 
-pub const  (
+pub const (
 	def = foo_decode('baz') or { Foo{} }
 	bar = foo_decode('bar') ?
 )

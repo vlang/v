@@ -69,8 +69,8 @@ and all the digits `\d`.
 
 It is possible to mix all the properties of the char class together.
 
-**Note:** In order to match the `-` (minus) char, it must be located at the first position
- in the cc, for example `[-_\d\a]` will match `-` minus, `_`underscore, `\d` numeric chars,
+**Note:** In order to match the `-` (minus) char, it must be preceded by a backslash
+ in the cc, for example `[\-_\d\a]` will match `-` minus, `_`underscore, `\d` numeric chars,
  `\a` lower case chars.
 
 ### Meta-chars

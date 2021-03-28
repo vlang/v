@@ -1,6 +1,6 @@
 fn test_for_c_multi_init_vars() {
 	mut rets := []string{}
-	for a,b := 0,1; a < 5; a++ {
+	for a, b := 0, 1; a < 5; a++ {
 		if a == 3 {
 			continue
 		}
@@ -18,7 +18,7 @@ fn test_for_c_multi_init_vars() {
 fn test_for_c_multi_inc_vars() {
 	mut rets := []string{}
 	mut b := 1
-	for a := 0; a < 10; a,b = b,a+b {
+	for a := 0; a < 10; a, b = b, a + b {
 		if a in [2, 3] {
 			continue
 		}

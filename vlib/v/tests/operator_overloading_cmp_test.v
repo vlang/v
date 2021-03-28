@@ -11,12 +11,16 @@ fn (a Foo) == (b Foo) bool {
 }
 
 fn test_operator_overloading_cmp() {
-	a := Foo{i: 38}
-	b := Foo{i: 38}
+	a := Foo{
+		i: 38
+	}
+	b := Foo{
+		i: 38
+	}
 	mut arr := [a, b]
 
 	assert (a > b) == false
-	assert (a < b) == false 
+	assert (a < b) == false
 	//// /// //
 	assert a >= b
 	assert a <= b

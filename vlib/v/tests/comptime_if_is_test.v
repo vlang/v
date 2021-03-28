@@ -26,4 +26,3 @@ fn test_is_or() {
 	assert g(i8(1)) == 1
 	assert g(1) == 2
 }
-

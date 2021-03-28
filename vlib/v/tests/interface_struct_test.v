@@ -39,7 +39,7 @@ fn test_interface_struct() {
 			name: 'Richard'
 		}
 	}
-	assert bz1.sp.say_hello() == "Hello, My name is Richard and I\'m the bawz"
+	assert bz1.sp.say_hello() == "Hello, My name is Richard and I'm the bawz"
 	print('Test Boss inside Baz struct: ')
 	bz1.sp.speak('Hello world!')
 	bz2 := Baz{
@@ -59,7 +59,7 @@ fn test_interface_mut_struct() {
 			name: 'Derek'
 		}
 	}
-	assert mbaz.sp.say_hello() == "Hello, My name is Derek and I\'m the bawz"
+	assert mbaz.sp.say_hello() == "Hello, My name is Derek and I'm the bawz"
 	mbaz.sp = Cat{
 		name: 'Dog'
 		breed: 'Not a dog'
@@ -82,7 +82,7 @@ fn test_interface_struct_from_array() {
 		},
 	]
 	assert bazs[0].sp.say_hello() == 'Meow meow Kitty the Catty Koo meow'
-	assert bazs[1].sp.say_hello() == "Hello, My name is Bob and I\'m the bawz"
+	assert bazs[1].sp.say_hello() == "Hello, My name is Bob and I'm the bawz"
 }
 
 /*

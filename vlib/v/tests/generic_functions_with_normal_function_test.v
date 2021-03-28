@@ -1,9 +1,9 @@
 fn get<T>(typ T) T {
-   return typ
+	return typ
 }
 
 fn get_string(typ string) string {
-   return 'boom'
+	return 'boom'
 }
 
 fn test_generic_with_same_type() {
