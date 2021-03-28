@@ -698,6 +698,7 @@ pub fn (mut t Table) find_or_register_array(elem_type Type) int {
 		name: name
 		cname: cname
 		info: Array{
+			nr_dims: 1
 			elem_type: elem_type
 		}
 	}

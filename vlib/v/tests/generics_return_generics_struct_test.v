@@ -29,3 +29,23 @@ fn test_generics_return_generics_struct() {
 	println(get<int>(o))
 	assert get<int>(o) == 42
 }
+
+pub struct ArrayIterator<T> {
+	data []T
+mut:
+	index int
+}
+
+pub fn iter<T>(arr []T) ArrayIterator<T> {
+	return ArrayIterator{data: arr, index: 11}
+}
+
+fn test_generics_with_generics_struct_string() {
+	data := ['foo' 'bar']
+	it := iter<string>(data)
+	println(it)
+	ret := '$it'
+	assert ret.contains('arrayIterator<string>{')
+	assert ret.contains("data: ['foo', 'bar']")
+	assert ret.contains('index: 11')
+}
