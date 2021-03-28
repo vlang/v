@@ -26,6 +26,7 @@ mut:
 	check_period_ms int = 200
 	is_debug        bool
 	vexe            string
+	affected_paths  map[string]bool
 	vfiles          map[string]VFileStat
 	opts            []string
 	rerun_channel   chan string
@@ -51,12 +52,31 @@ fn (mut context Context) update_changed_vfiles(changes map[string]VFileStat) {
 
 fn (mut context Context) get_stats_for_affected_vfiles() map[string]VFileStat {
 	mut newstats := map[string]VFileStat{}
-	cmd := '"$context.vexe" -silent -print_v_files ${context.opts.join(' ')}'
-	context.elog_debug('> cmd: $cmd')
-	vfiles := os.execute(cmd)
-	if vfiles.exit_code == 0 {
-		paths := vfiles.output.trim_space().split('\n')
-		for f in paths {
+	if context.affected_paths.len == 0 {
+		cmd := '"$context.vexe" -silent -print_v_files ${context.opts.join(' ')}'
+		context.elog_debug('> cmd: $cmd')
+		vfiles := os.execute(cmd)
+		if vfiles.exit_code == 0 {
+			paths := vfiles.output.trim_space().split('\n')
+			for vf in paths {
+				context.affected_paths[os.dir(vf)] = true
+			}
+		}
+	}
+	for path, _ in context.affected_paths {
+		files := os.ls(path) or { []string{} }
+		for pf in files {
+			pf_ext := os.file_ext(pf).to_lower()
+			if pf_ext in ['', 'bak', 'exe', 'dll', 'so'] {
+				continue
+			}
+			if pf.starts_with('.#') {
+				continue
+			}
+			if pf.ends_with('~') {
+				continue
+			}
+			f := os.join_path(path, pf)
 			fullpath := os.real_path(f)
 			mtime := os.file_last_mod_unix(fullpath)
 			newstats[fullpath] = VFileStat{fullpath, mtime}
@@ -79,6 +99,7 @@ fn (mut context Context) get_changed_vfiles() map[string]VFileStat {
 			continue
 		}
 	}
+	context.elog_debug('> get_changed_vfiles: $changed')
 	return changed
 }
 
