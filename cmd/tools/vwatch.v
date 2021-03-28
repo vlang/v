@@ -51,18 +51,22 @@ fn (mut context Context) update_changed_vfiles(changes map[string]VFileStat) {
 }
 
 fn (mut context Context) get_stats_for_affected_vfiles() map[string]VFileStat {
-	mut newstats := map[string]VFileStat{}
 	if context.affected_paths.len == 0 {
-		cmd := '"$context.vexe" -silent -print_v_files ${context.opts.join(' ')}'
+		// The next command will make V parse the program, and print all .v files,
+		// needed for its compilation, without actually compiling it.
+		cmd := '"$context.vexe" -silent -print-v-files ${context.opts.join(' ')}'
 		context.elog_debug('> cmd: $cmd')
 		vfiles := os.execute(cmd)
 		if vfiles.exit_code == 0 {
 			paths := vfiles.output.trim_space().split('\n')
 			for vf in paths {
-				context.affected_paths[os.dir(vf)] = true
+				context.affected_paths[os.real_path(os.dir(vf))] = true
 			}
 		}
+		// context.elog_debug('vfiles paths to be scanned: $context.affected_paths.keys()')
 	}
+	// scan all files in the found folders
+	mut newstats := map[string]VFileStat{}
 	for path, _ in context.affected_paths {
 		files := os.ls(path) or { []string{} }
 		for pf in files {
@@ -99,7 +103,7 @@ fn (mut context Context) get_changed_vfiles() map[string]VFileStat {
 			continue
 		}
 	}
-	context.elog_debug('> get_changed_vfiles: $changed')
+	// context.elog_debug('> get_changed_vfiles: $changed')
 	return changed
 }
 
@@ -112,7 +116,7 @@ fn change_detection_loop(ocontext &Context) {
 		changes := context.get_changed_vfiles()
 		if changes.len > 0 {
 			for f, _ in changes {
-				context.elog_debug('Checking found $changes.len changed files... First changed file: $f .')
+				// context.elog_debug('Checking found $changes.len changed files... First changed file: $f .')
 				break
 			}
 			context.update_changed_vfiles(changes)
@@ -127,7 +131,7 @@ fn (mut context Context) compilation_runner_loop() {
 	mut runner_cycles := 0
 	mut cmds := []string{}
 	_ := <-context.rerun_channel
-	context.elog_debug('>>>>>>>>>>>>>>>>>>>>>>>>>>>>> compilation_runner_loop FOR <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<')
+	// context.elog_debug('>>>>>>>>>>>>>>>>>>>>>>>>>>>>> compilation_runner_loop FOR <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<')
 	for {
 		for {
 			timestamp := time.now().format_ss_micro()
@@ -136,19 +140,19 @@ fn (mut context Context) compilation_runner_loop() {
 			context.child_process.set_args(context.opts)
 			context.child_process.run()
 			eprintln('$timestamp: $cmd | pid: $context.child_process.pid')
-			context.elog_debug('> compilation_runner_loop vexe pid: $context.child_process.pid | status: $context.child_process.status | cycles: $runner_cycles')
+			// context.elog_debug('> compilation_runner_loop vexe pid: $context.child_process.pid | status: $context.child_process.status | cycles: $runner_cycles')
 			for {
 				for {
 					if context.is_exiting {
 						return
 					}
 					if !context.child_process.is_alive() {
-						context.elog_debug('> process pid: $context.child_process.pid is no longer alive')
+						// context.elog_debug('> process pid: $context.child_process.pid is no longer alive')
 						context.child_process.wait()
 					}
 					select {
 						action := <-context.rerun_channel {
-							context.elog_debug('received action: $action')
+							// context.elog_debug('received action: $action')
 							cmds << action
 							if action == 'quit' {
 								context.child_process.signal_pgkill()
@@ -160,7 +164,7 @@ fn (mut context Context) compilation_runner_loop() {
 							should_restart := 'restart' in cmds
 							cmds = []
 							if should_restart {
-								context.elog_debug('>>>>>>>> KILLING $context.child_process.pid')
+								// context.elog_debug('>>>>>>>> KILLING $context.child_process.pid')
 								context.child_process.signal_pgkill()
 								context.child_process.wait()
 								break
