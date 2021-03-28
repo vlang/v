@@ -1,7 +1,0 @@
-Usage: 
-  `v redo [v compile options] file.v`
-  `v redo [v compile options] run file.v [options passed to the program in file.v]`
- ... should both work.
-
-Description: `v redo` is V command, that redoes over and over the same, 
-when a source change is detected.

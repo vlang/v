@@ -1,6 +1,11 @@
 module main
 
-// Implements `v redo file.v` , `v redo run file.v` etc.
+import os
+import time
+import v.pref
+
+//
+// Implements `v -watch file.v` , `v -watch run file.v` etc.
 // With this command, V will collect all .v files that are needed for the compilation,
 // then it will enter an infinite loop, monitoring them for changes.
 //
@@ -8,13 +13,9 @@ module main
 // then rerun/recompile/etc.
 //
 // In effect, this makes it easy to have an editor session and a separate terminal,
-// running just `v redo file.v`, and you will see your changes right after you save your
+// running just `v -watch run file.v`, and you will see your changes right after you save your
 // .v file in your editor.
-// TODO: stop/kill the current long running process if it is still live, when a change is
-// detected.
-import os
-import time
-import v.pref
+//
 
 struct VFileStat {
 	path  string
@@ -28,7 +29,7 @@ fn (mut vfs VFileStat) free() {
 
 struct Context {
 mut:
-	check_period_ms int = 300
+	check_period_ms int = 250
 	is_debug        bool
 	vexe            string
 	affected_paths  []string
