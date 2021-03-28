@@ -62,7 +62,7 @@ fn (mut context Context) get_stats_for_affected_vfiles() map[string]VFileStat {
 		// The next command will make V parse the program, and print all .v files,
 		// needed for its compilation, without actually compiling it.
 		copts := context.opts.join(' ')
-		cmd := '"$context.vexe" -silent -print-v-files ${copts}'
+		cmd := '"$context.vexe" -silent -print-v-files $copts'
 		// context.elog_debug('> cmd: $cmd')
 		vfiles := os.execute(cmd)
 		if vfiles.exit_code == 0 {
@@ -125,9 +125,7 @@ fn change_detection_loop(ocontext &Context) {
 		changes := context.get_changed_vfiles()
 		if changes.len > 0 {
 			context.update_changed_vfiles(changes)
-            eprintln('<- pushing "restart" changes.len: $changes.len')
 			context.rerun_channel <- 'restart'
-            eprintln('<- pushed "restart" changes.len: $changes.len')
 		}
 		time.sleep(context.check_period_ms * time.millisecond)
 	}
