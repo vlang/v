@@ -72,6 +72,7 @@ fn C.fclose(stream &C.FILE) int
 fn C.pclose(stream &C.FILE) int
 
 // process execution, os.process:
+[trusted]
 fn C.getpid() int
 
 fn C.system(cmd charptr) int
@@ -82,6 +83,12 @@ fn C.posix_spawnp(child_pid &int, exefile charptr, file_actions voidptr, attrp v
 
 fn C.execve(cmd_path charptr, args voidptr, envs voidptr) int
 
+fn C.execvp(cmd_path charptr, args &charptr) int
+
+fn C._execve(cmd_path charptr, args voidptr, envs voidptr) int
+
+fn C._execvp(cmd_path charptr, args &charptr) int
+
 [trusted]
 fn C.fork() int
 
@@ -89,6 +96,7 @@ fn C.wait(status &int) int
 
 fn C.waitpid(pid int, status &int, options int) int
 
+[trusted]
 fn C.kill(pid int, sig int) int
 
 fn C.setenv(charptr, charptr, int) int
@@ -115,12 +123,14 @@ fn C.fgets(str charptr, n int, stream &C.FILE) int
 
 fn C.memset(str voidptr, c int, n size_t) int
 
+[trusted]
 fn C.sigemptyset() int
 
 fn C.getcwd(buf charptr, size size_t) charptr
 
 fn C.signal(signal int, handlercb voidptr) voidptr
 
+[trusted]
 fn C.mktime() int
 
 fn C.gettimeofday(tv &C.timeval, tz &C.timezone) int
@@ -129,6 +139,7 @@ fn C.gettimeofday(tv &C.timeval, tz &C.timezone) int
 fn C.sleep(seconds u32) u32
 
 // fn C.usleep(usec useconds_t) int
+[trusted]
 fn C.usleep(usec u32) int
 
 fn C.opendir(charptr) voidptr
@@ -148,8 +159,10 @@ fn C.srand(seed u32)
 
 fn C.atof(str charptr) f64
 
+[trusted]
 fn C.tolower(c int) int
 
+[trusted]
 fn C.toupper(c int) int
 
 [trusted]
@@ -162,20 +175,26 @@ fn C.snprintf(str charptr, size size_t, format charptr, opt ...voidptr) int
 
 fn C.fprintf(byteptr, ...byteptr)
 
+[trusted]
 fn C.WIFEXITED(status int) bool
 
+[trusted]
 fn C.WEXITSTATUS(status int) int
 
+[trusted]
 fn C.WIFSIGNALED(status int) bool
 
+[trusted]
 fn C.WTERMSIG(status int) int
 
+[trusted]
 fn C.isatty(fd int) int
 
 fn C.syscall(number int, va ...voidptr) int
 
 fn C.sysctl(name &int, namelen u32, oldp voidptr, oldlenp voidptr, newp voidptr, newlen size_t) int
 
+[trusted]
 fn C._fileno(int) int
 
 fn C._get_osfhandle(fd int) C.intptr_t
@@ -196,6 +215,7 @@ fn C.SetHandleInformation(hObject voidptr, dwMask u32, dw_flags u32) bool
 
 fn C.ExpandEnvironmentStringsW(lpSrc &u16, lpDst &u16, nSize u32) u32
 
+[trusted]
 fn C.SendMessageTimeout() u32
 
 fn C.SendMessageTimeoutW(hWnd voidptr, Msg u32, wParam &u16, lParam &u32, fuFlags u32, uTimeout u32, lpdwResult &u64) u32
@@ -231,6 +251,7 @@ fn C.SetConsoleMode(voidptr, u32) int
 // fn C.GetConsoleMode() int
 fn C.GetConsoleMode(voidptr, &u32) int
 
+[trusted]
 fn C.GetCurrentProcessId() int
 
 fn C.wprintf()
@@ -280,6 +301,7 @@ fn C._fullpath() int
 
 fn C.GetFullPathName(voidptr, u32, voidptr, voidptr) u32
 
+[trusted]
 fn C.GetCommandLine() voidptr
 
 fn C.LocalFree()
@@ -301,8 +323,10 @@ fn C.CloseHandle(voidptr) int
 
 fn C.GetExitCodeProcess(hProcess voidptr, lpExitCode &u32)
 
+[trusted]
 fn C.GetTickCount() i64
 
+[trusted]
 fn C.Sleep(dwMilliseconds u32)
 
 fn C.WSAStartup(u16, &voidptr) int

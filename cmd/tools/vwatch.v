@@ -2,7 +2,6 @@ module main
 
 import os
 import time
-import v.pref
 
 //
 // Implements `v -watch file.v` , `v -watch run file.v` etc.
@@ -194,7 +193,7 @@ const ccontext = Context{
 fn main() {
 	mut context := &ccontext
 	context.rerun_channel = chan string{cap: 10}
-	context.vexe = pref.vexe_path()
+	context.vexe = os.getenv('VEXE')
 	context.opts = os.args[1..]
 	os.signal(C.SIGINT, fn () {
 		mut context := &ccontext
