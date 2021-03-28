@@ -29,10 +29,10 @@ pub fn (mut e Eval) stmt(stmt ast.Stmt) {
 			}
 			match stmt.op {
 				.decl_assign {
-					e.set(stmt.left[0], right, true)
+					e.set(stmt.left[0], right, true, stmt.left_types[0])
 				}
 				.assign {
-					e.set(stmt.left[0], right, false)
+					e.set(stmt.left[0], right, false, stmt.left_types[0])
 				}
 				else {
 					e.error('unknown assign statment: $stmt.op')
@@ -54,13 +54,28 @@ pub fn (mut e Eval) stmt(stmt ast.Stmt) {
 				e.error('keys are not supported in for in statements')
 			}
 			e.open_scope()
-			e.set(ast.Ident{ name: stmt.val_var, scope: 0 }, Int{-1, 32}, true)
-			for i in (e.expr(stmt.cond, stmt.cond_type) as Int).val .. (e.expr(stmt.high,
+			underscore := stmt.val_var == '_'
+			if !underscore {
+				e.set(ast.Ident{ name: stmt.val_var, scope: 0 }, Int{-1, 32}, true, stmt.val_type)
+			}
+			for i in (e.expr(stmt.cond, ast.int_type_idx) as Int).val .. (e.expr(stmt.high,
 				ast.int_type_idx) as Int).val {
-				e.set(ast.Ident{ name: stmt.val_var, scope: 0 }, Int{i, 32}, false)
+				if !underscore {
+					e.set(ast.Ident{ name: stmt.val_var, scope: 0 }, Int{i, 32}, false,
+						stmt.val_type)
+				}
 				e.stmts(stmt.stmts)
 			}
 			e.close_scope()
+		}
+		ast.ForStmt {
+			for {
+				should_break := e.expr(stmt.cond, ast.bool_type_idx)
+				if !(should_break as bool) {
+					break
+				}
+				e.stmts(stmt.stmts)
+			}
 		}
 		ast.Block {
 			e.stmts(stmt.stmts)

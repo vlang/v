@@ -1,12 +1,14 @@
 module eval
 
 import v.ast
+import v.table
 
 pub struct Var {
 pub mut:
 	val Object
 pub:
 	scope_idx int
+	typ       table.Type
 }
 
 pub fn (mut e Eval) open_scope() {
@@ -22,13 +24,14 @@ pub fn (mut e Eval) close_scope() {
 	}
 }
 
-pub fn (mut e Eval) set(expr ast.Expr, val Object, init bool) {
+pub fn (mut e Eval) set(expr ast.Expr, val Object, init bool, typ table.Type) {
 	match expr {
 		ast.Ident {
 			if init {
 				e.local_vars[expr.name] = Var{
 					val: val
 					scope_idx: e.scope_idx
+					typ: typ
 				}
 			} else {
 				e.local_vars[expr.name].val = val
@@ -36,6 +39,19 @@ pub fn (mut e Eval) set(expr ast.Expr, val Object, init bool) {
 		}
 		else {
 			panic('unknown left value to assign statment: $expr.type_name()')
+		}
+	}
+}
+
+// val and expr must be both numeric types, or both string
+pub fn (mut e Eval) add(expr ast.Expr, val Object) {
+	match expr {
+		ast.Ident {
+			e.local_vars[expr.name].val = e.infix_expr(e.local_vars[expr.name].val, val,
+				.plus, e.local_vars[expr.name].typ)
+		}
+		else {
+			panic('unknown left value to add statment: $expr.type_name()')
 		}
 	}
 }

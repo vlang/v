@@ -192,6 +192,9 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 			}
 		}
 		ast.CastExpr {
+			if e.cur_mod == 'main' {
+				println('dsaiu')
+			}
 			x := e.expr(expr.expr, expr.expr_type)
 			if expr.typ in ast.signed_integer_type_idxs {
 				match x {
@@ -404,7 +407,18 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 					}
 				}
 				else {
-					panic(expr.op)
+					e.error('unhandled prefix expression $expr.op')
+				}
+			}
+		}
+		ast.PostfixExpr {
+			match expr.op {
+				.inc {
+					e.add(expr.expr, Int{1, 64})
+					return e.expr(expr.expr, table.i64_type_idx)
+				}
+				else {
+					e.error('unhandled postfix expression $expr.op')
 				}
 			}
 		}

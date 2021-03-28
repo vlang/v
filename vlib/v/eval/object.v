@@ -89,7 +89,11 @@ pub mut:
 	val []Object
 }
 
-type Charptr = &i8
+type Charptr = charptr
+
+fn (c Charptr) str() string {
+	return voidptr(c).str()
+}
 
 pub struct Ptr {
 	val &Object
