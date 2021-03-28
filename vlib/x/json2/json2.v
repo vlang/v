@@ -14,7 +14,7 @@ pub interface Serializable {
 
 // Decodes a JSON string into an `Any` type. Returns an option.
 pub fn raw_decode(src string) ?Any {
-	mut p := new_parser(src, true)
+	mut p := new_parser(src.trim_space(), true)
 	return p.decode()
 }
 

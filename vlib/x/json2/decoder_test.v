@@ -67,3 +67,15 @@ fn test_raw_decode_string_with_dollarsign() {
 	}
 	assert str.str() == r'Hello $world'
 }
+
+fn test_multiline_raw_decode_map() {
+	raw_mp := json2.raw_decode('
+	{"name":"Bob","age":20}
+	') or {
+		assert false
+		json2.Any{}
+	}
+	mp := raw_mp.as_map()
+	assert mp['name'].str() == 'Bob'
+	assert mp['age'].int() == 20
+}
