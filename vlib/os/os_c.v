@@ -847,7 +847,12 @@ pub fn execvp(cmdpath string, args []string) ? {
 		cargs << charptr(args[i].str)
 	}
 	cargs << charptr(0)
-	res := C.execvp(charptr(cmdpath.str), cargs.data)
+	mut res := int(0)
+	$if windows {
+		res = C._execvp(charptr(cmdpath.str), cargs.data)
+	} $else {
+		res = C.execvp(charptr(cmdpath.str), cargs.data)
+	}
 	if res == -1 {
 		return error_with_code(posix_get_error_msg(C.errno), C.errno)
 	}
@@ -871,7 +876,12 @@ pub fn execve(cmdpath string, args []string, envs []string) ? {
 	}
 	cargv << charptr(0)
 	cenvs << charptr(0)
-	res := C.execve(charptr(cmdpath.str), cargv.data, cenvs.data)
+	mut res := int(0)
+	$if windows {
+		res = C._execve(charptr(cmdpath.str), cargv.data, cenvs.data)
+	} $else {
+		res = C.execve(charptr(cmdpath.str), cargv.data, cenvs.data)
+	}
 	// NB: normally execve does not return at all.
 	// If it returns, then something went wrong...
 	if res == -1 {

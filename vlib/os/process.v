@@ -90,7 +90,6 @@ pub fn (mut p Process) signal_pgkill() {
 		return
 	}
 	p._signal_pgkill()
-	p.status = .aborted
 	return
 }
 
