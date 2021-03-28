@@ -1953,7 +1953,8 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 					mut fields := rts.info.fields.clone()
 					if rts.info.generic_types.len == generic_types.len {
 						for i, _ in fields {
-							fields[i].typ = c.unwrap_generic_ex(fields[i].typ, rts.info.generic_types, generic_types)
+							fields[i].typ = c.unwrap_generic_ex(fields[i].typ, rts.info.generic_types,
+								generic_types)
 						}
 						mut info := rts.info
 						info.generic_types = []
