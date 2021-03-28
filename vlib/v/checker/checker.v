@@ -1954,12 +1954,22 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 					if rts.info.generic_types.len == generic_types.len {
 						for i, _ in fields {
 							mut field := fields[i]
-							if field.typ.has_flag(.generic) {
-								for j, gp in rts.info.generic_types {
-									if gp == field.typ {
+							sym := c.table.get_type_symbol(field.typ)
+							mut field_typ := field.typ
+							mut nr_dims := 0
+							if sym.kind == .array {
+								field_typ, nr_dims = c.array_element_info(field.typ)
+							}
+							for j, gp in rts.info.generic_types {
+								if gp == field_typ {
+									if sym.kind == .array {
+										field_idx := c.table.find_or_register_array_with_dims(generic_types[j],
+											nr_dims)
+										field.typ = table.new_type(field_idx)
+									} else {
 										field.typ = generic_types[j].derive(field.typ).clear_flag(.generic)
-										break
 									}
+									break
 								}
 							}
 							fields[i] = field
@@ -2134,6 +2144,21 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		return call_expr.return_type
 	}
 	return f.return_type
+}
+
+fn (mut c Checker) array_element_info(typ table.Type) (table.Type, int) {
+	mut typ_ := typ
+	mut dims := 0
+	for {
+		sym := c.table.get_type_symbol(typ_)
+		if sym.info is table.Array {
+			typ_ = sym.info.elem_type
+			dims++
+		} else {
+			break
+		}
+	}
+	return typ_, dims
 }
 
 fn (mut c Checker) deprecate_fnmethod(kind string, name string, the_fn table.Fn, call_expr ast.CallExpr) {
