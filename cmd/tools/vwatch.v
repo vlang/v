@@ -15,7 +15,6 @@ module main
 import os
 import time
 import v.pref
-import sync
 
 struct VFileStat {
 	path  string
@@ -30,6 +29,8 @@ mut:
 	vfiles          map[string]VFileStat
 	opts            []string
 	rerun_channel   chan string
+	child_process   &os.Process
+	is_exiting      bool // set by SIGINT/Ctrl-C
 }
 
 fn (context Context) str() string {
@@ -52,7 +53,7 @@ fn (mut context Context) get_stats_for_affected_vfiles() map[string]VFileStat {
 	mut newstats := map[string]VFileStat{}
 	cmd := '"$context.vexe" -silent -print_v_files ${context.opts.join(' ')}'
 	context.elog_debug('> cmd: $cmd')
-	vfiles := os.exec(cmd) or { panic(err) }
+	vfiles := os.execute(cmd)
 	if vfiles.exit_code == 0 {
 		paths := vfiles.output.trim_space().split('\n')
 		for f in paths {
@@ -84,6 +85,9 @@ fn (mut context Context) get_changed_vfiles() map[string]VFileStat {
 fn change_detection_loop(ocontext &Context) {
 	mut context := ocontext
 	for {
+		if context.is_exiting {
+			return
+		}
 		changes := context.get_changed_vfiles()
 		if changes.len > 0 {
 			for f, _ in changes {
@@ -93,7 +97,7 @@ fn change_detection_loop(ocontext &Context) {
 			context.update_changed_vfiles(changes)
 			context.rerun_channel <- 'restart'
 		}
-		time.sleep_ms(context.check_period_ms)
+		time.sleep(time.millisecond * context.check_period_ms)
 	}
 }
 
@@ -101,63 +105,78 @@ fn (mut context Context) compilation_runner_loop() {
 	cmd := '"$context.vexe" ${context.opts.join(' ')}'
 	mut runner_cycles := 0
 	mut cmds := []string{}
-	x := <- context.rerun_channel
-	eprintln('>>>>>>>>>>>>>>>>>>>>>>>>>>>>> compilation_runner_loop FOR <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<')
+	_ := <-context.rerun_channel
+	context.elog_debug('>>>>>>>>>>>>>>>>>>>>>>>>>>>>> compilation_runner_loop FOR <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<')
 	for {
 		for {
 			timestamp := time.now().format_ss_micro()
-			println("$timestamp: $cmd")
-			mut p := os.new_process(context.vexe)
-			p.set_args(context.opts)
-			p.run()
-			eprintln('> compilation_runner_loop vexe pid: $p.pid | status: $p.status')
-			eprintln('> compilation_runner_loop vexe pid: $p.pid | cycle $runner_cycles')
+			context.child_process = os.new_process(context.vexe)
+			context.child_process.use_pgroup = true
+			context.child_process.set_args(context.opts)
+			context.child_process.run()
+			eprintln('$timestamp: $cmd | pid: $context.child_process.pid')
+			context.elog_debug('> compilation_runner_loop vexe pid: $context.child_process.pid | status: $context.child_process.status | cycles: $runner_cycles')
 			for {
 				for {
+					if context.is_exiting {
+						return
+					}
+					if !context.child_process.is_alive() {
+						context.elog_debug('> process pid: $context.child_process.pid is no longer alive')
+						context.child_process.wait()
+					}
 					select {
-						action := <- context.rerun_channel {
-							eprintln('received action: $action')
+						action := <-context.rerun_channel {
+							context.elog_debug('received action: $action')
 							cmds << action
 							if action == 'quit' {
-								p.signal_kill()
-								p.wait()
+								context.child_process.signal_pgkill()
+								context.child_process.wait()
 								return
 							}
 						}
-						> 2000 * time.millisecond {					
+						> 100 * time.millisecond {
 							should_restart := 'restart' in cmds
-							eprintln('> compilation_runner_loop vexe pid: $p.pid | > 2000 ms passed with no other command, cmds: $cmds | should_restart: $should_restart')
 							cmds = []
 							if should_restart {
-								eprintln('>>>>>>>> KILLING $p.pid')
-								p.signal_kill()
-								p.wait()
+								context.elog_debug('>>>>>>>> KILLING $context.child_process.pid')
+								context.child_process.signal_pgkill()
+								context.child_process.wait()
 								break
 							}
 						}
 					}
 				}
-				if !p.is_alive() {
-					p.wait()
+				if !context.child_process.is_alive() {
+					context.child_process.wait()
 					break
-				}				
+				}
 			}
 		}
 		runner_cycles++
 	}
 }
 
+const ccontext = Context{
+	child_process: 0
+}
+
 fn main() {
-	mut context := Context{}
+	mut context := &ccontext
 	context.rerun_channel = chan string{cap: 10}
 	context.vexe = pref.vexe_path()
 	context.opts = os.args[1..]
+	os.signal(C.SIGINT, fn () {
+		mut context := &ccontext
+		context.is_exiting = true
+		if context.child_process == 0 {
+			return
+		}
+		context.child_process.signal_pgkill()
+		context.child_process.wait()
+	})
 	//
 	context.is_debug = '-debug' in os.getenv('VWATCH').split(' ')
-	go change_detection_loop(&context)
+	go change_detection_loop(context)
 	context.compilation_runner_loop()
-	//
-	// TODO: Add input handling, to implement forced redo on a keypress.
-	// For now, just sleep forever in the main thread.
-	time.sleep_ms(1000_000_000)
 }

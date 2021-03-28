@@ -17,6 +17,10 @@ fn (mut p Process) win_kill_process() {
 	eprintln('TODO implement killing a process on windows')
 }
 
+fn (mut p Process) win_kill_pgroup() {
+	eprintln('TODO implement killing a process group on windows')
+}
+
 fn (mut p Process) win_wait() {
 	eprintln('TODO implement waiting for a process on windows')
 	p.status = .exited
@@ -41,6 +45,9 @@ fn (mut p Process) unix_resume_process() {
 }
 
 fn (mut p Process) unix_kill_process() {
+}
+
+fn (mut p Process) unix_kill_pgroup() {
 }
 
 fn (mut p Process) unix_wait() {

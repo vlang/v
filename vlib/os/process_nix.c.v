@@ -1,5 +1,7 @@
 module os
 
+fn C.setpgid(pid int, pgid int) int
+
 fn (mut p Process) unix_spawn_process() int {
 	mut pipeset := [6]int{}
 	if p.use_stdio_ctl {
@@ -27,6 +29,10 @@ fn (mut p Process) unix_spawn_process() int {
 	// It still shares file descriptors with the parent process,
 	// but it is otherwise independant and can do stuff *without*
 	// affecting the parent process.
+	//
+	if p.use_pgroup {
+		C.setpgid(0, 0)
+	}
 	if p.use_stdio_ctl {
 		// Redirect the child standart in/out/err to the pipes that
 		// were created in the parent.
@@ -60,6 +66,10 @@ fn (mut p Process) unix_resume_process() {
 
 fn (mut p Process) unix_kill_process() {
 	C.kill(p.pid, C.SIGKILL)
+}
+
+fn (mut p Process) unix_kill_pgroup() {
+	C.kill(-p.pid, C.SIGKILL)
 }
 
 fn (mut p Process) unix_wait() {
@@ -112,6 +122,9 @@ fn (mut p Process) win_resume_process() {
 }
 
 fn (mut p Process) win_kill_process() {
+}
+
+fn (mut p Process) win_kill_pgroup() {
 }
 
 fn (mut p Process) win_wait() {

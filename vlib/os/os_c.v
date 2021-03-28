@@ -15,7 +15,7 @@ fn C.getline(voidptr, voidptr, voidptr) int
 
 fn C.ftell(fp voidptr) int
 
-fn C.sigaction(int, voidptr, int)
+fn C.sigaction(int, voidptr, int) int
 
 fn C.open(charptr, int, ...int) int
 
@@ -43,11 +43,14 @@ struct C.__stat64 {
 struct C.DIR {
 }
 
+type FN_SA_Handler = fn (sig int)
+
 struct C.sigaction {
 mut:
 	sa_mask      int
 	sa_sigaction int
 	sa_flags     int
+	sa_handler   FN_SA_Handler
 }
 
 struct C.dirent {
@@ -758,9 +761,10 @@ fn normalize_drive_letter(path string) string {
 	return path
 }
 
-// signal will assign `handler` callback to be called when `signum` signal is recieved.
-pub fn signal(signum int, handler voidptr) {
-	unsafe { C.signal(signum, handler) }
+// signal will assign `handler` callback to be called when `signum` signal is received.
+pub fn signal(signum int, handler voidptr) voidptr {
+	res := unsafe { C.signal(signum, handler) }
+	return res
 }
 
 // fork will fork the current system process and return the pid of the fork.

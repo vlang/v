@@ -28,6 +28,7 @@ pub mut:
 	env_is_custom bool     // true, when the environment was customized with .set_environment
 	env           []string // the environment with which the process was started  (list of 'var=val')
 	use_stdio_ctl bool     // when true, then you can use p.stdin_write(), p.stdout_slurp() and p.stderr_slurp()
+	use_pgroup    bool     // when true, the process will create a new process group, enabling .signal_pgkill()
 	stdio_fd      [3]int   // the file descriptors
 }
 
@@ -79,6 +80,16 @@ pub fn (mut p Process) signal_kill() {
 		return
 	}
 	p._signal_kill()
+	p.status = .aborted
+	return
+}
+
+// signal_pgkill - kills the whole process group
+pub fn (mut p Process) signal_pgkill() {
+	if p.status !in [.running, .stopped] {
+		return
+	}
+	p._signal_pgkill()
 	p.status = .aborted
 	return
 }
@@ -222,6 +233,15 @@ fn (mut p Process) _signal_kill() {
 		p.win_kill_process()
 	} $else {
 		p.unix_kill_process()
+	}
+}
+
+// _signal_pgkill - should not be called directly, except by p.signal_pgkill
+fn (mut p Process) _signal_pgkill() {
+	$if windows {
+		p.win_kill_pgroup()
+	} $else {
+		p.unix_kill_pgroup()
 	}
 }
 
