@@ -23,7 +23,7 @@ struct VFileStat {
 
 [unsafe]
 fn (mut vfs VFileStat) free() {
-	unsafe { vfs.free() }
+	unsafe { vfs.path.free() }
 }
 
 struct Context {
@@ -49,18 +49,12 @@ fn (mut context Context) elog_debug(msg string) {
 	}
 }
 
-[manualfree]
 fn (mut context Context) update_changed_vfiles(changes map[string]VFileStat) {
 	for f, x in changes {
-		if f in context.vfiles {
-			unsafe { context.vfiles[f].free() }
-		}
 		context.vfiles[f] = x
-		unsafe { f.free() }
 	}
 }
 
-[manualfree]
 fn (mut context Context) get_stats_for_affected_vfiles() map[string]VFileStat {
 	if context.affected_paths.len == 0 {
 		mut apaths := map[string]bool{}
@@ -68,7 +62,6 @@ fn (mut context Context) get_stats_for_affected_vfiles() map[string]VFileStat {
 		// needed for its compilation, without actually compiling it.
 		copts := context.opts.join(' ')
 		cmd := '"$context.vexe" -silent -print-v-files ${copts}'
-		unsafe { copts.free() }
 		// context.elog_debug('> cmd: $cmd')
 		vfiles := os.execute(cmd)
 		if vfiles.exit_code == 0 {
@@ -76,15 +69,9 @@ fn (mut context Context) get_stats_for_affected_vfiles() map[string]VFileStat {
 			paths := paths_trimmed.split('\n')
 			for vf in paths {
 				apaths[os.real_path(os.dir(vf))] = true
-				unsafe { vf.free() }
 			}
-			unsafe { paths.free() }
-			unsafe { paths_trimmed.free() }
 		}
-		unsafe { vfiles.free() }
-		unsafe { cmd.free() }
 		context.affected_paths = apaths.keys()
-		unsafe { apaths.free() }
 		// context.elog_debug('vfiles paths to be scanned: $context.affected_paths')
 	}
 	// scan all files in the found folders
@@ -94,49 +81,36 @@ fn (mut context Context) get_stats_for_affected_vfiles() map[string]VFileStat {
 		for pf in files {
 			pf_ext := os.file_ext(pf).to_lower()
 			if pf_ext in ['', 'bak', 'exe', 'dll', 'so'] {
-				unsafe { pf_ext.free() }
-				unsafe { pf.free() }
 				continue
 			}
 			if pf.starts_with('.#') {
-				unsafe { pf_ext.free() }
-				unsafe { pf.free() }
 				continue
 			}
 			if pf.ends_with('~') {
-				unsafe { pf_ext.free() }
-				unsafe { pf.free() }
 				continue
 			}
 			f := os.join_path(path, pf)
 			fullpath := os.real_path(f)
 			mtime := os.file_last_mod_unix(fullpath)
 			newstats[fullpath] = VFileStat{fullpath, mtime}
-			unsafe { f.free() }
 		}
-		unsafe { files.free() }
 	}
 	return newstats
 }
 
-[manualfree]
 fn (mut context Context) get_changed_vfiles() map[string]VFileStat {
 	mut changed := map[string]VFileStat{}
 	newstats := context.get_stats_for_affected_vfiles()
 	for f, newstat in newstats {
 		if f !in context.vfiles {
 			changed[f] = newstat
-			unsafe { f.free() }
 			continue
 		}
-		oldstat := context.vfiles[f]
-		if oldstat.mtime != newstat.mtime {
+		if context.vfiles[f].mtime != newstat.mtime {
 			changed[f] = newstat
-			unsafe { f.free() }
 			continue
 		}
 	}
-	unsafe { newstats.free() }
 	// context.elog_debug('> get_changed_vfiles: $changed')
 	return changed
 }
@@ -154,7 +128,6 @@ fn change_detection_loop(ocontext &Context) {
 			context.rerun_channel <- 'restart'
             eprintln('<- pushed "restart" changes.len: $changes.len')
 		}
-		unsafe { changes.free() }
 		time.sleep(context.check_period_ms * time.millisecond)
 	}
 }
