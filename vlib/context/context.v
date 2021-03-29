@@ -26,7 +26,7 @@
 // explicitly to each function that needs it. The Context should be the first
 // parameter, typically named ctx:
 //
-// 	pub fn do_something(ctx context.context, arg Arg) ? {
+// 	pub fn do_something(ctx context.context, arg Arg) ?int {
 // 		// ... use ctx ...
 // 	}
 //
@@ -48,14 +48,14 @@ import time
 
 pub const (
 	// canceled is the error returned by Context.err when the context is canceled.
-	canceled          = error('context canceled')
+	canceled          = 'context canceled'
 
 	// deadlineExceeded is the error returned by Context.err when the context's
 	// deadline passes.
-	deadline_exceeded = error('context deadline exceeded')
+	deadline_exceeded = 'context deadline exceeded'
 
-	background        = EmptyCtx{}
-	todo              = EmptyCtx{}
+	background        = EmptyCtx(0)
+	todo              = EmptyCtx(0)
 )
 
 pub interface ContextKey {}
@@ -78,13 +78,13 @@ pub interface Context {
 	// never be canceled. Successive calls to done return the same value.
 	// The close of the done channel may happen asynchronously,
 	// after the cancel function returns.
-	done() ?chan int
+	done() chan int
 	// If done is not yet closed, err returns none.
 	// If done is closed, err returns a non-none error explaining why:
 	// canceled if the context was canceled
 	// or deadlineExceeded if the context's deadline passed.
 	// After err returns a non-none error, successive calls to err return the same error.
-	err() ?
+	err() ?int
 	// value returns the value associated with this context for key, or nil
 	// if no value is associated with key. Successive calls to value with
 	// the same key returns the same result.
@@ -104,17 +104,17 @@ pub interface Context {
 
 // An EmptyCtx is never canceled, has no values, and has no deadline. It is not
 // int, since vars of this type must have distinct addresses.
-pub struct EmptyCtx {}
+pub type EmptyCtx = int
 
 pub fn (_ EmptyCtx) deadline() ?time.Time {
 	return time.now()
 }
 
-pub fn (_ EmptyCtx) done() ?chan int {
-	return none
+pub fn (_ EmptyCtx) done() chan int {
+	return chan int{}
 }
 
-pub fn (_ EmptyCtx) err() ? {
+pub fn (_ EmptyCtx) err() ?int {
 	return none
 }
 
@@ -158,7 +158,7 @@ pub fn todo() Context {
 // After the first call, subsequent calls to a CancelFunc do nothing.
 pub type CancelFunc = fn (mut context CancelCtx)
 
-pub type CancelerErr = IError
+pub type CancelerErr = string
 
 // with_cancel returns a copy of parent with a new done channel. The returned
 // context's done channel is closed when the returned cancel function is called
@@ -166,12 +166,12 @@ pub type CancelerErr = IError
 //
 // Canceling this context releases resources associated with it, so code should
 // call cancel as soon as the operations running in this Context complete.
-pub fn with_cancel(mut parent Context) (&Context, CancelFunc) {
+pub fn with_cancel(parent &Context) (&Context, CancelFunc) {
 	if isnil(parent) {
 		panic('cannot create context from nil parent')
 	}
 	mut c := new_cancel_ctx(parent)
-	propagate_cancel(mut parent, mut c)
+	propagate_cancel(parent, c)
 	return &c, fn (mut c CancelCtx) {
 		c.cancel(true, context.canceled)
 	}
@@ -191,47 +191,46 @@ pub fn new_cancel_ctx(parent &Context) CancelCtx {
 __global ( routines i64 )
 
 // propagate_cancel arranges for child to be canceled when parent is.
-fn propagate_cancel(mut parent Context, mut child Canceler) {
-	if done := parent.done() {
-		select {
-			_ := <-done {
-				// parent is already canceled
-				parent.err() or { child.cancel(false, err) }
-				return
-			}
-			else {}
-		}
-
-		mut p := parent_cancel_ctx(parent) or {
-			atomic2.add_i64(&routines, 1)
-			go fn (parent Context, mut child Canceler) {
-				parent_ch := parent.done() or { panic(err) }
-				child_ch := child.done() or { panic(err) }
-				select {
-					_ := <-parent_ch {
-						parent.err() or { child.cancel(false, err) }
-					}
-					_ := <-child_ch {}
-				}
-			}(parent, mut child)
+fn propagate_cancel(parent &Context, child Canceler) {
+	done := parent.done()
+	select {
+		_ := <-done {
+			// parent is already canceled
+			child.cancel(false, '')
 			return
 		}
-
-		p.mu.@lock()
-		p.err() or {
-			// parent has already been canceled
-			child.cancel(false, p.err)
-		}
-		p.children << child
-		p.mu.unlock()
+		else {}
 	}
+
+	mut p := parent_cancel_ctx(parent) or {
+		atomic2.add_i64(&routines, 1)
+		go fn (parent &Context, child Canceler) {
+			parent_ch := parent.done()
+			child_ch := child.done()
+			select {
+				_ := <-parent_ch {
+					child.cancel(false, '')
+				}
+				_ := <-child_ch {}
+			}
+		}(parent, child)
+		return
+	}
+
+	p.mu.@lock()
+	p.err() or {
+		// parent has already been canceled
+		child.cancel(false, p.err)
+	}
+	p.children << child
+	p.mu.unlock()
 }
 
-// &cancel_ctx_key is the key that a cancel_ctx returns itself for.
+// cancel_ctx_key is the key that a cancel_ctx returns itself for.
 __global ( cancel_ctx_key ContextKey )
 
 // parent_cancel_ctx returns the underlying CancelCtx for parent.
-// It does this by looking up parent.value(&cancel_ctx_key) to find
+// It does this by looking up parent.value(cancel_ctx_key) to find
 // the innermost enclosing CancelCtx and then checking whether
 // parent.done() matches that CancelCtx. (If not, the CancelCtx
 // has been wrapped in a custom implementation providing a
@@ -240,29 +239,29 @@ fn parent_cancel_ctx(parent &Context) ?&CancelCtx {
 	if isnil(parent) {
 		panic('cannot create context from nil parent')
 	}
-	done := parent.done() or { return none }
+	done := parent.done()
 	if done == closed_chan {
 		return none
 	}
-	val := parent.value(cancel_ctx_key) or { return none }
-	mut p := &CancelCtx(val)
+	mut p := new_cancel_ctx(parent)
 	p.mu.@lock()
 	ok := p.done == done
 	p.mu.unlock()
 	if !ok {
 		return none
 	}
-	return p
+	return &p
 }
 
 // remove_child removes a context from its parent.
-fn remove_child(mut parent Context, child Canceler) {
+fn remove_child(parent &Context, child Canceler) {
 	if isnil(parent) {
 		panic('cannot create context from nil parent')
 	}
 	mut p := parent_cancel_ctx(parent) or { return }
 	p.mu.@lock()
-	idx := p.children.index(child)
+	// TODO: FIX
+	idx := 0
 	if idx >= 0 {
 		p.children.delete(idx)
 	}
@@ -273,7 +272,7 @@ fn remove_child(mut parent Context, child Canceler) {
 // implementations are CancelCtx and *timerCtx.
 pub interface Canceler {
 	cancel(remove_from_parent bool, err CancelerErr)
-	done() ?chan int
+	done() chan int
 }
 
 // closed_chan is a reusable closed channel.
@@ -287,7 +286,7 @@ fn init() {
 // that implement Canceler.
 pub struct CancelCtx {
 mut:
-	context Context
+	context &Context
 
 	mu       sync.Mutex // protects following fields
 	done     chan int   // created lazily, closed by first cancel call
@@ -302,7 +301,7 @@ pub fn (c CancelCtx) value(key ContextKey) ?ContextValue {
 	return c.context.value(key)
 }
 
-pub fn (mut c CancelCtx) done() ?chan int {
+pub fn (mut c CancelCtx) done() chan int {
 	c.mu.@lock()
 	c.done = chan int{}
 	d := c.done
@@ -314,11 +313,11 @@ pub fn (_ CancelCtx) deadline() ?time.Time {
 	return none
 }
 
-pub fn (mut c CancelCtx) err() ? {
+pub fn (mut c CancelCtx) err() ?int {
 	c.mu.@lock()
 	err := c.err
 	c.mu.unlock()
-	return error(err.msg)
+	return error(err)
 }
 
 fn context_name(c Context) string {
@@ -349,7 +348,7 @@ pub fn (mut c CancelCtx) cancel(remove_from_parent bool, err CancelerErr) {
 	c.mu.unlock()
 
 	if remove_from_parent {
-		remove_child(mut c.context, c)
+		remove_child(c.context, c)
 	}
 }
 
@@ -362,21 +361,22 @@ pub fn (mut c CancelCtx) cancel(remove_from_parent bool, err CancelerErr) {
 //
 // Canceling this context releases resources associated with it, so code should
 // call cancel as soon as the operations running in this Context complete.
-pub fn with_deadline(mut parent Context, d time.Time) (&Context, CancelFunc) {
+pub fn with_deadline(parent &Context, d time.Time) (&Context, CancelFunc) {
 	if isnil(parent) {
 		panic('cannot create context from nil parent')
 	}
 	if cur := parent.deadline() {
 		if cur < d {
 			// The current deadline is already sooner than the new one.
-			return with_cancel(mut parent)
+			return with_cancel(parent)
 		}
 	}
+	cancel_ctx := new_cancel_ctx(parent)
 	mut c := &TimerCtx{
-		cancel_ctx: new_cancel_ctx(parent)
+		cancel_ctx: &cancel_ctx
 		deadline: d
 	}
-	propagate_cancel(mut parent, mut c)
+	propagate_cancel(parent, c)
 	dur := time.now() - d
 	if dur.microseconds() <= 0 {
 		c.cancel(true, context.deadline_exceeded) // deadline has already passed
@@ -406,7 +406,7 @@ pub fn with_deadline(mut parent Context, d time.Time) (&Context, CancelFunc) {
 // delegating to cancel_ctx.cancel.
 pub struct TimerCtx {
 mut:
-	cancel_ctx CancelCtx
+	cancel_ctx &CancelCtx
 	reached    bool // Under cancel_ctx.mu
 	deadline   time.Time
 }
@@ -415,11 +415,11 @@ pub fn (c TimerCtx) deadline() ?time.Time {
 	return c.deadline
 }
 
-pub fn (mut c TimerCtx) done() ?chan int {
+pub fn (mut c TimerCtx) done() chan int {
 	return c.cancel_ctx.done()
 }
 
-pub fn (mut c TimerCtx) err() ? {
+pub fn (mut c TimerCtx) err() ?int {
 	return c.cancel_ctx.err()
 }
 
@@ -436,7 +436,7 @@ pub fn (mut c TimerCtx) cancel(remove_from_parent bool, err CancelerErr) {
 	c.cancel_ctx.cancel(false, err)
 	if remove_from_parent {
 		// Remove this TimerCtx from its parent cancel_ctx's children.
-		remove_child(mut c.cancel_ctx.context, c)
+		remove_child(c.cancel_ctx.context, c)
 	}
 	c.cancel_ctx.mu.@lock()
 	c.reached = true
@@ -453,8 +453,8 @@ pub fn (mut c TimerCtx) cancel(remove_from_parent bool, err CancelerErr) {
 // 		defer cancel()  // releases resources if slowOperation completes before timeout elapses
 // 		return slowOperation(ctx)
 // 	}
-pub fn with_timeout(mut parent Context, timeout time.Duration) (&Context, CancelFunc) {
-	return with_deadline(mut parent, time.now().add(timeout))
+pub fn with_timeout(parent &Context, timeout time.Duration) (&Context, CancelFunc) {
+	return with_deadline(parent, time.now().add(timeout))
 }
 
 // with_value returns a copy of parent in which the value associated with key is
@@ -483,7 +483,7 @@ pub fn with_value(parent &Context, key ContextKey, val ContextValue) Context {
 // A ValueCtx carries a key-value pair. It implements value for that key and
 // delegates all other calls to the embedded Context.
 pub struct ValueCtx {
-	context Context
+	context &Context
 	key     ContextKey
 	val     ContextValue
 }
@@ -492,11 +492,11 @@ pub fn (c ValueCtx) deadline() ?time.Time {
 	return c.context.deadline()
 }
 
-pub fn (c ValueCtx) done() ?chan int {
+pub fn (c ValueCtx) done() chan int {
 	return c.context.done()
 }
 
-pub fn (c ValueCtx) err() ? {
+pub fn (c ValueCtx) err() ?int {
 	return c.context.err()
 }
 
