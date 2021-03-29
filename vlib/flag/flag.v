@@ -10,6 +10,26 @@ pub:
 	// and also the default value, when the flag is not given
 }
 
+struct UnkownFlagError {
+	msg  string
+	code int
+}
+
+struct MinimumArgsCountError {
+	msg  string
+	code int
+}
+
+struct MaximumArgsCountError {
+	msg  string
+	code int
+}
+
+struct NoArgsExpectedError {
+	msg  string
+	code int
+}
+
 [unsafe]
 fn (mut f Flag) free() {
 	unsafe {
@@ -477,17 +497,25 @@ pub fn (fs FlagParser) usage() string {
 pub fn (fs FlagParser) finalize() ?[]string {
 	for a in fs.args {
 		if (a.len >= 2 && a[..2] == '--') || (a.len == 2 && a[0] == `-`) {
-			return error('Unknown flag `$a`')
+			return IError(&UnkownFlagError{
+				msg: 'Unknown flag `$a`'
+			})
 		}
 	}
 	if fs.args.len < fs.min_free_args && fs.min_free_args > 0 {
-		return error('Expected at least $fs.min_free_args arguments, but given $fs.args.len')
+		return IError(&MinimumArgsCountError{
+			msg: 'Expected at least $fs.min_free_args arguments, but given $fs.args.len'
+		})
 	}
 	if fs.args.len > fs.max_free_args && fs.max_free_args > 0 {
-		return error('Expected at most $fs.max_free_args arguments, but given $fs.args.len')
+		return IError(&MaximumArgsCountError{
+			msg: 'Expected at most $fs.max_free_args arguments, but given $fs.args.len'
+		})
 	}
 	if fs.args.len > 0 && fs.max_free_args == 0 && fs.min_free_args == 0 {
-		return error('Expected no arguments, but given $fs.args.len')
+		return IError(&NoArgsExpectedError{
+			msg: 'Expected no arguments, but given $fs.args.len'
+		})
 	}
 	return fs.args
 }
