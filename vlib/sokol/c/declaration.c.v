@@ -33,6 +33,14 @@ pub const (
 #flag freebsd -DSOKOL_NO_ENTRY
 #flag solaris -DSOKOL_NO_ENTRY
 // TODO end
+
+$if gcboehm ? {
+	#define SOKOL_MALLOC GC_MALLOC
+	#define SOKOL_CALLOC(n,m) GC_MALLOC((n)*(m))
+	#define SOKOL_REALLOC GC_REALLOC
+	#define SOKOL_FREE GC_FREE
+}
+
 #include "sokol_v.h"
 #include "sokol_app.h"
 #define SOKOL_IMPL
