@@ -184,6 +184,9 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			mut typ := table.Type(0)
 			mut type_pos := token.Position{}
 			mut field_pos := token.Position{}
+
+			is_pub_field := is_embed || is_field_pub
+			is_mut_field := is_embed || is_field_mut
 			if is_embed {
 				// struct embedding
 				type_pos = p.tok.position()
@@ -228,8 +231,29 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				typ = p.parse_type()
 				if typ.idx() == 0 {
 					// error is set in parse_type
-					return ast.StructDecl{}
+					if p.pref.output_mode == .silent {
+						if p.tok.kind == .eof {
+							ast_fields << ast.StructField{
+								name: field_name
+								pos: field_pos
+								type_pos: type_pos
+								typ: typ
+								comments: comments
+								has_default_expr: false
+								attrs: p.attrs
+								is_public: is_field_pub
+							}
+
+							// NB: Do not store the culprit to the type symbol fields
+							break
+						}
+						p.next()
+						continue
+					} else {
+						return ast.StructDecl{}
+					}
 				}
+
 				type_pos = p.prev_tok.position()
 				field_pos = field_start_pos.extend(type_pos)
 			}
@@ -267,8 +291,6 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 					is_public: is_field_pub
 				}
 			}
-			is_pub_field := is_embed || is_field_pub
-			is_mut_field := is_embed || is_field_mut
 			// save embeds as table fields too, it will be used in generation phase
 			fields << table.Field{
 				name: field_name
