@@ -9,17 +9,23 @@ mut:
 
 const (
 	log2n = 10
-	n = 1 << log2n
-	n4 = f64(u64(1) << (4 * log2n))
+	n     = 1 << log2n
+	n4    = f64(u64(1) << (4 * log2n))
 )
 
 fn waste_mem() {
-	mut objs := MemObj{ nxt: []&MemObj{len: n} }
+	mut objs := MemObj{
+		nxt: []&MemObj{len: n}
+	}
 	for {
 		sz := rand.int_in_range(10, 100000)
-		mut new_obj := &MemObj{ nxt: []&MemObj{len: sz} }
+		mut new_obj := &MemObj{
+			nxt: []&MemObj{len: sz}
+		}
 		sz2 := rand.int_in_range(10, 100000)
-		new_obj2 := &MemObj{ nxt: []&MemObj{len: sz2} }
+		new_obj2 := &MemObj{
+			nxt: []&MemObj{len: sz2}
+		}
 		idx2 := rand.int_in_range(0, sz / 2)
 		new_obj.nxt[idx2] = new_obj2
 		// non-equally distributed random index
