@@ -242,6 +242,7 @@ pub struct StructInitField {
 pub:
 	expr          Expr
 	pos           token.Position
+	name_pos      token.Position
 	comments      []Comment
 	next_comments []Comment
 pub mut:
