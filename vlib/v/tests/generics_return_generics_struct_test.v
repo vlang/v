@@ -45,7 +45,7 @@ fn test_generics_with_generics_struct_string() {
 	it := iter<string>(data)
 	println(it)
 	ret := '$it'
-	assert ret.contains('arrayIterator<string>{')
+	assert ret.contains('ArrayIterator<string>{')
 	assert ret.contains("data: ['foo', 'bar']")
 	assert ret.contains('index: 11')
 }
