@@ -25,6 +25,7 @@ pub mut:
 }
 
 pub struct Rect {
+pub:
 	x      f32
 	y      f32
 	width  f32
