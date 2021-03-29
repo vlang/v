@@ -1,5 +1,3 @@
-// fn println(s string) { }
-
 fn test_fn() {
 	println('Hello worl from testfn')
 }

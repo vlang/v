@@ -407,6 +407,7 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 					}
 				}
 				else {
+<<<<<<< Updated upstream
 					e.error('unhandled prefix expression $expr.op')
 				}
 			}
@@ -417,8 +418,15 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 					e.add(expr.expr, Int{1, 64})
 					return e.expr(expr.expr, table.i64_type_idx)
 				}
+				.dec {
+					e.add(expr.expr, Int{-1, 64})
+					return e.expr(expr.expr, table.i64_type_idx)
+				}
 				else {
 					e.error('unhandled postfix expression $expr.op')
+=======
+					panic(expr.op)
+>>>>>>> Stashed changes
 				}
 			}
 		}
