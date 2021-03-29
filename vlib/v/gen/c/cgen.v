@@ -3700,7 +3700,12 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		e := right_sym.kind !in [.voidptr, .int_literal, .int]
 		if node.op in [.plus, .minus, .mul, .div, .mod, .lt, .eq] && ((a && b && e) || c || d) {
 			// Overloaded operators
-			the_left_type := if !d { left_type } else { (left_sym.info as table.Alias).parent_type }
+			the_left_type := if !d
+				|| g.table.get_type_symbol((left_sym.info as table.Alias).parent_type).kind in [.array, .array_fixed, .map] {
+				left_type
+			} else {
+				(left_sym.info as table.Alias).parent_type
+			}
 			g.write(g.typ(the_left_type))
 			g.write('_')
 			g.write(util.replace_op(node.op.str()))
