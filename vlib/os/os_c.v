@@ -25,8 +25,6 @@ fn C.CopyFile(&u32, &u32, int) int
 
 fn C.execvp(file charptr, argv &charptr) int
 
-// fn C.lstat(charptr, voidptr) u64
-
 fn C._wstat64(charptr, voidptr) u64
 
 // fn C.proc_pidpath(int, byteptr, int) int

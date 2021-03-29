@@ -448,7 +448,7 @@ pub fn (mut f File) read_struct<T>(mut t T) ? {
 }
 
 // read_struct_at reads a single struct of type `T` at position specified in file
-pub fn (mut f File) read_struct_at<T>(mut t T, pos int) ? {
+pub fn (mut f File) read_struct_at<T>(mut t T, pos u64) ? {
 	if !f.is_opened {
 		return none
 	}
@@ -457,9 +457,23 @@ pub fn (mut f File) read_struct_at<T>(mut t T, pos int) ? {
 		return none
 	}
 	C.errno = 0
-	C.fseek(f.cfile, pos, C.SEEK_SET)
-	nbytes := int(C.fread(t, 1, tsize, f.cfile))
-	C.fseek(f.cfile, 0, C.SEEK_END)
+	mut nbytes := 0
+	$if x64 {
+		$if windows {
+			C._fseeki64(f.cfile, pos, C.SEEK_SET)
+			nbytes = int(C.fread(t, 1, tsize, f.cfile))
+			C._fseeki64(f.cfile, 0, C.SEEK_END)
+		} $else {
+			C.fseeko(f.cfile, pos, C.SEEK_SET)
+			nbytes = int(C.fread(t, 1, tsize, f.cfile))
+			C.fseeko(f.cfile, 0, C.SEEK_END)
+		}
+	}
+	$if x32 {
+		C.fseek(f.cfile, pos, C.SEEK_SET)
+		nbytes = int(C.fread(t, 1, tsize, f.cfile))
+		C.fseek(f.cfile, 0, C.SEEK_END)
+	}
 	if C.errno != 0 {
 		return error(posix_get_error_msg(C.errno))
 	}
@@ -490,7 +504,7 @@ pub fn (mut f File) read_raw<T>() ?T {
 }
 
 // read_raw_at reads and returns a single instance of type `T` starting at file byte offset `pos`
-pub fn (mut f File) read_raw_at<T>(pos int) ?T {
+pub fn (mut f File) read_raw_at<T>(pos u64) ?T {
 	if !f.is_opened {
 		return none
 	}
@@ -499,17 +513,46 @@ pub fn (mut f File) read_raw_at<T>(pos int) ?T {
 		return none
 	}
 	C.errno = 0
-	if C.fseek(f.cfile, pos, C.SEEK_SET) != 0 {
-		return error(posix_get_error_msg(C.errno))
-	}
+	mut nbytes := 0
 	mut t := T{}
-	nbytes := int(C.fread(&t, 1, tsize, f.cfile))
-	if C.errno != 0 {
-		return error(posix_get_error_msg(C.errno))
+	$if x64 {
+		$if windows {
+			if C._fseeki64(f.cfile, pos, C.SEEK_SET) != 0 {
+				return error(posix_get_error_msg(C.errno))
+			}
+			nbytes = int(C.fread(&t, 1, tsize, f.cfile))
+			if C.errno != 0 {
+				return error(posix_get_error_msg(C.errno))
+			}
+			if C._fseeki64(f.cfile, 0, C.SEEK_END) != 0 {
+				return error(posix_get_error_msg(C.errno))
+			}
+		} $else {
+			if C.fseeko(f.cfile, pos, C.SEEK_SET) != 0 {
+				return error(posix_get_error_msg(C.errno))
+			}
+			nbytes = int(C.fread(&t, 1, tsize, f.cfile))
+			if C.errno != 0 {
+				return error(posix_get_error_msg(C.errno))
+			}
+			if C.fseeko(f.cfile, 0, C.SEEK_END) != 0 {
+				return error(posix_get_error_msg(C.errno))
+			}
+		}
 	}
-	if C.fseek(f.cfile, 0, C.SEEK_END) != 0 {
-		return error(posix_get_error_msg(C.errno))
+	$if x32 {
+		if C.fseek(f.cfile, pos, C.SEEK_SET) != 0 {
+			return error(posix_get_error_msg(C.errno))
+		}
+		nbytes = int(C.fread(&t, 1, tsize, f.cfile))
+		if C.errno != 0 {
+			return error(posix_get_error_msg(C.errno))
+		}
+		if C.fseek(f.cfile, 0, C.SEEK_END) != 0 {
+			return error(posix_get_error_msg(C.errno))
+		}
 	}
+
 	if nbytes != tsize {
 		return error_with_code('incomplete struct read', nbytes)
 	}
@@ -536,7 +579,7 @@ pub fn (mut f File) write_struct<T>(t &T) ? {
 }
 
 // write_struct_at writes a single struct of type `T` at position specified in file
-pub fn (mut f File) write_struct_at<T>(t &T, pos int) ? {
+pub fn (mut f File) write_struct_at<T>(t &T, pos u64) ? {
 	if !f.is_opened {
 		return error('file is not opened')
 	}
@@ -545,9 +588,23 @@ pub fn (mut f File) write_struct_at<T>(t &T, pos int) ? {
 		return error('struct size is 0')
 	}
 	C.errno = 0
-	C.fseek(f.cfile, pos, C.SEEK_SET)
-	nbytes := int(C.fwrite(t, 1, tsize, f.cfile))
-	C.fseek(f.cfile, 0, C.SEEK_END)
+	mut nbytes := 0
+	$if x64 {
+		$if windows {
+			C._fseeki64(f.cfile, pos, C.SEEK_SET)
+			nbytes = int(C.fwrite(t, 1, tsize, f.cfile))
+			C._fseeki64(f.cfile, 0, C.SEEK_END)
+		} $else {
+			C.fseeko(f.cfile, pos, C.SEEK_SET)
+			nbytes = int(C.fwrite(t, 1, tsize, f.cfile))
+			C.fseeko(f.cfile, 0, C.SEEK_END)
+		}
+	}
+	$if x32 {
+		C.fseek(f.cfile, pos, C.SEEK_SET)
+		nbytes = int(C.fwrite(t, 1, tsize, f.cfile))
+		C.fseek(f.cfile, 0, C.SEEK_END)
+	}
 	if C.errno != 0 {
 		return error(posix_get_error_msg(C.errno))
 	}
@@ -578,7 +635,7 @@ pub fn (mut f File) write_raw<T>(t &T) ? {
 }
 
 // write_raw_at writes a single instance of type `T` starting at file byte offset `pos`
-pub fn (mut f File) write_raw_at<T>(t &T, pos int) ? {
+pub fn (mut f File) write_raw_at<T>(t &T, pos u64) ? {
 	if !f.is_opened {
 		return error('file is not opened')
 	}
@@ -586,16 +643,46 @@ pub fn (mut f File) write_raw_at<T>(t &T, pos int) ? {
 	if tsize == 0 {
 		return error('struct size is 0')
 	}
-	if C.fseek(f.cfile, pos, C.SEEK_SET) != 0 {
-		return error(posix_get_error_msg(C.errno))
+	mut nbytes := 0
+
+	$if x64 {
+		$if windows {
+			if C._fseeki64(f.cfile, pos, C.SEEK_SET) != 0 {
+				return error(posix_get_error_msg(C.errno))
+			}
+			nbytes = int(C.fwrite(t, 1, tsize, f.cfile))
+			if C.errno != 0 {
+				return error(posix_get_error_msg(C.errno))
+			}
+			if C._fseeki64(f.cfile, 0, C.SEEK_END) != 0 {
+				return error(posix_get_error_msg(C.errno))
+			}
+		} $else {
+			if C.fseeko(f.cfile, pos, C.SEEK_SET) != 0 {
+				return error(posix_get_error_msg(C.errno))
+			}
+			nbytes = int(C.fwrite(t, 1, tsize, f.cfile))
+			if C.errno != 0 {
+				return error(posix_get_error_msg(C.errno))
+			}
+			if C.fseeko(f.cfile, 0, C.SEEK_END) != 0 {
+				return error(posix_get_error_msg(C.errno))
+			}
+		}
 	}
-	nbytes := int(C.fwrite(t, 1, tsize, f.cfile))
-	if C.errno != 0 {
-		return error(posix_get_error_msg(C.errno))
+	$if x32 {
+		if C.fseek(f.cfile, pos, C.SEEK_SET) != 0 {
+			return error(posix_get_error_msg(C.errno))
+		}
+		nbytes = int(C.fwrite(t, 1, tsize, f.cfile))
+		if C.errno != 0 {
+			return error(posix_get_error_msg(C.errno))
+		}
+		if C.fseek(f.cfile, 0, C.SEEK_END) != 0 {
+			return error(posix_get_error_msg(C.errno))
+		}
 	}
-	if C.fseek(f.cfile, 0, C.SEEK_END) != 0 {
-		return error(posix_get_error_msg(C.errno))
-	}
+
 	if nbytes != tsize {
 		return error_with_code('incomplete struct write', nbytes)
 	}
