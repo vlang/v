@@ -3898,6 +3898,8 @@ pub fn (c &Checker) unwrap_generic(typ table.Type) table.Type {
 	return typ
 }
 
+// `unwrap_generic()` is used in generic_fn decl, `unwrap_generic_ex()` can be used not in generic_fn decl
+// e.g. from_types: <T, B>   to_types: <int, string>
 pub fn (mut c Checker) unwrap_generic_ex(typ table.Type, from_types []table.Type, to_types []table.Type) table.Type {
 	sym := c.table.get_type_symbol(typ)
 	mut typ_ := typ
