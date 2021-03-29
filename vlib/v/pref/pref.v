@@ -19,8 +19,10 @@ pub enum BuildMode {
 
 pub enum GarbageCollectionMode {
 	no_gc
-	boehm
-	boehm_leak
+	boehm_full // full garbage collection mode
+	boehm_incr // incremental garbage colletion mode
+	boehm // default Boehm-GC mode for architecture
+	boehm_leak // leak detection mode (makes `gc_check_leaks()` work)
 }
 
 pub enum OutputMode {
@@ -159,7 +161,7 @@ pub mut:
 	build_options       []string // list of options, that should be passed down to `build-module`, if needed for -usecache
 	cache_manager       vcache.CacheManager
 	is_help             bool // -h, -help or --help was passed
-	gc_mode             GarbageCollectionMode = .no_gc // .no_gc, .boehm, .boehm_leak
+	gc_mode             GarbageCollectionMode = .no_gc // .no_gc, .boehm, .boehm_leak, ...
 	// checker settings:
 	checker_match_exhaustive_cutoff_limit int = 10
 }
@@ -224,8 +226,18 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			'-gc' {
 				gc_mode := cmdline.option(current_args, '-gc', '')
 				match gc_mode {
-					'' {
+					'', 'none' {
 						res.gc_mode = .no_gc
+					}
+					'boehm_full' {
+						res.gc_mode = .boehm_full
+						parse_define(mut res, 'gcboehm')
+						parse_define(mut res, 'gcboehm_full')
+					}
+					'boehm_incr' {
+						res.gc_mode = .boehm_incr
+						parse_define(mut res, 'gcboehm')
+						parse_define(mut res, 'gcboehm_incr')
 					}
 					'boehm' {
 						res.gc_mode = .boehm
