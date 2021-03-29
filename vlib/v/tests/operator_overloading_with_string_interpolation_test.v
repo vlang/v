@@ -79,5 +79,5 @@ fn test_operator_overloading_with_string_interpolation() {
 	ad *= Vec{2, 2}
 	assert ad.str() == '{8, 18}'
 	ad /= Vec{2, 2}
-	assert ad.str() == '{4, 9}' 
+	assert ad.str() == '{4, 9}'
 }

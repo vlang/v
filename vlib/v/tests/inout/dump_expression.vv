@@ -16,10 +16,19 @@ mut:
 }
 
 fn dump_of_struct() {
-	point := Point{1, 2, 3}
-	mut x := dump(point)
-	x.x += 100
-	assert x == Point{101, 2, 3}
+	p := Point{1, 2, 3}
+	mut p_mut := Point{1, 2, 3}
+	p_ptr := &Point{1, 2, 3}
+
+	mut x1 := dump(p)
+	mut x2 := dump(p_mut)
+	mut x3 := dump(p_ptr)
+	x1.x += 100
+	x2.x += 100
+	x3.x += 100
+	assert x1 == Point{101, 2, 3}
+	assert x2 == Point{101, 2, 3}
+	assert x3 == Point{101, 2, 3}
 }
 
 fn main() {

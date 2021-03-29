@@ -45,4 +45,3 @@ fn test_common_sumtype_field_access() {
 	assert out0.val == 1
 	assert out0.name == 'one'
 }
-

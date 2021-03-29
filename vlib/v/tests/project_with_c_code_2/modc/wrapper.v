@@ -3,6 +3,7 @@ module modc
 #flag -I @VROOT
 #flag @VROOT/impl.o
 #include "header.h"
+
 struct C.Atype {
 }
 

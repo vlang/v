@@ -3,7 +3,9 @@ fn show(a string) string {
 }
 
 fn test_function_interpolation() {
-	f := fn()(string, bool) {return 'aaa', true}
+	f := fn () (string, bool) {
+		return 'aaa', true
+	}
 	println(f)
 	assert '$f' == 'fn () (string, bool)'
 
@@ -12,13 +14,15 @@ fn test_function_interpolation() {
 }
 
 struct Info {
-	aa fn()string
+	aa fn () string
 	bb int
 }
 
 fn test_function_interpolation_in_struct() {
 	a := Info{
-		aa: fn()string {return 'aaa'}
+		aa: fn () string {
+			return 'aaa'
+		}
 		bb: 22
 	}
 	println(a)
@@ -26,14 +30,24 @@ fn test_function_interpolation_in_struct() {
 }
 
 fn test_function_interpolation_in_array() {
-	f := [fn()string{return 'aaa'}, fn()string{return 'bbb'}]
+	f := [fn () string {
+		return 'aaa'
+	}, fn () string {
+		return 'bbb'
+	}]
 	println(f)
 	assert '$f' == '[fn () string, fn () string]'
 }
 
 fn test_function_interpolation_in_map() {
-	m := {'aaa': fn()string{return 'aaa'}, 'bbb': fn()string{return 'bbb'}}
+	m := map{
+		'aaa': fn () string {
+			return 'aaa'
+		}
+		'bbb': fn () string {
+			return 'bbb'
+		}
+	}
 	println(m)
 	assert '$m'.contains(': fn () string')
 }
-

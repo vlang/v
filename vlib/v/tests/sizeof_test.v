@@ -4,6 +4,7 @@ import flag
 struct S1 {
 	p voidptr
 }
+
 struct S2 {
 	i int
 }

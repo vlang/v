@@ -1,15 +1,19 @@
 import math.complex
 
 struct Cat {
-	name string
+	name  string
 	breed string
-	age int
+	age   int
 }
 
 type Feline = Cat
 
 fn test_offsetof() {
-	cat := Cat{name: 'Cthulhu' breed: 'Great Old One' age: 2147483647}
+	cat := Cat{
+		name: 'Cthulhu'
+		breed: 'Great Old One'
+		age: 2147483647
+	}
 	unsafe {
 		assert *(&string(byteptr(&cat) + __offsetof(Cat, name))) == 'Cthulhu'
 		assert *(&string(byteptr(&cat) + __offsetof(Cat, breed))) == 'Great Old One'
@@ -26,7 +30,11 @@ fn test_offsetof_struct_from_another_module() {
 }
 
 fn test_offsetof_alias() {
-	fel := Feline{name: 'Cthulhu' breed: 'Great Old One' age: 2147483647}
+	fel := Feline{
+		name: 'Cthulhu'
+		breed: 'Great Old One'
+		age: 2147483647
+	}
 	unsafe {
 		assert *(&string(byteptr(&fel) + __offsetof(Feline, name))) == 'Cthulhu'
 		assert *(&string(byteptr(&fel) + __offsetof(Feline, breed))) == 'Great Old One'

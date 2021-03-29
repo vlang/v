@@ -42,9 +42,7 @@ fn test_all_v_repl_files() {
 		panic(err)
 	}
 	session.bmark.set_total_expected_steps(session.options.files.len)
-	mut pool_repl := pool.new_pool_processor(
-		callback: worker_repl
-	)
+	mut pool_repl := pool.new_pool_processor(callback: worker_repl)
 	pool_repl.set_shared_context(session)
 	$if windows {
 		// See: https://docs.microsoft.com/en-us/cpp/build/reference/fs-force-synchronous-pdb-writes?view=vs-2019

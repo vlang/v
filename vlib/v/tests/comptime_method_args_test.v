@@ -8,9 +8,11 @@ mut:
 fn (mut t TestStruct) one_arg(a1 string) {
 	t.one_arg_called = true
 }
+
 fn (mut t TestStruct) two_args(a2 string, b2 int) {
 	t.two_args_called = true
 }
+
 fn (mut t TestStruct) three_args(a3 string, b3 int, c3 []string) {
 	t.three_args_called = true
 }
@@ -43,7 +45,7 @@ fn test_comptime_call_method() {
 		} else if method.name == 'two_args' {
 			t.$method('two', 2)
 		} else if method.name == 'three_args' {
-			t.$method('three', 3, ['th' 'ree'])
+			t.$method('three', 3, ['th', 'ree'])
 		}
 	}
 	assert t.one_arg_called

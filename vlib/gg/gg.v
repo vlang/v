@@ -107,7 +107,7 @@ mut:
 	// (so that the user can store image ids, not entire Image objects)
 	image_cache   []Image
 	needs_refresh bool = true
-	ticks         int
+	ticks         int // for ui mode only
 pub:
 	native_rendering bool
 pub mut:
@@ -236,6 +236,9 @@ fn gg_event_fn(ce &C.sapp_event, user_data voidptr) {
 	// e := unsafe { &sapp.Event(ce) }
 	mut e := unsafe { &Event(ce) }
 	mut g := unsafe { &Context(user_data) }
+	if g.ui_mode {
+		g.refresh_ui()
+	}
 	if e.typ == .mouse_down {
 		bitplace := int(e.mouse_button)
 		g.mbtn_mask |= byte(1 << bitplace)

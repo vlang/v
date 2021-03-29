@@ -158,7 +158,7 @@ FONS_DEF void fonsDrawDebug(FONScontext* s, float x, float y);
 
 // Use FreeType on non-Windows systems
 #ifndef _WIN32
-#define FONS_USE_FREETYPE
+//#define FONS_USE_FREETYPE
 #endif
 
 #ifdef _WIN32
@@ -172,7 +172,7 @@ FONS_DEF void fonsDrawDebug(FONScontext* s, float x, float y);
     #endif
 #endif
 
-#undef FONS_USE_FREETYPE
+//#undef FONS_USE_FREETYPE
 
 //#define FONS_USE_FREETYPE 1
 

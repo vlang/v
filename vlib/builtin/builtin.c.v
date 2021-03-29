@@ -189,7 +189,9 @@ pub fn malloc(n int) byteptr {
 		nr_mallocs++
 	} $else {
 		$if gcboehm ? {
-			res = unsafe { C.GC_MALLOC(n) }
+			unsafe {
+				res = C.GC_MALLOC(n)
+			}
 		} $else {
 			res = unsafe { C.malloc(n) }
 		}
@@ -282,16 +284,6 @@ pub fn realloc_data(old_data byteptr, old_size int, new_size int) byteptr {
 	return nptr
 }
 
-// v_calloc dynamically allocates a zeroed `n` bytes block of memory on the heap.
-// v_calloc returns a `byteptr` pointing to the memory address of the allocated space.
-pub fn v_calloc(n int) byteptr {
-	$if gcboehm ? {
-		return C.GC_MALLOC(n)
-	} $else {
-		return C.calloc(1, n)
-	}
-}
-
 // vcalloc dynamically allocates a zeroed `n` bytes block of memory on the heap.
 // vcalloc returns a `byteptr` pointing to the memory address of the allocated space.
 // Unlike `v_calloc` vcalloc checks for negative values given in `n`.
@@ -302,7 +294,7 @@ pub fn vcalloc(n int) byteptr {
 		return byteptr(0)
 	}
 	$if gcboehm ? {
-		return C.GC_MALLOC(n)
+		return byteptr(C.GC_MALLOC(n))
 	} $else {
 		return C.calloc(1, n)
 	}
@@ -315,7 +307,14 @@ pub fn free(ptr voidptr) {
 		return
 	}
 	$if gcboehm ? {
-		C.GC_FREE(ptr)
+		// It is generally better to leave it to Boehm's gc to free things.
+		// Calling C.GC_FREE(ptr) was tried initially, but does not work
+		// well with programs that do manual management themselves.
+		//
+		// The exception is doing leak detection for manual memory management:
+		$if gcboehm_leak ? {
+			C.GC_FREE(ptr)
+		}
 		return
 	}
 	C.free(ptr)

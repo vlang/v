@@ -1,5 +1,10 @@
-struct Dog { breed string }
-struct Cat { breed string }
+struct Dog {
+	breed string
+}
+
+struct Cat {
+	breed string
+}
 
 interface Animal {
 	breed string
@@ -19,15 +24,17 @@ struct Holder {
 }
 
 struct Holder2 {
-	x map[string]Holder
+	x     map[string]Holder
 	breed string
 }
 
 fn test_auto_str_gen_for_complex_interface_types() {
 	a := Animal(Dog{'hi'})
 	h := Holder{a}
-	m := map{'dsa': h}
-	h2 := Holder2{ m, 'N/A' }
+	m := map{
+		'dsa': h
+	}
+	h2 := Holder2{m, 'N/A'}
 	a2 := Animal(h2)
 
 	assert '$a2' == r"

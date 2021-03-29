@@ -1,6 +1,6 @@
 struct User {
 	name string
-	num int
+	num  int
 }
 
 fn (u User) == (u1 User) bool {

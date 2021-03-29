@@ -1,4 +1,4 @@
-import mod1.submodule as m
+import v.tests.project_with_modules_having_submodules.mod1.submodule as m
 
 fn test_mod1_can_still_be_found_through_parent_project_vmod() {
 	assert 1051 == m.f()

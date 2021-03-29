@@ -17,6 +17,7 @@ pub enum OS {
 	android
 	solaris
 	haiku
+	all
 }
 
 // Helper function to convert string names to OS enum
@@ -34,7 +35,7 @@ pub fn os_from_string(os_str string) ?OS {
 		'solaris' { return .solaris }
 		'android' { return .android }
 		'haiku' { return .haiku }
-		'linux_or_macos' { return .linux }
+		'linux_or_macos', 'nix' { return .linux }
 		'' { return ._auto }
 		else { return error('bad OS $os_str') }
 	}
@@ -55,6 +56,7 @@ pub fn (o OS) str() string {
 		.android { return 'Android' }
 		.solaris { return 'Solaris' }
 		.haiku { return 'Haiku' }
+		.all { return 'all' }
 	}
 }
 

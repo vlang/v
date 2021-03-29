@@ -120,6 +120,6 @@ pub fn used_tools_must_exist(tools []string) {
 pub fn show_sizes_of_files(files []string) {
 	for f in files {
 		size := os.file_size(f)
-		println('${size:10d} $f')
+		println('$size $f') // println('${size:10d} $f')
 	}
 }

@@ -156,37 +156,37 @@ fn init_cube_glsl_i(mut app App) {
 	//d := u16(32767)     // for compatibility with D3D11, 32767 stand for 1
 	d := f32(1.0)
 	c := u32(0xFFFFFF_FF) // color RGBA8
-  vertices := [
+  	vertices := [
 		// Face 0
 		Vertex_t{-1.0, -1.0, -1.0, c,  0, 0},
 		Vertex_t{ 1.0, -1.0, -1.0, c,  d, 0},
-    Vertex_t{ 1.0,  1.0, -1.0, c,  d, d},
-    Vertex_t{-1.0,  1.0, -1.0, c,  0, d},
+		Vertex_t{ 1.0,  1.0, -1.0, c,  d, d},
+		Vertex_t{-1.0,  1.0, -1.0, c,  0, d},
 		// Face 1
 		Vertex_t{-1.0, -1.0,  1.0, c,  0, 0},
-    Vertex_t{ 1.0, -1.0,  1.0, c,  d, 0},
-    Vertex_t{ 1.0,  1.0,  1.0, c,  d, d},
-    Vertex_t{-1.0,  1.0,  1.0, c,  0, d},
+		Vertex_t{ 1.0, -1.0,  1.0, c,  d, 0},
+		Vertex_t{ 1.0,  1.0,  1.0, c,  d, d},
+		Vertex_t{-1.0,  1.0,  1.0, c,  0, d},
 		// Face 2
 		Vertex_t{-1.0, -1.0, -1.0, c,  0, 0},
-    Vertex_t{-1.0,  1.0, -1.0, c,  d, 0},
-    Vertex_t{-1.0,  1.0,  1.0, c,  d, d},
-    Vertex_t{-1.0, -1.0,  1.0, c,  0, d},
+		Vertex_t{-1.0,  1.0, -1.0, c,  d, 0},
+		Vertex_t{-1.0,  1.0,  1.0, c,  d, d},
+		Vertex_t{-1.0, -1.0,  1.0, c,  0, d},
 		// Face 3
 		Vertex_t{ 1.0, -1.0, -1.0, c,  0, 0},
-    Vertex_t{ 1.0,  1.0, -1.0, c,  d, 0},
-    Vertex_t{ 1.0,  1.0,  1.0, c,  d, d},
-    Vertex_t{ 1.0, -1.0,  1.0, c,  0, d},
+		Vertex_t{ 1.0,  1.0, -1.0, c,  d, 0},
+		Vertex_t{ 1.0,  1.0,  1.0, c,  d, d},
+		Vertex_t{ 1.0, -1.0,  1.0, c,  0, d},
 		// Face 4
 		Vertex_t{-1.0, -1.0, -1.0, c,  0, 0},
-    Vertex_t{-1.0, -1.0,  1.0, c,  d, 0},
-    Vertex_t{ 1.0, -1.0,  1.0, c,  d, d},
-    Vertex_t{ 1.0, -1.0, -1.0, c,  0, d},
+		Vertex_t{-1.0, -1.0,  1.0, c,  d, 0},
+		Vertex_t{ 1.0, -1.0,  1.0, c,  d, d},
+		Vertex_t{ 1.0, -1.0, -1.0, c,  0, d},
 		// Face 5
 		Vertex_t{-1.0,  1.0, -1.0, c,  0, 0},
-    Vertex_t{-1.0,  1.0,  1.0, c,  d, 0},
-    Vertex_t{ 1.0,  1.0,  1.0, c,  d, d},
-    Vertex_t{ 1.0,  1.0, -1.0, c,  0, d},
+		Vertex_t{-1.0,  1.0,  1.0, c,  d, 0},
+		Vertex_t{ 1.0,  1.0,  1.0, c,  d, d},
+		Vertex_t{ 1.0,  1.0, -1.0, c,  0, d},
 	]
 
 	mut vert_buffer_desc := C.sg_buffer_desc{}

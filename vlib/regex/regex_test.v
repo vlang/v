@@ -15,6 +15,14 @@ struct TestItem {
 
 const(
 match_test_suite = [
+	// minus in CC
+	TestItem{"d.def",r"abc.\.[\w\-]{,100}",-1,0},
+	TestItem{"abc12345.asd",r"abc.\.[\w\-]{,100}",-1,0},
+	TestItem{"abca.exe",r"abc.\.[\w\-]{,100}",0,8},
+	TestItem{"abc2.exe-test_12",r"abc.\.[\w\-]{,100}",0,13},
+	TestItem{"abcdefGHK",r"[a-f]+\A+",0,9},
+	TestItem{"ab-cd-efGHK",r"[a-f\-g]+\A+",0,11},
+
 	// base OR
 	TestItem{"a",r"a|b",0,1},
 	TestItem{"a",r"b|a",0,1},

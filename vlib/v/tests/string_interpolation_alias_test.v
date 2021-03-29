@@ -11,7 +11,10 @@ fn test_fixed_array_alias_string() {
 }
 
 fn test_map_alias_string() {
-	m := {'one': Literal('1'), 'two': Literal('2')}
+	m := map{
+		'one': Literal('1')
+		'two': Literal('2')
+	}
 	assert '$m'.contains("'one': '1'")
 	assert '$m'.contains("'two': '2'")
 }
@@ -19,7 +22,7 @@ fn test_map_alias_string() {
 type Duration = i64
 
 fn test_i64_number_alias_string() {
-    x := i64(9_123_456_789)
-    y := Duration(x)
-    assert '$x' == '$y'
+	x := i64(9_123_456_789)
+	y := Duration(x)
+	assert '$x' == '$y'
 }

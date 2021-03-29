@@ -25,9 +25,19 @@ fn C.CopyFile(&u32, &u32, int) int
 
 fn C.execvp(file charptr, argv &charptr) int
 
+// fn C.lstat(charptr, voidptr) u64
+
+fn C._wstat64(charptr, voidptr) u64
+
 // fn C.proc_pidpath(int, byteptr, int) int
 struct C.stat {
-	st_size  int
+	st_size  u64
+	st_mode  u32
+	st_mtime int
+}
+
+struct C.__stat64 {
+	st_size  u64
 	st_mode  u32
 	st_mtime int
 }
@@ -101,20 +111,33 @@ pub fn read_file(path string) ?string {
 
 // ***************************** OS ops ************************
 // file_size returns the size of the file located in `path`.
-pub fn file_size(path string) int {
+pub fn file_size(path string) u64 {
 	mut s := C.stat{}
 	unsafe {
-		$if windows {
-			$if tinyc {
-				C.stat(charptr(path.str), &s)
+		$if x64 {
+			$if windows {
+				mut swin := C.__stat64{}
+				C._wstat64(path.to_wide(), voidptr(&swin))
+				return swin.st_size
 			} $else {
-				C._wstat(path.to_wide(), voidptr(&s))
+				C.stat(charptr(path.str), &s)
+				return u64(s.st_size)
 			}
-		} $else {
-			C.stat(charptr(path.str), &s)
+		}
+		$if x32 {
+			$if debug {
+				println('Using os.file_size() on 32bit systems may not work on big files.')
+			}
+			$if windows {
+				C._wstat(path.to_wide(), voidptr(&s))
+				return u64(s.st_size)
+			} $else {
+				C.stat(charptr(path.str), &s)
+				return u64(s.st_size)
+			}
 		}
 	}
-	return s.st_size
+	return 0
 }
 
 // mv moves files or folders from `src` to `dst`.
@@ -172,7 +195,9 @@ pub fn cp(src string, dst string) ? {
 			}
 		}
 		from_attr := C.stat{}
-		unsafe { C.stat(charptr(src.str), &from_attr) }
+		unsafe {
+			C.stat(charptr(src.str), &from_attr)
+		}
 		if C.chmod(charptr(dst.str), from_attr.st_mode) < 0 {
 			return error_with_code('failed to set permissions for $dst', int(-1))
 		}

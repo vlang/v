@@ -11,9 +11,11 @@ fn test_identity() {
 	assert simple<string>('g') + 'h' == 'gh'
 
 	assert simple<[]int>([1])[0] == 1
-	assert simple<map[string]string>({'a':'b'})['a'] == 'b'
+	assert simple<map[string]string>(map{
+		'a': 'b'
+	})['a'] == 'b'
 
-	assert simple<simplemodule.Data>(simplemodule.Data{value: 0}).value == 0
+	assert simple<simplemodule.Data>(simplemodule.Data{ value: 0 }).value == 0
 }
 
 fn plus<T>(xxx T, b T) T {
@@ -118,16 +120,18 @@ fn test_return_array() {
 }
 
 fn opt<T>(v T) ?T {
-	if sizeof(T) > 1 {return v}
+	if sizeof(T) > 1 {
+		return v
+	}
 	return none
 }
 
 fn test_optional() {
 	s := opt('hi') or { '' }
 	assert s == 'hi'
-	i := opt(5) or {0}
+	i := opt(5) or { 0 }
 	assert i == 5
-	b := opt(s[0]) or {99}
+	b := opt(s[0]) or { 99 }
 	assert b == 99
 }
 
@@ -141,7 +145,7 @@ fn test_ptr() {
 	assert *ptr('aa') == 'aa'
 }
 
-fn map_f<T,U>(l []T, f fn(T)U) []U {
+fn map_f<T, U>(l []T, f fn (T) U) []U {
 	mut r := []U{}
 	for e in l {
 		r << f(e)
@@ -159,11 +163,11 @@ fn foldl<T>(l []T, nil T, f fn(T,T)T) T {
 }
 */
 fn square(x int) int {
-	return x*x
+	return x * x
 }
 
 fn mul_int(x int, y int) int {
-	return x*y
+	return x * y
 }
 
 fn assert_eq<T>(a T, b T) {
@@ -173,21 +177,21 @@ fn assert_eq<T>(a T, b T) {
 
 fn print_nice<T>(x T, indent int) string {
 	mut space := ''
-	for _ in 0..indent {
+	for _ in 0 .. indent {
 		space = space + ' '
 	}
 	return '$space$x'
 }
 
 fn test_generic_fn() {
-	assert_eq(simple(0+1), 1)
+	assert_eq(simple(0 + 1), 1)
 	assert_eq(simple('g') + 'h', 'gh')
-	assert_eq(sum([5.1,6.2,7.0]), 18.3)
+	assert_eq(sum([5.1, 6.2, 7.0]), 18.3)
 	assert_eq(plus(i64(4), i64(6)), i64(10))
-	a := [1,2,3,4]
+	a := [1, 2, 3, 4]
 	b := map_f(a, square)
 	assert_eq(sum(b), 30) // 1+4+9+16 = 30
-	//assert_eq(foldl(b, 1, mul_int), 576)   // 1*4*9*16 = 576
+	// assert_eq(foldl(b, 1, mul_int), 576)   // 1*4*9*16 = 576
 	assert print_nice('str', 8) == '        str'
 }
 
@@ -243,7 +247,7 @@ pub mut:
 }
 
 struct Repo<T, U> {
-	db         DB
+	db DB
 pub mut:
 	model      T
 	permission U
@@ -254,13 +258,13 @@ pub mut:
 // return Repo<T,Permission>{db: db}
 // }
 fn test_generic_struct() {
-	mut a := Repo<User, Permission>{
+	mut a := Repo<User,Permission>{
 		model: User{
 			name: 'joe'
 		}
 	}
 	assert a.model.name == 'joe'
-	mut b := Repo<Group, Permission>{
+	mut b := Repo<Group,Permission>{
 		permission: Permission{
 			name: 'superuser'
 		}
@@ -292,11 +296,10 @@ fn test_struct_from_other_module() {
 }
 
 fn test_generic_struct_print_array_as_field() {
-    foo := Foo<[]string>{
-        data: []string{}
-    }
+	foo := Foo<[]string>{
+		data: []string{}
+	}
 	assert foo.str() == 'Foo<array, string>{\n    data: []\n}'
-
 }
 
 /*
@@ -338,7 +341,7 @@ fn test<T>(mut app T) {
 }
 
 fn nested_test<T>(mut app T) {
-	app.context = Context {}
+	app.context = Context{}
 }
 
 fn test_pass_generic_to_nested_function() {
@@ -361,10 +364,13 @@ fn method_test<T>(mut app T) {
 fn test_pass_generic_to_nested_method() {
 	mut app := App{}
 	method_test(mut app)
-}*/
+}
+*/
 
 fn generic_return_map<M>() map[string]M {
-	return {'': M{}}
+	return map{
+		'': M{}
+	}
 }
 
 fn test_generic_return_map() {
@@ -372,7 +378,11 @@ fn test_generic_return_map() {
 }
 
 fn generic_return_nested_map<M>() map[string]map[string]M {
-	return {'': {'': M{}}}
+	return map{
+		'': map{
+			'': M{}
+		}
+	}
 }
 
 fn test_generic_return_nested_map() {
@@ -383,10 +393,13 @@ fn multi_return<A, B>() (A, B) {
 	return A{}, B{}
 }
 
-struct Foo1{}
-struct Foo2{}
-struct Foo3{}
-struct Foo4{}
+struct Foo1 {}
+
+struct Foo2 {}
+
+struct Foo3 {}
+
+struct Foo4 {}
 
 fn test_multi_return() {
 	// compiles
@@ -399,7 +412,7 @@ fn multi_generic_args<T, V>(t T, v V) bool {
 }
 
 fn test_multi_generic_args() {
-	assert multi_generic_args("Super", 2021)
+	assert multi_generic_args('Super', 2021)
 }
 
 fn new<T>() T {
@@ -429,9 +442,9 @@ fn test_generic_detection() {
 	v1, v2 := -1, 1
 
 	// not generic
-	a1, a2 := v1<v2, v2> v1
+	a1, a2 := v1 < v2, v2 > v1
 	assert a1 && a2
-	b1, b2 := v1 <simplemodule.zero, v2> v1
+	b1, b2 := v1 < simplemodule.zero, v2 > v1
 	assert b1 && b2
 
 	// generic

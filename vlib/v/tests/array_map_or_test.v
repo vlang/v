@@ -32,7 +32,7 @@ fn test_array_or_direct() {
 }
 
 fn test_map_or() {
-	m := {
+	m := map{
 		'as': 3
 		'qw': 4
 		'kl': 5
@@ -51,9 +51,12 @@ fn test_map_or() {
 	assert good == 5
 }
 
-
 fn get_map_el(key string) ?int {
-	m := {'as': 3, 'qw': 4, 'kl': 5}
+	m := map{
+		'as': 3
+		'qw': 4
+		'kl': 5
+	}
 	r := m[key] ?
 	return r
 }
@@ -90,12 +93,8 @@ fn test_propagation() {
 		testvar2 = 177
 		int(-67)
 	}
-	m := get_arr_el_direct(3) or {
-		17
-	}
-	n := get_arr_el_direct(0) or {
-		-73
-	}
+	m := get_arr_el_direct(3) or { 17 }
+	n := get_arr_el_direct(0) or { -73 }
 	assert testvar1 == -34
 	assert testvar2 == 99
 	assert e == 7
@@ -114,8 +113,6 @@ fn get_arr_el_nested(i int) ?int {
 }
 
 fn test_nested_array_propagation() {
-	g := get_arr_el_nested(3) or {
-		12
-	}
+	g := get_arr_el_nested(3) or { 12 }
 	assert g == 12
 }

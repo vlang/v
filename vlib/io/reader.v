@@ -70,5 +70,5 @@ pub fn read_any(r Reader) ?[]byte {
 
 // RandomReader represents a stream of data that can be read from at a random location
 interface RandomReader {
-	read_from(pos int, mut buf []byte) ?int
+	read_from(pos u64, mut buf []byte) ?int
 }
