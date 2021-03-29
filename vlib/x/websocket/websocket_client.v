@@ -31,7 +31,7 @@ pub:
 	uri    Uri    // uri of current connection
 	id     string // unique id of client
 pub mut:
-	header            http.Header // headers that will be passed when connecting
+	header            http.Header  // headers that will be passed when connecting
 	conn              &net.TcpConn // underlying TCP socket connection
 	nonce_size        int = 16 // size of nounce used for masking
 	panic_on_callback bool     // set to true of callbacks can panic
