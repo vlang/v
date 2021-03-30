@@ -328,3 +328,24 @@ fn test_bool_false() {
 	assert tok.lit.len == 5
 	assert tok.lit.bytestr() == 'false'
 }
+
+fn test_json_with_whitespace_start() {
+	mut sc := Scanner{
+		text: ' \n  \n\t {'.bytes()
+	}
+	tok := sc.scan()
+	eprintln(tok)
+	assert tok.kind == .lcbr
+	assert tok.lit.len == 0
+}
+
+fn test_json_with_whitespace_end() {
+	mut sc := Scanner{
+		text: '}  \n\t'.bytes()
+	}
+	tok := sc.scan()
+	assert tok.kind == .rcbr
+	tok2 := sc.scan()
+	eprintln(tok2)
+	assert tok2.kind == .eof
+}
