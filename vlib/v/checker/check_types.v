@@ -449,6 +449,10 @@ pub fn (mut c Checker) infer_fn_types(f table.Fn, mut call_expr ast.CallExpr) {
 				if arg.expr.is_auto_deref_var() {
 					typ = typ.deref()
 				}
+				// If the parent fn param is a generic too
+				if typ.has_flag(.generic) {
+					typ = c.unwrap_generic(typ)
+				}
 				break
 			}
 			arg_sym := c.table.get_type_symbol(arg.typ)

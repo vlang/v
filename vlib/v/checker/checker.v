@@ -1536,6 +1536,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			c.error('expected $nr_args arguments, but got $call_expr.args.len', unexpected_arguments_pos)
 			return method.return_type
 		}
+
 		// if method_name == 'clone' {
 		// println('CLONE nr args=$method.args.len')
 		// }
@@ -1647,6 +1648,9 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		}
 		if call_expr.generic_types.len > 0 && method.generic_names.len == 0 {
 			c.error('a non generic function called like a generic one', call_expr.generic_list_pos)
+		}
+		if call_expr.generic_types.len > method.generic_names.len {
+			c.error('too many generic parameters got $call_expr.generic_types.len, expected $method.generic_names.len', call_expr.generic_list_pos)
 		}
 		if method.generic_names.len > 0 {
 			return call_expr.return_type
@@ -2173,7 +2177,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 				call_arg.pos)
 		}
 	}
-	if f.generic_names.len != call_expr.generic_types.len {
+			if f.generic_names.len != call_expr.generic_types.len {		
 		// no type arguments given in call, attempt implicit instantiation
 		c.infer_fn_types(f, mut call_expr)
 	}
@@ -2185,6 +2189,10 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	}
 	if call_expr.generic_types.len > 0 && f.generic_names.len == 0 {
 		c.error('a non generic function called like a generic one', call_expr.generic_list_pos)
+	}
+
+	if call_expr.generic_types.len > f.generic_names.len {
+		c.error('too many generic parameters got $call_expr.generic_types.len, expected $f.generic_names.len', call_expr.generic_list_pos)
 	}
 	if f.generic_names.len > 0 {
 		return call_expr.return_type
