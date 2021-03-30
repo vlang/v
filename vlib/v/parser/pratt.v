@@ -238,7 +238,8 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			st := p.parse_type()
 			p.check(.comma)
 			if p.tok.kind != .name {
-				return p.error_with_pos('unexpected `$p.tok.lit`, expecting struct field', p.tok.position())
+				return p.error_with_pos('unexpected `$p.tok.lit`, expecting struct field',
+					p.tok.position())
 			}
 			field := p.tok.lit
 			p.next()
