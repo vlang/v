@@ -74,9 +74,9 @@ pub fn get(url string) ?Response {
 
 // post sends a POST HTTP request to the URL with a string data
 pub fn post(url string, data string) ?Response {
-	return fetch_with_method(.post, url, 
+	return fetch_with_method(.post, url,
 		data: data
-		headers: {
+		headers: map{
 			'Content-Type': http.content_type_default
 		}
 	)
@@ -84,9 +84,9 @@ pub fn post(url string, data string) ?Response {
 
 // post_json sends a POST HTTP request to the URL with a JSON data
 pub fn post_json(url string, data string) ?Response {
-	return fetch_with_method(.post, url, 
+	return fetch_with_method(.post, url,
 		data: data
-		headers: {
+		headers: map{
 			'Content-Type': 'application/json'
 		}
 	)
@@ -94,8 +94,8 @@ pub fn post_json(url string, data string) ?Response {
 
 // post_form sends a POST HTTP request to the URL with X-WWW-FORM-URLENCODED data
 pub fn post_form(url string, data map[string]string) ?Response {
-	return fetch_with_method(.post, url, 
-		headers: {
+	return fetch_with_method(.post, url,
+		headers: map{
 			'Content-Type': 'application/x-www-form-urlencoded'
 		}
 		data: url_encode_form_data(data)
@@ -104,9 +104,9 @@ pub fn post_form(url string, data map[string]string) ?Response {
 
 // put sends a PUT HTTP request to the URL with a string data
 pub fn put(url string, data string) ?Response {
-	return fetch_with_method(.put, url, 
+	return fetch_with_method(.put, url,
 		data: data
-		headers: {
+		headers: map{
 			'Content-Type': http.content_type_default
 		}
 	)
@@ -114,9 +114,9 @@ pub fn put(url string, data string) ?Response {
 
 // patch sends a PATCH HTTP request to the URL with a string data
 pub fn patch(url string, data string) ?Response {
-	return fetch_with_method(.patch, url, 
+	return fetch_with_method(.patch, url,
 		data: data
-		headers: {
+		headers: map{
 			'Content-Type': http.content_type_default
 		}
 	)
@@ -401,9 +401,16 @@ fn (req &Request) http_do(host string, method Method, path string) ?Response {
 	mut client := net.dial_tcp(host) ?
 	// TODO this really needs to be exposed somehow
 	client.write(s.bytes()) ?
+	$if trace_http_request ? {
+		eprintln('> $s')
+	}
 	mut bytes := io.read_all(reader: client) ?
 	client.close() ?
-	return parse_response(bytes.bytestr())
+	response_text := bytes.bytestr()
+	$if trace_http_response ? {
+		eprintln('< $response_text')
+	}
+	return parse_response(response_text)
 }
 
 // referer returns 'Referer' header value of the given request
