@@ -6,12 +6,25 @@ module csv
 // Once interfaces are further along the idea would be to have something similar to
 // go's io.reader & bufio.reader rather than reading the whole file into string, this
 // would then satisfy that interface. I designed it this way to be easily adapted.
-const (
-	err_comment_is_delim = error('encoding.csv: comment cannot be the same as delimiter')
-	err_invalid_delim    = error('encoding.csv: invalid delimiter')
-	err_eof              = error('encoding.csv: end of file')
-	err_invalid_le       = error('encoding.csv: could not find any valid line endings')
-)
+struct ErrCommentIsDelimiter {
+	msg  string = 'encoding.csv: comment cannot be the same as delimiter'
+	code int
+}
+
+struct ErrInvalidDelimiter {
+	msg  string = 'encoding.csv: invalid delimiter'
+	code int
+}
+
+struct ErrEndOfFile {
+	msg  string = 'encoding.csv: end of file'
+	code int
+}
+
+struct ErrInvalidLineEnding {
+	msg  string = 'encoding.csv: could not find any valid line endings'
+	code int
+}
 
 struct Reader {
 	// not used yet
@@ -59,7 +72,7 @@ pub fn (mut r Reader) read() ?[]string {
 fn (mut r Reader) read_line() ?string {
 	// last record
 	if r.row_pos == r.data.len {
-		return csv.err_eof
+		return IError(&ErrEndOfFile{})
 	}
 	le := if r.is_mac_pre_osx_le { '\r' } else { '\n' }
 	mut i := r.data.index_after(le, r.row_pos)
@@ -71,7 +84,7 @@ fn (mut r Reader) read_line() ?string {
 				r.is_mac_pre_osx_le = true
 			} else {
 				// no valid line endings found
-				return csv.err_invalid_le
+				return IError(&ErrInvalidLineEnding{})
 			}
 		} else {
 			// No line ending on file
@@ -89,10 +102,10 @@ fn (mut r Reader) read_line() ?string {
 
 fn (mut r Reader) read_record() ?[]string {
 	if r.delimiter == r.comment {
-		return csv.err_comment_is_delim
+		return IError(&ErrCommentIsDelimiter{})
 	}
 	if !valid_delim(r.delimiter) {
-		return csv.err_invalid_delim
+		return IError(&ErrInvalidDelimiter{})
 	}
 	mut need_read := true
 	mut keep_raw := false
@@ -154,7 +167,7 @@ fn (mut r Reader) read_record() ?[]string {
 			}
 		}
 		if i <= -1 && fields.len == 0 {
-			return csv.err_invalid_delim
+			return IError(&ErrInvalidDelimiter{})
 		}
 	}
 	return fields
