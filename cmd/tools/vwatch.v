@@ -26,15 +26,20 @@ fn (mut vfs VFileStat) free() {
 	unsafe { vfs.path.free() }
 }
 
+enum RerunCommand {
+	restart
+	quit
+}
+
 struct Context {
 mut:
 	check_period_ms int = 250
 	is_debug        bool
 	vexe            string
 	affected_paths  []string
-	vfiles          map[string]VFileStat
+	vfiles          []VFileStat
 	opts            []string
-	rerun_channel   chan string
+	rerun_channel   chan RerunCommand
 	child_process   &os.Process
 	is_exiting      bool // set by SIGINT/Ctrl-C
 }
@@ -49,13 +54,7 @@ fn (mut context Context) elog_debug(msg string) {
 	}
 }
 
-fn (mut context Context) update_changed_vfiles(changes map[string]VFileStat) {
-	for f, x in changes {
-		context.vfiles[f] = x
-	}
-}
-
-fn (mut context Context) get_stats_for_affected_vfiles() map[string]VFileStat {
+fn (mut context Context) get_stats_for_affected_vfiles() []VFileStat {
 	if context.affected_paths.len == 0 {
 		mut apaths := map[string]bool{}
 		// The next command will make V parse the program, and print all .v files,
@@ -63,10 +62,10 @@ fn (mut context Context) get_stats_for_affected_vfiles() map[string]VFileStat {
 		copts := context.opts.join(' ')
 		cmd := '"$context.vexe" -silent -print-v-files $copts'
 		// context.elog_debug('> cmd: $cmd')
-		vfiles := os.execute(cmd)
+		mut vfiles := os.execute(cmd)
 		if vfiles.exit_code == 0 {
 			paths_trimmed := vfiles.output.trim_space()
-			paths := paths_trimmed.split('\n')
+			mut paths := paths_trimmed.split('\n')
 			for vf in paths {
 				apaths[os.real_path(os.dir(vf))] = true
 			}
@@ -75,9 +74,9 @@ fn (mut context Context) get_stats_for_affected_vfiles() map[string]VFileStat {
 		// context.elog_debug('vfiles paths to be scanned: $context.affected_paths')
 	}
 	// scan all files in the found folders
-	mut newstats := map[string]VFileStat{}
+	mut newstats := []VFileStat{}
 	for path in context.affected_paths {
-		files := os.ls(path) or { []string{} }
+		mut files := os.ls(path) or { []string{} }
 		for pf in files {
 			pf_ext := os.file_ext(pf).to_lower()
 			if pf_ext in ['', 'bak', 'exe', 'dll', 'so'] {
@@ -92,26 +91,33 @@ fn (mut context Context) get_stats_for_affected_vfiles() map[string]VFileStat {
 			f := os.join_path(path, pf)
 			fullpath := os.real_path(f)
 			mtime := os.file_last_mod_unix(fullpath)
-			newstats[fullpath] = VFileStat{fullpath, mtime}
+			newstats << VFileStat{fullpath, mtime}
 		}
 	}
 	return newstats
 }
 
-fn (mut context Context) get_changed_vfiles() map[string]VFileStat {
-	mut changed := map[string]VFileStat{}
-	newstats := context.get_stats_for_affected_vfiles()
-	for f, newstat in newstats {
-		if f !in context.vfiles {
-			changed[f] = newstat
-			continue
+fn (mut context Context) get_changed_vfiles() int {
+	mut changed := 0
+	newfiles := context.get_stats_for_affected_vfiles()
+	for vfs in newfiles {
+		mut found := false
+		for existing_vfs in context.vfiles {
+			if existing_vfs.path == vfs.path {
+				found = true
+				if existing_vfs.mtime != vfs.mtime {
+					changed++
+				}
+				break
+			}
 		}
-		if context.vfiles[f].mtime != newstat.mtime {
-			changed[f] = newstat
+		if !found {
+			changed++
 			continue
 		}
 	}
-	// context.elog_debug('> get_changed_vfiles: $changed')
+	context.vfiles = newfiles
+	context.elog_debug('> get_changed_vfiles: $changed')
 	return changed
 }
 
@@ -122,9 +128,8 @@ fn change_detection_loop(ocontext &Context) {
 			return
 		}
 		changes := context.get_changed_vfiles()
-		if changes.len > 0 {
-			context.update_changed_vfiles(changes)
-			context.rerun_channel <- 'restart'
+		if changes > 0 {
+			context.rerun_channel <- RerunCommand.restart
 		}
 		time.sleep(context.check_period_ms * time.millisecond)
 	}
@@ -133,7 +138,6 @@ fn change_detection_loop(ocontext &Context) {
 fn (mut context Context) compilation_runner_loop() {
 	cmd := '"$context.vexe" ${context.opts.join(' ')}'
 	mut runner_cycles := 0
-	mut cmds := []string{}
 	_ := <-context.rerun_channel
 	// context.elog_debug('>>>>>>>>>>>>>>>>>>>>>>>>>>>>> compilation_runner_loop FOR <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<')
 	for {
@@ -146,6 +150,7 @@ fn (mut context Context) compilation_runner_loop() {
 			eprintln('$timestamp: $cmd | pid: $context.child_process.pid')
 			// context.elog_debug('> compilation_runner_loop vexe pid: $context.child_process.pid | status: $context.child_process.status | cycles: $runner_cycles')
 			for {
+				mut cmds := []RerunCommand{}
 				for {
 					if context.is_exiting {
 						return
@@ -158,14 +163,14 @@ fn (mut context Context) compilation_runner_loop() {
 						action := <-context.rerun_channel {
 							// context.elog_debug('received action: $action')
 							cmds << action
-							if action == 'quit' {
+							if action == .quit {
 								context.child_process.signal_pgkill()
 								context.child_process.wait()
 								return
 							}
 						}
 						> 100 * time.millisecond {
-							should_restart := 'restart' in cmds
+							should_restart := RerunCommand.restart in cmds
 							cmds = []
 							if should_restart {
 								// context.elog_debug('>>>>>>>> KILLING $context.child_process.pid')
@@ -192,7 +197,7 @@ const ccontext = Context{
 
 fn main() {
 	mut context := &ccontext
-	context.rerun_channel = chan string{cap: 10}
+	context.rerun_channel = chan RerunCommand{cap: 10}
 	context.vexe = os.getenv('VEXE')
 	context.opts = os.args[1..]
 	os.signal(C.SIGINT, fn () {
