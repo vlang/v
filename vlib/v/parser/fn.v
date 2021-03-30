@@ -91,7 +91,6 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 	pos.update_last_line(p.prev_tok.line_nr)
 	return ast.CallExpr{
 		name: fn_name
-		name_pos: first_pos
 		args: args
 		mod: p.mod
 		pos: pos

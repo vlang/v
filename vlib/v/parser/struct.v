@@ -184,9 +184,6 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			mut typ := table.Type(0)
 			mut type_pos := token.Position{}
 			mut field_pos := token.Position{}
-
-			is_pub_field := is_embed || is_field_pub
-			is_mut_field := is_embed || is_field_mut
 			if is_embed {
 				// struct embedding
 				type_pos = p.tok.position()
@@ -231,35 +228,8 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				typ = p.parse_type()
 				if typ.idx() == 0 {
 					// error is set in parse_type
-					if p.pref.output_mode == .silent {
-						if p.tok.kind == .eof {
-							ast_fields << ast.StructField{
-								name: field_name
-								pos: field_pos
-								type_pos: type_pos
-								typ: typ
-								comments: comments
-								has_default_expr: false
-								attrs: p.attrs
-								is_public: is_field_pub
-							}
-
-							// NB: Do not store the culprit to the type symbol fields
-							break
-						}
-						// its rewind time
-						p.scanner.set_current_tidx(p.tok.tidx - 2)
-						p.prev_tok = token.Token{}
-						p.tok = token.Token{}
-						p.peek_tok = token.Token{}
-						p.next()
-						p.next()
-						continue
-					} else {
-						return ast.StructDecl{}
-					}
+					return ast.StructDecl{}
 				}
-
 				type_pos = p.prev_tok.position()
 				field_pos = field_start_pos.extend(type_pos)
 			}
@@ -297,6 +267,8 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 					is_public: is_field_pub
 				}
 			}
+			is_pub_field := is_embed || is_field_pub
+			is_mut_field := is_embed || is_field_mut
 			// save embeds as table fields too, it will be used in generation phase
 			fields << table.Field{
 				name: field_name
@@ -387,7 +359,6 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 		mut field_name := ''
 		mut expr := ast.Expr{}
 		mut field_pos := token.Position{}
-		mut first_field_pos := token.Position{}
 		mut comments := []ast.Comment{}
 		mut nline_comments := []ast.Comment{}
 		is_update_expr := fields.len == 0 && p.tok.kind == .ellipsis
@@ -395,7 +366,6 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 			// name will be set later in checker
 			expr = p.expr(0)
 			field_pos = expr.position()
-			first_field_pos = field_pos
 			comments = p.eat_comments(same_line: true)
 		} else if is_update_expr {
 			// struct updating syntax; f2 := Foo{ ...f, name: 'f2' }
@@ -404,7 +374,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 			update_expr_comments << p.eat_comments(same_line: true)
 			has_update_expr = true
 		} else {
-			first_field_pos = p.tok.position()
+			first_field_pos := p.tok.position()
 			field_name = p.check_name()
 			p.check(.colon)
 			expr = p.expr(0)
@@ -433,7 +403,6 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 				name: field_name
 				expr: expr
 				pos: field_pos
-				name_pos: first_field_pos
 				comments: comments
 				next_comments: nline_comments
 			}
@@ -450,7 +419,6 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 		update_expr: update_expr
 		update_expr_comments: update_expr_comments
 		has_update_expr: has_update_expr
-		name_pos: first_pos
 		pos: first_pos.extend(p.prev_tok.position())
 		is_short: no_keys
 		pre_comments: pre_comments

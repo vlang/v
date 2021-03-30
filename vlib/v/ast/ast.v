@@ -242,7 +242,6 @@ pub struct StructInitField {
 pub:
 	expr          Expr
 	pos           token.Position
-	name_pos      token.Position
 	comments      []Comment
 	next_comments []Comment
 pub mut:
@@ -266,7 +265,6 @@ pub mut:
 pub struct StructInit {
 pub:
 	pos      token.Position
-	name_pos token.Position
 	is_short bool
 pub mut:
 	unresolved           bool
@@ -368,9 +366,8 @@ pub:
 // function or method call expr
 pub struct CallExpr {
 pub:
-	pos      token.Position
-	name_pos token.Position
-	mod      string
+	pos token.Position
+	mod string
 pub mut:
 	name               string // left.name()
 	is_method          bool
@@ -1086,7 +1083,7 @@ pub:
 pub struct AsmAddressing {
 pub:
 	displacement u32 // 8, 16 or 32 bit literal value
-	scale        int = -1 // 1, 2, 4, or 8 literal
+	scale        int = -1 // 1, 2, 4, or 8 literal 
 	mode         AddressingMode
 	pos          token.Position
 pub mut:
@@ -1413,7 +1410,7 @@ pub mut:
 
 pub struct NodeError {
 pub:
-	idx int
+	idx int // index for referencing the related ast.File error
 	pos token.Position
 }
 
@@ -1587,9 +1584,6 @@ pub fn (node Node) position() token.Position {
 			}
 			return pos
 		}
-		CallArg {
-			return node.pos
-		}
 	}
 }
 
@@ -1615,7 +1609,6 @@ pub fn (node Node) children() []Node {
 			}
 			CallExpr {
 				children << node.left
-				children << node.args.map(Node(it))
 				children << Expr(node.or_block)
 			}
 			InfixExpr {
