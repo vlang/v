@@ -823,6 +823,24 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 						c.error('mismatched types `$left_name` and `$right_name`', left_right_pos)
 					}
 				}
+			} else if right.kind == .alias && right.info is table.Alias
+				&& !(c.table.get_type_symbol((right.info as table.Alias).parent_type).is_primitive()) {
+				if right.has_method(infix_expr.op.str()) {
+					if method := right.find_method(infix_expr.op.str()) {
+						return_type = method.return_type
+					} else {
+						return_type = right_type
+					}
+				} else {
+					left_name := c.table.type_to_str(left_type)
+					right_name := c.table.type_to_str(right_type)
+					if left_name == right_name {
+						c.error('undefined operation `$left_name` $infix_expr.op.str() `$right_name`',
+							left_right_pos)
+					} else {
+						c.error('mismatched types `$left_name` and `$right_name`', left_right_pos)
+					}
+				}
 			}
 			if left.kind in [.array, .array_fixed, .map, .struct_] {
 				if left.has_method(infix_expr.op.str()) {
@@ -841,8 +859,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 						c.error('mismatched types `$left_name` and `$right_name`', left_right_pos)
 					}
 				}
-			}
-			else if right.kind in [.array, .array_fixed, .map, .struct_] {
+			} else if right.kind in [.array, .array_fixed, .map, .struct_] {
 				if right.has_method(infix_expr.op.str()) {
 					if method := right.find_method(infix_expr.op.str()) {
 						return_type = method.return_type
