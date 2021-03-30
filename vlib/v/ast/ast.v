@@ -28,8 +28,8 @@ pub type Stmt = AsmStmt | AssertStmt | AssignStmt | Block | BranchStmt | CompFor
 pub type ScopeObject = AsmRegister | ConstField | GlobalField | Var
 
 // TOOD: replace table.Param
-pub type Node = ConstField | EnumField | Expr | Field | File | GlobalField | IfBranch |
-	MatchBranch | ScopeObject | SelectBranch | Stmt | StructField | StructInitField |
+pub type Node = CallArg | ConstField | EnumField | Expr | Field | File | GlobalField |
+	IfBranch | MatchBranch | ScopeObject | SelectBranch | Stmt | StructField | StructInitField |
 	table.Param
 
 pub struct Type {
@@ -242,6 +242,7 @@ pub struct StructInitField {
 pub:
 	expr          Expr
 	pos           token.Position
+	name_pos      token.Position
 	comments      []Comment
 	next_comments []Comment
 pub mut:
@@ -265,6 +266,7 @@ pub mut:
 pub struct StructInit {
 pub:
 	pos      token.Position
+	name_pos token.Position
 	is_short bool
 pub mut:
 	unresolved           bool
@@ -366,8 +368,9 @@ pub:
 // function or method call expr
 pub struct CallExpr {
 pub:
-	pos token.Position
-	mod string
+	pos      token.Position
+	name_pos token.Position
+	mod      string
 pub mut:
 	name               string // left.name()
 	is_method          bool
@@ -1584,6 +1587,9 @@ pub fn (node Node) position() token.Position {
 			}
 			return pos
 		}
+		CallArg {
+			return node.pos
+		}
 	}
 }
 
@@ -1609,6 +1615,7 @@ pub fn (node Node) children() []Node {
 			}
 			CallExpr {
 				children << node.left
+				children << node.args.map(Node(it))
 				children << Expr(node.or_block)
 			}
 			InfixExpr {
