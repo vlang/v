@@ -1243,7 +1243,8 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 }
 
 fn (mut g Gen) write_defer_stmts() {
-	for defer_stmt in g.defer_stmts {
+	for i := g.defer_stmts.len - 1; i >= 0; i-- {
+		defer_stmt := g.defer_stmts[i]
 		g.writeln('// Defer begin')
 		g.writeln('if (${g.defer_flag_var(defer_stmt)} == true) {')
 		g.indent++
