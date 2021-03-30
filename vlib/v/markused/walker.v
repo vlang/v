@@ -123,6 +123,7 @@ pub fn (mut w Walker) stmt(node ast.Stmt) {
 		ast.InterfaceDecl {}
 		ast.Module {}
 		ast.TypeDecl {}
+		ast.NodeError {}
 	}
 }
 
@@ -335,6 +336,7 @@ fn (mut w Walker) expr(node ast.Expr) {
 		ast.UnsafeExpr {
 			w.expr(node.expr)
 		}
+		ast.NodeError {}
 	}
 }
 

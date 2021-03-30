@@ -3324,6 +3324,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 	}
 	// c.expected_type = table.void_type
 	match mut node {
+		ast.NodeError {}
 		ast.AsmStmt {
 			c.asm_stmt(mut node)
 		}
@@ -3950,6 +3951,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		return table.void_type
 	}
 	match mut node {
+		ast.NodeError {}
 		ast.CTempVar {
 			return node.typ
 		}

@@ -1187,6 +1187,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			// g.cur_mod = node.name
 			g.cur_mod = node
 		}
+		ast.NodeError {}
 		ast.Return {
 			g.write_defer_stmts_when_needed()
 			// af := g.autofree && node.exprs.len > 0 && node.exprs[0] is ast.CallExpr && !g.is_builtin_mod
@@ -3013,6 +3014,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.MapInit {
 			g.map_init(node)
 		}
+		ast.NodeError {}
 		ast.None {
 			g.write('_const_none__')
 		}

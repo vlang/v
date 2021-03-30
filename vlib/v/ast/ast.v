@@ -14,14 +14,14 @@ pub type Expr = AnonFn | ArrayDecompose | ArrayInit | AsCast | Assoc | AtExpr | 
 	CTempVar | CallExpr | CastExpr | ChanInit | CharLiteral | Comment | ComptimeCall |
 	ComptimeSelector | ConcatExpr | DumpExpr | EnumVal | FloatLiteral | GoExpr | Ident |
 	IfExpr | IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | Likely | LockExpr |
-	MapInit | MatchExpr | None | OffsetOf | OrExpr | ParExpr | PostfixExpr | PrefixExpr |
-	RangeExpr | SelectExpr | SelectorExpr | SizeOf | SqlExpr | StringInterLiteral | StringLiteral |
-	StructInit | Type | TypeOf | UnsafeExpr
+	MapInit | MatchExpr | NodeError | None | OffsetOf | OrExpr | ParExpr | PostfixExpr |
+	PrefixExpr | RangeExpr | SelectExpr | SelectorExpr | SizeOf | SqlExpr | StringInterLiteral |
+	StringLiteral | StructInit | Type | TypeOf | UnsafeExpr
 
 pub type Stmt = AsmStmt | AssertStmt | AssignStmt | Block | BranchStmt | CompFor | ConstDecl |
 	DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl |
-	GoStmt | GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module | Return |
-	SqlStmt | StructDecl | TypeDecl
+	GoStmt | GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module | NodeError |
+	Return | SqlStmt | StructDecl | TypeDecl
 
 // NB: when you add a new Expr or Stmt type with a .pos field, remember to update
 // the .position() token.Position methods too.
@@ -1083,7 +1083,7 @@ pub:
 pub struct AsmAddressing {
 pub:
 	displacement u32 // 8, 16 or 32 bit literal value
-	scale        int = -1 // 1, 2, 4, or 8 literal 
+	scale        int = -1 // 1, 2, 4, or 8 literal
 	mode         AddressingMode
 	pos          token.Position
 pub mut:
@@ -1408,6 +1408,12 @@ pub mut:
 	sub_structs map[int]SqlExpr
 }
 
+pub struct NodeError {
+pub:
+	idx int // index for referencing the related ast.File error
+	pos token.Position
+}
+
 [inline]
 pub fn (expr Expr) is_blank_ident() bool {
 	match expr {
@@ -1422,12 +1428,12 @@ pub fn (expr Expr) position() token.Position {
 		AnonFn {
 			return expr.decl.pos
 		}
-		ArrayDecompose, ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr, CastExpr, ChanInit,
-		CharLiteral, ConcatExpr, Comment, ComptimeCall, ComptimeSelector, EnumVal, DumpExpr, FloatLiteral,
-		GoExpr, Ident, IfExpr, IndexExpr, IntegerLiteral, Likely, LockExpr, MapInit, MatchExpr,
-		None, OffsetOf, OrExpr, ParExpr, PostfixExpr, PrefixExpr, RangeExpr, SelectExpr, SelectorExpr,
-		SizeOf, SqlExpr, StringInterLiteral, StringLiteral, StructInit, Type, TypeOf, UnsafeExpr
-		 {
+		NodeError, ArrayDecompose, ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr, CastExpr,
+		ChanInit, CharLiteral, ConcatExpr, Comment, ComptimeCall, ComptimeSelector, EnumVal, DumpExpr,
+		FloatLiteral, GoExpr, Ident, IfExpr, IndexExpr, IntegerLiteral, Likely, LockExpr, MapInit,
+		MatchExpr, None, OffsetOf, OrExpr, ParExpr, PostfixExpr, PrefixExpr, RangeExpr, SelectExpr,
+		SelectorExpr, SizeOf, SqlExpr, StringInterLiteral, StringLiteral, StructInit, Type, TypeOf,
+		UnsafeExpr {
 			return expr.pos
 		}
 		IfGuardExpr {
