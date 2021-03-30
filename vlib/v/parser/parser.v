@@ -516,8 +516,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 						return p.type_decl()
 					}
 					else {
-						p.error('wrong pub keyword usage')
-						return ast.Stmt{}
+						return p.error('wrong pub keyword usage')
 					}
 				}
 			}
@@ -591,8 +590,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 				} else if p.pref.is_fmt {
 					return p.stmt(false)
 				} else {
-					p.error('bad top level statement ' + p.tok.str())
-					return ast.Stmt{}
+					return p.error('bad top level statement ' + p.tok.str())
 				}
 			}
 		}
@@ -720,12 +718,10 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 					pos: spos.extend(p.tok.position())
 				}
 			} else if p.peek_tok.kind == .name {
-				p.error_with_pos('unexpected name `$p.peek_tok.lit`', p.peek_tok.position())
-				return ast.Stmt{}
+				return p.error_with_pos('unexpected name `$p.peek_tok.lit`', p.peek_tok.position())
 			} else if !p.inside_if_expr && !p.inside_match_body && !p.inside_or_expr
 				&& p.peek_tok.kind in [.rcbr, .eof] && !p.mark_var_as_used(p.tok.lit) {
-				p.error_with_pos('`$p.tok.lit` evaluated but not used', p.tok.position())
-				return ast.Stmt{}
+				return p.error_with_pos('`$p.tok.lit` evaluated but not used', p.tok.position())
 			}
 			return p.parse_multi_expr(is_top_level)
 		}
@@ -759,8 +755,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 					}
 				}
 				else {
-					p.error_with_pos('unexpected \$', p.tok.position())
-					return ast.Stmt{}
+					return p.error_with_pos('unexpected \$', p.tok.position())
 				}
 			}
 		}
@@ -820,9 +815,8 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			}
 		}
 		.key_const {
-			p.error_with_pos('const can only be defined at the top level (outside of functions)',
+			return p.error_with_pos('const can only be defined at the top level (outside of functions)',
 				p.tok.position())
-			return ast.Stmt{}
 		}
 		.key_asm {
 			return p.asm_stmt(false)
@@ -1483,8 +1477,8 @@ pub fn (mut p Parser) check_for_impure_v(language table.Language, pos token.Posi
 	}
 }
 
-pub fn (mut p Parser) error(s string) {
-	p.error_with_pos(s, p.tok.position())
+pub fn (mut p Parser) error(s string) ast.NodeError {
+	return p.error_with_pos(s, p.tok.position())
 }
 
 pub fn (mut p Parser) warn(s string) {
@@ -1495,7 +1489,7 @@ pub fn (mut p Parser) note(s string) {
 	p.note_with_pos(s, p.tok.position())
 }
 
-pub fn (mut p Parser) error_with_pos(s string, pos token.Position) {
+pub fn (mut p Parser) error_with_pos(s string, pos token.Position) ast.NodeError {
 	if p.pref.fatal_errors {
 		exit(1)
 	}
@@ -1522,6 +1516,10 @@ pub fn (mut p Parser) error_with_pos(s string, pos token.Position) {
 		// of the parser logic does not expect that, and may loop forever.
 		// The p.next() here is needed, so the parser is more robust, and *always* advances, even in the -silent mode.
 		p.next()
+	}
+	return ast.NodeError{
+		idx: p.errors.len - 1
+		pos: pos
 	}
 }
 
@@ -1611,8 +1609,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	left, left_comments := p.expr_list()
 	left0 := left[0]
 	if tok.kind == .key_mut && p.tok.kind != .decl_assign {
-		p.error('expecting `:=` (e.g. `mut x :=`)')
-		return ast.Stmt{}
+		return p.error('expecting `:=` (e.g. `mut x :=`)')
 	}
 	// TODO remove translated
 	if p.tok.kind in [.assign, .decl_assign] || p.tok.kind.is_assign() {
@@ -1624,8 +1621,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 				&& node !is ast.PostfixExpr && !(node is ast.InfixExpr
 				&& (node as ast.InfixExpr).op in [.left_shift, .arrow]) && node !is ast.ComptimeCall
 				&& node !is ast.SelectorExpr && node !is ast.DumpExpr {
-				p.error_with_pos('expression evaluated but not used', node.position())
-				return ast.Stmt{}
+				return p.error_with_pos('expression evaluated but not used', node.position())
 			}
 		}
 	}
@@ -1819,12 +1815,10 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 					cap_expr = p.expr(0)
 				}
 				'len', 'init' {
-					p.error('`$key` cannot be initialized for `chan`. Did you mean `cap`?')
-					return ast.Expr{}
+					return p.error('`$key` cannot be initialized for `chan`. Did you mean `cap`?')
 				}
 				else {
-					p.error('wrong field `$key`, expecting `cap`')
-					return ast.Expr{}
+					return p.error('wrong field `$key`, expecting `cap`')
 				}
 			}
 			last_pos = p.tok.position()
@@ -1843,15 +1837,13 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			return p.string_expr()
 		} else {
 			// don't allow any other string prefix except `r`, `js` and `c`
-			p.error('only `c`, `r`, `js` are recognized string prefixes, but you tried to use `$p.tok.lit`')
-			return ast.Expr{}
+			return p.error('only `c`, `r`, `js` are recognized string prefixes, but you tried to use `$p.tok.lit`')
 		}
 	}
 	// don't allow r`byte` and c`byte`
 	if p.tok.lit in ['r', 'c'] && p.peek_tok.kind == .chartoken {
 		opt := if p.tok.lit == 'r' { '`r` (raw string)' } else { '`c` (c string)' }
-		p.error('cannot use $opt with `byte` and `rune`')
-		return ast.Expr{}
+		return p.error('cannot use $opt with `byte` and `rune`')
 	}
 	known_var := p.mark_var_as_used(p.tok.lit)
 	mut is_mod_cast := false
@@ -2342,8 +2334,7 @@ fn (mut p Parser) string_expr() ast.Expr {
 					has_fmt = true
 					p.next()
 				} else {
-					p.error('format specifier may only be one letter')
-					return ast.Expr{}
+					return p.error('format specifier may only be one letter')
 				}
 			}
 		}
@@ -3072,13 +3063,11 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 	mut pos := p.tok.position()
 	p.next()
 	if p.tok.kind != .lcbr {
-		p.error_with_pos('please use `unsafe {`', p.tok.position())
-		return ast.Stmt{}
+		return p.error_with_pos('please use `unsafe {`', p.tok.position())
 	}
 	p.next()
 	if p.inside_unsafe {
-		p.error_with_pos('already inside `unsafe` block', pos)
-		return ast.Stmt{}
+		return p.error_with_pos('already inside `unsafe` block', pos)
 	}
 	if p.tok.kind == .rcbr {
 		// `unsafe {}`

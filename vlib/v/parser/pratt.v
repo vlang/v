@@ -69,8 +69,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 					return p.if_expr(true)
 				}
 				else {
-					p.error_with_pos('unexpected `$`', p.peek_tok.position())
-					return ast.Expr{}
+					return p.error_with_pos('unexpected `$`', p.peek_tok.position())
 				}
 			}
 		}
@@ -135,8 +134,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			mut pos := p.tok.position()
 			p.next()
 			if p.inside_unsafe {
-				p.error_with_pos('already inside `unsafe` block', pos)
-				return ast.Expr{}
+				return p.error_with_pos('already inside `unsafe` block', pos)
 			}
 			p.inside_unsafe = true
 			p.check(.lcbr)
@@ -240,8 +238,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			st := p.parse_type()
 			p.check(.comma)
 			if p.tok.kind != .name {
-				p.error_with_pos('unexpected `$p.tok.lit`, expecting struct field', p.tok.position())
-				return ast.Expr{}
+				return p.error_with_pos('unexpected `$p.tok.lit`, expecting struct field', p.tok.position())
 			}
 			field := p.tok.lit
 			p.next()
@@ -281,13 +278,11 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 					node = p.struct_init(true) // short_syntax: true
 				} else if p.tok.kind == .name {
 					p.next()
-					p.error_with_pos('unexpected $p.tok, expecting `:` after struct field name',
+					return p.error_with_pos('unexpected $p.tok, expecting `:` after struct field name',
 						p.tok.position())
-					return ast.Expr{}
 				} else {
-					p.error_with_pos('unexpected $p.tok, expecting struct field name',
+					return p.error_with_pos('unexpected $p.tok, expecting struct field name',
 						p.tok.position())
-					return ast.Expr{}
 				}
 			}
 			p.check(.rcbr)
@@ -326,8 +321,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 		else {
 			if p.tok.kind != .eof && !(p.tok.kind == .rsbr && p.inside_asm) {
 				// eof should be handled where it happens
-				p.error_with_pos('invalid expression: unexpected $p.tok', p.tok.position())
-				return ast.Expr{}
+				return p.error_with_pos('invalid expression: unexpected $p.tok', p.tok.position())
 			}
 		}
 	}
