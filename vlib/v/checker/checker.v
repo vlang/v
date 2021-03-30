@@ -414,7 +414,7 @@ pub fn (mut c Checker) struct_decl(mut decl ast.StructDecl) {
 			}
 			if field.has_default_expr {
 				c.expected_type = field.typ
-				field_expr_type := c.expr(field.default_expr)
+				field_expr_type := c.check_expr_opt_call(field.default_expr, c.expr(field.default_expr))
 				struct_sym.info.fields[i].default_expr_typ = field_expr_type
 				c.check_expected(field_expr_type, field.typ) or {
 					if !(sym.kind == .interface_
@@ -608,7 +608,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 					inited_fields << field_name
 					field_type_sym := c.table.get_type_symbol(info_field.typ)
 					c.expected_type = info_field.typ
-					expr_type := c.expr(field.expr)
+					expr_type := c.check_expr_opt_call(field.expr, c.expr(field.expr))
 					expr_type_sym := c.table.get_type_symbol(expr_type)
 					if field_type_sym.kind == .interface_ {
 						c.type_implements(expr_type, info_field.typ, field.pos)
@@ -937,6 +937,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 					c.error('array append cannot be used in an expression', infix_expr.pos)
 				}
 				// `array << elm`
+				c.check_expr_opt_call(infix_expr.right, right_type)
 				infix_expr.auto_locked, _ = c.fail_if_immutable(infix_expr.left)
 				left_value_type := c.table.value_type(left_type)
 				left_value_sym := c.table.get_type_symbol(left_value_type)
@@ -2686,12 +2687,7 @@ pub fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 	for i, field in node.fields {
 		c.const_decl = field.name
 		c.const_deps << field.name
-		mut typ := c.expr(field.expr)
-		if field.expr is ast.CallExpr {
-			if field.expr.or_block.kind != .absent {
-				typ = typ.clear_flag(.optional)
-			}
-		}
+		typ := c.check_expr_opt_call(field.expr, c.expr(field.expr))
 		node.fields[i].typ = c.table.mktyp(typ)
 		for cd in c.const_deps {
 			for j, f in node.fields {
@@ -3196,9 +3192,10 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 			}
 		}
 		if array_init.has_default {
-			default_typ := c.expr(array_init.default_expr)
+			default_expr := array_init.default_expr
+			default_typ := c.check_expr_opt_call(default_expr, c.expr(default_expr))
 			c.check_expected(default_typ, array_init.elem_type) or {
-				c.error(err.msg, array_init.default_expr.position())
+				c.error(err.msg, default_expr.position())
 			}
 		}
 		if array_init.has_len {
@@ -3498,7 +3495,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 
 fn (mut c Checker) assert_stmt(node ast.AssertStmt) {
 	cur_exp_typ := c.expected_type
-	assert_type := c.expr(node.expr)
+	assert_type := c.check_expr_opt_call(node.expr, c.expr(node.expr))
 	if assert_type != table.bool_type_idx {
 		atype_name := c.table.get_type_symbol(assert_type).name
 		c.error('assert can be used only with `bool` expressions, but found `$atype_name` instead',
