@@ -247,6 +247,12 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 							// NB: Do not store the culprit to the type symbol fields
 							break
 						}
+						// its rewind time
+						p.scanner.set_current_tidx(p.tok.tidx - 2)
+						p.prev_tok = token.Token{}
+						p.tok = token.Token{}
+						p.peek_tok = token.Token{}
+						p.next()
 						p.next()
 						continue
 					} else {
