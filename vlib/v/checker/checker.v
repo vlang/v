@@ -1598,7 +1598,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			c.infer_fn_types(method, mut call_expr)
 		}
 		if call_expr.generic_types.len > 0 && method.return_type != 0 {
-			if typ := c.resolve_generic_type(method.return_type, method.generic_names,
+			if typ := c.resolve_generic_by_names(method.return_type, method.generic_names,
 				call_expr.generic_types)
 			{
 				call_expr.return_type = typ
@@ -1955,8 +1955,11 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 					mut fields := rts.info.fields.clone()
 					if rts.info.generic_types.len == generic_types.len {
 						for i, _ in fields {
-							fields[i].typ = c.unwrap_generic_ex(fields[i].typ, rts.info.generic_types,
+							if t_typ := c.resolve_generic_by_types(fields[i].typ, rts.info.generic_types,
 								generic_types)
+							{
+								fields[i].typ = t_typ
+							}
 						}
 						mut info := rts.info
 						info.generic_types = []
@@ -2098,7 +2101,26 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 				continue
 			}
 			if f.generic_names.len > 0 {
-				continue
+				if param.typ.has_flag(.generic)
+					&& f.generic_names.len == call_expr.generic_types.len {
+					if unwrap_typ := c.resolve_generic_by_names(param.typ, f.generic_names,
+						call_expr.generic_types)
+					{
+						if (unwrap_typ.idx() == typ.idx())
+							|| (unwrap_typ.is_int() && typ.is_int())
+							|| (unwrap_typ.is_float() && typ.is_float()) {
+							continue
+						}
+						expected_sym := c.table.get_type_symbol(unwrap_typ)
+						got_sym := c.table.get_type_symbol(typ)
+						c.error('argument ${i + 1} got `$got_sym.name`, expected `$expected_sym.name`',
+							call_arg.pos)
+					} else {
+						continue
+					}
+				} else {
+					continue
+				}
 			}
 			c.error('$err.msg in argument ${i + 1} to `$fn_name`', call_arg.pos)
 		}
@@ -2116,7 +2138,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		c.infer_fn_types(f, mut call_expr)
 	}
 	if call_expr.generic_types.len > 0 && f.return_type != 0 {
-		if typ := c.resolve_generic_type(f.return_type, f.generic_names, call_expr.generic_types) {
+		if typ := c.resolve_generic_by_names(f.return_type, f.generic_names, call_expr.generic_types) {
 			call_expr.return_type = typ
 			return typ
 		}
@@ -3899,45 +3921,6 @@ pub fn (c &Checker) unwrap_generic(typ table.Type) table.Type {
 		}
 	}
 	return typ
-}
-
-// `unwrap_generic()` is used in generic_fn decl, `unwrap_generic_ex()` can be used not in generic_fn decl
-// e.g. from_types: <T, B>   to_types: <int, string>
-pub fn (mut c Checker) unwrap_generic_ex(typ table.Type, from_types []table.Type, to_types []table.Type) table.Type {
-	sym := c.table.get_type_symbol(typ)
-	mut typ_ := typ
-	mut nr_dims := 0
-	if sym.kind == .array {
-		typ_, nr_dims = c.array_element_info(typ)
-	}
-	if from_types.len == to_types.len {
-		for j, gp in from_types {
-			if gp == typ_ {
-				if sym.kind == .array {
-					idx := c.table.find_or_register_array_with_dims(to_types[j], nr_dims)
-					return table.new_type(idx)
-				} else {
-					return to_types[j].derive(typ).clear_flag(.generic)
-				}
-			}
-		}
-	}
-	return typ
-}
-
-fn (mut c Checker) array_element_info(typ table.Type) (table.Type, int) {
-	mut typ_ := typ
-	mut dims := 0
-	for {
-		sym := c.table.get_type_symbol(typ_)
-		if sym.info is table.Array {
-			typ_ = sym.info.elem_type
-			dims++
-		} else {
-			break
-		}
-	}
-	return typ_, dims
 }
 
 // TODO node must be mut
