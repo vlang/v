@@ -109,7 +109,8 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 			val_var_pos = p.tok.position()
 			val_var_name = p.check_name()
 			if key_var_name == val_var_name && key_var_name != '_' {
-				return p.error_with_pos('key and value in a for loop cannot be the same', val_var_pos)
+				return p.error_with_pos('key and value in a for loop cannot be the same',
+					val_var_pos)
 			}
 			if p.scope.known_var(key_var_name) {
 				return p.error('redefinition of key iteration variable `$key_var_name`')
@@ -148,7 +149,8 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 				is_tmp: true
 			})
 			if key_var_name.len > 0 {
-				return p.error_with_pos('cannot declare index variable with range `for`', key_var_pos)
+				return p.error_with_pos('cannot declare index variable with range `for`',
+					key_var_pos)
 			}
 		} else {
 			// this type will be set in checker
