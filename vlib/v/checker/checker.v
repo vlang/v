@@ -2134,6 +2134,10 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			c.type_implements(typ, param.typ, call_arg.expr.position())
 			continue
 		}
+		if f.generic_names.len != call_expr.generic_types.len {		
+			// no type arguments given in call, attempt implicit instantiation
+			c.infer_fn_types(f, mut call_expr)
+		}
 		c.check_expected_call_arg(typ, param.typ, call_expr.language) or {
 			// str method, allow type with str method if fn arg is string
 			// Passing an int or a string array produces a c error here
@@ -2177,10 +2181,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 				call_arg.pos)
 		}
 	}
-			if f.generic_names.len != call_expr.generic_types.len {		
-		// no type arguments given in call, attempt implicit instantiation
-		c.infer_fn_types(f, mut call_expr)
-	}
+
 	if call_expr.generic_types.len > 0 && f.return_type != 0 {
 		if typ := c.table.resolve_generic_by_names(f.return_type, f.generic_names, call_expr.generic_types) {
 			call_expr.return_type = typ
