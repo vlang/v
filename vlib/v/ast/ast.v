@@ -28,8 +28,8 @@ pub type Stmt = AsmStmt | AssertStmt | AssignStmt | Block | BranchStmt | CompFor
 pub type ScopeObject = AsmRegister | ConstField | GlobalField | Var
 
 // TOOD: replace table.Param
-pub type Node = CallArg | ConstField | EnumField | Expr | Field | File | GlobalField |
-	IfBranch | MatchBranch | ScopeObject | SelectBranch | Stmt | StructField | StructInitField |
+pub type Node = ConstField | EnumField | Expr | Field | File | GlobalField | IfBranch |
+	MatchBranch | ScopeObject | SelectBranch | Stmt | StructField | StructInitField |
 	table.Param
 
 pub struct Type {
@@ -1083,7 +1083,7 @@ pub:
 pub struct AsmAddressing {
 pub:
 	displacement u32 // 8, 16 or 32 bit literal value
-	scale        int = -1 // 1, 2, 4, or 8 literal 
+	scale        int = -1 // 1, 2, 4, or 8 literal
 	mode         AddressingMode
 	pos          token.Position
 pub mut:
