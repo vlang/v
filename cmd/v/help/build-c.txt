@@ -71,10 +71,16 @@ see also `v help build`.
       more performant without autofree.
       
    -gc <mode>
-      Use and link an optional garbage collector. 
-      Only `-gc boehm` and `-gc boehm_leak` are supported currently.
-      You need to install a `libgc-dev` package first, or install it manually
-      from source: 
+      Use and link an optional garbage collector. Only tThe Boehm–Demers–Weiser
+      garbage collector is supported currently with the following sub-options:
+
+      `-gc boehm` ........ selects the default mode for the architecture
+      `-gc boehm_full` ... full garbage collection mode
+      `-gc boehm_incr` ... incremental/generational garbage collection mode
+      `-gc boehm_leak` ... leak detection mode
+
+      You need to install a `libgc-dev` package first, or install it manually from:
+
           https://github.com/ivmai/bdwgc
           
       Note, `-gc boehm` is complementary to -autofree. The Boehm garbage
