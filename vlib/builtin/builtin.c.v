@@ -177,7 +177,7 @@ pub fn malloc(n int) byteptr {
 	}
 	$if trace_malloc ? {
 		total_m += n
-		C.fprintf(C.stderr, c'v_malloc %d total %d\n', n, total_m)
+		C.fprintf(C.stderr, c'v_malloc %6d total %10d\n', n, total_m)
 		// print_backtrace()
 	}
 	mut res := byteptr(0)
