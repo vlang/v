@@ -414,7 +414,10 @@ pub fn (mut c Checker) struct_decl(mut decl ast.StructDecl) {
 			}
 			if field.has_default_expr {
 				c.expected_type = field.typ
-				field_expr_type := c.check_expr_opt_call(field.default_expr, c.expr(field.default_expr))
+				mut field_expr_type := c.expr(field.default_expr)
+				if !field.typ.has_flag(.optional) {
+					c.check_expr_opt_call(field.default_expr, field_expr_type)
+				}
 				struct_sym.info.fields[i].default_expr_typ = field_expr_type
 				c.check_expected(field_expr_type, field.typ) or {
 					if !(sym.kind == .interface_
@@ -608,7 +611,10 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 					inited_fields << field_name
 					field_type_sym := c.table.get_type_symbol(info_field.typ)
 					c.expected_type = info_field.typ
-					expr_type := c.check_expr_opt_call(field.expr, c.expr(field.expr))
+					mut expr_type := c.expr(field.expr)
+					if !info_field.typ.has_flag(.optional) {
+						expr_type = c.check_expr_opt_call(field.expr, expr_type)
+					}
 					expr_type_sym := c.table.get_type_symbol(expr_type)
 					if field_type_sym.kind == .interface_ {
 						c.type_implements(expr_type, info_field.typ, field.pos)
