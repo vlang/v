@@ -1953,26 +1953,8 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 					mut fields := rts.info.fields.clone()
 					if rts.info.generic_types.len == generic_types.len {
 						for i, _ in fields {
-							mut field := fields[i]
-							sym := c.table.get_type_symbol(field.typ)
-							mut field_typ := field.typ
-							mut nr_dims := 0
-							if sym.kind == .array {
-								field_typ, nr_dims = c.array_element_info(field.typ)
-							}
-							for j, gp in rts.info.generic_types {
-								if gp == field_typ {
-									if sym.kind == .array {
-										field_idx := c.table.find_or_register_array_with_dims(generic_types[j],
-											nr_dims)
-										field.typ = table.new_type(field_idx)
-									} else {
-										field.typ = generic_types[j].derive(field.typ).clear_flag(.generic)
-									}
-									break
-								}
-							}
-							fields[i] = field
+							fields[i].typ = c.unwrap_generic_ex(fields[i].typ, rts.info.generic_types,
+								generic_types)
 						}
 						mut info := rts.info
 						info.generic_types = []
@@ -2144,21 +2126,6 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		return call_expr.return_type
 	}
 	return f.return_type
-}
-
-fn (mut c Checker) array_element_info(typ table.Type) (table.Type, int) {
-	mut typ_ := typ
-	mut dims := 0
-	for {
-		sym := c.table.get_type_symbol(typ_)
-		if sym.info is table.Array {
-			typ_ = sym.info.elem_type
-			dims++
-		} else {
-			break
-		}
-	}
-	return typ_, dims
 }
 
 fn (mut c Checker) deprecate_fnmethod(kind string, name string, the_fn table.Fn, call_expr ast.CallExpr) {
@@ -3929,6 +3896,45 @@ pub fn (c &Checker) unwrap_generic(typ table.Type) table.Type {
 		}
 	}
 	return typ
+}
+
+// `unwrap_generic()` is used in generic_fn decl, `unwrap_generic_ex()` can be used not in generic_fn decl
+// e.g. from_types: <T, B>   to_types: <int, string>
+pub fn (mut c Checker) unwrap_generic_ex(typ table.Type, from_types []table.Type, to_types []table.Type) table.Type {
+	sym := c.table.get_type_symbol(typ)
+	mut typ_ := typ
+	mut nr_dims := 0
+	if sym.kind == .array {
+		typ_, nr_dims = c.array_element_info(typ)
+	}
+	if from_types.len == to_types.len {
+		for j, gp in from_types {
+			if gp == typ_ {
+				if sym.kind == .array {
+					idx := c.table.find_or_register_array_with_dims(to_types[j], nr_dims)
+					return table.new_type(idx)
+				} else {
+					return to_types[j].derive(typ).clear_flag(.generic)
+				}
+			}
+		}
+	}
+	return typ
+}
+
+fn (mut c Checker) array_element_info(typ table.Type) (table.Type, int) {
+	mut typ_ := typ
+	mut dims := 0
+	for {
+		sym := c.table.get_type_symbol(typ_)
+		if sym.info is table.Array {
+			typ_ = sym.info.elem_type
+			dims++
+		} else {
+			break
+		}
+	}
+	return typ_, dims
 }
 
 // TODO node must be mut
