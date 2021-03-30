@@ -1,4 +1,0 @@
-fn main() {
-    v := 'hello'
-    println(v[v.last_index('l')])
-}
