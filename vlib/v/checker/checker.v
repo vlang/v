@@ -362,7 +362,9 @@ pub fn (mut c Checker) interface_decl(decl ast.InterfaceDecl) {
 	}
 	for i, field in decl.fields {
 		c.check_valid_snake_case(field.name, 'field name', field.pos)
-		c.ensure_type_exists(field.typ, field.pos) or { return }
+		if field.typ != table.Type(0) {
+			c.ensure_type_exists(field.typ, field.pos) or { return }
+		}
 		for j in 0 .. i {
 			if field.name == decl.fields[j].name {
 				c.error('field name `$field.name` duplicate', field.pos)
