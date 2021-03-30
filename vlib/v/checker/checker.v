@@ -1638,7 +1638,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			c.infer_fn_types(method, mut call_expr)
 		}
 		if call_expr.generic_types.len > 0 && method.return_type != 0 {
-			if typ := c.resolve_generic_by_names(method.return_type, method.generic_names,
+			if typ := c.table.resolve_generic_by_names(method.return_type, method.generic_names,
 				call_expr.generic_types)
 			{
 				call_expr.return_type = typ
@@ -1995,8 +1995,8 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 					mut fields := rts.info.fields.clone()
 					if rts.info.generic_types.len == generic_types.len {
 						for i, _ in fields {
-							if t_typ := c.resolve_generic_by_types(fields[i].typ, rts.info.generic_types,
-								generic_types)
+							if t_typ := c.table.resolve_generic_by_types(fields[i].typ,
+								rts.info.generic_types, generic_types)
 							{
 								fields[i].typ = t_typ
 							}
@@ -2143,7 +2143,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			if f.generic_names.len > 0 {
 				if param.typ.has_flag(.generic)
 					&& f.generic_names.len == call_expr.generic_types.len {
-					if unwrap_typ := c.resolve_generic_by_names(param.typ, f.generic_names,
+					if unwrap_typ := c.table.resolve_generic_by_names(param.typ, f.generic_names,
 						call_expr.generic_types)
 					{
 						if (unwrap_typ.idx() == typ.idx())
@@ -2178,7 +2178,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		c.infer_fn_types(f, mut call_expr)
 	}
 	if call_expr.generic_types.len > 0 && f.return_type != 0 {
-		if typ := c.resolve_generic_by_names(f.return_type, f.generic_names, call_expr.generic_types) {
+		if typ := c.table.resolve_generic_by_names(f.return_type, f.generic_names, call_expr.generic_types) {
 			call_expr.return_type = typ
 			return typ
 		}

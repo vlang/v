@@ -17,12 +17,12 @@ pub fn (mut b Builder) gen_c(v_files []string) string {
 	if b.pref.only_check_syntax {
 		return ''
 	}
-	//
+
 	util.timing_start('CHECK')
-	b.generic_struct_insts_to_concrete()
+	b.table.generic_struct_insts_to_concrete()
 	b.checker.check_files(b.parsed_files)
 	util.timing_measure('CHECK')
-	//
+
 	if b.pref.skip_unused {
 		markused.mark_used(mut b.table, b.pref, b.parsed_files)
 	}
