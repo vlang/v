@@ -804,7 +804,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 				&& c.table.get_type_symbol((left.info as table.Alias).parent_type).is_primitive() {
 				left = c.table.get_type_symbol((left.info as table.Alias).parent_type)
 			}
-
+			// Check if the alias type is not a primitive then allow using operator overloading for aliased `arrays` and `maps`
 			if left.kind == .alias && left.info is table.Alias
 				&& !(c.table.get_type_symbol((left.info as table.Alias).parent_type).is_primitive()) {
 				if left.has_method(infix_expr.op.str()) {
