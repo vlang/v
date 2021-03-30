@@ -362,7 +362,9 @@ pub fn (mut c Checker) interface_decl(decl ast.InterfaceDecl) {
 	}
 	for i, field in decl.fields {
 		c.check_valid_snake_case(field.name, 'field name', field.pos)
-		c.ensure_type_exists(field.typ, field.pos) or { return }
+		if field.typ != table.Type(0) {
+			c.ensure_type_exists(field.typ, field.pos) or { return }
+		}
 		for j in 0 .. i {
 			if field.name == decl.fields[j].name {
 				c.error('field name `$field.name` duplicate', field.pos)
@@ -3355,6 +3357,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 	}
 	// c.expected_type = table.void_type
 	match mut node {
+		ast.NodeError {}
 		ast.AsmStmt {
 			c.asm_stmt(mut node)
 		}
@@ -3942,6 +3945,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		return table.void_type
 	}
 	match mut node {
+		ast.NodeError {}
 		ast.CTempVar {
 			return node.typ
 		}

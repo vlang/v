@@ -16,12 +16,12 @@ pub type Expr = AnonFn | ArrayDecompose | ArrayInit | AsCast | Assoc | AtExpr | 
 	IfExpr | IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | Likely | LockExpr |
 	MapInit | MatchExpr | None | OffsetOf | OrExpr | ParExpr | PostfixExpr | PrefixExpr |
 	RangeExpr | SelectExpr | SelectorExpr | SizeOf | SqlExpr | StringInterLiteral | StringLiteral |
-	StructInit | Type | TypeOf | UnsafeExpr
+	StructInit | Type | TypeOf | UnsafeExpr | NodeError
 
 pub type Stmt = AsmStmt | AssertStmt | AssignStmt | Block | BranchStmt | CompFor | ConstDecl |
 	DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl |
 	GoStmt | GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module | Return |
-	SqlStmt | StructDecl | TypeDecl
+	SqlStmt | StructDecl | TypeDecl | NodeError
 
 // NB: when you add a new Expr or Stmt type with a .pos field, remember to update
 // the .position() token.Position methods too.
@@ -1411,6 +1411,12 @@ pub mut:
 	sub_structs map[int]SqlExpr
 }
 
+pub struct NodeError {
+pub:
+	idx int
+	pos token.Position
+}
+
 [inline]
 pub fn (expr Expr) is_blank_ident() bool {
 	match expr {
@@ -1425,7 +1431,7 @@ pub fn (expr Expr) position() token.Position {
 		AnonFn {
 			return expr.decl.pos
 		}
-		ArrayDecompose, ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr, CastExpr, ChanInit,
+		NodeError, ArrayDecompose, ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr, CastExpr, ChanInit,
 		CharLiteral, ConcatExpr, Comment, ComptimeCall, ComptimeSelector, EnumVal, DumpExpr, FloatLiteral,
 		GoExpr, Ident, IfExpr, IndexExpr, IntegerLiteral, Likely, LockExpr, MapInit, MatchExpr,
 		None, OffsetOf, OrExpr, ParExpr, PostfixExpr, PrefixExpr, RangeExpr, SelectExpr, SelectorExpr,
