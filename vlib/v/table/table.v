@@ -247,7 +247,9 @@ fn (t &Table) register_aggregate_field(mut sym TypeSymbol, name string) ?Field {
 	mut agg_info := sym.info as Aggregate
 	// an aggregate always has at least 2 types
 	mut found_once := false
-	mut new_field := Field{}
+	mut new_field := Field{
+		// default_expr: ast.empty_expr()
+	}
 	for typ in agg_info.types {
 		ts := t.get_type_symbol(typ)
 		if type_field := t.find_field(ts, name) {

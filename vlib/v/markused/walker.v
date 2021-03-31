@@ -155,7 +155,8 @@ fn (mut w Walker) exprs(exprs []ast.Expr) {
 fn (mut w Walker) expr(node ast.Expr) {
 	match mut node {
 		ast.EmptyExpr {
-			panic('Walker: EmptyExpr')
+			// TODO make sure this doesn't happen
+			// panic('Walker: EmptyExpr')
 		}
 		ast.AnonFn {
 			w.fn_decl(mut node.decl)

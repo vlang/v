@@ -637,7 +637,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 					struct_init.fields[i].expected_type = info_field.typ
 				}
 			}
-			// Check uninitialized refs
+			// Check uninitialized refs/sum types
 			for field in info.fields {
 				if field.has_default_expr || field.name in inited_fields {
 					continue
@@ -646,6 +646,14 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 					c.error('reference field `${type_sym.name}.$field.name` must be initialized',
 						struct_init.pos)
 				}
+				// Do not allow empty uninitialized sum types
+				/*
+				sym := c.table.get_type_symbol(field.typ)
+				if sym.kind == .sum_type {
+					c.warn('sum type field `${type_sym.name}.$field.name` must be initialized',
+						struct_init.pos)
+				}
+				*/
 				// Check for `[required]` struct attr
 				if field.attrs.contains('required') && !struct_init.is_short {
 					mut found := false
