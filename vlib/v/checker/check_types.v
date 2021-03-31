@@ -482,9 +482,12 @@ pub fn (mut c Checker) infer_fn_types(f table.Fn, mut call_expr ast.CallExpr) {
 			if to_set != table.void_type {
 				if typ != table.void_type {
 					// try to promote
-					promoted := c.promote(typ, to_set)
-					if promoted != table.void_type {
-						to_set = promoted
+					// only numbers so we don't promote pointers
+					if typ.is_number() && to_set.is_number() {
+						promoted := c.promote_num(typ, to_set)
+							if promoted != table.void_type {
+							to_set = promoted
+						}
 					}
 					if !c.check_types(typ, to_set) {
 						c.error('inferred generic type `$gt_name` is ambigous got `${c.table.get_type_symbol(to_set).name}`, expected `${c.table.get_type_symbol(typ).name}`',
