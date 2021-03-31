@@ -102,14 +102,21 @@ fn test_inline_asm() {
 fn test_rip_relative_label() {
 	mut a := i64(4)
 	asm amd64 {
-		mov a, loop_start4 // see below
+		mov a, [rip + one_two_three] // see below
 		; =r (a)
 	}
-	assert a == 123
+	assert a == 48321074923
+
+	mut b := i64(4)
+	asm amd64 {
+		mov b, one_two_three // see below
+		; =r (b)
+	}
+	assert b == 48321074923
 }
 
 asm amd64 {
-	.global loop_start4
-	loop_start4:
-	.quad 123
+	.global one_two_three
+	one_two_three:
+	.quad 48321074923
 }

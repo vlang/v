@@ -3802,12 +3802,7 @@ fn (mut c Checker) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt, aliases []string) {
 		ast.CharLiteral {}
 		ast.IntegerLiteral {}
 		ast.AsmRegister {} // if the register is not found, the parser will register it as an alias
-		ast.AsmDisp {
-			argg := arg.val.i64()
-			if int(argg) != argg {
-				c.error('displacement must be a signed 32-bit integer', arg.pos)
-			}
-		}
+		ast.AsmDisp {}
 		string {}
 	}
 }

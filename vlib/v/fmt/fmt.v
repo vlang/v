@@ -750,37 +750,45 @@ fn (mut f Fmt) asm_arg(arg ast.AsmArg) {
 					f.asm_arg(base)
 				}
 				.displacement {
-					f.write('$displacement')
+					f.asm_arg(displacement)
 				}
 				.base_plus_displacement {
 					f.asm_arg(base)
-					f.write(' + $displacement')
+					f.write(' + ')
+					f.asm_arg(displacement)
 				}
 				.index_times_scale_plus_displacement {
 					f.asm_arg(index)
-					f.write(' * $scale + $displacement')
+					f.write(' * $scale + ')
+					f.asm_arg(displacement)
 				}
 				.base_plus_index_plus_displacement {
 					f.asm_arg(base)
 					f.write(' + ')
 					f.asm_arg(index)
-					f.write(' + $displacement')
+					f.write(' + ')
+					f.asm_arg(displacement)
 				}
 				.base_plus_index_times_scale_plus_displacement {
 					f.asm_arg(base)
 					f.write(' + ')
 					f.asm_arg(index)
-					f.write(' * $scale + $displacement')
+					f.write(' * $scale + ')
+					f.asm_arg(displacement)
 				}
 				.rip_plus_displacement {
 					f.asm_arg(base)
-					f.write(' + $displacement')
+					f.write(' + ')
+					f.asm_arg(displacement)
 				}
 				.invalid {
 					panic('fmt: invalid addressing mode')
 				}
 			}
 			f.write(']')
+		}
+		ast.AsmDisp {
+			f.write(arg.val)
 		}
 	}
 }
