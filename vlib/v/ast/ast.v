@@ -1125,7 +1125,11 @@ pub:
 
 pub struct AsmAddressing {
 pub:
+<<<<<<< HEAD
 	scale int = -1 // 1, 2, 4, or 8 literal
+=======
+	scale int = -1 // 1, 2, 4, or 8 literal 
+>>>>>>> b7502d158... asm: make fixed labels possible as displacement
 	mode  AddressingMode
 	pos   token.Position
 pub mut:
