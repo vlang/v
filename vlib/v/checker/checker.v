@@ -2178,8 +2178,8 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		}
 	}
 	if f.generic_names.len != call_expr.generic_types.len {		
-			// no type arguments given in call, attempt implicit instantiation
-			c.infer_fn_types(f, mut call_expr)
+		// no type arguments given in call, attempt implicit instantiation
+		c.infer_fn_types(f, mut call_expr)
 	}
 	if call_expr.generic_types.len > 0 && f.return_type != 0 {
 		if typ := c.table.resolve_generic_by_names(f.return_type, f.generic_names, call_expr.generic_types) {
