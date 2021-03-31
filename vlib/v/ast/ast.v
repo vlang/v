@@ -38,7 +38,9 @@ pub:
 	pos token.Position
 }
 
-pub struct EmptyExpr {}
+pub struct EmptyExpr {
+	x int
+}
 
 pub fn empty_expr() Expr {
 	return EmptyExpr{}
