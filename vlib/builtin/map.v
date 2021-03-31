@@ -102,8 +102,8 @@ mut:
 	// array allocated (with `cap` bytes) on first deletion
 	// has non-zero element when key deleted
 	all_deleted &byte
-	values      byteptr 
-	keys        byteptr 
+	values      byteptr
+	keys        byteptr
 }
 
 [inline]
@@ -214,7 +214,7 @@ type MapFreeFn = fn (voidptr)
 // map is the internal representation of a V `map` type.
 pub struct map {
 	// Number of bytes of a key
-	key_bytes  int
+	key_bytes int
 	// Number of bytes of a value
 	value_bytes int
 mut:
@@ -809,6 +809,8 @@ pub fn (m &map) free() {
 		}
 		unsafe { free(m.key_values.all_deleted) }
 	}
-	unsafe { free(m.key_values.keys) }
-	unsafe { free(m.key_values.values) }
+	unsafe { 
+		free(m.key_values.keys) 
+		free(m.key_values.values)
+	}
 }
