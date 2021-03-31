@@ -124,7 +124,7 @@ pub mut:
 	last_name     string [json: lastName]
 	is_registered bool   [json: IsRegistered]
 	typ           int    [json: 'type']
-	pets          string [raw; json: 'pet_animals']
+	pets          string [json: 'pet_animals'; raw]
 }
 
 fn (mut u User) from_json(an json2.Any) {

@@ -423,7 +423,7 @@ pub fn (mut g Gen) init() {
 		}
 		g.comptime_defines.writeln('')
 	}
-	if g.pref.gc_mode in [.boehm, .boehm_leak] {
+	if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm, .boehm_leak] {
 		g.comptime_defines.writeln('#define _VGCBOEHM (1)')
 	}
 	if g.pref.is_debug || 'debug' in g.pref.compile_defines {
@@ -760,6 +760,32 @@ pub fn (mut g Gen) write_typedef_types() {
 			.array {
 				g.type_definitions.writeln('typedef array $typ.cname;')
 			}
+			.array_fixed {
+				info := typ.info as table.ArrayFixed
+				elem_sym := g.table.get_type_symbol(info.elem_type)
+				if elem_sym.is_builtin() {
+					// .array_fixed {
+					styp := typ.cname
+					// array_fixed_char_300 => char x[300]
+					mut fixed := styp[12..]
+					len := styp.after('_')
+					fixed = fixed[..fixed.len - len.len - 1]
+					if fixed.starts_with('C__') {
+						fixed = fixed[3..]
+					}
+					if elem_sym.info is table.FnType {
+						pos := g.out.len
+						g.write_fn_ptr_decl(&elem_sym.info, '')
+						fixed = g.out.after(pos)
+						g.out.go_back(fixed.len)
+						mut def_str := 'typedef $fixed;'
+						def_str = def_str.replace_once('(*)', '(*$styp[$len])')
+						g.type_definitions.writeln(def_str)
+					} else {
+						g.type_definitions.writeln('typedef $fixed $styp [$len];')
+					}
+				}
+			}
 			.interface_ {
 				g.write_interface_typesymbol_declaration(typ)
 			}
@@ -1010,6 +1036,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 	// println('g.stmt()')
 	// g.writeln('//// stmt start')
 	match node {
+		ast.EmptyStmt {}
 		ast.AsmStmt {
 			g.write_v_source_line_info(node.pos)
 			g.gen_asm_stmt(node)
@@ -1187,6 +1214,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			// g.cur_mod = node.name
 			g.cur_mod = node
 		}
+		ast.NodeError {}
 		ast.Return {
 			g.write_defer_stmts_when_needed()
 			// af := g.autofree && node.exprs.len > 0 && node.exprs[0] is ast.CallExpr && !g.is_builtin_mod
@@ -1242,7 +1270,8 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 }
 
 fn (mut g Gen) write_defer_stmts() {
-	for defer_stmt in g.defer_stmts {
+	for i := g.defer_stmts.len - 1; i >= 0; i-- {
+		defer_stmt := g.defer_stmts[i]
 		g.writeln('// Defer begin')
 		g.writeln('if (${g.defer_flag_var(defer_stmt)} == true) {')
 		g.indent++
@@ -2796,6 +2825,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 	}
 	// NB: please keep the type names in the match here in alphabetical order:
 	match mut node {
+		ast.EmptyExpr {
+			g.error('g.expr(): unhandled EmptyExpr', token.Position{})
+		}
 		ast.AnonFn {
 			// TODO: dont fiddle with buffers
 			g.gen_anon_fn_decl(mut node)
@@ -3022,6 +3054,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.MapInit {
 			g.map_init(node)
 		}
+		ast.NodeError {}
 		ast.None {
 			g.write('_const_none__')
 		}
@@ -3709,7 +3742,12 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		e := right_sym.kind !in [.voidptr, .int_literal, .int]
 		if node.op in [.plus, .minus, .mul, .div, .mod, .lt, .eq] && ((a && b && e) || c || d) {
 			// Overloaded operators
-			the_left_type := if !d { left_type } else { (left_sym.info as table.Alias).parent_type }
+			the_left_type := if !d
+				|| g.table.get_type_symbol((left_sym.info as table.Alias).parent_type).kind in [.array, .array_fixed, .map] {
+				left_type
+			} else {
+				(left_sym.info as table.Alias).parent_type
+			}
 			g.write(g.typ(the_left_type))
 			g.write('_')
 			g.write(util.replace_op(node.op.str()))
@@ -4159,7 +4197,7 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 	mut is_push := []bool{cap: n_channels}
 	mut has_else := false
 	mut has_timeout := false
-	mut timeout_expr := ast.Expr{}
+	mut timeout_expr := ast.empty_expr()
 	mut exception_branch := -1
 	for j, branch in node.branches {
 		if branch.is_else {
@@ -4183,7 +4221,7 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 						elem_types << ''
 					} else {
 						// must be evaluated to tmp var before real `select` is performed
-						objs << ast.Expr{}
+						objs << ast.empty_expr()
 						tmp_obj := g.new_tmp_var()
 						tmp_objs << tmp_obj
 						el_stype := g.typ(g.table.mktyp(expr.right_type))
@@ -5284,6 +5322,14 @@ fn (mut g Gen) write_builtin_types() {
 	for builtin_name in c.builtins {
 		sym := g.table.type_symbols[g.table.type_idxs[builtin_name]]
 		if sym.kind == .interface_ {
+			if g.pref.is_verbose {
+				println('XAXAXA $sym.name')
+				if isnil(sym.info) {
+					println('FFF')
+				}
+				println(sym.info)
+				println(sym.kind)
+			}
 			g.write_interface_typesymbol_declaration(sym)
 		} else {
 			builtin_types << sym
@@ -5408,27 +5454,28 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 				g.type_definitions.writeln('')
 			}
 			table.ArrayFixed {
-				// .array_fixed {
-				styp := typ.cname
-				// array_fixed_char_300 => char x[300]
-				mut fixed := styp[12..]
-				len := styp.after('_')
-				fixed = fixed[..fixed.len - len.len - 1]
-				if fixed.starts_with('C__') {
-					fixed = fixed[3..]
-				}
-				elem_type := typ.info.elem_type
-				elem_sym := g.table.get_type_symbol(elem_type)
-				if elem_sym.info is table.FnType {
-					pos := g.out.len
-					g.write_fn_ptr_decl(&elem_sym.info, '')
-					fixed = g.out.after(pos)
-					g.out.go_back(fixed.len)
-					mut def_str := 'typedef $fixed;'
-					def_str = def_str.replace_once('(*)', '(*$styp[$len])')
-					g.type_definitions.writeln(def_str)
-				} else {
-					g.type_definitions.writeln('typedef $fixed $styp [$len];')
+				elem_sym := g.table.get_type_symbol(typ.info.elem_type)
+				if !elem_sym.is_builtin() {
+					// .array_fixed {
+					styp := typ.cname
+					// array_fixed_char_300 => char x[300]
+					mut fixed := styp[12..]
+					len := styp.after('_')
+					fixed = fixed[..fixed.len - len.len - 1]
+					if fixed.starts_with('C__') {
+						fixed = fixed[3..]
+					}
+					if elem_sym.info is table.FnType {
+						pos := g.out.len
+						g.write_fn_ptr_decl(&elem_sym.info, '')
+						fixed = g.out.after(pos)
+						g.out.go_back(fixed.len)
+						mut def_str := 'typedef $fixed;'
+						def_str = def_str.replace_once('(*)', '(*$styp[$len])')
+						g.type_definitions.writeln(def_str)
+					} else {
+						g.type_definitions.writeln('typedef $fixed $styp [$len];')
+					}
 				}
 			}
 			else {}

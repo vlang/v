@@ -7,7 +7,7 @@ import strings
 
 struct Writer {
 mut:
-	sb        strings.Builder
+	sb strings.Builder
 pub mut:
 	use_crlf  bool
 	delimiter byte
@@ -23,7 +23,7 @@ pub fn new_writer() &Writer {
 // write writes a single record
 pub fn (mut w Writer) write(record []string) ?bool {
 	if !valid_delim(w.delimiter) {
-		return err_invalid_delim
+		return IError(&ErrInvalidDelimiter{})
 	}
 	le := if w.use_crlf { '\r\n' } else { '\n' }
 	for n, field_ in record {

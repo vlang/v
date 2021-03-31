@@ -239,7 +239,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				// attrs are stored in `p.attrs`
 				p.attributes()
 			}
-			mut default_expr := ast.Expr{}
+			mut default_expr := ast.empty_expr()
 			mut has_default_expr := false
 			if !is_embed {
 				if p.tok.kind == .assign {
@@ -352,13 +352,14 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 	// p.warn(is_short_syntax.str())
 	saved_is_amp := p.is_amp
 	p.is_amp = false
-	mut update_expr := ast.Expr{}
+	mut update_expr := ast.empty_expr()
 	mut update_expr_comments := []ast.Comment{}
 	mut has_update_expr := false
 	for p.tok.kind !in [.rcbr, .rpar, .eof] {
 		mut field_name := ''
-		mut expr := ast.Expr{}
+		mut expr := ast.empty_expr()
 		mut field_pos := token.Position{}
+		mut first_field_pos := token.Position{}
 		mut comments := []ast.Comment{}
 		mut nline_comments := []ast.Comment{}
 		is_update_expr := fields.len == 0 && p.tok.kind == .ellipsis
@@ -366,6 +367,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 			// name will be set later in checker
 			expr = p.expr(0)
 			field_pos = expr.position()
+			first_field_pos = field_pos
 			comments = p.eat_comments(same_line: true)
 		} else if is_update_expr {
 			// struct updating syntax; f2 := Foo{ ...f, name: 'f2' }
@@ -374,7 +376,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 			update_expr_comments << p.eat_comments(same_line: true)
 			has_update_expr = true
 		} else {
-			first_field_pos := p.tok.position()
+			first_field_pos = p.tok.position()
 			field_name = p.check_name()
 			p.check(.colon)
 			expr = p.expr(0)
@@ -403,6 +405,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 				name: field_name
 				expr: expr
 				pos: field_pos
+				name_pos: first_field_pos
 				comments: comments
 				next_comments: nline_comments
 			}
@@ -419,6 +422,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 		update_expr: update_expr
 		update_expr_comments: update_expr_comments
 		has_update_expr: has_update_expr
+		name_pos: first_pos
 		pos: first_pos.extend(p.prev_tok.position())
 		is_short: no_keys
 		pre_comments: pre_comments

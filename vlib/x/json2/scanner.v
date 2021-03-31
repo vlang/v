@@ -64,16 +64,16 @@ const (
 )
 
 // move_pos proceeds to the next position.
-fn (mut s Scanner) move_pos() {
-	s.move(true, true)
+fn (mut s Scanner) move() {
+	s.move_pos(true, true)
 }
 
 // move_pos_with_newlines is the same as move_pos but only enables newline checking.
 fn (mut s Scanner) move_pos_with_newlines() {
-	s.move(false, true)
+	s.move_pos(false, true)
 }
 
-fn (mut s Scanner) move(include_space bool, include_newlines bool) {
+fn (mut s Scanner) move_pos(include_space bool, include_newlines bool) {
 	s.pos++
 	if s.pos < s.text.len {
 		if include_newlines && s.text[s.pos] in json2.newlines {
@@ -83,13 +83,13 @@ fn (mut s Scanner) move(include_space bool, include_newlines bool) {
 				s.pos++
 			}
 			for s.pos < s.text.len && s.text[s.pos] in json2.newlines {
-				s.move_pos()
+				s.move()
 			}
 		} else if include_space && s.text[s.pos] == ` ` {
 			s.pos++
 			s.col++
 			for s.pos < s.text.len && s.text[s.pos] == ` ` {
-				s.move_pos()
+				s.move()
 			}
 		}
 	} else {
@@ -118,7 +118,8 @@ fn (mut s Scanner) text_scan() Token {
 	mut has_closed := false
 	mut chrs := []byte{}
 	for {
-		s.move(false, false)
+		s.pos++
+		s.col++
 		if s.pos >= s.text.len {
 			break
 		}
@@ -135,15 +136,18 @@ fn (mut s Scanner) text_scan() Token {
 			peek := s.text[s.pos + 1]
 			if peek in json2.valid_unicode_escapes {
 				chrs << json2.unicode_transform_escapes[int(peek)]
-				s.move(false, false)
+				s.pos++
+				s.col++
 				continue
 			} else if peek == `u` {
 				if s.pos + 5 < s.text.len {
-					s.move(false, false)
+					s.pos++
+					s.col++
 					mut codepoint := []byte{}
 					codepoint_start := s.pos
 					for s.pos < s.text.len && s.pos < codepoint_start + 4 {
-						s.move(false, false)
+						s.pos++
+						s.col++
 						if s.text[s.pos] == `"` {
 							break
 						} else if !s.text[s.pos].is_hex_digit() {
@@ -178,7 +182,7 @@ fn (mut s Scanner) text_scan() Token {
 		chrs << ch
 	}
 	tok := s.tokenize(chrs, .str_)
-	s.move_pos()
+	s.move()
 	if !has_closed {
 		return s.error('missing double quotes in string closing')
 	}
@@ -236,14 +240,18 @@ fn (mut s Scanner) num_scan() Token {
 
 // invalid_token returns an error token with the invalid token message.
 fn (s Scanner) invalid_token() Token {
-	return s.error('invalid token `${s.text[s.pos].ascii_str()}`')
+	if s.text[s.pos] >= 32 && s.text[s.pos] <= 126 {
+		return s.error('invalid token `${s.text[s.pos].ascii_str()}`')
+	} else {
+		return s.error('invalid token ${s.text[s.pos].str_escaped()}')
+	}
 }
 
 // scan returns a token based on the scanner's current position.
 [manualfree]
 fn (mut s Scanner) scan() Token {
-	for s.pos < s.text.len && s.text[s.pos] == ` ` {
-		s.pos++
+	if s.pos < s.text.len && (s.text[s.pos] == ` ` || s.text[s.pos] in json2.newlines) {
+		s.move()
 	}
 	if s.pos >= s.text.len {
 		return s.tokenize([]byte{}, .eof)
@@ -257,10 +265,10 @@ fn (mut s Scanner) scan() Token {
 			unsafe { ident.free() }
 			val := s.text[s.pos..s.pos + 4]
 			tok := s.tokenize(val, kind)
-			s.move_pos()
-			s.move_pos()
-			s.move_pos()
-			s.move_pos()
+			s.move() // n / t
+			s.move() // u / r
+			s.move() // l / u
+			s.move() // l / e
 			return tok
 		}
 		unsafe { ident.free() }
@@ -271,11 +279,11 @@ fn (mut s Scanner) scan() Token {
 			unsafe { ident.free() }
 			val := s.text[s.pos..s.pos + 5]
 			tok := s.tokenize(val, .bool_)
-			s.move_pos()
-			s.move_pos()
-			s.move_pos()
-			s.move_pos()
-			s.move_pos()
+			s.move() // f
+			s.move() // a
+			s.move() // l
+			s.move() // s
+			s.move() // e
 			return tok
 		}
 		unsafe { ident.free() }
@@ -283,7 +291,7 @@ fn (mut s Scanner) scan() Token {
 	} else if s.text[s.pos] in json2.char_list {
 		chr := s.text[s.pos]
 		tok := s.tokenize([]byte{}, TokenKind(int(chr)))
-		s.move_pos()
+		s.move()
 		return tok
 	} else if s.text[s.pos] == `"` {
 		return s.text_scan()
