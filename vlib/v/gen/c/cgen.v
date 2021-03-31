@@ -1832,12 +1832,9 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 	match arg {
 		ast.AsmAlias {
 			name := arg.name
-			if name in stmt.local_labels || name in stmt.global_labels {
-				asm_formatted_name := if name in stmt.local_labels {
-					name
-				} else { // val in stmt.global_labels
-					'%l[$name]'
-				}
+			if name in stmt.local_labels || name in stmt.global_labels
+				|| name in g.file.global_labels {
+				asm_formatted_name := if name in stmt.global_labels { '%l[$name]' } else { name }
 				g.write(asm_formatted_name)
 			} else {
 				g.write('%[$name]')
@@ -1867,43 +1864,53 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 				.base {
 					g.write('(')
 					g.asm_arg(base, stmt)
+					g.write(')')
 				}
 				.displacement {
-					g.write('${displacement}(')
+					g.asm_arg(displacement, stmt)
+					g.write('()')
 				}
 				.base_plus_displacement {
-					g.write('${displacement}(')
+					g.asm_arg(displacement, stmt)
+					g.write('(')
 					g.asm_arg(base, stmt)
+					g.write(')')
 				}
 				.index_times_scale_plus_displacement {
-					g.write('${displacement}(,')
+					g.asm_arg(displacement, stmt)
+					g.write('(')
 					g.asm_arg(index, stmt)
-					g.write(',')
-					g.write(scale.str())
+					g.write(',$scale)')
 				}
 				.base_plus_index_plus_displacement {
-					g.write('${displacement}(')
+					g.asm_arg(displacement, stmt)
+					g.write('(')
 					g.asm_arg(base, stmt)
 					g.write(',')
 					g.asm_arg(index, stmt)
-					g.write(',1')
+					g.write(',1)')
 				}
 				.base_plus_index_times_scale_plus_displacement {
-					g.write('${displacement}(')
+					g.asm_arg(displacement, stmt)
+					g.write('(')
 					g.asm_arg(base, stmt)
 					g.write(',')
 					g.asm_arg(index, stmt)
-					g.write(',$scale')
+					g.write(',$scale)')
 				}
 				.rip_plus_displacement {
-					g.write('${displacement}(')
+					g.asm_arg(displacement, stmt)
+					g.write('(')
 					g.asm_arg(base, stmt)
+					g.write(')')
 				}
 				.invalid {
 					g.error('invalid addressing mode', arg.pos)
 				}
 			}
-			g.write(')')
+		}
+		ast.AsmDisp {
+			g.write(arg.val)
 		}
 		string {
 			g.write('$arg')
@@ -1916,7 +1923,9 @@ fn (mut g Gen) gen_asm_ios(ios []ast.AsmIO) {
 		if io.alias != '' {
 			g.write('[$io.alias] ')
 		}
-		g.write('"$io.constraint" ($io.expr)')
+		g.write('"$io.constraint" (')
+		g.expr(io.expr)
+		g.write(')')
 		if i + 1 < ios.len {
 			g.writeln(',')
 		} else {

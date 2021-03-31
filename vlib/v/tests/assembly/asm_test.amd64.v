@@ -1,7 +1,7 @@
 import v.tests.assembly.util
 
 fn test_inline_asm() {
-	a, mut b := 10, 0
+	a, mut b := i64(10), i64(0)
 	asm amd64 {
 		mov rax, a
 		mov b, rax
@@ -96,4 +96,20 @@ fn test_inline_asm() {
 	assert n == [7, 11, 2, 6]
 
 	assert util.add(8, 9, 34, 7) == 58 // test .amd64.v files
+}
+
+// this test does not appear in i386 test since rip relative addressing was introduced in 64-bit mode
+fn test_rip_relative_label() {
+	mut a := i64(4)
+	asm amd64 {
+		mov a, loop_start4 // see below
+		; =r (a)
+	}
+	assert a == 123
+}
+
+asm amd64 {
+	.global loop_start4
+	loop_start4:
+	.quad 123
 }

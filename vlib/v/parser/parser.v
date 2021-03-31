@@ -73,6 +73,7 @@ mut:
 	n_asm               int  // controls assembly labels
 	inside_asm_template bool
 	inside_asm          bool
+	global_labels       []string
 }
 
 // for tests
@@ -281,6 +282,7 @@ pub fn (mut p Parser) parse() ast.File {
 		global_scope: p.global_scope
 		errors: p.errors
 		warnings: p.warnings
+		global_labels: p.global_labels
 	}
 }
 
@@ -882,7 +884,6 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 	}
 
 	mut local_labels := []string{}
-	mut exported_symbols := []string{}
 	// riscv: https://github.com/jameslzhu/riscv-card/blob/master/riscv-card.pdf
 	// x86: https://www.felixcloutier.com/x86/
 	// arm: https://developer.arm.com/documentation/dui0068/b/arm-instruction-reference
@@ -927,8 +928,15 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 							}
 						}
 						ast.IntegerLiteral {
-							args << ast.IntegerLiteral{
-								...number_lit
+							if is_directive {
+								args << ast.AsmDisp{
+									val: number_lit.val
+									pos: number_lit.pos
+								}
+							} else {
+								args << ast.IntegerLiteral{
+									...number_lit
+								}
 							}
 						}
 						else {
@@ -973,7 +981,9 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 			comments << p.comment()
 		}
 		if is_directive && name in ['globl', 'global'] {
-			exported_symbols << args
+			for arg in args {
+				p.global_labels << (arg as ast.AsmAlias).name
+			}
 		}
 		templates << ast.AsmTemplate{
 			name: name
@@ -1051,7 +1061,6 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 		scope: scope
 		global_labels: global_labels
 		local_labels: local_labels
-		exported_symbols: exported_symbols
 	}
 }
 
@@ -1064,7 +1073,8 @@ fn (mut p Parser) reg_or_alias() ast.AsmArg {
 			p.check(.name)
 			return b
 		} else {
-			panic('parser bug: non-register ast.ScopeObject found in scope')
+			verror('parser bug: non-register ast.ScopeObject found in scope')
+			return ast.AsmDisp{} // should not be reached
 		}
 	} else {
 		p.check(.name)
@@ -1179,8 +1189,15 @@ fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 				pos: pos.extend(p.prev_tok.position())
 			}
 		} else if p.tok.kind == .number {
-			displacement := p.tok.lit.u32()
-			p.check(.name)
+			displacement := if p.tok.kind == .name {
+				x := ast.AsmArg(p.tok.lit)
+				p.check(.name)
+				x
+			} else {
+				x := ast.AsmArg(p.tok.lit)
+				p.check(.number)
+				x
+			}
 			p.check(.rsbr)
 			return ast.AsmAddressing{
 				mode: .displacement
@@ -1193,13 +1210,22 @@ fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 	}
 	if p.peek_tok.kind == .plus && p.tok.kind == .name { // [base + displacement], [base + index ∗ scale + displacement], [base + index + displacement] or [rip + displacement]
 		if p.tok.lit == 'rip' {
-			p.check(.name)
+			rip := p.reg_or_alias()
 			p.check(.plus)
-			displacement := p.tok.lit.u32()
-			p.check(.number)
+
+			displacement := if p.tok.kind == .name {
+				x := ast.AsmArg(p.tok.lit)
+				p.check(.name)
+				x
+			} else {
+				x := ast.AsmArg(p.tok.lit)
+				p.check(.number)
+				x
+			}
+			p.check(.rsbr)
 			return ast.AsmAddressing{
 				mode: .rip_plus_displacement
-				base: 'rip'
+				base: rip
 				displacement: displacement
 				pos: pos.extend(p.prev_tok.position())
 			}
@@ -1208,8 +1234,15 @@ fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 		p.check(.plus)
 		if p.peek_tok.kind == .rsbr {
 			if p.tok.kind == .number {
-				displacement := p.tok.lit.u32()
-				p.check(.number)
+				displacement := if p.tok.kind == .name {
+					x := ast.AsmArg(p.tok.lit)
+					p.check(.name)
+					x
+				} else {
+					x := ast.AsmArg(p.tok.lit)
+					p.check(.name)
+					x
+				}
 				p.check(.rsbr)
 				return ast.AsmAddressing{
 					mode: .base_plus_displacement
@@ -1227,8 +1260,15 @@ fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 			scale := p.tok.lit.int()
 			p.check(.number)
 			p.check(.plus)
-			displacement := p.tok.lit.u32()
-			p.check(.number)
+			displacement := if p.tok.kind == .name {
+				x := ast.AsmArg(p.tok.lit)
+				p.check(.name)
+				x
+			} else {
+				x := ast.AsmArg(p.tok.lit)
+				p.check(.number)
+				x
+			}
 			p.check(.rsbr)
 			return ast.AsmAddressing{
 				mode: .base_plus_index_times_scale_plus_displacement
@@ -1240,8 +1280,15 @@ fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 			}
 		} else if p.tok.kind == .plus {
 			p.check(.plus)
-			displacement := p.tok.lit.u32()
-			p.check(.number)
+			displacement := if p.tok.kind == .name {
+				x := ast.AsmArg(p.tok.lit)
+				p.check(.name)
+				x
+			} else {
+				x := ast.AsmArg(p.tok.lit)
+				p.check(.number)
+				x
+			}
 			p.check(.rsbr)
 			return ast.AsmAddressing{
 				mode: .base_plus_index_plus_displacement
@@ -1258,8 +1305,15 @@ fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 		scale := p.tok.lit.int()
 		p.check(.number)
 		p.check(.plus)
-		displacement := p.tok.lit.u32()
-		p.check(.number)
+		displacement := if p.tok.kind == .name {
+			x := ast.AsmArg(p.tok.lit)
+			p.check(.name)
+			x
+		} else {
+			x := ast.AsmArg(p.tok.lit)
+			p.check(.number)
+			x
+		}
 		p.check(.rsbr)
 		return ast.AsmAddressing{
 			mode: .index_times_scale_plus_displacement

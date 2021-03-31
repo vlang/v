@@ -519,6 +519,7 @@ pub mut:
 	warnings         []errors.Warning  // all the checker warnings in the file
 	notices          []errors.Notice   // all the checker notices in the file
 	generic_fns      []&FnDecl
+	global_labels    []string // from `asm { .globl labelname }`
 }
 
 pub struct IdentFn {
@@ -1043,13 +1044,12 @@ pub:
 	clobbered    []AsmClobbered
 	pos          token.Position
 pub mut:
-	templates        []AsmTemplate
-	scope            &Scope
-	output           []AsmIO
-	input            []AsmIO
-	global_labels    []string // listed after clobbers, paired with is_goto == true
-	local_labels     []string // local to the assembly block
-	exported_symbols []string // functions defined in assembly block, exported with `.globl`
+	templates     []AsmTemplate
+	scope         &Scope
+	output        []AsmIO
+	input         []AsmIO
+	global_labels []string // labels defined in assembly block, exported with `.globl`
+	local_labels  []string // local to the assembly block
 }
 
 pub struct AsmTemplate {
@@ -1062,8 +1062,8 @@ pub mut:
 	pos          token.Position
 }
 
-// [eax+5] | j | eax | true | `a` | 0.594 | 123 | 'hi' | label_name
-pub type AsmArg = AsmAddressing | AsmAlias | AsmRegister | BoolLiteral | CharLiteral |
+// [eax+5] | j | displacement literal (e.g. 123 in [rax + 123] ) | eax | true | `a` | 0.594 | 123 | label_name
+pub type AsmArg = AsmAddressing | AsmAlias | AsmDisp | AsmRegister | BoolLiteral | CharLiteral |
 	FloatLiteral | IntegerLiteral | string
 
 pub struct AsmRegister {
@@ -1074,6 +1074,12 @@ mut:
 	size int
 }
 
+pub struct AsmDisp {
+pub:
+	val string
+	pos token.Position
+}
+
 pub struct AsmAlias {
 pub:
 	name string // a
@@ -1082,13 +1088,13 @@ pub:
 
 pub struct AsmAddressing {
 pub:
-	displacement u32 // 8, 16 or 32 bit literal value
-	scale        int = -1 // 1, 2, 4, or 8 literal 
-	mode         AddressingMode
-	pos          token.Position
+	scale int = -1 // 1, 2, 4, or 8 literal 
+	mode  AddressingMode
+	pos   token.Position
 pub mut:
-	base  AsmArg // gpr
-	index AsmArg // gpr
+	displacement AsmArg // 8, 16 or 32 bit literal value
+	base         AsmArg // gpr
+	index        AsmArg // gpr
 }
 
 // adressing modes:
@@ -1104,9 +1110,8 @@ pub enum AddressingMode {
 }
 
 pub struct AsmClobbered {
-pub:
-	reg AsmRegister
 pub mut:
+	reg      AsmRegister
 	comments []Comment
 }
 
@@ -1183,7 +1188,7 @@ pub const (
 )
 
 // TODO: saved priviled registers for arm
-const (
+pub const (
 	arm_no_number_register_list   = ['fp' /* aka r11 */, /* not instruction pointer: */ 'ip' /* aka r12 */,
 		'sp' /* aka r13 */, 'lr' /* aka r14 */, /* this is instruction pointer ('program counter'): */
 		'pc' /* aka r15 */,
@@ -1193,7 +1198,7 @@ const (
 	}
 )
 
-const (
+pub const (
 	riscv_no_number_register_list   = ['zero', 'ra', 'sp', 'gp', 'tp']
 	riscv_with_number_register_list = map{
 		'x#': 32
