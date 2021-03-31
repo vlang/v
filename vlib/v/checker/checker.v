@@ -470,7 +470,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 	c.ensure_type_exists(utyp, struct_init.pos) or {}
 	type_sym := c.table.get_type_symbol(utyp)
 	if !c.inside_unsafe && type_sym.kind == .sum_type {
-		c.warn('direct sum type init (`x := SumType{}`) will be removed soon', struct_init.pos)
+		c.note('direct sum type init (`x := SumType{}`) will be removed soon', struct_init.pos)
 	}
 	// Make sure the first letter is capital, do not allow e.g. `x := string{}`,
 	// but `x := T{}` is ok.
