@@ -239,7 +239,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				// attrs are stored in `p.attrs`
 				p.attributes()
 			}
-			mut default_expr := ast.Expr{}
+			mut default_expr := ast.empty_expr()
 			mut has_default_expr := false
 			if !is_embed {
 				if p.tok.kind == .assign {
@@ -352,12 +352,12 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 	// p.warn(is_short_syntax.str())
 	saved_is_amp := p.is_amp
 	p.is_amp = false
-	mut update_expr := ast.Expr{}
+	mut update_expr := ast.empty_expr()
 	mut update_expr_comments := []ast.Comment{}
 	mut has_update_expr := false
 	for p.tok.kind !in [.rcbr, .rpar, .eof] {
 		mut field_name := ''
-		mut expr := ast.Expr{}
+		mut expr := ast.empty_expr()
 		mut field_pos := token.Position{}
 		mut first_field_pos := token.Position{}
 		mut comments := []ast.Comment{}

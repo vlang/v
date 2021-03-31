@@ -12,30 +12,45 @@ pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
 pub type Expr = AnonFn | ArrayDecompose | ArrayInit | AsCast | Assoc | AtExpr | BoolLiteral |
 	CTempVar | CallExpr | CastExpr | ChanInit | CharLiteral | Comment | ComptimeCall |
-	ComptimeSelector | ConcatExpr | DumpExpr | EnumVal | FloatLiteral | GoExpr | Ident |
-	IfExpr | IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | Likely | LockExpr |
+	ComptimeSelector | ConcatExpr | DumpExpr | EmptyExpr | EnumVal | FloatLiteral | GoExpr |
+	Ident | IfExpr | IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | Likely | LockExpr |
 	MapInit | MatchExpr | NodeError | None | OffsetOf | OrExpr | ParExpr | PostfixExpr |
 	PrefixExpr | RangeExpr | SelectExpr | SelectorExpr | SizeOf | SqlExpr | StringInterLiteral |
 	StringLiteral | StructInit | Type | TypeOf | UnsafeExpr
 
 pub type Stmt = AsmStmt | AssertStmt | AssignStmt | Block | BranchStmt | CompFor | ConstDecl |
-	DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl |
-	GoStmt | GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module | NodeError |
-	Return | SqlStmt | StructDecl | TypeDecl
+	DeferStmt | EmptyStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt |
+	GlobalDecl | GoStmt | GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module |
+	NodeError | Return | SqlStmt | StructDecl | TypeDecl
 
 // NB: when you add a new Expr or Stmt type with a .pos field, remember to update
 // the .position() token.Position methods too.
 pub type ScopeObject = AsmRegister | ConstField | GlobalField | Var
 
-// TOOD: replace table.Param
+// TODO: replace table.Param
 pub type Node = CallArg | ConstField | EnumField | Expr | Field | File | GlobalField |
-	IfBranch | MatchBranch | ScopeObject | SelectBranch | Stmt | StructField | StructInitField |
-	table.Param
+	IfBranch | MatchBranch | NodeError | ScopeObject | SelectBranch | Stmt | StructField |
+	StructInitField | table.Param
 
 pub struct Type {
 pub:
 	typ table.Type
 	pos token.Position
+}
+
+pub struct EmptyExpr {}
+
+pub fn empty_expr() Expr {
+	return EmptyExpr{}
+}
+
+pub struct EmptyStmt {
+pub:
+	pos token.Position
+}
+
+pub fn empty_stmt() Stmt {
+	return EmptyStmt{}
 }
 
 // `{stmts}` or `unsafe {stmts}`
@@ -1431,6 +1446,10 @@ pub fn (expr Expr) position() token.Position {
 		AnonFn {
 			return expr.decl.pos
 		}
+		EmptyExpr {
+			println('compiler bug, unhandled EmptyExpr position()')
+			return token.Position{}
+		}
 		NodeError, ArrayDecompose, ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr, CastExpr,
 		ChanInit, CharLiteral, ConcatExpr, Comment, ComptimeCall, ComptimeSelector, EnumVal, DumpExpr,
 		FloatLiteral, GoExpr, Ident, IfExpr, IndexExpr, IntegerLiteral, Likely, LockExpr, MapInit,
@@ -1540,6 +1559,9 @@ pub:
 
 pub fn (node Node) position() token.Position {
 	match node {
+		NodeError {
+			return token.Position{}
+		}
 		Stmt {
 			mut pos := node.pos
 			if node is Import {
@@ -1736,15 +1758,19 @@ pub fn (node Node) children() []Node {
 // a dependency cycle between v.ast and v.table, for the single
 // field table.Field.default_expr, which should be ast.Expr
 pub fn fe2ex(x table.FExpr) Expr {
-	res := Expr{}
-	unsafe { C.memcpy(&res, &x, sizeof(Expr)) }
-	return res
+	unsafe {
+		res := Expr{}
+		C.memcpy(&res, &x, sizeof(Expr))
+		return res
+	}
 }
 
 pub fn ex2fe(x Expr) table.FExpr {
-	res := table.FExpr{}
-	unsafe { C.memcpy(&res, &x, sizeof(table.FExpr)) }
-	return res
+	unsafe {
+		res := table.FExpr{}
+		C.memcpy(&res, &x, sizeof(table.FExpr))
+		return res
+	}
 }
 
 // helper for dealing with `m[k1][k2][k3][k3] = value`

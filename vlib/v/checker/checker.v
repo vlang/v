@@ -469,6 +469,9 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 	utyp := c.unwrap_generic(struct_init.typ)
 	c.ensure_type_exists(utyp, struct_init.pos) or {}
 	type_sym := c.table.get_type_symbol(utyp)
+	if !c.inside_unsafe && type_sym.kind == .sum_type {
+		c.warn('direct sum type init (`x := SumType{}`) will be removed soon', struct_init.pos)
+	}
 	// Make sure the first letter is capital, do not allow e.g. `x := string{}`,
 	// but `x := T{}` is ok.
 	if !c.is_builtin_mod && !c.inside_unsafe && type_sym.language == .v
@@ -3386,6 +3389,10 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 	}
 	// c.expected_type = table.void_type
 	match mut node {
+		ast.EmptyStmt {
+			print_backtrace()
+			eprintln('Checker.stmt() EmptyStmt')
+		}
 		ast.NodeError {}
 		ast.AsmStmt {
 			c.asm_stmt(mut node)
@@ -3532,9 +3539,13 @@ fn (mut c Checker) branch_stmt(node ast.BranchStmt) {
 fn (mut c Checker) for_c_stmt(node ast.ForCStmt) {
 	c.in_for_count++
 	prev_loop_label := c.loop_label
-	c.stmt(node.init)
+	if node.has_init {
+		c.stmt(node.init)
+	}
 	c.expr(node.cond)
-	c.stmt(node.inc)
+	if node.has_inc {
+		c.stmt(node.inc)
+	}
 	c.check_loop_label(node.label, node.pos)
 	c.stmts(node.stmts)
 	c.loop_label = prev_loop_label
@@ -3975,6 +3986,10 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 	}
 	match mut node {
 		ast.NodeError {}
+		ast.EmptyExpr {
+			print_backtrace()
+			c.error('checker.expr(): unhandled EmptyExpr', token.Position{})
+		}
 		ast.CTempVar {
 			return node.typ
 		}
@@ -5567,7 +5582,7 @@ fn (mut c Checker) find_obj_definition(obj ast.ScopeObject) ?ast.Expr {
 	match obj {
 		ast.Var, ast.ConstField, ast.GlobalField, ast.AsmRegister { name = obj.name }
 	}
-	mut expr := ast.Expr{}
+	mut expr := ast.empty_expr()
 	if obj is ast.Var {
 		if obj.is_mut {
 			return error('`$name` is mut and may have changed since its definition')
@@ -6202,7 +6217,9 @@ fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) table.Type {
 			c.expr(expr)
 		}
 	}
-	c.expr(node.where_expr)
+	if node.where_expr !is ast.EmptyExpr {
+		c.expr(node.where_expr)
+	}
 
 	return table.void_type
 }

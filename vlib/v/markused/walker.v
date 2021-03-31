@@ -49,6 +49,7 @@ pub fn (mut w Walker) mark_root_fns(all_fn_root_names []string) {
 
 pub fn (mut w Walker) stmt(node ast.Stmt) {
 	match mut node {
+		ast.EmptyStmt {}
 		ast.AsmStmt {
 			w.asm_io(node.output)
 			w.asm_io(node.input)
@@ -153,6 +154,9 @@ fn (mut w Walker) exprs(exprs []ast.Expr) {
 
 fn (mut w Walker) expr(node ast.Expr) {
 	match mut node {
+		ast.EmptyExpr {
+			panic('Walker: EmptyExpr')
+		}
 		ast.AnonFn {
 			w.fn_decl(mut node.decl)
 		}

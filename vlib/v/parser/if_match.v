@@ -79,7 +79,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 			return ast.IfExpr{}
 		}
 		comments << p.eat_comments({})
-		mut cond := ast.Expr{}
+		mut cond := ast.empty_expr()
 		mut is_guard := false
 		// `if x := opt() {`
 		if !is_comptime && p.peek_tok.kind == .decl_assign {
@@ -290,7 +290,7 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 		// final else
 		mut is_else := false
 		mut is_timeout := false
-		mut stmt := ast.Stmt{}
+		mut stmt := ast.empty_stmt()
 		if p.tok.kind == .key_else {
 			if has_timeout {
 				p.error_with_pos('timeout `> t` and `else` are mutually exclusive `select` keys',

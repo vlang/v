@@ -356,6 +356,7 @@ fn (mut g JsGen) stmts(stmts []ast.Stmt) {
 fn (mut g JsGen) stmt(node ast.Stmt) {
 	g.stmt_start_pos = g.ns.out.len
 	match node {
+		ast.EmptyStmt{}
 		ast.AsmStmt {
 			panic('inline asm is not supported by js')
 		}
@@ -447,6 +448,7 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 fn (mut g JsGen) expr(node ast.Expr) {
 	match node {
 		ast.NodeError {}
+		ast.EmptyExpr {}
 		ast.CTempVar {
 			g.write('/* ast.CTempVar: node.name */')
 		}

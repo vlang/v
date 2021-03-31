@@ -1010,6 +1010,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 	// println('g.stmt()')
 	// g.writeln('//// stmt start')
 	match node {
+		ast.EmptyStmt {}
 		ast.AsmStmt {
 			g.write_v_source_line_info(node.pos)
 			g.gen_asm_stmt(node)
@@ -2789,6 +2790,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 	}
 	// NB: please keep the type names in the match here in alphabetical order:
 	match mut node {
+		ast.EmptyExpr {
+			g.error('g.expr(): unhandled EmptyExpr', token.Position{})
+		}
 		ast.AnonFn {
 			// TODO: dont fiddle with buffers
 			g.gen_anon_fn_decl(mut node)
@@ -4158,7 +4162,7 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 	mut is_push := []bool{cap: n_channels}
 	mut has_else := false
 	mut has_timeout := false
-	mut timeout_expr := ast.Expr{}
+	mut timeout_expr := ast.empty_expr()
 	mut exception_branch := -1
 	for j, branch in node.branches {
 		if branch.is_else {
@@ -4182,7 +4186,7 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 						elem_types << ''
 					} else {
 						// must be evaluated to tmp var before real `select` is performed
-						objs << ast.Expr{}
+						objs << ast.empty_expr()
 						tmp_obj := g.new_tmp_var()
 						tmp_objs << tmp_obj
 						el_stype := g.typ(g.table.mktyp(expr.right_type))
@@ -5283,6 +5287,14 @@ fn (mut g Gen) write_builtin_types() {
 	for builtin_name in c.builtins {
 		sym := g.table.type_symbols[g.table.type_idxs[builtin_name]]
 		if sym.kind == .interface_ {
+			if g.pref.is_verbose {
+				println('XAXAXA $sym.name')
+				if isnil(sym.info) {
+					println('FFF')
+				}
+				println(sym.info)
+				println(sym.kind)
+			}
 			g.write_interface_typesymbol_declaration(sym)
 		} else {
 			builtin_types << sym

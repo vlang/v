@@ -597,7 +597,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 	}
 	// TODO remove dummy return statement
 	// the compiler complains if it's not there
-	return ast.Stmt{}
+	return ast.empty_stmt()
 }
 
 // TODO [if vfmt]
@@ -1757,7 +1757,7 @@ fn (p &Parser) is_generic_call() bool {
 
 pub fn (mut p Parser) name_expr() ast.Expr {
 	prev_tok_kind := p.prev_tok.kind
-	mut node := ast.Expr{}
+	mut node := ast.empty_expr()
 	if p.expecting_type {
 		p.expecting_type = false
 		// get type position before moving to next
@@ -1801,7 +1801,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		mut last_pos := first_pos
 		chan_type := p.parse_chan_type()
 		mut has_cap := false
-		mut cap_expr := ast.Expr{}
+		mut cap_expr := ast.empty_expr()
 		p.check(.lcbr)
 		if p.tok.kind == .rcbr {
 			last_pos = p.tok.position()
@@ -1910,8 +1910,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			// without the next line int would result in int*
 			p.is_amp = false
 			p.check(.lpar)
-			mut expr := ast.Expr{}
-			mut arg := ast.Expr{}
+			mut expr := ast.empty_expr()
+			mut arg := ast.empty_expr()
 			mut has_arg := false
 			expr = p.expr(0)
 			// TODO, string(b, len)
@@ -2013,7 +2013,7 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 			left: left
 			pos: pos
 			index: ast.RangeExpr{
-				low: ast.Expr{}
+				low: ast.empty_expr()
 				high: high
 				has_high: true
 				pos: pos
@@ -2025,7 +2025,7 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 	if p.tok.kind == .dotdot {
 		// [start..end] or [start..]
 		p.next()
-		mut high := ast.Expr{}
+		mut high := ast.empty_expr()
 		if p.tok.kind != .rsbr {
 			has_high = true
 			high = p.expr(0)
@@ -2263,7 +2263,7 @@ fn (mut p Parser) string_expr() ast.Expr {
 	if is_raw || is_cstr {
 		p.next()
 	}
-	mut node := ast.Expr{}
+	mut node := ast.empty_expr()
 	val := p.tok.lit
 	pos := p.tok.position()
 	if p.peek_tok.kind != .str_dollar {
@@ -2372,7 +2372,7 @@ fn (mut p Parser) parse_number_literal() ast.Expr {
 	}
 	lit := p.tok.lit
 	full_lit := if is_neg { '-' + lit } else { lit }
-	mut node := ast.Expr{}
+	mut node := ast.empty_expr()
 	if lit.index_any('.eE') >= 0 && lit[..2] !in ['0x', '0X', '0o', '0O', '0b', '0B'] {
 		node = ast.FloatLiteral{
 			val: full_lit
@@ -2714,7 +2714,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 			p.error('global assign must have the type around the value, use `__global ( name = type(value) )`')
 			return ast.GlobalDecl{}
 		}
-		mut expr := ast.Expr{}
+		mut expr := ast.empty_expr()
 		if has_expr {
 			if p.tok.kind != .lpar {
 				p.error('global assign must have a type and value, use `__global ( name = type(value) )` or `__global ( name type )`')
@@ -2769,7 +2769,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		pos := p.tok.position()
 		val := p.check_name()
 		vals << val
-		mut expr := ast.Expr{}
+		mut expr := ast.empty_expr()
 		mut has_expr := false
 		// p.warn('enum val $val')
 		if p.tok.kind == .assign {
@@ -2854,7 +2854,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	if name.len == 1 && name[0].is_capital() {
 		p.error_with_pos('single letter capital names are reserved for generic template types.',
 			decl_pos)
-		return ast.TypeDecl{}
+		return ast.FnTypeDecl{}
 	}
 	mut sum_variants := []ast.SumTypeVariant{}
 	p.check(.assign)

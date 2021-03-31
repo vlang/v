@@ -14,7 +14,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 		eprintln('parsing file: ${p.file_name:-30} | tok.kind: ${p.tok.kind:-10} | tok.lit: ${p.tok.lit:-10} | tok_pos: ${tok_pos.str():-45} | expr($precedence)')
 	}
 	// println('\n\nparser.expr()')
-	mut node := ast.Expr{}
+	mut node := ast.empty_expr()
 	is_stmt_ident := p.is_stmt_ident
 	p.is_stmt_ident = false
 	if !p.pref.is_fmt {
@@ -439,7 +439,7 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	precedence := p.tok.precedence()
 	mut pos := p.tok.position()
 	p.next()
-	mut right := ast.Expr{}
+	mut right := ast.empty_expr()
 	prev_expecting_type := p.expecting_type
 	if op in [.key_is, .not_is] {
 		p.expecting_type = true
