@@ -5445,18 +5445,17 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 				g.type_definitions.writeln('')
 			}
 			table.ArrayFixed {
-				// .array_fixed {
-				styp := typ.cname
-				// array_fixed_char_300 => char x[300]
-				mut fixed := styp[12..]
-				len := styp.after('_')
-				fixed = fixed[..fixed.len - len.len - 1]
-				if fixed.starts_with('C__') {
-					fixed = fixed[3..]
-				}
-				elem_type := typ.info.elem_type
-				elem_sym := g.table.get_type_symbol(elem_type)
+				elem_sym := g.table.get_type_symbol(typ.info.elem_type)
 				if !elem_sym.is_builtin() {
+					// .array_fixed {
+					styp := typ.cname
+					// array_fixed_char_300 => char x[300]
+					mut fixed := styp[12..]
+					len := styp.after('_')
+					fixed = fixed[..fixed.len - len.len - 1]
+					if fixed.starts_with('C__') {
+						fixed = fixed[3..]
+					}
 					if elem_sym.info is table.FnType {
 						pos := g.out.len
 						g.write_fn_ptr_decl(&elem_sym.info, '')

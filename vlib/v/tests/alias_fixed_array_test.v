@@ -1,6 +1,6 @@
 type Block = [8]byte
 
-fn test_alias_fixed_array(){
+fn test_alias_fixed_array() {
 	a := [8]byte{init: 22}
 	ret := get(Block(a))
 	println(ret)
