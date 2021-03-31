@@ -312,6 +312,8 @@ extern int zip_create(const char *zipname, const char *filenames[], size_t len);
 extern int zip_extract(const char *zipname, const char *dir,
                        int (*on_extract_entry)(const char *filename, void *arg),
                        void *arg);
+// temporary working unzip solution
+extern int zip_extract_without_callback(const char *zipname, const char *dir);
 
 /**
  * Extracts a zip archive stream into directory.

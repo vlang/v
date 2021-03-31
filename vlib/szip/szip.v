@@ -39,6 +39,8 @@ fn C.zip_entry_fread(&Zip, byteptr) int
 
 fn C.zip_total_entries(&Zip) int
 
+fn C.zip_extract_without_callback(charptr, charptr) int
+
 // CompressionLevel lists compression levels, see in "thirdparty/zip/miniz.h"
 pub enum CompressionLevel {
 	no_compression = 0
@@ -201,17 +203,17 @@ pub fn (mut zentry Zip) extract_entry(path string) ? {
 	}
 }
 
-/*
-extract extracts the current zip entry using a callback function (on_extract).
-fn (mut zentry Zip) extract(path string) bool {
-	if C.access(path.str, 0) == -1 {
+
+// extract zip to directory
+pub fn extract_zip_to_dir(file string, dir string) bool {
+	if C.access(dir.str, 0) == -1 {
 		return false
 		// return error('szip: cannot open directory for extracting, directory not exists')
 	}
-	res := C.zip_extract(zentry, path.str, 0, 0)
+	res := C.zip_extract_without_callback(charptr(file.str), charptr(dir.str))
 	return res == 0
 }
-*/
+
 
 // total returns the number of all entries (files and directories) in the zip archive.
 pub fn (mut zentry Zip) total() ?int {
