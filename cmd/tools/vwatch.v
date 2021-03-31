@@ -65,7 +65,6 @@ mut:
 	pid             int  // the pid of the current process; useful while debugging manager/worker interactions
 	is_worker       bool // true in the workers, false in the manager process
 	check_period_ms int = scan_period_ms
-	is_debug        bool
 	vexe            string
 	affected_paths  []string
 	vfiles          []VFileStat
@@ -77,14 +76,13 @@ mut:
 	scan_cycles     int  // how many times the worker has scanned for source file changes
 }
 
-fn (context &Context) str() string {
-	return 'Context{ pid: $context.pid, is_worker: $context.is_worker, check_period_ms: $context.check_period_ms, is_debug: $context.is_debug, vexe: $context.vexe, opts: $context.opts, is_exiting: $context.is_exiting, vfiles: $context.vfiles'
+[if debug_vwatch]
+fn (mut context Context) elog(msg string) {
+	eprintln('> vredo $context.pid, $msg')
 }
 
-fn (mut context Context) elog_debug(msg string) {
-	if context.is_debug {
-		eprintln('> vredo $context.pid, $msg')
-	}
+fn (context &Context) str() string {
+	return 'Context{ pid: $context.pid, is_worker: $context.is_worker, check_period_ms: $context.check_period_ms, vexe: $context.vexe, opts: $context.opts, is_exiting: $context.is_exiting, vfiles: $context.vfiles'
 }
 
 fn (mut context Context) get_stats_for_affected_vfiles() []VFileStat {
@@ -94,7 +92,7 @@ fn (mut context Context) get_stats_for_affected_vfiles() []VFileStat {
 		// needed for its compilation, without actually compiling it.
 		copts := context.opts.join(' ')
 		cmd := '"$context.vexe" -silent -print-v-files $copts'
-		// context.elog_debug('> cmd: $cmd')
+		// context.elog('> cmd: $cmd')
 		mut vfiles := os.execute(cmd)
 		if vfiles.exit_code == 0 {
 			paths_trimmed := vfiles.output.trim_space()
@@ -104,7 +102,7 @@ fn (mut context Context) get_stats_for_affected_vfiles() []VFileStat {
 			}
 		}
 		context.affected_paths = apaths.keys()
-		// context.elog_debug('vfiles paths to be scanned: $context.affected_paths')
+		// context.elog('vfiles paths to be scanned: $context.affected_paths')
 	}
 	// scan all files in the found folders
 	mut newstats := []VFileStat{}
@@ -150,7 +148,7 @@ fn (mut context Context) get_changed_vfiles() int {
 		}
 	}
 	context.vfiles = newfiles
-	context.elog_debug('> get_changed_vfiles: $changed')
+	context.elog('> get_changed_vfiles: $changed')
 	return changed
 }
 
@@ -159,6 +157,7 @@ fn change_detection_loop(ocontext &Context) {
 	for {
 		if context.v_cycles >= max_v_cycles || context.scan_cycles >= max_scan_cycles {
 			context.is_exiting = true
+			context.kill_pgroup()
 			time.sleep(50 * time.millisecond)
 			exit(255)
 		}
@@ -174,18 +173,27 @@ fn change_detection_loop(ocontext &Context) {
 	}
 }
 
+fn (mut context Context) kill_pgroup() {
+	if context.child_process == 0 {
+		return
+	}
+	if context.child_process.is_alive() {
+		context.child_process.signal_pgkill()
+	}
+	context.child_process.wait()
+}
+
 fn (mut context Context) compilation_runner_loop() {
 	cmd := '"$context.vexe" ${context.opts.join(' ')}'
 	_ := <-context.rerun_channel
-	// context.elog_debug('>>>>>>>>>>>>>>>>>>>>>>>>>>>>> compilation_runner_loop FOR <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<')
 	for {
-		eprintln('>> loop: v_cycles: $context.v_cycles')
+		context.elog('>> loop: v_cycles: $context.v_cycles')
 		timestamp := time.now().format_ss_micro()
 		context.child_process = os.new_process(context.vexe)
 		context.child_process.use_pgroup = true
 		context.child_process.set_args(context.opts)
 		context.child_process.run()
-		eprintln('$timestamp: $cmd | pid: $context.child_process.pid')
+		eprintln('$timestamp: $cmd | pid: ${context.child_process.pid:7d} | reload cycle: ${context.v_cycles:5d}')
 		for {
 			mut cmds := []RerunCommand{}
 			for {
@@ -193,16 +201,13 @@ fn (mut context Context) compilation_runner_loop() {
 					return
 				}
 				if !context.child_process.is_alive() {
-					// context.elog_debug('> process pid: $context.child_process.pid is no longer alive')
 					context.child_process.wait()
 				}
 				select {
 					action := <-context.rerun_channel {
-						// context.elog_debug('received action: $action')
 						cmds << action
 						if action == .quit {
-							context.child_process.signal_pgkill()
-							context.child_process.wait()
+							context.kill_pgroup()
 							return
 						}
 					}
@@ -210,9 +215,8 @@ fn (mut context Context) compilation_runner_loop() {
 						should_restart := RerunCommand.restart in cmds
 						cmds = []
 						if should_restart {
-							// context.elog_debug('>>>>>>>> KILLING $context.child_process.pid')
-							context.child_process.signal_pgkill()
-							context.child_process.wait()
+							// context.elog('>>>>>>>> KILLING $context.child_process.pid')
+							context.kill_pgroup()
 							break
 						}
 					}
@@ -237,10 +241,10 @@ fn main() {
 	context.vexe = os.getenv('VEXE')
 	context.is_worker = os.args.contains('-vwatchworker')
 	context.opts = os.args[1..].filter(it != '-vwatchworker')
-	eprintln('>>> context.pid: $context.pid')
-	eprintln('>>> context.vexe: $context.vexe')
-	eprintln('>>> context.opts: $context.opts')
-	eprintln('>>> context.is_worker: $context.is_worker')
+	context.elog('>>> context.pid: $context.pid')
+	context.elog('>>> context.vexe: $context.vexe')
+	context.elog('>>> context.opts: $context.opts')
+	context.elog('>>> context.is_worker: $context.is_worker')
 	if context.is_worker {
 		context.worker_main()
 	} else {
@@ -249,7 +253,6 @@ fn main() {
 }
 
 fn (mut context Context) manager_main() {
-	eprintln('>>> ${@METHOD}')
 	myexecutable := os.executable()
 	mut worker_opts := ['-vwatchworker']
 	worker_opts << context.opts
@@ -271,19 +274,12 @@ fn (mut context Context) manager_main() {
 }
 
 fn (mut context Context) worker_main() {
-	eprintln('>>> ${@METHOD}')
 	context.rerun_channel = chan RerunCommand{cap: 10}
 	os.signal(C.SIGINT, fn () {
 		mut context := &ccontext
 		context.is_exiting = true
-		if context.child_process == 0 {
-			return
-		}
-		context.child_process.signal_pgkill()
-		context.child_process.wait()
+		context.kill_pgroup()
 	})
-	//
-	context.is_debug = '-debug' in os.getenv('VWATCH').split(' ')
 	go context.compilation_runner_loop()
 	change_detection_loop(context)
 }
