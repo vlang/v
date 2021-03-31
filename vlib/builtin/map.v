@@ -809,8 +809,8 @@ pub fn (m &map) free() {
 		}
 		unsafe { free(m.key_values.all_deleted) }
 	}
-	unsafe { 
-		free(m.key_values.keys) 
+	unsafe {
+		free(m.key_values.keys)
 		free(m.key_values.values)
 	}
 }
