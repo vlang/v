@@ -288,6 +288,7 @@ pub:
 	pos       token.Position
 	mod_pos   token.Position
 	alias_pos token.Position
+	syms_pos  token.Position
 pub mut:
 	syms          []ImportSymbol // the list of symbols in `import {symbol1, symbol2}`
 	comments      []Comment

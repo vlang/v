@@ -2530,7 +2530,14 @@ fn (mut p Parser) import_stmt() ast.Import {
 		}
 	}
 	if p.tok.kind == .lcbr { // import module { fn1, Type2 } syntax
+		mut initial_syms_pos := p.tok.position()
 		p.import_syms(mut import_node)
+		initial_syms_pos = initial_syms_pos.extend(p.tok.position())
+		import_node = ast.Import{
+			...import_node
+			syms_pos: initial_syms_pos
+			pos: import_node.pos.extend(initial_syms_pos)
+		}
 		p.register_used_import(mod_alias) // no `unused import` msg for parent
 	}
 	pos_t := p.tok.position()
