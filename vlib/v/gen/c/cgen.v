@@ -760,6 +760,32 @@ pub fn (mut g Gen) write_typedef_types() {
 			.array {
 				g.type_definitions.writeln('typedef array $typ.cname;')
 			}
+			.array_fixed {
+				info := typ.info as table.ArrayFixed
+				elem_sym := g.table.get_type_symbol(info.elem_type)
+				if elem_sym.is_builtin() {
+					// .array_fixed {
+					styp := typ.cname
+					// array_fixed_char_300 => char x[300]
+					mut fixed := styp[12..]
+					len := styp.after('_')
+					fixed = fixed[..fixed.len - len.len - 1]
+					if fixed.starts_with('C__') {
+						fixed = fixed[3..]
+					}
+					if elem_sym.info is table.FnType {
+						pos := g.out.len
+						g.write_fn_ptr_decl(&elem_sym.info, '')
+						fixed = g.out.after(pos)
+						g.out.go_back(fixed.len)
+						mut def_str := 'typedef $fixed;'
+						def_str = def_str.replace_once('(*)', '(*$styp[$len])')
+						g.type_definitions.writeln(def_str)
+					} else {
+						g.type_definitions.writeln('typedef $fixed $styp [$len];')
+					}
+				}
+			}
 			.interface_ {
 				g.write_interface_typesymbol_declaration(typ)
 			}
@@ -5430,16 +5456,18 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 				}
 				elem_type := typ.info.elem_type
 				elem_sym := g.table.get_type_symbol(elem_type)
-				if elem_sym.info is table.FnType {
-					pos := g.out.len
-					g.write_fn_ptr_decl(&elem_sym.info, '')
-					fixed = g.out.after(pos)
-					g.out.go_back(fixed.len)
-					mut def_str := 'typedef $fixed;'
-					def_str = def_str.replace_once('(*)', '(*$styp[$len])')
-					g.type_definitions.writeln(def_str)
-				} else {
-					g.type_definitions.writeln('typedef $fixed $styp [$len];')
+				if !elem_sym.is_builtin() {
+					if elem_sym.info is table.FnType {
+						pos := g.out.len
+						g.write_fn_ptr_decl(&elem_sym.info, '')
+						fixed = g.out.after(pos)
+						g.out.go_back(fixed.len)
+						mut def_str := 'typedef $fixed;'
+						def_str = def_str.replace_once('(*)', '(*$styp[$len])')
+						g.type_definitions.writeln(def_str)
+					} else {
+						g.type_definitions.writeln('typedef $fixed $styp [$len];')
+					}
 				}
 			}
 			else {}
