@@ -485,7 +485,7 @@ pub fn (mut c Checker) infer_fn_types(f table.Fn, mut call_expr ast.CallExpr) {
 					// only numbers so we don't promote pointers
 					if typ.is_number() && to_set.is_number() {
 						promoted := c.promote_num(typ, to_set)
-							if promoted != table.void_type {
+						if promoted != table.void_type {
 							to_set = promoted
 						}
 					}
