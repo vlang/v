@@ -2424,9 +2424,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					g.write('memcpy(($typ_str*)')
 					g.expr(left)
 					addr := if val_type.is_ptr() { '' } else { '&' }
-					g.write(', (byte*)$addr')
+					g.write(', (byte*)${addr}(')
 					g.expr(val)
-					g.write(', sizeof($typ_str))')
+					g.write('), sizeof($typ_str))')
 				} else if is_decl {
 					if is_fixed_array_init && !has_val {
 						if val is ast.ArrayInit {

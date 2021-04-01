@@ -1,6 +1,5 @@
 fn test_fn_return_fixed_array() {
 	x := get3()
-	dump(x)
 	assert '$x' == '[1, 2, 3]'
 }
 
