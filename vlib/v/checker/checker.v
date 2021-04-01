@@ -3768,11 +3768,11 @@ fn (mut c Checker) asm_stmt(mut stmt ast.AsmStmt) {
 
 			// }
 		}
-		for arg in template.args {
+		for mut arg in template.args {
 			c.asm_arg(arg, stmt, aliases)
 		}
 	}
-	for clob in stmt.clobbered {
+	for mut clob in stmt.clobbered {
 		c.asm_arg(clob.reg, stmt, aliases)
 	}
 }
@@ -3781,8 +3781,11 @@ fn (mut c Checker) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt, aliases []string) {
 	match mut arg {
 		ast.AsmAlias {
 			name := arg.name
-			if name !in aliases && name !in stmt.local_labels && name !in stmt.global_labels {
-				suggestion := util.new_suggestion(name, aliases)
+			if name !in aliases && name !in stmt.local_labels && name !in c.file.global_labels {
+				mut possible := aliases.clone()
+				possible << stmt.local_labels
+				possible << c.file.global_labels
+				suggestion := util.new_suggestion(name, possible)
 				c.error(suggestion.say('alias or label `$arg.name` does not exist'), arg.pos)
 			}
 		}
@@ -3790,6 +3793,7 @@ fn (mut c Checker) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt, aliases []string) {
 			if arg.scale !in [-1, 1, 2, 4, 8] {
 				c.error('scale must be one of 1, 2, 4, or 8', arg.pos)
 			}
+			c.asm_arg(arg.displacement, stmt, aliases)
 			c.asm_arg(arg.base, stmt, aliases)
 			c.asm_arg(arg.index, stmt, aliases)
 		}
@@ -3798,6 +3802,7 @@ fn (mut c Checker) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt, aliases []string) {
 		ast.CharLiteral {}
 		ast.IntegerLiteral {}
 		ast.AsmRegister {} // if the register is not found, the parser will register it as an alias
+		ast.AsmDisp {}
 		string {}
 	}
 }
