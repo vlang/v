@@ -188,7 +188,7 @@ fn (mut context Context) compilation_runner_loop() {
 	_ := <-context.rerun_channel
 	for {
 		context.elog('>> loop: v_cycles: $context.v_cycles')
-		timestamp := time.now().format_ss_micro()
+		timestamp := time.now().format_ss_milli()
 		context.child_process = os.new_process(context.vexe)
 		context.child_process.use_pgroup = true
 		context.child_process.set_args(context.opts)
