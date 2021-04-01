@@ -2267,7 +2267,8 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			else {}
 		}
 		right_sym := g.table.get_type_symbol(val_type)
-		is_fixed_array_copy := right_sym.kind == .array_fixed && val is ast.Ident
+		is_fixed_array_copy := right_sym.kind == .array_fixed
+			&& (val is ast.Ident || val is ast.CallExpr)
 		g.is_assign_lhs = true
 		g.assign_op = assign_stmt.op
 		if val_type.has_flag(.optional) {
@@ -2419,17 +2420,13 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			g.is_shared = var_type.has_flag(.shared_f)
 			if !cloned {
 				if is_fixed_array_copy {
-					i_var := g.new_tmp_var()
-					fixed_array := right_sym.info as table.ArrayFixed
-					g.write('for (int $i_var=0; $i_var<$fixed_array.size; $i_var++) {')
+					typ_str := g.typ(val_type).trim('*')
+					g.write('memcpy(($typ_str*)')
 					g.expr(left)
-					g.write('[$i_var] = ')
-					if val.is_auto_deref_var() {
-						g.write('*')
-					}
+					addr := if val_type.is_ptr() { '' } else { '&' }
+					g.write(', (byte*)$addr')
 					g.expr(val)
-					g.write('[$i_var];')
-					g.writeln('}')
+					g.write(', sizeof($typ_str))')
 				} else if is_decl {
 					if is_fixed_array_init && !has_val {
 						if val is ast.ArrayInit {
