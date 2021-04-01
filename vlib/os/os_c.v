@@ -849,6 +849,7 @@ pub fn execvp(cmdpath string, args []string) ? {
 	cargs << charptr(0)
 	mut res := int(0)
 	$if windows {
+        eprintln("execvp cmdpath: $cmdpath args: $args")
 		res = C._execvp(charptr(cmdpath.str), cargs.data)
 	} $else {
 		res = C.execvp(charptr(cmdpath.str), cargs.data)
