@@ -1,11 +1,11 @@
 module ast
 
-import v.table
+import v.ast
 
-pub fn resolve_init(node StructInit, typ table.Type, t &table.Table) Expr {
+pub fn resolve_init(node StructInit, typ Type, t &Table) Expr {
 	type_sym := t.get_type_symbol(typ)
 	if type_sym.kind == .array {
-		array_info := type_sym.info as table.Array
+		array_info := type_sym.info as Array
 		mut has_len := false
 		mut has_cap := false
 		mut has_default := false
@@ -32,7 +32,7 @@ pub fn resolve_init(node StructInit, typ table.Type, t &table.Table) Expr {
 				}
 			}
 		}
-		return ArrayInit{
+		return ast.ArrayInit{
 			// TODO: mod is not being set for now, we could need this in future
 			// mod: mod
 			pos: node.pos
@@ -47,16 +47,16 @@ pub fn resolve_init(node StructInit, typ table.Type, t &table.Table) Expr {
 			exprs: exprs
 		}
 	} else if type_sym.kind == .map {
-		map_info := type_sym.info as table.Map
+		map_info := type_sym.info as Map
 		mut keys := []Expr{}
 		mut vals := []Expr{}
 		for field in node.fields {
-			keys << StringLiteral{
+			keys << ast.StringLiteral{
 				val: field.name
 			}
 			vals << field.expr
 		}
-		return MapInit{
+		return ast.MapInit{
 			typ: typ
 			key_type: map_info.key_type
 			value_type: map_info.value_type
@@ -65,7 +65,7 @@ pub fn resolve_init(node StructInit, typ table.Type, t &table.Table) Expr {
 		}
 	}
 	// struct / other (sumtype?)
-	return StructInit{
+	return ast.StructInit{
 		...node
 		unresolved: false
 	}

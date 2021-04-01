@@ -16,7 +16,7 @@ fn get_foo() Foo {
 }
 
 /*
-// TODO: Fix this. It 'works' only with tcc, but is not stable.
+// TODO: Fix this. It 'works' only with tcc, but is not sast.
 fn test_ref_fn_arg() {
 	process_foo(get_foo())
 	println(3434)

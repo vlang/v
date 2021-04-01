@@ -4,7 +4,6 @@
 module c
 
 import v.ast
-import v.table
 
 fn (mut g Gen) gen_assert_stmt(original_assert_statement ast.AssertStmt) {
 	mut node := original_assert_statement
@@ -84,7 +83,7 @@ fn (mut g Gen) gen_assert_metainfo(node ast.AssertStmt) string {
 	return metaname
 }
 
-fn (mut g Gen) gen_assert_single_expr(expr ast.Expr, typ table.Type) {
+fn (mut g Gen) gen_assert_single_expr(expr ast.Expr, typ ast.Type) {
 	unknown_value := '*unknown value*'
 	match expr {
 		ast.CastExpr, ast.IndexExpr, ast.MatchExpr {
@@ -100,7 +99,7 @@ fn (mut g Gen) gen_assert_single_expr(expr ast.Expr, typ table.Type) {
 				g.gen_expr_to_string(expr, typ)
 			}
 		}
-		ast.Type {
+		ast.TypeNode {
 			sym := g.table.get_type_symbol(typ)
 			g.write(ctoslit('$sym.name'))
 		}

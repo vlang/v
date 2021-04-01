@@ -4,7 +4,6 @@
 module parser
 
 import v.ast
-import v.table
 
 fn (mut p Parser) for_stmt() ast.Stmt {
 	p.check(.key_for)
@@ -120,7 +119,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 			}
 			p.scope.register(ast.Var{
 				name: key_var_name
-				typ: table.int_type
+				typ: ast.int_type
 				pos: key_var_pos
 				is_tmp: true
 			})
@@ -144,7 +143,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 			high_expr = p.expr(0)
 			p.scope.register(ast.Var{
 				name: val_var_name
-				typ: table.int_type
+				typ: ast.int_type
 				pos: val_var_pos
 				is_tmp: true
 			})

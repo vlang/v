@@ -3,11 +3,10 @@
 // that can be found in the LICENSE file.
 module parser
 
-import v.table
-import v.util
 import v.ast
+import v.util
 
-pub fn (mut p Parser) parse_array_type() table.Type {
+pub fn (mut p Parser) parse_array_type() ast.Type {
 	p.check(.lsbr)
 	// fixed array
 	if p.tok.kind in [.number, .name] {
@@ -44,7 +43,7 @@ pub fn (mut p Parser) parse_array_type() table.Type {
 		}
 		// sym := p.table.get_type_symbol(elem_type)
 		idx := p.table.find_or_register_array_fixed(elem_type, fixed_size)
-		return table.new_type(idx)
+		return ast.new_type(idx)
 	}
 	// array
 	p.check(.rsbr)
@@ -62,13 +61,13 @@ pub fn (mut p Parser) parse_array_type() table.Type {
 		nr_dims++
 	}
 	idx := p.table.find_or_register_array_with_dims(elem_type, nr_dims)
-	return table.new_type(idx)
+	return ast.new_type(idx)
 }
 
-pub fn (mut p Parser) parse_map_type() table.Type {
+pub fn (mut p Parser) parse_map_type() ast.Type {
 	p.next()
 	if p.tok.kind != .lsbr {
-		return table.map_type
+		return ast.map_type
 	}
 	p.check(.lsbr)
 	key_type := p.parse_type()
@@ -78,12 +77,12 @@ pub fn (mut p Parser) parse_map_type() table.Type {
 		// error is reported in parse_type
 		return 0
 	}
-	if is_alias && !(key_type in [table.string_type_idx, table.voidptr_type_idx]
+	if is_alias && !(key_type in [ast.string_type_idx, ast.voidptr_type_idx]
 		|| ((key_type.is_int() || key_type.is_float()) && !key_type.is_ptr())) {
 		p.error('cannot use the alias type as the parent type is unsupported')
 		return 0
 	}
-	if !(key_type in [table.string_type_idx, table.voidptr_type_idx]
+	if !(key_type in [ast.string_type_idx, ast.voidptr_type_idx]
 		|| key_sym.kind == .enum_ || ((key_type.is_int() || key_type.is_float()
 		|| is_alias) && !key_type.is_ptr())) {
 		s := p.table.type_to_str(key_type)
@@ -97,29 +96,29 @@ pub fn (mut p Parser) parse_map_type() table.Type {
 		// error is reported in parse_type
 		return 0
 	}
-	if value_type.idx() == table.void_type_idx {
+	if value_type.idx() == ast.void_type_idx {
 		p.error_with_pos('map value type cannot be void', p.tok.position())
 		return 0
 	}
 	idx := p.table.find_or_register_map(key_type, value_type)
-	return table.new_type(idx)
+	return ast.new_type(idx)
 }
 
-pub fn (mut p Parser) parse_chan_type() table.Type {
+pub fn (mut p Parser) parse_chan_type() ast.Type {
 	if p.peek_tok.kind != .name && p.peek_tok.kind != .key_mut && p.peek_tok.kind != .amp
 		&& p.peek_tok.kind != .lsbr {
 		p.next()
-		return table.chan_type
+		return ast.chan_type
 	}
 	p.register_auto_import('sync')
 	p.next()
 	is_mut := p.tok.kind == .key_mut
 	elem_type := p.parse_type()
 	idx := p.table.find_or_register_chan(elem_type, is_mut)
-	return table.new_type(idx)
+	return ast.new_type(idx)
 }
 
-pub fn (mut p Parser) parse_thread_type() table.Type {
+pub fn (mut p Parser) parse_thread_type() ast.Type {
 	is_opt := p.peek_tok.kind == .question
 	if is_opt {
 		p.next()
@@ -128,12 +127,12 @@ pub fn (mut p Parser) parse_thread_type() table.Type {
 		&& p.peek_tok.kind != .lsbr {
 		p.next()
 		if is_opt {
-			mut ret_type := table.void_type
+			mut ret_type := ast.void_type
 			ret_type = ret_type.set_flag(.optional)
 			idx := p.table.find_or_register_thread(ret_type)
-			return table.new_type(idx)
+			return ast.new_type(idx)
 		} else {
-			return table.thread_type
+			return ast.thread_type
 		}
 	}
 	if !is_opt {
@@ -141,12 +140,12 @@ pub fn (mut p Parser) parse_thread_type() table.Type {
 	}
 	ret_type := p.parse_type()
 	idx := p.table.find_or_register_thread(ret_type)
-	return table.new_type(idx)
+	return ast.new_type(idx)
 }
 
-pub fn (mut p Parser) parse_multi_return_type() table.Type {
+pub fn (mut p Parser) parse_multi_return_type() ast.Type {
 	p.check(.lpar)
-	mut mr_types := []table.Type{}
+	mut mr_types := []ast.Type{}
 	for p.tok.kind != .eof {
 		mr_type := p.parse_type()
 		if mr_type.idx() == 0 {
@@ -165,20 +164,20 @@ pub fn (mut p Parser) parse_multi_return_type() table.Type {
 		return mr_types[0]
 	}
 	idx := p.table.find_or_register_multi_return(mr_types)
-	return table.new_type(idx)
+	return ast.new_type(idx)
 }
 
 // given anon name based off signature when `name` is blank
-pub fn (mut p Parser) parse_fn_type(name string) table.Type {
+pub fn (mut p Parser) parse_fn_type(name string) ast.Type {
 	// p.warn('parse fn')
 	p.check(.key_fn)
 	line_nr := p.tok.line_nr
 	args, _, is_variadic := p.fn_args()
-	mut return_type := table.void_type
+	mut return_type := ast.void_type
 	if p.tok.line_nr == line_nr && p.tok.kind.is_start_of_type() {
 		return_type = p.parse_type()
 	}
-	func := table.Fn{
+	func := ast.Fn{
 		name: name
 		params: args
 		is_variadic: is_variadic
@@ -188,10 +187,10 @@ pub fn (mut p Parser) parse_fn_type(name string) table.Type {
 	// because typedefs get generated after the map struct is generated
 	has_decl := p.builtin_mod && name.starts_with('Map') && name.ends_with('Fn')
 	idx := p.table.find_or_register_fn_type(p.mod, func, false, has_decl)
-	return table.new_type(idx)
+	return ast.new_type(idx)
 }
 
-pub fn (mut p Parser) parse_type_with_mut(is_mut bool) table.Type {
+pub fn (mut p Parser) parse_type_with_mut(is_mut bool) ast.Type {
 	typ := p.parse_type()
 	if is_mut {
 		return typ.set_nr_muls(1)
@@ -200,13 +199,13 @@ pub fn (mut p Parser) parse_type_with_mut(is_mut bool) table.Type {
 }
 
 // Parses any language indicators on a type.
-pub fn (mut p Parser) parse_language() table.Language {
+pub fn (mut p Parser) parse_language() ast.Language {
 	language := if p.tok.lit == 'C' {
-		table.Language.c
+		ast.Language.c
 	} else if p.tok.lit == 'JS' {
-		table.Language.js
+		ast.Language.js
 	} else {
-		table.Language.v
+		ast.Language.v
 	}
 	if language != .v {
 		p.next()
@@ -215,7 +214,7 @@ pub fn (mut p Parser) parse_language() table.Language {
 	return language
 }
 
-pub fn (mut p Parser) parse_type() table.Type {
+pub fn (mut p Parser) parse_type() ast.Type {
 	// optional
 	mut is_optional := false
 	if p.tok.kind == .question {
@@ -223,7 +222,7 @@ pub fn (mut p Parser) parse_type() table.Type {
 		p.next()
 		is_optional = true
 		if p.tok.line_nr > line_nr {
-			mut typ := table.void_type
+			mut typ := ast.void_type
 			if is_optional {
 				typ = typ.set_flag(.optional)
 			}
@@ -252,7 +251,7 @@ pub fn (mut p Parser) parse_type() table.Type {
 		p.next()
 	}
 	language := p.parse_language()
-	mut typ := table.void_type
+	mut typ := ast.void_type
 	is_array := p.tok.kind == .lsbr
 	if p.tok.kind != .lcbr {
 		pos := p.tok.position()
@@ -261,7 +260,7 @@ pub fn (mut p Parser) parse_type() table.Type {
 			// error is set in parse_type
 			return 0
 		}
-		if typ == table.void_type {
+		if typ == ast.void_type {
 			p.error_with_pos('use `?` instead of `?void`', pos)
 			return 0
 		}
@@ -287,7 +286,7 @@ If you need to modify an array in a function, use a mutable argument instead: `f
 	return typ
 }
 
-pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr bool, check_dot bool) table.Type {
+pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot bool) ast.Type {
 	mut name := p.tok.lit
 	if language == .c {
 		name = 'C.$name'
@@ -358,58 +357,58 @@ pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr bool, check
 			}
 			match name {
 				'voidptr' {
-					return table.voidptr_type
+					return ast.voidptr_type
 				}
 				'byteptr' {
-					return table.byteptr_type
+					return ast.byteptr_type
 				}
 				'charptr' {
-					return table.charptr_type
+					return ast.charptr_type
 				}
 				'i8' {
-					return table.i8_type
+					return ast.i8_type
 				}
 				'i16' {
-					return table.i16_type
+					return ast.i16_type
 				}
 				'int' {
-					return table.int_type
+					return ast.int_type
 				}
 				'i64' {
-					return table.i64_type
+					return ast.i64_type
 				}
 				'byte' {
-					return table.byte_type
+					return ast.byte_type
 				}
 				'u16' {
-					return table.u16_type
+					return ast.u16_type
 				}
 				'u32' {
-					return table.u32_type
+					return ast.u32_type
 				}
 				'u64' {
-					return table.u64_type
+					return ast.u64_type
 				}
 				'f32' {
-					return table.f32_type
+					return ast.f32_type
 				}
 				'f64' {
-					return table.f64_type
+					return ast.f64_type
 				}
 				'string' {
-					return table.string_type
+					return ast.string_type
 				}
 				'char' {
-					return table.char_type
+					return ast.char_type
 				}
 				'bool' {
-					return table.bool_type
+					return ast.bool_type
 				}
 				'float_literal' {
-					return table.float_literal_type
+					return ast.float_literal_type
 				}
 				'int_literal' {
-					return table.int_literal_type
+					return ast.int_literal_type
 				}
 				else {
 					if name.len == 1 && name[0].is_capital() {
@@ -425,42 +424,42 @@ pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr bool, check
 	}
 }
 
-pub fn (mut p Parser) parse_enum_or_struct_type(name string, language table.Language) table.Type {
+pub fn (mut p Parser) parse_enum_or_struct_type(name string, language ast.Language) ast.Type {
 	// struct / enum / placeholder
 	// struct / enum
 	mut idx := p.table.find_type_idx(name)
 	if idx > 0 {
-		return table.new_type(idx)
+		return ast.new_type(idx)
 	}
 	// not found - add placeholder
 	idx = p.table.add_placeholder_type(name, language)
 	// println('NOT FOUND: $name - adding placeholder - $idx')
-	return table.new_type(idx)
+	return ast.new_type(idx)
 }
 
-pub fn (mut p Parser) parse_generic_template_type(name string) table.Type {
+pub fn (mut p Parser) parse_generic_template_type(name string) ast.Type {
 	mut idx := p.table.find_type_idx(name)
 	if idx > 0 {
-		return table.new_type(idx).set_flag(.generic)
+		return ast.new_type(idx).set_flag(.generic)
 	}
-	idx = p.table.register_type_symbol(table.TypeSymbol{
+	idx = p.table.register_type_symbol(ast.TypeSymbol{
 		name: name
 		cname: util.no_dots(name)
 		mod: p.mod
 		kind: .any
 		is_public: true
 	})
-	return table.new_type(idx).set_flag(.generic)
+	return ast.new_type(idx).set_flag(.generic)
 }
 
-pub fn (mut p Parser) parse_generic_struct_inst_type(name string) table.Type {
+pub fn (mut p Parser) parse_generic_struct_inst_type(name string) ast.Type {
 	mut bs_name := name
 	mut bs_cname := name
 	p.next()
 	p.in_generic_params = true
 	bs_name += '<'
 	bs_cname += '_T_'
-	mut generic_types := []table.Type{}
+	mut generic_types := []ast.Type{}
 	mut is_instance := false
 	for p.tok.kind != .eof {
 		gt := p.parse_type()
@@ -484,28 +483,28 @@ pub fn (mut p Parser) parse_generic_struct_inst_type(name string) table.Type {
 	if is_instance && generic_types.len > 0 {
 		mut gt_idx := p.table.find_type_idx(bs_name)
 		if gt_idx > 0 {
-			return table.new_type(gt_idx)
+			return ast.new_type(gt_idx)
 		}
 		gt_idx = p.table.add_placeholder_type(bs_name, .v)
 		mut parent_idx := p.table.type_idxs[name]
 		if parent_idx == 0 {
 			parent_idx = p.table.add_placeholder_type(name, .v)
 		}
-		idx := p.table.register_type_symbol(table.TypeSymbol{
+		idx := p.table.register_type_symbol(ast.TypeSymbol{
 			kind: .generic_struct_inst
 			name: bs_name
 			cname: util.no_dots(bs_cname)
 			mod: p.mod
-			info: table.GenericStructInst{
+			info: ast.GenericStructInst{
 				parent_idx: parent_idx
 				generic_types: generic_types
 			}
 		})
-		return table.new_type(idx)
+		return ast.new_type(idx)
 	} else {
 		idx := p.table.find_type_idx(name)
 		if idx != 0 {
-			return table.new_type(idx).set_flag(.generic)
+			return ast.new_type(idx).set_flag(.generic)
 		}
 	}
 	return p.parse_enum_or_struct_type(name, .v)

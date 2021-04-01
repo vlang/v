@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module c
 
-import v.table
+import v.ast
 import v.util
 import strings
 
@@ -18,7 +18,7 @@ import strings
 // return res;
 // }
 // Codegen json_decode/encode funcs
-fn (mut g Gen) gen_json_for_type(typ table.Type) {
+fn (mut g Gen) gen_json_for_type(typ ast.Type) {
 	utyp := g.unwrap_generic(typ)
 	mut dec := strings.new_builder(100)
 	mut enc := strings.new_builder(100)
@@ -73,13 +73,13 @@ $enc_fn_dec {
 		// enc += g.encode_array(t)
 	} else if sym.kind == .map {
 		// Handle maps
-		m := sym.info as table.Map
+		m := sym.info as ast.Map
 		g.gen_json_for_type(m.key_type)
 		g.gen_json_for_type(m.value_type)
 		dec.writeln(g.decode_map(m.key_type, m.value_type))
 		enc.writeln(g.encode_map(m.key_type, m.value_type))
 	} else if sym.kind == .alias {
-		a := sym.info as table.Alias
+		a := sym.info as ast.Alias
 		parent_typ := a.parent_type
 		psym := g.table.get_type_symbol(parent_typ)
 		if is_js_prim(g.typ(parent_typ)) {
@@ -87,14 +87,14 @@ $enc_fn_dec {
 			return
 		}
 		enc.writeln('\to = cJSON_CreateObject();')
-		if psym.info !is table.Struct {
+		if psym.info !is ast.Struct {
 			verror('json: $sym.name is not struct')
 		}
 		g.gen_struct_enc_dec(psym.info, styp, mut enc, mut dec)
 	} else {
 		enc.writeln('\to = cJSON_CreateObject();')
 		// Structs. Range through fields
-		if sym.info !is table.Struct {
+		if sym.info !is ast.Struct {
 			verror('json: $sym.name is not struct')
 		}
 		g.gen_struct_enc_dec(sym.info, styp, mut enc, mut dec)
@@ -110,8 +110,8 @@ $enc_fn_dec {
 }
 
 [inline]
-fn (mut g Gen) gen_struct_enc_dec(type_info table.TypeInfo, styp string, mut enc strings.Builder, mut dec strings.Builder) {
-	info := type_info as table.Struct
+fn (mut g Gen) gen_struct_enc_dec(type_info ast.TypeInfo, styp string, mut enc strings.Builder, mut dec strings.Builder) {
+	info := type_info as ast.Struct
 	for field in info.fields {
 		if field.attrs.contains('skip') {
 			continue
@@ -143,7 +143,7 @@ fn (mut g Gen) gen_struct_enc_dec(type_info table.TypeInfo, styp string, mut enc
 				// it has to be decoded from a unix timestamp number
 				dec.writeln('\tres.${c_name(field.name)} = time__unix(json__decode_u64(js_get(root, "$name")));')
 			} else if field_sym.kind == .alias {
-				alias := field_sym.info as table.Alias
+				alias := field_sym.info as ast.Alias
 				parent_type := g.typ(alias.parent_type)
 				parent_dec_name := js_dec_name(parent_type)
 				if is_js_prim(parent_type) {
@@ -171,7 +171,7 @@ fn (mut g Gen) gen_struct_enc_dec(type_info table.TypeInfo, styp string, mut enc
 		mut enc_name := js_enc_name(field_type)
 		if !is_js_prim(field_type) {
 			if field_sym.kind == .alias {
-				ainfo := field_sym.info as table.Alias
+				ainfo := field_sym.info as ast.Alias
 				enc_name = js_enc_name(g.typ(ainfo.parent_type))
 			}
 		}
@@ -206,7 +206,7 @@ fn is_js_prim(typ string) bool {
 	]
 }
 
-fn (mut g Gen) decode_array(value_type table.Type) string {
+fn (mut g Gen) decode_array(value_type ast.Type) string {
 	styp := g.typ(value_type)
 	fn_name := js_dec_name(styp)
 	mut s := ''
@@ -236,7 +236,7 @@ fn (mut g Gen) decode_array(value_type table.Type) string {
 '
 }
 
-fn (mut g Gen) encode_array(value_type table.Type) string {
+fn (mut g Gen) encode_array(value_type ast.Type) string {
 	styp := g.typ(value_type)
 	fn_name := js_enc_name(styp)
 	return '
@@ -247,7 +247,7 @@ fn (mut g Gen) encode_array(value_type table.Type) string {
 '
 }
 
-fn (mut g Gen) decode_map(key_type table.Type, value_type table.Type) string {
+fn (mut g Gen) decode_map(key_type ast.Type, value_type ast.Type) string {
 	styp := g.typ(key_type)
 	styp_v := g.typ(value_type)
 	key_type_symbol := g.table.get_type_symbol(key_type)
@@ -281,7 +281,7 @@ fn (mut g Gen) decode_map(key_type table.Type, value_type table.Type) string {
 '
 }
 
-fn (mut g Gen) encode_map(key_type table.Type, value_type table.Type) string {
+fn (mut g Gen) encode_map(key_type ast.Type, value_type ast.Type) string {
 	styp := g.typ(key_type)
 	styp_v := g.typ(value_type)
 	fn_name_v := js_enc_name(styp_v)

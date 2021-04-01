@@ -5,11 +5,10 @@ module markused
 // Walk the entire program starting at fn main and marks used (called) functions.
 // Unused functions can be safely skipped by the backends to save CPU time and space.
 import v.ast
-import v.table
 
 pub struct Walker {
 pub mut:
-	table       &table.Table
+	table       &ast.Table
 	used_fns    map[string]bool // used_fns['println'] == true
 	used_consts map[string]bool // used_consts['os.args'] == true
 	n_maps      int
@@ -288,11 +287,10 @@ fn (mut w Walker) expr(node ast.Expr) {
 		ast.StructInit {
 			sym := w.table.get_type_symbol(node.typ)
 			if sym.kind == .struct_ {
-				info := sym.info as table.Struct
+				info := sym.info as ast.Struct
 				for ifield in info.fields {
 					if ifield.has_default_expr {
-						defex := ast.fe2ex(ifield.default_expr)
-						w.expr(defex)
+						w.expr(ifield.default_expr)
 					}
 				}
 			}
@@ -337,7 +335,7 @@ fn (mut w Walker) expr(node ast.Expr) {
 				w.stmts(branch.stmts)
 			}
 		}
-		ast.Type {}
+		ast.TypeNode {}
 		ast.UnsafeExpr {
 			w.expr(node.expr)
 		}

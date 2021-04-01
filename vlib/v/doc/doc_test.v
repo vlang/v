@@ -1,4 +1,4 @@
-// import v.table
+// import v.ast
 import v.doc
 
 // fn test_generate_with_pos() {}
