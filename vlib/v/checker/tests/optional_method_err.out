@@ -1,7 +1,0 @@
-vlib/v/checker/tests/optional_method_err.vv:17:10: error: inc_to_limit() returns an option, so it should have either an `or {}` block, or `?` at the end
-   15 |     mut a := Abc{}
-   16 |     for _ in 0 .. 4 {
-   17 |         _ := a.inc_to_limit(2)
-      |                ~~~~~~~~~~~~~~~
-   18 |         eprintln('a: $a')
-   19 |     }
