@@ -5,7 +5,6 @@ module parser
 
 import v.ast
 import v.vet
-import v.table
 import v.token
 
 pub fn (mut p Parser) expr(precedence int) ast.Expr {
@@ -23,7 +22,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 	// Prefix
 	match p.tok.kind {
 		.key_mut, .key_shared, .key_atomic, .key_static {
-			node = p.parse_ident(table.Language.v)
+			node = p.parse_ident(ast.Language.v)
 			p.is_stmt_ident = is_stmt_ident
 		}
 		.name {
@@ -292,7 +291,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			if p.expecting_type {
 				// Anonymous function type
 				start_pos := p.tok.position()
-				return ast.Type{
+				return ast.TypeNode{
 					typ: p.parse_type()
 					pos: start_pos.extend(p.prev_tok.position())
 				}
@@ -460,7 +459,7 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 			p.open_scope()
 			p.scope.register(ast.Var{
 				name: 'err'
-				typ: table.error_type
+				typ: ast.error_type
 				pos: p.tok.position()
 				is_used: true
 			})
@@ -523,7 +522,7 @@ fn (mut p Parser) prefix_expr() ast.PrefixExpr {
 			p.open_scope()
 			p.scope.register(ast.Var{
 				name: 'err'
-				typ: table.error_type
+				typ: ast.error_type
 				pos: p.tok.position()
 				is_used: true
 			})

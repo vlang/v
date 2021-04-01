@@ -4,7 +4,6 @@
 module parser
 
 import v.ast
-import v.table
 
 fn (mut p Parser) sql_expr() ast.Expr {
 	// `sql db {`
@@ -15,10 +14,10 @@ fn (mut p Parser) sql_expr() ast.Expr {
 	p.check(.key_select)
 	n := p.check_name()
 	is_count := n == 'count'
-	mut typ := table.void_type
+	mut typ := ast.void_type
 	if is_count {
 		p.check_name() // from
-		typ = table.int_type
+		typ = ast.int_type
 	}
 	table_pos := p.tok.position()
 	table_type := p.parse_type() // `User`
@@ -77,7 +76,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 	}
 	if !query_one && !is_count {
 		// return an array
-		typ = table.new_type(p.table.find_or_register_array(table_type))
+		typ = ast.new_type(p.table.find_or_register_array(table_type))
 	} else if !is_count {
 		// return a single object
 		// TODO optional
@@ -100,7 +99,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		has_desc: has_desc
 		is_array: !query_one
 		pos: pos.extend(p.prev_tok.position())
-		table_expr: ast.Type{
+		table_expr: ast.TypeNode{
 			typ: table_type
 			pos: table_pos
 		}
@@ -130,7 +129,7 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 		kind = .update
 	}
 	mut inserted_var_name := ''
-	mut table_type := table.Type(0)
+	mut table_type := ast.Type(0)
 	if kind != .delete {
 		if kind == .update {
 			table_type = p.parse_type()
@@ -189,7 +188,7 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 	pos.last_line = p.prev_tok.line_nr
 	return ast.SqlStmt{
 		db_expr: db_expr
-		table_expr: ast.Type{
+		table_expr: ast.TypeNode{
 			typ: table_type
 			pos: table_pos
 		}

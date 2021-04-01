@@ -430,8 +430,8 @@ fn (mut v Builder) setup_output_name() {
 		v.pref.cache_manager.save('.description.txt', v.pref.path, '${v.pref.path:-30} @ $v.pref.cache_manager.vopts\n') or {
 			panic(err)
 		}
-		// println('v.table.imports:')
-		// println(v.table.imports)
+		// println('v.ast.imports:')
+		// println(v.ast.imports)
 	}
 	if os.is_dir(v.pref.out_name) {
 		verror("'$v.pref.out_name' is a directory")
@@ -913,15 +913,15 @@ fn (mut c Builder) cc_windows_cross() {
 	println(c.pref.out_name + ' has been successfully compiled')
 }
 
-fn (mut v Builder) build_thirdparty_obj_files() {
-	v.log('build_thirdparty_obj_files: v.table.cflags: $v.table.cflags')
-	for flag in v.get_os_cflags() {
+fn (mut b Builder) build_thirdparty_obj_files() {
+	b.log('build_thirdparty_obj_files: v.ast.cflags: $b.table.cflags')
+	for flag in b.get_os_cflags() {
 		if flag.value.ends_with('.o') {
-			rest_of_module_flags := v.get_rest_of_module_cflags(flag)
-			if v.pref.ccompiler == 'msvc' {
-				v.build_thirdparty_obj_file_with_msvc(flag.value, rest_of_module_flags)
+			rest_of_module_flags := b.get_rest_of_module_cflags(flag)
+			if b.pref.ccompiler == 'msvc' {
+				b.build_thirdparty_obj_file_with_msvc(flag.value, rest_of_module_flags)
 			} else {
-				v.build_thirdparty_obj_file(flag.value, rest_of_module_flags)
+				b.build_thirdparty_obj_file(flag.value, rest_of_module_flags)
 			}
 		}
 	}

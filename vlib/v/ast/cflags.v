@@ -1,13 +1,13 @@
 // Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-module table
+module ast
 
 import v.cflag
 
 // check if cflag is in table
-fn (mytable &Table) has_cflag(flag cflag.CFlag) bool {
-	for cf in mytable.cflags {
+fn (t &Table) has_cflag(flag cflag.CFlag) bool {
+	for cf in t.cflags {
 		if cf.os == flag.os && cf.name == flag.name && cf.value == flag.value {
 			return true
 		}
@@ -15,9 +15,9 @@ fn (mytable &Table) has_cflag(flag cflag.CFlag) bool {
 	return false
 }
 
-// parse the flags to (table.cflags) []CFlag
+// parse the flags to (ast.cflags) []CFlag
 // Note: clean up big time (joe-c)
-pub fn (mut mytable Table) parse_cflag(cflg string, mod string, ctimedefines []string) ?bool {
+pub fn (mut t Table) parse_cflag(cflg string, mod string, ctimedefines []string) ?bool {
 	allowed_flags := ['framework', 'library', 'Wa', 'Wl', 'Wp', 'I', 'l', 'L']
 	flag_orig := cflg.trim_space()
 	mut flag := flag_orig
@@ -78,8 +78,8 @@ pub fn (mut mytable Table) parse_cflag(cflg string, mod string, ctimedefines []s
 			name: name
 			value: value
 		}
-		if !mytable.has_cflag(cf) {
-			mytable.cflags << cf
+		if !t.has_cflag(cf) {
+			t.cflags << cf
 		}
 		if index == -1 {
 			break

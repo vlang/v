@@ -4,7 +4,6 @@ module c
 
 import v.ast
 import strings
-import v.table
 import v.util
 
 // pg,mysql etc
@@ -133,7 +132,7 @@ fn (mut g Gen) sqlite3_stmt(node ast.SqlStmt, typ SqlType) {
 				continue
 			}
 			x := '${node.object_var_name}.$field.name'
-			if field.typ == table.string_type {
+			if field.typ == ast.string_type {
 				g.writeln('sqlite3_bind_text($g.sql_stmt_name, ${i + 0}, ${x}.str, ${x}.len, 0);')
 			} else if g.table.type_symbols[int(field.typ)].kind == .struct_ {
 				// insert again
@@ -249,14 +248,14 @@ fn (mut g Gen) sqlite3_select_expr(node ast.SqlExpr, sub bool, line string, sql_
 			// array_User array_tmp;
 			// for { User tmp; ... array_tmp << tmp; }
 			array_sym := g.table.get_type_symbol(node.typ)
-			array_info := array_sym.info as table.Array
+			array_info := array_sym.info as ast.Array
 			elem_type_str = g.typ(array_info.elem_type)
 			g.writeln('$styp ${tmp}_array = __new_array(0, 10, sizeof($elem_type_str));')
 			g.writeln('while (1) {')
 			g.writeln('\t$elem_type_str $tmp = ($elem_type_str) {')
 			//
 			sym := g.table.get_type_symbol(array_info.elem_type)
-			info := sym.info as table.Struct
+			info := sym.info as ast.Struct
 			for i, field in info.fields {
 				g.zero_struct_field(field)
 				if i != info.fields.len - 1 {
@@ -271,7 +270,7 @@ fn (mut g Gen) sqlite3_select_expr(node ast.SqlExpr, sub bool, line string, sql_
 			// If we don't, string values are going to be nil etc for fields that are not returned
 			// by the db engine.
 			sym := g.table.get_type_symbol(node.typ)
-			info := sym.info as table.Struct
+			info := sym.info as ast.Struct
 			for i, field in info.fields {
 				g.zero_struct_field(field)
 				if i != info.fields.len - 1 {
@@ -293,7 +292,7 @@ fn (mut g Gen) sqlite3_select_expr(node ast.SqlExpr, sub bool, line string, sql_
 		}
 		for i, field in node.fields {
 			mut func := 'sqlite3_column_int'
-			if field.typ == table.string_type {
+			if field.typ == ast.string_type {
 				func = 'sqlite3_column_text'
 				string_data := g.new_tmp_var()
 				g.writeln('byteptr $string_data = ${func}($g.sql_stmt_name, $i);')
@@ -415,9 +414,9 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr, typ SqlType) {
 				g.inc_sql_i()
 				info := expr.info as ast.IdentVar
 				ityp := info.typ
-				if ityp == table.string_type {
+				if ityp == ast.string_type {
 					g.sql_bind_string('${expr.name}.str', '${expr.name}.len', typ)
-				} else if ityp == table.int_type {
+				} else if ityp == ast.int_type {
 					g.sql_bind_int(expr.name, typ)
 				} else {
 					verror('bad sql type=$ityp ident_name=$expr.name')
@@ -426,7 +425,7 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr, typ SqlType) {
 		}
 		ast.SelectorExpr {
 			g.inc_sql_i()
-			if expr.typ == table.int_type {
+			if expr.typ == ast.int_type {
 				if expr.expr !is ast.Ident {
 					verror('orm selector not ident')
 				}

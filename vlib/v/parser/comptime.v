@@ -6,7 +6,6 @@ module parser
 import os
 import v.ast
 import v.pref
-import v.table
 import v.token
 
 const (

@@ -30,7 +30,7 @@ fn (mut g Gen) gen_embed_file_init(node ast.ComptimeCall) {
 	g.writeln('} // \$embed_file("$node.embed_file.apath")')
 }
 
-// gen_embedded_data embeds data into the V target executable.
+// gen_embedded_data embeds data into the V target execuast.
 fn (mut g Gen) gen_embedded_data() {
 	/*
 	TODO implement compression.

@@ -7,8 +7,8 @@ import os.cmdline
 import v.vet
 import v.pref
 import v.parser
-import v.table
 import v.token
+import v.ast
 import term
 
 struct Vet {
@@ -94,7 +94,7 @@ fn (mut vt Vet) vet_file(path string) {
 	vt.file = path
 	mut prefs := pref.new_preferences()
 	prefs.is_vet = true
-	table := table.new_table()
+	table := ast.new_table()
 	vt.vprintln("vetting file '$path'...")
 	_, errors := parser.parse_vet_file(path, table, prefs)
 	// Transfer errors from scanner and parser

@@ -3,9 +3,9 @@
 module c
 
 import strings
-import v.table
+import v.ast
 
-fn (mut g Gen) gen_sumtype_equality_fn(left table.Type) string {
+fn (mut g Gen) gen_sumtype_equality_fn(left ast.Type) string {
 	ptr_typ := g.typ(left).trim('*')
 	if ptr_typ in g.sumtype_fn_definitions {
 		return ptr_typ
@@ -58,7 +58,7 @@ fn (mut g Gen) gen_sumtype_equality_fn(left table.Type) string {
 	return ptr_typ
 }
 
-fn (mut g Gen) gen_struct_equality_fn(left table.Type) string {
+fn (mut g Gen) gen_struct_equality_fn(left ast.Type) string {
 	ptr_typ := g.typ(left).trim('*')
 	if ptr_typ in g.struct_fn_definitions {
 		return ptr_typ
@@ -115,14 +115,14 @@ fn (mut g Gen) gen_struct_equality_fn(left table.Type) string {
 	return ptr_typ
 }
 
-fn (mut g Gen) gen_alias_equality_fn(left table.Type) string {
+fn (mut g Gen) gen_alias_equality_fn(left ast.Type) string {
 	ptr_typ := g.typ(left).trim('*')
 	if ptr_typ in g.alias_fn_definitions {
 		return ptr_typ
 	}
 	g.alias_fn_definitions << ptr_typ
 	left_sym := g.table.get_type_symbol(left)
-	info := left_sym.info as table.Alias
+	info := left_sym.info as ast.Alias
 	g.type_definitions.writeln('static bool ${ptr_typ}_alias_eq($ptr_typ a, $ptr_typ b); // auto')
 	mut fn_builder := strings.new_builder(512)
 	fn_builder.writeln('static bool ${ptr_typ}_alias_eq($ptr_typ a, $ptr_typ b) {')
@@ -157,7 +157,7 @@ fn (mut g Gen) gen_alias_equality_fn(left table.Type) string {
 	return ptr_typ
 }
 
-fn (mut g Gen) gen_array_equality_fn(left table.Type) string {
+fn (mut g Gen) gen_array_equality_fn(left ast.Type) string {
 	ptr_typ := g.typ(left).trim('*')
 	if ptr_typ in g.array_fn_definitions {
 		return ptr_typ
@@ -209,7 +209,7 @@ fn (mut g Gen) gen_array_equality_fn(left table.Type) string {
 	return ptr_typ
 }
 
-fn (mut g Gen) gen_fixed_array_equality_fn(left table.Type) string {
+fn (mut g Gen) gen_fixed_array_equality_fn(left ast.Type) string {
 	ptr_typ := g.typ(left).trim('*')
 	if ptr_typ in g.array_fn_definitions {
 		return ptr_typ
@@ -259,7 +259,7 @@ fn (mut g Gen) gen_fixed_array_equality_fn(left table.Type) string {
 	return ptr_typ
 }
 
-fn (mut g Gen) gen_map_equality_fn(left table.Type) string {
+fn (mut g Gen) gen_map_equality_fn(left ast.Type) string {
 	ptr_typ := g.typ(left).trim('*')
 	if ptr_typ in g.map_fn_definitions {
 		return ptr_typ
@@ -281,7 +281,7 @@ fn (mut g Gen) gen_map_equality_fn(left table.Type) string {
 	kind := g.table.type_kind(value_typ)
 	if kind == .function {
 		value_sym := g.table.get_type_symbol(value_typ)
-		func := value_sym.info as table.FnType
+		func := value_sym.info as ast.FnType
 		ret_styp := g.typ(func.func.return_type)
 		fn_builder.write_string('\t\t$ret_styp (*v) (')
 		arg_len := func.func.params.len
