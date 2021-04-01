@@ -69,6 +69,16 @@ pub:
 	data         string
 }
 
+struct UnexpectedExtraAttributeError {
+	msg  string
+	code int
+}
+
+struct MultiplePathAttributesError {
+	msg  string = 'Expected at most one path attribute'
+	code int
+}
+
 // declaring init_once in your App struct is optional
 pub fn (ctx Context) init_once() {}
 
@@ -467,7 +477,7 @@ fn parse_attrs(name string, attrs []string) ?([]http.Method, string) {
 		}
 		if attr.starts_with('/') {
 			if path != '' {
-				return error('Expected at most one path attribute')
+				return IError(&MultiplePathAttributesError{})
 			}
 			path = attr
 			x.delete(i)
@@ -476,7 +486,9 @@ fn parse_attrs(name string, attrs []string) ?([]http.Method, string) {
 		i++
 	}
 	if x.len > 0 {
-		return error('Encountered unexpected extra attributes: $x')
+		return IError(&UnexpectedExtraAttributeError{
+			msg: 'Encountered unexpected extra attributes: $x'
+		})
 	}
 	if methods.len == 0 {
 		methods = [http.Method.get]

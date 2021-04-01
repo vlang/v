@@ -12,30 +12,47 @@ pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
 pub type Expr = AnonFn | ArrayDecompose | ArrayInit | AsCast | Assoc | AtExpr | BoolLiteral |
 	CTempVar | CallExpr | CastExpr | ChanInit | CharLiteral | Comment | ComptimeCall |
-	ComptimeSelector | ConcatExpr | DumpExpr | EnumVal | FloatLiteral | GoExpr | Ident |
-	IfExpr | IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | Likely | LockExpr |
-	MapInit | MatchExpr | None | OffsetOf | OrExpr | ParExpr | PostfixExpr | PrefixExpr |
-	RangeExpr | SelectExpr | SelectorExpr | SizeOf | SqlExpr | StringInterLiteral | StringLiteral |
-	StructInit | Type | TypeOf | UnsafeExpr
+	ComptimeSelector | ConcatExpr | DumpExpr | EmptyExpr | EnumVal | FloatLiteral | GoExpr |
+	Ident | IfExpr | IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | Likely | LockExpr |
+	MapInit | MatchExpr | NodeError | None | OffsetOf | OrExpr | ParExpr | PostfixExpr |
+	PrefixExpr | RangeExpr | SelectExpr | SelectorExpr | SizeOf | SqlExpr | StringInterLiteral |
+	StringLiteral | StructInit | Type | TypeOf | UnsafeExpr
 
 pub type Stmt = AsmStmt | AssertStmt | AssignStmt | Block | BranchStmt | CompFor | ConstDecl |
-	DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl |
-	GoStmt | GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module | Return |
-	SqlStmt | StructDecl | TypeDecl
+	DeferStmt | EmptyStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt |
+	GlobalDecl | GoStmt | GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module |
+	NodeError | Return | SqlStmt | StructDecl | TypeDecl
 
 // NB: when you add a new Expr or Stmt type with a .pos field, remember to update
 // the .position() token.Position methods too.
 pub type ScopeObject = AsmRegister | ConstField | GlobalField | Var
 
-// TOOD: replace table.Param
-pub type Node = ConstField | EnumField | Expr | Field | File | GlobalField | IfBranch |
-	MatchBranch | ScopeObject | SelectBranch | Stmt | StructField | StructInitField |
-	table.Param
+// TODO: replace table.Param
+pub type Node = CallArg | ConstField | EnumField | Expr | Field | File | GlobalField |
+	IfBranch | MatchBranch | NodeError | ScopeObject | SelectBranch | Stmt | StructField |
+	StructInitField | table.Param
 
 pub struct Type {
 pub:
 	typ table.Type
 	pos token.Position
+}
+
+pub struct EmptyExpr {
+	x int
+}
+
+pub fn empty_expr() Expr {
+	return EmptyExpr{}
+}
+
+pub struct EmptyStmt {
+pub:
+	pos token.Position
+}
+
+pub fn empty_stmt() Stmt {
+	return EmptyStmt{}
 }
 
 // `{stmts}` or `unsafe {stmts}`
@@ -242,6 +259,7 @@ pub struct StructInitField {
 pub:
 	expr          Expr
 	pos           token.Position
+	name_pos      token.Position
 	comments      []Comment
 	next_comments []Comment
 pub mut:
@@ -265,6 +283,7 @@ pub mut:
 pub struct StructInit {
 pub:
 	pos      token.Position
+	name_pos token.Position
 	is_short bool
 pub mut:
 	unresolved           bool
@@ -286,6 +305,7 @@ pub:
 	pos       token.Position
 	mod_pos   token.Position
 	alias_pos token.Position
+	syms_pos  token.Position
 pub mut:
 	syms          []ImportSymbol // the list of symbols in `import {symbol1, symbol2}`
 	comments      []Comment
@@ -366,8 +386,9 @@ pub:
 // function or method call expr
 pub struct CallExpr {
 pub:
-	pos token.Position
-	mod string
+	pos      token.Position
+	name_pos token.Position
+	mod      string
 pub mut:
 	name               string // left.name()
 	is_method          bool
@@ -519,6 +540,7 @@ pub mut:
 	warnings         []errors.Warning  // all the checker warnings in the file
 	notices          []errors.Notice   // all the checker notices in the file
 	generic_fns      []&FnDecl
+	global_labels    []string // from `asm { .globl labelname }`
 }
 
 pub struct IdentFn {
@@ -1043,13 +1065,12 @@ pub:
 	clobbered    []AsmClobbered
 	pos          token.Position
 pub mut:
-	templates        []AsmTemplate
-	scope            &Scope
-	output           []AsmIO
-	input            []AsmIO
-	global_labels    []string // listed after clobbers, paired with is_goto == true
-	local_labels     []string // local to the assembly block
-	exported_symbols []string // functions defined in assembly block, exported with `.globl`
+	templates     []AsmTemplate
+	scope         &Scope
+	output        []AsmIO
+	input         []AsmIO
+	global_labels []string // labels defined in assembly block, exported with `.globl`
+	local_labels  []string // local to the assembly block
 }
 
 pub struct AsmTemplate {
@@ -1062,8 +1083,8 @@ pub mut:
 	pos          token.Position
 }
 
-// [eax+5] | j | eax | true | `a` | 0.594 | 123 | 'hi' | label_name
-pub type AsmArg = AsmAddressing | AsmAlias | AsmRegister | BoolLiteral | CharLiteral |
+// [eax+5] | j | displacement literal (e.g. 123 in [rax + 123] ) | eax | true | `a` | 0.594 | 123 | label_name
+pub type AsmArg = AsmAddressing | AsmAlias | AsmDisp | AsmRegister | BoolLiteral | CharLiteral |
 	FloatLiteral | IntegerLiteral | string
 
 pub struct AsmRegister {
@@ -1074,6 +1095,12 @@ mut:
 	size int
 }
 
+pub struct AsmDisp {
+pub:
+	val string
+	pos token.Position
+}
+
 pub struct AsmAlias {
 pub:
 	name string // a
@@ -1082,13 +1109,13 @@ pub:
 
 pub struct AsmAddressing {
 pub:
-	displacement u32 // 8, 16 or 32 bit literal value
-	scale        int = -1 // 1, 2, 4, or 8 literal 
-	mode         AddressingMode
-	pos          token.Position
+	scale int = -1 // 1, 2, 4, or 8 literal 
+	mode  AddressingMode
+	pos   token.Position
 pub mut:
-	base  AsmArg // gpr
-	index AsmArg // gpr
+	displacement AsmArg // 8, 16 or 32 bit literal value
+	base         AsmArg // gpr
+	index        AsmArg // gpr
 }
 
 // adressing modes:
@@ -1104,9 +1131,8 @@ pub enum AddressingMode {
 }
 
 pub struct AsmClobbered {
-pub:
-	reg AsmRegister
 pub mut:
+	reg      AsmRegister
 	comments []Comment
 }
 
@@ -1183,7 +1209,7 @@ pub const (
 )
 
 // TODO: saved priviled registers for arm
-const (
+pub const (
 	arm_no_number_register_list   = ['fp' /* aka r11 */, /* not instruction pointer: */ 'ip' /* aka r12 */,
 		'sp' /* aka r13 */, 'lr' /* aka r14 */, /* this is instruction pointer ('program counter'): */
 		'pc' /* aka r15 */,
@@ -1193,7 +1219,7 @@ const (
 	}
 )
 
-const (
+pub const (
 	riscv_no_number_register_list   = ['zero', 'ra', 'sp', 'gp', 'tp']
 	riscv_with_number_register_list = map{
 		'x#': 32
@@ -1408,6 +1434,12 @@ pub mut:
 	sub_structs map[int]SqlExpr
 }
 
+pub struct NodeError {
+pub:
+	idx int // index for referencing the related ast.File error
+	pos token.Position
+}
+
 [inline]
 pub fn (expr Expr) is_blank_ident() bool {
 	match expr {
@@ -1422,12 +1454,16 @@ pub fn (expr Expr) position() token.Position {
 		AnonFn {
 			return expr.decl.pos
 		}
-		ArrayDecompose, ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr, CastExpr, ChanInit,
-		CharLiteral, ConcatExpr, Comment, ComptimeCall, ComptimeSelector, EnumVal, DumpExpr, FloatLiteral,
-		GoExpr, Ident, IfExpr, IndexExpr, IntegerLiteral, Likely, LockExpr, MapInit, MatchExpr,
-		None, OffsetOf, OrExpr, ParExpr, PostfixExpr, PrefixExpr, RangeExpr, SelectExpr, SelectorExpr,
-		SizeOf, SqlExpr, StringInterLiteral, StringLiteral, StructInit, Type, TypeOf, UnsafeExpr
-		 {
+		EmptyExpr {
+			println('compiler bug, unhandled EmptyExpr position()')
+			return token.Position{}
+		}
+		NodeError, ArrayDecompose, ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr, CastExpr,
+		ChanInit, CharLiteral, ConcatExpr, Comment, ComptimeCall, ComptimeSelector, EnumVal, DumpExpr,
+		FloatLiteral, GoExpr, Ident, IfExpr, IndexExpr, IntegerLiteral, Likely, LockExpr, MapInit,
+		MatchExpr, None, OffsetOf, OrExpr, ParExpr, PostfixExpr, PrefixExpr, RangeExpr, SelectExpr,
+		SelectorExpr, SizeOf, SqlExpr, StringInterLiteral, StringLiteral, StructInit, Type, TypeOf,
+		UnsafeExpr {
 			return expr.pos
 		}
 		IfGuardExpr {
@@ -1531,6 +1567,9 @@ pub:
 
 pub fn (node Node) position() token.Position {
 	match node {
+		NodeError {
+			return token.Position{}
+		}
 		Stmt {
 			mut pos := node.pos
 			if node is Import {
@@ -1578,6 +1617,9 @@ pub fn (node Node) position() token.Position {
 			}
 			return pos
 		}
+		CallArg {
+			return node.pos
+		}
 	}
 }
 
@@ -1603,6 +1645,7 @@ pub fn (node Node) children() []Node {
 			}
 			CallExpr {
 				children << node.left
+				children << node.args.map(Node(it))
 				children << Expr(node.or_block)
 			}
 			InfixExpr {
@@ -1723,15 +1766,19 @@ pub fn (node Node) children() []Node {
 // a dependency cycle between v.ast and v.table, for the single
 // field table.Field.default_expr, which should be ast.Expr
 pub fn fe2ex(x table.FExpr) Expr {
-	res := Expr{}
-	unsafe { C.memcpy(&res, &x, sizeof(Expr)) }
-	return res
+	unsafe {
+		res := Expr{}
+		C.memcpy(&res, &x, sizeof(Expr))
+		return res
+	}
 }
 
 pub fn ex2fe(x Expr) table.FExpr {
-	res := table.FExpr{}
-	unsafe { C.memcpy(&res, &x, sizeof(table.FExpr)) }
-	return res
+	unsafe {
+		res := table.FExpr{}
+		C.memcpy(&res, &x, sizeof(table.FExpr))
+		return res
+	}
 }
 
 // helper for dealing with `m[k1][k2][k3][k3] = value`

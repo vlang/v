@@ -73,6 +73,7 @@ mut:
 	n_asm               int  // controls assembly labels
 	inside_asm_template bool
 	inside_asm          bool
+	global_labels       []string
 }
 
 // for tests
@@ -281,6 +282,7 @@ pub fn (mut p Parser) parse() ast.File {
 		global_scope: p.global_scope
 		errors: p.errors
 		warnings: p.warnings
+		global_labels: p.global_labels
 	}
 }
 
@@ -516,8 +518,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 						return p.type_decl()
 					}
 					else {
-						p.error('wrong pub keyword usage')
-						return ast.Stmt{}
+						return p.error('wrong pub keyword usage')
 					}
 				}
 			}
@@ -591,15 +592,14 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 				} else if p.pref.is_fmt {
 					return p.stmt(false)
 				} else {
-					p.error('bad top level statement ' + p.tok.str())
-					return ast.Stmt{}
+					return p.error('bad top level statement ' + p.tok.str())
 				}
 			}
 		}
 	}
 	// TODO remove dummy return statement
 	// the compiler complains if it's not there
-	return ast.Stmt{}
+	return ast.empty_stmt()
 }
 
 // TODO [if vfmt]
@@ -720,12 +720,10 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 					pos: spos.extend(p.tok.position())
 				}
 			} else if p.peek_tok.kind == .name {
-				p.error_with_pos('unexpected name `$p.peek_tok.lit`', p.peek_tok.position())
-				return ast.Stmt{}
+				return p.error_with_pos('unexpected name `$p.peek_tok.lit`', p.peek_tok.position())
 			} else if !p.inside_if_expr && !p.inside_match_body && !p.inside_or_expr
 				&& p.peek_tok.kind in [.rcbr, .eof] && !p.mark_var_as_used(p.tok.lit) {
-				p.error_with_pos('`$p.tok.lit` evaluated but not used', p.tok.position())
-				return ast.Stmt{}
+				return p.error_with_pos('`$p.tok.lit` evaluated but not used', p.tok.position())
 			}
 			return p.parse_multi_expr(is_top_level)
 		}
@@ -759,8 +757,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 					}
 				}
 				else {
-					p.error_with_pos('unexpected \$', p.tok.position())
-					return ast.Stmt{}
+					return p.error_with_pos('unexpected \$', p.tok.position())
 				}
 			}
 		}
@@ -820,9 +817,8 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			}
 		}
 		.key_const {
-			p.error_with_pos('const can only be defined at the top level (outside of functions)',
+			return p.error_with_pos('const can only be defined at the top level (outside of functions)',
 				p.tok.position())
-			return ast.Stmt{}
 		}
 		.key_asm {
 			return p.asm_stmt(false)
@@ -882,7 +878,6 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 	}
 
 	mut local_labels := []string{}
-	mut exported_symbols := []string{}
 	// riscv: https://github.com/jameslzhu/riscv-card/blob/master/riscv-card.pdf
 	// x86: https://www.felixcloutier.com/x86/
 	// arm: https://developer.arm.com/documentation/dui0068/b/arm-instruction-reference
@@ -927,8 +922,15 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 							}
 						}
 						ast.IntegerLiteral {
-							args << ast.IntegerLiteral{
-								...number_lit
+							if is_directive {
+								args << ast.AsmDisp{
+									val: number_lit.val
+									pos: number_lit.pos
+								}
+							} else {
+								args << ast.IntegerLiteral{
+									...number_lit
+								}
 							}
 						}
 						else {
@@ -973,7 +975,9 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 			comments << p.comment()
 		}
 		if is_directive && name in ['globl', 'global'] {
-			exported_symbols << args
+			for arg in args {
+				p.global_labels << (arg as ast.AsmAlias).name
+			}
 		}
 		templates << ast.AsmTemplate{
 			name: name
@@ -1051,7 +1055,6 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 		scope: scope
 		global_labels: global_labels
 		local_labels: local_labels
-		exported_symbols: exported_symbols
 	}
 }
 
@@ -1064,7 +1067,8 @@ fn (mut p Parser) reg_or_alias() ast.AsmArg {
 			p.check(.name)
 			return b
 		} else {
-			panic('parser bug: non-register ast.ScopeObject found in scope')
+			verror('parser bug: non-register ast.ScopeObject found in scope')
+			return ast.AsmDisp{} // should not be reached
 		}
 	} else {
 		p.check(.name)
@@ -1179,8 +1183,15 @@ fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 				pos: pos.extend(p.prev_tok.position())
 			}
 		} else if p.tok.kind == .number {
-			displacement := p.tok.lit.u32()
-			p.check(.name)
+			displacement := if p.tok.kind == .name {
+				x := ast.AsmArg(p.tok.lit)
+				p.check(.name)
+				x
+			} else {
+				x := ast.AsmArg(p.tok.lit)
+				p.check(.number)
+				x
+			}
 			p.check(.rsbr)
 			return ast.AsmAddressing{
 				mode: .displacement
@@ -1193,13 +1204,22 @@ fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 	}
 	if p.peek_tok.kind == .plus && p.tok.kind == .name { // [base + displacement], [base + index ∗ scale + displacement], [base + index + displacement] or [rip + displacement]
 		if p.tok.lit == 'rip' {
-			p.check(.name)
+			rip := p.reg_or_alias()
 			p.check(.plus)
-			displacement := p.tok.lit.u32()
-			p.check(.number)
+
+			displacement := if p.tok.kind == .name {
+				x := ast.AsmArg(p.tok.lit)
+				p.check(.name)
+				x
+			} else {
+				x := ast.AsmArg(p.tok.lit)
+				p.check(.number)
+				x
+			}
+			p.check(.rsbr)
 			return ast.AsmAddressing{
 				mode: .rip_plus_displacement
-				base: 'rip'
+				base: rip
 				displacement: displacement
 				pos: pos.extend(p.prev_tok.position())
 			}
@@ -1208,8 +1228,15 @@ fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 		p.check(.plus)
 		if p.peek_tok.kind == .rsbr {
 			if p.tok.kind == .number {
-				displacement := p.tok.lit.u32()
-				p.check(.number)
+				displacement := if p.tok.kind == .name {
+					x := ast.AsmArg(p.tok.lit)
+					p.check(.name)
+					x
+				} else {
+					x := ast.AsmArg(p.tok.lit)
+					p.check(.name)
+					x
+				}
 				p.check(.rsbr)
 				return ast.AsmAddressing{
 					mode: .base_plus_displacement
@@ -1227,8 +1254,15 @@ fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 			scale := p.tok.lit.int()
 			p.check(.number)
 			p.check(.plus)
-			displacement := p.tok.lit.u32()
-			p.check(.number)
+			displacement := if p.tok.kind == .name {
+				x := ast.AsmArg(p.tok.lit)
+				p.check(.name)
+				x
+			} else {
+				x := ast.AsmArg(p.tok.lit)
+				p.check(.number)
+				x
+			}
 			p.check(.rsbr)
 			return ast.AsmAddressing{
 				mode: .base_plus_index_times_scale_plus_displacement
@@ -1240,8 +1274,15 @@ fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 			}
 		} else if p.tok.kind == .plus {
 			p.check(.plus)
-			displacement := p.tok.lit.u32()
-			p.check(.number)
+			displacement := if p.tok.kind == .name {
+				x := ast.AsmArg(p.tok.lit)
+				p.check(.name)
+				x
+			} else {
+				x := ast.AsmArg(p.tok.lit)
+				p.check(.number)
+				x
+			}
 			p.check(.rsbr)
 			return ast.AsmAddressing{
 				mode: .base_plus_index_plus_displacement
@@ -1258,8 +1299,15 @@ fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 		scale := p.tok.lit.int()
 		p.check(.number)
 		p.check(.plus)
-		displacement := p.tok.lit.u32()
-		p.check(.number)
+		displacement := if p.tok.kind == .name {
+			x := ast.AsmArg(p.tok.lit)
+			p.check(.name)
+			x
+		} else {
+			x := ast.AsmArg(p.tok.lit)
+			p.check(.number)
+			x
+		}
 		p.check(.rsbr)
 		return ast.AsmAddressing{
 			mode: .index_times_scale_plus_displacement
@@ -1483,8 +1531,8 @@ pub fn (mut p Parser) check_for_impure_v(language table.Language, pos token.Posi
 	}
 }
 
-pub fn (mut p Parser) error(s string) {
-	p.error_with_pos(s, p.tok.position())
+pub fn (mut p Parser) error(s string) ast.NodeError {
+	return p.error_with_pos(s, p.tok.position())
 }
 
 pub fn (mut p Parser) warn(s string) {
@@ -1495,7 +1543,7 @@ pub fn (mut p Parser) note(s string) {
 	p.note_with_pos(s, p.tok.position())
 }
 
-pub fn (mut p Parser) error_with_pos(s string, pos token.Position) {
+pub fn (mut p Parser) error_with_pos(s string, pos token.Position) ast.NodeError {
 	if p.pref.fatal_errors {
 		exit(1)
 	}
@@ -1522,6 +1570,10 @@ pub fn (mut p Parser) error_with_pos(s string, pos token.Position) {
 		// of the parser logic does not expect that, and may loop forever.
 		// The p.next() here is needed, so the parser is more robust, and *always* advances, even in the -silent mode.
 		p.next()
+	}
+	return ast.NodeError{
+		idx: p.errors.len - 1
+		pos: pos
 	}
 }
 
@@ -1611,8 +1663,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	left, left_comments := p.expr_list()
 	left0 := left[0]
 	if tok.kind == .key_mut && p.tok.kind != .decl_assign {
-		p.error('expecting `:=` (e.g. `mut x :=`)')
-		return ast.Stmt{}
+		return p.error('expecting `:=` (e.g. `mut x :=`)')
 	}
 	// TODO remove translated
 	if p.tok.kind in [.assign, .decl_assign] || p.tok.kind.is_assign() {
@@ -1624,8 +1675,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 				&& node !is ast.PostfixExpr && !(node is ast.InfixExpr
 				&& (node as ast.InfixExpr).op in [.left_shift, .arrow]) && node !is ast.ComptimeCall
 				&& node !is ast.SelectorExpr && node !is ast.DumpExpr {
-				p.error_with_pos('expression evaluated but not used', node.position())
-				return ast.Stmt{}
+				return p.error_with_pos('expression evaluated but not used', node.position())
 			}
 		}
 	}
@@ -1761,7 +1811,7 @@ fn (p &Parser) is_generic_call() bool {
 
 pub fn (mut p Parser) name_expr() ast.Expr {
 	prev_tok_kind := p.prev_tok.kind
-	mut node := ast.Expr{}
+	mut node := ast.empty_expr()
 	if p.expecting_type {
 		p.expecting_type = false
 		// get type position before moving to next
@@ -1805,7 +1855,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		mut last_pos := first_pos
 		chan_type := p.parse_chan_type()
 		mut has_cap := false
-		mut cap_expr := ast.Expr{}
+		mut cap_expr := ast.empty_expr()
 		p.check(.lcbr)
 		if p.tok.kind == .rcbr {
 			last_pos = p.tok.position()
@@ -1819,12 +1869,10 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 					cap_expr = p.expr(0)
 				}
 				'len', 'init' {
-					p.error('`$key` cannot be initialized for `chan`. Did you mean `cap`?')
-					return ast.Expr{}
+					return p.error('`$key` cannot be initialized for `chan`. Did you mean `cap`?')
 				}
 				else {
-					p.error('wrong field `$key`, expecting `cap`')
-					return ast.Expr{}
+					return p.error('wrong field `$key`, expecting `cap`')
 				}
 			}
 			last_pos = p.tok.position()
@@ -1843,15 +1891,13 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			return p.string_expr()
 		} else {
 			// don't allow any other string prefix except `r`, `js` and `c`
-			p.error('only `c`, `r`, `js` are recognized string prefixes, but you tried to use `$p.tok.lit`')
-			return ast.Expr{}
+			return p.error('only `c`, `r`, `js` are recognized string prefixes, but you tried to use `$p.tok.lit`')
 		}
 	}
 	// don't allow r`byte` and c`byte`
 	if p.tok.lit in ['r', 'c'] && p.peek_tok.kind == .chartoken {
 		opt := if p.tok.lit == 'r' { '`r` (raw string)' } else { '`c` (c string)' }
-		p.error('cannot use $opt with `byte` and `rune`')
-		return ast.Expr{}
+		return p.error('cannot use $opt with `byte` and `rune`')
 	}
 	known_var := p.mark_var_as_used(p.tok.lit)
 	mut is_mod_cast := false
@@ -1918,8 +1964,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			// without the next line int would result in int*
 			p.is_amp = false
 			p.check(.lpar)
-			mut expr := ast.Expr{}
-			mut arg := ast.Expr{}
+			mut expr := ast.empty_expr()
+			mut arg := ast.empty_expr()
 			mut has_arg := false
 			expr = p.expr(0)
 			// TODO, string(b, len)
@@ -2021,7 +2067,7 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 			left: left
 			pos: pos
 			index: ast.RangeExpr{
-				low: ast.Expr{}
+				low: ast.empty_expr()
 				high: high
 				has_high: true
 				pos: pos
@@ -2033,7 +2079,7 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 	if p.tok.kind == .dotdot {
 		// [start..end] or [start..]
 		p.next()
-		mut high := ast.Expr{}
+		mut high := ast.empty_expr()
 		if p.tok.kind != .rsbr {
 			has_high = true
 			high = p.expr(0)
@@ -2271,7 +2317,7 @@ fn (mut p Parser) string_expr() ast.Expr {
 	if is_raw || is_cstr {
 		p.next()
 	}
-	mut node := ast.Expr{}
+	mut node := ast.empty_expr()
 	val := p.tok.lit
 	pos := p.tok.position()
 	if p.peek_tok.kind != .str_dollar {
@@ -2342,8 +2388,7 @@ fn (mut p Parser) string_expr() ast.Expr {
 					has_fmt = true
 					p.next()
 				} else {
-					p.error('format specifier may only be one letter')
-					return ast.Expr{}
+					return p.error('format specifier may only be one letter')
 				}
 			}
 		}
@@ -2381,7 +2426,7 @@ fn (mut p Parser) parse_number_literal() ast.Expr {
 	}
 	lit := p.tok.lit
 	full_lit := if is_neg { '-' + lit } else { lit }
-	mut node := ast.Expr{}
+	mut node := ast.empty_expr()
 	if lit.index_any('.eE') >= 0 && lit[..2] !in ['0x', '0X', '0o', '0O', '0b', '0B'] {
 		node = ast.FloatLiteral{
 			val: full_lit
@@ -2539,7 +2584,14 @@ fn (mut p Parser) import_stmt() ast.Import {
 		}
 	}
 	if p.tok.kind == .lcbr { // import module { fn1, Type2 } syntax
+		mut initial_syms_pos := p.tok.position()
 		p.import_syms(mut import_node)
+		initial_syms_pos = initial_syms_pos.extend(p.tok.position())
+		import_node = ast.Import{
+			...import_node
+			syms_pos: initial_syms_pos
+			pos: import_node.pos.extend(initial_syms_pos)
+		}
 		p.register_used_import(mod_alias) // no `unused import` msg for parent
 	}
 	pos_t := p.tok.position()
@@ -2723,7 +2775,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 			p.error('global assign must have the type around the value, use `__global ( name = type(value) )`')
 			return ast.GlobalDecl{}
 		}
-		mut expr := ast.Expr{}
+		mut expr := ast.empty_expr()
 		if has_expr {
 			if p.tok.kind != .lpar {
 				p.error('global assign must have a type and value, use `__global ( name = type(value) )` or `__global ( name type )`')
@@ -2778,7 +2830,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		pos := p.tok.position()
 		val := p.check_name()
 		vals << val
-		mut expr := ast.Expr{}
+		mut expr := ast.empty_expr()
 		mut has_expr := false
 		// p.warn('enum val $val')
 		if p.tok.kind == .assign {
@@ -2863,7 +2915,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	if name.len == 1 && name[0].is_capital() {
 		p.error_with_pos('single letter capital names are reserved for generic template types.',
 			decl_pos)
-		return ast.TypeDecl{}
+		return ast.FnTypeDecl{}
 	}
 	mut sum_variants := []ast.SumTypeVariant{}
 	p.check(.assign)
@@ -3072,13 +3124,11 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 	mut pos := p.tok.position()
 	p.next()
 	if p.tok.kind != .lcbr {
-		p.error_with_pos('please use `unsafe {`', p.tok.position())
-		return ast.Stmt{}
+		return p.error_with_pos('please use `unsafe {`', p.tok.position())
 	}
 	p.next()
 	if p.inside_unsafe {
-		p.error_with_pos('already inside `unsafe` block', pos)
-		return ast.Stmt{}
+		return p.error_with_pos('already inside `unsafe` block', pos)
 	}
 	if p.tok.kind == .rcbr {
 		// `unsafe {}`

@@ -8,12 +8,12 @@ import runtime
 import benchmark
 
 const skip_files = [
-		'non_existing.vv' /* minimize commit diff churn, do not remove */,
-	]
+	'non_existing.vv' /* minimize commit diff churn, do not remove */,
+]
 
 const skip_on_ubuntu_musl = [
-		'vlib/v/checker/tests/vweb_tmpl_used_var.vv',
-	]
+	'vlib/v/checker/tests/vweb_tmpl_used_var.vv',
+]
 
 const turn_off_vcolors = os.setenv('VCOLORS', 'never', true)
 
@@ -117,14 +117,22 @@ fn test_all() {
 		parallel_jobs: 1
 		label: 'comptime define tests'
 	}
-	ct_tasks.add_checked_run('-d mysymbol run', '.mysymbol.run.out', ['custom_comptime_define_error.vv'])
-	ct_tasks.add_checked_run('-d mydebug run', '.mydebug.run.out', ['custom_comptime_define_if_flag.vv'])
-	ct_tasks.add_checked_run('-d nodebug run', '.nodebug.run.out', ['custom_comptime_define_if_flag.vv'])
+	ct_tasks.add_checked_run('-d mysymbol run', '.mysymbol.run.out', [
+		'custom_comptime_define_error.vv',
+	])
+	ct_tasks.add_checked_run('-d mydebug run', '.mydebug.run.out', [
+		'custom_comptime_define_if_flag.vv',
+	])
+	ct_tasks.add_checked_run('-d nodebug run', '.nodebug.run.out', [
+		'custom_comptime_define_if_flag.vv',
+	])
 	ct_tasks.add_checked_run('run', '.run.out', ['custom_comptime_define_if_debug.vv'])
 	ct_tasks.add_checked_run('-g run', '.g.run.out', ['custom_comptime_define_if_debug.vv'])
 	ct_tasks.add_checked_run('-cg run', '.cg.run.out', ['custom_comptime_define_if_debug.vv'])
 	ct_tasks.add_checked_run('-d debug run', '.debug.run.out', ['custom_comptime_define_if_debug.vv'])
-	ct_tasks.add_checked_run('-d debug -d bar run', '.debug.bar.run.out', ['custom_comptime_define_if_debug.vv'])
+	ct_tasks.add_checked_run('-d debug -d bar run', '.debug.bar.run.out', [
+		'custom_comptime_define_if_debug.vv',
+	])
 	ct_tasks.run()
 }
 
@@ -179,10 +187,10 @@ fn (mut tasks Tasks) run() {
 	}
 	$if msvc {
 		m_skip_files << 'vlib/v/checker/tests/asm_alias_does_not_exist.vv'
-		m_skip_files << 'vlib/v/checker/tests/asm_immutable_err.vv'	
+		m_skip_files << 'vlib/v/checker/tests/asm_immutable_err.vv'
 		// TODO: investigate why MSVC regressed
 		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_1.vv'
-		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_with_explanation_2.vv'        
+		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_with_explanation_2.vv'
 	}
 	for i in 0 .. tasks.all.len {
 		if tasks.all[i].path in m_skip_files {
@@ -194,6 +202,10 @@ fn (mut tasks Tasks) run() {
 	for _ in 0 .. vjobs {
 		go work_processor(mut work, mut results)
 	}
+	if github_job == '' {
+		println('')
+	}
+	mut line_can_be_erased := true
 	mut total_errors := 0
 	for _ in 0 .. tasks.all.len {
 		mut task := TaskDescription{}
@@ -202,6 +214,7 @@ fn (mut tasks Tasks) run() {
 		if task.is_skipped {
 			bench.skip()
 			eprintln(bstep_message(mut bench, benchmark.b_skip, task.path, task.took))
+			line_can_be_erased = false
 			continue
 		}
 		if task.is_error {
@@ -219,14 +232,22 @@ fn (mut tasks Tasks) run() {
 			println(task.found___)
 			println('============\n')
 			diff_content(task.expected, task.found___)
+			line_can_be_erased = false
 		} else {
 			bench.ok()
 			if tasks.show_cmd {
 				eprintln(bstep_message(mut bench, benchmark.b_ok, '$task.cli_cmd $task.path',
 					task.took))
 			} else {
-				eprintln(bstep_message(mut bench, benchmark.b_ok, task.path, task.took))
+				if github_job == '' {
+					// local mode:
+					if line_can_be_erased {
+						term.clear_previous_line()
+					}
+					println(bstep_message(mut bench, benchmark.b_ok, task.path, task.took))
+				}
 			}
+			line_can_be_erased = true
 		}
 	}
 	bench.stop()

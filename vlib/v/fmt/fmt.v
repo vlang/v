@@ -365,7 +365,7 @@ pub fn (mut f Fmt) node_str(node ast.Node) string {
 //=== General Stmt-related methods and helpers ===//
 
 pub fn (mut f Fmt) stmts(stmts []ast.Stmt) {
-	mut prev_stmt := if stmts.len > 0 { stmts[0] } else { ast.Stmt{} }
+	mut prev_stmt := if stmts.len > 0 { stmts[0] } else { ast.empty_stmt() }
 	f.indent++
 	for stmt in stmts {
 		if !f.pref.building_v && f.should_insert_newline_before_node(stmt, prev_stmt) {
@@ -382,6 +382,8 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 		eprintln('stmt: ${node.pos:-42} | node: ${node.type_name():-20}')
 	}
 	match node {
+		ast.NodeError {}
+		ast.EmptyStmt {}
 		ast.AsmStmt {
 			f.asm_stmt(node)
 		}
@@ -480,6 +482,8 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		eprintln('expr: ${node.position():-42} | node: ${node.type_name():-20} | $node.str()')
 	}
 	match mut node {
+		ast.NodeError {}
+		ast.EmptyExpr {}
 		ast.AnonFn {
 			f.fn_decl(node.decl)
 		}
@@ -746,37 +750,45 @@ fn (mut f Fmt) asm_arg(arg ast.AsmArg) {
 					f.asm_arg(base)
 				}
 				.displacement {
-					f.write('$displacement')
+					f.asm_arg(displacement)
 				}
 				.base_plus_displacement {
 					f.asm_arg(base)
-					f.write(' + $displacement')
+					f.write(' + ')
+					f.asm_arg(displacement)
 				}
 				.index_times_scale_plus_displacement {
 					f.asm_arg(index)
-					f.write(' * $scale + $displacement')
+					f.write(' * $scale + ')
+					f.asm_arg(displacement)
 				}
 				.base_plus_index_plus_displacement {
 					f.asm_arg(base)
 					f.write(' + ')
 					f.asm_arg(index)
-					f.write(' + $displacement')
+					f.write(' + ')
+					f.asm_arg(displacement)
 				}
 				.base_plus_index_times_scale_plus_displacement {
 					f.asm_arg(base)
 					f.write(' + ')
 					f.asm_arg(index)
-					f.write(' * $scale + $displacement')
+					f.write(' * $scale + ')
+					f.asm_arg(displacement)
 				}
 				.rip_plus_displacement {
 					f.asm_arg(base)
-					f.write(' + $displacement')
+					f.write(' + ')
+					f.asm_arg(displacement)
 				}
 				.invalid {
 					panic('fmt: invalid addressing mode')
 				}
 			}
 			f.write(']')
+		}
+		ast.AsmDisp {
+			f.write(arg.val)
 		}
 	}
 }
@@ -895,7 +907,11 @@ pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
 		}
 		f.indent++
 	}
-	mut prev_field := if node.fields.len > 0 { ast.Node(node.fields[0]) } else { ast.Node{} }
+	mut prev_field := if node.fields.len > 0 {
+		ast.Node(node.fields[0])
+	} else {
+		ast.Node(ast.NodeError{})
+	}
 	for field in node.fields {
 		if field.comments.len > 0 {
 			if f.should_insert_newline_before_node(ast.Expr(field.comments[0]), prev_field) {

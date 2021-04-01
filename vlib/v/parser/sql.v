@@ -22,7 +22,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 	}
 	table_pos := p.tok.position()
 	table_type := p.parse_type() // `User`
-	mut where_expr := ast.Expr{}
+	mut where_expr := ast.empty_expr()
 	has_where := p.tok.kind == .name && p.tok.lit == 'where'
 	mut query_one := false // one object is returned, not an array
 	if has_where {
@@ -40,11 +40,11 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		}
 	}
 	mut has_limit := false
-	mut limit_expr := ast.Expr{}
+	mut limit_expr := ast.empty_expr()
 	mut has_offset := false
-	mut offset_expr := ast.Expr{}
+	mut offset_expr := ast.empty_expr()
 	mut has_order := false
-	mut order_expr := ast.Expr{}
+	mut order_expr := ast.empty_expr()
 	mut has_desc := false
 	if p.tok.kind == .name && p.tok.lit == 'order' {
 		p.check_name() // `order`
@@ -52,8 +52,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		if p.tok.kind == .name && p.tok.lit == 'by' {
 			p.check_name() // `by`
 		} else {
-			p.error_with_pos('use `order by` in ORM queries', order_pos)
-			return ast.Expr{}
+			return p.error_with_pos('use `order by` in ORM queries', order_pos)
 		}
 		has_order = true
 		order_expr = p.expr(0)
@@ -173,7 +172,7 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 	}
 
 	mut table_pos := p.tok.position()
-	mut where_expr := ast.Expr{}
+	mut where_expr := ast.empty_expr()
 	if kind == .insert {
 		table_pos = p.tok.position()
 		table_type = p.parse_type()

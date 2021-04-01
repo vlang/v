@@ -110,8 +110,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 		// a, b := a + 1, b
 		for r in right {
 			p.check_undefined_variables(left, r) or {
-				p.error('check_undefined_variables failed')
-				return ast.Stmt{}
+				return p.error('check_undefined_variables failed')
 			}
 		}
 	} else if left.len > 1 {
@@ -119,8 +118,8 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 		for r in right {
 			has_cross_var = p.check_cross_variables(left, r)
 			if op !in [.assign, .decl_assign] {
-				p.error_with_pos('unexpected $op.str(), expecting := or = or comma', pos)
-				return ast.Stmt{}
+				return p.error_with_pos('unexpected $op.str(), expecting := or = or comma',
+					pos)
 			}
 			if has_cross_var {
 				break
@@ -133,8 +132,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 			ast.Ident {
 				if op == .decl_assign {
 					if p.scope.known_var(lx.name) {
-						p.error_with_pos('redefinition of `$lx.name`', lx.pos)
-						return ast.Stmt{}
+						return p.error_with_pos('redefinition of `$lx.name`', lx.pos)
 					}
 					mut share := table.ShareType(0)
 					if lx.info is ast.IdentVar {
@@ -142,9 +140,8 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 						share = iv.share
 						if iv.is_static {
 							if !p.pref.translated && !p.pref.is_fmt && !p.inside_unsafe_fn {
-								p.error_with_pos('static variables are supported only in -translated mode or in [unsafe] fn',
+								return p.error_with_pos('static variables are supported only in -translated mode or in [unsafe] fn',
 									lx.pos)
-								return ast.Stmt{}
 							}
 							is_static = true
 						}
@@ -152,7 +149,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 					r0 := right[0]
 					mut v := ast.Var{
 						name: lx.name
-						expr: if left.len == right.len { right[i] } else { ast.Expr{} }
+						expr: if left.len == right.len { right[i] } else { ast.empty_expr() }
 						share: share
 						is_mut: lx.is_mut || p.inside_for
 						pos: lx.pos
@@ -175,9 +172,8 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 			}
 			ast.IndexExpr {
 				if op == .decl_assign {
-					p.error_with_pos('non-name `$lx.left[$lx.index]` on left side of `:=`',
+					return p.error_with_pos('non-name `$lx.left[$lx.index]` on left side of `:=`',
 						lx.pos)
-					return ast.Stmt{}
 				}
 				lx.is_setter = true
 			}
@@ -185,9 +181,8 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 			ast.PrefixExpr {}
 			ast.SelectorExpr {
 				if op == .decl_assign {
-					p.error_with_pos('struct fields can only be declared during the initialization',
+					return p.error_with_pos('struct fields can only be declared during the initialization',
 						lx.pos)
-					return ast.Stmt{}
 				}
 			}
 			else {

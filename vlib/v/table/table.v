@@ -247,7 +247,9 @@ fn (t &Table) register_aggregate_field(mut sym TypeSymbol, name string) ?Field {
 	mut agg_info := sym.info as Aggregate
 	// an aggregate always has at least 2 types
 	mut found_once := false
-	mut new_field := Field{}
+	mut new_field := Field{
+		// default_expr: ast.empty_expr()
+	}
 	for typ in agg_info.types {
 		ts := t.get_type_symbol(typ)
 		if type_field := t.find_field(ts, name) {
@@ -935,6 +937,178 @@ pub fn (mut t Table) bitsize_to_type(bit_size int) Type {
 				panic('compiler bug: bitsizes must be multiples of 8')
 			}
 			return new_type(t.find_or_register_array_fixed(byte_type, bit_size / 8))
+		}
+	}
+}
+
+// resolve_generic_by_names resolves generics to real types T => int.
+// Even map[string]map[string]T can be resolved.
+// This is used for resolving the generic return type of CallExpr white `unwrap_generic` is used to resolve generic usage in FnDecl.
+pub fn (mut t Table) resolve_generic_by_names(generic_type Type, generic_names []string, generic_types []Type) ?Type {
+	mut sym := t.get_type_symbol(generic_type)
+	if sym.name in generic_names {
+		index := generic_names.index(sym.name)
+		mut typ := generic_types[index]
+		typ = typ.set_nr_muls(generic_type.nr_muls())
+		if generic_type.has_flag(.optional) {
+			typ = typ.set_flag(.optional)
+		}
+		return typ
+	} else if sym.kind == .array {
+		info := sym.info as Array
+		mut elem_type := info.elem_type
+		mut elem_sym := t.get_type_symbol(elem_type)
+		mut dims := 1
+		for mut elem_sym.info is Array {
+			elem_type = elem_sym.info.elem_type
+			elem_sym = t.get_type_symbol(elem_type)
+			dims++
+		}
+		if typ := t.resolve_generic_by_names(elem_type, generic_names, generic_types) {
+			idx := t.find_or_register_array_with_dims(typ, dims)
+			array_typ := new_type(idx)
+			return array_typ
+		}
+	} else if sym.kind == .chan {
+		info := sym.info as Chan
+		if typ := t.resolve_generic_by_names(info.elem_type, generic_names, generic_types) {
+			idx := t.find_or_register_chan(typ, typ.nr_muls() > 0)
+			chan_typ := new_type(idx)
+			return chan_typ
+		}
+	} else if mut sym.info is MultiReturn {
+		mut types := []Type{}
+		mut type_changed := false
+		for ret_type in sym.info.types {
+			if typ := t.resolve_generic_by_names(ret_type, generic_names, generic_types) {
+				types << typ
+				type_changed = true
+			} else {
+				types << ret_type
+			}
+		}
+		if type_changed {
+			idx := t.find_or_register_multi_return(types)
+			typ := new_type(idx)
+			return typ
+		}
+	} else if mut sym.info is Map {
+		mut type_changed := false
+		mut unwrapped_key_type := sym.info.key_type
+		mut unwrapped_value_type := sym.info.value_type
+		if typ := t.resolve_generic_by_names(sym.info.key_type, generic_names, generic_types) {
+			unwrapped_key_type = typ
+			type_changed = true
+		}
+		if typ := t.resolve_generic_by_names(sym.info.value_type, generic_names, generic_types) {
+			unwrapped_value_type = typ
+			type_changed = true
+		}
+		if type_changed {
+			idx := t.find_or_register_map(unwrapped_key_type, unwrapped_value_type)
+			return new_type(idx)
+		}
+	}
+	return none
+}
+
+// resolve_generic_by_types resolves generics to real types T => int.
+// Even map[string]map[string]T can be resolved.
+// This is used for resolving the generic return type of CallExpr white `unwrap_generic` is used to resolve generic usage in FnDecl.
+pub fn (mut t Table) resolve_generic_by_types(generic_type Type, from_types []Type, to_types []Type) ?Type {
+	mut sym := t.get_type_symbol(generic_type)
+	if generic_type in from_types {
+		index := from_types.index(generic_type)
+		mut typ := to_types[index]
+		typ = typ.set_nr_muls(generic_type.nr_muls())
+		if generic_type.has_flag(.optional) {
+			typ = typ.set_flag(.optional)
+		}
+		return typ
+	} else if sym.kind == .array {
+		info := sym.info as Array
+		mut elem_type := info.elem_type
+		mut elem_sym := t.get_type_symbol(elem_type)
+		mut dims := 1
+		for mut elem_sym.info is Array {
+			elem_type = elem_sym.info.elem_type
+			elem_sym = t.get_type_symbol(elem_type)
+			dims++
+		}
+		if typ := t.resolve_generic_by_types(elem_type, from_types, to_types) {
+			idx := t.find_or_register_array_with_dims(typ, dims)
+			return new_type(idx)
+		}
+	} else if sym.kind == .chan {
+		info := sym.info as Chan
+		if typ := t.resolve_generic_by_types(info.elem_type, from_types, to_types) {
+			idx := t.find_or_register_chan(typ, typ.nr_muls() > 0)
+			return new_type(idx)
+		}
+	} else if mut sym.info is MultiReturn {
+		mut types := []Type{}
+		mut type_changed := false
+		for ret_type in sym.info.types {
+			if typ := t.resolve_generic_by_types(ret_type, from_types, to_types) {
+				types << typ
+				type_changed = true
+			} else {
+				types << ret_type
+			}
+		}
+		if type_changed {
+			idx := t.find_or_register_multi_return(types)
+			return new_type(idx)
+		}
+	} else if mut sym.info is Map {
+		mut type_changed := false
+		mut unwrapped_key_type := sym.info.key_type
+		mut unwrapped_value_type := sym.info.value_type
+		if typ := t.resolve_generic_by_types(sym.info.key_type, from_types, to_types) {
+			unwrapped_key_type = typ
+			type_changed = true
+		}
+		if typ := t.resolve_generic_by_types(sym.info.value_type, from_types, to_types) {
+			unwrapped_value_type = typ
+			type_changed = true
+		}
+		if type_changed {
+			idx := t.find_or_register_map(unwrapped_key_type, unwrapped_value_type)
+			return new_type(idx)
+		}
+	}
+	return none
+}
+
+// generic struct instantiations to concrete types
+pub fn (mut t Table) generic_struct_insts_to_concrete() {
+	for idx, _ in t.type_symbols {
+		mut typ := unsafe { &t.type_symbols[idx] }
+		if typ.kind == .generic_struct_inst {
+			info := typ.info as GenericStructInst
+			parent := t.type_symbols[info.parent_idx]
+			if parent.kind == .placeholder {
+				typ.kind = .placeholder
+				continue
+			}
+			mut parent_info := parent.info as Struct
+			mut fields := parent_info.fields.clone()
+			if parent_info.generic_types.len == info.generic_types.len {
+				for i, _ in fields {
+					mut field := fields[i]
+					if t_typ := t.resolve_generic_by_types(field.typ, parent_info.generic_types,
+						info.generic_types)
+					{
+						field.typ = t_typ
+					}
+					fields[i] = field
+				}
+				parent_info.generic_types = []
+				parent_info.fields = fields
+				typ.is_public = true
+				typ.kind = .struct_
+				typ.info = parent_info
+			}
 		}
 	}
 }

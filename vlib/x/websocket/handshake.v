@@ -22,7 +22,12 @@ fn (mut ws Client) handshake() ? {
 	sb.write_string('\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n')
 	sb.write_string('Sec-WebSocket-Key: ')
 	sb.write_string(seckey)
-	sb.write_string('\r\nSec-WebSocket-Version: 13\r\n\r\n')
+	sb.write_string('\r\nSec-WebSocket-Version: 13')
+	for key in ws.header.keys() {
+		val := ws.header.values_str(key).join(',')
+		sb.write_string('\r\n$key:$val')
+	}
+	sb.write_string('\r\n\r\n')
 	handshake := sb.str()
 	defer {
 		unsafe { handshake.free() }

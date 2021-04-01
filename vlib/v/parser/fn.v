@@ -91,6 +91,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 	pos.update_last_line(p.prev_tok.line_nr)
 	return ast.CallExpr{
 		name: fn_name
+		name_pos: first_pos
 		args: args
 		mod: p.mod
 		pos: pos
@@ -128,7 +129,7 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 			p.next()
 			array_decompose = true
 		}
-		mut expr := ast.Expr{}
+		mut expr := ast.empty_expr()
 		if p.tok.kind == .name && p.peek_tok.kind == .colon {
 			// `foo(key:val, key2:val2)`
 			expr = p.struct_init(true) // short_syntax:true

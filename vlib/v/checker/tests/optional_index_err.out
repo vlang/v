@@ -1,6 +1,0 @@
-vlib/v/checker/tests/optional_index_err.vv:3:14: error: cannot use optional as index (type `string`)
-    1 | fn main() {
-    2 |     v := 'hello'
-    3 |     println(v[v.last_index('l')])
-      |              ~~~~~~~~~~~~~~~~~~~
-    4 | }

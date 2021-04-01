@@ -1,7 +1,6 @@
 // Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-
 import net.urllib
 
 fn test_net_urllib() {
@@ -13,18 +12,14 @@ fn test_net_urllib() {
 		assert false
 		return
 	}
-	assert u.scheme     == 'https' &&
-		u.hostname()    == 'www.mydomain.com' &&
-		u.port()        == '8080' &&
-		u.path          == '/som/url' &&
-		u.fragment      == 'testfragment' &&
-		u.user.username == 'joe' &&
-		u.user.password == 'pass'
+	assert u.scheme == 'https' && u.hostname() == 'www.mydomain.com' && u.port() == '8080'
+		&& u.path == '/som/url' && u.fragment == 'testfragment' && u.user.username == 'joe'
+		&& u.user.password == 'pass'
 }
 
 fn test_str() {
-	url := urllib.parse("https://en.wikipedia.org/wiki/Brazil_(1985_film)") or {
-		panic("unable to parse URL")
+	url := urllib.parse('https://en.wikipedia.org/wiki/Brazil_(1985_film)') or {
+		panic('unable to parse URL')
 	}
 	assert url.str() == 'https://en.wikipedia.org/wiki/Brazil_(1985_film)'
 }
@@ -33,6 +28,18 @@ fn test_escape_unescape() {
 	original := 'те ст: т\\%'
 	escaped := urllib.query_escape(original)
 	assert escaped == '%D1%82%D0%B5+%D1%81%D1%82%3A+%D1%82%5C%25'
-	unescaped := urllib.query_unescape(escaped) or { assert false return }
+	unescaped := urllib.query_unescape(escaped) or {
+		assert false
+		return
+	}
 	assert unescaped == original
+}
+
+fn test_parse_query() ? {
+	q1 := urllib.parse_query('format=%22%25l%3A+%25c+%25t%22') ?
+	q2 := urllib.parse_query('format="%l:+%c+%t"') ?
+	// dump(q1)
+	// dump(q2)
+	assert q1.data['format'].data == ['"%l: %c %t"']
+	assert q2.data['format'].data == ['"%l: %c %t"']
 }
