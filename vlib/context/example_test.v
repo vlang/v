@@ -1,11 +1,11 @@
 module context
 
 fn test_cancel() {
-	// gen generates integers in a separate goroutine and
+	// gen generates integers in a separate routine and
 	// sends them to the returned channel.
 	// The callers of gen need to cancel the context once
 	// they are done consuming generated integers not to leak
-	// the internal goroutine started by gen.
+	// the internal routine started by gen.
 	gen := fn(ctx Context) chan int {
 		dst := chan int{}
 		go fn(ctx Context, dst chan int) {
@@ -13,7 +13,7 @@ fn test_cancel() {
 				ch := ctx.done()
 				select {
 					_ := <- ch {
-						return // returning not to leak the goroutine
+						return // returning not to leak the routine
 					}
 					dst <- 0 {}
 				}
