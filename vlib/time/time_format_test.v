@@ -72,8 +72,10 @@ fn test_get_fmt_date_str() {
 	assert '07 11 80' == time_to_test.get_fmt_date_str(.space, .mmddyy)
 	assert 'Jul 11' == time_to_test.get_fmt_date_str(.space, .mmmd)
 	assert 'Jul 11' == time_to_test.get_fmt_date_str(.space, .mmmdd)
+	assert 'Jul 11 80' == time_to_test.get_fmt_date_str(.space, .mmmddyy)
 	assert 'Jul 11 1980' == time_to_test.get_fmt_date_str(.space, .mmmddyyyy)
 	assert '1980-07-11' == time_to_test.get_fmt_date_str(.hyphen, .yyyymmdd)
+	assert '80.07.11' == time_to_test.get_fmt_date_str(.dot, .yymmdd)
 }
 
 fn test_get_fmt_str() {
