@@ -203,7 +203,6 @@ pub fn (mut zentry Zip) extract_entry(path string) ? {
 	}
 }
 
-
 // extract zip file to directory
 pub fn extract_zip_to_dir(file string, dir string) ?bool {
 	if C.access(dir.str, 0) == -1 {
@@ -215,19 +214,17 @@ pub fn extract_zip_to_dir(file string, dir string) ?bool {
 
 // zip files (full path) to zip file
 pub fn zip_files(path_to_file []string, path_to_export_zip string) ? {
-
 	// open or create new zip
-	mut zip := szip.open(path_to_export_zip, .no_compression, .write) or { panic(err) }
+	mut zip := open(path_to_export_zip, .no_compression, .write) or { panic(err) }
 
 	// add all files from the directory to the archive
 	for file in path_to_file {
-
 		// add file to zip
 		zip.open_entry(os.base(file)) or { panic(err) }
 		file_as_byte := os.read_bytes(file) or { panic(err) }
-        zip.write_entry(file_as_byte) or { panic(err) }
+		zip.write_entry(file_as_byte) or { panic(err) }
 
-        zip.close_entry()
+		zip.close_entry()
 	}
 
 	// close zip
@@ -237,7 +234,6 @@ pub fn zip_files(path_to_file []string, path_to_export_zip string) ? {
 }
 
 /*
-
 TODO add 
 // zip all files in directory to zip file
 pub fn zip_folder(path_to_dir string, path_to_export_zip string) {
