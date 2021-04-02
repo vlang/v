@@ -266,6 +266,7 @@ pub mut:
 	name          string
 	typ           table.Type
 	expected_type table.Type
+	parent_type   table.Type
 }
 
 pub struct StructInitEmbed {
