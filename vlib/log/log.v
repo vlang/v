@@ -133,7 +133,7 @@ fn (l &Log) log_cli(s string, level Level) {
 
 // send_output writes log line `s` with `level` to either the log file or the console
 // according to the value of the `.output_target` field.
-fn (mut l Log) send_output(s &string, level Level) {
+pub fn (mut l Log) send_output(s &string, level Level) {
 	if l.output_target == .file || l.output_target == .both {
 		l.log_file(s, level)
 	}
