@@ -4341,7 +4341,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 				ast.f64_type
 			})
 		}
-		if !c.table.sumtype_has_variant(node.typ, node.expr_type) && !node.typ.has_flag(.optional) && node.expr_type == ast.none_type {
+		if !c.table.sumtype_has_variant(node.typ, node.expr_type) && !node.typ.has_flag(.optional) && node.expr_type != ast.none_type {
 			c.error('cannot cast `$from_type_sym.name` to `$to_type_sym.name`', node.pos)
 		}
 	} else if mut to_type_sym.info is ast.Alias {
