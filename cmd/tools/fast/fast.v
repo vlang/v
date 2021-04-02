@@ -116,12 +116,28 @@ fn measure(cmd string, description string) int {
 
 fn measure_steps(vdir string) (int, int, int) {
 	resp := os.execute_or_panic('$vdir/vprod -o v.c -show-timings $vdir/cmd/v')
+	mut parse, mut check, mut cgen := 0, 0, 0
 	lines := resp.output.split_into_lines()
-	if lines.len != 3 {
-		return 0, 0, 0
+	if lines.len == 3 {
+		parse = lines[0].before('.').int()
+		check = lines[1].before('.').int()
+		cgen = lines[2].before('.').int()
+	} else {
+		ms_lines := lines.map(it.split('  ms '))
+		for line in ms_lines {
+			if line.len == 2 {
+				// if line[1] == 'SCAN' { scan = line[0].int() }
+				if line[1] == 'PARSE' {
+					parse = line[0].int()
+				}
+				if line[1] == 'CHECK' {
+					check = line[0].int()
+				}
+				if line[1] == 'C GEN' {
+					cgen = line[0].int()
+				}
+			}
+		}
 	}
-	parse := lines[0].before('.').int()
-	check := lines[1].before('.').int()
-	cgen := lines[2].before('.').int()
 	return parse, check, cgen
 }
