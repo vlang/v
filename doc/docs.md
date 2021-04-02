@@ -2055,7 +2055,7 @@ particularly useful for initializing a C library.
 Briefly:
 
 ```powershell
-v [option] [param]
+v [module option] [param]
 ```
 
 ```
