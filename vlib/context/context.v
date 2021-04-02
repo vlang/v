@@ -3,17 +3,17 @@ module context
 import time
 
 pub const (
-	background = Context(EmptyContext{})
-	todo = Context(EmptyContext{})
+	background         = Context(EmptyContext{})
+	todo               = Context(EmptyContext{})
 
 	cancel_context_key = [0]
 
 	// canceled is the error returned by Context.err when the context is canceled.
-	canceled = 'context canceled'
+	canceled           = 'context canceled'
 
 	// deadline_exceeded is the error returned by Context.err when the context's
 	// deadline passes.
-	deadline_exceeded = 'context deadline exceeded'
+	deadline_exceeded  = 'context deadline exceeded'
 )
 
 // background returns an empty Context. It is never canceled, has no
@@ -21,7 +21,7 @@ pub const (
 // initialization, and tests, and as the top-level Context for incoming
 // requests.
 pub fn background() Context {
-	return background
+	return context.background
 }
 
 // todo returns an empty Context. Code should use context.todo when
@@ -29,10 +29,10 @@ pub fn background() Context {
 // surrounding function has not yet been extended to accept a Context
 // parameter).
 pub fn todo() Context {
-	return todo
+	return context.todo
 }
 
-pub type Context = EmptyContext | CancelContext | TimerContext | CancelerContext | ValueContext
+pub type Context = CancelContext | CancelerContext | EmptyContext | TimerContext | ValueContext
 
 pub type CancelerContext = CancelContext | TimerContext
 
@@ -293,13 +293,13 @@ pub fn (ctx EmptyContext) value(key voidptr) voidptr {
 }
 
 pub fn (ctx EmptyContext) str() string {
-	if Context(ctx) == background {
-		return "context.Background"
+	if Context(ctx) == context.background {
+		return 'context.Background'
 	}
-	if Context(ctx) == todo {
-		return "context.TODO"
+	if Context(ctx) == context.todo {
+		return 'context.TODO'
 	}
-	return "unknown empty Context"
+	return 'unknown empty Context'
 }
 
 // A CancelContext can be canceled. When canceled, it also cancels any children
@@ -316,7 +316,7 @@ mut:
 // A CancelFunc does not wait for the work to stop.
 // A CancelFunc may be called by multiple goroutines simultaneously.
 // After the first call, subsequent calls to a CancelFunc do nothing.
-pub type CancelFunc = fn(c Context)
+pub type CancelFunc = fn (c Context)
 
 // with_cancel returns a copy of parent with a new done channel. The returned
 // context's done channel is closed when the returned cancel function is called
@@ -327,12 +327,18 @@ pub type CancelFunc = fn(c Context)
 pub fn with_cancel(parent Context) (&Context, CancelFunc) {
 	mut c := new_cancel_context(parent)
 	propagate_cancel(parent, mut c)
-	return &c, fn(c Context) { if c is CancelerContext { c.cancel(true, canceled) } }
+	return &c, fn (c Context) {
+		if c is CancelerContext {
+			c.cancel(true, context.canceled)
+		}
+	}
 }
 
 // new_cancel_context returns an initialized CancelContext.
 fn new_cancel_context(parent Context) CancelContext {
-	return CancelContext{context: parent}
+	return CancelContext{
+		context: parent
+	}
 }
 
 fn propagate_cancel(parent Context, mut child CancelerContext) {
@@ -346,14 +352,14 @@ fn propagate_cancel(parent Context, mut child CancelerContext) {
 		else {}
 	}
 	mut p := parent_cancel_context(parent) or {
-		go fn(parent Context, mut child CancelerContext) {
+		go fn (parent Context, mut child CancelerContext) {
 			pdone := parent.done()
 			cdone := child.done()
 			select {
 				_ := <-pdone {
 					child.cancel(false, parent.err())
 				}
-				_ := <- cdone {}
+				_ := <-cdone {}
 				else {}
 			}
 		}(parent, mut child)
@@ -379,7 +385,7 @@ fn parent_cancel_context(parent Context) ?CancelContext {
 	if done.closed {
 		return none
 	}
-	p_ptr := parent.value(cancel_context_key)
+	p_ptr := parent.value(context.cancel_context_key)
 	if !isnil(p_ptr) {
 		mut p := &CancelContext(p_ptr)
 		pdone := p.done()
@@ -392,9 +398,7 @@ fn parent_cancel_context(parent Context) ?CancelContext {
 
 // remove_child removes a context from its parent.
 fn remove_child(parent Context, child CancelerContext) {
-	shared p := parent_cancel_context(parent) or {
-		return
-	}
+	shared p := parent_cancel_context(parent) or { return }
 	lock p {
 		child_ptr := voidptr(&child)
 		p.children[child_ptr] = false
@@ -414,7 +418,7 @@ pub fn (ctx CancelContext) err() string {
 }
 
 pub fn (ctx CancelContext) value(key voidptr) voidptr {
-	if (*&byte(cancel_context_key.data)) == (*&byte(key)) {
+	if (*&byte(context.cancel_context_key.data)) == (*&byte(key)) {
 		return voidptr(&ctx)
 	}
 	return ctx.context.value(key)
@@ -422,7 +426,7 @@ pub fn (ctx CancelContext) value(key voidptr) voidptr {
 
 pub fn (shared ctx CancelContext) cancel(remove_from_parent bool, err string) {
 	if err == '' {
-		panic("context: internal error: missing cancel error")
+		panic('context: internal error: missing cancel error')
 	}
 
 	lock ctx {
@@ -434,7 +438,7 @@ pub fn (shared ctx CancelContext) cancel(remove_from_parent bool, err string) {
 
 	for child_ptr, _ in ctx.children {
 		shared child := &CancelContext(child_ptr)
-		lock {
+		lock  {
 			child.cancel(false, err)
 		}
 	}
@@ -457,7 +461,7 @@ pub fn (ctx CancelContext) str() string {
 // delegating to CancelContext.cancel
 pub struct TimerContext {
 mut:
-	cancel CancelContext
+	cancel   CancelContext
 	finished bool
 	deadline time.Time
 }
@@ -480,23 +484,31 @@ pub fn with_deadline(parent Context, d time.Time) (&Context, CancelFunc) {
 	}
 	cancel_ctx := new_cancel_context(parent)
 	mut ctx := &TimerContext{
-		cancel: cancel_ctx,
+		cancel: cancel_ctx
 		deadline: d
 	}
 	propagate_cancel(parent, mut ctx)
 	dur := d - time.now()
 	if dur.nanoseconds() <= 0 {
-		ctx.cancel(true, deadline_exceeded) // deadline has already passed
-		return &Context(ctx), fn(c Context) { if c is CancelerContext { c.cancel(true, canceled) } }
+		ctx.cancel(true, context.deadline_exceeded) // deadline has already passed
+		return &Context(ctx), fn (c Context) {
+			if c is CancelerContext {
+				c.cancel(true, context.canceled)
+			}
+		}
 	}
 
 	if ctx.cancel.err == '' {
-		go fn(mut ctx TimerContext, dur time.Duration) {
+		go fn (mut ctx TimerContext, dur time.Duration) {
 			time.sleep(dur)
-			ctx.cancel(true, deadline_exceeded)
+			ctx.cancel(true, context.deadline_exceeded)
 		}(mut ctx, dur)
 	}
-	return &Context(ctx), fn(c Context) { if c is CancelerContext { c.cancel(true, canceled) } }
+	return &Context(ctx), fn (c Context) {
+		if c is CancelerContext {
+			c.cancel(true, context.canceled)
+		}
+	}
 }
 
 // with_timeout returns with_deadline(parent, time.now().add(timeout)).
@@ -533,16 +545,16 @@ pub fn (mut ctx TimerContext) cancel(remove_from_parent bool, err string) {
 }
 
 pub fn (ctx TimerContext) str() string {
-	return context_name(ctx.cancel.context) + '.with_deadline(' +
-		ctx.deadline.str() + ' [' + (time.now() - ctx.deadline).str() + '])'
+	return context_name(ctx.cancel.context) + '.with_deadline(' + ctx.deadline.str() + ' [' +
+		(time.now() - ctx.deadline).str() + '])'
 }
 
 // A ValueContext carries a key-value pair. It implements Value for that key and
 // delegates all other calls to the embedded Context.
 pub struct ValueContext {
 	context Context
-	key voidptr
-	value voidptr
+	key     voidptr
+	value   voidptr
 }
 
 // with_value returns a copy of parent in which the value associated with key is
