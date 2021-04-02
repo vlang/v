@@ -7,7 +7,7 @@ const (
 )
 
 fn testsuite_end() {
-	os.rmdir_all(output_dir) or { }
+	os.rmdir_all(output_dir) or {}
 }
 
 const there_is_node_available = is_nodejs_working()

@@ -4,15 +4,14 @@
 module parser
 
 import v.ast
-import v.table
 
 fn (mut p Parser) array_init() ast.ArrayInit {
 	first_pos := p.tok.position()
 	mut last_pos := p.tok.position()
 	p.check(.lsbr)
 	// p.warn('array_init() exp=$p.expected_type')
-	mut array_type := table.void_type
-	mut elem_type := table.void_type
+	mut array_type := ast.void_type
+	mut elem_type := ast.void_type
 	mut elem_type_pos := first_pos
 	mut exprs := []ast.Expr{}
 	mut ecmnts := [][]ast.Comment{}
@@ -21,7 +20,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 	mut has_val := false
 	mut has_type := false
 	mut has_default := false
-	mut default_expr := ast.Expr{}
+	mut default_expr := ast.empty_expr()
 	if p.tok.kind == .rsbr {
 		last_pos = p.tok.position()
 		// []typ => `[]` and `typ` must be on the same line
@@ -34,7 +33,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 			// this is set here because it's a known type, others could be the
 			// result of expr so we do those in checker
 			idx := p.table.find_or_register_array(elem_type)
-			array_type = table.new_type(idx)
+			array_type = ast.new_type(idx)
 			has_type = true
 		}
 		last_pos = p.tok.position()
@@ -103,9 +102,9 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 	}
 	mut has_len := false
 	mut has_cap := false
-	mut len_expr := ast.Expr{}
-	mut cap_expr := ast.Expr{}
-	if p.tok.kind == .lcbr && exprs.len == 0 && array_type != table.void_type {
+	mut len_expr := ast.empty_expr()
+	mut cap_expr := ast.empty_expr()
+	if p.tok.kind == .lcbr && exprs.len == 0 && array_type != ast.void_type {
 		// `[]int{ len: 10, cap: 100}` syntax
 		p.next()
 		for p.tok.kind != .rcbr {

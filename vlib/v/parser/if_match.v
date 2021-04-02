@@ -4,7 +4,6 @@
 module parser
 
 import v.ast
-import v.table
 import v.token
 
 fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
@@ -52,7 +51,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 				if prev_guard {
 					p.scope.register(ast.Var{
 						name: 'err'
-						typ: table.error_type
+						typ: ast.error_type
 						pos: p.tok.position()
 						is_used: true
 					})
@@ -79,7 +78,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 			return ast.IfExpr{}
 		}
 		comments << p.eat_comments({})
-		mut cond := ast.Expr{}
+		mut cond := ast.empty_expr()
 		mut is_guard := false
 		// `if x := opt() {`
 		if !is_comptime && p.peek_tok.kind == .decl_assign {
@@ -178,16 +177,16 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 			is_else = true
 			p.next()
 		} else if (p.tok.kind == .name && !(p.tok.lit == 'C' && p.peek_tok.kind == .dot)
-			&& (p.tok.lit in table.builtin_type_names || p.tok.lit[0].is_capital()
+			&& (p.tok.lit in ast.builtin_type_names || p.tok.lit[0].is_capital()
 			|| (p.peek_tok.kind == .dot && p.peek_token(2).lit.len > 0
 			&& p.peek_token(2).lit[0].is_capital()))) || p.tok.kind == .lsbr {
-			mut types := []table.Type{}
+			mut types := []ast.Type{}
 			for {
 				// Sum type match
 				parsed_type := p.parse_type()
 				ecmnts << p.eat_comments({})
 				types << parsed_type
-				exprs << ast.Type{
+				exprs << ast.TypeNode{
 					typ: parsed_type
 					pos: p.prev_tok.position()
 				}
@@ -290,7 +289,7 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 		// final else
 		mut is_else := false
 		mut is_timeout := false
-		mut stmt := ast.Stmt{}
+		mut stmt := ast.empty_stmt()
 		if p.tok.kind == .key_else {
 			if has_timeout {
 				p.error_with_pos('timeout `> t` and `else` are mutually exclusive `select` keys',

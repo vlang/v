@@ -3,7 +3,6 @@
 // that can be found in the LICENSE file.
 module ast
 
-import v.table
 import v.util
 import strings
 
@@ -19,7 +18,7 @@ pub fn (node &FnDecl) modname() string {
 }
 
 // These methods are used only by vfmt, vdoc, and for debugging.
-pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string, m2a map[string]string) string {
+pub fn (node &FnDecl) stringify(t &Table, cur_mod string, m2a map[string]string) string {
 	mut f := strings.new_builder(30)
 	if node.is_pub {
 		f.write_string('pub ')
@@ -117,7 +116,7 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string, m2a map[string]s
 		}
 	}
 	f.write_string(')')
-	if node.return_type != table.void_type {
+	if node.return_type != void_type {
 		mut rs := util.no_cur_mod(t.type_to_str(node.return_type), cur_mod)
 		for mod, alias in m2a {
 			rs = rs.replace(mod, alias)
@@ -351,8 +350,8 @@ pub fn (x Expr) str() string {
 		StringLiteral {
 			return "'$x.val'"
 		}
-		Type {
-			return 'Type($x.typ)'
+		TypeNode {
+			return 'TypeNode($x.typ)'
 		}
 		TypeOf {
 			return 'typeof($x.expr.str())'

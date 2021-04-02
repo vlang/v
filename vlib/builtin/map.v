@@ -94,9 +94,7 @@ fn fast_string_eq(a string, b string) bool {
 // DenseArray represents a dynamic array with very low growth factor
 struct DenseArray {
 	key_bytes   int
-	key_bytes_  int
 	value_bytes int
-	slot_bytes  int // sum of 2 fields above
 mut:
 	cap     int
 	len     int
@@ -104,42 +102,34 @@ mut:
 	// array allocated (with `cap` bytes) on first deletion
 	// has non-zero element when key deleted
 	all_deleted &byte
-	data        byteptr // array of interleaved key data and value data
+	values      byteptr
+	keys        byteptr
 }
 
 [inline]
 fn new_dense_array(key_bytes int, value_bytes int) DenseArray {
-	mut key_bytes_ := key_bytes
-	mut value_bytes_ := value_bytes
-	$if gcboehm ? {
-		align, mask := $if x64 { 7, int(0xfffffff8) } $else { 3, int(0xfffffffc) }
-		key_bytes_ = (key_bytes + align) & mask
-		value_bytes_ = (value_bytes + align) & mask
-	}
-	slot_bytes := key_bytes_ + value_bytes_
 	cap := 8
 	return DenseArray{
 		key_bytes: key_bytes
-		key_bytes_: key_bytes_
 		value_bytes: value_bytes
-		slot_bytes: slot_bytes
 		cap: cap
 		len: 0
 		deletes: 0
 		all_deleted: 0
-		data: unsafe { malloc(cap * slot_bytes) }
+		keys: unsafe { malloc(cap * key_bytes) }
+		values: unsafe { malloc(cap * value_bytes) }
 	}
 }
 
 [inline]
 fn (d &DenseArray) key(i int) voidptr {
-	return unsafe { d.data + i * d.slot_bytes }
+	return unsafe { d.keys + i * d.key_bytes }
 }
 
 // for cgen
 [inline]
 fn (d &DenseArray) value(i int) voidptr {
-	return unsafe { d.data + i * d.slot_bytes + d.key_bytes_ }
+	return unsafe { d.values + i * d.value_bytes }
 }
 
 [inline]
@@ -152,11 +142,13 @@ fn (d &DenseArray) has_index(i int) bool {
 [inline]
 fn (mut d DenseArray) expand() int {
 	old_cap := d.cap
-	old_size := d.slot_bytes * old_cap
+	old_value_size := d.value_bytes * old_cap
+	old_key_size := d.key_bytes * old_cap
 	if d.cap == d.len {
 		d.cap += d.cap >> 3
 		unsafe {
-			d.data = realloc_data(d.data, old_size, d.slot_bytes * d.cap)
+			d.keys = realloc_data(d.keys, old_key_size, d.key_bytes * d.cap)
+			d.values = realloc_data(d.values, old_value_size, d.value_bytes * d.cap)
 			if d.deletes != 0 {
 				d.all_deleted = realloc_data(d.all_deleted, old_cap, d.cap)
 				C.memset(d.all_deleted + d.len, 0, d.cap - d.len)
@@ -176,21 +168,28 @@ fn (mut d DenseArray) expand() int {
 // Move all zeros to the end of the array and resize array
 fn (mut d DenseArray) zeros_to_end() {
 	// TODO alloca?
-	mut tmp_buf := unsafe { malloc(d.slot_bytes) }
+	mut tmp_value := unsafe { malloc(d.value_bytes) }
+	mut tmp_key := unsafe { malloc(d.key_bytes) }
 	mut count := 0
 	for i in 0 .. d.len {
 		if d.has_index(i) {
 			// swap (TODO: optimize)
 			unsafe {
-				C.memcpy(tmp_buf, d.key(count), d.slot_bytes)
-				C.memcpy(d.key(count), d.key(i), d.slot_bytes)
-				C.memcpy(d.key(i), tmp_buf, d.slot_bytes)
+				// Swap keys
+				C.memcpy(tmp_key, d.key(count), d.key_bytes)
+				C.memcpy(d.key(count), d.key(i), d.key_bytes)
+				C.memcpy(d.key(i), tmp_key, d.key_bytes)
+				// Swap values
+				C.memcpy(tmp_value, d.value(count), d.value_bytes)
+				C.memcpy(d.value(count), d.value(i), d.value_bytes)
+				C.memcpy(d.value(i), tmp_value, d.value_bytes)
 			}
 			count++
 		}
 	}
 	unsafe {
-		free(tmp_buf)
+		free(tmp_value)
+		free(tmp_key)
 		d.deletes = 0
 		// TODO: reallocate instead as more deletes are likely
 		free(d.all_deleted)
@@ -199,7 +198,8 @@ fn (mut d DenseArray) zeros_to_end() {
 	old_cap := d.cap
 	d.cap = if count < 8 { 8 } else { count }
 	unsafe {
-		d.data = realloc_data(d.data, d.slot_bytes * old_cap, d.slot_bytes * d.cap)
+		d.values = realloc_data(d.values, d.value_bytes * old_cap, d.value_bytes * d.cap)
+		d.keys = realloc_data(d.keys, d.key_bytes * old_cap, d.key_bytes * d.cap)
 	}
 }
 
@@ -214,8 +214,7 @@ type MapFreeFn = fn (voidptr)
 // map is the internal representation of a V `map` type.
 pub struct map {
 	// Number of bytes of a key
-	key_bytes  int
-	key_bytes_ int
+	key_bytes int
 	// Number of bytes of a value
 	value_bytes int
 mut:
@@ -270,19 +269,19 @@ fn map_eq_string(a voidptr, b voidptr) bool {
 }
 
 fn map_eq_int_1(a voidptr, b voidptr) bool {
-	return unsafe { C.memcmp(a, b, 1) == 0 }
+	return unsafe { *&byte(a) == *&byte(b) }
 }
 
 fn map_eq_int_2(a voidptr, b voidptr) bool {
-	return unsafe { C.memcmp(a, b, 2) == 0 }
+	return unsafe { *&u16(a) == *&u16(b) }
 }
 
 fn map_eq_int_4(a voidptr, b voidptr) bool {
-	return unsafe { C.memcmp(a, b, 4) == 0 }
+	return unsafe { *&u32(a) == *&u32(b) }
 }
 
 fn map_eq_int_8(a voidptr, b voidptr) bool {
-	return unsafe { C.memcmp(a, b, 8) == 0 }
+	return unsafe { *&u64(a) == *&u64(b) }
 }
 
 fn map_clone_string(dest voidptr, pkey voidptr) {
@@ -294,25 +293,25 @@ fn map_clone_string(dest voidptr, pkey voidptr) {
 
 fn map_clone_int_1(dest voidptr, pkey voidptr) {
 	unsafe {
-		C.memcpy(dest, pkey, 1)
+		*&byte(dest) = *&byte(pkey)
 	}
 }
 
 fn map_clone_int_2(dest voidptr, pkey voidptr) {
 	unsafe {
-		C.memcpy(dest, pkey, 2)
+		*&u16(dest) = *&u16(pkey)
 	}
 }
 
 fn map_clone_int_4(dest voidptr, pkey voidptr) {
 	unsafe {
-		C.memcpy(dest, pkey, 4)
+		*&u32(dest) = *&u32(pkey)
 	}
 }
 
 fn map_clone_int_8(dest voidptr, pkey voidptr) {
 	unsafe {
-		C.memcpy(dest, pkey, 8)
+		*&u64(dest) = *&u64(pkey)
 	}
 }
 
@@ -329,14 +328,8 @@ fn new_map_2(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn MapEqF
 	metasize := int(sizeof(u32) * (init_capicity + extra_metas_inc))
 	// for now assume anything bigger than a pointer is a string
 	has_string_keys := key_bytes > sizeof(voidptr)
-	mut key_bytes_ := key_bytes
-	$if gcboehm ? {
-		align, mask := $if x64 { 7, int(0xfffffff8) } $else { 3, int(0xfffffffc) }
-		key_bytes_ = (key_bytes + align) & mask
-	}
 	return map{
 		key_bytes: key_bytes
-		key_bytes_: key_bytes_
 		value_bytes: value_bytes
 		even_index: init_even_index
 		cached_hashbits: max_cached_hashbits
@@ -457,7 +450,7 @@ fn (mut m map) set_1(key voidptr, value voidptr) {
 		pkey := unsafe { m.key_values.key(kv_index) }
 		if m.key_eq_fn(key, pkey) {
 			unsafe {
-				pval := byteptr(pkey) + m.key_bytes_
+				pval := m.key_values.value(kv_index)
 				C.memcpy(pval, value, m.value_bytes)
 			}
 			return
@@ -468,8 +461,9 @@ fn (mut m map) set_1(key voidptr, value voidptr) {
 	kv_index := m.key_values.expand()
 	unsafe {
 		pkey := m.key_values.key(kv_index)
+		pvalue := m.key_values.value(kv_index)
 		m.clone_fn(pkey, key)
-		C.memcpy(byteptr(pkey) + m.key_bytes_, value, m.value_bytes)
+		C.memcpy(byteptr(pvalue), value, m.value_bytes)
 	}
 	m.meta_greater(index, meta, u32(kv_index))
 	m.len++
@@ -548,7 +542,8 @@ fn (mut m map) get_and_set_1(key voidptr, zero voidptr) voidptr {
 				kv_index := int(unsafe { m.metas[index + 1] })
 				pkey := unsafe { m.key_values.key(kv_index) }
 				if m.key_eq_fn(key, pkey) {
-					return unsafe { byteptr(pkey) + m.key_values.key_bytes_ }
+					pval := unsafe { m.key_values.value(kv_index) }
+					return unsafe { byteptr(pval) }
 				}
 			}
 			index += 2
@@ -574,7 +569,8 @@ fn (m &map) get_1(key voidptr, zero voidptr) voidptr {
 			kv_index := int(unsafe { m.metas[index + 1] })
 			pkey := unsafe { m.key_values.key(kv_index) }
 			if m.key_eq_fn(key, pkey) {
-				return unsafe { byteptr(pkey) + m.key_values.key_bytes_ }
+				pval := unsafe { m.key_values.value(kv_index) }
+				return unsafe { byteptr(pval) }
 			}
 		}
 		index += 2
@@ -597,7 +593,8 @@ fn (m &map) get_1_check(key voidptr) voidptr {
 			kv_index := int(unsafe { m.metas[index + 1] })
 			pkey := unsafe { m.key_values.key(kv_index) }
 			if m.key_eq_fn(key, pkey) {
-				return unsafe { byteptr(pkey) + m.key_values.key_bytes_ }
+				pval := unsafe { m.key_values.value(kv_index) }
+				return unsafe { byteptr(pval) }
 			}
 		}
 		index += 2
@@ -737,20 +734,20 @@ fn (m &map) keys_1() array {
 fn (d &DenseArray) clone() DenseArray {
 	res := DenseArray{
 		key_bytes: d.key_bytes
-		key_bytes_: d.key_bytes_
 		value_bytes: d.value_bytes
-		slot_bytes: d.slot_bytes
 		cap: d.cap
 		len: d.len
 		deletes: d.deletes
 		all_deleted: 0
-		data: 0
+		values: 0
+		keys: 0
 	}
 	unsafe {
 		if d.deletes != 0 {
 			res.all_deleted = memdup(d.all_deleted, d.cap)
 		}
-		res.data = memdup(d.data, d.cap * d.slot_bytes)
+		res.keys = memdup(d.keys, d.cap * d.key_bytes)
+		res.values = memdup(d.values, d.cap * d.value_bytes)
 	}
 	return res
 }
@@ -761,7 +758,6 @@ pub fn (m &map) clone() map {
 	metasize := int(sizeof(u32) * (m.even_index + 2 + m.extra_metas))
 	res := map{
 		key_bytes: m.key_bytes
-		key_bytes_: m.key_bytes_
 		value_bytes: m.value_bytes
 		even_index: m.even_index
 		cached_hashbits: m.cached_hashbits
@@ -813,5 +809,8 @@ pub fn (m &map) free() {
 		}
 		unsafe { free(m.key_values.all_deleted) }
 	}
-	unsafe { free(m.key_values.data) }
+	unsafe {
+		free(m.key_values.keys)
+		free(m.key_values.values)
+	}
 }

@@ -5,7 +5,6 @@ module fmt
 
 import math.mathutil as mu
 import v.ast
-import v.table
 import strings
 import v.util
 import v.pref
@@ -18,7 +17,7 @@ const (
 
 pub struct Fmt {
 pub mut:
-	table              &table.Table
+	table              &ast.Table
 	out_imports        strings.Builder
 	out                strings.Builder
 	indent             int
@@ -49,7 +48,7 @@ pub mut:
 	pref               &pref.Preferences
 }
 
-pub fn fmt(file ast.File, table &table.Table, pref &pref.Preferences, is_debug bool) string {
+pub fn fmt(file ast.File, table &ast.Table, pref &pref.Preferences, is_debug bool) string {
 	mut f := Fmt{
 		out: strings.new_builder(1000)
 		out_imports: strings.new_builder(200)
@@ -113,7 +112,7 @@ fn (mut f Fmt) write_indent() {
 	f.line_len += f.indent * 4
 }
 
-fn (mut f Fmt) write_language_prefix(lang table.Language) {
+fn (mut f Fmt) write_language_prefix(lang ast.Language) {
 	match lang {
 		.c { f.write('C.') }
 		.js { f.write('JS.') }
@@ -223,7 +222,7 @@ pub fn (mut f Fmt) short_module(name string) string {
 
 //=== Import-related methods ===//
 
-pub fn (mut f Fmt) mark_types_import_as_used(typ table.Type) {
+pub fn (mut f Fmt) mark_types_import_as_used(typ ast.Type) {
 	sym := f.table.get_type_symbol(typ)
 	f.mark_import_as_used(sym.name)
 }
@@ -365,7 +364,7 @@ pub fn (mut f Fmt) node_str(node ast.Node) string {
 //=== General Stmt-related methods and helpers ===//
 
 pub fn (mut f Fmt) stmts(stmts []ast.Stmt) {
-	mut prev_stmt := if stmts.len > 0 { stmts[0] } else { ast.Stmt{} }
+	mut prev_stmt := if stmts.len > 0 { stmts[0] } else { ast.empty_stmt() }
 	f.indent++
 	for stmt in stmts {
 		if !f.pref.building_v && f.should_insert_newline_before_node(stmt, prev_stmt) {
@@ -383,6 +382,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 	}
 	match node {
 		ast.NodeError {}
+		ast.EmptyStmt {}
 		ast.AsmStmt {
 			f.asm_stmt(node)
 		}
@@ -482,6 +482,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 	}
 	match mut node {
 		ast.NodeError {}
+		ast.EmptyExpr {}
 		ast.AnonFn {
 			f.fn_decl(node.decl)
 		}
@@ -615,7 +616,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		ast.StructInit {
 			f.struct_init(node)
 		}
-		ast.Type {
+		ast.TypeNode {
 			f.type_expr(node)
 		}
 		ast.TypeOf {
@@ -748,37 +749,45 @@ fn (mut f Fmt) asm_arg(arg ast.AsmArg) {
 					f.asm_arg(base)
 				}
 				.displacement {
-					f.write('$displacement')
+					f.asm_arg(displacement)
 				}
 				.base_plus_displacement {
 					f.asm_arg(base)
-					f.write(' + $displacement')
+					f.write(' + ')
+					f.asm_arg(displacement)
 				}
 				.index_times_scale_plus_displacement {
 					f.asm_arg(index)
-					f.write(' * $scale + $displacement')
+					f.write(' * $scale + ')
+					f.asm_arg(displacement)
 				}
 				.base_plus_index_plus_displacement {
 					f.asm_arg(base)
 					f.write(' + ')
 					f.asm_arg(index)
-					f.write(' + $displacement')
+					f.write(' + ')
+					f.asm_arg(displacement)
 				}
 				.base_plus_index_times_scale_plus_displacement {
 					f.asm_arg(base)
 					f.write(' + ')
 					f.asm_arg(index)
-					f.write(' * $scale + $displacement')
+					f.write(' * $scale + ')
+					f.asm_arg(displacement)
 				}
 				.rip_plus_displacement {
 					f.asm_arg(base)
-					f.write(' + $displacement')
+					f.write(' + ')
+					f.asm_arg(displacement)
 				}
 				.invalid {
 					panic('fmt: invalid addressing mode')
 				}
 			}
 			f.write(']')
+		}
+		ast.AsmDisp {
+			f.write(arg.val)
 		}
 	}
 }
@@ -897,7 +906,11 @@ pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
 		}
 		f.indent++
 	}
-	mut prev_field := if node.fields.len > 0 { ast.Node(node.fields[0]) } else { ast.Node{} }
+	mut prev_field := if node.fields.len > 0 {
+		ast.Node(node.fields[0])
+	} else {
+		ast.Node(ast.NodeError{})
+	}
 	for field in node.fields {
 		if field.comments.len > 0 {
 			if f.should_insert_newline_before_node(ast.Expr(field.comments[0]), prev_field) {
@@ -1247,7 +1260,7 @@ pub fn (mut f Fmt) fn_type_decl(node ast.FnTypeDecl) {
 		f.write('pub ')
 	}
 	typ_sym := f.table.get_type_symbol(node.typ)
-	fn_typ_info := typ_sym.info as table.FnType
+	fn_typ_info := typ_sym.info as ast.FnType
 	fn_info := fn_typ_info.func
 	fn_name := f.no_cur_mod(node.name)
 	f.write('type $fn_name = fn (')
@@ -1279,7 +1292,7 @@ pub fn (mut f Fmt) fn_type_decl(node ast.FnTypeDecl) {
 		}
 	}
 	f.write(')')
-	if fn_info.return_type.idx() != table.void_type_idx {
+	if fn_info.return_type.idx() != ast.void_type_idx {
 		ret_str := f.no_cur_mod(f.table.type_to_str_using_aliases(fn_info.return_type,
 			f.mod2alias))
 		f.write(' $ret_str')
@@ -1321,7 +1334,7 @@ pub fn (mut f Fmt) array_decompose(node ast.ArrayDecompose) {
 }
 
 pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
-	if node.exprs.len == 0 && node.typ != 0 && node.typ != table.void_type {
+	if node.exprs.len == 0 && node.typ != 0 && node.typ != ast.void_type {
 		// `x := []string{}`
 		f.mark_types_import_as_used(node.typ)
 		f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
@@ -1516,7 +1529,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 	f.use_short_fn_args = false
 	if node.args.len > 0 && node.args.last().expr is ast.StructInit {
 		struct_expr := node.args.last().expr as ast.StructInit
-		if struct_expr.typ == table.void_type {
+		if struct_expr.typ == ast.void_type {
 			f.use_short_fn_args = true
 		}
 	}
@@ -1991,7 +2004,7 @@ pub fn (mut f Fmt) lock_expr(node ast.LockExpr) {
 
 pub fn (mut f Fmt) map_init(node ast.MapInit) {
 	if node.keys.len == 0 {
-		if node.typ > table.void_type {
+		if node.typ > ast.void_type {
 			f.mark_types_import_as_used(node.typ)
 			f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
 		} else {
@@ -2255,7 +2268,7 @@ pub fn (mut f Fmt) string_literal(node ast.StringLiteral) {
 	use_double_quote := node.val.contains("'") && !node.val.contains('"')
 	if node.is_raw {
 		f.write('r')
-	} else if node.language == table.Language.c {
+	} else if node.language == ast.Language.c {
 		f.write('c')
 	}
 	if node.is_raw {
@@ -2309,7 +2322,7 @@ pub fn (mut f Fmt) string_inter_literal(node ast.StringInterLiteral) {
 	f.write(quote)
 }
 
-pub fn (mut f Fmt) type_expr(node ast.Type) {
+pub fn (mut f Fmt) type_expr(node ast.TypeNode) {
 	f.write(f.table.type_to_str(node.typ))
 }
 

@@ -7,6 +7,6 @@ type Stmt = Expr | AnotherThing
 struct AnotherThing {}
 
 fn main() {
-    mut w := Stmt{}
+    mut w := Stmt(AnotherThing{})
 	w = IfExpr{}
 }

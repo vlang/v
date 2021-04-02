@@ -72,9 +72,11 @@ pub enum FormatDate {
 	mmddyyyy
 	mmmd
 	mmmdd
+	mmmddyy
 	mmmddyyyy
 	no_date
 	yyyymmdd
+	yymmdd
 }
 
 // FormatDelimiter contains different time/date delimiters.
