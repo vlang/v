@@ -1,14 +1,26 @@
 # Context
 
-This module defines the Context type, which carries deadlines, cancellation signals, and other request-scoped values across API boundaries and between processes.
+This module defines the Context type, which carries deadlines, cancellation signals,
+and other request-scoped values across API boundaries and between processes.
 
-Incoming requests to a server should create a Context, and outgoing calls to servers should accept a Context. The chain of function calls between them must propagate the Context, optionally replacing it with a derived Context created using with_cancel, with_deadline, with_timeout, or with_value. When a Context is canceled, all Contexts derived from it are also canceled.
+Incoming requests to a server should create a Context, and outgoing calls to servers
+should accept a Context. The chain of function calls between them must propagate the
+Context, optionally replacing it with a derived Context created using with_cancel,
+with_deadline, with_timeout, or with_value. When a Context is canceled, all Contexts
+derived from it are also canceled.
 
-The with_cancel, with_deadline, and with_timeout functions take a Context (the parent) and return a derived Context (the child) and a CancelFunc. Calling the CancelFunc cancels the child and its children, removes the parent's reference to the child, and stops any associated timers. Failing to call the CancelFunc leaks the child and its children until the parent is canceled or the timer fires. The go vet tool checks that CancelFuncs are used on all control-flow paths.
+The with_cancel, with_deadline, and with_timeout functions take a Context (the parent)
+and return a derived Context (the child) and a CancelFunc. Calling the CancelFunc
+cancels the child and its children, removes the parent's reference to the child,
+and stops any associated timers. Failing to call the CancelFunc leaks the child
+and its children until the parent is canceled or the timer fires.
 
-Programs that use Contexts should follow these rules to keep interfaces consistent across different modules.
+Programs that use Contexts should follow these rules to keep interfaces consistent
+across different modules.
 
-Do not store Contexts inside a struct type; instead, pass a Context explicitly to each function that needs it. The Context should be the first parameter, typically named ctx, just to make it more consistent.
+Do not store Contexts inside a struct type; instead, pass a Context explicitly
+to each function that needs it. The Context should be the first parameter,
+typically named ctx, just to make it more consistent.
 
 ## Examples
 
@@ -28,9 +40,9 @@ fn example_with_cancel() {
 	// The callers of gen need to cancel the context once
 	// they are done consuming generated integers not to leak
 	// the internal routine started by gen.
-	gen := fn (ctx contex.Context) chan int {
+	gen := fn (ctx context.Context) chan int {
 		dst := chan int{}
-		go fn (ctx contex.Context, dst chan int) {
+		go fn (ctx context.Context, dst chan int) {
 			for {
 				ch := ctx.done()
 				select {
