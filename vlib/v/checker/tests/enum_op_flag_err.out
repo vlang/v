@@ -12,9 +12,9 @@ vlib/v/checker/tests/enum_op_flag_err.vv:10:25: error: only `==`, `!=`, `|` and 
       |                            ^
    11 |     println(FilePerm.write && FilePerm.exec)
    12 | }
-vlib/v/checker/tests/enum_op_flag_err.vv:11:25: error: left operand for `&&` is not a boolean
+vlib/v/checker/tests/enum_op_flag_err.vv:11:10: error: left operand for `&&` is not a boolean
     9 |     println(FilePerm.read > FilePerm.write)
    10 |     println(FilePerm.write + FilePerm.exec)
    11 |     println(FilePerm.write && FilePerm.exec)
-      |                            ~~
+      |             ~~~~~~~~~~~~~~
    12 | }
