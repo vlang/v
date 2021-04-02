@@ -10,4 +10,10 @@ fn block_comments() {
     /* spaces for comment indentation (ouch)
     and inside too
     */
+
+fn space_inside_strings() {
+  str := "Bad space usage for variable indentation.
+  Here it's fine.
+  Here too."
+  str2 := 'linebreak and space\n  inside'
 }
