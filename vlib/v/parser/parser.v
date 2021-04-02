@@ -216,8 +216,8 @@ pub fn parse_vet_file(path string, table_ &ast.Table, pref &pref.Preferences) (a
 			}
 		}
 	}
-	file := p.parse()
 	p.vet_errors << p.scanner.vet_errors
+	file := p.parse()
 	return file, p.vet_errors
 }
 
@@ -614,9 +614,14 @@ pub fn (mut p Parser) comment() ast.Comment {
 	text := p.tok.lit
 	pos.last_line = pos.line_nr + text.count('\n')
 	p.next()
-	// p.next_with_comment()
+	is_multi := text.contains('\n')
+	// Filter out space indentation vet errors inside block comments
+	if p.vet_errors.len > 0 && is_multi {
+		p.vet_errors = p.vet_errors.filter(!(it.pos.line_nr - 1 > pos.line_nr
+			&& it.pos.line_nr - 1 <= pos.last_line))
+	}
 	return ast.Comment{
-		is_multi: text.contains('\n')
+		is_multi: is_multi
 		text: text
 		pos: pos
 	}
