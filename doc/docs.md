@@ -100,7 +100,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
 * [Builtin functions](#builtin-functions)
 * [Printing custom types](#printing-custom-types)
 * [Modules](#modules)
-    * [Module management](#module-management)
+    * [Module/package management](#module--package-management)
 * [Types 2](#types-2)
     * [Interfaces](#interfaces)
     * [Enums](#enums)
@@ -2050,9 +2050,27 @@ fn init() {
 The `init` function cannot be public - it will be called automatically. This feature is
 particularly useful for initializing a C library.
 
-### Module management
+### Module/package management
 
-You can also install modules already created by someone else:
+Briefly:
+
+```powershell
+v [option] [param]
+```
+
+```
+   install           Install a module from VPM.
+   remove            Remove a module that was installed from VPM.
+   search            Search for a module from VPM.
+   update            Update an installed module from VPM.
+   upgrade           Upgrade all the outdated modules.
+   list              List all installed modules.
+   outdated          Show installed modules that need updates.
+```
+
+Read more:
+
+You can also install modules already created by someone else with [VPM](https://vpm.vlang.io/):
 ```powershell
 v install [module]
 ```
@@ -2061,9 +2079,7 @@ v install [module]
 v install ui
 ```
 
-A list of available modules is available at https://vpm.vlang.io/
-
-To remove a module:
+For remove a module:
 
 ```powershell
 v remove [module]
@@ -2072,6 +2088,47 @@ v remove [module]
 ```powershell
 v remove ui
 ```
+
+For update an installed module from [VPM](https://vpm.vlang.io/):
+
+```powershell
+v update [module]
+```
+###### Example:
+```powershell
+v update ui
+```
+
+Or you can update all your modules:
+```powershell
+v update
+```
+
+To see all the modules you have installed, you can use:
+
+```powershell
+v list
+```
+###### Example
+```powershell
+> v list
+Installed modules:
+  markdown
+  ui
+```
+
+To see all the modules you have installed, you can use:
+outdated          Show installed modules that need updates.
+```powershell
+v outdated
+```
+###### Example
+```powershell
+> v outdated
+Modules are up to date.
+```
+
+You can also add your module to VPM by following the instructions on the website https://vpm.vlang.io/new
 
 ## Types 2
 
