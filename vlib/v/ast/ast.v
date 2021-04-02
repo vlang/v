@@ -1464,12 +1464,14 @@ pub fn (expr Expr) is_blank_ident() bool {
 
 pub fn (expr Expr) position() token.Position {
 	// all uncommented have to be implemented
+	// NB: please do not print here. the language server will hang
+	// as it uses STDIO primarly to communicate ~Ned
 	match expr {
 		AnonFn {
 			return expr.decl.pos
 		}
 		EmptyExpr {
-			println('compiler bug, unhandled EmptyExpr position()')
+			// println('compiler bug, unhandled EmptyExpr position()')
 			return token.Position{}
 		}
 		NodeError, ArrayDecompose, ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr, CastExpr,
