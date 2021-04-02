@@ -3,8 +3,6 @@
 // that can be found in the LICENSE file.
 module ast
 
-import v.ast
-
 pub struct Scope {
 pub mut:
 	// mut:
@@ -18,7 +16,7 @@ pub mut:
 }
 
 pub fn new_scope(parent &Scope, start_pos int) &Scope {
-	return &ast.Scope{
+	return &Scope{
 		parent: parent
 		start_pos: start_pos
 	}

@@ -1,7 +1,5 @@
 module ast
 
-import v.ast
-
 pub fn resolve_init(node StructInit, typ Type, t &Table) Expr {
 	type_sym := t.get_type_symbol(typ)
 	if type_sym.kind == .array {
@@ -32,7 +30,7 @@ pub fn resolve_init(node StructInit, typ Type, t &Table) Expr {
 				}
 			}
 		}
-		return ast.ArrayInit{
+		return ArrayInit{
 			// TODO: mod is not being set for now, we could need this in future
 			// mod: mod
 			pos: node.pos
@@ -51,12 +49,12 @@ pub fn resolve_init(node StructInit, typ Type, t &Table) Expr {
 		mut keys := []Expr{}
 		mut vals := []Expr{}
 		for field in node.fields {
-			keys << ast.StringLiteral{
+			keys << StringLiteral{
 				val: field.name
 			}
 			vals << field.expr
 		}
-		return ast.MapInit{
+		return MapInit{
 			typ: typ
 			key_type: map_info.key_type
 			value_type: map_info.value_type
@@ -65,7 +63,7 @@ pub fn resolve_init(node StructInit, typ Type, t &Table) Expr {
 		}
 	}
 	// struct / other (sumtype?)
-	return ast.StructInit{
+	return StructInit{
 		...node
 		unresolved: false
 	}
