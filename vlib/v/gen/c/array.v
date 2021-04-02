@@ -248,46 +248,62 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 		}
 		// Register a new custom `compare_xxx` function for qsort()
 		g.table.register_fn(name: compare_fn, return_type: ast.int_type)
-		infix_expr := node.args[0].expr as ast.InfixExpr
-		// Variables `a` and `b` are used in the `.sort(a < b)` syntax, so we can reuse them
-		// when generating the function as long as the args are named the same.
-		styp_arg := g.typ(typ)
-		g.definitions.writeln('int $compare_fn ($styp_arg* a, $styp_arg* b) {')
-		sym := g.table.get_type_symbol(typ)
-		if !is_reverse && sym.has_method('<') && infix_expr.left.str().len == 1 {
-			g.definitions.writeln('\tif (${styp}__lt(*a, *b)) { return -1; } else { return 1; }}')
-		} else if is_reverse && sym.has_method('<') && infix_expr.left.str().len == 1 {
-			g.definitions.writeln('\tif (${styp}__lt(*b, *a)) { return -1; } else { return 1; }}')
-		} else {
-			field_type := g.typ(infix_expr.left_type)
-			mut left_expr_str := g.write_expr_to_string(infix_expr.left)
-			mut right_expr_str := g.write_expr_to_string(infix_expr.right)
-			if typ.is_ptr() {
-				left_expr_str = left_expr_str.replace_once('a', '(*a)')
-				right_expr_str = right_expr_str.replace_once('b', '(*b)')
-			}
-			g.definitions.writeln('$field_type a_ = $left_expr_str;')
-			g.definitions.writeln('$field_type b_ = $right_expr_str;')
-			mut op1, mut op2 := '', ''
-			if infix_expr.left_type == ast.string_type {
-				if is_reverse {
-					op1 = 'string_gt(a_, b_)'
-					op2 = 'string_lt(a_, b_)'
-				} else {
-					op1 = 'string_lt(a_, b_)'
-					op2 = 'string_gt(a_, b_)'
-				}
+
+		if node.args.len == 0 {
+			styp_arg := g.typ(typ)
+			g.definitions.writeln('int $compare_fn ($styp_arg* a, $styp_arg* b) {')
+			sym := g.table.get_type_symbol(typ)
+			if !is_reverse && sym.has_method('<') {
+				g.definitions.writeln('\tif (${styp}__lt(*a, *b)) { return -1; } else { return 1; }}')
+			} else if is_reverse && sym.has_method('<') {
+				g.definitions.writeln('\tif (${styp}__lt(*b, *a)) { return -1; } else { return 1; }}')
 			} else {
-				if is_reverse {
-					op1 = 'a_ > b_'
-					op2 = 'a_ < b_'
-				} else {
-					op1 = 'a_ < b_'
-					op2 = 'a_ > b_'
-				}
+				g.definitions.writeln('if (*a < *b) return -1;')
+				g.definitions.writeln('if (*a > *b) return 1; return 0; }\n')
 			}
-			g.definitions.writeln('if ($op1) return -1;')
-			g.definitions.writeln('if ($op2) return 1; return 0; }\n')
+		} else {
+			infix_expr := node.args[0].expr as ast.InfixExpr
+			// Variables `a` and `b` are used in the `.sort(a < b)` syntax, so we can reuse them
+			// when generating the function as long as the args are named the same.
+			styp_arg := g.typ(typ)
+			g.definitions.writeln('int $compare_fn ($styp_arg* a, $styp_arg* b) {')
+			sym := g.table.get_type_symbol(typ)
+			if !is_reverse && sym.has_method('<') && infix_expr.left.str().len == 1 {
+				g.definitions.writeln('\tif (${styp}__lt(*a, *b)) { return -1; } else { return 1; }}')
+			} else if is_reverse && sym.has_method('<') && infix_expr.left.str().len == 1 {
+				g.definitions.writeln('\tif (${styp}__lt(*b, *a)) { return -1; } else { return 1; }}')
+			} else {
+				field_type := g.typ(infix_expr.left_type)
+				mut left_expr_str := g.write_expr_to_string(infix_expr.left)
+				mut right_expr_str := g.write_expr_to_string(infix_expr.right)
+				if typ.is_ptr() {
+					left_expr_str = left_expr_str.replace_once('a', '(*a)')
+					right_expr_str = right_expr_str.replace_once('b', '(*b)')
+				}
+				g.definitions.writeln('$field_type a_ = $left_expr_str;')
+				g.definitions.writeln('$field_type b_ = $right_expr_str;')
+				mut op1, mut op2 := '', ''
+				if infix_expr.left_type == ast.string_type {
+					if is_reverse {
+						op1 = 'string_gt(a_, b_)'
+						op2 = 'string_lt(a_, b_)'
+					} else {
+						op1 = 'string_lt(a_, b_)'
+						op2 = 'string_gt(a_, b_)'
+					}
+				} else {
+					deref_str := if infix_expr.left_type.is_ptr() { '*' } else { '' }
+					if is_reverse {
+						op1 = '${deref_str}a_ > ${deref_str}b_'
+						op2 = '${deref_str}a_ < ${deref_str}b_'
+					} else {
+						op1 = '${deref_str}a_ < ${deref_str}b_'
+						op2 = '${deref_str}a_ > ${deref_str}b_'
+					}
+				}
+				g.definitions.writeln('if ($op1) return -1;')
+				g.definitions.writeln('if ($op2) return 1; return 0; }\n')
+			}
 		}
 	}
 	if is_reverse && !compare_fn.ends_with('_reverse') {

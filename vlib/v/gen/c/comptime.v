@@ -6,6 +6,7 @@ module c
 import os
 import v.ast
 import v.util
+import v.pref
 
 fn (mut g Gen) comptime_selector(node ast.ComptimeSelector) {
 	g.expr(node.left)
@@ -188,6 +189,27 @@ fn (mut g Gen) comp_at(node ast.AtExpr) {
 }
 
 fn (mut g Gen) comp_if(node ast.IfExpr) {
+	if !node.is_expr && !node.has_else && node.branches.len == 1 {
+		if node.branches[0].stmts.len == 0 {
+			// empty ifdef; result of target OS != conditional => skip
+			return
+		}
+		if !g.pref.output_cross_c {
+			if node.branches[0].cond is ast.Ident {
+				if g.pref.os == (pref.os_from_string(node.branches[0].cond.name) or {
+					pref.OS._auto
+				}) {
+					// Same target OS as the conditional...
+					// => skip the #if defined ... #endif wrapper
+					// and just generate the branch statements:
+					g.indent--
+					g.stmts(node.branches[0].stmts)
+					g.indent++
+					return
+				}
+			}
+		}
+	}
 	line := if node.is_expr {
 		stmt_str := g.go_before_stmt(0)
 		g.write(util.tabs(g.indent))

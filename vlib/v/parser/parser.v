@@ -216,8 +216,8 @@ pub fn parse_vet_file(path string, table_ &ast.Table, pref &pref.Preferences) (a
 			}
 		}
 	}
-	file := p.parse()
 	p.vet_errors << p.scanner.vet_errors
+	file := p.parse()
 	return file, p.vet_errors
 }
 
@@ -614,9 +614,14 @@ pub fn (mut p Parser) comment() ast.Comment {
 	text := p.tok.lit
 	pos.last_line = pos.line_nr + text.count('\n')
 	p.next()
-	// p.next_with_comment()
+	is_multi := text.contains('\n')
+	// Filter out space indentation vet errors inside block comments
+	if p.vet_errors.len > 0 && is_multi {
+		p.vet_errors = p.vet_errors.filter(!(it.pos.line_nr - 1 > pos.line_nr
+			&& it.pos.line_nr - 1 <= pos.last_line))
+	}
 	return ast.Comment{
-		is_multi: text.contains('\n')
+		is_multi: is_multi
 		text: text
 		pos: pos
 	}
@@ -1933,14 +1938,16 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	} else {
 		false
 	}
+	is_optional := p.tok.kind == .question
 	// p.warn('name expr  $p.tok.lit $p.peek_tok.str()')
 	same_line := p.tok.line_nr == p.peek_tok.line_nr
 	// `(` must be on same line as name token otherwise it's a ParExpr
 	if !same_line && p.peek_tok.kind == .lpar {
 		node = p.parse_ident(language)
-	} else if p.peek_tok.kind == .lpar || p.is_generic_call() {
+	} else if p.peek_tok.kind == .lpar
+		|| (is_optional && p.peek_token(2).kind == .lpar) || p.is_generic_call() {
 		// foo(), foo<int>() or type() cast
-		mut name := p.tok.lit
+		mut name := if is_optional { p.peek_tok.lit } else { p.tok.lit }
 		if mod.len > 0 {
 			name = '${mod}.$name'
 		}
@@ -1987,6 +1994,9 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		} else {
 			// fn call
 			// println('calling $p.tok.lit')
+			if is_optional {
+				p.error_with_pos('unexpected $p.prev_tok', p.prev_tok.position())
+			}
 			node = p.call_expr(language, mod)
 		}
 	} else if (p.peek_tok.kind == .lcbr || (p.peek_tok.kind == .lt && lit0_is_capital))
@@ -2024,6 +2034,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		}
 		// `Color.green`
 		mut enum_name := p.check_name()
+		enum_name_pos := p.prev_tok.position()
 		if mod != '' {
 			enum_name = mod + '.' + enum_name
 		} else {
@@ -2037,7 +2048,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		return ast.EnumVal{
 			enum_name: enum_name
 			val: val
-			pos: p.tok.position()
+			pos: enum_name_pos.extend(p.prev_tok.position())
 			mod: mod
 		}
 	} else if language == .js && p.peek_tok.kind == .dot && p.peek_token(2).kind == .name {
@@ -2236,6 +2247,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 			left: left
 			name: field_name
 			args: args
+			name_pos: name_pos
 			pos: pos
 			is_method: true
 			generic_types: generic_types

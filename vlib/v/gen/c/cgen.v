@@ -1761,6 +1761,10 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 			g.write('*')
 		}
 	}
+	if expected_type.has_flag(.optional) && expr is ast.None {
+		g.gen_optional_error(expected_type, expr)
+		return
+	}
 	// no cast
 	g.expr(expr)
 }
@@ -2902,61 +2906,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			*/
 		}
 		ast.CastExpr {
-			// g.write('/*cast*/')
-			if g.is_amp {
-				// &Foo(0) => ((Foo*)0)
-				g.out.go_back(1)
-			}
-			g.is_amp = false
-			sym := g.table.get_type_symbol(node.typ)
-			if sym.kind == .string && !node.typ.is_ptr() {
-				// `string(x)` needs `tos()`, but not `&string(x)
-				// `tos(str, len)`, `tos2(str)`
-				if node.has_arg {
-					g.write('tos((byteptr)')
-				} else {
-					g.write('tos2((byteptr)')
-				}
-				g.expr(node.expr)
-				expr_sym := g.table.get_type_symbol(node.expr_type)
-				if expr_sym.kind == .array {
-					// if we are casting an array, we need to add `.data`
-					g.write('.data')
-				}
-				if node.has_arg {
-					// len argument
-					g.write(', ')
-					g.expr(node.arg)
-				}
-				g.write(')')
-			} else if sym.kind in [.sum_type, .interface_] {
-				g.expr_with_cast(node.expr, node.expr_type, node.typ)
-			} else if sym.kind == .struct_ && !node.typ.is_ptr()
-				&& !(sym.info as ast.Struct).is_typedef {
-				// deprecated, replaced by Struct{...exr}
-				styp := g.typ(node.typ)
-				g.write('*(($styp *)(&')
-				g.expr(node.expr)
-				g.write('))')
-			} else {
-				styp := g.typ(node.typ)
-				mut cast_label := ''
-				// `ast.string_type` is done for MSVC's bug
-				if sym.kind != .alias
-					|| (sym.info as ast.Alias).parent_type !in [node.expr_type, ast.string_type] {
-					cast_label = '($styp)'
-				}
-				g.write('(${cast_label}(')
-				g.expr(node.expr)
-				if node.expr is ast.IntegerLiteral {
-					if node.typ in [ast.u64_type, ast.u32_type, ast.u16_type] {
-						if !node.expr.val.starts_with('-') {
-							g.write('U')
-						}
-					}
-				}
-				g.write('))')
-			}
+			g.cast_expr(node)
 		}
 		ast.ChanInit {
 			elem_typ_str := g.typ(node.elem_type)
@@ -4403,6 +4353,66 @@ fn (mut g Gen) ident(node ast.Ident) {
 	g.write(g.get_ternary_name(name))
 }
 
+fn (mut g Gen) cast_expr(node ast.CastExpr) {
+	if g.is_amp {
+		// &Foo(0) => ((Foo*)0)
+		g.out.go_back(1)
+	}
+	g.is_amp = false
+	sym := g.table.get_type_symbol(node.typ)
+	if sym.kind == .string && !node.typ.is_ptr() {
+		// `string(x)` needs `tos()`, but not `&string(x)
+		// `tos(str, len)`, `tos2(str)`
+		if node.has_arg {
+			g.write('tos((byteptr)')
+		} else {
+			g.write('tos2((byteptr)')
+		}
+		g.expr(node.expr)
+		expr_sym := g.table.get_type_symbol(node.expr_type)
+		if expr_sym.kind == .array {
+			// if we are casting an array, we need to add `.data`
+			g.write('.data')
+		}
+		if node.has_arg {
+			// len argument
+			g.write(', ')
+			g.expr(node.arg)
+		}
+		g.write(')')
+	} else if sym.kind in [.sum_type, .interface_] {
+		g.expr_with_cast(node.expr, node.expr_type, node.typ)
+	} else if sym.kind == .struct_ && !node.typ.is_ptr() && !(sym.info as ast.Struct).is_typedef {
+		// deprecated, replaced by Struct{...exr}
+		styp := g.typ(node.typ)
+		g.write('*(($styp *)(&')
+		g.expr(node.expr)
+		g.write('))')
+	} else {
+		styp := g.typ(node.typ)
+		mut cast_label := ''
+		// `ast.string_type` is done for MSVC's bug
+		if sym.kind != .alias
+			|| (sym.info as ast.Alias).parent_type !in [node.expr_type, ast.string_type] {
+			cast_label = '($styp)'
+		}
+		if node.typ.has_flag(.optional) && node.expr is ast.None {
+			g.gen_optional_error(node.typ, node.expr)
+		} else {
+			g.write('(${cast_label}(')
+			g.expr(node.expr)
+			if node.expr is ast.IntegerLiteral {
+				if node.typ in [ast.u64_type, ast.u32_type, ast.u16_type] {
+					if !node.expr.val.starts_with('-') {
+						g.write('U')
+					}
+				}
+			}
+			g.write('))')
+		}
+	}
+}
+
 fn (mut g Gen) concat_expr(node ast.ConcatExpr) {
 	styp := g.typ(node.return_type)
 	sym := g.table.get_type_symbol(node.return_type)
@@ -4598,6 +4608,13 @@ fn (g &Gen) expr_is_multi_return_call(expr ast.Expr) bool {
 	}
 }
 
+fn (mut g Gen) gen_optional_error(target_type ast.Type, expr ast.Expr) {
+	styp := g.typ(target_type)
+	g.write('($styp){ .state=2, .err=')
+	g.expr(expr)
+	g.write(' }')
+}
+
 fn (mut g Gen) return_statement(node ast.Return) {
 	g.write_v_source_line_info(node.pos)
 	if node.exprs.len > 0 {
@@ -4635,18 +4652,10 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		optional_none := node.exprs[0] is ast.None
 		ftyp := g.typ(node.types[0])
 		mut is_regular_option := ftyp in ['Option2', 'Option']
-		if optional_none || is_regular_option {
-			styp := g.typ(g.fn_decl.return_type)
-			g.write('return ($styp){ .state=2, .err=')
-			g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
-			g.writeln(' };')
-			return
-		} else if node.types[0] == ast.error_type_idx {
-			// foo() or { return err }
-			styp := g.typ(g.fn_decl.return_type)
-			g.write('return ($styp){.state=2, .err=')
-			g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
-			g.writeln(' };')
+		if optional_none || is_regular_option || node.types[0] == ast.error_type_idx {
+			g.write('return ')
+			g.gen_optional_error(g.fn_decl.return_type, node.exprs[0])
+			g.writeln(';')
 			return
 		}
 	}

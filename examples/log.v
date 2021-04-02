@@ -5,6 +5,7 @@ fn main() {
 	l.set_level(.info)
 	// Make a new file called info.log in the current folder
 	l.set_full_logpath('./info.log')
+	l.log_to_console_too()
 	println('Please check the file: $l.output_file_name after this example crashes.')
 
 	l.info('info')

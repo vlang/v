@@ -279,6 +279,7 @@ pub mut:
 	name          string
 	typ           Type
 	expected_type Type
+	parent_type   Type
 }
 
 pub struct StructInitEmbed {
@@ -1122,7 +1123,7 @@ pub:
 
 pub struct AsmAddressing {
 pub:
-	scale int = -1 // 1, 2, 4, or 8 literal 
+	scale int = -1 // 1, 2, 4, or 8 literal
 	mode  AddressingMode
 	pos   token.Position
 pub mut:
@@ -1401,7 +1402,6 @@ pub mut:
 pub struct None {
 pub:
 	pos token.Position
-	foo int // todo
 }
 
 pub enum SqlStmtKind {
@@ -1463,12 +1463,14 @@ pub fn (expr Expr) is_blank_ident() bool {
 
 pub fn (expr Expr) position() token.Position {
 	// all uncommented have to be implemented
+	// NB: please do not print here. the language server will hang
+	// as it uses STDIO primarly to communicate ~Ned
 	match expr {
 		AnonFn {
 			return expr.decl.pos
 		}
 		EmptyExpr {
-			println('compiler bug, unhandled EmptyExpr position()')
+			// println('compiler bug, unhandled EmptyExpr position()')
 			return token.Position{}
 		}
 		NodeError, ArrayDecompose, ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr, CastExpr,
@@ -1755,7 +1757,7 @@ pub fn (node Node) children() []Node {
 		}
 	} else {
 		match node {
-			GlobalField, ConstField, EnumField, StructInitField {
+			GlobalField, ConstField, EnumField, StructInitField, CallArg {
 				children << node.expr
 			}
 			SelectBranch {

@@ -3,7 +3,6 @@
 // that can be found in the LICENSE file.
 module ast
 
-import v.ast
 import v.util
 import strings
 
@@ -117,7 +116,7 @@ pub fn (node &FnDecl) stringify(t &Table, cur_mod string, m2a map[string]string)
 		}
 	}
 	f.write_string(')')
-	if node.return_type != ast.void_type {
+	if node.return_type != void_type {
 		mut rs := util.no_cur_mod(t.type_to_str(node.return_type), cur_mod)
 		for mod, alias in m2a {
 			rs = rs.replace(mod, alias)
@@ -362,6 +361,9 @@ pub fn (x Expr) str() string {
 		}
 		UnsafeExpr {
 			return 'unsafe { $x.expr }'
+		}
+		None {
+			return 'none'
 		}
 		else {}
 	}

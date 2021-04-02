@@ -1560,6 +1560,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) ast.Type {
 			c.error('expected $nr_args arguments, but got $call_expr.args.len', unexpected_arguments_pos)
 			return method.return_type
 		}
+
 		// if method_name == 'clone' {
 		// println('CLONE nr args=$method.args.len')
 		// }
@@ -1671,6 +1672,10 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) ast.Type {
 		}
 		if call_expr.generic_types.len > 0 && method.generic_names.len == 0 {
 			c.error('a non generic function called like a generic one', call_expr.generic_list_pos)
+		}
+		if call_expr.generic_types.len > method.generic_names.len {
+			c.error('too many generic parameters got $call_expr.generic_types.len, expected $method.generic_names.len',
+				call_expr.generic_list_pos)
 		}
 		if method.generic_names.len > 0 {
 			return call_expr.return_type
@@ -2208,6 +2213,11 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) ast.Type {
 	}
 	if call_expr.generic_types.len > 0 && f.generic_names.len == 0 {
 		c.error('a non generic function called like a generic one', call_expr.generic_list_pos)
+	}
+
+	if call_expr.generic_types.len > f.generic_names.len {
+		c.error('too many generic parameters got $call_expr.generic_types.len, expected $f.generic_names.len',
+			call_expr.generic_list_pos)
 	}
 	if f.generic_names.len > 0 {
 		return call_expr.return_type
@@ -4341,7 +4351,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 				ast.f64_type
 			})
 		}
-		if !c.table.sumtype_has_variant(node.typ, node.expr_type) {
+		if !c.table.sumtype_has_variant(node.typ, node.expr_type) && !node.typ.has_flag(.optional) {
 			c.error('cannot cast `$from_type_sym.name` to `$to_type_sym.name`', node.pos)
 		}
 	} else if mut to_type_sym.info is ast.Alias {
@@ -4390,7 +4400,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		c.type_implements(node.expr_type, node.typ, node.pos)
 	} else if node.typ == ast.bool_type {
 		c.error('cannot cast to bool - use e.g. `some_int != 0` instead', node.pos)
-	} else if node.expr_type == ast.none_type {
+	} else if node.expr_type == ast.none_type && !node.typ.has_flag(.optional) {
 		type_name := c.table.type_to_str(node.typ)
 		c.error('cannot cast `none` to `$type_name`', node.pos)
 	} else if from_type_sym.kind == .struct_ && !node.expr_type.is_ptr() {

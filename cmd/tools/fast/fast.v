@@ -47,8 +47,8 @@ fn main() {
 	diff3 := 0 // measure('$vdir/vprod -x64 $vdir/cmd/tools/1mil.v', 'x64 1mil')
 	diff4 := measure('$vdir/vprod -cc clang $vdir/examples/hello_world.v', 'hello.v')
 	vc_size := os.file_size('v.c') / 1000
-	// parse/check/cgen
-	parse, check, cgen := measure_steps(vdir)
+	// scan/parse/check/cgen
+	scan, parse, check, cgen := measure_steps(vdir)
 	// println('Building V took ${diff}ms')
 	commit_date := exec('git log -n1 --pretty="format:%at" $commit')
 	date := time.unix(commit_date.int())
@@ -67,6 +67,7 @@ fn main() {
 		<td>${parse}ms</td>
 		<td>${check}ms</td>
 		<td>${cgen}ms</td>
+		<td>${scan}ms</td>
 	</tr>\n' +
 		table.trim_space()
 	out.writeln(table) ?
@@ -114,14 +115,32 @@ fn measure(cmd string, description string) int {
 	return int(sum / 3)
 }
 
-fn measure_steps(vdir string) (int, int, int) {
+fn measure_steps(vdir string) (int, int, int, int) {
 	resp := os.execute_or_panic('$vdir/vprod -o v.c -show-timings $vdir/cmd/v')
+	mut scan, mut parse, mut check, mut cgen := 0, 0, 0, 0
 	lines := resp.output.split_into_lines()
-	if lines.len != 3 {
-		return 0, 0, 0
+	if lines.len == 3 {
+		parse = lines[0].before('.').int()
+		check = lines[1].before('.').int()
+		cgen = lines[2].before('.').int()
+	} else {
+		ms_lines := lines.map(it.split('  ms '))
+		for line in ms_lines {
+			if line.len == 2 {
+				if line[1] == 'SCAN' {
+					scan = line[0].int()
+				}
+				if line[1] == 'PARSE' {
+					parse = line[0].int()
+				}
+				if line[1] == 'CHECK' {
+					check = line[0].int()
+				}
+				if line[1] == 'C GEN' {
+					cgen = line[0].int()
+				}
+			}
+		}
 	}
-	parse := lines[0].before('.').int()
-	check := lines[1].before('.').int()
-	cgen := lines[2].before('.').int()
-	return parse, check, cgen
+	return scan, parse, check, cgen
 }

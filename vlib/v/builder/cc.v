@@ -931,8 +931,13 @@ fn (mut v Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CF
 	obj_path := os.real_path(path)
 	cfile := '${obj_path[..obj_path.len - 2]}.c'
 	opath := v.pref.cache_manager.postfix_with_key2cpath('.o', obj_path)
+	mut rebuild_reason_message := '$obj_path not found, building it in $opath ...'
 	if os.exists(opath) {
-		return
+		if os.exists(cfile) && os.file_last_mod_unix(opath) < os.file_last_mod_unix(cfile) {
+			rebuild_reason_message = '$opath is older than $cfile, rebuilding ...'
+		} else {
+			return
+		}
 	}
 	if os.exists(obj_path) {
 		// Some .o files are distributed with no source
@@ -942,7 +947,7 @@ fn (mut v Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CF
 		os.cp(obj_path, opath) or { panic(err) }
 		return
 	}
-	println('$obj_path not found, building it in $opath ...')
+	println(rebuild_reason_message)
 	//
 	// prepare for tcc, it needs relative paths to thirdparty/tcc to work:
 	current_folder := os.getwd()
@@ -968,7 +973,9 @@ fn (mut v Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CF
 	v.pref.cache_manager.save('.description.txt', obj_path, '${obj_path:-30} @ $cmd\n') or {
 		panic(err)
 	}
-	println(res.output)
+	if res.output != '' {
+		println(res.output)
+	}
 }
 
 fn missing_compiler_info() string {

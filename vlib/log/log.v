@@ -16,6 +16,12 @@ pub enum Level {
 	debug
 }
 
+pub enum LogTarget {
+	console
+	file
+	both
+}
+
 // tag returns the tag for log level `l` as a string.
 fn tag_to_cli(l Level) string {
 	return match l {
@@ -49,10 +55,10 @@ interface Logger {
 // Log represents a logging object
 pub struct Log {
 mut:
-	level          Level
-	output_label   string
-	ofile          os.File
-	output_to_file bool // if true output to file else use stdout/stderr.
+	level         Level
+	output_label  string
+	ofile         os.File
+	output_target LogTarget // if true output to file else use stdout/stderr.
 pub mut:
 	output_file_name string // log output to this file
 }
@@ -84,12 +90,21 @@ pub fn (mut l Log) set_output_path(output_file_path string) {
 	if l.ofile.is_opened {
 		l.ofile.close()
 	}
-	l.output_to_file = true
+	l.output_target = .file
 	l.output_file_name = os.join_path(os.real_path(output_file_path), l.output_label)
 	ofile := os.open_append(l.output_file_name) or {
 		panic('error while opening log file $l.output_file_name for appending')
 	}
 	l.ofile = ofile
+}
+
+// log_to_console_too turns on logging to the console too, in addition to logging to a file.
+// You have to call it *after* calling .set_output_path(output_file_path).
+pub fn (mut l Log) log_to_console_too() {
+	if l.output_target != .file {
+		panic('log_to_console_too should be called *after* .set_output_path')
+	}
+	l.output_target = .both
 }
 
 // flush writes the log file content to disk.
@@ -116,12 +131,13 @@ fn (l &Log) log_cli(s string, level Level) {
 	println('[$f $t.format_ss()] $s')
 }
 
-// send_output writes log line `s` with `level` to either the log file or stdout
-// according to the value of the `.output_to_file` field.
-fn (mut l Log) send_output(s &string, level Level) {
-	if l.output_to_file {
+// send_output writes log line `s` with `level` to either the log file or the console
+// according to the value of the `.output_target` field.
+pub fn (mut l Log) send_output(s &string, level Level) {
+	if l.output_target == .file || l.output_target == .both {
 		l.log_file(s, level)
-	} else {
+	}
+	if l.output_target == .console || l.output_target == .both {
 		l.log_cli(s, level)
 	}
 }
