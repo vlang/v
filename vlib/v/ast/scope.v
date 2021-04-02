@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module ast
 
-import v.table
+import v.ast
 
 pub struct Scope {
 pub mut:
@@ -18,7 +18,7 @@ pub mut:
 }
 
 pub fn new_scope(parent &Scope, start_pos int) &Scope {
-	return &Scope{
+	return &ast.Scope{
 		parent: parent
 		start_pos: start_pos
 	}
@@ -54,7 +54,7 @@ pub fn (s &Scope) find(name string) ?ScopeObject {
 	return none
 }
 
-pub fn (s &Scope) find_struct_field(struct_type table.Type, field_name string) ?ScopeStructField {
+pub fn (s &Scope) find_struct_field(struct_type Type, field_name string) ?ScopeStructField {
 	for sc := s; true; sc = sc.parent {
 		for field in sc.struct_fields {
 			if field.struct_type == struct_type && field.name == field_name {
@@ -103,7 +103,7 @@ pub fn (s &Scope) known_var(name string) bool {
 	return false
 }
 
-pub fn (mut s Scope) update_var_type(name string, typ table.Type) {
+pub fn (mut s Scope) update_var_type(name string, typ Type) {
 	s.end_pos = s.end_pos // TODO mut bug
 	mut obj := s.objects[name]
 	match mut obj {

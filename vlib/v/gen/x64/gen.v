@@ -10,13 +10,12 @@ import v.errors
 import v.pref
 import term
 import strings
-import v.table
 
 pub struct Gen {
 	out_name string
 	pref     &pref.Preferences // Preferences shared from V struct
 mut:
-	table                &table.Table
+	table                &ast.Table
 	buf                  []byte
 	sect_header_name_pos int
 	offset               i64
@@ -82,7 +81,7 @@ enum Size {
 	_64
 }
 
-pub fn gen(files []ast.File, table &table.Table, out_name string, pref &pref.Preferences) {
+pub fn gen(files []ast.File, table &ast.Table, out_name string, pref &pref.Preferences) {
 	mut g := Gen{
 		table: table
 		sect_header_name_pos: 0
@@ -776,7 +775,7 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 				sym := g.table.get_type_symbol(right.typ)
 				// println(sym)
 				// println(typeof(sym.info))
-				info := sym.info as table.Struct
+				info := sym.info as ast.Struct
 				for field in info.fields {
 					field_name := name + '.' + field.name
 					println(field_name)

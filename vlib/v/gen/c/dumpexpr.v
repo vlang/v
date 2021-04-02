@@ -1,7 +1,6 @@
 module c
 
 import v.ast
-import v.table
 
 fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 	sexpr := ctoslit(node.expr.str())
@@ -20,7 +19,7 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 fn (mut g Gen) dump_expr_definitions() {
 	if g.pref.build_mode == .build_module {
 		for dump_type, cname in g.table.dumps {
-			is_ptr := table.Type(dump_type).is_ptr()
+			is_ptr := ast.Type(dump_type).is_ptr()
 			ptr_suffix := if is_ptr { '*' } else { '' }
 			dump_fn_name := '_v_dump_expr_$cname' + (if is_ptr { '_ptr' } else { '' })
 			g.definitions.writeln('$cname$ptr_suffix ${dump_fn_name}(string fpath, int line, string sexpr, $cname$ptr_suffix x) {')
@@ -28,7 +27,7 @@ fn (mut g Gen) dump_expr_definitions() {
 	} else {
 		for dump_type, cname in g.table.dumps {
 			to_string_fn_name := g.gen_str_for_type(dump_type)
-			is_ptr := table.Type(dump_type).is_ptr()
+			is_ptr := ast.Type(dump_type).is_ptr()
 			ptr_astarisk := if is_ptr { '*' } else { '' }
 			dump_fn_name := '_v_dump_expr_$cname' + (if is_ptr { '_ptr' } else { '' })
 			g.definitions.writeln('$cname$ptr_astarisk ${dump_fn_name}(string fpath, int line, string sexpr, $cname$ptr_astarisk x) {')

@@ -1,4 +1,4 @@
-import v.table
+import v.ast
 import v.cflag
 
 const (
@@ -10,7 +10,7 @@ const (
 )
 
 fn test_parse_valid_cflags() {
-	mut t := table.new_table()
+	mut t := ast.new_table()
 	expected_flags := [
 		make_flag('freebsd', '-I', '/usr/local/include/freetype2'),
 		make_flag('linux', '-l', 'glfw'),
@@ -36,7 +36,7 @@ fn test_parse_valid_cflags() {
 }
 
 fn test_parse_invalid_cflags() {
-	mut t := table.new_table()
+	mut t := ast.new_table()
 	// -I, -L, -l must have values
 	assert_parse_invalid_flag(mut t, 'windows -l')
 	assert_parse_invalid_flag(mut t, '-I')
@@ -53,11 +53,11 @@ fn test_parse_invalid_cflags() {
 	assert t.cflags.len == 0
 }
 
-fn parse_valid_flag(mut t table.Table, flag string) {
+fn parse_valid_flag(mut t ast.Table, flag string) {
 	t.parse_cflag(flag, module_name, cdefines) or {}
 }
 
-fn assert_parse_invalid_flag(mut t table.Table, flag string) {
+fn assert_parse_invalid_flag(mut t ast.Table, flag string) {
 	t.parse_cflag(flag, module_name, cdefines) or { return }
 	assert false
 }

@@ -28,6 +28,7 @@ const (
 		'vlib/v/tests/generics_return_generics_struct_test.v', /* generic fn param removed */
 		'vlib/v/tests/interop_test.v', /* bad comment formatting */
 		'vlib/v/tests/generics_test.v', /* some silent error */
+		'vlib/v/gen/js/tests/js.v', /* local `hello` fn, gets replaced with module `hello` aliased as `hl` */
 	]
 	vfmt_verify_list                = [
 		'cmd/',
@@ -55,7 +56,7 @@ const (
 		'vlib/v/eval/',
 		'vlib/v/fmt/',
 		'vlib/v/gen/c/',
-		//'vlib/v/gen/js/',
+		'vlib/v/gen/js/',
 		'vlib/v/gen/x64/',
 		'vlib/v/live/',
 		'vlib/v/markused/',
@@ -64,7 +65,6 @@ const (
 		'vlib/v/pref/',
 		'vlib/v/preludes',
 		'vlib/v/scanner/',
-		'vlib/v/table/',
 		'vlib/v/tests/',
 		'vlib/v/token/',
 		'vlib/v/util/',

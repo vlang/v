@@ -260,7 +260,7 @@ pub fn (mut v Builder) cc_msvc() {
 			println('`builtin.obj` not found')
 			exit(1)
 		}
-		for imp in v.table.imports {
+		for imp in v.ast.imports {
 			if imp == 'webview' {
 				continue
 			}
