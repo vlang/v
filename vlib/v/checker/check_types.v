@@ -437,41 +437,63 @@ pub fn (mut c Checker) infer_fn_types(f ast.Fn, mut call_expr ast.CallExpr) {
 		}
 		mut typ := ast.void_type
 		for i, param in f.params {
+			mut to_set := ast.void_type
 			arg_i := if i != 0 && call_expr.is_method { i - 1 } else { i }
 			if call_expr.args.len <= arg_i {
 				break
 			}
 			arg := call_expr.args[arg_i]
 			param_type_sym := c.table.get_type_symbol(param.typ)
+
 			if param.typ.has_flag(.generic) && param_type_sym.name == gt_name {
-				typ = c.table.mktyp(arg.typ)
+				to_set = c.table.mktyp(arg.typ)
 				if arg.expr.is_auto_deref_var() {
-					typ = typ.deref()
+					to_set = to_set.deref()
 				}
-				break
+				// If the parent fn param is a generic too
+				if to_set.has_flag(.generic) {
+					to_set = c.unwrap_generic(to_set)
+				}
+			} else {
+				arg_sym := c.table.get_type_symbol(arg.typ)
+				if arg_sym.kind == .array && param_type_sym.kind == .array {
+					mut arg_elem_info := arg_sym.info as ast.Array
+					mut param_elem_info := param_type_sym.info as ast.Array
+					mut arg_elem_sym := c.table.get_type_symbol(arg_elem_info.elem_type)
+					mut param_elem_sym := c.table.get_type_symbol(param_elem_info.elem_type)
+					for {
+						if arg_elem_sym.kind == .array && param_elem_sym.kind == .array
+							&& c.cur_fn.generic_params.filter(it.name == param_elem_sym.name).len == 0 {
+							arg_elem_info = arg_elem_sym.info as ast.Array
+							arg_elem_sym = c.table.get_type_symbol(arg_elem_info.elem_type)
+							param_elem_info = param_elem_sym.info as ast.Array
+							param_elem_sym = c.table.get_type_symbol(param_elem_info.elem_type)
+						} else {
+							to_set = arg_elem_info.elem_type
+							break
+						}
+					}
+				} else if param.typ.has_flag(.variadic) {
+					to_set = c.table.mktyp(arg.typ)
+				}
 			}
-			arg_sym := c.table.get_type_symbol(arg.typ)
-			if arg_sym.kind == .array && param_type_sym.kind == .array {
-				mut arg_elem_info := arg_sym.info as ast.Array
-				mut param_elem_info := param_type_sym.info as ast.Array
-				mut arg_elem_sym := c.table.get_type_symbol(arg_elem_info.elem_type)
-				mut param_elem_sym := c.table.get_type_symbol(param_elem_info.elem_type)
-				for {
-					if arg_elem_sym.kind == .array && param_elem_sym.kind == .array
-						&& c.cur_fn.generic_params.filter(it.name == param_elem_sym.name).len == 0 {
-						arg_elem_info = arg_elem_sym.info as ast.Array
-						arg_elem_sym = c.table.get_type_symbol(arg_elem_info.elem_type)
-						param_elem_info = param_elem_sym.info as ast.Array
-						param_elem_sym = c.table.get_type_symbol(param_elem_info.elem_type)
-					} else {
-						typ = arg_elem_info.elem_type
-						break
+
+			if to_set != ast.void_type {
+				if typ != ast.void_type {
+					// try to promote
+					// only numbers so we don't promote pointers
+					if typ.is_number() && to_set.is_number() {
+						promoted := c.promote_num(typ, to_set)
+						if promoted != ast.void_type {
+							to_set = promoted
+						}
+					}
+					if !c.check_types(typ, to_set) {
+						c.error('inferred generic type `$gt_name` is ambigous got `${c.table.get_type_symbol(to_set).name}`, expected `${c.table.get_type_symbol(typ).name}`',
+							arg.pos)
 					}
 				}
-				break
-			} else if param.typ.has_flag(.variadic) {
-				typ = c.table.mktyp(arg.typ)
-				break
+				typ = to_set
 			}
 		}
 		if typ == ast.void_type {
