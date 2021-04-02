@@ -21,10 +21,6 @@ fn test_getpid() {
 }
 
 fn test_run() {
-	if os.user_os() == 'windows' {
-		return
-	}
-	//
 	mut p := os.new_process(test_os_process)
 	p.set_args(['-timeout_ms', '150', '-period_ms', '50'])
 	p.run()
@@ -51,9 +47,6 @@ fn test_run() {
 }
 
 fn test_wait() {
-	if os.user_os() == 'windows' {
-		return
-	}
 	mut p := os.new_process(test_os_process)
 	assert p.status != .exited
 	p.wait()
@@ -63,9 +56,6 @@ fn test_wait() {
 }
 
 fn test_slurping_output() {
-	if os.user_os() == 'windows' {
-		return
-	}
 	mut p := os.new_process(test_os_process)
 	p.set_args(['-timeout_ms', '500', '-period_ms', '50'])
 	p.set_redirect_stdio()
