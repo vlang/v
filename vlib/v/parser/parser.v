@@ -1939,7 +1939,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	// `(` must be on same line as name token otherwise it's a ParExpr
 	if !same_line && p.peek_tok.kind == .lpar {
 		node = p.parse_ident(language)
-	} else if p.peek_tok.kind == .lpar || (is_optional && p.peek_token(2).kind == .lpar) || p.is_generic_call() {
+	} else if p.peek_tok.kind == .lpar
+		|| (is_optional && p.peek_token(2).kind == .lpar) || p.is_generic_call() {
 		// foo(), foo<int>() or type() cast
 		mut name := if is_optional { p.peek_tok.lit } else { p.tok.lit }
 		if mod.len > 0 {

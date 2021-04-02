@@ -4390,7 +4390,8 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		c.type_implements(node.expr_type, node.typ, node.pos)
 	} else if node.typ == ast.bool_type {
 		c.error('cannot cast to bool - use e.g. `some_int != 0` instead', node.pos)
-	} else if node.expr_type == ast.none_type && !node.typ.has_flag(.optional) && node.expr_type != ast.none_type {
+	} else if node.expr_type == ast.none_type && !node.typ.has_flag(.optional)
+		&& node.expr_type != ast.none_type {
 		type_name := c.table.type_to_str(node.typ)
 		c.error('cannot cast `none` to `$type_name`', node.pos)
 	} else if from_type_sym.kind == .struct_ && !node.expr_type.is_ptr() {
