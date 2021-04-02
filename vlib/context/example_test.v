@@ -7,6 +7,8 @@ const (
 	short_duration = 1 * time.millisecond
 )
 
+type FavContextKey = string
+
 fn after(dur time.Duration) chan int {
 	dst := chan int{}
 	go fn(dur time.Duration, dst chan int) {
@@ -19,7 +21,7 @@ fn after(dur time.Duration) chan int {
 // This example demonstrates the use of a cancelable context to prevent a
 // goroutine leak. By the end of the example function, the goroutine started
 // by gen will return without leaking.
-fn test_cancel() {
+fn test_with_cancel() {
 	// gen generates integers in a separate routine and
 	// sends them to the returned channel.
 	// The callers of gen need to cancel the context once
@@ -55,7 +57,7 @@ fn test_cancel() {
 
 // This example passes a context with an arbitrary deadline to tell a blocking
 // function that it should abandon its work as soon as it gets to it.
-fn test_deadline() {
+fn test_with_deadline() {
 	dur := time.now().add(short_duration)
 	cancel_ctx, cancel := with_deadline(background(), dur)
 	defer {
@@ -68,13 +70,14 @@ fn test_deadline() {
 	}
 	_ := <-ctx_ch {
 		assert true
+		println(cancel_ctx.err())
 	}
 	}
 }
 
 // This example passes a context with a timeout to tell a blocking function that
 // it should abandon its work after the timeout elapses.
-fn test_timeout() {
+fn test_with_timeout() {
 	// Pass a context with a timeout to tell a blocking function that it
 	// should abandon its work after the timeout elapses.
 	cancel_ctx, cancel := with_timeout(background(), short_duration)
@@ -87,6 +90,26 @@ fn test_timeout() {
 	}
 	_ := <-ctx_ch {
 		assert true
+		println(cancel_ctx.err())
 	}
 	}
+}
+
+// This example demonstrates how a value can be passed to the context
+// and also how to retrieve it if it exists.
+fn test_with_value() {
+	f := fn(ctx Context, key FavContextKey) string {
+		value := ctx.value(&key)
+		if !isnil(value) {
+			return *(&string(value))
+		}
+		return "key not found"
+	}
+
+	key := FavContextKey("language")
+	value := "VAL"
+	ctx := with_value(background(), &key, &value)
+
+	assert value == f(ctx, key)
+	assert "key not found" == f(ctx, FavContextKey("color"))
 }

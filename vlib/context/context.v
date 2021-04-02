@@ -128,7 +128,7 @@ pub fn (ctx Context) err() string {
 //
 // A key identifies a specific value in a Context. Functions that wish
 // to store values in Context typically allocate a key in a global
-// variable then use that key as the argument to context.WithValue and
+// variable then use that key as the argument to context.with_value and
 // Context.Value. A key can be any type that supports equality;
 // packages should define keys as an unexported type to avoid
 // collisions.
@@ -148,6 +148,26 @@ pub fn (ctx Context) value(key voidptr) voidptr {
 		}
 		ValueContext {
 			return ctx.value(key)
+		}
+	}
+}
+
+pub fn (ctx Context) str() string {
+	match ctx {
+		EmptyContext {
+			return ctx.str()
+		}
+		CancelContext {
+			return ctx.str()
+		}
+		TimerContext {
+			return ctx.str()
+		}
+		CancelerContext {
+			return ctx.str()
+		}
+		ValueContext {
+			return ctx.str()
 		}
 	}
 }
@@ -214,6 +234,17 @@ pub fn (ctx CancelerContext) err() string {
 	}
 }
 
+pub fn (ctx CancelerContext) str() string {
+	match ctx {
+		CancelContext {
+			return ctx.str()
+		}
+		TimerContext {
+			return ctx.str()
+		}
+	}
+}
+
 // Value returns the value associated with this context for key, or nil
 // if no value is associated with key. Successive calls to Value with
 // the same key returns the same result.
@@ -224,7 +255,7 @@ pub fn (ctx CancelerContext) err() string {
 //
 // A key identifies a specific value in a Context. Functions that wish
 // to store values in Context typically allocate a key in a global
-// variable then use that key as the argument to context.WithValue and
+// variable then use that key as the argument to context.with_value and
 // Context.Value. A key can be any type that supports equality;
 // packages should define keys as an unexported type to avoid
 // collisions.
@@ -261,6 +292,16 @@ pub fn (ctx EmptyContext) value(key voidptr) voidptr {
 	return voidptr(0)
 }
 
+pub fn (ctx EmptyContext) str() string {
+	if Context(ctx) == background {
+		return "context.Background"
+	}
+	if Context(ctx) == todo {
+		return "context.TODO"
+	}
+	return "unknown empty Context"
+}
+
 // A CancelContext can be canceled. When canceled, it also cancels any children
 // that implement CancelerContext.
 pub struct CancelContext {
@@ -275,7 +316,7 @@ mut:
 // A CancelFunc does not wait for the work to stop.
 // A CancelFunc may be called by multiple goroutines simultaneously.
 // After the first call, subsequent calls to a CancelFunc do nothing.
-pub type CancelFunc = fn(c CancelerContext)
+pub type CancelFunc = fn(c Context)
 
 // with_cancel returns a copy of parent with a new done channel. The returned
 // context's done channel is closed when the returned cancel function is called
@@ -283,10 +324,10 @@ pub type CancelFunc = fn(c CancelerContext)
 //
 // Canceling this context releases resources associated with it, so code should
 // call cancel as soon as the operations running in this Context complete.
-pub fn with_cancel(parent Context) (CancelerContext, CancelFunc) {
+pub fn with_cancel(parent Context) (&Context, CancelFunc) {
 	mut c := new_cancel_context(parent)
 	propagate_cancel(parent, mut c)
-	return CancelerContext(c), fn(c CancelerContext) { c.cancel(true, canceled) }
+	return &c, fn(c Context) { if c is CancelerContext { c.cancel(true, canceled) } }
 }
 
 // new_cancel_context returns an initialized CancelContext.
@@ -298,7 +339,9 @@ fn propagate_cancel(parent Context, mut child CancelerContext) {
 	done := parent.done()
 	select {
 		_ := <-done {
+			// parent is already canceled
 			child.cancel(false, parent.err())
+			return
 		}
 		else {}
 	}
@@ -428,7 +471,7 @@ mut:
 //
 // Canceling this context releases resources associated with it, so code should
 // call cancel as soon as the operations running in this Context complete.
-pub fn with_deadline(parent Context, d time.Time) (CancelerContext, CancelFunc) {
+pub fn with_deadline(parent Context, d time.Time) (&Context, CancelFunc) {
 	if cur := parent.deadline() {
 		if cur < d {
 			// The current deadline is already sooner than the new one.
@@ -444,7 +487,7 @@ pub fn with_deadline(parent Context, d time.Time) (CancelerContext, CancelFunc) 
 	dur := d - time.now()
 	if dur.nanoseconds() <= 0 {
 		ctx.cancel(true, deadline_exceeded) // deadline has already passed
-		return CancelerContext(*ctx), fn(c CancelerContext) { c.cancel(true, canceled) }
+		return &Context(ctx), fn(c Context) { if c is CancelerContext { c.cancel(true, canceled) } }
 	}
 
 	if ctx.cancel.err == '' {
@@ -453,14 +496,14 @@ pub fn with_deadline(parent Context, d time.Time) (CancelerContext, CancelFunc) 
 			ctx.cancel(true, deadline_exceeded)
 		}(mut ctx, dur)
 	}
-	return CancelerContext(*ctx), fn(c CancelerContext) { c.cancel(true, canceled) }
+	return &Context(ctx), fn(c Context) { if c is CancelerContext { c.cancel(true, canceled) } }
 }
 
 // with_timeout returns with_deadline(parent, time.now().add(timeout)).
 //
 // Canceling this context releases resources associated with it, so code should
 // call cancel as soon as the operations running in this Context complete
-pub fn with_timeout(parent Context, timeout time.Duration) (CancelerContext, CancelFunc) {
+pub fn with_timeout(parent Context, timeout time.Duration) (&Context, CancelFunc) {
 	return with_deadline(parent, time.now().add(timeout))
 }
 
@@ -500,6 +543,23 @@ pub struct ValueContext {
 	context Context
 	key voidptr
 	value voidptr
+}
+
+// with_value returns a copy of parent in which the value associated with key is
+// val.
+//
+// Use context Values only for request-scoped data that transits processes and
+// APIs, not for passing optional parameters to functions.
+//
+// The provided key must be comparable and should not be of type
+// string or any other built-in type to avoid collisions between
+// packages using context. Users of with_value should define their own
+// types for keys
+pub fn with_value(parent Context, key voidptr, value voidptr) &Context {
+	if isnil(key) {
+		panic('nil key')
+	}
+	return &ValueContext{parent, key, value}
 }
 
 pub fn (ctx ValueContext) deadline() ?time.Time {
