@@ -1,5 +1,24 @@
 module context
 
+import time
+
+const (
+	// a reasonable duration to block in an example
+	short_duration = 1 * time.millisecond
+)
+
+fn after(dur time.Duration) chan int {
+	dst := chan int{}
+	go fn(dur time.Duration, dst chan int) {
+			time.sleep(dur)
+			dst <- 0
+		}(dur, dst)
+	return dst
+}
+
+// This example demonstrates the use of a cancelable context to prevent a
+// goroutine leak. By the end of the example function, the goroutine started
+// by gen will return without leaking.
 fn test_cancel() {
 	// gen generates integers in a separate routine and
 	// sends them to the returned channel.
@@ -15,7 +34,8 @@ fn test_cancel() {
 					_ := <- ch {
 						return // returning not to leak the routine
 					}
-					dst <- 0 {}
+					dst <- 0 {
+					}
 				}
 			}
 		}(ctx, dst)
@@ -24,11 +44,49 @@ fn test_cancel() {
 
 	cancel_ctx, cancel := with_cancel(background())
 	defer {
-		cancel(cancel_ctx)
-	}
 
-	ch := gen(Context(cancel_ctx))
+		cancel(cancel_ctx) }
+
+	ch := gen(cancel_ctx)
 	for _ in 0 .. 5 {
 		assert 0 == <-ch
+	}
+}
+
+// This example passes a context with an arbitrary deadline to tell a blocking
+// function that it should abandon its work as soon as it gets to it.
+fn test_deadline() {
+	dur := time.now().add(short_duration)
+	cancel_ctx, cancel := with_deadline(background(), dur)
+	defer {
+		cancel(cancel_ctx) }
+	after_ch := after(1 * time.second)
+	ctx_ch := cancel_ctx.done()
+	select {
+	_ := <-after_ch {
+		assert false
+	}
+	_ := <-ctx_ch {
+		assert true
+	}
+	}
+}
+
+// This example passes a context with a timeout to tell a blocking function that
+// it should abandon its work after the timeout elapses.
+fn test_timeout() {
+	// Pass a context with a timeout to tell a blocking function that it
+	// should abandon its work after the timeout elapses.
+	cancel_ctx, cancel := with_timeout(background(), short_duration)
+	defer { cancel(cancel_ctx) }
+	after_ch := after(1 * time.second)
+	ctx_ch := cancel_ctx.done()
+	select {
+	_ := <-after_ch {
+		assert false
+	}
+	_ := <-ctx_ch {
+		assert true
+	}
 	}
 }

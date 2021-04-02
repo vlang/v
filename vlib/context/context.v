@@ -383,7 +383,8 @@ pub fn (shared ctx CancelContext) cancel(remove_from_parent bool, err string) {
 	}
 
 	lock ctx {
-		if ctx.done.closed {
+		ctx.done <- 0
+		if !ctx.done.closed {
 			ctx.done.close()
 		}
 	}
@@ -439,7 +440,7 @@ pub fn with_deadline(parent Context, d time.Time) (CancelerContext, CancelFunc) 
 		deadline: d
 	}
 	propagate_cancel(parent, mut ctx)
-	dur := time.now() - d
+	dur := d - time.now()
 	if dur.nanoseconds() <= 0 {
 		ctx.cancel(true, deadline_exceeded) // deadline has already passed
 		return CancelerContext(*ctx), fn(c CancelerContext) { c.cancel(true, canceled) }
