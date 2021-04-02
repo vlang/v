@@ -1740,7 +1740,7 @@ pub fn (node Node) children() []Node {
 		}
 	} else {
 		match node {
-			GlobalField, ConstField, EnumField, StructInitField {
+			GlobalField, ConstField, EnumField, StructInitField, CallArg {
 				children << node.expr
 			}
 			SelectBranch {
