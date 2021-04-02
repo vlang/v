@@ -16,8 +16,8 @@ pub enum ProcessState {
 [heap]
 pub struct Process {
 mut:
-	wdata    voidptr // private, used only by the windows implementation
-	stdio_fd [3]int  // the file descriptors
+	wdata    voidptr // the WProcess; used only by the windows implementation
+	stdio_fd [3]int  // the stdio file descriptors for the child process, used only by the nix implementation
 pub:
 	filename string // the process's command file path
 pub mut:
