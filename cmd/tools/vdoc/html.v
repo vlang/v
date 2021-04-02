@@ -5,7 +5,7 @@ import net.urllib
 import strings
 import markdown
 import v.scanner
-import v.table
+import v.ast
 import v.token
 import v.doc
 import v.pref
@@ -344,7 +344,7 @@ fn get_src_link(repo_url string, file_name string, line_nr int) string {
 	return url.str()
 }
 
-fn html_highlight(code string, tb &table.Table) string {
+fn html_highlight(code string, tb &ast.Table) string {
 	builtin := ['bool', 'string', 'i8', 'i16', 'int', 'i64', 'i128', 'byte', 'u16', 'u32', 'u64',
 		'u128', 'rune', 'f32', 'f64', 'int_literal', 'float_literal', 'byteptr', 'voidptr', 'any']
 	highlight_code := fn (tok token.Token, typ HighlightTokenTyp) string {
@@ -425,7 +425,7 @@ fn html_highlight(code string, tb &table.Table) string {
 	return buf.str()
 }
 
-fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, tb &table.Table) string {
+fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, tb &ast.Table) string {
 	mut dnw := strings.new_builder(200)
 	head_tag := if head { 'h1' } else { 'h2' }
 	comments := dn.merge_comments_without_examples()

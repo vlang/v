@@ -5,7 +5,6 @@ module c
 
 import os
 import v.ast
-import v.table
 import v.util
 
 fn (mut g Gen) comptime_selector(node ast.ComptimeSelector) {
@@ -123,7 +122,7 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 			} else {
 				// last argument; try to expand if it's []string
 				idx := i - node.args.len
-				if m.params[i].typ.is_int() || m.params[i].typ.idx() == table.bool_type_idx {
+				if m.params[i].typ.is_int() || m.params[i].typ.idx() == ast.bool_type_idx {
 					// Gets the type name and cast the string to the type with the string_<type> function
 					type_name := g.table.type_symbols[int(m.params[i].typ)].str()
 					g.write('string_${type_name}(((string*)${node.args[node.args.len - 1]}.data) [$idx])')
@@ -140,7 +139,7 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 	}
 	mut j := 0
 	for method in node.sym.methods {
-		// if method.return_type != table.void_type {
+		// if method.return_type != ast.void_type {
 		if method.return_type != node.result_type {
 			continue
 		}
@@ -165,7 +164,7 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 	}
 }
 
-fn cgen_attrs(attrs []table.Attr) []string {
+fn cgen_attrs(attrs []ast.Attr) []string {
 	mut res := []string{cap: attrs.len}
 	for attr in attrs {
 		// we currently don't quote 'arg' (otherwise we could just use `s := attr.str()`)
@@ -287,12 +286,12 @@ fn (mut g Gen) comp_if_cond(cond ast.Expr) bool {
 				.key_is, .not_is {
 					left := cond.left
 					mut name := ''
-					mut exp_type := table.Type(0)
-					got_type := (cond.right as ast.Type).typ
+					mut exp_type := ast.Type(0)
+					got_type := (cond.right as ast.TypeNode).typ
 					if left is ast.SelectorExpr {
 						name = '${left.expr}.$left.field_name'
 						exp_type = g.comptime_var_type_map[name]
-					} else if left is ast.Type {
+					} else if left is ast.TypeNode {
 						name = left.str()
 						// this is only allowed for generics currently, otherwise blocked by checker
 						exp_type = g.unwrap_generic(left.typ)
@@ -333,7 +332,7 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 	sym := g.table.get_type_symbol(g.unwrap_generic(node.typ))
 	g.writeln('/* \$for $node.val_var in ${sym.name}($node.kind.str()) */ {')
 	g.indent++
-	// vweb_result_type := table.new_type(g.table.find_type_idx('vweb.Result'))
+	// vweb_result_type := ast.new_type(g.table.find_type_idx('vweb.Result'))
 	mut i := 0
 	// g.writeln('string method = _SLIT("");')
 	if node.kind == .methods {
@@ -345,7 +344,7 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 		}
 		for method in methods { // sym.methods {
 			/*
-			if method.return_type != vweb_result_type { // table.void_type {
+			if method.return_type != vweb_result_type { // ast.void_type {
 				continue
 			}
 			*/
@@ -414,7 +413,7 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 		}
 	} else if node.kind == .fields {
 		// TODO add fields
-		if sym.info is table.Struct {
+		if sym.info is ast.Struct {
 			mut fields := sym.info.fields.filter(it.attrs.len == 0)
 			fields_with_attrs := sym.info.fields.filter(it.attrs.len > 0)
 			fields << fields_with_attrs

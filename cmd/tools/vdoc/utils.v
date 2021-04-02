@@ -3,7 +3,7 @@ module main
 import os
 import v.doc
 import term
-import v.table
+import v.ast
 import v.scanner
 import v.token
 import strings
@@ -137,7 +137,7 @@ fn gen_footer_text(d &doc.Doc, include_timestamp bool) string {
 	return '$footer_text Generated on: $time_str'
 }
 
-fn color_highlight(code string, tb &table.Table) string {
+fn color_highlight(code string, tb &ast.Table) string {
 	builtin := ['bool', 'string', 'i8', 'i16', 'int', 'i64', 'i128', 'byte', 'u16', 'u32', 'u64',
 		'u128', 'rune', 'f32', 'f64', 'int_literal', 'float_literal', 'byteptr', 'voidptr', 'any']
 	highlight_code := fn (tok token.Token, typ HighlightTokenTyp) string {

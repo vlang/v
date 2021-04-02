@@ -1,7 +1,6 @@
 module parser
 
 import v.ast
-import v.table
 
 fn (mut p Parser) lock_expr() ast.LockExpr {
 	// TODO Handle aliasing sync
@@ -20,7 +19,7 @@ fn (mut p Parser) lock_expr() ast.LockExpr {
 		p.next()
 		for p.tok.kind == .name {
 			lockeds << ast.Ident{
-				language: table.Language.v
+				language: ast.Language.v
 				pos: p.tok.position()
 				mod: p.mod
 				name: p.tok.lit

@@ -1,11 +1,10 @@
 module builder
 
 import os
-import v.ast
 import v.token
-import v.table
 import v.pref
 import v.util
+import v.ast
 import v.vmod
 import v.checker
 import v.parser
@@ -26,14 +25,14 @@ pub mut:
 	module_search_paths []string
 	parsed_files        []ast.File
 	cached_msvc         MsvcResult
-	table               &table.Table
+	table               &ast.Table
 	ccoptions           CcompilerOptions
 }
 
 pub fn new_builder(pref &pref.Preferences) Builder {
 	rdir := os.real_path(pref.path)
 	compiled_dir := if os.is_dir(rdir) { rdir } else { os.dir(rdir) }
-	mut table := table.new_table()
+	mut table := ast.new_table()
 	table.is_fmt = false
 	if pref.use_color == .always {
 		util.emanager.set_support_color(true)
@@ -100,7 +99,7 @@ pub fn (mut b Builder) parse_imports() {
 				continue
 			}
 			import_path := b.find_module_path(mod, ast_file.path) or {
-				// v.parsers[i].error_with_token_index('cannot import module "$mod" (not found)', v.parsers[i].import_table.get_import_tok_idx(mod))
+				// v.parsers[i].error_with_token_index('cannot import module "$mod" (not found)', v.parsers[i].import_ast.get_import_tok_idx(mod))
 				// break
 				error_with_pos('cannot import module "$mod" (not found)', ast_file.path,
 					imp.pos)
@@ -108,7 +107,7 @@ pub fn (mut b Builder) parse_imports() {
 			}
 			v_files := b.v_files_from_dir(import_path)
 			if v_files.len == 0 {
-				// v.parsers[i].error_with_token_index('cannot import module "$mod" (no .v files in "$import_path")', v.parsers[i].import_table.get_import_tok_idx(mod))
+				// v.parsers[i].error_with_token_index('cannot import module "$mod" (no .v files in "$import_path")', v.parsers[i].import_ast.get_import_tok_idx(mod))
 				error_with_pos('cannot import module "$mod" (no .v files in "$import_path")',
 					ast_file.path, imp.pos)
 			}
