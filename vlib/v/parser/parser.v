@@ -2024,6 +2024,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		}
 		// `Color.green`
 		mut enum_name := p.check_name()
+		enum_name_pos := p.prev_tok.position()
 		if mod != '' {
 			enum_name = mod + '.' + enum_name
 		} else {
@@ -2037,7 +2038,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		return ast.EnumVal{
 			enum_name: enum_name
 			val: val
-			pos: p.tok.position()
+			pos: enum_name_pos.extend(p.prev_tok.position())
 			mod: mod
 		}
 	} else if language == .js && p.peek_tok.kind == .dot && p.peek_token(2).kind == .name {
@@ -2236,6 +2237,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 			left: left
 			name: field_name
 			args: args
+			name_pos: name_pos
 			pos: pos
 			is_method: true
 			generic_types: generic_types

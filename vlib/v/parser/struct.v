@@ -409,6 +409,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 				name_pos: first_field_pos
 				comments: comments
 				next_comments: nline_comments
+				parent_type: typ
 			}
 		}
 	}
