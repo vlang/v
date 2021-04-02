@@ -807,6 +807,21 @@ fn test_sort() {
 	// assert users.map(it.name).join(' ') == 'Alice Bob Peter'
 }
 
+fn test_rune_sort() {
+	mut bs := [`f`, `e`, `d`, `b`, `c`, `a`]
+	bs.sort()
+	println(bs)
+	assert '$bs' == '[`a`, `b`, `c`, `d`, `e`, `f`]'
+
+	bs.sort(a > b)
+	println(bs)
+	assert '$bs' == '[`f`, `e`, `d`, `c`, `b`, `a`]'
+
+	bs.sort(a < b)
+	println(bs)
+	assert '$bs' == '[`a`, `b`, `c`, `d`, `e`, `f`]'
+}
+
 fn test_sort_by_different_order_of_a_b() {
 	mut x := [1, 2, 3]
 	x.sort(a < b)
