@@ -100,7 +100,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
 * [Builtin functions](#builtin-functions)
 * [Printing custom types](#printing-custom-types)
 * [Modules](#modules)
-    * [Module/package management](#module--package-management)
+    * [Module/package management](#modulepackage-management)
 * [Types 2](#types-2)
     * [Interfaces](#interfaces)
     * [Enums](#enums)
