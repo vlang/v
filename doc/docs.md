@@ -100,6 +100,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
 * [Builtin functions](#builtin-functions)
 * [Printing custom types](#printing-custom-types)
 * [Modules](#modules)
+    * [Module management](#module-management)
 * [Types 2](#types-2)
     * [Interfaces](#interfaces)
     * [Enums](#enums)
@@ -2048,6 +2049,29 @@ fn init() {
 
 The `init` function cannot be public - it will be called automatically. This feature is
 particularly useful for initializing a C library.
+
+### Module management
+
+You can also install modules already created by someone else:
+```powershell
+v install [module]
+```
+###### Example:
+```powershell
+v install ui
+```
+
+A list of available modules is available at https://vpm.vlang.io/
+
+To remove a module:
+
+```powershell
+v remove [module]
+```
+###### Example:
+```powershell
+v remove ui
+```
 
 ## Types 2
 
