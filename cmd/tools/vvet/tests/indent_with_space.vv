@@ -1,3 +1,13 @@
 fn main() {
     _ = 1 == 2
 }
+
+fn block_comments() {
+	/* tab to indent the comment
+    spaces before
+    also spaces before
+    same here */
+    /* spaces for comment indentation (ouch)
+    and inside too
+    */
+}
