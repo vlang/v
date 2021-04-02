@@ -4397,7 +4397,7 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 			|| (sym.info as ast.Alias).parent_type !in [node.expr_type, ast.string_type] {
 			cast_label = '($styp)'
 		}
-		if node.typ.has_flag(.optional) {
+		if node.typ.has_flag(.optional) && node.expr is ast.None {
 			g.gen_optional_error(node.typ, node.expr)
 		} else {
 			g.write('(${cast_label}(')
