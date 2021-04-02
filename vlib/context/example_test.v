@@ -19,7 +19,7 @@ fn after(dur time.Duration) chan int {
 }
 
 // This example demonstrates the use of a cancelable context to prevent a
-// goroutine leak. By the end of the example function, the goroutine started
+// routine leak. By the end of the example function, the routine started
 // by gen will return without leaking.
 fn test_with_cancel() {
 	// gen generates integers in a separate routine and
