@@ -1401,7 +1401,6 @@ pub mut:
 pub struct None {
 pub:
 	pos token.Position
-	foo int // todo
 }
 
 pub enum SqlStmtKind {

@@ -362,6 +362,9 @@ pub fn (x Expr) str() string {
 		UnsafeExpr {
 			return 'unsafe { $x.expr }'
 		}
+		None {
+			return 'none'
+		}
 		else {}
 	}
 	return '[unhandled expr type $x.type_name()]'
