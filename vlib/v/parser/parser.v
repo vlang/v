@@ -1938,14 +1938,16 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	} else {
 		false
 	}
+	is_optional := p.tok.kind == .question
 	// p.warn('name expr  $p.tok.lit $p.peek_tok.str()')
 	same_line := p.tok.line_nr == p.peek_tok.line_nr
 	// `(` must be on same line as name token otherwise it's a ParExpr
 	if !same_line && p.peek_tok.kind == .lpar {
 		node = p.parse_ident(language)
-	} else if p.peek_tok.kind == .lpar || p.is_generic_call() {
+	} else if p.peek_tok.kind == .lpar
+		|| (is_optional && p.peek_token(2).kind == .lpar) || p.is_generic_call() {
 		// foo(), foo<int>() or type() cast
-		mut name := p.tok.lit
+		mut name := if is_optional { p.peek_tok.lit } else { p.tok.lit }
 		if mod.len > 0 {
 			name = '${mod}.$name'
 		}
@@ -1992,6 +1994,9 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		} else {
 			// fn call
 			// println('calling $p.tok.lit')
+			if is_optional {
+				p.error_with_pos('unexpected $p.prev_tok', p.prev_tok.position())
+			}
 			node = p.call_expr(language, mod)
 		}
 	} else if (p.peek_tok.kind == .lcbr || (p.peek_tok.kind == .lt && lit0_is_capital))
