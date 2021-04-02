@@ -435,8 +435,9 @@ pub fn with_deadline(parent Context, d time.Time) (CancelerContext, CancelFunc) 
 			return with_cancel(parent)
 		}
 	}
+	cancel_ctx := new_cancel_context(parent)
 	mut ctx := &TimerContext{
-		cancel: new_cancel_context(parent),
+		cancel: cancel_ctx,
 		deadline: d
 	}
 	propagate_cancel(parent, mut ctx)
