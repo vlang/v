@@ -11,7 +11,10 @@ const test_os_process_source = os.join_path(vroot, 'cmd/tools/test_os_process.v'
 
 fn testsuite_begin() {
 	os.rm(test_os_process) or {}
-	assert os.system('$vexe -o $test_os_process $test_os_process_source') == 0
+	build_test_os_process_cmd := '$vexe -o $test_os_process $test_os_process_source'
+	dump(build_test_os_process_cmd)
+	compilation_status := os.system(build_test_os_process_cmd)
+	assert compilation_status == 0
 }
 
 fn test_getpid() {
