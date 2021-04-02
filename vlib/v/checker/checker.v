@@ -1410,9 +1410,9 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, call_exp
 			}
 		}
 		ast.CallExpr {
-			if is_map && arg_expr.return_type == table.void_type {
+			if is_map && arg_expr.return_type == ast.void_type {
 				c.error('type mismatch, `$arg_expr.name` does not return anything', arg_expr.pos)
-			} else if !is_map && arg_expr.return_type != table.bool_type {
+			} else if !is_map && arg_expr.return_type != ast.bool_type {
 				c.error('type mismatch, `$arg_expr.name` must return a bool', arg_expr.pos)
 			}
 		}
