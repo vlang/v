@@ -2238,6 +2238,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 			left: left
 			name: field_name
 			args: args
+			name_pos: name_pos
 			pos: pos
 			is_method: true
 			generic_types: generic_types
