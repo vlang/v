@@ -2058,6 +2058,8 @@ Briefly:
 v [module option] [param]
 ```
 
+###### module option's:
+
 ```
    install           Install a module from VPM.
    remove            Remove a module that was installed from VPM.
