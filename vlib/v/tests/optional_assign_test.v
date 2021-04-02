@@ -6,6 +6,12 @@ fn test_optional_none_assign() {
 	// assert !x.has_value
 }
 
+fn test_optional_none_assign_nonsumtype() {
+	x := ?int(none)
+	// assert x.err == none
+	// assert !x.has_value
+}
+
 // TODO: make this working next
 /*
 fn test_optional_value_assign() {

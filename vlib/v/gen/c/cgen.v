@@ -4397,16 +4397,20 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 			|| (sym.info as ast.Alias).parent_type !in [node.expr_type, ast.string_type] {
 			cast_label = '($styp)'
 		}
-		g.write('(${cast_label}(')
-		g.expr(node.expr)
-		if node.expr is ast.IntegerLiteral {
-			if node.typ in [ast.u64_type, ast.u32_type, ast.u16_type] {
-				if !node.expr.val.starts_with('-') {
-					g.write('U')
+		if node.typ.has_flag(.optional) {
+			g.gen_optional_error(node.typ, node.expr)
+		} else {
+			g.write('(${cast_label}(')
+			g.expr(node.expr)
+			if node.expr is ast.IntegerLiteral {
+				if node.typ in [ast.u64_type, ast.u32_type, ast.u16_type] {
+					if !node.expr.val.starts_with('-') {
+						g.write('U')
+					}
 				}
 			}
+			g.write('))')
 		}
-		g.write('))')
 	}
 }
 
