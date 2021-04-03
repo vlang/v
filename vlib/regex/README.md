@@ -573,8 +573,6 @@ If the usage of `groups` in the replace process is not needed it is possible to 
 pub fn (mut re RE) replace_simple(in_txt string, repl string) string
 ```
 
-
-
 #### Custom replace function
 
 For complex find and replace operations it is available the function `replace_by_fn` .
