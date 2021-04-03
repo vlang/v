@@ -29,7 +29,7 @@ pub type ScopeObject = AsmRegister | ConstField | GlobalField | Var
 // TODO: replace Param
 pub type Node = CallArg | ConstField | EmptyNode | EnumField | Expr | File | GlobalField |
 	IfBranch | MatchBranch | NodeError | Param | ScopeObject | SelectBranch | Stmt | StructField |
-	StructInitField
+	StructInitField | SumTypeVariant
 
 pub struct TypeNode {
 pub:
@@ -913,6 +913,7 @@ pub:
 	is_pub      bool
 	parent_type Type
 	pos         token.Position
+	type_pos    token.Position
 	comments    []Comment
 }
 
@@ -940,6 +941,7 @@ pub:
 	is_pub   bool
 	typ      Type
 	pos      token.Position
+	type_pos token.Position
 	comments []Comment
 }
 
@@ -1606,6 +1608,17 @@ pub fn (node Node) position() token.Position {
 				for sym in node.syms {
 					pos = pos.extend(sym.pos)
 				}
+			} else if node is TypeDecl {
+				match node {
+					FnTypeDecl, AliasTypeDecl {
+						pos = pos.extend(node.type_pos)
+					}
+					SumTypeDecl {
+						for variant in node.variants {
+							pos = pos.extend(variant.pos)
+						}
+					}
+				}
 			}
 			if node is AssignStmt {
 				return pos.extend(node.right.last().position())
@@ -1621,8 +1634,11 @@ pub fn (node Node) position() token.Position {
 		StructField {
 			return node.pos.extend(node.type_pos)
 		}
-		MatchBranch, SelectBranch, EnumField, ConstField, StructInitField, GlobalField, CallArg {
+		MatchBranch, SelectBranch, EnumField, ConstField, StructInitField, GlobalField, CallArg, SumTypeVariant {
 			return node.pos
+		}
+		Param {
+			return node.pos.extend(node.type_pos)
 		}
 		IfBranch {
 			return node.pos.extend(node.body_pos)
@@ -1642,9 +1658,6 @@ pub fn (node Node) position() token.Position {
 					}
 				}
 			}
-		}
-		Param {
-			return node.pos.extend(node.type_pos)
 		}
 		File {
 			mut pos := token.Position{}
@@ -1766,6 +1779,11 @@ pub fn (node Node) children() []Node {
 				}
 				children << node.params.map(Node(it))
 				children << node.stmts.map(Node(it))
+			}
+			TypeDecl {
+				if node is SumTypeDecl {
+					children << node.variants.map(Node(it))
+				}
 			}
 			else {}
 		}
