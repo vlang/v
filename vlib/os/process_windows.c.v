@@ -132,8 +132,6 @@ fn (mut p Process) win_kill_pgroup() {
 	wdata := &WProcess(p.wdata)
 	res := C.TerminateProcess(wdata.proc_info.h_process, 3)
 	eprintln('> win_kill_pgroup res: $res')
-    C.WaitForSingleObject(wdata.proc_info.h_process, 2000) // wait for a maximum of 2 seconds
-	eprintln('> win_kill_pgroup res: $res finish')
 }
 
 fn (mut p Process) win_wait() {
@@ -141,7 +139,8 @@ fn (mut p Process) win_wait() {
 	exit_code := u32(1)
 	mut wdata := &WProcess(p.wdata)
 	if p.wdata != 0 {
-		C.WaitForSingleObject(wdata.proc_info.h_process, C.INFINITE)
+		C.WaitForSingleObject(wdata.proc_info.h_process, 200)
+	eprintln('> win_wait C.WaitForSingleObject finished')
 		C.GetExitCodeProcess(wdata.proc_info.h_process, voidptr(&exit_code))
 		close_valid_handle(&wdata.proc_info.h_process)
 		close_valid_handle(&wdata.proc_info.h_thread)
