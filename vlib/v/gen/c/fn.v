@@ -552,7 +552,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 
 	if left_sym.kind == .map && node.name == 'delete_1' {
-		left_info := left_sym.info as table.Map
+		left_info := left_sym.info as ast.Map
 		elem_type_str := g.typ(left_info.key_type)
 		g.write('map_delete_1(&')
 		g.expr(node.left)
