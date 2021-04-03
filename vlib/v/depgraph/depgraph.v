@@ -56,7 +56,7 @@ pub fn (mut o OrderedDepMap) delete(name string) {
 			break
 		}
 	}
-	o.data.delete_1(name)
+	o.data.delete(name)
 }
 
 pub fn (mut o OrderedDepMap) apply_diff(name string, deps []string) {

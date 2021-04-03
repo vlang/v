@@ -919,9 +919,9 @@ pub fn (mut g Gen) reset_tmp_count() {
 fn (mut g Gen) decrement_inside_ternary() {
 	key := g.inside_ternary.str()
 	for name in g.ternary_level_names[key] {
-		g.ternary_names.delete_1(name)
+		g.ternary_names.delete(name)
 	}
-	g.ternary_level_names.delete_1(key)
+	g.ternary_level_names.delete(key)
 	g.inside_ternary--
 }
 
