@@ -96,7 +96,7 @@ pub fn resolve_addrs(addr string, family SocketFamily, @type SocketType) ?[]Addr
 
 	match family {
 		.inet, .inet6, .unspec {
-			return resolve_ipaddr(addr, family, @type)
+			return resolve_ipaddrs(addr, family, @type)
 		}
 
 		.unix {
@@ -124,7 +124,7 @@ pub fn resolve_addrs(addr string, family SocketFamily, @type SocketType) ?[]Addr
 	}
 }
 
-pub fn resolve_ipaddr(addr string, family SocketFamily, typ SocketType) ?[]Addr {
+pub fn resolve_ipaddrs(addr string, family SocketFamily, typ SocketType) ?[]Addr {
 	address, port := split_address(addr) ?
 
 	mut hints := C.addrinfo{
@@ -140,32 +140,40 @@ pub fn resolve_ipaddr(addr string, family SocketFamily, typ SocketType) ?[]Addr 
 	hints.ai_addr = voidptr(0)
 	hints.ai_canonname = voidptr(0)
 	hints.ai_next = voidptr(0)
-	info := &C.addrinfo(0)
+	results := &C.addrinfo(0)
 
 	sport := '$port'
 
 	// This might look silly but is recommended by MSDN
 	$if windows {
-		socket_error(0 - C.getaddrinfo(&char(address.str), &char(sport.str), &hints,
-			&info)) ?
+		socket_error(0 - C.getaddrinfo(address.str, sport.str, &hints, &results)) ?
 	} $else {
-		x := C.getaddrinfo(&char(address.str), &char(sport.str), &hints, &info)
+		x := C.getaddrinfo(address.str, sport.str, &hints, &results)
 		wrap_error(x) ?
 	}
+
+	defer { C.freeaddrinfo(results) }
 
 	// Now that we have our linked list of addresses
 	// convert them into an array
 	mut addresses := []Addr{}
 
-	for addrinfo := info; !isnil(addrinfo); addrinfo = addrinfo.ai_next {
-		addresses << &IpAddr{ 
-			addr: SockaddrStorage{sockaddr: *addrinfo.ai_addr }
-			len: int(addrinfo.ai_addrlen)
+	for result := results; !isnil(result); result = result.ai_next {
+		new_addr := &IpAddr{ 
+			len: int(result.ai_addrlen)
 
-			family: SocketFamily(addrinfo.ai_family)
-			@type: SocketType(addrinfo.ai_socktype)
+			family: SocketFamily(result.ai_family)
+			@type: SocketType(result.ai_socktype)
 		}
+
+		unsafe {
+			C.memcpy(&new_addr.addr, result.ai_addr, new_addr.len)
+		}
+
+		addresses << new_addr
 	}
+
+
 
 	return addresses
 }
