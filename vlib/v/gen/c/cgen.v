@@ -1688,7 +1688,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	// cast to sum type
 	exp_styp := g.typ(expected_type)
 	got_styp := g.typ(got_type)
-	if expected_type != ast.void_type {
+	if expected_type != ast.void_type && !expected_type.has_flag(.optional) {
 		expected_deref_type := if expected_is_ptr { expected_type.deref() } else { expected_type }
 		got_deref_type := if got_is_ptr { got_type.deref() } else { got_type }
 		if g.table.sumtype_has_variant(expected_deref_type, got_deref_type) {
@@ -1761,8 +1761,14 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 			g.write('*')
 		}
 	}
-	if expected_type.has_flag(.optional) && expr is ast.None {
-		g.gen_optional_error(expected_type, expr)
+	if expected_type.has_flag(.optional) {
+		if expr is ast.None {
+			g.gen_optional_error(expected_type, expr)
+		} else {
+			line := g.go_before_stmt(0)
+			opt_name := g.gen_optional_value(expected_type, got_type, expr)
+			g.write(line.trim_left('\n') + opt_name)
+		}
 		return
 	}
 	// no cast
@@ -4396,8 +4402,14 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 			|| (sym.info as ast.Alias).parent_type !in [node.expr_type, ast.string_type] {
 			cast_label = '($styp)'
 		}
-		if node.typ.has_flag(.optional) && node.expr is ast.None {
-			g.gen_optional_error(node.typ, node.expr)
+		if node.typ.has_flag(.optional) {
+			if node.expr is ast.None {
+				g.gen_optional_error(node.typ, node.expr)
+			} else {
+				line := g.go_before_stmt(0)
+				opt_name := g.gen_optional_value(node.typ, node.expr_type, node.expr)
+				g.write(line.trim_left('\t') + opt_name)
+			}
 		} else {
 			g.write('(${cast_label}(')
 			g.expr(node.expr)
@@ -4613,6 +4625,16 @@ fn (mut g Gen) gen_optional_error(target_type ast.Type, expr ast.Expr) {
 	g.write('($styp){ .state=2, .err=')
 	g.expr(expr)
 	g.write(' }')
+}
+
+fn (mut g Gen) gen_optional_value(target_type ast.Type, typ ast.Type, expr ast.Expr) string {
+	opt_type := g.typ(target_type)
+	styp := g.typ(typ)
+	opt_tmp := g.new_tmp_var()
+	g.write('$opt_type $opt_tmp; opt_ok(&($styp[]) { ')
+	g.expr(expr)
+	g.writeln(' }, (Option*)(&$opt_tmp), sizeof($styp));')
+	return opt_tmp
 }
 
 fn (mut g Gen) return_statement(node ast.Return) {
