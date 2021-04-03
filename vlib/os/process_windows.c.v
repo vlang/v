@@ -132,6 +132,8 @@ fn (mut p Process) win_kill_pgroup() {
 	wdata := &WProcess(p.wdata)
 	res := C.TerminateProcess(wdata.proc_info.h_process, 3)
 	eprintln('> win_kill_pgroup res: $res')
+    C.Sleep(1000)
+	eprintln('> win_kill_pgroup res: $res finish')
 }
 
 fn (mut p Process) win_wait() {
