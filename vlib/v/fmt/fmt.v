@@ -1933,14 +1933,18 @@ pub fn (mut f Fmt) wrap_infix(start_pos int, start_len int, ignore_paren bool) {
 			}
 			f.write(cnd)
 		} else {
+			is_paren_expr := (cnd[0] == `(` || cnd[3] == `(`) && cnd.ends_with(')')
+			final_len := ((f.indent + 1) * 4) + cnd.len
 			prev_len := f.line_len
 			prev_pos := f.out.len
+			if i == 0 && final_len <= fmt.max_len.last() && !is_paren_expr {
+				f.remove_new_line({})
+			}
 			f.writeln('')
 			f.indent++
 			f.write(cnd)
 			f.indent--
-			if f.line_len > fmt.max_len.last() && (cnd[0] == `(` || cnd[3] == `(`)
-				&& cnd.ends_with(')') {
+			if final_len > fmt.max_len.last() && is_paren_expr {
 				f.wrap_infix(prev_pos, prev_len, true)
 			}
 		}
