@@ -4,10 +4,9 @@
 import os
 import term
 import benchmark
-import v.ast
 import v.fmt
 import v.parser
-import v.table
+import v.ast
 import v.pref
 import v.util
 import v.util.vtest
@@ -54,7 +53,7 @@ fn test_fmt() {
 			eprintln(fmt_bench.step_message_fail('cannot read from $vrelpath'))
 			continue
 		}
-		table := table.new_table()
+		table := ast.new_table()
 		file_ast := parser.parse_file(ipath, table, .parse_comments, fpref, &ast.Scope{
 			parent: 0
 		})

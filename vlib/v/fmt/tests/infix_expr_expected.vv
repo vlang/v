@@ -14,3 +14,9 @@ fn unwrap_grouped_conds() {
 	fields = fields.filter((it.typ in [string_type, int_type, bool_type]
 		|| c.table.types[int(it.typ)].kind == .struct_) && !it.attrs.contains('skip'))
 }
+
+fn main() {
+	clean_struct_v_type_name =
+		clean_struct_v_type_name.replace('_Array', '_array').replace('_T_', '<').replace('_', ', ') +
+		'>'
+}

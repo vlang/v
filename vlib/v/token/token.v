@@ -458,7 +458,7 @@ pub fn (kind Kind) is_infix() bool {
 		.right_shift, .arrow]
 }
 
-// Pass table.builtin_type_names
+// Pass ast.builtin_type_names
 // Note: can't import table here due to circular module dependency
 pub fn (tok &Token) can_start_type(builtin_type_names []string) bool {
 	match tok.kind {

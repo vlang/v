@@ -9,7 +9,7 @@
 // flag: (int(type)>>24) & 0xff
 // nr_muls: (int(type)>>16) & 0xff
 // idx:  u16(type) & 0xffff
-module table
+module ast
 
 import strings
 import v.pref
@@ -109,10 +109,10 @@ pub fn (t ShareType) str() string {
 pub fn (t Type) atomic_typename() string {
 	idx := t.idx()
 	match idx {
-		table.u32_type_idx { return 'atomic_uint' }
-		table.int_type_idx { return 'atomic_int' }
-		table.u64_type_idx { return 'atomic_ullong' }
-		table.i64_type_idx { return 'atomic_llong' }
+		ast.u32_type_idx { return 'atomic_uint' }
+		ast.int_type_idx { return 'atomic_int' }
+		ast.u64_type_idx { return 'atomic_ullong' }
+		ast.i64_type_idx { return 'atomic_llong' }
 		else { return 'unknown_atomic' }
 	}
 }
@@ -133,12 +133,12 @@ pub fn (t Type) idx() int {
 
 [inline]
 pub fn (t Type) is_void() bool {
-	return t == table.void_type
+	return t == ast.void_type
 }
 
 [inline]
 pub fn (t Type) is_full() bool {
-	return t != 0 && t != table.void_type
+	return t != 0 && t != ast.void_type
 }
 
 // return nr_muls for `t`
@@ -273,42 +273,42 @@ pub fn new_type_ptr(idx int, nr_muls int) Type {
 // built in pointers (voidptr, byteptr, charptr)
 [inline]
 pub fn (typ Type) is_pointer() bool {
-	return typ.idx() in table.pointer_type_idxs
+	return typ.idx() in ast.pointer_type_idxs
 }
 
 [inline]
 pub fn (typ Type) is_float() bool {
-	return typ.idx() in table.float_type_idxs
+	return typ.idx() in ast.float_type_idxs
 }
 
 [inline]
 pub fn (typ Type) is_int() bool {
-	return typ.idx() in table.integer_type_idxs
+	return typ.idx() in ast.integer_type_idxs
 }
 
 [inline]
 pub fn (typ Type) is_signed() bool {
-	return typ.idx() in table.signed_integer_type_idxs
+	return typ.idx() in ast.signed_integer_type_idxs
 }
 
 [inline]
 pub fn (typ Type) is_unsigned() bool {
-	return typ.idx() in table.unsigned_integer_type_idxs
+	return typ.idx() in ast.unsigned_integer_type_idxs
 }
 
 [inline]
 pub fn (typ Type) is_int_literal() bool {
-	return typ.idx() == table.int_literal_type_idx
+	return typ.idx() == ast.int_literal_type_idx
 }
 
 [inline]
 pub fn (typ Type) is_number() bool {
-	return typ.idx() in table.number_type_idxs
+	return typ.idx() in ast.number_type_idxs
 }
 
 [inline]
 pub fn (typ Type) is_string() bool {
-	return typ.idx() in table.string_type_idxs
+	return typ.idx() in ast.string_type_idxs
 }
 
 pub const (
@@ -408,11 +408,11 @@ pub:
 }
 
 // returns TypeSymbol kind only if there are no type modifiers
-pub fn (table &Table) type_kind(typ Type) Kind {
+pub fn (t &Table) type_kind(typ Type) Kind {
 	if typ.nr_muls() > 0 || typ.has_flag(.optional) {
 		return Kind.placeholder
 	}
-	return table.get_type_symbol(typ).kind
+	return t.get_type_symbol(typ).kind
 }
 
 pub enum Kind {
@@ -585,7 +585,7 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 		cname: '__v_thread'
 		mod: 'builtin'
 		info: Thread{
-			return_type: table.void_type
+			return_type: ast.void_type
 		}
 	)
 	t.register_type_symbol(kind: .interface_, name: 'IError', cname: 'IError', mod: 'builtin')
@@ -688,7 +688,7 @@ pub:
 	attrs []Attr
 pub mut:
 	embeds        []Type
-	fields        []Field
+	fields        []StructField
 	is_typedef    bool // C. [typedef]
 	is_union      bool
 	is_heap       bool
@@ -705,7 +705,7 @@ pub mut:
 pub struct Interface {
 pub mut:
 	types   []Type
-	fields  []Field
+	fields  []StructField
 	methods []Fn
 }
 
@@ -725,22 +725,23 @@ pub:
 
 pub struct Aggregate {
 mut:
-	fields []Field // used for faster lookup inside the module
+	fields []StructField // used for faster lookup inside the module
 pub:
 	types []Type
 }
 
 // NB: FExpr here is a actually an ast.Expr .
 // It should always be used by casting to ast.Expr, using ast.fe2ex()/ast.ex2fe()
-// That hack is needed to break an import cycle between v.ast and v.table .
-pub type FExpr = byteptr | voidptr
+// That hack is needed to break an import cycle between v.ast and v.ast .
+// pub type FExpr = byteptr | voidptr
 
+/*
 pub struct Field {
 pub:
 	name string
 pub mut:
 	typ              Type
-	default_expr     FExpr
+	default_expr     Expr
 	has_default_expr bool
 	default_expr_typ Type
 	default_val      string
@@ -749,8 +750,9 @@ pub mut:
 	is_mut           bool
 	is_global        bool
 }
+*/
 
-pub fn (f &Field) equals(o &Field) bool {
+pub fn (f &StructField) equals(o &StructField) bool {
 	// TODO: f.is_mut == o.is_mut was removed here to allow read only access
 	// to (mut/not mut), but otherwise equal fields; some other new checks are needed:
 	// - if node is declared mut, and we mutate node.stmts, all stmts fields must be mutable
@@ -793,19 +795,19 @@ pub struct SumType {
 pub:
 	variants []Type
 pub mut:
-	fields       []Field
+	fields       []StructField
 	found_fields bool
 }
 
 // human readable type name
-pub fn (table &Table) type_to_str(t Type) string {
-	return table.type_to_str_using_aliases(t, map[string]string{})
+pub fn (t &Table) type_to_str(typ Type) string {
+	return t.type_to_str_using_aliases(typ, map[string]string{})
 }
 
 // type name in code (for builtin)
 pub fn (mytable &Table) type_to_code(t Type) string {
 	match t {
-		table.int_literal_type, table.float_literal_type { return mytable.get_type_symbol(t).kind.str() }
+		ast.int_literal_type, ast.float_literal_type { return mytable.get_type_symbol(t).kind.str() }
 		else { return mytable.type_to_str_using_aliases(t, map[string]string{}) }
 	}
 }
@@ -824,7 +826,7 @@ pub fn (mytable &Table) type_to_str_using_aliases(t Type, import_aliases map[str
 			res = sym.kind.str()
 		}
 		.array {
-			if t == table.array_type {
+			if t == ast.array_type {
 				return 'array'
 			}
 			if t.has_flag(.variadic) {
@@ -869,7 +871,7 @@ pub fn (mytable &Table) type_to_str_using_aliases(t Type, import_aliases map[str
 			}
 		}
 		.map {
-			if int(t) == table.map_type_idx {
+			if int(t) == ast.map_type_idx {
 				return 'map'
 			}
 			info := sym.info as Map
@@ -969,7 +971,7 @@ pub fn (t &Table) fn_signature(func &Fn, opts FnSignatureOpts) string {
 		sb.write_string('$styp')
 	}
 	sb.write_string(')')
-	if func.return_type != table.void_type {
+	if func.return_type != ast.void_type {
 		sb.write_string(' ${t.type_to_str(func.return_type)}')
 	}
 	return sb.str()
@@ -1014,7 +1016,7 @@ pub fn (t &TypeSymbol) str_method_info() (bool, bool, int) {
 	return has_str_method, expects_ptr, nr_args
 }
 
-pub fn (t &TypeSymbol) find_field(name string) ?Field {
+pub fn (t &TypeSymbol) find_field(name string) ?StructField {
 	match t.info {
 		Aggregate { return t.info.find_field(name) }
 		Struct { return t.info.find_field(name) }
@@ -1024,7 +1026,7 @@ pub fn (t &TypeSymbol) find_field(name string) ?Field {
 	}
 }
 
-fn (a &Aggregate) find_field(name string) ?Field {
+fn (a &Aggregate) find_field(name string) ?StructField {
 	for field in a.fields {
 		if field.name == name {
 			return field
@@ -1033,7 +1035,7 @@ fn (a &Aggregate) find_field(name string) ?Field {
 	return none
 }
 
-pub fn (i &Interface) find_field(name string) ?Field {
+pub fn (i &Interface) find_field(name string) ?StructField {
 	for field in i.fields {
 		if field.name == name {
 			return field
@@ -1058,7 +1060,7 @@ pub fn (i &Interface) has_method(name string) bool {
 	return false
 }
 
-pub fn (s Struct) find_field(name string) ?Field {
+pub fn (s Struct) find_field(name string) ?StructField {
 	for field in s.fields {
 		if field.name == name {
 			return field
@@ -1067,14 +1069,14 @@ pub fn (s Struct) find_field(name string) ?Field {
 	return none
 }
 
-pub fn (s Struct) get_field(name string) Field {
+pub fn (s Struct) get_field(name string) StructField {
 	if field := s.find_field(name) {
 		return field
 	}
 	panic('unknown field `$name`')
 }
 
-pub fn (s &SumType) find_field(name string) ?Field {
+pub fn (s &SumType) find_field(name string) ?StructField {
 	for field in s.fields {
 		if field.name == name {
 			return field
