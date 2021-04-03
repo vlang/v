@@ -561,11 +561,28 @@ fn test_int_keys() {
 	m[5] += 24
 	m[5]++
 	assert m[5] == 25
-	m2 := map{
+	mut m2 := map{
 		3: 9
 		4: 16
 		5: 25
 	}
+
+	four := 4
+	m2.delete(3)
+	m2.delete(four)
+	m2.delete(5)
+	assert m2.len == 0
+	assert m2[3] == 0
+	assert m2[4] == 0
+	assert m2[5] == 0
+	assert m2.keys() == []
+
+	m2 = map{
+		3: 9
+		4: 16
+		5: 25
+	}
+
 	assert m2.len == 3
 	// clone
 	mc := m.clone()
@@ -580,6 +597,13 @@ fn test_int_keys() {
 		all << v
 	}
 	assert all == [3, 9, 4, 16, 5, 25]
+
+	mut m3 := map{
+		1: 'one'
+		2: 'two'
+	}
+	assert m3[1] == 'one'
+	m3.delete(1)
 }
 
 fn test_voidptr_keys() {
