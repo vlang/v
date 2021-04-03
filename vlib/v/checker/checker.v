@@ -1455,7 +1455,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	// FIXME: Argument count != 1 will break these
 	if left_type_sym.kind == .array && method_name in checker.array_builtin_methods {
 		return c.call_array_builtin_method(mut call_expr, left_type, left_type_sym)
-	} else if left_type_sym.kind == .map && method_name in ['clone', 'keys', 'move'] {
+	} else if left_type_sym.kind == .map && method_name in ['clone', 'keys', 'move', 'delete_1'] {
 		return c.call_map_builtin_method(mut call_expr, left_type, left_type_sym)
 	} else if left_type_sym.kind == .array && method_name in ['insert', 'prepend'] {
 		info := left_type_sym.info as table.Array
