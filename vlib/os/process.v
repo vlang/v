@@ -173,7 +173,7 @@ pub fn (mut p Process) set_redirect_stdio() {
 pub fn (mut p Process) stdin_write(s string) {
 	p._check_redirection_call('stdin_write')
 	$if windows {
-		p.w_write_string(0, s)
+		p.win_write_string(0, s)
 	} $else {
 		fd_write(p.stdio_fd[0], s)
 	}
@@ -184,7 +184,7 @@ pub fn (mut p Process) stdin_write(s string) {
 pub fn (mut p Process) stdout_slurp() string {
 	p._check_redirection_call('stdout_slurp')
 	$if windows {
-		return p.w_slurp(1)
+		return p.win_slurp(1)
 	} $else {
 		return fd_slurp(p.stdio_fd[1]).join('')
 	}
@@ -194,7 +194,7 @@ pub fn (mut p Process) stdout_slurp() string {
 pub fn (mut p Process) stderr_slurp() string {
 	p._check_redirection_call('stderr_slurp')
 	$if windows {
-		return p.w_slurp(2)
+		return p.win_slurp(2)
 	} $else {
 		return fd_slurp(p.stdio_fd[2]).join('')
 	}
@@ -204,7 +204,7 @@ pub fn (mut p Process) stderr_slurp() string {
 pub fn (mut p Process) stdout_read() string {
 	p._check_redirection_call('stdout_read')
 	$if windows {
-		s, _ := p.w_read_string(1, 4096)
+		s, _ := p.win_read_string(1, 4096)
 		return s
 	} $else {
 		s, _ := fd_read(p.stdio_fd[1], 4096)
@@ -215,7 +215,7 @@ pub fn (mut p Process) stdout_read() string {
 pub fn (mut p Process) stderr_read() string {
 	p._check_redirection_call('stderr_read')
 	$if windows {
-		s, _ := p.w_read_string(2, 4096)
+		s, _ := p.win_read_string(2, 4096)
 		return s
 	} $else {
 		s, _ := fd_read(p.stdio_fd[2], 4096)

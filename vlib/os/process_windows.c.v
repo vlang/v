@@ -166,43 +166,18 @@ fn (mut p Process) win_is_alive() bool {
 	return false
 }
 
-//
-// these are here to make v_win.c/v.c generation work in all cases:
-fn (mut p Process) unix_spawn_process() int {
-	return 0
-}
-
-fn (mut p Process) unix_stop_process() {
-}
-
-fn (mut p Process) unix_resume_process() {
-}
-
-fn (mut p Process) unix_kill_process() {
-}
-
-fn (mut p Process) unix_kill_pgroup() {
-}
-
-fn (mut p Process) unix_wait() {
-}
-
-fn (mut p Process) unix_is_alive() bool {
-	return false
-}
-
 ///////////////
 
-fn (mut p Process) w_write_string(idx int, s string) {
+fn (mut p Process) win_write_string(idx int, s string) {
 	panic('Process.write_string $idx is not implemented yet')
 }
 
-fn (mut p Process) w_read_string(idx int, maxbytes int) (string, int) {
+fn (mut p Process) win_read_string(idx int, maxbytes int) (string, int) {
 	panic('WProcess.read_string $idx is not implemented yet')
 	return '', 0
 }
 
-fn (mut p Process) w_slurp(idx int) string {
+fn (mut p Process) win_slurp(idx int) string {
 	mut wdata := &WProcess(p.wdata)
 	if wdata == 0 {
 		return ''
@@ -239,4 +214,29 @@ fn (mut p Process) w_slurp(idx int) string {
 		close_valid_handle(&wdata.child_stderr_read)
 	}
 	return soutput
+}
+
+//
+// these are here to make v_win.c/v.c generation work in all cases:
+fn (mut p Process) unix_spawn_process() int {
+	return 0
+}
+
+fn (mut p Process) unix_stop_process() {
+}
+
+fn (mut p Process) unix_resume_process() {
+}
+
+fn (mut p Process) unix_kill_process() {
+}
+
+fn (mut p Process) unix_kill_pgroup() {
+}
+
+fn (mut p Process) unix_wait() {
+}
+
+fn (mut p Process) unix_is_alive() bool {
+	return false
 }
