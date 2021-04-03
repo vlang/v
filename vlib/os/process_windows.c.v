@@ -2,7 +2,8 @@ module os
 
 import strings
 
-fn C.GetModuleHandleA(charptr) HMODULE
+fn C.GenerateConsoleCtrlEvent(event u32, pgid u32) bool
+fn C.GetModuleHandleA(name charptr) HMODULE
 fn C.GetProcAddress(handle voidptr, procname byteptr) voidptr
 fn C.TerminateProcess(process HANDLE, exit_code u32) bool
 
@@ -148,10 +149,12 @@ fn (mut p Process) win_kill_process() {
 	eprintln('> win_kill_process res: $res')
 }
 
+
 fn (mut p Process) win_kill_pgroup() {
 	wdata := &WProcess(p.wdata)
+    console_event_res := C.GenerateConsoleCtrlEvent(C.CTRL_BREAK_EVENT, wdata.proc_info.dw_process_id)
+    eprintln('> win_kill_pgroup console_event_res: $console_event_res')
 	res := C.TerminateProcess(wdata.proc_info.h_process, 3)
-	C.Sleep(2000)
 	eprintln('> win_kill_pgroup res: $res')
 }
 
