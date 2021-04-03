@@ -566,7 +566,8 @@ Today it is a good day. => Tod__[ay]__it is a good d__[ay]__
 
 **Note:** in the replace strings can be used only groups from `0` to `9`.
 
-If the usage of `groups` in the replace process is not needed it is possible to use a quick function:
+If the usage of `groups` in the replace process is not needed it is possible
+to use a quick function:
 
 ```v ignore
 // replace_simple return a string where the matches are replaced with the replace string
