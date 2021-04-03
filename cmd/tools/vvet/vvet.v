@@ -77,7 +77,7 @@ fn main() {
 	if vfmt_err_count > 0 {
 		eprintln('NB: You can run `v fmt -w file.v` to fix these errors automatically')
 	}
-	if vt.errors.len > 0 || (vt.opt.is_werror && vt.warns.len > 0) {
+	if vt.errors.len > 0 {
 		exit(1)
 	}
 }
@@ -236,12 +236,18 @@ fn (mut vt Vet) warn(msg string, line int, fix vet.FixKind) {
 	pos := token.Position{
 		line_nr: line + 1
 	}
-	vt.warns << vet.Error{
+	mut w := vet.Error{
 		message: msg
 		file_path: vt.file
 		pos: pos
 		kind: .warning
 		fix: fix
+	}
+	if vt.opt.is_werror {
+		w.kind = .error
+		vt.errors << w
+	} else {
+		vt.warns << w
 	}
 }
 
