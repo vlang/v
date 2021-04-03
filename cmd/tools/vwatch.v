@@ -110,7 +110,7 @@ fn (mut context Context) get_stats_for_affected_vfiles() []VFileStat {
 		mut files := os.ls(path) or { []string{} }
 		for pf in files {
 			pf_ext := os.file_ext(pf).to_lower()
-			if pf_ext in ['', 'bak', 'exe', 'dll', 'so'] {
+			if pf_ext in ['', '.bak', '.exe', '.dll', '.so', '.def'] {
 				continue
 			}
 			if pf.starts_with('.#') {
