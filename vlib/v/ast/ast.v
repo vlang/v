@@ -502,7 +502,7 @@ pub:
 	pos         token.Position
 	typ         Type
 	smartcasts  []Type // nested sum types require nested smart casting, for that a list of types is needed
-	orig_type   table.Type   // original sumtype type; 0 if it's not a sumtype
+	orig_type   Type   // original sumtype type; 0 if it's not a sumtype
 	// TODO: move this to a real docs site later
 	// 10 <- original type (orig_type)
 	//   [11, 12, 13] <- cast order (smartcasts)

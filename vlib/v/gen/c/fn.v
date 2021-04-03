@@ -195,7 +195,7 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 	// if g.pref.show_cc && it.is_builtin {
 	// println(name)
 	// }
-	// type_name := g.table.Type_to_str(it.return_type)
+	// type_name := g.ast.Type_to_str(it.return_type)
 	// Live functions are protected by a mutex, because otherwise they
 	// can be changed by the live reload thread, *while* they are
 	// running, with unpredictable results (usually just crashing).
