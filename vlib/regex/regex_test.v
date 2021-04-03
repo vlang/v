@@ -176,7 +176,41 @@ match_test_suite_replace = [
 		r"[Tt]o\w+",
 		"CIAO",
 		"CIAO is a good day and CIAO will be for sure."
-	}
+	},
+	TestItemRe{
+		"Today is a good day and tomorrow will be for sure.",
+		r"(a\w) ",
+		r"[\0] ",
+		"Tod[ay] is a good d[ay] and tomorrow will be for sure."
+	},
+	TestItemRe{
+		"Today is a good day and tomorrow will be for sure.",
+		r"(a\w) ",
+		r"[\0_\0] ",
+		"Tod[ay_ay] is a good d[ay_ay] and tomorrow will be for sure."
+	},
+	TestItemRe{
+		"Today is a good day and tomorrow will be for sure.",
+		r"(a\w) ",
+		r"[\0\1] ",
+		"Tod[ay] is a good d[ay] and tomorrow will be for sure."
+	},
+]
+
+match_test_suite_replace_simple = [
+	// replace tests
+	TestItemRe{
+		"oggi pibao è andato a casa di pbababao ed ha trovato pibabababao",
+		r"(pi?(ba)+o)",
+		"CIAO",
+		"oggi CIAO è andato a casa di CIAO ed ha trovato CIAO"
+	},
+	TestItemRe{
+		"Today is a good day and tomorrow will be for sure.",
+		r"[Tt]o\w+",
+		"CIAO",
+		"CIAO is a good day and CIAO will be for sure."
+	},
 ]
 )
 
@@ -418,6 +452,25 @@ fn test_regex(){
 		}
 
 		res := re.replace(to.src,to.rep)
+		if res != to.r {
+			eprintln("ERROR: replace.")
+			assert false
+			continue
+		}
+	}
+
+	// check replace simple
+	for c,to in match_test_suite_replace_simple{
+		// debug print
+		if debug { println("#$c [$to.src] q[$to.q] $to.r") }
+
+		mut re := regex.regex_opt(to.q) or {
+			eprintln('err: $err')
+			assert false
+			continue
+		}
+
+		res := re.replace_simple(to.src,to.rep)
 		if res != to.r {
 			eprintln("ERROR: replace.")
 			assert false
