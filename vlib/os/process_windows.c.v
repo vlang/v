@@ -35,6 +35,8 @@ type PU32 = &u32
 fn close_valid_handle(p voidptr) {
 	h := &PU32(p)
 	if *h != &u32(0) {
+	    v := *h
+		eprintln('> close_valid_handle: ' + ptr_str(v))
 		C.CloseHandle(*h)
 		unsafe {
 			*h = &u32(0)
@@ -96,9 +98,9 @@ fn (mut p Process) win_spawn_process() int {
 
 mut creation_flags := int(C.NORMAL_PRIORITY_CLASS)
 if p.use_pgroup {
-	creation_flags |= C.CREATE_NEW_PROCESS_GROUP
+	creation_flags = creation_flags | C.CREATE_NEW_PROCESS_GROUP
 }
-
+eprintln('p.use_pgroup: $p.use_pgroup | process creation flags:  $creation_flags')
 	create_process_ok := C.CreateProcessW(
         0 /*no module name*/, 
         &wdata.command_line[0], 
@@ -117,6 +119,8 @@ if p.use_pgroup {
 		close_valid_handle(&wdata.child_stderr_write)
 	}
 	p.pid = int(wdata.proc_info.dw_process_id)
+	dump(wdata.proc_info.h_process)
+	dump(wdata.proc_info.dw_process_id)
 	return p.pid
 }
 
@@ -147,24 +151,27 @@ fn (mut p Process) win_kill_process() {
 fn (mut p Process) win_kill_pgroup() {
 	wdata := &WProcess(p.wdata)
 	res := C.TerminateProcess(wdata.proc_info.h_process, 3)
+	C.Sleep(2000)
 	eprintln('> win_kill_pgroup res: $res')
 }
 
-fn (mut p Process) win_wait() {
+fn (mut p Process) win_wait() { 
 	eprintln('> win_wait')
 	exit_code := u32(1)
 	mut wdata := &WProcess(p.wdata)
 	if p.wdata != 0 {
+		dump(wdata.proc_info.h_process)
+		dump(wdata.proc_info.dw_process_id)
 		C.WaitForSingleObject(wdata.proc_info.h_process, C.INFINITE)
-	eprintln('> win_wait C.WaitForSingleObject finished')
 		C.GetExitCodeProcess(wdata.proc_info.h_process, voidptr(&exit_code))
+		eprintln('> win_wait C.WaitForSingleObject finished exit_code: $exit_code')
 		close_valid_handle(&wdata.child_stdin)
 		close_valid_handle(&wdata.child_stdout_write)
 		close_valid_handle(&wdata.child_stderr_write)
-		close_valid_handle(&wdata.proc_info.h_thread)
 		close_valid_handle(&wdata.proc_info.h_process)
+		close_valid_handle(&wdata.proc_info.h_thread)
 	}
-	p.status = .exited
+	p.status = .exited 
 	p.code = int(exit_code)
 }
 
