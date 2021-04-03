@@ -12,7 +12,6 @@ import v.pref
 import v.fmt
 import v.util
 import v.parser
-import v.table
 import vhelp
 
 struct FormatOptions {
@@ -156,7 +155,7 @@ fn (foptions &FormatOptions) format_file(file string) {
 	if foptions.is_verbose {
 		eprintln('vfmt2 running fmt.fmt over file: $file')
 	}
-	table := table.new_table()
+	table := ast.new_table()
 	// checker := checker.new_checker(table, prefs)
 	file_ast := parser.parse_file(file, table, .parse_comments, prefs, &ast.Scope{
 		parent: 0
@@ -180,7 +179,7 @@ fn (foptions &FormatOptions) format_pipe() {
 		eprintln('vfmt2 running fmt.fmt over stdin')
 	}
 	input_text := os.get_raw_lines_joined()
-	table := table.new_table()
+	table := ast.new_table()
 	// checker := checker.new_checker(table, prefs)
 	file_ast := parser.parse_text(input_text, '', table, .parse_comments, prefs, &ast.Scope{
 		parent: 0
@@ -268,7 +267,7 @@ fn (foptions &FormatOptions) post_process_file(file string, formatted_file_path 
 }
 
 fn (f FormatOptions) str() string {
-	return 
+	return
 		'FormatOptions{ is_l: $f.is_l, is_w: $f.is_w, is_diff: $f.is_diff, is_verbose: $f.is_verbose,' +
 		' is_all: $f.is_all, is_worker: $f.is_worker, is_debug: $f.is_debug, is_noerror: $f.is_noerror,' +
 		' is_verify: $f.is_verify" }'

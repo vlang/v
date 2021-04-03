@@ -2,7 +2,6 @@ module js
 
 import strings
 import v.ast
-import v.table
 import v.token
 import v.pref
 import v.util
@@ -19,7 +18,7 @@ const (
 	// used to generate type structs
 	v_types            = ['i8', 'i16', 'int', 'i64', 'byte', 'u16', 'u32', 'u64', 'f32', 'f64',
 		'int_literal', 'float_literal', 'size_t', 'bool', 'string', 'map', 'array']
-	shallow_equatables = [table.Kind.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64,
+	shallow_equatables = [ast.Kind.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64,
 		.int_literal, .float_literal, .size_t, .bool, .string]
 )
 
@@ -34,7 +33,7 @@ mut:
 }
 
 struct JsGen {
-	table &table.Table
+	table &ast.Table
 	pref  &pref.Preferences
 mut:
 	definitions         strings.Builder
@@ -58,11 +57,11 @@ mut:
 	method_fn_decls     map[string][]ast.FnDecl
 	builtin_fns         []string // Functions defined in `builtin`
 	empty_line          bool
-	cast_stack          []table.Type
+	cast_stack          []ast.Type
 	call_stack          []ast.CallExpr
 }
 
-pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string {
+pub fn gen(files []ast.File, table &ast.Table, pref &pref.Preferences) string {
 	mut g := &JsGen{
 		definitions: strings.new_builder(100)
 		table: table
@@ -356,7 +355,7 @@ fn (mut g JsGen) stmts(stmts []ast.Stmt) {
 fn (mut g JsGen) stmt(node ast.Stmt) {
 	g.stmt_start_pos = g.ns.out.len
 	match node {
-		ast.EmptyStmt{}
+		ast.EmptyStmt {}
 		ast.AsmStmt {
 			panic('inline asm is not supported by js')
 		}
@@ -587,7 +586,7 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			// `user := User{name: 'Bob'}`
 			g.gen_struct_init(node)
 		}
-		ast.Type {
+		ast.TypeNode {
 			// skip: JS has no types
 			// TODO maybe?
 		}
@@ -697,7 +696,7 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt) {
 			} else {
 				g.write(' $op ')
 				// TODO: Multiple types??
-				should_cast :=
+				should_cast := 
 					(g.table.type_kind(stmt.left_types.first()) in js.shallow_equatables)
 					&& (g.cast_stack.len <= 0 || stmt.left_types.first() != g.cast_stack.last())
 
@@ -723,7 +722,7 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt) {
 	}
 }
 
-fn (mut g JsGen) gen_attrs(attrs []table.Attr) {
+fn (mut g JsGen) gen_attrs(attrs []ast.Attr) {
 	for attr in attrs {
 		g.writeln('/* [$attr.name] */')
 	}
@@ -875,7 +874,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
 	g.fn_decl = voidptr(0)
 }
 
-fn (mut g JsGen) fn_args(args []table.Param, is_variadic bool) {
+fn (mut g JsGen) fn_args(args []ast.Param, is_variadic bool) {
 	for i, arg in args {
 		name := g.js_name(arg.name)
 		is_varg := i == args.len - 1 && is_variadic
@@ -1388,7 +1387,7 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 		// TODO Does this cover all cases?
 		g.expr(expr.left)
 		g.write('[')
-		g.cast_stack << table.int_type_idx
+		g.cast_stack << ast.int_type_idx
 		g.expr(expr.index)
 		g.cast_stack.delete_last()
 		g.write(']')
@@ -1480,52 +1479,52 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 	}
 }
 
-fn (mut g JsGen) greater_typ(left table.Type, right table.Type) table.Type {
+fn (mut g JsGen) greater_typ(left ast.Type, right ast.Type) ast.Type {
 	l := int(left)
 	r := int(right)
 	lr := [l, r]
-	if table.string_type_idx in lr {
-		return table.Type(table.string_type_idx)
+	if ast.string_type_idx in lr {
+		return ast.Type(ast.string_type_idx)
 	}
-	should_float := (l in table.integer_type_idxs && r in table.float_type_idxs)
-		|| (r in table.integer_type_idxs && l in table.float_type_idxs)
+	should_float := (l in ast.integer_type_idxs && r in ast.float_type_idxs)
+		|| (r in ast.integer_type_idxs && l in ast.float_type_idxs)
 	if should_float {
-		if table.f64_type_idx in lr {
-			return table.Type(table.f64_type_idx)
+		if ast.f64_type_idx in lr {
+			return ast.Type(ast.f64_type_idx)
 		}
-		if table.f32_type_idx in lr {
-			return table.Type(table.f32_type_idx)
+		if ast.f32_type_idx in lr {
+			return ast.Type(ast.f32_type_idx)
 		}
-		return table.Type(table.float_literal_type)
+		return ast.Type(ast.float_literal_type)
 	}
-	should_int := (l in table.integer_type_idxs && r in table.integer_type_idxs)
+	should_int := (l in ast.integer_type_idxs && r in ast.integer_type_idxs)
 	if should_int {
-		// cant add to u64 - if (table.u64_type_idx in lr) { return table.Type(table.u64_type_idx) }
+		// cant add to u64 - if (ast.u64_type_idx in lr) { return ast.Type(ast.u64_type_idx) }
 		// just guessing this order
-		if table.i64_type_idx in lr {
-			return table.Type(table.i64_type_idx)
+		if ast.i64_type_idx in lr {
+			return ast.Type(ast.i64_type_idx)
 		}
-		if table.u32_type_idx in lr {
-			return table.Type(table.u32_type_idx)
+		if ast.u32_type_idx in lr {
+			return ast.Type(ast.u32_type_idx)
 		}
-		if table.int_type_idx in lr {
-			return table.Type(table.int_type_idx)
+		if ast.int_type_idx in lr {
+			return ast.Type(ast.int_type_idx)
 		}
-		if table.u16_type_idx in lr {
-			return table.Type(table.u16_type_idx)
+		if ast.u16_type_idx in lr {
+			return ast.Type(ast.u16_type_idx)
 		}
-		if table.i16_type_idx in lr {
-			return table.Type(table.i16_type_idx)
+		if ast.i16_type_idx in lr {
+			return ast.Type(ast.i16_type_idx)
 		}
-		if table.byte_type_idx in lr {
-			return table.Type(table.byte_type_idx)
+		if ast.byte_type_idx in lr {
+			return ast.Type(ast.byte_type_idx)
 		}
-		if table.i8_type_idx in lr {
-			return table.Type(table.i8_type_idx)
+		if ast.i8_type_idx in lr {
+			return ast.Type(ast.i8_type_idx)
 		}
-		return table.Type(table.int_literal_type_idx)
+		return ast.Type(ast.int_literal_type_idx)
 	}
-	return table.Type(l)
+	return ast.Type(l)
 }
 
 fn (mut g JsGen) gen_map_init_expr(it ast.MapInit) {
@@ -1561,7 +1560,7 @@ fn (mut g JsGen) gen_selector_expr(it ast.SelectorExpr) {
 }
 
 fn (mut g JsGen) gen_string_inter_literal(it ast.StringInterLiteral) {
-	should_cast := !(g.cast_stack.len > 0 && g.cast_stack.last() == table.string_type_idx)
+	should_cast := !(g.cast_stack.len > 0 && g.cast_stack.last() == ast.string_type_idx)
 	if should_cast {
 		if g.file.mod.name == 'builtin' {
 			g.write('new ')
@@ -1600,7 +1599,7 @@ fn (mut g JsGen) gen_string_inter_literal(it ast.StringInterLiteral) {
 
 fn (mut g JsGen) gen_string_literal(it ast.StringLiteral) {
 	text := it.val.replace("'", "\\'")
-	should_cast := !(g.cast_stack.len > 0 && g.cast_stack.last() == table.string_type_idx)
+	should_cast := !(g.cast_stack.len > 0 && g.cast_stack.last() == ast.string_type_idx)
 	if should_cast {
 		if g.file.mod.name == 'builtin' {
 			g.write('new ')
@@ -1639,11 +1638,11 @@ fn (mut g JsGen) gen_typeof_expr(it ast.TypeOf) {
 	if sym.kind == .sum_type {
 		// TODO: JS sumtypes not implemented yet
 	} else if sym.kind == .array_fixed {
-		fixed_info := sym.info as table.ArrayFixed
+		fixed_info := sym.info as ast.ArrayFixed
 		typ_name := g.table.get_type_name(fixed_info.elem_type)
 		g.write('"[$fixed_info.size]$typ_name"')
 	} else if sym.kind == .function {
-		info := sym.info as table.FnType
+		info := sym.info as ast.FnType
 		fn_info := info.func
 		mut repr := 'fn ('
 		for i, arg in fn_info.params {
@@ -1653,7 +1652,7 @@ fn (mut g JsGen) gen_typeof_expr(it ast.TypeOf) {
 			repr += g.table.get_type_name(arg.typ)
 		}
 		repr += ')'
-		if fn_info.return_type != table.void_type {
+		if fn_info.return_type != ast.void_type {
 			repr += ' ${g.table.get_type_name(fn_info.return_type)}'
 		}
 		g.write('"$repr"')
@@ -1663,8 +1662,8 @@ fn (mut g JsGen) gen_typeof_expr(it ast.TypeOf) {
 }
 
 fn (mut g JsGen) gen_type_cast_expr(it ast.CastExpr) {
-	is_literal := ((it.expr is ast.IntegerLiteral && it.typ in table.integer_type_idxs)
-		|| (it.expr is ast.FloatLiteral && it.typ in table.float_type_idxs))
+	is_literal := ((it.expr is ast.IntegerLiteral && it.typ in ast.integer_type_idxs)
+		|| (it.expr is ast.FloatLiteral && it.typ in ast.float_type_idxs))
 	// Skip cast if type is the same as the parrent caster
 	if g.cast_stack.len > 0 && is_literal {
 		if it.typ == g.cast_stack[g.cast_stack.len - 1] {
@@ -1690,7 +1689,7 @@ fn (mut g JsGen) gen_type_cast_expr(it ast.CastExpr) {
 }
 
 fn (mut g JsGen) gen_integer_literal_expr(it ast.IntegerLiteral) {
-	typ := table.Type(table.int_type)
+	typ := ast.Type(ast.int_type)
 
 	// Don't wrap integers for use in JS.foo functions.
 	// TODO: call.language always seems to be "v", parser bug?
@@ -1710,7 +1709,7 @@ fn (mut g JsGen) gen_integer_literal_expr(it ast.IntegerLiteral) {
 
 	// Skip cast if type is the same as the parrent caster
 	if g.cast_stack.len > 0 {
-		if g.cast_stack[g.cast_stack.len - 1] in table.integer_type_idxs {
+		if g.cast_stack[g.cast_stack.len - 1] in ast.integer_type_idxs {
 			g.write('$it.val')
 			return
 		}
@@ -1724,7 +1723,7 @@ fn (mut g JsGen) gen_integer_literal_expr(it ast.IntegerLiteral) {
 }
 
 fn (mut g JsGen) gen_float_literal_expr(it ast.FloatLiteral) {
-	typ := table.Type(table.f32_type)
+	typ := ast.Type(ast.f32_type)
 
 	// Don't wrap integers for use in JS.foo functions.
 	// TODO: call.language always seems to be "v", parser bug?
@@ -1734,7 +1733,7 @@ fn (mut g JsGen) gen_float_literal_expr(it ast.FloatLiteral) {
 		for i, t in call.args {
 			if t.expr is ast.FloatLiteral {
 				if t.expr == it {
-					if call.expected_arg_types[i] in table.integer_type_idxs {
+					if call.expected_arg_types[i] in ast.integer_type_idxs {
 						g.write(int(it.val.f64()).str())
 					} else {
 						g.write(it.val)
@@ -1748,10 +1747,10 @@ fn (mut g JsGen) gen_float_literal_expr(it ast.FloatLiteral) {
 
 	// Skip cast if type is the same as the parrent caster
 	if g.cast_stack.len > 0 {
-		if g.cast_stack[g.cast_stack.len - 1] in table.float_type_idxs {
+		if g.cast_stack[g.cast_stack.len - 1] in ast.float_type_idxs {
 			g.write('$it.val')
 			return
-		} else if g.cast_stack[g.cast_stack.len - 1] in table.integer_type_idxs {
+		} else if g.cast_stack[g.cast_stack.len - 1] in ast.integer_type_idxs {
 			g.write(int(it.val.f64()).str())
 			return
 		}

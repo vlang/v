@@ -7,7 +7,6 @@ import benchmark
 import v.ast
 import v.fmt
 import v.parser
-import v.table
 import v.pref
 import v.util
 
@@ -47,7 +46,7 @@ fn test_vlib_fmt() {
 			eprintln(fmt_bench.step_message_fail('cannot read from $opath'))
 			continue
 		}
-		table := table.new_table()
+		table := ast.new_table()
 		file_ast := parser.parse_file(ipath, table, .parse_comments, fpref, &ast.Scope{
 			parent: 0
 		})

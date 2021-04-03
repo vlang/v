@@ -7,8 +7,8 @@ import os.cmdline
 import v.vet
 import v.pref
 import v.parser
-import v.table
 import v.token
+import v.ast
 import term
 
 struct Vet {
@@ -77,7 +77,7 @@ fn main() {
 	if vfmt_err_count > 0 {
 		eprintln('NB: You can run `v fmt -w file.v` to fix these errors automatically')
 	}
-	if vt.errors.len > 0 || (vt.opt.is_werror && vt.warns.len > 0) {
+	if vt.errors.len > 0 {
 		exit(1)
 	}
 }
@@ -94,7 +94,7 @@ fn (mut vt Vet) vet_file(path string) {
 	vt.file = path
 	mut prefs := pref.new_preferences()
 	prefs.is_vet = true
-	table := table.new_table()
+	table := ast.new_table()
 	vt.vprintln("vetting file '$path'...")
 	_, errors := parser.parse_vet_file(path, table, prefs)
 	// Transfer errors from scanner and parser
@@ -236,12 +236,18 @@ fn (mut vt Vet) warn(msg string, line int, fix vet.FixKind) {
 	pos := token.Position{
 		line_nr: line + 1
 	}
-	vt.warns << vet.Error{
+	mut w := vet.Error{
 		message: msg
 		file_path: vt.file
 		pos: pos
 		kind: .warning
 		fix: fix
+	}
+	if vt.opt.is_werror {
+		w.kind = .error
+		vt.errors << w
+	} else {
+		vt.warns << w
 	}
 }
 

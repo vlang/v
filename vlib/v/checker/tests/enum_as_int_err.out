@@ -5,9 +5,16 @@ vlib/v/checker/tests/enum_as_int_err.vv:9:10: error: cannot assign to `color`: e
       |             ^
    10 |     foo = Color.red
    11 |     println(color == 0)
-vlib/v/checker/tests/enum_as_int_err.vv:11:2: error: cannot assign to `foo`: expected `int`, not `Color`
+vlib/v/checker/tests/enum_as_int_err.vv:10:8: error: cannot assign to `foo`: expected `int`, not `Color`
+    8 |     mut foo := 1
+    9 |     color = 1
+   10 |     foo = Color.red
+      |           ~~~~~~~~~
+   11 |     println(color == 0)
+   12 | }
+vlib/v/checker/tests/enum_as_int_err.vv:11:10: error: infix expr: cannot use `int literal` (right expression) as `Color`
     9 |     color = 1
    10 |     foo = Color.red
    11 |     println(color == 0)
-      |     ~~~~~~~
+      |             ~~~~~~~~~~
    12 | }

@@ -39,6 +39,8 @@ fn C.zip_entry_fread(&Zip, byteptr) int
 
 fn C.zip_total_entries(&Zip) int
 
+fn C.zip_extract_without_callback(charptr, charptr) int
+
 // CompressionLevel lists compression levels, see in "thirdparty/zip/miniz.h"
 pub enum CompressionLevel {
 	no_compression = 0
@@ -201,15 +203,64 @@ pub fn (mut zentry Zip) extract_entry(path string) ? {
 	}
 }
 
-/*
-extract extracts the current zip entry using a callback function (on_extract).
-fn (mut zentry Zip) extract(path string) bool {
-	if C.access(path.str, 0) == -1 {
-		return false
-		// return error('szip: cannot open directory for extracting, directory not exists')
+// extract zip file to directory
+pub fn extract_zip_to_dir(file string, dir string) ?bool {
+	if C.access(dir.str, 0) == -1 {
+		return error('szip: cannot open directory for extracting, directory not exists')
 	}
-	res := C.zip_extract(zentry, path.str, 0, 0)
+	res := C.zip_extract_without_callback(charptr(file.str), charptr(dir.str))
 	return res == 0
+}
+
+// zip files (full path) to zip file
+pub fn zip_files(path_to_file []string, path_to_export_zip string) ? {
+	// open or create new zip
+	mut zip := open(path_to_export_zip, .no_compression, .write) or { panic(err) }
+
+	// add all files from the directory to the archive
+	for file in path_to_file {
+		// add file to zip
+		zip.open_entry(os.base(file)) or { panic(err) }
+		file_as_byte := os.read_bytes(file) or { panic(err) }
+		zip.write_entry(file_as_byte) or { panic(err) }
+
+		zip.close_entry()
+	}
+
+	// close zip
+	defer {
+		zip.close()
+	}
+}
+
+/*
+TODO add 
+// zip all files in directory to zip file
+pub fn zip_folder(path_to_dir string, path_to_export_zip string) {
+
+	// get list files from directory
+	files := os.ls(path_to_dir) or { panic(err) }
+
+	// open or create new zip
+	mut zip := szip.open(path_to_export_zip, .no_compression, .write) or { panic(err) }
+
+	// add all files from the directory to the archive
+	for file in files {
+		eprintln('Zipping $file to ${path_to_export_zip}...')
+		println(path_to_dir + file)
+
+		// add file to zip
+		zip.open_entry(file) or { panic(err) }
+		file_as_byte := os.read_bytes(path_to_dir + '/'+ file) or { panic(err) }
+        zip.write_entry(file_as_byte) or { panic(err) }
+
+        zip.close_entry()
+	}
+
+	// close zip
+	zip.close()
+
+	eprintln('Successfully')
 }
 */
 
