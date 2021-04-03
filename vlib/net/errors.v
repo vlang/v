@@ -61,3 +61,12 @@ fn wrap_read_result(result int) ?int {
 
 	return none
 }
+
+[inline]
+fn wrap_write_result(result int) ?int {
+	if result > 0 || result < 0 {
+		return result
+	}
+
+	return none
+}

@@ -1,9 +1,5 @@
 module net
 
-// needed for unix domain sockets support
-// is not included in CI rn
-// #include <afunix.h>
-
 // WsaError is all of the socket errors that WSA provides from WSAGetLastError
 pub enum WsaError {
 	//
@@ -749,6 +745,8 @@ const (
 #flag -lws2_32
 #include <winsock2.h>
 #include <ws2tcpip.h>
+
+#include <afunix.h>
 
 // Constants that windows needs
 const (

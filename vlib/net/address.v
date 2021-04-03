@@ -1,71 +1,134 @@
 module net
 
-// Addr represents an ip address
-pub struct Addr {
-	addr C.sockaddr
+import os
+
+interface Addr {
+	addr SockaddrStorage
 	len  int
-pub:
-	saddr string
-	port  int
+
+	family SocketFamily
+	@type SocketType
 }
 
-struct C.addrinfo {
-}
+// IpAddr represents an ip address
+pub struct  IpAddr {
+	addr SockaddrStorage
+	len  int
 
-pub fn (a Addr) str() string {
-	return '$a.saddr:$a.port'
+	family SocketFamily
+	@type SocketType
 }
 
 const (
 	max_ipv4_addr_len = 24
-	ipv4_addr_size    = sizeof(C.sockaddr_in)
+	max_ip_addr_len = 46
 )
 
-fn new_addr(addr C.sockaddr) ?Addr {
-	addr_len := if addr.sa_family == int(SocketFamily.inet) {
-		sizeof(C.sockaddr)
-	} else {
-		// TODO NOOOOOOOOOOOO
-		0
-	}
+pub fn (i IpAddr) str() string {
 	// Convert to string representation
-	buf := []byte{len: net.max_ipv4_addr_len, init: 0}
+	buf := []byte{len: max_ip_addr_len, init: 0}
 	$if windows {
-		res := C.WSAAddressToStringA(&addr, addr_len, C.NULL, buf.data, unsafe { &u32(&buf.len) })
+		res := C.WSAAddressToStringA(&i.addr, i.len, C.NULL, buf.data, &buf.len)
 		if res != 0 {
-			socket_error(-1) ?
+			return '<Unknown>'
 		}
+		// Windows will return the port as part of the address
+		return buf.bytestr()
 	} $else {
-		res := &char(C.inet_ntop(SocketFamily.inet, &addr, buf.data, buf.len))
-		if res == 0 {
-			socket_error(-1) ?
+		res := charptr(C.inet_ntop(addr.sa_family, addr, buf.data, buf.len))
+
+		if res != 0 {
+			return '<Unknown>'
 		}
 	}
-	mut saddr := buf.bytestr()
 
-	hport := unsafe { &C.sockaddr_in(&addr) }.sin_port
-	port := C.ntohs(hport)
+	saddr := buf.bytestr()
 
-	$if windows {
-		// strip the port from the address string
-		saddr = saddr.split(':')[0]
+	match i.family {
+		.inet {
+			hport := unsafe { i.addr.sockaddr_in.sin_port }
+			port := C.ntohs(hport)
+
+			return '$saddr:$port'
+		}
+
+		.inet6 {
+			hport := unsafe { i.addr.sockaddr_in6.sin6_port }
+			port := C.ntohs(hport)
+
+			return '[$saddr]:$port'
+		}
+
+		else {
+			panic('Address family is not inet or inet6?')
+		}
 	}
-
-	return Addr{addr, int(addr_len), saddr, port}
 }
 
-pub fn resolve_addr(addr string, family SocketFamily, typ SocketType) ?Addr {
+pub struct UnixAddr {
+	addr SockaddrStorage
+	len  int
+
+	family SocketFamily
+	@type SocketType
+}
+
+fn (a UnixAddr) str() string {
+	return '<UnixAddr>'
+}
+
+const max_sun_path = 104
+
+pub fn resolve_addrs(addr string, family SocketFamily, @type SocketType) ?[]Addr {
+	// Do some heuristics on the address to figure
+	// out what address type it should be
+
+	match family {
+		.inet, .inet6, .unspec {
+			return resolve_ipaddr(addr, family, @type)
+		}
+
+		.unix {
+			resolved := C.sockaddr_un {
+				sun_family: .unix
+			}
+
+			if addr.len > max_sun_path {
+				return error('net: resolve_addr2 Unix socket address is too long')
+			}
+
+			// Copy the unix path into the address struct
+			unsafe {
+				C.memcpy(&resolved.sun_path, addr.str, addr.len)
+			}
+
+			return [
+				UnixAddr{
+					SockaddrStorage{ sockaddr_un: resolved } 
+					int(sizeof(resolved)) 
+					(.unix)
+					@type 
+				}]
+		}
+	}
+}
+
+pub fn resolve_ipaddr(addr string, family SocketFamily, typ SocketType) ?[]Addr {
 	address, port := split_address(addr) ?
 
-	mut hints := C.addrinfo{}
+	mut hints := C.addrinfo{
+		// ai_family: int(family)
+		// ai_socktype: int(typ)
+		// ai_flags: C.AI_PASSIVE
+	}
 	hints.ai_family = int(family)
 	hints.ai_socktype = int(typ)
 	hints.ai_flags = C.AI_PASSIVE
 	hints.ai_protocol = 0
 	hints.ai_addrlen = 0
-	hints.ai_canonname = C.NULL
-	hints.ai_addr = C.NULL
-	hints.ai_next = C.NULL
+	hints.ai_addr = voidptr(0)
+	hints.ai_canonname = voidptr(0)
+	hints.ai_next = voidptr(0)
 	info := &C.addrinfo(0)
 
 	sport := '$port'
@@ -79,5 +142,19 @@ pub fn resolve_addr(addr string, family SocketFamily, typ SocketType) ?Addr {
 		wrap_error(x) ?
 	}
 
-	return new_addr(*info.ai_addr)
+	// Now that we have our linked list of addresses
+	// convert them into an array
+	mut addresses := []Addr{}
+
+	for addrinfo := info; !isnil(addrinfo); addrinfo = addrinfo.ai_next {
+		addresses << &IpAddr{ 
+			addr: SockaddrStorage{sockaddr: *addrinfo.ai_addr }
+			len: int(addrinfo.ai_addrlen)
+
+			family: SocketFamily(addrinfo.ai_family)
+			@type: SocketType(addrinfo.ai_socktype)
+		}
+	}
+
+	return addresses
 }

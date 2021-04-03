@@ -19,6 +19,9 @@ pub fn split_address(addr string) ?(string, u16) {
 	port := addr.all_after_last(':').int()
 	address := addr.all_before_last(':')
 
+	// TODO(emily): Maybe do some more checking here
+	// to validate ipv6 address sanity?
+
 	p := validate_port(port)?
 	return address, p
 }
