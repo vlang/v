@@ -970,12 +970,7 @@ pub fn (s string) starts_with(p string) bool {
 	if p.len > s.len {
 		return false
 	}
-	for i in 0 .. p.len {
-		if unsafe { s.str[i] != p.str[i] } {
-			return false
-		}
-	}
-	return true
+	return s[..p.len] == p
 }
 
 // ends_with returns `true` if the string ends with `p`.
@@ -983,12 +978,7 @@ pub fn (s string) ends_with(p string) bool {
 	if p.len > s.len {
 		return false
 	}
-	for i in 0 .. p.len {
-		if p[i] != s[s.len - p.len + i] {
-			return false
-		}
-	}
-	return true
+	return s[(s.len - p.len)..] == p
 }
 
 // to_lower returns the string in all lowercase characters.
