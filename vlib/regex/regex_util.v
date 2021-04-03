@@ -54,7 +54,9 @@ pub fn (re RE) get_group_by_name(in_txt string, group_name string) string {
 		tmp_index := re.group_map[group_name]-1
 		start     := re.groups[tmp_index * 2]
 		end       := re.groups[tmp_index * 2 + 1]
-		return in_txt[start..end]
+		if start >= 0 && end > start {
+			return in_txt[start..end]
+		}
 	}
 	return ""
 }
@@ -65,7 +67,9 @@ pub fn (re RE) get_group_by_id(in_txt string, group_id int) string {
 		index := group_id << 1
 		start := re.groups[index]
 		end   := re.groups[index + 1]
-		return in_txt[start..end]
+		if start >= 0 && end > start {
+			return in_txt[start..end]
+		}
 	}
 	return ""
 }
@@ -307,8 +311,8 @@ pub fn (mut re RE) find_all_str(in_txt string) []string {
 * Replacers
 *
 ******************************************************************************/
-// replace return a string where the matches are replaced with the replace string
-pub fn (mut re RE) replace(in_txt string, repl string) string {
+// replace_simple return a string where the matches are replaced with the replace string
+pub fn (mut re RE) replace_simple(in_txt string, repl string) string {
 	pos := re.find_all(in_txt)
 
 	if pos.len > 0 {
@@ -330,6 +334,7 @@ pub fn (mut re RE) replace(in_txt string, repl string) string {
 	}
 	return in_txt
 }
+
 
 // type of function used for custom replace
 // in_txt  source text
@@ -361,6 +366,70 @@ pub fn (mut re RE) replace_by_fn(in_txt string, repl_fn FnReplace) string {
 			}
 			
 			repl := repl_fn(re, in_txt, s, e)
+			//println("repl res: $repl")
+			res.write_string(repl)
+			//res.write_string("[[${in_txt[s..e]}]]")
+			
+			last_end = e
+			i = e
+		} else {
+			break
+			//i++
+		}
+		//println(i)
+	}
+	if last_end >= 0 && last_end < in_txt.len {
+		res.write_string(in_txt[last_end..])
+	}
+	return res.str()
+}
+
+
+fn (re RE) parsed_replace_string(in_txt string, repl string) string {
+	str_lst := repl.split("\\")
+	mut res := str_lst[0]
+	mut i := 1
+	for i < str_lst.len {
+		tmp := str_lst[i]
+		//println("tmp: ${tmp}")
+		if tmp.len > 0 && tmp[0] >= `0` && tmp[0] <= `9` {
+			group_id := int(tmp[0] - `0`)
+			group := re.get_group_by_id(in_txt, group_id)
+			//println("group: $group_id [$group]")
+			res += "${group}${tmp[1..]}"
+		} else {
+			res += '\\'+tmp
+		}
+		i++
+	}
+	return res
+}
+
+// replace return a string where the matches are replaced with the repl_str string, 
+// this function support use groups in the replace string
+pub fn (mut re RE) replace(in_txt string, repl_str string) string {
+	mut i   := 0
+	mut res := strings.new_builder(in_txt.len)
+	mut last_end    := 0
+
+	for i < in_txt.len {
+		//println("Find Start. $i [${in_txt[i..]}]")
+		s, e := re.find_from(in_txt,i)
+		//println("Find End.")
+		if s >= 0 && e > s  {
+			//println("find match in: ${s},${e} [${in_txt[s..e]}]")
+			
+			if last_end < s {
+				res.write_string(in_txt[last_end..s])
+			}
+
+			for g_i in 0..re.group_count {
+				re.groups[g_i << 1      ] += i
+				re.groups[(g_i << 1) + 1] += i
+			}
+			
+			//repl := repl_fn(re, in_txt, s, e)
+			repl := re.parsed_replace_string(in_txt, repl_str)
 			//println("repl res: $repl")
 			res.write_string(repl)
 			//res.write_string("[[${in_txt[s..e]}]]")
