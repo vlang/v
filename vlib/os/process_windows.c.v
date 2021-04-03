@@ -132,7 +132,7 @@ fn (mut p Process) win_kill_pgroup() {
 	wdata := &WProcess(p.wdata)
 	res := C.TerminateProcess(wdata.proc_info.h_process, 3)
 	eprintln('> win_kill_pgroup res: $res')
-    C.WaitForSingleObject(wdata.proc_info.h_process, C.INFINITE)
+    C.WaitForSingleObject(wdata.proc_info.h_process, 2000) // wait for a maximum of 2 seconds
 	eprintln('> win_kill_pgroup res: $res finish')
 }
 
