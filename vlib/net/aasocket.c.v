@@ -31,7 +31,7 @@ mut:
 
 struct C.in6_addr {
 mut:
-	s_addr [16]byte
+	s6_addr [16]byte
 }
 
 
@@ -109,6 +109,8 @@ fn C.listen(sockfd int, backlog int) int
 fn C.accept(sockfd int, addr &SockaddrStorage, addrlen &u32) int
 
 fn C.getaddrinfo(node charptr, service charptr, hints &C.addrinfo, res &&C.addrinfo) int
+
+fn C.freeaddrinfo(info &C.addrinfo) 
 
 // fn C.connect(sockfd int, addr &C.sockaddr, addrlen C.socklen_t) int
 fn C.connect(sockfd int, addr &SockaddrStorage, addrlen u32) int
