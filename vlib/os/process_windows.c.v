@@ -93,8 +93,24 @@ fn (mut p Process) win_spawn_process() int {
 	}
 	cmd := '$p.filename ' + p.args.join(' ')
 	C.ExpandEnvironmentStringsW(cmd.to_wide(), voidptr(&wdata.command_line[0]), 32768)
-	create_process_ok := C.CreateProcessW(0, &wdata.command_line[0], 0, 0, C.TRUE, 0,
-		0, 0, voidptr(&start_info), voidptr(&wdata.proc_info))
+
+mut creation_flags := int(C.NORMAL_PRIORITY_CLASS)
+if p.use_pgroup {
+	creation_flags |= C.CREATE_NEW_PROCESS_GROUP
+}
+
+	create_process_ok := C.CreateProcessW(
+        0 /*no module name*/, 
+        &wdata.command_line[0], 
+        0 /*process handle not inheritable*/, 
+        0 /*thread handle not inheritable*/, 
+        C.FALSE /* set handle inheritance*/,
+        creation_flags,
+		0 /* environment */, 
+        0 /* current directory */,
+        voidptr(&start_info),
+        voidptr(&wdata.proc_info)
+    )
 	failed_cfn_report_error(create_process_ok, 'CreateProcess')
 	if p.use_stdio_ctl {
 		close_valid_handle(&wdata.child_stdout_write)
@@ -139,14 +155,14 @@ fn (mut p Process) win_wait() {
 	exit_code := u32(1)
 	mut wdata := &WProcess(p.wdata)
 	if p.wdata != 0 {
-		C.WaitForSingleObject(wdata.proc_info.h_process, 200)
+		C.WaitForSingleObject(wdata.proc_info.h_process, C.INFINITE)
 	eprintln('> win_wait C.WaitForSingleObject finished')
 		C.GetExitCodeProcess(wdata.proc_info.h_process, voidptr(&exit_code))
-		close_valid_handle(&wdata.proc_info.h_process)
-		close_valid_handle(&wdata.proc_info.h_thread)
 		close_valid_handle(&wdata.child_stdin)
 		close_valid_handle(&wdata.child_stdout_write)
 		close_valid_handle(&wdata.child_stderr_write)
+		close_valid_handle(&wdata.proc_info.h_thread)
+		close_valid_handle(&wdata.proc_info.h_process)
 	}
 	p.status = .exited
 	p.code = int(exit_code)
