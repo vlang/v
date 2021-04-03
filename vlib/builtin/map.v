@@ -637,13 +637,6 @@ fn (mut d DenseArray) delete(i int) {
 	}
 }
 
-// delete this
-pub fn (mut m map) delete(key string) {
-	unsafe {
-		m.delete_1(&key)
-	}
-}
-
 // Removes the mapping of a particular key from the map.
 [unsafe]
 pub fn (mut m map) delete_1(key voidptr) {

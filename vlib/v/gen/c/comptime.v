@@ -409,7 +409,7 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 				}
 			}
 			for key in delete_keys {
-				g.comptime_var_type_map.delete(key)
+				g.comptime_var_type_map.delete_1(key)
 			}
 		}
 	} else if node.kind == .fields {
@@ -445,7 +445,8 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 				i++
 				g.writeln('}')
 			}
-			g.comptime_var_type_map.delete(node.val_var)
+			val_var := node.val_var
+			g.comptime_var_type_map.delete_1(val_var)
 		}
 	}
 	g.indent--
