@@ -6,15 +6,17 @@ const (
 	vroot                  = os.dir(vexe)
 	test_os_process        = os.join_path(os.temp_dir(), 'v', 'test_os_process.exe')
 	test_os_process_source = os.join_path(vroot, 'cmd/tools/test_os_process.v')
-	test_os_process_exe    = os.join_path(vroot, 'cmd/tools/test_os_process.exe')
 )
 
 fn testsuite_begin() ? {
 	os.rm(test_os_process) or {}
-	if os.exists(test_os_process_exe) {
-		os.cp(test_os_process_exe, test_os_process) ?
-	}
-	$if !windows {
+	if os.getenv('WINE_TEST_OS_PROCESS_EXE') != '' {
+		// Make it easier to run the test under wine emulation, by just 
+		// prebuilding the executable with:
+		//   v -os windows -o x.exe cmd/tools/test_os_process.v
+		//   WINE_TEST_OS_PROCESS_EXE=x.exe ./v -os windows vlib/os/process_test.v
+		os.cp(os.getenv('WINE_TEST_OS_PROCESS_EXE'), test_os_process) ?
+	} else {
 		os.system('$vexe -o $test_os_process $test_os_process_source')
 	}
 	assert os.exists(test_os_process)
