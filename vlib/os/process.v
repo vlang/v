@@ -42,6 +42,7 @@ pub mut:
 pub fn new_process(filename string) &Process {
 	return &Process{
 		filename: filename
+		stdio_fd: [-1,-1,-1]!
 	}
 }
 
@@ -151,6 +152,8 @@ fn (mut p Process) _spawn() int {
 		pid = p.unix_spawn_process()
 	}
 	p.pid = pid
+	eprintln('spawned pid: $p.pid | $p.filename $p.args | use_stdio_ctl: $p.use_stdio_ctl')
+	print_backtrace()
 	p.status = .running
 	return 0
 }

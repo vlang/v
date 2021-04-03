@@ -129,17 +129,26 @@ fn (mut p Process) win_kill_pgroup() {
 }
 
 fn (mut p Process) win_wait() {
+	exit_code := u32(1)
+	eprintln(@METHOD)
 	mut wdata := &WProcess(p.wdata)
-	exit_code := u32(0)
-	C.WaitForSingleObject(wdata.proc_info.h_process, C.INFINITE)
-	C.GetExitCodeProcess(wdata.proc_info.h_process, voidptr(&exit_code))
-	//
-	C.CloseHandle(wdata.proc_info.h_process)
-	C.CloseHandle(wdata.proc_info.h_thread)
-	//
-	C.CloseHandle(wdata.child_stdin)
-	C.CloseHandle(wdata.child_stdout_write)
-	C.CloseHandle(wdata.child_stderr_write)
+	if p.wdata != 0 {
+		C.WaitForSingleObject(wdata.proc_info.h_process, C.INFINITE)
+		C.GetExitCodeProcess(wdata.proc_info.h_process, voidptr(&exit_code))
+		//
+		C.CloseHandle(wdata.proc_info.h_process)
+		C.CloseHandle(wdata.proc_info.h_thread)
+		//
+		if wdata.child_stdin != 0 {
+			C.CloseHandle(wdata.child_stdin)
+		}
+		if wdata.child_stdout_write != 0 {
+			C.CloseHandle(wdata.child_stdout_write)
+		}
+		if wdata.child_stderr_write != 0 {
+			C.CloseHandle(wdata.child_stderr_write)
+		}
+	}
 	p.status = .exited
 	p.code = int(exit_code)
 }

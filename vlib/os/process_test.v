@@ -1,20 +1,23 @@
 import os
 import time
 
-const vexe = os.getenv('VEXE')
+const (
+	vexe = os.getenv('VEXE')
+	vroot = os.dir(vexe)
+	test_os_process = os.join_path(os.temp_dir(), 'v', 'test_os_process.exe')
+	test_os_process_source = os.join_path(vroot, 'cmd/tools/test_os_process.v')
+	test_os_process_exe = os.join_path(vroot, 'cmd/tools/test_os_process.exe')
+)
 
-const vroot = os.dir(vexe)
-
-const test_os_process = os.join_path(os.temp_dir(), 'v', 'test_os_process.exe')
-
-const test_os_process_source = os.join_path(vroot, 'cmd/tools/test_os_process.v')
-
-fn testsuite_begin() {
+fn testsuite_begin() ? {
 	os.rm(test_os_process) or {}
-	build_test_os_process_cmd := '$vexe -o $test_os_process $test_os_process_source'
-	dump(build_test_os_process_cmd)
-	compilation_status := os.system(build_test_os_process_cmd)
-	assert compilation_status == 0
+	if os.exists(test_os_process_exe) {
+		os.cp(test_os_process_exe, test_os_process) ?
+	}
+	$if !windows {
+		os.system('$vexe -o $test_os_process $test_os_process_source')
+	}
+	assert os.exists(test_os_process)
 }
 
 fn test_getpid() {
@@ -74,6 +77,7 @@ fn test_slurping_output() {
 		eprintln('p errors: "$errors"')
 		eprintln('---------------------------')
 	}
+	dump(output)
 	assert output.contains('stdout, 1')
 	assert output.contains('stdout, 2')
 	assert output.contains('stdout, 3')
