@@ -253,7 +253,11 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 			exit(1)
 		}
 	}
-	os.execvp(tool_exe, args) or { panic(err) }
+	$if windows {
+		exit(os.system('"$tool_exe" $tool_args'))
+	} $else {
+		os.execvp(tool_exe, args) or { panic(err) }
+	}
 }
 
 // NB: should_recompile_tool/4 compares unix timestamps that have 1 second resolution
