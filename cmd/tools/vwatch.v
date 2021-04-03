@@ -137,6 +137,7 @@ fn (mut context Context) get_changed_vfiles() int {
 			if existing_vfs.path == vfs.path {
 				found = true
 				if existing_vfs.mtime != vfs.mtime {
+					context.elog('> new updates for file: $vfs')
 					changed++
 				}
 				break
@@ -148,7 +149,9 @@ fn (mut context Context) get_changed_vfiles() int {
 		}
 	}
 	context.vfiles = newfiles
-	context.elog('> get_changed_vfiles: $changed')
+	if changed > 0 {
+		context.elog('> get_changed_vfiles: $changed')
+	}
 	return changed
 }
 
