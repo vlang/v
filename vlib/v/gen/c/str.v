@@ -4,7 +4,6 @@ module c
 
 import v.ast
 import v.util
-import v.table
 
 fn (mut g Gen) write_str_fn_definitions() {
 	// _STR function can't be defined in vlib
@@ -26,7 +25,7 @@ void _STR_PRINT_ARG(const char *fmt, char** refbufp, int *nbytes, int *memsize, 
 		}
 		// increase buffer (somewhat exponentially)
 		*memsize += (*memsize + *memsize) / 3 + guess;
-#ifdef _VGCBOEHM     
+#ifdef _VGCBOEHM
 		*refbufp = (char*)GC_REALLOC((void*)*refbufp, *memsize);
 #else
 		*refbufp = (char*)realloc((void*)*refbufp, *memsize);
@@ -39,7 +38,7 @@ string _STR(const char *fmt, int nfmts, ...) {
 	va_list argptr;
 	int memsize = 128;
 	int nbytes = 0;
-#ifdef _VGCBOEHM     
+#ifdef _VGCBOEHM
 	char* buf = (char*)GC_MALLOC(memsize);
 #else
 	char* buf = (char*)malloc(memsize);
@@ -222,7 +221,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		mut typ := g.unwrap_generic(node.expr_types[i])
 		sym := g.table.get_type_symbol(typ)
 		if sym.kind == .alias {
-			typ = (sym.info as table.Alias).parent_type
+			typ = (sym.info as ast.Alias).parent_type
 		}
 		// write correct format specifier to intermediate string
 		g.write('%')
@@ -256,11 +255,11 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 				g.write('${fmt}c')
 			} else {
 				g.write('$fmt"PRI${fspec:c}')
-				if typ in [table.i8_type, table.byte_type] {
+				if typ in [ast.i8_type, ast.byte_type] {
 					g.write('8')
-				} else if typ in [table.i16_type, table.u16_type] {
+				} else if typ in [ast.i16_type, ast.u16_type] {
 					g.write('16')
-				} else if typ in [table.i64_type, table.u64_type] {
+				} else if typ in [ast.i64_type, ast.u64_type] {
 					g.write('64')
 				} else {
 					g.write('32')
@@ -280,7 +279,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	// Build args
 	for i, expr in node.exprs {
 		typ := g.unwrap_generic(node.expr_types[i])
-		if typ == table.string_type {
+		if typ == ast.string_type {
 			if g.inside_vweb_tmpl {
 				g.write('vweb__filter(')
 				if expr.is_auto_deref_var() {
@@ -299,11 +298,11 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		} else if typ.is_number() || typ.is_pointer() || node.fmts[i] == `d` {
 			if typ.is_signed() && node.fmts[i] in [`x`, `X`, `o`] {
 				// convert to unsigned first befors C's integer propagation strikes
-				if typ == table.i8_type {
+				if typ == ast.i8_type {
 					g.write('(byte)(')
-				} else if typ == table.i16_type {
+				} else if typ == ast.i16_type {
 					g.write('(u16)(')
-				} else if typ == table.int_type {
+				} else if typ == ast.int_type {
 					g.write('(u32)(')
 				} else {
 					g.write('(u64)(')
@@ -335,7 +334,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	g.write(')')
 }
 
-fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) {
+fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 	is_shared := etype.has_flag(.shared_f)
 	mut typ := etype
 	if is_shared {
@@ -343,7 +342,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) {
 	}
 	mut sym := g.table.get_type_symbol(typ)
 	// when type is alias, print the aliased value
-	if mut sym.info is table.Alias {
+	if mut sym.info is ast.Alias {
 		parent_sym := g.table.get_type_symbol(sym.info.parent_type)
 		if parent_sym.has_method('str') {
 			typ = sym.info.parent_type
@@ -356,9 +355,9 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) {
 		g.write('${str_fn_name}(')
 		g.expr(expr)
 		g.write(')')
-	} else if typ == table.string_type {
+	} else if typ == ast.string_type {
 		g.expr(expr)
-	} else if typ == table.bool_type {
+	} else if typ == ast.bool_type {
 		g.expr(expr)
 		g.write(' ? _SLIT("true") : _SLIT("false")')
 	} else if sym.kind == .none_ {

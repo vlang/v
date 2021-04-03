@@ -544,8 +544,34 @@ pub fn (mut re RE) find_all_str(in_txt string) []string
 #### Replace functions
 
 ```v ignore
-// replace return a string where the matches are replaced with the replace string, only non overlapped matches are used
+// replace return a string where the matches are replaced with the repl_str string, 
+// this function support groups in the replace string
 pub fn (re mut RE) replace(in_txt string, repl string) string
+```
+
+replace string can include groups references:
+
+```v ignore
+txt   := "Today it is a good day."
+query := r'(a\w)[ ,.]'
+mut re := regex.regex_opt(query)?
+res := re.replace(txt, r"__[\0]__")
+```
+
+in this example we used the group `0` in the replace string: `\0`, the result will be:
+
+```
+Today it is a good day. => Tod__[ay]__it is a good d__[ay]__
+```
+
+**Note:** in the replace strings can be used only groups from `0` to `9`.
+
+If the usage of `groups` in the replace process is not needed it is possible
+to use a quick function:
+
+```v ignore
+// replace_simple return a string where the matches are replaced with the replace string
+pub fn (mut re RE) replace_simple(in_txt string, repl string) string
 ```
 
 #### Custom replace function

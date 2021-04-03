@@ -3,9 +3,9 @@
 // that can be found in the LICENSE file.
 module fmt
 
-import v.table
+import v.ast
 
-pub fn (mut f Fmt) attrs(attrs []table.Attr) {
+pub fn (mut f Fmt) attrs(attrs []ast.Attr) {
 	mut sorted_attrs := attrs.clone()
 	// Sort the attributes. The ones with arguments come first.
 	sorted_attrs.sort(a.arg.len > b.arg.len)
@@ -22,7 +22,7 @@ pub struct AttrsOptions {
 	inline bool
 }
 
-pub fn (mut f Fmt) single_line_attrs(attrs []table.Attr, options AttrsOptions) {
+pub fn (mut f Fmt) single_line_attrs(attrs []ast.Attr, options AttrsOptions) {
 	if attrs.len == 0 {
 		return
 	}
@@ -44,7 +44,7 @@ pub fn (mut f Fmt) single_line_attrs(attrs []table.Attr, options AttrsOptions) {
 	}
 }
 
-fn inline_attrs_len(attrs []table.Attr) int {
+fn inline_attrs_len(attrs []ast.Attr) int {
 	if attrs.len == 0 {
 		return 0
 	}

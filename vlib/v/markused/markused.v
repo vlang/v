@@ -3,12 +3,11 @@
 module markused
 
 import v.ast
-import v.table
 import v.util
 import v.pref
 
 // mark_used walks the AST, starting at main() and marks all used fns transitively
-pub fn mark_used(mut the_table table.Table, pref &pref.Preferences, ast_files []ast.File) {
+pub fn mark_used(mut t ast.Table, pref &pref.Preferences, ast_files []ast.File) {
 	mut all_fns, all_consts := all_fn_and_const(ast_files)
 
 	util.timing_start(@METHOD)
@@ -103,7 +102,7 @@ pub fn mark_used(mut the_table table.Table, pref &pref.Preferences, ast_files []
 
 	// implicit string builders are generated in auto_eq_methods.v
 	mut sb_mut_type := ''
-	if sbfn := the_table.find_fn('strings.new_builder') {
+	if sbfn := t.find_fn('strings.new_builder') {
 		sb_mut_type = sbfn.return_type.set_nr_muls(1).str() + '.'
 	}
 
@@ -141,7 +140,7 @@ pub fn mark_used(mut the_table table.Table, pref &pref.Preferences, ast_files []
 	if pref.is_test {
 		all_fn_root_names << 'main.cb_assertion_ok'
 		all_fn_root_names << 'main.cb_assertion_failed'
-		if benched_tests_sym := the_table.find_type('main.BenchedTests') {
+		if benched_tests_sym := t.find_type('main.BenchedTests') {
 			bts_type := benched_tests_sym.methods[0].params[0].typ
 			all_fn_root_names << '${bts_type}.testing_step_start'
 			all_fn_root_names << '${bts_type}.testing_step_end'
@@ -151,7 +150,7 @@ pub fn mark_used(mut the_table table.Table, pref &pref.Preferences, ast_files []
 	}
 
 	mut walker := Walker{
-		table: the_table
+		table: t
 		files: ast_files
 		all_fns: all_fns
 		all_consts: all_consts
@@ -181,12 +180,12 @@ pub fn mark_used(mut the_table table.Table, pref &pref.Preferences, ast_files []
 		}
 	}
 
-	the_table.used_fns = walker.used_fns.move()
-	the_table.used_consts = walker.used_consts.move()
+	t.used_fns = walker.used_fns.move()
+	t.used_consts = walker.used_consts.move()
 
 	$if trace_skip_unused ? {
-		eprintln('>> the_table.used_fns: $the_table.used_fns.keys()')
-		eprintln('>> the_table.used_consts: $the_table.used_consts.keys()')
+		eprintln('>> t.used_fns: $t.used_fns.keys()')
+		eprintln('>> t.used_consts: $t.used_consts.keys()')
 		eprintln('>> walker.n_maps: $walker.n_maps')
 	}
 }

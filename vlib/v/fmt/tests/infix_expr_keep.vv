@@ -1,0 +1,4 @@
+fn infix_in_multi_assign() {
+	child_width, child_height = child.adj_width + child.margin(.left) + child.margin(.right),
+		child.adj_height + child.margin(.top) + child.margin(.bottom)
+}

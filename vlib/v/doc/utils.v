@@ -3,7 +3,6 @@ module doc
 import strings
 import v.ast
 import v.token
-import v.table
 
 // merge_comments merges all the comment contents into a single text.
 pub fn merge_comments(comments []ast.Comment) string {
@@ -140,9 +139,9 @@ pub fn (d Doc) stmt_pub(stmt ast.Stmt) bool {
 	}
 }
 
-// type_to_str is a wrapper function around `fmt.table.type_to_str`.
-pub fn (mut d Doc) type_to_str(typ table.Type) string {
-	// why is it the default behaviour of table.type_to_str
+// type_to_str is a wrapper function around `fmt.ast.type_to_str`.
+pub fn (mut d Doc) type_to_str(typ ast.Type) string {
+	// why is it the default behaviour of ast.type_to_str
 	// to convert math.bits.Type to bits.Type?
 	d.table.cmod_prefix = d.orig_mod_name + '.'
 	return d.fmt.table.type_to_str(typ).all_after('&')
