@@ -207,12 +207,15 @@ pub fn parse_vet_file(path string, table_ &ast.Table, pref &pref.Preferences) (a
 		global_scope: global_scope
 	}
 	p.set_path(path)
-	if p.scanner.text.contains('\n  ') {
+	if p.scanner.text.contains_any_substr(['\n  ', ' \n']) {
 		source_lines := os.read_lines(path) or { []string{} }
 		for lnumber, line in source_lines {
 			if line.starts_with('  ') {
 				p.vet_error('Looks like you are using spaces for indentation.', lnumber,
 					.vfmt)
+			}
+			if line.ends_with(' ') {
+				p.vet_error('Looks like you have trailing whitespace.', lnumber, .vfmt)
 			}
 		}
 	}
