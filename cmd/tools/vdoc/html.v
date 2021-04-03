@@ -228,7 +228,7 @@ fn (vd VDoc) write_content(cn &doc.DocNode, d &doc.Doc, mut hw strings.Builder) 
 	}
 	for child in cn.children {
 		child_file_path_name := child.file_path.replace('$base_dir/', '')
-		child_src_link := get_src_link(vd.manifest.repo_url, child_file_path_name, 
+		child_src_link := get_src_link(vd.manifest.repo_url, child_file_path_name,
 			child.pos.line_nr + 1)
 		hw.write_string(doc_node_html(child, child_src_link, false, cfg.include_examples,
 			d.table))

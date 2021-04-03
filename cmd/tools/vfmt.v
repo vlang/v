@@ -267,7 +267,7 @@ fn (foptions &FormatOptions) post_process_file(file string, formatted_file_path 
 }
 
 fn (f FormatOptions) str() string {
-	return 
+	return
 		'FormatOptions{ is_l: $f.is_l, is_w: $f.is_w, is_diff: $f.is_diff, is_verbose: $f.is_verbose,' +
 		' is_all: $f.is_all, is_worker: $f.is_worker, is_debug: $f.is_debug, is_noerror: $f.is_noerror,' +
 		' is_verify: $f.is_verify" }'
