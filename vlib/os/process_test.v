@@ -2,11 +2,11 @@ import os
 import time
 
 const (
-	vexe = os.getenv('VEXE')
-	vroot = os.dir(vexe)
-	test_os_process = os.join_path(os.temp_dir(), 'v', 'test_os_process.exe')
+	vexe                   = os.getenv('VEXE')
+	vroot                  = os.dir(vexe)
+	test_os_process        = os.join_path(os.temp_dir(), 'v', 'test_os_process.exe')
 	test_os_process_source = os.join_path(vroot, 'cmd/tools/test_os_process.v')
-	test_os_process_exe = os.join_path(vroot, 'cmd/tools/test_os_process.exe')
+	test_os_process_exe    = os.join_path(vroot, 'cmd/tools/test_os_process.exe')
 )
 
 fn testsuite_begin() ? {
@@ -77,11 +77,13 @@ fn test_slurping_output() {
 		eprintln('p errors: "$errors"')
 		eprintln('---------------------------')
 	}
-	dump(output)
+	// dump(output)
 	assert output.contains('stdout, 1')
 	assert output.contains('stdout, 2')
 	assert output.contains('stdout, 3')
 	assert output.contains('stdout, 4')
+	//
+	// dump(errors)
 	assert errors.contains('stderr, 1')
 	assert errors.contains('stderr, 2')
 	assert errors.contains('stderr, 3')

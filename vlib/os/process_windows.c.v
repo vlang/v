@@ -1,5 +1,7 @@
 module os
 
+import strings
+
 fn C.GetModuleHandleA(charptr) HMODULE
 fn C.GetProcAddress(handle voidptr, procname byteptr) voidptr
 fn C.TerminateProcess(process HANDLE, exit_code u32) bool
@@ -132,7 +134,6 @@ fn (mut p Process) win_kill_pgroup() {
 
 fn (mut p Process) win_wait() {
 	exit_code := u32(1)
-	eprintln(@METHOD)
 	mut wdata := &WProcess(p.wdata)
 	if p.wdata != 0 {
 		C.WaitForSingleObject(wdata.proc_info.h_process, C.INFINITE)
@@ -180,4 +181,54 @@ fn (mut p Process) unix_wait() {
 
 fn (mut p Process) unix_is_alive() bool {
 	return false
+}
+
+///////////////
+
+fn (mut p Process) w_write_string(idx int, s string) {
+	panic('Process.write_string $idx is not implemented yet')
+}
+
+fn (mut p Process) w_read_string(idx int, maxbytes int) (string, int) {
+	panic('WProcess.read_string $idx is not implemented yet')
+	return '', 0
+}
+
+fn (mut p Process) w_slurp(idx int) string {
+	mut wdata := &WProcess(p.wdata)
+	if wdata == 0 {
+		return ''
+	}
+	mut rhandle := &u32(0)
+	if idx == 1 {
+		rhandle = wdata.child_stdout_read
+	}
+	if idx == 2 {
+		rhandle = wdata.child_stderr_read
+	}
+	if rhandle == 0 {
+		return ''
+	}
+	mut bytes_read := u32(0)
+	buf := [4096]byte{}
+	mut read_data := strings.new_builder(1024)
+	for {
+		mut result := false
+		unsafe {
+			result = C.ReadFile(rhandle, &buf[0], 1000, voidptr(&bytes_read), 0)
+			read_data.write_ptr(&buf[0], int(bytes_read))
+		}
+		if result == false || int(bytes_read) == 0 {
+			break
+		}
+	}
+	soutput := read_data.str()
+	unsafe { read_data.free() }
+	if idx == 1 {
+		close_valid_handle(&wdata.child_stdout_read)
+	}
+	if idx == 2 {
+		close_valid_handle(&wdata.child_stderr_read)
+	}
+	return soutput
 }

@@ -152,7 +152,6 @@ fn (mut p Process) _spawn() int {
 		pid = p.unix_spawn_process()
 	}
 	p.pid = pid
-	eprintln('spawned pid: $p.pid | $p.filename $p.args | use_stdio_ctl: $p.use_stdio_ctl')
 	p.status = .running
 	return 0
 }
@@ -173,33 +172,55 @@ pub fn (mut p Process) set_redirect_stdio() {
 
 pub fn (mut p Process) stdin_write(s string) {
 	p._check_redirection_call('stdin_write')
-	fd_write(p.stdio_fd[0], s)
+	$if windows {
+		p.w_write_string(0, s)
+	} $else {
+		fd_write(p.stdio_fd[0], s)
+	}
 }
 
 // will read from stdout pipe, will only return when EOF (end of file) or data
 // means this will block unless there is data
 pub fn (mut p Process) stdout_slurp() string {
 	p._check_redirection_call('stdout_slurp')
-	return fd_slurp(p.stdio_fd[1]).join('')
+	$if windows {
+		return p.w_slurp(1)
+	} $else {
+		return fd_slurp(p.stdio_fd[1]).join('')
+	}
 }
 
 // read from stderr pipe, wait for data or EOF
 pub fn (mut p Process) stderr_slurp() string {
 	p._check_redirection_call('stderr_slurp')
-	return fd_slurp(p.stdio_fd[2]).join('')
+	$if windows {
+		return p.w_slurp(2)
+	} $else {
+		return fd_slurp(p.stdio_fd[2]).join('')
+	}
 }
 
 // read from stdout, return if data or not
 pub fn (mut p Process) stdout_read() string {
 	p._check_redirection_call('stdout_read')
-	s, _ := fd_read(p.stdio_fd[1], 4096)
-	return s
+	$if windows {
+		s, _ := p.w_read_string(1, 4096)
+		return s
+	} $else {
+		s, _ := fd_read(p.stdio_fd[1], 4096)
+		return s
+	}
 }
 
 pub fn (mut p Process) stderr_read() string {
 	p._check_redirection_call('stderr_read')
-	s, _ := fd_read(p.stdio_fd[2], 4096)
-	return s
+	$if windows {
+		s, _ := p.w_read_string(2, 4096)
+		return s
+	} $else {
+		s, _ := fd_read(p.stdio_fd[2], 4096)
+		return s
+	}
 }
 
 // _check_redirection_call - should be called just by stdxxx methods
