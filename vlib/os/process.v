@@ -15,9 +15,6 @@ pub enum ProcessState {
 
 [heap]
 pub struct Process {
-mut:
-	wdata    voidptr // the WProcess; used only by the windows implementation
-	stdio_fd [3]int  // the stdio file descriptors for the child process, used only by the nix implementation
 pub:
 	filename string // the process's command file path
 pub mut:
@@ -32,6 +29,8 @@ pub mut:
 	env           []string // the environment with which the process was started  (list of 'var=val')
 	use_stdio_ctl bool     // when true, then you can use p.stdin_write(), p.stdout_slurp() and p.stderr_slurp()
 	use_pgroup    bool     // when true, the process will create a new process group, enabling .signal_pgkill()
+	stdio_fd [3]int  // the stdio file descriptors for the child process, used only by the nix implementation
+	wdata    voidptr // the WProcess; used only by the windows implementation
 }
 
 // new_process - create a new process descriptor
