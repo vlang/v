@@ -1,11 +1,9 @@
 module ast
 
-import v.table
-
-pub fn resolve_init(node StructInit, typ table.Type, t &table.Table) Expr {
+pub fn resolve_init(node StructInit, typ Type, t &Table) Expr {
 	type_sym := t.get_type_symbol(typ)
 	if type_sym.kind == .array {
-		array_info := type_sym.info as table.Array
+		array_info := type_sym.info as Array
 		mut has_len := false
 		mut has_cap := false
 		mut has_default := false
@@ -47,7 +45,7 @@ pub fn resolve_init(node StructInit, typ table.Type, t &table.Table) Expr {
 			exprs: exprs
 		}
 	} else if type_sym.kind == .map {
-		map_info := type_sym.info as table.Map
+		map_info := type_sym.info as Map
 		mut keys := []Expr{}
 		mut vals := []Expr{}
 		for field in node.fields {

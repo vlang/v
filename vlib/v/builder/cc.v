@@ -430,8 +430,8 @@ fn (mut v Builder) setup_output_name() {
 		v.pref.cache_manager.save('.description.txt', v.pref.path, '${v.pref.path:-30} @ $v.pref.cache_manager.vopts\n') or {
 			panic(err)
 		}
-		// println('v.table.imports:')
-		// println(v.table.imports)
+		// println('v.ast.imports:')
+		// println(v.ast.imports)
 	}
 	if os.is_dir(v.pref.out_name) {
 		verror("'$v.pref.out_name' is a directory")
@@ -913,15 +913,15 @@ fn (mut c Builder) cc_windows_cross() {
 	println(c.pref.out_name + ' has been successfully compiled')
 }
 
-fn (mut v Builder) build_thirdparty_obj_files() {
-	v.log('build_thirdparty_obj_files: v.table.cflags: $v.table.cflags')
-	for flag in v.get_os_cflags() {
+fn (mut b Builder) build_thirdparty_obj_files() {
+	b.log('build_thirdparty_obj_files: v.ast.cflags: $b.table.cflags')
+	for flag in b.get_os_cflags() {
 		if flag.value.ends_with('.o') {
-			rest_of_module_flags := v.get_rest_of_module_cflags(flag)
-			if v.pref.ccompiler == 'msvc' {
-				v.build_thirdparty_obj_file_with_msvc(flag.value, rest_of_module_flags)
+			rest_of_module_flags := b.get_rest_of_module_cflags(flag)
+			if b.pref.ccompiler == 'msvc' {
+				b.build_thirdparty_obj_file_with_msvc(flag.value, rest_of_module_flags)
 			} else {
-				v.build_thirdparty_obj_file(flag.value, rest_of_module_flags)
+				b.build_thirdparty_obj_file(flag.value, rest_of_module_flags)
 			}
 		}
 	}
@@ -931,8 +931,13 @@ fn (mut v Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CF
 	obj_path := os.real_path(path)
 	cfile := '${obj_path[..obj_path.len - 2]}.c'
 	opath := v.pref.cache_manager.postfix_with_key2cpath('.o', obj_path)
+	mut rebuild_reason_message := '$obj_path not found, building it in $opath ...'
 	if os.exists(opath) {
-		return
+		if os.exists(cfile) && os.file_last_mod_unix(opath) < os.file_last_mod_unix(cfile) {
+			rebuild_reason_message = '$opath is older than $cfile, rebuilding ...'
+		} else {
+			return
+		}
 	}
 	if os.exists(obj_path) {
 		// Some .o files are distributed with no source
@@ -942,7 +947,7 @@ fn (mut v Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CF
 		os.cp(obj_path, opath) or { panic(err) }
 		return
 	}
-	println('$obj_path not found, building it in $opath ...')
+	println(rebuild_reason_message)
 	//
 	// prepare for tcc, it needs relative paths to thirdparty/tcc to work:
 	current_folder := os.getwd()
@@ -968,7 +973,9 @@ fn (mut v Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CF
 	v.pref.cache_manager.save('.description.txt', obj_path, '${obj_path:-30} @ $cmd\n') or {
 		panic(err)
 	}
-	println(res.output)
+	if res.output != '' {
+		println(res.output)
+	}
 }
 
 fn missing_compiler_info() string {

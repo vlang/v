@@ -1,7 +1,7 @@
 // Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-module table
+module ast
 
 import v.cflag
 import v.token
@@ -18,7 +18,7 @@ pub mut:
 	cflags        []cflag.CFlag
 	redefined_fns []string
 	fn_gen_types  map[string][][]Type // for generic functions
-	cmod_prefix   string // needed for table.type_to_str(Type) while vfmt; contains `os.`
+	cmod_prefix   string // needed for ast.type_to_str(Type) while vfmt; contains `os.`
 	is_fmt        bool
 	used_fns      map[string]bool // filled in by the checker, when pref.skip_unused = true;
 	used_consts   map[string]bool // filled in by the checker, when pref.skip_unused = true;
@@ -82,6 +82,7 @@ fn (p []Param) equals(o []Param) bool {
 	return true
 }
 
+/*
 pub struct Var {
 pub:
 	name   string
@@ -89,6 +90,7 @@ pub:
 mut:
 	typ Type
 }
+*/
 
 pub fn new_table() &Table {
 	mut t := &Table{
@@ -240,14 +242,14 @@ pub fn (t &Table) type_find_method(s &TypeSymbol, name string) ?Fn {
 	return none
 }
 
-fn (t &Table) register_aggregate_field(mut sym TypeSymbol, name string) ?Field {
+fn (t &Table) register_aggregate_field(mut sym TypeSymbol, name string) ?StructField {
 	if sym.kind != .aggregate {
 		panic('Unexpected type symbol: $sym.kind')
 	}
 	mut agg_info := sym.info as Aggregate
 	// an aggregate always has at least 2 types
 	mut found_once := false
-	mut new_field := Field{
+	mut new_field := StructField{
 		// default_expr: ast.empty_expr()
 	}
 	for typ in agg_info.types {
@@ -276,7 +278,7 @@ pub fn (t &Table) struct_has_field(s &TypeSymbol, name string) bool {
 }
 
 // search from current type up through each parent looking for field
-pub fn (t &Table) find_field(s &TypeSymbol, name string) ?Field {
+pub fn (t &Table) find_field(s &TypeSymbol, name string) ?StructField {
 	// println('find_field($s.name, $name) types.len=$t.types.len s.parent_idx=$s.parent_idx')
 	mut ts := s
 	for {
@@ -316,13 +318,13 @@ pub fn (t &Table) find_field(s &TypeSymbol, name string) ?Field {
 }
 
 // search for a given field, looking through embedded fields
-pub fn (t &Table) find_field_with_embeds(sym &TypeSymbol, field_name string) ?Field {
+pub fn (t &Table) find_field_with_embeds(sym &TypeSymbol, field_name string) ?StructField {
 	if f := t.find_field(sym, field_name) {
 		return f
 	} else {
 		// look for embedded field
 		if sym.info is Struct {
-			mut found_fields := []Field{}
+			mut found_fields := []StructField{}
 			mut embed_of_found_fields := []Type{}
 			for embed in sym.info.embeds {
 				embed_sym := t.get_type_symbol(embed)
@@ -347,7 +349,7 @@ pub fn (t &Table) resolve_common_sumtype_fields(sym_ &TypeSymbol) {
 	if info.found_fields {
 		return
 	}
-	mut field_map := map[string]Field{}
+	mut field_map := map[string]StructField{}
 	mut field_usages := map[string]int{}
 	for variant in info.variants {
 		mut v_sym := t.get_type_symbol(variant)
@@ -360,7 +362,7 @@ pub fn (t &Table) resolve_common_sumtype_fields(sym_ &TypeSymbol) {
 				v_sym.info.fields
 			}
 			else {
-				[]Field{}
+				[]StructField{}
 			}
 		}
 		for field in fields {
@@ -867,8 +869,8 @@ pub fn (mut t Table) register_fn_gen_type(fn_name string, types []Type) {
 
 // TODO: there is a bug when casting sumtype the other way if its pointer
 // so until fixed at least show v (not C) error `x(variant) =  y(SumType*)`
-pub fn (mytable &Table) sumtype_has_variant(parent Type, variant Type) bool {
-	parent_sym := mytable.get_type_symbol(parent)
+pub fn (t &Table) sumtype_has_variant(parent Type, variant Type) bool {
+	parent_sym := t.get_type_symbol(parent)
 	if parent_sym.kind == .sum_type {
 		parent_info := parent_sym.info as SumType
 		for v in parent_info.variants {
@@ -894,11 +896,11 @@ pub fn (t &Table) known_type_names() []string {
 // has_deep_child_no_ref returns true if type is struct and has any child or nested child with the type of the given name
 // the given name consists of module and name (`mod.Name`)
 // it doesn't care about childs that are references
-pub fn (mytable &Table) has_deep_child_no_ref(ts &TypeSymbol, name string) bool {
+pub fn (t &Table) has_deep_child_no_ref(ts &TypeSymbol, name string) bool {
 	if ts.info is Struct {
 		for field in ts.info.fields {
-			sym := mytable.get_type_symbol(field.typ)
-			if !field.typ.is_ptr() && (sym.name == name || mytable.has_deep_child_no_ref(sym, name)) {
+			sym := t.get_type_symbol(field.typ)
+			if !field.typ.is_ptr() && (sym.name == name || t.has_deep_child_no_ref(sym, name)) {
 				return true
 			}
 		}

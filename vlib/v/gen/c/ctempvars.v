@@ -1,9 +1,8 @@
 module c
 
 import v.ast
-import v.table
 
-fn (mut g Gen) new_ctemp_var(expr ast.Expr, expr_type table.Type) ast.CTempVar {
+fn (mut g Gen) new_ctemp_var(expr ast.Expr, expr_type ast.Type) ast.CTempVar {
 	return ast.CTempVar{
 		name: g.new_tmp_var()
 		typ: expr_type
@@ -12,7 +11,7 @@ fn (mut g Gen) new_ctemp_var(expr ast.Expr, expr_type table.Type) ast.CTempVar {
 	}
 }
 
-fn (mut g Gen) new_ctemp_var_then_gen(expr ast.Expr, expr_type table.Type) ast.CTempVar {
+fn (mut g Gen) new_ctemp_var_then_gen(expr ast.Expr, expr_type ast.Type) ast.CTempVar {
 	x := g.new_ctemp_var(expr, expr_type)
 	g.gen_ctemp_var(x)
 	return x

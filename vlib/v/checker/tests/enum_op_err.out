@@ -12,11 +12,11 @@ vlib/v/checker/tests/enum_op_err.vv:9:20: error: only `==` and `!=` are defined 
       |                       ^
    10 |     println(Color.red && Color.green)
    11 |     println(Color.red | Color.green)
-vlib/v/checker/tests/enum_op_err.vv:10:20: error: left operand for `&&` is not a boolean
+vlib/v/checker/tests/enum_op_err.vv:10:10: error: left operand for `&&` is not a boolean
     8 |     println(Color.red > Color.green)
     9 |     println(Color.red + Color.green)
    10 |     println(Color.red && Color.green)
-      |                       ~~
+      |             ~~~~~~~~~
    11 |     println(Color.red | Color.green)
    12 |     println(Color.red & Color.green)
 vlib/v/checker/tests/enum_op_err.vv:11:20: error: only `==` and `!=` are defined on `enum`, use an explicit cast to `int` if needed

@@ -3,10 +3,8 @@ module parser
 // import v.eval
 import v.ast
 import v.gen.c
-import v.table
 import v.checker
 import v.pref
-import v.scanner
 import term
 
 fn test_eval() {
@@ -35,7 +33,7 @@ fn test_eval() {
 	'20',
 	//
 	]
-	table := table.new_table()
+	table := ast.new_table()
 	vpref := &pref.Preferences{}
 	mut scope := &ast.Scope{
 		start_pos: 0
@@ -76,7 +74,7 @@ x := 10
 5+7
 8+4
 '
-	table := &table.Table{}
+	table := &ast.Table{}
 	vpref := &pref.Preferences{}
 	gscope := &ast.Scope{
 		parent: 0
@@ -95,7 +93,7 @@ fn test_one() {
 	println('\n\ntest_one()')
 	input := ['a := 10', 'b := -a', 'c := 20']
 	expected := 'int a = 10;int b = -a;int c = 20;'
-	table := table.new_table()
+	table := ast.new_table()
 	vpref := &pref.Preferences{}
 	scope := &ast.Scope{
 		start_pos: 0
@@ -136,7 +134,7 @@ fn test_parse_expr() {
 		'string s = tos3("hi");', 'x = 11;', 'a += 10;', '1.2 + 3.4;', '4 + 4;', '1 + 2 * 5;',
 		'-a + 1;', '2 + 2;']
 	mut e := []ast.Stmt{}
-	table := table.new_table()
+	table := ast.new_table()
 	vpref := &pref.Preferences{}
 	mut checker := checker.new_checker(table, vpref)
 	scope := &ast.Scope{
@@ -184,7 +182,7 @@ fn test_num_literals() {
 		'c := -12.',
 		'd := -a',
 	]
-	table := table.new_table()
+	table := ast.new_table()
 	mut scope := &ast.Scope{
 		start_pos: 0
 		parent: 0
@@ -211,7 +209,7 @@ fn test_num_literals() {
 }
 
 /*
-table := &table.Table{}
+table := &ast.Table{}
 for s in text_expr {
 	// print using str method
 	x := parse_expr(s, table)

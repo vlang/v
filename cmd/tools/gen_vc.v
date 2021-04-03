@@ -1,5 +1,12 @@
 module main
 
+import os
+import log
+import flag
+import time
+import vweb
+import net.urllib
+
 // This tool regenerates V's bootstrap .c files
 // every time the V master branch is updated.
 // if run with the --serve flag it will run in webhook
@@ -13,12 +20,6 @@ module main
 // --log-file  path to log file used when --log-to is 'file'
 // --dry-run   dont push anything to remote repo
 // --force     force update even if already up to date
-import os
-import log
-import flag
-import time
-import vweb
-import net.urllib
 
 // git credentials
 const (
