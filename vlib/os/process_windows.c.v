@@ -124,15 +124,18 @@ fn (mut p Process) win_resume_process() {
 
 fn (mut p Process) win_kill_process() {
 	wdata := &WProcess(p.wdata)
-	C.TerminateProcess(wdata.proc_info.h_process, 1)
+	res := C.TerminateProcess(wdata.proc_info.h_process, 3)
+	eprintln('> win_kill_process res: $res')
 }
 
 fn (mut p Process) win_kill_pgroup() {
 	wdata := &WProcess(p.wdata)
-	C.TerminateProcess(wdata.proc_info.h_process, 1)
+	res := C.TerminateProcess(wdata.proc_info.h_process, 3)
+	eprintln('> win_kill_pgroup res: $res')
 }
 
 fn (mut p Process) win_wait() {
+	eprintln('> win_wait')
 	exit_code := u32(1)
 	mut wdata := &WProcess(p.wdata)
 	if p.wdata != 0 {
