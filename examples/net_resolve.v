@@ -14,7 +14,6 @@ for addr in [
 		continue
 	}
 
-
 	for a in addrs {
 		println('> $a ${a.family} ${a.@type}')
 	}

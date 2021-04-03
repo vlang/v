@@ -35,9 +35,20 @@ pub fn (i IpAddr) str() string {
 		// Windows will return the port as part of the address
 		return buf.bytestr()
 	} $else {
-		res := charptr(C.inet_ntop(addr.sa_family, addr, buf.data, buf.len))
+		// TODO(emily):
+		// I would like to use voidptr here
+		// I really would...
+		addr := unsafe { 
+			if i.family == .inet6 {
+				&byte(&i.addr.sockaddr_in6.sin6_addr)
+			} else {
+				&byte(&i.addr.sockaddr_in.sin_addr)
+			} 
+		}
 
-		if res != 0 {
+		res := charptr(C.inet_ntop(&i.family, addr, buf.data, buf.len))
+
+		if res == 0 {
 			return '<Unknown>'
 		}
 	}
