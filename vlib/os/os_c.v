@@ -849,7 +849,6 @@ pub fn execvp(cmdpath string, args []string) ? {
 	cargs << charptr(0)
 	mut res := int(0)
 	$if windows {
-        eprintln("execvp cmdpath: $cmdpath args: $args")
 		res = C._execvp(charptr(cmdpath.str), cargs.data)
 	} $else {
 		res = C.execvp(charptr(cmdpath.str), cargs.data)
@@ -857,6 +856,8 @@ pub fn execvp(cmdpath string, args []string) ? {
 	if res == -1 {
 		return error_with_code(posix_get_error_msg(C.errno), C.errno)
 	}
+	// just in case C._execvp returned ... that happens on windows ...
+	exit(res)
 }
 
 // execve - loads and executes a new child process, *in place* of the current process.
