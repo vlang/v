@@ -208,7 +208,7 @@ pub fn extract_zip_to_dir(file string, dir string) ?bool {
 	if C.access(dir.str, 0) == -1 {
 		return error('szip: cannot open directory for extracting, directory not exists')
 	}
-	res := C.zip_extract_without_callback(charptr(file.str), charptr(dir.str))
+	res := C.zip_extract_without_callback(&char(file.str), &char(dir.str))
 	return res == 0
 }
 

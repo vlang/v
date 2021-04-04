@@ -12,6 +12,7 @@ pub const (
 // Ref - https://docs.microsoft.com/en-us/windows/desktop/winprog/windows-data-types
 // A handle to an object.
 pub type HANDLE = voidptr
+pub type HMODULE = voidptr
 
 // win: FILETIME
 // https://docs.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-filetime

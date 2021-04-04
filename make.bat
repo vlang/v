@@ -162,21 +162,12 @@ if !flag_local! NEQ 1 (
             cd ..>>"!log_file!" 2>NUL
         )
         popd
-    ) || (
-        echo Cloning vc...
-        echo  ^> Cloning from remote !vc_url!
-        if !flag_verbose! EQU 1 (
-            echo [Debug] git clone --depth 1 --quiet %vc_url%>>"!log_file!"
-            echo    git clone --depth 1 --quiet %vc_url%
-        )
-        git clone --depth 1 --quiet %vc_url%>>"!log_file!" 2>NUL
-    )
+    ) || call :cloning_vc
     echo.
 )
 
 echo Building V...
 if not [!compiler!] == [] goto :!compiler!_strap
-
 
 
 REM By default, use tcc, since we have it prebuilt:
@@ -308,8 +299,6 @@ del %ObjFile%>>"!log_file!" 2>>&1
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
 
-
-
 :download_tcc
 pushd %tcc_dir% 2>NUL && (
     echo Updating TCC
@@ -320,16 +309,8 @@ pushd %tcc_dir% 2>NUL && (
     )
     git pull --quiet>>"!log_file!" 2>NUL
     popd
-) || (
-    echo Bootstraping TCC...
-    echo  ^> TCC not found
-    if "!tcc_branch!" == "thirdparty-windows-i386" ( echo  ^> Downloading TCC32 from !tcc_url! ) else ( echo  ^> Downloading TCC64 from !tcc_url! )
-    if !flag_verbose! EQU 1 (
-        echo [Debug] git clone --depth 1 --quiet --single-branch --branch !tcc_branch! !tcc_url! "%tcc_dir%">>"!log_file!"
-        echo    git clone --depth 1 --quiet --single-branch --branch !tcc_branch! !tcc_url! "%tcc_dir%"
-    )
-    git clone --depth 1 --quiet --single-branch --branch !tcc_branch! !tcc_url! "%tcc_dir%">>"!log_file!" 2>NUL
-)
+) || call :bootstrap_tcc
+
 for /f "usebackq delims=" %%i in (`dir "%tcc_dir%" /b /a /s tcc.exe`) do (
     set "attrib=%%~ai"
     set "dattrib=%attrib:~0,1%"
@@ -424,6 +405,27 @@ echo                                      syncing with remote
 echo    --logfile PATH                    Use the specified PATH as the log
 echo                                      file
 echo    --verbose                         Output compilation commands to stdout
+exit /b 0
+
+:bootstrap_tcc
+echo Bootstraping TCC...
+echo  ^> TCC not found
+if "!tcc_branch!" == "thirdparty-windows-i386" ( echo  ^> Downloading TCC32 from !tcc_url! ) else ( echo  ^> Downloading TCC64 from !tcc_url! )
+if !flag_verbose! EQU 1 (
+   echo [Debug] git clone --depth 1 --quiet --single-branch --branch !tcc_branch! !tcc_url! "%tcc_dir%">>"!log_file!"
+   echo    git clone --depth 1 --quiet --single-branch --branch !tcc_branch! !tcc_url! "%tcc_dir%"
+)
+git clone --depth 1 --quiet --single-branch --branch !tcc_branch! !tcc_url! "%tcc_dir%">>"!log_file!" 2>NUL
+exit /b 0
+
+:cloning_vc
+echo Cloning vc...
+echo  ^> Cloning from remote !vc_url!
+if !flag_verbose! EQU 1 (
+   echo [Debug] git clone --depth 1 --quiet %vc_url%>>"!log_file!"
+   echo    git clone --depth 1 --quiet %vc_url%
+)
+git clone --depth 1 --quiet %vc_url%>>"!log_file!" 2>NUL
 exit /b 0
 
 :eof

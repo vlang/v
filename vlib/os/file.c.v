@@ -57,11 +57,11 @@ pub fn open_file(path string, mode string, options ...int) ?File {
 	$if windows {
 		p = path.replace('/', '\\')
 	}
-	fd := C.open(charptr(p.str), flags, permission)
+	fd := C.open(&char(p.str), flags, permission)
 	if fd == -1 {
 		return error(posix_get_error_msg(C.errno))
 	}
-	cfile := C.fdopen(fd, charptr(mode.str))
+	cfile := C.fdopen(fd, &char(mode.str))
 	if isnil(cfile) {
 		return error('Failed to open or create file "$path"')
 	}

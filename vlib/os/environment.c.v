@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module os
 
-fn C.getenv(charptr) &char
+fn C.getenv(&char) &char
 
 // C.GetEnvironmentStringsW & C.FreeEnvironmentStringsW are defined only on windows
 fn C.GetEnvironmentStringsW() &u16
@@ -20,12 +20,12 @@ pub fn getenv(key string) string {
 			}
 			return string_from_wide(s)
 		} $else {
-			s := C.getenv(charptr(key.str))
+			s := C.getenv(&char(key.str))
 			if s == voidptr(0) {
 				return ''
 			}
 			// NB: C.getenv *requires* that the result be copied.
-			return cstring_to_vstring(byteptr(s))
+			return cstring_to_vstring(&byte(s))
 		}
 	}
 }
@@ -36,19 +36,19 @@ pub fn setenv(name string, value string, overwrite bool) int {
 		format := '$name=$value'
 		if overwrite {
 			unsafe {
-				return C._putenv(charptr(format.str))
+				return C._putenv(&char(format.str))
 			}
 		} else {
 			if getenv(name).len == 0 {
 				unsafe {
-					return C._putenv(charptr(format.str))
+					return C._putenv(&char(format.str))
 				}
 			}
 		}
 		return -1
 	} $else {
 		unsafe {
-			return C.setenv(charptr(name.str), charptr(value.str), overwrite)
+			return C.setenv(&char(name.str), &char(value.str), overwrite)
 		}
 	}
 }
@@ -57,9 +57,9 @@ pub fn setenv(name string, value string, overwrite bool) int {
 pub fn unsetenv(name string) int {
 	$if windows {
 		format := '$name='
-		return C._putenv(charptr(format.str))
+		return C._putenv(&char(format.str))
 	} $else {
-		return C.unsetenv(charptr(name.str))
+		return C.unsetenv(&char(name.str))
 	}
 }
 
@@ -83,14 +83,18 @@ pub fn environ() map[string]string {
 		}
 		C.FreeEnvironmentStringsW(estrings)
 	} $else {
+		/*
+		// e := unsafe { &&char(C.environ) }
 		e := unsafe { &charptr(C.environ) }
 		for i := 0; !isnil(unsafe { e[i] }); i++ {
-			eline := unsafe { cstring_to_vstring(byteptr(e[i])) }
+			x := &byte(e[i])
+			eline := unsafe { cstring_to_vstring(x) }
 			eq_index := eline.index_byte(`=`)
 			if eq_index > 0 {
 				res[eline[0..eq_index]] = eline[eq_index + 1..]
 			}
 		}
+		*/
 	}
 	return res
 }

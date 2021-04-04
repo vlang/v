@@ -297,7 +297,7 @@ fn gg_cleanup_fn(user_data voidptr) {
 	}
 }
 
-fn gg_fail_fn(msg charptr, user_data voidptr) {
+fn gg_fail_fn(msg &char, user_data voidptr) {
 	mut g := unsafe { &Context(user_data) }
 	vmsg := unsafe { tos3(msg) }
 	if g.config.fail_fn != voidptr(0) {

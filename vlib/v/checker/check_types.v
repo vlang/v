@@ -241,7 +241,8 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	if exp_idx == got_idx {
 		return true
 	}
-	if exp_idx == ast.voidptr_type_idx || exp_idx == ast.byteptr_type_idx {
+	if exp_idx == ast.voidptr_type_idx || exp_idx == ast.byteptr_type_idx
+		|| (expected.is_ptr() && expected.deref().idx() == ast.byte_type_idx) {
 		if got.is_ptr() || got.is_pointer() {
 			return true
 		}
@@ -253,7 +254,8 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 			return true
 		}
 	}
-	if got_idx == ast.voidptr_type_idx || got_idx == ast.byteptr_type_idx {
+	if got_idx == ast.voidptr_type_idx || got_idx == ast.byteptr_type_idx
+		|| (got_idx == ast.byte_type_idx && got.is_ptr()) {
 		if expected.is_ptr() || expected.is_pointer() {
 			return true
 		}
