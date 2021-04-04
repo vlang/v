@@ -3976,9 +3976,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 }
 
 fn (mut c Checker) import_stmt(imp ast.Import) {
-	if imp.alias.starts_with('_') {
-		c.error('alias `$imp.alias` for module `$imp.mod` cannot start with `_`', imp.pos)
-	}
+	c.check_valid_snake_case(imp.alias, 'module alias', imp.pos)
 	for sym in imp.syms {
 		name := '${imp.mod}.$sym.name'
 		if sym.name[0].is_capital() {
