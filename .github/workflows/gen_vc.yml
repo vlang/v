@@ -6,7 +6,7 @@ on:
       - master
 
 jobs:
-  build-vc-module-docs:
+  build-vc:
     runs-on: ubuntu-18.04
     steps:
     - uses: actions/checkout@v2
