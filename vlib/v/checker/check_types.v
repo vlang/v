@@ -50,6 +50,18 @@ pub fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type,
 	if c.check_types(got, expected) {
 		return
 	}
+	igot := int(got)
+	iexpected := int(expected)
+	if (igot == ast.byteptr_type_idx && iexpected == 65545)
+		|| (iexpected == ast.byteptr_type_idx && igot == 65545) {
+		// TODO: remove; transitional compatibility for byteptr === &byte
+		return
+	}
+	if (igot == ast.charptr_type_idx && iexpected == 65551)
+		|| (iexpected == ast.charptr_type_idx && igot == 65545) {
+		// TODO: remove; transitional compatibility for charptr === &char
+		return
+	}
 	return error('cannot use `${c.table.type_to_str(got.clear_flag(.variadic))}` as `${c.table.type_to_str(expected.clear_flag(.variadic))}`')
 }
 
