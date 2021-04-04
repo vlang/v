@@ -2915,7 +2915,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 						c.error('cannot modify blank `_` identifier', left.pos)
 					}
 				} else if left.info !is ast.IdentVar {
-					c.error('1cannot assign to $left.kind `$left.name`', left.pos)
+					c.error('cannot assign to $left.kind `$left.name`', left.pos)
 				} else {
 					if is_decl {
 						c.check_valid_snake_case(left.name, 'variable name', left.pos)
@@ -3019,7 +3019,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			}
 			right_is_ptr := right_type.is_ptr() || right_sym.is_pointer()
 			if !right_is_ptr && assign_stmt.op == .assign && right_type_unwrapped.is_number() {
-				c.error('2cannot assign to `$left`: ' +
+				c.error('cannot assign to `$left`: ' +
 					c.expected_msg(right_type_unwrapped, left_type_unwrapped), right.position())
 			}
 			if (right is ast.StructInit || !right_is_ptr) && !(right_sym.is_number()
@@ -3122,7 +3122,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			&& left_sym.kind != .interface_ {
 			// Dual sides check (compatibility check)
 			c.check_expected(right_type_unwrapped, left_type_unwrapped) or {
-				c.error('3cannot assign to `$left`: $err.msg', right.position())
+				c.error('cannot assign to `$left`: $err.msg', right.position())
 			}
 		}
 		if left_sym.kind == .interface_ {
