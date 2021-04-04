@@ -3977,7 +3977,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 
 fn (mut c Checker) import_stmt(imp ast.Import) {
 	if imp.alias.starts_with('_') {
-		c.error('alias `$imp.alias` on module `$imp.mod` cannot start with `_`', imp.pos)
+		c.error('alias `$imp.alias` for module `$imp.mod` cannot start with `_`', imp.pos)
 	}
 	for sym in imp.syms {
 		name := '${imp.mod}.$sym.name'
