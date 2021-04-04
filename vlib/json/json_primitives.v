@@ -178,13 +178,13 @@ fn encode_bool(val bool) &C.cJSON {
 }
 
 fn encode_string(val string) &C.cJSON {
-	return C.cJSON_CreateString(charptr(val.str))
+	return C.cJSON_CreateString(&char(val.str))
 }
 
 // ///////////////////////
 // user := decode_User(json_parse(js_string_var))
 fn json_parse(s string) &C.cJSON {
-	return C.cJSON_Parse(charptr(s.str))
+	return C.cJSON_Parse(&char(s.str))
 }
 
 // json_string := json_print(encode_User(user))

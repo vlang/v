@@ -50,7 +50,7 @@ pub fn vhash() string {
 	buf[0] = 0
 	unsafe {
 		bp := &buf[0]
-		C.snprintf(charptr(bp), 50, '%s', C.V_COMMIT_HASH)
+		C.snprintf(&char(bp), 50, c'%s', C.V_COMMIT_HASH)
 		return tos_clone(bp)
 	}
 }
@@ -119,7 +119,7 @@ pub fn githash(should_get_from_filesystem bool) string {
 	buf[0] = 0
 	unsafe {
 		bp := &buf[0]
-		C.snprintf(charptr(bp), 50, '%s', C.V_CURRENT_COMMIT_HASH)
+		C.snprintf(&char(bp), 50, c'%s', C.V_CURRENT_COMMIT_HASH)
 		return tos_clone(bp)
 	}
 }

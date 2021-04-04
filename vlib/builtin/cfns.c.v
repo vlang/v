@@ -23,7 +23,7 @@ fn C.qsort(base voidptr, items size_t, item_size size_t, cb qsort_callback_func)
 
 fn C.sprintf(a ...voidptr) int
 
-fn C.strlen(s charptr) int
+fn C.strlen(s &char) int
 
 fn C.sscanf(byteptr, byteptr, ...byteptr) int
 
@@ -31,19 +31,19 @@ fn C.sscanf(byteptr, byteptr, ...byteptr) int
 fn C.isdigit(c int) bool
 
 // stdio.h
-fn C.popen(c charptr, t charptr) voidptr
+fn C.popen(c &char, t &char) voidptr
 
 // <execinfo.h>
 fn C.backtrace(a &voidptr, size int) int
 
-fn C.backtrace_symbols(a &voidptr, size int) &charptr
+fn C.backtrace_symbols(a &voidptr, size int) &&char
 
 fn C.backtrace_symbols_fd(a &voidptr, size int, fd int)
 
 // <libproc.h>
 pub fn proc_pidpath(int, voidptr, int) int
 
-fn C.realpath(charptr, charptr) &char
+fn C.realpath(&char, &char) &char
 
 // fn C.chmod(byteptr, mode_t) int
 fn C.chmod(byteptr, u32) int
@@ -59,7 +59,7 @@ fn C.fflush(&C.FILE) int
 // TODO define args in these functions
 fn C.fseek(stream &C.FILE, offset int, whence int) int
 
-fn C.fopen(filename charptr, mode charptr) &C.FILE
+fn C.fopen(filename &char, mode &char) &C.FILE
 
 fn C.fileno(&C.FILE) int
 
@@ -75,13 +75,13 @@ fn C.pclose(stream &C.FILE) int
 [trusted]
 fn C.getpid() int
 
-fn C.system(cmd charptr) int
+fn C.system(cmd &char) int
 
-fn C.posix_spawn(child_pid &int, path charptr, file_actions voidptr, attrp voidptr, argv &charptr, envp &charptr) int
+fn C.posix_spawn(child_pid &int, path &char, file_actions voidptr, attrp voidptr, argv &&char, envp &&char) int
 
-fn C.posix_spawnp(child_pid &int, exefile charptr, file_actions voidptr, attrp voidptr, argv &charptr, envp &charptr) int
+fn C.posix_spawnp(child_pid &int, exefile &char, file_actions voidptr, attrp voidptr, argv &&char, envp &&char) int
 
-fn C.execve(cmd_path charptr, args voidptr, envs voidptr) int
+fn C.execve(cmd_path &char, args voidptr, envs voidptr) int
 
 fn C.execvp(cmd_path charptr, args &charptr) int
 
@@ -99,34 +99,34 @@ fn C.waitpid(pid int, status &int, options int) int
 [trusted]
 fn C.kill(pid int, sig int) int
 
-fn C.setenv(charptr, charptr, int) int
+fn C.setenv(&char, &char, int) int
 
-fn C.unsetenv(charptr) int
+fn C.unsetenv(&char) int
 
-fn C.access(path charptr, amode int) int
+fn C.access(path &char, amode int) int
 
-fn C.remove(filename charptr) int
+fn C.remove(filename &char) int
 
-fn C.rmdir(path charptr) int
+fn C.rmdir(path &char) int
 
-fn C.chdir(path charptr) int
+fn C.chdir(path &char) int
 
 fn C.rewind(stream &C.FILE) int
 
-fn C.stat(charptr, voidptr) int
+fn C.stat(&char, voidptr) int
 
-fn C.lstat(path charptr, buf &C.stat) int
+fn C.lstat(path &char, buf &C.stat) int
 
-fn C.rename(old_filename charptr, new_filename charptr) int
+fn C.rename(old_filename &char, new_filename &char) int
 
-fn C.fgets(str charptr, n int, stream &C.FILE) int
+fn C.fgets(str &char, n int, stream &C.FILE) int
 
 fn C.memset(str voidptr, c int, n size_t) int
 
 [trusted]
 fn C.sigemptyset() int
 
-fn C.getcwd(buf charptr, size size_t) charptr
+fn C.getcwd(buf &char, size size_t) &char
 
 fn C.signal(signal int, handlercb voidptr) voidptr
 
@@ -142,12 +142,12 @@ fn C.sleep(seconds u32) u32
 [trusted]
 fn C.usleep(usec u32) int
 
-fn C.opendir(charptr) voidptr
+fn C.opendir(&char) voidptr
 
 fn C.closedir(dirp &C.DIR) int
 
-// fn C.mkdir(path charptr, mode mode_t) int
-fn C.mkdir(path charptr, mode u32) int
+// fn C.mkdir(path &char, mode mode_t) int
+fn C.mkdir(path &char, mode u32) int
 
 // C.rand returns a pseudorandom integer from 0 (inclusive) to C.RAND_MAX (exclusive)
 [trusted]
@@ -157,7 +157,7 @@ fn C.rand() int
 [trusted]
 fn C.srand(seed u32)
 
-fn C.atof(str charptr) f64
+fn C.atof(str &char) f64
 
 [trusted]
 fn C.tolower(c int) int
@@ -169,9 +169,9 @@ fn C.toupper(c int) int
 fn C.getchar() int
 
 [trusted]
-fn C.strerror(int) charptr
+fn C.strerror(int) &char
 
-fn C.snprintf(str charptr, size size_t, format charptr, opt ...voidptr) int
+fn C.snprintf(str &char, size size_t, format &char, opt ...voidptr) int
 
 fn C.fprintf(byteptr, ...byteptr)
 
@@ -240,7 +240,7 @@ fn C.RegSetValueExW(hKey voidptr, lpValueName &u16, Reserved u32, dwType u32, lp
 
 fn C.RegCloseKey(hKey voidptr)
 
-fn C.RemoveDirectory(lpPathName charptr) int
+fn C.RemoveDirectory(lpPathName &char) int
 
 // fn C.GetStdHandle() voidptr
 fn C.GetStdHandle(u32) voidptr
@@ -257,15 +257,15 @@ fn C.GetCurrentProcessId() int
 fn C.wprintf()
 
 // fn C.setbuf()
-fn C.setbuf(voidptr, charptr)
+fn C.setbuf(voidptr, &char)
 
 fn C.SymCleanup(hProcess voidptr)
 
-fn C.MultiByteToWideChar(codePage u32, dwFlags u32, lpMultiMyteStr charptr, cbMultiByte int, lpWideCharStr &u16, cchWideChar int) int
+fn C.MultiByteToWideChar(codePage u32, dwFlags u32, lpMultiMyteStr &char, cbMultiByte int, lpWideCharStr &u16, cchWideChar int) int
 
 fn C.wcslen(str &u16) int
 
-fn C.WideCharToMultiByte(codePage u32, dwFlags u32, lpWideCharStr &u16, cchWideChar int, lpMultiByteStr charptr, cbMultiByte int, lpDefaultChar charptr, lpUsedDefaultChar &int) int
+fn C.WideCharToMultiByte(codePage u32, dwFlags u32, lpWideCharStr &u16, cchWideChar int, lpMultiByteStr &char, cbMultiByte int, lpDefaultChar &char, lpUsedDefaultChar &int) int
 
 fn C._wstat(path &u16, buffer &C._stat)
 
@@ -281,7 +281,7 @@ fn C._wsystem(command &u16) int
 
 fn C._wgetenv(varname &u16) voidptr
 
-fn C._putenv(envstring charptr) int
+fn C._putenv(envstring &char) int
 
 fn C._waccess(path &u16, mode int) int
 

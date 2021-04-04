@@ -2915,7 +2915,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 						c.error('cannot modify blank `_` identifier', left.pos)
 					}
 				} else if left.info !is ast.IdentVar {
-					c.error('cannot assign to $left.kind `$left.name`', left.pos)
+					c.error('1cannot assign to $left.kind `$left.name`', left.pos)
 				} else {
 					if is_decl {
 						c.check_valid_snake_case(left.name, 'variable name', left.pos)
@@ -3019,7 +3019,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			}
 			right_is_ptr := right_type.is_ptr() || right_sym.is_pointer()
 			if !right_is_ptr && assign_stmt.op == .assign && right_type_unwrapped.is_number() {
-				c.error('cannot assign to `$left`: ' +
+				c.error('2cannot assign to `$left`: ' +
 					c.expected_msg(right_type_unwrapped, left_type_unwrapped), right.position())
 			}
 			if (right is ast.StructInit || !right_is_ptr) && !(right_sym.is_number()
@@ -3122,7 +3122,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			&& left_sym.kind != .interface_ {
 			// Dual sides check (compatibility check)
 			c.check_expected(right_type_unwrapped, left_type_unwrapped) or {
-				c.error('cannot assign to `$left`: $err.msg', right.position())
+				c.error('3cannot assign to `$left`: $err.msg', right.position())
 			}
 		}
 		if left_sym.kind == .interface_ {
@@ -4412,7 +4412,8 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		// variadic case can happen when arrays are converted into variadic
 		msg := if node.expr_type.has_flag(.optional) { 'an optional' } else { 'a variadic' }
 		c.error('cannot type cast $msg', node.pos)
-	} else if !c.inside_unsafe && node.typ.is_ptr() && node.expr_type.is_ptr() {
+	} else if !c.inside_unsafe && node.typ.is_ptr() && node.expr_type.is_ptr()
+		&& node.typ.deref() != ast.char_type && node.expr_type.deref() != ast.char_type {
 		ft := c.table.type_to_str(node.expr_type)
 		tt := c.table.type_to_str(node.typ)
 		c.warn('casting `$ft` to `$tt` is only allowed in `unsafe` code', node.pos)
@@ -5240,7 +5241,10 @@ pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) ast.Type {
 }
 
 pub fn (mut c Checker) unsafe_expr(mut node ast.UnsafeExpr) ast.Type {
-	assert !c.inside_unsafe
+	// assert !c.inside_unsafe
+	if c.inside_unsafe {
+		c.error('unsafe inside unsafe', node.pos)
+	}
 	c.inside_unsafe = true
 	t := c.expr(node.expr)
 	c.inside_unsafe = false

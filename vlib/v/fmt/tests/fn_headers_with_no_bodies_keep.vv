@@ -1,5 +1,5 @@
 fn proc_pidpath(int, voidptr, int) int
 
-fn C.realpath(charptr, charptr) &char
+fn C.realpath(&char, &char) &char
 
-fn C.chmod(byteptr, int) int
+fn C.chmod(&byte, int) int

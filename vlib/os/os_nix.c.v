@@ -75,14 +75,14 @@ fn init_os_args(argc int, argv &&byte) []string {
 	// mut args := []string{len:argc}
 	for i in 0 .. argc {
 		// args [i] = argv[i].vstring()
-		unsafe { args_ << byteptr(argv[i]).vstring_literal() }
+		unsafe { args_ << (&byte(argv[i])).vstring_literal() }
 	}
 	return args_
 }
 
 pub fn ls(path string) ?[]string {
 	mut res := []string{}
-	dir := unsafe { C.opendir(charptr(path.str)) }
+	dir := unsafe { C.opendir(&char(path.str)) }
 	if isnil(dir) {
 		return error('ls() couldnt open dir "$path"')
 	}
@@ -149,7 +149,7 @@ pub fn mkdir(path string) ?bool {
 		}
 	}
 	*/
-	r := unsafe { C.mkdir(charptr(apath.str), 511) }
+	r := unsafe { C.mkdir(&char(apath.str), 511) }
 	if r == -1 {
 		return error(posix_get_error_msg(C.errno))
 	}
@@ -177,7 +177,7 @@ pub fn execute(cmd string) Result {
 	}
 	unsafe {
 		bufbp := &buf[0]
-		for C.fgets(charptr(bufbp), 4096, f) != 0 {
+		for C.fgets(&char(bufbp), 4096, f) != 0 {
 			res.write_ptr(bufbp, vstrlen(bufbp))
 		}
 	}
@@ -220,7 +220,7 @@ pub fn (mut c Command) read_line() string {
 	}
 	unsafe {
 		bufbp := &buf[0]
-		for C.fgets(charptr(bufbp), 4096, c.f) != 0 {
+		for C.fgets(&char(bufbp), 4096, c.f) != 0 {
 			len := vstrlen(bufbp)
 			for i in 0 .. len {
 				if bufbp[i] == `\n` {
@@ -245,7 +245,7 @@ pub fn (c &Command) close() ? {
 }
 
 pub fn symlink(origin string, target string) ?bool {
-	res := C.symlink(charptr(origin.str), charptr(target.str))
+	res := C.symlink(&char(origin.str), &char(target.str))
 	if res == 0 {
 		return true
 	}
@@ -290,7 +290,7 @@ pub fn is_writable_folder(folder string) ?bool {
 	}
 	tmp_perm_check := join_path(folder, 'XXXXXX')
 	unsafe {
-		x := C.mkstemp(charptr(tmp_perm_check.str))
+		x := C.mkstemp(&char(tmp_perm_check.str))
 		if -1 == x {
 			return error('folder `$folder` is not writable')
 		}
@@ -309,7 +309,7 @@ pub fn getpid() int {
 pub fn posix_set_permission_bit(path_s string, mode u32, enable bool) {
 	mut s := C.stat{}
 	mut new_mode := u32(0)
-	path := charptr(path_s.str)
+	path := &char(path_s.str)
 	unsafe {
 		C.stat(path, &s)
 		new_mode = s.st_mode

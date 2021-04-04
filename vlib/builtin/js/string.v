@@ -138,7 +138,7 @@ pub fn (s string) i16() i16 {
 
 // f32 returns the value of the string as f32 `'1.0'.f32() == f32(1)`.
 pub fn (s string) f32() f32 {
-	// return C.atof(charptr(s.str))
+	// return C.atof(&char(s.str))
 	return f32(JS.parseFloat(s))
 }
 
