@@ -1750,7 +1750,7 @@ fn (mut c Checker) map_builtin_method_call(mut call_expr ast.CallExpr, left_type
 			info := left_type_sym.info as ast.Map
 			arg_type := c.expr(call_expr.args[0].expr)
 			c.check_expected_call_arg(arg_type, info.key_type, call_expr.language) or {
-				c.error('$err.msg', call_expr.args[0].pos)
+				c.error('$err.msg in argument 1 to `Map.delete`', call_expr.args[0].pos)
 			}
 		}
 		else {}
