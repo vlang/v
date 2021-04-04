@@ -50,17 +50,35 @@ pub fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type,
 	if c.check_types(got, expected) {
 		return
 	}
-	igot := int(got)
-	iexpected := int(expected)
-	if (igot == ast.byteptr_type_idx && iexpected == 65545)
-		|| (iexpected == ast.byteptr_type_idx && igot == 65545) {
+	idx_got := got.idx()
+	idx_expected := expected.idx()
+	if idx_got in [ ast.byteptr_type_idx, ast.charptr_type_idx] || idx_expected in [ast.byteptr_type_idx, ast.charptr_type_idx] {
+		igot := int(got)
+		iexpected := int(expected)
 		// TODO: remove; transitional compatibility for byteptr === &byte
-		return
-	}
-	if (igot == ast.charptr_type_idx && iexpected == 65551)
-		|| (iexpected == ast.charptr_type_idx && igot == 65545) {
+		if (igot == ast.byteptr_type_idx && iexpected == 65545)
+		|| (iexpected == ast.byteptr_type_idx && igot == 65545) {
+			return
+		}
 		// TODO: remove; transitional compatibility for charptr === &char
-		return
+		if (igot == ast.charptr_type_idx && iexpected == 65551)
+		|| (iexpected == ast.charptr_type_idx && igot == 65551) {
+			return
+		}
+		muls_got := got.nr_muls()
+		muls_expected := expected.nr_muls()
+		if idx_got == ast.byteptr_type_idx && idx_expected == ast.byte_type_idx && muls_got + 1 == muls_expected {
+			return
+		}
+		if idx_expected == ast.byteptr_type_idx && idx_got == ast.byte_type_idx && muls_expected + 1 == muls_got {
+			return
+		}
+		if idx_got == ast.charptr_type_idx && idx_expected == ast.char_type_idx && muls_got + 1 == muls_expected {
+			return
+		}
+		if idx_expected == ast.charptr_type_idx && idx_got == ast.char_type_idx && muls_expected + 1 == muls_got {
+			return
+		}
 	}
 	return error('cannot use `${c.table.type_to_str(got.clear_flag(.variadic))}` as `${c.table.type_to_str(expected.clear_flag(.variadic))}`')
 }
