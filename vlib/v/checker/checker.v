@@ -1461,7 +1461,7 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 	// FIXME: Argument count != 1 will break these
 	if left_type_sym.kind == .array && method_name in checker.array_builtin_methods {
 		return c.array_builtin_method_call(mut call_expr, left_type, left_type_sym)
-	} else if left_type_sym.kind == .map && method_name in ['clone', 'keys', 'move', 'delete_1'] {
+	} else if left_type_sym.kind == .map && method_name in ['clone', 'keys', 'move', 'delete'] {
 		return c.map_builtin_method_call(mut call_expr, left_type, left_type_sym)
 	} else if left_type_sym.kind == .array && method_name in ['insert', 'prepend'] {
 		info := left_type_sym.info as ast.Array
@@ -1741,6 +1741,17 @@ fn (mut c Checker) map_builtin_method_call(mut call_expr ast.CallExpr, left_type
 			info := left_type_sym.info as ast.Map
 			typ := c.table.find_or_register_array(info.key_type)
 			ret_type = ast.Type(typ)
+		}
+		'delete' {
+			c.fail_if_immutable(call_expr.left)
+			if call_expr.args.len != 1 {
+				c.error('expected 1 argument, but got $call_expr.args.len', call_expr.pos)
+			}
+			info := left_type_sym.info as ast.Map
+			arg_type := c.expr(call_expr.args[0].expr)
+			c.check_expected_call_arg(arg_type, info.key_type, call_expr.language) or {
+				c.error('$err.msg', call_expr.args[0].pos)
+			}
 		}
 		else {}
 	}
