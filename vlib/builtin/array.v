@@ -576,6 +576,37 @@ pub fn (mut a []int) sort() {
 	a.sort_with_compare(compare_ints)
 }
 
+pub fn (mut a[]T) sort()
+
+//Tells whether array is sorted or not
+//Works for ints only, planning on providing generic implementation
+pub fn (a []int) is_sorted(sort_type string) bool{
+	//Initially, we assume that array is sorted
+	mut sorted := true
+	match sort_type{	
+		'asc'{
+			for i in 0 .. a.len - 1{
+				if a[i] > a[i+1]{
+					sorted = false
+					break
+				}
+			}
+		}
+		'des'{
+			for i in 0 .. a.len - 1{
+				if a[i] < a[i+1]{
+					sorted = false
+					break
+				}
+			}
+		}else{
+			panic("Unknown sorting type -- must be 'asc' or 'des'")
+		}
+	}
+
+	return sorted
+}
+
 // index returns the first index at which a given element can be found in the array
 // or -1 if the value is not found.
 pub fn (a []string) index(v string) int {

@@ -410,7 +410,13 @@ fn ortho_js(left f32, right f32, bottom f32, top f32) &f32 {
 // }
 fn cross(a Vec3, b Vec3) Vec3 {
 	// # return myglm_cross(a,b);
-	return Vec3{}
+	return Vec3{
+		
+	}
+}
+
+fn dot(a Vec3, b Vec3) f32{
+	return (a.x * b.x) + ()
 }
 
 /*

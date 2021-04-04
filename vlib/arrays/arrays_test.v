@@ -53,6 +53,23 @@ fn test_merge() {
 	assert merge<int>(d, b) == b
 }
 
+fn test_reverse(){
+	mut a := [1, 2, 3, 4, 5, 6]
+	mut b := [2, 3, 5, 7, 11]
+	assert reverse<int>(a) == [6, 5, 4, 3, 2, 1]
+	assert reverse<int>(b) == [11, 7, 5, 3, 2]
+}
+
+fn test_reverse_inplace(){
+	mut a := [10, 20, 30, 40, 50, 60, 70]
+	mut b := [13, 17, 19, 23, 29, 31]
+	reverse_inplace<int>(mut a)
+	reverse_inplace<int>(mut b)
+	assert a == [70, 60, 50, 40, 30, 20, 10]
+	assert b == [31, 29, 23, 19, 17, 13]
+}
+
+
 fn test_fixed_array_assignment() {
 	mut a := [2]int{}
 	a[0] = 111

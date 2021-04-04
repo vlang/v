@@ -807,6 +807,16 @@ fn test_sort() {
 	// assert users.map(it.name).join(' ') == 'Alice Bob Peter'
 }
 
+fn test_is_sorted(){
+	a := [1729, 1730, 1731, 1732, 1733]
+	c := [1733, 1732, 1731, 1730, 1729]
+
+	assert a.is_sorted('asc') == true
+	assert a.is_sorted('des') == false
+	assert c.is_sorted('des') == true
+	assert c.is_sorted('asc') == false
+}
+
 fn test_rune_sort() {
 	mut bs := [`f`, `e`, `d`, `b`, `c`, `a`]
 	bs.sort()

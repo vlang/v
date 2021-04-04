@@ -98,6 +98,38 @@ pub fn merge<T>(a []T, b []T) []T {
 	return m
 }
 
+//Reverses an order of elements in array
+pub fn reverse<T>(a []T) []T{
+	mut m := []T{len: a.len}
+	for i in 0 .. a.len{
+		m[i] = a[a.len-1-i]
+	}
+	return m
+}
+
+//Does the same thing as reverse function, but inplace
+pub fn reverse_inplace<T>(mut a []T){
+	mut start := 0
+	mut end := a.len-1
+	mut halt := a.len / 2
+	for start < halt{
+		temp := a[start]
+		a[start] = a[end-start]
+		a[end-start] = temp
+		start++
+	} 	
+}
+
+//iota returns an array of length n filled with integer values starting from start.
+pub fn iota<T>(n u64, start u64) []T{
+	mut arr := []T{len: n}
+
+	for i in 0 .. n{
+		arr[i] = start 
+		start++
+	}
+}
+
 // group n arrays into a single array of arrays with n elements
 pub fn group<T>(lists ...[]T) [][]T {
 	mut length := if lists.len > 0 { lists[0].len } else { 0 }
