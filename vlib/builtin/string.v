@@ -43,7 +43,7 @@ NB: A V string should be/is immutable from the point of view of
 */
 pub struct string {
 pub:
-	str &byte // points to a C style 0 terminated string of bytes.
+	str &byte = 0 // points to a C style 0 terminated string of bytes.
 	len int   // the length of the .str field, excluding the ending 0 byte. It is always equal to strlen(.str).
 mut:
 	is_lit int

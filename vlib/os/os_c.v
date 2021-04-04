@@ -118,7 +118,7 @@ pub fn file_size(path string) u64 {
 		$if x64 {
 			$if windows {
 				mut swin := C.__stat64{}
-				C._wstat64(path.to_wide(), voidptr(&swin))
+				C._wstat64(&char(path.to_wide()), voidptr(&swin))
 				return swin.st_size
 			} $else {
 				C.stat(&char(path.str), &s)
@@ -308,7 +308,7 @@ pub fn system(cmd string) int {
 			unsafe {
 				arg := [c'/bin/sh', c'-c', &byte(cmd.str), 0]
 				pid := 0
-				ret = C.posix_spawn(&pid, '/bin/sh', 0, 0, arg.data, 0)
+				ret = C.posix_spawn(&pid, c'/bin/sh', 0, 0, arg.data, 0)
 				status := 0
 				ret = C.waitpid(pid, &status, 0)
 				if C.WIFEXITED(status) {
@@ -405,7 +405,7 @@ pub fn rm(path string) ? {
 // rmdir removes a specified directory.
 pub fn rmdir(path string) ? {
 	$if windows {
-		rc := C.RemoveDirectory(path.to_wide())
+		rc := C.RemoveDirectory(&char(path.to_wide()))
 		if rc == 0 {
 			// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-removedirectorya - 0 is failure
 			return error('Failed to remove "$path": ' + posix_get_error_msg(C.errno))
@@ -566,7 +566,7 @@ pub fn executable() string {
 	$if windows {
 		max := 512
 		size := max * 2 // max_path_len * sizeof(wchar_t)
-		mut result := &u16(vcalloc(size))
+		mut result := unsafe { &u16(vcalloc(size)) }
 		len := C.GetModuleFileName(0, result, max)
 		// determine if the file is a windows symlink
 		attrs := C.GetFileAttributesW(result)
@@ -575,7 +575,7 @@ pub fn executable() string {
 			// gets handle with GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0
 			file := C.CreateFile(result, 0x80000000, 1, 0, 3, 0x80, 0)
 			if file != voidptr(-1) {
-				final_path := &u16(vcalloc(size))
+				final_path := unsafe { &u16(vcalloc(size)) }
 				// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew
 				final_len := C.GetFinalPathNameByHandleW(file, final_path, size, 0)
 				if final_len < size {

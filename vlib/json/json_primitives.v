@@ -190,12 +190,12 @@ fn json_parse(s string) &C.cJSON {
 // json_string := json_print(encode_User(user))
 fn json_print(json &C.cJSON) string {
 	s := C.cJSON_PrintUnformatted(json)
-	return unsafe { tos(byteptr(s), C.strlen(s)) }
+	return unsafe { tos(byteptr(s), C.strlen(&char(s))) }
 }
 
 fn json_print_pretty(json &C.cJSON) string {
 	s := C.cJSON_Print(json)
-	return unsafe { tos(byteptr(s), C.strlen(s)) }
+	return unsafe { tos(byteptr(s), C.strlen(&char(s))) }
 }
 
 // /  cjson wrappers

@@ -13,7 +13,7 @@ fn new_a2d(maxx int, maxy int) &A2D {
 	return &A2D{
 		maxx: maxx
 		maxy: maxy
-		data: &int(vcalloc(size))
+		data: unsafe { &int(vcalloc(size)) }
 	}
 }
 
