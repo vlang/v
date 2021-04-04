@@ -554,7 +554,7 @@ pub fn on_segfault(f voidptr) {
 pub fn executable() string {
 	$if linux {
 		mut xresult := vcalloc(max_path_len)
-		count := C.readlink('/proc/self/exe', &char(xresult), max_path_len)
+		count := C.readlink(c'/proc/self/exe', &char(xresult), max_path_len)
 		if count < 0 {
 			eprintln('os.executable() failed at reading /proc/self/exe to get exe path')
 			return executable_fallback()
@@ -616,7 +616,7 @@ pub fn executable() string {
 	}
 	$if netbsd {
 		mut result := vcalloc(max_path_len)
-		count := C.readlink('/proc/curproc/exe', &char(result), max_path_len)
+		count := C.readlink(c'/proc/curproc/exe', &char(result), max_path_len)
 		if count < 0 {
 			eprintln('os.executable() failed at reading /proc/curproc/exe to get exe path')
 			return executable_fallback()
@@ -625,7 +625,7 @@ pub fn executable() string {
 	}
 	$if dragonfly {
 		mut result := vcalloc(max_path_len)
-		count := C.readlink('/proc/curproc/file', &char(result), max_path_len)
+		count := C.readlink(c'/proc/curproc/file', &char(result), max_path_len)
 		if count < 0 {
 			eprintln('os.executable() failed at reading /proc/curproc/file to get exe path')
 			return executable_fallback()
