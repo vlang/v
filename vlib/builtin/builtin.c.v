@@ -139,26 +139,19 @@ fn C.asl_log(voidptr, voidptr, int, charptr)
 */
 // println prints a message with a line end, to stdout. stdout is flushed.
 pub fn println(s string) {
-	$if windows {
-		print(s)
-		print('\n')
-	} $else {
-		// For debugging .app applications (no way to read stdout) so that it's printed to macOS Console
-		/*
-		$if macos {
-			C.asl_log(0, 0, C.ASL_LEVEL_ERR, s.str)
+	if s.str == 0 {
+		$if android {
+			C.fprintf(C.stdout, c'println(NIL)\n')
+		} $else {
+			C.write(1, c'println(NIL)\n', 13)
 		}
-		*/
-		//  TODO: a syscall sys_write on linux works, except for the v repl.
-		//  Probably it is a stdio buffering issue. Needs more testing...
-		//	$if linux {
-		//		$if !android {
-		//			snl := s + '\n'
-		//			C.syscall(/* sys_write */ 1, /* stdout_value */ 1, snl.str, s.len+1)
-		//			return
-		//		}
-		//	}
-		C.printf('%.*s\n', s.len, s.str)
+		return
+	}
+	$if android {
+		C.fprintf(C.stdout, c'%.*s\n', s.len, s.str)
+	} $else {
+		C.write(1, s.str, s.len)
+		C.write(1, c'\n', 1)
 	}
 }
 
