@@ -61,15 +61,15 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		// locate resources relative to it. That enables running examples like
 		// this:
 		// `./v run examples/flappylearning/`
-		// instead of: 
+		// instead of:
 		// `./v -o examples/flappylearning/flappylearning run examples/flappylearning/`
 		// This topic comes up periodically from time to time on Discord, and
 		// many CI breakages already happened, when someone decides to make V
 		// behave in this aspect similarly to the dumb behaviour of other
 		// compilers.
 		//
-		// If you do decide to break it, please *at the very least*, test it 
-		// extensively, and make a PR about it, instead of commiting directly 
+		// If you do decide to break it, please *at the very least*, test it
+		// extensively, and make a PR about it, instead of commiting directly
 		// and breaking the CI, VC, and users doing `v up`.
 		if rpath == '$p.vroot/cmd/v' && os.is_dir('vlib/compiler') {
 			// Building V? Use v2, since we can't overwrite a running
