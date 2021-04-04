@@ -3,6 +3,8 @@
 // that can be found in the LICENSE file.
 module http
 
+import strings
+
 // CommonHeader is an enum of the most common HTTP headers
 pub enum CommonHeader {
 	accept
@@ -323,11 +325,14 @@ const common_header_map = map{
 pub struct Header {
 mut:
 	data map[string][]string
+	// map of lowercase custom header keys to their original key
+	custom_headers map[string]string
 }
 
 pub fn (mut h Header) free() {
 	unsafe {
 		h.data.free()
+		h.custom_headers.free()
 	}
 }
 
@@ -354,9 +359,12 @@ pub fn (mut h Header) add(key CommonHeader, value string) {
 
 // Append a value to a custom header key. This function will return an error
 // if the key contains invalid header characters.
-pub fn (mut h Header) add_str(key string, value string) ? {
-	k := canonicalize(key) ?
+pub fn (mut h Header) add_custom(key string, value string) ? {
+	k, exists := h.canonicalize(key) ?
 	h.data[k] << value
+	if !exists {
+		h.custom_headers[k.to_lower()] = k
+	}
 }
 
 // Sets the key-value pair. This function will clear any other values
@@ -367,9 +375,12 @@ pub fn (mut h Header) set(key CommonHeader, value string) {
 
 // Sets the key-value pair for a custom header key. This function will
 // clear any other values that exist for the CommonHeader.
-pub fn (mut h Header) set_str(key string, value string) {
-	k := canonicalize(key) or { return }
+pub fn (mut h Header) set_custom(key string, value string) {
+	k, exists := h.canonicalize(key) or { return }
 	h.data[k] = [value]
+	if !exists {
+		h.custom_headers[k.to_lower()] = k
+	}
 }
 
 // Delete all values for a key.
@@ -378,9 +389,12 @@ pub fn (mut h Header) delete(key CommonHeader) {
 }
 
 // Delete all values for a custom header key.
-pub fn (mut h Header) delete_str(key string) {
-	k := canonicalize(key) or { return }
+pub fn (mut h Header) delete_custom(key string) {
+	k, exists := h.canonicalize(key) or { return }
 	h.data.delete(k)
+	if exists {
+		h.custom_headers.delete(k.to_lower())
+	}
 }
 
 // Returns whether the header key exists in the map.
@@ -389,9 +403,9 @@ pub fn (h Header) contains(key CommonHeader) bool {
 }
 
 // Returns whether the custom header key exists in the map.
-pub fn (h Header) contains_str(key string) bool {
-	k := canonicalize(key) or { return false }
-	return k in h.data
+pub fn (h Header) contains_custom(key string) bool {
+	k, exists := h.canonicalize(key) or { return false }
+	return exists && k in h.data
 }
 
 // Gets the first value for the CommonHeader, or none if the key does
@@ -406,9 +420,9 @@ pub fn (h Header) get(key CommonHeader) ?string {
 
 // Gets the first value for the custom header, or none if the key does
 // not exist.
-pub fn (h Header) get_str(key string) ?string {
-	k := canonicalize(key) or { return none }
-	if h.data[k].len == 0 {
+pub fn (h Header) get_custom(key string) ?string {
+	k, exists := h.canonicalize(key) or { return none }
+	if !exists || h.data[k].len == 0 {
 		return none
 	}
 	return h.data[k][0]
@@ -420,8 +434,8 @@ pub fn (h Header) values(key CommonHeader) []string {
 }
 
 // Gets all values for the custom header.
-pub fn (h Header) values_str(key string) []string {
-	k := canonicalize(key) or { return [] }
+pub fn (h Header) custom_values(key string) []string {
+	k, _ := h.canonicalize(key) or { return [] }
 	return h.data[k]
 }
 
@@ -431,11 +445,11 @@ pub fn (h Header) keys() []string {
 }
 
 // Validate and canonicalize an HTTP header key
-// A canonical header is all lowercase except for the first character
-// and any character after a `-`. Example: `Example-Header-Key`
-// There are some exceptions like `DNT`, `WWW-Authenticate`, etc. For these we
-// check if the lowercase matches any in the common_header_map and return that.
-fn canonicalize(s string) ?string {
+// Common headers are determined by the common_header_map
+// Custom headers are determined by h.custom_headers which uses the
+// first occurrence of a custom header as the canoncial value
+// Returns the canonical header and whether it exists or not
+fn (h Header) canonicalize(s string) ?(string, bool) {
 	// check for valid header bytes
 	for _, c in s {
 		if int(c) >= 128 || !is_token(c) {
@@ -446,21 +460,15 @@ fn canonicalize(s string) ?string {
 	// check if we have a common header
 	sl := s.to_lower()
 	if sl in http.common_header_map {
-		return http.common_header_map[sl].str()
+		return http.common_header_map[sl].str(), true
 	}
 
-	// check for canonicalization; create a new string if not
-	mut upper := true
-	for _, c in s {
-		if upper && `a` <= c && c <= `z` {
-			return s.to_lower().split('-').map(it.capitalize()).join('-')
-		}
-		if !upper && `A` <= c && c <= `Z` {
-			return s.to_lower().split('-').map(it.capitalize()).join('-')
-		}
-		upper = c == `-`
+	// check if we have a custom header
+	if sl in h.custom_headers {
+		return h.custom_headers[sl], true
 	}
-	return s
+
+	return s, false
 }
 
 // Checks if the byte is valid for a header token
@@ -469,4 +477,20 @@ fn is_token(b byte) bool {
 		33, 35...39, 42, 43, 45, 46, 48...57, 65...90, 94...122, 124, 126 { true }
 		else { false }
 	}
+}
+
+// Returns the headers string as seen in HTTP requests
+// Key order is not guaranteed
+fn (h Header) str() string {
+	// estimate ~48 bytes per header
+	mut sb := strings.new_builder(h.data.len * 48)
+	for k, v in h.data {
+		sb.write_string(k)
+		sb.write_string(': ')
+		sb.write_string(v.join(','))
+		sb.write_string('\n\r')
+	}
+	res := sb.str()
+	unsafe { sb.free() }
+	return res
 }
