@@ -1,4 +1,4 @@
- vlib/v/checker/tests/modules/module_alias_started_with_underscore/main.v:3:1: error: alias `_` on module `underscore` cannot start with `_`
+ vlib/v/checker/tests/modules/module_alias_started_with_underscore/main.v:3:1: error: alias `_` for module `underscore` cannot start with `_`
     1 | module main
     2 |
     3 | import underscore as _
