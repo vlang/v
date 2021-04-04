@@ -1460,18 +1460,12 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 	// TODO: remove this for actual methods, use only for compiler magic
 	// FIXME: Argument count != 1 will break these
 	if left_type_sym.kind == .array && method_name in checker.array_builtin_methods {
-<<<<<<< HEAD
 		return c.call_array_builtin_method(mut call_expr, left_type, left_type_sym)
 	} else if left_type_sym.kind == .map && method_name in ['clone', 'keys', 'move', 'delete_1'] {
 		if method_name == 'delete_1' { 
 			c.fail_if_immutable(call_expr.left)
 		}
 		return c.call_map_builtin_method(mut call_expr, left_type, left_type_sym)
-=======
-		return c.array_builtin_method_call(mut call_expr, left_type, left_type_sym)
-	} else if left_type_sym.kind == .map && method_name in ['clone', 'keys', 'move', 'delete_1'] {
-		return c.map_builtin_method_call(mut call_expr, left_type, left_type_sym)
->>>>>>> upstream/master
 	} else if left_type_sym.kind == .array && method_name in ['insert', 'prepend'] {
 		info := left_type_sym.info as ast.Array
 		arg_expr := if method_name == 'insert' {
