@@ -3417,8 +3417,10 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 	// c.expected_type = ast.void_type
 	match mut node {
 		ast.EmptyStmt {
-			print_backtrace()
-			eprintln('Checker.stmt() EmptyStmt')
+			if c.pref.is_verbose {
+				eprintln('Checker.stmt() EmptyStmt')
+				print_backtrace()
+			}
 		}
 		ast.NodeError {}
 		ast.AsmStmt {
@@ -4019,7 +4021,6 @@ pub fn (mut c Checker) expr(node ast.Expr) ast.Type {
 	match mut node {
 		ast.NodeError {}
 		ast.EmptyExpr {
-			print_backtrace()
 			c.error('checker.expr(): unhandled EmptyExpr', token.Position{})
 		}
 		ast.CTempVar {
