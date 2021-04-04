@@ -215,13 +215,12 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 		tool_exe = path_of_executable(tool_basename)
 		tool_source = tool_basename + '.v'
 	}
-	tool_command := '"$tool_exe" $tool_args'
 	if is_verbose {
 		println('launch_tool vexe        : $vroot')
 		println('launch_tool vroot       : $vroot')
-		println('launch_tool tool_args   : $tool_args')
 		println('launch_tool tool_source : $tool_source')
-		println('launch_tool tool_command: $tool_command')
+		println('launch_tool tool_exe    : $tool_exe')
+		println('launch_tool tool_args   : $tool_args')
 	}
 	disabling_file := recompilation.disabling_file(vroot)
 	is_recompilation_disabled := os.exists(disabling_file)
@@ -254,10 +253,11 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 			exit(1)
 		}
 	}
-	if is_verbose {
-		println('launch_tool running tool command: $tool_command ...')
+	$if windows {
+		exit(os.system('"$tool_exe" $tool_args'))
+	} $else {
+		os.execvp(tool_exe, args) or { panic(err) }
 	}
-	exit(os.system(tool_command))
 }
 
 // NB: should_recompile_tool/4 compares unix timestamps that have 1 second resolution

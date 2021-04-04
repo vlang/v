@@ -15,7 +15,7 @@ fn C.getline(voidptr, voidptr, voidptr) int
 
 fn C.ftell(fp voidptr) int
 
-fn C.sigaction(int, voidptr, int)
+fn C.sigaction(int, voidptr, int) int
 
 fn C.open(charptr, int, ...int) int
 
@@ -23,7 +23,7 @@ fn C.fdopen(fd int, mode charptr) &C.FILE
 
 fn C.CopyFile(&u32, &u32, int) int
 
-fn C.execvp(file charptr, argv &charptr) int
+// fn C.lstat(charptr, voidptr) u64
 
 fn C._wstat64(charptr, voidptr) u64
 
@@ -43,11 +43,14 @@ struct C.__stat64 {
 struct C.DIR {
 }
 
+type FN_SA_Handler = fn (sig int)
+
 struct C.sigaction {
 mut:
 	sa_mask      int
 	sa_sigaction int
 	sa_flags     int
+	sa_handler   FN_SA_Handler
 }
 
 struct C.dirent {
@@ -758,9 +761,10 @@ fn normalize_drive_letter(path string) string {
 	return path
 }
 
-// signal will assign `handler` callback to be called when `signum` signal is recieved.
-pub fn signal(signum int, handler voidptr) {
-	unsafe { C.signal(signum, handler) }
+// signal will assign `handler` callback to be called when `signum` signal is received.
+pub fn signal(signum int, handler voidptr) voidptr {
+	res := unsafe { C.signal(signum, handler) }
+	return res
 }
 
 // fork will fork the current system process and return the pid of the fork.
@@ -843,10 +847,17 @@ pub fn execvp(cmdpath string, args []string) ? {
 		cargs << charptr(args[i].str)
 	}
 	cargs << charptr(0)
-	res := C.execvp(charptr(cmdpath.str), cargs.data)
+	mut res := int(0)
+	$if windows {
+		res = C._execvp(charptr(cmdpath.str), cargs.data)
+	} $else {
+		res = C.execvp(charptr(cmdpath.str), cargs.data)
+	}
 	if res == -1 {
 		return error_with_code(posix_get_error_msg(C.errno), C.errno)
 	}
+	// just in case C._execvp returned ... that happens on windows ...
+	exit(res)
 }
 
 // execve - loads and executes a new child process, *in place* of the current process.
@@ -867,7 +878,12 @@ pub fn execve(cmdpath string, args []string, envs []string) ? {
 	}
 	cargv << charptr(0)
 	cenvs << charptr(0)
-	res := C.execve(charptr(cmdpath.str), cargv.data, cenvs.data)
+	mut res := int(0)
+	$if windows {
+		res = C._execve(charptr(cmdpath.str), cargv.data, cenvs.data)
+	} $else {
+		res = C.execve(charptr(cmdpath.str), cargv.data, cenvs.data)
+	}
 	// NB: normally execve does not return at all.
 	// If it returns, then something went wrong...
 	if res == -1 {
