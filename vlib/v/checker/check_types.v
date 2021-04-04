@@ -489,7 +489,7 @@ pub fn (mut c Checker) infer_fn_types(f ast.Fn, mut call_expr ast.CallExpr) {
 						}
 					}
 					if !c.check_types(typ, to_set) {
-						c.error('inferred generic type `$gt_name` is ambigous got `${c.table.get_type_symbol(to_set).name}`, expected `${c.table.get_type_symbol(typ).name}`',
+						c.error('inferred generic type `$gt_name` is ambiguous got `${c.table.get_type_symbol(to_set).name}`, expected `${c.table.get_type_symbol(typ).name}`',
 							arg.pos)
 					}
 				}
