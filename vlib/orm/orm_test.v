@@ -30,7 +30,6 @@ fn test_orm_sqlite() {
 	db.exec("insert into User (name, age) values ('Peter', 31)")
 	db.exec("insert into User (name, age, is_customer) values ('Kate', 30, 1)")
 
-
 	c := sql db {
 		select count from User where id != 1
 	}
