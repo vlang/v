@@ -2058,7 +2058,7 @@ Briefly:
 v [module option] [param]
 ```
 
-###### module option's:
+###### module options:
 
 ```
    install           Install a module from VPM.
