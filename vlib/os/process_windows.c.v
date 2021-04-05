@@ -3,13 +3,13 @@ module os
 import strings
 
 fn C.GenerateConsoleCtrlEvent(event u32, pgid u32) bool
-fn C.GetModuleHandleA(name charptr) HMODULE
-fn C.GetProcAddress(handle voidptr, procname byteptr) voidptr
+fn C.GetModuleHandleA(name &char) HMODULE
+fn C.GetProcAddress(handle voidptr, procname &byte) voidptr
 fn C.TerminateProcess(process HANDLE, exit_code u32) bool
 
 type FN_NTSuspendResume = fn (voidptr)
 
-fn ntdll_fn(name charptr) FN_NTSuspendResume {
+fn ntdll_fn(name &char) FN_NTSuspendResume {
 	ntdll := C.GetModuleHandleA(c'NTDLL')
 	if ntdll == 0 {
 		return FN_NTSuspendResume(0)
@@ -66,6 +66,7 @@ fn (mut p Process) win_spawn_process() int {
 	}
 	p.wdata = voidptr(wdata)
 	mut start_info := StartupInfo{
+		lp_reserved2: 0
 		lp_reserved: 0
 		lp_desktop: 0
 		lp_title: 0

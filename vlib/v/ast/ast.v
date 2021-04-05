@@ -1605,7 +1605,8 @@ pub fn (node Node) position() token.Position {
 		StructField {
 			return node.pos.extend(node.type_pos)
 		}
-		MatchBranch, SelectBranch, EnumField, ConstField, StructInitField, GlobalField, CallArg {
+		MatchBranch, SelectBranch, EnumField, ConstField, StructInitField, GlobalField, CallArg
+		 {
 			return node.pos
 		}
 		IfBranch {
