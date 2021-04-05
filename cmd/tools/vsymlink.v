@@ -147,8 +147,8 @@ fn get_reg_sys_env_handle() ?voidptr {
 fn get_reg_value(reg_env_key voidptr, key string) ?string {
 	$if windows {
 		// query the value (shortcut the sizing step)
-		reg_value_size := 4095 // this is the max length (not for the registry, but for the system %PATH%)
-		mut reg_value := unsafe { &u16(malloc(reg_value_size)) }
+		reg_value_size := u32(4095) // this is the max length (not for the registry, but for the system %PATH%)
+		mut reg_value := unsafe { &u16(malloc(int(reg_value_size))) }
 		if C.RegQueryValueExW(reg_env_key, key.to_wide(), 0, 0, reg_value, &reg_value_size) != 0 {
 			return error('Unable to get registry value for "$key".')
 		}
@@ -173,7 +173,7 @@ fn set_reg_value(reg_key voidptr, key string, value string) ?bool {
 // letting them know that the system environment has changed and should be reloaded
 fn send_setting_change_msg(message_data string) ?bool {
 	$if windows {
-		if C.SendMessageTimeoutW(os.hwnd_broadcast, os.wm_settingchange, 0, message_data.to_wide(),
+		if C.SendMessageTimeoutW(os.hwnd_broadcast, os.wm_settingchange, 0, unsafe { &u32(message_data.to_wide()) },
 			os.smto_abortifhung, 5000, 0) == 0 {
 			return error('Could not broadcast WM_SETTINGCHANGE')
 		}
