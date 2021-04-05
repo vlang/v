@@ -319,7 +319,7 @@ fn find_char_in_table( in_code u16, upper_flag bool) int {
 		index = (first_index+last_index) >> 1
 		x = unicode_con_table_up_to_low[ (index<<1)+offset ]
 
-		C.printf("(%d..%d) index:%d base[%04x]==>[%04x]\n",first_index,last_index,index,in_code,x)
+		//C.printf("(%d..%d) index:%d base[%04x]==>[%04x]\n",first_index,last_index,index,in_code,x)
 
 		if x == in_code {
 			//C.printf(" Found!\n")
@@ -335,21 +335,24 @@ fn find_char_in_table( in_code u16, upper_flag bool) int {
 			break
 		}
 	}
-	C.printf("not found.\n %d %04x",index, unicode_con_table_up_to_low[ (index<<1)+offset ] )
-	// the low to up is not full sorted, we must try a linear search in the surroundings
+	//C.printf("not found.\n %d %04x",index, unicode_con_table_up_to_low[ (index<<1)+offset ] )
+	// the low to up is not full sorted for different reasons, 
+	// we must try a linear search in the surroundings
 	if upper_flag {
 		search_radius := 30 * 2
-		mut index1 := index + search_radius
-		if index1 > unicode_con_table_up_to_low.len {
-			index1 = unicode_con_table_up_to_low.len
+		max_index     := unicode_con_table_up_to_low.len >> 1
+		mut index1    := index + search_radius
+		
+		if index1 > max_index {
+			index1 = max_index
 		}
 		index = index - search_radius
 		if index < 0 {
 			index = 0
 		}
 		for index < index1 {
-			if unicode_con_table_up_to_low[ (index<<1) + 1 ] == in_code {
-				return (index<<1)
+			if unicode_con_table_up_to_low[ (index << 1) + 1 ] == in_code {
+				return (index << 1)
 			}
 			index++
 		}
