@@ -349,8 +349,8 @@ fn new_map_2(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn MapEqF
 fn new_map_init_2(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_fn MapFreeFn, n int, key_bytes int, value_bytes int, keys voidptr, values voidptr) map {
 	mut out := new_map_2(key_bytes, value_bytes, hash_fn, key_eq_fn, clone_fn, free_fn)
 	// TODO pre-allocate n slots
-	mut pkey := byteptr(keys)
-	mut pval := byteptr(values)
+	mut pkey := &byte(keys)
+	mut pval := &byte(values)
 	for _ in 0 .. n {
 		unsafe {
 			out.set_1(pkey, pval)
@@ -513,7 +513,7 @@ fn (mut m map) rehash() {
 fn (mut m map) cached_rehash(old_cap u32) {
 	old_metas := m.metas
 	metasize := int(sizeof(u32) * (m.even_index + 2 + m.extra_metas))
-	m.metas = unsafe {  &u32(vcalloc(metasize)) }
+	m.metas = unsafe { &u32(vcalloc(metasize)) }
 	old_extra_metas := m.extra_metas
 	for i := u32(0); i <= old_cap + old_extra_metas; i += 2 {
 		if unsafe { old_metas[i] } == 0 {
@@ -688,7 +688,7 @@ pub fn (mut m map) delete_1(key voidptr) {
 // delete this
 pub fn (m &map) keys() []string {
 	mut keys := []string{len: m.len}
-	mut item := unsafe { byteptr(keys.data) }
+	mut item := unsafe { &byte(keys.data) }
 	for i := 0; i < m.key_values.len; i++ {
 		if !m.key_values.has_index(i) {
 			continue
@@ -705,7 +705,7 @@ pub fn (m &map) keys() []string {
 // Returns all keys in the map.
 fn (m &map) keys_1() array {
 	mut keys := __new_array(m.len, 0, m.key_bytes)
-	mut item := unsafe { byteptr(keys.data) }
+	mut item := unsafe { &byte(keys.data) }
 	if m.key_values.deletes == 0 {
 		for i := 0; i < m.key_values.len; i++ {
 			unsafe {

@@ -3126,7 +3126,11 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			&& left_sym.kind != .interface_ {
 			// Dual sides check (compatibility check)
 			c.check_expected(right_type_unwrapped, left_type_unwrapped) or {
-				c.error('cannot assign to `$left`: $err.msg', right.position())
+				// allow for ptr += 2
+				if !left_type_unwrapped.is_ptr() && !right_type_unwrapped.is_int()
+					&& assign_stmt.op !in [.plus_assign, .minus_assign] {
+					c.error('cannot assign to `$left`: $err.msg', right.position())
+				}
 			}
 		}
 		if left_sym.kind == .interface_ {

@@ -67,7 +67,7 @@ fn opt_ok(data voidptr, mut option Option, size int) {
 	unsafe {
 		*option = Option{}
 		// use err to get the end of OptionBase and then memcpy into it
-		C.memcpy(byteptr(&option.err) + sizeof(IError), data, size)
+		C.memcpy(&byte(&option.err) + sizeof(IError), data, size)
 	}
 }
 

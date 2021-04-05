@@ -11,7 +11,7 @@ pub fn mm_pages(size u64) u32 {
 	return u32(pages)
 }
 
-pub fn mm_alloc(size u64) (byteptr, Errno) {
+pub fn mm_alloc(size u64) (&byte, Errno) {
 	pages := mm_pages(size)
 	n_bytes := u64(pages * u32(Linux_mem.page_size))
 
@@ -19,12 +19,12 @@ pub fn mm_alloc(size u64) (byteptr, Errno) {
 	if e == .enoerror {
 		mut ap := &int(a)
 		*ap = pages
-		return byteptr(a + 4), e
+		return &byte(a + 4), e
 	}
-	return byteptr(0), e
+	return &byte(0), e
 }
 
-pub fn mm_free(addr byteptr) Errno {
+pub fn mm_free(addr &byte) Errno {
 	ap := &int(addr - 4)
 	size := u64(*ap) * u64(Linux_mem.page_size)
 
@@ -32,8 +32,8 @@ pub fn mm_free(addr byteptr) Errno {
 }
 
 pub fn mem_copy(dest0 voidptr, src0 voidptr, n int) voidptr {
-	mut dest := byteptr(dest0)
-	src := byteptr(src0)
+	mut dest := &byte(dest0)
+	src := &byte(src0)
 	for i in 0 .. n {
 		dest[i] = src[i]
 	}
@@ -41,7 +41,7 @@ pub fn mem_copy(dest0 voidptr, src0 voidptr, n int) voidptr {
 }
 
 [unsafe]
-pub fn malloc(n int) byteptr {
+pub fn malloc(n int) &byte {
 	if n < 0 {
 		panic('malloc(<0)')
 	}

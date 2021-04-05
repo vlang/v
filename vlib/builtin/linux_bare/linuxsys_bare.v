@@ -337,16 +337,16 @@ fn split_int_errno(rc_in u64) (i64, Errno) {
 }
 
 // 0 sys_read unsigned int fd char *buf size_t count
-pub fn sys_read(fd i64, buf byteptr, count u64) (i64, Errno) {
+pub fn sys_read(fd i64, buf &byte, count u64) (i64, Errno) {
 	return split_int_errno(sys_call3(0, u64(fd), u64(buf), count))
 }
 
 // 1 sys_write unsigned int fd, const char *buf, size_t count
-pub fn sys_write(fd i64, buf byteptr, count u64) (i64, Errno) {
+pub fn sys_write(fd i64, buf &byte, count u64) (i64, Errno) {
 	return split_int_errno(sys_call3(1, u64(fd), u64(buf), count))
 }
 
-pub fn sys_open(filename byteptr, flags i64, mode int) (i64, Errno) {
+pub fn sys_open(filename &byte, flags i64, mode int) (i64, Errno) {
 	// 2 sys_open  const char *filename  int flags int mode
 	return split_int_errno(sys_call3(2, u64(filename), u64(flags), u64(mode)))
 }
@@ -357,10 +357,10 @@ pub fn sys_close(fd i64) Errno {
 }
 
 // 9 sys_mmap unsigned long addr  unsigned long len unsigned long prot  unsigned long flags unsigned long fd  unsigned long off
-pub fn sys_mmap(addr byteptr, len u64, prot Mm_prot, flags Map_flags, fildes u64, off u64) (byteptr, Errno) {
+pub fn sys_mmap(addr &byte, len u64, prot Mm_prot, flags Map_flags, fildes u64, off u64) (&byte, Errno) {
 	rc := sys_call6(9, u64(addr), len, u64(prot), u64(flags), fildes, off)
 	a, e := split_int_errno(rc)
-	return byteptr(a), e
+	return &byte(a), e
 }
 
 pub fn sys_munmap(addr voidptr, len u64) Errno {

@@ -18,6 +18,8 @@ const (
 	]
 	verify_known_failing_exceptions = [
 		'vlib/builtin/int_test.v' /* special number formatting that should be tested */,
+		'vlib/builtin/int.v' /* vfmt converts `pub fn (nn byteptr) str() string {` to `nn &byte` and that conflicts with `nn byte` */,
+		'vlib/builtin/string_charptr_byteptr_helpers.v' /* a temporary shim to ease the byteptr=>&byte transition */,
 		'vlib/gg/m4/graphic.v' /* has hand crafted meaningful formatting of matrices */,
 		'vlib/gg/m4/m4_test.v' /* has hand crafted meaningful formatting of matrices */,
 		'vlib/gg/m4/matrix.v' /* has hand crafted meaningful formatting of matrices */,
