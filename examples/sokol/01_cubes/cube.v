@@ -39,7 +39,7 @@ mut:
 * Texture functions
 *
 ******************************************************************************/
-fn create_texture(w int, h int, buf byteptr) C.sg_image {
+fn create_texture(w int, h int, buf &byte) C.sg_image {
 	sz := w * h * 4
 	mut img_desc := C.sg_image_desc{
 		width: w
@@ -68,7 +68,7 @@ fn destroy_texture(sg_img C.sg_image) {
 }
 
 // Use only if usage: .dynamic is enabled
-fn update_text_texture(sg_img C.sg_image, w int, h int, buf byteptr) {
+fn update_text_texture(sg_img C.sg_image, w int, h int, buf &byte) {
 	sz := w * h * 4
 	mut tmp_sbc := C.sg_image_content{}
 	tmp_sbc.subimage[0][0] = C.sg_subimage_content{
