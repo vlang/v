@@ -212,10 +212,11 @@ pub fn parse_vet_file(path string, table_ &ast.Table, pref &pref.Preferences) (a
 		for lnumber, line in source_lines {
 			if line.starts_with('  ') {
 				p.vet_error('Looks like you are using spaces for indentation.', lnumber,
-					.vfmt)
+					.vfmt, .space_indent)
 			}
 			if line.ends_with(' ') {
-				p.vet_error('Looks like you have trailing whitespace.', lnumber, .vfmt)
+				p.vet_error('Looks like you have trailing whitespace.', lnumber, .unknown,
+					.trailing_space)
 			}
 		}
 	}
@@ -620,8 +621,7 @@ pub fn (mut p Parser) comment() ast.Comment {
 	is_multi := text.contains('\n')
 	// Filter out space indentation vet errors inside block comments
 	if p.vet_errors.len > 0 && is_multi {
-		p.vet_errors = p.vet_errors.filter(!(it.pos.line_nr - 1 > pos.line_nr
-			&& it.pos.line_nr - 1 <= pos.last_line))
+		p.vet_errors = p.vet_errors.filter((it.typ == .trailing_space && it.pos.line_nr - 1 < pos.line_nr) || it.pos.line_nr - 1 <= pos.line_nr || it.pos.line_nr - 1 > pos.last_line)
 	}
 	return ast.Comment{
 		is_multi: is_multi
@@ -1647,7 +1647,7 @@ pub fn (mut p Parser) note_with_pos(s string, pos token.Position) {
 	}
 }
 
-pub fn (mut p Parser) vet_error(msg string, line int, fix vet.FixKind) {
+pub fn (mut p Parser) vet_error(msg string, line int, fix vet.FixKind, typ vet.ErrorType) {
 	pos := token.Position{
 		line_nr: line + 1
 	}
@@ -1657,6 +1657,7 @@ pub fn (mut p Parser) vet_error(msg string, line int, fix vet.FixKind) {
 		pos: pos
 		kind: .error
 		fix: fix
+		typ: typ
 	}
 }
 

@@ -15,6 +15,13 @@ pub enum FixKind {
 	vfmt
 }
 
+// ErrorType is used to filter out false positive errors under specific conditions
+pub enum ErrorType {
+	default
+	space_indent
+	trailing_space
+}
+
 pub struct Error {
 pub mut:
 	kind ErrorKind [required]
@@ -25,4 +32,5 @@ pub:
 	file_path string // file where the error have origin
 	pos       token.Position // position in the file
 	fix       FixKind        [required]
+	typ       ErrorType      [required]
 }
