@@ -139,6 +139,15 @@ pub fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
 	if got == ast.error_type_idx && expected == ast.string_type_idx {
 		return true
 	}
+	// allow `return 0` in a function with `?int` return type
+	expected_nonopt := expected.clear_flag(.optional)
+	if got == ast.int_literal_type && expected_nonopt.is_int() {
+		return true
+	}
+	// allow `return 0` in a function with `?f32` return type
+	if got == ast.float_literal_type && expected_nonopt.is_float() {
+		return true
+	}
 	return false
 }
 

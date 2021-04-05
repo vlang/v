@@ -11,15 +11,15 @@ struct C.zip_t {
 
 type Zip = C.zip_t
 
-fn C.zip_open(byteptr, int, byte) &Zip
+fn C.zip_open(&char, int, char) &Zip
 
 fn C.zip_close(&Zip)
 
-fn C.zip_entry_open(&Zip, byteptr) int
+fn C.zip_entry_open(&Zip, &byte) int
 
 fn C.zip_entry_close(&Zip) int
 
-fn C.zip_entry_name(&Zip) byteptr
+fn C.zip_entry_name(&Zip) &byte
 
 fn C.zip_entry_index(&Zip) int
 
@@ -29,17 +29,17 @@ fn C.zip_entry_size(&Zip) u64
 
 fn C.zip_entry_crc32(&Zip) u32
 
-fn C.zip_entry_write(&Zip, voidptr, int) int
+fn C.zip_entry_write(&Zip, voidptr, size_t) int
 
-fn C.zip_entry_fwrite(&Zip, byteptr) int
+fn C.zip_entry_fwrite(&Zip, &char) int
 
-fn C.zip_entry_read(&Zip, byteptr, int) int
+fn C.zip_entry_read(&Zip, &&byte, &size_t) int
 
-fn C.zip_entry_fread(&Zip, byteptr) int
+fn C.zip_entry_fread(&Zip, &char) int
 
 fn C.zip_total_entries(&Zip) int
 
-fn C.zip_extract_without_callback(charptr, charptr) int
+fn C.zip_extract_without_callback(&char, &char) int
 
 // CompressionLevel lists compression levels, see in "thirdparty/zip/miniz.h"
 pub enum CompressionLevel {
@@ -84,7 +84,7 @@ pub fn open(name string, level CompressionLevel, mode OpenMode) ?&Zip {
 	if name.len == 0 {
 		return error('szip: name of file empty')
 	}
-	p_zip := &Zip(C.zip_open(name.str, int(level), mode.to_byte()))
+	p_zip := &Zip(C.zip_open(name.str, int(level), char(mode.to_byte())))
 	if isnil(p_zip) {
 		return error('szip: cannot open/create/append new zip archive')
 	}
@@ -183,8 +183,8 @@ pub fn (mut zentry Zip) create_entry(name string) ? {
 // NOTE: remember to release the memory allocated for an output buffer.
 // for large entries, please take a look at zip_entry_extract function.
 pub fn (mut zentry Zip) read_entry() ?voidptr {
-	mut buf := voidptr(0)
-	mut bsize := i64(0)
+	mut buf := &byte(0)
+	mut bsize := size_t(0)
 	res := C.zip_entry_read(zentry, &buf, &bsize)
 	if res == -1 {
 		return error('szip: cannot read properly data from entry')

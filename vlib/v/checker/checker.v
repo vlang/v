@@ -1096,6 +1096,10 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) ast.Type {
 		if left_type == ast.void_type || right_type == ast.void_type {
 			return ast.void_type
 		}
+		if left_type.nr_muls() > 0 && right_type.is_int() {
+			// pointer arithmetic is fine, it is checked in other places
+			return return_type
+		}
 		c.error('infix expr: cannot use `$right.name` (right expression) as `$left.name`',
 			left_right_pos)
 	}

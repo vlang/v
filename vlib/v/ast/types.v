@@ -283,7 +283,7 @@ pub fn (typ Type) is_float() bool {
 
 [inline]
 pub fn (typ Type) is_int() bool {
-	return typ.idx() in ast.integer_type_idxs
+	return int(typ) in ast.integer_type_idxs
 }
 
 [inline]
@@ -298,12 +298,12 @@ pub fn (typ Type) is_unsigned() bool {
 
 [inline]
 pub fn (typ Type) is_int_literal() bool {
-	return typ.idx() == ast.int_literal_type_idx
+	return int(typ) == ast.int_literal_type_idx
 }
 
 [inline]
 pub fn (typ Type) is_number() bool {
-	return typ.idx() in ast.number_type_idxs
+	return int(typ) in ast.number_type_idxs
 }
 
 [inline]
