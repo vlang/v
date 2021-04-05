@@ -33,14 +33,14 @@ pub fn (mut c TcpConn) close() ? {
 }
 
 // write_ptr blocks and attempts to write all data
-pub fn (mut c TcpConn) write_ptr(b byteptr, len int) ?int {
+pub fn (mut c TcpConn) write_ptr(b &byte, len int) ?int {
 	$if trace_tcp ? {
 		eprintln(
 			'>>> TcpConn.write_ptr | c.sock.handle: $c.sock.handle | b: ${ptr_str(b)} len: $len |\n' +
 			unsafe { b.vstring_with_len(len) })
 	}
 	unsafe {
-		mut ptr_base := byteptr(b)
+		mut ptr_base := &byte(b)
 		mut total_sent := 0
 		for total_sent < len {
 			ptr := ptr_base + total_sent
@@ -77,7 +77,7 @@ pub fn (mut c TcpConn) write_string(s string) ?int {
 	return c.write_ptr(s.str, s.len)
 }
 
-pub fn (mut c TcpConn) read_ptr(buf_ptr byteptr, len int) ?int {
+pub fn (mut c TcpConn) read_ptr(buf_ptr &byte, len int) ?int {
 	mut res := wrap_read_result(C.recv(c.sock.handle, buf_ptr, len, 0)) ?
 	$if trace_tcp ? {
 		eprintln('<<< TcpConn.read_ptr  | c.sock.handle: $c.sock.handle | buf_ptr: ${ptr_str(buf_ptr)} len: $len | res: $res')
@@ -163,7 +163,7 @@ pub fn (c &TcpConn) peer_ip() ?string {
 	peeraddr := C.sockaddr_in{}
 	speeraddr := sizeof(peeraddr)
 	socket_error(C.getpeername(c.sock.handle, unsafe { &C.sockaddr(&peeraddr) }, &speeraddr)) ?
-	cstr := charptr(C.inet_ntop(SocketFamily.inet, &peeraddr.sin_addr, &buf[0], sizeof(buf)))
+	cstr := &char(C.inet_ntop(SocketFamily.inet, &peeraddr.sin_addr, &buf[0], sizeof(buf)))
 	if cstr == 0 {
 		return error('net.peer_ip: inet_ntop failed')
 	}

@@ -522,7 +522,7 @@ fn test_posix_set_bit() {
 		fpath := '/tmp/permtest'
 		create(fpath) or { panic("Couldn't create file") }
 		chmod(fpath, 0o7777)
-		c_fpath := charptr(fpath.str)
+		c_fpath := &char(fpath.str)
 		mut s := C.stat{}
 		unsafe {
 			C.stat(c_fpath, &s)

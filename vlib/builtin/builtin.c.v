@@ -139,26 +139,19 @@ fn C.asl_log(voidptr, voidptr, int, charptr)
 */
 // println prints a message with a line end, to stdout. stdout is flushed.
 pub fn println(s string) {
-	$if windows {
-		print(s)
-		print('\n')
-	} $else {
-		// For debugging .app applications (no way to read stdout) so that it's printed to macOS Console
-		/*
-		$if macos {
-			C.asl_log(0, 0, C.ASL_LEVEL_ERR, s.str)
+	if s.str == 0 {
+		$if android {
+			C.fprintf(C.stdout, c'println(NIL)\n')
+		} $else {
+			C.write(1, c'println(NIL)\n', 13)
 		}
-		*/
-		//  TODO: a syscall sys_write on linux works, except for the v repl.
-		//  Probably it is a stdio buffering issue. Needs more testing...
-		//	$if linux {
-		//		$if !android {
-		//			snl := s + '\n'
-		//			C.syscall(/* sys_write */ 1, /* stdout_value */ 1, snl.str, s.len+1)
-		//			return
-		//		}
-		//	}
-		C.printf('%.*s\n', s.len, s.str)
+		return
+	}
+	$if android {
+		C.fprintf(C.stdout, c'%.*s\n', s.len, s.str)
+	} $else {
+		C.write(1, s.str, s.len)
+		C.write(1, c'\n', 1)
 	}
 }
 
@@ -166,7 +159,7 @@ pub fn println(s string) {
 // malloc returns a `byteptr` pointing to the memory address of the allocated space.
 // unlike the `calloc` family of functions - malloc will not zero the memory block.
 [unsafe]
-pub fn malloc(n int) byteptr {
+pub fn malloc(n int) &byte {
 	if n <= 0 {
 		panic('> V malloc(<=0)')
 	}
@@ -177,10 +170,10 @@ pub fn malloc(n int) byteptr {
 	}
 	$if trace_malloc ? {
 		total_m += n
-		C.fprintf(C.stderr, c'v_malloc %d total %d\n', n, total_m)
+		C.fprintf(C.stderr, c'v_malloc %6d total %10d\n', n, total_m)
 		// print_backtrace()
 	}
-	mut res := byteptr(0)
+	mut res := &byte(0)
 	$if prealloc {
 		res = g_m2_ptr
 		unsafe {
@@ -216,8 +209,8 @@ fn malloc_size(b byteptr) int
 // previously allocated with `malloc`, `v_calloc` or `vcalloc`.
 // Please, see also realloc_data, and use it instead if possible.
 [unsafe]
-pub fn v_realloc(b byteptr, n int) byteptr {
-	mut new_ptr := byteptr(0)
+pub fn v_realloc(b &byte, n int) &byte {
+	mut new_ptr := &byte(0)
 	$if prealloc {
 		unsafe {
 			new_ptr = malloc(n)
@@ -245,7 +238,7 @@ pub fn v_realloc(b byteptr, n int) byteptr {
 // can make debugging easier, when you compile your program with
 // `-d debug_realloc`.
 [unsafe]
-pub fn realloc_data(old_data byteptr, old_size int, new_size int) byteptr {
+pub fn realloc_data(old_data &byte, old_size int, new_size int) &byte {
 	$if prealloc {
 		unsafe {
 			new_ptr := malloc(new_size)
@@ -272,7 +265,7 @@ pub fn realloc_data(old_data byteptr, old_size int, new_size int) byteptr {
 			return new_ptr
 		}
 	}
-	mut nptr := byteptr(0)
+	mut nptr := &byte(0)
 	$if gcboehm ? {
 		nptr = unsafe { C.GC_REALLOC(old_data, new_size) }
 	} $else {
@@ -287,14 +280,14 @@ pub fn realloc_data(old_data byteptr, old_size int, new_size int) byteptr {
 // vcalloc dynamically allocates a zeroed `n` bytes block of memory on the heap.
 // vcalloc returns a `byteptr` pointing to the memory address of the allocated space.
 // Unlike `v_calloc` vcalloc checks for negative values given in `n`.
-pub fn vcalloc(n int) byteptr {
+pub fn vcalloc(n int) &byte {
 	if n < 0 {
 		panic('calloc(<=0)')
 	} else if n == 0 {
-		return byteptr(0)
+		return &byte(0)
 	}
 	$if gcboehm ? {
-		return byteptr(C.GC_MALLOC(n))
+		return &byte(C.GC_MALLOC(n))
 	} $else {
 		return C.calloc(1, n)
 	}

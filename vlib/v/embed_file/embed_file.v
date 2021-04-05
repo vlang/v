@@ -8,8 +8,8 @@ pub struct EmbedFileData {
 	path  string
 	apath string
 mut:
-	compressed        byteptr
-	uncompressed      byteptr
+	compressed        &byte
+	uncompressed      &byte
 	free_compressed   bool
 	free_uncompressed bool
 pub:
@@ -27,11 +27,11 @@ pub fn (mut ed EmbedFileData) free() {
 		ed.apath.free()
 		if ed.free_compressed {
 			free(ed.compressed)
-			ed.compressed = byteptr(0)
+			ed.compressed = &byte(0)
 		}
 		if ed.free_uncompressed {
 			free(ed.uncompressed)
-			ed.uncompressed = byteptr(0)
+			ed.uncompressed = &byte(0)
 		}
 	}
 }
@@ -39,8 +39,8 @@ pub fn (mut ed EmbedFileData) free() {
 pub fn (original &EmbedFileData) to_string() string {
 	unsafe {
 		mut ed := &EmbedFileData(original)
-		the_copy := memdup(ed.data(), ed.len)
-		return byteptr(the_copy).vstring_with_len(ed.len)
+		the_copy := &byte(memdup(ed.data(), ed.len))
+		return the_copy.vstring_with_len(ed.len)
 	}
 }
 
@@ -52,7 +52,7 @@ pub fn (original &EmbedFileData) to_bytes() []byte {
 	}
 }
 
-pub fn (mut ed EmbedFileData) data() byteptr {
+pub fn (mut ed EmbedFileData) data() &byte {
 	if !isnil(ed.uncompressed) {
 		return ed.uncompressed
 	} else {
@@ -87,7 +87,7 @@ pub fn (mut ed EmbedFileData) data() byteptr {
 pub struct EmbedFileIndexEntry {
 	id   int
 	path string
-	data byteptr
+	data &byte
 }
 
 // find_index_entry_by_path is used internally by the V compiler:

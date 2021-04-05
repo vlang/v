@@ -882,6 +882,7 @@ pub fn (t &Table) sumtype_has_variant(parent Type, variant Type) bool {
 	return false
 }
 
+// only used for debugging V compiler type bugs
 pub fn (t &Table) known_type_names() []string {
 	mut res := []string{cap: t.type_idxs.len}
 	for _, idx in t.type_idxs {

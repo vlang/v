@@ -76,6 +76,7 @@ pub mut:
 	output_mode OutputMode = .stdout
 	// verbosity           VerboseLevel
 	is_verbose bool
+	is_watch   bool // -watch mode, implemented by cmd/tools/watch.v
 	// nofmt            bool   // disable vfmt
 	is_test           bool   // `v test string_test.v`
 	is_script         bool   // single file mode (`v program.v`), main function can be skipped
@@ -390,6 +391,9 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			}
 			'-w' {
 				res.skip_warnings = true
+			}
+			'-watch' {
+				res.is_watch = true
 			}
 			'-print-v-files' {
 				res.print_v_files = true

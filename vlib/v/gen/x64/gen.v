@@ -666,7 +666,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				if word.len != 2 {
 					verror('opcodes format: xx xx xx xx')
 				}
-				b := unsafe { C.strtol(charptr(word.str), 0, 16) }
+				b := unsafe { C.strtol(&char(word.str), 0, 16) }
 				// b := word.byte()
 				// println('"$word" $b')
 				g.write8(b)
@@ -684,7 +684,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 	}
 }
 
-fn C.strtol(str charptr, endptr &&char, base int) int
+fn C.strtol(str &char, endptr &&char, base int) int
 
 fn (mut g Gen) expr(node ast.Expr) {
 	// println('cgen expr()')

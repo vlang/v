@@ -30,7 +30,7 @@ fn main() {
 	checksum = 0
 	for len in str_lens {
 		end_pos := start_pos + len
-		checksum ^= wyhash.wyhash_c(unsafe { byteptr(bytepile.data) + start_pos }, u64(len),
+		checksum ^= wyhash.wyhash_c(unsafe { &byte(bytepile.data) + start_pos }, u64(len),
 			1)
 		start_pos = end_pos
 	}

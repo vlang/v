@@ -34,8 +34,10 @@ pub fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type,
 			&& got.idx() in [ast.int_type_idx, ast.int_literal_type_idx]) {
 			return
 		}
+		// allow `C.printf('foo')` instead of `C.printf(c'foo')`
 		if got.idx() == ast.string_type_idx
-			&& expected in [ast.byteptr_type_idx, ast.charptr_type_idx] {
+			&& (expected in [ast.byteptr_type_idx, ast.charptr_type_idx]
+			|| (expected.idx() == ast.char_type_idx && expected.is_ptr())) {
 			return
 		}
 		exp_sym := c.table.get_type_symbol(expected)
@@ -49,6 +51,41 @@ pub fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type,
 	}
 	if c.check_types(got, expected) {
 		return
+	}
+	idx_got := got.idx()
+	idx_expected := expected.idx()
+	if idx_got in [ast.byteptr_type_idx, ast.charptr_type_idx]
+		|| idx_expected in [ast.byteptr_type_idx, ast.charptr_type_idx] {
+		igot := int(got)
+		iexpected := int(expected)
+		// TODO: remove; transitional compatibility for byteptr === &byte
+		if (igot == ast.byteptr_type_idx && iexpected == 65545)
+			|| (iexpected == ast.byteptr_type_idx && igot == 65545) {
+			return
+		}
+		// TODO: remove; transitional compatibility for charptr === &char
+		if (igot == ast.charptr_type_idx && iexpected == 65551)
+			|| (iexpected == ast.charptr_type_idx && igot == 65551) {
+			return
+		}
+		muls_got := got.nr_muls()
+		muls_expected := expected.nr_muls()
+		if idx_got == ast.byteptr_type_idx && idx_expected == ast.byte_type_idx
+			&& muls_got + 1 == muls_expected {
+			return
+		}
+		if idx_expected == ast.byteptr_type_idx && idx_got == ast.byte_type_idx
+			&& muls_expected + 1 == muls_got {
+			return
+		}
+		if idx_got == ast.charptr_type_idx && idx_expected == ast.char_type_idx
+			&& muls_got + 1 == muls_expected {
+			return
+		}
+		if idx_expected == ast.charptr_type_idx && idx_got == ast.char_type_idx
+			&& muls_expected + 1 == muls_got {
+			return
+		}
 	}
 	return error('cannot use `${c.table.type_to_str(got.clear_flag(.variadic))}` as `${c.table.type_to_str(expected.clear_flag(.variadic))}`')
 }
@@ -100,6 +137,15 @@ pub fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
 	}
 	// allow using Error as a string for now (avoid a breaking change)
 	if got == ast.error_type_idx && expected == ast.string_type_idx {
+		return true
+	}
+	// allow `return 0` in a function with `?int` return type
+	expected_nonflagged := expected.clear_flags()
+	if got == ast.int_literal_type && expected_nonflagged.is_int() {
+		return true
+	}
+	// allow `return 0` in a function with `?f32` return type
+	if got == ast.float_literal_type && expected_nonflagged.is_float() {
 		return true
 	}
 	return false
@@ -241,7 +287,8 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	if exp_idx == got_idx {
 		return true
 	}
-	if exp_idx == ast.voidptr_type_idx || exp_idx == ast.byteptr_type_idx {
+	if exp_idx == ast.voidptr_type_idx || exp_idx == ast.byteptr_type_idx
+		|| (expected.is_ptr() && expected.deref().idx() == ast.byte_type_idx) {
 		if got.is_ptr() || got.is_pointer() {
 			return true
 		}
@@ -253,7 +300,8 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 			return true
 		}
 	}
-	if got_idx == ast.voidptr_type_idx || got_idx == ast.byteptr_type_idx {
+	if got_idx == ast.voidptr_type_idx || got_idx == ast.byteptr_type_idx
+		|| (got_idx == ast.byte_type_idx && got.is_ptr()) {
 		if expected.is_ptr() || expected.is_pointer() {
 			return true
 		}

@@ -653,6 +653,6 @@ pub fn (data voidptr) vbytes(len int) []byte {
 
 // byteptr.vbytes() - makes a V []byte structure from a C style memory buffer. NB: the data is reused, NOT copied!
 [unsafe]
-pub fn (data byteptr) vbytes(len int) []byte {
+pub fn (data &byte) vbytes(len int) []byte {
 	return unsafe { voidptr(data).vbytes(len) }
 }
