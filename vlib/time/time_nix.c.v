@@ -34,8 +34,6 @@ pub fn (t Time) local() Time {
 	return convert_ctime(loc_tm, t.microsecond)
 }
 
-type time_t = i64
-
 // in most systems, these are __quad_t, which is an i64
 struct C.timespec {
 mut:
