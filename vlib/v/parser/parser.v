@@ -619,9 +619,9 @@ pub fn (mut p Parser) comment() ast.Comment {
 	pos.last_line = pos.line_nr + text.count('\n')
 	p.next()
 	is_multi := text.contains('\n')
-	// Filter out space indentation vet errors inside block comments
-	if p.vet_errors.len > 0 && is_multi {
-		p.vet_errors = p.vet_errors.filter((it.typ == .trailing_space && it.pos.line_nr - 1 < pos.line_nr) || it.pos.line_nr - 1 <= pos.line_nr || it.pos.line_nr - 1 > pos.last_line)
+	// Filter out false positive vet errors inside comments
+	if p.vet_errors.len > 0 {
+		p.vet_errors = p.vet_errors.filter(it.pos.line_nr - 1 > pos.last_line || (it.typ == .trailing_space && it.pos.line_nr - 1 < pos.line_nr) || (it.typ != .trailing_space && it.pos.line_nr - 1 <= pos.line_nr))
 	}
 	return ast.Comment{
 		is_multi: is_multi
