@@ -621,7 +621,9 @@ pub fn (mut p Parser) comment() ast.Comment {
 	is_multi := text.contains('\n')
 	// Filter out false positive vet errors inside comments
 	if p.vet_errors.len > 0 {
-		p.vet_errors = p.vet_errors.filter(it.pos.line_nr - 1 > pos.last_line || (it.typ == .trailing_space && it.pos.line_nr - 1 < pos.line_nr) || (it.typ != .trailing_space && it.pos.line_nr - 1 <= pos.line_nr))
+		p.vet_errors = p.vet_errors.filter(it.pos.line_nr - 1 > pos.last_line
+			|| (it.typ == .trailing_space && it.pos.line_nr - 1 < pos.line_nr)
+			|| (it.typ != .trailing_space && it.pos.line_nr - 1 <= pos.line_nr))
 	}
 	return ast.Comment{
 		is_multi: is_multi
