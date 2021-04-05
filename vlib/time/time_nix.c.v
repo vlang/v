@@ -79,7 +79,7 @@ fn linux_now() Time {
 	mut ts := C.timespec{}
 	C.clock_gettime(C.CLOCK_REALTIME, &ts)
 	loc_tm := C.tm{}
-	C.localtime_r(&time.time_t(voidptr(&ts.tv_sec)), &loc_tm)
+	C.localtime_r(&time_t(voidptr(&ts.tv_sec)), &loc_tm)
 	return convert_ctime(loc_tm, int(ts.tv_nsec / 1000))
 }
 
