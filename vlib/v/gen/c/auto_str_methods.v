@@ -42,7 +42,7 @@ fn (mut g Gen) gen_str_default(sym ast.TypeSymbol, styp string, str_fn_name stri
 
 fn (g &Gen) type_to_fmt(typ ast.Type) string {
 	sym := g.table.get_type_symbol(typ)
-	if typ.is_ptr() && (typ.is_int() || typ.is_float()) {
+	if typ.is_ptr() && (typ.is_int_valptr() || typ.is_float_valptr()) {
 		return '%.*s\\000'
 	} else if sym.kind in [.struct_, .array, .array_fixed, .map, .bool, .enum_, .interface_,
 		.sum_type, .function, .alias] {
@@ -512,7 +512,8 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 					g.auto_str_funcs.write_string('isnil(it.${c_name(field.name)})')
 					g.auto_str_funcs.write_string(' ? _SLIT("nil") : ')
 					// struct, floats and ints have a special case through the _str function
-					if sym.kind != .struct_ && !field.typ.is_int() && !field.typ.is_float() {
+					if sym.kind != .struct_ && !field.typ.is_int_valptr()
+						&& !field.typ.is_float_valptr() {
 						g.auto_str_funcs.write_string('*')
 					}
 				}
@@ -558,8 +559,8 @@ fn struct_auto_str_func(sym &ast.TypeSymbol, field_type ast.Type, fn_name string
 		mut method_str := 'it.${c_name(field_name)}'
 		if sym.kind == .bool {
 			method_str += ' ? _SLIT("true") : _SLIT("false")'
-		} else if (field_type.is_int() || field_type.is_float()) && field_type.is_ptr()
-			&& !expects_ptr {
+		} else if (field_type.is_int_valptr() || field_type.is_float_valptr())
+			&& field_type.is_ptr() && !expects_ptr {
 			// ptr int can be "nil", so this needs to be castet to a string
 			fmt := if sym.kind in [.f32, .f64] {
 				'%g\\000'
