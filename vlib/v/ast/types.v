@@ -278,12 +278,12 @@ pub fn (typ Type) is_pointer() bool {
 
 [inline]
 pub fn (typ Type) is_float() bool {
-	return typ.idx() in ast.float_type_idxs
+	return typ.clear_flags() in ast.float_type_idxs
 }
 
 [inline]
 pub fn (typ Type) is_int() bool {
-	return int(typ) in ast.integer_type_idxs
+	return typ.clear_flags() in ast.integer_type_idxs
 }
 
 [inline]
@@ -303,7 +303,13 @@ pub fn (typ Type) is_int_literal() bool {
 
 [inline]
 pub fn (typ Type) is_number() bool {
-	return int(typ) in ast.number_type_idxs
+	return typ.clear_flags() in ast.number_type_idxs
+}
+
+pub fn (typ Type) is_number_or_literal() bool {
+	res := int(typ) in ast.number_type_idxs
+	eprintln('> is_number_or_literal typ: $typ.debug() | res: $res')
+	return res
 }
 
 [inline]
