@@ -68,11 +68,11 @@ pub fn color_compare_files(diff_cmd string, file1 string, file2 string) string {
 	return ''
 }
 
-pub fn color_compare_strings(diff_cmd string, expected string, found string) string {
+pub fn color_compare_strings(diff_cmd string, unique_prefix string, expected string, found string) string {
 	cdir := os.cache_dir()
 	ctime := time.sys_mono_now()
-	e_file := os.join_path(cdir, '${ctime}.expected.txt')
-	f_file := os.join_path(cdir, '${ctime}.found.txt')
+	e_file := os.join_path(cdir, '${unique_prefix}_${ctime}.expected.txt')
+	f_file := os.join_path(cdir, '${unique_prefix}_${ctime}.found.txt')
 	os.write_file(e_file, expected) or { panic(err) }
 	os.write_file(f_file, found) or { panic(err) }
 	res := color_compare_files(diff_cmd, e_file, f_file)

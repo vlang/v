@@ -5,6 +5,7 @@ import v.util
 import v.pref
 import v.builder
 import v.ast
+import rand
 import term
 
 const (
@@ -116,7 +117,7 @@ fn (app App) gen_api_for_module_in_os(mod_name string, os_name string) string {
 }
 
 fn (mut app App) compare_api(api_base string, api_os string, mod_name string, os_base string, os_target string) {
-	res := util.color_compare_strings(app.diff_cmd, api_base, api_os)
+	res := util.color_compare_strings(app.diff_cmd, rand.ulid(), api_base, api_os)
 	if res.len > 0 {
 		summary := 'Different APIs found for module: `$mod_name`, between OS base: `$os_base` and OS: `$os_target`'
 		eprintln(term.header(summary, '-'))
