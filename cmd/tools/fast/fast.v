@@ -54,7 +54,7 @@ fn main() {
 	date := time.unix(commit_date.int())
 	mut out := os.create('table.html') ?
 	// Place the new row on top
-	table = 
+	table =
 		'<tr>
 		<td>$date.format()</td>
 		<td><a target=_blank href="https://github.com/vlang/v/commit/$commit">$commit</a></td>

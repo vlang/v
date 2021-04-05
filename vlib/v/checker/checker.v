@@ -1286,7 +1286,7 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 
 pub fn (mut c Checker) call_expr(mut call_expr ast.CallExpr) ast.Type {
 	// First check everything that applies to both fns and methods
-	// TODO merge logic from call_method and call_fn
+	// TODO merge logic from method_call and fn_call
 	/*
 	for i, call_arg in call_expr.args {
 		if call_arg.is_mut {
@@ -1307,8 +1307,8 @@ pub fn (mut c Checker) call_expr(mut call_expr ast.CallExpr) ast.Type {
 		}
 	}
 	*/
-	// Now call `call_method` or `call_fn` for specific checks.
-	typ := if call_expr.is_method { c.call_method(mut call_expr) } else { c.call_fn(mut call_expr) }
+	// Now call `method_call` or `fn_call` for specific checks.
+	typ := if call_expr.is_method { c.method_call(mut call_expr) } else { c.fn_call(mut call_expr) }
 	// autofree: mark args that have to be freed (after saving them in tmp exprs)
 	free_tmp_arg_vars := c.pref.autofree && !c.is_builtin_mod && call_expr.args.len > 0
 		&& !call_expr.args[0].typ.has_flag(.optional)
@@ -1420,7 +1420,7 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, call_exp
 	}
 }
 
-pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) ast.Type {
+pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 	left_type := c.expr(call_expr.left)
 	c.expected_type = left_type
 	is_generic := left_type.has_flag(.generic)
@@ -1460,9 +1460,9 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) ast.Type {
 	// TODO: remove this for actual methods, use only for compiler magic
 	// FIXME: Argument count != 1 will break these
 	if left_type_sym.kind == .array && method_name in checker.array_builtin_methods {
-		return c.call_array_builtin_method(mut call_expr, left_type, left_type_sym)
-	} else if left_type_sym.kind == .map && method_name in ['clone', 'keys', 'move'] {
-		return c.call_map_builtin_method(mut call_expr, left_type, left_type_sym)
+		return c.array_builtin_method_call(mut call_expr, left_type, left_type_sym)
+	} else if left_type_sym.kind == .map && method_name in ['clone', 'keys', 'move', 'delete_1'] {
+		return c.map_builtin_method_call(mut call_expr, left_type, left_type_sym)
 	} else if left_type_sym.kind == .array && method_name in ['insert', 'prepend'] {
 		info := left_type_sym.info as ast.Array
 		arg_expr := if method_name == 'insert' {
@@ -1723,7 +1723,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) ast.Type {
 	return ast.void_type
 }
 
-fn (mut c Checker) call_map_builtin_method(mut call_expr ast.CallExpr, left_type ast.Type, left_type_sym ast.TypeSymbol) ast.Type {
+fn (mut c Checker) map_builtin_method_call(mut call_expr ast.CallExpr, left_type ast.Type, left_type_sym ast.TypeSymbol) ast.Type {
 	method_name := call_expr.name
 	mut ret_type := ast.void_type
 	match method_name {
@@ -1749,7 +1749,7 @@ fn (mut c Checker) call_map_builtin_method(mut call_expr ast.CallExpr, left_type
 	return call_expr.return_type
 }
 
-fn (mut c Checker) call_array_builtin_method(mut call_expr ast.CallExpr, left_type ast.Type, left_type_sym ast.TypeSymbol) ast.Type {
+fn (mut c Checker) array_builtin_method_call(mut call_expr ast.CallExpr, left_type ast.Type, left_type_sym ast.TypeSymbol) ast.Type {
 	method_name := call_expr.name
 	mut elem_typ := ast.void_type
 	if method_name == 'slice' && !c.is_builtin_mod {
@@ -1849,7 +1849,7 @@ fn (mut c Checker) call_array_builtin_method(mut call_expr ast.CallExpr, left_ty
 	return call_expr.return_type
 }
 
-pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) ast.Type {
+pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 	fn_name := call_expr.name
 	if fn_name == 'main' {
 		c.error('the `main` function cannot be called in the program', call_expr.pos)
@@ -4412,7 +4412,8 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		// variadic case can happen when arrays are converted into variadic
 		msg := if node.expr_type.has_flag(.optional) { 'an optional' } else { 'a variadic' }
 		c.error('cannot type cast $msg', node.pos)
-	} else if !c.inside_unsafe && node.typ.is_ptr() && node.expr_type.is_ptr() {
+	} else if !c.inside_unsafe && node.typ.is_ptr() && node.expr_type.is_ptr()
+		&& node.typ.deref() != ast.char_type && node.expr_type.deref() != ast.char_type {
 		ft := c.table.type_to_str(node.expr_type)
 		tt := c.table.type_to_str(node.typ)
 		c.warn('casting `$ft` to `$tt` is only allowed in `unsafe` code', node.pos)
@@ -5240,7 +5241,10 @@ pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) ast.Type {
 }
 
 pub fn (mut c Checker) unsafe_expr(mut node ast.UnsafeExpr) ast.Type {
-	assert !c.inside_unsafe
+	// assert !c.inside_unsafe
+	if c.inside_unsafe {
+		c.error('unsafe inside unsafe', node.pos)
+	}
 	c.inside_unsafe = true
 	t := c.expr(node.expr)
 	c.inside_unsafe = false

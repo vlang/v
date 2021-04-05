@@ -25,15 +25,16 @@ pub fn new_builder(initial_size int) Builder {
 }
 
 // write_bytes appends `bytes` to the accumulated buffer
-//[deprecated: 'use Builder.write_ptr() instead']
+[deprecated: 'use Builder.write_ptr() instead']
+[deprecated_after: '2021-04-18']
 [unsafe]
-pub fn (mut b Builder) write_bytes(bytes byteptr, len int) {
+pub fn (mut b Builder) write_bytes(bytes &byte, len int) {
 	unsafe { b.write_ptr(bytes, len) }
 }
 
 // write_ptr writes `len` bytes provided byteptr to the accumulated buffer
 [unsafe]
-pub fn (mut b Builder) write_ptr(ptr byteptr, len int) {
+pub fn (mut b Builder) write_ptr(ptr &byte, len int) {
 	unsafe { b.buf.push_many(ptr, len) }
 	b.len += len
 }
@@ -139,7 +140,7 @@ pub fn (b &Builder) after(n int) string {
 // .str() call.
 pub fn (mut b Builder) str() string {
 	b.buf << `\0`
-	s := unsafe { byteptr(memdup(b.buf.data, b.len)).vstring_with_len(b.len) }
+	s := unsafe { (&byte(memdup(b.buf.data, b.len))).vstring_with_len(b.len) }
 	b.len = 0
 	b.buf.trim(0)
 	return s

@@ -2330,9 +2330,14 @@ fn (mut p Parser) string_expr() ast.Expr {
 	}
 	mut node := ast.empty_expr()
 	val := p.tok.lit
-	pos := p.tok.position()
+	mut pos := p.tok.position()
+	pos.last_line = pos.line_nr + val.count('\n')
 	if p.peek_tok.kind != .str_dollar {
 		p.next()
+		if p.vet_errors.len > 0 && val.contains('\n  ') {
+			p.vet_errors = p.vet_errors.filter(!(it.pos.line_nr > pos.line_nr - 1
+				&& it.pos.line_nr <= pos.last_line - 1))
+		}
 		node = ast.StringLiteral{
 			val: val
 			is_raw: is_raw

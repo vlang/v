@@ -228,9 +228,7 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 		// users.sort() or users.sort(a > b)
 		compare_fn = match typ {
 			ast.int_type, ast.int_type.to_ptr() { 'compare_ints' }
-			ast.u64_type, ast.u64_type.to_ptr() { 'compare_u64s' }
 			ast.string_type, ast.string_type.to_ptr() { 'compare_strings' }
-			ast.f64_type, ast.f64_type.to_ptr() { 'compare_floats' }
 			else { '' }
 		}
 		if compare_fn != '' && is_reverse {

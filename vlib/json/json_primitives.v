@@ -178,24 +178,24 @@ fn encode_bool(val bool) &C.cJSON {
 }
 
 fn encode_string(val string) &C.cJSON {
-	return C.cJSON_CreateString(charptr(val.str))
+	return C.cJSON_CreateString(&char(val.str))
 }
 
 // ///////////////////////
 // user := decode_User(json_parse(js_string_var))
 fn json_parse(s string) &C.cJSON {
-	return C.cJSON_Parse(charptr(s.str))
+	return C.cJSON_Parse(&char(s.str))
 }
 
 // json_string := json_print(encode_User(user))
 fn json_print(json &C.cJSON) string {
 	s := C.cJSON_PrintUnformatted(json)
-	return unsafe { tos(byteptr(s), C.strlen(s)) }
+	return unsafe { tos(byteptr(s), C.strlen(&char(s))) }
 }
 
 fn json_print_pretty(json &C.cJSON) string {
 	s := C.cJSON_Print(json)
-	return unsafe { tos(byteptr(s), C.strlen(s)) }
+	return unsafe { tos(byteptr(s), C.strlen(&char(s))) }
 }
 
 // /  cjson wrappers

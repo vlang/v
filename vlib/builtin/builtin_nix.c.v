@@ -108,7 +108,7 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 			beforeaddr := sframe.all_before('[')
 			cmd := 'addr2line -e $executable $addr'
 			// taken from os, to avoid depending on the os module inside builtin.v
-			f := C.popen(charptr(cmd.str), 'r')
+			f := C.popen(&char(cmd.str), c'r')
 			if isnil(f) {
 				eprintln(sframe)
 				continue
@@ -117,7 +117,7 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 			mut output := ''
 			unsafe {
 				bp := &buf[0]
-				for C.fgets(charptr(bp), 1000, f) != 0 {
+				for C.fgets(&char(bp), 1000, f) != 0 {
 					output += tos(bp, vstrlen(bp))
 				}
 			}

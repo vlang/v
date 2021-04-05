@@ -4792,7 +4792,8 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			// Don't use a tmp var if a variable is simply returned: `return x`
 			if node.exprs[0] !is ast.Ident {
 				tmp = g.new_tmp_var()
-				g.write('/*tmp return var*/ ')
+				// g.write('/*tmp return var*/ ')
+				g.write(' ')
 				g.write(g.typ(g.fn_decl.return_type))
 				g.write(' ')
 				g.write(tmp)

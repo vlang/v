@@ -43,8 +43,8 @@ NB: A V string should be/is immutable from the point of view of
 */
 pub struct string {
 pub:
-	str byteptr // points to a C style 0 terminated string of bytes.
-	len int     // the length of the .str field, excluding the ending 0 byte. It is always equal to strlen(.str).
+	str &byte = 0 // points to a C style 0 terminated string of bytes.
+	len int   // the length of the .str field, excluding the ending 0 byte. It is always equal to strlen(.str).
 mut:
 	is_lit int
 }
@@ -67,14 +67,14 @@ pub mut:
 
 // vstrlen returns the V length of the C string `s` (0 terminator is not counted).
 [unsafe]
-pub fn vstrlen(s byteptr) int {
-	return unsafe { C.strlen(charptr(s)) }
+pub fn vstrlen(s &byte) int {
+	return unsafe { C.strlen(&char(s)) }
 }
 
 // tos converts a C string to a V string.
 // String data is reused, not copied.
 [unsafe]
-pub fn tos(s byteptr, len int) string {
+pub fn tos(s &byte, len int) string {
 	// This should never happen.
 	if s == 0 {
 		panic('tos(): nil string')
@@ -87,14 +87,14 @@ pub fn tos(s byteptr, len int) string {
 
 // tos_clone returns a copy of `s`.
 [unsafe]
-pub fn tos_clone(s byteptr) string {
+pub fn tos_clone(s &byte) string {
 	return unsafe { tos2(s) }.clone()
 }
 
 // tos2 does the same as `tos`, but also calculates the length. Called by `string(bytes)` casts.
 // Used only internally.
 [unsafe]
-pub fn tos2(s byteptr) string {
+pub fn tos2(s &byte) string {
 	if s == 0 {
 		panic('tos2: nil string')
 	}
@@ -106,19 +106,19 @@ pub fn tos2(s byteptr) string {
 
 // tos3 does the same as `tos2`, but for char*, to avoid warnings.
 [unsafe]
-pub fn tos3(s charptr) string {
+pub fn tos3(s &char) string {
 	if s == 0 {
 		panic('tos3: nil string')
 	}
 	return string{
-		str: byteptr(s)
+		str: &byte(s)
 		len: unsafe { C.strlen(s) }
 	}
 }
 
 // tos4 does the same as `tos2`, but returns an empty string on nil ptr.
 [unsafe]
-pub fn tos4(s byteptr) string {
+pub fn tos4(s &byte) string {
 	if s == 0 {
 		return ''
 	}
@@ -127,7 +127,7 @@ pub fn tos4(s byteptr) string {
 
 // tos5 does the same as `tos4`, but for char*, to avoid warnings.
 [unsafe]
-pub fn tos5(s charptr) string {
+pub fn tos5(s &char) string {
 	if s == 0 {
 		return ''
 	}
@@ -135,10 +135,10 @@ pub fn tos5(s charptr) string {
 }
 
 [deprecated]
-pub fn tos_lit(s charptr) string {
+pub fn tos_lit(s &char) string {
 	eprintln('warning: `tos_lit` has been deprecated, use `_SLIT` instead')
 	return string{
-		str: byteptr(s)
+		str: &byte(s)
 		len: unsafe { C.strlen(s) }
 		is_lit: 1
 	}
@@ -148,17 +148,17 @@ pub fn tos_lit(s charptr) string {
 // strings returned from this function will be normal V strings beside that (i.e. they would be
 // freed by V's -autofree mechanism, when they are no longer used).
 [unsafe]
-pub fn (bp byteptr) vstring() string {
+pub fn (bp &byte) vstring() string {
 	return string{
 		str: bp
-		len: unsafe { C.strlen(charptr(bp)) }
+		len: unsafe { C.strlen(&char(bp)) }
 	}
 }
 
 // vstring_with_len converts a C style string to a V string.
 // NB: the string data is reused, NOT copied.
 [unsafe]
-pub fn (bp byteptr) vstring_with_len(len int) string {
+pub fn (bp &byte) vstring_with_len(len int) string {
 	return string{
 		str: bp
 		len: len
@@ -169,9 +169,9 @@ pub fn (bp byteptr) vstring_with_len(len int) string {
 // vstring converts C char* to V string.
 // NB: the string data is reused, NOT copied.
 [unsafe]
-pub fn (cp charptr) vstring() string {
+pub fn (cp &char) vstring() string {
 	return string{
-		str: byteptr(cp)
+		str: &byte(cp)
 		len: unsafe { C.strlen(cp) }
 		is_lit: 0
 	}
@@ -180,9 +180,9 @@ pub fn (cp charptr) vstring() string {
 // vstring_with_len converts C char* to V string.
 // NB: the string data is reused, NOT copied.
 [unsafe]
-pub fn (cp charptr) vstring_with_len(len int) string {
+pub fn (cp &char) vstring_with_len(len int) string {
 	return string{
-		str: byteptr(cp)
+		str: &byte(cp)
 		len: len
 		is_lit: 0
 	}
@@ -196,10 +196,10 @@ pub fn (cp charptr) vstring_with_len(len int) string {
 // that can be read by the V program, but that should not be
 // managed by it, for example `os.args` is implemented using it.
 [unsafe]
-pub fn (bp byteptr) vstring_literal() string {
+pub fn (bp &byte) vstring_literal() string {
 	return string{
 		str: bp
-		len: unsafe { C.strlen(charptr(bp)) }
+		len: unsafe { C.strlen(&char(bp)) }
 		is_lit: 1
 	}
 }
@@ -207,7 +207,7 @@ pub fn (bp byteptr) vstring_literal() string {
 // vstring_with_len converts a C style string to a V string.
 // NB: the string data is reused, NOT copied.
 [unsafe]
-pub fn (bp byteptr) vstring_literal_with_len(len int) string {
+pub fn (bp &byte) vstring_literal_with_len(len int) string {
 	return string{
 		str: bp
 		len: len
@@ -219,9 +219,9 @@ pub fn (bp byteptr) vstring_literal_with_len(len int) string {
 // See also vstring_literal defined on byteptr for more details.
 // NB: the string data is reused, NOT copied.
 [unsafe]
-pub fn (cp charptr) vstring_literal() string {
+pub fn (cp &char) vstring_literal() string {
 	return string{
-		str: byteptr(cp)
+		str: &byte(cp)
 		len: unsafe { C.strlen(cp) }
 		is_lit: 1
 	}
@@ -231,9 +231,9 @@ pub fn (cp charptr) vstring_literal() string {
 // See also vstring_literal_with_len defined on byteptr.
 // NB: the string data is reused, NOT copied.
 [unsafe]
-pub fn (cp charptr) vstring_literal_with_len(len int) string {
+pub fn (cp &char) vstring_literal_with_len(len int) string {
 	return string{
-		str: byteptr(cp)
+		str: &byte(cp)
 		len: len
 		is_lit: 1
 	}
@@ -270,7 +270,7 @@ pub fn (s string) cstr() byteptr {
 */
 // cstring_to_vstring creates a copy of cstr and turns it into a v string.
 [unsafe]
-pub fn cstring_to_vstring(cstr byteptr) string {
+pub fn cstring_to_vstring(cstr &byte) string {
 	return unsafe { tos_clone(cstr) }
 }
 
@@ -483,13 +483,13 @@ pub fn (s string) i16() i16 {
 
 // f32 returns the value of the string as f32 `'1.0'.f32() == f32(1)`.
 pub fn (s string) f32() f32 {
-	// return C.atof(charptr(s.str))
+	// return C.atof(&char(s.str))
 	return f32(strconv.atof64(s))
 }
 
 // f64 returns the value of the string as f64 `'1.0'.f64() == f64(1)`.
 pub fn (s string) f64() f64 {
-	// return C.atof(charptr(s.str))
+	// return C.atof(&char(s.str))
 	return strconv.atof64(s)
 }
 
@@ -1639,9 +1639,10 @@ pub fn (a []string) join(del string) string {
 	}
 	len -= del.len
 	// Allocate enough memory
-	mut res := string{}
-	res.len = len
-	res.str = unsafe { malloc(res.len + 1) }
+	mut res := string{
+		len: len
+		str: unsafe { malloc(len + 1) }
+	}
 	mut idx := 0
 	// Go thru every string and copy its every char one by one
 	for i, val in a {

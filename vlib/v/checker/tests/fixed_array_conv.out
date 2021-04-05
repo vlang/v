@@ -17,16 +17,16 @@ vlib/v/checker/tests/fixed_array_conv.vv:6:6: error: cannot cast a fixed array (
     5 | ip = arr
     6 | _ = &int(arr)
       |      ~~~~~~~~
-    7 | 
+    7 |
     8 | unsafe {
 vlib/v/checker/tests/fixed_array_conv.vv:9:13: error: cannot use `[2]int` as `voidptr` in argument 1 to `memdup`
-    7 | 
+    7 |
     8 | unsafe {
     9 |     _ = memdup(arr, 1)
       |                ~~~
    10 |     _ = tos(arr, 1)
    11 |     fn (p &int){}(arr)
-vlib/v/checker/tests/fixed_array_conv.vv:10:10: error: cannot use `[2]int` as `byteptr` in argument 1 to `tos`
+vlib/v/checker/tests/fixed_array_conv.vv:10:10: error: cannot use `[2]int` as `&byte` in argument 1 to `tos`
     8 | unsafe {
     9 |     _ = memdup(arr, 1)
    10 |     _ = tos(arr, 1)

@@ -28,7 +28,9 @@ pub mut:
 	env_is_custom bool     // true, when the environment was customized with .set_environment
 	env           []string // the environment with which the process was started  (list of 'var=val')
 	use_stdio_ctl bool     // when true, then you can use p.stdin_write(), p.stdout_slurp() and p.stderr_slurp()
-	stdio_fd      [3]int   // the file descriptors
+	use_pgroup    bool     // when true, the process will create a new process group, enabling .signal_pgkill()
+	stdio_fd      [3]int   // the stdio file descriptors for the child process, used only by the nix implementation
+	wdata         voidptr  // the WProcess; used only by the windows implementation
 }
 
 // new_process - create a new process descriptor
@@ -39,6 +41,7 @@ pub mut:
 pub fn new_process(filename string) &Process {
 	return &Process{
 		filename: filename
+		stdio_fd: [-1, -1, -1]!
 	}
 }
 
@@ -80,6 +83,15 @@ pub fn (mut p Process) signal_kill() {
 	}
 	p._signal_kill()
 	p.status = .aborted
+	return
+}
+
+// signal_pgkill - kills the whole process group
+pub fn (mut p Process) signal_pgkill() {
+	if p.status !in [.running, .stopped] {
+		return
+	}
+	p._signal_pgkill()
 	return
 }
 
@@ -159,33 +171,55 @@ pub fn (mut p Process) set_redirect_stdio() {
 
 pub fn (mut p Process) stdin_write(s string) {
 	p._check_redirection_call('stdin_write')
-	fd_write(p.stdio_fd[0], s)
+	$if windows {
+		p.win_write_string(0, s)
+	} $else {
+		fd_write(p.stdio_fd[0], s)
+	}
 }
 
 // will read from stdout pipe, will only return when EOF (end of file) or data
 // means this will block unless there is data
 pub fn (mut p Process) stdout_slurp() string {
 	p._check_redirection_call('stdout_slurp')
-	return fd_slurp(p.stdio_fd[1]).join('')
+	$if windows {
+		return p.win_slurp(1)
+	} $else {
+		return fd_slurp(p.stdio_fd[1]).join('')
+	}
 }
 
 // read from stderr pipe, wait for data or EOF
 pub fn (mut p Process) stderr_slurp() string {
 	p._check_redirection_call('stderr_slurp')
-	return fd_slurp(p.stdio_fd[2]).join('')
+	$if windows {
+		return p.win_slurp(2)
+	} $else {
+		return fd_slurp(p.stdio_fd[2]).join('')
+	}
 }
 
 // read from stdout, return if data or not
 pub fn (mut p Process) stdout_read() string {
 	p._check_redirection_call('stdout_read')
-	s, _ := fd_read(p.stdio_fd[1], 4096)
-	return s
+	$if windows {
+		s, _ := p.win_read_string(1, 4096)
+		return s
+	} $else {
+		s, _ := fd_read(p.stdio_fd[1], 4096)
+		return s
+	}
 }
 
 pub fn (mut p Process) stderr_read() string {
 	p._check_redirection_call('stderr_read')
-	s, _ := fd_read(p.stdio_fd[2], 4096)
-	return s
+	$if windows {
+		s, _ := p.win_read_string(2, 4096)
+		return s
+	} $else {
+		s, _ := fd_read(p.stdio_fd[2], 4096)
+		return s
+	}
 }
 
 // _check_redirection_call - should be called just by stdxxx methods
@@ -222,6 +256,15 @@ fn (mut p Process) _signal_kill() {
 		p.win_kill_process()
 	} $else {
 		p.unix_kill_process()
+	}
+}
+
+// _signal_pgkill - should not be called directly, except by p.signal_pgkill
+fn (mut p Process) _signal_pgkill() {
+	$if windows {
+		p.win_kill_pgroup()
+	} $else {
+		p.unix_kill_pgroup()
 	}
 }
 

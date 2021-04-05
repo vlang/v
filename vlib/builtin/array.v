@@ -571,46 +571,6 @@ fn compare_ints_reverse(a &int, b &int) int {
 	return 0
 }
 
-fn compare_u64s(a &u64, b &u64) int {
-	if *a < *b {
-		return -1
-	}
-	if *a > *b {
-		return 1
-	}
-	return 0
-}
-
-fn compare_u64s_reverse(a &u64, b &u64) int {
-	if *a > *b {
-		return -1
-	}
-	if *a < *b {
-		return 1
-	}
-	return 0
-}
-
-fn compare_floats(a &f64, b &f64) int {
-	if *a < *b {
-		return -1
-	}
-	if *a > *b {
-		return 1
-	}
-	return 0
-}
-
-fn compare_floats_reverse(a &f64, b &f64) int {
-	if *a > *b {
-		return -1
-	}
-	if *a < *b {
-		return 1
-	}
-	return 0
-}
-
 // sort sorts an array of int in place in ascending order.
 pub fn (mut a []int) sort() {
 	a.sort_with_compare(compare_ints)
@@ -649,38 +609,6 @@ pub fn (mut a array) grow_len(amount int) {
 	a.len += amount
 }
 
-// array_eq<T> checks if two arrays contain all the same elements in the same order.
-// []int == []int (also for: i64, f32, f64, byte, string)
-/*
-fn array_eq<T>(a1, a2 []T) bool {
-	if a1.len != a2.len {
-		return false
-	}
-	for i in 0..a1.len {
-		if a1[i] != a2[i] {
-			return false
-		}
-	}
-	return true
-}
-
-pub fn (a []int) eq(a2 []int) bool {
-	return array_eq(a, a2)
-}
-
-pub fn (a []i64) eq(a2 []i64) bool {
-	return array_eq(a, a2)
-}
-
-
-pub fn (a []byte) eq(a2 []byte) bool {
-	return array_eq(a, a2)
-}
-
-pub fn (a []f32) eq(a2 []f32) bool {
-	return array_eq(a, a2)
-}
-*/
 // eq checks if the arrays have the same elements or not.
 // TODO: make it work with all types.
 pub fn (a1 []string) eq(a2 []string) bool {
@@ -698,48 +626,6 @@ pub fn (a1 []string) eq(a2 []string) bool {
 		}
 	}
 	return true
-}
-
-// compare_i64 for []i64 sort_with_compare()
-// sort []i64 with quicksort
-// usage :
-// mut x := [i64(100),10,70,28,92]
-// x.sort_with_compare(compare_i64)
-// println(x)     // Sorted i64 Array
-// output:
-// [10, 28, 70, 92, 100]
-pub fn compare_i64(a &i64, b &i64) int {
-	if *a < *b {
-		return -1
-	}
-	if *a > *b {
-		return 1
-	}
-	return 0
-}
-
-// compare_f64 for []f64 sort_with_compare()
-// ref. compare_i64(...)
-pub fn compare_f64(a &f64, b &f64) int {
-	if *a < *b {
-		return -1
-	}
-	if *a > *b {
-		return 1
-	}
-	return 0
-}
-
-// compare_f32 for []f32 sort_with_compare()
-// ref. compare_i64(...)
-pub fn compare_f32(a &f32, b &f32) int {
-	if *a < *b {
-		return -1
-	}
-	if *a > *b {
-		return 1
-	}
-	return 0
 }
 
 // pointers returns a new array, where each element
@@ -767,6 +653,6 @@ pub fn (data voidptr) vbytes(len int) []byte {
 
 // byteptr.vbytes() - makes a V []byte structure from a C style memory buffer. NB: the data is reused, NOT copied!
 [unsafe]
-pub fn (data byteptr) vbytes(len int) []byte {
+pub fn (data &byte) vbytes(len int) []byte {
 	return unsafe { voidptr(data).vbytes(len) }
 }

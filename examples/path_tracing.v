@@ -91,7 +91,7 @@ fn new_image(w int, h int) Image {
 	return Image{
 		width: w
 		height: h
-		data: &Vec(vcalloc(vecsize * w * h))
+		data: unsafe { &Vec(vcalloc(vecsize * w * h)) }
 	}
 }
 
