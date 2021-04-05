@@ -1,4 +1,5 @@
 import sqlite
+import mysql
 
 struct Module {
 	id           int
@@ -40,5 +41,34 @@ fn main() {
 
 	println(modul.name)
 	println(modul.creator.name)
+
+	mysql()
+}
+
+fn mysql() {
+	mut conn := mysql.Connection{
+		host: 'localhost'
+		port: 3306
+		username: 'root'
+		password: ''
+		dbname: 'mysql'
+	}
+	conn.connect() or { panic(err) }
+	_ := conn.query("create table Module (id integer primary key, name text default '', nr_downloads int default 0, creator int default 0);") or { panic(err) }
+	_ := conn.query("create table User (id integer primary key, age int default 0, name text default '', is_customer int default 0);") or { panic(err) }
+	
+	mod := Module{
+		name: 'test'
+		nr_downloads: 10
+		creator: User{
+			age: 21
+			name: 'VUser'
+			is_customer: true
+		}
+	}
+
+	sql conn {
+		insert mod into Module
+	}
 
 }

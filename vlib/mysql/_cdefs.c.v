@@ -5,6 +5,10 @@ struct C.MYSQL {
 }
 
 [typedef]
+struct C.MYSQL_STMT {
+}
+
+[typedef]
 struct C.MYSQL_RES {
 }
 
@@ -30,6 +34,14 @@ struct C.MYSQL_FIELD {
 	decimals         u32 // Number of decimals in field
 	charsetnr        u32 // Character set
 	@type            int // Type of field. See mysql_com.h for types
+}
+
+[typedef]
+struct C.MYSQL_BIND {
+	length &u64
+	is_null &bool
+	buffer voidptr
+	buffer_length u64
 }
 
 fn C.mysql_init(mysql &C.MYSQL) &C.MYSQL
@@ -75,6 +87,12 @@ fn C.mysql_free_result(res &C.MYSQL_RES)
 fn C.mysql_real_escape_string_quote(mysql &C.MYSQL, to byteptr, from byteptr, len u64, quote byte) u64
 
 fn C.mysql_close(sock &C.MYSQL)
+
+fn C.mysql_stmt_init(mysql &C.MYSQL) &C.MYSQL_STMT
+
+fn C.mysql_stmt_close(stmt &C.MYSQL_STMT) bool
+
+fn C.mysql_stmt_prepare(stmt &C.MYSQL_STMT, stmt_str byteptr, len u64) int
 
 // INFO & VERSION
 fn C.mysql_info(mysql &C.MYSQL) byteptr
