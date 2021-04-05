@@ -28,7 +28,7 @@ fn (mut ws Client) socket_read(mut buffer []byte) ?int {
 }
 
 // socket_read reads from socket into the provided byte pointer and length
-fn (mut ws Client) socket_read_ptr(buf_ptr byteptr, len int) ?int {
+fn (mut ws Client) socket_read_ptr(buf_ptr &byte, len int) ?int {
 	lock  {
 		if ws.state in [.closed, .closing] || ws.conn.sock.handle <= 1 {
 			return error('socket_read_ptr: trying to read a closed socket')
