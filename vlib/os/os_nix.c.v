@@ -170,15 +170,16 @@ pub fn execute(cmd string) Result {
 			output: 'exec("$cmd") failed'
 		}
 	}
-	buf := unsafe { &char(malloc(4096)) }
+	buf := unsafe { malloc(4096) }
 	mut res := strings.new_builder(1024)
 	defer {
 		unsafe { res.free() }
 	}
 	unsafe {
 		bufbp := buf
-		for C.fgets(bufbp, 4096, f) != 0 {
-			res.write_ptr(bufbp, vstrlen(bufbp))
+		for C.fgets(&char(bufbp), 4096, f) != 0 {
+			buflen := vstrlen(bufbp)
+			res.write_ptr(bufbp, buflen)
 		}
 	}
 	soutput := res.str()
