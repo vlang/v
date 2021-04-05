@@ -14,11 +14,15 @@ jobs:
       run: make
     - name: Regenerate v.c and v_win.c
       run: |
+        git config http.sslVerify false
+        git config --local user.email "github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "github-actions[bot]"
+
         COMMIT_HASH=$(git rev-parse --short HEAD)
         COMMIT_MSG=$(git log -1 --oneline --pretty='%s' HEAD)
 
         rm -rf vc
-        git clone https://github.com/vlang/vc
+        git clone https://${GITHUB_ACTOR}:${{ secrets.GITHUB_TOKEN }}@github.com/vlang/vc.git
 
         rm -rf vc/v.c vc/v_win.c
 
