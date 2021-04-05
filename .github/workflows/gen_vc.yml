@@ -15,8 +15,8 @@ jobs:
     - name: Regenerate v.c and v_win.c
       run: |
         git config http.sslVerify false
-        git config --local user.email "github-actions[bot]@users.noreply.github.com"
-        git config --local user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        git config --global user.name "github-actions[bot]"
 
         COMMIT_HASH=$(git rev-parse --short HEAD)
         COMMIT_MSG=$(git log -1 --oneline --pretty='%s' HEAD)
