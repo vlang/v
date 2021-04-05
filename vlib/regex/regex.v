@@ -109,7 +109,7 @@ fn (re RE) get_char(in_txt string, i int) (u32,int) {
 // get_charb get a char from position i and return an u32 with the unicode code
 [inline]
 [direct_array_access]
-fn (re RE) get_charb(in_txt byteptr, i int) (u32,int) {
+fn (re RE) get_charb(in_txt &byte, i int) (u32,int) {
 	// ascii 8 bit
 	if (re.flag & f_bin) !=0 ||	unsafe {in_txt[i]} & 0x80 == 0 {
 		return u32(unsafe {in_txt[i]}), 1
@@ -1567,7 +1567,7 @@ pub mut:
 }
 
 [direct_array_access]
-pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
+pub fn (mut re RE) match_base(in_txt &byte, in_txt_len int ) (int,int) {
 	// result status
 	mut result   := no_match_found    // function return
 
