@@ -354,8 +354,8 @@ fn new_map_init_2(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, fre
 	for _ in 0 .. n {
 		unsafe {
 			out.set_1(pkey, pval)
-			pkey += key_bytes
-			pval += value_bytes
+			pkey = pkey + key_bytes
+			pval = pval + value_bytes
 		}
 	}
 	return out
@@ -696,7 +696,7 @@ pub fn (m &map) keys() []string {
 		unsafe {
 			pkey := m.key_values.key(i)
 			m.clone_fn(item, pkey)
-			item += m.key_bytes
+			item = item + m.key_bytes
 		}
 	}
 	return keys
@@ -711,7 +711,7 @@ fn (m &map) keys_1() array {
 			unsafe {
 				pkey := m.key_values.key(i)
 				m.clone_fn(item, pkey)
-				item += m.key_bytes
+				item = item + m.key_bytes
 			}
 		}
 		return keys
@@ -723,7 +723,7 @@ fn (m &map) keys_1() array {
 		unsafe {
 			pkey := m.key_values.key(i)
 			m.clone_fn(item, pkey)
-			item += m.key_bytes
+			item = item + m.key_bytes
 		}
 	}
 	return keys
