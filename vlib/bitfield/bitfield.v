@@ -137,6 +137,36 @@ pub fn (mut instance BitField) clear_bit(bitnr int) {
 	instance.field[bitslot(bitnr)] &= ~bitmask(bitnr)
 }
 
+// extract returns the value converted from a slice of bit numbers
+// from 'start' by the length of 'len'.
+pub fn (instance BitField) extract(start int, len int) u64 {
+	if start < 0 {
+		return 0 // or panic?
+	}
+	mut output := u64(0)
+	for i in 0..len {
+		output |= u64(instance.get_bit(start + i)) << i
+	}
+	return output
+}
+
+// insert sets bit numbers from 'start' to 'len' length with
+// the value converted from the number 'value'.
+pub fn (mut instance BitField) insert<T>(start int, len int, _value T) {
+	if start < 0 {
+		return // or panic?
+	}
+	mut value := _value
+	for pos in start..start+len {
+		if value & 1 == 1 {
+			instance.set_bit(pos)
+		} else {
+			instance.clear_bit(pos)
+		}
+		value >>= 1
+	}
+}
+
 // set_all sets all bits in the array to 1.
 pub fn (mut instance BitField) set_all() {
 	for i in 0 .. zbitnslots(instance.size) {

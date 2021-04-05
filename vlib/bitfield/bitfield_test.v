@@ -16,6 +16,15 @@ fn test_bf_set_clear_toggle_get() {
 	assert instance.get_bit(47) == 1
 }
 
+fn test_bf_insert_extract() {
+	mut instance := bitfield.new(11)
+	instance.set_all()
+	instance.insert(2, 9, 3)
+	assert instance.extract(2, 1) == 1
+	assert instance.extract(2, 8) == 3
+	assert instance.extract(10, 1) == 0
+}
+
 fn test_bf_and_not_or_xor() {
 	len := 80
 	mut input1 := bitfield.new(len)
