@@ -99,7 +99,7 @@ pub fn environ() map[string]string {
 			if isnil(derefed) {
 				break
 			}
-			eline := unsafe { cstring_to_vstring(derefed) }
+			eline := unsafe { cstring_to_vstring(&byte(derefed)) }
 			eq_index := eline.index_byte(`=`)
 			if eq_index > 0 {
 				res[eline[0..eq_index]] = eline[eq_index + 1..]
