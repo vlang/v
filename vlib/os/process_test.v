@@ -51,7 +51,7 @@ fn test_run() {
 	assert p.status == .exited
 	//
 	eprintln('polling iterations: $i')
-	assert i < 20
+	assert i < 50
 }
 
 fn test_wait() {
