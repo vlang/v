@@ -71,7 +71,7 @@ mut:
 /******************************************************************************
 * Texture functions
 ******************************************************************************/
-fn create_texture(w int, h int, buf byteptr) C.sg_image {
+fn create_texture(w int, h int, buf &byte) C.sg_image {
 	sz := w * h * 4
 	mut img_desc := C.sg_image_desc{
 		width: w
@@ -100,7 +100,7 @@ fn destroy_texture(sg_img C.sg_image) {
 }
 
 // Use only if usage: .dynamic is enabled
-fn update_text_texture(sg_img C.sg_image, w int, h int, buf byteptr) {
+fn update_text_texture(sg_img C.sg_image, w int, h int, buf &byte) {
 	sz := w * h * 4
 	mut tmp_sbc := C.sg_image_content{}
 	tmp_sbc.subimage[0][0] = C.sg_subimage_content{
@@ -175,7 +175,7 @@ fn init_cube_glsl(mut app App) {
 	mut vert_buffer_desc := C.sg_buffer_desc{}
 	unsafe { C.memset(&vert_buffer_desc, 0, sizeof(vert_buffer_desc)) }
 	vert_buffer_desc.size = vertices.len * int(sizeof(Vertex_t))
-	vert_buffer_desc.content = byteptr(vertices.data)
+	vert_buffer_desc.content = &byte(vertices.data)
 	vert_buffer_desc.@type = .vertexbuffer
 	vert_buffer_desc.label = 'cube-vertices'.str
 	vbuf := gfx.make_buffer(&vert_buffer_desc)
@@ -193,7 +193,7 @@ fn init_cube_glsl(mut app App) {
 	mut index_buffer_desc := C.sg_buffer_desc{}
 	unsafe {C.memset(&index_buffer_desc, 0, sizeof(index_buffer_desc))}
 	index_buffer_desc.size    = indices.len * int(sizeof(u16))
-	index_buffer_desc.content = byteptr(indices.data)
+	index_buffer_desc.content = &byte(indices.data)
 	index_buffer_desc.@type   = .indexbuffer
 	index_buffer_desc.label   = "cube-indices".str
 	ibuf := gfx.make_buffer(&index_buffer_desc)

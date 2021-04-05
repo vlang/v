@@ -17,7 +17,7 @@ import stbi
 /******************************************************************************
 * Texture functions
 ******************************************************************************/
-pub fn create_texture(w int, h int, buf byteptr) C.sg_image {
+pub fn create_texture(w int, h int, buf &byte) C.sg_image {
 	sz := w * h * 4
 	mut img_desc := C.sg_image_desc{
 		width: w
@@ -70,7 +70,7 @@ pub fn (mut obj_part ObjPart) create_pipeline(in_part []int, shader C.sg_shader,
 	mut vert_buffer_desc := C.sg_buffer_desc{}
 	unsafe { C.memset(&vert_buffer_desc, 0, sizeof(vert_buffer_desc)) }
 	vert_buffer_desc.size = obj_buf.vbuf.len * int(sizeof(Vertex_pnct))
-	vert_buffer_desc.content = byteptr(obj_buf.vbuf.data)
+	vert_buffer_desc.content = &byte(obj_buf.vbuf.data)
 	vert_buffer_desc.@type = .vertexbuffer
 	vert_buffer_desc.label = 'vertbuf_part_${in_part:03}'.str
 	vbuf := gfx.make_buffer(&vert_buffer_desc)
@@ -79,7 +79,7 @@ pub fn (mut obj_part ObjPart) create_pipeline(in_part []int, shader C.sg_shader,
 	mut index_buffer_desc := C.sg_buffer_desc{}
 	unsafe {C.memset(&index_buffer_desc, 0, sizeof(index_buffer_desc))}
 	index_buffer_desc.size    = obj_buf.ibuf.len * int(sizeof(u32))
-	index_buffer_desc.content = byteptr(obj_buf.ibuf.data)
+	index_buffer_desc.content = &byte(obj_buf.ibuf.data)
 	index_buffer_desc.@type   = .indexbuffer
 	index_buffer_desc.label   = "indbuf_part_${in_part:03}".str
 	ibuf := gfx.make_buffer(&index_buffer_desc)
