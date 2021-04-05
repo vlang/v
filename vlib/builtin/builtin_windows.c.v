@@ -36,7 +36,7 @@ pub mut:
 	f_size_of_struct u32
 	f_key            voidptr
 	f_line_number    u32
-	f_file_name      byteptr
+	f_file_name      &byte
 	f_address        u64
 }
 
@@ -46,7 +46,7 @@ fn C.SymSetOptions(symoptions u32) u32
 // returns handle
 fn C.GetCurrentProcess() voidptr
 
-fn C.SymInitialize(h_process voidptr, p_user_search_path byteptr, b_invade_process int) int
+fn C.SymInitialize(h_process voidptr, p_user_search_path &byte, b_invade_process int) int
 
 fn C.CaptureStackBackTrace(frames_to_skip u32, frames_to_capture u32, p_backtrace voidptr, p_backtrace_hash voidptr) u16
 
@@ -176,7 +176,7 @@ fn print_backtrace_skipping_top_frames_mingw(skipframes int) bool {
 	return false
 }
 
-fn C.tcc_backtrace(fmt charptr, other ...charptr) int
+fn C.tcc_backtrace(fmt &char) int
 
 fn print_backtrace_skipping_top_frames_tcc(skipframes int) bool {
 	$if tinyc {
@@ -184,7 +184,7 @@ fn print_backtrace_skipping_top_frames_tcc(skipframes int) bool {
 			eprintln('backtraces are disabled')
 			return false
 		} $else {
-			C.tcc_backtrace('Backtrace')
+			C.tcc_backtrace(c'Backtrace')
 			return true
 		}
 	} $else {
