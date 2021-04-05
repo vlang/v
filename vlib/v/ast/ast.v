@@ -1605,7 +1605,7 @@ pub fn (node Node) position() token.Position {
 		StructField {
 			return node.pos.extend(node.type_pos)
 		}
-		MatchBranch, SelectBranch, EnumField, ConstField, StructInitField, GlobalField, Param {
+		MatchBranch, SelectBranch, EnumField, ConstField, StructInitField, GlobalField, CallArg {
 			return node.pos
 		}
 		IfBranch {
@@ -1627,6 +1627,9 @@ pub fn (node Node) position() token.Position {
 				}
 			}
 		}
+		Param {
+			return node.pos.extend(node.type_pos)
+		}
 		File {
 			mut pos := token.Position{}
 			if node.stmts.len > 0 {
@@ -1635,9 +1638,6 @@ pub fn (node Node) position() token.Position {
 				pos = first_pos.extend_with_last_line(last_pos, last_pos.line_nr)
 			}
 			return pos
-		}
-		CallArg {
-			return node.pos
 		}
 	}
 }
