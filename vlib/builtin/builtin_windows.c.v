@@ -115,7 +115,9 @@ fn print_backtrace_skipping_top_frames_msvc(skipframes int) bool {
 		si.f_size_of_struct = sizeof(SymbolInfo) // Note: C.SYMBOL_INFO is 88
 		si.f_max_name_len = sizeof(SymbolInfoContainer) - sizeof(SymbolInfo) - 1
 		fname := &char(&si.f_name)
-		mut sline64 := Line64{}
+		mut sline64 := Line64{
+			f_file_name: &byte(0)
+		}
 		sline64.f_size_of_struct = sizeof(Line64)
 
 		handle := C.GetCurrentProcess()
