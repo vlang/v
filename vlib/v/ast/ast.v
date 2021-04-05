@@ -259,6 +259,7 @@ pub:
 pub struct InterfaceDecl {
 pub:
 	name         string
+	name_pos     token.Position
 	field_names  []string
 	is_pub       bool
 	methods      []FnDecl
@@ -365,7 +366,6 @@ pub:
 	language        Language
 	no_body         bool // just a definition `fn C.malloc()`
 	is_builtin      bool // this function is defined in builtin/strconv
-	pos             token.Position // function declaration position
 	body_pos        token.Position // function bodys position
 	file            string
 	generic_params  []GenericParam
@@ -373,15 +373,17 @@ pub:
 	attrs           []Attr
 	skip_gen        bool // this function doesn't need to be generated (for example [if foo])
 pub mut:
-	stmts         []Stmt
-	defer_stmts   []DeferStmt
-	return_type   Type
-	has_return    bool
-	comments      []Comment // comments *after* the header, but *before* `{`; used for InterfaceDecl
-	next_comments []Comment // coments that are one line after the decl; used for InterfaceDecl
-	source_file   &File = 0
-	scope         &Scope
-	label_names   []string
+	stmts           []Stmt
+	defer_stmts     []DeferStmt
+	return_type     Type
+	return_type_pos token.Position // `string` in `fn (u User) name() string` position
+	has_return      bool
+	comments        []Comment // comments *after* the header, but *before* `{`; used for InterfaceDecl
+	next_comments   []Comment // coments that are one line after the decl; used for InterfaceDecl
+	source_file     &File = 0
+	scope           &Scope
+	label_names     []string
+	pos             token.Position // function declaration position
 }
 
 pub struct GenericParam {
@@ -1719,7 +1721,8 @@ pub fn (node Node) children() []Node {
 				children << node.expr
 			}
 			InterfaceDecl {
-				return node.methods.map(Node(Stmt(it)))
+				children << node.methods.map(Node(Stmt(it)))
+				children << node.fields.map(Node(it))
 			}
 			AssignStmt {
 				children << node.left.map(Node(it))
