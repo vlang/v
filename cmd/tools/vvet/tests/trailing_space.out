@@ -1,0 +1,1 @@
+cmd/tools/vvet/tests/trailing_space.vv:6: error: Looks like you have trailing whitespace.

@@ -1,0 +1,7 @@
+// NB: This file has and *should* have trailing spaces.
+// When making changes, please ensure they are not removed.
+
+fn main() {
+	// cmt with spaces afterwards  
+	var := 'spaces after here too'  
+}
