@@ -7,7 +7,7 @@ pub const (
 
 fn C.LoadLibrary(libfilename &u16) voidptr
 
-fn C.GetProcAddress(handle voidptr, procname byteptr) voidptr
+fn C.GetProcAddress(handle voidptr, procname &byte) voidptr
 
 fn C.FreeLibrary(handle voidptr) bool
 

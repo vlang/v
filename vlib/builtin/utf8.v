@@ -21,7 +21,7 @@ pub fn utf32_to_str_no_malloc(code u32, buf voidptr) string {
 	icode := int(code) // Prevents doing casts everywhere
 	mut res := ''
 	unsafe {
-		mut buffer := byteptr(buf)
+		mut buffer := &byte(buf)
 		if icode <= 127 {
 			// 0x7F
 			buffer[0] = byte(icode)
