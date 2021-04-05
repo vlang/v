@@ -33,7 +33,7 @@ fn C.zip_entry_write(&Zip, voidptr, size_t) int
 
 fn C.zip_entry_fwrite(&Zip, &char) int
 
-fn C.zip_entry_read(&Zip, &&byte, &size_t) int
+fn C.zip_entry_read(&Zip, &voidptr, &size_t) int
 
 fn C.zip_entry_fread(&Zip, &char) int
 
@@ -84,7 +84,7 @@ pub fn open(name string, level CompressionLevel, mode OpenMode) ?&Zip {
 	if name.len == 0 {
 		return error('szip: name of file empty')
 	}
-	p_zip := &Zip(C.zip_open(name.str, int(level), char(mode.to_byte())))
+	p_zip := &Zip(C.zip_open(&char(name.str), int(level), char(mode.to_byte())))
 	if isnil(p_zip) {
 		return error('szip: cannot open/create/append new zip archive')
 	}
@@ -102,7 +102,7 @@ pub fn (mut z Zip) close() {
 // a new entry. In readonly mode the function tries to locate the entry
 // in global dictionary.
 pub fn (mut zentry Zip) open_entry(name string) ? {
-	res := C.zip_entry_open(zentry, name.str)
+	res := C.zip_entry_open(zentry, &char(name.str))
 	if res == -1 {
 		return error('szip: cannot open archive entry')
 	}
@@ -122,7 +122,7 @@ pub fn (mut zentry Zip) close_entry() {
 // All slashes MUST be forward slashes '/' as opposed to backwards slashes '\'
 // for compatibility with Amiga and UNIX file systems etc.
 pub fn (mut zentry Zip) name() string {
-	name := C.zip_entry_name(zentry)
+	name := unsafe { &byte(C.zip_entry_name(zentry)) }
 	if name == 0 {
 		return ''
 	}
@@ -172,7 +172,7 @@ pub fn (mut zentry Zip) write_entry(data []byte) ? {
 
 // create_entry compresses a file for the current zip entry.
 pub fn (mut zentry Zip) create_entry(name string) ? {
-	res := C.zip_entry_fwrite(zentry, name.str)
+	res := C.zip_entry_fwrite(zentry, &char(name.str))
 	if res != 0 {
 		return error('szip: failed to create entry')
 	}
@@ -185,7 +185,7 @@ pub fn (mut zentry Zip) create_entry(name string) ? {
 pub fn (mut zentry Zip) read_entry() ?voidptr {
 	mut buf := &byte(0)
 	mut bsize := size_t(0)
-	res := C.zip_entry_read(zentry, &buf, &bsize)
+	res := C.zip_entry_read(zentry, unsafe { &voidptr(&buf) }, &bsize)
 	if res == -1 {
 		return error('szip: cannot read properly data from entry')
 	}
@@ -197,7 +197,7 @@ pub fn (mut zentry Zip) extract_entry(path string) ? {
 	if !os.is_file(path) {
 		return error('szip: cannot open file for extracting, "$path" not exists')
 	}
-	res := C.zip_entry_fread(zentry, path.str)
+	res := C.zip_entry_fread(zentry, &char(path.str))
 	if res != 0 {
 		return error('szip: failed to extract entry')
 	}
@@ -205,7 +205,7 @@ pub fn (mut zentry Zip) extract_entry(path string) ? {
 
 // extract zip file to directory
 pub fn extract_zip_to_dir(file string, dir string) ?bool {
-	if C.access(dir.str, 0) == -1 {
+	if C.access(&char(dir.str), 0) == -1 {
 		return error('szip: cannot open directory for extracting, directory not exists')
 	}
 	res := C.zip_extract_without_callback(&char(file.str), &char(dir.str))
