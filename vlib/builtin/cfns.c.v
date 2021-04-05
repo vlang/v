@@ -173,7 +173,7 @@ fn C.strerror(int) &char
 
 fn C.snprintf(str &char, size size_t, format &char, opt ...voidptr) int
 
-fn C.fprintf(&char, ...&char)
+fn C.fprintf(voidptr, &char, ...voidptr)
 
 [trusted]
 fn C.WIFEXITED(status int) bool
