@@ -46,13 +46,13 @@ pub fn proc_pidpath(int, voidptr, int) int
 fn C.realpath(&char, &char) &char
 
 // fn C.chmod(byteptr, mode_t) int
-fn C.chmod(&byte, u32) int
+fn C.chmod(&char, u32) int
 
-fn C.printf(&byte, ...voidptr) int
+fn C.printf(&char, ...voidptr) int
 
-fn C.puts(&byte) int
+fn C.puts(&char) int
 
-fn C.fputs(str &byte, stream &C.FILE) int
+fn C.fputs(str &char, stream &C.FILE) int
 
 fn C.fflush(&C.FILE) int
 
@@ -173,7 +173,7 @@ fn C.strerror(int) &char
 
 fn C.snprintf(str &char, size size_t, format &char, opt ...voidptr) int
 
-fn C.fprintf(&byte, ...&byte)
+fn C.fprintf(&char, ...&char)
 
 [trusted]
 fn C.WIFEXITED(status int) bool
