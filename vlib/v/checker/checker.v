@@ -353,7 +353,7 @@ pub fn (mut c Checker) interface_decl(decl ast.InterfaceDecl) {
 	for method in decl.methods {
 		c.check_valid_snake_case(method.name, 'method name', method.pos)
 		if method.return_type != ast.Type(0) {
-			c.ensure_type_exists(method.return_type, method.pos) or { return }
+			c.ensure_type_exists(method.return_type, method.return_type_pos) or { return }
 		}
 		for param in method.params {
 			c.ensure_type_exists(param.typ, param.pos) or { return }

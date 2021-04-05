@@ -293,12 +293,14 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		}
 	}
 	// Return type
+	mut return_type_pos := p.tok.position()
 	mut return_type := ast.void_type
 	// don't confuse token on the next line: fn decl, [attribute]
 	same_line := p.tok.line_nr == p.prev_tok.line_nr
 	if (p.tok.kind.is_start_of_type() && (same_line || p.tok.kind != .lsbr))
 		|| (same_line && p.tok.kind == .key_fn) {
 		return_type = p.parse_type()
+		return_type_pos = return_type_pos.extend(p.prev_tok.position())
 	}
 	mut type_sym_method_idx := 0
 	no_body := p.tok.kind != .lcbr
@@ -398,6 +400,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		mod: p.mod
 		stmts: stmts
 		return_type: return_type
+		return_type_pos: return_type_pos
 		params: params
 		is_manualfree: is_manualfree
 		is_deprecated: is_deprecated
@@ -574,10 +577,12 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	}
 	mut same_line := p.tok.line_nr == p.prev_tok.line_nr
 	mut return_type := ast.void_type
+	mut return_type_pos := p.tok.position()
 	// lpar: multiple return types
 	if same_line {
 		if p.tok.kind.is_start_of_type() {
 			return_type = p.parse_type()
+			return_type_pos = return_type_pos.extend(p.tok.position())
 		} else if p.tok.kind != .lcbr {
 			p.error_with_pos('expected return type, not $p.tok for anonymous function',
 				p.tok.position())
@@ -618,6 +623,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 			mod: p.mod
 			stmts: stmts
 			return_type: return_type
+			return_type_pos: return_type_pos
 			params: args
 			is_variadic: is_variadic
 			is_method: false
