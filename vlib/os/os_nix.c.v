@@ -40,16 +40,16 @@ pub const (
 
 struct C.utsname {
 mut:
-	sysname  charptr
-	nodename charptr
-	release  charptr
-	version  charptr
-	machine  charptr
+	sysname  &char
+	nodename &char
+	release  &char
+	version  &char
+	machine  &char
 }
 
 fn C.uname(name voidptr) int
 
-fn C.symlink(charptr, charptr) int
+fn C.symlink(&char, &char) int
 
 pub fn uname() Uname {
 	mut u := Uname{}
@@ -58,11 +58,11 @@ pub fn uname() Uname {
 		x := malloc(int(utsize))
 		d := &C.utsname(x)
 		if C.uname(d) == 0 {
-			u.sysname = cstring_to_vstring(byteptr(d.sysname))
-			u.nodename = cstring_to_vstring(byteptr(d.nodename))
-			u.release = cstring_to_vstring(byteptr(d.release))
-			u.version = cstring_to_vstring(byteptr(d.version))
-			u.machine = cstring_to_vstring(byteptr(d.machine))
+			u.sysname = cstring_to_vstring(d.sysname)
+			u.nodename = cstring_to_vstring(d.nodename)
+			u.release = cstring_to_vstring(d.release)
+			u.version = cstring_to_vstring(d.version)
+			u.machine = cstring_to_vstring(d.machine)
 		}
 		free(d)
 	}
@@ -94,7 +94,7 @@ pub fn ls(path string) ?[]string {
 			break
 		}
 		unsafe {
-			bptr := byteptr(&ent.d_name[0])
+			bptr := &byte(&ent.d_name[0])
 			if bptr[0] == 0 || (bptr[0] == `.` && bptr[1] == 0)
 				|| (bptr[0] == `.` && bptr[1] == `.` && bptr[2] == 0) {
 				continue
@@ -278,7 +278,7 @@ pub fn debugger_present() bool {
 	return false
 }
 
-fn C.mkstemp(stemplate byteptr) int
+fn C.mkstemp(stemplate &byte) int
 
 // `is_writable_folder` - `folder` exists and is writable to the process
 pub fn is_writable_folder(folder string) ?bool {
