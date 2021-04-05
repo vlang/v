@@ -21,7 +21,7 @@ fn C.open(&char, int, ...int) int
 
 fn C.fdopen(fd int, mode &char) &C.FILE
 
-fn C.CopyFile(&u32, &u32, int) int
+fn C.CopyFile(&u16, &u16, bool) int
 
 // fn C.lstat(charptr, voidptr) u64
 
@@ -432,13 +432,13 @@ pub fn get_raw_line() string {
 			max_line_chars := 256
 			buf := malloc(max_line_chars * 2)
 			h_input := C.GetStdHandle(C.STD_INPUT_HANDLE)
-			mut bytes_read := 0
+			mut bytes_read := u32(0)
 			if is_atty(0) > 0 {
 				x := C.ReadConsole(h_input, buf, max_line_chars * 2, &bytes_read, 0)
 				if !x {
 					return tos(buf, 0)
 				}
-				return string_from_wide2(&u16(buf), bytes_read)
+				return string_from_wide2(&u16(buf), int(bytes_read))
 			}
 			mut offset := 0
 			for {
