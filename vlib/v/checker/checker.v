@@ -4268,7 +4268,8 @@ pub fn (mut c Checker) expr(node ast.Expr) ast.Type {
 		}
 		ast.StringLiteral {
 			if node.language == .c {
-				return ast.byteptr_type
+				// string literal starts with "c": `C.printf(c'hello')`
+				return ast.byte_type.set_nr_muls(1)
 			}
 			return ast.string_type
 		}

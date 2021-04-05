@@ -34,8 +34,10 @@ pub fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type,
 			&& got.idx() in [ast.int_type_idx, ast.int_literal_type_idx]) {
 			return
 		}
+		// allow `C.printf('foo')` instead of `C.printf(c'foo')`
 		if got.idx() == ast.string_type_idx
-			&& expected in [ast.byteptr_type_idx, ast.charptr_type_idx] {
+			&& (expected in [ast.byteptr_type_idx, ast.charptr_type_idx]
+			|| (expected.idx() == ast.char_type_idx && expected.is_ptr())) {
 			return
 		}
 		exp_sym := c.table.get_type_symbol(expected)
