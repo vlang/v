@@ -1247,12 +1247,14 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			if node.is_union {
 				g.typedefs.writeln('typedef union $name $name;')
 			} else {
+				/*
 				attrs := if node.attrs.contains('packed') {
 					'__attribute__((__packed__))'
 				} else {
 					''
 				}
-				g.typedefs.writeln('typedef struct $attrs $name $name;')
+				*/
+				g.typedefs.writeln('typedef struct $name $name;')
 			}
 		}
 		ast.TypeDecl {
@@ -5331,14 +5333,6 @@ fn (mut g Gen) write_builtin_types() {
 	for builtin_name in c.builtins {
 		sym := g.table.type_symbols[g.table.type_idxs[builtin_name]]
 		if sym.kind == .interface_ {
-			if g.pref.is_verbose {
-				println('XAXAXA $sym.name')
-				if isnil(sym.info) {
-					println('FFF')
-				}
-				println(sym.info)
-				println(sym.kind)
-			}
 			g.write_interface_typesymbol_declaration(sym)
 		} else {
 			builtin_types << sym
@@ -5417,7 +5411,12 @@ fn (mut g Gen) write_types(types []ast.TypeSymbol) {
 				}
 				// g.type_definitions.writeln('} $name;\n')
 				//
-				g.type_definitions.writeln('};\n')
+				attrs := if typ.info.attrs.contains('packed') {
+					'__attribute__((__packed__))'
+				} else {
+					''
+				}
+				g.type_definitions.writeln('} $attrs;\n')
 			}
 			ast.Alias {
 				// ast.Alias { TODO
