@@ -15,17 +15,17 @@ fn test_offsetof() {
 		age: 2147483647
 	}
 	unsafe {
-		assert *(&string(byteptr(&cat) + __offsetof(Cat, name))) == 'Cthulhu'
-		assert *(&string(byteptr(&cat) + __offsetof(Cat, breed))) == 'Great Old One'
-		assert *(&int(byteptr(&cat) + __offsetof(Cat, age))) == 2147483647
+		assert *(&string(&byte(&cat) + __offsetof(Cat, name))) == 'Cthulhu'
+		assert *(&string(&byte(&cat) + __offsetof(Cat, breed))) == 'Great Old One'
+		assert *(&int(&byte(&cat) + __offsetof(Cat, age))) == 2147483647
 	}
 }
 
 fn test_offsetof_struct_from_another_module() {
 	num := complex.Complex{1.0, 1.0}
 	unsafe {
-		assert *(&f64(byteptr(&num) + __offsetof(complex.Complex, re))) == 1.0
-		assert *(&f64(byteptr(&num) + __offsetof(complex.Complex, im))) == 1.0
+		assert *(&f64(&byte(&num) + __offsetof(complex.Complex, re))) == 1.0
+		assert *(&f64(&byte(&num) + __offsetof(complex.Complex, im))) == 1.0
 	}
 }
 
@@ -36,8 +36,8 @@ fn test_offsetof_alias() {
 		age: 2147483647
 	}
 	unsafe {
-		assert *(&string(byteptr(&fel) + __offsetof(Feline, name))) == 'Cthulhu'
-		assert *(&string(byteptr(&fel) + __offsetof(Feline, breed))) == 'Great Old One'
-		assert *(&int(byteptr(&fel) + __offsetof(Feline, age))) == 2147483647
+		assert *(&string(&byte(&fel) + __offsetof(Feline, name))) == 'Cthulhu'
+		assert *(&string(&byte(&fel) + __offsetof(Feline, breed))) == 'Great Old One'
+		assert *(&int(&byte(&fel) + __offsetof(Feline, age))) == 2147483647
 	}
 }
