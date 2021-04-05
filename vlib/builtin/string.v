@@ -270,8 +270,8 @@ pub fn (s string) cstr() byteptr {
 */
 // cstring_to_vstring creates a copy of cstr and turns it into a v string.
 [unsafe]
-pub fn cstring_to_vstring(cstr &byte) string {
-	return unsafe { tos_clone(cstr) }
+pub fn cstring_to_vstring(cstr &char) string {
+	return unsafe { tos_clone(&byte(cstr)) }
 }
 
 // replace_once replaces the first occurence of `rep` with the string passed in `with`.
