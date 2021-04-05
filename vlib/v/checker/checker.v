@@ -3127,8 +3127,13 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			// Dual sides check (compatibility check)
 			c.check_expected(right_type_unwrapped, left_type_unwrapped) or {
 				// allow for ptr += 2
-				if !left_type_unwrapped.is_ptr() && !right_type_unwrapped.is_int()
-					&& assign_stmt.op !in [.plus_assign, .minus_assign] {
+				if left_type_unwrapped.is_ptr() && right_type_unwrapped.is_int()
+					&& assign_stmt.op in [.plus_assign, .minus_assign] {
+					if !c.inside_unsafe {
+						c.warn('pointer arithmetic is only allowed in `unsafe` blocks',
+							assign_stmt.pos)
+					}
+				} else {
 					c.error('cannot assign to `$left`: $err.msg', right.position())
 				}
 			}
