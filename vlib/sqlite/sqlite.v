@@ -36,21 +36,21 @@ pub mut:
 }
 
 //
-fn C.sqlite3_open(charptr, &&C.sqlite3) int
+fn C.sqlite3_open(&char, &&C.sqlite3) int
 
 fn C.sqlite3_close(&C.sqlite3) int
 
 //
-fn C.sqlite3_prepare_v2(&C.sqlite3, charptr, int, &&C.sqlite3_stmt, &charptr) int
+fn C.sqlite3_prepare_v2(&C.sqlite3, &char, int, &&C.sqlite3_stmt, &&char) int
 
 fn C.sqlite3_step(&C.sqlite3_stmt) int
 
 fn C.sqlite3_finalize(&C.sqlite3_stmt) int
 
 //
-fn C.sqlite3_column_name(&C.sqlite3_stmt, int) charptr
+fn C.sqlite3_column_name(&C.sqlite3_stmt, int) &char
 
-fn C.sqlite3_column_text(&C.sqlite3_stmt, int) byteptr
+fn C.sqlite3_column_text(&C.sqlite3_stmt, int) &byte
 
 fn C.sqlite3_column_int(&C.sqlite3_stmt, int) int
 
@@ -61,7 +61,7 @@ fn C.sqlite3_column_double(&C.sqlite3_stmt, int) f64
 fn C.sqlite3_column_count(&C.sqlite3_stmt) int
 
 //
-fn C.sqlite3_errstr(int) charptr
+fn C.sqlite3_errstr(int) &char
 
 fn C.sqlite3_free(voidptr)
 
@@ -180,5 +180,5 @@ pub fn (db DB) insert<T>(x T) {
 }
 
 pub fn (db DB) create_table(table_name string, columns []string) {
-	db.exec('create table $table_name (' + columns.join(',\n') + ')')
+	db.exec('create table if not exists $table_name (' + columns.join(',\n') + ')')
 }
