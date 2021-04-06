@@ -191,6 +191,7 @@ jobs:
       - name: Shader examples can be build
         run: |
           wget https://github.com/floooh/sokol-tools-bin/raw/master/bin/linux/sokol-shdc
+          chmod +x ./sokol-shdc
           for f in examples/sokol/02_cubes_glsl/cube_glsl \
               examples/sokol/03_march_tracing_glsl/rt_glsl \
               examples/sokol/04_multi_shader_glsl/rt_glsl_puppy \
