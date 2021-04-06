@@ -433,7 +433,7 @@ pub fn (mut h Header) coerce(flags ...HeaderCoerceConfig) {
 
 // Returns whether the header key exists in the map.
 pub fn (h Header) contains(key CommonHeader) bool {
-	return key.str().to_lower() in h.keys
+	return h.contains_custom(key.str())
 }
 
 pub struct HeaderQueryConfig {
@@ -460,7 +460,7 @@ pub fn (h Header) get_custom(key string, flags ...HeaderQueryConfig) ?string {
 	mut data_key := key
 	if !flags.any(it.exact) {
 		// get the first key from key metadata
-		k := key.str().to_lower()
+		k := key.to_lower()
 		if h.keys[k].len == 0 {
 			return none
 		}
@@ -552,7 +552,7 @@ pub fn (h Header) render(flags HeaderRenderConfig) string {
 // Canonicalize an HTTP header key
 // Common headers are determined by the common_header_map
 // Custom headers are capitalized on the first letter and any letter after a '-'
-// s is assumes to be already lowercased
+// NOTE: Assumes sl is lowercase, since the caller usually already has the lowercase key
 fn canonicalize(sl string) string {
 	// check if we have a common header
 	if sl in http.common_header_map {
