@@ -1477,10 +1477,16 @@ pub fn (expr Expr) position() token.Position {
 		}
 		NodeError, ArrayDecompose, ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr, CastExpr,
 		ChanInit, CharLiteral, ConcatExpr, Comment, ComptimeCall, ComptimeSelector, EnumVal, DumpExpr,
-		FloatLiteral, GoExpr, Ident, IfExpr, IndexExpr, IntegerLiteral, Likely, LockExpr, MapInit,
-		MatchExpr, None, OffsetOf, OrExpr, ParExpr, PostfixExpr, PrefixExpr, RangeExpr, SelectExpr,
-		SelectorExpr, SizeOf, SqlExpr, StringInterLiteral, StringLiteral, StructInit, TypeNode,
-		TypeOf, UnsafeExpr {
+		FloatLiteral, GoExpr, Ident, IfExpr, IntegerLiteral, Likely, LockExpr, MapInit, MatchExpr,
+		None, OffsetOf, OrExpr, ParExpr, PostfixExpr, PrefixExpr, RangeExpr, SelectExpr, SelectorExpr,
+		SizeOf, SqlExpr, StringInterLiteral, StringLiteral, StructInit, TypeNode, TypeOf, UnsafeExpr
+		 {
+			return expr.pos
+		}
+		IndexExpr {
+			if expr.or_expr.kind != .absent {
+				return expr.or_expr.pos
+			}
 			return expr.pos
 		}
 		IfGuardExpr {
@@ -1596,6 +1602,12 @@ pub fn (node Node) position() token.Position {
 				for sym in node.syms {
 					pos = pos.extend(sym.pos)
 				}
+			}
+			if node is AssignStmt {
+				return pos.extend(node.right.last().position())
+			}
+			if node is AssertStmt {
+				return pos.extend(node.expr.position())
 			}
 			return pos
 		}

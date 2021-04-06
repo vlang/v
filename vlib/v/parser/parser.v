@@ -1850,7 +1850,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		}
 		return ast.MapInit{
 			typ: map_type
-			pos: p.tok.position()
+			pos: p.prev_tok.position()
 		}
 	}
 	// `chan typ{...}`
@@ -2138,8 +2138,9 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 		}
 		// `a[i] ?`
 		if p.tok.kind == .question {
-			p.next()
+			or_pos = p.tok.position()
 			or_kind = .propagate
+			p.next()
 		}
 	}
 	return ast.IndexExpr{
