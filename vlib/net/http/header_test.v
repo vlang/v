@@ -27,13 +27,22 @@ fn test_header_adds_multiple() {
 	assert h.values(.accept) == ['one' 'two']
 }
 
-fn test_header_set() {
+fn test_header_get() ? {
+	mut h := http.new_header(key: .dnt, value: 'one')
+	h.add_custom('dnt', 'two') ?
+	dnt := h.get_custom('dnt') or { '' }
+	exact := h.get_custom('dnt', exact: true) or { '' }
+	assert dnt == 'one'
+	assert exact == 'two'
+}
+
+fn test_header_set() ? {
 	mut h := http.new_header(
 		{key: .dnt, value: 'one'},
 		{key: .dnt, value: 'two'}
 	)
 	assert h.values(.dnt) == ['one' 'two']
-	h.set_custom('dnt', 'three')
+	h.set_custom('DNT', 'three') ?
 	assert h.values(.dnt) == ['three']
 }
 
@@ -158,8 +167,8 @@ fn test_coerce_canonicalize_custom() ? {
 
 fn test_render_version() ? {
 	mut h := http.new_header()
-	h.add_custom('accept', 'foo')
-	h.add_custom('Accept', 'bar')
+	h.add_custom('accept', 'foo') ?
+	h.add_custom('Accept', 'bar') ?
 	h.add(.accept, 'baz')
 
 	s1_0 := h.render(version: .v1_0)
@@ -177,8 +186,8 @@ fn test_render_version() ? {
 
 fn test_render_coerce() ? {
 	mut h := http.new_header()
-	h.add_custom('accept', 'foo')
-	h.add_custom('Accept', 'bar')
+	h.add_custom('accept', 'foo') ?
+	h.add_custom('Accept', 'bar') ?
 	h.add(.accept, 'baz')
 	h.add(.host, 'host')
 
@@ -197,8 +206,8 @@ fn test_render_coerce() ? {
 
 fn test_render_canonicalize() ? {
 	mut h := http.new_header()
-	h.add_custom('accept', 'foo')
-	h.add_custom('Accept', 'bar')
+	h.add_custom('accept', 'foo') ?
+	h.add_custom('Accept', 'bar') ?
 	h.add(.accept, 'baz')
 	h.add(.host, 'host')
 
@@ -208,9 +217,9 @@ fn test_render_canonicalize() ? {
 	assert s1_0.contains('Host: host\n\r')
 
 	s1_1 := h.render(version: .v1_1, canonicalize: true)
-	assert s1_0.contains('Accept: foo\n\r')
-	assert s1_0.contains('Accept: bar,baz\n\r')
-	assert s1_0.contains('Host: host\n\r')
+	assert s1_1.contains('Accept: foo\n\r')
+	assert s1_1.contains('Accept: bar,baz\n\r')
+	assert s1_1.contains('Host: host\n\r')
 
 	s2_0 := h.render(version: .v2_0, canonicalize: true)
 	assert s2_0.contains('accept: foo\n\r')
@@ -220,8 +229,8 @@ fn test_render_canonicalize() ? {
 
 fn test_render_coerce_canonicalize() ? {
 	mut h := http.new_header()
-	h.add_custom('accept', 'foo')
-	h.add_custom('Accept', 'bar')
+	h.add_custom('accept', 'foo') ?
+	h.add_custom('Accept', 'bar') ?
 	h.add(.accept, 'baz')
 	h.add(.host, 'host')
 
@@ -230,8 +239,8 @@ fn test_render_coerce_canonicalize() ? {
 	assert s1_0.contains('Host: host\n\r')
 
 	s1_1 := h.render(version: .v1_1, coerce: true, canonicalize: true)
-	assert s1_0.contains('Accept: foo,bar,baz\n\r')
-	assert s1_0.contains('Host: host\n\r')
+	assert s1_1.contains('Accept: foo,bar,baz\n\r')
+	assert s1_1.contains('Host: host\n\r')
 
 	s2_0 := h.render(version: .v2_0, coerce: true, canonicalize: true)
 	assert s2_0.contains('accept: foo,bar,baz\n\r')
