@@ -174,7 +174,9 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 			.function { 'voidptr*' }
 			else { '$elem_type_str*' }
 		}
-		needs_clone := info.elem_type == ast.string_type_idx && g.is_autofree && !g.is_assign_lhs
+		// do not clone inside `opt_ok(opt_ok(&(string[]) {..})` before returns
+		needs_clone := info.elem_type == ast.string_type_idx && g.is_autofree && !(g.inside_return
+			&& g.fn_decl.return_type.has_flag(.optional)) && !g.is_assign_lhs
 		is_gen_or_and_assign_rhs := gen_or && !g.discard_or_result
 		cur_line := if is_gen_or_and_assign_rhs {
 			line := g.go_before_stmt(0)

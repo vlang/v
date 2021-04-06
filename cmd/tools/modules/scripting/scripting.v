@@ -2,6 +2,7 @@ module scripting
 
 import os
 import term
+import time
 
 const (
 	term_colors = term.can_show_color_on_stdout()
@@ -17,16 +18,47 @@ pub fn set_verbose(on bool) {
 	}
 }
 
-pub fn cprintln(message string) {
-	mut omessage := message
-	omessage = if scripting.term_colors { term.green(omessage) } else { omessage }
-	println(omessage)
+pub fn cprint(omessage string) {
+	mut message := omessage
+	if scripting.term_colors {
+		message = term.cyan(message)
+	}
+	print(message)
+}
+
+pub fn cprint_strong(omessage string) {
+	mut message := omessage
+	if scripting.term_colors {
+		message = term.bright_green(message)
+	}
+	print(message)
+}
+
+pub fn cprintln(omessage string) {
+	cprint(omessage)
+	println('')
+}
+
+pub fn cprintln_strong(omessage string) {
+	cprint_strong(omessage)
+	println('')
 }
 
 pub fn verbose_trace(label string, message string) {
 	if os.getenv('VERBOSE').len > 0 {
-		slabel := 'scripting.$label'
-		cprintln('# ${slabel:-25s} : $message')
+		slabel := '$time.now().format_ss_milli() scripting.$label'
+		cprintln('# ${slabel:-40s} : $message')
+	}
+}
+
+pub fn verbose_trace_strong(label string, omessage string) {
+	if os.getenv('VERBOSE').len > 0 {
+		slabel := '$time.now().format_ss_milli() scripting.$label'
+		mut message := omessage
+		if scripting.term_colors {
+			message = term.bright_green(message)
+		}
+		cprintln('# ${slabel:-40s} : $message')
 	}
 }
 
@@ -36,7 +68,11 @@ pub fn verbose_trace_exec_result(x os.Result) {
 		cprintln('# ----------------------------------- #')
 		mut lnum := 1
 		lines := x.output.split_into_lines()
-		for line in lines {
+		for oline in lines {
+			mut line := oline
+			if scripting.term_colors {
+				line = term.bright_green(line)
+			}
 			cprintln('# ${lnum:3d}: $line')
 			lnum++
 		}
@@ -45,12 +81,12 @@ pub fn verbose_trace_exec_result(x os.Result) {
 }
 
 pub fn chdir(path string) {
-	verbose_trace(@FN, 'cd $path')
+	verbose_trace_strong(@FN, 'cd $path')
 	os.chdir(path)
 }
 
 pub fn rmrf(path string) {
-	verbose_trace(@FN, 'rm -rf $path')
+	verbose_trace_strong(@FN, 'rm -rf $path')
 	if os.exists(path) {
 		if os.is_dir(path) {
 			os.rmdir_all(path) or { panic(err) }
@@ -62,7 +98,7 @@ pub fn rmrf(path string) {
 
 // execute a command, and return a result, or an error, if it failed in any way.
 pub fn exec(cmd string) ?os.Result {
-	verbose_trace(@FN, cmd)
+	verbose_trace_strong(@FN, cmd)
 	x := os.execute(cmd)
 	if x.exit_code != 0 {
 		verbose_trace(@FN, '## failed.')
@@ -74,7 +110,7 @@ pub fn exec(cmd string) ?os.Result {
 
 // run a command, tracing its results, and returning ONLY its output
 pub fn run(cmd string) string {
-	verbose_trace(@FN, cmd)
+	verbose_trace_strong(@FN, cmd)
 	x := os.execute(cmd)
 	if x.exit_code < 0 {
 		verbose_trace(@FN, '## failed.')
@@ -88,7 +124,7 @@ pub fn run(cmd string) string {
 }
 
 pub fn exit_0_status(cmd string) bool {
-	verbose_trace(@FN, cmd)
+	verbose_trace_strong(@FN, cmd)
 	x := os.execute(cmd)
 	if x.exit_code < 0 {
 		verbose_trace(@FN, '## failed.')

@@ -74,3 +74,25 @@ fn between_orm_blocks() {
 		select from Upper where id == 1
 	}
 }
+
+fn no_empty_lines() {
+	_ := $embed_file('testy.v')
+	mut files := map[string][]FileData{}
+	code := 'foo
+bar'
+	params[0] = {
+		...params[0]
+		typ: params[0].typ.set_nr_muls(1)
+	}
+	env_value = environ()[env_lit] or {
+		return error('the environment variable "$env_lit" does not exist.')
+	}
+	assert '$mr_one_two()' == "(One{
+    value: 'one'
+}, Two{
+    value: 'two'
+})"
+	r := m[key] ?
+	compile_time_env := $env('ENV_VAR')
+	func()
+}

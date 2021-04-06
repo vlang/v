@@ -44,6 +44,12 @@ pub fn normalized_workpath_for_commit(workdir string, commit string) string {
 	return os.real_path(workdir + os.path_separator + nc)
 }
 
+fn get_current_folder_commit_hash() string {
+	vline := scripting.run('git rev-list -n1 --timestamp HEAD')
+	_, v_commithash := line_to_timestamp_and_commit(vline)
+	return v_commithash
+}
+
 pub fn prepare_vc_source(vcdir string, cdir string, commit string) (string, string) {
 	scripting.chdir(cdir)
 	// Building a historic v with the latest vc is not always possible ...
@@ -54,7 +60,7 @@ pub fn prepare_vc_source(vcdir string, cdir string, commit string) (string, stri
 	scripting.verbose_trace(@FN, 'v_timestamp: $v_timestamp | v_commithash: $v_commithash')
 	check_v_commit_timestamp_before_self_rebuilding(v_timestamp)
 	scripting.chdir(vcdir)
-	scripting.run('git checkout master')
+	scripting.run('git checkout --quiet master')
 	//
 	mut vccommit := ''
 	vcbefore_subject_match := scripting.run('git rev-list HEAD -n1 --timestamp --grep=${v_commithash[0..7]} ')
@@ -67,7 +73,7 @@ pub fn prepare_vc_source(vcdir string, cdir string, commit string) (string, stri
 		_, vccommit = line_to_timestamp_and_commit(vcbefore)
 	}
 	scripting.verbose_trace(@FN, 'vccommit: $vccommit')
-	scripting.run('git checkout "$vccommit" ')
+	scripting.run('git checkout --quiet "$vccommit" ')
 	scripting.run('wc *.c')
 	scripting.chdir(cdir)
 	return v_commithash, vccommit
@@ -119,7 +125,12 @@ pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 	clone_or_pull(vgit_context.v_repo_url, vgit_context.path_v)
 	clone_or_pull(vgit_context.vc_repo_url, vgit_context.path_vc)
 	scripting.chdir(vgit_context.path_v)
-	scripting.run('git checkout $vgit_context.commit_v')
+	scripting.run('git checkout --quiet $vgit_context.commit_v')
+	if os.is_dir(vgit_context.path_v) && os.exists(vgit_context.vexepath) {
+		// already compiled, so no need to compile v again
+		vgit_context.commit_v__hash = get_current_folder_commit_hash()
+		return
+	}
 	v_commithash, vccommit_before := prepare_vc_source(vgit_context.path_vc, vgit_context.path_v,
 		'HEAD')
 	vgit_context.commit_v__hash = v_commithash

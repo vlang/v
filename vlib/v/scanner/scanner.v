@@ -758,8 +758,10 @@ fn (mut s Scanner) text_scan() token.Token {
 				return s.new_token(.question, '', 1)
 			}
 			scanner.single_quote, scanner.double_quote {
+				start_line := s.line_nr
 				ident_string := s.ident_string()
-				return s.new_token(.string, ident_string, ident_string.len + 2) // + two quotes
+				return s.new_multiline_token(.string, ident_string, ident_string.len + 2,
+					start_line) // + two quotes
 			}
 			`\`` {
 				// ` // apostrophe balance comment. do not remove

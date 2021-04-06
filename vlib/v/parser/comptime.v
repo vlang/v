@@ -74,6 +74,7 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 			args_var: s
 			is_env: true
 			env_pos: spos
+			pos: spos.extend(p.prev_tok.position())
 		}
 	}
 	p.check(.lpar)
@@ -121,6 +122,7 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 				rpath: literal_string_param
 				apath: epath
 			}
+			pos: start_pos.extend(p.prev_tok.position())
 		}
 	}
 	// Compile vweb html template to V code, parse that V code and embed the resulting V function
