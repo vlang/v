@@ -92,6 +92,7 @@ fn test_inline_asm() {
 		addq [in_data + rcx * 4 + 0], 2
 		; ; c (n.len - 1) // c is counter (loop) register
 		  r (n.data) as in_data
+		; memory
 	}
 	assert n == [7, 11, 2, 6]
 

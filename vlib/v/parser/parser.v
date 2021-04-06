@@ -1008,20 +1008,22 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 				p.scope = scope
 				p.check(.semicolon)
 				for p.tok.kind == .name {
-					reg := p.reg_or_alias()
+					reg := ast.AsmRegister{
+						name: p.tok.lit
+						typ: 0
+						size: -1
+					}
+					p.check(.name)
 
 					mut comments := []ast.Comment{}
 					for p.tok.kind == .comment {
 						comments << p.comment()
 					}
-					if reg is ast.AsmRegister {
-						clobbered << ast.AsmClobbered{
-							reg: reg
-							comments: comments
-						}
-					} else {
-						p.error('not a register: $reg')
+					clobbered << ast.AsmClobbered{
+						reg: reg
+						comments: comments
 					}
+
 					if p.tok.kind in [.rcbr, .semicolon] {
 						break
 					}
