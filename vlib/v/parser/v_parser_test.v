@@ -218,3 +218,49 @@ for s in text_expr {
 	println('===================')
 }
 */
+
+fn test_fn_is_html_open_tag() {
+	mut s := '<style>'
+	mut b := is_html_open_tag('style', s)
+	assert b == true
+
+	s = '<style    media="print"    custom-attr    >'
+	b = is_html_open_tag('style', s)
+	assert b == true
+
+	s = '<style/>'
+	b = is_html_open_tag('style', s)
+	assert b == false
+
+	s = 'styl'
+	b = is_html_open_tag('style', s)
+	assert b == false
+
+	s = 'style'
+	b = is_html_open_tag('style', s)
+	assert b == false
+
+	s = '<style'
+	b = is_html_open_tag('style', s)
+	assert b == false
+
+	s = '<<style>'
+	b = is_html_open_tag('style', s)
+	assert b == false
+
+	s = '<style>>'
+	b = is_html_open_tag('style', s)
+	assert b == false
+
+	s = '<stylex>'
+	b = is_html_open_tag('style', s)
+	assert b == false
+
+	s = '<html>'
+	b = is_html_open_tag('style', s)
+	assert b == false
+
+	s = '<sript>'
+	b = is_html_open_tag('style', s)
+	assert b == false
+}
