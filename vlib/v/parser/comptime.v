@@ -121,6 +121,7 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 				rpath: literal_string_param
 				apath: epath
 			}
+			pos: start_pos.extend(p.prev_tok.position())
 		}
 	}
 	// Compile vweb html template to V code, parse that V code and embed the resulting V function
