@@ -2,31 +2,53 @@ module net
 
 import os
 
-interface Addr {
-	addr SockaddrStorage
-	len  int
+const max_unix_path = 104
 
-	family SocketFamily
-	@type SocketType
+struct Unix {
+	path [max_unix_path]byte
 }
 
-// IpAddr represents an ip address
-pub struct  IpAddr {
-	addr SockaddrStorage
-	len  int
+union AddrData {
+	Unix
+	Ip
+	Ip6
+}
 
-	family SocketFamily
-	@type SocketType
+pub fn (a Addr) family() AddrFamily {
+	return AddrFamily(a.f)
 }
 
 const (
-	max_ipv4_addr_len = 24
-	max_ip_addr_len = 46
+	max_ip_len = 24
+	max_ip6_len = 46
 )
 
-pub fn (i IpAddr) str() string {
-	// Convert to string representation
-	buf := []byte{len: max_ip_addr_len, init: 0}
+fn (a Ip) str() string {
+	buf := []byte{len: max_ip_len, init: 0}
+
+	$if windows {
+		res := C.WSAAddressToStringA(&a, i.len, C.NULL, buf.data, &buf.len)
+		if res != 0 {
+			return '<Unknown>'
+		}
+		// Windows will return the port as part of the address
+		return buf.bytestr()
+	} $else {
+		res := charptr(C.inet_ntop(.ip, &a.addr, buf.data, buf.len))
+
+		if res == 0 {
+			return '<Unknown>'
+		}
+	}
+	saddr := buf.bytestr()
+	port := C.ntohs(a.port)
+
+	return '$saddr:$port'
+}
+
+fn (a Ip6) str() string {
+	buf := []byte{len: max_ip6_len, init: 0}
+
 	$if windows {
 		res := C.WSAAddressToStringA(&i.addr, i.len, C.NULL, buf.data, &buf.len)
 		if res != 0 {
@@ -35,18 +57,7 @@ pub fn (i IpAddr) str() string {
 		// Windows will return the port as part of the address
 		return buf.bytestr()
 	} $else {
-		// TODO(emily):
-		// I would like to use voidptr here
-		// I really would...
-		addr := unsafe { 
-			if i.family == .inet6 {
-				&byte(&i.addr.sockaddr_in6.sin6_addr)
-			} else {
-				&byte(&i.addr.sockaddr_in.sin_addr)
-			} 
-		}
-
-		res := charptr(C.inet_ntop(&i.family, addr, buf.data, buf.len))
+		res := charptr(C.inet_ntop(.ip6, a.addr[0..a.addr.len].data, buf.data, buf.len))
 
 		if res == 0 {
 			return '<Unknown>'
@@ -54,77 +65,55 @@ pub fn (i IpAddr) str() string {
 	}
 
 	saddr := buf.bytestr()
+	port := C.ntohs(a.port)
 
-	match i.family {
-		.inet {
-			hport := unsafe { i.addr.sockaddr_in.sin_port }
-			port := C.ntohs(hport)
+	return '[$saddr]:$port'
+}
 
-			return '$saddr:$port'
+fn (a Addr) len() u32 {
+	match a.family() {
+		.ip {
+			return sizeof(Ip)
 		}
 
-		.inet6 {
-			hport := unsafe { i.addr.sockaddr_in6.sin6_port }
-			port := C.ntohs(hport)
-
-			return '[$saddr]:$port'
+		.ip6 {
+			return sizeof(Ip6)
+		}
+		
+		.unix {
+			return sizeof(Unix)
 		}
 
 		else {
-			panic('Address family is not inet or inet6?')
+			panic('Unknown address family')
 		}
 	}
 }
 
-pub struct UnixAddr {
-	addr SockaddrStorage
-	len  int
-
-	family SocketFamily
-	@type SocketType
-}
-
-fn (a UnixAddr) str() string {
-	return '<UnixAddr>'
-}
-
-const max_sun_path = 104
-
-pub fn resolve_addrs(addr string, family SocketFamily, @type SocketType) ?[]Addr {
-	// Do some heuristics on the address to figure
-	// out what address type it should be
-
+pub fn resolve_addrs(addr string, family AddrFamily, @type SocketType) ?[]Addr {
 	match family {
-		.inet, .inet6, .unspec {
+		.ip, .ip6, .unspec {
 			return resolve_ipaddrs(addr, family, @type)
 		}
 
 		.unix {
-			resolved := C.sockaddr_un {
-				sun_family: .unix
-			}
+			resolved := Unix {}
 
-			if addr.len > max_sun_path {
+			if addr.len > max_unix_path {
 				return error('net: resolve_addr2 Unix socket address is too long')
 			}
 
 			// Copy the unix path into the address struct
 			unsafe {
-				C.memcpy(&resolved.sun_path, addr.str, addr.len)
+				C.memcpy(&resolved.path, addr.str, addr.len)
 			}
 
-			return [
-				UnixAddr{
-					SockaddrStorage{ sockaddr_un: resolved } 
-					int(sizeof(resolved)) 
-					(.unix)
-					@type 
-				}]
+			return [Addr{f: u16(AddrFamily.unix) addr: AddrData{Unix: resolved}}]
 		}
 	}
 }
 
-pub fn resolve_ipaddrs(addr string, family SocketFamily, typ SocketType) ?[]Addr {
+pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ?[]Addr {
 	address, port := split_address(addr) ?
 
 	mut hints := C.addrinfo{
@@ -159,21 +148,46 @@ pub fn resolve_ipaddrs(addr string, family SocketFamily, typ SocketType) ?[]Addr
 	mut addresses := []Addr{}
 
 	for result := results; !isnil(result); result = result.ai_next {
-		new_addr := &IpAddr{ 
-			len: int(result.ai_addrlen)
+		match AddrFamily(result.ai_family) {
+			.ip, .ip6 {
+				new_addr := Addr{}
+				unsafe {
+					C.memcpy(&new_addr, result.ai_addr, result.ai_addrlen)
+				}
+				addresses << new_addr
+			}
 
-			family: SocketFamily(result.ai_family)
-			@type: SocketType(result.ai_socktype)
+			else {
+				panic('Unexpected address family ${result.ai_family}')
+			}
 		}
-
-		unsafe {
-			C.memcpy(&new_addr.addr, result.ai_addr, new_addr.len)
-		}
-
-		addresses << new_addr
 	}
 
-
-
 	return addresses
+}
+
+fn (a Addr) str() string {
+	match AddrFamily(a.f) {
+		.ip {
+			unsafe {
+				return a.addr.Ip.str()
+			}
+		}
+
+		.ip6 {
+			unsafe {
+				return a.addr.Ip6.str()
+			}
+		}
+
+		.unix {
+			unsafe {
+				return tos_clone(a.addr.Unix.path[0..max_unix_path].data)
+			}
+		}
+		
+		.unspec {
+			return '<.unspec>'
+		}
+	}
 }
