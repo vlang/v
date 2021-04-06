@@ -518,7 +518,10 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 				scope: p.scope
 			}
 			if p.tok.kind.is_start_of_type() && p.tok.line_nr == line_nr {
+				method.return_type_pos = p.tok.position()
 				method.return_type = p.parse_type()
+				method.return_type_pos = method.return_type_pos.extend(p.tok.position())
+				method.pos = method.pos.extend(method.return_type_pos)
 			}
 			mcomments := p.eat_comments(same_line: true)
 			mnext_comments := p.eat_comments({})
@@ -577,5 +580,6 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		pos: pos
 		pre_comments: pre_comments
 		mut_pos: mut_pos
+		name_pos: name_pos
 	}
 }

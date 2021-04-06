@@ -150,6 +150,8 @@ pub fn (t Type) nr_muls() int {
 // return true if `t` is a pointer (nr_muls>0)
 [inline]
 pub fn (t Type) is_ptr() bool {
+	// any normal pointer, i.e. &Type, &&Type etc;
+	// NB: voidptr, charptr and byteptr are NOT included!
 	return (int(t) >> 16) & 0xff > 0
 }
 
@@ -270,20 +272,40 @@ pub fn new_type_ptr(idx int, nr_muls int) Type {
 	return (nr_muls << 16) | u16(idx)
 }
 
-// built in pointers (voidptr, byteptr, charptr)
 [inline]
 pub fn (typ Type) is_pointer() bool {
+	// builtin pointer types (voidptr, byteptr, charptr)
 	return typ.idx() in ast.pointer_type_idxs
 }
 
 [inline]
 pub fn (typ Type) is_float() bool {
-	return typ.idx() in ast.float_type_idxs
+	return typ.clear_flags() in ast.float_type_idxs
 }
 
 [inline]
 pub fn (typ Type) is_int() bool {
+	return typ.clear_flags() in ast.integer_type_idxs
+}
+
+[inline]
+pub fn (typ Type) is_int_valptr() bool {
 	return typ.idx() in ast.integer_type_idxs
+}
+
+[inline]
+pub fn (typ Type) is_float_valptr() bool {
+	return typ.idx() in ast.float_type_idxs
+}
+
+[inline]
+pub fn (typ Type) is_pure_int() bool {
+	return int(typ) in ast.integer_type_idxs
+}
+
+[inline]
+pub fn (typ Type) is_pure_float() bool {
+	return int(typ) in ast.float_type_idxs
 }
 
 [inline]
@@ -298,12 +320,18 @@ pub fn (typ Type) is_unsigned() bool {
 
 [inline]
 pub fn (typ Type) is_int_literal() bool {
-	return typ.idx() == ast.int_literal_type_idx
+	return int(typ) == ast.int_literal_type_idx
 }
 
 [inline]
 pub fn (typ Type) is_number() bool {
-	return typ.idx() in ast.number_type_idxs
+	return typ.clear_flags() in ast.number_type_idxs
+}
+
+pub fn (typ Type) is_number_or_literal() bool {
+	res := int(typ) in ast.number_type_idxs
+	eprintln('> is_number_or_literal typ: $typ.debug() | res: $res')
+	return res
 }
 
 [inline]

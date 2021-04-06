@@ -7,13 +7,13 @@ pub const (
 	rtld_lazy = C.RTLD_LAZY
 )
 
-fn C.dlopen(filename charptr, flags int) voidptr
+fn C.dlopen(filename &char, flags int) voidptr
 
-fn C.dlsym(handle voidptr, symbol charptr) voidptr
+fn C.dlsym(handle voidptr, symbol &char) voidptr
 
 fn C.dlclose(handle voidptr) int
 
-fn C.dlerror() charptr
+fn C.dlerror() &char
 
 // open loads the dynamic shared object.
 pub fn open(filename string, flags int) voidptr {
@@ -35,5 +35,5 @@ pub fn sym(handle voidptr, symbol string) voidptr {
 // that occurred from a call to one of the `dl` functions, since the last
 // call to dlerror()
 pub fn dlerror() string {
-	return unsafe { cstring_to_vstring(byteptr(C.dlerror())) }
+	return unsafe { cstring_to_vstring(C.dlerror()) }
 }

@@ -25,7 +25,7 @@ pub fn getenv(key string) string {
 				return ''
 			}
 			// NB: C.getenv *requires* that the result be copied.
-			return cstring_to_vstring(&byte(s))
+			return cstring_to_vstring(s)
 		}
 	}
 }

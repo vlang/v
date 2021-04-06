@@ -4,8 +4,8 @@
 module builtin
 
 __global (
-	g_m2_buf byteptr 
-	g_m2_ptr byteptr 
+	g_m2_buf &byte 
+	g_m2_ptr &byte 
 )
 
 // isnil returns true if an object is nil (only for C objects).

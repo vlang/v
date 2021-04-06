@@ -34,8 +34,10 @@ pub fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type,
 			&& got.idx() in [ast.int_type_idx, ast.int_literal_type_idx]) {
 			return
 		}
+		// allow `C.printf('foo')` instead of `C.printf(c'foo')`
 		if got.idx() == ast.string_type_idx
-			&& expected in [ast.byteptr_type_idx, ast.charptr_type_idx] {
+			&& (expected in [ast.byteptr_type_idx, ast.charptr_type_idx]
+			|| (expected.idx() == ast.char_type_idx && expected.is_ptr())) {
 			return
 		}
 		exp_sym := c.table.get_type_symbol(expected)
@@ -52,31 +54,36 @@ pub fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type,
 	}
 	idx_got := got.idx()
 	idx_expected := expected.idx()
-	if idx_got in [ ast.byteptr_type_idx, ast.charptr_type_idx] || idx_expected in [ast.byteptr_type_idx, ast.charptr_type_idx] {
+	if idx_got in [ast.byteptr_type_idx, ast.charptr_type_idx]
+		|| idx_expected in [ast.byteptr_type_idx, ast.charptr_type_idx] {
 		igot := int(got)
 		iexpected := int(expected)
 		// TODO: remove; transitional compatibility for byteptr === &byte
 		if (igot == ast.byteptr_type_idx && iexpected == 65545)
-		|| (iexpected == ast.byteptr_type_idx && igot == 65545) {
+			|| (iexpected == ast.byteptr_type_idx && igot == 65545) {
 			return
 		}
 		// TODO: remove; transitional compatibility for charptr === &char
 		if (igot == ast.charptr_type_idx && iexpected == 65551)
-		|| (iexpected == ast.charptr_type_idx && igot == 65551) {
+			|| (iexpected == ast.charptr_type_idx && igot == 65551) {
 			return
 		}
 		muls_got := got.nr_muls()
 		muls_expected := expected.nr_muls()
-		if idx_got == ast.byteptr_type_idx && idx_expected == ast.byte_type_idx && muls_got + 1 == muls_expected {
+		if idx_got == ast.byteptr_type_idx && idx_expected == ast.byte_type_idx
+			&& muls_got + 1 == muls_expected {
 			return
 		}
-		if idx_expected == ast.byteptr_type_idx && idx_got == ast.byte_type_idx && muls_expected + 1 == muls_got {
+		if idx_expected == ast.byteptr_type_idx && idx_got == ast.byte_type_idx
+			&& muls_expected + 1 == muls_got {
 			return
 		}
-		if idx_got == ast.charptr_type_idx && idx_expected == ast.char_type_idx && muls_got + 1 == muls_expected {
+		if idx_got == ast.charptr_type_idx && idx_expected == ast.char_type_idx
+			&& muls_got + 1 == muls_expected {
 			return
 		}
-		if idx_expected == ast.charptr_type_idx && idx_got == ast.char_type_idx && muls_expected + 1 == muls_got {
+		if idx_expected == ast.charptr_type_idx && idx_got == ast.char_type_idx
+			&& muls_expected + 1 == muls_got {
 			return
 		}
 	}
@@ -130,6 +137,15 @@ pub fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
 	}
 	// allow using Error as a string for now (avoid a breaking change)
 	if got == ast.error_type_idx && expected == ast.string_type_idx {
+		return true
+	}
+	// allow `return 0` in a function with `?int` return type
+	expected_nonflagged := expected.clear_flags()
+	if got == ast.int_literal_type && expected_nonflagged.is_int() {
+		return true
+	}
+	// allow `return 0` in a function with `?f32` return type
+	if got == ast.float_literal_type && expected_nonflagged.is_float() {
 		return true
 	}
 	return false
@@ -187,7 +203,7 @@ fn (mut c Checker) check_shift(left_type ast.Type, right_type ast.Type, left_pos
 	return left_type
 }
 
-pub fn (c &Checker) promote(left_type ast.Type, right_type ast.Type) ast.Type {
+pub fn (mut c Checker) promote(left_type ast.Type, right_type ast.Type) ast.Type {
 	if left_type.is_ptr() || left_type.is_pointer() {
 		if right_type.is_int() {
 			return left_type
@@ -521,7 +537,7 @@ pub fn (mut c Checker) infer_fn_types(f ast.Fn, mut call_expr ast.CallExpr) {
 						}
 					}
 					if !c.check_types(typ, to_set) {
-						c.error('inferred generic type `$gt_name` is ambigous got `${c.table.get_type_symbol(to_set).name}`, expected `${c.table.get_type_symbol(typ).name}`',
+						c.error('inferred generic type `$gt_name` is ambiguous: got `${c.table.get_type_symbol(to_set).name}`, expected `${c.table.get_type_symbol(typ).name}`',
 							arg.pos)
 					}
 				}

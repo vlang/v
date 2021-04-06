@@ -229,7 +229,7 @@ pub fn (mut ws Client) pong() ? {
 }
 
 // write_ptr writes len bytes provided a byteptr with a websocket messagetype
-pub fn (mut ws Client) write_ptr(bytes byteptr, payload_len int, code OPCode) ?int {
+pub fn (mut ws Client) write_ptr(bytes &byte, payload_len int, code OPCode) ?int {
 	// ws.debug_log('write_ptr code: $code')
 	if ws.state != .open || ws.conn.sock.handle < 1 {
 		// todo: send error here later
@@ -286,7 +286,7 @@ pub fn (mut ws Client) write_ptr(bytes byteptr, payload_len int, code OPCode) ?i
 	len := header.len + payload_len
 	mut frame_buf := []byte{len: len}
 	unsafe {
-		C.memcpy(&frame_buf[0], byteptr(header.data), header.len)
+		C.memcpy(&frame_buf[0], &byte(header.data), header.len)
 		if payload_len > 0 {
 			C.memcpy(&frame_buf[header.len], bytes, payload_len)
 		}
@@ -307,7 +307,7 @@ pub fn (mut ws Client) write_ptr(bytes byteptr, payload_len int, code OPCode) ?i
 
 // write writes a byte array with a websocket messagetype to socket
 pub fn (mut ws Client) write(bytes []byte, code OPCode) ?int {
-	return ws.write_ptr(byteptr(bytes.data), bytes.len, code)
+	return ws.write_ptr(&byte(bytes.data), bytes.len, code)
 }
 
 // write_string, writes a string with a websocket texttype to socket

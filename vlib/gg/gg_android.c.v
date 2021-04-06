@@ -19,10 +19,10 @@ pub:
 	callbacks        voidptr // Pointer to the callback function table of the native application. (struct ANativeActivityCallbacks *)
 	clazz            voidptr // The NativeActivity object handle.
 	env              voidptr // JNI context for the main thread of the app.
-	externalDataPath charptr // Path to this application's external (removable/mountable) data directory.
+	externalDataPath &char   // Path to this application's external (removable/mountable) data directory.
 	instance         voidptr // This is the native instance of the application.
-	internalDataPath charptr // Path to this application's internal data directory.
-	obbPath          charptr // Available starting with Honeycomb: path to the directory containing the application's OBB files (if any).
+	internalDataPath &char   // Path to this application's internal data directory.
+	obbPath          &char   // Available starting with Honeycomb: path to the directory containing the application's OBB files (if any).
 	sdkVersion       int     // The platform's SDK version code.
 	vm               voidptr // The global handle on the process's Java VM
 }

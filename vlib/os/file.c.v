@@ -182,7 +182,7 @@ pub fn (mut f File) writeln(s string) ?int {
 	if written == 0 && s.len != 0 {
 		return error('0 bytes written')
 	}
-	x := C.fputs('\n', f.cfile)
+	x := C.fputs(c'\n', f.cfile)
 	if x < 0 {
 		return error('could not add newline')
 	}

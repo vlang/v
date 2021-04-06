@@ -10,6 +10,9 @@ fn test_utf8_util() {
 	lower:=utf8.to_lower(src)
 	assert upper==src_upper
 	assert lower==src_lower
+	
+	assert utf8.to_upper('абвёabc12｛') == 'АБВЁABC12｛'
+	assert utf8.to_lower('АБВЁABC12｛') == 'абвёabc12｛'
 
 	// ustring test
 	src1:=src.ustring()

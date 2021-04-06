@@ -196,9 +196,9 @@ fn test_various_map_value() {
 	mut m14 := map[string]voidptr{}
 	m14['test'] = voidptr(0)
 	assert m14['test'] == voidptr(0)
-	mut m15 := map[string]byteptr{}
-	m15['test'] = byteptr(0)
-	assert m15['test'] == byteptr(0)
+	mut m15 := map[string]&byte{}
+	m15['test'] = &byte(0)
+	assert m15['test'] == &byte(0)
 	mut m16 := map[string]i64{}
 	m16['test'] = i64(0)
 	assert m16['test'] == i64(0)

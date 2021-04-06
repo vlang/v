@@ -31,7 +31,7 @@ fn new_addr(addr C.sockaddr) ?Addr {
 	// Convert to string representation
 	buf := []byte{len: net.max_ipv4_addr_len, init: 0}
 	$if windows {
-		res := C.WSAAddressToStringA(&addr, addr_len, C.NULL, buf.data, &buf.len)
+		res := C.WSAAddressToStringA(&addr, addr_len, C.NULL, buf.data, unsafe { &u32(&buf.len) })
 		if res != 0 {
 			socket_error(-1) ?
 		}
