@@ -87,6 +87,7 @@ fn (mut g Gen) sqlite3_stmt(node ast.SqlStmt, typ SqlType) {
 	g.writeln(';')
 	g.write('sqlite3_stmt* $g.sql_stmt_name = ${c.dbtype}__DB_init_stmt($db_name, _SLIT("')
 	g.sql_defaults(node, typ)
+	g.writeln(');')
 	if node.kind == .insert {
 		// build the object now (`x.name = ... x.id == ...`)
 		for i, field in node.fields {
@@ -318,15 +319,15 @@ fn (mut g Gen) mysql_stmt(node ast.SqlStmt, typ SqlType) {
 	g.expr(node.db_expr)
 	g.writeln(';')
 	stmt_name := g.new_tmp_var()
-	g.write('const char *$stmt_name = _SLIT("')
+	g.write('string $stmt_name = _SLIT("')
 	g.sql_defaults(node, typ)
-	g.writeln('MYSQL_STMT* $g.sql_stmt_name = mysql_stmt_init($db_name);')
-	g.writeln('mysql_stmt_prepare($g.sql_stmt_name, $stmt_name, strlen($stmt_name));')
+	g.writeln(';')
+	g.writeln('MYSQL_STMT* $g.sql_stmt_name = mysql_stmt_init(${db_name}.conn);')
+	g.writeln('mysql_stmt_prepare($g.sql_stmt_name, ${stmt_name}.str, ${stmt_name}.len);')
 
 	bind := g.new_tmp_var()
-	eprintln(g.sql_i)
 	g.writeln('MYSQL_BIND ${bind}[$g.sql_i];')
-	g.writeln('memset(bind, 0, sizeof(MYSQL_BIND)*$g.sql_i);')
+	g.writeln('memset($bind, 0, sizeof(MYSQL_BIND)*$g.sql_i);')
 	if node.kind == .insert {
 		for i, field in node.fields {
 			if field.name == 'id' {
@@ -337,7 +338,7 @@ fn (mut g Gen) mysql_stmt(node ast.SqlStmt, typ SqlType) {
 			if field.typ == ast.string_type {
 				g.writeln('${bind}[${i-1}].buffer_type = MYSQL_TYPE_STRING;')
 				g.writeln('${bind}[${i-1}].buffer = ${x}.str;')
-				g.writeln('${bind}[${i-1}].buffer_len = ${x}.len;')
+				g.writeln('${bind}[${i-1}].buffer_length = ${x}.len;')
 				g.writeln('${bind}[${i-1}].length = &${x}.len;')
 			} else if g.table.type_symbols[int(field.typ)].kind == .struct_ {
 				//insert again
@@ -347,21 +348,32 @@ fn (mut g Gen) mysql_stmt(node ast.SqlStmt, typ SqlType) {
 				g.sql_stmt_name = tmp_sql_stmt_name
 
 				res := g.new_tmp_var()
-				g.writeln('Option_mysql__Result $res = mysql__Connection_query($db_name, _SLIT("SELECT LAST_INSERTED_ID();"));')
-				g.writeln('${x}.id = string_int(((mysql__Row*)${res}.data)[0].vals[0]);')
+				g.writeln('Option_mysql__Result $res = mysql__Connection_query(&$db_name, _SLIT("SELECT LAST_INSERTED_ID();"));')
+				g.writeln('if (${res}.state != 0) { v_panic(IError_str(${res}.err)); }')
+				g.writeln('${x}.id = string_int(*(string*)array_get((*(mysql__Row*)array_get(mysql__Result_rows(*(mysql__Result*)${res}.data), 0)).vals, 0));')
 
-				g.writeln('${bind}[${i-1}].buffer_type = MYSQL_TYPE_INT;')
+				g.writeln('${bind}[${i-1}].buffer_type = MYSQL_TYPE_LONG;')
 				g.writeln('${bind}[${i-1}].buffer = &${x}.id;')
 				g.writeln('${bind}[${i-1}].is_null = 0;')
 				g.writeln('${bind}[${i-1}].length = 0;')
 			} else {
-				g.writeln('${bind}[${i-1}].buffer_type = MYSQL_TYPE_INT;')
+				g.writeln('${bind}[${i-1}].buffer_type = MYSQL_TYPE_LONG;')
 				g.writeln('${bind}[${i-1}].buffer = &${x};')
 				g.writeln('${bind}[${i-1}].is_null = 0;')
 				g.writeln('${bind}[${i-1}].length = 0;')
 			}
 		}
 	}
+	binds := g.sql_buf.str()
+	g.sql_buf = strings.new_builder(100)
+	g.writeln(binds)
+	//g.writeln('mysql_stmt_attr_set($g.sql_stmt_name, STMT_ATTR_ARRAY_SIZE, 1);')
+	res := g.new_tmp_var()
+	g.writeln('int $res = mysql_stmt_bind_param($g.sql_stmt_name, $bind);')
+	g.writeln('if ($res != 0) { puts(mysql_error(${db_name}.conn)); }')
+	g.writeln('$res = mysql_stmt_execute($g.sql_stmt_name);')
+	g.writeln('if ($res != 0) { puts(mysql_error(${db_name}.conn)); }')
+	g.writeln('mysql_stmt_close($g.sql_stmt_name);')
 }
 
 fn (mut g Gen) mysql_select_expr(node ast.SqlExpr, sub bool, line string) {
@@ -426,7 +438,7 @@ fn (mut g Gen) sql_defaults(node ast.SqlStmt, typ SqlType) {
 	if node.kind == .update || node.kind == .delete {
 		g.expr_to_sql(node.where_expr, typ)
 	}
-	g.writeln('"));')
+	g.write('")')
 }
 
 fn (mut g Gen) expr_to_sql(expr ast.Expr, typ SqlType) {

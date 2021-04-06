@@ -4,7 +4,7 @@
 #endif
 
 #ifndef V_CURRENT_COMMIT_HASH
-	#define V_CURRENT_COMMIT_HASH "92f40f9"
+	#define V_CURRENT_COMMIT_HASH "14be1f9"
 #endif
 
 // V comptime_defines:
@@ -9720,6 +9720,7 @@ VV_LOCAL_SYMBOL void main__main(void) {
 		panic_optional_not_set(*_t139.err.msg);
 	}
  	mysql__Result res =  *(mysql__Result*)_t139.data;
+	string a = (*(string*)/*ee elem_typ */array_get((*(mysql__Row*)/*ee elem_typ */array_get(mysql__Result_rows(res), 0)).vals, 0));
 	// FOR IN array
 	Array_mysql__Row _t140 = mysql__Result_rows(res);
 	for (int _t141 = 0; _t141 < _t140.len; ++_t141) {

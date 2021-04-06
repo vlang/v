@@ -4,7 +4,7 @@
 #endif
 
 #ifndef V_CURRENT_COMMIT_HASH
-	#define V_CURRENT_COMMIT_HASH "92f40f9"
+	#define V_CURRENT_COMMIT_HASH "14be1f9"
 #endif
 
 // V comptime_defines:
@@ -1066,6 +1066,10 @@ struct multi_return_u64_u64 {
 
 // END_multi_return_structs
 
+static string mysql__Row_str(mysql__Row it); // auto
+static string indent_mysql__Row_str(mysql__Row it, int indent_count); // auto
+static string Array_mysql__Row_str(Array_mysql__Row a); // auto
+static string indent_Array_mysql__Row_str(Array_mysql__Row a, int indent_count); // auto
 
 // V shared types:
 
@@ -1848,6 +1852,36 @@ void vinit_string_literals(){
 }
 // << string literal consts
 
+
+// V auto str functions:
+static string mysql__Row_str(mysql__Row it) { return indent_mysql__Row_str(it, 0);}
+static string indent_mysql__Row_str(mysql__Row it, int indent_count) {
+	string indents = _SLIT("");
+	for (int i = 0; i < indent_count; ++i) {
+		indents = string_add(indents, _SLIT("    "));
+	}
+	return _STR("mysql.Row{\n"		"%.*s\000    vals: %.*s\000\n"
+		"%.*s\000}", 4,
+		indents, Array_string_str(it.vals),
+		indents);
+}
+static string Array_mysql__Row_str(Array_mysql__Row a) { return indent_Array_mysql__Row_str(a, 0);}
+static string indent_Array_mysql__Row_str(Array_mysql__Row a, int indent_count) {
+	strings__Builder sb = strings__new_builder(a.len * 10);
+	strings__Builder_write_string(&sb, _SLIT("["));
+	for (int i = 0; i < a.len; ++i) {
+		mysql__Row it = *(mysql__Row*)array_get(a, i);
+		string x = indent_mysql__Row_str(it, indent_count);
+		strings__Builder_write_string(&sb, x);
+		if (i < a.len-1) {
+			strings__Builder_write_string(&sb, _SLIT(", "));
+		}
+	}
+	strings__Builder_write_string(&sb, _SLIT("]"));
+	string res = strings__Builder_str(&sb);
+	strings__Builder_free(&sb);
+	return res;
+}
 
 // V out
 
@@ -10029,23 +10063,25 @@ VV_LOCAL_SYMBOL void main__mysql(void) {
 	if (_t165.state != 0) { /*or block*/ 
 		IError err = _t165.err;
 		v_panic(IError_str(err));
-	};
+	}
+ 	mysql__Result a =  *(mysql__Result*)_t165.data;
+	eprintln(Array_mysql__Row_str(mysql__Result_rows(a)));
 	main__Module mod = (main__Module){.id = 0,.name = _SLIT("test"),.nr_downloads = 10,.creator = (main__User){.id = 0,.age = 21,.name = _SLIT("VUser"),.is_customer = true,.skipped_string = (string){.str=(byteptr)"", .is_lit=1},},};
 	
 	//mysql insert
 	mysql__Connection _t166 = conn;
-	const char *_t168 = _SLIT("INSERT INTO `Module` (`name`, `nr_downloads`, `creator`) values (?, ?, ?)"));
-	MYSQL_STMT* _t167 = mysql_stmt_init(_t166);
-	mysql_stmt_prepare(_t167, _t168, strlen(_t168));
+	string _t168 = _SLIT("INSERT INTO `Module` (`name`, `nr_downloads`, `creator`) values (?, ?, ?)");
+	MYSQL_STMT* _t167 = mysql_stmt_init(_t166.conn);
+	mysql_stmt_prepare(_t167, _t168.str, _t168.len);
 	MYSQL_BIND _t169[3];
-	memset(bind, 0, sizeof(MYSQL_BIND)*3);
+	memset(_t169, 0, sizeof(MYSQL_BIND)*3);
 	//name (18)
 	_t169[0].buffer_type = MYSQL_TYPE_STRING;
 	_t169[0].buffer = mod.name.str;
-	_t169[0].buffer_len = mod.name.len;
+	_t169[0].buffer_length = mod.name.len;
 	_t169[0].length = &mod.name.len;
 	//nr_downloads (7)
-	_t169[1].buffer_type = MYSQL_TYPE_INT;
+	_t169[1].buffer_type = MYSQL_TYPE_LONG;
 	_t169[1].buffer = &mod.nr_downloads;
 	_t169[1].is_null = 0;
 	_t169[1].length = 0;
@@ -10053,32 +10089,45 @@ VV_LOCAL_SYMBOL void main__mysql(void) {
 	
 	//mysql insert
 	mysql__Connection _t170 = conn;
-	const char *_t172 = _SLIT("INSERT INTO `User` (`age`, `name`, `is_customer`) values (?, ?, ?)"));
-	MYSQL_STMT* _t171 = mysql_stmt_init(_t170);
-	mysql_stmt_prepare(_t171, _t172, strlen(_t172));
+	string _t172 = _SLIT("INSERT INTO `User` (`age`, `name`, `is_customer`) values (?, ?, ?)");
+	MYSQL_STMT* _t171 = mysql_stmt_init(_t170.conn);
+	mysql_stmt_prepare(_t171, _t172.str, _t172.len);
 	MYSQL_BIND _t173[3];
-	memset(bind, 0, sizeof(MYSQL_BIND)*3);
+	memset(_t173, 0, sizeof(MYSQL_BIND)*3);
 	//age (7)
-	_t173[0].buffer_type = MYSQL_TYPE_INT;
+	_t173[0].buffer_type = MYSQL_TYPE_LONG;
 	_t173[0].buffer = &mod.creator.age;
 	_t173[0].is_null = 0;
 	_t173[0].length = 0;
 	//name (18)
 	_t173[1].buffer_type = MYSQL_TYPE_STRING;
 	_t173[1].buffer = mod.creator.name.str;
-	_t173[1].buffer_len = mod.creator.name.len;
+	_t173[1].buffer_length = mod.creator.name.len;
 	_t173[1].length = &mod.creator.name.len;
 	//is_customer (16)
-	_t173[2].buffer_type = MYSQL_TYPE_INT;
+	_t173[2].buffer_type = MYSQL_TYPE_LONG;
 	_t173[2].buffer = &mod.creator.is_customer;
 	_t173[2].is_null = 0;
 	_t173[2].length = 0;
-	Option_mysql__Result _t174 = mysql__Connection_query(_t166, _SLIT("SELECT LAST_INSERTED_ID();"));
-	mod.creator.id = string_int(((mysql__Row*)_t174.data)[0].vals[0]);
-	_t169[2].buffer_type = MYSQL_TYPE_INT;
+	
+	int _t174 = mysql_stmt_bind_param(_t171, _t173);
+	if (_t174 != 0) { puts(mysql_error(_t170.conn)); }
+	_t174 = mysql_stmt_execute(_t171);
+	if (_t174 != 0) { puts(mysql_error(_t170.conn)); }
+	mysql_stmt_close(_t171);
+	Option_mysql__Result _t175 = mysql__Connection_query(&_t166, _SLIT("SELECT LAST_INSERTED_ID();"));
+	if (_t175.state != 0) { v_panic(IError_str(_t175.err)); }
+	mod.creator.id = string_int(*(string*)array_get((*(mysql__Row*)array_get(mysql__Result_rows(*(mysql__Result*)_t175.data), 0)).vals, 0));
+	_t169[2].buffer_type = MYSQL_TYPE_LONG;
 	_t169[2].buffer = &mod.creator.id;
 	_t169[2].is_null = 0;
 	_t169[2].length = 0;
+	
+	int _t176 = mysql_stmt_bind_param(_t167, _t169);
+	if (_t176 != 0) { puts(mysql_error(_t166.conn)); }
+	_t176 = mysql_stmt_execute(_t167);
+	if (_t176 != 0) { puts(mysql_error(_t166.conn)); }
+	mysql_stmt_close(_t167);
 }
 
 void _vinit(int ___argc, voidptr ___argv) {

@@ -10,6 +10,7 @@ fn main() {
 	}
 	conn.connect() ?
 	res := conn.query('show tables') ?
+	a := res.rows()[0].vals[0]
 	for row in res.rows() {
 		println(row.vals.join(', '))
 	}
