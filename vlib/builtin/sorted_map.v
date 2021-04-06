@@ -49,7 +49,7 @@ fn new_sorted_map_init(n int, value_bytes int, keys &string, values voidptr) Sor
 	mut out := new_sorted_map(n, value_bytes)
 	for i in 0 .. n {
 		unsafe {
-			out.set(keys[i], byteptr(values) + i * value_bytes)
+			out.set(keys[i], &byte(values) + i * value_bytes)
 		}
 	}
 	return out

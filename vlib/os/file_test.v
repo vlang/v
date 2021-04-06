@@ -66,7 +66,8 @@ fn test_write_struct() ? {
 	f.write_struct(another_point) ?
 	f.close()
 	x := os.read_file(tfile) ?
-	y := unsafe { byteptr(memdup(&another_point, size_of_point)).vstring_with_len(size_of_point) }
+	pcopy := unsafe { &byte(memdup(&another_point, size_of_point)) }
+	y := unsafe { pcopy.vstring_with_len(size_of_point) }
 	assert x == y
 	$if debug {
 		eprintln(x.bytes())
@@ -120,7 +121,8 @@ fn test_write_raw() ? {
 	f.write_raw(another_point) ?
 	f.close()
 	x := os.read_file(tfile) ?
-	y := unsafe { byteptr(memdup(&another_point, size_of_point)).vstring_with_len(size_of_point) }
+	pcopy := unsafe { &byte(memdup(&another_point, size_of_point)) }
+	y := unsafe { pcopy.vstring_with_len(size_of_point) }
 	assert x == y
 	$if debug {
 		eprintln(x.bytes())

@@ -2,6 +2,7 @@
 // To test a panic, remove everything after the long `===` line
 // You can also remove the line with 'line:' e.g. for a builtin fn
 import os
+import rand
 import term
 import v.util
 import v.util.vtest
@@ -77,7 +78,7 @@ fn test_all() {
 			println(found)
 			if diff_cmd != '' {
 				println(term.header('difference:', '-'))
-				println(util.color_compare_strings(diff_cmd, expected, found))
+				println(util.color_compare_strings(diff_cmd, rand.ulid(), expected, found))
 			} else {
 				println(term.h_divider('-'))
 			}

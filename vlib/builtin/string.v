@@ -1539,7 +1539,7 @@ pub fn (s &string) free() {
 		return
 	}
 	if s.is_lit == -98761234 {
-		C.printf('double string.free() detected\n')
+		C.printf(c'double string.free() detected\n')
 		return
 	}
 	if s.is_lit == 1 || s.len == 0 {

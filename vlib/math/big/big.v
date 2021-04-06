@@ -19,9 +19,9 @@ fn C.bignum_from_int(n &Number, i u64)
 
 fn C.bignum_to_int(n &Number) int
 
-fn C.bignum_from_string(n &Number, s byteptr, nbytes int)
+fn C.bignum_from_string(n &Number, s &byte, nbytes int)
 
-fn C.bignum_to_string(n &Number, s byteptr, maxsize int)
+fn C.bignum_to_string(n &Number, s &byte, maxsize int)
 
 // c = a + b
 fn C.bignum_add(a &Number, b &Number, c &Number)

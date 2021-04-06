@@ -30,7 +30,7 @@ fn make_unix_time(t C.tm) int {
 // local returns t with the location set to local time.
 pub fn (t Time) local() Time {
 	loc_tm := C.tm{}
-	C.localtime_r(&time_t(voidptr(&t.unix)), &loc_tm)
+	C.localtime_r(voidptr(&t.unix), &loc_tm)
 	return convert_ctime(loc_tm, t.microsecond)
 }
 
@@ -77,7 +77,7 @@ fn linux_now() Time {
 	mut ts := C.timespec{}
 	C.clock_gettime(C.CLOCK_REALTIME, &ts)
 	loc_tm := C.tm{}
-	C.localtime_r(&time_t(voidptr(&ts.tv_sec)), &loc_tm)
+	C.localtime_r(voidptr(&ts.tv_sec), &loc_tm)
 	return convert_ctime(loc_tm, int(ts.tv_nsec / 1000))
 }
 

@@ -536,7 +536,7 @@ pub fn on_segfault(f voidptr) {
 		return
 	}
 	$if macos {
-		C.printf('TODO')
+		C.printf(c'TODO')
 		/*
 		mut sa := C.sigaction{}
 		C.memset(&sa, 0, sizeof(C.sigaction_size))

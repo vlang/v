@@ -34,7 +34,7 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 				$if panics_break_into_debugger ? {
 					break_if_debugger_attached()
 				} $else {
-					C.tcc_backtrace('Backtrace')
+					C.tcc_backtrace(c'Backtrace')
 				}
 				C.exit(1)
 			}
@@ -65,7 +65,7 @@ pub fn panic(s string) {
 				$if panics_break_into_debugger ? {
 					break_if_debugger_attached()
 				} $else {
-					C.tcc_backtrace('Backtrace')
+					C.tcc_backtrace(c'Backtrace')
 				}
 				C.exit(1)
 			}

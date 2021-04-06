@@ -353,7 +353,7 @@ pub fn (mut c Checker) interface_decl(decl ast.InterfaceDecl) {
 	for method in decl.methods {
 		c.check_valid_snake_case(method.name, 'method name', method.pos)
 		if method.return_type != ast.Type(0) {
-			c.ensure_type_exists(method.return_type, method.pos) or { return }
+			c.ensure_type_exists(method.return_type, method.return_type_pos) or { return }
 		}
 		for param in method.params {
 			c.ensure_type_exists(param.typ, param.pos) or { return }
@@ -3126,7 +3126,16 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			&& left_sym.kind != .interface_ {
 			// Dual sides check (compatibility check)
 			c.check_expected(right_type_unwrapped, left_type_unwrapped) or {
-				c.error('cannot assign to `$left`: $err.msg', right.position())
+				// allow for ptr += 2
+				if left_type_unwrapped.is_ptr() && right_type_unwrapped.is_int()
+					&& assign_stmt.op in [.plus_assign, .minus_assign] {
+					if !c.inside_unsafe {
+						c.warn('pointer arithmetic is only allowed in `unsafe` blocks',
+							assign_stmt.pos)
+					}
+				} else {
+					c.error('cannot assign to `$left`: $err.msg', right.position())
+				}
 			}
 		}
 		if left_sym.kind == .interface_ {
@@ -3421,8 +3430,10 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 	// c.expected_type = ast.void_type
 	match mut node {
 		ast.EmptyStmt {
-			print_backtrace()
-			eprintln('Checker.stmt() EmptyStmt')
+			if c.pref.is_verbose {
+				eprintln('Checker.stmt() EmptyStmt')
+				print_backtrace()
+			}
 		}
 		ast.NodeError {}
 		ast.AsmStmt {
@@ -4023,7 +4034,6 @@ pub fn (mut c Checker) expr(node ast.Expr) ast.Type {
 	match mut node {
 		ast.NodeError {}
 		ast.EmptyExpr {
-			print_backtrace()
 			c.error('checker.expr(): unhandled EmptyExpr', token.Position{})
 		}
 		ast.CTempVar {

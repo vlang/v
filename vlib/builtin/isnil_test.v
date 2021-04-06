@@ -1,5 +1,5 @@
 fn test_isnil_byteptr() {
-	pb := byteptr(0)
+	pb := &byte(0)
 	assert isnil(pb)
 }
 

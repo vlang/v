@@ -1,18 +1,18 @@
 module builtin
 
 // <string.h>
-fn C.memcpy(dest byteptr, src byteptr, n int) voidptr
+fn C.memcpy(dest &byte, src &byte, n int) voidptr
 
-fn C.memcmp(byteptr, byteptr, int) int
+fn C.memcmp(&byte, &byte, int) int
 
-fn C.memmove(byteptr, byteptr, int) voidptr
+fn C.memmove(&byte, &byte, int) voidptr
 
 [trusted]
-fn C.calloc(int, int) byteptr
+fn C.calloc(int, int) &byte
 
-fn C.malloc(int) byteptr
+fn C.malloc(int) &byte
 
-fn C.realloc(a byteptr, b int) byteptr
+fn C.realloc(a &byte, b int) &byte
 
 fn C.free(ptr voidptr)
 
@@ -25,7 +25,7 @@ fn C.sprintf(a ...voidptr) int
 
 fn C.strlen(s &char) int
 
-fn C.sscanf(byteptr, byteptr, ...byteptr) int
+fn C.sscanf(&byte, &byte, ...&byte) int
 
 [trusted]
 fn C.isdigit(c int) bool
@@ -46,13 +46,13 @@ pub fn proc_pidpath(int, voidptr, int) int
 fn C.realpath(&char, &char) &char
 
 // fn C.chmod(byteptr, mode_t) int
-fn C.chmod(byteptr, u32) int
+fn C.chmod(&char, u32) int
 
-fn C.printf(byteptr, ...voidptr) int
+fn C.printf(&char, ...voidptr) int
 
-fn C.puts(byteptr) int
+fn C.puts(&char) int
 
-fn C.fputs(str byteptr, stream &C.FILE) int
+fn C.fputs(str &char, stream &C.FILE) int
 
 fn C.fflush(&C.FILE) int
 
@@ -83,11 +83,11 @@ fn C.posix_spawnp(child_pid &int, exefile &char, file_actions voidptr, attrp voi
 
 fn C.execve(cmd_path &char, args voidptr, envs voidptr) int
 
-fn C.execvp(cmd_path charptr, args &charptr) int
+fn C.execvp(cmd_path &char, args &&char) int
 
-fn C._execve(cmd_path charptr, args voidptr, envs voidptr) int
+fn C._execve(cmd_path &char, args voidptr, envs voidptr) int
 
-fn C._execvp(cmd_path charptr, args &charptr) int
+fn C._execvp(cmd_path &char, args &&char) int
 
 [trusted]
 fn C.fork() int
@@ -173,7 +173,7 @@ fn C.strerror(int) &char
 
 fn C.snprintf(str &char, size size_t, format &char, opt ...voidptr) int
 
-fn C.fprintf(byteptr, ...byteptr)
+fn C.fprintf(voidptr, &char, ...voidptr)
 
 [trusted]
 fn C.WIFEXITED(status int) bool
@@ -224,11 +224,11 @@ fn C.CreateProcessW(lpApplicationName &u16, lpCommandLine &u16, lpProcessAttribu
 
 fn C.ReadFile(hFile voidptr, lpBuffer voidptr, nNumberOfBytesToRead u32, lpNumberOfBytesRead C.LPDWORD, lpOverlapped voidptr) bool
 
-fn C.GetFileAttributesW(lpFileName byteptr) u32
+fn C.GetFileAttributesW(lpFileName &byte) u32
 
-fn C.RegQueryValueEx(hKey voidptr, lpValueName &u16, lp_reserved &u32, lpType &u32, lpData byteptr, lpcbData &u32) voidptr
+fn C.RegQueryValueEx(hKey voidptr, lpValueName &u16, lp_reserved &u32, lpType &u32, lpData &byte, lpcbData &u32) voidptr
 
-fn C.RegQueryValueExW(hKey voidptr, lpValueName &u16, lp_reserved &u32, lpType &u32, lpData byteptr, lpcbData &u32) int
+fn C.RegQueryValueExW(hKey voidptr, lpValueName &u16, lp_reserved &u32, lpType &u32, lpData &byte, lpcbData &u32) int
 
 fn C.RegOpenKeyEx(hKey voidptr, lpSubKey &u16, ulOptions u32, samDesired u32, phkResult voidptr) voidptr
 
@@ -236,7 +236,7 @@ fn C.RegOpenKeyExW(hKey voidptr, lpSubKey &u16, ulOptions u32, samDesired u32, p
 
 fn C.RegSetValueEx() voidptr
 
-fn C.RegSetValueExW(hKey voidptr, lpValueName &u16, Reserved u32, dwType u32, lpData byteptr, lpcbData u32) int
+fn C.RegSetValueExW(hKey voidptr, lpValueName &u16, Reserved u32, dwType u32, lpData &byte, lpcbData u32) int
 
 fn C.RegCloseKey(hKey voidptr)
 
@@ -308,7 +308,7 @@ fn C.LocalFree()
 
 fn C.FindFirstFileW(lpFileName &u16, lpFindFileData voidptr) voidptr
 
-fn C.FindFirstFile(lpFileName byteptr, lpFindFileData voidptr) voidptr
+fn C.FindFirstFile(lpFileName &byte, lpFindFileData voidptr) voidptr
 
 fn C.FindNextFile(hFindFile voidptr, lpFindFileData voidptr) int
 
@@ -337,7 +337,7 @@ fn C.closesocket(int) int
 
 fn C.vschannel_init(&C.TlsContext)
 
-fn C.request(&C.TlsContext, int, &u16, byteptr, &byteptr)
+fn C.request(&C.TlsContext, int, &u16, &byte, &&byte)
 
 fn C.vschannel_cleanup(&C.TlsContext)
 
@@ -345,19 +345,19 @@ fn C.URLDownloadToFile(int, &u16, &u16, int, int)
 
 fn C.GetLastError() u32
 
-fn C.CreateDirectory(byteptr, int) bool
+fn C.CreateDirectory(&byte, int) bool
 
 // win crypto
 fn C.BCryptGenRandom(int, voidptr, int, int) int
 
 // win synchronization
-fn C.CreateMutex(int, bool, byteptr) voidptr
+fn C.CreateMutex(int, bool, &byte) voidptr
 
 fn C.WaitForSingleObject(voidptr, int) int
 
 fn C.ReleaseMutex(voidptr) bool
 
-fn C.CreateEvent(int, bool, bool, byteptr) voidptr
+fn C.CreateEvent(int, bool, bool, &byte) voidptr
 
 fn C.SetEvent(voidptr) int
 
