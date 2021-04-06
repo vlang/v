@@ -619,11 +619,10 @@ pub fn (mut p Parser) comment() ast.Comment {
 	pos.last_line = pos.line_nr + text.count('\n')
 	p.next()
 	is_multi := text.contains('\n')
-	// Filter out false positive vet errors inside comments
-	if p.vet_errors.len > 0 {
-		p.vet_errors = p.vet_errors.filter(it.pos.line_nr - 1 > pos.last_line
-			|| (it.typ == .trailing_space && it.pos.line_nr - 1 < pos.line_nr)
-			|| (it.typ != .trailing_space && it.pos.line_nr - 1 <= pos.line_nr))
+	// Filter out false positive space indent vet errors inside comments
+	if p.vet_errors.len > 0 && is_multi {
+		p.vet_errors = p.vet_errors.filter(it.typ != .space_indent
+			|| it.pos.line_nr - 1 > pos.last_line || it.pos.line_nr - 1 <= pos.line_nr)
 	}
 	return ast.Comment{
 		is_multi: is_multi
@@ -2341,9 +2340,13 @@ fn (mut p Parser) string_expr() ast.Expr {
 	pos.last_line = pos.line_nr + val.count('\n')
 	if p.peek_tok.kind != .str_dollar {
 		p.next()
-		if p.vet_errors.len > 0 && val.contains('\n  ') {
-			p.vet_errors = p.vet_errors.filter(!(it.pos.line_nr > pos.line_nr - 1
-				&& it.pos.line_nr <= pos.last_line - 1))
+		// Filter out false positive vet errors inside strings
+		if p.vet_errors.len > 0 {
+			p.vet_errors = p.vet_errors.filter(
+				(it.typ == .trailing_space && it.pos.line_nr - 1 >= pos.last_line)
+				|| (it.typ != .trailing_space && it.pos.line_nr - 1 > pos.last_line)
+				|| (it.typ == .space_indent && it.pos.line_nr - 1 <= pos.line_nr)
+				|| (it.typ != .space_indent && it.pos.line_nr - 1 < pos.line_nr))
 		}
 		node = ast.StringLiteral{
 			val: val
