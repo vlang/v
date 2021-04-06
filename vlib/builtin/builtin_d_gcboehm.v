@@ -40,6 +40,9 @@ fn C.GC_enable()
 // returns non-zero if GC is disabled
 fn C.GC_is_disabled() int
 
+// protect memory block from being freed before this call
+fn C.GC_reachable_here(voidptr)
+
 // for leak detection it is advisable to do explicit garbage collections
 pub fn gc_check_leaks() {
 	$if gcboehm_leak ? {
