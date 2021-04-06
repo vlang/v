@@ -5691,10 +5691,28 @@ fn (mut g Gen) write_types(types []ast.TypeSymbol) {
 				}
 				// TODO avoid buffer manip
 				start_pos := g.type_definitions.len
+
+				mut attrs := ''
+				mut pre_pragma := ''
+				mut post_pragma := ''
+
+				for attr in typ.info.attrs {
+					match attr.name {
+						'_pack' {
+							pre_pragma += '#pragma pack(push, ${attr.arg})\n'
+							post_pragma += '#pragma pack(pop)'
+						}
+						
+						else { }
+					}
+				}
+
+				g.type_definitions.writeln(pre_pragma)
+
 				if typ.info.is_union {
-					g.type_definitions.writeln('union $name {')
+					g.type_definitions.writeln('union $attrs $name {')
 				} else {
-					g.type_definitions.writeln('struct $name {')
+					g.type_definitions.writeln('struct $attrs $name {')
 				}
 				if typ.info.fields.len > 0 || typ.info.embeds.len > 0 {
 					for field in typ.info.fields {
@@ -5732,6 +5750,7 @@ fn (mut g Gen) write_types(types []ast.TypeSymbol) {
 					''
 				}
 				g.type_definitions.writeln('}$attrs;\n')
+				g.type_definitions.writeln(post_pragma)
 			}
 			ast.Alias {
 				// ast.Alias { TODO
