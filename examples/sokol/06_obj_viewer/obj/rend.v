@@ -32,9 +32,9 @@ pub fn create_texture(w int, h int, buf &byte) C.sg_image {
 		d3d11_texture: 0
 	}
 	// comment if .dynamic is enabled
-	img_desc.content.subimage[0][0] = C.sg_subimage_content{
+	img_desc.data.subimage[0][0] = C.sg_range{
 		ptr: buf
-		size: sz
+		size: size_t(sz)
 	}
 
 	sg_img := C.sg_make_image(&img_desc)
@@ -65,25 +65,35 @@ pub fn (mut obj_part ObjPart) create_pipeline(in_part []int, shader C.sg_shader,
 	obj_buf := obj_part.get_buffer(in_part)
 	res.n_vert = obj_buf.n_vertex
 	res.material = obj_part.part[in_part[0]].material
-	
+
 	// vertex buffer
 	mut vert_buffer_desc := C.sg_buffer_desc{}
 	unsafe { C.memset(&vert_buffer_desc, 0, sizeof(vert_buffer_desc)) }
-	vert_buffer_desc.size = obj_buf.vbuf.len * int(sizeof(Vertex_pnct))
-	vert_buffer_desc.content = &byte(obj_buf.vbuf.data)
+
+	vert_buffer_desc.size = size_t(obj_buf.vbuf.len * int(sizeof(Vertex_pnct)))
+	vert_buffer_desc.data = C.sg_range{
+		ptr: obj_buf.vbuf.data
+		size: size_t(obj_buf.vbuf.len * int(sizeof(Vertex_pnct)))
+	}
+
 	vert_buffer_desc.@type = .vertexbuffer
 	vert_buffer_desc.label = 'vertbuf_part_${in_part:03}'.str
 	vbuf := gfx.make_buffer(&vert_buffer_desc)
-	
+
 	// index buffer
 	mut index_buffer_desc := C.sg_buffer_desc{}
 	unsafe {C.memset(&index_buffer_desc, 0, sizeof(index_buffer_desc))}
-	index_buffer_desc.size    = obj_buf.ibuf.len * int(sizeof(u32))
-	index_buffer_desc.content = &byte(obj_buf.ibuf.data)
+
+	index_buffer_desc.size = size_t(obj_buf.ibuf.len * int(sizeof(u32)))
+	index_buffer_desc.data = C.sg_range{
+		ptr: obj_buf.ibuf.data
+		size: size_t(obj_buf.ibuf.len * int(sizeof(u32)))
+	}
+
 	index_buffer_desc.@type   = .indexbuffer
 	index_buffer_desc.label   = "indbuf_part_${in_part:03}".str
 	ibuf := gfx.make_buffer(&index_buffer_desc)
-	
+
 	mut pipdesc := C.sg_pipeline_desc{}
 	unsafe { C.memset(&pipdesc, 0, sizeof(pipdesc)) }
 	pipdesc.layout.buffers[0].stride = int(sizeof(Vertex_pnct))
@@ -96,19 +106,23 @@ pub fn (mut obj_part ObjPart) create_pipeline(in_part []int, shader C.sg_shader,
 	// pipdesc.layout.attrs[C.ATTR_vs_a_Texcoord0].format  = .short2n  // u,v as u16
 	pipdesc.index_type = .uint32
 
-	pipdesc.blend.enabled = true
-	pipdesc.blend.src_factor_rgb = gfx.BlendFactor(C.SG_BLENDFACTOR_SRC_ALPHA)
-	pipdesc.blend.dst_factor_rgb = gfx.BlendFactor(C.SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA)
-	
-	pipdesc.depth_stencil = C.sg_depth_stencil_state{
-		depth_write_enabled: true
-		depth_compare_func: gfx.CompareFunc(C.SG_COMPAREFUNC_LESS_EQUAL)
+	color_state := C.sg_color_state{
+		blend: C.sg_blend_state{
+			enabled: true
+			src_factor_rgb: gfx.BlendFactor(C.SG_BLENDFACTOR_SRC_ALPHA)
+			dst_factor_rgb: gfx.BlendFactor(C.SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA)
+		}
 	}
-	pipdesc.rasterizer = C.sg_rasterizer_state{
-		cull_mode: .front //.back
+	pipdesc.colors[0] = color_state
+
+	pipdesc.depth = C.sg_depth_state{
+		write_enabled: true
+		compare: gfx.CompareFunc(C.SG_COMPAREFUNC_LESS_EQUAL)
 	}
+	pipdesc.cull_mode = .front
+
 	pipdesc.label = 'pip_part_${in_part:03}'.str
-	
+
 	// shader
 	pipdesc.shader = shader
 
@@ -128,9 +142,8 @@ pub fn (mut obj_part ObjPart) create_pipeline(in_part []int, shader C.sg_shader,
 pub fn (mut obj_part ObjPart) init_render_data(texture C.sg_image) {
 	// create shader
 	// One shader for all the model
-	shader := gfx.make_shader(C.gouraud_shader_desc())
-	//shader := gfx.make_shader(C.gouraud_shader_desc(gfx.query_backend()))
-	
+	shader := gfx.make_shader(C.gouraud_shader_desc(gfx.query_backend()))
+
 	mut part_dict := map[string][]int{}
 	for i, p in obj_part.part {
 		if p.faces.len > 0 {
@@ -139,7 +152,7 @@ pub fn (mut obj_part ObjPart) init_render_data(texture C.sg_image) {
 	}
 	obj_part.rend_data.clear()
 	//println("Material dict: ${obj_part.mat_map.keys()}")
-		
+
 	for k, v in part_dict {
 		//println("$k => Parts $v")
 
@@ -172,27 +185,27 @@ pub fn (mut obj_part ObjPart) init_render_data(texture C.sg_image) {
 pub fn (obj_part ObjPart) bind_and_draw(rend_data_index int, in_data Shader_data) u32 {
 	// apply the pipline and bindings
 	mut part_render_data := obj_part.rend_data[rend_data_index]
-	
+
 	// pass light position
 	mut tmp_fs_params := obj.Tmp_fs_param{}
 	tmp_fs_params.ligth = in_data.fs_data.ligth
-	
+
 	if part_render_data.material in obj_part.mat_map {
 		mat_index := obj_part.mat_map[part_render_data.material]
 		mat := obj_part.mat[mat_index]
-		
+
 		// ambient
 		tmp_fs_params.ka = in_data.fs_data.ka
 		if 'Ka' in mat.ks {
 			tmp_fs_params.ka = mat.ks['Ka']
 		}
-		
+
 		// specular
 		tmp_fs_params.ks = in_data.fs_data.ks
 		if 'Ks' in mat.ks {
 			tmp_fs_params.ks = mat.ks['Ks']
 		}
-		
+
 		//  specular exponent Ns
 		if 'Ns' in mat.ns {
 			tmp_fs_params.ks.e[3] = mat.ns['Ns'] / 1000.0
@@ -200,7 +213,7 @@ pub fn (obj_part ObjPart) bind_and_draw(rend_data_index int, in_data Shader_data
 			// defautl value is 10
 			tmp_fs_params.ks.e[3] = f32(10) / 1000.0
 		}
-		
+
 		// diffuse
 		tmp_fs_params.kd = in_data.fs_data.kd
 		if 'Kd' in mat.ks {
@@ -212,11 +225,21 @@ pub fn (obj_part ObjPart) bind_and_draw(rend_data_index int, in_data Shader_data
 			tmp_fs_params.kd.e[3] = mat.ns['Tr']
 		}
 	}
-	
+
 	gfx.apply_pipeline(part_render_data.pipeline)
 	gfx.apply_bindings(part_render_data.bind)
-	gfx.apply_uniforms(C.SG_SHADERSTAGE_VS, C.SLOT_vs_params, in_data.vs_data, in_data.vs_len)
-	gfx.apply_uniforms(C.SG_SHADERSTAGE_FS, C.SLOT_fs_params, &tmp_fs_params, in_data.fs_len)
+
+	vs_uniforms_range := C.sg_range{
+		ptr: in_data.vs_data
+		size: size_t(in_data.vs_len)
+	}
+	fs_uniforms_range := C.sg_range{
+		ptr: &tmp_fs_params
+		size: size_t(in_data.fs_len)
+	}
+
+	gfx.apply_uniforms(C.SG_SHADERSTAGE_VS, C.SLOT_vs_params, &vs_uniforms_range)
+	gfx.apply_uniforms(C.SG_SHADERSTAGE_FS, C.SLOT_fs_params, &fs_uniforms_range)
 	gfx.draw(0, int(part_render_data.n_vert), 1)
 	return part_render_data.n_vert
 }
@@ -237,7 +260,7 @@ pub fn (mut obj_part ObjPart) calc_bbox() {
 		if v.e[0] > obj_part.max.e[0] { obj_part.max.e[0] = v.e[0] }
 		if v.e[1] > obj_part.max.e[1] { obj_part.max.e[1] = v.e[1] }
 		if v.e[2] > obj_part.max.e[2] { obj_part.max.e[2] = v.e[2] }
-		
+
 		if v.e[0] < obj_part.min.e[0] { obj_part.min.e[0] = v.e[0] }
 		if v.e[1] < obj_part.min.e[1] { obj_part.min.e[1] = v.e[1] }
 		if v.e[2] < obj_part.min.e[2] { obj_part.min.e[2] = v.e[2] }

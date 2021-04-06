@@ -36,7 +36,7 @@ pub struct C.sg_context_desc {
 	*/
 	sample_count int
 	gl           C.sg_gl_context_desc
-	metal        C.sg_mtl_context_desc
+	metal        C.sg_metal_context_desc
 	d3d11        C.sg_d3d11_context_desc
 	color_format PixelFormat
 	depth_format PixelFormat
@@ -46,7 +46,7 @@ pub struct C.sg_gl_context_desc {
 	gl_force_gles2 bool
 }
 
-pub struct C.sg_mtl_context_desc {
+pub struct C.sg_metal_context_desc {
 	device                   voidptr
 	renderpass_descriptor_cb fn () voidptr
 	drawable_cb              fn () voidptr
@@ -59,18 +59,31 @@ pub struct C.sg_d3d11_context_desc {
 	depth_stencil_view_cb fn () voidptr
 }
 
+pub struct C.sg_color_state {
+pub mut:
+	pixel_format PixelFormat
+	write_mask   ColorMask
+	blend        C.sg_blend_state
+}
+
 pub struct C.sg_pipeline_desc {
 pub mut:
-	_start_canary  u32
-	layout         C.sg_layout_desc
-	shader         C.sg_shader
-	primitive_type PrimitiveType
-	index_type     IndexType
-	depth_stencil  C.sg_depth_stencil_state
-	blend          C.sg_blend_state
-	rasterizer     C.sg_rasterizer_state
-	label          byteptr
-	_end_canary    u32
+	_start_canary             u32
+	shader                    C.sg_shader
+	layout                    C.sg_layout_desc
+	depth                     C.sg_depth_state
+	stencil                   C.sg_stencil_state
+	color_count               int
+	colors                    [4]C.sg_color_state // C.SG_MAX_COLOR_ATTACHMENTS
+	primitive_type            PrimitiveType
+	index_type                IndexType
+	cull_mode                 CullMode
+	face_winding              FaceWinding
+	sample_count              int
+	blend_color               C.sg_color
+	alpha_to_coverage_enabled bool
+	label                     byteptr
+	_end_canary               u32
 }
 
 pub struct C.sg_pipeline_info {
@@ -106,19 +119,35 @@ pub fn (mut b C.sg_bindings) set_frag_image(index int, img C.sg_image) {
 }
 
 pub fn (b &C.sg_bindings) update_vert_buffer(index int, data voidptr, element_size int, element_count int) {
-	C.sg_update_buffer(b.vertex_buffers[index], data, element_size * element_count)
+	range := C.sg_range{
+		ptr: data
+		size: size_t(element_size * element_count)
+	}
+	C.sg_update_buffer(b.vertex_buffers[index], &range)
 }
 
 pub fn (b &C.sg_bindings) append_vert_buffer(index int, data voidptr, element_size int, element_count int) int {
-	return C.sg_append_buffer(b.vertex_buffers[index], data, element_size * element_count)
+	range := C.sg_range{
+		ptr: data
+		size: size_t(element_size * element_count)
+	}
+	return C.sg_append_buffer(b.vertex_buffers[index], &range)
 }
 
 pub fn (b &C.sg_bindings) update_index_buffer(data voidptr, element_size int, element_count int) {
-	C.sg_update_buffer(b.index_buffer, data, element_size * element_count)
+	range := C.sg_range{
+		ptr: data
+		size: size_t(element_size * element_count)
+	}
+	C.sg_update_buffer(b.index_buffer, &range)
 }
 
 pub fn (b &C.sg_bindings) append_index_buffer(data voidptr, element_size int, element_count int) int {
-	return C.sg_append_buffer(b.index_buffer, data, element_size * element_count)
+	range := C.sg_range{
+		ptr: data
+		size: size_t(element_size * element_count)
+	}
+	return C.sg_append_buffer(b.index_buffer, &range)
 }
 
 pub struct C.sg_shader_desc {
@@ -143,22 +172,22 @@ pub fn (mut desc C.sg_shader_desc) set_frag_src(src string) &C.sg_shader_desc {
 
 pub fn (mut desc C.sg_shader_desc) set_vert_image(index int, name string) &C.sg_shader_desc {
 	desc.vs.images[index].name = name.str
-	desc.vs.images[index].@type = ._2d
+	desc.vs.images[index].image_type = ._2d
 	return desc
 }
 
 pub fn (mut desc C.sg_shader_desc) set_frag_image(index int, name string) &C.sg_shader_desc {
 	desc.fs.images[index].name = name.str
-	desc.fs.images[index].@type = ._2d
+	desc.fs.images[index].image_type = ._2d
 	return desc
 }
 
-pub fn (mut desc C.sg_shader_desc) set_vert_uniform_block_size(block_index int, size int) &C.sg_shader_desc {
+pub fn (mut desc C.sg_shader_desc) set_vert_uniform_block_size(block_index int, size size_t) &C.sg_shader_desc {
 	desc.vs.uniform_blocks[block_index].size = size
 	return desc
 }
 
-pub fn (mut desc C.sg_shader_desc) set_frag_uniform_block_size(block_index int, size int) &C.sg_shader_desc {
+pub fn (mut desc C.sg_shader_desc) set_frag_uniform_block_size(block_index int, size size_t) &C.sg_shader_desc {
 	desc.fs.uniform_blocks[block_index].size = size
 	return desc
 }
@@ -189,8 +218,7 @@ pub mut:
 pub struct C.sg_shader_stage_desc {
 pub mut:
 	source         byteptr
-	byte_code      &byte
-	byte_code_size int
+	bytecode       C.sg_range
 	entry          byteptr
 	uniform_blocks [4]C.sg_shader_uniform_block_desc
 	images         [12]C.sg_shader_image_desc
@@ -198,13 +226,13 @@ pub mut:
 
 pub fn (mut desc C.sg_shader_stage_desc) set_image(index int, name string) C.sg_shader_stage_desc {
 	desc.images[index].name = name.str
-	desc.images[index].@type = ._2d
+	desc.images[index].image_type = ._2d
 	return *desc
 }
 
 pub struct C.sg_shader_uniform_block_desc {
 pub mut:
-	size     int
+	size     size_t
 	uniforms [16]C.sg_shader_uniform_desc
 }
 
@@ -218,7 +246,7 @@ pub mut:
 pub struct C.sg_shader_image_desc {
 pub mut:
 	name  byteptr
-	@type ImageType
+	image_type ImageType
 }
 
 pub struct C.sg_shader_info {
@@ -226,6 +254,20 @@ pub struct C.sg_shader_info {
 
 pub struct C.sg_context {
 	id u32
+}
+
+pub struct C.sg_range {
+pub mut:
+	ptr  voidptr
+	size size_t
+}
+
+pub struct C.sg_color {
+pub mut:
+	r f32
+	g f32
+	b f32
+	a f32
 }
 
 pub struct C.sg_shader {
@@ -240,8 +282,8 @@ pub fn (s C.sg_shader) free() {
 pub struct C.sg_pass_desc {
 pub mut:
 	_start_canary            u32
-	color_attachments        [4]C.sg_attachment_desc
-	depth_stencil_attachment C.sg_attachment_desc
+	color_attachments        [4]C.sg_pass_attachment_desc
+	depth_stencil_attachment C.sg_pass_attachment_desc
 	label                    byteptr
 	_end_canary              u32
 }
@@ -270,10 +312,10 @@ pub fn (p C.sg_pass) free() {
 pub struct C.sg_buffer_desc {
 pub mut:
 	_start_canary u32
-	size          int
+	size          size_t
 	@type         BufferType
 	usage         Usage
-	content       byteptr
+	data          C.sg_range
 	label         byteptr
 	// GL specific
 	gl_buffers    [2]u32
@@ -307,12 +349,7 @@ pub mut:
 	render_target  bool
 	width          int
 	height         int
-	depth          DepthLayers
-	// depth int
-	// union {
-	// int depth;
-	// int layers;
-	// };
+	num_slices     int
 	num_mipmaps    int
 	usage          Usage
 	pixel_format   PixelFormat
@@ -326,14 +363,18 @@ pub mut:
 	max_anisotropy u32
 	min_lod        f32
 	max_lod        f32
-	content        C.sg_image_content
+	data           C.sg_image_data
 	label          byteptr
 	// GL specific
 	gl_textures    [2]u32
+	gl_texture_target u32
 	// Metal specific
 	mtl_textures   [2]voidptr
 	// D3D11 specific
 	d3d11_texture  voidptr
+	d3d11_shader_resource_view voidptr
+	// WebGPU specific
+    wgpu_texture   voidptr
 	_end_canary    u32
 }
 
@@ -354,26 +395,23 @@ pub fn (i C.sg_image) free() {
 	C.sg_destroy_image(i)
 }
 
-pub struct C.sg_image_content {
+pub struct C.sg_image_data {
 pub mut:
-	subimage [6][16]C.sg_subimage_content
-}
-
-pub struct C.sg_subimage_content {
-pub mut:
-	ptr  voidptr // pointer to subimage data
-	size int // size in bytes of pointed-to subimage data
+	//subimage [C.SG_CUBEFACE_NUM][C.SG_MAX_MIPMAPS]C.sg_range
+	subimage [6][16]C.sg_range
 }
 
 pub struct C.sg_features {
 pub:
-	instancing              bool // hardware instancing supported
-	origin_top_left         bool // framebuffer and texture origin is in top left corner
-	multiple_render_targets bool // offscreen render passes can have multiple render targets attached
-	msaa_render_targets     bool // offscreen render passes support MSAA antialiasing
-	imagetype_3d            bool // creation of SG_IMAGETYPE_3D images is supported
-	imagetype_array         bool // creation of SG_IMAGETYPE_ARRAY images is supported
-	image_clamp_to_border   bool // border color and clamp-to-border UV-wrap mode is supported
+	instancing                  bool // hardware instancing supported
+	origin_top_left             bool // framebuffer and texture origin is in top left corner
+	multiple_render_targets     bool // offscreen render passes can have multiple render targets attached
+	msaa_render_targets         bool // offscreen render passes support MSAA antialiasing
+	imagetype_3d                bool // creation of SG_IMAGETYPE_3D images is supported
+	imagetype_array             bool // creation of SG_IMAGETYPE_ARRAY images is supported
+	image_clamp_to_border       bool // border color and clamp-to-border UV-wrap mode is supported
+	mrt_independent_blend_state bool // multiple-render-target rendering can use per-render-target blend state
+	mrt_independent_write_mask  bool // multiple-render-target rendering can use per-render-target color write masks
 }
 
 pub struct C.sg_limits {
@@ -406,18 +444,25 @@ pub mut:
 	format       VertexFormat
 }
 
-pub struct C.sg_depth_stencil_state {
-	stencil_front       C.sg_stencil_state
-	stencil_back        C.sg_stencil_state
-	depth_compare_func  CompareFunc
-	depth_write_enabled bool
-	stencil_enabled     bool
-	stencil_read_mask   byte
-	stencil_write_mask  byte
-	stencil_ref         byte
+pub struct C.sg_stencil_state {
+	enabled bool
+	front C.sg_stencil_face_state
+	back C.sg_stencil_face_state
+	read_mask byte
+	write_mask byte
+	ref byte
 }
 
-pub struct C.sg_stencil_state {
+pub struct C.sg_depth_state {
+	pixel_format PixelFormat
+	compare CompareFunc
+	write_enabled bool
+	bias f32
+	bias_slope_scale f32
+	bias_clamp f32
+}
+
+pub struct C.sg_stencil_face_state {
 	fail_op       StencilOp
 	depth_fail_op StencilOp
 	pass_op       StencilOp
@@ -433,28 +478,12 @@ pub mut:
 	src_factor_alpha       BlendFactor
 	dst_factor_alpha       BlendFactor
 	op_alpha               BlendOp
-	color_write_mask       byte
-	color_attachment_count int
-	color_format           PixelFormat
-	depth_format           PixelFormat
-	blend_color            [4]f32
-}
-
-pub struct C.sg_rasterizer_state {
-pub mut:
-	alpha_to_coverage_enabled bool
-	cull_mode                 CullMode
-	face_winding              FaceWinding
-	sample_count              int
-	depth_bias                f32
-	depth_bias_slope_scale    f32
-	depth_bias_clamp          f32
 }
 
 pub struct C.sg_color_attachment_action {
 pub mut:
 	action Action
-	val    [4]f32
+	value  C.sg_color
 }
 
 /*
@@ -468,13 +497,13 @@ pub fn (mut action C.sg_color_attachment_action) set_color_values(r, g, b, a f32
 pub struct C.sg_depth_attachment_action {
 pub mut:
 	action Action
-	val    f32
+	value  f32
 }
 
 pub struct C.sg_stencil_attachment_action {
 pub mut:
 	action Action
-	val    byte
+	value  byte
 }
 
 pub struct C.sg_pixelformat_info {
@@ -487,7 +516,7 @@ pub:
 	depth  bool // pixel format is a depth format
 }
 
-pub struct C.sg_attachment_desc {
+pub struct C.sg_pass_attachment_desc {
 pub mut:
 	image     C.sg_image
 	mip_level int
