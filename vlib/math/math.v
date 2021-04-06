@@ -98,8 +98,9 @@ pub fn lcm(a i64, b i64) i64 {
 	return res
 }
 
-//Famous fast inverse square root algorithm
-pub fn isqrt(a f32) f32{
+//Famous fast inverse square root algorithm (works for 32 bit floats)
+//'rounds' is a so-called precision controlling factor 
+pub fn isqrt(a f32, rounds u32) f32{
 	mut i := u32(0)
 	mut x2 := f32(0.0)
 	mut y := f32(0.0) 
@@ -110,8 +111,9 @@ pub fn isqrt(a f32) f32{
 		i = *(&u32(&y))
 		i = 0x5f3759df - (i >> 1)
 		y = *(&f32(&i))
-		y = y * (threehalfs - (x2 * y * y))
-		y = y * (threehalfs - (x2 * y * y))
+		for k := 0; k < rounds; k++{
+			y = y * (threehalfs - (x2 * y * y))
+		}
 		return y
 	}
 }

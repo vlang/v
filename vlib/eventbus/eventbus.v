@@ -105,8 +105,6 @@ pub fn (s &Subscriber) is_subscribed(name string) bool {
 	return s.registry.check_subscriber(name)
 }
 
-
-
 // is_subscribed_method checks whether a receiver was already subscribed for any events
 pub fn (s &Subscriber) is_subscribed_method(name string, receiver voidptr) bool {
 	return s.registry.events.any(it.name == name && it.receiver == receiver)
