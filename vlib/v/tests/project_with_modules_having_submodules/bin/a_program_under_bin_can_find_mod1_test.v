@@ -6,7 +6,7 @@ fn test_mod1_can_still_be_found_through_parent_project_vmod() {
 
 /*
 NB: this main program is under bin/ , but it still
-can find mod1, because the parent project has v.mod, 
+can find mod1, because the parent project has v.mod,
 so v module lookup for this program will find mod1 through
 relation to the parent v.mod file
 */

@@ -24,7 +24,7 @@ fn test_inline_asm() {
 		mov f, d
 		add f, e
 		add f, 5
-		; +r (f) // output 
+		; +r (f) // output
 		; r (d)
 		  r (e) // input
 	}
@@ -45,7 +45,7 @@ fn test_inline_asm() {
 
 	mut j := 0
 	// do 5*3
-	// adding three, five times 
+	// adding three, five times
 	asm amd64 {
 		mov rcx, 5 // loop 5 times
 		loop_start:

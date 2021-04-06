@@ -25,7 +25,7 @@ fn test_inline_asm() {
 		mov f, d
 		add f, e
 		add f, 5
-		; +r (f) // output 
+		; +r (f) // output
 		; r (d)
 		  r (e) // input
 	}
