@@ -353,6 +353,8 @@ fn parse_header0(s string) ?string {
 		return error('missing colon in header')
 	}
 	words := s.split_nth(':', 2)
+	// x := words[0]
+	// return x
 	return words[0]
 }
 
@@ -386,7 +388,7 @@ fn main() {
 	s2 := return_sb_str()
 	// free_map()
 	// loop_map()
-	// advanced_optionals()
+	advanced_optionals()
 	free_array_except_returned_element()
 	println('end')
 }

@@ -4664,6 +4664,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		if optional_none || is_regular_option || node.types[0] == ast.error_type_idx {
 			g.write('return ')
 			g.gen_optional_error(g.fn_decl.return_type, node.exprs[0])
+			// g.writeln('; /*ret1*/')
 			g.writeln(';')
 			return
 		}
@@ -4778,6 +4779,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 				}
 			}
 			g.writeln(' }, (Option*)(&$opt_tmp), sizeof($styp));')
+			g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 			g.writeln('return $opt_tmp;')
 			return
 		}
