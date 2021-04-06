@@ -49,16 +49,14 @@ fn mysql() {
 	mut conn := mysql.Connection{
 		host: 'localhost'
 		port: 3306
-		username: 'v'
-		password: ''
+		username: 'root'
+		password: 'abc'
 		dbname: 'test'
 	}
 	conn.connect() or { panic(err) }
-	_ := conn.query("create table Module (id integer primary key, name text default '', nr_downloads int default 0, creator int default 0);") or { panic(err) }
-	a := conn.query("create table User (id integer primary key, age int default 0, name text default '', is_customer int default 0);") or { panic(err) }
+	_ := conn.query("create table if not exists Module (id SERIAL, name TEXT NOT NULL, nr_downloads INT DEFAULT 0, creator INT DEFAULT 0, PRIMARY KEY(`id`));") or { panic(err) }
+	_ := conn.query("create table if not exists User (id SERIAL, age INT DEFAULT 0, name TEXT NOT NULL, is_customer INT DEFAULT 0, PRIMARY KEY(`id`));") or { panic(err) }
 	
-	eprintln(a.rows())
-
 	mod := Module{
 		name: 'test'
 		nr_downloads: 10
