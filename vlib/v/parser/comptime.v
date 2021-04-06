@@ -74,6 +74,7 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 			args_var: s
 			is_env: true
 			env_pos: spos
+			pos: spos.extend(p.prev_tok.position())
 		}
 	}
 	p.check(.lpar)

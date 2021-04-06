@@ -93,5 +93,6 @@ bar'
     value: 'two'
 })"
 	r := m[key] ?
+	compile_time_env := $env('ENV_VAR')
 	func()
 }
