@@ -3180,7 +3180,9 @@ fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 		varg_elem_type_sym := g.table.get_type_symbol(g.table.value_type(node.expr_type))
 		g.write('_SLIT("...${util.strip_main_name(varg_elem_type_sym.name)}")')
 	} else {
-		g.write('_SLIT("${util.strip_main_name(g.table.type_to_str(node.expr_type))}")')
+		x := g.table.type_to_str(node.expr_type)
+		y := util.strip_main_name(x)
+		g.write('_SLIT("$y")')
 	}
 }
 
@@ -4662,6 +4664,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		if optional_none || is_regular_option || node.types[0] == ast.error_type_idx {
 			g.write('return ')
 			g.gen_optional_error(g.fn_decl.return_type, node.exprs[0])
+			// g.writeln('; /*ret1*/')
 			g.writeln(';')
 			return
 		}
@@ -4776,6 +4779,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 				}
 			}
 			g.writeln(' }, (Option*)(&$opt_tmp), sizeof($styp));')
+			g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 			g.writeln('return $opt_tmp;')
 			return
 		}

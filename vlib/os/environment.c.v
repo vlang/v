@@ -66,11 +66,10 @@ pub fn unsetenv(name string) int {
 // See: https://linux.die.net/man/5/environ for unix platforms.
 // See: https://docs.microsoft.com/bg-bg/windows/win32/api/processenv/nf-processenv-getenvironmentstrings
 // os.environ returns a map of all the current environment variables
-type PChar = &char
-type PPChar = &&char
 
-fn deref_ppchar(x &PChar) &char {
-	return &char(*x)
+fn unix_environ() &&char {
+	// TODO: remove this helper function, when `&&char(C.environ)` works properly
+	return voidptr(C.environ)
 }
 
 pub fn environ() map[string]string {
@@ -90,20 +89,19 @@ pub fn environ() map[string]string {
 		}
 		C.FreeEnvironmentStringsW(estrings)
 	} $else {
-		e := unsafe { PPChar(voidptr(C.environ)) }
-		size_of_pchar := int(sizeof(PChar))
-		for i := 0; true; i++ {
-			z := voidptr(unsafe { &byte(voidptr(e)) + size_of_pchar * i })
-			current_ptr := &PChar(z)
-			derefed := deref_ppchar(current_ptr)
-			if isnil(derefed) {
+		start := unix_environ()
+		mut i := 0
+		for {
+			x := unsafe { start[i] }
+			if x == 0 {
 				break
 			}
-			eline := unsafe { cstring_to_vstring(derefed) }
+			eline := unsafe { cstring_to_vstring(x) }
 			eq_index := eline.index_byte(`=`)
 			if eq_index > 0 {
 				res[eline[0..eq_index]] = eline[eq_index + 1..]
 			}
+			i++
 		}
 	}
 	return res

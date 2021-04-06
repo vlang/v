@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+<style>
+h1 {
+color: green;
+}
+</style>
+<style media="print">
+h1 {
+color: red;
+}
+</style>
+<script type="application/ld+json">
+<!-- JSON-LD -->
+</script>
+<script>
+document.getElementById("demo").innerHTML = "Hello JavaScript!";
+</script>
+</head>
+
+<body>
+<header>
+<h1>TEST</h1>
+</header>
+</body>
+
+</html>

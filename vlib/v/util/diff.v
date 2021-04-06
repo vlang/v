@@ -8,6 +8,9 @@ import time
 pub fn find_working_diff_command() ?string {
 	env_difftool := os.getenv('VDIFF_TOOL')
 	env_diffopts := os.getenv('VDIFF_OPTIONS')
+	if env_difftool != '' {
+		return '$env_difftool $env_diffopts'
+	}
 	mut known_diff_tools := []string{}
 	if env_difftool.len > 0 {
 		known_diff_tools << env_difftool

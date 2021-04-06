@@ -97,12 +97,14 @@ fn main() {
 	}
 	context.compile_oldv_if_needed()
 	scripting.chdir(context.path_v)
-	scripting.cprintln('#     v commit hash: $context.commit_v_hash')
-	scripting.cprintln('#   checkout folder: $context.path_v')
+	shorter_hash := context.commit_v_hash[0..10]
+	scripting.cprintln('#     v commit hash: $shorter_hash | folder: $context.path_v')
 	if context.cmd_to_run.len > 0 {
+		scripting.cprintln_strong('#           command: ${context.cmd_to_run:-34s}')
 		cmdres := os.execute_or_panic(context.cmd_to_run)
-		scripting.cprintln('#           command: ${context.cmd_to_run:-34s} exit code: ${cmdres.exit_code:-4d}  result:')
-		println(cmdres.output)
+		scripting.cprintln_strong('#         exit code: ${cmdres.exit_code:-4d}')
+		scripting.cprint_strong('#            result: ')
+		print(cmdres.output)
 		exit(cmdres.exit_code)
 	}
 }
