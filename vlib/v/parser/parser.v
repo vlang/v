@@ -1850,7 +1850,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		}
 		return ast.MapInit{
 			typ: map_type
-			pos: p.tok.position()
+			pos: p.prev_tok.position()
 		}
 	}
 	// `chan typ{...}`
