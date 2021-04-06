@@ -588,6 +588,6 @@ fn is_token(b byte) bool {
 
 // Returns the headers string as seen in HTTP/1.1 requests
 // Key order is not guaranteed
-fn (h Header) str() string {
+pub fn (h Header) str() string {
 	return h.render(version: .v1_1)
 }
