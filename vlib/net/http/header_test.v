@@ -1,4 +1,4 @@
-import net.http
+module http
 
 fn test_header_new() {
 	h := http.new_header(
@@ -54,6 +54,15 @@ fn test_header_delete() {
 	assert h.values(.dnt) == ['one' 'two']
 	h.delete(.dnt)
 	assert h.values(.dnt) == []
+}
+
+fn test_header_delete_not_existing() {
+	mut h := http.new_header()
+	assert h.data.len == 0
+	assert h.keys.len == 0
+	h.delete(.dnt)
+	assert h.data.len == 0
+	assert h.keys.len == 0
 }
 
 fn test_custom_header() ? {

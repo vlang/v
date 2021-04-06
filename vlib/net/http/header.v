@@ -387,12 +387,7 @@ pub fn (mut h Header) set_custom(key string, value string) ? {
 
 // Delete all values for a key.
 pub fn (mut h Header) delete(key CommonHeader) {
-	k := key.str()
-	h.data.delete(k)
-
-	// remove key from keys metadata
-	kl := k.to_lower()
-	h.keys[kl] = h.keys[kl].filter(it != k)
+	h.delete_custom(key.str())
 }
 
 // Delete all values for a custom header key.
@@ -401,7 +396,9 @@ pub fn (mut h Header) delete_custom(key string) {
 
 	// remove key from keys metadata
 	kl := key.to_lower()
-	h.keys[kl] = h.keys[kl].filter(it != key)
+	if kl in h.keys {
+		h.keys[kl] = h.keys[kl].filter(it != key)
+	}
 }
 
 pub struct HeaderCoerceConfig {
