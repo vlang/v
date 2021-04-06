@@ -3180,7 +3180,9 @@ fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 		varg_elem_type_sym := g.table.get_type_symbol(g.table.value_type(node.expr_type))
 		g.write('_SLIT("...${util.strip_main_name(varg_elem_type_sym.name)}")')
 	} else {
-		g.write('_SLIT("${util.strip_main_name(g.table.type_to_str(node.expr_type))}")')
+		x := g.table.type_to_str(node.expr_type)
+		y := util.strip_main_name(x)
+		g.write('_SLIT("$y")')
 	}
 }
 
