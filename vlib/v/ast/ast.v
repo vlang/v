@@ -1597,6 +1597,9 @@ pub fn (node Node) position() token.Position {
 					pos = pos.extend(sym.pos)
 				}
 			}
+			if node is AssignStmt {
+				return pos.extend(node.right.last().position())
+			}
 			return pos
 		}
 		Expr {
