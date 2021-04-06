@@ -9,12 +9,16 @@ for addr in [
 ] {
 	println('$addr')
 
-	addrs := net.resolve_addrs(addr, .unspec, .tcp) or {
+	@type := net.SocketType.tcp
+	family := net.AddrFamily.unspec
+
+	addrs := net.resolve_addrs(addr, family, @type) or {
 		println('> None')
 		continue
 	}
 
 	for a in addrs {
-		println('> $a ${a.family} ${a.@type}')
+		f := a.family()
+		println('> ${a} ${f} ${@type}')
 	}
 }
