@@ -1564,6 +1564,45 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 			c.error('expected $nr_args arguments, but got $call_expr.args.len', unexpected_arguments_pos)
 			return method.return_type
 		}
+		if method.generic_names.len > 0 && method.return_type.has_flag(.generic) {
+			rts := c.table.get_type_symbol(method.return_type)
+			if rts.info is ast.Struct {
+				if rts.info.generic_types.len > 0 {
+					gts := c.table.get_type_symbol(call_expr.generic_types[0])
+					nrt := '$rts.name<$gts.name>'
+					c_nrt := '${rts.name}_T_$gts.name'
+					idx := c.table.type_idxs[nrt]
+					if idx != 0 {
+						c.ensure_type_exists(idx, call_expr.pos) or {}
+						call_expr.return_type = ast.new_type(idx).derive(method.return_type)
+					} else {
+						mut fields := rts.info.fields.clone()
+						if rts.info.generic_types.len == generic_types.len {
+							for i, _ in fields {
+								if t_typ := c.table.resolve_generic_by_types(fields[i].typ,
+									rts.info.generic_types, generic_types)
+								{
+									fields[i].typ = t_typ
+								}
+							}
+							mut info := rts.info
+							info.generic_types = []
+							info.fields = fields
+							stru_idx := c.table.register_type_symbol(ast.TypeSymbol{
+								kind: .struct_
+								name: nrt
+								cname: util.no_dots(c_nrt)
+								mod: c.mod
+								info: info
+							})
+							call_expr.return_type = ast.new_type(stru_idx)
+						}
+					}
+				}
+			}
+		} else {
+			call_expr.return_type = method.return_type
+		}
 
 		// if method_name == 'clone' {
 		// println('CLONE nr args=$method.args.len')
@@ -1661,7 +1700,6 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 		} else {
 			call_expr.receiver_type = method.params[0].typ
 		}
-		call_expr.return_type = method.return_type
 		if method.generic_names.len != call_expr.generic_types.len {
 			// no type arguments given in call, attempt implicit instantiation
 			c.infer_fn_types(method, mut call_expr)
