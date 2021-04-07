@@ -44,7 +44,7 @@ pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 		}
 	} else if !node.text.contains('\n') {
 		is_separate_line := !options.inline || node.text.starts_with('\x01')
-		mut s := node.text.trim_left('\x01')
+		mut s := node.text.trim_left('\x01').trim_right(' ')
 		mut out_s := '//'
 		if s != '' {
 			if is_char_alphanumeric(s[0]) {
@@ -67,7 +67,7 @@ pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 			f.writeln('')
 		}
 		for line in lines {
-			f.writeln(line)
+			f.writeln(line.trim_right(' '))
 			f.empty_line = false
 		}
 		if end_break {

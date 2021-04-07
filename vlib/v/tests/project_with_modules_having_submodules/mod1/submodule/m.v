@@ -2,7 +2,7 @@ module submodule
 
 /*
 This submodule just imports its sibling submodules.
-Note that they are NOT under 'submodule' itself, 
+Note that they are NOT under 'submodule' itself,
 but are in its parent mod1 , and mod1 has a 'v.mod' file.
 */
 import v.tests.project_with_modules_having_submodules.mod1.mod11

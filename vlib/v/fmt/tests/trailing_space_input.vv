@@ -1,0 +1,10 @@
+// NB: The input file has and *should* have trailing spaces.
+// When making changes, please ensure these spaces are not removed.
+
+fn comments_with_trailing_space() {
+	// two spaces on the right  
+	/*  
+	spaces after here  
+	and everywhere :)  
+	*/  
+}

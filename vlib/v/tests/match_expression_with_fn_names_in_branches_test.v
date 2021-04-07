@@ -32,7 +32,7 @@ fn sine(note &Note, time f32, amp f32) f32 {
 pub fn new_context(cfg Config) fn (&Note, f32, f32) f32 {
 	// Note, that here `sine` and `sawtooth`,
 	// are different functions, but they do have
-	// a compatible signature, so `next_fn` can 
+	// a compatible signature, so `next_fn` can
 	// become either one of them:
 	next_fn := match cfg.wave_kind {
 		.sine { sine }
