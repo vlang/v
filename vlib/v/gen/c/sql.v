@@ -482,8 +482,7 @@ fn (mut g Gen) mysql_get_table_type(typ ast.Type) string {
 		-1 {
 			table_typ = 'SERIAL'
 		}
-		else {
-		}
+		else {}
 	}
 	return table_typ
 }
