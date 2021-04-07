@@ -95,7 +95,7 @@ fn (mut a array) ensure_cap(required int) {
 		cap *= 2
 	}
 	new_size := cap * a.element_size
-	mut new_data := byteptr(0)
+	mut new_data := &byte(0)
 	if a.cap > 0 {
 		new_data = unsafe { realloc_data(a.data, a.cap * a.element_size, new_size) }
 	} else {
@@ -128,7 +128,7 @@ pub fn (a array) repeat(count int) array {
 			ary_clone := ary.clone()
 			unsafe { C.memcpy(arr.get_unsafe(i * a.len), &ary_clone, a.len * a.element_size) }
 		} else {
-			unsafe { C.memcpy(arr.get_unsafe(i * a.len), byteptr(a.data), a.len * a.element_size) }
+			unsafe { C.memcpy(arr.get_unsafe(i * a.len), &byte(a.data), a.len * a.element_size) }
 		}
 	}
 	return arr
@@ -213,7 +213,7 @@ pub fn (mut a array) trim(index int) {
 [inline; unsafe]
 fn (a array) get_unsafe(i int) voidptr {
 	unsafe {
-		return byteptr(a.data) + i * a.element_size
+		return &byte(a.data) + i * a.element_size
 	}
 }
 
@@ -225,7 +225,7 @@ fn (a array) get(i int) voidptr {
 		}
 	}
 	unsafe {
-		return byteptr(a.data) + i * a.element_size
+		return &byte(a.data) + i * a.element_size
 	}
 }
 
@@ -235,7 +235,7 @@ fn (a array) get_with_check(i int) voidptr {
 		return 0
 	}
 	unsafe {
-		return byteptr(a.data) + i * a.element_size
+		return &byte(a.data) + i * a.element_size
 	}
 }
 
@@ -257,7 +257,7 @@ pub fn (a array) last() voidptr {
 		}
 	}
 	unsafe {
-		return byteptr(a.data) + (a.len - 1) * a.element_size
+		return &byte(a.data) + (a.len - 1) * a.element_size
 	}
 }
 
@@ -270,7 +270,7 @@ pub fn (mut a array) pop() voidptr {
 		}
 	}
 	new_len := a.len - 1
-	last_elem := unsafe { byteptr(a.data) + (new_len) * a.element_size }
+	last_elem := unsafe { &byte(a.data) + (new_len) * a.element_size }
 	a.len = new_len
 	// NB: a.cap is not changed here *on purpose*, so that
 	// further << ops on that array will be more efficient.
@@ -305,9 +305,9 @@ fn (a array) slice(start int, _end int) array {
 			panic('array.slice: slice bounds out of range ($start < 0)')
 		}
 	}
-	mut data := byteptr(0)
+	mut data := &byte(0)
 	unsafe {
-		data = byteptr(a.data) + start * a.element_size
+		data = &byte(a.data) + start * a.element_size
 	}
 	l := end - start
 	res := array{
@@ -363,7 +363,7 @@ pub fn (a &array) clone() array {
 	}
 
 	if !isnil(a.data) {
-		unsafe { C.memcpy(byteptr(arr.data), a.data, a.cap * a.element_size) }
+		unsafe { C.memcpy(&byte(arr.data), a.data, a.cap * a.element_size) }
 	}
 	return arr
 }
@@ -381,9 +381,9 @@ fn (a &array) slice_clone(start int, _end int) array {
 			panic('array.slice: slice bounds out of range ($start < 0)')
 		}
 	}
-	mut data := byteptr(0)
+	mut data := &byte(0)
 	unsafe {
-		data = byteptr(a.data) + start * a.element_size
+		data = &byte(a.data) + start * a.element_size
 	}
 	l := end - start
 	res := array{
@@ -398,7 +398,7 @@ fn (a &array) slice_clone(start int, _end int) array {
 // we manually inline this for single operations for performance without -prod
 [inline; unsafe]
 fn (mut a array) set_unsafe(i int, val voidptr) {
-	unsafe { C.memcpy(byteptr(a.data) + a.element_size * i, val, a.element_size) }
+	unsafe { C.memcpy(&byte(a.data) + a.element_size * i, val, a.element_size) }
 }
 
 // Private function. Used to implement assigment to the array element.
@@ -408,12 +408,12 @@ fn (mut a array) set(i int, val voidptr) {
 			panic('array.set: index out of range (i == $i, a.len == $a.len)')
 		}
 	}
-	unsafe { C.memcpy(byteptr(a.data) + a.element_size * i, val, a.element_size) }
+	unsafe { C.memcpy(&byte(a.data) + a.element_size * i, val, a.element_size) }
 }
 
 fn (mut a array) push(val voidptr) {
 	a.ensure_cap(a.len + 1)
-	unsafe { C.memmove(byteptr(a.data) + a.element_size * a.len, val, a.element_size) }
+	unsafe { C.memmove(&byte(a.data) + a.element_size * a.len, val, a.element_size) }
 	a.len++
 }
 
@@ -446,10 +446,10 @@ pub fn (mut a array) reverse_in_place() {
 	unsafe {
 		mut tmp_value := malloc(a.element_size)
 		for i in 0 .. a.len / 2 {
-			C.memcpy(tmp_value, byteptr(a.data) + i * a.element_size, a.element_size)
-			C.memcpy(byteptr(a.data) + i * a.element_size, byteptr(a.data) +
+			C.memcpy(tmp_value, &byte(a.data) + i * a.element_size, a.element_size)
+			C.memcpy(&byte(a.data) + i * a.element_size, &byte(a.data) +
 				(a.len - 1 - i) * a.element_size, a.element_size)
-			C.memcpy(byteptr(a.data) + (a.len - 1 - i) * a.element_size, tmp_value, a.element_size)
+			C.memcpy(&byte(a.data) + (a.len - 1 - i) * a.element_size, tmp_value, a.element_size)
 		}
 		free(tmp_value)
 	}
@@ -545,7 +545,7 @@ pub fn (b []byte) hex() string {
 pub fn copy(dst []byte, src []byte) int {
 	min := if dst.len < src.len { dst.len } else { src.len }
 	if min > 0 {
-		unsafe { C.memcpy(byteptr(dst.data), src.data, min) }
+		unsafe { C.memcpy(&byte(dst.data), src.data, min) }
 	}
 	return min
 }
@@ -619,8 +619,8 @@ pub fn (a1 []string) eq(a2 []string) bool {
 	size_of_string := int(sizeof(string))
 	for i in 0 .. a1.len {
 		offset := i * size_of_string
-		s1 := &string(unsafe { byteptr(a1.data) + offset })
-		s2 := &string(unsafe { byteptr(a2.data) + offset })
+		s1 := unsafe { &string(&byte(a1.data) + offset) }
+		s2 := unsafe { &string(&byte(a2.data) + offset) }
 		if *s1 != *s2 {
 			return false
 		}

@@ -7,7 +7,7 @@ import io
 
 const (
 	sport           = 12380
-	exit_after_time = 9000 // milliseconds
+	exit_after_time = 12000 // milliseconds
 	vexe            = os.getenv('VEXE')
 	vweb_logfile    = os.getenv('VWEB_LOGFILE')
 	vroot           = os.dir(vexe)

@@ -8,6 +8,9 @@ import time
 pub fn find_working_diff_command() ?string {
 	env_difftool := os.getenv('VDIFF_TOOL')
 	env_diffopts := os.getenv('VDIFF_OPTIONS')
+	if env_difftool != '' {
+		return '$env_difftool $env_diffopts'
+	}
 	mut known_diff_tools := []string{}
 	if env_difftool.len > 0 {
 		known_diff_tools << env_difftool
@@ -68,15 +71,15 @@ pub fn color_compare_files(diff_cmd string, file1 string, file2 string) string {
 	return ''
 }
 
-pub fn color_compare_strings(diff_cmd string, expected string, found string) string {
-	cdir := os.cache_dir()
+pub fn color_compare_strings(diff_cmd string, unique_prefix string, expected string, found string) string {
+	cdir := os.join_path(os.cache_dir(), unique_prefix)
+	os.mkdir(cdir) or {}
 	ctime := time.sys_mono_now()
 	e_file := os.join_path(cdir, '${ctime}.expected.txt')
 	f_file := os.join_path(cdir, '${ctime}.found.txt')
 	os.write_file(e_file, expected) or { panic(err) }
 	os.write_file(f_file, found) or { panic(err) }
 	res := color_compare_files(diff_cmd, e_file, f_file)
-	os.rm(e_file) or { panic(err) }
-	os.rm(f_file) or { panic(err) }
+	os.rmdir_all(cdir) or {}
 	return res
 }

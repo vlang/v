@@ -1247,6 +1247,13 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			if node.is_union {
 				g.typedefs.writeln('typedef union $name $name;')
 			} else {
+				/*
+				attrs := if node.attrs.contains('packed') {
+					'__attribute__((__packed__))'
+				} else {
+					''
+				}
+				*/
 				g.typedefs.writeln('typedef struct $name $name;')
 			}
 		}
@@ -3173,7 +3180,9 @@ fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 		varg_elem_type_sym := g.table.get_type_symbol(g.table.value_type(node.expr_type))
 		g.write('_SLIT("...${util.strip_main_name(varg_elem_type_sym.name)}")')
 	} else {
-		g.write('_SLIT("${util.strip_main_name(sym.name)}")')
+		x := g.table.type_to_str(node.expr_type)
+		y := util.strip_main_name(x)
+		g.write('_SLIT("$y")')
 	}
 }
 
@@ -4655,6 +4664,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		if optional_none || is_regular_option || node.types[0] == ast.error_type_idx {
 			g.write('return ')
 			g.gen_optional_error(g.fn_decl.return_type, node.exprs[0])
+			// g.writeln('; /*ret1*/')
 			g.writeln(';')
 			return
 		}
@@ -4769,6 +4779,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 				}
 			}
 			g.writeln(' }, (Option*)(&$opt_tmp), sizeof($styp));')
+			g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 			g.writeln('return $opt_tmp;')
 			return
 		}
@@ -5326,14 +5337,6 @@ fn (mut g Gen) write_builtin_types() {
 	for builtin_name in c.builtins {
 		sym := g.table.type_symbols[g.table.type_idxs[builtin_name]]
 		if sym.kind == .interface_ {
-			if g.pref.is_verbose {
-				println('XAXAXA $sym.name')
-				if isnil(sym.info) {
-					println('FFF')
-				}
-				println(sym.info)
-				println(sym.kind)
-			}
 			g.write_interface_typesymbol_declaration(sym)
 		} else {
 			builtin_types << sym
@@ -5412,7 +5415,12 @@ fn (mut g Gen) write_types(types []ast.TypeSymbol) {
 				}
 				// g.type_definitions.writeln('} $name;\n')
 				//
-				g.type_definitions.writeln('};\n')
+				attrs := if typ.info.attrs.contains('packed') {
+					'__attribute__((__packed__))'
+				} else {
+					''
+				}
+				g.type_definitions.writeln('} $attrs;\n')
 			}
 			ast.Alias {
 				// ast.Alias { TODO

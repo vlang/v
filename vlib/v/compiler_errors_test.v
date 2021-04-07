@@ -1,4 +1,5 @@
 import os
+import rand
 import term
 import v.util
 import v.util.vtest
@@ -315,7 +316,7 @@ fn clean_line_endings(s string) string {
 fn diff_content(s1 string, s2 string) {
 	diff_cmd := util.find_working_diff_command() or { return }
 	println(term.bold(term.yellow('diff: ')))
-	println(util.color_compare_strings(diff_cmd, s1, s2))
+	println(util.color_compare_strings(diff_cmd, rand.ulid(), s1, s2))
 	println('============\n')
 }
 

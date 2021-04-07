@@ -1,4 +1,5 @@
 import os
+import rand
 import term
 import v.util.vtest
 import v.util
@@ -51,7 +52,7 @@ fn check_path(vexe string, dir string, tests []string) int {
 			println(found)
 			println('============\n')
 			println('diff:')
-			println(util.color_compare_strings(diff_cmd, found, expected))
+			println(util.color_compare_strings(diff_cmd, rand.ulid(), found, expected))
 			println('============\n')
 			nb_fail++
 		} else {

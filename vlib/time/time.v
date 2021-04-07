@@ -5,6 +5,8 @@ module time
 
 #include <time.h>
 
+type time_t = i64
+
 pub const (
 	days_string        = 'MonTueWedThuFriSatSun'
 	month_days         = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]

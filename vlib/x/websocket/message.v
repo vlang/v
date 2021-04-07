@@ -89,7 +89,7 @@ fn (mut ws Client) read_payload(frame &Frame) ?[]byte {
 	mut read_buf := [1]byte{}
 	mut bytes_read := 0
 	for bytes_read < frame.payload_len {
-		len := ws.socket_read_ptr(byteptr(&read_buf), 1) ?
+		len := ws.socket_read_ptr(&read_buf[0], 1) ?
 		if len != 1 {
 			return error('expected read all message, got zero')
 		}

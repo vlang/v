@@ -39,14 +39,14 @@ fn find_windows_kit_internal(key RegKey, versions []string) ?string {
 	$if windows {
 		unsafe {
 			for version in versions {
-				required_bytes := 0 // TODO mut
+				required_bytes := u32(0) // TODO mut
 				result := C.RegQueryValueEx(key, version.to_wide(), 0, 0, 0, &required_bytes)
 				length := required_bytes / 2
 				if result != 0 {
 					continue
 				}
 				alloc_length := (required_bytes + 2)
-				mut value := &u16(malloc(alloc_length))
+				mut value := &u16(malloc(int(alloc_length)))
 				if isnil(value) {
 					continue
 				}

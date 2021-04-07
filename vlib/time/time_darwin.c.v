@@ -67,7 +67,8 @@ fn darwin_now() Time {
 	tv := C.timeval{}
 	C.gettimeofday(&tv, 0)
 	loc_tm := C.tm{}
-	C.localtime_r(&tv.tv_sec, &loc_tm)
+	asec := voidptr(&tv.tv_sec)
+	C.localtime_r(asec, &loc_tm)
 	return convert_ctime(loc_tm, int(tv.tv_usec))
 }
 

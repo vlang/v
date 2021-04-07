@@ -216,7 +216,7 @@ fn up_low(s string, upper_flag bool) string {
 
 			//C.printf("len: %d code: %04x ",ch_len,res)
 			ch_index := find_char_in_table(u16(res), upper_flag)
-			//C.printf(" utf8 index: %d ",ch_index)
+			//C.printf(" utf8 index: %d \n",ch_index)
 
 			// char not in table, no need of conversion
 			if ch_index == 0 {
@@ -307,11 +307,11 @@ fn find_char_in_table( in_code u16, upper_flag bool) int {
 	mut index := 0
 	mut x := u16(0)
 
-	mut offset:=0 		// up to low
+	mut offset:=0 	// up to low
 	mut i_step:=1		// up to low
 	if upper_flag==true {
-		offset=1		// low to up
-		i_step=0		// low to up
+		offset=1		  // low to up
+		i_step=0		  // low to up
 	}
 
 	//C.printf("looking for [%04x] in (%d..%d).\n",in_code,first_index,last_index)
@@ -335,7 +335,29 @@ fn find_char_in_table( in_code u16, upper_flag bool) int {
 			break
 		}
 	}
-	//C.printf("not found.\n")
+	//C.printf("not found.\n %d %04x",index, unicode_con_table_up_to_low[ (index<<1)+offset ] )
+	// the low to up is not full sorted for different reasons, 
+	// we must try a linear search in the surroundings
+	if upper_flag {
+		search_radius := 30 * 2
+		max_index     := unicode_con_table_up_to_low.len >> 1
+		mut index1    := index + search_radius
+		
+		if index1 > max_index {
+			index1 = max_index
+		}
+		index = index - search_radius
+		if index < 0 {
+			index = 0
+		}
+		for index < index1 {
+			if unicode_con_table_up_to_low[ (index << 1) + 1 ] == in_code {
+				return (index << 1)
+			}
+			index++
+		}
+	}
+	//eprintln("NOT FOUND!!")
 	return 0
 }
 

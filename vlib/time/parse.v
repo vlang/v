@@ -50,7 +50,7 @@ const (
 
 fn parse_iso8601_date(s string) ?(int, int, int) {
 	year, month, day, dummy := 0, 0, 0, byte(0)
-	count := unsafe { C.sscanf(&char(s.str), '%4d-%2d-%2d%c', &year, &month, &day, &dummy) }
+	count := unsafe { C.sscanf(&char(s.str), c'%4d-%2d-%2d%c', &year, &month, &day, &dummy) }
 	if count != 3 {
 		return time.err_invalid_8601
 	}
@@ -66,13 +66,13 @@ fn parse_iso8601_time(s string) ?(int, int, int, int, i64, bool) {
 	offset_hour := 0
 	offset_minute := 0
 	mut count := unsafe {
-		C.sscanf(&char(s.str), '%2d:%2d:%2d.%6d%c%2d:%2d', &hour_, &minute_, &second_,
+		C.sscanf(&char(s.str), c'%2d:%2d:%2d.%6d%c%2d:%2d', &hour_, &minute_, &second_,
 			&microsecond_, &char(&plus_min_z), &offset_hour, &offset_minute)
 	}
 	// Missread microsecond ([Sec Hour Minute].len == 3 < 4)
 	if count < 4 {
 		count = unsafe {
-			C.sscanf(&char(s.str), '%2d:%2d:%2d%c%2d:%2d', &hour_, &minute_, &second_,
+			C.sscanf(&char(s.str), c'%2d:%2d:%2d%c%2d:%2d', &hour_, &minute_, &second_,
 				&char(&plus_min_z), &offset_hour, &offset_minute)
 		}
 		count++ // Increment count because skipped microsecond

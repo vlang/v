@@ -10,7 +10,7 @@ struct C.ANativeActivity {
 	assetManager voidptr
 }
 
-fn C.AAssetManager_open(&C.AAssetManager, charptr, int) &C.AAsset
+fn C.AAssetManager_open(&C.AAssetManager, &char, int) &C.AAsset
 
 fn C.AAsset_getLength(&C.AAsset) int
 

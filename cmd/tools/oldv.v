@@ -29,22 +29,20 @@ const (
 
 struct Context {
 mut:
-	vgo      vgit.VGitOptions
-	commit_v string = 'master'
-	// the commit from which you want to produce a working v compiler (this may be a commit-ish too)
-	commit_vc string = 'master'
-	// this will be derived from commit_v
+	vgo           vgit.VGitOptions
+	vgcontext     vgit.VGitContext
+	commit_v      string = 'master' // the commit from which you want to produce a working v compiler (this may be a commit-ish too)
 	commit_v_hash string // this will be filled from the commit-ish commit_v using rev-list. It IS a commit hash.
 	path_v        string // the full path to the v folder inside workdir.
 	path_vc       string // the full path to the vc folder inside workdir.
 	cmd_to_run    string // the command that you want to run *in* the oldv repo
-	cc            string = 'cc'
-	// the C compiler to use for bootstrapping.
-	cleanup bool // should the tool run a cleanup first
+	cc            string = 'cc' // the C compiler to use for bootstrapping.
+	cleanup       bool   // should the tool run a cleanup first
+	use_cache     bool   // use local cached copies for --vrepo and --vcrepo in
 }
 
 fn (mut c Context) compile_oldv_if_needed() {
-	mut vgit_context := vgit.VGitContext{
+	c.vgcontext = vgit.VGitContext{
 		workdir: c.vgo.workdir
 		v_repo_url: c.vgo.v_repo_url
 		vc_repo_url: c.vgo.vc_repo_url
@@ -53,28 +51,91 @@ fn (mut c Context) compile_oldv_if_needed() {
 		path_v: c.path_v
 		path_vc: c.path_vc
 	}
-	vgit_context.compile_oldv_if_needed()
-	c.commit_v_hash = vgit_context.commit_v__hash
-	if !os.exists(vgit_context.vexepath) && c.cmd_to_run.len > 0 {
+	c.vgcontext.compile_oldv_if_needed()
+	c.commit_v_hash = c.vgcontext.commit_v__hash
+	if !os.exists(c.vgcontext.vexepath) && c.cmd_to_run.len > 0 {
 		// NB: 125 is a special code, that git bisect understands as 'skip this commit'.
 		// it is used to inform git bisect that the current commit leads to a build failure.
 		exit(125)
 	}
 }
 
+const cache_oldv_folder = os.join_path(os.cache_dir(), 'oldv')
+
+const cache_oldv_folder_v = os.join_path(cache_oldv_folder, 'v')
+
+const cache_oldv_folder_vc = os.join_path(cache_oldv_folder, 'vc')
+
+fn sync_cache() {
+	scripting.verbose_trace(@FN, 'start')
+	if !os.exists(cache_oldv_folder) {
+		scripting.verbose_trace(@FN, 'creating $cache_oldv_folder')
+		scripting.mkdir_all(cache_oldv_folder) or {
+			scripting.verbose_trace(@FN, '## failed.')
+			exit(1)
+		}
+	}
+	scripting.chdir(cache_oldv_folder)
+	for reponame in ['v', 'vc'] {
+		repofolder := os.join_path(cache_oldv_folder, reponame)
+		if !os.exists(repofolder) {
+			scripting.verbose_trace(@FN, 'cloning to $repofolder')
+			scripting.exec('git clone --quiet https://github.com/vlang/$reponame $repofolder') or {
+				scripting.verbose_trace(@FN, '## error during clone: $err')
+				exit(1)
+			}
+		}
+		scripting.chdir(repofolder)
+		scripting.exec('git pull --quiet') or {
+			scripting.verbose_trace(@FN, 'pulling to $repofolder')
+			scripting.verbose_trace(@FN, '## error during pull: $err')
+			exit(1)
+		}
+	}
+	scripting.verbose_trace(@FN, 'done')
+}
+
 fn main() {
 	scripting.used_tools_must_exist(['git', 'cc'])
+	//
+	// Resetting VEXE here allows for `v run cmd/tools/oldv.v'.
+	// the parent V would have set VEXE, which later will
+	// affect the V's run from the tool itself.
+	os.setenv('VEXE', '', true)
+	//
 	mut context := Context{}
+	context.vgo.workdir = cache_oldv_folder
 	mut fp := flag.new_flag_parser(os.args)
 	fp.application(os.file_name(os.executable()))
 	fp.version(tool_version)
 	fp.description(tool_description)
 	fp.arguments_description('VCOMMIT')
 	fp.skip_executable()
-	fp.limit_free_args(1, 1)
-	context.cleanup = fp.bool('clean', 0, true, 'Clean before running (slower).')
+	context.use_cache = fp.bool('cache', `u`, true, 'Use a cache of local repositories for --vrepo and --vcrepo in \$HOME/.cache/oldv/')
+	if context.use_cache {
+		context.vgo.v_repo_url = cache_oldv_folder_v
+		context.vgo.vc_repo_url = cache_oldv_folder_vc
+	} else {
+		context.vgo.v_repo_url = 'https://github.com/vlang/v'
+		context.vgo.vc_repo_url = 'https://github.com/vlang/vc'
+	}
+	should_sync := fp.bool('cache-sync', `s`, false, 'Update the local cache')
+	if !should_sync {
+		fp.limit_free_args(1, 1)
+	}
+	////
+	context.cleanup = fp.bool('clean', 0, false, 'Clean before running (slower).')
 	context.cmd_to_run = fp.string('command', `c`, '', 'Command to run in the old V repo.\n')
 	commits := vgit.add_common_tool_options(mut context.vgo, mut fp)
+	if should_sync {
+		sync_cache()
+		exit(0)
+	}
+	if context.use_cache {
+		if !os.is_dir(cache_oldv_folder_v) || !os.is_dir(cache_oldv_folder_vc) {
+			sync_cache()
+		}
+	}
 	if commits.len > 0 {
 		context.commit_v = commits[0]
 	} else {
@@ -97,12 +158,16 @@ fn main() {
 	}
 	context.compile_oldv_if_needed()
 	scripting.chdir(context.path_v)
-	scripting.cprintln('#     v commit hash: $context.commit_v_hash')
-	scripting.cprintln('#   checkout folder: $context.path_v')
+	shorter_hash := context.commit_v_hash[0..10]
+	scripting.cprintln('#     v commit hash: $shorter_hash | folder: $context.path_v')
 	if context.cmd_to_run.len > 0 {
+		scripting.cprintln_strong('#           command: ${context.cmd_to_run:-34s}')
 		cmdres := os.execute_or_panic(context.cmd_to_run)
-		scripting.cprintln('#           command: ${context.cmd_to_run:-34s} exit code: ${cmdres.exit_code:-4d}  result:')
-		println(cmdres.output)
+		if cmdres.exit_code != 0 {
+			scripting.cprintln_strong('#         exit code: ${cmdres.exit_code:-4d}')
+		}
+		scripting.cprint_strong('#            result: ')
+		print(cmdres.output)
 		exit(cmdres.exit_code)
 	}
 }

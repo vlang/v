@@ -125,6 +125,9 @@ fn (mut context Context) get_stats_for_affected_vfiles() []VFileStat {
 			newstats << VFileStat{fullpath, mtime}
 		}
 	}
+	// always add the v compiler itself, so that if it is recompiled with `v self`
+	// the watcher will rerun the compilation too
+	newstats << VFileStat{context.vexe, os.file_last_mod_unix(context.vexe)}
 	return newstats
 }
 

@@ -100,6 +100,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
 * [Builtin functions](#builtin-functions)
 * [Printing custom types](#printing-custom-types)
 * [Modules](#modules)
+    * [Module/package management](#modulepackage-management)
 * [Types 2](#types-2)
     * [Interfaces](#interfaces)
     * [Enums](#enums)
@@ -2049,6 +2050,88 @@ fn init() {
 The `init` function cannot be public - it will be called automatically. This feature is
 particularly useful for initializing a C library.
 
+### Module/package management
+
+Briefly:
+
+```powershell
+v [module option] [param]
+```
+
+###### module options:
+
+```
+   install           Install a module from VPM.
+   remove            Remove a module that was installed from VPM.
+   search            Search for a module from VPM.
+   update            Update an installed module from VPM.
+   upgrade           Upgrade all the outdated modules.
+   list              List all installed modules.
+   outdated          Show installed modules that need updates.
+```
+
+Read more:
+
+You can also install modules already created by someone else with [VPM](https://vpm.vlang.io/):
+```powershell
+v install [module]
+```
+###### Example:
+```powershell
+v install ui
+```
+
+For remove a module:
+
+```powershell
+v remove [module]
+```
+###### Example:
+```powershell
+v remove ui
+```
+
+For update an installed module from [VPM](https://vpm.vlang.io/):
+
+```powershell
+v update [module]
+```
+###### Example:
+```powershell
+v update ui
+```
+
+Or you can update all your modules:
+```powershell
+v update
+```
+
+To see all the modules you have installed, you can use:
+
+```powershell
+v list
+```
+###### Example
+```powershell
+> v list
+Installed modules:
+  markdown
+  ui
+```
+
+To see all the modules you have installed, you can use:
+outdated          Show installed modules that need updates.
+```powershell
+v outdated
+```
+###### Example
+```powershell
+> v outdated
+Modules are up to date.
+```
+
+You can also add your module to VPM by following the instructions on the website https://vpm.vlang.io/new
+
 ## Types 2
 
 ### Interfaces
@@ -3306,26 +3389,26 @@ struct C.sqlite3 {
 struct C.sqlite3_stmt {
 }
 
-type FnSqlite3Callback = fn (voidptr, int, &charptr, &charptr) int
+type FnSqlite3Callback = fn (voidptr, int, &&char, &&char) int
 
-fn C.sqlite3_open(charptr, &&C.sqlite3) int
+fn C.sqlite3_open(&char, &&C.sqlite3) int
 
 fn C.sqlite3_close(&C.sqlite3) int
 
 fn C.sqlite3_column_int(stmt &C.sqlite3_stmt, n int) int
 
 // ... you can also just define the type of parameter and leave out the C. prefix
-fn C.sqlite3_prepare_v2(&C.sqlite3, charptr, int, &&C.sqlite3_stmt, &charptr) int
+fn C.sqlite3_prepare_v2(&C.sqlite3, &char, int, &&C.sqlite3_stmt, &&char) int
 
 fn C.sqlite3_step(&C.sqlite3_stmt)
 
 fn C.sqlite3_finalize(&C.sqlite3_stmt)
 
-fn C.sqlite3_exec(db &C.sqlite3, sql charptr, cb FnSqlite3Callback, cb_arg voidptr, emsg &charptr) int
+fn C.sqlite3_exec(db &C.sqlite3, sql &char, cb FnSqlite3Callback, cb_arg voidptr, emsg &&char) int
 
 fn C.sqlite3_free(voidptr)
 
-fn my_callback(arg voidptr, howmany int, cvalues &charptr, cnames &charptr) int {
+fn my_callback(arg voidptr, howmany int, cvalues &&char, cnames &&char) int {
 	unsafe {
 		for i in 0 .. howmany {
 			print('| ${cstring_to_vstring(cnames[i])}: ${cstring_to_vstring(cvalues[i]):20} ')
@@ -3344,17 +3427,17 @@ fn main() {
 	stmt := &C.sqlite3_stmt(0)
 	// NB: you can also use the `.str` field of a V string,
 	// to get its C style zero terminated representation
-	C.sqlite3_prepare_v2(db, query.str, -1, &stmt, 0)
+	C.sqlite3_prepare_v2(db, &char(query.str), -1, &stmt, 0)
 	C.sqlite3_step(stmt)
 	nr_users := C.sqlite3_column_int(stmt, 0)
 	C.sqlite3_finalize(stmt)
 	println('There are $nr_users users in the database.')
 	//
-	error_msg := charptr(0)
+	error_msg := &char(0)
 	query_all_users := 'select * from users'
-	rc := C.sqlite3_exec(db, query_all_users.str, my_callback, 7, &error_msg)
+	rc := C.sqlite3_exec(db, &char(query_all_users.str), my_callback, voidptr(7), &error_msg)
 	if rc != C.SQLITE_OK {
-		eprintln(cstring_to_vstring(error_msg))
+		eprintln(unsafe { cstring_to_vstring(error_msg) })
 		C.sqlite3_free(error_msg)
 	}
 	C.sqlite3_close(db)
