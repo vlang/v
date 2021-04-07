@@ -346,6 +346,14 @@ pub fn sys_write(fd i64, buf &byte, count u64) (i64, Errno) {
 	return split_int_errno(sys_call3(1, u64(fd), u64(buf), count))
 }
 
+fn write(fd i64, buf &byte, count u64) int {
+	written, err := sys_write(fd, buf, count)
+	if err == .enoerror {
+		return int(written)
+	}
+	return -1
+}
+
 pub fn sys_open(filename &byte, flags i64, mode int) (i64, Errno) {
 	// 2 sys_open  const char *filename  int flags int mode
 	return split_int_errno(sys_call3(2, u64(filename), u64(flags), u64(mode)))
@@ -423,47 +431,12 @@ pub fn sys_waitid(which Wi_which, pid int, infop &int, options int, ru voidptr) 
 	return Errno(sys_call5(247, u64(which), u64(pid), u64(infop), u64(options), u64(ru)))
 }
 
-const (
-	mem_prot  = Mm_prot(int(Mm_prot.prot_read) | int(Mm_prot.prot_write))
-	mem_flags = Map_flags(int(Map_flags.map_private) | int(Map_flags.map_anonymous))
-	page_size = u64(Linux_mem.page_size)
-)
-
-pub fn mm_pages(size u64) u32 {
-	pages := (size + u64(4) + page_size) / page_size
-	return u32(pages)
-}
-
-pub fn mm_alloc(size u64) (&byte, Errno) {
-	pages := mm_pages(size)
-	n_bytes := u64(pages * u32(Linux_mem.page_size))
-
-	a, e := sys_mmap(&byte(0), n_bytes, mem_prot, mem_flags, -1, 0)
-	if e == .enoerror {
-		unsafe {
-			mut ap := &u32(a)
-			*ap = pages
-			return &byte(a + 4), e
-		}
-	}
-	return &byte(0), e
-}
-
-pub fn mm_free(addr &byte) Errno {
-	unsafe {
-		ap := &int(addr - 4)
-		size := u64(*ap) * u64(Linux_mem.page_size)
-		return sys_munmap(ap, size)
-	}
-}
-
-pub fn memcpy(dest0 &C.void, src0 &C.void, n size_t) &C.void {
-	unsafe {
-		mut dest := &byte(dest0)
-		src := &byte(src0)
-		for i in 0 .. int(n) {
-			dest[i] = src[i]
-		}
-		return dest0
-	}
+asm amd64 {
+	.globl _start
+	_start:
+	call main
+	mov rax, 60
+	xor rdi, rdi
+	syscall 
+	ret 
 }

@@ -392,9 +392,6 @@ pub fn (mut g Gen) init() {
 		} else {
 			g.cheaders.writeln(c_headers)
 		}
-		if !g.pref.is_bare {
-			g.definitions.writeln('void _STR_PRINT_ARG(const char*, char**, int*, int*, int, ...);')
-		}
 		g.definitions.writeln('string _STR(const char*, int, ...);')
 		g.definitions.writeln('string _STR_TMP(const char*, ...);')
 	}

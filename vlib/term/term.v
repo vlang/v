@@ -125,8 +125,8 @@ fn supports_escape_sequences(fd int) bool {
 			return true
 		}
 		// 4 is enable_virtual_terminal_processing
-		return (is_atty(fd) & 0x0004) > 0
+		return (os.is_atty(fd) & 0x0004) > 0
 	} $else {
-		return is_atty(fd) > 0
+		return os.is_atty(fd) > 0
 	}
 }

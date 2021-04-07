@@ -502,7 +502,8 @@ static inline void make_secret(uint64_t seed, uint64_t *secret){
 #define _PUSH_MANY(arr, val, tmp, tmp_typ) {tmp_typ tmp = (val); array_push_many(arr, tmp.data, tmp.len);}
 #define _IN_MAP(val, m) map_exists_1(m, val)
 '
-	c_headers                     =  c_helper_macros + c_unsigned_comparison_functions + c_common_macros + r'
+	c_headers                       =
+		c_helper_macros + c_unsigned_comparison_functions + c_common_macros + r'
 // c_headers
 typedef int (*qsort_callback_func)(const void*, const void*);
 #include <stdio.h>  // TODO remove all these includes, define all function signatures and types manually
@@ -692,6 +693,10 @@ static void* g_live_info = NULL;
 	#define PRIx64 "llx"
 	#define PRIX64 "llX"
 #endif
+
+#ifdef _VFREESTANDING
+#undef _VFREESTANDING
+#endif
 ' + c_wyhash
 	c_builtin_types                 = '
 //================================== builtin types ================================*/
@@ -740,16 +745,18 @@ void sys_exit (int);
 #define stdout 1
 #define stderr 2
 
+#define _VFREESTANDING
+
 typedef long unsigned int size_t;
 
 // Memory allocation related headers
-// void *malloc(size_t size);
-void *calloc(size_t nitems, size_t size);
+// void *malloc(int size);
+void *calloc(int nitems, int size);
 // void free(void *ptr);
-void *realloc(void *ptr, size_t size);
-void *memcpy(void *dest, void *src, size_t n);
-void *memset(void *s, int c, size_t n);
-void *memmove(void *dest, void *src, size_t n);
+void *realloc(void *ptr, int size);
+void *memcpy(void *dest, void *src, int n);
+void *memset(void *s, int c, int n);
+void *memmove(void *dest, void *src, int n);
 
 // Backtrace headers
 int backtrace(void **buffer, int size);

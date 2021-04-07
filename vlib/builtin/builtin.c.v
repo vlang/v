@@ -38,7 +38,9 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 				}
 				C.exit(1)
 			}
-			print_backtrace_skipping_top_frames(1)
+			$if !freestanding {
+				print_backtrace_skipping_top_frames(1)
+			}
 			$if panics_break_into_debugger ? {
 				break_if_debugger_attached()
 			}
@@ -69,7 +71,9 @@ pub fn panic(s string) {
 				}
 				C.exit(1)
 			}
-			print_backtrace_skipping_top_frames(1)
+			$if !freestanding {
+				print_backtrace_skipping_top_frames(1)
+			}
 			$if panics_break_into_debugger ? {
 				break_if_debugger_attached()
 			}
@@ -80,14 +84,13 @@ pub fn panic(s string) {
 
 // eprintln prints a message with a line end, to stderr. Both stderr and stdout are flushed.
 pub fn eprintln(s string) {
-	C.fflush(C.stdout)
-	C.fflush(C.stderr)
-	// eprintln is used in panics, so it should not fail at all
-	$if android {
+	$if freestanding {
+		// flushing is only a thing with C.FILE from stdio.h, not on the syscall level
 		if s.str == 0 {
-			C.fprintf(C.stderr, c'eprintln(NIL)\n')
+			C.write(C.stderr, c'eprintln(NIL)\n', 14)
 		} else {
-			C.fprintf(C.stderr, c'%.*s\n', s.len, s.str)
+			C.write(C.stderr, s.str, s.len)
+			C.write(C.stderr, c'\n', 1)
 		}
 	} $else $if ios {
 		if s.str == 0 {
@@ -96,25 +99,35 @@ pub fn eprintln(s string) {
 			C.WrappedNSLog(s.str)
 		}
 	} $else {
-		if s.str == 0 {
-			C.write(2, c'eprintln(NIL)\n', 14)
-		} else {
-			C.write(2, s.str, s.len)
-			C.write(2, c'\n', 1)
+		C.fflush(C.stdout)
+		C.fflush(C.stderr)
+		// eprintln is used in panics, so it should not fail at all
+		$if android {
+			if s.str == 0 {
+				C.fprintf(C.stderr, c'eprintln(NIL)\n')
+			} else {
+				C.fprintf(C.stderr, c'%.*s\n', s.len, s.str)
+			}
+		} $else {
+			if s.str == 0 {
+				C.write(2, c'eprintln(NIL)\n', 14)
+			} else {
+				C.write(2, s.str, s.len)
+				C.write(2, c'\n', 1)
+			}
 		}
+		C.fflush(C.stderr)
 	}
-	C.fflush(C.stderr)
 }
 
 // eprint prints a message to stderr. Both stderr and stdout are flushed.
 pub fn eprint(s string) {
-	C.fflush(C.stdout)
-	C.fflush(C.stderr)
-	$if android {
+	$if freestanding {
+		// flushing is only a thing with C.FILE from stdio.h, not on the syscall level
 		if s.str == 0 {
-			C.fprintf(C.stderr, c'eprint(NIL)')
+			C.write(C.stderr, c'eprint(NIL)\n', 12)
 		} else {
-			C.fprintf(C.stderr, c'%.*s', s.len, s.str)
+			C.write(C.stderr, s.str, s.len)
 		}
 	} $else $if ios {
 		// TODO: Implement a buffer as NSLog doesn't have a "print"
@@ -124,13 +137,23 @@ pub fn eprint(s string) {
 			C.WrappedNSLog(s.str)
 		}
 	} $else {
-		if s.str == 0 {
-			C.write(2, c'eprint(NIL)', 11)
-		} else {
-			C.write(2, s.str, s.len)
+		C.fflush(C.stdout)
+		C.fflush(C.stderr)
+		$if android {
+			if s.str == 0 {
+				C.fprintf(C.stderr, c'eprint(NIL)')
+			} else {
+				C.fprintf(C.stderr, c'%.*s', s.len, s.str)
+			}
+		} $else {
+			if s.str == 0 {
+				C.write(2, c'eprint(NIL)', 11)
+			} else {
+				C.write(2, s.str, s.len)
+			}
 		}
+		C.fflush(C.stderr)
 	}
-	C.fflush(C.stderr)
 }
 
 // print prints a message to stdout. Unlike `println` stdout is not automatically flushed.
@@ -175,6 +198,12 @@ pub fn println(s string) {
 	}
 }
 
+// secret info placed before memory allocated by malloc - can be used to get size for realloc
+struct MallocInfo {
+mut:
+	size int
+}
+
 // malloc dynamically allocates a `n` bytes block of memory on the heap.
 // malloc returns a `byteptr` pointing to the memory address of the allocated space.
 // unlike the `calloc` family of functions - malloc will not zero the memory block.
@@ -204,6 +233,20 @@ pub fn malloc(n int) &byte {
 		$if gcboehm ? {
 			unsafe {
 				res = C.GC_MALLOC(n)
+			}
+		} $else $if freestanding {
+			mut e := Errno{}
+			res, e = mm_alloc(sizeof(MallocInfo) + u64(n))
+			if e != .enoerror {
+				panic('malloc($n) failed: $e')
+			}
+			if res == 0 { // check before setting MallocInfo
+				panic('malloc($n) failed, and failed to give an error')
+			}
+			mut mlcinfo := unsafe { &MallocInfo(res) }
+			mlcinfo.size = n
+			unsafe {
+				res += sizeof(MallocInfo)
 			}
 		} $else {
 			res = unsafe { C.malloc(n) }
@@ -344,18 +387,6 @@ pub fn memdup(src voidptr, sz int) voidptr {
 	unsafe {
 		mem := malloc(sz)
 		return C.memcpy(mem, src, sz)
-	}
-}
-
-// is_atty returns 1 if the `fd` file descriptor is open and refers to a terminal
-pub fn is_atty(fd int) int {
-	$if windows {
-		mut mode := u32(0)
-		osfh := voidptr(C._get_osfhandle(fd))
-		C.GetConsoleMode(osfh, voidptr(&mode))
-		return int(mode)
-	} $else {
-		return C.isatty(fd)
 	}
 }
 
