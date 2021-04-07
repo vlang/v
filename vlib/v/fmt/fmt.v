@@ -1232,6 +1232,9 @@ pub fn (mut f Fmt) sql_stmt(node ast.SqlStmt) {
 			f.expr(node.where_expr)
 			f.writeln('')
 		}
+		.create {
+			f.writeln('create table $table_name')
+		}
 	}
 	f.writeln('}')
 }

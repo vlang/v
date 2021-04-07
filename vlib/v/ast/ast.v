@@ -1410,6 +1410,7 @@ pub enum SqlStmtKind {
 	insert
 	update
 	delete
+	create
 }
 
 pub struct SqlStmt {

@@ -24,10 +24,26 @@ enum SqlType {
 }
 
 fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
+	if node.kind == .create {
+		g.sql_create_table(node)
+		return
+	}
 	typ := g.parse_db_type(node.db_expr)
 	match typ {
 		.sqlite3 {
 			g.sqlite3_stmt(node, typ)
+		}
+		else {
+			verror('This database type `$typ` is not implemented yet in orm') // TODO add better error
+		}
+	}
+}
+
+fn (mut g Gen) sql_create_table(node ast.SqlStmt) {
+	typ := g.parse_db_type(node.db_expr)
+	match typ {
+		.sqlite3 {
+			g.sqlite3_create_table(node, typ)
 		}
 		else {
 			verror('This database type `$typ` is not implemented yet in orm') // TODO add better error
@@ -67,6 +83,18 @@ fn (mut g Gen) sql_bind_string(val string, len string, typ SqlType) {
 			// add error
 		}
 	}
+}
+
+fn (mut g Gen) sql_type_from_v(typ SqlType, v_typ ast.Type) string {
+	match typ {
+		.sqlite3 {
+			return g.sqlite3_type_from_v(typ, v_typ)
+		}
+		else {
+			// add error
+		}
+	}
+	return ''
 }
 
 // sqlite3
@@ -337,12 +365,86 @@ fn (mut g Gen) sqlite3_select_expr(node ast.SqlExpr, sub bool, line string, sql_
 	}
 }
 
+fn (mut g Gen) sqlite3_create_table(node ast.SqlStmt, typ SqlType) {
+	typ_sym := g.table.get_type_symbol(node.table_expr.typ)
+	if typ_sym.info !is ast.Struct {
+		verror('Type `$typ_sym.name` has to be a struct')
+	}
+	g.writeln('// sqlite3 table creator ($typ_sym.name)')
+	struct_data := typ_sym.info as ast.Struct
+	table_name := typ_sym.name.split('.').last()
+	mut create_string := 'CREATE TABLE IF NOT EXISTS `$table_name` ('
+
+	mut fields := []string{}
+
+	outer: for field in struct_data.fields {
+		mut is_primary := false
+		for attr in field.attrs {
+			match attr.name {
+				'skip' {
+					continue outer
+				}
+				'primary' {
+					is_primary = true
+				}
+				else {}
+			}
+		}
+		mut stmt := ''
+		mut converted_typ := g.sql_type_from_v(typ, field.typ)
+		mut name := field.name
+		if converted_typ == '' {
+			if g.table.get_type_symbol(field.typ).kind == .struct_ {
+				converted_typ = g.sql_type_from_v(typ, ast.int_type)
+				g.sql_create_table(ast.SqlStmt{
+					db_expr: node.db_expr
+					kind: node.kind
+					pos: node.pos
+					table_expr: ast.TypeNode{
+						typ: field.typ
+						pos: node.table_expr.pos
+					}
+				})
+			} else {
+				eprintln(g.table.get_type_symbol(field.typ).kind)
+				verror('unknown type ($field.typ)')
+				continue
+			}
+		}
+		stmt = '`$name` $converted_typ'
+
+		if field.has_default_expr {
+			stmt += ' DEFAULT '
+			stmt += field.default_expr.str()
+		}
+		if is_primary {
+			stmt += ' PRIMARY KEY'
+		}
+		fields << stmt
+	}
+	create_string += fields.join(', ')
+	create_string += ');'
+	g.write('sqlite__DB_exec(')
+	g.expr(node.db_expr)
+	g.writeln(', _SLIT("$create_string"));')
+}
+
 fn (mut g Gen) sqlite3_bind_int(val string) {
 	g.sql_buf.writeln('sqlite3_bind_int($g.sql_stmt_name, $g.sql_i, $val);')
 }
 
 fn (mut g Gen) sqlite3_bind_string(val string, len string) {
 	g.sql_buf.writeln('sqlite3_bind_text($g.sql_stmt_name, $g.sql_i, $val, $len, 0);')
+}
+
+fn (mut g Gen) sqlite3_type_from_v(typ SqlType, v_typ ast.Type) string {
+	if v_typ.is_number() || v_typ == ast.bool_type {
+		return 'INTEGER'
+	}
+	if v_typ.is_string() {
+		return 'TEXT'
+	}
+	return ''
 }
 
 // mysql
