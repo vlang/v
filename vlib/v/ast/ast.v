@@ -410,6 +410,7 @@ pub mut:
 	name               string // left.name()
 	is_method          bool
 	is_field           bool // temp hack, remove ASAP when re-impl CallExpr / Selector (joe)
+	is_keep_alive      bool // GC must not free arguments before fn returns
 	args               []CallArg
 	expected_arg_types []Type
 	language           Language

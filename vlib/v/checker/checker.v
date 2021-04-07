@@ -2056,6 +2056,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 		// builtin C.m*, C.s* only - temp
 		c.warn('function `$f.name` must be called from an `unsafe` block', call_expr.pos)
 	}
+	call_expr.is_keep_alive = f.is_keep_alive
 	if f.mod != 'builtin' && f.language == .v && f.no_body && !c.pref.translated && !f.is_unsafe {
 		c.error('cannot call a function that does not have a body', call_expr.pos)
 	}
