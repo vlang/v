@@ -14,7 +14,6 @@ jobs:
       run: make
     - name: Regenerate v.c and v_win.c
       run: |
-        git config http.sslVerify false
         git config --global user.email "vlang-bot@users.noreply.github.com"
         git config --global user.name "vlang-bot"
 
@@ -22,6 +21,8 @@ jobs:
         COMMIT_MSG=$(git log -1 --oneline --pretty='%s' HEAD)
 
         rm -rf vc
+        echo "cloning, secret="
+        echo "${{ secrets.VLANG_BOT_SECRET }}"
         git clone https://vlang-bot:${{ secrets.VLANG_BOT_SECRET }}@github.com/vlang/vc.git
 
         rm -rf vc/v.c vc/v_win.c
