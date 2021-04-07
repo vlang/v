@@ -118,6 +118,7 @@ pub fn new_test_session(_vargs string) TestSession {
 	}
 	$if macos {
 		skip_files << 'examples/database/mysql.v'
+		skip_files << 'examples/database/orm.v'
 	}
 	$if windows {
 		skip_files << 'examples/database/mysql.v'

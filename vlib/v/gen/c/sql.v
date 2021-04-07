@@ -48,6 +48,9 @@ fn (mut g Gen) sql_create_table(node ast.SqlStmt) {
 		.sqlite3 {
 			g.sqlite3_create_table(node, typ)
 		}
+		.mysql {
+			g.mysql_create_table(node, typ)
+		}
 		else {
 			verror('This database type `$typ` is not implemented yet in orm') // TODO add better error
 		}
@@ -94,7 +97,10 @@ fn (mut g Gen) sql_bind_string(val string, len string, typ SqlType) {
 fn (mut g Gen) sql_type_from_v(typ SqlType, v_typ ast.Type) string {
 	match typ {
 		.sqlite3 {
-			return g.sqlite3_type_from_v(typ, v_typ)
+			return g.sqlite3_type_from_v(v_typ)
+		}
+		.mysql {
+			return g.mysql_get_table_type(v_typ)
 		}
 		else {
 			// add error
@@ -329,68 +335,8 @@ fn (mut g Gen) sqlite3_select_expr(node ast.SqlExpr, sub bool, line string, sql_
 }
 
 fn (mut g Gen) sqlite3_create_table(node ast.SqlStmt, typ SqlType) {
-	typ_sym := g.table.get_type_symbol(node.table_expr.typ)
-	if typ_sym.info !is ast.Struct {
-		verror('Type `$typ_sym.name` has to be a struct')
-	}
-	g.writeln('// sqlite3 table creator ($typ_sym.name)')
-	struct_data := typ_sym.info as ast.Struct
-	table_name := typ_sym.name.split('.').last()
-	mut create_string := 'CREATE TABLE IF NOT EXISTS `$table_name` ('
-
-	mut fields := []string{}
-
-	for field in struct_data.fields {
-		mut is_primary := false
-		mut skip := false
-		for attr in field.attrs {
-			match attr.name {
-				'skip' {
-					skip = true
-				}
-				'primary' {
-					is_primary = true
-				}
-				else {}
-			}
-		}
-		if skip { // cpp workaround
-			continue
-		}
-		mut stmt := ''
-		mut converted_typ := g.sql_type_from_v(typ, field.typ)
-		mut name := field.name
-		if converted_typ == '' {
-			if g.table.get_type_symbol(field.typ).kind == .struct_ {
-				converted_typ = g.sql_type_from_v(typ, ast.int_type)
-				g.sql_create_table(ast.SqlStmt{
-					db_expr: node.db_expr
-					kind: node.kind
-					pos: node.pos
-					table_expr: ast.TypeNode{
-						typ: field.typ
-						pos: node.table_expr.pos
-					}
-				})
-			} else {
-				eprintln(g.table.get_type_symbol(field.typ).kind)
-				verror('unknown type ($field.typ)')
-				continue
-			}
-		}
-		stmt = '`$name` $converted_typ'
-
-		if field.has_default_expr {
-			stmt += ' DEFAULT '
-			stmt += field.default_expr.str()
-		}
-		if is_primary {
-			stmt += ' PRIMARY KEY'
-		}
-		fields << stmt
-	}
-	create_string += fields.join(', ')
-	create_string += ');'
+	g.writeln('// sqlite3 table creator')
+	create_string := g.table_gen(node, typ)
 	g.write('sqlite__DB_exec(')
 	g.expr(node.db_expr)
 	g.writeln(', _SLIT("$create_string"));')
@@ -404,8 +350,8 @@ fn (mut g Gen) sqlite3_bind_string(val string, len string) {
 	g.sql_buf.writeln('sqlite3_bind_text($g.sql_stmt_name, $g.sql_i, $val, $len, 0);')
 }
 
-fn (mut g Gen) sqlite3_type_from_v(typ SqlType, v_typ ast.Type) string {
-	if v_typ.is_number() || v_typ == ast.bool_type {
+fn (mut g Gen) sqlite3_type_from_v(v_typ ast.Type) string {
+	if v_typ.is_number() || v_typ == ast.bool_type || v_typ == -1 {
 		return 'INTEGER'
 	}
 	if v_typ.is_string() {
@@ -443,6 +389,7 @@ fn (mut g Gen) mysql_stmt(node ast.SqlStmt, typ SqlType) {
 			x := '${node.object_var_name}.$field.name'
 			if field.typ == ast.string_type {
 				g.writeln('$bind[${i - 1}].buffer_type = MYSQL_TYPE_STRING;')
+				// add string escape
 				g.writeln('$bind[${i - 1}].buffer = (char *) ${x}.str;')
 				g.writeln('$bind[${i - 1}].buffer_length = ${x}.len;')
 				g.writeln('$bind[${i - 1}].is_null = 0;')
@@ -468,7 +415,7 @@ fn (mut g Gen) mysql_stmt(node ast.SqlStmt, typ SqlType) {
 				g.writeln('$bind[${i - 1}].is_null = 0;')
 				g.writeln('$bind[${i - 1}].length = 0;')
 			} else {
-				t, _, sym := g.mysql_buffer_typ_from_field(field)
+				t, sym := g.mysql_buffer_typ_from_field(field)
 				g.writeln('$bind[${i - 1}].buffer_type = $t;')
 				g.writeln('$bind[${i - 1}].buffer = ($sym*) &$x;')
 				g.writeln('$bind[${i - 1}].is_null = 0;')
@@ -492,57 +439,83 @@ fn (mut g Gen) mysql_stmt(node ast.SqlStmt, typ SqlType) {
 fn (mut g Gen) mysql_select_expr(node ast.SqlExpr, sub bool, line string) {
 }
 
+fn (mut g Gen) mysql_create_table(node ast.SqlStmt, typ SqlType) {
+	g.writeln('// mysql table creator')
+	create_string := g.table_gen(node, typ)
+	tmp := g.new_tmp_var()
+	g.write('Option_mysql__Result $tmp = mysql__Connection_query(&')
+	g.expr(node.db_expr)
+	g.writeln(', _SLIT("$create_string"));')
+	g.writeln('if (${tmp}.state != 0) { IError err = ${tmp}.err; _STR("Something went wrong\\000%.*s", 2, IError_str(err)); }')
+}
+
 fn (mut g Gen) mysql_bind_int(val string) {
 }
 
 fn (mut g Gen) mysql_bind_string(val string) {
-	g.write('mysql__escape_string(_SLIT("$val")')
 }
 
-fn (mut g Gen) mysql_buffer_typ_from_field(field ast.StructField) (string, string, string) {
-	mut typ := field.typ
-	mut sym := g.table.get_type_symbol(field.typ).cname
-	for attr in field.attrs {
-		if attr.name == 'sql' && attr.arg != '' {
-			typ = g.table.type_idxs[attr.arg]
-			sym = g.table.get_type_symbol(typ).cname
-		}
-	}
-	mut buf_typ := ''
+fn (mut g Gen) mysql_get_table_type(typ ast.Type) string {
 	mut table_typ := ''
 	match typ {
 		ast.i8_type, ast.byte_type, ast.bool_type {
-			buf_typ = 'MYSQL_TYPE_TINY'
 			table_typ = 'TINYINT'
 		}
 		ast.i16_type, ast.u16_type {
-			buf_typ = 'MYSQL_TYPE_SHORT'
 			table_typ = 'SMALLINT'
 		}
 		ast.int_type, ast.u32_type {
-			buf_typ = 'MYSQL_TYPE_LONG'
 			table_typ = 'INT'
 		}
 		ast.i64_type, ast.u64_type {
-			buf_typ = 'MYSQL_TYPE_LONGLONG'
 			table_typ = 'BIGINT'
 		}
 		ast.f32_type {
-			buf_typ = 'MYSQL_TYPE_FLOAT'
 			table_typ = 'BIGINT'
 		}
 		ast.f64_type {
-			buf_typ = 'MYSQL_TYPE_DOUBLE'
 			table_typ = 'BIGINT'
 		}
 		ast.string_type {
 			table_typ = 'TEXT'
 		}
+		-1 {
+			table_typ = 'SERIAL'
+		}
+		else {
+		}
+	}
+	return table_typ
+}
+
+fn (mut g Gen) mysql_buffer_typ_from_field(field ast.StructField) (string, string) {
+	mut typ := g.get_sql_field_type(field)
+	mut sym := g.table.get_type_symbol(typ).cname
+	mut buf_typ := ''
+	match typ {
+		ast.i8_type, ast.byte_type, ast.bool_type {
+			buf_typ = 'MYSQL_TYPE_TINY'
+		}
+		ast.i16_type, ast.u16_type {
+			buf_typ = 'MYSQL_TYPE_SHORT'
+		}
+		ast.int_type, ast.u32_type {
+			buf_typ = 'MYSQL_TYPE_LONG'
+		}
+		ast.i64_type, ast.u64_type {
+			buf_typ = 'MYSQL_TYPE_LONGLONG'
+		}
+		ast.f32_type {
+			buf_typ = 'MYSQL_TYPE_FLOAT'
+		}
+		ast.f64_type {
+			buf_typ = 'MYSQL_TYPE_DOUBLE'
+		}
 		else {
 			buf_typ = 'MYSQL_TYPE_NULL'
 		}
 	}
-	return buf_typ, table_typ, sym
+	return buf_typ, sym
 }
 
 // utils
@@ -598,6 +571,77 @@ fn (mut g Gen) sql_defaults(node ast.SqlStmt, typ SqlType) {
 		g.expr_to_sql(node.where_expr, typ)
 	}
 	g.write('")')
+}
+
+fn (mut g Gen) table_gen(node ast.SqlStmt, typ SqlType) string {
+	typ_sym := g.table.get_type_symbol(node.table_expr.typ)
+	if typ_sym.info !is ast.Struct {
+		verror('Type `$typ_sym.name` has to be a struct')
+	}
+	struct_data := typ_sym.info as ast.Struct
+	table_name := typ_sym.name.split('.').last()
+	mut create_string := 'CREATE TABLE IF NOT EXISTS `$table_name` ('
+
+	mut fields := []string{}
+
+	mut primary := '' // for mysql
+
+	for field in struct_data.fields {
+		mut is_primary := false
+		mut no_null := false
+		for attr in field.attrs {
+			match attr.name {
+				'primary' {
+					is_primary = true
+					primary = field.name
+				}
+				'nonull' {
+					no_null = true
+				}
+				else {}
+			}
+		}
+		mut stmt := ''
+		mut converted_typ := g.sql_type_from_v(typ, g.get_sql_field_type(field))
+		mut name := field.name
+		if converted_typ == '' {
+			if g.table.get_type_symbol(field.typ).kind == .struct_ {
+				converted_typ = g.sql_type_from_v(typ, ast.int_type)
+				g.sql_create_table(ast.SqlStmt{
+					db_expr: node.db_expr
+					kind: node.kind
+					pos: node.pos
+					table_expr: ast.TypeNode{
+						typ: field.typ
+						pos: node.table_expr.pos
+					}
+				})
+			} else {
+				eprintln(g.table.get_type_symbol(field.typ).kind)
+				verror('unknown type ($field.typ)')
+				continue
+			}
+		}
+		stmt = '`$name` $converted_typ'
+
+		if field.has_default_expr && typ != .mysql {
+			stmt += ' DEFAULT '
+			stmt += field.default_expr.str()
+		}
+		if no_null {
+			stmt += ' NOT NULL'
+		}
+		if is_primary && typ == .sqlite3 {
+			stmt += ' PRIMARY KEY'
+		}
+		fields << stmt
+	}
+	if typ == .mysql {
+		fields << 'PRIMARY KEY(`$primary`)'
+	}
+	create_string += fields.join(', ')
+	create_string += ');'
+	return create_string
 }
 
 fn (mut g Gen) expr_to_sql(expr ast.Expr, typ SqlType) {
@@ -720,4 +764,18 @@ fn (mut g Gen) parse_db_from_type_string(name string) SqlType {
 			return .unknown
 		}
 	}
+}
+
+fn (mut g Gen) get_sql_field_type(field ast.StructField) ast.Type {
+	mut typ := field.typ
+	for attr in field.attrs {
+		if attr.name == 'sql' && attr.arg != '' {
+			if attr.arg.to_lower() == 'serial' {
+				typ = ast.Type(-1)
+				break
+			}
+			typ = g.table.type_idxs[attr.arg]
+		}
+	}
+	return typ
 }

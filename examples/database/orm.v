@@ -2,16 +2,16 @@ import sqlite
 import mysql
 
 struct Module {
-	id           int    [primary]
+	id           int    [primary; sql: serial]
 	name         string
 	nr_downloads int    [sql: u64]
 	creator      User
 }
 
 struct User {
-	id             int    [primary]
+	id             int    [primary; sql: serial]
 	age            int
-	name           string
+	name           string [nonull]
 	is_customer    bool
 	skipped_string string [skip]
 }
@@ -21,9 +21,6 @@ fn main() {
 	db.exec('drop table if exists User')
 	sql db {
 		create table Module
-	}
-	sql db {
-		create table User
 	}
 
 	mod := Module{
@@ -58,11 +55,9 @@ fn mysql() {
 		dbname: 'test'
 	}
 	conn.connect() or { panic(err) }
-	_ := conn.query('create table if not exists Module (id SERIAL, name TEXT NOT NULL, nr_downloads INT DEFAULT 0, creator INT DEFAULT 0, PRIMARY KEY(`id`));') or {
-		panic(err)
-	}
-	_ := conn.query('create table if not exists User (id SERIAL, age INT DEFAULT 0, name TEXT NOT NULL, is_customer INT DEFAULT 0, PRIMARY KEY(`id`));') or {
-		panic(err)
+
+	sql conn {
+		create table Module
 	}
 
 	mod := Module{
