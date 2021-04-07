@@ -377,18 +377,22 @@ fn (mut g Gen) sqlite3_create_table(node ast.SqlStmt, typ SqlType) {
 
 	mut fields := []string{}
 
-	outer: for field in struct_data.fields {
+	for field in struct_data.fields {
 		mut is_primary := false
+		mut skip := false
 		for attr in field.attrs {
 			match attr.name {
 				'skip' {
-					continue outer
+					skip = true
 				}
 				'primary' {
 					is_primary = true
 				}
 				else {}
 			}
+		}
+		if skip { // cpp workaround
+			continue
 		}
 		mut stmt := ''
 		mut converted_typ := g.sql_type_from_v(typ, field.typ)
