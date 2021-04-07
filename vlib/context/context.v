@@ -280,7 +280,9 @@ pub fn (ctx EmptyContext) deadline() ?time.Time {
 
 pub fn (ctx EmptyContext) done() chan int {
 	ch := chan int{}
-	ch.close()
+	defer {
+		ch.close()
+	}
 	return ch
 }
 
@@ -432,7 +434,9 @@ pub fn (shared ctx CancelContext) cancel(remove_from_parent bool, err string) {
 	lock ctx {
 		ctx.done <- 0
 		if !ctx.done.closed {
-			ctx.done.close()
+			defer {
+				ctx.done.close()
+			}
 		}
 	}
 
