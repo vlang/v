@@ -892,9 +892,8 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			} else {
 				if node.is_keep_alive && g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm] {
 					cur_line := g.go_before_stmt(0)
-					g.out.write_string(util.tabs(g.indent))
 					tmp_cnt_save = g.keep_alive_call_pregen(node)
-					g.write('$cur_line')
+					g.write(cur_line)
 					for i in 0 .. node.args.len {
 						if i > 0 {
 							g.write(', ')
@@ -907,6 +906,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			}
 			g.write(')')
 			if tmp_cnt_save >= 0 {
+				g.writeln(';')
 				g.keep_alive_call_postgen(node, tmp_cnt_save)
 			}
 		}
@@ -1133,6 +1133,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 
 // similar to `autofree_call_pregen()` but only to to handle [keep_args_alive] for C functions
 fn (mut g Gen) keep_alive_call_pregen(node ast.CallExpr) int {
+	g.empty_line = true
 	g.writeln('// keep_alive_call_pregen()')
 	// reserve the next tmp_vars for arguments
 	tmp_cnt_save := g.tmp_count + 1
@@ -1145,6 +1146,7 @@ fn (mut g Gen) keep_alive_call_pregen(node ast.CallExpr) int {
 		g.expr(arg.expr)
 		g.writeln(';')
 	}
+	g.empty_line = false
 	return tmp_cnt_save
 }
 

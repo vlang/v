@@ -373,6 +373,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			is_main: is_main
 			is_test: is_test
 			is_conditional: is_conditional
+			is_keep_alive: is_keep_alive
 			ctdefine: conditional_ctdefine
 			no_body: no_body
 			mod: p.mod
