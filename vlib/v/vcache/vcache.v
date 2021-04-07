@@ -66,7 +66,7 @@ pub fn (mut cm CacheManager) set_temporary_options(new_opts []string) {
 }
 
 pub fn (mut cm CacheManager) key2cpath(key string) string {
-	mut cpath := cm.k2cpath[key]
+	mut cpath := cm.k2cpath[key] or { '' }
 	if cpath == '' {
 		hk := cm.vopts + key
 		a := hash.sum64_string(hk, 5).hex_full()
