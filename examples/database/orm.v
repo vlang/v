@@ -4,7 +4,7 @@ import mysql
 struct Module {
 	id           int    [primary]
 	name         string
-	nr_downloads int
+	nr_downloads int    [sql: u64]
 	creator      User
 }
 

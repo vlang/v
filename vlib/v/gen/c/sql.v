@@ -468,8 +468,9 @@ fn (mut g Gen) mysql_stmt(node ast.SqlStmt, typ SqlType) {
 				g.writeln('$bind[${i - 1}].is_null = 0;')
 				g.writeln('$bind[${i - 1}].length = 0;')
 			} else {
-				g.writeln('$bind[${i - 1}].buffer_type = MYSQL_TYPE_LONG;')
-				g.writeln('$bind[${i - 1}].buffer = &$x;')
+				t, _, sym := g.mysql_buffer_typ_from_field(field)
+				g.writeln('$bind[${i - 1}].buffer_type = $t;')
+				g.writeln('$bind[${i - 1}].buffer = ($sym*) &$x;')
 				g.writeln('$bind[${i - 1}].is_null = 0;')
 				g.writeln('$bind[${i - 1}].length = 0;')
 			}
@@ -496,6 +497,52 @@ fn (mut g Gen) mysql_bind_int(val string) {
 
 fn (mut g Gen) mysql_bind_string(val string) {
 	g.write('mysql__escape_string(_SLIT("$val")')
+}
+
+fn (mut g Gen) mysql_buffer_typ_from_field(field ast.StructField) (string, string, string) {
+	mut typ := field.typ
+	mut sym := g.table.get_type_symbol(field.typ).cname
+	for attr in field.attrs {
+		if attr.name == 'sql' && attr.arg != '' {
+			typ = g.table.type_idxs[attr.arg]
+			sym = g.table.get_type_symbol(typ).cname
+		}
+	}
+	mut buf_typ := ''
+	mut table_typ := ''
+	match typ {
+		ast.i8_type, ast.byte_type, ast.bool_type {
+			buf_typ = 'MYSQL_TYPE_TINY'
+			table_typ = 'TINYINT'
+		}
+		ast.i16_type, ast.u16_type {
+			buf_typ = 'MYSQL_TYPE_SHORT'
+			table_typ = 'SMALLINT'
+		}
+		ast.int_type, ast.u32_type {
+			buf_typ = 'MYSQL_TYPE_LONG'
+			table_typ = 'INT'
+		}
+		ast.i64_type, ast.u64_type {
+			buf_typ = 'MYSQL_TYPE_LONGLONG'
+			table_typ = 'BIGINT'
+		}
+		ast.f32_type {
+			buf_typ = 'MYSQL_TYPE_FLOAT'
+			table_typ = 'BIGINT'
+		}
+		ast.f64_type {
+			buf_typ = 'MYSQL_TYPE_DOUBLE'
+			table_typ = 'BIGINT'
+		}
+		ast.string_type {
+			table_typ = 'TEXT'
+		}
+		else {
+			buf_typ = 'MYSQL_TYPE_NULL'
+		}
+	}
+	return buf_typ, table_typ, sym
 }
 
 // utils
