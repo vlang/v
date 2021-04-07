@@ -568,9 +568,9 @@ fn test_int_keys() {
 	}
 
 	four := 4
-	m2.delete(3)
-	m2.delete(four)
-	m2.delete(5)
+	m2.delete_1(3)
+	m2.delete_1(four)
+	m2.delete_1(5)
 	assert m2.len == 0
 	assert m2[3] == 0
 	assert m2[4] == 0
@@ -603,7 +603,7 @@ fn test_int_keys() {
 		2: 'two'
 	}
 	assert m3[1] == 'one'
-	m3.delete(1)
+	m3.delete_1(1)
 }
 
 fn test_voidptr_keys() {
