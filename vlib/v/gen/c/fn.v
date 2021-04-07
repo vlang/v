@@ -554,8 +554,13 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	if left_sym.kind == .map && node.name == 'delete' {
 		left_info := left_sym.info as ast.Map
 		elem_type_str := g.typ(left_info.key_type)
-		g.write('map_delete(&')
-		g.expr(node.left)
+		g.write('map_delete(')
+		if node.left_type.is_ptr() {
+			g.expr(node.left)
+		} else {
+			g.write('&')
+			g.expr(node.left)
+		}
 		g.write(', &($elem_type_str[]){')
 		g.expr(node.args[0].expr)
 		g.write('})')
