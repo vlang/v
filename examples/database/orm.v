@@ -2,14 +2,14 @@ import sqlite
 import mysql
 
 struct Module {
-	id           int
+	id           int [primary]
 	name         string
 	nr_downloads int
 	creator      User
 }
 
 struct User {
-	id             int
+	id             int [primary]
 	age            int
 	name           string
 	is_customer    bool
@@ -19,8 +19,12 @@ struct User {
 fn main() {
 	db := sqlite.connect(':memory:') or { panic(err) }
 	db.exec('drop table if exists User')
-	db.exec("create table Module (id integer primary key, name text default '', nr_downloads int default 0, creator int default 0);")
-	db.exec("create table User (id integer primary key, age int default 0, name text default '', is_customer int default 0);")
+	sql db {
+		create table Module
+	}
+	sql db {
+		create table User
+	}
 
 	mod := Module{
 		name: 'test'

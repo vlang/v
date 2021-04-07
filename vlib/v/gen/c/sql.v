@@ -443,9 +443,10 @@ fn (mut g Gen) mysql_stmt(node ast.SqlStmt, typ SqlType) {
 			x := '${node.object_var_name}.$field.name'
 			if field.typ == ast.string_type {
 				g.writeln('${bind}[${i-1}].buffer_type = MYSQL_TYPE_STRING;')
-				g.writeln('${bind}[${i-1}].buffer = ${x}.str;')
+				g.writeln('${bind}[${i-1}].buffer = (char *) ${x}.str;')
 				g.writeln('${bind}[${i-1}].buffer_length = ${x}.len;')
-				g.writeln('${bind}[${i-1}].length = &${x}.len;')
+				g.writeln('${bind}[${i-1}].is_null = 0;')
+				g.writeln('${bind}[${i-1}].length = 0;')
 			} else if g.table.type_symbols[int(field.typ)].kind == .struct_ {
 				//insert again
 				expr := node.sub_structs[int(field.typ)]
@@ -454,9 +455,14 @@ fn (mut g Gen) mysql_stmt(node ast.SqlStmt, typ SqlType) {
 				g.sql_stmt_name = tmp_sql_stmt_name
 
 				res := g.new_tmp_var()
-				g.writeln('Option_mysql__Result $res = mysql__Connection_query(&$db_name, _SLIT("SELECT LAST_INSERTED_ID();"));')
-				g.writeln('if (${res}.state != 0) { v_panic(IError_str(${res}.err)); }')
-				g.writeln('${x}.id = string_int(*(string*)array_get((*(mysql__Row*)array_get(mysql__Result_rows(*(mysql__Result*)${res}.data), 0)).vals, 0));')
+				g.writeln('int ${res}_err = mysql_real_query(${db_name}.conn, "SELECT LAST_INSERT_ID();", 24);')
+				g.writeln('if (${res}_err != 0) { puts(mysql_error(${db_name}.conn)); }')
+				g.writeln('MYSQL_RES* $res = mysql_store_result(${db_name}.conn);')
+				g.writeln('if (mysql_num_rows($res) != 1) { puts("Something went wrong"); }')
+				g.writeln('MYSQL_ROW ${res}_row = mysql_fetch_row($res);')
+				g.writeln('${x}.id = string_int(tos_clone(${res}_row[0]));')
+				g.writeln('mysql_free_result($res);')
+
 
 				g.writeln('${bind}[${i-1}].buffer_type = MYSQL_TYPE_LONG;')
 				g.writeln('${bind}[${i-1}].buffer = &${x}.id;')
@@ -480,6 +486,7 @@ fn (mut g Gen) mysql_stmt(node ast.SqlStmt, typ SqlType) {
 	g.writeln('$res = mysql_stmt_execute($g.sql_stmt_name);')
 	g.writeln('if ($res != 0) { puts(mysql_error(${db_name}.conn)); puts(mysql_stmt_error($g.sql_stmt_name)); }')
 	g.writeln('mysql_stmt_close($g.sql_stmt_name);')
+	g.writeln('mysql_stmt_free_result($g.sql_stmt_name);')
 }
 
 fn (mut g Gen) mysql_select_expr(node ast.SqlExpr, sub bool, line string) {

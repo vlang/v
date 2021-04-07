@@ -4,7 +4,7 @@
 #endif
 
 #ifndef V_CURRENT_COMMIT_HASH
-	#define V_CURRENT_COMMIT_HASH "a747651"
+	#define V_CURRENT_COMMIT_HASH "15569f3"
 #endif
 
 // V comptime_defines:
@@ -10011,8 +10011,12 @@ VV_LOCAL_SYMBOL void main__main(void) {
 	}
  	sqlite__DB db =  *(sqlite__DB*)_t144.data;
 	sqlite__DB_exec(db, _SLIT("drop table if exists User"));
-	sqlite__DB_exec(db, _SLIT("create table Module (id integer primary key, name text default '', nr_downloads int default 0, creator int default 0);"));
-	sqlite__DB_exec(db, _SLIT("create table User (id integer primary key, age int default 0, name text default '', is_customer int default 0);"));
+	// sqlite3 table creator (main.Module)
+	// sqlite3 table creator (main.User)
+	sqlite__DB_exec(db, _SLIT("CREATE TABLE IF NOT EXISTS `User` (`id` INTEGER PRIMARY KEY, `age` INTEGER, `name` TEXT, `is_customer` INTEGER);"));
+	sqlite__DB_exec(db, _SLIT("CREATE TABLE IF NOT EXISTS `Module` (`id` INTEGER PRIMARY KEY, `name` TEXT, `nr_downloads` INTEGER, `creator` INTEGER);"));
+	// sqlite3 table creator (main.User)
+	sqlite__DB_exec(db, _SLIT("CREATE TABLE IF NOT EXISTS `User` (`id` INTEGER PRIMARY KEY, `age` INTEGER, `name` TEXT, `is_customer` INTEGER);"));
 	main__Module mod = (main__Module){.id = 0,.name = _SLIT("test"),.nr_downloads = 10,.creator = (main__User){.id = 0,.age = 21,.name = _SLIT("VUser"),.is_customer = true,.skipped_string = (string){.str=(byteptr)"", .is_lit=1},},};
 	
 	// sql insert
@@ -10118,9 +10122,10 @@ VV_LOCAL_SYMBOL void main__mysql(void) {
 	memset(_t169, 0, sizeof(MYSQL_BIND)*3);
 	//name (18)
 	_t169[0].buffer_type = MYSQL_TYPE_STRING;
-	_t169[0].buffer = mod.name.str;
+	_t169[0].buffer = (char *) mod.name.str;
 	_t169[0].buffer_length = mod.name.len;
-	_t169[0].length = &mod.name.len;
+	_t169[0].is_null = 0;
+	_t169[0].length = 0;
 	//nr_downloads (7)
 	_t169[1].buffer_type = MYSQL_TYPE_LONG;
 	_t169[1].buffer = &mod.nr_downloads;
@@ -10142,9 +10147,10 @@ VV_LOCAL_SYMBOL void main__mysql(void) {
 	_t173[0].length = 0;
 	//name (18)
 	_t173[1].buffer_type = MYSQL_TYPE_STRING;
-	_t173[1].buffer = mod.creator.name.str;
+	_t173[1].buffer = (char *) mod.creator.name.str;
 	_t173[1].buffer_length = mod.creator.name.len;
-	_t173[1].length = &mod.creator.name.len;
+	_t173[1].is_null = 0;
+	_t173[1].length = 0;
 	//is_customer (16)
 	_t173[2].buffer_type = MYSQL_TYPE_LONG;
 	_t173[2].buffer = &mod.creator.is_customer;
@@ -10156,9 +10162,14 @@ VV_LOCAL_SYMBOL void main__mysql(void) {
 	_t174 = mysql_stmt_execute(_t171);
 	if (_t174 != 0) { puts(mysql_error(_t170.conn)); puts(mysql_stmt_error(_t171)); }
 	mysql_stmt_close(_t171);
-	Option_mysql__Result _t175 = mysql__Connection_query(&_t166, _SLIT("SELECT LAST_INSERTED_ID();"));
-	if (_t175.state != 0) { v_panic(IError_str(_t175.err)); }
-	mod.creator.id = string_int(*(string*)array_get((*(mysql__Row*)array_get(mysql__Result_rows(*(mysql__Result*)_t175.data), 0)).vals, 0));
+	mysql_stmt_free_result(_t171);
+	int _t175_err = mysql_real_query(_t166.conn, "SELECT LAST_INSERT_ID();", 24);
+	if (_t175_err != 0) { puts(mysql_error(_t166.conn)); }
+	MYSQL_RES* _t175 = mysql_store_result(_t166.conn);
+	if (mysql_num_rows(_t175) != 1) { puts("Something went wrong"); }
+	MYSQL_ROW _t175_row = mysql_fetch_row(_t175);
+	mod.creator.id = string_int(tos_clone(_t175_row[0]));
+	mysql_free_result(_t175);
 	_t169[2].buffer_type = MYSQL_TYPE_LONG;
 	_t169[2].buffer = &mod.creator.id;
 	_t169[2].is_null = 0;
@@ -10169,6 +10180,7 @@ VV_LOCAL_SYMBOL void main__mysql(void) {
 	_t176 = mysql_stmt_execute(_t167);
 	if (_t176 != 0) { puts(mysql_error(_t166.conn)); puts(mysql_stmt_error(_t167)); }
 	mysql_stmt_close(_t167);
+	mysql_stmt_free_result(_t167);
 }
 
 void _vinit(int ___argc, voidptr ___argv) {
