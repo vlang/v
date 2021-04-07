@@ -1,7 +1,5 @@
 module net
 
-import os
-
 const max_unix_path = 104
 
 struct Unix {
@@ -113,6 +111,19 @@ pub fn resolve_addrs(addr string, family AddrFamily, @type SocketType) ?[]Addr {
 	}
 }
 
+pub fn resolve_addrs_fuzzy(addr string, @type SocketType) ?[]Addr {
+	// Use a small heuristic to figure out what address family this is
+	// (out of the ones that we support)
+
+	if (addr.contains(':')) {
+		// Colon is a reserved character in unix paths
+		// so this must be an ip address
+		return resolve_addrs(addr, .unspec, @type)
+	}
+
+	return resolve_addrs(addr, unix, @type)
+}
+
 pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ?[]Addr {
 	address, port := split_address(addr) ?
 
@@ -190,4 +201,13 @@ fn (a Addr) str() string {
 			return '<.unspec>'
 		}
 	}
+}
+
+pub fn addr_from_socket_handle(handle int) Addr {
+	addr := Addr{}
+	size := sizeof(addr)
+
+	C.getsockname(handle, &addr, &size)
+
+	return addr
 }
