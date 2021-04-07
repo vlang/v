@@ -129,6 +129,11 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 		kind = .update
 	} else if n == 'create' {
 		kind = .create
+		table := p.check_name()
+		if table != 'table' {
+			p.error('expected `table` got `$table`')
+			return ast.SqlStmt{}
+		}
 		typ := p.parse_type()
 		typ_pos := p.tok.position()
 		p.check(.rcbr)

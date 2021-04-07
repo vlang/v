@@ -25,7 +25,7 @@ fn test_orm_sqlite() {
 	db := sqlite.connect(':memory:') or { panic(err) }
 	db.exec('drop table if exists User')
 	sql db {
-		create User
+		create table User
 	}
 	name := 'Peter'
 	db.exec("insert into User (name, age) values ('Sam', 29)")
