@@ -38,5 +38,5 @@ jobs:
         git -C vc add v.c v_win.c
         git -C vc commit -m "[v:master] $COMMIT_HASH - $COMMIT_MSG"
 
-        git pull --rebase origin master # in case there are recent commits
+        git -C vc pull --rebase origin master # in case there are recent commits
         git -C vc push
