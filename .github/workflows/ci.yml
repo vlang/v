@@ -178,7 +178,7 @@ jobs:
         run: |
           ./v cmd/tools/oldv.v
           ./cmd/tools/oldv -v HEAD^^^^^
-          cd /tmp/v_at_HEAD_____/
+          cd ~/.cache/oldv/v_at_HEAD_____/
           ./v version
           ./v -v up
           ./v version
