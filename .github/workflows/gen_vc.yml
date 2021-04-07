@@ -21,8 +21,6 @@ jobs:
         COMMIT_MSG=$(git log -1 --oneline --pretty='%s' HEAD)
 
         rm -rf vc
-        echo "cloning, secret="
-        echo "${{ secrets.VLANG_BOT_SECRET }}"
         git clone https://vlang-bot:${{ secrets.VLANG_BOT_SECRET }}@github.com/vlang/vc.git
 
         rm -rf vc/v.c vc/v_win.c
@@ -40,4 +38,5 @@ jobs:
         git -C vc add v.c v_win.c
         git -C vc commit -m "[v:master] $COMMIT_HASH - $COMMIT_MSG"
 
+        git pull --rebase origin master # in case there are recent commits
         git -C vc push
