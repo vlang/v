@@ -392,7 +392,9 @@ pub fn (mut g Gen) init() {
 		} else {
 			g.cheaders.writeln(c_headers)
 		}
-		g.definitions.writeln('void _STR_PRINT_ARG(const char*, char**, int*, int*, int, ...);')
+		if !g.pref.is_bare {
+			g.definitions.writeln('void _STR_PRINT_ARG(const char*, char**, int*, int*, int, ...);')
+		}
 		g.definitions.writeln('string _STR(const char*, int, ...);')
 		g.definitions.writeln('string _STR_TMP(const char*, ...);')
 	}
@@ -1891,7 +1893,7 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 		ast.AsmAlias {
 			name := arg.name
 			if name in stmt.local_labels || name in stmt.global_labels
-				|| name in g.file.global_labels {
+				|| name in g.file.global_labels || stmt.is_top_level {
 				asm_formatted_name := if name in stmt.global_labels { '%l[$name]' } else { name }
 				g.write(asm_formatted_name)
 			} else {
@@ -5464,7 +5466,9 @@ fn (mut g Gen) write_types(types []ast.TypeSymbol) {
 						g.type_definitions.writeln('} $name;')
 					}
 				} else {
-					g.type_definitions.writeln('typedef pthread_t $name;')
+					if !g.pref.is_bare {
+						g.type_definitions.writeln('typedef pthread_t $name;')
+					}
 				}
 			}
 			ast.SumType {

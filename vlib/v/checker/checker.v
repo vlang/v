@@ -3804,7 +3804,7 @@ fn (mut c Checker) asm_stmt(mut stmt ast.AsmStmt) {
 			stmt.pos)
 	}
 	if c.pref.backend == .js {
-		c.error('inline assembly is not supported in js backend', stmt.pos)
+		c.error('inline assembly is not supported in the js backend', stmt.pos)
 	}
 	if c.pref.backend == .c && c.pref.ccompiler_type == .msvc {
 		c.error('msvc compiler does not support inline assembly', stmt.pos)
@@ -3857,16 +3857,7 @@ fn (mut c Checker) asm_stmt(mut stmt ast.AsmStmt) {
 
 fn (mut c Checker) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt, aliases []string) {
 	match mut arg {
-		ast.AsmAlias {
-			name := arg.name
-			if name !in aliases && name !in stmt.local_labels && name !in c.file.global_labels {
-				mut possible := aliases.clone()
-				possible << stmt.local_labels
-				possible << c.file.global_labels
-				suggestion := util.new_suggestion(name, possible)
-				c.error(suggestion.say('alias or label `$arg.name` does not exist'), arg.pos)
-			}
-		}
+		ast.AsmAlias {}
 		ast.AsmAddressing {
 			if arg.scale !in [-1, 1, 2, 4, 8] {
 				c.error('scale must be one of 1, 2, 4, or 8', arg.pos)
