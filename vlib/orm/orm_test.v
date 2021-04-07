@@ -10,7 +10,7 @@ struct Module {
 }
 
 struct User {
-	id             int
+	id             int    [primary]
 	age            int
 	name           string
 	is_customer    bool
@@ -24,7 +24,9 @@ struct Foo {
 fn test_orm_sqlite() {
 	db := sqlite.connect(':memory:') or { panic(err) }
 	db.exec('drop table if exists User')
-	db.exec("create table User (id integer primary key, age int default 0, name text default '', is_customer int default 0);")
+	sql db {
+		create table User
+	}
 	name := 'Peter'
 	db.exec("insert into User (name, age) values ('Sam', 29)")
 	db.exec("insert into User (name, age) values ('Peter', 31)")

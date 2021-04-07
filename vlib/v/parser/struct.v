@@ -425,7 +425,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 		update_expr_comments: update_expr_comments
 		has_update_expr: has_update_expr
 		name_pos: first_pos
-		pos: first_pos.extend(p.prev_tok.position())
+		pos: first_pos.extend(if short_syntax { p.tok.position() } else { p.prev_tok.position() })
 		is_short: no_keys
 		pre_comments: pre_comments
 	}

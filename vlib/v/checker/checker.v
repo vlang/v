@@ -1465,7 +1465,7 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 	// FIXME: Argument count != 1 will break these
 	if left_type_sym.kind == .array && method_name in checker.array_builtin_methods {
 		return c.array_builtin_method_call(mut call_expr, left_type, left_type_sym)
-	} else if left_type_sym.kind == .map && method_name in ['clone', 'keys', 'move', 'delete_1'] {
+	} else if left_type_sym.kind == .map && method_name in ['clone', 'keys', 'move', 'delete'] {
 		return c.map_builtin_method_call(mut call_expr, left_type, left_type_sym)
 	} else if left_type_sym.kind == .array && method_name in ['insert', 'prepend'] {
 		info := left_type_sym.info as ast.Array
@@ -1564,6 +1564,45 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 			c.error('expected $nr_args arguments, but got $call_expr.args.len', unexpected_arguments_pos)
 			return method.return_type
 		}
+		if method.generic_names.len > 0 && method.return_type.has_flag(.generic) {
+			rts := c.table.get_type_symbol(method.return_type)
+			if rts.info is ast.Struct {
+				if rts.info.generic_types.len > 0 {
+					gts := c.table.get_type_symbol(call_expr.generic_types[0])
+					nrt := '$rts.name<$gts.name>'
+					c_nrt := '${rts.name}_T_$gts.name'
+					idx := c.table.type_idxs[nrt]
+					if idx != 0 {
+						c.ensure_type_exists(idx, call_expr.pos) or {}
+						call_expr.return_type = ast.new_type(idx).derive(method.return_type)
+					} else {
+						mut fields := rts.info.fields.clone()
+						if rts.info.generic_types.len == generic_types.len {
+							for i, _ in fields {
+								if t_typ := c.table.resolve_generic_by_types(fields[i].typ,
+									rts.info.generic_types, generic_types)
+								{
+									fields[i].typ = t_typ
+								}
+							}
+							mut info := rts.info
+							info.generic_types = []
+							info.fields = fields
+							stru_idx := c.table.register_type_symbol(ast.TypeSymbol{
+								kind: .struct_
+								name: nrt
+								cname: util.no_dots(c_nrt)
+								mod: c.mod
+								info: info
+							})
+							call_expr.return_type = ast.new_type(stru_idx)
+						}
+					}
+				}
+			}
+		} else {
+			call_expr.return_type = method.return_type
+		}
 
 		// if method_name == 'clone' {
 		// println('CLONE nr args=$method.args.len')
@@ -1661,7 +1700,6 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 		} else {
 			call_expr.receiver_type = method.params[0].typ
 		}
-		call_expr.return_type = method.return_type
 		if method.generic_names.len != call_expr.generic_types.len {
 			// no type arguments given in call, attempt implicit instantiation
 			c.infer_fn_types(method, mut call_expr)
@@ -1745,6 +1783,17 @@ fn (mut c Checker) map_builtin_method_call(mut call_expr ast.CallExpr, left_type
 			info := left_type_sym.info as ast.Map
 			typ := c.table.find_or_register_array(info.key_type)
 			ret_type = ast.Type(typ)
+		}
+		'delete' {
+			c.fail_if_immutable(call_expr.left)
+			if call_expr.args.len != 1 {
+				c.error('expected 1 argument, but got $call_expr.args.len', call_expr.pos)
+			}
+			info := left_type_sym.info as ast.Map
+			arg_type := c.expr(call_expr.args[0].expr)
+			c.check_expected_call_arg(arg_type, info.key_type, call_expr.language) or {
+				c.error('$err.msg in argument 1 to `Map.delete`', call_expr.args[0].pos)
+			}
 		}
 		else {}
 	}
@@ -3073,8 +3122,8 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 						right.position())
 				}
 			}
-			.and_assign, .or_assign, .xor_assign, .mod_assign, .left_shift_assign, .right_shift_assign
-			 {
+			.and_assign, .or_assign, .xor_assign, .mod_assign, .left_shift_assign,
+			.right_shift_assign {
 				if !left_sym.is_int()
 					&& !c.table.get_final_type_symbol(left_type_unwrapped).is_int() {
 					c.error('operator $assign_stmt.op.str() not defined on left operand type `$left_sym.name`',

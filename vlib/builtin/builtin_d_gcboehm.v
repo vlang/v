@@ -29,7 +29,7 @@ fn C.GC_REALLOC(ptr voidptr, n size_t) voidptr
 fn C.GC_FREE(ptr voidptr)
 
 // explicitely perform garbage collection now! Garbage collections
-// are done automatically when needed, so this function is hardly needed 
+// are done automatically when needed, so this function is hardly needed
 fn C.GC_gcollect()
 
 // functions to temporarily suspend/resume garbage collection

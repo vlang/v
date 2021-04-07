@@ -1232,6 +1232,9 @@ pub fn (mut f Fmt) sql_stmt(node ast.SqlStmt) {
 			f.expr(node.where_expr)
 			f.writeln('')
 		}
+		.create {
+			f.writeln('create table $table_name')
+		}
 	}
 	f.writeln('}')
 }
@@ -2068,7 +2071,12 @@ pub fn (mut f Fmt) match_expr(node ast.MatchExpr) {
 			// normal branch
 			f.is_mbranch_expr = true
 			for j, expr in branch.exprs {
-				f.expr(expr)
+				estr := f.node_str(expr)
+				if f.line_len + estr.len + 2 > fmt.max_len[5] {
+					f.remove_new_line({})
+					f.writeln('')
+				}
+				f.write(estr)
 				if j < branch.ecmnts.len && branch.ecmnts[j].len > 0 {
 					f.write(' ')
 					f.comments(branch.ecmnts[j], iembed: true)
@@ -2076,7 +2084,6 @@ pub fn (mut f Fmt) match_expr(node ast.MatchExpr) {
 				if j < branch.exprs.len - 1 {
 					f.write(', ')
 				}
-				f.wrap_long_line(4, false)
 			}
 			f.is_mbranch_expr = false
 		} else {

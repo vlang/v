@@ -1640,8 +1640,8 @@ pub fn (a []string) join(del string) string {
 	len -= del.len
 	// Allocate enough memory
 	mut res := string{
-		len: len
 		str: unsafe { malloc(len + 1) }
+		len: len
 	}
 	mut idx := 0
 	// Go thru every string and copy its every char one by one

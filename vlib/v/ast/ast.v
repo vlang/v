@@ -1411,6 +1411,7 @@ pub enum SqlStmtKind {
 	insert
 	update
 	delete
+	create
 }
 
 pub struct SqlStmt {
@@ -1476,12 +1477,18 @@ pub fn (expr Expr) position() token.Position {
 			// println('compiler bug, unhandled EmptyExpr position()')
 			return token.Position{}
 		}
-		NodeError, ArrayDecompose, ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr, CastExpr,
-		ChanInit, CharLiteral, ConcatExpr, Comment, ComptimeCall, ComptimeSelector, EnumVal, DumpExpr,
-		FloatLiteral, GoExpr, Ident, IfExpr, IndexExpr, IntegerLiteral, Likely, LockExpr, MapInit,
-		MatchExpr, None, OffsetOf, OrExpr, ParExpr, PostfixExpr, PrefixExpr, RangeExpr, SelectExpr,
-		SelectorExpr, SizeOf, SqlExpr, StringInterLiteral, StringLiteral, StructInit, TypeNode,
-		TypeOf, UnsafeExpr {
+		NodeError, ArrayDecompose, ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr,
+		CastExpr, ChanInit, CharLiteral, ConcatExpr, Comment, ComptimeCall, ComptimeSelector,
+		EnumVal, DumpExpr, FloatLiteral, GoExpr, Ident, IfExpr, IntegerLiteral, Likely, LockExpr,
+		MapInit, MatchExpr, None, OffsetOf, OrExpr, ParExpr, PostfixExpr, PrefixExpr, RangeExpr,
+		SelectExpr, SelectorExpr, SizeOf, SqlExpr, StringInterLiteral, StringLiteral, StructInit,
+		TypeNode, TypeOf, UnsafeExpr {
+			return expr.pos
+		}
+		IndexExpr {
+			if expr.or_expr.kind != .absent {
+				return expr.or_expr.pos
+			}
 			return expr.pos
 		}
 		IfGuardExpr {
@@ -1598,6 +1605,12 @@ pub fn (node Node) position() token.Position {
 					pos = pos.extend(sym.pos)
 				}
 			}
+			if node is AssignStmt {
+				return pos.extend(node.right.last().position())
+			}
+			if node is AssertStmt {
+				return pos.extend(node.expr.position())
+			}
 			return pos
 		}
 		Expr {
@@ -1606,8 +1619,7 @@ pub fn (node Node) position() token.Position {
 		StructField {
 			return node.pos.extend(node.type_pos)
 		}
-		MatchBranch, SelectBranch, EnumField, ConstField, StructInitField, GlobalField, CallArg
-		 {
+		MatchBranch, SelectBranch, EnumField, ConstField, StructInitField, GlobalField, CallArg {
 			return node.pos
 		}
 		IfBranch {

@@ -1008,20 +1008,22 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 				p.scope = scope
 				p.check(.semicolon)
 				for p.tok.kind == .name {
-					reg := p.reg_or_alias()
+					reg := ast.AsmRegister{
+						name: p.tok.lit
+						typ: 0
+						size: -1
+					}
+					p.check(.name)
 
 					mut comments := []ast.Comment{}
 					for p.tok.kind == .comment {
 						comments << p.comment()
 					}
-					if reg is ast.AsmRegister {
-						clobbered << ast.AsmClobbered{
-							reg: reg
-							comments: comments
-						}
-					} else {
-						p.error('not a register: $reg')
+					clobbered << ast.AsmClobbered{
+						reg: reg
+						comments: comments
 					}
+
 					if p.tok.kind in [.rcbr, .semicolon] {
 						break
 					}
@@ -1850,7 +1852,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		}
 		return ast.MapInit{
 			typ: map_type
-			pos: p.tok.position()
+			pos: p.prev_tok.position()
 		}
 	}
 	// `chan typ{...}`
@@ -2138,8 +2140,9 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 		}
 		// `a[i] ?`
 		if p.tok.kind == .question {
-			p.next()
+			or_pos = p.tok.position()
 			or_kind = .propagate
+			p.next()
 		}
 	}
 	return ast.IndexExpr{
