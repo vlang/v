@@ -11,7 +11,7 @@
 
 ## Usage
 
-```v
+```v ignore
 struct Foo {
     id   int    [primary; sql: serial]
     name string [nonull]
@@ -20,7 +20,7 @@ struct Foo {
 
 ### Create
 
-```v
+```v ignore
 sql db {
     create table Foo
 }
@@ -28,7 +28,7 @@ sql db {
 
 ### Insert
 
-```v
+```v ignore
 var := Foo{
     name: 'abc'
 }
@@ -40,31 +40,31 @@ sql db {
 
 ### Update
 
-```v
+```v ignore
 sql db {
     update Foo set name = 'cde' where name == 'abc'
 }
 ```
 
 ### Delete
-```v
+```v ignore
 sql db {
     delete from Foo where id > 10
 }
 ```
 
 ### Select
-```v
+```v ignore
 result := sql db {
     select from Foo where id == 1
 }
 ```
-```v
+```v ignore
 result := sql db {
     select from Foo where id > 1 limit 5
 }
 ```
-```v
+```v ignore
 result := sql db {
     select from Foo where id > 1 order by id
 }

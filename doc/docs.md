@@ -3164,10 +3164,10 @@ import sqlite
 
 struct Customer {
 	// struct name has to be the same as the table name (for now)
-	id        int     [primary; sql: serial] // a field named `id` of integer type must be the first field
-	name      string  [nonull]
+	id        int    [primary; sql: serial] // a field named `id` of integer type must be the first field
+	name      string [nonull]
 	nr_orders int
-	country   string  [nonull]
+	country   string [nonull]
 }
 
 db := sqlite.connect('customers.db') ?
