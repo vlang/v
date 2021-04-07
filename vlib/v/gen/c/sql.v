@@ -432,7 +432,7 @@ fn (mut g Gen) mysql_stmt(node ast.SqlStmt, typ SqlType) {
 	g.writeln('mysql_stmt_prepare($g.sql_stmt_name, ${stmt_name}.str, ${stmt_name}.len);')
 
 	bind := g.new_tmp_var()
-	g.writeln('MYSQL_BIND ${bind}[$g.sql_i];')
+	g.writeln('MYSQL_BIND $bind[$g.sql_i];')
 	g.writeln('memset($bind, 0, sizeof(MYSQL_BIND)*$g.sql_i);')
 	if node.kind == .insert {
 		for i, field in node.fields {
@@ -442,13 +442,13 @@ fn (mut g Gen) mysql_stmt(node ast.SqlStmt, typ SqlType) {
 			g.writeln('//$field.name ($field.typ)')
 			x := '${node.object_var_name}.$field.name'
 			if field.typ == ast.string_type {
-				g.writeln('${bind}[${i-1}].buffer_type = MYSQL_TYPE_STRING;')
-				g.writeln('${bind}[${i-1}].buffer = (char *) ${x}.str;')
-				g.writeln('${bind}[${i-1}].buffer_length = ${x}.len;')
-				g.writeln('${bind}[${i-1}].is_null = 0;')
-				g.writeln('${bind}[${i-1}].length = 0;')
+				g.writeln('$bind[${i - 1}].buffer_type = MYSQL_TYPE_STRING;')
+				g.writeln('$bind[${i - 1}].buffer = (char *) ${x}.str;')
+				g.writeln('$bind[${i - 1}].buffer_length = ${x}.len;')
+				g.writeln('$bind[${i - 1}].is_null = 0;')
+				g.writeln('$bind[${i - 1}].length = 0;')
 			} else if g.table.type_symbols[int(field.typ)].kind == .struct_ {
-				//insert again
+				// insert again
 				expr := node.sub_structs[int(field.typ)]
 				tmp_sql_stmt_name := g.sql_stmt_name
 				g.sql_stmt(expr)
@@ -463,23 +463,22 @@ fn (mut g Gen) mysql_stmt(node ast.SqlStmt, typ SqlType) {
 				g.writeln('${x}.id = string_int(tos_clone(${res}_row[0]));')
 				g.writeln('mysql_free_result($res);')
 
-
-				g.writeln('${bind}[${i-1}].buffer_type = MYSQL_TYPE_LONG;')
-				g.writeln('${bind}[${i-1}].buffer = &${x}.id;')
-				g.writeln('${bind}[${i-1}].is_null = 0;')
-				g.writeln('${bind}[${i-1}].length = 0;')
+				g.writeln('$bind[${i - 1}].buffer_type = MYSQL_TYPE_LONG;')
+				g.writeln('$bind[${i - 1}].buffer = &${x}.id;')
+				g.writeln('$bind[${i - 1}].is_null = 0;')
+				g.writeln('$bind[${i - 1}].length = 0;')
 			} else {
-				g.writeln('${bind}[${i-1}].buffer_type = MYSQL_TYPE_LONG;')
-				g.writeln('${bind}[${i-1}].buffer = &${x};')
-				g.writeln('${bind}[${i-1}].is_null = 0;')
-				g.writeln('${bind}[${i-1}].length = 0;')
+				g.writeln('$bind[${i - 1}].buffer_type = MYSQL_TYPE_LONG;')
+				g.writeln('$bind[${i - 1}].buffer = &$x;')
+				g.writeln('$bind[${i - 1}].is_null = 0;')
+				g.writeln('$bind[${i - 1}].length = 0;')
 			}
 		}
 	}
 	binds := g.sql_buf.str()
 	g.sql_buf = strings.new_builder(100)
 	g.writeln(binds)
-	//g.writeln('mysql_stmt_attr_set($g.sql_stmt_name, STMT_ATTR_ARRAY_SIZE, 1);')
+	// g.writeln('mysql_stmt_attr_set($g.sql_stmt_name, STMT_ATTR_ARRAY_SIZE, 1);')
 	res := g.new_tmp_var()
 	g.writeln('int $res = mysql_stmt_bind_param($g.sql_stmt_name, $bind);')
 	g.writeln('if ($res != 0) { puts(mysql_error(${db_name}.conn)); }')
