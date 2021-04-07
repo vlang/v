@@ -3578,7 +3578,6 @@ fn (mut c Checker) assert_stmt(node ast.AssertStmt) {
 
 fn (mut c Checker) block(node ast.Block) {
 	if node.is_unsafe {
-		assert !c.inside_unsafe
 		c.inside_unsafe = true
 		c.stmts(node.stmts)
 		c.inside_unsafe = false
@@ -5276,10 +5275,6 @@ pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) ast.Type {
 }
 
 pub fn (mut c Checker) unsafe_expr(mut node ast.UnsafeExpr) ast.Type {
-	// assert !c.inside_unsafe
-	if c.inside_unsafe {
-		c.error('unsafe inside unsafe', node.pos)
-	}
 	c.inside_unsafe = true
 	t := c.expr(node.expr)
 	c.inside_unsafe = false

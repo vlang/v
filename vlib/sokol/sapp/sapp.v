@@ -10,7 +10,7 @@ pub const (
 __global ( g_desc C.sapp_desc )
 
 pub fn create_desc() C.sg_desc {
-	mtl_desc := C.sg_mtl_context_desc{
+	metal_desc := C.sg_metal_context_desc{
 		device: metal_get_device()
 		renderpass_descriptor_cb: metal_get_renderpass_descriptor
 		drawable_cb: metal_get_drawable
@@ -23,7 +23,7 @@ pub fn create_desc() C.sg_desc {
 	}
 	return C.sg_desc{
 		context: C.sg_context_desc{
-			metal: mtl_desc
+			metal: metal_desc
 			d3d11: d3d11_desc
 		}
 		image_pool_size: 1000
@@ -140,9 +140,9 @@ pub fn get_clipboard_string() byteptr {
 
 // special run-function for SOKOL_NO_ENTRY (in standard mode this is an empty stub)
 [inline]
-pub fn run(desc &C.sapp_desc) int {
+pub fn run(desc &C.sapp_desc) {
 	g_desc = desc
-	return C.sapp_run(desc)
+	C.sapp_run(desc)
 }
 
 // GL: return true when GLES2 fallback is active (to detect fallback from GLES3)
