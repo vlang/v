@@ -33,6 +33,9 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 		.sqlite3 {
 			g.sqlite3_stmt(node, typ)
 		}
+		.mysql {
+			g.mysql_stmt(node, typ)
+		}
 		else {
 			verror('This database type `$typ` is not implemented yet in orm') // TODO add better error
 		}
@@ -79,6 +82,9 @@ fn (mut g Gen) sql_bind_string(val string, len string, typ SqlType) {
 		.sqlite3 {
 			g.sqlite3_bind_string(val, len)
 		}
+		.mysql {
+			g.mysql_bind_string(val)
+		}
 		else {
 			// add error
 		}
@@ -108,51 +114,8 @@ fn (mut g Gen) sqlite3_stmt(node ast.SqlStmt, typ SqlType) {
 	g.expr(node.db_expr)
 	g.writeln(';')
 	g.write('sqlite3_stmt* $g.sql_stmt_name = ${c.dbtype}__DB_init_stmt($db_name, _SLIT("')
-	table_name := util.strip_mod_name(g.table.get_type_symbol(node.table_expr.typ).name)
-	if node.kind == .insert {
-		g.write('INSERT INTO `$table_name` (')
-	} else if node.kind == .update {
-		g.write('UPDATE `$table_name` SET ')
-	} else if node.kind == .delete {
-		g.write('DELETE FROM `$table_name` ')
-	}
-	if node.kind == .insert {
-		for i, field in node.fields {
-			if field.name == 'id' {
-				continue
-			}
-			g.write('`$field.name`')
-			if i < node.fields.len - 1 {
-				g.write(', ')
-			}
-		}
-		g.write(') values (')
-		for i, field in node.fields {
-			if field.name == 'id' {
-				continue
-			}
-			g.write('?${i + 0}')
-			if i < node.fields.len - 1 {
-				g.write(', ')
-			}
-		}
-		g.write(')')
-	} else if node.kind == .update {
-		for i, col in node.updated_columns {
-			g.write(' $col = ')
-			g.expr_to_sql(node.update_exprs[i], typ)
-			if i < node.updated_columns.len - 1 {
-				g.write(', ')
-			}
-		}
-		g.write(' WHERE ')
-	} else if node.kind == .delete {
-		g.write(' WHERE ')
-	}
-	if node.kind == .update || node.kind == .delete {
-		g.expr_to_sql(node.where_expr, typ)
-	}
-	g.writeln('"));')
+	g.sql_defaults(node, typ)
+	g.writeln(');')
 	if node.kind == .insert {
 		// build the object now (`x.name = ... x.id == ...`)
 		for i, field in node.fields {
@@ -453,7 +416,70 @@ fn (mut g Gen) sqlite3_type_from_v(typ SqlType, v_typ ast.Type) string {
 
 // mysql
 
-fn (mut g Gen) mysql_stmt(node ast.SqlStmt) {
+fn (mut g Gen) mysql_stmt(node ast.SqlStmt, typ SqlType) {
+	g.sql_i = 0
+	g.writeln('\n\t//mysql insert')
+	db_name := g.new_tmp_var()
+	g.sql_stmt_name = g.new_tmp_var()
+	g.write('mysql__Connection $db_name = ')
+	g.expr(node.db_expr)
+	g.writeln(';')
+	stmt_name := g.new_tmp_var()
+	g.write('string $stmt_name = _SLIT("')
+	g.sql_defaults(node, typ)
+	g.writeln(';')
+	g.writeln('MYSQL_STMT* $g.sql_stmt_name = mysql_stmt_init(${db_name}.conn);')
+	g.writeln('mysql_stmt_prepare($g.sql_stmt_name, ${stmt_name}.str, ${stmt_name}.len);')
+
+	bind := g.new_tmp_var()
+	g.writeln('MYSQL_BIND ${bind}[$g.sql_i];')
+	g.writeln('memset($bind, 0, sizeof(MYSQL_BIND)*$g.sql_i);')
+	if node.kind == .insert {
+		for i, field in node.fields {
+			if field.name == 'id' {
+				continue
+			}
+			g.writeln('//$field.name ($field.typ)')
+			x := '${node.object_var_name}.$field.name'
+			if field.typ == ast.string_type {
+				g.writeln('${bind}[${i-1}].buffer_type = MYSQL_TYPE_STRING;')
+				g.writeln('${bind}[${i-1}].buffer = ${x}.str;')
+				g.writeln('${bind}[${i-1}].buffer_length = ${x}.len;')
+				g.writeln('${bind}[${i-1}].length = &${x}.len;')
+			} else if g.table.type_symbols[int(field.typ)].kind == .struct_ {
+				//insert again
+				expr := node.sub_structs[int(field.typ)]
+				tmp_sql_stmt_name := g.sql_stmt_name
+				g.sql_stmt(expr)
+				g.sql_stmt_name = tmp_sql_stmt_name
+
+				res := g.new_tmp_var()
+				g.writeln('Option_mysql__Result $res = mysql__Connection_query(&$db_name, _SLIT("SELECT LAST_INSERTED_ID();"));')
+				g.writeln('if (${res}.state != 0) { v_panic(IError_str(${res}.err)); }')
+				g.writeln('${x}.id = string_int(*(string*)array_get((*(mysql__Row*)array_get(mysql__Result_rows(*(mysql__Result*)${res}.data), 0)).vals, 0));')
+
+				g.writeln('${bind}[${i-1}].buffer_type = MYSQL_TYPE_LONG;')
+				g.writeln('${bind}[${i-1}].buffer = &${x}.id;')
+				g.writeln('${bind}[${i-1}].is_null = 0;')
+				g.writeln('${bind}[${i-1}].length = 0;')
+			} else {
+				g.writeln('${bind}[${i-1}].buffer_type = MYSQL_TYPE_LONG;')
+				g.writeln('${bind}[${i-1}].buffer = &${x};')
+				g.writeln('${bind}[${i-1}].is_null = 0;')
+				g.writeln('${bind}[${i-1}].length = 0;')
+			}
+		}
+	}
+	binds := g.sql_buf.str()
+	g.sql_buf = strings.new_builder(100)
+	g.writeln(binds)
+	//g.writeln('mysql_stmt_attr_set($g.sql_stmt_name, STMT_ATTR_ARRAY_SIZE, 1);')
+	res := g.new_tmp_var()
+	g.writeln('int $res = mysql_stmt_bind_param($g.sql_stmt_name, $bind);')
+	g.writeln('if ($res != 0) { puts(mysql_error(${db_name}.conn)); }')
+	g.writeln('$res = mysql_stmt_execute($g.sql_stmt_name);')
+	g.writeln('if ($res != 0) { puts(mysql_error(${db_name}.conn)); puts(mysql_stmt_error($g.sql_stmt_name)); }')
+	g.writeln('mysql_stmt_close($g.sql_stmt_name);')
 }
 
 fn (mut g Gen) mysql_select_expr(node ast.SqlExpr, sub bool, line string) {
@@ -462,10 +488,64 @@ fn (mut g Gen) mysql_select_expr(node ast.SqlExpr, sub bool, line string) {
 fn (mut g Gen) mysql_bind_int(val string) {
 }
 
-fn (mut g Gen) mysql_bind_string(val string, len string) {
+fn (mut g Gen) mysql_bind_string(val string) {
+	g.write('mysql__escape_string(_SLIT("$val")')
 }
 
 // utils
+
+fn (mut g Gen) sql_defaults(node ast.SqlStmt, typ SqlType) {
+	table_name := util.strip_mod_name(g.table.get_type_symbol(node.table_expr.typ).name)
+	if node.kind == .insert {
+		g.write('INSERT INTO `$table_name` (')
+	} else if node.kind == .update {
+		g.write('UPDATE `$table_name` SET ')
+	} else if node.kind == .delete {
+		g.write('DELETE FROM `$table_name` ')
+	}
+	if node.kind == .insert {
+		for i, field in node.fields {
+			if field.name == 'id' {
+				continue
+			}
+			g.write('`$field.name`')
+			if i < node.fields.len - 1 {
+				g.write(', ')
+			}
+		}
+		g.write(') values (')
+		for i, field in node.fields {
+			if field.name == 'id' {
+				continue
+			}
+			if typ == .sqlite3 {
+				g.write('?${i + 0}')
+			} else if typ == .mysql {
+				g.write('?')
+			}
+			if i < node.fields.len - 1 {
+				g.write(', ')
+			}
+			g.sql_i++
+		}
+		g.write(')')
+	} else if node.kind == .update {
+		for i, col in node.updated_columns {
+			g.write(' $col = ')
+			g.expr_to_sql(node.update_exprs[i], typ)
+			if i < node.updated_columns.len - 1 {
+				g.write(', ')
+			}
+		}
+		g.write(' WHERE ')
+	} else if node.kind == .delete {
+		g.write(' WHERE ')
+	}
+	if node.kind == .update || node.kind == .delete {
+		g.expr_to_sql(node.where_expr, typ)
+	}
+	g.write('")')
+}
 
 fn (mut g Gen) expr_to_sql(expr ast.Expr, typ SqlType) {
 	// Custom handling for infix exprs (since we need e.g. `and` instead of `&&` in SQL queries),
@@ -579,6 +659,9 @@ fn (mut g Gen) parse_db_from_type_string(name string) SqlType {
 	match name {
 		'sqlite.DB' {
 			return .sqlite3
+		}
+		'mysql.Connection' {
+			return .mysql
 		}
 		else {
 			return .unknown
