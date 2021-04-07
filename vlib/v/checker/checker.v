@@ -1424,6 +1424,44 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, call_exp
 	}
 }
 
+fn (mut c Checker) check_return_generics_struct(return_type ast.Type, mut call_expr ast.CallExpr, generic_types []ast.Type) {
+	rts := c.table.get_type_symbol(return_type)
+	if rts.info is ast.Struct {
+		if rts.info.generic_types.len > 0 {
+			gts := c.table.get_type_symbol(call_expr.generic_types[0])
+			nrt := '$rts.name<$gts.name>'
+			c_nrt := '${rts.name}_T_$gts.name'
+			idx := c.table.type_idxs[nrt]
+			if idx != 0 {
+				c.ensure_type_exists(idx, call_expr.pos) or {}
+				call_expr.return_type = ast.new_type(idx).derive(return_type)
+			} else {
+				mut fields := rts.info.fields.clone()
+				if rts.info.generic_types.len == generic_types.len {
+					for i, _ in fields {
+						if t_typ := c.table.resolve_generic_by_types(fields[i].typ, rts.info.generic_types,
+							generic_types)
+						{
+							fields[i].typ = t_typ
+						}
+					}
+					mut info := rts.info
+					info.generic_types = []
+					info.fields = fields
+					stru_idx := c.table.register_type_symbol(ast.TypeSymbol{
+						kind: .struct_
+						name: nrt
+						cname: util.no_dots(c_nrt)
+						mod: c.mod
+						info: info
+					})
+					call_expr.return_type = ast.new_type(stru_idx)
+				}
+			}
+		}
+	}
+}
+
 pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 	left_type := c.expr(call_expr.left)
 	c.expected_type = left_type
@@ -1565,41 +1603,7 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 			return method.return_type
 		}
 		if method.generic_names.len > 0 && method.return_type.has_flag(.generic) {
-			rts := c.table.get_type_symbol(method.return_type)
-			if rts.info is ast.Struct {
-				if rts.info.generic_types.len > 0 {
-					gts := c.table.get_type_symbol(call_expr.generic_types[0])
-					nrt := '$rts.name<$gts.name>'
-					c_nrt := '${rts.name}_T_$gts.name'
-					idx := c.table.type_idxs[nrt]
-					if idx != 0 {
-						c.ensure_type_exists(idx, call_expr.pos) or {}
-						call_expr.return_type = ast.new_type(idx).derive(method.return_type)
-					} else {
-						mut fields := rts.info.fields.clone()
-						if rts.info.generic_types.len == generic_types.len {
-							for i, _ in fields {
-								if t_typ := c.table.resolve_generic_by_types(fields[i].typ,
-									rts.info.generic_types, generic_types)
-								{
-									fields[i].typ = t_typ
-								}
-							}
-							mut info := rts.info
-							info.generic_types = []
-							info.fields = fields
-							stru_idx := c.table.register_type_symbol(ast.TypeSymbol{
-								kind: .struct_
-								name: nrt
-								cname: util.no_dots(c_nrt)
-								mod: c.mod
-								info: info
-							})
-							call_expr.return_type = ast.new_type(stru_idx)
-						}
-					}
-				}
-			}
+			c.check_return_generics_struct(method.return_type, mut call_expr, generic_types)
 		} else {
 			call_expr.return_type = method.return_type
 		}
@@ -2064,41 +2068,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 		c.ensure_type_exists(generic_type, call_expr.generic_list_pos) or {}
 	}
 	if f.generic_names.len > 0 && f.return_type.has_flag(.generic) {
-		rts := c.table.get_type_symbol(f.return_type)
-		if rts.info is ast.Struct {
-			if rts.info.generic_types.len > 0 {
-				gts := c.table.get_type_symbol(call_expr.generic_types[0])
-				nrt := '$rts.name<$gts.name>'
-				c_nrt := '${rts.name}_T_$gts.name'
-				idx := c.table.type_idxs[nrt]
-				if idx != 0 {
-					c.ensure_type_exists(idx, call_expr.pos) or {}
-					call_expr.return_type = ast.new_type(idx).derive(f.return_type)
-				} else {
-					mut fields := rts.info.fields.clone()
-					if rts.info.generic_types.len == generic_types.len {
-						for i, _ in fields {
-							if t_typ := c.table.resolve_generic_by_types(fields[i].typ,
-								rts.info.generic_types, generic_types)
-							{
-								fields[i].typ = t_typ
-							}
-						}
-						mut info := rts.info
-						info.generic_types = []
-						info.fields = fields
-						stru_idx := c.table.register_type_symbol(ast.TypeSymbol{
-							kind: .struct_
-							name: nrt
-							cname: util.no_dots(c_nrt)
-							mod: c.mod
-							info: info
-						})
-						call_expr.return_type = ast.new_type(stru_idx)
-					}
-				}
-			}
-		}
+		c.check_return_generics_struct(f.return_type, mut call_expr, generic_types)
 	} else {
 		call_expr.return_type = f.return_type
 	}
