@@ -637,16 +637,9 @@ fn (mut d DenseArray) delete(i int) {
 	}
 }
 
-// delete this
-pub fn (mut m map) delete(key string) {
-	unsafe {
-		m.delete_1(&key)
-	}
-}
-
 // Removes the mapping of a particular key from the map.
 [unsafe]
-pub fn (mut m map) delete_1(key voidptr) {
+pub fn (mut m map) delete(key voidptr) {
 	mut index, mut meta := m.key_to_index(key)
 	index, meta = m.meta_less(index, meta)
 	// Perform backwards shifting
