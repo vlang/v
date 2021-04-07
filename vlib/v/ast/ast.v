@@ -356,6 +356,7 @@ pub:
 	is_main         bool           // true for `fn main()`
 	is_test         bool           // true for `fn test_abcde`
 	is_conditional  bool           // true for `[if abc] fn abc(){}`
+	is_keep_alive   bool           // passed memory must not be freed (by GC) before function returns
 	receiver        StructField    // TODO this is not a struct field
 	receiver_pos    token.Position // `(u User)` in `fn (u User) name()` position
 	is_method       bool
