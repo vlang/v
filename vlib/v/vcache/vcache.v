@@ -90,7 +90,9 @@ pub fn (mut cm CacheManager) key2cpath(key string) string {
 }
 
 pub fn (mut cm CacheManager) postfix_with_key2cpath(postfix string, key string) string {
-	return cm.key2cpath(key) + postfix
+	prefix := cm.key2cpath(key)
+	res := prefix + postfix
+	return res
 }
 
 pub fn (mut cm CacheManager) exists(postfix string, key string) ?string {
