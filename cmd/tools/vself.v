@@ -67,7 +67,9 @@ fn backup_old_version_and_rename_newer() ?bool {
 	bak_file := os.real_path(short_bak_file)
 
 	list_folder('before:', 'removing $bak_file ...')
-	os.rm(bak_file) or { errors << 'failed removing $bak_file: $err.msg' }
+	if os.exists(bak_file) {
+		os.rm(bak_file) or { errors << 'failed removing $bak_file: $err.msg' }
+	}
 
 	list_folder('', 'moving $v_file to $bak_file ...')
 	os.mv(v_file, bak_file) or { errors << err.msg }
