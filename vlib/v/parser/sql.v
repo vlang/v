@@ -127,6 +127,25 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 		kind = .delete
 	} else if n == 'update' {
 		kind = .update
+	} else if n == 'create' {
+		kind = .create
+		table := p.check_name()
+		if table != 'table' {
+			p.error('expected `table` got `$table`')
+			return ast.SqlStmt{}
+		}
+		typ := p.parse_type()
+		typ_pos := p.tok.position()
+		p.check(.rcbr)
+		return ast.SqlStmt{
+			db_expr: db_expr
+			kind: kind
+			pos: pos.extend(p.prev_tok.position())
+			table_expr: ast.TypeNode{
+				typ: typ
+				pos: typ_pos
+			}
+		}
 	}
 	mut inserted_var_name := ''
 	mut table_type := ast.Type(0)

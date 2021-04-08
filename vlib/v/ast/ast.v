@@ -543,6 +543,8 @@ pub struct File {
 pub:
 	path         string // absolute path of the source file - '/projects/v/file.v'
 	path_base    string // file name - 'file.v' (useful for tracing)
+	lines        int    // number of source code lines in the file (including newlines and comments)
+	bytes        int    // number of processed source code bytes
 	mod          Module // the module of the source file (from `module xyz` at the top)
 	global_scope &Scope
 pub mut:
@@ -1410,6 +1412,7 @@ pub enum SqlStmtKind {
 	insert
 	update
 	delete
+	create
 }
 
 pub struct SqlStmt {
@@ -1475,12 +1478,12 @@ pub fn (expr Expr) position() token.Position {
 			// println('compiler bug, unhandled EmptyExpr position()')
 			return token.Position{}
 		}
-		NodeError, ArrayDecompose, ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr, CastExpr,
-		ChanInit, CharLiteral, ConcatExpr, Comment, ComptimeCall, ComptimeSelector, EnumVal, DumpExpr,
-		FloatLiteral, GoExpr, Ident, IfExpr, IntegerLiteral, Likely, LockExpr, MapInit, MatchExpr,
-		None, OffsetOf, OrExpr, ParExpr, PostfixExpr, PrefixExpr, RangeExpr, SelectExpr, SelectorExpr,
-		SizeOf, SqlExpr, StringInterLiteral, StringLiteral, StructInit, TypeNode, TypeOf, UnsafeExpr
-		 {
+		NodeError, ArrayDecompose, ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr,
+		CastExpr, ChanInit, CharLiteral, ConcatExpr, Comment, ComptimeCall, ComptimeSelector,
+		EnumVal, DumpExpr, FloatLiteral, GoExpr, Ident, IfExpr, IntegerLiteral, Likely, LockExpr,
+		MapInit, MatchExpr, None, OffsetOf, OrExpr, ParExpr, PostfixExpr, PrefixExpr, RangeExpr,
+		SelectExpr, SelectorExpr, SizeOf, SqlExpr, StringInterLiteral, StringLiteral, StructInit,
+		TypeNode, TypeOf, UnsafeExpr {
 			return expr.pos
 		}
 		IndexExpr {
@@ -1617,8 +1620,7 @@ pub fn (node Node) position() token.Position {
 		StructField {
 			return node.pos.extend(node.type_pos)
 		}
-		MatchBranch, SelectBranch, EnumField, ConstField, StructInitField, GlobalField, CallArg
-		 {
+		MatchBranch, SelectBranch, EnumField, ConstField, StructInitField, GlobalField, CallArg {
 			return node.pos
 		}
 		IfBranch {

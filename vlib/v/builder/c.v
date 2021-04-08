@@ -46,8 +46,22 @@ pub fn (mut b Builder) build_c(v_files []string, out_file string) {
 	f.writeln(output2) or { panic(err) }
 	f.close()
 	if b.pref.is_stats {
-		slines := util.bold((output2.count('\n') + 1).str())
-		sbytes := util.bold(output2.len.str())
+		mut all_v_source_lines, mut all_v_source_bytes := 0, 0
+		for mut pf in b.parsed_files {
+			all_v_source_lines += pf.lines
+			all_v_source_bytes += pf.bytes
+		}
+		mut sall_v_source_lines := all_v_source_lines.str()
+		mut sall_v_source_bytes := all_v_source_bytes.str()
+		mut slines := (output2.count('\n') + 1).str()
+		mut sbytes := output2.len.str()
+		//
+		slines = util.bold('${slines:10s}')
+		sbytes = util.bold('${sbytes:10s}')
+		sall_v_source_lines = util.bold('${sall_v_source_lines:10s}')
+		sall_v_source_bytes = util.bold('${sall_v_source_bytes:10s}')
+		//
+		println('          V source code size: $sall_v_source_lines lines, $sall_v_source_bytes bytes')
 		println('generated C source code size: $slines lines, $sbytes bytes')
 	}
 	// os.write_file(out_file, b.gen_c(v_files))

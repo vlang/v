@@ -65,11 +65,13 @@ mut:
 fn main() {
 	mut color_action := C.sg_color_attachment_action{
 		action: gfx.Action(C.SG_ACTION_CLEAR)
+		value: C.sg_color{
+			r: 1.0
+			g: 1.0
+			b: 1.0
+			a: 1.0
+		}
 	}
-	color_action.val[0] = 1
-	color_action.val[1] = 1
-	color_action.val[2] = 1
-	color_action.val[3] = 1.0
 	mut pass_action := C.sg_pass_action{}
 	pass_action.colors[0] = color_action
 	state := &AppState{

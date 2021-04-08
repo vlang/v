@@ -15,16 +15,17 @@ fn parse_request(mut reader io.BufferedReader) ?http.Request {
 	line = reader.read_line() ?
 	for line != '' {
 		key, value := parse_header(line) ?
-		h.add_str(key, value) ?
+		h.add_custom(key, value) ?
 		line = reader.read_line() ?
 	}
+	h.coerce(canonicalize: true)
 
 	// create map[string]string from headers
 	// TODO: replace headers and lheaders with http.Header type
 	mut headers := map[string]string{}
 	mut lheaders := map[string]string{}
 	for key in h.keys() {
-		values := h.values_str(key).join('; ')
+		values := h.custom_values(key).join('; ')
 		headers[key] = values
 		lheaders[key.to_lower()] = values
 	}

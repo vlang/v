@@ -11,7 +11,7 @@ const (
 fn testsuite_begin() ? {
 	os.rm(test_os_process) or {}
 	if os.getenv('WINE_TEST_OS_PROCESS_EXE') != '' {
-		// Make it easier to run the test under wine emulation, by just 
+		// Make it easier to run the test under wine emulation, by just
 		// prebuilding the executable with:
 		//   v -os windows -o x.exe cmd/tools/test_os_process.v
 		//   WINE_TEST_OS_PROCESS_EXE=x.exe ./v -os windows vlib/os/process_test.v

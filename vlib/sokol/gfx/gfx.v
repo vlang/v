@@ -75,18 +75,18 @@ pub fn destroy_pass(pass C.sg_pass) {
 }
 
 [inline]
-pub fn update_buffer(buf C.sg_buffer, ptr voidptr, num_bytes int) {
-	C.sg_update_buffer(buf, ptr, num_bytes)
+pub fn update_buffer(buf C.sg_buffer, data &C.sg_range) {
+	C.sg_update_buffer(buf, data)
 }
 
 [inline]
-pub fn update_image(img C.sg_image, content &C.sg_image_content) {
-	C.sg_update_image(img, content)
+pub fn update_image(img C.sg_image, data &C.sg_image_data) {
+	C.sg_update_image(img, data)
 }
 
 [inline]
-pub fn append_buffer(buf C.sg_buffer, ptr voidptr, num_bytes int) int {
-	return C.sg_append_buffer(buf, ptr, num_bytes)
+pub fn append_buffer(buf C.sg_buffer, data &C.sg_range) int {
+	return C.sg_append_buffer(buf, data)
 }
 
 [inline]
@@ -126,8 +126,8 @@ pub fn apply_bindings(bindings &C.sg_bindings) {
 }
 
 [inline]
-pub fn apply_uniforms(stage int, ub_index int, data voidptr, num_bytes int) {
-	C.sg_apply_uniforms(stage, ub_index, data, num_bytes)
+pub fn apply_uniforms(stage int, ub_index int, data &C.sg_range) {
+	C.sg_apply_uniforms(stage, ub_index, data)
 }
 
 [inline]
