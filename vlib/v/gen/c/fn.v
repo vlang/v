@@ -1141,9 +1141,11 @@ fn (mut g Gen) keep_alive_call_pregen(node ast.CallExpr) int {
 	for i, arg in node.args {
 		// save all arguments in temp vars (not only pointers) to make sure the
 		// evaluation order is preserved
-		typ := g.table.get_type_symbol(arg.typ).cname
+		expected_type := node.expected_arg_types[i]
+		typ := g.table.get_type_symbol(expected_type).cname
 		g.write('$typ __tmp_arg_${tmp_cnt_save+i} = ')
-		g.expr(arg.expr)
+		// g.expr(arg.expr)
+		g.ref_or_deref_arg(arg, expected_type, node.language)
 		g.writeln(';')
 	}
 	g.empty_line = false
@@ -1152,8 +1154,8 @@ fn (mut g Gen) keep_alive_call_pregen(node ast.CallExpr) int {
 
 fn (mut g Gen) keep_alive_call_postgen(node ast.CallExpr, tmp_cnt_save int) {
 	g.writeln('// keep_alive_call_postgen()')
-	for i, arg in node.args {
-		if arg.typ.is_ptr() || arg.typ.is_pointer() {
+	for i, expected_type in node.expected_arg_types {
+		if expected_type.is_ptr() || expected_type.is_pointer() {
 			g.writeln('GC_reachable_here(__tmp_arg_${tmp_cnt_save+i});')
 		}
 	}
