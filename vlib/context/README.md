@@ -43,12 +43,12 @@ fn example_with_cancel() {
 	gen := fn (ctx context.Context) chan int {
 		dst := chan int{}
 		go fn (ctx context.Context, dst chan int) {
-			for {
+			loop: for {
 				ch := ctx.done()
 				select {
 					_ := <-ch {
 						// returning not to leak the routine
-						return
+						break loop
 					}
 					dst <- 0 {}
 				}
@@ -64,7 +64,7 @@ fn example_with_cancel() {
 
 	ch := gen(cancel_ctx)
 	for _ in 0 .. 5 {
-		assert 0 == <-ch
+		<-ch
 	}
 }
 ```
