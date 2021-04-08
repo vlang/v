@@ -33,6 +33,10 @@ fn echo(address string) ? {
 	defer {
 		c.close() or { }
 	}
+
+	println('local: ${c.addr()?}')
+	println(' peer: ${c.peer_addr()?}')
+
 	data := 'Hello from vlib/net!'
 	c.write_string(data) ?
 	mut buf := []byte{len: 4096}
@@ -45,9 +49,17 @@ fn echo(address string) ? {
 	return none
 }
 
-fn test_tcp() {
+fn test_tcp_ip6() {
 	address := 'localhost:$test_port'
 	mut l := net.listen_tcp(.ip6, ':$test_port') or { panic(err) }
+	go echo_server(mut l)
+	echo(address) or { panic(err) }
+	l.close() or { }
+}
+
+fn test_tcp_ip() {
+	address := 'localhost:$test_port'
+	mut l := net.listen_tcp(.ip, address) or { panic(err) }
 	go echo_server(mut l)
 	echo(address) or { panic(err) }
 	l.close() or { }
@@ -61,4 +73,6 @@ fn test_tcp_unix() {
 	go echo_server(mut l)
 	echo(address) or { panic(err) }
 	l.close() or { }
+
+	os.rm(address) or { panic('failed to remove socket file') }
 }

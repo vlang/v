@@ -20,16 +20,25 @@ mut:
 pub fn dial_tcp(address string) ?&TcpConn {
 	addrs := resolve_addrs_fuzzy(address, .tcp)?
 
-	// TODO(emily)
-	addr := addrs[0]
+	// Very simple dialer
+	for addr in addrs {
+		mut s := new_tcp_socket(addr.family()) ?
+		s.connect(addr) or {
+			// Connection failed
+			s.close() or {
+				continue
+			}
+			continue 
+		}
 
-	mut s := new_tcp_socket(addr.family()) ?
-	s.connect(addr) ?
-	return &TcpConn{
-		sock: s
-		read_timeout: net.tcp_default_read_timeout
-		write_timeout: net.tcp_default_write_timeout
+		return &TcpConn{
+			sock: s
+			read_timeout: net.tcp_default_read_timeout
+			write_timeout: net.tcp_default_write_timeout
+		}
 	}
+	// failed
+	return none
 }
 
 pub fn (mut c TcpConn) close() ? {
@@ -329,16 +338,15 @@ fn (mut s TcpSocket) connect(a Addr) ? {
 	if res == 0 {
 		return none
 	}
-	_ := error_code()
 	write_result := s.@select(.write, net.connect_timeout) ?
 	if write_result {
-		// succeeded
+		// Here we need to call connect again to make sure we connected
+		socket_error(C.connect(s.handle, &a, a.len()))?
+
+		// Succeeded
 		return none
 	}
-	except_result := s.@select(.except, net.connect_timeout) ?
-	if except_result {
-		return err_connect_failed
-	}
+
 	// otherwise we timed out
 	return err_connect_timed_out
 }
