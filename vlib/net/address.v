@@ -158,49 +158,12 @@ pub fn resolve_addrs_fuzzy(addr string, @type SocketType) ?[]Addr {
 	return resolve_addrs(addr, .unix, @type)
 }
 
-pub fn resolve_ip(saddr string, port u16, family AddrFamily) ?Addr {
-	match family {
-		.unspec {
-			if addr := resolve_ip(saddr, port, .ip) { return addr }
-			if addr := resolve_ip(saddr, port, .ip6) { return addr }
-			return none
-		}
-
-		.ip {
-			addr := [4]byte{}
-			result := socket_error(C.inet_pton(family, saddr.str, &addr[0]))?
-
-			if result == 0 { return none }
-
-			return new_ip(port, addr)
-		}
-
-		.ip6 {
-			addr := [16]byte{}
-			result := socket_error(C.inet_pton(family, saddr.str, &addr[0]))?
-
-			if result == 0 { return none }
-
-			return new_ip6(port, addr)
-		}
-
-		else {
-			panic('Bad family (should be ip or ip6)')
-		}
-	}
-}
-
 pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ?[]Addr {
 	address, port := split_address(addr) ?
 
 	if addr[0] == `:` {
-		println('Using ip6_any')
 		// Use in6addr_any
 		return [new_ip6(port, addr_ip6_any)]
-	}
-
-	if a := resolve_ip(address, port, family) {
-		return [a]
 	}
 
 	mut hints := C.addrinfo{
