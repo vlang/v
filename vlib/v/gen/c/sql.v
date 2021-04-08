@@ -478,6 +478,7 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr, typ SqlType) {
 			g.sql_side = .left
 			g.expr_to_sql(expr.left, typ)
 			match expr.op {
+				.ne { g.write(' != ') }
 				.eq { g.write(' = ') }
 				.gt { g.write(' > ') }
 				.lt { g.write(' < ') }
