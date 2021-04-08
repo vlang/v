@@ -2,19 +2,31 @@ module builtin
 
 #define GC_THREADS 1
 
-$if windows {
-	#flag -I@VROOT/thirdparty/libgc/include
-	#flag -L@VROOT/thirdparty/libgc
+$if static_boehm ? {
+	$if macos {
+		#flag -I/opt/homebrew/include
+		#flag   /opt/homebrew/lib/libgc.a
+	} $else $if linux {
+		#flag -l:libgc.a
+	} $else {
+		#flag -lgc
+	}
+} $else {
+	$if macos {
+		#pkgconfig bdw-gc
+	}
+	$if windows {
+		#flag -I@VROOT/thirdparty/libgc/include
+		#flag -L@VROOT/thirdparty/libgc
+	}
+	#flag -lgc
 }
-$if macos {
-	#pkgconfig bdw-gc
-}
+
 $if gcboehm_leak ? {
 	#define GC_DEBUG
 }
-#include <gc.h>
 
-#flag -lgc
+#include <gc.h>
 
 // replacements for `malloc()/calloc()`, `realloc()` and `free()`
 // for use with Boehm-GC
