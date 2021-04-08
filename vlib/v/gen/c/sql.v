@@ -434,13 +434,16 @@ fn (mut g Gen) mysql_select_expr(node ast.SqlExpr, sub bool, line string, typ Sq
 	g.writeln('$res = mysql_stmt_execute($g.sql_stmt_name);')
 	g.writeln('if ($res != 0) { puts(mysql_error(${db_name}.conn)); puts(mysql_stmt_error($g.sql_stmt_name)); }')
 	*/
+	query := g.new_tmp_var()
 	res := g.new_tmp_var()
-	g.writeln('Option_mysql__Result $res = mysql__Connection_real_query(&$db_name, $stmt_name);')
+	/*g.writeln('Option_mysql__Result $res = mysql__Connection_real_query(&$db_name, $stmt_name);')
 	g.writeln('if (${res}.state != 0) { IError err = ${res}.err; _STR("Something went wrong\\000%.*s", 2, IError_str(err)); }')
-	g.writeln('Array_mysql__Row ${res}_rows = mysql__Result_rows(*(mysql__Result*)${res}.data);')
-	g.writeln('mysql__Result_free((mysql__Result*)&${res}.data);')
+	g.writeln('Array_mysql__Row ${res}_rows = mysql__Result_rows(*(mysql__Result*)${res}.data);')*/
+	g.writeln('int $query = mysql_real_query(${db_name}.conn, ${stmt_name}.str, ${stmt_name}.len);')
+	g.writeln('if ($query != 0) { puts(mysql_error(${db_name}.conn)); }')
+	g.writeln('MYSQL_RES* $res = mysql_store_result(${db_name}.conn);')
 	if node.is_count {
-		g.writeln('$cur_line string_int((*(string*) array_get((*(mysql__Row*)array_get(${res}_rows, 0)).vals, 0)));')
+		g.writeln('$cur_line ;')
 	} else {
 		tmp := g.new_tmp_var()
 		styp := g.typ(node.typ)
@@ -452,7 +455,7 @@ fn (mut g Gen) mysql_select_expr(node ast.SqlExpr, sub bool, line string, typ Sq
 			array_info := array_sym.info as ast.Array
 			elem_type_str = g.typ(array_info.elem_type)
 			g.writeln('$styp ${tmp}_array = __new_array(0, 10, sizeof($elem_type_str));')
-			g.writeln('for ($tmp_i = 0; $tmp_i < ${res}_rows.len; $tmp_i++) {')
+			g.writeln('for ($tmp_i = 0; $tmp_i < mysql_num_rows($res); $tmp_i++) {')
 			g.writeln('\t$elem_type_str $tmp = ($elem_type_str) {')
 			//
 			sym := g.table.get_type_symbol(array_info.elem_type)
@@ -481,14 +484,14 @@ fn (mut g Gen) mysql_select_expr(node ast.SqlExpr, sub bool, line string, typ Sq
 		}
 
 		fields := g.new_tmp_var()
-		g.writeln('Array_string $fields = (*(mysql__Row*)array_get(${res}_rows, $tmp_i)).vals;')
+		g.writeln('MYSQL_ROW $fields = mysql_fetch_row($res);')
 
 		for i, field in node.fields {
 			name := g.table.get_type_symbol(field.typ).cname
 			if g.table.get_type_symbol(field.typ).kind == .struct_ {
 				id_name := g.new_tmp_var()
 				g.writeln('//parse struct start') //
-				g.writeln('int $id_name = string_int((*(string*) array_get($fields, $i)));')
+				g.writeln('int $id_name = string_int(tos_clone($fields[$i]));')
 
 				mut expr := node.sub_structs[int(field.typ)]
 				mut where_expr := expr.where_expr as ast.InfixExpr
@@ -509,13 +512,13 @@ fn (mut g Gen) mysql_select_expr(node ast.SqlExpr, sub bool, line string, typ Sq
 				g.sql_buf = tmp_sql_buf
 				g.sql_i = tmp_sql_i
 			} else if field.typ == ast.string_type {
-				g.writeln('${tmp}.$field.name = (*($name*) array_get($fields, $i));')
+				g.writeln('${tmp}.$field.name = tos_clone($fields[$i]);')
 			} else if field.typ == ast.byte_type {
-				g.writeln('${tmp}.$field.name = (*(byte*)array_get(string_bytes((*(string*)array_get($fields, $i))), 0));')
+				g.writeln('${tmp}.$field.name = (byte) string_${name}(tos_clone($fields[$i]));')
 			} else if field.typ == ast.i8_type {
-				g.writeln('${tmp}.$field.name = ((i8)((*(byte*)array_get(string_bytes((*(string*)array_get($fields, $i))), 0)))));')
+				g.writeln('${tmp}.$field.name = (i8) string_${name}(tos_clone($fields[$i]));')
 			} else {
-				g.writeln('${tmp}.$field.name = string_${name}((*(string*) array_get($fields, $i)));')
+				g.writeln('${tmp}.$field.name = string_${name}(tos_clone($fields[$i]));')
 			}
 		}
 
@@ -524,6 +527,7 @@ fn (mut g Gen) mysql_select_expr(node ast.SqlExpr, sub bool, line string, typ Sq
 			g.writeln('}')
 		}
 		g.writeln('string_free(&$stmt_name);')
+		g.writeln('mysql_free_result($res);')
 		if node.is_array {
 			g.writeln('$cur_line ${tmp}_array; ')
 		} else {

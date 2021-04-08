@@ -71,8 +71,16 @@ fn mysql() {
 		insert mod into Module
 	}
 
-	modul := sql conn {
-		select from Module where id == 1
+	/*u1 := sql conn {
+		select from User where id == 1
 	}
-	eprintln(modul)
+	u2 := sql conn {
+		select from User where id == 2
+	}
+	eprintln(u1)
+	eprintln(u2)
+*/
+	m := sql conn {
+		select from User
+	}
 }
