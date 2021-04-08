@@ -2,6 +2,18 @@
 
 #if defined(_WIN32)
 #define __SLEEP_MS(n) Sleep(n)
+#elif defined(__APPLE__)
+static void __sleep_ms(int ms) {
+	struct timespec ts = {
+		.tv_sec = ms / 1000,
+		.tv_nsec = 1000000L * (ms % 1000)
+	};
+	struct timespec rem;
+	while (nanosleep(&ts, &rem) != 0) {
+		ts = rem;
+	}
+}
+#define __SLEEP_MS(n) __sleep_ms(n)
 #else
 static void __sleep_ms(int ms) {
 	struct timespec ts;
