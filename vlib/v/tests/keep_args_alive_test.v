@@ -10,7 +10,7 @@
 import rand
 import sync
 
-#flag -I.
+#flag -I@VROOT/vlib/v/tests
 #include "keep_args_alive_test_c.h"
 
 fn C.atomic_load_ptr(voidptr) voidptr
