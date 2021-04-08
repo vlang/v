@@ -1,12 +1,11 @@
 /*
- * To verify the effect of "[keep_args_alive]", this attribute may be commented out.
- * However it is not guaranteed that then this test will fail.
- * To provoke a failure it seems to be best to use `gcc` with optimization:
- * `gcc -gc boehm -cc gcc-9 -prod test keep_args_alive_test.v`.
- * Without optimization, pointer variables may remain on the stack even if
- * not used any more.
- */
-
+* To verify the effect of "[keep_args_alive]", this attribute may be commented out.
+* However it is not guaranteed that then this test will fail.
+* To provoke a failure it seems to be best to use `gcc` with optimization:
+* `gcc -gc boehm -cc gcc-9 -prod test keep_args_alive_test.v`.
+* Without optimization, pointer variables may remain on the stack even if
+* not used any more.
+*/
 import rand
 import sync
 
@@ -53,7 +52,9 @@ fn waste_mem(n int, mut sem sync.Semaphore) {
 		m[i] = unsafe { malloc(10000) }
 		fill := rand.intn(256)
 		unsafe { C.memset(m[i], fill, 10000) }
-		if n < 0 && sem.try_wait() { break }
+		if n < 0 && sem.try_wait() {
+			break
+		}
 	}
 }
 
