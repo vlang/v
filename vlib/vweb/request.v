@@ -96,7 +96,7 @@ fn parse_form(body string) map[string]string {
 
 fn parse_multipart_form(body string, boundary string) (map[string]string, map[string][]FileData) {
 	sections := body.split(boundary)
-	fields := sections[1..sections.len - 1]
+	fields := sections[1..]
 	mut form := map[string]string{}
 	mut files := map[string][]FileData{}
 
