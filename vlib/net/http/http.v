@@ -291,7 +291,7 @@ fn parse_response(resp string) Response {
 		pos := h.index(':') or { continue }
 		mut key := h[..pos]
 		val := h[pos + 2..].trim_space()
-		header.add_str(key, val) or { eprintln('error parsing header: $err') }
+		header.add_custom(key, val) or { eprintln('error parsing header: $err') }
 	}
 	// set cookies
 	for cookie in header.values(.set_cookie) {
@@ -325,7 +325,7 @@ fn (req &Request) build_request_headers(method Method, host_name string, path st
 		if key == CommonHeader.cookie.str() {
 			continue
 		}
-		val := req.header.values_str(key).join('; ')
+		val := req.header.custom_values(key).join('; ')
 		uheaders << '$key: $val\r\n'
 	}
 	uheaders << req.build_request_cookies_header()

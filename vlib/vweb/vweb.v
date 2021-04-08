@@ -281,7 +281,7 @@ pub fn (mut ctx Context) add_header(key string, val string) {
 
 // Returns the header data from the key
 pub fn (ctx &Context) get_header(key string) string {
-	return ctx.req.header.get_str(key) or { '' }
+	return ctx.req.header.get_custom(key) or { '' }
 }
 
 pub fn run<T>(port int) {
@@ -577,7 +577,7 @@ pub fn (mut ctx Context) serve_static(url string, file_path string, mime_type st
 pub fn (ctx &Context) ip() string {
 	mut ip := ctx.req.header.get(.x_forwarded_for) or { '' }
 	if ip == '' {
-		ip = ctx.req.header.get_str('X-Real-Ip') or { '' }
+		ip = ctx.req.header.get_custom('X-Real-Ip') or { '' }
 	}
 
 	if ip.contains(',') {

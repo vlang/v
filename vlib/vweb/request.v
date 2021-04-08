@@ -18,7 +18,7 @@ fn parse_request(mut reader io.BufferedReader) ?http.Request {
 		header.add_custom(key, value) ?
 		line = reader.read_line() ?
 	}
-	h.coerce(canonicalize: true)
+	header.coerce(canonicalize: true)
 
 	// body
 	mut body := []byte{}

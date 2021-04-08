@@ -80,7 +80,7 @@ fn test_http_fetch_with_params() {
 fn test_http_fetch_with_headers() ? {
 	$if !network ? { return }
 	mut header := new_header()
-	header.add_str('Test-Header', 'hello world') ?
+	header.add_custom('Test-Header', 'hello world') ?
 	responses := http_fetch_mock([], {
 		header: header
 	}) or {
