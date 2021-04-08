@@ -435,7 +435,7 @@ fn (mut g Gen) mysql_select_expr(node ast.SqlExpr, sub bool, line string, typ Sq
 	g.writeln('if ($res != 0) { puts(mysql_error(${db_name}.conn)); puts(mysql_stmt_error($g.sql_stmt_name)); }')
 	*/
 	res := g.new_tmp_var()
-	g.writeln('Option_mysql__Result $res = mysql__Connection_real_query(&${db_name}, $stmt_name);')
+	g.writeln('Option_mysql__Result $res = mysql__Connection_real_query(&$db_name, $stmt_name);')
 	g.writeln('if (${res}.state != 0) { IError err = ${res}.err; _STR("Something went wrong\\000%.*s", 2, IError_str(err)); }')
 	g.writeln('Array_mysql__Row ${res}_rows = mysql__Result_rows(*(mysql__Result*)${res}.data);')
 	g.writeln('mysql__Result_free((mysql__Result*)&${res}.data);')
@@ -487,7 +487,7 @@ fn (mut g Gen) mysql_select_expr(node ast.SqlExpr, sub bool, line string, typ Sq
 			name := g.table.get_type_symbol(field.typ).cname
 			if g.table.get_type_symbol(field.typ).kind == .struct_ {
 				id_name := g.new_tmp_var()
-				g.writeln('//parse struct start') // 
+				g.writeln('//parse struct start') //
 				g.writeln('int $id_name = string_int((*(string*) array_get($fields, $i)));')
 
 				mut expr := node.sub_structs[int(field.typ)]
@@ -508,7 +508,6 @@ fn (mut g Gen) mysql_select_expr(node ast.SqlExpr, sub bool, line string, typ Sq
 				g.sql_stmt_name = tmp_sql_stmt_name
 				g.sql_buf = tmp_sql_buf
 				g.sql_i = tmp_sql_i
-
 			} else if field.typ == ast.string_type {
 				g.writeln('${tmp}.$field.name = (*($name*) array_get($fields, $i));')
 			} else if field.typ == ast.byte_type {
