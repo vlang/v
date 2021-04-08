@@ -40,9 +40,6 @@ fn main() {
 		select from Module where id == 1
 	}
 
-	println(modul.name)
-	println(modul.creator.name)
-
 	mysql()
 }
 
@@ -77,4 +74,5 @@ fn mysql() {
 	modul := sql conn {
 		select from Module where id == 1
 	}
+	eprintln(modul)
 }

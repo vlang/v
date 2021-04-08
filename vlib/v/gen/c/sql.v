@@ -417,7 +417,6 @@ fn (mut g Gen) mysql_select_expr(node ast.SqlExpr, sub bool, line string, typ Sq
 	g.write(g.get_base_sql_select_query(node))
 	g.sql_expr_defaults(node, typ)
 	g.writeln('");')
-
 	/*
 	g.writeln('MYSQL_STMT* $g.sql_stmt_name = mysql_stmt_init(${db_name}.conn);')
 	g.writeln('mysql_stmt_prepare($g.sql_stmt_name, ${stmt_name}.str, ${stmt_name}.len);')
@@ -435,7 +434,103 @@ fn (mut g Gen) mysql_select_expr(node ast.SqlExpr, sub bool, line string, typ Sq
 	g.writeln('$res = mysql_stmt_execute($g.sql_stmt_name);')
 	g.writeln('if ($res != 0) { puts(mysql_error(${db_name}.conn)); puts(mysql_stmt_error($g.sql_stmt_name)); }')
 	*/
-	g.writeln('')
+	res := g.new_tmp_var()
+	g.writeln('Option_mysql__Result $res = mysql__Connection_real_query(&${db_name}, $stmt_name);')
+	g.writeln('if (${res}.state != 0) { IError err = ${res}.err; _STR("Something went wrong\\000%.*s", 2, IError_str(err)); }')
+	g.writeln('Array_mysql__Row ${res}_rows = mysql__Result_rows(*(mysql__Result*)${res}.data);')
+	g.writeln('mysql__Result_free((mysql__Result*)&${res}.data);')
+	if node.is_count {
+		g.writeln('$cur_line string_int((*(string*) array_get((*(mysql__Row*)array_get(${res}_rows, 0)).vals, 0)));')
+	} else {
+		tmp := g.new_tmp_var()
+		styp := g.typ(node.typ)
+		tmp_i := g.new_tmp_var()
+		mut elem_type_str := ''
+		g.writeln('int $tmp_i = 0;')
+		if node.is_array {
+			array_sym := g.table.get_type_symbol(node.typ)
+			array_info := array_sym.info as ast.Array
+			elem_type_str = g.typ(array_info.elem_type)
+			g.writeln('$styp ${tmp}_array = __new_array(0, 10, sizeof($elem_type_str));')
+			g.writeln('for ($tmp_i = 0; $tmp_i < ${res}_rows.len; $tmp_i++) {')
+			g.writeln('\t$elem_type_str $tmp = ($elem_type_str) {')
+			//
+			sym := g.table.get_type_symbol(array_info.elem_type)
+			info := sym.info as ast.Struct
+			for i, field in info.fields {
+				g.zero_struct_field(field)
+				if i != info.fields.len - 1 {
+					g.write(', ')
+				}
+			}
+			g.writeln('};')
+		} else {
+			g.writeln('$styp $tmp = ($styp){')
+			// Zero fields, (only the [skip] ones?)
+			// If we don't, string values are going to be nil etc for fields that are not returned
+			// by the db engine.
+			sym := g.table.get_type_symbol(node.typ)
+			info := sym.info as ast.Struct
+			for i, field in info.fields {
+				g.zero_struct_field(field)
+				if i != info.fields.len - 1 {
+					g.write(', ')
+				}
+			}
+			g.writeln('};')
+		}
+
+		fields := g.new_tmp_var()
+		g.writeln('Array_string $fields = (*(mysql__Row*)array_get(${res}_rows, $tmp_i)).vals;')
+
+		for i, field in node.fields {
+			name := g.table.get_type_symbol(field.typ).cname
+			if g.table.get_type_symbol(field.typ).kind == .struct_ {
+				id_name := g.new_tmp_var()
+				g.writeln('//parse struct start') // 
+				g.writeln('int $id_name = string_int((*(string*) array_get($fields, $i)));')
+
+				mut expr := node.sub_structs[int(field.typ)]
+				mut where_expr := expr.where_expr as ast.InfixExpr
+				mut ident := where_expr.right as ast.Ident
+
+				ident.name = id_name
+				where_expr.right = ident
+				expr.where_expr = where_expr
+
+				tmp_sql_i := g.sql_i
+				tmp_sql_stmt_name := g.sql_stmt_name
+				tmp_sql_buf := g.sql_buf
+
+				g.sql_select_expr(expr, true, '\t${tmp}.$field.name =')
+				g.writeln('//parse struct end')
+
+				g.sql_stmt_name = tmp_sql_stmt_name
+				g.sql_buf = tmp_sql_buf
+				g.sql_i = tmp_sql_i
+
+			} else if field.typ == ast.string_type {
+				g.writeln('${tmp}.$field.name = (*($name*) array_get($fields, $i));')
+			} else if field.typ == ast.byte_type {
+				g.writeln('${tmp}.$field.name = (*(byte*)array_get(string_bytes((*(string*)array_get($fields, $i))), 0));')
+			} else if field.typ == ast.i8_type {
+				g.writeln('${tmp}.$field.name = ((i8)((*(byte*)array_get(string_bytes((*(string*)array_get($fields, $i))), 0)))));')
+			} else {
+				g.writeln('${tmp}.$field.name = string_${name}((*(string*) array_get($fields, $i)));')
+			}
+		}
+
+		if node.is_array {
+			g.writeln('\t array_push(&${tmp}_array, _MOV(($elem_type_str[]) { $tmp }));')
+			g.writeln('}')
+		}
+		g.writeln('string_free(&$stmt_name);')
+		if node.is_array {
+			g.writeln('$cur_line ${tmp}_array; ')
+		} else {
+			g.writeln('$cur_line $tmp; ')
+		}
+	}
 }
 
 fn (mut g Gen) mysql_create_table(node ast.SqlStmt, typ SqlType) {
@@ -520,6 +615,9 @@ fn (mut g Gen) mysql_buffer_typ_from_typ(typ ast.Type) string {
 		ast.f64_type {
 			buf_typ = 'MYSQL_TYPE_DOUBLE'
 		}
+		ast.string_type {
+			buf_typ = 'MYSQL_TYPE_STRING'
+		}
 		else {
 			buf_typ = 'MYSQL_TYPE_NULL'
 		}
@@ -533,7 +631,7 @@ fn (mut g Gen) mysql_buffer_typ_from_field(field ast.StructField) (string, strin
 	buf_typ := g.mysql_buffer_typ_from_typ(typ)
 
 	if typ == ast.string_type {
-		sym = 'char *'
+		sym = 'char'
 	}
 
 	return buf_typ, sym
