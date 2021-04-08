@@ -413,7 +413,8 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	defer {
 		g.inside_call = false
 	}
-	gen_keep_alive := node.is_keep_alive && node.return_type != ast.void_type && g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm]
+	gen_keep_alive := node.is_keep_alive && node.return_type != ast.void_type
+		&& g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm]
 	gen_or := node.or_block.kind != .absent // && !g.is_autofree
 	is_gen_or_and_assign_rhs := gen_or && !g.discard_or_result
 	cur_line := if is_gen_or_and_assign_rhs || gen_keep_alive { // && !g.is_autofree {
@@ -898,7 +899,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 						if i > 0 {
 							g.write(', ')
 						}
-						g.write('__tmp_arg_${tmp_cnt_save+i}')
+						g.write('__tmp_arg_${tmp_cnt_save + i}')
 					}
 				} else {
 					g.call_args(node)
@@ -1143,7 +1144,7 @@ fn (mut g Gen) keep_alive_call_pregen(node ast.CallExpr) int {
 		// evaluation order is preserved
 		expected_type := node.expected_arg_types[i]
 		typ := g.table.get_type_symbol(expected_type).cname
-		g.write('$typ __tmp_arg_${tmp_cnt_save+i} = ')
+		g.write('$typ __tmp_arg_${tmp_cnt_save + i} = ')
 		// g.expr(arg.expr)
 		g.ref_or_deref_arg(arg, expected_type, node.language)
 		g.writeln(';')
@@ -1156,7 +1157,7 @@ fn (mut g Gen) keep_alive_call_postgen(node ast.CallExpr, tmp_cnt_save int) {
 	g.writeln('// keep_alive_call_postgen()')
 	for i, expected_type in node.expected_arg_types {
 		if expected_type.is_ptr() || expected_type.is_pointer() {
-			g.writeln('GC_reachable_here(__tmp_arg_${tmp_cnt_save+i});')
+			g.writeln('GC_reachable_here(__tmp_arg_${tmp_cnt_save + i});')
 		}
 	}
 }
