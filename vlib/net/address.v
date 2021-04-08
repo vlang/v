@@ -12,6 +12,36 @@ union AddrData {
 	Ip6
 }
 
+fn new_ip6(port u16, addr [16]byte) Addr {
+	a := Addr {
+		f: u16(AddrFamily.ip6)
+		addr: {
+			Ip6: {
+				port: u16(C.htons(port))
+			}
+		}
+	}
+
+	copy(a.addr.Ip6.addr[0..], addr[0..])
+
+	return a
+}
+
+fn new_ip(port u16, addr [4]byte) Addr {
+	a :=  Addr {
+		f: u16(AddrFamily.ip)
+		addr: {
+			Ip: {
+				port: u16(C.htons(port))
+			}
+		}
+	}
+
+	copy(a.addr.Ip6.addr[0..], addr[0..])
+
+	return a
+}
+
 pub fn (a Addr) family() AddrFamily {
 	return AddrFamily(a.f)
 }
@@ -112,20 +142,66 @@ pub fn resolve_addrs(addr string, family AddrFamily, @type SocketType) ?[]Addr {
 }
 
 pub fn resolve_addrs_fuzzy(addr string, @type SocketType) ?[]Addr {
+	if addr.len == 0 {
+		return none
+	}
+
 	// Use a small heuristic to figure out what address family this is
 	// (out of the ones that we support)
 
-	if (addr.contains(':')) {
+	if addr.contains(':') {
 		// Colon is a reserved character in unix paths
 		// so this must be an ip address
 		return resolve_addrs(addr, .unspec, @type)
 	}
 
-	return resolve_addrs(addr, unix, @type)
+	return resolve_addrs(addr, .unix, @type)
+}
+
+pub fn resolve_ip(saddr string, port u16, family AddrFamily) ?Addr {
+	match family {
+		.unspec {
+			if addr := resolve_ip(saddr, port, .ip) { return addr }
+			if addr := resolve_ip(saddr, port, .ip6) { return addr }
+			return none
+		}
+
+		.ip {
+			addr := [4]byte{}
+			result := socket_error(C.inet_pton(family, saddr.str, &addr[0]))?
+
+			if result == 0 { return none }
+
+			return new_ip(port, addr)
+		}
+
+		.ip6 {
+			addr := [16]byte{}
+			result := socket_error(C.inet_pton(family, saddr.str, &addr[0]))?
+
+			if result == 0 { return none }
+
+			return new_ip6(port, addr)
+		}
+
+		else {
+			panic('Bad family (should be ip or ip6)')
+		}
+	}
 }
 
 pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ?[]Addr {
 	address, port := split_address(addr) ?
+
+	if addr[0] == `:` {
+		println('Using ip6_any')
+		// Use in6addr_any
+		return [new_ip6(port, addr_ip6_any)]
+	}
+
+	if a := resolve_ip(address, port, family) {
+		return [a]
+	}
 
 	mut hints := C.addrinfo{
 		// ai_family: int(family)

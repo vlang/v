@@ -109,5 +109,7 @@ fn C.FD_SET(fd int, fdset &C.fd_set)
 
 fn C.FD_ISSET(fd int, fdset &C.fd_set) bool
 
+fn C.inet_pton(family AddrFamily, saddr charptr, addr voidptr) int
+
 [typedef]
 pub struct C.fd_set {}
