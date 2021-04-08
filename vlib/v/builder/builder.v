@@ -21,6 +21,8 @@ mut:
 	out_name_c    string
 	out_name_js   string
 	max_nr_errors int = 100
+	stats_lines   int // size of backend generated source code in lines
+	stats_bytes   int // size of backend generated source code in bytes
 pub mut:
 	module_search_paths []string
 	parsed_files        []ast.File
@@ -283,6 +285,9 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) ?string {
 }
 
 fn (b &Builder) show_total_warns_and_errors_stats() {
+	if b.checker.nr_errors == 0 && b.checker.nr_warnings == 0 && b.checker.nr_notices == 0 {
+		return
+	}
 	if b.pref.is_stats {
 		estring := util.bold(b.checker.nr_errors.str())
 		wstring := util.bold(b.checker.nr_warnings.str())

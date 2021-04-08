@@ -27,7 +27,7 @@ pub fn (mut b Builder) build_x64(v_files []string, out_file string) {
 		markused.mark_used(mut b.table, b.pref, b.parsed_files)
 	}
 	util.timing_start('x64 GEN')
-	x64.gen(b.parsed_files, b.table, out_file, b.pref)
+	b.stats_lines, b.stats_bytes = x64.gen(b.parsed_files, b.table, out_file, b.pref)
 	util.timing_measure('x64 GEN')
 }
 

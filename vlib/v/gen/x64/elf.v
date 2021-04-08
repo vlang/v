@@ -103,5 +103,7 @@ pub fn (mut g Gen) generate_elf_footer() {
 	os.chmod(g.out_name, 0o775) // make it an executable
 	unsafe { f.write_ptr(g.buf.data, g.buf.len) }
 	f.close()
-	println('\nx64 elf binary has been successfully generated')
+	if g.pref.is_verbose {
+		println('\nx64 elf binary has been successfully generated')
+	}
 }
