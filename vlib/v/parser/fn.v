@@ -195,7 +195,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		language = ast.Language.js
 	}
 	if is_keep_alive && language != .c {
-		p.error_with_pos('attribute [keep_args_alive] is only supported for C functions', p.tok.position())
+		p.error_with_pos('attribute [keep_args_alive] is only supported for C functions',
+			p.tok.position())
 	}
 	if language != .v {
 		p.next()
