@@ -73,4 +73,8 @@ fn mysql() {
 	sql conn {
 		insert mod into Module
 	}
+
+	modul := sql conn {
+		select from Module where id == 1
+	}
 }

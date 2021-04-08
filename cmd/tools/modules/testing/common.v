@@ -122,6 +122,7 @@ pub fn new_test_session(_vargs string) TestSession {
 	}
 	$if windows {
 		skip_files << 'examples/database/mysql.v'
+		skip_files << 'examples/database/orm.v'
 		skip_files << 'examples/websocket/ping.v' // requires OpenSSL
 		skip_files << 'examples/websocket/client-server/client.v' // requires OpenSSL
 		skip_files << 'examples/websocket/client-server/server.v' // requires OpenSSL
