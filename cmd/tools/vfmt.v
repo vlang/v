@@ -104,13 +104,6 @@ fn main() {
 			eprintln('vfmt worker_cmd: $worker_cmd')
 		}
 		worker_result := os.execute(worker_cmd)
-		if worker_result.exit_code != 0 {
-			if foptions.is_debug {
-				eprintln(worker_result.output)
-			}
-			errors++
-			continue
-		}
 		// Guard against a possibly crashing worker process.
 		if worker_result.exit_code != 0 {
 			eprintln(worker_result.output)

@@ -209,7 +209,6 @@ fn main() {
 	mut tsession := testing.new_test_session(cmd_prefix)
 	tsession.files << all_test_files
 	tsession.skip_files << skip_test_files
-	tsession.skip_files << 'vlib/v/tests/option_print_errors_test.v'
 	mut werror := false
 	mut sanitize_memory := false
 	mut sanitize_address := false

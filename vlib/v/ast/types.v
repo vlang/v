@@ -930,6 +930,21 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			}
 			res += ')'
 		}
+		.struct_ {
+			if typ.has_flag(.generic) {
+				info := sym.info as Struct
+				res += '<'
+				for i, gtyp in info.generic_types {
+					res += t.get_type_symbol(gtyp).name
+					if i != info.generic_types.len - 1 {
+						res += ', '
+					}
+				}
+				res += '>'
+			} else {
+				res = t.shorten_user_defined_typenames(res, import_aliases)
+			}
+		}
 		.void {
 			if typ.has_flag(.optional) {
 				return '?'

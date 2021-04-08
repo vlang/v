@@ -9,8 +9,8 @@
 * Example .obj model of V from SurmanPP
 *
 * HOW TO COMPILE SHADERS:
-* - download the sokol shader convertor tool from https://github.com/floooh/sokol-tools-bin/archive/pre-feb2021-api-changes.tar.gz
-* ( also look at https://github.com/floooh/sokol-tools/blob/master/docs/sokol-shdc.md )
+* - download the sokol shader convertor tool from https://github.com/floooh/sokol-tools-bin
+*
 * - compile the .glsl shader with:
 * linux  :  sokol-shdc --input gouraud.glsl --output gouraud.h --slang glsl330
 * windows:  sokol-shdc.exe --input gouraud.glsl --output gouraud.h --slang glsl330
