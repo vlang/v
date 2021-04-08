@@ -30,12 +30,12 @@ fn test_with_cancel() {
 	gen := fn (ctx Context) chan int {
 		dst := chan int{}
 		go fn (ctx Context, dst chan int) {
-			for {
+			loop: for {
 				ch := ctx.done()
 				select {
 					_ := <-ch {
 						// returning not to leak the routine
-						return
+						break loop
 					}
 					dst <- 0 {}
 				}
