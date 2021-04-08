@@ -1,5 +1,7 @@
 import net
 
+import os
+
 const (
 	test_port = 45123
 )
@@ -26,8 +28,8 @@ fn echo_server(mut l net.TcpListener) ? {
 	return none
 }
 
-fn echo() ? {
-	mut c := net.dial_tcp('127.0.0.1:$test_port') ?
+fn echo(address string) ? {
+	mut c := net.dial_tcp(address) ?
 	defer {
 		c.close() or { }
 	}
@@ -44,8 +46,19 @@ fn echo() ? {
 }
 
 fn test_tcp() {
-	mut l := net.listen_tcp(.ip, "localhost:$test_port") or { panic(err) }
+	address := 'localhost:$test_port'
+	mut l := net.listen_tcp(.ip6, ':$test_port') or { panic(err) }
 	go echo_server(mut l)
-	echo() or { panic(err) }
+	echo(address) or { panic(err) }
+	l.close() or { }
+}
+
+fn test_tcp_unix() {
+	address := os.real_path('./tcp-test.sock')
+	println('$address')
+
+	mut l := net.listen_tcp(.unix, address) or { panic(err) }
+	go echo_server(mut l)
+	echo(address) or { panic(err) }
 	l.close() or { }
 }
