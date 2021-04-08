@@ -2397,7 +2397,6 @@ pub fn (mut c Checker) check_or_expr(or_expr ast.OrExpr, ret_type ast.Type, expr
 		if ret_type != ast.void_type {
 			// x := f() or {}
 			c.error('assignment requires a non empty `or {}` block', or_expr.pos)
-			return
 		}
 		// allow `f() or {}`
 		return
