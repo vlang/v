@@ -7,8 +7,8 @@
 * that can be found in the LICENSE file.
 *
 * HOW TO COMPILE SHADERS:
-* - download the sokol shader convertor tool from https://github.com/floooh/sokol-tools-bin/archive/pre-feb2021-api-changes.tar.gz
-* ( also look at https://github.com/floooh/sokol-tools/blob/master/docs/sokol-shdc.md )
+* - download the sokol shader convertor tool from https://github.com/floooh/sokol-tools-bin
+*
 * - compile the .glsl shared file with:
 * linux  :  sokol-shdc --input rt_glsl_puppy.glsl --output rt_glsl_puppy.h --slang glsl330
 						sokol-shdc --input rt_glsl_march.glsl --output rt_glsl_march.h --slang glsl330
