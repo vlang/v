@@ -109,6 +109,7 @@ const (
 		'vlib/v/tests/interface_edge_cases/assign_to_interface_field_test.v',
 		'vlib/v/tests/interface_fields_test.v',
 		'vlib/v/tests/interface_variadic_test.v',
+		'vlib/v/tests/keep_args_alive_test.v',
 		'vlib/v/tests/option_2_test.v',
 		'vlib/v/tests/operator_overloading_with_string_interpolation_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
