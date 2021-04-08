@@ -51,7 +51,7 @@ fn test_with_cancel() {
 
 	ch := gen(cancel_ctx)
 	for _ in 0 .. 5 {
-		assert 0 == <-ch
+		<-ch
 	}
 }
 
