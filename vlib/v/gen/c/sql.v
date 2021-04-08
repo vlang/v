@@ -418,7 +418,8 @@ fn (mut g Gen) mysql_select_expr(node ast.SqlExpr, sub bool, line string, typ Sq
 	g.sql_expr_defaults(node, typ)
 	g.writeln('");')
 
-	/*g.writeln('MYSQL_STMT* $g.sql_stmt_name = mysql_stmt_init(${db_name}.conn);')
+	/*
+	g.writeln('MYSQL_STMT* $g.sql_stmt_name = mysql_stmt_init(${db_name}.conn);')
 	g.writeln('mysql_stmt_prepare($g.sql_stmt_name, ${stmt_name}.str, ${stmt_name}.len);')
 
 	g.writeln('MYSQL_BIND $g.sql_bind_name[$g.sql_i];')
@@ -433,9 +434,8 @@ fn (mut g Gen) mysql_select_expr(node ast.SqlExpr, sub bool, line string, typ Sq
 	g.writeln('if ($res != 0) { puts(mysql_error(${db_name}.conn)); }')
 	g.writeln('$res = mysql_stmt_execute($g.sql_stmt_name);')
 	g.writeln('if ($res != 0) { puts(mysql_error(${db_name}.conn)); puts(mysql_stmt_error($g.sql_stmt_name)); }')
-*/
+	*/
 	g.writeln('')
-	
 }
 
 fn (mut g Gen) mysql_create_table(node ast.SqlStmt, typ SqlType) {
@@ -449,7 +449,8 @@ fn (mut g Gen) mysql_create_table(node ast.SqlStmt, typ SqlType) {
 }
 
 fn (mut g Gen) mysql_bind(val string, _ ast.Type) {
-	/*t := g.mysql_buffer_typ_from_typ(typ)
+	/*
+	t := g.mysql_buffer_typ_from_typ(typ)
 	mut sym := g.table.get_type_symbol(typ).cname
 	if typ == ast.string_type {
 		sym = 'char *'
@@ -530,7 +531,7 @@ fn (mut g Gen) mysql_buffer_typ_from_field(field ast.StructField) (string, strin
 	mut typ := g.get_sql_field_type(field)
 	mut sym := g.table.get_type_symbol(typ).cname
 	buf_typ := g.mysql_buffer_typ_from_typ(typ)
-	
+
 	if typ == ast.string_type {
 		sym = 'char *'
 	}
@@ -743,7 +744,8 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr, typ SqlType) {
 		ast.StringLiteral {
 			// g.write("'$it.val'")
 			g.inc_sql_i(typ)
-			g.sql_bind('"$expr.val"', expr.val.len.str(), g.sql_get_real_type(ast.string_type), typ)
+			g.sql_bind('"$expr.val"', expr.val.len.str(), g.sql_get_real_type(ast.string_type),
+				typ)
 		}
 		ast.IntegerLiteral {
 			g.inc_sql_i(typ)
@@ -768,7 +770,8 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr, typ SqlType) {
 				info := expr.info as ast.IdentVar
 				ityp := info.typ
 				if ityp == ast.string_type {
-					g.sql_bind('${expr.name}.str', '${expr.name}.len', g.sql_get_real_type(ityp), typ)
+					g.sql_bind('${expr.name}.str', '${expr.name}.len', g.sql_get_real_type(ityp),
+						typ)
 				} else {
 					g.sql_bind(expr.name, '', g.sql_get_real_type(ityp), typ)
 				}
@@ -780,7 +783,8 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr, typ SqlType) {
 				verror('orm selector not ident')
 			}
 			ident := expr.expr as ast.Ident
-			g.sql_bind(ident.name + '.' + expr.field_name, '', g.sql_get_real_type(expr.typ), typ)
+			g.sql_bind(ident.name + '.' + expr.field_name, '', g.sql_get_real_type(expr.typ),
+				typ)
 		}
 		else {
 			g.expr(expr)
@@ -796,7 +800,7 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr, typ SqlType) {
 
 fn (mut g Gen) get_struct_field_typ(f string) ast.Type {
 	sym := g.table.get_type_symbol(g.table.type_idxs[g.sql_table_name])
-	
+
 	mut typ := ast.Type(-1)
 
 	if sym.kind != .struct_ {
