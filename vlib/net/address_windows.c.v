@@ -8,6 +8,10 @@ struct Ip6 {
 	scope_id u32 
 }
 
+const (
+	addr_ip6_any = [16]byte{init: byte(0)}
+)
+
 [_pack: '4']
 struct Ip {
 	port u16

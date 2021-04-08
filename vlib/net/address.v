@@ -54,20 +54,12 @@ const (
 fn (a Ip) str() string {
 	buf := []byte{len: max_ip_len, init: 0}
 
-	$if windows {
-		res := C.WSAAddressToStringA(&a, i.len, C.NULL, buf.data, &buf.len)
-		if res != 0 {
-			return '<Unknown>'
-		}
-		// Windows will return the port as part of the address
-		return buf.bytestr()
-	} $else {
-		res := charptr(C.inet_ntop(.ip, &a.addr, buf.data, buf.len))
+	res := charptr(C.inet_ntop(.ip, &a.addr, buf.data, buf.len))
 
-		if res == 0 {
-			return '<Unknown>'
-		}
+	if res == 0 {
+		return '<Unknown>'
 	}
+
 	saddr := buf.bytestr()
 	port := C.ntohs(a.port)
 
@@ -77,19 +69,10 @@ fn (a Ip) str() string {
 fn (a Ip6) str() string {
 	buf := []byte{len: max_ip6_len, init: 0}
 
-	$if windows {
-		res := C.WSAAddressToStringA(&i.addr, i.len, C.NULL, buf.data, &buf.len)
-		if res != 0 {
-			return '<Unknown>'
-		}
-		// Windows will return the port as part of the address
-		return buf.bytestr()
-	} $else {
-		res := charptr(C.inet_ntop(.ip6, a.addr[0..a.addr.len].data, buf.data, buf.len))
+	res := charptr(C.inet_ntop(.ip6, &a.addr, buf.data, buf.len))
 
-		if res == 0 {
-			return '<Unknown>'
-		}
+	if res == 0 {
+		return '<Unknown>'
 	}
 
 	saddr := buf.bytestr()
