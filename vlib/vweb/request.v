@@ -36,7 +36,10 @@ fn parse_request(mut reader io.BufferedReader) ?http.Request {
 		n := length.int()
 		if n > 0 {
 			body = []byte{len: n}
-			reader.read(mut body) or {}
+			mut count := 0
+			for count < body.len {
+				count += reader.read(mut body[count..]) or { break }
+			}
 		}
 	}
 	h.free()
