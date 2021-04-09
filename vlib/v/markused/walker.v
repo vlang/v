@@ -197,6 +197,8 @@ fn (mut w Walker) expr(node ast.Expr) {
 		}
 		ast.DumpExpr {
 			w.expr(node.expr)
+			w.fn_by_name('eprint')
+			w.fn_by_name('eprintln')
 		}
 		ast.GoExpr {
 			w.expr(node.go_stmt.call_expr)
@@ -210,6 +212,15 @@ fn (mut w Walker) expr(node ast.Expr) {
 			w.expr(node.left)
 			w.expr(node.right)
 			w.or_block(node.or_block)
+			if node.left_type == 0 {
+				return
+			}
+			sym := w.table.get_type_symbol(node.left_type)
+			if sym.kind == .struct_ {
+				if opmethod := sym.find_method(node.op.str()) {
+					w.fn_decl(mut &ast.FnDecl(opmethod.source_fn))
+				}
+			}
 		}
 		ast.IfGuardExpr {
 			w.expr(node.expr)
