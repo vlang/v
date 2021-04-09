@@ -165,6 +165,9 @@ pub fn (mut ch Channel) close() {
 	}
 	C.atomic_store_u16(&ch.write_sub_mtx, u16(0))
 	ch.writesem.post()
+	if ch.cap == 0 {
+		C.atomic_store_ptr(&ch.read_adr, voidptr(0))
+	}
 	ch.writesem_im.post()
 }
 
