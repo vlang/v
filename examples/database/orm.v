@@ -71,11 +71,6 @@ fn mysql() {
 		insert mod into Module
 	}
 
-	mut rps := []string{}
-	i := 0
-	rps << int(0).str()
-	println('jhell')
-
 	m := sql conn {
 		select from Module where id == 1
 	}

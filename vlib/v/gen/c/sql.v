@@ -376,7 +376,11 @@ fn (mut g Gen) mysql_stmt(node ast.SqlStmt, typ SqlType) {
 			} else {
 				t, sym := g.mysql_buffer_typ_from_field(field)
 				g.writeln('$bind[${i - 1}].buffer_type = $t;')
-				g.writeln('$bind[${i - 1}].buffer = ($sym*) &$x;')
+				if sym == 'char' {
+					g.writeln('$bind[${i - 1}].buffer = ($sym*) ${x}.str;')
+				} else {
+					g.writeln('$bind[${i - 1}].buffer = ($sym*) &$x;')
+				}
 				if sym == 'char' {
 					g.writeln('$bind[${i - 1}].buffer_length = ${x}.len;')
 				}
