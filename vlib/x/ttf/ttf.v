@@ -9,9 +9,9 @@ module ttf
 * that can be found in the LICENSE file.
 *
 * Note:
-* - inspired by: http://stevehanov.ca/blog/?id=143 
+* - inspired by: http://stevehanov.ca/blog/?id=143
 *
-* TODO: 
+* TODO:
 * - check for unicode > 0xFFFF if supported
 * - evaluate use a buffer for the points in the glyph
 **********************************************************************/
