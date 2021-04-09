@@ -60,7 +60,7 @@ fn (mut ctx Context) termios_setup() ? {
 	// store the current title, so restore_terminal_state can get it back
 	save_title()
 
-	if !ctx.cfg.skip_init_checks && !(is_atty(C.STDIN_FILENO) != 0 && is_atty(C.STDOUT_FILENO) != 0) {
+	if !ctx.cfg.skip_init_checks && !(os.is_atty(C.STDIN_FILENO) != 0 && os.is_atty(C.STDOUT_FILENO) != 0) {
 		return error('not running under a TTY')
 	}
 
