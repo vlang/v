@@ -28,6 +28,7 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 		g.sql_create_table(node)
 		return
 	}
+	g.sql_table_name = g.table.get_type_symbol(node.table_expr.typ).name
 	typ := g.parse_db_type(node.db_expr)
 	match typ {
 		.sqlite3 {
@@ -58,6 +59,7 @@ fn (mut g Gen) sql_create_table(node ast.SqlStmt) {
 }
 
 fn (mut g Gen) sql_select_expr(node ast.SqlExpr, sub bool, line string) {
+	g.sql_table_name = g.table.get_type_symbol(node.table_expr.typ).name
 	typ := g.parse_db_type(node.db_expr)
 	match typ {
 		.sqlite3 {
@@ -125,8 +127,10 @@ fn (mut g Gen) sqlite3_stmt(node ast.SqlStmt, typ SqlType) {
 				// insert again
 				expr := node.sub_structs[int(field.typ)]
 				tmp_sql_stmt_name := g.sql_stmt_name
+				tmp_sql_table_name := g.sql_table_name
 				g.sql_stmt(expr)
 				g.sql_stmt_name = tmp_sql_stmt_name
+				g.sql_table_name = tmp_sql_table_name
 				// get last inserted id
 				g.writeln('Array_sqlite__Row rows = sqlite__DB_exec($db_name, _SLIT("SELECT last_insert_rowid()")).arg0;')
 				id_name := g.new_tmp_var()
@@ -262,6 +266,7 @@ fn (mut g Gen) sqlite3_select_expr(node ast.SqlExpr, sub bool, line string, sql_
 				tmp_sql_i := g.sql_i
 				tmp_sql_stmt_name := g.sql_stmt_name
 				tmp_sql_buf := g.sql_buf
+				tmp_sql_table_name := g.sql_table_name
 
 				g.sql_select_expr(expr, true, '\t${tmp}.$field.name =')
 				g.writeln('//parse struct end')
@@ -269,6 +274,7 @@ fn (mut g Gen) sqlite3_select_expr(node ast.SqlExpr, sub bool, line string, sql_
 				g.sql_stmt_name = tmp_sql_stmt_name
 				g.sql_buf = tmp_sql_buf
 				g.sql_i = tmp_sql_i
+				g.sql_table_name = tmp_sql_table_name
 			} else {
 				g.writeln('${tmp}.$field.name = ${func}($g.sql_stmt_name, $i);')
 			}
@@ -357,8 +363,10 @@ fn (mut g Gen) mysql_stmt(node ast.SqlStmt, typ SqlType) {
 				// insert again
 				expr := node.sub_structs[int(field.typ)]
 				tmp_sql_stmt_name := g.sql_stmt_name
+				tmp_sql_table_name := g.sql_table_name
 				g.sql_stmt(expr)
 				g.sql_stmt_name = tmp_sql_stmt_name
+				g.sql_table_name = tmp_sql_table_name
 
 				res := g.new_tmp_var()
 				g.writeln('int ${res}_err = mysql_real_query(${db_name}.conn, "SELECT LAST_INSERT_ID();", 24);')
@@ -533,6 +541,7 @@ fn (mut g Gen) mysql_select_expr(node ast.SqlExpr, sub bool, line string, typ Sq
 				tmp_sql_i := g.sql_i
 				tmp_sql_stmt_name := g.sql_stmt_name
 				tmp_sql_buf := g.sql_buf
+				tmp_sql_table_name := g.sql_table_name
 
 				g.sql_select_expr(expr, true, '\t${tmp}.$field.name =')
 				g.writeln('//parse struct end')
@@ -540,6 +549,7 @@ fn (mut g Gen) mysql_select_expr(node ast.SqlExpr, sub bool, line string, typ Sq
 				g.sql_stmt_name = tmp_sql_stmt_name
 				g.sql_buf = tmp_sql_buf
 				g.sql_i = tmp_sql_i
+				g.sql_table_name := tmp_sql_table_name
 				*/
 			} else if field.typ == ast.string_type {
 				g.writeln('${tmp}.$field.name = tos_clone($char_ptr);')
@@ -699,7 +709,6 @@ fn (mut g Gen) sql_expr_defaults(node ast.SqlExpr, sql_typ SqlType) {
 
 fn (mut g Gen) get_base_sql_select_query(node ast.SqlExpr) string {
 	mut sql_query := 'SELECT '
-	g.sql_table_name = g.table.get_type_symbol(node.table_expr.typ).name
 	table_name := util.strip_mod_name(g.table.get_type_symbol(node.table_expr.typ).name)
 	if node.is_count {
 		// `select count(*) from User`
@@ -893,6 +902,7 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr, typ SqlType) {
 			// for left sides just add a string, for right sides, generate the bindings
 			if g.sql_side == .left {
 				// println("sql gen left $expr.name")
+				eprintln(expr.name)
 				g.sql_left_type = g.get_struct_field_typ(expr.name)
 				g.write(expr.name)
 			} else {
