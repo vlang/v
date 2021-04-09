@@ -36,6 +36,10 @@ pub fn (mut b Builder) build_js(v_files []string, out_file string) {
 	output := b.gen_js(v_files)
 	mut f := os.create(out_file) or { panic(err) }
 	f.writeln(output) or { panic(err) }
+	if b.pref.is_stats {
+		b.stats_lines = output.count('\n') + 1
+		b.stats_bytes = output.len
+	}
 	f.close()
 }
 

@@ -7,8 +7,8 @@
 * that can be found in the LICENSE file.
 *
 * HOW TO COMPILE SHADERS:
-* - download the sokol shader convertor tool from https://github.com/floooh/sokol-tools-bin/archive/pre-feb2021-api-changes.tar.gz
-* ( also look at https://github.com/floooh/sokol-tools/blob/master/docs/sokol-shdc.md )
+* - download the sokol shader convertor tool from https://github.com/floooh/sokol-tools-bin
+*
 * - compile the .glsl shared file with:
 * linux  :  sokol-shdc --input rt_glsl_puppy.glsl --output rt_glsl_puppy.h --slang glsl330
 						sokol-shdc --input rt_glsl_march.glsl --output rt_glsl_march.h --slang glsl330
@@ -45,8 +45,8 @@ import time
 #flag -I @VROOT/.
 #include "rt_glsl_march.h" #Please use sokol-shdc to generate the necessary rt_glsl_march.h file from rt_glsl_march.glsl (see the instructions at the top of this file)
 #include "rt_glsl_puppy.h" #Please use sokol-shdc to generate the necessary rt_glsl_puppy.h file from rt_glsl_puppy.glsl (see the instructions at the top of this file)
-fn C.rt_march_shader_desc() &C.sg_shader_desc
-fn C.rt_puppy_shader_desc() &C.sg_shader_desc
+fn C.rt_march_shader_desc(gfx.Backend) &C.sg_shader_desc
+fn C.rt_puppy_shader_desc(gfx.Backend) &C.sg_shader_desc
 
 const (
 	win_width  = 800
@@ -90,9 +90,9 @@ fn create_texture(w int, h int, buf byteptr) C.sg_image {
 		d3d11_texture: 0
 	}
 	// comment if .dynamic is enabled
-	img_desc.content.subimage[0][0] = C.sg_subimage_content{
+	img_desc.data.subimage[0][0] = C.sg_range{
 		ptr: buf
-		size: sz
+		size: size_t(sz)
 	}
 
 	sg_img := C.sg_make_image(&img_desc)
@@ -106,10 +106,10 @@ fn destroy_texture(sg_img C.sg_image) {
 // Use only if usage: .dynamic is enabled
 fn update_text_texture(sg_img C.sg_image, w int, h int, buf byteptr) {
 	sz := w * h * 4
-	mut tmp_sbc := C.sg_image_content{}
-	tmp_sbc.subimage[0][0] = C.sg_subimage_content{
+	mut tmp_sbc := C.sg_image_data{}
+	tmp_sbc.subimage[0][0] = C.sg_range{
 		ptr: buf
-		size: sz
+		size: size_t(sz)
 	}
 	C.sg_update_image(sg_img, &tmp_sbc)
 }
@@ -178,8 +178,11 @@ fn init_cube_glsl_m(mut app App) {
 
 	mut vert_buffer_desc := C.sg_buffer_desc{}
 	unsafe { C.memset(&vert_buffer_desc, 0, sizeof(vert_buffer_desc)) }
-	vert_buffer_desc.size = vertices.len * int(sizeof(Vertex_t))
-	vert_buffer_desc.content = byteptr(vertices.data)
+	vert_buffer_desc.size = size_t(vertices.len * int(sizeof(Vertex_t)))
+	vert_buffer_desc.data = C.sg_range{
+		ptr: vertices.data
+		size: size_t(vertices.len * int(sizeof(Vertex_t)))
+	}
 	vert_buffer_desc.@type = .vertexbuffer
 	vert_buffer_desc.label = 'cube-vertices'.str
 	vbuf := gfx.make_buffer(&vert_buffer_desc)
@@ -198,14 +201,17 @@ fn init_cube_glsl_m(mut app App) {
 
 	mut index_buffer_desc := C.sg_buffer_desc{}
 	unsafe { C.memset(&index_buffer_desc, 0, sizeof(index_buffer_desc)) }
-	index_buffer_desc.size = indices.len * int(sizeof(u16))
-	index_buffer_desc.content = byteptr(indices.data)
+	index_buffer_desc.size = size_t(indices.len * int(sizeof(u16)))
+	index_buffer_desc.data = C.sg_range{
+		ptr: indices.data
+		size: size_t(indices.len * int(sizeof(u16)))
+	}
 	index_buffer_desc.@type = .indexbuffer
 	index_buffer_desc.label = 'cube-indices'.str
 	ibuf := gfx.make_buffer(&index_buffer_desc)
 
 	// create shader
-	shader := gfx.make_shader(C.rt_march_shader_desc())
+	shader := gfx.make_shader(C.rt_march_shader_desc(C.sg_query_backend()))
 
 	mut pipdesc := C.sg_pipeline_desc{}
 	unsafe { C.memset(&pipdesc, 0, sizeof(pipdesc)) }
@@ -220,13 +226,11 @@ fn init_cube_glsl_m(mut app App) {
 	pipdesc.shader = shader
 	pipdesc.index_type = .uint16
 
-	pipdesc.depth_stencil = C.sg_depth_stencil_state{
-		depth_write_enabled: true
-		depth_compare_func: gfx.CompareFunc(C.SG_COMPAREFUNC_LESS_EQUAL)
+	pipdesc.depth = C.sg_depth_state{
+		write_enabled: true
+		compare: gfx.CompareFunc(C.SG_COMPAREFUNC_LESS_EQUAL)
 	}
-	pipdesc.rasterizer = C.sg_rasterizer_state{
-		cull_mode: .back
-	}
+	pipdesc.cull_mode = .back
 	pipdesc.label = 'glsl_shader pipeline'.str
 
 	mut bind := C.sg_bindings{}
@@ -282,8 +286,11 @@ fn init_cube_glsl_p(mut app App) {
 
 	mut vert_buffer_desc := C.sg_buffer_desc{}
 	unsafe { C.memset(&vert_buffer_desc, 0, sizeof(vert_buffer_desc)) }
-	vert_buffer_desc.size = vertices.len * int(sizeof(Vertex_t))
-	vert_buffer_desc.content = byteptr(vertices.data)
+	vert_buffer_desc.size = size_t(vertices.len * int(sizeof(Vertex_t)))
+	vert_buffer_desc.data = C.sg_range{
+		ptr: vertices.data
+		size: size_t(vertices.len * int(sizeof(Vertex_t)))
+	}
 	vert_buffer_desc.@type = .vertexbuffer
 	vert_buffer_desc.label = 'cube-vertices'.str
 	vbuf := gfx.make_buffer(&vert_buffer_desc)
@@ -303,14 +310,17 @@ fn init_cube_glsl_p(mut app App) {
 
 	mut index_buffer_desc := C.sg_buffer_desc{}
 	unsafe { C.memset(&index_buffer_desc, 0, sizeof(index_buffer_desc)) }
-	index_buffer_desc.size = indices.len * int(sizeof(u16))
-	index_buffer_desc.content = byteptr(indices.data)
+	index_buffer_desc.size = size_t(indices.len * int(sizeof(u16)))
+	index_buffer_desc.data = C.sg_range{
+		ptr: indices.data
+		size: size_t(indices.len * int(sizeof(u16)))
+	}
 	index_buffer_desc.@type = .indexbuffer
 	index_buffer_desc.label = 'cube-indices'.str
 	ibuf := gfx.make_buffer(&index_buffer_desc)
 
 	// create shader
-	shader := gfx.make_shader(C.rt_puppy_shader_desc())
+	shader := gfx.make_shader(C.rt_puppy_shader_desc(C.sg_query_backend()))
 
 	mut pipdesc := C.sg_pipeline_desc{}
 	unsafe { C.memset(&pipdesc, 0, sizeof(pipdesc)) }
@@ -325,13 +335,12 @@ fn init_cube_glsl_p(mut app App) {
 	pipdesc.shader = shader
 	pipdesc.index_type = .uint16
 
-	pipdesc.depth_stencil = C.sg_depth_stencil_state{
-		depth_write_enabled: true
-		depth_compare_func: gfx.CompareFunc(C.SG_COMPAREFUNC_LESS_EQUAL)
+	pipdesc.depth = C.sg_depth_state{
+		write_enabled: true
+		compare: gfx.CompareFunc(C.SG_COMPAREFUNC_LESS_EQUAL)
 	}
-	pipdesc.rasterizer = C.sg_rasterizer_state{
-		cull_mode: .back
-	}
+	pipdesc.cull_mode = .back
+
 	pipdesc.label = 'glsl_shader pipeline'.str
 
 	mut bind := C.sg_bindings{}
@@ -346,7 +355,7 @@ fn init_cube_glsl_p(mut app App) {
 	println('GLSL Puppy init DONE!')
 }
 
-[inline] 
+[inline]
 fn vec4(x f32, y f32, z f32, w f32) m4.Vec4 {
 	return m4.Vec4{e:[x, y, z, w]!}
 }
@@ -387,7 +396,11 @@ fn draw_cube_glsl_m(app App) {
 	// *** vertex shadeer uniforms ***
 	// passing the view matrix as uniform
 	// res is a 4x4 matrix of f32 thus: 4*16 byte of size
-	gfx.apply_uniforms(C.SG_SHADERSTAGE_VS, C.SLOT_vs_params_m, &tr_matrix, 4 * 16)
+	vs_uniforms_range := C.sg_range{
+		ptr: &tr_matrix
+		size: size_t(4 * 16)
+	}
+	gfx.apply_uniforms(C.SG_SHADERSTAGE_VS, C.SLOT_vs_params_m, &vs_uniforms_range)
 
 	// *** fragment shader uniforms ***
 	time_ticks := f32(time.ticks() - app.ticks) / 1000
@@ -403,7 +416,11 @@ fn draw_cube_glsl_m(app App) {
 		0,
 		0 // padding bytes , see "fs_params" struct paddings in rt_glsl.h
 	]!
-	gfx.apply_uniforms(C.SG_SHADERSTAGE_FS, C.SLOT_fs_params_m, &tmp_fs_params, int(sizeof(tmp_fs_params)))
+	fs_uniforms_range := C.sg_range{
+		ptr: &tmp_fs_params
+		size: size_t(sizeof(tmp_fs_params))
+	}
+	gfx.apply_uniforms(C.SG_SHADERSTAGE_FS, C.SLOT_fs_params_p, &fs_uniforms_range)
 
 	// 3 vertices for triangle * 2 triangles per face * 6 faces = 36 vertices to draw
 	gfx.draw(0, (3 * 2) * 3, 1)
@@ -431,7 +448,11 @@ fn draw_cube_glsl_p(app App) {
 	// *** vertex shadeer uniforms ***
 	// passing the view matrix as uniform
 	// res is a 4x4 matrix of f32 thus: 4*16 byte of size
-	gfx.apply_uniforms(C.SG_SHADERSTAGE_VS, C.SLOT_vs_params_p, &tr_matrix, 4 * 16)
+	vs_uniforms_range := C.sg_range{
+		ptr: &tr_matrix
+		size: size_t(4 * 16)
+	}
+	gfx.apply_uniforms(C.SG_SHADERSTAGE_VS, C.SLOT_vs_params_p, &vs_uniforms_range)
 
 	// *** fragment shader uniforms ***
 	time_ticks := f32(time.ticks() - app.ticks) / 1000
@@ -447,7 +468,11 @@ fn draw_cube_glsl_p(app App) {
 		0,
 		0 // padding bytes , see "fs_params" struct paddings in rt_glsl.h
 	]!
-	gfx.apply_uniforms(C.SG_SHADERSTAGE_FS, C.SLOT_fs_params_p, &tmp_fs_params, int(sizeof(tmp_fs_params)))
+	fs_uniforms_range := C.sg_range{
+		ptr: &tmp_fs_params
+		size: size_t(sizeof(tmp_fs_params))
+	}
+	gfx.apply_uniforms(C.SG_SHADERSTAGE_FS, C.SLOT_fs_params_p, &fs_uniforms_range)
 
 	// 3 vertices for triangle * 2 triangles per face * 6 faces = 36 vertices to draw
 	gfx.draw(0, (3 * 2) * 3, 1)
@@ -477,11 +502,13 @@ fn frame(mut app App) {
 	// clear
 	mut color_action := C.sg_color_attachment_action{
 		action: gfx.Action(C.SG_ACTION_CLEAR)
+		value: C.sg_color{
+			r: 0.0
+			g: 0.0
+			b: 0.0
+			a: 1.0
+		}
 	}
-	color_action.val[0] = 0
-	color_action.val[1] = 0
-	color_action.val[2] = 0
-	color_action.val[3] = 1.0
 	mut pass_action := C.sg_pass_action{}
 	pass_action.colors[0] = color_action
 	gfx.begin_default_pass(&pass_action, ws.width, ws.height)

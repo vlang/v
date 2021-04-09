@@ -45,8 +45,28 @@ pub fn compile(command string, pref &pref.Preferences) {
 		.x64 { b.compile_x64() }
 	}
 	if pref.is_stats {
-		compilation_time := util.bold(sw.elapsed().milliseconds().str())
-		println('compilation took: $compilation_time ms')
+		compilation_time_micros := 1 + sw.elapsed().microseconds()
+		scompilation_time_ms := util.bold('${f64(compilation_time_micros) / 1000.0:6.3f}')
+		mut all_v_source_lines, mut all_v_source_bytes := 0, 0
+		for mut pf in b.parsed_files {
+			all_v_source_lines += pf.lines
+			all_v_source_bytes += pf.bytes
+		}
+		mut sall_v_source_lines := all_v_source_lines.str()
+		mut sall_v_source_bytes := all_v_source_bytes.str()
+		sall_v_source_lines = util.bold('${sall_v_source_lines:10s}')
+		sall_v_source_bytes = util.bold('${sall_v_source_bytes:10s}')
+		println('        V  source  code size: $sall_v_source_lines lines, $sall_v_source_bytes bytes')
+		//
+		mut slines := b.stats_lines.str()
+		mut sbytes := b.stats_bytes.str()
+		slines = util.bold('${slines:10s}')
+		sbytes = util.bold('${sbytes:10s}')
+		println('generated  target  code size: $slines lines, $sbytes bytes')
+		//
+		vlines_per_second := int(1_000_000.0 * f64(all_v_source_lines) / f64(compilation_time_micros))
+		svlines_per_second := util.bold(vlines_per_second.str())
+		println('compilation took: $scompilation_time_ms ms, compilation speed: $svlines_per_second vlines/s')
 	}
 	b.exit_on_invalid_syntax()
 	// running does not require the parsers anymore

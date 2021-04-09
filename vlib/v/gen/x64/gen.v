@@ -32,6 +32,7 @@ mut:
 	warnings             []errors.Warning
 	syms                 []Symbol
 	relocs               []Reloc
+	nlines               int
 }
 
 // string_addr map[string]i64
@@ -81,7 +82,7 @@ enum Size {
 	_64
 }
 
-pub fn gen(files []ast.File, table &ast.Table, out_name string, pref &pref.Preferences) {
+pub fn gen(files []ast.File, table &ast.Table, out_name string, pref &pref.Preferences) (int, int) {
 	mut g := Gen{
 		table: table
 		sect_header_name_pos: 0
@@ -96,6 +97,7 @@ pub fn gen(files []ast.File, table &ast.Table, out_name string, pref &pref.Prefe
 		g.stmts(file.stmts)
 	}
 	g.generate_elf_footer()
+	return g.nlines, g.buf.len
 }
 
 pub fn (mut g Gen) stmts(stmts []ast.Stmt) {
@@ -272,6 +274,7 @@ fn (mut g Gen) jle(addr i64) {
 }
 
 fn (mut g Gen) println(comment string) {
+	g.nlines++
 	if !g.pref.is_verbose {
 		return
 	}

@@ -149,9 +149,9 @@ pub fn (mut img Image) init_sokol_image() &Image {
 		label: &byte(0)
 		d3d11_texture: 0
 	}
-	img_desc.content.subimage[0][0] = C.sg_subimage_content{
+	img_desc.data.subimage[0][0] = C.sg_range{
 		ptr: img.data
-		size: img.nr_channels * img.width * img.height
+		size: size_t(img.nr_channels * img.width * img.height)
 	}
 	img.simg = C.sg_make_image(&img_desc)
 	img.simg_ok = true

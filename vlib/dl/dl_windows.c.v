@@ -28,7 +28,7 @@ pub fn sym(handle voidptr, symbol string) voidptr {
 }
 
 // dlerror provides a text error diagnostic message for functions in `dl`
-// it returns a human-readable string, describing the most recent error 
+// it returns a human-readable string, describing the most recent error
 // that occurred from a call to one of the `dl` functions, since the last
 // call to dlerror()
 pub fn dlerror() string {

@@ -191,9 +191,16 @@ fn gg_init_sokol_window(user_data voidptr) {
 	//
 	mut pipdesc := C.sg_pipeline_desc{}
 	unsafe { C.memset(&pipdesc, 0, sizeof(pipdesc)) }
-	pipdesc.blend.enabled = true
-	pipdesc.blend.src_factor_rgb = gfx.BlendFactor(C.SG_BLENDFACTOR_SRC_ALPHA)
-	pipdesc.blend.dst_factor_rgb = gfx.BlendFactor(C.SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA)
+
+	color_state := C.sg_color_state{
+		blend: C.sg_blend_state{
+			enabled: true
+			src_factor_rgb: gfx.BlendFactor(C.SG_BLENDFACTOR_SRC_ALPHA)
+			dst_factor_rgb: gfx.BlendFactor(C.SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA)
+		}
+	}
+	pipdesc.colors[0] = color_state
+
 	g.timage_pip = sgl.make_pipeline(&pipdesc)
 	//
 	if g.config.init_fn != voidptr(0) {
@@ -203,6 +210,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 	if g.native_rendering {
 		return
 	}
+
 	for i in 0 .. g.image_cache.len {
 		g.image_cache[i].init_sokol_image()
 	}
@@ -216,6 +224,7 @@ fn gg_frame_fn(user_data voidptr) {
 	if ctx.native_rendering {
 		// return
 	}
+
 	if ctx.ui_mode && !ctx.needs_refresh {
 		// Draw 3 more frames after the "stop refresh" command
 		ctx.ticks++
@@ -334,7 +343,7 @@ pub fn new_context(cfg Config) &Context {
 		sample_count: cfg.sample_count
 		high_dpi: true
 		fullscreen: cfg.fullscreen
-		native_render: cfg.native_rendering
+		__v_native_render: cfg.native_rendering
 	}
 	if cfg.use_ortho {
 	} else {
@@ -422,6 +431,12 @@ pub fn (ctx &Context) draw_empty_square(x f32, y f32, s f32, c gx.Color) {
 }
 
 pub fn (ctx &Context) draw_circle_line(x f32, y f32, r int, segments int, c gx.Color) {
+	$if macos {
+		if ctx.native_rendering {
+			C.darwin_draw_circle(x - r + 1, ctx.height - (y + r + 3), r, c)
+			return
+		}
+	}
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
@@ -440,12 +455,6 @@ pub fn (ctx &Context) draw_circle_line(x f32, y f32, r int, segments int, c gx.C
 }
 
 pub fn (ctx &Context) draw_circle(x f32, y f32, r f32, c gx.Color) {
-	$if macos {
-		if ctx.native_rendering {
-			C.darwin_draw_circle(x - r + 1, ctx.height - (y + r + 3), r, c)
-			return
-		}
-	}
 	if ctx.scale == 1 {
 		ctx.draw_circle_with_segments(x, y, r, 10, c)
 	} else {

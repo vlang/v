@@ -380,7 +380,7 @@ fn main() {
 	str_tmp_expr_advanced_var_decl()
 	str_inter()
 	match_expr()
-	// optional_str()
+	optional_str()
 	// optional_return()
 	str_replace()
 	str_replace2()

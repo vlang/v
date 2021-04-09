@@ -9,8 +9,8 @@
 * Example .obj model of V from SurmanPP
 *
 * HOW TO COMPILE SHADERS:
-* - download the sokol shader convertor tool from https://github.com/floooh/sokol-tools-bin/archive/pre-feb2021-api-changes.tar.gz
-* ( also look at https://github.com/floooh/sokol-tools/blob/master/docs/sokol-shdc.md )
+* - download the sokol shader convertor tool from https://github.com/floooh/sokol-tools-bin
+*
 * - compile the .glsl shader with:
 * linux  :  sokol-shdc --input gouraud.glsl --output gouraud.h --slang glsl330
 * windows:  sokol-shdc.exe --input gouraud.glsl --output gouraud.h --slang glsl330
@@ -52,8 +52,7 @@ import obj
 
 #flag -I @VROOT/.
 #include "gouraud.h" #Please use sokol-shdc to generate the necessary rt_glsl.h file from rt_glsl.glsl (see the instructions at the top of this file)
-//fn C.gouraud_shader_desc(gfx.Backend) &C.sg_shader_desc
-fn C.gouraud_shader_desc() &C.sg_shader_desc
+fn C.gouraud_shader_desc(gfx.Backend) &C.sg_shader_desc
 
 const (
 	win_width  = 600
@@ -74,11 +73,11 @@ mut:
 
 	// time
 	ticks       i64
-	
+
 	// model
 	obj_part    &obj.ObjPart
 	n_vertex    u32
-	
+
 	// init parameters
 	file_name   string
 	single_material_flag bool
@@ -87,7 +86,7 @@ mut:
 /******************************************************************************
 * Draw functions
 ******************************************************************************/
-[inline] 
+[inline]
 fn vec4(x f32, y f32, z f32, w f32) m4.Vec4 {
 	return m4.Vec4{e:[x, y, z, w]!}
 }
@@ -99,7 +98,7 @@ fn calc_matrices(w f32, h f32, rx f32, ry f32, in_scale f32, pos m4.Vec4) obj.Ma
 
 	rxm := m4.rotate(m4.rad(rx), vec4(f32(1), 0, 0, 0))
 	rym := m4.rotate(m4.rad(ry), vec4(f32(0), 1, 0, 0))
-	
+
 	model_pos := m4.unit_m4().translate(pos)
 
 	model_m :=  (rym * rxm) * model_pos
@@ -108,7 +107,7 @@ fn calc_matrices(w f32, h f32, rx f32, ry f32, in_scale f32, pos m4.Vec4) obj.Ma
 	mv := scale_m * model_m        // model view
 	nm := mv.inverse().transpose() // normal matrix
 	mvp :=  mv * view_proj         // model view projection
-	
+
 	return obj.Mats{mv:mv, mvp:mvp, nm:nm}
 }
 
@@ -123,23 +122,23 @@ fn draw_model(app App, model_pos m4.Vec4) u32 {
 
 	mut scale := f32(1)
 	if app.obj_part.radius > 1 {
-		scale = 1/(app.obj_part.radius) 
+		scale = 1/(app.obj_part.radius)
 	} else {
 		scale = app.obj_part.radius
 	}
 	scale *= 3
-	
+
 	// *** vertex shader uniforms ***
 	rot := [f32(app.mouse_y), f32(app.mouse_x)]
 	mut zoom_scale := scale + f32(app.scroll_y) / (app.obj_part.radius*4)
 	mats := calc_matrices(dw, dh, rot[0], rot[1] , zoom_scale, model_pos)
-	
+
 	mut tmp_vs_param := obj.Tmp_vs_param{
 		mv:  mats.mv,
 		mvp: mats.mvp,
 		nm:  mats.nm
 	}
-	
+
 	// *** fragment shader uniforms ***
 	time_ticks := f32(time.ticks() - app.ticks) / 1000
 	radius_light  := f32(app.obj_part.radius)
@@ -148,7 +147,7 @@ fn draw_model(app App, model_pos m4.Vec4) u32 {
 
 	mut tmp_fs_params := obj.Tmp_fs_param{}
 	tmp_fs_params.ligth = m4.vec3(x_light, radius_light, z_light)
-	
+
 	sd := obj.Shader_data{
 		vs_data: &tmp_vs_param
 		vs_len:  int(sizeof(tmp_vs_param))
@@ -156,7 +155,7 @@ fn draw_model(app App, model_pos m4.Vec4) u32 {
 		fs_len:  int(sizeof(tmp_fs_params))
 	}
 
-	return app.obj_part.bind_and_draw_all(sd)	
+	return app.obj_part.bind_and_draw_all(sd)
 }
 
 fn frame(mut app App) {
@@ -165,11 +164,14 @@ fn frame(mut app App) {
 	// clear
 	mut color_action := C.sg_color_attachment_action{
 		action: gfx.Action(C.SG_ACTION_CLEAR)
+		value: C.sg_color{
+			r: 0.0
+			g: 0.0
+			b: 0.0
+			a: 1.0
+		}
 	}
-	color_action.val[0] = 0
-	color_action.val[1] = 0
-	color_action.val[2] = 0
-	color_action.val[3] = 1.0
+
 	mut pass_action := C.sg_pass_action{}
 	pass_action.colors[0] = color_action
 	gfx.begin_default_pass(&pass_action, ws.width, ws.height)
@@ -178,7 +180,7 @@ fn frame(mut app App) {
 	draw_start_glsl(app)
 	draw_model(app, m4.Vec4{})
 // uncoment if you want a raw benchmark mode
-/*	
+/*
 	mut n_vertex_drawn := u32(0)
 	n_x_obj := 20
 
@@ -189,9 +191,9 @@ fn frame(mut app App) {
 			}
 		}
 	}
-*/	
+*/
 	draw_end_glsl(app)
-		
+
 	//println("v:$n_vertex_drawn")
 	app.frame_count++
 }
@@ -227,7 +229,7 @@ fn my_init(mut app App) {
 		max_vertices: 128 * 65536
 	}
 	sgl.setup(&sgl_desc)
-	
+
 	// 1x1 pixel white, default texture
 	unsafe {
 		tmp_txt := malloc(4)
@@ -238,7 +240,7 @@ fn my_init(mut app App) {
 		app.texture = obj.create_texture(1, 1, tmp_txt)
 		free(tmp_txt)
 	}
-	
+
 	// glsl
 	app.obj_part.init_render_data(app.texture)
 	app.init_flag = true
@@ -250,7 +252,7 @@ fn cleanup(mut app App) {
 	for _, mat in app.obj_part.texture {
 		obj.destroy_texture(mat)
 	}
-*/	
+*/
 }
 
 /******************************************************************************
@@ -261,11 +263,11 @@ fn my_event_manager(mut ev gg.Event, mut app App) {
 		app.mouse_x = int(ev.mouse_x)
 		app.mouse_y = int(ev.mouse_y)
 	}
-	
+
 	if ev.scroll_y != 0 {
 		app.scroll_y += int(ev.scroll_y)
 	}
-	
+
 	if ev.typ == .touches_began || ev.typ == .touches_moved {
 		if ev.num_touches > 0 {
 			touch_point := ev.touches[0]
@@ -290,8 +292,9 @@ fn main() {
 		gg:       0
 		obj_part: 0
 	}
-	
+
 	app.file_name            = "v.obj_" // default object is the v logo
+
 	app.single_material_flag = false
 	$if !android {
 		if os.args.len > 3 || (os.args.len >= 2 && os.args[1] in ['-h', '--help', '\\?', '-?']) {
@@ -302,8 +305,8 @@ fn main() {
 			eprintln('single_material_flag: if true the viewer use for all the model\'s parts the default material\n')
 			exit(0)
 		}
-		
-		if os.args.len >= 2 { 
+
+		if os.args.len >= 2 {
 			app.file_name = os.args[1]
 		}
 		if os.args.len >= 3 {
@@ -312,7 +315,7 @@ fn main() {
 		println("Loading model: $app.file_name")
 		println("Using single material: $app.single_material_flag")
 	}
-	
+
 	app.gg = gg.new_context(
 		width: win_width
 		height: win_height

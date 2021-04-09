@@ -1,3 +1,4 @@
+// test generics function that return generics struct
 pub struct Optional<T> {
 mut:
 	value T
@@ -21,7 +22,7 @@ pub fn set<T>(mut opt Optional<T>, value T) {
 	opt.some = true
 }
 
-fn test_generics_return_generics_struct() {
+fn test_generics_fn_return_generics_struct() {
 	mut o := new_some<int>(23)
 	println(some<int>(o))
 	assert some<int>(o) == true
@@ -30,6 +31,39 @@ fn test_generics_return_generics_struct() {
 	assert get<int>(o) == 42
 }
 
+// test generics method that return generics struct
+pub struct Foo {
+	foo int
+}
+
+pub fn (f Foo)new_some<T>(value T) Optional<T> {
+	return {value: value, some: true}
+}
+
+pub fn (f Foo)some<T>(opt Optional<T>) bool {
+	return opt.some
+}
+
+pub fn (f Foo)get<T>(opt Optional<T>) T {
+	return opt.value
+}
+
+pub fn (f Foo)set<T>(mut opt Optional<T>, value T) {
+	opt.value = value
+	opt.some = true
+}
+
+fn test_generics_method_return_generics_struct() {
+	foo := Foo{}
+	mut o := foo.new_some<int>(23)
+	println(foo.some<int>(o))
+	assert foo.some<int>(o) == true
+	foo.set<int>(mut o, 42)
+	println(foo.get<int>(o))
+	assert foo.get<int>(o) == 42
+}
+
+// test genrics struct str()
 pub struct ArrayIterator<T> {
 	data []T
 mut:
