@@ -71,16 +71,13 @@ fn mysql() {
 		insert mod into Module
 	}
 
-	/*u1 := sql conn {
-		select from User where id == 1
-	}
-	u2 := sql conn {
-		select from User where id == 2
-	}
-	eprintln(u1)
-	eprintln(u2)
-*/
+	mut rps := []string{}
+	i := 0
+	rps << int(0).str()
+	println('jhell')
+
 	m := sql conn {
-		select from User
+		select from Module where id == 1
 	}
+	eprintln(m)
 }

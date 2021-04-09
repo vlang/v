@@ -377,7 +377,7 @@ fn (mut g Gen) mysql_stmt(node ast.SqlStmt, typ SqlType) {
 				t, sym := g.mysql_buffer_typ_from_field(field)
 				g.writeln('$bind[${i - 1}].buffer_type = $t;')
 				g.writeln('$bind[${i - 1}].buffer = ($sym*) &$x;')
-				if sym == 'char *' {
+				if sym == 'char' {
 					g.writeln('$bind[${i - 1}].buffer_length = ${x}.len;')
 				}
 				g.writeln('$bind[${i - 1}].is_null = 0;')
@@ -413,10 +413,31 @@ fn (mut g Gen) mysql_select_expr(node ast.SqlExpr, sub bool, line string, typ Sq
 	g.writeln(';')
 
 	stmt_name := g.new_tmp_var()
-	g.write('string $stmt_name = _SLIT("')
+	g.sql_idents = []string{}
+	g.sql_idents_types = []ast.Type{}
+	g.write('char* ${stmt_name}_raw = "')
 	g.write(g.get_base_sql_select_query(node))
 	g.sql_expr_defaults(node, typ)
-	g.writeln('");')
+	g.writeln('";')
+	g.writeln('string $stmt_name = tos_clone(${stmt_name}_raw);')
+	if g.sql_idents.len > 0 {
+		mut rpl := []string{}
+		vals := g.new_tmp_var()
+		g.writeln('Array_string $vals = __new_array_with_default(0, 0, sizeof(string), 0);')
+		for i, ident in g.sql_idents {
+			g.writeln('array_push(&$vals, _MOV((string[]){string_clone(_SLIT("%${i + 1}"))}));')
+
+			g.write('array_push(&$vals, _MOV((string[]){string_clone(')
+			if g.sql_idents_types[i] == ast.string_type {
+				g.write('_SLIT(')
+			} else {
+				sym := g.table.get_type_name(g.sql_idents_types[i])
+				g.write('${sym}_str(')
+			}
+			g.writeln('$ident))}));')
+		}
+		g.writeln('$stmt_name = string_replace_each($stmt_name, $vals);')
+	}
 	/*
 	g.writeln('MYSQL_STMT* $g.sql_stmt_name = mysql_stmt_init(${db_name}.conn);')
 	g.writeln('mysql_stmt_prepare($g.sql_stmt_name, ${stmt_name}.str, ${stmt_name}.len);')
@@ -436,14 +457,17 @@ fn (mut g Gen) mysql_select_expr(node ast.SqlExpr, sub bool, line string, typ Sq
 	*/
 	query := g.new_tmp_var()
 	res := g.new_tmp_var()
-	/*g.writeln('Option_mysql__Result $res = mysql__Connection_real_query(&$db_name, $stmt_name);')
+	fields := g.new_tmp_var()
+	/*
+	g.writeln('Option_mysql__Result $res = mysql__Connection_real_query(&$db_name, $stmt_name);')
 	g.writeln('if (${res}.state != 0) { IError err = ${res}.err; _STR("Something went wrong\\000%.*s", 2, IError_str(err)); }')
 	g.writeln('Array_mysql__Row ${res}_rows = mysql__Result_rows(*(mysql__Result*)${res}.data);')*/
 	g.writeln('int $query = mysql_real_query(${db_name}.conn, ${stmt_name}.str, ${stmt_name}.len);')
 	g.writeln('if ($query != 0) { puts(mysql_error(${db_name}.conn)); }')
 	g.writeln('MYSQL_RES* $res = mysql_store_result(${db_name}.conn);')
+	g.writeln('MYSQL_ROW $fields = mysql_fetch_row($res);')
 	if node.is_count {
-		g.writeln('$cur_line ;')
+		g.writeln('$cur_line string_int(tos_clone($fields[0]));')
 	} else {
 		tmp := g.new_tmp_var()
 		styp := g.typ(node.typ)
@@ -483,21 +507,23 @@ fn (mut g Gen) mysql_select_expr(node ast.SqlExpr, sub bool, line string, typ Sq
 			g.writeln('};')
 		}
 
-		fields := g.new_tmp_var()
-		g.writeln('MYSQL_ROW $fields = mysql_fetch_row($res);')
-
+		char_ptr := g.new_tmp_var()
+		g.writeln('char* $char_ptr = "";')
 		for i, field in node.fields {
+			g.writeln('$char_ptr = $fields[$i];')
+			g.writeln('if ($char_ptr == NULL) { $char_ptr = ""; }')
 			name := g.table.get_type_symbol(field.typ).cname
 			if g.table.get_type_symbol(field.typ).kind == .struct_ {
+				/*
 				id_name := g.new_tmp_var()
 				g.writeln('//parse struct start') //
-				g.writeln('int $id_name = string_int(tos_clone($fields[$i]));')
+				//g.writeln('int $id_name = string_int(tos_clone($fields[$i]));')
 
 				mut expr := node.sub_structs[int(field.typ)]
 				mut where_expr := expr.where_expr as ast.InfixExpr
 				mut ident := where_expr.right as ast.Ident
 
-				ident.name = id_name
+				ident.name = '$char_ptr[$i]'
 				where_expr.right = ident
 				expr.where_expr = where_expr
 
@@ -511,17 +537,17 @@ fn (mut g Gen) mysql_select_expr(node ast.SqlExpr, sub bool, line string, typ Sq
 				g.sql_stmt_name = tmp_sql_stmt_name
 				g.sql_buf = tmp_sql_buf
 				g.sql_i = tmp_sql_i
+				*/
 			} else if field.typ == ast.string_type {
-				g.writeln('${tmp}.$field.name = tos_clone($fields[$i]);')
+				g.writeln('${tmp}.$field.name = tos_clone($char_ptr);')
 			} else if field.typ == ast.byte_type {
-				g.writeln('${tmp}.$field.name = (byte) string_${name}(tos_clone($fields[$i]));')
+				g.writeln('${tmp}.$field.name = (byte) string_${name}(tos_clone($char_ptr));')
 			} else if field.typ == ast.i8_type {
-				g.writeln('${tmp}.$field.name = (i8) string_${name}(tos_clone($fields[$i]));')
+				g.writeln('${tmp}.$field.name = (i8) string_${name}(tos_clone($char_ptr));')
 			} else {
-				g.writeln('${tmp}.$field.name = string_${name}(tos_clone($fields[$i]));')
+				g.writeln('${tmp}.$field.name = string_${name}(tos_clone($char_ptr));')
 			}
 		}
-
 		if node.is_array {
 			g.writeln('\t array_push(&${tmp}_array, _MOV(($elem_type_str[]) { $tmp }));')
 			g.writeln('}')
@@ -870,11 +896,17 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr, typ SqlType) {
 				g.inc_sql_i(typ)
 				info := expr.info as ast.IdentVar
 				ityp := info.typ
-				if ityp == ast.string_type {
-					g.sql_bind('${expr.name}.str', '${expr.name}.len', g.sql_get_real_type(ityp),
-						typ)
+				if typ == .sqlite3 {
+					if ityp == ast.string_type {
+						g.sql_bind('${expr.name}.str', '${expr.name}.len', g.sql_get_real_type(ityp),
+							typ)
+					} else {
+						g.sql_bind(expr.name, '', g.sql_get_real_type(ityp), typ)
+					}
 				} else {
-					g.sql_bind(expr.name, '', g.sql_get_real_type(ityp), typ)
+					g.sql_bind('%$g.sql_i.str()', '', g.sql_get_real_type(ityp), typ)
+					g.sql_idents << expr.name
+					g.sql_idents_types << g.sql_get_real_type(ityp)
 				}
 			}
 		}
