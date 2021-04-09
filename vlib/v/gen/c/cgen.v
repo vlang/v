@@ -4579,6 +4579,11 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 						} else {
 							g.writeln('\t$base_type $branch.cond.var_name = *($base_type*)${var_name}.data;')
 						}
+					} else if short_opt {
+						base_type := g.base_type(branch.cond.expr_type)
+						g.write('\t$base_type _dummy_${g.tmp_count + 1} = ')
+						g.expr(branch.cond.expr)
+						g.writeln(';')
 					}
 				}
 				else {
