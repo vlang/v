@@ -510,6 +510,7 @@ fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInf
 		is_mut: rec.is_mut
 		is_auto_rec: is_auto_rec
 		typ: rec.typ
+		type_pos: rec.type_pos
 	}
 	p.check(.rpar)
 
