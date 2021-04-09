@@ -630,7 +630,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 	} else if left_sym.kind == .map {
 		if node.name == 'keys' {
-			name = 'map_keys_1'
+			name = 'map_keys'
 		}
 	}
 	if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__')
