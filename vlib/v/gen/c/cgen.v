@@ -4576,10 +4576,15 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 						g.expr(branch.cond.expr)
 						g.writeln(', ${var_name}.state == 0) {')
 					}
-					if branch.cond.var_name != '_' {
+					if short_opt || branch.cond.var_name != '_' {
 						base_type := g.base_type(branch.cond.expr_type)
 						if short_opt {
-							g.write('\t$base_type $branch.cond.var_name = ')
+							cond_var_name := if branch.cond.var_name == '_' {
+								'_dummy_${g.tmp_count + 1}'
+							} else {
+								branch.cond.var_name
+							}
+							g.write('\t$base_type $cond_var_name = ')
 							g.expr(branch.cond.expr)
 							g.writeln(';')
 						} else {
