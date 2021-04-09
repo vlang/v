@@ -77,6 +77,13 @@ fn restore_codepage() {
 	C.SetConsoleOutputCP(g_original_codepage)
 }
 
+fn is_atty(fd int) int {
+	mut mode := u32(0)
+	osfh := voidptr(C._get_osfhandle(fd))
+	C.GetConsoleMode(osfh, voidptr(&mode))
+	return int(mode)
+}
+
 fn builtin_init() {
 	g_original_codepage = C.GetConsoleOutputCP()
 	C.SetConsoleOutputCP(C.CP_UTF8)
