@@ -4222,6 +4222,11 @@ fn bar() {
 	foo() // will not be called if `-d debug` is not passed
 }
 
+// The memory pointed to by the pointer arguments of this function will not be
+// freed by the garbage collector (if in use) before the function returns
+[keep_args_alive]
+fn C.my_external_function(voidptr, int, voidptr) int
+
 // Calls to following function must be in unsafe{} blocks.
 // Note that the code in the body of `risky_business()` will still be
 // checked, unless you also wrap it in `unsafe {}` blocks.
