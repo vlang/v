@@ -1264,7 +1264,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			}
 		}
 		ast.TypeDecl {
-			g.writeln('// TypeDecl')
+			if !g.pref.skip_unused {
+				g.writeln('// TypeDecl')
+			}
 		}
 	}
 	if !g.skip_stmt_pos { // && g.stmt_path_pos.len > 0 {
@@ -1793,6 +1795,9 @@ fn ctoslit(s string) string {
 }
 
 fn (mut g Gen) gen_attrs(attrs []ast.Attr) {
+	if g.pref.skip_unused {
+		return
+	}
 	for attr in attrs {
 		g.writeln('// Attr: [$attr.name]')
 	}
