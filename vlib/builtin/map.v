@@ -351,7 +351,8 @@ fn new_map_2(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn MapEqF
 }
 
 fn new_map_init(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_fn MapFreeFn, n int, key_bytes int, value_bytes int, keys voidptr, values voidptr) map {
-	return new_map_init_2(hash_fn, key_eq_fn, clone_fn, free_fn, n, key_bytes, value_bytes, keys, values)
+	return new_map_init_2(hash_fn, key_eq_fn, clone_fn, free_fn, n, key_bytes, value_bytes,
+		keys, values)
 }
 
 fn new_map_init_2(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_fn MapFreeFn, n int, key_bytes int, value_bytes int, keys voidptr, values voidptr) map {
