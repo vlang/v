@@ -7,7 +7,7 @@ const (
 )
 
 pub fn mm_pages(size u64) u32 {
-	pages := (size + u64(4) + page_size) / page_size
+	pages := (size + u64(4) + u64(Linux_mem.page_size)) / u64(Linux_mem.page_size)
 	return u32(pages)
 }
 

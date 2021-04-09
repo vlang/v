@@ -128,3 +128,11 @@ fn memcmp(_a &C.void, _b &C.void, n int) int {
 fn __free(ptr voidptr) {
 	assert mm_free(ptr) == .enoerror
 }
+
+fn vsprintf(str &char, format &char, ap &byte) int {
+	panic('string interpolation is not supported in `-freestanding`')
+}
+
+fn vsnprintf(str &char, size size_t, format &char, ap &byte) int {
+	panic('string interpolation is not supported in `-freestanding`')
+}
