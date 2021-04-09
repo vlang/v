@@ -195,7 +195,7 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 	// if g.pref.show_cc && it.is_builtin {
 	// println(name)
 	// }
-	// type_name := g.table.Type_to_str(it.return_type)
+	// type_name := g.ast.Type_to_str(it.return_type)
 	// Live functions are protected by a mutex, because otherwise they
 	// can be changed by the live reload thread, *while* they are
 	// running, with unpredictable results (usually just crashing).
@@ -494,7 +494,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.expr(node.left)
 		dot := if node.left_type.is_ptr() { '->' } else { '.' }
 		mname := c_name(node.name)
-		g.write('${dot}_interface_idx]._method_${mname}(')
+		g.write('${dot}_typ]._method_${mname}(')
 		g.expr(node.left)
 		g.write('${dot}_object')
 		if node.args.len > 0 {
@@ -578,7 +578,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.write('tos3( /* $left_sym.name */ v_typeof_interface_${typ_sym.cname}( (')
 		g.expr(node.left)
 		dot := if node.left_type.is_ptr() { '->' } else { '.' }
-		g.write(')${dot}_interface_idx ))')
+		g.write(')${dot}_typ ))')
 		return
 	}
 	if node.name == 'str' {

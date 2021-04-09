@@ -644,9 +644,9 @@ fn (mut g Gen) gen_str_for_interface(info ast.Interface, styp string, str_fn_nam
 		deref := if sym_has_str_method && str_method_expects_ptr { ' ' } else { '*' }
 		value_fmt := if typ == ast.string_type { "'%.*s\\000'" } else { '%.*s\\000' }
 
-		g.auto_str_funcs.write_string('\tif (x._interface_idx == _${styp}_${subtype.cname}_index)')
+		g.auto_str_funcs.write_string('\tif (x._typ == _${styp}_${subtype.cname}_index)')
 		g.auto_str_funcs.write_string(' return _STR("${clean_interface_v_type_name}($value_fmt)", 2, ')
-		g.auto_str_funcs.write_string('${func_name}(${deref}($subtype.cname*)x._object')
+		g.auto_str_funcs.write_string('${func_name}(${deref}($subtype.cname*)x._$subtype.cname')
 		if should_use_indent_func(subtype.kind) && !sym_has_str_method {
 			g.auto_str_funcs.write_string(', indent_count')
 		}

@@ -2350,9 +2350,7 @@ fn (mut c Checker) type_implements(typ ast.Type, inter_typ ast.Type, pos token.P
 			c.error("`$styp` doesn't implement field `$ifield.name` of interface `$inter_sym.name`",
 				pos)
 		}
-		if utyp !in inter_sym.info.types && typ_sym.kind != .interface_ {
-			inter_sym.info.types << utyp
-		}
+		inter_sym.info.types << utyp
 	}
 	return true
 }
@@ -2593,10 +2591,10 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) ast.Typ
 			c.error('field `${sym.name}.$field_name` is not public', selector_expr.pos)
 		}
 		field_sym := c.table.get_type_symbol(field.typ)
-		if field_sym.kind == .sum_type {
+		if field_sym.kind in [.sum_type, .interface_] {
 			if !prevent_sum_type_unwrapping_once {
 				if scope_field := selector_expr.scope.find_struct_field(utyp, field_name) {
-					return scope_field.sum_type_casts.last()
+					return scope_field.smartcasts.last()
 				}
 			}
 		}
@@ -3729,9 +3727,8 @@ fn (mut c Checker) for_stmt(mut node ast.ForStmt) {
 				left_type := c.expr(infix.left)
 				left_sym := c.table.get_type_symbol(left_type)
 				if is_variable {
-					if left_sym.kind == .sum_type {
-						c.smartcast_sumtype(infix.left, infix.left_type, right_expr.typ, mut
-							node.scope)
+					if left_sym.kind in [.sum_type, .interface_] {
+						c.smartcast(infix.left, infix.left_type, right_expr.typ, mut node.scope)
 					}
 				}
 			}
@@ -4658,10 +4655,10 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) ast.Type {
 						c.error('undefined variable `$ident.name` (used before declaration)',
 							ident.pos)
 					}
-					is_sum_type_cast := obj.sum_type_casts.len != 0
+					is_sum_type_cast := obj.smartcasts.len != 0
 						&& !c.prevent_sum_type_unwrapping_once
 					c.prevent_sum_type_unwrapping_once = false
-					mut typ := if is_sum_type_cast { obj.sum_type_casts.last() } else { obj.typ }
+					mut typ := if is_sum_type_cast { obj.smartcasts.last() } else { obj.typ }
 					if typ == 0 {
 						if mut obj.expr is ast.Ident {
 							if obj.expr.kind == .unresolved {
@@ -4988,9 +4985,9 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 			}
 			branch_exprs[key] = val + 1
 		}
-		// when match is sum type matching, then register smart cast for every branch
+		// when match is type matching, then register smart cast for every branch
 		if expr_types.len > 0 {
-			if cond_type_sym.kind == .sum_type {
+			if cond_type_sym.kind in [.sum_type, .interface_] {
 				mut expr_type := ast.Type(0)
 				if expr_types.len > 1 {
 					mut agg_name := strings.new_builder(20)
@@ -5025,7 +5022,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				} else {
 					expr_type = expr_types[0].typ
 				}
-				c.smartcast_sumtype(node.cond, node.cond_type, expr_type, mut branch.scope)
+				c.smartcast(node.cond, node.cond_type, expr_type, mut branch.scope)
 			}
 		}
 	}
@@ -5106,11 +5103,13 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 }
 
 // smartcast takes the expression with the current type which should be smartcasted to the target type in the given scope
-fn (c &Checker) smartcast_sumtype(expr ast.Expr, cur_type ast.Type, to_type ast.Type, mut scope ast.Scope) {
-	match mut expr {
+fn (c Checker) smartcast(expr ast.Expr, cur_type ast.Type, to_type_ ast.Type, mut scope ast.Scope) {
+	sym := c.table.get_type_symbol(cur_type)
+	to_type := if sym.kind == .interface_ { to_type_.to_ptr() } else { to_type_ }
+	match expr {
 		ast.SelectorExpr {
 			mut is_mut := false
-			mut sum_type_casts := []ast.Type{}
+			mut smartcasts := []ast.Type{}
 			expr_sym := c.table.get_type_symbol(expr.expr_type)
 			mut orig_type := 0
 			if field := c.table.find_field(expr_sym, expr.field_name) {
@@ -5125,16 +5124,16 @@ fn (c &Checker) smartcast_sumtype(expr ast.Expr, cur_type ast.Type, to_type ast.
 				}
 			}
 			if field := scope.find_struct_field(expr.expr_type, expr.field_name) {
-				sum_type_casts << field.sum_type_casts
+				smartcasts << field.smartcasts
 			}
 			// smartcast either if the value is immutable or if the mut argument is explicitly given
 			if !is_mut || expr.is_mut {
-				sum_type_casts << to_type
+				smartcasts << to_type
 				scope.register_struct_field(ast.ScopeStructField{
 					struct_type: expr.expr_type
 					name: expr.field_name
 					typ: cur_type
-					sum_type_casts: sum_type_casts
+					smartcasts: smartcasts
 					pos: expr.pos
 					orig_type: orig_type
 				})
@@ -5142,12 +5141,12 @@ fn (c &Checker) smartcast_sumtype(expr ast.Expr, cur_type ast.Type, to_type ast.
 		}
 		ast.Ident {
 			mut is_mut := false
-			mut sum_type_casts := []ast.Type{}
+			mut smartcasts := []ast.Type{}
 			mut is_already_casted := false
 			mut orig_type := 0
 			if mut expr.obj is ast.Var {
 				is_mut = expr.obj.is_mut
-				sum_type_casts << expr.obj.sum_type_casts
+				smartcasts << expr.obj.smartcasts
 				is_already_casted = expr.obj.pos.pos == expr.pos.pos
 				if orig_type == 0 {
 					orig_type = expr.obj.typ
@@ -5155,14 +5154,14 @@ fn (c &Checker) smartcast_sumtype(expr ast.Expr, cur_type ast.Type, to_type ast.
 			}
 			// smartcast either if the value is immutable or if the mut argument is explicitly given
 			if (!is_mut || expr.is_mut) && !is_already_casted {
-				sum_type_casts << to_type
+				smartcasts << to_type
 				scope.register(ast.Var{
 					name: expr.name
 					typ: cur_type
 					pos: expr.pos
 					is_used: true
 					is_mut: expr.is_mut
-					sum_type_casts: sum_type_casts
+					smartcasts: smartcasts
 					orig_type: orig_type
 				})
 			}
@@ -5378,29 +5377,8 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						}
 						if is_variable {
 							if left_sym.kind in [.interface_, .sum_type] {
-								if branch.cond.left is ast.Ident && left_sym.kind == .interface_ {
-									// TODO: rewrite interface smartcast
-									left := branch.cond.left as ast.Ident
-									mut is_mut := false
-									mut sum_type_casts := []ast.Type{}
-									if v := branch.scope.find_var(left.name) {
-										is_mut = v.is_mut
-										sum_type_casts << v.sum_type_casts
-									}
-									branch.scope.register(ast.Var{
-										name: left.name
-										typ: right_expr.typ.to_ptr()
-										sum_type_casts: sum_type_casts
-										pos: left.pos
-										is_used: true
-										is_mut: is_mut
-									})
-									// TODO: needs to be removed
-									node.branches[i].smartcast = true
-								} else {
-									c.smartcast_sumtype(branch.cond.left, branch.cond.left_type,
-										right_expr.typ, mut branch.scope)
-								}
+								c.smartcast(branch.cond.left, branch.cond.left_type, right_expr.typ, mut
+									branch.scope)
 							}
 						}
 					}
