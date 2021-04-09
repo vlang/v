@@ -86,8 +86,10 @@ fn (mut g Gen) process_fn_decl(node ast.FnDecl) {
 	if skip {
 		g.out.go_back_to(pos)
 	}
-	if node.language != .c {
-		g.writeln('')
+	if !g.pref.skip_unused {
+		if node.language != .c {
+			g.writeln('')
+		}
 	}
 }
 

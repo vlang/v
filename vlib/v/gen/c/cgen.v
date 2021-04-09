@@ -670,6 +670,7 @@ static inline $opt_el_type __Option_${styp}_popval($styp ch) {
 fn (mut g Gen) register_chan_push_optional_call(el_type string, styp string) {
 	if styp !in g.chan_push_optionals {
 		g.chan_push_optionals << styp
+		g.register_optional(ast.void_type.set_flag(.optional))
 		g.channel_definitions.writeln('
 static inline Option_void __Option_${styp}_pushval($styp ch, $el_type e) {
 	if (sync__Channel_try_push_priv(ch, &e, false)) {
@@ -1264,7 +1265,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			}
 		}
 		ast.TypeDecl {
-			g.writeln('// TypeDecl')
+			if !g.pref.skip_unused {
+				g.writeln('// TypeDecl')
+			}
 		}
 	}
 	if !g.skip_stmt_pos { // && g.stmt_path_pos.len > 0 {
@@ -1793,6 +1796,9 @@ fn ctoslit(s string) string {
 }
 
 fn (mut g Gen) gen_attrs(attrs []ast.Attr) {
+	if g.pref.skip_unused {
+		return
+	}
 	for attr in attrs {
 		g.writeln('// Attr: [$attr.name]')
 	}
@@ -4570,10 +4576,15 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 						g.expr(branch.cond.expr)
 						g.writeln(', ${var_name}.state == 0) {')
 					}
-					if branch.cond.var_name != '_' {
+					if short_opt || branch.cond.var_name != '_' {
 						base_type := g.base_type(branch.cond.expr_type)
 						if short_opt {
-							g.write('\t$base_type $branch.cond.var_name = ')
+							cond_var_name := if branch.cond.var_name == '_' {
+								'_dummy_${g.tmp_count + 1}'
+							} else {
+								branch.cond.var_name
+							}
+							g.write('\t$base_type $cond_var_name = ')
 							g.expr(branch.cond.expr)
 							g.writeln(';')
 						} else {

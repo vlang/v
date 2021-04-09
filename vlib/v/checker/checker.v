@@ -5116,9 +5116,10 @@ fn (c Checker) smartcast(expr ast.Expr, cur_type ast.Type, to_type_ ast.Type, mu
 			mut orig_type := 0
 			if field := c.table.find_field(expr_sym, expr.field_name) {
 				if field.is_mut {
-					root_ident := expr.root_ident()
-					if v := scope.find_var(root_ident.name) {
-						is_mut = v.is_mut
+					if root_ident := expr.root_ident() {
+						if v := scope.find_var(root_ident.name) {
+							is_mut = v.is_mut
+						}
 					}
 				}
 				if orig_type == 0 {
