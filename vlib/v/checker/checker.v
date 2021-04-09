@@ -5359,7 +5359,19 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			} else if !is_comptime_type_is_expr {
 				found_branch = true // If a branch wasn't skipped, the rest must be
 			}
-			if !c.skip_flags || c.pref.output_cross_c {
+			if !c.skip_flags {
+				c.stmts(branch.stmts)
+			} else if c.pref.output_cross_c {
+				mut is_freestanding_block := false
+				if branch.cond is ast.Ident {
+					if branch.cond.name == 'freestanding' {
+						is_freestanding_block = true
+					}
+				}
+				if is_freestanding_block {
+					branch.stmts = []
+					node.branches[i].stmts = []
+				}
 				c.stmts(branch.stmts)
 			} else if !is_comptime_type_is_expr {
 				node.branches[i].stmts = []
@@ -5594,7 +5606,7 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 					'glibc' { return false } // TODO
 					'prealloc' { return !c.pref.prealloc }
 					'no_bounds_checking' { return cond.name !in c.pref.compile_defines_all }
-					'freestanding' { return !c.pref.is_bare }
+					'freestanding' { return !c.pref.is_bare || c.pref.output_cross_c }
 					else { return false }
 				}
 			} else if cond.name !in c.pref.compile_defines_all {
