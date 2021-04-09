@@ -8,7 +8,7 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 	files.sort()
 	mut all_v_files := []string{}
 	for file in files {
-		if os.join_path(dir, file).ends_with('/vlib/builtin/builtin_nix.c.v') && prefs.is_bare {
+		if prefs.is_bare && os.join_path(dir, file).ends_with('/vlib/builtin/builtin_nix.c.v') {
 			continue
 		}
 		if !file.ends_with('.v') && !file.ends_with('.vh') {
@@ -126,7 +126,7 @@ pub fn (prefs &Preferences) should_compile_c(file string) bool {
 	if prefs.os == .all {
 		return true
 	}
-	if file.ends_with('.freestanding.v') && !prefs.is_bare {
+	if !prefs.is_bare && file.ends_with('.freestanding.v') {
 		return false
 	}
 	if (file.ends_with('_windows.c.v') || file.ends_with('_windows.v')) && prefs.os != .windows {
