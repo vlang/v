@@ -130,6 +130,9 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		// eprintln('-usecache and -shared flags are not compatible')
 		p.use_cache = false
 	}
+	if p.bare_builtin_dir == '' {
+		p.bare_builtin_dir = os.join_path(p.vroot, 'vlib', 'builtin', 'linux_bare')
+	}
 }
 
 fn (mut p Preferences) find_cc_if_cross_compiling() {
