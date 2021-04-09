@@ -261,7 +261,7 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) ?Res
 	return error('http.request.method_and_url_to_response: unsupported scheme: "$scheme"')
 }
 
-fn parse_response(resp string) Response {
+pub fn parse_response(resp string) Response {
 	mut header := new_header()
 	// TODO: Cookie data type
 	mut cookies := map[string]string{}
