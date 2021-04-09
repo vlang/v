@@ -22,4 +22,8 @@ fn test_negative() {
 	foo := Foo{1}
 	assert -foo.value() == -1
 	assert -(foo.value()) == -1
+
+	arr := [1, 2, 3]
+	assert -arr[0] == -1
+	assert -arr[1] == -2
 }
