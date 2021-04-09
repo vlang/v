@@ -2955,12 +2955,14 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		// function type: `type mycallback = fn(string, int)`
 		fn_name := p.prepend_mod(name)
 		fn_type := p.parse_fn_type(fn_name)
+		type_pos = type_pos.extend(p.tok.position())
 		comments = p.eat_comments(same_line: true)
 		return ast.FnTypeDecl{
 			name: fn_name
 			is_pub: is_pub
 			typ: fn_type
 			pos: decl_pos
+			type_pos: type_pos
 			comments: comments
 		}
 	}
@@ -3045,6 +3047,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		name: name
 		is_pub: is_pub
 		parent_type: parent_type
+		type_pos: type_pos
 		pos: decl_pos
 		comments: comments
 	}
