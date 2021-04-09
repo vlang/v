@@ -507,11 +507,7 @@ fn (mut p Parser) prefix_expr() ast.PrefixExpr {
 	// p.warn('unsafe')
 	// }
 	p.next()
-	mut right := if op == .minus {
-		p.expr(int(token.Precedence.call))
-	} else {
-		p.expr(int(token.Precedence.prefix))
-	}
+	mut right := p.expr(int(token.Precedence.prefix))
 	p.is_amp = false
 	if mut right is ast.CastExpr {
 		right.in_prexpr = true
