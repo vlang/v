@@ -1,9 +1,5 @@
 module builtin
 
-fn builtin_init() {
-	// Do nothing
-}
-
 [unsafe]
 pub fn memcpy(dest0 &C.void, src0 &C.void, n int) &C.void {
 	unsafe {

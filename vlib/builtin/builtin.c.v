@@ -18,12 +18,17 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 	// module is less likely to change than function, etc...
 	// During edits, the line number will change most frequently,
 	// so it is last
-	eprintln('================ V panic ================')
-	eprintln('   module: $mod')
-	eprintln(' function: ${fn_name}()')
-	eprintln('  message: $s')
-	eprintln('     file: $file:$line_no')
-	eprintln('=========================================')
+	$if !freestanding {
+		eprintln('================ V panic ================')
+		eprintln('   module: $mod')
+		eprintln(' function: ${fn_name}()')
+		eprintln('  message: $s')
+		eprintln('     file: $file:$line_no')
+		eprintln('=========================================')
+	} $else {
+		eprint('V panic: ')
+		eprintln(s)
+	}
 	$if exit_after_panic_message ? {
 		C.exit(1)
 	} $else {
@@ -238,10 +243,12 @@ pub fn malloc(n int) &byte {
 			mut e := Errno{}
 			res, e = mm_alloc(sizeof(MallocInfo) + u64(n))
 			if e != .enoerror {
-				panic('malloc($n) failed: $e')
+				eprint('malloc() failed: ')
+				eprintln(e.str())
+				panic('malloc() failed')
 			}
 			if res == 0 { // check before setting MallocInfo
-				panic('malloc($n) failed, and failed to give an error')
+				panic('malloc() failed, and failed to give an error')
 			}
 			mut mlcinfo := unsafe { &MallocInfo(res) }
 			mlcinfo.size = n

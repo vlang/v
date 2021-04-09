@@ -8,9 +8,6 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 	files.sort()
 	mut all_v_files := []string{}
 	for file in files {
-		if prefs.is_bare && os.join_path(dir, file).ends_with('/vlib/builtin/builtin_nix.c.v') {
-			continue
-		}
 		if !file.ends_with('.v') && !file.ends_with('.vh') {
 			continue
 		}

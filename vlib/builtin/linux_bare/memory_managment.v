@@ -6,12 +6,12 @@ const (
 	page_size = u64(Linux_mem.page_size)
 )
 
-pub fn mm_pages(size u64) u32 {
+fn mm_pages(size u64) u32 {
 	pages := (size + u64(4) + u64(Linux_mem.page_size)) / u64(Linux_mem.page_size)
 	return u32(pages)
 }
 
-pub fn mm_alloc(size u64) (&byte, Errno) {
+fn mm_alloc(size u64) (&byte, Errno) {
 	pages := mm_pages(size)
 	n_bytes := u64(pages * u32(Linux_mem.page_size))
 
@@ -26,7 +26,7 @@ pub fn mm_alloc(size u64) (&byte, Errno) {
 	return &byte(0), e
 }
 
-pub fn mm_free(addr &byte) Errno {
+fn mm_free(addr &byte) Errno {
 	unsafe {
 		ap := &int(addr - 4)
 		size := u64(*ap) * u64(Linux_mem.page_size)
