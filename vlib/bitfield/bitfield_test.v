@@ -20,9 +20,14 @@ fn test_bf_insert_extract() {
 	mut instance := bitfield.new(11)
 	instance.set_all()
 	instance.insert(2, 9, 3)
-	assert instance.extract(2, 1) == 1
-	assert instance.extract(2, 8) == 3
-	assert instance.extract(10, 1) == 0
+	assert instance.extract(2, 1) == 0
+	assert instance.extract(2, 8) == 1
+	assert instance.extract(10, 1) == 1
+	instance.set_all()
+	instance.insert_lowest_bits_first(2, 9, 3)
+	assert instance.extract_lowest_bits_first(2, 1) == 1
+	assert instance.extract_lowest_bits_first(2, 8) == 3
+	assert instance.extract_lowest_bits_first(10, 1) == 0
 }
 
 fn test_bf_and_not_or_xor() {

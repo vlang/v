@@ -139,7 +139,43 @@ pub fn (mut instance BitField) clear_bit(bitnr int) {
 
 // extract returns the value converted from a slice of bit numbers
 // from 'start' by the length of 'len'.
+// 0101 (1, 2) => 0b10
 pub fn (instance BitField) extract(start int, len int) u64 {
+	// panic?
+	if start < 0 {
+		return 0
+	}
+	mut output := u64(0)
+	for i in 0 .. len {
+		output |= u64(instance.get_bit(start + len - i - 1)) << i
+	}
+	return output
+}
+
+// insert sets bit numbers from 'start' to 'len' length with
+// the value converted from the number 'value'.
+// 0000 (1, 2, 0b10) => 0100
+pub fn (mut instance BitField) insert<T>(start int, len int, _value T) {
+	// panic?
+	if start < 0 {
+		return
+	}
+	mut value := _value
+	for i in 0 .. len {
+		pos := start + len - i - 1
+		if value & 1 == 1 {
+			instance.set_bit(pos)
+		} else {
+			instance.clear_bit(pos)
+		}
+		value >>= 1
+	}
+}
+
+// extract returns the value converted from a slice of bit numbers
+// from 'start' by the length of 'len'.
+// 0101 (1, 2) => 0b01
+pub fn (instance BitField) extract_lowest_bits_first(start int, len int) u64 {
 	// panic?
 	if start < 0 {
 		return 0
@@ -153,7 +189,8 @@ pub fn (instance BitField) extract(start int, len int) u64 {
 
 // insert sets bit numbers from 'start' to 'len' length with
 // the value converted from the number 'value'.
-pub fn (mut instance BitField) insert<T>(start int, len int, _value T) {
+// 0000 (1, 2, 0b10) => 0010
+pub fn (mut instance BitField) insert_lowest_bits_first<T>(start int, len int, _value T) {
 	// panic?
 	if start < 0 {
 		return
