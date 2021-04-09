@@ -670,6 +670,7 @@ static inline $opt_el_type __Option_${styp}_popval($styp ch) {
 fn (mut g Gen) register_chan_push_optional_call(el_type string, styp string) {
 	if styp !in g.chan_push_optionals {
 		g.chan_push_optionals << styp
+		g.register_optional(ast.void_type.set_flag(.optional))
 		g.channel_definitions.writeln('
 static inline Option_void __Option_${styp}_pushval($styp ch, $el_type e) {
 	if (sync__Channel_try_push_priv(ch, &e, false)) {
