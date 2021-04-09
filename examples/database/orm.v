@@ -40,6 +40,8 @@ fn main() {
 		select from Module where id == 1
 	}
 
+	eprintln(modul)
+
 	mysql()
 }
 

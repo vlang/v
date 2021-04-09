@@ -425,7 +425,6 @@ fn (mut g Gen) mysql_select_expr(node ast.SqlExpr, sub bool, line string, typ Sq
 	g.writeln('";')
 	g.writeln('string $stmt_name = tos_clone(${stmt_name}_raw);')
 	if g.sql_idents.len > 0 {
-		mut rpl := []string{}
 		vals := g.new_tmp_var()
 		g.writeln('Array_string $vals = __new_array_with_default(0, 0, sizeof(string), 0);')
 		for i, ident in g.sql_idents {
