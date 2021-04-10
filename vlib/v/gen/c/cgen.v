@@ -1232,7 +1232,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				g.writeln('// ast.Return free_end2')
 			}
 			*/
-			g.return_statement(node)
+			g.return_stmt(node)
 		}
 		ast.SqlStmt {
 			g.sql_stmt(node)
@@ -4630,7 +4630,7 @@ fn (mut g Gen) gen_optional_error(target_type ast.Type, expr ast.Expr) {
 	g.write(' }')
 }
 
-fn (mut g Gen) return_statement(node ast.Return) {
+fn (mut g Gen) return_stmt(node ast.Return) {
 	g.write_v_source_line_info(node.pos)
 	if node.exprs.len > 0 {
 		// skip `retun $vweb.html()`
