@@ -1,6 +1,6 @@
 module test
 
-pub struct Test{
+pub struct Test {
 pub:
 	a string
 }
