@@ -1446,6 +1446,8 @@ fn (mut c Checker) check_return_generics_struct(return_type ast.Type, mut call_e
 					}
 					mut info := rts.info
 					info.generic_types = []
+					info.concrete_types = generic_types.clone()
+					info.parent_type = return_type
 					info.fields = fields
 					stru_idx := c.table.register_type_symbol(ast.TypeSymbol{
 						kind: .struct_
