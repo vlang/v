@@ -178,7 +178,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []ast.Fi
 			if mfn.is_method {
 				method_receiver_typename = table.type_to_str(mfn.receiver.typ)
 			}
-			if k in ['new_map_2', 'new_map_init_2', 'map_hash_string']
+			if k in ['new_map', 'new_map_init', 'map_hash_string']
 				|| method_receiver_typename == '&map' || method_receiver_typename == '&DenseArray'
 				|| k.starts_with('map_') {
 				walker.fn_decl(mut mfn)

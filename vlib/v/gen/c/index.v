@@ -302,12 +302,12 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 	if g.is_assign_lhs && !g.is_arraymap_set && !get_and_set_types {
 		if g.assign_op == .assign || info.value_type == ast.string_type {
 			g.is_arraymap_set = true
-			g.write('map_set_1(')
+			g.write('map_set(')
 		} else {
 			if node.is_setter {
-				g.write('(*(($elem_type_str*)map_get_and_set_1(')
+				g.write('(*(($elem_type_str*)map_get_and_set(')
 			} else {
-				g.write('(*(($elem_type_str*)map_get_1(')
+				g.write('(*(($elem_type_str*)map_get(')
 			}
 		}
 		if !left_is_ptr || node.left_type.has_flag(.shared_f) {
@@ -344,9 +344,9 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 		|| (g.is_assign_lhs && !g.is_arraymap_set && get_and_set_types) {
 		zero := g.type_default(info.value_type)
 		if node.is_setter {
-			g.write('(*($elem_type_str*)map_get_and_set_1(')
+			g.write('(*($elem_type_str*)map_get_and_set(')
 		} else {
-			g.write('(*($elem_type_str*)map_get_1(')
+			g.write('(*($elem_type_str*)map_get(')
 		}
 		if !left_is_ptr {
 			g.write('&')
@@ -368,18 +368,18 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 		tmp_opt := if gen_or { g.new_tmp_var() } else { '' }
 		tmp_opt_ptr := if gen_or { g.new_tmp_var() } else { '' }
 		if gen_or {
-			g.write('$elem_type_str* $tmp_opt_ptr = ($elem_type_str*)/*ee elem_ptr_typ */(map_get_1_check(')
+			g.write('$elem_type_str* $tmp_opt_ptr = ($elem_type_str*)/*ee elem_ptr_typ */(map_get_check(')
 		} else {
 			if g.is_fn_index_call {
 				if elem_typ.info is ast.FnType {
 					g.write('((')
 					g.write_fn_ptr_decl(&elem_typ.info, '')
-					g.write(')(*(voidptr*)map_get_1(')
+					g.write(')(*(voidptr*)map_get(')
 				}
 			} else if elem_typ.kind == .function {
-				g.write('(*(voidptr*)map_get_1(')
+				g.write('(*(voidptr*)map_get(')
 			} else {
-				g.write('(*($elem_type_str*)map_get_1(')
+				g.write('(*($elem_type_str*)map_get(')
 			}
 		}
 		if !left_is_ptr || node.left_type.has_flag(.shared_f) {
