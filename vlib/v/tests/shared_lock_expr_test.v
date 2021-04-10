@@ -67,9 +67,13 @@ fn test_mult_ret_method() {
 }
 
 fn test_shared_lock_map_index_expr() {
-	shared m := map{'qwe': 'asd'}
+	shared m := map{
+		'qwe': 'asd'
+	}
 	for key in ['fdf', 'qwe'] {
-		v := rlock m { m[key] or { 'key not found' } }
+		v := rlock m {
+			m[key] or { 'key not found' }
+		}
 		if key == 'qwe' {
 			assert v == 'asd'
 		} else {
@@ -79,9 +83,11 @@ fn test_shared_lock_map_index_expr() {
 }
 
 fn test_shared_lock_array_index_expr() {
-	shared a := [-12.5 6.25]
+	shared a := [-12.5, 6.25]
 	for i in -2 .. 4 {
-		v := rlock a { a[i] or { 23.75 } }
+		v := rlock a {
+			a[i] or { 23.75 }
+		}
 		if i == 0 {
 			assert v == -12.5
 		} else if i == 1 {
@@ -103,7 +109,9 @@ fn test_shared_lock_chan_rec_expr() {
 	ch <- -13
 	ch.close()
 	for i in 0 .. 3 {
-		v := rlock st { <-ch or { -17 } }
+		v := rlock st {
+			<-ch or { -17 }
+		}
 		if i == 0 {
 			assert v == 7
 		} else if i == 1 {
