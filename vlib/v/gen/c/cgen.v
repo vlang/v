@@ -3827,6 +3827,9 @@ fn (mut g Gen) lock_expr(node ast.LockExpr) {
 	}
 	g.writeln('/*lock*/ {')
 	g.stmts_with_tmp_var(node.stmts, tmp_result)
+	if node.is_expr {
+		g.writeln(';')
+	}
 	g.writeln('}')
 	if node.lockeds.len == 0 {
 		// this should not happen
