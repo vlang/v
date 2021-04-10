@@ -141,7 +141,7 @@ pub fn print(s string) {
 	} $else $if ios {
 		// TODO: Implement a buffer as NSLog doesn't have a "print"
 		C.WrappedNSLog(s.str)
-	}  $else {
+	} $else {
 		C.write(1, s.str, s.len)
 	}
 }
