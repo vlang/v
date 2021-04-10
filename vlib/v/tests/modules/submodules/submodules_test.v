@@ -2,7 +2,7 @@ import submodules
 import submodules.test
 import submodules.test.test2
 
-fn main_test() {
+fn test_main() {
 	println('main')
 	main := submodules.Main{
 		a: 'main'
@@ -14,7 +14,7 @@ fn main_test() {
 	}
 	assert 'test' == test.a
 
-	test2 := test2.Test{
+	test2 := test2.Test2{
 		a: 'test2'
 	}
 	assert 'test2' == test2.a

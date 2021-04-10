@@ -1,6 +1,7 @@
 module submodules
 
 pub struct Main {
+pub:
 	a string
 }
 
