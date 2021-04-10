@@ -1108,7 +1108,9 @@ pub fn (mut t Table) generic_struct_insts_to_concrete() {
 					fields[i] = field
 				}
 				parent_info.generic_types = []
+				parent_info.concrete_types = info.generic_types.clone()
 				parent_info.fields = fields
+				parent_info.parent_type = new_type(info.parent_idx).set_flag(.generic)
 				typ.is_public = true
 				typ.kind = .struct_
 				typ.info = parent_info
