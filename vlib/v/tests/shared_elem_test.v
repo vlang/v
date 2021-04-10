@@ -14,7 +14,9 @@ fn test_shared_struct_auto_struct() {
 	lock a {
 		a.n = 17
 	}
-	r := rlock a { a.n }
+	r := rlock a {
+		a.n
+	}
 	assert r == 17
 }
 
@@ -68,7 +70,9 @@ fn test_shared_auto_init_array() {
 		a << -133.25
 		a << 0.125
 	}
-	r := rlock a { a[1] }
+	r := rlock a {
+		a[1]
+	}
 	assert r == -133.25
 }
 
@@ -104,7 +108,9 @@ fn test_shared_auto_init_map() {
 	lock m {
 		m['xcv'] = -31.125
 	}
-	r := rlock m { m['xcv'] }
+	r := rlock m {
+		m['xcv']
+	}
 	assert r == -31.125
 }
 
