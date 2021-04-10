@@ -4,5 +4,3 @@ module builtin
 $if ios {
 	#include "@VROOT/thirdparty/ios/ios.m"
 }
-
-fn C.WrappedNSLog(str &byte)
