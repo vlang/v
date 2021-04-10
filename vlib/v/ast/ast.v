@@ -77,9 +77,9 @@ pub:
 	expr     Expr
 	pos      token.Position
 	comments []Comment
-	is_expr  bool
 pub mut:
-	typ Type
+	is_expr bool
+	typ     Type
 }
 
 pub struct IntegerLiteral {
