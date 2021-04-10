@@ -3,7 +3,6 @@ type FooBar = Bar | Foo
 pub type PublicBar = Bar | Foo | FooBar
 
 type Uint = byte | u16 | u32 | u64 // This should stay on the same line
-
 type Float = f32 | f64
 
 // Alias type
@@ -14,6 +13,7 @@ pub type Abc = f32
 // Fn type decl
 
 type EmptyFn = fn ()
+
 type OneArgFn = fn (i int)
 
 type TwoDiffArgs = fn (i int, s string) bool

@@ -108,28 +108,28 @@ fn test_a_simple_tcp_client_html_page() {
 }
 
 // net.http client based tests follow:
-fn assert_common_http_headers(x http.Response) {
+fn assert_common_http_headers(x http.Response) ? {
 	assert x.status_code == 200
-	assert x.headers['Server'] == 'VWeb'
-	assert x.headers['Content-Length'].int() > 0
-	assert x.headers['Connection'] == 'close'
+	assert x.header.get(.server) ? == 'VWeb'
+	assert x.header.get(.content_length) ?.int() > 0
+	assert x.header.get(.connection) ? == 'close'
 }
 
-fn test_http_client_index() {
+fn test_http_client_index() ? {
 	x := http.get('http://127.0.0.1:$sport/') or { panic(err) }
-	assert_common_http_headers(x)
-	assert x.headers['Content-Type'] == 'text/plain'
+	assert_common_http_headers(x) ?
+	assert x.header.get(.content_type) ? == 'text/plain'
 	assert x.text == 'Welcome to VWeb'
 }
 
-fn test_http_client_chunk_transfer() {
+fn test_http_client_chunk_transfer() ? {
 	x := http.get('http://127.0.0.1:$sport/chunk') or { panic(err) }
-	assert_common_http_headers(x)
-	assert x.headers['Transfer-Encoding'] == 'chunked'
+	assert_common_http_headers(x) ?
+	assert x.header.get(.transfer_encoding) ? == 'chunked'
 	assert x.text == 'Lorem ipsum dolor sit amet, consetetur sadipscing'
 }
 
-fn test_http_client_404() {
+fn test_http_client_404() ? {
 	url_404_list := [
 		'http://127.0.0.1:$sport/zxcnbnm',
 		'http://127.0.0.1:$sport/JHKAJA',
@@ -141,37 +141,37 @@ fn test_http_client_404() {
 	}
 }
 
-fn test_http_client_simple() {
+fn test_http_client_simple() ? {
 	x := http.get('http://127.0.0.1:$sport/simple') or { panic(err) }
-	assert_common_http_headers(x)
-	assert x.headers['Content-Type'] == 'text/plain'
+	assert_common_http_headers(x) ?
+	assert x.header.get(.content_type) ? == 'text/plain'
 	assert x.text == 'A simple result'
 }
 
-fn test_http_client_html_page() {
+fn test_http_client_html_page() ? {
 	x := http.get('http://127.0.0.1:$sport/html_page') or { panic(err) }
-	assert_common_http_headers(x)
-	assert x.headers['Content-Type'] == 'text/html'
+	assert_common_http_headers(x) ?
+	assert x.header.get(.content_type) ? == 'text/html'
 	assert x.text == '<h1>ok</h1>'
 }
 
-fn test_http_client_settings_page() {
+fn test_http_client_settings_page() ? {
 	x := http.get('http://127.0.0.1:$sport/bilbo/settings') or { panic(err) }
-	assert_common_http_headers(x)
+	assert_common_http_headers(x) ?
 	assert x.text == 'username: bilbo'
 	//
 	y := http.get('http://127.0.0.1:$sport/kent/settings') or { panic(err) }
-	assert_common_http_headers(y)
+	assert_common_http_headers(y) ?
 	assert y.text == 'username: kent'
 }
 
-fn test_http_client_user_repo_settings_page() {
+fn test_http_client_user_repo_settings_page() ? {
 	x := http.get('http://127.0.0.1:$sport/bilbo/gostamp/settings') or { panic(err) }
-	assert_common_http_headers(x)
+	assert_common_http_headers(x) ?
 	assert x.text == 'username: bilbo | repository: gostamp'
 	//
 	y := http.get('http://127.0.0.1:$sport/kent/golang/settings') or { panic(err) }
-	assert_common_http_headers(y)
+	assert_common_http_headers(y) ?
 	assert y.text == 'username: kent | repository: golang'
 	//
 	z := http.get('http://127.0.0.1:$sport/missing/golang/settings') or { panic(err) }
@@ -183,7 +183,7 @@ struct User {
 	age  int
 }
 
-fn test_http_client_json_post() {
+fn test_http_client_json_post() ? {
 	ouser := User{
 		name: 'Bilbo'
 		age: 123
@@ -193,7 +193,7 @@ fn test_http_client_json_post() {
 	$if debug_net_socket_client ? {
 		eprintln('/json_echo endpoint response: $x')
 	}
-	assert x.headers['Content-Type'] == 'application/json'
+	assert x.header.get(.content_type) ? == 'application/json'
 	assert x.text == json_for_ouser
 	nuser := json.decode(User, x.text) or { User{} }
 	assert '$ouser' == '$nuser'
@@ -202,7 +202,7 @@ fn test_http_client_json_post() {
 	$if debug_net_socket_client ? {
 		eprintln('/json endpoint response: $x')
 	}
-	assert x.headers['Content-Type'] == 'application/json'
+	assert x.header.get(.content_type) ? == 'application/json'
 	assert x.text == json_for_ouser
 	nuser2 := json.decode(User, x.text) or { User{} }
 	assert '$ouser' == '$nuser2'

@@ -324,6 +324,10 @@ fn map_free_string(pkey voidptr) {
 fn map_free_nop(_ voidptr) {
 }
 
+fn new_map(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_fn MapFreeFn) map {
+	return new_map_2(key_bytes, value_bytes, hash_fn, key_eq_fn, clone_fn, free_fn)
+}
+
 fn new_map_2(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_fn MapFreeFn) map {
 	metasize := int(sizeof(u32) * (init_capicity + extra_metas_inc))
 	// for now assume anything bigger than a pointer is a string
@@ -344,6 +348,11 @@ fn new_map_2(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn MapEqF
 		clone_fn: clone_fn
 		free_fn: free_fn
 	}
+}
+
+fn new_map_init(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_fn MapFreeFn, n int, key_bytes int, value_bytes int, keys voidptr, values voidptr) map {
+	return new_map_init_2(hash_fn, key_eq_fn, clone_fn, free_fn, n, key_bytes, value_bytes,
+		keys, values)
 }
 
 fn new_map_init_2(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_fn MapFreeFn, n int, key_bytes int, value_bytes int, keys voidptr, values voidptr) map {
@@ -432,6 +441,10 @@ fn (mut m map) ensure_extra_metas(probe_count u32) {
 			panic('Probe overflow')
 		}
 	}
+}
+
+fn (mut m map) set(key voidptr, value voidptr) {
+	m.set_1(key, value)
 }
 
 // Insert new element to the map. The element is inserted if its key is
@@ -531,6 +544,10 @@ fn (mut m map) cached_rehash(old_cap u32) {
 	unsafe { free(old_metas) }
 }
 
+fn (mut m map) get_and_set(key voidptr, zero voidptr) voidptr {
+	return m.get_and_set_1(key, zero)
+}
+
 // This method is used for assignment operators. If the argument-key
 // does not exist in the map, it's added to the map along with the zero/default value.
 // If the key exists, its respective value is returned.
@@ -559,6 +576,10 @@ fn (mut m map) get_and_set_1(key voidptr, zero voidptr) voidptr {
 	return voidptr(0)
 }
 
+fn (m &map) get(key voidptr, zero voidptr) voidptr {
+	return m.get_1(key, zero)
+}
+
 // If `key` matches the key of an element in the container,
 // the method returns a reference to its mapped value.
 // If not, a zero/default value is returned.
@@ -580,6 +601,10 @@ fn (m &map) get_1(key voidptr, zero voidptr) voidptr {
 		}
 	}
 	return zero
+}
+
+fn (m &map) get_check(key voidptr) voidptr {
+	return m.get_1_check(key)
 }
 
 // If `key` matches the key of an element in the container,
@@ -604,6 +629,10 @@ fn (m &map) get_1_check(key voidptr) voidptr {
 		}
 	}
 	return 0
+}
+
+fn (m &map) exists(key voidptr) bool {
+	return m.exists_1(key)
 }
 
 // Checks whether a particular key exists in the map.
@@ -677,22 +706,8 @@ pub fn (mut m map) delete(key voidptr) {
 	}
 }
 
-// bootstrap
-// delete this
-pub fn (m &map) keys() []string {
-	mut keys := []string{len: m.len}
-	mut item := unsafe { &byte(keys.data) }
-	for i := 0; i < m.key_values.len; i++ {
-		if !m.key_values.has_index(i) {
-			continue
-		}
-		unsafe {
-			pkey := m.key_values.key(i)
-			m.clone_fn(item, pkey)
-			item = item + m.key_bytes
-		}
-	}
-	return keys
+fn (m &map) keys() array {
+	return m.keys_1()
 }
 
 // Returns all keys in the map.

@@ -4,8 +4,8 @@ module builtin
 
 $if static_boehm ? {
 	$if macos {
-		#flag -I/opt/homebrew/include
-		#flag   /opt/homebrew/lib/libgc.a
+		#flag -I$first_existing("/opt/homebrew/include",     "/usr/local/include")
+		#flag   $first_existing("/opt/homebrew/lib/libgc.a", "/usr/local/lib/libgc.a")
 	} $else $if linux {
 		#flag -l:libgc.a
 	} $else {
@@ -51,6 +51,9 @@ fn C.GC_enable()
 
 // returns non-zero if GC is disabled
 fn C.GC_is_disabled() int
+
+// protect memory block from being freed before this call
+fn C.GC_reachable_here(voidptr)
 
 // for leak detection it is advisable to do explicit garbage collections
 pub fn gc_check_leaks() {

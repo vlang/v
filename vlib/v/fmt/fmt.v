@@ -1304,6 +1304,7 @@ pub fn (mut f Fmt) fn_type_decl(node ast.FnTypeDecl) {
 	}
 
 	f.comments(node.comments, has_nl: false)
+	f.writeln('')
 }
 
 pub fn (mut f Fmt) sum_type_decl(node ast.SumTypeDecl) {

@@ -575,6 +575,9 @@ fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) ?string 
 		'no_bounds_checking' {
 			return 'CUSTOM_DEFINE_no_bounds_checking'
 		}
+		'freestanding' {
+			return '_VFREESTANDING'
+		}
 		// architectures:
 		'amd64' {
 			return '__V_amd64'

@@ -1,0 +1,7 @@
+cmd/tools/vvet/tests/trailing_space.vv:5: error: Looks like you have trailing whitespace.
+cmd/tools/vvet/tests/trailing_space.vv:6: error: Looks like you have trailing whitespace.
+cmd/tools/vvet/tests/trailing_space.vv:7: error: Looks like you have trailing whitespace.
+cmd/tools/vvet/tests/trailing_space.vv:8: error: Looks like you have trailing whitespace.
+cmd/tools/vvet/tests/trailing_space.vv:9: error: Looks like you have trailing whitespace.
+cmd/tools/vvet/tests/trailing_space.vv:13: error: Looks like you have trailing whitespace.
+cmd/tools/vvet/tests/trailing_space.vv:15: error: Looks like you have trailing whitespace.

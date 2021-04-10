@@ -1376,6 +1376,7 @@ fn (mut s Scanner) vet_error(msg string, fix vet.FixKind) {
 		}
 		kind: .error
 		fix: fix
+		typ: .default
 	}
 	s.vet_errors << ve
 }

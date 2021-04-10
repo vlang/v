@@ -229,6 +229,7 @@ fn (mut vt Vet) error(msg string, line int, fix vet.FixKind) {
 		pos: pos
 		kind: .error
 		fix: fix
+		typ: .default
 	}
 }
 
@@ -242,6 +243,7 @@ fn (mut vt Vet) warn(msg string, line int, fix vet.FixKind) {
 		pos: pos
 		kind: .warning
 		fix: fix
+		typ: .default
 	}
 	if vt.opt.is_werror {
 		w.kind = .error

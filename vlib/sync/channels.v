@@ -138,7 +138,10 @@ fn new_channel_st(n u32, st u32) &Channel {
 }
 
 pub fn (mut ch Channel) close() {
-	C.atomic_store_u16(&ch.closed, 1)
+	open_val := u16(0)
+	if !C.atomic_compare_exchange_strong_u16(&ch.closed, &open_val, 1) {
+		return
+	}
 	mut nulladr := voidptr(0)
 	for !C.atomic_compare_exchange_weak_ptr(&ch.adr_written, &nulladr, voidptr(-1)) {
 		nulladr = voidptr(0)
@@ -162,6 +165,9 @@ pub fn (mut ch Channel) close() {
 	}
 	C.atomic_store_u16(&ch.write_sub_mtx, u16(0))
 	ch.writesem.post()
+	if ch.cap == 0 {
+		C.atomic_store_ptr(&ch.read_adr, voidptr(0))
+	}
 	ch.writesem_im.post()
 }
 

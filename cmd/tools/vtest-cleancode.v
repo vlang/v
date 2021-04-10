@@ -5,7 +5,9 @@ import testing
 import v.util
 
 const (
-	vet_known_failing_exceptions    = []string{}
+	vet_known_failing_exceptions    = [
+		'vlib/v/gen/js/js.v' /* trailing space */,
+	]
 	vet_folders                     = [
 		'vlib/sqlite',
 		'vlib/v',
@@ -115,7 +117,8 @@ fn tsession(vargs string, tool_source string, tool_cmd string, tool_args string,
 }
 
 fn v_test_vetting(vargs string) {
-	vet_session := tsession(vargs, 'vvet', 'v vet', 'vet', vet_folders, vet_known_failing_exceptions)
+	expanded_vet_list := util.find_all_v_files(vet_folders) or { return }
+	vet_session := tsession(vargs, 'vvet', 'v vet', 'vet', expanded_vet_list, vet_known_failing_exceptions)
 	fmt_cmd, fmt_args := if is_fix { 'v fmt -w', 'fmt -w' } else { 'v fmt -verify', 'fmt -verify' }
 	expanded_vfmt_list := util.find_all_v_files(vfmt_verify_list) or { return }
 	verify_session := tsession(vargs, 'vfmt.v', fmt_cmd, fmt_args, expanded_vfmt_list,

@@ -123,19 +123,20 @@ pub mut:
 	// This is on by default, since a vast majority of users do not
 	// work on the builtin module itself.
 	// generating_vh    bool
-	enable_globals bool // allow __global for low level code
-	is_fmt         bool
-	is_vet         bool
-	is_bare        bool
-	no_preludes    bool   // Prevents V from generating preludes in resulting .c files
-	custom_prelude string // Contents of custom V prelude that will be prepended before code in resulting .c files
-	lookup_path    []string
-	output_cross_c bool
-	prealloc       bool
-	vroot          string
-	out_name_c     string // full os.real_path to the generated .tmp.c file; set by builder.
-	out_name       string
-	path           string // Path to file/folder to compile
+	enable_globals   bool // allow __global for low level code
+	is_fmt           bool
+	is_vet           bool
+	is_bare          bool
+	no_preludes      bool   // Prevents V from generating preludes in resulting .c files
+	custom_prelude   string // Contents of custom V prelude that will be prepended before code in resulting .c files
+	lookup_path      []string
+	bare_builtin_dir string // Path to implementation of malloc, memset, etc. Only used if is_bare is true
+	output_cross_c   bool
+	prealloc         bool
+	vroot            string
+	out_name_c       string // full os.real_path to the generated .tmp.c file; set by builder.
+	out_name         string
+	path             string // Path to file/folder to compile
 	// -d vfmt and -d another=0 for `$if vfmt { will execute }` and `$if another ? { will NOT get here }`
 	compile_defines     []string    // just ['vfmt']
 	compile_defines_all []string    // contains both: ['vfmt','another']
@@ -462,6 +463,12 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 				path := cmdline.option(current_args, '-path', '')
 				res.build_options << '$arg "$path"'
 				res.lookup_path = path.replace('|', os.path_delimiter).split(os.path_delimiter)
+				i++
+			}
+			'-bare-builtin-dir' {
+				bare_builtin_dir := cmdline.option(current_args, arg, '')
+				res.build_options << '$arg "$bare_builtin_dir"'
+				res.bare_builtin_dir = bare_builtin_dir
 				i++
 			}
 			'-custom-prelude' {

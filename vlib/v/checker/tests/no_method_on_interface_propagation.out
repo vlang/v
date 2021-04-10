@@ -1,5 +1,5 @@
 vlib/v/checker/tests/no_method_on_interface_propagation.vv:18:5: error: unknown method: `Cat.foo`
-   16 |     mut a := new_animal('persian')
+   16 |     a := new_animal('persian')
    17 |     if a is Cat {
    18 |         a.foo()
       |           ~~~~~

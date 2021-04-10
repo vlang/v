@@ -29,7 +29,7 @@ pub type ScopeObject = AsmRegister | ConstField | GlobalField | Var
 // TODO: replace Param
 pub type Node = CallArg | ConstField | EmptyNode | EnumField | Expr | File | GlobalField |
 	IfBranch | MatchBranch | NodeError | Param | ScopeObject | SelectBranch | Stmt | StructField |
-	StructInitField
+	StructInitField | SumTypeVariant
 
 pub struct TypeNode {
 pub:
@@ -77,9 +77,9 @@ pub:
 	expr     Expr
 	pos      token.Position
 	comments []Comment
-	is_expr  bool
 pub mut:
-	typ Type
+	is_expr bool
+	typ     Type
 }
 
 pub struct IntegerLiteral {
@@ -149,14 +149,18 @@ pub mut:
 }
 
 // root_ident returns the origin ident where the selector started.
-pub fn (e &SelectorExpr) root_ident() Ident {
+pub fn (e &SelectorExpr) root_ident() ?Ident {
 	mut root := e.expr
 	for root is SelectorExpr {
 		// TODO: remove this line
 		selector_expr := root as SelectorExpr
 		root = selector_expr.expr
 	}
-	return root as Ident
+	if root is Ident {
+		return root as Ident
+	}
+
+	return none
 }
 
 // module declaration
@@ -356,6 +360,7 @@ pub:
 	is_main         bool           // true for `fn main()`
 	is_test         bool           // true for `fn test_abcde`
 	is_conditional  bool           // true for `[if abc] fn abc(){}`
+	is_keep_alive   bool           // passed memory must not be freed (by GC) before function returns
 	receiver        StructField    // TODO this is not a struct field
 	receiver_pos    token.Position // `(u User)` in `fn (u User) name()` position
 	is_method       bool
@@ -409,6 +414,7 @@ pub mut:
 	name               string // left.name()
 	is_method          bool
 	is_field           bool // temp hack, remove ASAP when re-impl CallExpr / Selector (joe)
+	is_keep_alive      bool // GC must not free arguments before fn returns
 	args               []CallArg
 	expected_arg_types []Type
 	language           Language
@@ -479,12 +485,12 @@ pub:
 	is_arg          bool // fn args should not be autofreed
 	is_auto_deref   bool
 pub mut:
-	typ            Type
-	orig_type      Type   // original sumtype type; 0 if it's not a sumtype
-	sum_type_casts []Type // nested sum types require nested smart casting, for that a list of types is needed
+	typ        Type
+	orig_type  Type   // original sumtype type; 0 if it's not a sumtype
+	smartcasts []Type // nested sum types require nested smart casting, for that a list of types is needed
 	// TODO: move this to a real docs site later
 	// 10 <- original type (orig_type)
-	//   [11, 12, 13] <- cast order (sum_type_casts)
+	//   [11, 12, 13] <- cast order (smartcasts)
 	//        12 <- the current casted type (typ)
 	pos        token.Position
 	is_used    bool
@@ -499,15 +505,15 @@ pub mut:
 // struct fields change type in scopes
 pub struct ScopeStructField {
 pub:
-	struct_type    Type // type of struct
-	name           string
-	pos            token.Position
-	typ            Type
-	sum_type_casts []Type // nested sum types require nested smart casting, for that a list of types is needed
-	orig_type      Type   // original sumtype type; 0 if it's not a sumtype
+	struct_type Type // type of struct
+	name        string
+	pos         token.Position
+	typ         Type
+	smartcasts  []Type // nested sum types require nested smart casting, for that a list of types is needed
+	orig_type   Type   // original sumtype type; 0 if it's not a sumtype
 	// TODO: move this to a real docs site later
 	// 10 <- original type (orig_type)
-	//   [11, 12, 13] <- cast order (sum_type_casts)
+	//   [11, 12, 13] <- cast order (smartcasts)
 	//        12 <- the current casted type (typ)
 }
 
@@ -691,9 +697,8 @@ pub:
 	body_pos token.Position
 	comments []Comment
 pub mut:
-	stmts     []Stmt
-	smartcast bool // true when cond is `x is SumType`, set in checker.if_expr // no longer needed with union sum types TODO: remove
-	scope     &Scope
+	stmts []Stmt
+	scope &Scope
 }
 
 pub struct UnsafeExpr {
@@ -912,6 +917,7 @@ pub:
 	is_pub      bool
 	parent_type Type
 	pos         token.Position
+	type_pos    token.Position
 	comments    []Comment
 }
 
@@ -939,6 +945,7 @@ pub:
 	is_pub   bool
 	typ      Type
 	pos      token.Position
+	type_pos token.Position
 	comments []Comment
 }
 
@@ -1605,6 +1612,17 @@ pub fn (node Node) position() token.Position {
 				for sym in node.syms {
 					pos = pos.extend(sym.pos)
 				}
+			} else if node is TypeDecl {
+				match node {
+					FnTypeDecl, AliasTypeDecl {
+						pos = pos.extend(node.type_pos)
+					}
+					SumTypeDecl {
+						for variant in node.variants {
+							pos = pos.extend(variant.pos)
+						}
+					}
+				}
 			}
 			if node is AssignStmt {
 				return pos.extend(node.right.last().position())
@@ -1620,8 +1638,12 @@ pub fn (node Node) position() token.Position {
 		StructField {
 			return node.pos.extend(node.type_pos)
 		}
-		MatchBranch, SelectBranch, EnumField, ConstField, StructInitField, GlobalField, CallArg {
+		MatchBranch, SelectBranch, EnumField, ConstField, StructInitField, GlobalField, CallArg,
+		SumTypeVariant {
 			return node.pos
+		}
+		Param {
+			return node.pos.extend(node.type_pos)
 		}
 		IfBranch {
 			return node.pos.extend(node.body_pos)
@@ -1641,9 +1663,6 @@ pub fn (node Node) position() token.Position {
 					}
 				}
 			}
-		}
-		Param {
-			return node.pos.extend(node.type_pos)
 		}
 		File {
 			mut pos := token.Position{}
@@ -1765,6 +1784,11 @@ pub fn (node Node) children() []Node {
 				}
 				children << node.params.map(Node(it))
 				children << node.stmts.map(Node(it))
+			}
+			TypeDecl {
+				if node is SumTypeDecl {
+					children << node.variants.map(Node(it))
+				}
 			}
 			else {}
 		}

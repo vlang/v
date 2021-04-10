@@ -571,7 +571,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	ts.info = info
 	p.top_level_statement_end()
 	p.check(.rcbr)
-	pos.update_last_line(p.prev_tok.line_nr)
+	pos = pos.extend_with_last_line(p.prev_tok.position(), p.prev_tok.line_nr)
 	return ast.InterfaceDecl{
 		name: interface_name
 		fields: fields

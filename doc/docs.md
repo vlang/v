@@ -3147,8 +3147,8 @@ fn test() []int {
 
 (This is still in an alpha state)
 
-V has a built-in ORM (object-relational mapping) which supports SQLite,
-and will soon support MySQL, Postgres, MS SQL, and Oracle.
+V has a built-in ORM (object-relational mapping) which supports SQLite and MySQL,
+but soon it will support Postgres, MS SQL, and Oracle.
 
 V's ORM provides a number of benefits:
 
@@ -3164,20 +3164,26 @@ import sqlite
 
 struct Customer {
 	// struct name has to be the same as the table name (for now)
-	id        int // a field named `id` of integer type must be the first field
-	name      string
+	id        int    [primary; sql: serial] // a field named `id` of integer type must be the first field
+	name      string [nonull]
 	nr_orders int
-	country   string
+	country   string [nonull]
 }
 
 db := sqlite.connect('customers.db') ?
+
+// you can create tables
+// CREATE TABLE IF NOT EXISTS `Customer` (`id` INTEGER PRIMARY KEY, `name` TEXT NOT NULL, `nr_orders` INTEGER, `country` TEXT NOT NULL)
+sql db {
+	create table Customer
+}
+
 // select count(*) from Customer
 nr_customers := sql db {
 	select count from Customer
 }
 println('number of all customers: $nr_customers')
 // V syntax can be used to build queries
-// db.select returns an array
 uk_customers := sql db {
 	select from Customer where country == 'uk' && nr_orders > 0
 }
@@ -3200,7 +3206,7 @@ sql db {
 }
 ```
 
-For more examples, see <a href='https://github.com/vlang/v/blob/master/vlib/orm/orm_test.v'>vlib/orm/orm_test.v</a>.
+For more examples and the docs, see <a href='https://github.com/vlang/v/tree/master/vlib/orm'>vlib/orm</a>.
 
 ## Writing Documentation
 
@@ -3700,8 +3706,8 @@ Full list of builtin options:
 | ---                           | ---               | ---                   | ---                       |
 | `windows`, `linux`, `macos`   | `gcc`, `tinyc`    | `amd64`, `aarch64`    | `debug`, `prod`, `test`   |
 | `mac`, `darwin`, `ios`,       | `clang`, `mingw`  | `x64`, `x32`          | `js`, `glibc`, `prealloc` |
-| `android`,`mach`, `dragonfly` | `msvc`            | `little_endian`       | `no_bounds_checking`      |
-| `gnu`, `hpux`, `haiku`, `qnx` | `cplusplus`       | `big_endian`          | |
+| `android`,`mach`, `dragonfly` | `msvc`            | `little_endian`       | `no_bounds_checking`, `freestanding`    |
+| `gnu`, `hpux`, `haiku`, `qnx` | `cplusplus`       | `big_endian`          |
 | `solaris`, `linux_or_macos`   | | | |
 
 #### $embed_file
@@ -4221,6 +4227,11 @@ fn foo() {
 fn bar() {
 	foo() // will not be called if `-d debug` is not passed
 }
+
+// The memory pointed to by the pointer arguments of this function will not be
+// freed by the garbage collector (if in use) before the function returns
+[keep_args_alive]
+fn C.my_external_function(voidptr, int, voidptr) int
 
 // Calls to following function must be in unsafe{} blocks.
 // Note that the code in the body of `risky_business()` will still be

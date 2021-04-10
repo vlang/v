@@ -447,7 +447,8 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	p.expecting_type = prev_expecting_type
 	if p.pref.is_vet && op in [.key_in, .not_in] && right is ast.ArrayInit
 		&& (right as ast.ArrayInit).exprs.len == 1 {
-		p.vet_error('Use `var == value` instead of `var in [value]`', pos.line_nr, vet.FixKind.vfmt)
+		p.vet_error('Use `var == value` instead of `var in [value]`', pos.line_nr, vet.FixKind.vfmt,
+			.default)
 	}
 	mut or_stmts := []ast.Stmt{}
 	mut or_kind := ast.OrKind.absent
@@ -507,11 +508,7 @@ fn (mut p Parser) prefix_expr() ast.PrefixExpr {
 	// p.warn('unsafe')
 	// }
 	p.next()
-	mut right := if op == .minus {
-		p.expr(int(token.Precedence.call))
-	} else {
-		p.expr(int(token.Precedence.prefix))
-	}
+	mut right := p.expr(int(token.Precedence.prefix))
 	p.is_amp = false
 	if mut right is ast.CastExpr {
 		right.in_prexpr = true

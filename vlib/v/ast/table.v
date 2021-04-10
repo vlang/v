@@ -38,6 +38,7 @@ pub:
 	is_main        bool // `fn main(){}`
 	is_test        bool // `fn test_abc(){}`
 	is_conditional bool // `[if abc]fn(){}`
+	is_keep_alive  bool // passed memory must not be freed (by GC) before function returns
 	no_body        bool // a pure declaration like `fn abc(x int)`; used in .vh files, C./JS. fns.
 	mod            string
 	ctdefine       string // compile time define. "myflag", when [if myflag] tag
@@ -1107,7 +1108,9 @@ pub fn (mut t Table) generic_struct_insts_to_concrete() {
 					fields[i] = field
 				}
 				parent_info.generic_types = []
+				parent_info.concrete_types = info.generic_types.clone()
 				parent_info.fields = fields
+				parent_info.parent_type = new_type(info.parent_idx).set_flag(.generic)
 				typ.is_public = true
 				typ.kind = .struct_
 				typ.info = parent_info
