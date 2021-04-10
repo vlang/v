@@ -91,3 +91,25 @@ fn test_shared_lock_array_index_expr() {
 		}
 	}
 }
+
+struct DummySt {
+	a int
+}
+
+fn test_shared_lock_chan_rec_expr() {
+	ch := chan int{cap: 10}
+	shared st := DummySt{}
+	ch <- 7
+	ch <- -13
+	ch.close()
+	for i in 0 .. 3 {
+		v := rlock st { <-ch or { -17 } }
+		if i == 0 {
+			assert v == 7
+		} else if i == 1 {
+			assert v == -13
+		} else {
+			assert v == -17
+		}
+	}
+}
