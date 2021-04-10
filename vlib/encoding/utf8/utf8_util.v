@@ -87,6 +87,27 @@ pub fn get_uchar(s string, index int) int {
 }
 
 
+// raw_index - get the raw chracter from the string by the given index value.
+// example: '我是V Lang'.raw_index(1) => '是'
+
+pub fn raw_index(s string, index int) string {
+	mut r := []rune{}
+
+	for i := 0; i < s.len; i++ {
+        b := s[i]
+        ch_len := ((0xe5000000>>((b>>3) & 0x1e)) & 3)
+        
+		r << if ch_len > 0 {
+            i += ch_len
+            rune(get_uchar(s,i-ch_len))
+        } else {
+            rune(b)
+        }
+    }
+
+	return r[index].str()
+}
+
 /*
 
 Conversion functions
