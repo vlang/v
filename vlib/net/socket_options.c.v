@@ -23,6 +23,8 @@ pub enum SocketOption {
 	send_timeout = C.SO_SNDTIMEO
 
 	socket_type = C.SO_TYPE
+
+	ipv6_only = C.IPV6_V6ONLY
 }
 
 const (
@@ -51,5 +53,7 @@ const (
 		.send_buf_size,
 		.send_low_size,
 		.send_timeout,
+
+		.ipv6_only
 	]
 )

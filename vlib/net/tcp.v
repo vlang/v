@@ -258,7 +258,7 @@ pub fn (mut c TcpListener) close() ? {
 	return none
 }
 
-pub fn (c &TcpListener) address() ?Addr {
+pub fn (c &TcpListener) addr() ?Addr {
 	return c.sock.address()
 }
 
@@ -292,8 +292,11 @@ fn tcp_socket_from_handle(sockfd int) ?TcpSocket {
 	mut s := TcpSocket{
 		handle: sockfd
 	}
-	// s.set_option_bool(.reuse_addr, true)?
+	//s.set_option_bool(.reuse_addr, true)?
 	s.set_option_int(.reuse_addr, 1) ?
+	s.set_dualstack(true) or { 
+		// Not ipv6, we dont care
+	}
 	$if windows {
 		t := u32(1) // true
 		socket_error(C.ioctlsocket(sockfd, fionbio, &t)) ?
@@ -316,6 +319,11 @@ pub fn (mut s TcpSocket) set_option_bool(opt SocketOption, value bool) ? {
 	return none
 }
 
+pub fn (mut s TcpSocket) set_dualstack(on bool) ? {
+	x := int(!on)
+	socket_error(C.setsockopt(s.handle, C.IPPROTO_IPV6, int(SocketOption.ipv6_only), &x, sizeof(int)))?
+}
+
 pub fn (mut s TcpSocket) set_option_int(opt SocketOption, value int) ? {
 	socket_error(C.setsockopt(s.handle, C.SOL_SOCKET, int(opt), &value, sizeof(int))) ?
 	return none
@@ -335,17 +343,18 @@ const (
 
 fn (mut s TcpSocket) connect(a Addr) ? {
 	res := C.connect(s.handle, &a, a.len())
+
 	if res == 0 {
 		return none
 	}
 	write_result := s.@select(.write, net.connect_timeout) ?
 	if write_result {
-		// Here we need to call connect again to make sure we connected
-		socket_error(C.connect(s.handle, &a, a.len()))?
-
 		// Succeeded
 		return none
 	}
+
+	// Get the error
+	socket_error(C.connect(s.handle, &a, a.len()))?
 
 	// otherwise we timed out
 	return err_connect_timed_out
