@@ -1464,7 +1464,7 @@ fn (mut c Checker) check_return_generics_struct(return_type ast.Type, mut call_e
 pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 	left_type := c.expr(call_expr.left)
 	c.expected_type = left_type
-	is_generic := left_type.has_flag(.generic)
+	mut is_generic := left_type.has_flag(.generic)
 	call_expr.left_type = left_type
 	// Set default values for .return_type & .receiver_type too,
 	// or there will be hard to diagnose 0 type panics in cgen.
@@ -1533,22 +1533,31 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 	} else {
 		// can this logic be moved to ast.type_find_method() so it can be used from anywhere
 		if left_type_sym.info is ast.Struct {
-			mut found_methods := []ast.Fn{}
-			mut embed_of_found_methods := []ast.Type{}
-			for embed in left_type_sym.info.embeds {
-				embed_sym := c.table.get_type_symbol(embed)
-				if m := c.table.type_find_method(embed_sym, method_name) {
-					found_methods << m
-					embed_of_found_methods << embed
+			if left_type_sym.info.parent_type != 0 {
+				type_sym := c.table.get_type_symbol(left_type_sym.info.parent_type)
+				if m := c.table.type_find_method(type_sym, method_name) {
+					method = m
+					has_method = true
+					is_generic = true
 				}
-			}
-			if found_methods.len == 1 {
-				method = found_methods[0]
-				has_method = true
-				is_method_from_embed = true
-				call_expr.from_embed_type = embed_of_found_methods[0]
-			} else if found_methods.len > 1 {
-				c.error('ambiguous method `$method_name`', call_expr.pos)
+			} else {
+				mut found_methods := []ast.Fn{}
+				mut embed_of_found_methods := []ast.Type{}
+				for embed in left_type_sym.info.embeds {
+					embed_sym := c.table.get_type_symbol(embed)
+					if m := c.table.type_find_method(embed_sym, method_name) {
+						found_methods << m
+						embed_of_found_methods << embed
+					}
+				}
+				if found_methods.len == 1 {
+					method = found_methods[0]
+					has_method = true
+					is_method_from_embed = true
+					call_expr.from_embed_type = embed_of_found_methods[0]
+				} else if found_methods.len > 1 {
+					c.error('ambiguous method `$method_name`', call_expr.pos)
+				}
 			}
 		}
 		if left_type_sym.kind == .aggregate {
