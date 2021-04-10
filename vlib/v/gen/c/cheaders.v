@@ -303,7 +303,7 @@ static void* g_live_info = NULL;
 // copy something to the heap
 #define HEAP(type, expr) ((type*)memdup((void*)&((type[]){expr}[0]), sizeof(type)))
 #define _PUSH_MANY(arr, val, tmp, tmp_typ) {tmp_typ tmp = (val); array_push_many(arr, tmp.data, tmp.len);}
-#define _IN_MAP(val, m) map_exists_1(m, val)
+#define _IN_MAP(val, m) map_exists(m, val)
 
 // unsigned/signed comparisons
 static inline bool _us32_gt(uint32_t a, int32_t b) { return a > INT32_MAX || (int32_t)a > b; }
@@ -352,13 +352,13 @@ void _vcleanup();
 //protections that produce different results:
 //1: normal valid behavior
 //2: extra protection against entropy loss (probability=2^-63), aka. "blind multiplication"
-#define WYHASH_CONDOM 1 
+#define WYHASH_CONDOM 1
 #endif
 
 #ifndef WYHASH_32BIT_MUM
 //0: normal version, slow on 32 bit systems
 //1: faster on 32 bit systems but produces different results, incompatible with wy2u0k function
-#define WYHASH_32BIT_MUM 0  
+#define WYHASH_32BIT_MUM 0
 #endif
 
 //includes
@@ -389,7 +389,7 @@ static inline void _wymum(uint64_t *A, uint64_t *B){
 	*A=_wyrot(hl)^hh; *B=_wyrot(lh)^ll;
 	#endif
 #elif defined(__SIZEOF_INT128__)
-	__uint128_t r=*A; r*=*B; 
+	__uint128_t r=*A; r*=*B;
 	#if(WYHASH_CONDOM>1)
 	*A^=(uint64_t)r; *B^=(uint64_t)(r>>64);
 	#else
@@ -461,7 +461,7 @@ static inline uint64_t wyhash(const void *key, size_t len, uint64_t seed, const 
 		else a=b=0;
 	}
 	else{
-		size_t i=len; 
+		size_t i=len;
 		if(_unlikely_(i>48)){
 			uint64_t see1=seed, see2=seed;
 			do{

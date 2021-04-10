@@ -7,7 +7,7 @@ import v.util
 import v.pref
 
 // mark_used walks the AST, starting at main() and marks all used fns transitively
-pub fn mark_used(mut t ast.Table, pref &pref.Preferences, ast_files []ast.File) {
+pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []ast.File) {
 	mut all_fns, all_consts := all_fn_and_const(ast_files)
 
 	util.timing_start(@METHOD)
@@ -100,37 +100,48 @@ pub fn mark_used(mut t ast.Table, pref &pref.Preferences, ast_files []ast.File) 
 		'os.init_os_args_wide',
 	]
 
-	// implicit string builders are generated in auto_eq_methods.v
-	mut sb_mut_type := ''
-	if sbfn := t.find_fn('strings.new_builder') {
-		sb_mut_type = sbfn.return_type.set_nr_muls(1).str() + '.'
-	}
-
-	for k, _ in all_fns {
+	for k, mut mfn in all_fns {
+		mut method_receiver_typename := ''
+		if mfn.is_method {
+			method_receiver_typename = table.type_to_str(mfn.receiver.typ)
+		}
+		if method_receiver_typename == '&wyrand.WyRandRNG' {
+			// WyRandRNG is the default rand pseudo random generator
+			all_fn_root_names << k
+			continue
+		}
+		if method_receiver_typename == '&strings.Builder' {
+			// implicit string builders are generated in auto_eq_methods.v
+			all_fn_root_names << k
+			continue
+		}
 		if k.ends_with('.str') {
 			all_fn_root_names << k
+			continue
 		}
 		if k.ends_with('.init') {
 			all_fn_root_names << k
+			continue
 		}
 		if k.ends_with('.free') {
 			all_fn_root_names << k
+			continue
 		}
 		if k.ends_with('.lock') || k.ends_with('.unlock') || k.ends_with('.rlock')
 			|| k.ends_with('.runlock') {
 			all_fn_root_names << k
+			continue
 		}
 		if pref.is_test {
 			if k.starts_with('test_') || k.contains('.test_') {
 				all_fn_root_names << k
+				continue
 			}
 			if k.starts_with('testsuite_') || k.contains('.testsuite_') {
-				eprintln('>>> test suite: $k')
+				// eprintln('>>> test suite: $k')
 				all_fn_root_names << k
+				continue
 			}
-		}
-		if sb_mut_type != '' && k.starts_with(sb_mut_type) {
-			all_fn_root_names << k
 		}
 	}
 	if pref.is_debug {
@@ -140,7 +151,7 @@ pub fn mark_used(mut t ast.Table, pref &pref.Preferences, ast_files []ast.File) 
 	if pref.is_test {
 		all_fn_root_names << 'main.cb_assertion_ok'
 		all_fn_root_names << 'main.cb_assertion_failed'
-		if benched_tests_sym := t.find_type('main.BenchedTests') {
+		if benched_tests_sym := table.find_type('main.BenchedTests') {
 			bts_type := benched_tests_sym.methods[0].params[0].typ
 			all_fn_root_names << '${bts_type}.testing_step_start'
 			all_fn_root_names << '${bts_type}.testing_step_end'
@@ -150,7 +161,7 @@ pub fn mark_used(mut t ast.Table, pref &pref.Preferences, ast_files []ast.File) 
 	}
 
 	mut walker := Walker{
-		table: t
+		table: table
 		files: ast_files
 		all_fns: all_fns
 		all_consts: all_consts
@@ -163,12 +174,13 @@ pub fn mark_used(mut t ast.Table, pref &pref.Preferences, ast_files []ast.File) 
 	}
 	if walker.n_maps > 0 {
 		for k, mut mfn in all_fns {
-			if k in ['new_map_2', 'new_map_init_2']
-				|| (k.starts_with('map_') || k.ends_with('clone') || k.ends_with('exists_1')
-				|| k.ends_with('keys') || k.ends_with('keys_1') || k.ends_with('get_1')
-				|| k.ends_with('get_1_check') || k.ends_with('set_1') || k.ends_with('key')
-				|| k.ends_with('value') || k.ends_with('has_index') || k.ends_with('expand')
-				|| k.ends_with('zeros_to_end')) {
+			mut method_receiver_typename := ''
+			if mfn.is_method {
+				method_receiver_typename = table.type_to_str(mfn.receiver.typ)
+			}
+			if k in ['new_map', 'new_map_init', 'map_hash_string']
+				|| method_receiver_typename == '&map' || method_receiver_typename == '&DenseArray'
+				|| k.starts_with('map_') {
 				walker.fn_decl(mut mfn)
 			}
 		}
@@ -180,12 +192,12 @@ pub fn mark_used(mut t ast.Table, pref &pref.Preferences, ast_files []ast.File) 
 		}
 	}
 
-	t.used_fns = walker.used_fns.move()
-	t.used_consts = walker.used_consts.move()
+	table.used_fns = walker.used_fns.move()
+	table.used_consts = walker.used_consts.move()
 
 	$if trace_skip_unused ? {
-		eprintln('>> t.used_fns: $t.used_fns.keys()')
-		eprintln('>> t.used_consts: $t.used_consts.keys()')
+		eprintln('>> t.used_fns: $table.used_fns.keys()')
+		eprintln('>> t.used_consts: $table.used_consts.keys()')
 		eprintln('>> walker.n_maps: $walker.n_maps')
 	}
 }

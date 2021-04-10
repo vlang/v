@@ -207,12 +207,16 @@ pub fn parse_vet_file(path string, table_ &ast.Table, pref &pref.Preferences) (a
 		global_scope: global_scope
 	}
 	p.set_path(path)
-	if p.scanner.text.contains('\n  ') {
+	if p.scanner.text.contains_any_substr(['\n  ', ' \n']) {
 		source_lines := os.read_lines(path) or { []string{} }
 		for lnumber, line in source_lines {
 			if line.starts_with('  ') {
 				p.vet_error('Looks like you are using spaces for indentation.', lnumber,
-					.vfmt)
+					.vfmt, .space_indent)
+			}
+			if line.ends_with(' ') {
+				p.vet_error('Looks like you have trailing whitespace.', lnumber, .unknown,
+					.trailing_space)
 			}
 		}
 	}
@@ -617,10 +621,10 @@ pub fn (mut p Parser) comment() ast.Comment {
 	pos.last_line = pos.line_nr + text.count('\n')
 	p.next()
 	is_multi := text.contains('\n')
-	// Filter out space indentation vet errors inside block comments
+	// Filter out false positive space indent vet errors inside comments
 	if p.vet_errors.len > 0 && is_multi {
-		p.vet_errors = p.vet_errors.filter(!(it.pos.line_nr - 1 > pos.line_nr
-			&& it.pos.line_nr - 1 <= pos.last_line))
+		p.vet_errors = p.vet_errors.filter(it.typ != .space_indent
+			|| it.pos.line_nr - 1 > pos.last_line || it.pos.line_nr - 1 <= pos.line_nr)
 	}
 	return ast.Comment{
 		is_multi: is_multi
@@ -1648,7 +1652,7 @@ pub fn (mut p Parser) note_with_pos(s string, pos token.Position) {
 	}
 }
 
-pub fn (mut p Parser) vet_error(msg string, line int, fix vet.FixKind) {
+pub fn (mut p Parser) vet_error(msg string, line int, fix vet.FixKind, typ vet.ErrorType) {
 	pos := token.Position{
 		line_nr: line + 1
 	}
@@ -1658,6 +1662,7 @@ pub fn (mut p Parser) vet_error(msg string, line int, fix vet.FixKind) {
 		pos: pos
 		kind: .error
 		fix: fix
+		typ: typ
 	}
 }
 
@@ -2339,9 +2344,13 @@ fn (mut p Parser) string_expr() ast.Expr {
 	pos.last_line = pos.line_nr + val.count('\n')
 	if p.peek_tok.kind != .str_dollar {
 		p.next()
-		if p.vet_errors.len > 0 && val.contains('\n  ') {
-			p.vet_errors = p.vet_errors.filter(!(it.pos.line_nr > pos.line_nr - 1
-				&& it.pos.line_nr <= pos.last_line - 1))
+		// Filter out false positive vet errors inside strings
+		if p.vet_errors.len > 0 {
+			p.vet_errors = p.vet_errors.filter(
+				(it.typ == .trailing_space && it.pos.line_nr - 1 >= pos.last_line)
+				|| (it.typ != .trailing_space && it.pos.line_nr - 1 > pos.last_line)
+				|| (it.typ == .space_indent && it.pos.line_nr - 1 <= pos.line_nr)
+				|| (it.typ != .space_indent && it.pos.line_nr - 1 < pos.line_nr))
 		}
 		node = ast.StringLiteral{
 			val: val
@@ -2946,12 +2955,14 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		// function type: `type mycallback = fn(string, int)`
 		fn_name := p.prepend_mod(name)
 		fn_type := p.parse_fn_type(fn_name)
+		type_pos = type_pos.extend(p.tok.position())
 		comments = p.eat_comments(same_line: true)
 		return ast.FnTypeDecl{
 			name: fn_name
 			is_pub: is_pub
 			typ: fn_type
 			pos: decl_pos
+			type_pos: type_pos
 			comments: comments
 		}
 	}
@@ -3036,6 +3047,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		name: name
 		is_pub: is_pub
 		parent_type: parent_type
+		type_pos: type_pos
 		pos: decl_pos
 		comments: comments
 	}

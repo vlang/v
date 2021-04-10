@@ -89,6 +89,12 @@ pub fn eprintln(s string) {
 		} else {
 			C.fprintf(C.stderr, c'%.*s\n', s.len, s.str)
 		}
+	} $else $if ios {
+		if s.str == 0 {
+			C.WrappedNSLog(c'eprintln(NIL)\n')
+		} else {
+			C.WrappedNSLog(s.str)
+		}
 	} $else {
 		if s.str == 0 {
 			C.write(2, c'eprintln(NIL)\n', 14)
@@ -110,6 +116,13 @@ pub fn eprint(s string) {
 		} else {
 			C.fprintf(C.stderr, c'%.*s', s.len, s.str)
 		}
+	} $else $if ios {
+		// TODO: Implement a buffer as NSLog doesn't have a "print"
+		if s.str == 0 {
+			C.WrappedNSLog(c'eprint(NIL)')
+		} else {
+			C.WrappedNSLog(s.str)
+		}
 	} $else {
 		if s.str == 0 {
 			C.write(2, c'eprint(NIL)', 11)
@@ -125,6 +138,9 @@ pub fn eprint(s string) {
 pub fn print(s string) {
 	$if android {
 		C.fprintf(C.stdout, c'%.*s', s.len, s.str)
+	} $else $if ios {
+		// TODO: Implement a buffer as NSLog doesn't have a "print"
+		C.WrappedNSLog(s.str)
 	} $else {
 		C.write(1, s.str, s.len)
 	}
@@ -142,6 +158,8 @@ pub fn println(s string) {
 	if s.str == 0 {
 		$if android {
 			C.fprintf(C.stdout, c'println(NIL)\n')
+		} $else $if ios {
+			C.WrappedNSLog(c'println(NIL)')
 		} $else {
 			C.write(1, c'println(NIL)\n', 13)
 		}
@@ -149,6 +167,8 @@ pub fn println(s string) {
 	}
 	$if android {
 		C.fprintf(C.stdout, c'%.*s\n', s.len, s.str)
+	} $else $if ios {
+		C.WrappedNSLog(s.str)
 	} $else {
 		C.write(1, s.str, s.len)
 		C.write(1, c'\n', 1)

@@ -48,7 +48,6 @@ jobs:
       - uses: actions/checkout@v2
       - name: Install dependencies
         run: |
-          sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update;
           sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind
           sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
           ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
@@ -111,7 +110,6 @@ jobs:
       - uses: actions/checkout@v2
       - name: Install dependencies
         run: |
-          sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update;
           sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind
           sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
           sudo apt-get install --quiet -y libgc-dev
@@ -207,8 +205,6 @@ jobs:
   ## C++
       - name: Install C++ dependencies
         run: |
-          sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list;
-          sudo apt-get update;
           sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev
           sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
           sudo apt-get install --quiet -y valgrind g++-9
@@ -225,8 +221,6 @@ jobs:
   ## Cross compilation
       - name: Install dependencies
         run: |
-          sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list
-          sudo apt-get update
           sudo apt install --quiet -y mingw-w64 wine-stable winetricks
       - name: Build V
         run: make -j4
@@ -376,8 +370,6 @@ jobs:
           node-version: 12.x
       - name: Install dependencies
         run: |
-          sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list;
-          sudo apt-get update;
           sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
           sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
           ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
@@ -475,8 +467,6 @@ jobs:
           node-version: 12.x
       - name: Install dependencies
         run: |
-          sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list;
-          sudo apt-get update;
           sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
           sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
           sudo apt-get install clang
@@ -555,8 +545,6 @@ jobs:
           node-version: 12.x
       - name: Install dependencies
         run: |
-          sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list;
-          sudo apt-get update;
           sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
           sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
           sudo apt-get install clang
@@ -565,6 +553,8 @@ jobs:
         run: make -j4 && ./v -cg -cflags -Werror -o v cmd/v
       - name: Self tests (-fsanitize=undefined)
         run: ./v -cflags "-fsanitize=undefined" -o v2 cmd/v && ./v2 -cflags -fsanitize=undefined test-self
+      - name: Build examples (V compiled with -fsanitize=undefined)
+        run: ./v2 build-examples
 
   tests-sanitize-undefined-gcc:
     runs-on: ubuntu-20.04
@@ -578,8 +568,6 @@ jobs:
           node-version: 12.x
       - name: Install dependencies
         run: |
-          sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list;
-          sudo apt-get update;
           sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
           sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
           ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
@@ -587,6 +575,8 @@ jobs:
         run: make -j4 && ./v -cg -cflags -Werror -o v cmd/v
       - name: Self tests (-fsanitize=undefined)
         run: ./v -cflags "-fsanitize=undefined" -o v2 cmd/v && ./v2 -cflags -fsanitize=undefined test-self
+      - name: Build examples (V compiled with -fsanitize=undefined)
+        run: ./v2 build-examples
 
   tests-sanitize-address-clang:
     runs-on: ubuntu-20.04
@@ -600,8 +590,6 @@ jobs:
           node-version: 12.x
       - name: Install dependencies
         run: |
-          sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list;
-          sudo apt-get update;
           sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
           sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
           sudo apt-get install clang
@@ -614,6 +602,8 @@ jobs:
         run:
           ./v -cflags -fsanitize=address -o v cmd/v &&
           ASAN_OPTIONS=detect_leaks=0 ./v -cc tcc test-self -asan-compiler
+      - name: Build examples (V compiled with -fsanitize=address)
+        run: ASAN_OPTIONS=detect_leaks=0 ./v build-examples
 
   tests-sanitize-address-msvc:
     runs-on: windows-2019
@@ -652,8 +642,6 @@ jobs:
           node-version: 12.x
       - name: Install dependencies
         run: |
-          sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list;
-          sudo apt-get update;
           sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
           sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
           sudo apt-get install clang
@@ -666,6 +654,8 @@ jobs:
         run:
           ./v -cflags -fsanitize=address,pointer-compare,pointer-subtract -o v cmd/v &&
           ASAN_OPTIONS=detect_leaks=0 ./v -cc tcc test-self -asan-compiler
+      - name: Build examples (V compiled with -fsanitize=address)
+        run: ASAN_OPTIONS=detect_leaks=0 ./v build-examples
 
   tests-sanitize-memory-clang:
     runs-on: ubuntu-20.04
@@ -679,8 +669,6 @@ jobs:
           node-version: 12.x
       - name: Install dependencies
         run: |
-          sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list;
-          sudo apt-get update;
           sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
           sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
           sudo apt-get install clang
@@ -692,6 +680,8 @@ jobs:
       - name: Self tests (V compiled with -fsanitize=memory)
         run:
           ./v -cflags -fsanitize=memory -o v cmd/v && ./v -cc tcc test-self -msan-compiler
+      - name: Build examples (V compiled with -fsanitize=memory)
+        run: ./v build-examples
   #  ubuntu-autofree-selfcompile:
   #    runs-on: ubuntu-20.04
   #    timeout-minutes: 30
@@ -745,8 +735,6 @@ jobs:
   #         node-version: 12.x
   #     - name: Install dependencies
   #       run: |
-  #          sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list;
-  #          sudo apt-get update;
   #          sudo apt-get install --quiet -y musl musl-tools libssl-dev sqlite3 libsqlite3-dev valgrind
   #          sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
   #     - name: Build v

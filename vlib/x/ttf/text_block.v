@@ -10,7 +10,7 @@ module ttf
 *
 * Note:
 *
-* TODO: 
+* TODO:
 **********************************************************************/
 pub struct Text_block {
 	x         int  // x postion of the left high corner

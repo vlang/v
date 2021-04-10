@@ -715,12 +715,14 @@ pub struct Struct {
 pub:
 	attrs []Attr
 pub mut:
-	embeds        []Type
-	fields        []StructField
-	is_typedef    bool // C. [typedef]
-	is_union      bool
-	is_heap       bool
-	generic_types []Type
+	embeds         []Type
+	fields         []StructField
+	is_typedef     bool // C. [typedef]
+	is_union       bool
+	is_heap        bool
+	generic_types  []Type
+	concrete_types []Type
+	parent_type    Type
 }
 
 // instantiation of a generic struct

@@ -179,6 +179,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	is_direct_arr := p.attrs.contains('direct_array_access')
 	is_conditional, conditional_ctdefine := p.attrs.has_comptime_define()
 	mut is_unsafe := p.attrs.contains('unsafe')
+	is_keep_alive := p.attrs.contains('keep_args_alive')
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
 		p.next()
@@ -192,6 +193,10 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		language = ast.Language.c
 	} else if p.tok.kind == .name && p.tok.lit == 'JS' {
 		language = ast.Language.js
+	}
+	if is_keep_alive && language != .c {
+		p.error_with_pos('attribute [keep_args_alive] is only supported for C functions',
+			p.tok.position())
 	}
 	if language != .v {
 		p.next()
@@ -340,6 +345,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			is_main: is_main
 			is_test: is_test
 			is_conditional: is_conditional
+			is_keep_alive: is_keep_alive
 			ctdefine: conditional_ctdefine
 			no_body: no_body
 			mod: p.mod
@@ -368,6 +374,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			is_main: is_main
 			is_test: is_test
 			is_conditional: is_conditional
+			is_keep_alive: is_keep_alive
 			ctdefine: conditional_ctdefine
 			no_body: no_body
 			mod: p.mod
@@ -410,6 +417,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		is_main: is_main
 		is_test: is_test
 		is_conditional: is_conditional
+		is_keep_alive: is_keep_alive
 		receiver: ast.StructField{
 			name: rec.name
 			typ: rec.typ
@@ -502,6 +510,7 @@ fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInf
 		is_mut: rec.is_mut
 		is_auto_rec: is_auto_rec
 		typ: rec.typ
+		type_pos: rec.type_pos
 	}
 	p.check(.rpar)
 

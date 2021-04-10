@@ -65,3 +65,59 @@ fn test_mult_ret_method() {
 	assert b == 13.125
 	assert c == -7.5
 }
+
+fn test_shared_lock_map_index_expr() {
+	shared m := map{
+		'qwe': 'asd'
+	}
+	for key in ['fdf', 'qwe'] {
+		v := rlock m {
+			m[key] or { 'key not found' }
+		}
+		if key == 'qwe' {
+			assert v == 'asd'
+		} else {
+			assert v == 'key not found'
+		}
+	}
+}
+
+fn test_shared_lock_array_index_expr() {
+	shared a := [-12.5, 6.25]
+	for i in -2 .. 4 {
+		v := rlock a {
+			a[i] or { 23.75 }
+		}
+		if i == 0 {
+			assert v == -12.5
+		} else if i == 1 {
+			assert v == 6.25
+		} else {
+			assert v == 23.75
+		}
+	}
+}
+
+struct DummySt {
+	a int
+}
+
+fn test_shared_lock_chan_rec_expr() {
+	ch := chan int{cap: 10}
+	shared st := DummySt{}
+	ch <- 7
+	ch <- -13
+	ch.close()
+	for i in 0 .. 3 {
+		v := rlock st {
+			<-ch or { -17 }
+		}
+		if i == 0 {
+			assert v == 7
+		} else if i == 1 {
+			assert v == -13
+		} else {
+			assert v == -17
+		}
+	}
+}
