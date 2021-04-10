@@ -3206,7 +3206,7 @@ sql db {
 }
 ```
 
-For more examples, see <a href='https://github.com/vlang/v/blob/master/vlib/orm/orm_test.v'>vlib/orm/orm_test.v</a>.
+For more examples and the docs, see <a href='https://github.com/vlang/v/tree/master/vlib/orm'>vlib/orm</a>.
 
 ## Writing Documentation
 
