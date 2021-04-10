@@ -4,8 +4,8 @@ module builtin
 
 $if static_boehm ? {
 	$if macos {
-		#flag -I/opt/homebrew/include
-		#flag   /opt/homebrew/lib/libgc.a
+		#flag -I$first_existing("/opt/homebrew/include",     "/usr/local/include")
+		#flag   $first_existing("/opt/homebrew/lib/libgc.a", "/usr/local/lib/libgc.a")
 	} $else $if linux {
 		#flag -l:libgc.a
 	} $else {
