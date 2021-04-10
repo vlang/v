@@ -116,6 +116,11 @@ mut:
 	cur_generic_types      []ast.Type // `int`, `string`, etc in `foo<T>()`
 	sql_i                  int
 	sql_stmt_name          string
+	sql_bind_name          string
+	sql_idents             []string
+	sql_idents_types       []ast.Type
+	sql_left_type          ast.Type
+	sql_table_name         string
 	sql_side               SqlExprSide // left or right, to distinguish idents in `name == name`
 	inside_vweb_tmpl       bool
 	inside_return          bool
