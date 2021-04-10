@@ -173,7 +173,7 @@ pub fn (ctx Context) str() string {
 }
 
 pub fn (c CancelerContext) cancel(remove_from_parent bool, err string) {
-	match shared c {
+	match mut c {
 		CancelContext {
 			c.cancel(remove_from_parent, err)
 		}
@@ -400,11 +400,9 @@ fn parent_cancel_context(parent Context) ?CancelContext {
 
 // remove_child removes a context from its parent.
 fn remove_child(parent Context, child CancelerContext) {
-	shared p := parent_cancel_context(parent) or { return }
-	lock p {
-		child_ptr := voidptr(&child)
-		p.children[child_ptr] = false
-	}
+	mut p := parent_cancel_context(parent) or { return }
+	child_ptr := voidptr(&child)
+	p.children[child_ptr] = false
 }
 
 pub fn (ctx CancelContext) deadline() ?time.Time {
@@ -426,33 +424,27 @@ pub fn (ctx CancelContext) value(key voidptr) voidptr {
 	return ctx.context.value(key)
 }
 
-pub fn (shared ctx CancelContext) cancel(remove_from_parent bool, err string) {
+pub fn (mut ctx CancelContext) cancel(remove_from_parent bool, err string) {
 	if err == '' {
 		panic('context: internal error: missing cancel error')
 	}
 
-	lock ctx {
-		ctx.done <- 0
-		if !ctx.done.closed {
-			defer {
-				ctx.done.close()
-			}
+	ctx.done <- 0
+	if !ctx.done.closed {
+		defer {
+			ctx.done.close()
 		}
 	}
 
 	for child_ptr, _ in ctx.children {
-		shared child := &CancelContext(child_ptr)
-		lock  {
-			child.cancel(false, err)
-		}
+		mut child := &CancelContext(child_ptr)
+		child.cancel(false, err)
 	}
 
-	lock ctx {
-		ctx.children = map[voidptr]bool{}
+	ctx.children = map[voidptr]bool{}
 
-		if remove_from_parent {
-			remove_child(ctx.context, CancelerContext(ctx))
-		}
+	if remove_from_parent {
+		remove_child(ctx.context, CancelerContext(ctx))
 	}
 }
 
