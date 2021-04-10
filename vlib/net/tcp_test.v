@@ -66,13 +66,19 @@ fn test_tcp_ip() {
 }
 
 fn test_tcp_unix() {
-	address := os.real_path('./tcp-test.sock')
-	println('$address')
+	// TODO(emily):
+	// whilst windows supposedly supports unix sockets
+	// this doesnt work (wsaeopnotsupp at the call to bind())
+	$if !windows {
+		address := os.real_path('tcp-test.sock')
+		// address := 'tcp-test.sock'
+		println('$address')
 
-	mut l := net.listen_tcp(.unix, address) or { panic(err) }
-	go echo_server(mut l)
-	echo(address) or { panic(err) }
-	l.close() or { }
+		mut l := net.listen_tcp(.unix, address) or { panic(err) }
+		go echo_server(mut l)
+		echo(address) or { panic(err) }
+		l.close() or { }
 
-	os.rm(address) or { panic('failed to remove socket file') }
+		os.rm(address) or { panic('failed to remove socket file') }
+	}
 }

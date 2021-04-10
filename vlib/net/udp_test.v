@@ -5,6 +5,8 @@ fn echo_server(mut c net.UdpConn) {
 		mut buf := []byte{len: 100, init: 0}
 		read, addr := c.read(mut buf) or { continue }
 
+		println('Server got addr $addr')
+
 		c.write_to(addr, buf[..read]) or {
 			println('Server: connection dropped')
 			return
@@ -12,8 +14,13 @@ fn echo_server(mut c net.UdpConn) {
 	}
 }
 
+const (
+	local_addr = ':40003'
+	remote_addr = 'localhost:40003'
+)
+
 fn echo() ? {
-	mut c := net.dial_udp('127.0.0.1:40003', '127.0.0.1:40001') ?
+	mut c := net.dial_udp(remote_addr) ?
 	defer {
 		c.close() or { }
 	}
@@ -42,7 +49,7 @@ fn echo() ? {
 }
 
 fn test_udp() {
-	mut l := net.listen_udp(40001) or {
+	mut l := net.listen_udp(local_addr) or {
 		println(err)
 		assert false
 		panic('')
@@ -54,7 +61,7 @@ fn test_udp() {
 		assert false
 	}
 
-	l.close() or { }
+	l.close() or {}
 }
 
 fn main() {
