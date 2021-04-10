@@ -9,11 +9,6 @@ struct Ip6 {
 	sin6_pad [2]byte
 }
 
-const (
-	addr_ip6_any = [16]byte{init: byte(0)}
-)
-
-
 [_pack: '4']
 struct Ip {
 	port u16
@@ -24,6 +19,10 @@ struct Ip {
 	// some constant calculations here
 	// so that this doesnt have to be hardcoded
 	sin_pad [10]byte
+}
+
+struct Unix {
+	path [max_unix_path]byte
 }
 
 [_pack: '2']

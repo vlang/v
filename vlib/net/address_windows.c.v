@@ -5,17 +5,20 @@ struct Ip6 {
 	port u16
 	flow_info u32
 	addr [16]byte
-	scope_id u32 
+	scope_id u32
+	sin6_pad [2]byte
 }
-
-const (
-	addr_ip6_any = [16]byte{init: byte(0)}
-)
 
 [_pack: '4']
 struct Ip {
 	port u16
 	addr [4]byte
+	sin_pad [10]byte
+}
+
+struct Unix {
+	path [max_unix_path]byte
+	sun_pad [6]byte
 }
 
 [_pack: '8']

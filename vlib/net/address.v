@@ -1,16 +1,20 @@
 module net
 
-const max_unix_path = 104
+import io.util
+import os
 
-struct Unix {
-	path [max_unix_path]byte
-}
+const max_unix_path = 104
 
 union AddrData {
 	Unix
 	Ip
 	Ip6
 }
+
+const (
+	addr_ip6_any = [16]byte{init: byte(0)}
+	addr_ip_any = [4]byte{init: byte(0)}
+)
 
 fn new_ip6(port u16, addr [16]byte) Addr {
 	a := Addr {
@@ -40,6 +44,18 @@ fn new_ip(port u16, addr [4]byte) Addr {
 	copy(a.addr.Ip6.addr[0..], addr[0..])
 
 	return a
+}
+
+fn temp_unix() ?Addr {
+	// create a temp file to get a filename
+	// close it
+	// remove it 
+	// then reuse the filename
+	mut file, filename := util.temp_file({})?
+	file.close()
+	os.rm(filename)?
+	addrs := resolve_addrs(filename, .unix, .udp)?
+	return addrs[0]
 }
 
 pub fn (a Addr) family() AddrFamily {
