@@ -826,14 +826,8 @@ static inline void __${typ.cname}_pushval($typ.cname ch, $el_stype val) {
 	// Generating interfaces after all the common types have been defined
 	// to prevent generating interface struct before definition of field types
 	for typ in g.table.type_symbols {
-		if typ.name in c.builtins {
-			continue
-		}
-		match typ.kind {
-			.interface_ {
-				g.write_interface_typesymbol_declaration(typ)
-			}
-			else {}
+		if typ.kind == .interface_ && typ.name !in c.builtins {
+			g.write_interface_typesymbol_declaration(typ)
 		}
 	}
 }
