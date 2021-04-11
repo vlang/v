@@ -64,7 +64,7 @@ fn (mut g Gen) process_fn_decl(node ast.FnDecl) {
 		// We are using prebuilt modules, we do not need to generate
 		// their functions in main.c.
 		if node.mod != 'main' && node.mod != 'help' && !should_bundle_module && !g.pref.is_test
-			&& node.generic_params.len == 0 {
+			&& node.generic_names.len == 0 {
 			skip = true
 		}
 	}
@@ -127,7 +127,7 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 	// if g.fileis('vweb.v') {
 	// println('\ngen_fn_decl() $node.name $node.is_generic $g.cur_generic_type')
 	// }
-	if node.generic_params.len > 0 && g.cur_generic_types.len == 0 { // need the cur_generic_type check to avoid inf. recursion
+	if node.generic_names.len > 0 && g.cur_generic_types.len == 0 { // need the cur_generic_type check to avoid inf. recursion
 		// loop thru each generic type and generate a function
 		for gen_types in g.table.fn_gen_types[node.name] {
 			if g.pref.is_verbose {
@@ -475,13 +475,10 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	}
 }
 
-pub fn (g &Gen) unwrap_generic(typ ast.Type) ast.Type {
+pub fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
 	if typ.has_flag(.generic) {
-		sym := g.table.get_type_symbol(typ)
-		for i, generic_param in g.cur_fn.generic_params {
-			if generic_param.name == sym.name {
-				return g.cur_generic_types[i].derive(typ).clear_flag(.generic)
-			}
+		if t_typ := g.table.resolve_generic_by_names(typ, g.cur_fn.generic_names, g.cur_generic_types) {
+			return t_typ
 		}
 	}
 	return typ

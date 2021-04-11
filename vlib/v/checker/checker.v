@@ -514,7 +514,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
 				struct_init.pos)
 		}
 	}
-	if type_sym.name.len == 1 && c.cur_fn.generic_params.len == 0 {
+	if type_sym.name.len == 1 && c.cur_fn.generic_names.len == 0 {
 		c.error('unknown struct `$type_sym.name`', struct_init.pos)
 		return 0
 	}
@@ -2495,8 +2495,7 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) ast.Typ
 	match mut selector_expr.expr {
 		ast.Ident {
 			name := selector_expr.expr.name
-			valid_generic := util.is_generic_type_name(name)
-				&& c.cur_fn.generic_params.filter(it.name == name).len != 0
+			valid_generic := util.is_generic_type_name(name) && name in c.cur_fn.generic_names
 			if valid_generic {
 				name_type = ast.Type(c.table.find_type_idx(name)).set_flag(.generic)
 			}
@@ -4051,13 +4050,10 @@ fn (mut c Checker) stmts(stmts []ast.Stmt) {
 	c.expected_type = ast.void_type
 }
 
-pub fn (c &Checker) unwrap_generic(typ ast.Type) ast.Type {
+pub fn (mut c Checker) unwrap_generic(typ ast.Type) ast.Type {
 	if typ.has_flag(.generic) {
-		sym := c.table.get_type_symbol(typ)
-		for i, generic_param in c.cur_fn.generic_params {
-			if generic_param.name == sym.name {
-				return c.cur_generic_types[i].derive(typ).clear_flag(.generic)
-			}
+		if t_typ := c.table.resolve_generic_by_names(typ, c.cur_fn.generic_names, c.cur_generic_types) {
+			return t_typ
 		}
 	}
 	return typ
@@ -6332,7 +6328,7 @@ fn (mut c Checker) post_process_generic_fns() {
 
 fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	c.returns = false
-	if node.generic_params.len > 0 && c.cur_generic_types.len == 0 {
+	if node.generic_names.len > 0 && c.cur_generic_types.len == 0 {
 		// Just remember the generic function for now.
 		// It will be processed later in c.post_process_generic_fns,
 		// after all other normal functions are processed.
