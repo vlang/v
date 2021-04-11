@@ -10,6 +10,65 @@ pub interface Canceler {
 	str() string
 }
 
+// CancelerContext implements the Canceler intarface for both
+// struct types: CancelContext and TimerContext
+pub type CancelerContext = CancelContext | TimerContext
+
+pub fn (ctx CancelerContext) done() chan int {
+	match ctx {
+		CancelContext {
+			return ctx.done()
+		}
+		TimerContext {
+			return ctx.done()
+		}
+	}
+}
+
+pub fn (ctx CancelerContext) err() string {
+	match ctx {
+		CancelContext {
+			return ctx.err()
+		}
+		TimerContext {
+			return ctx.err()
+		}
+	}
+}
+
+pub fn (ctx CancelerContext) value(key string) ?voidptr {
+	match ctx {
+		CancelContext {
+			return ctx.value(key)
+		}
+		TimerContext {
+			return ctx.value(key)
+		}
+	}
+}
+
+pub fn (mut ctx CancelerContext) cancel(remove_from_parent bool, err string) {
+	match ctx {
+		CancelContext {
+			ctx.cancel(remove_from_parent, err)
+		}
+		TimerContext {
+			ctx.cancel(remove_from_parent, err)
+		}
+	}
+}
+
+pub fn (ctx CancelerContext) str() string {
+	match ctx {
+		CancelContext {
+			return ctx.str()
+		}
+		TimerContext {
+			return ctx.str()
+		}
+	}
+}
+
 // A CancelContext can be canceled. When canceled, it also cancels any children
 // that implement Canceler.
 pub struct CancelContext {
@@ -17,7 +76,7 @@ pub struct CancelContext {
 mut:
 	context  Context
 	done     chan int
-	children []Canceler
+	children map[string]Canceler
 	err      string
 	canceled bool
 }
@@ -34,7 +93,7 @@ mut:
 //
 // Canceling this context releases resources associated with it, so code should
 // call cancel as soon as the operations running in this Context complete.
-pub fn with_cancel(parent Context) CancelContext {
+pub fn with_cancel(parent Context) CancelerContext {
 	mut c := new_cancel_context(parent)
 	propagate_cancel(parent, mut c)
 	return c
@@ -88,11 +147,11 @@ fn (mut ctx CancelContext) cancel(remove_from_parent bool, err string) {
 		ctx.done.close()
 	}
 
-	for mut child in ctx.children {
+	for _, child in ctx.children {
 		child.cancel(false, err)
 	}
 
-	ctx.children = []Canceler{}
+	ctx.children = map[string]Canceler{}
 
 	if remove_from_parent {
 		remove_child(ctx.context, ctx)
@@ -128,7 +187,7 @@ fn propagate_cancel(parent Context, mut child Canceler) {
 		// parent has already been canceled
 		child.cancel(false, p.err)
 	} else {
-		p.children << child
+		p.children[child.id] = child
 	}
 }
 
@@ -158,9 +217,9 @@ fn parent_cancel_context(parent Context) ?CancelContext {
 // remove_child removes a context from its parent.
 fn remove_child(parent Context, child Canceler) {
 	mut p := parent_cancel_context(parent) or { return }
-	for i, c in p.children {
-		// if c == child {
-		// 	p.children.delete(i)
-		// }
+	for id, c in p.children {
+		if id == child.id {
+			p.children.delete(id)
+		}
 	}
 }

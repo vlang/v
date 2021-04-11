@@ -12,8 +12,8 @@ fn test_with_cancel() {
 	gen := fn (ctx CancelContext) chan int {
 		dst := chan int{}
 		go fn (ctx CancelContext, dst chan int) {
+			ch := ctx.done()
 			loop: for i in 0 .. 5 {
-				ch := ctx.done()
 				select {
 					_ := <-ch {
 						// returning not to leak the routine
@@ -27,13 +27,15 @@ fn test_with_cancel() {
 	}
 
 	mut ctx := with_cancel(background())
-	defer {
-		ctx.cancel(true, canceled)
-	}
+	if mut ctx is CancelContext {
+		defer {
+			ctx.cancel(true, canceled)
+		}
 
-	ch := gen(ctx)
-	for i in 0 .. 5 {
-		v := <-ch
-		assert i == v
+		ch := gen(ctx)
+		for i in 0 .. 5 {
+			v := <-ch
+			assert i == v
+		}
 	}
 }
