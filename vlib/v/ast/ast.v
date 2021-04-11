@@ -1407,6 +1407,7 @@ pub enum SqlStmtKind {
 	update
 	delete
 	create
+	drop
 }
 
 pub struct SqlStmt {

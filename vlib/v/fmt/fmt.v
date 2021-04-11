@@ -1237,6 +1237,9 @@ pub fn (mut f Fmt) sql_stmt(node ast.SqlStmt) {
 		.create {
 			f.writeln('create table $table_name')
 		}
+		.drop {
+			f.writeln('drop table $table_name')
+		}
 	}
 	f.writeln('}')
 }

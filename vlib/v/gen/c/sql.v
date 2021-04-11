@@ -27,6 +27,9 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 	if node.kind == .create {
 		g.sql_create_table(node)
 		return
+	} else if node.kind == .drop {
+		g.sql_drop_table(node)
+		return
 	}
 	g.sql_table_name = g.table.get_type_symbol(node.table_expr.typ).name
 	typ := g.parse_db_type(node.db_expr)
@@ -51,6 +54,21 @@ fn (mut g Gen) sql_create_table(node ast.SqlStmt) {
 		}
 		.mysql {
 			g.mysql_create_table(node, typ)
+		}
+		else {
+			verror('This database type `$typ` is not implemented yet in orm') // TODO add better error
+		}
+	}
+}
+
+fn (mut g Gen) sql_drop_table(node ast.SqlStmt) {
+	typ := g.parse_db_type(node.db_expr)
+	match typ {
+		.sqlite3 {
+			g.sqlite3_drop_table(node, typ)
+		}
+		.mysql {
+			g.mysql_drop_table(node, typ)
 		}
 		else {
 			verror('This database type `$typ` is not implemented yet in orm') // TODO add better error
@@ -295,6 +313,15 @@ fn (mut g Gen) sqlite3_select_expr(node ast.SqlExpr, sub bool, line string, sql_
 fn (mut g Gen) sqlite3_create_table(node ast.SqlStmt, typ SqlType) {
 	g.writeln('// sqlite3 table creator')
 	create_string := g.table_gen(node, typ)
+	g.write('sqlite__DB_exec(')
+	g.expr(node.db_expr)
+	g.writeln(', _SLIT("$create_string"));')
+}
+
+fn (mut g Gen) sqlite3_drop_table(node ast.SqlStmt, typ SqlType) {
+	table_name := util.strip_mod_name(g.table.get_type_symbol(node.table_expr.typ).name)
+	g.writeln('// sqlite3 table drop')
+	create_string := 'DROP TABLE $table_name;'
 	g.write('sqlite__DB_exec(')
 	g.expr(node.db_expr)
 	g.writeln(', _SLIT("$create_string"));')
@@ -582,7 +609,18 @@ fn (mut g Gen) mysql_create_table(node ast.SqlStmt, typ SqlType) {
 	g.write('Option_mysql__Result $tmp = mysql__Connection_query(&')
 	g.expr(node.db_expr)
 	g.writeln(', _SLIT("$create_string"));')
-	g.writeln('if (${tmp}.state != 0) { IError err = ${tmp}.err; _STR("Something went wrong\\000%.*s", 2, IError_str(err)); }')
+	g.writeln('if (${tmp}.state != 0) { IError err = ${tmp}.err; eprintln(_STR("Something went wrong\\000%.*s", 2, IError_str(err))); }')
+}
+
+fn (mut g Gen) mysql_drop_table(node ast.SqlStmt, typ SqlType) {
+	table_name := util.strip_mod_name(g.table.get_type_symbol(node.table_expr.typ).name)
+	g.writeln('// mysql table drop')
+	create_string := 'DROP TABLE $table_name;'
+	tmp := g.new_tmp_var()
+	g.write('Option_mysql__Result $tmp = mysql__Connection_query(&')
+	g.expr(node.db_expr)
+	g.writeln(', _SLIT("$create_string"));')
+	g.writeln('if (${tmp}.state != 0) { IError err = ${tmp}.err; eprintln(_STR("Something went wrong\\000%.*s", 2, IError_str(err))); }')
 }
 
 fn (mut g Gen) mysql_bind(val string, _ ast.Type) {
@@ -794,15 +832,24 @@ fn (mut g Gen) table_gen(node ast.SqlStmt, typ SqlType) string {
 	mut fields := []string{}
 
 	mut primary := '' // for mysql
+	mut unique := map[string][]string{}
 
 	for field in struct_data.fields {
 		mut is_primary := false
 		mut no_null := false
+		mut is_unique := false
 		for attr in field.attrs {
 			match attr.name {
 				'primary' {
 					is_primary = true
 					primary = field.name
+				}
+				'unique' {
+					if attr.arg != '' {
+						unique[attr.arg] << field.name
+					} else {
+						is_unique = true
+					}
 				}
 				'nonull' {
 					no_null = true
@@ -840,10 +887,22 @@ fn (mut g Gen) table_gen(node ast.SqlStmt, typ SqlType) string {
 		if no_null {
 			stmt += ' NOT NULL'
 		}
+		if is_unique {
+			stmt += ' UNIQUE'
+		}
 		if is_primary && typ == .sqlite3 {
 			stmt += ' PRIMARY KEY'
 		}
 		fields << stmt
+	}
+	if unique.len > 0 {
+		for k, v in unique {
+			mut tmp := []string{}
+			for f in v {
+				tmp << '`$f`'
+			}
+			fields << '/* $k */UNIQUE(${tmp.join(', ')})'
+		}
 	}
 	if typ == .mysql {
 		fields << 'PRIMARY KEY(`$primary`)'
@@ -903,7 +962,6 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr, typ SqlType) {
 			// for left sides just add a string, for right sides, generate the bindings
 			if g.sql_side == .left {
 				// println("sql gen left $expr.name")
-				eprintln(expr.name)
 				g.sql_left_type = g.get_struct_field_typ(expr.name)
 				g.write(expr.name)
 			} else {
