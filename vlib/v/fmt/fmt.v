@@ -668,7 +668,13 @@ fn expr_is_single_line(expr ast.Expr) bool {
 //=== Specific Stmt methods ===//
 
 fn (mut f Fmt) asm_stmt(stmt ast.AsmStmt) {
-	f.writeln('asm $stmt.arch {')
+	f.write('asm ')
+	if stmt.is_volatile {
+		f.write('volatile ')
+	} else if stmt.is_goto {
+		f.write('goto ')
+	}
+	f.writeln('$stmt.arch {')
 	f.indent++
 	for template in stmt.templates {
 		if template.is_directive {
