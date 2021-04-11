@@ -56,22 +56,24 @@ pub interface Context {
 	// packages should define keys as an unexported type to avoid
 	// collisions.
 	value(key string) ?voidptr
+
+	str() string
 }
 
 // background returns an empty Context. It is never canceled, has no
 // values, and has no deadline. It is typically used by the main function,
 // initialization, and tests, and as the top-level Context for incoming
 // requests.
-pub fn background() EmptyContext {
-	return background
+pub fn background() Context {
+	return Context(background)
 }
 
 // todo returns an empty Context. Code should use todo when
 // it's unclear which Context to use or it is not yet available (because the
 // surrounding function has not yet been extended to accept a Context
 // parameter).
-pub fn todo() EmptyContext {
-	return todo
+pub fn todo() Context {
+	return Context(todo)
 }
 
 fn context_name(ctx Context) string {

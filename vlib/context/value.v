@@ -8,7 +8,7 @@ pub struct ValueContext {
 	key     string
 	value   voidptr
 mut:
-	context EmptyContext
+	context Context
 }
 
 // with_value returns a copy of parent in which the value associated with key is
@@ -21,7 +21,7 @@ mut:
 // string or any other built-in type to avoid collisions between
 // packages using context. Users of with_value should define their own
 // types for keys
-pub fn with_value(parent EmptyContext, key string, value voidptr) ValueContext {
+pub fn with_value(parent Context, key string, value voidptr) ValueContext {
 	if isnil(key) {
 		panic('nil key')
 	}
