@@ -1,0 +1,71 @@
+# ORM
+
+## Attributes
+
+### Fields
+
+- `[primary]` set the field as the primary key
+- `[nonull]` field will be `NOT NULL` in table creation
+- `[skip]` field will be skipped
+- `[sql: type]` sets the type which is used in sql (special type `serial`)
+
+## Usage
+
+```v ignore
+struct Foo {
+    id   int    [primary; sql: serial]
+    name string [nonull]
+}
+```
+
+### Create
+
+```v ignore
+sql db {
+    create table Foo
+}
+```
+
+### Insert
+
+```v ignore
+var := Foo{
+    name: 'abc'
+}
+
+sql db {
+    insert var into Foo
+}
+```
+
+### Update
+
+```v ignore
+sql db {
+    update Foo set name = 'cde' where name == 'abc'
+}
+```
+
+### Delete
+```v ignore
+sql db {
+    delete from Foo where id > 10
+}
+```
+
+### Select
+```v ignore
+result := sql db {
+    select from Foo where id == 1
+}
+```
+```v ignore
+result := sql db {
+    select from Foo where id > 1 limit 5
+}
+```
+```v ignore
+result := sql db {
+    select from Foo where id > 1 order by id
+}
+```

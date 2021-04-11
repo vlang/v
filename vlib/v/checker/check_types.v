@@ -360,7 +360,7 @@ pub fn (mut c Checker) symmetric_check(left ast.Type, right ast.Type) bool {
 	return c.check_basic(left, right)
 }
 
-pub fn (c &Checker) get_default_fmt(ftyp ast.Type, typ ast.Type) byte {
+pub fn (mut c Checker) get_default_fmt(ftyp ast.Type, typ ast.Type) byte {
 	if ftyp.has_flag(.optional) {
 		return `s`
 	} else if typ.is_float() {
@@ -486,6 +486,16 @@ pub fn (mut c Checker) infer_fn_types(f ast.Fn, mut call_expr ast.CallExpr) {
 		mut typ := ast.void_type
 		for i, param in f.params {
 			mut to_set := ast.void_type
+			// resolve generic struct receiver (TODO: multi generic struct)
+			if i == 0 && call_expr.is_method && param.typ.has_flag(.generic) {
+				sym := c.table.get_type_symbol(call_expr.receiver_type)
+				if sym.kind == .struct_ {
+					info := sym.info as ast.Struct
+					if info.concrete_types.len > 0 {
+						typ = info.concrete_types[0]
+					}
+				}
+			}
 			arg_i := if i != 0 && call_expr.is_method { i - 1 } else { i }
 			if call_expr.args.len <= arg_i {
 				break
@@ -511,7 +521,7 @@ pub fn (mut c Checker) infer_fn_types(f ast.Fn, mut call_expr ast.CallExpr) {
 					mut param_elem_sym := c.table.get_type_symbol(param_elem_info.elem_type)
 					for {
 						if arg_elem_sym.kind == .array && param_elem_sym.kind == .array
-							&& c.cur_fn.generic_params.filter(it.name == param_elem_sym.name).len == 0 {
+							&& param_elem_sym.name !in c.cur_fn.generic_names {
 							arg_elem_info = arg_elem_sym.info as ast.Array
 							arg_elem_sym = c.table.get_type_symbol(arg_elem_info.elem_type)
 							param_elem_info = param_elem_sym.info as ast.Array

@@ -116,6 +116,11 @@ mut:
 	cur_generic_types      []ast.Type // `int`, `string`, etc in `foo<T>()`
 	sql_i                  int
 	sql_stmt_name          string
+	sql_bind_name          string
+	sql_idents             []string
+	sql_idents_types       []ast.Type
+	sql_left_type          ast.Type
+	sql_table_name         string
 	sql_side               SqlExprSide // left or right, to distinguish idents in `name == name`
 	inside_vweb_tmpl       bool
 	inside_return          bool
@@ -682,7 +687,7 @@ static inline Option_void __Option_${styp}_pushval($styp ch, $el_type e) {
 }
 
 // cc_type whether to prefix 'struct' or not (C__Foo -> struct Foo)
-fn (g &Gen) cc_type(typ ast.Type, is_prefix_struct bool) string {
+fn (mut g Gen) cc_type(typ ast.Type, is_prefix_struct bool) string {
 	sym := g.table.get_type_symbol(g.unwrap_generic(typ))
 	mut styp := sym.cname
 	// TODO: this needs to be removed; cgen shouldn't resolve generic types (job of checker)
@@ -1232,7 +1237,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				g.writeln('// ast.Return free_end2')
 			}
 			*/
-			g.return_statement(node)
+			g.return_stmt(node)
 		}
 		ast.SqlStmt {
 			g.sql_stmt(node)
@@ -2183,9 +2188,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 							left_type := assign_stmt.left_types[i]
 							left_sym := g.table.get_type_symbol(left_type)
 							g.write_fn_ptr_decl(left_sym.info as ast.FnType, '_var_$left.pos.pos')
-							g.write(' = *(voidptr*)map_get_1(')
+							g.write(' = *(voidptr*)map_get(')
 						} else {
-							g.write('$styp _var_$left.pos.pos = *($styp*)map_get_1(')
+							g.write('$styp _var_$left.pos.pos = *($styp*)map_get(')
 						}
 						if !left.left_type.is_ptr() {
 							g.write('ADDR(map, ')
@@ -3827,6 +3832,9 @@ fn (mut g Gen) lock_expr(node ast.LockExpr) {
 	}
 	g.writeln('/*lock*/ {')
 	g.stmts_with_tmp_var(node.stmts, tmp_result)
+	if node.is_expr {
+		g.writeln(';')
+	}
 	g.writeln('}')
 	if node.lockeds.len == 0 {
 		// this should not happen
@@ -4118,9 +4126,9 @@ fn (mut g Gen) map_init(node ast.MapInit) {
 	}
 	if size > 0 {
 		if value_typ.kind == .function {
-			g.write('new_map_init_2($hash_fn, $key_eq_fn, $clone_fn, $free_fn, $size, sizeof($key_typ_str), sizeof(voidptr), _MOV(($key_typ_str[$size]){')
+			g.write('new_map_init($hash_fn, $key_eq_fn, $clone_fn, $free_fn, $size, sizeof($key_typ_str), sizeof(voidptr), _MOV(($key_typ_str[$size]){')
 		} else {
-			g.write('new_map_init_2($hash_fn, $key_eq_fn, $clone_fn, $free_fn, $size, sizeof($key_typ_str), sizeof($value_typ_str), _MOV(($key_typ_str[$size]){')
+			g.write('new_map_init($hash_fn, $key_eq_fn, $clone_fn, $free_fn, $size, sizeof($key_typ_str), sizeof($value_typ_str), _MOV(($key_typ_str[$size]){')
 		}
 		for expr in node.keys {
 			g.expr(expr)
@@ -4140,7 +4148,7 @@ fn (mut g Gen) map_init(node ast.MapInit) {
 		}
 		g.write('}))')
 	} else {
-		g.write('new_map_2(sizeof($key_typ_str), sizeof($value_typ_str), $hash_fn, $key_eq_fn, $clone_fn, $free_fn)')
+		g.write('new_map(sizeof($key_typ_str), sizeof($value_typ_str), $hash_fn, $key_eq_fn, $clone_fn, $free_fn)')
 	}
 	if g.is_shared {
 		g.write('}, sizeof($shared_styp))')
@@ -4630,7 +4638,7 @@ fn (mut g Gen) gen_optional_error(target_type ast.Type, expr ast.Expr) {
 	g.write(' }')
 }
 
-fn (mut g Gen) return_statement(node ast.Return) {
+fn (mut g Gen) return_stmt(node ast.Return) {
 	g.write_v_source_line_info(node.pos)
 	if node.exprs.len > 0 {
 		// skip `retun $vweb.html()`
@@ -5002,7 +5010,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		g.go_back_out(3)
 		return
 	}
-	sym := g.table.get_final_type_symbol(struct_init.typ)
+	sym := g.table.get_final_type_symbol(g.unwrap_generic(struct_init.typ))
 	is_amp := g.is_amp
 	is_multiline := struct_init.fields.len > 5
 	g.is_amp = false // reset the flag immediately so that other struct inits in this expr are handled correctly
@@ -5735,23 +5743,36 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 		return '{0}'
 	}
 	// Always set pointers to 0
-	if typ.is_ptr() {
+	if typ.is_ptr() && !typ.has_flag(.shared_f) {
 		return '0'
 	}
 	sym := g.table.get_type_symbol(typ)
 	if sym.kind == .array {
-		elem_sym := g.typ(sym.array_info().elem_type)
+		elem_typ := sym.array_info().elem_type
+		elem_sym := g.typ(elem_typ)
 		mut elem_type_str := util.no_dots(elem_sym)
 		if elem_type_str.starts_with('C__') {
 			elem_type_str = elem_type_str[3..]
 		}
-		return '__new_array(0, 1, sizeof($elem_type_str))'
+		init_str := '__new_array(0, 1, sizeof($elem_type_str))'
+		if typ.has_flag(.shared_f) {
+			atyp := '__shared__Array_${g.table.get_type_symbol(elem_typ).cname}'
+			return '($atyp*)__dup_shared_array(&($atyp){.val = $init_str}, sizeof($atyp))'
+		} else {
+			return init_str
+		}
 	}
 	if sym.kind == .map {
 		info := sym.map_info()
 		key_typ := g.table.get_type_symbol(info.key_type)
 		hash_fn, key_eq_fn, clone_fn, free_fn := g.map_fn_ptrs(key_typ)
-		return 'new_map_2(sizeof(${g.typ(info.key_type)}), sizeof(${g.typ(info.value_type)}), $hash_fn, $key_eq_fn, $clone_fn, $free_fn)'
+		init_str := 'new_map(sizeof(${g.typ(info.key_type)}), sizeof(${g.typ(info.value_type)}), $hash_fn, $key_eq_fn, $clone_fn, $free_fn)'
+		if typ.has_flag(.shared_f) {
+			mtyp := '__shared__Map_${key_typ.cname}_${g.table.get_type_symbol(info.value_type).cname}'
+			return '($mtyp*)__dup_shared_map(&($mtyp){.val = $init_str}, sizeof($mtyp))'
+		} else {
+			return init_str
+		}
 	}
 	// User struct defined in another module.
 	// if typ.contains('__') {
@@ -5778,7 +5799,12 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 		} else {
 			init_str += '0}'
 		}
-		return init_str
+		if typ.has_flag(.shared_f) {
+			styp := '__shared__${g.table.get_type_symbol(typ).cname}'
+			return '($styp*)__dup${styp}(&($styp){.val = $init_str}, sizeof($styp))'
+		} else {
+			return init_str
+		}
 	}
 	// if typ.ends_with('Fn') { // TODO
 	// return '0'

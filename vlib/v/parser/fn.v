@@ -274,7 +274,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		}
 	}
 	// <T>
-	generic_params := p.parse_generic_params()
+	generic_names := p.parse_generic_names()
 	// Args
 	args2, are_args_type_only, is_variadic := p.fn_args()
 	params << args2
@@ -338,7 +338,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			params: params
 			return_type: return_type
 			is_variadic: is_variadic
-			generic_names: generic_params.map(it.name)
+			generic_names: generic_names
 			is_pub: is_pub
 			is_deprecated: is_deprecated
 			is_unsafe: is_unsafe
@@ -367,7 +367,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			params: params
 			return_type: return_type
 			is_variadic: is_variadic
-			generic_names: generic_params.map(it.name)
+			generic_names: generic_names
 			is_pub: is_pub
 			is_deprecated: is_deprecated
 			is_unsafe: is_unsafe
@@ -422,7 +422,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			name: rec.name
 			typ: rec.typ
 		}
-		generic_params: generic_params
+		generic_names: generic_names
 		receiver_pos: rec.pos
 		is_method: is_method
 		method_type_pos: rec.type_pos
@@ -517,10 +517,10 @@ fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInf
 	return
 }
 
-fn (mut p Parser) parse_generic_params() []ast.GenericParam {
+fn (mut p Parser) parse_generic_names() []string {
 	mut param_names := []string{}
 	if p.tok.kind != .lt {
-		return []ast.GenericParam{}
+		return param_names
 	}
 	p.check(.lt)
 	mut first_done := false
@@ -551,7 +551,7 @@ fn (mut p Parser) parse_generic_params() []ast.GenericParam {
 		count++
 	}
 	p.check(.gt)
-	return param_names.map(ast.GenericParam{it})
+	return param_names
 }
 
 // is_generic_name returns true if the current token is a generic name.

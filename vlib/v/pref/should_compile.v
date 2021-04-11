@@ -141,6 +141,9 @@ pub fn (prefs &Preferences) should_compile_c(file string) bool {
 	if (file.ends_with('_macos.c.v') || file.ends_with('_macos.v')) && prefs.os != .macos {
 		return false
 	}
+	if (file.ends_with('_ios.c.v') || file.ends_with('_ios.v')) && prefs.os != .ios {
+		return false
+	}
 	if file.ends_with('_nix.c.v') && prefs.os == .windows {
 		return false
 	}

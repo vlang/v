@@ -514,7 +514,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
 				struct_init.pos)
 		}
 	}
-	if type_sym.name.len == 1 && c.cur_fn.generic_params.len == 0 {
+	if type_sym.name.len == 1 && c.cur_fn.generic_names.len == 0 {
 		c.error('unknown struct `$type_sym.name`', struct_init.pos)
 		return 0
 	}
@@ -646,7 +646,8 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
 				if field.has_default_expr || field.name in inited_fields {
 					continue
 				}
-				if field.typ.is_ptr() && !struct_init.has_update_expr && !c.pref.translated {
+				if field.typ.is_ptr() && !field.typ.has_flag(.shared_f)
+					&& !struct_init.has_update_expr && !c.pref.translated {
 					c.error('reference field `${type_sym.name}.$field.name` must be initialized',
 						struct_init.pos)
 				}
@@ -1446,6 +1447,8 @@ fn (mut c Checker) check_return_generics_struct(return_type ast.Type, mut call_e
 					}
 					mut info := rts.info
 					info.generic_types = []
+					info.concrete_types = generic_types.clone()
+					info.parent_type = return_type
 					info.fields = fields
 					stru_idx := c.table.register_type_symbol(ast.TypeSymbol{
 						kind: .struct_
@@ -1464,7 +1467,7 @@ fn (mut c Checker) check_return_generics_struct(return_type ast.Type, mut call_e
 pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 	left_type := c.expr(call_expr.left)
 	c.expected_type = left_type
-	is_generic := left_type.has_flag(.generic)
+	mut is_generic := left_type.has_flag(.generic)
 	call_expr.left_type = left_type
 	// Set default values for .return_type & .receiver_type too,
 	// or there will be hard to diagnose 0 type panics in cgen.
@@ -1533,22 +1536,31 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 	} else {
 		// can this logic be moved to ast.type_find_method() so it can be used from anywhere
 		if left_type_sym.info is ast.Struct {
-			mut found_methods := []ast.Fn{}
-			mut embed_of_found_methods := []ast.Type{}
-			for embed in left_type_sym.info.embeds {
-				embed_sym := c.table.get_type_symbol(embed)
-				if m := c.table.type_find_method(embed_sym, method_name) {
-					found_methods << m
-					embed_of_found_methods << embed
+			if left_type_sym.info.parent_type != 0 {
+				type_sym := c.table.get_type_symbol(left_type_sym.info.parent_type)
+				if m := c.table.type_find_method(type_sym, method_name) {
+					method = m
+					has_method = true
+					is_generic = true
 				}
-			}
-			if found_methods.len == 1 {
-				method = found_methods[0]
-				has_method = true
-				is_method_from_embed = true
-				call_expr.from_embed_type = embed_of_found_methods[0]
-			} else if found_methods.len > 1 {
-				c.error('ambiguous method `$method_name`', call_expr.pos)
+			} else {
+				mut found_methods := []ast.Fn{}
+				mut embed_of_found_methods := []ast.Type{}
+				for embed in left_type_sym.info.embeds {
+					embed_sym := c.table.get_type_symbol(embed)
+					if m := c.table.type_find_method(embed_sym, method_name) {
+						found_methods << m
+						embed_of_found_methods << embed
+					}
+				}
+				if found_methods.len == 1 {
+					method = found_methods[0]
+					has_method = true
+					is_method_from_embed = true
+					call_expr.from_embed_type = embed_of_found_methods[0]
+				} else if found_methods.len > 1 {
+					c.error('ambiguous method `$method_name`', call_expr.pos)
+				}
 			}
 		}
 		if left_type_sym.kind == .aggregate {
@@ -2484,8 +2496,7 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) ast.Typ
 	match mut selector_expr.expr {
 		ast.Ident {
 			name := selector_expr.expr.name
-			valid_generic := util.is_generic_type_name(name)
-				&& c.cur_fn.generic_params.filter(it.name == name).len != 0
+			valid_generic := util.is_generic_type_name(name) && name in c.cur_fn.generic_names
 			if valid_generic {
 				name_type = ast.Type(c.table.find_type_idx(name)).set_flag(.generic)
 			}
@@ -3493,7 +3504,23 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		ast.ExprStmt {
 			node.typ = c.expr(node.expr)
 			c.expected_type = ast.void_type
-			c.check_expr_opt_call(node.expr, ast.void_type)
+			mut or_typ := ast.void_type
+			match node.expr {
+				ast.IndexExpr {
+					if node.expr.or_expr.kind != .absent {
+						node.is_expr = true
+						or_typ = node.typ
+					}
+				}
+				ast.PrefixExpr {
+					if node.expr.or_block.kind != .absent {
+						node.is_expr = true
+						or_typ = node.typ
+					}
+				}
+				else {}
+			}
+			c.check_expr_opt_call(node.expr, or_typ)
 			// TODO This should work, even if it's prolly useless .-.
 			// node.typ = c.check_expr_opt_call(node.expr, ast.void_type)
 		}
@@ -4024,13 +4051,10 @@ fn (mut c Checker) stmts(stmts []ast.Stmt) {
 	c.expected_type = ast.void_type
 }
 
-pub fn (c &Checker) unwrap_generic(typ ast.Type) ast.Type {
+pub fn (mut c Checker) unwrap_generic(typ ast.Type) ast.Type {
 	if typ.has_flag(.generic) {
-		sym := c.table.get_type_symbol(typ)
-		for i, generic_param in c.cur_fn.generic_params {
-			if generic_param.name == sym.name {
-				return c.cur_generic_types[i].derive(typ).clear_flag(.generic)
-			}
+		if t_typ := c.table.resolve_generic_by_names(typ, c.cur_fn.generic_names, c.cur_generic_types) {
+			return t_typ
 		}
 	}
 	return typ
@@ -6305,7 +6329,7 @@ fn (mut c Checker) post_process_generic_fns() {
 
 fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	c.returns = false
-	if node.generic_params.len > 0 && c.cur_generic_types.len == 0 {
+	if node.generic_names.len > 0 && c.cur_generic_types.len == 0 {
 		// Just remember the generic function for now.
 		// It will be processed later in c.post_process_generic_fns,
 		// after all other normal functions are processed.

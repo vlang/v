@@ -270,13 +270,13 @@ fn (mut g Gen) decode_map(key_type ast.Type, value_type ast.Type) string {
 	if(!cJSON_IsObject(root) && !cJSON_IsNull(root)) {
 		return (Option_Map_${styp}_$styp_v){ .state = 2, .err = v_error( string_add(_SLIT("Json element is not an object: "), tos2((byteptr)cJSON_PrintUnformatted(root))) )};
 	}
-	res = new_map_2(sizeof($styp), sizeof($styp_v), $hash_fn, $key_eq_fn, $clone_fn, $free_fn);
+	res = new_map(sizeof($styp), sizeof($styp_v), $hash_fn, $key_eq_fn, $clone_fn, $free_fn);
 	cJSON *jsval = NULL;
 	cJSON_ArrayForEach(jsval, root)
 	{
 		$s
 		string key = tos2((byteptr)jsval->string);
-		map_set_1(&res, &key, &val);
+		map_set(&res, &key, &val);
 	}
 '
 }
@@ -299,7 +299,7 @@ fn (mut g Gen) encode_map(key_type ast.Type, value_type ast.Type) string {
 	Array_$styp $keys_tmp = map_keys(&val);
 	for (int i = 0; i < ${keys_tmp}.len; ++i) {
 		$key
-		cJSON_AddItemToObject(o, (char*) key.str, $fn_name_v ( *($styp_v*) map_get_1(&val, &key, &($styp_v[]) { $zero } ) ) );
+		cJSON_AddItemToObject(o, (char*) key.str, $fn_name_v ( *($styp_v*) map_get(&val, &key, &($styp_v[]) { $zero } ) ) );
 	}
 	array_free(&$keys_tmp);
 '

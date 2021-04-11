@@ -451,3 +451,6 @@ fn C.dup2(oldfd int, newfd int) int
 
 // used by gl, stbi, freetype
 fn C.glTexImage2D()
+
+// used by ios for println
+fn C.WrappedNSLog(str &byte)
