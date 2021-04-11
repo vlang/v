@@ -175,8 +175,8 @@ fn (mut d DenseArray) zeros_to_end() {
 		if d.has_index(i) {
 			// swap (TODO: optimize)
 			unsafe {
-				// Swap keys
 				if count != i {
+					// Swap keys
 					C.memcpy(tmp_key, d.key(count), d.key_bytes)
 					C.memcpy(d.key(count), d.key(i), d.key_bytes)
 					C.memcpy(d.key(i), tmp_key, d.key_bytes)
