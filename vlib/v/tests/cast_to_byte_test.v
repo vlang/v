@@ -30,3 +30,12 @@ fn test_casting_an_int_to_byte() {
 	b := byte(x)
 	assert 'x: $x | b: $b.hex()' == 'x: 12 | b: 0c'
 }
+
+fn test_casting_a_bool_to_byte() {
+	x := true
+	b1 := byte(x)
+	assert 'x: $x | b: $b1.hex()' == 'x: true | b: 01'
+	y := false
+	b2 := byte(y)
+	assert 'y: $y | b: $b2.hex()' == 'y: false | b: 00'
+}
