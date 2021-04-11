@@ -43,14 +43,9 @@ pub fn with_deadline(parent Context, d time.Time) &CancelerContext {
 		return ctx
 	}
 
-	ctx.cancel_ctx.mutex.@lock()
-	defer {
-		ctx.cancel_ctx.mutex.unlock()
-	}
 	if ctx.cancel_ctx.err() == '' {
 		go fn (mut ctx TimerContext, dur time.Duration) {
 			time.sleep(dur)
-			println('AAAAAAAAAAAAAAAA')
 			ctx.cancel(true, deadline_exceeded)
 		}(mut ctx, dur)
 	}

@@ -34,37 +34,38 @@ import context
 // This example demonstrates the use of a cancelable context to prevent a
 // routine leak. By the end of the example function, the routine started
 // by gen will return without leaking.
-fn example_with_cancel() {
+fn test_with_cancel() {
 	// gen generates integers in a separate routine and
 	// sends them to the returned channel.
 	// The callers of gen need to cancel the context once
 	// they are done consuming generated integers not to leak
 	// the internal routine started by gen.
-	gen := fn (ctx context.Context) chan int {
+	gen := fn (mut ctx context.CancelerContext) chan int {
 		dst := chan int{}
-		go fn (ctx context.Context, dst chan int) {
-			loop: for {
-				ch := ctx.done()
+		go fn (mut ctx context.CancelerContext, dst chan int) {
+			ch := ctx.done()
+			loop: for i in 0 .. 5 {
 				select {
 					_ := <-ch {
 						// returning not to leak the routine
 						break loop
 					}
-					dst <- 0 {}
+					dst <- i {}
 				}
 			}
-		}(ctx, dst)
+		}(mut ctx, dst)
 		return dst
 	}
 
-	cancel_ctx, cancel := context.with_cancel(context.background())
+	mut ctx := context.with_cancel(context.background())
 	defer {
-		cancel(cancel_ctx)
+		context.cancel(mut ctx)
 	}
 
-	ch := gen(cancel_ctx)
-	for _ in 0 .. 5 {
-		<-ch
+	ch := gen(mut ctx)
+	for i in 0 .. 5 {
+		v := <-ch
+		assert i == v
 	}
 }
 ```
@@ -157,24 +158,25 @@ fn example_with_timeout() {
 ```v
 import context
 
-type FavContextKey = string
+type ValueContextKey = string
 
 // This example demonstrates how a value can be passed to the context
 // and also how to retrieve it if it exists.
-fn example_with_value() {
-	f := fn (ctx context.Context, key FavContextKey) string {
-		value := ctx.value(&key)
-		if !isnil(value) {
-			return *(&string(value))
+fn test_with_value() {
+	f := fn (ctx context.ValueContext, key ValueContextKey) string {
+		if value := ctx.value(key) {
+			if !isnil(value) {
+				return *(&string(value))
+			}
 		}
 		return 'key not found'
 	}
 
-	key := FavContextKey('language')
+	key := ValueContextKey('language')
 	value := 'VAL'
-	ctx := context.with_value(context.background(), &key, &value)
+	ctx := context.with_value(context.background(), key, &value)
 
 	assert value == f(ctx, key)
-	assert 'key not found' == f(ctx, FavContextKey('color'))
+	assert 'key not found' == f(ctx, ValueContextKey('color'))
 }
 ```

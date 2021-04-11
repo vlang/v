@@ -1,4 +1,4 @@
-module context
+import context
 
 // This example demonstrates the use of a cancelable context to prevent a
 // routine leak. By the end of the example function, the routine started
@@ -9,9 +9,9 @@ fn test_with_cancel() {
 	// The callers of gen need to cancel the context once
 	// they are done consuming generated integers not to leak
 	// the internal routine started by gen.
-	gen := fn (mut ctx CancelerContext) chan int {
+	gen := fn (mut ctx context.CancelerContext) chan int {
 		dst := chan int{}
-		go fn (mut ctx CancelerContext, dst chan int) {
+		go fn (mut ctx context.CancelerContext, dst chan int) {
 			ch := ctx.done()
 			loop: for i in 0 .. 5 {
 				select {
@@ -26,9 +26,9 @@ fn test_with_cancel() {
 		return dst
 	}
 
-	mut ctx := with_cancel(background())
+	mut ctx := context.with_cancel(context.background())
 	defer {
-		cancel(mut ctx)
+		context.cancel(mut ctx)
 	}
 
 	ch := gen(mut ctx)

@@ -1,5 +1,4 @@
-module context
-
+import context
 import time
 
 const (
@@ -19,10 +18,10 @@ fn after(dur time.Duration) chan int {
 // This example passes a context with an arbitrary deadline to tell a blocking
 // function that it should abandon its work as soon as it gets to it.
 fn test_with_deadline() {
-	dur := time.now().add(context.short_duration)
-	mut ctx := with_deadline(background(), dur)
+	dur := time.now().add(short_duration)
+	mut ctx := context.with_deadline(context.background(), dur)
 	defer {
-		cancel(mut ctx)
+		context.cancel(mut ctx)
 	}
 
 	after_ch := after(1 * time.second)
@@ -42,9 +41,9 @@ fn test_with_deadline() {
 fn test_with_timeout() {
 	// Pass a context with a timeout to tell a blocking function that it
 	// should abandon its work after the timeout elapses.
-	mut ctx := with_timeout(background(), context.short_duration)
+	mut ctx := context.with_timeout(context.background(), short_duration)
 	defer {
-		cancel(mut ctx)
+		context.cancel(mut ctx)
 	}
 
 	after_ch := after(1 * time.second)
