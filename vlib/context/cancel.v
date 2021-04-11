@@ -9,7 +9,7 @@ const (
 )
 
 fn init() {
-	closedchan.close()
+	context.closedchan.close()
 }
 
 pub interface Canceler {
@@ -35,7 +35,7 @@ pub fn cancel(mut ctx CancelerContext) {
 pub type CancelerContext = CancelContext | TimerContext
 
 pub fn (ctx CancelerContext) done() chan int {
-	match ctx {
+	match mut ctx {
 		CancelContext {
 			return ctx.done()
 		}
@@ -45,8 +45,8 @@ pub fn (ctx CancelerContext) done() chan int {
 	}
 }
 
-pub fn (mut ctx CancelerContext) err() string {
-	match ctx {
+pub fn (ctx CancelerContext) err() string {
+	match mut ctx {
 		CancelContext {
 			return ctx.err()
 		}
@@ -67,8 +67,8 @@ pub fn (ctx CancelerContext) value(key string) ?voidptr {
 	}
 }
 
-pub fn (mut ctx CancelerContext) cancel(remove_from_parent bool, err string) {
-	match ctx {
+pub fn (ctx CancelerContext) cancel(remove_from_parent bool, err string) {
+	match mut ctx {
 		CancelContext {
 			ctx.cancel(remove_from_parent, err)
 		}
@@ -95,8 +95,8 @@ pub struct CancelContext {
 	id string
 mut:
 	context  Context
-	mutex     &sync.Mutex
-	done     chan int = closedchan
+	mutex    &sync.Mutex
+	done     chan int = context.closedchan
 	children map[string]Canceler
 	err      string
 }
@@ -132,8 +132,11 @@ pub fn (ctx CancelContext) deadline() ?time.Time {
 	return none
 }
 
-pub fn (ctx CancelContext) done() chan int {
-	return ctx.done
+pub fn (mut ctx CancelContext) done() chan int {
+	ctx.mutex.@lock()
+	done := ctx.done
+	ctx.mutex.unlock()
+	return done
 }
 
 pub fn (mut ctx CancelContext) err() string {
