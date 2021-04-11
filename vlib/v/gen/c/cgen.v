@@ -791,9 +791,6 @@ pub fn (mut g Gen) write_typedef_types() {
 					}
 				}
 			}
-			.interface_ {
-				g.write_interface_typesymbol_declaration(typ)
-			}
 			.chan {
 				if typ.name != 'chan' {
 					g.type_definitions.writeln('typedef chan $typ.cname;')
@@ -823,6 +820,20 @@ static inline void __${typ.cname}_pushval($typ.cname ch, $el_stype val) {
 			else {
 				continue
 			}
+		}
+	}
+
+	// Generating interfaces after all the common types have been defined
+	// to prevent generating interface struct before definition of field types
+	for typ in g.table.type_symbols {
+		if typ.name in c.builtins {
+			continue
+		}
+		match typ.kind {
+			.interface_ {
+				g.write_interface_typesymbol_declaration(typ)
+			}
+			else {}
 		}
 	}
 }
