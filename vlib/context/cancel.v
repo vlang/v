@@ -3,6 +3,14 @@ module context
 import rand
 import time
 
+const (
+	closedchan = chan int{}
+)
+
+fn init() {
+	closedchan.close()
+}
+
 pub interface Canceler {
 	id string
 	cancel(remove_from_parent bool, err string)
@@ -86,10 +94,9 @@ pub struct CancelContext {
 	id string
 mut:
 	context  Context
-	done     chan int
+	done     chan int = closedchan
 	children map[string]Canceler
 	err      string
-	canceled bool
 }
 
 // A CancelFunc tells an operation to abandon its work.
@@ -146,13 +153,12 @@ fn (mut ctx CancelContext) cancel(remove_from_parent bool, err string) {
 		panic('context: internal error: missing cancel error')
 	}
 
-	if ctx.canceled {
+	if ctx.err != '' {
 		// already canceled
 		return
 	}
 
 	ctx.err = err
-	ctx.canceled = true
 
 	if !ctx.done.closed {
 		ctx.done.close()
