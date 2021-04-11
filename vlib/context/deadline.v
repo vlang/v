@@ -43,6 +43,10 @@ pub fn with_deadline(parent Context, d time.Time) &CancelerContext {
 		return ctx
 	}
 
+	ctx.cancel_ctx.mutex.@lock()
+	defer {
+		ctx.cancel_ctx.mutex.unlock()
+	}
 	if ctx.cancel_ctx.err() == '' {
 		go fn (mut ctx TimerContext, dur time.Duration) {
 			time.sleep(dur)
@@ -68,7 +72,7 @@ pub fn (ctx TimerContext) done() chan int {
 	return ctx.cancel_ctx.done()
 }
 
-pub fn (ctx TimerContext) err() string {
+pub fn (mut ctx TimerContext) err() string {
 	return ctx.cancel_ctx.err()
 }
 

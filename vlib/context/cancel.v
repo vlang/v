@@ -1,6 +1,7 @@
 module context
 
 import rand
+import sync
 import time
 
 const (
@@ -44,7 +45,7 @@ pub fn (ctx CancelerContext) done() chan int {
 	}
 }
 
-pub fn (ctx CancelerContext) err() string {
+pub fn (mut ctx CancelerContext) err() string {
 	match ctx {
 		CancelContext {
 			return ctx.err()
@@ -94,6 +95,7 @@ pub struct CancelContext {
 	id string
 mut:
 	context  Context
+	mutex     &sync.Mutex
 	done     chan int = closedchan
 	children map[string]Canceler
 	err      string
@@ -122,6 +124,7 @@ fn new_cancel_context(parent Context) CancelContext {
 	return CancelContext{
 		id: rand.uuid_v4()
 		context: parent
+		mutex: sync.new_mutex()
 	}
 }
 
@@ -133,8 +136,11 @@ pub fn (ctx CancelContext) done() chan int {
 	return ctx.done
 }
 
-pub fn (ctx CancelContext) err() string {
-	return ctx.err
+pub fn (mut ctx CancelContext) err() string {
+	ctx.mutex.@lock()
+	err := ctx.err
+	ctx.mutex.unlock()
+	return err
 }
 
 pub fn (ctx CancelContext) value(key string) ?voidptr {
@@ -153,7 +159,9 @@ fn (mut ctx CancelContext) cancel(remove_from_parent bool, err string) {
 		panic('context: internal error: missing cancel error')
 	}
 
+	ctx.mutex.@lock()
 	if ctx.err != '' {
+		ctx.mutex.unlock()
 		// already canceled
 		return
 	}
@@ -165,10 +173,12 @@ fn (mut ctx CancelContext) cancel(remove_from_parent bool, err string) {
 	}
 
 	for _, child in ctx.children {
+		// NOTE: acquiring the child's lock while holding parent's lock.
 		child.cancel(false, err)
 	}
 
 	ctx.children = map[string]Canceler{}
+	ctx.mutex.unlock()
 
 	if remove_from_parent {
 		remove_child(ctx.context, ctx)
