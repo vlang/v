@@ -427,7 +427,9 @@ pub fn (mut g Gen) init() {
 		}
 		g.comptime_defines.writeln('')
 	}
-	if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm, .boehm_leak] {
+	if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm,
+		.boehm_leak,
+	] {
 		g.comptime_defines.writeln('#define _VGCBOEHM (1)')
 	}
 	if g.pref.is_debug || 'debug' in g.pref.compile_defines {
@@ -6386,7 +6388,8 @@ pub fn (mut g Gen) contains_ptr(el_typ ast.Type) bool {
 		.voidptr, .byteptr, .charptr {
 			return true
 		}
-		.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64, .char, .size_t, .rune, .bool, .enum_ {
+		.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64, .char, .size_t, .rune, .bool,
+		.enum_ {
 			return false
 		}
 		.array_fixed {
