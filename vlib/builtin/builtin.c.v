@@ -313,6 +313,38 @@ pub fn vcalloc(n int) &byte {
 	}
 }
 
+// special versions of the above that allocate memory which is not scanned
+// for pointers (but is collected) when the Boehm garbage collection is used
+pub fn vcalloc_noscan(n int) &byte {
+	$if gcboehm ? {
+		if n < 0 {
+			panic('calloc(<=0)')
+		} else if n == 0 {
+			return &byte(0)
+		}
+		return &byte(C.GC_MALLOC_ATOMIC(n))
+	} $else {
+		return unsafe { vcalloc(n) }
+	}
+}
+
+[unsafe]
+pub fn malloc_noscan(n int) &byte {
+	$if gcboehm ? {
+		if n <= 0 {
+			panic('> V malloc(<=0)')
+		}
+		$if vplayground ? {
+			if n > 10000 {
+				panic('allocating more than 10 KB is not allowed in the playground')
+			}
+		}
+		return &byte(C.GC_MALLOC_ATOMIC(n))
+	} $else {
+		return unsafe { malloc(n) }
+	}
+}
+
 // free allows for manually freeing memory allocated at the address `ptr`.
 [unsafe]
 pub fn free(ptr voidptr) {
