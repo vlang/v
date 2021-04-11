@@ -428,9 +428,6 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 		ast.GlobalDecl {
 			f.global_decl(node)
 		}
-		ast.GoStmt {
-			f.go_stmt(node, false)
-		}
 		ast.GotoLabel {
 			f.goto_label(node)
 		}
@@ -541,7 +538,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.write(node.val)
 		}
 		ast.GoExpr {
-			f.go_stmt(node.go_stmt, true)
+			f.go_expr(node)
 		}
 		ast.Ident {
 			f.ident(node)
@@ -1122,12 +1119,9 @@ pub fn (mut f Fmt) global_decl(node ast.GlobalDecl) {
 	f.writeln(')\n')
 }
 
-pub fn (mut f Fmt) go_stmt(node ast.GoStmt, is_expr bool) {
+pub fn (mut f Fmt) go_expr(node ast.GoExpr) {
 	f.write('go ')
 	f.expr(node.call_expr)
-	if !is_expr {
-		f.writeln('')
-	}
 }
 
 pub fn (mut f Fmt) goto_label(node ast.GotoLabel) {

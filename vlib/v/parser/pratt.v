@@ -92,12 +92,9 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			}
 		}
 		.key_go {
-			stmt := p.stmt(false)
-			go_stmt := stmt as ast.GoStmt
-			node = ast.GoExpr{
-				go_stmt: go_stmt
-				pos: go_stmt.pos
-			}
+			mut go_expr := p.go_expr()
+			go_expr.is_expr = true
+			node = go_expr
 		}
 		.key_true, .key_false {
 			node = ast.BoolLiteral{
@@ -487,6 +484,25 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 			kind: or_kind
 			pos: or_pos
 		}
+	}
+}
+
+fn (mut p Parser) go_expr() ast.GoExpr {
+	p.next()
+	spos := p.tok.position()
+	expr := p.expr(0)
+	call_expr := if expr is ast.CallExpr {
+		expr
+	} else {
+		p.error_with_pos('expression in `go` must be a function call', expr.position())
+		ast.CallExpr{
+			scope: p.scope
+		}
+	}
+	pos := spos.extend(p.prev_tok.position())
+	return ast.GoExpr{
+		call_expr: call_expr
+		pos: pos
 	}
 }
 
