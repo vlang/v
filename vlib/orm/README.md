@@ -4,7 +4,8 @@
 
 ### Fields
 
-- `[primary]` set the field as the primary key
+- `[primary]` sets the field as the primary key
+- `[unique]` sets the field unique
 - `[nonull]` field will be `NOT NULL` in table creation
 - `[skip]` field will be skipped
 - `[sql: type]` sets the type which is used in sql (special type `serial`)
@@ -23,6 +24,14 @@ struct Foo {
 ```v ignore
 sql db {
     create table Foo
+}
+```
+
+### Drop
+
+```v ignore
+sql db {
+    drop table Foo
 }
 ```
 
