@@ -832,11 +832,12 @@ fn (mut g Gen) table_gen(node ast.SqlStmt, typ SqlType) string {
 	mut fields := []string{}
 
 	mut primary := '' // for mysql
-	mut unique := []string{}
+	mut unique := map[string][]string{}
 
 	for field in struct_data.fields {
 		mut is_primary := false
 		mut no_null := false
+		mut is_unique := false
 		for attr in field.attrs {
 			match attr.name {
 				'primary' {
@@ -844,7 +845,11 @@ fn (mut g Gen) table_gen(node ast.SqlStmt, typ SqlType) string {
 					primary = field.name
 				}
 				'unique' {
-					unique << field.name
+					if attr.arg != '' {
+						unique[attr.arg] << field.name
+					} else {
+						is_unique = true
+					}
 				}
 				'nonull' {
 					no_null = true
@@ -882,17 +887,22 @@ fn (mut g Gen) table_gen(node ast.SqlStmt, typ SqlType) string {
 		if no_null {
 			stmt += ' NOT NULL'
 		}
+		if is_unique {
+			stmt += ' UNIQUE'
+		}
 		if is_primary && typ == .sqlite3 {
 			stmt += ' PRIMARY KEY'
 		}
 		fields << stmt
 	}
 	if unique.len > 0 {
-		mut tmp := []string{}
-		for f in unique {
-			tmp << '`$f`'
+		for k, v in unique {
+			mut tmp := []string{}
+			for f in v {
+				tmp << '`$f`'
+			}
+			fields << '/* $k */UNIQUE(${tmp.join(', ')})'
 		}
-		fields << 'UNIQUE(${tmp.join(', ')})'
 	}
 	if typ == .mysql {
 		fields << 'PRIMARY KEY(`$primary`)'
