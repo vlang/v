@@ -43,6 +43,7 @@ const (
 		'vlib/builtin/',
 		'vlib/cli/',
 		'vlib/dl/',
+		'vlib/encoding/utf8/',
 		'vlib/flag/',
 		'vlib/gg/',
 		'vlib/math/bits/bits.v',

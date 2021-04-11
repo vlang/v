@@ -11,10 +11,10 @@ pub fn validate_str(str string) bool {
 	return validate(str.str, str.len)
 }
 
-pub fn validate(data byteptr, len int) bool {
+pub fn validate(data &byte, len int) bool {
 	mut state := Utf8State{}
 	for i := 0; i < len; i++ {
-		s := unsafe {data[i]}
+		s := unsafe { data[i] }
 		if s == 0 {
 			break
 		}
