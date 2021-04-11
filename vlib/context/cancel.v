@@ -81,9 +81,7 @@ fn (mut ctx CancelContext) cancel(remove_from_parent bool, err string) {
 	ctx.canceled = true
 
 	if !ctx.done.closed {
-		defer {
-			ctx.done.close()
-		}
+		ctx.done.close()
 	}
 
 	for mut child in ctx.children {
