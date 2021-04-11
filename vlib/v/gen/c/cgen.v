@@ -6370,3 +6370,63 @@ fn (mut g Gen) trace(fbase string, message string) {
 		println('> g.trace | ${fbase:-10s} | $message')
 	}
 }
+
+// returns true if `t` includes any pointer(s) - during garbage collection heap regions
+// that contain no pointers do not have to be scanned
+pub fn (mut g Gen) contains_ptr(el_typ ast.Type) bool {
+	typ := g.unwrap_generic(el_typ)
+	if typ.is_ptr() {
+		return true
+	}
+	sym := g.table.get_final_type_symbol(typ)
+	if sym.language != .v {
+		return true
+	}
+	match sym.kind {
+		.voidptr, .byteptr, .charptr {
+			return true
+		}
+		.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64, .char, .size_t, .rune, .bool, .enum_ {
+			return false
+		}
+		.array_fixed {
+			info := sym.info as ast.ArrayFixed
+			return g.contains_ptr(info.elem_type)
+		}
+		.sum_type {
+			info := sym.info as ast.SumType
+			for variant in info.variants {
+				if g.contains_ptr(variant) {
+					return true
+				}
+			}
+			return false
+		}
+		.struct_ {
+			info := sym.info as ast.Struct
+			for embed in info.embeds {
+				if g.contains_ptr(embed) {
+					return true
+				}
+			}
+			for field in info.fields {
+				if g.contains_ptr(field.typ) {
+					return true
+				}
+			}
+			return false
+		}
+		.aggregate {
+			info := sym.info as ast.Aggregate
+			for atyp in info.types {
+				if g.contains_ptr(atyp) {
+					return true
+				}
+			}
+			return false
+		}
+		else {
+			return true
+		}
+	}
+}
