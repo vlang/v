@@ -228,7 +228,7 @@ pub enum Map_flags {
 fn sys_call0(scn u64) u64 {
 	res := u64(0)
 	asm amd64 {
-		syscall 
+		syscall
 		; =a (res)
 		; a (scn)
 	}
@@ -238,7 +238,7 @@ fn sys_call0(scn u64) u64 {
 fn sys_call1(scn u64, arg1 u64) u64 {
 	res := u64(0)
 	asm amd64 {
-		syscall 
+		syscall
 		; =a (res)
 		; a (scn)
 		  D (arg1)
@@ -249,7 +249,7 @@ fn sys_call1(scn u64, arg1 u64) u64 {
 fn sys_call2(scn u64, arg1 u64, arg2 u64) u64 {
 	res := u64(0)
 	asm amd64 {
-		syscall 
+		syscall
 		; =a (res)
 		; a (scn)
 		  D (arg1)
@@ -261,7 +261,7 @@ fn sys_call2(scn u64, arg1 u64, arg2 u64) u64 {
 fn sys_call3(scn u64, arg1 u64, arg2 u64, arg3 u64) u64 {
 	res := u64(0)
 	asm amd64 {
-		syscall 
+		syscall
 		; =a (res)
 		; a (scn)
 		  D (arg1)
@@ -275,7 +275,7 @@ fn sys_call4(scn u64, arg1 u64, arg2 u64, arg3 u64, arg4 u64) u64 {
 	res := u64(0)
 	asm amd64 {
 		mov r10, arg4
-		syscall 
+		syscall
 		; =a (res)
 		; a (scn)
 		  D (arg1)
@@ -292,7 +292,7 @@ fn sys_call5(scn u64, arg1 u64, arg2 u64, arg3 u64, arg4 u64, arg5 u64) u64 {
 	asm amd64 {
 		mov r10, arg4
 		mov r8, arg5
-		syscall 
+		syscall
 		; =a (res)
 		; a (scn)
 		  D (arg1)
@@ -312,7 +312,7 @@ fn sys_call6(scn u64, arg1 u64, arg2 u64, arg3 u64, arg4 u64, arg5 u64, arg6 u64
 		mov r10, arg4
 		mov r8, arg5
 		mov r9, arg6
-		syscall 
+		syscall
 		; =a (res)
 		; a (scn)
 		  D (arg1)
