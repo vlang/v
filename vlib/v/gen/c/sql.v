@@ -327,7 +327,6 @@ fn (mut g Gen) sqlite3_drop_table(node ast.SqlStmt, typ SqlType) {
 	g.writeln(', _SLIT("$create_string"));')
 }
 
-
 fn (mut g Gen) sqlite3_bind(val string, len string, typ ast.Type) {
 	match g.sqlite3_type_from_v(typ) {
 		'INTEGER' {
@@ -893,7 +892,7 @@ fn (mut g Gen) table_gen(node ast.SqlStmt, typ SqlType) string {
 		for f in unique {
 			tmp << '`$f`'
 		}
-		fields << 'UNIQUE(${tmp.join(", ")})'
+		fields << 'UNIQUE(${tmp.join(', ')})'
 	}
 	if typ == .mysql {
 		fields << 'PRIMARY KEY(`$primary`)'
