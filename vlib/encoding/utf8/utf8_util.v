@@ -19,6 +19,10 @@ Utility functions
 
 // len return the length as number of unicode chars from a string
 pub fn len(s string) int {
+	if s.len == 0 {
+		return 0
+	}
+
 	mut count := 0
 	mut index := 0
 
