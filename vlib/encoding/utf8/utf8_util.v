@@ -96,16 +96,16 @@ pub fn raw_index(s string, index int) string {
 			break
 		}
 
-        b := s[i]
-        ch_len := ((0xe5000000>>((b>>3) & 0x1e)) & 3)
-        
+		b := s[i]
+		ch_len := ((0xe5000000 >> ((b >> 3) & 0x1e)) & 3)
+
 		r << if ch_len > 0 {
-            i += ch_len
-            rune(get_uchar(s,i-ch_len))
-        } else {
-            rune(b)
-        }
-    }
+			i += ch_len
+			rune(get_uchar(s, i - ch_len))
+		} else {
+			rune(b)
+		}
+	}
 
 	return r[index].str()
 }
