@@ -609,7 +609,7 @@ fn (mut g Gen) mysql_create_table(node ast.SqlStmt, typ SqlType) {
 	g.write('Option_mysql__Result $tmp = mysql__Connection_query(&')
 	g.expr(node.db_expr)
 	g.writeln(', _SLIT("$create_string"));')
-	g.writeln('if (${tmp}.state != 0) { IError err = ${tmp}.err; _STR("Something went wrong\\000%.*s", 2, IError_str(err)); }')
+	g.writeln('if (${tmp}.state != 0) { IError err = ${tmp}.err; eprintln(_STR("Something went wrong\\000%.*s", 2, IError_str(err))); }')
 }
 
 fn (mut g Gen) mysql_drop_table(node ast.SqlStmt, typ SqlType) {
@@ -620,7 +620,7 @@ fn (mut g Gen) mysql_drop_table(node ast.SqlStmt, typ SqlType) {
 	g.write('Option_mysql__Result $tmp = mysql__Connection_query(&')
 	g.expr(node.db_expr)
 	g.writeln(', _SLIT("$create_string"));')
-	g.writeln('if (${tmp}.state != 0) { IError err = ${tmp}.err; _STR("Something went wrong\\000%.*s", 2, IError_str(err)); }')
+	g.writeln('if (${tmp}.state != 0) { IError err = ${tmp}.err; eprintln(_STR("Something went wrong\\000%.*s", 2, IError_str(err))); }')
 }
 
 fn (mut g Gen) mysql_bind(val string, _ ast.Type) {

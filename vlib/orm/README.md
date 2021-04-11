@@ -5,7 +5,7 @@
 ### Fields
 
 - `[primary]` sets the field as the primary key
-- `[unique]` sets the field unique
+- `[unique]` sets the field as unique
 - `[unique: 'foo']` adds the field to a unique group
 - `[nonull]` field will be `NOT NULL` in table creation
 - `[skip]` field will be skipped
