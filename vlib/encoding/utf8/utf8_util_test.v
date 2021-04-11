@@ -50,3 +50,20 @@ fn test_utf8_util() {
   	// test utility functions
   	assert utf8.get_uchar(b,0)==0x002E
 }
+
+fn test_raw_indexing() {
+	a := "我是V Lang!"
+
+	// test non ascii characters
+	assert utf8.raw_index(a, 0) == '我'
+	assert utf8.raw_index(a, 1) == '是'
+	
+	// test ascii characters
+	assert utf8.raw_index(a, 2) == 'V'
+	assert utf8.raw_index(a, 3) == ' '
+	assert utf8.raw_index(a, 4) == 'L'
+	assert utf8.raw_index(a, 5) == 'a'
+	assert utf8.raw_index(a, 6) == 'n'
+	assert utf8.raw_index(a, 7) == 'g'
+	assert utf8.raw_index(a, 8) == '!'
+}
