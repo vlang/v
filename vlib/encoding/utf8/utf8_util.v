@@ -2,7 +2,7 @@
 
 utf-8 util
 
-Copyright (c) 2019 Dario Deledda. All rights reserved.
+Copyright (c) 2019-2021 Dario Deledda. All rights reserved.
 Use of this source code is governed by an MIT license
 that can be found in the LICENSE file.
 
@@ -174,7 +174,6 @@ pub fn is_uchar_global_punct( uchar int ) bool {
 	return find_punct_in_table( uchar , unicode_punct ) != 0
 }
 
-
 /*
 
 Private functions
@@ -216,7 +215,7 @@ fn utf8_to_lower(in_cp int) int{
 	} else if ((0x0531 <= cp) && (0x0556 >= cp)) || // ARMENIAN
 		((0x10A0 <= cp) && (0x10C5 >= cp)) {        // GEORGIAN
 			cp += 0x30
-	} else if (((0x1E00 <= cp) && (0x1E94 >= cp)) ||  // LATIN CAPITAL LETTER 
+	} else if (((0x1E00 <= cp) && (0x1E94 >= cp)) ||// LATIN CAPITAL LETTER 
 		((0x1EA0 <= cp) && (0x1EF8 >= cp))) &&
 		(cp & 1 == 0) { 
 			cp += 1
@@ -224,7 +223,7 @@ fn utf8_to_lower(in_cp int) int{
 		cp += 0x1a
 	} else if (0xFF21 <= cp) && (0xFF3A >= cp) {    // FULLWIDTH LATIN CAPITAL
 		cp += 0x19
-	} else if ((0x1F08 <= cp) && (0x1F0F >= cp)) || //GREEK
+	} else if ((0x1F08 <= cp) && (0x1F0F >= cp)) || // GREEK
 		((0x1F18 <= cp) && (0x1F1D >= cp)) ||
 		((0x1F28 <= cp) && (0x1F2F >= cp)) ||
 		((0x1F38 <= cp) && (0x1F3F >= cp)) ||
@@ -330,10 +329,10 @@ fn utf8_to_upper(in_cp int) int {
 		((0x01cd <= cp) && (0x01dc >= cp)) {
 			cp -= 1
 			cp |= 0x1
-	} else if ((0x0561 <= cp) && (0x0586 >= cp)) || //ARMENIAN
-		((0x10D0 <= cp) && (0x10F5 >= cp)) {        //ARMENIAN
+	} else if ((0x0561 <= cp) && (0x0586 >= cp)) || // ARMENIAN
+		((0x10D0 <= cp) && (0x10F5 >= cp)) {        // GEORGIAN
 			cp -= 0x30
-	} else if (((0x1E01 <= cp) && (0x1E95 >= cp)) ||  // LATIN CAPITAL LETTER 
+	} else if (((0x1E01 <= cp) && (0x1E95 >= cp)) ||// LATIN CAPITAL LETTER 
 		((0x1EA1 <= cp) && (0x1EF9 >= cp))) &&
 		(cp & 1 == 1) { 
 			cp -= 1
@@ -341,7 +340,7 @@ fn utf8_to_upper(in_cp int) int {
 		cp -= 0x1a
 	} else if (0xFF41 <= cp) && (0xFF5A >= cp) {    // FULLWIDTH LATIN CAPITAL
 		cp -= 0x19
-	} else if ((0x1F00 <= cp) && (0x1F07 >= cp)) || //GREEK
+	} else if ((0x1F00 <= cp) && (0x1F07 >= cp)) || // GREEK
 		((0x1F10 <= cp) && (0x1F15 >= cp)) ||
 		((0x1F20 <= cp) && (0x1F27 >= cp)) ||
 		((0x1F30 <= cp) && (0x1F37 >= cp)) ||
@@ -481,8 +480,8 @@ fn up_low(s string, upper_flag bool) string {
 
 
 			if ch_len == 2 {
-				ch0 := byte( (tab_char >> 6) & 0x1f ) | 0xc0  	/*110x xxxx*/
-				ch1 := byte( (tab_char >> 0) & 0x3f ) | 0x80		/*10xx xxxx*/
+				ch0 := byte( (tab_char >> 6) & 0x1f ) | 0xc0  // 110x xxxx
+				ch1 := byte( (tab_char >> 0) & 0x3f ) | 0x80  // 10xx xxxx
 				//C.printf("[%02x%02x] \n",ch0,ch1)
 
 				unsafe {
@@ -493,13 +492,13 @@ fn up_low(s string, upper_flag bool) string {
 				//****************************************************************
 				//  BUG: doesn't compile, workaround use shitf to right of 0 bit
 				//****************************************************************
-				//str_res[index + 1 ] = byte( tab_char & 0xbf )			/*1011 1111*/
+				//str_res[index + 1 ] = byte( tab_char & 0xbf )	// 1011 1111
 
 			}
 			else if ch_len == 3 {
-				ch0 := byte( (tab_char >> 12) & 0x0f ) | 0xe0  	/*1110 xxxx*/
-				ch1 := byte( (tab_char >> 6) & 0x3f ) | 0x80		/*10xx xxxx*/
-				ch2 := byte( (tab_char >> 0) & 0x3f ) | 0x80		/*10xx xxxx*/
+				ch0 := byte( (tab_char >> 12) & 0x0f ) | 0xe0  // 1110 xxxx
+				ch1 := byte( (tab_char >> 6) & 0x3f  ) | 0x80  // 10xx xxxx
+				ch2 := byte( (tab_char >> 0) & 0x3f  ) | 0x80  // 10xx xxxx
 				//C.printf("[%02x%02x%02x] \n",ch0,ch1,ch2)
 
 				unsafe {
