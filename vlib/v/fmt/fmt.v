@@ -684,7 +684,9 @@ fn (mut f Fmt) asm_stmt(stmt ast.AsmStmt) {
 		if template.is_label {
 			f.write(':')
 		} else {
-			f.write(' ')
+			if template.args.len > 0 {
+				f.write(' ')
+			}
 		}
 		for i, arg in template.args {
 			f.asm_arg(arg)
