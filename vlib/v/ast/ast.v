@@ -969,7 +969,6 @@ pub:
 pub mut:
 	call_expr CallExpr
 	is_expr   bool
-	typ       Type
 }
 
 pub struct GotoLabel {

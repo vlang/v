@@ -3790,9 +3790,7 @@ fn (mut c Checker) go_expr(mut node ast.GoExpr) ast.Type {
 		c.error('method in `go` statement cannot have non-reference mutable receiver',
 			node.call_expr.left.position())
 	}
-	thread_type := c.table.find_or_register_thread(ret_type)
-	node.typ = thread_type
-	return thread_type
+	return c.table.find_or_register_thread(ret_type)
 }
 
 fn (mut c Checker) asm_stmt(mut stmt ast.AsmStmt) {
