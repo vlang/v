@@ -34,7 +34,7 @@ pub fn cancel(mut ctx CancelerContext) {
 // struct types: CancelContext and TimerContext
 pub type CancelerContext = CancelContext | TimerContext
 
-pub fn (ctx CancelerContext) done() chan int {
+pub fn (mut ctx CancelerContext) done() chan int {
 	match mut ctx {
 		CancelContext {
 			return ctx.done()
@@ -45,7 +45,7 @@ pub fn (ctx CancelerContext) done() chan int {
 	}
 }
 
-pub fn (ctx CancelerContext) err() string {
+pub fn (mut ctx CancelerContext) err() string {
 	match mut ctx {
 		CancelContext {
 			return ctx.err()
@@ -67,7 +67,7 @@ pub fn (ctx CancelerContext) value(key string) ?voidptr {
 	}
 }
 
-pub fn (ctx CancelerContext) cancel(remove_from_parent bool, err string) {
+pub fn (mut ctx CancelerContext) cancel(remove_from_parent bool, err string) {
 	match mut ctx {
 		CancelContext {
 			ctx.cancel(remove_from_parent, err)

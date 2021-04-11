@@ -9,9 +9,9 @@ fn test_with_cancel() {
 	// The callers of gen need to cancel the context once
 	// they are done consuming generated integers not to leak
 	// the internal routine started by gen.
-	gen := fn (ctx CancelerContext) chan int {
+	gen := fn (mut ctx CancelerContext) chan int {
 		dst := chan int{}
-		go fn (ctx CancelerContext, dst chan int) {
+		go fn (mut ctx CancelerContext, dst chan int) {
 			ch := ctx.done()
 			loop: for i in 0 .. 5 {
 				select {
@@ -22,7 +22,7 @@ fn test_with_cancel() {
 					dst <- i {}
 				}
 			}
-		}(ctx, dst)
+		}(mut ctx, dst)
 		return dst
 	}
 
@@ -31,7 +31,7 @@ fn test_with_cancel() {
 		cancel(mut ctx)
 	}
 
-	ch := gen(ctx)
+	ch := gen(mut ctx)
 	for i in 0 .. 5 {
 		v := <-ch
 		assert i == v
