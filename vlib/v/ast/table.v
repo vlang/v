@@ -433,6 +433,9 @@ pub fn (t &Table) contains_ptr(typ Type) bool {
 		return true
 	}
 	sym := t.get_final_type_symbol(typ)
+	if sym.language != .v {
+		return true
+	}
 	match sym.kind {
 		.voidptr, .byteptr, .charptr {
 			return true
