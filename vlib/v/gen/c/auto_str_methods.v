@@ -41,6 +41,18 @@ fn (mut g Gen) gen_str_default(sym ast.TypeSymbol, styp string, str_fn_name stri
 }
 
 fn (g &Gen) type_to_fmt(typ ast.Type) string {
+	if typ == ast.byte_type_idx {
+		return '%hhx\\000'
+	}
+	if typ == ast.char_type_idx {
+		return '%c\\000'
+	}
+	if typ == ast.voidptr_type_idx || typ in ast.byteptr_types {
+		return '%p\\000'
+	}
+	if typ in ast.charptr_types {
+		return '%C\\000' // a C string
+	}
 	sym := g.table.get_type_symbol(typ)
 	if typ.is_ptr() && (typ.is_int_valptr() || typ.is_float_valptr()) {
 		return '%.*s\\000'
@@ -51,6 +63,8 @@ fn (g &Gen) type_to_fmt(typ ast.Type) string {
 		return "'%.*s\\000'"
 	} else if sym.kind in [.f32, .f64] {
 		return '%g\\000' // g removes trailing zeros unlike %f
+	} else if sym.kind == .int {
+		return '%d\\000'
 	} else if sym.kind == .u32 {
 		return '%u\\000'
 	} else if sym.kind == .u64 {
@@ -506,9 +520,11 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 					fnames2strfunc[field_styp]
 				}
 				g.auto_str_funcs.write_string('indents, ')
-				func := struct_auto_str_func(sym, field.typ, field_styp_fn_name, field.name)
+				mut func := struct_auto_str_func(sym, field.typ, field_styp_fn_name, field.name)
 				// reference types can be "nil"
-				if field.typ.is_ptr() {
+				if field.typ.is_ptr() && !(field.typ in ast.charptr_types
+					|| field.typ in ast.byteptr_types
+					|| field.typ == ast.voidptr_type_idx) {
 					g.auto_str_funcs.write_string('isnil(it.${c_name(field.name)})')
 					g.auto_str_funcs.write_string(' ? _SLIT("nil") : ')
 					// struct, floats and ints have a special case through the _str function
