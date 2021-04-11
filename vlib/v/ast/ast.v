@@ -373,7 +373,7 @@ pub:
 	is_builtin      bool // this function is defined in builtin/strconv
 	body_pos        token.Position // function bodys position
 	file            string
-	generic_params  []GenericParam
+	generic_names   []string
 	is_direct_arr   bool // direct array access
 	attrs           []Attr
 	skip_gen        bool // this function doesn't need to be generated (for example [if foo])
@@ -389,11 +389,6 @@ pub mut:
 	scope           &Scope
 	label_names     []string
 	pos             token.Position // function declaration position
-}
-
-pub struct GenericParam {
-pub:
-	name string
 }
 
 // break, continue

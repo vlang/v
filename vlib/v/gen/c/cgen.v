@@ -687,7 +687,7 @@ static inline Option_void __Option_${styp}_pushval($styp ch, $el_type e) {
 }
 
 // cc_type whether to prefix 'struct' or not (C__Foo -> struct Foo)
-fn (g &Gen) cc_type(typ ast.Type, is_prefix_struct bool) string {
+fn (mut g Gen) cc_type(typ ast.Type, is_prefix_struct bool) string {
 	sym := g.table.get_type_symbol(g.unwrap_generic(typ))
 	mut styp := sym.cname
 	// TODO: this needs to be removed; cgen shouldn't resolve generic types (job of checker)
