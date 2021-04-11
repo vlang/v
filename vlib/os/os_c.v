@@ -21,6 +21,10 @@ fn C.open(&char, int, ...int) int
 
 fn C.fdopen(fd int, mode &char) &C.FILE
 
+fn C.ferror(stream &C.FILE) int
+
+fn C.feof(stream &C.FILE) int
+
 fn C.CopyFile(&u16, &u16, bool) int
 
 // fn C.lstat(charptr, voidptr) u64
@@ -100,8 +104,10 @@ pub fn read_file(path string) ?string {
 	C.rewind(fp)
 	unsafe {
 		mut str := malloc(fsize + 1)
-		nelements := int(C.fread(str, fsize, 1, fp))
-		if nelements == 0 && fsize > 0 {
+		C.fread(str, fsize, 1, fp)
+		is_eof := int(C.feof(fp))
+		is_error := int(C.ferror(fp))
+		if is_eof == 0 && is_error != 0 {
 			free(str)
 			return error('fread failed')
 		}
