@@ -10,6 +10,17 @@ pub interface Canceler {
 	str() string
 }
 
+pub fn cancel(mut ctx CancelerContext) {
+	match mut ctx {
+		CancelContext {
+			ctx.cancel(true, canceled)
+		}
+		TimerContext {
+			ctx.cancel(true, canceled)
+		}
+	}
+}
+
 // CancelerContext implements the Canceler intarface for both
 // struct types: CancelContext and TimerContext
 pub type CancelerContext = CancelContext | TimerContext
@@ -93,10 +104,10 @@ mut:
 //
 // Canceling this context releases resources associated with it, so code should
 // call cancel as soon as the operations running in this Context complete.
-pub fn with_cancel(parent Context) CancelerContext {
+pub fn with_cancel(parent Context) &CancelerContext {
 	mut c := new_cancel_context(parent)
 	propagate_cancel(parent, mut c)
-	return c
+	return &c
 }
 
 // new_cancel_context returns an initialized CancelContext.
@@ -217,9 +228,5 @@ fn parent_cancel_context(parent Context) ?CancelContext {
 // remove_child removes a context from its parent.
 fn remove_child(parent Context, child Canceler) {
 	mut p := parent_cancel_context(parent) or { return }
-	for id, c in p.children {
-		if id == child.id {
-			p.children.delete(id)
-		}
-	}
+	p.children.delete(child.id)
 }
