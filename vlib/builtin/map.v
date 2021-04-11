@@ -172,7 +172,7 @@ fn (mut d DenseArray) zeros_to_end() {
 	mut tmp_key := unsafe { malloc(d.key_bytes) }
 	mut count := 0
 	for i in 0 .. d.len {
-		if d.has_index(i) {
+		if d.has_index(i) && count != i {
 			// swap (TODO: optimize)
 			unsafe {
 				// Swap keys
