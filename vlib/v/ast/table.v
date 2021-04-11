@@ -426,6 +426,62 @@ pub fn (t &Table) get_final_type_symbol(typ Type) &TypeSymbol {
 	panic('get_final_type_symbol: invalid type (typ=$typ idx=$idx). Compiler bug. This should never happen. Please create a GitHub issue.')
 }
 
+// returns true if `t` includes any pointer(s) - during garbage collection heap regions
+// that contain no pointers do not have to be scanned
+pub fn (t &Table) contains_ptr(typ Type) bool {
+	if typ.is_ptr() {
+		return true
+	}
+	sym := t.get_final_type_symbol(typ)
+	match sym.kind {
+		.voidptr, .byteptr, .charptr {
+			return true
+		}
+		.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64, .char, .size_t, .rune, .bool, .enum_ {
+			return false
+		}
+		.array_fixed {
+			info := sym.info as ArrayFixed
+			return t.contains_ptr(info.elem_type)
+		}
+		.sum_type {
+			info := sym.info as SumType
+			for variant in info.variants {
+				if t.contains_ptr(variant) {
+					return true
+				}
+			}
+			return false
+		}
+		.struct_ {
+			info := sym.info as Struct
+			for embed in info.embeds {
+				if t.contains_ptr(embed) {
+					return true
+				}
+			}
+			for field in info.fields {
+				if t.contains_ptr(field.typ) {
+					return true
+				}
+			}
+			return false
+		}
+		.aggregate {
+			info := sym.info as Aggregate
+			for atyp in info.types {
+				if t.contains_ptr(atyp) {
+					return true
+				}
+			}
+			return false
+		}
+		else {
+			return true
+		}
+	}
+}		
+
 [inline]
 pub fn (t &Table) get_type_name(typ Type) string {
 	typ_sym := t.get_type_symbol(typ)
