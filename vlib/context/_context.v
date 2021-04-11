@@ -6,7 +6,7 @@ pub const (
 	background         = EmptyContext(0)
 	todo               = EmptyContext(1)
 
-	cancel_context_key = &u32(0)
+	cancel_context_key = 'context.CancelContext'
 
 	// canceled is the error returned by Context.err when the context is canceled.
 	canceled           = 'context canceled'
