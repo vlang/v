@@ -144,7 +144,7 @@ fn (mut p Parser) decode_value() ?Any {
 			})
 		}
 	}
-	return Any{}
+	return Any(null)
 }
 
 fn (mut p Parser) decode_array() ?Any {
