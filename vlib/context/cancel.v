@@ -1,8 +1,10 @@
 module context
 
+import rand
 import time
 
 pub interface Canceler {
+	id string
 	cancel(remove_from_parent bool, err string)
 	done() chan int
 	str() string
@@ -11,6 +13,7 @@ pub interface Canceler {
 // A CancelContext can be canceled. When canceled, it also cancels any children
 // that implement Canceler.
 pub struct CancelContext {
+	id string
 mut:
 	context  Context
 	done     chan int
@@ -40,6 +43,7 @@ pub fn with_cancel(parent Context) CancelContext {
 // new_cancel_context returns an initialized CancelContext.
 fn new_cancel_context(parent Context) CancelContext {
 	return CancelContext{
+		id: rand.uuid_v4()
 		context: parent
 	}
 }

@@ -21,7 +21,6 @@ pub interface Context {
 	// should be canceled. deadline returns none when no deadline is
 	// set. Successive calls to deadline return the same results.
 	deadline() ?time.Time
-
 	// done returns a channel that's closed when work done on behalf of this
 	// context should be canceled. done may return nil if this context can
 	// never be canceled. Successive calls to done return the same value.
@@ -33,14 +32,12 @@ pub interface Context {
 	// expires; with_timeout arranges for done to be closed when the timeout
 	// elapses.
 	done() chan int
-
 	// If done is not yet closed, err returns nil.
 	// If done is closed, err returns a non-nil error explaining why:
 	// canceled if the context was canceled
 	// or deadline_exceeded if the context's deadline passed.
 	// After err returns a non-nil error, successive calls to err return the same error.
 	err() string
-
 	// Value returns the value associated with this context for key, or nil
 	// if no value is associated with key. Successive calls to Value with
 	// the same key returns the same result.
@@ -56,7 +53,6 @@ pub interface Context {
 	// packages should define keys as an unexported type to avoid
 	// collisions.
 	value(key string) ?voidptr
-
 	str() string
 }
 
@@ -65,7 +61,7 @@ pub interface Context {
 // initialization, and tests, and as the top-level Context for incoming
 // requests.
 pub fn background() Context {
-	return Context(background)
+	return Context(context.background)
 }
 
 // todo returns an empty Context. Code should use todo when
@@ -73,7 +69,7 @@ pub fn background() Context {
 // surrounding function has not yet been extended to accept a Context
 // parameter).
 pub fn todo() Context {
-	return Context(todo)
+	return Context(context.todo)
 }
 
 fn context_name(ctx Context) string {
