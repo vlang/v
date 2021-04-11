@@ -687,7 +687,7 @@ static inline Option_void __Option_${styp}_pushval($styp ch, $el_type e) {
 }
 
 // cc_type whether to prefix 'struct' or not (C__Foo -> struct Foo)
-fn (g &Gen) cc_type(typ ast.Type, is_prefix_struct bool) string {
+fn (mut g Gen) cc_type(typ ast.Type, is_prefix_struct bool) string {
 	sym := g.table.get_type_symbol(g.unwrap_generic(typ))
 	mut styp := sym.cname
 	// TODO: this needs to be removed; cgen shouldn't resolve generic types (job of checker)
@@ -5743,23 +5743,36 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 		return '{0}'
 	}
 	// Always set pointers to 0
-	if typ.is_ptr() {
+	if typ.is_ptr() && !typ.has_flag(.shared_f) {
 		return '0'
 	}
 	sym := g.table.get_type_symbol(typ)
 	if sym.kind == .array {
-		elem_sym := g.typ(sym.array_info().elem_type)
+		elem_typ := sym.array_info().elem_type
+		elem_sym := g.typ(elem_typ)
 		mut elem_type_str := util.no_dots(elem_sym)
 		if elem_type_str.starts_with('C__') {
 			elem_type_str = elem_type_str[3..]
 		}
-		return '__new_array(0, 1, sizeof($elem_type_str))'
+		init_str := '__new_array(0, 1, sizeof($elem_type_str))'
+		if typ.has_flag(.shared_f) {
+			atyp := '__shared__Array_${g.table.get_type_symbol(elem_typ).cname}'
+			return '($atyp*)__dup_shared_array(&($atyp){.val = $init_str}, sizeof($atyp))'
+		} else {
+			return init_str
+		}
 	}
 	if sym.kind == .map {
 		info := sym.map_info()
 		key_typ := g.table.get_type_symbol(info.key_type)
 		hash_fn, key_eq_fn, clone_fn, free_fn := g.map_fn_ptrs(key_typ)
-		return 'new_map(sizeof(${g.typ(info.key_type)}), sizeof(${g.typ(info.value_type)}), $hash_fn, $key_eq_fn, $clone_fn, $free_fn)'
+		init_str := 'new_map(sizeof(${g.typ(info.key_type)}), sizeof(${g.typ(info.value_type)}), $hash_fn, $key_eq_fn, $clone_fn, $free_fn)'
+		if typ.has_flag(.shared_f) {
+			mtyp := '__shared__Map_${key_typ.cname}_${g.table.get_type_symbol(info.value_type).cname}'
+			return '($mtyp*)__dup_shared_map(&($mtyp){.val = $init_str}, sizeof($mtyp))'
+		} else {
+			return init_str
+		}
 	}
 	// User struct defined in another module.
 	// if typ.contains('__') {
@@ -5786,7 +5799,12 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 		} else {
 			init_str += '0}'
 		}
-		return init_str
+		if typ.has_flag(.shared_f) {
+			styp := '__shared__${g.table.get_type_symbol(typ).cname}'
+			return '($styp*)__dup${styp}(&($styp){.val = $init_str}, sizeof($styp))'
+		} else {
+			return init_str
+		}
 	}
 	// if typ.ends_with('Fn') { // TODO
 	// return '0'

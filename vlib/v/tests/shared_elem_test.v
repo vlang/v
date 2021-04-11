@@ -8,6 +8,18 @@ struct Abc {
 	i int
 }
 
+fn test_shared_struct_auto_struct() {
+	e := Abc{}
+	shared a := e.a
+	lock a {
+		a.n = 17
+	}
+	r := rlock a {
+		a.n
+	}
+	assert r == 17
+}
+
 fn test_shared_struct_in_struct() {
 	shared y := Xyz{
 		n: 7
@@ -50,6 +62,20 @@ struct Efg {
 	i int
 }
 
+fn test_shared_auto_init_array() {
+	e := Efg{}
+	shared a := e.a
+	lock a {
+		a << 23.0625
+		a << -133.25
+		a << 0.125
+	}
+	r := rlock a {
+		a[1]
+	}
+	assert r == -133.25
+}
+
 fn test_shared_array_in_struct() {
 	x := Efg{
 		a: [1.25, 2.75, 7, 13.0625]
@@ -74,6 +100,18 @@ fn test_shared_array_in_struct() {
 struct Hjk {
 	m shared map[string]f64
 	i int
+}
+
+fn test_shared_auto_init_map() {
+	a := Hjk{}
+	shared m := a.m
+	lock m {
+		m['xcv'] = -31.125
+	}
+	r := rlock m {
+		m['xcv']
+	}
+	assert r == -31.125
 }
 
 fn test_shared_map_in_struct() {
