@@ -1331,6 +1331,7 @@ pub fn (mut s Scanner) warn(msg string) {
 		line_nr: s.line_nr
 		pos: s.pos
 		col: s.current_column() - 1
+		last_col: s.current_column() - 1
 	}
 	if s.pref.output_mode == .stdout {
 		eprintln(util.formatted_error('warning:', msg, s.file_path, pos))
@@ -1349,6 +1350,7 @@ pub fn (mut s Scanner) error(msg string) {
 		line_nr: s.line_nr
 		pos: s.pos
 		col: s.current_column() - 1
+		last_col: s.current_column() - 1
 	}
 	if s.pref.output_mode == .stdout {
 		eprintln(util.formatted_error('error:', msg, s.file_path, pos))
@@ -1373,6 +1375,7 @@ fn (mut s Scanner) vet_error(msg string, fix vet.FixKind) {
 		pos: token.Position{
 			line_nr: s.line_nr
 			col: s.current_column() - 1
+			last_col: s.current_column() - 1
 		}
 		kind: .error
 		fix: fix

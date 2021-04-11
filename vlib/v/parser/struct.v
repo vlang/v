@@ -389,10 +389,9 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 				first_field_pos.len + 1
 			}
 			field_pos = token.Position{
-				line_nr: first_field_pos.line_nr
-				pos: first_field_pos.pos
+				...first_field_pos
 				len: field_len
-				col: first_field_pos.col
+				last_col: last_field_pos.last_col
 			}
 		}
 		i++

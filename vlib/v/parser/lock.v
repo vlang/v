@@ -40,7 +40,7 @@ fn (mut p Parser) lock_expr() ast.LockExpr {
 		}
 	}
 	stmts := p.parse_block()
-	pos.update_last_line(p.prev_tok.line_nr)
+	pos.update_last_line(p.prev_tok)
 	return ast.LockExpr{
 		lockeds: lockeds
 		stmts: stmts

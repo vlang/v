@@ -190,7 +190,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 			}
 		}
 	}
-	pos.update_last_line(p.prev_tok.line_nr)
+	pos.update_last_line(p.prev_tok)
 	return ast.AssignStmt{
 		op: op
 		left: left

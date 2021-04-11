@@ -87,7 +87,7 @@ pub fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr 
 		fn_name = p.imported_symbols[fn_name]
 	}
 	comments := p.eat_comments(same_line: true)
-	pos.update_last_line(p.prev_tok.line_nr)
+	pos.update_last_line(p.prev_tok)
 	return ast.CallExpr{
 		name: fn_name
 		name_pos: first_pos

@@ -23,6 +23,7 @@ pub fn ast_comment_to_doc_comment(ast_node ast.Comment) DocComment {
 			line_nr: ast_node.pos.line_nr
 			col: 0 // ast_node.pos.pos - ast_node.text.len
 			len: text.len
+			last_col: 0
 		}
 	}
 }

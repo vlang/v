@@ -139,7 +139,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 			break
 		}
 	}
-	pos.update_last_line(p.prev_tok.line_nr)
+	pos.update_last_line(p.prev_tok)
 	if comments.len > 0 {
 		pos.last_line = comments.last().pos.last_line
 	}
@@ -253,16 +253,14 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 	}
 	match_last_pos := p.tok.position()
 	mut pos := token.Position{
-		line_nr: match_first_pos.line_nr
-		pos: match_first_pos.pos
+		...match_first_pos
 		len: match_last_pos.pos - match_first_pos.pos + match_last_pos.len
-		col: match_first_pos.col
 	}
 	if p.tok.kind == .rcbr {
 		p.check(.rcbr)
 	}
 	// return ast.StructInit{}
-	pos.update_last_line(p.prev_tok.line_nr)
+	pos.update_last_line(p.prev_tok)
 	return ast.MatchExpr{
 		branches: branches
 		cond: cond
@@ -398,13 +396,11 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 		p.close_scope()
 		p.inside_match_body = false
 		mut pos := token.Position{
-			line_nr: branch_first_pos.line_nr
-			pos: branch_first_pos.pos
+			...branch_first_pos
 			len: branch_last_pos.pos - branch_first_pos.pos + branch_last_pos.len
-			col: branch_first_pos.col
 		}
 		post_comments := p.eat_comments({})
-		pos.update_last_line(p.prev_tok.line_nr)
+		pos.update_last_line(p.prev_tok)
 		if post_comments.len > 0 {
 			pos.last_line = post_comments.last().pos.last_line
 		}
@@ -423,10 +419,8 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 	}
 	match_last_pos := p.tok.position()
 	pos := token.Position{
-		line_nr: match_first_pos.line_nr
-		pos: match_first_pos.pos
+		...match_first_pos
 		len: match_last_pos.pos - match_first_pos.pos + match_last_pos.len
-		col: match_first_pos.col
 	}
 	if p.tok.kind == .rcbr {
 		p.check(.rcbr)

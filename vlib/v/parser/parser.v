@@ -682,7 +682,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			p.next()
 			mut pos := p.tok.position()
 			expr := p.expr(0)
-			pos.update_last_line(p.prev_tok.line_nr)
+			pos.update_last_line(p.prev_tok)
 			return ast.AssertStmt{
 				expr: expr
 				pos: pos
@@ -748,7 +748,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				.key_if {
 					mut pos := p.tok.position()
 					expr := p.if_expr(true)
-					pos.update_last_line(p.prev_tok.line_nr)
+					pos.update_last_line(p.prev_tok)
 					return ast.ExprStmt{
 						expr: expr
 						pos: pos
@@ -760,7 +760,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				.name {
 					mut pos := p.tok.position()
 					expr := p.comp_call()
-					pos.update_last_line(p.prev_tok.line_nr)
+					pos.update_last_line(p.prev_tok)
 					return ast.ExprStmt{
 						expr: expr
 						pos: pos
@@ -1692,7 +1692,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 			}
 		}
 	}
-	pos.update_last_line(p.prev_tok.line_nr)
+	pos.update_last_line(p.prev_tok)
 	if left.len == 1 {
 		return ast.ExprStmt{
 			expr: left0
@@ -3165,7 +3165,7 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 	}
 	if p.tok.kind == .rcbr {
 		// `unsafe {}`
-		pos.update_last_line(p.tok.line_nr)
+		pos.update_last_line(p.tok)
 		p.next()
 		return ast.Block{
 			is_unsafe: true
@@ -3184,7 +3184,7 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 			// `unsafe {expr}`
 			if stmt.expr.is_expr() {
 				p.next()
-				pos.update_last_line(p.prev_tok.line_nr)
+				pos.update_last_line(p.prev_tok)
 				ue := ast.UnsafeExpr{
 					expr: stmt.expr
 					pos: pos
@@ -3204,7 +3204,7 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 		stmts << p.stmt(false)
 	}
 	p.next()
-	pos.update_last_line(p.tok.line_nr)
+	pos.update_last_line(p.tok)
 	return ast.Block{
 		stmts: stmts
 		is_unsafe: true

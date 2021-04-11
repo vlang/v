@@ -106,7 +106,7 @@ pub fn source_context(kind string, source string, pos token.Position) []string {
 	for iline := bline; iline <= aline; iline++ {
 		sline := source_lines[iline]
 		start_column := mu.max(0, mu.min(pos.col, sline.len))
-		end_column := mu.max(0, mu.min(pos.col + mu.max(0, pos.len), sline.len))
+		end_column := mu.max(0, mu.min(pos.last_col, sline.len))
 		cline := if iline == pos.line_nr {
 			sline[..start_column] + color(kind, sline[start_column..end_column]) +
 				sline[end_column..]

@@ -139,7 +139,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			p.check(.lcbr)
 			e := p.expr(0)
 			p.check(.rcbr)
-			pos.update_last_line(p.prev_tok.line_nr)
+			pos.update_last_line(p.prev_tok)
 			node = ast.UnsafeExpr{
 				expr: e
 				pos: pos
@@ -374,7 +374,7 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 			mut pos := tok.position()
 			p.next()
 			right := p.expr(precedence - 1)
-			pos.update_last_line(p.prev_tok.line_nr)
+			pos.update_last_line(p.prev_tok)
 			if mut node is ast.IndexExpr {
 				node.recursive_mapset_is_setter(true)
 			}
@@ -475,7 +475,7 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 		}
 		p.or_is_handled = false
 	}
-	pos.update_last_line(p.prev_tok.line_nr)
+	pos.update_last_line(p.prev_tok)
 	return ast.InfixExpr{
 		left: left
 		right: right
@@ -538,7 +538,7 @@ fn (mut p Parser) prefix_expr() ast.PrefixExpr {
 		}
 		p.or_is_handled = false
 	}
-	pos.update_last_line(p.prev_tok.line_nr)
+	pos.update_last_line(p.prev_tok)
 	return ast.PrefixExpr{
 		op: op
 		right: right
