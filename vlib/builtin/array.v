@@ -820,4 +820,3 @@ fn (a array) reverse_noscan() array {
 	}
 	return arr
 }
-
