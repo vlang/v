@@ -343,7 +343,7 @@ Note the (important) difference between `:=` and `=`.
 
 ```v failcompile
 fn main() {
-    age = 21
+	age = 21
 }
 ```
 
@@ -374,13 +374,13 @@ In development mode the compiler will warn you that you haven't used the variabl
 In production mode (enabled by passing the `-prod` flag to v – `v -prod foo.v`)
 it will not compile at all (like in Go).
 
-```v failcompile
+```v failcompile nofmt
 fn main() {
-    a := 10
-    if true {
-        a := 20 // error: redefinition of `a`
-    }
-    // warning: unused variable `a`
+	a := 10
+	if true {
+		a := 20 // error: redefinition of `a`
+	}
+	// warning: unused variable `a`
 }
 ```
 
@@ -393,8 +393,8 @@ import ui
 import gg
 
 fn draw(ctx &gg.Context) {
-    gg := ctx.parent.get_ui().gg
-    gg.draw_rect(10, 10, 100, 50)
+	gg := ctx.parent.get_ui().gg
+	gg.draw_rect(10, 10, 100, 50)
 }
 ```
 
@@ -937,9 +937,9 @@ import crypto.sha256
 import mymod.sha256 as mysha256
 
 fn main() {
-    v_hash := sha256.sum('hi'.bytes()).hex()
-    my_hash := mysha256.sum('hi'.bytes()).hex()
-    assert my_hash == v_hash
+	v_hash := mysha256.sum('hi'.bytes()).hex()
+	my_hash := mysha256.sum('hi'.bytes()).hex()
+	assert my_hash == v_hash
 }
 ```
 
@@ -1581,9 +1581,9 @@ The byte pointer with the string data is not accessible outside `builtin` at all
 The `len` field is public, but immutable:
 ```v failcompile
 fn main() {
-    str := 'hello'
-    len := str.len // OK
-    str.len++      // Compilation error
+	str := 'hello'
+	len := str.len // OK
+	str.len++ // Compilation error
 }
 ```
 
@@ -2016,7 +2016,7 @@ module mymodule
 
 // To export a function we have to use `pub`
 pub fn say_hi() {
-    println('hello from mymodule!')
+	println('hello from mymodule!')
 }
 ```
 
@@ -2026,7 +2026,7 @@ You can now use `mymodule` in your code:
 import mymodule
 
 fn main() {
-    mymodule.say_hi()
+	mymodule.say_hi()
 }
 ```
 
@@ -3026,9 +3026,10 @@ fn main() {
 
 ```v failcompile
 module main
+
 // hello_test.v
 fn test_hello() {
-    assert hello() == 'Hello world'
+	assert hello() == 'Hello world'
 }
 ```
 To run the test above, use `v hello_test.v`. This will check that the function `hello` is
