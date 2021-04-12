@@ -21,10 +21,12 @@ fn test_utf8_util() {
 	assert lower1 == (src_lower.ustring())
 
 	// test len function
+	assert utf8.len('') == 0
 	assert utf8.len('pippo') == 5
 	assert utf8.len(src) == 15 // 29
 	assert src.len == 24 // 49
 	// test u_len function
+	assert utf8.u_len(''.ustring()) == 0
 	assert utf8.u_len(src1) == 15 // 29
 	assert utf8.u_len('pippo'.ustring()) == 5
 
