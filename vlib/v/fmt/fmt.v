@@ -2157,11 +2157,16 @@ pub fn (mut f Fmt) or_expr(node ast.OrExpr) {
 }
 
 pub fn (mut f Fmt) par_expr(node ast.ParExpr) {
-	f.write('(')
-	f.par_level++
+	requires_paren := node.expr !is ast.Ident
+	if requires_paren {
+		f.par_level++
+		f.write('(')
+	}
 	f.expr(node.expr)
-	f.par_level--
-	f.write(')')
+	if requires_paren {
+		f.par_level--
+		f.write(')')
+	}
 }
 
 pub fn (mut f Fmt) postfix_expr(node ast.PostfixExpr) {
