@@ -222,11 +222,12 @@ fn (mut g Gen) decode_array(value_type ast.Type) string {
 		$styp val = *($styp*)val2.data;
 '
 	}
+	noscan := g.check_noscan(value_type)
 	return '
 	if(root && !cJSON_IsArray(root) && !cJSON_IsNull(root)) {
 		return (Option_Array_$styp){.state = 2, .err = v_error(string_add(_SLIT("Json element is not an array: "), tos2((byteptr)cJSON_PrintUnformatted(root))))};
 	}
-	res = __new_array(0, 0, sizeof($styp));
+	res = __new_array${noscan}(0, 0, sizeof($styp));
 	const cJSON *jsval = NULL;
 	cJSON_ArrayForEach(jsval, root)
 	{

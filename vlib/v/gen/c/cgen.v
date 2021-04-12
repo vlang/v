@@ -5758,7 +5758,8 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 		if elem_type_str.starts_with('C__') {
 			elem_type_str = elem_type_str[3..]
 		}
-		init_str := '__new_array(0, 1, sizeof($elem_type_str))'
+		noscan := g.check_noscan(elem_typ)
+		init_str := '__new_array${noscan}(0, 1, sizeof($elem_type_str))'
 		if typ.has_flag(.shared_f) {
 			atyp := '__shared__Array_${g.table.get_type_symbol(elem_typ).cname}'
 			return '($atyp*)__dup_shared_array(&($atyp){.val = $init_str}, sizeof($atyp))'
@@ -6430,4 +6431,13 @@ pub fn (mut g Gen) contains_ptr(el_typ ast.Type) bool {
 			return true
 		}
 	}
+}
+
+fn (mut g Gen) check_noscan(elem_typ ast.Type) string {
+	if g.pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
+		if g.contains_ptr(elem_typ) {
+			return '_noscan'
+		}
+	}
+	return ''
 }

@@ -50,10 +50,11 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 	if node.exprs.len == 0 {
 		elem_sym := g.table.get_type_symbol(node.elem_type)
 		is_default_array := elem_sym.kind == .array && node.has_default
+		noscan := g.check_noscan(node.elem_type)
 		if is_default_array {
-			g.write('__new_array_with_array_default(')
+			g.write('__new_array_with_array_default${noscan}(')
 		} else {
-			g.write('__new_array_with_default(')
+			g.write('__new_array_with_default${noscan}(')
 		}
 		if node.has_len {
 			g.expr(node.len_expr)
@@ -145,7 +146,8 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	g.expr(node.left)
 	g.writeln(';')
 	g.writeln('int ${tmp}_len = ${tmp}_orig.len;')
-	g.writeln('$ret_typ $tmp = __new_array(0, ${tmp}_len, sizeof($ret_elem_type));\n')
+	noscan := g.check_noscan(ret_info.elem_type)
+	g.writeln('$ret_typ $tmp = __new_array${noscan}(0, ${tmp}_len, sizeof($ret_elem_type));\n')
 	i := g.new_tmp_var()
 	g.writeln('for (int $i = 0; $i < ${tmp}_len; ++$i) {')
 	g.writeln('\t$inp_elem_type it = (($inp_elem_type*) ${tmp}_orig.data)[$i];')
@@ -337,7 +339,8 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	g.expr(node.left)
 	g.writeln(';')
 	g.writeln('int ${tmp}_len = ${tmp}_orig.len;')
-	g.writeln('$styp $tmp = __new_array(0, ${tmp}_len, sizeof($elem_type_str));\n')
+	noscan := g.check_noscan(info.elem_type)
+	g.writeln('$styp $tmp = __new_array${noscan}(0, ${tmp}_len, sizeof($elem_type_str));\n')
 	i := g.new_tmp_var()
 	g.writeln('for (int $i = 0; $i < ${tmp}_len; ++$i) {')
 	g.writeln('\t$elem_type_str it = (($elem_type_str*) ${tmp}_orig.data)[$i];')
