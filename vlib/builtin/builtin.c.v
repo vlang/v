@@ -302,7 +302,7 @@ pub fn realloc_data(old_data &byte, old_size int, new_size int) &byte {
 // Unlike `v_calloc` vcalloc checks for negative values given in `n`.
 pub fn vcalloc(n int) &byte {
 	if n < 0 {
-		panic('calloc(<=0)')
+		panic('calloc(<0)')
 	} else if n == 0 {
 		return &byte(0)
 	}
@@ -317,31 +317,17 @@ pub fn vcalloc(n int) &byte {
 // for pointers (but is collected) when the Boehm garbage collection is used
 pub fn vcalloc_noscan(n int) &byte {
 	$if gcboehm ? {
-		if n < 0 {
-			panic('calloc(<=0)')
-		} else if n == 0 {
-			return &byte(0)
-		}
-		return &byte(C.GC_MALLOC_ATOMIC(n))
-	} $else {
-		return unsafe { vcalloc(n) }
-	}
-}
-
-[unsafe]
-pub fn malloc_noscan(n int) &byte {
-	$if gcboehm ? {
-		if n <= 0 {
-			panic('> V malloc(<=0)')
-		}
 		$if vplayground ? {
 			if n > 10000 {
 				panic('allocating more than 10 KB is not allowed in the playground')
 			}
 		}
+		if n < 0 {
+			panic('calloc(<0)')
+		}
 		return &byte(C.GC_MALLOC_ATOMIC(n))
 	} $else {
-		return unsafe { malloc(n) }
+		return unsafe { vcalloc(n) }
 	}
 }
 
