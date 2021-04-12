@@ -10,7 +10,7 @@ struct Module {
 }
 
 struct User {
-	id             int    [primary]
+	id             int    [primary; sql: serial]
 	age            int
 	name           string
 	is_customer    bool
