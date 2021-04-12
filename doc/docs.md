@@ -414,7 +414,7 @@ rune // represents a Unicode code point
 
 f32 f64
 
-byteptr, voidptr, charptr, size_t // these are mostly used for C interoperability
+voidptr, size_t // these are mostly used for C interoperability
 
 any // similar to C's void* and Go's interface{}
 ```
@@ -1570,7 +1570,7 @@ For example, here's the `string` type defined in the `builtin` module:
 
 ```v ignore
 struct string {
-    str byteptr
+    str &byte
 pub:
     len int
 }
@@ -3580,8 +3580,8 @@ Another example, demonstrating passing structs from C to V and back again:
 ### C types
 
 Ordinary zero terminated C strings can be converted to V strings with
-`unsafe { charptr(cstring).vstring() }` or if you know their length already with
-`unsafe { charptr(cstring).vstring_with_len(len) }`.
+`unsafe { &char(cstring).vstring() }` or if you know their length already with
+`unsafe { &char(cstring).vstring_with_len(len) }`.
 
 NB: The .vstring() and .vstring_with_len() methods do NOT create a copy of the `cstring`,
 so you should NOT free it after calling the method `.vstring()`.
@@ -3594,9 +3594,9 @@ These can be converted to V strings with `string_from_wide(&u16(cwidestring))` .
 V has these types for easier interoperability with C:
 
 - `voidptr` for C's `void*`,
-- `byteptr` for C's `byte*` and
-- `charptr` for C's `char*`.
-- `&charptr` for C's `char**`
+- `&byte` for C's `byte*` and
+- `&char` for C's `char*`.
+- `&&char` for C's `char**`
 
 To cast a `voidptr` to a V reference, use `user := &User(user_void_ptr)`.
 
