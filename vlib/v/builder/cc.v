@@ -201,6 +201,9 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		'-Wswitch-default', '-Wswitch-enum', '-Wno-unused-parameter', '-Wno-unknown-warning-option',
 		'-Wno-format-nonliteral',
 	]
+	if v.pref.os == .ios {
+		ccoptions.args << '-fobjc-arc'
+	}
 	ccoptions.debug_mode = v.pref.is_debug
 	ccoptions.guessed_compiler = v.pref.ccompiler
 	if ccoptions.guessed_compiler == 'cc' && v.pref.is_prod {

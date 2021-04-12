@@ -8,7 +8,6 @@ pub const (
 #flag -I @VROOT/thirdparty/sokol/util
 #flag freebsd -I /usr/local/include
 #flag darwin -fobjc-arc
-#flag ios -fobjc-arc
 #flag linux -lX11 -lGL -lXcursor -lXi
 #flag freebsd -L/usr/local/lib -lX11 -lGL -lXcursor -lXi
 #flag windows -lgdi32
