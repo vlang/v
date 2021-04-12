@@ -61,7 +61,8 @@ pub fn panic_optional_not_set(s string) {
 // panic prints a nice error message, then exits the process with exit code of 1.
 // It also shows a backtrace on most platforms.
 pub fn panic(s string) {
-	eprintln('V panic: $s')
+	eprint('V panic: ')
+	eprintln(s)
 	$if exit_after_panic_message ? {
 		C.exit(1)
 	} $else {
@@ -92,10 +93,10 @@ pub fn eprintln(s string) {
 	$if freestanding {
 		// flushing is only a thing with C.FILE from stdio.h, not on the syscall level
 		if s.str == 0 {
-			C.write(C.stderr, c'eprintln(NIL)\n', 14)
+			write(C.stderr, c'eprintln(NIL)\n', 14)
 		} else {
-			C.write(C.stderr, s.str, s.len)
-			C.write(C.stderr, c'\n', 1)
+			write(C.stderr, s.str, u64(s.len))
+			write(1, c'\n', 1)
 		}
 	} $else $if ios {
 		if s.str == 0 {
@@ -130,9 +131,9 @@ pub fn eprint(s string) {
 	$if freestanding {
 		// flushing is only a thing with C.FILE from stdio.h, not on the syscall level
 		if s.str == 0 {
-			C.write(C.stderr, c'eprint(NIL)\n', 12)
+			write(C.stderr, c'eprint(NIL)\n', 12)
 		} else {
-			C.write(C.stderr, s.str, s.len)
+			write(C.stderr, s.str, u64(s.len))
 		}
 	} $else $if ios {
 		// TODO: Implement a buffer as NSLog doesn't have a "print"
@@ -169,6 +170,8 @@ pub fn print(s string) {
 	} $else $if ios {
 		// TODO: Implement a buffer as NSLog doesn't have a "print"
 		C.WrappedNSLog(s.str)
+	} $else $if freestanding {
+		write(1, s.str, u64(s.len))
 	} $else {
 		C.write(1, s.str, s.len)
 	}
@@ -186,8 +189,14 @@ pub fn println(s string) {
 	if s.str == 0 {
 		$if android {
 			C.fprintf(C.stdout, c'println(NIL)\n')
+<<<<<<< HEAD
 		} $else $if ios {
 			C.WrappedNSLog(c'println(NIL)')
+=======
+		} $else $if freestanding {
+			write(C.stdout, s.str, u64(s.len))
+			write(1, c'println(NIL)\n', 13)
+>>>>>>> 9a7e3b0c7... hello world works
 		} $else {
 			C.write(1, c'println(NIL)\n', 13)
 		}
@@ -195,18 +204,18 @@ pub fn println(s string) {
 	}
 	$if android {
 		C.fprintf(C.stdout, c'%.*s\n', s.len, s.str)
+<<<<<<< HEAD
 	} $else $if ios {
 		C.WrappedNSLog(s.str)
+=======
+	} $else $if freestanding {
+		write(C.stdout, s.str, u64(s.len))
+		write(1, c'\n', 1)
+>>>>>>> 9a7e3b0c7... hello world works
 	} $else {
 		C.write(1, s.str, s.len)
 		C.write(1, c'\n', 1)
 	}
-}
-
-// secret info placed before memory allocated by malloc - can be used to get size for realloc
-struct MallocInfo {
-mut:
-	size int
 }
 
 // malloc dynamically allocates a `n` bytes block of memory on the heap.
@@ -241,19 +250,11 @@ pub fn malloc(n int) &byte {
 			}
 		} $else $if freestanding {
 			mut e := Errno{}
-			res, e = mm_alloc(sizeof(MallocInfo) + u64(n))
+			res, e = mm_alloc(u64(n))
 			if e != .enoerror {
 				eprint('malloc() failed: ')
 				eprintln(e.str())
 				panic('malloc() failed')
-			}
-			if res == 0 { // check before setting MallocInfo
-				panic('malloc() failed, and failed to give an error')
-			}
-			mut mlcinfo := unsafe { &MallocInfo(res) }
-			mlcinfo.size = n
-			unsafe {
-				res += sizeof(MallocInfo)
 			}
 		} $else {
 			res = unsafe { C.malloc(n) }

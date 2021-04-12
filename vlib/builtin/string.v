@@ -1548,7 +1548,7 @@ pub fn (s &string) free() {
 	}
 	if s.is_lit == -98761234 {
 		$if freestanding {
-			sys_write(C.stderr, c'double string.free() detected\n', u64(unsafe { C.strlen(c'double string.free() detected\n') }))
+			write(C.stderr, c'double string.free() detected\n', u64(unsafe { C.strlen(c'double string.free() detected\n') }))
 		} $else {
 			C.printf(c'double string.free() detected\n')
 		}

@@ -34,13 +34,12 @@ fn realloc(old_area &C.void, new_size int) &C.void {
 		unsafe { free(old_area) }
 		return 0
 	}
-	mlcinfo := unsafe { &MallocInfo(old_area) }
-	old_size := mlcinfo.size
+	old_size := unsafe { *(&u64(old_area - sizeof(u64))) }
 	if new_size <= old_size {
 		return old_area
 	} else {
 		new_area := unsafe { malloc(new_size) }
-		unsafe { memmove(new_area, old_area, old_size) }
+		unsafe { memmove(new_area, old_area, int(old_size)) }
 		unsafe { free(old_area) }
 		return new_area
 	}
@@ -122,13 +121,17 @@ fn memcmp(_a &C.void, _b &C.void, n int) int {
 [export: 'free']
 [unsafe]
 fn __free(ptr voidptr) {
-	assert mm_free(ptr) == .enoerror
+	err := mm_free(ptr)
+	if err != .enoerror {
+		eprintln('free error:')
+		panic(err)
+	}
 }
 
 fn vsprintf(str &char, format &char, ap &byte) int {
-	panic('string interpolation is not supported in `-freestanding`')
+	panic('vsprintf(): string interpolation is not supported in `-freestanding`')
 }
 
 fn vsnprintf(str &char, size size_t, format &char, ap &byte) int {
-	panic('string interpolation is not supported in `-freestanding`')
+	panic('vsnprintf(): string interpolation is not supported in `-freestanding`')
 }

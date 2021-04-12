@@ -1,35 +1,33 @@
 module builtin
 
-const (
-	mem_prot  = Mm_prot(int(Mm_prot.prot_read) | int(Mm_prot.prot_write))
-	mem_flags = Map_flags(int(Map_flags.map_private) | int(Map_flags.map_anonymous))
-	page_size = u64(Linux_mem.page_size)
-)
-
-fn mm_pages(size u64) u32 {
-	pages := (size + u64(4) + u64(Linux_mem.page_size)) / u64(Linux_mem.page_size)
-	return u32(pages)
-}
-
 fn mm_alloc(size u64) (&byte, Errno) {
-	pages := mm_pages(size)
-	n_bytes := u64(pages * u32(Linux_mem.page_size))
+	// BEGIN CONSTS
+	// the constants need to be here, since the initialization of other constants,
+	// which happen before these ones would, require malloc
+	mem_prot := MemProt(int(MemProt.prot_read) | int(MemProt.prot_write))
+	map_flags := MapFlags(int(MapFlags.map_private) | int(MapFlags.map_anonymous))
+	// END CONSTS
 
-	a, e := sys_mmap(&byte(0), n_bytes, mem_prot, mem_flags, -1, 0)
+	a, e := sys_mmap(&byte(0), size + sizeof(u64), mem_prot, map_flags, -1, 0)
 	if e == .enoerror {
 		unsafe {
-			mut ap := &u32(a)
-			*ap = pages
-			return &byte(a + 4), e
+			mut ap := &u64(a)
+			*ap = size
+			x2 := &byte(a + sizeof(u64))
+			return x2, e
 		}
 	}
 	return &byte(0), e
 }
 
+fn write(fd i64, buf &byte, count u64) (i64, Errno) {
+	return sys_write(fd, buf, count)
+}
+
 fn mm_free(addr &byte) Errno {
 	unsafe {
-		ap := &int(addr - 4)
-		size := u64(*ap) * u64(Linux_mem.page_size)
-		return sys_munmap(ap, size)
+		ap := &u64(addr - sizeof(u64))
+		size := *ap
+		return sys_munmap(addr - sizeof(u64), size + sizeof(u64))
 	}
 }
