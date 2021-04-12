@@ -4,5 +4,5 @@ fn main() {
 }
 
 fn method() {
-    _ = map{'h':2}.exists_1('h')
+    _ = map{'h':2}.exists('h')
 }
