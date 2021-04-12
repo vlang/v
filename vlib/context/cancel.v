@@ -4,14 +4,6 @@ import rand
 import sync
 import time
 
-const (
-	closedchan = chan int{}
-)
-
-fn init() {
-	context.closedchan.close()
-}
-
 pub interface Canceler {
 	id string
 	cancel(remove_from_parent bool, err string)
@@ -96,7 +88,7 @@ pub struct CancelContext {
 mut:
 	context  Context
 	mutex    &sync.Mutex
-	done     chan int = context.closedchan
+	done     chan int
 	children map[string]Canceler
 	err      string
 }

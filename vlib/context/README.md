@@ -92,14 +92,19 @@ fn after(dur time.Duration) chan int {
 
 // This example passes a context with an arbitrary deadline to tell a blocking
 // function that it should abandon its work as soon as it gets to it.
-fn example_with_deadline() {
+fn test_with_deadline() {
 	dur := time.now().add(short_duration)
-	cancel_ctx, cancel := context.with_deadline(context.background(), dur)
+	mut ctx := context.with_deadline(context.background(), dur)
+
 	defer {
-		cancel(cancel_ctx)
+		// Even though ctx will be expired, it is good practice to call its
+		// cancellation function in any case. Failure to do so may keep the
+		// context and its parent alive longer than necessary.
+		context.cancel(mut ctx)
 	}
+
 	after_ch := after(1 * time.second)
-	ctx_ch := cancel_ctx.done()
+	ctx_ch := ctx.done()
 	select {
 		_ := <-after_ch {
 			assert false
@@ -133,15 +138,16 @@ fn after(dur time.Duration) chan int {
 
 // This example passes a context with a timeout to tell a blocking function that
 // it should abandon its work after the timeout elapses.
-fn example_with_timeout() {
+fn test_with_timeout() {
 	// Pass a context with a timeout to tell a blocking function that it
 	// should abandon its work after the timeout elapses.
-	cancel_ctx, cancel := context.with_timeout(context.background(), short_duration)
+	mut ctx := context.with_timeout(context.background(), short_duration)
 	defer {
-		cancel(cancel_ctx)
+		context.cancel(mut ctx)
 	}
+
 	after_ch := after(1 * time.second)
-	ctx_ch := cancel_ctx.done()
+	ctx_ch := ctx.done()
 	select {
 		_ := <-after_ch {
 			assert false

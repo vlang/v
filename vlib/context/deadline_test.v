@@ -20,7 +20,11 @@ fn after(dur time.Duration) chan int {
 fn test_with_deadline() {
 	dur := time.now().add(short_duration)
 	mut ctx := context.with_deadline(context.background(), dur)
+
 	defer {
+		// Even though ctx will be expired, it is good practice to call its
+		// cancellation function in any case. Failure to do so may keep the
+		// context and its parent alive longer than necessary.
 		context.cancel(mut ctx)
 	}
 
