@@ -90,9 +90,6 @@ pub fn (mut w Walker) stmt(node ast.Stmt) {
 			w.expr(node.cond)
 			w.stmts(node.stmts)
 		}
-		ast.GoStmt {
-			w.expr(node.call_expr)
-		}
 		ast.Return {
 			w.exprs(node.exprs)
 		}
@@ -201,7 +198,7 @@ fn (mut w Walker) expr(node ast.Expr) {
 			w.fn_by_name('eprintln')
 		}
 		ast.GoExpr {
-			w.expr(node.go_stmt.call_expr)
+			w.expr(node.call_expr)
 		}
 		ast.IndexExpr {
 			w.expr(node.left)

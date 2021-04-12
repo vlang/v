@@ -11,7 +11,8 @@ const (
 	vet_folders                     = [
 		'vlib/sqlite',
 		'vlib/v',
-		'vlib/x/ttf/',
+		'vlib/x/json2',
+		'vlib/x/ttf',
 		'cmd/v',
 		'cmd/tools',
 		'examples/2048',
@@ -43,6 +44,7 @@ const (
 		'vlib/builtin/',
 		'vlib/cli/',
 		'vlib/dl/',
+		'vlib/encoding/utf8/',
 		'vlib/flag/',
 		'vlib/gg/',
 		'vlib/math/bits/bits.v',
@@ -84,6 +86,7 @@ const (
 		'vlib/strings/',
 		'vlib/time/',
 		'vlib/vweb/',
+		'vlib/x/json2',
 		'vlib/x/websocket/',
 	]
 )

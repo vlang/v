@@ -7,7 +7,7 @@ import v.util
 
 fn (mut g Gen) write_str_fn_definitions() {
 	// _STR function can't be defined in vlib
-	g.writeln("
+	g.writeln('
 void _STR_PRINT_ARG(const char *fmt, char** refbufp, int *nbytes, int *memsize, int guess, ...) {
 	va_list args;
 	va_start(args, guess);
@@ -16,15 +16,16 @@ void _STR_PRINT_ARG(const char *fmt, char** refbufp, int *nbytes, int *memsize, 
 	// *nbytes === already occupied bytes of buffer refbufp
 	// guess === how many bytes were taken during the current vsnprintf run
 	for(;;) {
-		if (guess < *memsize - *nbytes) {
+		int remaining_space = *memsize - *nbytes;
+		if (guess < remaining_space) {
 			guess = vsnprintf(*refbufp + *nbytes, *memsize - *nbytes, fmt, args);
-			if (guess < *memsize - *nbytes) { // result did fit into buffer
+			if (guess < remaining_space) { // result did fit into buffer
 				*nbytes += guess;
 				break;
 			}
 		}
 		// increase buffer (somewhat exponentially)
-		*memsize += (*memsize + *memsize) / 3 + guess;
+		*memsize += guess + 3 * (*memsize) / 2;
 #ifdef _VGCBOEHM
 		*refbufp = (char*)GC_REALLOC((void*)*refbufp, *memsize);
 #else
@@ -48,9 +49,9 @@ string _STR(const char *fmt, int nfmts, ...) {
 		int k = strlen(fmt);
 		bool is_fspec = false;
 		for (int j=0; j<k; ++j) {
-			if (fmt[j] == '%') {
+			if (fmt[j] == \'%\') {
 				j++;
-				if (fmt[j] != '%') {
+				if (fmt[j] != \'%\') {
 					is_fspec = true;
 					break;
 				}
@@ -59,19 +60,31 @@ string _STR(const char *fmt, int nfmts, ...) {
 		if (is_fspec) {
 			char f = fmt[k-1];
 			char fup = f & 0xdf; // toupper
-			bool l = fmt[k-2] == 'l';
-			bool ll = l && fmt[k-3] == 'l';
-			if (f == 'u' || fup == 'X' || f == 'o' || f == 'd' || f == 'c') { // int...
+			bool l = fmt[k-2] == \'l\';
+			bool ll = l && fmt[k-3] == \'l\';
+			if (f == \'u\' || fup == \'X\' || f == \'o\' || f == \'d\' || f == \'c\') { // int...
 				if (ll) _STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k+16, va_arg(argptr, long long));
 				else if (l) _STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k+10, va_arg(argptr, long));
 				else _STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k+8, va_arg(argptr, int));
-			} else if (fup >= 'E' && fup <= 'G') { // floating point
+			} else if (fup >= \'E\' && fup <= \'G\') { // floating point
 				_STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k+10, va_arg(argptr, double));
-			} else if (f == 'p') {
+			} else if (f == \'p\') {
 				_STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k+14, va_arg(argptr, void*));
-			} else if (f == 's') { // v string
+			} else if (f == \'C\') { // a C string
+				char* sptr = va_arg(argptr, char*);
+				char* fmt_no_c = (char*)v_malloc(k+4);
+				memcpy(fmt_no_c, fmt, k);
+				fmt_no_c[k-2]=\'C\';
+				fmt_no_c[k-1]=\'"\';
+				fmt_no_c[k]=\'%\';
+				fmt_no_c[k+1]=\'s\';
+				fmt_no_c[k+2]=\'"\';
+				fmt_no_c[k+3]=0;
+				_STR_PRINT_ARG(fmt_no_c, &buf, &nbytes, &memsize, k + 4 + 100, sptr);
+				v_free(fmt_no_c);
+			} else if (f == \'s\') { // v string
 				string s = va_arg(argptr, string);
-				if (fmt[k-4] == '*') { // %*.*s
+				if (fmt[k-4] == \'*\') { // %*.*s
 					int fwidth = va_arg(argptr, int);
 					if (fwidth < 0)
 						fwidth -= (s.len - utf8_str_visible_length(s));
@@ -82,7 +95,7 @@ string _STR(const char *fmt, int nfmts, ...) {
 					_STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k+s.len-4, s.len, s.str);
 				}
 			} else {
-				//v_panic(tos3('Invaid format specifier'));
+				//v_panic(tos3(\'Invaid format specifier\'));
 			}
 		} else {
 			_STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k);
@@ -92,14 +105,8 @@ string _STR(const char *fmt, int nfmts, ...) {
 	va_end(argptr);
 	buf[nbytes] = 0;
 
-#ifdef _VGCBOEHM
-	buf = (char*)GC_REALLOC((void*)buf, nbytes+1);
-#else
-	buf = (char*)realloc((void*)buf, nbytes+1);
-#endif
-
 #ifdef DEBUG_ALLOC
-	//puts('_STR:');
+	//puts(\'_STR:\');
 	puts(buf);
 #endif
 
@@ -119,7 +126,7 @@ string _STR_TMP(const char *fmt, ...) {
 	va_end(argptr);
 
 #ifdef DEBUG_ALLOC
-	//puts('_STR_TMP:');
+	//puts(\'_STR_TMP:\');
 	//puts(g_str_buf);
 #endif
 	string res = tos(g_str_buf,  len);
@@ -128,7 +135,7 @@ string _STR_TMP(const char *fmt, ...) {
 
 } // endof _STR_TMP
 
-")
+')
 }
 
 fn (mut g Gen) string_literal(node ast.StringLiteral) {

@@ -514,7 +514,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
 				struct_init.pos)
 		}
 	}
-	if type_sym.name.len == 1 && c.cur_fn.generic_params.len == 0 {
+	if type_sym.name.len == 1 && c.cur_fn.generic_names.len == 0 {
 		c.error('unknown struct `$type_sym.name`', struct_init.pos)
 		return 0
 	}
@@ -646,7 +646,8 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
 				if field.has_default_expr || field.name in inited_fields {
 					continue
 				}
-				if field.typ.is_ptr() && !struct_init.has_update_expr && !c.pref.translated {
+				if field.typ.is_ptr() && !field.typ.has_flag(.shared_f)
+					&& !struct_init.has_update_expr && !c.pref.translated {
 					c.error('reference field `${type_sym.name}.$field.name` must be initialized',
 						struct_init.pos)
 				}
@@ -1967,7 +1968,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 		return ret_type
 	}
 	// look for function in format `mod.fn` or `fn` (builtin)
-	mut f := ast.Fn{}
+	mut func := ast.Fn{}
 	mut found := false
 	mut found_in_args := false
 	// anon fn direct call
@@ -1976,16 +1977,16 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 		call_expr.name = ''
 		c.expr(call_expr.left)
 		anon_fn_sym := c.table.get_type_symbol(call_expr.left.typ)
-		f = (anon_fn_sym.info as ast.FnType).func
+		func = (anon_fn_sym.info as ast.FnType).func
 		found = true
 	}
 	// try prefix with current module as it would have never gotten prefixed
 	if !found && !fn_name.contains('.') && call_expr.mod != 'builtin' {
 		name_prefixed := '${call_expr.mod}.$fn_name'
-		if f1 := c.table.find_fn(name_prefixed) {
+		if f := c.table.find_fn(name_prefixed) {
 			call_expr.name = name_prefixed
 			found = true
-			f = f1
+			func = f
 			c.table.fns[name_prefixed].usages++
 		}
 	}
@@ -2017,21 +2018,21 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 	}
 	// already prefixed (mod.fn) or C/builtin/main
 	if !found {
-		if f1 := c.table.find_fn(fn_name) {
+		if f := c.table.find_fn(fn_name) {
 			found = true
-			f = f1
+			func = f
 			c.table.fns[fn_name].usages++
 		}
 	}
 	if c.pref.is_script && !found {
 		os_name := 'os.$fn_name'
-		if f1 := c.table.find_fn(os_name) {
-			if f1.generic_names.len == call_expr.generic_types.len {
+		if f := c.table.find_fn(os_name) {
+			if f.generic_names.len == call_expr.generic_types.len {
 				c.table.fn_gen_types[os_name] = c.table.fn_gen_types['${call_expr.mod}.$call_expr.name']
 			}
 			call_expr.name = os_name
 			found = true
-			f = f1
+			func = f
 			c.table.fns[os_name].usages++
 		}
 	}
@@ -2042,7 +2043,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 				vts := c.table.get_type_symbol(v.typ)
 				if vts.kind == .function {
 					info := vts.info as ast.FnType
-					f = info.func
+					func = info.func
 					found = true
 					found_in_args = true
 				}
@@ -2059,44 +2060,47 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 				call_expr.pos)
 		}
 	}
-	if !f.is_pub && f.language == .v && f.name.len > 0 && f.mod.len > 0 && f.mod != c.mod {
-		c.error('function `$f.name` is private', call_expr.pos)
+	if !func.is_pub && func.language == .v && func.name.len > 0 && func.mod.len > 0
+		&& func.mod != c.mod {
+		c.error('function `$func.name` is private', call_expr.pos)
 	}
-	if !c.cur_fn.is_deprecated && f.is_deprecated {
-		c.deprecate_fnmethod('function', f.name, f, call_expr)
+	if !c.cur_fn.is_deprecated && func.is_deprecated {
+		c.deprecate_fnmethod('function', func.name, func, call_expr)
 	}
-	if f.is_unsafe && !c.inside_unsafe
-		&& (f.language != .c || (f.name[2] in [`m`, `s`] && f.mod == 'builtin')) {
+	if func.is_unsafe && !c.inside_unsafe
+		&& (func.language != .c || (func.name[2] in [`m`, `s`] && func.mod == 'builtin')) {
 		// builtin C.m*, C.s* only - temp
-		c.warn('function `$f.name` must be called from an `unsafe` block', call_expr.pos)
+		c.warn('function `$func.name` must be called from an `unsafe` block', call_expr.pos)
 	}
-	call_expr.is_keep_alive = f.is_keep_alive
-	if f.mod != 'builtin' && f.language == .v && f.no_body && !c.pref.translated && !f.is_unsafe {
+	call_expr.is_keep_alive = func.is_keep_alive
+	if func.mod != 'builtin' && func.language == .v && func.no_body && !c.pref.translated
+		&& !func.is_unsafe {
 		c.error('cannot call a function that does not have a body', call_expr.pos)
 	}
 	for generic_type in call_expr.generic_types {
 		c.ensure_type_exists(generic_type, call_expr.generic_list_pos) or {}
 	}
-	if f.generic_names.len > 0 && f.return_type.has_flag(.generic) {
-		c.check_return_generics_struct(f.return_type, mut call_expr, generic_types)
+	if func.generic_names.len > 0 && func.return_type.has_flag(.generic) {
+		c.check_return_generics_struct(func.return_type, mut call_expr, generic_types)
 	} else {
-		call_expr.return_type = f.return_type
+		call_expr.return_type = func.return_type
 	}
-	if f.return_type == ast.void_type && f.ctdefine.len > 0 && f.ctdefine !in c.pref.compile_defines {
+	if func.return_type == ast.void_type && func.ctdefine.len > 0
+		&& func.ctdefine !in c.pref.compile_defines {
 		call_expr.should_be_skipped = true
 	}
 	// dont check number of args for JS functions since arguments are not required
 	if call_expr.language != .js {
-		min_required_args := if f.is_variadic { f.params.len - 1 } else { f.params.len }
+		min_required_args := if func.is_variadic { func.params.len - 1 } else { func.params.len }
 		if call_expr.args.len < min_required_args {
 			c.error('expected $min_required_args arguments, but got $call_expr.args.len',
 				call_expr.pos)
-		} else if !f.is_variadic && call_expr.args.len > f.params.len {
+		} else if !func.is_variadic && call_expr.args.len > func.params.len {
 			unexpected_arguments := call_expr.args[min_required_args..]
 			unexpected_arguments_pos := unexpected_arguments[0].pos.extend(unexpected_arguments.last().pos)
 			c.error('expected $min_required_args arguments, but got $call_expr.args.len',
 				unexpected_arguments_pos)
-			return f.return_type
+			return func.return_type
 		}
 	}
 	// println / eprintln / panic can print anything
@@ -2122,7 +2126,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 		prhas_str, prexpects_ptr, prnr_args := prtyp_sym.str_method_info()
 		eprintln('>>> println hack typ: ${prtyp} | sym.name: ${prtyp_sym.name} | is_ptr: $prtyp_is_ptr | has_str: $prhas_str | expects_ptr: $prexpects_ptr | nr_args: $prnr_args | expr: ${prexpr.str()} ')
 		*/
-		return f.return_type
+		return func.return_type
 	}
 	// `return error(err)` -> `return err`
 	if fn_name == 'error' {
@@ -2134,19 +2138,19 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 	}
 	// TODO: typ optimize.. this node can get processed more than once
 	if call_expr.expected_arg_types.len == 0 {
-		for param in f.params {
+		for param in func.params {
 			call_expr.expected_arg_types << param.typ
 		}
 	}
 	for i, call_arg in call_expr.args {
-		param := if f.is_variadic && i >= f.params.len - 1 {
-			f.params[f.params.len - 1]
+		param := if func.is_variadic && i >= func.params.len - 1 {
+			func.params[func.params.len - 1]
 		} else {
-			f.params[i]
+			func.params[i]
 		}
-		if f.is_variadic && call_arg.expr is ast.ArrayDecompose {
-			if i > f.params.len - 1 {
-				c.error('too many arguments in call to `$f.name`', call_expr.pos)
+		if func.is_variadic && call_arg.expr is ast.ArrayDecompose {
+			if i > func.params.len - 1 {
+				c.error('too many arguments in call to `$func.name`', call_expr.pos)
 			}
 		}
 		c.expected_type = param.typ
@@ -2154,7 +2158,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 		call_expr.args[i].typ = typ
 		typ_sym := c.table.get_type_symbol(typ)
 		arg_typ_sym := c.table.get_type_symbol(param.typ)
-		if f.is_variadic && typ.has_flag(.variadic) && call_expr.args.len - 1 > i {
+		if func.is_variadic && typ.has_flag(.variadic) && call_expr.args.len - 1 > i {
 			c.error('when forwarding a variadic variable, it must be the final argument',
 				call_arg.pos)
 		}
@@ -2163,7 +2167,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 			c.error('function with `shared` arguments cannot be called inside `lock`/`rlock` block',
 				call_arg.pos)
 		}
-		if call_arg.is_mut && f.language == .v {
+		if call_arg.is_mut && func.language == .v {
 			to_lock, pos := c.fail_if_immutable(call_arg.expr)
 			if !param.is_mut {
 				tok := call_arg.share.str()
@@ -2202,10 +2206,10 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 			if typ_sym.kind == .void && arg_typ_sym.kind == .string {
 				continue
 			}
-			if f.generic_names.len > 0 {
+			if func.generic_names.len > 0 {
 				if param.typ.has_flag(.generic)
-					&& f.generic_names.len == call_expr.generic_types.len {
-					if unwrap_typ := c.table.resolve_generic_by_names(param.typ, f.generic_names,
+					&& func.generic_names.len == call_expr.generic_types.len {
+					if unwrap_typ := c.table.resolve_generic_by_names(param.typ, func.generic_names,
 						call_expr.generic_types)
 					{
 						if (unwrap_typ.idx() == typ.idx())
@@ -2227,7 +2231,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 			c.error('$err.msg in argument ${i + 1} to `$fn_name`', call_arg.pos)
 		}
 		// Warn about automatic (de)referencing, which will be removed soon.
-		if f.language != .c && !c.inside_unsafe && typ.nr_muls() != param.typ.nr_muls()
+		if func.language != .c && !c.inside_unsafe && typ.nr_muls() != param.typ.nr_muls()
 			&& !(call_arg.is_mut && param.is_mut) && !(!call_arg.is_mut && !param.is_mut)
 			&& param.typ !in [ast.byteptr_type, ast.charptr_type, ast.voidptr_type] {
 			// sym := c.table.get_type_symbol(typ)
@@ -2235,28 +2239,30 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 				call_arg.pos)
 		}
 	}
-	if f.generic_names.len != call_expr.generic_types.len {
+	if func.generic_names.len != call_expr.generic_types.len {
 		// no type arguments given in call, attempt implicit instantiation
-		c.infer_fn_types(f, mut call_expr)
+		c.infer_fn_types(func, mut call_expr)
 	}
-	if call_expr.generic_types.len > 0 && f.return_type != 0 {
-		if typ := c.table.resolve_generic_by_names(f.return_type, f.generic_names, call_expr.generic_types) {
+	if call_expr.generic_types.len > 0 && func.return_type != 0 {
+		if typ := c.table.resolve_generic_by_names(func.return_type, func.generic_names,
+			call_expr.generic_types)
+		{
 			call_expr.return_type = typ
 			return typ
 		}
 	}
-	if call_expr.generic_types.len > 0 && f.generic_names.len == 0 {
+	if call_expr.generic_types.len > 0 && func.generic_names.len == 0 {
 		c.error('a non generic function called like a generic one', call_expr.generic_list_pos)
 	}
 
-	if call_expr.generic_types.len > f.generic_names.len {
-		c.error('too many generic parameters got $call_expr.generic_types.len, expected $f.generic_names.len',
+	if call_expr.generic_types.len > func.generic_names.len {
+		c.error('too many generic parameters got $call_expr.generic_types.len, expected $func.generic_names.len',
 			call_expr.generic_list_pos)
 	}
-	if f.generic_names.len > 0 {
+	if func.generic_names.len > 0 {
 		return call_expr.return_type
 	}
-	return f.return_type
+	return func.return_type
 }
 
 fn (mut c Checker) deprecate_fnmethod(kind string, name string, the_fn ast.Fn, call_expr ast.CallExpr) {
@@ -2495,8 +2501,7 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) ast.Typ
 	match mut selector_expr.expr {
 		ast.Ident {
 			name := selector_expr.expr.name
-			valid_generic := util.is_generic_type_name(name)
-				&& c.cur_fn.generic_params.filter(it.name == name).len != 0
+			valid_generic := util.is_generic_type_name(name) && name in c.cur_fn.generic_names
 			if valid_generic {
 				name_type = ast.Type(c.table.find_type_idx(name)).set_flag(.generic)
 			}
@@ -3539,13 +3544,6 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		ast.GlobalDecl {
 			c.global_decl(node)
 		}
-		ast.GoStmt {
-			c.go_stmt(mut node)
-			if node.call_expr.or_block.kind != .absent {
-				c.error('optional handling cannot be done in `go` call. Do it when calling `.wait()`',
-					node.call_expr.or_block.pos)
-			}
-		}
 		ast.GotoLabel {}
 		ast.GotoStmt {
 			if !c.inside_unsafe {
@@ -3779,8 +3777,12 @@ fn (mut c Checker) global_decl(node ast.GlobalDecl) {
 	}
 }
 
-fn (mut c Checker) go_stmt(mut node ast.GoStmt) {
-	c.call_expr(mut node.call_expr)
+fn (mut c Checker) go_expr(mut node ast.GoExpr) ast.Type {
+	ret_type := c.call_expr(mut node.call_expr)
+	if node.call_expr.or_block.kind != .absent {
+		c.error('optional handling cannot be done in `go` call. Do it when calling `.wait()`',
+			node.call_expr.or_block.pos)
+	}
 	// Make sure there are no mutable arguments
 	for arg in node.call_expr.args {
 		if arg.is_mut && !arg.typ.is_ptr() {
@@ -3793,6 +3795,7 @@ fn (mut c Checker) go_stmt(mut node ast.GoStmt) {
 		c.error('method in `go` statement cannot have non-reference mutable receiver',
 			node.call_expr.left.position())
 	}
+	return c.table.find_or_register_thread(ret_type)
 }
 
 fn (mut c Checker) asm_stmt(mut stmt ast.AsmStmt) {
@@ -4051,13 +4054,10 @@ fn (mut c Checker) stmts(stmts []ast.Stmt) {
 	c.expected_type = ast.void_type
 }
 
-pub fn (c &Checker) unwrap_generic(typ ast.Type) ast.Type {
+pub fn (mut c Checker) unwrap_generic(typ ast.Type) ast.Type {
 	if typ.has_flag(.generic) {
-		sym := c.table.get_type_symbol(typ)
-		for i, generic_param in c.cur_fn.generic_params {
-			if generic_param.name == sym.name {
-				return c.cur_generic_types[i].derive(typ).clear_flag(.generic)
-			}
+		if t_typ := c.table.resolve_generic_by_names(typ, c.cur_fn.generic_names, c.cur_generic_types) {
+			return t_typ
 		}
 	}
 	return typ
@@ -4159,14 +4159,6 @@ pub fn (mut c Checker) expr(node ast.Expr) ast.Type {
 			}
 			return ret_type
 		}
-		ast.GoExpr {
-			mut ret_type := c.call_expr(mut node.go_stmt.call_expr)
-			if node.go_stmt.call_expr.or_block.kind != .absent {
-				c.error('optional handling cannot be done in `go` call. Do it when calling `.wait()`',
-					node.go_stmt.call_expr.or_block.pos)
-			}
-			return c.table.find_or_register_thread(ret_type)
-		}
 		ast.ChanInit {
 			return c.chan_init(mut node)
 		}
@@ -4228,6 +4220,9 @@ pub fn (mut c Checker) expr(node ast.Expr) ast.Type {
 		}
 		ast.FloatLiteral {
 			return ast.float_literal_type
+		}
+		ast.GoExpr {
+			return c.go_expr(mut node)
 		}
 		ast.Ident {
 			// c.checked_ident = node.name
@@ -4434,7 +4429,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		}
 	} else if to_type_sym.kind == .byte && node.expr_type != ast.voidptr_type
 		&& from_type_sym.kind != .enum_ && !node.expr_type.is_int() && !node.expr_type.is_float()
-		&& !node.expr_type.is_ptr() {
+		&& node.expr_type != ast.bool_type && !node.expr_type.is_ptr() {
 		type_name := c.table.type_to_str(node.expr_type)
 		c.error('cannot cast type `$type_name` to `byte`', node.pos)
 	} else if to_type_sym.kind == .struct_ && !node.typ.is_ptr()
@@ -6332,7 +6327,7 @@ fn (mut c Checker) post_process_generic_fns() {
 
 fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	c.returns = false
-	if node.generic_params.len > 0 && c.cur_generic_types.len == 0 {
+	if node.generic_names.len > 0 && c.cur_generic_types.len == 0 {
 		// Just remember the generic function for now.
 		// It will be processed later in c.post_process_generic_fns,
 		// after all other normal functions are processed.

@@ -62,11 +62,11 @@ pub fn (node &FnDecl) stringify(t &Table, cur_mod string, m2a map[string]string)
 	if name in ['+', '-', '*', '/', '%', '<', '>', '==', '!=', '>=', '<='] {
 		f.write_string(' ')
 	}
-	if node.generic_params.len > 0 {
+	if node.generic_names.len > 0 {
 		f.write_string('<')
-		for i, param in node.generic_params {
-			is_last := i == node.generic_params.len - 1
-			f.write_string(param.name)
+		for i, gname in node.generic_names {
+			is_last := i == node.generic_names.len - 1
+			f.write_string(gname)
 			if !is_last {
 				f.write_string(', ')
 			}
