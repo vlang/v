@@ -270,7 +270,7 @@ pub fn (mut a array) pop() voidptr {
 		}
 	}
 	new_len := a.len - 1
-	last_elem := unsafe { &byte(a.data) + (new_len) * a.element_size }
+	last_elem := unsafe { &byte(a.data) + new_len * a.element_size }
 	a.len = new_len
 	// NB: a.cap is not changed here *on purpose*, so that
 	// further << ops on that array will be more efficient.

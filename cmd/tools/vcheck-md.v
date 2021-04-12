@@ -13,8 +13,8 @@ import v.pref
 const (
 	too_long_line_length = 100
 	term_colors          = term.can_show_color_on_stderr()
-	is_all               = '-all' in os.args
-	hide_warnings        = '-hide-warnings' in os.args
+	hide_warnings        = '-hide-warnings' in os.args || '-w' in os.args
+	show_progress        = os.getenv('GITHUB_JOB') == '' && '-silent' !in os.args
 	non_option_args      = cmdline.only_non_options(os.args[2..])
 )
 
@@ -38,9 +38,13 @@ fn main() {
 		vhelp.show_topic('check-md')
 		exit(0)
 	}
-	if is_all {
+	if '-all' in os.args {
 		println('´-all´ flag is deprecated. Please use ´v check-md .´ instead.')
 		exit(1)
+	}
+	if show_progress {
+		// this is intended to be replaced by the progress lines
+		println('')
 	}
 	mut files_paths := non_option_args.clone()
 	mut res := CheckResult{}
@@ -64,6 +68,9 @@ fn main() {
 			lines: lines
 		}
 		res += mdfile.check()
+	}
+	if res.errors == 0 && show_progress {
+		term.clear_previous_line()
 	}
 	if res.warnings > 0 || res.errors > 0 || res.oks > 0 {
 		println('\nWarnings: $res.warnings | Errors: $res.errors | OKs: $res.oks')
@@ -146,9 +153,17 @@ mut:
 	state    MDFileParserState = .markdown
 }
 
+fn (mut f MDFile) progress(message string) {
+	if show_progress {
+		term.clear_previous_line()
+		println('File: ${f.path:-30s}, Lines: ${f.lines.len:5}, $message')
+	}
+}
+
 fn (mut f MDFile) check() CheckResult {
 	mut res := CheckResult{}
 	for j, line in f.lines {
+		// f.progress('line: $j')
 		if line.len > too_long_line_length {
 			if f.state == .vexample {
 				wprintln(wline(f.path, j, line.len, 'long V example line'))
@@ -266,6 +281,7 @@ fn (mut f MDFile) check_examples() CheckResult {
 		mut acommands := e.command.split(' ')
 		nofmt := 'nofmt' in acommands
 		for command in acommands {
+			f.progress('example from $e.sline to $e.eline, command: $command')
 			fmt_res := if nofmt { 0 } else { get_fmt_exit_code(vfile, vexe) }
 			match command {
 				'compile' {
@@ -304,8 +320,13 @@ fn (mut f MDFile) check_examples() CheckResult {
 				'failcompile' {
 					res := silent_cmdexecute('"$vexe" -w -Wfatal-errors -o x.c $vfile')
 					os.rm('x.c') or {}
-					if res == 0 {
-						eprintln(eline(f.path, e.sline, 0, '`failcompile` example compiled'))
+					if res == 0 || fmt_res != 0 {
+						if res == 0 {
+							eprintln(eline(f.path, e.sline, 0, '`failcompile` example compiled'))
+						}
+						if fmt_res != 0 {
+							eprintln(eline(f.path, e.sline, 0, 'example is not formatted'))
+						}
 						eprintln(vcontent)
 						should_cleanup_vfile = false
 						errors++

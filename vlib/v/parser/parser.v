@@ -2322,6 +2322,17 @@ fn (mut p Parser) enum_val() ast.EnumVal {
 	}
 }
 
+fn (mut p Parser) filter_string_vet_errors(pos token.Position) {
+	if p.vet_errors.len == 0 {
+		return
+	}
+	p.vet_errors = p.vet_errors.filter(
+		(it.typ == .trailing_space && it.pos.line_nr - 1 >= pos.last_line)
+		|| (it.typ != .trailing_space && it.pos.line_nr - 1 > pos.last_line)
+		|| (it.typ == .space_indent && it.pos.line_nr - 1 <= pos.line_nr)
+		|| (it.typ != .space_indent && it.pos.line_nr - 1 < pos.line_nr))
+}
+
 fn (mut p Parser) string_expr() ast.Expr {
 	is_raw := p.tok.kind == .name && p.tok.lit == 'r'
 	is_cstr := p.tok.kind == .name && p.tok.lit == 'c'
@@ -2334,14 +2345,7 @@ fn (mut p Parser) string_expr() ast.Expr {
 	pos.last_line = pos.line_nr + val.count('\n')
 	if p.peek_tok.kind != .str_dollar {
 		p.next()
-		// Filter out false positive vet errors inside strings
-		if p.vet_errors.len > 0 {
-			p.vet_errors = p.vet_errors.filter(
-				(it.typ == .trailing_space && it.pos.line_nr - 1 >= pos.last_line)
-				|| (it.typ != .trailing_space && it.pos.line_nr - 1 > pos.last_line)
-				|| (it.typ == .space_indent && it.pos.line_nr - 1 <= pos.line_nr)
-				|| (it.typ != .space_indent && it.pos.line_nr - 1 < pos.line_nr))
-		}
+		p.filter_string_vet_errors(pos)
 		node = ast.StringLiteral{
 			val: val
 			is_raw: is_raw
@@ -2420,6 +2424,8 @@ fn (mut p Parser) string_expr() ast.Expr {
 		fills << fill
 		fposs << p.prev_tok.position()
 	}
+	pos = pos.extend(p.prev_tok.position())
+	p.filter_string_vet_errors(pos)
 	node = ast.StringInterLiteral{
 		vals: vals
 		exprs: exprs
@@ -2430,7 +2436,7 @@ fn (mut p Parser) string_expr() ast.Expr {
 		fills: fills
 		fmts: fmts
 		fmt_poss: fposs
-		pos: pos.extend(p.prev_tok.position())
+		pos: pos
 	}
 	// need_fmts: prelimery - until checker finds out if really needed
 	p.inside_str_interp = false

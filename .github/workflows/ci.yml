@@ -49,8 +49,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind
-          sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
-          ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
+          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev libgl-dev
           ## The following is needed for examples/wkhtmltopdf.v
           wget https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.focal_amd64.deb
           sudo apt-get install xfonts-75dpi xfonts-base
@@ -111,9 +110,8 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind
-          sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
+          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev libgl-dev
           sudo apt-get install --quiet -y libgc-dev
-          ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
           ## The following is needed for examples/wkhtmltopdf.v
           wget https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.focal_amd64.deb
           sudo apt-get install xfonts-75dpi xfonts-base
@@ -167,7 +165,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind
-          sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
+          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev libgl-dev
           sudo apt-get install --quiet -y xfonts-75dpi xfonts-base
       - name: Build v
         run: make
@@ -206,9 +204,8 @@ jobs:
       - name: Install C++ dependencies
         run: |
           sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev
-          sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
+          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev libgl-dev
           sudo apt-get install --quiet -y valgrind g++-9
-          ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
       - name: Build V
         run: make -j4
       - name: g++ version
@@ -293,8 +290,6 @@ jobs:
           ##brew install libpq openssl freetype ### these are *already installed* on Catalina ...
           brew uninstall --ignore-dependencies libpq ## libpq is a dependency of PHP
           brew install postgresql
-          brew install glfw
-          ## brew install sdl2 sdl2_ttf sdl2_mixer sdl2_image
           brew install mingw-w64
           export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
       - name: Build V
@@ -371,8 +366,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
-          ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
+          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev libgl-dev
       - name: Build V
         run: make -j4 && ./v -cc gcc -cg -cflags -Werror -o v cmd/v
       - name: Valgrind v.c
@@ -445,9 +439,7 @@ jobs:
           ../../vprod -backend x64 -o 1m 1m.v
           echo "Running it..."
           ls
-  #    - name: SDL examples
-  #      run: git clone --depth 1 https://github.com/vlang/sdl && cd sdl
-
+          
   #        ./1m
   #run: echo "TODO" #cd examples/x64 && ../../v -x64 hello_world.v && ./hello_world
   #    - name: Coveralls GitHub Action
@@ -468,9 +460,8 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
+          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev libgl-dev
           sudo apt-get install clang
-          ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
       - name: Build V
         run: make -j4 && ./v -cc clang -cg -cflags -Werror -o v cmd/v
       - name: Valgrind
@@ -546,9 +537,8 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
+          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev libgl-dev
           sudo apt-get install clang
-          ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
       - name: Build V
         run: make -j4 && ./v -cg -cflags -Werror -o v cmd/v
       - name: Self tests (-fsanitize=undefined)
@@ -569,8 +559,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
-          ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
+          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev libgl-dev
       - name: Build V
         run: make -j4 && ./v -cg -cflags -Werror -o v cmd/v
       - name: Self tests (-fsanitize=undefined)
@@ -591,9 +580,8 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
+          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev libgl-dev
           sudo apt-get install clang
-          ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
       - name: Build V
         run: make -j4 && ./v -cg -cflags -Werror -o v cmd/v
       - name: Self tests (-fsanitize=address)
@@ -625,7 +613,6 @@ jobs:
         run: |
           .\v.exe setup-freetype
           .\.github\workflows\windows-install-sqlite.bat
-          ## .\.github\workflows\windows-install-sdl.bat
       - name: Self tests (-fsanitize=address)
         run: |
           .\v.exe -cflags -fsanitize=address test-self
@@ -643,9 +630,8 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
+          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev libgl-dev
           sudo apt-get install clang
-          ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
       - name: Build V
         run: make -j4 && ./v -cg -cflags -Werror -o v cmd/v
       - name: Self tests (-fsanitize=address)
@@ -670,9 +656,8 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
+          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev libgl-dev
           sudo apt-get install clang
-          ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
       - name: Build V
         run: make -j4 && ./v -cc clang -cg -cflags -Werror -o v cmd/v
       - name: Self tests (-fsanitize=memory)
@@ -736,7 +721,6 @@ jobs:
   #     - name: Install dependencies
   #       run: |
   #          sudo apt-get install --quiet -y musl musl-tools libssl-dev sqlite3 libsqlite3-dev valgrind
-  #          sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
   #     - name: Build v
   #       run: echo $VFLAGS && make -j4 && ./v -cg -o v cmd/v
   # #    - name: Test v binaries
@@ -768,7 +752,6 @@ jobs:
         run: |
           .\v.exe setup-freetype
           .\.github\workflows\windows-install-sqlite.bat
-          ## .\.github\workflows\windows-install-sdl.bat
       - name: v doctor
         run: |
           ./v doctor
@@ -811,7 +794,6 @@ jobs:
         run: |
           .\v.exe setup-freetype
           .\.github\workflows\windows-install-sqlite.bat
-          ## .\.github\workflows\windows-install-sdl.bat
       - name: v doctor
         run: |
           ./v doctor
@@ -854,7 +836,6 @@ jobs:
         run: |
           .\v.exe setup-freetype
           .\.github\workflows\windows-install-sqlite.bat
-          ## .\.github\workflows\windows-install-sdl.bat
       - name: v doctor
         run: |
           ./v doctor

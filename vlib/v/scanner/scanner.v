@@ -1094,9 +1094,12 @@ fn (mut s Scanner) ident_string() string {
 	// }
 	mut n_cr_chars := 0
 	mut start := s.pos
-	if s.text[start] == s.quote
-		|| (s.text[start] == s.inter_quote && (s.is_inter_start || s.is_enclosed_inter)) {
+	start_char := s.text[start]
+	if start_char == s.quote
+		|| (start_char == s.inter_quote && (s.is_inter_start || s.is_enclosed_inter)) {
 		start++
+	} else if start_char == `\n` {
+		s.inc_line_number()
 	}
 	s.is_inside_string = false
 	mut u_escapes_pos := []int{} // pos list of \uXXXX
