@@ -34,7 +34,7 @@ import context
 // This example demonstrates the use of a cancelable context to prevent a
 // routine leak. By the end of the example function, the routine started
 // by gen will return without leaking.
-fn test_with_cancel() {
+fn example_with_cancel() {
 	// gen generates integers in a separate routine and
 	// sends them to the returned channel.
 	// The callers of gen need to cancel the context once
@@ -92,7 +92,7 @@ fn after(dur time.Duration) chan int {
 
 // This example passes a context with an arbitrary deadline to tell a blocking
 // function that it should abandon its work as soon as it gets to it.
-fn test_with_deadline() {
+fn example_with_deadline() {
 	dur := time.now().add(short_duration)
 	mut ctx := context.with_deadline(context.background(), dur)
 
@@ -138,7 +138,7 @@ fn after(dur time.Duration) chan int {
 
 // This example passes a context with a timeout to tell a blocking function that
 // it should abandon its work after the timeout elapses.
-fn test_with_timeout() {
+fn example_with_timeout() {
 	// Pass a context with a timeout to tell a blocking function that it
 	// should abandon its work after the timeout elapses.
 	mut ctx := context.with_timeout(context.background(), short_duration)
@@ -168,7 +168,7 @@ type ValueContextKey = string
 
 // This example demonstrates how a value can be passed to the context
 // and also how to retrieve it if it exists.
-fn test_with_value() {
+fn example_with_value() {
 	f := fn (ctx context.ValueContext, key ValueContextKey) string {
 		if value := ctx.value(key) {
 			if !isnil(value) {
