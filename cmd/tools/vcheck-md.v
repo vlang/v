@@ -13,8 +13,7 @@ import v.pref
 const (
 	too_long_line_length = 100
 	term_colors          = term.can_show_color_on_stderr()
-	is_all               = '-all' in os.args
-	hide_warnings        = '-hide-warnings' in os.args
+	hide_warnings        = '-hide-warnings' in os.args || '-w' in os.args
 	non_option_args      = cmdline.only_non_options(os.args[2..])
 )
 
@@ -38,7 +37,7 @@ fn main() {
 		vhelp.show_topic('check-md')
 		exit(0)
 	}
-	if is_all {
+	if '-all' in os.args {
 		println('´-all´ flag is deprecated. Please use ´v check-md .´ instead.')
 		exit(1)
 	}
@@ -304,8 +303,13 @@ fn (mut f MDFile) check_examples() CheckResult {
 				'failcompile' {
 					res := silent_cmdexecute('"$vexe" -w -Wfatal-errors -o x.c $vfile')
 					os.rm('x.c') or {}
-					if res == 0 {
-						eprintln(eline(f.path, e.sline, 0, '`failcompile` example compiled'))
+					if res == 0 || fmt_res != 0 {
+						if res == 0 {
+							eprintln(eline(f.path, e.sline, 0, '`failcompile` example compiled'))
+						}
+						if fmt_res != 0 {
+							eprintln(eline(f.path, e.sline, 0, 'example is not formatted'))
+						}
 						eprintln(vcontent)
 						should_cleanup_vfile = false
 						errors++
