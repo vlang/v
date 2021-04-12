@@ -338,11 +338,10 @@ fn (mut vd VDoc) generate_docs_from_file() {
 			println(outputs[first])
 		}
 	} else {
-		if !os.is_dir(out.path) {
-			out.path = os.real_path('.')
-		}
 		if !os.exists(out.path) {
-			os.mkdir(out.path) or { panic(err) }
+			os.mkdir_all(out.path) or { panic(err) }
+		} else if !os.is_dir(out.path) {
+			out.path = os.real_path('.')
 		}
 		if cfg.is_multi {
 			out.path = os.join_path(out.path, '_docs')
