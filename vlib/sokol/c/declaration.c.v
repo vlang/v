@@ -12,8 +12,14 @@ pub const (
 #flag freebsd -L/usr/local/lib -lX11 -lGL -lXcursor -lXi
 #flag windows -lgdi32
 // METAL
-#flag darwin -DSOKOL_METAL
-#flag darwin -framework Metal -framework Cocoa -framework MetalKit -framework QuartzCore
+$if darwin {
+	#flag -DSOKOL_METAL
+	#flag -framework Metal -framework Cocoa -framework MetalKit -framework QuartzCore
+}
+$if ios {
+	#flag -DSOKOL_METAL
+	#flag -framework Foundation -framework Metal -framework MetalKit -framework UIKit
+}
 // OPENGL
 #flag linux -DSOKOL_GLCORE33
 #flag freebsd -DSOKOL_GLCORE33

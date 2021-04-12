@@ -202,11 +202,6 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		'-Wno-format-nonliteral',
 	]
 	if v.pref.os == .ios {
-		ccoptions.args << '-framework Foundation'
-		ccoptions.args << '-framework UIKit'
-		ccoptions.args << '-framework Metal'
-		ccoptions.args << '-framework MetalKit'
-		ccoptions.args << '-DSOKOL_METAL'
 		ccoptions.args << '-fobjc-arc'
 	}
 	ccoptions.debug_mode = v.pref.is_debug
