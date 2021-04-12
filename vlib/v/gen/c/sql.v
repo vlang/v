@@ -822,10 +822,7 @@ fn (mut g Gen) sql_defaults(node ast.SqlStmt, typ SqlType) {
 
 fn (mut g Gen) table_gen(node ast.SqlStmt, typ SqlType) string {
 	typ_sym := g.table.get_type_symbol(node.table_expr.typ)
-	if typ_sym.info !is ast.Struct {
-		verror('Type `$typ_sym.name` has to be a struct')
-	}
-	struct_data := typ_sym.info as ast.Struct
+	struct_data := typ_sym.struct_info()
 	table_name := g.get_table_name(node.table_expr)
 	mut create_string := 'CREATE TABLE IF NOT EXISTS `$table_name` ('
 
