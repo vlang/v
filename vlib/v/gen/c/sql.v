@@ -804,7 +804,7 @@ fn (mut g Gen) sql_defaults(node ast.SqlStmt, typ SqlType) {
 		g.write(')')
 	} else if node.kind == .update {
 		for i, col in node.updated_columns {
-			g.write(' $col = ')
+			g.write(' ${g.get_field_name(g.get_struct_field(col))} = ')
 			g.expr_to_sql(node.update_exprs[i], typ)
 			if i < node.updated_columns.len - 1 {
 				g.write(', ')
@@ -963,7 +963,7 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr, typ SqlType) {
 			if g.sql_side == .left {
 				// println("sql gen left $expr.name")
 				g.sql_left_type = g.get_struct_field_typ(expr.name)
-				g.write(expr.name)
+				g.write(g.get_field_name(g.get_struct_field(expr.name)))
 			} else {
 				g.inc_sql_i(typ)
 				info := expr.info as ast.IdentVar
@@ -1092,6 +1092,17 @@ fn (mut g Gen) get_table_name(table_expr ast.TypeNode) string {
 		}
 	}
 	return tablename
+}
+
+fn (mut g Gen) get_struct_field(name string) ast.StructField {
+	info := g.table.get_type_symbol(g.table.type_idxs[g.sql_table_name]).struct_info()
+	mut f := ast.StructField{}
+	for field in info.fields {
+		if field.name == name {
+			f = field
+		}
+	}
+	return f
 }
 
 fn (mut g Gen) get_field_name(field ast.StructField) string {
