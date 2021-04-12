@@ -1245,10 +1245,8 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 				}
 				.array, .string {
 					// This should only happen in `builtin`
-					// TODO Remove `crypto.rand` when possible (see vlib/crypto/rand/rand.v,
-					// if `c_array_to_bytes_tmp` doesn't exist, then it's safe to remove it)
-					if c.file.mod.name !in ['builtin', 'crypto.rand'] {
-						c.error('`$typ_sym.kind` can not be modified', expr.pos)
+					if c.file.mod.name != 'builtin' {
+						c.error('unexpected checker error, please report it', expr.pos)
 					}
 				}
 				.aggregate {
