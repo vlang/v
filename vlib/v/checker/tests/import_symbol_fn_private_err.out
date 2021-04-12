@@ -14,5 +14,5 @@ vlib/v/checker/tests/import_symbol_fn_private_err.vv:7:20: error: method `map[st
     5 | 
     6 | fn method() {
     7 |     _ = map{'h':2}.exists('h')
-      |                    ~~~~~~~~~~~~~
+      |                    ~~~~~~~~~~~
     8 | }
