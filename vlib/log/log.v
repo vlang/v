@@ -126,9 +126,9 @@ fn (mut l Log) log_file(s string, level Level) {
 
 // log_cli writes log line `s` with `level` to stdout.
 fn (l &Log) log_cli(s string, level Level) {
-	f := tag_to_cli(level)
-	t := time.now()
-	println('[$f $t.format_ss()] $s')
+	timestamp := time.now().format_ss()
+	e := tag_to_cli(level)
+	println('$timestamp [$e] $s')
 }
 
 // send_output writes log line `s` with `level` to either the log file or the console
