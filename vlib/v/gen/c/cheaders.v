@@ -47,8 +47,7 @@ static inline void __sort_ptr(uintptr_t a[], bool b[], int l)
 	}
 }
 '
-	c_str_fn_defs                   = 
-'
+	c_str_fn_defs                   = '
 void _STR_PRINT_ARG(const char *fmt, char** refbufp, int *nbytes, int *memsize, int guess, ...) {
 	va_list args;
 	va_start(args, guess);
