@@ -85,20 +85,6 @@ fn calloc(nmemb int, size int) &C.void {
 	return new_area
 }
 
-fn toupper(c int) int {
-	if c >= `a` && c <= `z` {
-		return c - 32
-	}
-	return c
-}
-
-fn tolower(c int) int {
-	if c >= `A` && c <= `Z` {
-		return c + 32
-	}
-	return c
-}
-
 fn getchar() int {
 	x := byte(0)
 	sys_read(C.stdin, &x, 1)
