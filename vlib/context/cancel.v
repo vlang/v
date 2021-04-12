@@ -108,12 +108,12 @@ mut:
 pub fn with_cancel(parent Context) &CancelerContext {
 	mut c := new_cancel_context(parent)
 	propagate_cancel(parent, mut c)
-	return &c
+	return c
 }
 
 // new_cancel_context returns an initialized CancelContext.
-fn new_cancel_context(parent Context) CancelContext {
-	return CancelContext{
+fn new_cancel_context(parent Context) &CancelContext {
+	return &CancelContext{
 		id: rand.uuid_v4()
 		context: parent
 		mutex: sync.new_mutex()
