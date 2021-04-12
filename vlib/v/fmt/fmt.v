@@ -428,9 +428,6 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 		ast.GlobalDecl {
 			f.global_decl(node)
 		}
-		ast.GoStmt {
-			f.go_stmt(node, false)
-		}
 		ast.GotoLabel {
 			f.goto_label(node)
 		}
@@ -541,7 +538,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.write(node.val)
 		}
 		ast.GoExpr {
-			f.go_stmt(node.go_stmt, true)
+			f.go_expr(node)
 		}
 		ast.Ident {
 			f.ident(node)
@@ -668,7 +665,13 @@ fn expr_is_single_line(expr ast.Expr) bool {
 //=== Specific Stmt methods ===//
 
 fn (mut f Fmt) asm_stmt(stmt ast.AsmStmt) {
-	f.writeln('asm $stmt.arch {')
+	f.write('asm ')
+	if stmt.is_volatile {
+		f.write('volatile ')
+	} else if stmt.is_goto {
+		f.write('goto ')
+	}
+	f.writeln('$stmt.arch {')
 	f.indent++
 	for template in stmt.templates {
 		if template.is_directive {
@@ -678,7 +681,9 @@ fn (mut f Fmt) asm_stmt(stmt ast.AsmStmt) {
 		if template.is_label {
 			f.write(':')
 		} else {
-			f.write(' ')
+			if template.args.len > 0 {
+				f.write(' ')
+			}
 		}
 		for i, arg in template.args {
 			f.asm_arg(arg)
@@ -1122,12 +1127,9 @@ pub fn (mut f Fmt) global_decl(node ast.GlobalDecl) {
 	f.writeln(')\n')
 }
 
-pub fn (mut f Fmt) go_stmt(node ast.GoStmt, is_expr bool) {
+pub fn (mut f Fmt) go_expr(node ast.GoExpr) {
 	f.write('go ')
 	f.expr(node.call_expr)
-	if !is_expr {
-		f.writeln('')
-	}
 }
 
 pub fn (mut f Fmt) goto_label(node ast.GotoLabel) {
@@ -1234,6 +1236,9 @@ pub fn (mut f Fmt) sql_stmt(node ast.SqlStmt) {
 		}
 		.create {
 			f.writeln('create table $table_name')
+		}
+		.drop {
+			f.writeln('drop table $table_name')
 		}
 	}
 	f.writeln('}')

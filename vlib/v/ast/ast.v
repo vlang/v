@@ -19,8 +19,8 @@ pub type Expr = AnonFn | ArrayDecompose | ArrayInit | AsCast | Assoc | AtExpr | 
 
 pub type Stmt = AsmStmt | AssertStmt | AssignStmt | Block | BranchStmt | CompFor | ConstDecl |
 	DeferStmt | EmptyStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt |
-	GlobalDecl | GoStmt | GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module |
-	NodeError | Return | SqlStmt | StructDecl | TypeDecl
+	GlobalDecl | GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module | NodeError |
+	Return | SqlStmt | StructDecl | TypeDecl
 
 // NB: when you add a new Expr or Stmt type with a .pos field, remember to update
 // the .position() token.Position methods too.
@@ -963,20 +963,12 @@ pub:
 	pos  token.Position
 }
 
-pub struct GoStmt {
-pub:
-	pos token.Position
-pub mut:
-	call_expr CallExpr
-}
-
 pub struct GoExpr {
 pub:
 	pos token.Position
 pub mut:
-	go_stmt GoStmt
-mut:
-	return_type Type
+	call_expr CallExpr
+	is_expr   bool
 }
 
 pub struct GotoLabel {
@@ -1415,6 +1407,7 @@ pub enum SqlStmtKind {
 	update
 	delete
 	create
+	drop
 }
 
 pub struct SqlStmt {

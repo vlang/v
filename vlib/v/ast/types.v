@@ -414,6 +414,8 @@ pub const (
 	int_literal_type   = new_type(int_literal_type_idx)
 	thread_type        = new_type(thread_type_idx)
 	error_type         = new_type(error_type_idx)
+	charptr_types      = [charptr_type, new_type(char_type_idx).set_nr_muls(1)]
+	byteptr_types      = [byteptr_type, new_type(byte_type_idx).set_nr_muls(1)]
 )
 
 pub const (

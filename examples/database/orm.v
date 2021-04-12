@@ -10,15 +10,14 @@ struct Module {
 
 struct User {
 	id             int    [primary; sql: serial]
-	age            int
-	name           string [nonull]
-	is_customer    bool
+	age            int    [unique: 'user']
+	name           string [unique]
+	is_customer    bool   [unique: 'user']
 	skipped_string string [skip]
 }
 
 fn main() {
 	db := sqlite.connect(':memory:') or { panic(err) }
-	db.exec('drop table if exists User')
 	sql db {
 		create table Module
 	}
@@ -38,6 +37,10 @@ fn main() {
 
 	modul := sql db {
 		select from Module where id == 1
+	}
+
+	sql db {
+		drop table Module
 	}
 
 	eprintln(modul)
