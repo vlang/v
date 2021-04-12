@@ -1086,7 +1086,7 @@ fn (mut g Gen) get_table_name(table_expr ast.TypeNode) string {
 	info := g.table.get_type_symbol(table_expr.typ).struct_info()
 	mut tablename := util.strip_mod_name(g.table.get_type_symbol(table_expr.typ).name)
 	for attr in info.attrs {
-		if attr.name == 'tablename' && attr.is_string_arg {
+		if attr.name == 'tablename' && attr.is_string_arg && attr.arg != '' {
 			tablename = attr.arg
 			break
 		}
@@ -1097,7 +1097,7 @@ fn (mut g Gen) get_table_name(table_expr ast.TypeNode) string {
 fn (mut g Gen) get_field_name(field ast.StructField) string {
 	mut name := field.name
 	for attr in field.attrs {
-		if attr.name == 'sql' && attr.is_string_arg {
+		if attr.name == 'sql' && attr.is_string_arg && attr.arg != '' {
 			name = attr.arg
 			break
 		}
