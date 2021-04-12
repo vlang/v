@@ -30,7 +30,6 @@ const (
 	]
 	skip_with_fsanitize_undefined = []string{}
 	skip_with_werror              = [
-		'vlib/sync/array_rlock_test.v',
 		'vlib/clipboard/clipboard_test.v',
 		'vlib/eventbus/eventbus_test.v',
 		'vlib/gx/color_test.v',
@@ -56,6 +55,10 @@ const (
 		'vlib/strconv/atof_test.v',
 		'vlib/strconv/f32_f64_to_string_test.v',
 		'vlib/strconv/number_to_base_test.v',
+		'vlib/context/value_test.v' /* the following tests need C casts in `sync` and/or thirdparty/stdatomic */,
+		'vlib/context/empty_test.v',
+		'vlib/context/cancel_test.v',
+		'vlib/sync/array_rlock_test.v',
 		'vlib/sync/atomic2/atomic_test.v',
 		'vlib/sync/channel_2_test.v',
 		'vlib/sync/channel_1_test.v',
