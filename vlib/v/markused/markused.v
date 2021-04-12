@@ -31,6 +31,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []ast.Fi
 		'isnil',
 		'opt_ok',
 		'error',
+		'__print_assert_failure',
 		// utf8_str_visible_length is used by c/str.v
 		'utf8_str_visible_length',
 		'compare_ints',
@@ -142,6 +143,10 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []ast.Fi
 				all_fn_root_names << k
 				continue
 			}
+		}
+		if mfn.is_pub && pref.is_shared {
+			all_fn_root_names << k
+			continue
 		}
 	}
 	if pref.is_debug {

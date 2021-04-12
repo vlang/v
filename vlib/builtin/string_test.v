@@ -43,7 +43,7 @@ fn test_between() {
 fn test_compare() {
 	a := 'Music'
 	b := 'src'
-	assert b >= (a)
+	assert b >= a
 }
 
 fn test_lt() {
@@ -53,12 +53,12 @@ fn test_lt() {
 	d := 'b'
 	e := 'aa'
 	f := 'ab'
-	assert a < (b)
+	assert a < b
 	assert !(b < c)
-	assert c < (d)
+	assert c < d
 	assert !(d < e)
-	assert c < (e)
-	assert e < (f)
+	assert c < e
+	assert e < f
 }
 
 fn test_ge() {
@@ -67,11 +67,11 @@ fn test_ge() {
 	c := 'ab'
 	d := 'abc'
 	e := 'aaa'
-	assert b >= (a)
-	assert c >= (b)
-	assert d >= (c)
+	assert b >= a
+	assert c >= b
+	assert d >= c
 	assert !(c >= d)
-	assert e >= (a)
+	assert e >= a
 }
 
 fn test_compare_strings() {

@@ -124,6 +124,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [v fmt](#v-fmt)
     * [Profiling](#profiling)
 * [Advanced Topics](#advanced-topics)
+    * [Dumping expressions at runtime](#dumping-expressions-at-runtime)
     * [Memory-unsafe code](#memory-unsafe-code)
     * [Structs with reference fields](#structs-with-reference-fields)
     * [sizeof and __offsetof](#sizeof-and-__offsetof)
@@ -342,7 +343,7 @@ Note the (important) difference between `:=` and `=`.
 
 ```v failcompile
 fn main() {
-    age = 21
+	age = 21
 }
 ```
 
@@ -373,13 +374,13 @@ In development mode the compiler will warn you that you haven't used the variabl
 In production mode (enabled by passing the `-prod` flag to v – `v -prod foo.v`)
 it will not compile at all (like in Go).
 
-```v failcompile
+```v failcompile nofmt
 fn main() {
-    a := 10
-    if true {
-        a := 20 // error: redefinition of `a`
-    }
-    // warning: unused variable `a`
+	a := 10
+	if true {
+		a := 20 // error: redefinition of `a`
+	}
+	// warning: unused variable `a`
 }
 ```
 
@@ -392,8 +393,8 @@ import ui
 import gg
 
 fn draw(ctx &gg.Context) {
-    gg := ctx.parent.get_ui().gg
-    gg.draw_rect(10, 10, 100, 50)
+	gg := ctx.parent.get_ui().gg
+	gg.draw_rect(10, 10, 100, 50)
 }
 ```
 
@@ -413,7 +414,7 @@ rune // represents a Unicode code point
 
 f32 f64
 
-byteptr, voidptr, charptr, size_t // these are mostly used for C interoperability
+voidptr, size_t // these are mostly used for C interoperability
 
 any // similar to C's void* and Go's interface{}
 ```
@@ -936,9 +937,9 @@ import crypto.sha256
 import mymod.sha256 as mysha256
 
 fn main() {
-    v_hash := sha256.sum('hi'.bytes()).hex()
-    my_hash := mysha256.sum('hi'.bytes()).hex()
-    assert my_hash == v_hash
+	v_hash := mysha256.sum('hi'.bytes()).hex()
+	my_hash := mysha256.sum('hi'.bytes()).hex()
+	assert my_hash == v_hash
 }
 ```
 
@@ -1569,7 +1570,7 @@ For example, here's the `string` type defined in the `builtin` module:
 
 ```v ignore
 struct string {
-    str byteptr
+    str &byte
 pub:
     len int
 }
@@ -1580,9 +1581,9 @@ The byte pointer with the string data is not accessible outside `builtin` at all
 The `len` field is public, but immutable:
 ```v failcompile
 fn main() {
-    str := 'hello'
-    len := str.len // OK
-    str.len++      // Compilation error
+	str := 'hello'
+	len := str.len // OK
+	str.len++ // Compilation error
 }
 ```
 
@@ -2015,7 +2016,7 @@ module mymodule
 
 // To export a function we have to use `pub`
 pub fn say_hi() {
-    println('hello from mymodule!')
+	println('hello from mymodule!')
 }
 ```
 
@@ -2025,7 +2026,7 @@ You can now use `mymodule` in your code:
 import mymodule
 
 fn main() {
-    mymodule.say_hi()
+	mymodule.say_hi()
 }
 ```
 
@@ -3025,9 +3026,10 @@ fn main() {
 
 ```v failcompile
 module main
+
 // hello_test.v
 fn test_hello() {
-    assert hello() == 'Hello world'
+	assert hello() == 'Hello world'
 }
 ```
 To run the test above, use `v hello_test.v`. This will check that the function `hello` is
@@ -3283,6 +3285,39 @@ fn main() {
 ```
 
 # Advanced Topics
+
+## Dumping expressions at runtime
+You can dump/trace the value of any V expression using `dump(expr)`.
+For example, save this code sample as `factorial.v`, then run it with
+`v run factorial.v`:
+```v
+fn factorial(n u32) u32 {
+	if dump(n <= 1) {
+		return dump(1)
+	}
+	return dump(n * factorial(n - 1))
+}
+
+fn main() {
+	println(factorial(5))
+}
+```
+You will get:
+```
+[factorial.v:2] n <= 1: false
+[factorial.v:2] n <= 1: false
+[factorial.v:2] n <= 1: false
+[factorial.v:2] n <= 1: false
+[factorial.v:2] n <= 1: true
+[factorial.v:3] 1: 1
+[factorial.v:5] n * factorial(n - 1): 2
+[factorial.v:5] n * factorial(n - 1): 6
+[factorial.v:5] n * factorial(n - 1): 24
+[factorial.v:5] n * factorial(n - 1): 120
+120
+```
+Note that `dump(expr)` will trace both the source location, 
+the expression itself, and the expression value.
 
 ## Memory-unsafe code
 
@@ -3545,8 +3580,8 @@ Another example, demonstrating passing structs from C to V and back again:
 ### C types
 
 Ordinary zero terminated C strings can be converted to V strings with
-`unsafe { charptr(cstring).vstring() }` or if you know their length already with
-`unsafe { charptr(cstring).vstring_with_len(len) }`.
+`unsafe { &char(cstring).vstring() }` or if you know their length already with
+`unsafe { &char(cstring).vstring_with_len(len) }`.
 
 NB: The .vstring() and .vstring_with_len() methods do NOT create a copy of the `cstring`,
 so you should NOT free it after calling the method `.vstring()`.
@@ -3559,9 +3594,9 @@ These can be converted to V strings with `string_from_wide(&u16(cwidestring))` .
 V has these types for easier interoperability with C:
 
 - `voidptr` for C's `void*`,
-- `byteptr` for C's `byte*` and
-- `charptr` for C's `char*`.
-- `&charptr` for C's `char**`
+- `&byte` for C's `byte*` and
+- `&char` for C's `char*`.
+- `&&char` for C's `char**`
 
 To cast a `voidptr` to a V reference, use `user := &User(user_void_ptr)`.
 

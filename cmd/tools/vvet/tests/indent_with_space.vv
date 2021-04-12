@@ -13,8 +13,12 @@ fn block_comments() {
 }
 
 fn space_inside_strings() {
+	// Plain strings
   str := "Bad space usage for variable indentation.
   Here it's fine.
   Here too."
   str2 := 'linebreak and space\n  inside'
+	// String interpolation
+  si1 := 'Error here $foo
+  and not here'
 }
