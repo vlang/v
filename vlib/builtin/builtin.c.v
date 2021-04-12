@@ -189,14 +189,11 @@ pub fn println(s string) {
 	if s.str == 0 {
 		$if android {
 			C.fprintf(C.stdout, c'println(NIL)\n')
-<<<<<<< HEAD
 		} $else $if ios {
 			C.WrappedNSLog(c'println(NIL)')
-=======
 		} $else $if freestanding {
 			write(C.stdout, s.str, u64(s.len))
 			write(1, c'println(NIL)\n', 13)
->>>>>>> 9a7e3b0c7... hello world works
 		} $else {
 			C.write(1, c'println(NIL)\n', 13)
 		}
@@ -204,14 +201,11 @@ pub fn println(s string) {
 	}
 	$if android {
 		C.fprintf(C.stdout, c'%.*s\n', s.len, s.str)
-<<<<<<< HEAD
 	} $else $if ios {
 		C.WrappedNSLog(s.str)
-=======
 	} $else $if freestanding {
 		write(C.stdout, s.str, u64(s.len))
 		write(1, c'\n', 1)
->>>>>>> 9a7e3b0c7... hello world works
 	} $else {
 		C.write(1, s.str, s.len)
 		C.write(1, c'\n', 1)
