@@ -17,6 +17,7 @@ fn (mut v Builder) get_os_cflags() []cflag.CFlag {
 		if flag.os == '' || (flag.os == 'linux' && v.pref.os == .linux)
 			|| (flag.os == 'macos' && v.pref.os == .macos)
 			|| (flag.os == 'darwin' && v.pref.os == .macos)
+			|| (flag.os == 'ios' && v.pref.os == .ios)
 			|| (flag.os == 'freebsd' && v.pref.os == .freebsd)
 			|| (flag.os == 'windows' && v.pref.os == .windows)
 			|| (flag.os == 'mingw' && v.pref.os == .windows && v.pref.ccompiler != 'msvc')
