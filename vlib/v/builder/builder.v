@@ -116,9 +116,13 @@ pub fn (mut b Builder) parse_imports() {
 			// Add all imports referenced by these libs
 			parsed_files := parser.parse_files(v_files, b.table, b.pref, b.global_scope)
 			for file in parsed_files {
-				if file.mod.name != mod {
+				mut name := file.mod.name
+				if name == '' {
+					name = file.mod.short_name
+				}
+				if name != mod {
 					// v.parsers[pidx].error_with_token_index('bad module definition: ${v.parsers[pidx].file_path} imports module "$mod" but $file is defined as module `$p_mod`', 1
-					error_with_pos('bad module definition: $ast_file.path imports module "$mod" but $file.path is defined as module `$file.mod.name`',
+					error_with_pos('bad module definition: $ast_file.path imports module "$mod" but $file.path is defined as module `$name`',
 						ast_file.path, imp.pos)
 				}
 			}
