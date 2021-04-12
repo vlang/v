@@ -143,6 +143,10 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []ast.Fi
 				continue
 			}
 		}
+		if mfn.is_pub && pref.is_shared {
+			all_fn_root_names << k
+			continue
+		}
 	}
 	if pref.is_debug {
 		all_fn_root_names << 'panic_debug'
