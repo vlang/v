@@ -104,7 +104,7 @@ pub fn read_file(path string) ?string {
 	C.rewind(fp)
 	unsafe {
 		mut str := malloc(fsize + 1)
-		C.fread(str, fsize, 1, fp)
+		nelements := int(C.fread(str, fsize, 1, fp))
 		is_eof := int(C.feof(fp))
 		is_error := int(C.ferror(fp))
 		if is_eof == 0 && is_error != 0 {
@@ -112,6 +112,17 @@ pub fn read_file(path string) ?string {
 			return error('fread failed')
 		}
 		str[fsize] = 0
+		if nelements == 0 {
+			// It is highly likely that the file was a virtual file from
+			// /sys or /proc, with information generated on the fly, so
+			// fsize was not reliably reported. Using vstring() here is
+			// slower (it calls strlen internally), but will return more
+			// consistent results.
+			// For example reading from /sys/class/sound/card0/id produces
+			// a `PCH\n` string, but fsize is 4096, and otherwise you would
+			// get a V string with .len = 4096 and .str = "PCH\n\\000".
+			return str.vstring()
+		}
 		return str.vstring_with_len(fsize)
 	}
 }
