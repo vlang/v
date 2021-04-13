@@ -4687,6 +4687,16 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	}
 	// regular cases
 	if fn_return_is_multi && node.exprs.len > 0 && !g.expr_is_multi_return_call(node.exprs[0]) { // not_optional_none { //&& !fn_return_is_optional {
+		if node.exprs.len == 1 && node.exprs[0] is ast.IfExpr {
+			// use a temporary for `return if cond { x,y } else { a,b }`
+			tmpvar := g.new_tmp_var()
+			tmptyp := g.typ(g.fn_decl.return_type)
+			g.write('$tmptyp $tmpvar = ')
+			g.expr(node.exprs[0])
+			g.writeln(';')
+			g.writeln('return $tmpvar;')
+			return
+		}
 		// typ_sym := g.table.get_type_symbol(g.fn_decl.return_type)
 		// mr_info := typ_sym.info as ast.MultiReturn
 		mut styp := ''
