@@ -5,7 +5,7 @@ type ValueContextKey = string
 // This example demonstrates how a value can be passed to the context
 // and also how to retrieve it if it exists.
 fn test_with_value() {
-	f := fn (ctx context.ValueContext, key ValueContextKey) string {
+	f := fn (ctx context.Context, key ValueContextKey) string {
 		if value := ctx.value(key) {
 			if !isnil(value) {
 				return *(&string(value))
