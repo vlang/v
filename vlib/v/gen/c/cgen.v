@@ -427,7 +427,9 @@ pub fn (mut g Gen) init() {
 		}
 		g.comptime_defines.writeln('')
 	}
-	if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm, .boehm_leak] {
+	if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm,
+		.boehm_leak,
+	] {
 		g.comptime_defines.writeln('#define _VGCBOEHM (1)')
 	}
 	if g.pref.is_debug || 'debug' in g.pref.compile_defines {
@@ -5766,7 +5768,8 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 		if elem_type_str.starts_with('C__') {
 			elem_type_str = elem_type_str[3..]
 		}
-		init_str := '__new_array(0, 1, sizeof($elem_type_str))'
+		noscan := g.check_noscan(elem_typ)
+		init_str := '__new_array${noscan}(0, 1, sizeof($elem_type_str))'
 		if typ.has_flag(.shared_f) {
 			atyp := '__shared__Array_${g.table.get_type_symbol(elem_typ).cname}'
 			return '($atyp*)__dup_shared_array(&($atyp){.val = $init_str}, sizeof($atyp))'
@@ -6377,4 +6380,65 @@ fn (mut g Gen) trace(fbase string, message string) {
 	if g.file.path_base == fbase {
 		println('> g.trace | ${fbase:-10s} | $message')
 	}
+}
+
+// returns true if `t` includes any pointer(s) - during garbage collection heap regions
+// that contain no pointers do not have to be scanned
+pub fn (mut g Gen) contains_ptr(el_typ ast.Type) bool {
+	if el_typ.is_ptr() || el_typ.is_pointer() {
+		return true
+	}
+	typ := g.unwrap_generic(el_typ)
+	if typ.is_ptr() {
+		return true
+	}
+	sym := g.table.get_final_type_symbol(typ)
+	if sym.language != .v {
+		return true
+	}
+	match sym.kind {
+		.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64, .char, .size_t, .rune, .bool,
+		.enum_ {
+			return false
+		}
+		.array_fixed {
+			info := sym.info as ast.ArrayFixed
+			return g.contains_ptr(info.elem_type)
+		}
+		.struct_ {
+			info := sym.info as ast.Struct
+			for embed in info.embeds {
+				if g.contains_ptr(embed) {
+					return true
+				}
+			}
+			for field in info.fields {
+				if g.contains_ptr(field.typ) {
+					return true
+				}
+			}
+			return false
+		}
+		.aggregate {
+			info := sym.info as ast.Aggregate
+			for atyp in info.types {
+				if g.contains_ptr(atyp) {
+					return true
+				}
+			}
+			return false
+		}
+		else {
+			return true
+		}
+	}
+}
+
+fn (mut g Gen) check_noscan(elem_typ ast.Type) string {
+	if g.pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
+		if !g.contains_ptr(elem_typ) {
+			return '_noscan'
+		}
+	}
+	return ''
 }

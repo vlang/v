@@ -302,7 +302,7 @@ pub fn realloc_data(old_data &byte, old_size int, new_size int) &byte {
 // Unlike `v_calloc` vcalloc checks for negative values given in `n`.
 pub fn vcalloc(n int) &byte {
 	if n < 0 {
-		panic('calloc(<=0)')
+		panic('calloc(<0)')
 	} else if n == 0 {
 		return &byte(0)
 	}
@@ -310,6 +310,24 @@ pub fn vcalloc(n int) &byte {
 		return &byte(C.GC_MALLOC(n))
 	} $else {
 		return C.calloc(1, n)
+	}
+}
+
+// special versions of the above that allocate memory which is not scanned
+// for pointers (but is collected) when the Boehm garbage collection is used
+pub fn vcalloc_noscan(n int) &byte {
+	$if gcboehm ? {
+		$if vplayground ? {
+			if n > 10000 {
+				panic('allocating more than 10 KB is not allowed in the playground')
+			}
+		}
+		if n < 0 {
+			panic('calloc(<0)')
+		}
+		return &byte(unsafe { C.memset(C.GC_MALLOC_ATOMIC(n), 0, n) })
+	} $else {
+		return unsafe { vcalloc(n) }
 	}
 }
 

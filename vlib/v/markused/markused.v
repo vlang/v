@@ -100,6 +100,14 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []ast.Fi
 		'os.init_os_args',
 		'os.init_os_args_wide',
 	]
+	if pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
+		all_fn_root_names << [
+			'__new_array_noscan',
+			'__new_array_with_default_noscan',
+			'__new_array_with_array_default_noscan',
+			'new_array_from_c_array_noscan',
+		]
+	}
 
 	for k, mut mfn in all_fns {
 		mut method_receiver_typename := ''

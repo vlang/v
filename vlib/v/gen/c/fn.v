@@ -416,7 +416,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		g.inside_call = false
 	}
 	gen_keep_alive := node.is_keep_alive && node.return_type != ast.void_type
-		&& g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm]
+		&& g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm]
 	gen_or := node.or_block.kind != .absent // && !g.is_autofree
 	is_gen_or_and_assign_rhs := gen_or && !g.discard_or_result
 	cur_line := if is_gen_or_and_assign_rhs || gen_keep_alive { // && !g.is_autofree {
@@ -890,7 +890,8 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			if g.is_json_fn {
 				g.write(json_obj)
 			} else {
-				if node.is_keep_alive && g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm] {
+				if node.is_keep_alive
+					&& g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm] {
 					cur_line := g.go_before_stmt(0)
 					tmp_cnt_save = g.keep_alive_call_pregen(node)
 					g.write(cur_line)

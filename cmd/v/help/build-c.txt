@@ -74,10 +74,12 @@ see also `v help build`.
       Use and link an optional garbage collector. Only tThe Boehm–Demers–Weiser
       garbage collector is supported currently with the following sub-options:
 
-      `-gc boehm` ........ selects the default mode for the architecture
-      `-gc boehm_full` ... full garbage collection mode
-      `-gc boehm_incr` ... incremental/generational garbage collection mode
-      `-gc boehm_leak` ... leak detection mode
+      `-gc boehm` ........... selects the default mode for the architecture
+      `-gc boehm_full` ...... full garbage collection mode
+      `-gc boehm_incr` ...... incremental/generational garbage collection mode
+      `-gc boehm_full_opt` .. optimized full garbage collection mode
+      `-gc boehm_incr_opt` .. optimized incremental/generational garbage collection mode
+      `-gc boehm_leak` ...... leak detection mode
 
       You need to install a `libgc-dev` package first, or install it manually from:
 
