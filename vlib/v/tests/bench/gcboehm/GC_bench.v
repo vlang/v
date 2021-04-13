@@ -1,3 +1,4 @@
+import os
 import time
 import rand
 import math
@@ -44,9 +45,17 @@ fn waste_mem() {
 }
 
 fn main() {
+	mut n_iterations := 5_000_000
+	if os.args.len == 2 {
+		n_iterations = os.args[1].int()
+	}
+	if os.args.len > 2 || n_iterations <= 0 {
+		eprintln('usage:\n\t${os.args[0]} [num_iterations]')
+		exit(1)
+	}
 	go waste_mem()
 	mut last := time.sys_mono_now()
-	for _ in 0 .. 5_000_000 {
+	for _ in 0 .. n_iterations {
 		now := time.sys_mono_now()
 		interval := now - last
 		println(f64(interval) / f64(time.millisecond))
