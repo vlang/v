@@ -381,7 +381,7 @@ fn (mut g Gen) mysql_stmt(node ast.SqlStmt, typ SqlType) {
 	g.writeln('memset($bind, 0, sizeof(MYSQL_BIND)*$g.sql_i);')
 	if node.kind == .insert {
 		for i, field in node.fields {
-			if g.get_sql_field_type(field) != ast.Type(-1) {
+			if g.get_sql_field_type(field) == ast.Type(-1) {
 				continue
 			}
 			g.writeln('//$field.name ($field.typ)')
