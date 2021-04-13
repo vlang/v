@@ -1647,13 +1647,13 @@ pub fn (a []string) join(del string) string {
 	for i, val in a {
 		unsafe {
 			C.memcpy(res.str + idx, val.str, val.len)
-			idx+=val.len
+			idx += val.len
 		}
 		// Add del if it's not last
-		if i != a.len-1 {
+		if i != a.len - 1 {
 			unsafe {
 				C.memcpy(res.str + idx, del.str, del.len)
-				idx+=del.len
+				idx += del.len
 			}
 		}
 	}
