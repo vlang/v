@@ -257,7 +257,7 @@ pub fn (a string) clone() string {
 	}
 	unsafe {
 		C.memcpy(b.str, a.str, a.len)
-		b.str[a.len] = `\0`
+		b.str[a.len] = 0
 	}
 	return b
 }
@@ -339,7 +339,7 @@ pub fn (s string) replace(rep string, with string) string {
 		}
 	}
 	unsafe {
-		b[new_len] = `\0`
+		b[new_len] = 0
 		return tos(b, new_len)
 	}
 }
@@ -419,7 +419,7 @@ pub fn (s string) replace_each(vals []string) string {
 		return s.clone()
 	}
 	idxs.sort2()
-	mut b := unsafe { malloc(new_len + 1) } // add a \0 just in case
+	mut b := unsafe { malloc(new_len + 1) } // add space for 0 terminator
 	// Fill the new string
 	mut idx_pos := 0
 	mut cur_idx := idxs[idx_pos]
@@ -451,7 +451,7 @@ pub fn (s string) replace_each(vals []string) string {
 		}
 	}
 	unsafe {
-		b[new_len] = `\0`
+		b[new_len] = 0
 		return tos(b, new_len)
 	}
 }
@@ -576,7 +576,7 @@ pub fn (s string) add(a string) string {
 		}
 	}
 	unsafe {
-		res.str[new_len] = `\0` // V strings are not null terminated, but just in case
+		res.str[new_len] = 0 // V strings are not null terminated, but just in case
 	}
 	return res
 }
@@ -726,7 +726,7 @@ pub fn (s string) substr(start int, end int) string {
 		}
 	}
 	unsafe {
-		res.str[len] = `\0`
+		res.str[len] = 0
 	}
 	/*
 	res := string {
@@ -1644,26 +1644,21 @@ pub fn (a []string) join(del string) string {
 		len: len
 	}
 	mut idx := 0
-	// Go thru every string and copy its every char one by one
 	for i, val in a {
-		for j in 0 .. val.len {
-			unsafe {
-				res.str[idx] = val.str[j]
-			}
-			idx++
+		unsafe {
+			C.memcpy(res.str + idx, val.str, val.len)
+			idx += val.len
 		}
 		// Add del if it's not last
 		if i != a.len - 1 {
-			for k in 0 .. del.len {
-				unsafe {
-					res.str[idx] = del.str[k]
-				}
-				idx++
+			unsafe {
+				C.memcpy(res.str + idx, del.str, del.len)
+				idx += del.len
 			}
 		}
 	}
 	unsafe {
-		res.str[res.len] = `\0`
+		res.str[res.len] = 0
 	}
 	return res
 }

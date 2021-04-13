@@ -41,7 +41,7 @@ fn diff_files(file_result string, file_expected string) string {
 
 pub fn run_repl_file(wd string, vexec string, file string) ?string {
 	vexec_folder := os.dir(vexec) + os.path_separator
-	fcontent := os.read_file(file) or { return error('Could not read file $file') }
+	fcontent := os.read_file(file) or { return error('Could not read repl file $file') }
 	content := fcontent.replace('\r', '')
 	input := content.all_before('===output===\n')
 	output := content.all_after('===output===\n').trim_right('\n\r')
@@ -81,7 +81,7 @@ $diff
 pub fn run_prod_file(wd string, vexec string, file string) ?string {
 	file_expected := '${file}.expected.txt'
 	f_expected_content := os.read_file(file_expected) or {
-		return error('Could not read file $file')
+		return error('Could not read expected prod file $file_expected')
 	}
 	expected_content := f_expected_content.replace('\r', '')
 	cmd := '"$vexec" -prod run "$file"'

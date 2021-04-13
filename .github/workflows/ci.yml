@@ -11,7 +11,7 @@ on:
 jobs:
   code-formatting-perf-regressions:
     runs-on: ubuntu-20.04
-    timeout-minutes: 45
+    timeout-minutes: 15
     env:
       VFLAGS: -cc gcc
     steps:
@@ -169,6 +169,13 @@ jobs:
           sudo apt-get install --quiet -y xfonts-75dpi xfonts-base
       - name: Build v
         run: make
+        
+      - name: v.c can be compiled and run with -os cross
+        run: |
+          ./v -os cross -o /tmp/v.c cmd/v
+          gcc  -g -std=gnu11 -w -o v_from_vc /tmp/v.c  -lm -lpthread
+          ls -lart v_from_vc
+          ./v_from_vc version
 
       - name: Ensure v up works
         run: |
@@ -199,8 +206,7 @@ jobs:
                  ./sokol-shdc --input $f.glsl --output $f.h --slang glsl330 ; \
           done
           for vfile in examples/sokol/0?*/*.v; do echo "compiling $vfile ..."; ./v $vfile ; done
-
-  ## C++
+          
       - name: Install C++ dependencies
         run: |
           sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev
@@ -215,43 +221,13 @@ jobs:
   ##    - name: Running tests with g++
   ##      run: ./v -cc g++-9 -silent test-self
 
-  ## Cross compilation
-      - name: Install dependencies
-        run: |
-          sudo apt install --quiet -y mingw-w64 wine-stable winetricks
-      - name: Build V
-        run: make -j4
-      - name: v.c can be compiled and run
-        run: |
-          ./v -os cross -o /tmp/v.c cmd/v
-          gcc  -g -std=gnu11 -w -o v_from_vc /tmp/v.c  -lm -lpthread
-          ls -lart v_from_vc
-          ./v_from_vc version
-      - name: turn off the wine crash dialog
-        run: winetricks nocrashdialog
-      - name: v_win.c can be compiled and run
-        run: |
-          ./v -os windows -o /tmp/v_win.c cmd/v
-          x86_64-w64-mingw32-gcc  /tmp/v_win.c -std=c99 -w -municode -o v_from_vc.exe
-          ls -lart v_from_vc.exe
-          wine v_from_vc.exe version
-      - name: hello_world.v can be cross compiled to hello_world.exe
-        run: |
-          ./v -os windows examples/hello_world.v
-          ls -lart examples/hello_world.exe
-          wine examples/hello_world.exe
-      - name: 2048.v can be cross compiled to 2048.exe
-        run: |
-          ./v -os windows examples/2048/2048.v
-          ls -lart examples/2048/2048.exe
 
-
-  # Alpine docker pre-built container
   alpine-docker-musl-gcc:
     name: alpine-musl
     runs-on: ubuntu-20.04
     timeout-minutes: 45
     container:
+      # Alpine docker pre-built container
       image: thevlang/vlang:alpine-build
       env:
         V_CI_MUSL: 1
@@ -290,7 +266,6 @@ jobs:
           ##brew install libpq openssl freetype ### these are *already installed* on Catalina ...
           brew uninstall --ignore-dependencies libpq ## libpq is a dependency of PHP
           brew install postgresql
-          brew install mingw-w64
           export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
       - name: Build V
         run: make -j4 && ./v -cg -cflags -Werror -o v cmd/v
@@ -320,10 +295,13 @@ jobs:
         run: |
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
+          
       - name: Self tests
         run: VJOBS=1 ./v -silent test-self
+        
       - name: Build examples
         run: ./v build-examples
+        
       - name: Build examples with -autofree
         run: |
           ./v -autofree -o tetris examples/tetris/tetris.v
@@ -331,21 +309,14 @@ jobs:
       - name: v doctor
         run: |
           ./v doctor
-      - name: Cross-compilation to Linux
-        run: |
-          ./v -os linux cmd/v
-          # TODO: fix this: ./v -os linux examples/2048/2048.v
-      - name: Cross-compilation to Windows
-        run: |
-          ./v -os windows cmd/v
-          ./v -os windows examples/2048/2048.v
-      #    - name: Test vsh
-      #      run:  ./v examples/v_script.vsh
+          
       - name: Test ved
         run: |
           git clone --depth 1 https://github.com/vlang/ved
           cd ved && ../v -o ved .
           ../v -autofree .
+          cd ..
+          
       - name: Build V UI examples
         run: |
           git clone --depth 1 https://github.com/vlang/ui
@@ -524,149 +495,6 @@ jobs:
           echo "Running it..."
           ls
 
-  tests-sanitize-undefined-clang:
-    runs-on: ubuntu-20.04
-    timeout-minutes: 45
-    env:
-      VFLAGS: -cc clang
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-node@v1
-        with:
-          node-version: 12.x
-      - name: Install dependencies
-        run: |
-          sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev libgl-dev
-          sudo apt-get install clang
-      - name: Build V
-        run: make -j4 && ./v -cg -cflags -Werror -o v cmd/v
-      - name: Self tests (-fsanitize=undefined)
-        run: ./v -cflags "-fsanitize=undefined" -o v2 cmd/v && ./v2 -cflags -fsanitize=undefined test-self
-      - name: Build examples (V compiled with -fsanitize=undefined)
-        run: ./v2 build-examples
-
-  tests-sanitize-undefined-gcc:
-    runs-on: ubuntu-20.04
-    timeout-minutes: 45
-    env:
-      VFLAGS: -cc gcc
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-node@v1
-        with:
-          node-version: 12.x
-      - name: Install dependencies
-        run: |
-          sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev libgl-dev
-      - name: Build V
-        run: make -j4 && ./v -cg -cflags -Werror -o v cmd/v
-      - name: Self tests (-fsanitize=undefined)
-        run: ./v -cflags "-fsanitize=undefined" -o v2 cmd/v && ./v2 -cflags -fsanitize=undefined test-self
-      - name: Build examples (V compiled with -fsanitize=undefined)
-        run: ./v2 build-examples
-
-  tests-sanitize-address-clang:
-    runs-on: ubuntu-20.04
-    timeout-minutes: 45
-    env:
-      VFLAGS: -cc clang
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-node@v1
-        with:
-          node-version: 12.x
-      - name: Install dependencies
-        run: |
-          sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev libgl-dev
-          sudo apt-get install clang
-      - name: Build V
-        run: make -j4 && ./v -cg -cflags -Werror -o v cmd/v
-      - name: Self tests (-fsanitize=address)
-        run: ASAN_OPTIONS=detect_leaks=0 ./v -cflags "-fsanitize=address,pointer-compare,pointer-subtract" test-self
-      - name: Self tests (V compiled with -fsanitize=address)
-        run:
-          ./v -cflags -fsanitize=address -o v cmd/v &&
-          ASAN_OPTIONS=detect_leaks=0 ./v -cc tcc test-self -asan-compiler
-      - name: Build examples (V compiled with -fsanitize=address)
-        run: ASAN_OPTIONS=detect_leaks=0 ./v build-examples
-
-  tests-sanitize-address-msvc:
-    runs-on: windows-2019
-    timeout-minutes: 45
-    env:
-      VFLAGS: -cc msvc
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-node@v1
-        with:
-          node-version: 12.x
-      - name: Build
-        run: |
-          echo %VFLAGS%
-          echo $VFLAGS
-          .\make.bat -msvc
-          .\v.exe -cflags /WX self
-      - name: Install dependencies
-        run: |
-          .\v.exe setup-freetype
-          .\.github\workflows\windows-install-sqlite.bat
-      - name: Self tests (-fsanitize=address)
-        run: |
-          .\v.exe -cflags -fsanitize=address test-self
-
-  tests-sanitize-address-gcc:
-    runs-on: ubuntu-20.04
-    timeout-minutes: 45
-    env:
-      VFLAGS: -cc gcc
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-node@v1
-        with:
-          node-version: 12.x
-      - name: Install dependencies
-        run: |
-          sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev libgl-dev
-          sudo apt-get install clang
-      - name: Build V
-        run: make -j4 && ./v -cg -cflags -Werror -o v cmd/v
-      - name: Self tests (-fsanitize=address)
-        run: ASAN_OPTIONS=detect_leaks=0 ./v -cflags -fsanitize=address test-self
-      - name: Self tests (V compiled with -fsanitize=address)
-        run:
-          ./v -cflags -fsanitize=address,pointer-compare,pointer-subtract -o v cmd/v &&
-          ASAN_OPTIONS=detect_leaks=0 ./v -cc tcc test-self -asan-compiler
-      - name: Build examples (V compiled with -fsanitize=address)
-        run: ASAN_OPTIONS=detect_leaks=0 ./v build-examples
-
-  tests-sanitize-memory-clang:
-    runs-on: ubuntu-20.04
-    timeout-minutes: 45
-    env:
-      VFLAGS: -cc clang
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-node@v1
-        with:
-          node-version: 12.x
-      - name: Install dependencies
-        run: |
-          sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev libgl-dev
-          sudo apt-get install clang
-      - name: Build V
-        run: make -j4 && ./v -cc clang -cg -cflags -Werror -o v cmd/v
-      - name: Self tests (-fsanitize=memory)
-        run: ./v -cflags -fsanitize=memory test-self
-      - name: Self tests (V compiled with -fsanitize=memory)
-        run:
-          ./v -cflags -fsanitize=memory -o v cmd/v && ./v -cc tcc test-self -msan-compiler
-      - name: Build examples (V compiled with -fsanitize=memory)
-        run: ./v build-examples
   #  ubuntu-autofree-selfcompile:
   #    runs-on: ubuntu-20.04
   #    timeout-minutes: 45

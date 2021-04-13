@@ -54,8 +54,10 @@ pub fn (mut w Walker) stmt(node ast.Stmt) {
 			w.asm_io(node.input)
 		}
 		ast.AssertStmt {
-			w.expr(node.expr)
-			w.n_asserts++
+			if node.is_used {
+				w.expr(node.expr)
+				w.n_asserts++
+			}
 		}
 		ast.AssignStmt {
 			w.exprs(node.left)
