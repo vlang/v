@@ -376,15 +376,21 @@ pub fn debugger_present() bool {
 }
 
 pub fn uname() Uname {
-	// TODO: implement `os.uname()` for windows
-	unknown := 'unknown'
+	sys_and_ver := execute('cmd /c ver').output.split('[')
+
+	nodename := execute('cmd /c hostname').output
+	machine := execute('cmd /c echo %PROCESSOR_ARCHITECTURE%').output
 	return Uname{
-		sysname: unknown
-		nodename: unknown
-		release: unknown
-		version: unknown
-		machine: unknown
+		sysname: sys_and_ver[0].trim_space()
+		nodename: nodename
+		release: sys_and_ver[1].replace(']', '')
+		version: sys_and_ver[0] + '[' + sys_and_ver[1]
+		machine: machine
 	}
+}
+
+pub fn hostname() string {
+	return execute('cmd /c hostname').output
 }
 
 // `is_writable_folder` - `folder` exists and is writable to the process

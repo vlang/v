@@ -69,6 +69,10 @@ pub fn uname() Uname {
 	return u
 }
 
+pub fn hostname() string {
+	return uname().nodename
+}
+
 fn init_os_args(argc int, argv &&byte) []string {
 	mut args_ := []string{}
 	// mut args := []string(make(0, argc, sizeof(string)))
