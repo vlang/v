@@ -22,4 +22,24 @@ set ylabel "Time [s]"
 plot [-1:4] [0:210] "resources.txt" using 4:xtic(1) title "{/Monospace Time to Complete}" lt 3
 unset multiplot
 set output
+unset margin
+set terminal svg size 900,530 dynamic enhanced
+set output "Resources.svg"
+set multiplot layout 1,3 title "\nBoehm GC: Resource Requirements for \`GC\\_bench.v\` (2·10^8 Iterations)\n" font ",18"
+#
+set rmargin at screen 0.27
+set ylabel "Process Memory [GB]"
+plot [-1:4] [0:9.36] "resources.txt" using 3:xtic(1) title "{/Monospace Memory Usage}" lt 2
+#
+set lmargin at screen 0.38
+set rmargin at screen 0.59
+set ylabel "CPU Usage [% of 1 Core]"
+plot [-1:4] [0:750] "resources.txt" using 5:xtic(1) title "{/Monospace CPU Usage}" lt 7
+#
+set lmargin at screen 0.71
+unset rmargin
+set ylabel "Time [s]"
+plot [-1:4] [0:210] "resources.txt" using 4:xtic(1) title "{/Monospace Time to Complete}" lt 3
+unset multiplot
+set output
 #    EOF

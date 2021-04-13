@@ -62,4 +62,5 @@ clean:
 	rm -f boehm_full.txt boehm_incr.txt boehm_full_opt.txt boehm_incr_opt.txt \
           GC_bench_non_opt.pdf GC_bench_full.pdf GC_bench_incr.pdf \
           GC_bench_opt.pdf GC_bench.pdf Resources.pdf \
-          GC_bench_full GC_bench_incr GC_bench_full_opt GC_bench_incr_opt
+          GC_bench_full GC_bench_incr GC_bench_full_opt GC_bench_incr_opt \
+          GC_bench.svg Resources.svg
