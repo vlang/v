@@ -376,8 +376,13 @@ pub fn debugger_present() bool {
 }
 
 pub fn uname() Uname {
+<<<<<<< HEAD
 	// TODO: use Win32 Api functions instead
 	sys_and_ver := execute('cmd /c ver').output.split('[')
+=======
+	sys_and_ver := execute('cmd /c ver').output.split('[')
+
+>>>>>>> 421573c1a (os: create hostname() & uname() for windows)
 	nodename := execute('cmd /c hostname').output
 	machine := execute('cmd /c echo %PROCESSOR_ARCHITECTURE%').output
 	return Uname{
@@ -390,7 +395,10 @@ pub fn uname() Uname {
 }
 
 pub fn hostname() string {
+<<<<<<< HEAD
 	// TODO: use C.GetComputerName(&u16, u32) int instead
+=======
+>>>>>>> 421573c1a (os: create hostname() & uname() for windows)
 	return execute('cmd /c hostname').output
 }
 

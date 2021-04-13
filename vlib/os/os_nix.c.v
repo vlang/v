@@ -72,6 +72,7 @@ pub fn uname() Uname {
 }
 
 pub fn hostname() string {
+<<<<<<< HEAD
 	mut hstnme := ''
 	size := 256
 	mut buf := unsafe { &char(malloc(size)) }
@@ -81,6 +82,9 @@ pub fn hostname() string {
 		return hstnme
 	}
 	return ''
+=======
+	return uname().nodename
+>>>>>>> 421573c1a (os: create hostname() & uname() for windows)
 }
 
 fn init_os_args(argc int, argv &&byte) []string {
