@@ -2688,7 +2688,6 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 	if is_pub {
 		p.next()
 	}
-	end_pos := p.tok.position()
 	const_pos := p.tok.position()
 	p.check(.key_const)
 	is_block := p.tok.kind == .lpar
@@ -2698,11 +2697,11 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 	mut fields := []ast.ConstField{}
 	mut comments := []ast.Comment{}
 	for {
+		comments = p.eat_comments({})
 		if p.tok.kind == .eof {
 			p.error_with_pos('const declaration is missing closing `)`', const_pos)
 			return ast.ConstDecl{}
 		}
-		comments = p.eat_comments({})
 		if p.tok.kind == .rpar {
 			break
 		}
@@ -2739,7 +2738,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		p.check(.rpar)
 	}
 	return ast.ConstDecl{
-		pos: start_pos.extend_with_last_line(end_pos, p.prev_tok.line_nr)
+		pos: start_pos.extend_with_last_line(const_pos, p.prev_tok.line_nr)
 		fields: fields
 		is_pub: is_pub
 		end_comments: comments

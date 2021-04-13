@@ -1,0 +1,4 @@
+vlib/v/parser/tests/const_missing_rpar_a.vv:1:1: error: const declaration is missing closing `)`
+    1 | const (
+      | ~~~~~
+    2 |     a = 5
