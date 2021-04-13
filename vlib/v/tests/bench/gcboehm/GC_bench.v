@@ -17,6 +17,7 @@ struct PtrPtrObj {
 mut:
 	nxt []&PtrObj
 }
+
 const (
 	log2n = 11
 	n     = 1 << log2n
