@@ -325,7 +325,7 @@ pub fn vcalloc_noscan(n int) &byte {
 		if n < 0 {
 			panic('calloc(<0)')
 		}
-		return &byte(C.GC_MALLOC_ATOMIC(n))
+		return &byte(unsafe { C.memset(C.GC_MALLOC_ATOMIC(n), 0, n) })
 	} $else {
 		return unsafe { vcalloc(n) }
 	}
