@@ -58,6 +58,7 @@ const (
 		'vlib/context/value_test.v' /* the following tests need C casts in `sync` and/or thirdparty/stdatomic */,
 		'vlib/context/empty_test.v',
 		'vlib/context/cancel_test.v',
+		'vlib/context/deadline_test.v',
 		'vlib/sync/array_rlock_test.v',
 		'vlib/sync/atomic2/atomic_test.v',
 		'vlib/sync/channel_2_test.v',
