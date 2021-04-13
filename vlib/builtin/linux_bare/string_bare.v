@@ -34,7 +34,7 @@ fn (s string) add(a string) string {
 	for j in 0 .. a.len {
 		res[s.len + j] = a[j]
 	}
-	res[new_len] = `\0` // V strings are not null terminated, but just in case
+	res[new_len] = 0 // V strings are not null terminated, but just in case
 	return res
 }
 
@@ -145,6 +145,6 @@ pub fn (a string) clone() string {
 		str: malloc(a.len + 1)
 	}
 	mem_copy(b.str, a.str, a.len)
-	b[a.len] = `\0`
+	b[a.len] = 0
 	return b
 }

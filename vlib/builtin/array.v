@@ -533,7 +533,7 @@ pub fn (b []byte) hex() string {
 		}
 	}
 	unsafe {
-		hex[dst_i] = `\0`
+		hex[dst_i] = 0
 		return tos(hex, dst_i)
 	}
 }
