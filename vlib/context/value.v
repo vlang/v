@@ -21,10 +21,7 @@ mut:
 // string or any other built-in type to avoid collisions between
 // packages using context. Users of with_value should define their own
 // types for keys
-pub fn with_value(parent Context, key string, value voidptr) &ValueContext {
-	if isnil(key) {
-		panic('nil key')
-	}
+pub fn with_value(parent Context, key string, value voidptr) Context {
 	return &ValueContext{
 		context: parent
 		key: key

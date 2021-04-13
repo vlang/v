@@ -8,10 +8,9 @@ pub interface Canceler {
 	id string
 	cancel(remove_from_parent bool, err string)
 	done() chan int
-	str() string
 }
 
-pub fn cancel(mut ctx CancelerContext) {
+pub fn cancel(ctx Context) {
 	match mut ctx {
 		CancelContext {
 			ctx.cancel(true, canceled)
@@ -19,65 +18,7 @@ pub fn cancel(mut ctx CancelerContext) {
 		TimerContext {
 			ctx.cancel(true, canceled)
 		}
-	}
-}
-
-// CancelerContext implements the Canceler intarface for both
-// struct types: CancelContext and TimerContext
-pub type CancelerContext = CancelContext | TimerContext
-
-pub fn (mut ctx CancelerContext) done() chan int {
-	match mut ctx {
-		CancelContext {
-			return ctx.done()
-		}
-		TimerContext {
-			return ctx.done()
-		}
-	}
-}
-
-pub fn (mut ctx CancelerContext) err() string {
-	match mut ctx {
-		CancelContext {
-			return ctx.err()
-		}
-		TimerContext {
-			return ctx.err()
-		}
-	}
-}
-
-pub fn (ctx CancelerContext) value(key string) ?voidptr {
-	match ctx {
-		CancelContext {
-			return ctx.value(key)
-		}
-		TimerContext {
-			return ctx.value(key)
-		}
-	}
-}
-
-pub fn (mut ctx CancelerContext) cancel(remove_from_parent bool, err string) {
-	match mut ctx {
-		CancelContext {
-			ctx.cancel(remove_from_parent, err)
-		}
-		TimerContext {
-			ctx.cancel(remove_from_parent, err)
-		}
-	}
-}
-
-pub fn (ctx CancelerContext) str() string {
-	match ctx {
-		CancelContext {
-			return ctx.str()
-		}
-		TimerContext {
-			return ctx.str()
-		}
+		else {}
 	}
 }
 
@@ -93,22 +34,16 @@ mut:
 	err      string
 }
 
-// A CancelFunc tells an operation to abandon its work.
-// A CancelFunc does not wait for the work to stop.
-// A CancelFunc may be called by multiple goroutines simultaneously.
-// After the first call, subsequent calls to a CancelFunc do nothing.
-// pub type CancelFunc = fn (c Canceler)
-
 // with_cancel returns a copy of parent with a new done channel. The returned
 // context's done channel is closed when the returned cancel function is called
 // or when the parent context's done channel is closed, whichever happens first.
 //
 // Canceling this context releases resources associated with it, so code should
 // call cancel as soon as the operations running in this Context complete.
-pub fn with_cancel(parent Context) &CancelerContext {
+pub fn with_cancel(parent Context) Context {
 	mut c := new_cancel_context(parent)
 	propagate_cancel(parent, mut c)
-	return c
+	return Context(c)
 }
 
 // new_cancel_context returns an initialized CancelContext.
@@ -164,6 +99,7 @@ fn (mut ctx CancelContext) cancel(remove_from_parent bool, err string) {
 	ctx.err = err
 
 	if !ctx.done.closed {
+		ctx.done <- 0
 		ctx.done.close()
 	}
 

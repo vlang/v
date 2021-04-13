@@ -10,10 +10,9 @@ with_deadline, with_timeout, or with_value. When a Context is canceled, all Cont
 derived from it are also canceled.
 
 The with_cancel, with_deadline, and with_timeout functions take a Context (the parent)
-and return a derived Context (the child) and a CancelFunc. Calling the CancelFunc
+and return a derived Context (the child). Calling the cancel function
 cancels the child and its children, removes the parent's reference to the child,
-and stops any associated timers. Failing to call the CancelFunc leaks the child
-and its children until the parent is canceled or the timer fires.
+and stops any associated timers.
 
 Programs that use Contexts should follow these rules to keep interfaces consistent
 across different modules.
@@ -40,29 +39,32 @@ fn example_with_cancel() {
 	// The callers of gen need to cancel the context once
 	// they are done consuming generated integers not to leak
 	// the internal routine started by gen.
-	gen := fn (mut ctx context.CancelerContext) chan int {
+	gen := fn (ctx context.Context) chan int {
 		dst := chan int{}
-		go fn (mut ctx context.CancelerContext, dst chan int) {
+		go fn (ctx context.Context, dst chan int) {
+			mut v := 0
 			ch := ctx.done()
-			loop: for i in 0 .. 5 {
+			for {
 				select {
 					_ := <-ch {
 						// returning not to leak the routine
-						break loop
+						return
 					}
-					dst <- i {}
+					dst <- v {
+						v++
+					}
 				}
 			}
-		}(mut ctx, dst)
+		}(ctx, dst)
 		return dst
 	}
 
-	mut ctx := context.with_cancel(context.background())
+	ctx := context.with_cancel(context.background())
 	defer {
-		context.cancel(mut ctx)
+		context.cancel(ctx)
 	}
 
-	ch := gen(mut ctx)
+	ch := gen(ctx)
 	for i in 0 .. 5 {
 		v := <-ch
 		assert i == v
@@ -94,13 +96,13 @@ fn after(dur time.Duration) chan int {
 // function that it should abandon its work as soon as it gets to it.
 fn example_with_deadline() {
 	dur := time.now().add(short_duration)
-	mut ctx := context.with_deadline(context.background(), dur)
+	ctx := context.with_deadline(context.background(), dur)
 
 	defer {
 		// Even though ctx will be expired, it is good practice to call its
 		// cancellation function in any case. Failure to do so may keep the
 		// context and its parent alive longer than necessary.
-		context.cancel(mut ctx)
+		context.cancel(ctx)
 	}
 
 	after_ch := after(1 * time.second)
@@ -141,9 +143,9 @@ fn after(dur time.Duration) chan int {
 fn example_with_timeout() {
 	// Pass a context with a timeout to tell a blocking function that it
 	// should abandon its work after the timeout elapses.
-	mut ctx := context.with_timeout(context.background(), short_duration)
+	ctx := context.with_timeout(context.background(), short_duration)
 	defer {
-		context.cancel(mut ctx)
+		context.cancel(ctx)
 	}
 
 	after_ch := after(1 * time.second)
@@ -169,7 +171,7 @@ type ValueContextKey = string
 // This example demonstrates how a value can be passed to the context
 // and also how to retrieve it if it exists.
 fn example_with_value() {
-	f := fn (ctx context.ValueContext, key ValueContextKey) string {
+	f := fn (ctx context.Context, key ValueContextKey) string {
 		if value := ctx.value(key) {
 			if !isnil(value) {
 				return *(&string(value))

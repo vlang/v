@@ -22,7 +22,7 @@ mut:
 //
 // Canceling this context releases resources associated with it, so code should
 // call cancel as soon as the operations running in this Context complete.
-pub fn with_deadline(parent Context, d time.Time) &CancelerContext {
+pub fn with_deadline(parent Context, d time.Time) Context {
 	id := rand.uuid_v4()
 	if cur := parent.deadline() {
 		if cur < d {
@@ -40,25 +40,23 @@ pub fn with_deadline(parent Context, d time.Time) &CancelerContext {
 	dur := d - time.now()
 	if dur.nanoseconds() <= 0 {
 		ctx.cancel(true, deadline_exceeded) // deadline has already passed
-		return ctx
+		return Context(ctx)
 	}
 
 	if ctx.cancel_ctx.err() == '' {
 		go fn (mut ctx TimerContext, dur time.Duration) {
 			time.sleep(dur)
-			ctx_ch := ctx.done()
-			ctx_ch <- 0
 			ctx.cancel(true, deadline_exceeded)
 		}(mut ctx, dur)
 	}
-	return ctx
+	return Context(ctx)
 }
 
 // with_timeout returns with_deadline(parent, time.now().add(timeout)).
 //
 // Canceling this context releases resources associated with it, so code should
 // call cancel as soon as the operations running in this Context complete
-pub fn with_timeout(parent Context, timeout time.Duration) &CancelerContext {
+pub fn with_timeout(parent Context, timeout time.Duration) Context {
 	return with_deadline(parent, time.now().add(timeout))
 }
 
