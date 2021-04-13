@@ -970,14 +970,14 @@ pub fn (mut t Table) resolve_generic_by_names(generic_type Type, generic_names [
 		}
 		if typ := t.resolve_generic_by_names(elem_type, generic_names, generic_types) {
 			idx := t.find_or_register_array_with_dims(typ, dims)
-			array_typ := new_type(idx)
+			array_typ := new_type(idx).derive(generic_type).clear_flag(.generic)
 			return array_typ
 		}
 	} else if sym.kind == .chan {
 		info := sym.info as Chan
 		if typ := t.resolve_generic_by_names(info.elem_type, generic_names, generic_types) {
 			idx := t.find_or_register_chan(typ, typ.nr_muls() > 0)
-			chan_typ := new_type(idx)
+			chan_typ := new_type(idx).derive(generic_type).clear_flag(.generic)
 			return chan_typ
 		}
 	} else if mut sym.info is MultiReturn {
@@ -993,7 +993,7 @@ pub fn (mut t Table) resolve_generic_by_names(generic_type Type, generic_names [
 		}
 		if type_changed {
 			idx := t.find_or_register_multi_return(types)
-			typ := new_type(idx)
+			typ := new_type(idx).derive(generic_type).clear_flag(.generic)
 			return typ
 		}
 	} else if mut sym.info is Map {
@@ -1010,7 +1010,7 @@ pub fn (mut t Table) resolve_generic_by_names(generic_type Type, generic_names [
 		}
 		if type_changed {
 			idx := t.find_or_register_map(unwrapped_key_type, unwrapped_value_type)
-			return new_type(idx)
+			return new_type(idx).derive(generic_type).clear_flag(.generic)
 		}
 	}
 	return none
@@ -1041,13 +1041,13 @@ pub fn (mut t Table) resolve_generic_by_types(generic_type Type, from_types []Ty
 		}
 		if typ := t.resolve_generic_by_types(elem_type, from_types, to_types) {
 			idx := t.find_or_register_array_with_dims(typ, dims)
-			return new_type(idx)
+			return new_type(idx).derive(generic_type).clear_flag(.generic)
 		}
 	} else if sym.kind == .chan {
 		info := sym.info as Chan
 		if typ := t.resolve_generic_by_types(info.elem_type, from_types, to_types) {
 			idx := t.find_or_register_chan(typ, typ.nr_muls() > 0)
-			return new_type(idx)
+			return new_type(idx).derive(generic_type).clear_flag(.generic)
 		}
 	} else if mut sym.info is MultiReturn {
 		mut types := []Type{}
@@ -1062,7 +1062,7 @@ pub fn (mut t Table) resolve_generic_by_types(generic_type Type, from_types []Ty
 		}
 		if type_changed {
 			idx := t.find_or_register_multi_return(types)
-			return new_type(idx)
+			return new_type(idx).derive(generic_type).clear_flag(.generic)
 		}
 	} else if mut sym.info is Map {
 		mut type_changed := false
@@ -1078,7 +1078,7 @@ pub fn (mut t Table) resolve_generic_by_types(generic_type Type, from_types []Ty
 		}
 		if type_changed {
 			idx := t.find_or_register_map(unwrapped_key_type, unwrapped_value_type)
-			return new_type(idx)
+			return new_type(idx).derive(generic_type).clear_flag(.generic)
 		}
 	}
 	return none
