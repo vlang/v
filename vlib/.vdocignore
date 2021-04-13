@@ -1,5 +1,6 @@
 builtin/bare
 builtin/js
+builtin/linux_bare
 dl/example
 oldgg/
 os/bare
