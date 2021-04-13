@@ -613,6 +613,9 @@ fn (mut g JsGen) expr(node ast.Expr) {
 
 // TODO
 fn (mut g JsGen) gen_assert_stmt(a ast.AssertStmt) {
+	if !a.is_used {
+		return
+	}
 	g.writeln('// assert')
 	g.write('if( ')
 	g.expr(a.expr)

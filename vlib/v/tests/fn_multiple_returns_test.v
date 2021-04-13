@@ -72,3 +72,13 @@ fn test_multiple_ret() {
 	assert res3_1 == 'replaced'
 	assert res3_2 == 'val'
 }
+
+fn multi_values() (string, string) {
+	return if 1 > 0 { 'abc', 'def' } else { 'jkl', 'mno' }
+}
+
+fn test_multi_values() {
+	x, y := multi_values()
+	assert x == 'abc'
+	assert y == 'def'
+}

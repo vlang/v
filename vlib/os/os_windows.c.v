@@ -188,7 +188,7 @@ const (
 const (
 	sublang_neutral = 0x00
 	sublang_default = 0x01
-	lang_neutral    = (sublang_neutral)
+	lang_neutral    = sublang_neutral
 )
 
 // Ref - https://docs.microsoft.com/en-us/windows/win32/debug/system-error-codes--12000-15999-

@@ -31,6 +31,7 @@ mut:
 	peek_tok            token.Token
 	table               &ast.Table
 	language            ast.Language
+	inside_test_file    bool // when inside _test.v or _test.vv file
 	inside_if           bool
 	inside_if_expr      bool
 	inside_ct_if_expr   bool
@@ -79,6 +80,7 @@ mut:
 pub fn parse_stmt(text string, table &ast.Table, scope &ast.Scope) ast.Stmt {
 	mut p := Parser{
 		scanner: scanner.new_scanner(text, .skip_comments, &pref.Preferences{})
+		inside_test_file: true
 		table: table
 		pref: &pref.Preferences{}
 		scope: scope
@@ -138,6 +140,9 @@ pub fn (mut p Parser) set_path(path string) {
 	p.file_name = path
 	p.file_base = os.base(path)
 	p.file_name_dir = os.dir(path)
+	if p.file_base.ends_with('_test.v') || p.file_base.ends_with('_test.vv') {
+		p.inside_test_file = true
+	}
 	before_dot_v := path.before('.v') // also works for .vv and .vsh
 	language := before_dot_v.all_after_last('.')
 	langauge_with_underscore := before_dot_v.all_after_last('_')
@@ -276,6 +281,7 @@ pub fn (mut p Parser) parse() ast.File {
 	return ast.File{
 		path: p.file_name
 		path_base: p.file_base
+		is_test: p.inside_test_file
 		lines: p.scanner.line_nr
 		bytes: p.scanner.text.len
 		mod: module_decl
@@ -686,6 +692,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			return ast.AssertStmt{
 				expr: expr
 				pos: pos
+				is_used: p.inside_test_file || !p.pref.is_prod
 			}
 		}
 		.key_for {
@@ -2322,6 +2329,17 @@ fn (mut p Parser) enum_val() ast.EnumVal {
 	}
 }
 
+fn (mut p Parser) filter_string_vet_errors(pos token.Position) {
+	if p.vet_errors.len == 0 {
+		return
+	}
+	p.vet_errors = p.vet_errors.filter(
+		(it.typ == .trailing_space && it.pos.line_nr - 1 >= pos.last_line)
+		|| (it.typ != .trailing_space && it.pos.line_nr - 1 > pos.last_line)
+		|| (it.typ == .space_indent && it.pos.line_nr - 1 <= pos.line_nr)
+		|| (it.typ != .space_indent && it.pos.line_nr - 1 < pos.line_nr))
+}
+
 fn (mut p Parser) string_expr() ast.Expr {
 	is_raw := p.tok.kind == .name && p.tok.lit == 'r'
 	is_cstr := p.tok.kind == .name && p.tok.lit == 'c'
@@ -2334,14 +2352,7 @@ fn (mut p Parser) string_expr() ast.Expr {
 	pos.last_line = pos.line_nr + val.count('\n')
 	if p.peek_tok.kind != .str_dollar {
 		p.next()
-		// Filter out false positive vet errors inside strings
-		if p.vet_errors.len > 0 {
-			p.vet_errors = p.vet_errors.filter(
-				(it.typ == .trailing_space && it.pos.line_nr - 1 >= pos.last_line)
-				|| (it.typ != .trailing_space && it.pos.line_nr - 1 > pos.last_line)
-				|| (it.typ == .space_indent && it.pos.line_nr - 1 <= pos.line_nr)
-				|| (it.typ != .space_indent && it.pos.line_nr - 1 < pos.line_nr))
-		}
+		p.filter_string_vet_errors(pos)
 		node = ast.StringLiteral{
 			val: val
 			is_raw: is_raw
@@ -2420,6 +2431,8 @@ fn (mut p Parser) string_expr() ast.Expr {
 		fills << fill
 		fposs << p.prev_tok.position()
 	}
+	pos = pos.extend(p.prev_tok.position())
+	p.filter_string_vet_errors(pos)
 	node = ast.StringInterLiteral{
 		vals: vals
 		exprs: exprs
@@ -2430,7 +2443,7 @@ fn (mut p Parser) string_expr() ast.Expr {
 		fills: fills
 		fmts: fmts
 		fmt_poss: fposs
-		pos: pos.extend(p.prev_tok.position())
+		pos: pos
 	}
 	// need_fmts: prelimery - until checker finds out if really needed
 	p.inside_str_interp = false

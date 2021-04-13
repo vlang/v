@@ -6,6 +6,9 @@ module c
 import v.ast
 
 fn (mut g Gen) gen_assert_stmt(original_assert_statement ast.AssertStmt) {
+	if !original_assert_statement.is_used {
+		return
+	}
 	mut node := original_assert_statement
 	g.writeln('// assert')
 	if mut node.expr is ast.InfixExpr {

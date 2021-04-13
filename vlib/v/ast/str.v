@@ -274,6 +274,9 @@ pub fn (x Expr) str() string {
 		ComptimeSelector {
 			return '${x.left}.$$x.field_expr'
 		}
+		ConcatExpr {
+			return x.vals.map(it.str()).join(',')
+		}
 		EnumVal {
 			return '.$x.val'
 		}
@@ -282,6 +285,23 @@ pub fn (x Expr) str() string {
 		}
 		Ident {
 			return x.name
+		}
+		IfExpr {
+			mut parts := []string{}
+			dollar := if x.is_comptime { '$' } else { '' }
+			for i, branch in x.branches {
+				if i != 0 {
+					parts << ' } ${dollar}else '
+				}
+				if i < x.branches.len - 1 || !x.has_else {
+					parts << ' ${dollar}if ' + branch.cond.str() + ' { '
+				}
+				for stmt in branch.stmts {
+					parts << stmt.str()
+				}
+			}
+			parts << ' }'
+			return parts.join('')
 		}
 		IndexExpr {
 			return '$x.left.str()[$x.index.str()]'

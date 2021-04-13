@@ -548,6 +548,7 @@ pub:
 	bytes        int    // number of processed source code bytes
 	mod          Module // the module of the source file (from `module xyz` at the top)
 	global_scope &Scope
+	is_test      bool // true for _test.v files
 pub mut:
 	scope            &Scope
 	stmts            []Stmt            // all the statements in the source file
@@ -1245,7 +1246,8 @@ pub struct AssertStmt {
 pub:
 	pos token.Position
 pub mut:
-	expr Expr
+	expr    Expr
+	is_used bool // asserts are used in _test.v files, as well as in non -prod builds of all files
 }
 
 // `if [x := opt()] {`

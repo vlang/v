@@ -1,25 +1,25 @@
-vlib/v/checker/tests/generics_fn_called_arg_mismatch.vv:6:15: error: argument 1 got `int literal`, expected `bool`
+vlib/v/checker/tests/generics_fn_called_arg_mismatch.vv:6:15: error: cannot use `int literal` as `bool` in argument 1 to `foo`
     4 |
     5 | fn main() {
     6 |     foo<bool>(1)
       |               ^
     7 |     foo<bool>(2.2)
     8 |     foo<string>(true)
-vlib/v/checker/tests/generics_fn_called_arg_mismatch.vv:7:15: error: argument 1 got `float literal`, expected `bool`
+vlib/v/checker/tests/generics_fn_called_arg_mismatch.vv:7:15: error: cannot use `float literal` as `bool` in argument 1 to `foo`
     5 | fn main() {
     6 |     foo<bool>(1)
     7 |     foo<bool>(2.2)
       |               ~~~
     8 |     foo<string>(true)
     9 |     foo<int>('aaa')
-vlib/v/checker/tests/generics_fn_called_arg_mismatch.vv:8:17: error: argument 1 got `bool`, expected `string`
+vlib/v/checker/tests/generics_fn_called_arg_mismatch.vv:8:17: error: cannot use `bool` as `string` in argument 1 to `foo`
     6 |     foo<bool>(1)
     7 |     foo<bool>(2.2)
     8 |     foo<string>(true)
       |                 ~~~~
     9 |     foo<int>('aaa')
    10 | }
-vlib/v/checker/tests/generics_fn_called_arg_mismatch.vv:9:14: error: argument 1 got `string`, expected `int`
+vlib/v/checker/tests/generics_fn_called_arg_mismatch.vv:9:14: error: cannot use `string` as `int` in argument 1 to `foo`
     7 |     foo<bool>(2.2)
     8 |     foo<string>(true)
     9 |     foo<int>('aaa')
