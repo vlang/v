@@ -1245,9 +1245,7 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 				}
 				.array, .string {
 					// This should only happen in `builtin`
-					// TODO Remove `crypto.rand` when possible (see vlib/crypto/rand/rand.v,
-					// if `c_array_to_bytes_tmp` doesn't exist, then it's safe to remove it)
-					if c.file.mod.name !in ['builtin', 'crypto.rand'] {
+					if c.file.mod.name != 'builtin' {
 						c.error('`$typ_sym.kind` can not be modified', expr.pos)
 					}
 				}
@@ -2207,26 +2205,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 				continue
 			}
 			if func.generic_names.len > 0 {
-				if param.typ.has_flag(.generic)
-					&& func.generic_names.len == call_expr.generic_types.len {
-					if unwrap_typ := c.table.resolve_generic_by_names(param.typ, func.generic_names,
-						call_expr.generic_types)
-					{
-						if (unwrap_typ.idx() == typ.idx())
-							|| (unwrap_typ.is_int() && typ.is_int())
-							|| (unwrap_typ.is_float() && typ.is_float()) {
-							continue
-						}
-						expected_sym := c.table.get_type_symbol(unwrap_typ)
-						got_sym := c.table.get_type_symbol(typ)
-						c.error('argument ${i + 1} got `$got_sym.name`, expected `$expected_sym.name`',
-							call_arg.pos)
-					} else {
-						continue
-					}
-				} else {
-					continue
-				}
+				continue
 			}
 			c.error('$err.msg in argument ${i + 1} to `$fn_name`', call_arg.pos)
 		}
@@ -2242,6 +2221,27 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 	if func.generic_names.len != call_expr.generic_types.len {
 		// no type arguments given in call, attempt implicit instantiation
 		c.infer_fn_types(func, mut call_expr)
+	}
+	if func.generic_names.len > 0 {
+		for i, call_arg in call_expr.args {
+			param := if func.is_variadic && i >= func.params.len - 1 {
+				func.params[func.params.len - 1]
+			} else {
+				func.params[i]
+			}
+			c.expected_type = param.typ
+			typ := c.check_expr_opt_call(call_arg.expr, c.expr(call_arg.expr))
+
+			if param.typ.has_flag(.generic) && func.generic_names.len == call_expr.generic_types.len {
+				if unwrap_typ := c.table.resolve_generic_by_names(param.typ, func.generic_names,
+					call_expr.generic_types)
+				{
+					c.check_expected_call_arg(typ, unwrap_typ, call_expr.language) or {
+						c.error('$err.msg in argument ${i + 1} to `$fn_name`', call_arg.pos)
+					}
+				}
+			}
+		}
 	}
 	if call_expr.generic_types.len > 0 && func.return_type != 0 {
 		if typ := c.table.resolve_generic_by_names(func.return_type, func.generic_names,

@@ -61,7 +61,7 @@ pub interface Context {
 // initialization, and tests, and as the top-level Context for incoming
 // requests.
 pub fn background() Context {
-	return Context(context.background)
+	return context.background
 }
 
 // todo returns an empty Context. Code should use todo when
@@ -69,7 +69,7 @@ pub fn background() Context {
 // surrounding function has not yet been extended to accept a Context
 // parameter).
 pub fn todo() Context {
-	return Context(context.todo)
+	return context.todo
 }
 
 fn context_name(ctx Context) string {
