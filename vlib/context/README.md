@@ -10,10 +10,9 @@ with_deadline, with_timeout, or with_value. When a Context is canceled, all Cont
 derived from it are also canceled.
 
 The with_cancel, with_deadline, and with_timeout functions take a Context (the parent)
-and return a derived Context (the child) and a CancelFunc. Calling the CancelFunc
+and return a derived Context (the child). Calling the cancel fucntion
 cancels the child and its children, removes the parent's reference to the child,
-and stops any associated timers. Failing to call the CancelFunc leaks the child
-and its children until the parent is canceled or the timer fires.
+and stops any associated timers.
 
 Programs that use Contexts should follow these rules to keep interfaces consistent
 across different modules.

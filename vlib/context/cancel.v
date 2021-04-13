@@ -34,12 +34,6 @@ mut:
 	err      string
 }
 
-// A CancelFunc tells an operation to abandon its work.
-// A CancelFunc does not wait for the work to stop.
-// A CancelFunc may be called by multiple goroutines simultaneously.
-// After the first call, subsequent calls to a CancelFunc do nothing.
-// pub type CancelFunc = fn (c Canceler)
-
 // with_cancel returns a copy of parent with a new done channel. The returned
 // context's done channel is closed when the returned cancel function is called
 // or when the parent context's done channel is closed, whichever happens first.
