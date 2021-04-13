@@ -23,9 +23,6 @@ const (
 		'test-fmt',
 		'test-parser',
 		'test-self',
-		'test-fixed', /* deprecated by test-self */
-		'test-compiler', /* deprecated by test-self */
-		'test-compiler-full', /* deprecated by test-self */
 		'test-cleancode',
 		'check-md',
 		'repl',
@@ -82,18 +79,6 @@ fn main() {
 	}
 	if prefs.use_cache && os.user_os() == 'windows' {
 		eprintln('-usecache is currently disabled on windows')
-		exit(1)
-	}
-	if command in ['test-fixed', 'test-compiler-full'] {
-		eprintln('Please use `v test-self` instead.')
-		exit(1)
-	}
-	if command == 'test-compiler' {
-		eprintln('Please use either `v test-all`, `v test-self`, `v build-examples`, `v build-tools` or `v build-vbinaries` instead.')
-		exit(1)
-	}
-	if command == 'test-vet' {
-		eprintln('Please use `v test-cleancode` instead.')
 		exit(1)
 	}
 	// Start calling the correct functions/external tools
