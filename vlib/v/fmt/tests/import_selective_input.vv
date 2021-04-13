@@ -7,6 +7,39 @@ import math.complex { complex, Complex }
 import os {
 	input, user_os, file_ext }
 
+import mod {
+	Unused,
+	StructEmbed, StructField, StructRefField
+	StructMethodArg,
+	StructMethodRet
+
+	InterfaceField,
+	InterfaceMethodArg,
+	InterfaceMethodRet,
+
+	FnArg,
+	FnRet,
+}
+
+struct Struct {
+	StructEmbed
+	v StructField
+	ref &StructRefField
+}
+
+fn (s Struct) method(v StructMethodArg) StructMethodRet {
+	return {}
+}
+
+interface Interface {
+	v InterfaceField
+	f(InterfaceMethodArg) InterfaceMethodRet
+}
+
+fn f(v FnArg) FnRet {
+	return {}
+}
+
 struct App {
 	command &Command
 }
@@ -26,3 +59,4 @@ fn main() {
 	println(file_ext('main.v'))
 	println(imaginary(1))
 }
+
