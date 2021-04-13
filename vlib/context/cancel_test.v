@@ -12,14 +12,17 @@ fn test_with_cancel() {
 	gen := fn (ctx context.Context) chan int {
 		dst := chan int{}
 		go fn (ctx context.Context, dst chan int) {
+			mut v := 0
 			ch := ctx.done()
-			loop: for i in 0 .. 5 {
+			for {
 				select {
 					_ := <-ch {
 						// returning not to leak the routine
-						break loop
+						return
 					}
-					dst <- i {}
+					dst <- v {
+						v++
+					}
 				}
 			}
 		}(ctx, dst)

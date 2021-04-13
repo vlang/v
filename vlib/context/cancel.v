@@ -99,6 +99,7 @@ fn (mut ctx CancelContext) cancel(remove_from_parent bool, err string) {
 	ctx.err = err
 
 	if !ctx.done.closed {
+		ctx.done <- 0
 		ctx.done.close()
 	}
 
