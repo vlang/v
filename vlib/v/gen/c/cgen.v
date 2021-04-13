@@ -6375,6 +6375,9 @@ fn (mut g Gen) trace(fbase string, message string) {
 // returns true if `t` includes any pointer(s) - during garbage collection heap regions
 // that contain no pointers do not have to be scanned
 pub fn (mut g Gen) contains_ptr(el_typ ast.Type) bool {
+	if el_typ.is_ptr() || el_typ.is_pointer() {
+		return true
+	}
 	typ := g.unwrap_generic(el_typ)
 	if typ.is_ptr() {
 		return true
@@ -6384,9 +6387,6 @@ pub fn (mut g Gen) contains_ptr(el_typ ast.Type) bool {
 		return true
 	}
 	match sym.kind {
-		.voidptr, .byteptr, .charptr {
-			return true
-		}
 		.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64, .char, .size_t, .rune, .bool,
 		.enum_ {
 			return false
@@ -6394,15 +6394,6 @@ pub fn (mut g Gen) contains_ptr(el_typ ast.Type) bool {
 		.array_fixed {
 			info := sym.info as ast.ArrayFixed
 			return g.contains_ptr(info.elem_type)
-		}
-		.sum_type {
-			info := sym.info as ast.SumType
-			for variant in info.variants {
-				if g.contains_ptr(variant) {
-					return true
-				}
-			}
-			return false
 		}
 		.struct_ {
 			info := sym.info as ast.Struct
@@ -6435,7 +6426,7 @@ pub fn (mut g Gen) contains_ptr(el_typ ast.Type) bool {
 
 fn (mut g Gen) check_noscan(elem_typ ast.Type) string {
 	if g.pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
-		if g.contains_ptr(elem_typ) {
+		if !g.contains_ptr(elem_typ) {
 			return '_noscan'
 		}
 	}
