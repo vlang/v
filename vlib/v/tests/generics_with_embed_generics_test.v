@@ -10,7 +10,7 @@ fn group_new<T>(val ...T) Group<T> {
 	for i in val {
 		arr << i
 	}
-	mut g := Group<T>{
+	mut g := Group{
 		len: val.len
 		val: arr
 	}
