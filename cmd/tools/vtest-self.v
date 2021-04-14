@@ -76,6 +76,7 @@ const (
 		'vlib/vweb/request_test.v',
 		'vlib/vweb/route_test.v',
 		'vlib/x/websocket/websocket_test.v',
+		'vlib/x/ttf/ttf_test.v'
 	]
 	skip_with_asan_compiler       = []string{}
 	skip_with_msan_compiler       = []string{}
