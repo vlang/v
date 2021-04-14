@@ -2719,7 +2719,6 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 	if is_pub {
 		p.next()
 	}
-	end_pos := p.tok.position()
 	const_pos := p.tok.position()
 	p.check(.key_const)
 	is_block := p.tok.kind == .lpar
@@ -2729,11 +2728,11 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 	mut fields := []ast.ConstField{}
 	mut comments := []ast.Comment{}
 	for {
-		if p.tok.kind == .eof {
-			p.error_with_pos('const declaration is missing closing `)`', const_pos)
+		comments = p.eat_comments({})
+		if is_block && p.tok.kind == .eof {
+			p.error('unexpected eof, expecting ´)´')
 			return ast.ConstDecl{}
 		}
-		comments = p.eat_comments({})
 		if p.tok.kind == .rpar {
 			break
 		}
@@ -2747,6 +2746,10 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		p.check(.assign)
 		if p.tok.kind == .key_fn {
 			p.error('const initializer fn literal is not a constant')
+			return ast.ConstDecl{}
+		}
+		if p.tok.kind == .eof {
+			p.error('unexpected eof, expecting an expression')
 			return ast.ConstDecl{}
 		}
 		expr := p.expr(0)
@@ -2770,7 +2773,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		p.check(.rpar)
 	}
 	return ast.ConstDecl{
-		pos: start_pos.extend_with_last_line(end_pos, p.prev_tok.line_nr)
+		pos: start_pos.extend_with_last_line(const_pos, p.prev_tok.line_nr)
 		fields: fields
 		is_pub: is_pub
 		end_comments: comments
