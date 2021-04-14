@@ -33,7 +33,11 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 			// this is set here because it's a known type, others could be the
 			// result of expr so we do those in checker
 			idx := p.table.find_or_register_array(elem_type)
-			array_type = ast.new_type(idx)
+			if elem_type.has_flag(.generic) {
+				array_type = ast.new_type(idx).set_flag(.generic)
+			} else {
+				array_type = ast.new_type(idx)
+			}
 			has_type = true
 		}
 		last_pos = p.tok.position()
