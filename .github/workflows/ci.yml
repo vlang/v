@@ -650,6 +650,8 @@ jobs:
     timeout-minutes: 45
     env:
       VFLAGS: -cc tcc -no-retry-compilation
+      VJOBS: 1
+      VTEST_SHOW_START: 1      
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-node@v1
@@ -672,7 +674,7 @@ jobs:
           .\v.exe cmd/tools/test_if_v_test_system_works.v
           .\cmd\tools\test_if_v_test_system_works.exe
       - name: Make sure running TCC64 instead of TCC32
-        run : .\v.exe test .github\workflows\make_sure_ci_run_with_64bit_compiler_test.v
+        run : ./v test .github\workflows\make_sure_ci_run_with_64bit_compiler_test.v
 
       - name: Test ./v doc -v clipboard *BEFORE building tools*
         run: ./v doc -v clipboard
@@ -684,11 +686,8 @@ jobs:
         run: ./v doc clipboard
 
       - name: Self tests
-        run: |
-          .\v.exe -silent test-self
-  #    - name: Test
-  #      run: |
-  #        .\v.exe -silent test-all
+        run: ./v test-self
+        
       - name: Test v->js
         run: ./v -o hi.js examples/hello_v_js.v && node hi.js
       - name: Test v binaries
@@ -707,15 +706,14 @@ jobs:
       - name: Test new v.c
         run: .\v.exe -o v.c cmd/v && .\thirdparty\tcc\tcc.exe -Werror -w -ladvapi32 -bt10 v.c
       - name: v doctor
-        run: |
-          ./v doctor
+        run: ./v doctor
       - name: Verify `v test` works
         run: |
           .\v.exe cmd/tools/test_if_v_test_system_works.v
           .\cmd\tools\test_if_v_test_system_works.exe
 
       - name: Make sure running TCC32 instead of TCC64
-        run : .\v.exe test .github\workflows\make_sure_ci_run_with_32bit_compiler_test.v
+        run : ./v test .github\workflows\make_sure_ci_run_with_32bit_compiler_test.v
 
       - name: Test v build-tools
         run: ./v -W build-tools
@@ -724,11 +722,7 @@ jobs:
         run: ./v doc clipboard
 
       - name: Self tests
-        run: |
-          .\v.exe -silent test-self
-  #    - name: Test
-  #      run: |
-  #        .\v.exe -silent test-all
+        run: ./v test-self
       - name: Test v->js
         run: ./v -o hi.js examples/hello_v_js.v && node hi.js
       - name: Test v binaries
