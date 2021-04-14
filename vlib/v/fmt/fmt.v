@@ -1164,6 +1164,7 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 			ft = f.short_module(ft)
 		}
 		f.writeln('\t$field.name $ft')
+		f.mark_types_import_as_used(field.typ)
 	}
 	for method in node.methods {
 		f.write('\t')
@@ -1171,6 +1172,10 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 		f.comments(method.comments, inline: true, has_nl: false, level: .indent)
 		f.writeln('')
 		f.comments(method.next_comments, inline: false, has_nl: true, level: .indent)
+		for param in method.params {
+			f.mark_types_import_as_used(param.typ)
+		}
+		f.mark_types_import_as_used(method.return_type)
 	}
 	f.writeln('}\n')
 }
