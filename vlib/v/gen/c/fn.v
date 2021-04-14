@@ -605,7 +605,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 	// TODO performance, detect `array` method differently
 	if left_sym.kind == .array
-		&& node.name in ['repeat', 'sort_with_compare', 'free', 'push_many', 'trim', 'first', 'last', 'pop', 'clone', 'reverse', 'slice'] {
+		&& node.name in ['repeat', 'sort_with_compare', 'free', 'push_many', 'trim', 'first', 'last', 'pop', 'clone', 'reverse', 'slice', 'pointers'] {
 		// && rec_sym.name == 'array' {
 		// && rec_sym.name == 'array' && receiver_name.starts_with('array') {
 		// `array_byte_clone` => `array_clone`
