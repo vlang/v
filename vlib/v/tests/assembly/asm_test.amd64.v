@@ -96,7 +96,8 @@ fn test_inline_asm() {
 	}
 	assert n == [7, 11, 2, 6]
 
-	assert util.add(8, 9, 34, 7) == 58 // test .amd64.v files
+	assert util.add(8, 9, 34, 7) == 58 // test .amd64.v imported files
+
 	mut manu := Manu{}
 	asm amd64 {
 		mov eax, 0
