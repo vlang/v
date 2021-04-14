@@ -3825,7 +3825,7 @@ fn (mut g Gen) lock_expr(node ast.LockExpr) {
 			if !node.is_rlock[i] {
 				name := id.name
 				deref := if id.is_mut { '->' } else { '.' }
-				g.writeln('_arr_$mtxs[$j] = &$name${deref}mtx;')
+				g.writeln('_arr_$mtxs[$j] = (uintptr_t)&$name${deref}mtx;')
 				g.writeln('_isrlck_$mtxs[$j] = false;')
 				j++
 			}
@@ -3834,7 +3834,7 @@ fn (mut g Gen) lock_expr(node ast.LockExpr) {
 			if node.is_rlock[i] {
 				name := id.name
 				deref := if id.is_mut { '->' } else { '.' }
-				g.writeln('_arr_$mtxs[$j] = &$name${deref}mtx;')
+				g.writeln('_arr_$mtxs[$j] = (uintptr_t)&$name${deref}mtx;')
 				g.writeln('_isrlck_$mtxs[$j] = true;')
 				j++
 			}
