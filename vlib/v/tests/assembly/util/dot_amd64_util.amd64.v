@@ -5,7 +5,7 @@ pub fn add(a ...int) int {
 	asm amd64 {
 		1:
 		addq rax, [in_data + rcx * 4 + 0]
-		loop b1
+		loop 1b
 		addq rax, [in_data + rcx * 4 + 0]
 		; +a (res)
 		; c (a.len - 1) // c is counter (loop) register
