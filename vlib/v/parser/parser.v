@@ -936,7 +936,7 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 							}
 							if is_digit {
 								args << ast.AsmDisp{
-									val: p.tok.lit[1..] + rune(p.tok.lit[0]).str()
+									val: p.tok.lit
 									pos: p.tok.position()
 								}
 								p.check(.name)
