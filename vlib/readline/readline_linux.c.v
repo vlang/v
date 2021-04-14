@@ -13,9 +13,9 @@ import os
 #include <termios.h>
 #include <sys/ioctl.h>
 
-fn C.tcgetattr(fd int, termios_p &Termios) int
+fn C.tcgetattr(fd int, termios_p &C.termios) int
 
-fn C.tcsetattr(fd int, optional_actions int, termios_p &Termios) int
+fn C.tcsetattr(fd int, optional_actions int, termios_p &C.termios) int
 
 fn C.raise(sig int)
 
@@ -47,18 +47,18 @@ enum Action {
 // Please note that `enable_raw_mode` catches the `SIGUSER` (CTRL + C) signal.
 // For a method that does please see `enable_raw_mode_nosig`.
 pub fn (mut r Readline) enable_raw_mode() {
-	if C.tcgetattr(0, &r.orig_termios) == -1 {
+	if C.tcgetattr(0, unsafe { &C.termios(&r.orig_termios) }) == -1 {
 		r.is_tty = false
 		r.is_raw = false
 		return
 	}
 	mut raw := r.orig_termios
 	raw.c_iflag &= ~(C.BRKINT | C.ICRNL | C.INPCK | C.ISTRIP | C.IXON)
-	raw.c_cflag |= (C.CS8)
+	raw.c_cflag |= C.CS8
 	raw.c_lflag &= ~(C.ECHO | C.ICANON | C.IEXTEN | C.ISIG)
 	raw.c_cc[C.VMIN] = 1
 	raw.c_cc[C.VTIME] = 0
-	C.tcsetattr(0, C.TCSADRAIN, &raw)
+	C.tcsetattr(0, C.TCSADRAIN, unsafe { &C.termios(&raw) })
 	r.is_raw = true
 	r.is_tty = true
 }
@@ -68,18 +68,18 @@ pub fn (mut r Readline) enable_raw_mode() {
 // Please note that `enable_raw_mode_nosig` does not catch the `SIGUSER` (CTRL + C) signal
 // as opposed to `enable_raw_mode`.
 pub fn (mut r Readline) enable_raw_mode_nosig() {
-	if C.tcgetattr(0, &r.orig_termios) == -1 {
+	if C.tcgetattr(0, unsafe { &C.termios(&r.orig_termios) }) == -1 {
 		r.is_tty = false
 		r.is_raw = false
 		return
 	}
 	mut raw := r.orig_termios
 	raw.c_iflag &= ~(C.BRKINT | C.ICRNL | C.INPCK | C.ISTRIP | C.IXON)
-	raw.c_cflag |= (C.CS8)
+	raw.c_cflag |= C.CS8
 	raw.c_lflag &= ~(C.ECHO | C.ICANON | C.IEXTEN)
 	raw.c_cc[C.VMIN] = 1
 	raw.c_cc[C.VTIME] = 0
-	C.tcsetattr(0, C.TCSADRAIN, &raw)
+	C.tcsetattr(0, C.TCSADRAIN, unsafe { &C.termios(&raw) })
 	r.is_raw = true
 	r.is_tty = true
 }
@@ -88,7 +88,7 @@ pub fn (mut r Readline) enable_raw_mode_nosig() {
 // For a description of raw mode please see the `enable_raw_mode` method.
 pub fn (mut r Readline) disable_raw_mode() {
 	if r.is_raw {
-		C.tcsetattr(0, C.TCSADRAIN, &r.orig_termios)
+		C.tcsetattr(0, C.TCSADRAIN, unsafe { &C.termios(&r.orig_termios) })
 		r.is_raw = false
 	}
 }

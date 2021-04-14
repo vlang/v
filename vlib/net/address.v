@@ -72,9 +72,10 @@ pub fn resolve_addr(addr string, family SocketFamily, typ SocketType) ?Addr {
 
 	// This might look silly but is recommended by MSDN
 	$if windows {
-		socket_error(0 - C.getaddrinfo(address.str, sport.str, &hints, &info)) ?
+		socket_error(0 - C.getaddrinfo(&char(address.str), &char(sport.str), &hints,
+			&info)) ?
 	} $else {
-		x := C.getaddrinfo(address.str, sport.str, &hints, &info)
+		x := C.getaddrinfo(&char(address.str), &char(sport.str), &hints, &info)
 		wrap_error(x) ?
 	}
 

@@ -19,9 +19,9 @@ fn C.bignum_from_int(n &Number, i u64)
 
 fn C.bignum_to_int(n &Number) int
 
-fn C.bignum_from_string(n &Number, s &byte, nbytes int)
+fn C.bignum_from_string(n &Number, s &char, nbytes int)
 
-fn C.bignum_to_string(n &Number, s &byte, maxsize int)
+fn C.bignum_to_string(n &Number, s &char, maxsize int)
 
 // c = a + b
 fn C.bignum_add(a &Number, b &Number, c &Number)
@@ -104,7 +104,7 @@ pub fn from_hex_string(input string) Number {
 	padding := '0'.repeat((8 - s.len % 8) % 8)
 	s = padding + s
 	n := Number{}
-	C.bignum_from_string(&n, s.str, s.len)
+	C.bignum_from_string(&n, &char(s.str), s.len)
 	return n
 }
 
@@ -151,7 +151,7 @@ pub fn (n Number) hexstr() string {
 	unsafe {
 		bp := &buf[0]
 		// NB: C.bignum_to_string(), returns the HEXADECIMAL representation of the bignum n
-		C.bignum_to_string(&n, bp, 8192)
+		C.bignum_to_string(&n, &char(bp), 8192)
 		s = tos_clone(bp)
 	}
 	if s.len == 0 {

@@ -47,7 +47,7 @@ fn test_atof() {
 
 		// test C.atof
 		n1 := x.strsci(18)
-		n2 := f64(C.atof(src_num_str[c].str)).strsci(18)
+		n2 := f64(C.atof(&char(src_num_str[c].str))).strsci(18)
 		//println("$n1 $n2")
 		assert n1 == n2
 	}

@@ -159,7 +159,7 @@ pub fn (c &TcpConn) peer_addr() ?Addr {
 }
 
 pub fn (c &TcpConn) peer_ip() ?string {
-	buf := [44]byte{}
+	buf := [44]char{}
 	peeraddr := C.sockaddr_in{}
 	speeraddr := sizeof(peeraddr)
 	socket_error(C.getpeername(c.sock.handle, unsafe { &C.sockaddr(&peeraddr) }, &speeraddr)) ?

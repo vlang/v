@@ -41,7 +41,8 @@ fn error_code() int {
 }
 
 fn new_stream_socket() ?StreamSocket {
-	sockfd := net.socket_error(C.socket(net.SocketFamily.unix, net.SocketType.stream, 0)) ?
+	sockfd := net.socket_error(C.socket(net.SocketFamily.unix, net.SocketType.stream,
+		0)) ?
 	mut s := StreamSocket{
 		handle: sockfd
 	}
@@ -64,7 +65,7 @@ fn (mut s StreamSocket) connect(a string) ? {
 	mut addr := C.sockaddr_un{}
 	unsafe { C.memset(&addr, 0, sizeof(C.sockaddr_un)) }
 	addr.sun_family = C.AF_UNIX
-	unsafe { C.strncpy(&addr.sun_path[0], a.str, max_sun_path) }
+	unsafe { C.strncpy(&addr.sun_path[0], &char(a.str), max_sun_path) }
 	size := C.SUN_LEN(&addr)
 	sockaddr := unsafe { &C.sockaddr(&addr) }
 	res := C.connect(s.handle, sockaddr, size)
@@ -97,7 +98,7 @@ pub fn listen_stream(sock string) ?&StreamListener {
 	mut addr := C.sockaddr_un{}
 	unsafe { C.memset(&addr, 0, sizeof(C.sockaddr_un)) }
 	addr.sun_family = C.AF_UNIX
-	unsafe { C.strncpy(&addr.sun_path[0], sock.str, max_sun_path) }
+	unsafe { C.strncpy(&addr.sun_path[0], &char(sock.str), max_sun_path) }
 	size := C.SUN_LEN(&addr)
 	sockaddr := unsafe { &C.sockaddr(&addr) }
 	net.socket_error(C.bind(s.handle, sockaddr, size)) ?
@@ -170,14 +171,14 @@ pub fn (mut c StreamConn) close() ? {
 }
 
 // write_ptr blocks and attempts to write all data
-pub fn (mut c StreamConn) write_ptr(b byteptr, len int) ?int {
+pub fn (mut c StreamConn) write_ptr(b &byte, len int) ?int {
 	$if trace_unix ? {
 		eprintln(
 			'>>> StreamConn.write_ptr | c.sock.handle: $c.sock.handle | b: ${ptr_str(b)} len: $len |\n' +
 			unsafe { b.vstring_with_len(len) })
 	}
 	unsafe {
-		mut ptr_base := byteptr(b)
+		mut ptr_base := &byte(b)
 		mut total_sent := 0
 		for total_sent < len {
 			ptr := ptr_base + total_sent
@@ -214,7 +215,7 @@ pub fn (mut c StreamConn) write_string(s string) ?int {
 	return c.write_ptr(s.str, s.len)
 }
 
-pub fn (mut c StreamConn) read_ptr(buf_ptr byteptr, len int) ?int {
+pub fn (mut c StreamConn) read_ptr(buf_ptr &byte, len int) ?int {
 	mut res := wrap_read_result(C.recv(c.sock.handle, buf_ptr, len, 0)) ?
 	$if trace_unix ? {
 		eprintln('<<< StreamConn.read_ptr  | c.sock.handle: $c.sock.handle | buf_ptr: ${ptr_str(buf_ptr)} len: $len | res: $res')
