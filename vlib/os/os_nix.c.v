@@ -51,6 +51,8 @@ fn C.uname(name voidptr) int
 
 fn C.symlink(&char, &char) int
 
+fn C.gethostname(&char, int) int
+
 pub fn uname() Uname {
 	mut u := Uname{}
 	utsize := sizeof(C.utsname)
@@ -67,6 +69,18 @@ pub fn uname() Uname {
 		free(d)
 	}
 	return u
+}
+
+pub fn hostname() string {
+	mut hstnme := ''
+	size := 256
+	mut buf := unsafe { &char(malloc(size)) }
+	if C.gethostname(buf, size) == 0 {
+		hstnme = unsafe { cstring_to_vstring(buf) }
+		unsafe { free(buf) }
+		return hstnme
+	}
+	return ''
 }
 
 fn init_os_args(argc int, argv &&byte) []string {

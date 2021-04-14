@@ -31,6 +31,8 @@ fn C.CopyFile(&u16, &u16, bool) int
 
 fn C._wstat64(&char, voidptr) u64
 
+fn C.chown(&char, int, int) int
+
 // fn C.proc_pidpath(int, byteptr, int) int
 struct C.stat {
 	st_size  u64
@@ -827,7 +829,24 @@ pub fn flush() {
 // chmod change file access attributes of `path` to `mode`.
 // Octals like `0o600` can be used.
 pub fn chmod(path string, mode int) {
-	C.chmod(&char(path.str), mode)
+	if C.chmod(&char(path.str), mode) != 0 {
+		panic(posix_get_error_msg(C.errno))
+	}
+}
+
+// chown change owner and group attributes of path to `owner` and `group`.
+pub fn chown(path string, owner int, group int) ? {
+	$if windows {
+		return error('os.chown() not implemented for Windows')
+	} $else {
+		if owner < 0 || group < 0 {
+			return error('os.chown() uid and gid cannot be negative: Not changing owner!')
+		} else {
+			if C.chown(&char(path.str), owner, group) != 0 {
+				return error_with_code(posix_get_error_msg(C.errno), C.errno)
+			}
+		}
+	}
 }
 
 // open_append opens `path` file for appending.
