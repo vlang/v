@@ -6,6 +6,7 @@ import v.pref
 
 const (
 	skip_with_fsanitize_memory    = [
+		'vlib/context/deadline_test.v',
 		'vlib/net/tcp_simple_client_server_test.v',
 		'vlib/net/http/cookie_test.v',
 		'vlib/net/http/http_test.v',
@@ -168,6 +169,7 @@ const (
 		'vlib/net/websocket/ws_test.v',
 	]
 	skip_on_windows               = [
+		'vlib/context/deadline_test.v' /* blocks `windows-tcc` */,
 		'vlib/orm/orm_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/net/websocket/ws_test.v',
