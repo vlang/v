@@ -840,7 +840,7 @@ pub fn chown(path string, owner int, group int) ? {
 		return error('os.chown() not implemented for Windows')
 	} $else {
 		if owner < 0 || group < 0 {
-			return error('os.chown() uid or gid equal not valid: Not changing owner!')
+			return error('os.chown() uid and gid cannot be negative: Not changing owner!')
 		} else {
 			if C.chown(&char(path.str), owner, group) != 0 {
 				return error_with_code(posix_get_error_msg(C.errno), C.errno)
