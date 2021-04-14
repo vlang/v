@@ -2698,7 +2698,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 	mut comments := []ast.Comment{}
 	for {
 		comments = p.eat_comments({})
-		if p.tok.kind == .eof {
+		if is_block && p.tok.kind == .eof {
 			p.error('unexpected eof, expecting ´)´')
 			return ast.ConstDecl{}
 		}
