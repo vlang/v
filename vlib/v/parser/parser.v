@@ -859,11 +859,11 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 	if p.tok.lit == 'volatile' && p.tok.kind == .name {
 		arch = pref.arch_from_string(p.peek_tok.lit) or { pref.Arch._auto }
 		is_volatile = true
-		p.check(.name)
+		p.next()
 	} else if p.tok.kind == .key_goto {
 		arch = pref.arch_from_string(p.peek_tok.lit) or { pref.Arch._auto }
 		is_goto = true
-		p.check(.key_goto)
+		p.next()
 	}
 	if arch == ._auto && !p.pref.is_fmt {
 		p.error('unknown assembly architecture')
@@ -871,7 +871,7 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 	if p.tok.kind != .name {
 		p.error('must specify assembly architecture')
 	} else {
-		p.check(.name)
+		p.next()
 	}
 
 	p.check_for_impure_v(ast.pref_arch_to_table_language(arch), p.prev_tok.position())
@@ -894,10 +894,13 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 		mut name := ''
 		is_directive := p.tok.kind == .dot
 		if is_directive {
-			p.check(.dot)
+			p.next()
 		}
 		if p.tok.kind in [.key_in, .key_lock, .key_orelse] { // `in`, `lock`, `or` are v keywords that are also x86/arm/riscv instructions.
 			name = p.tok.kind.str()
+			p.next()
+		} else if p.tok.kind == .number {
+			name = p.tok.lit
 			p.next()
 		} else {
 			name = p.tok.lit
@@ -907,7 +910,7 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 		if arch in [.rv32, .rv64] {
 			for p.tok.kind == .dot {
 				name += '.'
-				p.check(.dot)
+				p.next()
 				name += p.tok.lit
 				p.check(.name)
 			}
@@ -915,69 +918,92 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 		mut is_label := false
 
 		mut args := []ast.AsmArg{}
-		args_loop: for {
-			if p.prev_tok.position().line_nr < p.tok.position().line_nr {
-				break
-			}
-			match p.tok.kind {
-				.name {
-					args << p.reg_or_alias()
+		if p.tok.line_nr == p.prev_tok.line_nr {
+			args_loop: for {
+				if p.prev_tok.position().line_nr < p.tok.position().line_nr {
+					break
 				}
-				.number {
-					number_lit := p.parse_number_literal()
-					match number_lit {
-						ast.FloatLiteral {
-							args << ast.FloatLiteral{
-								...number_lit
-							}
-						}
-						ast.IntegerLiteral {
-							if is_directive {
-								args << ast.AsmDisp{
-									val: number_lit.val
-									pos: number_lit.pos
+				match p.tok.kind {
+					.name {
+						if p.tok.kind == .name && p.tok.lit.len >= 2
+							&& (p.tok.lit.starts_with('b') || p.tok.lit.starts_with('f')) {
+							mut is_digit := true
+							for c in p.tok.lit[1..] {
+								if !c.is_digit() {
+									is_digit = false
+									break
 								}
+							}
+							if is_digit {
+								args << ast.AsmDisp{
+									val: p.tok.lit
+									pos: p.tok.position()
+								}
+								p.check(.name)
 							} else {
-								args << ast.IntegerLiteral{
+								args << p.reg_or_alias()
+							}
+						} else {
+							args << p.reg_or_alias()
+						}
+					}
+					.number {
+						number_lit := p.parse_number_literal()
+						match number_lit {
+							ast.FloatLiteral {
+								args << ast.FloatLiteral{
 									...number_lit
 								}
 							}
-						}
-						else {
-							verror('p.parse_number_literal() invalid output: `$number_lit`')
+							ast.IntegerLiteral {
+								if is_directive || number_lit.val.ends_with('b')
+									|| number_lit.val.ends_with('f') {
+									args << ast.AsmDisp{
+										val: number_lit.val
+										pos: number_lit.pos
+									}
+								} else {
+									args << ast.IntegerLiteral{
+										...number_lit
+									}
+								}
+							}
+							else {
+								verror('p.parse_number_literal() invalid output: `$number_lit`')
+							}
 						}
 					}
-				}
-				.chartoken {
-					args << ast.CharLiteral{
-						val: p.tok.lit
-						pos: p.tok.position()
+					.chartoken {
+						args << ast.CharLiteral{
+							val: p.tok.lit
+							pos: p.tok.position()
+						}
+						p.next()
 					}
-					p.check(.chartoken)
+					.colon {
+						is_label = true
+						p.next()
+						local_labels << name
+						break
+					}
+					.lsbr {
+						args << p.asm_addressing()
+					}
+					.rcbr {
+						break
+					}
+					.semicolon {
+						break
+					}
+					else {
+						p.error('invalid token in assembly block')
+					}
 				}
-				.colon {
-					is_label = true
-					p.check(.colon)
-					local_labels << name
+				if p.tok.kind == .comma {
+					p.next()
+				} else {
 					break
 				}
-				.lsbr {
-					args << p.asm_addressing()
-				}
-				.rcbr {
-					break
-				}
-				.semicolon {
-					break
-				}
-				else {
-					p.error('invalid token in assembly block')
-				}
-			}
-			if p.tok.kind == .comma {
-				p.check(.comma)
-			} else {
-				break
 			}
 			// if p.prev_tok.position().line_nr < p.tok.position().line_nr {
 			// 	break
@@ -1015,14 +1041,14 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 				// because p.reg_or_alias() requires the scope with registers to recognize registers.
 				backup_scope = p.scope
 				p.scope = scope
-				p.check(.semicolon)
+				p.next()
 				for p.tok.kind == .name {
 					reg := ast.AsmRegister{
 						name: p.tok.lit
 						typ: 0
 						size: -1
 					}
-					p.check(.name)
+					p.next()
 
 					mut comments := []ast.Comment{}
 					for p.tok.kind == .comment {
@@ -1039,10 +1065,10 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 				}
 
 				if is_goto && p.tok.kind == .semicolon {
-					p.check(.semicolon)
+					p.next()
 					for p.tok.kind == .name {
 						global_labels << p.tok.lit
-						p.check(.name)
+						p.next()
 					}
 				}
 			}
@@ -1074,7 +1100,6 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 }
 
 fn (mut p Parser) reg_or_alias() ast.AsmArg {
-	assert p.tok.kind == .name
 	if p.tok.lit in p.scope.objects {
 		x := p.scope.objects[p.tok.lit]
 		if x is ast.AsmRegister {
@@ -1200,7 +1225,7 @@ fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 		} else if p.tok.kind == .number {
 			displacement := if p.tok.kind == .name {
 				x := ast.AsmArg(p.tok.lit)
-				p.check(.name)
+				p.next()
 				x
 			} else {
 				x := ast.AsmArg(p.tok.lit)
@@ -1220,11 +1245,11 @@ fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 	if p.peek_tok.kind == .plus && p.tok.kind == .name { // [base + displacement], [base + index ∗ scale + displacement], [base + index + displacement] or [rip + displacement]
 		if p.tok.lit == 'rip' {
 			rip := p.reg_or_alias()
-			p.check(.plus)
+			p.next()
 
 			displacement := if p.tok.kind == .name {
 				x := ast.AsmArg(p.tok.lit)
-				p.check(.name)
+				p.next()
 				x
 			} else {
 				x := ast.AsmArg(p.tok.lit)
@@ -1240,16 +1265,16 @@ fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 			}
 		}
 		base := p.reg_or_alias()
-		p.check(.plus)
+		p.next()
 		if p.peek_tok.kind == .rsbr {
 			if p.tok.kind == .number {
 				displacement := if p.tok.kind == .name {
 					x := ast.AsmArg(p.tok.lit)
-					p.check(.name)
+					p.next()
 					x
 				} else {
 					x := ast.AsmArg(p.tok.lit)
-					p.check(.name)
+					p.check(.number)
 					x
 				}
 				p.check(.rsbr)
@@ -1265,13 +1290,13 @@ fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 		}
 		index := p.reg_or_alias()
 		if p.tok.kind == .mul {
-			p.check(.mul)
+			p.next()
 			scale := p.tok.lit.int()
 			p.check(.number)
 			p.check(.plus)
 			displacement := if p.tok.kind == .name {
 				x := ast.AsmArg(p.tok.lit)
-				p.check(.name)
+				p.next()
 				x
 			} else {
 				x := ast.AsmArg(p.tok.lit)
@@ -1288,10 +1313,10 @@ fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 				pos: pos.extend(p.prev_tok.position())
 			}
 		} else if p.tok.kind == .plus {
-			p.check(.plus)
+			p.next()
 			displacement := if p.tok.kind == .name {
 				x := ast.AsmArg(p.tok.lit)
-				p.check(.name)
+				p.next()
 				x
 			} else {
 				x := ast.AsmArg(p.tok.lit)
@@ -1310,13 +1335,13 @@ fn (mut p Parser) asm_addressing() ast.AsmAddressing {
 	}
 	if p.peek_tok.kind == .mul { // [index ∗ scale + displacement]
 		index := p.reg_or_alias()
-		p.check(.mul)
+		p.next()
 		scale := p.tok.lit.int()
 		p.check(.number)
 		p.check(.plus)
 		displacement := if p.tok.kind == .name {
 			x := ast.AsmArg(p.tok.lit)
-			p.check(.name)
+			p.next()
 			x
 		} else {
 			x := ast.AsmArg(p.tok.lit)
@@ -1371,10 +1396,10 @@ fn (mut p Parser) asm_ios(output bool) []ast.AsmIO {
 			}
 			if p.tok.kind == .assign {
 				constraint += '='
-				p.check(.assign)
+				p.next()
 			} else if p.tok.kind == .plus {
 				constraint += '+'
-				p.check(.plus)
+				p.next()
 			}
 			constraint += p.tok.lit
 			p.check(.name)
@@ -1387,7 +1412,7 @@ fn (mut p Parser) asm_ios(output bool) []ast.AsmIO {
 		}
 		mut alias := ''
 		if p.tok.kind == .key_as {
-			p.check(.key_as)
+			p.next()
 			alias = p.tok.lit
 			p.check(.name)
 		} else if mut expr is ast.Ident {

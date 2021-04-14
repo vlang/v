@@ -1101,9 +1101,8 @@ pub type AsmArg = AsmAddressing | AsmAlias | AsmDisp | AsmRegister | BoolLiteral
 	FloatLiteral | IntegerLiteral | string
 
 pub struct AsmRegister {
-pub:
-	name string // eax or r12d
-mut:
+pub mut:
+	name string // eax or r12d etc.
 	typ  Type
 	size int
 }
@@ -1116,8 +1115,9 @@ pub:
 
 pub struct AsmAlias {
 pub:
+	pos token.Position
+pub mut:
 	name string // a
-	pos  token.Position
 }
 
 pub struct AsmAddressing {

@@ -3839,12 +3839,9 @@ fn (mut c Checker) asm_stmt(mut stmt ast.AsmStmt) {
 			*/
 			if template.name !in ['skip', 'space', 'byte', 'word', 'short', 'int', 'long', 'quad',
 				'globl', 'global', 'section', 'text', 'data', 'bss', 'fill', 'org', 'previous',
-				'string', 'asciz', 'ascii'] { // all tcc supported assembler directive
+				'string', 'asciz', 'ascii'] { // all tcc-supported assembler directives
 				c.error('unknown assembler directive: `$template.name`', template.pos)
 			}
-			// if c.file in  {
-
-			// }
 		}
 		for mut arg in template.args {
 			c.asm_arg(arg, stmt, aliases)

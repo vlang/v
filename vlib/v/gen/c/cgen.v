@@ -1969,7 +1969,22 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 			}
 		}
 		ast.AsmDisp {
-			g.write(arg.val)
+			if arg.val.len >= 2 && arg.val[0] in [`b`, `f`] {
+				mut is_digit := true
+				for c in arg.val[1..] {
+					if !c.is_digit() {
+						is_digit = false
+						break
+					}
+				}
+				if is_digit {
+					g.write(arg.val[1..] + rune(arg.val[0]).str())
+				} else {
+					g.write(arg.val)
+				}
+			} else {
+				g.write(arg.val)
+			}
 		}
 		string {
 			g.write('$arg')
