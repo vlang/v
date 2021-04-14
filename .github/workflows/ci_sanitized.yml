@@ -14,6 +14,8 @@ jobs:
     timeout-minutes: 60
     env:
       VFLAGS: -cc clang
+      VJOBS: 1
+      VTEST_SHOW_START: 1
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-node@v1
@@ -36,6 +38,8 @@ jobs:
     timeout-minutes: 60
     env:
       VFLAGS: -cc gcc
+      VJOBS: 1
+      VTEST_SHOW_START: 1
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-node@v1
@@ -57,6 +61,8 @@ jobs:
     timeout-minutes: 60
     env:
       VFLAGS: -cc clang
+      VJOBS: 1
+      VTEST_SHOW_START: 1
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-node@v1
@@ -83,6 +89,8 @@ jobs:
     timeout-minutes: 60
     env:
       VFLAGS: -cc msvc
+      VJOBS: 1
+      VTEST_SHOW_START: 1
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-node@v1
@@ -107,6 +115,8 @@ jobs:
     timeout-minutes: 60
     env:
       VFLAGS: -cc gcc
+      VJOBS: 1
+      VTEST_SHOW_START: 1
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-node@v1
@@ -133,6 +143,8 @@ jobs:
     timeout-minutes: 60
     env:
       VFLAGS: -cc clang
+      VJOBS: 1
+      VTEST_SHOW_START: 1
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-node@v1
