@@ -3,6 +3,8 @@
 // that can be found in the LICENSE file.
 module builtin
 
+type u8 = byte
+
 /*
 // old function for reference
 pub fn (nn int) str1() string {
