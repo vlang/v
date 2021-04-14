@@ -2717,6 +2717,10 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 			p.error('const initializer fn literal is not a constant')
 			return ast.ConstDecl{}
 		}
+		if p.tok.kind == .eof {
+			p.error('unexpected eof, expecting an expression')
+			return ast.ConstDecl{}
+		}
 		expr := p.expr(0)
 		field := ast.ConstField{
 			name: full_name
