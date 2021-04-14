@@ -2699,7 +2699,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 	for {
 		comments = p.eat_comments({})
 		if p.tok.kind == .eof {
-			p.error_with_pos('const declaration is missing closing `)`', const_pos)
+			p.error('unexpected eof, expecting ´)´')
 			return ast.ConstDecl{}
 		}
 		if p.tok.kind == .rpar {
