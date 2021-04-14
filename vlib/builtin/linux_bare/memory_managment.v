@@ -20,10 +20,6 @@ fn mm_alloc(size u64) (&byte, Errno) {
 	return &byte(0), e
 }
 
-fn write(fd i64, buf &byte, count u64) (i64, Errno) {
-	return sys_write(fd, buf, count)
-}
-
 fn mm_free(addr &byte) Errno {
 	unsafe {
 		ap := &u64(addr - sizeof(u64))

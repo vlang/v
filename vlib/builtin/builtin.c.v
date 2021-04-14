@@ -93,10 +93,10 @@ pub fn eprintln(s string) {
 	$if freestanding {
 		// flushing is only a thing with C.FILE from stdio.h, not on the syscall level
 		if s.str == 0 {
-			write(C.stderr, c'eprintln(NIL)\n', 14)
+			bare_eprint(c'eprintln(NIL)\n', 14)
 		} else {
-			write(C.stderr, s.str, u64(s.len))
-			write(1, c'\n', 1)
+			bare_eprint(s.str, u64(s.len))
+			bare_eprint(c'\n', 1)
 		}
 	} $else $if ios {
 		if s.str == 0 {
@@ -131,9 +131,9 @@ pub fn eprint(s string) {
 	$if freestanding {
 		// flushing is only a thing with C.FILE from stdio.h, not on the syscall level
 		if s.str == 0 {
-			write(C.stderr, c'eprint(NIL)\n', 12)
+			bare_eprint(c'eprint(NIL)\n', 12)
 		} else {
-			write(C.stderr, s.str, u64(s.len))
+			bare_eprint(s.str, u64(s.len))
 		}
 	} $else $if ios {
 		// TODO: Implement a buffer as NSLog doesn't have a "print"
@@ -171,7 +171,7 @@ pub fn print(s string) {
 		// TODO: Implement a buffer as NSLog doesn't have a "print"
 		C.WrappedNSLog(s.str)
 	} $else $if freestanding {
-		write(1, s.str, u64(s.len))
+		bare_print(s.str, u64(s.len))
 	} $else {
 		C.write(1, s.str, s.len)
 	}
@@ -192,8 +192,8 @@ pub fn println(s string) {
 		} $else $if ios {
 			C.WrappedNSLog(c'println(NIL)')
 		} $else $if freestanding {
-			write(C.stdout, s.str, u64(s.len))
-			write(1, c'println(NIL)\n', 13)
+			bare_print(s.str, u64(s.len))
+			bare_print(c'println(NIL)\n', 13)
 		} $else {
 			C.write(1, c'println(NIL)\n', 13)
 		}
@@ -204,8 +204,8 @@ pub fn println(s string) {
 	} $else $if ios {
 		C.WrappedNSLog(s.str)
 	} $else $if freestanding {
-		write(C.stdout, s.str, u64(s.len))
-		write(1, c'\n', 1)
+		bare_print(s.str, u64(s.len))
+		bare_print(c'\n', 1)
 	} $else {
 		C.write(1, s.str, s.len)
 		C.write(1, c'\n', 1)

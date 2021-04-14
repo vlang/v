@@ -750,12 +750,11 @@ typedef long unsigned int size_t;
 
 // Memory allocation related headers
 // void *malloc(int size);
-void *calloc(int nitems, int size);
-// void free(void *ptr);
-void *realloc(void *ptr, int size);
-void *memcpy(void *dest, void *src, int n);
-void *memset(void *s, int c, int n);
-void *memmove(void *dest, void *src, int n);
+byte *calloc(int nitems, int size);
+byte *realloc(byte *ptr, int size);
+byte *memcpy(byte *dest, byte *src, int n);
+byte *memset(byte *s, int c, int n);
+byte *memmove(byte *dest, byte *src, int n);
 
 // Backtrace headers
 int backtrace(void **buffer, int size);

@@ -576,6 +576,9 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			res.path += '.v'
 		}
 	}
+	if !res.is_bare && res.bare_builtin_dir != '' {
+		eprintln('`-bare-builtin-dir` must be used with `-freestanding`')
+	}
 	if command == 'build-module' {
 		res.build_mode = .build_module
 		res.path = args[command_pos + 1]
