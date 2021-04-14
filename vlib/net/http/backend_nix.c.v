@@ -12,7 +12,7 @@ const (
 
 fn (req &Request) ssl_do(port int, method Method, host_name string, path string) ?Response {
 	// ssl_method := C.SSLv23_method()
-	ctx := C.SSL_CTX_new(C.TLSv1_2_method())
+	ctx := C.SSL_CTX_new(C.TLS_method())
 	C.SSL_CTX_set_verify_depth(ctx, 4)
 	flags := C.SSL_OP_NO_SSLv2 | C.SSL_OP_NO_SSLv3 | C.SSL_OP_NO_COMPRESSION
 	C.SSL_CTX_set_options(ctx, flags)
@@ -23,7 +23,7 @@ fn (req &Request) ssl_do(port int, method Method, host_name string, path string)
 	ssl := &openssl.SSL(0)
 	C.BIO_get_ssl(web, &ssl)
 	preferred_ciphers := 'HIGH:!aNULL:!kRSA:!PSK:!SRP:!MD5:!RC4'
-	res = C.SSL_set_cipher_list(voidptr(ssl), preferred_ciphers.str)
+	res = C.SSL_set_cipher_list(voidptr(ssl), &char(preferred_ciphers.str))
 	if res != 1 {
 		println('http: openssl: cipher failed')
 	}
@@ -41,7 +41,7 @@ fn (req &Request) ssl_do(port int, method Method, host_name string, path string)
 		eprintln('> $req_headers')
 	}
 	// println(req_headers)
-	C.BIO_puts(web, req_headers.str)
+	C.BIO_puts(web, &char(req_headers.str))
 	mut content := strings.new_builder(100)
 	mut buff := [bufsize]byte{}
 	bp := &buff[0]

@@ -11,7 +11,7 @@ module json
 struct C.cJSON {
 	valueint    int
 	valuedouble f32
-	valuestring charptr
+	valuestring &char
 }
 
 fn C.cJSON_IsTrue(&C.cJSON) bool
@@ -20,13 +20,13 @@ fn C.cJSON_CreateNumber(int) &C.cJSON
 
 fn C.cJSON_CreateBool(bool) &C.cJSON
 
-fn C.cJSON_CreateString(charptr) &C.cJSON
+fn C.cJSON_CreateString(&char) &C.cJSON
 
-fn C.cJSON_Parse(charptr) &C.cJSON
+fn C.cJSON_Parse(&char) &C.cJSON
 
-fn C.cJSON_PrintUnformatted(&C.cJSON) charptr
+fn C.cJSON_PrintUnformatted(&C.cJSON) &char
 
-fn C.cJSON_Print(&C.cJSON) charptr
+fn C.cJSON_Print(&C.cJSON) &char
 
 pub fn decode(typ voidptr, s string) ?voidptr {
 	// compiler implementation
@@ -122,7 +122,7 @@ fn decode_string(root &C.cJSON) string {
 	}
 	// println('decode string valuestring="$root.valuestring"')
 	// return tos(root.valuestring, _strlen(root.valuestring))
-	return unsafe { tos_clone(byteptr(root.valuestring)) } // , _strlen(root.valuestring))
+	return unsafe { tos_clone(&byte(root.valuestring)) } // , _strlen(root.valuestring))
 }
 
 fn decode_bool(root &C.cJSON) bool {
@@ -190,12 +190,12 @@ fn json_parse(s string) &C.cJSON {
 // json_string := json_print(encode_User(user))
 fn json_print(json &C.cJSON) string {
 	s := C.cJSON_PrintUnformatted(json)
-	return unsafe { tos(byteptr(s), C.strlen(&char(s))) }
+	return unsafe { tos(&byte(s), C.strlen(&char(s))) }
 }
 
 fn json_print_pretty(json &C.cJSON) string {
 	s := C.cJSON_Print(json)
-	return unsafe { tos(byteptr(s), C.strlen(&char(s))) }
+	return unsafe { tos(&byte(s), C.strlen(&char(s))) }
 }
 
 // /  cjson wrappers
