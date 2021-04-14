@@ -81,6 +81,7 @@ fn main() {
 		bg_color: bg_color
 		frame_fn: frame
 		font_path: font_path // window_user_ptr: ctx
+		// native_rendering: true
 	)
 	app.gg.run()
 }

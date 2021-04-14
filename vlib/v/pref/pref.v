@@ -21,6 +21,8 @@ pub enum GarbageCollectionMode {
 	no_gc
 	boehm_full // full garbage collection mode
 	boehm_incr // incremental garbage colletion mode
+	boehm_full_opt // full garbage collection mode
+	boehm_incr_opt // incremental garbage colletion mode
 	boehm // default Boehm-GC mode for architecture
 	boehm_leak // leak detection mode (makes `gc_check_leaks()` work)
 }
@@ -241,6 +243,18 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 						parse_define(mut res, 'gcboehm')
 						parse_define(mut res, 'gcboehm_incr')
 					}
+					'boehm_full_opt' {
+						res.gc_mode = .boehm_full_opt
+						parse_define(mut res, 'gcboehm')
+						parse_define(mut res, 'gcboehm_full')
+						parse_define(mut res, 'gcboehm_opt')
+					}
+					'boehm_incr_opt' {
+						res.gc_mode = .boehm_incr_opt
+						parse_define(mut res, 'gcboehm')
+						parse_define(mut res, 'gcboehm_incr')
+						parse_define(mut res, 'gcboehm_opt')
+					}
 					'boehm' {
 						res.gc_mode = .boehm
 						parse_define(mut res, 'gcboehm')
@@ -251,7 +265,13 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 						parse_define(mut res, 'gcboehm_leak')
 					}
 					else {
-						eprintln('unknown garbage collection mode, only `-gc boehm`, `-gc boehm_incr`, `-gc boehm_full` and `-gc boehm_leak` are supported')
+						eprintln('unknown garbage collection mode `-gc $gc_mode`, supported modes are:`')
+						eprintln('  `-gc boehm` ............ default mode for the platform')
+						eprintln('  `-gc boehm_full` ....... classic full collection')
+						eprintln('  `-gc boehm_incr` ....... incremental collection')
+						eprintln('  `-gc boehm_full_opt` ... optimized classic full collection')
+						eprintln('  `-gc boehm_incr_opt` ... optimized incremental collection')
+						eprintln('  `-gc boehm_leak` ....... leak detection (for debugging)')
 						exit(1)
 					}
 				}
@@ -575,6 +595,9 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			eprintln('It looks like you wanted to run "${res.path}.v", so we went ahead and did that since "$res.path" is an execuast.')
 			res.path += '.v'
 		}
+	}
+	if !res.is_bare && res.bare_builtin_dir != '' {
+		eprintln('`-bare-builtin-dir` must be used with `-freestanding`')
 	}
 	if command == 'build-module' {
 		res.build_mode = .build_module

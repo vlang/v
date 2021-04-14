@@ -77,11 +77,18 @@ fn restore_codepage() {
 	C.SetConsoleOutputCP(g_original_codepage)
 }
 
+fn is_terminal(fd int) int {
+	mut mode := u32(0)
+	osfh := voidptr(C._get_osfhandle(fd))
+	C.GetConsoleMode(osfh, voidptr(&mode))
+	return int(mode)
+}
+
 fn builtin_init() {
 	g_original_codepage = C.GetConsoleOutputCP()
 	C.SetConsoleOutputCP(C.CP_UTF8)
 	C.atexit(restore_codepage)
-	if is_atty(1) > 0 {
+	if is_terminal(1) > 0 {
 		C.SetConsoleMode(C.GetStdHandle(C.STD_OUTPUT_HANDLE), C.ENABLE_PROCESSED_OUTPUT | C.ENABLE_WRAP_AT_EOL_OUTPUT | 0x0004) // enable_virtual_terminal_processing
 		C.SetConsoleMode(C.GetStdHandle(C.STD_ERROR_HANDLE), C.ENABLE_PROCESSED_OUTPUT | C.ENABLE_WRAP_AT_EOL_OUTPUT | 0x0004) // enable_virtual_terminal_processing
 		unsafe {

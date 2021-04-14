@@ -24,6 +24,47 @@ see also `v help build`.
       Build the executable without dependency on libc.
       Supported only on `linux` targets currently.
 
+   -bare-builtin-dir <bare-builtin-dir>
+      Use with `-freestanding`. This specifies the directory to the 
+      implementation of some basic builtin functions. The list is as follows:
+         memcpy(dest &byte, src &byte, n int) &byte
+            Moves n bytes from dest to src, and returns dest
+         [export: 'malloc']
+         __malloc(n int) &byte
+            Allocates n bytes of memory and returns the pointer to the first byte
+         strlen(s &byte) int
+            Returns the amount of bytes until the first `0`, starting at s
+         realloc(old_area &byte, new_size int) &byte
+            Allocates a new area of size new_size, copies old_area 
+            to the new area, and returns a pointer to the new area.
+         memset(s &byte, c int, n int) &byte
+            Sets n bytes starting at s to c (c is casted to a char)
+            and returns s.
+         memmove(dest &byte, src &byte, n int) &byte
+            Like memcpy, but guaranteed to work if dest and src overlap.
+         [export: 'calloc']
+         __calloc(nmemb int, size int) &byte
+            Like malloc, but sets all the bytes to `0` first.
+         getchar() int
+            Read one character from stdin and return it.
+         memcmp(a &byte, b &byte, n int) int
+            Compare two buffers of length n. If a and b are equal, return 0.
+            Otherwise, return the difference between the first different letter.
+         [export: 'free']
+         __free(ptr &byte)
+            Free the block of memory ptr allocated by malloc.
+         vsprintf(str &char, format &char, ap va_list) int
+            See `man vsprintf`.
+         vsnprintf(str &char, size int, format &char, ap va_list) int
+            See `man vsnprintf`.
+         bare_print(buf &byte, len u64)
+            Print len charecters from the buffer pointed to by buf to stdout.
+         bare_eprint(buf &byte, len u64)
+            Print len charecters from the buffer pointed to by buf to stderr.
+
+         The module decleration should be `builtin`. The default linux 
+         implementation can be found in `vlib/builtin/linux_bare`.
+
    -os <os>, -target-os <os>
       Change the target OS that V tries to compile for.
       By default, the target OS is the host system.
@@ -74,10 +115,12 @@ see also `v help build`.
       Use and link an optional garbage collector. Only tThe Boehm–Demers–Weiser
       garbage collector is supported currently with the following sub-options:
 
-      `-gc boehm` ........ selects the default mode for the architecture
-      `-gc boehm_full` ... full garbage collection mode
-      `-gc boehm_incr` ... incremental/generational garbage collection mode
-      `-gc boehm_leak` ... leak detection mode
+      `-gc boehm` ........... selects the default mode for the architecture
+      `-gc boehm_full` ...... full garbage collection mode
+      `-gc boehm_incr` ...... incremental/generational garbage collection mode
+      `-gc boehm_full_opt` .. optimized full garbage collection mode
+      `-gc boehm_incr_opt` .. optimized incremental/generational garbage collection mode
+      `-gc boehm_leak` ...... leak detection mode
 
       You need to install a `libgc-dev` package first, or install it manually from:
 

@@ -916,6 +916,9 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 
 		mut args := []ast.AsmArg{}
 		args_loop: for {
+			if p.prev_tok.position().line_nr < p.tok.position().line_nr {
+				break
+			}
 			match p.tok.kind {
 				.name {
 					args << p.reg_or_alias()
@@ -976,6 +979,9 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 			} else {
 				break
 			}
+			// if p.prev_tok.position().line_nr < p.tok.position().line_nr {
+			// 	break
+			// }
 		}
 		mut comments := []ast.Comment{}
 		for p.tok.kind == .comment {

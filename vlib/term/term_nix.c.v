@@ -17,7 +17,7 @@ fn C.ioctl(fd int, request u64, arg voidptr) int
 
 // get_terminal_size returns a number of colums and rows of terminal window.
 pub fn get_terminal_size() (int, int) {
-	if is_atty(1) <= 0 || os.getenv('TERM') == 'dumb' {
+	if os.is_atty(1) <= 0 || os.getenv('TERM') == 'dumb' {
 		return default_columns_size, default_rows_size
 	}
 	w := C.winsize{}
@@ -27,7 +27,7 @@ pub fn get_terminal_size() (int, int) {
 
 // get_cursor_position returns a Coord containing the current cursor position
 pub fn get_cursor_position() Coord {
-	if is_atty(1) <= 0 || os.getenv('TERM') == 'dumb' {
+	if os.is_atty(1) <= 0 || os.getenv('TERM') == 'dumb' {
 		return Coord{
 			x: 0
 			y: 0
@@ -89,7 +89,7 @@ pub fn get_cursor_position() Coord {
 
 // set_terminal_title change the terminal title
 pub fn set_terminal_title(title string) bool {
-	if is_atty(1) <= 0 || os.getenv('TERM') == 'dumb' {
+	if os.is_atty(1) <= 0 || os.getenv('TERM') == 'dumb' {
 		return true
 	}
 	print('\033]0')

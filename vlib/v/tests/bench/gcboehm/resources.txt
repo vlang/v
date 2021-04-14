@@ -1,0 +1,6 @@
+# 200000000 iterations
+# flags %MEM MEM[GB] TIME[s] %CPU
+"-gc boehm\\_full" 19.7 6.17 132 680
+"-gc boehm\\_incr" 23.7 7.42 181 625
+"-gc boehm\\_full\\_opt" 14.0 4.38 100 204
+"-gc boehm\\_incr\\_opt" 14.4 4.51 166 186

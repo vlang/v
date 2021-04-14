@@ -6,6 +6,8 @@ module builtin
 
 fn C.GC_MALLOC(n size_t) voidptr
 
+fn C.GC_MALLOC_ATOMIC(n size_t) voidptr
+
 fn C.GC_MALLOC_UNCOLLECTABLE(n size_t) voidptr
 
 fn C.GC_REALLOC(ptr voidptr, n size_t) voidptr

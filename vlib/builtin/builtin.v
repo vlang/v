@@ -13,6 +13,12 @@ pub fn isnil(v voidptr) bool {
 	return v == 0
 }
 
+[deprecated: 'use os.is_atty(x) instead']
+pub fn is_atty(fd int) int {
+	panic('use os.is_atty(x) instead')
+	return 0
+}
+
 /*
 fn on_panic(f fn(int)int) {
 	// TODO
@@ -26,7 +32,9 @@ pub fn print_backtrace() {
 	// 1 frame for print_backtrace itself
 	// ... print the rest of the backtrace frames ...
 	// => top 2 frames should be skipped, since they will not be informative to the developer
-	print_backtrace_skipping_top_frames(2)
+	$if !freestanding {
+		print_backtrace_skipping_top_frames(2)
+	}
 }
 
 struct VCastTypeIndexName {
