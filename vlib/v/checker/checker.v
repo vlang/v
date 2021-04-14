@@ -1043,11 +1043,11 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) ast.Type {
 			if infix_expr.right_type != ast.bool_type_idx {
 				c.error('right operand for `$infix_expr.op` is not a boolean', infix_expr.right.position())
 			}
-			// use `()` to make the boolean expression clear error
-			// for example: `(a && b) || c` instead of `a && b || c`
 			if mut infix_expr.left is ast.InfixExpr {
 				if infix_expr.left.op != infix_expr.op && infix_expr.left.op in [.logical_or, .and] {
-					c.error('use `()` to make the boolean expression clear', infix_expr.pos)
+					// for example: `(a && b) || c` instead of `a && b || c`
+					c.error('ambiguous boolean expression. use `()` to ensure correct order of operations',
+						infix_expr.pos)
 				}
 			}
 		}
