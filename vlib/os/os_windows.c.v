@@ -376,8 +376,8 @@ pub fn debugger_present() bool {
 }
 
 pub fn uname() Uname {
+	// TODO: use Win32 Api functions instead
 	sys_and_ver := execute('cmd /c ver').output.split('[')
-
 	nodename := execute('cmd /c hostname').output
 	machine := execute('cmd /c echo %PROCESSOR_ARCHITECTURE%').output
 	return Uname{
@@ -390,6 +390,7 @@ pub fn uname() Uname {
 }
 
 pub fn hostname() string {
+	// TODO: use C.GetComputerName(&u16, u32) int instead
 	return execute('cmd /c hostname').output
 }
 
