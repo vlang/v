@@ -997,7 +997,11 @@ pub fn (s string) to_lower() string {
 	unsafe {
 		mut b := malloc(s.len + 1)
 		for i in 0 .. s.len {
-			b[i] = byte(C.tolower(s.str[i]))
+			if s.str[i] >= `A` && s.str[i] <= `Z` {
+				b[i] = s.str[i] + 32
+			} else {
+				b[i] = s.str[i]
+			}
 		}
 		b[s.len] = 0
 		return tos(b, s.len)
@@ -1021,7 +1025,11 @@ pub fn (s string) to_upper() string {
 	unsafe {
 		mut b := malloc(s.len + 1)
 		for i in 0 .. s.len {
-			b[i] = byte(C.toupper(s.str[i]))
+			if s.str[i] >= `a` && s.str[i] <= `z` {
+				b[i] = s.str[i] - 32
+			} else {
+				b[i] = s.str[i]
+			}
 		}
 		b[s.len] = 0
 		return tos(b, s.len)
@@ -1539,7 +1547,11 @@ pub fn (s &string) free() {
 		return
 	}
 	if s.is_lit == -98761234 {
-		C.printf(c'double string.free() detected\n')
+		$if freestanding {
+			bare_eprint(c'double string.free() detected\n', u64(unsafe { C.strlen(c'double string.free() detected\n') }))
+		} $else {
+			C.printf(c'double string.free() detected\n')
+		}
 		return
 	}
 	if s.is_lit == 1 || s.len == 0 {

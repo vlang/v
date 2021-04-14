@@ -8,9 +8,6 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 	files.sort()
 	mut all_v_files := []string{}
 	for file in files {
-		if prefs.is_bare && os.join_path(dir, file).ends_with('/vlib/builtin/builtin_nix.c.v') {
-			continue
-		}
 		if !file.ends_with('.v') && !file.ends_with('.vh') {
 			continue
 		}
@@ -123,22 +120,22 @@ pub fn (prefs &Preferences) should_compile_c(file string) bool {
 		// Probably something like `a.js.v`.
 		return false
 	}
+	if prefs.is_bare && file.ends_with('.freestanding.v') {
+		return true
+	}
 	if prefs.os == .all {
 		return true
 	}
-	if !prefs.is_bare && file.ends_with('.freestanding.v') {
+	if prefs.backend != .x64 && file.ends_with('_x64.v') {
 		return false
 	}
-	if (file.ends_with('_windows.c.v') || file.ends_with('_windows.v')) && prefs.os != .windows {
+	if prefs.os != .windows && (file.ends_with('_windows.c.v') || file.ends_with('_windows.v')) {
 		return false
 	}
-	if (file.ends_with('_linux.c.v') || file.ends_with('_linux.v')) && prefs.os != .linux {
+	if prefs.os != .linux && (file.ends_with('_linux.c.v') || file.ends_with('_linux.v')) {
 		return false
 	}
-	if (file.ends_with('_darwin.c.v') || file.ends_with('_darwin.v')) && prefs.os != .macos {
-		return false
-	}
-	if (file.ends_with('_macos.c.v') || file.ends_with('_macos.v')) && prefs.os != .macos {
+	if prefs.os != .macos && (file.ends_with('_darwin.c.v') || file.ends_with('_darwin.v')) {
 		return false
 	}
 	if (file.ends_with('_ios.c.v') || file.ends_with('_ios.v')) && prefs.os != .ios {
@@ -147,25 +144,28 @@ pub fn (prefs &Preferences) should_compile_c(file string) bool {
 	if file.ends_with('_nix.c.v') && prefs.os == .windows {
 		return false
 	}
-	if file.ends_with('_android.c.v') && prefs.os != .android {
+	if prefs.os != .macos && (file.ends_with('_macos.c.v') || file.ends_with('_macos.v')) {
 		return false
 	}
-	if file.ends_with('_freebsd.c.v') && prefs.os != .freebsd {
+	if prefs.os == .windows && file.ends_with('_nix.c.v') {
 		return false
 	}
-	if file.ends_with('_openbsd.c.v') && prefs.os != .openbsd {
+	if prefs.os != .android && file.ends_with('_android.c.v') {
 		return false
 	}
-	if file.ends_with('_netbsd.c.v') && prefs.os != .netbsd {
+	if prefs.os != .freebsd && file.ends_with('_freebsd.c.v') {
 		return false
 	}
-	if file.ends_with('_dragonfly.c.v') && prefs.os != .dragonfly {
+	if prefs.os != .openbsd && file.ends_with('_openbsd.c.v') {
 		return false
 	}
-	if file.ends_with('_solaris.c.v') && prefs.os != .solaris {
+	if prefs.os != .netbsd && file.ends_with('_netbsd.c.v') {
 		return false
 	}
-	if file.ends_with('_x64.v') && prefs.backend != .x64 {
+	if prefs.os != .dragonfly && file.ends_with('_dragonfly.c.v') {
+		return false
+	}
+	if prefs.os != .solaris && file.ends_with('_solaris.c.v') {
 		return false
 	}
 	return true

@@ -136,7 +136,11 @@ pub fn (a array) repeat(count int) array {
 
 // sort_with_compare sorts array in-place using given `compare` function as comparator.
 pub fn (mut a array) sort_with_compare(compare voidptr) {
-	C.qsort(mut a.data, a.len, a.element_size, compare)
+	$if freestanding {
+		panic('sort does not work with -freestanding')
+	} $else {
+		C.qsort(mut a.data, a.len, a.element_size, compare)
+	}
 }
 
 // insert inserts a value in the array at index `i`

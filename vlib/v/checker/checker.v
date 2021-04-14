@@ -3804,7 +3804,7 @@ fn (mut c Checker) asm_stmt(mut stmt ast.AsmStmt) {
 			stmt.pos)
 	}
 	if c.pref.backend == .js {
-		c.error('inline assembly is not supported in js backend', stmt.pos)
+		c.error('inline assembly is not supported in the js backend', stmt.pos)
 	}
 	if c.pref.backend == .c && c.pref.ccompiler_type == .msvc {
 		c.error('msvc compiler does not support inline assembly', stmt.pos)
@@ -3857,16 +3857,7 @@ fn (mut c Checker) asm_stmt(mut stmt ast.AsmStmt) {
 
 fn (mut c Checker) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt, aliases []string) {
 	match mut arg {
-		ast.AsmAlias {
-			name := arg.name
-			if name !in aliases && name !in stmt.local_labels && name !in c.file.global_labels {
-				mut possible := aliases.clone()
-				possible << stmt.local_labels
-				possible << c.file.global_labels
-				suggestion := util.new_suggestion(name, possible)
-				c.error(suggestion.say('alias or label `$arg.name` does not exist'), arg.pos)
-			}
-		}
+		ast.AsmAlias {}
 		ast.AsmAddressing {
 			if arg.scale !in [-1, 1, 2, 4, 8] {
 				c.error('scale must be one of 1, 2, 4, or 8', arg.pos)
@@ -5368,7 +5359,19 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			} else if !is_comptime_type_is_expr {
 				found_branch = true // If a branch wasn't skipped, the rest must be
 			}
-			if !c.skip_flags || c.pref.output_cross_c {
+			if !c.skip_flags {
+				c.stmts(branch.stmts)
+			} else if c.pref.output_cross_c {
+				mut is_freestanding_block := false
+				if branch.cond is ast.Ident {
+					if branch.cond.name == 'freestanding' {
+						is_freestanding_block = true
+					}
+				}
+				if is_freestanding_block {
+					branch.stmts = []
+					node.branches[i].stmts = []
+				}
 				c.stmts(branch.stmts)
 			} else if !is_comptime_type_is_expr {
 				node.branches[i].stmts = []
@@ -5603,7 +5606,7 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 					'glibc' { return false } // TODO
 					'prealloc' { return !c.pref.prealloc }
 					'no_bounds_checking' { return cond.name !in c.pref.compile_defines_all }
-					'freestanding' { return !c.pref.is_bare }
+					'freestanding' { return !c.pref.is_bare || c.pref.output_cross_c }
 					else { return false }
 				}
 			} else if cond.name !in c.pref.compile_defines_all {

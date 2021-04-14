@@ -80,7 +80,7 @@ fn main() {
 		verror(err.msg)
 		return
 	}
-	if is_atty(0) == 0 && files.len == 0 {
+	if os.is_atty(0) == 0 && files.len == 0 {
 		foptions.format_pipe()
 		exit(0)
 	}
