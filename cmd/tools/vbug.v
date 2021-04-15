@@ -3,11 +3,6 @@ import os
 import v.util
 import v.pref
 
-fn print_help() {
-	// TODO -v (verbose), -h | -help (help), -y (force even if there was an error getting infos)
-	println('v bug [options] <file>')
-}
-
 // get output from `v doctor`
 fn get_vdoctor_output(is_verbose bool) string {
 	// ensure vdoctor exists
@@ -27,31 +22,36 @@ fn get_vdoctor_output(is_verbose bool) string {
 fn get_v_build_output(is_verbose bool, file_path string) string {
 	mut vexe := pref.vexe_path()
 	v_dir := os.dir(vexe)
+	verbose_flag := if is_verbose { '-v' } else { '' }
 	vdbg_path := $if windows { '${v_dir}/vdbg.exe' } $else { '${v_dir}/vdbg' }
-	vdbg_result := os.execute('"$vexe" -g -o "$vdbg_path" ${v_dir}/cmd/v')
+	vdbg_result := os.execute('"$vexe" $verbose_flag -g -o "$vdbg_path" ${v_dir}/cmd/v')
 	if vdbg_result.exit_code == 0 {
 		vexe = vdbg_path
 	} else {
 		eprintln('unable to compile V in debug mode: $vdbg_result.output')
 	}
-	build_result := os.execute('"$vexe" "$file_path"')
+	build_result := os.execute('"$vexe" $verbose_flag "$file_path"')
+	// if !is_yes && build_result.exit_code == 0 {
+	//
+	// }
 	return build_result.output
 }
 
 // TODO move this to vlib ?
-// open a url in the default browser
-fn open_url(url string) ? {
+// open a uri using the default associated application
+fn open_uri(uri string) ? {
 	cmd := $if darwin {
-		'open "$url"'
+		'open "$uri"'
 	} $else $if windows {
-		'explorer "$url"'
+		'explorer "$uri"'
 	} $else $if linux {
-		'xdg-open "$url"'
+		'xdg-open "$uri"'
 	} $else {
 		'' // TODO Can this happen ?
 	}
-	if os.system(cmd) != 0 {
-		return error('unable to open url `$url`')
+	result := os.execute(cmd)
+	if result.exit_code != 0 {
+		return error('unable to open url: $result.output')
 	}
 }
 
@@ -73,10 +73,6 @@ fn main() {
 				}
 				is_yes = true
 			}
-			'-h', '-help' {
-				print_help()
-				exit(0)
-			}
 			else {
 				if !arg.ends_with('.v') && !arg.ends_with('.vsh') && !arg.ends_with('.vv') {
 					eprintln('unknown argument: `$arg`')
@@ -91,8 +87,7 @@ fn main() {
 		}
 	}
 	if file_path == '' {
-		eprintln('invalid use of command `bug`')
-		print_help()
+		eprintln('v bug: no v file listed to report')
 		exit(1)
 	}
 	// collect error information
@@ -144,11 +139,11 @@ $file_content
 $build_output```')
 	// TODO GitHub probably won't accept URL with infinite size, this must be checked before hand
 	// TODO We can probably prefill the title with something too (`&title=`)
-	generated_url := 'https://github.com/vlang/v/issues/new?labels=Bug&body=${encoded_body}'
-	open_url(generated_url) or {
+	generated_uri := 'https://github.com/vlang/v/issues/new?labels=Bug&body=${encoded_body}'
+	open_uri(generated_uri) or {
 		if is_verbose {
 			eprintln(err)
 		}
-		println(generated_url)
+		println(generated_uri)
 	}
 }
