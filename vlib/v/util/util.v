@@ -188,22 +188,21 @@ pub fn resolve_env_value(str string, check_for_presence bool) ?string {
 	return rep
 }
 
-// launch_tool - starts a V tool in a separate process, passing it the `args`.
+// compile_tool compiles a V tool to prepare launching it
 // All V tools are located in the cmd/tools folder, in files or folders prefixed by
 // the letter `v`, followed by the tool name, i.e. `cmd/tools/vdoc/` or `cmd/tools/vpm.v`.
 // The folder variant is suitable for larger and more complex tools, like `v doc`, because
 // it provides you the ability to split their source in separate .v files, organized by topic,
 // as well as have resources like static css/text/js files, that the tools can use.
-// launch_tool uses a timestamp based detection mechanism, so that after `v self`, each tool
+// compile_tool uses a timestamp based detection mechanism, so that after `v self`, each tool
 // will be recompiled too, before it is used, which guarantees that it would be up to date with
 // V itself. That mechanism can be disabled by package managers by creating/touching a small
 // `cmd/tools/.disable_autorecompilation` file, OR by changing the timestamps of all executables
 // in cmd/tools to be < 1024 seconds (in unix time).
-pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
+pub fn compile_tool(is_verbose bool, tool_name string) ?string {
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
 	set_vroot_folder(vroot)
-	tool_args := args_quote_paths(args)
 	tools_folder := os.join_path(vroot, 'cmd', 'tools')
 	tool_basename := os.real_path(os.join_path(tools_folder, tool_name))
 	mut tool_exe := ''
@@ -216,18 +215,17 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 		tool_source = tool_basename + '.v'
 	}
 	if is_verbose {
-		println('launch_tool vexe        : $vroot')
-		println('launch_tool vroot       : $vroot')
-		println('launch_tool tool_source : $tool_source')
-		println('launch_tool tool_exe    : $tool_exe')
-		println('launch_tool tool_args   : $tool_args')
+		println('compile_tool vexe        : $vroot')
+		println('compile_tool vroot       : $vroot')
+		println('compile_tool tool_source : $tool_source')
+		println('compile_tool tool_exe    : $tool_exe')
 	}
 	disabling_file := recompilation.disabling_file(vroot)
 	is_recompilation_disabled := os.exists(disabling_file)
 	should_compile := !is_recompilation_disabled
 		&& should_recompile_tool(vexe, tool_source, tool_name, tool_exe)
 	if is_verbose {
-		println('launch_tool should_compile: $should_compile')
+		println('compile_tool should_compile: $should_compile')
 	}
 	if should_compile {
 		emodules := util.external_module_dependencies_for_tool[tool_name]
@@ -249,9 +247,22 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 		}
 		tool_compilation := os.execute_or_panic(compilation_command)
 		if tool_compilation.exit_code != 0 {
-			eprintln('cannot compile `$tool_source`: \n$tool_compilation.output')
-			exit(1)
+			return error('cannot compile `$tool_source`: \n$tool_compilation.output')
 		}
+	}
+	return tool_exe
+}
+
+// launch_tool - starts a V tool in a separate process, passing it the `args`.
+// see compile_tool for more detail about the tool compilation
+pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
+	tool_exe := compile_tool(is_verbose, tool_name) or {
+		eprintln(err)
+		exit(1)
+	}
+	tool_args := args_quote_paths(args)
+	if is_verbose {
+		println('launch_tool  tool_args   : $tool_args')
 	}
 	$if windows {
 		exit(os.system('"$tool_exe" $tool_args'))
