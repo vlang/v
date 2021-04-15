@@ -132,7 +132,7 @@ fn main() {
 	// }
 
 	// When updating this template, make sure to update `.github/ISSUE_TEMPLATE/bug_report.md` too
-	encoded_body := urllib.query_escape("<!-- Please make sure to run `v up` before reporting any issues as it may have already been fixed.
+	raw_body := "<!-- Please make sure to run `v up` before reporting any issues as it may have already been fixed.
      It's also advisable to update all relevant modules using `v outdated` and `v install` -->
 
 **V doctor:**
@@ -141,23 +141,28 @@ $vdoctor_output```
 
 **What did you do?**
 `v -g -o vdbg cmd/v && vdbg $file_path`
-```v
-$file_content
-```
+{file_content}
 
 **What did you expect to see?**
 
 
 **What did you see instead?**
 ```
-$build_output```")
-	// TODO GitHub probably won't accept URL with infinite size, this must be checked before hand
-	// TODO We can probably prefill the title with something too (`&title=`)
-	generated_uri := 'https://github.com/vlang/v/issues/new?labels=Bug&body=$encoded_body'
-	open_uri(generated_uri) or {
-		if is_verbose {
-			eprintln(err)
-		}
+$build_output```"
+	mut encoded_body := urllib.query_escape(raw_body.replace_once('{file_content}', '```v\n$file_content\n```'))
+	mut generated_uri := 'https://github.com/vlang/v/issues/new?labels=Bug&body=$encoded_body'
+	if generated_uri.len > 8192 {
+		// GitHub doesn't support URLs longer than 8192 characters
+		encoded_body = urllib.query_escape(raw_body.replace_once('{file_content}', 'See attached file `$file_path`'))
+		generated_uri = 'https://github.com/vlang/v/issues/new?labels=Bug&body=$encoded_body'
+		println('Your file is too big to be submitted. Head over to the following URL and attach your file.')
 		println(generated_uri)
+	} else {
+		open_uri(generated_uri) or {
+			if is_verbose {
+				eprintln(err)
+			}
+			println(generated_uri)
+		}
 	}
 }
