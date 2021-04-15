@@ -127,7 +127,7 @@ fn (mut g Gen) gen_struct_enc_dec(type_info ast.TypeInfo, styp string, mut enc s
 		field_sym := g.table.get_type_symbol(field.typ)
 		// First generate decoding
 		if field.attrs.contains('raw') {
-			dec.writeln('\tres.${c_name(field.name)} = tos4(cJSON_PrintUnformatted(' +
+			dec.writeln('\tres.${c_name(field.name)} = tos5(cJSON_PrintUnformatted(' +
 				'js_get(root, "$name")));')
 		} else {
 			// Now generate decoders for all field types in this struct
@@ -222,11 +222,12 @@ fn (mut g Gen) decode_array(value_type ast.Type) string {
 		$styp val = *($styp*)val2.data;
 '
 	}
+	noscan := g.check_noscan(value_type)
 	return '
 	if(root && !cJSON_IsArray(root) && !cJSON_IsNull(root)) {
 		return (Option_Array_$styp){.state = 2, .err = v_error(string_add(_SLIT("Json element is not an array: "), tos2((byteptr)cJSON_PrintUnformatted(root))))};
 	}
-	res = __new_array(0, 0, sizeof($styp));
+	res = __new_array${noscan}(0, 0, sizeof($styp));
 	const cJSON *jsval = NULL;
 	cJSON_ArrayForEach(jsval, root)
 	{

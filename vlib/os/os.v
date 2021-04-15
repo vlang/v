@@ -629,3 +629,15 @@ pub fn execute_or_panic(cmd string) Result {
 	}
 	return res
 }
+
+// is_atty returns 1 if the `fd` file descriptor is open and refers to a terminal
+pub fn is_atty(fd int) int {
+	$if windows {
+		mut mode := u32(0)
+		osfh := voidptr(C._get_osfhandle(fd))
+		C.GetConsoleMode(osfh, voidptr(&mode))
+		return int(mode)
+	} $else {
+		return C.isatty(fd)
+	}
+}

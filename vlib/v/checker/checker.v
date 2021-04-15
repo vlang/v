@@ -1043,11 +1043,11 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) ast.Type {
 			if infix_expr.right_type != ast.bool_type_idx {
 				c.error('right operand for `$infix_expr.op` is not a boolean', infix_expr.right.position())
 			}
-			// use `()` to make the boolean expression clear error
-			// for example: `(a && b) || c` instead of `a && b || c`
 			if mut infix_expr.left is ast.InfixExpr {
 				if infix_expr.left.op != infix_expr.op && infix_expr.left.op in [.logical_or, .and] {
-					c.error('use `()` to make the boolean expression clear', infix_expr.pos)
+					// for example: `(a && b) || c` instead of `a && b || c`
+					c.error('ambiguous boolean expression. use `()` to ensure correct order of operations',
+						infix_expr.pos)
 				}
 			}
 		}
@@ -2062,7 +2062,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 		&& func.mod != c.mod {
 		c.error('function `$func.name` is private', call_expr.pos)
 	}
-	if !c.cur_fn.is_deprecated && func.is_deprecated {
+	if c.cur_fn != 0 && !c.cur_fn.is_deprecated && func.is_deprecated {
 		c.deprecate_fnmethod('function', func.name, func, call_expr)
 	}
 	if func.is_unsafe && !c.inside_unsafe
@@ -3353,10 +3353,18 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) ast.Type {
 		}
 		if array_init.is_fixed {
 			idx := c.table.find_or_register_array_fixed(elem_type, array_init.exprs.len)
-			array_init.typ = ast.new_type(idx)
+			if elem_type.has_flag(.generic) {
+				array_init.typ = ast.new_type(idx).set_flag(.generic)
+			} else {
+				array_init.typ = ast.new_type(idx)
+			}
 		} else {
 			idx := c.table.find_or_register_array(elem_type)
-			array_init.typ = ast.new_type(idx)
+			if elem_type.has_flag(.generic) {
+				array_init.typ = ast.new_type(idx).set_flag(.generic)
+			} else {
+				array_init.typ = ast.new_type(idx)
+			}
 		}
 		array_init.elem_type = elem_type
 	} else if array_init.is_fixed && array_init.exprs.len == 1
@@ -3391,8 +3399,11 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) ast.Type {
 			c.error('fixed size cannot be zero or negative', init_expr.position())
 		}
 		idx := c.table.find_or_register_array_fixed(array_init.elem_type, fixed_size)
-		array_type := ast.new_type(idx)
-		array_init.typ = array_type
+		if array_init.elem_type.has_flag(.generic) {
+			array_init.typ = ast.new_type(idx).set_flag(.generic)
+		} else {
+			array_init.typ = ast.new_type(idx)
+		}
 		if array_init.has_default {
 			c.expr(array_init.default_expr)
 		}
@@ -3804,7 +3815,7 @@ fn (mut c Checker) asm_stmt(mut stmt ast.AsmStmt) {
 			stmt.pos)
 	}
 	if c.pref.backend == .js {
-		c.error('inline assembly is not supported in js backend', stmt.pos)
+		c.error('inline assembly is not supported in the js backend', stmt.pos)
 	}
 	if c.pref.backend == .c && c.pref.ccompiler_type == .msvc {
 		c.error('msvc compiler does not support inline assembly', stmt.pos)
@@ -3839,12 +3850,9 @@ fn (mut c Checker) asm_stmt(mut stmt ast.AsmStmt) {
 			*/
 			if template.name !in ['skip', 'space', 'byte', 'word', 'short', 'int', 'long', 'quad',
 				'globl', 'global', 'section', 'text', 'data', 'bss', 'fill', 'org', 'previous',
-				'string', 'asciz', 'ascii'] { // all tcc supported assembler directive
+				'string', 'asciz', 'ascii'] { // all tcc-supported assembler directives
 				c.error('unknown assembler directive: `$template.name`', template.pos)
 			}
-			// if c.file in  {
-
-			// }
 		}
 		for mut arg in template.args {
 			c.asm_arg(arg, stmt, aliases)
@@ -3857,16 +3865,7 @@ fn (mut c Checker) asm_stmt(mut stmt ast.AsmStmt) {
 
 fn (mut c Checker) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt, aliases []string) {
 	match mut arg {
-		ast.AsmAlias {
-			name := arg.name
-			if name !in aliases && name !in stmt.local_labels && name !in c.file.global_labels {
-				mut possible := aliases.clone()
-				possible << stmt.local_labels
-				possible << c.file.global_labels
-				suggestion := util.new_suggestion(name, possible)
-				c.error(suggestion.say('alias or label `$arg.name` does not exist'), arg.pos)
-			}
-		}
+		ast.AsmAlias {}
 		ast.AsmAddressing {
 			if arg.scale !in [-1, 1, 2, 4, 8] {
 				c.error('scale must be one of 1, 2, 4, or 8', arg.pos)
@@ -5368,7 +5367,19 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			} else if !is_comptime_type_is_expr {
 				found_branch = true // If a branch wasn't skipped, the rest must be
 			}
-			if !c.skip_flags || c.pref.output_cross_c {
+			if !c.skip_flags {
+				c.stmts(branch.stmts)
+			} else if c.pref.output_cross_c {
+				mut is_freestanding_block := false
+				if branch.cond is ast.Ident {
+					if branch.cond.name == 'freestanding' {
+						is_freestanding_block = true
+					}
+				}
+				if is_freestanding_block {
+					branch.stmts = []
+					node.branches[i].stmts = []
+				}
 				c.stmts(branch.stmts)
 			} else if !is_comptime_type_is_expr {
 				node.branches[i].stmts = []
@@ -5603,7 +5614,7 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 					'glibc' { return false } // TODO
 					'prealloc' { return !c.pref.prealloc }
 					'no_bounds_checking' { return cond.name !in c.pref.compile_defines_all }
-					'freestanding' { return !c.pref.is_bare }
+					'freestanding' { return !c.pref.is_bare || c.pref.output_cross_c }
 					else { return false }
 				}
 			} else if cond.name !in c.pref.compile_defines_all {
@@ -6047,10 +6058,13 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 				c.check_dup_keys(node, i)
 			}
 		}
-		map_type := ast.new_type(c.table.find_or_register_map(key0_type, val0_type))
+		mut map_type := ast.new_type(c.table.find_or_register_map(key0_type, val0_type))
 		node.typ = map_type
 		node.key_type = key0_type
 		node.value_type = val0_type
+		if node.key_type.has_flag(.generic) || node.value_type.has_flag(.generic) {
+			map_type = map_type.set_flag(.generic)
+		}
 		return map_type
 	}
 	return node.typ
@@ -6257,6 +6271,10 @@ fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) ast.Type {
 	c.ensure_type_exists(node.table_expr.typ, node.pos) or { return ast.void_type }
 	table_sym := c.table.get_type_symbol(node.table_expr.typ)
 	c.cur_orm_ts = table_sym
+	if table_sym.info !is ast.Struct {
+		c.error('unknown type `$table_sym.name`', node.pos)
+		return ast.void_type
+	}
 	info := table_sym.info as ast.Struct
 	fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, table_sym.name)
 	mut sub_structs := map[int]ast.SqlStmt{}

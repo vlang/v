@@ -8,6 +8,8 @@
 module readline
 
 // Termios stores the terminal options on Linux.
+struct C.termios {}
+
 struct Termios {
 mut:
 	c_iflag int
@@ -32,7 +34,7 @@ mut:
 	is_raw            bool
 	orig_termios      Termios // Linux
 	current           ustring // Line being edited
-	cursor            int // Cursor position
+	cursor            int     // Cursor position
 	overwrite         bool
 	cursor_row_offset int
 	prompt            string

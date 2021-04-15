@@ -79,11 +79,11 @@ struct MultiplePathAttributesError {
 	code int
 }
 
-// declaring init_once in your App struct is optional
-pub fn (ctx Context) init_once() {}
+// declaring init_server in your App struct is optional
+pub fn (ctx Context) init_server() {}
 
-// declaring init in your App struct is optional
-pub fn (ctx Context) init() {}
+// declaring before_request in your App struct is optional
+pub fn (ctx Context) before_request() {}
 
 pub struct Cookie {
 	name      string
@@ -295,7 +295,7 @@ pub fn run_app<T>(mut app T, port int) {
 	app.Context = Context{
 		conn: 0
 	}
-	app.init_once()
+	app.init_server()
 	$for method in T.methods {
 		$if method.return_type is Result {
 			// check routes for validity
@@ -364,7 +364,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 		return
 	}
 
-	app.init()
+	app.before_request()
 	// Call the right action
 	$if debug {
 		println('route matching...')

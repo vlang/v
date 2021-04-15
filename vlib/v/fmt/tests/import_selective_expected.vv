@@ -5,6 +5,37 @@ import os {
 	file_ext,
 	user_os,
 }
+import mod {
+	FnArg,
+	FnRet,
+	InterfaceField,
+	InterfaceMethodArg,
+	InterfaceMethodRet,
+	StructEmbed,
+	StructField,
+	StructMethodArg,
+	StructMethodRet,
+	StructRefField,
+}
+
+struct Struct {
+	StructEmbed
+	v   StructField
+	ref &StructRefField
+}
+
+fn (s Struct) method(v StructMethodArg) StructMethodRet {
+	return {}
+}
+
+interface Interface {
+	v InterfaceField
+	f(InterfaceMethodArg) InterfaceMethodRet
+}
+
+fn f(v FnArg) FnRet {
+	return {}
+}
 
 struct App {
 	command &Command

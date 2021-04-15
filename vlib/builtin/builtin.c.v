@@ -18,12 +18,17 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 	// module is less likely to change than function, etc...
 	// During edits, the line number will change most frequently,
 	// so it is last
-	eprintln('================ V panic ================')
-	eprintln('   module: $mod')
-	eprintln(' function: ${fn_name}()')
-	eprintln('  message: $s')
-	eprintln('     file: $file:$line_no')
-	eprintln('=========================================')
+	$if !freestanding {
+		eprintln('================ V panic ================')
+		eprintln('   module: $mod')
+		eprintln(' function: ${fn_name}()')
+		eprintln('  message: $s')
+		eprintln('     file: $file:$line_no')
+		eprintln('=========================================')
+	} $else {
+		eprint('V panic: ')
+		eprintln(s)
+	}
 	$if exit_after_panic_message ? {
 		C.exit(1)
 	} $else {
@@ -38,7 +43,9 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 				}
 				C.exit(1)
 			}
-			print_backtrace_skipping_top_frames(1)
+			$if !freestanding {
+				print_backtrace_skipping_top_frames(1)
+			}
 			$if panics_break_into_debugger ? {
 				break_if_debugger_attached()
 			}
@@ -54,7 +61,8 @@ pub fn panic_optional_not_set(s string) {
 // panic prints a nice error message, then exits the process with exit code of 1.
 // It also shows a backtrace on most platforms.
 pub fn panic(s string) {
-	eprintln('V panic: $s')
+	eprint('V panic: ')
+	eprintln(s)
 	$if exit_after_panic_message ? {
 		C.exit(1)
 	} $else {
@@ -69,7 +77,9 @@ pub fn panic(s string) {
 				}
 				C.exit(1)
 			}
-			print_backtrace_skipping_top_frames(1)
+			$if !freestanding {
+				print_backtrace_skipping_top_frames(1)
+			}
 			$if panics_break_into_debugger ? {
 				break_if_debugger_attached()
 			}
@@ -80,14 +90,13 @@ pub fn panic(s string) {
 
 // eprintln prints a message with a line end, to stderr. Both stderr and stdout are flushed.
 pub fn eprintln(s string) {
-	C.fflush(C.stdout)
-	C.fflush(C.stderr)
-	// eprintln is used in panics, so it should not fail at all
-	$if android {
+	$if freestanding {
+		// flushing is only a thing with C.FILE from stdio.h, not on the syscall level
 		if s.str == 0 {
-			C.fprintf(C.stderr, c'eprintln(NIL)\n')
+			bare_eprint(c'eprintln(NIL)\n', 14)
 		} else {
-			C.fprintf(C.stderr, c'%.*s\n', s.len, s.str)
+			bare_eprint(s.str, u64(s.len))
+			bare_eprint(c'\n', 1)
 		}
 	} $else $if ios {
 		if s.str == 0 {
@@ -96,25 +105,35 @@ pub fn eprintln(s string) {
 			C.WrappedNSLog(s.str)
 		}
 	} $else {
-		if s.str == 0 {
-			C.write(2, c'eprintln(NIL)\n', 14)
-		} else {
-			C.write(2, s.str, s.len)
-			C.write(2, c'\n', 1)
+		C.fflush(C.stdout)
+		C.fflush(C.stderr)
+		// eprintln is used in panics, so it should not fail at all
+		$if android {
+			if s.str == 0 {
+				C.fprintf(C.stderr, c'eprintln(NIL)\n')
+			} else {
+				C.fprintf(C.stderr, c'%.*s\n', s.len, s.str)
+			}
+		} $else {
+			if s.str == 0 {
+				C.write(2, c'eprintln(NIL)\n', 14)
+			} else {
+				C.write(2, s.str, s.len)
+				C.write(2, c'\n', 1)
+			}
 		}
+		C.fflush(C.stderr)
 	}
-	C.fflush(C.stderr)
 }
 
 // eprint prints a message to stderr. Both stderr and stdout are flushed.
 pub fn eprint(s string) {
-	C.fflush(C.stdout)
-	C.fflush(C.stderr)
-	$if android {
+	$if freestanding {
+		// flushing is only a thing with C.FILE from stdio.h, not on the syscall level
 		if s.str == 0 {
-			C.fprintf(C.stderr, c'eprint(NIL)')
+			bare_eprint(c'eprint(NIL)\n', 12)
 		} else {
-			C.fprintf(C.stderr, c'%.*s', s.len, s.str)
+			bare_eprint(s.str, u64(s.len))
 		}
 	} $else $if ios {
 		// TODO: Implement a buffer as NSLog doesn't have a "print"
@@ -124,13 +143,23 @@ pub fn eprint(s string) {
 			C.WrappedNSLog(s.str)
 		}
 	} $else {
-		if s.str == 0 {
-			C.write(2, c'eprint(NIL)', 11)
-		} else {
-			C.write(2, s.str, s.len)
+		C.fflush(C.stdout)
+		C.fflush(C.stderr)
+		$if android {
+			if s.str == 0 {
+				C.fprintf(C.stderr, c'eprint(NIL)')
+			} else {
+				C.fprintf(C.stderr, c'%.*s', s.len, s.str)
+			}
+		} $else {
+			if s.str == 0 {
+				C.write(2, c'eprint(NIL)', 11)
+			} else {
+				C.write(2, s.str, s.len)
+			}
 		}
+		C.fflush(C.stderr)
 	}
-	C.fflush(C.stderr)
 }
 
 // print prints a message to stdout. Unlike `println` stdout is not automatically flushed.
@@ -141,6 +170,8 @@ pub fn print(s string) {
 	} $else $if ios {
 		// TODO: Implement a buffer as NSLog doesn't have a "print"
 		C.WrappedNSLog(s.str)
+	} $else $if freestanding {
+		bare_print(s.str, u64(s.len))
 	} $else {
 		C.write(1, s.str, s.len)
 	}
@@ -160,6 +191,9 @@ pub fn println(s string) {
 			C.fprintf(C.stdout, c'println(NIL)\n')
 		} $else $if ios {
 			C.WrappedNSLog(c'println(NIL)')
+		} $else $if freestanding {
+			bare_print(s.str, u64(s.len))
+			bare_print(c'println(NIL)\n', 13)
 		} $else {
 			C.write(1, c'println(NIL)\n', 13)
 		}
@@ -169,6 +203,9 @@ pub fn println(s string) {
 		C.fprintf(C.stdout, c'%.*s\n', s.len, s.str)
 	} $else $if ios {
 		C.WrappedNSLog(s.str)
+	} $else $if freestanding {
+		bare_print(s.str, u64(s.len))
+		bare_print(c'\n', 1)
 	} $else {
 		C.write(1, s.str, s.len)
 		C.write(1, c'\n', 1)
@@ -204,6 +241,14 @@ pub fn malloc(n int) &byte {
 		$if gcboehm ? {
 			unsafe {
 				res = C.GC_MALLOC(n)
+			}
+		} $else $if freestanding {
+			mut e := Errno{}
+			res, e = mm_alloc(u64(n))
+			if e != .enoerror {
+				eprint('malloc() failed: ')
+				eprintln(e.str())
+				panic('malloc() failed')
 			}
 		} $else {
 			res = unsafe { C.malloc(n) }
@@ -302,7 +347,7 @@ pub fn realloc_data(old_data &byte, old_size int, new_size int) &byte {
 // Unlike `v_calloc` vcalloc checks for negative values given in `n`.
 pub fn vcalloc(n int) &byte {
 	if n < 0 {
-		panic('calloc(<=0)')
+		panic('calloc(<0)')
 	} else if n == 0 {
 		return &byte(0)
 	}
@@ -310,6 +355,24 @@ pub fn vcalloc(n int) &byte {
 		return &byte(C.GC_MALLOC(n))
 	} $else {
 		return C.calloc(1, n)
+	}
+}
+
+// special versions of the above that allocate memory which is not scanned
+// for pointers (but is collected) when the Boehm garbage collection is used
+pub fn vcalloc_noscan(n int) &byte {
+	$if gcboehm ? {
+		$if vplayground ? {
+			if n > 10000 {
+				panic('allocating more than 10 KB is not allowed in the playground')
+			}
+		}
+		if n < 0 {
+			panic('calloc(<0)')
+		}
+		return &byte(unsafe { C.memset(C.GC_MALLOC_ATOMIC(n), 0, n) })
+	} $else {
+		return unsafe { vcalloc(n) }
 	}
 }
 
@@ -344,18 +407,6 @@ pub fn memdup(src voidptr, sz int) voidptr {
 	unsafe {
 		mem := malloc(sz)
 		return C.memcpy(mem, src, sz)
-	}
-}
-
-// is_atty returns 1 if the `fd` file descriptor is open and refers to a terminal
-pub fn is_atty(fd int) int {
-	$if windows {
-		mut mode := u32(0)
-		osfh := voidptr(C._get_osfhandle(fd))
-		C.GetConsoleMode(osfh, voidptr(&mode))
-		return int(mode)
-	} $else {
-		return C.isatty(fd)
 	}
 }
 

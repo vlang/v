@@ -328,7 +328,6 @@ fn (mut g Gen) gen_map_equality_fn(left ast.Type) string {
 			fn_builder.writeln('\t\tif (*(voidptr*)map_get(&b, k, &(voidptr[]){ 0 }) != v) {')
 		}
 		else {
-			println(kind)
 			fn_builder.writeln('\t\tif (*($ptr_value_typ*)map_get(&b, k, &($ptr_value_typ[]){ 0 }) != v) {')
 		}
 	}

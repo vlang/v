@@ -39,7 +39,7 @@ mut:
 * Texture functions
 *
 ******************************************************************************/
-fn create_texture(w int, h int, buf &byte) C.sg_image {
+fn create_texture(w int, h int, buf &u8) C.sg_image {
 	sz := w * h * 4
 	mut img_desc := C.sg_image_desc{
 		width: w
@@ -407,7 +407,8 @@ fn my_event_manager(mut ev gg.Event, mut app App) {
 * Main
 *
 ******************************************************************************/
-[console] // is needed for easier diagnostics on windows
+// is needed for easier diagnostics on windows
+[console]
 fn main() {
 	// App init
 	mut app := &App{

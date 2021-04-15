@@ -72,12 +72,6 @@ fn main() {
 pub fn (mut app App) index() vweb.Result {
 	return app.text('Hello world from vweb!')
 }
-
-pub fn (app &App) init() {
-}
-
-pub fn (app &App) init_once() {
-}
 ```
 
 Run it with
@@ -228,10 +222,10 @@ mut:
 
 
 
-Modify the `init_once()` method we created earlier to connect to a database:
+Add the `init_server()` method where we'll connect to a database:
 
 ```v oksyntax
-pub fn (mut app App) init_once() {
+pub fn (mut app App) init_server() {
 	db := sqlite.connect(':memory:') or { panic(err) }
 	db.exec('create table `Article` (id integer primary key, title text default "", text text default "")')
 	db.exec('insert into Article (title, text) values ("Hello, world!", "V is great.")')
@@ -240,7 +234,7 @@ pub fn (mut app App) init_once() {
 }
 ```
 
-Code in the `init_once()` function is run only once during app's startup, so we are going
+Code in the `init_server()` function is run only once during app's startup, so we are going
 to have one DB connection for all requests.
 
 Create a new file `article.v`:

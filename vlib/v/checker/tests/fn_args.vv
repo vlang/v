@@ -1,10 +1,10 @@
-fn u8(a byte) {}
+fn uu8(a byte) {}
 fn arr(a []int) {}
 fn fun(a fn(int)) {}
 
 fn basic() {
 	v := 4
-	u8(&v)
+	uu8(&v)
 	arr([5]!)
 	fun(fn(i &int){})
 }

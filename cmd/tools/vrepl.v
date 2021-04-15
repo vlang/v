@@ -26,7 +26,7 @@ mut:
 	vstartup_lines []string // lines in the `VSTARTUP` file
 }
 
-const is_stdin_a_pipe = (is_atty(0) == 0)
+const is_stdin_a_pipe = (os.is_atty(0) == 0)
 
 const vexe = os.getenv('VEXE')
 

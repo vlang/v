@@ -43,6 +43,9 @@ pub fn (mut p Parser) parse_array_type() ast.Type {
 		}
 		// sym := p.table.get_type_symbol(elem_type)
 		idx := p.table.find_or_register_array_fixed(elem_type, fixed_size)
+		if elem_type.has_flag(.generic) {
+			return ast.new_type(idx).set_flag(.generic)
+		}
 		return ast.new_type(idx)
 	}
 	// array
@@ -61,6 +64,9 @@ pub fn (mut p Parser) parse_array_type() ast.Type {
 		nr_dims++
 	}
 	idx := p.table.find_or_register_array_with_dims(elem_type, nr_dims)
+	if elem_type.has_flag(.generic) {
+		return ast.new_type(idx).set_flag(.generic)
+	}
 	return ast.new_type(idx)
 }
 
@@ -101,6 +107,9 @@ pub fn (mut p Parser) parse_map_type() ast.Type {
 		return 0
 	}
 	idx := p.table.find_or_register_map(key_type, value_type)
+	if key_type.has_flag(.generic) || value_type.has_flag(.generic) {
+		return ast.new_type(idx).set_flag(.generic)
+	}
 	return ast.new_type(idx)
 }
 
@@ -115,6 +124,9 @@ pub fn (mut p Parser) parse_chan_type() ast.Type {
 	is_mut := p.tok.kind == .key_mut
 	elem_type := p.parse_type()
 	idx := p.table.find_or_register_chan(elem_type, is_mut)
+	if elem_type.has_flag(.generic) {
+		return ast.new_type(idx).set_flag(.generic)
+	}
 	return ast.new_type(idx)
 }
 
@@ -140,16 +152,23 @@ pub fn (mut p Parser) parse_thread_type() ast.Type {
 	}
 	ret_type := p.parse_type()
 	idx := p.table.find_or_register_thread(ret_type)
+	if ret_type.has_flag(.generic) {
+		return ast.new_type(idx).set_flag(.generic)
+	}
 	return ast.new_type(idx)
 }
 
 pub fn (mut p Parser) parse_multi_return_type() ast.Type {
 	p.check(.lpar)
 	mut mr_types := []ast.Type{}
+	mut has_generic := false
 	for p.tok.kind != .eof {
 		mr_type := p.parse_type()
 		if mr_type.idx() == 0 {
 			break
+		}
+		if mr_type.has_flag(.generic) {
+			has_generic = true
 		}
 		mr_types << mr_type
 		if p.tok.kind == .comma {
@@ -164,6 +183,9 @@ pub fn (mut p Parser) parse_multi_return_type() ast.Type {
 		return mr_types[0]
 	}
 	idx := p.table.find_or_register_multi_return(mr_types)
+	if has_generic {
+		return ast.new_type(idx).set_flag(.generic)
+	}
 	return ast.new_type(idx)
 }
 

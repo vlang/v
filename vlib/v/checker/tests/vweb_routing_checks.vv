@@ -27,6 +27,7 @@ pub fn (mut app App) cow() vweb.Result {
 	return app.html('works')
 }
 
+/*
 pub fn (app App) init_once() {
 	//
 }
@@ -34,6 +35,7 @@ pub fn (app App) init_once() {
 pub fn (app App) init() {
 	//
 }
+*/
 
 pub fn (mut app App) index() {
 	app.html('hello')
