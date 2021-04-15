@@ -1,5 +1,6 @@
 import net.urllib
 import os
+import strconv
 import v.util
 import v.pref
 
@@ -31,7 +32,21 @@ fn get_v_build_output(is_verbose bool, is_yes bool, file_path string) string {
 		eprintln('unable to compile V in debug mode: $vdbg_result.output')
 	}
 	build_result := os.execute('"$vexe" $verbose_flag "$file_path"')
+	os.rm(vdbg_path) or {
+		if is_verbose {
+			eprintln('unable to delete `vdbg`: $err')
+		}
+	}
 	if !is_yes && build_result.exit_code == 0 {
+		mut generated_file := file_path.all_before_last('.')
+		$if windows {
+			generated_file += '.exe'
+		}
+		os.rm(generated_file) or {
+			if is_verbose {
+				eprintln('unable to delete generated file: $err')
+			}
+		}
 		confirm_or_exit('It looks like the compilation went well, do you want to continue ?')
 	}
 	return build_result.output
@@ -56,8 +71,8 @@ fn open_uri(uri string) ? {
 }
 
 fn confirm_or_exit(msg string) {
-	prompt := os.input_opt('$msg [Y/n]') or { 'y' }
-	if prompt != '' && prompt[0].to_lower() == `n` {
+	prompt := os.input_opt('$msg [Y/n] ') or { 'y' }
+	if prompt != '' && strconv.byte_to_lower(prompt[0]) == `n` {
 		exit(1)
 	}
 }
