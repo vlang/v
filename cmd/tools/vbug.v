@@ -19,7 +19,7 @@ fn get_vdoctor_output(is_verbose bool) string {
 }
 
 // get ouput from `v -g -o vdbg cmd/v && vdbg file.v`
-fn get_v_build_output(is_verbose bool, file_path string) string {
+fn get_v_build_output(is_verbose bool, is_yes bool, file_path string) string {
 	mut vexe := pref.vexe_path()
 	v_dir := os.dir(vexe)
 	verbose_flag := if is_verbose { '-v' } else { '' }
@@ -31,9 +31,9 @@ fn get_v_build_output(is_verbose bool, file_path string) string {
 		eprintln('unable to compile V in debug mode: $vdbg_result.output')
 	}
 	build_result := os.execute('"$vexe" $verbose_flag "$file_path"')
-	// if !is_yes && build_result.exit_code == 0 {
-	//
-	// }
+	if !is_yes && build_result.exit_code == 0 {
+		confirm_or_exit('It looks like the compilation went well, do you want to continue ?')
+	}
 	return build_result.output
 }
 
@@ -52,6 +52,13 @@ fn open_uri(uri string) ? {
 	result := os.execute(cmd)
 	if result.exit_code != 0 {
 		return error('unable to open url: $result.output')
+	}
+}
+
+fn confirm_or_exit(msg string) {
+	prompt := os.input_opt('$msg [Y/n]') or { 'y' }
+	if prompt != '' && prompt[0].to_lower() == `n` {
+		exit(1)
 	}
 }
 
@@ -99,22 +106,16 @@ fn main() {
 		''
 	}
 	// output from `v -g -o vdbg cmd/v && vdbg file.v`
-	build_output := get_v_build_output(is_verbose, file_path)
+	build_output := get_v_build_output(is_verbose, is_yes, file_path)
 	// ask the user if he wants to submit even after an error
 	if !is_yes && (vdoctor_output == '' || file_content == '' || build_output == '') {
-		prompt := os.input_opt('An error occured retrieving the information, do you want to continue ? [Y/n]') or { 'y' }
-		if prompt != '' && prompt[0] == `n` {
-			exit(1)
-		}
+		confirm_or_exit('An error occured retrieving the information, do you want to continue ?')
 	}
 	// open prefilled issue creation page, or print link as a fallback
 
 	// TODO Check that V is up-to-date and remove the relevant message at the start of the template
 	// if !is_yes && !is_v_up_to_date() {
-	// 	prompt := os.input_opt('It looks like your installation of V is outdated, we advise you to run `v up` before submitting an issue. Are you sure you want to continue ? [Y/n]') or { 'y' }
-	// 	if prompt != '' && prompt[0] == `n` {
-	// 		exit(1)
-	// 	}
+	//	confirm_or_exit('It looks like your installation of V is outdated, we advise you to run `v up` before submitting an issue. Are you sure you want to continue ?')
 	// }
 
 	// When updating this template, make sure to update `.github/ISSUE_TEMPLATE/bug_report.md` too
