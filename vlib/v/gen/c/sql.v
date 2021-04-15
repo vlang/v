@@ -901,7 +901,7 @@ fn (mut g Gen) table_gen(node ast.SqlStmt, typ SqlType) string {
 			for f in v {
 				tmp << '`$f`'
 			}
-			fields << '/* $k */UNIQUE(${tmp.join(', ')})'
+			fields << '/* ${k} */UNIQUE(${tmp.join(', ')})'
 		}
 	}
 	if typ == .mysql {

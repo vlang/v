@@ -140,6 +140,13 @@ pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
 		|| (lit.fills[i] && lit.fwidths[i] >= 0) || lit.fwidths[i] != 0
 		|| lit.precisions[i] != 987698
 	mut needs_braces := needs_fspec
+	for x in lit.exprs {
+		sx := x.str()
+		if sx.contains(r'"') || sx.contains(r"'") {
+			needs_braces = true
+			break
+		}
+	}
 	if !needs_braces {
 		if i + 1 < lit.vals.len && lit.vals[i + 1].len > 0 {
 			next_char := lit.vals[i + 1][0]
@@ -477,7 +484,7 @@ pub fn (node Stmt) str() string {
 }
 
 fn field_to_string(f ConstField) string {
-	return '${f.name.trim_prefix(f.mod + '.')} = $f.expr'
+	return '${f.name.trim_prefix(f.mod + '.')} = ${f.expr}'
 }
 
 pub fn (e CompForKind) str() string {
