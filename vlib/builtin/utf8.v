@@ -182,7 +182,7 @@ pub fn utf8_str_visible_length(s string) int {
 				if (r >= 0x0f9f8880 && r <= 0xf09f8a8f)
 					|| (r >= 0xf09f8c80 && r <= 0xf09f9c90)
 					|| (r >= 0xf09fa490 && r <= 0xf09fa7af)
-					|| (r >= 0xff0a08080 && r <= 0xf180807f) {
+					|| (r >= 0xf0a08080 && r <= 0xf180807f) {
 					l++
 				}
 			}
