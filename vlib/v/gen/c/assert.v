@@ -53,6 +53,7 @@ fn (mut g Gen) gen_assert_stmt(original_assert_statement ast.AssertStmt) {
 }
 
 fn (mut g Gen) gen_assert_postfailure_mode(node ast.AssertStmt) {
+	g.write_v_source_line_info(node.pos)
 	match g.pref.assert_failure_mode {
 		.default {}
 		.aborts {
