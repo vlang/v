@@ -1,6 +1,7 @@
 import sqlite
 import mysql
 
+[table: 'modules']
 struct Module {
 	id           int    [primary; sql: serial]
 	name         string
@@ -11,8 +12,8 @@ struct Module {
 struct User {
 	id             int    [primary; sql: serial]
 	age            int    [unique: 'user']
-	name           string [unique]
-	is_customer    bool   [unique: 'user']
+	name           string [sql: 'username'; unique]
+	is_customer    bool   [sql: 'abc'; unique: 'user']
 	skipped_string string [skip]
 }
 

@@ -135,7 +135,7 @@ fn (mut g Gen) sqlite3_stmt(node ast.SqlStmt, typ SqlType) {
 	if node.kind == .insert {
 		// build the object now (`x.name = ... x.id == ...`)
 		for i, field in node.fields {
-			if field.name == 'id' {
+			if g.get_sql_field_type(field) == ast.Type(-1) {
 				continue
 			}
 			x := '${node.object_var_name}.$field.name'
@@ -319,7 +319,7 @@ fn (mut g Gen) sqlite3_create_table(node ast.SqlStmt, typ SqlType) {
 }
 
 fn (mut g Gen) sqlite3_drop_table(node ast.SqlStmt, typ SqlType) {
-	table_name := util.strip_mod_name(g.table.get_type_symbol(node.table_expr.typ).name)
+	table_name := g.get_table_name(node.table_expr)
 	g.writeln('// sqlite3 table drop')
 	create_string := 'DROP TABLE $table_name;'
 	g.write('sqlite__DB_exec(')
@@ -381,7 +381,7 @@ fn (mut g Gen) mysql_stmt(node ast.SqlStmt, typ SqlType) {
 	g.writeln('memset($bind, 0, sizeof(MYSQL_BIND)*$g.sql_i);')
 	if node.kind == .insert {
 		for i, field in node.fields {
-			if field.name == 'id' {
+			if g.get_sql_field_type(field) == ast.Type(-1) {
 				continue
 			}
 			g.writeln('//$field.name ($field.typ)')
@@ -613,7 +613,7 @@ fn (mut g Gen) mysql_create_table(node ast.SqlStmt, typ SqlType) {
 }
 
 fn (mut g Gen) mysql_drop_table(node ast.SqlStmt, typ SqlType) {
-	table_name := util.strip_mod_name(g.table.get_type_symbol(node.table_expr.typ).name)
+	table_name := g.get_table_name(node.table_expr)
 	g.writeln('// mysql table drop')
 	create_string := 'DROP TABLE $table_name;'
 	tmp := g.new_tmp_var()
@@ -747,14 +747,14 @@ fn (mut g Gen) sql_expr_defaults(node ast.SqlExpr, sql_typ SqlType) {
 
 fn (mut g Gen) get_base_sql_select_query(node ast.SqlExpr) string {
 	mut sql_query := 'SELECT '
-	table_name := util.strip_mod_name(g.table.get_type_symbol(node.table_expr.typ).name)
+	table_name := g.get_table_name(node.table_expr)
 	if node.is_count {
 		// `select count(*) from User`
 		sql_query += 'COUNT(*) FROM `$table_name` '
 	} else {
 		// `select id, name, country from User`
 		for i, field in node.fields {
-			sql_query += '`$field.name`'
+			sql_query += '`${g.get_field_name(field)}`'
 			if i < node.fields.len - 1 {
 				sql_query += ', '
 			}
@@ -768,7 +768,7 @@ fn (mut g Gen) get_base_sql_select_query(node ast.SqlExpr) string {
 }
 
 fn (mut g Gen) sql_defaults(node ast.SqlStmt, typ SqlType) {
-	table_name := util.strip_mod_name(g.table.get_type_symbol(node.table_expr.typ).name)
+	table_name := g.get_table_name(node.table_expr)
 	if node.kind == .insert {
 		g.write('INSERT INTO `$table_name` (')
 	} else if node.kind == .update {
@@ -778,17 +778,17 @@ fn (mut g Gen) sql_defaults(node ast.SqlStmt, typ SqlType) {
 	}
 	if node.kind == .insert {
 		for i, field in node.fields {
-			if field.name == 'id' {
+			if g.get_sql_field_type(field) == ast.Type(-1) {
 				continue
 			}
-			g.write('`$field.name`')
+			g.write('`${g.get_field_name(field)}`')
 			if i < node.fields.len - 1 {
 				g.write(', ')
 			}
 		}
 		g.write(') values (')
 		for i, field in node.fields {
-			if field.name == 'id' {
+			if g.get_sql_field_type(field) == ast.Type(-1) {
 				continue
 			}
 			if typ == .sqlite3 {
@@ -804,7 +804,7 @@ fn (mut g Gen) sql_defaults(node ast.SqlStmt, typ SqlType) {
 		g.write(')')
 	} else if node.kind == .update {
 		for i, col in node.updated_columns {
-			g.write(' $col = ')
+			g.write(' ${g.get_field_name(g.get_struct_field(col))} = ')
 			g.expr_to_sql(node.update_exprs[i], typ)
 			if i < node.updated_columns.len - 1 {
 				g.write(', ')
@@ -822,11 +822,8 @@ fn (mut g Gen) sql_defaults(node ast.SqlStmt, typ SqlType) {
 
 fn (mut g Gen) table_gen(node ast.SqlStmt, typ SqlType) string {
 	typ_sym := g.table.get_type_symbol(node.table_expr.typ)
-	if typ_sym.info !is ast.Struct {
-		verror('Type `$typ_sym.name` has to be a struct')
-	}
-	struct_data := typ_sym.info as ast.Struct
-	table_name := typ_sym.name.split('.').last()
+	struct_data := typ_sym.struct_info()
+	table_name := g.get_table_name(node.table_expr)
 	mut create_string := 'CREATE TABLE IF NOT EXISTS `$table_name` ('
 
 	mut fields := []string{}
@@ -835,18 +832,20 @@ fn (mut g Gen) table_gen(node ast.SqlStmt, typ SqlType) string {
 	mut unique := map[string][]string{}
 
 	for field in struct_data.fields {
+		name := g.get_field_name(field)
 		mut is_primary := false
 		mut no_null := false
 		mut is_unique := false
+		mut is_skip := false
 		for attr in field.attrs {
 			match attr.name {
 				'primary' {
 					is_primary = true
-					primary = field.name
+					primary = name
 				}
 				'unique' {
 					if attr.arg != '' {
-						unique[attr.arg] << field.name
+						unique[attr.arg] << name
 					} else {
 						is_unique = true
 					}
@@ -854,12 +853,17 @@ fn (mut g Gen) table_gen(node ast.SqlStmt, typ SqlType) string {
 				'nonull' {
 					no_null = true
 				}
+				'skip' {
+					is_skip = true
+				}
 				else {}
 			}
 		}
+		if is_skip {
+			continue
+		}
 		mut stmt := ''
 		mut converted_typ := g.sql_type_from_v(typ, g.get_sql_field_type(field))
-		mut name := field.name
 		if converted_typ == '' {
 			if g.table.get_type_symbol(field.typ).kind == .struct_ {
 				converted_typ = g.sql_type_from_v(typ, ast.int_type)
@@ -873,8 +877,7 @@ fn (mut g Gen) table_gen(node ast.SqlStmt, typ SqlType) string {
 					}
 				})
 			} else {
-				eprintln(g.table.get_type_symbol(field.typ).kind)
-				verror('unknown type ($field.typ)')
+				verror('unknown type ($field.typ) for field $field.name in struct $table_name')
 				continue
 			}
 		}
@@ -963,7 +966,7 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr, typ SqlType) {
 			if g.sql_side == .left {
 				// println("sql gen left $expr.name")
 				g.sql_left_type = g.get_struct_field_typ(expr.name)
-				g.write(expr.name)
+				g.write(g.get_field_name(g.get_struct_field(expr.name)))
 			} else {
 				g.inc_sql_i(typ)
 				info := expr.info as ast.IdentVar
@@ -1071,7 +1074,7 @@ fn (mut g Gen) parse_db_from_type_string(name string) SqlType {
 fn (mut g Gen) get_sql_field_type(field ast.StructField) ast.Type {
 	mut typ := field.typ
 	for attr in field.attrs {
-		if attr.name == 'sql' && attr.arg != '' {
+		if attr.name == 'sql' && !attr.is_string_arg && attr.arg != '' {
 			if attr.arg.to_lower() == 'serial' {
 				typ = ast.Type(-1)
 				break
@@ -1080,4 +1083,38 @@ fn (mut g Gen) get_sql_field_type(field ast.StructField) ast.Type {
 		}
 	}
 	return typ
+}
+
+fn (mut g Gen) get_table_name(table_expr ast.TypeNode) string {
+	info := g.table.get_type_symbol(table_expr.typ).struct_info()
+	mut tablename := util.strip_mod_name(g.table.get_type_symbol(table_expr.typ).name)
+	for attr in info.attrs {
+		if attr.name == 'table' && attr.is_string_arg && attr.arg != '' {
+			tablename = attr.arg
+			break
+		}
+	}
+	return tablename
+}
+
+fn (mut g Gen) get_struct_field(name string) ast.StructField {
+	info := g.table.get_type_symbol(g.table.type_idxs[g.sql_table_name]).struct_info()
+	mut f := ast.StructField{}
+	for field in info.fields {
+		if field.name == name {
+			f = field
+		}
+	}
+	return f
+}
+
+fn (mut g Gen) get_field_name(field ast.StructField) string {
+	mut name := field.name
+	for attr in field.attrs {
+		if attr.name == 'sql' && attr.is_string_arg && attr.arg != '' {
+			name = attr.arg
+			break
+		}
+	}
+	return name
 }

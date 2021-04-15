@@ -9,10 +9,11 @@ struct Module {
 	nr_downloads int
 }
 
+[table: 'userlist']
 struct User {
-	id             int    [primary]
+	id             int    [primary; sql: serial]
 	age            int
-	name           string
+	name           string [sql: 'username']
 	is_customer    bool
 	skipped_string string [skip]
 }
@@ -28,9 +29,9 @@ fn test_orm_sqlite() {
 		create table User
 	}
 	name := 'Peter'
-	db.exec("insert into User (name, age) values ('Sam', 29)")
-	db.exec("insert into User (name, age) values ('Peter', 31)")
-	db.exec("insert into User (name, age, is_customer) values ('Kate', 30, 1)")
+	db.exec("insert into userlist (username, age) values ('Sam', 29)")
+	db.exec("insert into userlist (username, age) values ('Peter', 31)")
+	db.exec("insert into userlist (username, age, is_customer) values ('Kate', 30, 1)")
 
 	c := sql db {
 		select count from User where id != 1
@@ -144,6 +145,7 @@ fn test_orm_sqlite() {
 	sql db {
 		update User set age = 32, name = 'Kate N' where name == 'Kate'
 	}
+
 	mut kate3 := sql db {
 		select from User where id == 3
 	}
