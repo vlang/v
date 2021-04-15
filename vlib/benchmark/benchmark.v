@@ -200,7 +200,7 @@ pub fn (b &Benchmark) total_message(msg string) string {
 	if b.nskip > 0 {
 		tmsg += term.colorize(term.bold, term.colorize(term.yellow, '$b.nskip skipped')) + ', '
 	}
-	tmsg += '${b.ntotal} total. ${term.colorize(term.bold, 'Runtime:')} ${b.bench_timer.elapsed().microseconds() / 1000} ms.\n'
+	tmsg += '$b.ntotal total. ${term.colorize(term.bold, 'Runtime:')} ${b.bench_timer.elapsed().microseconds() / 1000} ms.\n'
 	return tmsg
 }
 
