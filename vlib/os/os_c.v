@@ -192,7 +192,7 @@ pub fn mv(src string, dst string) ? {
 	rdest := real_path(dst)
 	mut rdst := rdest
 	if is_dir(rdst) {
-		rdst = join_path(rdst.trim_right(path_separator), file_name(src.trim_right(path_separator)))
+		rdst = join_path(rdst.trim_right(path_separator), file_name(rsrc.trim_right(path_separator)))
 	}
 	$if windows {
 		w_src := rsrc.replace('/', '\\')
@@ -243,17 +243,17 @@ pub fn cp(src string, dst string) ? {
 			if C.write(fp_to, &buf[0], count) < 0 {
 				C.close(fp_to)
 				C.close(fp_from)
-				return error_with_code('cp: failed to write to $dst', int(-1))
+				return error_with_code('cp: failed to write to $rdst', int(-1))
 			}
 		}
 		from_attr := C.stat{}
 		unsafe {
-			C.stat(&char(src.str), &from_attr)
+			C.stat(&char(rsrc.str), &from_attr)
 		}
-		if C.chmod(&char(dst.str), from_attr.st_mode) < 0 {
+		if C.chmod(&char(rdst.str), from_attr.st_mode) < 0 {
 			C.close(fp_to)
 			C.close(fp_from)
-			return error_with_code('failed to set permissions for $dst', int(-1))
+			return error_with_code('failed to set permissions for $rdst', int(-1))
 		}
 		C.close(fp_to)
 		C.close(fp_from)
