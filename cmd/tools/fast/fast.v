@@ -54,11 +54,12 @@ fn main() {
 	date := time.unix(commit_date.int())
 	mut out := os.create('table.html') ?
 	// Place the new row on top
+	html_message := message.replace_each(['<', '&lt;', '>', '&gt;'])
 	table =
 		'<tr>
 		<td>$date.format()</td>
 		<td><a target=_blank href="https://github.com/vlang/v/commit/$commit">$commit</a></td>
-		<td>$message</td>
+		<td>$html_message</td>
 		<td>${diff1}ms</td>
 		<td>${diff2}ms</td>
 		<td>${diff3}ms</td>
