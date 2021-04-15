@@ -51,7 +51,8 @@ fn get_v_build_output(is_verbose bool, is_yes bool, file_path string) string {
 				}
 			}
 		}
-		run := is_yes || ask('It looks like the compilation went well, do you want to run the file?')
+		run := is_yes
+			|| ask('It looks like the compilation went well, do you want to run the file?')
 		if run {
 			result = os.execute('"$vexe" $verbose_flag run "$file_path"')
 			if result.exit_code == 0 && !is_yes {
@@ -76,7 +77,7 @@ fn open_uri(uri string) ? {
 	if result.exit_code != 0 {
 		$if linux {
 			// check if wsl, and use the windows approach if that's the case
-			if 'Microsoft' in os.execute('cat /proc/sys/kernel/osrelease').output {
+			if os.execute('cat /proc/sys/kernel/osrelease').output.contains('Microsoft') {
 				if os.execute('explorer.exe "$uri"').exit_code == 0 {
 					return
 				}
