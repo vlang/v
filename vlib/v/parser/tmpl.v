@@ -214,6 +214,10 @@ mut sb := strings.new_builder($lstartlength)\n
 			} else {
 				source.writeln('</div>')
 			}
+		} else if state == .js {
+			// replace `$` to `\$` at first to escape JavaScript template literal syntax
+			source.writeln(line.replace('$', '\\$').replace('$$', '@').replace('.$', '.@').replace("'",
+				"\\'"))
 		} else {
 			// HTML, may include `@var`
 			// escaped by cgen, unless it's a `vweb.RawHtml` string
