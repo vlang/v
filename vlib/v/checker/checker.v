@@ -736,9 +736,9 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) ast.Type {
 	right_type := c.expr(infix_expr.right)
 	// right_type = c.unwrap_genric(c.expr(infix_expr.right))
 	infix_expr.right_type = right_type
-	// if right_type in [ast.int_literal_type, ast.float_literal_type] {
-	// 	infix_expr.right_type = left_type
-	// }
+	if left_type.is_int() && !left_type.is_ptr() && right_type in [ast.int_literal_type, ast.float_literal_type] {
+		infix_expr.right_type = left_type
+	}
 	mut right := c.table.get_type_symbol(right_type)
 	right_final := c.table.get_final_type_symbol(right_type)
 	mut left := c.table.get_type_symbol(left_type)

@@ -210,11 +210,12 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		'-Wno-enum-conversion' /* used in vlib/sokol, where C enums in C structs are typed as V structs instead */,
 		'-Wno-sometimes-uninitialized' /* produced after exhaustive matches */,
 		'-Wno-shadow' /* the V compiler already catches this for user code, and enabling this causes issues with e.g. the `it` variable */,
-		'-Wno-int-to-void-pointer-cast'
+		'-Wno-int-to-void-pointer-cast',
+		'-Wno-int-to-pointer-cast' /* gcc version of the above */,
 		'-Wno-trigraphs' // see https://stackoverflow.com/a/8435413
 		'-Wno-missing-braces', // see https://stackoverflow.com/q/13746033
 
-		'-Wno-unknown-warning' /* if some C compiler does not understand a certain flag, it should just just ignore it */,
+		'-Wno-unknown-warning' /* if a C compiler does not understand a certain flag, it should just ignore it */,
 		'-Wno-unknown-warning-option' /* clang equivalent of the above */,
 
 		// enable additional warnings:

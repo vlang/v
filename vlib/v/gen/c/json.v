@@ -153,7 +153,7 @@ fn (mut g Gen) gen_struct_enc_dec(type_info ast.TypeInfo, styp string, mut enc s
 					tmp := g.new_tmp_var()
 					dec.writeln('\tOption_$field_type $tmp = $dec_name (js_get(root,"$name"));')
 					dec.writeln('\tif(${tmp}.state != 0) {')
-					dec.writeln('\t\treturn *(Option_$styp*) &$tmp;')
+					dec.writeln('\t\treturn (Option_$styp){ .state = ${tmp}.state, .err = ${tmp}.err, .data = {0} };')
 					dec.writeln('\t}')
 					dec.writeln('\tres.${c_name(field.name)} = *($field_type*) ${tmp}.data;')
 				}
@@ -162,7 +162,7 @@ fn (mut g Gen) gen_struct_enc_dec(type_info ast.TypeInfo, styp string, mut enc s
 				tmp := g.new_tmp_var()
 				dec.writeln('\tOption_$field_type $tmp = $dec_name (js_get(root,"$name"));')
 				dec.writeln('\tif(${tmp}.state != 0) {')
-				dec.writeln('\t\treturn *(Option_$styp*) &$tmp;')
+				dec.writeln('\t\treturn (Option_$styp){ .state = ${tmp}.state, .err = ${tmp}.err, .data = {0} };')
 				dec.writeln('\t}')
 				dec.writeln('\tres.${c_name(field.name)} = *($field_type*) ${tmp}.data;')
 			}
