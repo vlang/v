@@ -188,45 +188,47 @@ pub fn file_size(path string) u64 {
 
 // mv moves files or folders from `src` to `dst`.
 pub fn mv(src string, dst string) ? {
-	mut rdst := dst
+	rsrc := real_path(src)
+	rdest := real_path(dst)
+	mut rdst := rdest
 	if is_dir(rdst) {
 		rdst = join_path(rdst.trim_right(path_separator), file_name(src.trim_right(path_separator)))
 	}
 	$if windows {
-		w_src := src.replace('/', '\\')
+		w_src := rsrc.replace('/', '\\')
 		w_dst := rdst.replace('/', '\\')
 		ret := C._wrename(w_src.to_wide(), w_dst.to_wide())
 		if ret != 0 {
-			return error_with_code('failed to rename $src to $dst', int(ret))
+			return error_with_code('failed to rename $rsrc to $rdst', int(ret))
 		}
 	} $else {
-		ret := C.rename(&char(src.str), &char(rdst.str))
+		ret := C.rename(&char(rsrc.str), &char(rdst.str))
 		if ret != 0 {
-			return error_with_code('failed to rename $src to $dst', int(ret))
+			return error_with_code('failed to rename $rsrc to $rdst', int(ret))
 		}
 	}
 }
 
 // cp copies files or folders from `src` to `dst`.
 pub fn cp(src string, dst string) ? {
+	rsrc := real_path(src)
+	rdst := real_path(dst)
 	$if windows {
-		w_src := src.replace('/', '\\')
-		w_dst := dst.replace('/', '\\')
+		w_src := rsrc.replace('/', '\\')
+		w_dst := rdst.replace('/', '\\')
 		if C.CopyFile(w_src.to_wide(), w_dst.to_wide(), false) == 0 {
 			result := C.GetLastError()
-			return error_with_code('failed to copy $src to $dst', int(result))
+			return error_with_code('failed to copy $rsrc to $rdst', int(result))
 		}
 	} $else {
-		rsrc := real_path(src)
-		rdst := real_path(dst)
-		fp_from := C.open(&char(src.str), C.O_RDONLY)
+		fp_from := C.open(&char(rsrc.str), C.O_RDONLY)
 		if fp_from < 0 { // Check if file opened
-			return error_with_code('cp: failed to open $src', int(fp_from))
+			return error_with_code('cp: failed to open $rsrc', int(fp_from))
 		}
 		fp_to := C.open(&char(rdst.str), C.O_WRONLY | C.O_CREAT | C.O_TRUNC, C.S_IWUSR | C.S_IRUSR)
 		if fp_to < 0 { // Check if file opened (permissions problems ...)
 			C.close(fp_from)
-			return error_with_code('cp (permission): failed to write to $dst (fp_to: $fp_to)',
+			return error_with_code('cp (permission): failed to write to $rdst (fp_to: $fp_to)',
 				int(fp_to))
 		}
 		// TODO use defer{} to close files in case of error or return.
