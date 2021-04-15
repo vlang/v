@@ -450,14 +450,13 @@ pub fn is_readable(path string) bool {
 // rm removes file in `path`.
 pub fn rm(path string) ? {
 	mut rc := 0
-	p := real_path(path)
 	$if windows {
-		rc = C._wremove(p.to_wide())
+		rc = C._wremove(path.to_wide())
 	} $else {
-		rc = C.remove(&char(p.str))
+		rc = C.remove(&char(path.str))
 	}
 	if rc == -1 {
-		return error('Failed to remove "$p": ' + posix_get_error_msg(C.errno))
+		return error('Failed to remove "$path": ' + posix_get_error_msg(C.errno))
 	}
 	// C.unlink(path.cstr())
 }
@@ -722,12 +721,11 @@ pub fn is_dir(path string) bool {
 
 // is_link returns a boolean indicating whether `path` is a link.
 pub fn is_link(path string) bool {
-	p := real_path(path)
 	$if windows {
 		return false // TODO
 	} $else {
 		statbuf := C.stat{}
-		if C.lstat(&char(p.str), &statbuf) != 0 {
+		if C.lstat(&char(path.str), &statbuf) != 0 {
 			return false
 		}
 		return int(statbuf.st_mode) & s_ifmt == s_iflnk

@@ -97,9 +97,9 @@ fn init_os_args(argc int, argv &&byte) []string {
 pub fn ls(path string) ?[]string {
 	mut res := []string{}
 	pth := real_path(path)
-	dir := unsafe { C.opendir(&char(path.str)) }
+	dir := unsafe { C.opendir(&char(pth.str)) }
 	if isnil(dir) {
-		return error('ls() couldnt open dir "$path"')
+		return error('ls() couldnt open dir "$pth"')
 	}
 	mut ent := &C.dirent(0)
 	// mut ent := &C.dirent{!}
@@ -329,12 +329,12 @@ pub fn posix_set_permission_bit(path_s string, mode u32, enable bool) {
 	mut new_mode := u32(0)
 	path := &char(p.str)
 	unsafe {
-		C.stat(p, &s)
+		C.stat(path, &s)
 		new_mode = s.st_mode
 	}
 	match enable {
 		true { new_mode |= mode }
 		false { new_mode &= (0o7777 - mode) }
 	}
-	C.chmod(p, int(new_mode))
+	C.chmod(path, int(new_mode))
 }
