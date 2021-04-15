@@ -53,7 +53,7 @@ fn test_float_to_str() {
 		1e23,
 		f32_from_bits1(0x0080_0000), // smallest float32
 		math.max_f32,
-		383260575764816448,
+		383260575764816448.,
 	]
 
 	exp_result_f32 := [

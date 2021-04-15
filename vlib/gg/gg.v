@@ -336,8 +336,8 @@ pub fn new_context(cfg Config) &Context {
 		event_userdata_cb: gg_event_fn
 		fail_userdata_cb: gg_fail_fn
 		cleanup_userdata_cb: gg_cleanup_fn
-		window_title: cfg.window_title.str
-		html5_canvas_name: cfg.window_title.str
+		window_title: &char(cfg.window_title.str)
+		html5_canvas_name: &char(cfg.window_title.str)
 		width: cfg.width
 		height: cfg.height
 		sample_count: cfg.sample_count

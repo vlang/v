@@ -305,9 +305,9 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 			g.write('map_set(')
 		} else {
 			if node.is_setter {
-				g.write('(*(($elem_type_str*)map_get_and_set(')
+				g.write('(*(($elem_type_str*)map_get_and_set((map*)')
 			} else {
-				g.write('(*(($elem_type_str*)map_get(')
+				g.write('(*(($elem_type_str*)map_get((map*)')
 			}
 		}
 		if !left_is_ptr || node.left_type.has_flag(.shared_f) {
@@ -344,9 +344,9 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 		|| (g.is_assign_lhs && !g.is_arraymap_set && get_and_set_types) {
 		zero := g.type_default(info.value_type)
 		if node.is_setter {
-			g.write('(*($elem_type_str*)map_get_and_set(')
+			g.write('(*($elem_type_str*)map_get_and_set((map*)')
 		} else {
-			g.write('(*($elem_type_str*)map_get(')
+			g.write('(*($elem_type_str*)map_get((map*)')
 		}
 		if !left_is_ptr {
 			g.write('&')

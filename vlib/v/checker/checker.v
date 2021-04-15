@@ -736,6 +736,9 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) ast.Type {
 	right_type := c.expr(infix_expr.right)
 	// right_type = c.unwrap_genric(c.expr(infix_expr.right))
 	infix_expr.right_type = right_type
+	// if right_type in [ast.int_literal_type, ast.float_literal_type] {
+	// 	infix_expr.right_type = left_type
+	// }
 	mut right := c.table.get_type_symbol(right_type)
 	right_final := c.table.get_final_type_symbol(right_type)
 	mut left := c.table.get_type_symbol(left_type)
@@ -3686,6 +3689,11 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			c.error('range type can not be bool', node.cond.position())
 		} else if typ_idx == ast.string_type_idx || high_type_idx == ast.string_type_idx {
 			c.error('range type can not be string', node.cond.position())
+		}
+		if high_type in [ast.int_type, ast.int_literal_type] {
+			node.val_type = typ
+		} else {
+			node.val_type = high_type
 		}
 	} else {
 		sym := c.table.get_type_symbol(typ)

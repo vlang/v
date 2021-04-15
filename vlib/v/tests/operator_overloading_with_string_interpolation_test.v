@@ -58,12 +58,12 @@ fn test_operator_overloading_with_string_interpolation() {
 	assert a.x % b.x == g.x
 	assert a.y % b.y == g.y
 	////// /////
-	assert b > a == true
-	assert a < b == true
-	assert b >= a == true
-	assert a <= b == true
-	assert (Vec{2, 3} == Vec{3, 2}) == true
-	assert (Vec{2, 3} != Vec{3, 2}) == false
+	assert b > a
+	assert a < b
+	assert b >= a
+	assert a <= b
+	assert Vec{2, 3} == Vec{3, 2}
+	assert !(Vec{2, 3} != Vec{3, 2})
 	////// /////
 	assert c.str() == '{6, 8}'
 	assert d.str() == '{-2, -2}'

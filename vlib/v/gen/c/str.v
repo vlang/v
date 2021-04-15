@@ -275,7 +275,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 				g.write('($s)')
 			}
 		}
-		g.expr(expr)
+		g.expr_with_cast(expr, typ, typ)
 		if is_shared {
 			g.write('->val')
 		}
@@ -287,7 +287,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		str_fn_name := g.gen_str_for_type(typ)
 		g.write('${str_fn_name}(')
 		if sym.kind != .function {
-			g.expr(expr)
+			g.expr_with_cast(expr, typ, typ)
 		}
 		g.write(')')
 	}

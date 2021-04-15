@@ -58,11 +58,11 @@ fn C.sg_query_pipeline_info(pip C.sg_pipeline) C.sg_pipeline_info
 fn C.sg_query_pass_info(pass C.sg_pass) C.sg_pass_info
 
 // get resource creation desc struct with their default values replaced
-fn C.sg_query_buffer_defaults(desc &C.sg_buffer) C.sg_buffer_desc
-fn C.sg_query_image_defaults(desc &C.sg_image) C.sg_image_desc
-fn C.sg_query_shader_defaults(desc &C.sg_shader) C.sg_shader_desc
-fn C.sg_query_pipeline_defaults(desc &C.sg_pipeline) C.sg_pipeline_desc
-fn C.sg_query_pass_defaults(desc &C.sg_pass) C.sg_pass_desc
+fn C.sg_query_buffer_defaults(desc &C.sg_buffer_desc) C.sg_buffer_desc
+fn C.sg_query_image_defaults(desc &C.sg_image_desc) C.sg_image_desc
+fn C.sg_query_shader_defaults(desc &C.sg_shader_desc) C.sg_shader_desc
+fn C.sg_query_pipeline_defaults(desc &C.sg_pipeline_desc) C.sg_pipeline_desc
+fn C.sg_query_pass_defaults(desc &C.sg_pass_desc) C.sg_pass_desc
 
 /* rendering contexts (optional) */
 fn C.sg_setup_context() C.sg_context

@@ -666,7 +666,7 @@ fn (mut g Gen) register_chan_pop_optional_call(opt_el_type string, styp string) 
 static inline $opt_el_type __Option_${styp}_popval($styp ch) {
 	$opt_el_type _tmp = {0};
 	if (sync__Channel_try_pop_priv(ch, _tmp.data, false)) {
-		return ($opt_el_type){ .state = 2, .err = v_error(_SLIT("channel closed")) };
+		return ($opt_el_type){ .state = 2, .err = v_error(_SLIT("channel closed")), .data = {0} };
 	}
 	return _tmp;
 }')
@@ -680,7 +680,7 @@ fn (mut g Gen) register_chan_push_optional_call(el_type string, styp string) {
 		g.channel_definitions.writeln('
 static inline Option_void __Option_${styp}_pushval($styp ch, $el_type e) {
 	if (sync__Channel_try_push_priv(ch, &e, false)) {
-		return (Option_void){ .state = 2, .err = v_error(_SLIT("channel closed")) };
+		return (Option_void){ .state = 2, .err = v_error(_SLIT("channel closed")), .data = {0} };
 	}
 	return (Option_void){0};
 }')
@@ -1298,7 +1298,7 @@ fn (mut g Gen) write_defer_stmts() {
 	for i := g.defer_stmts.len - 1; i >= 0; i-- {
 		defer_stmt := g.defer_stmts[i]
 		g.writeln('// Defer begin')
-		g.writeln('if (${g.defer_flag_var(defer_stmt)} == true) {')
+		g.writeln('if (${g.defer_flag_var(defer_stmt)}) {')
 		g.indent++
 		if defer_stmt.ifdef.len > 0 {
 			g.writeln(defer_stmt.ifdef)
@@ -1424,7 +1424,7 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 	if node.is_range {
 		// `for x in 1..10 {`
 		i := if node.val_var == '_' { g.new_tmp_var() } else { c_name(node.val_var) }
-		g.write('for (int $i = ')
+		g.write('for (${g.typ(node.val_type)} $i = ')
 		g.expr(node.cond)
 		g.write('; $i < ')
 		g.expr(node.high)
@@ -1793,6 +1793,16 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	if expected_type.has_flag(.optional) && expr is ast.None {
 		g.gen_optional_error(expected_type, expr)
 		return
+	}
+	if expr is ast.IntegerLiteral {
+		if expected_type in [ast.u64_type, ast.u32_type, ast.u16_type] && expr.val[0] != `-` {
+			g.expr(expr)
+			g.write('U')
+			return
+		}
+	}
+	if exp_sym.kind == .function {
+		g.write('(voidptr)')
 	}
 	// no cast
 	g.expr(expr)
@@ -3657,7 +3667,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			// push a single element
 			elem_type_str := g.typ(info.elem_type)
 			elem_sym := g.table.get_type_symbol(info.elem_type)
-			g.write('array_push(')
+			g.write('array_push((array*)')
 			if !left_type.is_ptr() {
 				g.write('&')
 			}
@@ -3789,10 +3799,11 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			}
 			g.expr(node.left)
 			g.write(' $node.op.str() ')
-			if node.right_type.is_ptr() && node.right.is_auto_deref_var() {
-				g.write('*')
-			}
-			g.expr(node.right)
+			// if node.right_type.is_ptr() && node.right.is_auto_deref_var() {
+			// 	g.write('/*hello*/*')
+			// 	// g.write('*')
+			// }
+			g.expr_with_cast(node.right, node.right_type, node.left_type)
 			if need_par {
 				g.write(')')
 			}
@@ -4658,7 +4669,7 @@ fn (mut g Gen) gen_optional_error(target_type ast.Type, expr ast.Expr) {
 	styp := g.typ(target_type)
 	g.write('($styp){ .state=2, .err=')
 	g.expr(expr)
-	g.write(' }')
+	g.write(', .data={0} }')
 }
 
 fn (mut g Gen) return_stmt(node ast.Return) {

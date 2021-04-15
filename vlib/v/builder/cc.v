@@ -194,12 +194,43 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	// TODO : try and remove the below workaround options when the corresponding
 	// warnings are totally fixed/removed
 	ccoptions.args = [v.pref.cflags, '-std=gnu99']
-	ccoptions.wargs = ['-Wall', '-Wextra', '-Wno-unused', '-Wno-missing-braces', '-Walloc-zero',
-		'-Wcast-qual', '-Wdate-time', '-Wduplicated-branches', '-Wduplicated-cond', '-Wformat=2',
-		'-Winit-self', '-Winvalid-pch', '-Wjump-misses-init', '-Wlogical-op', '-Wmultichar',
-		'-Wnested-externs', '-Wnull-dereference', '-Wpacked', '-Wpointer-arith', '-Wshadow',
-		'-Wswitch-default', '-Wswitch-enum', '-Wno-unused-parameter', '-Wno-unknown-warning-option',
-		'-Wno-format-nonliteral',
+	ccoptions.wargs = [
+		'-Wall',
+		'-Wextra',
+		'-Werror',
+
+		// if anything, these should be a `v vet` warning instead:
+		'-Wno-unused-parameter',
+		'-Wno-unused',
+		'-Wno-type-limits',
+		'-Wno-tautological-compare',
+		'-Wno-tautological-bitwise-compare',
+
+		// these cause various issues:
+		'-Wno-enum-conversion' /* used in vlib/sokol, where C enums in C structs are typed as V structs instead */,
+		'-Wno-sometimes-uninitialized' /* produced after exhaustive matches */,
+		'-Wno-shadow' /* the V compiler already catches this for user code, and enabling this causes issues with e.g. the `it` variable */,
+		'-Wno-int-to-void-pointer-cast'
+		'-Wno-trigraphs' // see https://stackoverflow.com/a/8435413
+		'-Wno-missing-braces', // see https://stackoverflow.com/q/13746033
+
+		'-Wno-unknown-warning' /* if some C compiler does not understand a certain flag, it should just just ignore it */,
+		'-Wno-unknown-warning-option' /* clang equivalent of the above */,
+
+		// enable additional warnings:
+		'-Wdate-time',
+		'-Wduplicated-branches',
+		'-Wduplicated-cond',
+		'-Winit-self',
+		'-Winvalid-pch',
+		'-Wjump-misses-init',
+		'-Wlogical-op',
+		'-Wmultichar',
+		'-Wnested-externs',
+		'-Wnull-dereference',
+		'-Wpacked',
+		'-Wpointer-arith',
+		'-Wswitch-enum',
 	]
 	if v.pref.os == .ios {
 		ccoptions.args << '-fobjc-arc'

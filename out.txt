@@ -1,0 +1,576 @@
+---------------------------------- testing vlib --------------------------------
+OK    [  1/461]  2121.670 ms vlib/builtin/linux_bare/old/syscallwrapper_test.v
+OK    [  2/461]  2145.512 ms vlib/builtin/isnil_test.v
+OK    [  3/461]  2226.491 ms vlib/builtin/byte_test.v
+OK    [  4/461]  2377.076 ms vlib/arrays/arrays_test.v
+OK    [  5/461]  2431.058 ms vlib/builtin/float_test.v
+OK    [  6/461]  2595.627 ms vlib/builtin/int_test.v
+OK    [  7/461]  2868.647 ms vlib/bitfield/bitfield_test.v
+OK    [  8/461]  2709.217 ms vlib/builtin/map_of_floats_test.v
+OK    [  9/461]  4879.785 ms vlib/builtin/array_test.v
+OK    [ 10/461]  2712.114 ms vlib/builtin/sorting_test.v
+OK    [ 11/461]  2699.206 ms vlib/builtin/string_strip_margin_test.v
+OK    [ 12/461]  2753.197 ms vlib/builtin/utf8_test.v
+SKIP  [ 13/461]     0.001 ms vlib/context/deadline_test.v
+OK    [ 14/461]  3368.994 ms vlib/builtin/string_int_test.v
+OK    [ 15/461]  4970.790 ms vlib/builtin/string_test.v
+OK    [ 16/461]  3660.823 ms vlib/cli/command_test.v
+OK    [ 17/461]  3654.324 ms vlib/cli/flag_test.v
+OK    [ 18/461]  3702.703 ms vlib/context/cancel_test.v
+OK    [ 19/461]  4101.372 ms vlib/clipboard/clipboard_test.v
+OK    [ 20/461]  3615.629 ms vlib/context/empty_test.v
+OK    [ 21/461]  3956.575 ms vlib/context/value_test.v
+OK    [ 22/461]  2984.856 ms vlib/crypto/aes/aes_test.v
+OK    [ 23/461]  2472.699 ms vlib/crypto/md5/md5_test.v
+OK    [ 24/461]  2964.161 ms vlib/crypto/internal/subtle/comparison_test.v
+OK    [ 25/461]  3030.356 ms vlib/crypto/hmac/hmac_test.v
+OK    [ 26/461]  2513.419 ms vlib/crypto/rand/crypto_rand_read_test.v
+OK    [ 27/461]  2432.200 ms vlib/crypto/rc4/rc4_test.v
+OK    [ 28/461]  2717.113 ms vlib/crypto/sha1/sha1_test.v
+OK    [ 29/461]  3321.331 ms vlib/crypto/sha256/sha256_test.v
+OK    [ 30/461] 12441.414 ms vlib/builtin/map_test.v
+OK    [ 31/461]  3037.659 ms vlib/encoding/base64/base64_test.v
+OK    [ 32/461]  3147.643 ms vlib/dl/dl_test.v
+OK    [ 33/461]  3593.895 ms vlib/crypto/sha512/sha512_test.v
+OK    [ 34/461]  3401.684 ms vlib/encoding/base64/base64_memory_test.v
+OK    [ 35/461]  3349.054 ms vlib/encoding/csv/reader_test.v
+OK    [ 36/461]  3051.419 ms vlib/encoding/csv/writer_test.v
+OK    [ 37/461]  3210.553 ms vlib/encoding/utf8/east_asian/east_asian_width_test.v
+OK    [ 38/461]  2904.318 ms vlib/eventbus/eventbus_test.v
+OK    [ 39/461]  2982.616 ms vlib/encoding/utf8/encoding_utf8_test.v
+OK    [ 40/461]  3327.373 ms vlib/encoding/utf8/utf8_util_test.v
+OK    [ 41/461]  3173.556 ms vlib/glm/glm_test.v
+OK    [ 42/461]  3294.616 ms vlib/gg/m4/m4_test.v
+OK    [ 43/461]  3740.947 ms vlib/flag/flag_test.v
+OK    [ 44/461]  4167.542 ms vlib/gx/color_test.v
+OK    [ 45/461]  2924.082 ms vlib/hash/hash_wyhash_test.v
+OK    [ 46/461]  3479.029 ms vlib/hash/crc32/crc32_test.v
+OK    [ 47/461]  3120.895 ms vlib/hash/fnv1a/fnv1a_test.v
+OK    [ 48/461]  3191.965 ms vlib/io/os_file_reader_test.v
+OK    [ 49/461]  3436.774 ms vlib/io/reader_test.v
+OK    [ 50/461]  3632.188 ms vlib/io/util/util_test.v
+OK    [ 51/461]  3115.592 ms vlib/math/bits/bits_test.v
+OK    [ 52/461]  4301.276 ms vlib/json/json_test.v
+OK    [ 53/461]  3499.951 ms vlib/math/complex/complex_test.v
+OK    [ 54/461]  3151.426 ms vlib/math/factorial/factorial_test.v
+OK    [ 55/461]  3122.879 ms vlib/math/fractions/approximations_test.v
+OK    [ 56/461]  4705.560 ms vlib/math/big/big_test.v
+OK    [ 57/461]  3477.302 ms vlib/math/fractions/fraction_test.v
+OK    [ 58/461]  2547.989 ms vlib/math/mathutil/mathutil_test.v
+OK    [ 59/461]  3358.938 ms vlib/math/math_test.v
+OK    [ 60/461]  3221.024 ms vlib/math/stats/stats_test.v
+FAIL  [ 61/461]  3181.968 ms vlib/net/html/dom_test.v
+V panic: file is not opened
+v hash: d90be54
+                                                        | 0x5564c85303db | /tmp/v/test_session_4376356377761/dom_test(net__html__DocumentObjectModel_print_debug+0xbb) 
+                                                        | 0x5564c853193d | /tmp/v/test_session_4376356377761/dom_test(net__html__DocumentObjectModel_construct+0x36d) 
+                                                        | 0x5564c853250d | /tmp/v/test_session_4376356377761/dom_test(net__html__Parser_parse_html+0xdd) 
+                                                        | 0x5564c852bea4 | /tmp/v/test_session_4376356377761/dom_test(net__html__parse+0x474) 
+                                                        | 0x5564c852aab5 | /tmp/v/test_session_4376356377761/dom_test(net__html__test_search_by_tag_type+0x45) 
+                                                        | 0x5564c853893f | /tmp/v/test_session_4376356377761/dom_test(main+0x3f) 
+                                                        | 0x7feb8bf09b25 | /usr/lib/libc.so.6(__libc_start_main+0xd5) 
+                                                        | 0x5564c84fe56e | /tmp/v/test_session_4376356377761/dom_test(_start+0x2e)
+
+OK    [ 62/461]  3649.547 ms vlib/net/ftp/ftp_test.v
+FAIL  [ 63/461]  3275.913 ms vlib/net/html/html_test.v
+V panic: file is not opened
+v hash: d90be54
+                                                        | 0x55c3bb16babb | /tmp/v/test_session_4376356377761/html_test(net__html__DocumentObjectModel_print_debug+0xbb) 
+                                                        | 0x55c3bb16d01d | /tmp/v/test_session_4376356377761/html_test(net__html__DocumentObjectModel_construct+0x36d) 
+                                                        | 0x55c3bb16e06d | /tmp/v/test_session_4376356377761/html_test(net__html__Parser_parse_html+0xdd) 
+                                                        | 0x55c3bb16a4e4 | /tmp/v/test_session_4376356377761/html_test(net__html__parse+0x474) 
+                                                        | 0x55c3bb168964 | /tmp/v/test_session_4376356377761/html_test(net__html__test_parse+0x54) 
+                                                        | 0x55c3bb17449f | /tmp/v/test_session_4376356377761/html_test(main+0x3f) 
+                                                        | 0x7f78dd50cb25 | /usr/lib/libc.so.6(__libc_start_main+0xd5) 
+                                                        | 0x55c3bb13c56e | /tmp/v/test_session_4376356377761/html_test(_start+0x2e)
+
+FAIL  [ 64/461]  3458.697 ms vlib/net/html/parser_test.v
+V panic: file is not opened
+v hash: d90be54
+                                                        | 0x55afd7d5435b | /tmp/v/test_session_4376356377761/parser_test(net__html__DocumentObjectModel_print_debug+0xbb) 
+                                                        | 0x55afd7d558bd | /tmp/v/test_session_4376356377761/parser_test(net__html__DocumentObjectModel_construct+0x36d) 
+                                                        | 0x55afd7d530bd | /tmp/v/test_session_4376356377761/parser_test(net__html__Parser_parse_html+0xdd) 
+                                                        | 0x55afd7d52b65 | /tmp/v/test_session_4376356377761/parser_test(net__html__test_giant_string+0x5a5) 
+                                                        | 0x55afd7d5c349 | /tmp/v/test_session_4376356377761/parser_test(main+0x59) 
+                                                        | 0x7fe03eb38b25 | /usr/lib/libc.so.6(__libc_start_main+0xd5) 
+                                                        | 0x55afd7d2356e | /tmp/v/test_session_4376356377761/parser_test(_start+0x2e)
+
+OK    [ 65/461]  5148.504 ms vlib/net/http/cookie_test.v
+OK    [ 66/461]  4712.125 ms vlib/net/http/http_httpbin_test.v
+OK    [ 67/461]  3659.079 ms vlib/net/smtp/smtp_test.v
+OK    [ 68/461]  5230.774 ms vlib/net/http/header_test.v
+OK    [ 69/461]  4595.580 ms vlib/net/http/http_test.v
+OK    [ 70/461]  4492.988 ms vlib/net/http/status_test.v
+OK    [ 71/461]  3678.065 ms vlib/net/tcp_simple_client_server_test.v
+OK    [ 72/461]  3275.163 ms vlib/net/tcp_test.v
+OK    [ 73/461]  2381.653 ms vlib/os/cmdline/cmdline_test.v
+OK    [ 74/461]  3181.359 ms vlib/net/udp_test.v
+OK    [ 75/461]  3239.554 ms vlib/net/urllib/urllib_test.v
+OK    [ 76/461]  3434.387 ms vlib/net/unix/unix_test.v
+OK    [ 77/461]  3128.869 ms vlib/orm/orm_test.v
+OK    [ 78/461]  3094.730 ms vlib/os/environment_test.v
+OK    [ 79/461] 19325.577 ms vlib/io/custom_string_reading_test.v
+OK    [ 80/461]  2668.525 ms vlib/os/inode_test.v
+OK    [ 81/461]  3073.989 ms vlib/os/file_test.v
+OK    [ 82/461]  2523.436 ms vlib/os2/os2_test.v
+OK    [ 83/461]  3418.940 ms vlib/os/os_test.v
+OK    [ 84/461]  3578.843 ms vlib/rand/mt19937/mt19937_test.v
+OK    [ 85/461]  4358.216 ms vlib/os/process_test.v
+OK    [ 86/461]  3582.307 ms vlib/rand/musl/musl_rng_test.v
+OK    [ 87/461]  5303.598 ms vlib/rand/dist/dist_test.v
+OK    [ 88/461]  3246.211 ms vlib/rand/random_identifiers_test.v
+OK    [ 89/461]  3791.243 ms vlib/rand/pcg32/pcg32_test.v
+OK    [ 90/461]  3296.664 ms vlib/rand/splitmix64/splitmix64_test.v
+OK    [ 91/461]  3919.541 ms vlib/rand/random_numbers_test.v
+OK    [ 92/461]  3308.486 ms vlib/rand/util/util_test.v
+OK    [ 93/461]  3849.517 ms vlib/rand/sys/system_rng_test.v
+OK    [ 94/461]  3413.374 ms vlib/readline/readline_test.v
+OK    [ 95/461]  2954.866 ms vlib/runtime/runtime_test.v
+OK    [ 96/461]  3815.505 ms vlib/rand/wyrand/wyrand_test.v
+OK    [ 97/461]  3896.035 ms vlib/regex/regex_test.v
+OK    [ 98/461]  3291.400 ms vlib/sqlite/sqlite_test.v
+OK    [ 99/461]  3691.702 ms vlib/semver/semver_test.v
+OK    [100/461]  3333.240 ms vlib/strconv/atof_test.v
+OK    [101/461]  3330.430 ms vlib/strconv/atoi_test.v
+OK    [102/461]  2802.415 ms vlib/strconv/f32_f64_to_string_test.v
+OK    [103/461]  2956.755 ms vlib/strconv/format_test.v
+OK    [104/461]  3006.187 ms vlib/strconv/number_to_base_test.v
+OK    [105/461]  2908.914 ms vlib/strings/similarity_test.v
+OK    [106/461]  3268.161 ms vlib/strings/builder_test.v
+FAIL  [107/461]  1814.179 ms vlib/sync/atomic2/atomic_test.v
+/tmp/v/test_session_4376356377761/atomic_test.14183305598450502200.tmp.c:13269:33: error: incompatible pointer types passing 'u64 *' (aka 'unsigned long *') to parameter of type 'unsigned long long *' [-Werror,-Wincompatible-pointer-types]
+        u64 res = atomic_fetch_add_u64(ptr, delta);
+                                       ^~~
+/home/spaceface/git/v/kwv/thirdparty/stdatomic/nix/atomic.h:292:75: note: passing argument to parameter 'x' here
+static inline unsigned long long atomic_fetch_add_u64(unsigned long long* x, unsigned long long y) {
+                                                                          ^
+/tmp/v/test_session_4376356377761/atomic_test.14183305598450502200.tmp.c:13281:33: error: incompatible pointer types passing 'u64 *' (aka 'unsigned long *') to parameter of type 'unsigned long long *' [-Werror,-Wincompatible-pointer-types]
+        u64 res = atomic_fetch_sub_u64(ptr, delta);
+                                       ^~~
+/home/spaceface/git/v/kwv/thirdparty/stdatomic/nix/atomic.h:295:75: note: passing argument to parameter 'x' here
+static inline unsigned long long atomic_fetch_sub_u64(unsigned long long* x, unsigned long long y) {
+                                                                          ^
+/tmp/v/test_session_4376356377761/atomic_test.14183305598450502200.tmp.c:13293:33: error: incompatible pointer types passing 'i64 *' (aka 'long *') to parameter of type 'unsigned long long *' [-Werror,-Wincompatible-pointer-types]
+        u64 res = atomic_fetch_add_u64(ptr, delta);
+                                       ^~~
+/home/spaceface/git/v/kwv/thirdparty/stdatomic/nix/atomic.h:292:75: note: passing argument to parameter 'x' here
+static inline unsigned long long atomic_fetch_add_u64(unsigned long long* x, unsigned long long y) {
+                                                                          ^
+/tmp/v/test_session_4376356377761/atomic_test.14183305598450502200.tmp.c:13305:33: error: incompatible pointer types passing 'i64 *' (aka 'long *') to parameter of type 'unsigned long long *' [-Werror,-Wincompatible-pointer-types]
+        u64 res = atomic_fetch_sub_u64(ptr, delta);
+                                       ^~~
+/home/spaceface/git/v/kwv/thirdparty/stdatomic/nix/atomic.h:295:75: note: passing argument to parameter 'x' here
+static inline unsigned long long atomic_fetch_sub_u64(unsigned long long* x, unsigned long long y) {
+                                                                          ^
+/tmp/v/test_session_4376356377761/atomic_test.14183305598450502200.tmp.c:13317:19: error: incompatible pointer types passing 'u64 *' (aka 'unsigned long *') to parameter of type 'unsigned long long *' [-Werror,-Wincompatible-pointer-types]
+        atomic_store_u64(ptr, val);
+                         ^~~
+/home/spaceface/git/v/kwv/thirdparty/stdatomic/nix/atomic.h:280:57: note: passing argument to parameter 'x' here
+static inline void atomic_store_u64(unsigned long long* x, unsigned long long y) {
+                                                        ^
+/tmp/v/test_session_4376356377761/atomic_test.14183305598450502200.tmp.c:13321:31: error: incompatible pointer types passing 'u64 *' (aka 'unsigned long *') to parameter of type 'unsigned long long *' [-Werror,-Wincompatible-pointer-types]
+         u64 _t238 = atomic_load_u64(ptr);
+                                     ^~~
+/home/spaceface/git/v/kwv/thirdparty/stdatomic/nix/atomic.h:277:70: note: passing argument to parameter 'x' here
+static inline unsigned long long atomic_load_u64(unsigned long long* x) {
+                                                                     ^
+/tmp/v/test_session_4376356377761/atomic_test.14183305598450502200.tmp.c:13330:19: error: incompatible pointer types passing 'i64 *' (aka 'long *') to parameter of type 'unsigned long long *' [-Werror,-Wincompatible-pointer-types]
+        atomic_store_u64(ptr, val);
+                         ^~~
+/home/spaceface/git/v/kwv/thirdparty/stdatomic/nix/atomic.h:280:57: note: passing argument to parameter 'x' here
+static inline void atomic_store_u64(unsigned long long* x, unsigned long long y) {
+                                                        ^
+/tmp/v/test_session_4376356377761/atomic_test.14183305598450502200.tmp.c:13334:38: error: incompatible pointer types passing 'i64 *' (aka 'long *') to parameter of type 'unsigned long long *' [-Werror,-Wincompatible-pointer-types]
+         i64 _t239 = ((i64)(atomic_load_u64(ptr)));
+                                            ^~~
+/home/spaceface/git/v/kwv/thirdparty/stdatomic/nix/atomic.h:277:70: note: passing argument to parameter 'x' here
+static inline unsigned long long atomic_load_u64(unsigned long long* x) {
+                                                                     ^
+8 errors generated.
+builder error: 
+==================
+C error. This should never happen.
+
+If you were not working with C interop, this is a compiler bug, please raise an issue on GitHub:
+
+https://github.com/vlang/v/issues/new/choose
+
+You can also use #help on Discord: https://discord.gg/vlang
+
+OK    [108/461]  3291.770 ms vlib/strings/strings_test.v
+OK    [109/461]  3488.134 ms vlib/sync/array_rlock_test.v
+OK    [110/461]  3573.246 ms vlib/sync/channel_1_test.v
+OK    [111/461]  3503.487 ms vlib/sync/channel_3_test.v
+OK    [112/461]  3786.994 ms vlib/sync/channel_2_test.v
+OK    [113/461]  3360.705 ms vlib/sync/channel_4_test.v
+OK    [114/461]  3940.169 ms vlib/sync/channel_array_mut_test.v
+OK    [115/461]  3473.982 ms vlib/sync/channel_fill_test.v
+OK    [116/461]  3344.485 ms vlib/sync/channel_opt_propagate_test.v
+OK    [117/461]  3262.994 ms vlib/sync/channel_polling_test.v
+OK    [118/461]  5837.854 ms vlib/sync/channel_close_test.v
+OK    [119/461]  3322.575 ms vlib/sync/channel_push_or_1_test.v
+OK    [120/461]  3313.901 ms vlib/sync/channel_push_or_2_test.v
+OK    [121/461]  3398.176 ms vlib/sync/channel_select_2_test.v
+OK    [122/461]  3707.444 ms vlib/sync/channel_select_4_test.v
+OK    [123/461]  3991.857 ms vlib/sync/channel_select_3_test.v
+OK    [124/461]  4497.382 ms vlib/sync/channel_select_5_test.v
+OK    [125/461]  4119.552 ms vlib/sync/channel_select_6_test.v
+OK    [126/461]  3909.936 ms vlib/sync/channel_select_test.v
+OK    [127/461]  3803.335 ms vlib/sync/channel_try_unbuf_test.v
+OK    [128/461]  4488.206 ms vlib/sync/channel_try_buf_test.v
+OK    [129/461]  4018.732 ms vlib/sync/pool/pool_test.v
+OK    [130/461]  4016.085 ms vlib/sync/struct_chan_init_test.v
+OK    [131/461]  4475.917 ms vlib/sync/select_close_test.v
+OK    [132/461]  3386.654 ms vlib/time/misc/misc_test.v
+OK    [133/461]  3550.072 ms vlib/term/term_test.v
+OK    [134/461]  3520.076 ms vlib/time/operator_test.v
+OK    [135/461]  3444.194 ms vlib/time/private_test.v
+OK    [136/461]  4853.086 ms vlib/szip/szip_test.v
+OK    [137/461]  4028.075 ms vlib/time/parse_test.v
+OK    [138/461]  3767.307 ms vlib/time/stopwatch_test.v
+OK    [139/461]  3959.150 ms vlib/time/time_format_test.v
+OK    [140/461]  4130.506 ms vlib/time/time_test.v
+OK    [141/461]  3562.022 ms vlib/v/embed_file/embed_file_test.v
+OK    [142/461]  7166.985 ms vlib/v/ast/cflags_test.v
+OK    [143/461]  7992.657 ms vlib/v/ast/types_test.v
+OK    [144/461]  5790.180 ms vlib/v/gen/js/jsgen_test.v
+OK    [145/461] 13440.482 ms vlib/v/ast/walker/walker_test.v
+OK    [146/461] 11543.150 ms vlib/v/gen/x64/macho_test.v
+OK    [147/461]  6983.503 ms vlib/v/gen/x64/tests/x64_test.v
+OK    [148/461] 18916.424 ms vlib/v/doc/doc_test.v
+OK    [149/461] 16320.285 ms vlib/v/fmt/fmt_test.v
+OK    [150/461] 17543.781 ms vlib/v/fmt/fmt_keep_test.v
+OK    [151/461] 16581.352 ms vlib/v/fmt/fmt_vlib_test.v
+OK    [152/461]  5869.450 ms vlib/v/tests/alias_fixed_array_test.v
+OK    [153/461]  6200.028 ms vlib/v/tests/alias_array_operator_overloading_test.v
+OK    [154/461]  4383.191 ms vlib/v/tests/alias_in_a_struct_field_autostr_test.v
+OK    [155/461]  7494.067 ms vlib/v/pkgconfig/pkgconfig_test.v
+OK    [156/461] 11701.520 ms vlib/v/scanner/scanner_test.v
+OK    [157/461]  5682.996 ms vlib/v/tests/alias_map_operator_overloading_test.v
+OK    [158/461]  6360.838 ms vlib/v/tests/anon_fn_call_test.v
+OK    [159/461]  6173.251 ms vlib/v/tests/anon_fn_redefinition_test.v
+OK    [160/461]  6768.031 ms vlib/v/tests/anon_fn_in_containers_test.v
+OK    [161/461] 21177.918 ms vlib/v/live/live_test.v
+OK    [162/461]  6062.229 ms vlib/v/tests/anon_fn_returning_question_test.v
+OK    [163/461]  6579.634 ms vlib/v/tests/anon_fn_test.v
+OK    [164/461]  5779.076 ms vlib/v/tests/appending_to_mut_array_in_fn_param_test.v
+OK    [165/461]  5224.484 ms vlib/v/tests/array_cast_test.v
+OK    [166/461]  6573.500 ms vlib/v/tests/array_append_short_struct_test.v
+OK    [167/461]  6690.840 ms vlib/v/tests/array_equality_test.v
+OK    [168/461]  6043.758 ms vlib/v/tests/array_init_test.v
+OK    [169/461]  5770.334 ms vlib/v/tests/array_map_or_test.v
+OK    [170/461]  6050.352 ms vlib/v/tests/array_methods_test.v
+OK    [171/461]  6322.720 ms vlib/v/tests/array_map_ref_test.v
+OK    [172/461]  5653.699 ms vlib/v/tests/array_slice_test.v
+OK    [173/461] 27403.863 ms vlib/v/parser/v_parser_test.v
+OK    [174/461]  5285.699 ms vlib/v/tests/array_to_string_test.v
+OK    [175/461]  8100.690 ms vlib/v/tests/array_test.v
+OK    [176/461]  4330.536 ms vlib/v/tests/assert_with_newlines_test.v
+OK    [177/461]  5924.884 ms vlib/v/tests/array_type_alias_test.v
+OK    [178/461]  5987.815 ms vlib/v/tests/as_cast_is_expr_sumtype_fn_result_test.v
+OK    [179/461]  6324.056 ms vlib/v/tests/assert_sumtype_test.v
+OK    [180/461]  5668.846 ms vlib/v/tests/assign_bitops_with_type_aliases_test.v
+OK    [181/461]  6462.588 ms vlib/v/tests/attribute_test.v
+OK    [182/461]  5709.988 ms vlib/v/tests/backtrace_test.v
+OK    [183/461]  5750.828 ms vlib/v/tests/blank_ident_test.v
+OK    [184/461]  5994.513 ms vlib/v/tests/calling_module_functions_with_maps_of_arrays_test.v
+OK    [185/461]  7342.408 ms vlib/v/tests/autolock_array1_test.v
+OK    [186/461]  7796.995 ms vlib/v/tests/autolock_array2_test.v
+OK    [187/461]  5727.335 ms vlib/v/tests/cast_to_byte_test.v
+OK    [188/461]  5359.701 ms vlib/v/tests/cast_to_interface_test.v
+OK    [189/461]  3397.143 ms vlib/v/tests/comptime_field_selector_test.v
+OK    [190/461]  6153.082 ms vlib/v/tests/clash_var_name_of_array_and_map_test.v
+OK    [191/461]  5619.136 ms vlib/v/tests/comptime_at_test.v
+OK    [192/461]  5304.226 ms vlib/v/tests/comptime_call_test.v
+OK    [193/461]  6611.246 ms vlib/v/tests/complex_assign_test.v
+OK    [194/461]  5952.265 ms vlib/v/tests/comptime_bittness_and_endianess_test.v
+OK    [195/461]  6536.494 ms vlib/v/tests/comptime_for_test.v
+OK    [196/461]  4461.429 ms vlib/v/tests/comptime_method_args_test.v
+OK    [197/461]  6222.116 ms vlib/v/tests/comptime_if_is_test.v
+OK    [198/461]  5248.408 ms vlib/v/tests/const_can_use_optionals_test.v
+OK    [199/461]  7317.496 ms vlib/v/tests/comptime_if_expr_test.v
+OK    [200/461]  6870.041 ms vlib/v/tests/comptime_if_test_support_test.v
+OK    [201/461]  7812.270 ms vlib/v/tests/const_embed_test.v
+OK    [202/461]  5166.115 ms vlib/v/tests/const_eval_simple_int_expressions_at_comptime_test.v
+OK    [203/461]  4935.318 ms vlib/v/tests/conversions_test.v
+OK    [204/461]  5911.011 ms vlib/v/tests/const_init_order_test.v
+OK    [205/461]  5499.502 ms vlib/v/tests/const_test.v
+OK    [206/461]  5086.962 ms vlib/v/tests/cross_assign_test.v
+OK    [207/461]  4552.901 ms vlib/v/tests/cstrings_test.v
+OK    [208/461]  3654.768 ms vlib/v/tests/defer_test.v
+OK    [209/461]  2767.036 ms vlib/v/tests/differently_named_structs_test.v
+OK    [210/461]  2533.822 ms vlib/v/tests/enum_array_field_test.v
+OK    [211/461]  2867.038 ms vlib/v/tests/double_ref_deref_test.v
+OK    [212/461]  2854.233 ms vlib/v/tests/enum_bitfield_test.v
+OK    [213/461]  2742.509 ms vlib/v/tests/enum_default_value_in_struct_test.v
+OK    [214/461]  2650.708 ms vlib/v/tests/enum_hex_test.v
+OK    [215/461]  2867.531 ms vlib/v/tests/enum_test.v
+OK    [216/461]  2540.475 ms vlib/v/tests/filter_in_map_test.v
+OK    [217/461]  2609.731 ms vlib/v/tests/fixed_array_const_size_test.v
+OK    [218/461]  2768.513 ms vlib/v/tests/fixed_array_init_test.v
+OK    [219/461]  2735.097 ms vlib/v/tests/fixed_array_of_fn_test.v
+OK    [220/461]  2641.081 ms vlib/v/tests/fixed_array_test.v
+OK    [221/461]  2598.993 ms vlib/v/tests/fixed_array_to_string_test.v
+OK    [222/461]  2741.605 ms vlib/v/tests/fn_assignment_test.v
+OK    [223/461]  2717.623 ms vlib/v/tests/fn_cross_assign_test.v
+OK    [224/461]  2540.117 ms vlib/v/tests/fn_expecting_ref_but_returning_struct_test.v
+OK    [225/461]  2770.204 ms vlib/v/tests/fn_expecting_ref_but_returning_struct_time_module_test.v
+OK    [226/461]  2730.707 ms vlib/v/tests/fn_high_test.v
+OK    [227/461]  2635.818 ms vlib/v/tests/fn_index_direct_call_test.v
+OK    [228/461]  2620.806 ms vlib/v/tests/fn_multiple_returns_test.v
+OK    [229/461]  3159.832 ms vlib/v/tests/fn_mut_args_test.v
+OK    [230/461]  3257.139 ms vlib/v/tests/fn_shared_return_test.v
+OK    [231/461]  3086.865 ms vlib/v/tests/fn_test.v
+OK    [232/461]  2899.439 ms vlib/v/tests/fn_type_aliases_test.v
+OK    [233/461]  2949.380 ms vlib/v/tests/fn_with_fixed_array_function_args_test.v
+OK    [234/461]  2988.101 ms vlib/v/tests/for_c_multi_vars_test.v
+OK    [235/461]  3150.742 ms vlib/v/tests/fn_variadic_test.v
+OK    [236/461]  3093.684 ms vlib/v/tests/for_in_containers_of_fixed_array_test.v
+OK    [237/461]  2825.508 ms vlib/v/tests/for_in_mut_val_test.v
+OK    [238/461]  3200.795 ms vlib/v/tests/for_in_iterator_test.v
+OK    [239/461]  2915.026 ms vlib/v/tests/for_label_continue_break_test.v
+OK    [240/461]  2785.506 ms vlib/v/tests/for_loops_test.v
+OK    [241/461]  2836.600 ms vlib/v/tests/for_smartcast_test.v
+OK    [242/461]  3372.938 ms vlib/v/tests/for_loops_2_test.v
+OK    [243/461]  2797.759 ms vlib/v/tests/generic_fn_infer_test.v
+OK    [244/461]  2895.267 ms vlib/v/tests/generic_fn_infer_modifier_test.v
+OK    [245/461]  3584.880 ms vlib/v/tests/generic_chan_test.v
+OK    [246/461]  2776.689 ms vlib/v/tests/generic_fn_upper_name_type_test.v
+OK    [247/461]  3191.632 ms vlib/v/tests/generic_fn_returning_type_with_T_test.v
+OK    [248/461]  2758.652 ms vlib/v/tests/generic_functions_with_normal_function_test.v
+OK    [249/461]  3096.902 ms vlib/v/tests/generics_from_modules/inference_test.v
+OK    [250/461]  2678.007 ms vlib/v/tests/generics_in_big_struct_method_test.v
+OK    [251/461]  2846.367 ms vlib/v/tests/generics_method_test.v
+OK    [252/461]  2653.368 ms vlib/v/tests/generics_return_generics_struct_test.v
+OK    [253/461]  2681.476 ms vlib/v/tests/generics_return_multi_array_test.v
+OK    [254/461]  2690.082 ms vlib/v/tests/generics_struct_init_test.v
+OK    [255/461]  3153.680 ms vlib/v/tests/generics_test.v
+OK    [256/461]  2633.044 ms vlib/v/tests/generics_with_embed_generics_test.v
+OK    [257/461]  2780.355 ms vlib/v/tests/generics_with_generics_struct_receiver_test.v
+OK    [258/461]  3042.132 ms vlib/v/tests/go_array_wait_test.v
+OK    [259/461]  2537.256 ms vlib/v/tests/go_wait_1_test.v
+OK    [260/461]  3301.715 ms vlib/v/tests/go_call_generic_fn_test.v
+OK    [261/461]  2774.475 ms vlib/v/tests/go_handle_for_functions_returning_array_test.v
+OK    [262/461]  2473.469 ms vlib/v/tests/go_wait_3_test.v
+OK    [263/461]  3061.200 ms vlib/v/tests/go_wait_2_test.v
+OK    [264/461] 96506.736 ms vlib/v/compiler_errors_test.v
+OK    [265/461]  2761.597 ms vlib/v/tests/go_wait_option_test.v
+OK    [266/461]  2826.773 ms vlib/v/tests/goto_test.v
+OK    [267/461]  2886.847 ms vlib/v/tests/if_expr_of_optional_test.v
+OK    [268/461]  2984.033 ms vlib/v/tests/if_expression_test.v
+OK    [269/461]  2929.950 ms vlib/v/tests/if_smartcast_test.v
+OK    [270/461]  2695.881 ms vlib/v/tests/imported_symbols_test.v
+OK    [271/461]  3550.650 ms vlib/v/tests/if_guard_test.v
+OK    [272/461]  3345.479 ms vlib/v/tests/in_expression_test.v
+OK    [273/461]  2900.712 ms vlib/v/tests/infix_expr_test.v
+OK    [274/461]  2466.287 ms vlib/v/tests/int_cmp_test.v
+OK    [275/461]  2556.924 ms vlib/v/tests/interface_auto_str_gen_test.v
+OK    [276/461]  2747.975 ms vlib/v/tests/interface_edge_cases/assign_to_interface_field_test.v
+OK    [277/461]  2992.389 ms vlib/v/tests/interface_edge_cases/array_of_interfaces_test.v
+OK    [278/461]  3103.693 ms vlib/v/tests/interface_edge_cases/array_of_interfaces_with_utility_fn_test.v
+OK    [279/461]  3159.890 ms vlib/v/tests/interface_edge_cases/i1_test.v
+OK    [280/461]  3094.046 ms vlib/v/tests/interface_edge_cases/i4_test.v
+OK    [281/461]  3780.951 ms vlib/v/tests/interface_edge_cases/i2_test.v
+OK    [282/461]  3592.698 ms vlib/v/tests/interface_edge_cases/i3_test.v
+OK    [283/461]  3204.826 ms vlib/v/tests/interface_edge_cases/i5_test.v
+OK    [284/461]  3255.731 ms vlib/v/tests/interface_edge_cases/i6_test.v
+OK    [285/461]  3139.853 ms vlib/v/tests/interface_edge_cases/i7_test.v
+OK    [286/461]  3751.657 ms vlib/v/tests/interface_edge_cases/i8_test.v
+OK    [287/461]  3337.478 ms vlib/v/tests/interface_fields_typearray_test.v
+OK    [288/461]  3576.036 ms vlib/v/tests/interface_edge_cases/i9_test.v
+OK    [289/461]  3878.227 ms vlib/v/tests/interface_fields_test.v
+OK    [290/461]  3709.694 ms vlib/v/tests/interface_struct_test.v
+OK    [291/461]  3758.802 ms vlib/v/tests/interface_variadic_test.v
+OK    [292/461]  4027.637 ms vlib/v/tests/interface_test.v
+OK    [293/461] 12782.892 ms vlib/v/tests/inout/compiler_test.v
+OK    [294/461]  4759.135 ms vlib/v/tests/interfaces_map_test.v
+OK    [295/461]  4500.968 ms vlib/v/tests/interop_test.v
+OK    [296/461]  4131.421 ms vlib/v/tests/local_test.v
+OK    [297/461]  3693.302 ms vlib/v/tests/map_alias_key_test.v
+OK    [298/461]  5090.864 ms vlib/v/tests/keep_args_alive_test.v
+OK    [299/461]  4203.999 ms vlib/v/tests/map_complex_fixed_array_test.v
+OK    [300/461]  4475.901 ms vlib/v/tests/map_and_array_with_fns_test.v
+OK    [301/461]  3846.160 ms vlib/v/tests/map_enum_keys_test.v
+OK    [302/461]  3681.997 ms vlib/v/tests/map_high_order_assign_test.v
+OK    [303/461]  4363.226 ms vlib/v/tests/map_equality_test.v
+OK    [304/461]  3968.880 ms vlib/v/tests/map_mut_fn_test.v
+OK    [305/461]  4493.580 ms vlib/v/tests/map_key_expr_test.v
+OK    [306/461]  3535.495 ms vlib/v/tests/maps_equal_test.v
+OK    [307/461]  3867.445 ms vlib/v/tests/map_type_alias_test.v
+OK    [308/461]  4547.082 ms vlib/v/tests/map_to_string_test.v
+OK    [309/461]  4486.031 ms vlib/v/tests/match_expr_with_one_branch_test.v
+OK    [310/461]  4152.796 ms vlib/v/tests/match_expression_with_fn_names_in_branches_test.v
+OK    [311/461]  4402.799 ms vlib/v/tests/match_expression_for_types_test.v
+OK    [312/461]  3976.258 ms vlib/v/tests/match_in_fn_call_test.v
+OK    [313/461]  3770.774 ms vlib/v/tests/match_in_if_expression_test.v
+OK    [314/461]  3666.121 ms vlib/v/tests/match_interface_test.v
+OK    [315/461]  3978.183 ms vlib/v/tests/match_in_map_init_test.v
+OK    [316/461]  3933.703 ms vlib/v/tests/match_smartcast_test.v
+OK    [317/461]  4543.397 ms vlib/v/tests/match_sumtype_var_shadow_and_as_test.v
+OK    [318/461]  3833.017 ms vlib/v/tests/match_with_complex_exprs_in_branches_test.v
+OK    [319/461]  4063.243 ms vlib/v/tests/match_test.v
+OK    [320/461]  3980.471 ms vlib/v/tests/method_call_chain_test.v
+OK    [321/461]  3905.040 ms vlib/v/tests/methods_on_interfaces_test.v
+OK    [322/461]  4054.796 ms vlib/v/tests/modules/amodule/another_internal_module_test.v
+OK    [323/461]  4880.606 ms vlib/v/tests/module_type_cast_test.v
+OK    [324/461]  5891.766 ms vlib/v/tests/module_test.v
+OK    [325/461]  4570.471 ms vlib/v/tests/modules/methods_struct_another_module/methods_struct_test.v
+OK    [326/461]  4489.075 ms vlib/v/tests/modules/simplemodule/importing_test.v
+OK    [327/461]  5164.398 ms vlib/v/tests/modules/amodule/internal_module_test.v
+OK    [328/461]  4760.365 ms vlib/v/tests/multiple_assign_test.v
+OK    [329/461]  5144.650 ms vlib/v/tests/multiple_paths_in_vmodules/vmodules_overrides_test.v
+OK    [330/461]  5008.794 ms vlib/v/tests/multiret_with_ptrtype_test.v
+OK    [331/461]  4742.461 ms vlib/v/tests/mut_receiver_returned_as_reference_test.v
+OK    [332/461]  4672.327 ms vlib/v/tests/mut_test.v
+OK    [333/461]  4059.770 ms vlib/v/tests/nested_option_call_test.v
+OK    [334/461]  4334.516 ms vlib/v/tests/named_break_continue_test.v
+OK    [335/461]  4702.727 ms vlib/v/tests/nested_map_test.v
+OK    [336/461]  4591.205 ms vlib/v/tests/num_lit_call_method_test.v
+OK    [337/461]  4849.653 ms vlib/v/tests/offsetof_test.v
+OK    [338/461]  4739.777 ms vlib/v/tests/operator_overloading_cmp_test.v
+OK    [339/461]  4936.968 ms vlib/v/tests/operator_overloading_with_string_interpolation_test.v
+OK    [340/461]  4895.697 ms vlib/v/tests/option_2_test.v
+OK    [341/461]  3881.921 ms vlib/v/tests/option_if_assign_and_fallthrough_test.v
+OK    [342/461]  4333.479 ms vlib/v/tests/option_default_values_test.v
+OK    [343/461]  3858.793 ms vlib/v/tests/option_in_loop_test.v
+OK    [344/461]  4712.594 ms vlib/v/tests/option_print_errors_test.v
+OK    [345/461]  4970.142 ms vlib/v/tests/option_test.v
+OK    [346/461]  4530.007 ms vlib/v/tests/option_void_test.v
+OK    [347/461]  4482.772 ms vlib/v/tests/optional_assign_test.v
+OK    [348/461]  4717.051 ms vlib/v/tests/orm_sub_struct_test.v
+OK    [349/461]  4418.045 ms vlib/v/tests/parser_line_test.v
+OK    [350/461]  4001.518 ms vlib/v/tests/pointers_str_test.v
+OK    [351/461]  4815.122 ms vlib/v/tests/pointers_test.v
+OK    [352/461]  4162.683 ms vlib/v/tests/prefix_expr_test.v
+OK    [353/461]  4737.801 ms vlib/v/tests/print_test.v
+OK    [354/461]  4893.239 ms vlib/v/tests/printing_c_structs/string_interpolation_test.v
+OK    [355/461]  4216.529 ms vlib/v/tests/project_with_c_code_2/main2_test.v
+OK    [356/461]  4679.889 ms vlib/v/tests/project_with_c_code/main_test.v
+OK    [357/461]  5664.818 ms vlib/v/tests/profile/profile_test.v
+OK    [358/461]  4706.633 ms vlib/v/tests/project_with_modules_having_submodules/bin/a_program_under_bin_can_find_mod1_test.v
+OK    [359/461]  5212.741 ms vlib/v/tests/project_with_modules_having_submodules/tests/submodule_test.v
+OK    [360/461]  4470.658 ms vlib/v/tests/project_with_tests_for_main/my_other_test.v
+OK    [361/461]  4563.477 ms vlib/v/tests/project_with_tests_for_main/my_test.v
+OK    [362/461]  4686.427 ms vlib/v/tests/ptr_arithmetic_test.v
+OK    [363/461]  4384.752 ms vlib/v/tests/ref_return_test.v
+OK    [364/461]  4059.289 ms vlib/v/tests/repeated_multiret_values_test.v
+OK    [365/461]  5932.335 ms vlib/v/tests/ref_struct_test.v
+OK    [366/461]  4242.707 ms vlib/v/tests/return_voidptr_test.v
+OK    [367/461]  5001.234 ms vlib/v/tests/reserved_keywords_can_be_escaped_with_at_test.v
+OK    [368/461]  4287.542 ms vlib/v/tests/reusable_mut_multiret_values_test.v
+OK    [369/461]  4705.612 ms vlib/v/tests/run_v_code_from_stdin_test.v
+OK    [370/461]  5414.653 ms vlib/v/tests/semaphore_test.v
+OK    [371/461]  4817.915 ms vlib/v/tests/semaphore_timed_test.v
+OK    [372/461]  4515.541 ms vlib/v/tests/shared_array_test.v
+OK    [373/461]  3894.703 ms vlib/v/tests/shared_autolock_test.v
+OK    [374/461]  5419.812 ms vlib/v/tests/shared_arg_test.v
+OK    [375/461] 11549.726 ms vlib/v/tests/repl/repl_test.v
+OK    [376/461]  5399.593 ms vlib/v/tests/shared_elem_test.v
+OK    [377/461]  5479.716 ms vlib/v/tests/shared_fn_return_test.v
+OK    [378/461]  5118.536 ms vlib/v/tests/shared_lock_2_test.v
+OK    [379/461]  5326.495 ms vlib/v/tests/shared_lock_3_test.v
+OK    [380/461]  4947.933 ms vlib/v/tests/shared_lock_5_test.v
+OK    [381/461]  4826.497 ms vlib/v/tests/shared_lock_6_test.v
+OK    [382/461]  6200.664 ms vlib/v/tests/shared_lock_4_test.v
+OK    [383/461]  5208.956 ms vlib/v/tests/shared_lock_expr_test.v
+FAIL  [384/461]  2339.371 ms vlib/v/tests/shift_test.v
+/tmp/v/test_session_4376356377761/shift_test.16588589388606862179.tmp.c:14052:53: error: integer literal is too large to be represented in a signed integer type, interpreting as unsigned [-Werror,-Wimplicitly-unsigned-literal]
+                v_assert_meta_info__t335.rvalue = int_literal_str(9223372036854775808) /* typeof: v.ast.IntegerLiteral type: 27 */ ;
+                                                                  ^
+/tmp/v/test_session_4376356377761/shift_test.16588589388606862179.tmp.c:14065:53: error: integer literal is too large to be represented in a signed integer type, interpreting as unsigned [-Werror,-Wimplicitly-unsigned-literal]
+                v_assert_meta_info__t336.rvalue = int_literal_str(9223372036854775808) /* typeof: v.ast.IntegerLiteral type: 27 */ ;
+                                                                  ^
+2 errors generated.
+builder error: 
+==================
+C error. This should never happen.
+
+If you were not working with C interop, this is a compiler bug, please raise an issue on GitHub:
+
+https://github.com/vlang/v/issues/new/choose
+
+You can also use #help on Discord: https://discord.gg/vlang
+
+OK    [385/461]  5077.633 ms vlib/v/tests/shared_lock_test.v
+OK    [386/461]  4867.321 ms vlib/v/tests/shared_map_test.v
+OK    [387/461]  4124.544 ms vlib/v/tests/short_struct_param_syntax_test.v
+OK    [388/461]  4960.617 ms vlib/v/tests/shared_unordered_mixed_test.v
+OK    [389/461]  4130.930 ms vlib/v/tests/sizeof_2_test.v
+OK    [390/461]  4064.137 ms vlib/v/tests/sorting_by_different_criteria_test.v
+OK    [391/461]  5055.912 ms vlib/v/tests/sizeof_test.v
+OK    [392/461]  4005.053 ms vlib/v/tests/sorting_by_references_test.v
+OK    [393/461]  3686.322 ms vlib/v/tests/static_arrays_using_const_for_size_test.v
+OK    [394/461]  4346.456 ms vlib/v/tests/static_vars_test.v
+OK    [395/461]  4345.410 ms vlib/v/tests/string_alias_test.v
+OK    [396/461] 33082.190 ms vlib/v/tests/prod_test.v
+OK    [397/461]  5047.037 ms vlib/v/tests/str_gen_test.v
+OK    [398/461]  4102.149 ms vlib/v/tests/string_interpolation_alias_test.v
+OK    [399/461]  4583.785 ms vlib/v/tests/string_interpolation_custom_str_test.v
+OK    [400/461]  4845.488 ms vlib/v/tests/string_interpolation_array_test.v
+OK    [401/461]  4419.532 ms vlib/v/tests/string_interpolation_floats_test.v
+OK    [402/461]  3575.098 ms vlib/v/tests/string_interpolation_multi_return_test.v
+OK    [403/461]  4014.933 ms vlib/v/tests/string_interpolation_function_test.v
+OK    [404/461]  3615.015 ms vlib/v/tests/string_interpolation_of_array_of_structs_test.v
+OK    [405/461]  4426.799 ms vlib/v/tests/string_interpolation_shared_test.v
+OK    [406/461]  3768.635 ms vlib/v/tests/string_interpolation_string_args_test.v
+OK    [407/461]  2916.029 ms vlib/v/tests/string_interpolation_struct_test.v
+OK    [408/461]  2786.379 ms vlib/v/tests/string_interpolation_variadic_test.v
+OK    [409/461]  3174.109 ms vlib/v/tests/string_interpolation_test.v
+OK    [410/461]  2802.938 ms vlib/v/tests/string_struct_interpolation_test.v
+OK    [411/461]  2761.729 ms vlib/v/tests/strings_unicode_test.v
+OK    [412/461]  2744.322 ms vlib/v/tests/struct_allow_both_field_defaults_and_skip_flag_test.v
+OK    [413/461]  2626.546 ms vlib/v/tests/struct_chained_fields_correct_test.v
+OK    [414/461]  2680.439 ms vlib/v/tests/struct_child_field_default_test.v
+OK    [415/461]  2798.647 ms vlib/v/tests/struct_eq_op_only_test.v
+OK    [416/461]  2682.638 ms vlib/v/tests/struct_equality_test.v
+OK    [417/461]  3183.903 ms vlib/v/tests/struct_embed_test.v
+OK    [418/461]  2751.246 ms vlib/v/tests/struct_field_default_value_interface_cast_test.v
+OK    [419/461]  2730.640 ms vlib/v/tests/struct_field_default_value_sumtype_cast_test.v
+OK    [420/461]  2686.870 ms vlib/v/tests/struct_fields_storing_functions_test.v
+OK    [421/461]  2623.621 ms vlib/v/tests/struct_map_method_test.v
+OK    [422/461]  2738.056 ms vlib/v/tests/struct_test.v
+OK    [423/461]  2385.400 ms vlib/v/tests/struct_transmute_test.v
+OK    [424/461]  2539.978 ms vlib/v/tests/sum_type_common_fields_test.v
+OK    [425/461]  2357.220 ms vlib/v/tests/sumtype_calls_test.v
+OK    [426/461]  3029.153 ms vlib/v/tests/sum_type_test.v
+OK    [427/461]  2628.642 ms vlib/v/tests/sumtype_equality_test.v
+OK    [428/461]  2731.194 ms vlib/v/tests/sumtype_assign_test.v
+OK    [429/461]  2526.486 ms vlib/v/tests/sumtype_str_for_subtypes_with_str_test.v
+OK    [430/461]  3024.692 ms vlib/v/tests/sumtype_literal_test.v
+OK    [431/461]  2609.619 ms vlib/v/tests/supports__likely__test.v
+OK    [432/461]  3033.304 ms vlib/v/tests/sumtype_str_test.v
+OK    [433/461]  2853.845 ms vlib/v/tests/tmpl_test.v
+OK    [434/461]  3051.655 ms vlib/v/tests/type_alias_of_pointer_types_test.v
+OK    [435/461]  2846.210 ms vlib/v/tests/type_alias_str_method_override_test.v
+OK    [436/461]  3049.259 ms vlib/v/tests/type_alias_test.v
+OK    [437/461]  2655.217 ms vlib/v/tests/type_promotion_test.v
+OK    [438/461]  2874.705 ms vlib/v/tests/type_name_test.v
+OK    [439/461]  2957.747 ms vlib/v/tests/type_voidptr_test.v
+OK    [440/461]  2878.623 ms vlib/v/tests/typeof_simple_types_test.v
+OK    [441/461]  2469.079 ms vlib/v/tests/unsafe_test.v
+OK    [442/461]  2888.801 ms vlib/v/tests/typeof_test.v
+OK    [443/461]  2914.986 ms vlib/v/tests/vargs_auto_str_method_and_println_test.v
+OK    [444/461]  2579.788 ms vlib/v/tests/vargs_empty_param_test.v
+OK    [445/461]  2728.526 ms vlib/v/tests/vmod_parser_test.v
+OK    [446/461]  2682.861 ms vlib/v/tests/voidptr_to_u64_cast_a_test.v
+OK    [447/461]  2843.537 ms vlib/v/tests/voidptr_to_u64_cast_b_test.v
+OK    [448/461]  2681.033 ms vlib/v/tests/working_with_an_empty_struct_test.v
+OK    [449/461]  3232.522 ms vlib/v/vcache/vcache_test.v
+OK    [450/461]  3361.140 ms vlib/vweb/assets/assets_test.v
+OK    [451/461]  7439.102 ms vlib/v/tests/valgrind/valgrind_test.v
+OK    [452/461]  3296.441 ms vlib/x/json2/any_test.v
+SKIP  [453/461]     0.001 ms vlib/x/ttf/ttf_test.v
+OK    [454/461]  4451.176 ms vlib/vweb/route_test.v
+OK    [455/461]  3225.316 ms vlib/x/json2/decoder_test.v
+OK    [456/461]  4765.880 ms vlib/vweb/request_test.v
+OK    [457/461]  3102.022 ms vlib/x/json2/encoder_test.v
+OK    [458/461]  3063.251 ms vlib/x/json2/json2_test.v
+OK    [459/461]  5332.872 ms vlib/vweb/tests/vweb_test.v
+OK    [460/461]  2759.239 ms vlib/x/json2/scanner_test.v
+OK    [461/461]  5521.545 ms vlib/x/websocket/websocket_test.v
+--------------------------------------------------------------------------------
+Summary for testing vlib: 5 failed, 454 passed, 2 skipped, 461 total. Runtime: 263737 ms.
+
+
+WARNING: failed 5 times.
+

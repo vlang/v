@@ -150,7 +150,7 @@ fn propagate_cancel(parent Context, mut child Canceler) {
 		// parent has already been canceled
 		child.cancel(false, p.err)
 	} else {
-		p.children[child.id] = child
+		p.children[child.id] = *child
 	}
 }
 
