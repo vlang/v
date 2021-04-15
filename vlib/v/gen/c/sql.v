@@ -836,6 +836,7 @@ fn (mut g Gen) table_gen(node ast.SqlStmt, typ SqlType) string {
 		mut is_primary := false
 		mut no_null := false
 		mut is_unique := false
+		mut is_skip := false
 		for attr in field.attrs {
 			match attr.name {
 				'primary' {
@@ -852,8 +853,14 @@ fn (mut g Gen) table_gen(node ast.SqlStmt, typ SqlType) string {
 				'nonull' {
 					no_null = true
 				}
+				'skip' {
+					is_skip = true
+				}
 				else {}
 			}
+		}
+		if is_skip {
+			continue
 		}
 		mut stmt := ''
 		mut converted_typ := g.sql_type_from_v(typ, g.get_sql_field_type(field))
@@ -870,8 +877,7 @@ fn (mut g Gen) table_gen(node ast.SqlStmt, typ SqlType) string {
 					}
 				})
 			} else {
-				eprintln(g.table.get_type_symbol(field.typ).kind)
-				verror('unknown type ($field.typ)')
+				verror('unknown type ($field.typ) for field $field.name in struct $table_name')
 				continue
 			}
 		}
