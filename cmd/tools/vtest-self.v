@@ -5,8 +5,10 @@ import testing
 import v.pref
 
 const (
+	skip_test_files               = [
+		'vlib/context/deadline_test.v' /* sometimes blocks */,
+	]
 	skip_with_fsanitize_memory    = [
-		'vlib/context/deadline_test.v',
 		'vlib/net/tcp_simple_client_server_test.v',
 		'vlib/net/http/cookie_test.v',
 		'vlib/net/http/http_test.v',
@@ -29,7 +31,9 @@ const (
 		'vlib/regex/regex_test.v',
 		'vlib/x/websocket/websocket_test.v',
 	]
-	skip_with_fsanitize_undefined = []string{}
+	skip_with_fsanitize_undefined = [
+		'do_not_remove',
+	]
 	skip_with_werror              = [
 		'vlib/clipboard/clipboard_test.v',
 		'vlib/eventbus/eventbus_test.v',
@@ -79,9 +83,12 @@ const (
 		'vlib/x/websocket/websocket_test.v',
 		'vlib/x/ttf/ttf_test.v',
 	]
-	skip_with_asan_compiler       = []string{}
-	skip_with_msan_compiler       = []string{}
-	skip_test_files               = []string{}
+	skip_with_asan_compiler       = [
+		'do_not_remove',
+	]
+	skip_with_msan_compiler       = [
+		'do_not_remove',
+	]
 	skip_on_musl                  = [
 		'vlib/v/tests/profile/profile_test.v',
 	]
@@ -102,12 +109,13 @@ const (
 		'vlib/net/http/http_httpbin_test.v',
 		'vlib/net/http/header_test.v',
 	]
-	skip_on_linux                 = []string{}
+	skip_on_linux                 = [
+		'do_not_remove',
+	]
 	skip_on_non_linux             = [
-		'vlib/net/websocket/ws_test.v',
+		'do_not_remove',
 	]
 	skip_on_windows               = [
-		'vlib/context/deadline_test.v' /* blocks `windows-tcc` */,
 		'vlib/orm/orm_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/net/websocket/ws_test.v',
@@ -117,9 +125,15 @@ const (
 		'vlib/vweb/request_test.v',
 		'vlib/vweb/route_test.v',
 	]
-	skip_on_non_windows           = []string{}
-	skip_on_macos                 = []string{}
-	skip_on_non_macos             = []string{}
+	skip_on_non_windows           = [
+		'do_not_remove',
+	]
+	skip_on_macos                 = [
+		'do_not_remove',
+	]
+	skip_on_non_macos             = [
+		'do_not_remove',
+	]
 )
 
 // NB: musl misses openssl, thus the http tests can not be done there
