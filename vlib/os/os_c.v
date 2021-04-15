@@ -137,7 +137,8 @@ pub fn read_file(path string) ?string {
 
 // truncate changes the size of the file located in `path` to `len`.
 pub fn truncate(path string, len u64) ? {
-	fp := C.open(&char(real_path(path).str), o_wronly | o_trunc)
+	rpath := real_path(path)
+	fp := C.open(&char(rpath.str), o_wronly | o_trunc)
 	defer {
 		C.close(fp)
 	}
@@ -146,11 +147,11 @@ pub fn truncate(path string, len u64) ? {
 	}
 	$if windows {
 		if C._chsize_s(fp, len) != 0 {
-			return error('truncate file failed: ' + posix_get_error_msg(C.errno))
+			return error_with_code(posix_get_error_msg(C.errno), C.errno)
 		}
 	} $else {
 		if C.ftruncate(fp, len) != 0 {
-			return error('truncate file failed: ' + posix_get_error_msg(C.errno))
+			return error_with_code(posix_get_error_msg(C.errno), C.errno)
 		}
 	}
 }
@@ -216,12 +217,13 @@ pub fn cp(src string, dst string) ? {
 			return error_with_code('failed to copy $src to $dst', int(result))
 		}
 	} $else {
-		fp_from := C.open(&char(real_path(src).str), C.O_RDONLY)
+		rsrc := real_path(src)
+		rdst := real_path(dst)
+		fp_from := C.open(&char(src.str), C.O_RDONLY)
 		if fp_from < 0 { // Check if file opened
 			return error_with_code('cp: failed to open $src', int(fp_from))
 		}
-		fp_to := C.open(&char(real_path(dst).str), C.O_WRONLY | C.O_CREAT | C.O_TRUNC,
-			C.S_IWUSR | C.S_IRUSR)
+		fp_to := C.open(&char(rdst.str), C.O_WRONLY | C.O_CREAT | C.O_TRUNC, C.S_IWUSR | C.S_IRUSR)
 		if fp_to < 0 { // Check if file opened (permissions problems ...)
 			C.close(fp_from)
 			return error_with_code('cp (permission): failed to write to $dst (fp_to: $fp_to)',
@@ -873,7 +875,7 @@ pub fn chown(path string, owner int, group int) ? {
 			return error('os.chown() uid and gid cannot be negative: Not changing owner!')
 		} else {
 			if C.chown(&char(path.str), owner, group) != 0 {
-				return error('chown failed: ' + posix_get_error_msg(C.errno))
+				return error_with_code(posix_get_error_msg(C.errno), C.errno)
 			}
 		}
 	}
