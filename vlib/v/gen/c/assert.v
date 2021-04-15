@@ -33,9 +33,7 @@ fn (mut g Gen) gen_assert_stmt(original_assert_statement ast.AssertStmt) {
 		g.writeln('\tg_test_fails++;')
 		metaname_fail := g.gen_assert_metainfo(node)
 		g.writeln('\tmain__cb_assertion_failed(&$metaname_fail);')
-		if 'abort_on_assert' in g.pref.compile_defines_all {
-			g.writeln('\tabort();')
-		}
+		g.gen_assert_postfailure_mode(node)
 		g.writeln('\tlongjmp(g_jump_buffer, 1);')
 		g.writeln('\t// TODO')
 		g.writeln('\t// Maybe print all vars in a test function if it fails?')
@@ -48,11 +46,21 @@ fn (mut g Gen) gen_assert_stmt(original_assert_statement ast.AssertStmt) {
 		g.writeln(' {')
 		metaname_panic := g.gen_assert_metainfo(node)
 		g.writeln('\t__print_assert_failure(&$metaname_panic);')
-		if 'abort_on_assert' in g.pref.compile_defines_all {
-			g.writeln('\tabort();')
-		}
+		g.gen_assert_postfailure_mode(node)
 		g.writeln('\tv_panic(_SLIT("Assertion failed..."));')
 		g.writeln('}')
+	}
+}
+
+fn (mut g Gen) gen_assert_postfailure_mode(node ast.AssertStmt) {
+	match g.pref.assert_failure_mode {
+		.default {}
+		.aborts {
+			g.writeln('\tabort();')
+		}
+		.backtraces {
+			g.writeln('\tprint_backtrace();')
+		}
 	}
 }
 

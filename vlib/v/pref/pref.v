@@ -17,6 +17,12 @@ pub enum BuildMode {
 	build_module
 }
 
+pub enum AssertFailureMode {
+	default
+	aborts
+	backtraces
+}
+
 pub enum GarbageCollectionMode {
 	no_gc
 	boehm_full // full garbage collection mode
@@ -167,6 +173,7 @@ pub mut:
 	is_help             bool // -h, -help or --help was passed
 	gc_mode             GarbageCollectionMode = .no_gc // .no_gc, .boehm, .boehm_leak, ...
 	is_cstrict          bool                  // turn on more C warnings; slightly slower
+	assert_failure_mode AssertFailureMode // whether to call abort() or print_backtrace() after an assertion failure
 	// checker settings:
 	checker_match_exhaustive_cutoff_limit int = 10
 }
@@ -196,6 +203,23 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 				}
 				res.arch = target_arch_kind
 				res.build_options << '$arg $target_arch'
+			}
+			'-assert' {
+				assert_mode := cmdline.option(current_args, '-assert', '')
+				match assert_mode {
+					'aborts' {
+						res.assert_failure_mode = .aborts
+					}
+					'backtraces' {
+						res.assert_failure_mode = .backtraces
+					}
+					else {
+						eprintln('unknown assert mode `-gc $assert_mode`, supported modes are:`')
+						eprintln('  `-assert aborts`     .... calls abort() after assertion failure')
+						eprintln('  `-assert backtraces` .... calls print_backtrace() after assertion failure')
+						exit(1)
+					}
+				}
 			}
 			'-show-timings' {
 				res.show_timings = true
