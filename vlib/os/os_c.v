@@ -199,7 +199,7 @@ pub fn mv(src string, dst string) ? {
 			return error_with_code('failed to rename $src to $dst', int(ret))
 		}
 	} $else {
-		ret := C.rename(&char(src.str), &char(dst.str))
+		ret := C.rename(&char(src.str), &char(rdst.str))
 		if ret != 0 {
 			return error_with_code('failed to rename $src to $dst', int(ret))
 		}
