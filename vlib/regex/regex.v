@@ -1690,7 +1690,7 @@ pub fn (mut re RE) match_base(in_txt &byte, in_txt_len int ) (int,int) {
 		}
 
 		// we're out of text, manage it
-		if state.i > in_txt_len || m_state == .new_line {
+		if state.i >= in_txt_len || m_state == .new_line {
 			//println("Finished text!!")
 			src_end = true
 
