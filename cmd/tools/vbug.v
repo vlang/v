@@ -31,28 +31,38 @@ fn get_v_build_output(is_verbose bool, is_yes bool, file_path string) string {
 	} else {
 		eprintln('unable to compile V in debug mode: $vdbg_result.output')
 	}
-	build_result := os.execute('"$vexe" $verbose_flag "$file_path"')
-	os.rm(vdbg_path) or {
-		if is_verbose {
-			eprintln('unable to delete `vdbg`: $err')
-		}
-	}
-	if !is_yes && build_result.exit_code == 0 {
-		mut generated_file := file_path.all_before_last('.')
-		$if windows {
-			generated_file += '.exe'
-		}
-		os.rm(generated_file) or {
+	mut result := os.execute('"$vexe" $verbose_flag "$file_path"')
+	defer {
+		os.rm(vdbg_path) or {
 			if is_verbose {
-				eprintln('unable to delete generated file: $err')
+				eprintln('unable to delete `vdbg`: $err')
 			}
 		}
-		confirm_or_exit('It looks like the compilation went well, do you want to continue ?')
 	}
-	return build_result.output
+	if result.exit_code == 0 {
+		defer {
+			mut generated_file := file_path.all_before_last('.')
+			$if windows {
+				generated_file += '.exe'
+			}
+			os.rm(generated_file) or {
+				if is_verbose {
+					eprintln('unable to delete generated file: $err')
+				}
+			}
+		}
+		run := is_yes || ask('It looks like the compilation went well, do you want to run the file?')
+		if run {
+			result = os.execute('"$vexe" $verbose_flag run "$file_path"')
+			if result.exit_code == 0 && !is_yes {
+				confirm_or_exit('It looks like the file ran correctly as well, are you sure you want to continue?')
+			}
+		}
+	}
+	return result.output
 }
 
-// TODO move this to vlib ?
+// TODO move this to vlib?
 // open a uri using the default associated application
 fn open_uri(uri string) ? {
 	cmd := $if darwin {
@@ -64,13 +74,28 @@ fn open_uri(uri string) ? {
 	}
 	result := os.execute(cmd)
 	if result.exit_code != 0 {
+		$if linux {
+			// check if wsl, and use the windows approach if that's the case
+			if 'Microsoft' in os.execute('cat /proc/sys/kernel/osrelease').output {
+				if os.execute('explorer.exe "$uri"').exit_code == 0 {
+					return
+				}
+			}
+		}
 		return error('unable to open url: $result.output')
 	}
 }
 
-fn confirm_or_exit(msg string) {
+fn ask(msg string) bool {
 	prompt := os.input_opt('$msg [Y/n] ') or { 'y' }
 	if prompt != '' && strconv.byte_to_lower(prompt[0]) == `n` {
+		return false
+	}
+	return true
+}
+
+fn confirm_or_exit(msg string) {
+	if !ask(msg) {
 		exit(1)
 	}
 }
@@ -122,14 +147,15 @@ fn main() {
 	build_output := get_v_build_output(is_verbose, is_yes, file_path)
 	// ask the user if he wants to submit even after an error
 	if !is_yes && (vdoctor_output == '' || file_content == '' || build_output == '') {
-		confirm_or_exit('An error occured retrieving the information, do you want to continue ?')
+		confirm_or_exit('An error occured retrieving the information, do you want to continue?')
 	}
+
+	expected_result := os.input_opt('What did you expect to see? ') or { '' }
 	// open prefilled issue creation page, or print link as a fallback
 
-	// TODO Check that V is up-to-date and remove the relevant message at the start of the template
-	// if !is_yes && !is_v_up_to_date() {
-	//	confirm_or_exit('It looks like your installation of V is outdated, we advise you to run `v up` before submitting an issue. Are you sure you want to continue ?')
-	// }
+	if !is_yes && vdoctor_output.contains('behind V master') {
+		confirm_or_exit('It looks like your installation of V is outdated, we advise you to run `v up` before submitting an issue. Are you sure you want to continue?')
+	}
 
 	// When updating this template, make sure to update `.github/ISSUE_TEMPLATE/bug_report.md` too
 	raw_body := "<!-- Please make sure to run `v up` before reporting any issues as it may have already been fixed.
@@ -145,6 +171,7 @@ $vdoctor_output```
 
 **What did you expect to see?**
 
+$expected_result
 
 **What did you see instead?**
 ```
