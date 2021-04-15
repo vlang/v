@@ -211,10 +211,10 @@ static inline unsigned atomic_fetch_xor_u32(unsigned* x, unsigned y) {
 static inline unsigned short atomic_load_u16(unsigned short* x) {
 	return __atomic_load_2(x, memory_order_seq_cst);
 }
-static inline void atomic_store_u16(unsigned short* x, unsigned short y) {
+static inline void atomic_store_u16(void* x, unsigned short y) {
 	__atomic_store_2(x, y, memory_order_seq_cst);
 }
-static inline int atomic_compare_exchange_weak_u16(unsigned short* x, unsigned short* expected, unsigned short y) {
+static inline int atomic_compare_exchange_weak_u16(void* x, unsigned short* expected, unsigned short y) {
 	return (int)__atomic_compare_exchange_2(x, expected, y, memory_order_seq_cst, memory_order_seq_cst);
 }
 static inline int atomic_compare_exchange_strong_u16(unsigned short* x, unsigned short* expected, unsigned short y) {
