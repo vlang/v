@@ -6271,6 +6271,10 @@ fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) ast.Type {
 	c.ensure_type_exists(node.table_expr.typ, node.pos) or { return ast.void_type }
 	table_sym := c.table.get_type_symbol(node.table_expr.typ)
 	c.cur_orm_ts = table_sym
+	if table_sym.info !is ast.Struct {
+		c.error('unknown type `$table_sym.name`', node.pos)
+		return ast.void_type
+	}
 	info := table_sym.info as ast.Struct
 	fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, table_sym.name)
 	mut sub_structs := map[int]ast.SqlStmt{}
