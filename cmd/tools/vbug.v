@@ -24,8 +24,8 @@ fn get_v_build_output(is_verbose bool, is_yes bool, file_path string) string {
 	mut vexe := pref.vexe_path()
 	v_dir := os.dir(vexe)
 	verbose_flag := if is_verbose { '-v' } else { '' }
-	vdbg_path := $if windows { '${v_dir}/vdbg.exe' } $else { '${v_dir}/vdbg' }
-	vdbg_result := os.execute('"$vexe" $verbose_flag -g -o "$vdbg_path" ${v_dir}/cmd/v')
+	vdbg_path := $if windows { '$v_dir/vdbg.exe' } $else { '$v_dir/vdbg' }
+	vdbg_result := os.execute('"$vexe" $verbose_flag -g -o "$vdbg_path" $v_dir/cmd/v')
 	if vdbg_result.exit_code == 0 {
 		vexe = vdbg_path
 	} else {
@@ -59,10 +59,8 @@ fn open_uri(uri string) ? {
 		'open "$uri"'
 	} $else $if windows {
 		'explorer "$uri"'
-	} $else $if linux {
-		'xdg-open "$uri"'
 	} $else {
-		'' // TODO Can this happen ?
+		'xdg-open "$uri"'
 	}
 	result := os.execute(cmd)
 	if result.exit_code != 0 {
@@ -134,8 +132,8 @@ fn main() {
 	// }
 
 	// When updating this template, make sure to update `.github/ISSUE_TEMPLATE/bug_report.md` too
-	encoded_body := urllib.query_escape('<!-- Please make sure to run `v up` before reporting any issues as it may have already been fixed.
-     It\'s also advisable to update all relevant modules using `v outdated` and `v install` -->
+	encoded_body := urllib.query_escape("<!-- Please make sure to run `v up` before reporting any issues as it may have already been fixed.
+     It's also advisable to update all relevant modules using `v outdated` and `v install` -->
 
 **V doctor:**
 ```
@@ -152,10 +150,10 @@ $file_content
 
 **What did you see instead?**
 ```
-$build_output```')
+$build_output```")
 	// TODO GitHub probably won't accept URL with infinite size, this must be checked before hand
 	// TODO We can probably prefill the title with something too (`&title=`)
-	generated_uri := 'https://github.com/vlang/v/issues/new?labels=Bug&body=${encoded_body}'
+	generated_uri := 'https://github.com/vlang/v/issues/new?labels=Bug&body=$encoded_body'
 	open_uri(generated_uri) or {
 		if is_verbose {
 			eprintln(err)
