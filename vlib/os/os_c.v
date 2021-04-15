@@ -159,14 +159,15 @@ pub fn truncate(path string, len u64) ? {
 // file_size returns the size of the file located in `path`. In case of error -1 is returned.
 pub fn file_size(path string) u64 {
 	mut s := C.stat{}
+	p := real_path(path)
 	unsafe {
 		$if x64 {
 			$if windows {
 				mut swin := C.__stat64{}
-				C._wstat64(&char(path.to_wide()), voidptr(&swin))
+				C._wstat64(&char(p.to_wide()), voidptr(&swin))
 				return swin.st_size
 			} $else {
-				C.stat(&char(path.str), &s)
+				C.stat(&char(p.str), &s)
 				return u64(s.st_size)
 			}
 		}
@@ -175,10 +176,10 @@ pub fn file_size(path string) u64 {
 				println('Using os.file_size() on 32bit systems may not work on big files.')
 			}
 			$if windows {
-				C._wstat(path.to_wide(), voidptr(&s))
+				C._wstat(p.to_wide(), voidptr(&s))
 				return u64(s.st_size)
 			} $else {
-				C.stat(&char(path.str), &s)
+				C.stat(&char(p.str), &s)
 				return u64(s.st_size)
 			}
 		}
@@ -267,14 +268,15 @@ pub fn vfopen(path string, mode string) ?&C.FILE {
 	if path.len == 0 {
 		return error('vfopen called with ""')
 	}
+	p := real_path(path)
 	mut fp := voidptr(0)
 	$if windows {
-		fp = C._wfopen(real_path(path).to_wide(), mode.to_wide())
+		fp = C._wfopen(p.to_wide(), mode.to_wide())
 	} $else {
-		fp = C.fopen(&char(real_path(path).str), &char(mode.str))
+		fp = C.fopen(&char(p.str), &char(mode.str))
 	}
 	if isnil(fp) {
-		return error('failed to open file "$path"')
+		return error('failed to open file "$p"')
 	} else {
 		return fp
 	}
@@ -296,12 +298,13 @@ pub fn fileno(cfile voidptr) int {
 // vpopen system starts the specified command, waits for it to complete, and returns its code.
 fn vpopen(path string) voidptr {
 	// *C.FILE {
+	p := real_path(path)
 	$if windows {
 		mode := 'rb'
-		wpath := path.to_wide()
+		wpath := p.to_wide()
 		return C._wpopen(wpath, mode.to_wide())
 	} $else {
-		cpath := path.str
+		cpath := p.str
 		return C.popen(&char(cpath), c'r')
 	}
 }
@@ -389,16 +392,18 @@ pub fn system(cmd string) int {
 
 // exists returns true if `path` (file or directory) exists.
 pub fn exists(path string) bool {
+	pth := real_path(path)
 	$if windows {
-		p := path.replace('/', '\\')
+		p := pth.replace('/', '\\')
 		return C._waccess(p.to_wide(), f_ok) != -1
 	} $else {
-		return C.access(&char(path.str), f_ok) != -1
+		return C.access(&char(pth.str), f_ok) != -1
 	}
 }
 
 // is_executable returns `true` if `path` is executable.
 pub fn is_executable(path string) bool {
+	p := real_path(path)
 	$if windows {
 		// NB: https://docs.microsoft.com/en-us/cpp/c-runtime-library/reference/access-waccess?view=vs-2019
 		// i.e. there is no X bit there, the modes can be:
@@ -406,65 +411,68 @@ pub fn is_executable(path string) bool {
 		// 02 Write-only
 		// 04 Read-only
 		// 06 Read and write
-		p := real_path(path)
 		return (exists(p) && p.ends_with('.exe'))
 	}
 	$if solaris {
 		statbuf := C.stat{}
 		unsafe {
-			if C.stat(&char(path.str), &statbuf) != 0 {
+			if C.stat(&char(p.str), &statbuf) != 0 {
 				return false
 			}
 		}
 		return (int(statbuf.st_mode) & (s_ixusr | s_ixgrp | s_ixoth)) != 0
 	}
-	return C.access(&char(path.str), x_ok) != -1
+	return C.access(&char(p.str), x_ok) != -1
 }
 
 // is_writable returns `true` if `path` is writable.
 pub fn is_writable(path string) bool {
+	pth := real_path(path)
 	$if windows {
-		p := path.replace('/', '\\')
+		p := pth.replace('/', '\\')
 		return C._waccess(p.to_wide(), w_ok) != -1
 	} $else {
-		return C.access(&char(path.str), w_ok) != -1
+		return C.access(&char(pth.str), w_ok) != -1
 	}
 }
 
 // is_readable returns `true` if `path` is readable.
 pub fn is_readable(path string) bool {
+	pth := real_path(path)
 	$if windows {
-		p := path.replace('/', '\\')
+		p := pth.replace('/', '\\')
 		return C._waccess(p.to_wide(), r_ok) != -1
 	} $else {
-		return C.access(&char(path.str), r_ok) != -1
+		return C.access(&char(pth.str), r_ok) != -1
 	}
 }
 
 // rm removes file in `path`.
 pub fn rm(path string) ? {
 	mut rc := 0
+	p := real_path(path)
 	$if windows {
-		rc = C._wremove(path.to_wide())
+		rc = C._wremove(p.to_wide())
 	} $else {
-		rc = C.remove(&char(path.str))
+		rc = C.remove(&char(p.str))
 	}
 	if rc == -1 {
-		return error('Failed to remove "$path": ' + posix_get_error_msg(C.errno))
+		return error('Failed to remove "$p": ' + posix_get_error_msg(C.errno))
 	}
 	// C.unlink(path.cstr())
 }
 
 // rmdir removes a specified directory.
 pub fn rmdir(path string) ? {
+	p := real_path(path)
 	$if windows {
-		rc := C.RemoveDirectory(&char(path.to_wide()))
+		rc := C.RemoveDirectory(&char(p.to_wide()))
 		if rc == 0 {
 			// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-removedirectorya - 0 is failure
-			return error('Failed to remove "$path": ' + posix_get_error_msg(C.errno))
+			return error('Failed to remove "$p": ' + posix_get_error_msg(C.errno))
 		}
 	} $else {
-		rc := C.rmdir(&char(path.str))
+		rc := C.rmdir(&char(p.str))
 		if rc == -1 {
 			return error(posix_get_error_msg(C.errno))
 		}
@@ -690,8 +698,9 @@ pub fn executable() string {
 
 // is_dir returns a `bool` indicating whether the given `path` is a directory.
 pub fn is_dir(path string) bool {
+	p := real_path(path)
 	$if windows {
-		w_path := path.replace('/', '\\')
+		w_path := p.replace('/', '\\')
 		attr := C.GetFileAttributesW(w_path.to_wide())
 		if attr == u32(C.INVALID_FILE_ATTRIBUTES) {
 			return false
@@ -702,7 +711,7 @@ pub fn is_dir(path string) bool {
 		return false
 	} $else {
 		statbuf := C.stat{}
-		if unsafe { C.stat(&char(path.str), &statbuf) } != 0 {
+		if unsafe { C.stat(&char(p.str), &statbuf) } != 0 {
 			return false
 		}
 		// ref: https://code.woboq.org/gcc/include/sys/stat.h.html
@@ -713,11 +722,12 @@ pub fn is_dir(path string) bool {
 
 // is_link returns a boolean indicating whether `path` is a link.
 pub fn is_link(path string) bool {
+	p := real_path(path)
 	$if windows {
 		return false // TODO
 	} $else {
 		statbuf := C.stat{}
-		if C.lstat(&char(path.str), &statbuf) != 0 {
+		if C.lstat(&char(p.str), &statbuf) != 0 {
 			return false
 		}
 		return int(statbuf.st_mode) & s_ifmt == s_iflnk
@@ -726,10 +736,11 @@ pub fn is_link(path string) bool {
 
 // chdir changes the current working directory to the new directory in `path`.
 pub fn chdir(path string) {
+	p := real_path(path)
 	$if windows {
-		C._wchdir(path.to_wide())
+		C._wchdir(p.to_wide())
 	} $else {
-		C.chdir(&char(path.str))
+		C.chdir(&char(p.str))
 	}
 }
 
@@ -848,8 +859,9 @@ pub fn wait() int {
 // file_last_mod_unix returns the "last modified" time stamp of file in `path`.
 pub fn file_last_mod_unix(path string) int {
 	attr := C.stat{}
+	p := real_path(path)
 	// # struct stat attr;
-	unsafe { C.stat(&char(path.str), &attr) }
+	unsafe { C.stat(&char(p.str), &attr) }
 	// # stat(path.str, &attr);
 	return attr.st_mtime
 	// # return attr.st_mtime ;
@@ -863,7 +875,8 @@ pub fn flush() {
 // chmod change file access attributes of `path` to `mode`.
 // Octals like `0o600` can be used.
 pub fn chmod(path string, mode int) {
-	if C.chmod(&char(path.str), mode) != 0 {
+	p := real_path(path)
+	if C.chmod(&char(p.str), mode) != 0 {
 		panic('chmod failed: ' + posix_get_error_msg(C.errno))
 	}
 }
@@ -873,10 +886,11 @@ pub fn chown(path string, owner int, group int) ? {
 	$if windows {
 		return error('os.chown() not implemented for Windows')
 	} $else {
+		p := real_path(path)
 		if owner < 0 || group < 0 {
 			return error('os.chown() uid and gid cannot be negative: Not changing owner!')
 		} else {
-			if C.chown(&char(path.str), owner, group) != 0 {
+			if C.chown(&char(p.str), owner, group) != 0 {
 				return error_with_code(posix_get_error_msg(C.errno), C.errno)
 			}
 		}
@@ -886,20 +900,21 @@ pub fn chown(path string, owner int, group int) ? {
 // open_append opens `path` file for appending.
 pub fn open_append(path string) ?File {
 	mut file := File{}
+	p := real_path(path)
 	$if windows {
-		wpath := path.replace('/', '\\').to_wide()
+		wpath := p.replace('/', '\\').to_wide()
 		mode := 'ab'
 		file = File{
 			cfile: C._wfopen(wpath, mode.to_wide())
 		}
 	} $else {
-		cpath := path.str
+		cpath := p.str
 		file = File{
 			cfile: C.fopen(&char(cpath), c'ab')
 		}
 	}
 	if isnil(file.cfile) {
-		return error('failed to create(append) file "$path"')
+		return error('failed to create(append) file "$p"')
 	}
 	file.is_opened = true
 	return file

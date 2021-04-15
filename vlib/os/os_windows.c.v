@@ -314,15 +314,17 @@ fn C.CreateSymbolicLinkW(&u16, &u16, u32) int
 
 pub fn symlink(symlink_path string, target_path string) ?bool {
 	mut flags := 0
-	if is_dir(symlink_path) {
+	sp := real_path(symlink_path)
+	tp := real_path(target_path)
+	if is_dir(sp) {
 		flags |= 1
 	}
 	flags |= 2 // SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE
-	res := C.CreateSymbolicLinkW(symlink_path.to_wide(), target_path.to_wide(), flags)
+	res := C.CreateSymbolicLinkW(sp.to_wide(), tp.to_wide(), flags)
 	if res == 0 {
 		return error(get_error_msg(int(C.GetLastError())))
 	}
-	if !exists(symlink_path) {
+	if !exists(sp) {
 		return error('C.CreateSymbolicLinkW reported success, but symlink still does not exist')
 	}
 	return true
