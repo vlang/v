@@ -2248,7 +2248,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		has_generic_generic := generic_types.filter(it.has_flag(.generic)).len > 0
 		if !has_generic_generic {
 			// will be added in checker
-			p.table.register_fn_gen_type(field_name, generic_types)
+			p.table.register_fn_generic_types(field_name, generic_types)
 		}
 	}
 	if p.tok.kind == .lpar {

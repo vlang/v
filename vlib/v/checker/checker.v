@@ -1494,9 +1494,9 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 	if has_generic_generic {
 		if c.mod != '' {
 			// Need to prepend the module when adding a generic type to a function
-			c.table.register_fn_gen_type(c.mod + '.' + call_expr.name, generic_types)
+			c.table.register_fn_generic_types(c.mod + '.' + call_expr.name, generic_types)
 		} else {
-			c.table.register_fn_gen_type(call_expr.name, generic_types)
+			c.table.register_fn_generic_types(call_expr.name, generic_types)
 		}
 	}
 	// TODO: remove this for actual methods, use only for compiler magic
@@ -1715,7 +1715,7 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 		}
 		if method.generic_names.len != call_expr.generic_types.len {
 			// no type arguments given in call, attempt implicit instantiation
-			c.infer_fn_types(method, mut call_expr)
+			c.infer_fn_generic_types(method, mut call_expr)
 		}
 		if call_expr.generic_types.len > 0 && method.return_type != 0 {
 			if typ := c.table.resolve_generic_by_names(method.return_type, method.generic_names,
@@ -1937,9 +1937,9 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 	if has_generic_generic {
 		if c.mod != '' {
 			// Need to prepend the module when adding a generic type to a function
-			c.table.register_fn_gen_type(c.mod + '.' + fn_name, generic_types)
+			c.table.register_fn_generic_types(c.mod + '.' + fn_name, generic_types)
 		} else {
-			c.table.register_fn_gen_type(fn_name, generic_types)
+			c.table.register_fn_generic_types(fn_name, generic_types)
 		}
 	}
 	if fn_name == 'json.encode' {
@@ -2026,7 +2026,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 		os_name := 'os.$fn_name'
 		if f := c.table.find_fn(os_name) {
 			if f.generic_names.len == call_expr.generic_types.len {
-				c.table.fn_gen_types[os_name] = c.table.fn_gen_types['${call_expr.mod}.$call_expr.name']
+				c.table.fn_generic_types[os_name] = c.table.fn_generic_types['${call_expr.mod}.$call_expr.name']
 			}
 			call_expr.name = os_name
 			found = true
@@ -2220,7 +2220,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 	}
 	if func.generic_names.len != call_expr.generic_types.len {
 		// no type arguments given in call, attempt implicit instantiation
-		c.infer_fn_types(func, mut call_expr)
+		c.infer_fn_generic_types(func, mut call_expr)
 	}
 	if func.generic_names.len > 0 {
 		for i, call_arg in call_expr.args {
@@ -6326,13 +6326,13 @@ fn (mut c Checker) post_process_generic_fns() {
 	// Loop thru each generic function concrete type.
 	// Check each specific fn instantiation.
 	for i in 0 .. c.file.generic_fns.len {
-		if c.table.fn_gen_types.len == 0 {
+		if c.table.fn_generic_types.len == 0 {
 			// no concrete types, so just skip:
 			continue
 		}
 		mut node := c.file.generic_fns[i]
 		c.mod = node.mod
-		for gen_types in c.table.fn_gen_types[node.name] {
+		for gen_types in c.table.fn_generic_types[node.name] {
 			c.cur_generic_types = gen_types
 			c.fn_decl(mut node)
 			if node.name in ['vweb.run_app', 'vweb.run'] {
@@ -6350,7 +6350,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		// It will be processed later in c.post_process_generic_fns,
 		// after all other normal functions are processed.
 		// This is done so that all generic function calls can
-		// have a chance to populate c.table.fn_gen_types with
+		// have a chance to populate c.table.fn_generic_types with
 		// the correct concrete types.
 		c.file.generic_fns << node
 		return

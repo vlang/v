@@ -9,19 +9,19 @@ import v.util
 
 pub struct Table {
 pub mut:
-	type_symbols  []TypeSymbol
-	type_idxs     map[string]int
-	fns           map[string]Fn
-	dumps         map[int]string // needed for efficiently generating all _v_dump_expr_TNAME() functions
-	imports       []string       // List of all imports
-	modules       []string       // Topologically sorted list of all modules registered by the application
-	cflags        []cflag.CFlag
-	redefined_fns []string
-	fn_gen_types  map[string][][]Type // for generic functions
-	cmod_prefix   string // needed for ast.type_to_str(Type) while vfmt; contains `os.`
-	is_fmt        bool
-	used_fns      map[string]bool // filled in by the checker, when pref.skip_unused = true;
-	used_consts   map[string]bool // filled in by the checker, when pref.skip_unused = true;
+	type_symbols     []TypeSymbol
+	type_idxs        map[string]int
+	fns              map[string]Fn
+	dumps            map[int]string // needed for efficiently generating all _v_dump_expr_TNAME() functions
+	imports          []string       // List of all imports
+	modules          []string       // Topologically sorted list of all modules registered by the application
+	cflags           []cflag.CFlag
+	redefined_fns    []string
+	fn_generic_types map[string][][]Type // for generic functions
+	cmod_prefix      string // needed for ast.type_to_str(Type) while vfmt; contains `os.`
+	is_fmt           bool
+	used_fns         map[string]bool // filled in by the checker, when pref.skip_unused = true;
+	used_consts      map[string]bool // filled in by the checker, when pref.skip_unused = true;
 }
 
 pub struct Fn {
@@ -859,13 +859,13 @@ pub fn (t &Table) mktyp(typ Type) Type {
 	}
 }
 
-pub fn (mut t Table) register_fn_gen_type(fn_name string, types []Type) {
-	mut a := t.fn_gen_types[fn_name]
+pub fn (mut t Table) register_fn_generic_types(fn_name string, types []Type) {
+	mut a := t.fn_generic_types[fn_name]
 	if types in a {
 		return
 	}
 	a << types
-	t.fn_gen_types[fn_name] = a
+	t.fn_generic_types[fn_name] = a
 }
 
 // TODO: there is a bug when casting sumtype the other way if its pointer
