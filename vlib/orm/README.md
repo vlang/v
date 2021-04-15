@@ -11,7 +11,6 @@
 - `[primary]` sets the field as the primary key
 - `[unique]` sets the field as unique
 - `[unique: 'foo']` adds the field to a unique group
-- `[nonull]` field will be `NOT NULL` in table creation
 - `[skip]` field will be skipped
 - `[sql: type]` sets the type which is used in sql (special type `serial`)
 - `[sql: 'name']` sets a custom column name for the field

@@ -1,7 +1,7 @@
 import sqlite
 import mysql
 
-[tablename: 'modules']
+[table: 'modules']
 struct Module {
 	id           int    [primary; sql: serial]
 	name         string

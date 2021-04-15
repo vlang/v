@@ -9,7 +9,7 @@ struct Module {
 	nr_downloads int
 }
 
-[tablename: 'userlist']
+[table: 'userlist']
 struct User {
 	id             int    [primary; sql: serial]
 	age            int
