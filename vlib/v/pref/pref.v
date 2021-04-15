@@ -166,6 +166,7 @@ pub mut:
 	cache_manager       vcache.CacheManager
 	is_help             bool // -h, -help or --help was passed
 	gc_mode             GarbageCollectionMode = .no_gc // .no_gc, .boehm, .boehm_leak, ...
+	is_cstrict          bool                  // turn on more C warnings; slightly slower
 	// checker settings:
 	checker_match_exhaustive_cutoff_limit int = 10
 }
@@ -226,6 +227,9 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			}
 			'-silent' {
 				res.output_mode = .silent
+			}
+			'-cstrict' {
+				res.is_cstrict = true
 			}
 			'-gc' {
 				gc_mode := cmdline.option(current_args, '-gc', '')

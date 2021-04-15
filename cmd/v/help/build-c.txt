@@ -16,6 +16,10 @@ see also `v help build`.
       Pass the provided flag as is to the C compiler.
       Can be specified multiple times to provide multiple flags.
       Use quotes to wrap the flag argument if it contains spaces.
+      
+   -cstrict
+      Turn on additional C warnings. This slows down compilation
+      slightly (~10-10% for gcc), but sometimes provides better diagnosis.
 
    -showcc
       Prints the C command that is used to build the program.
