@@ -53,10 +53,9 @@ pub fn open_file(path string, mode string, options ...int) ?File {
 			permission = 0x0100 | 0x0080
 		}
 	}
-	pth := real_path(path)
-	mut p := pth
+	mut p := path
 	$if windows {
-		p = pth.replace('/', '\\')
+		p = path.replace('/', '\\')
 	}
 	fd := C.open(&char(p.str), flags, permission)
 	if fd == -1 {
@@ -64,7 +63,7 @@ pub fn open_file(path string, mode string, options ...int) ?File {
 	}
 	cfile := C.fdopen(fd, &char(mode.str))
 	if isnil(cfile) {
-		return error('Failed to open or create file "$pth"')
+		return error('Failed to open or create file "$path"')
 	}
 	return File{
 		cfile: cfile

@@ -137,8 +137,7 @@ pub fn read_file(path string) ?string {
 
 // truncate changes the size of the file located in `path` to `len`.
 pub fn truncate(path string, len u64) ? {
-	rpath := real_path(path)
-	fp := C.open(&char(rpath.str), o_wronly | o_trunc)
+	fp := C.open(&char(path.str), o_wronly | o_trunc)
 	defer {
 		C.close(fp)
 	}
@@ -159,15 +158,14 @@ pub fn truncate(path string, len u64) ? {
 // file_size returns the size of the file located in `path`. In case of error -1 is returned.
 pub fn file_size(path string) u64 {
 	mut s := C.stat{}
-	p := real_path(path)
 	unsafe {
 		$if x64 {
 			$if windows {
 				mut swin := C.__stat64{}
-				C._wstat64(&char(p.to_wide()), voidptr(&swin))
+				C._wstat64(&char(path.to_wide()), voidptr(&swin))
 				return swin.st_size
 			} $else {
-				C.stat(&char(p.str), &s)
+				C.stat(&char(path.str), &s)
 				return u64(s.st_size)
 			}
 		}
@@ -176,10 +174,10 @@ pub fn file_size(path string) u64 {
 				println('Using os.file_size() on 32bit systems may not work on big files.')
 			}
 			$if windows {
-				C._wstat(p.to_wide(), voidptr(&s))
+				C._wstat(path.to_wide(), voidptr(&s))
 				return u64(s.st_size)
 			} $else {
-				C.stat(&char(p.str), &s)
+				C.stat(&char(path.str), &s)
 				return u64(s.st_size)
 			}
 		}
@@ -189,47 +187,43 @@ pub fn file_size(path string) u64 {
 
 // mv moves files or folders from `src` to `dst`.
 pub fn mv(src string, dst string) ? {
-	rsrc := real_path(src)
-	rdest := real_path(dst)
-	mut rdst := rdest
+	mut rdst := dst
 	if is_dir(rdst) {
-		rdst = join_path(rdst.trim_right(path_separator), file_name(rsrc.trim_right(path_separator)))
+		rdst = join_path(rdst.trim_right(path_separator), file_name(src.trim_right(path_separator)))
 	}
 	$if windows {
-		w_src := rsrc.replace('/', '\\')
+		w_src := src.replace('/', '\\')
 		w_dst := rdst.replace('/', '\\')
 		ret := C._wrename(w_src.to_wide(), w_dst.to_wide())
 		if ret != 0 {
-			return error_with_code('failed to rename $rsrc to $rdst', int(ret))
+			return error_with_code('failed to rename $src to $dst', int(ret))
 		}
 	} $else {
-		ret := C.rename(&char(rsrc.str), &char(rdst.str))
+		ret := C.rename(&char(src.str), &char(dst.str))
 		if ret != 0 {
-			return error_with_code('failed to rename $rsrc to $rdst', int(ret))
+			return error_with_code('failed to rename $src to $dst', int(ret))
 		}
 	}
 }
 
 // cp copies files or folders from `src` to `dst`.
 pub fn cp(src string, dst string) ? {
-	rsrc := real_path(src)
-	rdst := real_path(dst)
 	$if windows {
-		w_src := rsrc.replace('/', '\\')
-		w_dst := rdst.replace('/', '\\')
+		w_src := src.replace('/', '\\')
+		w_dst := dst.replace('/', '\\')
 		if C.CopyFile(w_src.to_wide(), w_dst.to_wide(), false) == 0 {
 			result := C.GetLastError()
-			return error_with_code('failed to copy $rsrc to $rdst', int(result))
+			return error_with_code('failed to copy $src to $dst', int(result))
 		}
 	} $else {
-		fp_from := C.open(&char(rsrc.str), C.O_RDONLY)
+		fp_from := C.open(&char(src.str), C.O_RDONLY)
 		if fp_from < 0 { // Check if file opened
-			return error_with_code('cp: failed to open $rsrc', int(fp_from))
+			return error_with_code('cp: failed to open $src', int(fp_from))
 		}
-		fp_to := C.open(&char(rdst.str), C.O_WRONLY | C.O_CREAT | C.O_TRUNC, C.S_IWUSR | C.S_IRUSR)
+		fp_to := C.open(&char(dst.str), C.O_WRONLY | C.O_CREAT | C.O_TRUNC, C.S_IWUSR | C.S_IRUSR)
 		if fp_to < 0 { // Check if file opened (permissions problems ...)
 			C.close(fp_from)
-			return error_with_code('cp (permission): failed to write to $rdst (fp_to: $fp_to)',
+			return error_with_code('cp (permission): failed to write to $dst (fp_to: $fp_to)',
 				int(fp_to))
 		}
 		// TODO use defer{} to close files in case of error or return.
@@ -244,17 +238,17 @@ pub fn cp(src string, dst string) ? {
 			if C.write(fp_to, &buf[0], count) < 0 {
 				C.close(fp_to)
 				C.close(fp_from)
-				return error_with_code('cp: failed to write to $rdst', int(-1))
+				return error_with_code('cp: failed to write to $dst', int(-1))
 			}
 		}
 		from_attr := C.stat{}
 		unsafe {
-			C.stat(&char(rsrc.str), &from_attr)
+			C.stat(&char(src.str), &from_attr)
 		}
-		if C.chmod(&char(rdst.str), from_attr.st_mode) < 0 {
+		if C.chmod(&char(dst.str), from_attr.st_mode) < 0 {
 			C.close(fp_to)
 			C.close(fp_from)
-			return error_with_code('failed to set permissions for $rdst', int(-1))
+			return error_with_code('failed to set permissions for $dst', int(-1))
 		}
 		C.close(fp_to)
 		C.close(fp_from)
@@ -268,15 +262,14 @@ pub fn vfopen(path string, mode string) ?&C.FILE {
 	if path.len == 0 {
 		return error('vfopen called with ""')
 	}
-	p := real_path(path)
 	mut fp := voidptr(0)
 	$if windows {
-		fp = C._wfopen(p.to_wide(), mode.to_wide())
+		fp = C._wfopen(path.to_wide(), mode.to_wide())
 	} $else {
-		fp = C.fopen(&char(p.str), &char(mode.str))
+		fp = C.fopen(&char(path.str), &char(mode.str))
 	}
 	if isnil(fp) {
-		return error('failed to open file "$p"')
+		return error('failed to open file "$path"')
 	} else {
 		return fp
 	}
@@ -298,13 +291,12 @@ pub fn fileno(cfile voidptr) int {
 // vpopen system starts the specified command, waits for it to complete, and returns its code.
 fn vpopen(path string) voidptr {
 	// *C.FILE {
-	p := real_path(path)
 	$if windows {
 		mode := 'rb'
-		wpath := p.to_wide()
+		wpath := path.to_wide()
 		return C._wpopen(wpath, mode.to_wide())
 	} $else {
-		cpath := p.str
+		cpath := path.str
 		return C.popen(&char(cpath), c'r')
 	}
 }
@@ -392,18 +384,16 @@ pub fn system(cmd string) int {
 
 // exists returns true if `path` (file or directory) exists.
 pub fn exists(path string) bool {
-	pth := real_path(path)
 	$if windows {
-		p := pth.replace('/', '\\')
+		p := path.replace('/', '\\')
 		return C._waccess(p.to_wide(), f_ok) != -1
 	} $else {
-		return C.access(&char(pth.str), f_ok) != -1
+		return C.access(&char(path.str), f_ok) != -1
 	}
 }
 
 // is_executable returns `true` if `path` is executable.
 pub fn is_executable(path string) bool {
-	p := real_path(path)
 	$if windows {
 		// NB: https://docs.microsoft.com/en-us/cpp/c-runtime-library/reference/access-waccess?view=vs-2019
 		// i.e. there is no X bit there, the modes can be:
@@ -411,39 +401,38 @@ pub fn is_executable(path string) bool {
 		// 02 Write-only
 		// 04 Read-only
 		// 06 Read and write
+		p := real_path(path)
 		return (exists(p) && p.ends_with('.exe'))
 	}
 	$if solaris {
 		statbuf := C.stat{}
 		unsafe {
-			if C.stat(&char(p.str), &statbuf) != 0 {
+			if C.stat(&char(path.str), &statbuf) != 0 {
 				return false
 			}
 		}
 		return (int(statbuf.st_mode) & (s_ixusr | s_ixgrp | s_ixoth)) != 0
 	}
-	return C.access(&char(p.str), x_ok) != -1
+	return C.access(&char(path.str), x_ok) != -1
 }
 
 // is_writable returns `true` if `path` is writable.
 pub fn is_writable(path string) bool {
-	pth := real_path(path)
 	$if windows {
-		p := pth.replace('/', '\\')
+		p := path.replace('/', '\\')
 		return C._waccess(p.to_wide(), w_ok) != -1
 	} $else {
-		return C.access(&char(pth.str), w_ok) != -1
+		return C.access(&char(path.str), w_ok) != -1
 	}
 }
 
 // is_readable returns `true` if `path` is readable.
 pub fn is_readable(path string) bool {
-	pth := real_path(path)
 	$if windows {
-		p := pth.replace('/', '\\')
+		p := path.replace('/', '\\')
 		return C._waccess(p.to_wide(), r_ok) != -1
 	} $else {
-		return C.access(&char(pth.str), r_ok) != -1
+		return C.access(&char(path.str), r_ok) != -1
 	}
 }
 
@@ -463,15 +452,14 @@ pub fn rm(path string) ? {
 
 // rmdir removes a specified directory.
 pub fn rmdir(path string) ? {
-	p := real_path(path)
 	$if windows {
-		rc := C.RemoveDirectory(&char(p.to_wide()))
+		rc := C.RemoveDirectory(&char(path.to_wide()))
 		if rc == 0 {
 			// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-removedirectorya - 0 is failure
-			return error('Failed to remove "$p": ' + posix_get_error_msg(C.errno))
+			return error('Failed to remove "$path": ' + posix_get_error_msg(C.errno))
 		}
 	} $else {
-		rc := C.rmdir(&char(p.str))
+		rc := C.rmdir(&char(path.str))
 		if rc == -1 {
 			return error(posix_get_error_msg(C.errno))
 		}
@@ -697,9 +685,8 @@ pub fn executable() string {
 
 // is_dir returns a `bool` indicating whether the given `path` is a directory.
 pub fn is_dir(path string) bool {
-	p := real_path(path)
 	$if windows {
-		w_path := p.replace('/', '\\')
+		w_path := path.replace('/', '\\')
 		attr := C.GetFileAttributesW(w_path.to_wide())
 		if attr == u32(C.INVALID_FILE_ATTRIBUTES) {
 			return false
@@ -710,7 +697,7 @@ pub fn is_dir(path string) bool {
 		return false
 	} $else {
 		statbuf := C.stat{}
-		if unsafe { C.stat(&char(p.str), &statbuf) } != 0 {
+		if unsafe { C.stat(&char(path.str), &statbuf) } != 0 {
 			return false
 		}
 		// ref: https://code.woboq.org/gcc/include/sys/stat.h.html
@@ -734,11 +721,10 @@ pub fn is_link(path string) bool {
 
 // chdir changes the current working directory to the new directory in `path`.
 pub fn chdir(path string) {
-	p := real_path(path)
 	$if windows {
-		C._wchdir(p.to_wide())
+		C._wchdir(path.to_wide())
 	} $else {
-		C.chdir(&char(p.str))
+		C.chdir(&char(path.str))
 	}
 }
 
@@ -857,9 +843,8 @@ pub fn wait() int {
 // file_last_mod_unix returns the "last modified" time stamp of file in `path`.
 pub fn file_last_mod_unix(path string) int {
 	attr := C.stat{}
-	p := real_path(path)
 	// # struct stat attr;
-	unsafe { C.stat(&char(p.str), &attr) }
+	unsafe { C.stat(&char(path.str), &attr) }
 	// # stat(path.str, &attr);
 	return attr.st_mtime
 	// # return attr.st_mtime ;
@@ -873,8 +858,7 @@ pub fn flush() {
 // chmod change file access attributes of `path` to `mode`.
 // Octals like `0o600` can be used.
 pub fn chmod(path string, mode int) {
-	p := real_path(path)
-	if C.chmod(&char(p.str), mode) != 0 {
+	if C.chmod(&char(path.str), mode) != 0 {
 		panic('chmod failed: ' + posix_get_error_msg(C.errno))
 	}
 }
@@ -884,11 +868,10 @@ pub fn chown(path string, owner int, group int) ? {
 	$if windows {
 		return error('os.chown() not implemented for Windows')
 	} $else {
-		p := real_path(path)
 		if owner < 0 || group < 0 {
 			return error('os.chown() uid and gid cannot be negative: Not changing owner!')
 		} else {
-			if C.chown(&char(p.str), owner, group) != 0 {
+			if C.chown(&char(path.str), owner, group) != 0 {
 				return error_with_code(posix_get_error_msg(C.errno), C.errno)
 			}
 		}
@@ -898,21 +881,20 @@ pub fn chown(path string, owner int, group int) ? {
 // open_append opens `path` file for appending.
 pub fn open_append(path string) ?File {
 	mut file := File{}
-	p := real_path(path)
 	$if windows {
-		wpath := p.replace('/', '\\').to_wide()
+		wpath := path.replace('/', '\\').to_wide()
 		mode := 'ab'
 		file = File{
 			cfile: C._wfopen(wpath, mode.to_wide())
 		}
 	} $else {
-		cpath := p.str
+		cpath := path.str
 		file = File{
 			cfile: C.fopen(&char(cpath), c'ab')
 		}
 	}
 	if isnil(file.cfile) {
-		return error('failed to create(append) file "$p"')
+		return error('failed to create(append) file "$path"')
 	}
 	file.is_opened = true
 	return file
