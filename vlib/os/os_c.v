@@ -135,7 +135,7 @@ pub fn read_file(path string) ?string {
 
 // ***************************** OS ops ************************
 
-// truncate changes the size of file in `path` to `len`.
+// truncate changes the size of the file located in `path` to `len`.
 pub fn truncate(path string, len u64) ? {
 	fp := C.open(&char(real_path(path).str), o_wronly | o_trunc)
 	defer {
@@ -864,7 +864,7 @@ pub fn chmod(path string, mode int) {
 	}
 }
 
-// chown changes owner and group attributes of `path` to `owner` and `group`.
+// chown changes the owner and group attributes of `path` to `owner` and `group`.
 pub fn chown(path string, owner int, group int) ? {
 	$if windows {
 		return error('os.chown() not implemented for Windows')
