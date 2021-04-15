@@ -475,7 +475,7 @@ pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Typ
 	return ast.string_type
 }
 
-pub fn (mut c Checker) infer_fn_types(f ast.Fn, mut call_expr ast.CallExpr) {
+pub fn (mut c Checker) infer_fn_generic_types(f ast.Fn, mut call_expr ast.CallExpr) {
 	mut inferred_types := []ast.Type{}
 	for gi, gt_name in f.generic_names {
 		// skip known types
@@ -565,5 +565,5 @@ pub fn (mut c Checker) infer_fn_types(f ast.Fn, mut call_expr ast.CallExpr) {
 		inferred_types << typ
 		call_expr.generic_types << typ
 	}
-	c.table.register_fn_gen_type(f.name, inferred_types)
+	c.table.register_fn_generic_types(f.name, inferred_types)
 }
