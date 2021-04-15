@@ -220,6 +220,7 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 						exit(1)
 					}
 				}
+				i++
 			}
 			'-show-timings' {
 				res.show_timings = true
