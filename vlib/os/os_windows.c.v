@@ -314,7 +314,7 @@ fn C.CreateSymbolicLinkW(&u16, &u16, u32) int
 
 pub fn symlink(symlink_path string, target_path string) ?bool {
 	mut flags := 0
-	if is_dir(sp) {
+	if is_dir(symlink_path) {
 		flags |= 1
 	}
 	flags |= 2 // SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE
