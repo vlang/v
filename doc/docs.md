@@ -2082,7 +2082,7 @@ v install [module]
 v install ui
 ```
 
-For remove a module:
+For removing a module:
 
 ```powershell
 v remove [module]
@@ -2092,7 +2092,7 @@ v remove [module]
 v remove ui
 ```
 
-For update an installed module from [VPM](https://vpm.vlang.io/):
+For updating an installed module from [VPM](https://vpm.vlang.io/):
 
 ```powershell
 v update [module]
