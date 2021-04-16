@@ -56,6 +56,7 @@ fn new_cancel_context(parent Context) &CancelContext {
 		id: rand.uuid_v4()
 		context: parent
 		mutex: sync.new_mutex()
+		done: chan int{cap: 2}
 	}
 }
 
