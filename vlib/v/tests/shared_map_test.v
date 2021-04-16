@@ -88,7 +88,7 @@ fn test_shared_map_iteration() {
 	mut n0 := 0
 	mut n1 := 0
 	mut n2 := 0
-	lock m {
+	rlock m {
 		for k, val in m {
 			match k {
 				'rtz' {
