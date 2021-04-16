@@ -336,8 +336,9 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 		page_gen_start: page_gen_start
 	}
 	if req.method in vweb.methods_with_form {
-		if 'multipart/form-data' in req.header.values(.content_type) {
-			boundary := req.header.values(.content_type).filter(it.starts_with('boundary='))
+		ct := req.header.get(.content_type) or { '' }.split(';').map(it.trim_left(' \t'))
+		if 'multipart/form-data' in ct {
+			boundary := ct.filter(it.starts_with('boundary='))
 			if boundary.len != 1 {
 				send_string(mut conn, vweb.http_400) or {}
 				return

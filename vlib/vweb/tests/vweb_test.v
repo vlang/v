@@ -208,6 +208,31 @@ fn test_http_client_json_post() ? {
 	assert '$ouser' == '$nuser2'
 }
 
+fn test_http_client_multipart_form_data() ? {
+	boundary := '6844a625b1f0b299'
+	name := 'foo'
+	ct := 'multipart/form-data; boundary=------------------------$boundary'
+	contents := 'baz buzz'
+	data := '--------------------------$boundary
+Content-Disposition: form-data; name=\"$name\"
+
+$contents
+--------------------------$boundary--
+'
+	mut x := http.fetch('http://127.0.0.1:$sport/form_echo',
+		method: .post
+		header: http.new_header(
+			key: .content_type
+			value: ct
+		)
+		data: data
+	) ?
+	$if debug_net_socket_client ? {
+		eprintln('/form_echo endpoint response: $x')
+	}
+	assert x.text == contents
+}
+
 fn test_http_client_shutdown_does_not_work_without_a_cookie() {
 	x := http.get('http://127.0.0.1:$sport/shutdown') or {
 		assert err.msg == ''
