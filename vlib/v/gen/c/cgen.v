@@ -1067,6 +1067,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.gen_assign_stmt(node)
 		}
 		ast.Block {
+			g.write_v_source_line_info(node.pos)
 			if node.is_unsafe {
 				g.writeln('{ // Unsafe block')
 			} else {
@@ -1188,6 +1189,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.writeln('$node.name: {}')
 		}
 		ast.GotoStmt {
+			g.write_v_source_line_info(node.pos)
 			g.writeln('goto $node.name;')
 		}
 		ast.HashStmt {
@@ -1538,7 +1540,10 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 			g.expr(node.cond)
 			g.writeln(';')
 		}
-		arw_or_pt := if node.cond_type.is_ptr() { '->' } else { '.' }
+		mut arw_or_pt := if node.cond_type.is_ptr() { '->' } else { '.' }
+		if node.cond_type.has_flag(.shared_f) {
+			arw_or_pt = '->val.'
+		}
 		idx := g.new_tmp_var()
 		map_len := g.new_tmp_var()
 		g.empty_line = true

@@ -85,6 +85,12 @@ pub fn (mut app App) json_echo() vweb.Result {
 	return app.ok(app.req.data)
 }
 
+['/form_echo'; post]
+pub fn (mut app App) form_echo() vweb.Result {
+	app.set_content_type(app.req.header.get(.content_type) or { '' })
+	return app.ok(app.form['foo'])
+}
+
 // Make sure [post] works without the path
 [post]
 pub fn (mut app App) json() vweb.Result {

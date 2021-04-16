@@ -378,14 +378,17 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	}
 	v.ccoptions = ccoptions
 	// setup the cache too, so that different compilers/options do not interfere:
-	v.pref.cache_manager.set_temporary_options(ccoptions.thirdparty_object_args([
+	v.pref.cache_manager.set_temporary_options(v.thirdparty_object_args(v.ccoptions, [
 		ccoptions.guessed_compiler,
 	]))
 }
 
-fn (ccoptions CcompilerOptions) all_args() []string {
+fn (v &Builder) all_args(ccoptions CcompilerOptions) []string {
 	mut all := []string{}
 	all << ccoptions.env_cflags
+	if v.pref.is_cstrict {
+		all << ccoptions.wargs
+	}
 	all << ccoptions.args
 	all << ccoptions.o_args
 	all << ccoptions.pre_args
@@ -396,7 +399,7 @@ fn (ccoptions CcompilerOptions) all_args() []string {
 	return all
 }
 
-fn (ccoptions CcompilerOptions) thirdparty_object_args(middle []string) []string {
+fn (v &Builder) thirdparty_object_args(ccoptions CcompilerOptions, middle []string) []string {
 	mut all := []string{}
 	all << ccoptions.env_cflags
 	all << ccoptions.args
@@ -611,7 +614,7 @@ fn (mut v Builder) cc() {
 			}
 		}
 		//
-		all_args := v.ccoptions.all_args()
+		all_args := v.all_args(v.ccoptions)
 		v.dump_c_options(all_args)
 		str_args := all_args.join(' ')
 		// write args to response file
@@ -953,7 +956,7 @@ fn (mut v Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CF
 	all_options << moduleflags.c_options_before_target()
 	all_options << '-o "$opath"'
 	all_options << '-c "$cfile"'
-	cc_options := v.ccoptions.thirdparty_object_args(all_options).join(' ')
+	cc_options := v.thirdparty_object_args(v.ccoptions, all_options).join(' ')
 	cmd := '$v.pref.ccompiler $cc_options'
 	$if trace_thirdparty_obj_files ? {
 		println('>>> build_thirdparty_obj_files cmd: $cmd')

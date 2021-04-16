@@ -33,6 +33,10 @@ fn C._wstat64(&char, voidptr) u64
 
 fn C.chown(&char, int, int) int
 
+fn C.ftruncate(voidptr, u64) int
+
+fn C._chsize_s(voidptr, u64) int
+
 // fn C.proc_pidpath(int, byteptr, int) int
 struct C.stat {
 	st_size  u64
@@ -130,7 +134,28 @@ pub fn read_file(path string) ?string {
 }
 
 // ***************************** OS ops ************************
-// file_size returns the size of the file located in `path`.
+
+// truncate changes the size of the file located in `path` to `len`.
+pub fn truncate(path string, len u64) ? {
+	fp := C.open(&char(path.str), o_wronly | o_trunc)
+	defer {
+		C.close(fp)
+	}
+	if fp < 0 {
+		return error('open file failed')
+	}
+	$if windows {
+		if C._chsize_s(fp, len) != 0 {
+			return error_with_code(posix_get_error_msg(C.errno), C.errno)
+		}
+	} $else {
+		if C.ftruncate(fp, len) != 0 {
+			return error_with_code(posix_get_error_msg(C.errno), C.errno)
+		}
+	}
+}
+
+// file_size returns the size of the file located in `path`. In case of error -1 is returned.
 pub fn file_size(path string) u64 {
 	mut s := C.stat{}
 	unsafe {
@@ -157,7 +182,7 @@ pub fn file_size(path string) u64 {
 			}
 		}
 	}
-	return 0
+	return -1
 }
 
 // mv moves files or folders from `src` to `dst`.
@@ -201,16 +226,18 @@ pub fn cp(src string, dst string) ? {
 			return error_with_code('cp (permission): failed to write to $dst (fp_to: $fp_to)',
 				int(fp_to))
 		}
+		// TODO use defer{} to close files in case of error or return.
+		// Currently there is a C-Error when building.
 		mut buf := [1024]byte{}
 		mut count := 0
 		for {
-			// FIXME: use sizeof, bug: 'os__buf' undeclared
-			// count = C.read(fp_from, buf, sizeof(buf))
-			count = C.read(fp_from, &buf[0], 1024)
+			count = C.read(fp_from, &buf[0], sizeof(buf))
 			if count == 0 {
 				break
 			}
 			if C.write(fp_to, &buf[0], count) < 0 {
+				C.close(fp_to)
+				C.close(fp_from)
 				return error_with_code('cp: failed to write to $dst', int(-1))
 			}
 		}
@@ -219,6 +246,8 @@ pub fn cp(src string, dst string) ? {
 			C.stat(&char(src.str), &from_attr)
 		}
 		if C.chmod(&char(dst.str), from_attr.st_mode) < 0 {
+			C.close(fp_to)
+			C.close(fp_from)
 			return error_with_code('failed to set permissions for $dst', int(-1))
 		}
 		C.close(fp_to)
@@ -830,11 +859,11 @@ pub fn flush() {
 // Octals like `0o600` can be used.
 pub fn chmod(path string, mode int) {
 	if C.chmod(&char(path.str), mode) != 0 {
-		panic(posix_get_error_msg(C.errno))
+		panic('chmod failed: ' + posix_get_error_msg(C.errno))
 	}
 }
 
-// chown change owner and group attributes of path to `owner` and `group`.
+// chown changes the owner and group attributes of `path` to `owner` and `group`.
 pub fn chown(path string, owner int, group int) ? {
 	$if windows {
 		return error('os.chown() not implemented for Windows')

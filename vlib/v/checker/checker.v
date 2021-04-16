@@ -53,16 +53,15 @@ pub mut:
 	rlocked_names    []string // vars that are currently read-locked
 	in_for_count     int      // if checker is currently in a for loop
 	// checked_ident  string // to avoid infinite checker loops
-	returns           bool
-	scope_returns     bool
-	mod               string // current module name
-	is_builtin_mod    bool   // are we in `builtin`?
-	inside_unsafe     bool
-	inside_const      bool
-	inside_anon_fn    bool
-	inside_ref_lit    bool
-	skip_flags        bool // should `#flag` and `#include` be skipped
-	cur_generic_types []ast.Type
+	returns        bool
+	scope_returns  bool
+	mod            string // current module name
+	is_builtin_mod bool   // are we in `builtin`?
+	inside_unsafe  bool
+	inside_const   bool
+	inside_anon_fn bool
+	inside_ref_lit bool
+	skip_flags     bool // should `#flag` and `#include` be skipped
 mut:
 	files                            []ast.File
 	expr_level                       int  // to avoid infinite recursion segfaults due to compiler bugs
@@ -476,7 +475,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
 	// Make sure the first letter is capital, do not allow e.g. `x := string{}`,
 	// but `x := T{}` is ok.
 	if !c.is_builtin_mod && !c.inside_unsafe && type_sym.language == .v
-		&& c.cur_generic_types.len == 0 {
+		&& c.cur_fn.cur_generic_types.len == 0 {
 		pos := type_sym.name.last_index('.') or { -1 }
 		first_letter := type_sym.name[pos + 1]
 		if !first_letter.is_capital() {
@@ -1492,12 +1491,7 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 		}
 	}
 	if has_generic_generic {
-		if c.mod != '' {
-			// Need to prepend the module when adding a generic type to a function
-			c.table.register_fn_generic_types(c.mod + '.' + call_expr.name, generic_types)
-		} else {
-			c.table.register_fn_generic_types(call_expr.name, generic_types)
-		}
+		c.table.register_fn_generic_types(call_expr.name, generic_types)
 	}
 	// TODO: remove this for actual methods, use only for compiler magic
 	// FIXME: Argument count != 1 will break these
@@ -2653,7 +2647,7 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 	mut expected_types := [expected_type]
 	if expected_type_sym.info is ast.MultiReturn {
 		expected_types = expected_type_sym.info.types
-		if c.cur_generic_types.len > 0 {
+		if c.cur_fn.cur_generic_types.len > 0 {
 			expected_types = expected_types.map(c.unwrap_generic(it))
 		}
 	}
@@ -4055,7 +4049,7 @@ fn (mut c Checker) stmts(stmts []ast.Stmt) {
 
 pub fn (mut c Checker) unwrap_generic(typ ast.Type) ast.Type {
 	if typ.has_flag(.generic) {
-		if t_typ := c.table.resolve_generic_by_names(typ, c.cur_fn.generic_names, c.cur_generic_types) {
+		if t_typ := c.table.resolve_generic_by_names(typ, c.cur_fn.generic_names, c.cur_fn.cur_generic_types) {
 			return t_typ
 		}
 	}
@@ -6333,19 +6327,19 @@ fn (mut c Checker) post_process_generic_fns() {
 		mut node := c.file.generic_fns[i]
 		c.mod = node.mod
 		for gen_types in c.table.fn_generic_types[node.name] {
-			c.cur_generic_types = gen_types
+			node.cur_generic_types = gen_types
 			c.fn_decl(mut node)
 			if node.name in ['vweb.run_app', 'vweb.run'] {
 				c.vweb_gen_types << gen_types
 			}
 		}
-		c.cur_generic_types = []
+		node.cur_generic_types = []
 	}
 }
 
 fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	c.returns = false
-	if node.generic_names.len > 0 && c.cur_generic_types.len == 0 {
+	if node.generic_names.len > 0 && node.cur_generic_types.len == 0 {
 		// Just remember the generic function for now.
 		// It will be processed later in c.post_process_generic_fns,
 		// after all other normal functions are processed.
