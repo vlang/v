@@ -1538,7 +1538,10 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 			g.expr(node.cond)
 			g.writeln(';')
 		}
-		arw_or_pt := if node.cond_type.is_ptr() { '->' } else { '.' }
+		mut arw_or_pt := if node.cond_type.is_ptr() { '->' } else { '.' }
+		if node.cond_type.has_flag(.shared_f) {
+			arw_or_pt = '->val.'
+		}
 		idx := g.new_tmp_var()
 		map_len := g.new_tmp_var()
 		g.empty_line = true
