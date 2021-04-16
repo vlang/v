@@ -157,8 +157,8 @@ pub fn truncate(path string, len u64) ? {
 }
 
 // file_size returns the size of the file located in `path`.
-// In case of an error 0 is returned.
-// Note that use of this on symbolic links on Windows returns allways 0.
+// If an error occurs it returns 0.
+// Note that use of this on symbolic links on Windows returns always 0.
 pub fn file_size(path string) u64 {
 	mut s := C.stat{}
 	unsafe {
