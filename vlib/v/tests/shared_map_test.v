@@ -82,3 +82,36 @@ fn new_map() map[string]f64 {
 	}
 	return m
 }
+
+fn test_shared_map_iteration() {
+	shared m := map{'qwe': 12.75, 'rtz': -0.125, 'k': 17}
+	mut n0 := 0
+	mut n1 := 0
+	mut n2 := 0
+	lock m {
+		for k, val in m {
+			match k {
+				'rtz' {
+					assert val == -0.125
+					n0++
+				}
+				'qwe' {
+					assert val == 12.75
+					n1++
+				}
+				'k' {
+					assert val == 17.0
+					n2++
+				}
+				else {
+					// this should not happen
+					assert false
+				}
+			}
+		}
+	}
+	// make sure we have iterated over each of the 3 keys exactly once
+	assert n0 == 1
+	assert n1 == 1
+	assert n2 == 1
+}
