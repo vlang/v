@@ -84,7 +84,11 @@ fn new_map() map[string]f64 {
 }
 
 fn test_shared_map_iteration() {
-	shared m := map{'qwe': 12.75, 'rtz': -0.125, 'k': 17}
+	shared m := map{
+		'qwe': 12.75
+		'rtz': -0.125
+		'k':   17
+	}
 	mut n0 := 0
 	mut n1 := 0
 	mut n2 := 0
