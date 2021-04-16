@@ -31,42 +31,51 @@ see also `v help build`.
    -bare-builtin-dir <bare-builtin-dir>
       Use with `-freestanding`. This specifies the directory to the 
       implementation of some basic builtin functions. The list is as follows:
-         memcpy(dest &byte, src &byte, n int) &byte
-            Moves n bytes from dest to src, and returns dest
-         [export: 'malloc']
-         __malloc(n int) &byte
-            Allocates n bytes of memory and returns the pointer to the first byte
-         strlen(s &byte) int
-            Returns the amount of bytes until the first `0`, starting at s
-         realloc(old_area &byte, new_size int) &byte
-            Allocates a new area of size new_size, copies old_area 
-            to the new area, and returns a pointer to the new area.
-         memset(s &byte, c int, n int) &byte
-            Sets n bytes starting at s to c (c is casted to a char)
-            and returns s.
-         memmove(dest &byte, src &byte, n int) &byte
-            Like memcpy, but guaranteed to work if dest and src overlap.
-         [export: 'calloc']
-         __calloc(nmemb int, size int) &byte
-            Like malloc, but sets all the bytes to `0` first.
-         getchar() int
-            Read one character from stdin and return it.
-         memcmp(a &byte, b &byte, n int) int
-            Compare two buffers of length n. If a and b are equal, return 0.
-            Otherwise, return the difference between the first different letter.
-         [export: 'free']
-         __free(ptr &byte)
-            Free the block of memory ptr allocated by malloc.
-         vsprintf(str &char, format &char, ap va_list) int
-            See `man vsprintf`.
-         vsnprintf(str &char, size int, format &char, ap va_list) int
-            See `man vsnprintf`.
          bare_print(buf &byte, len u64)
             Print len charecters from the buffer pointed to by buf to stdout.
          bare_eprint(buf &byte, len u64)
             Print len charecters from the buffer pointed to by buf to stderr.
+         bare_panic(msg string)
+            Print "V panic: " + msg, along with an optional backtrace and/or the V commit hash, and then exit.
+         [export: 'malloc']
+         __malloc(n size_t) &C.void
+            Allocates n bytes of memory and returns the pointer to the first byte
+         [export: 'free']
+         __free(ptr &C.void)
+            Free the block of memory ptr allocated by malloc.
+         realloc(old_area &C.void, new_size size_t) &C.void
+            Allocates a new area of size new_size, copies old_area 
+            to the new area, and returns a pointer to the new area.
+         [export: 'calloc']
+         __calloc(nmemb size_t, size size_t) &C.void
+            Like malloc, but sets all the bytes to `0` first.
+         memcpy(dest &C.void, src &C.void, n size_t) &C.void
+            Moves n bytes from dest to src, and returns dest
+         memmove(dest &C.void, src &C.void, n size_t) &C.void
+            Like memcpy, but guaranteed to work if dest and src overlap.
+         memcmp(a &C.void, b &C.void, n size_t) int
+            Compare two buffers of length n. If a and b are equal, return 0.
+            Otherwise, return the difference between the first different letter.
+         strlen(s &C.void) size_t
+            Returns the amount of bytes until the first `0`, starting at s
+         memset(s &C.void, c int, n size_t) &C.void
+            Sets n bytes starting at s to c (c is casted to a char)
+            and returns s.
+         getchar() int
+            Read one character from stdin and return it.
+            Print "V Panic" + msg, along with an optional backtrace, and then exit.
+         vsprintf(str &char, format &char, ap va_list) int
+            See `man vsprintf`.
+         vsnprintf(str &char, size size_t, format &char, ap va_list) int
+            See `man vsnprintf`.
+         bare_backtrace() string
+            Return a backtrace that can be printed. If backtraces are not 
+            supported, return a message stating that backtraces do not work.
+         [export: 'exit']
+         __exit(code int)
+            Exit with code code. code is allowed to be ignored.
 
-         The module decleration should be `builtin`. The default linux 
+         The module decleration should be `builtin`. The default Linux 
          implementation can be found in `vlib/builtin/linux_bare`.
 
    -os <os>, -target-os <os>

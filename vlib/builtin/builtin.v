@@ -32,7 +32,9 @@ pub fn print_backtrace() {
 	// 1 frame for print_backtrace itself
 	// ... print the rest of the backtrace frames ...
 	// => top 2 frames should be skipped, since they will not be informative to the developer
-	$if !freestanding {
+	$if freestanding {
+		println(bare_backtrace())
+	} $else {
 		print_backtrace_skipping_top_frames(2)
 	}
 }
