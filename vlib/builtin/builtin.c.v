@@ -66,30 +66,34 @@ pub fn panic_optional_not_set(s string) {
 // panic prints a nice error message, then exits the process with exit code of 1.
 // It also shows a backtrace on most platforms.
 pub fn panic(s string) {
-	eprint('V panic: ')
-	eprintln(s)
-	eprintln('v hash: $vcommithash()')
-	$if exit_after_panic_message ? {
-		C.exit(1)
+	$if freestanding {
+		bare_panic(s)
 	} $else {
-		$if no_backtrace ? {
+		eprint('V panic: ')
+		eprintln(s)
+		eprintln('v hash: $vcommithash()')
+		$if exit_after_panic_message ? {
 			C.exit(1)
 		} $else {
-			$if tinyc {
+			$if no_backtrace ? {
+				C.exit(1)
+			} $else {
+				$if tinyc {
+					$if panics_break_into_debugger ? {
+						break_if_debugger_attached()
+					} $else {
+						C.tcc_backtrace(c'Backtrace')
+					}
+					C.exit(1)
+				}
+				$if !freestanding {
+					print_backtrace_skipping_top_frames(1)
+				}
 				$if panics_break_into_debugger ? {
 					break_if_debugger_attached()
-				} $else {
-					C.tcc_backtrace(c'Backtrace')
 				}
 				C.exit(1)
 			}
-			$if !freestanding {
-				print_backtrace_skipping_top_frames(1)
-			}
-			$if panics_break_into_debugger ? {
-				break_if_debugger_attached()
-			}
-			C.exit(1)
 		}
 	}
 }
