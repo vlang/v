@@ -24,7 +24,7 @@ pub fn (ctx EmptyContext) done() chan int {
 
 pub fn (ctx EmptyContext) err() IError {
 	// TODO: Change this to `none`
-	return none__
+	return none_
 }
 
 pub fn (ctx EmptyContext) value(key string) ?voidptr {
