@@ -20,7 +20,8 @@ The major way to get the latest and greatest V, is to __install it from source__
 It is __easy__, and it usually takes __only a few seconds__.
 
 ### Linux, macOS, FreeBSD, etc:
-You need `git`, and a C compiler like `tcc`, `gcc` or `clang`, and `make`:
+You need [`git`](https://git-scm.com/downloads)
+>You can install and use a C compiler of your choice for binary optimization, but by default V will use [TCC](http://savannah.nongnu.org/projects/tinycc/).
 ```bash
 git clone https://github.com/vlang/v
 cd v
@@ -28,7 +29,8 @@ make
 ```
 
 ### Windows:
-You need `git`, and a C compiler like `tcc`, `gcc`, `clang` or `msvc`:
+You need [`git`](https://git-scm.com/downloads)
+>You can install and use a C compiler of your choice for binary optimization, but by default V will use [TCC](http://savannah.nongnu.org/projects/tinycc/).
 ```bash
 git clone https://github.com/vlang/v
 cd v
