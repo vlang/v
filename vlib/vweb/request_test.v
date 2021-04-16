@@ -112,17 +112,16 @@ ${contents[1]}
 --------------------------$boundary--
 '
 	form, files := parse_multipart_form(data, boundary)
-	// TODO: remove newlines
 	assert files == map{
 		names[0]: [FileData{
 			filename: file
 			content_type: ct
-			data: contents[0] + '\n'
+			data: contents[0]
 		}]
 	}
 
 	assert form == map{
-		names[1]: contents[1] + '\n'
+		names[1]: contents[1]
 	}
 }
 
