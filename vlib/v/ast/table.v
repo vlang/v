@@ -948,16 +948,12 @@ pub fn (mut t Table) bitsize_to_type(bit_size int) Type {
 // resolve_generic_by_names resolves generics to real types T => int.
 // Even map[string]map[string]T can be resolved.
 // This is used for resolving the generic return type of CallExpr white `unwrap_generic` is used to resolve generic usage in FnDecl.
-pub fn (mut t Table) resolve_generic_by_names(generic_type Type, generic_names []string, generic_types []Type) ?Type {
+pub fn (mut t Table) resolve_generic_by_names(generic_type Type, generic_names []string, concrete_types []Type) ?Type {
 	mut sym := t.get_type_symbol(generic_type)
 	if sym.name in generic_names {
 		index := generic_names.index(sym.name)
-		mut typ := generic_types[index]
-		typ = typ.set_nr_muls(generic_type.nr_muls())
-		if generic_type.has_flag(.optional) {
-			typ = typ.set_flag(.optional)
-		}
-		return typ
+		typ := concrete_types[index]
+		return typ.derive(generic_type).clear_flag(.generic)
 	} else if sym.kind == .array {
 		info := sym.info as Array
 		mut elem_type := info.elem_type
@@ -968,23 +964,21 @@ pub fn (mut t Table) resolve_generic_by_names(generic_type Type, generic_names [
 			elem_sym = t.get_type_symbol(elem_type)
 			dims++
 		}
-		if typ := t.resolve_generic_by_names(elem_type, generic_names, generic_types) {
+		if typ := t.resolve_generic_by_names(elem_type, generic_names, concrete_types) {
 			idx := t.find_or_register_array_with_dims(typ, dims)
-			array_typ := new_type(idx).derive(generic_type).clear_flag(.generic)
-			return array_typ
+			return new_type(idx).derive(generic_type).clear_flag(.generic)
 		}
 	} else if sym.kind == .chan {
 		info := sym.info as Chan
-		if typ := t.resolve_generic_by_names(info.elem_type, generic_names, generic_types) {
+		if typ := t.resolve_generic_by_names(info.elem_type, generic_names, concrete_types) {
 			idx := t.find_or_register_chan(typ, typ.nr_muls() > 0)
-			chan_typ := new_type(idx).derive(generic_type).clear_flag(.generic)
-			return chan_typ
+			return new_type(idx).derive(generic_type).clear_flag(.generic)
 		}
 	} else if mut sym.info is MultiReturn {
 		mut types := []Type{}
 		mut type_changed := false
 		for ret_type in sym.info.types {
-			if typ := t.resolve_generic_by_names(ret_type, generic_names, generic_types) {
+			if typ := t.resolve_generic_by_names(ret_type, generic_names, concrete_types) {
 				types << typ
 				type_changed = true
 			} else {
@@ -993,18 +987,17 @@ pub fn (mut t Table) resolve_generic_by_names(generic_type Type, generic_names [
 		}
 		if type_changed {
 			idx := t.find_or_register_multi_return(types)
-			typ := new_type(idx).derive(generic_type).clear_flag(.generic)
-			return typ
+			return new_type(idx).derive(generic_type).clear_flag(.generic)
 		}
 	} else if mut sym.info is Map {
 		mut type_changed := false
 		mut unwrapped_key_type := sym.info.key_type
 		mut unwrapped_value_type := sym.info.value_type
-		if typ := t.resolve_generic_by_names(sym.info.key_type, generic_names, generic_types) {
+		if typ := t.resolve_generic_by_names(sym.info.key_type, generic_names, concrete_types) {
 			unwrapped_key_type = typ
 			type_changed = true
 		}
-		if typ := t.resolve_generic_by_names(sym.info.value_type, generic_names, generic_types) {
+		if typ := t.resolve_generic_by_names(sym.info.value_type, generic_names, concrete_types) {
 			unwrapped_value_type = typ
 			type_changed = true
 		}
@@ -1019,16 +1012,12 @@ pub fn (mut t Table) resolve_generic_by_names(generic_type Type, generic_names [
 // resolve_generic_by_types resolves generics to real types T => int.
 // Even map[string]map[string]T can be resolved.
 // This is used for resolving the generic return type of CallExpr white `unwrap_generic` is used to resolve generic usage in FnDecl.
-pub fn (mut t Table) resolve_generic_by_types(generic_type Type, from_types []Type, to_types []Type) ?Type {
+pub fn (mut t Table) resolve_generic_by_types(generic_type Type, generic_types []Type, concrete_types []Type) ?Type {
 	mut sym := t.get_type_symbol(generic_type)
-	if generic_type in from_types {
-		index := from_types.index(generic_type)
-		mut typ := to_types[index]
-		typ = typ.set_nr_muls(generic_type.nr_muls())
-		if generic_type.has_flag(.optional) {
-			typ = typ.set_flag(.optional)
-		}
-		return typ
+	if generic_type in generic_types {
+		index := generic_types.index(generic_type)
+		typ := concrete_types[index]
+		return typ.derive(generic_type).clear_flag(.generic)
 	} else if sym.kind == .array {
 		info := sym.info as Array
 		mut elem_type := info.elem_type
@@ -1039,13 +1028,13 @@ pub fn (mut t Table) resolve_generic_by_types(generic_type Type, from_types []Ty
 			elem_sym = t.get_type_symbol(elem_type)
 			dims++
 		}
-		if typ := t.resolve_generic_by_types(elem_type, from_types, to_types) {
+		if typ := t.resolve_generic_by_types(elem_type, generic_types, concrete_types) {
 			idx := t.find_or_register_array_with_dims(typ, dims)
 			return new_type(idx).derive(generic_type).clear_flag(.generic)
 		}
 	} else if sym.kind == .chan {
 		info := sym.info as Chan
-		if typ := t.resolve_generic_by_types(info.elem_type, from_types, to_types) {
+		if typ := t.resolve_generic_by_types(info.elem_type, generic_types, concrete_types) {
 			idx := t.find_or_register_chan(typ, typ.nr_muls() > 0)
 			return new_type(idx).derive(generic_type).clear_flag(.generic)
 		}
@@ -1053,7 +1042,7 @@ pub fn (mut t Table) resolve_generic_by_types(generic_type Type, from_types []Ty
 		mut types := []Type{}
 		mut type_changed := false
 		for ret_type in sym.info.types {
-			if typ := t.resolve_generic_by_types(ret_type, from_types, to_types) {
+			if typ := t.resolve_generic_by_types(ret_type, generic_types, concrete_types) {
 				types << typ
 				type_changed = true
 			} else {
@@ -1068,11 +1057,11 @@ pub fn (mut t Table) resolve_generic_by_types(generic_type Type, from_types []Ty
 		mut type_changed := false
 		mut unwrapped_key_type := sym.info.key_type
 		mut unwrapped_value_type := sym.info.value_type
-		if typ := t.resolve_generic_by_types(sym.info.key_type, from_types, to_types) {
+		if typ := t.resolve_generic_by_types(sym.info.key_type, generic_types, concrete_types) {
 			unwrapped_key_type = typ
 			type_changed = true
 		}
-		if typ := t.resolve_generic_by_types(sym.info.value_type, from_types, to_types) {
+		if typ := t.resolve_generic_by_types(sym.info.value_type, generic_types, concrete_types) {
 			unwrapped_value_type = typ
 			type_changed = true
 		}
