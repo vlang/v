@@ -66,10 +66,11 @@ fn get_v_build_output(is_verbose bool, is_yes bool, file_path string) string {
 // TODO move this to vlib?
 // open a uri using the default associated application
 fn open_uri(uri string) ? {
+	win_command := 'cmd.exe /C start "$uri"'
 	cmd := $if darwin {
 		'open "$uri"'
 	} $else $if windows {
-		'explorer "$uri"'
+		win_command
 	} $else {
 		'xdg-open "$uri"'
 	}
@@ -80,7 +81,7 @@ fn open_uri(uri string) ? {
 			if os.execute('cat /proc/sys/kernel/osrelease').output.contains_any_substr([
 				'Microsoft', 'microsoft'])
 			{
-				if os.execute('cmd.exe /C start "$uri"').exit_code == 0 {
+				if os.execute(win_command).exit_code == 0 {
 					return
 				}
 			}
