@@ -88,7 +88,7 @@ fn test_shared_array_iteration() {
 	mut n0 := 0
 	mut n1 := 0
 	mut n2 := 0
-	lock a {
+	rlock a {
 		for i, val in a {
 			match i {
 				1 {
