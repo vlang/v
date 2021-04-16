@@ -1,6 +1,10 @@
-struct NestedGeneric {}
+struct NestedGeneric {
+	a int
+}
 
-struct Context {}
+struct Context {
+	b int
+}
 
 struct App {
 mut:
