@@ -573,3 +573,16 @@ fn test_exists_in_system_path() {
 	}
 	assert os.exists_in_system_path('ls')
 }
+
+fn test_truncate() {
+	filename := './test_trunc.txt'
+	hello := 'hello world!'
+	mut f := os.create(filename) or { panic(err) }
+	f.write_string(hello) or { panic(err) }
+	f.close()
+	assert hello.len == os.file_size(filename)
+	newlen := u64(40000)
+	os.truncate(filename, newlen) or { panic(err) }
+	assert newlen == os.file_size(filename)
+	os.rm(filename) or { panic(err) }
+}

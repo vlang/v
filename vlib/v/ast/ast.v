@@ -378,17 +378,18 @@ pub:
 	attrs           []Attr
 	skip_gen        bool // this function doesn't need to be generated (for example [if foo])
 pub mut:
-	stmts           []Stmt
-	defer_stmts     []DeferStmt
-	return_type     Type
-	return_type_pos token.Position // `string` in `fn (u User) name() string` position
-	has_return      bool
-	comments        []Comment // comments *after* the header, but *before* `{`; used for InterfaceDecl
-	next_comments   []Comment // coments that are one line after the decl; used for InterfaceDecl
-	source_file     &File = 0
-	scope           &Scope
-	label_names     []string
-	pos             token.Position // function declaration position
+	stmts             []Stmt
+	defer_stmts       []DeferStmt
+	return_type       Type
+	return_type_pos   token.Position // `string` in `fn (u User) name() string` position
+	has_return        bool
+	comments          []Comment // comments *after* the header, but *before* `{`; used for InterfaceDecl
+	next_comments     []Comment // coments that are one line after the decl; used for InterfaceDecl
+	source_file       &File = 0
+	scope             &Scope
+	label_names       []string
+	pos               token.Position // function declaration position
+	cur_generic_types []Type
 }
 
 // break, continue

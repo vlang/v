@@ -1,3 +1,7 @@
+// This module defines the Context type, which carries deadlines, cancellation signals,
+// and other request-scoped values across API boundaries and between processes.
+// Based off:   https://github.com/golang/go/tree/master/src/context
+// Last commit: https://github.com/golang/go/commit/52bf14e0e8bdcd73f1ddfb0c4a1d0200097d3ba2
 module context
 
 import rand
@@ -6,7 +10,7 @@ import time
 
 pub interface Canceler {
 	id string
-	cancel(remove_from_parent bool, err string)
+	cancel(remove_from_parent bool, err IError)
 	done() chan int
 }
 
@@ -31,7 +35,7 @@ mut:
 	mutex    &sync.Mutex
 	done     chan int
 	children map[string]Canceler
-	err      string
+	err      IError
 }
 
 // with_cancel returns a copy of parent with a new done channel. The returned
@@ -52,6 +56,7 @@ fn new_cancel_context(parent Context) &CancelContext {
 		id: rand.uuid_v4()
 		context: parent
 		mutex: sync.new_mutex()
+		done: chan int{cap: 2}
 	}
 }
 
@@ -66,7 +71,7 @@ pub fn (mut ctx CancelContext) done() chan int {
 	return done
 }
 
-pub fn (mut ctx CancelContext) err() string {
+pub fn (mut ctx CancelContext) err() IError {
 	ctx.mutex.@lock()
 	err := ctx.err
 	ctx.mutex.unlock()
@@ -84,13 +89,13 @@ pub fn (ctx CancelContext) str() string {
 	return context_name(ctx.context) + '.with_cancel'
 }
 
-fn (mut ctx CancelContext) cancel(remove_from_parent bool, err string) {
-	if err == '' {
+fn (mut ctx CancelContext) cancel(remove_from_parent bool, err IError) {
+	if err.str() == 'none' {
 		panic('context: internal error: missing cancel error')
 	}
 
 	ctx.mutex.@lock()
-	if ctx.err != '' {
+	if ctx.err.str() != 'none' {
 		ctx.mutex.unlock()
 		// already canceled
 		return
@@ -141,7 +146,7 @@ fn propagate_cancel(parent Context, mut child Canceler) {
 		return
 	}
 
-	if p.err != '' {
+	if p.err.str() != 'none' {
 		// parent has already been canceled
 		child.cancel(false, p.err)
 	} else {

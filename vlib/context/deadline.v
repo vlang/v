@@ -1,3 +1,7 @@
+// This module defines the Context type, which carries deadlines, cancellation signals,
+// and other request-scoped values across API boundaries and between processes.
+// Based off:   https://github.com/golang/go/tree/master/src/context
+// Last commit: https://github.com/golang/go/commit/52bf14e0e8bdcd73f1ddfb0c4a1d0200097d3ba2
 module context
 
 import rand
@@ -43,7 +47,7 @@ pub fn with_deadline(parent Context, d time.Time) Context {
 		return Context(ctx)
 	}
 
-	if ctx.cancel_ctx.err() == '' {
+	if ctx.err().str() == 'none' {
 		go fn (mut ctx TimerContext, dur time.Duration) {
 			time.sleep(dur)
 			ctx.cancel(true, deadline_exceeded)
@@ -68,7 +72,7 @@ pub fn (mut ctx TimerContext) done() chan int {
 	return ctx.cancel_ctx.done()
 }
 
-pub fn (mut ctx TimerContext) err() string {
+pub fn (mut ctx TimerContext) err() IError {
 	return ctx.cancel_ctx.err()
 }
 
@@ -76,7 +80,7 @@ pub fn (ctx TimerContext) value(key string) ?voidptr {
 	return ctx.cancel_ctx.value(key)
 }
 
-pub fn (mut ctx TimerContext) cancel(remove_from_parent bool, err string) {
+pub fn (mut ctx TimerContext) cancel(remove_from_parent bool, err IError) {
 	ctx.cancel_ctx.cancel(false, err)
 	if remove_from_parent {
 		// Remove this TimerContext from its parent CancelContext's children.
