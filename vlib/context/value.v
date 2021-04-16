@@ -1,3 +1,7 @@
+// This module defines the Context type, which carries deadlines, cancellation signals,
+// and other request-scoped values across API boundaries and between processes.
+// Based off:   https://github.com/golang/go/tree/master/src/context
+// Last commit: https://github.com/golang/go/commit/52bf14e0e8bdcd73f1ddfb0c4a1d0200097d3ba2
 module context
 
 import time
@@ -37,7 +41,7 @@ pub fn (ctx ValueContext) done() chan int {
 	return ctx.context.done()
 }
 
-pub fn (ctx ValueContext) err() string {
+pub fn (ctx ValueContext) err() IError {
 	return ctx.context.err()
 }
 
