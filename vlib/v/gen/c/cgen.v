@@ -5120,7 +5120,9 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	mut nr_fields := 1
 	if sym.kind == .struct_ {
 		info := sym.info as ast.Struct
-		nr_fields = info.fields.len
+		$if !msvc {
+			nr_fields = info.fields.len
+		}
 		if info.is_union && struct_init.fields.len > 1 {
 			verror('union must not have more than 1 initializer')
 		}
