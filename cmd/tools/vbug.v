@@ -77,8 +77,10 @@ fn open_uri(uri string) ? {
 	if result.exit_code != 0 {
 		$if linux {
 			// check if wsl, and use the windows approach if that's the case
-			if os.execute('cat /proc/sys/kernel/osrelease').output.contains('Microsoft') {
-				if os.execute('explorer.exe "$uri"').exit_code == 0 {
+			if os.execute('cat /proc/sys/kernel/osrelease').output.contains_any_substr([
+				'Microsoft', 'microsoft'])
+			{
+				if os.execute('cmd.exe /C start "$uri"').exit_code == 0 {
 					return
 				}
 			}
@@ -159,7 +161,7 @@ fn main() {
 	}
 
 	// When updating this template, make sure to update `.github/ISSUE_TEMPLATE/bug_report.md` too
-	raw_body := "<!-- It is advisable to update all relevant modules using `v outdated` and `v install` -->
+	raw_body := '<!-- It is advisable to update all relevant modules using `v outdated` and `v install` -->
 **V doctor:**
 ```
 $vdoctor_output```
@@ -174,7 +176,7 @@ $expected_result
 
 **What did you see instead?**
 ```
-$build_output```"
+$build_output```'
 	mut encoded_body := urllib.query_escape(raw_body.replace_once('{file_content}', '```v\n$file_content\n```'))
 	mut generated_uri := 'https://github.com/vlang/v/issues/new?labels=Bug&body=$encoded_body'
 	if generated_uri.len > 8192 {
