@@ -321,7 +321,10 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	}
 	page_gen_start := time.ticks()
 	req := parse_request(mut reader) or {
-		eprintln('error parsing request: $err')
+		// Prevents errors from being thrown when BufferedReader is empty
+		if '$err' != 'none' {
+			eprintln('error parsing request: $err')
+		}
 		return
 	}
 	app.Context = Context{
