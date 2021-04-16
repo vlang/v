@@ -21,7 +21,7 @@ It is __easy__, and it usually takes __only a few seconds__.
 
 ### Linux, macOS, FreeBSD, etc:
 You need [`git`](https://git-scm.com/downloads)
->You can install and use a C compiler of your choice for binary optimization, but by default V will use [TCC](http://savannah.nongnu.org/projects/tinycc/).
+>You can install and use a C compiler of your choice for binary optimization, by default V will download and use [TCC](http://savannah.nongnu.org/projects/tinycc/).
 ```bash
 git clone https://github.com/vlang/v
 cd v
@@ -30,7 +30,7 @@ make
 
 ### Windows:
 You need [`git`](https://git-scm.com/downloads)
->You can install and use a C compiler of your choice for binary optimization, but by default V will use [TCC](http://savannah.nongnu.org/projects/tinycc/).
+>You can install and use a C compiler of your choice for binary optimization, by default V will download and use [TCC](http://savannah.nongnu.org/projects/tinycc/).
 ```bash
 git clone https://github.com/vlang/v
 cd v
@@ -2010,25 +2010,25 @@ To create a new module, create a directory with your module's name containing
 ```shell
 cd ~/code/modules
 mkdir mymodule
-vim mymodule/myfile.v
+vim my_module/myfile.v
 ```
 ```v failcompile
 // myfile.v
-module mymodule
+module my_module
 
 // To export a function we have to use `pub`
 pub fn say_hi() {
-	println('hello from mymodule!')
+	println('hello from my_module!')
 }
 ```
 
-You can now use `mymodule` in your code:
+You can now use `my_module` in your code:
 
 ```v failcompile
-import mymodule
+import my_module
 
 fn main() {
-	mymodule.say_hi()
+	my_module.say_hi()
 }
 ```
 
