@@ -2054,6 +2054,49 @@ pub fn (mut f Fmt) map_init(node ast.MapInit) {
 	f.write('}')
 }
 
+fn (mut f Fmt) match_branch(branch ast.MatchBranch, single_line bool) {
+	if !branch.is_else {
+		// normal branch
+		f.is_mbranch_expr = true
+		for j, expr in branch.exprs {
+			estr := f.node_str(expr)
+			if f.line_len + estr.len + 2 > fmt.max_len[5] {
+				f.remove_new_line({})
+				f.writeln('')
+			}
+			f.write(estr)
+			if j < branch.ecmnts.len && branch.ecmnts[j].len > 0 {
+				f.write(' ')
+				f.comments(branch.ecmnts[j], iembed: true)
+			}
+			if j < branch.exprs.len - 1 {
+				f.write(', ')
+			}
+		}
+		f.is_mbranch_expr = false
+	} else {
+		// else branch
+		f.write('else')
+	}
+	if branch.stmts.len == 0 {
+		f.writeln(' {}')
+	} else {
+		if single_line {
+			f.write(' { ')
+		} else {
+			f.writeln(' {')
+		}
+		f.stmts(branch.stmts)
+		if single_line {
+			f.remove_new_line({})
+			f.writeln(' }')
+		} else {
+			f.writeln('}')
+		}
+	}
+	f.comments(branch.post_comments, inline: true)
+}
+
 pub fn (mut f Fmt) match_expr(node ast.MatchExpr) {
 	f.write('match ')
 	f.expr(node.cond)
@@ -2077,47 +2120,16 @@ pub fn (mut f Fmt) match_expr(node ast.MatchExpr) {
 			break
 		}
 	}
-	for branch in node.branches {
-		if !branch.is_else {
-			// normal branch
-			f.is_mbranch_expr = true
-			for j, expr in branch.exprs {
-				estr := f.node_str(expr)
-				if f.line_len + estr.len + 2 > fmt.max_len[5] {
-					f.remove_new_line({})
-					f.writeln('')
-				}
-				f.write(estr)
-				if j < branch.ecmnts.len && branch.ecmnts[j].len > 0 {
-					f.write(' ')
-					f.comments(branch.ecmnts[j], iembed: true)
-				}
-				if j < branch.exprs.len - 1 {
-					f.write(', ')
-				}
-			}
-			f.is_mbranch_expr = false
-		} else {
-			// else branch
-			f.write('else')
+	mut else_idx := -1
+	for i, branch in node.branches {
+		if branch.is_else {
+			else_idx = i
+			continue
 		}
-		if branch.stmts.len == 0 {
-			f.writeln(' {}')
-		} else {
-			if single_line {
-				f.write(' { ')
-			} else {
-				f.writeln(' {')
-			}
-			f.stmts(branch.stmts)
-			if single_line {
-				f.remove_new_line({})
-				f.writeln(' }')
-			} else {
-				f.writeln('}')
-			}
-		}
-		f.comments(branch.post_comments, inline: true)
+		f.match_branch(branch, single_line)
+	}
+	if else_idx >= 0 {
+		f.match_branch(node.branches[else_idx], single_line)
 	}
 	f.indent--
 	f.write('}')
