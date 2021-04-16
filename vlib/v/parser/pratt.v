@@ -328,7 +328,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 		}
 	}
 	if inside_array_lit {
-		if p.tok.kind == .minus && p.tok.pos + 1 == p.peek_tok.pos
+		if p.tok.kind in [.minus, .mul, .amp, .arrow] && p.tok.pos + 1 == p.peek_tok.pos
 			&& p.prev_tok.pos + p.prev_tok.len + 1 != p.peek_tok.pos {
 			return node
 		}
