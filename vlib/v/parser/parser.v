@@ -40,6 +40,7 @@ mut:
 	inside_fn           bool // true even with implicit main
 	inside_unsafe_fn    bool
 	inside_str_interp   bool
+	inside_array_lit    bool
 	or_is_handled       bool       // ignore `or` in this expression
 	builtin_mod         bool       // are we in the `builtin` module?
 	mod                 string     // current module name
