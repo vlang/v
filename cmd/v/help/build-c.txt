@@ -16,6 +16,10 @@ see also `v help build`.
       Pass the provided flag as is to the C compiler.
       Can be specified multiple times to provide multiple flags.
       Use quotes to wrap the flag argument if it contains spaces.
+      
+   -cstrict
+      Turn on additional C warnings. This slows down compilation
+      slightly (~10-10% for gcc), but sometimes provides better diagnosis.
 
    -showcc
       Prints the C command that is used to build the program.
@@ -201,3 +205,13 @@ see also `v help build`.
       Write all C flags into `file.txt`, one flag per line.
       If `file.txt` is `-`, then write the flags to stdout, one flag per line.
 
+   -assert aborts
+      Call abort() after an assertion failure. Debuggers usually
+      install signal handlers for SIGABRT, so your program will stop and you
+      will get a backtrace. If you are running your program outside of a
+      debugger, you will most likely get a core dump file.
+      
+   -assert backtraces
+      Call print_backtrace() after an assertion failure. Note that
+      backtraces are not implemented yet on all combinations of
+      platform/compiler.

@@ -147,6 +147,7 @@ fn lines_to_string(len int, lines []string, start int, end int) string {
 	for i in start .. end {
 		sb.writeln(lines[i])
 	}
+	sb.cut_last(1) // last newline
 	res := sb.str()
 	unsafe { sb.free() }
 	return res
