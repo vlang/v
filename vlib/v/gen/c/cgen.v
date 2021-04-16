@@ -1067,6 +1067,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.gen_assign_stmt(node)
 		}
 		ast.Block {
+			g.write_v_source_line_info(node.pos)
 			if node.is_unsafe {
 				g.writeln('{ // Unsafe block')
 			} else {
@@ -1188,6 +1189,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.writeln('$node.name: {}')
 		}
 		ast.GotoStmt {
+			g.write_v_source_line_info(node.pos)
 			g.writeln('goto $node.name;')
 		}
 		ast.HashStmt {
