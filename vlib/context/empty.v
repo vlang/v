@@ -23,6 +23,7 @@ pub fn (ctx EmptyContext) done() chan int {
 }
 
 pub fn (ctx EmptyContext) err() IError {
+	// TODO: Change this to `none`
 	return none__
 }
 
