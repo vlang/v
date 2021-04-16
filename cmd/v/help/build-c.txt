@@ -68,6 +68,12 @@ see also `v help build`.
             See `man vsprintf`.
          vsnprintf(str &char, size size_t, format &char, ap va_list) int
             See `man vsnprintf`.
+         bare_backtrace() string
+            Return a backtrace that can be printed. If backtraces are not 
+            supported, return a message stating that backtraces do not work.
+         [export: 'exit']
+         __exit(code int)
+            Exit with code code. code is allowed to be ignored.
 
          The module decleration should be `builtin`. The default Linux 
          implementation can be found in `vlib/builtin/linux_bare`.

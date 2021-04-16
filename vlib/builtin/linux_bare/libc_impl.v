@@ -140,6 +140,10 @@ fn bare_panic(msg string) {
 	exit(1)
 }
 
+fn bare_backtrace() string {
+	return 'backtraces are not available with `-freestanding`'
+}
+
 [export: 'exit']
 fn __exit(code int) {
 	sys_exit(code)
