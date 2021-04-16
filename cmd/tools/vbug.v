@@ -159,9 +159,7 @@ fn main() {
 	}
 
 	// When updating this template, make sure to update `.github/ISSUE_TEMPLATE/bug_report.md` too
-	raw_body := "<!-- Please make sure to run `v up` before reporting any issues as it may have already been fixed.
-     It's also advisable to update all relevant modules using `v outdated` and `v install` -->
-
+	raw_body := "<!-- It is advisable to update all relevant modules using `v outdated` and `v install` -->
 **V doctor:**
 ```
 $vdoctor_output```
