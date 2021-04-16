@@ -1,4 +1,5 @@
 struct NestedGeneric {}
+
 struct Context {}
 
 struct App {
