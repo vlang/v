@@ -616,7 +616,7 @@ jobs:
         run: |
           echo %VFLAGS%
           echo $VFLAGS
-          .\make.bat --verbose -msvc
+          .\make.bat -msvc --verbose
           .\v.exe -cflags /WX self
       - name: Install dependencies
         run: |
@@ -659,7 +659,7 @@ jobs:
           node-version: 12.x
       - name: Build with make.bat -tcc
         run: |
-          .\make.bat --verbose -tcc
+          .\make.bat -tcc --verbose
       - name: Test new v.c
         run: .\v.exe -o v.c cmd/v && .\thirdparty\tcc\tcc.exe -Werror -w -ladvapi32 -bt10 v.c
       - name: Install dependencies
@@ -702,7 +702,7 @@ jobs:
         run: |
           Remove-Item -Recurse -Force .\thirdparty\tcc
           .\v.exe wipe-cache
-          .\make.bat --verbose -tcc32
+          .\make.bat -tcc32 --verbose
       - name: Test new v.c
         run: .\v.exe -o v.c cmd/v && .\thirdparty\tcc\tcc.exe -Werror -w -ladvapi32 -bt10 v.c
       - name: v doctor
@@ -713,7 +713,7 @@ jobs:
           .\cmd\tools\test_if_v_test_system_works.exe
 
       - name: Make sure running TCC32 instead of TCC64
-        run : ./v test .github\workflows\make_sure_ci_run_with_32bit_compiler_test.v
+        run : ./v -stats .github\workflows\make_sure_ci_run_with_32bit_compiler_test.v
 
       - name: Test v build-tools
         run: ./v -W build-tools
