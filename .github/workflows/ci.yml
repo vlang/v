@@ -779,11 +779,6 @@ jobs:
       - name: Build V
         run: make -j2 && ./v -cc gcc -o v cmd/v
 
-      - name: Installing V modules
-        run: |
-          ./v install ui
-          ./v install nedpals.args
-
   ## vls
       - name: Clone VLS
         run: git clone --depth 1 https://github.com/vlang/vls
@@ -798,16 +793,6 @@ jobs:
       - name: Build vab
         run: cd vab; ../v ./vab.v ; cd ..
 
-  ## vex
-      - name: Install Vex dependencies
-        run: sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev
-      - name: Install Vex
-        run: ./v install nedpals.vex
-      - name: Compile the simple Vex example
-        run: ./v ~/.vmodules/nedpals/vex/examples/simple_example.v
-      - name: Run Vex Tests
-        run: ./v test ~/.vmodules/nedpals/vex
-
   ## gitly
       - name: Install markdown
         run: ./v install markdown
@@ -818,3 +803,18 @@ jobs:
           ../v .
           ../v -autofree .
           cd ..
+          
+  ## vex
+      - name: Install Vex dependencies
+        run: sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev
+      - name: Install Vex
+        run: mkdir -p ~/.vmodules/nedpals; git clone https://github.com/nedpals/vex ~/.vmodules/nedpals/vex
+      - name: Compile the simple Vex example
+        run: ./v ~/.vmodules/nedpals/vex/examples/simple_example.v
+      - name: Run Vex Tests
+        run: ./v test ~/.vmodules/nedpals/vex
+        
+  ## vpm modules
+      - name: Installing V modules
+        run: |
+          ./v install ui
