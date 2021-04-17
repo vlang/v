@@ -84,7 +84,7 @@ fn new_map() map[string]f64 {
 }
 
 fn test_shared_array_iteration() {
-	shared a := [12.75, -0.125, 17]
+	shared a := [12.75, -0.125, 18.5 - (1.0 + .5)]
 	mut n0 := 0
 	mut n1 := 0
 	mut n2 := 0

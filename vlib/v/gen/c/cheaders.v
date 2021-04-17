@@ -735,50 +735,17 @@ typedef void (*MapFreeFn)(voidptr);
 		c_common_macros +
 		'
 
-#ifndef exit
-#define exit(rc) sys_exit(rc)
-void sys_exit (int);
-#endif
-
-#define stdin 0
-#define stdout 1
-#define stderr 2
-
 #define _VFREESTANDING
 
 typedef long unsigned int size_t;
 
 // Memory allocation related headers
-// void *malloc(int size);
-byte *calloc(int nitems, int size);
-byte *realloc(byte *ptr, int size);
-byte *memcpy(byte *dest, byte *src, int n);
-byte *memset(byte *s, int c, int n);
-byte *memmove(byte *dest, byte *src, int n);
-
-// Backtrace headers
-int backtrace(void **buffer, int size);
-char **backtrace_symbols(void *const *buffer, int size);
-void backtrace_symbols_fd(void *const *buffer, int size, int fd);
-
-// I/O related headers
-typedef void FILE;
-FILE *popen(const char *command, const char *type);
-int pclose(FILE *stream);
-int fgetc(FILE *stream);
-char *fgets(char *s, int size, FILE *stream);
-int getc(FILE *stream);
-int getchar(void);
-int ungetc(int c, FILE *stream);
-
-
-// char manipulation headers
-int toupper(int c);
-int tolower(int c);
-// int toupper_l(int c, locale_t locale);
-// int tolower_l(int c, locale_t locale);
-
-int isatty(int fd);
+void *malloc(size_t size);
+void *calloc(size_t nitems, size_t size);
+void *realloc(void *ptr, size_t size);
+void *memcpy(void *dest, void *src, size_t n);
+void *memset(void *s, int c, size_t n);
+void *memmove(void *dest, void *src, size_t n);
 
 // varargs implementation, TODO: works on tcc and gcc, but is very unportable and hacky
 typedef __builtin_va_list va_list;
@@ -804,6 +771,5 @@ static voidptr memfreedup(voidptr ptr, voidptr src, int sz) {
 	return memdup(src, sz);
 }
 
-' +
-		c_wyhash
+' + c_wyhash
 )

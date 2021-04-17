@@ -6014,8 +6014,8 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 		info := c.table.get_type_symbol(node.typ).map_info()
 		c.ensure_type_exists(info.key_type, node.pos) or {}
 		c.ensure_type_exists(info.value_type, node.pos) or {}
-		node.key_type = info.key_type
-		node.value_type = info.value_type
+		node.key_type = c.unwrap_generic(info.key_type)
+		node.value_type = c.unwrap_generic(info.value_type)
 		return node.typ
 	}
 	if node.keys.len > 0 && node.vals.len > 0 {
@@ -6052,13 +6052,12 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 				c.check_dup_keys(node, i)
 			}
 		}
+		key0_type = c.unwrap_generic(key0_type)
+		val0_type = c.unwrap_generic(val0_type)
 		mut map_type := ast.new_type(c.table.find_or_register_map(key0_type, val0_type))
 		node.typ = map_type
 		node.key_type = key0_type
 		node.value_type = val0_type
-		if node.key_type.has_flag(.generic) || node.value_type.has_flag(.generic) {
-			map_type = map_type.set_flag(.generic)
-		}
 		return map_type
 	}
 	return node.typ
@@ -6319,21 +6318,24 @@ fn (mut c Checker) fetch_and_verify_orm_fields(info ast.Struct, pos token.Positi
 fn (mut c Checker) post_process_generic_fns() {
 	// Loop thru each generic function concrete type.
 	// Check each specific fn instantiation.
-	for i in 0 .. c.file.generic_fns.len {
-		if c.table.fn_generic_types.len == 0 {
-			// no concrete types, so just skip:
-			continue
-		}
-		mut node := c.file.generic_fns[i]
-		c.mod = node.mod
-		for gen_types in c.table.fn_generic_types[node.name] {
-			node.cur_generic_types = gen_types
-			c.fn_decl(mut node)
-			if node.name in ['vweb.run_app', 'vweb.run'] {
-				c.vweb_gen_types << gen_types
+	// Check 2 times (in order to check nested generics fn)
+	for _ in 0 .. 2 {
+		for i in 0 .. c.file.generic_fns.len {
+			if c.table.fn_generic_types.len == 0 {
+				// no concrete types, so just skip:
+				continue
 			}
+			mut node := c.file.generic_fns[i]
+			c.mod = node.mod
+			for gen_types in c.table.fn_generic_types[node.name] {
+				node.cur_generic_types = gen_types
+				c.fn_decl(mut node)
+				if node.name in ['vweb.run_app', 'vweb.run'] {
+					c.vweb_gen_types << gen_types
+				}
+			}
+			node.cur_generic_types = []
 		}
-		node.cur_generic_types = []
 	}
 }
 

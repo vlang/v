@@ -328,6 +328,7 @@ goto :error
 :error
 echo.
 echo Exiting from error
+type "!log_file!"
 echo ERROR: please follow the instructions in https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows
 exit /b 1
 

@@ -134,8 +134,9 @@ pub fn read_file(path string) ?string {
 }
 
 // ***************************** OS ops ************************
-
+//
 // truncate changes the size of the file located in `path` to `len`.
+// Note that changing symbolic links on Windows only works as admin.
 pub fn truncate(path string, len u64) ? {
 	fp := C.open(&char(path.str), o_wronly | o_trunc)
 	defer {
@@ -155,7 +156,9 @@ pub fn truncate(path string, len u64) ? {
 	}
 }
 
-// file_size returns the size of the file located in `path`. In case of error -1 is returned.
+// file_size returns the size of the file located in `path`.
+// If an error occurs it returns 0.
+// Note that use of this on symbolic links on Windows returns always 0.
 pub fn file_size(path string) u64 {
 	mut s := C.stat{}
 	unsafe {
@@ -182,7 +185,7 @@ pub fn file_size(path string) u64 {
 			}
 		}
 	}
-	return -1
+	return 0
 }
 
 // mv moves files or folders from `src` to `dst`.
@@ -868,12 +871,8 @@ pub fn chown(path string, owner int, group int) ? {
 	$if windows {
 		return error('os.chown() not implemented for Windows')
 	} $else {
-		if owner < 0 || group < 0 {
-			return error('os.chown() uid and gid cannot be negative: Not changing owner!')
-		} else {
-			if C.chown(&char(path.str), owner, group) != 0 {
-				return error_with_code(posix_get_error_msg(C.errno), C.errno)
-			}
+		if C.chown(&char(path.str), owner, group) != 0 {
+			return error_with_code(posix_get_error_msg(C.errno), C.errno)
 		}
 	}
 }

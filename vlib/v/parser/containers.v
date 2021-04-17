@@ -43,6 +43,8 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		last_pos = p.tok.position()
 	} else {
 		// [1,2,3] or [const]byte
+		old_inside_array_lit := p.inside_array_lit
+		p.inside_array_lit = true
 		pre_cmnts = p.eat_comments({})
 		for i := 0; p.tok.kind !in [.rsbr, .eof]; i++ {
 			exprs << p.expr(0)
@@ -52,6 +54,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 			}
 			ecmnts.last() << p.eat_comments({})
 		}
+		p.inside_array_lit = old_inside_array_lit
 		line_nr := p.tok.line_nr
 		$if tinyc {
 			// NB: do not remove the next line without testing
