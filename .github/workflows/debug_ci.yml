@@ -1,4 +1,4 @@
-name: Code CI
+name: Debug CI
 
 on: [push, workflow_dispatch]
 
