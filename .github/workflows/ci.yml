@@ -616,7 +616,7 @@ jobs:
         run: |
           echo %VFLAGS%
           echo $VFLAGS
-          .\make.bat -msvc
+          .\make.bat --verbose -msvc
           .\v.exe -cflags /WX self
       - name: Install dependencies
         run: |
@@ -659,7 +659,7 @@ jobs:
           node-version: 12.x
       - name: Build with make.bat -tcc
         run: |
-          .\make.bat -tcc
+          .\make.bat --verbose -tcc
       - name: Test new v.c
         run: .\v.exe -o v.c cmd/v && .\thirdparty\tcc\tcc.exe -Werror -w -ladvapi32 -bt10 v.c
       - name: Install dependencies
@@ -702,7 +702,7 @@ jobs:
         run: |
           Remove-Item -Recurse -Force .\thirdparty\tcc
           .\v.exe wipe-cache
-          .\make.bat -tcc32
+          .\make.bat --verbose -tcc32
       - name: Test new v.c
         run: .\v.exe -o v.c cmd/v && .\thirdparty\tcc\tcc.exe -Werror -w -ladvapi32 -bt10 v.c
       - name: v doctor
