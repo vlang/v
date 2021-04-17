@@ -218,6 +218,10 @@ mut sb := strings.new_builder($lstartlength)\n
 			// replace `$` to `\$` at first to escape JavaScript template literal syntax
 			source.writeln(line.replace(r'$', r'\$').replace(r'$$', r'@').replace(r'.$',
 				r'.@').replace(r"'", r"\'"))
+		} else if state == .css {
+			// disable template variable declaration in inline stylesheet
+			// because of  some CSS rules prefixed with `@`.
+			source.writeln(line.replace(r'.$', r'.@').replace(r"'", r"\'"))
 		} else {
 			// HTML, may include `@var`
 			// escaped by cgen, unless it's a `vweb.RawHtml` string
