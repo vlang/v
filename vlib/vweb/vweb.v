@@ -85,6 +85,15 @@ pub fn (ctx Context) init_server() {}
 // declaring before_request in your App struct is optional
 pub fn (ctx Context) before_request() {}
 
+// declaring init_conn in your App struct is optional
+pub fn (ctx Context) init_conn(mut conn net.TcpConn) {
+	conn.set_read_timeout(30 * time.second)
+	conn.set_write_timeout(30 * time.second)
+	defer {
+		conn.close() or {}
+	}
+}
+
 pub struct Cookie {
 	name      string
 	value     string
@@ -310,11 +319,7 @@ pub fn run_app<T>(mut app T, port int) {
 
 [manualfree]
 fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
-	conn.set_read_timeout(30 * time.second)
-	conn.set_write_timeout(30 * time.second)
-	defer {
-		conn.close() or {}
-	}
+	app.init_conn(conn)
 	mut reader := io.new_buffered_reader(reader: io.make_reader(conn))
 	defer {
 		reader.free()
