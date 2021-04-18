@@ -1424,7 +1424,8 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 	if node.is_range {
 		// `for x in 1..10 {`
 		i := if node.val_var == '_' { g.new_tmp_var() } else { c_name(node.val_var) }
-		g.write('for (${g.typ(node.val_type)} $i = ')
+		val_typ := g.table.mktyp(node.val_type)
+		g.write('for (${g.typ(val_typ)} $i = ')
 		g.expr(node.cond)
 		g.write('; $i < ')
 		g.expr(node.high)
