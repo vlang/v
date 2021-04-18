@@ -20,7 +20,7 @@ fn test_select() {
 	go do_send_int(chi)
 	mut sum := i64(0)
 	mut sl := i64(0)
-	for _ in 0 .. 60000 + recch.cap {
+	for _ in 0 .. 60000 + int(recch.cap) {
 		select {
 			ri := <-chi {
 				sum += ri
@@ -36,7 +36,7 @@ fn test_select() {
 
 	mut sumrec := <- chsum
 	// Empty receive buffer
-	for _ in 0 .. recch.cap {
+	for _ in 0 .. int(recch.cap) {
 		sumrec += <- recch
 	}
 	assert sumrec == i64(30000 + recch.cap) * (30000 + recch.cap - 1) / 2
