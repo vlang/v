@@ -158,7 +158,7 @@ fn unescape(s_ string, mode EncodingMode) ?string {
 					break
 				}
 				n++
-				if i + 3 >= s.len || !ishex(s[i + 1]) || !ishex(s[i + 2]) {
+				if i + 2 >= s.len || !ishex(s[i + 1]) || !ishex(s[i + 2]) {
 					if mode == .encode_query_component && i + 1 < s.len {
 						s = s[..i] + '%25' + s[(i + 1)..]
 						i += 4 // skip the %25 and the next character
