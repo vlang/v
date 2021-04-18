@@ -5838,7 +5838,11 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 			type_name := g.typ(typ)
 			init_str = '($type_name)' + init_str
 		} else {
-			init_str += '0}'
+			if info.fields.len > 0 {
+				init_str += '0}'
+			} else {
+				init_str += 'EMPTY_STRUCT_INITIALIZATION}'
+			}
 		}
 		if typ.has_flag(.shared_f) {
 			styp := '__shared__${g.table.get_type_symbol(typ).cname}'
