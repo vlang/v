@@ -3,7 +3,27 @@ module sync
 import time
 import rand
 
-// See include directory rules in sync_default.c.v
+
+$if windows {
+	#flag -I @VROOT/thirdparty/stdatomic/win
+} $else {
+	#flag -I @VROOT/thirdparty/stdatomic/nix
+}
+
+$if linux {
+	$if tinyc {
+		// most Linux distributions have /usr/lib/libatomic.so, but Ubuntu uses gcc version specific dir
+		#flag -L/usr/lib/gcc/x86_64-linux-gnu/6
+		#flag -L/usr/lib/gcc/x86_64-linux-gnu/7
+		#flag -L/usr/lib/gcc/x86_64-linux-gnu/8
+		#flag -L/usr/lib/gcc/x86_64-linux-gnu/9
+		#flag -L/usr/lib/gcc/x86_64-linux-gnu/10
+		#flag -L/usr/lib/gcc/x86_64-linux-gnu/11
+		#flag -L/usr/lib/gcc/x86_64-linux-gnu/12
+		#flag -latomic
+	}
+}
+
 #include <atomic.h>
 // The following functions are actually generic in C
 fn C.atomic_load_ptr(voidptr) voidptr
