@@ -1612,17 +1612,30 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 		} else {
 			call_expr.return_type = method.return_type
 		}
-
+		mut exp_arg_typ := ast.Type(0) // type of 1st arg for special builtin methods
+		mut param_is_mut := false
+		if left_type_sym.kind == .chan {
+			elem_typ := (left_type_sym.info as ast.Chan).elem_type
+			if method_name == 'try_push' {
+				exp_arg_typ = elem_typ.to_ptr()
+			} else if method_name == 'try_pop' {
+				exp_arg_typ = elem_typ
+				param_is_mut = true
+			}
+		}
 		// if method_name == 'clone' {
 		// println('CLONE nr args=$method.args.len')
 		// }
 		// call_expr.args << method.args[0].typ
 		// call_expr.exp_arg_types << method.args[0].typ
 		for i, arg in call_expr.args {
-			exp_arg_typ := if method.is_variadic && i >= method.params.len - 1 {
-				method.params[method.params.len - 1].typ
-			} else {
-				method.params[i + 1].typ
+			if i > 0 || exp_arg_typ == ast.Type(0) {
+				exp_arg_typ = if method.is_variadic && i >= method.params.len - 1 {
+					method.params[method.params.len - 1].typ
+				} else {
+					method.params[i + 1].typ
+				}
+				param_is_mut = false
 			}
 			exp_arg_sym := c.table.get_type_symbol(exp_arg_typ)
 			c.expected_type = exp_arg_typ
@@ -1656,6 +1669,7 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 			} else {
 				method.params[i + 1]
 			}
+			param_is_mut = param_is_mut || param.is_mut
 			param_share := param.typ.share()
 			if param_share == .shared_t && (c.locked_names.len > 0 || c.rlocked_names.len > 0) {
 				c.error('method with `shared` arguments cannot be called inside `lock`/`rlock` block',
@@ -1663,12 +1677,12 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 			}
 			if arg.is_mut {
 				to_lock, pos := c.fail_if_immutable(arg.expr)
-				if !param.is_mut {
+				if !param_is_mut {
 					tok := arg.share.str()
 					c.error('`$call_expr.name` parameter `$param.name` is not `$tok`, `$tok` is not needed`',
 						arg.expr.position())
 				} else {
-					if param.typ.share() != arg.share {
+					if param_share != arg.share {
 						c.error('wrong shared type', arg.expr.position())
 					}
 					if to_lock != '' && param_share != .shared_t {
@@ -1677,7 +1691,7 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 					}
 				}
 			} else {
-				if param.is_mut {
+				if param_is_mut {
 					tok := arg.share.str()
 					c.error('`$call_expr.name` parameter `$param.name` is `$tok`, you need to provide `$tok` e.g. `$tok arg${
 						i + 1}`', arg.expr.position())
