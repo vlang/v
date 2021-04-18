@@ -5932,7 +5932,7 @@ pub fn (mut c Checker) enum_val(mut node ast.EnumVal) ast.Type {
 		c.error('not an enum', node.pos)
 		return ast.void_type
 	}
-	if !(typ_sym.is_public || typ_sym.mod == c.mod || c.pref.is_test) {
+	if !(typ_sym.is_public || typ_sym.mod == c.mod) {
 		c.error('enum `$typ_sym.name` is private', node.pos)
 	}
 	// info := typ_sym.info as ast.Enum
