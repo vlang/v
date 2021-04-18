@@ -49,7 +49,7 @@ enum Flag {
 }
 
 // State represents the state of the websocket connection.
-enum State {
+pub enum State {
 	connecting = 0
 	open
 	closing
