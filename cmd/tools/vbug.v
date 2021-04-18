@@ -88,7 +88,7 @@ fn open_uri(uri string) ? {
 
 fn ask(msg string) bool {
 	prompt := os.input_opt('$msg [Y/n] ') or { 'y' }
-	return prompt == '' || promp[0].ascii_str().to_lower() != 'n'
+	return prompt == '' || prompt[0].ascii_str().to_lower() != 'n'
 }
 
 fn confirm_or_exit(msg string) {
