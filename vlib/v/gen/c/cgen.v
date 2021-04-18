@@ -5207,6 +5207,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 				g.write(field.name)
 			} else {
 				if !g.zero_struct_field(field) {
+					nr_fields--
 					continue
 				}
 			}
