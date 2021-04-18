@@ -1614,6 +1614,7 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 		}
 		mut exp_arg_typ := ast.Type(0) // type of 1st arg for special builtin methods
 		mut param_is_mut := false
+		mut no_type_promotion := false
 		if left_type_sym.kind == .chan {
 			elem_typ := (left_type_sym.info as ast.Chan).elem_type
 			if method_name == 'try_push' {
@@ -1621,6 +1622,7 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 			} else if method_name == 'try_pop' {
 				exp_arg_typ = elem_typ
 				param_is_mut = true
+				no_type_promotion = true
 			}
 		}
 		// if method_name == 'clone' {
@@ -1636,11 +1638,18 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 					method.params[i + 1].typ
 				}
 				param_is_mut = false
+				no_type_promotion = false
 			}
 			exp_arg_sym := c.table.get_type_symbol(exp_arg_typ)
 			c.expected_type = exp_arg_typ
 			got_arg_typ := c.check_expr_opt_call(arg.expr, c.expr(arg.expr))
 			call_expr.args[i].typ = got_arg_typ
+			if no_type_promotion {
+				if got_arg_typ != exp_arg_typ {
+					c.error('cannot use `${c.table.get_type_symbol(got_arg_typ).name}` as argument for `$method.name` (`$exp_arg_sym.name` expected)',
+						arg.pos)
+				}
+			}
 			if method.is_variadic && got_arg_typ.has_flag(.variadic) && call_expr.args.len - 1 > i {
 				c.error('when forwarding a variadic variable, it must be the final argument',
 					arg.pos)
