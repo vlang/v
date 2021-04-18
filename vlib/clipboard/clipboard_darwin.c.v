@@ -3,7 +3,7 @@ module clipboard
 #include <libkern/OSAtomic.h>
 #include <Cocoa/Cocoa.h>
 #flag -framework Cocoa
-#include "@VROOT/vlib/clipboard/clipboard_darwin.m"
+#include "@VEXEROOT/vlib/clipboard/clipboard_darwin.m"
 
 pub struct Clipboard {
 	pb             voidptr
@@ -14,7 +14,7 @@ mut:
 
 fn C.darwin_new_pasteboard() voidptr
 
-fn C.darwin_get_pasteboard_text(voidptr) byteptr
+fn C.darwin_get_pasteboard_text(voidptr) &byte
 
 fn C.darwin_set_pasteboard_text(voidptr, string) bool
 

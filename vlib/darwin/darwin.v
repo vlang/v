@@ -8,7 +8,7 @@ module darwin
 
 struct C.NSString {}
 
-#include "@VROOT/vlib/darwin/darwin.m"
+#include "@VEXEROOT/vlib/darwin/darwin.m"
 
 fn C.nsstring2(s string) voidptr
 
@@ -30,10 +30,10 @@ pub fn nsstring(s string) voidptr {
 // for .app packages: .../my.app/Contents/Resources
 // for cli: .../parent_folder/Resources
 
-fn C.CFBundleCopyResourcesDirectoryURL(bundle voidptr) byteptr
+fn C.CFBundleCopyResourcesDirectoryURL(bundle voidptr) &byte
 fn C.CFBundleGetMainBundle() voidptr
-fn C.CFURLGetFileSystemRepresentation(url byteptr, resolve_against_base bool, buffer byteptr, buffer_size int) int
-fn C.CFRelease(url byteptr)
+fn C.CFURLGetFileSystemRepresentation(url &byte, resolve_against_base bool, buffer &byte, buffer_size int) int
+fn C.CFRelease(url &byte)
 
 pub fn resource_path() string {
 	main_bundle := C.CFBundleGetMainBundle()
@@ -42,8 +42,10 @@ pub fn resource_path() string {
 		panic('CFBundleCopyResourcesDirectoryURL failed')
 	}
 	buffer_size := 4096
-	mut buffer := unsafe{ malloc(buffer_size) }
-	unsafe{ buffer[0] = 0 }
+	mut buffer := unsafe { malloc(buffer_size) }
+	unsafe {
+		buffer[0] = 0
+	}
 	conv_result := C.CFURLGetFileSystemRepresentation(resource_dir_url, true, buffer,
 		buffer_size)
 	if conv_result == 0 {

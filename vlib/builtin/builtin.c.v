@@ -186,7 +186,7 @@ pub fn print(s string) {
 }
 
 /*
-#include "@VROOT/vlib/darwin/darwin.m"
+#include "@VEXEROOT/vlib/darwin/darwin.m"
 fn C.nsstring2(s string) voidptr
 fn C.NSLog(x voidptr)
 #include <asl.h>
