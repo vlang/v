@@ -525,6 +525,7 @@ pub mut:
 }
 
 pub struct GlobalDecl {
+	is_block     bool // __global() block
 pub:
 	pos token.Position
 pub mut:
