@@ -78,8 +78,8 @@ jobs:
           ./cmd/tools/test_if_v_test_system_works
       - name: Self tests
         run: ./v -silent test-self
-      - name: Self tests (-cstrict)
-        run: ./v -cstrict test-self
+      # - name: Self tests (-cstrict)
+      #   run: ./v -cstrict test-self
       - name: Test time functions in a timezone UTC-12
         run: TZ=Etc/GMT+12 ./v test vlib/time/
       - name: Test time functions in a timezone UTC-3
@@ -803,7 +803,7 @@ jobs:
           ../v .
           ../v -autofree .
           cd ..
-          
+
   ## vex
       - name: Install Vex dependencies
         run: sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev
@@ -813,7 +813,7 @@ jobs:
         run: ./v ~/.vmodules/nedpals/vex/examples/simple_example.v
       - name: Run Vex Tests
         run: ./v test ~/.vmodules/nedpals/vex
-        
+
   ## vpm modules
       - name: Installing V modules
         run: |
