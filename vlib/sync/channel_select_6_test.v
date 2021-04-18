@@ -8,7 +8,7 @@ fn do_select(ch1 chan int, ch2 chan int, chf1 chan f64, chf2 chan f64, sumch1 ch
 	mut sum2 := i64(0)
 	f1 := 17.
 	f2 := 7.	
-	for _ in 0 .. 20000 + int(chf1.cap / 3) {
+	for _ in 0 .. 20000 + chf1.cap / 3 {
 		select {
 			chf1 <- f1 {}
 			i := <-ch1 {
@@ -62,7 +62,7 @@ fn test_select() {
 	sum2 := <-chsum2 + <-chsum2 + <-chsum2
 	mut sumf1 := <-chsumf1
 	// empty channel buffer
-	for _ in 0 .. int(chf1.cap) {
+	for _ in 0 .. chf1.cap {
 		sumf1 += <-chf1
 	}
 	sumf2 := <-chsumf2 + <-chsumf2
