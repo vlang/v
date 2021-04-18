@@ -5197,7 +5197,6 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 			if field.typ in info.embeds {
 				continue
 			}
-			mut has_init_str := true
 			if struct_init.has_update_expr {
 				g.expr(struct_init.update_expr)
 				if struct_init.update_expr_type.is_ptr() {
@@ -5207,14 +5206,14 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 				}
 				g.write(field.name)
 			} else {
-				has_init_str = g.zero_struct_field(field)
-			}
-			if has_init_str {
-				if is_multiline {
-					g.writeln(',')
-				} else {
-					g.write(',')
+				if !g.zero_struct_field(field) {
+					continue
 				}
+			}
+			if is_multiline {
+				g.writeln(',')
+			} else {
+				g.write(',')
 			}
 			initialized = true
 		}
