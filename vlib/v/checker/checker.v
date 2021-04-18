@@ -740,6 +740,11 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) ast.Type {
 		&& right_type in [ast.int_literal_type, ast.float_literal_type] {
 		infix_expr.right_type = left_type
 	}
+	if right_type.is_number() && !right_type.is_ptr()
+		&& left_type in [ast.int_literal_type, ast.float_literal_type] {
+		infix_expr.left_type = right_type
+	}
+	if c.fileis('select_4') { c.warn('$left_type, $right_type -> $infix_expr.left_type, $infix_expr.right_type', infix_expr.pos) }
 	mut right := c.table.get_type_symbol(right_type)
 	right_final := c.table.get_final_type_symbol(right_type)
 	mut left := c.table.get_type_symbol(left_type)
@@ -2564,14 +2569,17 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) ast.Typ
 	field_name := selector_expr.field_name
 	utyp := c.unwrap_generic(typ)
 	sym := c.table.get_type_symbol(utyp)
-	if typ.has_flag(.variadic) || sym.kind == .array_fixed || sym.kind == .chan {
-		if field_name == 'len' || (sym.kind == .chan && field_name == 'cap') {
-			selector_expr.typ = ast.int_type
-			return ast.int_type
-		}
-		if sym.kind == .chan && field_name == 'closed' {
+	if (typ.has_flag(.variadic) || sym.kind == .array_fixed) && field_name == 'len' {
+		selector_expr.typ = ast.int_type
+		return ast.int_type
+	}
+	if sym.kind == .chan {
+		if field_name == 'closed' {
 			selector_expr.typ = ast.bool_type
 			return ast.bool_type
+		} else if field_name in ['len', 'cap'] {
+			selector_expr.typ = ast.u32_type
+			return ast.u32_type
 		}
 	}
 	mut unknown_field_msg := 'type `$sym.name` has no field or method `$field_name`'
