@@ -73,7 +73,9 @@ fn open_uri(uri string) ? {
 		$if linux {
 			// check if wsl, and use the windows approach if that's the case
 			if os.execute('cat /proc/sys/kernel/osrelease').output.contains_any_substr([
-				'Microsoft', 'microsoft'])
+				'Microsoft',
+				'microsoft',
+			])
 			{
 				if os.execute(win_command).exit_code == 0 {
 					return
