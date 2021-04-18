@@ -2,7 +2,7 @@ module szip
 
 import os
 
-#flag -I @VROOT/thirdparty/zip
+#flag -I @VEXEROOT/thirdparty/zip
 #include "zip.c"
 #include "zip.h"
 

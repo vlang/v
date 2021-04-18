@@ -5,9 +5,9 @@ import rand
 
 
 $if windows {
-	#flag -I @VROOT/thirdparty/stdatomic/win
+	#flag -I @VEXEROOT/thirdparty/stdatomic/win
 } $else {
-	#flag -I @VROOT/thirdparty/stdatomic/nix
+	#flag -I @VEXEROOT/thirdparty/stdatomic/nix
 }
 
 $if linux {

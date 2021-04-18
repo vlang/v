@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module http
 
-#flag windows -I @VROOT/thirdparty/vschannel
+#flag windows -I @VEXEROOT/thirdparty/vschannel
 #flag -l ws2_32 -l crypt32 -l secur32 -l user32
 #include "vschannel.c"
 

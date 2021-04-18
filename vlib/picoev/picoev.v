@@ -11,9 +11,9 @@ import picohttpparser
 #include <netinet/tcp.h>
 #include <fcntl.h>
 #include <signal.h>
-#flag -I @VROOT/thirdparty/picoev
-#flag -L @VROOT/thirdparty/picoev
-#flag @VROOT/thirdparty/picoev/picoev.o
+#flag -I @VEXEROOT/thirdparty/picoev
+#flag -L @VEXEROOT/thirdparty/picoev
+#flag @VEXEROOT/thirdparty/picoev/picoev.o
 #include "src/picoev.h"
 const (
 	max_fds      = 1024

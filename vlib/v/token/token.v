@@ -141,17 +141,24 @@ const (
 // @METHOD => will be substituted with ReceiverType.MethodName
 // @MOD => will be substituted with the name of the current V module
 // @STRUCT => will be substituted with the name of the current V struct
-// @VEXE => will be substituted with the path to the V compiler
 // @FILE => will be substituted with the path of the V source file
 // @LINE => will be substituted with the V line number where it appears (as a string).
 // @COLUMN => will be substituted with the column where it appears (as a string).
 // @VHASH  => will be substituted with the shortened commit hash of the V compiler (as a string).
 // @VMOD_FILE => will be substituted with the contents of the nearest v.mod file (as a string).
-// This allows things like this:
-// println( 'file: ' + @FILE + ' | line: ' + @LINE + ' | fn: ' + @MOD + '.' + @FN)
-// ... which is useful while debugging/tracing
+// @VMODROOT => will be substituted with the *folder* where the nearest v.mod file is (as a string).
+// @VEXE => will be substituted with the path to the V compiler
+// @VEXEROOT => will be substituted with the *folder* where the V executable is (as a string).
+// @VROOT => the old name for @VMODROOT; sometimes it was used as @VEXEROOT;
+//           NB: @VROOT is now deprecated, use either @VMODROOT or @VEXEROOT instead.
+// NB: @VEXEROOT & @VMODROOT are used for compilation options like this:
+//   #include "@VMODROOT/include/abc.h"
+//   #flag -L@VEXEROOT/thirdparty/libgc
 //
-// @VROOT is special and handled in places like '#include ...'
+// The @XYZ tokens allow for code like this:
+// println( 'file: ' + @FILE + ' | line: ' + @LINE + ' | fn: ' + @MOD + '.' + @FN)
+// ... which is useful while debugging/tracing.
+//
 // @<type> is allowed for keyword variable names. E.g. 'type'
 pub enum AtKind {
 	unknown
@@ -165,11 +172,14 @@ pub enum AtKind {
 	column_nr
 	vhash
 	vmod_file
+	vmodroot_path
+	vroot_path // obsolete
+	vexeroot_path
 }
 
 pub const (
-	valid_at_tokens = ['@FN', '@METHOD', '@MOD', '@STRUCT', '@VEXE', '@FILE', '@LINE', '@COLUMN',
-		'@VHASH', '@VMOD_FILE']
+	valid_at_tokens = ['@VROOT', '@VMODROOT', '@VEXEROOT', '@FN', '@METHOD', '@MOD', '@STRUCT',
+		'@VEXE', '@FILE', '@LINE', '@COLUMN', '@VHASH', '@VMOD_FILE']
 )
 
 // build_keys genereates a map with keywords' string values:
