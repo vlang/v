@@ -1,4 +1,5 @@
-import sync
+module sync
+
 import time
 
 fn do_rec_i64(mut ch sync.Channel) {

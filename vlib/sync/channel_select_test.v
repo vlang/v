@@ -6,7 +6,7 @@
  * in order to test it independently from the support in the core language
  */
 
-import sync
+module sync
 
 fn do_rec_i64(mut ch sync.Channel) {
 	mut sum := i64(0)
