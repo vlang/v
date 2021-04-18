@@ -24,6 +24,24 @@ pub mut:
 	used_consts      map[string]bool // filled in by the checker, when pref.skip_unused = true;
 }
 
+[unsafe]
+pub fn (t &Table) free() {
+	unsafe {
+		t.type_symbols.free()
+		t.type_idxs.free()
+		t.fns.free()
+		t.dumps.free()
+		t.imports.free()
+		t.modules.free()
+		t.cflags.free()
+		t.redefined_fns.free()
+		t.fn_generic_types.free()
+		t.cmod_prefix.free()
+		t.used_fns.free()
+		t.used_consts.free()
+	}
+}
+
 pub struct Fn {
 pub:
 	params         []Param
