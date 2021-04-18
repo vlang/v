@@ -1929,7 +1929,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 		}
 	}
 	if has_generic_generic {
-		if c.mod != '' {
+		if c.mod != '' && !fn_name.starts_with('${c.mod}.') {
 			// Need to prepend the module when adding a generic type to a function
 			c.table.register_fn_generic_types(c.mod + '.' + fn_name, generic_types)
 		} else {
