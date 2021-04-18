@@ -4,6 +4,7 @@ import strings
 
 #flag windows -l advapi32
 #include <process.h>
+#include <sys/utime.h>
 
 // See https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createsymboliclinkw
 fn C.CreateSymbolicLinkW(&u16, &u16, u32) int
@@ -86,6 +87,13 @@ mut:
 	b_inherit_handle       bool
 }
 
+struct C._utimbuf {
+	actime  int
+	modtime int
+}
+
+fn C._utime(&char, voidptr) int
+
 fn init_os_args_wide(argc int, argv &&byte) []string {
 	mut args_ := []string{}
 	for i in 0 .. argc {
@@ -142,6 +150,13 @@ fn windows_glob_pattern(pattern string, mut matches []string) ? {
 			fpath += '/'
 		}
 		matches << fpath
+	}
+}
+
+pub fn utime(path string, actime int, modtime int) ? {
+	mut u := C._utimbuf{actime, modtime}
+	if C._utime(&char(path.str), voidptr(&u)) != 0 {
+		return error_with_code(posix_get_error_msg(C.errno), C.errno)
 	}
 }
 
