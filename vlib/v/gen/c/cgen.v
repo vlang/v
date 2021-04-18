@@ -5197,6 +5197,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 			if field.typ in info.embeds {
 				continue
 			}
+			mut has_init_str := true
 			if struct_init.has_update_expr {
 				g.expr(struct_init.update_expr)
 				if struct_init.update_expr_type.is_ptr() {
@@ -5206,12 +5207,14 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 				}
 				g.write(field.name)
 			} else {
-				g.zero_struct_field(field)
+				has_init_str = g.zero_struct_field(field)
 			}
-			if is_multiline {
-				g.writeln(',')
-			} else {
-				g.write(',')
+			if has_init_str {
+				if is_multiline {
+					g.writeln(',')
+				} else {
+					g.write(',')
+				}
 			}
 			initialized = true
 		}
@@ -5236,19 +5239,26 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	}
 }
 
-fn (mut g Gen) zero_struct_field(field ast.StructField) {
+fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
+	sym := g.table.get_type_symbol(field.typ)
+	if sym.kind == .struct_ {
+		info := sym.info as ast.Struct
+		if info.fields.len == 0 {
+			return false
+		}
+	}
 	field_name := c_name(field.name)
 	g.write('.$field_name = ')
-	sym := g.table.get_type_symbol(field.typ)
 	if field.has_default_expr {
 		if sym.kind in [.sum_type, .interface_] {
 			g.expr_with_cast(field.default_expr, field.default_expr_typ, field.typ)
-			return
+			return true
 		}
 		g.expr(field.default_expr)
 	} else {
 		g.write(g.type_default(field.typ))
 	}
+	return true
 }
 
 // fn (mut g Gen) zero_struct_fields(info ast.Struct, inited_fields map[string]int) {
@@ -5838,11 +5848,7 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 			type_name := g.typ(typ)
 			init_str = '($type_name)' + init_str
 		} else {
-			if info.fields.len > 0 {
-				init_str += '0}'
-			} else {
-				init_str += 'EMPTY_STRUCT_INITIALIZATION}'
-			}
+			init_str += '0}'
 		}
 		if typ.has_flag(.shared_f) {
 			styp := '__shared__${g.table.get_type_symbol(typ).cname}'
