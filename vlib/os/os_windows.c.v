@@ -1,8 +1,10 @@
 module os
 
 import strings
+import time
 
 #include <process.h>
+#include <sys/utime.h>
 
 pub const (
 	path_separator = '\\'
@@ -77,12 +79,26 @@ mut:
 	b_inherit_handle       bool
 }
 
+struct C._utimbuf {
+	actime  int
+	modtime int
+}
+
+fn C._utime(&char, voidptr) int
+
 fn init_os_args_wide(argc int, argv &&byte) []string {
 	mut args_ := []string{}
 	for i in 0 .. argc {
 		args_ << unsafe { string_from_wide(&u16(argv[i])) }
 	}
 	return args_
+}
+
+pub fn utime(path string, actime time.Time, modtime time.Time) ? {
+	mut u := C._utimbuf{actime.unix_time(), modtime.unix_time()}
+	if C._utime(&char(path.str), voidptr(&u)) != 0 {
+		return error_with_code(posix_get_error_msg(C.errno), C.errno)
+	}
 }
 
 pub fn ls(path string) ?[]string {
@@ -392,6 +408,11 @@ pub fn uname() Uname {
 pub fn hostname() string {
 	// TODO: use C.GetComputerName(&u16, u32) int instead
 	return execute('cmd /c hostname').output
+}
+
+pub fn loginname() string {
+	// TODO: use C.GetUserName(&char, u32) bool instead
+	return execute('cmd /c echo %USERNAME%').output
 }
 
 // `is_writable_folder` - `folder` exists and is writable to the process

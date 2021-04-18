@@ -1,4 +1,5 @@
 import os
+import time
 
 const (
 	// tfolder will contain all the temporary files/subfolders made by
@@ -584,5 +585,18 @@ fn test_truncate() {
 	newlen := u64(40000)
 	os.truncate(filename, newlen) or { panic(err) }
 	assert newlen == os.file_size(filename)
+	os.rm(filename) or { panic(err) }
+}
+
+fn test_utime() {
+	filename := './test_utime.txt'
+	hello := 'hello world!'
+	mut f := os.create(filename) or { panic(err) }
+	f.write_string(hello) or { panic(err) }
+	f.close()
+	atime := time.now().add_days(2)
+	mtime := time.now().add_days(4)
+	os.utime(filename, atime, mtime) or { panic(err) }
+	assert os.file_last_mod_unix(filename) == mtime.unix_time()
 	os.rm(filename) or { panic(err) }
 }

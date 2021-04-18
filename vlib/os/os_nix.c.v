@@ -1,11 +1,13 @@
 module os
 
 import strings
+import time
 
 #include <dirent.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/utsname.h>
+#include <utime.h>
 
 pub const (
 	path_separator = '/'
@@ -47,11 +49,27 @@ mut:
 	machine  &char
 }
 
+struct C.utimbuf {
+	actime  int
+	modtime int
+}
+
 fn C.uname(name voidptr) int
 
 fn C.symlink(&char, &char) int
 
 fn C.gethostname(&char, int) int
+
+fn C.getlogin_r(&char, int) int
+
+fn C.utime(&char, voidptr) int
+
+pub fn utime(path string, actime time.Time, modtime time.Time) ? {
+	mut u := C.utimbuf{actime.unix_time(), modtime.unix_time()}
+	if C.utime(&char(path.str), voidptr(&u)) != 0 {
+		return error_with_code(posix_get_error_msg(C.errno), C.errno)
+	}
+}
 
 pub fn uname() Uname {
 	mut u := Uname{}
@@ -79,6 +97,18 @@ pub fn hostname() string {
 		hstnme = unsafe { cstring_to_vstring(buf) }
 		unsafe { free(buf) }
 		return hstnme
+	}
+	return ''
+}
+
+pub fn loginname() string {
+	mut lgnname := ''
+	size := 256
+	mut buf := unsafe { &char(malloc(size)) }
+	if C.getlogin_r(buf, size) == 0 {
+		lgnname = unsafe { cstring_to_vstring(buf) }
+		unsafe { free(buf) }
+		return lgnname
 	}
 	return ''
 }
