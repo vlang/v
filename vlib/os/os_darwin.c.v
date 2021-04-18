@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module os
 
-#include "@VEXEROOT/vlib/os/os_darwin.m"
+#include "@VROOT/vlib/os/os_darwin.m"
 
 pub const (
 	sys_write         = 4
