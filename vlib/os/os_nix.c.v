@@ -1,7 +1,6 @@
 module os
 
 import strings
-import time
 
 #include <dirent.h>
 #include <unistd.h>
@@ -64,8 +63,8 @@ fn C.getlogin_r(&char, int) int
 
 fn C.utime(&char, voidptr) int
 
-pub fn utime(path string, actime time.Time, modtime time.Time) ? {
-	mut u := C.utimbuf{actime.unix_time(), modtime.unix_time()}
+pub fn utime(path string, actime int, modtime int) ? {
+	mut u := C.utimbuf{actime, modtime}
 	if C.utime(&char(path.str), voidptr(&u)) != 0 {
 		return error_with_code(posix_get_error_msg(C.errno), C.errno)
 	}

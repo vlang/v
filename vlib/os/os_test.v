@@ -594,9 +594,9 @@ fn test_utime() {
 	mut f := os.create(filename) or { panic(err) }
 	f.write_string(hello) or { panic(err) }
 	f.close()
-	atime := time.now().add_days(2)
-	mtime := time.now().add_days(4)
+	atime := time.now().add_days(2).unix_time()
+	mtime := time.now().add_days(4).unix_time()
 	os.utime(filename, atime, mtime) or { panic(err) }
-	assert os.file_last_mod_unix(filename) == mtime.unix_time()
+	assert os.file_last_mod_unix(filename) == mtime
 	os.rm(filename) or { panic(err) }
 }

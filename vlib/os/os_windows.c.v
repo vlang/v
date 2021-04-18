@@ -1,7 +1,6 @@
 module os
 
 import strings
-import time
 
 #include <process.h>
 #include <sys/utime.h>
@@ -94,8 +93,8 @@ fn init_os_args_wide(argc int, argv &&byte) []string {
 	return args_
 }
 
-pub fn utime(path string, actime time.Time, modtime time.Time) ? {
-	mut u := C._utimbuf{actime.unix_time(), modtime.unix_time()}
+pub fn utime(path string, actime int, modtime int) ? {
+	mut u := C._utimbuf{actime, modtime}
 	if C._utime(&char(path.str), voidptr(&u)) != 0 {
 		return error_with_code(posix_get_error_msg(C.errno), C.errno)
 	}
