@@ -1425,6 +1425,7 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 		// `for x in 1..10 {`
 		i := if node.val_var == '_' { g.new_tmp_var() } else { c_name(node.val_var) }
 		val_typ := g.table.mktyp(node.val_type)
+		x := node.str().replace('\n', '')
 		g.write('for (${g.typ(val_typ)} $i = ')
 		g.expr(node.cond)
 		g.write('; $i < ')
@@ -3800,10 +3801,6 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			}
 			g.expr(node.left)
 			g.write(' $node.op.str() ')
-			// if node.right_type.is_ptr() && node.right.is_auto_deref_var() {
-			// 	g.write('/*hello*/*')
-			// 	// g.write('*')
-			// }
 			g.expr_with_cast(node.right, node.right_type, node.left_type)
 			if need_par {
 				g.write(')')
