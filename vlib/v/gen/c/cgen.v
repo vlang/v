@@ -5122,9 +5122,10 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	}
 	// The rest of the fields are zeroed.
 	// `inited_fields` is a list of fields that have been init'ed, they are skipped
-	// mut nr_fields := 0
+	mut nr_fields := 1
 	if sym.kind == .struct_ {
 		info := sym.info as ast.Struct
+		nr_fields = info.fields.len
 		if info.is_union && struct_init.fields.len > 1 {
 			verror('union must not have more than 1 initializer')
 		}
@@ -5205,7 +5206,10 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 				}
 				g.write(field.name)
 			} else {
-				g.zero_struct_field(field)
+				if !g.zero_struct_field(field) {
+					nr_fields--
+					continue
+				}
 			}
 			if is_multiline {
 				g.writeln(',')
@@ -5220,7 +5224,11 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	}
 
 	if !initialized {
-		g.write('0')
+		if nr_fields > 0 {
+			g.write('0')
+		} else {
+			g.write('EMPTY_STRUCT_INITIALIZATION')
+		}
 	}
 
 	g.write('}')
@@ -5231,19 +5239,26 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	}
 }
 
-fn (mut g Gen) zero_struct_field(field ast.StructField) {
+fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
+	sym := g.table.get_type_symbol(field.typ)
+	if sym.kind == .struct_ {
+		info := sym.info as ast.Struct
+		if info.fields.len == 0 {
+			return false
+		}
+	}
 	field_name := c_name(field.name)
 	g.write('.$field_name = ')
-	sym := g.table.get_type_symbol(field.typ)
 	if field.has_default_expr {
 		if sym.kind in [.sum_type, .interface_] {
 			g.expr_with_cast(field.default_expr, field.default_expr_typ, field.typ)
-			return
+			return true
 		}
 		g.expr(field.default_expr)
 	} else {
 		g.write(g.type_default(field.typ))
 	}
+	return true
 }
 
 // fn (mut g Gen) zero_struct_fields(info ast.Struct, inited_fields map[string]int) {

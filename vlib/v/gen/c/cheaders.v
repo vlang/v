@@ -179,7 +179,7 @@ string _STR_TMP(const char *fmt, ...) {
 	c_common_macros                 = '
 #define EMPTY_VARG_INITIALIZATION 0
 #define EMPTY_STRUCT_DECLARATION
-#define EMPTY_STRUCT_INITIALIZATION 0
+#define EMPTY_STRUCT_INITIALIZATION
 // Due to a tcc bug, the length of an array needs to be specified, but GCC crashes if it is...
 #define EMPTY_ARRAY_OF_ELEMS(x,n) (x[])
 #define TCCSKIP(x) x
@@ -209,13 +209,13 @@ string _STR_TMP(const char *fmt, ...) {
 #endif
 #ifdef _MSC_VER
 	#undef __V_GCC__
+	#undef EMPTY_STRUCT_INITIALIZATION
+	#define EMPTY_STRUCT_INITIALIZATION 0
 #endif
 
 #ifdef __TINYC__
 	#undef EMPTY_STRUCT_DECLARATION
-	#undef EMPTY_STRUCT_INITIALIZATION
 	#define EMPTY_STRUCT_DECLARATION char _dummy
-	#define EMPTY_STRUCT_INITIALIZATION 0
 	#undef EMPTY_ARRAY_OF_ELEMS
 	#define EMPTY_ARRAY_OF_ELEMS(x,n) (x[n])
 	#undef __NOINLINE
