@@ -3,6 +3,8 @@ module sync
 import time
 import rand
 
+// See include directory rules in sync_default.c.v
+#include <atomic.h>
 // The following functions are actually generic in C
 fn C.atomic_load_ptr(voidptr) voidptr
 fn C.atomic_store_ptr(voidptr, voidptr)

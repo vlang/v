@@ -31,7 +31,6 @@ $if linux {
 	}
 }
 
-#include <atomic.h>
 #include <semaphore.h>
 
 [trusted]
