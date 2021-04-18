@@ -1083,21 +1083,23 @@ pub fn (mut f Fmt) for_stmt(node ast.ForStmt) {
 }
 
 pub fn (mut f Fmt) global_decl(node ast.GlobalDecl) {
-	single := node.fields.len == 1
-	if single {
-		f.write('__global ( ')
-	} else {
-		f.writeln('__global (')
-		f.indent++
+	if node.fields.len == 0 && node.pos.line_nr == node.pos.last_line {
+		f.writeln('__global ()')
+		return
 	}
+	f.write('__global ')
 	mut max := 0
 	mut has_assign := false
-	for field in node.fields {
-		if field.name.len > max {
-			max = field.name.len
-		}
-		if field.has_expr {
-			has_assign = true
+	if node.is_block {
+		f.writeln('(')
+		f.indent++
+		for field in node.fields {
+			if field.name.len > max {
+				max = field.name.len
+			}
+			if field.has_expr {
+				has_assign = true
+			}
 		}
 	}
 	for field in node.fields {
@@ -1111,20 +1113,19 @@ pub fn (mut f Fmt) global_decl(node ast.GlobalDecl) {
 			f.expr(field.expr)
 			f.write(')')
 		} else {
-			if !single && has_assign {
-				f.write('  ')
-			}
-			f.write('${f.table.type_to_str_using_aliases(field.typ, f.mod2alias)} ')
+			f.write('${f.table.type_to_str_using_aliases(field.typ, f.mod2alias)}')
 		}
-		if !single {
+		if node.is_block {
 			f.writeln('')
 		}
 	}
-	if !single {
-		f.indent--
-	}
 	f.comments_after_last_field(node.end_comments)
-	f.writeln(')\n')
+	if node.is_block {
+		f.indent--
+		f.writeln(')')
+	} else {
+		f.writeln('')
+	}
 }
 
 pub fn (mut f Fmt) go_expr(node ast.GoExpr) {

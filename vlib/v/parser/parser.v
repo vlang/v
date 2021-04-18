@@ -2818,7 +2818,6 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 		return ast.GlobalDecl{}
 	}
 	start_pos := p.tok.position()
-	end_pos := p.tok.position()
 	p.check(.key_global)
 	is_block := p.tok.kind == .lpar
 	if is_block {
@@ -2875,7 +2874,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 		p.check(.rpar)
 	}
 	return ast.GlobalDecl{
-		pos: start_pos.extend(end_pos)
+		pos: start_pos.extend(p.prev_tok.position())
 		fields: fields
 		end_comments: comments
 		is_block: is_block
