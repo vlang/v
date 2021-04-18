@@ -1,17 +1,11 @@
 import net.urllib
 import os
-import strconv
-import v.util
-import v.pref
 
 // get output from `v doctor`
 fn get_vdoctor_output(is_verbose bool) string {
-	// ensure vdoctor exists
-	tool_exe := util.compile_tool(is_verbose, 'vdoctor') or {
-		eprintln('unable to get `v doctor` output: $err')
-		return ''
-	}
-	result := os.execute('"$tool_exe"')
+	vexe := os.getenv('VEXE')
+	verbose_flag := if is_verbose { '-v' } else { '' }
+	result := os.execute('$vexe $verbose_flag doctor')
 	if result.exit_code != 0 {
 		eprintln('unable to get `v doctor` output: $result.output')
 		return ''
@@ -21,7 +15,7 @@ fn get_vdoctor_output(is_verbose bool) string {
 
 // get ouput from `v -g -o vdbg cmd/v && vdbg file.v`
 fn get_v_build_output(is_verbose bool, is_yes bool, file_path string) string {
-	mut vexe := pref.vexe_path()
+	mut vexe := os.getenv('VEXE')
 	v_dir := os.dir(vexe)
 	verbose_flag := if is_verbose { '-v' } else { '' }
 	vdbg_path := $if windows { '$v_dir/vdbg.exe' } $else { '$v_dir/vdbg' }
@@ -92,10 +86,7 @@ fn open_uri(uri string) ? {
 
 fn ask(msg string) bool {
 	prompt := os.input_opt('$msg [Y/n] ') or { 'y' }
-	if prompt != '' && strconv.byte_to_lower(prompt[0]) == `n` {
-		return false
-	}
-	return true
+	return prompt == '' || promp[0].ascii_str().to_lower() != 'n'
 }
 
 fn confirm_or_exit(msg string) {
@@ -111,15 +102,9 @@ fn main() {
 	for arg in os.args[2..] {
 		match arg {
 			'-v' {
-				if is_verbose {
-					eprintln('duplicated option: `-v`')
-				}
 				is_verbose = true
 			}
 			'-y' {
-				if is_yes {
-					eprintln('duplicated option: `-y`')
-				}
 				is_yes = true
 			}
 			else {
