@@ -115,7 +115,6 @@ pub fn (mut b Builder) parse_imports() {
 			}
 			// Add all imports referenced by these libs
 			parsed_files := parser.parse_files(v_files, b.table, b.pref, b.global_scope)
-			/*
 			for file in parsed_files {
 				if file.mod.name != mod {
 					// v.parsers[pidx].error_with_token_index('bad module definition: ${v.parsers[pidx].file_path} imports module "$mod" but $file is defined as module `$p_mod`', 1
@@ -123,7 +122,6 @@ pub fn (mut b Builder) parse_imports() {
 						ast_file.path, imp.pos)
 				}
 			}
-			*/
 			b.parsed_files << parsed_files
 			done_imports << mod
 		}
