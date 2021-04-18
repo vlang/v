@@ -3,29 +3,7 @@ module sync
 import time
 import rand
 
-#flag windows -I @VROOT/thirdparty/stdatomic/win
-#flag linux -I @VROOT/thirdparty/stdatomic/nix
-#flag darwin -I @VROOT/thirdparty/stdatomic/nix
-#flag freebsd -I @VROOT/thirdparty/stdatomic/nix
-#flag solaris -I @VROOT/thirdparty/stdatomic/nix
-
-$if linux {
-	$if tinyc {
-		// most Linux distributions have /usr/lib/libatomic.so, but Ubuntu uses gcc version specific dir
-		#flag -L/usr/lib/gcc/x86_64-linux-gnu/6
-		#flag -L/usr/lib/gcc/x86_64-linux-gnu/7
-		#flag -L/usr/lib/gcc/x86_64-linux-gnu/8
-		#flag -L/usr/lib/gcc/x86_64-linux-gnu/9
-		#flag -L/usr/lib/gcc/x86_64-linux-gnu/10
-		#flag -L/usr/lib/gcc/x86_64-linux-gnu/11
-		#flag -L/usr/lib/gcc/x86_64-linux-gnu/12
-		#flag -latomic
-	}
-}
-
-#include <atomic.h>
-
-// the following functions are actually generic in C
+// The following functions are actually generic in C
 fn C.atomic_load_ptr(voidptr) voidptr
 fn C.atomic_store_ptr(voidptr, voidptr)
 fn C.atomic_compare_exchange_weak_ptr(voidptr, voidptr, voidptr) bool
