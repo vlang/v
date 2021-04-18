@@ -3,7 +3,6 @@ module os
 import strings
 
 #include <process.h>
-#include <sys/utime.h>
 
 pub const (
 	path_separator = '\\'
@@ -78,26 +77,12 @@ mut:
 	b_inherit_handle       bool
 }
 
-struct C._utimbuf {
-	actime  int
-	modtime int
-}
-
-fn C._utime(&char, voidptr) int
-
 fn init_os_args_wide(argc int, argv &&byte) []string {
 	mut args_ := []string{}
 	for i in 0 .. argc {
 		args_ << unsafe { string_from_wide(&u16(argv[i])) }
 	}
 	return args_
-}
-
-pub fn utime(path string, actime int, modtime int) ? {
-	mut u := C._utimbuf{actime, modtime}
-	if C._utime(&char(path.str), voidptr(&u)) != 0 {
-		return error_with_code(posix_get_error_msg(C.errno), C.errno)
-	}
 }
 
 pub fn ls(path string) ?[]string {

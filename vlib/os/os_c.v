@@ -166,14 +166,14 @@ pub fn file_size(path string) u64 {
 			$if windows {
 				mut swin := C.__stat64{}
 				if C._wstat64(&char(path.to_wide()), voidptr(&swin)) != 0 {
-					println('os.file_size() Cannot determine file-size: ' +
+					eprintln('os.file_size() Cannot determine file-size: ' +
 						posix_get_error_msg(C.errno))
 					return 0
 				}
 				return swin.st_size
 			} $else {
 				if C.stat(&char(path.str), &s) != 0 {
-					println('os.file_size() Cannot determine file-size: ' +
+					eprintln('os.file_size() Cannot determine file-size: ' +
 						posix_get_error_msg(C.errno))
 					return 0
 				}
@@ -186,14 +186,14 @@ pub fn file_size(path string) u64 {
 			}
 			$if windows {
 				if C._wstat(path.to_wide(), voidptr(&s)) != 0 {
-					println('os.file_size() Cannot determine file-size: ' +
+					eprintln('os.file_size() Cannot determine file-size: ' +
 						posix_get_error_msg(C.errno))
 					return 0
 				}
 				return u64(s.st_size)
 			} $else {
 				if C.stat(&char(path.str), &s) != 0 {
-					println('os.file_size() Cannot determine file-size: ' +
+					eprintln('os.file_size() Cannot determine file-size: ' +
 						posix_get_error_msg(C.errno))
 					return 0
 				}

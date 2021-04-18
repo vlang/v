@@ -6,7 +6,6 @@ import strings
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/utsname.h>
-#include <utime.h>
 
 pub const (
 	path_separator = '/'
@@ -48,11 +47,6 @@ mut:
 	machine  &char
 }
 
-struct C.utimbuf {
-	actime  int
-	modtime int
-}
-
 fn C.uname(name voidptr) int
 
 fn C.symlink(&char, &char) int
@@ -60,15 +54,6 @@ fn C.symlink(&char, &char) int
 fn C.gethostname(&char, int) int
 
 fn C.getlogin_r(&char, int) int
-
-fn C.utime(&char, voidptr) int
-
-pub fn utime(path string, actime int, modtime int) ? {
-	mut u := C.utimbuf{actime, modtime}
-	if C.utime(&char(path.str), voidptr(&u)) != 0 {
-		return error_with_code(posix_get_error_msg(C.errno), C.errno)
-	}
-}
 
 pub fn uname() Uname {
 	mut u := Uname{}
