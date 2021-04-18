@@ -6445,7 +6445,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		// It will be processed later in c.post_process_generic_fns,
 		// after all other normal functions are processed.
 		// This is done so that all generic function calls can
-		// have a chance to populate c.table.fn_generic_types with
+		// have a chance to populate c.table.fn_concrete_types with
 		// the correct concrete types.
 		c.file.generic_fns << node
 		return
