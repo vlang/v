@@ -1425,7 +1425,6 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 		// `for x in 1..10 {`
 		i := if node.val_var == '_' { g.new_tmp_var() } else { c_name(node.val_var) }
 		val_typ := g.table.mktyp(node.val_type)
-		x := node.str().replace('\n', '')
 		g.write('for (${g.typ(val_typ)} $i = ')
 		g.expr(node.cond)
 		g.write('; $i < ')

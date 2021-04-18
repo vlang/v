@@ -744,7 +744,6 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) ast.Type {
 		&& left_type in [ast.int_literal_type, ast.float_literal_type] {
 		infix_expr.left_type = right_type
 	}
-	if c.fileis('select_4') { c.warn('$left_type, $right_type -> $infix_expr.left_type, $infix_expr.right_type', infix_expr.pos) }
 	mut right := c.table.get_type_symbol(right_type)
 	right_final := c.table.get_final_type_symbol(right_type)
 	mut left := c.table.get_type_symbol(left_type)
@@ -3704,6 +3703,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 		} else {
 			node.val_type = high_type
 		}
+		node.scope.update_var_type(node.val_var, node.val_type)
 	} else {
 		sym := c.table.get_type_symbol(typ)
 		if sym.kind == .struct_ {
