@@ -564,6 +564,24 @@ pub mut:
 	global_labels    []string // from `asm { .globl labelname }`
 }
 
+[unsafe]
+pub fn (f &File) free() {
+	unsafe {
+		f.path.free()
+		f.path_base.free()
+		f.scope.free()
+		f.stmts.free()
+		f.imports.free()
+		f.auto_imports.free()
+		f.embedded_files.free()
+		f.imported_symbols.free()
+		f.errors.free()
+		f.warnings.free()
+		f.notices.free()
+		f.global_labels.free()
+	}
+}
+
 pub struct IdentFn {
 pub mut:
 	typ Type

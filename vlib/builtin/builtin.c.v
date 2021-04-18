@@ -22,7 +22,9 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 	// module is less likely to change than function, etc...
 	// During edits, the line number will change most frequently,
 	// so it is last
-	$if !freestanding {
+	$if freestanding {
+		bare_panic(s)
+	} $else {
 		eprintln('================ V panic ================')
 		eprintln('   module: $mod')
 		eprintln(' function: ${fn_name}()')
@@ -30,31 +32,26 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 		eprintln('     file: $file:$line_no')
 		eprintln('   v hash: $vcommithash()')
 		eprintln('=========================================')
-	} $else {
-		eprint('V panic: ')
-		eprintln(s)
-	}
-	$if exit_after_panic_message ? {
-		C.exit(1)
-	} $else {
-		$if no_backtrace ? {
+		$if exit_after_panic_message ? {
 			C.exit(1)
 		} $else {
-			$if tinyc {
+			$if no_backtrace ? {
+				C.exit(1)
+			} $else {
+				$if tinyc {
+					$if panics_break_into_debugger ? {
+						break_if_debugger_attached()
+					} $else {
+						C.tcc_backtrace(c'Backtrace')
+					}
+					C.exit(1)
+				}
+				print_backtrace_skipping_top_frames(1)
 				$if panics_break_into_debugger ? {
 					break_if_debugger_attached()
-				} $else {
-					C.tcc_backtrace(c'Backtrace')
 				}
 				C.exit(1)
 			}
-			$if !freestanding {
-				print_backtrace_skipping_top_frames(1)
-			}
-			$if panics_break_into_debugger ? {
-				break_if_debugger_attached()
-			}
-			C.exit(1)
 		}
 	}
 }
@@ -66,30 +63,32 @@ pub fn panic_optional_not_set(s string) {
 // panic prints a nice error message, then exits the process with exit code of 1.
 // It also shows a backtrace on most platforms.
 pub fn panic(s string) {
-	eprint('V panic: ')
-	eprintln(s)
-	eprintln('v hash: $vcommithash()')
-	$if exit_after_panic_message ? {
-		C.exit(1)
+	$if freestanding {
+		bare_panic(s)
 	} $else {
-		$if no_backtrace ? {
+		eprint('V panic: ')
+		eprintln(s)
+		eprintln('v hash: $vcommithash()')
+		$if exit_after_panic_message ? {
 			C.exit(1)
 		} $else {
-			$if tinyc {
+			$if no_backtrace ? {
+				C.exit(1)
+			} $else {
+				$if tinyc {
+					$if panics_break_into_debugger ? {
+						break_if_debugger_attached()
+					} $else {
+						C.tcc_backtrace(c'Backtrace')
+					}
+					C.exit(1)
+				}
+				print_backtrace_skipping_top_frames(1)
 				$if panics_break_into_debugger ? {
 					break_if_debugger_attached()
-				} $else {
-					C.tcc_backtrace(c'Backtrace')
 				}
 				C.exit(1)
 			}
-			$if !freestanding {
-				print_backtrace_skipping_top_frames(1)
-			}
-			$if panics_break_into_debugger ? {
-				break_if_debugger_attached()
-			}
-			C.exit(1)
 		}
 	}
 }

@@ -19,6 +19,11 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 	if !p.pref.is_fmt {
 		p.eat_comments({})
 	}
+	inside_array_lit := p.inside_array_lit
+	p.inside_array_lit = false
+	defer {
+		p.inside_array_lit = inside_array_lit
+	}
 	// Prefix
 	match p.tok.kind {
 		.key_mut, .key_shared, .key_atomic, .key_static {
@@ -320,6 +325,12 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 				// eof should be handled where it happens
 				return p.error_with_pos('invalid expression: unexpected $p.tok', p.tok.position())
 			}
+		}
+	}
+	if inside_array_lit {
+		if p.tok.kind in [.minus, .mul, .amp, .arrow] && p.tok.pos + 1 == p.peek_tok.pos
+			&& p.prev_tok.pos + p.prev_tok.len + 1 != p.peek_tok.pos {
+			return node
 		}
 	}
 	return p.expr_with_left(node, precedence, is_stmt_ident)

@@ -49,9 +49,6 @@ mut:
 	is_lit int
 }
 
-// mut:
-// hash_cache int
-//
 // NB string.is_lit is an enumeration of the following:
 // .is_lit == 0 => a fresh string, should be freed by autofree
 // .is_lit == 1 => a literal string from .rodata, should NOT be freed
@@ -134,9 +131,8 @@ pub fn tos5(s &char) string {
 	return unsafe { tos3(s) }
 }
 
-[deprecated]
+[deprecated: 'tos_lit has been deprecated, use _SLIT instead']
 pub fn tos_lit(s &char) string {
-	eprintln('warning: `tos_lit` has been deprecated, use `_SLIT` instead')
 	return string{
 		str: &byte(s)
 		len: unsafe { C.strlen(s) }
@@ -262,12 +258,6 @@ pub fn (a string) clone() string {
 	return b
 }
 
-/*
-pub fn (s string) cstr() byteptr {
-	clone := s.clone()
-	return clone.str
-}
-*/
 // cstring_to_vstring creates a copy of cstr and turns it into a v string.
 [unsafe]
 pub fn cstring_to_vstring(cstr &char) string {
@@ -365,12 +355,6 @@ fn (mut a []RepIndex) sort2() {
 	a.sort_with_compare(compare_rep_index)
 }
 
-// TODO
-/*
-fn (a RepIndex) < (b RepIndex) bool {
-	return a.idx < b.idx
-}
-*/
 // replace_each replaces all occurences of the string pairs given in `vals`.
 // Example: assert 'ABCD'.replace_each(['B','C/','C','D','D','C']) == 'AC/DC'
 pub fn (s string) replace_each(vals []string) string {
@@ -378,7 +362,7 @@ pub fn (s string) replace_each(vals []string) string {
 		return s.clone()
 	}
 	if vals.len % 2 != 0 {
-		println('string.replace_each(): odd number of strings')
+		eprintln('string.replace_each(): odd number of strings')
 		return s.clone()
 	}
 	// `rep` - string to replace
@@ -701,14 +685,6 @@ fn (s string) substr2(start int, _end int, end_max bool) string {
 pub fn (s string) substr(start int, end int) string {
 	$if !no_bounds_checking ? {
 		if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
-			/*
-			$if debug {
-					println('substr($start, $end) out of bounds (len=$s.len)')
-					println('s="$s"')
-					print_backtrace()
-					return ''
-			}
-			*/
 			panic('substr($start, $end) out of bounds (len=$s.len)')
 		}
 	}
@@ -728,12 +704,6 @@ pub fn (s string) substr(start int, end int) string {
 	unsafe {
 		res.str[len] = 0
 	}
-	/*
-	res := string {
-		str: s.str + start
-		len: len
-	}
-	*/
 	return res
 }
 
@@ -1636,9 +1606,6 @@ pub fn (s string) after_char(dot byte) string {
 	return s[pos + 1..]
 }
 
-// fn (s []string) substr(a, b int) string {
-// return join_strings(s.slice_fast(a, b))
-// }
 // join joins a string array into a string using `del` delimiter.
 // Example: assert ['Hello','V'].join(' ') == 'Hello V'
 pub fn (a []string) join(del string) string {
@@ -1711,7 +1678,6 @@ pub fn (s string) limit(max int) string {
 
 // hash returns an integer hash of the string.
 pub fn (s string) hash() int {
-	// mut h := s.hash_cache
 	mut h := u32(0)
 	if h == 0 && s.len > 0 {
 		for c in s {

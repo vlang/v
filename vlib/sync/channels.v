@@ -3,11 +3,12 @@ module sync
 import time
 import rand
 
-#flag windows -I @VROOT/thirdparty/stdatomic/win
-#flag linux -I @VROOT/thirdparty/stdatomic/nix
-#flag darwin -I @VROOT/thirdparty/stdatomic/nix
-#flag freebsd -I @VROOT/thirdparty/stdatomic/nix
-#flag solaris -I @VROOT/thirdparty/stdatomic/nix
+
+$if windows {
+	#flag -I @VROOT/thirdparty/stdatomic/win
+} $else {
+	#flag -I @VROOT/thirdparty/stdatomic/nix
+}
 
 $if linux {
 	$if tinyc {
@@ -24,8 +25,7 @@ $if linux {
 }
 
 #include <atomic.h>
-
-// the following functions are actually generic in C
+// The following functions are actually generic in C
 fn C.atomic_load_ptr(voidptr) voidptr
 fn C.atomic_store_ptr(voidptr, voidptr)
 fn C.atomic_compare_exchange_weak_ptr(voidptr, voidptr, voidptr) bool

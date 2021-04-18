@@ -1000,16 +1000,18 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) ast.Type {
 					ast.Type(0)
 				}
 			}
-			typ_sym := c.table.get_type_symbol(typ)
-			op := infix_expr.op.str()
-			if typ_sym.kind == .placeholder {
-				c.error('$op: type `$typ_sym.name` does not exist', right_expr.position())
-			}
-			if left.kind !in [.interface_, .sum_type] {
-				c.error('`$op` can only be used with interfaces and sum types', infix_expr.pos)
-			} else if mut left.info is ast.SumType {
-				if typ !in left.info.variants {
-					c.error('`$left.name` has no variant `$right.name`', infix_expr.pos)
+			if typ != ast.Type(0) {
+				typ_sym := c.table.get_type_symbol(typ)
+				op := infix_expr.op.str()
+				if typ_sym.kind == .placeholder {
+					c.error('$op: type `$typ_sym.name` does not exist', right_expr.position())
+				}
+				if left.kind !in [.interface_, .sum_type] {
+					c.error('`$op` can only be used with interfaces and sum types', infix_expr.pos)
+				} else if mut left.info is ast.SumType {
+					if typ !in left.info.variants {
+						c.error('`$left.name` has no variant `$right.name`', infix_expr.pos)
+					}
 				}
 			}
 			return ast.bool_type
@@ -1929,7 +1931,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 		}
 	}
 	if has_generic_generic {
-		if c.mod != '' {
+		if c.mod != '' && !fn_name.starts_with('${c.mod}.') {
 			// Need to prepend the module when adding a generic type to a function
 			c.table.register_fn_generic_types(c.mod + '.' + fn_name, generic_types)
 		} else {
@@ -5387,27 +5389,42 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			pos := branch.cond.position()
 			if branch.cond is ast.InfixExpr {
 				if branch.cond.op == .key_is {
-					right_expr := branch.cond.right as ast.TypeNode
-					left_sym := c.table.get_type_symbol(branch.cond.left_type)
-					expr_type := c.expr(branch.cond.left)
-					if left_sym.kind == .interface_ {
-						c.type_implements(right_expr.typ, expr_type, pos)
-					} else if !c.check_types(right_expr.typ, expr_type) {
-						expect_str := c.table.type_to_str(right_expr.typ)
-						expr_str := c.table.type_to_str(expr_type)
-						c.error('cannot use type `$expect_str` as type `$expr_str`', pos)
-					}
-					if (branch.cond.left is ast.Ident || branch.cond.left is ast.SelectorExpr)
-						&& branch.cond.right is ast.TypeNode {
-						is_variable := if mut branch.cond.left is ast.Ident {
-							branch.cond.left.kind == .variable
-						} else {
-							true
+					right_expr := branch.cond.right
+					right_type := match right_expr {
+						ast.TypeNode {
+							right_expr.typ
 						}
-						if is_variable {
-							if left_sym.kind in [.interface_, .sum_type] {
-								c.smartcast(branch.cond.left, branch.cond.left_type, right_expr.typ, mut
-									branch.scope)
+						ast.None {
+							ast.none_type_idx
+						}
+						else {
+							c.error('invalid type `$right_expr`', right_expr.position())
+							ast.Type(0)
+						}
+					}
+					if right_type != ast.Type(0) {
+						left_sym := c.table.get_type_symbol(branch.cond.left_type)
+						expr_type := c.expr(branch.cond.left)
+						if left_sym.kind == .interface_ {
+							c.type_implements(right_type, expr_type, pos)
+						} else if !c.check_types(right_type, expr_type) {
+							expect_str := c.table.type_to_str(right_type)
+							expr_str := c.table.type_to_str(expr_type)
+							c.error('cannot use type `$expect_str` as type `$expr_str`',
+								pos)
+						}
+						if (branch.cond.left is ast.Ident || branch.cond.left is ast.SelectorExpr)
+							&& branch.cond.right is ast.TypeNode {
+							is_variable := if mut branch.cond.left is ast.Ident {
+								branch.cond.left.kind == .variable
+							} else {
+								true
+							}
+							if is_variable {
+								if left_sym.kind in [.interface_, .sum_type] {
+									c.smartcast(branch.cond.left, branch.cond.left_type,
+										right_type, mut branch.scope)
+								}
 							}
 						}
 					}
@@ -6014,8 +6031,8 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 		info := c.table.get_type_symbol(node.typ).map_info()
 		c.ensure_type_exists(info.key_type, node.pos) or {}
 		c.ensure_type_exists(info.value_type, node.pos) or {}
-		node.key_type = info.key_type
-		node.value_type = info.value_type
+		node.key_type = c.unwrap_generic(info.key_type)
+		node.value_type = c.unwrap_generic(info.value_type)
 		return node.typ
 	}
 	if node.keys.len > 0 && node.vals.len > 0 {
@@ -6052,13 +6069,12 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 				c.check_dup_keys(node, i)
 			}
 		}
+		key0_type = c.unwrap_generic(key0_type)
+		val0_type = c.unwrap_generic(val0_type)
 		mut map_type := ast.new_type(c.table.find_or_register_map(key0_type, val0_type))
 		node.typ = map_type
 		node.key_type = key0_type
 		node.value_type = val0_type
-		if node.key_type.has_flag(.generic) || node.value_type.has_flag(.generic) {
-			map_type = map_type.set_flag(.generic)
-		}
 		return map_type
 	}
 	return node.typ
@@ -6319,21 +6335,24 @@ fn (mut c Checker) fetch_and_verify_orm_fields(info ast.Struct, pos token.Positi
 fn (mut c Checker) post_process_generic_fns() {
 	// Loop thru each generic function concrete type.
 	// Check each specific fn instantiation.
-	for i in 0 .. c.file.generic_fns.len {
-		if c.table.fn_generic_types.len == 0 {
-			// no concrete types, so just skip:
-			continue
-		}
-		mut node := c.file.generic_fns[i]
-		c.mod = node.mod
-		for gen_types in c.table.fn_generic_types[node.name] {
-			node.cur_generic_types = gen_types
-			c.fn_decl(mut node)
-			if node.name in ['vweb.run_app', 'vweb.run'] {
-				c.vweb_gen_types << gen_types
+	// Check 2 times (in order to check nested generics fn)
+	for _ in 0 .. 2 {
+		for i in 0 .. c.file.generic_fns.len {
+			if c.table.fn_generic_types.len == 0 {
+				// no concrete types, so just skip:
+				continue
 			}
+			mut node := c.file.generic_fns[i]
+			c.mod = node.mod
+			for gen_types in c.table.fn_generic_types[node.name] {
+				node.cur_generic_types = gen_types
+				c.fn_decl(mut node)
+				if node.name in ['vweb.run_app', 'vweb.run'] {
+					c.vweb_gen_types << gen_types
+				}
+			}
+			node.cur_generic_types = []
 		}
-		node.cur_generic_types = []
 	}
 }
 
