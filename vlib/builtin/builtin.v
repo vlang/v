@@ -4,8 +4,8 @@
 module builtin
 
 __global (
-	g_m2_buf &byte 
-	g_m2_ptr &byte 
+	g_m2_buf &byte
+	g_m2_ptr &byte
 )
 
 // isnil returns true if an object is nil (only for C objects).
@@ -48,7 +48,7 @@ __global (
 	total_m              = i64(0)
 	nr_mallocs           = int(0)
 	// will be filled in cgen
-	as_cast_type_indexes   []VCastTypeIndexName 
+	as_cast_type_indexes []VCastTypeIndexName
 )
 
 fn __as_cast(obj voidptr, obj_type int, expected_type int) voidptr {
