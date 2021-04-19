@@ -57,8 +57,11 @@ fn get_v_build_output(is_verbose bool, is_yes bool, file_path string) string {
 	return result.output
 }
 
+// https://docs.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-shellexecutea
+fn C.ShellExecute(hwnd voidptr, verb &u16, file &u16, args &u16, cwd &u16, showCmd int)
+
 // open a uri using the default associated application
-fn open_uri(uri string) ? {
+fn open_browser(uri string) ? {
 	$if darwin {
 		result := os.execute('open "$uri"')
 		if result.exit_code != 0 {
@@ -84,46 +87,12 @@ fn open_uri(uri string) ? {
 				break
 			}
 		}
-	// } $else $if windows {
-		// return shellExecute(0, "", url, "", "", sW_SHOWNORMAL)
-
-		// var (
-		// 	modshell32 = windows.NewLazySystemDLL("shell32.dll")
-
-		// 	procShellExecuteW = modshell32.NewProc("ShellExecuteW")
-		// )
-
-		// func shellExecute(hwnd int, verb string, file string, args string, cwd string, showCmd int) (err error) {
-		// 	var _p0 *uint16
-		// 	_p0, err = syscall.UTF16PtrFromString(verb)
-		// 	if err != nil {
-		// 		return
-		// 	}
-		// 	var _p1 *uint16
-		// 	_p1, err = syscall.UTF16PtrFromString(file)
-		// 	if err != nil {
-		// 		return
-		// 	}
-		// 	var _p2 *uint16
-		// 	_p2, err = syscall.UTF16PtrFromString(args)
-		// 	if err != nil {
-		// 		return
-		// 	}
-		// 	var _p3 *uint16
-		// 	_p3, err = syscall.UTF16PtrFromString(cwd)
-		// 	if err != nil {
-		// 		return
-		// 	}
-		// 	return _shellExecute(hwnd, _p0, _p1, _p2, _p3, showCmd)
-		// }
-
-		// func _shellExecute(hwnd int, verb *uint16, file *uint16, args *uint16, cwd *uint16, showCmd int) (err error) {
-		// 	r1, _, e1 := syscall.Syscall6(procShellExecuteW.Addr(), 6, uintptr(hwnd), uintptr(unsafe.Pointer(verb)), uintptr(unsafe.Pointer(file)), uintptr(unsafe.Pointer(args)), uintptr(unsafe.Pointer(cwd)), uintptr(showCmd))
-		// 	if r1 == 0 {
-		// 		err = errnoErr(e1)
-		// 	}
-		// 	return
-		// }
+	} $else $if windows {
+		result := C.ShellExecute(0, "open".to_wide(), uri.to_wide(), 0, 0, C.SW_SHOWNORMAL)
+		// `If the function succeeds, it returns a value greater than 32`... Really, MS ?
+		if result <= 32 {
+			return error('unable to open url: ')
+		}
 	} $else {
 		return error('unsupported platform')
 	}
@@ -217,7 +186,7 @@ $build_output```'
 		println('Your file is too big to be submitted. Head over to the following URL and attach your file.')
 		println(generated_uri)
 	} else {
-		open_uri(generated_uri) or {
+		open_browser(generated_uri) or {
 			if is_verbose {
 				eprintln(err)
 			}
