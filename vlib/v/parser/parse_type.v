@@ -523,11 +523,6 @@ pub fn (mut p Parser) parse_generic_struct_inst_type(name string) ast.Type {
 			}
 		})
 		return ast.new_type(idx)
-	} else {
-		idx := p.table.find_type_idx(name)
-		if idx != 0 {
-			return ast.new_type(idx).set_flag(.generic)
-		}
 	}
-	return p.parse_enum_or_struct_type(name, .v)
+	return p.parse_enum_or_struct_type(name, .v).set_flag(.generic)
 }
