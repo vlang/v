@@ -143,7 +143,7 @@ pub fn truncate(path string, len u64) ? {
 		C.close(fp)
 	}
 	if fp < 0 {
-		return error('open file failed')
+		return error_with_code(posix_get_error_msg(C.errno), C.errno)
 	}
 	$if windows {
 		if C._chsize_s(fp, len) != 0 {
@@ -165,10 +165,18 @@ pub fn file_size(path string) u64 {
 		$if x64 {
 			$if windows {
 				mut swin := C.__stat64{}
-				C._wstat64(&char(path.to_wide()), voidptr(&swin))
+				if C._wstat64(&char(path.to_wide()), voidptr(&swin)) != 0 {
+					eprintln('os.file_size() Cannot determine file-size: ' +
+						posix_get_error_msg(C.errno))
+					return 0
+				}
 				return swin.st_size
 			} $else {
-				C.stat(&char(path.str), &s)
+				if C.stat(&char(path.str), &s) != 0 {
+					eprintln('os.file_size() Cannot determine file-size: ' +
+						posix_get_error_msg(C.errno))
+					return 0
+				}
 				return u64(s.st_size)
 			}
 		}
@@ -177,10 +185,18 @@ pub fn file_size(path string) u64 {
 				println('Using os.file_size() on 32bit systems may not work on big files.')
 			}
 			$if windows {
-				C._wstat(path.to_wide(), voidptr(&s))
+				if C._wstat(path.to_wide(), voidptr(&s)) != 0 {
+					eprintln('os.file_size() Cannot determine file-size: ' +
+						posix_get_error_msg(C.errno))
+					return 0
+				}
 				return u64(s.st_size)
 			} $else {
-				C.stat(&char(path.str), &s)
+				if C.stat(&char(path.str), &s) != 0 {
+					eprintln('os.file_size() Cannot determine file-size: ' +
+						posix_get_error_msg(C.errno))
+					return 0
+				}
 				return u64(s.st_size)
 			}
 		}

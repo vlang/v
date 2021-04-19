@@ -53,6 +53,8 @@ fn C.symlink(&char, &char) int
 
 fn C.gethostname(&char, int) int
 
+fn C.getlogin_r(&char, int) int
+
 pub fn uname() Uname {
 	mut u := Uname{}
 	utsize := sizeof(C.utsname)
@@ -79,6 +81,18 @@ pub fn hostname() string {
 		hstnme = unsafe { cstring_to_vstring(buf) }
 		unsafe { free(buf) }
 		return hstnme
+	}
+	return ''
+}
+
+pub fn loginname() string {
+	mut lgnname := ''
+	size := 256
+	mut buf := unsafe { &char(malloc(size)) }
+	if C.getlogin_r(buf, size) == 0 {
+		lgnname = unsafe { cstring_to_vstring(buf) }
+		unsafe { free(buf) }
+		return lgnname
 	}
 	return ''
 }
