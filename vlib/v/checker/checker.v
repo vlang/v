@@ -3971,7 +3971,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 		'include' {
 			mut flag := node.main
 			if flag.contains('@VROOT') {
-				//c.note(checker.vroot_is_deprecated_message, node.pos)
+				// c.note(checker.vroot_is_deprecated_message, node.pos)
 				vroot := util.resolve_vmodroot(flag.replace('@VROOT', '@VMODROOT'), c.file.path) or {
 					c.error(err.msg, node.pos)
 					return
@@ -4032,7 +4032,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			// #flag linux -lm
 			mut flag := node.main
 			if flag.contains('@VROOT') {
-				//c.note(checker.vroot_is_deprecated_message, node.pos)
+				// c.note(checker.vroot_is_deprecated_message, node.pos)
 				flag = util.resolve_vmodroot(flag.replace('@VROOT', '@VMODROOT'), c.file.path) or {
 					c.error(err.msg, node.pos)
 					return
