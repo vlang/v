@@ -140,7 +140,7 @@ fn (mut g Gen) sqlite3_stmt(node ast.SqlStmt, typ SqlType) {
 			}
 			x := '${node.object_var_name}.$field.name'
 			if field.typ == ast.string_type {
-				g.writeln('sqlite3_bind_text($g.sql_stmt_name, ${i + 0}, ${x}.str, ${x}.len, 0);')
+				g.writeln('sqlite3_bind_text($g.sql_stmt_name, ${i + 0}, (char*)${x}.str, ${x}.len, 0);')
 			} else if g.table.type_symbols[int(field.typ)].kind == .struct_ {
 				// insert again
 				expr := node.sub_structs[int(field.typ)]
@@ -267,7 +267,7 @@ fn (mut g Gen) sqlite3_select_expr(node ast.SqlExpr, sub bool, line string, sql_
 			if field.typ == ast.string_type {
 				func = 'sqlite3_column_text'
 				string_data := g.new_tmp_var()
-				g.writeln('byteptr $string_data = ${func}($g.sql_stmt_name, $i);')
+				g.writeln('byte* $string_data = (byte*)${func}($g.sql_stmt_name, $i);')
 				g.writeln('if ($string_data != NULL) {')
 				g.writeln('\t${tmp}.$field.name = tos_clone($string_data);')
 				g.writeln('}')
@@ -299,7 +299,7 @@ fn (mut g Gen) sqlite3_select_expr(node ast.SqlExpr, sub bool, line string, sql_
 			}
 		}
 		if node.is_array {
-			g.writeln('\t array_push(&${tmp}_array, _MOV(($elem_type_str[]){ $tmp }));')
+			g.writeln('\t array_push((array*)&${tmp}_array, _MOV(($elem_type_str[]){ $tmp }));')
 		}
 		g.writeln('}')
 		g.writeln('sqlite3_finalize($g.sql_stmt_name);')
@@ -347,7 +347,7 @@ fn (mut g Gen) sqlite3_bind_int(val string) {
 }
 
 fn (mut g Gen) sqlite3_bind_string(val string, len string) {
-	g.sql_buf.writeln('sqlite3_bind_text($g.sql_stmt_name, $g.sql_i, $val, $len, 0);')
+	g.sql_buf.writeln('sqlite3_bind_text($g.sql_stmt_name, $g.sql_i, (char*)$val, $len, 0);')
 }
 
 fn (mut g Gen) sqlite3_type_from_v(v_typ ast.Type) string {
@@ -464,9 +464,9 @@ fn (mut g Gen) mysql_select_expr(node ast.SqlExpr, sub bool, line string, typ Sq
 		vals := g.new_tmp_var()
 		g.writeln('Array_string $vals = __new_array_with_default(0, 0, sizeof(string), 0);')
 		for i, ident in g.sql_idents {
-			g.writeln('array_push(&$vals, _MOV((string[]){string_clone(_SLIT("%${i + 1}"))}));')
+			g.writeln('array_push((array*)&$vals, _MOV((string[]){string_clone(_SLIT("%${i + 1}"))}));')
 
-			g.write('array_push(&$vals, _MOV((string[]){string_clone(')
+			g.write('array_push((array*)&$vals, _MOV((string[]){string_clone(')
 			if g.sql_idents_types[i] == ast.string_type {
 				g.write('_SLIT(')
 			} else {
@@ -590,7 +590,7 @@ fn (mut g Gen) mysql_select_expr(node ast.SqlExpr, sub bool, line string, typ Sq
 			}
 		}
 		if node.is_array {
-			g.writeln('\t array_push(&${tmp}_array, _MOV(($elem_type_str[]) { $tmp }));')
+			g.writeln('\t array_push((array*)&${tmp}_array, _MOV(($elem_type_str[]) { $tmp }));')
 			g.writeln('}')
 		}
 		g.writeln('string_free(&$stmt_name);')

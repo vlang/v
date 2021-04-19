@@ -68,7 +68,7 @@ fn C.sqlite3_free(voidptr)
 // connect Opens the connection with a database.
 pub fn connect(path string) ?DB {
 	db := &C.sqlite3(0)
-	if C.sqlite3_open(path.str, &db) != 0 {
+	if C.sqlite3_open(&char(path.str), &db) != 0 {
 		return error('sqlite db error')
 	}
 	return DB{
@@ -93,7 +93,7 @@ pub fn (mut db DB) close() ?bool {
 // Only for V ORM
 fn (db DB) init_stmt(query string) &C.sqlite3_stmt {
 	stmt := &C.sqlite3_stmt(0)
-	C.sqlite3_prepare_v2(db.conn, query.str, -1, &stmt, 0)
+	C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
 	return stmt
 }
 
@@ -111,7 +111,7 @@ fn get_int_from_stmt(stmt &C.sqlite3_stmt) int {
 // Returns a single cell with value int.
 pub fn (db DB) q_int(query string) int {
 	stmt := &C.sqlite3_stmt(0)
-	C.sqlite3_prepare_v2(db.conn, query.str, -1, &stmt, 0)
+	C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
 	C.sqlite3_step(stmt)
 	res := C.sqlite3_column_int(stmt, 0)
 	C.sqlite3_finalize(stmt)
@@ -121,9 +121,9 @@ pub fn (db DB) q_int(query string) int {
 // Returns a single cell with value string.
 pub fn (db DB) q_string(query string) string {
 	stmt := &C.sqlite3_stmt(0)
-	C.sqlite3_prepare_v2(db.conn, query.str, -1, &stmt, 0)
+	C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
 	C.sqlite3_step(stmt)
-	res := unsafe { tos_clone(C.sqlite3_column_text(stmt, 0)) }
+	res := unsafe { tos_clone(&byte(C.sqlite3_column_text(stmt, 0))) }
 	C.sqlite3_finalize(stmt)
 	return res
 }
@@ -132,7 +132,7 @@ pub fn (db DB) q_string(query string) string {
 // Result codes: https://www.sqlite.org/rescode.html
 pub fn (db DB) exec(query string) ([]Row, int) {
 	stmt := &C.sqlite3_stmt(0)
-	C.sqlite3_prepare_v2(db.conn, query.str, -1, &stmt, 0)
+	C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
 	nr_cols := C.sqlite3_column_count(stmt)
 	mut res := 0
 	mut rows := []Row{}
@@ -145,7 +145,7 @@ pub fn (db DB) exec(query string) ([]Row, int) {
 		}
 		mut row := Row{}
 		for i in 0 .. nr_cols {
-			val := unsafe { tos_clone(C.sqlite3_column_text(stmt, i)) }
+			val := unsafe { tos_clone(&byte(C.sqlite3_column_text(stmt, i))) }
 			row.vals << val
 		}
 		rows << row

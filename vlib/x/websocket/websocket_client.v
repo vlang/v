@@ -250,7 +250,7 @@ pub fn (mut ws Client) write_ptr(bytes &byte, payload_len int, code OPCode) ?int
 			len16 := C.htons(payload_len)
 			header[1] = 126
 			unsafe { C.memcpy(&header[2], &len16, 2) }
-		} else if payload_len > 0xffff && payload_len <= 0xffffffffffffffff {
+		} else if payload_len > 0xffff && payload_len <= 0x7fffffff {
 			len_bytes := htonl64(u64(payload_len))
 			header[1] = 127
 			unsafe { C.memcpy(&header[2], len_bytes.data, 8) }
@@ -270,7 +270,7 @@ pub fn (mut ws Client) write_ptr(bytes &byte, payload_len int, code OPCode) ?int
 			header[5] = masking_key[1]
 			header[6] = masking_key[2]
 			header[7] = masking_key[3]
-		} else if payload_len > 0xffff && payload_len <= 0xffffffffffffffff {
+		} else if payload_len > 0xffff && payload_len <= 0x7fffffff {
 			len64 := htonl64(u64(payload_len))
 			header[1] = (127 | 0x80)
 			unsafe { C.memcpy(&header[2], len64.data, 8) }

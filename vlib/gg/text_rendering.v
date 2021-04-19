@@ -189,7 +189,7 @@ pub fn (ctx &Context) draw_text(x int, y int, text_ string, cfg gx.TextCfg) {
 	// }
 	ctx.set_cfg(cfg)
 	scale := if ctx.ft.scale == 0 { f32(1) } else { ctx.ft.scale }
-	C.fonsDrawText(ctx.ft.fons, x * scale, y * scale, text_.str, 0) // TODO: check offsets/alignment
+	C.fonsDrawText(ctx.ft.fons, x * scale, y * scale, &char(text_.str), 0) // TODO: check offsets/alignment
 }
 
 pub fn (ctx &Context) draw_text_def(x int, y int, text string) {
@@ -215,7 +215,7 @@ pub fn (ctx &Context) text_width(s string) int {
 		return 0
 	}
 	mut buf := [4]f32{}
-	C.fonsTextBounds(ctx.ft.fons, 0, 0, s.str, 0, &buf[0])
+	C.fonsTextBounds(ctx.ft.fons, 0, 0, &char(s.str), 0, &buf[0])
 	if s.ends_with(' ') {
 		return int((buf[2] - buf[0]) / ctx.scale) +
 			ctx.text_width('i') // TODO fix this in fontstash?
@@ -236,7 +236,7 @@ pub fn (ctx &Context) text_height(s string) int {
 		return 0
 	}
 	mut buf := [4]f32{}
-	C.fonsTextBounds(ctx.ft.fons, 0, 0, s.str, 0, &buf[0])
+	C.fonsTextBounds(ctx.ft.fons, 0, 0, &char(s.str), 0, &buf[0])
 	return int((buf[3] - buf[1]) / ctx.scale)
 }
 
@@ -246,7 +246,7 @@ pub fn (ctx &Context) text_size(s string) (int, int) {
 		return 0, 0
 	}
 	mut buf := [4]f32{}
-	C.fonsTextBounds(ctx.ft.fons, 0, 0, s.str, 0, &buf[0])
+	C.fonsTextBounds(ctx.ft.fons, 0, 0, &char(s.str), 0, &buf[0])
 	return int((buf[2] - buf[0]) / ctx.scale), int((buf[3] - buf[1]) / ctx.scale)
 }
 

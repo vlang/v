@@ -736,6 +736,14 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) ast.Type {
 	right_type := c.expr(infix_expr.right)
 	// right_type = c.unwrap_genric(c.expr(infix_expr.right))
 	infix_expr.right_type = right_type
+	if left_type.is_number() && !left_type.is_ptr()
+		&& right_type in [ast.int_literal_type, ast.float_literal_type] {
+		infix_expr.right_type = left_type
+	}
+	if right_type.is_number() && !right_type.is_ptr()
+		&& left_type in [ast.int_literal_type, ast.float_literal_type] {
+		infix_expr.left_type = right_type
+	}
 	mut right := c.table.get_type_symbol(right_type)
 	right_final := c.table.get_final_type_symbol(right_type)
 	mut left := c.table.get_type_symbol(left_type)
@@ -2560,14 +2568,17 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) ast.Typ
 	field_name := selector_expr.field_name
 	utyp := c.unwrap_generic(typ)
 	sym := c.table.get_type_symbol(utyp)
-	if typ.has_flag(.variadic) || sym.kind == .array_fixed || sym.kind == .chan {
-		if field_name == 'len' || (sym.kind == .chan && field_name == 'cap') {
-			selector_expr.typ = ast.int_type
-			return ast.int_type
-		}
-		if sym.kind == .chan && field_name == 'closed' {
+	if (typ.has_flag(.variadic) || sym.kind == .array_fixed) && field_name == 'len' {
+		selector_expr.typ = ast.int_type
+		return ast.int_type
+	}
+	if sym.kind == .chan {
+		if field_name == 'closed' {
 			selector_expr.typ = ast.bool_type
 			return ast.bool_type
+		} else if field_name in ['len', 'cap'] {
+			selector_expr.typ = ast.u32_type
+			return ast.u32_type
 		}
 	}
 	mut unknown_field_msg := 'type `$sym.name` has no field or method `$field_name`'
@@ -3691,6 +3702,12 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 		} else if typ_idx == ast.string_type_idx || high_type_idx == ast.string_type_idx {
 			c.error('range type can not be string', node.cond.position())
 		}
+		if high_type in [ast.int_type, ast.int_literal_type] {
+			node.val_type = typ
+		} else {
+			node.val_type = high_type
+		}
+		node.scope.update_var_type(node.val_var, node.val_type)
 	} else {
 		sym := c.table.get_type_symbol(typ)
 		if sym.kind == .struct_ {

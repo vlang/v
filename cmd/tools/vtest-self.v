@@ -27,61 +27,16 @@ const (
 		'vlib/crypto/rand/crypto_rand_read_test.v',
 	]
 	skip_with_fsanitize_address   = [
-		'vlib/json/json_test.v',
-		'vlib/regex/regex_test.v',
 		'vlib/x/websocket/websocket_test.v',
 	]
 	skip_with_fsanitize_undefined = [
 		'do_not_remove',
 	]
 	skip_with_werror              = [
-		'vlib/clipboard/clipboard_test.v',
-		'vlib/eventbus/eventbus_test.v',
-		'vlib/json/json_test.v',
-		'vlib/orm/orm_test.v',
-		'vlib/sqlite/sqlite_test.v',
-		'vlib/regex/regex_test.v',
-		'vlib/strconv/f32_f64_to_string_test.v',
-		'vlib/strconv/number_to_base_test.v',
-		'vlib/sync/atomic2/atomic_test.v',
-		'vlib/sync/pool/pool_test.v',
-		'vlib/v/tests/assert_sumtype_test.v',
-		'vlib/v/tests/autolock_array1_test.v',
-		'vlib/v/tests/blank_ident_test.v',
-		'vlib/v/tests/comptime_call_test.v',
-		'vlib/v/tests/comptime_at_test.v',
-		'vlib/v/tests/comptime_if_expr_test.v',
-		'vlib/v/tests/cstrings_test.v',
-		'vlib/v/tests/enum_test.v',
-		'vlib/v/tests/fn_variadic_test.v',
-		'vlib/v/tests/generics_method_test.v',
-		'vlib/v/tests/generics_test.v',
-		'vlib/v/tests/in_expression_test.v',
-		'vlib/v/tests/interface_edge_cases/assign_to_interface_field_test.v',
-		'vlib/v/tests/interface_fields_test.v',
-		'vlib/v/tests/interface_variadic_test.v',
-		'vlib/v/tests/operator_overloading_with_string_interpolation_test.v',
-		'vlib/v/tests/orm_sub_struct_test.v',
-		'vlib/v/tests/shared_array_test.v',
-		'vlib/v/tests/shared_autolock_test.v',
-		'vlib/v/tests/shared_elem_test.v',
-		'vlib/v/tests/shared_lock_2_test.v',
-		'vlib/v/tests/shared_lock_3_test.v',
-		'vlib/v/tests/shared_lock_4_test.v',
-		'vlib/v/tests/shared_lock_test.v',
-		'vlib/v/tests/shift_test.v',
-		'vlib/v/tests/str_gen_test.v',
-		'vlib/v/tests/string_interpolation_multi_return_test.v',
-		'vlib/v/tests/string_interpolation_test.v',
-		'vlib/v/tests/struct_test.v',
-		'vlib/v/tests/sum_type_test.v',
-		'vlib/v/tests/type_name_test.v',
+		// -Wduplicated-branches
+		'vlib/v/tests/match_in_fn_call_test.v',
+		'vlib/v/tests/match_test.v',
 		'vlib/v/tests/unsafe_test.v',
-		'vlib/v/tests/working_with_an_empty_struct_test.v',
-		'vlib/vweb/request_test.v',
-		'vlib/vweb/route_test.v',
-		'vlib/x/websocket/websocket_test.v',
-		'vlib/x/ttf/ttf_test.v',
 	]
 	skip_with_asan_compiler       = [
 		'do_not_remove',
@@ -164,7 +119,7 @@ fn main() {
 		if arg.contains('-msan-compiler') {
 			msan_compiler = true
 		}
-		if arg.contains('-Werror') {
+		if arg.contains('-Werror') || arg.contains('-cstrict') {
 			werror = true
 		}
 		if arg.contains('-fsanitize=memory') {

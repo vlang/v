@@ -198,7 +198,7 @@ fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) ChanState {
 	if C.atomic_load_u16(&ch.closed) != 0 {
 		return .closed
 	}
-	spinloops_sem_, spinloops_ := if no_block { 1, 1 } else { sync.spinloops, sync.spinloops_sem }
+	spinloops_sem_, spinloops_ := if no_block { 1, 1 } else { spinloops, spinloops_sem }
 	mut have_swapped := false
 	for {
 		mut got_sem := false
@@ -344,8 +344,8 @@ fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) ChanState {
 					status_adr += wr_idx * sizeof(u16)
 				}
 				mut expected_status := u16(BufferElemStat.unused)
-				for !C.atomic_compare_exchange_weak_u16(unsafe { &u16(status_adr) },
-					&expected_status, u16(BufferElemStat.writing)) {
+				for !C.atomic_compare_exchange_weak_u16(status_adr, &expected_status,
+					u16(BufferElemStat.writing)) {
 					expected_status = u16(BufferElemStat.unused)
 				}
 				unsafe {
@@ -387,7 +387,7 @@ pub fn (mut ch Channel) try_pop(dest voidptr) ChanState {
 }
 
 fn (mut ch Channel) try_pop_priv(dest voidptr, no_block bool) ChanState {
-	spinloops_sem_, spinloops_ := if no_block { 1, 1 } else { sync.spinloops, sync.spinloops_sem }
+	spinloops_sem_, spinloops_ := if no_block { 1, 1 } else { spinloops, spinloops_sem }
 	mut have_swapped := false
 	mut write_in_progress := false
 	for {
@@ -466,8 +466,8 @@ fn (mut ch Channel) try_pop_priv(dest voidptr, no_block bool) ChanState {
 					status_adr += rd_idx * sizeof(u16)
 				}
 				mut expected_status := u16(BufferElemStat.written)
-				for !C.atomic_compare_exchange_weak_u16(unsafe { &u16(status_adr) },
-					&expected_status, u16(BufferElemStat.reading)) {
+				for !C.atomic_compare_exchange_weak_u16(status_adr, &expected_status,
+					u16(BufferElemStat.reading)) {
 					expected_status = u16(BufferElemStat.written)
 				}
 				unsafe {
@@ -580,8 +580,8 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 			}
 			subscr[i].prev = &ch.write_subscriber
 			unsafe {
-				subscr[i].nxt = &Subscription(C.atomic_exchange_ptr(&voidptr(&ch.write_subscriber),
-					&subscr[i]))
+				subscr[i].nxt = C.atomic_exchange_ptr(&voidptr(&ch.write_subscriber),
+					&subscr[i])
 			}
 			if voidptr(subscr[i].nxt) != voidptr(0) {
 				subscr[i].nxt.prev = &subscr[i].nxt
@@ -594,8 +594,8 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 			}
 			subscr[i].prev = &ch.read_subscriber
 			unsafe {
-				subscr[i].nxt = &Subscription(C.atomic_exchange_ptr(&voidptr(&ch.read_subscriber),
-					&subscr[i]))
+				subscr[i].nxt = C.atomic_exchange_ptr(&voidptr(&ch.read_subscriber),
+					&subscr[i])
 			}
 			if voidptr(subscr[i].nxt) != voidptr(0) {
 				subscr[i].nxt.prev = &subscr[i].nxt
