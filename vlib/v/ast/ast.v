@@ -526,7 +526,8 @@ pub mut:
 
 pub struct GlobalDecl {
 pub:
-	pos token.Position
+	pos      token.Position
+	is_block bool // __global() block
 pub mut:
 	fields       []GlobalField
 	end_comments []Comment
