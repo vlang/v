@@ -3275,12 +3275,16 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) ast.Type {
 		if array_init.has_len {
 			c.ensure_sumtype_array_has_default_value(array_init)
 		}
-		c.ensure_type_exists(array_init.elem_type, array_init.elem_type_pos) or {}
+		if array_init.elem_type != 0 {
+			c.ensure_type_exists(array_init.elem_type, array_init.elem_type_pos) or {}
+		}
 		return array_init.typ
 	}
 	if array_init.is_fixed {
 		c.ensure_sumtype_array_has_default_value(array_init)
-		c.ensure_type_exists(array_init.elem_type, array_init.elem_type_pos) or {}
+		if array_init.elem_type != 0 {
+			c.ensure_type_exists(array_init.elem_type, array_init.elem_type_pos) or {}
+		}
 	}
 	// a = []
 	if array_init.exprs.len == 0 {
