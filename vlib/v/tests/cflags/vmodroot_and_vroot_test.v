@@ -8,8 +8,8 @@
 fn C.add(int, int) int
 
 // Tests that VROOT works no matter the current folder
-#flag -I @VEXEROOT/thirdparty/sokol
-#include "sokol_app.h"
+#flag -I @VEXEROOT/thirdparty/stb_image
+#include "stb_image.h"
 
 fn test_vroot_and_vmodroot() {
 	x := C.add(123, 456)
