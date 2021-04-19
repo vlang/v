@@ -120,7 +120,7 @@ pub fn eprintln(s string) {
 				C.fprintf(C.stderr, c'%.*s\n', s.len, s.str)
 			}
 		} $else {
-			mut _ := 0
+			_ := 0
 			if s.str == 0 {
 				_ = C.write(2, c'eprintln(NIL)\n', 14)
 			} else {
@@ -158,7 +158,7 @@ pub fn eprint(s string) {
 				C.fprintf(C.stderr, c'%.*s', s.len, s.str)
 			}
 		} $else {
-			mut _ := 0
+			_ := 0
 			if s.str == 0 {
 				_ = C.write(2, c'eprint(NIL)', 11)
 			} else {
@@ -172,7 +172,7 @@ pub fn eprint(s string) {
 // print prints a message to stdout. Unlike `println` stdout is not automatically flushed.
 // A call to `flush()` will flush the output buffer to stdout.
 pub fn print(s string) {
-	mut _ := 0
+	_ := 0
 	$if android {
 		C.fprintf(C.stdout, c'%.*s', s.len, s.str)
 	} $else $if ios {
@@ -194,7 +194,7 @@ fn C.asl_log(voidptr, voidptr, int, charptr)
 */
 // println prints a message with a line end, to stdout. stdout is flushed.
 pub fn println(s string) {
-	mut _ := 0
+	_ := 0
 	if s.str == 0 {
 		$if android {
 			C.fprintf(C.stdout, c'println(NIL)\n')
