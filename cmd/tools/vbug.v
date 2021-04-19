@@ -57,32 +57,75 @@ fn get_v_build_output(is_verbose bool, is_yes bool, file_path string) string {
 	return result.output
 }
 
-// TODO move this to vlib?
 // open a uri using the default associated application
 fn open_uri(uri string) ? {
-	win_command := 'cmd.exe /C start "$uri"'
-	cmd := $if darwin {
-		'open "$uri"'
-	} $else $if windows {
-		win_command
-	} $else {
-		'xdg-open "$uri"'
-	}
-	result := os.execute(cmd)
-	if result.exit_code != 0 {
-		$if linux {
-			// check if wsl, and use the windows approach if that's the case
-			if os.execute('cat /proc/sys/kernel/osrelease').output.contains_any_substr([
-				'Microsoft',
-				'microsoft',
-			])
-			{
-				if os.execute(win_command).exit_code == 0 {
-					return
+	$if darwin {
+		result := os.execute('open "$uri"')
+		if result.exit_code != 0 {
+			return error('unable to open url: $result.output')
+		}
+	} $else $if freebsd || openbsd {
+		result := os.execute('xdg-open "$uri"')
+		if result.exit_code != 0 {
+			return error('unable to open url: $result.output')
+		}
+	} $else $if linux {
+		providers := ['xdg-open', 'x-www-browser', 'www-browser', 'wslview']
+
+		// There are multiple possible providers to open a browser on linux
+		// One of them is xdg-open, another is x-www-browser, then there's www-browser, etc.
+		// Look for one that exists and run it
+		for provider in providers {
+			if os.exists_in_system_path(provider) {
+				result := os.execute('$provider "$uri"')
+				if result.exit_code != 0 {
+					return error('unable to open url: $result.output')
 				}
+				break
 			}
 		}
-		return error('unable to open url: $result.output')
+	// } $else $if windows {
+		// return shellExecute(0, "", url, "", "", sW_SHOWNORMAL)
+
+		// var (
+		// 	modshell32 = windows.NewLazySystemDLL("shell32.dll")
+
+		// 	procShellExecuteW = modshell32.NewProc("ShellExecuteW")
+		// )
+
+		// func shellExecute(hwnd int, verb string, file string, args string, cwd string, showCmd int) (err error) {
+		// 	var _p0 *uint16
+		// 	_p0, err = syscall.UTF16PtrFromString(verb)
+		// 	if err != nil {
+		// 		return
+		// 	}
+		// 	var _p1 *uint16
+		// 	_p1, err = syscall.UTF16PtrFromString(file)
+		// 	if err != nil {
+		// 		return
+		// 	}
+		// 	var _p2 *uint16
+		// 	_p2, err = syscall.UTF16PtrFromString(args)
+		// 	if err != nil {
+		// 		return
+		// 	}
+		// 	var _p3 *uint16
+		// 	_p3, err = syscall.UTF16PtrFromString(cwd)
+		// 	if err != nil {
+		// 		return
+		// 	}
+		// 	return _shellExecute(hwnd, _p0, _p1, _p2, _p3, showCmd)
+		// }
+
+		// func _shellExecute(hwnd int, verb *uint16, file *uint16, args *uint16, cwd *uint16, showCmd int) (err error) {
+		// 	r1, _, e1 := syscall.Syscall6(procShellExecuteW.Addr(), 6, uintptr(hwnd), uintptr(unsafe.Pointer(verb)), uintptr(unsafe.Pointer(file)), uintptr(unsafe.Pointer(args)), uintptr(unsafe.Pointer(cwd)), uintptr(showCmd))
+		// 	if r1 == 0 {
+		// 		err = errnoErr(e1)
+		// 	}
+		// 	return
+		// }
+	} $else {
+		return error('unsupported platform')
 	}
 }
 
