@@ -5,9 +5,7 @@ import testing
 import v.util
 
 const (
-	vet_known_failing_exceptions    = [
-		'vlib/v/gen/js/js.v' /* trailing space */,
-	]
+	vet_known_failing_exceptions    = []string{}
 	vet_folders                     = [
 		'vlib/sqlite',
 		'vlib/v',
