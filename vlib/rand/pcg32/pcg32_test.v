@@ -141,13 +141,13 @@ fn test_pcg32_u64n() {
 }
 
 fn test_pcg32_u32_in_range() {
-	max := u64(484468466)
-	min := u64(316846)
+	max := u32(484468466)
+	min := u32(316846)
 	for seed in seeds {
 		mut rng := pcg32.PCG32RNG{}
 		rng.seed(seed)
 		for _ in 0 .. range_limit {
-			value := rng.u32_in_range(u64(min), u64(max))
+			value := rng.u32_in_range(u32(min), u32(max))
 			assert value >= min
 			assert value < max
 		}
