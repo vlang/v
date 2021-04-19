@@ -695,7 +695,7 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt) {
 			} else {
 				g.write(' $op ')
 				// TODO: Multiple types??
-				should_cast := 
+				should_cast :=
 					(g.table.type_kind(stmt.left_types.first()) in js.shallow_equatables)
 					&& (g.cast_stack.len <= 0 || stmt.left_types.first() != g.cast_stack.last())
 
