@@ -1,3 +1,4 @@
+import dl
 import net.urllib
 import os
 
@@ -57,8 +58,7 @@ fn get_v_build_output(is_verbose bool, is_yes bool, file_path string) string {
 	return result.output
 }
 
-// https://docs.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-shellexecutea
-fn C.ShellExecute(hwnd voidptr, verb &u16, file &u16, args &u16, cwd &u16, showCmd int)
+type ShellExecuteWin = fn (voidptr, &u16, &u16, &u16, &u16, int)
 
 // open a uri using the default associated application
 fn open_browser(uri string) ? {
@@ -88,11 +88,11 @@ fn open_browser(uri string) ? {
 			}
 		}
 	} $else $if windows {
-		result := C.ShellExecute(0, "open".to_wide(), uri.to_wide(), 0, 0, C.SW_SHOWNORMAL)
-		// `If the function succeeds, it returns a value greater than 32`... Really, MS ?
-		if result <= 32 {
-			return error('unable to open url: ')
-		}
+		handle := dl.open_opt('shell32', dl.rtld_now) ?
+		// https://docs.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-shellexecutew
+		func := ShellExecuteWin(dl.sym_opt(handle, 'ShellExecuteW') ?)
+		func(C.NULL, "open".to_wide(), uri.to_wide(), C.NULL, C.NULL, C.SW_SHOWNORMAL)
+		dl.close(handle)
 	} $else {
 		return error('unsupported platform')
 	}
