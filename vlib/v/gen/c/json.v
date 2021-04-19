@@ -50,7 +50,7 @@ $dec_fn_dec {
 		if (error_ptr != NULL)	{
 			// fprintf(stderr, "Error in decode() for $styp error_ptr=: %s\\n", error_ptr);
 			// printf("\\nbad js=%%s\\n", js.str);
-			return (Option_$styp){.state = 2,.err = v_error(tos2((byteptr)error_ptr))};
+			return (Option_$styp){.state = 2,.err = v_error(tos2((byteptr)error_ptr)),.data = {0}};
 		}
 	}
 ')
@@ -153,7 +153,7 @@ fn (mut g Gen) gen_struct_enc_dec(type_info ast.TypeInfo, styp string, mut enc s
 					tmp := g.new_tmp_var()
 					dec.writeln('\tOption_$field_type $tmp = $dec_name (js_get(root,"$name"));')
 					dec.writeln('\tif(${tmp}.state != 0) {')
-					dec.writeln('\t\treturn *(Option_$styp*) &$tmp;')
+					dec.writeln('\t\treturn (Option_$styp){ .state = ${tmp}.state, .err = ${tmp}.err, .data = {0} };')
 					dec.writeln('\t}')
 					dec.writeln('\tres.${c_name(field.name)} = *($field_type*) ${tmp}.data;')
 				}
@@ -162,7 +162,7 @@ fn (mut g Gen) gen_struct_enc_dec(type_info ast.TypeInfo, styp string, mut enc s
 				tmp := g.new_tmp_var()
 				dec.writeln('\tOption_$field_type $tmp = $dec_name (js_get(root,"$name"));')
 				dec.writeln('\tif(${tmp}.state != 0) {')
-				dec.writeln('\t\treturn *(Option_$styp*) &$tmp;')
+				dec.writeln('\t\treturn (Option_$styp){ .state = ${tmp}.state, .err = ${tmp}.err, .data = {0} };')
 				dec.writeln('\t}')
 				dec.writeln('\tres.${c_name(field.name)} = *($field_type*) ${tmp}.data;')
 			}
@@ -225,14 +225,14 @@ fn (mut g Gen) decode_array(value_type ast.Type) string {
 	noscan := g.check_noscan(value_type)
 	return '
 	if(root && !cJSON_IsArray(root) && !cJSON_IsNull(root)) {
-		return (Option_Array_$styp){.state = 2, .err = v_error(string_add(_SLIT("Json element is not an array: "), tos2((byteptr)cJSON_PrintUnformatted(root))))};
+		return (Option_Array_$styp){.state = 2, .err = v_error(string_add(_SLIT("Json element is not an array: "), tos2((byteptr)cJSON_PrintUnformatted(root)))), .data = {0}};
 	}
 	res = __new_array${noscan}(0, 0, sizeof($styp));
 	const cJSON *jsval = NULL;
 	cJSON_ArrayForEach(jsval, root)
 	{
 	$s
-		array_push(&res, &val);
+		array_push((array*)&res, &val);
 	}
 '
 }
@@ -269,7 +269,7 @@ fn (mut g Gen) decode_map(key_type ast.Type, value_type ast.Type) string {
 	}
 	return '
 	if(!cJSON_IsObject(root) && !cJSON_IsNull(root)) {
-		return (Option_Map_${styp}_$styp_v){ .state = 2, .err = v_error( string_add(_SLIT("Json element is not an object: "), tos2((byteptr)cJSON_PrintUnformatted(root))) )};
+		return (Option_Map_${styp}_$styp_v){ .state = 2, .err = v_error( string_add(_SLIT("Json element is not an object: "), tos2((byteptr)cJSON_PrintUnformatted(root)))), .data = {0}};
 	}
 	res = new_map(sizeof($styp), sizeof($styp_v), $hash_fn, $key_eq_fn, $clone_fn, $free_fn);
 	cJSON *jsval = NULL;

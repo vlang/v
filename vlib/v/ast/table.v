@@ -22,6 +22,9 @@ pub mut:
 	is_fmt           bool
 	used_fns         map[string]bool // filled in by the checker, when pref.skip_unused = true;
 	used_consts      map[string]bool // filled in by the checker, when pref.skip_unused = true;
+	panic_handler    FnPanicHandler = default_table_panic_handler
+	panic_userdata   voidptr        = voidptr(0) // can be used to pass arbitrary data to panic_handler;
+	panic_npanics    int
 }
 
 [unsafe]
@@ -40,6 +43,18 @@ pub fn (t &Table) free() {
 		t.used_fns.free()
 		t.used_consts.free()
 	}
+}
+
+pub type FnPanicHandler = fn (&Table, string)
+
+fn default_table_panic_handler(t &Table, message string) {
+	panic(message)
+}
+
+pub fn (t &Table) panic(message string) {
+	mut mt := unsafe { &Table(t) }
+	mt.panic_npanics++
+	t.panic_handler(t, message)
 }
 
 pub struct Fn {
@@ -209,7 +224,7 @@ pub fn (mut t TypeSymbol) register_method(new_fn Fn) int {
 
 pub fn (t &Table) register_aggregate_method(mut sym TypeSymbol, name string) ?Fn {
 	if sym.kind != .aggregate {
-		panic('Unexpected type symbol: $sym.kind')
+		t.panic('Unexpected type symbol: $sym.kind')
 	}
 	agg_info := sym.info as Aggregate
 	// an aggregate always has at least 2 types
@@ -263,7 +278,7 @@ pub fn (t &Table) type_find_method(s &TypeSymbol, name string) ?Fn {
 
 fn (t &Table) register_aggregate_field(mut sym TypeSymbol, name string) ?StructField {
 	if sym.kind != .aggregate {
-		panic('Unexpected type symbol: $sym.kind')
+		t.panic('Unexpected type symbol: $sym.kind')
 	}
 	mut agg_info := sym.info as Aggregate
 	// an aggregate always has at least 2 types
@@ -424,7 +439,7 @@ pub fn (t &Table) get_type_symbol(typ Type) &TypeSymbol {
 		return unsafe { &t.type_symbols[idx] }
 	}
 	// this should never happen
-	panic('get_type_symbol: invalid type (typ=$typ idx=$idx). Compiler bug. This should never happen. Please create a GitHub issue.
+	t.panic('get_type_symbol: invalid type (typ=$typ idx=$idx). Compiler bug. This should never happen. Please create a GitHub issue.
 ')
 }
 
@@ -441,7 +456,7 @@ pub fn (t &Table) get_final_type_symbol(typ Type) &TypeSymbol {
 		return unsafe { &t.type_symbols[idx] }
 	}
 	// this should never happen
-	panic('get_final_type_symbol: invalid type (typ=$typ idx=$idx). Compiler bug. This should never happen. Please create a GitHub issue.')
+	t.panic('get_final_type_symbol: invalid type (typ=$typ idx=$idx). Compiler bug. This should never happen. Please create a GitHub issue.')
 }
 
 [inline]
@@ -956,7 +971,7 @@ pub fn (mut t Table) bitsize_to_type(bit_size int) Type {
 		}
 		else {
 			if bit_size % 8 != 0 { // there is no way to do `i2131(32)` so this should never be reached
-				panic('compiler bug: bitsizes must be multiples of 8')
+				t.panic('compiler bug: bitsizes must be multiples of 8')
 			}
 			return new_type(t.find_or_register_array_fixed(byte_type, bit_size / 8))
 		}

@@ -666,7 +666,7 @@ fn (mut g Gen) register_chan_pop_optional_call(opt_el_type string, styp string) 
 static inline $opt_el_type __Option_${styp}_popval($styp ch) {
 	$opt_el_type _tmp = {0};
 	if (sync__Channel_try_pop_priv(ch, _tmp.data, false)) {
-		return ($opt_el_type){ .state = 2, .err = v_error(_SLIT("channel closed")) };
+		return ($opt_el_type){ .state = 2, .err = v_error(_SLIT("channel closed")), .data = {0} };
 	}
 	return _tmp;
 }')
@@ -680,7 +680,7 @@ fn (mut g Gen) register_chan_push_optional_call(el_type string, styp string) {
 		g.channel_definitions.writeln('
 static inline Option_void __Option_${styp}_pushval($styp ch, $el_type e) {
 	if (sync__Channel_try_push_priv(ch, &e, false)) {
-		return (Option_void){ .state = 2, .err = v_error(_SLIT("channel closed")) };
+		return (Option_void){ .state = 2, .err = v_error(_SLIT("channel closed")), .data = {0} };
 	}
 	return (Option_void){0};
 }')
@@ -1298,7 +1298,7 @@ fn (mut g Gen) write_defer_stmts() {
 	for i := g.defer_stmts.len - 1; i >= 0; i-- {
 		defer_stmt := g.defer_stmts[i]
 		g.writeln('// Defer begin')
-		g.writeln('if (${g.defer_flag_var(defer_stmt)} == true) {')
+		g.writeln('if (${g.defer_flag_var(defer_stmt)}) {')
 		g.indent++
 		if defer_stmt.ifdef.len > 0 {
 			g.writeln(defer_stmt.ifdef)
@@ -1424,7 +1424,8 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 	if node.is_range {
 		// `for x in 1..10 {`
 		i := if node.val_var == '_' { g.new_tmp_var() } else { c_name(node.val_var) }
-		g.write('for (int $i = ')
+		val_typ := g.table.mktyp(node.val_type)
+		g.write('for (${g.typ(val_typ)} $i = ')
 		g.expr(node.cond)
 		g.write('; $i < ')
 		g.expr(node.high)
@@ -1770,11 +1771,11 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 			g.error('cannot convert reference to `shared`', expr.position())
 		}
 		if exp_sym.kind == .array {
-			g.writeln('($shared_styp*)__dup_shared_array(&($shared_styp){.val = ')
+			g.writeln('($shared_styp*)__dup_shared_array(&($shared_styp){.mtx = {0}, .val =')
 		} else if exp_sym.kind == .map {
-			g.writeln('($shared_styp*)__dup_shared_map(&($shared_styp){.val = ')
+			g.writeln('($shared_styp*)__dup_shared_map(&($shared_styp){.mtx = {0}, .val =')
 		} else {
-			g.writeln('($shared_styp*)__dup${shared_styp}(&($shared_styp){.val = ')
+			g.writeln('($shared_styp*)__dup${shared_styp}(&($shared_styp){.mtx = {0}, .val =')
 		}
 		g.expr(expr)
 		g.writeln('}, sizeof($shared_styp))')
@@ -1793,6 +1794,16 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	if expected_type.has_flag(.optional) && expr is ast.None {
 		g.gen_optional_error(expected_type, expr)
 		return
+	}
+	if expr is ast.IntegerLiteral {
+		if expected_type in [ast.u64_type, ast.u32_type, ast.u16_type] && expr.val[0] != `-` {
+			g.expr(expr)
+			g.write('U')
+			return
+		}
+	}
+	if exp_sym.kind == .function {
+		g.write('(voidptr)')
 	}
 	// no cast
 	g.expr(expr)
@@ -2910,11 +2921,11 @@ fn (mut g Gen) expr(node ast.Expr) {
 				shared_typ := ret_type.set_flag(.shared_f)
 				shared_styp = g.typ(shared_typ)
 				if ret_sym.kind == .array {
-					g.writeln('($shared_styp*)__dup_shared_array(&($shared_styp){.val = ')
+					g.writeln('($shared_styp*)__dup_shared_array(&($shared_styp){.mtx = {0}, .val =')
 				} else if ret_sym.kind == .map {
-					g.writeln('($shared_styp*)__dup_shared_map(&($shared_styp){.val = ')
+					g.writeln('($shared_styp*)__dup_shared_map(&($shared_styp){.mtx = {0}, .val =')
 				} else {
-					g.writeln('($shared_styp*)__dup${shared_styp}(&($shared_styp){.val = ')
+					g.writeln('($shared_styp*)__dup${shared_styp}(&($shared_styp){.mtx = {0}, .val =')
 				}
 			}
 			g.call_expr(node)
@@ -3657,7 +3668,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			// push a single element
 			elem_type_str := g.typ(info.elem_type)
 			elem_sym := g.table.get_type_symbol(info.elem_type)
-			g.write('array_push(')
+			g.write('array_push((array*)')
 			if !left_type.is_ptr() {
 				g.write('&')
 			}
@@ -3789,10 +3800,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			}
 			g.expr(node.left)
 			g.write(' $node.op.str() ')
-			if node.right_type.is_ptr() && node.right.is_auto_deref_var() {
-				g.write('*')
-			}
-			g.expr(node.right)
+			g.expr_with_cast(node.right, node.right_type, node.left_type)
 			if need_par {
 				g.write(')')
 			}
@@ -4142,7 +4150,7 @@ fn (mut g Gen) map_init(node ast.MapInit) {
 	if g.is_shared {
 		mut shared_typ := node.typ.set_flag(.shared_f)
 		shared_styp = g.typ(shared_typ)
-		g.writeln('($shared_styp*)__dup_shared_map(&($shared_styp){.val = ')
+		g.writeln('($shared_styp*)__dup_shared_map(&($shared_styp){.mtx = {0}, .val =')
 	} else if is_amp {
 		styp = g.typ(node.typ)
 		g.write('($styp*)memdup(ADDR($styp, ')
@@ -4658,7 +4666,7 @@ fn (mut g Gen) gen_optional_error(target_type ast.Type, expr ast.Expr) {
 	styp := g.typ(target_type)
 	g.write('($styp){ .state=2, .err=')
 	g.expr(expr)
-	g.write(' }')
+	g.write(', .data={0} }')
 }
 
 fn (mut g Gen) return_stmt(node ast.Return) {
@@ -5053,7 +5061,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	if g.is_shared && !g.inside_opt_data && !g.is_arraymap_set {
 		mut shared_typ := struct_init.typ.set_flag(.shared_f)
 		shared_styp = g.typ(shared_typ)
-		g.writeln('($shared_styp*)__dup${shared_styp}(&($shared_styp){.val = ($styp){')
+		g.writeln('($shared_styp*)__dup${shared_styp}(&($shared_styp){.mtx = {0}, .val =($styp){')
 	} else if is_amp {
 		g.write('($styp*)memdup(&($styp){')
 	} else if struct_init.typ.is_ptr() {
@@ -5808,7 +5816,7 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 		init_str := '__new_array${noscan}(0, 1, sizeof($elem_type_str))'
 		if typ.has_flag(.shared_f) {
 			atyp := '__shared__Array_${g.table.get_type_symbol(elem_typ).cname}'
-			return '($atyp*)__dup_shared_array(&($atyp){.val = $init_str}, sizeof($atyp))'
+			return '($atyp*)__dup_shared_array(&($atyp){.mtx = {0}, .val =$init_str}, sizeof($atyp))'
 		} else {
 			return init_str
 		}
@@ -5820,7 +5828,7 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 		init_str := 'new_map(sizeof(${g.typ(info.key_type)}), sizeof(${g.typ(info.value_type)}), $hash_fn, $key_eq_fn, $clone_fn, $free_fn)'
 		if typ.has_flag(.shared_f) {
 			mtyp := '__shared__Map_${key_typ.cname}_${g.table.get_type_symbol(info.value_type).cname}'
-			return '($mtyp*)__dup_shared_map(&($mtyp){.val = $init_str}, sizeof($mtyp))'
+			return '($mtyp*)__dup_shared_map(&($mtyp){.mtx = {0}, .val =$init_str}, sizeof($mtyp))'
 		} else {
 			return init_str
 		}
@@ -5852,7 +5860,7 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 		}
 		if typ.has_flag(.shared_f) {
 			styp := '__shared__${g.table.get_type_symbol(typ).cname}'
-			return '($styp*)__dup${styp}(&($styp){.val = $init_str}, sizeof($styp))'
+			return '($styp*)__dup${styp}(&($styp){.mtx = {0}, .val =$init_str}, sizeof($styp))'
 		} else {
 			return init_str
 		}

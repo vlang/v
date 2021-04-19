@@ -657,7 +657,7 @@ static voidptr memfreedup(voidptr ptr, voidptr src, int sz) {
 		#undef EMPTY_STRUCT_DECLARATION
 		#undef OPTION_CAST
 
-		#define EMPTY_STRUCT_DECLARATION int ____dummy_variable
+		#define EMPTY_STRUCT_DECLARATION char __pad
 		#define OPTION_CAST(x)
 		#undef __NOINLINE
 		#undef __IRQHANDLER

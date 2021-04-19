@@ -263,14 +263,14 @@ pub fn (mut ws Client) parse_frame_header() ?Frame {
 			frame.header_len += 8
 			// these shift operators needs 64 bit on clang with -prod flag
 			mut payload_len := u64(0)
-			payload_len |= buffer[2] << 56
-			payload_len |= buffer[3] << 48
-			payload_len |= buffer[4] << 40
-			payload_len |= buffer[5] << 32
-			payload_len |= buffer[6] << 24
-			payload_len |= buffer[7] << 16
-			payload_len |= buffer[8] << 8
-			payload_len |= buffer[9]
+			payload_len |= u64(buffer[2]) << 56
+			payload_len |= u64(buffer[3]) << 48
+			payload_len |= u64(buffer[4]) << 40
+			payload_len |= u64(buffer[5]) << 32
+			payload_len |= u64(buffer[6]) << 24
+			payload_len |= u64(buffer[7]) << 16
+			payload_len |= u64(buffer[8]) << 8
+			payload_len |= u64(buffer[9])
 			frame.payload_len = int(payload_len)
 			if !frame.has_mask {
 				break

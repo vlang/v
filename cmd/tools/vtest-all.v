@@ -58,8 +58,8 @@ fn get_all_commands() []Command {
 		okmsg: 'V can compile itself.'
 	}
 	res << Command{
-		line: '$vexe -o vtmp_werror -cflags -Werror cmd/v'
-		okmsg: 'V can compile itself with -cflags -Werror too.'
+		line: '$vexe -o vtmp_werror -cstrict cmd/v'
+		okmsg: 'V can compile itself with -cstrict too.'
 	}
 	res << Command{
 		line: '$vexe $vargs -progress test-cleancode'

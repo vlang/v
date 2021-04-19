@@ -15,13 +15,8 @@ import math
 struct C.Display {
 }
 
-[typedef]
-struct C.Atom {
-}
-
-[typedef]
-struct C.Window {
-}
+type Window = u64
+type Atom = u64
 
 fn C.XInitThreads() int
 
@@ -29,35 +24,35 @@ fn C.XCloseDisplay(d &C.Display)
 
 fn C.XFlush(d &C.Display)
 
-fn C.XDestroyWindow(d &C.Display, w C.Window)
+fn C.XDestroyWindow(d &C.Display, w Window)
 
 fn C.XNextEvent(d &C.Display, e &C.XEvent)
 
-fn C.XSetSelectionOwner(d &C.Display, a C.Atom, w C.Window, time int)
+fn C.XSetSelectionOwner(d &C.Display, a Atom, w Window, time int)
 
-fn C.XGetSelectionOwner(d &C.Display, a C.Atom) C.Window
+fn C.XGetSelectionOwner(d &C.Display, a Atom) Window
 
-fn C.XChangeProperty(d &C.Display, requestor C.Window, property C.Atom, typ C.Atom, format int, mode int, data voidptr, nelements int) int
+fn C.XChangeProperty(d &C.Display, requestor Window, property Atom, typ Atom, format int, mode int, data voidptr, nelements int) int
 
-fn C.XSendEvent(d &C.Display, requestor C.Window, propogate int, mask i64, event &C.XEvent)
+fn C.XSendEvent(d &C.Display, requestor Window, propogate int, mask i64, event &C.XEvent)
 
-fn C.XInternAtom(d &C.Display, typ byteptr, only_if_exists int) C.Atom
+fn C.XInternAtom(d &C.Display, typ byteptr, only_if_exists int) Atom
 
-fn C.XCreateSimpleWindow(d &C.Display, root C.Window, x int, y int, width u32, height u32, border_width u32, border u64, background u64) C.Window
+fn C.XCreateSimpleWindow(d &C.Display, root Window, x int, y int, width u32, height u32, border_width u32, border u64, background u64) Window
 
 fn C.XOpenDisplay(name byteptr) &C.Display
 
-fn C.XConvertSelection(d &C.Display, selection C.Atom, target C.Atom, property C.Atom, requestor C.Window, time int) int
+fn C.XConvertSelection(d &C.Display, selection Atom, target Atom, property Atom, requestor Window, time int) int
 
 fn C.XSync(d &C.Display, discard int) int
 
-fn C.XGetWindowProperty(d &C.Display, w C.Window, property C.Atom, offset i64, length i64, delete int, req_type C.Atom, actual_type_return &C.Atom, actual_format_return &int, nitems &u64, bytes_after_return &u64, prop_return &byteptr) int
+fn C.XGetWindowProperty(d &C.Display, w Window, property Atom, offset i64, length i64, delete int, req_type Atom, actual_type_return &Atom, actual_format_return &int, nitems &u64, bytes_after_return &u64, prop_return &byteptr) int
 
-fn C.XDeleteProperty(d &C.Display, w C.Window, property C.Atom) int
+fn C.XDeleteProperty(d &C.Display, w Window, property Atom) int
 
 fn C.DefaultScreen(display &C.Display) int
 
-fn C.RootWindow(display &C.Display, screen_number int) C.Window
+fn C.RootWindow(display &C.Display, screen_number int) Window
 
 fn C.BlackPixel(display &C.Display, screen_number int) u32
 
@@ -71,11 +66,11 @@ fn todo_del() {}
 struct C.XSelectionRequestEvent {
 mut:
 	display   &C.Display // Display the event was read from
-	owner     C.Window
-	requestor C.Window
-	selection C.Atom
-	target    C.Atom
-	property  C.Atom
+	owner     Window
+	requestor Window
+	selection Atom
+	target    Atom
+	property  Atom
 	time      int
 }
 
@@ -84,24 +79,24 @@ struct C.XSelectionEvent {
 mut:
 	@type     int
 	display   &C.Display // Display the event was read from
-	requestor C.Window
-	selection C.Atom
-	target    C.Atom
-	property  C.Atom
+	requestor Window
+	selection Atom
+	target    Atom
+	property  Atom
 	time      int
 }
 
 [typedef]
 struct C.XSelectionClearEvent {
 mut:
-	window    C.Window
-	selection C.Atom
+	window    Window
+	selection Atom
 }
 
 [typedef]
 struct C.XDestroyWindowEvent {
 mut:
-	window C.Window
+	window Window
 }
 
 [typedef]
@@ -141,9 +136,9 @@ enum AtomType {
 pub struct Clipboard {
 	display &C.Display
 mut:
-	selection C.Atom // the selection atom
-	window    C.Window
-	atoms     []C.Atom
+	selection Atom // the selection atom
+	window    Window
+	atoms     []Atom
 	mutex     &sync.Mutex
 	text      string // text data sent or received
 	got_text  bool   // used to confirm that we have got the text
@@ -151,7 +146,7 @@ mut:
 }
 
 struct Property {
-	actual_type   C.Atom
+	actual_type   Atom
 	actual_format int
 	nitems        u64
 	data          byteptr
@@ -204,14 +199,14 @@ pub fn (cb &Clipboard) check_availability() bool {
 
 pub fn (mut cb Clipboard) free() {
 	C.XDestroyWindow(cb.display, cb.window)
-	cb.window = C.Window(C.None)
+	cb.window = Window(0)
 	// FIX ME: program hangs when closing display
 	// XCloseDisplay(cb.display)
 }
 
 pub fn (mut cb Clipboard) clear() {
 	cb.mutex.@lock()
-	C.XSetSelectionOwner(cb.display, cb.selection, C.Window(C.None), C.CurrentTime)
+	C.XSetSelectionOwner(cb.display, cb.selection, Window(0), C.CurrentTime)
 	C.XFlush(cb.display)
 	cb.is_owner = false
 	cb.text = ''
@@ -229,7 +224,7 @@ fn (cb &Clipboard) take_ownership() {
 
 // set_text stores `text` in the system clipboard.
 pub fn (mut cb Clipboard) set_text(text string) bool {
-	if cb.window == C.Window(C.None) {
+	if cb.window == Window(0) {
 		return false
 	}
 	cb.mutex.@lock()
@@ -244,7 +239,7 @@ pub fn (mut cb Clipboard) set_text(text string) bool {
 }
 
 pub fn (mut cb Clipboard) get_text() string {
-	if cb.window == C.Window(C.None) {
+	if cb.window == Window(0) {
 		return ''
 	}
 	if cb.is_owner {
@@ -289,7 +284,7 @@ fn (mut cb Clipboard) transmit_selection(xse &C.XSelectionEvent) bool {
 fn (mut cb Clipboard) start_listener() {
 	event := C.XEvent{}
 	mut sent_request := false
-	mut to_be_requested := C.Atom(0)
+	mut to_be_requested := Atom(0)
 	for {
 		C.XNextEvent(cb.display, &event)
 		if unsafe { event.@type == 0 } {
@@ -330,7 +325,7 @@ fn (mut cb Clipboard) start_listener() {
 						property: xsre.property
 					}
 					if !cb.transmit_selection(&xse) {
-						xse.property = new_atom(C.None)
+						xse.property = new_atom(0)
 					}
 					C.XSendEvent(cb.display, xse.requestor, 0, C.PropertyChangeMask, voidptr(&xse))
 					C.XFlush(cb.display)
@@ -339,19 +334,19 @@ fn (mut cb Clipboard) start_listener() {
 			C.SelectionNotify {
 				if unsafe {
 					event.xselection.selection == cb.selection
-						&& event.xselection.property != C.Atom(C.None)
+						&& event.xselection.property != Atom(0)
 				} {
 					if unsafe { event.xselection.target == cb.get_atom(.targets) && !sent_request } {
 						sent_request = true
 						prop := read_property(cb.display, cb.window, cb.selection)
 						to_be_requested = cb.pick_target(prop)
-						if to_be_requested != C.Atom(0) {
+						if to_be_requested != Atom(0) {
 							C.XConvertSelection(cb.display, cb.selection, to_be_requested,
 								cb.selection, cb.window, C.CurrentTime)
 						}
 					} else if unsafe { event.xselection.target == to_be_requested } {
 						sent_request = false
-						to_be_requested = C.Atom(0)
+						to_be_requested = Atom(0)
 						cb.mutex.@lock()
 						prop := unsafe {
 							read_property(event.xselection.display, event.xselection.requestor,
@@ -382,19 +377,19 @@ fn (mut cb Clipboard) start_listener() {
 */
 // intern_atoms initializes all the atoms we need.
 fn (mut cb Clipboard) intern_atoms() {
-	cb.atoms << C.Atom(4) // XA_ATOM
-	cb.atoms << C.Atom(31) // XA_STRING
+	cb.atoms << Atom(4) // XA_ATOM
+	cb.atoms << Atom(31) // XA_STRING
 	for i, name in x11.atom_names {
 		only_if_exists := if i == int(AtomType.utf8_string) { 1 } else { 0 }
-		cb.atoms << C.XInternAtom(cb.display, name.str, only_if_exists)
-		if i == int(AtomType.utf8_string) && cb.atoms[i] == C.Atom(C.None) {
+		cb.atoms << C.XInternAtom(cb.display, &char(name.str), only_if_exists)
+		if i == int(AtomType.utf8_string) && cb.atoms[i] == Atom(0) {
 			cb.atoms[i] = cb.get_atom(.xa_string)
 		}
 	}
 }
 
-fn read_property(d &C.Display, w C.Window, p C.Atom) Property {
-	actual_type := C.Atom(0)
+fn read_property(d &C.Display, w Window, p Atom) Property {
+	actual_type := Atom(0)
 	actual_format := 0
 	nitems := u64(0)
 	bytes_after := u64(0)
@@ -404,7 +399,7 @@ fn read_property(d &C.Display, w C.Window, p C.Atom) Property {
 		if ret != 0 {
 			C.XFree(ret)
 		}
-		C.XGetWindowProperty(d, w, p, 0, read_bytes, 0, C.Atom(C.AnyPropertyType), &actual_type,
+		C.XGetWindowProperty(d, w, p, 0, read_bytes, 0, 0, &actual_type,
 			&actual_format, &nitems, &bytes_after, &ret)
 		read_bytes *= 2
 		if bytes_after == 0 {
@@ -415,7 +410,7 @@ fn read_property(d &C.Display, w C.Window, p C.Atom) Property {
 }
 
 // pick_target finds the best target given a local copy of a property.
-fn (cb &Clipboard) pick_target(prop Property) C.Atom {
+fn (cb &Clipboard) pick_target(prop Property) Atom {
 	// The list of targets is a list of atoms, so it should have type XA_ATOM
 	// but it may have the type TARGETS instead.
 	if (prop.actual_type != cb.get_atom(.xa_atom) && prop.actual_type != cb.get_atom(.targets))
@@ -426,9 +421,9 @@ fn (cb &Clipboard) pick_target(prop Property) C.Atom {
 		// next instead as the lowest common denominator
 		return cb.get_atom(.xa_string)
 	} else {
-		atom_list := &C.Atom(prop.data)
+		atom_list := &Atom(prop.data)
 
-		mut to_be_requested := C.Atom(0)
+		mut to_be_requested := Atom(0)
 
 		// This is higher than the maximum priority.
 		mut priority := math.max_i32
@@ -450,23 +445,23 @@ fn (cb &Clipboard) pick_target(prop Property) C.Atom {
 	}
 }
 
-fn (cb &Clipboard) get_atoms(types ...AtomType) []C.Atom {
-	mut atoms := []C.Atom{}
+fn (cb &Clipboard) get_atoms(types ...AtomType) []Atom {
+	mut atoms := []Atom{}
 	for typ in types {
 		atoms << cb.atoms[typ]
 	}
 	return atoms
 }
 
-fn (cb &Clipboard) get_atom(typ AtomType) C.Atom {
+fn (cb &Clipboard) get_atom(typ AtomType) Atom {
 	return cb.atoms[typ]
 }
 
-fn (cb &Clipboard) is_supported_target(target C.Atom) bool {
+fn (cb &Clipboard) is_supported_target(target Atom) bool {
 	return cb.get_target_index(target) >= 0
 }
 
-fn (cb &Clipboard) get_target_index(target C.Atom) int {
+fn (cb &Clipboard) get_target_index(target Atom) int {
 	for i, atom in cb.get_supported_targets() {
 		if atom == target {
 			return i
@@ -475,15 +470,15 @@ fn (cb &Clipboard) get_target_index(target C.Atom) int {
 	return -1
 }
 
-fn (cb &Clipboard) get_supported_targets() []C.Atom {
+fn (cb &Clipboard) get_supported_targets() []Atom {
 	return cb.get_atoms(AtomType.utf8_string, .xa_string, .text, .text_plain, .text_html)
 }
 
-fn new_atom(value int) &C.Atom {
-	return unsafe { &C.Atom(value) }
+fn new_atom(value int) &Atom {
+	return unsafe { &Atom(&u64(u64(value))) }
 }
 
-fn create_xwindow(display &C.Display) C.Window {
+fn create_xwindow(display &C.Display) Window {
 	n := C.DefaultScreen(display)
 	return C.XCreateSimpleWindow(display, C.RootWindow(display, n), 0, 0, 1, 1, 0, C.BlackPixel(display,
 		n), C.WhitePixel(display, n))

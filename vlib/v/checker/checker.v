@@ -736,6 +736,14 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) ast.Type {
 	right_type := c.expr(infix_expr.right)
 	// right_type = c.unwrap_genric(c.expr(infix_expr.right))
 	infix_expr.right_type = right_type
+	if left_type.is_number() && !left_type.is_ptr()
+		&& right_type in [ast.int_literal_type, ast.float_literal_type] {
+		infix_expr.right_type = left_type
+	}
+	if right_type.is_number() && !right_type.is_ptr()
+		&& left_type in [ast.int_literal_type, ast.float_literal_type] {
+		infix_expr.left_type = right_type
+	}
 	mut right := c.table.get_type_symbol(right_type)
 	right_final := c.table.get_final_type_symbol(right_type)
 	mut left := c.table.get_type_symbol(left_type)
@@ -1612,22 +1620,44 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 		} else {
 			call_expr.return_type = method.return_type
 		}
-
+		mut exp_arg_typ := ast.Type(0) // type of 1st arg for special builtin methods
+		mut param_is_mut := false
+		mut no_type_promotion := false
+		if left_type_sym.kind == .chan {
+			elem_typ := (left_type_sym.info as ast.Chan).elem_type
+			if method_name == 'try_push' {
+				exp_arg_typ = elem_typ.to_ptr()
+			} else if method_name == 'try_pop' {
+				exp_arg_typ = elem_typ
+				param_is_mut = true
+				no_type_promotion = true
+			}
+		}
 		// if method_name == 'clone' {
 		// println('CLONE nr args=$method.args.len')
 		// }
 		// call_expr.args << method.args[0].typ
 		// call_expr.exp_arg_types << method.args[0].typ
 		for i, arg in call_expr.args {
-			exp_arg_typ := if method.is_variadic && i >= method.params.len - 1 {
-				method.params[method.params.len - 1].typ
-			} else {
-				method.params[i + 1].typ
+			if i > 0 || exp_arg_typ == ast.Type(0) {
+				exp_arg_typ = if method.is_variadic && i >= method.params.len - 1 {
+					method.params[method.params.len - 1].typ
+				} else {
+					method.params[i + 1].typ
+				}
+				param_is_mut = false
+				no_type_promotion = false
 			}
 			exp_arg_sym := c.table.get_type_symbol(exp_arg_typ)
 			c.expected_type = exp_arg_typ
 			got_arg_typ := c.check_expr_opt_call(arg.expr, c.expr(arg.expr))
 			call_expr.args[i].typ = got_arg_typ
+			if no_type_promotion {
+				if got_arg_typ != exp_arg_typ {
+					c.error('cannot use `${c.table.get_type_symbol(got_arg_typ).name}` as argument for `$method.name` (`$exp_arg_sym.name` expected)',
+						arg.pos)
+				}
+			}
 			if method.is_variadic && got_arg_typ.has_flag(.variadic) && call_expr.args.len - 1 > i {
 				c.error('when forwarding a variadic variable, it must be the final argument',
 					arg.pos)
@@ -1656,6 +1686,7 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 			} else {
 				method.params[i + 1]
 			}
+			param_is_mut = param_is_mut || param.is_mut
 			param_share := param.typ.share()
 			if param_share == .shared_t && (c.locked_names.len > 0 || c.rlocked_names.len > 0) {
 				c.error('method with `shared` arguments cannot be called inside `lock`/`rlock` block',
@@ -1663,12 +1694,12 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 			}
 			if arg.is_mut {
 				to_lock, pos := c.fail_if_immutable(arg.expr)
-				if !param.is_mut {
+				if !param_is_mut {
 					tok := arg.share.str()
 					c.error('`$call_expr.name` parameter `$param.name` is not `$tok`, `$tok` is not needed`',
 						arg.expr.position())
 				} else {
-					if param.typ.share() != arg.share {
+					if param_share != arg.share {
 						c.error('wrong shared type', arg.expr.position())
 					}
 					if to_lock != '' && param_share != .shared_t {
@@ -1677,7 +1708,7 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 					}
 				}
 			} else {
-				if param.is_mut {
+				if param_is_mut {
 					tok := arg.share.str()
 					c.error('`$call_expr.name` parameter `$param.name` is `$tok`, you need to provide `$tok` e.g. `$tok arg${
 						i + 1}`', arg.expr.position())
@@ -2537,14 +2568,17 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) ast.Typ
 	field_name := selector_expr.field_name
 	utyp := c.unwrap_generic(typ)
 	sym := c.table.get_type_symbol(utyp)
-	if typ.has_flag(.variadic) || sym.kind == .array_fixed || sym.kind == .chan {
-		if field_name == 'len' || (sym.kind == .chan && field_name == 'cap') {
-			selector_expr.typ = ast.int_type
-			return ast.int_type
-		}
-		if sym.kind == .chan && field_name == 'closed' {
+	if (typ.has_flag(.variadic) || sym.kind == .array_fixed) && field_name == 'len' {
+		selector_expr.typ = ast.int_type
+		return ast.int_type
+	}
+	if sym.kind == .chan {
+		if field_name == 'closed' {
 			selector_expr.typ = ast.bool_type
 			return ast.bool_type
+		} else if field_name in ['len', 'cap'] {
+			selector_expr.typ = ast.u32_type
+			return ast.u32_type
 		}
 	}
 	mut unknown_field_msg := 'type `$sym.name` has no field or method `$field_name`'
@@ -3275,12 +3309,16 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) ast.Type {
 		if array_init.has_len {
 			c.ensure_sumtype_array_has_default_value(array_init)
 		}
-		c.ensure_type_exists(array_init.elem_type, array_init.elem_type_pos) or {}
+		if array_init.elem_type != 0 {
+			c.ensure_type_exists(array_init.elem_type, array_init.elem_type_pos) or {}
+		}
 		return array_init.typ
 	}
 	if array_init.is_fixed {
 		c.ensure_sumtype_array_has_default_value(array_init)
-		c.ensure_type_exists(array_init.elem_type, array_init.elem_type_pos) or {}
+		if array_init.elem_type != 0 {
+			c.ensure_type_exists(array_init.elem_type, array_init.elem_type_pos) or {}
+		}
 	}
 	// a = []
 	if array_init.exprs.len == 0 {
@@ -3664,6 +3702,12 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 		} else if typ_idx == ast.string_type_idx || high_type_idx == ast.string_type_idx {
 			c.error('range type can not be string', node.cond.position())
 		}
+		if high_type in [ast.int_type, ast.int_literal_type] {
+			node.val_type = typ
+		} else {
+			node.val_type = high_type
+		}
+		node.scope.update_var_type(node.val_var, node.val_type)
 	} else {
 		sym := c.table.get_type_symbol(typ)
 		if sym.kind == .struct_ {

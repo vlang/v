@@ -120,11 +120,12 @@ pub fn eprintln(s string) {
 				C.fprintf(C.stderr, c'%.*s\n', s.len, s.str)
 			}
 		} $else {
+			_ := 0
 			if s.str == 0 {
-				C.write(2, c'eprintln(NIL)\n', 14)
+				_ = C.write(2, c'eprintln(NIL)\n', 14)
 			} else {
-				C.write(2, s.str, s.len)
-				C.write(2, c'\n', 1)
+				_ = C.write(2, s.str, s.len)
+				_ = C.write(2, c'\n', 1)
 			}
 		}
 		C.fflush(C.stderr)
@@ -157,10 +158,11 @@ pub fn eprint(s string) {
 				C.fprintf(C.stderr, c'%.*s', s.len, s.str)
 			}
 		} $else {
+			_ := 0
 			if s.str == 0 {
-				C.write(2, c'eprint(NIL)', 11)
+				_ = C.write(2, c'eprint(NIL)', 11)
 			} else {
-				C.write(2, s.str, s.len)
+				_ = C.write(2, s.str, s.len)
 			}
 		}
 		C.fflush(C.stderr)
@@ -170,6 +172,7 @@ pub fn eprint(s string) {
 // print prints a message to stdout. Unlike `println` stdout is not automatically flushed.
 // A call to `flush()` will flush the output buffer to stdout.
 pub fn print(s string) {
+	_ := 0
 	$if android {
 		C.fprintf(C.stdout, c'%.*s', s.len, s.str)
 	} $else $if ios {
@@ -178,7 +181,7 @@ pub fn print(s string) {
 	} $else $if freestanding {
 		bare_print(s.str, u64(s.len))
 	} $else {
-		C.write(1, s.str, s.len)
+		_ = C.write(1, s.str, s.len)
 	}
 }
 
@@ -191,6 +194,7 @@ fn C.asl_log(voidptr, voidptr, int, charptr)
 */
 // println prints a message with a line end, to stdout. stdout is flushed.
 pub fn println(s string) {
+	_ := 0
 	if s.str == 0 {
 		$if android {
 			C.fprintf(C.stdout, c'println(NIL)\n')
@@ -200,7 +204,7 @@ pub fn println(s string) {
 			bare_print(s.str, u64(s.len))
 			bare_print(c'println(NIL)\n', 13)
 		} $else {
-			C.write(1, c'println(NIL)\n', 13)
+			_ = C.write(1, c'println(NIL)\n', 13)
 		}
 		return
 	}
@@ -212,8 +216,8 @@ pub fn println(s string) {
 		bare_print(s.str, u64(s.len))
 		bare_print(c'\n', 1)
 	} $else {
-		C.write(1, s.str, s.len)
-		C.write(1, c'\n', 1)
+		_ = C.write(1, s.str, s.len)
+		_ = C.write(1, c'\n', 1)
 	}
 }
 

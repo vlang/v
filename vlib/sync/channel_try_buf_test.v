@@ -7,7 +7,7 @@ fn test_channel_try_buffered() {
 		}
 	}
 	mut obj := int(0)
-	for ch.try_pop(obj) == .success {
+	for ch.try_pop(mut obj) == .success {
 		println(obj)
 	}
 	assert obj == 6

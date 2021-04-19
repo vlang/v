@@ -59,7 +59,7 @@ jobs:
           echo $VFLAGS
           make
           ./v -d debug_malloc -d debug_realloc -o v cmd/v
-          ./v -cg -cflags -Werror -o v cmd/v
+          ./v -cg -cstrict -o v cmd/v
           # Test v -realloc arena allocation
           ./v -o vrealloc -prealloc cmd/v && ./vrealloc -o v3 cmd/v && ./v3 -o v4 cmd/v
       - name: Test v->c
@@ -78,8 +78,8 @@ jobs:
           ./cmd/tools/test_if_v_test_system_works
       - name: Self tests
         run: ./v -silent test-self
-      - name: Self tests (-Werror)
-        run: ./v -cflags -Werror test-self
+      # - name: Self tests (-cstrict)
+      #   run: ./v -cstrict test-self
       - name: Test time functions in a timezone UTC-12
         run: TZ=Etc/GMT+12 ./v test vlib/time/
       - name: Test time functions in a timezone UTC-3
@@ -169,7 +169,7 @@ jobs:
           sudo apt-get install --quiet -y xfonts-75dpi xfonts-base
       - name: Build v
         run: make
-        
+
       - name: v.c can be compiled and run with -os cross
         run: |
           ./v -os cross -o /tmp/v.c cmd/v
@@ -206,7 +206,7 @@ jobs:
                  ./sokol-shdc --input $f.glsl --output $f.h --slang glsl330 ; \
           done
           for vfile in examples/sokol/0?*/*.v; do echo "compiling $vfile ..."; ./v $vfile ; done
-          
+
       - name: Install C++ dependencies
         run: |
           sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev
@@ -268,7 +268,7 @@ jobs:
           brew install postgresql
           export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
       - name: Build V
-        run: make -j4 && ./v -cg -cflags -Werror -o v cmd/v
+        run: make -j4 && ./v -cg -cstrict -o v cmd/v
       - name: Run sanitizers
         run: |
           ./v -o v2 cmd/v -cflags -fsanitize=undefined
@@ -295,13 +295,13 @@ jobs:
         run: |
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
-          
+
       - name: Self tests
         run: VJOBS=1 ./v -silent test-self
-        
+
       - name: Build examples
         run: ./v build-examples
-        
+
       - name: Build examples with -autofree
         run: |
           ./v -autofree -o tetris examples/tetris/tetris.v
@@ -309,14 +309,14 @@ jobs:
       - name: v doctor
         run: |
           ./v doctor
-          
+
       - name: Test ved
         run: |
           git clone --depth 1 https://github.com/vlang/ved
           cd ved && ../v -o ved .
           ../v -autofree .
           cd ..
-          
+
       - name: Build V UI examples
         run: |
           git clone --depth 1 https://github.com/vlang/ui
@@ -339,7 +339,7 @@ jobs:
           sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
           sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev libgl-dev
       - name: Build V
-        run: make -j4 && ./v -cc gcc -cg -cflags -Werror -o v cmd/v
+        run: make -j4 && ./v -cc gcc -cg -cstrict -o v cmd/v
       - name: Valgrind v.c
         run: valgrind --error-exitcode=1 ./v -o v.c cmd/v
       - name: Run sanitizers
@@ -375,8 +375,8 @@ jobs:
           ./v -silent test-self
       - name: Self tests (-prod)
         run: ./v -o vprod -prod cmd/v && ./vprod -silent test-self
-      - name: Self tests (-Werror)
-        run: ./v -cc gcc -cflags "-Werror" test-self
+      - name: Self tests (-cstrict)
+        run: ./v -cc gcc -cstrict test-self
       - name: Build examples
         run: ./v build-examples
       - name: Build tetris.v with -autofree
@@ -410,7 +410,7 @@ jobs:
           ../../vprod -backend x64 -o 1m 1m.v
           echo "Running it..."
           ls
-          
+
   #        ./1m
   #run: echo "TODO" #cd examples/x64 && ../../v -x64 hello_world.v && ./hello_world
   #    - name: Coveralls GitHub Action
@@ -434,7 +434,7 @@ jobs:
           sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev libgl-dev
           sudo apt-get install clang
       - name: Build V
-        run: make -j4 && ./v -cc clang -cg -cflags -Werror -o v cmd/v
+        run: make -j4 && ./v -cc clang -cg -cstrict -o v cmd/v
       - name: Valgrind
         run: valgrind --error-exitcode=1 ./v -o v.c cmd/v
       - name: Run sanitizers
@@ -460,8 +460,8 @@ jobs:
           ./v -silent test-self
       - name: Self tests (-prod)
         run: ./v -o vprod -prod cmd/v && ./vprod -silent test-self
-      - name: Self tests (-Werror)
-        run: ./v -cflags "-Werror" test-self
+      - name: Self tests (-cstrict)
+        run: ./v -cstrict test-self
       - name: Build examples
         run: ./v build-examples
       - name: Build examples with -autofree
@@ -651,7 +651,7 @@ jobs:
     env:
       VFLAGS: -cc tcc -no-retry-compilation
       VJOBS: 1
-      VTEST_SHOW_START: 1      
+      VTEST_SHOW_START: 1
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-node@v1
@@ -687,7 +687,7 @@ jobs:
 
       - name: Self tests
         run: ./v test-self
-        
+
       - name: Test v->js
         run: ./v -o hi.js examples/hello_v_js.v && node hi.js
       - name: Test v binaries
@@ -803,7 +803,7 @@ jobs:
           ../v .
           ../v -autofree .
           cd ..
-          
+
   ## vex
       - name: Install Vex dependencies
         run: sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev
@@ -813,7 +813,7 @@ jobs:
         run: ./v ~/.vmodules/nedpals/vex/examples/simple_example.v
       - name: Run Vex Tests
         run: ./v test ~/.vmodules/nedpals/vex
-        
+
   ## vpm modules
       - name: Installing V modules
         run: |
