@@ -62,7 +62,7 @@ type ShellExecuteWin = fn (voidptr, &u16, &u16, &u16, &u16, int)
 
 // open a uri using the default associated application
 fn open_browser(uri string) ? {
-	$if darwin {
+	$if macos {
 		result := os.execute('open "$uri"')
 		if result.exit_code != 0 {
 			return error('unable to open url: $result.output')
