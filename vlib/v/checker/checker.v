@@ -18,16 +18,16 @@ const int_min = int(0x80000000)
 const int_max = int(0x7FFFFFFF)
 
 const (
-	valid_comp_if_os        = ['windows', 'ios', 'macos', 'mach', 'darwin', 'hpux', 'gnu', 'qnx',
-		'linux', 'freebsd', 'openbsd', 'netbsd', 'bsd', 'dragonfly', 'android', 'solaris', 'haiku',
-		'linux_or_macos',
-	]
-	valid_comp_if_compilers = ['gcc', 'tinyc', 'clang', 'mingw', 'msvc', 'cplusplus']
-	valid_comp_if_platforms = ['amd64', 'aarch64', 'x64', 'x32', 'little_endian', 'big_endian']
-	valid_comp_if_other     = ['js', 'debug', 'prod', 'test', 'glibc', 'prealloc',
+	valid_comp_if_os            = ['windows', 'ios', 'macos', 'mach', 'darwin', 'hpux', 'gnu',
+		'qnx', 'linux', 'freebsd', 'openbsd', 'netbsd', 'bsd', 'dragonfly', 'android', 'solaris',
+		'haiku', 'linux_or_macos']
+	valid_comp_if_compilers     = ['gcc', 'tinyc', 'clang', 'mingw', 'msvc', 'cplusplus']
+	valid_comp_if_platforms     = ['amd64', 'aarch64', 'x64', 'x32', 'little_endian', 'big_endian']
+	valid_comp_if_other         = ['js', 'debug', 'prod', 'test', 'glibc', 'prealloc',
 		'no_bounds_checking', 'freestanding']
-	array_builtin_methods   = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort',
+	array_builtin_methods       = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort',
 		'contains', 'index', 'wait', 'any', 'all', 'first', 'last', 'pop']
+	vroot_is_deprecated_message = '@VROOT is deprecated, use @VMODROOT or @VEXEROOT instead'
 )
 
 pub struct Checker {
@@ -99,7 +99,7 @@ pub fn new_checker(table &ast.Table, pref &pref.Preferences) Checker {
 }
 
 pub fn (mut c Checker) check(ast_file &ast.File) {
-	c.file = ast_file
+	c.change_current_file(ast_file)
 	for i, ast_import in ast_file.imports {
 		for j in 0 .. i {
 			if ast_import.mod == ast_file.imports[j].mod {
@@ -139,11 +139,17 @@ pub fn (mut c Checker) check_scope_vars(sc &ast.Scope) {
 
 // not used right now
 pub fn (mut c Checker) check2(ast_file &ast.File) []errors.Error {
-	c.file = ast_file
+	c.change_current_file(ast_file)
 	for stmt in ast_file.stmts {
 		c.stmt(stmt)
 	}
 	return c.errors
+}
+
+pub fn (mut c Checker) change_current_file(file &ast.File) {
+	c.file = file
+	c.vmod_file_content = ''
+	c.mod = file.mod.name
 }
 
 pub fn (mut c Checker) check_files(ast_files []ast.File) {
@@ -183,21 +189,18 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 	}
 	c.timers.start('checker_post_process_generic_fns')
 	last_file := c.file
-	last_mod := c.mod
 	// post process generic functions. must be done after all files have been
 	// checked, to eunsure all generic calls are processed as this information
 	// is needed when the generic type is auto inferred from the call argument
 	for i in 0 .. ast_files.len {
 		file := unsafe { &ast_files[i] }
 		if file.generic_fns.len > 0 {
-			c.file = file
-			c.mod = file.mod.name
+			c.change_current_file(file)
 			c.post_process_generic_fns()
 		}
 	}
 	// restore the original c.file && c.mod after post processing
-	c.file = last_file
-	c.mod = last_mod
+	c.change_current_file(last_file)
 	c.timers.show('checker_post_process_generic_fns')
 	//
 	c.timers.start('checker_verify_all_vweb_routes')
@@ -3968,7 +3971,23 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 		'include' {
 			mut flag := node.main
 			if flag.contains('@VROOT') {
-				vroot := util.resolve_vroot(flag, c.file.path) or {
+				// c.note(checker.vroot_is_deprecated_message, node.pos)
+				vroot := util.resolve_vmodroot(flag.replace('@VROOT', '@VMODROOT'), c.file.path) or {
+					c.error(err.msg, node.pos)
+					return
+				}
+				node.val = 'include $vroot'
+				node.main = vroot
+				flag = vroot
+			}
+			if flag.contains('@VEXEROOT') {
+				vroot := flag.replace('@VEXEROOT', os.dir(pref.vexe_path()))
+				node.val = 'include $vroot'
+				node.main = vroot
+				flag = vroot
+			}
+			if flag.contains('@VMODROOT') {
+				vroot := util.resolve_vmodroot(flag, c.file.path) or {
 					c.error(err.msg, node.pos)
 					return
 				}
@@ -4012,9 +4031,19 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 		'flag' {
 			// #flag linux -lm
 			mut flag := node.main
-			// expand `@VROOT` to its absolute path
 			if flag.contains('@VROOT') {
-				flag = util.resolve_vroot(flag, c.file.path) or {
+				// c.note(checker.vroot_is_deprecated_message, node.pos)
+				flag = util.resolve_vmodroot(flag.replace('@VROOT', '@VMODROOT'), c.file.path) or {
+					c.error(err.msg, node.pos)
+					return
+				}
+			}
+			if flag.contains('@VEXEROOT') {
+				// expand `@VEXEROOT` to its absolute path
+				flag = flag.replace('@VEXEROOT', os.dir(pref.vexe_path()))
+			}
+			if flag.contains('@VMODROOT') {
+				flag = util.resolve_vmodroot(flag, c.file.path) or {
 					c.error(err.msg, node.pos)
 					return
 				}
@@ -4027,7 +4056,10 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			}
 			for deprecated in ['@VMOD', '@VMODULE', '@VPATH', '@VLIB_PATH'] {
 				if flag.contains(deprecated) {
-					c.error('$deprecated had been deprecated, use @VROOT instead.', node.pos)
+					if !flag.contains('@VMODROOT') {
+						c.error('$deprecated had been deprecated, use @VMODROOT instead.',
+							node.pos)
+					}
 				}
 			}
 			// println('adding flag "$flag"')
@@ -4644,6 +4676,7 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) ast.Type {
 			node.val = util.vhash()
 		}
 		.vmod_file {
+			// cache the vmod content, do not read it many times
 			if c.vmod_file_content.len == 0 {
 				mut mcache := vmod.get_cache()
 				vmod_file_location := mcache.get_by_file(c.file.path)
@@ -4652,13 +4685,20 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) ast.Type {
 						node.pos)
 				}
 				vmod_content := os.read_file(vmod_file_location.vmod_file) or { '' }
-				$if windows {
-					c.vmod_file_content = vmod_content.replace('\r\n', '\n')
-				} $else {
-					c.vmod_file_content = vmod_content
-				}
+				c.vmod_file_content = vmod_content.replace('\r\n', '\n') // normalise EOLs just in case
 			}
 			node.val = c.vmod_file_content
+		}
+		.vroot_path {
+			node.val = os.dir(pref.vexe_path())
+		}
+		.vexeroot_path {
+			node.val = os.dir(pref.vexe_path())
+		}
+		.vmodroot_path {
+			mut mcache := vmod.get_cache()
+			vmod_file_location := mcache.get_by_file(c.file.path)
+			node.val = os.dir(vmod_file_location.vmod_file)
 		}
 		.unknown {
 			c.error('unknown @ identifier: ${node.name}. Available identifiers: $token.valid_at_tokens',
@@ -6594,6 +6634,7 @@ fn (mut c Checker) verify_all_vweb_routes() {
 		return
 	}
 	typ_vweb_result := c.table.find_type_idx('vweb.Result')
+	old_file := c.file
 	for vgt in c.vweb_gen_types {
 		sym_app := c.table.get_type_symbol(vgt)
 		for m in sym_app.methods {
@@ -6606,7 +6647,7 @@ fn (mut c Checker) verify_all_vweb_routes() {
 					}
 					if f.return_type == typ_vweb_result && f.receiver.typ == m.params[0].typ
 						&& f.name == m.name {
-						c.file = f.source_file // setup of file path for the warning
+						c.change_current_file(f.source_file) // setup of file path for the warning
 						c.warn('mismatched parameters count between vweb method `${sym_app.name}.$m.name` ($nargs) and route attribute $m.attrs ($nroute_attributes)',
 							f.pos)
 					}
@@ -6614,6 +6655,7 @@ fn (mut c Checker) verify_all_vweb_routes() {
 			}
 		}
 	}
+	c.change_current_file(old_file)
 }
 
 fn (mut c Checker) trace(fbase string, message string) {

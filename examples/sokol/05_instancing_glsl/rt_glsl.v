@@ -79,7 +79,7 @@ mut:
 /******************************************************************************
 * GLSL Include and functions
 ******************************************************************************/
-#flag -I @VROOT/.
+#flag -I @VMODROOT/.
 #include "rt_glsl_instancing.h" #Please use sokol-shdc to generate the necessary rt_glsl_march.h file from rt_glsl_march.glsl (see the instructions at the top of this file)
 fn C.instancing_shader_desc(gfx.Backend) &C.sg_shader_desc
 

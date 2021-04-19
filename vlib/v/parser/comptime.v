@@ -279,12 +279,15 @@ fn (mut p Parser) at() ast.AtExpr {
 		'@METHOD' { token.AtKind.method_name }
 		'@MOD' { token.AtKind.mod_name }
 		'@STRUCT' { token.AtKind.struct_name }
-		'@VEXE' { token.AtKind.vexe_path }
 		'@FILE' { token.AtKind.file_path }
 		'@LINE' { token.AtKind.line_nr }
 		'@COLUMN' { token.AtKind.column_nr }
 		'@VHASH' { token.AtKind.vhash }
 		'@VMOD_FILE' { token.AtKind.vmod_file }
+		'@VEXE' { token.AtKind.vexe_path }
+		'@VEXEROOT' { token.AtKind.vexeroot_path }
+		'@VMODROOT' { token.AtKind.vmodroot_path }
+		'@VROOT' { token.AtKind.vroot_path } // deprecated, use @VEXEROOT or @VMODROOT
 		else { token.AtKind.unknown }
 	}
 	p.next()

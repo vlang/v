@@ -3555,20 +3555,20 @@ Module {
 
 * Add these lines to the top of your module:
 ```v oksyntax
-#flag -I @VROOT/c
-#flag @VROOT/c/implementation.o
+#flag -I @VMODROOT/c
+#flag @VMODROOT/c/implementation.o
 #include "header.h"
 ```
-NB: @VROOT will be replaced by V with the *nearest parent folder, where there is a v.mod file*.
+NB: @VMODROOT will be replaced by V with the *nearest parent folder, where there is a v.mod file*.
 Any .v file beside or below the folder where the v.mod file is,
-can use `#flag @VROOT/abc` to refer to this folder.
-The @VROOT folder is also *prepended* to the module lookup path,
-so you can *import* other modules under your @VROOT, by just naming them.
+can use `#flag @VMODROOT/abc` to refer to this folder.
+The @VMODROOT folder is also *prepended* to the module lookup path,
+so you can *import* other modules under your @VMODROOT, by just naming them.
 
 The instructions above will make V look for an compiled .o file in
 your module `folder/c/implementation.o`.
 If V finds it, the .o file will get linked to the main executable, that used the module.
-If it does not find it, V assumes that there is a `@VROOT/c/implementation.c` file,
+If it does not find it, V assumes that there is a `@VMODROOT/c/implementation.c` file,
 and tries to compile it to a .o file, then will use that.
 
 This allows you to have C code, that is contained in a V module, so that its distribution is easier.
@@ -3904,8 +3904,12 @@ that are substituted at compile time:
 - `@LINE` => replaced with the V line number where it appears (as a string).
 - `@COLUMN` => replaced with the column where it appears (as a string).
 - `@VEXE` => replaced with the path to the V compiler
+- `@VEXEROOT`  => will be substituted with the *folder*,
+   where the V executable is (as a string).
 - `@VHASH`  => replaced with the shortened commit hash of the V compiler (as a string).
 - `@VMOD_FILE` => replaced with the contents of the nearest v.mod file (as a string).
+- `@VMODROOT` => will be substituted with the *folder*,
+   where the nearest v.mod file is (as a string).
 
 That allows you to do the following example, useful while debugging/logging/tracing your code:
 ```v

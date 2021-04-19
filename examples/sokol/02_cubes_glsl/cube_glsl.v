@@ -40,7 +40,7 @@ import time
 import gg.m4
 
 // GLSL Include and functions
-#flag -I @VROOT/.
+#flag -I @VMODROOT/.
 #include "cube_glsl.h" #Please use sokol-shdc to generate the necessary cube_glsl.h file from cube_glsl.glsl (see the instructions at the top of this file)
 
 fn C.cube_shader_desc(gfx.Backend) &C.sg_shader_desc

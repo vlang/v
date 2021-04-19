@@ -50,7 +50,7 @@ import obj
 
 // GLSL Include and functions
 
-#flag -I @VROOT/.
+#flag -I @VMODROOT/.
 #include "gouraud.h" #Please use sokol-shdc to generate the necessary rt_glsl.h file from rt_glsl.glsl (see the instructions at the top of this file)
 fn C.gouraud_shader_desc(gfx.Backend) &C.sg_shader_desc
 

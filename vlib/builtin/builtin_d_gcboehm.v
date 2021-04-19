@@ -16,8 +16,8 @@ $if static_boehm ? {
 		#pkgconfig bdw-gc
 	}
 	$if windows {
-		#flag -I@VROOT/thirdparty/libgc/include
-		#flag -L@VROOT/thirdparty/libgc
+		#flag -I@VEXEROOT/thirdparty/libgc/include
+		#flag -L@VEXEROOT/thirdparty/libgc
 	}
 	#flag -lgc
 }

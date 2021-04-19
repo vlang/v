@@ -5,17 +5,17 @@ Implements the atomic operations. For now TCC does not support
 the atomic versions on nix so it uses locks to simulate the same behavor.
 On windows tcc can simulate with other atomic operations.
 
-The @VROOT/thirdparty/stdatomic contains compability header files
+The @VEXEROOT/thirdparty/stdatomic contains compability header files
 for stdatomic that supports both nix, windows and c++.
 
 This implementations should be regarded as alpha stage and be
 further tested.
 */
-#flag windows -I @VROOT/thirdparty/stdatomic/win
-#flag linux -I @VROOT/thirdparty/stdatomic/nix
-#flag darwin -I @VROOT/thirdparty/stdatomic/nix
-#flag freebsd -I @VROOT/thirdparty/stdatomic/nix
-#flag solaris -I @VROOT/thirdparty/stdatomic/nix
+#flag windows -I @VEXEROOT/thirdparty/stdatomic/win
+#flag linux -I @VEXEROOT/thirdparty/stdatomic/nix
+#flag darwin -I @VEXEROOT/thirdparty/stdatomic/nix
+#flag freebsd -I @VEXEROOT/thirdparty/stdatomic/nix
+#flag solaris -I @VEXEROOT/thirdparty/stdatomic/nix
 $if linux {
 	$if tinyc {
 		// most Linux distributions have /usr/lib/libatomic.so, but Ubuntu uses gcc version specific dir

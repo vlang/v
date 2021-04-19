@@ -4,9 +4,9 @@
 
 module stbi
 
-#flag -I @VROOT/thirdparty/stb_image
+#flag -I @VEXEROOT/thirdparty/stb_image
 #include "stb_image.h"
-#flag @VROOT/thirdparty/stb_image/stbi.o
+#flag @VEXEROOT/thirdparty/stb_image/stbi.o
 
 pub struct Image {
 pub mut:

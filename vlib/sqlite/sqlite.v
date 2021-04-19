@@ -5,11 +5,11 @@ module sqlite
 #flag solaris -lsqlite3
 #flag freebsd -I/usr/local/include
 #flag freebsd -Wl -L/usr/local/lib -lsqlite3
-#flag windows -I@VROOT/thirdparty/sqlite
-#flag windows -L@VROOT/thirdparty/sqlite
-#flag windows @VROOT/thirdparty/sqlite/sqlite3.o
-// #flag linux -I @VROOT/thirdparty/sqlite
-// #flag @VROOT/thirdparty/sqlite/sqlite.c
+#flag windows -I@VEXEROOT/thirdparty/sqlite
+#flag windows -L@VEXEROOT/thirdparty/sqlite
+#flag windows @VEXEROOT/thirdparty/sqlite/sqlite3.o
+// #flag linux -I @VEXEROOT/thirdparty/sqlite
+// #flag @VEXEROOT/thirdparty/sqlite/sqlite.c
 #include "sqlite3.h"
 //
 struct C.sqlite3 {
