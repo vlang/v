@@ -479,8 +479,8 @@ pub fn (mut c Checker) infer_fn_generic_types(f ast.Fn, mut call_expr ast.CallEx
 	mut inferred_types := []ast.Type{}
 	for gi, gt_name in f.generic_names {
 		// skip known types
-		if gi < call_expr.generic_types.len {
-			inferred_types << call_expr.generic_types[gi]
+		if gi < call_expr.concrete_types.len {
+			inferred_types << call_expr.concrete_types[gi]
 			continue
 		}
 		mut typ := ast.void_type
@@ -563,7 +563,7 @@ pub fn (mut c Checker) infer_fn_generic_types(f ast.Fn, mut call_expr ast.CallEx
 			println('inferred `$f.name<$s>`')
 		}
 		inferred_types << typ
-		call_expr.generic_types << typ
+		call_expr.concrete_types << typ
 	}
-	c.table.register_fn_generic_types(f.name, inferred_types)
+	c.table.register_fn_concrete_types(f.name, inferred_types)
 }

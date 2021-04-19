@@ -474,7 +474,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
 	// Make sure the first letter is capital, do not allow e.g. `x := string{}`,
 	// but `x := T{}` is ok.
 	if !c.is_builtin_mod && !c.inside_unsafe && type_sym.language == .v
-		&& c.cur_fn.cur_generic_types.len == 0 {
+		&& c.cur_fn.cur_concrete_types.len == 0 {
 		pos := type_sym.name.last_index('.') or { -1 }
 		first_letter := type_sym.name[pos + 1]
 		if !first_letter.is_capital() {
@@ -1430,11 +1430,11 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, call_exp
 	}
 }
 
-fn (mut c Checker) check_return_generics_struct(return_type ast.Type, mut call_expr ast.CallExpr, generic_types []ast.Type) {
+fn (mut c Checker) check_return_generics_struct(return_type ast.Type, mut call_expr ast.CallExpr, concrete_types []ast.Type) {
 	rts := c.table.get_type_symbol(return_type)
 	if rts.info is ast.Struct {
 		if rts.info.generic_types.len > 0 {
-			gts := c.table.get_type_symbol(call_expr.generic_types[0])
+			gts := c.table.get_type_symbol(call_expr.concrete_types[0])
 			nrt := '$rts.name<$gts.name>'
 			c_nrt := '${rts.name}_T_$gts.name'
 			idx := c.table.type_idxs[nrt]
@@ -1443,17 +1443,17 @@ fn (mut c Checker) check_return_generics_struct(return_type ast.Type, mut call_e
 				call_expr.return_type = ast.new_type(idx).derive(return_type)
 			} else {
 				mut fields := rts.info.fields.clone()
-				if rts.info.generic_types.len == generic_types.len {
+				if rts.info.generic_types.len == concrete_types.len {
 					for i, _ in fields {
 						if t_typ := c.table.resolve_generic_by_types(fields[i].typ, rts.info.generic_types,
-							generic_types)
+							concrete_types)
 						{
 							fields[i].typ = t_typ
 						}
 					}
 					mut info := rts.info
 					info.generic_types = []
-					info.concrete_types = generic_types.clone()
+					info.concrete_types = concrete_types.clone()
 					info.parent_type = return_type
 					info.fields = fields
 					stru_idx := c.table.register_type_symbol(ast.TypeSymbol{
@@ -1489,18 +1489,18 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 	if left_type_sym.kind in [.sum_type, .interface_] && method_name == 'type_name' {
 		return ast.string_type
 	}
-	mut has_generic_generic := false // x.foo<T>() instead of x.foo<int>()
-	mut generic_types := []ast.Type{}
-	for generic_type in call_expr.generic_types {
-		if generic_type.has_flag(.generic) {
-			has_generic_generic = true
-			generic_types << c.unwrap_generic(generic_type)
+	mut has_generic := false // x.foo<T>() instead of x.foo<int>()
+	mut concrete_types := []ast.Type{}
+	for concrete_type in call_expr.concrete_types {
+		if concrete_type.has_flag(.generic) {
+			has_generic = true
+			concrete_types << c.unwrap_generic(concrete_type)
 		} else {
-			generic_types << generic_type
+			concrete_types << concrete_type
 		}
 	}
-	if has_generic_generic {
-		c.table.register_fn_generic_types(call_expr.name, generic_types)
+	if has_generic {
+		c.table.register_fn_concrete_types(call_expr.name, concrete_types)
 	}
 	// TODO: remove this for actual methods, use only for compiler magic
 	// FIXME: Argument count != 1 will break these
@@ -1615,7 +1615,7 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 			return method.return_type
 		}
 		if method.generic_names.len > 0 && method.return_type.has_flag(.generic) {
-			c.check_return_generics_struct(method.return_type, mut call_expr, generic_types)
+			c.check_return_generics_struct(method.return_type, mut call_expr, concrete_types)
 		} else {
 			call_expr.return_type = method.return_type
 		}
@@ -1739,24 +1739,24 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 		} else {
 			call_expr.receiver_type = method.params[0].typ
 		}
-		if method.generic_names.len != call_expr.generic_types.len {
+		if method.generic_names.len != call_expr.concrete_types.len {
 			// no type arguments given in call, attempt implicit instantiation
 			c.infer_fn_generic_types(method, mut call_expr)
 		}
-		if call_expr.generic_types.len > 0 && method.return_type != 0 {
+		if call_expr.concrete_types.len > 0 && method.return_type != 0 {
 			if typ := c.table.resolve_generic_by_names(method.return_type, method.generic_names,
-				call_expr.generic_types)
+				call_expr.concrete_types)
 			{
 				call_expr.return_type = typ
 				return typ
 			}
 		}
-		if call_expr.generic_types.len > 0 && method.generic_names.len == 0 {
-			c.error('a non generic function called like a generic one', call_expr.generic_list_pos)
+		if call_expr.concrete_types.len > 0 && method.generic_names.len == 0 {
+			c.error('a non generic function called like a generic one', call_expr.concrete_list_pos)
 		}
-		if call_expr.generic_types.len > method.generic_names.len {
-			c.error('too many generic parameters got $call_expr.generic_types.len, expected $method.generic_names.len',
-				call_expr.generic_list_pos)
+		if call_expr.concrete_types.len > method.generic_names.len {
+			c.error('too many generic parameters got $call_expr.concrete_types.len, expected $method.generic_names.len',
+				call_expr.concrete_list_pos)
 		}
 		if method.generic_names.len > 0 {
 			return call_expr.return_type
@@ -1950,22 +1950,22 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 		// TODO: impl typeof properly (probably not going to be a fn call)
 		return ast.string_type
 	}
-	mut has_generic_generic := false // foo<T>() instead of foo<int>()
-	mut generic_types := []ast.Type{}
-	for generic_type in call_expr.generic_types {
-		if generic_type.has_flag(.generic) {
-			has_generic_generic = true
-			generic_types << c.unwrap_generic(generic_type)
+	mut has_generic := false // foo<T>() instead of foo<int>()
+	mut concrete_types := []ast.Type{}
+	for concrete_type in call_expr.concrete_types {
+		if concrete_type.has_flag(.generic) {
+			has_generic = true
+			concrete_types << c.unwrap_generic(concrete_type)
 		} else {
-			generic_types << generic_type
+			concrete_types << concrete_type
 		}
 	}
-	if has_generic_generic {
+	if has_generic {
 		if c.mod != '' && !fn_name.starts_with('${c.mod}.') {
 			// Need to prepend the module when adding a generic type to a function
-			c.table.register_fn_generic_types(c.mod + '.' + fn_name, generic_types)
+			c.table.register_fn_concrete_types(c.mod + '.' + fn_name, concrete_types)
 		} else {
-			c.table.register_fn_generic_types(fn_name, generic_types)
+			c.table.register_fn_concrete_types(fn_name, concrete_types)
 		}
 	}
 	if fn_name == 'json.encode' {
@@ -2051,8 +2051,8 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 	if c.pref.is_script && !found {
 		os_name := 'os.$fn_name'
 		if f := c.table.find_fn(os_name) {
-			if f.generic_names.len == call_expr.generic_types.len {
-				c.table.fn_generic_types[os_name] = c.table.fn_generic_types['${call_expr.mod}.$call_expr.name']
+			if f.generic_names.len == call_expr.concrete_types.len {
+				c.table.fn_concrete_types[os_name] = c.table.fn_concrete_types['${call_expr.mod}.$call_expr.name']
 			}
 			call_expr.name = os_name
 			found = true
@@ -2101,8 +2101,8 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 		&& !func.is_unsafe {
 		c.error('cannot call a function that does not have a body', call_expr.pos)
 	}
-	for generic_type in call_expr.generic_types {
-		c.ensure_type_exists(generic_type, call_expr.generic_list_pos) or {}
+	for concrete_type in call_expr.concrete_types {
+		c.ensure_type_exists(concrete_type, call_expr.concrete_list_pos) or {}
 	}
 	if func.generic_names.len > 0 && call_expr.args.len == 0 && call_expr.generic_types.len == 0 {
 		c.error('no argument generic function must add concrete types, e.g. foo<int>()',
@@ -2110,7 +2110,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 		return func.return_type
 	}
 	if func.generic_names.len > 0 && func.return_type.has_flag(.generic) {
-		c.check_return_generics_struct(func.return_type, mut call_expr, generic_types)
+		c.check_return_generics_struct(func.return_type, mut call_expr, concrete_types)
 	} else {
 		call_expr.return_type = func.return_type
 	}
@@ -2249,7 +2249,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 				call_arg.pos)
 		}
 	}
-	if func.generic_names.len != call_expr.generic_types.len {
+	if func.generic_names.len != call_expr.concrete_types.len {
 		// no type arguments given in call, attempt implicit instantiation
 		c.infer_fn_generic_types(func, mut call_expr)
 	}
@@ -2263,9 +2263,10 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 			c.expected_type = param.typ
 			typ := c.check_expr_opt_call(call_arg.expr, c.expr(call_arg.expr))
 
-			if param.typ.has_flag(.generic) && func.generic_names.len == call_expr.generic_types.len {
+			if param.typ.has_flag(.generic)
+				&& func.generic_names.len == call_expr.concrete_types.len {
 				if unwrap_typ := c.table.resolve_generic_by_names(param.typ, func.generic_names,
-					call_expr.generic_types)
+					call_expr.concrete_types)
 				{
 					c.check_expected_call_arg(typ, unwrap_typ, call_expr.language) or {
 						c.error('$err.msg in argument ${i + 1} to `$fn_name`', call_arg.pos)
@@ -2274,21 +2275,21 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 			}
 		}
 	}
-	if call_expr.generic_types.len > 0 && func.return_type != 0 {
+	if call_expr.concrete_types.len > 0 && func.return_type != 0 {
 		if typ := c.table.resolve_generic_by_names(func.return_type, func.generic_names,
-			call_expr.generic_types)
+			call_expr.concrete_types)
 		{
 			call_expr.return_type = typ
 			return typ
 		}
 	}
-	if call_expr.generic_types.len > 0 && func.generic_names.len == 0 {
-		c.error('a non generic function called like a generic one', call_expr.generic_list_pos)
+	if call_expr.concrete_types.len > 0 && func.generic_names.len == 0 {
+		c.error('a non generic function called like a generic one', call_expr.concrete_list_pos)
 	}
 
-	if call_expr.generic_types.len > func.generic_names.len {
-		c.error('too many generic parameters got $call_expr.generic_types.len, expected $func.generic_names.len',
-			call_expr.generic_list_pos)
+	if call_expr.concrete_types.len > func.generic_names.len {
+		c.error('too many generic parameters got $call_expr.concrete_types.len, expected $func.generic_names.len',
+			call_expr.concrete_list_pos)
 	}
 	if func.generic_names.len > 0 {
 		return call_expr.return_type
@@ -2687,7 +2688,7 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 	mut expected_types := [expected_type]
 	if expected_type_sym.info is ast.MultiReturn {
 		expected_types = expected_type_sym.info.types
-		if c.cur_fn.cur_generic_types.len > 0 {
+		if c.cur_fn.cur_concrete_types.len > 0 {
 			expected_types = expected_types.map(c.unwrap_generic(it))
 		}
 	}
@@ -4124,7 +4125,7 @@ fn (mut c Checker) stmts(stmts []ast.Stmt) {
 
 pub fn (mut c Checker) unwrap_generic(typ ast.Type) ast.Type {
 	if typ.has_flag(.generic) {
-		if t_typ := c.table.resolve_generic_by_names(typ, c.cur_fn.generic_names, c.cur_fn.cur_generic_types) {
+		if t_typ := c.table.resolve_generic_by_names(typ, c.cur_fn.generic_names, c.cur_fn.cur_concrete_types) {
 			return t_typ
 		}
 	}
@@ -6419,27 +6420,27 @@ fn (mut c Checker) post_process_generic_fns() {
 	// Check 2 times (in order to check nested generics fn)
 	for _ in 0 .. 2 {
 		for i in 0 .. c.file.generic_fns.len {
-			if c.table.fn_generic_types.len == 0 {
+			if c.table.fn_concrete_types.len == 0 {
 				// no concrete types, so just skip:
 				continue
 			}
 			mut node := c.file.generic_fns[i]
 			c.mod = node.mod
-			for gen_types in c.table.fn_generic_types[node.name] {
-				node.cur_generic_types = gen_types
+			for concrete_types in c.table.fn_concrete_types[node.name] {
+				node.cur_concrete_types = concrete_types
 				c.fn_decl(mut node)
 				if node.name in ['vweb.run_app', 'vweb.run'] {
-					c.vweb_gen_types << gen_types
+					c.vweb_gen_types << concrete_types
 				}
 			}
-			node.cur_generic_types = []
+			node.cur_concrete_types = []
 		}
 	}
 }
 
 fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	c.returns = false
-	if node.generic_names.len > 0 && node.cur_generic_types.len == 0 {
+	if node.generic_names.len > 0 && node.cur_concrete_types.len == 0 {
 		// Just remember the generic function for now.
 		// It will be processed later in c.post_process_generic_fns,
 		// after all other normal functions are processed.

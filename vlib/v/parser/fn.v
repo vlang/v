@@ -33,20 +33,20 @@ pub fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr 
 	}
 	p.expr_mod = ''
 	//
-	mut generic_types := []ast.Type{}
-	mut generic_list_pos := p.tok.position()
+	mut concrete_types := []ast.Type{}
+	mut concrete_list_pos := p.tok.position()
 	if p.tok.kind == .lt {
 		// `foo<int>(10)`
 		p.expr_mod = ''
-		generic_types = p.parse_generic_type_list()
-		generic_list_pos = generic_list_pos.extend(p.prev_tok.position())
+		concrete_types = p.parse_concrete_type_list()
+		concrete_list_pos = concrete_list_pos.extend(p.prev_tok.position())
 		// In case of `foo<T>()`
 		// T is unwrapped and registered in the checker.
 		full_generic_fn_name := if fn_name.contains('.') { fn_name } else { p.prepend_mod(fn_name) }
-		has_generic_generic := generic_types.filter(it.has_flag(.generic)).len > 0
-		if !has_generic_generic {
+		has_generic := concrete_types.filter(it.has_flag(.generic)).len > 0
+		if !has_generic {
 			// will be added in checker
-			p.table.register_fn_generic_types(full_generic_fn_name, generic_types)
+			p.table.register_fn_concrete_types(full_generic_fn_name, concrete_types)
 		}
 	}
 	p.check(.lpar)
@@ -95,8 +95,8 @@ pub fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr 
 		mod: p.mod
 		pos: pos
 		language: language
-		generic_types: generic_types
-		generic_list_pos: generic_list_pos
+		concrete_types: concrete_types
+		concrete_list_pos: concrete_list_pos
 		or_block: ast.OrExpr{
 			stmts: or_stmts
 			kind: or_kind
