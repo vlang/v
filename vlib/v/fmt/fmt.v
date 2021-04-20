@@ -1951,6 +1951,9 @@ fn split_up_infix(infix_str string, ignore_paren bool) ([]string, []int) {
 fn (mut f Fmt) write_splitted_infix(conditions []string, penalties []int, ignore_paren bool) {
 	for i, cnd in conditions {
 		c := cnd.trim_space()
+		if c.len == 0 {
+			continue
+		}
 		if f.line_len + c.len < fmt.max_len[penalties[i]] {
 			if (i > 0 && i < conditions.len) || (ignore_paren && i == 0 && c.len > 5 && c[3] == `(`) {
 				f.write(' ')
