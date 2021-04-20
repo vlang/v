@@ -221,13 +221,13 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		language = rec.language
 	}
 	mut name := ''
+	mut name_pos := p.tok.position()
 	if p.tok.kind == .name {
-		pos := p.tok.position()
 		// TODO high order fn
 		name = if language == .js { p.check_js_name() } else { p.check_name() }
 		if language == .v && !p.pref.translated && util.contains_capital(name) && !p.builtin_mod {
 			p.error_with_pos('function names cannot contain uppercase letters, use snake_case instead',
-				pos)
+				name_pos)
 			return ast.FnDecl{
 				scope: 0
 			}
@@ -243,7 +243,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 				}
 			}
 			if is_duplicate {
-				p.error_with_pos('duplicate method `$name`', pos)
+				p.error_with_pos('duplicate method `$name`', name_pos)
 				return ast.FnDecl{
 					scope: 0
 				}
@@ -251,7 +251,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		}
 		// cannot redefine buildin function
 		if !is_method && !p.builtin_mod && name in builtin_functions {
-			p.error_with_pos('cannot redefine builtin function `$name`', pos)
+			p.error_with_pos('cannot redefine builtin function `$name`', name_pos)
 			return ast.FnDecl{
 				scope: 0
 			}
@@ -275,6 +275,12 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	}
 	// <T>
 	generic_names := p.parse_generic_names()
+	// check generic receiver method has no generic names
+	if is_method && rec.typ.has_flag(.generic) && generic_names.len == 0
+		&& p.table.get_type_symbol(rec.typ).kind != .any {
+		p.error_with_pos('generic receiver method `$name` should add generic names, e.g. $name<T>',
+			name_pos)
+	}
 	// Args
 	args2, are_args_type_only, is_variadic := p.fn_args()
 	params << args2

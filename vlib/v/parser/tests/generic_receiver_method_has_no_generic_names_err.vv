@@ -1,0 +1,12 @@
+struct Queue<T>{
+	buffer []T
+}
+
+fn (q Queue<T>) poll() T {
+	return q.buffer[0]
+}
+
+fn main() {
+	q := Queue<int>{}
+	println(q)
+}
