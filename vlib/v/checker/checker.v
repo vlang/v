@@ -353,18 +353,14 @@ pub fn (mut c Checker) interface_decl(decl ast.InterfaceDecl) {
 	c.check_valid_pascal_case(decl.name, 'interface name', decl.pos)
 	for method in decl.methods {
 		c.check_valid_snake_case(method.name, 'method name', method.pos)
-		if method.return_type != ast.Type(0) {
-			c.ensure_type_exists(method.return_type, method.return_type_pos) or { return }
-		}
+		c.ensure_type_exists(method.return_type, method.return_type_pos) or { return }
 		for param in method.params {
 			c.ensure_type_exists(param.typ, param.pos) or { return }
 		}
 	}
 	for i, field in decl.fields {
 		c.check_valid_snake_case(field.name, 'field name', field.pos)
-		if field.typ != ast.Type(0) {
-			c.ensure_type_exists(field.typ, field.pos) or { return }
-		}
+		c.ensure_type_exists(field.typ, field.pos) or { return }
 		for j in 0 .. i {
 			if field.name == decl.fields[j].name {
 				c.error('field name `$field.name` duplicate', field.pos)
@@ -3312,16 +3308,12 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) ast.Type {
 		if array_init.has_len {
 			c.ensure_sumtype_array_has_default_value(array_init)
 		}
-		if array_init.elem_type != 0 {
-			c.ensure_type_exists(array_init.elem_type, array_init.elem_type_pos) or {}
-		}
+		c.ensure_type_exists(array_init.elem_type, array_init.elem_type_pos) or {}
 		return array_init.typ
 	}
 	if array_init.is_fixed {
 		c.ensure_sumtype_array_has_default_value(array_init)
-		if array_init.elem_type != 0 {
-			c.ensure_type_exists(array_init.elem_type, array_init.elem_type_pos) or {}
-		}
+		c.ensure_type_exists(array_init.elem_type, array_init.elem_type_pos) or {}
 	}
 	// a = []
 	if array_init.exprs.len == 0 {
@@ -6667,6 +6659,7 @@ fn (mut c Checker) trace(fbase string, message string) {
 fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Position) ? {
 	if typ == 0 {
 		c.error('unknown type', pos)
+		return none
 	}
 	sym := c.table.get_type_symbol(typ)
 	match sym.kind {
