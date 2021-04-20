@@ -96,7 +96,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	mut is_field_mut := false
 	mut is_field_pub := false
 	mut is_field_global := false
-	mut last_line := -1
+	mut last_line := p.prev_tok.position().line_nr + 1
 	mut end_comments := []ast.Comment{}
 	if !no_body {
 		p.check(.lcbr)

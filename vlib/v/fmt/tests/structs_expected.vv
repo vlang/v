@@ -58,3 +58,5 @@ pub:
 14
 	*/
 }
+
+struct C.Foo {}
