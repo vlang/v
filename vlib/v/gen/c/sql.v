@@ -777,11 +777,14 @@ fn (mut g Gen) psql_stmt(node ast.SqlStmt, typ SqlType) {
 				g.write('Option_int $res = pg__DB_q_int($db_name, _SLIT("SELECT LASTVAL();"));')
 				g.writeln('if (${res}.state != 0) { IError err = ${res}.err; eprintln(_STR("\\000%.*s", 2, IError_str(err))); }')
 				g.sql_buf = strings.new_builder(100)
-				g.sql_bind('${res}.data', '', ast.int_type, typ, [(i - 1).str(), param_values, param_lens, param_formats])
+				g.sql_bind('${res}.data', '', ast.int_type, typ, [
+					(i - 1).str(), param_values, param_lens, param_formats])
 				g.writeln(g.sql_buf.str())
 			} else {
 				g.sql_buf = strings.new_builder(100)
-				g.sql_bind(x, '', field_type, typ, [(i - 1).str(), param_values, param_lens, param_formats])
+				g.sql_bind(x, '', field_type, typ, [(i - 1).str(), param_values, param_lens,
+					param_formats,
+				])
 				g.writeln(g.sql_buf.str())
 			}
 		}
@@ -1109,14 +1112,16 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr, typ SqlType, psql_data []string) {
 		}
 		ast.IntegerLiteral {
 			g.inc_sql_i(typ)
-			g.sql_bind(expr.val, '', g.sql_get_real_type(ast.int_type), typ, g.append_arr(g.sql_i, psql_data))
+			g.sql_bind(expr.val, '', g.sql_get_real_type(ast.int_type), typ, g.append_arr(g.sql_i,
+				psql_data))
 		}
 		ast.BoolLiteral {
 			// true/false literals were added to Sqlite 3.23 (2018-04-02)
 			// but lots of apps/distros use older sqlite (e.g. Ubuntu 18.04 LTS )
 			g.inc_sql_i(typ)
 			eval := if expr.val { '1' } else { '0' }
-			g.sql_bind(eval, '', g.sql_get_real_type(ast.byte_type), typ, g.append_arr(g.sql_i, psql_data))
+			g.sql_bind(eval, '', g.sql_get_real_type(ast.byte_type), typ, g.append_arr(g.sql_i,
+				psql_data))
 		}
 		ast.Ident {
 			// `name == user_name` => `name == ?1`
@@ -1134,10 +1139,12 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr, typ SqlType, psql_data []string) {
 						g.sql_bind('${expr.name}.str', '${expr.name}.len', g.sql_get_real_type(ityp),
 							typ, g.append_arr(g.sql_i, psql_data))
 					} else {
-						g.sql_bind(expr.name, '', g.sql_get_real_type(ityp), typ, g.append_arr(g.sql_i, psql_data))
+						g.sql_bind(expr.name, '', g.sql_get_real_type(ityp), typ, g.append_arr(g.sql_i,
+							psql_data))
 					}
 				} else {
-					g.sql_bind('%$g.sql_i.str()', '', g.sql_get_real_type(ityp), typ, g.append_arr(g.sql_i, psql_data))
+					g.sql_bind('%$g.sql_i.str()', '', g.sql_get_real_type(ityp), typ,
+						g.append_arr(g.sql_i, psql_data))
 					g.sql_idents << expr.name
 					g.sql_idents_types << g.sql_get_real_type(ityp)
 				}
