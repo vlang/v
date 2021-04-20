@@ -221,7 +221,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		language = rec.language
 	}
 	mut name := ''
-	mut name_pos := p.tok.position()
+	name_pos := p.tok.position()
 	if p.tok.kind == .name {
 		// TODO high order fn
 		name = if language == .js { p.check_js_name() } else { p.check_name() }
@@ -267,8 +267,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		p.error_with_pos('cannot overload `!=`, `>`, `<=` and `>=` as they are auto generated from `==` and`<`',
 			p.tok.position())
 	} else {
-		pos := p.tok.position()
-		p.error_with_pos('expecting method name', pos)
+		p.error_with_pos('expecting method name', p.tok.position())
 		return ast.FnDecl{
 			scope: 0
 		}
