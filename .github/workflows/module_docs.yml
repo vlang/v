@@ -1,6 +1,7 @@
 name: vlib modules CI
 
 on:
+  pull_request:
   push:
     branches:
       - master
@@ -15,4 +16,5 @@ jobs:
     - name: Build module documentation
       run: ./v doc -m -f html vlib/
     - name: Deploy docs to vercel
+      if: ${{ github.event_name == 'push' }}
       run: npx vercel --confirm --prod --name vmodules --token ${{ secrets.VERCEL_TOKEN }} vlib/_docs/ || true

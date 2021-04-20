@@ -161,23 +161,23 @@ pub mut:
 }
 
 pub fn (mut desc C.sg_shader_desc) set_vert_src(src string) &C.sg_shader_desc {
-	desc.vs.source = src.str
+	desc.vs.source = &char(src.str)
 	return desc
 }
 
 pub fn (mut desc C.sg_shader_desc) set_frag_src(src string) &C.sg_shader_desc {
-	desc.fs.source = src.str
+	desc.fs.source = &char(src.str)
 	return desc
 }
 
 pub fn (mut desc C.sg_shader_desc) set_vert_image(index int, name string) &C.sg_shader_desc {
-	desc.vs.images[index].name = name.str
+	desc.vs.images[index].name = &char(name.str)
 	desc.vs.images[index].image_type = ._2d
 	return desc
 }
 
 pub fn (mut desc C.sg_shader_desc) set_frag_image(index int, name string) &C.sg_shader_desc {
-	desc.fs.images[index].name = name.str
+	desc.fs.images[index].name = &char(name.str)
 	desc.fs.images[index].image_type = ._2d
 	return desc
 }
@@ -193,13 +193,13 @@ pub fn (mut desc C.sg_shader_desc) set_frag_uniform_block_size(block_index int, 
 }
 
 pub fn (mut desc C.sg_shader_desc) set_vert_uniform(block_index int, uniform_index int, name string, @type UniformType, array_count int) &C.sg_shader_desc {
-	desc.vs.uniform_blocks[block_index].uniforms[uniform_index].name = name.str
+	desc.vs.uniform_blocks[block_index].uniforms[uniform_index].name = &char(name.str)
 	desc.vs.uniform_blocks[block_index].uniforms[uniform_index].@type = @type
 	return desc
 }
 
 pub fn (mut desc C.sg_shader_desc) set_frag_uniform(block_index int, uniform_index int, name string, @type UniformType, array_count int) &C.sg_shader_desc {
-	desc.fs.uniform_blocks[block_index].uniforms[uniform_index].name = name.str
+	desc.fs.uniform_blocks[block_index].uniforms[uniform_index].name = &char(name.str)
 	desc.fs.uniform_blocks[block_index].uniforms[uniform_index].@type = @type
 	return desc
 }
@@ -225,7 +225,7 @@ pub mut:
 }
 
 pub fn (mut desc C.sg_shader_stage_desc) set_image(index int, name string) C.sg_shader_stage_desc {
-	desc.images[index].name = name.str
+	desc.images[index].name = &char(name.str)
 	desc.images[index].image_type = ._2d
 	return *desc
 }

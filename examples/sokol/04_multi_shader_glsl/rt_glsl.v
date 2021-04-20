@@ -42,7 +42,7 @@ import sokol.sgl
 import time
 
 // GLSL Include and functions
-#flag -I @VROOT/.
+#flag -I @VMODROOT/.
 #include "rt_glsl_march.h" #Please use sokol-shdc to generate the necessary rt_glsl_march.h file from rt_glsl_march.glsl (see the instructions at the top of this file)
 #include "rt_glsl_puppy.h" #Please use sokol-shdc to generate the necessary rt_glsl_puppy.h file from rt_glsl_puppy.glsl (see the instructions at the top of this file)
 fn C.rt_march_shader_desc(gfx.Backend) &C.sg_shader_desc

@@ -3,11 +3,11 @@ module sync
 import time
 import rand
 
-#flag windows -I @VROOT/thirdparty/stdatomic/win
-#flag linux -I @VROOT/thirdparty/stdatomic/nix
-#flag darwin -I @VROOT/thirdparty/stdatomic/nix
-#flag freebsd -I @VROOT/thirdparty/stdatomic/nix
-#flag solaris -I @VROOT/thirdparty/stdatomic/nix
+$if windows {
+	#flag -I @VEXEROOT/thirdparty/stdatomic/win
+} $else {
+	#flag -I @VEXEROOT/thirdparty/stdatomic/nix
+}
 
 $if linux {
 	$if tinyc {
@@ -24,8 +24,7 @@ $if linux {
 }
 
 #include <atomic.h>
-
-// the following functions are actually generic in C
+// The following functions are actually generic in C
 fn C.atomic_load_ptr(voidptr) voidptr
 fn C.atomic_store_ptr(voidptr, voidptr)
 fn C.atomic_compare_exchange_weak_ptr(voidptr, voidptr, voidptr) bool
@@ -344,8 +343,8 @@ fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) ChanState {
 					status_adr += wr_idx * sizeof(u16)
 				}
 				mut expected_status := u16(BufferElemStat.unused)
-				for !C.atomic_compare_exchange_weak_u16(unsafe { &u16(status_adr) },
-					&expected_status, u16(BufferElemStat.writing)) {
+				for !C.atomic_compare_exchange_weak_u16(status_adr, &expected_status,
+					u16(BufferElemStat.writing)) {
 					expected_status = u16(BufferElemStat.unused)
 				}
 				unsafe {
@@ -466,8 +465,8 @@ fn (mut ch Channel) try_pop_priv(dest voidptr, no_block bool) ChanState {
 					status_adr += rd_idx * sizeof(u16)
 				}
 				mut expected_status := u16(BufferElemStat.written)
-				for !C.atomic_compare_exchange_weak_u16(unsafe { &u16(status_adr) },
-					&expected_status, u16(BufferElemStat.reading)) {
+				for !C.atomic_compare_exchange_weak_u16(status_adr, &expected_status,
+					u16(BufferElemStat.reading)) {
 					expected_status = u16(BufferElemStat.written)
 				}
 				unsafe {
@@ -580,8 +579,8 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 			}
 			subscr[i].prev = &ch.write_subscriber
 			unsafe {
-				subscr[i].nxt = &Subscription(C.atomic_exchange_ptr(&voidptr(&ch.write_subscriber),
-					&subscr[i]))
+				subscr[i].nxt = C.atomic_exchange_ptr(&voidptr(&ch.write_subscriber),
+					&subscr[i])
 			}
 			if voidptr(subscr[i].nxt) != voidptr(0) {
 				subscr[i].nxt.prev = &subscr[i].nxt
@@ -594,8 +593,8 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 			}
 			subscr[i].prev = &ch.read_subscriber
 			unsafe {
-				subscr[i].nxt = &Subscription(C.atomic_exchange_ptr(&voidptr(&ch.read_subscriber),
-					&subscr[i]))
+				subscr[i].nxt = C.atomic_exchange_ptr(&voidptr(&ch.read_subscriber),
+					&subscr[i])
 			}
 			if voidptr(subscr[i].nxt) != voidptr(0) {
 				subscr[i].nxt.prev = &subscr[i].nxt

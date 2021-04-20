@@ -3,3 +3,10 @@ vlib/v/checker/tests/function_missing_return_type.vv:1:1: error: missing return 
       | ~~~~~~~~~~
     2 | }
     3 |
+vlib/v/checker/tests/function_missing_return_type.vv:12:1: error: missing return at end of function `abc`
+   10 | }
+   11 | 
+   12 | fn (s Abc) abc() &int {
+      | ~~~~~~~~~~~~~~~~~~~~~
+   13 |     if true {
+   14 |         return &s.x

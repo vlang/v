@@ -10,7 +10,7 @@ on:
 
 jobs:
 
-  macos:
+  macos-cross:
     runs-on: macOS-latest
     timeout-minutes: 15
     env:
@@ -41,7 +41,7 @@ jobs:
           ./v -os windows cmd/v
           ./v -os windows examples/2048/2048.v
 
-  linux:
+  linux-cross:
     runs-on: ubuntu-20.04
     timeout-minutes: 15
     env:
@@ -53,8 +53,6 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind
-          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev libgl-dev
-          sudo apt-get install --quiet -y xfonts-75dpi xfonts-base
           sudo apt-get install --quiet -y mingw-w64 wine-stable winetricks
       - name: Turn off the wine crash dialog
         run: winetricks nocrashdialog
@@ -86,3 +84,22 @@ jobs:
         run: |
           ./v -os windows examples/2048/2048.v
           ls -lart examples/2048/2048.exe
+
+  windows-cross:
+    runs-on: windows-2019
+    timeout-minutes: 15
+    env:
+      VFLAGS: -cc msvc
+    steps:
+      - uses: actions/checkout@v2
+      - name: Build
+        run: |
+          echo %VFLAGS%
+          echo $VFLAGS
+          .\make.bat --verbose -msvc
+      - name: TODO v_win.c can be compiled and run with -os windows
+        run: |
+          .\v.exe -os windows -showcc -o v2.exe cmd\v
+          .\v.exe -os windows -o v_win.c cmd\v
+          dir v2.exe
+          dir v_win.c

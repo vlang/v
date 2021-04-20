@@ -5,9 +5,7 @@ import testing
 import v.util
 
 const (
-	vet_known_failing_exceptions    = [
-		'vlib/v/gen/js/js.v' /* trailing space */,
-	]
+	vet_known_failing_exceptions    = []string{}
 	vet_folders                     = [
 		'vlib/sqlite',
 		'vlib/v',
@@ -20,12 +18,18 @@ const (
 		'examples/term.ui',
 	]
 	verify_known_failing_exceptions = [
+		// Handcrafted meaningful formatting of code parts (mostly arrays)
+		'examples/sokol/02_cubes_glsl/cube_glsl.v',
+		'examples/sokol/03_march_tracing_glsl/rt_glsl.v',
+		'examples/sokol/04_multi_shader_glsl/rt_glsl.v',
+		'examples/sokol/05_instancing_glsl/rt_glsl.v',
+		'vlib/gg/m4/graphic.v',
+		'vlib/gg/m4/m4_test.v',
+		'vlib/gg/m4/matrix.v',
 		'vlib/builtin/int_test.v' /* special number formatting that should be tested */,
+		// TODOs and unfixed vfmt bugs
 		'vlib/builtin/int.v' /* TODO byteptr: vfmt converts `pub fn (nn byteptr) str() string {` to `nn &byte` and that conflicts with `nn byte` */,
 		'vlib/builtin/string_charptr_byteptr_helpers.v' /* TODO byteptr: a temporary shim to ease the byteptr=>&byte transition */,
-		'vlib/gg/m4/graphic.v' /* has hand crafted meaningful formatting of matrices */,
-		'vlib/gg/m4/m4_test.v' /* has hand crafted meaningful formatting of matrices */,
-		'vlib/gg/m4/matrix.v' /* has hand crafted meaningful formatting of matrices */,
 		'vlib/v/tests/array_append_short_struct_test.v', /* extra empty line */
 		'vlib/v/tests/fixed_array_const_size_test.v', /* fixed arr type is changed */
 		'vlib/v/tests/fn_high_test.v', /* param name removed */
@@ -36,9 +40,13 @@ const (
 		'vlib/v/tests/string_interpolation_test.v' /* TODO byteptr: &byte.str() behaves differently than byteptr.str() */,
 		'vlib/v/gen/js/tests/js.v', /* local `hello` fn, gets replaced with module `hello` aliased as `hl` */
 		'vlib/v/gen/c/cheaders.v' /* the preprocessor directives are formated to the V standard, even though they are in a string literal */,
+		'examples/c_interop_wkhtmltopdf.v', /* &charptr --> &&char */
+		'examples/path_tracing.v', /* block --> line comments corrupts code */
 	]
 	vfmt_verify_list                = [
 		'cmd/',
+		'examples/',
+		'tutorials/',
 		'vlib/arrays/',
 		'vlib/benchmark/',
 		'vlib/bitfield/',

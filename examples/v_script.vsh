@@ -1,9 +1,10 @@
 #!/usr/local/bin/v run
+
 // The shebang above associates the file to V on Unix-like systems,
 // so it can be run just by specifying the path to the file
 // once it's made executable using `chmod +x`.
 
-for _ in 0..3 {
+for _ in 0 .. 3 {
 	println('V script')
 }
 
@@ -16,7 +17,7 @@ files := ls('.') or { panic(err.msg) }
 println(files)
 
 println('\nCreating foo.txt')
-create('foo.txt')?
+create('foo.txt') ?
 
 println('\nFiles:')
 again_ls := ls('.') or { panic(err.msg) }

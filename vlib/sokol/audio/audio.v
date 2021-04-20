@@ -1,6 +1,6 @@
 module audio
 
-#flag -I @VROOT/thirdparty/sokol
+#flag -I @VEXEROOT/thirdparty/sokol
 #define SOKOL_IMPL
 #include "sokol_audio.h"
 #flag linux -lasound

@@ -4,7 +4,7 @@ about: Bug report
 title: ''
 labels: 'Bug'
 assignees: ''
-
+# When updating, make sure to update the template in 'cmd/tools/vbug.v' too
 ---
 
 <!-- Please make sure to run `v up` before reporting any issues as it may have already been fixed.

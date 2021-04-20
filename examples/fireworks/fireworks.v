@@ -61,14 +61,18 @@ fn on_frame(mut app App) {
 
 fn on_event(e &gg.Event, mut app App) {
 	match e.typ {
-		.resized, .resumed { app.resize() }
-		.iconified { app.draw_flag = false }
-		.restored { 
+		.resized, .resumed {
+			app.resize()
+		}
+		.iconified {
+			app.draw_flag = false
+		}
+		.restored {
 			app.draw_flag = true
 			app.resize()
-		} 
+		}
 		else {
-			//println("Type ${e.typ}")
+			// println("Type ${e.typ}")
 		}
 	}
 }
@@ -80,16 +84,17 @@ fn (mut app App) resize() {
 		return
 	}
 	mut s := gg.dpi_scale()
-	
+
 	if s == 0.0 {
 		s = 1.0
-	}	
+	}
 	app.ui.dpi_scale = s
 	app.ui.width = size.width
 	app.ui.height = size.height
 }
 
-[console] // is needed for easier diagnostics on windows
+// is needed for easier diagnostics on windows
+[console]
 fn main() {
 	mut font_path := os.resource_abs_path(os.join_path('../assets/fonts/', 'RobotoMono-Regular.ttf'))
 	$if android {

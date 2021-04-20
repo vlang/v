@@ -1083,21 +1083,23 @@ pub fn (mut f Fmt) for_stmt(node ast.ForStmt) {
 }
 
 pub fn (mut f Fmt) global_decl(node ast.GlobalDecl) {
-	single := node.fields.len == 1
-	if single {
-		f.write('__global ( ')
-	} else {
-		f.writeln('__global (')
-		f.indent++
+	if node.fields.len == 0 && node.pos.line_nr == node.pos.last_line {
+		f.writeln('__global ()')
+		return
 	}
+	f.write('__global ')
 	mut max := 0
 	mut has_assign := false
-	for field in node.fields {
-		if field.name.len > max {
-			max = field.name.len
-		}
-		if field.has_expr {
-			has_assign = true
+	if node.is_block {
+		f.writeln('(')
+		f.indent++
+		for field in node.fields {
+			if field.name.len > max {
+				max = field.name.len
+			}
+			if field.has_expr {
+				has_assign = true
+			}
 		}
 	}
 	for field in node.fields {
@@ -1111,20 +1113,19 @@ pub fn (mut f Fmt) global_decl(node ast.GlobalDecl) {
 			f.expr(field.expr)
 			f.write(')')
 		} else {
-			if !single && has_assign {
-				f.write('  ')
-			}
-			f.write('${f.table.type_to_str_using_aliases(field.typ, f.mod2alias)} ')
+			f.write('${f.table.type_to_str_using_aliases(field.typ, f.mod2alias)}')
 		}
-		if !single {
+		if node.is_block {
 			f.writeln('')
 		}
 	}
-	if !single {
-		f.indent--
-	}
 	f.comments_after_last_field(node.end_comments)
-	f.writeln(')\n')
+	if node.is_block {
+		f.indent--
+		f.writeln(')')
+	} else {
+		f.writeln('')
+	}
 }
 
 pub fn (mut f Fmt) go_expr(node ast.GoExpr) {
@@ -1887,81 +1888,89 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	if !buffering_save && f.buffering {
 		f.buffering = false
 		if !f.single_line_if && f.line_len > fmt.max_len.last() {
-			f.wrap_infix(start_pos, start_len, false)
+			is_cond := node.op in [.and, .logical_or]
+			f.wrap_infix(start_pos, start_len, is_cond)
 		}
 	}
 	f.is_assign = is_assign_save
 	f.or_expr(node.or_block)
 }
 
-pub fn (mut f Fmt) wrap_infix(start_pos int, start_len int, ignore_paren bool) {
+pub fn (mut f Fmt) wrap_infix(start_pos int, start_len int, is_cond bool) {
 	cut_span := f.out.len - start_pos
-	condstr := f.out.cut_last(cut_span)
-	is_cond_infix := condstr.contains_any_substr(['&&', '||'])
-	if !is_cond_infix && !condstr.contains('+') {
-		f.write(condstr)
+	infix_str := f.out.cut_last(cut_span)
+	if !infix_str.contains_any_substr(['&&', '||', '+']) {
+		f.write(infix_str)
 		return
 	}
 	f.line_len = start_len
 	if start_len == 0 {
 		f.empty_line = true
 	}
-	or_pen := if condstr.contains('&&') { 3 } else { 5 }
-	cond_parts := condstr.split(' ')
-	mut grouped_cond := false
+	conditions, penalties := split_up_infix(infix_str, false, is_cond)
+	f.write_splitted_infix(conditions, penalties, false, is_cond)
+}
+
+fn split_up_infix(infix_str string, ignore_paren bool, is_cond_infix bool) ([]string, []int) {
 	mut conditions := ['']
 	mut penalties := [5]
-	mut index := 0
-	for cp in cond_parts {
-		if is_cond_infix && cp in ['&&', '||'] {
-			if grouped_cond {
-				conditions[index] += '$cp '
+	or_pen := if infix_str.contains('&&') { 3 } else { 5 }
+	parts := infix_str.split(' ')
+	mut inside_paren := false
+	mut ind := 0
+	for p in parts {
+		if is_cond_infix && p in ['&&', '||'] {
+			if inside_paren {
+				conditions[ind] += '$p '
 			} else {
-				p := if cp == '||' { or_pen } else { 5 }
-				penalties << p
-				conditions << '$cp '
-				index++
+				pen := if p == '||' { or_pen } else { 5 }
+				penalties << pen
+				conditions << '$p '
+				ind++
 			}
-		} else if !is_cond_infix && cp == '+' {
+		} else if !is_cond_infix && p == '+' {
 			penalties << 5
-			conditions[index] += '$cp '
+			conditions[ind] += '$p '
 			conditions << ''
-			index++
+			ind++
 		} else {
-			conditions[index] += '$cp '
+			conditions[ind] += '$p '
 			if ignore_paren {
 				continue
 			}
-			if cp.starts_with('(') {
-				grouped_cond = true
-			} else if cp.ends_with(')') {
-				grouped_cond = false
+			if p.starts_with('(') {
+				inside_paren = true
+			} else if p.ends_with(')') {
+				inside_paren = false
 			}
 		}
 	}
-	for i, c in conditions {
-		cnd := c.trim_space()
-		if f.line_len + cnd.len < fmt.max_len[penalties[i]] {
-			if (i > 0 && i < conditions.len)
-				|| (ignore_paren && i == 0 && cnd.len > 5 && cnd[3] == `(`) {
+	return conditions, penalties
+}
+
+fn (mut f Fmt) write_splitted_infix(conditions []string, penalties []int, ignore_paren bool, is_cond bool) {
+	for i, cnd in conditions {
+		c := cnd.trim_space()
+		if f.line_len + c.len < fmt.max_len[penalties[i]] {
+			if (i > 0 && i < conditions.len) || (ignore_paren && i == 0 && c.len > 5 && c[3] == `(`) {
 				f.write(' ')
 			}
-			f.write(cnd)
+			f.write(c)
 		} else {
-			is_paren_expr := (cnd[0] == `(` || (cnd.len > 5 && cnd[3] == `(`)) && cnd.ends_with(')')
-			final_len := ((f.indent + 1) * 4) + cnd.len
-			prev_len := f.line_len
-			prev_pos := f.out.len
-			if i == 0 && !is_paren_expr {
+			is_paren_expr := (c[0] == `(` || (c.len > 5 && c[3] == `(`)) && c.ends_with(')')
+			final_len := ((f.indent + 1) * 4) + c.len
+			if final_len > fmt.max_len.last() && is_paren_expr {
+				conds, pens := split_up_infix(c, true, is_cond)
+				f.write_splitted_infix(conds, pens, true, is_cond)
+				continue
+			}
+			if i == 0 {
 				f.remove_new_line({})
 			}
 			f.writeln('')
 			f.indent++
-			f.write(cnd)
+			f.write(c)
 			f.indent--
-			if final_len > fmt.max_len.last() && is_paren_expr {
-				f.wrap_infix(prev_pos, prev_len, true)
-			}
 		}
 	}
 }
@@ -2334,12 +2343,19 @@ pub fn (mut f Fmt) string_inter_literal(node ast.StringInterLiteral) {
 	// TODO: this code is very similar to ast.Expr.str()
 	mut quote := "'"
 	for val in node.vals {
-		if val.contains("'") {
+		if val.contains('\\"') {
 			quote = '"'
+			break
+		}
+		if val.contains("\\'") {
+			quote = "'"
+			break
 		}
 		if val.contains('"') {
 			quote = "'"
-			break
+		}
+		if val.contains("'") {
+			quote = '"'
 		}
 	}
 	f.write(quote)

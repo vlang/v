@@ -3,9 +3,9 @@
 // that can be found in the LICENSE file.
 module picohttpparser
 
-#flag -I @VROOT/thirdparty/picohttpparser
-#flag -L @VROOT/thirdparty/picohttpparser
-#flag @VROOT/thirdparty/picohttpparser/picohttpparser.o
+#flag -I @VEXEROOT/thirdparty/picohttpparser
+#flag -L @VEXEROOT/thirdparty/picohttpparser
+#flag @VEXEROOT/thirdparty/picohttpparser/picohttpparser.o
 
 #include "picohttpparser.h"
 

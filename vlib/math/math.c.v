@@ -6,7 +6,7 @@ module math
 #include <math.h>
 $if windows {
 	$if tinyc {
-		#flag @VROOT/thirdparty/tcc/lib/openlibm.o
+		#flag @VEXEROOT/thirdparty/tcc/lib/openlibm.o
 	}
 }
 fn C.acos(x f64) f64

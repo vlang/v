@@ -236,10 +236,10 @@ fn test_array_init_inferred_from_optional() {
 	b := read() or {
 		match x {
 			1 {
-				[]
+				['1']
 			}
 			else {
-				[]
+				['2']
 			}
 		}
 	}

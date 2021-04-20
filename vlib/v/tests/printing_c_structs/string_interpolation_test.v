@@ -1,4 +1,4 @@
-#include "@VROOT/cstruct.h"
+#include "@VMODROOT/cstruct.h"
 
 const the_string = 'the string'
 

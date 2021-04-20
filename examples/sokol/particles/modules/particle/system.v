@@ -2,7 +2,7 @@
 // Use of this source code is governed by an MIT license file distributed with this software package
 module particle
 
-import vec2
+import particle.vec2
 import rand
 import sokol.sgl
 
@@ -14,8 +14,8 @@ pub struct System {
 	width  int
 	height int
 mut:
-	pool   []&Particle
-	bin    []&Particle
+	pool []&Particle
+	bin  []&Particle
 }
 
 pub fn (mut s System) init(sc SystemConfig) {
@@ -82,7 +82,7 @@ pub fn (mut s System) free() {
 			print(ptr_str(p) + ' ouch')
 			continue
 		}
-		unsafe {free(p)}
+		unsafe { free(p) }
 	}
 	s.pool.clear()
 	for p in s.bin {

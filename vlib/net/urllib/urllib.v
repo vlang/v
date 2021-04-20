@@ -176,7 +176,8 @@ fn unescape(s_ string, mode EncodingMode) ?string {
 				// But https://tools.ietf.org/html/rfc6874#section-2
 				// introduces %25 being allowed to escape a percent sign
 				// in IPv6 scoped-address literals. Yay.
-				if mode == .encode_host && unhex(s[i + 1]) < 8 && s[i..i + 3] != '%25' {
+				if i + 3 >= s.len && mode == .encode_host && unhex(s[i + 1]) < 8
+					&& s[i..i + 3] != '%25' {
 					return error(error_msg(urllib.err_msg_escape, s[i..i + 3]))
 				}
 				if mode == .encode_zone {
@@ -187,6 +188,9 @@ fn unescape(s_ string, mode EncodingMode) ?string {
 					// That is, you can use escaping in the zone identifier but not
 					// to introduce bytes you couldn't just write directly.
 					// But Windows puts spaces here! Yay.
+					if i + 3 >= s.len {
+						return error(error_msg('unescape: invalid escape sequence', ''))
+					}
 					v := ((unhex(s[i + 1]) << byte(4)) | unhex(s[i + 2]))
 					if s[i..i + 3] != '%25' && v != ` ` && should_escape(v, .encode_host) {
 						error(error_msg(urllib.err_msg_escape, s[i..i + 3]))
@@ -210,11 +214,17 @@ fn unescape(s_ string, mode EncodingMode) ?string {
 	if n == 0 && !has_plus {
 		return s
 	}
+	if s.len < 2 * n {
+		return error(error_msg('unescape: invalid escape sequence', ''))
+	}
 	mut t := strings.new_builder(s.len - 2 * n)
 	for i := 0; i < s.len; i++ {
 		x := s[i]
 		match x {
 			`%` {
+				if i + 2 >= s.len {
+					return error(error_msg('unescape: invalid escape sequence', ''))
+				}
 				t.write_string(((unhex(s[i + 1]) << byte(4)) | unhex(s[i + 2])).ascii_str())
 				i += 2
 			}
@@ -268,7 +278,7 @@ fn escape(s string, mode EncodingMode) string {
 	if required <= buf.len {
 		t = buf[..required]
 	} else {
-		t = []byte{len: (required)}
+		t = []byte{len: required}
 	}
 	if hex_count == 0 {
 		copy(t, s.bytes())

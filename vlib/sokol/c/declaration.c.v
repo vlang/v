@@ -4,8 +4,8 @@ pub const (
 	used_import = 1
 )
 
-#flag -I @VROOT/thirdparty/sokol
-#flag -I @VROOT/thirdparty/sokol/util
+#flag -I @VEXEROOT/thirdparty/sokol
+#flag -I @VEXEROOT/thirdparty/sokol/util
 #flag freebsd -I /usr/local/include
 #flag darwin -fobjc-arc
 #flag linux -lX11 -lGL -lXcursor -lXi

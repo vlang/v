@@ -394,6 +394,11 @@ pub fn hostname() string {
 	return execute('cmd /c hostname').output
 }
 
+pub fn loginname() string {
+	// TODO: use C.GetUserName(&char, u32) bool instead
+	return execute('cmd /c echo %USERNAME%').output
+}
+
 // `is_writable_folder` - `folder` exists and is writable to the process
 pub fn is_writable_folder(folder string) ?bool {
 	if !exists(folder) {
