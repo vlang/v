@@ -156,7 +156,7 @@ fn (mut g Gen) sqlite3_stmt(node ast.SqlStmt, typ SqlType) {
 			x := '${node.object_var_name}.$field.name'
 			if field.typ == ast.string_type {
 				g.writeln('sqlite3_bind_text($g.sql_stmt_name, ${i + 0}, ${x}.str, ${x}.len, 0);')
-			} else if g.table.type_symbols[int(field.typ)].kind == .struct_ {
+			} else if g.table.get_type_symbol(field.typ).kind == .struct_ {
 				// insert again
 				expr := node.sub_structs[int(field.typ)]
 				tmp_sql_stmt_name := g.sql_stmt_name
@@ -286,7 +286,7 @@ fn (mut g Gen) sqlite3_select_expr(node ast.SqlExpr, sub bool, line string, sql_
 				g.writeln('if ($string_data != NULL) {')
 				g.writeln('\t${tmp}.$field.name = tos_clone($string_data);')
 				g.writeln('}')
-			} else if g.table.type_symbols[int(field.typ)].kind == .struct_ {
+			} else if g.table.get_type_symbol(field.typ).kind == .struct_ {
 				id_name := g.new_tmp_var()
 				g.writeln('//parse struct start')
 				g.writeln('int $id_name = ${func}($g.sql_stmt_name, $i);')
@@ -337,10 +337,10 @@ fn (mut g Gen) sqlite3_create_table(node ast.SqlStmt, typ SqlType) {
 fn (mut g Gen) sqlite3_drop_table(node ast.SqlStmt, typ SqlType) {
 	table_name := g.get_table_name(node.table_expr)
 	g.writeln('// sqlite3 table drop')
-	create_string := 'DROP TABLE $table_name;'
+	drop_string := 'DROP TABLE `$table_name`;'
 	g.write('sqlite__DB_exec(')
 	g.expr(node.db_expr)
-	g.writeln(', _SLIT("$create_string"));')
+	g.writeln(', _SLIT("$drop_string"));')
 }
 
 fn (mut g Gen) sqlite3_bind(val string, len string, typ ast.Type) {
@@ -402,7 +402,7 @@ fn (mut g Gen) mysql_stmt(node ast.SqlStmt, typ SqlType) {
 			}
 			g.writeln('//$field.name ($field.typ)')
 			x := '${node.object_var_name}.$field.name'
-			if g.table.type_symbols[int(field.typ)].kind == .struct_ {
+			if g.table.get_type_symbol(field.typ).kind == .struct_ {
 				// insert again
 				expr := node.sub_structs[int(field.typ)]
 				tmp_sql_stmt_name := g.sql_stmt_name
@@ -631,11 +631,11 @@ fn (mut g Gen) mysql_create_table(node ast.SqlStmt, typ SqlType) {
 fn (mut g Gen) mysql_drop_table(node ast.SqlStmt, typ SqlType) {
 	table_name := g.get_table_name(node.table_expr)
 	g.writeln('// mysql table drop')
-	create_string := 'DROP TABLE $table_name;'
+	drop_string := 'DROP TABLE `$table_name`;'
 	tmp := g.new_tmp_var()
 	g.write('Option_mysql__Result $tmp = mysql__Connection_query(&')
 	g.expr(node.db_expr)
-	g.writeln(', _SLIT("$create_string"));')
+	g.writeln(', _SLIT("$drop_string"));')
 	g.writeln('if (${tmp}.state != 0) { IError err = ${tmp}.err; eprintln(_STR("Something went wrong\\000%.*s", 2, IError_str(err))); }')
 }
 
@@ -764,7 +764,7 @@ fn (mut g Gen) psql_stmt(node ast.SqlStmt, typ SqlType) {
 			g.writeln('//$field.name ($field.typ)')
 			x := '${node.object_var_name}.$field.name'
 			field_type := g.get_sql_field_type(field)
-			if g.table.type_symbols[int(field.typ)].kind == .struct_ {
+			if g.table.get_type_symbol(field.typ).kind == .struct_ {
 				// insert again
 				expr := node.sub_structs[int(field.typ)]
 				tmp_sql_stmt_name := g.sql_stmt_name
@@ -809,11 +809,11 @@ fn (mut g Gen) psql_create_table(node ast.SqlStmt, typ SqlType) {
 fn (mut g Gen) psql_drop_table(node ast.SqlStmt, typ SqlType) {
 	table_name := g.get_table_name(node.table_expr)
 	g.writeln('// psql table drop')
-	create_string := 'DROP TABLE $table_name;'
+	drop_string := 'DROP TABLE "$table_name";'
 	tmp := g.new_tmp_var()
 	g.write('Option_Array_pg__Row $tmp = pg__DB_exec(&')
 	g.expr(node.db_expr)
-	g.writeln(', _SLIT("$create_string"));')
+	g.writeln(', _SLIT("$drop_string"));')
 	g.writeln('if (${tmp}.state != 0) { IError err = ${tmp}.err; eprintln(_STR("Something went wrong\\000%.*s", 2, IError_str(err))); }')
 }
 
@@ -852,7 +852,7 @@ fn (mut g Gen) psql_get_table_type(typ ast.Type) string {
 fn (mut g Gen) psql_bind(val string, data []string, typ ast.Type) {
 	tmp := g.new_tmp_var()
 	g.sql_idents << tmp
-	g.sql_buf.write('char* $tmp = '.bytes()) or { panic(err) }
+	g.sql_buf.write_string('char* $tmp = ')
 	if typ.is_number() {
 		g.sql_buf.writeln('(char *) htonl($val);')
 		g.sql_buf.writeln('\t${data[1]}[${data[0]}] = &$tmp;')
