@@ -2108,6 +2108,11 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 	for generic_type in call_expr.generic_types {
 		c.ensure_type_exists(generic_type, call_expr.generic_list_pos) or {}
 	}
+	if func.generic_names.len > 0 && call_expr.args.len == 0 && call_expr.generic_types.len == 0 {
+		c.error('no argument generic function must add concrete types, e.g. foo<int>()',
+			call_expr.pos)
+		return func.return_type
+	}
 	if func.generic_names.len > 0 && func.return_type.has_flag(.generic) {
 		c.check_return_generics_struct(func.return_type, mut call_expr, generic_types)
 	} else {
