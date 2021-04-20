@@ -2511,7 +2511,7 @@ pub fn (mut c Checker) check_or_expr(or_expr ast.OrExpr, ret_type ast.Type, expr
 
 fn is_expr_panic_or_exit(expr ast.Expr) bool {
 	match expr {
-		ast.CallExpr { return expr.name in ['panic', 'exit'] }
+		ast.CallExpr { return !expr.is_method && expr.name in ['panic', 'exit'] }
 		else { return false }
 	}
 }
@@ -6584,7 +6584,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	c.stmts(node.stmts)
 	node.has_return = c.returns || has_top_return(node.stmts)
 	if node.language == .v && !node.no_body && node.return_type != ast.void_type && !node.has_return
-		&& node.name !in ['panic', 'exit'] {
+		&& (node.is_method || node.name !in ['panic', 'exit']) {
 		if c.inside_anon_fn {
 			c.error('missing return at the end of an anonymous function', node.pos)
 		} else {
@@ -6605,7 +6605,7 @@ fn has_top_return(stmts []ast.Stmt) bool {
 			}
 		} else if stmt is ast.ExprStmt {
 			if stmt.expr is ast.CallExpr {
-				if stmt.expr.name in ['panic', 'exit'] {
+				if !stmt.expr.is_method && stmt.expr.name in ['panic', 'exit'] {
 					return true
 				}
 			}
