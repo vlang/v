@@ -938,7 +938,7 @@ fn (mut g JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 			if it.kind == .string {
 				g.write('Array.from(')
 				g.expr(it.cond)
-				g.write(".str.split(\'\').entries(), ([$it.key_var, $val]) => [$it.key_var, ")
+				g.write('.str.split(\'\').entries(), ([$it.key_var, $val]) => [$it.key_var, ')
 				if g.ns.name == 'builtin' {
 					g.write('new ')
 				}

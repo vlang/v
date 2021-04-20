@@ -100,7 +100,7 @@ fn test_parse_multipart_form() {
 	file := 'bar.v'
 	ct := 'application/octet-stream'
 	contents := ['baz', 'buzz']
-	data := '--------------------------$boundary
+	data := "--------------------------$boundary
 Content-Disposition: form-data; name=\"${names[0]}\"; filename=\"$file\"
 Content-Type: $ct
 
@@ -110,7 +110,7 @@ Content-Disposition: form-data; name=\"${names[1]}\"
 
 ${contents[1]}
 --------------------------$boundary--
-'
+"
 	form, files := parse_multipart_form(data, boundary)
 	assert files == map{
 		names[0]: [FileData{

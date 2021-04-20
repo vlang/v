@@ -213,12 +213,12 @@ fn test_http_client_multipart_form_data() ? {
 	name := 'foo'
 	ct := 'multipart/form-data; boundary=------------------------$boundary'
 	contents := 'baz buzz'
-	data := '--------------------------$boundary
+	data := "--------------------------$boundary
 Content-Disposition: form-data; name=\"$name\"
 
 $contents
 --------------------------$boundary--
-'
+"
 	mut x := http.fetch('http://127.0.0.1:$sport/form_echo',
 		method: .post
 		header: http.new_header(

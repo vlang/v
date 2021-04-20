@@ -2343,12 +2343,19 @@ pub fn (mut f Fmt) string_inter_literal(node ast.StringInterLiteral) {
 	// TODO: this code is very similar to ast.Expr.str()
 	mut quote := "'"
 	for val in node.vals {
-		if val.contains("'") {
+		if val.contains('\\"') {
 			quote = '"'
+			break
+		}
+		if val.contains("\\'") {
+			quote = "'"
+			break
 		}
 		if val.contains('"') {
 			quote = "'"
-			break
+		}
+		if val.contains("'") {
+			quote = '"'
 		}
 	}
 	f.write(quote)
