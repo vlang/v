@@ -27,16 +27,17 @@ struct Options {
 	use_color     bool
 }
 
-const vet_options = cmdline.options_after(os.args, ['vet'])
+const term_colors = term.can_show_color_on_stderr()
 
 fn main() {
+	vet_options := cmdline.options_after(os.args, ['vet'])
 	mut vt := Vet{
 		opt: Options{
 			is_force: '-force' in vet_options
 			is_werror: '-W' in vet_options
 			is_verbose: '-verbose' in vet_options || '-v' in vet_options
 			show_warnings: '-hide-warnings' !in vet_options && '-w' !in vet_options
-			use_color: should_use_color()
+			use_color: '-color' in vet_options || (term_colors && '-nocolor' !in vet_options)
 		}
 	}
 	mut paths := cmdline.only_non_options(vet_options)
@@ -251,15 +252,4 @@ fn (mut vt Vet) warn(msg string, line int, fix vet.FixKind) {
 	} else {
 		vt.warns << w
 	}
-}
-
-fn should_use_color() bool {
-	mut color := term.can_show_color_on_stderr()
-	if '-nocolor' in vet_options {
-		color = false
-	}
-	if '-color' in vet_options {
-		color = true
-	}
-	return color
 }
