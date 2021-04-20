@@ -32,9 +32,9 @@ fn main() {
 		description: 'Number of times the message gets printed.'
 	})
 	greet_cmd.add_flag(Flag{
-	 	flag: .string_array
-	 	name: 'fun'
-	 	description: 'Just a dumby flags to show multiple.'
+		flag: .string_array
+		name: 'fun'
+		description: 'Just a dumby flags to show multiple.'
 	})
 	cmd.add_command(greet_cmd)
 	cmd.setup()

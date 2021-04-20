@@ -2,9 +2,9 @@ module main
 
 import some_module
 
-fn main(){
+fn main() {
 	mut sub := some_module.get_subscriber()
-	sub.subscribe("error", on_error)
+	sub.subscribe('error', on_error)
 	some_module.do_work()
 }
 
