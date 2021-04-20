@@ -35,7 +35,7 @@ fn main() {
 			is_force: '-force' in vet_options
 			is_werror: '-W' in vet_options
 			is_verbose: '-verbose' in vet_options || '-v' in vet_options
-			show_warnings: '-hide-warnings' !in vet_options
+			show_warnings: '-hide-warnings' !in vet_options && '-w' !in vet_options
 			use_color: should_use_color()
 		}
 	}
@@ -88,7 +88,7 @@ fn (mut vt Vet) vet_file(path string) {
 		// skip all /tests/ files, since usually their content is not
 		// important enough to be documented/vetted, and they may even
 		// contain intentionally invalid code.
-		eprintln("skipping test file: '$path' ...")
+		vt.vprintln("skipping test file: '$path' ...")
 		return
 	}
 	vt.file = path
