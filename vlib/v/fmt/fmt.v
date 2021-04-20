@@ -1888,14 +1888,15 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	if !buffering_save && f.buffering {
 		f.buffering = false
 		if !f.single_line_if && f.line_len > fmt.max_len.last() {
-			f.wrap_infix(start_pos, start_len)
+			is_cond := node.op in [.and, .logical_or]
+			f.wrap_infix(start_pos, start_len, is_cond)
 		}
 	}
 	f.is_assign = is_assign_save
 	f.or_expr(node.or_block)
 }
 
-pub fn (mut f Fmt) wrap_infix(start_pos int, start_len int) {
+pub fn (mut f Fmt) wrap_infix(start_pos int, start_len int, is_cond bool) {
 	cut_span := f.out.len - start_pos
 	infix_str := f.out.cut_last(cut_span)
 	if !infix_str.contains_any_substr(['&&', '||', '+']) {
@@ -1906,14 +1907,13 @@ pub fn (mut f Fmt) wrap_infix(start_pos int, start_len int) {
 	if start_len == 0 {
 		f.empty_line = true
 	}
-	conditions, penalties := split_up_infix(infix_str, false)
-	f.write_splitted_infix(conditions, penalties, false)
+	conditions, penalties := split_up_infix(infix_str, false, is_cond)
+	f.write_splitted_infix(conditions, penalties, false, is_cond)
 }
 
-fn split_up_infix(infix_str string, ignore_paren bool) ([]string, []int) {
+fn split_up_infix(infix_str string, ignore_paren bool, is_cond_infix bool) ([]string, []int) {
 	mut conditions := ['']
 	mut penalties := [5]
-	is_cond_infix := infix_str.contains_any_substr(['&&', '||'])
 	or_pen := if infix_str.contains('&&') { 3 } else { 5 }
 	parts := infix_str.split(' ')
 	mut inside_paren := false
@@ -1948,12 +1948,9 @@ fn split_up_infix(infix_str string, ignore_paren bool) ([]string, []int) {
 	return conditions, penalties
 }
 
-fn (mut f Fmt) write_splitted_infix(conditions []string, penalties []int, ignore_paren bool) {
+fn (mut f Fmt) write_splitted_infix(conditions []string, penalties []int, ignore_paren bool, is_cond bool) {
 	for i, cnd in conditions {
 		c := cnd.trim_space()
-		if c.len == 0 {
-			continue
-		}
 		if f.line_len + c.len < fmt.max_len[penalties[i]] {
 			if (i > 0 && i < conditions.len) || (ignore_paren && i == 0 && c.len > 5 && c[3] == `(`) {
 				f.write(' ')
@@ -1963,8 +1960,8 @@ fn (mut f Fmt) write_splitted_infix(conditions []string, penalties []int, ignore
 			is_paren_expr := (c[0] == `(` || (c.len > 5 && c[3] == `(`)) && c.ends_with(')')
 			final_len := ((f.indent + 1) * 4) + c.len
 			if final_len > fmt.max_len.last() && is_paren_expr {
-				conds, pens := split_up_infix(c, true)
-				f.write_splitted_infix(conds, pens, true)
+				conds, pens := split_up_infix(c, true, is_cond)
+				f.write_splitted_infix(conds, pens, true, is_cond)
 				continue
 			}
 			if i == 0 {
