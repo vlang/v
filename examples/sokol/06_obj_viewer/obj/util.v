@@ -1,21 +1,22 @@
 module obj
+
 import os
 
 // read a file as single lines
 pub fn read_lines_from_file(file_path string) []string {
-	mut path := ""
+	mut path := ''
 	mut rows := []string{}
 	$if android {
-		path = "models/"+file_path
+		path = 'models/' + file_path
 		bts := os.read_apk_asset(path) or {
-			eprintln("File [$path] NOT FOUND!")
+			eprintln('File [$path] NOT FOUND!')
 			return rows
 		}
 		rows = bts.bytestr().split_into_lines()
 	} $else {
-		path = "assets/models/"+file_path
+		path = 'assets/models/' + file_path
 		rows = os.read_lines(path) or {
-			eprintln("File [$path] NOT FOUND!")
+			eprintln('File [$path] NOT FOUND!')
 			return rows
 		}
 	}
@@ -24,18 +25,18 @@ pub fn read_lines_from_file(file_path string) []string {
 
 // read a file as []byte
 pub fn read_bytes_from_file(file_path string) []byte {
-	mut path := ""
+	mut path := ''
 	mut buffer := []byte{}
 	$if android {
-		path = "models/"+file_path
+		path = 'models/' + file_path
 		buffer = os.read_apk_asset(path) or {
-			eprintln("Texure file: [$path] NOT FOUND!")
+			eprintln('Texure file: [$path] NOT FOUND!')
 			exit(0)
 		}
 	} $else {
-		path = "assets/models/"+file_path
+		path = 'assets/models/' + file_path
 		buffer = os.read_bytes(path) or {
-			eprintln("Texure file: [$path] NOT FOUND!")
+			eprintln('Texure file: [$path] NOT FOUND!')
 			exit(0)
 		}
 	}

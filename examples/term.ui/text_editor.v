@@ -300,7 +300,7 @@ fn (mut b Buffer) free() {
 		eprintln(@MOD + '.' + @STRUCT + '::' + @FN)
 	}
 	for line in b.lines {
-		unsafe {line.free()}
+		unsafe { line.free() }
 	}
 	unsafe { b.lines.free() }
 }
@@ -374,12 +374,12 @@ fn (mut b Buffer) move_to_word(movement Movement) {
 	}
 	// first, move past all non-`a-zA-Z0-9_` characters
 	for x + a >= 0 && x + a < line.len && !(line[x + a].is_letter()
-		|| line[x + a].is_digit()|| line[x + a] == `_`) {
+		|| line[x + a].is_digit() || line[x + a] == `_`) {
 		x += a
 	}
 	// then, move past all the letters and numbers
 	for x + a >= 0 && x + a < line.len && (line[x + a].is_letter()
-		|| line[x + a].is_digit()|| line[x + a] == `_`) {
+		|| line[x + a].is_digit() || line[x + a] == `_`) {
 		x += a
 	}
 	// if the cursor is out of bounds, move it to the next/previous line
@@ -393,19 +393,11 @@ fn (mut b Buffer) move_to_word(movement Movement) {
 }
 
 fn imax(x int, y int) int {
-	return if x < y {
-		y
-	} else {
-		x
-	}
+	return if x < y { y } else { x }
 }
 
 fn imin(x int, y int) int {
-	return if x < y {
-		x
-	} else {
-		y
-	}
+	return if x < y { x } else { y }
 }
 
 struct Cursor {

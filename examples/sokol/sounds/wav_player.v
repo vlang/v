@@ -117,13 +117,12 @@ struct RIFFFormat {
 }
 
 fn read_wav_file_samples(fpath string) ?[]f32 {
-
 	mut res := []f32{}
 	// eprintln('> read_wav_file_samples: $fpath -------------------------------------------------')
 	mut bytes := os.read_bytes(fpath) ?
 	mut pbytes := &byte(bytes.data)
 	mut offset := u32(0)
-	rh := unsafe{ &RIFFHeader(pbytes) }
+	rh := unsafe { &RIFFHeader(pbytes) }
 	// eprintln('rh: $rh')
 	if rh.riff != [byte(`R`), `I`, `F`, `F`]! {
 		return error('WAV should start with `RIFF`')
@@ -141,7 +140,7 @@ fn read_wav_file_samples(fpath string) ?[]f32 {
 			break
 		}
 		//
-		ch := unsafe{ &RIFFChunkHeader(pbytes + offset) }
+		ch := unsafe { &RIFFChunkHeader(pbytes + offset) }
 		offset += 8 + ch.chunk_size
 		// eprintln('ch: $ch')
 		// eprintln('p: $pbytes | offset: $offset | bytes.len: $bytes.len')
@@ -176,20 +175,20 @@ fn read_wav_file_samples(fpath string) ?[]f32 {
 			}
 			// eprintln('`fmt ` chunk: $rf\n`data` chunk: $ch')
 			mut doffset := 0
-			mut dp := unsafe{ &byte(&ch.chunk_data) }
+			mut dp := unsafe { &byte(&ch.chunk_data) }
 			for doffset < ch.chunk_size {
 				for c := 0; c < rf.nchannels; c++ {
 					mut x := f32(0.0)
 					mut step := 0
 					ppos := unsafe { dp + doffset }
 					if rf.bits_per_sample == 8 {
-						d8 := unsafe{ &byte(ppos) }
+						d8 := unsafe { &byte(ppos) }
 						x = (f32(*d8) - 128) / 128.0
 						step = 1
 						doffset++
 					}
 					if rf.bits_per_sample == 16 {
-						d16 := unsafe{ &i16(ppos) }
+						d16 := unsafe { &i16(ppos) }
 						x = f32(*d16) / 32768.0
 						step = 2
 					}
@@ -207,5 +206,4 @@ fn read_wav_file_samples(fpath string) ?[]f32 {
 		}
 	}
 	return res
-
 }
