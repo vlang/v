@@ -1058,8 +1058,9 @@ pub fn (mut t Table) resolve_generic_by_names(generic_type Type, generic_names [
 // This is used for resolving the generic return type of CallExpr white `unwrap_generic` is used to resolve generic usage in FnDecl.
 pub fn (mut t Table) resolve_generic_by_types(generic_type Type, generic_types []Type, concrete_types []Type) ?Type {
 	mut sym := t.get_type_symbol(generic_type)
-	if generic_type in generic_types {
-		index := generic_types.index(generic_type)
+	gtype := generic_type.set_nr_muls(0) // resolve &T &&T
+	if gtype in generic_types {
+		index := generic_types.index(gtype)
 		typ := concrete_types[index]
 		return typ.derive(generic_type).clear_flag(.generic)
 	} else if sym.kind == .array {

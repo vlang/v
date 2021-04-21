@@ -508,6 +508,10 @@ pub fn (mut c Checker) infer_fn_generic_types(f ast.Fn, mut call_expr ast.CallEx
 				if arg.expr.is_auto_deref_var() {
 					to_set = to_set.deref()
 				}
+				// resolve &T &&T ...
+				if param.typ.nr_muls() > 0 && to_set.nr_muls() > 0 {
+					to_set = to_set.set_nr_muls(0)
+				}
 				// If the parent fn param is a generic too
 				if to_set.has_flag(.generic) {
 					to_set = c.unwrap_generic(to_set)
