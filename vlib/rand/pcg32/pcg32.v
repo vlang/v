@@ -91,7 +91,7 @@ pub fn (mut rng PCG32RNG) u64n(max u64) u64 {
 
 // u32_in_range returns a pseudorandom 32-bit unsigned `u32` in range `[min, max)`.
 [inline]
-pub fn (mut rng PCG32RNG) u32_in_range(min u64, max u64) u64 {
+pub fn (mut rng PCG32RNG) u32_in_range(min u32, max u32) u32 {
 	if max <= min {
 		eprintln('max must be greater than min')
 		exit(1)
