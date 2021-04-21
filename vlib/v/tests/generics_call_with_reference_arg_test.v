@@ -23,6 +23,4 @@ fn test_generics_call_with_reference_arg() {
 	assert s.pos == 1
 	println(s.buffer.len)
 	assert s.buffer.len == 2
-	println(int(s.buffer[0]))
-	assert int(s.buffer[0]) == 123
 }
