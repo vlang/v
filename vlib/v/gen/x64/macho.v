@@ -99,7 +99,7 @@ pub fn (mut g Gen) generate_macho_header() {
 	for _ in 0 .. 12 {
 		g.write32(0)
 	}
-// ADD THE CODE HERE THIS GOES INTO THE STMTS THING
+	// ADD THE CODE HERE THIS GOES INTO THE STMTS THING
 	// g.write32(0x77777777)
 	// assembly
 	g.mov_arm(.x0, 1)

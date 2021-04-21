@@ -18,14 +18,14 @@ const (
 
 // ELF file types
 const (
-	elf_osabi  = 0
-	et_rel     = 1
-	et_exec    = 2
-	et_dyn     = 3
-	e_machine_amd64 = 0x3e
+	elf_osabi         = 0
+	et_rel            = 1
+	et_exec           = 2
+	et_dyn            = 3
+	e_machine_amd64   = 0x3e
 	e_machine_aarch64 = 183
-	shn_xindex = 0xffff
-	sht_null   = 0
+	shn_xindex        = 0xffff
+	sht_null          = 0
 )
 
 const (
