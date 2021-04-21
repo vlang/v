@@ -481,7 +481,7 @@ pub fn (mut p Parser) parse_generic_struct_inst_type(name string) ast.Type {
 	p.in_generic_params = true
 	bs_name += '<'
 	bs_cname += '_T_'
-	mut generic_types := []ast.Type{}
+	mut concrete_types := []ast.Type{}
 	mut is_instance := false
 	for p.tok.kind != .eof {
 		gt := p.parse_type()
@@ -491,7 +491,7 @@ pub fn (mut p Parser) parse_generic_struct_inst_type(name string) ast.Type {
 		gts := p.table.get_type_symbol(gt)
 		bs_name += gts.name
 		bs_cname += gts.cname
-		generic_types << gt
+		concrete_types << gt
 		if p.tok.kind != .comma {
 			break
 		}
@@ -502,7 +502,7 @@ pub fn (mut p Parser) parse_generic_struct_inst_type(name string) ast.Type {
 	p.check(.gt)
 	p.in_generic_params = false
 	bs_name += '>'
-	if is_instance && generic_types.len > 0 {
+	if is_instance && concrete_types.len > 0 {
 		mut gt_idx := p.table.find_type_idx(bs_name)
 		if gt_idx > 0 {
 			return ast.new_type(gt_idx)
@@ -519,7 +519,7 @@ pub fn (mut p Parser) parse_generic_struct_inst_type(name string) ast.Type {
 			mod: p.mod
 			info: ast.GenericStructInst{
 				parent_idx: parent_idx
-				generic_types: generic_types
+				concrete_types: concrete_types
 			}
 		})
 		return ast.new_type(idx)
