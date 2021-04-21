@@ -468,6 +468,23 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 			}
 			g.comptime_var_type_map.delete(node.val_var)
 		}
+	} else if node.kind == .attributes {
+		if sym.info is ast.Struct {
+			if sym.info.attrs.len > 0 {
+				g.writeln('\tStructAttribute $node.val_var = {0};')
+			}
+			for attr in sym.info.attrs {
+				g.writeln('/* attribute $i */ {')
+
+				g.writeln('\t${node.val_var}.name = _SLIT("$attr.name");')
+				g.writeln('\t${node.val_var}.is_string = $attr.is_string;')
+				g.writeln('\t${node.val_var}.is_comptime_define = $attr.is_comptime_define;')
+				g.writeln('\t${node.val_var}.arg = _SLIT("$attr.arg");')
+				g.writeln('\t${node.val_var}.is_string_arg = $attr.is_string_arg;')
+
+				g.writeln('}')
+			}
+		}
 	}
 	g.indent--
 	g.writeln('}// \$for')

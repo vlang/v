@@ -121,3 +121,13 @@ pub:
 	is_mut bool
 	typ    int
 }
+
+pub struct StructAttribute {
+pub:
+	name               string
+	is_string          bool
+	is_comptime_define bool
+	arg                string
+	is_string_arg      bool
+	is_number_arg      bool
+}

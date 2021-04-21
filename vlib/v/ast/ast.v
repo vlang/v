@@ -785,6 +785,7 @@ pub:
 pub enum CompForKind {
 	methods
 	fields
+	attributes
 }
 
 pub struct CompFor {
