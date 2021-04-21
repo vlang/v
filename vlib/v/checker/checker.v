@@ -1444,9 +1444,10 @@ fn (mut c Checker) check_return_generics_struct(return_type ast.Type, mut call_e
 			} else {
 				mut fields := rts.info.fields.clone()
 				if rts.info.generic_types.len == generic_types.len {
+					generic_names := rts.info.generic_types.map(c.table.get_type_symbol(it).name)
 					for i, _ in fields {
-						if t_typ := c.table.resolve_generic_by_types(fields[i].typ, rts.info.generic_types,
-							generic_types)
+						if t_typ := c.table.resolve_generic_to_concrete(fields[i].typ,
+							generic_names, generic_types)
 						{
 							fields[i].typ = t_typ
 						}
@@ -1744,7 +1745,7 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 			c.infer_fn_generic_types(method, mut call_expr)
 		}
 		if call_expr.generic_types.len > 0 && method.return_type != 0 {
-			if typ := c.table.resolve_generic_by_names(method.return_type, method.generic_names,
+			if typ := c.table.resolve_generic_to_concrete(method.return_type, method.generic_names,
 				call_expr.generic_types)
 			{
 				call_expr.return_type = typ
@@ -2264,7 +2265,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 			typ := c.check_expr_opt_call(call_arg.expr, c.expr(call_arg.expr))
 
 			if param.typ.has_flag(.generic) && func.generic_names.len == call_expr.generic_types.len {
-				if unwrap_typ := c.table.resolve_generic_by_names(param.typ, func.generic_names,
+				if unwrap_typ := c.table.resolve_generic_to_concrete(param.typ, func.generic_names,
 					call_expr.generic_types)
 				{
 					c.check_expected_call_arg(typ, unwrap_typ, call_expr.language) or {
@@ -2275,7 +2276,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 		}
 	}
 	if call_expr.generic_types.len > 0 && func.return_type != 0 {
-		if typ := c.table.resolve_generic_by_names(func.return_type, func.generic_names,
+		if typ := c.table.resolve_generic_to_concrete(func.return_type, func.generic_names,
 			call_expr.generic_types)
 		{
 			call_expr.return_type = typ
@@ -4124,7 +4125,7 @@ fn (mut c Checker) stmts(stmts []ast.Stmt) {
 
 pub fn (mut c Checker) unwrap_generic(typ ast.Type) ast.Type {
 	if typ.has_flag(.generic) {
-		if t_typ := c.table.resolve_generic_by_names(typ, c.cur_fn.generic_names, c.cur_fn.cur_generic_types) {
+		if t_typ := c.table.resolve_generic_to_concrete(typ, c.cur_fn.generic_names, c.cur_fn.cur_generic_types) {
 			return t_typ
 		}
 	}
