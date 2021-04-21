@@ -89,23 +89,46 @@ pub fn gen(files []ast.File, table &ast.Table, out_name string, pref &pref.Prefe
 		out_name: out_name
 		pref: pref
 	}
-	if !pref.is_verbose {
-		println('use `v -x64 -v ...` to print resulting asembly/machine code')
-	}
-	if pref.os == .macos {
-		g.generate_macho_header()
-	} else {
-		g.generate_elf_header()
-	}
+	g.generate_header()
 	for file in files {
+		if file.warnings.len > 0 {
+			eprintln('Warning: ${file.warnings[0]}')
+		}
+		if file.errors.len > 0 {
+			eprintln('Error ${file.errors[0]}')
+			return 0, 0
+		}
 		g.stmts(file.stmts)
 	}
-	if pref.os == .macos {
-		g.generate_macho_footer()
-	} else {
-		g.generate_elf_footer()
-	}
+	g.generate_footer()
 	return g.nlines, g.buf.len
+}
+
+pub fn (mut g Gen) generate_header() {
+	match g.pref.os {
+		.macos {
+			g.generate_macho_header()
+		}
+		.linux {
+			g.generate_elf_header()
+		}
+		else {
+		}
+	}
+}
+
+pub fn (mut g Gen) generate_footer() {
+	match g.pref.os {
+		.macos {
+			g.generate_macho_footer()
+		}
+		.linux {
+			g.generate_elf_footer()
+		}
+		else {
+			g.generate_macho_footer()
+		}
+	}
 }
 
 pub fn (mut g Gen) stmts(stmts []ast.Stmt) {
@@ -653,6 +676,26 @@ pub fn (mut g Gen) call_fn(node ast.CallExpr) {
 	// println('call $name $addr')
 }
 
+fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
+	if node.is_range {
+		// `for x in 1..10 {`
+		// i := if node.val_var == '_' { g.new_tmp_var() } else { c_name(node.val_var) }
+		// val_typ := g.table.mktyp(node.val_type)
+		g.write32(0x3131) // 'for (${g.typ(val_typ)} $i = ')
+		g.expr(node.cond)
+		g.write32(0x3232)// ; $i < ')
+		g.expr(node.high)
+		g.write32(0x3333) // '; ++$i) {')
+/*
+	} else if node.kind == .array {
+	} else if node.kind == .array_fixed {
+	} else if node.kind == .map {
+	} else if node.kind == .string {
+	} else if node.kind == .struct_ {
+*/
+	}
+}
+
 fn (mut g Gen) stmt(node ast.Stmt) {
 	match node {
 		ast.AssignStmt {
@@ -667,6 +710,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.FnDecl {
 			g.fn_decl(node)
+		}
+		ast.ForInStmt {
+			g.for_in_stmt(node)
 		}
 		ast.ForStmt {
 			g.for_stmt(node)

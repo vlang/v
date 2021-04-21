@@ -99,6 +99,7 @@ pub fn (mut g Gen) generate_macho_header() {
 	for _ in 0 .. 12 {
 		g.write32(0)
 	}
+// ADD THE CODE HERE THIS GOES INTO THE STMTS THING
 	// g.write32(0x77777777)
 	// assembly
 	g.mov_arm(.x0, 1)
@@ -119,9 +120,9 @@ pub fn (mut g Gen) generate_macho_header() {
 }
 
 pub fn (mut g Gen) generate_macho_footer() {
-	// Create the binary
+	// Create the binary // should be .o ?
 	mut f := os.create(g.out_name) or { panic(err) }
-	os.chmod(g.out_name, 0o775) // make it an executable
+	os.chmod(g.out_name, 0o775) // make it executable
 	unsafe { f.write_ptr(g.buf.data, g.buf.len) }
 	f.close()
 	// println('\narm64 mach-o binary has been successfully generated')

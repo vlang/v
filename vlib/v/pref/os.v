@@ -17,6 +17,7 @@ pub enum OS {
 	android
 	solaris
 	haiku
+	raw
 	all
 }
 
@@ -35,6 +36,7 @@ pub fn os_from_string(os_str string) ?OS {
 		'solaris' { return .solaris }
 		'android' { return .android }
 		'haiku' { return .haiku }
+		'raw' { return .raw }
 		'linux_or_macos', 'nix' { return .linux }
 		'' { return ._auto }
 		else { return error('bad OS $os_str') }
@@ -56,6 +58,7 @@ pub fn (o OS) str() string {
 		.android { return 'Android' }
 		.solaris { return 'Solaris' }
 		.haiku { return 'Haiku' }
+		.raw { return 'Raw' }
 		.all { return 'all' }
 	}
 }
