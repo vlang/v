@@ -1,4 +1,5 @@
 import math
+import rand
 import rand.pcg32
 import rand.seed
 
@@ -329,4 +330,8 @@ fn test_pcg32_f64_in_range() {
 			assert value < max
 		}
 	}
+}
+
+fn test_change_default_random_generator() {
+	rand.set_rng(pcg32.PCG32RNG{})
 }
