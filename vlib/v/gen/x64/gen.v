@@ -92,11 +92,19 @@ pub fn gen(files []ast.File, table &ast.Table, out_name string, pref &pref.Prefe
 	if !pref.is_verbose {
 		println('use `v -x64 -v ...` to print resulting asembly/machine code')
 	}
-	g.generate_elf_header()
+	if pref.os == .macos {
+		g.generate_macho_header()
+	} else {
+		g.generate_elf_header()
+	}
 	for file in files {
 		g.stmts(file.stmts)
 	}
-	g.generate_elf_footer()
+	if pref.os == .macos {
+		g.generate_macho_footer()
+	} else {
+		g.generate_elf_footer()
+	}
 	return g.nlines, g.buf.len
 }
 

@@ -37,9 +37,15 @@ struct Reloc {
 }
 
 pub fn (mut g Gen) generate_macho_header() {
-	g.write32(0xfeedfacf) // MH_MAGIC_64
-	g.write32(0x0100000c) // CPU_TYPE_ARM64
-	g.write32(0x00000000) // CPU_SUBTYPE_ARM64_ALL
+	if g.pref.arch == .aarch64 {
+		g.write32(0xfeedfacf) // MH_MAGIC_64
+		g.write32(0x0100000c) // CPU_TYPE_ARM64
+		g.write32(0x00000000) // CPU_SUBTYPE_ARM64_ALL
+	} else {
+		g.write32(0xfeedfacf) // MH_MAGIC_64
+		g.write32(0x01000007) // CPU_TYPE_X64
+		g.write32(0x00000003) // CPU_SUBTYPE_X64
+	}
 	g.write32(0x00000001) // MH_OBJECT
 	g.write32(0x00000004) // # of load commands
 	g.write32(0x118) // size of load commands
@@ -76,7 +82,7 @@ pub fn (mut g Gen) generate_macho_header() {
 	g.write32(0x18)
 
 	g.write32(0x01)
-	g.write32(0x000b0000)
+	g.write32(0x000a0000) // minOS 10.0
 	g.write32(0)
 	g.write32(0)
 	// lc_symtab
@@ -102,7 +108,7 @@ pub fn (mut g Gen) generate_macho_header() {
 	g.mov_arm(.x16, 1)
 	g.svc()
 	//
-	g.write_string('Hello WorlD!\n')
+	g.write_string('Hello World!\n')
 	g.write8(0) // padding?
 	g.write8(0)
 	g.write8(0)
