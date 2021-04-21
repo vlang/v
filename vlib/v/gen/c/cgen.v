@@ -696,11 +696,7 @@ fn (mut g Gen) cc_type(typ ast.Type, is_prefix_struct bool) string {
 		if sym.info.generic_types.len > 0 {
 			mut sgtyps := '_T'
 			for gt in sym.info.generic_types {
-				gts := g.table.get_type_symbol(if gt.has_flag(.generic) {
-					g.unwrap_generic(gt)
-				} else {
-					gt
-				})
+				gts := g.table.get_type_symbol(g.unwrap_generic(gt))
 				sgtyps += '_$gts.cname'
 			}
 			styp += sgtyps

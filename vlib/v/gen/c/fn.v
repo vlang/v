@@ -477,7 +477,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 
 pub fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
 	if typ.has_flag(.generic) {
-		if t_typ := g.table.resolve_generic_by_names(typ, g.cur_fn.generic_names, g.cur_generic_types) {
+		if t_typ := g.table.resolve_generic_to_concrete(typ, g.cur_fn.generic_names, g.cur_generic_types) {
 			return t_typ
 		}
 	}
