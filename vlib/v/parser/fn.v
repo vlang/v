@@ -294,7 +294,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			mut is_heap_ref := false // args are only borrowed, so assume maybe on stack
 			if param.typ.nr_muls() == 1 { // mut a St, b &St
 				base_type_sym := p.table.get_type_symbol(param.typ.set_nr_muls(0))
-				if base_type_sym.kind = .struct_ {
+				if base_type_sym.kind == .struct_ {
 					info := base_type_sym.info as ast.Struct
 					is_heap_ref = info.is_heap // if type is declared as [heap] we can assume this, too
 				}
