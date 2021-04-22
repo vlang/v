@@ -1,7 +1,8 @@
-import sync
+module sync
+
 import time
 
-fn do_rec_i64(mut ch sync.Channel) {
+fn do_rec_i64(mut ch Channel) {
 	mut sum := i64(0)
 	for i in 0 .. 300 {
 		if i == 200 {
@@ -15,14 +16,14 @@ fn do_rec_i64(mut ch sync.Channel) {
 	assert sum == 200 * (200 - 1) / 2
 }
 
-fn do_send_int(mut ch sync.Channel) {
+fn do_send_int(mut ch Channel) {
 	for i in 0 .. 300 {
 		ch.push(&i)
 	}
 	ch.close()
 }
 
-fn do_send_byte(mut ch sync.Channel) {
+fn do_send_byte(mut ch Channel) {
 	for i in 0 .. 300 {
 		ii := byte(i)
 		ch.push(&ii)
@@ -30,7 +31,7 @@ fn do_send_byte(mut ch sync.Channel) {
 	ch.close()
 }
 
-fn do_send_i64(mut ch sync.Channel) {
+fn do_send_i64(mut ch Channel) {
 	for i in 0 .. 300 {
 		ii := i64(i)
 		ch.push(&ii)
@@ -39,16 +40,16 @@ fn do_send_i64(mut ch sync.Channel) {
 }
 
 fn test_select() {
-	mut chi := sync.new_channel<int>(0)
-	mut chl := sync.new_channel<i64>(1)
-	mut chb := sync.new_channel<byte>(10)
-	mut recch := sync.new_channel<i64>(0)
+	mut chi := new_channel<int>(0)
+	mut chl := new_channel<i64>(1)
+	mut chb := new_channel<byte>(10)
+	mut recch := new_channel<i64>(0)
 	go do_rec_i64(mut recch)
 	go do_send_int(mut chi)
 	go do_send_byte(mut chb)
 	go do_send_i64(mut chl)
 	mut channels := [chi, recch, chl, chb]
-	directions := [sync.Direction.pop, .push, .pop, .pop]
+	directions := [Direction.pop, .push, .pop, .pop]
 	mut sum := i64(0)
 	mut rl := i64(0)
 	mut ri := int(0)
@@ -56,7 +57,7 @@ fn test_select() {
 	mut sl := i64(0)
 	mut objs := [voidptr(&ri), &sl, &rl, &rb]
 	for j in 0 .. 1101 {
-		idx := sync.channel_select(mut channels, directions, mut objs, time.infinite)
+		idx := channel_select(mut channels, directions, mut objs, time.infinite)
 		match idx {
 			0 {
 				sum += ri
