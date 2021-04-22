@@ -3545,9 +3545,11 @@ created your module with `v new` you already have v.mod file). For
 example:
 ```v ignore
 Module {
-	name: 'mymodule',
-	description: 'My nice module wraps a simple C library.',
+	name: 'my_module'
+	description: 'This is my_module's description.'
 	version: '0.0.1'
+	license: ''
+	repo_url: 'https://github.com/Example/ExampleRepo'
 	dependencies: []
 }
 ```
