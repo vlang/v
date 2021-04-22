@@ -3008,6 +3008,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					}
 					assign_stmt.left_types[i] = left_type
 					ident_var_info.typ = left_type
+					idend_var_info.is_heap_ref = left_type.nr_muls() > 0
 					left.info = ident_var_info
 					if left_type != 0 {
 						match mut left.obj {

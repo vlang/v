@@ -291,11 +291,20 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 					scope: 0
 				}
 			}
+			mut is_heap_ref := false // args are only borrowed, so assume maybe on stack
+			if param.typ.nr_muls() == 1 { // mut a St, b &St
+				base_type_sym := p.table.get_type_symbol(param.typ.set_nr_muls(0))
+				if base_type_sym.kind = .struct_ {
+					info := base_type_sym.info as ast.Struct
+					is_heap_ref = info.is_heap // if type is declared as [heap] we can assume this, too
+				}
+			}
 			p.scope.register(ast.Var{
 				name: param.name
 				typ: param.typ
 				is_mut: param.is_mut
 				is_auto_deref: param.is_mut || param.is_auto_rec
+				is_heap_ref: is_heap_ref
 				pos: param.pos
 				is_used: true
 				is_arg: true
