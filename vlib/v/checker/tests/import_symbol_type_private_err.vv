@@ -1,4 +1,0 @@
-import io { ReaderWriterImpl }
-fn main() {
-  _ := ReaderWriterImpl{}
-}
