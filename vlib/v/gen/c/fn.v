@@ -129,13 +129,13 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 	// }
 	if node.generic_names.len > 0 && g.cur_generic_types.len == 0 { // need the cur_generic_type check to avoid inf. recursion
 		// loop thru each generic type and generate a function
-		for gen_types in g.table.fn_generic_types[node.name] {
+		for generic_types in g.table.fn_generic_types[node.name] {
 			if g.pref.is_verbose {
-				syms := gen_types.map(g.table.get_type_symbol(it))
+				syms := generic_types.map(g.table.get_type_symbol(it))
 				the_type := syms.map(node.name).join(', ')
 				println('gen fn `$node.name` for type `$the_type`')
 			}
-			g.cur_generic_types = gen_types
+			g.cur_generic_types = generic_types
 			g.gen_fn_decl(node, skip)
 		}
 		g.cur_generic_types = []

@@ -730,8 +730,8 @@ pub mut:
 // instantiation of a generic struct
 pub struct GenericStructInst {
 pub mut:
-	parent_idx    int // idx of the base generic struct
-	generic_types []Type
+	parent_idx     int    // idx of the base generic struct
+	concrete_types []Type // concrete types, e.g. <int, string>
 }
 
 pub struct Interface {
