@@ -762,11 +762,6 @@ pub:
 	types []Type
 }
 
-// NB: FExpr here is a actually an ast.Expr .
-// It should always be used by casting to ast.Expr, using ast.fe2ex()/ast.ex2fe()
-// That hack is needed to break an import cycle between v.ast and v.ast .
-// pub type FExpr = byteptr | voidptr
-
 /*
 pub struct Field {
 pub:
