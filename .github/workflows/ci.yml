@@ -358,8 +358,8 @@ jobs:
       #      run: git clone --depth 1 https://github.com/vlang/vorum && cd vorum && ../v . && cd ..
       #    - name: Build vpm
       #      run: git clone --depth 1 https://github.com/vlang/vpm && cd vpm && ../v . && cd ..
-      #    - name: Freestanding
-      #      run: ./v -freestanding -o bare vlib/os/bare/bare_example_linux.v
+      - name: Freestanding
+        run: ./v -freestanding run vlib/os/bare/bare_example_linux.v
       - name: v self compilation
         run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
       - name: -usecache
