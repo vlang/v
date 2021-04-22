@@ -5867,14 +5867,19 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 	if node.op == .not && right_type != ast.bool_type_idx && !c.pref.translated {
 		c.error('! operator can only be used with bool types', node.pos)
 	}
+	// FIXME
+	// there are currently other issues to investigate if right_type
+	// is unwraped directly as initialization, so do it here
+	right_sym := c.table.get_final_type_symbol(c.unwrap_generic(right_type))
+	if node.op == .minus && !right_sym.is_number() {
+		c.error('- operator can only be used with number types', node.pos)
+	}
 	if node.op == .arrow {
-		right := c.table.get_type_symbol(right_type)
-		if right.kind == .chan {
+		if right_sym.kind == .chan {
 			c.stmts(node.or_block.stmts)
-			return right.chan_info().elem_type
-		} else {
-			c.error('<- operator can only be used with `chan` types', node.pos)
+			return right_sym.chan_info().elem_type
 		}
+		c.error('<- operator can only be used with `chan` types', node.pos)
 	}
 	return right_type
 }
