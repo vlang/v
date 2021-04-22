@@ -102,9 +102,9 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 	f.write_language_prefix(node.language)
 	name := node.name.after('.')
 	f.write(name)
-	if node.gen_types.len > 0 {
+	if node.generic_types.len > 0 {
 		f.write('<')
-		gtypes := node.gen_types.map(f.table.type_to_str(it)).join(', ')
+		gtypes := node.generic_types.map(f.table.type_to_str(it)).join(', ')
 		f.write(gtypes)
 		f.write('>')
 	}
