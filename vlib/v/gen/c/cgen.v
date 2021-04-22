@@ -2534,14 +2534,14 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 						}
 					} else {
 						if is_auto_heap {
-							g.write('HEAP($styp, ')
+							g.write('HEAP($styp, (')
 						}
 						if val.is_auto_deref_var() {
 							g.write('*')
 						}
 						g.expr(val)
 						if is_auto_heap {
-							g.write(')')
+							g.write('))')
 						}
 					}
 				} else {
@@ -4383,6 +4383,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 	mut name := c_name(node.name)
 	// TODO: temporary, remove this
 	node_info := node.info
+	mut is_auto_heap := false
 	if node_info is ast.IdentVar {
 		// x ?int
 		// `x = 10` => `x.data = 10` (g.right_is_opt == false)
@@ -4400,6 +4401,10 @@ fn (mut g Gen) ident(node ast.Ident) {
 		}
 		scope := g.file.scope.innermost(node.pos.pos)
 		if v := scope.find_var(node.name) {
+			is_auto_heap = v.is_auto_heap && !g.is_assign_lhs
+			if is_auto_heap {
+				g.write('(*(')
+			}
 			if v.smartcasts.len > 0 {
 				v_sym := g.table.get_type_symbol(v.typ)
 				if !prevent_sum_type_unwrapping_once {
@@ -4441,6 +4446,9 @@ fn (mut g Gen) ident(node ast.Ident) {
 		}
 	}
 	g.write(g.get_ternary_name(name))
+	if is_auto_heap {
+		g.write('))')
+	}
 }
 
 fn (mut g Gen) cast_expr(node ast.CastExpr) {
