@@ -11,10 +11,15 @@ import v.pref
 import term
 import strings
 
+interface CodeGen {
+	allocate_var(g &Gen, name string, size int, initial_val int)
+}
+
 pub struct Gen {
 	out_name string
 	pref     &pref.Preferences // Preferences shared from V struct
 mut:
+	cgen                 CodeGen
 	table                &ast.Table
 	buf                  []byte
 	sect_header_name_pos int
@@ -82,22 +87,63 @@ enum Size {
 	_64
 }
 
+fn get_backend(pref &pref.Preferences) CodeGen {
+	if pref.arch == .aarch64 {
+		return Aarch64{}
+	}
+	return Amd64{}
+}
+
 pub fn gen(files []ast.File, table &ast.Table, out_name string, pref &pref.Preferences) (int, int) {
 	mut g := Gen{
 		table: table
 		sect_header_name_pos: 0
 		out_name: out_name
 		pref: pref
+		cgen: get_backend(pref)
 	}
-	if !pref.is_verbose {
-		println('use `v -x64 -v ...` to print resulting asembly/machine code')
-	}
-	g.generate_elf_header()
+	g.generate_header()
 	for file in files {
+		if file.warnings.len > 0 {
+			eprintln('Warning: ${file.warnings[0]}')
+		}
+		if file.errors.len > 0 {
+			eprintln('Error ${file.errors[0]}')
+			// verror('Error ${file.errors[0]}')
+		}
 		g.stmts(file.stmts)
 	}
-	g.generate_elf_footer()
+	g.generate_footer()
 	return g.nlines, g.buf.len
+}
+
+pub fn (mut g Gen) generate_header() {
+	match g.pref.os {
+		.macos {
+			g.generate_macho_header()
+		}
+		.linux {
+			g.generate_elf_header()
+		}
+		.raw {}
+		else {
+			verror('Error: only `raw`, `linux` and `macos` are supported for -os in -x64')
+		}
+	}
+}
+
+pub fn (mut g Gen) generate_footer() {
+	match g.pref.os {
+		.macos {
+			g.generate_macho_footer()
+		}
+		.linux {
+			g.generate_elf_footer()
+		}
+		else {
+			g.generate_macho_footer()
+		}
+	}
 }
 
 pub fn (mut g Gen) stmts(stmts []ast.Stmt) {
@@ -174,6 +220,7 @@ fn (mut g Gen) write_string(s string) {
 	for c in s {
 		g.write8(int(c))
 	}
+	// g.write8(0) // null terminated strings
 }
 
 fn (mut g Gen) write_string_with_padding(s string, max int) {
@@ -645,6 +692,27 @@ pub fn (mut g Gen) call_fn(node ast.CallExpr) {
 	// println('call $name $addr')
 }
 
+fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
+	eprintln('for-in statement is not yet implemented')
+	/*
+	if node.is_range {
+		// `for x in 1..10 {`
+		// i := if node.val_var == '_' { g.new_tmp_var() } else { c_name(node.val_var) }
+		// val_typ := g.table.mktyp(node.val_type)
+		g.write32(0x3131) // 'for (${g.typ(val_typ)} $i = ')
+		g.expr(node.cond)
+		g.write32(0x3232) // ; $i < ')
+		g.expr(node.high)
+		g.write32(0x3333) // '; ++$i) {')
+		} else if node.kind == .array {
+	} else if node.kind == .array_fixed {
+	} else if node.kind == .map {
+	} else if node.kind == .string {
+	} else if node.kind == .struct_ {
+	}
+	*/
+}
+
 fn (mut g Gen) stmt(node ast.Stmt) {
 	match node {
 		ast.AssignStmt {
@@ -659,6 +727,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.FnDecl {
 			g.fn_decl(node)
+		}
+		ast.ForInStmt {
+			g.for_in_stmt(node)
 		}
 		ast.ForStmt {
 			g.for_stmt(node)
@@ -690,7 +761,6 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 fn C.strtol(str &char, endptr &&char, base int) int
 
 fn (mut g Gen) expr(node ast.Expr) {
-	// println('cgen expr()')
 	match node {
 		ast.ArrayInit {}
 		ast.BoolLiteral {}
@@ -721,38 +791,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 }
 
 fn (mut g Gen) allocate_var(name string, size int, initial_val int) {
-	// `a := 3`  =>
-	// `move DWORD [rbp-0x4],0x3`
-	match size {
-		1 {
-			// BYTE
-			g.write8(0xc6)
-			g.write8(0x45)
-		}
-		4 {
-			// DWORD
-			g.write8(0xc7)
-			g.write8(0x45)
-		}
-		8 {
-			// QWORD
-			g.write8(0x48)
-			g.write8(0xc7)
-			g.write8(0x45)
-		}
-		else {
-			verror('allocate_var: bad size $size')
-		}
-	}
-	// Generate N in `[rbp-N]`
-	n := g.stack_var_pos + size
-	g.write8(0xff - n + 1)
-	g.stack_var_pos += size
-	g.var_offset[name] = g.stack_var_pos
-	// Generate the value assigned to the variable
-	g.write32(initial_val)
-	// println('allocate_var(size=$size, initial_val=$initial_val)')
-	g.println('mov DWORD [rbp-$n.hex2()],$initial_val (Allocate var `$name`)')
+	g.cgen.allocate_var(g, name, size, initial_val)
 }
 
 fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
