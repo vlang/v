@@ -1066,17 +1066,17 @@ pub fn (mut t Table) generic_struct_insts_to_concrete() {
 			}
 			mut parent_info := parent.info as Struct
 			mut fields := parent_info.fields.clone()
-			if parent_info.generic_types.len == info.generic_types.len {
+			if parent_info.generic_types.len == info.concrete_types.len {
 				generic_names := parent_info.generic_types.map(t.get_type_symbol(it).name)
 				for i in 0 .. fields.len {
 					if t_typ := t.resolve_generic_to_concrete(fields[i].typ, generic_names,
-						info.generic_types)
+						info.concrete_types)
 					{
 						fields[i].typ = t_typ
 					}
 				}
 				parent_info.generic_types = []
-				parent_info.concrete_types = info.generic_types.clone()
+				parent_info.concrete_types = info.concrete_types.clone()
 				parent_info.fields = fields
 				parent_info.parent_type = new_type(info.parent_idx).set_flag(.generic)
 				typ.is_public = true

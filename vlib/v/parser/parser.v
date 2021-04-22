@@ -1512,6 +1512,7 @@ fn (mut p Parser) parse_attr() ast.Attr {
 	mut arg := ''
 	is_string := p.tok.kind == .string
 	mut is_string_arg := false
+	mut is_number_arg := false
 	if is_string {
 		name = p.tok.lit
 		p.next()
@@ -1532,6 +1533,10 @@ fn (mut p Parser) parse_attr() ast.Attr {
 			// `name: arg`
 			if p.tok.kind == .name {
 				arg = p.check_name()
+			} else if p.tok.kind == .number {
+				arg = p.tok.lit
+				is_number_arg = true
+				p.next()
 			} else if p.tok.kind == .string { // `name: 'arg'`
 				arg = p.tok.lit
 				is_string_arg = true
@@ -1545,6 +1550,7 @@ fn (mut p Parser) parse_attr() ast.Attr {
 		is_comptime_define: is_comptime_define
 		arg: arg
 		is_string_arg: is_string_arg
+		is_number_arg: is_number_arg
 		pos: apos.extend(p.tok.position())
 	}
 }
