@@ -2145,21 +2145,36 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			g.expr(assign_stmt.right[0])
 			g.writeln(';')
 			for i, lx in assign_stmt.left {
+				mut is_auto_heap := false
 				if lx is ast.Ident {
 					if lx.kind == .blank_ident {
 						continue
+					}
+					if lx.obj is ast.Var {
+						is_auto_heap = lx.obj.is_auto_heap
 					}
 				}
 				styp := g.typ(assign_stmt.left_types[i])
 				if assign_stmt.op == .decl_assign {
 					g.write('$styp ')
+					if is_auto_heap {
+						g.write('*')
+					}
 				}
 				g.expr(lx)
 				if is_opt {
 					mr_base_styp := g.base_type(return_type)
-					g.writeln(' = (*($mr_base_styp*)${mr_var_name}.data).arg$i;')
+					if is_auto_heap {
+						g.writeln(' = HEAP($mr_base_styp, *($mr_base_styp*)${mr_var_name}.data).arg$i);')
+					} else {						
+						g.writeln(' = (*($mr_base_styp*)${mr_var_name}.data).arg$i;')
+					}
 				} else {
-					g.writeln(' = ${mr_var_name}.arg$i;')
+					if is_auto_heap {
+						g.writeln(' = HEAP($styp, ${mr_var_name}.arg$i);')
+					} else {						
+						g.writeln(' = ${mr_var_name}.arg$i;')
+					}
 				}
 			}
 			return
@@ -2256,6 +2271,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	}
 	// `a := 1` | `a,b := 1,2`
 	for i, left in assign_stmt.left {
+		mut is_auto_heap := false
 		mut var_type := assign_stmt.left_types[i]
 		mut val_type := assign_stmt.right_types[i]
 		val := assign_stmt.right[i]
@@ -2280,6 +2296,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				if share == .atomic_t {
 					var_type = var_type.set_flag(.atomic_f)
 				}
+			}
+			if left.obj is ast.Var {
+				is_auto_heap = left.obj.is_auto_heap
 			}
 		}
 		styp := g.typ(var_type)
@@ -2432,6 +2451,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 						g.out.write_string(util.tabs(g.indent - g.inside_ternary))
 					}
 					g.write('$styp ')
+					if is_auto_heap {
+						g.write('*')
+					}
 				}
 				if left is ast.Ident || left is ast.SelectorExpr {
 					g.prevent_sum_type_unwrapping_once = true
@@ -2511,10 +2533,16 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 							g.write('{0}')
 						}
 					} else {
+						if is_auto_heap {
+							g.write('HEAP($styp, ')
+						}
 						if val.is_auto_deref_var() {
 							g.write('*')
 						}
 						g.expr(val)
+						if is_auto_heap {
+							g.write(')')
+						}
 					}
 				} else {
 					if assign_stmt.has_cross_var {
