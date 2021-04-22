@@ -2,6 +2,7 @@
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module checker
 
+import math
 import os
 import strings
 import time
@@ -4463,6 +4464,36 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	if node.expr_type == ast.byte_type && to_type_sym.kind == .string {
 		c.error('can not cast type `byte` to string, use `${node.expr.str()}.str()` instead.',
 			node.pos)
+	}
+	if from_type_sym.kind == .int_literal {
+		if node.expr is ast.IntegerLiteral {
+			max, mut do_check_uint_overflow := match to_type_sym.kind {
+				.byte, .u8 { u64(math.max_u8), true }
+				.u16 { u64(math.max_u16), true }
+				.u32 { u64(math.max_u32), true }
+				.u64 { math.max_u64, true }
+				else { u64(0), false }
+			}
+			val := node.expr.val.replace('_', '').to_lower()
+			val_abs := if val[0] == `-` { val[1..] } else { val }
+
+			max_str := if val_abs.starts_with('0x') {
+				'0x$max.hex()'
+			} else if val_abs.starts_with('0b') || val_abs.starts_with('0o') {
+				// TODO: skip 0b and 0o representation because convert method like hex() for oct and bin don't exist
+				do_check_uint_overflow = false
+				''
+			} else {
+				max.str()
+			}
+			// compare by string because val may overflows. using bignum is inefficient
+			gt_as_num := fn (a string, b string) bool {
+				return a.len > b.len || (a.len == b.len && a > b)
+			}
+			if do_check_uint_overflow && (val[0] == `-` || gt_as_num(val_abs, max_str)) {
+				c.error('constant `$node.expr.val` overflows $to_type_sym.name', node.pos)
+			}
+		}
 	}
 	if to_type_sym.kind == .sum_type {
 		if node.expr_type in [ast.int_literal_type, ast.float_literal_type] {

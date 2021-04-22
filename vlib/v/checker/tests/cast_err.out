@@ -20,8 +20,64 @@ vlib/v/checker/tests/cast_err.vv:5:6: error: cannot cast to bool - use e.g. `som
     6 | }
     7 |
 vlib/v/checker/tests/cast_err.vv:9:6: error: unknown type `Foo`
-    7 | 
+    7 |
     8 | fn unknown() {
     9 |     _ = Foo(3)
       |         ~~~~~~
    10 | }
+   11 |
+vlib/v/checker/tests/cast_err.vv:14:6: error: constant `1000` overflows byte
+   12 | fn int_literal_overflow() {
+   13 |     _ = byte(100)
+   14 |     _ = byte(1000)
+      |         ~~~~~~~~~~
+   15 |     _ = byte(0xff)
+   16 |     _ = byte(0x100)
+vlib/v/checker/tests/cast_err.vv:16:6: error: constant `0x100` overflows byte
+   14 |     _ = byte(1000)
+   15 |     _ = byte(0xff)
+   16 |     _ = byte(0x100)
+      |         ~~~~~~~~~~~
+   17 |     _ = byte(-1)
+   18 |     _ = u16(10_000)
+vlib/v/checker/tests/cast_err.vv:17:6: error: constant `-1` overflows byte
+   15 |     _ = byte(0xff)
+   16 |     _ = byte(0x100)
+   17 |     _ = byte(-1)
+      |         ~~~~~~~~
+   18 |     _ = u16(10_000)
+   19 |     _ = u16(100_000)
+vlib/v/checker/tests/cast_err.vv:19:6: error: constant `100000` overflows u16
+   17 |     _ = byte(-1)
+   18 |     _ = u16(10_000)
+   19 |     _ = u16(100_000)
+      |         ~~~~~~~~~~~~
+   20 |     _ = u16(-1)
+   21 |     _ = u32(1_000_000_000)
+vlib/v/checker/tests/cast_err.vv:20:6: error: constant `-1` overflows u16
+   18 |     _ = u16(10_000)
+   19 |     _ = u16(100_000)
+   20 |     _ = u16(-1)
+      |         ~~~~~~~
+   21 |     _ = u32(1_000_000_000)
+   22 |     _ = u32(10_000_000_000)
+vlib/v/checker/tests/cast_err.vv:22:6: error: constant `10000000000` overflows u32
+   20 |     _ = u16(-1)
+   21 |     _ = u32(1_000_000_000)
+   22 |     _ = u32(10_000_000_000)
+      |         ~~~~~~~~~~~~~~~~~~~
+   23 |     _ = u32(-1)
+   24 |     _ = u64(1_000_000_000_000_000_000)
+vlib/v/checker/tests/cast_err.vv:23:6: error: constant `-1` overflows u32
+   21 |     _ = u32(1_000_000_000)
+   22 |     _ = u32(10_000_000_000)
+   23 |     _ = u32(-1)
+      |         ~~~~~~~
+   24 |     _ = u64(1_000_000_000_000_000_000)
+   25 |     _ = u64(10_000_000_000_000_000_000)
+vlib/v/checker/tests/cast_err.vv:26:6: error: constant `-1` overflows u64
+   24 |     _ = u64(1_000_000_000_000_000_000)
+   25 |     _ = u64(10_000_000_000_000_000_000)
+   26 |     _ = u64(-1)
+      |         ~~~~~~~
+   27 | }
