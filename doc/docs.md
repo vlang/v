@@ -3548,7 +3548,7 @@ Module {
 	name: 'my_module'
 	description: 'This is my_module's description.'
 	version: '0.0.1'
-	license: ''
+	license: 'MIT'
 	repo_url: 'https://github.com/Example/ExampleRepo'
 	dependencies: []
 }
