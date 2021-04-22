@@ -439,30 +439,14 @@ pub fn (mut p Parser) parse_block_no_scope(is_top_level bool) []ast.Stmt {
 	return stmts
 }
 
-/*
-fn (mut p Parser) next_with_comment() {
-	p.tok = p.peek_tok
-	p.peek_tok = p.scanner.scan()
-}
-*/
 fn (mut p Parser) next() {
 	p.prev_tok = p.tok
 	p.tok = p.peek_tok
 	p.peek_tok = p.scanner.scan()
-	/*
-	if p.tok.kind==.comment {
-		p.comments << ast.Comment{text:p.tok.lit, line_nr:p.tok.line_nr}
-		p.next()
-	}
-	*/
 }
 
 fn (mut p Parser) check(expected token.Kind) {
 	p.name_error = false
-	// for p.tok.kind in [.line_comment, .mline_comment] {
-	// p.next()
-	// }
-
 	if _likely_(p.tok.kind == expected) {
 		p.next()
 	} else {
@@ -1469,7 +1453,7 @@ fn (mut p Parser) attributes() {
 			p.error_with_pos('duplicate attribute `$attr.name`', start_pos.extend(p.prev_tok.position()))
 			return
 		}
-		if attr.is_comptime_define {
+		if attr.kind == .comptime_define {
 			if has_ctdefine {
 				p.error_with_pos('only one `[if flag]` may be applied at a time `$attr.name`',
 					start_pos.extend(p.prev_tok.position()))
@@ -1496,61 +1480,55 @@ fn (mut p Parser) attributes() {
 }
 
 fn (mut p Parser) parse_attr() ast.Attr {
+	mut kind := ast.AttrKind.plain
 	apos := p.prev_tok.position()
 	if p.tok.kind == .key_unsafe {
 		p.next()
 		return ast.Attr{
 			name: 'unsafe'
+			kind: kind
 			pos: apos.extend(p.tok.position())
 		}
 	}
-	is_comptime_define := p.tok.kind == .key_if
-	if is_comptime_define {
-		p.next()
-	}
 	mut name := ''
+	mut has_arg := false
 	mut arg := ''
-	is_string := p.tok.kind == .string
-	mut is_string_arg := false
-	mut is_number_arg := false
-	if is_string {
+	if p.tok.kind == .key_if {
+		kind = .comptime_define
+		p.next()
+		p.check(.name)
+		name = p.prev_tok.lit
+	} else if p.tok.kind == .string {
 		name = p.tok.lit
+		kind = .string
 		p.next()
 	} else {
 		name = p.check_name()
-		if name == 'unsafe_fn' {
-			p.error_with_pos('[unsafe_fn] is obsolete, use `[unsafe]` instead', apos.extend(p.tok.position()))
-			return ast.Attr{}
-		} else if name == 'trusted_fn' {
-			p.error_with_pos('[trusted_fn] is obsolete, use `[trusted]` instead', apos.extend(p.tok.position()))
-			return ast.Attr{}
-		} else if name == 'ref_only' {
-			p.warn_with_pos('[ref_only] is deprecated, use [heap] instead', apos.extend(p.tok.position()))
-			name = 'heap'
-		}
 		if p.tok.kind == .colon {
+			has_arg = true
 			p.next()
 			// `name: arg`
 			if p.tok.kind == .name {
+				kind = .plain
 				arg = p.check_name()
 			} else if p.tok.kind == .number {
+				kind = .number
 				arg = p.tok.lit
-				is_number_arg = true
 				p.next()
 			} else if p.tok.kind == .string { // `name: 'arg'`
+				kind = .string
 				arg = p.tok.lit
-				is_string_arg = true
 				p.next()
+			} else {
+				p.error('unexpected $p.tok, an argument is expected after `:`')
 			}
 		}
 	}
 	return ast.Attr{
 		name: name
-		is_string: is_string
-		is_comptime_define: is_comptime_define
+		has_arg: has_arg
 		arg: arg
-		is_string_arg: is_string_arg
-		is_number_arg: is_number_arg
+		kind: kind
 		pos: apos.extend(p.tok.position())
 	}
 }

@@ -177,7 +177,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	is_manualfree := p.is_manualfree || p.attrs.contains('manualfree')
 	is_deprecated := p.attrs.contains('deprecated')
 	is_direct_arr := p.attrs.contains('direct_array_access')
-	is_conditional, conditional_ctdefine := p.attrs.has_comptime_define()
+	conditional_ctdefine := p.attrs.find_comptime_define() or { '' }
 	mut is_unsafe := p.attrs.contains('unsafe')
 	is_keep_alive := p.attrs.contains('keep_args_alive')
 	is_pub := p.tok.kind == .key_pub
@@ -349,7 +349,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			is_unsafe: is_unsafe
 			is_main: is_main
 			is_test: is_test
-			is_conditional: is_conditional
+			is_conditional: conditional_ctdefine != ''
 			is_keep_alive: is_keep_alive
 			ctdefine: conditional_ctdefine
 			no_body: no_body
@@ -378,7 +378,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			is_unsafe: is_unsafe
 			is_main: is_main
 			is_test: is_test
-			is_conditional: is_conditional
+			is_conditional: conditional_ctdefine != ''
 			is_keep_alive: is_keep_alive
 			ctdefine: conditional_ctdefine
 			no_body: no_body
@@ -421,7 +421,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		is_variadic: is_variadic
 		is_main: is_main
 		is_test: is_test
-		is_conditional: is_conditional
+		is_conditional: conditional_ctdefine != ''
 		is_keep_alive: is_keep_alive
 		receiver: ast.StructField{
 			name: rec.name
