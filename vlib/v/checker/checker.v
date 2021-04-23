@@ -1434,9 +1434,18 @@ fn (mut c Checker) check_return_generics_struct(return_type ast.Type, mut call_e
 	rts := c.table.get_type_symbol(return_type)
 	if rts.info is ast.Struct {
 		if rts.info.generic_types.len > 0 {
-			gts := c.table.get_type_symbol(call_expr.generic_types[0])
-			nrt := '$rts.name<$gts.name>'
-			c_nrt := '${rts.name}_T_$gts.name'
+			mut nrt := '$rts.name<'
+			mut c_nrt := '${rts.name}_T_'
+			for i in 0 .. call_expr.generic_types.len {
+				gts := c.table.get_type_symbol(call_expr.generic_types[i])
+				nrt += gts.name
+				c_nrt += gts.name
+				if i != call_expr.generic_types.len - 1 {
+					nrt += ','
+					c_nrt += '_'
+				}
+			}
+			nrt += '>'
 			idx := c.table.type_idxs[nrt]
 			if idx != 0 {
 				c.ensure_type_exists(idx, call_expr.pos) or {}
