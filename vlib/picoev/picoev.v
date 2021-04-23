@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module picoev
 
+import net
 import picohttpparser
 
 #include <errno.h>
@@ -34,57 +35,13 @@ mut:
 	sin_addr   C.in_addr
 }
 
-struct C.sockaddr_storage {
-}
+struct C.sockaddr_storage {}
 
 fn C.atoi() int
 
 fn C.strncasecmp(s1 charptr, s2 charptr, n size_t) int
 
-fn C.socket(domain int, typ int, protocol int) int
-
-// fn C.setsockopt(sockfd int, level int, optname int, optval voidptr, optlen C.socklen_t) int
-fn C.setsockopt(sockfd int, level int, optname int, optval voidptr, optlen u32) int
-
-fn C.htonl(hostlong u32) int
-
-fn C.htons(netshort u16) int
-
-// fn C.bind(sockfd int, addr &C.sockaddr, addrlen C.socklen_t) int
-// use voidptr for arg 2 becasue sockaddr is a generic descriptor for any kind of socket operation,
-// it can also take sockaddr_in depending on the type of socket used in arg 1
-fn C.bind(sockfd int, addr voidptr, addrlen u32) int
-
-fn C.listen(sockfd int, backlog int) int
-
-// fn C.accept(sockfd int, addr &C.sockaddr, addrlen &C.socklen_t) int
-fn C.accept(sockfd int, addr &C.sockaddr, addrlen &u32) int
-
-fn C.getaddrinfo(node charptr, service charptr, hints &C.addrinfo, res &&C.addrinfo) int
-
-// fn C.connect(sockfd int, addr &C.sockaddr, addrlen C.socklen_t) int
-fn C.connect(sockfd int, addr &C.sockaddr, addrlen u32) int
-
-// fn C.send(sockfd int, buf voidptr, len size_t, flags int) size_t
-fn C.send(sockfd int, buf voidptr, len size_t, flags int) int
-
-// fn C.recv(sockfd int, buf voidptr, len size_t, flags int) size_t
-fn C.recv(sockfd int, buf voidptr, len size_t, flags int) int
-
-// fn C.read() int
-fn C.shutdown(socket int, how int) int
-
-// fn C.close() int
-fn C.ntohs(netshort u16) int
-
-// fn C.getsockname(sockfd int, addr &C.sockaddr, addrlen &C.socklen_t) int
-fn C.getsockname(sockfd int, addr &C.sockaddr, addrlen &u32) int
-
-fn C.fcntl(fd int, cmd int, arg ...voidptr) int
-
-// fn C.write() int
-struct C.picoev_loop {
-}
+struct C.picoev_loop {}
 
 struct Picoev {
 	loop &C.picoev_loop
@@ -141,13 +98,6 @@ fn close_conn(loop &C.picoev_loop, fd int) {
 fn req_read(fd int, b byteptr, max_len int, idx int) int {
 	unsafe {
 		return C.read(fd, b + idx, max_len - idx)
-	}
-}
-
-[inline]
-fn mysubstr(s byteptr, from int, len int) string {
-	unsafe {
-		return tos(s + from, len)
 	}
 }
 
@@ -228,7 +178,7 @@ fn accept_callback(loop &C.picoev_loop, fd int, events int, cb_arg voidptr) {
 }
 
 pub fn new(port int, cb voidptr) &Picoev {
-	fd := C.socket(C.AF_INET, C.SOCK_STREAM, 0)
+	fd := C.socket(net.SocketFamily.inet, net.SocketType.tcp, 0)
 	assert fd != -1
 	flag := 1
 	assert C.setsockopt(fd, C.SOL_SOCKET, C.SO_REUSEADDR, &flag, sizeof(int)) == 0
