@@ -43,7 +43,8 @@ pub fn (mut c TcpConn) write_ptr(b &byte, len int) ?int {
 			unsafe { b.vstring_with_len(len) })
 	}
 	$if trace_tcp_data_write ? {
-		eprintln('>>> TcpConn.write_ptr | data.len: ${len:6} | data: ' + b.vstring_with_len(len))
+		eprintln('>>> TcpConn.write_ptr | data.len: ${len:6} | data: ' +
+			unsafe { b.vstring_with_len(len) })
 	}
 	unsafe {
 		mut ptr_base := &byte(b)
@@ -94,7 +95,7 @@ pub fn (mut c TcpConn) read_ptr(buf_ptr &byte, len int) ?int {
 	if res > 0 {
 		$if trace_tcp_data_read ? {
 			eprintln('<<< TcpConn.read_ptr  | 1 data.len: ${res:6} | data: ' +
-				buf_ptr.vstring_with_len(res))
+				unsafe { buf_ptr.vstring_with_len(res) })
 		}
 		return res
 	}
@@ -108,7 +109,7 @@ pub fn (mut c TcpConn) read_ptr(buf_ptr &byte, len int) ?int {
 		$if trace_tcp_data_read ? {
 			if res > 0 {
 				eprintln('<<< TcpConn.read_ptr  | 2 data.len: ${res:6} | data: ' +
-					buf_ptr.vstring_with_len(res))
+					unsafe { buf_ptr.vstring_with_len(res) })
 			}
 		}
 		return socket_error(res)
