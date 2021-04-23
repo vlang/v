@@ -9,7 +9,8 @@ const (
 
 pub struct TcpConn {
 pub mut:
-	sock TcpSocket
+	sock                 TcpSocket
+	max_write_chunk_size int = 4096
 mut:
 	write_deadline time.Time
 	read_deadline  time.Time
@@ -49,10 +50,13 @@ pub fn (mut c TcpConn) write_ptr(b &byte, len int) ?int {
 		mut total_sent := 0
 		for total_sent < len {
 			ptr := ptr_base + total_sent
-			remaining := len - total_sent
-			mut sent := C.send(c.sock.handle, ptr, remaining, msg_nosignal)
+			mut chunk_size := len - total_sent
+			if chunk_size > c.max_write_chunk_size {
+				chunk_size = c.max_write_chunk_size
+			}
+			mut sent := C.send(c.sock.handle, ptr, chunk_size, msg_nosignal)
 			$if trace_tcp_data_write ? {
-				eprintln('>>> TcpConn.write_ptr | data chunk, total_sent: ${total_sent:6}, remaining: ${remaining:6}, sent: ${sent:6}, ptr: ${ptr_str(ptr)}')
+				eprintln('>>> TcpConn.write_ptr | data chunk, total_sent: ${total_sent:6}, chunk_size: ${chunk_size:6}, sent: ${sent:6}, ptr: ${ptr_str(ptr)}')
 			}
 			if sent < 0 {
 				code := error_code()
@@ -303,7 +307,7 @@ fn new_tcp_socket() ?TcpSocket {
 		socket_error(C.fcntl(sockfd, C.F_SETFL, C.fcntl(sockfd, C.F_GETFL) | C.O_NONBLOCK)) ?
 	}
 	$if trace_tcp ? {
-		eprintln('    new_tcp_socket | s.handle: $s.handle')
+		eprintln('    new_tcp_socket | s.handle: ${s.handle:6}')
 	}
 	return s
 }
@@ -321,7 +325,7 @@ fn tcp_socket_from_handle(sockfd int) ?TcpSocket {
 		socket_error(C.fcntl(sockfd, C.F_SETFL, C.fcntl(sockfd, C.F_GETFL) | C.O_NONBLOCK)) ?
 	}
 	$if trace_tcp ? {
-		eprintln('    tcp_socket_from_handle | s.handle: $s.handle')
+		eprintln('    tcp_socket_from_handle | s.handle: ${s.handle:6}')
 	}
 	return s
 }
