@@ -5826,18 +5826,22 @@ pub fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) ast.Type {
 	return typ
 }
 
-pub fn mark_as_referenced(mut node ast.Expr) {
+pub fn (mut c Checker) mark_as_referenced(mut node ast.Expr) {
 	match mut node {
 		ast.Ident {
 			if mut node.obj is ast.Var {
-				node.obj.is_auto_heap = true
+				if node.obj.is_stack_ref {
+					c.error('`$node.name` is borrowed and cannot be referenced since it might be on stack', node.pos)
+				} else {
+					node.obj.is_auto_heap = true
+				}
 			}
 		}
 		ast.SelectorExpr {
-			mark_as_referenced(mut &node.expr)
+			c.mark_as_referenced(mut &node.expr)
 		}
 		ast.IndexExpr {
-			mark_as_referenced(mut &node.left)
+			c.mark_as_referenced(mut &node.left)
 		}
 		else {}
 	}
@@ -5884,10 +5888,10 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 				}
 			}
 		}
-		mark_as_referenced(mut &node.right)
+		c.mark_as_referenced(mut &node.right)
 		return right_type.to_ptr()
 	} else if node.op == .amp && node.right !is ast.CastExpr {
-		mark_as_referenced(mut &node.right)
+		c.mark_as_referenced(mut &node.right)
 		return right_type.to_ptr()
 	}
 	if node.op == .mul {

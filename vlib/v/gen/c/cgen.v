@@ -2166,13 +2166,13 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					mr_base_styp := g.base_type(return_type)
 					if is_auto_heap {
 						g.writeln(' = HEAP($mr_base_styp, *($mr_base_styp*)${mr_var_name}.data).arg$i);')
-					} else {						
+					} else {
 						g.writeln(' = (*($mr_base_styp*)${mr_var_name}.data).arg$i;')
 					}
 				} else {
 					if is_auto_heap {
 						g.writeln(' = HEAP($styp, ${mr_var_name}.arg$i);')
-					} else {						
+					} else {
 						g.writeln(' = ${mr_var_name}.arg$i;')
 					}
 				}
@@ -4401,7 +4401,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 		}
 		scope := g.file.scope.innermost(node.pos.pos)
 		if v := scope.find_var(node.name) {
-			is_auto_heap = v.is_auto_heap && !g.is_assign_lhs
+			is_auto_heap = v.is_auto_heap && (!g.is_assign_lhs || g.assign_op != .decl_assign)
 			if is_auto_heap {
 				g.write('(*(')
 			}

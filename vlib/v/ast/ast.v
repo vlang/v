@@ -495,8 +495,9 @@ pub mut:
 	// (for setting the position after the or block for autofree)
 	is_or        bool // `x := foo() or { ... }`
 	is_tmp       bool // for tmp for loop vars, so that autofree can skip them
-	is_auto_heap bool // var is value whoes address goes out of scope
-	is_heap_ref  bool // var is *known* to be pointer to heap memory
+	is_auto_heap bool // value whoes address goes out of scope
+	is_heap_ref  bool // *known* to be pointer to heap memory (ptr to [heap] struct)
+	is_stack_ref bool // may be pointer to stack value (`mut` or `&` arg and not [heap] struct)
 }
 
 // used for smartcasting only

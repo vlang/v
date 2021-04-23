@@ -7,6 +7,7 @@ import v.cflag
 import v.token
 import v.util
 
+[heap]
 pub struct Table {
 pub mut:
 	type_symbols     []TypeSymbol
