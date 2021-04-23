@@ -1433,7 +1433,7 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, call_exp
 fn (mut c Checker) check_return_generics_struct(return_type ast.Type, mut call_expr ast.CallExpr, generic_types []ast.Type) {
 	rts := c.table.get_type_symbol(return_type)
 	if rts.info is ast.Struct {
-		if rts.info.generic_types.len > 0 {
+		if rts.info.is_generic {
 			mut nrt := '$rts.name<'
 			mut c_nrt := '${rts.name}_T_'
 			for i in 0 .. call_expr.generic_types.len {
@@ -1462,7 +1462,7 @@ fn (mut c Checker) check_return_generics_struct(return_type ast.Type, mut call_e
 						}
 					}
 					mut info := rts.info
-					info.generic_types = []
+					info.is_generic = false
 					info.concrete_types = generic_types.clone()
 					info.parent_type = return_type
 					info.fields = fields

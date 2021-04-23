@@ -299,6 +299,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			is_typedef: attrs.contains('typedef')
 			is_union: is_union
 			is_heap: attrs.contains('heap')
+			is_generic: generic_types.len > 0
 			generic_types: generic_types
 			attrs: attrs
 		}
