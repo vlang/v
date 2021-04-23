@@ -6481,12 +6481,9 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		c.main_fn_decl_node = node
 	}
 	if node.return_type != ast.void_type {
-		for attr in node.attrs {
-			if attr.is_comptime_define {
-				c.error('only functions that do NOT return values can have `[if $attr.name]` tags',
-					node.pos)
-				break
-			}
+		if ct_name := node.attrs.find_comptime_define() {
+			c.error('only functions that do NOT return values can have `[if $ct_name]` tags',
+				node.pos)
 		}
 	}
 	if node.is_method {
