@@ -1056,8 +1056,7 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 
 // generic struct instantiations to concrete types
 pub fn (mut t Table) generic_struct_insts_to_concrete() {
-	for idx, _ in t.type_symbols {
-		mut typ := unsafe { &t.type_symbols[idx] }
+	for mut typ in t.type_symbols {
 		if typ.kind == .generic_struct_inst {
 			info := typ.info as GenericStructInst
 			parent := t.type_symbols[info.parent_idx]
