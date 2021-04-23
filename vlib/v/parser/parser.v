@@ -1947,7 +1947,14 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		opt := if p.tok.lit == 'r' { '`r` (raw string)' } else { '`c` (c string)' }
 		return p.error('cannot use $opt with `byte` and `rune`')
 	}
-	known_var := p.mark_var_as_used(p.tok.lit)
+	// Make sure that the var is not marked as used in assignments: `x = 1`, `x += 2` etc
+	// but only when it's actually used (e.g. `println(x)`)
+	known_var := if p.peek_tok.kind.is_assign() {
+		p.scope.known_var(p.tok.lit)
+	} else {
+		p.mark_var_as_used(p.tok.lit)
+	}
+	// Handle modules
 	mut is_mod_cast := false
 	if p.peek_tok.kind == .dot && !known_var && (language != .v || p.known_import(p.tok.lit)
 		|| p.mod.all_after_last('.') == p.tok.lit) {
@@ -2846,6 +2853,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 		if has_expr {
 			p.next() // =
 		}
+		typ_pos := p.tok.position()
 		typ := p.parse_type()
 		if p.tok.kind == .assign {
 			p.error('global assign must have the type around the value, use `name = type(value)`')
@@ -2866,6 +2874,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 			has_expr: has_expr
 			expr: expr
 			pos: pos
+			typ_pos: typ_pos
 			typ: typ
 			comments: comments
 		}

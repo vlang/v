@@ -1033,7 +1033,7 @@ fn (mut g Gen) autofree_call_postgen(node_pos int) {
 					// this means this tmp expr var has already been freed
 					continue
 				}
-				obj.is_used = true
+				obj.is_used = true // TODO bug? sets all vars is_used to true
 				g.autofree_variable(obj)
 				// g.nr_vars_to_free--
 			}

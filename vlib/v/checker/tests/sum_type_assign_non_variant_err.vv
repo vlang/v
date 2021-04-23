@@ -9,4 +9,5 @@ struct AnotherThing {}
 fn main() {
     mut w := Stmt(AnotherThing{})
 	w = IfExpr{}
+	_ = w
 }

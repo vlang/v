@@ -11,10 +11,11 @@ vlib/v/checker/tests/enum_as_int_err.vv:10:8: error: cannot assign to `foo`: exp
    10 |     foo = Color.red
       |           ~~~~~~~~~
    11 |     println(color == 0)
-   12 | }
+   12 |     _ = foo
 vlib/v/checker/tests/enum_as_int_err.vv:11:10: error: infix expr: cannot use `int literal` (right expression) as `Color`
     9 |     color = 1
    10 |     foo = Color.red
    11 |     println(color == 0)
       |             ~~~~~~~~~~
-   12 | }
+   12 |     _ = foo
+   13 | }

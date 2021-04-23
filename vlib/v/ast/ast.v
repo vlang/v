@@ -521,6 +521,7 @@ pub:
 	expr     Expr
 	has_expr bool
 	pos      token.Position
+	typ_pos  token.Position
 pub mut:
 	typ      Type
 	comments []Comment

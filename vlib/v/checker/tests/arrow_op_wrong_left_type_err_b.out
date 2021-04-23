@@ -3,4 +3,5 @@ vlib/v/checker/tests/arrow_op_wrong_left_type_err_b.vv:4:8: error: cannot assign
     3 |     mut obj := 9
     4 |     obj = <-ch
       |           ~~
-    5 | }
+    5 |     _ = obj
+    6 | }
