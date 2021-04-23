@@ -185,11 +185,13 @@ fn new_udp_socket(local_port int) ?&UdpSocket {
 		handle: sockfd
 	}
 	s.set_option_bool(.reuse_addr, true) ?
-	$if windows {
-		t := u32(1) // true
-		socket_error(C.ioctlsocket(sockfd, fionbio, &t)) ?
-	} $else {
-		socket_error(C.fcntl(sockfd, C.F_SETFD, C.O_NONBLOCK)) ?
+	$if !net_blocking_sockets ? {
+		$if windows {
+			t := u32(1) // true
+			socket_error(C.ioctlsocket(sockfd, fionbio, &t)) ?
+		} $else {
+			socket_error(C.fcntl(sockfd, C.F_SETFD, C.O_NONBLOCK)) ?
+		}
 	}
 	// In UDP we always have to bind to a port
 	validate_port(local_port) ?

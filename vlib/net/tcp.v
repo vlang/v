@@ -298,16 +298,18 @@ fn new_tcp_socket() ?TcpSocket {
 	mut s := TcpSocket{
 		handle: sockfd
 	}
-	// s.set_option_bool(.reuse_addr, true)?
-	s.set_option_int(.reuse_addr, 1) ?
-	$if windows {
-		t := u32(1) // true
-		socket_error(C.ioctlsocket(sockfd, fionbio, &t)) ?
-	} $else {
-		socket_error(C.fcntl(sockfd, C.F_SETFL, C.fcntl(sockfd, C.F_GETFL) | C.O_NONBLOCK)) ?
-	}
 	$if trace_tcp ? {
 		eprintln('    new_tcp_socket | s.handle: ${s.handle:6}')
+	}
+	// s.set_option_bool(.reuse_addr, true)?
+	s.set_option_int(.reuse_addr, 1) ?
+	$if !net_blocking_sockets ? {
+		$if windows {
+			t := u32(1) // true
+			socket_error(C.ioctlsocket(sockfd, fionbio, &t)) ?
+		} $else {
+			socket_error(C.fcntl(sockfd, C.F_SETFL, C.fcntl(sockfd, C.F_GETFL) | C.O_NONBLOCK)) ?
+		}
 	}
 	return s
 }
@@ -316,16 +318,18 @@ fn tcp_socket_from_handle(sockfd int) ?TcpSocket {
 	mut s := TcpSocket{
 		handle: sockfd
 	}
-	// s.set_option_bool(.reuse_addr, true)?
-	s.set_option_int(.reuse_addr, 1) ?
-	$if windows {
-		t := u32(1) // true
-		socket_error(C.ioctlsocket(sockfd, fionbio, &t)) ?
-	} $else {
-		socket_error(C.fcntl(sockfd, C.F_SETFL, C.fcntl(sockfd, C.F_GETFL) | C.O_NONBLOCK)) ?
-	}
 	$if trace_tcp ? {
 		eprintln('    tcp_socket_from_handle | s.handle: ${s.handle:6}')
+	}
+	// s.set_option_bool(.reuse_addr, true)?
+	s.set_option_int(.reuse_addr, 1) ?
+	$if !net_blocking_sockets ? {
+		$if windows {
+			t := u32(1) // true
+			socket_error(C.ioctlsocket(sockfd, fionbio, &t)) ?
+		} $else {
+			socket_error(C.fcntl(sockfd, C.F_SETFL, C.fcntl(sockfd, C.F_GETFL) | C.O_NONBLOCK)) ?
+		}
 	}
 	return s
 }
