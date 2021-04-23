@@ -3834,6 +3834,10 @@ fn (mut c Checker) global_decl(node ast.GlobalDecl) {
 		if field.name in c.global_names {
 			c.error('duplicate global `$field.name`', field.pos)
 		}
+		sym := c.table.get_type_symbol(field.typ)
+		if sym.kind == .placeholder {
+			c.error('unknown type `$sym.name`', field.typ_pos)
+		}
 		c.global_names << field.name
 	}
 }

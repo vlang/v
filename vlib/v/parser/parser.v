@@ -2846,6 +2846,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 		if has_expr {
 			p.next() // =
 		}
+		typ_pos := p.tok.position()
 		typ := p.parse_type()
 		if p.tok.kind == .assign {
 			p.error('global assign must have the type around the value, use `name = type(value)`')
@@ -2866,6 +2867,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 			has_expr: has_expr
 			expr: expr
 			pos: pos
+			typ_pos: typ_pos
 			typ: typ
 			comments: comments
 		}
