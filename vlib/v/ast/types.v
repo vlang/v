@@ -730,8 +730,8 @@ pub mut:
 // instantiation of a generic struct
 pub struct GenericStructInst {
 pub mut:
-	parent_idx    int // idx of the base generic struct
-	generic_types []Type
+	parent_idx     int    // idx of the base generic struct
+	concrete_types []Type // concrete types, e.g. <int, string>
 }
 
 pub struct Interface {
@@ -761,11 +761,6 @@ mut:
 pub:
 	types []Type
 }
-
-// NB: FExpr here is a actually an ast.Expr .
-// It should always be used by casting to ast.Expr, using ast.fe2ex()/ast.ex2fe()
-// That hack is needed to break an import cycle between v.ast and v.ast .
-// pub type FExpr = byteptr | voidptr
 
 /*
 pub struct Field {

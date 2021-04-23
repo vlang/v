@@ -20,7 +20,7 @@ pub fn (mut v Vec2) from(src Vec2) {
 
 // * Addition
 // + operator overload. Adds two vectors
-pub fn (v1 Vec2) +(v2 Vec2) Vec2 {
+pub fn (v1 Vec2) + (v2 Vec2) Vec2 {
 	return Vec2{v1.x + v2.x, v1.y + v2.y}
 }
 
@@ -43,7 +43,7 @@ pub fn (mut v Vec2) plus_f64(scalar f64) {
 }
 
 // * Subtraction
-pub fn (v1 Vec2) -(v2 Vec2) Vec2 {
+pub fn (v1 Vec2) - (v2 Vec2) Vec2 {
 	return Vec2{v1.x - v2.x, v1.y - v2.y}
 }
 
@@ -66,7 +66,7 @@ pub fn (mut v Vec2) subtract_f64(scalar f64) {
 }
 
 // * Multiplication
-pub fn (v1 Vec2) *(v2 Vec2) Vec2 {
+pub fn (v1 Vec2) * (v2 Vec2) Vec2 {
 	return Vec2{v1.x * v2.x, v1.y * v2.y}
 }
 

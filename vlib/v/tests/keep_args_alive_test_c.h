@@ -29,7 +29,7 @@ static void __sleep_ms(int ms) {
 #define __SLEEP_MS(n) __sleep_ms(n)
 #endif
 
-volatile static int** keep;
+static volatile int** keep;
 
 static int calc_expr_after_delay(int* a, int b, int* c) {
 	keep = malloc(1000000);

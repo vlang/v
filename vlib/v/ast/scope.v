@@ -15,6 +15,18 @@ pub mut:
 	end_pos              int
 }
 
+[unsafe]
+pub fn (s &Scope) free() {
+	unsafe {
+		s.objects.free()
+		s.struct_fields.free()
+		for child in s.children {
+			child.free()
+		}
+		s.children.free()
+	}
+}
+
 pub fn new_scope(parent &Scope, start_pos int) &Scope {
 	return &Scope{
 		parent: parent

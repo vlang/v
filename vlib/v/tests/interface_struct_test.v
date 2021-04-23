@@ -8,7 +8,7 @@ struct Boss {
 }
 
 fn (b Boss) say_hello() string {
-	return "Hello, My name is $b.name and I\'m the bawz"
+	return 'Hello, My name is $b.name and I\'m the bawz'
 }
 
 fn (b Boss) speak(msg string) {

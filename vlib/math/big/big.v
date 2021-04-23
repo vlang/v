@@ -1,8 +1,8 @@
 module big
 
 // Wrapper for https://github.com/kokke/tiny-bignum-c
-#flag -I @VROOT/thirdparty/bignum
-#flag @VROOT/thirdparty/bignum/bn.o
+#flag -I @VEXEROOT/thirdparty/bignum
+#flag @VEXEROOT/thirdparty/bignum/bn.o
 #include "bn.h"
 
 struct C.bn {

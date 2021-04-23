@@ -1,0 +1,7 @@
+vlib/v/parser/tests/generic_receiver_method_has_no_generic_names_err.vv:5:17: error: generic receiver method `poll` should add generic names, e.g. poll<T>
+    3 | }
+    4 |
+    5 | fn (q Queue<T>) poll() T {
+      |                 ~~~~
+    6 |     return q.buffer[0]
+    7 | }

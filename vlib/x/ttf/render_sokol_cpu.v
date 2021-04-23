@@ -127,7 +127,7 @@ pub fn (mut tf_skl TTF_render_Sokol) create_texture() {
 		// usage: .dynamic
 		wrap_u: .clamp_to_edge
 		wrap_v: .clamp_to_edge
-		label: &byte(0)
+		label: &char(0)
 		d3d11_texture: 0
 	}
 	// comment for dynamic

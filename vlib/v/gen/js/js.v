@@ -695,7 +695,7 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt) {
 			} else {
 				g.write(' $op ')
 				// TODO: Multiple types??
-				should_cast := 
+				should_cast :=
 					(g.table.type_kind(stmt.left_types.first()) in js.shallow_equatables)
 					&& (g.cast_stack.len <= 0 || stmt.left_types.first() != g.cast_stack.last())
 
@@ -938,7 +938,7 @@ fn (mut g JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 			if it.kind == .string {
 				g.write('Array.from(')
 				g.expr(it.cond)
-				g.write(".str.split(\'\').entries(), ([$it.key_var, $val]) => [$it.key_var, ")
+				g.write('.str.split(\'\').entries(), ([$it.key_var, $val]) => [$it.key_var, ')
 				if g.ns.name == 'builtin' {
 					g.write('new ')
 				}

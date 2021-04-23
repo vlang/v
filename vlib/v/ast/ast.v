@@ -228,10 +228,10 @@ pub mut:
 
 pub struct StructDecl {
 pub:
-	pos       token.Position
-	name      string
-	gen_types []Type
-	is_pub    bool
+	pos           token.Position
+	name          string
+	generic_types []Type
+	is_pub        bool
 	// _pos fields for vfmt
 	mut_pos      int // mut:
 	pub_pos      int // pub:
@@ -526,7 +526,8 @@ pub mut:
 
 pub struct GlobalDecl {
 pub:
-	pos token.Position
+	pos      token.Position
+	is_block bool // __global() block
 pub mut:
 	fields       []GlobalField
 	end_comments []Comment
@@ -562,6 +563,24 @@ pub mut:
 	notices          []errors.Notice   // all the checker notices in the file
 	generic_fns      []&FnDecl
 	global_labels    []string // from `asm { .globl labelname }`
+}
+
+[unsafe]
+pub fn (f &File) free() {
+	unsafe {
+		f.path.free()
+		f.path_base.free()
+		f.scope.free()
+		f.stmts.free()
+		f.imports.free()
+		f.auto_imports.free()
+		f.embedded_files.free()
+		f.imported_symbols.free()
+		f.errors.free()
+		f.warnings.free()
+		f.notices.free()
+		f.global_labels.free()
+	}
 }
 
 pub struct IdentFn {

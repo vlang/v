@@ -1,9 +1,7 @@
 struct NestedGeneric {
-	a int
 }
 
 struct Context {
-	b int
 }
 
 struct App {

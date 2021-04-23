@@ -5,7 +5,12 @@ module sync
 
 import time
 
-#flag -lpthread
+// There's no additional linking (-lpthread) needed for Android.
+// See https://stackoverflow.com/a/31277163/1904615
+$if !android {
+	#flag -lpthread
+}
+
 #include <semaphore.h>
 
 [trusted]

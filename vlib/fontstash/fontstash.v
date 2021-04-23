@@ -1,6 +1,6 @@
 module fontstash
 
-#flag -I @VROOT/thirdparty/fontstash
+#flag -I @VEXEROOT/thirdparty/fontstash
 #define FONTSTASH_IMPLEMENTATION
 $if gcboehm ? {
 	#define FONTSTASH_MALLOC GC_MALLOC

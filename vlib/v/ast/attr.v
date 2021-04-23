@@ -13,6 +13,7 @@ pub:
 	is_comptime_define bool   // [if name]
 	arg                string // [name: arg]
 	is_string_arg      bool   // [name: 'arg']
+	is_number_arg      bool   // [name: 123]
 	pos                token.Position
 }
 

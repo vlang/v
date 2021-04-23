@@ -146,7 +146,7 @@ pub fn (mut img Image) init_sokol_image() &Image {
 		num_mipmaps: 0
 		wrap_u: .clamp_to_edge
 		wrap_v: .clamp_to_edge
-		label: &byte(0)
+		label: &char(0)
 		d3d11_texture: 0
 	}
 	img_desc.data.subimage[0][0] = C.sg_range{

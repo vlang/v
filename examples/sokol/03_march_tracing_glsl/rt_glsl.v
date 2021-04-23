@@ -41,7 +41,7 @@ import time
 
 // GLSL Include and functions
 
-#flag -I @VROOT/.
+#flag -I @VMODROOT/.
 #include "rt_glsl.h" #Please use sokol-shdc to generate the necessary rt_glsl.h file from rt_glsl.glsl (see the instructions at the top of this file)
 
 fn C.rt_shader_desc(gfx.Backend) &C.sg_shader_desc

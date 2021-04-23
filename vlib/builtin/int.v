@@ -472,6 +472,7 @@ pub fn (b byte) str_escaped() string {
 		11 { r'`\v`' }
 		12 { r'`\f`' }
 		13 { r'`\r`' }
+		27 { r'`\e`' }
 		32...126 { b.ascii_str() }
 		else { '0x' + b.hex() }
 	}

@@ -1512,6 +1512,7 @@ fn (mut p Parser) parse_attr() ast.Attr {
 	mut arg := ''
 	is_string := p.tok.kind == .string
 	mut is_string_arg := false
+	mut is_number_arg := false
 	if is_string {
 		name = p.tok.lit
 		p.next()
@@ -1532,6 +1533,10 @@ fn (mut p Parser) parse_attr() ast.Attr {
 			// `name: arg`
 			if p.tok.kind == .name {
 				arg = p.check_name()
+			} else if p.tok.kind == .number {
+				arg = p.tok.lit
+				is_number_arg = true
+				p.next()
 			} else if p.tok.kind == .string { // `name: 'arg'`
 				arg = p.tok.lit
 				is_string_arg = true
@@ -1545,6 +1550,7 @@ fn (mut p Parser) parse_attr() ast.Attr {
 		is_comptime_define: is_comptime_define
 		arg: arg
 		is_string_arg: is_string_arg
+		is_number_arg: is_number_arg
 		pos: apos.extend(p.tok.position())
 	}
 }
@@ -2818,17 +2824,19 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 		return ast.GlobalDecl{}
 	}
 	start_pos := p.tok.position()
-	end_pos := p.tok.position()
 	p.check(.key_global)
-	if p.tok.kind != .lpar {
-		p.error('globals must be grouped, e.g. `__global ( a = int(1) )`')
-		return ast.GlobalDecl{}
+	is_block := p.tok.kind == .lpar
+	if is_block {
+		p.next() // (
 	}
-	p.next() // (
 	mut fields := []ast.GlobalField{}
 	mut comments := []ast.Comment{}
 	for {
 		comments = p.eat_comments({})
+		if is_block && p.tok.kind == .eof {
+			p.error('unexpected eof, expecting ´)´')
+			return ast.GlobalDecl{}
+		}
 		if p.tok.kind == .rpar {
 			break
 		}
@@ -2840,13 +2848,13 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 		}
 		typ := p.parse_type()
 		if p.tok.kind == .assign {
-			p.error('global assign must have the type around the value, use `__global ( name = type(value) )`')
+			p.error('global assign must have the type around the value, use `name = type(value)`')
 			return ast.GlobalDecl{}
 		}
 		mut expr := ast.empty_expr()
 		if has_expr {
 			if p.tok.kind != .lpar {
-				p.error('global assign must have a type and value, use `__global ( name = type(value) )` or `__global ( name type )`')
+				p.error('global assign must have a type and value, use `name = type(value)` or `name type`')
 				return ast.GlobalDecl{}
 			}
 			p.next() // (
@@ -2864,12 +2872,18 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 		fields << field
 		p.global_scope.register(field)
 		comments = []
+		if !is_block {
+			break
+		}
 	}
-	p.check(.rpar)
+	if is_block {
+		p.check(.rpar)
+	}
 	return ast.GlobalDecl{
-		pos: start_pos.extend(end_pos)
+		pos: start_pos.extend(p.prev_tok.position())
 		fields: fields
 		end_comments: comments
+		is_block: is_block
 	}
 }
 

@@ -17,7 +17,7 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 	if g.is_shared {
 		mut shared_typ := node.typ.set_flag(.shared_f)
 		shared_styp = g.typ(shared_typ)
-		g.writeln('($shared_styp*)__dup_shared_array(&($shared_styp){.val = ')
+		g.writeln('($shared_styp*)__dup_shared_array(&($shared_styp){.mtx = {0}, .val =')
 	} else if is_amp {
 		g.write('HEAP($styp, ')
 	}
@@ -189,7 +189,7 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 		}
 	}
 	g.writeln(';')
-	g.writeln('\tarray_push(&$tmp, &ti);')
+	g.writeln('\tarray_push((array*)&$tmp, &ti);')
 	g.writeln('}')
 	if !is_embed_map_filter {
 		g.stmt_path_pos << g.out.len
@@ -259,7 +259,7 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 				g.definitions.writeln('\tif (${styp}__lt(*b, *a)) { return -1; } else { return 1; }}')
 			} else {
 				g.definitions.writeln('if (*a < *b) return -1;')
-				g.definitions.writeln('if (*a > *b) return 1; return 0; }\n')
+				g.definitions.writeln('if (*a > *b) return 1; else return 0; }\n')
 			}
 		} else {
 			infix_expr := node.args[0].expr as ast.InfixExpr
@@ -302,7 +302,7 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 					}
 				}
 				g.definitions.writeln('if ($op1) return -1;')
-				g.definitions.writeln('if ($op2) return 1; return 0; }\n')
+				g.definitions.writeln('if ($op2) return 1; else return 0; }\n')
 			}
 		}
 	}
@@ -382,7 +382,7 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 		}
 	}
 	g.writeln(') {')
-	g.writeln('\t\tarray_push(&$tmp, &it); \n\t\t}')
+	g.writeln('\t\tarray_push((array*)&$tmp, &it); \n\t\t}')
 	g.writeln('}')
 	if !is_embed_map_filter {
 		g.stmt_path_pos << g.out.len

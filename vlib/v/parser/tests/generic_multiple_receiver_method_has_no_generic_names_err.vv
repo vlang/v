@@ -1,0 +1,13 @@
+struct Queue<A, B>{
+	buffer []A
+	size   B
+}
+
+fn (q Queue<A, B>) poll() A {
+	return q.buffer[0]
+}
+
+fn main() {
+	q := Queue<string, int>{}
+	println(q)
+}

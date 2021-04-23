@@ -153,7 +153,7 @@ pub fn query_desc() C.sg_desc {
 
 [inline]
 pub fn query_backend() Backend {
-	return C.sg_query_backend()
+	return Backend(C.sg_query_backend())
 }
 
 [inline]
@@ -226,27 +226,27 @@ pub fn query_pass_info(pass C.sg_pass) C.sg_pass_info {
 // get resource creation desc struct with their default values replaced
 [inline]
 pub fn query_buffer_defaults(desc &C.sg_buffer) C.sg_buffer_desc {
-	return C.sg_query_buffer_defaults(desc)
+	return C.sg_query_buffer_defaults(unsafe { &C.sg_buffer_desc(desc) })
 }
 
 [inline]
 pub fn query_image_defaults(desc &C.sg_image) C.sg_image_desc {
-	return C.sg_query_image_defaults(desc)
+	return C.sg_query_image_defaults(unsafe { &C.sg_image_desc(desc) })
 }
 
 [inline]
 pub fn query_shader_defaults(desc &C.sg_shader) C.sg_shader_desc {
-	return C.sg_query_shader_defaults(desc)
+	return C.sg_query_shader_defaults(unsafe { &C.sg_shader_desc(desc) })
 }
 
 [inline]
 pub fn query_pipeline_defaults(desc &C.sg_pipeline) C.sg_pipeline_desc {
-	return C.sg_query_pipeline_defaults(desc)
+	return C.sg_query_pipeline_defaults(unsafe { &C.sg_pipeline_desc(desc) })
 }
 
 [inline]
 pub fn query_pass_defaults(desc &C.sg_pass) C.sg_pass_desc {
-	return C.sg_query_pass_defaults(desc)
+	return C.sg_query_pass_defaults(unsafe { &C.sg_pass_desc(desc) })
 }
 
 /* rendering contexts (optional) */

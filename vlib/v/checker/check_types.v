@@ -171,7 +171,7 @@ pub fn (mut c Checker) check_matching_function_symbols(got_type_sym &ast.TypeSym
 		if exp_arg_is_ptr != got_arg_is_ptr {
 			exp_arg_pointedness := if exp_arg_is_ptr { 'a pointer' } else { 'NOT a pointer' }
 			got_arg_pointedness := if got_arg_is_ptr { 'a pointer' } else { 'NOT a pointer' }
-			c.add_error_detail("`$exp_fn.name`\'s expected fn argument: `$exp_arg.name` is $exp_arg_pointedness, but the passed fn argument: `$got_arg.name` is $got_arg_pointedness")
+			c.add_error_detail('`$exp_fn.name`\'s expected fn argument: `$exp_arg.name` is $exp_arg_pointedness, but the passed fn argument: `$got_arg.name` is $got_arg_pointedness')
 			return false
 		}
 		if !c.check_basic(got_arg.typ, exp_arg.typ) {
@@ -507,6 +507,10 @@ pub fn (mut c Checker) infer_fn_generic_types(f ast.Fn, mut call_expr ast.CallEx
 				to_set = c.table.mktyp(arg.typ)
 				if arg.expr.is_auto_deref_var() {
 					to_set = to_set.deref()
+				}
+				// resolve &T &&T ...
+				if param.typ.nr_muls() > 0 && to_set.nr_muls() > 0 {
+					to_set = to_set.set_nr_muls(0)
 				}
 				// If the parent fn param is a generic too
 				if to_set.has_flag(.generic) {

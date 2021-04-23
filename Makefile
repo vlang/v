@@ -80,11 +80,11 @@ endif
 all: latest_vc latest_tcc
 ifdef WIN32
 	$(CC) $(CFLAGS) -g -std=c99 -municode -w -o $(V) $(VC)/$(VCFILE) $(LDFLAGS)
-	$(V) -o v2.exe cmd/v
+	$(V) -o v2.exe $(VFLAGS) cmd/v
 	move /y v2.exe v.exe
 else
 	$(CC) $(CFLAGS) -g -std=gnu99 -w -o $(V) $(VC)/$(VCFILE) -lm -lpthread $(LDFLAGS)
-	$(V) -o v2.exe cmd/v
+	$(V) -o v2.exe $(VFLAGS) cmd/v
 	mv -f v2.exe v  
 endif
 	@echo "V has been successfully built"

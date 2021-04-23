@@ -3,8 +3,8 @@
 // that can be found in the LICENSE file.
 module json
 
-#flag -I @VROOT/thirdparty/cJSON
-#flag @VROOT/thirdparty/cJSON/cJSON.o
+#flag -I @VEXEROOT/thirdparty/cJSON
+#flag @VEXEROOT/thirdparty/cJSON/cJSON.o
 #include "cJSON.h"
 #define js_get(object, key) cJSON_GetObjectItemCaseSensitive((object), (key))
 

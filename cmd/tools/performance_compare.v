@@ -152,7 +152,7 @@ fn (c Context) compare_v_performance(label string, commands []string) string {
 		println(cmd)
 	}
 	for cmd in commands {
-		hyperfine_commands_arguments << " \'cd ${c.b:-34s} ; ./$cmd \' ".replace_each([
+		hyperfine_commands_arguments << ' \'cd ${c.b:-34s} ; ./$cmd \' '.replace_each([
 			'@COMPILER@',
 			source_location_b,
 			'@DEBUG@',
@@ -160,7 +160,7 @@ fn (c Context) compare_v_performance(label string, commands []string) string {
 		])
 	}
 	for cmd in commands {
-		hyperfine_commands_arguments << " \'cd ${c.a:-34s} ; ./$cmd \' ".replace_each([
+		hyperfine_commands_arguments << ' \'cd ${c.a:-34s} ; ./$cmd \' '.replace_each([
 			'@COMPILER@',
 			source_location_a,
 			'@DEBUG@',
