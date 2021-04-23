@@ -334,14 +334,14 @@ pub fn (mut ws Client) close(code int, message string) ? {
 		ws.reset_state()
 	}
 	ws.set_state(.closing)
-	mut code32 := 0
+	// mut code32 := 0
 	if code > 0 {
 		code_ := C.htons(code)
 		message_len := message.len + 2
 		mut close_frame := []byte{len: message_len}
 		close_frame[0] = byte(code_ & 0xFF)
 		close_frame[1] = byte(code_ >> 8)
-		code32 = (close_frame[0] << 8) + close_frame[1]
+		// code32 = (close_frame[0] << 8) + close_frame[1]
 		for i in 0 .. message.len {
 			close_frame[i + 2] = message[i]
 		}
