@@ -119,7 +119,7 @@ pub fn (mut c Checker) check_scope_vars(sc &ast.Scope) {
 		match obj {
 			ast.Var {
 				if !c.pref.is_repl {
-					if !obj.is_used && obj.name[0] != `_` {
+					if !obj.is_used && obj.name[0] != `_` && !c.file.is_test {
 						c.warn('unused variable: `$obj.name`', obj.pos)
 					}
 				}
@@ -2570,7 +2570,10 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) ast.Typ
 	//
 	c.using_new_err_struct = using_new_err_struct_save
 	if typ == ast.void_type_idx {
-		c.error('unknown selector expression', selector_expr.pos)
+		// This means that the variable's value was assigned to an
+		// unknown function or method, so the error was already handled
+		// earlier
+		// c.error('unknown selector expression', selector_expr.pos)
 		return ast.void_type
 	}
 	selector_expr.expr_type = typ
@@ -3644,7 +3647,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 fn (mut c Checker) assert_stmt(node ast.AssertStmt) {
 	cur_exp_typ := c.expected_type
 	assert_type := c.check_expr_opt_call(node.expr, c.expr(node.expr))
-	if assert_type != ast.bool_type_idx {
+	if assert_type != ast.bool_type_idx && assert_type != ast.void_type_idx {
 		atype_name := c.table.get_type_symbol(assert_type).name
 		c.error('assert can be used only with `bool` expressions, but found `$atype_name` instead',
 			node.pos)
@@ -4763,7 +4766,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) ast.Type {
 				}
 				ast.Var {
 					// incase var was not marked as used yet (vweb tmpl)
-					obj.is_used = true
+					// obj.is_used = true
 					if ident.pos.pos < obj.pos.pos {
 						c.error('undefined variable `$ident.name` (used before declaration)',
 							ident.pos)

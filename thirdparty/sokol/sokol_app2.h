@@ -1,14 +1,14 @@
 
 @implementation MyView2
 
-int xx = 0;
+int __v_sokol_inited = 0;
 
 // Alternative drawRect which calls a frame function with native Cocoa calls
 - (void)drawRect:(NSRect)rect {
-	puts("drawRect()");
-	if (xx == 0) {
+	//puts("drawRect()");
+	if (__v_sokol_inited == 0) {
         _sapp_call_init();
-       xx = 1;
+       __v_sokol_inited = 1;
       }
     _sapp_call_frame_native();
 }

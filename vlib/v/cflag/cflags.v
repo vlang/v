@@ -33,10 +33,10 @@ pub fn (cf &CFlag) eval() string {
 				sparams := remainder[cflag.fexisting_literal.len + 1..].all_before(')')
 				i += sparams.len + cflag.fexisting_literal.len + 1
 				svalues := sparams.replace(',', '\n').split_into_lines().map(it.trim(' \'"'))
-				mut found_spath := ''
+				// mut found_spath := ''
 				for spath in svalues {
 					if os.exists(spath) {
-						found_spath = spath
+						// found_spath = spath
 						value += spath
 						continue cflag_eval_outer_loop
 					}
