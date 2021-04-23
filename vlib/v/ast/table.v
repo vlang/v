@@ -1076,7 +1076,7 @@ pub fn (mut t Table) generic_struct_insts_to_concrete() {
 						fields[i].typ = t_typ
 					}
 				}
-				parent_info.generic_types = []
+				parent_info.is_generic = false
 				parent_info.concrete_types = info.concrete_types.clone()
 				parent_info.fields = fields
 				parent_info.parent_type = new_type(info.parent_idx).set_flag(.generic)

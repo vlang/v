@@ -1075,7 +1075,7 @@ fn (mut g Gen) parse_db_from_type_string(name string) SqlType {
 fn (mut g Gen) get_sql_field_type(field ast.StructField) ast.Type {
 	mut typ := field.typ
 	for attr in field.attrs {
-		if attr.name == 'sql' && !attr.is_string_arg && attr.arg != '' {
+		if attr.kind == .plain && attr.name == 'sql' && attr.arg != '' {
 			if attr.arg.to_lower() == 'serial' {
 				typ = ast.Type(-1)
 				break
@@ -1090,7 +1090,7 @@ fn (mut g Gen) get_table_name(table_expr ast.TypeNode) string {
 	info := g.table.get_type_symbol(table_expr.typ).struct_info()
 	mut tablename := util.strip_mod_name(g.table.get_type_symbol(table_expr.typ).name)
 	for attr in info.attrs {
-		if attr.name == 'table' && attr.is_string_arg && attr.arg != '' {
+		if attr.kind == .string && attr.name == 'table' && attr.arg != '' {
 			tablename = attr.arg
 			break
 		}
@@ -1112,7 +1112,7 @@ fn (mut g Gen) get_struct_field(name string) ast.StructField {
 fn (mut g Gen) get_field_name(field ast.StructField) string {
 	mut name := field.name
 	for attr in field.attrs {
-		if attr.name == 'sql' && attr.is_string_arg && attr.arg != '' {
+		if attr.kind == .string && attr.name == 'sql' && attr.arg != '' {
 			name = attr.arg
 			break
 		}

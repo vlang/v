@@ -1433,7 +1433,7 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, call_exp
 fn (mut c Checker) check_return_generics_struct(return_type ast.Type, mut call_expr ast.CallExpr, generic_types []ast.Type) {
 	rts := c.table.get_type_symbol(return_type)
 	if rts.info is ast.Struct {
-		if rts.info.generic_types.len > 0 {
+		if rts.info.is_generic {
 			mut nrt := '$rts.name<'
 			mut c_nrt := '${rts.name}_T_'
 			for i in 0 .. call_expr.generic_types.len {
@@ -1462,7 +1462,7 @@ fn (mut c Checker) check_return_generics_struct(return_type ast.Type, mut call_e
 						}
 					}
 					mut info := rts.info
-					info.generic_types = []
+					info.is_generic = false
 					info.concrete_types = generic_types.clone()
 					info.parent_type = return_type
 					info.fields = fields
@@ -5909,14 +5909,19 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 	if node.op == .not && right_type != ast.bool_type_idx && !c.pref.translated {
 		c.error('! operator can only be used with bool types', node.pos)
 	}
+	// FIXME
+	// there are currently other issues to investigate if right_type
+	// is unwraped directly as initialization, so do it here
+	right_sym := c.table.get_final_type_symbol(c.unwrap_generic(right_type))
+	if node.op == .minus && !right_sym.is_number() {
+		c.error('- operator can only be used with numeric types', node.pos)
+	}
 	if node.op == .arrow {
-		right := c.table.get_type_symbol(right_type)
-		if right.kind == .chan {
+		if right_sym.kind == .chan {
 			c.stmts(node.or_block.stmts)
-			return right.chan_info().elem_type
-		} else {
-			c.error('<- operator can only be used with `chan` types', node.pos)
+			return right_sym.chan_info().elem_type
 		}
+		c.error('<- operator can only be used with `chan` types', node.pos)
 	}
 	return right_type
 }
@@ -6502,12 +6507,9 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		c.main_fn_decl_node = node
 	}
 	if node.return_type != ast.void_type {
-		for attr in node.attrs {
-			if attr.is_comptime_define {
-				c.error('only functions that do NOT return values can have `[if $attr.name]` tags',
-					node.pos)
-				break
-			}
+		if ct_name := node.attrs.find_comptime_define() {
+			c.error('only functions that do NOT return values can have `[if $ct_name]` tags',
+				node.pos)
 		}
 	}
 	if node.is_method {

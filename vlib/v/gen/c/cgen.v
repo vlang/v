@@ -693,7 +693,7 @@ fn (mut g Gen) cc_type(typ ast.Type, is_prefix_struct bool) string {
 	mut styp := sym.cname
 	// TODO: this needs to be removed; cgen shouldn't resolve generic types (job of checker)
 	if mut sym.info is ast.Struct {
-		if sym.info.generic_types.len > 0 {
+		if sym.info.is_generic {
 			mut sgtyps := '_T'
 			for gt in sym.info.generic_types {
 				gts := g.table.get_type_symbol(g.unwrap_generic(gt))
@@ -5474,7 +5474,7 @@ fn (mut g Gen) write_types(types []ast.TypeSymbol) {
 		mut name := typ.cname
 		match mut typ.info {
 			ast.Struct {
-				if typ.info.generic_types.len > 0 {
+				if typ.info.is_generic {
 					continue
 				}
 				if name.contains('_T_') {
