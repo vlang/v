@@ -29,7 +29,7 @@ pub fn dial_tcp(address string) ?&TcpConn {
 
 pub fn (mut c TcpConn) close() ? {
 	$if trace_tcp ? {
-		eprintln('    TcpConn.close | c.sock.handle: $c.sock.handle')
+		eprintln('    TcpConn.close | c.sock.handle: ${c.sock.handle:6}')
 	}
 	c.sock.close() ?
 	return none
@@ -38,9 +38,7 @@ pub fn (mut c TcpConn) close() ? {
 // write_ptr blocks and attempts to write all data
 pub fn (mut c TcpConn) write_ptr(b &byte, len int) ?int {
 	$if trace_tcp ? {
-		eprintln(
-			'>>> TcpConn.write_ptr | c.sock.handle: $c.sock.handle | b: ${ptr_str(b)} len: $len |\n' +
-			unsafe { b.vstring_with_len(len) })
+		eprintln('>>> TcpConn.write_ptr | c.sock.handle: ${c.sock.handle:6} | b: ${ptr_str(b)} len: ${len:6}')
 	}
 	$if trace_tcp_data_write ? {
 		eprintln('>>> TcpConn.write_ptr | data.len: ${len:6} | data: ' +
@@ -90,7 +88,7 @@ pub fn (mut c TcpConn) write_string(s string) ?int {
 pub fn (mut c TcpConn) read_ptr(buf_ptr &byte, len int) ?int {
 	mut res := wrap_read_result(C.recv(c.sock.handle, buf_ptr, len, 0)) ?
 	$if trace_tcp ? {
-		eprintln('<<< TcpConn.read_ptr  | c.sock.handle: $c.sock.handle | buf_ptr: ${ptr_str(buf_ptr)} len: $len | res: $res')
+		eprintln('<<< TcpConn.read_ptr  | c.sock.handle: ${c.sock.handle:6} | buf_ptr: ${ptr_str(buf_ptr):8} len: ${len:6} | res: ${res:6}')
 	}
 	if res > 0 {
 		$if trace_tcp_data_read ? {
@@ -104,7 +102,7 @@ pub fn (mut c TcpConn) read_ptr(buf_ptr &byte, len int) ?int {
 		c.wait_for_read() ?
 		res = wrap_read_result(C.recv(c.sock.handle, buf_ptr, len, 0)) ?
 		$if trace_tcp ? {
-			eprintln('<<< TcpConn.read_ptr  | c.sock.handle: $c.sock.handle | buf_ptr: ${ptr_str(buf_ptr)} len: $len | res: $res')
+			eprintln('<<< TcpConn.read_ptr  | c.sock.handle: ${c.sock.handle:6} | buf_ptr: ${ptr_str(buf_ptr):8} len: ${len:6} | res: ${res:6}')
 		}
 		$if trace_tcp_data_read ? {
 			if res > 0 {
@@ -225,7 +223,7 @@ pub fn listen_tcp(port int) ?&TcpListener {
 
 pub fn (mut l TcpListener) accept() ?&TcpConn {
 	$if trace_tcp ? {
-		eprintln('    TcpListener.accept | l.sock.handle: $l.sock.handle')
+		eprintln('    TcpListener.accept | l.sock.handle: ${l.sock.handle:6}')
 	}
 	addr := C.sockaddr_storage{}
 	unsafe { C.memset(&addr, 0, sizeof(C.sockaddr_storage)) }
@@ -242,7 +240,7 @@ pub fn (mut l TcpListener) accept() ?&TcpConn {
 	}
 	new_sock := tcp_socket_from_handle(new_handle) ?
 	$if trace_tcp ? {
-		eprintln('    TcpListener.accept | << new_sock: $new_sock')
+		eprintln('    TcpListener.accept | << new_sock.handle: ${new_sock.handle:6}')
 	}
 	return &TcpConn{
 		sock: new_sock
@@ -276,7 +274,7 @@ pub fn (mut c TcpListener) wait_for_accept() ? {
 
 pub fn (mut c TcpListener) close() ? {
 	$if trace_tcp ? {
-		eprintln('    TcpListener.close | c.sock.handle: $c.sock.handle')
+		eprintln('    TcpListener.close | c.sock.handle: ${c.sock.handle:6}')
 	}
 	c.sock.close() ?
 	return none
@@ -348,7 +346,7 @@ pub fn (mut s TcpSocket) set_option_int(opt SocketOption, value int) ? {
 
 fn (mut s TcpSocket) close() ? {
 	$if trace_tcp ? {
-		eprintln('    TcpSocket.close | s.handle: $s.handle')
+		eprintln('    TcpSocket.close | s.handle: ${s.handle:6}')
 	}
 	return shutdown(s.handle)
 }
@@ -363,7 +361,7 @@ const (
 
 fn (mut s TcpSocket) connect(a string) ? {
 	$if trace_tcp ? {
-		eprintln('    TcpSocket.connect | s.handle: $s.handle | a: $a')
+		eprintln('    TcpSocket.connect | s.handle: ${s.handle:6} | a: $a')
 	}
 	addr := resolve_addr(a, .inet, .tcp) ?
 	res := C.connect(s.handle, &addr.addr, addr.len)
