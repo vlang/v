@@ -61,6 +61,7 @@ pub mut:
 	inside_const   bool
 	inside_anon_fn bool
 	inside_ref_lit bool
+	inside_fn_arg  bool // `a`, `b` in `a.f(b)`
 	skip_flags     bool // should `#flag` and `#include` be skipped
 mut:
 	files                            []ast.File
@@ -1318,7 +1319,10 @@ pub fn (mut c Checker) call_expr(mut call_expr ast.CallExpr) ast.Type {
 	}
 	*/
 	// Now call `method_call` or `fn_call` for specific checks.
+	old_inside_fn_arg := c.inside_fn_arg
+	c.inside_fn_arg = true
 	typ := if call_expr.is_method { c.method_call(mut call_expr) } else { c.fn_call(mut call_expr) }
+	c.inside_fn_arg = old_inside_fn_arg
 	// autofree: mark args that have to be freed (after saving them in tmp exprs)
 	free_tmp_arg_vars := c.pref.autofree && !c.is_builtin_mod && call_expr.args.len > 0
 		&& !call_expr.args[0].typ.has_flag(.optional)
@@ -5830,8 +5834,8 @@ pub fn (mut c Checker) mark_as_referenced(mut node ast.Expr) {
 	match mut node {
 		ast.Ident {
 			if mut node.obj is ast.Var {
-				if node.obj.is_stack_ref {
-					c.error('`$node.name` is borrowed and cannot be referenced since it might be on stack', node.pos)
+				if node.obj.is_stack_obj {
+					c.error('`$node.name` cannot be referenced since it might be on stack', node.pos)
 				} else {
 					node.obj.is_auto_heap = true
 				}
@@ -5888,10 +5892,14 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 				}
 			}
 		}
-		c.mark_as_referenced(mut &node.right)
+		if !c.inside_fn_arg && !c.inside_unsafe {
+			c.mark_as_referenced(mut &node.right)
+		}
 		return right_type.to_ptr()
 	} else if node.op == .amp && node.right !is ast.CastExpr {
-		c.mark_as_referenced(mut &node.right)
+		if !c.inside_fn_arg && !c.inside_unsafe {
+			c.mark_as_referenced(mut &node.right)
+		}
 		return right_type.to_ptr()
 	}
 	if node.op == .mul {

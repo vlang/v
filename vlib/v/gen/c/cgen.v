@@ -2870,9 +2870,9 @@ fn (mut g Gen) map_fn_ptrs(key_typ ast.TypeSymbol) (string, string, string, stri
 		}
 		.voidptr {
 			ts := if g.pref.m64 {
-				&g.table.type_symbols[ast.u64_type_idx]
+				unsafe { &g.table.type_symbols[ast.u64_type_idx] }
 			} else {
-				&g.table.type_symbols[ast.u32_type_idx]
+				unsafe { &g.table.type_symbols[ast.u32_type_idx] }
 			}
 			return g.map_fn_ptrs(ts)
 		}
