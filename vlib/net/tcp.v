@@ -294,7 +294,7 @@ pub:
 }
 
 fn new_tcp_socket() ?TcpSocket {
-	sockfd := socket_error(C.socket(SocketFamily.inet, SocketType.tcp, 0)) ?
+	sockfd := socket_error(C.socket(int(SocketFamily.inet), int(SocketType.tcp), 0)) ?
 	mut s := TcpSocket{
 		handle: sockfd
 	}
