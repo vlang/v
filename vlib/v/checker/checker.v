@@ -5841,7 +5841,7 @@ fn (c &Checker) has_return(stmts []ast.Stmt) ?bool {
 }
 
 pub fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) ast.Type {
-	typ := c.expr(node.expr)
+	typ := c.unwrap_generic(c.expr(node.expr))
 	typ_sym := c.table.get_type_symbol(typ)
 	is_non_void_pointer := (typ.is_ptr() || typ.is_pointer()) && typ_sym.kind != .voidptr
 	if !c.inside_unsafe && is_non_void_pointer && !node.expr.is_auto_deref_var() {
