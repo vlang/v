@@ -486,13 +486,15 @@ pub fn (mut c Checker) infer_fn_generic_types(f ast.Fn, mut call_expr ast.CallEx
 		mut typ := ast.void_type
 		for i, param in f.params {
 			mut to_set := ast.void_type
-			// resolve generic struct receiver (TODO: multi generic struct)
+			// resolve generic struct receiver
 			if i == 0 && call_expr.is_method && param.typ.has_flag(.generic) {
 				sym := c.table.get_type_symbol(call_expr.receiver_type)
 				if sym.kind == .struct_ {
 					info := sym.info as ast.Struct
-					if info.concrete_types.len > 0 {
-						typ = info.concrete_types[0]
+					receiver_generic_names := info.generic_types.map(c.table.get_type_symbol(it).name)
+					if gt_name in receiver_generic_names {
+						idx := receiver_generic_names.index(gt_name)
+						typ = info.concrete_types[idx]
 					}
 				}
 			}

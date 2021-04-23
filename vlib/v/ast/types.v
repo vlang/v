@@ -722,6 +722,7 @@ pub mut:
 	is_typedef     bool // C. [typedef]
 	is_union       bool
 	is_heap        bool
+	is_generic     bool
 	generic_types  []Type
 	concrete_types []Type
 	parent_type    Type
