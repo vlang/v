@@ -3,11 +3,11 @@ struct Foo<A, B> {
 	b B
 }
 
-fn (num Foo<A, B>) is_foo1<A, B>() (A, B) {
+fn (num Foo<A, B>) get_foo1<A, B>() (A, B) {
 	return num.a, num.b
 }
 
-fn (num Foo<A, B>) is_foo2<B, A>() (A, B) {
+fn (num Foo<A, B>) get_foo2<B, A>() (A, B) {
 	return num.a, num.b
 }
 
@@ -16,12 +16,12 @@ fn test_generics_with_multi_generics_struct_receiver() {
 		a: 3
 		b: 'aaa'
 	}
-	a1, b1 := num.is_foo1()
+	a1, b1 := num.get_foo1()
 	println('$a1, $b1')
 	assert a1 == 3
 	assert b1 == 'aaa'
 
-	a2, b2 := num.is_foo2()
+	a2, b2 := num.get_foo2()
 	println('$a2, $b2')
 	assert a2 == 3
 	assert b2 == 'aaa'
