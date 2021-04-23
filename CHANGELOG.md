@@ -1,5 +1,7 @@
 -## V 0.2.4
 -*Not yet released*
+- Improved `unused variable` warning. Assigning to a variable no longer marks it as used.
+- Bare metal support.
 
 ## V 0.2.2 - 0.2.3
 *22 Jan 2021*

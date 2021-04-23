@@ -1089,7 +1089,7 @@ pub fn (mut f Fmt) global_decl(node ast.GlobalDecl) {
 	}
 	f.write('__global ')
 	mut max := 0
-	mut has_assign := false
+	// mut has_assign := false
 	if node.is_block {
 		f.writeln('(')
 		f.indent++
@@ -1097,9 +1097,9 @@ pub fn (mut f Fmt) global_decl(node ast.GlobalDecl) {
 			if field.name.len > max {
 				max = field.name.len
 			}
-			if field.has_expr {
-				has_assign = true
-			}
+			// if field.has_expr {
+			// has_assign = true
+			//}
 		}
 	}
 	for field in node.fields {
