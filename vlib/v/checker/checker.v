@@ -5872,7 +5872,7 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 	// is unwraped directly as initialization, so do it here
 	right_sym := c.table.get_final_type_symbol(c.unwrap_generic(right_type))
 	if node.op == .minus && !right_sym.is_number() {
-		c.error('- operator can only be used with number types', node.pos)
+		c.error('- operator can only be used with numeric types', node.pos)
 	}
 	if node.op == .arrow {
 		if right_sym.kind == .chan {
