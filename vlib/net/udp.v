@@ -180,7 +180,7 @@ pub fn listen_udp(port int) ?&UdpConn {
 }
 
 fn new_udp_socket(local_port int) ?&UdpSocket {
-	sockfd := socket_error(C.socket(int(SocketFamily.inet), int(SocketType.udp), 0)) ?
+	sockfd := socket_error(C.socket(SocketFamily.inet, SocketType.udp, 0)) ?
 	mut s := &UdpSocket{
 		handle: sockfd
 	}
