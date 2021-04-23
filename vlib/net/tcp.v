@@ -28,6 +28,9 @@ pub fn dial_tcp(address string) ?&TcpConn {
 }
 
 pub fn (mut c TcpConn) close() ? {
+	$if trace_tcp ? {
+		eprintln('    TcpConn.close | c.sock.handle: $c.sock.handle')
+	}
 	c.sock.close() ?
 	return none
 }
@@ -204,6 +207,9 @@ pub fn listen_tcp(port int) ?&TcpListener {
 }
 
 pub fn (mut l TcpListener) accept() ?&TcpConn {
+	$if trace_tcp ? {
+		eprintln('    TcpListener.accept | l.sock.handle: $l.sock.handle')
+	}
 	addr := C.sockaddr_storage{}
 	unsafe { C.memset(&addr, 0, sizeof(C.sockaddr_storage)) }
 	size := sizeof(C.sockaddr_storage)
@@ -249,6 +255,9 @@ pub fn (mut c TcpListener) wait_for_accept() ? {
 }
 
 pub fn (mut c TcpListener) close() ? {
+	$if trace_tcp ? {
+		eprintln('    TcpListener.close | c.sock.handle: $c.sock.handle')
+	}
 	c.sock.close() ?
 	return none
 }
@@ -275,6 +284,9 @@ fn new_tcp_socket() ?TcpSocket {
 	} $else {
 		socket_error(C.fcntl(sockfd, C.F_SETFL, C.fcntl(sockfd, C.F_GETFL) | C.O_NONBLOCK)) ?
 	}
+	$if trace_tcp ? {
+		eprintln('    new_tcp_socket | s.handle: $s.handle')
+	}
 	return s
 }
 
@@ -289,6 +301,9 @@ fn tcp_socket_from_handle(sockfd int) ?TcpSocket {
 		socket_error(C.ioctlsocket(sockfd, fionbio, &t)) ?
 	} $else {
 		socket_error(C.fcntl(sockfd, C.F_SETFL, C.fcntl(sockfd, C.F_GETFL) | C.O_NONBLOCK)) ?
+	}
+	$if trace_tcp ? {
+		eprintln('    tcp_socket_from_handle | s.handle: $s.handle')
 	}
 	return s
 }
@@ -312,6 +327,9 @@ pub fn (mut s TcpSocket) set_option_int(opt SocketOption, value int) ? {
 }
 
 fn (mut s TcpSocket) close() ? {
+	$if trace_tcp ? {
+		eprintln('    TcpSocket.close | s.handle: $s.handle')
+	}
 	return shutdown(s.handle)
 }
 
@@ -324,6 +342,9 @@ const (
 )
 
 fn (mut s TcpSocket) connect(a string) ? {
+	$if trace_tcp ? {
+		eprintln('    TcpSocket.connect | s.handle: $s.handle | a: $a')
+	}
 	addr := resolve_addr(a, .inet, .tcp) ?
 	res := C.connect(s.handle, &addr.addr, addr.len)
 	if res == 0 {
