@@ -3222,7 +3222,8 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			c.type_implements(right_type, left_type, right.position())
 		}
 	}
-	// this needs to run after the assign stmt left exprs have been run through checker so that ident.obj is set
+	// this needs to run after the assign stmt left exprs have been run through checker
+	// so that ident.obj is set
 	// Check `x := &y` and `mut x := <-ch`
 	if right_first is ast.PrefixExpr {
 		node := right_first
@@ -3237,12 +3238,17 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			c.inside_ref_lit = (c.inside_ref_lit || node.op == .amp || is_shared)
 			c.expr(node.right)
 			c.inside_ref_lit = old_inside_ref_lit
-			if node.right is ast.Ident {
-				if node.right.obj is ast.Var {
-					v := node.right.obj
-					right_type0 = v.typ
-					if node.op == .amp {
+			if node.op == .amp {
+				if node.right is ast.Ident {
+					if node.right.obj is ast.Var {
+						v := node.right.obj
+						right_type0 = v.typ
 						if !v.is_mut && assigned_var.is_mut && !c.inside_unsafe {
+							c.error('`$node.right.name` is immutable, cannot have a mutable reference to it',
+								node.pos)
+						}
+					} else if node.right.obj is ast.ConstField {
+						if assigned_var.is_mut && !c.inside_unsafe {
 							c.error('`$node.right.name` is immutable, cannot have a mutable reference to it',
 								node.pos)
 						}
