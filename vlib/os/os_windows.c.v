@@ -392,7 +392,10 @@ pub fn uname() Uname {
 pub fn hostname() string {
 	hostname := [255]u16{}
 	size := u32(255)
-	result := C.GetComputerNameW(&hostname[0], &size)
+	res := C.GetComputerNameW(&hostname[0], &size)
+	if !res {
+		return error(get_error_msg(int(C.GetLastError())))
+	}
 	return unsafe { string_from_wide(&hostname[0]) }
 }
 
