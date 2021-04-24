@@ -1456,7 +1456,7 @@ fn (mut c Checker) check_return_generics_struct(return_type ast.Type, mut call_e
 					generic_names := rts.info.generic_types.map(c.table.get_type_symbol(it).name)
 					for i, _ in fields {
 						if t_typ := c.table.resolve_generic_to_concrete(fields[i].typ,
-							generic_names, concrete_types)
+							generic_names, concrete_types, false)
 						{
 							fields[i].typ = t_typ
 						}
@@ -1755,7 +1755,7 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 		}
 		if call_expr.concrete_types.len > 0 && method.return_type != 0 {
 			if typ := c.table.resolve_generic_to_concrete(method.return_type, method.generic_names,
-				call_expr.concrete_types)
+				call_expr.concrete_types, false)
 			{
 				call_expr.return_type = typ
 				return typ
@@ -2276,7 +2276,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 			if param.typ.has_flag(.generic)
 				&& func.generic_names.len == call_expr.concrete_types.len {
 				if unwrap_typ := c.table.resolve_generic_to_concrete(param.typ, func.generic_names,
-					call_expr.concrete_types)
+					call_expr.concrete_types, false)
 				{
 					c.check_expected_call_arg(typ, unwrap_typ, call_expr.language) or {
 						c.error('$err.msg in argument ${i + 1} to `$fn_name`', call_arg.pos)
@@ -2287,7 +2287,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 	}
 	if call_expr.concrete_types.len > 0 && func.return_type != 0 {
 		if typ := c.table.resolve_generic_to_concrete(func.return_type, func.generic_names,
-			call_expr.concrete_types)
+			call_expr.concrete_types, false)
 		{
 			call_expr.return_type = typ
 			return typ
@@ -4142,7 +4142,9 @@ fn (mut c Checker) stmts(stmts []ast.Stmt) {
 
 pub fn (mut c Checker) unwrap_generic(typ ast.Type) ast.Type {
 	if typ.has_flag(.generic) {
-		if t_typ := c.table.resolve_generic_to_concrete(typ, c.cur_fn.generic_names, c.cur_fn.cur_generic_types) {
+		if t_typ := c.table.resolve_generic_to_concrete(typ, c.cur_fn.generic_names, c.cur_fn.cur_generic_types,
+			false)
+		{
 			return t_typ
 		}
 	}
