@@ -83,15 +83,6 @@ const (
 	short_duration = 1 * time.millisecond
 )
 
-fn after(dur time.Duration) chan int {
-	dst := chan int{}
-	go fn (dur time.Duration, dst chan int) {
-		time.sleep(dur)
-		dst <- 0
-	}(dur, dst)
-	return dst
-}
-
 // This example passes a context with an arbitrary deadline to tell a blocking
 // function that it should abandon its work as soon as it gets to it.
 fn example_with_deadline() {
@@ -105,14 +96,11 @@ fn example_with_deadline() {
 		context.cancel(ctx)
 	}
 
-	after_ch := after(1 * time.second)
 	ctx_ch := ctx.done()
 	select {
-		_ := <-after_ch {
-			assert false
-		}
-		_ := <-ctx_ch {
-			assert true
+		_ := <-ctx_ch {}
+		> 1 * time.second {
+			panic('This should not happen')
 		}
 	}
 }
@@ -129,15 +117,6 @@ const (
 	short_duration = 1 * time.millisecond
 )
 
-fn after(dur time.Duration) chan int {
-	dst := chan int{}
-	go fn (dur time.Duration, dst chan int) {
-		time.sleep(dur)
-		dst <- 0
-	}(dur, dst)
-	return dst
-}
-
 // This example passes a context with a timeout to tell a blocking function that
 // it should abandon its work after the timeout elapses.
 fn example_with_timeout() {
@@ -148,14 +127,11 @@ fn example_with_timeout() {
 		context.cancel(ctx)
 	}
 
-	after_ch := after(1 * time.second)
 	ctx_ch := ctx.done()
 	select {
-		_ := <-after_ch {
-			assert false
-		}
-		_ := <-ctx_ch {
-			assert true
+		_ := <-ctx_ch {}
+		> 1 * time.second {
+			panic('This should not happen')
 		}
 	}
 }

@@ -90,12 +90,12 @@ pub fn (ctx CancelContext) str() string {
 }
 
 fn (mut ctx CancelContext) cancel(remove_from_parent bool, err IError) {
-	if err.str() == 'none' {
+	if err is none {
 		panic('context: internal error: missing cancel error')
 	}
 
 	ctx.mutex.@lock()
-	if ctx.err.str() != 'none' {
+	if !(ctx.err is none) {
 		ctx.mutex.unlock()
 		// already canceled
 		return
@@ -129,28 +129,24 @@ fn propagate_cancel(parent Context, mut child Canceler) {
 			child.cancel(false, parent.err())
 			return
 		}
-		else {}
 	}
 	mut p := parent_cancel_context(parent) or {
 		go fn (parent Context, mut child Canceler) {
 			pdone := parent.done()
-			cdone := child.done()
 			select {
 				_ := <-pdone {
 					child.cancel(false, parent.err())
 				}
-				_ := <-cdone {}
-				else {}
 			}
 		}(parent, mut child)
 		return
 	}
 
-	if p.err.str() != 'none' {
+	if p.err is none {
+		p.children[child.id] = *child
+	} else {
 		// parent has already been canceled
 		child.cancel(false, p.err)
-	} else {
-		p.children[child.id] = *child
 	}
 }
 
