@@ -390,8 +390,10 @@ pub fn uname() Uname {
 }
 
 pub fn hostname() string {
-	// TODO: use C.GetComputerName(&u16, u32) int instead
-	return execute('cmd /c hostname').output
+	hostname := [255]u16{}
+	size := u32(255)
+	result := C.GetComputerNameW(&hostname[0], &size)
+	return unsafe { string_from_wide(&hostname[0]) }
 }
 
 pub fn loginname() string {
