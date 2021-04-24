@@ -387,7 +387,7 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 			g.gen_expr_stmt(node)
 		}
 		ast.FnDecl {
-			g.fn_decl = &node
+			g.fn_decl = unsafe { &node }
 			g.gen_fn_decl(node)
 		}
 		ast.ForCStmt {

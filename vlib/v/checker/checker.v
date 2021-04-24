@@ -3028,10 +3028,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					left.info = ident_var_info
 					if left_type != 0 {
 						match mut left.obj {
-							ast.Var {
-								left.obj.typ = left_type
-								left.obj.is_heap_ref = left_type.nr_muls() > 0
-							}
+							ast.Var { left.obj.typ = left_type }
 							ast.GlobalField { left.obj.typ = left_type }
 							else {}
 						}
@@ -3571,7 +3568,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		ast.DeferStmt {
 			if node.idx_in_fn < 0 {
 				node.idx_in_fn = c.cur_fn.defer_stmts.len
-				c.cur_fn.defer_stmts << &node
+				c.cur_fn.defer_stmts << unsafe { &node }
 			}
 			c.stmts(node.stmts)
 		}
@@ -4183,7 +4180,7 @@ pub fn (mut c Checker) expr(node ast.Expr) ast.Type {
 		ast.AnonFn {
 			c.inside_anon_fn = true
 			keep_fn := c.cur_fn
-			c.cur_fn = &node.decl
+			c.cur_fn = unsafe { &node.decl }
 			c.stmts(node.decl.stmts)
 			c.fn_decl(mut node.decl)
 			c.cur_fn = keep_fn
@@ -5021,6 +5018,24 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	// node.expected_type = c.expected_type
 	// }
 	node.return_type = ret_type
+	cond_var := c.get_base_name(&node.cond)
+	if cond_var != '' {
+		mut cond_is_auto_heap := false
+		for branch in node.branches {
+			if v := branch.scope.find_var(cond_var) {
+				if v.is_auto_heap {
+					cond_is_auto_heap = true
+					break
+				}
+			}
+		}
+		if cond_is_auto_heap {
+			for branch in node.branches {
+				mut v := branch.scope.find_var(cond_var) or { continue }
+				v.is_auto_heap = true
+			}
+		}
+	}
 	return ret_type
 }
 
@@ -5841,7 +5856,11 @@ pub fn (mut c Checker) mark_as_referenced(mut node ast.Expr) {
 	match mut node {
 		ast.Ident {
 			if mut node.obj is ast.Var {
-				if node.obj.is_stack_obj {
+				mut obj := unsafe { &node.obj }
+				if c.fn_scope != voidptr(0) {
+					obj = c.fn_scope.find_var(node.obj.name) or { unsafe { &node.obj } }
+				}
+				if obj.is_stack_obj {
 					c.error('`$node.name` cannot be referenced since it might be on stack', node.pos)
 				} else {
 					node.obj.is_auto_heap = true
@@ -5855,6 +5874,23 @@ pub fn (mut c Checker) mark_as_referenced(mut node ast.Expr) {
 			c.mark_as_referenced(mut &node.left)
 		}
 		else {}
+	}
+}
+
+pub fn (mut c Checker) get_base_name(node &ast.Expr) string {
+	match node {
+		ast.Ident {
+			return node.name
+		}
+		ast.SelectorExpr {
+			return c.get_base_name(&node.expr)
+		}
+		ast.IndexExpr {
+			return c.get_base_name(&node.left)
+		}
+		else {
+			return ''
+		}
 	}
 }
 

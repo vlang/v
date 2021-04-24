@@ -4410,7 +4410,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 				if !prevent_sum_type_unwrapping_once {
 					for _ in v.smartcasts {
 						g.write('(')
-						if v_sym.kind == .sum_type {
+						if v_sym.kind == .sum_type && !is_auto_heap {
 							g.write('*')
 						}
 					}
@@ -4423,7 +4423,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 								is_ptr = true
 							}
 						}
-						dot := if is_ptr { '->' } else { '.' }
+						dot := if is_ptr || is_auto_heap { '->' } else { '.' }
 						if mut cast_sym.info is ast.Aggregate {
 							sym := g.table.get_type_symbol(cast_sym.info.types[g.aggregate_type_idx])
 							g.write('${dot}_$sym.cname')
@@ -4431,6 +4431,9 @@ fn (mut g Gen) ident(node ast.Ident) {
 							g.write('${dot}_$cast_sym.cname')
 						}
 						g.write(')')
+					}
+					if is_auto_heap {
+						g.write('))')
 					}
 					return
 				}
@@ -4659,7 +4662,18 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 							g.expr(branch.cond.expr)
 							g.writeln(';')
 						} else {
-							g.writeln('\t$base_type $branch.cond.var_name = *($base_type*)${var_name}.data;')
+							mut is_auto_heap := false
+							if branch.stmts.len > 0 {
+								scope := g.file.scope.innermost(ast.Node(branch.stmts[branch.stmts.len-1]).position().pos)
+								if v := scope.find_var(branch.cond.var_name) {
+									is_auto_heap = v.is_auto_heap
+								}
+							}
+							if is_auto_heap {
+								g.writeln('\t$base_type* $branch.cond.var_name = HEAP($base_type, *($base_type*)${var_name}.data);')
+							} else {
+								g.writeln('\t$base_type $branch.cond.var_name = *($base_type*)${var_name}.data;')
+							}
 						}
 					}
 				}
