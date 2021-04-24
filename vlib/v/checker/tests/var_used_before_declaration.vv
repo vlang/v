@@ -1,4 +1,5 @@
 fn main() {
     println(x)
     x := 'hello v'
+   _ = x
 }

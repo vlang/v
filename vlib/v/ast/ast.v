@@ -420,8 +420,8 @@ pub mut:
 	receiver_type      Type // User
 	return_type        Type
 	should_be_skipped  bool
-	generic_types      []Type
-	generic_list_pos   token.Position
+	concrete_types     []Type // concrete types, e.g. <int, string>
+	concrete_list_pos  token.Position
 	free_receiver      bool // true if the receiver expression needs to be freed
 	scope              &Scope
 	from_embed_type    Type // holds the type of the embed that the method is called from
@@ -519,6 +519,7 @@ pub:
 	expr     Expr
 	has_expr bool
 	pos      token.Position
+	typ_pos  token.Position
 pub mut:
 	typ      Type
 	comments []Comment

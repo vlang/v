@@ -26,27 +26,27 @@ pub fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr 
 		p.expecting_type = true // Makes name_expr() parse the type `User` in `json.decode(User, txt)`
 		or_kind = .block
 	}
-	//
+
 	old_expr_mod := p.expr_mod
 	defer {
 		p.expr_mod = old_expr_mod
 	}
 	p.expr_mod = ''
-	//
-	mut generic_types := []ast.Type{}
-	mut generic_list_pos := p.tok.position()
+
+	mut concrete_types := []ast.Type{}
+	mut concrete_list_pos := p.tok.position()
 	if p.tok.kind == .lt {
 		// `foo<int>(10)`
 		p.expr_mod = ''
-		generic_types = p.parse_generic_type_list()
-		generic_list_pos = generic_list_pos.extend(p.prev_tok.position())
+		concrete_types = p.parse_generic_type_list()
+		concrete_list_pos = concrete_list_pos.extend(p.prev_tok.position())
 		// In case of `foo<T>()`
 		// T is unwrapped and registered in the checker.
 		full_generic_fn_name := if fn_name.contains('.') { fn_name } else { p.prepend_mod(fn_name) }
-		has_generic_generic := generic_types.filter(it.has_flag(.generic)).len > 0
+		has_generic_generic := concrete_types.filter(it.has_flag(.generic)).len > 0
 		if !has_generic_generic {
 			// will be added in checker
-			p.table.register_fn_generic_types(full_generic_fn_name, generic_types)
+			p.table.register_fn_generic_types(full_generic_fn_name, concrete_types)
 		}
 	}
 	p.check(.lpar)
@@ -95,8 +95,8 @@ pub fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr 
 		mod: p.mod
 		pos: pos
 		language: language
-		generic_types: generic_types
-		generic_list_pos: generic_list_pos
+		concrete_types: concrete_types
+		concrete_list_pos: concrete_list_pos
 		or_block: ast.OrExpr{
 			stmts: or_stmts
 			kind: or_kind
@@ -177,7 +177,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	is_manualfree := p.is_manualfree || p.attrs.contains('manualfree')
 	is_deprecated := p.attrs.contains('deprecated')
 	is_direct_arr := p.attrs.contains('direct_array_access')
-	is_conditional, conditional_ctdefine := p.attrs.has_comptime_define()
+	conditional_ctdefine := p.attrs.find_comptime_define() or { '' }
 	mut is_unsafe := p.attrs.contains('unsafe')
 	is_keep_alive := p.attrs.contains('keep_args_alive')
 	is_pub := p.tok.kind == .key_pub
@@ -349,7 +349,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			is_unsafe: is_unsafe
 			is_main: is_main
 			is_test: is_test
-			is_conditional: is_conditional
+			is_conditional: conditional_ctdefine != ''
 			is_keep_alive: is_keep_alive
 			ctdefine: conditional_ctdefine
 			no_body: no_body
@@ -378,7 +378,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			is_unsafe: is_unsafe
 			is_main: is_main
 			is_test: is_test
-			is_conditional: is_conditional
+			is_conditional: conditional_ctdefine != ''
 			is_keep_alive: is_keep_alive
 			ctdefine: conditional_ctdefine
 			no_body: no_body
@@ -421,7 +421,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		is_variadic: is_variadic
 		is_main: is_main
 		is_test: is_test
-		is_conditional: is_conditional
+		is_conditional: conditional_ctdefine != ''
 		is_keep_alive: is_keep_alive
 		receiver: ast.StructField{
 			name: rec.name

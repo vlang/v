@@ -119,6 +119,7 @@ pub fn new_test_session(_vargs string) TestSession {
 	$if macos {
 		skip_files << 'examples/database/mysql.v'
 		skip_files << 'examples/database/orm.v'
+		skip_files << 'examples/database/pg/customer.v'
 	}
 	$if windows {
 		skip_files << 'examples/database/mysql.v'
@@ -345,15 +346,6 @@ pub fn prepare_test_session(zargs string, folder string, oskipped []string, main
 	mut skipped := oskipped.clone()
 	next_file: for f in files {
 		if f.contains('modules') || f.contains('preludes') {
-			continue
-		}
-		// $if !linux {
-		// run pg example only on linux
-		if f.contains('/pg/') {
-			continue
-		}
-		// }
-		if f.contains('life_gg') || f.contains('/graph.v') || f.contains('rune.v') {
 			continue
 		}
 		$if windows {

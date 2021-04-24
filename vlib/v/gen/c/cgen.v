@@ -113,7 +113,7 @@ mut:
 	hotcode_fn_names       []string
 	embedded_files         []ast.EmbeddedFile
 	cur_fn                 ast.FnDecl
-	cur_generic_types      []ast.Type // `int`, `string`, etc in `foo<T>()`
+	cur_concrete_types     []ast.Type // current concrete types, e.g. <int, string>
 	sql_i                  int
 	sql_stmt_name          string
 	sql_bind_name          string
@@ -693,7 +693,7 @@ fn (mut g Gen) cc_type(typ ast.Type, is_prefix_struct bool) string {
 	mut styp := sym.cname
 	// TODO: this needs to be removed; cgen shouldn't resolve generic types (job of checker)
 	if mut sym.info is ast.Struct {
-		if sym.info.generic_types.len > 0 {
+		if sym.info.is_generic {
 			mut sgtyps := '_T'
 			for gt in sym.info.generic_types {
 				gts := g.table.get_type_symbol(g.unwrap_generic(gt))
@@ -3202,7 +3202,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 fn (mut g Gen) type_name(type_ ast.Type) {
 	mut typ := type_
 	if typ.has_flag(.generic) {
-		typ = g.cur_generic_types[0]
+		typ = g.cur_concrete_types[0]
 	}
 	s := g.table.type_to_str(typ)
 	g.write('_SLIT("${util.strip_main_name(s)}")')
@@ -5438,7 +5438,7 @@ fn (mut g Gen) write_types(types []ast.TypeSymbol) {
 		mut name := typ.cname
 		match mut typ.info {
 			ast.Struct {
-				if typ.info.generic_types.len > 0 {
+				if typ.info.is_generic {
 					continue
 				}
 				if name.contains('_T_') {
@@ -5945,14 +5945,14 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 	mut expr := node.call_expr
 	mut name := expr.name // util.no_dots(expr.name)
 	// TODO: fn call is duplicated. merge with fn_call().
-	for i, generic_type in expr.generic_types {
-		if generic_type != ast.void_type && generic_type != 0 {
+	for i, concrete_type in expr.concrete_types {
+		if concrete_type != ast.void_type && concrete_type != 0 {
 			// Using _T_ to differentiate between get<string> and get_string
 			// `foo<int>()` => `foo_T_int()`
 			if i == 0 {
 				name += '_T'
 			}
-			name += '_' + g.typ(generic_type)
+			name += '_' + g.typ(concrete_type)
 		}
 	}
 	if expr.is_method {

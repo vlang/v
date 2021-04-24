@@ -455,7 +455,6 @@ fn (mut app App) ai_move() {
 		move_idx := int(move)
 		predictions[move_idx].move = move
 		mut mpoints := 0
-		mut mshifts := 0
 		mut mcmoves := 0
 		for _ in 0 .. predictions_per_move {
 			mut cboard := app.board
@@ -479,7 +478,6 @@ fn (mut app App) ai_move() {
 				}
 			}
 			mpoints += cboard.points
-			mshifts += cboard.shifts
 			mcmoves += cmoves
 		}
 		predictions[move_idx].mpoints = f64(mpoints) / predictions_per_move

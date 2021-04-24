@@ -439,30 +439,14 @@ pub fn (mut p Parser) parse_block_no_scope(is_top_level bool) []ast.Stmt {
 	return stmts
 }
 
-/*
-fn (mut p Parser) next_with_comment() {
-	p.tok = p.peek_tok
-	p.peek_tok = p.scanner.scan()
-}
-*/
 fn (mut p Parser) next() {
 	p.prev_tok = p.tok
 	p.tok = p.peek_tok
 	p.peek_tok = p.scanner.scan()
-	/*
-	if p.tok.kind==.comment {
-		p.comments << ast.Comment{text:p.tok.lit, line_nr:p.tok.line_nr}
-		p.next()
-	}
-	*/
 }
 
 fn (mut p Parser) check(expected token.Kind) {
 	p.name_error = false
-	// for p.tok.kind in [.line_comment, .mline_comment] {
-	// p.next()
-	// }
-
 	if _likely_(p.tok.kind == expected) {
 		p.next()
 	} else {
@@ -1469,7 +1453,7 @@ fn (mut p Parser) attributes() {
 			p.error_with_pos('duplicate attribute `$attr.name`', start_pos.extend(p.prev_tok.position()))
 			return
 		}
-		if attr.is_comptime_define {
+		if attr.kind == .comptime_define {
 			if has_ctdefine {
 				p.error_with_pos('only one `[if flag]` may be applied at a time `$attr.name`',
 					start_pos.extend(p.prev_tok.position()))
@@ -1496,61 +1480,55 @@ fn (mut p Parser) attributes() {
 }
 
 fn (mut p Parser) parse_attr() ast.Attr {
+	mut kind := ast.AttrKind.plain
 	apos := p.prev_tok.position()
 	if p.tok.kind == .key_unsafe {
 		p.next()
 		return ast.Attr{
 			name: 'unsafe'
+			kind: kind
 			pos: apos.extend(p.tok.position())
 		}
 	}
-	is_comptime_define := p.tok.kind == .key_if
-	if is_comptime_define {
-		p.next()
-	}
 	mut name := ''
+	mut has_arg := false
 	mut arg := ''
-	is_string := p.tok.kind == .string
-	mut is_string_arg := false
-	mut is_number_arg := false
-	if is_string {
+	if p.tok.kind == .key_if {
+		kind = .comptime_define
+		p.next()
+		p.check(.name)
+		name = p.prev_tok.lit
+	} else if p.tok.kind == .string {
 		name = p.tok.lit
+		kind = .string
 		p.next()
 	} else {
 		name = p.check_name()
-		if name == 'unsafe_fn' {
-			p.error_with_pos('[unsafe_fn] is obsolete, use `[unsafe]` instead', apos.extend(p.tok.position()))
-			return ast.Attr{}
-		} else if name == 'trusted_fn' {
-			p.error_with_pos('[trusted_fn] is obsolete, use `[trusted]` instead', apos.extend(p.tok.position()))
-			return ast.Attr{}
-		} else if name == 'ref_only' {
-			p.warn_with_pos('[ref_only] is deprecated, use [heap] instead', apos.extend(p.tok.position()))
-			name = 'heap'
-		}
 		if p.tok.kind == .colon {
+			has_arg = true
 			p.next()
 			// `name: arg`
 			if p.tok.kind == .name {
+				kind = .plain
 				arg = p.check_name()
 			} else if p.tok.kind == .number {
+				kind = .number
 				arg = p.tok.lit
-				is_number_arg = true
 				p.next()
 			} else if p.tok.kind == .string { // `name: 'arg'`
+				kind = .string
 				arg = p.tok.lit
-				is_string_arg = true
 				p.next()
+			} else {
+				p.error('unexpected $p.tok, an argument is expected after `:`')
 			}
 		}
 	}
 	return ast.Attr{
 		name: name
-		is_string: is_string
-		is_comptime_define: is_comptime_define
+		has_arg: has_arg
 		arg: arg
-		is_string_arg: is_string_arg
-		is_number_arg: is_number_arg
+		kind: kind
 		pos: apos.extend(p.tok.position())
 	}
 }
@@ -1947,7 +1925,14 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		opt := if p.tok.lit == 'r' { '`r` (raw string)' } else { '`c` (c string)' }
 		return p.error('cannot use $opt with `byte` and `rune`')
 	}
-	known_var := p.mark_var_as_used(p.tok.lit)
+	// Make sure that the var is not marked as used in assignments: `x = 1`, `x += 2` etc
+	// but only when it's actually used (e.g. `println(x)`)
+	known_var := if p.peek_tok.kind.is_assign() {
+		p.scope.known_var(p.tok.lit)
+	} else {
+		p.mark_var_as_used(p.tok.lit)
+	}
+	// Handle modules
 	mut is_mod_cast := false
 	if p.peek_tok.kind == .dot && !known_var && (language != .v || p.known_import(p.tok.lit)
 		|| p.mod.all_after_last('.') == p.tok.lit) {
@@ -2244,18 +2229,18 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	}
 	// Method call
 	// TODO move to fn.v call_expr()
-	mut generic_types := []ast.Type{}
-	mut generic_list_pos := p.tok.position()
+	mut concrete_types := []ast.Type{}
+	mut concrete_list_pos := p.tok.position()
 	if is_generic_call {
 		// `g.foo<int>(10)`
-		generic_types = p.parse_generic_type_list()
-		generic_list_pos = generic_list_pos.extend(p.prev_tok.position())
+		concrete_types = p.parse_generic_type_list()
+		concrete_list_pos = concrete_list_pos.extend(p.prev_tok.position())
 		// In case of `foo<T>()`
 		// T is unwrapped and registered in the checker.
-		has_generic_generic := generic_types.filter(it.has_flag(.generic)).len > 0
+		has_generic_generic := concrete_types.filter(it.has_flag(.generic)).len > 0
 		if !has_generic_generic {
 			// will be added in checker
-			p.table.register_fn_generic_types(field_name, generic_types)
+			p.table.register_fn_generic_types(field_name, concrete_types)
 		}
 	}
 	if p.tok.kind == .lpar {
@@ -2295,8 +2280,8 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 			name_pos: name_pos
 			pos: pos
 			is_method: true
-			generic_types: generic_types
-			generic_list_pos: generic_list_pos
+			concrete_types: concrete_types
+			concrete_list_pos: concrete_list_pos
 			or_block: ast.OrExpr{
 				stmts: or_stmts
 				kind: or_kind
@@ -2846,6 +2831,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 		if has_expr {
 			p.next() // =
 		}
+		typ_pos := p.tok.position()
 		typ := p.parse_type()
 		if p.tok.kind == .assign {
 			p.error('global assign must have the type around the value, use `name = type(value)`')
@@ -2866,6 +2852,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 			has_expr: has_expr
 			expr: expr
 			pos: pos
+			typ_pos: typ_pos
 			typ: typ
 			comments: comments
 		}

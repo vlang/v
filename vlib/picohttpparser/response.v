@@ -10,13 +10,7 @@ pub mut:
 }
 
 [inline]
-[deprecated: 'use Response.write_string() instead']
-pub fn (mut r Response) write_str(s string) {
-	r.write_string(s)
-}
-
-[inline]
-fn (mut r Response) write_string(s string) {
+pub fn (mut r Response) write_string(s string) {
 	unsafe {
 		C.memcpy(r.buf, s.str, s.len)
 		r.buf += s.len

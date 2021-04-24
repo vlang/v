@@ -328,12 +328,6 @@ pub fn (typ Type) is_number() bool {
 	return typ.clear_flags() in ast.number_type_idxs
 }
 
-pub fn (typ Type) is_number_or_literal() bool {
-	res := int(typ) in ast.number_type_idxs
-	eprintln('> is_number_or_literal typ: $typ.debug() | res: $res')
-	return res
-}
-
 [inline]
 pub fn (typ Type) is_string() bool {
 	return typ.idx() in ast.string_type_idxs
@@ -722,6 +716,7 @@ pub mut:
 	is_typedef     bool // C. [typedef]
 	is_union       bool
 	is_heap        bool
+	is_generic     bool
 	generic_types  []Type
 	concrete_types []Type
 	parent_type    Type
