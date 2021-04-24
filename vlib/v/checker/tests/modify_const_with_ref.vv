@@ -1,0 +1,13 @@
+struct Foo {
+mut:
+	value int
+}
+
+const constant = Foo{ 100 }
+
+fn main() {
+	mut unused_var := Foo{}
+	unused_var = Foo{}
+	mut c := &constant
+	c.value = 200
+}

@@ -53,7 +53,8 @@ fn C.symlink(&char, &char) int
 
 fn C.gethostname(&char, int) int
 
-fn C.getlogin_r(&char, int) int
+// NB: not available on Android fn C.getlogin_r(&char, int) int
+fn C.getlogin() &char
 
 pub fn uname() Uname {
 	mut u := Uname{}
@@ -86,13 +87,9 @@ pub fn hostname() string {
 }
 
 pub fn loginname() string {
-	mut lgnname := ''
-	size := 256
-	mut buf := unsafe { &char(malloc(size)) }
-	if C.getlogin_r(buf, size) == 0 {
-		lgnname = unsafe { cstring_to_vstring(buf) }
-		unsafe { free(buf) }
-		return lgnname
+	x := C.getlogin()
+	if !isnil(x) {
+		return unsafe { cstring_to_vstring(x) }
 	}
 	return ''
 }

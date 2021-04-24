@@ -215,6 +215,8 @@ fn C.SetHandleInformation(hObject voidptr, dwMask u32, dw_flags u32) bool
 
 fn C.ExpandEnvironmentStringsW(lpSrc &u16, lpDst &u16, nSize u32) u32
 
+fn C.GetComputerNameW(&u16, &u32) bool
+
 [trusted]
 fn C.SendMessageTimeout() u32
 
