@@ -107,10 +107,10 @@ pub fn utf8_str_len(s string) int {
 	mut l := 0
 	mut i := 0
 	for i < s.len {
- 		l++
- 		i += ((0xe5000000 >> ((unsafe{s.str[i]} >> 3) & 0x1e)) & 3) + 1
- 	}
- 	return l
+		l++
+		i += ((0xe5000000 >> ((unsafe { s.str[i] } >> 3) & 0x1e)) & 3) + 1
+	}
+	return l
 }
 
 // Calculate string length for formatting, i.e. number of "characters"
@@ -121,7 +121,7 @@ pub fn utf8_str_visible_length(s string) int {
 	mut ul := 1
 	for i := 0; i < s.len; i += ul {
 		c := unsafe { s.str[i] }
-		ul = ((0xe5000000 >> ((unsafe{s.str[i]} >> 3) & 0x1e)) & 3) + 1
+		ul = ((0xe5000000 >> ((unsafe { s.str[i] } >> 3) & 0x1e)) & 3) + 1
 		if i + ul > s.len { // incomplete UTF-8 sequence
 			return l
 		}
