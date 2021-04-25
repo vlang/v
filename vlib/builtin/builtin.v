@@ -122,12 +122,17 @@ pub:
 	typ    int
 }
 
+pub enum AttributeKind {
+	plain // [name]
+	string // ['name']
+	number // [123]
+	comptime_define // [if name]
+}
+
 pub struct StructAttribute {
 pub:
-	name               string
-	is_string          bool
-	is_comptime_define bool
-	arg                string
-	is_string_arg      bool
-	is_number_arg      bool
+	name    string
+	has_arg bool
+	arg     string
+	kind    AttributeKind
 }

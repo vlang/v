@@ -477,10 +477,9 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 				g.writeln('/* attribute $i */ {')
 
 				g.writeln('\t${node.val_var}.name = _SLIT("$attr.name");')
-				g.writeln('\t${node.val_var}.is_string = $attr.is_string;')
-				g.writeln('\t${node.val_var}.is_comptime_define = $attr.is_comptime_define;')
+				g.writeln('\t${node.val_var}.has_arg = $attr.has_arg;')
 				g.writeln('\t${node.val_var}.arg = _SLIT("$attr.arg");')
-				g.writeln('\t${node.val_var}.is_string_arg = $attr.is_string_arg;')
+				g.writeln('\t${node.val_var}.kind = AttributeKind_$attr.kind;')
 
 				g.writeln('}')
 			}
