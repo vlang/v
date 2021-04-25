@@ -2,7 +2,7 @@ struct Abc<T> {
 	value T
 }
 
-fn (s Abc<T>) get_value<T>() T {
+fn (s Abc<T>) get_value() T {
 	return s.value
 }
 
