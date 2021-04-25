@@ -62,7 +62,7 @@ fn (mut ctx Context) shift(len int) {
 // TODO: don't actually do this, lmao
 [inline]
 fn (mut ctx Context) resize_arr(size int) {
-	mut l := &ctx.read_buf.len
+	mut l := unsafe { &ctx.read_buf.len }
 	unsafe {
 		*l = size
 		_ = l

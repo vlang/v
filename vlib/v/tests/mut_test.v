@@ -284,7 +284,7 @@ fn test_mut_13() {
 }
 
 fn foo5(mut arr []int) {
-	arr2 := &arr
+	arr2 := unsafe { &arr }
 	arr[0] = 0
 	println(arr[0]) // 0
 	assert arr[0] == 0
@@ -300,7 +300,7 @@ fn test_mut_14() {
 }
 
 fn foo6(mut arr [3]int) {
-	arr2 := &arr
+	arr2 := unsafe { &arr }
 	arr[0] = 0
 	println(arr[0]) // 0
 	assert arr[0] == 0
@@ -316,7 +316,7 @@ fn test_mut_15() {
 }
 
 fn foo7(mut m map[string]int) {
-	m2 := &m
+	m2 := unsafe { &m }
 	m['one'] = 1
 	println(m['one']) // 1
 	assert m['one'] == 1

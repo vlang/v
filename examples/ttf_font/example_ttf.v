@@ -53,7 +53,7 @@ fn draw_frame(mut app App_data) {
 		sgl.v2f(510, 400)
 		sgl.end()
 		// update the text
-		mut txt1 := &app.ttf_render[0]
+		mut txt1 := unsafe { &app.ttf_render[0] }
 		if app.frame_c % 2 == 0 {
 			txt1.destroy_texture()
 			txt1.create_text(cframe_txt, 43)
@@ -71,7 +71,7 @@ Frame: $app.frame_c
 But Vwill prevail for sure, V is the way!!
 òàèì@ò!£$%&
 "
-		txt1 = &app.ttf_render[1]
+		txt1 = unsafe { &app.ttf_render[1] }
 		if app.frame_c % 2 == 0 {
 			txt1.bmp.justify = false
 			if (app.frame_c >> 6) % 2 == 0 {
@@ -93,7 +93,7 @@ But Vwill prevail for sure, V is the way!!
 		txt1.draw_text_bmp(app.gg, 30 + (app.frame_c >> 1) & 0xFF, 200)
 		// draw mouse position
 		if app.mouse_x >= 0 {
-			txt1 = &app.ttf_render[2]
+			txt1 = unsafe { &app.ttf_render[2] }
 			txt1.destroy_texture()
 			txt1.create_text('$app.mouse_x,$app.mouse_y', 25)
 			txt1.create_texture()

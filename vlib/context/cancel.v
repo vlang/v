@@ -80,7 +80,7 @@ pub fn (mut ctx CancelContext) err() IError {
 
 pub fn (ctx CancelContext) value(key string) ?voidptr {
 	if key == cancel_context_key {
-		return voidptr(&ctx)
+		return voidptr(unsafe { &ctx })
 	}
 	return ctx.context.value(key)
 }
