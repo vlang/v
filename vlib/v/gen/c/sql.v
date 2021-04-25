@@ -778,7 +778,11 @@ fn (mut g Gen) psql_stmt(node ast.SqlStmt, typ SqlType) {
 				g.writeln('if (${res}.state != 0) { IError err = ${res}.err; eprintln(_STR("\\000%.*s", 2, IError_str(err))); }')
 				g.sql_buf = strings.new_builder(100)
 				g.sql_bind('${res}.data', '', ast.int_type, typ, [
-					(i - 1).str(), param_values, param_lens, param_formats])
+					(i - 1).str(),
+					param_values,
+					param_lens,
+					param_formats,
+				])
 				g.writeln(g.sql_buf.str())
 			} else {
 				g.sql_buf = strings.new_builder(100)
