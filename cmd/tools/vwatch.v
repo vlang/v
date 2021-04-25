@@ -242,7 +242,7 @@ const ccontext = Context{
 }
 
 fn main() {
-	mut context := &ccontext
+	mut context := unsafe { &Context(voidptr(&ccontext)) }
 	context.pid = os.getpid()
 	context.vexe = os.getenv('VEXE')
 	context.is_worker = os.args.contains('-vwatchworker')
@@ -282,7 +282,7 @@ fn (mut context Context) manager_main() {
 fn (mut context Context) worker_main() {
 	context.rerun_channel = chan RerunCommand{cap: 10}
 	os.signal(C.SIGINT, fn () {
-		mut context := &ccontext
+		mut context := unsafe { &Context(voidptr(&ccontext)) }
 		context.is_exiting = true
 		context.kill_pgroup()
 	})
