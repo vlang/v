@@ -1,20 +1,17 @@
-/*
-
-str_intp.v
-
+/*=============================================================================
 Copyright (c) 2019-2021 Dario Deledda. All rights reserved.
 Use of this source code is governed by an MIT license
 that can be found in the LICENSE file.
 
 This file contains string interpolation V functions
+=============================================================================*/
 
-*/
 module builtin
 import strconv
 //import strings
 
 //=============================================================================
-// Enum format types max 0x1F => 31 types
+// Enum format types max 0x1F => 32 types
 //=============================================================================
 pub enum Str_intp_type {
 	si_no_str = 0  // no parameter to print only fix string
