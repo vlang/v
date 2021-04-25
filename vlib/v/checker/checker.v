@@ -786,9 +786,9 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) ast.Type {
 			}
 		}
 		.key_in, .not_in {
-			match right.kind {
+			match right_final.kind {
 				.array {
-					elem_type := right.array_info().elem_type
+					elem_type := right_final.array_info().elem_type
 					// if left_default.kind != right_sym.kind {
 					c.check_expected(left_type, elem_type) or {
 						c.error('left operand to `$infix_expr.op` does not match the array element type: $err.msg',
@@ -796,7 +796,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) ast.Type {
 					}
 				}
 				.map {
-					map_info := right.map_info()
+					map_info := right_final.map_info()
 					c.check_expected(left_type, map_info.key_type) or {
 						c.error('left operand to `$infix_expr.op` does not match the map key type: $err.msg',
 							left_right_pos)
