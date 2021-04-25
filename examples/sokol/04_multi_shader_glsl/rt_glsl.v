@@ -417,7 +417,7 @@ fn draw_cube_glsl_m(app App) {
 		0 // padding bytes , see "fs_params" struct paddings in rt_glsl.h
 	]!
 	fs_uniforms_range := C.sg_range{
-		ptr: &tmp_fs_params
+		ptr: unsafe { &tmp_fs_params }
 		size: size_t(sizeof(tmp_fs_params))
 	}
 	gfx.apply_uniforms(C.SG_SHADERSTAGE_FS, C.SLOT_fs_params_p, &fs_uniforms_range)
@@ -469,7 +469,7 @@ fn draw_cube_glsl_p(app App) {
 		0 // padding bytes , see "fs_params" struct paddings in rt_glsl.h
 	]!
 	fs_uniforms_range := C.sg_range{
-		ptr: &tmp_fs_params
+		ptr: unsafe { &tmp_fs_params }
 		size: size_t(sizeof(tmp_fs_params))
 	}
 	gfx.apply_uniforms(C.SG_SHADERSTAGE_FS, C.SLOT_fs_params_p, &fs_uniforms_range)

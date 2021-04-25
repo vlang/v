@@ -61,6 +61,7 @@ pub mut:
 	inside_const   bool
 	inside_anon_fn bool
 	inside_ref_lit bool
+	inside_fn_arg  bool // `a`, `b` in `a.f(b)`
 	skip_flags     bool // should `#flag` and `#include` be skipped
 mut:
 	files                            []ast.File
@@ -1318,7 +1319,10 @@ pub fn (mut c Checker) call_expr(mut call_expr ast.CallExpr) ast.Type {
 	}
 	*/
 	// Now call `method_call` or `fn_call` for specific checks.
+	old_inside_fn_arg := c.inside_fn_arg
+	c.inside_fn_arg = true
 	typ := if call_expr.is_method { c.method_call(mut call_expr) } else { c.fn_call(mut call_expr) }
+	c.inside_fn_arg = old_inside_fn_arg
 	// autofree: mark args that have to be freed (after saving them in tmp exprs)
 	free_tmp_arg_vars := c.pref.autofree && !c.is_builtin_mod && call_expr.args.len > 0
 		&& !call_expr.args[0].typ.has_flag(.optional)
@@ -3564,7 +3568,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		ast.DeferStmt {
 			if node.idx_in_fn < 0 {
 				node.idx_in_fn = c.cur_fn.defer_stmts.len
-				c.cur_fn.defer_stmts << &node
+				c.cur_fn.defer_stmts << unsafe { &node }
 			}
 			c.stmts(node.stmts)
 		}
@@ -4176,7 +4180,7 @@ pub fn (mut c Checker) expr(node ast.Expr) ast.Type {
 		ast.AnonFn {
 			c.inside_anon_fn = true
 			keep_fn := c.cur_fn
-			c.cur_fn = &node.decl
+			c.cur_fn = unsafe { &node.decl }
 			c.stmts(node.decl.stmts)
 			c.fn_decl(mut node.decl)
 			c.cur_fn = keep_fn
@@ -5014,6 +5018,24 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	// node.expected_type = c.expected_type
 	// }
 	node.return_type = ret_type
+	cond_var := c.get_base_name(&node.cond)
+	if cond_var != '' {
+		mut cond_is_auto_heap := false
+		for branch in node.branches {
+			if v := branch.scope.find_var(cond_var) {
+				if v.is_auto_heap {
+					cond_is_auto_heap = true
+					break
+				}
+			}
+		}
+		if cond_is_auto_heap {
+			for branch in node.branches {
+				mut v := branch.scope.find_var(cond_var) or { continue }
+				v.is_auto_heap = true
+			}
+		}
+	}
 	return ret_type
 }
 
@@ -5830,6 +5852,53 @@ pub fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) ast.Type {
 	return typ
 }
 
+pub fn (mut c Checker) mark_as_referenced(mut node ast.Expr) {
+	match mut node {
+		ast.Ident {
+			if mut node.obj is ast.Var {
+				mut obj := unsafe { &node.obj }
+				if c.fn_scope != voidptr(0) {
+					obj = c.fn_scope.find_var(node.obj.name) or { unsafe { &node.obj } }
+				}
+				type_sym := c.table.get_type_symbol(obj.typ)
+				if obj.is_stack_obj {
+					c.error('`$node.name` cannot be referenced outside `unsafe` blocks as it might be stored on stack. Consider declaring `$type_sym.name` as `[heap]`.',
+						node.pos)
+				} else if type_sym.kind == .array_fixed {
+					c.error('cannot reference fixed array `$node.name` outside `unsafe` blocks as it is supposed to be stored on stack',
+						node.pos)
+				} else {
+					node.obj.is_auto_heap = true
+				}
+			}
+		}
+		ast.SelectorExpr {
+			c.mark_as_referenced(mut &node.expr)
+		}
+		ast.IndexExpr {
+			c.mark_as_referenced(mut &node.left)
+		}
+		else {}
+	}
+}
+
+pub fn (mut c Checker) get_base_name(node &ast.Expr) string {
+	match node {
+		ast.Ident {
+			return node.name
+		}
+		ast.SelectorExpr {
+			return c.get_base_name(&node.expr)
+		}
+		ast.IndexExpr {
+			return c.get_base_name(&node.left)
+		}
+		else {
+			return ''
+		}
+	}
+}
+
 pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 	old_inside_ref_lit := c.inside_ref_lit
 	c.inside_ref_lit = c.inside_ref_lit || node.op == .amp
@@ -5871,9 +5940,19 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 				}
 			}
 		}
+		if !c.inside_fn_arg && !c.inside_unsafe {
+			c.mark_as_referenced(mut &node.right)
+		}
 		return right_type.to_ptr()
 	} else if node.op == .amp && node.right !is ast.CastExpr {
-		return right_type.to_ptr()
+		if !c.inside_fn_arg && !c.inside_unsafe {
+			c.mark_as_referenced(mut &node.right)
+		}
+		if node.right.is_auto_deref_var() {
+			return right_type
+		} else {
+			return right_type.to_ptr()
+		}
 	}
 	if node.op == .mul {
 		if right_type.is_ptr() {

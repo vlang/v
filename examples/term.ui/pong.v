@@ -210,7 +210,7 @@ fn (mut p Player) update() {
 		return
 	}
 	// dt := p.game.app.dt
-	ball := &p.game.ball
+	ball := unsafe { &p.game.ball }
 	// Evil AI that eventually will take over the world
 	p.pos.y = ball.pos.y - int(f32(p.racket_size) * 0.5)
 }
@@ -246,7 +246,7 @@ mut:
 }
 
 fn (mut g Game) move_player(id int, x int, y int) {
-	mut p := &g.players[id]
+	mut p := unsafe { &g.players[id] }
 	if p.ai { // disable AI when moved
 		p.ai = false
 	}
@@ -288,7 +288,7 @@ fn (mut g Game) new_round() {
 
 fn (mut g Game) update() {
 	dt := g.app.dt
-	mut b := &g.ball
+	mut b := unsafe { &g.ball }
 	for mut p in g.players {
 		p.update()
 		// Keep rackets within the game area

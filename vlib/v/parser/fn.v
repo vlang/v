@@ -291,11 +291,28 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 					scope: 0
 				}
 			}
+			mut is_heap_ref := false // args are only borrowed, so assume maybe on stack
+			mut is_stack_obj := true
+			nr_muls := param.typ.nr_muls()
+			if nr_muls == 1 { // mut a St, b &St
+				base_type_sym := p.table.get_type_symbol(param.typ.set_nr_muls(0))
+				if base_type_sym.kind == .struct_ {
+					info := base_type_sym.info as ast.Struct
+					is_heap_ref = info.is_heap // if type is declared as [heap] we can assume this, too
+					is_stack_obj = !is_heap_ref
+				}
+			}
+			if param.typ.has_flag(.shared_f) {
+				is_heap_ref = true
+				is_stack_obj = false
+			}
 			p.scope.register(ast.Var{
 				name: param.name
 				typ: param.typ
 				is_mut: param.is_mut
 				is_auto_deref: param.is_mut || param.is_auto_rec
+				is_heap_ref: is_heap_ref
+				is_stack_obj: is_stack_obj
 				pos: param.pos
 				is_used: true
 				is_arg: true
@@ -580,6 +597,21 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 		if arg.name.len == 0 {
 			p.error_with_pos('use `_` to name an unused parameter', arg.pos)
 		}
+		mut is_heap_ref := false // args are only borrowed, so assume maybe on stack
+		mut is_stack_obj := true
+		nr_muls := arg.typ.nr_muls()
+		if nr_muls == 1 { // mut a St, b &St
+			base_type_sym := p.table.get_type_symbol(arg.typ.set_nr_muls(0))
+			if base_type_sym.kind == .struct_ {
+				info := base_type_sym.info as ast.Struct
+				is_heap_ref = info.is_heap // if type is declared as [heap] we can assume this, too
+				is_stack_obj = !is_heap_ref
+			}
+		}
+		if arg.typ.has_flag(.shared_f) {
+			is_heap_ref = true
+			is_stack_obj = false
+		}
 		p.scope.register(ast.Var{
 			name: arg.name
 			typ: arg.typ
@@ -587,6 +619,8 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 			pos: arg.pos
 			is_used: true
 			is_arg: true
+			is_heap_ref: is_heap_ref
+			is_stack_obj: is_stack_obj
 		})
 	}
 	mut same_line := p.tok.line_nr == p.prev_tok.line_nr
