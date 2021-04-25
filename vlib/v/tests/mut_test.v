@@ -268,7 +268,7 @@ mut:
 }
 
 fn foo4(mut f Foo) {
-	f2 := &f
+	f2 := unsafe { &f }
 	f.foo = 100
 	println(f.foo)
 	println(f2.foo)

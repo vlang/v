@@ -5949,7 +5949,11 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 		if !c.inside_fn_arg && !c.inside_unsafe {
 			c.mark_as_referenced(mut &node.right)
 		}
-		return right_type.to_ptr()
+		if node.right.is_auto_deref_var() {
+			return right_type
+		} else {
+			return right_type.to_ptr()
+		}
 	}
 	if node.op == .mul {
 		if right_type.is_ptr() {

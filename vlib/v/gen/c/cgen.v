@@ -3151,7 +3151,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 				}
 			} else {
 				// g.write('/*pref*/')
-				g.write(node.op.str())
+				if !(g.is_amp && node.right.is_auto_deref_var()) {
+					g.write(node.op.str())
+				}
 				// g.write('(')
 				g.expr(node.right)
 			}
