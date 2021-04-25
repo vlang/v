@@ -4,7 +4,9 @@ mut:
 }
 
 fn f() &Qwe {
-	q := Qwe{a: 12.5}
+	q := Qwe{
+		a: 12.5
+	}
 	return &q
 }
 
