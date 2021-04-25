@@ -47,7 +47,7 @@ fn main() {
 
 	eprintln(modul)
 
-	//mysql()
+	// mysql()
 	psql()
 }
 
