@@ -454,10 +454,11 @@ fn (mut g Gen) gen_array_prepend(node ast.CallExpr) {
 
 fn (mut g Gen) gen_array_contains_method(left_type ast.Type) string {
 	mut left_sym := g.table.get_type_symbol(left_type)
+	left_final_sym := g.table.get_final_type_symbol(left_type)
 	mut left_type_str := g.typ(left_type).replace('*', '')
 	fn_name := '${left_type_str}_contains'
 	if !left_sym.has_method('contains') {
-		left_info := left_sym.info as ast.Array
+		left_info := left_final_sym.info as ast.Array
 		mut elem_type_str := g.typ(left_info.elem_type)
 		elem_sym := g.table.get_type_symbol(left_info.elem_type)
 		if elem_sym.kind == .function {
