@@ -2804,13 +2804,13 @@ Objects can be pushed to channels using the arrow operator. The same operator ca
 pop objects from the other end:
 
 ```v
-ch := chan int{}
-ch2 := chan f64{}
+// make buffered channels so pushing does not block (if there is room in the buffer)
+ch := chan int{cap: 1}
+ch2 := chan f64{cap: 1}
 n := 5
-x := 7.3
-ch <- n
 // push
-ch2 <- x
+ch <- n
+ch2 <- 7.3
 mut y := f64(0.0)
 m := <-ch // pop creating new variable
 y = <-ch2 // pop into existing variable

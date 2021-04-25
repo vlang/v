@@ -12,10 +12,3 @@ vlib/v/checker/tests/chan_ref.vv:12:8: error: cannot push non-reference `St` on 
       |           ^
    13 |     // the following works
    14 |     y := &St{}
-vlib/v/checker/tests/chan_ref.vv:28:11: error: cannot have a mutable reference to object from `chan &St`
-   26 |     y := <-c
-   27 |     // this should fail
-   28 |     mut z := <-c
-      |              ~~
-   29 |     z.n = 9
-   30 |     sem.post()

@@ -217,6 +217,8 @@ fn C.ExpandEnvironmentStringsW(lpSrc &u16, lpDst &u16, nSize u32) u32
 
 fn C.GetComputerNameW(&u16, &u32) bool
 
+fn C.GetUserNameW(&u16, &u32) bool
+
 [trusted]
 fn C.SendMessageTimeout() u32
 

@@ -3640,7 +3640,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		&& left_sym.kind in [.array, .array_fixed, .alias, .map, .struct_, .sum_type] {
 		g.infix_gen_equality(node, left_type, left_sym, right_sym)
 	} else if op_is_key_in_or_not_in {
-		g.infix_in_or_not_in(node, left_sym, right_sym)
+		g.infix_in_or_not_in(node, left_final_sym, right_final_sym)
 	} else if node.op == .left_shift && left_final_sym.kind == .array {
 		// arr << val
 		tmp := g.new_tmp_var()

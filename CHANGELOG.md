@@ -127,7 +127,6 @@ files with compilation errors.
 - High order functions improvements (functions can now be returned etc).
 - Anonymous functions that can be defined inside other functions.
 - Built-in JSON module is back.
-- Closures.
 - Lots and lots of new tests added, including output tests that test error messages.
 - Multiple errors are now printed, the compiler no longer stops after the first error.
 - The new JS backend using the AST parser (almost complete).
