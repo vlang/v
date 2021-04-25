@@ -3,7 +3,6 @@
 struct Test {}
 
 fn test_attributes() {
-	a := AQ.abc
 	$for attr in Test.attributes {
 		if attr.has_arg {
 			assert attr.name == 'test'
