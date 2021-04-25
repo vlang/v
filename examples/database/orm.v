@@ -86,7 +86,7 @@ fn mysql() {
 }
 
 fn psql() {
-	mut db := pg.connect(host: 'localhost', user: 'louis', password: 'abc', dbname: 'louis') or {
+	mut db := pg.connect(host: 'localhost', user: 'test', password: 'abc', dbname: 'test') or {
 		panic(err)
 	}
 

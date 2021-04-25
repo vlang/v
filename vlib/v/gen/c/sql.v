@@ -1209,7 +1209,7 @@ fn (mut g Gen) inc_sql_i(typ SqlType) {
 	if typ == .psql {
 		g.write('$')
 	} else {
-		g.write('?')
+		g.write('?') // used in sqlite `?i` and mysql `?`
 	}
 	if typ != .mysql {
 		g.write('$g.sql_i')
