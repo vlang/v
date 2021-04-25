@@ -29,7 +29,7 @@ enum Char_parse_state {
 	reset_params
 }
 
-enum Align_text {
+pub enum Align_text {
 	right = 0
 	left
 	center
@@ -176,6 +176,12 @@ pub fn f64_to_str_lnd(f f64, dec_digit int) string {
 			i++
 		}
 	}
+	
+	// no more digits needed, stop here
+	if dec_digit <= 0 {	
+		return unsafe { tos(res.data, dot_res_sp) }
+	} 
+
 	//println("r_i-d_pos: ${r_i - d_pos}")
 	if dot_res_sp >= 0 {
 		if (r_i - dot_res_sp) > dec_digit {
@@ -204,6 +210,7 @@ pub fn f64_to_str_lnd(f f64, dec_digit int) string {
 
 */
 pub struct BF_param {
+pub mut:
 	pad_ch       byte       = byte(` `)     // padding char
 	len0         int        = -1      // default len for whole the number or string
 	len1         int        = 6       // number of decimal digits, if needed
@@ -214,7 +221,10 @@ pub struct BF_param {
 }
 
 pub fn format_str(s string, p BF_param) string {
-	dif := p.len0 - s.len
+	if p.len0 <= 0 {
+		return s
+	}
+	dif := p.len0 - utf8_str_visible_length(s)
 	if dif <= 0 {
 		return s
 	}
