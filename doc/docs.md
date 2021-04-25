@@ -3149,8 +3149,8 @@ fn test() []int {
 
 (This is still in an alpha state)
 
-V has a built-in ORM (object-relational mapping) which supports SQLite and MySQL,
-but soon it will support Postgres, MS SQL, and Oracle.
+V has a built-in ORM (object-relational mapping) which supports SQLite, MySQL and Postgres,
+but soon it will support MS SQL and Oracle.
 
 V's ORM provides a number of benefits:
 

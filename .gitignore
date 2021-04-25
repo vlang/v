@@ -82,3 +82,6 @@ _docs
 cmd/tools/.disable_autorecompilation
 
 test.bin
+
+# ignore codespace env
+.venv/
