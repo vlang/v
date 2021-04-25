@@ -2258,6 +2258,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 				typ: ast.error_type
 				pos: p.tok.position()
 				is_used: true
+				is_stack_obj: true
 			})
 			or_kind = .block
 			or_stmts = p.parse_block_no_scope(false)
