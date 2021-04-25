@@ -80,6 +80,7 @@ fn (mut g Gen) string_inter_literal_sb_optimized(call_expr ast.CallExpr) {
 	return
 }
 
+/*
 fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	g.write('_STR("')
 	// Build the string with %
@@ -211,6 +212,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	}
 	g.write(')')
 }
+*/
 
 fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 	is_shared := etype.has_flag(.shared_f)
