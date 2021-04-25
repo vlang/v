@@ -406,7 +406,9 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 		} else if elem_typ.kind == .function {
 			g.write(', &(voidptr[]){ $zero }))')
 		} else {
-			g.write(', &($elem_type_str[]){ $zero }))')
+			g.write(', &')
+			g.struct_init(ast.StructInit{typ: elem_type})
+			g.write('))')
 		}
 		if gen_or {
 			g.writeln(';')
