@@ -8,7 +8,7 @@ This file contains string interpolation V functions
 
 module builtin
 import strconv
-//import strings
+import strings
 
 //=============================================================================
 // Enum format types max 0x1F => 32 types
@@ -368,18 +368,18 @@ pub:
 
 // interpolation function
 pub fn str_interpolation(data_len int, in_data voidptr) string {
-	//mut res := strings.new_builder(256)
-	mut res := ""
+	mut res := strings.new_builder(256)
+	//mut res := ""
 	unsafe{	
 		mut i := 0
 		for i < data_len {
 			data := &Str_intp_data( byteptr(in_data) + (int(sizeof(Str_intp_data)) * i) )
-			//res.write_string(data.str)
-			res += data.str
+			res.write_string(data.str)
+			//res += data.str
 			// skip only string records
 			if data.fmt != 0 {
-				//res.write_string(data.get_fmt_from_u64_format())
-				res += data.get_fmt_from_u64_format()
+				res.write_string(data.get_fmt_from_u64_format())
+				//res += data.get_fmt_from_u64_format()
 			}
 			i++
 		}
