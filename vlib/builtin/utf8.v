@@ -102,24 +102,6 @@ fn utf8_len(c byte) int {
 	return b
 }
 
-/*
-// Note: Old function for rederence
-// Calculate string length for in number of codepoints
-fn utf8_str_len(s string) int {
-	mut l := 0
-	for i := 0; i < s.len; i++ {
-		l++
-		c := unsafe { s.str[i] }
-		if (c & (1 << 7)) != 0 {
-			for t := byte(1 << 6); (c & t) != 0; t >>= 1 {
-				i++
-			}
-		}
-	}
-	return l
-}
-*/
-
 // Calculate string length for in number of codepoints
 pub fn utf8_str_len(s string) int {
 	mut l := 0
@@ -138,32 +120,16 @@ pub fn utf8_str_visible_length(s string) int {
 	mut l := 0
 	mut ul := 1
 	for i := 0; i < s.len; i += ul {
-
-		// quick version
 		c := unsafe { s.str[i] }
 		ul = ((0xe5000000 >> ((unsafe{s.str[i]} >> 3) & 0x1e)) & 3) + 1
-
-		/*
-		// slow version, test and remove!
-		ul = 1
-		c := unsafe { s.str[i] }
-		if (c & (1 << 7)) != 0 {
-			for t := byte(1 << 6); (c & t) != 0; t >>= 1 {
-				ul++
-			}
-		}
-		*/
-
 		if i + ul > s.len { // incomplete UTF-8 sequence
 			return l
 		}
 		l++
-
 		// avoid the match if not needed
 		if ul == 1 {
 			continue
 		}
-
 		// recognize combining characters and wide characters
 		match ul {
 			2 {
