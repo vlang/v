@@ -5873,7 +5873,8 @@ pub fn (mut c Checker) mark_as_referenced(mut node ast.Expr) {
 		}
 		ast.IndexExpr {
 			if c.table.get_type_symbol(node.left_type).kind == .array_fixed {
-				c.error('cannot reference fixed array `$node.left` as it might be on stack', node.left.position())
+				c.error('cannot reference fixed array `$node.left` as it might be on stack',
+					node.left.position())
 			} else {
 				c.mark_as_referenced(mut &node.left)
 			}
