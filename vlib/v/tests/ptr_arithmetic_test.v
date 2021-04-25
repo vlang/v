@@ -48,8 +48,8 @@ fn test_ptr_arithmetic_over_struct() {
 	a[0].x = 10
 	a[1].x = 100
 	a[2].x = 1000
-	mut pa := &a[0]
-	assert pa == &a[0]
+	mut pa := unsafe { &a[0] }
+	assert pa == unsafe { &a[0] }
 	unsafe {
 		assert pa.x == 10
 		pa++
@@ -66,5 +66,5 @@ fn test_ptr_arithmetic_over_struct() {
 		assert pa.x == 1000
 		pa -= 2
 	}
-	assert pa == &a[0]
+	assert pa == unsafe { &a[0] }
 }
