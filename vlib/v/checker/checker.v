@@ -5860,11 +5860,12 @@ pub fn (mut c Checker) mark_as_referenced(mut node ast.Expr) {
 				if c.fn_scope != voidptr(0) {
 					obj = c.fn_scope.find_var(node.obj.name) or { unsafe { &node.obj } }
 				}
+				type_sym := c.table.get_type_symbol(obj.typ)
 				if obj.is_stack_obj {
-					c.error('`$node.name` cannot be referenced since it might be on stack',
+					c.error('`$node.name` cannot be referenced outside `unsafe` blocks as it might be stored on stack. Consider declaring `$type_sym.name` as `[heap]`.',
 						node.pos)
-				} else if c.table.get_type_symbol(obj.typ).kind == .array_fixed {
-					c.error('cannot reference fixed array `$node.name` as it might be on stack',
+				} else if type_sym.kind == .array_fixed {
+					c.error('cannot reference fixed array `$node.name` outside `unsafe` blocks as it is supposed to be stored on stack',
 						node.pos)
 				} else {
 					node.obj.is_auto_heap = true
