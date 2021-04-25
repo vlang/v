@@ -488,5 +488,6 @@ pub fn (e CompForKind) str() string {
 	match e {
 		.methods { return 'methods' }
 		.fields { return 'fields' }
+		.attributes { return 'attributes' }
 	}
 }

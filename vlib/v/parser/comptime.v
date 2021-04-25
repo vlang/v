@@ -253,8 +253,15 @@ fn (mut p Parser) comp_for() ast.CompFor {
 			pos: var_pos
 		})
 		kind = .fields
+	} else if for_val == 'attributes' {
+		p.scope.register(ast.Var{
+			name: val_var
+			typ: p.table.find_type_idx('StructAttribute')
+			pos: var_pos
+		})
+		kind = .attributes
 	} else {
-		p.error_with_pos('unknown kind `$for_val`, available are: `methods` or `fields`',
+		p.error_with_pos('unknown kind `$for_val`, available are: `methods`, `fields` or `attributes`',
 			p.prev_tok.position())
 		return ast.CompFor{}
 	}
