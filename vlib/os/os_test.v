@@ -590,3 +590,7 @@ fn test_truncate() {
 fn test_hostname() {
 	assert os.hostname().len > 2
 }
+
+fn test_loginname() {
+	assert os.loginname().len > 2
+}

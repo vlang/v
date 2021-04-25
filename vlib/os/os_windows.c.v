@@ -2,6 +2,7 @@ module os
 
 import strings
 
+#flag windows -l advapi32
 #include <process.h>
 
 pub const (
@@ -376,10 +377,9 @@ pub fn debugger_present() bool {
 }
 
 pub fn uname() Uname {
-	// TODO: use Win32 Api functions instead
 	sys_and_ver := execute('cmd /c ver').output.split('[')
-	nodename := execute('cmd /c hostname').output
-	machine := execute('cmd /c echo %PROCESSOR_ARCHITECTURE%').output
+	nodename := hostname()
+	machine := getenv('PROCESSOR_ARCHITECTURE')
 	return Uname{
 		sysname: sys_and_ver[0].trim_space()
 		nodename: nodename
@@ -400,8 +400,13 @@ pub fn hostname() string {
 }
 
 pub fn loginname() string {
-	// TODO: use C.GetUserName(&char, u32) bool instead
-	return execute('cmd /c echo %USERNAME%').output
+	loginname := [255]u16{}
+	size := u32(255)
+	res := C.GetUserNameW(&loginname[0], &size)
+	if !res {
+		return error(get_error_msg(int(C.GetLastError())))
+	}
+	return unsafe { string_from_wide(&loginname[0]) }
 }
 
 // `is_writable_folder` - `folder` exists and is writable to the process
