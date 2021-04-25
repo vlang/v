@@ -264,6 +264,7 @@ pub struct InterfaceDecl {
 pub:
 	name         string
 	name_pos     token.Position
+	language     Language
 	field_names  []string
 	is_pub       bool
 	methods      []FnDecl

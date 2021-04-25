@@ -352,14 +352,18 @@ pub fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 pub fn (mut c Checker) interface_decl(decl ast.InterfaceDecl) {
 	c.check_valid_pascal_case(decl.name, 'interface name', decl.pos)
 	for method in decl.methods {
-		c.check_valid_snake_case(method.name, 'method name', method.pos)
+		if decl.language == .v {
+			c.check_valid_snake_case(method.name, 'method name', method.pos)
+		}
 		c.ensure_type_exists(method.return_type, method.return_type_pos) or { return }
 		for param in method.params {
 			c.ensure_type_exists(param.typ, param.pos) or { return }
 		}
 	}
 	for i, field in decl.fields {
-		c.check_valid_snake_case(field.name, 'field name', field.pos)
+		if decl.language == .v {
+			c.check_valid_snake_case(field.name, 'field name', field.pos)
+		}
 		c.ensure_type_exists(field.typ, field.pos) or { return }
 		for j in 0 .. i {
 			if field.name == decl.fields[j].name {

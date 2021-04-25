@@ -440,7 +440,19 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		p.next()
 	}
 	p.next() // `interface`
+	language := if p.tok.lit == 'C' && p.peek_tok.kind == .dot {
+		ast.Language.c
+	} else if p.tok.lit == 'JS' && p.peek_tok.kind == .dot {
+		ast.Language.js
+	} else {
+		ast.Language.v
+	}
+	if language != .v {
+		p.next() // C || JS
+		p.next() // .
+	}
 	name_pos := p.tok.position()
+	p.check_for_impure_v(language, name_pos)
 	interface_name := p.prepend_mod(p.check_name()).clone()
 	// println('interface decl $interface_name')
 	p.check(.lcbr)
@@ -494,7 +506,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 				p.error_with_pos('duplicate method `$name`', method_start_pos)
 				return ast.InterfaceDecl{}
 			}
-			if util.contains_capital(name) {
+			if language == .v && util.contains_capital(name) {
 				p.error('interface methods cannot contain uppercase letters, use snake_case instead')
 				return ast.InterfaceDecl{}
 			}
@@ -575,6 +587,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	pos = pos.extend_with_last_line(p.prev_tok.position(), p.prev_tok.line_nr)
 	return ast.InterfaceDecl{
 		name: interface_name
+		language: language
 		fields: fields
 		methods: methods
 		is_pub: is_pub
