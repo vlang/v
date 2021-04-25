@@ -5863,6 +5863,9 @@ pub fn (mut c Checker) mark_as_referenced(mut node ast.Expr) {
 				if obj.is_stack_obj {
 					c.error('`$node.name` cannot be referenced since it might be on stack',
 						node.pos)
+				} else if c.table.get_type_symbol(obj.typ).kind == .array_fixed {
+					c.error('cannot reference fixed array `$node.name` as it might be on stack',
+						node.pos)
 				} else {
 					node.obj.is_auto_heap = true
 				}
@@ -5872,12 +5875,7 @@ pub fn (mut c Checker) mark_as_referenced(mut node ast.Expr) {
 			c.mark_as_referenced(mut &node.expr)
 		}
 		ast.IndexExpr {
-			if c.table.get_type_symbol(node.left_type).kind == .array_fixed {
-				c.error('cannot reference fixed array `$node.left` as it might be on stack',
-					node.left.position())
-			} else {
-				c.mark_as_referenced(mut &node.left)
-			}
+			c.mark_as_referenced(mut &node.left)
 		}
 		else {}
 	}
