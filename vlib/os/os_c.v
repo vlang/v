@@ -740,11 +740,10 @@ pub fn is_link(path string) bool {
 
 // chdir changes the current working directory to the new directory in `path`.
 pub fn chdir(path string) {
-	mut n := 0
 	$if windows {
 		C._wchdir(path.to_wide())
 	} $else {
-		n = C.chdir(&char(path.str))
+		_ = C.chdir(&char(path.str))
 	}
 }
 

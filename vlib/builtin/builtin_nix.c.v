@@ -145,5 +145,6 @@ fn break_if_debugger_attached() {
 	unsafe {
 		mut ptr := &voidptr(0)
 		*ptr = voidptr(0)
+		_ = ptr
 	}
 }

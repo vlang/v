@@ -306,7 +306,7 @@ pub fn (mut d Doc) file_ast(file_ast ast.File) map[string]DocNode {
 		}
 	}
 	mut preceeding_comments := []DocComment{}
-	mut imports_section := true
+	// mut imports_section := true
 	for sidx, stmt in stmts {
 		if stmt is ast.ExprStmt {
 			// Collect comments
@@ -338,7 +338,7 @@ pub fn (mut d Doc) file_ast(file_ast ast.File) map[string]DocNode {
 				d.head.comments << preceeding_comments
 			}
 			preceeding_comments = []
-			imports_section = false
+			// imports_section = false
 		}
 		if stmt is ast.Import {
 			continue

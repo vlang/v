@@ -236,7 +236,7 @@ fn sys_read(fd i64, buf &byte, count u64) (i64, Errno) {
 }
 
 // 1 sys_write
-fn sys_write(fd i64, buf &byte, count u64) (i64, Errno) {
+pub fn sys_write(fd i64, buf &byte, count u64) (i64, Errno) {
 	return split_int_errno(sys_call3(1, u64(fd), u64(buf), count))
 }
 

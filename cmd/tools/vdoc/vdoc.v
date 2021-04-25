@@ -349,7 +349,10 @@ fn (mut vd VDoc) generate_docs_from_file() {
 				os.mkdir(out.path) or { panic(err) }
 			} else {
 				for fname in css_js_assets {
-					os.rm(os.join_path(out.path, fname)) or { panic(err) }
+					existing_asset_path := os.join_path(out.path, fname)
+					if os.exists(existing_asset_path) {
+						os.rm(existing_asset_path) or { panic(err) }
+					}
 				}
 			}
 		}

@@ -382,13 +382,10 @@ static inline uint64_t _wymix(uint64_t A, uint64_t B){ _wymum(&A,&B); return A^B
 
 //endian macros
 #ifndef WYHASH_LITTLE_ENDIAN
-	#if defined(_WIN32) || defined(__LITTLE_ENDIAN__) || (defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+	#ifdef TARGET_ORDER_IS_LITTLE
 		#define WYHASH_LITTLE_ENDIAN 1
-	#elif defined(__BIG_ENDIAN__) || (defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
-		#define WYHASH_LITTLE_ENDIAN 0
 	#else
-		#warning could not determine endianness! Falling back to little endian.
-		#define WYHASH_LITTLE_ENDIAN 1
+		#define WYHASH_LITTLE_ENDIAN 0
 	#endif
 #endif
 
@@ -580,9 +577,9 @@ static voidptr memfreedup(voidptr ptr, voidptr src, int sz) {
 #endif
 
 #if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ || defined(__BYTE_ORDER) && __BYTE_ORDER == __BIG_ENDIAN || defined(__BIG_ENDIAN__) || defined(__ARMEB__) || defined(__THUMBEB__) || defined(__AARCH64EB__) || defined(_MIBSEB) || defined(__MIBSEB) || defined(__MIBSEB__)
-	#define TARGET_ORDER_IS_BIG
+	#define TARGET_ORDER_IS_BIG 1
 #elif defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__ || defined(__BYTE_ORDER) && __BYTE_ORDER == __LITTLE_ENDIAN || defined(__LITTLE_ENDIAN__) || defined(__ARMEL__) || defined(__THUMBEL__) || defined(__AARCH64EL__) || defined(_MIPSEL) || defined(__MIPSEL) || defined(__MIPSEL__) || defined(_M_AMD64) || defined(_M_X64) || defined(_M_IX86)
-	#define TARGET_ORDER_IS_LITTLE
+	#define TARGET_ORDER_IS_LITTLE 1
 #else
 	#error "Unknown architecture endianness"
 #endif

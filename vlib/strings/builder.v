@@ -74,7 +74,7 @@ pub fn (mut b Builder) go_back(n int) {
 
 fn bytes2string(b []byte) string {
 	mut copy := b.clone()
-	copy << byte(`\0`)
+	copy << byte(0)
 	return unsafe { tos(copy.data, copy.len - 1) }
 }
 
@@ -109,7 +109,7 @@ pub fn (mut b Builder) writeln(s string) {
 	// }
 	unsafe { b.buf.push_many(s.str, s.len) }
 	// b.buf << []byte(s)  // TODO
-	b.buf << `\n`
+	b.buf << byte(`\n`)
 	b.len += s.len + 1
 }
 
@@ -139,8 +139,9 @@ pub fn (b &Builder) after(n int) string {
 // accumulated data that was in the string builder, before the
 // .str() call.
 pub fn (mut b Builder) str() string {
-	b.buf << `\0`
-	s := unsafe { (&byte(memdup(b.buf.data, b.len))).vstring_with_len(b.len) }
+	b.buf << byte(0)
+	bcopy := unsafe { &byte(memdup(b.buf.data, b.buf.len)) }
+	s := unsafe { bcopy.vstring_with_len(b.len) }
 	b.len = 0
 	b.buf.trim(0)
 	return s

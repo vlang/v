@@ -586,3 +586,7 @@ fn test_truncate() {
 	assert newlen == os.file_size(filename)
 	os.rm(filename) or { panic(err) }
 }
+
+fn test_hostname() {
+	assert os.hostname().len > 2
+}

@@ -14,10 +14,10 @@ vlib/v/checker/tests/fn_var.vv:4:5: error: cannot assign to `p`: expected `&fn (
     3 | mut p := &f
     4 | p = &[f]
       |     ^
-    5 | i := 0
-    6 | println(i)
-vlib/v/checker/tests/fn_var.vv:7:31: error: undefined ident: `i`
-    5 | i := 0
-    6 | println(i)
-    7 | f = fn(mut a []int) { println(i) }
+    5 | _ = p
+    6 | i := 0
+vlib/v/checker/tests/fn_var.vv:8:31: error: undefined ident: `i`
+    6 | i := 0
+    7 | println(i)
+    8 | f = fn(mut a []int) { println(i) }
       |                               ^

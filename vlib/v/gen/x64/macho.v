@@ -37,9 +37,15 @@ struct Reloc {
 }
 
 pub fn (mut g Gen) generate_macho_header() {
-	g.write32(0xfeedfacf) // MH_MAGIC_64
-	g.write32(0x0100000c) // CPU_TYPE_ARM64
-	g.write32(0x00000000) // CPU_SUBTYPE_ARM64_ALL
+	if g.pref.arch == .aarch64 {
+		g.write32(0xfeedfacf) // MH_MAGIC_64
+		g.write32(0x0100000c) // CPU_TYPE_ARM64
+		g.write32(0x00000000) // CPU_SUBTYPE_ARM64_ALL
+	} else {
+		g.write32(0xfeedfacf) // MH_MAGIC_64
+		g.write32(0x01000007) // CPU_TYPE_X64
+		g.write32(0x00000003) // CPU_SUBTYPE_X64
+	}
 	g.write32(0x00000001) // MH_OBJECT
 	g.write32(0x00000004) // # of load commands
 	g.write32(0x118) // size of load commands
@@ -76,7 +82,7 @@ pub fn (mut g Gen) generate_macho_header() {
 	g.write32(0x18)
 
 	g.write32(0x01)
-	g.write32(0x000b0000)
+	g.write32(0x000a0000) // minOS 10.0
 	g.write32(0)
 	g.write32(0)
 	// lc_symtab
@@ -93,6 +99,7 @@ pub fn (mut g Gen) generate_macho_header() {
 	for _ in 0 .. 12 {
 		g.write32(0)
 	}
+	// ADD THE CODE HERE THIS GOES INTO THE STMTS THING
 	// g.write32(0x77777777)
 	// assembly
 	g.mov_arm(.x0, 1)
@@ -102,7 +109,7 @@ pub fn (mut g Gen) generate_macho_header() {
 	g.mov_arm(.x16, 1)
 	g.svc()
 	//
-	g.write_string('Hello WorlD!\n')
+	g.write_string('Hello World!\n')
 	g.write8(0) // padding?
 	g.write8(0)
 	g.write8(0)
@@ -113,9 +120,9 @@ pub fn (mut g Gen) generate_macho_header() {
 }
 
 pub fn (mut g Gen) generate_macho_footer() {
-	// Create the binary
+	// Create the binary // should be .o ?
 	mut f := os.create(g.out_name) or { panic(err) }
-	os.chmod(g.out_name, 0o775) // make it an executable
+	os.chmod(g.out_name, 0o775) // make it executable
 	unsafe { f.write_ptr(g.buf.data, g.buf.len) }
 	f.close()
 	// println('\narm64 mach-o binary has been successfully generated')

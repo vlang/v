@@ -1,6 +1,6 @@
 module net
 
-enum SocketOption {
+pub enum SocketOption {
 	// TODO: SO_ACCEPT_CONN is not here becuase windows doesnt support it
 	// and there is no easy way to define it
 
@@ -28,10 +28,10 @@ enum SocketOption {
 const (
 	opts_bool = [SocketOption.broadcast, .debug, .dont_route, .error, .keep_alive, .oob_inline]
 	opts_int = [
-		.recieve_buf_size, 
-		.recieve_low_size, 
+		.recieve_buf_size,
+		.recieve_low_size,
 		.recieve_timeout,
-		
+
 		.send_buf_size,
 		.send_low_size,
 		.send_timeout,
@@ -39,15 +39,15 @@ const (
 
 	opts_can_set = [
 		SocketOption.broadcast,
-		.debug, 
-		.dont_route, 
-		.keep_alive, 
-		.linger, 
-		.oob_inline, 
-		.recieve_buf_size, 
-		.recieve_low_size, 
+		.debug,
+		.dont_route,
+		.keep_alive,
+		.linger,
+		.oob_inline,
+		.recieve_buf_size,
+		.recieve_low_size,
 		.recieve_timeout,
-		
+
 		.send_buf_size,
 		.send_low_size,
 		.send_timeout,

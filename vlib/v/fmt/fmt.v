@@ -1089,7 +1089,7 @@ pub fn (mut f Fmt) global_decl(node ast.GlobalDecl) {
 	}
 	f.write('__global ')
 	mut max := 0
-	mut has_assign := false
+	// mut has_assign := false
 	if node.is_block {
 		f.writeln('(')
 		f.indent++
@@ -1097,9 +1097,9 @@ pub fn (mut f Fmt) global_decl(node ast.GlobalDecl) {
 			if field.name.len > max {
 				max = field.name.len
 			}
-			if field.has_expr {
-				has_assign = true
-			}
+			// if field.has_expr {
+			// has_assign = true
+			//}
 		}
 	}
 	for field in node.fields {
@@ -1599,11 +1599,11 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 }
 
 fn (mut f Fmt) write_generic_if_require(node ast.CallExpr) {
-	if node.generic_types.len > 0 {
+	if node.concrete_types.len > 0 {
 		f.write('<')
-		for i, generic_type in node.generic_types {
-			is_last := i == node.generic_types.len - 1
-			f.write(f.table.type_to_str(generic_type))
+		for i, concrete_type in node.concrete_types {
+			is_last := i == node.concrete_types.len - 1
+			f.write(f.table.type_to_str(concrete_type))
 			if !is_last {
 				f.write(', ')
 			}

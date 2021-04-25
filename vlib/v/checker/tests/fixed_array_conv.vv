@@ -4,6 +4,8 @@ p = arr
 mut ip := &int(0)
 ip = arr
 _ = &int(arr)
+_ = p
+_ = ip
 
 unsafe {
 	_ = memdup(arr, 1)
