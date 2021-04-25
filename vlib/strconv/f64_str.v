@@ -110,6 +110,14 @@ fn (d Dec64) get_string_64(neg bool, i_n_digit int, i_pad_digit int) string {
 		x++
 	}
 
+	// no decimal digits needed, end here
+	if i_n_digit == 0 {
+		unsafe {
+			buf[i]=0
+			return 	tos(byteptr(&buf[0]), i)
+		}
+	}
+
 	if out_len >= 1 {
 		buf[y - x] = `.`
 		x++
