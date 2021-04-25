@@ -69,7 +69,9 @@ fn (mut g Gen) process_fn_decl(node ast.FnDecl) {
 		}
 	}
 	keep_fn_decl := g.fn_decl
-	unsafe { g.fn_decl = &node }
+	unsafe {
+		g.fn_decl = &node
+	}
 	if node.name == 'main.main' {
 		g.has_main = true
 	}

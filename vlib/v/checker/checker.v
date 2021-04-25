@@ -5861,7 +5861,8 @@ pub fn (mut c Checker) mark_as_referenced(mut node ast.Expr) {
 					obj = c.fn_scope.find_var(node.obj.name) or { unsafe { &node.obj } }
 				}
 				if obj.is_stack_obj {
-					c.error('`$node.name` cannot be referenced since it might be on stack', node.pos)
+					c.error('`$node.name` cannot be referenced since it might be on stack',
+						node.pos)
 				} else {
 					node.obj.is_auto_heap = true
 				}

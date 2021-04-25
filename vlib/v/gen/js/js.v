@@ -813,7 +813,9 @@ fn fn_has_go(node ast.FnDecl) bool {
 }
 
 fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
-	unsafe { g.fn_decl = &it }
+	unsafe {
+		g.fn_decl = &it
+	}
 	has_go := fn_has_go(it)
 	is_main := it.name == 'main.main'
 	g.gen_attrs(it.attrs)
