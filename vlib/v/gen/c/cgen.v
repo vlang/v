@@ -4742,7 +4742,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	}
 	tmpvar := g.new_tmp_var()
 	ret_typ := g.typ(g.fn_decl.return_type)
-	mut use_tmp_var := g.defer_stmts.len > 0 || g.defer_profile_code.len > 0 || g.is_autofree
+	mut use_tmp_var := g.defer_stmts.len > 0 || g.defer_profile_code.len > 0
 	// handle promoting none/error/function returning 'Option'
 	if fn_return_is_optional {
 		optional_none := node.exprs[0] is ast.None
@@ -4758,9 +4758,6 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			g.writeln(';')
 			if use_tmp_var {
 				g.write_defer_stmts_when_needed()
-				if g.is_autofree {
-					g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
-				}
 				g.writeln('return $tmpvar;')
 			}
 			return
@@ -4774,9 +4771,6 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			g.expr(node.exprs[0])
 			g.writeln(';')
 			g.write_defer_stmts_when_needed()
-			if g.is_autofree {
-				g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
-			}
 			g.writeln('return $tmpvar;')
 			return
 		}
@@ -4850,9 +4844,6 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		if fn_return_is_optional {
 			g.writeln(' }, (Option*)(&$tmpvar), sizeof($styp));')
 			g.write_defer_stmts_when_needed()
-			if g.is_autofree {
-				g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
-			}
 			g.write('return $tmpvar')
 		}
 		// Make sure to add our unpacks
@@ -4897,9 +4888,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			}
 			g.writeln(' }, (Option*)(&$tmpvar), sizeof($styp));')
 			g.write_defer_stmts_when_needed()
-			if g.is_autofree {
-				g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
-			}
+			g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 			g.writeln('return $tmpvar;')
 			return
 		}
@@ -4923,14 +4912,15 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			if node.exprs[0] !is ast.Ident {
 				g.write('$ret_typ $tmpvar = ')
 			} else {
+				use_tmp_var = false
 				g.write_defer_stmts_when_needed()
-				if g.is_autofree {
+				if !g.is_builtin_mod {
 					g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 				}
 				g.write('return ')
-				use_tmp_var = false
 			}
 		} else {
+			g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 			g.write('return ')
 		}
 		if expr0.is_auto_deref_var() {
@@ -4948,7 +4938,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			g.writeln(';')
 			has_semicolon = true
 			g.write_defer_stmts_when_needed()
-			if g.is_autofree {
+			if !g.is_builtin_mod {
 				g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 			}
 			g.write('return $tmpvar')
