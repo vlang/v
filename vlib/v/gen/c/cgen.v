@@ -5907,11 +5907,12 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 				for field in info.fields {
 					field_sym := g.table.get_type_symbol(field.typ)
 					if field.has_default_expr || field_sym.kind in [.array, .map, .string, .ustring, .bool, .alias, .size_t, .i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .char, .voidptr, .byteptr, .charptr, .struct_ ] {
+						field_name := c_name(field.name)
 						if field.has_default_expr {
 							expr_str := g.expr_string(field.default_expr)
-							init_str += '.$field.name = $expr_str,'
+							init_str += '.$field_name = $expr_str,'
 						} else {
-							init_str += '.$field.name = ${g.type_default(field.typ)},'
+							init_str += '.$field_name = ${g.type_default(field.typ)},'
 						}
 						has_none_zero = true
 					}
