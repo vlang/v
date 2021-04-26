@@ -1,5 +1,6 @@
 import sqlite
 import mysql
+import pg
 
 [table: 'modules']
 struct Module {
@@ -46,7 +47,8 @@ fn main() {
 
 	eprintln(modul)
 
-	mysql()
+	// mysql()
+	psql()
 }
 
 fn mysql() {
@@ -81,4 +83,28 @@ fn mysql() {
 		select from Module where id == 1
 	}
 	eprintln(m)
+}
+
+fn psql() {
+	mut db := pg.connect(host: 'localhost', user: 'test', password: 'abc', dbname: 'test') or {
+		panic(err)
+	}
+
+	mod := Module{
+		name: 'test'
+		nr_downloads: 10
+		creator: User{
+			age: 21
+			name: 'VUser'
+			is_customer: true
+		}
+	}
+
+	sql db {
+		create table Module
+	}
+
+	sql db {
+		insert mod into Module
+	}
 }

@@ -12,7 +12,7 @@ struct Customer {
 }
 
 fn main() {
-	db := pg.connect(pg.Config{
+	/*db := pg.connect(pg.Config{
 		host: 'localhost' //'127.0.0.1'
 		user: 'postgres'
 		dbname: 'customerdb'
@@ -58,7 +58,7 @@ fn main() {
 		name: 'John Doe'
 		nr_orders: 10
 	}
-	db.insert(nc)
+	db.insert(nc)*/
 }
 
 

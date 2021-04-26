@@ -35,7 +35,7 @@ fn print_help_for_command(help_cmd Command) ? {
 			mut found := false
 			for sub_cmd in cmd.commands {
 				if sub_cmd.name == arg {
-					cmd = &sub_cmd
+					cmd = unsafe { &sub_cmd }
 					found = true
 					break
 				}

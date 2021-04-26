@@ -331,7 +331,7 @@ fn draw_cube_glsl_i(mut app App){
 		app.inst_pos[index] = m4.Vec4{e:[f32((x - cx - app.camera_x) * cube_size),y ,f32( (z - cz - app.camera_z) * cube_size),spare_param]!}
 	}
 	range := C.sg_range{
-		ptr: &app.inst_pos
+		ptr: unsafe { &app.inst_pos }
 		size: size_t(num_inst * int(sizeof(m4.Vec4)))
 	}
 	gfx.update_buffer(app.bind['inst'].vertex_buffers[1], &range )
@@ -341,7 +341,7 @@ fn draw_cube_glsl_i(mut app App){
 	// passing the view matrix as uniform
 	// res is a 4x4 matrix of f32 thus: 4*16 byte of size
 	vs_uniforms_range := C.sg_range{
-		ptr: &tr_matrix
+		ptr: unsafe { &tr_matrix }
 		size: size_t(4 * 16)
 	}
 	gfx.apply_uniforms(C.SG_SHADERSTAGE_VS, C.SLOT_vs_params_i, &vs_uniforms_range)
@@ -359,7 +359,7 @@ fn draw_cube_glsl_i(mut app App){
 		0,0                        // padding bytes , see "fs_params" struct paddings in rt_glsl.h
 	]!
 	fs_uniforms_range := C.sg_range{
-		ptr: &tmp_fs_params
+		ptr: unsafe { &tmp_fs_params }
 		size: size_t(sizeof(tmp_fs_params))
 	}
 	gfx.apply_uniforms(C.SG_SHADERSTAGE_FS, C.SLOT_fs_params, &fs_uniforms_range)

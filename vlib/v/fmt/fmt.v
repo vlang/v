@@ -147,7 +147,7 @@ pub struct RemoveNewLineConfig {
 }
 
 pub fn (mut f Fmt) remove_new_line(cfg RemoveNewLineConfig) {
-	mut buffer := if cfg.imports_buffer { &f.out_imports } else { &f.out }
+	mut buffer := if cfg.imports_buffer { unsafe { &f.out_imports } } else { unsafe { &f.out } }
 	mut i := 0
 	for i = buffer.len - 1; i >= 0; i-- {
 		if !buffer.buf[i].is_space() { // != `\n` {

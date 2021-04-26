@@ -121,3 +121,18 @@ pub:
 	is_mut bool
 	typ    int
 }
+
+pub enum AttributeKind {
+	plain // [name]
+	string // ['name']
+	number // [123]
+	comptime_define // [if name]
+}
+
+pub struct StructAttribute {
+pub:
+	name    string
+	has_arg bool
+	arg     string
+	kind    AttributeKind
+}

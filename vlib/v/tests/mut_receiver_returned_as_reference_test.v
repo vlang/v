@@ -18,7 +18,7 @@ fn (mut p Player) set_position(x int, y int) &Player {
 	// TODO: from the point of view of the V programmer,
 	// `p` has still type &Player.
 	// assert typeof(p).name == 'Player'
-	return &p
+	return unsafe { &p }
 }
 
 fn test_mut_receiver() {

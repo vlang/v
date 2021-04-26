@@ -571,19 +571,19 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 	mut sem := unsafe { Semaphore{} }
 	sem.init(0)
 	for i, ch in channels {
-		subscr[i].sem = &sem
+		subscr[i].sem = unsafe { &sem }
 		if dir[i] == .push {
 			mut null16 := u16(0)
 			for !C.atomic_compare_exchange_weak_u16(&ch.write_sub_mtx, &null16, u16(1)) {
 				null16 = u16(0)
 			}
-			subscr[i].prev = &ch.write_subscriber
+			subscr[i].prev = unsafe { &ch.write_subscriber }
 			unsafe {
 				subscr[i].nxt = C.atomic_exchange_ptr(&voidptr(&ch.write_subscriber),
 					&subscr[i])
 			}
 			if voidptr(subscr[i].nxt) != voidptr(0) {
-				subscr[i].nxt.prev = &subscr[i].nxt
+				subscr[i].nxt.prev = unsafe { &subscr[i].nxt }
 			}
 			C.atomic_store_u16(&ch.write_sub_mtx, u16(0))
 		} else {
@@ -591,13 +591,13 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 			for !C.atomic_compare_exchange_weak_u16(&ch.read_sub_mtx, &null16, u16(1)) {
 				null16 = u16(0)
 			}
-			subscr[i].prev = &ch.read_subscriber
+			subscr[i].prev = unsafe { &ch.read_subscriber }
 			unsafe {
 				subscr[i].nxt = C.atomic_exchange_ptr(&voidptr(&ch.read_subscriber),
 					&subscr[i])
 			}
 			if voidptr(subscr[i].nxt) != voidptr(0) {
-				subscr[i].nxt.prev = &subscr[i].nxt
+				subscr[i].nxt.prev = unsafe { &subscr[i].nxt }
 			}
 			C.atomic_store_u16(&ch.read_sub_mtx, u16(0))
 		}
