@@ -43,7 +43,7 @@ pub struct C.sg_context_desc {
 }
 
 pub struct C.sg_gl_context_desc {
-	gl_force_gles2 bool
+	force_gles2 bool
 }
 
 pub struct C.sg_metal_context_desc {
