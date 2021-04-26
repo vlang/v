@@ -69,7 +69,6 @@ pub fn (mut g Gen) fn_decl_arm64(node ast.FnDecl) {
 }
 
 fn (mut g Gen) gen_arm64_helloworld() {
-	// ADD THE CODE HERE THIS GOES INTO THE STMTS THING
 	// g.write32(0x77777777)
 	// assembly
 	g.mov_arm(.x0, 1)

@@ -529,7 +529,9 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 				g.allocate_var(name, 4, 0)
 				// `mov DWORD PTR [rbp-0x8],eax`
 				offset := g.get_var_offset(name)
-				println('infix assignment $name offset=$offset.hex2()')
+				if g.pref.is_verbose {
+					println('infix assignment $name offset=$offset.hex2()')
+				}
 				g.mov_reg_to_rbp(offset, .eax)
 			}
 			ast.StructInit {

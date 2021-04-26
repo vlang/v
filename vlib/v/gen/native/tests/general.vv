@@ -6,8 +6,8 @@ fn if_test() {
 		if b == 2 {
 			println('b == 2')
 		}
-		//if b != 2 {
-			//println('b != 2')
+		// if b != 2 {
+		// println('b != 2')
 		//}
 	}
 	if a == 2 {
@@ -35,22 +35,27 @@ fn foo(a int) {
 	if a == 7 {
 		println('a == 7')
 	}
-	a++
-	if a == 2 {
-		println('a == 2')
+	/*
+	// native gen doesnt support more than one variable
+	mut b := a + 1
+	if b == 2 {
+		println('b == 2')
 	}
-	if a == 3 {
-		println('a == 3')
+	if b == 3 {
+		println('b == 3')
 	}
-
+	if b == 8 {
+		println('b == 8')
+	}
+	*/
 }
 
 fn args() {
 	x := 7
 	println('===args===')
-	foo(1)
-	foo(x)
-	foo(2)
+	foo(1) // prints 1 2
+	foo(x) // prints 7 8
+	foo(2) // prints 3
 }
 
 /*
@@ -69,9 +74,8 @@ fn expr() {
 }
 */
 
-
 struct User {
-	age int
+	age       int
 	nr_orders int
 }
 
@@ -79,5 +83,5 @@ fn main() {
 	if_test()
 	loop()
 	args()
-	//expr()
+	// expr()
 }

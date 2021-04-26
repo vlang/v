@@ -1,4 +1,4 @@
-fn print_greeting(){
+fn print_greeting() {
 	println('hello from native V')
 }
 

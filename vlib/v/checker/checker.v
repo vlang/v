@@ -2072,9 +2072,8 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 	}
 	if !found && c.pref.backend == .native {
 		if fn_name in native.builtins {
-			found = true
 			c.table.fns[fn_name].usages++
-			return ast.string_type
+			return ast.void_type
 		}
 	}
 	if !found && c.pref.is_script && !found {
