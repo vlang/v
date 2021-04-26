@@ -361,10 +361,40 @@ pub fn (mut g Gen) gen_print(s string) {
 	g.syscall()
 }
 
-pub fn (mut g Gen) gen_exit() {
-	// Return 0
-	g.mov(.edi, 0) // ret value
-	g.mov(.eax, 60)
+fn (mut g Gen) nsyscall_exit() int {
+	match g.pref.os {
+		.linux {
+			return 60
+		}
+		.macos {
+			return 0x2000001
+		}
+		else {
+			verror('unsupported exit syscall for this platform')
+		}
+	}
+	return 0
+}
+
+pub fn (mut g Gen) gen_amd64_exit(expr ast.Expr) {
+	// ret value
+	match expr {
+		ast.CallExpr {
+			right := expr.return_type
+			verror('native exit builtin: Unsupported call $right')
+		}
+		ast.Ident {
+			var_offset := g.get_var_offset(expr.name)
+			g.mov_var_to_reg(.edi, var_offset)
+		}
+		ast.IntegerLiteral {
+			g.mov(.edi, expr.val.int())
+		}
+		else {
+			verror('native builtin exit expects a numeric argument')
+		}
+	}
+	g.mov(.eax, g.nsyscall_exit())
 	g.syscall()
 }
 
@@ -626,7 +656,8 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	g.stmts(node.stmts)
 	if is_main {
 		// println('end of main: gen exit')
-		g.gen_exit()
+		zero := ast.IntegerLiteral{}
+		g.gen_exit(zero)
 		// return
 	}
 	if !is_main {

@@ -259,6 +259,20 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 	*/
 }
 
+pub fn (mut g Gen) gen_exit(node ast.Expr) {
+	match g.pref.arch {
+		.amd64 {
+			g.gen_amd64_exit(node)
+		}
+		.arm64 {
+			g.gen_arm64_exit(node)
+		}
+		else {
+			verror('native exit not implemented for this architecture $g.pref.arch')
+		}
+	}
+}
+
 fn (mut g Gen) stmt(node ast.Stmt) {
 	match node {
 		ast.AssignStmt {
@@ -294,7 +308,8 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.Module {}
 		ast.Return {
-			g.gen_exit()
+			zero := ast.IntegerLiteral{}
+			g.gen_exit(zero)
 			g.ret()
 		}
 		ast.StructDecl {}
@@ -311,6 +326,11 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.ArrayInit {}
 		ast.BoolLiteral {}
 		ast.CallExpr {
+			if node.name == 'exit' {
+				expr := node.args[0].expr
+				g.gen_exit(expr)
+				return
+			}
 			if node.name in ['println', 'print', 'eprintln', 'eprint'] {
 				expr := node.args[0].expr
 				g.gen_print_from_expr(expr, node.name in ['println', 'eprintln'])

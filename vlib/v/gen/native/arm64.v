@@ -100,3 +100,16 @@ fn (mut g Gen) svc() {
 	g.write32(0xd4001001)
 	g.println('svc')
 }
+
+pub fn (mut g Gen) gen_arm64_exit(expr ast.Expr) {
+	match expr {
+		ast.IntegerLiteral {
+			g.mov_arm(.x16, expr.val.u64())
+		}
+		else {
+			verror('native builtin exit expects a numeric argument')
+		}
+	}
+	g.mov_arm(.x0, 0)
+	g.svc()
+}
