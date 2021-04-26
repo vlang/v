@@ -1457,7 +1457,7 @@ fn (mut c Checker) check_return_generics_struct(return_type ast.Type, mut call_e
 			idx := c.table.type_idxs[nrt]
 			if idx != 0 {
 				c.ensure_type_exists(idx, call_expr.pos) or {}
-				call_expr.return_type = ast.new_type(idx).derive(return_type)
+				call_expr.return_type = ast.new_type(idx).derive(return_type).clear_flag(.generic)
 			} else {
 				mut fields := rts.info.fields.clone()
 				if rts.info.generic_types.len == concrete_types.len {
@@ -1481,7 +1481,7 @@ fn (mut c Checker) check_return_generics_struct(return_type ast.Type, mut call_e
 						mod: c.mod
 						info: info
 					})
-					call_expr.return_type = ast.new_type(stru_idx)
+					call_expr.return_type = ast.new_type(stru_idx).derive(return_type).clear_flag(.generic)
 				}
 			}
 		}
