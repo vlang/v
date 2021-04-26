@@ -47,7 +47,7 @@ pub enum ColorOutput {
 pub enum Backend {
 	c // The (default) C backend
 	js // The JavaScript backend
-	x64 // The x64 backend
+	native // The Native backend
 }
 
 pub enum CompilerType {
@@ -429,8 +429,8 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			'-parallel' {
 				res.is_parallel = true
 			}
-			'-x64' {
-				res.backend = .x64
+			'-native' {
+				res.backend = .native
 				res.build_options << arg
 			}
 			'-W' {
@@ -700,7 +700,7 @@ pub fn backend_from_string(s string) ?Backend {
 	match s {
 		'c' { return .c }
 		'js' { return .js }
-		'x64' { return .x64 }
+		'native' { return .native }
 		else { return error('Unknown backend type $s') }
 	}
 }

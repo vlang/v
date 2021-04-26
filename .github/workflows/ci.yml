@@ -398,7 +398,7 @@ jobs:
           ./v build-module vlib/v/gen/c
           ./v build-module vlib/v/depgraph
           ./v build-module vlib/os/cmdline
-      - name: x64 machine code generation
+      - name: native machine code generation
         run: |
           exit
           ./v -o vprod -prod cmd/v
@@ -407,12 +407,12 @@ jobs:
           ../../vprod gen1m.v
           ./gen1m > 1m.v
           echo "Building it..."
-          ../../vprod -backend x64 -o 1m 1m.v
+          ../../vprod -backend native -o 1m 1m.v
           echo "Running it..."
           ls
 
   #        ./1m
-  #run: echo "TODO" #cd examples/x64 && ../../v -x64 hello_world.v && ./hello_world
+  #run: echo "TODO" #cd examples/native && ../../v -native hello_world.v && ./hello_world
   #    - name: Coveralls GitHub Action
   #      uses: coverallsapp/github-action@v1.0.1
   #      with:
@@ -482,7 +482,7 @@ jobs:
           ./v build-module vlib/v/gen/c
           ./v build-module vlib/v/depgraph
           ./v build-module vlib/os/cmdline
-      - name: x64 machine code generation
+      - name: native machine code generation
         run: |
           exit
           ./v -o vprod -prod cmd/v
@@ -491,7 +491,7 @@ jobs:
           ../../vprod gen1m.v
           ./gen1m > 1m.v
           echo "Building it..."
-          ../../vprod -backend x64 -o 1m 1m.v
+          ../../vprod -backend native -o 1m 1m.v
           echo "Running it..."
           ls
 

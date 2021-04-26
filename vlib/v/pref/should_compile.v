@@ -109,7 +109,7 @@ fn fname_without_platform_postfix(file string) string {
 		'_',
 		'solaris.c.v',
 		'_',
-		'x64.v',
+		'native.v',
 		'_',
 	])
 	return res
@@ -126,7 +126,7 @@ pub fn (prefs &Preferences) should_compile_c(file string) bool {
 	if prefs.os == .all {
 		return true
 	}
-	if prefs.backend != .x64 && file.ends_with('_x64.v') {
+	if prefs.backend != .native && file.ends_with('_native.v') {
 		return false
 	}
 	if prefs.os != .windows && (file.ends_with('_windows.c.v') || file.ends_with('_windows.v')) {

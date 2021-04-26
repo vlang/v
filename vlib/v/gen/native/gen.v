@@ -1,7 +1,7 @@
 // Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-module x64
+module native
 
 import v.ast
 import v.util
@@ -88,7 +88,7 @@ pub fn (mut g Gen) generate_header() {
 		}
 		.raw {}
 		else {
-			verror('Error: only `raw`, `linux` and `macos` are supported for -os in -x64')
+			verror('Error: only `raw`, `linux` and `macos` are supported for -os in -native')
 		}
 	}
 }
@@ -281,7 +281,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.StructDecl {}
 		else {
-			println('x64.stmt(): bad node: ' + node.type_name())
+			println('native.stmt(): bad node: ' + node.type_name())
 		}
 	}
 }
@@ -313,14 +313,16 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.StringLiteral {}
 		ast.StructInit {}
 		else {
-			println(term.red('x64.expr(): unhandled node: ' + node.type_name()))
+			println(term.red('native.expr(): unhandled node: ' + node.type_name()))
 		}
 	}
 }
 
+/*
 fn (mut g Gen) allocate_var(name string, size int, initial_val int) {
 	g.cgen.allocate_var(name, size, initial_val)
 }
+*/
 
 fn (mut g Gen) postfix_expr(node ast.PostfixExpr) {
 	if node.expr !is ast.Ident {
@@ -334,7 +336,7 @@ fn (mut g Gen) postfix_expr(node ast.PostfixExpr) {
 }
 
 fn verror(s string) {
-	util.verror('x64 gen error', s)
+	util.verror('native gen error', s)
 }
 
 pub fn (mut g Gen) error_with_pos(s string, pos token.Position) {

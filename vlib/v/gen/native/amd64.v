@@ -1,4 +1,4 @@
-module x64
+module native
 
 import term
 import v.ast
@@ -459,16 +459,16 @@ pub fn (mut g Gen) call_fn(node ast.CallExpr) {
 		match expr {
 			ast.IntegerLiteral {
 				// `foo(2)` => `mov edi,0x2`
-				g.mov(x64.fn_arg_registers[i], expr.val.int())
+				g.mov(native.fn_arg_registers[i], expr.val.int())
 			}
 			ast.Ident {
 				// `foo(x)` => `mov edi,DWORD PTR [rbp-0x8]`
 				var_offset := g.get_var_offset(expr.name)
 				if g.pref.is_verbose {
 					println('i=$i fn name= $name offset=$var_offset')
-					println(int(x64.fn_arg_registers[i]))
+					println(int(native.fn_arg_registers[i]))
 				}
-				g.mov_var_to_reg(x64.fn_arg_registers[i], var_offset)
+				g.mov_var_to_reg(native.fn_arg_registers[i], var_offset)
 			}
 			else {
 				verror('unhandled call_fn (name=$name) node: ' + expr.type_name())
@@ -514,7 +514,7 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 				}
 			}
 			else {
-				g.error_with_pos('x64 assign_stmt unhandled expr: ' + right.type_name(),
+				g.error_with_pos('native assign_stmt unhandled expr: ' + right.type_name(),
 					right.position())
 			}
 		}
@@ -616,7 +616,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		g.allocate_var(name, 4, 0)
 		// `mov DWORD PTR [rbp-0x4],edi`
 		offset += 4
-		g.mov_reg_to_rbp(offset, x64.fn_arg_registers[i])
+		g.mov_reg_to_rbp(offset, native.fn_arg_registers[i])
 	}
 	//
 	g.stmts(node.stmts)
@@ -634,7 +634,10 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 }
 
 pub fn (mut x Amd64) allocate_var(name string, size int, initial_val int) {
-	mut g := x.g
+	// do nothing as interface call is crashing
+}
+
+pub fn (mut g Gen) allocate_var(name string, size int, initial_val int) {
 	// `a := 3`  =>
 	// `move DWORD [rbp-0x4],0x3`
 	match size {
