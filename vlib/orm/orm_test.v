@@ -28,6 +28,7 @@ fn test_orm_sqlite() {
 	sql db {
 		create table User
 	}
+
 	name := 'Peter'
 
 	sam := User{
@@ -51,6 +52,7 @@ fn test_orm_sqlite() {
 		insert peter into User
 		insert k into User
 	}
+
 	c := sql db {
 		select count from User where id != 1
 	}
@@ -131,6 +133,7 @@ fn test_orm_sqlite() {
 	sql db {
 		insert new_user into User
 	}
+
 	// db.insert<User>(user2)
 	x := sql db {
 		select from User where id == 4
@@ -154,6 +157,7 @@ fn test_orm_sqlite() {
 	sql db {
 		update User set age = 31 where name == 'Kate'
 	}
+
 	kate2 := sql db {
 		select from User where id == 3
 	}
@@ -163,6 +167,7 @@ fn test_orm_sqlite() {
 	sql db {
 		update User set age = 32, name = 'Kate N' where name == 'Kate'
 	}
+
 	mut kate3 := sql db {
 		select from User where id == 3
 	}
@@ -184,6 +189,7 @@ fn test_orm_sqlite() {
 	sql db {
 		update User set age = new_age, name = 'Kate N' where id == 3
 	}
+
 	kate3 = sql db {
 		select from User where id == 3
 	}
@@ -194,6 +200,7 @@ fn test_orm_sqlite() {
 	sql db {
 		update User set age = foo.age, name = 'Kate N' where id == 3
 	}
+
 	kate3 = sql db {
 		select from User where id == 3
 	}
@@ -236,6 +243,7 @@ fn test_orm_sqlite() {
 	sql db {
 		delete from User where age == 34
 	}
+
 	updated_oldest := sql db {
 		select from User order by age desc limit 1
 	}

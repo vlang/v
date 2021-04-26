@@ -1221,6 +1221,7 @@ pub fn (mut f Fmt) sql_stmt(node ast.SqlStmt) {
 	}
 
 	f.writeln('}')
+	f.writeln('')
 }
 
 pub fn (mut f Fmt) sql_stmt_line(node ast.SqlStmtLine) {
