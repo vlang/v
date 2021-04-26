@@ -25,7 +25,7 @@ fn (mut g Gen) str_format2(node ast.StringInterLiteral, i int) (u64, string) {
 	}
 
 	fspec := node.fmts[i]
-	mut fmt_type := Str_intp_type{}
+	mut fmt_type := StrIntpType{}
 
 	// upper cases
 	if (fspec - `A`) <= (`Z`-`A`) {
@@ -173,7 +173,7 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int) string{
 
 fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 //fn (mut g Gen) str_int2(node ast.StringInterLiteral) {
-	mut data := []Str_intp_cgen_data{}
+	mut data := []StrIntpCgenData{}
 	for i, val in node.vals {
 
 		//mut escaped_val := val.replace_each(['%', '%%'])
@@ -182,7 +182,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 
 		if i >= node.exprs.len {
 			// last part of the string without data, manage it with .no_str
-			data << Str_intp_cgen_data{
+			data << StrIntpCgenData{
 				str: escaped_val,
 				fmt: '0', // no_str
 				d: '{ .d_c = 0 }'
@@ -194,7 +194,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		ft_data := g.str_val(node, i)
 		
 
-		data << Str_intp_cgen_data{
+		data << StrIntpCgenData{
 			str: escaped_val,
 			fmt: '0x'+ft_u64.hex(),
 			d:   '{.d_${ft_str} = ${ft_data.trim(" ,")}}'
@@ -204,7 +204,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	// write struct
 	//g.writeln("")
 	g.write(" str_interpolation(${data.len}, ")
-	g.write("(Str_intp_data[]){")
+	g.write("(StrIntpData[]){")
 	for i, item in data {
 		//clean_str := item.str.replace('"',"'")
 		clean_str := item.str
