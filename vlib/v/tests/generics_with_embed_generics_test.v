@@ -18,7 +18,7 @@ fn group_new<T>(val ...T) Group<T> {
 	return g
 }
 
-fn (mut it Group<T>) next<T>() ?T {
+fn (mut it Group<T>) next() ?T {
 	if it.index >= it.len {
 		return none
 	}
