@@ -3179,6 +3179,7 @@ db := sqlite.connect('customers.db') ?
 sql db {
 	create table Customer
 }
+
 // select count(*) from Customer
 nr_customers := sql db {
 	select count from Customer
@@ -3205,6 +3206,7 @@ new_customer := Customer{
 sql db {
 	insert new_customer into Customer
 }
+
 ```
 
 For more examples and the docs, see <a href='https://github.com/vlang/v/tree/master/vlib/orm'>vlib/orm</a>.
