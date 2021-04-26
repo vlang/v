@@ -6472,10 +6472,8 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) ast.Type {
 	c.expr(node.db_expr)
 	mut typ := ast.void_type
-	for i, line in node.lines {
-		mut l := line
-		a := c.sql_stmt_line(mut l)
-		node.lines[i] = l
+	for mut line in node.lines {
+		a := c.sql_stmt_line(mut line)
 		if a != ast.void_type {
 			typ = a
 		}

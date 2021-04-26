@@ -126,7 +126,7 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 		lines << p.parse_sql_stmt_line()
 	}
 
-	p.check(.rcbr)
+	p.next()
 	pos.last_line = p.prev_tok.line_nr
 	return ast.SqlStmt{
 		pos: pos
