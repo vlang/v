@@ -106,7 +106,7 @@ pub fn (mut g Gen) create_executable() {
 	unsafe { f.write_ptr(g.buf.data, g.buf.len) }
 	f.close()
 	if g.pref.is_verbose {
-		println('\narm64 mach-o binary has been successfully generated')
+		println('\n$g.out_name: native binary has been successfully generated')
 	}
 }
 

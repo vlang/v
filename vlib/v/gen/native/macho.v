@@ -13,6 +13,7 @@ const (
 	macho_d_size             = 0x50
 	lc_symtab                = 0x2
 	lc_dymsymtab             = 0xB
+	mh_object                = 1
 )
 
 struct Symbol {
@@ -44,9 +45,10 @@ pub fn (mut g Gen) generate_macho_header() {
 		g.write32(0x01000007) // CPU_TYPE_X64
 		g.write32(0x00000003) // CPU_SUBTYPE_X64
 	}
-	g.write32(0x00000001) // MH_OBJECT
-	g.write32(0x00000004) // # of load commands
-	g.write32(0x118) // size of load commands
+	g.write32(native.mh_object) // MH_OBJECT
+	text_offset := 0x138
+	g.write32(4) // # of load commands
+	g.write32(text_offset - 0x20) // size of load commands // 0x138-0x20
 	// g.write32(0x00002000) // MH_SUBSECTIONS_VIA_SYMBOLS
 	g.write32(0) // MH_SUBSECTIONS_VIA_SYMBOLS
 	g.write32(0) // reserved
@@ -56,7 +58,7 @@ pub fn (mut g Gen) generate_macho_header() {
 	g.zeroes(16) // segment name
 	g.write64(0) // VM address
 	g.write64(0x25) // VM size
-	g.write64(0x138) // file offset
+	g.write64(text_offset) // file offset
 	g.write64(0x25) // file size
 	g.write32(0x7) // max vm protection
 	g.write32(0x7) // initial vm protection
@@ -67,7 +69,7 @@ pub fn (mut g Gen) generate_macho_header() {
 	g.write_string_with_padding('__TEXT', 16) // segment name
 	g.write64(0) // address
 	g.write64(0x25) // size
-	g.write32(0x138) // offset
+	g.write32(text_offset) // offset
 	g.write32(0x4) // alignment
 	g.write32(0x160) // relocation offset
 	g.write32(0x1) // # of relocations
@@ -97,9 +99,17 @@ pub fn (mut g Gen) generate_macho_header() {
 	for _ in 0 .. 12 {
 		g.write32(0)
 	}
+	if g.pref.is_verbose {
+		println('commands size = $g.buf.len')
+		if g.buf.len != 0x138 {
+			println('macho: invalid header size')
+		}
+	}
 
 	if g.pref.arch == .arm64 {
 		g.gen_arm64_helloworld()
+	} else {
+		// do nothing
 	}
 }
 
@@ -168,6 +178,9 @@ pub fn (mut g Gen) zeroes(n int) {
 }
 
 fn (mut g Gen) write_relocs() {
+	if g.pref.is_verbose {
+		println('relocs at $g.buf.len should be 0x160')
+	}
 	g.write32(0x8)
 	g.write32(0x2d000003)
 }
