@@ -86,10 +86,10 @@ pub mut:
 	ka    m4.Vec4 = m4.Vec4{
 		e: [f32(0.1), 0.0, 0.0, 1.0]!
 	}
-	kd    m4.Vec4 = m4.Vec4{
+	kd m4.Vec4 = m4.Vec4{
 		e: [f32(0.5), 0.5, 0.5, 1.0]!
 	}
-	ks    m4.Vec4 = m4.Vec4{
+	ks m4.Vec4 = m4.Vec4{
 		e: [f32(1.0), 1.0, 1.0, 1.0]!
 	}
 }
