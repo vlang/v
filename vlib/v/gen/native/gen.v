@@ -48,7 +48,7 @@ enum Size {
 }
 
 fn (g Gen) get_backend(pref &pref.Preferences) CodeGen {
-	if pref.arch == .aarch64 {
+	if pref.arch == .arm64 {
 		return Aarch64{}
 	}
 	return Amd64{}

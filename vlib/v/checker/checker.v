@@ -22,7 +22,9 @@ const (
 		'qnx', 'linux', 'freebsd', 'openbsd', 'netbsd', 'bsd', 'dragonfly', 'android', 'solaris',
 		'haiku', 'linux_or_macos']
 	valid_comp_if_compilers     = ['gcc', 'tinyc', 'clang', 'mingw', 'msvc', 'cplusplus']
-	valid_comp_if_platforms     = ['amd64', 'aarch64', 'x64', 'x32', 'little_endian', 'big_endian']
+	valid_comp_if_platforms     = ['amd64', 'aarch64', 'arm64', 'x64', 'x32', 'little_endian',
+		'big_endian',
+	]
 	valid_comp_if_other         = ['js', 'debug', 'prod', 'test', 'glibc', 'prealloc',
 		'no_bounds_checking', 'freestanding']
 	array_builtin_methods       = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort',
