@@ -37,7 +37,7 @@ struct Reloc {
 }
 
 pub fn (mut g Gen) generate_macho_header() {
-	if g.pref.arch == .aarch64 {
+	if g.pref.arch == .arm64 {
 		g.write32(0xfeedfacf) // MH_MAGIC_64
 		g.write32(0x0100000c) // CPU_TYPE_ARM64
 		g.write32(0x00000000) // CPU_SUBTYPE_ARM64_ALL

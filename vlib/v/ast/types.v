@@ -25,8 +25,8 @@ pub enum Language {
 	js
 	amd64 // aka x86_64
 	i386
-	aarch64 // 64-bit arm
-	aarch32 // 32-bit arm
+	arm64 // 64-bit arm
+	arm32 // 32-bit arm
 	rv64 // 64-bit risc-v
 	rv32 // 32-bit risc-v
 }
@@ -36,11 +36,11 @@ pub fn pref_arch_to_table_language(pref_arch pref.Arch) Language {
 		.amd64 {
 			Language.amd64
 		}
-		.aarch64 {
-			Language.aarch64
+		.arm64 {
+			Language.arm64
 		}
-		.aarch32 {
-			Language.aarch32
+		.arm32 {
+			Language.arm32
 		}
 		.rv64 {
 			Language.rv64

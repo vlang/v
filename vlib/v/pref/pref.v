@@ -62,8 +62,8 @@ pub enum CompilerType {
 pub enum Arch {
 	_auto
 	amd64 // aka x86_64
-	aarch64 // 64-bit arm
-	aarch32 // 32-bit arm
+	arm64 // 64-bit arm
+	arm32 // 32-bit arm
 	rv64 // 64-bit risc-v
 	rv32 // 32-bit risc-v
 	i386
@@ -655,13 +655,13 @@ pub fn arch_from_string(arch_str string) ?Arch {
 
 			return Arch.amd64
 		}
-		'aarch64', 'arm64' { // aarch64 recommended
+		'aarch64', 'arm64' { // arm64 recommended
 
-			return Arch.aarch64
+			return Arch.arm64
 		}
-		'arm32', 'aarch32', 'arm' { // aarch32 recommended
+		'aarch32', 'arm32', 'arm' { // arm32 recommended
 
-			return Arch.aarch32
+			return Arch.arm32
 		}
 		'rv64', 'riscv64', 'risc-v64', 'riscv', 'risc-v' { // rv64 recommended
 
@@ -740,11 +740,12 @@ pub fn get_host_arch() Arch {
 	// $if i386 {
 	// 	return .amd64
 	// }
+	// $if arm64 { // requires new vc
 	$if aarch64 {
-		return .aarch64
+		return .arm64
 	}
-	// $if aarch32 {
-	// 	return .aarch32
+	// $if arm32 {
+	// 	return .arm32
 	// }
 	panic('unknown host OS')
 }

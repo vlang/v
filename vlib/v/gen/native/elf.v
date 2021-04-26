@@ -18,14 +18,14 @@ const (
 
 // ELF file types
 const (
-	elf_osabi         = 0
-	et_rel            = 1
-	et_exec           = 2
-	et_dyn            = 3
-	e_machine_amd64   = 0x3e
-	e_machine_aarch64 = 183
-	shn_xindex        = 0xffff
-	sht_null          = 0
+	elf_osabi       = 0
+	et_rel          = 1
+	et_exec         = 2
+	et_dyn          = 3
+	e_machine_amd64 = 0x3e
+	e_machine_arm64 = 0xb7
+	shn_xindex      = 0xffff
+	sht_null        = 0
 )
 
 const (
@@ -42,8 +42,8 @@ pub fn (mut g Gen) generate_elf_header() {
 	g.buf << 1 // elf_osabi
 	g.write64(0) // et_rel) // et_rel for .o
 	g.write16(2) // e_type
-	if g.pref.arch == .aarch64 {
-		g.write16(native.e_machine_aarch64)
+	if g.pref.arch == .arm64 {
+		g.write16(native.e_machine_arm64)
 	} else {
 		g.write16(native.e_machine_amd64)
 	}

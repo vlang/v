@@ -60,7 +60,7 @@ else
 ifneq ($(filter x86%,$(TCCARCH)),)
 	TCCARCH := i386
 else
-ifeq ($(TCCARCH),aarch64)
+ifeq ($(TCCARCH),arm64)
 	TCCARCH := arm64
 else
 ifneq ($(filter arm%,$(TCCARCH)),)
