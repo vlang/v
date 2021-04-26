@@ -15,7 +15,6 @@ fn test_orm_sub_structs() {
 	sql db {
 		create table Upper
 	}
-
 	upper_1 := Upper{
 		sub: SubStruct{
 			name: 'test123'
@@ -25,7 +24,6 @@ fn test_orm_sub_structs() {
 	sql db {
 		insert upper_1 into Upper
 	}
-
 	upper_s := sql db {
 		select from Upper where id == 1
 	}

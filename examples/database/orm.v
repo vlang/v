@@ -23,7 +23,6 @@ fn main() {
 	sql db {
 		create table Module
 	}
-
 	mod := Module{
 		name: 'test'
 		nr_downloads: 10
@@ -36,7 +35,6 @@ fn main() {
 	sql db {
 		insert mod into Module
 	}
-
 	modul := sql db {
 		select from Module where id == 1
 	}
@@ -44,7 +42,6 @@ fn main() {
 	sql db {
 		drop table Module
 	}
-
 	eprintln(modul)
 
 	// mysql()
@@ -64,7 +61,6 @@ fn mysql() {
 	sql conn {
 		create table Module
 	}
-
 	mod := Module{
 		name: 'test'
 		nr_downloads: 10
@@ -78,7 +74,6 @@ fn mysql() {
 	sql conn {
 		insert mod into Module
 	}
-
 	m := sql conn {
 		select from Module where id == 1
 	}
@@ -103,7 +98,6 @@ fn psql() {
 	sql db {
 		create table Module
 	}
-
 	sql db {
 		insert mod into Module
 	}
