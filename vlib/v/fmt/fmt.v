@@ -1149,8 +1149,10 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 	if node.is_pub {
 		f.write('pub ')
 	}
+	f.write('interface ')
+	f.write_language_prefix(node.language)
 	name := node.name.after('.')
-	f.write('interface $name {')
+	f.write('$name {')
 	if node.fields.len > 0 || node.methods.len > 0 || node.pos.line_nr < node.pos.last_line {
 		f.writeln('')
 	}

@@ -5852,109 +5852,87 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 	if typ.is_ptr() && !typ.has_flag(.shared_f) {
 		return '0'
 	}
-	sym := g.table.get_type_symbol(typ)
-	if sym.kind == .array {
-		elem_typ := sym.array_info().elem_type
-		elem_sym := g.typ(elem_typ)
-		mut elem_type_str := util.no_dots(elem_sym)
-		if elem_type_str.starts_with('C__') {
-			elem_type_str = elem_type_str[3..]
-		}
-		noscan := g.check_noscan(elem_typ)
-		init_str := '__new_array${noscan}(0, 1, sizeof($elem_type_str))'
-		if typ.has_flag(.shared_f) {
-			atyp := '__shared__Array_${g.table.get_type_symbol(elem_typ).cname}'
-			return '($atyp*)__dup_shared_array(&($atyp){.mtx = {0}, .val =$init_str}, sizeof($atyp))'
-		} else {
-			return init_str
-		}
-	}
-	if sym.kind == .map {
-		info := sym.map_info()
-		key_typ := g.table.get_type_symbol(info.key_type)
-		hash_fn, key_eq_fn, clone_fn, free_fn := g.map_fn_ptrs(key_typ)
-		init_str := 'new_map(sizeof(${g.typ(info.key_type)}), sizeof(${g.typ(info.value_type)}), $hash_fn, $key_eq_fn, $clone_fn, $free_fn)'
-		if typ.has_flag(.shared_f) {
-			mtyp := '__shared__Map_${key_typ.cname}_${g.table.get_type_symbol(info.value_type).cname}'
-			return '($mtyp*)__dup_shared_map(&($mtyp){.mtx = {0}, .val =$init_str}, sizeof($mtyp))'
-		} else {
-			return init_str
-		}
-	}
-	// User struct defined in another module.
-	// if typ.contains('__') {
-	if sym.kind == .struct_ {
-		mut has_none_zero := false
-		mut init_str := '{'
-		info := sym.info as ast.Struct
-		for field in info.fields {
-			field_sym := g.table.get_type_symbol(field.typ)
-			if field_sym.kind in [.array, .map] || field.has_default_expr {
-				if field.has_default_expr {
-					expr_str := g.expr_string(field.default_expr)
-					init_str += '.$field.name = $expr_str,'
-				} else {
-					init_str += '.$field.name = ${g.type_default(field.typ)},'
-				}
-				has_none_zero = true
-			}
-		}
-		if has_none_zero {
-			init_str += '}'
-			type_name := g.typ(typ)
-			init_str = '($type_name)' + init_str
-		} else {
-			init_str += '0}'
-		}
-		if typ.has_flag(.shared_f) {
-			styp := '__shared__${g.table.get_type_symbol(typ).cname}'
-			return '($styp*)__dup${styp}(&($styp){.mtx = {0}, .val =$init_str}, sizeof($styp))'
-		} else {
-			return init_str
-		}
-	}
-	// if typ.ends_with('Fn') { // TODO
-	// return '0'
-	// }
-	// Default values for other types are not needed because of mandatory initialization
-	idx := int(typ)
-	if idx >= 1 && idx <= 17 {
+	if typ.idx() < ast.string_type_idx {
+		// Default values for other types are not needed because of mandatory initialization
 		return '0'
 	}
-	/*
-	match idx {
-		ast.bool_type_idx {
+	sym := g.table.get_type_symbol(typ)
+	match sym.kind {
+		.string {
+			return '(string){.str=(byteptr)"", .is_lit=1}'
+		}
+		.interface_, .sum_type, .array_fixed, .multi_return {
+			return '{0}'
+		}
+		.alias {
+			return g.type_default((sym.info as ast.Alias).parent_type)
+		}
+		.chan {
+			elemtypstr := g.typ(sym.chan_info().elem_type)
+			return 'sync__new_channel_st(0, sizeof($elemtypstr))'
+		}
+		.array {
+			elem_typ := sym.array_info().elem_type
+			elem_sym := g.typ(elem_typ)
+			mut elem_type_str := util.no_dots(elem_sym)
+			if elem_type_str.starts_with('C__') {
+				elem_type_str = elem_type_str[3..]
+			}
+			noscan := g.check_noscan(elem_typ)
+			init_str := '__new_array${noscan}(0, 1, sizeof($elem_type_str))'
+			if typ.has_flag(.shared_f) {
+				atyp := '__shared__Array_${g.table.get_type_symbol(elem_typ).cname}'
+				return '($atyp*)__dup_shared_array(&($atyp){.mtx = {0}, .val =$init_str}, sizeof($atyp))'
+			} else {
+				return init_str
+			}
+		}
+		.map {
+			info := sym.map_info()
+			key_typ := g.table.get_type_symbol(info.key_type)
+			hash_fn, key_eq_fn, clone_fn, free_fn := g.map_fn_ptrs(key_typ)
+			init_str := 'new_map(sizeof(${g.typ(info.key_type)}), sizeof(${g.typ(info.value_type)}), $hash_fn, $key_eq_fn, $clone_fn, $free_fn)'
+			if typ.has_flag(.shared_f) {
+				mtyp := '__shared__Map_${key_typ.cname}_${g.table.get_type_symbol(info.value_type).cname}'
+				return '($mtyp*)__dup_shared_map(&($mtyp){.mtx = {0}, .val =$init_str}, sizeof($mtyp))'
+			} else {
+				return init_str
+			}
+		}
+		.struct_ {
+			mut has_none_zero := false
+			mut init_str := '{'
+			info := sym.info as ast.Struct
+			for field in info.fields {
+				field_sym := g.table.get_type_symbol(field.typ)
+				if field_sym.kind in [.array, .map] || field.has_default_expr {
+					if field.has_default_expr {
+						expr_str := g.expr_string(field.default_expr)
+						init_str += '.$field.name = $expr_str,'
+					} else {
+						init_str += '.$field.name = ${g.type_default(field.typ)},'
+					}
+					has_none_zero = true
+				}
+			}
+			if has_none_zero {
+				init_str += '}'
+				type_name := g.typ(typ)
+				init_str = '($type_name)' + init_str
+			} else {
+				init_str += '0}'
+			}
+			if typ.has_flag(.shared_f) {
+				styp := '__shared__${g.table.get_type_symbol(typ).cname}'
+				return '($styp*)__dup${styp}(&($styp){.mtx = {0}, .val =$init_str}, sizeof($styp))'
+			} else {
+				return init_str
+			}
+		}
+		else {
 			return '0'
 		}
-		else {}
 	}
-	*/
-	match sym.name {
-		'string' { return '(string){.str=(byteptr)"", .is_lit=1}' }
-		'rune' { return '0' }
-		else {}
-	}
-	if sym.kind == .chan {
-		elemtypstr := g.typ(sym.chan_info().elem_type)
-		return 'sync__new_channel_st(0, sizeof($elemtypstr))'
-	}
-	return match sym.kind {
-		.interface_, .sum_type, .array_fixed, .multi_return { '{0}' }
-		.alias { g.type_default((sym.info as ast.Alias).parent_type) }
-		else { '0' }
-	}
-	// TODO this results in
-	// error: expected a field designator, such as '.field = 4'
-	// - Empty ee= (Empty) { . =  {0}  } ;
-	/*
-	return match typ {
-	'bool', 'i8', 'i16', 'i64', 'u16', 'u32', 'u64', 'byte', 'int', 'rune', 'byteptr', 'voidptr' {'0'}
-	'string'{ '_SLIT("")'}
-	'f32'{ '0.0'}
-	'f64'{ '0.0'}
-	else { '{0} '}
-}
-	*/
 }
 
 fn (g &Gen) get_all_test_function_names() []string {
