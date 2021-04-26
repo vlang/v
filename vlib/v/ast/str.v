@@ -62,16 +62,28 @@ pub fn (node &FnDecl) stringify(t &Table, cur_mod string, m2a map[string]string)
 	if name in ['+', '-', '*', '/', '%', '<', '>', '==', '!=', '>=', '<='] {
 		f.write_string(' ')
 	}
+	mut add_para_types := true
 	if node.generic_names.len > 0 {
-		f.write_string('<')
-		for i, gname in node.generic_names {
-			is_last := i == node.generic_names.len - 1
-			f.write_string(gname)
-			if !is_last {
-				f.write_string(', ')
+		if node.is_method {
+			sym := t.get_type_symbol(node.params[0].typ)
+			if sym.info is Struct {
+				generic_names := sym.info.generic_types.map(t.get_type_symbol(it).name)
+				if generic_names == node.generic_names {
+					add_para_types = false
+				}
 			}
 		}
-		f.write_string('>')
+		if add_para_types {
+			f.write_string('<')
+			for i, gname in node.generic_names {
+				is_last := i == node.generic_names.len - 1
+				f.write_string(gname)
+				if !is_last {
+					f.write_string(', ')
+				}
+			}
+			f.write_string('>')
+		}
 	}
 	f.write_string('(')
 	for i, arg in node.params {

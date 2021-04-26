@@ -153,9 +153,9 @@ fn draw_model(app App, model_pos m4.Vec4) u32 {
 	tmp_fs_params.ligth = m4.vec3(x_light, radius_light, z_light)
 
 	sd := obj.Shader_data{
-		vs_data: &tmp_vs_param
+		vs_data: unsafe { &tmp_vs_param }
 		vs_len: int(sizeof(tmp_vs_param))
-		fs_data: &tmp_fs_params
+		fs_data: unsafe { &tmp_fs_params }
 		fs_len: int(sizeof(tmp_fs_params))
 	}
 

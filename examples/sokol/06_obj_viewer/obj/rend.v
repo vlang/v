@@ -235,7 +235,7 @@ pub fn (obj_part ObjPart) bind_and_draw(rend_data_index int, in_data Shader_data
 		size: size_t(in_data.vs_len)
 	}
 	fs_uniforms_range := C.sg_range{
-		ptr: &tmp_fs_params
+		ptr: unsafe { &tmp_fs_params }
 		size: size_t(in_data.fs_len)
 	}
 

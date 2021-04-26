@@ -264,6 +264,7 @@ pub struct InterfaceDecl {
 pub:
 	name         string
 	name_pos     token.Position
+	language     Language
 	field_names  []string
 	is_pub       bool
 	methods      []FnDecl
@@ -493,8 +494,11 @@ pub mut:
 	is_changed bool // to detect mutable vars that are never changed
 	//
 	// (for setting the position after the or block for autofree)
-	is_or  bool // `x := foo() or { ... }`
-	is_tmp bool // for tmp for loop vars, so that autofree can skip them
+	is_or        bool // `x := foo() or { ... }`
+	is_tmp       bool // for tmp for loop vars, so that autofree can skip them
+	is_auto_heap bool // value whoes address goes out of scope
+	is_heap_ref  bool // *known* to be pointer to heap memory (ptr to [heap] struct)
+	is_stack_obj bool // may be pointer to stack value (`mut` or `&` arg and not [heap] struct)
 }
 
 // used for smartcasting only

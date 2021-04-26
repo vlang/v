@@ -2145,21 +2145,36 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			g.expr(assign_stmt.right[0])
 			g.writeln(';')
 			for i, lx in assign_stmt.left {
+				mut is_auto_heap := false
 				if lx is ast.Ident {
 					if lx.kind == .blank_ident {
 						continue
+					}
+					if lx.obj is ast.Var {
+						is_auto_heap = lx.obj.is_auto_heap
 					}
 				}
 				styp := g.typ(assign_stmt.left_types[i])
 				if assign_stmt.op == .decl_assign {
 					g.write('$styp ')
+					if is_auto_heap {
+						g.write('*')
+					}
 				}
 				g.expr(lx)
 				if is_opt {
 					mr_base_styp := g.base_type(return_type)
-					g.writeln(' = (*($mr_base_styp*)${mr_var_name}.data).arg$i;')
+					if is_auto_heap {
+						g.writeln(' = HEAP($mr_base_styp, *($mr_base_styp*)${mr_var_name}.data).arg$i);')
+					} else {
+						g.writeln(' = (*($mr_base_styp*)${mr_var_name}.data).arg$i;')
+					}
 				} else {
-					g.writeln(' = ${mr_var_name}.arg$i;')
+					if is_auto_heap {
+						g.writeln(' = HEAP($styp, ${mr_var_name}.arg$i);')
+					} else {
+						g.writeln(' = ${mr_var_name}.arg$i;')
+					}
 				}
 			}
 			return
@@ -2256,6 +2271,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	}
 	// `a := 1` | `a,b := 1,2`
 	for i, left in assign_stmt.left {
+		mut is_auto_heap := false
 		mut var_type := assign_stmt.left_types[i]
 		mut val_type := assign_stmt.right_types[i]
 		val := assign_stmt.right[i]
@@ -2280,6 +2296,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				if share == .atomic_t {
 					var_type = var_type.set_flag(.atomic_f)
 				}
+			}
+			if left.obj is ast.Var {
+				is_auto_heap = left.obj.is_auto_heap
 			}
 		}
 		styp := g.typ(var_type)
@@ -2432,6 +2451,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 						g.out.write_string(util.tabs(g.indent - g.inside_ternary))
 					}
 					g.write('$styp ')
+					if is_auto_heap {
+						g.write('*')
+					}
 				}
 				if left is ast.Ident || left is ast.SelectorExpr {
 					g.prevent_sum_type_unwrapping_once = true
@@ -2511,10 +2533,16 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 							g.write('{0}')
 						}
 					} else {
+						if is_auto_heap {
+							g.write('HEAP($styp, (')
+						}
 						if val.is_auto_deref_var() {
 							g.write('*')
 						}
 						g.expr(val)
+						if is_auto_heap {
+							g.write('))')
+						}
 					}
 				} else {
 					if assign_stmt.has_cross_var {
@@ -2842,9 +2870,9 @@ fn (mut g Gen) map_fn_ptrs(key_typ ast.TypeSymbol) (string, string, string, stri
 		}
 		.voidptr {
 			ts := if g.pref.m64 {
-				&g.table.type_symbols[ast.u64_type_idx]
+				unsafe { &g.table.type_symbols[ast.u64_type_idx] }
 			} else {
-				&g.table.type_symbols[ast.u32_type_idx]
+				unsafe { &g.table.type_symbols[ast.u32_type_idx] }
 			}
 			return g.map_fn_ptrs(ts)
 		}
@@ -3123,7 +3151,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 				}
 			} else {
 				// g.write('/*pref*/')
-				g.write(node.op.str())
+				if !(g.is_amp && node.right.is_auto_deref_var()) {
+					g.write(node.op.str())
+				}
 				// g.write('(')
 				g.expr(node.right)
 			}
@@ -4355,6 +4385,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 	mut name := c_name(node.name)
 	// TODO: temporary, remove this
 	node_info := node.info
+	mut is_auto_heap := false
 	if node_info is ast.IdentVar {
 		// x ?int
 		// `x = 10` => `x.data = 10` (g.right_is_opt == false)
@@ -4372,12 +4403,16 @@ fn (mut g Gen) ident(node ast.Ident) {
 		}
 		scope := g.file.scope.innermost(node.pos.pos)
 		if v := scope.find_var(node.name) {
+			is_auto_heap = v.is_auto_heap && (!g.is_assign_lhs || g.assign_op != .decl_assign)
+			if is_auto_heap {
+				g.write('(*(')
+			}
 			if v.smartcasts.len > 0 {
 				v_sym := g.table.get_type_symbol(v.typ)
 				if !prevent_sum_type_unwrapping_once {
 					for _ in v.smartcasts {
 						g.write('(')
-						if v_sym.kind == .sum_type {
+						if v_sym.kind == .sum_type && !is_auto_heap {
 							g.write('*')
 						}
 					}
@@ -4390,7 +4425,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 								is_ptr = true
 							}
 						}
-						dot := if is_ptr { '->' } else { '.' }
+						dot := if is_ptr || is_auto_heap { '->' } else { '.' }
 						if mut cast_sym.info is ast.Aggregate {
 							sym := g.table.get_type_symbol(cast_sym.info.types[g.aggregate_type_idx])
 							g.write('${dot}_$sym.cname')
@@ -4398,6 +4433,9 @@ fn (mut g Gen) ident(node ast.Ident) {
 							g.write('${dot}_$cast_sym.cname')
 						}
 						g.write(')')
+					}
+					if is_auto_heap {
+						g.write('))')
 					}
 					return
 				}
@@ -4413,6 +4451,9 @@ fn (mut g Gen) ident(node ast.Ident) {
 		}
 	}
 	g.write(g.get_ternary_name(name))
+	if is_auto_heap {
+		g.write('))')
+	}
 }
 
 fn (mut g Gen) cast_expr(node ast.CastExpr) {
@@ -4623,7 +4664,18 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 							g.expr(branch.cond.expr)
 							g.writeln(';')
 						} else {
-							g.writeln('\t$base_type $branch.cond.var_name = *($base_type*)${var_name}.data;')
+							mut is_auto_heap := false
+							if branch.stmts.len > 0 {
+								scope := g.file.scope.innermost(ast.Node(branch.stmts[branch.stmts.len - 1]).position().pos)
+								if v := scope.find_var(branch.cond.var_name) {
+									is_auto_heap = v.is_auto_heap
+								}
+							}
+							if is_auto_heap {
+								g.writeln('\t$base_type* $branch.cond.var_name = HEAP($base_type, *($base_type*)${var_name}.data);')
+							} else {
+								g.writeln('\t$base_type $branch.cond.var_name = *($base_type*)${var_name}.data;')
+							}
 						}
 					}
 				}
@@ -5800,109 +5852,87 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 	if typ.is_ptr() && !typ.has_flag(.shared_f) {
 		return '0'
 	}
-	sym := g.table.get_type_symbol(typ)
-	if sym.kind == .array {
-		elem_typ := sym.array_info().elem_type
-		elem_sym := g.typ(elem_typ)
-		mut elem_type_str := util.no_dots(elem_sym)
-		if elem_type_str.starts_with('C__') {
-			elem_type_str = elem_type_str[3..]
-		}
-		noscan := g.check_noscan(elem_typ)
-		init_str := '__new_array${noscan}(0, 1, sizeof($elem_type_str))'
-		if typ.has_flag(.shared_f) {
-			atyp := '__shared__Array_${g.table.get_type_symbol(elem_typ).cname}'
-			return '($atyp*)__dup_shared_array(&($atyp){.mtx = {0}, .val =$init_str}, sizeof($atyp))'
-		} else {
-			return init_str
-		}
-	}
-	if sym.kind == .map {
-		info := sym.map_info()
-		key_typ := g.table.get_type_symbol(info.key_type)
-		hash_fn, key_eq_fn, clone_fn, free_fn := g.map_fn_ptrs(key_typ)
-		init_str := 'new_map(sizeof(${g.typ(info.key_type)}), sizeof(${g.typ(info.value_type)}), $hash_fn, $key_eq_fn, $clone_fn, $free_fn)'
-		if typ.has_flag(.shared_f) {
-			mtyp := '__shared__Map_${key_typ.cname}_${g.table.get_type_symbol(info.value_type).cname}'
-			return '($mtyp*)__dup_shared_map(&($mtyp){.mtx = {0}, .val =$init_str}, sizeof($mtyp))'
-		} else {
-			return init_str
-		}
-	}
-	// User struct defined in another module.
-	// if typ.contains('__') {
-	if sym.kind == .struct_ {
-		mut has_none_zero := false
-		mut init_str := '{'
-		info := sym.info as ast.Struct
-		for field in info.fields {
-			field_sym := g.table.get_type_symbol(field.typ)
-			if field_sym.kind in [.array, .map] || field.has_default_expr {
-				if field.has_default_expr {
-					expr_str := g.expr_string(field.default_expr)
-					init_str += '.$field.name = $expr_str,'
-				} else {
-					init_str += '.$field.name = ${g.type_default(field.typ)},'
-				}
-				has_none_zero = true
-			}
-		}
-		if has_none_zero {
-			init_str += '}'
-			type_name := g.typ(typ)
-			init_str = '($type_name)' + init_str
-		} else {
-			init_str += '0}'
-		}
-		if typ.has_flag(.shared_f) {
-			styp := '__shared__${g.table.get_type_symbol(typ).cname}'
-			return '($styp*)__dup${styp}(&($styp){.mtx = {0}, .val =$init_str}, sizeof($styp))'
-		} else {
-			return init_str
-		}
-	}
-	// if typ.ends_with('Fn') { // TODO
-	// return '0'
-	// }
-	// Default values for other types are not needed because of mandatory initialization
-	idx := int(typ)
-	if idx >= 1 && idx <= 17 {
+	if typ.idx() < ast.string_type_idx {
+		// Default values for other types are not needed because of mandatory initialization
 		return '0'
 	}
-	/*
-	match idx {
-		ast.bool_type_idx {
+	sym := g.table.get_type_symbol(typ)
+	match sym.kind {
+		.string {
+			return '(string){.str=(byteptr)"", .is_lit=1}'
+		}
+		.interface_, .sum_type, .array_fixed, .multi_return {
+			return '{0}'
+		}
+		.alias {
+			return g.type_default((sym.info as ast.Alias).parent_type)
+		}
+		.chan {
+			elemtypstr := g.typ(sym.chan_info().elem_type)
+			return 'sync__new_channel_st(0, sizeof($elemtypstr))'
+		}
+		.array {
+			elem_typ := sym.array_info().elem_type
+			elem_sym := g.typ(elem_typ)
+			mut elem_type_str := util.no_dots(elem_sym)
+			if elem_type_str.starts_with('C__') {
+				elem_type_str = elem_type_str[3..]
+			}
+			noscan := g.check_noscan(elem_typ)
+			init_str := '__new_array${noscan}(0, 1, sizeof($elem_type_str))'
+			if typ.has_flag(.shared_f) {
+				atyp := '__shared__Array_${g.table.get_type_symbol(elem_typ).cname}'
+				return '($atyp*)__dup_shared_array(&($atyp){.mtx = {0}, .val =$init_str}, sizeof($atyp))'
+			} else {
+				return init_str
+			}
+		}
+		.map {
+			info := sym.map_info()
+			key_typ := g.table.get_type_symbol(info.key_type)
+			hash_fn, key_eq_fn, clone_fn, free_fn := g.map_fn_ptrs(key_typ)
+			init_str := 'new_map(sizeof(${g.typ(info.key_type)}), sizeof(${g.typ(info.value_type)}), $hash_fn, $key_eq_fn, $clone_fn, $free_fn)'
+			if typ.has_flag(.shared_f) {
+				mtyp := '__shared__Map_${key_typ.cname}_${g.table.get_type_symbol(info.value_type).cname}'
+				return '($mtyp*)__dup_shared_map(&($mtyp){.mtx = {0}, .val =$init_str}, sizeof($mtyp))'
+			} else {
+				return init_str
+			}
+		}
+		.struct_ {
+			mut has_none_zero := false
+			mut init_str := '{'
+			info := sym.info as ast.Struct
+			for field in info.fields {
+				field_sym := g.table.get_type_symbol(field.typ)
+				if field_sym.kind in [.array, .map] || field.has_default_expr {
+					if field.has_default_expr {
+						expr_str := g.expr_string(field.default_expr)
+						init_str += '.$field.name = $expr_str,'
+					} else {
+						init_str += '.$field.name = ${g.type_default(field.typ)},'
+					}
+					has_none_zero = true
+				}
+			}
+			if has_none_zero {
+				init_str += '}'
+				type_name := g.typ(typ)
+				init_str = '($type_name)' + init_str
+			} else {
+				init_str += '0}'
+			}
+			if typ.has_flag(.shared_f) {
+				styp := '__shared__${g.table.get_type_symbol(typ).cname}'
+				return '($styp*)__dup${styp}(&($styp){.mtx = {0}, .val =$init_str}, sizeof($styp))'
+			} else {
+				return init_str
+			}
+		}
+		else {
 			return '0'
 		}
-		else {}
 	}
-	*/
-	match sym.name {
-		'string' { return '(string){.str=(byteptr)"", .is_lit=1}' }
-		'rune' { return '0' }
-		else {}
-	}
-	if sym.kind == .chan {
-		elemtypstr := g.typ(sym.chan_info().elem_type)
-		return 'sync__new_channel_st(0, sizeof($elemtypstr))'
-	}
-	return match sym.kind {
-		.interface_, .sum_type, .array_fixed, .multi_return { '{0}' }
-		.alias { g.type_default((sym.info as ast.Alias).parent_type) }
-		else { '0' }
-	}
-	// TODO this results in
-	// error: expected a field designator, such as '.field = 4'
-	// - Empty ee= (Empty) { . =  {0}  } ;
-	/*
-	return match typ {
-	'bool', 'i8', 'i16', 'i64', 'u16', 'u32', 'u64', 'byte', 'int', 'rune', 'byteptr', 'voidptr' {'0'}
-	'string'{ '_SLIT("")'}
-	'f32'{ '0.0'}
-	'f64'{ '0.0'}
-	else { '{0} '}
-}
-	*/
 }
 
 fn (g &Gen) get_all_test_function_names() []string {

@@ -387,7 +387,7 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 			g.gen_expr_stmt(node)
 		}
 		ast.FnDecl {
-			g.fn_decl = &node
+			g.fn_decl = unsafe { &node }
 			g.gen_fn_decl(node)
 		}
 		ast.ForCStmt {
@@ -813,7 +813,9 @@ fn fn_has_go(node ast.FnDecl) bool {
 }
 
 fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
-	g.fn_decl = &it
+	unsafe {
+		g.fn_decl = &it
+	}
 	has_go := fn_has_go(it)
 	is_main := it.name == 'main.main'
 	g.gen_attrs(it.attrs)
@@ -1083,6 +1085,10 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 	g.writeln('};')
 	g.writeln('${js_name}.prototype = {')
 	g.inc_indent()
+	for embed in node.embeds {
+		etyp := g.typ(embed.typ)
+		g.writeln('...${etyp}.prototype,')
+	}
 	fns := g.method_fn_decls[name]
 	for field in node.fields {
 		typ := g.typ(field.typ)

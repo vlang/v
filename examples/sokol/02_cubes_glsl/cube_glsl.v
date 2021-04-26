@@ -400,7 +400,7 @@ fn draw_cube_glsl(app App) {
 		0 /* padding 4 Bytes == 1 f32 */,
 	]!
 	fs_uniforms_range := C.sg_range{
-		ptr: &text_res
+		ptr: unsafe { &text_res }
 		size: size_t(4 * 4)
 	}
 	gfx.apply_uniforms(C.SG_SHADERSTAGE_FS, C.SLOT_fs_params, &fs_uniforms_range)
