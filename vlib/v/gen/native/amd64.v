@@ -223,7 +223,7 @@ fn (mut g Gen) call(addr int) {
 	// println('call addr=$addr.hex2() rel_addr=$rel.hex2() pos=$g.buf.len')
 	g.write8(0xe8)
 	g.write32(rel)
-	// g.println('fn call')
+	g.println('call $addr')
 }
 
 fn (mut g Gen) syscall() {
@@ -589,6 +589,10 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 }
 
 fn (mut g Gen) fn_decl(node ast.FnDecl) {
+	if g.pref.arch == .arm64 {
+		g.fn_decl_arm64(node)
+		return
+	}
 	if g.pref.is_verbose {
 		println(term.green('\n$node.name:'))
 	}

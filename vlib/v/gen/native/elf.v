@@ -3,8 +3,6 @@
 // that can be found in the LICENSE file.
 module native
 
-import os
-
 const (
 	mag0        = byte(0x7f)
 	mag1        = `E`
@@ -72,11 +70,13 @@ pub fn (mut g Gen) generate_elf_header() {
 	g.write64(0x1000) // p_align
 	// user code starts here at
 	// address: 00070 and a half
-	println('code_start_pos = $g.buf.len.hex()')
+	if g.pref.is_verbose {
+		eprintln('code_start_pos = $g.buf.len.hex()')
+	}
 	g.code_start_pos = i64(g.buf.len)
 	g.debug_pos = g.buf.len
 	g.call(native.placeholder) // call main function, it's not guaranteed to be the first, we don't know its address yet
-	g.println('call fn main')
+	g.println('; call fn main')
 }
 
 pub fn (mut g Gen) generate_elf_footer() {
@@ -103,12 +103,5 @@ pub fn (mut g Gen) generate_elf_footer() {
 	// +1 is for "e8"
 	// -5 is for "e8 00 00 00 00"
 	g.write32_at(g.code_start_pos + 1, int(g.main_fn_addr - g.code_start_pos) - 5)
-	// Create the binary
-	mut f := os.create(g.out_name) or { panic(err) }
-	os.chmod(g.out_name, 0o775) // make it an executable
-	unsafe { f.write_ptr(g.buf.data, g.buf.len) }
-	f.close()
-	if g.pref.is_verbose {
-		println('\nnative elf binary has been successfully generated')
-	}
+	g.create_executable()
 }
