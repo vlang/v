@@ -642,7 +642,7 @@ pub fn (mut p Parser) eat_comments(cfg EatCommentsConfig) []ast.Comment {
 	mut comments := []ast.Comment{}
 	for {
 		if p.tok.kind != .comment || (cfg.same_line && p.tok.line_nr > line)
-			|| (cfg.follow_up && p.tok.line_nr > line + 1) {
+			|| (cfg.follow_up && (p.tok.line_nr > line + 1 || p.tok.lit.contains('\n'))) {
 			break
 		}
 		comments << p.comment()
