@@ -5,5 +5,5 @@ struct Test {
 fn test_map_value_init() {
 	m := map[string]Test{}
 	empty := m['not-here']
-	assert empty.s != "something"
+	assert !isnil(empty.s.str)
 }

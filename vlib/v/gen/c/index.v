@@ -407,7 +407,7 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 			g.write(', &(voidptr[]){ $zero }))')
 		} else {
 			g.write(', &')
-			g.struct_init(ast.StructInit{typ: elem_type})
+			g.struct_init(ast.StructInit{ typ: elem_type })
 			g.write('))')
 		}
 		if gen_or {
