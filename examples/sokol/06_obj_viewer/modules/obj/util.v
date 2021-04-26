@@ -14,9 +14,9 @@ pub fn read_lines_from_file(file_path string) []string {
 		}
 		rows = bts.bytestr().split_into_lines()
 	} $else {
-		path = 'assets/models/' + file_path
+		path = os.resource_abs_path('assets/models/' + file_path)
 		rows = os.read_lines(path) or {
-			eprintln('File [$path] NOT FOUND!')
+			eprintln('File [$path] NOT FOUND! file_path: $file_path')
 			return rows
 		}
 	}
@@ -34,7 +34,7 @@ pub fn read_bytes_from_file(file_path string) []byte {
 			exit(0)
 		}
 	} $else {
-		path = 'assets/models/' + file_path
+		path = os.resource_abs_path('assets/models/' + file_path)
 		buffer = os.read_bytes(path) or {
 			eprintln('Texure file: [$path] NOT FOUND!')
 			exit(0)
