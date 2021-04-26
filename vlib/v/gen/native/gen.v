@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module native
 
+import os
 import v.ast
 import v.util
 import v.token
@@ -49,7 +50,7 @@ enum Size {
 
 fn (g Gen) get_backend(pref &pref.Preferences) CodeGen {
 	if pref.arch == .arm64 {
-		return Aarch64{}
+		return Arm64{}
 	}
 	return Amd64{}
 }
@@ -86,10 +87,25 @@ pub fn (mut g Gen) generate_header() {
 		.linux {
 			g.generate_elf_header()
 		}
-		.raw {}
+		.raw {
+			if g.pref.arch == .arm64 {
+				g.gen_arm64_helloworld()
+			}
+		}
 		else {
 			verror('Error: only `raw`, `linux` and `macos` are supported for -os in -native')
 		}
+	}
+}
+
+pub fn (mut g Gen) create_executable() {
+	// Create the binary // should be .o ?
+	mut f := os.create(g.out_name) or { panic(err) }
+	os.chmod(g.out_name, 0o775) // make it executable
+	unsafe { f.write_ptr(g.buf.data, g.buf.len) }
+	f.close()
+	if g.pref.is_verbose {
+		println('\narm64 mach-o binary has been successfully generated')
 	}
 }
 
@@ -101,9 +117,10 @@ pub fn (mut g Gen) generate_footer() {
 		.linux {
 			g.generate_elf_footer()
 		}
-		else {
-			g.generate_macho_footer()
+		.raw {
+			g.create_executable()
 		}
+		else {}
 	}
 }
 
@@ -221,7 +238,7 @@ pub fn (mut g Gen) register_function_address(name string) {
 }
 
 fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
-	eprintln('for-in statement is not yet implemented')
+	verror('for-in statement is not yet implemented')
 	/*
 	if node.is_range {
 		// `for x in 1..10 {`

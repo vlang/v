@@ -3,8 +3,6 @@
 // that can be found in the LICENSE file.
 module native
 
-import os
-
 const (
 	s_attr_some_instructions = 0x00000400
 	s_attr_pure_instructions = 0x80000000
@@ -99,33 +97,19 @@ pub fn (mut g Gen) generate_macho_header() {
 	for _ in 0 .. 12 {
 		g.write32(0)
 	}
-	// ADD THE CODE HERE THIS GOES INTO THE STMTS THING
-	// g.write32(0x77777777)
-	// assembly
-	g.mov_arm(.x0, 1)
-	g.adr()
-	g.bl()
-	g.mov_arm(.x0, 0)
-	g.mov_arm(.x16, 1)
-	g.svc()
-	//
-	g.write_string('Hello World!\n')
-	g.write8(0) // padding?
-	g.write8(0)
-	g.write8(0)
+
+	if g.pref.arch == .arm64 {
+		g.gen_arm64_helloworld()
+	}
+
+}
+
+pub fn (mut g Gen) generate_macho_footer() {
 	g.write_relocs()
 	g.sym_table()
 	g.sym_string_table()
 	g.write8(0)
-}
-
-pub fn (mut g Gen) generate_macho_footer() {
-	// Create the binary // should be .o ?
-	mut f := os.create(g.out_name) or { panic(err) }
-	os.chmod(g.out_name, 0o775) // make it executable
-	unsafe { f.write_ptr(g.buf.data, g.buf.len) }
-	f.close()
-	// println('\narm64 mach-o binary has been successfully generated')
+	g.create_executable()
 }
 
 fn (mut g Gen) sym_table_command() {
@@ -182,68 +166,6 @@ pub fn (mut g Gen) zeroes(n int) {
 	for _ in 0 .. n {
 		g.buf << 0
 	}
-}
-
-enum Register2 {
-	x0
-	x1
-	x2
-	x3
-	x4
-	x5
-	x6
-	x7
-	x8
-	x9
-	x10
-	x11
-	x12
-	x13
-	x14
-	x15
-	x16
-}
-
-fn (mut g Gen) mov_arm(reg Register2, val u64) {
-	// m := u64(0xffff)
-	// x := u64(val)
-	// println('========')
-	// println(x & ~m)
-	// println(x & ~(m << 16))
-	// g.write32(0x777777)
-	r := int(reg)
-	if r == 0 && val == 1 {
-		g.write32(0xd2800020)
-	} else if r == 0 {
-		g.write32(0xd2800000)
-	} else if r == 16 {
-		g.write32(0xd2800030)
-	}
-	/*
-	if 1 ^ (x & ~m) != 0 {
-		// println('yep')
-		g.write32(int(u64(0x52800000) | u64(r) | x << 5))
-		g.write32(0x88888888)
-		g.write32(int(u64(0x52800000) | u64(r) | x >> 11))
-	} else if 1 ^ (x & ~(m << 16)) != 0 {
-		// g.write32(int(u64(0x52800000) | u64(r) | x >> 11))
-		// println('yep2')
-		// g.write32(0x52a00000 | r | val >> 11)
-	}
-	*/
-}
-
-fn (mut g Gen) adr() {
-	g.write32(0x100000a0)
-}
-
-fn (mut g Gen) bl() {
-	// g.write32(0xa9400000)
-	g.write32(0x94000000)
-}
-
-fn (mut g Gen) svc() {
-	g.write32(0xd4001001)
 }
 
 fn (mut g Gen) write_relocs() {
