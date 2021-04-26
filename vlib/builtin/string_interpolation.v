@@ -13,7 +13,7 @@ import strings
 //=============================================================================
 // Enum format types max 0x1F => 32 types
 //=============================================================================
-pub enum Str_intp_type {
+pub enum StrIntpType {
 	si_no_str = 0  // no parameter to print only fix string
 	si_c
 	
@@ -38,7 +38,7 @@ pub enum Str_intp_type {
 	si_vp
 }
 
-pub fn (x Str_intp_type) str() string {
+pub fn (x StrIntpType) str() string {
 	match x {
 		.si_no_str{ return "no_str" }
 		.si_c     { return "c" }
@@ -68,7 +68,7 @@ pub fn (x Str_intp_type) str() string {
 //=============================================================================
 // Union data
 //=============================================================================
-pub union Str_intp_mem {
+pub union StrIntpMem {
 pub mut:
 	d_c   u32
 	d_u8  byte 
@@ -128,7 +128,7 @@ fn abs64(x i64) u64 {
 //=========================================
 
 // convert from data format to compact u64
-pub fn get_str_intp_u64_format(fmt_type Str_intp_type, in_width int, in_precision int, in_sign bool, in_pad_ch u8, in_base int, in_upper_case bool) u64 {
+pub fn get_str_intp_u64_format(fmt_type StrIntpType, in_width int, in_precision int, in_sign bool, in_pad_ch u8, in_base int, in_upper_case bool) u64 {
 	width      := if in_width != 0 { abs64(in_width) } else { u64(0) }
 	allign     := if in_width > 0 { u64(1 << 5) } else { u64(0) }  // two bit 0 .left 1 .rigth, for now we use only one
 	upper_case := if in_upper_case { u64(1 << 7) } else { u64(0) }
@@ -140,9 +140,9 @@ pub fn get_str_intp_u64_format(fmt_type Str_intp_type, in_width int, in_precisio
 }
 
 // convert from struct to formated string
-fn (data Str_intp_data) get_fmt_from_u64_format() string {
+fn (data StrIntpData) get_fmt_from_u64_format() string {
 	x              := data.fmt
-	typ            := Str_intp_type(x & 0x1F)
+	typ            := StrIntpType(x & 0x1F)
 	allign         := int((x >> 5) & 0x01)
 	upper_case     := if ((x >> 7) & 0x01) > 0 { true } else { false }
 	sign           := int((x >> 8) & 0x01)
@@ -350,7 +350,7 @@ fn (data Str_intp_data) get_fmt_from_u64_format() string {
 //====================================================================================
 
 // storing struct used by cgen
-pub struct Str_intp_cgen_data {
+pub struct StrIntpCgenData {
 pub:
 	str     string
 	fmt     string
@@ -359,11 +359,11 @@ pub:
 
 // NOTE: LOW LEVEL struct 
 // storing struct passed to V in the C code
-pub struct Str_intp_data {
+pub struct StrIntpData {
 pub:
 	str     string
 	fmt     u64
-	d       Str_intp_mem
+	d       StrIntpMem
 }
 
 // interpolation function
@@ -373,7 +373,7 @@ pub fn str_interpolation(data_len int, in_data voidptr) string {
 	unsafe{	
 		mut i := 0
 		for i < data_len {
-			data := &Str_intp_data( byteptr(in_data) + (int(sizeof(Str_intp_data)) * i) )
+			data := &StrIntpData( byteptr(in_data) + (int(sizeof(StrIntpData)) * i) )
 			res.write_string(data.str)
 			//res += data.str
 			// skip only string records
