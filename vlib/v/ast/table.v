@@ -197,9 +197,7 @@ pub fn (t &Table) is_same_method(f &Fn, func &Fn) string {
 }
 
 pub fn (t &Table) find_fn(name string) ?Fn {
-	f := t.fns[name]
-	if f.name.str != 0 {
-		// TODO
+	if f := t.fns[name] {
 		return f
 	}
 	return none
