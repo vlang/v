@@ -24,5 +24,6 @@ fn deferer() &Qwe {
 
 fn test_defer_in_return() {
 	q := deferer()
-	assert q.n == 12
+	// both `mut_x()` and `defer` have been run
+	assert q.n == 17
 }
