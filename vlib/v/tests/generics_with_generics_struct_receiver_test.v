@@ -2,7 +2,7 @@ struct Num<T> {
 	num T
 }
 
-fn (num Num<T>) is_autom<T>() bool {
+fn (num Num<T>) is_autom() bool {
 	return true
 }
 

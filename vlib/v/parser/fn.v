@@ -273,12 +273,13 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		}
 	}
 	// <T>
-	generic_names := p.parse_generic_names()
-	// check generic receiver method has no generic names
-	if is_method && rec.typ.has_flag(.generic) && generic_names.len == 0
-		&& p.table.get_type_symbol(rec.typ).kind != .any {
-		p.error_with_pos('generic receiver method `$name` should add generic names, e.g. $name<T>',
-			name_pos)
+	mut generic_names := p.parse_generic_names()
+	// generic names can be infer with receiver's generic names
+	if is_method && rec.typ.has_flag(.generic) && generic_names.len == 0 {
+		sym := p.table.get_type_symbol(rec.typ)
+		if sym.info is ast.Struct {
+			generic_names = sym.info.generic_types.map(p.table.get_type_symbol(it).name)
+		}
 	}
 	// Args
 	args2, are_args_type_only, is_variadic := p.fn_args()
