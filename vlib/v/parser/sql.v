@@ -119,9 +119,25 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 	db_expr := p.expr(0)
 	// println(typeof(db_expr))
 	p.check(.lcbr)
-	// kind := ast.SqlExprKind.select_
-	//
+
+	mut lines := []ast.SqlStmtLine{}
+
+	for p.tok.kind != .rcbr {
+		lines << p.parse_sql_stmt_line()
+	}
+
+	p.check(.rcbr)
+	pos.last_line = p.prev_tok.line_nr
+	return ast.SqlStmt{
+		pos: pos
+		db_expr: db_expr
+		lines: lines
+	}
+}
+
+fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 	mut n := p.check_name() // insert
+	pos := p.tok.position()
 	mut kind := ast.SqlStmtKind.insert
 	if n == 'delete' {
 		kind = .delete
@@ -132,13 +148,11 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 		table := p.check_name()
 		if table != 'table' {
 			p.error('expected `table` got `$table`')
-			return ast.SqlStmt{}
+			return ast.SqlStmtLine{}
 		}
 		typ := p.parse_type()
 		typ_pos := p.tok.position()
-		p.check(.rcbr)
-		return ast.SqlStmt{
-			db_expr: db_expr
+		return ast.SqlStmtLine{
 			kind: kind
 			pos: pos.extend(p.prev_tok.position())
 			table_expr: ast.TypeNode{
@@ -151,13 +165,11 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 		table := p.check_name()
 		if table != 'table' {
 			p.error('expected `table` got `$table`')
-			return ast.SqlStmt{}
+			return ast.SqlStmtLine{}
 		}
 		typ := p.parse_type()
 		typ_pos := p.tok.position()
-		p.check(.rcbr)
-		return ast.SqlStmt{
-			db_expr: db_expr
+		return ast.SqlStmtLine{
 			kind: kind
 			pos: pos.extend(p.prev_tok.position())
 			table_expr: ast.TypeNode{
@@ -177,7 +189,7 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 				inserted_var_name = expr.name
 			} else {
 				p.error('can only insert variables')
-				return ast.SqlStmt{}
+				return ast.SqlStmtLine{}
 			}
 		}
 	}
@@ -186,11 +198,11 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 	mut update_exprs := []ast.Expr{cap: 5}
 	if kind == .insert && n != 'into' {
 		p.error('expecting `into`')
-		return ast.SqlStmt{}
+		return ast.SqlStmtLine{}
 	} else if kind == .update {
 		if n != 'set' {
 			p.error('expecting `set`')
-			return ast.SqlStmt{}
+			return ast.SqlStmtLine{}
 		}
 		for {
 			column := p.check_name()
@@ -205,7 +217,7 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 		}
 	} else if kind == .delete && n != 'from' {
 		p.error('expecting `from`')
-		return ast.SqlStmt{}
+		return ast.SqlStmtLine{}
 	}
 
 	mut table_pos := p.tok.position()
@@ -214,24 +226,21 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 		table_pos = p.tok.position()
 		table_type = p.parse_type()
 	} else if kind == .update {
-		p.check_sql_keyword('where') or { return ast.SqlStmt{} }
+		p.check_sql_keyword('where') or { return ast.SqlStmtLine{} }
 		where_expr = p.expr(0)
 	} else if kind == .delete {
 		table_pos = p.tok.position()
 		table_type = p.parse_type()
-		p.check_sql_keyword('where') or { return ast.SqlStmt{} }
+		p.check_sql_keyword('where') or { return ast.SqlStmtLine{} }
 		where_expr = p.expr(0)
 	}
-	p.check(.rcbr)
-	pos.last_line = p.prev_tok.line_nr
-	return ast.SqlStmt{
-		db_expr: db_expr
+	return ast.SqlStmtLine{
 		table_expr: ast.TypeNode{
 			typ: table_type
 			pos: table_pos
 		}
 		object_var_name: inserted_var_name
-		pos: pos.extend(p.prev_tok.position())
+		pos: pos
 		updated_columns: updated_columns
 		update_exprs: update_exprs
 		kind: kind

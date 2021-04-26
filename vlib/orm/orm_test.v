@@ -29,10 +29,28 @@ fn test_orm_sqlite() {
 		create table User
 	}
 	name := 'Peter'
-	db.exec("insert into userlist (username, age) values ('Sam', 29)")
-	db.exec("insert into userlist (username, age) values ('Peter', 31)")
-	db.exec("insert into userlist (username, age, is_customer) values ('Kate', 30, 1)")
 
+	sam := User{
+		age: 29
+		name: 'Sam'
+	}
+
+	peter := User{
+		age: 31
+		name: 'Peter'
+	}
+
+	k := User{
+		age: 30
+		name: 'Kate'
+		is_customer: true
+	}
+
+	sql db {
+		insert sam into User
+		insert peter into User
+		insert k into User
+	}
 	c := sql db {
 		select count from User where id != 1
 	}
@@ -145,7 +163,6 @@ fn test_orm_sqlite() {
 	sql db {
 		update User set age = 32, name = 'Kate N' where name == 'Kate'
 	}
-
 	mut kate3 := sql db {
 		select from User where id == 3
 	}

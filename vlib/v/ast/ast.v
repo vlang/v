@@ -1440,8 +1440,15 @@ pub enum SqlStmtKind {
 
 pub struct SqlStmt {
 pub:
+	pos     token.Position
+	db_expr Expr // `db` in `sql db {`
+pub mut:
+	lines []SqlStmtLine
+}
+
+pub struct SqlStmtLine {
+pub:
 	kind            SqlStmtKind
-	db_expr         Expr   // `db` in `sql db {`
 	object_var_name string // `user`
 	pos             token.Position
 	where_expr      Expr
@@ -1450,7 +1457,7 @@ pub:
 pub mut:
 	table_expr  TypeNode
 	fields      []StructField
-	sub_structs map[int]SqlStmt
+	sub_structs map[int]SqlStmtLine
 }
 
 pub struct SqlExpr {
