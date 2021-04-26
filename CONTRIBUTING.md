@@ -33,7 +33,7 @@ The main files are:
 - Constructs the compiler object (`struct V`).
 - Creates a list of .v files that need to be parsed.
 - Creates a parser object for each file and runs `parse()` on them.
-- The correct backend is called (C, JS, x64), and a binary is compiled.
+- The correct backend is called (C, JS, native), and a binary is compiled.
 
 2. `v/scanner` The scanner's job is to parse a list of characters and convert
 them to tokens.
@@ -60,11 +60,11 @@ compiled with Clang, GCC, Visual Studio, and TCC.
 supports comptime code generation, and it will be possible to do this using the
 language's tools.
 
-9. `v/gen/x64` is the directory with all the machine code generation logic. It
+9. `v/gen/native` is the directory with all the machine code generation logic. It
 defines a set of functions that translate assembly instructions to machine code
 and build the binary from scratch byte by byte. It manually builds all headers,
 segments, sections, symtable, relocations, etc. Right now it only has basic
-support of the x64 platform/ELF format.
+support of the native platform (ELF, MACHO format).
 
 The rest of the directories are vlib modules: `builtin/` (strings, arrays,
 maps), `time/`, `os/`, etc. Their documentation is pretty clear.

@@ -1,7 +1,7 @@
 // Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-module x64
+module native
 
 import os
 
@@ -73,7 +73,7 @@ pub fn (mut g Gen) generate_macho_header() {
 	g.write32(0x4) // alignment
 	g.write32(0x160) // relocation offset
 	g.write32(0x1) // # of relocations
-	g.write32(x64.s_attr_some_instructions | x64.s_attr_pure_instructions)
+	g.write32(native.s_attr_some_instructions | native.s_attr_pure_instructions)
 	g.write32(0)
 	g.write32(0)
 	g.write32(0)
@@ -88,8 +88,8 @@ pub fn (mut g Gen) generate_macho_header() {
 	// lc_symtab
 	g.sym_table_command()
 	//
-	g.write32(x64.lc_dymsymtab)
-	g.write32(x64.macho_d_size)
+	g.write32(native.lc_dymsymtab)
+	g.write32(native.macho_d_size)
 	g.write32(0)
 	g.write32(2)
 	g.write32(2)
@@ -166,8 +166,8 @@ fn (mut g Gen) sym_table_command() {
 		name: 'ltmp1'
 		is_ext: false
 	}
-	g.write32(x64.lc_symtab)
-	g.write32(x64.macho_symcmd_size)
+	g.write32(native.lc_symtab)
+	g.write32(native.macho_symcmd_size)
 	sym_table_offset := 0x168
 	g.write32(sym_table_offset)
 	g_syms_len := 4

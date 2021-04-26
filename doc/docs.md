@@ -3881,7 +3881,7 @@ If a file has an environment-specific suffix, it will only be compiled for that 
 
 - `.js.v` => will be used only by the JS backend. These files can contain JS. code.
 - `.c.v` => will be used only by the C backend. These files can contain C. code.
-- `.x64.v` => will be used only by V's x64 backend.
+- `.native.v` => will be used only by V's native backend.
 - `_nix.c.v` => will be used only on Unix systems (non Windows).
 - `_${os}.c.v` => will be used only on the specific `os` system.
 For example, `_windows.c.v` will be used only when compiling on Windows, or with `-os windows`.

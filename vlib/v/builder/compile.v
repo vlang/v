@@ -42,7 +42,7 @@ pub fn compile(command string, pref &pref.Preferences) {
 	match pref.backend {
 		.c { b.compile_c() }
 		.js { b.compile_js() }
-		.x64 { b.compile_x64() }
+		.native { b.compile_native() }
 	}
 	if pref.is_stats {
 		compilation_time_micros := 1 + sw.elapsed().microseconds()

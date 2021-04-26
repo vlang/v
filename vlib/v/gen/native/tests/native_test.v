@@ -3,26 +3,26 @@ import benchmark
 import term
 
 // TODO some logic copy pasted from valgrind_test.v and compiler_test.v, move to a module
-fn test_x64() {
+fn test_native() {
 	$if !amd64 {
 		return
 	}
 	if os.user_os() != 'linux' {
-		eprintln('x64 tests can only be run on Linux for now.')
+		eprintln('native tests can only be run on Linux for now.')
 		exit(0)
 	}
 	mut bench := benchmark.new_benchmark()
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
-	dir := os.join_path(vroot, 'vlib/v/gen/x64/tests')
+	dir := os.join_path(vroot, 'vlib/v/gen/native/tests')
 	files := os.ls(dir) or { panic(err) }
 	//
-	wrkdir := os.join_path(os.temp_dir(), 'vtests', 'x64')
+	wrkdir := os.join_path(os.temp_dir(), 'vtests', 'native')
 	os.mkdir_all(wrkdir) or { panic(err) }
 	os.chdir(wrkdir)
 	tests := files.filter(it.ends_with('.vv'))
 	if tests.len == 0 {
-		println('no x64 tests found')
+		println('no native tests found')
 		assert false
 	}
 	bench.set_total_expected_steps(tests.len)
@@ -32,10 +32,10 @@ fn test_x64() {
 		relative_test_path := full_test_path.replace(vroot + '/', '')
 		work_test_path := '$wrkdir/x.v'
 		os.cp(full_test_path, work_test_path) or {}
-		res_x64 := os.execute('$vexe -o exe -x64 $work_test_path')
-		if res_x64.exit_code != 0 {
+		res_native := os.execute('$vexe -o exe -native $work_test_path')
+		if res_native.exit_code != 0 {
 			bench.fail()
-			eprintln(bench.step_message_fail('x64 $test failed'))
+			eprintln(bench.step_message_fail('native $test failed'))
 			continue
 		}
 		res := os.execute('./exe')
@@ -64,7 +64,7 @@ fn test_x64() {
 	}
 	bench.stop()
 	eprintln(term.h_divider('-'))
-	eprintln(bench.total_message('x64'))
+	eprintln(bench.total_message('native'))
 	if bench.nfail > 0 {
 		exit(1)
 	}

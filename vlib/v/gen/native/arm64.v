@@ -1,4 +1,4 @@
-module x64
+module native
 
 pub struct Aarch64 {
 mut:

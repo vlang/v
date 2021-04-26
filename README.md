@@ -27,7 +27,7 @@
 
 - Simplicity: the language can be learned in less than an hour
 - Fast compilation: ≈110k loc/s with a Clang backend,
-    ≈1 million loc/s with x64 and tcc backends *(Intel i5-7500, SSD, no optimization)* ([demo video](https://www.youtube.com/watch?v=pvP6wmcl_Sc))
+    ≈1 million loc/s with native and tcc backends *(Intel i5-7500, SSD, no optimization)* ([demo video](https://www.youtube.com/watch?v=pvP6wmcl_Sc))
 - Easy to develop: V compiles itself in less than a second
 - Performance: as fast as C (V's main backend compiles to human readable C)
 - Safety: no null, no globals, no undefined behavior, immutability by default
