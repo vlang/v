@@ -419,7 +419,7 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 		} else if p.tok.kind in [.inc, .dec] || (p.tok.kind == .question && p.inside_ct_if_expr) {
 			// Postfix
 			// detect `f(x++)`, `a[x++]`
-			if p.peek_tok.kind in [.rpar, .rsbr] && p.mod !in ['builtin', 'regex', 'strconv'] { // temp
+			if p.peek_tok.kind in [.rpar, .rsbr] {
 				p.warn_with_pos('`$p.tok.kind` operator can only be used as a statement',
 					p.peek_tok.position())
 			}

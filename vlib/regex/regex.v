@@ -483,8 +483,10 @@ fn (re RE) get_char_class(pc int) string {
 
 		if re.cc[cc_i].cc_type == cc_bsls {
 			unsafe {
-				buf_ptr[i++] = `\\`
-				buf_ptr[i++] = byte(re.cc[cc_i].ch0)
+				buf_ptr[i] = `\\`
+				i++
+				buf_ptr[i] = byte(re.cc[cc_i].ch0)
+				i++
 			}
 		}
 		else if re.cc[cc_i].ch0 == re.cc[cc_i].ch1 {
@@ -493,7 +495,8 @@ fn (re RE) get_char_class(pc int) string {
 				x := byte((re.cc[cc_i].ch0 >> (tmp*8)) & 0xFF)
 				if x != 0 {
 					unsafe {
-						buf_ptr[i++] = x
+						buf_ptr[i] = x
+						i++
 					}
 				}
 				tmp--
@@ -505,20 +508,23 @@ fn (re RE) get_char_class(pc int) string {
 				x := byte((re.cc[cc_i].ch0 >> (tmp*8)) & 0xFF)
 				if x != 0 {
 					unsafe {
-						buf_ptr[i++] = x
+						buf_ptr[i] = x
+						i++
 					}
 				}
 				tmp--
 			}
 			unsafe {
-				buf_ptr[i++] = `-`
+				buf_ptr[i] = `-`
+				i++
 			}
 			tmp = 3
 			for tmp >= 0 {
 				x := byte((re.cc[cc_i].ch1 >> (tmp*8)) & 0xFF)
 				if x != 0 {
 					unsafe {
-						buf_ptr[i++] = x
+						buf_ptr[i] = x
+						i++
 					}
 				}
 				tmp--
