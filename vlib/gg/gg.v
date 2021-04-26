@@ -560,17 +560,19 @@ pub fn (ctx &Context) draw_line(x f32, y f32, x2 f32, y2 f32, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
-	if ctx.scale > 1 {
-		// Make the line more clear on hi dpi screens: draw a rectangle
-		mut width := mu.abs(x2 - x)
-		mut height := mu.abs(y2 - y)
-		if width == 0 {
-			width = 1
-		} else if height == 0 {
-			height = 1
+	$if !android {
+		if ctx.scale > 1 {
+			// Make the line more clear on hi dpi screens: draw a rectangle
+			mut width := mu.abs(x2 - x)
+			mut height := mu.abs(y2 - y)
+			if width == 0 {
+				width = 1
+			} else if height == 0 {
+				height = 1
+			}
+			ctx.draw_rect(x, y, width, height, c)
+			return
 		}
-		ctx.draw_rect(x, y, width, height, c)
-		return
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
 	sgl.begin_line_strip()
