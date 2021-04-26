@@ -82,7 +82,7 @@ pub mut:
 	sample_count              int
 	blend_color               C.sg_color
 	alpha_to_coverage_enabled bool
-	label                     &char
+	label                     &char = &char(0)
 	_end_canary               u32
 }
 
