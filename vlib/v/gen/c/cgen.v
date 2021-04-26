@@ -1228,16 +1228,6 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.NodeError {}
 		ast.Return {
-			g.write_defer_stmts_when_needed()
-			// af := g.autofree && node.exprs.len > 0 && node.exprs[0] is ast.CallExpr && !g.is_builtin_mod
-			/*
-			af := g.autofree && !g.is_builtin_mod
-			if false && af {
-				g.writeln('// ast.Return free')
-				g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
-				g.writeln('// ast.Return free_end2')
-			}
-			*/
 			g.return_stmt(node)
 		}
 		ast.SqlStmt {
@@ -4720,7 +4710,7 @@ fn (mut g Gen) gen_optional_error(target_type ast.Type, expr ast.Expr) {
 fn (mut g Gen) return_stmt(node ast.Return) {
 	g.write_v_source_line_info(node.pos)
 	if node.exprs.len > 0 {
-		// skip `retun $vweb.html()`
+		// skip `return $vweb.html()`
 		if node.exprs[0] is ast.ComptimeCall {
 			g.expr(node.exprs[0])
 			g.writeln(';')
@@ -4737,6 +4727,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	fn_return_is_optional := g.fn_decl.return_type.has_flag(.optional)
 	mut has_semicolon := false
 	if node.exprs.len == 0 {
+		g.write_defer_stmts_when_needed()
 		if fn_return_is_optional {
 			styp := g.typ(g.fn_decl.return_type)
 			g.writeln('return ($styp){0};')
@@ -4749,45 +4740,53 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		}
 		return
 	}
+	tmpvar := g.new_tmp_var()
+	ret_typ := g.typ(g.fn_decl.return_type)
+	mut use_tmp_var := g.defer_stmts.len > 0 || g.defer_profile_code.len > 0
 	// handle promoting none/error/function returning 'Option'
 	if fn_return_is_optional {
 		optional_none := node.exprs[0] is ast.None
 		ftyp := g.typ(node.types[0])
 		mut is_regular_option := ftyp in ['Option2', 'Option']
 		if optional_none || is_regular_option || node.types[0] == ast.error_type_idx {
-			g.write('return ')
+			if use_tmp_var {
+				g.write('$ret_typ $tmpvar = ')
+			} else {
+				g.write('return ')
+			}
 			g.gen_optional_error(g.fn_decl.return_type, node.exprs[0])
-			// g.writeln('; /*ret1*/')
 			g.writeln(';')
+			if use_tmp_var {
+				g.write_defer_stmts_when_needed()
+				g.writeln('return $tmpvar;')
+			}
 			return
 		}
 	}
 	// regular cases
-	if fn_return_is_multi && node.exprs.len > 0 && !g.expr_is_multi_return_call(node.exprs[0]) { // not_optional_none { //&& !fn_return_is_optional {
+	if fn_return_is_multi && node.exprs.len > 0 && !g.expr_is_multi_return_call(node.exprs[0]) {
 		if node.exprs.len == 1 && node.exprs[0] is ast.IfExpr {
 			// use a temporary for `return if cond { x,y } else { a,b }`
-			tmpvar := g.new_tmp_var()
-			tmptyp := g.typ(g.fn_decl.return_type)
-			g.write('$tmptyp $tmpvar = ')
+			g.write('$ret_typ $tmpvar = ')
 			g.expr(node.exprs[0])
 			g.writeln(';')
+			g.write_defer_stmts_when_needed()
 			g.writeln('return $tmpvar;')
 			return
 		}
 		// typ_sym := g.table.get_type_symbol(g.fn_decl.return_type)
 		// mr_info := typ_sym.info as ast.MultiReturn
 		mut styp := ''
-		mut opt_tmp := ''
-		mut opt_type := ''
 		if fn_return_is_optional {
-			opt_type = g.typ(g.fn_decl.return_type)
-			// Create a tmp for this option
-			opt_tmp = g.new_tmp_var()
-			g.writeln('$opt_type $opt_tmp;')
+			g.writeln('$ret_typ $tmpvar;')
 			styp = g.base_type(g.fn_decl.return_type)
 			g.write('opt_ok(&($styp/*X*/[]) { ')
 		} else {
-			g.write('return ')
+			if use_tmp_var {
+				g.write('$ret_typ $tmpvar = ')
+			} else {
+				g.write('return ')
+			}
 			styp = g.typ(g.fn_decl.return_type)
 		}
 		// Use this to keep the tmp assignments in order
@@ -4843,12 +4842,21 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		}
 		g.write('}')
 		if fn_return_is_optional {
-			g.writeln(' }, (Option*)(&$opt_tmp), sizeof($styp));')
-			g.write('return $opt_tmp')
+			g.writeln(' }, (Option*)(&$tmpvar), sizeof($styp));')
+			g.write_defer_stmts_when_needed()
+			g.write('return $tmpvar')
 		}
 		// Make sure to add our unpacks
 		if multi_unpack.len > 0 {
 			g.insert_before_stmt(multi_unpack)
+		}
+		if use_tmp_var && !fn_return_is_optional {
+			if !has_semicolon {
+				g.writeln(';')
+			}
+			g.write_defer_stmts_when_needed()
+			g.writeln('return $tmpvar;')
+			has_semicolon = true
 		}
 	} else if node.exprs.len >= 1 {
 		// normal return
@@ -4865,10 +4873,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		}
 		if fn_return_is_optional && !expr_type_is_opt && return_sym.name !in ['Option2', 'Option'] {
 			styp := g.base_type(g.fn_decl.return_type)
-			opt_type := g.typ(g.fn_decl.return_type)
-			// Create a tmp for this option
-			opt_tmp := g.new_tmp_var()
-			g.writeln('$opt_type $opt_tmp;')
+			g.writeln('$ret_typ $tmpvar;')
 			g.write('opt_ok(&($styp[]) { ')
 			if !g.fn_decl.return_type.is_ptr() && node.types[0].is_ptr() {
 				if !(node.exprs[0] is ast.Ident && !g.is_amp) {
@@ -4881,9 +4886,10 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 					g.write(', ')
 				}
 			}
-			g.writeln(' }, (Option*)(&$opt_tmp), sizeof($styp));')
+			g.writeln(' }, (Option*)(&$tmpvar), sizeof($styp));')
+			g.write_defer_stmts_when_needed()
 			g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
-			g.writeln('return $opt_tmp;')
+			g.writeln('return $tmpvar;')
 			return
 		}
 		// autofree before `return`
@@ -4897,24 +4903,20 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		}
 		// free := g.is_autofree && !g.is_builtin_mod // node.exprs[0] is ast.CallExpr
 		// Create a temporary variable for the return expression
-		mut gen_tmp_var := !g.is_builtin_mod // node.exprs[0] is ast.CallExpr
-		mut tmp := ''
-		if gen_tmp_var {
+		use_tmp_var = use_tmp_var || !g.is_builtin_mod // node.exprs[0] is ast.CallExpr
+		if use_tmp_var {
 			// `return foo(a, b, c)`
 			// `tmp := foo(a, b, c); free(a); free(b); free(c); return tmp;`
 			// Save return value in a temp var so that all args (a,b,c) can be freed
 			// Don't use a tmp var if a variable is simply returned: `return x`
 			if node.exprs[0] !is ast.Ident {
-				tmp = g.new_tmp_var()
-				// g.write('/*tmp return var*/ ')
-				g.write(' ')
-				g.write(g.typ(g.fn_decl.return_type))
-				g.write(' ')
-				g.write(tmp)
-				g.write(' = ')
+				g.write('$ret_typ $tmpvar = ')
 			} else {
-				gen_tmp_var = false
-				g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
+				use_tmp_var = false
+				g.write_defer_stmts_when_needed()
+				if !g.is_builtin_mod {
+					g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
+				}
 				g.write('return ')
 			}
 		} else {
@@ -4932,14 +4934,15 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		} else {
 			g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
 		}
-		if gen_tmp_var {
+		if use_tmp_var {
 			g.writeln(';')
 			has_semicolon = true
-			if tmp != '' {
+			g.write_defer_stmts_when_needed()
+			if !g.is_builtin_mod {
 				g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
-				g.write('return $tmp')
-				has_semicolon = false
 			}
+			g.write('return $tmpvar')
+			has_semicolon = false
 		}
 	} else { // if node.exprs.len == 0 {
 		println('this should never happen')
