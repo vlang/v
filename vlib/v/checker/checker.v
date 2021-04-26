@@ -12,6 +12,7 @@ import v.pref
 import v.util
 import v.errors
 import v.pkgconfig
+import v.gen.native
 
 const int_min = int(0x80000000)
 
@@ -2069,7 +2070,14 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 			c.table.fns[fn_name].usages++
 		}
 	}
-	if c.pref.is_script && !found {
+	if !found && c.pref.backend == .native {
+		if fn_name in native.builtins {
+			found = true
+			c.table.fns[fn_name].usages++
+			return ast.string_type
+		}
+	}
+	if !found && c.pref.is_script && !found {
 		os_name := 'os.$fn_name'
 		if f := c.table.find_fn(os_name) {
 			if f.generic_names.len == call_expr.concrete_types.len {

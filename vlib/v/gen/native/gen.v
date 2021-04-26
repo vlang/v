@@ -11,6 +11,8 @@ import v.errors
 import v.pref
 import term
 
+pub const builtins = ['println', 'exit']
+
 interface CodeGen {
 	g Gen
 	allocate_var(name string, size int, initial_val int)
@@ -70,8 +72,7 @@ pub fn gen(files []ast.File, table &ast.Table, out_name string, pref &pref.Prefe
 			eprintln('Warning: ${file.warnings[0]}')
 		}
 		if file.errors.len > 0 {
-			eprintln('Error ${file.errors[0]}')
-			// verror('Error ${file.errors[0]}')
+			verror('Error ${file.errors[0]}')
 		}
 		g.stmts(file.stmts)
 	}
