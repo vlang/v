@@ -101,7 +101,6 @@ pub fn (mut g Gen) generate_macho_header() {
 	if g.pref.arch == .arm64 {
 		g.gen_arm64_helloworld()
 	}
-
 }
 
 pub fn (mut g Gen) generate_macho_footer() {
