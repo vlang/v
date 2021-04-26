@@ -5905,7 +5905,7 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 			info := sym.info as ast.Struct
 			for field in info.fields {
 				field_sym := g.table.get_type_symbol(field.typ)
-				if field_sym.kind in [.array, .map, .string] || field.has_default_expr {
+				if field_sym.kind in [.array, .map, .string, .ustring, .bool, .alias, .size_t, .i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .char, .voidptr, .byteptr, .charptr, .struct_ ] || field.has_default_expr {
 					if field.has_default_expr {
 						expr_str := g.expr_string(field.default_expr)
 						init_str += '.$field.name = $expr_str,'
