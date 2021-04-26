@@ -2127,11 +2127,6 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 			call_expr.pos)
 		return func.return_type
 	}
-	if func.generic_names.len > 0 && func.return_type.has_flag(.generic) {
-		c.check_return_generics_struct(func.return_type, mut call_expr, concrete_types)
-	} else {
-		call_expr.return_type = func.return_type
-	}
 	if func.return_type == ast.void_type && func.ctdefine.len > 0
 		&& func.ctdefine !in c.pref.compile_defines {
 		call_expr.should_be_skipped = true
@@ -2292,6 +2287,11 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 				}
 			}
 		}
+	}
+	if func.generic_names.len > 0 && func.return_type.has_flag(.generic) {
+		c.check_return_generics_struct(func.return_type, mut call_expr, call_expr.concrete_types)
+	} else {
+		call_expr.return_type = func.return_type
 	}
 	if call_expr.concrete_types.len > 0 && func.return_type != 0 {
 		if typ := c.table.resolve_generic_to_concrete(func.return_type, func.generic_names,
