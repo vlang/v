@@ -260,7 +260,8 @@ pub fn f64_to_str_l(f f64) string {
 			i++
 		}
 		else if c >= `0` && c <= `9` {
-			b[i1++] = c
+			b[i1] = c
+			i1++
 			i++
 		} else if c == `.` {
 			if sgn > 0 {
@@ -298,40 +299,48 @@ pub fn f64_to_str_l(f f64) string {
 
 	if sgn == 1 {
 		if m_sgn_flag {
-			res[r_i++] = `+`
+			res[r_i] = `+`
+			r_i++
 		}
 	} else {
-		res[r_i++] = `-`
+		res[r_i] = `-`
+		r_i++
 	}
 
 	i = 0
 	if exp_sgn >= 0 {
 		for b[i] != 0 {
-			res[r_i++] = b[i]
+			res[r_i] = b[i]
+			r_i++
 			i++
 			if i >= d_pos && exp >= 0 {
 				if exp == 0 {
-					res[r_i++] = `.`
+					res[r_i] = `.`
+					r_i++
 				}
 				exp--
 			}
 		}
 		for exp >= 0 {
-			res[r_i++] = `0`
+			res[r_i] = `0`
+			r_i++
 			exp--
 		}
 	} else {
 		mut dot_p := true
 		for exp > 0 {
-			res[r_i++] = `0`
+			res[r_i] = `0`
+			r_i++
 			exp--
 			if dot_p  {
-				res[r_i++] = `.`
+				res[r_i] = `.`
+				r_i++
 				dot_p = false
 			}
 		}
 		for b[i] != 0 {
-			res[r_i++] = b[i]
+			res[r_i] = b[i]
+			r_i++
 			i++
 		}
 	}

@@ -205,10 +205,12 @@ fn parser(s string) (int,PrepNumber) {
 			// skip the inital zeros
 			fsm_c {
 				if c == c_zero {
-					c = s[i++]
+					c = s[i]
+					i++
 				}
 				else if c == c_dpoint {
-					c = s[i++]
+					c = s[i]
+					i++
 					state = fsm_d
 				}
 				else {
@@ -218,7 +220,8 @@ fn parser(s string) (int,PrepNumber) {
 			// reading leading zeros in the fractional part of mantissa
 			fsm_d {
 				if c == c_zero {
-					c = s[i++]
+					c = s[i]
+					i++
 					if pn.exponent > -2147483647 {
 						pn.exponent--
 					}
@@ -238,10 +241,12 @@ fn parser(s string) (int,PrepNumber) {
 					else if pn.exponent < 2147483647 {
 						pn.exponent++
 					}
-					c = s[i++]
+					c = s[i]
+					i++
 				}
 				else if c == c_dpoint {
-					c = s[i++]
+					c = s[i]
+					i++
 					state = fsm_f
 				}
 				else {
@@ -257,10 +262,12 @@ fn parser(s string) (int,PrepNumber) {
 						pn.exponent--
 						digx++
 					}
-					c = s[i++]
+					c = s[i]
+					i++
 				}
 				else if is_exp(c) {
-					c = s[i++]
+					c = s[i]
+					i++
 					state = fsm_g
 				}
 				else {
@@ -270,18 +277,21 @@ fn parser(s string) (int,PrepNumber) {
 			// reading sign of exponent
 			fsm_g {
 				if c == c_plus {
-					c = s[i++]
+					c = s[i]
+					i++
 				}
 				else if c == c_minus {
 					expneg = true
-					c = s[i++]
+					c = s[i]
+					i++
 				}
 				state = fsm_h
 			}
 			// skipping leading zeros of exponent
 			fsm_h {
 				if c == c_zero {
-					c = s[i++]
+					c = s[i]
+					i++
 				}
 				else {
 					state = fsm_i
@@ -294,7 +304,8 @@ fn parser(s string) (int,PrepNumber) {
 						expexp *= 10
 						expexp += int(c - c_zero)
 					}
-					c = s[i++]
+					c = s[i]
+					i++
 				}
 				else {
 					state = fsm_stop

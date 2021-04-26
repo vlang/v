@@ -772,7 +772,8 @@ fn (mut g JsGen) gen_enum_decl(it ast.EnumDecl) {
 			e := field.expr as ast.IntegerLiteral
 			i = e.val.int()
 		}
-		g.writeln('${i++},')
+		g.writeln('$i,')
+		i++
 	}
 	g.dec_indent()
 	g.writeln('};')
