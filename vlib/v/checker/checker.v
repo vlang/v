@@ -1632,11 +1632,6 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 			c.error('expected $nr_args arguments, but got $call_expr.args.len', unexpected_arguments_pos)
 			return method.return_type
 		}
-		if method.generic_names.len > 0 && method.return_type.has_flag(.generic) {
-			c.check_return_generics_struct(method.return_type, mut call_expr, concrete_types)
-		} else {
-			call_expr.return_type = method.return_type
-		}
 		mut exp_arg_typ := ast.Type(0) // type of 1st arg for special builtin methods
 		mut param_is_mut := false
 		mut no_type_promotion := false
@@ -1760,6 +1755,12 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 		if method.generic_names.len != call_expr.concrete_types.len {
 			// no type arguments given in call, attempt implicit instantiation
 			c.infer_fn_generic_types(method, mut call_expr)
+		}
+		// resolve return generics struct to concrete type
+		if method.generic_names.len > 0 && method.return_type.has_flag(.generic) {
+			c.check_return_generics_struct(method.return_type, mut call_expr, call_expr.concrete_types)
+		} else {
+			call_expr.return_type = method.return_type
 		}
 		if call_expr.concrete_types.len > 0 && method.return_type != 0 {
 			if typ := c.table.resolve_generic_to_concrete(method.return_type, method.generic_names,
@@ -2127,11 +2128,6 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 			call_expr.pos)
 		return func.return_type
 	}
-	if func.generic_names.len > 0 && func.return_type.has_flag(.generic) {
-		c.check_return_generics_struct(func.return_type, mut call_expr, concrete_types)
-	} else {
-		call_expr.return_type = func.return_type
-	}
 	if func.return_type == ast.void_type && func.ctdefine.len > 0
 		&& func.ctdefine !in c.pref.compile_defines {
 		call_expr.should_be_skipped = true
@@ -2292,6 +2288,12 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 				}
 			}
 		}
+	}
+	// resolve return generics struct to concrete type
+	if func.generic_names.len > 0 && func.return_type.has_flag(.generic) {
+		c.check_return_generics_struct(func.return_type, mut call_expr, call_expr.concrete_types)
+	} else {
+		call_expr.return_type = func.return_type
 	}
 	if call_expr.concrete_types.len > 0 && func.return_type != 0 {
 		if typ := c.table.resolve_generic_to_concrete(func.return_type, func.generic_names,
