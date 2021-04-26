@@ -9,7 +9,10 @@ fn (mut p Parser) sql_expr() ast.Expr {
 	// `sql db {`
 	pos := p.tok.position()
 	p.check_name()
-	db_expr := p.expr(0)
+	db_expr := p.check_expr(0) or {
+		p.error_with_pos('invalid expression: unexpected $p.tok, expecting database',
+			p.tok.position())
+	}
 	p.check(.lcbr)
 	p.check(.key_select)
 	n := p.check_name()
@@ -116,7 +119,10 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 	}
 	// `sql db {`
 	p.check_name()
-	db_expr := p.expr(0)
+	db_expr := p.check_expr(0) or {
+		p.error_with_pos('invalid expression: unexpected $p.tok, expecting database',
+			p.tok.position())
+	}
 	// println(typeof(db_expr))
 	p.check(.lcbr)
 	// kind := ast.SqlExprKind.select_
