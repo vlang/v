@@ -5247,7 +5247,9 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 				continue
 			}
 			if field.typ.has_flag(.optional) {
-				// TODO handle/require optionals in inits
+				field_name := c_name(field.name)
+				g.write('.$field_name = {0},')
+				initialized = true
 				continue
 			}
 			if field.typ in info.embeds {
