@@ -5699,11 +5699,10 @@ fn (mut g Gen) write_types(types []ast.TypeSymbol) {
 				for attr in typ.info.attrs {
 					match attr.name {
 						'_pack' {
-							pre_pragma += '#pragma pack(push, ${attr.arg})\n'
+							pre_pragma += '#pragma pack(push, $attr.arg)\n'
 							post_pragma += '#pragma pack(pop)'
 						}
-						
-						else { }
+						else {}
 					}
 				}
 

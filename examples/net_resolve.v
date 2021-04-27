@@ -1,4 +1,3 @@
-
 import net
 
 for addr in [
@@ -19,7 +18,7 @@ for addr in [
 
 		for a in addrs {
 			f := a.family()
-			println('> ${a} ${f} ${@type}')
+			println('> $a $f ${@type}')
 		}
 	}
 }
