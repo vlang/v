@@ -107,5 +107,4 @@ fn psql() {
 	sql db {
 		insert mod into Module
 	}
-
 }

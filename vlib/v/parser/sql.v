@@ -129,7 +129,7 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 	p.next()
 	pos.last_line = p.prev_tok.line_nr
 	return ast.SqlStmt{
-		pos: pos
+		pos: pos.extend(p.prev_tok.position())
 		db_expr: db_expr
 		lines: lines
 	}
