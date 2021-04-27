@@ -746,8 +746,6 @@ const (
 #include <winsock2.h>
 #include <ws2tcpip.h>
 
-#include <afunix.h>
-
 // Constants that windows needs
 const (
 	fionbio      = C.FIONBIO
