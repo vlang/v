@@ -5250,7 +5250,9 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 				continue
 			}
 			if field.typ.has_flag(.optional) {
-				// TODO handle/require optionals in inits
+				field_name := c_name(field.name)
+				g.write('.$field_name = {0},')
+				initialized = true
 				continue
 			}
 			if field.typ in info.embeds {
@@ -5906,16 +5908,21 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 			mut has_none_zero := false
 			mut init_str := '{'
 			info := sym.info as ast.Struct
-			for field in info.fields {
-				field_sym := g.table.get_type_symbol(field.typ)
-				if field_sym.kind in [.array, .map] || field.has_default_expr {
-					if field.has_default_expr {
-						expr_str := g.expr_string(field.default_expr)
-						init_str += '.$field.name = $expr_str,'
-					} else {
-						init_str += '.$field.name = ${g.type_default(field.typ)},'
+			typ_is_shared_f := typ.has_flag(.shared_f)
+			if sym.language == .v && !typ_is_shared_f {
+				for field in info.fields {
+					field_sym := g.table.get_type_symbol(field.typ)
+					if field.has_default_expr
+						|| field_sym.kind in [.array, .map, .string, .ustring, .bool, .alias, .size_t, .i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .char, .voidptr, .byteptr, .charptr, .struct_] {
+						field_name := c_name(field.name)
+						if field.has_default_expr {
+							expr_str := g.expr_string(field.default_expr)
+							init_str += '.$field_name = $expr_str,'
+						} else {
+							init_str += '.$field_name = ${g.type_default(field.typ)},'
+						}
+						has_none_zero = true
 					}
-					has_none_zero = true
 				}
 			}
 			if has_none_zero {

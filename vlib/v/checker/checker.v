@@ -2730,8 +2730,10 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 	}
 	return_stmt.types = got_types
 	// allow `none` & `error` return types for function that returns optional
+	option_type_idx := c.table.type_idxs['Option']
+	got_types_0_idx := got_types[0].idx()
 	if exp_is_optional
-		&& got_types[0].idx() in [ast.none_type_idx, ast.error_type_idx, c.table.type_idxs['Option']] {
+		&& got_types_0_idx in [ast.none_type_idx, ast.error_type_idx, option_type_idx] {
 		return
 	}
 	if expected_types.len > 0 && expected_types.len != got_types.len {
@@ -4485,7 +4487,8 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	if to_type_sym.language != .c {
 		c.ensure_type_exists(node.typ, node.pos) or {}
 	}
-	expr_is_ptr := node.expr_type.is_ptr() || node.expr_type.idx() in ast.pointer_type_idxs
+	n_e_t_idx := node.expr_type.idx()
+	expr_is_ptr := node.expr_type.is_ptr() || n_e_t_idx in ast.pointer_type_idxs
 	if expr_is_ptr && to_type_sym.kind == .string && !node.in_prexpr {
 		if node.has_arg {
 			c.warn('to convert a C string buffer pointer to a V string, please use x.vstring_with_len(len) instead of string(x,len)',
