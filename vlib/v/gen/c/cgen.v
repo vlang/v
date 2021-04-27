@@ -853,7 +853,15 @@ pub fn (mut g Gen) write_fn_typesymbol_declaration(sym ast.TypeSymbol) {
 	func := info.func
 	is_fn_sig := func.name == ''
 	not_anon := !info.is_anon
-	if !info.has_decl && (not_anon || is_fn_sig) && !func.return_type.has_flag(.generic) {
+	mut has_generic_arg := false
+	for param in func.params {
+		if param.typ.has_flag(.generic) {
+			has_generic_arg = true
+			break
+		}
+	}
+	if !info.has_decl && (not_anon || is_fn_sig) && !func.return_type.has_flag(.generic)
+		&& !has_generic_arg {
 		fn_name := sym.cname
 		g.type_definitions.write_string('typedef ${g.typ(func.return_type)} (*$fn_name)(')
 		for i, param in func.params {
