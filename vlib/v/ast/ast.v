@@ -272,6 +272,7 @@ pub:
 	fields       []StructField
 	pos          token.Position
 	pre_comments []Comment
+	ifaces       []Type
 }
 
 pub struct StructInitField {

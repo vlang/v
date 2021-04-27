@@ -498,6 +498,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			method_start_pos := p.tok.position()
 			line_nr := p.tok.line_nr
 			name := p.check_name()
+
 			if name == 'type_name' {
 				p.error_with_pos('cannot override built-in method `type_name`', method_start_pos)
 				return ast.InterfaceDecl{}
@@ -553,6 +554,13 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			info.methods << tmethod
 		} else {
 			// interface fields
+			if p.tok.kind == .name && p.tok.lit.len > 0 && p.tok.lit[0].is_capital() {
+				info.ifaces << p.parse_type()
+				if p.tok.kind == .rcbr {
+					break
+				}
+				continue
+			}
 			field_pos := p.tok.position()
 			field_name := p.check_name()
 			mut type_pos := p.tok.position()
@@ -585,11 +593,13 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	p.top_level_statement_end()
 	p.check(.rcbr)
 	pos = pos.extend_with_last_line(p.prev_tok.position(), p.prev_tok.line_nr)
+	eprintln('>>> interface_name: $interface_name | info.ifaces: $info.ifaces')
 	return ast.InterfaceDecl{
 		name: interface_name
 		language: language
 		fields: fields
 		methods: methods
+		ifaces: info.ifaces
 		is_pub: is_pub
 		pos: pos
 		pre_comments: pre_comments

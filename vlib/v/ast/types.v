@@ -734,6 +734,7 @@ pub mut:
 	types   []Type
 	fields  []StructField
 	methods []Fn
+	ifaces  []Type
 }
 
 pub struct Enum {
