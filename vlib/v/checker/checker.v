@@ -152,7 +152,7 @@ pub fn (mut c Checker) check2(ast_file &ast.File) []errors.Error {
 }
 
 pub fn (mut c Checker) change_current_file(file &ast.File) {
-	c.file = file
+	c.file = unsafe { file }
 	c.vmod_file_content = ''
 	c.mod = file.mod.name
 }
@@ -6727,7 +6727,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 	}
 	c.expected_type = ast.void_type
-	c.cur_fn = node
+	c.cur_fn = unsafe { node }
 	// Add return if `fn(...) ? {...}` have no return at end
 	if node.return_type != ast.void_type && node.return_type.has_flag(.optional)
 		&& (node.stmts.len == 0 || node.stmts[node.stmts.len - 1] !is ast.Return) {
