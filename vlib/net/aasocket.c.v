@@ -11,8 +11,6 @@ enum Select {
 pub enum SocketType {
 	udp = C.SOCK_DGRAM
 	tcp = C.SOCK_STREAM
-	// dgram = C.SOCK_DGRAM
-	// stream = C.SOCK_STREAM
 	seqpacket = C.SOCK_SEQPACKET
 }
 
