@@ -15,7 +15,7 @@ pub fn (mut con TcpConn) read_line() string {
 	mut res := '' // The final result, including the ending \n.
 	for {
 		mut line := '' // The current line. Can be a partial without \n in it.
-		n := C.recv(con.sock.handle, voidptr(buf), max_read - 1, msg_peek | msg_nosignal)
+		n := C.recv(con.sock.handle, &buf[0], max_read - 1, msg_peek | msg_nosignal)
 		if n == -1 {
 			return res
 		}
