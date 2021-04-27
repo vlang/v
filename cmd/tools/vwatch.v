@@ -72,10 +72,11 @@ mut:
 	opts            []string
 	rerun_channel   chan RerunCommand
 	child_process   &os.Process
-	is_exiting      bool // set by SIGINT/Ctrl-C
-	v_cycles        int  // how many times the worker has restarted the V compiler
-	scan_cycles     int  // how many times the worker has scanned for source file changes
-	clear_terminal  bool // whether to clear the terminal before each re-run
+	is_exiting      bool     // set by SIGINT/Ctrl-C
+	v_cycles        int      // how many times the worker has restarted the V compiler
+	scan_cycles     int      // how many times the worker has scanned for source file changes
+	clear_terminal  bool     // whether to clear the terminal before each re-run
+	add_files       []string // path to additional files that have to be watched for changes
 }
 
 [if debug_vwatch]
@@ -95,13 +96,17 @@ fn (mut context Context) get_stats_for_affected_vfiles() []VFileStat {
 		copts := context.opts.join(' ')
 		cmd := '"$context.vexe" -silent -print-v-files $copts'
 		// context.elog('> cmd: $cmd')
-		mut vfiles := os.execute(cmd)
+		mut paths := []string{}
+		if context.add_files.len > 0 && context.add_files[0] != '' {
+			paths << context.add_files
+		}
+		vfiles := os.execute(cmd)
 		if vfiles.exit_code == 0 {
 			paths_trimmed := vfiles.output.trim_space()
-			mut paths := paths_trimmed.split('\n')
-			for vf in paths {
-				apaths[os.real_path(os.dir(vf))] = true
-			}
+			paths << paths_trimmed.split('\n')
+		}
+		for vf in paths {
+			apaths[os.real_path(os.dir(vf))] = true
 		}
 		context.affected_paths = apaths.keys()
 		// context.elog('vfiles paths to be scanned: $context.affected_paths')
@@ -252,6 +257,7 @@ fn main() {
 	context.vexe = os.getenv('VEXE')
 	context.is_worker = os.args.contains('-vwatchworker')
 	context.clear_terminal = os.getenv('VWATCH_CLEAR_TERMINAL') != ''
+	context.add_files = os.getenv('VWATCH_ADD_FILES').split(',')
 	context.opts = os.args[1..].filter(it != '-vwatchworker')
 	context.elog('>>> context.pid: $context.pid')
 	context.elog('>>> context.vexe: $context.vexe')
