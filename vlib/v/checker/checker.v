@@ -3016,6 +3016,21 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			c.fail_if_immutable(left)
 			// left_type = c.expr(left)
 		}
+		if right_type.is_ptr() && left_type.is_ptr() {
+			if mut right is ast.Ident {
+				if mut right.obj is ast.Var {
+					mut obj := unsafe { &right.obj }
+					if c.fn_scope != voidptr(0) {
+						obj = c.fn_scope.find_var(right.obj.name) or { unsafe { &right.obj } }
+					}
+					if obj.is_stack_obj && !c.inside_unsafe {
+						type_sym := c.table.get_type_symbol(obj.typ.set_nr_muls(0))
+						c.error('`$right.name` cannot be assigned outside `unsafe` blocks as it might refer to an object stored on stack. Consider declaring `$type_sym.name` as `[heap]`.',
+							right.pos)
+					}
+				}
+			}
+		}
 		assign_stmt.left_types << left_type
 		match mut left {
 			ast.Ident {
