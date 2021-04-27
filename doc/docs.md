@@ -3206,7 +3206,6 @@ new_customer := Customer{
 sql db {
 	insert new_customer into Customer
 }
-
 ```
 
 For more examples and the docs, see <a href='https://github.com/vlang/v/tree/master/vlib/orm'>vlib/orm</a>.
