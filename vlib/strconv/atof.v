@@ -159,165 +159,82 @@ NOTE: #TOFIX need one char after the last char of the number
 
 */
 
-// parser return a support struct with all the parsing information for the converter
 fn parser(s string) (int,PrepNumber) {
-	mut state := fsm_a
 	mut digx := 0
-	mut c := byte(` `) // initial value for kicking off the state machine
 	mut result := parser_ok
 	mut expneg := false
 	mut expexp := 0
 	mut i := 0
 	mut pn := PrepNumber{
 	}
-	for state != fsm_stop {
-		match state {
-			// skip starting spaces
-			fsm_a {
-				if is_space(c) == true {
-					c = s[i]
-					i++
-				}
-				else {
-					state = fsm_b
-				}
+
+	// skip spaces
+	for i < s.len && s[i].is_space() {
+		i++
+	}
+
+	// check negatives
+	if s[i] == `-` {
+		pn.negative = true
+		i++
+	}
+
+	// positive sign ingore it
+	if s[i] == `+` {
+		i++
+	}
+
+	// read mantissa
+	for i < s.len && s[i].is_digit() {
+		//println("$i => ${s[i]}")
+		if digx < digits {
+			pn.mantissa *= 10
+			pn.mantissa += u64(s[i] - c_zero)
+			digx++
+		}
+		else if pn.exponent < 2147483647 {
+			pn.exponent++
+		}
+		i++
+	}
+
+	// read mantissa decimals
+	if  (i < s.len) && (s[i] == `.`) {
+		i++
+		for i < s.len && s[i].is_digit() {
+			if digx < digits {
+				pn.mantissa *= 10
+				pn.mantissa += u64(s[i] - c_zero)
+				pn.exponent--
+				digx++
 			}
-			// check for the sign or point
-			fsm_b {
-				state = fsm_c
-				if c == c_plus {
-					c = s[i]
-					i++
-				}
-				else if c == c_minus {
-					pn.negative = true
-					c = s[i]
-					i++
-				}
-				else if is_digit(c) {
-				}
-				else if c == c_dpoint {
-				}
-				else {
-					state = fsm_stop
-				}
-			}
-			// skip the inital zeros
-			fsm_c {
-				if c == c_zero {
-					c = s[i]
-					i++
-				}
-				else if c == c_dpoint {
-					c = s[i]
-					i++
-					state = fsm_d
-				}
-				else {
-					state = fsm_e
-				}
-			}
-			// reading leading zeros in the fractional part of mantissa
-			fsm_d {
-				if c == c_zero {
-					c = s[i]
-					i++
-					if pn.exponent > -2147483647 {
-						pn.exponent--
-					}
-				}
-				else {
-					state = fsm_f
-				}
-			}
-			// reading integer part of mantissa
-			fsm_e {
-				if is_digit(c) {
-					if digx < digits {
-						pn.mantissa *= 10
-						pn.mantissa += u64(c - c_zero)
-						digx++
-					}
-					else if pn.exponent < 2147483647 {
-						pn.exponent++
-					}
-					c = s[i]
-					i++
-				}
-				else if c == c_dpoint {
-					c = s[i]
-					i++
-					state = fsm_f
-				}
-				else {
-					state = fsm_f
-				}
-			}
-			// reading fractional part of mantissa
-			fsm_f {
-				if is_digit(c) {
-					if digx < digits {
-						pn.mantissa *= 10
-						pn.mantissa += u64(c - c_zero)
-						pn.exponent--
-						digx++
-					}
-					c = s[i]
-					i++
-				}
-				else if is_exp(c) {
-					c = s[i]
-					i++
-					state = fsm_g
-				}
-				else {
-					state = fsm_g
-				}
-			}
-			// reading sign of exponent
-			fsm_g {
-				if c == c_plus {
-					c = s[i]
-					i++
-				}
-				else if c == c_minus {
-					expneg = true
-					c = s[i]
-					i++
-				}
-				state = fsm_h
-			}
-			// skipping leading zeros of exponent
-			fsm_h {
-				if c == c_zero {
-					c = s[i]
-					i++
-				}
-				else {
-					state = fsm_i
-				}
-			}
-			// reading exponent digits
-			fsm_i {
-				if is_digit(c) {
-					if expexp < 214748364 {
-						expexp *= 10
-						expexp += int(c - c_zero)
-					}
-					c = s[i]
-					i++
-				}
-				else {
-					state = fsm_stop
-				}
-			}
-			else {
-			}}
-		// C.printf("len: %d i: %d str: %s \n",s.len,i,s[..i])
-		if i >= s.len {
-			state = fsm_stop
+			i++
 		}
 	}
+
+	// read exponent
+	if (i < s.len) && ((s[i] == `e`) || (s[i] == `E`)) {
+		i++
+		if i < s.len {
+			// esponent sign
+			if s[i] == c_plus {
+				i++
+			}
+			else if s[i] == c_minus {
+				expneg = true
+				i++
+			}
+
+			for i < s.len && s[i].is_digit() {
+				if expexp < 214748364 {
+					expexp *= 10
+					expexp += int(s[i] - c_zero)
+				}
+				i++
+			}	
+		}
+	}
+
 	if expneg {
 		expexp = -expexp
 	}
@@ -531,7 +448,7 @@ pub fn atof64(s string) f64 {
 	mut res_parsing := 0
 	mut res  := Float64u{}
 
-	res_parsing,pn = parser(s + ' ') // TODO: need an extra char for now
+	res_parsing,pn = parser(s)
 	// println(pn)
 	match res_parsing {
 		parser_ok {
