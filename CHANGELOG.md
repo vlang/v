@@ -196,7 +196,7 @@ files with compilation errors.
 - `os.cp()` for copying files and directores.
 - Additional compile-time flags: `$if clang, msvc, mingw, x32, x64, big_endian, little_endian {`.
 - All C functions now have to be declared, all missing C functions have been defined.
-- Global variables (only with the `--enable-globals` flag)
+- Global variables (only with the `-enable-globals` flag)
     for low level applications like kernels and drivers.
 - Nothing can be cast to bool (previously code like `if bool(1) {` worked).
 - `<<` and `>>` now work with all integer types.
