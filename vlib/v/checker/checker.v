@@ -5884,7 +5884,9 @@ pub fn (mut c Checker) mark_as_referenced(mut node ast.Expr) {
 			}
 		}
 		ast.SelectorExpr {
-			c.mark_as_referenced(mut &node.expr)
+			if !node.expr_type.is_ptr() {
+				c.mark_as_referenced(mut &node.expr)
+			}
 		}
 		ast.IndexExpr {
 			c.mark_as_referenced(mut &node.left)
