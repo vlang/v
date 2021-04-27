@@ -146,7 +146,7 @@ fn (data StrIntpData) get_fmt_from_u64_format() string {
 	allign         := int((x >> 5) & 0x01)
 	upper_case     := if ((x >> 7) & 0x01) > 0 { true } else { false }
 	sign           := int((x >> 8) & 0x01)
-	mut precision  := int((x >> 9) & 0xFF)
+	precision      := int((x >> 9) & 0xFF)
 	width          := int(i16((x >> 17) & 0x3FF))
 	mut base       := int(x >> 27) & 0xF
 	fmt_pad_ch     := byte((x >> 31) & 0xFF)
@@ -167,15 +167,19 @@ fn (data StrIntpData) get_fmt_from_u64_format() string {
 		pad_ch = fmt_pad_ch
 	}
 
+	len0_set := if width > 0 { width } else { -1 }
+	len1_set := if precision == 0xFF { -1 } else {precision}
+	sign_set := if sign == 1 {true} else {false} 
+
 
 	mut bf := strconv.BF_param {
-		pad_ch       : pad_ch                                      // padding char
-		len0         : if width > 0 { width } else { -1 }          // default len for whole the number or string
-		len1         : if precision == 0xFF { -1 } else {precision} // number of decimal digits, if needed
-		positive     : true                                        // mandatory: the sign of the number passed
-		sign_flag    : if sign == 1 {true} else {false}            // flag for print sign as prefix in padding
-		allign       : .left                                       // alignment of the string
-		rm_tail_zero : false                                       // remove the tail zeros from floats
+		pad_ch       : pad_ch    // padding char
+		len0         : len0_set  // default len for whole the number or string
+		len1         : len1_set  // number of decimal digits, if needed
+		positive     : true      // mandatory: the sign of the number passed
+		sign_flag    : sign_set  // flag for print sign as prefix in padding
+		allign       : .left     // alignment of the string
+		rm_tail_zero : false     // remove the tail zeros from floats
 	}
 
 	// allign
