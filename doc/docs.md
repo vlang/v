@@ -3781,7 +3781,7 @@ If you're using a custom ifdef, then you do need `$if option ? {}` and compile w
 Full list of builtin options:
 | OS                            | Compilers         | Platforms             | Other                     |
 | ---                           | ---               | ---                   | ---                       |
-| `windows`, `linux`, `macos`   | `gcc`, `tinyc`    | `amd64`, `aarch64`    | `debug`, `prod`, `test`   |
+| `windows`, `linux`, `macos`   | `gcc`, `tinyc`    | `amd64`, `arm64`      | `debug`, `prod`, `test`   |
 | `mac`, `darwin`, `ios`,       | `clang`, `mingw`  | `x64`, `x32`          | `js`, `glibc`, `prealloc` |
 | `android`,`mach`, `dragonfly` | `msvc`            | `little_endian`       | `no_bounds_checking`, `freestanding`    |
 | `gnu`, `hpux`, `haiku`, `qnx` | `cplusplus`       | `big_endian`          |
@@ -3881,7 +3881,7 @@ If a file has an environment-specific suffix, it will only be compiled for that 
 
 - `.js.v` => will be used only by the JS backend. These files can contain JS. code.
 - `.c.v` => will be used only by the C backend. These files can contain C. code.
-- `.x64.v` => will be used only by V's x64 backend.
+- `.native.v` => will be used only by V's native backend.
 - `_nix.c.v` => will be used only on Unix systems (non Windows).
 - `_${os}.c.v` => will be used only on the specific `os` system.
 For example, `_windows.c.v` will be used only when compiling on Windows, or with `-os windows`.

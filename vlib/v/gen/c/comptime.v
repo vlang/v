@@ -598,8 +598,8 @@ fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) ?string 
 		'amd64' {
 			return '__V_amd64'
 		}
-		'aarch64' {
-			return '__V_aarch64'
+		'aarch64', 'arm64' {
+			return '__V_arm64'
 		}
 		// bitness:
 		'x64' {

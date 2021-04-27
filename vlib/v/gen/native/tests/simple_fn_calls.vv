@@ -1,5 +1,5 @@
-fn print_greeting(){
-	println('hello from x64')
+fn print_greeting() {
+	println('hello from native V')
 }
 
 fn print_123() {

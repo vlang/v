@@ -24,24 +24,30 @@ enum SqlType {
 }
 
 fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
+	for line in node.lines {
+		g.sql_stmt_line(line, node.db_expr)
+	}
+}
+
+fn (mut g Gen) sql_stmt_line(node ast.SqlStmtLine, expr ast.Expr) {
 	if node.kind == .create {
-		g.sql_create_table(node)
+		g.sql_create_table(node, expr)
 		return
 	} else if node.kind == .drop {
-		g.sql_drop_table(node)
+		g.sql_drop_table(node, expr)
 		return
 	}
 	g.sql_table_name = g.table.get_type_symbol(node.table_expr.typ).name
-	typ := g.parse_db_type(node.db_expr)
+	typ := g.parse_db_type(expr)
 	match typ {
 		.sqlite3 {
-			g.sqlite3_stmt(node, typ)
+			g.sqlite3_stmt(node, typ, expr)
 		}
 		.mysql {
-			g.mysql_stmt(node, typ)
+			g.mysql_stmt(node, typ, expr)
 		}
 		.psql {
-			g.psql_stmt(node, typ)
+			g.psql_stmt(node, typ, expr)
 		}
 		else {
 			verror('This database type `$typ` is not implemented yet in orm') // TODO add better error
@@ -49,17 +55,17 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 	}
 }
 
-fn (mut g Gen) sql_create_table(node ast.SqlStmt) {
-	typ := g.parse_db_type(node.db_expr)
+fn (mut g Gen) sql_create_table(node ast.SqlStmtLine, expr ast.Expr) {
+	typ := g.parse_db_type(expr)
 	match typ {
 		.sqlite3 {
-			g.sqlite3_create_table(node, typ)
+			g.sqlite3_create_table(node, typ, expr)
 		}
 		.mysql {
-			g.mysql_create_table(node, typ)
+			g.mysql_create_table(node, typ, expr)
 		}
 		.psql {
-			g.psql_create_table(node, typ)
+			g.psql_create_table(node, typ, expr)
 		}
 		else {
 			verror('This database type `$typ` is not implemented yet in orm') // TODO add better error
@@ -67,17 +73,17 @@ fn (mut g Gen) sql_create_table(node ast.SqlStmt) {
 	}
 }
 
-fn (mut g Gen) sql_drop_table(node ast.SqlStmt) {
-	typ := g.parse_db_type(node.db_expr)
+fn (mut g Gen) sql_drop_table(node ast.SqlStmtLine, expr ast.Expr) {
+	typ := g.parse_db_type(expr)
 	match typ {
 		.sqlite3 {
-			g.sqlite3_drop_table(node, typ)
+			g.sqlite3_drop_table(node, typ, expr)
 		}
 		.mysql {
-			g.mysql_drop_table(node, typ)
+			g.mysql_drop_table(node, typ, expr)
 		}
 		.psql {
-			g.psql_create_table(node, typ)
+			g.psql_create_table(node, typ, expr)
 		}
 		else {
 			verror('This database type `$typ` is not implemented yet in orm') // TODO add better error
@@ -136,13 +142,13 @@ fn (mut g Gen) sql_type_from_v(typ SqlType, v_typ ast.Type) string {
 
 // sqlite3
 
-fn (mut g Gen) sqlite3_stmt(node ast.SqlStmt, typ SqlType) {
+fn (mut g Gen) sqlite3_stmt(node ast.SqlStmtLine, typ SqlType, db_expr ast.Expr) {
 	g.sql_i = 0
 	g.writeln('\n\t// sql insert')
 	db_name := g.new_tmp_var()
 	g.sql_stmt_name = g.new_tmp_var()
 	g.write('${c.dbtype}__DB $db_name = ')
-	g.expr(node.db_expr)
+	g.expr(db_expr)
 	g.writeln(';')
 	g.write('sqlite3_stmt* $g.sql_stmt_name = ${c.dbtype}__DB_init_stmt($db_name, _SLIT("')
 	g.sql_defaults(node, typ)
@@ -161,7 +167,7 @@ fn (mut g Gen) sqlite3_stmt(node ast.SqlStmt, typ SqlType) {
 				expr := node.sub_structs[int(field.typ)]
 				tmp_sql_stmt_name := g.sql_stmt_name
 				tmp_sql_table_name := g.sql_table_name
-				g.sql_stmt(expr)
+				g.sql_stmt_line(expr, db_expr)
 				g.sql_stmt_name = tmp_sql_stmt_name
 				g.sql_table_name = tmp_sql_table_name
 				// get last inserted id
@@ -326,20 +332,20 @@ fn (mut g Gen) sqlite3_select_expr(node ast.SqlExpr, sub bool, line string, sql_
 	}
 }
 
-fn (mut g Gen) sqlite3_create_table(node ast.SqlStmt, typ SqlType) {
+fn (mut g Gen) sqlite3_create_table(node ast.SqlStmtLine, typ SqlType, db_expr ast.Expr) {
 	g.writeln('// sqlite3 table creator')
-	create_string := g.table_gen(node, typ)
+	create_string := g.table_gen(node, typ, db_expr)
 	g.write('sqlite__DB_exec(')
-	g.expr(node.db_expr)
+	g.expr(db_expr)
 	g.writeln(', _SLIT("$create_string"));')
 }
 
-fn (mut g Gen) sqlite3_drop_table(node ast.SqlStmt, typ SqlType) {
+fn (mut g Gen) sqlite3_drop_table(node ast.SqlStmtLine, typ SqlType, db_expr ast.Expr) {
 	table_name := g.get_table_name(node.table_expr)
 	g.writeln('// sqlite3 table drop')
 	drop_string := 'DROP TABLE `$table_name`;'
 	g.write('sqlite__DB_exec(')
-	g.expr(node.db_expr)
+	g.expr(db_expr)
 	g.writeln(', _SLIT("$drop_string"));')
 }
 
@@ -377,13 +383,13 @@ fn (mut g Gen) sqlite3_type_from_v(v_typ ast.Type) string {
 
 // mysql
 
-fn (mut g Gen) mysql_stmt(node ast.SqlStmt, typ SqlType) {
+fn (mut g Gen) mysql_stmt(node ast.SqlStmtLine, typ SqlType, db_expr ast.Expr) {
 	g.sql_i = 0
 	g.writeln('\n\t//mysql insert')
 	db_name := g.new_tmp_var()
 	g.sql_stmt_name = g.new_tmp_var()
 	g.write('mysql__Connection $db_name = ')
-	g.expr(node.db_expr)
+	g.expr(db_expr)
 	g.writeln(';')
 	stmt_name := g.new_tmp_var()
 	g.write('string $stmt_name = _SLIT("')
@@ -407,7 +413,7 @@ fn (mut g Gen) mysql_stmt(node ast.SqlStmt, typ SqlType) {
 				expr := node.sub_structs[int(field.typ)]
 				tmp_sql_stmt_name := g.sql_stmt_name
 				tmp_sql_table_name := g.sql_table_name
-				g.sql_stmt(expr)
+				g.sql_stmt_line(expr, db_expr)
 				g.sql_stmt_name = tmp_sql_stmt_name
 				g.sql_table_name = tmp_sql_table_name
 
@@ -618,23 +624,23 @@ fn (mut g Gen) mysql_select_expr(node ast.SqlExpr, sub bool, line string, typ Sq
 	}
 }
 
-fn (mut g Gen) mysql_create_table(node ast.SqlStmt, typ SqlType) {
+fn (mut g Gen) mysql_create_table(node ast.SqlStmtLine, typ SqlType, db_expr ast.Expr) {
 	g.writeln('// mysql table creator')
-	create_string := g.table_gen(node, typ)
+	create_string := g.table_gen(node, typ, db_expr)
 	tmp := g.new_tmp_var()
 	g.write('Option_mysql__Result $tmp = mysql__Connection_query(&')
-	g.expr(node.db_expr)
+	g.expr(db_expr)
 	g.writeln(', _SLIT("$create_string"));')
 	g.writeln('if (${tmp}.state != 0) { IError err = ${tmp}.err; eprintln(_STR("Something went wrong\\000%.*s", 2, IError_str(err))); }')
 }
 
-fn (mut g Gen) mysql_drop_table(node ast.SqlStmt, typ SqlType) {
+fn (mut g Gen) mysql_drop_table(node ast.SqlStmtLine, typ SqlType, db_expr ast.Expr) {
 	table_name := g.get_table_name(node.table_expr)
 	g.writeln('// mysql table drop')
 	drop_string := 'DROP TABLE `$table_name`;'
 	tmp := g.new_tmp_var()
 	g.write('Option_mysql__Result $tmp = mysql__Connection_query(&')
-	g.expr(node.db_expr)
+	g.expr(db_expr)
 	g.writeln(', _SLIT("$drop_string"));')
 	g.writeln('if (${tmp}.state != 0) { IError err = ${tmp}.err; eprintln(_STR("Something went wrong\\000%.*s", 2, IError_str(err))); }')
 }
@@ -735,7 +741,7 @@ fn (mut g Gen) mysql_buffer_typ_from_field(field ast.StructField) (string, strin
 
 // psql
 
-fn (mut g Gen) psql_stmt(node ast.SqlStmt, typ SqlType) {
+fn (mut g Gen) psql_stmt(node ast.SqlStmtLine, typ SqlType, db_expr ast.Expr) {
 	g.sql_i = 0
 	g.sql_idents = []string{}
 	param_values := g.new_tmp_var()
@@ -745,7 +751,7 @@ fn (mut g Gen) psql_stmt(node ast.SqlStmt, typ SqlType) {
 	db_name := g.new_tmp_var()
 	g.sql_stmt_name = g.new_tmp_var()
 	g.write('pg__DB $db_name = ')
-	g.expr(node.db_expr)
+	g.expr(db_expr)
 	g.writeln(';')
 	stmt_name := g.new_tmp_var()
 	g.write('string $stmt_name = _SLIT("')
@@ -769,7 +775,7 @@ fn (mut g Gen) psql_stmt(node ast.SqlStmt, typ SqlType) {
 				expr := node.sub_structs[int(field.typ)]
 				tmp_sql_stmt_name := g.sql_stmt_name
 				tmp_sql_table_name := g.sql_table_name
-				g.sql_stmt(expr)
+				g.sql_stmt_line(expr, db_expr)
 				g.sql_stmt_name = tmp_sql_stmt_name
 				g.sql_table_name = tmp_sql_table_name
 
@@ -803,23 +809,23 @@ fn (mut g Gen) psql_stmt(node ast.SqlStmt, typ SqlType) {
 	g.writeln('if (${res}_rows.state != 0) { IError err = ${res}_rows.err; eprintln(_STR("\\000%.*s", 2, IError_str(err))); }')
 }
 
-fn (mut g Gen) psql_create_table(node ast.SqlStmt, typ SqlType) {
+fn (mut g Gen) psql_create_table(node ast.SqlStmtLine, typ SqlType, db_expr ast.Expr) {
 	g.writeln('// psql table creator')
-	create_string := g.table_gen(node, typ)
+	create_string := g.table_gen(node, typ, db_expr)
 	tmp := g.new_tmp_var()
 	g.write('Option_Array_pg__Row $tmp = pg__DB_exec(')
-	g.expr(node.db_expr)
+	g.expr(db_expr)
 	g.writeln(', _SLIT("$create_string"));')
 	g.writeln('if (${tmp}.state != 0) { IError err = ${tmp}.err; eprintln(_STR("Something went wrong\\000%.*s", 2, IError_str(err))); }')
 }
 
-fn (mut g Gen) psql_drop_table(node ast.SqlStmt, typ SqlType) {
+fn (mut g Gen) psql_drop_table(node ast.SqlStmtLine, typ SqlType, db_expr ast.Expr) {
 	table_name := g.get_table_name(node.table_expr)
 	g.writeln('// psql table drop')
 	drop_string := 'DROP TABLE "$table_name";'
 	tmp := g.new_tmp_var()
 	g.write('Option_Array_pg__Row $tmp = pg__DB_exec(&')
-	g.expr(node.db_expr)
+	g.expr(db_expr)
 	g.writeln(', _SLIT("$drop_string"));')
 	g.writeln('if (${tmp}.state != 0) { IError err = ${tmp}.err; eprintln(_STR("Something went wrong\\000%.*s", 2, IError_str(err))); }')
 }
@@ -929,7 +935,7 @@ fn (mut g Gen) get_base_sql_select_query(node ast.SqlExpr) string {
 	return sql_query
 }
 
-fn (mut g Gen) sql_defaults(node ast.SqlStmt, typ SqlType, psql_data ...string) {
+fn (mut g Gen) sql_defaults(node ast.SqlStmtLine, typ SqlType, psql_data ...string) {
 	table_name := g.get_table_name(node.table_expr)
 	mut lit := '`'
 	if typ == .psql {
@@ -981,7 +987,7 @@ fn (mut g Gen) sql_defaults(node ast.SqlStmt, typ SqlType, psql_data ...string) 
 	g.write(';")')
 }
 
-fn (mut g Gen) table_gen(node ast.SqlStmt, typ SqlType) string {
+fn (mut g Gen) table_gen(node ast.SqlStmtLine, typ SqlType, expr ast.Expr) string {
 	typ_sym := g.table.get_type_symbol(node.table_expr.typ)
 	struct_data := typ_sym.struct_info()
 	table_name := g.get_table_name(node.table_expr)
@@ -1032,15 +1038,14 @@ fn (mut g Gen) table_gen(node ast.SqlStmt, typ SqlType) string {
 		if converted_typ == '' {
 			if g.table.get_type_symbol(field.typ).kind == .struct_ {
 				converted_typ = g.sql_type_from_v(typ, ast.int_type)
-				g.sql_create_table(ast.SqlStmt{
-					db_expr: node.db_expr
+				g.sql_create_table(ast.SqlStmtLine{
 					kind: node.kind
 					pos: node.pos
 					table_expr: ast.TypeNode{
 						typ: field.typ
 						pos: node.table_expr.pos
 					}
-				})
+				}, expr)
 			} else {
 				verror('unknown type ($field.typ) for field $field.name in struct $table_name')
 				continue
