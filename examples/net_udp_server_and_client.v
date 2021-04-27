@@ -12,7 +12,7 @@ fn main() {
 	mut buf := []byte{len: 100}
 	if is_server {
 		println('UDP echo server, listening for udp packets on port: $port')
-		mut c := net.listen_udp(port) ?
+		mut c := net.listen_udp(':$port') ?
 		for {
 			read, addr := c.read(mut buf) or { continue }
 			println('received $read bytes from $addr')
@@ -23,7 +23,7 @@ fn main() {
 		}
 	} else {
 		println('UDP client, sending packets to port: ${port}.\nType `exit` to exit.')
-		mut c := net.dial_udp('localhost', 'localhost:$port') ?
+		mut c := net.dial_udp('localhost:$port') ?
 		for {
 			mut line := os.input('client > ')
 			match line {
