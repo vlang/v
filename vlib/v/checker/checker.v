@@ -1681,7 +1681,7 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 			if method.generic_names.len > 0 {
 				continue
 			}
-			c.check_expected_call_arg(got_arg_typ, exp_arg_typ, call_expr.language) or {
+			c.check_expected_call_arg(got_arg_typ, c.unwrap_generic(exp_arg_typ), call_expr.language) or {
 				// str method, allow type with str method if fn arg is string
 				// Passing an int or a string array produces a c error here
 				// Deleting this condition results in propper V error messages
