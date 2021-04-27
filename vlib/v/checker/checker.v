@@ -1755,16 +1755,17 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 		if method.generic_names.len != call_expr.concrete_types.len {
 			// no type arguments given in call, attempt implicit instantiation
 			c.infer_fn_generic_types(method, mut call_expr)
+			concrete_types = call_expr.concrete_types
 		}
 		// resolve return generics struct to concrete type
 		if method.generic_names.len > 0 && method.return_type.has_flag(.generic) {
-			c.check_return_generics_struct(method.return_type, mut call_expr, call_expr.concrete_types)
+			c.check_return_generics_struct(method.return_type, mut call_expr, concrete_types)
 		} else {
 			call_expr.return_type = method.return_type
 		}
 		if call_expr.concrete_types.len > 0 && method.return_type != 0 {
 			if typ := c.table.resolve_generic_to_concrete(method.return_type, method.generic_names,
-				call_expr.concrete_types, false)
+				concrete_types, false)
 			{
 				call_expr.return_type = typ
 				return typ
@@ -2239,7 +2240,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 			c.type_implements(typ, param.typ, call_arg.expr.position())
 			continue
 		}
-		c.check_expected_call_arg(typ, param.typ, call_expr.language) or {
+		c.check_expected_call_arg(typ, c.unwrap_generic(param.typ), call_expr.language) or {
 			// str method, allow type with str method if fn arg is string
 			// Passing an int or a string array produces a c error here
 			// Deleting this condition results in propper V error messages
@@ -2266,6 +2267,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 	if func.generic_names.len != call_expr.concrete_types.len {
 		// no type arguments given in call, attempt implicit instantiation
 		c.infer_fn_generic_types(func, mut call_expr)
+		concrete_types = call_expr.concrete_types
 	}
 	if func.generic_names.len > 0 {
 		for i, call_arg in call_expr.args {
@@ -2280,7 +2282,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 			if param.typ.has_flag(.generic)
 				&& func.generic_names.len == call_expr.concrete_types.len {
 				if unwrap_typ := c.table.resolve_generic_to_concrete(param.typ, func.generic_names,
-					call_expr.concrete_types, false)
+					concrete_types, false)
 				{
 					c.check_expected_call_arg(typ, unwrap_typ, call_expr.language) or {
 						c.error('$err.msg in argument ${i + 1} to `$fn_name`', call_arg.pos)
@@ -2291,13 +2293,13 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 	}
 	// resolve return generics struct to concrete type
 	if func.generic_names.len > 0 && func.return_type.has_flag(.generic) {
-		c.check_return_generics_struct(func.return_type, mut call_expr, call_expr.concrete_types)
+		c.check_return_generics_struct(func.return_type, mut call_expr, concrete_types)
 	} else {
 		call_expr.return_type = func.return_type
 	}
 	if call_expr.concrete_types.len > 0 && func.return_type != 0 {
 		if typ := c.table.resolve_generic_to_concrete(func.return_type, func.generic_names,
-			call_expr.concrete_types, false)
+			concrete_types, false)
 		{
 			call_expr.return_type = typ
 			return typ
