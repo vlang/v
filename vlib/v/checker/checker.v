@@ -2284,7 +2284,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 				if unwrap_typ := c.table.resolve_generic_to_concrete(param.typ, func.generic_names,
 					concrete_types, false)
 				{
-					c.check_expected_call_arg(typ, unwrap_typ, call_expr.language) or {
+					c.check_expected_call_arg(c.unwrap_generic(typ), unwrap_typ, call_expr.language) or {
 						c.error('$err.msg in argument ${i + 1} to `$fn_name`', call_arg.pos)
 					}
 				}
