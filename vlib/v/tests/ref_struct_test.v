@@ -71,7 +71,6 @@ mut:
 	a []Abc
 }
 
-
 fn mod_heap_array(mut x Yxc) {
 	x.a << Abc{
 		n: 9
