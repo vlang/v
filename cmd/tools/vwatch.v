@@ -2,6 +2,7 @@ module main
 
 import os
 import time
+import term
 
 const scan_timeout_s = 5 * 60
 
@@ -74,11 +75,12 @@ mut:
 	is_exiting      bool // set by SIGINT/Ctrl-C
 	v_cycles        int  // how many times the worker has restarted the V compiler
 	scan_cycles     int  // how many times the worker has scanned for source file changes
+	clear_terminal  bool // whether to clear the terminal before each re-run
 }
 
 [if debug_vwatch]
 fn (mut context Context) elog(msg string) {
-	eprintln('> vredo $context.pid, $msg')
+	eprintln('> vwatch $context.pid, $msg')
 }
 
 fn (context &Context) str() string {
@@ -199,6 +201,9 @@ fn (mut context Context) compilation_runner_loop() {
 		context.child_process.use_pgroup = true
 		context.child_process.set_args(context.opts)
 		context.child_process.run()
+		if context.clear_terminal {
+			term.clear()
+		}
 		eprintln('$timestamp: $cmd | pid: ${context.child_process.pid:7d} | reload cycle: ${context.v_cycles:5d}')
 		for {
 			mut cmds := []RerunCommand{}
@@ -246,6 +251,7 @@ fn main() {
 	context.pid = os.getpid()
 	context.vexe = os.getenv('VEXE')
 	context.is_worker = os.args.contains('-vwatchworker')
+	context.clear_terminal = os.getenv('VWATCH_CLEAR_TERMINAL') != ''
 	context.opts = os.args[1..].filter(it != '-vwatchworker')
 	context.elog('>>> context.pid: $context.pid')
 	context.elog('>>> context.vexe: $context.vexe')
