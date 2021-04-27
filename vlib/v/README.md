@@ -41,7 +41,7 @@ and a new scope is created:
 ```v
 import v.ast
 
-scope := ast.Scope{
+scope := &ast.Scope{
 	parent: 0
 }
 ```
