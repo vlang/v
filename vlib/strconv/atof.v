@@ -3,7 +3,7 @@ module strconv
 /*
 atof util
 
-Copyright (c) 2019 Dario Deledda. All rights reserved.
+Copyright (c) 2019-2021 Dario Deledda. All rights reserved.
 Use of this source code is governed by an MIT license
 that can be found in the LICENSE file.
 
@@ -156,7 +156,7 @@ fn parser(s string) (int, PrepNumber) {
 		i++
 	}
 
-	// positive sign ingore it
+	// positive sign ignore it
 	if s[i] == `+` {
 		i++
 	}
@@ -412,7 +412,6 @@ pub fn atof64(s string) f64 {
 	mut res := Float64u{}
 
 	res_parsing, pn = parser(s)
-	// println(pn)
 	match res_parsing {
 		strconv.parser_ok {
 			res.u = converter(mut pn)
