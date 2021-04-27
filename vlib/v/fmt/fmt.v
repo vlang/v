@@ -1215,6 +1215,15 @@ pub fn (mut f Fmt) sql_stmt(node ast.SqlStmt) {
 	f.write('sql ')
 	f.expr(node.db_expr)
 	f.writeln(' {')
+
+	for line in node.lines {
+		f.sql_stmt_line(line)
+	}
+
+	f.writeln('}')
+}
+
+pub fn (mut f Fmt) sql_stmt_line(node ast.SqlStmtLine) {
 	table_name := util.strip_mod_name(f.table.get_type_symbol(node.table_expr.typ).name)
 	f.write('\t')
 	match node.kind {
@@ -1249,7 +1258,6 @@ pub fn (mut f Fmt) sql_stmt(node ast.SqlStmt) {
 			f.writeln('drop table $table_name')
 		}
 	}
-	f.writeln('}')
 }
 
 pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {

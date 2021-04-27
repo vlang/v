@@ -6488,6 +6488,18 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 }
 
 fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) ast.Type {
+	c.expr(node.db_expr)
+	mut typ := ast.void_type
+	for mut line in node.lines {
+		a := c.sql_stmt_line(mut line)
+		if a != ast.void_type {
+			typ = a
+		}
+	}
+	return typ
+}
+
+fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	c.inside_sql = true
 	defer {
 		c.inside_sql = false
@@ -6501,11 +6513,10 @@ fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) ast.Type {
 	}
 	info := table_sym.info as ast.Struct
 	fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, table_sym.name)
-	mut sub_structs := map[int]ast.SqlStmt{}
+	mut sub_structs := map[int]ast.SqlStmtLine{}
 	for f in fields.filter(c.table.type_symbols[int(it.typ)].kind == .struct_) {
-		mut n := ast.SqlStmt{
+		mut n := ast.SqlStmtLine{
 			pos: node.pos
-			db_expr: node.db_expr
 			kind: node.kind
 			table_expr: ast.TypeNode{
 				pos: node.table_expr.pos
@@ -6514,13 +6525,12 @@ fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) ast.Type {
 			object_var_name: '${node.object_var_name}.$f.name'
 		}
 		tmp_inside_sql := c.inside_sql
-		c.sql_stmt(mut n)
+		c.sql_stmt_line(mut n)
 		c.inside_sql = tmp_inside_sql
 		sub_structs[int(f.typ)] = n
 	}
 	node.fields = fields
 	node.sub_structs = sub_structs.move()
-	c.expr(node.db_expr)
 	if node.kind == .update {
 		for expr in node.update_exprs {
 			c.expr(expr)
