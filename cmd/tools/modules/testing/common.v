@@ -140,10 +140,6 @@ pub fn new_test_session(_vargs string) TestSession {
 		skip_files << 'examples/sokol/05_instancing_glsl/rt_glsl.v'
 		// Skip obj_viewer code in the CI
 		skip_files << 'examples/sokol/06_obj_viewer/show_obj.v'
-		skip_files << 'examples/sokol/06_obj_viewer/obj/obj.v'
-		skip_files << 'examples/sokol/06_obj_viewer/obj/rend.v'
-		skip_files << 'examples/sokol/06_obj_viewer/obj/struct.v'
-		skip_files << 'examples/sokol/06_obj_viewer/obj/util.v'
 	}
 	if testing.github_job != 'ubuntu-tcc' {
 		skip_files << 'examples/c_interop_wkhtmltopdf.v' // needs installation of wkhtmltopdf from https://github.com/wkhtmltopdf/packaging/releases

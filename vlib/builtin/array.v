@@ -529,11 +529,13 @@ pub fn (b []byte) hex() string {
 	for i in b {
 		n0 := i >> 4
 		unsafe {
-			hex[dst_i++] = if n0 < 10 { n0 + `0` } else { n0 + byte(87) }
+			hex[dst_i] = if n0 < 10 { n0 + `0` } else { n0 + byte(87) }
+			dst_i++
 		}
 		n1 := i & 0xF
 		unsafe {
-			hex[dst_i++] = if n1 < 10 { n1 + `0` } else { n1 + byte(87) }
+			hex[dst_i] = if n1 < 10 { n1 + `0` } else { n1 + byte(87) }
+			dst_i++
 		}
 	}
 	unsafe {

@@ -1440,8 +1440,15 @@ pub enum SqlStmtKind {
 
 pub struct SqlStmt {
 pub:
+	pos     token.Position
+	db_expr Expr // `db` in `sql db {`
+pub mut:
+	lines []SqlStmtLine
+}
+
+pub struct SqlStmtLine {
+pub:
 	kind            SqlStmtKind
-	db_expr         Expr   // `db` in `sql db {`
 	object_var_name string // `user`
 	pos             token.Position
 	where_expr      Expr
@@ -1450,7 +1457,7 @@ pub:
 pub mut:
 	table_expr  TypeNode
 	fields      []StructField
-	sub_structs map[int]SqlStmt
+	sub_structs map[int]SqlStmtLine
 }
 
 pub struct SqlExpr {
@@ -1875,17 +1882,17 @@ pub fn all_registers(mut t Table, arch pref.Arch) map[string]ScopeObject {
 				}
 			}
 		}
-		.aarch32 {
-			aarch32 := gen_all_registers(mut t, ast.arm_no_number_register_list, ast.arm_with_number_register_list,
+		.arm32 {
+			arm32 := gen_all_registers(mut t, ast.arm_no_number_register_list, ast.arm_with_number_register_list,
 				32)
-			for k, v in aarch32 {
+			for k, v in arm32 {
 				res[k] = v
 			}
 		}
-		.aarch64 {
-			aarch64 := gen_all_registers(mut t, ast.arm_no_number_register_list, ast.arm_with_number_register_list,
+		.arm64 {
+			arm64 := gen_all_registers(mut t, ast.arm_no_number_register_list, ast.arm_with_number_register_list,
 				64)
-			for k, v in aarch64 {
+			for k, v in arm64 {
 				res[k] = v
 			}
 		}

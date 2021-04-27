@@ -28,10 +28,30 @@ fn test_orm_sqlite() {
 	sql db {
 		create table User
 	}
+
 	name := 'Peter'
-	db.exec("insert into userlist (username, age) values ('Sam', 29)")
-	db.exec("insert into userlist (username, age) values ('Peter', 31)")
-	db.exec("insert into userlist (username, age, is_customer) values ('Kate', 30, 1)")
+
+	sam := User{
+		age: 29
+		name: 'Sam'
+	}
+
+	peter := User{
+		age: 31
+		name: 'Peter'
+	}
+
+	k := User{
+		age: 30
+		name: 'Kate'
+		is_customer: true
+	}
+
+	sql db {
+		insert sam into User
+		insert peter into User
+		insert k into User
+	}
 
 	c := sql db {
 		select count from User where id != 1
@@ -113,6 +133,7 @@ fn test_orm_sqlite() {
 	sql db {
 		insert new_user into User
 	}
+
 	// db.insert<User>(user2)
 	x := sql db {
 		select from User where id == 4
@@ -136,6 +157,7 @@ fn test_orm_sqlite() {
 	sql db {
 		update User set age = 31 where name == 'Kate'
 	}
+
 	kate2 := sql db {
 		select from User where id == 3
 	}
@@ -167,6 +189,7 @@ fn test_orm_sqlite() {
 	sql db {
 		update User set age = new_age, name = 'Kate N' where id == 3
 	}
+
 	kate3 = sql db {
 		select from User where id == 3
 	}
@@ -177,6 +200,7 @@ fn test_orm_sqlite() {
 	sql db {
 		update User set age = foo.age, name = 'Kate N' where id == 3
 	}
+
 	kate3 = sql db {
 		select from User where id == 3
 	}
@@ -219,6 +243,7 @@ fn test_orm_sqlite() {
 	sql db {
 		delete from User where age == 34
 	}
+
 	updated_oldest := sql db {
 		select from User order by age desc limit 1
 	}

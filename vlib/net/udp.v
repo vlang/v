@@ -9,8 +9,8 @@ const (
 
 struct UdpSocket {
 	handle int
-	l      Addr
-	r      ?Addr
+	local  Addr
+	remote ?Addr
 }
 
 pub struct UdpConn {
@@ -28,8 +28,8 @@ pub fn dial_udp(laddr string, raddr string) ?&UdpConn {
 	sbase := new_udp_socket(local.port) ?
 	sock := UdpSocket{
 		handle: sbase.handle
-		l: local
-		r: resolve_wrapper(raddr)
+		local: local
+		remote: resolve_wrapper(raddr)
 	}
 	return &UdpConn{
 		sock: sock
@@ -45,7 +45,7 @@ fn resolve_wrapper(raddr string) ?Addr {
 	return x
 }
 
-pub fn (mut c UdpConn) write_ptr(b byteptr, len int) ?int {
+pub fn (mut c UdpConn) write_ptr(b &byte, len int) ?int {
 	remote := c.sock.remote() or { return err_no_udp_remote }
 	return c.write_to_ptr(remote, b, len)
 }
@@ -63,7 +63,7 @@ pub fn (mut c UdpConn) write_string(s string) ?int {
 	return c.write_ptr(s.str, s.len)
 }
 
-pub fn (mut c UdpConn) write_to_ptr(addr Addr, b byteptr, len int) ?int {
+pub fn (mut c UdpConn) write_to_ptr(addr Addr, b &byte, len int) ?int {
 	res := C.sendto(c.sock.handle, b, len, 0, &addr.addr, addr.len)
 	if res >= 0 {
 		return res
@@ -207,7 +207,7 @@ fn new_udp_socket(local_port int) ?&UdpSocket {
 }
 
 pub fn (s &UdpSocket) remote() ?Addr {
-	return s.r
+	return s.remote
 }
 
 pub fn (mut s UdpSocket) set_option_bool(opt SocketOption, value bool) ? {

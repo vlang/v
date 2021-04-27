@@ -1383,6 +1383,48 @@ fn read_log() {
 }
 ```
 
+If the function returns a value the `defer` block is executed *after* the return
+expression is evaluated: 
+
+```v
+import os
+
+enum State {
+	normal
+	write_log
+	return_error
+}
+
+// write log file and return number of bytes written
+fn write_log(s State) ?int {
+	mut f := os.create('log.txt') ?
+	defer {
+		f.close()
+	}
+	if s == .write_log {
+		// `f.close()` will be called after `f.write()` has been
+		// executed, but before `write_log()` finally returns the
+		// number of bytes written to `main()`
+		return f.writeln('This is a log file')
+	} else if s == .return_error {
+		// the file will be closed after the `error()` function
+		// has returned - so the error message will still report
+		// it as open
+		return error('nothing written; file open: $f.is_opened')
+	}
+	// the file will be closed here, too
+	return 0
+}
+
+fn main() {
+	n := write_log(.return_error) or {
+		println('Error: $err')
+		0
+	}
+	println('$n bytes written')
+}
+```
+
 ## Structs
 
 ```v
@@ -3739,7 +3781,7 @@ If you're using a custom ifdef, then you do need `$if option ? {}` and compile w
 Full list of builtin options:
 | OS                            | Compilers         | Platforms             | Other                     |
 | ---                           | ---               | ---                   | ---                       |
-| `windows`, `linux`, `macos`   | `gcc`, `tinyc`    | `amd64`, `aarch64`    | `debug`, `prod`, `test`   |
+| `windows`, `linux`, `macos`   | `gcc`, `tinyc`    | `amd64`, `arm64`      | `debug`, `prod`, `test`   |
 | `mac`, `darwin`, `ios`,       | `clang`, `mingw`  | `x64`, `x32`          | `js`, `glibc`, `prealloc` |
 | `android`,`mach`, `dragonfly` | `msvc`            | `little_endian`       | `no_bounds_checking`, `freestanding`    |
 | `gnu`, `hpux`, `haiku`, `qnx` | `cplusplus`       | `big_endian`          |
@@ -3839,7 +3881,7 @@ If a file has an environment-specific suffix, it will only be compiled for that 
 
 - `.js.v` => will be used only by the JS backend. These files can contain JS. code.
 - `.c.v` => will be used only by the C backend. These files can contain C. code.
-- `.x64.v` => will be used only by V's x64 backend.
+- `.native.v` => will be used only by V's native backend.
 - `_nix.c.v` => will be used only on Unix systems (non Windows).
 - `_${os}.c.v` => will be used only on the specific `os` system.
 For example, `_windows.c.v` will be used only when compiling on Windows, or with `-os windows`.

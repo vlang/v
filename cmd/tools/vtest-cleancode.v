@@ -73,7 +73,7 @@ const (
 		'vlib/v/fmt/',
 		'vlib/v/gen/c/',
 		'vlib/v/gen/js/',
-		'vlib/v/gen/x64/',
+		'vlib/v/gen/native/',
 		'vlib/v/live/',
 		'vlib/v/markused/',
 		'vlib/v/parser/',

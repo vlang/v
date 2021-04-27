@@ -125,7 +125,7 @@ const (
 		'-usecache',
 		'-prealloc',
 		'-parallel',
-		'-x64',
+		'-native',
 		'-W',
 		'-keepc',
 		'-w',

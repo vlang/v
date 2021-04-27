@@ -44,7 +44,7 @@ fn main() {
 		tcc_path = '/usr/local/bin/tcc'
 	}
 	diff2 := measure('$vdir/vprod -cc $tcc_path -o v2 $vdir/cmd/v', 'v2')
-	diff3 := 0 // measure('$vdir/vprod -x64 $vdir/cmd/tools/1mil.v', 'x64 1mil')
+	diff3 := 0 // measure('$vdir/vprod -native $vdir/cmd/tools/1mil.v', 'native 1mil')
 	diff4 := measure('$vdir/vprod -cc clang $vdir/examples/hello_world.v', 'hello.v')
 	vc_size := os.file_size('v.c') / 1000
 	// scan/parse/check/cgen

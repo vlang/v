@@ -1,9 +1,7 @@
 // Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-module x64
-
-import os
+module native
 
 const (
 	s_attr_some_instructions = 0x00000400
@@ -15,6 +13,7 @@ const (
 	macho_d_size             = 0x50
 	lc_symtab                = 0x2
 	lc_dymsymtab             = 0xB
+	mh_object                = 1
 )
 
 struct Symbol {
@@ -37,7 +36,7 @@ struct Reloc {
 }
 
 pub fn (mut g Gen) generate_macho_header() {
-	if g.pref.arch == .aarch64 {
+	if g.pref.arch == .arm64 {
 		g.write32(0xfeedfacf) // MH_MAGIC_64
 		g.write32(0x0100000c) // CPU_TYPE_ARM64
 		g.write32(0x00000000) // CPU_SUBTYPE_ARM64_ALL
@@ -46,9 +45,10 @@ pub fn (mut g Gen) generate_macho_header() {
 		g.write32(0x01000007) // CPU_TYPE_X64
 		g.write32(0x00000003) // CPU_SUBTYPE_X64
 	}
-	g.write32(0x00000001) // MH_OBJECT
-	g.write32(0x00000004) // # of load commands
-	g.write32(0x118) // size of load commands
+	g.write32(native.mh_object) // MH_OBJECT
+	text_offset := 0x138
+	g.write32(4) // # of load commands
+	g.write32(text_offset - 0x20) // size of load commands // 0x138-0x20
 	// g.write32(0x00002000) // MH_SUBSECTIONS_VIA_SYMBOLS
 	g.write32(0) // MH_SUBSECTIONS_VIA_SYMBOLS
 	g.write32(0) // reserved
@@ -58,7 +58,7 @@ pub fn (mut g Gen) generate_macho_header() {
 	g.zeroes(16) // segment name
 	g.write64(0) // VM address
 	g.write64(0x25) // VM size
-	g.write64(0x138) // file offset
+	g.write64(text_offset) // file offset
 	g.write64(0x25) // file size
 	g.write32(0x7) // max vm protection
 	g.write32(0x7) // initial vm protection
@@ -69,11 +69,11 @@ pub fn (mut g Gen) generate_macho_header() {
 	g.write_string_with_padding('__TEXT', 16) // segment name
 	g.write64(0) // address
 	g.write64(0x25) // size
-	g.write32(0x138) // offset
+	g.write32(text_offset) // offset
 	g.write32(0x4) // alignment
 	g.write32(0x160) // relocation offset
 	g.write32(0x1) // # of relocations
-	g.write32(x64.s_attr_some_instructions | x64.s_attr_pure_instructions)
+	g.write32(native.s_attr_some_instructions | native.s_attr_pure_instructions)
 	g.write32(0)
 	g.write32(0)
 	g.write32(0)
@@ -88,8 +88,8 @@ pub fn (mut g Gen) generate_macho_header() {
 	// lc_symtab
 	g.sym_table_command()
 	//
-	g.write32(x64.lc_dymsymtab)
-	g.write32(x64.macho_d_size)
+	g.write32(native.lc_dymsymtab)
+	g.write32(native.macho_d_size)
 	g.write32(0)
 	g.write32(2)
 	g.write32(2)
@@ -99,33 +99,26 @@ pub fn (mut g Gen) generate_macho_header() {
 	for _ in 0 .. 12 {
 		g.write32(0)
 	}
-	// ADD THE CODE HERE THIS GOES INTO THE STMTS THING
-	// g.write32(0x77777777)
-	// assembly
-	g.mov_arm(.x0, 1)
-	g.adr()
-	g.bl()
-	g.mov_arm(.x0, 0)
-	g.mov_arm(.x16, 1)
-	g.svc()
-	//
-	g.write_string('Hello World!\n')
-	g.write8(0) // padding?
-	g.write8(0)
-	g.write8(0)
+	if g.pref.is_verbose {
+		println('commands size = $g.buf.len')
+		if g.buf.len != 0x138 {
+			println('macho: invalid header size')
+		}
+	}
+
+	if g.pref.arch == .arm64 {
+		g.gen_arm64_helloworld()
+	} else {
+		// do nothing
+	}
+}
+
+pub fn (mut g Gen) generate_macho_footer() {
 	g.write_relocs()
 	g.sym_table()
 	g.sym_string_table()
 	g.write8(0)
-}
-
-pub fn (mut g Gen) generate_macho_footer() {
-	// Create the binary // should be .o ?
-	mut f := os.create(g.out_name) or { panic(err) }
-	os.chmod(g.out_name, 0o775) // make it executable
-	unsafe { f.write_ptr(g.buf.data, g.buf.len) }
-	f.close()
-	// println('\narm64 mach-o binary has been successfully generated')
+	g.create_executable()
 }
 
 fn (mut g Gen) sym_table_command() {
@@ -166,8 +159,8 @@ fn (mut g Gen) sym_table_command() {
 		name: 'ltmp1'
 		is_ext: false
 	}
-	g.write32(x64.lc_symtab)
-	g.write32(x64.macho_symcmd_size)
+	g.write32(native.lc_symtab)
+	g.write32(native.macho_symcmd_size)
 	sym_table_offset := 0x168
 	g.write32(sym_table_offset)
 	g_syms_len := 4
@@ -184,69 +177,10 @@ pub fn (mut g Gen) zeroes(n int) {
 	}
 }
 
-enum Register2 {
-	x0
-	x1
-	x2
-	x3
-	x4
-	x5
-	x6
-	x7
-	x8
-	x9
-	x10
-	x11
-	x12
-	x13
-	x14
-	x15
-	x16
-}
-
-fn (mut g Gen) mov_arm(reg Register2, val u64) {
-	// m := u64(0xffff)
-	// x := u64(val)
-	// println('========')
-	// println(x & ~m)
-	// println(x & ~(m << 16))
-	// g.write32(0x777777)
-	r := int(reg)
-	if r == 0 && val == 1 {
-		g.write32(0xd2800020)
-	} else if r == 0 {
-		g.write32(0xd2800000)
-	} else if r == 16 {
-		g.write32(0xd2800030)
-	}
-	/*
-	if 1 ^ (x & ~m) != 0 {
-		// println('yep')
-		g.write32(int(u64(0x52800000) | u64(r) | x << 5))
-		g.write32(0x88888888)
-		g.write32(int(u64(0x52800000) | u64(r) | x >> 11))
-	} else if 1 ^ (x & ~(m << 16)) != 0 {
-		// g.write32(int(u64(0x52800000) | u64(r) | x >> 11))
-		// println('yep2')
-		// g.write32(0x52a00000 | r | val >> 11)
-	}
-	*/
-}
-
-fn (mut g Gen) adr() {
-	g.write32(0x100000a0)
-}
-
-fn (mut g Gen) bl() {
-	// g.write32(0xa9400000)
-	g.write32(0x94000000)
-}
-
-fn (mut g Gen) svc() {
-	g.write32(0xd4001001)
-}
-
 fn (mut g Gen) write_relocs() {
+	if g.pref.is_verbose {
+		println('relocs at $g.buf.len should be 0x160')
+	}
 	g.write32(0x8)
 	g.write32(0x2d000003)
 }
