@@ -155,7 +155,7 @@ pub fn (mut f File) write(buf []byte) ?int {
 		}
 	}
 	*/
-	written := int(C.fwrite(buf.data, buf.len, 1, f.cfile))
+	written := int(C.fwrite(buf.data, 1, buf.len, f.cfile))
 	if written == 0 && buf.len != 0 {
 		return error('0 bytes written')
 	}
@@ -178,7 +178,7 @@ pub fn (mut f File) writeln(s string) ?int {
 	}
 	*/
 	// TODO perf
-	written := int(C.fwrite(s.str, s.len, 1, f.cfile))
+	written := int(C.fwrite(s.str, 1, s.len, f.cfile))
 	if written == 0 && s.len != 0 {
 		return error('0 bytes written')
 	}
@@ -196,7 +196,7 @@ pub fn (mut f File) write_string(s string) ?int {
 		return error('file is not opened')
 	}
 	// TODO perf
-	written := int(C.fwrite(s.str, s.len, 1, f.cfile))
+	written := int(C.fwrite(s.str, 1, s.len, f.cfile))
 	if written == 0 && s.len != 0 {
 		return error('0 bytes written')
 	}

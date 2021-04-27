@@ -79,15 +79,19 @@ fn (nn int) str_l(max int) string {
 	}
 	mut index := max
 	unsafe {
-		buf[index--] = 0
+		buf[index] = 0
+		index--
 	}
 	for n > 0 {
 		n1 := int(n / 100)
 		d = ((int(n) - (n1 * 100)) << 1)
 		n = n1
 		unsafe {
-			buf[index--] = digit_pairs.str[d++]
-			buf[index--] = digit_pairs.str[d]
+			buf[index] = digit_pairs.str[d]
+			index--
+			d++
+			buf[index] = digit_pairs.str[d]
+			index--
 		}
 	}
 	index++
@@ -145,15 +149,19 @@ pub fn (nn u32) str() string {
 	mut buf := unsafe { malloc(max + 1) }
 	mut index := max
 	unsafe {
-		buf[index--] = 0
+		buf[index] = 0
+		index--
 	}
 	for n > 0 {
 		n1 := n / u32(100)
 		d = ((n - (n1 * u32(100))) << u32(1))
 		n = n1
 		unsafe {
-			buf[index--] = digit_pairs[d++]
-			buf[index--] = digit_pairs[d]
+			buf[index] = digit_pairs[d]
+			index--
+			d++
+			buf[index] = digit_pairs[d]
+			index--
 		}
 	}
 	index++
@@ -191,15 +199,19 @@ pub fn (nn i64) str() string {
 	}
 	mut index := max
 	unsafe {
-		buf[index--] = 0
+		buf[index] = 0
+		index--
 	}
 	for n > 0 {
 		n1 := n / i64(100)
 		d = ((n - (n1 * i64(100))) << i64(1))
 		n = n1
 		unsafe {
-			buf[index--] = digit_pairs[d++]
-			buf[index--] = digit_pairs[d]
+			buf[index] = digit_pairs[d]
+			index--
+			d++
+			buf[index] = digit_pairs[d]
+			index--
 		}
 	}
 	index++
@@ -233,15 +245,19 @@ pub fn (nn u64) str() string {
 	mut buf := vcalloc(max + 1)
 	mut index := max
 	unsafe {
-		buf[index--] = 0
+		buf[index] = 0
+		index--
 	}
 	for n > 0 {
 		n1 := n / 100
 		d = ((n - (n1 * 100)) << 1)
 		n = n1
 		unsafe {
-			buf[index--] = digit_pairs[d++]
-			buf[index--] = digit_pairs[d]
+			buf[index] = digit_pairs[d]
+			index--
+			d++
+			buf[index] = digit_pairs[d]
+			index--
 		}
 	}
 	index++

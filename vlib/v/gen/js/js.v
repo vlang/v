@@ -772,7 +772,8 @@ fn (mut g JsGen) gen_enum_decl(it ast.EnumDecl) {
 			e := field.expr as ast.IntegerLiteral
 			i = e.val.int()
 		}
-		g.writeln('${i++},')
+		g.writeln('$i,')
+		i++
 	}
 	g.dec_indent()
 	g.writeln('};')
@@ -1085,6 +1086,10 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 	g.writeln('};')
 	g.writeln('${js_name}.prototype = {')
 	g.inc_indent()
+	for embed in node.embeds {
+		etyp := g.typ(embed.typ)
+		g.writeln('...${etyp}.prototype,')
+	}
 	fns := g.method_fn_decls[name]
 	for field in node.fields {
 		typ := g.typ(field.typ)

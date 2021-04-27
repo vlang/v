@@ -28,11 +28,11 @@ pub fn (mut app App) cow() vweb.Result {
 }
 
 /*
-pub fn (app App) init_once() {
+pub fn (app App) init_server() {
 	//
 }
 
-pub fn (app App) init() {
+pub fn (app App) before_request() {
 	//
 }
 */

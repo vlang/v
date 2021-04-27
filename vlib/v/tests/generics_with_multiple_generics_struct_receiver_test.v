@@ -3,7 +3,7 @@ struct Foo<A, B> {
 	b B
 }
 
-fn (num Foo<A, B>) get_foo1<A, B>() (A, B) {
+fn (num Foo<A, B>) get_foo1() (A, B) {
 	return num.a, num.b
 }
 
