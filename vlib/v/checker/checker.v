@@ -86,6 +86,7 @@ mut:
 	using_new_err_struct bool
 	inside_selector_expr bool
 	inside_println_arg   bool
+	inside_decl_rhs      bool
 }
 
 pub fn new_checker(table &ast.Table, pref &pref.Preferences) Checker {
@@ -515,7 +516,8 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
 			c.error('struct `$type_sym.name` is declared with a `[noinit]` attribute, so ' +
 				'it cannot be initialized with `$type_sym.name{}`', struct_init.pos)
 		}
-		if info.is_heap && !c.inside_ref_lit && !c.inside_unsafe && !struct_init.typ.is_ptr() {
+		if info.is_heap && c.inside_decl_rhs && !c.inside_ref_lit && !c.inside_unsafe
+			&& !struct_init.typ.is_ptr() {
 			c.error('`$type_sym.name` type can only be used as a reference `&$type_sym.name` or inside a `struct` reference',
 				struct_init.pos)
 		}
@@ -2979,7 +2981,9 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					c.inside_ref_lit = c.inside_ref_lit || left.info.share == .shared_t
 				}
 			}
+			c.inside_decl_rhs = is_decl
 			right_type := c.expr(assign_stmt.right[i])
+			c.inside_decl_rhs = false
 			c.inside_ref_lit = old_inside_ref_lit
 			if assign_stmt.right_types.len == i {
 				assign_stmt.right_types << c.check_expr_opt_call(assign_stmt.right[i],
