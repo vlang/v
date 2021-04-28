@@ -135,7 +135,7 @@ pub fn get_str_intp_u64_format(fmt_type StrIntpType, in_width int, in_precision 
 	sign       := if in_sign { u64(1 << 8) } else { u64(0) }
 	precision  := if in_precision != 987698 { (u64(in_precision & 0xFF) << 9)  } else { u64(0xFF) << 9 }
 	base       := u64((in_base & 0xf) << 27)
-	res := u64( (u64(fmt_type) & 0x1F) | allign | upper_case | sign |  precision | (u64(width & 0x7FFF) << 17) | base | (u64(in_pad_ch) << 31) )
+	res := u64( (u64(fmt_type) & 0x1F) | allign | upper_case | sign |  precision | (u64(width & 0x3FF) << 17) | base | (u64(in_pad_ch) << 31) )
 	return res
 }
 
