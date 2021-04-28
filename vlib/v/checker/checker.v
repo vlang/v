@@ -1523,7 +1523,7 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 		}
 	}
 	if has_generic {
-		c.table.register_fn_generic_types(call_expr.name, concrete_types)
+		c.table.register_fn_concrete_types(call_expr.name, concrete_types)
 	}
 	// TODO: remove this for actual methods, use only for compiler magic
 	// FIXME: Argument count != 1 will break these
@@ -1988,9 +1988,9 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 	if has_generic {
 		if c.mod != '' && !fn_name.starts_with('${c.mod}.') {
 			// Need to prepend the module when adding a generic type to a function
-			c.table.register_fn_generic_types(c.mod + '.' + fn_name, concrete_types)
+			c.table.register_fn_concrete_types(c.mod + '.' + fn_name, concrete_types)
 		} else {
-			c.table.register_fn_generic_types(fn_name, concrete_types)
+			c.table.register_fn_concrete_types(fn_name, concrete_types)
 		}
 	}
 	if fn_name == 'json.encode' {

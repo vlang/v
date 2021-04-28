@@ -2237,10 +2237,10 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		concrete_list_pos = concrete_list_pos.extend(p.prev_tok.position())
 		// In case of `foo<T>()`
 		// T is unwrapped and registered in the checker.
-		has_generic_generic := concrete_types.filter(it.has_flag(.generic)).len > 0
-		if !has_generic_generic {
+		has_generic := concrete_types.filter(it.has_flag(.generic)).len > 0
+		if !has_generic {
 			// will be added in checker
-			p.table.register_fn_generic_types(field_name, concrete_types)
+			p.table.register_fn_concrete_types(field_name, concrete_types)
 		}
 	}
 	if p.tok.kind == .lpar {

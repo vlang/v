@@ -43,10 +43,10 @@ pub fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr 
 		// In case of `foo<T>()`
 		// T is unwrapped and registered in the checker.
 		full_generic_fn_name := if fn_name.contains('.') { fn_name } else { p.prepend_mod(fn_name) }
-		has_generic_generic := concrete_types.filter(it.has_flag(.generic)).len > 0
-		if !has_generic_generic {
+		has_generic := concrete_types.filter(it.has_flag(.generic)).len > 0
+		if !has_generic {
 			// will be added in checker
-			p.table.register_fn_generic_types(full_generic_fn_name, concrete_types)
+			p.table.register_fn_concrete_types(full_generic_fn_name, concrete_types)
 		}
 	}
 	p.check(.lpar)
