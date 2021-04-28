@@ -140,7 +140,8 @@ pub fn get_str_intp_u64_format(fmt_type StrIntpType, in_width int, in_precision 
 }
 
 // convert from struct to formated string
-fn (data StrIntpData) get_fmt_from_u64_format(mut sb &strings.Builder) {
+[manualfree]
+fn (data StrIntpData) get_fmt_from_u64_format1(mut sb &strings.Builder) {
 	x              := data.fmt
 	typ            := StrIntpType(x & 0x1F)
 	allign         := int((x >> 5) & 0x01)
@@ -197,12 +198,20 @@ fn (data StrIntpData) get_fmt_from_u64_format(mut sb &strings.Builder) {
 	unsafe {
 		// strings
 		if typ == .si_s   { 
-			mut d := data.d.d_s
-			if upper_case { d = d.to_upper() }
+			mut d := ''
+			if upper_case {
+				d = data.d.d_s.to_upper()
+			} else {
+				d = data.d.d_s.clone()
+			}
 			if width == 0 {
 				sb.write_string(d)
+				d.free()
 			} else {
-				sb.write_string(strconv.format_str(d, bf) )
+				n := strconv.format_str(d, bf)
+				d.free()
+				sb.write_string(n)
+				n.free()
 			}
 			return
 		}
@@ -223,12 +232,19 @@ fn (data StrIntpData) get_fmt_from_u64_format(mut sb &strings.Builder) {
 				sb.write_string(strconv.format_dec(abs64(d), bf))
 			} else {
 				mut hx := strconv.format_uint(data.d.d_u64, base)
-				if upper_case { hx = hx.to_upper() }
+				if upper_case {
+					o := hx
+					hx = hx.to_upper()
+					o.free()
+				}
 				if width == 0 {
 					sb.write_string(hx)
 				} else {
-					sb.write_string(strconv.format_str(hx, bf) )
+					hx_formatted := strconv.format_str(hx, bf)
+					sb.write_string(hx_formatted)
+					hx_formatted.free()
 				}
+				hx.free()
 			}
 			return
 		}
@@ -244,12 +260,19 @@ fn (data StrIntpData) get_fmt_from_u64_format(mut sb &strings.Builder) {
 				sb.write_string(strconv.format_dec(d, bf))
 			} else {
 				mut hx := strconv.format_uint(d, base)
-				if upper_case { hx = hx.to_upper() }
+				if upper_case { 
+					o := hx
+					hx = hx.to_upper()
+					o.free()
+				}
 				if width == 0 {
 					sb.write_string(hx)
 				} else {
-					sb.write_string(strconv.format_str(hx, bf) )
+					hx_formatted := strconv.format_str(hx, bf)
+					sb.write_string( hx_formatted )
+					hx_formatted.free()
 				}
+				hx.free()
 			}
 			return
 		}
@@ -260,18 +283,29 @@ fn (data StrIntpData) get_fmt_from_u64_format(mut sb &strings.Builder) {
 			base = 16  // TODO: **** decide the behaviour of this flag! ****
 			if base == 0 {
 				if width == 0 {
-					sb.write_string(d.str())
+					dstr := d.str()
+					sb.write_string(dstr)
+					dstr.free()
 					return
 				}
-				sb.write_string(strconv.format_dec(d, bf))
+				d_formatted := strconv.format_dec(d, bf)
+				sb.write_string(d_formatted)
+				d_formatted.free()
 			} else {
 				mut hx := strconv.format_uint(d, base)
-				if upper_case { hx = hx.to_upper() }
+				if upper_case { 
+					o := hx
+					hx = hx.to_upper()
+					o.free()
+				}
 				if width == 0 {
 					sb.write_string(hx)
 				} else {
-					sb.write_string(strconv.format_str(hx, bf) )
+					hx_formatted := strconv.format_str(hx, bf)
+					sb.write_string( hx_formatted )
+					hx_formatted.free()
 				}
+				hx.free()
 			}
 			return
 		} 
