@@ -1,3 +1,10 @@
+const size = 5
+
+struct Foo {
+	bar [size]int
+	baz [5]int
+}
+
 fn foo() [1]f32 {
 	return [f32(0.0)]!
 }

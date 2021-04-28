@@ -577,10 +577,16 @@ pub fn (t &Table) array_cname(elem_type Type) string {
 // array_fixed_source_name generates the original name for the v source.
 // e. g. [16][8]int
 [inline]
-pub fn (t &Table) array_fixed_name(elem_type Type, size int) string {
+pub fn (t &Table) array_fixed_name(elem_type Type, size int, size_expr Expr) string {
 	elem_type_sym := t.get_type_symbol(elem_type)
 	ptr := if elem_type.is_ptr() { '&'.repeat(elem_type.nr_muls()) } else { '' }
-	return '[$size]$ptr$elem_type_sym.name'
+	mut size_str := size.str()
+	if t.is_fmt {
+		if size_expr is Ident {
+			size_str = size_expr.name
+		}
+	}
+	return '[$size_str]$ptr$elem_type_sym.name'
 }
 
 [inline]
@@ -760,8 +766,8 @@ pub fn (mut t Table) find_or_register_array_with_dims(elem_type Type, nr_dims in
 	return t.find_or_register_array(t.find_or_register_array_with_dims(elem_type, nr_dims - 1))
 }
 
-pub fn (mut t Table) find_or_register_array_fixed(elem_type Type, size int) int {
-	name := t.array_fixed_name(elem_type, size)
+pub fn (mut t Table) find_or_register_array_fixed(elem_type Type, size int, size_expr Expr) int {
+	name := t.array_fixed_name(elem_type, size, size_expr)
 	cname := t.array_fixed_cname(elem_type, size)
 	// existing
 	existing_idx := t.type_idxs[name]
@@ -776,6 +782,7 @@ pub fn (mut t Table) find_or_register_array_fixed(elem_type Type, size int) int 
 		info: ArrayFixed{
 			elem_type: elem_type
 			size: size
+			expr: size_expr
 		}
 	}
 	return t.register_type_symbol(array_fixed_type)
@@ -983,7 +990,7 @@ pub fn (mut t Table) bitsize_to_type(bit_size int) Type {
 			if bit_size % 8 != 0 { // there is no way to do `i2131(32)` so this should never be reached
 				t.panic('compiler bug: bitsizes must be multiples of 8')
 			}
-			return new_type(t.find_or_register_array_fixed(byte_type, bit_size / 8))
+			return new_type(t.find_or_register_array_fixed(byte_type, bit_size / 8, EmptyExpr{}))
 		}
 	}
 }

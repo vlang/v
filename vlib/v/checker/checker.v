@@ -3433,7 +3433,8 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) ast.Type {
 			}
 		}
 		if array_init.is_fixed {
-			idx := c.table.find_or_register_array_fixed(elem_type, array_init.exprs.len)
+			idx := c.table.find_or_register_array_fixed(elem_type, array_init.exprs.len,
+				ast.EmptyExpr{})
 			if elem_type.has_flag(.generic) {
 				array_init.typ = ast.new_type(idx).set_flag(.generic)
 			} else {
@@ -3479,7 +3480,8 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) ast.Type {
 		if fixed_size <= 0 {
 			c.error('fixed size cannot be zero or negative', init_expr.position())
 		}
-		idx := c.table.find_or_register_array_fixed(array_init.elem_type, fixed_size)
+		idx := c.table.find_or_register_array_fixed(array_init.elem_type, fixed_size,
+			init_expr)
 		if array_init.elem_type.has_flag(.generic) {
 			array_init.typ = ast.new_type(idx).set_flag(.generic)
 		} else {
