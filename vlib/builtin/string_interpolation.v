@@ -139,220 +139,6 @@ pub fn get_str_intp_u64_format(fmt_type StrIntpType, in_width int, in_precision 
 	return res
 }
 
-/*
-// convert from struct to formated string
-fn (data StrIntpData) get_fmt_from_u64_format() string {
-	x              := data.fmt
-	typ            := StrIntpType(x & 0x1F)
-	allign         := int((x >> 5) & 0x01)
-	upper_case     := if ((x >> 7) & 0x01) > 0 { true } else { false }
-	sign           := int((x >> 8) & 0x01)
-	precision      := int((x >> 9) & 0xFF)
-	width          := int(i16((x >> 17) & 0x3FF))
-	mut base       := int(x >> 27) & 0xF
-	fmt_pad_ch     := byte((x >> 31) & 0xFF)
-	
-	// no string interpolation is needed, return empty string
-	if typ == .si_no_str { return "" }
-
-	//if width > 0 { println("${x.hex()} Type: ${x & 0x7F} Width: ${width} Precision: ${precision} allign:${allign}") }
-
-	// manage base if any
-	if base > 0 {
-		base += 2 // we start from 2, 0 == base 10
-	}	
-	
-	// mange pad char, for now only 0 allowed
-	mut pad_ch := byte(` `)
-	if fmt_pad_ch > 0 {
-		pad_ch = fmt_pad_ch
-	}
-
-	len0_set := if width > 0 { width } else { -1 }
-	len1_set := if precision == 0xFF { -1 } else {precision}
-	sign_set := if sign == 1 {true} else {false} 
-
-
-	mut bf := strconv.BF_param {
-		pad_ch       : pad_ch    // padding char
-		len0         : len0_set  // default len for whole the number or string
-		len1         : len1_set  // number of decimal digits, if needed
-		positive     : true      // mandatory: the sign of the number passed
-		sign_flag    : sign_set  // flag for print sign as prefix in padding
-		allign       : .left     // alignment of the string
-		rm_tail_zero : false     // remove the tail zeros from floats
-	}
-
-	// allign
-	if fmt_pad_ch == 0 {
-		match allign {
-			0 { bf.allign = .left }
-			1 { bf.allign = .right }
-			// 2 { bf.allign = .center }
-			else {bf.allign = .left }
-		}
-	} else {
-		bf.allign = .right
-	}
-
-	unsafe {
-		// strings
-		if typ == .si_s   { 
-			mut d := data.d.d_s
-			if upper_case { d = d.to_upper() }
-			if width == 0 {
-				return d
-			} else {
-				return strconv.format_str(d, bf) 
-			}
-		}
-	
-		// signed int
-		if typ in [.si_i8, .si_i16, .si_i32, .si_i64] {
-			mut d := data.d.d_i64
-			if typ == .si_i8 { d = i64(data.d.d_i8) }
-			else if typ == .si_i16 { d = i64(data.d.d_i16) }
-			else if typ == .si_i32 { d = i64(data.d.d_i32) }
-
-			if base == 0 {
-				if width == 0 {
-					return d.str()
-				}
-				if d < 0 { bf.positive = false }
-				return strconv.format_dec(abs64(d), bf)
-			} else {
-				mut hx := strconv.format_uint(data.d.d_u64, base)
-				if upper_case { hx = hx.to_upper() }
-				if width == 0 {
-					return hx
-				} else {
-					return strconv.format_str(hx, bf) 
-				}
-			}
-		}
-
-		// unsigned int and pointers
-		if typ in [.si_u8, .si_u16, .si_u32, .si_u64] {
-			mut d := data.d.d_u64
-			if base == 0 {
-				if width == 0 {
-					return d.str()
-				}
-				return strconv.format_dec(d, bf)
-			} else {
-				mut hx := strconv.format_uint(d, base)
-				if upper_case { hx = hx.to_upper() }
-				if width == 0 {
-					return hx
-				} else {
-					return strconv.format_str(hx, bf) 
-				}
-			}
-		}
-
-		// pointers
-		if typ in [.si_p] {
-			mut d := data.d.d_u64
-			base = 16  // TODO: **** decide the behaviour of this flag! ****
-			if base == 0 {
-				if width == 0 {
-					return d.str()
-				}
-				return strconv.format_dec(d, bf)
-			} else {
-				mut hx := strconv.format_uint(d, base)
-				if upper_case { hx = hx.to_upper() }
-				if width == 0 {
-					return hx
-				} else {
-					return strconv.format_str(hx, bf) 
-				}
-			}
-		}
-
-		// default settings for floats
-		mut use_default_str := false
-		if width == 0 && precision == 0xFF {
-			bf.len1 = 3
-			use_default_str = true
-		}
-
-		match typ {	
-			// floating point
-			.si_f32 { 
-				if use_default_str {
-					return data.d.d_f32.str()
-				} else {
-					if data.d.d_f32 < 0 { bf.positive = false }
-					return strconv.format_fl(data.d.d_f32, bf)
-				}
-			}
-			.si_f64 { 
-				if use_default_str {
-					return data.d.d_f64.str()
-				} else {
-					if data.d.d_f64 < 0 { bf.positive = false }
-					return strconv.format_fl(data.d.d_f64, bf)
-				}
-			}
-			.si_g32 {
-				if use_default_str {
-					return data.d.d_f32.str()
-				} else {
-					if data.d.d_f32 < 0 { bf.positive = false }
-					d := fabs32(data.d.d_f32)
-					if d < 999_999.0 && d >= 0.00001 {
-						return strconv.format_fl(data.d.d_f32, bf)
-					}
-					return strconv.format_es(data.d.d_f32, bf)
-				}
-			}
-			.si_g64 { 
-				if use_default_str {
-					return data.d.d_f64.str()
-				} else {
-					if data.d.d_f64 < 0 { bf.positive = false }
-					d := fabs64(data.d.d_f64)
-					if d < 999_999.0 && d >= 0.00001 {
-						return strconv.format_fl(data.d.d_f64, bf)
-					}
-					return strconv.format_es(data.d.d_f64, bf)
-				}
-			}
-			.si_e32 { 
-				if use_default_str {
-					return data.d.d_f32.str()
-				} else {
-					if data.d.d_f32 < 0 { bf.positive = false }
-					return strconv.format_es(data.d.d_f32, bf)
-				}
-			}
-			.si_e64 { 
-				if use_default_str {
-					return data.d.d_f64.str()
-				} else {
-					if data.d.d_f64 < 0 { bf.positive = false }
-					return strconv.format_es(data.d.d_f64, bf)
-				}
-			}
-
-			// runes
-			.si_c   { return utf32_to_str(data.d.d_c) }
-
-			// v pointers
-			.si_vp  {
-				return u64(data.d.d_vp).hex()
-			}
-
-			else { return "***ERROR!***"}
-
-		}
-
-	}
-
-}
-*/
-
 // convert from struct to formated string
 fn (data StrIntpData) get_fmt_from_u64_format1(mut sb &strings.Builder) {
 	x              := data.fmt
@@ -592,8 +378,12 @@ pub:
 }
 
 // interpolation function
+[manualfree]
 pub fn str_interpolation(data_len int, in_data voidptr) string {
 	mut res := strings.new_builder(256)
+	defer {
+		unsafe{res.free()}
+	}
 	//mut res := ""
 	unsafe{	
 		mut i := 0
@@ -611,6 +401,7 @@ pub fn str_interpolation(data_len int, in_data voidptr) string {
 		}
 	}
 	//return res
-	return res.str()
+	ret := res.str()
+	return ret
 }
 
