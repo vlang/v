@@ -657,6 +657,9 @@ fn expr_is_single_line(expr ast.Expr) bool {
 				}
 			}
 		}
+		ast.StringLiteral {
+			return expr.pos.line_nr == expr.pos.last_line
+		}
 		else {}
 	}
 	return true
