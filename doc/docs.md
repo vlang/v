@@ -1713,7 +1713,7 @@ immutable by default, even when [references](#references) are passed.
 
 V is not a purely functional language however.
 
-There is a compiler flag to enable global variables (`--enable-globals`), but this is
+There is a compiler flag to enable global variables (`-enable-globals`), but this is
 intended for low-level applications like kernels and drivers.
 
 ### Mutable arguments
