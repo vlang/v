@@ -233,11 +233,11 @@ pub mut:
 
 pub fn format_str(s string, p BF_param) string {
 	if p.len0 <= 0 {
-		return s
+		return s.clone()
 	}
 	dif := p.len0 - utf8_str_visible_length(s)
 	if dif <= 0 {
-		return s
+		return s.clone()
 	}
 	mut res := strings.new_builder(s.len + dif)
 	if p.allign == .right {
