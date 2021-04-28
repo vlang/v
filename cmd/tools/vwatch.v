@@ -77,6 +77,7 @@ mut:
 	scan_cycles     int      // how many times the worker has scanned for source file changes
 	clear_terminal  bool     // whether to clear the terminal before each re-run
 	add_files       []string // path to additional files that have to be watched for changes
+	ignore_exts     []string // extensions of files that will be ignored, even if they change (useful for sqlite.db files for example)
 }
 
 [if debug_vwatch]
@@ -118,6 +119,9 @@ fn (mut context Context) get_stats_for_affected_vfiles() []VFileStat {
 		for pf in files {
 			pf_ext := os.file_ext(pf).to_lower()
 			if pf_ext in ['', '.bak', '.exe', '.dll', '.so', '.def'] {
+				continue
+			}
+			if pf_ext in context.ignore_exts {
 				continue
 			}
 			if pf.starts_with('.#') {
@@ -258,6 +262,7 @@ fn main() {
 	context.is_worker = os.args.contains('-vwatchworker')
 	context.clear_terminal = os.getenv('VWATCH_CLEAR_TERMINAL') != ''
 	context.add_files = os.getenv('VWATCH_ADD_FILES').split(',')
+	context.ignore_exts = os.getenv('VWATCH_IGNORE_EXTENSIONS').split(',')
 	context.opts = os.args[1..].filter(it != '-vwatchworker')
 	context.elog('>>> context.pid: $context.pid')
 	context.elog('>>> context.vexe: $context.vexe')
