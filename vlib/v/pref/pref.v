@@ -336,7 +336,11 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			'-shared' {
 				res.is_shared = true
 			}
-			'--enable-globals', '-enable-globals' {
+			'--enable-globals' {
+				eprintln('`--enable-globals` flag is deprecated, please use `-enable-globals` instead')
+				res.enable_globals = true
+			}
+			'-enable-globals' {
 				res.enable_globals = true
 			}
 			'-autofree' {

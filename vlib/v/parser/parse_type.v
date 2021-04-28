@@ -83,14 +83,14 @@ pub fn (mut p Parser) parse_map_type() ast.Type {
 		// error is reported in parse_type
 		return 0
 	}
-	if is_alias && !(key_type in [ast.string_type_idx, ast.voidptr_type_idx]
-		|| ((key_type.is_int() || key_type.is_float()) && !key_type.is_ptr())) {
-		p.error('cannot use the alias type as the parent type is unsupported')
-		return 0
-	}
-	if !(key_type in [ast.string_type_idx, ast.voidptr_type_idx]
+	key_type_supported := key_type in [ast.string_type_idx, ast.voidptr_type_idx]
 		|| key_sym.kind == .enum_ || ((key_type.is_int() || key_type.is_float()
-		|| is_alias) && !key_type.is_ptr())) {
+		|| is_alias) && !key_type.is_ptr())
+	if !key_type_supported {
+		if is_alias {
+			p.error('cannot use the alias type as the parent type is unsupported')
+			return 0
+		}
 		s := p.table.type_to_str(key_type)
 		p.error_with_pos('maps only support string, integer, float, rune, enum or voidptr keys for now (not `$s`)',
 			p.tok.position())

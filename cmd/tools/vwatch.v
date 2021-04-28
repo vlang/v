@@ -2,6 +2,7 @@ module main
 
 import os
 import time
+import term
 
 const scan_timeout_s = 5 * 60
 
@@ -71,14 +72,17 @@ mut:
 	opts            []string
 	rerun_channel   chan RerunCommand
 	child_process   &os.Process
-	is_exiting      bool // set by SIGINT/Ctrl-C
-	v_cycles        int  // how many times the worker has restarted the V compiler
-	scan_cycles     int  // how many times the worker has scanned for source file changes
+	is_exiting      bool     // set by SIGINT/Ctrl-C
+	v_cycles        int      // how many times the worker has restarted the V compiler
+	scan_cycles     int      // how many times the worker has scanned for source file changes
+	clear_terminal  bool     // whether to clear the terminal before each re-run
+	add_files       []string // path to additional files that have to be watched for changes
+	ignore_exts     []string // extensions of files that will be ignored, even if they change (useful for sqlite.db files for example)
 }
 
 [if debug_vwatch]
 fn (mut context Context) elog(msg string) {
-	eprintln('> vredo $context.pid, $msg')
+	eprintln('> vwatch $context.pid, $msg')
 }
 
 fn (context &Context) str() string {
@@ -93,13 +97,17 @@ fn (mut context Context) get_stats_for_affected_vfiles() []VFileStat {
 		copts := context.opts.join(' ')
 		cmd := '"$context.vexe" -silent -print-v-files $copts'
 		// context.elog('> cmd: $cmd')
-		mut vfiles := os.execute(cmd)
+		mut paths := []string{}
+		if context.add_files.len > 0 && context.add_files[0] != '' {
+			paths << context.add_files
+		}
+		vfiles := os.execute(cmd)
 		if vfiles.exit_code == 0 {
 			paths_trimmed := vfiles.output.trim_space()
-			mut paths := paths_trimmed.split('\n')
-			for vf in paths {
-				apaths[os.real_path(os.dir(vf))] = true
-			}
+			paths << paths_trimmed.split('\n')
+		}
+		for vf in paths {
+			apaths[os.real_path(os.dir(vf))] = true
 		}
 		context.affected_paths = apaths.keys()
 		// context.elog('vfiles paths to be scanned: $context.affected_paths')
@@ -111,6 +119,9 @@ fn (mut context Context) get_stats_for_affected_vfiles() []VFileStat {
 		for pf in files {
 			pf_ext := os.file_ext(pf).to_lower()
 			if pf_ext in ['', '.bak', '.exe', '.dll', '.so', '.def'] {
+				continue
+			}
+			if pf_ext in context.ignore_exts {
 				continue
 			}
 			if pf.starts_with('.#') {
@@ -199,6 +210,9 @@ fn (mut context Context) compilation_runner_loop() {
 		context.child_process.use_pgroup = true
 		context.child_process.set_args(context.opts)
 		context.child_process.run()
+		if context.clear_terminal {
+			term.clear()
+		}
 		eprintln('$timestamp: $cmd | pid: ${context.child_process.pid:7d} | reload cycle: ${context.v_cycles:5d}')
 		for {
 			mut cmds := []RerunCommand{}
@@ -246,6 +260,9 @@ fn main() {
 	context.pid = os.getpid()
 	context.vexe = os.getenv('VEXE')
 	context.is_worker = os.args.contains('-vwatchworker')
+	context.clear_terminal = os.getenv('VWATCH_CLEAR_TERMINAL') != ''
+	context.add_files = os.getenv('VWATCH_ADD_FILES').split(',')
+	context.ignore_exts = os.getenv('VWATCH_IGNORE_EXTENSIONS').split(',')
 	context.opts = os.args[1..].filter(it != '-vwatchworker')
 	context.elog('>>> context.pid: $context.pid')
 	context.elog('>>> context.vexe: $context.vexe')

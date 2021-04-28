@@ -206,7 +206,8 @@ pub fn println(s string) {
 	}
 	$if android {
 		C.fprintf(C.stdout, c'%.*s\n', s.len, s.str)
-	} $else $if ios {
+	}
+	$if ios {
 		C.WrappedNSLog(s.str)
 	} $else $if freestanding {
 		bare_print(s.str, u64(s.len))
