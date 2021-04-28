@@ -260,19 +260,28 @@ pub:
 	pos  token.Position
 }
 
+pub struct InterfaceEmbedding {
+pub:
+	name string
+	typ Type
+	pos token.Position
+	comments      []Comment
+}
+
 pub struct InterfaceDecl {
 pub:
 	name         string
 	name_pos     token.Position
 	language     Language
-	field_names  []string
 	is_pub       bool
-	methods      []FnDecl
 	mut_pos      int // mut:
-	fields       []StructField
 	pos          token.Position
 	pre_comments []Comment
-	ifaces       []Type
+	ifaces       []InterfaceEmbedding
+pub mut:
+	fields       []StructField
+	methods      []FnDecl
+	field_names  []string
 }
 
 pub struct StructInitField {

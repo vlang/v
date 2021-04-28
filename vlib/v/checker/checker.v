@@ -362,6 +362,13 @@ pub fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 
 pub fn (mut c Checker) interface_decl(decl ast.InterfaceDecl) {
 	c.check_valid_pascal_case(decl.name, 'interface name', decl.pos)
+	for iface in decl.ifaces {
+		isym := c.table.get_type_symbol(iface.typ)
+		if isym.kind != .interface_ {
+			c.error('`interface `$decl.name` tries to embed `$isym.name`, but `$isym.name` is not an interface, but `$isym.kind`',
+				iface.pos)
+		}
+	}
 	for method in decl.methods {
 		if decl.language == .v {
 			c.check_valid_snake_case(method.name, 'method name', method.pos)
@@ -2437,6 +2444,7 @@ fn (mut c Checker) type_implements(typ ast.Type, inter_typ ast.Type, pos token.P
 				}
 				continue
 			}
+			eprintln('>>> inter_sym.name: $inter_sym.name | inter_sym.kind: $inter_sym.kind | inter_sym.info.fields: $inter_sym.info.fields')
 			c.error("`$styp` doesn't implement field `$ifield.name` of interface `$inter_sym.name`",
 				pos)
 		}

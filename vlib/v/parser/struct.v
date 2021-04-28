@@ -483,7 +483,24 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	mut methods := []ast.FnDecl{cap: 20}
 	mut is_mut := false
 	mut mut_pos := -1
+	mut ifaces := []ast.InterfaceEmbedding{}
 	for p.tok.kind != .rcbr && p.tok.kind != .eof {
+		if p.tok.kind == .name && p.tok.lit.len > 0 && p.tok.lit[0].is_capital() {
+			iface_pos := p.tok.position()
+			iface_name := p.tok.lit
+			iface_type := p.parse_type()
+			comments := p.eat_comments({})
+			ifaces << ast.InterfaceEmbedding{
+				name: iface_name
+				typ: iface_type
+				pos: iface_pos
+				comments: comments
+			}
+			if p.tok.kind == .rcbr {
+				break
+			}
+			continue
+		}
 		if p.tok.kind == .key_mut {
 			if is_mut {
 				p.error_with_pos('redefinition of `mut` section', p.tok.position())
@@ -554,13 +571,6 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			info.methods << tmethod
 		} else {
 			// interface fields
-			if p.tok.kind == .name && p.tok.lit.len > 0 && p.tok.lit[0].is_capital() {
-				info.ifaces << p.parse_type()
-				if p.tok.kind == .rcbr {
-					break
-				}
-				continue
-			}
 			field_pos := p.tok.position()
 			field_name := p.check_name()
 			mut type_pos := p.tok.position()
@@ -589,17 +599,17 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			}
 		}
 	}
+	info.ifaces = ifaces.map(it.typ)
 	ts.info = info
 	p.top_level_statement_end()
 	p.check(.rcbr)
 	pos = pos.extend_with_last_line(p.prev_tok.position(), p.prev_tok.line_nr)
-	eprintln('>>> interface_name: $interface_name | info.ifaces: $info.ifaces')
 	return ast.InterfaceDecl{
 		name: interface_name
 		language: language
 		fields: fields
 		methods: methods
-		ifaces: info.ifaces
+		ifaces: ifaces
 		is_pub: is_pub
 		pos: pos
 		pre_comments: pre_comments
