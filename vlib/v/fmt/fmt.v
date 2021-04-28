@@ -888,6 +888,12 @@ pub fn (mut f Fmt) comp_for(node ast.CompFor) {
 	f.writeln('}')
 }
 
+struct ConstAlignInfo {
+mut:
+	max      int
+	last_idx int
+}
+
 pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
 	if node.is_pub {
 		f.write('pub ')
@@ -901,22 +907,36 @@ pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
 		f.inside_const = false
 	}
 	f.write('const ')
-	mut max := 0
+	mut align_infos := []ConstAlignInfo{}
 	if node.is_block {
 		f.writeln('(')
-		for field in node.fields {
-			if field.name.len > max {
-				max = field.name.len
+		mut info := ConstAlignInfo{}
+		for i, field in node.fields {
+			if field.name.len > info.max {
+				info.max = field.name.len
+			}
+			if !expr_is_single_line(field.expr) {
+				info.last_idx = i
+				align_infos << info
+				info = ConstAlignInfo{}
 			}
 		}
+		info.last_idx = node.fields.len
+		align_infos << info
 		f.indent++
+	} else {
+		align_infos << ConstAlignInfo{0, 1}
 	}
 	mut prev_field := if node.fields.len > 0 {
 		ast.Node(node.fields[0])
 	} else {
 		ast.Node(ast.NodeError{})
 	}
-	for field in node.fields {
+	mut align_idx := 0
+	for i, field in node.fields {
+		if i > align_infos[align_idx].last_idx {
+			align_idx++
+		}
 		if field.comments.len > 0 {
 			if f.should_insert_newline_before_node(ast.Expr(field.comments[0]), prev_field) {
 				f.writeln('')
@@ -929,7 +949,7 @@ pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
 		}
 		name := field.name.after('.')
 		f.write('$name ')
-		f.write(strings.repeat(` `, max - field.name.len))
+		f.write(strings.repeat(` `, align_infos[align_idx].max - field.name.len))
 		f.write('= ')
 		f.expr(field.expr)
 		f.writeln('')
