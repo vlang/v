@@ -65,6 +65,7 @@ pub mut:
 	application_description string
 	min_free_args           int
 	args_description        string
+	allow_unknown_args      bool // whether passing undescribed arguments is allowed
 }
 
 [unsafe]
@@ -121,6 +122,14 @@ pub fn (mut fs FlagParser) description(desc string) {
 // in most cases you do not need the first argv for flag parsing
 pub fn (mut fs FlagParser) skip_executable() {
 	fs.args.delete(0)
+}
+
+// allow_unknown_args - if your program has sub commands, that have
+// their own arguments, you can call .allow_unknown_args(), so that
+// the subcommand arguments (which generally are not known to your
+// parent program), will not cause the validation in .finalize() to fail.
+pub fn (mut fs FlagParser) allow_unknown_args() {
+	fs.allow_unknown_args = true
 }
 
 // private helper to register a flag
@@ -495,11 +504,13 @@ pub fn (fs FlagParser) usage() string {
 // defined on the command line. If additional flags are found, i.e.
 // (things starting with '--' or '-'), it returns an error.
 pub fn (fs FlagParser) finalize() ?[]string {
-	for a in fs.args {
-		if (a.len >= 2 && a[..2] == '--') || (a.len == 2 && a[0] == `-`) {
-			return IError(&UnkownFlagError{
-				msg: 'Unknown flag `$a`'
-			})
+	if !fs.allow_unknown_args {
+		for a in fs.args {
+			if (a.len >= 2 && a[..2] == '--') || (a.len == 2 && a[0] == `-`) {
+				return IError(&UnkownFlagError{
+					msg: 'Unknown flag `$a`'
+				})
+			}
 		}
 	}
 	if fs.args.len < fs.min_free_args && fs.min_free_args > 0 {
