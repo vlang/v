@@ -3,12 +3,12 @@ module builder
 import v.parser
 import v.pref
 import v.util
-import v.gen.x64
+import v.gen.native
 import v.markused
 
-pub fn (mut b Builder) build_x64(v_files []string, out_file string) {
+pub fn (mut b Builder) build_native(v_files []string, out_file string) {
 	$if !linux && !macos {
-		eprintln('Warning: v -x64 can only generate macOS and Linux binaries for now')
+		eprintln('Warning: v -native can only generate macOS and Linux binaries for now')
 	}
 	util.timing_start('PARSE')
 	b.parsed_files = parser.parse_files(v_files, b.table, b.pref, b.global_scope)
@@ -24,14 +24,17 @@ pub fn (mut b Builder) build_x64(v_files []string, out_file string) {
 	if b.pref.skip_unused {
 		markused.mark_used(mut b.table, b.pref, b.parsed_files)
 	}
-	util.timing_start('x64 GEN')
-	b.stats_lines, b.stats_bytes = x64.gen(b.parsed_files, b.table, out_file, b.pref)
-	util.timing_measure('x64 GEN')
+	util.timing_start('Native GEN')
+	b.stats_lines, b.stats_bytes = native.gen(b.parsed_files, b.table, out_file, b.pref)
+	util.timing_measure('Native GEN')
 }
 
-pub fn (mut b Builder) compile_x64() {
+pub fn (mut b Builder) compile_native() {
 	// v.files << v.v_files_from_dir(os.join_path(v.pref.vlib_path,'builtin','bare'))
 	files := [b.pref.path]
+	if b.pref.arch == ._auto {
+		b.pref.arch = pref.get_host_arch()
+	}
 	b.set_module_lookup_paths()
-	b.build_x64(files, b.pref.out_name)
+	b.build_native(files, b.pref.out_name)
 }

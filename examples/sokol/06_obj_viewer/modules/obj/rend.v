@@ -68,7 +68,9 @@ pub fn (mut obj_part ObjPart) create_pipeline(in_part []int, shader C.sg_shader,
 	res.material = obj_part.part[in_part[0]].material
 
 	// vertex buffer
-	mut vert_buffer_desc := C.sg_buffer_desc{}
+	mut vert_buffer_desc := C.sg_buffer_desc{
+		label: 0
+	}
 	unsafe { C.memset(&vert_buffer_desc, 0, sizeof(vert_buffer_desc)) }
 
 	vert_buffer_desc.size = size_t(obj_buf.vbuf.len * int(sizeof(Vertex_pnct)))
@@ -82,7 +84,9 @@ pub fn (mut obj_part ObjPart) create_pipeline(in_part []int, shader C.sg_shader,
 	vbuf := gfx.make_buffer(&vert_buffer_desc)
 
 	// index buffer
-	mut index_buffer_desc := C.sg_buffer_desc{}
+	mut index_buffer_desc := C.sg_buffer_desc{
+		label: 0
+	}
 	unsafe { C.memset(&index_buffer_desc, 0, sizeof(index_buffer_desc)) }
 
 	index_buffer_desc.size = size_t(obj_buf.ibuf.len * int(sizeof(u32)))

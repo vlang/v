@@ -97,8 +97,10 @@ pub fn (mut w Walker) stmt(node ast.Stmt) {
 		}
 		ast.SqlStmt {
 			w.expr(node.db_expr)
-			w.expr(node.where_expr)
-			w.exprs(node.update_exprs)
+			for line in node.lines {
+				w.expr(line.where_expr)
+				w.exprs(line.update_exprs)
+			}
 		}
 		ast.StructDecl {
 			w.struct_fields(node.fields)

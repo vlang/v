@@ -12,6 +12,7 @@ import v.pref
 import v.util
 import v.errors
 import v.pkgconfig
+import v.gen.native
 
 const int_min = int(0x80000000)
 
@@ -22,7 +23,9 @@ const (
 		'qnx', 'linux', 'freebsd', 'openbsd', 'netbsd', 'bsd', 'dragonfly', 'android', 'solaris',
 		'haiku', 'linux_or_macos']
 	valid_comp_if_compilers     = ['gcc', 'tinyc', 'clang', 'mingw', 'msvc', 'cplusplus']
-	valid_comp_if_platforms     = ['amd64', 'aarch64', 'x64', 'x32', 'little_endian', 'big_endian']
+	valid_comp_if_platforms     = ['amd64', 'aarch64', 'arm64', 'x64', 'x32', 'little_endian',
+		'big_endian',
+	]
 	valid_comp_if_other         = ['js', 'debug', 'prod', 'test', 'glibc', 'prealloc',
 		'no_bounds_checking', 'freestanding']
 	array_builtin_methods       = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort',
@@ -83,6 +86,7 @@ mut:
 	using_new_err_struct bool
 	inside_selector_expr bool
 	inside_println_arg   bool
+	inside_decl_rhs      bool
 }
 
 pub fn new_checker(table &ast.Table, pref &pref.Preferences) Checker {
@@ -512,7 +516,8 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
 			c.error('struct `$type_sym.name` is declared with a `[noinit]` attribute, so ' +
 				'it cannot be initialized with `$type_sym.name{}`', struct_init.pos)
 		}
-		if info.is_heap && !c.inside_ref_lit && !c.inside_unsafe && !struct_init.typ.is_ptr() {
+		if info.is_heap && c.inside_decl_rhs && !c.inside_ref_lit && !c.inside_unsafe
+			&& !struct_init.typ.is_ptr() {
 			c.error('`$type_sym.name` type can only be used as a reference `&$type_sym.name` or inside a `struct` reference',
 				struct_init.pos)
 		}
@@ -1457,14 +1462,14 @@ fn (mut c Checker) check_return_generics_struct(return_type ast.Type, mut call_e
 			idx := c.table.type_idxs[nrt]
 			if idx != 0 {
 				c.ensure_type_exists(idx, call_expr.pos) or {}
-				call_expr.return_type = ast.new_type(idx).derive(return_type)
+				call_expr.return_type = ast.new_type(idx).derive(return_type).clear_flag(.generic)
 			} else {
 				mut fields := rts.info.fields.clone()
 				if rts.info.generic_types.len == concrete_types.len {
 					generic_names := rts.info.generic_types.map(c.table.get_type_symbol(it).name)
 					for i, _ in fields {
 						if t_typ := c.table.resolve_generic_to_concrete(fields[i].typ,
-							generic_names, concrete_types)
+							generic_names, concrete_types, false)
 						{
 							fields[i].typ = t_typ
 						}
@@ -1481,7 +1486,7 @@ fn (mut c Checker) check_return_generics_struct(return_type ast.Type, mut call_e
 						mod: c.mod
 						info: info
 					})
-					call_expr.return_type = ast.new_type(stru_idx)
+					call_expr.return_type = ast.new_type(stru_idx).derive(return_type).clear_flag(.generic)
 				}
 			}
 		}
@@ -1632,11 +1637,6 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 			c.error('expected $nr_args arguments, but got $call_expr.args.len', unexpected_arguments_pos)
 			return method.return_type
 		}
-		if method.generic_names.len > 0 && method.return_type.has_flag(.generic) {
-			c.check_return_generics_struct(method.return_type, mut call_expr, concrete_types)
-		} else {
-			call_expr.return_type = method.return_type
-		}
 		mut exp_arg_typ := ast.Type(0) // type of 1st arg for special builtin methods
 		mut param_is_mut := false
 		mut no_type_promotion := false
@@ -1686,7 +1686,7 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 			if method.generic_names.len > 0 {
 				continue
 			}
-			c.check_expected_call_arg(got_arg_typ, exp_arg_typ, call_expr.language) or {
+			c.check_expected_call_arg(got_arg_typ, c.unwrap_generic(exp_arg_typ), call_expr.language) or {
 				// str method, allow type with str method if fn arg is string
 				// Passing an int or a string array produces a c error here
 				// Deleting this condition results in propper V error messages
@@ -1760,10 +1760,17 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 		if method.generic_names.len != call_expr.concrete_types.len {
 			// no type arguments given in call, attempt implicit instantiation
 			c.infer_fn_generic_types(method, mut call_expr)
+			concrete_types = call_expr.concrete_types
+		}
+		// resolve return generics struct to concrete type
+		if method.generic_names.len > 0 && method.return_type.has_flag(.generic) {
+			c.check_return_generics_struct(method.return_type, mut call_expr, concrete_types)
+		} else {
+			call_expr.return_type = method.return_type
 		}
 		if call_expr.concrete_types.len > 0 && method.return_type != 0 {
 			if typ := c.table.resolve_generic_to_concrete(method.return_type, method.generic_names,
-				call_expr.concrete_types)
+				concrete_types, false)
 			{
 				call_expr.return_type = typ
 				return typ
@@ -2066,7 +2073,13 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 			c.table.fns[fn_name].usages++
 		}
 	}
-	if c.pref.is_script && !found {
+	if !found && c.pref.backend == .native {
+		if fn_name in native.builtins {
+			c.table.fns[fn_name].usages++
+			return ast.void_type
+		}
+	}
+	if !found && c.pref.is_script && !found {
 		os_name := 'os.$fn_name'
 		if f := c.table.find_fn(os_name) {
 			if f.generic_names.len == call_expr.concrete_types.len {
@@ -2126,11 +2139,6 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 		c.error('no argument generic function must add concrete types, e.g. foo<int>()',
 			call_expr.pos)
 		return func.return_type
-	}
-	if func.generic_names.len > 0 && func.return_type.has_flag(.generic) {
-		c.check_return_generics_struct(func.return_type, mut call_expr, concrete_types)
-	} else {
-		call_expr.return_type = func.return_type
 	}
 	if func.return_type == ast.void_type && func.ctdefine.len > 0
 		&& func.ctdefine !in c.pref.compile_defines {
@@ -2243,7 +2251,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 			c.type_implements(typ, param.typ, call_arg.expr.position())
 			continue
 		}
-		c.check_expected_call_arg(typ, param.typ, call_expr.language) or {
+		c.check_expected_call_arg(typ, c.unwrap_generic(param.typ), call_expr.language) or {
 			// str method, allow type with str method if fn arg is string
 			// Passing an int or a string array produces a c error here
 			// Deleting this condition results in propper V error messages
@@ -2270,6 +2278,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 	if func.generic_names.len != call_expr.concrete_types.len {
 		// no type arguments given in call, attempt implicit instantiation
 		c.infer_fn_generic_types(func, mut call_expr)
+		concrete_types = call_expr.concrete_types
 	}
 	if func.generic_names.len > 0 {
 		for i, call_arg in call_expr.args {
@@ -2284,18 +2293,24 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 			if param.typ.has_flag(.generic)
 				&& func.generic_names.len == call_expr.concrete_types.len {
 				if unwrap_typ := c.table.resolve_generic_to_concrete(param.typ, func.generic_names,
-					call_expr.concrete_types)
+					concrete_types, false)
 				{
-					c.check_expected_call_arg(typ, unwrap_typ, call_expr.language) or {
+					c.check_expected_call_arg(c.unwrap_generic(typ), unwrap_typ, call_expr.language) or {
 						c.error('$err.msg in argument ${i + 1} to `$fn_name`', call_arg.pos)
 					}
 				}
 			}
 		}
 	}
+	// resolve return generics struct to concrete type
+	if func.generic_names.len > 0 && func.return_type.has_flag(.generic) {
+		c.check_return_generics_struct(func.return_type, mut call_expr, concrete_types)
+	} else {
+		call_expr.return_type = func.return_type
+	}
 	if call_expr.concrete_types.len > 0 && func.return_type != 0 {
 		if typ := c.table.resolve_generic_to_concrete(func.return_type, func.generic_names,
-			call_expr.concrete_types)
+			concrete_types, false)
 		{
 			call_expr.return_type = typ
 			return typ
@@ -2728,8 +2743,10 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 	}
 	return_stmt.types = got_types
 	// allow `none` & `error` return types for function that returns optional
+	option_type_idx := c.table.type_idxs['Option']
+	got_types_0_idx := got_types[0].idx()
 	if exp_is_optional
-		&& got_types[0].idx() in [ast.none_type_idx, ast.error_type_idx, c.table.type_idxs['Option']] {
+		&& got_types_0_idx in [ast.none_type_idx, ast.error_type_idx, option_type_idx] {
 		return
 	}
 	if expected_types.len > 0 && expected_types.len != got_types.len {
@@ -2964,7 +2981,9 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					c.inside_ref_lit = c.inside_ref_lit || left.info.share == .shared_t
 				}
 			}
+			c.inside_decl_rhs = is_decl
 			right_type := c.expr(assign_stmt.right[i])
+			c.inside_decl_rhs = false
 			c.inside_ref_lit = old_inside_ref_lit
 			if assign_stmt.right_types.len == i {
 				assign_stmt.right_types << c.check_expr_opt_call(assign_stmt.right[i],
@@ -4156,7 +4175,9 @@ fn (mut c Checker) stmts(stmts []ast.Stmt) {
 
 pub fn (mut c Checker) unwrap_generic(typ ast.Type) ast.Type {
 	if typ.has_flag(.generic) {
-		if t_typ := c.table.resolve_generic_to_concrete(typ, c.cur_fn.generic_names, c.cur_fn.cur_generic_types) {
+		if t_typ := c.table.resolve_generic_to_concrete(typ, c.cur_fn.generic_names, c.cur_fn.cur_generic_types,
+			false)
+		{
 			return t_typ
 		}
 	}
@@ -4481,7 +4502,8 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	if to_type_sym.language != .c {
 		c.ensure_type_exists(node.typ, node.pos) or {}
 	}
-	expr_is_ptr := node.expr_type.is_ptr() || node.expr_type.idx() in ast.pointer_type_idxs
+	n_e_t_idx := node.expr_type.idx()
+	expr_is_ptr := node.expr_type.is_ptr() || n_e_t_idx in ast.pointer_type_idxs
 	if expr_is_ptr && to_type_sym.kind == .string && !node.in_prexpr {
 		if node.has_arg {
 			c.warn('to convert a C string buffer pointer to a V string, please use x.vstring_with_len(len) instead of string(x,len)',
@@ -5841,7 +5863,7 @@ fn (c &Checker) has_return(stmts []ast.Stmt) ?bool {
 }
 
 pub fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) ast.Type {
-	typ := c.expr(node.expr)
+	typ := c.unwrap_generic(c.expr(node.expr))
 	typ_sym := c.table.get_type_symbol(typ)
 	is_non_void_pointer := (typ.is_ptr() || typ.is_pointer()) && typ_sym.kind != .voidptr
 	if !c.inside_unsafe && is_non_void_pointer && !node.expr.is_auto_deref_var() {
@@ -5877,7 +5899,9 @@ pub fn (mut c Checker) mark_as_referenced(mut node ast.Expr) {
 			}
 		}
 		ast.SelectorExpr {
-			c.mark_as_referenced(mut &node.expr)
+			if !node.expr_type.is_ptr() {
+				c.mark_as_referenced(mut &node.expr)
+			}
 		}
 		ast.IndexExpr {
 			c.mark_as_referenced(mut &node.left)
@@ -6470,6 +6494,18 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 }
 
 fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) ast.Type {
+	c.expr(node.db_expr)
+	mut typ := ast.void_type
+	for mut line in node.lines {
+		a := c.sql_stmt_line(mut line)
+		if a != ast.void_type {
+			typ = a
+		}
+	}
+	return typ
+}
+
+fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	c.inside_sql = true
 	defer {
 		c.inside_sql = false
@@ -6483,11 +6519,10 @@ fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) ast.Type {
 	}
 	info := table_sym.info as ast.Struct
 	fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, table_sym.name)
-	mut sub_structs := map[int]ast.SqlStmt{}
+	mut sub_structs := map[int]ast.SqlStmtLine{}
 	for f in fields.filter(c.table.type_symbols[int(it.typ)].kind == .struct_) {
-		mut n := ast.SqlStmt{
+		mut n := ast.SqlStmtLine{
 			pos: node.pos
-			db_expr: node.db_expr
 			kind: node.kind
 			table_expr: ast.TypeNode{
 				pos: node.table_expr.pos
@@ -6496,13 +6531,12 @@ fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) ast.Type {
 			object_var_name: '${node.object_var_name}.$f.name'
 		}
 		tmp_inside_sql := c.inside_sql
-		c.sql_stmt(mut n)
+		c.sql_stmt_line(mut n)
 		c.inside_sql = tmp_inside_sql
 		sub_structs[int(f.typ)] = n
 	}
 	node.fields = fields
 	node.sub_structs = sub_structs.move()
-	c.expr(node.db_expr)
 	if node.kind == .update {
 		for expr in node.update_exprs {
 			c.expr(expr)

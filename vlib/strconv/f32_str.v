@@ -114,7 +114,8 @@ pub fn (d Dec32) get_string_32(neg bool, i_n_digit int, i_pad_digit int) string 
 	}
 
 	for fw_zeros > 0 {
-		buf[i++] = `0`
+		buf[i] = `0`
+		i++
 		fw_zeros--
 	}
 

@@ -37,10 +37,7 @@ fn main() {
 	vweb.run_app<App>(mut app, http_port)
 }
 
-pub fn (mut app App) init() {
-}
-
-pub fn (mut app App) init_once() {
+pub fn (mut app App) init_server() {
 	eprintln('>> webserver: started on http://127.0.0.1:$app.port/ , with maximum runtime of $app.timeout milliseconds.')
 }
 

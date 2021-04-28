@@ -189,7 +189,7 @@ fn init_cube_glsl_i(mut app App) {
 		Vertex_t{ 1.0,  1.0, -1.0, c,  0, d},
 	]
 
-	mut vert_buffer_desc := C.sg_buffer_desc{}
+	mut vert_buffer_desc := C.sg_buffer_desc{label: c'cube-vertices'}
 	unsafe {C.memset(&vert_buffer_desc, 0, sizeof(vert_buffer_desc))}
 	vert_buffer_desc.size = size_t(vertices.len * int(sizeof(Vertex_t)))
 	vert_buffer_desc.data = C.sg_range{
@@ -197,17 +197,15 @@ fn init_cube_glsl_i(mut app App) {
 		size: size_t(vertices.len * int(sizeof(Vertex_t)))
 	}
 	vert_buffer_desc.@type   = .vertexbuffer
-	vert_buffer_desc.label   = "cube-vertices".str
 	vbuf := gfx.make_buffer(&vert_buffer_desc)
 
 	/* create an instance buffer for the cube */
-	mut inst_buffer_desc := C.sg_buffer_desc{}
+	mut inst_buffer_desc := C.sg_buffer_desc{label: c'instance-data'}
 	unsafe {C.memset(&inst_buffer_desc, 0, sizeof(inst_buffer_desc))}
 
 	inst_buffer_desc.size = size_t(num_inst * int(sizeof(m4.Vec4)))
 	inst_buffer_desc.@type   = .vertexbuffer
 	inst_buffer_desc.usage   = .stream
-	inst_buffer_desc.label   = "instance-data".str
 	inst_buf := gfx.make_buffer(&inst_buffer_desc)
 
 
@@ -221,7 +219,7 @@ fn init_cube_glsl_i(mut app App) {
 		22, 21, 20,    23, 22, 20
 	]
 
-	mut index_buffer_desc := C.sg_buffer_desc{}
+	mut index_buffer_desc := C.sg_buffer_desc{label: c'cube-indices'}
 	unsafe {C.memset(&index_buffer_desc, 0, sizeof(index_buffer_desc))}
 	index_buffer_desc.size    = size_t(indices.len * int(sizeof(u16)))
 	index_buffer_desc.data = C.sg_range{
@@ -229,7 +227,6 @@ fn init_cube_glsl_i(mut app App) {
 		size: size_t(indices.len * int(sizeof(u16)))
 	}
 	index_buffer_desc.@type   = .indexbuffer
-	index_buffer_desc.label   = "cube-indices".str
 	ibuf := gfx.make_buffer(&index_buffer_desc)
 
 	/* create shader */

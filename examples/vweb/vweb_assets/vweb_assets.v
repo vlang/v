@@ -16,7 +16,7 @@ fn main() {
 	vweb.run<App>(port)
 }
 
-pub fn (mut app App) init_once() {
+pub fn (mut app App) init_server() {
 	// Arbitary mime type.
 	app.serve_static('/favicon.ico', 'favicon.ico', 'img/x-icon')
 	// Automatically make available known static mime types found in given directory.
@@ -24,9 +24,6 @@ pub fn (mut app App) init_once() {
 	// This would make available all known static mime types from current
 	// directory and below.
 	app.handle_static('.', false)
-}
-
-pub fn (mut app App) init() {
 }
 
 pub fn (mut app App) index() vweb.Result {

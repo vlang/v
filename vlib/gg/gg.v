@@ -189,7 +189,9 @@ fn gg_init_sokol_window(user_data voidptr) {
 		}
 	}
 	//
-	mut pipdesc := C.sg_pipeline_desc{}
+	mut pipdesc := C.sg_pipeline_desc{
+		label: c'alpha_image'
+	}
 	unsafe { C.memset(&pipdesc, 0, sizeof(pipdesc)) }
 
 	color_state := C.sg_color_state{

@@ -24,7 +24,7 @@ pub struct C.sg_desc {
     d3d11_render_target_view_cb fn() voidptr
     d3d11_depth_stencil_view_cb fn() voidptr
 	*/
-	_end_canary        u32
+	_end_canary u32
 }
 
 pub struct C.sg_context_desc {
@@ -43,7 +43,7 @@ pub struct C.sg_context_desc {
 }
 
 pub struct C.sg_gl_context_desc {
-	gl_force_gles2 bool
+	force_gles2 bool
 }
 
 pub struct C.sg_metal_context_desc {
@@ -82,7 +82,7 @@ pub mut:
 	sample_count              int
 	blend_color               C.sg_color
 	alpha_to_coverage_enabled bool
-	label                     byteptr
+	label                     &char = &char(0)
 	_end_canary               u32
 }
 
@@ -156,7 +156,7 @@ pub mut:
 	attrs         [16]C.sg_shader_attr_desc
 	vs            C.sg_shader_stage_desc
 	fs            C.sg_shader_stage_desc
-	label         byteptr
+	label         &char
 	_end_canary   u32
 }
 
@@ -210,16 +210,16 @@ pub fn (desc &C.sg_shader_desc) make_shader() C.sg_shader {
 
 pub struct C.sg_shader_attr_desc {
 pub mut:
-	name      byteptr // GLSL vertex attribute name (only required for GLES2)
-	sem_name  byteptr // HLSL semantic name
-	sem_index int // HLSL semantic index
+	name      &char // GLSL vertex attribute name (only required for GLES2)
+	sem_name  &char // HLSL semantic name
+	sem_index int   // HLSL semantic index
 }
 
 pub struct C.sg_shader_stage_desc {
 pub mut:
-	source         byteptr
+	source         &char
 	bytecode       C.sg_range
-	entry          byteptr
+	entry          &char
 	uniform_blocks [4]C.sg_shader_uniform_block_desc
 	images         [12]C.sg_shader_image_desc
 }
@@ -238,14 +238,14 @@ pub mut:
 
 pub struct C.sg_shader_uniform_desc {
 pub mut:
-	name        byteptr
+	name        &char
 	@type       UniformType
 	array_count int
 }
 
 pub struct C.sg_shader_image_desc {
 pub mut:
-	name  byteptr
+	name       &char
 	image_type ImageType
 }
 
@@ -284,7 +284,7 @@ pub mut:
 	_start_canary            u32
 	color_attachments        [4]C.sg_pass_attachment_desc
 	depth_stencil_attachment C.sg_pass_attachment_desc
-	label                    byteptr
+	label                    &char
 	_end_canary              u32
 }
 
@@ -316,14 +316,14 @@ pub mut:
 	@type         BufferType
 	usage         Usage
 	data          C.sg_range
-	label         byteptr
+	label         &char
 	// GL specific
-	gl_buffers    [2]u32
+	gl_buffers [2]u32
 	// Metal specific
-	mtl_buffers   [2]voidptr
+	mtl_buffers [2]voidptr
 	// D3D11 specific
-	d3d11_buffer  voidptr
-	_end_canary   u32
+	d3d11_buffer voidptr
+	_end_canary  u32
 }
 
 pub struct C.sg_buffer_info {
@@ -364,18 +364,18 @@ pub mut:
 	min_lod        f32
 	max_lod        f32
 	data           C.sg_image_data
-	label          byteptr
+	label          &char
 	// GL specific
-	gl_textures    [2]u32
+	gl_textures       [2]u32
 	gl_texture_target u32
 	// Metal specific
-	mtl_textures   [2]voidptr
+	mtl_textures [2]voidptr
 	// D3D11 specific
-	d3d11_texture  voidptr
+	d3d11_texture              voidptr
 	d3d11_shader_resource_view voidptr
 	// WebGPU specific
-    wgpu_texture   voidptr
-	_end_canary    u32
+	wgpu_texture voidptr
+	_end_canary  u32
 }
 
 pub struct C.sg_image_info {
@@ -397,7 +397,7 @@ pub fn (i C.sg_image) free() {
 
 pub struct C.sg_image_data {
 pub mut:
-	//subimage [C.SG_CUBEFACE_NUM][C.SG_MAX_MIPMAPS]C.sg_range
+	// subimage [C.SG_CUBEFACE_NUM][C.SG_MAX_MIPMAPS]C.sg_range
 	subimage [6][16]C.sg_range
 }
 
@@ -445,21 +445,21 @@ pub mut:
 }
 
 pub struct C.sg_stencil_state {
-	enabled bool
-	front C.sg_stencil_face_state
-	back C.sg_stencil_face_state
-	read_mask byte
+	enabled    bool
+	front      C.sg_stencil_face_state
+	back       C.sg_stencil_face_state
+	read_mask  byte
 	write_mask byte
-	ref byte
+	ref        byte
 }
 
 pub struct C.sg_depth_state {
-	pixel_format PixelFormat
-	compare CompareFunc
-	write_enabled bool
-	bias f32
+	pixel_format     PixelFormat
+	compare          CompareFunc
+	write_enabled    bool
+	bias             f32
 	bias_slope_scale f32
-	bias_clamp f32
+	bias_clamp       f32
 }
 
 pub struct C.sg_stencil_face_state {
@@ -471,13 +471,13 @@ pub struct C.sg_stencil_face_state {
 
 pub struct C.sg_blend_state {
 pub mut:
-	enabled                bool
-	src_factor_rgb         BlendFactor
-	dst_factor_rgb         BlendFactor
-	op_rgb                 BlendOp
-	src_factor_alpha       BlendFactor
-	dst_factor_alpha       BlendFactor
-	op_alpha               BlendOp
+	enabled          bool
+	src_factor_rgb   BlendFactor
+	dst_factor_rgb   BlendFactor
+	op_rgb           BlendOp
+	src_factor_alpha BlendFactor
+	dst_factor_alpha BlendFactor
+	op_alpha         BlendOp
 }
 
 pub struct C.sg_color_attachment_action {

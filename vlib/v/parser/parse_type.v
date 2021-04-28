@@ -83,14 +83,14 @@ pub fn (mut p Parser) parse_map_type() ast.Type {
 		// error is reported in parse_type
 		return 0
 	}
-	if is_alias && !(key_type in [ast.string_type_idx, ast.voidptr_type_idx]
-		|| ((key_type.is_int() || key_type.is_float()) && !key_type.is_ptr())) {
-		p.error('cannot use the alias type as the parent type is unsupported')
-		return 0
-	}
-	if !(key_type in [ast.string_type_idx, ast.voidptr_type_idx]
+	key_type_supported := key_type in [ast.string_type_idx, ast.voidptr_type_idx]
 		|| key_sym.kind == .enum_ || ((key_type.is_int() || key_type.is_float()
-		|| is_alias) && !key_type.is_ptr())) {
+		|| is_alias) && !key_type.is_ptr())
+	if !key_type_supported {
+		if is_alias {
+			p.error('cannot use the alias type as the parent type is unsupported')
+			return 0
+		}
 		s := p.table.type_to_str(key_type)
 		p.error_with_pos('maps only support string, integer, float, rune, enum or voidptr keys for now (not `$s`)',
 			p.tok.position())
@@ -359,7 +359,7 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 			return p.parse_multi_return_type()
 		}
 		else {
-			// no defer
+			// no p.next()
 			if name == 'map' {
 				return p.parse_map_type()
 			}
@@ -369,79 +369,80 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 			if name == 'thread' {
 				return p.parse_thread_type()
 			}
-			defer {
-				p.next()
-			}
+			mut ret := ast.Type(0)
 			if name == '' {
 				// This means the developer is using some wrong syntax like `x: int` instead of `x int`
 				p.error('expecting type declaration')
-				return 0
-			}
-			match name {
-				'voidptr' {
-					return ast.voidptr_type
-				}
-				'byteptr' {
-					return ast.byteptr_type
-				}
-				'charptr' {
-					return ast.charptr_type
-				}
-				'i8' {
-					return ast.i8_type
-				}
-				'i16' {
-					return ast.i16_type
-				}
-				'int' {
-					return ast.int_type
-				}
-				'i64' {
-					return ast.i64_type
-				}
-				'byte' {
-					return ast.byte_type
-				}
-				'u16' {
-					return ast.u16_type
-				}
-				'u32' {
-					return ast.u32_type
-				}
-				'u64' {
-					return ast.u64_type
-				}
-				'f32' {
-					return ast.f32_type
-				}
-				'f64' {
-					return ast.f64_type
-				}
-				'string' {
-					return ast.string_type
-				}
-				'char' {
-					return ast.char_type
-				}
-				'bool' {
-					return ast.bool_type
-				}
-				'float_literal' {
-					return ast.float_literal_type
-				}
-				'int_literal' {
-					return ast.int_literal_type
-				}
-				else {
-					if name.len == 1 && name[0].is_capital() {
-						return p.parse_generic_template_type(name)
+			} else {
+				match name {
+					'voidptr' {
+						ret = ast.voidptr_type
 					}
-					if p.peek_tok.kind == .lt {
-						return p.parse_generic_struct_inst_type(name)
+					'byteptr' {
+						ret = ast.byteptr_type
 					}
-					return p.parse_enum_or_struct_type(name, language)
+					'charptr' {
+						ret = ast.charptr_type
+					}
+					'i8' {
+						ret = ast.i8_type
+					}
+					'i16' {
+						ret = ast.i16_type
+					}
+					'int' {
+						ret = ast.int_type
+					}
+					'i64' {
+						ret = ast.i64_type
+					}
+					'byte' {
+						ret = ast.byte_type
+					}
+					'u16' {
+						ret = ast.u16_type
+					}
+					'u32' {
+						ret = ast.u32_type
+					}
+					'u64' {
+						ret = ast.u64_type
+					}
+					'f32' {
+						ret = ast.f32_type
+					}
+					'f64' {
+						ret = ast.f64_type
+					}
+					'string' {
+						ret = ast.string_type
+					}
+					'char' {
+						ret = ast.char_type
+					}
+					'bool' {
+						ret = ast.bool_type
+					}
+					'float_literal' {
+						ret = ast.float_literal_type
+					}
+					'int_literal' {
+						ret = ast.int_literal_type
+					}
+					else {
+						p.next()
+						if name.len == 1 && name[0].is_capital() {
+							return p.parse_generic_template_type(name)
+						}
+						if p.tok.kind == .lt {
+							return p.parse_generic_struct_inst_type(name)
+						}
+						return p.parse_enum_or_struct_type(name, language)
+					}
 				}
 			}
+			p.next()
+			return ret
 		}
 	}
 }
