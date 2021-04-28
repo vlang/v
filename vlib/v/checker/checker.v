@@ -6109,14 +6109,16 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 			typ = typ.set_nr_muls(0)
 		}
 	} else { // [1]
-		index_type := c.expr(node.index)
 		if typ_sym.kind == .map {
 			info := typ_sym.info as ast.Map
+			c.expected_type = info.key_type
+			index_type := c.expr(node.index)
 			if !c.check_types(index_type, info.key_type) {
 				err := c.expected_msg(index_type, info.key_type)
 				c.error('invalid key: $err', node.pos)
 			}
 		} else {
+			index_type := c.expr(node.index)
 			c.check_index(typ_sym, node.index, index_type, node.pos, false)
 		}
 		value_type := c.table.value_type(typ)
