@@ -1,5 +1,7 @@
 import net
 
+#include <afunix.h>
+
 struct C.sockaddr_in6 {
 	sin6_addr [16]byte
 }
