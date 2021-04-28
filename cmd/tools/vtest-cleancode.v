@@ -41,6 +41,7 @@ const (
 		'vlib/v/gen/js/tests/js.v', /* local `hello` fn, gets replaced with module `hello` aliased as `hl` */
 		'examples/c_interop_wkhtmltopdf.v', /* &charptr --> &&char */
 		'examples/path_tracing.v', /* block --> line comments corrupts code */
+		'vlib/v/gen/c/cheaders.v' /* infix wrapping error */,
 	]
 	vfmt_verify_list                = [
 		'cmd/',
