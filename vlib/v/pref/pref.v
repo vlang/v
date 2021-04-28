@@ -84,7 +84,6 @@ pub mut:
 	output_mode OutputMode = .stdout
 	// verbosity           VerboseLevel
 	is_verbose bool
-	is_watch   bool // -watch mode, implemented by cmd/tools/watch.v
 	// nofmt            bool   // disable vfmt
 	is_test           bool   // `v test string_test.v`
 	is_script         bool   // single file mode (`v program.v`), main function can be skipped
@@ -336,7 +335,11 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			'-shared' {
 				res.is_shared = true
 			}
-			'--enable-globals', '-enable-globals' {
+			'--enable-globals' {
+				eprintln('`--enable-globals` flag is deprecated, please use `-enable-globals` instead')
+				res.enable_globals = true
+			}
+			'-enable-globals' {
 				res.enable_globals = true
 			}
 			'-autofree' {
@@ -443,7 +446,8 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 				res.skip_warnings = true
 			}
 			'-watch' {
-				res.is_watch = true
+				eprintln('The -watch option is deprecated. Please use the watch command `v watch file.v` instead.')
+				exit(1)
 			}
 			'-print-v-files' {
 				res.print_v_files = true

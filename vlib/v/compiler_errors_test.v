@@ -75,9 +75,9 @@ fn test_all() {
 	tasks.add('', parser_dir, '-prod', '.out', parser_tests, false)
 	tasks.add('', checker_dir, '-prod', '.out', checker_tests, false)
 	tasks.add('', scanner_dir, '-prod', '.out', scanner_tests, false)
-	tasks.add('', checker_dir, '--enable-globals run', '.run.out', ['globals_error.vv'],
+	tasks.add('', checker_dir, '-enable-globals run', '.run.out', ['globals_error.vv'],
 		false)
-	tasks.add('', global_dir, '--enable-globals', '.out', global_tests, false)
+	tasks.add('', global_dir, '-enable-globals', '.out', global_tests, false)
 	tasks.add('', module_dir, '-prod run', '.out', module_tests, true)
 	tasks.add('', run_dir, 'run', '.run.out', run_tests, false)
 	tasks.run()
