@@ -140,7 +140,7 @@ pub fn get_str_intp_u64_format(fmt_type StrIntpType, in_width int, in_precision 
 }
 
 // convert from struct to formated string
-fn (data StrIntpData) get_fmt_from_u64_format1(mut sb &strings.Builder) {
+fn (data StrIntpData) get_fmt_from_u64_format(mut sb &strings.Builder) {
 	x              := data.fmt
 	typ            := StrIntpType(x & 0x1F)
 	allign         := int((x >> 5) & 0x01)
@@ -309,6 +309,7 @@ fn (data StrIntpData) get_fmt_from_u64_format1(mut sb &strings.Builder) {
 					d := fabs32(data.d.d_f32)
 					if d < 999_999.0 && d >= 0.00001 {
 						sb.write_string(strconv.format_fl(data.d.d_f32, bf))
+						return
 					}
 					sb.write_string(strconv.format_es(data.d.d_f32, bf))
 				}
@@ -321,6 +322,7 @@ fn (data StrIntpData) get_fmt_from_u64_format1(mut sb &strings.Builder) {
 					d := fabs64(data.d.d_f64)
 					if d < 999_999.0 && d >= 0.00001 {
 						sb.write_string(strconv.format_fl(data.d.d_f64, bf))
+						return
 					}
 					sb.write_string(strconv.format_es(data.d.d_f64, bf))
 				}
@@ -393,8 +395,8 @@ pub fn str_interpolation(data_len int, in_data voidptr) string {
 			//res += data.str
 			// skip only string records
 			if data.fmt != 0 {
-				data.get_fmt_from_u64_format1(mut &res)
-				//res += data.get_fmt_from_u64_format1()
+				data.get_fmt_from_u64_format(mut &res)
+				//res += data.get_fmt_from_u64_format()
 				//res.write_string(data.get_fmt_from_u64_format())
 			}
 			i++
