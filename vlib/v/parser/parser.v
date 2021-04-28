@@ -2987,7 +2987,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			decl_pos)
 		return ast.FnTypeDecl{}
 	}
-	mut sum_variants := []ast.SumTypeVariant{}
+	mut sum_variants := []ast.TypeNode{}
 	p.check(.assign)
 	mut type_pos := p.tok.position()
 	mut comments := []ast.Comment{}
@@ -3012,7 +3012,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		mut type_end_pos := p.prev_tok.position()
 		type_pos = type_pos.extend(type_end_pos)
 		p.next()
-		sum_variants << ast.SumTypeVariant{
+		sum_variants << {
 			typ: first_type
 			pos: type_pos
 		}
@@ -3024,7 +3024,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			prev_tok := p.prev_tok
 			type_end_pos = prev_tok.position()
 			type_pos = type_pos.extend(type_end_pos)
-			sum_variants << ast.SumTypeVariant{
+			sum_variants << {
 				typ: variant_type
 				pos: type_pos
 			}
