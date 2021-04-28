@@ -11,17 +11,17 @@ import vhelp
 import v.vmod
 
 const (
-	default_vpm_server_urls      = ['https://vpm.vlang.io']
-	valid_vpm_commands           = ['help', 'search', 'install', 'update', 'upgrade', 'outdated',
+	default_vpm_server_urls   = ['https://vpm.vlang.io']
+	valid_vpm_commands        = ['help', 'search', 'install', 'update', 'upgrade', 'outdated',
 		'list', 'remove']
-	excluded_dirs                = ['cache', 'vlib']
-	supported_vcs_systems        = ['git', 'hg']
-	supported_vcs_folders        = ['.git', '.hg']
-	supported_vcs_update_cmds    = map{
+	excluded_dirs             = ['cache', 'vlib']
+	supported_vcs_systems     = ['git', 'hg']
+	supported_vcs_folders     = ['.git', '.hg']
+	supported_vcs_update_cmds = map{
 		'git': 'git pull'
 		'hg':  'hg pull --update'
 	}
-	supported_vcs_install_cmds   = map{
+	supported_vcs_install_cmds = map{
 		'git': 'git clone --depth=1'
 		'hg':  'hg clone'
 	}
