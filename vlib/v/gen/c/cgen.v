@@ -3537,8 +3537,8 @@ fn (mut g Gen) infix_in_or_not_in(node ast.InfixExpr, left_sym ast.TypeSymbol, r
 	} else if right_sym.kind == .map {
 		g.write('_IN_MAP(')
 		if !node.left_type.is_ptr() {
-			left_type_str := g.table.type_to_str(node.left_type)
-			g.write('ADDR($left_type_str, ')
+			styp := g.typ(node.left_type)
+			g.write('ADDR($styp, ')
 			g.expr(node.left)
 			g.write(')')
 		} else {

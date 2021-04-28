@@ -30,8 +30,6 @@ const (
 		// TODOs and unfixed vfmt bugs
 		'vlib/builtin/int.v' /* TODO byteptr: vfmt converts `pub fn (nn byteptr) str() string {` to `nn &byte` and that conflicts with `nn byte` */,
 		'vlib/builtin/string_charptr_byteptr_helpers.v' /* TODO byteptr: a temporary shim to ease the byteptr=>&byte transition */,
-		'vlib/v/tests/array_append_short_struct_test.v', /* extra empty line */
-		'vlib/v/tests/fixed_array_const_size_test.v', /* fixed arr type is changed */
 		'vlib/v/tests/fn_high_test.v', /* param name removed */
 		'vlib/v/tests/fn_test.v', /* bad comment formatting */
 		'vlib/v/tests/generics_return_generics_struct_test.v', /* generic fn param removed */
