@@ -18,12 +18,55 @@ struct User {
 	skipped_string string [skip]
 }
 
-fn main() {
-	sqlite3()
-	mysql()
-	psql()
+struct Parent {
+	id int [primary; sql: serial]
+	name string
+	chields []Chield [fkey: 'parent_id']
 }
 
+struct Chield {
+	id int [primary; sql: serial]
+	parent_id int
+	name string
+}
+
+fn main() {
+	sqlite3_array()
+
+	/*sqlite3()
+	mysql()
+	psql()*/
+}
+
+fn sqlite3_array() {
+	mut db := sqlite.connect(':memory:') or { panic(err) }
+	sql db {
+		create table Parent
+	}
+
+	par := Parent{
+		name: 'test'
+		chields: [
+			Chield{
+				name: 'abc'
+			},
+			Chield{
+				name: 'def'
+			}
+		]
+	}
+
+	sql db {
+		insert par into Parent
+	}
+
+	parent := sql db {
+		select from Parent where id == 1
+	}
+
+	eprintln(parent)
+}
+/*
 fn sqlite3() {
 	mut db := sqlite.connect(':memory:') or { panic(err) }
 	sql db {
@@ -124,4 +167,4 @@ fn psql() {
 
 	eprintln(modul)
 	db.close()
-}
+}*/
