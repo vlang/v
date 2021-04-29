@@ -197,7 +197,7 @@ pub fn (mut p Parser) parse_fn_type(name string) ast.Type {
 	args, _, is_variadic := p.fn_args()
 	mut return_type := ast.void_type
 	if p.tok.line_nr == line_nr && p.tok.kind.is_start_of_type() {
-		return_type = p.parse_type()
+		return_type = p.parse_type_or_sum_type()
 	}
 	func := ast.Fn{
 		name: name
@@ -234,6 +234,28 @@ pub fn (mut p Parser) parse_language() ast.Language {
 		p.check(.dot)
 	}
 	return language
+}
+
+pub fn (mut p Parser) parse_type_or_sum_type() ast.Type {
+	mut pos := p.tok.position()
+	mut typ := p.parse_type()
+	if p.tok.kind != .pipe {
+		return typ
+	}
+	mut variants := [ast.SumTypeVariant{
+		typ: typ
+		pos: pos.extend(p.prev_tok.position())
+	}]
+	for p.tok.kind == .pipe {
+		p.next()
+		start_pos := p.tok.position()
+		next_typ := p.parse_type()
+		variants << ast.SumTypeVariant{
+			typ: next_typ
+			pos: start_pos.extend(p.prev_tok.position())
+		}
+	}
+	return p.table.find_or_register_sum_type(p.mod, variants)
 }
 
 pub fn (mut p Parser) parse_type() ast.Type {

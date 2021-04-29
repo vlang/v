@@ -327,7 +327,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	same_line := p.tok.line_nr == p.prev_tok.line_nr
 	if (p.tok.kind.is_start_of_type() && (same_line || p.tok.kind != .lsbr))
 		|| (same_line && p.tok.kind == .key_fn) {
-		return_type = p.parse_type()
+		return_type = p.parse_type_or_sum_type()
 		return_type_pos = return_type_pos.extend(p.prev_tok.position())
 	}
 	mut type_sym_method_idx := 0
@@ -632,7 +632,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	// lpar: multiple return types
 	if same_line {
 		if p.tok.kind.is_start_of_type() {
-			return_type = p.parse_type()
+			return_type = p.parse_type_or_sum_type()
 			return_type_pos = return_type_pos.extend(p.tok.position())
 		} else if p.tok.kind != .lcbr {
 			p.error_with_pos('expected return type, not $p.tok for anonymous function',
@@ -702,7 +702,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 	}
 	types_only := p.tok.kind in [.amp, .ellipsis, .key_fn, .lsbr]
 		|| (p.peek_tok.kind == .comma && p.table.known_type(argname))
-		|| p.peek_tok.kind == .dot || p.peek_tok.kind == .rpar
+		|| p.peek_tok.kind == .dot || p.peek_tok.kind == .pipe ||  p.peek_tok.kind == .rpar
 	// TODO copy pasta, merge 2 branches
 	if types_only {
 		mut arg_no := 1
@@ -722,7 +722,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 				is_variadic = true
 			}
 			pos := p.tok.position()
-			mut arg_type := p.parse_type()
+			mut arg_type := p.parse_type_or_sum_type()
 			if arg_type == 0 {
 				// error is added in parse_type
 				return []ast.Param{}, false, false
@@ -821,7 +821,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 				is_variadic = true
 			}
 			pos := p.tok.position()
-			mut typ := p.parse_type()
+			mut typ := p.parse_type_or_sum_type()
 			if typ == 0 {
 				// error is added in parse_type
 				return []ast.Param{}, false, false

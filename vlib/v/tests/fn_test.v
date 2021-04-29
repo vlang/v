@@ -43,6 +43,16 @@ type F6 = fn (int, int)
 
 type F7 = fn (time.Time, int)
 
+type SumF1 = fn (int | string)
+
+type SumF2 = fn (int | string, int | string)
+
+type SumF3 = fn (a int | string, b int | string)
+
+type SumF4 = fn (time.Time | string, int | string) int | string
+
+fn sumf5(int | string) int | string
+
 fn C.atoi(byteptr) int
 fn C.freec(ptr voidptr)
 
@@ -162,4 +172,26 @@ fn ff() fn () int {
 fn test_fn_return_fn() {
 	f := ff()
 	assert f() == 22
+}
+
+fn swap_int_str(v int | string) int | string {
+	match v {
+		int { return v.str() }
+		string { return v.int() }
+	}
+}
+
+fn test_sum_fn_call() {
+	v1 := swap_int_str(0)
+	if v1 is string {
+		assert v1 == '0'
+	} else {
+		assert false
+	}
+	v2 := swap_int_str('0')
+	if v2 is int {
+		assert v2 == 0
+	} else {
+		assert false
+	}
 }

@@ -843,6 +843,26 @@ pub fn (mut t Table) find_or_register_fn_type(mod string, f Fn, is_anon bool, ha
 	)
 }
 
+pub fn (mut t Table) find_or_register_sum_type(mod string, variants []SumTypeVariant) Type {
+	syms := variants.map(t.get_type_symbol(it.typ))
+	name := syms.map(it.name).join(' | ')
+	cname := syms.map(it.cname).join('_or_')
+	// existing
+	existing_idx := t.type_idxs[name]
+	if existing_idx > 0 {
+		return existing_idx
+	}
+	return t.register_type_symbol(
+		kind: .sum_type
+		name: name
+		cname: cname
+		mod: mod
+		info: SumType{
+			variants: variants.map(it.typ)
+		}
+	)
+}
+
 pub fn (mut t Table) add_placeholder_type(name string, language Language) int {
 	mut modname := ''
 	if name.contains('.') {
