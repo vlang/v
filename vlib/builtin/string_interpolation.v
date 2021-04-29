@@ -206,13 +206,10 @@ fn (data StrIntpData) get_fmt_from_u64_format(mut sb &strings.Builder) {
 			}
 			if width == 0 {
 				sb.write_string(d)
-				d.free()
 			} else {
-				n := strconv.format_str(d, bf)
-				d.free()
-				sb.write_string(n)
-				n.free()
+				strconv.format_str_sb(d, bf, mut sb)
 			}
+			d.free()
 			return
 		}
 	
@@ -225,7 +222,9 @@ fn (data StrIntpData) get_fmt_from_u64_format(mut sb &strings.Builder) {
 
 			if base == 0 {
 				if width == 0 {
+					o := d.str()
 					sb.write_string(d.str())
+					o.free()
 					return
 				}
 				if d < 0 { bf.positive = false }
