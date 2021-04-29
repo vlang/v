@@ -55,18 +55,16 @@ pub fn wrap_error(error_code int) ? {
 // e.g. res := wrap_read_result(C.recv(c.sock.handle, buf_ptr, len, 0))?
 [inline]
 fn wrap_read_result(result int) ?int {
-	if result > 0 || result < 0 {
-		return result
+	if result == 0 {
+		return none
 	}
-
-	return none
+	return result
 }
 
 [inline]
 fn wrap_write_result(result int) ?int {
-	if result > 0 || result < 0 {
-		return result
+	if result == 0 {
+		return none
 	}
-
-	return none
+	return result
 }
