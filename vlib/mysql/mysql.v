@@ -22,7 +22,7 @@ pub enum ConnectionFlag {
 // TODO: Documentation
 pub struct Connection {
 mut:
-	conn     &C.MYSQL = C.mysql_init(0)
+	conn &C.MYSQL = C.mysql_init(0)
 pub mut:
 	host     string = '127.0.0.1'
 	port     u32    = 3306
@@ -35,7 +35,7 @@ pub mut:
 // connect - create a new connection to the MySQL server.
 pub fn (mut conn Connection) connect() ?bool {
 	instance := C.mysql_init(conn.conn)
-	conn.conn = C.mysql_real_connect(conn.conn, conn.host.str, conn.username.str, conn.password.str,
+	conn.conn = C.mysql_real_connect(instance, conn.host.str, conn.username.str, conn.password.str,
 		conn.dbname.str, conn.port, 0, conn.flag)
 	if isnil(conn.conn) {
 		return error_with_code(get_error_msg(instance), get_errno(instance))
@@ -56,8 +56,8 @@ pub fn (mut conn Connection) query(q string) ?Result {
 
 // real_query - make an SQL query and receive the results.
 // `real_query()` can be used for statements containing binary data.
-// (Binary data may contain the `\0` character, which `query()` 
-// interprets as the end of the statement string). In addition, 
+// (Binary data may contain the `\0` character, which `query()`
+// interprets as the end of the statement string). In addition,
 // `real_query()` is faster than `query()`.
 pub fn (mut conn Connection) real_query(q string) ?Result {
 	if C.mysql_real_query(conn.conn, q.str, q.len) != 0 {
@@ -122,13 +122,13 @@ pub fn (conn &Connection) tables(wildcard string) ?[]string {
 }
 
 // escape_string - creates a legal SQL string for use in an SQL statement.
-// The `s` argument is encoded to produce an escaped SQL string, 
-// taking into account the current character set of the connection. 
+// The `s` argument is encoded to produce an escaped SQL string,
+// taking into account the current character set of the connection.
 pub fn (conn &Connection) escape_string(s string) string {
 	unsafe {
 		to := malloc(2 * s.len + 1)
 		C.mysql_real_escape_string_quote(conn.conn, to, s.str, s.len, `\'`)
-		return to.vstring() 
+		return to.vstring()
 	}
 }
 
@@ -149,7 +149,7 @@ pub fn (conn &Connection) get_option(option_type int) ?voidptr {
 	return ret
 }
 
-// refresh - flush the tables or caches, or resets replication server 
+// refresh - flush the tables or caches, or resets replication server
 // information. The connected user must have the `RELOAD` privilege.
 pub fn (mut conn Connection) refresh(options u32) ?bool {
 	if C.mysql_refresh(conn.conn, options) != 0 {
@@ -166,7 +166,7 @@ pub fn (mut conn Connection) reset() ?bool {
 	return true
 }
 
-// ping - pings a server connection, or tries to reconnect if the connection 
+// ping - pings a server connection, or tries to reconnect if the connection
 // has gone down.
 pub fn (mut conn Connection) ping() ?bool {
 	if C.mysql_ping(conn.conn) != 0 {
