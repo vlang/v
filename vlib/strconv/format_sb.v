@@ -8,7 +8,7 @@ This file contains string interpolation V functions
 module strconv
 import strings
 
-// builder version of format_str
+// strings.Builder version of format_str
 pub fn format_str_sb(s string, p BF_param, mut sb strings.Builder) {
 	if p.len0 <= 0 {
 		//return s.clone()
@@ -35,7 +35,7 @@ pub fn format_str_sb(s string, p BF_param, mut sb strings.Builder) {
 }
 
 
-// string builder version of format_dec
+// strings.Builder version of format_dec
 [manualfree]
 pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
 	mut s := ""
