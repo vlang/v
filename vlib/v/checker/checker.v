@@ -350,6 +350,9 @@ pub fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 		} else if sym.kind == .interface_ {
 			c.error('sum type cannot hold an interface', variant.pos)
 		}
+		if sym.name.trim_prefix(sym.mod + '.') == node.name {
+			c.error('sum type cannot hold itself', variant.pos)
+		}
 		names_used << sym.name
 	}
 }
@@ -1109,7 +1112,8 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) ast.Type {
 		c.error('unwrapped optional cannot be used in an infix expression', left_right_pos)
 	}
 	// Dual sides check (compatibility check)
-	if !c.symmetric_check(right_type, left_type) && !c.pref.translated {
+	if !(c.symmetric_check(left_type, right_type) && c.symmetric_check(right_type, left_type))
+		&& !c.pref.translated {
 		// for type-unresolved consts
 		if left_type == ast.void_type || right_type == ast.void_type {
 			return ast.void_type
