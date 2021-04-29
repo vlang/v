@@ -22,8 +22,10 @@ pub fn (mut p Parser) parse_array_type() ast.Type {
 					if const_field.expr is ast.IntegerLiteral {
 						fixed_size = const_field.expr.val.int()
 					} else {
-						p.error_with_pos('non-constant array bound `$size_expr.name`',
-							size_expr.pos)
+						if !p.pref.is_fmt {
+							p.error_with_pos('non-constant array bound `$size_expr.name`',
+								size_expr.pos)
+						}
 					}
 				} else {
 					if p.pref.is_fmt {
