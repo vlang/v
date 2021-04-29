@@ -350,6 +350,9 @@ pub fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 		} else if sym.kind == .interface_ {
 			c.error('sum type cannot hold an interface', variant.pos)
 		}
+		if sym.name.trim_prefix(sym.mod + '.') == node.name {
+			c.error('sum type cannot hold itself', variant.pos)
+		}
 		names_used << sym.name
 	}
 }
@@ -1109,7 +1112,8 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) ast.Type {
 		c.error('unwrapped optional cannot be used in an infix expression', left_right_pos)
 	}
 	// Dual sides check (compatibility check)
-	if !c.symmetric_check(right_type, left_type) && !c.pref.translated {
+	if !(c.symmetric_check(left_type, right_type) && c.symmetric_check(right_type, left_type))
+		&& !c.pref.translated {
 		// for type-unresolved consts
 		if left_type == ast.void_type || right_type == ast.void_type {
 			return ast.void_type
@@ -1523,7 +1527,7 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 		}
 	}
 	if has_generic {
-		c.table.register_fn_generic_types(call_expr.name, concrete_types)
+		c.table.register_fn_concrete_types(call_expr.name, concrete_types)
 	}
 	// TODO: remove this for actual methods, use only for compiler magic
 	// FIXME: Argument count != 1 will break these
@@ -1988,9 +1992,9 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 	if has_generic {
 		if c.mod != '' && !fn_name.starts_with('${c.mod}.') {
 			// Need to prepend the module when adding a generic type to a function
-			c.table.register_fn_generic_types(c.mod + '.' + fn_name, concrete_types)
+			c.table.register_fn_concrete_types(c.mod + '.' + fn_name, concrete_types)
 		} else {
-			c.table.register_fn_generic_types(fn_name, concrete_types)
+			c.table.register_fn_concrete_types(fn_name, concrete_types)
 		}
 	}
 	if fn_name == 'json.encode' {
@@ -3448,7 +3452,8 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) ast.Type {
 			}
 		}
 		if array_init.is_fixed {
-			idx := c.table.find_or_register_array_fixed(elem_type, array_init.exprs.len)
+			idx := c.table.find_or_register_array_fixed(elem_type, array_init.exprs.len,
+				ast.EmptyExpr{})
 			if elem_type.has_flag(.generic) {
 				array_init.typ = ast.new_type(idx).set_flag(.generic)
 			} else {
@@ -3494,7 +3499,8 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) ast.Type {
 		if fixed_size <= 0 {
 			c.error('fixed size cannot be zero or negative', init_expr.position())
 		}
-		idx := c.table.find_or_register_array_fixed(array_init.elem_type, fixed_size)
+		idx := c.table.find_or_register_array_fixed(array_init.elem_type, fixed_size,
+			init_expr)
 		if array_init.elem_type.has_flag(.generic) {
 			array_init.typ = ast.new_type(idx).set_flag(.generic)
 		} else {
@@ -6122,14 +6128,16 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 			typ = typ.set_nr_muls(0)
 		}
 	} else { // [1]
-		index_type := c.expr(node.index)
 		if typ_sym.kind == .map {
 			info := typ_sym.info as ast.Map
+			c.expected_type = info.key_type
+			index_type := c.expr(node.index)
 			if !c.check_types(index_type, info.key_type) {
 				err := c.expected_msg(index_type, info.key_type)
 				c.error('invalid key: $err', node.pos)
 			}
 		} else {
+			index_type := c.expr(node.index)
 			c.check_index(typ_sym, node.index, index_type, node.pos, false)
 		}
 		value_type := c.table.value_type(typ)

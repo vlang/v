@@ -3,6 +3,7 @@ module main
 import os
 import time
 import term
+import flag
 
 const scan_timeout_s = 5 * 60
 
@@ -37,7 +38,7 @@ const max_scan_cycles = scan_timeout_s * scan_frequency_hz
 //   workers, thus it does not leak much.
 //
 //   b) A worker process, doing the actual monitoring/polling.
-//    NB: *workers are started with the -vwatchworker option*
+//    NB: *workers are started with the --vwatchworker option*
 //
 //    Worker processes will run for a limited number of iterations, then
 // they will do exit(255), and then the parent will start a new worker.
@@ -259,15 +260,38 @@ fn main() {
 	mut context := unsafe { &Context(voidptr(&ccontext)) }
 	context.pid = os.getpid()
 	context.vexe = os.getenv('VEXE')
-	context.is_worker = os.args.contains('-vwatchworker')
-	context.clear_terminal = os.getenv('VWATCH_CLEAR_TERMINAL') != ''
-	context.add_files = os.getenv('VWATCH_ADD_FILES').split(',')
-	context.ignore_exts = os.getenv('VWATCH_IGNORE_EXTENSIONS').split(',')
-	context.opts = os.args[1..].filter(it != '-vwatchworker')
+
+	mut fp := flag.new_flag_parser(os.args[1..])
+	fp.application('v watch')
+	if os.args[1] == 'watch' {
+		fp.skip_executable()
+	}
+	fp.version('0.0.2')
+	fp.description('Collect all .v files needed for a compilation, then re-run the compilation when any of the source changes.')
+	fp.arguments_description('[--clear] [--ignore .db] [--add /path/to/a/file.v] [run] program.v')
+	fp.allow_unknown_args()
+	fp.limit_free_args_to_at_least(1)
+	context.is_worker = fp.bool('vwatchworker', 0, false, 'Internal flag. Used to distinguish vwatch manager and worker processes.')
+	context.clear_terminal = fp.bool('clear', `c`, false, 'Clears the terminal before each re-run.')
+	context.add_files = fp.string('add', `a`, '', 'Add more files to be watched. Useful with `v watch -add=/tmp/feature.v run cmd/v /tmp/feature.v`, when you want to change *both* the compiler, and the feature.v file.').split(',')
+	context.ignore_exts = fp.string('ignore', `i`, '', 'Ignore files having these extensions. Useful with `v watch -ignore=.db run server.v`, if your server writes to an sqlite.db file in the same folder.').split(',')
+	show_help := fp.bool('help', `h`, false, 'Show this help screen.')
+	if show_help {
+		println(fp.usage())
+		exit(0)
+	}
+	remaining_options := fp.finalize() or {
+		eprintln('Error: $err')
+		exit(1)
+	}
+	context.opts = remaining_options
 	context.elog('>>> context.pid: $context.pid')
 	context.elog('>>> context.vexe: $context.vexe')
 	context.elog('>>> context.opts: $context.opts')
 	context.elog('>>> context.is_worker: $context.is_worker')
+	context.elog('>>> context.clear_terminal: $context.clear_terminal')
+	context.elog('>>> context.add_files: $context.add_files')
+	context.elog('>>> context.ignore_exts: $context.ignore_exts')
 	if context.is_worker {
 		context.worker_main()
 	} else {
@@ -277,8 +301,8 @@ fn main() {
 
 fn (mut context Context) manager_main() {
 	myexecutable := os.executable()
-	mut worker_opts := ['-vwatchworker']
-	worker_opts << context.opts
+	mut worker_opts := ['--vwatchworker']
+	worker_opts << os.args[2..]
 	for {
 		mut worker_process := os.new_process(myexecutable)
 		worker_process.set_args(worker_opts)

@@ -642,7 +642,7 @@ pub fn (mut p Parser) eat_comments(cfg EatCommentsConfig) []ast.Comment {
 	mut comments := []ast.Comment{}
 	for {
 		if p.tok.kind != .comment || (cfg.same_line && p.tok.line_nr > line)
-			|| (cfg.follow_up && p.tok.line_nr > line + 1) {
+			|| (cfg.follow_up && (p.tok.line_nr > line + 1 || p.tok.lit.contains('\n'))) {
 			break
 		}
 		comments << p.comment()
@@ -2237,10 +2237,10 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		concrete_list_pos = concrete_list_pos.extend(p.prev_tok.position())
 		// In case of `foo<T>()`
 		// T is unwrapped and registered in the checker.
-		has_generic_generic := concrete_types.filter(it.has_flag(.generic)).len > 0
-		if !has_generic_generic {
+		has_generic := concrete_types.filter(it.has_flag(.generic)).len > 0
+		if !has_generic {
 			// will be added in checker
-			p.table.register_fn_generic_types(field_name, concrete_types)
+			p.table.register_fn_concrete_types(field_name, concrete_types)
 		}
 	}
 	if p.tok.kind == .lpar {
@@ -2987,7 +2987,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			decl_pos)
 		return ast.FnTypeDecl{}
 	}
-	mut sum_variants := []ast.SumTypeVariant{}
+	mut sum_variants := []ast.TypeNode{}
 	p.check(.assign)
 	mut type_pos := p.tok.position()
 	mut comments := []ast.Comment{}
@@ -3012,7 +3012,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		mut type_end_pos := p.prev_tok.position()
 		type_pos = type_pos.extend(type_end_pos)
 		p.next()
-		sum_variants << ast.SumTypeVariant{
+		sum_variants << {
 			typ: first_type
 			pos: type_pos
 		}
@@ -3024,7 +3024,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			prev_tok := p.prev_tok
 			type_end_pos = prev_tok.position()
 			type_pos = type_pos.extend(type_end_pos)
-			sum_variants << ast.SumTypeVariant{
+			sum_variants << {
 				typ: variant_type
 				pos: type_pos
 			}

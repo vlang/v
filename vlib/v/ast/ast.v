@@ -29,7 +29,7 @@ pub type ScopeObject = AsmRegister | ConstField | GlobalField | Var
 // TODO: replace Param
 pub type Node = CallArg | ConstField | EmptyNode | EnumField | Expr | File | GlobalField |
 	IfBranch | MatchBranch | NodeError | Param | ScopeObject | SelectBranch | Stmt | StructField |
-	StructInitField | SumTypeVariant
+	StructInitField
 
 pub struct TypeNode {
 pub:
@@ -952,13 +952,7 @@ pub:
 	comments []Comment
 	typ      Type
 pub mut:
-	variants []SumTypeVariant
-}
-
-pub struct SumTypeVariant {
-pub:
-	typ Type
-	pos token.Position
+	variants []TypeNode
 }
 
 pub struct FnTypeDecl {
@@ -1189,7 +1183,7 @@ pub:
 pub const (
 	// reference: https://en.wikipedia.org/wiki/X86#/media/File:Table_of_x86_Registers_svg.svg
 	// map register size -> register name
-	x86_no_number_register_list   = map{
+	x86_no_number_register_list = map{
 		8:  ['al', 'ah', 'bl', 'bh', 'cl', 'ch', 'dl', 'dh', 'bpl', 'sil', 'dil', 'spl']
 		16: ['ax', 'bx', 'cx', 'dx', 'bp', 'si', 'di', 'sp', /* segment registers */ 'cs', 'ss',
 			'ds', 'es', 'fs', 'gs', 'flags', 'ip', /* task registers */ 'gdtr', 'idtr', 'tr', 'ldtr',
@@ -1661,8 +1655,7 @@ pub fn (node Node) position() token.Position {
 		StructField {
 			return node.pos.extend(node.type_pos)
 		}
-		MatchBranch, SelectBranch, EnumField, ConstField, StructInitField, GlobalField, CallArg,
-		SumTypeVariant {
+		MatchBranch, SelectBranch, EnumField, ConstField, StructInitField, GlobalField, CallArg {
 			return node.pos
 		}
 		Param {
@@ -1810,7 +1803,7 @@ pub fn (node Node) children() []Node {
 			}
 			TypeDecl {
 				if node is SumTypeDecl {
-					children << node.variants.map(Node(it))
+					children << node.variants.map(Node(Expr(it)))
 				}
 			}
 			else {}

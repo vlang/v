@@ -6,10 +6,10 @@ enum Token {
 
 fn test_map_with_enum_keys() {
 	mut m := map[Token]string{}
-	m[Token.aa] = 'abc'
+	m[.aa] = 'abc'
 	m[Token.bb] = 'def'
 	assert m[Token.aa] == 'abc'
-	assert m[Token.bb] == 'def'
+	assert m[.bb] == 'def'
 	//
 	s := '$m'
 	assert s == "{aa: 'abc', bb: 'def'}"

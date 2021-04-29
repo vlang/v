@@ -83,7 +83,7 @@ fn (mut g Gen) sql_drop_table(node ast.SqlStmtLine, expr ast.Expr) {
 			g.mysql_drop_table(node, typ, expr)
 		}
 		.psql {
-			g.psql_create_table(node, typ, expr)
+			g.psql_drop_table(node, typ, expr)
 		}
 		else {
 			verror('This database type `$typ` is not implemented yet in orm') // TODO add better error
@@ -101,13 +101,16 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr, sub bool, line string) {
 		.mysql {
 			g.mysql_select_expr(node, sub, line, typ)
 		}
+		.psql {
+			g.psql_select_expr(node, sub, line, typ)
+		}
 		else {
 			verror('This database type `$typ` is not implemented yet in orm') // TODO add better error
 		}
 	}
 }
 
-fn (mut g Gen) sql_bind(val string, len string, real_type ast.Type, typ SqlType, data []string) {
+fn (mut g Gen) sql_bind(val string, len string, real_type ast.Type, typ SqlType) {
 	match typ {
 		.sqlite3 {
 			g.sqlite3_bind(val, len, real_type)
@@ -116,7 +119,7 @@ fn (mut g Gen) sql_bind(val string, len string, real_type ast.Type, typ SqlType,
 			g.mysql_bind(val, real_type)
 		}
 		.psql {
-			g.psql_bind(val, data, real_type)
+			g.psql_bind(val, real_type)
 		}
 		else {}
 	}
@@ -217,7 +220,7 @@ fn (mut g Gen) sqlite3_select_expr(node ast.SqlExpr, sub bool, line string, sql_
 	g.writeln(';')
 	stmt_name := g.new_tmp_var()
 	g.write('string $stmt_name = _SLIT("')
-	g.write(g.get_base_sql_select_query(node))
+	g.write(g.get_base_sql_select_query(node, sql_typ))
 	g.sql_expr_defaults(node, sql_typ)
 	g.writeln('");')
 	// g.write('sqlite3_stmt* $g.sql_stmt_name = ${dbtype}__DB_init_stmt(*(${dbtype}__DB*)${node.db_var_name}.data, _SLIT("$sql_query')
@@ -477,7 +480,7 @@ fn (mut g Gen) mysql_select_expr(node ast.SqlExpr, sub bool, line string, typ Sq
 	g.sql_idents = []string{}
 	g.sql_idents_types = []ast.Type{}
 	g.write('char* ${stmt_name}_raw = "')
-	g.write(g.get_base_sql_select_query(node))
+	g.write(g.get_base_sql_select_query(node, typ))
 	g.sql_expr_defaults(node, typ)
 	g.writeln('";')
 	g.writeln('string $stmt_name = tos_clone(${stmt_name}_raw);')
@@ -612,6 +615,7 @@ fn (mut g Gen) mysql_select_expr(node ast.SqlExpr, sub bool, line string, typ Sq
 		}
 		if node.is_array {
 			g.writeln('\t array_push((array*)&${tmp}_array, _MOV(($elem_type_str[]) { $tmp }));')
+			g.writeln('\t $fields = mysql_fetch_row($res);')
 			g.writeln('}')
 		}
 		g.writeln('string_free(&$stmt_name);')
@@ -744,29 +748,22 @@ fn (mut g Gen) mysql_buffer_typ_from_field(field ast.StructField) (string, strin
 fn (mut g Gen) psql_stmt(node ast.SqlStmtLine, typ SqlType, db_expr ast.Expr) {
 	g.sql_i = 0
 	g.sql_idents = []string{}
-	param_values := g.new_tmp_var()
-	param_lens := g.new_tmp_var()
-	param_formats := g.new_tmp_var()
 	g.writeln('\n\t//psql insert')
 	db_name := g.new_tmp_var()
 	g.sql_stmt_name = g.new_tmp_var()
 	g.write('pg__DB $db_name = ')
 	g.expr(db_expr)
 	g.writeln(';')
-	stmt_name := g.new_tmp_var()
-	g.write('string $stmt_name = _SLIT("')
-	g.sql_defaults(node, typ, param_values, param_lens, param_formats)
+	g.write('string $g.sql_stmt_name = _SLIT("')
+	g.sql_defaults(node, typ)
 	g.writeln(';')
-
-	g.writeln('char *$param_values[$g.sql_i]; //param values')
-	g.writeln('int $param_lens[$g.sql_i]; //param lens')
-	g.writeln('int $param_formats[$g.sql_i]; // param formats')
 
 	if node.kind == .insert {
 		for i, field in node.fields {
 			if g.get_sql_field_type(field) == ast.Type(-1) {
 				continue
 			}
+			g.sql_i = i
 			g.writeln('//$field.name ($field.typ)')
 			x := '${node.object_var_name}.$field.name'
 			field_type := g.get_sql_field_type(field)
@@ -780,21 +777,15 @@ fn (mut g Gen) psql_stmt(node ast.SqlStmtLine, typ SqlType, db_expr ast.Expr) {
 				g.sql_table_name = tmp_sql_table_name
 
 				res := g.new_tmp_var()
-				g.write('Option_int $res = pg__DB_q_int($db_name, _SLIT("SELECT LASTVAL();"));')
+				g.writeln('Option_pg__Row $res = pg__DB_exec_one($db_name, _SLIT("SELECT LASTVAL();"));')
 				g.writeln('if (${res}.state != 0) { IError err = ${res}.err; eprintln(_STR("\\000%.*s", 2, IError_str(err))); }')
 				g.sql_buf = strings.new_builder(100)
-				g.sql_bind('${res}.data', '', ast.int_type, typ, [
-					(i - 1).str(),
-					param_values,
-					param_lens,
-					param_formats,
-				])
+				g.sql_bind('string_int((*(string*)array_get((*(pg__Row*)${res}.data).vals, 0)))',
+					'', ast.int_type, typ)
 				g.writeln(g.sql_buf.str())
 			} else {
 				g.sql_buf = strings.new_builder(100)
-				g.sql_bind(x, '', field_type, typ, [(i - 1).str(), param_values, param_lens,
-					param_formats,
-				])
+				g.sql_bind(x, '', field_type, typ)
 				g.writeln(g.sql_buf.str())
 			}
 		}
@@ -803,10 +794,129 @@ fn (mut g Gen) psql_stmt(node ast.SqlStmtLine, typ SqlType, db_expr ast.Expr) {
 	g.sql_buf = strings.new_builder(100)
 	g.writeln(binds)
 
+	g.writeln('pg__DB_exec($db_name, $g.sql_stmt_name);')
+}
+
+fn (mut g Gen) psql_select_expr(node ast.SqlExpr, sub bool, line string, typ SqlType) {
+	g.sql_i = 0
+	mut cur_line := line
+	if !sub {
+		cur_line = g.go_before_stmt(0)
+	}
+	g.sql_stmt_name = g.new_tmp_var()
+	db_name := g.new_tmp_var()
+	g.writeln('\n\t// psql select')
+	g.write('pg__DB $db_name = ')
+	g.expr(node.db_expr)
+	g.writeln(';')
+
+	g.write('string $g.sql_stmt_name = _SLIT("')
+	g.write(g.get_base_sql_select_query(node, typ))
+	g.sql_expr_defaults(node, typ)
+	g.writeln('");')
+
+	buf := g.sql_buf.str()
+	g.sql_buf = strings.new_builder(100)
+	g.writeln(buf)
+
 	res := g.new_tmp_var()
-	g.writeln('PGresult * $res = PQexecParams(${db_name}.conn, ${stmt_name}.str, $g.sql_i, 0, $param_values, $param_lens, $param_formats, 0);')
-	g.writeln('Option_Array_pg__Row ${res}_rows = pg__DB_handle_error_or_result($db_name, $res, _SLIT("$stmt_name"));')
-	g.writeln('if (${res}_rows.state != 0) { IError err = ${res}_rows.err; eprintln(_STR("\\000%.*s", 2, IError_str(err))); }')
+	g.writeln('Option_Array_pg__Row $res = pg__DB_exec($db_name, $g.sql_stmt_name);')
+	g.writeln('if (${res}.state != 0) { IError err = ${res}.err; eprintln(_STR("Something went wrong\\000%.*s", 2, IError_str(err))); }')
+
+	rows := g.new_tmp_var()
+
+	g.writeln('Array_pg__Row $rows = *(Array_pg__Row*) ${res}.data;')
+
+	if node.is_count {
+		g.writeln('$cur_line string_int((*(string*)array_get(array_get($rows, 0).vals), 0)));')
+	} else {
+		tmp := g.new_tmp_var()
+		styp := g.typ(node.typ)
+		tmp_i := g.new_tmp_var()
+		mut elem_type_str := ''
+		g.writeln('int $tmp_i = 0;')
+		if node.is_array {
+			array_sym := g.table.get_type_symbol(node.typ)
+			array_info := array_sym.info as ast.Array
+			elem_type_str = g.typ(array_info.elem_type)
+			g.writeln('$styp ${tmp}_array = __new_array(0, 10, sizeof($elem_type_str));')
+			g.writeln('for ($tmp_i = 0; $tmp_i < ${rows}.len; $tmp_i++) {')
+			g.writeln('\t$elem_type_str $tmp = ($elem_type_str) {')
+			//
+			sym := g.table.get_type_symbol(array_info.elem_type)
+			info := sym.info as ast.Struct
+			for i, field in info.fields {
+				g.zero_struct_field(field)
+				if i != info.fields.len - 1 {
+					g.write(', ')
+				}
+			}
+			g.writeln('};')
+		} else {
+			g.writeln('$styp $tmp = ($styp){')
+			sym := g.table.get_type_symbol(node.typ)
+			info := sym.info as ast.Struct
+			for i, field in info.fields {
+				g.zero_struct_field(field)
+				if i != info.fields.len - 1 {
+					g.write(', ')
+				}
+			}
+			g.writeln('};')
+		}
+		fields := g.new_tmp_var()
+		g.writeln('Array_string $fields = (*(pg__Row*) array_get($rows, $tmp_i)).vals;')
+		fld := g.new_tmp_var()
+		g.writeln('string $fld;')
+		for i, field in node.fields {
+			g.writeln('$fld = (*(string*)array_get($fields, $i));')
+			name := g.table.get_type_symbol(field.typ).cname
+
+			if g.table.get_type_symbol(field.typ).kind == .struct_ {
+				g.writeln('//parse struct start')
+
+				mut expr := node.sub_structs[int(field.typ)]
+				mut where_expr := expr.where_expr as ast.InfixExpr
+				mut ident := where_expr.right as ast.Ident
+
+				ident.name = '$fld'
+				where_expr.right = ident
+				expr.where_expr = where_expr
+
+				tmp_sql_i := g.sql_i
+				tmp_sql_stmt_name := g.sql_stmt_name
+				tmp_sql_buf := g.sql_buf
+				tmp_sql_table_name := g.sql_table_name
+
+				g.sql_select_expr(expr, true, '\t${tmp}.$field.name =')
+				g.writeln('//parse struct end')
+				g.sql_stmt_name = tmp_sql_stmt_name
+				g.sql_buf = tmp_sql_buf
+				g.sql_i = tmp_sql_i
+				g.sql_table_name = tmp_sql_table_name
+			} else if field.typ == ast.string_type {
+				g.writeln('${tmp}.$field.name = $fld;')
+			} else if field.typ == ast.byte_type {
+				g.writeln('${tmp}.$field.name = (byte) string_${name}($fld);')
+			} else if field.typ == ast.i8_type {
+				g.writeln('${tmp}.$field.name = (i8) string_${name}($fld);')
+			} else if field.typ == ast.bool_type {
+				g.writeln('${tmp}.$field.name = string_eq($fld, _SLIT("0")) ? false : true;')
+			} else {
+				g.writeln('${tmp}.$field.name = string_${name}($fld);')
+			}
+		}
+		if node.is_array {
+			g.writeln('\t array_push((array*)&${tmp}_array, _MOV(($elem_type_str[]) { $tmp }));')
+			g.writeln('}')
+		}
+		g.writeln('string_free(&$g.sql_stmt_name);')
+		if node.is_array {
+			g.writeln('$cur_line ${tmp}_array; ')
+		} else {
+			g.writeln('$cur_line $tmp; ')
+		}
+	}
 }
 
 fn (mut g Gen) psql_create_table(node ast.SqlStmtLine, typ SqlType, db_expr ast.Expr) {
@@ -822,9 +932,10 @@ fn (mut g Gen) psql_create_table(node ast.SqlStmtLine, typ SqlType, db_expr ast.
 fn (mut g Gen) psql_drop_table(node ast.SqlStmtLine, typ SqlType, db_expr ast.Expr) {
 	table_name := g.get_table_name(node.table_expr)
 	g.writeln('// psql table drop')
-	drop_string := 'DROP TABLE "$table_name";'
+	lit := '\\"'
+	drop_string := 'DROP TABLE $lit$table_name$lit;'
 	tmp := g.new_tmp_var()
-	g.write('Option_Array_pg__Row $tmp = pg__DB_exec(&')
+	g.write('Option_Array_pg__Row $tmp = pg__DB_exec(')
 	g.expr(db_expr)
 	g.writeln(', _SLIT("$drop_string"));')
 	g.writeln('if (${tmp}.state != 0) { IError err = ${tmp}.err; eprintln(_STR("Something went wrong\\000%.*s", 2, IError_str(err))); }')
@@ -862,39 +973,40 @@ fn (mut g Gen) psql_get_table_type(typ ast.Type) string {
 	return table_typ
 }
 
-fn (mut g Gen) psql_bind(val string, data []string, typ ast.Type) {
-	tmp := g.new_tmp_var()
-	g.sql_idents << tmp
-	g.sql_buf.write_string('char* $tmp = ')
-	if typ.is_number() {
-		g.sql_buf.writeln('(char *) htonl($val);')
-		g.sql_buf.writeln('\t${data[1]}[${data[0]}] = &$tmp;')
-		g.sql_buf.writeln('\t${data[2]}[${data[0]}] = sizeof($tmp);')
-		g.sql_buf.writeln('\t${data[3]}[${data[0]}] = 1;')
-	} else if typ.is_string() {
-		g.sql_buf.writeln('(char *) ${val}.str;')
-		g.sql_buf.writeln('\t${data[1]}[${data[0]}] = &$tmp;')
-		g.sql_buf.writeln('\t${data[2]}[${data[0]}] = 0;')
-		g.sql_buf.writeln('\t${data[3]}[${data[0]}] = 0;')
+fn (mut g Gen) psql_bind(val string, typ ast.Type) {
+	mut sym := g.table.get_type_symbol(typ).cname
+	g.sql_buf.write_string('$g.sql_stmt_name = string_replace($g.sql_stmt_name, _SLIT("\$$g.sql_i"), ')
+	if sym != 'string' {
+		mut num := false
+		if sym != 'bool' {
+			num = true
+			g.sql_buf.write_string('${sym}_str(')
+		}
+		g.sql_buf.write_string('(($sym) $val)')
+
+		if sym == 'bool' {
+			g.sql_buf.write_string('? _SLIT("1") : _SLIT("0")')
+		}
+
+		if num {
+			g.sql_buf.write_string(')')
+		}
 	} else {
-		g.sql_buf.writeln('(char *) htonl(0);')
-		g.sql_buf.writeln('if ($val) { $tmp = (char *) htonl(1); }')
-		g.sql_buf.writeln('\t${data[1]}[${data[0]}] = &$tmp;')
-		g.sql_buf.writeln('\t${data[2]}[${data[0]}] = sizeof($tmp);')
-		g.sql_buf.writeln('\t${data[3]}[${data[0]}] = 1;')
+		g.sql_buf.write_string('string_add(_SLIT("\'"), string_add(((string) $val), _SLIT("\'")))')
 	}
+	g.sql_buf.writeln(');')
 }
 
 // utils
 
 fn (mut g Gen) sql_expr_defaults(node ast.SqlExpr, sql_typ SqlType) {
 	if node.has_where && node.where_expr is ast.InfixExpr {
-		g.expr_to_sql(node.where_expr, sql_typ, [])
+		g.expr_to_sql(node.where_expr, sql_typ)
 	}
 	if node.has_order {
 		g.write(' ORDER BY ')
 		g.sql_side = .left
-		g.expr_to_sql(node.order_expr, sql_typ, [])
+		g.expr_to_sql(node.order_expr, sql_typ)
 		if node.has_desc {
 			g.write(' DESC ')
 		}
@@ -904,30 +1016,34 @@ fn (mut g Gen) sql_expr_defaults(node ast.SqlExpr, sql_typ SqlType) {
 	if node.has_limit {
 		g.write(' LIMIT ')
 		g.sql_side = .right
-		g.expr_to_sql(node.limit_expr, sql_typ, [])
+		g.expr_to_sql(node.limit_expr, sql_typ)
 	}
 	if node.has_offset {
 		g.write(' OFFSET ')
 		g.sql_side = .right
-		g.expr_to_sql(node.offset_expr, sql_typ, [])
+		g.expr_to_sql(node.offset_expr, sql_typ)
 	}
 }
 
-fn (mut g Gen) get_base_sql_select_query(node ast.SqlExpr) string {
+fn (mut g Gen) get_base_sql_select_query(node ast.SqlExpr, typ SqlType) string {
+	mut lit := '`'
+	if typ == .psql {
+		lit = '\\"'
+	}
 	mut sql_query := 'SELECT '
 	table_name := g.get_table_name(node.table_expr)
 	if node.is_count {
 		// `select count(*) from User`
-		sql_query += 'COUNT(*) FROM `$table_name` '
+		sql_query += 'COUNT(*) FROM $lit$table_name$lit '
 	} else {
 		// `select id, name, country from User`
 		for i, field in node.fields {
-			sql_query += '`${g.get_field_name(field)}`'
+			sql_query += '$lit${g.get_field_name(field)}$lit'
 			if i < node.fields.len - 1 {
 				sql_query += ', '
 			}
 		}
-		sql_query += ' FROM `$table_name`'
+		sql_query += ' FROM $lit$table_name$lit'
 	}
 	if node.has_where {
 		sql_query += ' WHERE '
@@ -935,7 +1051,7 @@ fn (mut g Gen) get_base_sql_select_query(node ast.SqlExpr) string {
 	return sql_query
 }
 
-fn (mut g Gen) sql_defaults(node ast.SqlStmtLine, typ SqlType, psql_data ...string) {
+fn (mut g Gen) sql_defaults(node ast.SqlStmtLine, typ SqlType) {
 	table_name := g.get_table_name(node.table_expr)
 	mut lit := '`'
 	if typ == .psql {
@@ -958,7 +1074,7 @@ fn (mut g Gen) sql_defaults(node ast.SqlStmtLine, typ SqlType, psql_data ...stri
 				g.write(', ')
 			}
 		}
-		g.write(') values (')
+		g.write(') VALUES (')
 		for i, field in node.fields {
 			if g.get_sql_field_type(field) == ast.Type(-1) {
 				continue
@@ -972,7 +1088,7 @@ fn (mut g Gen) sql_defaults(node ast.SqlStmtLine, typ SqlType, psql_data ...stri
 	} else if node.kind == .update {
 		for i, col in node.updated_columns {
 			g.write(' ${g.get_field_name(g.get_struct_field(col))} = ')
-			g.expr_to_sql(node.update_exprs[i], typ, psql_data)
+			g.expr_to_sql(node.update_exprs[i], typ)
 			if i < node.updated_columns.len - 1 {
 				g.write(', ')
 			}
@@ -982,7 +1098,7 @@ fn (mut g Gen) sql_defaults(node ast.SqlStmtLine, typ SqlType, psql_data ...stri
 		g.write(' WHERE ')
 	}
 	if node.kind == .update || node.kind == .delete {
-		g.expr_to_sql(node.where_expr, typ, psql_data)
+		g.expr_to_sql(node.where_expr, typ)
 	}
 	g.write(';")')
 }
@@ -1077,7 +1193,7 @@ fn (mut g Gen) table_gen(node ast.SqlStmtLine, typ SqlType, expr ast.Expr) strin
 			fields << '/* $k */UNIQUE(${tmp.join(', ')})'
 		}
 	}
-	if typ == .mysql {
+	if typ == .mysql || typ == .psql {
 		fields << 'PRIMARY KEY($lit$primary$lit)'
 	}
 	create_string += fields.join(', ')
@@ -1085,7 +1201,7 @@ fn (mut g Gen) table_gen(node ast.SqlStmtLine, typ SqlType, expr ast.Expr) strin
 	return create_string
 }
 
-fn (mut g Gen) expr_to_sql(expr ast.Expr, typ SqlType, psql_data []string) {
+fn (mut g Gen) expr_to_sql(expr ast.Expr, typ SqlType) {
 	// Custom handling for infix exprs (since we need e.g. `and` instead of `&&` in SQL queries),
 	// strings. Everything else (like numbers, a.b) is handled by g.expr()
 	//
@@ -1094,7 +1210,7 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr, typ SqlType, psql_data []string) {
 	match expr {
 		ast.InfixExpr {
 			g.sql_side = .left
-			g.expr_to_sql(expr.left, typ, psql_data)
+			g.expr_to_sql(expr.left, typ)
 			match expr.op {
 				.ne { g.write(' != ') }
 				.eq { g.write(' = ') }
@@ -1111,26 +1227,24 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr, typ SqlType, psql_data []string) {
 				else {}
 			}
 			g.sql_side = .right
-			g.expr_to_sql(expr.right, typ, psql_data)
+			g.expr_to_sql(expr.right, typ)
 		}
 		ast.StringLiteral {
 			// g.write("'$it.val'")
 			g.inc_sql_i(typ)
 			g.sql_bind('"$expr.val"', expr.val.len.str(), g.sql_get_real_type(ast.string_type),
-				typ, g.append_arr(g.sql_i, psql_data))
+				typ)
 		}
 		ast.IntegerLiteral {
 			g.inc_sql_i(typ)
-			g.sql_bind(expr.val, '', g.sql_get_real_type(ast.int_type), typ, g.append_arr(g.sql_i,
-				psql_data))
+			g.sql_bind(expr.val, '', g.sql_get_real_type(ast.int_type), typ)
 		}
 		ast.BoolLiteral {
 			// true/false literals were added to Sqlite 3.23 (2018-04-02)
 			// but lots of apps/distros use older sqlite (e.g. Ubuntu 18.04 LTS )
 			g.inc_sql_i(typ)
 			eval := if expr.val { '1' } else { '0' }
-			g.sql_bind(eval, '', g.sql_get_real_type(ast.byte_type), typ, g.append_arr(g.sql_i,
-				psql_data))
+			g.sql_bind(eval, '', g.sql_get_real_type(ast.byte_type), typ)
 		}
 		ast.Ident {
 			// `name == user_name` => `name == ?1`
@@ -1146,14 +1260,12 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr, typ SqlType, psql_data []string) {
 				if typ == .sqlite3 {
 					if ityp == ast.string_type {
 						g.sql_bind('${expr.name}.str', '${expr.name}.len', g.sql_get_real_type(ityp),
-							typ, g.append_arr(g.sql_i, psql_data))
+							typ)
 					} else {
-						g.sql_bind(expr.name, '', g.sql_get_real_type(ityp), typ, g.append_arr(g.sql_i,
-							psql_data))
+						g.sql_bind(expr.name, '', g.sql_get_real_type(ityp), typ)
 					}
 				} else {
-					g.sql_bind('%$g.sql_i.str()', '', g.sql_get_real_type(ityp), typ,
-						g.append_arr(g.sql_i, psql_data))
+					g.sql_bind('$g.sql_i.str()', '', g.sql_get_real_type(ityp), typ)
 					g.sql_idents << expr.name
 					g.sql_idents_types << g.sql_get_real_type(ityp)
 				}
@@ -1166,7 +1278,7 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr, typ SqlType, psql_data []string) {
 			}
 			ident := expr.expr as ast.Ident
 			g.sql_bind(ident.name + '.' + expr.field_name, '', g.sql_get_real_type(expr.typ),
-				typ, g.append_arr(g.sql_i, psql_data))
+				typ)
 		}
 		else {
 			g.expr(expr)
@@ -1178,13 +1290,6 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr, typ SqlType, psql_data []string) {
 		}
 		else {}
 	*/
-}
-
-fn (mut g Gen) append_arr(i int, arr []string) []string {
-	mut tmp := []string{}
-	tmp << i.str()
-	tmp << arr
-	return tmp
 }
 
 fn (mut g Gen) get_struct_field_typ(f string) ast.Type {
