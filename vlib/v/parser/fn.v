@@ -702,7 +702,8 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 	}
 	types_only := p.tok.kind in [.amp, .ellipsis, .key_fn, .lsbr]
 		|| (p.peek_tok.kind == .comma && p.table.known_type(argname))
-		|| p.peek_tok.kind == .dot || p.peek_tok.kind == .pipe ||  p.peek_tok.kind == .rpar
+		|| p.peek_tok.kind == .dot || p.peek_tok.kind == .pipe
+		|| p.peek_tok.kind == .rpar
 	// TODO copy pasta, merge 2 branches
 	if types_only {
 		mut arg_no := 1
