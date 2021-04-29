@@ -1,5 +1,4 @@
 import net
-
 import os
 
 const (
@@ -20,7 +19,8 @@ fn handle_conn(mut c net.TcpConn) {
 	}
 }
 
-fn echo_server(mut l net.TcpListener) ? {
+fn echo_server(mut l net.TcpListener, ch_started chan int) ? {
+	ch_started <- 1
 	for {
 		mut new_conn := l.accept() or { continue }
 		go handle_conn(mut new_conn)
@@ -31,11 +31,11 @@ fn echo_server(mut l net.TcpListener) ? {
 fn echo(address string) ? {
 	mut c := net.dial_tcp(address) ?
 	defer {
-		c.close() or { }
+		c.close() or {}
 	}
 
-	println('local: ${c.addr()?}')
-	println(' peer: ${c.peer_addr()?}')
+	println('local: ' + c.addr() ?.str())
+	println(' peer: ' + c.peer_addr() ?.str())
 
 	data := 'Hello from vlib/net!'
 	c.write_string(data) ?
@@ -52,17 +52,23 @@ fn echo(address string) ? {
 fn test_tcp_ip6() {
 	address := 'localhost:$test_port'
 	mut l := net.listen_tcp(.ip6, ':$test_port') or { panic(err) }
-	go echo_server(mut l)
+	start_echo_server(mut l)
 	echo(address) or { panic(err) }
-	l.close() or { }
+	l.close() or {}
+}
+
+fn start_echo_server(mut l net.TcpListener) {
+	ch_server_started := chan int{}
+	go echo_server(mut l, ch_server_started)
+	_ := <-ch_server_started
 }
 
 fn test_tcp_ip() {
 	address := 'localhost:$test_port'
 	mut l := net.listen_tcp(.ip, address) or { panic(err) }
-	go echo_server(mut l)
+	start_echo_server(mut l)
 	echo(address) or { panic(err) }
-	l.close() or { }
+	l.close() or {}
 }
 
 fn test_tcp_unix() {
@@ -75,10 +81,14 @@ fn test_tcp_unix() {
 		println('$address')
 
 		mut l := net.listen_tcp(.unix, address) or { panic(err) }
-		go echo_server(mut l)
+		start_echo_server(mut l)
 		echo(address) or { panic(err) }
-		l.close() or { }
+		l.close() or {}
 
 		os.rm(address) or { panic('failed to remove socket file') }
 	}
+}
+
+fn testsuite_end() {
+	eprintln('\ndone')
 }
