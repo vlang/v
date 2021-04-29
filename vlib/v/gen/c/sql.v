@@ -932,7 +932,7 @@ fn (mut g Gen) psql_create_table(node ast.SqlStmtLine, typ SqlType, db_expr ast.
 fn (mut g Gen) psql_drop_table(node ast.SqlStmtLine, typ SqlType, db_expr ast.Expr) {
 	table_name := g.get_table_name(node.table_expr)
 	g.writeln('// psql table drop')
-	drop_string := 'DROP TABLE \\"$table_name\\";'
+	drop_string := "DROP TABLE \\"$table_name\\";"
 	tmp := g.new_tmp_var()
 	g.write('Option_Array_pg__Row $tmp = pg__DB_exec(')
 	g.expr(db_expr)
