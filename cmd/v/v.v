@@ -35,6 +35,7 @@ const (
 		'up',
 		'vet',
 		'wipe-cache',
+		'watch',
 	]
 	list_of_flags_that_allow_duplicates = ['cc', 'd', 'define', 'cf', 'cflags']
 )
@@ -69,9 +70,6 @@ fn main() {
 	}
 	args_and_flags := util.join_env_vflags_and_os_args()[1..]
 	prefs, command := pref.parse_args(external_tools, args_and_flags)
-	if prefs.is_watch {
-		util.launch_tool(prefs.is_verbose, 'vwatch', os.args[1..].filter(it != '-watch'))
-	}
 	if prefs.is_verbose {
 		// println('args= ')
 		// println(args) // QTODO

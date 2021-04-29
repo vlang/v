@@ -22,7 +22,7 @@ https://github.com/vlang/v/issues/new/choose
 
 You can also use #help on Discord: https://discord.gg/vlang
 '
-	no_compiler_error       = '
+	no_compiler_error = '
 ==================
 Error: no C compiler detected.
 
