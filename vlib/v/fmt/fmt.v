@@ -1428,7 +1428,12 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 				f.write(' ')
 			}
 		} else {
-			if c.pos.last_line < node.pos.last_line {
+			next_line := if node.exprs.len > 0 {
+				node.exprs[0].position().line_nr
+			} else {
+				node.pos.last_line
+			}
+			if c.pos.last_line < next_line {
 				f.comment(c, level: .indent)
 				if node.exprs.len == 0 {
 					f.writeln('')
