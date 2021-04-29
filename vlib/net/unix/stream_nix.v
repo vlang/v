@@ -41,8 +41,7 @@ fn error_code() int {
 }
 
 fn new_stream_socket() ?StreamSocket {
-	sockfd := net.socket_error(C.socket(net.SocketFamily.unix, net.SocketType.stream,
-		0)) ?
+	sockfd := net.socket_error(C.socket(net.AddrFamily.unix, net.SocketType.tcp, 0)) ?
 	mut s := StreamSocket{
 		handle: sockfd
 	}
@@ -67,8 +66,7 @@ fn (mut s StreamSocket) connect(a string) ? {
 	addr.sun_family = C.AF_UNIX
 	unsafe { C.strncpy(&addr.sun_path[0], &char(a.str), max_sun_path) }
 	size := C.SUN_LEN(&addr)
-	sockaddr := unsafe { &C.sockaddr(&addr) }
-	res := C.connect(s.handle, sockaddr, size)
+	res := C.connect(s.handle, unsafe { &net.Addr(&addr) }, size)
 	// if res != 1 {
 	// return none
 	//}
@@ -100,8 +98,7 @@ pub fn listen_stream(sock string) ?&StreamListener {
 	addr.sun_family = C.AF_UNIX
 	unsafe { C.strncpy(&addr.sun_path[0], &char(sock.str), max_sun_path) }
 	size := C.SUN_LEN(&addr)
-	sockaddr := unsafe { &C.sockaddr(&addr) }
-	net.socket_error(C.bind(s.handle, sockaddr, size)) ?
+	net.socket_error(C.bind(s.handle, unsafe { &net.Addr(&addr) }, size)) ?
 	net.socket_error(C.listen(s.handle, 128)) ?
 	return &StreamListener{
 		sock: s
