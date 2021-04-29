@@ -227,15 +227,28 @@ f64 to string with string format
 
 */
 
+// TODO: Investigate precision issues
 // f32_to_str_l return a string with the f32 converted in a string in decimal notation
-pub fn f32_to_str_l(f f64) string {
-	return f64_to_str_l(f32(f))
+[manualfree]
+pub fn f32_to_str_l(f f32) string {
+	s := f32_to_str(f,6)
+	res := fxx_to_str_l_parse(s)
+	unsafe{s.free()}
+	return res
 }
 
-// f64_to_str_l return a string with the f64 converted in a string in decimal notation
+[manualfree]
 pub fn f64_to_str_l(f f64) string {
 	s := f64_to_str(f,18)
+	res := fxx_to_str_l_parse(s)
+	unsafe{s.free()}
+	return res
+}
 
+
+// f64_to_str_l return a string with the f64 converted in a string in decimal notation
+[manualfree]
+pub fn fxx_to_str_l_parse(s string) string {
 	// check for +inf -inf Nan
 	if s.len > 2 && (s[0] == `n` || s[1] == `i`) {
 		return s
@@ -287,8 +300,11 @@ pub fn f64_to_str_l(f f64) string {
 		exp_sgn = 1
 		i++
 	}
-	for c in s[i..] {
-		exp = exp * 10 + int(c-`0`)
+
+	mut c := i
+	for c < s.len {
+		exp = exp * 10 + int(s[c]-`0`)
+		c++
 	}
 
 	// allocate exp+32 chars for the return string
@@ -296,7 +312,7 @@ pub fn f64_to_str_l(f f64) string {
 	mut r_i := 0  // result string buffer index
 
 	//println("s:${sgn} b:${b[0]} es:${exp_sgn} exp:${exp}")
-
+	
 	if sgn == 1 {
 		if m_sgn_flag {
 			res[r_i] = `+`
