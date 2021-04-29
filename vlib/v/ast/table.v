@@ -102,7 +102,7 @@ pub:
 	type_pos    token.Position
 	is_hidden   bool // interface first arg
 pub mut:
-	typ         Type
+	typ Type
 }
 
 fn (p &Param) equals(o &Param) bool {
