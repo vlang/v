@@ -309,6 +309,9 @@ fn (data StrIntpData) get_fmt_from_u64_format(mut sb &strings.Builder) {
 			bf.len1 = 3
 			use_default_str = true
 		}
+		if bf.len1 < 0 {
+			bf.len1 = 3
+		}
 
 		match typ {	
 			// floating point
@@ -341,7 +344,9 @@ fn (data StrIntpData) get_fmt_from_u64_format(mut sb &strings.Builder) {
 					if data.d.d_f32 < 0 { bf.positive = false }
 					d := fabs32(data.d.d_f32)
 					if d < 999_999.0 && d >= 0.00001 {
-						sb.write_string(strconv.format_fl(data.d.d_f32, bf))
+						f := strconv.format_fl(data.d.d_f32, bf)
+						sb.write_string(f)
+						f.free()
 						return
 					}
 					sb.write_string(strconv.format_es(data.d.d_f32, bf))
@@ -356,7 +361,9 @@ fn (data StrIntpData) get_fmt_from_u64_format(mut sb &strings.Builder) {
 					if data.d.d_f64 < 0 { bf.positive = false }
 					d := fabs64(data.d.d_f64)
 					if d < 999_999.0 && d >= 0.00001 {
-						sb.write_string(strconv.format_fl(data.d.d_f64, bf))
+						tmp := strconv.format_fl(data.d.d_f64, bf)
+						sb.write_string(tmp)
+						tmp.free()
 						return
 					}
 					sb.write_string(strconv.format_es(data.d.d_f64, bf))
