@@ -2458,7 +2458,6 @@ fn (mut c Checker) type_implements(typ ast.Type, inter_typ ast.Type, pos token.P
 				}
 				continue
 			}
-			eprintln('>>> inter_sym.name: $inter_sym.name | inter_sym.kind: $inter_sym.kind | inter_sym.info.fields: $inter_sym.info.fields')
 			c.error("`$styp` doesn't implement field `$ifield.name` of interface `$inter_sym.name`",
 				pos)
 		}
