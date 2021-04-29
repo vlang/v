@@ -312,9 +312,11 @@ fn (data StrIntpData) get_fmt_from_u64_format(mut sb &strings.Builder) {
 
 		match typ {	
 			// floating point
-			.si_f32 { 
+			.si_f32 {
 				if use_default_str {
-					sb.write_string(data.d.d_f32.str())
+					f := data.d.d_f32.str()
+					sb.write_string(f)
+					f.free()
 				} else {
 					if data.d.d_f32 < 0 { bf.positive = false }
 					sb.write_string(strconv.format_fl(data.d.d_f32, bf))
@@ -322,7 +324,9 @@ fn (data StrIntpData) get_fmt_from_u64_format(mut sb &strings.Builder) {
 			}
 			.si_f64 { 
 				if use_default_str {
-					sb.write_string(data.d.d_f64.str())
+					f := data.d.d_f64.str()
+					sb.write_string(f)
+					f.free()
 				} else {
 					if data.d.d_f64 < 0 { bf.positive = false }
 					sb.write_string(strconv.format_fl(data.d.d_f64, bf))
@@ -330,7 +334,9 @@ fn (data StrIntpData) get_fmt_from_u64_format(mut sb &strings.Builder) {
 			}
 			.si_g32 {
 				if use_default_str {
-					sb.write_string(data.d.d_f32.str())
+					f := data.d.d_f32.str()
+					sb.write_string(f)
+					f.free()
 				} else {
 					if data.d.d_f32 < 0 { bf.positive = false }
 					d := fabs32(data.d.d_f32)
@@ -341,9 +347,11 @@ fn (data StrIntpData) get_fmt_from_u64_format(mut sb &strings.Builder) {
 					sb.write_string(strconv.format_es(data.d.d_f32, bf))
 				}
 			}
-			.si_g64 { 
+			.si_g64 {
 				if use_default_str {
-					sb.write_string(data.d.d_f64.str())
+					f := data.d.d_f64.str()
+					sb.write_string(f)
+					f.free()
 				} else {
 					if data.d.d_f64 < 0 { bf.positive = false }
 					d := fabs64(data.d.d_f64)
@@ -354,7 +362,8 @@ fn (data StrIntpData) get_fmt_from_u64_format(mut sb &strings.Builder) {
 					sb.write_string(strconv.format_es(data.d.d_f64, bf))
 				}
 			}
-			.si_e32 { 
+			.si_e32 {
+				println("Here e32")
 				if use_default_str {
 					sb.write_string(data.d.d_f32.str())
 				} else {
