@@ -198,18 +198,18 @@ fn (data StrIntpData) get_fmt_from_u64_format(mut sb &strings.Builder) {
 	unsafe {
 		// strings
 		if typ == .si_s   { 
-			mut d := ''
+			mut s := ''
 			if upper_case {
-				d = data.d.d_s.to_upper()
+				s = data.d.d_s.to_upper()
 			} else {
-				d = data.d.d_s.clone()
+				s = data.d.d_s.clone()
 			}
 			if width == 0 {
-				sb.write_string(d)
+				sb.write_string(s)
 			} else {
-				strconv.format_str_sb(d, bf, mut sb)
+				strconv.format_str_sb(s, bf, mut sb)
 			}
-			d.free()
+			s.free()
 			return
 		}
 	
@@ -223,12 +223,12 @@ fn (data StrIntpData) get_fmt_from_u64_format(mut sb &strings.Builder) {
 			if base == 0 {
 				if width == 0 {
 					o := d.str()
-					sb.write_string(d.str())
+					sb.write_string(o)
 					o.free()
 					return
 				}
 				if d < 0 { bf.positive = false }
-				sb.write_string(strconv.format_dec(abs64(d), bf))
+				strconv.format_dec_sb(abs64(d), bf, mut sb)
 			} else {
 				mut hx := strconv.format_uint(data.d.d_u64, base)
 				if upper_case {
@@ -239,9 +239,10 @@ fn (data StrIntpData) get_fmt_from_u64_format(mut sb &strings.Builder) {
 				if width == 0 {
 					sb.write_string(hx)
 				} else {
-					hx_formatted := strconv.format_str(hx, bf)
-					sb.write_string(hx_formatted)
-					hx_formatted.free()
+					strconv.format_str_sb(hx, bf, mut sb)
+					//hx_formatted := strconv.format_str(hx, bf)
+					//sb.write_string(hx_formatted)
+					//hx_formatted.free()
 				}
 				hx.free()
 			}
