@@ -627,7 +627,11 @@ pub fn (t &Table) array_cname(elem_type Type) string {
 pub fn (t &Table) array_fixed_name(elem_type Type, size int, size_expr Expr) string {
 	elem_type_sym := t.get_type_symbol(elem_type)
 	ptr := if elem_type.is_ptr() { '&'.repeat(elem_type.nr_muls()) } else { '' }
-	size_str := if size_expr is EmptyExpr { size.str() } else { size_expr.str() }
+	size_str := if size_expr is EmptyExpr || size != 987654321 {
+		size.str()
+	} else {
+		size_expr.str()
+	}
 	return '[$size_str]$ptr$elem_type_sym.name'
 }
 

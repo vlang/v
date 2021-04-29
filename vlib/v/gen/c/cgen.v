@@ -5743,12 +5743,12 @@ fn (mut g Gen) write_types(types []ast.TypeSymbol) {
 				}
 				// g.type_definitions.writeln('} $name;\n')
 				//
-				attrs := if typ.info.attrs.contains('packed') {
+				ti_attrs := if typ.info.attrs.contains('packed') {
 					'__attribute__((__packed__))'
 				} else {
 					''
 				}
-				g.type_definitions.writeln('}$attrs;\n')
+				g.type_definitions.writeln('}$ti_attrs;\n')
 				g.type_definitions.writeln(post_pragma)
 			}
 			ast.Alias {
