@@ -222,9 +222,9 @@ fn (data StrIntpData) get_fmt_from_u64_format(mut sb &strings.Builder) {
 
 			if base == 0 {
 				if width == 0 {
-					o := d.str()
-					sb.write_string(o)
-					o.free()
+					d_str := d.str()
+					sb.write_string(d_str)
+					d_str.free()
 					return
 				}
 				if d < 0 { bf.positive = false }
@@ -232,17 +232,14 @@ fn (data StrIntpData) get_fmt_from_u64_format(mut sb &strings.Builder) {
 			} else {
 				mut hx := strconv.format_uint(data.d.d_u64, base)
 				if upper_case {
-					o := hx
+					tmp := hx
 					hx = hx.to_upper()
-					o.free()
+					tmp.free()
 				}
 				if width == 0 {
 					sb.write_string(hx)
 				} else {
 					strconv.format_str_sb(hx, bf, mut sb)
-					//hx_formatted := strconv.format_str(hx, bf)
-					//sb.write_string(hx_formatted)
-					//hx_formatted.free()
 				}
 				hx.free()
 			}
@@ -254,23 +251,23 @@ fn (data StrIntpData) get_fmt_from_u64_format(mut sb &strings.Builder) {
 			mut d := data.d.d_u64
 			if base == 0 {
 				if width == 0 {
-					sb.write_string(d.str())
+					d_str := d.str()
+					sb.write_string(d_str)
+					d_str.free()
 					return
 				}
-				sb.write_string(strconv.format_dec(d, bf))
+				strconv.format_dec_sb(d, bf, mut sb)
 			} else {
 				mut hx := strconv.format_uint(d, base)
 				if upper_case { 
-					o := hx
+					tmp := hx
 					hx = hx.to_upper()
-					o.free()
+					tmp.free()
 				}
 				if width == 0 {
 					sb.write_string(hx)
 				} else {
-					hx_formatted := strconv.format_str(hx, bf)
-					sb.write_string( hx_formatted )
-					hx_formatted.free()
+					strconv.format_str_sb(hx, bf, mut sb)
 				}
 				hx.free()
 			}
@@ -283,27 +280,23 @@ fn (data StrIntpData) get_fmt_from_u64_format(mut sb &strings.Builder) {
 			base = 16  // TODO: **** decide the behaviour of this flag! ****
 			if base == 0 {
 				if width == 0 {
-					dstr := d.str()
-					sb.write_string(dstr)
-					dstr.free()
+					d_str := d.str()
+					sb.write_string(d_str)
+					d_str.free()
 					return
 				}
-				d_formatted := strconv.format_dec(d, bf)
-				sb.write_string(d_formatted)
-				d_formatted.free()
+				strconv.format_dec_sb(d, bf, mut sb)
 			} else {
 				mut hx := strconv.format_uint(d, base)
 				if upper_case { 
-					o := hx
+					tmp := hx
 					hx = hx.to_upper()
-					o.free()
+					tmp.free()
 				}
 				if width == 0 {
 					sb.write_string(hx)
 				} else {
-					hx_formatted := strconv.format_str(hx, bf)
-					sb.write_string( hx_formatted )
-					hx_formatted.free()
+					strconv.format_str_sb(hx, bf, mut sb)
 				}
 				hx.free()
 			}
