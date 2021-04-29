@@ -8,7 +8,8 @@ import v.util
 
 // pg,mysql etc
 const (
-	dbtype = 'sqlite'
+	dbtype                 = 'sqlite'
+	default_unique_str_len = 256
 )
 
 enum SqlExprSide {
@@ -452,7 +453,6 @@ fn (mut g Gen) mysql_stmt(node ast.SqlStmtLine, typ SqlType, db_expr ast.Expr) {
 	binds := g.sql_buf.str()
 	g.sql_buf = strings.new_builder(100)
 	g.writeln(binds)
-	// g.writeln('mysql_stmt_attr_set($g.sql_stmt_name, STMT_ATTR_ARRAY_SIZE, 1);')
 	res := g.new_tmp_var()
 	g.writeln('int $res = mysql_stmt_bind_param($g.sql_stmt_name, $bind);')
 	g.writeln('if ($res != 0) { puts(mysql_error(${db_name}.conn)); }')
@@ -476,56 +476,20 @@ fn (mut g Gen) mysql_select_expr(node ast.SqlExpr, sub bool, line string, typ Sq
 	g.expr(node.db_expr)
 	g.writeln(';')
 
-	stmt_name := g.new_tmp_var()
-	g.sql_idents = []string{}
-	g.sql_idents_types = []ast.Type{}
-	g.write('char* ${stmt_name}_raw = "')
+	g.write('string $g.sql_stmt_name = _SLIT("')
 	g.write(g.get_base_sql_select_query(node, typ))
 	g.sql_expr_defaults(node, typ)
-	g.writeln('";')
-	g.writeln('string $stmt_name = tos_clone(${stmt_name}_raw);')
-	if g.sql_idents.len > 0 {
-		vals := g.new_tmp_var()
-		g.writeln('Array_string $vals = __new_array_with_default(0, 0, sizeof(string), 0);')
-		for i, ident in g.sql_idents {
-			g.writeln('array_push((array*)&$vals, _MOV((string[]){string_clone(_SLIT("%${i + 1}"))}));')
+	g.writeln('");')
 
-			g.write('array_push((array*)&$vals, _MOV((string[]){string_clone(')
-			if g.sql_idents_types[i] == ast.string_type {
-				g.write('_SLIT(')
-			} else {
-				sym := g.table.get_type_name(g.sql_idents_types[i])
-				g.write('${sym}_str(')
-			}
-			g.writeln('$ident))}));')
-		}
-		g.writeln('$stmt_name = string_replace_each($stmt_name, $vals);')
-	}
-	/*
-	g.writeln('MYSQL_STMT* $g.sql_stmt_name = mysql_stmt_init(${db_name}.conn);')
-	g.writeln('mysql_stmt_prepare($g.sql_stmt_name, ${stmt_name}.str, ${stmt_name}.len);')
-
-	g.writeln('MYSQL_BIND $g.sql_bind_name[$g.sql_i];')
-	g.writeln('memset($g.sql_bind_name, 0, sizeof(MYSQL_BIND)*$g.sql_i);')
-
-	binds := g.sql_buf.str()
+	rplc := g.sql_buf.str()
 	g.sql_buf = strings.new_builder(100)
-	g.writeln(binds)
+	g.writeln(rplc)
 
-	res := g.new_tmp_var()
-	g.writeln('int $res = mysql_stmt_bind_param($g.sql_stmt_name, $g.sql_bind_name);')
-	g.writeln('if ($res != 0) { puts(mysql_error(${db_name}.conn)); }')
-	g.writeln('$res = mysql_stmt_execute($g.sql_stmt_name);')
-	g.writeln('if ($res != 0) { puts(mysql_error(${db_name}.conn)); puts(mysql_stmt_error($g.sql_stmt_name)); }')
-	*/
 	query := g.new_tmp_var()
 	res := g.new_tmp_var()
 	fields := g.new_tmp_var()
-	/*
-	g.writeln('Option_mysql__Result $res = mysql__Connection_real_query(&$db_name, $stmt_name);')
-	g.writeln('if (${res}.state != 0) { IError err = ${res}.err; _STR("Something went wrong\\000%.*s", 2, IError_str(err)); }')
-	g.writeln('Array_mysql__Row ${res}_rows = mysql__Result_rows(*(mysql__Result*)${res}.data);')*/
-	g.writeln('int $query = mysql_real_query(${db_name}.conn, ${stmt_name}.str, ${stmt_name}.len);')
+
+	g.writeln('int $query = mysql_real_query(${db_name}.conn, ${g.sql_stmt_name}.str, ${g.sql_stmt_name}.len);')
 	g.writeln('if ($query != 0) { puts(mysql_error(${db_name}.conn)); }')
 	g.writeln('MYSQL_RES* $res = mysql_store_result(${db_name}.conn);')
 	g.writeln('MYSQL_ROW $fields = mysql_fetch_row($res);')
@@ -577,10 +541,7 @@ fn (mut g Gen) mysql_select_expr(node ast.SqlExpr, sub bool, line string, typ Sq
 			g.writeln('if ($char_ptr == NULL) { $char_ptr = ""; }')
 			name := g.table.get_type_symbol(field.typ).cname
 			if g.table.get_type_symbol(field.typ).kind == .struct_ {
-				/*
-				id_name := g.new_tmp_var()
-				g.writeln('//parse struct start') //
-				//g.writeln('int $id_name = string_int(tos_clone($fields[$i]));')
+				g.writeln('//parse struct start')
 
 				mut expr := node.sub_structs[int(field.typ)]
 				mut where_expr := expr.where_expr as ast.InfixExpr
@@ -601,8 +562,7 @@ fn (mut g Gen) mysql_select_expr(node ast.SqlExpr, sub bool, line string, typ Sq
 				g.sql_stmt_name = tmp_sql_stmt_name
 				g.sql_buf = tmp_sql_buf
 				g.sql_i = tmp_sql_i
-				g.sql_table_name := tmp_sql_table_name
-				*/
+				g.sql_table_name = tmp_sql_table_name
 			} else if field.typ == ast.string_type {
 				g.writeln('${tmp}.$field.name = tos_clone($char_ptr);')
 			} else if field.typ == ast.byte_type {
@@ -618,7 +578,7 @@ fn (mut g Gen) mysql_select_expr(node ast.SqlExpr, sub bool, line string, typ Sq
 			g.writeln('\t $fields = mysql_fetch_row($res);')
 			g.writeln('}')
 		}
-		g.writeln('string_free(&$stmt_name);')
+		g.writeln('string_free(&$g.sql_stmt_name);')
 		g.writeln('mysql_free_result($res);')
 		if node.is_array {
 			g.writeln('$cur_line ${tmp}_array; ')
@@ -649,23 +609,29 @@ fn (mut g Gen) mysql_drop_table(node ast.SqlStmtLine, typ SqlType, db_expr ast.E
 	g.writeln('if (${tmp}.state != 0) { IError err = ${tmp}.err; eprintln(_STR("Something went wrong\\000%.*s", 2, IError_str(err))); }')
 }
 
-fn (mut g Gen) mysql_bind(val string, _ ast.Type) {
-	/*
-	t := g.mysql_buffer_typ_from_typ(typ)
+fn (mut g Gen) mysql_bind(val string, typ ast.Type) {
+	g.write('$g.sql_i')
 	mut sym := g.table.get_type_symbol(typ).cname
-	if typ == ast.string_type {
-		sym = 'char *'
+	g.sql_buf.write_string('$g.sql_stmt_name = string_replace($g.sql_stmt_name, _SLIT("?$g.sql_i"), ')
+	if sym != 'string' {
+		mut num := false
+		if sym != 'bool' {
+			num = true
+			g.sql_buf.write_string('${sym}_str(')
+		}
+		g.sql_buf.write_string('(($sym) $val)')
+
+		if sym == 'bool' {
+			g.sql_buf.write_string('? _SLIT("1") : _SLIT("0")')
+		}
+
+		if num {
+			g.sql_buf.write_string(')')
+		}
+	} else {
+		g.sql_buf.write_string('string_add(_SLIT("\'"), string_add(((string) $val), _SLIT("\'")))')
 	}
-	tmp := g.new_tmp_var()
-	g.sql_buf.writeln('$sym $tmp = $val;')
-	g.sql_buf.writeln('$g.sql_bind_name[${g.sql_i - 1}].buffer_type = $t;')
-	g.sql_buf.writeln('$g.sql_bind_name[${g.sql_i - 1}].buffer = ($sym*) &$tmp;')
-	if sym == 'char *' {
-		g.sql_buf.writeln('$g.sql_bind_name[${g.sql_i - 1}].buffer_length = ${val}.len;')
-	}
-	g.sql_buf.writeln('$g.sql_bind_name[${g.sql_i - 1}].is_null = 0;')
-	g.sql_buf.writeln('$g.sql_bind_name[${g.sql_i - 1}].length = 0;')*/
-	g.write(val)
+	g.sql_buf.writeln(');')
 }
 
 fn (mut g Gen) mysql_get_table_type(typ ast.Type) string {
@@ -1114,6 +1080,7 @@ fn (mut g Gen) table_gen(node ast.SqlStmtLine, typ SqlType, expr ast.Expr) strin
 	mut create_string := 'CREATE TABLE IF NOT EXISTS $lit$table_name$lit ('
 
 	mut fields := []string{}
+	mut unique_fields := []string{}
 
 	mut primary := '' // for mysql
 	mut unique := map[string][]string{}
@@ -1124,6 +1091,7 @@ fn (mut g Gen) table_gen(node ast.SqlStmtLine, typ SqlType, expr ast.Expr) strin
 		mut no_null := false
 		mut is_unique := false
 		mut is_skip := false
+		mut unique_len := 0
 		for attr in field.attrs {
 			match attr.name {
 				'primary' {
@@ -1132,10 +1100,16 @@ fn (mut g Gen) table_gen(node ast.SqlStmtLine, typ SqlType, expr ast.Expr) strin
 				}
 				'unique' {
 					if attr.arg != '' {
-						unique[attr.arg] << name
-					} else {
-						is_unique = true
+						if attr.kind == .string {
+							unique[attr.arg] << name
+							continue
+						} else if attr.kind == .number {
+							unique_len = attr.arg.int()
+							is_unique = true
+							continue
+						}
 					}
+					is_unique = true
 				}
 				'nonull' {
 					no_null = true
@@ -1177,7 +1151,20 @@ fn (mut g Gen) table_gen(node ast.SqlStmtLine, typ SqlType, expr ast.Expr) strin
 			stmt += ' NOT NULL'
 		}
 		if is_unique {
-			stmt += ' UNIQUE'
+			if typ == .mysql {
+				mut f := 'UNIQUE KEY($lit$name$lit'
+				if converted_typ == 'TEXT' {
+					if unique_len > 0 {
+						f += '($unique_len)'
+					} else {
+						f += '($c.default_unique_str_len)'
+					}
+				}
+				f += ')'
+				unique_fields << f
+			} else {
+				stmt += ' UNIQUE'
+			}
 		}
 		if is_primary && typ == .sqlite3 {
 			stmt += ' PRIMARY KEY'
@@ -1196,6 +1183,7 @@ fn (mut g Gen) table_gen(node ast.SqlStmtLine, typ SqlType, expr ast.Expr) strin
 	if typ == .mysql || typ == .psql {
 		fields << 'PRIMARY KEY($lit$primary$lit)'
 	}
+	fields << unique_fields
 	create_string += fields.join(', ')
 	create_string += ');'
 	return create_string

@@ -19,7 +19,13 @@ struct User {
 }
 
 fn main() {
-	db := sqlite.connect(':memory:') or { panic(err) }
+	sqlite3()
+	mysql()
+	psql()
+}
+
+fn sqlite3() {
+	mut db := sqlite.connect(':memory:') or { panic(err) }
 	sql db {
 		create table Module
 	}
@@ -46,9 +52,7 @@ fn main() {
 	}
 
 	eprintln(modul)
-
-	// mysql()
-	psql()
+	db.close() or { panic(err) }
 }
 
 fn mysql() {
@@ -56,7 +60,7 @@ fn mysql() {
 		host: 'localhost'
 		port: 3306
 		username: 'root'
-		password: 'abc'
+		password: '8UshXfNT'
 		dbname: 'test'
 	}
 	conn.connect() or { panic(err) }
@@ -82,7 +86,9 @@ fn mysql() {
 	m := sql conn {
 		select from Module where id == 1
 	}
+
 	eprintln(m)
+	conn.close()
 }
 
 fn psql() {
@@ -117,4 +123,5 @@ fn psql() {
 	}
 
 	eprintln(modul)
+	db.close()
 }
