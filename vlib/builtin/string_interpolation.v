@@ -141,7 +141,7 @@ pub fn get_str_intp_u64_format(fmt_type StrIntpType, in_width int, in_precision 
 
 // convert from struct to formated string
 [manualfree]
-fn (data StrIntpData) get_fmt_from_u64_format1(mut sb &strings.Builder) {
+fn (data StrIntpData) get_fmt_from_u64_format(mut sb &strings.Builder) {
 	x              := data.fmt
 	typ            := StrIntpType(x & 0x1F)
 	allign         := int((x >> 5) & 0x01)
