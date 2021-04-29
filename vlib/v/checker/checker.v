@@ -197,11 +197,14 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 	// post process generic functions. must be done after all files have been
 	// checked, to eunsure all generic calls are processed as this information
 	// is needed when the generic type is auto inferred from the call argument
-	for i in 0 .. ast_files.len {
-		file := unsafe { &ast_files[i] }
-		if file.generic_fns.len > 0 {
-			c.change_current_file(file)
-			c.post_process_generic_fns()
+	// Check 2 times (in order to check nested generics fn)
+	for _ in 0 .. 2 {
+		for i in 0 .. ast_files.len {
+			file := unsafe { &ast_files[i] }
+			if file.generic_fns.len > 0 {
+				c.change_current_file(file)
+				c.post_process_generic_fns()
+			}
 		}
 	}
 	// restore the original c.file && c.mod after post processing
@@ -1990,7 +1993,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 		}
 	}
 	if has_generic {
-		if c.mod != '' && !fn_name.starts_with('${c.mod}.') {
+		if c.mod != '' && !fn_name.contains('.') {
 			// Need to prepend the module when adding a generic type to a function
 			c.table.register_fn_concrete_types(c.mod + '.' + fn_name, concrete_types)
 		} else {
@@ -6573,24 +6576,21 @@ fn (mut c Checker) fetch_and_verify_orm_fields(info ast.Struct, pos token.Positi
 fn (mut c Checker) post_process_generic_fns() {
 	// Loop thru each generic function concrete type.
 	// Check each specific fn instantiation.
-	// Check 2 times (in order to check nested generics fn)
-	for _ in 0 .. 2 {
-		for i in 0 .. c.file.generic_fns.len {
-			if c.table.fn_generic_types.len == 0 {
-				// no concrete types, so just skip:
-				continue
-			}
-			mut node := c.file.generic_fns[i]
-			c.mod = node.mod
-			for generic_types in c.table.fn_generic_types[node.name] {
-				node.cur_generic_types = generic_types
-				c.fn_decl(mut node)
-				if node.name in ['vweb.run_app', 'vweb.run'] {
-					c.vweb_gen_types << generic_types
-				}
-			}
-			node.cur_generic_types = []
+	for i in 0 .. c.file.generic_fns.len {
+		if c.table.fn_generic_types.len == 0 {
+			// no concrete types, so just skip:
+			continue
 		}
+		mut node := c.file.generic_fns[i]
+		c.mod = node.mod
+		for generic_types in c.table.fn_generic_types[node.name] {
+			node.cur_generic_types = generic_types
+			c.fn_decl(mut node)
+			if node.name in ['vweb.run_app', 'vweb.run'] {
+				c.vweb_gen_types << generic_types
+			}
+		}
+		node.cur_generic_types = []
 	}
 }
 
