@@ -60,7 +60,7 @@ fn mysql() {
 		host: 'localhost'
 		port: 3306
 		username: 'root'
-		password: '8UshXfNT'
+		password: 'abc'
 		dbname: 'test'
 	}
 	conn.connect() or { panic(err) }
