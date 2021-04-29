@@ -107,4 +107,14 @@ fn psql() {
 	sql db {
 		insert mod into Module
 	}
+
+	modul := sql db {
+		select from Module where id == 1
+	}
+
+	sql db {
+		drop table Module
+	}
+
+	eprintln(modul)
 }
