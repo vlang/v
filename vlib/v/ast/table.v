@@ -909,7 +909,7 @@ pub fn (t &Table) mktyp(typ Type) Type {
 	}
 }
 
-pub fn (mut t Table) register_fn_generic_types(fn_name string, types []Type) {
+pub fn (mut t Table) register_fn_concrete_types(fn_name string, types []Type) {
 	mut a := t.fn_generic_types[fn_name]
 	if types in a {
 		return
