@@ -60,7 +60,6 @@ pub fn (t &Table) panic(message string) {
 
 pub struct Fn {
 pub:
-	params         []Param
 	return_type    Type
 	is_variadic    bool
 	language       Language
@@ -77,8 +76,12 @@ pub:
 	mod            string
 	ctdefine       string // compile time define. "myflag", when [if myflag] tag
 	attrs          []Attr
+	//
+	pos             token.Position
+	return_type_pos token.Position
 pub mut:
 	name      string
+	params    []Param
 	source_fn voidptr // set in the checker, while processing fn declarations
 	usages    int
 }
@@ -96,9 +99,10 @@ pub:
 	name        string
 	is_mut      bool
 	is_auto_rec bool
-	typ         Type
 	type_pos    token.Position
 	is_hidden   bool // interface first arg
+pub mut:
+	typ         Type
 }
 
 fn (p &Param) equals(o &Param) bool {

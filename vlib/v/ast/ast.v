@@ -271,17 +271,18 @@ pub:
 pub struct InterfaceDecl {
 pub:
 	name         string
+	typ          Type
 	name_pos     token.Position
 	language     Language
 	is_pub       bool
 	mut_pos      int // mut:
 	pos          token.Position
 	pre_comments []Comment
-	ifaces       []InterfaceEmbedding
 pub mut:
 	fields       []StructField
 	methods      []FnDecl
 	field_names  []string
+	ifaces       []InterfaceEmbedding
 }
 
 pub struct StructInitField {

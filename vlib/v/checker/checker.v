@@ -360,32 +360,46 @@ pub fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 	}
 }
 
-pub fn (mut c Checker) interface_decl(decl ast.InterfaceDecl) {
+pub fn (mut c Checker) interface_decl(mut decl ast.InterfaceDecl) {
 	c.check_valid_pascal_case(decl.name, 'interface name', decl.pos)
-	for iface in decl.ifaces {
-		isym := c.table.get_type_symbol(iface.typ)
-		if isym.kind != .interface_ {
-			c.error('`interface `$decl.name` tries to embed `$isym.name`, but `$isym.name` is not an interface, but `$isym.kind`',
-				iface.pos)
+	mut decl_sym := c.table.get_type_symbol(decl.typ)
+	if mut decl_sym.info is ast.Interface {
+		if decl.ifaces.len > 0 {
+			for iface in decl.ifaces {
+				isym := c.table.get_type_symbol(iface.typ)
+				if isym.kind != .interface_ {
+					c.error('`interface `$decl.name` tries to embed `$isym.name`, but `$isym.name` is not an interface, but `$isym.kind`',
+						iface.pos)
+					continue
+				}
+				decl_sym.info.methods << isym.info.methods
+				decl_sym.info.fields << isym.info.fields
+				for m in isym.methods {
+					mut new_method := m
+					new_method.params[0].typ = decl.typ
+					decl_sym.methods << new_method
+				}
+			}
+			decl.ifaces = []
 		}
-	}
-	for method in decl.methods {
-		if decl.language == .v {
-			c.check_valid_snake_case(method.name, 'method name', method.pos)
+		for method in decl_sym.info.methods {
+			if decl.language == .v {
+				c.check_valid_snake_case(method.name, 'method name', method.pos)
+			}
+			c.ensure_type_exists(method.return_type, method.return_type_pos) or { return }
+			for param in method.params {
+				c.ensure_type_exists(param.typ, param.pos) or { return }
+			}
 		}
-		c.ensure_type_exists(method.return_type, method.return_type_pos) or { return }
-		for param in method.params {
-			c.ensure_type_exists(param.typ, param.pos) or { return }
-		}
-	}
-	for i, field in decl.fields {
-		if decl.language == .v {
-			c.check_valid_snake_case(field.name, 'field name', field.pos)
-		}
-		c.ensure_type_exists(field.typ, field.pos) or { return }
-		for j in 0 .. i {
-			if field.name == decl.fields[j].name {
-				c.error('field name `$field.name` duplicate', field.pos)
+		for i, field in decl_sym.info.fields {
+			if decl.language == .v {
+				c.check_valid_snake_case(field.name, 'field name', field.pos)
+			}
+			c.ensure_type_exists(field.typ, field.pos) or { return }
+			for j in 0 .. i {
+				if field.name == decl.fields[j].name {
+					c.error('field name `$field.name` duplicate', field.pos)
+				}
 			}
 		}
 	}
@@ -3672,7 +3686,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.import_stmt(node)
 		}
 		ast.InterfaceDecl {
-			c.interface_decl(node)
+			c.interface_decl(mut node)
 		}
 		ast.Module {
 			c.mod = node.name
@@ -6331,6 +6345,11 @@ pub fn (mut c Checker) warn(s string, pos token.Position) {
 }
 
 pub fn (mut c Checker) error(message string, pos token.Position) {
+	$if checker_exit_on_first_error ? {
+		eprintln('\n\n>> checker error: $message, pos: $pos')
+		print_backtrace()
+		exit(1)
+	}
 	if c.pref.translated && message.starts_with('mismatched types') {
 		// TODO move this
 		return

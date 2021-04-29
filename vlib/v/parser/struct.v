@@ -563,6 +563,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			tmethod := ast.Fn{
 				name: name
 				params: args
+				pos: method.pos
 				return_type: method.return_type
 				is_variadic: is_variadic
 				is_pub: true
@@ -607,6 +608,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	return ast.InterfaceDecl{
 		name: interface_name
 		language: language
+		typ: typ
 		fields: fields
 		methods: methods
 		ifaces: ifaces
