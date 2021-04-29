@@ -18,6 +18,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []ast.Fi
 	mut all_fn_root_names := [
 		'main.main',
 		'__new_array',
+		'str_interpolation'
 		'__new_array_with_default',
 		'__new_array_with_array_default',
 		'new_array_from_c_array',
