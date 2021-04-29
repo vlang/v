@@ -3802,7 +3802,7 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) ast.Type {
 		}
 		if array_init.is_fixed {
 			idx := c.table.find_or_register_array_fixed(elem_type, array_init.exprs.len,
-				ast.EmptyExpr{})
+				ast.empty_expr())
 			if elem_type.has_flag(.generic) {
 				array_init.typ = ast.new_type(idx).set_flag(.generic)
 			} else {

@@ -12,6 +12,9 @@ pub fn (mut p Parser) parse_array_type() ast.Type {
 	// fixed array
 	if p.tok.kind in [.number, .name] {
 		mut fixed_size := 0
+		if p.pref.is_fmt {
+			fixed_size = 987654321
+		}
 		size_expr := p.expr(0)
 		match size_expr {
 			ast.IntegerLiteral {
