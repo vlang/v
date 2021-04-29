@@ -19,12 +19,11 @@ fn handle_conn(mut c net.TcpConn) {
 	}
 }
 
-fn echo_server(mut l net.TcpListener, ch_started chan int) ? {
+fn one_shot_echo_server(mut l net.TcpListener, ch_started chan int) ? {
 	ch_started <- 1
-	for {
-		mut new_conn := l.accept() or { continue }
-		go handle_conn(mut new_conn)
-	}
+	mut new_conn := l.accept() or { return none }
+	handle_conn(mut new_conn)
+	new_conn.close() or {}
 	return none
 }
 
@@ -50,6 +49,7 @@ fn echo(address string) ? {
 }
 
 fn test_tcp_ip6() {
+	eprintln('\n>>> ${@FN}')
 	address := 'localhost:$test_port'
 	mut l := net.listen_tcp(.ip6, ':$test_port') or { panic(err) }
 	start_echo_server(mut l)
@@ -59,11 +59,12 @@ fn test_tcp_ip6() {
 
 fn start_echo_server(mut l net.TcpListener) {
 	ch_server_started := chan int{}
-	go echo_server(mut l, ch_server_started)
+	go one_shot_echo_server(mut l, ch_server_started)
 	_ := <-ch_server_started
 }
 
 fn test_tcp_ip() {
+	eprintln('\n>>> ${@FN}')
 	address := 'localhost:$test_port'
 	mut l := net.listen_tcp(.ip, address) or { panic(err) }
 	start_echo_server(mut l)
@@ -72,6 +73,7 @@ fn test_tcp_ip() {
 }
 
 fn test_tcp_unix() {
+	eprintln('\n>>> ${@FN}')
 	// TODO(emily):
 	// whilst windows supposedly supports unix sockets
 	// this doesnt work (wsaeopnotsupp at the call to bind())
