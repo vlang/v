@@ -810,7 +810,7 @@ pub mut:
 pub struct ArrayFixed {
 pub:
 	size      int
-	size_expr Expr
+	size_expr Expr // used by fmt for e.g. ´[my_const]byte´
 pub mut:
 	elem_type Type
 }
@@ -890,10 +890,10 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 		.array_fixed {
 			info := sym.info as ArrayFixed
 			elem_str := t.type_to_str_using_aliases(info.elem_type, import_aliases)
-			if info.size == 987654321 {
-				res = '[$info.size_expr]$elem_str'
-			} else {
+			if info.size_expr is EmptyExpr {
 				res = '[$info.size]$elem_str'
+			} else {
+				res = '[$info.size_expr]$elem_str'
 			}
 		}
 		.chan {

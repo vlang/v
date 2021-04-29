@@ -2,11 +2,11 @@ module net
 
 [_pack: '2']
 struct Ip6 {
-	port u16
+	port      u16
 	flow_info u32
-	addr [16]byte
-	scope_id u32
-	sin6_pad [2]byte
+	addr      [16]byte
+	scope_id  u32
+	sin6_pad  [2]byte
 }
 
 [_pack: '4']
@@ -28,6 +28,6 @@ struct Unix {
 [_pack: '2']
 struct Addr {
 pub:
-	f u16
+	f    u16
 	addr AddrData
 }
