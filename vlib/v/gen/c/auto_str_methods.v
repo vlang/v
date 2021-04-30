@@ -724,14 +724,17 @@ fn (mut g Gen) gen_str_for_union_sum_type(info ast.SumType, styp string, str_fn_
 fn (mut g Gen) fn_decl_str(info ast.FnType) string {
 	mut fn_str := 'fn ('
 	for i, arg in info.func.params {
+		if arg.is_mut {
+			fn_str += 'mut '
+		}
 		if i > 0 {
 			fn_str += ', '
 		}
-		fn_str += util.strip_main_name(g.table.get_type_name(arg.typ))
+		fn_str += util.strip_main_name(g.table.get_type_name(g.unwrap_generic(arg.typ)))
 	}
 	fn_str += ')'
 	if info.func.return_type != ast.void_type {
-		fn_str += ' ${util.strip_main_name(g.table.get_type_name(info.func.return_type))}'
+		fn_str += ' ${util.strip_main_name(g.table.get_type_name(g.unwrap_generic(info.func.return_type)))}'
 	}
 	return fn_str
 }
