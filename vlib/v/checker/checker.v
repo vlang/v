@@ -6439,15 +6439,24 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 	info := sym.info as ast.Struct
 	fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, sym.name)
 	mut sub_structs := map[int]ast.SqlExpr{}
-	for f in fields.filter(c.table.type_symbols[int(it.typ)].kind == .struct_) {
+	for f in fields.filter(c.table.type_symbols[int(it.typ)].kind == .struct_
+		|| (c.table.get_type_symbol(it.typ).kind == .array
+		&& c.table.get_type_symbol(c.table.get_type_symbol(it.typ).array_info().elem_type).kind == .struct_)) {
+		typ := if c.table.get_type_symbol(f.typ).kind == .struct_ {
+			f.typ
+		} else if c.table.get_type_symbol(f.typ).kind == .array {
+			c.table.get_type_symbol(f.typ).array_info().elem_type
+		} else {
+			ast.Type(0)
+		}
 		mut n := ast.SqlExpr{
 			pos: node.pos
 			has_where: true
-			typ: f.typ
+			typ: typ
 			db_expr: node.db_expr
 			table_expr: ast.TypeNode{
 				pos: node.table_expr.pos
-				typ: f.typ
+				typ: typ
 			}
 		}
 		tmp_inside_sql := c.inside_sql
@@ -6484,7 +6493,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 			or_block: ast.OrExpr{}
 		}
 
-		sub_structs[int(f.typ)] = n
+		sub_structs[int(typ)] = n
 	}
 	node.fields = fields
 	node.sub_structs = sub_structs.move()
@@ -6531,20 +6540,29 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	info := table_sym.info as ast.Struct
 	fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, table_sym.name)
 	mut sub_structs := map[int]ast.SqlStmtLine{}
-	for f in fields.filter(c.table.type_symbols[int(it.typ)].kind == .struct_) {
+	for f in fields.filter((c.table.type_symbols[int(it.typ)].kind == .struct_)
+		|| (c.table.get_type_symbol(it.typ).kind == .array
+		&& c.table.get_type_symbol(c.table.get_type_symbol(it.typ).array_info().elem_type).kind == .struct_)) {
+		typ := if c.table.get_type_symbol(f.typ).kind == .struct_ {
+			f.typ
+		} else if c.table.get_type_symbol(f.typ).kind == .array {
+			c.table.get_type_symbol(f.typ).array_info().elem_type
+		} else {
+			ast.Type(0)
+		}
 		mut n := ast.SqlStmtLine{
 			pos: node.pos
 			kind: node.kind
 			table_expr: ast.TypeNode{
 				pos: node.table_expr.pos
-				typ: f.typ
+				typ: typ
 			}
 			object_var_name: '${node.object_var_name}.$f.name'
 		}
 		tmp_inside_sql := c.inside_sql
 		c.sql_stmt_line(mut n)
 		c.inside_sql = tmp_inside_sql
-		sub_structs[int(f.typ)] = n
+		sub_structs[typ] = n
 	}
 	node.fields = fields
 	node.sub_structs = sub_structs.move()
@@ -6562,7 +6580,10 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 
 fn (mut c Checker) fetch_and_verify_orm_fields(info ast.Struct, pos token.Position, table_name string) []ast.StructField {
 	fields := info.fields.filter((it.typ in [ast.string_type, ast.int_type, ast.bool_type]
-		|| c.table.type_symbols[int(it.typ)].kind == .struct_) && !it.attrs.contains('skip'))
+		|| c.table.type_symbols[int(it.typ)].kind == .struct_
+		|| (c.table.get_type_symbol(it.typ).kind == .array
+		&& c.table.get_type_symbol(c.table.get_type_symbol(it.typ).array_info().elem_type).kind == .struct_))
+		&& !it.attrs.contains('skip'))
 	if fields.len == 0 {
 		c.error('V orm: select: empty fields in `$table_name`', pos)
 		return []ast.StructField{}

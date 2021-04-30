@@ -18,10 +18,143 @@ struct User {
 	skipped_string string [skip]
 }
 
+struct Parent {
+	id      int      [primary; sql: serial]
+	name    string
+	chields []Chield [fkey: 'parent_id']
+}
+
+struct Chield {
+	id        int    [primary; sql: serial]
+	parent_id int
+	name      string
+}
+
 fn main() {
+	sqlite3_array()
+	mysql_array()
+	psql_array()
+
 	sqlite3()
 	mysql()
 	psql()
+}
+
+fn sqlite3_array() {
+	mut db := sqlite.connect(':memory:') or { panic(err) }
+	sql db {
+		create table Parent
+	}
+
+	par := Parent{
+		name: 'test'
+		chields: [
+			Chield{
+				name: 'abc'
+			},
+			Chield{
+				name: 'def'
+			},
+		]
+	}
+
+	sql db {
+		insert par into Parent
+	}
+
+	parent := sql db {
+		select from Parent where id == 1
+	}
+
+	sql db {
+		drop table Chield
+		drop table Parent
+	}
+
+	eprintln(parent)
+}
+
+fn mysql_array() {
+	mut db := mysql.Connection{
+		host: 'localhost'
+		port: 3306
+		username: 'root'
+		password: 'abc'
+		dbname: 'test'
+	}
+	db.connect() or { panic(err) }
+
+	sql db {
+		create table Parent
+	}
+
+	par := Parent{
+		name: 'test'
+		chields: [
+			Chield{
+				name: 'abc'
+			},
+			Chield{
+				name: 'def'
+			},
+		]
+	}
+
+	sql db {
+		insert par into Parent
+	}
+
+	parent := sql db {
+		select from Parent where id == 1
+	}
+
+	eprintln(parent)
+
+	sql db {
+		drop table Chield
+		drop table Parent
+	}
+
+	db.close()
+}
+
+fn psql_array() {
+	mut db := pg.connect(host: 'localhost', user: 'test', password: 'abc', dbname: 'test') or {
+		panic(err)
+	}
+
+	sql db {
+		create table Parent
+	}
+
+	par := Parent{
+		name: 'test'
+		chields: [
+			Chield{
+				name: 'abc'
+			},
+			Chield{
+				name: 'def'
+			},
+		]
+	}
+
+	sql db {
+		insert par into Parent
+	}
+
+	parent := sql db {
+		select from Parent where id == 1
+	}
+
+	eprintln(parent)
+
+	sql db {
+		drop table Chield
+		drop table Parent
+	}
+
+	db.close()
 }
 
 fn sqlite3() {
