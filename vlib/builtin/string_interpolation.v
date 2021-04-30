@@ -519,27 +519,22 @@ pub:
 [manualfree]
 pub fn str_interpolation(data_len int, in_data voidptr) string {
 	mut res := strings.new_builder(256)
-	defer {
-		unsafe{res.free()}
-	}
-	//mut res := ""
 	unsafe{	
 		mut i := 0
 		for i < data_len {
 			data := &StrIntpData( byteptr(in_data) + (int(sizeof(StrIntpData)) * i) )
 			res.write_string(data.str)
-			//res += data.str
+
 			// skip only string records
 			if data.fmt != 0 {
 				data.get_fmt_from_u64_format(mut &res)
-				//res += data.get_fmt_from_u64_format()
-				//res.write_string(data.get_fmt_from_u64_format())
 			}
 			i++
 		}
 	}
-	//return res
+	
 	ret := res.str()
+	unsafe{ res.free() }
 	return ret
 }
 
