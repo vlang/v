@@ -758,7 +758,7 @@ fn test_byte_keys() {
 		m[i] = i
 		assert m[i] == i
 	}
-	for k, v in  m {
+	for k, v in m {
 		assert k == v
 	}
 	for i in byte(0) .. 100 {
@@ -784,7 +784,7 @@ fn test_i16_keys() {
 		m[i] = i
 		assert m[i] == i
 	}
-	for k, v in  m {
+	for k, v in m {
 		assert k == v
 	}
 	for i in i16(0) .. 500 {
@@ -810,7 +810,7 @@ fn test_u16_keys() {
 		m[i] = i
 		assert m[i] == i
 	}
-	for k, v in  m {
+	for k, v in m {
 		assert k == v
 	}
 	for i in u16(0) .. 500 {
@@ -836,7 +836,7 @@ fn test_u32_keys() {
 		m[i] = i
 		assert m[i] == i
 	}
-	for k, v in  m {
+	for k, v in m {
 		assert k == v
 	}
 	for i in u32(0) .. 500 {
@@ -862,7 +862,7 @@ fn test_int_keys2() {
 		m[i] = i
 		assert m[i] == i
 	}
-	for k, v in  m {
+	for k, v in m {
 		assert k == v
 	}
 	for i in int(0) .. 500 {
@@ -888,7 +888,7 @@ fn test_i64_keys() {
 		m[i] = i
 		assert m[i] == i
 	}
-	for k, v in  m {
+	for k, v in m {
 		assert k == v
 	}
 	for i in i64(0) .. 500 {
@@ -914,7 +914,7 @@ fn test_u64_keys() {
 		m[i] = i
 		assert m[i] == i
 	}
-	for k, v in  m {
+	for k, v in m {
 		assert k == v
 	}
 	for i in u64(0) .. 500 {
