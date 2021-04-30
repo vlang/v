@@ -906,3 +906,29 @@ fn test_i64_keys() {
 	}
 	assert m.len == 0
 }
+
+fn test_u64_keys() {
+	mut m := map[u64]u64{}
+	end := 1000
+	for i in u64(0) .. end {
+		m[i] = i
+		assert m[i] == i
+	}
+	for k, v in  m {
+		assert k == v
+	}
+	for i in u64(0) .. 500 {
+		m[i]++
+		assert m[i] == i + 1
+	}
+	assert m.len == end
+	keys := m.keys()
+	for i in u64(0) .. end {
+		assert keys[i] == i
+	}
+	for i in u64(0) .. end {
+		m.delete(i)
+		assert m[i] == 0
+	}
+	assert m.len == 0
+}
