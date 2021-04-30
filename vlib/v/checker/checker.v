@@ -197,11 +197,14 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 	// post process generic functions. must be done after all files have been
 	// checked, to eunsure all generic calls are processed as this information
 	// is needed when the generic type is auto inferred from the call argument
-	for i in 0 .. ast_files.len {
-		file := unsafe { &ast_files[i] }
-		if file.generic_fns.len > 0 {
-			c.change_current_file(file)
-			c.post_process_generic_fns()
+	// Check 2 times (in order to check nested generics fn)
+	for _ in 0 .. 2 {
+		for i in 0 .. ast_files.len {
+			file := unsafe { &ast_files[i] }
+			if file.generic_fns.len > 0 {
+				c.change_current_file(file)
+				c.post_process_generic_fns()
+			}
 		}
 	}
 	// restore the original c.file && c.mod after post processing
@@ -1956,6 +1959,7 @@ fn (mut c Checker) array_builtin_method_call(mut call_expr ast.CallExpr, left_ty
 	} else if method_name == 'sort' {
 		call_expr.return_type = ast.void_type
 	} else if method_name == 'contains' {
+		// c.warn('use `value in arr` instead of `arr.contains(value)`', call_expr.pos)
 		call_expr.return_type = ast.bool_type
 	} else if method_name == 'index' {
 		call_expr.return_type = ast.int_type
@@ -1990,7 +1994,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 		}
 	}
 	if has_generic {
-		if c.mod != '' && !fn_name.starts_with('${c.mod}.') {
+		if c.mod != '' && !fn_name.contains('.') {
 			// Need to prepend the module when adding a generic type to a function
 			c.table.register_fn_concrete_types(c.mod + '.' + fn_name, concrete_types)
 		} else {
@@ -6451,15 +6455,24 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 	info := sym.info as ast.Struct
 	fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, sym.name)
 	mut sub_structs := map[int]ast.SqlExpr{}
-	for f in fields.filter(c.table.type_symbols[int(it.typ)].kind == .struct_) {
+	for f in fields.filter(c.table.type_symbols[int(it.typ)].kind == .struct_
+		|| (c.table.get_type_symbol(it.typ).kind == .array
+		&& c.table.get_type_symbol(c.table.get_type_symbol(it.typ).array_info().elem_type).kind == .struct_)) {
+		typ := if c.table.get_type_symbol(f.typ).kind == .struct_ {
+			f.typ
+		} else if c.table.get_type_symbol(f.typ).kind == .array {
+			c.table.get_type_symbol(f.typ).array_info().elem_type
+		} else {
+			ast.Type(0)
+		}
 		mut n := ast.SqlExpr{
 			pos: node.pos
 			has_where: true
-			typ: f.typ
+			typ: typ
 			db_expr: node.db_expr
 			table_expr: ast.TypeNode{
 				pos: node.table_expr.pos
-				typ: f.typ
+				typ: typ
 			}
 		}
 		tmp_inside_sql := c.inside_sql
@@ -6496,7 +6509,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 			or_block: ast.OrExpr{}
 		}
 
-		sub_structs[int(f.typ)] = n
+		sub_structs[int(typ)] = n
 	}
 	node.fields = fields
 	node.sub_structs = sub_structs.move()
@@ -6543,20 +6556,29 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	info := table_sym.info as ast.Struct
 	fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, table_sym.name)
 	mut sub_structs := map[int]ast.SqlStmtLine{}
-	for f in fields.filter(c.table.type_symbols[int(it.typ)].kind == .struct_) {
+	for f in fields.filter((c.table.type_symbols[int(it.typ)].kind == .struct_)
+		|| (c.table.get_type_symbol(it.typ).kind == .array
+		&& c.table.get_type_symbol(c.table.get_type_symbol(it.typ).array_info().elem_type).kind == .struct_)) {
+		typ := if c.table.get_type_symbol(f.typ).kind == .struct_ {
+			f.typ
+		} else if c.table.get_type_symbol(f.typ).kind == .array {
+			c.table.get_type_symbol(f.typ).array_info().elem_type
+		} else {
+			ast.Type(0)
+		}
 		mut n := ast.SqlStmtLine{
 			pos: node.pos
 			kind: node.kind
 			table_expr: ast.TypeNode{
 				pos: node.table_expr.pos
-				typ: f.typ
+				typ: typ
 			}
 			object_var_name: '${node.object_var_name}.$f.name'
 		}
 		tmp_inside_sql := c.inside_sql
 		c.sql_stmt_line(mut n)
 		c.inside_sql = tmp_inside_sql
-		sub_structs[int(f.typ)] = n
+		sub_structs[typ] = n
 	}
 	node.fields = fields
 	node.sub_structs = sub_structs.move()
@@ -6574,7 +6596,10 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 
 fn (mut c Checker) fetch_and_verify_orm_fields(info ast.Struct, pos token.Position, table_name string) []ast.StructField {
 	fields := info.fields.filter((it.typ in [ast.string_type, ast.int_type, ast.bool_type]
-		|| c.table.type_symbols[int(it.typ)].kind == .struct_) && !it.attrs.contains('skip'))
+		|| c.table.type_symbols[int(it.typ)].kind == .struct_
+		|| (c.table.get_type_symbol(it.typ).kind == .array
+		&& c.table.get_type_symbol(c.table.get_type_symbol(it.typ).array_info().elem_type).kind == .struct_))
+		&& !it.attrs.contains('skip'))
 	if fields.len == 0 {
 		c.error('V orm: select: empty fields in `$table_name`', pos)
 		return []ast.StructField{}
@@ -6588,24 +6613,21 @@ fn (mut c Checker) fetch_and_verify_orm_fields(info ast.Struct, pos token.Positi
 fn (mut c Checker) post_process_generic_fns() {
 	// Loop thru each generic function concrete type.
 	// Check each specific fn instantiation.
-	// Check 2 times (in order to check nested generics fn)
-	for _ in 0 .. 2 {
-		for i in 0 .. c.file.generic_fns.len {
-			if c.table.fn_generic_types.len == 0 {
-				// no concrete types, so just skip:
-				continue
-			}
-			mut node := c.file.generic_fns[i]
-			c.mod = node.mod
-			for generic_types in c.table.fn_generic_types[node.name] {
-				node.cur_generic_types = generic_types
-				c.fn_decl(mut node)
-				if node.name in ['vweb.run_app', 'vweb.run'] {
-					c.vweb_gen_types << generic_types
-				}
-			}
-			node.cur_generic_types = []
+	for i in 0 .. c.file.generic_fns.len {
+		if c.table.fn_generic_types.len == 0 {
+			// no concrete types, so just skip:
+			continue
 		}
+		mut node := c.file.generic_fns[i]
+		c.mod = node.mod
+		for generic_types in c.table.fn_generic_types[node.name] {
+			node.cur_generic_types = generic_types
+			c.fn_decl(mut node)
+			if node.name in ['vweb.run_app', 'vweb.run'] {
+				c.vweb_gen_types << generic_types
+			}
+		}
+		node.cur_generic_types = []
 	}
 }
 

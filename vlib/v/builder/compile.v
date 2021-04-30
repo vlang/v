@@ -49,8 +49,8 @@ pub fn compile(command string, pref &pref.Preferences) {
 		scompilation_time_ms := util.bold('${f64(compilation_time_micros) / 1000.0:6.3f}')
 		mut all_v_source_lines, mut all_v_source_bytes := 0, 0
 		for mut pf in b.parsed_files {
-			all_v_source_lines += pf.lines
-			all_v_source_bytes += pf.bytes
+			all_v_source_lines += pf.nr_lines
+			all_v_source_bytes += pf.nr_bytes
 		}
 		mut sall_v_source_lines := all_v_source_lines.str()
 		mut sall_v_source_bytes := all_v_source_bytes.str()

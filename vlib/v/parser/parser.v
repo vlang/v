@@ -283,8 +283,8 @@ pub fn (mut p Parser) parse() ast.File {
 		path: p.file_name
 		path_base: p.file_base
 		is_test: p.inside_test_file
-		lines: p.scanner.line_nr
-		bytes: p.scanner.text.len
+		nr_lines: p.scanner.line_nr
+		nr_bytes: p.scanner.text.len
 		mod: module_decl
 		imports: p.ast_imports
 		imported_symbols: p.imported_symbols
