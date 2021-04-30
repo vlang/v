@@ -551,8 +551,8 @@ pub struct File {
 pub:
 	path         string // absolute path of the source file - '/projects/v/file.v'
 	path_base    string // file name - 'file.v' (useful for tracing)
-	nr_lines        int    // number of source code lines in the file (including newlines and comments)
-	nr_bytes        int    // number of processed source code bytes
+	nr_lines     int    // number of source code lines in the file (including newlines and comments)
+	nr_bytes     int    // number of processed source code bytes
 	mod          Module // the module of the source file (from `module xyz` at the top)
 	global_scope &Scope
 	is_test      bool // true for _test.v files
