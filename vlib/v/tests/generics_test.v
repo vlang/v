@@ -342,7 +342,7 @@ fn test_generic_struct_print_array_as_field() {
 	foo := Foo<[]string>{
 		data: []string{}
 	}
-	assert foo.str() == 'Foo<array, string>{\n    data: []\n}'
+	assert foo.str() == 'Foo<[]string>{\n    data: []\n}'
 }
 
 /*
@@ -493,7 +493,7 @@ fn test_generic_detection() {
 	// generic
 	assert multi_generic_args<int, string>(0, 's')
 	assert multi_generic_args<Foo1, Foo2>(Foo1{}, Foo2{})
-	assert multi_generic_args<Foo<int>, Foo<int> >(Foo<int>{}, Foo<int>{})
+	assert multi_generic_args<Foo<int>, Foo<int>>(Foo<int>{}, Foo<int>{})
 	// TODO: assert multi_generic_args<Foo<int>, Foo<int>>(Foo1{}, Foo2{})
 	assert multi_generic_args<simplemodule.Data, int>(simplemodule.Data{}, 0)
 	assert multi_generic_args<int, simplemodule.Data>(0, simplemodule.Data{})
