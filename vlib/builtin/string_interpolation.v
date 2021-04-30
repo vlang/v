@@ -378,7 +378,7 @@ fn (data StrIntpData) get_fmt_from_u64_format(mut sb &strings.Builder) {
 					if data.d.d_f32 < 0 { bf.positive = false }
 					d := fabs32(data.d.d_f32)
 					if d < 999_999.0 && d >= 0.00001 {
-						mut f := strconv.format_fl(data.d.d_f32, bf)
+						mut f := strconv.format_fl1(data.d.d_f32, bf)
 						if upper_case {
 							tmp := f
 							f = f.to_upper()
@@ -388,8 +388,7 @@ fn (data StrIntpData) get_fmt_from_u64_format(mut sb &strings.Builder) {
 						f.free()
 						return
 					}
-
-					mut f := strconv.format_es(data.d.d_f32, bf)
+					mut f := strconv.format_es1(data.d.d_f32, bf)
 					if upper_case {
 						tmp := f
 						f = f.to_upper()
@@ -447,7 +446,7 @@ fn (data StrIntpData) get_fmt_from_u64_format(mut sb &strings.Builder) {
 					f.free()
 				} else {
 					if data.d.d_f32 < 0 { bf.positive = false }
-					mut f := strconv.format_es(data.d.d_f32, bf)
+					mut f := strconv.format_es1(data.d.d_f32, bf)
 					if upper_case {
 						tmp := f
 						f = f.to_upper()
@@ -470,7 +469,7 @@ fn (data StrIntpData) get_fmt_from_u64_format(mut sb &strings.Builder) {
 					f.free()
 				} else {
 					if data.d.d_f64 < 0 { bf.positive = false }
-					mut f := strconv.format_es(data.d.d_f64, bf)
+					mut f := strconv.format_es1(data.d.d_f64, bf)
 					if upper_case {
 						tmp := f
 						f = f.to_upper()
