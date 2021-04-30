@@ -80,7 +80,7 @@ pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
 
 // strings.Builder version of format_fl
 [manualfree]
-pub fn format_fl1(f f64, p BF_param) string {
+pub fn format_fl(f f64, p BF_param) string {
 	unsafe{
 		mut s  := ""
 		//mut fs := "1.2343"
@@ -321,7 +321,7 @@ pub fn f64_to_str_lnd1(f f64, dec_digit int) string {
 }
 
 [manualfree]
-pub fn format_es1(f f64, p BF_param) string {
+pub fn format_es(f f64, p BF_param) string {
 	unsafe{
 		mut s := ""
 		mut fs := f64_to_str_pad(if f> 0 {f} else {-f},p.len1)
