@@ -435,6 +435,7 @@ fn (data StrIntpData) get_fmt_from_u64_format(mut sb &strings.Builder) {
 			}
 			.si_e32 {
 				//println("HERE: e32")
+				bf.len1 = 6
 				if use_default_str {
 					mut f := data.d.d_f32.str()
 					if upper_case {
@@ -458,6 +459,7 @@ fn (data StrIntpData) get_fmt_from_u64_format(mut sb &strings.Builder) {
 			}
 			.si_e64 {
 				//println("HERE: e64")
+				bf.len1 = 6
 				if use_default_str {
 					mut f := data.d.d_f64.str()
 					if upper_case {
