@@ -757,7 +757,13 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	// TODO: test node.left instead
 	// left & left_type will be `x` and `x type` in `x.fieldfn()`
 	// will be `0` for `foo()`
+	mut is_interface_call := false
 	if node.left_type != 0 {
+		left_sym := g.table.get_type_symbol(node.left_type)
+		if left_sym.kind == .interface_ {
+			is_interface_call = true
+			g.write('(*')
+		}
 		g.expr(node.left)
 		if node.left_type.is_ptr() {
 			g.write('->')
@@ -889,8 +895,12 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			// g.writeln(';')
 			// g.write(cur_line + ' /* <== af cur line*/')
 			// }
+			g.write(g.get_ternary_name(name))
+			if is_interface_call {
+				g.write(')')
+			}
 			mut tmp_cnt_save := -1
-			g.write('${g.get_ternary_name(name)}(')
+			g.write('(')
 			if g.is_json_fn {
 				g.write(json_obj)
 			} else {
