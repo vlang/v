@@ -6550,6 +6550,10 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 		} else {
 			ast.Type(0)
 		}
+		mut object_var_name := '${node.object_var_name}.$f.name'
+		if typ != f.typ {
+			object_var_name = node.object_var_name
+		}
 		mut n := ast.SqlStmtLine{
 			pos: node.pos
 			kind: node.kind
@@ -6557,7 +6561,7 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 				pos: node.table_expr.pos
 				typ: typ
 			}
-			object_var_name: '${node.object_var_name}.$f.name'
+			object_var_name: object_var_name
 		}
 		tmp_inside_sql := c.inside_sql
 		c.sql_stmt_line(mut n)
