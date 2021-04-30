@@ -3229,14 +3229,15 @@ fn (mut g Gen) expr(node ast.Expr) {
 // T.name, typeof(expr).name
 fn (mut g Gen) type_name(typ ast.Type) {
 	sym := g.table.get_type_symbol(typ)
-	s := if sym.kind == .function {
+	mut s := ''
+	if sym.kind == .function {
 		if typ.is_ptr() {
-			'&' + g.fn_decl_str(sym.info as ast.FnType)
+			s = '&' + g.fn_decl_str(sym.info as ast.FnType)
 		} else {
-			g.fn_decl_str(sym.info as ast.FnType)
+			s = g.fn_decl_str(sym.info as ast.FnType)
 		}
 	} else {
-		g.table.type_to_str(g.unwrap_generic(typ))
+		s = g.table.type_to_str(g.unwrap_generic(typ))
 	}
 	g.write('_SLIT("${util.strip_main_name(s)}")')
 }
