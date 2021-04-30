@@ -193,11 +193,21 @@ pub fn (mut p Parser) parse_multi_return_type() ast.Type {
 pub fn (mut p Parser) parse_fn_type(name string) ast.Type {
 	// p.warn('parse fn')
 	p.check(.key_fn)
+	mut has_generic := false
 	line_nr := p.tok.line_nr
 	args, _, is_variadic := p.fn_args()
+	for arg in args {
+		if arg.typ.has_flag(.generic) {
+			has_generic = true
+			break
+		}
+	}
 	mut return_type := ast.void_type
 	if p.tok.line_nr == line_nr && p.tok.kind.is_start_of_type() {
 		return_type = p.parse_type()
+		if return_type.has_flag(.generic) {
+			has_generic = true
+		}
 	}
 	func := ast.Fn{
 		name: name
@@ -209,6 +219,9 @@ pub fn (mut p Parser) parse_fn_type(name string) ast.Type {
 	// because typedefs get generated after the map struct is generated
 	has_decl := p.builtin_mod && name.starts_with('Map') && name.ends_with('Fn')
 	idx := p.table.find_or_register_fn_type(p.mod, func, false, has_decl)
+	if has_generic {
+		return ast.new_type(idx).set_flag(.generic)
+	}
 	return ast.new_type(idx)
 }
 
