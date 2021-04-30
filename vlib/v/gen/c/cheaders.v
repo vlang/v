@@ -382,13 +382,10 @@ static inline uint64_t _wymix(uint64_t A, uint64_t B){ _wymum(&A,&B); return A^B
 
 //endian macros
 #ifndef WYHASH_LITTLE_ENDIAN
-	#if defined(_WIN32) || defined(__LITTLE_ENDIAN__) || (defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+	#ifdef TARGET_ORDER_IS_LITTLE
 		#define WYHASH_LITTLE_ENDIAN 1
-	#elif defined(__BIG_ENDIAN__) || (defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
-		#define WYHASH_LITTLE_ENDIAN 0
 	#else
-		#warning could not determine endianness! Falling back to little endian.
-		#define WYHASH_LITTLE_ENDIAN 1
+		#define WYHASH_LITTLE_ENDIAN 0
 	#endif
 #endif
 
