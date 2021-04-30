@@ -36,8 +36,8 @@ pub const (
 		'.wasm': 'application/wasm'
 		'.xml':  'text/xml; charset=utf-8'
 	}
-	max_http_post_size      = 1024 * 1024
-	default_port            = 8080
+	max_http_post_size = 1024 * 1024
+	default_port       = 8080
 )
 
 pub struct Context {

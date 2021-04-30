@@ -19,7 +19,13 @@ struct User {
 }
 
 fn main() {
-	db := sqlite.connect(':memory:') or { panic(err) }
+	sqlite3()
+	mysql()
+	psql()
+}
+
+fn sqlite3() {
+	mut db := sqlite.connect(':memory:') or { panic(err) }
 	sql db {
 		create table Module
 	}
@@ -46,9 +52,7 @@ fn main() {
 	}
 
 	eprintln(modul)
-
-	// mysql()
-	psql()
+	db.close() or { panic(err) }
 }
 
 fn mysql() {
@@ -82,7 +86,9 @@ fn mysql() {
 	m := sql conn {
 		select from Module where id == 1
 	}
+
 	eprintln(m)
+	conn.close()
 }
 
 fn psql() {
@@ -107,4 +113,15 @@ fn psql() {
 	sql db {
 		insert mod into Module
 	}
+
+	modul := sql db {
+		select from Module where id == 1
+	}
+
+	sql db {
+		drop table Module
+	}
+
+	eprintln(modul)
+	db.close()
 }

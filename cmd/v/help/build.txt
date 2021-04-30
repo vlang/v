@@ -155,5 +155,7 @@ NB: the build flags are shared with the run command too:
 
 For C-specific build flags, use `v help build-c`.
 
+For Native-specific build flags, use `v help build-native`.
+
 See also:
    `v help run` for documentation regarding `v run`.

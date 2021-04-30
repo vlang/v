@@ -197,11 +197,14 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 	// post process generic functions. must be done after all files have been
 	// checked, to eunsure all generic calls are processed as this information
 	// is needed when the generic type is auto inferred from the call argument
-	for i in 0 .. ast_files.len {
-		file := unsafe { &ast_files[i] }
-		if file.generic_fns.len > 0 {
-			c.change_current_file(file)
-			c.post_process_generic_fns()
+	// Check 2 times (in order to check nested generics fn)
+	for _ in 0 .. 2 {
+		for i in 0 .. ast_files.len {
+			file := unsafe { &ast_files[i] }
+			if file.generic_fns.len > 0 {
+				c.change_current_file(file)
+				c.post_process_generic_fns()
+			}
 		}
 	}
 	// restore the original c.file && c.mod after post processing
@@ -349,6 +352,9 @@ pub fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 			c.error("type `$sym.name` doesn't exist", variant.pos)
 		} else if sym.kind == .interface_ {
 			c.error('sum type cannot hold an interface', variant.pos)
+		}
+		if sym.name.trim_prefix(sym.mod + '.') == node.name {
+			c.error('sum type cannot hold itself', variant.pos)
 		}
 		names_used << sym.name
 	}
@@ -1109,7 +1115,8 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) ast.Type {
 		c.error('unwrapped optional cannot be used in an infix expression', left_right_pos)
 	}
 	// Dual sides check (compatibility check)
-	if !c.symmetric_check(right_type, left_type) && !c.pref.translated {
+	if !(c.symmetric_check(left_type, right_type) && c.symmetric_check(right_type, left_type))
+		&& !c.pref.translated {
 		// for type-unresolved consts
 		if left_type == ast.void_type || right_type == ast.void_type {
 			return ast.void_type
@@ -1523,7 +1530,7 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 		}
 	}
 	if has_generic {
-		c.table.register_fn_generic_types(call_expr.name, concrete_types)
+		c.table.register_fn_concrete_types(call_expr.name, concrete_types)
 	}
 	// TODO: remove this for actual methods, use only for compiler magic
 	// FIXME: Argument count != 1 will break these
@@ -1986,11 +1993,11 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 		}
 	}
 	if has_generic {
-		if c.mod != '' && !fn_name.starts_with('${c.mod}.') {
+		if c.mod != '' && !fn_name.contains('.') {
 			// Need to prepend the module when adding a generic type to a function
-			c.table.register_fn_generic_types(c.mod + '.' + fn_name, concrete_types)
+			c.table.register_fn_concrete_types(c.mod + '.' + fn_name, concrete_types)
 		} else {
-			c.table.register_fn_generic_types(fn_name, concrete_types)
+			c.table.register_fn_concrete_types(fn_name, concrete_types)
 		}
 	}
 	if fn_name == 'json.encode' {
@@ -6109,14 +6116,16 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 			typ = typ.set_nr_muls(0)
 		}
 	} else { // [1]
-		index_type := c.expr(node.index)
 		if typ_sym.kind == .map {
 			info := typ_sym.info as ast.Map
+			c.expected_type = info.key_type
+			index_type := c.expr(node.index)
 			if !c.check_types(index_type, info.key_type) {
 				err := c.expected_msg(index_type, info.key_type)
 				c.error('invalid key: $err', node.pos)
 			}
 		} else {
+			index_type := c.expr(node.index)
 			c.check_index(typ_sym, node.index, index_type, node.pos, false)
 		}
 		value_type := c.table.value_type(typ)
@@ -6567,24 +6576,21 @@ fn (mut c Checker) fetch_and_verify_orm_fields(info ast.Struct, pos token.Positi
 fn (mut c Checker) post_process_generic_fns() {
 	// Loop thru each generic function concrete type.
 	// Check each specific fn instantiation.
-	// Check 2 times (in order to check nested generics fn)
-	for _ in 0 .. 2 {
-		for i in 0 .. c.file.generic_fns.len {
-			if c.table.fn_generic_types.len == 0 {
-				// no concrete types, so just skip:
-				continue
-			}
-			mut node := c.file.generic_fns[i]
-			c.mod = node.mod
-			for generic_types in c.table.fn_generic_types[node.name] {
-				node.cur_generic_types = generic_types
-				c.fn_decl(mut node)
-				if node.name in ['vweb.run_app', 'vweb.run'] {
-					c.vweb_gen_types << generic_types
-				}
-			}
-			node.cur_generic_types = []
+	for i in 0 .. c.file.generic_fns.len {
+		if c.table.fn_generic_types.len == 0 {
+			// no concrete types, so just skip:
+			continue
 		}
+		mut node := c.file.generic_fns[i]
+		c.mod = node.mod
+		for generic_types in c.table.fn_generic_types[node.name] {
+			node.cur_generic_types = generic_types
+			c.fn_decl(mut node)
+			if node.name in ['vweb.run_app', 'vweb.run'] {
+				c.vweb_gen_types << generic_types
+			}
+		}
+		node.cur_generic_types = []
 	}
 }
 
