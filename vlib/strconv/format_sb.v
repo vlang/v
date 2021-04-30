@@ -83,8 +83,10 @@ pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
 pub fn format_fl1(f f64, p BF_param) string {
 	unsafe{
 		mut s  := ""
-		mut fs := f64_to_str_lnd1(if f >= 0.0 {f} else {-f}, p.len1)
 		//mut fs := "1.2343"
+		mut fs := f64_to_str_lnd1(if f >= 0.0 {f} else {-f}, p.len1)
+		//println("Dario")
+		//println(fs)
 
 		// error!!
 		if fs[0] == `[` {
@@ -111,7 +113,7 @@ pub fn format_fl1(f f64, p BF_param) string {
 				sign_len_diff = -1
 			}
 			tmp := s
-			s = fs
+			s = fs.clone()
 			tmp.free()
 		} else {
 			if p.positive {
@@ -121,7 +123,7 @@ pub fn format_fl1(f f64, p BF_param) string {
 					tmp.free()
 				} else {
 					tmp := s
-					s = fs
+					s = fs.clone()
 					tmp.free()
 				}
 			} else {
@@ -315,5 +317,67 @@ pub fn f64_to_str_lnd1(f f64, dec_digit int) string {
 			return tmp_res
 		}
 
+	}
+}
+
+[manualfree]
+pub fn format_es1(f f64, p BF_param) string {
+	unsafe{
+		mut s := ""
+		mut fs := f64_to_str_pad(if f> 0 {f} else {-f},p.len1)
+		if p.rm_tail_zero {
+			fs = remove_tail_zeros(fs)
+		}
+		mut res := strings.new_builder( if p.len0 > fs.len { p.len0 } else { fs.len })
+
+		mut sign_len_diff := 0
+		if p.pad_ch == `0` {
+			if p.positive {
+				if p.sign_flag {
+					res.write_b(`+`)
+					sign_len_diff = -1
+				}
+			} else {
+				res.write_b(`-`)
+				sign_len_diff = -1
+			}
+			tmp := s
+			s = fs.clone()
+			tmp.free()
+		} else {
+			if p.positive {
+				if p.sign_flag {
+					tmp := s
+					s = "+" + fs
+					tmp.free()
+				} else {
+					tmp := s
+					s = fs.clone()
+					tmp.free()
+				}
+			} else {
+				tmp := s
+				s = "-" + fs
+				tmp.free()
+			}
+		}
+
+		dif := p.len0 - s.len + sign_len_diff
+		if p.allign == .right {
+			for i1 :=0; i1 < dif; i1++ {
+				res.write_b(p.pad_ch)
+			}
+		}
+		res.write_string(s)
+		if p.allign == .left {
+			for i1 :=0; i1 < dif; i1++ {
+				res.write_b(p.pad_ch)
+			}
+		}
+		s.free()
+		fs.free()
+		tmp_res := res.str()
+		res.free()
+		return tmp_res
 	}
 }
