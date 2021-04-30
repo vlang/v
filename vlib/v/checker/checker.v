@@ -1959,6 +1959,7 @@ fn (mut c Checker) array_builtin_method_call(mut call_expr ast.CallExpr, left_ty
 	} else if method_name == 'sort' {
 		call_expr.return_type = ast.void_type
 	} else if method_name == 'contains' {
+		// c.warn('use `value in arr` instead of `arr.contains(value)`', call_expr.pos)
 		call_expr.return_type = ast.bool_type
 	} else if method_name == 'index' {
 		call_expr.return_type = ast.int_type
