@@ -342,7 +342,7 @@ fn test_generic_struct_print_array_as_field() {
 	foo := Foo<[]string>{
 		data: []string{}
 	}
-	assert foo.str() == 'Foo<array, string>{\n    data: []\n}'
+	assert foo.str() == 'Foo<[]string>{\n    data: []\n}'
 }
 
 /*

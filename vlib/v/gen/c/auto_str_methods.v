@@ -489,7 +489,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 		// TODO: this is a bit hacky. styp shouldn't be even parsed with _T_
 		// use something different than g.typ for styp
 		clean_struct_v_type_name =
-			clean_struct_v_type_name.replace('_Array', '_array').replace('_T_', '<').replace('_', ', ') +
+			clean_struct_v_type_name.replace('Array_', '[]').replace('_T_', '<').replace('_', ', ') +
 			'>'
 	}
 	clean_struct_v_type_name = util.strip_main_name(clean_struct_v_type_name)
