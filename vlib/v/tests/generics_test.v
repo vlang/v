@@ -345,13 +345,16 @@ fn test_generic_struct_print_array_as_field() {
 	assert foo.str() == 'Foo<[]string>{\n    data: []\n}'
 }
 
-/*
-struct Abc{ x int y int z int }
+struct Abc {
+	x int
+	y int
+	z int
+}
 
 fn p<T>(args ...T) {
-	size:=sizeof(T)
-	print('p called with size: ${size:3d} | ')
-	for _,x in args {
+	size := sizeof(T)
+	print('p called with size: ${size:3} | ')
+	for _, x in args {
 		print(x)
 		print(' ')
 	}
@@ -359,10 +362,10 @@ fn p<T>(args ...T) {
 	assert true
 }
 
-fn test_generic_fn_with_variadics(){
-	s:='abc'
-	i:=1
-	abc:=Abc{1,2,3}
+fn test_generic_fn_with_variadics() {
+	s := 'abc'
+	i := 1
+	abc := Abc{1, 2, 3}
 	// these calls should all compile, and print the arguments,
 	// even though the arguments are all a different type and arity:
 	p(s)
@@ -370,7 +373,6 @@ fn test_generic_fn_with_variadics(){
 	p(abc)
 	p('Good', 'morning', 'world')
 }
-*/
 
 struct Context {}
 
@@ -391,24 +393,6 @@ fn test_pass_generic_to_nested_function() {
 	mut app := App{}
 	test(mut app)
 }
-
-/*
-struct NestedGeneric {}
-
-fn (ng NestedGeneric) nested_test<T>(mut app T) {
-	app.context = Context {}
-}
-
-fn method_test<T>(mut app T) {
-	ng := NestedGeneric{}
-	ng.nested_test<T>(app)
-}
-
-fn test_pass_generic_to_nested_method() {
-	mut app := App{}
-	method_test(mut app)
-}
-*/
 
 fn generic_return_map<M>() map[string]M {
 	return map{
