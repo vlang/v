@@ -838,8 +838,8 @@ Maps can have keys of type string, rune, integer, float or voidptr.
 The whole map can be initialized using this short syntax:
 ```v
 numbers := map{
-	1: 'one'
-	2: 'two'
+	'one': 1
+	'two': 2
 }
 println(numbers)
 ```
