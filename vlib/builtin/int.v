@@ -3,7 +3,6 @@
 // that can be found in the LICENSE file.
 module builtin
 
-
 //
 // ----- value to string functions -----
 //
@@ -41,7 +40,7 @@ fn (nn int) str_l(max int) string {
 		mut index := max
 		buf[index] = 0
 		index--
-		
+
 		for n > 0 {
 			n1 := int(n / 100)
 			d = ((int(n) - (n1 * 100)) << 1)
@@ -107,7 +106,7 @@ pub fn (nn u32) str() string {
 		for n > 0 {
 			n1 := n / u32(100)
 			d = ((n - (n1 * u32(100))) << u32(1))
-			n = n1	
+			n = n1
 			buf[index] = digit_pairs[d]
 			index--
 			d++
@@ -145,7 +144,7 @@ pub fn (nn i64) str() string {
 			n = -n
 			is_neg = true
 		}
-		mut index := max	
+		mut index := max
 		buf[index] = 0
 		index--
 		for n > 0 {
@@ -170,7 +169,6 @@ pub fn (nn i64) str() string {
 		}
 		return tos(memdup(&buf[0] + index, (max - index)), (max - index))
 	}
-	
 }
 
 // str returns the value of the `u64` as a `string`.
@@ -184,7 +182,7 @@ pub fn (nn u64) str() string {
 		}
 		max := 20
 		mut buf := [32]byte{}
-		mut index := max	
+		mut index := max
 		buf[index] = 0
 		index--
 		for n > 0 {
@@ -357,6 +355,7 @@ pub fn (nn voidptr) str() string {
 
 // hex returns the value of the `byteptr` as a hexadecimal `string`.
 // Note that the output is ***not*** zero padded.
+//pub fn (nn byteptr) str() string {
 pub fn (nn byteptr) str() string {
 	return u64(nn).hex()
 }
