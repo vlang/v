@@ -99,7 +99,7 @@ pub fn (nn u32) str() string {
 			return '0'
 		}
 		max := 12
-		mut buf := [32]byte{}
+		mut buf := [16]byte{}
 		mut index := max
 		buf[index] = 0
 		index--
