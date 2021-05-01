@@ -81,7 +81,8 @@ fn get_string_special(neg bool, expZero bool, mantZero bool) string {
  32 bit functions
 
 */
-fn decimal_len_32(u u32) int {
+// decimal_len_32 return the number of decimal digits of the input
+pub fn decimal_len_32(u u32) int {
 	// Function precondition: u is not a 10-digit number.
 	// (9 digits are sufficient for round-tripping.)
 	// This benchmarked faster than the log2 approach used for u64.
@@ -172,7 +173,8 @@ fn pow5_bits(e int) int {
  64 bit functions
 
 */
-fn decimal_len_64(u u64) int {
+// decimal_len_64 return the number of decimal digits of the input
+pub fn decimal_len_64(u u64) int {
 	// http://graphics.stanford.edu/~seander/bithacks.html#IntegerLog10
 	log2 := 64 - bits.leading_zeros_64(u) - 1
 	t := (log2 + 1) * 1233 >> 12

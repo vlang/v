@@ -11,7 +11,6 @@ import strings
 // strings.Builder version of format_str
 pub fn format_str_sb(s string, p BF_param, mut sb strings.Builder) {
 	if p.len0 <= 0 {
-		//return s.clone()
 		sb.write_string(s)
 		return
 	}
@@ -33,6 +32,131 @@ pub fn format_str_sb(s string, p BF_param, mut sb strings.Builder) {
 		}
 	}
 }
+
+/*
+pub fn fast_str(d u64) string {
+	if d == 0 {
+		return "0"
+	}
+
+	n_char := decimal_len_64(d)
+	
+	// max u64 18446744073709551615 => 20 byte
+	mut buf := [20]byte{}
+	mut i := 19
+	mut d1 := d
+	free_byte := 20 - n_char
+	for i >= free_byte {
+		buf[i] = byte(d1 % 10) + `0`
+		d1 = d1 / 10
+		i--
+	}
+	i++
+	unsafe {
+		ret := tos(&buf[0] + i, n_char).clone()
+		return ret
+	}
+}
+
+
+pub fn fast_str_ptr(d u64, n_char int) byteptr {
+	//mut n_char := decimal_len_64(d)
+	
+	// max u64 18446744073709551615 => 20 byte
+	mut buf := [20]byte{}
+	
+	if d == 0 {
+		buf[0] = 0
+		unsafe{
+			return &buf[0]
+		}
+	}
+	mut i := 19
+	mut d1 := d
+	free_byte := 20 - n_char
+	for i >= free_byte {
+		buf[i] = byte(d1 % 10) + `0`
+		d1 = d1 / 10
+		i--
+	}
+	i++
+	unsafe{
+		return &buf[0] + i
+	}
+}
+*/
+
+/*
+// strings.Builder version of format_dec
+[manualfree]
+pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
+	mut n_char := decimal_len_64(d)
+	dif := p.len0 - n_char
+	
+	// max u64 18446744073709551615 => 20 byte
+	buf := [20]byte{}
+	mut i := 19
+	mut d1 := d
+	for i > (20 - n_char) {
+		buf[i] = d1 % 10
+		d1 = d1 / 10
+		i--
+	}
+	
+	// add sign lenght
+	n_char += if !p.positive { 1 } else { if p.sign_flag { 1 } else { 0 } }
+
+	if p.pad_ch == `0` {
+		if p.positive {
+			if p.sign_flag {
+				res.write_b(`+`)
+			}
+		} else {
+			res.write_b(`-`)
+		}
+
+		
+		if p.allign == .right {
+			for i1 :=0; i1 < dif; i1++ {
+				res.write_b(p.pad_ch)
+			}
+		}
+		if p.sign_flag && p.positive {
+			res.write_b(`+`)
+		}
+		res.write_string(s)
+		if p.allign == .left {
+			for i1 :=0; i1 < dif; i1++ {
+				res.write_b(p.pad_ch)
+			}
+		}
+	} else {
+		if p.allign == .right {
+			for i1 :=0; i1 < dif; i1++ {
+				res.write_b(p.pad_ch)
+			}
+		}
+		if p.sign_flag && p.positive {
+			res.write_b(`+`)
+		}
+		if p.positive {
+			if p.sign_flag {
+				res.write_b(`+`)
+			}
+		} else {
+			res.write_b(`-`)
+		}
+		res.write_string(s)
+		if p.allign == .left {
+			for i1 :=0; i1 < dif; i1++ {
+				res.write_b(p.pad_ch)
+			}
+		}
+
+	}
+	unsafe{s.free()}
+}
+*/
 
 
 // strings.Builder version of format_dec
@@ -85,6 +209,7 @@ pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
 		}
 	}
 }
+
 
 // strings.Builder version of format_fl
 [manualfree]
