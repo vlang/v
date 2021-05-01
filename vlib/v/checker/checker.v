@@ -415,8 +415,7 @@ pub fn (mut c Checker) interface_decl(mut decl ast.InterfaceDecl) {
 				}
 			}
 		}
-
-		for method in decl_sym.info.methods {
+		for method in decl.methods {
 			if decl.language == .v {
 				c.check_valid_snake_case(method.name, 'method name', method.pos)
 			}
@@ -425,7 +424,7 @@ pub fn (mut c Checker) interface_decl(mut decl ast.InterfaceDecl) {
 				c.ensure_type_exists(param.typ, param.pos) or { return }
 			}
 		}
-		for i, field in decl_sym.info.fields {
+		for i, field in decl.fields {
 			if decl.language == .v {
 				c.check_valid_snake_case(field.name, 'field name', field.pos)
 			}
