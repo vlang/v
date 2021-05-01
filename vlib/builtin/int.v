@@ -3,6 +3,9 @@
 // that can be found in the LICENSE file.
 module builtin
 
+// Alias until native supported
+type u8 = byte
+
 //
 // ----- value to string functions -----
 //
