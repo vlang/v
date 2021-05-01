@@ -3,7 +3,6 @@
 // that can be found in the LICENSE file.
 module builtin
 
-type u8 = byte
 
 //
 // ----- value to string functions -----
