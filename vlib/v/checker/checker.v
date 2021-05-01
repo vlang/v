@@ -361,7 +361,8 @@ pub fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 }
 
 pub fn (mut c Checker) expand_iface_embeds(idecl &ast.InterfaceDecl, level int, iface_embeds []ast.InterfaceEmbedding) []ast.InterfaceEmbedding {
-	if level > 50 {
+	// eprintln('> expand_iface_embeds: idecl.name: $idecl.name | level: $level | iface_embeds.len: $iface_embeds.len')
+	if level > 100 {
 		c.error('too many interface embedding levels: $level, for interface `$idecl.name`',
 			idecl.pos)
 		return []
@@ -373,7 +374,12 @@ pub fn (mut c Checker) expand_iface_embeds(idecl &ast.InterfaceDecl, level int, 
 	mut ares := []ast.InterfaceEmbedding{}
 	for ie in iface_embeds {
 		if iface_decl := c.table.interfaces[ie.typ] {
-			list := c.expand_iface_embeds(idecl, level + 1, iface_decl.ifaces)
+			mut list := iface_decl.ifaces
+			if !iface_decl.are_ifaces_expanded {
+				list = c.expand_iface_embeds(idecl, level + 1, iface_decl.ifaces)
+				c.table.interfaces[ie.typ].ifaces = list
+				c.table.interfaces[ie.typ].are_ifaces_expanded = true
+			}
 			for partial in list {
 				res[partial.typ] = partial
 			}
@@ -392,7 +398,23 @@ pub fn (mut c Checker) interface_decl(mut decl ast.InterfaceDecl) {
 	if mut decl_sym.info is ast.Interface {
 		if decl.ifaces.len > 0 {
 			all_ifaces := c.expand_iface_embeds(decl, 0, decl.ifaces)
+			// eprintln('> decl.name: $decl.name | decl.ifaces.len: $decl.ifaces.len | all_ifaces: $all_ifaces.len')
 			decl.ifaces = all_ifaces
+			mut emnames := map[string]bool{}
+			mut emnames_ds := map[string]bool{}
+			mut emnames_ds_info := map[string]bool{}
+			mut efnames := map[string]bool{}
+			mut efnames_ds_info := map[string]bool{}
+			for m in decl.methods {
+				emnames[m.name] = true
+				emnames_ds[m.name] = true
+				emnames_ds_info[m.name] = true
+			}
+			for f in decl.fields {
+				efnames[f.name] = true
+				efnames_ds_info[f.name] = true
+			}
+			//
 			for iface in all_ifaces {
 				isym := c.table.get_type_symbol(iface.typ)
 				if isym.kind != .interface_ {
@@ -400,17 +422,36 @@ pub fn (mut c Checker) interface_decl(mut decl ast.InterfaceDecl) {
 						iface.pos)
 					continue
 				}
-				decl_sym.info.fields << isym.info.fields
+				for f in isym.info.fields {
+					if !efnames_ds_info[f.name] {
+						efnames_ds_info[f.name] = true
+						decl_sym.info.fields << f
+					}
+				}
 				for m in isym.info.methods {
-					decl_sym.info.methods << m.new_method_with_receiver_type(decl.typ)
+					if !emnames_ds_info[m.name] {
+						emnames_ds_info[m.name] = true
+						decl_sym.info.methods << m.new_method_with_receiver_type(decl.typ)
+					}
 				}
 				for m in isym.methods {
-					decl_sym.methods << m.new_method_with_receiver_type(decl.typ)
+					if !emnames_ds[m.name] {
+						emnames_ds[m.name] = true
+						decl_sym.methods << m.new_method_with_receiver_type(decl.typ)
+					}
 				}
 				if iface_decl := c.table.interfaces[iface.typ] {
-					decl.fields << iface_decl.fields
+					for f in iface_decl.fields {
+						if !efnames[f.name] {
+							efnames[f.name] = true
+							decl.fields << f
+						}
+					}
 					for m in iface_decl.methods {
-						decl.methods << m.new_method_with_receiver_type(decl.typ)
+						if !emnames[m.name] {
+							emnames[m.name] = true
+							decl.methods << m.new_method_with_receiver_type(decl.typ)
+						}
 					}
 				}
 			}

@@ -282,7 +282,9 @@ pub:
 pub mut:
 	methods []FnDecl
 	fields  []StructField
-	ifaces  []InterfaceEmbedding
+	//
+	ifaces              []InterfaceEmbedding
+	are_ifaces_expanded bool
 }
 
 pub struct StructInitField {
