@@ -63,8 +63,6 @@ fn (nn int) str_l(max int) string {
 			buf[index] = `-`
 		}
 		return tos(memdup(&buf[0] + index, (max - index)), (max - index))
-		
-		//return tos(&buf[0] + index, (max - index)).clone()
 	}
 }
 
@@ -122,7 +120,6 @@ pub fn (nn u32) str() string {
 			index++
 		}
 		return tos(memdup(&buf[0] + index, (max - index)), (max - index))
-		//return tos(&buf[0] + index, (max - index)).clone()
 	}
 }
 
@@ -172,7 +169,6 @@ pub fn (nn i64) str() string {
 			buf[index] = `-`
 		}
 		return tos(memdup(&buf[0] + index, (max - index)), (max - index))
-		//return tos(&buf[0] + index, (max - index)).clone()
 	}
 	
 }
@@ -207,7 +203,6 @@ pub fn (nn u64) str() string {
 			index++
 		}
 		return tos(memdup(&buf[0] + index, (max - index)), (max - index))
-		//return tos(&buf[0] + index, (max - index)).clone()
 	}
 }
 
