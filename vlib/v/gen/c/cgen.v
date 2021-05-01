@@ -6386,9 +6386,9 @@ $staticprefix inline $interface_name I_${cctype}_to_Interface_${interface_name}(
 				// .speak = Cat_speak
 				mut method_call := '${cctype}_$method.name'
 				if !method.params[0].typ.is_ptr() {
-					// inline void Cat_speak_method_wrapper(Cat c) { return Cat_speak(*c); }
-					methods_wrapper.write_string('static inline ${g.typ(method.return_type)}')
-					methods_wrapper.write_string(' ${method_call}_method_wrapper(')
+					// inline void Cat_speak_Interface_Animal_method_wrapper(Cat c) { return Cat_speak(*c); }
+					iwpostfix := '_Interface_${interface_name}_method_wrapper'
+					methods_wrapper.write_string('static inline ${g.typ(method.return_type)} ${method_call}${iwpostfix}(')
 					//
 					params_start_pos := g.out.len
 					mut params := method.params.clone()
@@ -6406,8 +6406,8 @@ $staticprefix inline $interface_name I_${cctype}_to_Interface_${interface_name}(
 					}
 					methods_wrapper.writeln('${method_call}(*${fargs.join(', ')});')
 					methods_wrapper.writeln('}')
-					// .speak = Cat_speak_method_wrapper
-					method_call += '_method_wrapper'
+					// .speak = Cat_speak_Interface_Animal_method_wrapper
+					method_call += iwpostfix
 				}
 				if g.pref.build_mode != .build_module {
 					methods_struct.writeln('\t\t._method_${c_name(method.name)} = (void*) $method_call,')

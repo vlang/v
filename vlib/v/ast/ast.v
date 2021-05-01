@@ -276,12 +276,12 @@ pub:
 	language     Language
 	field_names  []string
 	is_pub       bool
-	methods      []FnDecl
 	mut_pos      int // mut:
-	fields       []StructField
 	pos          token.Position
 	pre_comments []Comment
 pub mut:
+	methods      []FnDecl
+	fields       []StructField
 	ifaces []InterfaceEmbedding
 }
 
@@ -363,7 +363,6 @@ pub struct FnDecl {
 pub:
 	name            string
 	mod             string
-	params          []Param
 	is_deprecated   bool
 	is_pub          bool
 	is_variadic     bool
@@ -390,6 +389,7 @@ pub:
 	attrs           []Attr
 	skip_gen        bool // this function doesn't need to be generated (for example [if foo])
 pub mut:
+	params             []Param
 	stmts              []Stmt
 	defer_stmts        []DeferStmt
 	return_type        Type

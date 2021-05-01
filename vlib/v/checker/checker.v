@@ -360,28 +360,61 @@ pub fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 	}
 }
 
+pub fn (mut c Checker) expand_iface_embeds(idecl &ast.InterfaceDecl, level int, iface_embeds []ast.InterfaceEmbedding) []ast.InterfaceEmbedding {
+	if level > 50 {
+		c.error('too many interface embedding levels: $level, for interface `$idecl.name`', idecl.pos)
+		return []
+	}
+	if iface_embeds.len == 0 {
+		return []
+	}
+	mut res := map[ast.Type]ast.InterfaceEmbedding{}
+	mut ares := []ast.InterfaceEmbedding{}
+	for ie in iface_embeds {
+		if iface_decl := c.table.interfaces[ ie.typ ] {
+			list := c.expand_iface_embeds(idecl, level + 1, iface_decl.ifaces)
+			for partial in list {
+				res[partial.typ] = partial
+			}
+		}
+		res[ie.typ] = ie
+	}
+	for _, v in res {
+		ares << v
+	}
+	return ares
+}
+
 pub fn (mut c Checker) interface_decl(mut decl ast.InterfaceDecl) {
 	c.check_valid_pascal_case(decl.name, 'interface name', decl.pos)
 	mut decl_sym := c.table.get_type_symbol(decl.typ)
 	if mut decl_sym.info is ast.Interface {
 		if decl.ifaces.len > 0 {
-			for iface in decl.ifaces {
+			all_ifaces := c.expand_iface_embeds(decl, 0, decl.ifaces)
+			decl.ifaces = all_ifaces
+			for iface in all_ifaces {
 				isym := c.table.get_type_symbol(iface.typ)
 				if isym.kind != .interface_ {
-					c.error('`interface `$decl.name` tries to embed `$isym.name`, but `$isym.name` is not an interface, but `$isym.kind`',
+					c.error('interface `$decl.name` tries to embed `$isym.name`, but `$isym.name` is not an interface, but `$isym.kind`',
 						iface.pos)
 					continue
 				}
-				decl_sym.info.methods << isym.info.methods
 				decl_sym.info.fields << isym.info.fields
+				for m in isym.info.methods {
+					decl_sym.info.methods << m.new_method_with_receiver_type(decl.typ)
+				}
 				for m in isym.methods {
-					mut new_method := m
-					new_method.params[0].typ = decl.typ
-					decl_sym.methods << new_method
+					decl_sym.methods << m.new_method_with_receiver_type(decl.typ)
+				}
+				if iface_decl := c.table.interfaces[ iface.typ ] {
+					decl.fields << iface_decl.fields
+					for m in iface_decl.methods {
+						decl.methods << m.new_method_with_receiver_type(decl.typ)
+					}
 				}
 			}
-			decl.ifaces = []
 		}
+
 		for method in decl_sym.info.methods {
 			if decl.language == .v {
 				c.check_valid_snake_case(method.name, 'method name', method.pos)

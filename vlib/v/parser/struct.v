@@ -605,7 +605,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	p.top_level_statement_end()
 	p.check(.rcbr)
 	pos = pos.extend_with_last_line(p.prev_tok.position(), p.prev_tok.line_nr)
-	return ast.InterfaceDecl{
+	res := ast.InterfaceDecl{
 		name: interface_name
 		language: language
 		typ: typ
@@ -618,4 +618,6 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		mut_pos: mut_pos
 		name_pos: name_pos
 	}
+	p.table.register_interface(res)
+	return res
 }
