@@ -1979,10 +1979,6 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 	if fn_name == 'main' {
 		c.error('the `main` function cannot be called in the program', call_expr.pos)
 	}
-	if fn_name == 'typeof' {
-		// TODO: impl typeof properly (probably not going to be a fn call)
-		return ast.string_type
-	}
 	mut has_generic := false // foo<T>() instead of foo<int>()
 	mut concrete_types := []ast.Type{}
 	for concrete_type in call_expr.concrete_types {
