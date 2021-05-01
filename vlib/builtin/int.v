@@ -23,7 +23,7 @@ const (
 
 // This implementation is the quickest with gcc -O2
 // str_l returns the string representation of the integer `max`.
-[inline]
+[inline] [direct_array_access]
 fn (nn int) str_l(max int) string {
 	unsafe {
 		mut n := i64(nn)
@@ -31,13 +31,14 @@ fn (nn int) str_l(max int) string {
 		if n == 0 {
 			return '0'
 		}
-		mut buf := [32]byte{}
+		
 		mut is_neg := false
 		if n < 0 {
 			n = -n
 			is_neg = true
 		}
 		mut index := max
+		mut buf := malloc(max + 1)
 		buf[index] = 0
 		index--
 
@@ -61,7 +62,20 @@ fn (nn int) str_l(max int) string {
 			index--
 			buf[index] = `-`
 		}
-		return tos(memdup(&buf[0] + index, (max - index)), (max - index))
+		diff := max - index
+		C.memmove(buf, buf + index, diff + 1)
+		/*
+		// manual memory move
+		mut c:= 0
+		for c < diff {
+			buf[c] = buf[c+index]
+			c++
+		}
+		buf[c] = 0
+		*/
+		return tos(buf, diff)
+
+		//return tos(memdup(&buf[0] + index, (max - index)), (max - index))
 	}
 }
 
@@ -91,6 +105,7 @@ pub fn (n int) str() string {
 
 // str returns the value of the `u32` as a `string`.
 // Example: assert u32(20000).str() == '20000'
+[inline] [direct_array_access]
 pub fn (nn u32) str() string {
 	unsafe {
 		mut n := nn
@@ -99,7 +114,7 @@ pub fn (nn u32) str() string {
 			return '0'
 		}
 		max := 12
-		mut buf := [16]byte{}
+		mut buf := malloc(max + 1)
 		mut index := max
 		buf[index] = 0
 		index--
@@ -118,7 +133,11 @@ pub fn (nn u32) str() string {
 		if d < u32(20) {
 			index++
 		}
-		return tos(memdup(&buf[0] + index, (max - index)), (max - index))
+		diff := max - index
+		C.memmove(buf, buf + index, diff + 1)
+		return tos(buf, diff)
+
+		//return tos(memdup(&buf[0] + index, (max - index)), (max - index))
 	}
 }
 
@@ -130,6 +149,7 @@ pub fn (n int_literal) str() string {
 
 // str returns the value of the `i64` as a `string`.
 // Example: assert i64(-200000).str() == '-200000'
+[inline] [direct_array_access]
 pub fn (nn i64) str() string {
 	unsafe {
 		mut n := nn
@@ -138,7 +158,7 @@ pub fn (nn i64) str() string {
 			return '0'
 		}
 		max := 20
-		mut buf := [32]byte{}
+		mut buf := malloc(max + 1)
 		mut is_neg := false
 		if n < 0 {
 			n = -n
@@ -167,12 +187,16 @@ pub fn (nn i64) str() string {
 			index--
 			buf[index] = `-`
 		}
-		return tos(memdup(&buf[0] + index, (max - index)), (max - index))
+		diff := max - index
+		C.memmove(buf, buf + index, diff + 1)
+		return tos(buf, diff)
+		//return tos(memdup(&buf[0] + index, (max - index)), (max - index))
 	}
 }
 
 // str returns the value of the `u64` as a `string`.
 // Example: assert u64(2000000).str() == '2000000'
+[inline] [direct_array_access]
 pub fn (nn u64) str() string {
 	unsafe {
 		mut n := nn
@@ -181,7 +205,7 @@ pub fn (nn u64) str() string {
 			return '0'
 		}
 		max := 20
-		mut buf := [32]byte{}
+		mut buf := malloc(max + 1)
 		mut index := max
 		buf[index] = 0
 		index--
@@ -200,7 +224,10 @@ pub fn (nn u64) str() string {
 		if d < 20 {
 			index++
 		}
-		return tos(memdup(&buf[0] + index, (max - index)), (max - index))
+		diff := max - index
+		C.memmove(buf, buf + index, diff + 1)
+		return tos(buf, diff)
+		//return tos(memdup(&buf[0] + index, (max - index)), (max - index))
 	}
 }
 
@@ -218,7 +245,7 @@ pub fn (b bool) str() string {
 //
 
 // u64_to_hex converts the number `nn` to a (zero padded if necessary) hexadecimal `string`.
-[inline]
+[inline] [direct_array_access]
 fn u64_to_hex(nn u64, len byte) string {
 	mut n := nn
 	mut buf := [256]byte{}
@@ -234,7 +261,7 @@ fn u64_to_hex(nn u64, len byte) string {
 }
 
 // u64_to_hex_no_leading_zeros converts the number `nn` to hexadecimal `string`.
-[inline]
+[inline] [direct_array_access]
 fn u64_to_hex_no_leading_zeros(nn u64, len byte) string {
 	mut n := nn
 	mut buf := [256]byte{}
