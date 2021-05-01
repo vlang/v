@@ -26,7 +26,7 @@ const (
 )
 
 // This implementation is the quickest with gcc -O2
-// str_l returns the string representation of the integer `max`.
+// str_l returns the string representation of the integer nn with max chars.
 [inline] [direct_array_access]
 fn (nn int) str_l(max int) string {
 	unsafe {
