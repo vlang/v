@@ -18,6 +18,7 @@ pub fn (cptr &char) str() string {
 }
 
 const (
+	// digit pairs in reverse order
 	digit_pairs = '00102030405060708090011121314151617181910212223242526272829203132333435363738393041424344454647484940515253545556575859506162636465666768696071727374757677787970818283848586878889809192939495969798999'
 )
 
@@ -44,6 +45,7 @@ fn (nn int) str_l(max int) string {
 
 		for n > 0 {
 			n1 := int(n / 100)
+			// calculate the digit_pairs start index
 			d = ((int(n) - (n1 * 100)) << 1)
 			n = n1
 			buf[index] = digit_pairs.str[d]
@@ -65,7 +67,7 @@ fn (nn int) str_l(max int) string {
 		diff := max - index
 		C.memmove(buf, buf + index, diff + 1)
 		/*
-		// manual memory move
+		// === manual memory move for bare metal ===
 		mut c:= 0
 		for c < diff {
 			buf[c] = buf[c+index]
