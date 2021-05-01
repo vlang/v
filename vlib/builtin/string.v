@@ -275,12 +275,12 @@ pub fn (s string) replace_once(rep string, with string) string {
 
 // replace replaces all occurences of `rep` with the string passed in `with`.
 pub fn (s string) replace(rep string, with string) string {
-	if s.len == 0 || rep.len == 0 {
+	if s.len == 0 || rep.len == 0 || rep.len > s.len{
 		return s.clone()
 	}
 	// TODO PERF Allocating ints is expensive. Should be a stack array
 	// Get locations of all reps within this string
-	mut idxs := []int{}
+	mut idxs := []int{cap: s.len/rep.len}
 	defer {
 		unsafe { idxs.free() }
 	}
