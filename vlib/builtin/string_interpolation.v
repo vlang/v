@@ -108,13 +108,13 @@ fn abs64(x i64) u64 {
 
 //=========================================
 //
-//  u64 bit compact format
+//  u32/u64 bit compact format
 //
-//      32      24      16       8     
-//       |       |       |       | 
-//3333333333222222222211111111110000000000
-//9876543210987654321098765432109876543210
-//_PPPPPPPPBBBBWWWWWWWWWWDDDDDDDDSUAA=====
+//___     32      24      16       8
+//___      |       |       |       |
+//_3333333333222222222211111111110000000000
+//_9876543210987654321098765432109876543210
+//_nPPPPPPPPBBBBWWWWWWWWWWDDDDDDDDSUAA=====
 // = data type  5 bit  max 32 data type
 // A allign     2 bit  Note: for now only 1 used!
 // U uppercase  1 bit  0 do nothing, 1 do to_upper()
@@ -122,7 +122,7 @@ fn abs64(x i64) u64 {
 // D decimals   8 bit  number of decimals digit to show
 // W Width     10 bit  number of char for padding and indentation
 // B num base   4 bit  start from 2, 0 for base 10
-// P pad char   8 bit  padding char (it can reduced to 32bit using only 1 bit as flag for 0 padding)
+// P pad char 1/8 bit  padding char (in u32 format reduced to 1 bit as flag for `0` padding)
 //     --------------
 //     TOTAL:  39 bit
 //=========================================
