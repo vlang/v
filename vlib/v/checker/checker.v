@@ -400,18 +400,18 @@ pub fn (mut c Checker) interface_decl(mut decl ast.InterfaceDecl) {
 			all_ifaces := c.expand_iface_embeds(decl, 0, decl.ifaces)
 			// eprintln('> decl.name: $decl.name | decl.ifaces.len: $decl.ifaces.len | all_ifaces: $all_ifaces.len')
 			decl.ifaces = all_ifaces
-			mut emnames := map[string]bool{}
+			mut emnames := map[string]int{}
 			mut emnames_ds := map[string]bool{}
 			mut emnames_ds_info := map[string]bool{}
-			mut efnames := map[string]bool{}
+			mut efnames := map[string]int{}
 			mut efnames_ds_info := map[string]bool{}
-			for m in decl.methods {
-				emnames[m.name] = true
+			for i, m in decl.methods {
+				emnames[m.name] = i
 				emnames_ds[m.name] = true
 				emnames_ds_info[m.name] = true
 			}
-			for f in decl.fields {
-				efnames[f.name] = true
+			for i, f in decl.fields {
+				efnames[f.name] = i
 				efnames_ds_info[f.name] = true
 			}
 			//
@@ -442,27 +442,59 @@ pub fn (mut c Checker) interface_decl(mut decl ast.InterfaceDecl) {
 				}
 				if iface_decl := c.table.interfaces[iface.typ] {
 					for f in iface_decl.fields {
-						if !efnames[f.name] {
-							efnames[f.name] = true
+						if f.name in efnames {
+							// already existing method name, check for conflicts
+							ifield := decl.fields[efnames[f.name]]
+							if field := c.table.find_field_with_embeds(isym, f.name) {
+								if ifield.typ != field.typ {
+									exp := c.table.type_to_str(ifield.typ)
+									got := c.table.type_to_str(field.typ)
+									c.error('embedded interface `$iface_decl.name` conflicts existing field: `$ifield.name`, expecting type: `$exp`, got type: `$got`',
+										ifield.pos)
+								}
+							}
+						} else {
+							efnames[f.name] = decl.fields.len
 							decl.fields << f
 						}
 					}
 					for m in iface_decl.methods {
-						if !emnames[m.name] {
-							emnames[m.name] = true
-							decl.methods << m.new_method_with_receiver_type(decl.typ)
+						if m.name in emnames {
+							// already existing field name, check for conflicts
+							imethod := decl.methods[emnames[m.name]]
+							if em_fn := decl_sym.find_method(imethod.name) {
+								if m_fn := isym.find_method(m.name) {
+									msg := c.table.is_same_method(m_fn, em_fn)
+									if msg.len > 0 {
+										em_sig := c.table.fn_signature(em_fn, skip_receiver: true)
+										m_sig := c.table.fn_signature(m_fn, skip_receiver: true)
+										c.error('embedded interface `$iface_decl.name` causes conflict: $msg, for interface method `$em_sig` vs `$m_sig`',
+											imethod.pos)
+									}
+								}
+							}
+						} else {
+							emnames[m.name] = decl.methods.len
+							mut new_method := m.new_method_with_receiver_type(decl.typ)
+							new_method.pos = iface.pos
+							decl.methods << new_method
 						}
 					}
 				}
 			}
 		}
-		for method in decl.methods {
+		for i, method in decl.methods {
 			if decl.language == .v {
 				c.check_valid_snake_case(method.name, 'method name', method.pos)
 			}
 			c.ensure_type_exists(method.return_type, method.return_type_pos) or { return }
 			for param in method.params {
 				c.ensure_type_exists(param.typ, param.pos) or { return }
+			}
+			for j in 0 .. i {
+				if method.name == decl.methods[j].name {
+					c.error('duplicate method name `$method.name`', method.pos)
+				}
 			}
 		}
 		for i, field in decl.fields {
