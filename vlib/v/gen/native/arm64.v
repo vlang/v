@@ -24,8 +24,8 @@ enum Arm64Register {
 
 pub struct Arm64 {
 mut:
+	g &Gen
 	// arm64 specific stuff for code generation
-	g Gen
 }
 
 pub fn (mut x Arm64) allocate_var(name string, size int, initial_val int) {
@@ -98,6 +98,20 @@ fn (mut g Gen) bl() {
 fn (mut g Gen) svc() {
 	g.write32(0xd4001001)
 	g.println('svc')
+}
+
+pub fn (mut c Arm64) gen_exit(mut g Gen, expr ast.Expr) {
+	eprintln('ge-arm-exit')
+	match expr {
+		ast.IntegerLiteral {
+			g.mov_arm(.x16, expr.val.u64())
+		}
+		else {
+			verror('native builtin exit expects a numeric argument')
+		}
+	}
+	g.mov_arm(.x0, 0)
+	g.svc()
 }
 
 pub fn (mut g Gen) gen_arm64_exit(expr ast.Expr) {

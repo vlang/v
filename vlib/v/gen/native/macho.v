@@ -12,8 +12,13 @@ const (
 	macho_symcmd_size        = 0x18
 	macho_d_size             = 0x50
 	lc_symtab                = 0x2
-	lc_dymsymtab             = 0xB
+	lc_dysymtab              = 0xb
 	mh_object                = 1
+	mh_execute               = 2
+	lc_main                  = 0x80000028
+	lc_segment_64            = 0x19
+	lc_load_dylinker         = 0xe
+	lc_load_dylib            = 0xc
 )
 
 struct Symbol {
@@ -35,7 +40,171 @@ struct Reloc {
 	snum  int // symbol index (if ext) or infile section number
 }
 
+fn (mut g Gen) macho_segment64_pagezero() {
+	g.write32(native.lc_segment_64) // LC_SEGMENT_64
+	g.write32(72) // cmdsize
+	g.write_string_with_padding('__PAGEZERO', 16) // section name
+	g.write64(0) // vmaddr
+	g.write64(0x1000) // vmsize
+	g.write64(0) // fileoff
+	g.write64(0) // filesize
+
+	g.write32(0) // maxprot
+	g.write32(0) // initprot
+	g.write32(0) // nsects
+	g.write32(0) // flags
+}
+
+fn (mut g Gen) macho_segment64_linkedit() {
+	g.write32(native.lc_segment_64)
+	g.write32(0x48) // cmdsize
+	g.write_string_with_padding('__LINKEDIT', 16)
+
+	g.write64(0x3000) // vmaddr
+	g.write64(0x1000) // vmsize
+	g.write64(0x1000) // fileoff
+	g.write64(0) // filesize
+	g.write32(7) // maxprot
+	g.write32(3) // initprot
+	g.write32(0) // nsects
+	g.write32(0) // flags
+}
+
+fn (mut g Gen) macho_header(ncmds int, bintype int) int {
+	g.write32(0xfeedfacf) // MH_MAGIC_64
+	if g.pref.arch == .arm64 {
+		g.write32(0x0100000c) // CPU_TYPE_ARM64
+		g.write32(0x00000000) // CPU_SUBTYPE_ARM64_ALL
+	} else {
+		g.write32(0x01000007) // CPU_TYPE_X64
+		g.write32(0x80000003) // CPU_SUBTYPE_X64
+	}
+	g.write32(native.mh_execute) // filetype
+	g.write32(ncmds) // ncmds
+
+	cmdsize_offset := g.buf.len
+	g.write32(0) // size of load commands
+
+	g.write32(0) // flags
+	g.write32(0) // reserved
+	return cmdsize_offset
+}
+
+fn (mut g Gen) macho_segment64_text() []int {
+	mut patch := []int{}
+	g.write32(native.lc_segment_64) // LC_SEGMENT_64
+	g.write32(152) // 152
+	g.write_string_with_padding('__TEXT', 16) // section name
+	g.write64(0x100001000) // vmaddr
+	patch << g.buf.len
+	g.write64(0x00001000) // + codesize) // vmsize
+	g.write64(0x00000000) // filesize
+	patch << g.buf.len
+	g.write64(0x00001000) // + codesize) // filesize
+
+	g.write32(7) // maxprot
+	g.write32(5) // initprot
+	g.write32(1) // nsects
+	g.write32(0) // flags
+
+	g.write_string_with_padding('__text', 16) // section name
+	g.write_string_with_padding('__TEXT', 16) // segment name
+	g.write64(0x0000000100002000) // vmaddr
+	patch << g.buf.len
+	g.write64(0) // vmsize
+	g.write32(4096) // offset
+	g.write32(0) // align
+
+	g.write32(0) // reloff
+	g.write32(0) // nreloc
+
+	g.write32(0) // flags
+	g.write32(0)
+
+	g.write32(0) // reserved1
+	g.write32(0) // reserved2
+	return patch
+}
+
+fn (mut g Gen) macho_symtab() {
+	g.write32(native.lc_symtab)
+	g.write32(24)
+	g.write32(0x1000)
+	g.write32(0)
+	g.write32(0x1000)
+	g.write32(0)
+
+	// lc_dysymtab
+	g.write32(native.lc_dysymtab)
+	g.write32(0x50)
+	g.write32(0) // ilocalsym
+	g.write32(0) // nlocalsym
+	g.write32(0) // iextdefsym
+	g.write32(0) // nextdefsym
+	g.write32(0) // iundefsym
+	g.write32(0) // nundefsym
+	g.write32(0) // tocoff
+	g.write32(0) // ntoc
+	g.write32(0) // modtaboff
+	g.write32(0) // nmodtab
+	g.write32(0) // extrefsymoff
+	g.write32(0) // nextrefsyms
+	g.write32(0) // indirectsymoff
+	g.write32(0) // nindirectsyms
+	g.write32(0) // extreloff
+	g.write32(0) // nextrel
+	g.write32(0) // locreloff
+	g.write32(0) // nlocrel
+}
+
+fn (mut g Gen) macho_dylibs() {
+	g.write32(native.lc_load_dylinker)
+	g.write32(32) // cmdsize (must be aligned to int32)
+	g.write32(12) // offset
+	g.write_string_with_padding('/usr/lib/dyld', 16)
+	g.write32(0) // padding // can be removed
+
+	g.write32(native.lc_load_dylib)
+	g.write32(56) // cmdsize
+	g.write32(24) // offset
+	g.write32(0) // ts
+	g.write32(1) // ver
+	g.write32(1) // compat
+	g.write_string_with_padding('/usr/lib/libSystem.B.dylib', 32)
+}
+
+fn (mut g Gen) macho_main(addr int) {
+	g.write32(native.lc_main) // LC_MAIN
+	g.write32(24) // cmdsize
+	g.write32(addr) // entrypoint
+	g.write32(0) // initial_stacksize
+}
+
 pub fn (mut g Gen) generate_macho_header() {
+	g.code_start_pos = 0x1000
+	g.debug_pos = 0x1000
+	cmdsize_offset := g.macho_header(8, native.mh_execute)
+	g.macho_segment64_pagezero()
+
+	g.size_pos = g.macho_segment64_text()
+	g.macho_segment64_linkedit()
+	g.macho_symtab()
+	g.macho_dylibs()
+	g.macho_main(0x1000)
+
+	g.write32_at(cmdsize_offset, g.buf.len - 24)
+	g.write_nulls(0x1000 - g.buf.len)
+	g.call(0)
+}
+
+fn (mut g Gen) write_nulls(len int) {
+	pad := 0x1000 - g.buf.len
+	for _ in 0 .. pad {
+		g.write8(0)
+	}
+}
+
+pub fn (mut g Gen) generate_macho_object_header() {
 	if g.pref.arch == .arm64 {
 		g.write32(0xfeedfacf) // MH_MAGIC_64
 		g.write32(0x0100000c) // CPU_TYPE_ARM64
@@ -88,7 +257,7 @@ pub fn (mut g Gen) generate_macho_header() {
 	// lc_symtab
 	g.sym_table_command()
 	//
-	g.write32(native.lc_dymsymtab)
+	g.write32(native.lc_dysymtab)
 	g.write32(native.macho_d_size)
 	g.write32(0)
 	g.write32(2)
@@ -114,10 +283,20 @@ pub fn (mut g Gen) generate_macho_header() {
 }
 
 pub fn (mut g Gen) generate_macho_footer() {
+	codesize := g.buf.len - 0x1000
 	g.write_relocs()
 	g.sym_table()
-	g.sym_string_table()
+	stringtablesize := g.sym_string_table()
+	delta := codesize + stringtablesize + 12 // code_offset_end - 0x1000// + stringtablesize
 	g.write8(0)
+	for o in g.size_pos {
+		n := g.read32_at(o)
+		g.write32_at(o, n + delta)
+	}
+	g.write64(0)
+	// this is amd64-specific
+	call_delta := int(g.main_fn_addr - g.code_start_pos) - 5
+	g.write32_at(g.code_start_pos + 1, call_delta)
 	g.create_executable()
 }
 
@@ -213,10 +392,14 @@ fn (mut g Gen) write_symbol(s Symbol) {
 	// g.write16(s.desc)
 }
 
-fn (mut g Gen) sym_string_table() {
+fn (mut g Gen) sym_string_table() int {
+	begin := g.buf.len
 	g.zeroes(1)
-	for sym in g.syms {
-		g.write_string(sym.name)
+	at := i64(0x100001000)
+	for i, s in g.strings {
+		g.write64_at(at + g.buf.len, int(g.str_pos[i]))
+		g.write_string(s)
 		g.write8(0)
 	}
+	return g.buf.len - begin
 }
