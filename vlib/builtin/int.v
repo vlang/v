@@ -122,7 +122,8 @@ pub fn (nn u32) str() string {
 		if d < u32(20) {
 			index++
 		}
-		return tos(&buf[0] + index, (max - index)).clone()
+		return tos(memdup(&buf[0] + index, (max - index)), (max - index))
+		//return tos(&buf[0] + index, (max - index)).clone()
 	}
 }
 
@@ -171,7 +172,8 @@ pub fn (nn i64) str() string {
 			index--
 			buf[index] = `-`
 		}
-		return tos(&buf[0] + index, (max - index)).clone()
+		return tos(memdup(&buf[0] + index, (max - index)), (max - index))
+		//return tos(&buf[0] + index, (max - index)).clone()
 	}
 	
 }
@@ -205,7 +207,8 @@ pub fn (nn u64) str() string {
 		if d < 20 {
 			index++
 		}
-		return tos(&buf[0] + index, (max - index)).clone()
+		return tos(memdup(&buf[0] + index, (max - index)), (max - index))
+		//return tos(&buf[0] + index, (max - index)).clone()
 	}
 }
 
