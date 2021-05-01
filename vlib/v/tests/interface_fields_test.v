@@ -56,11 +56,11 @@ fn test_interface_fields() {
 }
 
 struct Nofun {
-	foo fn (a int) int
+	foo fn (int) int
 }
 
 interface NofunInterface {
-	foo fn (a int) int
+	foo fn (int) int
 }
 
 fn my_fn(a int) int {
@@ -69,6 +69,6 @@ fn my_fn(a int) int {
 }
 
 fn test_interface_fn_pointer_fields() {
-	nf := NofunInterface(Nofun{ my_fn })
+	nf := NofunInterface(Nofun{my_fn})
 	assert nf.foo(123) == 246
 }
