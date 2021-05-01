@@ -1608,17 +1608,17 @@ pub fn (s string) after_char(dot byte) string {
 	return s[pos + 1..]
 }
 
-// join joins a string array into a string using `del` delimiter.
+// join joins a string array into a string using `sep` separator.
 // Example: assert ['Hello','V'].join(' ') == 'Hello V'
-pub fn (a []string) join(del string) string {
+pub fn (a []string) join(sep string) string {
 	if a.len == 0 {
 		return ''
 	}
 	mut len := 0
 	for val in a {
-		len += val.len + del.len
+		len += val.len + sep.len
 	}
-	len -= del.len
+	len -= sep.len
 	// Allocate enough memory
 	mut res := string{
 		str: unsafe { malloc(len + 1) }
@@ -1630,11 +1630,11 @@ pub fn (a []string) join(del string) string {
 			C.memcpy(res.str + idx, val.str, val.len)
 			idx += val.len
 		}
-		// Add del if it's not last
+		// Add sep if it's not last
 		if i != a.len - 1 {
 			unsafe {
-				C.memcpy(res.str + idx, del.str, del.len)
-				idx += del.len
+				C.memcpy(res.str + idx, sep.str, sep.len)
+				idx += sep.len
 			}
 		}
 	}
