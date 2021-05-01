@@ -93,13 +93,22 @@ fn (mut g Gen) str_format2(node ast.StringInterLiteral, i int) (u64, string) {
 		 fmt_type = .si_p
 	}
 
-	// pad filling
+	/*
+	// pad filling 64bit format
 	mut pad_ch := u8(0)
 	if node.fills[i] {
 		pad_ch = u8(`0`)
 	}
-
 	res := get_str_intp_u64_format(fmt_type, node.fwidths[i], node.precisions[i], node.pluss[i], pad_ch, base, upper_case)
+	*/
+
+	// pad filling 32bit format
+	mut pad_ch := 0
+	if node.fills[i] {
+		pad_ch = 1
+	}
+	res := get_str_intp_u32_format(fmt_type, node.fwidths[i], node.precisions[i], node.pluss[i], pad_ch, base, upper_case)
+	//
 	return res, fmt_type.str()
 }
 

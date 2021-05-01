@@ -114,7 +114,7 @@ fn abs64(x i64) u64 {
 //       |       |       |       | 
 //3333333333222222222211111111110000000000
 //9876543210987654321098765432109876543210
-// PPPPPPPPBBBBWWWWWWWWWWDDDDDDDDSUAA=====
+//_PPPPPPPPBBBBWWWWWWWWWWDDDDDDDDSUAA=====
 // = data type  5 bit  max 32 data type
 // A allign     2 bit  Note: for now only 1 used!
 // U uppercase  1 bit  0 do nothing, 1 do to_upper()
@@ -122,7 +122,7 @@ fn abs64(x i64) u64 {
 // D decimals   8 bit  number of decimals digit to show
 // W Width     10 bit  number of char for padding and indentation
 // B num base   4 bit  start from 2, 0 for base 10
-// P pad char   8 bit  padding char
+// P pad char   8 bit  padding char (it can reduced to 32bit using only 1 bit as flag for 0 padding)
 //     --------------
 //     TOTAL:  39 bit
 //=========================================
@@ -139,9 +139,21 @@ pub fn get_str_intp_u64_format(fmt_type StrIntpType, in_width int, in_precision 
 	return res
 }
 
+// convert from data format to compact u32
+pub fn get_str_intp_u32_format(fmt_type StrIntpType, in_width int, in_precision int, in_sign bool, in_pad_ch u8, in_base int, in_upper_case bool) u32 {
+	width      := if in_width != 0 { abs64(in_width) } else { u32(0) }
+	allign     := if in_width > 0 { u32(1 << 5) } else { u32(0) }  // two bit 0 .left 1 .rigth, for now we use only one
+	upper_case := if in_upper_case { u32(1 << 7) } else { u32(0) }
+	sign       := if in_sign { u32(1 << 8) } else { u32(0) }
+	precision  := if in_precision != 987698 { (u32(in_precision & 0xFF) << 9)  } else { u32(0xFF) << 9 }
+	base       := u32((in_base & 0xf) << 27)
+	res := u32( (u32(fmt_type) & 0x1F) | allign | upper_case | sign |  precision | (u32(width & 0x3FF) << 17) | base | (u32(in_pad_ch & 1) << 31) )
+	return res
+}
+
 // convert from struct to formated string
 [manualfree]
-fn (data StrIntpData) get_fmt_from_u64_format(mut sb &strings.Builder) {
+fn (data StrIntpData) get_fmt_format(mut sb &strings.Builder) {
 	x              := data.fmt
 	typ            := StrIntpType(x & 0x1F)
 	allign         := int((x >> 5) & 0x01)
@@ -165,7 +177,8 @@ fn (data StrIntpData) get_fmt_from_u64_format(mut sb &strings.Builder) {
 	// mange pad char, for now only 0 allowed
 	mut pad_ch := byte(` `)
 	if fmt_pad_ch > 0 {
-		pad_ch = fmt_pad_ch
+		//pad_ch = fmt_pad_ch
+		pad_ch = `0`
 	}
 
 	len0_set := if width > 0 { width } else { -1 }
@@ -513,7 +526,8 @@ pub:
 pub struct StrIntpData {
 pub:
 	str     string
-	fmt     u64
+	//fmt     u64  // expandedn version for future use
+	fmt     u32
 	d       StrIntpMem
 }
 
@@ -529,7 +543,7 @@ pub fn str_interpolation(data_len int, in_data voidptr) string {
 
 			// skip only string records
 			if data.fmt != 0 {
-				data.get_fmt_from_u64_format(mut &res)
+				data.get_fmt_format(mut &res)
 			}
 			i++
 		}
