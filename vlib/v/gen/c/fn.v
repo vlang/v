@@ -496,7 +496,17 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	if node.receiver_type == 0 {
 		g.checker_bug('CallExpr.receiver_type is 0 in method_call', node.pos)
 	}
-	unwrapped_rec_type := g.unwrap_generic(node.receiver_type)
+	// TODO(emily): hack for interface comptime selection
+	mut receiver_type := node.receiver_type
+	if node.left is ast.ComptimeSelector {
+		if node.left.field_expr is ast.SelectorExpr {
+			// Get the current comptime type for this
+			// expr
+			name := '${node.left.field_expr.expr}.typ'
+			receiver_type = g.comptime_var_type_map[name]
+		}
+	}
+	unwrapped_rec_type := g.unwrap_generic(receiver_type)
 	typ_sym := g.table.get_type_symbol(unwrapped_rec_type)
 	rec_cc_type := g.cc_type(unwrapped_rec_type, false)
 	mut receiver_type_name := util.no_dots(rec_cc_type)

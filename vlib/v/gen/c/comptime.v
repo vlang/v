@@ -309,21 +309,28 @@ fn (mut g Gen) comp_if_cond(cond ast.Expr) bool {
 					left := cond.left
 					mut name := ''
 					mut exp_type := ast.Type(0)
-					got_type := (cond.right as ast.TypeNode).typ
+					typenode := (cond.right as ast.TypeNode)
+					got_type := typenode.typ
+					mut matches_interface := 'false'
 					if left is ast.SelectorExpr {
 						name = '${left.expr}.$left.field_name'
 						exp_type = g.comptime_var_type_map[name]
+						got_sym := g.table.get_type_symbol(got_type)
+						if got_sym.info is ast.Interface {
+							if exp_type in got_sym.info.types {
+								matches_interface = '/*iface:$got_type $exp_type*/ true'
+							}
+						}
 					} else if left is ast.TypeNode {
 						name = left.str()
 						// this is only allowed for generics currently, otherwise blocked by checker
 						exp_type = g.unwrap_generic(left.typ)
 					}
-
 					if cond.op == .key_is {
-						g.write('$exp_type == $got_type')
+						g.write('$exp_type == $got_type || $matches_interface')
 						return exp_type == got_type
 					} else {
-						g.write('$exp_type !=$got_type')
+						g.write('$exp_type !=$got_type && !($matches_interface)')
 						return exp_type != got_type
 					}
 				}
