@@ -362,16 +362,17 @@ pub fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 
 pub fn (mut c Checker) expand_iface_embeds(idecl &ast.InterfaceDecl, level int, iface_embeds []ast.InterfaceEmbedding) []ast.InterfaceEmbedding {
 	if level > 50 {
-		c.error('too many interface embedding levels: $level, for interface `$idecl.name`', idecl.pos)
+		c.error('too many interface embedding levels: $level, for interface `$idecl.name`',
+			idecl.pos)
 		return []
 	}
 	if iface_embeds.len == 0 {
 		return []
 	}
-	mut res := map[ast.Type]ast.InterfaceEmbedding{}
+	mut res := map[int]ast.InterfaceEmbedding{}
 	mut ares := []ast.InterfaceEmbedding{}
 	for ie in iface_embeds {
-		if iface_decl := c.table.interfaces[ ie.typ ] {
+		if iface_decl := c.table.interfaces[ie.typ] {
 			list := c.expand_iface_embeds(idecl, level + 1, iface_decl.ifaces)
 			for partial in list {
 				res[partial.typ] = partial
@@ -406,7 +407,7 @@ pub fn (mut c Checker) interface_decl(mut decl ast.InterfaceDecl) {
 				for m in isym.methods {
 					decl_sym.methods << m.new_method_with_receiver_type(decl.typ)
 				}
-				if iface_decl := c.table.interfaces[ iface.typ ] {
+				if iface_decl := c.table.interfaces[iface.typ] {
 					decl.fields << iface_decl.fields
 					for m in iface_decl.methods {
 						decl.methods << m.new_method_with_receiver_type(decl.typ)

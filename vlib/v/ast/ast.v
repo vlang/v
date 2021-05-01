@@ -280,9 +280,9 @@ pub:
 	pos          token.Position
 	pre_comments []Comment
 pub mut:
-	methods      []FnDecl
-	fields       []StructField
-	ifaces []InterfaceEmbedding
+	methods []FnDecl
+	fields  []StructField
+	ifaces  []InterfaceEmbedding
 }
 
 pub struct StructInitField {
