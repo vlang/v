@@ -38,42 +38,50 @@ pub fn format_str_sb(s string, p BF_param, mut sb strings.Builder) {
 // strings.Builder version of format_dec
 [manualfree]
 pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
-	mut s := ""
-	mut sign_len_diff := 0
-	if p.pad_ch == `0` {
-		if p.positive {
-			if p.sign_flag {
-				res.write_b(`+`)
+	unsafe{
+		mut s := ""
+		mut sign_len_diff := 0
+		if p.pad_ch == `0` {
+			if p.positive {
+				if p.sign_flag {
+					res.write_b(`+`)
+					sign_len_diff = -1
+				}
+			} else {
+				res.write_b(`-`)
 				sign_len_diff = -1
 			}
+			s = d.str()
 		} else {
-			res.write_b(`-`)
-			sign_len_diff = -1
-		}
-		s = d.str()
-	} else {
-		if p.positive {
-			if p.sign_flag {
-				s = "+" + d.str()
+			if p.positive {
+				if p.sign_flag {
+					tmp := s
+					s = "+" + d.str()
+					tmp.free()
+				} else {
+					tmp := s
+					s = d.str()
+					tmp.free()
+				}
 			} else {
-				s = d.str()
+				tmp := s
+				s = "-" + d.str()
+				tmp.free()
 			}
-		} else {
-			s = "-" + d.str()
 		}
-	}
-	dif := p.len0 - s.len + sign_len_diff
+		dif := p.len0 - s.len + sign_len_diff
 
-	if p.allign == .right {
-		for i1 :=0; i1 < dif; i1++ {
-			res.write_b(p.pad_ch)
+		if p.allign == .right {
+			for i1 :=0; i1 < dif; i1++ {
+				res.write_b(p.pad_ch)
+			}
 		}
-	}
-	res.write_string(s)
-	unsafe{ s.free() }
-	if p.allign == .left {
-		for i1 :=0; i1 < dif; i1++ {
-			res.write_b(p.pad_ch)
+		res.write_string(s)
+		s.free()
+		if p.allign == .left {
+			for i1 :=0; i1 < dif; i1++ {
+				res.write_b(p.pad_ch)
+			}
 		}
 	}
 }
