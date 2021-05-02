@@ -24,8 +24,8 @@ enum Arm64Register {
 
 pub struct Arm64 {
 mut:
+	g &Gen
 	// arm64 specific stuff for code generation
-	g Gen
 }
 
 pub fn (mut x Arm64) allocate_var(name string, size int, initial_val int) {
@@ -49,6 +49,8 @@ fn (mut g Gen) mov_arm(reg Arm64Register, val u64) {
 	} else if r == 16 {
 		g.write32(0xd2800030)
 		g.println('mov x16, 1')
+	} else {
+		verror('mov_arm unsupported values')
 	}
 	/*
 	if 1 ^ (x & ~m) != 0 {
@@ -74,9 +76,14 @@ fn (mut g Gen) gen_arm64_helloworld() {
 	g.mov_arm(.x0, 1)
 	g.adr()
 	g.bl()
+
+	zero := ast.IntegerLiteral{}
+	g.gen_exit(zero)
+	/*
 	g.mov_arm(.x0, 0)
 	g.mov_arm(.x16, 1)
 	g.svc()
+	*/
 	//
 	g.write_string('Hello World!\n')
 	g.write8(0) // padding?
@@ -97,7 +104,33 @@ fn (mut g Gen) bl() {
 
 fn (mut g Gen) svc() {
 	g.write32(0xd4001001)
-	g.println('svc')
+	g.println('svc 0x80')
+}
+
+pub fn (mut c Arm64) gen_exit(mut g Gen, expr ast.Expr) {
+	mut return_code := u64(0)
+	match expr {
+		ast.IntegerLiteral {
+			return_code = expr.val.u64()
+		}
+		else {
+			verror('native builtin exit expects a numeric argument')
+		}
+	}
+	match c.g.pref.os {
+		.macos {
+			c.g.mov_arm(.x0, return_code)
+			c.g.mov_arm(.x16, 1) // syscall exit
+		}
+		.linux {
+			c.g.mov_arm(.x16, return_code)
+			c.g.mov_arm(.x0, 0)
+		}
+		else {
+			verror('unsupported os $c.g.pref.os')
+		}
+	}
+	g.svc()
 }
 
 pub fn (mut g Gen) gen_arm64_exit(expr ast.Expr) {
