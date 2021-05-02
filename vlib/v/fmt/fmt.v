@@ -1180,6 +1180,11 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 		f.writeln('')
 	}
 	f.comments_after_last_field(node.pre_comments)
+	for iface in node.ifaces {
+		f.write('\t$iface.name')
+		f.comments(iface.comments, inline: true, has_nl: false, level: .indent)
+		f.writeln('')
+	}
 	for i, field in node.fields {
 		if i == node.mut_pos {
 			f.writeln('mut:')

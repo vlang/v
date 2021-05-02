@@ -360,25 +360,152 @@ pub fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 	}
 }
 
-pub fn (mut c Checker) interface_decl(decl ast.InterfaceDecl) {
-	c.check_valid_pascal_case(decl.name, 'interface name', decl.pos)
-	for method in decl.methods {
-		if decl.language == .v {
-			c.check_valid_snake_case(method.name, 'method name', method.pos)
-		}
-		c.ensure_type_exists(method.return_type, method.return_type_pos) or { return }
-		for param in method.params {
-			c.ensure_type_exists(param.typ, param.pos) or { return }
-		}
+pub fn (mut c Checker) expand_iface_embeds(idecl &ast.InterfaceDecl, level int, iface_embeds []ast.InterfaceEmbedding) []ast.InterfaceEmbedding {
+	// eprintln('> expand_iface_embeds: idecl.name: $idecl.name | level: $level | iface_embeds.len: $iface_embeds.len')
+	if level > 100 {
+		c.error('too many interface embedding levels: $level, for interface `$idecl.name`',
+			idecl.pos)
+		return []
 	}
-	for i, field in decl.fields {
-		if decl.language == .v {
-			c.check_valid_snake_case(field.name, 'field name', field.pos)
+	if iface_embeds.len == 0 {
+		return []
+	}
+	mut res := map[int]ast.InterfaceEmbedding{}
+	mut ares := []ast.InterfaceEmbedding{}
+	for ie in iface_embeds {
+		if iface_decl := c.table.interfaces[ie.typ] {
+			mut list := iface_decl.ifaces
+			if !iface_decl.are_ifaces_expanded {
+				list = c.expand_iface_embeds(idecl, level + 1, iface_decl.ifaces)
+				c.table.interfaces[ie.typ].ifaces = list
+				c.table.interfaces[ie.typ].are_ifaces_expanded = true
+			}
+			for partial in list {
+				res[partial.typ] = partial
+			}
 		}
-		c.ensure_type_exists(field.typ, field.pos) or { return }
-		for j in 0 .. i {
-			if field.name == decl.fields[j].name {
-				c.error('field name `$field.name` duplicate', field.pos)
+		res[ie.typ] = ie
+	}
+	for _, v in res {
+		ares << v
+	}
+	return ares
+}
+
+pub fn (mut c Checker) interface_decl(mut decl ast.InterfaceDecl) {
+	c.check_valid_pascal_case(decl.name, 'interface name', decl.pos)
+	mut decl_sym := c.table.get_type_symbol(decl.typ)
+	if mut decl_sym.info is ast.Interface {
+		if decl.ifaces.len > 0 {
+			all_ifaces := c.expand_iface_embeds(decl, 0, decl.ifaces)
+			// eprintln('> decl.name: $decl.name | decl.ifaces.len: $decl.ifaces.len | all_ifaces: $all_ifaces.len')
+			decl.ifaces = all_ifaces
+			mut emnames := map[string]int{}
+			mut emnames_ds := map[string]bool{}
+			mut emnames_ds_info := map[string]bool{}
+			mut efnames := map[string]int{}
+			mut efnames_ds_info := map[string]bool{}
+			for i, m in decl.methods {
+				emnames[m.name] = i
+				emnames_ds[m.name] = true
+				emnames_ds_info[m.name] = true
+			}
+			for i, f in decl.fields {
+				efnames[f.name] = i
+				efnames_ds_info[f.name] = true
+			}
+			//
+			for iface in all_ifaces {
+				isym := c.table.get_type_symbol(iface.typ)
+				if isym.kind != .interface_ {
+					c.error('interface `$decl.name` tries to embed `$isym.name`, but `$isym.name` is not an interface, but `$isym.kind`',
+						iface.pos)
+					continue
+				}
+				for f in isym.info.fields {
+					if !efnames_ds_info[f.name] {
+						efnames_ds_info[f.name] = true
+						decl_sym.info.fields << f
+					}
+				}
+				for m in isym.info.methods {
+					if !emnames_ds_info[m.name] {
+						emnames_ds_info[m.name] = true
+						decl_sym.info.methods << m.new_method_with_receiver_type(decl.typ)
+					}
+				}
+				for m in isym.methods {
+					if !emnames_ds[m.name] {
+						emnames_ds[m.name] = true
+						decl_sym.methods << m.new_method_with_receiver_type(decl.typ)
+					}
+				}
+				if iface_decl := c.table.interfaces[iface.typ] {
+					for f in iface_decl.fields {
+						if f.name in efnames {
+							// already existing method name, check for conflicts
+							ifield := decl.fields[efnames[f.name]]
+							if field := c.table.find_field_with_embeds(isym, f.name) {
+								if ifield.typ != field.typ {
+									exp := c.table.type_to_str(ifield.typ)
+									got := c.table.type_to_str(field.typ)
+									c.error('embedded interface `$iface_decl.name` conflicts existing field: `$ifield.name`, expecting type: `$exp`, got type: `$got`',
+										ifield.pos)
+								}
+							}
+						} else {
+							efnames[f.name] = decl.fields.len
+							decl.fields << f
+						}
+					}
+					for m in iface_decl.methods {
+						if m.name in emnames {
+							// already existing field name, check for conflicts
+							imethod := decl.methods[emnames[m.name]]
+							if em_fn := decl_sym.find_method(imethod.name) {
+								if m_fn := isym.find_method(m.name) {
+									msg := c.table.is_same_method(m_fn, em_fn)
+									if msg.len > 0 {
+										em_sig := c.table.fn_signature(em_fn, skip_receiver: true)
+										m_sig := c.table.fn_signature(m_fn, skip_receiver: true)
+										c.error('embedded interface `$iface_decl.name` causes conflict: $msg, for interface method `$em_sig` vs `$m_sig`',
+											imethod.pos)
+									}
+								}
+							}
+						} else {
+							emnames[m.name] = decl.methods.len
+							mut new_method := m.new_method_with_receiver_type(decl.typ)
+							new_method.pos = iface.pos
+							decl.methods << new_method
+						}
+					}
+				}
+			}
+		}
+		for i, method in decl.methods {
+			if decl.language == .v {
+				c.check_valid_snake_case(method.name, 'method name', method.pos)
+			}
+			c.ensure_type_exists(method.return_type, method.return_type_pos) or { return }
+			for param in method.params {
+				c.ensure_type_exists(param.typ, param.pos) or { return }
+			}
+			for j in 0 .. i {
+				if method.name == decl.methods[j].name {
+					c.error('duplicate method name `$method.name`', method.pos)
+				}
+			}
+		}
+		for i, field in decl.fields {
+			if decl.language == .v {
+				c.check_valid_snake_case(field.name, 'field name', field.pos)
+			}
+			c.ensure_type_exists(field.typ, field.pos) or { return }
+			for j in 0 .. i {
+				if field.name == decl.fields[j].name {
+					c.error('field name `$field.name` duplicate', field.pos)
+				}
 			}
 		}
 	}
@@ -3660,7 +3787,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.import_stmt(node)
 		}
 		ast.InterfaceDecl {
-			c.interface_decl(node)
+			c.interface_decl(mut node)
 		}
 		ast.Module {
 			c.mod = node.name
@@ -6319,6 +6446,11 @@ pub fn (mut c Checker) warn(s string, pos token.Position) {
 }
 
 pub fn (mut c Checker) error(message string, pos token.Position) {
+	$if checker_exit_on_first_error ? {
+		eprintln('\n\n>> checker error: $message, pos: $pos')
+		print_backtrace()
+		exit(1)
+	}
 	if c.pref.translated && message.starts_with('mismatched types') {
 		// TODO move this
 		return
