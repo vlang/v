@@ -909,13 +909,14 @@ pub fn (t &Table) mktyp(typ Type) Type {
 	}
 }
 
-pub fn (mut t Table) register_fn_concrete_types(fn_name string, types []Type) {
+pub fn (mut t Table) register_fn_concrete_types(fn_name string, types []Type) bool {
 	mut a := t.fn_generic_types[fn_name]
 	if types in a {
-		return
+		return false
 	}
 	a << types
 	t.fn_generic_types[fn_name] = a
+	return true
 }
 
 // TODO: there is a bug when casting sumtype the other way if its pointer
