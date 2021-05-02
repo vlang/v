@@ -336,6 +336,25 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	short_fn_name := name
 	is_main := short_fn_name == 'main' && p.mod == 'main'
 	is_test := short_fn_name.starts_with('test_') || short_fn_name.starts_with('testsuite_')
+
+	// Check generics fn/method without generic type parameters
+	mut need_generic_names := false
+	if generic_names.len == 0 {
+		if return_type.has_flag(.generic) {
+			need_generic_names = true
+		} else {
+			for param in params {
+				if param.typ.has_flag(.generic) {
+					need_generic_names = true
+					break
+				}
+			}
+		}
+		if need_generic_names {
+			p.error_with_pos('generic function declaration must specify generic type names, e.g. foo<T>',
+				name_pos)
+		}
+	}
 	// Register
 	if is_method {
 		mut type_sym := p.table.get_type_symbol(rec.typ)

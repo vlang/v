@@ -1,0 +1,7 @@
+vlib/v/parser/tests/generic_fn_decl_without_generic_names_err.vv:26:4: error: generic function declaration must specify generic type names, e.g. foo<T>
+   24 | }
+   25 |
+   26 | fn g_worker(g Generic<T>) {
+      |    ~~~~~~~~
+   27 |     t := <-g.ch
+   28 |     handle(t)
