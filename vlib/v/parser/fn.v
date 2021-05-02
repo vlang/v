@@ -336,6 +336,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	short_fn_name := name
 	is_main := short_fn_name == 'main' && p.mod == 'main'
 	is_test := short_fn_name.starts_with('test_') || short_fn_name.starts_with('testsuite_')
+
 	// Register
 	if is_method {
 		mut type_sym := p.table.get_type_symbol(rec.typ)
