@@ -87,7 +87,7 @@ mut:
 	inside_selector_expr     bool
 	inside_println_arg       bool
 	inside_decl_rhs          bool
-	need_recheck_generic_fns bool // if we need recheck generic fns because of cascated nested generic fns
+	need_recheck_generic_fns bool // need recheck generic fns because there are cascaded nested generic fn
 }
 
 pub fn new_checker(table &ast.Table, pref &pref.Preferences) Checker {
@@ -198,7 +198,7 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 	// post process generic functions. must be done after all files have been
 	// checked, to eunsure all generic calls are processed as this information
 	// is needed when the generic type is auto inferred from the call argument
-	// Check more times if there are more new registed concrete types
+	// Check more times if there are more new registered fn concrete types
 	for {
 		for i in 0 .. ast_files.len {
 			file := unsafe { &ast_files[i] }
