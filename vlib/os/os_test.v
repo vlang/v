@@ -229,31 +229,31 @@ fn test_mv() {
 	os.mv(tfile1, tdir1) or { panic(err) }
 	mut expected := os.join_path(tdir1, 'file')
 	assert os.exists(expected)
-	assert !is_dir(expected)
+	assert !os.is_dir(expected)
 	// Move dir with contents to other dir
 	os.mv(tdir1, tdir2) or { panic(err) }
 	expected = os.join_path(tdir2, 'dir')
 	assert os.exists(expected)
-	assert is_dir(expected)
+	assert os.is_dir(expected)
 	expected = os.join_path(tdir2, 'dir', 'file')
 	assert os.exists(expected)
-	assert !is_dir(expected)
+	assert !os.is_dir(expected)
 	// Move dir with contents to other dir (by renaming)
 	os.mv(os.join_path(tdir2, 'dir'), tdir3) or { panic(err) }
 	expected = tdir3
 	assert os.exists(expected)
-	assert is_dir(expected)
+	assert os.is_dir(expected)
 	assert os.is_dir_empty(tdir2)
 	// Move file with extension to dir
 	os.mv(tfile2, tdir2) or { panic(err) }
 	expected = os.join_path(tdir2, 'file.test')
 	assert os.exists(expected)
-	assert !is_dir(expected)
+	assert !os.is_dir(expected)
 	// Move file to dir (by renaming)
 	os.mv(os.join_path(tdir2, 'file.test'), tfile3) or { panic(err) }
 	expected = tfile3
 	assert os.exists(expected)
-	assert !is_dir(expected)
+	assert !os.is_dir(expected)
 }
 
 fn test_cp_all() {
@@ -520,8 +520,8 @@ fn test_posix_set_bit() {
 		assert true
 	} $else {
 		fpath := '/tmp/permtest'
-		create(fpath) or { panic("Couldn't create file") }
-		chmod(fpath, 0o7777)
+		os.create(fpath) or { panic("Couldn't create file") }
+		os.chmod(fpath, 0o7777)
 		c_fpath := &char(fpath.str)
 		mut s := C.stat{}
 		unsafe {
@@ -531,37 +531,37 @@ fn test_posix_set_bit() {
 		mut mode := u32(s.st_mode) & 0o7777
 		assert mode == 0o7777
 		// `chmod u-r`
-		posix_set_permission_bit(fpath, os.s_irusr, false)
+		os.posix_set_permission_bit(fpath, os.s_irusr, false)
 		unsafe {
 			C.stat(c_fpath, &s)
 		}
 		mode = u32(s.st_mode) & 0o7777
 		assert mode == 0o7377
 		// `chmod u+r`
-		posix_set_permission_bit(fpath, os.s_irusr, true)
+		os.posix_set_permission_bit(fpath, os.s_irusr, true)
 		unsafe {
 			C.stat(c_fpath, &s)
 		}
 		mode = u32(s.st_mode) & 0o7777
 		assert mode == 0o7777
 		// `chmod -s -g -t`
-		posix_set_permission_bit(fpath, os.s_isuid, false)
-		posix_set_permission_bit(fpath, os.s_isgid, false)
-		posix_set_permission_bit(fpath, os.s_isvtx, false)
+		os.posix_set_permission_bit(fpath, os.s_isuid, false)
+		os.posix_set_permission_bit(fpath, os.s_isgid, false)
+		os.posix_set_permission_bit(fpath, os.s_isvtx, false)
 		unsafe {
 			C.stat(c_fpath, &s)
 		}
 		mode = u32(s.st_mode) & 0o7777
 		assert mode == 0o0777
 		// `chmod g-w o-w`
-		posix_set_permission_bit(fpath, os.s_iwgrp, false)
-		posix_set_permission_bit(fpath, os.s_iwoth, false)
+		os.posix_set_permission_bit(fpath, os.s_iwgrp, false)
+		os.posix_set_permission_bit(fpath, os.s_iwoth, false)
 		unsafe {
 			C.stat(c_fpath, &s)
 		}
 		mode = u32(s.st_mode) & 0o7777
 		assert mode == 0o0755
-		rm(fpath) or {}
+		os.rm(fpath) or {}
 	}
 }
 

@@ -2223,7 +2223,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 			return ast.void_type
 		}
 	}
-	if !found && c.pref.is_script && !found {
+	if !found && c.pref.is_vsh {
 		os_name := 'os.$fn_name'
 		if f := c.table.find_fn(os_name) {
 			if f.generic_names.len == call_expr.concrete_types.len {
