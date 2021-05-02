@@ -334,18 +334,18 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 		mut mod_pos := p.tok.position()
 		p.next()
 		p.check(.dot)
-		mut module_names := [mod]
+		mut mod_last_part := mod
 		for p.peek_tok.kind == .dot {
 			mod_pos = mod_pos.extend(p.tok.position())
-			mod += '.$p.tok.lit'
-			module_names << p.tok.lit
+			mod_last_part = p.tok.lit
+			mod += '.$mod_last_part'
 			p.next()
 			p.check(.dot)
 		}
 		if !p.known_import(mod) {
 			mut msg := 'unknown module `$mod`'
-			if module_names.len > 1 && p.known_import(module_names.last()) {
-				msg += '; did you mean `$module_names.last()`?'
+			if mod.len > mod_last_part.len && p.known_import(mod_last_part) {
+				msg += '; did you mean `$mod_last_part`?'
 			}
 			p.error_with_pos(msg, mod_pos)
 			return 0
