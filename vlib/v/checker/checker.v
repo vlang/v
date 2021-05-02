@@ -6752,6 +6752,24 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		c.file.generic_fns << node
 		return
 	}
+	// Check generics fn/method without generic type parameters
+	mut need_generic_names := false
+	if node.generic_names.len == 0 {
+		if node.return_type.has_flag(.generic) {
+			need_generic_names = true
+		} else {
+			for param in node.params {
+				if param.typ.has_flag(.generic) {
+					need_generic_names = true
+					break
+				}
+			}
+		}
+		if need_generic_names {
+			c.error('generic function declaration must specify generic type names, e.g. foo<T>',
+				node.pos)
+		}
+	}
 	if node.language == .v && !c.is_builtin_mod {
 		c.check_valid_snake_case(node.name, 'function name', node.pos)
 	}
