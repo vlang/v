@@ -299,29 +299,27 @@ pub fn (s string) replace(rep string, with string) string {
 	}
 	// Now we know the number of replacements we need to do and we can calc the len of the new string
 	new_len := s.len + idxs.len * (with.len - rep.len)
-	mut b := unsafe { malloc(new_len + 1) } // add a newline just in case
+	mut b := unsafe { malloc(new_len + 1) } // add space for the null byte at the end
 	// Fill the new string
-	mut idx_pos := 0
-	mut cur_idx := idxs[idx_pos]
 	mut b_i := 0
-	for i := 0; i < s.len; i++ {
-		if i == cur_idx {
-			// Reached the location of rep, replace it with "with"
-			for j in 0 .. with.len {
-				unsafe {
-					b[b_i] = with[j]
-				}
-				b_i++
+	mut s_idx := 0
+	for _, rep_pos in idxs {
+		for i in s_idx .. rep_pos { // copy everything up to piece being replaced
+			unsafe {
+				b[b_i] = s[i]
 			}
-			// Skip the length of rep, since we just replaced it with "with"
-			i += rep.len - 1
-			// Go to the next index
-			idx_pos++
-			if idx_pos < idxs.len {
-				cur_idx = idxs[idx_pos]
+			b_i++
+		}
+		s_idx = rep_pos + rep.len // move string index past replacement
+		for i in 0 .. with.len { // copy replacement piece
+			unsafe {
+				b[b_i] = with[i]
 			}
-		} else {
-			// Rep doesnt start here, just copy
+			b_i++
+		}
+	}
+	if s_idx < s.len { // if any original after last replacement, copy it
+		for i in s_idx .. s.len {
 			unsafe {
 				b[b_i] = s[i]
 			}
