@@ -83,10 +83,11 @@ mut:
 	main_fn_decl_node                ast.FnDecl
 	match_exhaustive_cutoff_limit    int = 10
 	// TODO: these are here temporarily and used for deprecations; remove soon
-	using_new_err_struct bool
-	inside_selector_expr bool
-	inside_println_arg   bool
-	inside_decl_rhs      bool
+	using_new_err_struct     bool
+	inside_selector_expr     bool
+	inside_println_arg       bool
+	inside_decl_rhs          bool
+	need_recheck_generic_fns bool // need recheck generic fns because there are cascaded nested generic fn
 }
 
 pub fn new_checker(table &ast.Table, pref &pref.Preferences) Checker {
@@ -197,14 +198,20 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 	// post process generic functions. must be done after all files have been
 	// checked, to eunsure all generic calls are processed as this information
 	// is needed when the generic type is auto inferred from the call argument
-	// Check 2 times (in order to check nested generics fn)
-	for _ in 0 .. 2 {
+	// Check more times if there are more new registered fn concrete types
+	for {
 		for i in 0 .. ast_files.len {
 			file := unsafe { &ast_files[i] }
 			if file.generic_fns.len > 0 {
 				c.change_current_file(file)
 				c.post_process_generic_fns()
 			}
+		}
+		if c.need_recheck_generic_fns {
+			c.need_recheck_generic_fns = false
+			continue
+		} else {
+			break
 		}
 	}
 	// restore the original c.file && c.mod after post processing
@@ -1657,7 +1664,9 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 		}
 	}
 	if has_generic {
-		c.table.register_fn_concrete_types(call_expr.name, concrete_types)
+		if c.table.register_fn_concrete_types(call_expr.name, concrete_types) {
+			c.need_recheck_generic_fns = true
+		}
 	}
 	// TODO: remove this for actual methods, use only for compiler magic
 	// FIXME: Argument count != 1 will break these
@@ -2117,11 +2126,15 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 		}
 	}
 	if has_generic {
+		mut no_exists := true
 		if c.mod != '' && !fn_name.contains('.') {
 			// Need to prepend the module when adding a generic type to a function
-			c.table.register_fn_concrete_types(c.mod + '.' + fn_name, concrete_types)
+			no_exists = c.table.register_fn_concrete_types(c.mod + '.' + fn_name, concrete_types)
 		} else {
-			c.table.register_fn_concrete_types(fn_name, concrete_types)
+			no_exists = c.table.register_fn_concrete_types(fn_name, concrete_types)
+		}
+		if no_exists {
+			c.need_recheck_generic_fns = true
 		}
 	}
 	if fn_name == 'json.encode' {
