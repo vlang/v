@@ -543,8 +543,10 @@ pub fn str_interpolation(data_len int, in_data voidptr) string {
 		mut i := 0
 		for i < data_len {
 			data := &StrIntpData( byteptr(in_data) + (int(sizeof(StrIntpData)) * i) )
-			res.write_string(data.str)
-
+			// avoid empty strings
+			if data.str.len != 0 {
+				res.write_string(data.str)
+			}
 			// skip only string records
 			if data.fmt != 0 {
 				data.get_fmt_format(mut &res)
