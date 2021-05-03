@@ -802,6 +802,25 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 }
 
 fn (mut g Gen) fn_call(node ast.CallExpr) {
+	mut nullcheck := false
+	if node.is_field && !node.return_type.has_flag(.optional) {
+		nullcheck = true
+		g.write('/* null check */ (')
+		// fn_name := c_name(node.name)
+		if node.left_type != 0 {
+			left_sym := g.table.get_type_symbol(node.left_type)
+			if left_sym.kind == .interface_ {
+				g.write('(*')
+			}
+			g.expr(node.left)
+			if node.left_type.is_ptr() {
+				g.write('->')
+			} else {
+				g.write('.')
+			}
+		}
+		g.write('$node.name)? ')
+	}
 	// call struct field with fn type
 	// TODO: test node.left instead
 	// left & left_type will be `x` and `x type` in `x.fieldfn()`
@@ -969,6 +988,13 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				}
 			}
 			g.write(')')
+			if nullcheck && node.left_type != 0 {
+				g.write(': 0')
+				left_sym := g.table.get_type_symbol(node.left_type)
+				if left_sym.kind == .interface_ {
+					g.write(')')
+				}
+			}
 			if tmp_cnt_save >= 0 {
 				g.writeln(';')
 				g.keep_alive_call_postgen(node, tmp_cnt_save)
