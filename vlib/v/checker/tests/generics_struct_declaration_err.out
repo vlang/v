@@ -5,10 +5,3 @@ vlib/v/checker/tests/generics_struct_declaration_err.vv:5:1: error: generic stru
       | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     6 |     GenericChannelStruct<T>
     7 |     msg string
-vlib/v/checker/tests/generics_struct_declaration_err.vv:15:2: error: unused variable: `d`
-   13 |
-   14 | fn main() {
-   15 |     d := new_channel_struct<Simple>()
-      |     ^
-   16 | }
-   17 |

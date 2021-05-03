@@ -12,7 +12,7 @@ struct Simple {
 }
 
 fn main() {
-	d := new_channel_struct<Simple>()
+	new_channel_struct<Simple>()
 }
 
 pub fn new_channel_struct<T>() GenericChannelStruct<T> {
