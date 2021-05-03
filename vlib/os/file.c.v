@@ -146,6 +146,24 @@ pub fn stdin() File {
 	}
 }
 
+// stdout - return an os.File for stdout
+pub fn stdout() File {
+	return File{
+		fd: 1
+		cfile: C.stdout
+		is_opened: true
+	}
+}
+
+// stderr - return an os.File for stderr
+pub fn stderr() File {
+	return File{
+		fd: 2
+		cfile: C.stderr
+		is_opened: true
+	}
+}
+
 // **************************** Write ops  ***************************
 // write implements the Writer interface.
 // It returns how many bytes were actually written.
