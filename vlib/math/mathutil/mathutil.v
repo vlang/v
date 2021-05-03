@@ -5,27 +5,15 @@ module mathutil
 
 [inline]
 pub fn min<T>(a T, b T) T {
-	if a < b {
-		return a
-	} else {
-		return b
-	}
+	return if a < b { a } else { b }
 }
 
 [inline]
 pub fn max<T>(a T, b T) T {
-	if a > b {
-		return a
-	} else {
-		return b
-	}
+	return if a > b { a } else { b }
 }
 
 [inline]
 pub fn abs<T>(a T) T {
-	if a > 0 {
-		return a
-	} else {
-		return -a
-	}
+	return if a > 0 { a } else { -a }
 }

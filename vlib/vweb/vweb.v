@@ -36,8 +36,8 @@ pub const (
 		'.wasm': 'application/wasm'
 		'.xml':  'text/xml; charset=utf-8'
 	}
-	max_http_post_size      = 1024 * 1024
-	default_port            = 8080
+	max_http_post_size = 1024 * 1024
+	default_port       = 8080
 )
 
 pub struct Context {
@@ -359,7 +359,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	}
 	// Serve a static file if it is one
 	// TODO: get the real path
-	url := urllib.parse(app.req.url.to_lower()) or {
+	url := urllib.parse(app.req.url) or {
 		eprintln('error parsing path: $err')
 		return
 	}

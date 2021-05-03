@@ -47,7 +47,7 @@ pub enum ColorOutput {
 pub enum Backend {
 	c // The (default) C backend
 	js // The JavaScript backend
-	x64 // The x64 backend
+	native // The Native backend
 }
 
 pub enum CompilerType {
@@ -62,8 +62,8 @@ pub enum CompilerType {
 pub enum Arch {
 	_auto
 	amd64 // aka x86_64
-	aarch64 // 64-bit arm
-	aarch32 // 32-bit arm
+	arm64 // 64-bit arm
+	arm32 // 32-bit arm
 	rv64 // 64-bit risc-v
 	rv32 // 32-bit risc-v
 	i386
@@ -84,7 +84,6 @@ pub mut:
 	output_mode OutputMode = .stdout
 	// verbosity           VerboseLevel
 	is_verbose bool
-	is_watch   bool // -watch mode, implemented by cmd/tools/watch.v
 	// nofmt            bool   // disable vfmt
 	is_test           bool   // `v test string_test.v`
 	is_script         bool   // single file mode (`v program.v`), main function can be skipped
@@ -336,7 +335,11 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			'-shared' {
 				res.is_shared = true
 			}
-			'--enable-globals', '-enable-globals' {
+			'--enable-globals' {
+				eprintln('`--enable-globals` flag is deprecated, please use `-enable-globals` instead')
+				res.enable_globals = true
+			}
+			'-enable-globals' {
 				res.enable_globals = true
 			}
 			'-autofree' {
@@ -429,8 +432,8 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 			'-parallel' {
 				res.is_parallel = true
 			}
-			'-x64' {
-				res.backend = .x64
+			'-native' {
+				res.backend = .native
 				res.build_options << arg
 			}
 			'-W' {
@@ -443,7 +446,8 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 				res.skip_warnings = true
 			}
 			'-watch' {
-				res.is_watch = true
+				eprintln('The -watch option is deprecated. Please use the watch command `v watch file.v` instead.')
+				exit(1)
 			}
 			'-print-v-files' {
 				res.print_v_files = true
@@ -655,13 +659,13 @@ pub fn arch_from_string(arch_str string) ?Arch {
 
 			return Arch.amd64
 		}
-		'aarch64', 'arm64' { // aarch64 recommended
+		'aarch64', 'arm64' { // arm64 recommended
 
-			return Arch.aarch64
+			return Arch.arm64
 		}
-		'arm32', 'aarch32', 'arm' { // aarch32 recommended
+		'aarch32', 'arm32', 'arm' { // arm32 recommended
 
-			return Arch.aarch32
+			return Arch.arm32
 		}
 		'rv64', 'riscv64', 'risc-v64', 'riscv', 'risc-v' { // rv64 recommended
 
@@ -700,7 +704,7 @@ pub fn backend_from_string(s string) ?Backend {
 	match s {
 		'c' { return .c }
 		'js' { return .js }
-		'x64' { return .x64 }
+		'native' { return .native }
 		else { return error('Unknown backend type $s') }
 	}
 }
@@ -740,11 +744,12 @@ pub fn get_host_arch() Arch {
 	// $if i386 {
 	// 	return .amd64
 	// }
+	// $if arm64 { // requires new vc
 	$if aarch64 {
-		return .aarch64
+		return .arm64
 	}
-	// $if aarch32 {
-	// 	return .aarch32
+	// $if arm32 {
+	// 	return .arm32
 	// }
 	panic('unknown host OS')
 }

@@ -657,6 +657,9 @@ fn expr_is_single_line(expr ast.Expr) bool {
 				}
 			}
 		}
+		ast.StringLiteral {
+			return expr.pos.line_nr == expr.pos.last_line
+		}
 		else {}
 	}
 	return true
@@ -888,6 +891,12 @@ pub fn (mut f Fmt) comp_for(node ast.CompFor) {
 	f.writeln('}')
 }
 
+struct ConstAlignInfo {
+mut:
+	max      int
+	last_idx int
+}
+
 pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
 	if node.is_pub {
 		f.write('pub ')
@@ -901,22 +910,36 @@ pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
 		f.inside_const = false
 	}
 	f.write('const ')
-	mut max := 0
+	mut align_infos := []ConstAlignInfo{}
 	if node.is_block {
 		f.writeln('(')
-		for field in node.fields {
-			if field.name.len > max {
-				max = field.name.len
+		mut info := ConstAlignInfo{}
+		for i, field in node.fields {
+			if field.name.len > info.max {
+				info.max = field.name.len
+			}
+			if !expr_is_single_line(field.expr) {
+				info.last_idx = i
+				align_infos << info
+				info = ConstAlignInfo{}
 			}
 		}
+		info.last_idx = node.fields.len
+		align_infos << info
 		f.indent++
+	} else {
+		align_infos << ConstAlignInfo{0, 1}
 	}
 	mut prev_field := if node.fields.len > 0 {
 		ast.Node(node.fields[0])
 	} else {
 		ast.Node(ast.NodeError{})
 	}
-	for field in node.fields {
+	mut align_idx := 0
+	for i, field in node.fields {
+		if i > align_infos[align_idx].last_idx {
+			align_idx++
+		}
 		if field.comments.len > 0 {
 			if f.should_insert_newline_before_node(ast.Expr(field.comments[0]), prev_field) {
 				f.writeln('')
@@ -929,7 +952,7 @@ pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
 		}
 		name := field.name.after('.')
 		f.write('$name ')
-		f.write(strings.repeat(` `, max - field.name.len))
+		f.write(strings.repeat(` `, align_infos[align_idx].max - field.name.len))
 		f.write('= ')
 		f.expr(field.expr)
 		f.writeln('')
@@ -1157,15 +1180,17 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 		f.writeln('')
 	}
 	f.comments_after_last_field(node.pre_comments)
+	for iface in node.ifaces {
+		f.write('\t$iface.name')
+		f.comments(iface.comments, inline: true, has_nl: false, level: .indent)
+		f.writeln('')
+	}
 	for i, field in node.fields {
 		if i == node.mut_pos {
 			f.writeln('mut:')
 		}
 		// TODO: alignment, comments, etc.
 		mut ft := f.no_cur_mod(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
-		if !ft.contains('C.') && !ft.contains('JS.') && !ft.contains('fn (') {
-			ft = f.short_module(ft)
-		}
 		f.writeln('\t$field.name $ft')
 		f.mark_types_import_as_used(field.typ)
 	}
@@ -1215,6 +1240,15 @@ pub fn (mut f Fmt) sql_stmt(node ast.SqlStmt) {
 	f.write('sql ')
 	f.expr(node.db_expr)
 	f.writeln(' {')
+
+	for line in node.lines {
+		f.sql_stmt_line(line)
+	}
+
+	f.writeln('}')
+}
+
+pub fn (mut f Fmt) sql_stmt_line(node ast.SqlStmtLine) {
 	table_name := util.strip_mod_name(f.table.get_type_symbol(node.table_expr.typ).name)
 	f.write('\t')
 	match node.kind {
@@ -1249,7 +1283,6 @@ pub fn (mut f Fmt) sql_stmt(node ast.SqlStmt) {
 			f.writeln('drop table $table_name')
 		}
 	}
-	f.writeln('}')
 }
 
 pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
@@ -1397,7 +1430,12 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 				f.write(' ')
 			}
 		} else {
-			if c.pos.last_line < node.pos.last_line {
+			next_line := if node.exprs.len > 0 {
+				node.exprs[0].position().line_nr
+			} else {
+				node.pos.last_line
+			}
+			if c.pos.last_line < next_line {
 				f.comment(c, level: .indent)
 				if node.exprs.len == 0 {
 					f.writeln('')

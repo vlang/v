@@ -8,7 +8,8 @@ import v.util
 
 // pg,mysql etc
 const (
-	dbtype = 'sqlite'
+	dbtype                 = 'sqlite'
+	default_unique_str_len = 256
 )
 
 enum SqlExprSide {
@@ -24,24 +25,30 @@ enum SqlType {
 }
 
 fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
+	for line in node.lines {
+		g.sql_stmt_line(line, node.db_expr)
+	}
+}
+
+fn (mut g Gen) sql_stmt_line(node ast.SqlStmtLine, expr ast.Expr) {
 	if node.kind == .create {
-		g.sql_create_table(node)
+		g.sql_create_table(node, expr)
 		return
 	} else if node.kind == .drop {
-		g.sql_drop_table(node)
+		g.sql_drop_table(node, expr)
 		return
 	}
 	g.sql_table_name = g.table.get_type_symbol(node.table_expr.typ).name
-	typ := g.parse_db_type(node.db_expr)
+	typ := g.parse_db_type(expr)
 	match typ {
 		.sqlite3 {
-			g.sqlite3_stmt(node, typ)
+			g.sqlite3_stmt(node, typ, expr)
 		}
 		.mysql {
-			g.mysql_stmt(node, typ)
+			g.mysql_stmt(node, typ, expr)
 		}
 		.psql {
-			g.psql_stmt(node, typ)
+			g.psql_stmt(node, typ, expr)
 		}
 		else {
 			verror('This database type `$typ` is not implemented yet in orm') // TODO add better error
@@ -49,17 +56,17 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 	}
 }
 
-fn (mut g Gen) sql_create_table(node ast.SqlStmt) {
-	typ := g.parse_db_type(node.db_expr)
+fn (mut g Gen) sql_create_table(node ast.SqlStmtLine, expr ast.Expr) {
+	typ := g.parse_db_type(expr)
 	match typ {
 		.sqlite3 {
-			g.sqlite3_create_table(node, typ)
+			g.sqlite3_create_table(node, typ, expr)
 		}
 		.mysql {
-			g.mysql_create_table(node, typ)
+			g.mysql_create_table(node, typ, expr)
 		}
 		.psql {
-			g.psql_create_table(node, typ)
+			g.psql_create_table(node, typ, expr)
 		}
 		else {
 			verror('This database type `$typ` is not implemented yet in orm') // TODO add better error
@@ -67,17 +74,17 @@ fn (mut g Gen) sql_create_table(node ast.SqlStmt) {
 	}
 }
 
-fn (mut g Gen) sql_drop_table(node ast.SqlStmt) {
-	typ := g.parse_db_type(node.db_expr)
+fn (mut g Gen) sql_drop_table(node ast.SqlStmtLine, expr ast.Expr) {
+	typ := g.parse_db_type(expr)
 	match typ {
 		.sqlite3 {
-			g.sqlite3_drop_table(node, typ)
+			g.sqlite3_drop_table(node, typ, expr)
 		}
 		.mysql {
-			g.mysql_drop_table(node, typ)
+			g.mysql_drop_table(node, typ, expr)
 		}
 		.psql {
-			g.psql_create_table(node, typ)
+			g.psql_drop_table(node, typ, expr)
 		}
 		else {
 			verror('This database type `$typ` is not implemented yet in orm') // TODO add better error
@@ -95,13 +102,16 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr, sub bool, line string) {
 		.mysql {
 			g.mysql_select_expr(node, sub, line, typ)
 		}
+		.psql {
+			g.psql_select_expr(node, sub, line, typ)
+		}
 		else {
 			verror('This database type `$typ` is not implemented yet in orm') // TODO add better error
 		}
 	}
 }
 
-fn (mut g Gen) sql_bind(val string, len string, real_type ast.Type, typ SqlType, data []string) {
+fn (mut g Gen) sql_bind(val string, len string, real_type ast.Type, typ SqlType) {
 	match typ {
 		.sqlite3 {
 			g.sqlite3_bind(val, len, real_type)
@@ -110,7 +120,7 @@ fn (mut g Gen) sql_bind(val string, len string, real_type ast.Type, typ SqlType,
 			g.mysql_bind(val, real_type)
 		}
 		.psql {
-			g.psql_bind(val, data, real_type)
+			g.psql_bind(val, real_type)
 		}
 		else {}
 	}
@@ -136,21 +146,27 @@ fn (mut g Gen) sql_type_from_v(typ SqlType, v_typ ast.Type) string {
 
 // sqlite3
 
-fn (mut g Gen) sqlite3_stmt(node ast.SqlStmt, typ SqlType) {
+fn (mut g Gen) sqlite3_stmt(node ast.SqlStmtLine, typ SqlType, db_expr ast.Expr) {
 	g.sql_i = 0
 	g.writeln('\n\t// sql insert')
 	db_name := g.new_tmp_var()
 	g.sql_stmt_name = g.new_tmp_var()
 	g.write('${c.dbtype}__DB $db_name = ')
-	g.expr(node.db_expr)
+	g.expr(db_expr)
 	g.writeln(';')
 	g.write('sqlite3_stmt* $g.sql_stmt_name = ${c.dbtype}__DB_init_stmt($db_name, _SLIT("')
 	g.sql_defaults(node, typ)
 	g.writeln(');')
+	mut arr_stmt := []ast.SqlStmtLine{}
+	mut arr_fkeys := []string{}
 	if node.kind == .insert {
 		// build the object now (`x.name = ... x.id == ...`)
 		for i, field in node.fields {
 			if g.get_sql_field_type(field) == ast.Type(-1) {
+				continue
+			}
+			if field.name == g.sql_fkey && g.sql_fkey != '' {
+				g.writeln('sqlite3_bind_int($g.sql_stmt_name, ${i + 0} , $g.sql_parent_id); // parent id')
 				continue
 			}
 			x := '${node.object_var_name}.$field.name'
@@ -161,7 +177,7 @@ fn (mut g Gen) sqlite3_stmt(node ast.SqlStmt, typ SqlType) {
 				expr := node.sub_structs[int(field.typ)]
 				tmp_sql_stmt_name := g.sql_stmt_name
 				tmp_sql_table_name := g.sql_table_name
-				g.sql_stmt(expr)
+				g.sql_stmt_line(expr, db_expr)
 				g.sql_stmt_name = tmp_sql_stmt_name
 				g.sql_table_name = tmp_sql_table_name
 				// get last inserted id
@@ -170,6 +186,24 @@ fn (mut g Gen) sqlite3_stmt(node ast.SqlStmt, typ SqlType) {
 				id_name := g.new_tmp_var()
 				g.writeln('int $id_name = string_int((*(string*)array_get((*(sqlite__Row*)array_get($res, 0)).vals, 0)));')
 				g.writeln('sqlite3_bind_int($g.sql_stmt_name, ${i + 0} , $id_name); // id')
+			} else if g.table.get_type_symbol(field.typ).kind == .array {
+				t := g.table.get_type_symbol(field.typ).array_info().elem_type
+				if g.table.get_type_symbol(t).kind == .struct_ {
+					mut fkey := ''
+					for attr in field.attrs {
+						if attr.name == 'fkey' && attr.arg != '' && attr.kind == .string {
+							fkey = attr.arg
+							break
+						}
+					}
+					if fkey == '' {
+						verror('fkey attribute has to be set for arrays in orm')
+						continue
+					}
+
+					arr_stmt << node.sub_structs[int(t)]
+					arr_fkeys << fkey
+				}
 			} else {
 				g.writeln('sqlite3_bind_int($g.sql_stmt_name, ${i + 0} , $x); // stmt')
 			}
@@ -183,6 +217,15 @@ fn (mut g Gen) sqlite3_stmt(node ast.SqlStmt, typ SqlType) {
 	g.writeln('\tint $step_res = sqlite3_step($g.sql_stmt_name);')
 	g.writeln('\tif( ($step_res != SQLITE_OK) && ($step_res != SQLITE_DONE)){ puts(sqlite3_errmsg(${db_name}.conn)); }')
 	g.writeln('\tsqlite3_finalize($g.sql_stmt_name);')
+
+	if arr_stmt.len > 0 {
+		res := g.new_tmp_var()
+		g.writeln('Array_sqlite__Row $res = sqlite__DB_exec($db_name, _SLIT("SELECT last_insert_rowid()")).arg0;')
+		id_name := g.new_tmp_var()
+		g.writeln('int $id_name = string_int((*(string*)array_get((*(sqlite__Row*)array_get($res, 0)).vals, 0)));')
+
+		g.sql_arr_stmt(arr_stmt, arr_fkeys, id_name, db_expr)
+	}
 }
 
 fn (mut g Gen) sqlite3_select_expr(node ast.SqlExpr, sub bool, line string, sql_typ SqlType) {
@@ -211,7 +254,7 @@ fn (mut g Gen) sqlite3_select_expr(node ast.SqlExpr, sub bool, line string, sql_
 	g.writeln(';')
 	stmt_name := g.new_tmp_var()
 	g.write('string $stmt_name = _SLIT("')
-	g.write(g.get_base_sql_select_query(node))
+	g.write(g.get_base_sql_select_query(node, sql_typ))
 	g.sql_expr_defaults(node, sql_typ)
 	g.writeln('");')
 	// g.write('sqlite3_stmt* $g.sql_stmt_name = ${dbtype}__DB_init_stmt(*(${dbtype}__DB*)${node.db_var_name}.data, _SLIT("$sql_query')
@@ -277,7 +320,14 @@ fn (mut g Gen) sqlite3_select_expr(node ast.SqlExpr, sub bool, line string, sql_
 			// g.writeln('printf("RES: %d\\n", _step_res$tmp) ;')
 			g.writeln('\tif (_step_res$tmp == SQLITE_OK || _step_res$tmp == SQLITE_ROW) {')
 		}
+		mut primary := ''
 		for i, field in node.fields {
+			for attr in field.attrs {
+				if attr.name == 'primary' {
+					primary = '${tmp}.$field.name'
+					break
+				}
+			}
 			mut func := 'sqlite3_column_int'
 			if field.typ == ast.string_type {
 				func = 'sqlite3_column_text'
@@ -309,6 +359,8 @@ fn (mut g Gen) sqlite3_select_expr(node ast.SqlExpr, sub bool, line string, sql_
 				g.sql_buf = tmp_sql_buf
 				g.sql_i = tmp_sql_i
 				g.sql_table_name = tmp_sql_table_name
+			} else if g.table.get_type_symbol(field.typ).kind == .array {
+				g.sql_select_arr(field, node, primary, tmp)
 			} else {
 				g.writeln('${tmp}.$field.name = ${func}($g.sql_stmt_name, $i);')
 			}
@@ -326,20 +378,20 @@ fn (mut g Gen) sqlite3_select_expr(node ast.SqlExpr, sub bool, line string, sql_
 	}
 }
 
-fn (mut g Gen) sqlite3_create_table(node ast.SqlStmt, typ SqlType) {
+fn (mut g Gen) sqlite3_create_table(node ast.SqlStmtLine, typ SqlType, db_expr ast.Expr) {
 	g.writeln('// sqlite3 table creator')
-	create_string := g.table_gen(node, typ)
+	create_string := g.table_gen(node, typ, db_expr)
 	g.write('sqlite__DB_exec(')
-	g.expr(node.db_expr)
+	g.expr(db_expr)
 	g.writeln(', _SLIT("$create_string"));')
 }
 
-fn (mut g Gen) sqlite3_drop_table(node ast.SqlStmt, typ SqlType) {
+fn (mut g Gen) sqlite3_drop_table(node ast.SqlStmtLine, typ SqlType, db_expr ast.Expr) {
 	table_name := g.get_table_name(node.table_expr)
 	g.writeln('// sqlite3 table drop')
 	drop_string := 'DROP TABLE `$table_name`;'
 	g.write('sqlite__DB_exec(')
-	g.expr(node.db_expr)
+	g.expr(db_expr)
 	g.writeln(', _SLIT("$drop_string"));')
 }
 
@@ -377,13 +429,13 @@ fn (mut g Gen) sqlite3_type_from_v(v_typ ast.Type) string {
 
 // mysql
 
-fn (mut g Gen) mysql_stmt(node ast.SqlStmt, typ SqlType) {
+fn (mut g Gen) mysql_stmt(node ast.SqlStmtLine, typ SqlType, db_expr ast.Expr) {
 	g.sql_i = 0
 	g.writeln('\n\t//mysql insert')
 	db_name := g.new_tmp_var()
 	g.sql_stmt_name = g.new_tmp_var()
 	g.write('mysql__Connection $db_name = ')
-	g.expr(node.db_expr)
+	g.expr(db_expr)
 	g.writeln(';')
 	stmt_name := g.new_tmp_var()
 	g.write('string $stmt_name = _SLIT("')
@@ -395,9 +447,26 @@ fn (mut g Gen) mysql_stmt(node ast.SqlStmt, typ SqlType) {
 	bind := g.new_tmp_var()
 	g.writeln('MYSQL_BIND $bind[$g.sql_i];')
 	g.writeln('memset($bind, 0, sizeof(MYSQL_BIND)*$g.sql_i);')
+	mut arr_stmt := []ast.SqlStmtLine{}
+	mut arr_fkeys := []string{}
 	if node.kind == .insert {
 		for i, field in node.fields {
 			if g.get_sql_field_type(field) == ast.Type(-1) {
+				continue
+			}
+			if field.name == g.sql_fkey && g.sql_fkey != '' {
+				t, sym := g.mysql_buffer_typ_from_field(field)
+				g.writeln('$bind[${i - 1}].buffer_type = $t;')
+				if sym == 'char' {
+					g.writeln('$bind[${i - 1}].buffer = ($sym*) ${g.sql_parent_id}.str;')
+				} else {
+					g.writeln('$bind[${i - 1}].buffer = ($sym*) &$g.sql_parent_id;')
+				}
+				if sym == 'char' {
+					g.writeln('$bind[${i - 1}].buffer_length = ${g.sql_parent_id}.len;')
+				}
+				g.writeln('$bind[${i - 1}].is_null = 0;')
+				g.writeln('$bind[${i - 1}].length = 0;')
 				continue
 			}
 			g.writeln('//$field.name ($field.typ)')
@@ -407,7 +476,7 @@ fn (mut g Gen) mysql_stmt(node ast.SqlStmt, typ SqlType) {
 				expr := node.sub_structs[int(field.typ)]
 				tmp_sql_stmt_name := g.sql_stmt_name
 				tmp_sql_table_name := g.sql_table_name
-				g.sql_stmt(expr)
+				g.sql_stmt_line(expr, db_expr)
 				g.sql_stmt_name = tmp_sql_stmt_name
 				g.sql_table_name = tmp_sql_table_name
 
@@ -424,6 +493,24 @@ fn (mut g Gen) mysql_stmt(node ast.SqlStmt, typ SqlType) {
 				g.writeln('$bind[${i - 1}].buffer = &${x}.id;')
 				g.writeln('$bind[${i - 1}].is_null = 0;')
 				g.writeln('$bind[${i - 1}].length = 0;')
+			} else if g.table.get_type_symbol(field.typ).kind == .array {
+				t := g.table.get_type_symbol(field.typ).array_info().elem_type
+				if g.table.get_type_symbol(t).kind == .struct_ {
+					mut fkey := ''
+					for attr in field.attrs {
+						if attr.name == 'fkey' && attr.arg != '' && attr.kind == .string {
+							fkey = attr.arg
+							break
+						}
+					}
+					if fkey == '' {
+						verror('fkey attribute has to be set for arrays in orm')
+						continue
+					}
+
+					arr_stmt << node.sub_structs[int(t)]
+					arr_fkeys << fkey
+				}
 			} else {
 				t, sym := g.mysql_buffer_typ_from_field(field)
 				g.writeln('$bind[${i - 1}].buffer_type = $t;')
@@ -443,7 +530,6 @@ fn (mut g Gen) mysql_stmt(node ast.SqlStmt, typ SqlType) {
 	binds := g.sql_buf.str()
 	g.sql_buf = strings.new_builder(100)
 	g.writeln(binds)
-	// g.writeln('mysql_stmt_attr_set($g.sql_stmt_name, STMT_ATTR_ARRAY_SIZE, 1);')
 	res := g.new_tmp_var()
 	g.writeln('int $res = mysql_stmt_bind_param($g.sql_stmt_name, $bind);')
 	g.writeln('if ($res != 0) { puts(mysql_error(${db_name}.conn)); }')
@@ -451,6 +537,20 @@ fn (mut g Gen) mysql_stmt(node ast.SqlStmt, typ SqlType) {
 	g.writeln('if ($res != 0) { puts(mysql_error(${db_name}.conn)); puts(mysql_stmt_error($g.sql_stmt_name)); }')
 	g.writeln('mysql_stmt_close($g.sql_stmt_name);')
 	g.writeln('mysql_stmt_free_result($g.sql_stmt_name);')
+
+	if arr_stmt.len > 0 {
+		rs := g.new_tmp_var()
+		g.writeln('int ${rs}_err = mysql_real_query(${db_name}.conn, "SELECT LAST_INSERT_ID();", 24);')
+		g.writeln('if (${rs}_err != 0) { puts(mysql_error(${db_name}.conn)); }')
+		g.writeln('MYSQL_RES* $rs = mysql_store_result(${db_name}.conn);')
+		g.writeln('if (mysql_num_rows($rs) != 1) { puts("Something went wrong"); }')
+		g.writeln('MYSQL_ROW ${rs}_row = mysql_fetch_row($rs);')
+		id_name := g.new_tmp_var()
+		g.writeln('int $id_name = string_int(tos_clone(${rs}_row[0]));')
+		g.writeln('mysql_free_result($rs);')
+
+		g.sql_arr_stmt(arr_stmt, arr_fkeys, id_name, db_expr)
+	}
 }
 
 fn (mut g Gen) mysql_select_expr(node ast.SqlExpr, sub bool, line string, typ SqlType) {
@@ -467,56 +567,20 @@ fn (mut g Gen) mysql_select_expr(node ast.SqlExpr, sub bool, line string, typ Sq
 	g.expr(node.db_expr)
 	g.writeln(';')
 
-	stmt_name := g.new_tmp_var()
-	g.sql_idents = []string{}
-	g.sql_idents_types = []ast.Type{}
-	g.write('char* ${stmt_name}_raw = "')
-	g.write(g.get_base_sql_select_query(node))
+	g.write('string $g.sql_stmt_name = _SLIT("')
+	g.write(g.get_base_sql_select_query(node, typ))
 	g.sql_expr_defaults(node, typ)
-	g.writeln('";')
-	g.writeln('string $stmt_name = tos_clone(${stmt_name}_raw);')
-	if g.sql_idents.len > 0 {
-		vals := g.new_tmp_var()
-		g.writeln('Array_string $vals = __new_array_with_default(0, 0, sizeof(string), 0);')
-		for i, ident in g.sql_idents {
-			g.writeln('array_push((array*)&$vals, _MOV((string[]){string_clone(_SLIT("%${i + 1}"))}));')
+	g.writeln('");')
 
-			g.write('array_push((array*)&$vals, _MOV((string[]){string_clone(')
-			if g.sql_idents_types[i] == ast.string_type {
-				g.write('_SLIT(')
-			} else {
-				sym := g.table.get_type_name(g.sql_idents_types[i])
-				g.write('${sym}_str(')
-			}
-			g.writeln('$ident))}));')
-		}
-		g.writeln('$stmt_name = string_replace_each($stmt_name, $vals);')
-	}
-	/*
-	g.writeln('MYSQL_STMT* $g.sql_stmt_name = mysql_stmt_init(${db_name}.conn);')
-	g.writeln('mysql_stmt_prepare($g.sql_stmt_name, ${stmt_name}.str, ${stmt_name}.len);')
-
-	g.writeln('MYSQL_BIND $g.sql_bind_name[$g.sql_i];')
-	g.writeln('memset($g.sql_bind_name, 0, sizeof(MYSQL_BIND)*$g.sql_i);')
-
-	binds := g.sql_buf.str()
+	rplc := g.sql_buf.str()
 	g.sql_buf = strings.new_builder(100)
-	g.writeln(binds)
+	g.writeln(rplc)
 
-	res := g.new_tmp_var()
-	g.writeln('int $res = mysql_stmt_bind_param($g.sql_stmt_name, $g.sql_bind_name);')
-	g.writeln('if ($res != 0) { puts(mysql_error(${db_name}.conn)); }')
-	g.writeln('$res = mysql_stmt_execute($g.sql_stmt_name);')
-	g.writeln('if ($res != 0) { puts(mysql_error(${db_name}.conn)); puts(mysql_stmt_error($g.sql_stmt_name)); }')
-	*/
 	query := g.new_tmp_var()
 	res := g.new_tmp_var()
 	fields := g.new_tmp_var()
-	/*
-	g.writeln('Option_mysql__Result $res = mysql__Connection_real_query(&$db_name, $stmt_name);')
-	g.writeln('if (${res}.state != 0) { IError err = ${res}.err; _STR("Something went wrong\\000%.*s", 2, IError_str(err)); }')
-	g.writeln('Array_mysql__Row ${res}_rows = mysql__Result_rows(*(mysql__Result*)${res}.data);')*/
-	g.writeln('int $query = mysql_real_query(${db_name}.conn, ${stmt_name}.str, ${stmt_name}.len);')
+
+	g.writeln('int $query = mysql_real_query(${db_name}.conn, ${g.sql_stmt_name}.str, ${g.sql_stmt_name}.len);')
 	g.writeln('if ($query != 0) { puts(mysql_error(${db_name}.conn)); }')
 	g.writeln('MYSQL_RES* $res = mysql_store_result(${db_name}.conn);')
 	g.writeln('MYSQL_ROW $fields = mysql_fetch_row($res);')
@@ -563,15 +627,19 @@ fn (mut g Gen) mysql_select_expr(node ast.SqlExpr, sub bool, line string, typ Sq
 
 		char_ptr := g.new_tmp_var()
 		g.writeln('char* $char_ptr = "";')
+		mut primary := ''
 		for i, field in node.fields {
+			for attr in field.attrs {
+				if attr.name == 'primary' {
+					primary = '${tmp}.$field.name'
+					break
+				}
+			}
 			g.writeln('$char_ptr = $fields[$i];')
 			g.writeln('if ($char_ptr == NULL) { $char_ptr = ""; }')
 			name := g.table.get_type_symbol(field.typ).cname
 			if g.table.get_type_symbol(field.typ).kind == .struct_ {
-				/*
-				id_name := g.new_tmp_var()
-				g.writeln('//parse struct start') //
-				//g.writeln('int $id_name = string_int(tos_clone($fields[$i]));')
+				g.writeln('//parse struct start')
 
 				mut expr := node.sub_structs[int(field.typ)]
 				mut where_expr := expr.where_expr as ast.InfixExpr
@@ -592,8 +660,9 @@ fn (mut g Gen) mysql_select_expr(node ast.SqlExpr, sub bool, line string, typ Sq
 				g.sql_stmt_name = tmp_sql_stmt_name
 				g.sql_buf = tmp_sql_buf
 				g.sql_i = tmp_sql_i
-				g.sql_table_name := tmp_sql_table_name
-				*/
+				g.sql_table_name = tmp_sql_table_name
+			} else if g.table.get_type_symbol(field.typ).kind == .array {
+				g.sql_select_arr(field, node, primary, tmp)
 			} else if field.typ == ast.string_type {
 				g.writeln('${tmp}.$field.name = tos_clone($char_ptr);')
 			} else if field.typ == ast.byte_type {
@@ -606,9 +675,10 @@ fn (mut g Gen) mysql_select_expr(node ast.SqlExpr, sub bool, line string, typ Sq
 		}
 		if node.is_array {
 			g.writeln('\t array_push((array*)&${tmp}_array, _MOV(($elem_type_str[]) { $tmp }));')
+			g.writeln('\t $fields = mysql_fetch_row($res);')
 			g.writeln('}')
 		}
-		g.writeln('string_free(&$stmt_name);')
+		g.writeln('string_free(&$g.sql_stmt_name);')
 		g.writeln('mysql_free_result($res);')
 		if node.is_array {
 			g.writeln('$cur_line ${tmp}_array; ')
@@ -618,44 +688,50 @@ fn (mut g Gen) mysql_select_expr(node ast.SqlExpr, sub bool, line string, typ Sq
 	}
 }
 
-fn (mut g Gen) mysql_create_table(node ast.SqlStmt, typ SqlType) {
+fn (mut g Gen) mysql_create_table(node ast.SqlStmtLine, typ SqlType, db_expr ast.Expr) {
 	g.writeln('// mysql table creator')
-	create_string := g.table_gen(node, typ)
+	create_string := g.table_gen(node, typ, db_expr)
 	tmp := g.new_tmp_var()
 	g.write('Option_mysql__Result $tmp = mysql__Connection_query(&')
-	g.expr(node.db_expr)
+	g.expr(db_expr)
 	g.writeln(', _SLIT("$create_string"));')
 	g.writeln('if (${tmp}.state != 0) { IError err = ${tmp}.err; eprintln(_STR("Something went wrong\\000%.*s", 2, IError_str(err))); }')
 }
 
-fn (mut g Gen) mysql_drop_table(node ast.SqlStmt, typ SqlType) {
+fn (mut g Gen) mysql_drop_table(node ast.SqlStmtLine, typ SqlType, db_expr ast.Expr) {
 	table_name := g.get_table_name(node.table_expr)
 	g.writeln('// mysql table drop')
 	drop_string := 'DROP TABLE `$table_name`;'
 	tmp := g.new_tmp_var()
 	g.write('Option_mysql__Result $tmp = mysql__Connection_query(&')
-	g.expr(node.db_expr)
+	g.expr(db_expr)
 	g.writeln(', _SLIT("$drop_string"));')
 	g.writeln('if (${tmp}.state != 0) { IError err = ${tmp}.err; eprintln(_STR("Something went wrong\\000%.*s", 2, IError_str(err))); }')
 }
 
-fn (mut g Gen) mysql_bind(val string, _ ast.Type) {
-	/*
-	t := g.mysql_buffer_typ_from_typ(typ)
+fn (mut g Gen) mysql_bind(val string, typ ast.Type) {
+	g.write('$g.sql_i')
 	mut sym := g.table.get_type_symbol(typ).cname
-	if typ == ast.string_type {
-		sym = 'char *'
+	g.sql_buf.write_string('$g.sql_stmt_name = string_replace($g.sql_stmt_name, _SLIT("?$g.sql_i"), ')
+	if sym != 'string' {
+		mut num := false
+		if sym != 'bool' {
+			num = true
+			g.sql_buf.write_string('${sym}_str(')
+		}
+		g.sql_buf.write_string('(($sym) $val)')
+
+		if sym == 'bool' {
+			g.sql_buf.write_string('? _SLIT("1") : _SLIT("0")')
+		}
+
+		if num {
+			g.sql_buf.write_string(')')
+		}
+	} else {
+		g.sql_buf.write_string('string_add(_SLIT("\'"), string_add(((string) $val), _SLIT("\'")))')
 	}
-	tmp := g.new_tmp_var()
-	g.sql_buf.writeln('$sym $tmp = $val;')
-	g.sql_buf.writeln('$g.sql_bind_name[${g.sql_i - 1}].buffer_type = $t;')
-	g.sql_buf.writeln('$g.sql_bind_name[${g.sql_i - 1}].buffer = ($sym*) &$tmp;')
-	if sym == 'char *' {
-		g.sql_buf.writeln('$g.sql_bind_name[${g.sql_i - 1}].buffer_length = ${val}.len;')
-	}
-	g.sql_buf.writeln('$g.sql_bind_name[${g.sql_i - 1}].is_null = 0;')
-	g.sql_buf.writeln('$g.sql_bind_name[${g.sql_i - 1}].length = 0;')*/
-	g.write(val)
+	g.sql_buf.writeln(');')
 }
 
 fn (mut g Gen) mysql_get_table_type(typ ast.Type) string {
@@ -735,60 +811,73 @@ fn (mut g Gen) mysql_buffer_typ_from_field(field ast.StructField) (string, strin
 
 // psql
 
-fn (mut g Gen) psql_stmt(node ast.SqlStmt, typ SqlType) {
+fn (mut g Gen) psql_stmt(node ast.SqlStmtLine, typ SqlType, db_expr ast.Expr) {
 	g.sql_i = 0
 	g.sql_idents = []string{}
-	param_values := g.new_tmp_var()
-	param_lens := g.new_tmp_var()
-	param_formats := g.new_tmp_var()
 	g.writeln('\n\t//psql insert')
 	db_name := g.new_tmp_var()
 	g.sql_stmt_name = g.new_tmp_var()
 	g.write('pg__DB $db_name = ')
-	g.expr(node.db_expr)
+	g.expr(db_expr)
 	g.writeln(';')
-	stmt_name := g.new_tmp_var()
-	g.write('string $stmt_name = _SLIT("')
-	g.sql_defaults(node, typ, param_values, param_lens, param_formats)
+	g.write('string $g.sql_stmt_name = _SLIT("')
+	g.sql_defaults(node, typ)
 	g.writeln(';')
 
-	g.writeln('char *$param_values[$g.sql_i]; //param values')
-	g.writeln('int $param_lens[$g.sql_i]; //param lens')
-	g.writeln('int $param_formats[$g.sql_i]; // param formats')
-
+	mut arr_stmt := []ast.SqlStmtLine{}
+	mut arr_fkeys := []string{}
 	if node.kind == .insert {
 		for i, field in node.fields {
 			if g.get_sql_field_type(field) == ast.Type(-1) {
 				continue
 			}
+			g.sql_i = i
+			field_type := g.get_sql_field_type(field)
+			if field.name == g.sql_fkey && g.sql_fkey != '' {
+				g.sql_buf = strings.new_builder(100)
+				g.sql_bind(g.sql_parent_id, '', field_type, typ)
+				g.writeln(g.sql_buf.str())
+				continue
+			}
 			g.writeln('//$field.name ($field.typ)')
 			x := '${node.object_var_name}.$field.name'
-			field_type := g.get_sql_field_type(field)
 			if g.table.get_type_symbol(field.typ).kind == .struct_ {
 				// insert again
 				expr := node.sub_structs[int(field.typ)]
 				tmp_sql_stmt_name := g.sql_stmt_name
 				tmp_sql_table_name := g.sql_table_name
-				g.sql_stmt(expr)
+				g.sql_stmt_line(expr, db_expr)
 				g.sql_stmt_name = tmp_sql_stmt_name
 				g.sql_table_name = tmp_sql_table_name
 
 				res := g.new_tmp_var()
-				g.write('Option_int $res = pg__DB_q_int($db_name, _SLIT("SELECT LASTVAL();"));')
+				g.writeln('Option_pg__Row $res = pg__DB_exec_one($db_name, _SLIT("SELECT LASTVAL();"));')
 				g.writeln('if (${res}.state != 0) { IError err = ${res}.err; eprintln(_STR("\\000%.*s", 2, IError_str(err))); }')
 				g.sql_buf = strings.new_builder(100)
-				g.sql_bind('${res}.data', '', ast.int_type, typ, [
-					(i - 1).str(),
-					param_values,
-					param_lens,
-					param_formats,
-				])
+				g.sql_bind('string_int((*(string*)array_get((*(pg__Row*)${res}.data).vals, 0)))',
+					'', ast.int_type, typ)
 				g.writeln(g.sql_buf.str())
+			} else if g.table.get_type_symbol(field.typ).kind == .array {
+				t := g.table.get_type_symbol(field.typ).array_info().elem_type
+				if g.table.get_type_symbol(t).kind == .struct_ {
+					mut fkey := ''
+					for attr in field.attrs {
+						if attr.name == 'fkey' && attr.arg != '' && attr.kind == .string {
+							fkey = attr.arg
+							break
+						}
+					}
+					if fkey == '' {
+						verror('fkey attribute has to be set for arrays in orm')
+						continue
+					}
+
+					arr_stmt << node.sub_structs[int(t)]
+					arr_fkeys << fkey
+				}
 			} else {
 				g.sql_buf = strings.new_builder(100)
-				g.sql_bind(x, '', field_type, typ, [(i - 1).str(), param_values, param_lens,
-					param_formats,
-				])
+				g.sql_bind(x, '', field_type, typ)
 				g.writeln(g.sql_buf.str())
 			}
 		}
@@ -797,29 +886,170 @@ fn (mut g Gen) psql_stmt(node ast.SqlStmt, typ SqlType) {
 	g.sql_buf = strings.new_builder(100)
 	g.writeln(binds)
 
-	res := g.new_tmp_var()
-	g.writeln('PGresult * $res = PQexecParams(${db_name}.conn, ${stmt_name}.str, $g.sql_i, 0, $param_values, $param_lens, $param_formats, 0);')
-	g.writeln('Option_Array_pg__Row ${res}_rows = pg__DB_handle_error_or_result($db_name, $res, _SLIT("$stmt_name"));')
-	g.writeln('if (${res}_rows.state != 0) { IError err = ${res}_rows.err; eprintln(_STR("\\000%.*s", 2, IError_str(err))); }')
+	g.writeln('pg__DB_exec($db_name, $g.sql_stmt_name);')
+
+	if arr_stmt.len > 0 {
+		res := g.new_tmp_var()
+		g.writeln('Option_pg__Row $res = pg__DB_exec_one($db_name, _SLIT("SELECT LASTVAL();"));')
+		g.writeln('if (${res}.state != 0) { IError err = ${res}.err; eprintln(_STR("\\000%.*s", 2, IError_str(err))); }')
+		id_name := g.new_tmp_var()
+		g.writeln('int $id_name = string_int((*(string*)array_get((*(pg__Row*)${res}.data).vals, 0)));')
+
+		g.sql_arr_stmt(arr_stmt, arr_fkeys, id_name, db_expr)
+	}
 }
 
-fn (mut g Gen) psql_create_table(node ast.SqlStmt, typ SqlType) {
+fn (mut g Gen) psql_select_expr(node ast.SqlExpr, sub bool, line string, typ SqlType) {
+	g.sql_i = 0
+	mut cur_line := line
+	if !sub {
+		cur_line = g.go_before_stmt(0)
+	}
+	g.sql_stmt_name = g.new_tmp_var()
+	db_name := g.new_tmp_var()
+	g.writeln('\n\t// psql select')
+	g.write('pg__DB $db_name = ')
+	g.expr(node.db_expr)
+	g.writeln(';')
+
+	g.write('string $g.sql_stmt_name = _SLIT("')
+	g.write(g.get_base_sql_select_query(node, typ))
+	g.sql_expr_defaults(node, typ)
+	g.writeln('");')
+
+	buf := g.sql_buf.str()
+	g.sql_buf = strings.new_builder(100)
+	g.writeln(buf)
+
+	res := g.new_tmp_var()
+	g.writeln('Option_Array_pg__Row $res = pg__DB_exec($db_name, $g.sql_stmt_name);')
+	g.writeln('if (${res}.state != 0) { IError err = ${res}.err; eprintln(_STR("Something went wrong\\000%.*s", 2, IError_str(err))); }')
+
+	rows := g.new_tmp_var()
+
+	g.writeln('Array_pg__Row $rows = *(Array_pg__Row*) ${res}.data;')
+
+	if node.is_count {
+		g.writeln('$cur_line string_int((*(string*)array_get(array_get($rows, 0).vals), 0)));')
+	} else {
+		tmp := g.new_tmp_var()
+		styp := g.typ(node.typ)
+		tmp_i := g.new_tmp_var()
+		mut elem_type_str := ''
+		g.writeln('int $tmp_i = 0;')
+		if node.is_array {
+			array_sym := g.table.get_type_symbol(node.typ)
+			array_info := array_sym.info as ast.Array
+			elem_type_str = g.typ(array_info.elem_type)
+			g.writeln('$styp ${tmp}_array = __new_array(0, 10, sizeof($elem_type_str));')
+			g.writeln('for ($tmp_i = 0; $tmp_i < ${rows}.len; $tmp_i++) {')
+			g.writeln('\t$elem_type_str $tmp = ($elem_type_str) {')
+			//
+			sym := g.table.get_type_symbol(array_info.elem_type)
+			info := sym.info as ast.Struct
+			for i, field in info.fields {
+				g.zero_struct_field(field)
+				if i != info.fields.len - 1 {
+					g.write(', ')
+				}
+			}
+			g.writeln('};')
+		} else {
+			g.writeln('$styp $tmp = ($styp){')
+			sym := g.table.get_type_symbol(node.typ)
+			info := sym.info as ast.Struct
+			for i, field in info.fields {
+				g.zero_struct_field(field)
+				if i != info.fields.len - 1 {
+					g.write(', ')
+				}
+			}
+			g.writeln('};')
+		}
+		fields := g.new_tmp_var()
+		g.writeln('Array_string $fields = (*(pg__Row*) array_get($rows, $tmp_i)).vals;')
+		fld := g.new_tmp_var()
+		g.writeln('string $fld;')
+		mut primary := ''
+		for i, field in node.fields {
+			for attr in field.attrs {
+				if attr.name == 'primary' {
+					primary = '${tmp}.$field.name'
+					break
+				}
+			}
+			if g.table.get_type_symbol(field.typ).kind == .array {
+				g.sql_select_arr(field, node, primary, tmp)
+				continue
+			}
+			g.writeln('$fld = (*(string*)array_get($fields, $i));')
+			name := g.table.get_type_symbol(field.typ).cname
+
+			if g.table.get_type_symbol(field.typ).kind == .struct_ {
+				g.writeln('//parse struct start')
+
+				mut expr := node.sub_structs[int(field.typ)]
+				mut where_expr := expr.where_expr as ast.InfixExpr
+				mut ident := where_expr.right as ast.Ident
+
+				ident.name = '$fld'
+				where_expr.right = ident
+				expr.where_expr = where_expr
+
+				tmp_sql_i := g.sql_i
+				tmp_sql_stmt_name := g.sql_stmt_name
+				tmp_sql_buf := g.sql_buf
+				tmp_sql_table_name := g.sql_table_name
+
+				g.sql_select_expr(expr, true, '\t${tmp}.$field.name =')
+				g.writeln('//parse struct end')
+				g.sql_stmt_name = tmp_sql_stmt_name
+				g.sql_buf = tmp_sql_buf
+				g.sql_i = tmp_sql_i
+				g.sql_table_name = tmp_sql_table_name
+			} else if field.typ == ast.string_type {
+				g.writeln('${tmp}.$field.name = $fld;')
+			} else if field.typ == ast.byte_type {
+				g.writeln('${tmp}.$field.name = (byte) string_${name}($fld);')
+			} else if field.typ == ast.i8_type {
+				g.writeln('${tmp}.$field.name = (i8) string_${name}($fld);')
+			} else if field.typ == ast.bool_type {
+				g.writeln('${tmp}.$field.name = string_eq($fld, _SLIT("0")) ? false : true;')
+			} else {
+				g.writeln('${tmp}.$field.name = string_${name}($fld);')
+			}
+		}
+		if node.is_array {
+			g.writeln('\t array_push((array*)&${tmp}_array, _MOV(($elem_type_str[]) { $tmp }));')
+			g.writeln('}')
+		}
+		g.writeln('string_free(&$g.sql_stmt_name);')
+		if node.is_array {
+			g.writeln('$cur_line ${tmp}_array; ')
+		} else {
+			g.writeln('$cur_line $tmp; ')
+		}
+	}
+}
+
+fn (mut g Gen) psql_create_table(node ast.SqlStmtLine, typ SqlType, db_expr ast.Expr) {
 	g.writeln('// psql table creator')
-	create_string := g.table_gen(node, typ)
+	create_string := g.table_gen(node, typ, db_expr)
 	tmp := g.new_tmp_var()
 	g.write('Option_Array_pg__Row $tmp = pg__DB_exec(')
-	g.expr(node.db_expr)
+	g.expr(db_expr)
 	g.writeln(', _SLIT("$create_string"));')
 	g.writeln('if (${tmp}.state != 0) { IError err = ${tmp}.err; eprintln(_STR("Something went wrong\\000%.*s", 2, IError_str(err))); }')
 }
 
-fn (mut g Gen) psql_drop_table(node ast.SqlStmt, typ SqlType) {
+fn (mut g Gen) psql_drop_table(node ast.SqlStmtLine, typ SqlType, db_expr ast.Expr) {
 	table_name := g.get_table_name(node.table_expr)
 	g.writeln('// psql table drop')
-	drop_string := 'DROP TABLE "$table_name";'
+	lit := '\\"'
+	drop_string := 'DROP TABLE $lit$table_name$lit;'
 	tmp := g.new_tmp_var()
-	g.write('Option_Array_pg__Row $tmp = pg__DB_exec(&')
-	g.expr(node.db_expr)
+	g.write('Option_Array_pg__Row $tmp = pg__DB_exec(')
+	g.expr(db_expr)
 	g.writeln(', _SLIT("$drop_string"));')
 	g.writeln('if (${tmp}.state != 0) { IError err = ${tmp}.err; eprintln(_STR("Something went wrong\\000%.*s", 2, IError_str(err))); }')
 }
@@ -856,39 +1086,121 @@ fn (mut g Gen) psql_get_table_type(typ ast.Type) string {
 	return table_typ
 }
 
-fn (mut g Gen) psql_bind(val string, data []string, typ ast.Type) {
-	tmp := g.new_tmp_var()
-	g.sql_idents << tmp
-	g.sql_buf.write_string('char* $tmp = ')
-	if typ.is_number() {
-		g.sql_buf.writeln('(char *) htonl($val);')
-		g.sql_buf.writeln('\t${data[1]}[${data[0]}] = &$tmp;')
-		g.sql_buf.writeln('\t${data[2]}[${data[0]}] = sizeof($tmp);')
-		g.sql_buf.writeln('\t${data[3]}[${data[0]}] = 1;')
-	} else if typ.is_string() {
-		g.sql_buf.writeln('(char *) ${val}.str;')
-		g.sql_buf.writeln('\t${data[1]}[${data[0]}] = &$tmp;')
-		g.sql_buf.writeln('\t${data[2]}[${data[0]}] = 0;')
-		g.sql_buf.writeln('\t${data[3]}[${data[0]}] = 0;')
+fn (mut g Gen) psql_bind(val string, typ ast.Type) {
+	mut sym := g.table.get_type_symbol(typ).cname
+	g.sql_buf.write_string('$g.sql_stmt_name = string_replace($g.sql_stmt_name, _SLIT("\$$g.sql_i"), ')
+	if sym != 'string' {
+		mut num := false
+		if sym != 'bool' {
+			num = true
+			g.sql_buf.write_string('${sym}_str(')
+		}
+		g.sql_buf.write_string('(($sym) $val)')
+
+		if sym == 'bool' {
+			g.sql_buf.write_string('? _SLIT("1") : _SLIT("0")')
+		}
+
+		if num {
+			g.sql_buf.write_string(')')
+		}
 	} else {
-		g.sql_buf.writeln('(char *) htonl(0);')
-		g.sql_buf.writeln('if ($val) { $tmp = (char *) htonl(1); }')
-		g.sql_buf.writeln('\t${data[1]}[${data[0]}] = &$tmp;')
-		g.sql_buf.writeln('\t${data[2]}[${data[0]}] = sizeof($tmp);')
-		g.sql_buf.writeln('\t${data[3]}[${data[0]}] = 1;')
+		g.sql_buf.write_string('string_add(_SLIT("\'"), string_add(((string) $val), _SLIT("\'")))')
 	}
+	g.sql_buf.writeln(');')
 }
 
 // utils
 
+fn (mut g Gen) sql_select_arr(field ast.StructField, node ast.SqlExpr, primary string, tmp string) {
+	t := g.table.get_type_symbol(field.typ).array_info().elem_type
+	if g.table.get_type_symbol(t).kind == .struct_ {
+		mut fkey := ''
+		for attr in field.attrs {
+			if attr.name == 'fkey' && attr.arg != '' && attr.kind == .string {
+				fkey = attr.arg
+				break
+			}
+		}
+		if fkey == '' {
+			verror('fkey attribute has to be set for arrays in orm')
+			return
+		}
+		g.writeln('//parse array start')
+
+		e := node.sub_structs[int(t)]
+		mut where_expr := e.where_expr as ast.InfixExpr
+		mut lidt := where_expr.left as ast.Ident
+		mut ridt := where_expr.right as ast.Ident
+		ridt.name = primary
+		lidt.name = fkey
+		where_expr.right = ridt
+		where_expr.left = lidt
+		expr := ast.SqlExpr{
+			typ: field.typ
+			has_where: e.has_where
+			db_expr: e.db_expr
+			is_array: true
+			pos: e.pos
+			where_expr: where_expr
+			table_expr: e.table_expr
+			fields: e.fields
+			sub_structs: e.sub_structs
+		}
+		tmp_sql_i := g.sql_i
+		tmp_sql_stmt_name := g.sql_stmt_name
+		tmp_sql_buf := g.sql_buf
+		tmp_sql_table_name := g.sql_table_name
+
+		g.sql_select_expr(expr, true, '\t${tmp}.$field.name =')
+		g.writeln('//parse array end')
+
+		g.sql_stmt_name = tmp_sql_stmt_name
+		g.sql_buf = tmp_sql_buf
+		g.sql_i = tmp_sql_i
+		g.sql_table_name = tmp_sql_table_name
+	}
+}
+
+fn (mut g Gen) sql_arr_stmt(arr_stmt []ast.SqlStmtLine, arr_fkeys []string, id_name string, db_expr ast.Expr) {
+	for i, s in arr_stmt {
+		cnt := g.new_tmp_var()
+		g.writeln('for (int $cnt = 0; $cnt < ${s.object_var_name}.len; $cnt++) {')
+		name := g.table.get_type_symbol(s.table_expr.typ).cname
+		tmp_var := g.new_tmp_var()
+		g.writeln('\t$name $tmp_var = (*($name*)array_get($s.object_var_name, $cnt));')
+
+		stmt := ast.SqlStmtLine{
+			pos: s.pos
+			kind: s.kind
+			table_expr: s.table_expr
+			object_var_name: tmp_var
+			fields: s.fields
+			sub_structs: s.sub_structs
+		}
+
+		tmp_fkey := g.sql_fkey
+		tmp_parent_id := g.sql_parent_id
+		g.sql_fkey = arr_fkeys[i]
+		g.sql_parent_id = id_name
+
+		g.sql_stmt_line(stmt, db_expr)
+
+		g.sql_fkey = tmp_fkey
+		g.sql_parent_id = tmp_parent_id
+
+		g.writeln('}')
+	}
+}
+
 fn (mut g Gen) sql_expr_defaults(node ast.SqlExpr, sql_typ SqlType) {
 	if node.has_where && node.where_expr is ast.InfixExpr {
-		g.expr_to_sql(node.where_expr, sql_typ, [])
+		g.expr_to_sql(node.where_expr, sql_typ)
 	}
 	if node.has_order {
 		g.write(' ORDER BY ')
 		g.sql_side = .left
-		g.expr_to_sql(node.order_expr, sql_typ, [])
+		g.expr_to_sql(node.order_expr, sql_typ)
 		if node.has_desc {
 			g.write(' DESC ')
 		}
@@ -898,30 +1210,35 @@ fn (mut g Gen) sql_expr_defaults(node ast.SqlExpr, sql_typ SqlType) {
 	if node.has_limit {
 		g.write(' LIMIT ')
 		g.sql_side = .right
-		g.expr_to_sql(node.limit_expr, sql_typ, [])
+		g.expr_to_sql(node.limit_expr, sql_typ)
 	}
 	if node.has_offset {
 		g.write(' OFFSET ')
 		g.sql_side = .right
-		g.expr_to_sql(node.offset_expr, sql_typ, [])
+		g.expr_to_sql(node.offset_expr, sql_typ)
 	}
 }
 
-fn (mut g Gen) get_base_sql_select_query(node ast.SqlExpr) string {
+fn (mut g Gen) get_base_sql_select_query(node ast.SqlExpr, typ SqlType) string {
+	mut lit := '`'
+	if typ == .psql {
+		lit = '\\"'
+	}
 	mut sql_query := 'SELECT '
 	table_name := g.get_table_name(node.table_expr)
 	if node.is_count {
 		// `select count(*) from User`
-		sql_query += 'COUNT(*) FROM `$table_name` '
+		sql_query += 'COUNT(*) FROM $lit$table_name$lit '
 	} else {
 		// `select id, name, country from User`
-		for i, field in node.fields {
-			sql_query += '`${g.get_field_name(field)}`'
-			if i < node.fields.len - 1 {
+		fields := node.fields.filter(g.table.get_type_symbol(it.typ).kind != .array)
+		for i, field in fields {
+			sql_query += '$lit${g.get_field_name(field)}$lit'
+			if i < fields.len - 1 {
 				sql_query += ', '
 			}
 		}
-		sql_query += ' FROM `$table_name`'
+		sql_query += ' FROM $lit$table_name$lit'
 	}
 	if node.has_where {
 		sql_query += ' WHERE '
@@ -929,7 +1246,7 @@ fn (mut g Gen) get_base_sql_select_query(node ast.SqlExpr) string {
 	return sql_query
 }
 
-fn (mut g Gen) sql_defaults(node ast.SqlStmt, typ SqlType, psql_data ...string) {
+fn (mut g Gen) sql_defaults(node ast.SqlStmtLine, typ SqlType) {
 	table_name := g.get_table_name(node.table_expr)
 	mut lit := '`'
 	if typ == .psql {
@@ -943,22 +1260,23 @@ fn (mut g Gen) sql_defaults(node ast.SqlStmt, typ SqlType, psql_data ...string) 
 		g.write('DELETE FROM $lit$table_name$lit ')
 	}
 	if node.kind == .insert {
-		for i, field in node.fields {
+		fields := node.fields.filter(g.table.get_type_symbol(it.typ).kind != .array)
+		for i, field in fields {
 			if g.get_sql_field_type(field) == ast.Type(-1) {
 				continue
 			}
 			g.write('$lit${g.get_field_name(field)}$lit')
-			if i < node.fields.len - 1 {
+			if i < fields.len - 1 {
 				g.write(', ')
 			}
 		}
-		g.write(') values (')
-		for i, field in node.fields {
+		g.write(') VALUES (')
+		for i, field in fields {
 			if g.get_sql_field_type(field) == ast.Type(-1) {
 				continue
 			}
 			g.inc_sql_i(typ)
-			if i < node.fields.len - 1 {
+			if i < fields.len - 1 {
 				g.write(', ')
 			}
 		}
@@ -966,7 +1284,7 @@ fn (mut g Gen) sql_defaults(node ast.SqlStmt, typ SqlType, psql_data ...string) 
 	} else if node.kind == .update {
 		for i, col in node.updated_columns {
 			g.write(' ${g.get_field_name(g.get_struct_field(col))} = ')
-			g.expr_to_sql(node.update_exprs[i], typ, psql_data)
+			g.expr_to_sql(node.update_exprs[i], typ)
 			if i < node.updated_columns.len - 1 {
 				g.write(', ')
 			}
@@ -976,12 +1294,12 @@ fn (mut g Gen) sql_defaults(node ast.SqlStmt, typ SqlType, psql_data ...string) 
 		g.write(' WHERE ')
 	}
 	if node.kind == .update || node.kind == .delete {
-		g.expr_to_sql(node.where_expr, typ, psql_data)
+		g.expr_to_sql(node.where_expr, typ)
 	}
 	g.write(';")')
 }
 
-fn (mut g Gen) table_gen(node ast.SqlStmt, typ SqlType) string {
+fn (mut g Gen) table_gen(node ast.SqlStmtLine, typ SqlType, expr ast.Expr) string {
 	typ_sym := g.table.get_type_symbol(node.table_expr.typ)
 	struct_data := typ_sym.struct_info()
 	table_name := g.get_table_name(node.table_expr)
@@ -992,6 +1310,7 @@ fn (mut g Gen) table_gen(node ast.SqlStmt, typ SqlType) string {
 	mut create_string := 'CREATE TABLE IF NOT EXISTS $lit$table_name$lit ('
 
 	mut fields := []string{}
+	mut unique_fields := []string{}
 
 	mut primary := '' // for mysql
 	mut unique := map[string][]string{}
@@ -1002,6 +1321,8 @@ fn (mut g Gen) table_gen(node ast.SqlStmt, typ SqlType) string {
 		mut no_null := false
 		mut is_unique := false
 		mut is_skip := false
+		mut unique_len := 0
+		mut fkey := ''
 		for attr in field.attrs {
 			match attr.name {
 				'primary' {
@@ -1010,16 +1331,30 @@ fn (mut g Gen) table_gen(node ast.SqlStmt, typ SqlType) string {
 				}
 				'unique' {
 					if attr.arg != '' {
-						unique[attr.arg] << name
-					} else {
-						is_unique = true
+						if attr.kind == .string {
+							unique[attr.arg] << name
+							continue
+						} else if attr.kind == .number {
+							unique_len = attr.arg.int()
+							is_unique = true
+							continue
+						}
 					}
+					is_unique = true
 				}
 				'nonull' {
 					no_null = true
 				}
 				'skip' {
 					is_skip = true
+				}
+				'fkey' {
+					if attr.arg != '' {
+						if attr.kind == .string {
+							fkey = attr.arg
+							continue
+						}
+					}
 				}
 				else {}
 			}
@@ -1032,15 +1367,38 @@ fn (mut g Gen) table_gen(node ast.SqlStmt, typ SqlType) string {
 		if converted_typ == '' {
 			if g.table.get_type_symbol(field.typ).kind == .struct_ {
 				converted_typ = g.sql_type_from_v(typ, ast.int_type)
-				g.sql_create_table(ast.SqlStmt{
-					db_expr: node.db_expr
+				g.sql_create_table(ast.SqlStmtLine{
 					kind: node.kind
 					pos: node.pos
 					table_expr: ast.TypeNode{
 						typ: field.typ
 						pos: node.table_expr.pos
 					}
-				})
+				}, expr)
+			} else if g.table.get_type_symbol(field.typ).kind == .array {
+				arr_info := g.table.get_type_symbol(field.typ).array_info()
+				if arr_info.nr_dims > 1 {
+					verror('array with one dim are supported in orm')
+					continue
+				}
+				atyp := arr_info.elem_type
+				if g.table.get_type_symbol(atyp).kind == .struct_ {
+					if fkey == '' {
+						verror('array field ($field.name) needs a fkey')
+						continue
+					}
+					g.sql_create_table(ast.SqlStmtLine{
+						kind: node.kind
+						pos: node.pos
+						table_expr: ast.TypeNode{
+							typ: atyp
+							pos: node.table_expr.pos
+						}
+					}, expr)
+				} else {
+					verror('unknown type ($field.typ) for field $field.name in struct $table_name')
+				}
+				continue
 			} else {
 				verror('unknown type ($field.typ) for field $field.name in struct $table_name')
 				continue
@@ -1056,7 +1414,20 @@ fn (mut g Gen) table_gen(node ast.SqlStmt, typ SqlType) string {
 			stmt += ' NOT NULL'
 		}
 		if is_unique {
-			stmt += ' UNIQUE'
+			if typ == .mysql {
+				mut f := 'UNIQUE KEY($lit$name$lit'
+				if converted_typ == 'TEXT' {
+					if unique_len > 0 {
+						f += '($unique_len)'
+					} else {
+						f += '($c.default_unique_str_len)'
+					}
+				}
+				f += ')'
+				unique_fields << f
+			} else {
+				stmt += ' UNIQUE'
+			}
 		}
 		if is_primary && typ == .sqlite3 {
 			stmt += ' PRIMARY KEY'
@@ -1072,15 +1443,16 @@ fn (mut g Gen) table_gen(node ast.SqlStmt, typ SqlType) string {
 			fields << '/* $k */UNIQUE(${tmp.join(', ')})'
 		}
 	}
-	if typ == .mysql {
+	if typ == .mysql || typ == .psql {
 		fields << 'PRIMARY KEY($lit$primary$lit)'
 	}
+	fields << unique_fields
 	create_string += fields.join(', ')
 	create_string += ');'
 	return create_string
 }
 
-fn (mut g Gen) expr_to_sql(expr ast.Expr, typ SqlType, psql_data []string) {
+fn (mut g Gen) expr_to_sql(expr ast.Expr, typ SqlType) {
 	// Custom handling for infix exprs (since we need e.g. `and` instead of `&&` in SQL queries),
 	// strings. Everything else (like numbers, a.b) is handled by g.expr()
 	//
@@ -1089,7 +1461,7 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr, typ SqlType, psql_data []string) {
 	match expr {
 		ast.InfixExpr {
 			g.sql_side = .left
-			g.expr_to_sql(expr.left, typ, psql_data)
+			g.expr_to_sql(expr.left, typ)
 			match expr.op {
 				.ne { g.write(' != ') }
 				.eq { g.write(' = ') }
@@ -1106,26 +1478,24 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr, typ SqlType, psql_data []string) {
 				else {}
 			}
 			g.sql_side = .right
-			g.expr_to_sql(expr.right, typ, psql_data)
+			g.expr_to_sql(expr.right, typ)
 		}
 		ast.StringLiteral {
 			// g.write("'$it.val'")
 			g.inc_sql_i(typ)
 			g.sql_bind('"$expr.val"', expr.val.len.str(), g.sql_get_real_type(ast.string_type),
-				typ, g.append_arr(g.sql_i, psql_data))
+				typ)
 		}
 		ast.IntegerLiteral {
 			g.inc_sql_i(typ)
-			g.sql_bind(expr.val, '', g.sql_get_real_type(ast.int_type), typ, g.append_arr(g.sql_i,
-				psql_data))
+			g.sql_bind(expr.val, '', g.sql_get_real_type(ast.int_type), typ)
 		}
 		ast.BoolLiteral {
 			// true/false literals were added to Sqlite 3.23 (2018-04-02)
 			// but lots of apps/distros use older sqlite (e.g. Ubuntu 18.04 LTS )
 			g.inc_sql_i(typ)
 			eval := if expr.val { '1' } else { '0' }
-			g.sql_bind(eval, '', g.sql_get_real_type(ast.byte_type), typ, g.append_arr(g.sql_i,
-				psql_data))
+			g.sql_bind(eval, '', g.sql_get_real_type(ast.byte_type), typ)
 		}
 		ast.Ident {
 			// `name == user_name` => `name == ?1`
@@ -1141,14 +1511,12 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr, typ SqlType, psql_data []string) {
 				if typ == .sqlite3 {
 					if ityp == ast.string_type {
 						g.sql_bind('${expr.name}.str', '${expr.name}.len', g.sql_get_real_type(ityp),
-							typ, g.append_arr(g.sql_i, psql_data))
+							typ)
 					} else {
-						g.sql_bind(expr.name, '', g.sql_get_real_type(ityp), typ, g.append_arr(g.sql_i,
-							psql_data))
+						g.sql_bind(expr.name, '', g.sql_get_real_type(ityp), typ)
 					}
 				} else {
-					g.sql_bind('%$g.sql_i.str()', '', g.sql_get_real_type(ityp), typ,
-						g.append_arr(g.sql_i, psql_data))
+					g.sql_bind('$g.sql_i.str()', '', g.sql_get_real_type(ityp), typ)
 					g.sql_idents << expr.name
 					g.sql_idents_types << g.sql_get_real_type(ityp)
 				}
@@ -1161,7 +1529,7 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr, typ SqlType, psql_data []string) {
 			}
 			ident := expr.expr as ast.Ident
 			g.sql_bind(ident.name + '.' + expr.field_name, '', g.sql_get_real_type(expr.typ),
-				typ, g.append_arr(g.sql_i, psql_data))
+				typ)
 		}
 		else {
 			g.expr(expr)
@@ -1173,13 +1541,6 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr, typ SqlType, psql_data []string) {
 		}
 		else {}
 	*/
-}
-
-fn (mut g Gen) append_arr(i int, arr []string) []string {
-	mut tmp := []string{}
-	tmp << i.str()
-	tmp << arr
-	return tmp
 }
 
 fn (mut g Gen) get_struct_field_typ(f string) ast.Type {

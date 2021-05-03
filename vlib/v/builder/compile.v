@@ -42,15 +42,15 @@ pub fn compile(command string, pref &pref.Preferences) {
 	match pref.backend {
 		.c { b.compile_c() }
 		.js { b.compile_js() }
-		.x64 { b.compile_x64() }
+		.native { b.compile_native() }
 	}
 	if pref.is_stats {
 		compilation_time_micros := 1 + sw.elapsed().microseconds()
 		scompilation_time_ms := util.bold('${f64(compilation_time_micros) / 1000.0:6.3f}')
 		mut all_v_source_lines, mut all_v_source_bytes := 0, 0
 		for mut pf in b.parsed_files {
-			all_v_source_lines += pf.lines
-			all_v_source_bytes += pf.bytes
+			all_v_source_lines += pf.nr_lines
+			all_v_source_bytes += pf.nr_bytes
 		}
 		mut sall_v_source_lines := all_v_source_lines.str()
 		mut sall_v_source_bytes := all_v_source_bytes.str()

@@ -30,8 +30,6 @@ const (
 		// TODOs and unfixed vfmt bugs
 		'vlib/builtin/int.v' /* TODO byteptr: vfmt converts `pub fn (nn byteptr) str() string {` to `nn &byte` and that conflicts with `nn byte` */,
 		'vlib/builtin/string_charptr_byteptr_helpers.v' /* TODO byteptr: a temporary shim to ease the byteptr=>&byte transition */,
-		'vlib/v/tests/array_append_short_struct_test.v', /* extra empty line */
-		'vlib/v/tests/fixed_array_const_size_test.v', /* fixed arr type is changed */
 		'vlib/v/tests/fn_high_test.v', /* param name removed */
 		'vlib/v/tests/fn_test.v', /* bad comment formatting */
 		'vlib/v/tests/generics_return_generics_struct_test.v', /* generic fn param removed */
@@ -39,9 +37,8 @@ const (
 		'vlib/v/tests/generics_test.v', /* multi_generic_args<Foo<int>, Foo<int> >(...) becomes .... Foo<int>>(...) which does not parse */
 		'vlib/v/tests/string_interpolation_test.v' /* TODO byteptr: &byte.str() behaves differently than byteptr.str() */,
 		'vlib/v/gen/js/tests/js.v', /* local `hello` fn, gets replaced with module `hello` aliased as `hl` */
-		'vlib/v/gen/c/cheaders.v' /* the preprocessor directives are formated to the V standard, even though they are in a string literal */,
 		'examples/c_interop_wkhtmltopdf.v', /* &charptr --> &&char */
-		'examples/path_tracing.v', /* block --> line comments corrupts code */
+		'vlib/v/gen/c/cheaders.v' /* infix wrapping error */,
 	]
 	vfmt_verify_list                = [
 		'cmd/',
@@ -73,7 +70,7 @@ const (
 		'vlib/v/fmt/',
 		'vlib/v/gen/c/',
 		'vlib/v/gen/js/',
-		'vlib/v/gen/x64/',
+		'vlib/v/gen/native/',
 		'vlib/v/live/',
 		'vlib/v/markused/',
 		'vlib/v/parser/',

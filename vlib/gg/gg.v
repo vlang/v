@@ -189,7 +189,9 @@ fn gg_init_sokol_window(user_data voidptr) {
 		}
 	}
 	//
-	mut pipdesc := C.sg_pipeline_desc{}
+	mut pipdesc := C.sg_pipeline_desc{
+		label: c'alpha_image'
+	}
 	unsafe { C.memset(&pipdesc, 0, sizeof(pipdesc)) }
 
 	color_state := C.sg_color_state{
@@ -609,7 +611,7 @@ pub fn (ctx &Context) draw_rounded_rect(x f32, y f32, w f32, h f32, radius f32, 
 		sgl.v2f(lx, ly)
 	}
 	// right top
-	mut rx := nx + 2 * width - r
+	mut rx := nx + width - r
 	mut ry := ny + r
 	for i in rt .. int(segments) {
 		theta = 2 * f32(math.pi) * f32(i) / segments
@@ -620,7 +622,7 @@ pub fn (ctx &Context) draw_rounded_rect(x f32, y f32, w f32, h f32, radius f32, 
 	}
 	// right bottom
 	mut rbx := rx
-	mut rby := ny + 2 * height - r
+	mut rby := ny + height - r
 	for i in rb .. lb {
 		theta = 2 * f32(math.pi) * f32(i) / segments
 		xx = r * math.cosf(theta)
@@ -630,7 +632,7 @@ pub fn (ctx &Context) draw_rounded_rect(x f32, y f32, w f32, h f32, radius f32, 
 	}
 	// left bottom
 	mut lbx := lx
-	mut lby := ny + 2 * height - r
+	mut lby := ny + height - r
 	for i in lb .. lt {
 		theta = 2 * f32(math.pi) * f32(i) / segments
 		xx = r * math.cosf(theta)
@@ -676,7 +678,7 @@ pub fn (ctx &Context) draw_empty_rounded_rect(x f32, y f32, w f32, h f32, radius
 		sgl.v2f(xx + lx, yy + ly)
 	}
 	// right top
-	mut rx := nx + 2 * width - r
+	mut rx := nx + width - r
 	mut ry := ny + r
 	for i in rt .. int(segments) {
 		theta = 2 * f32(math.pi) * f32(i) / segments
@@ -686,7 +688,7 @@ pub fn (ctx &Context) draw_empty_rounded_rect(x f32, y f32, w f32, h f32, radius
 	}
 	// right bottom
 	mut rbx := rx
-	mut rby := ny + 2 * height - r
+	mut rby := ny + height - r
 	for i in rb .. lb {
 		theta = 2 * f32(math.pi) * f32(i) / segments
 		xx = r * math.cosf(theta)
@@ -695,7 +697,7 @@ pub fn (ctx &Context) draw_empty_rounded_rect(x f32, y f32, w f32, h f32, radius
 	}
 	// left bottom
 	mut lbx := lx
-	mut lby := ny + 2 * height - r
+	mut lby := ny + height - r
 	for i in lb .. lt {
 		theta = 2 * f32(math.pi) * f32(i) / segments
 		xx = r * math.cosf(theta)

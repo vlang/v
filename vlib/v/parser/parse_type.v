@@ -42,7 +42,7 @@ pub fn (mut p Parser) parse_array_type() ast.Type {
 			p.error_with_pos('fixed size cannot be zero or negative', size_expr.position())
 		}
 		// sym := p.table.get_type_symbol(elem_type)
-		idx := p.table.find_or_register_array_fixed(elem_type, fixed_size)
+		idx := p.table.find_or_register_array_fixed(elem_type, fixed_size, size_expr)
 		if elem_type.has_flag(.generic) {
 			return ast.new_type(idx).set_flag(.generic)
 		}
@@ -83,14 +83,14 @@ pub fn (mut p Parser) parse_map_type() ast.Type {
 		// error is reported in parse_type
 		return 0
 	}
-	if is_alias && !(key_type in [ast.string_type_idx, ast.voidptr_type_idx]
-		|| ((key_type.is_int() || key_type.is_float()) && !key_type.is_ptr())) {
-		p.error('cannot use the alias type as the parent type is unsupported')
-		return 0
-	}
-	if !(key_type in [ast.string_type_idx, ast.voidptr_type_idx]
+	key_type_supported := key_type in [ast.string_type_idx, ast.voidptr_type_idx]
 		|| key_sym.kind == .enum_ || ((key_type.is_int() || key_type.is_float()
-		|| is_alias) && !key_type.is_ptr())) {
+		|| is_alias) && !key_type.is_ptr())
+	if !key_type_supported {
+		if is_alias {
+			p.error('cannot use the alias type as the parent type is unsupported')
+			return 0
+		}
 		s := p.table.type_to_str(key_type)
 		p.error_with_pos('maps only support string, integer, float, rune, enum or voidptr keys for now (not `$s`)',
 			p.tok.position())
@@ -193,11 +193,21 @@ pub fn (mut p Parser) parse_multi_return_type() ast.Type {
 pub fn (mut p Parser) parse_fn_type(name string) ast.Type {
 	// p.warn('parse fn')
 	p.check(.key_fn)
+	mut has_generic := false
 	line_nr := p.tok.line_nr
 	args, _, is_variadic := p.fn_args()
+	for arg in args {
+		if arg.typ.has_flag(.generic) {
+			has_generic = true
+			break
+		}
+	}
 	mut return_type := ast.void_type
 	if p.tok.line_nr == line_nr && p.tok.kind.is_start_of_type() {
 		return_type = p.parse_type()
+		if return_type.has_flag(.generic) {
+			has_generic = true
+		}
 	}
 	func := ast.Fn{
 		name: name
@@ -209,6 +219,9 @@ pub fn (mut p Parser) parse_fn_type(name string) ast.Type {
 	// because typedefs get generated after the map struct is generated
 	has_decl := p.builtin_mod && name.starts_with('Map') && name.ends_with('Fn')
 	idx := p.table.find_or_register_fn_type(p.mod, func, false, has_decl)
+	if has_generic {
+		return ast.new_type(idx).set_flag(.generic)
+	}
 	return ast.new_type(idx)
 }
 

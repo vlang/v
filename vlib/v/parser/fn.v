@@ -43,10 +43,10 @@ pub fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr 
 		// In case of `foo<T>()`
 		// T is unwrapped and registered in the checker.
 		full_generic_fn_name := if fn_name.contains('.') { fn_name } else { p.prepend_mod(fn_name) }
-		has_generic_generic := concrete_types.filter(it.has_flag(.generic)).len > 0
-		if !has_generic_generic {
+		has_generic := concrete_types.filter(it.has_flag(.generic)).len > 0
+		if !has_generic {
 			// will be added in checker
-			p.table.register_fn_generic_types(full_generic_fn_name, concrete_types)
+			p.table.register_fn_concrete_types(full_generic_fn_name, concrete_types)
 		}
 	}
 	p.check(.lpar)
@@ -336,6 +336,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	short_fn_name := name
 	is_main := short_fn_name == 'main' && p.mod == 'main'
 	is_test := short_fn_name.starts_with('test_') || short_fn_name.starts_with('testsuite_')
+
 	// Register
 	if is_method {
 		mut type_sym := p.table.get_type_symbol(rec.typ)
@@ -703,6 +704,8 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 	types_only := p.tok.kind in [.amp, .ellipsis, .key_fn, .lsbr]
 		|| (p.peek_tok.kind == .comma && p.table.known_type(argname))
 		|| p.peek_tok.kind == .dot || p.peek_tok.kind == .rpar
+		|| (p.tok.kind == .key_mut && (p.peek_token(2).kind == .comma
+		|| p.peek_token(2).kind == .rpar))
 	// TODO copy pasta, merge 2 branches
 	if types_only {
 		mut arg_no := 1

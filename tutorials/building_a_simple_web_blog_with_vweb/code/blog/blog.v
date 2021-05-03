@@ -65,6 +65,7 @@ pub fn (mut app App) new_article() vweb.Result {
 	sql app.db {
 		insert article into Article
 	}
+
 	return app.redirect('/')
 }
 

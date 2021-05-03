@@ -14,18 +14,26 @@ import v.depgraph
 const (
 	// NB: some of the words in c_reserved, are not reserved in C,
 	// but are in C++, or have special meaning in V, thus need escaping too.
-	c_reserved = ['auto', 'break', 'calloc', 'case', 'char', 'class', 'const', 'continue', 'default',
-		'delete', 'do', 'double', 'else', 'enum', 'error', 'exit', 'export', 'extern', 'float',
-		'for', 'free', 'goto', 'if', 'inline', 'int', 'link', 'long', 'malloc', 'namespace', 'new',
-		'panic', 'register', 'restrict', 'return', 'short', 'signed', 'sizeof', 'static', 'struct',
-		'switch', 'typedef', 'typename', 'union', 'unix', 'unsigned', 'void', 'volatile', 'while',
-		'template',
-	]
+	c_reserved     = ['auto', 'break', 'calloc', 'case', 'char', 'class', 'const', 'continue',
+		'default', 'delete', 'do', 'double', 'else', 'enum', 'error', 'exit', 'export', 'extern',
+		'float', 'for', 'free', 'goto', 'if', 'inline', 'int', 'link', 'long', 'malloc', 'namespace',
+		'new', 'panic', 'register', 'restrict', 'return', 'short', 'signed', 'sizeof', 'static',
+		'struct', 'switch', 'typedef', 'typename', 'union', 'unix', 'unsigned', 'void', 'volatile',
+		'while', 'template']
+	c_reserved_map = string_array_to_map(c_reserved)
 	// same order as in token.Kind
-	cmp_str    = ['eq', 'ne', 'gt', 'lt', 'ge', 'le']
+	cmp_str        = ['eq', 'ne', 'gt', 'lt', 'ge', 'le']
 	// when operands are switched
-	cmp_rev    = ['eq', 'ne', 'lt', 'gt', 'le', 'ge']
+	cmp_rev        = ['eq', 'ne', 'lt', 'gt', 'le', 'ge']
 )
+
+fn string_array_to_map(a []string) map[string]bool {
+	mut res := map[string]bool{}
+	for x in a {
+		res[x] = true
+	}
+	return res
+}
 
 struct Gen {
 	pref         &pref.Preferences
@@ -121,6 +129,8 @@ mut:
 	sql_idents_types       []ast.Type
 	sql_left_type          ast.Type
 	sql_table_name         string
+	sql_fkey               string
+	sql_parent_id          string
 	sql_side               SqlExprSide // left or right, to distinguish idents in `name == name`
 	inside_vweb_tmpl       bool
 	inside_return          bool
@@ -853,7 +863,15 @@ pub fn (mut g Gen) write_fn_typesymbol_declaration(sym ast.TypeSymbol) {
 	func := info.func
 	is_fn_sig := func.name == ''
 	not_anon := !info.is_anon
-	if !info.has_decl && (not_anon || is_fn_sig) && !func.return_type.has_flag(.generic) {
+	mut has_generic_arg := false
+	for param in func.params {
+		if param.typ.has_flag(.generic) {
+			has_generic_arg = true
+			break
+		}
+	}
+	if !info.has_decl && (not_anon || is_fn_sig) && !func.return_type.has_flag(.generic)
+		&& !has_generic_arg {
 		fn_name := sym.cname
 		g.type_definitions.write_string('typedef ${g.typ(func.return_type)} (*$fn_name)(')
 		for i, param in func.params {
@@ -3219,12 +3237,18 @@ fn (mut g Gen) expr(node ast.Expr) {
 }
 
 // T.name, typeof(expr).name
-fn (mut g Gen) type_name(type_ ast.Type) {
-	mut typ := type_
-	if typ.has_flag(.generic) {
-		typ = g.cur_concrete_types[0]
+fn (mut g Gen) type_name(typ ast.Type) {
+	sym := g.table.get_type_symbol(typ)
+	mut s := ''
+	if sym.kind == .function {
+		if typ.is_ptr() {
+			s = '&' + g.fn_decl_str(sym.info as ast.FnType)
+		} else {
+			s = g.fn_decl_str(sym.info as ast.FnType)
+		}
+	} else {
+		s = g.table.type_to_str(g.unwrap_generic(typ))
 	}
-	s := g.table.type_to_str(typ)
 	g.write('_SLIT("${util.strip_main_name(s)}")')
 }
 
@@ -3529,8 +3553,8 @@ fn (mut g Gen) infix_in_or_not_in(node ast.InfixExpr, left_sym ast.TypeSymbol, r
 	} else if right_sym.kind == .map {
 		g.write('_IN_MAP(')
 		if !node.left_type.is_ptr() {
-			left_type_str := g.table.type_to_str(node.left_type)
-			g.write('ADDR($left_type_str, ')
+			styp := g.typ(node.left_type)
+			g.write('ADDR($styp, ')
 			g.expr(node.left)
 			g.write(')')
 		} else {
@@ -5250,7 +5274,9 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 				continue
 			}
 			if field.typ.has_flag(.optional) {
-				// TODO handle/require optionals in inits
+				field_name := c_name(field.name)
+				g.write('.$field_name = {0},')
+				initialized = true
 				continue
 			}
 			if field.typ in info.embeds {
@@ -5840,7 +5866,7 @@ fn op_to_fn_name(name string) string {
 [inline]
 fn c_name(name_ string) string {
 	name := util.no_dots(name_)
-	if name in c.c_reserved {
+	if name in c.c_reserved_map {
 		return 'v_$name'
 	}
 	return name
@@ -5906,16 +5932,21 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 			mut has_none_zero := false
 			mut init_str := '{'
 			info := sym.info as ast.Struct
-			for field in info.fields {
-				field_sym := g.table.get_type_symbol(field.typ)
-				if field_sym.kind in [.array, .map] || field.has_default_expr {
-					if field.has_default_expr {
-						expr_str := g.expr_string(field.default_expr)
-						init_str += '.$field.name = $expr_str,'
-					} else {
-						init_str += '.$field.name = ${g.type_default(field.typ)},'
+			typ_is_shared_f := typ.has_flag(.shared_f)
+			if sym.language == .v && !typ_is_shared_f {
+				for field in info.fields {
+					field_sym := g.table.get_type_symbol(field.typ)
+					if field.has_default_expr
+						|| field_sym.kind in [.array, .map, .string, .ustring, .bool, .alias, .size_t, .i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .char, .voidptr, .byteptr, .charptr, .struct_] {
+						field_name := c_name(field.name)
+						if field.has_default_expr {
+							expr_str := g.expr_string(field.default_expr)
+							init_str += '.$field_name = $expr_str,'
+						} else {
+							init_str += '.$field_name = ${g.type_default(field.typ)},'
+						}
+						has_none_zero = true
 					}
-					has_none_zero = true
 				}
 			}
 			if has_none_zero {
@@ -6363,9 +6394,9 @@ $staticprefix inline $interface_name I_${cctype}_to_Interface_${interface_name}(
 				// .speak = Cat_speak
 				mut method_call := '${cctype}_$method.name'
 				if !method.params[0].typ.is_ptr() {
-					// inline void Cat_speak_method_wrapper(Cat c) { return Cat_speak(*c); }
-					methods_wrapper.write_string('static inline ${g.typ(method.return_type)}')
-					methods_wrapper.write_string(' ${method_call}_method_wrapper(')
+					// inline void Cat_speak_Interface_Animal_method_wrapper(Cat c) { return Cat_speak(*c); }
+					iwpostfix := '_Interface_${interface_name}_method_wrapper'
+					methods_wrapper.write_string('static inline ${g.typ(method.return_type)} $method_call${iwpostfix}(')
 					//
 					params_start_pos := g.out.len
 					mut params := method.params.clone()
@@ -6383,8 +6414,8 @@ $staticprefix inline $interface_name I_${cctype}_to_Interface_${interface_name}(
 					}
 					methods_wrapper.writeln('${method_call}(*${fargs.join(', ')});')
 					methods_wrapper.writeln('}')
-					// .speak = Cat_speak_method_wrapper
-					method_call += '_method_wrapper'
+					// .speak = Cat_speak_Interface_Animal_method_wrapper
+					method_call += iwpostfix
 				}
 				if g.pref.build_mode != .build_module {
 					methods_struct.writeln('\t\t._method_${c_name(method.name)} = (void*) $method_call,')

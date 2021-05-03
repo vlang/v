@@ -3,6 +3,7 @@
 // Don't use this editor for any serious work.
 // A lot of funtionality is missing compared to your favourite editor :)
 import strings
+import math.mathutil as mu
 import os
 import term.ui as tui
 
@@ -329,11 +330,11 @@ fn (mut b Buffer) move_cursor(amount int, movement Movement) {
 			}
 		}
 		.page_up {
-			dlines := imin(b.cursor.pos_y, amount)
+			dlines := mu.min(b.cursor.pos_y, amount)
 			b.move_updown(-dlines)
 		}
 		.page_down {
-			dlines := imin(b.lines.len - 1, b.cursor.pos_y + amount) - b.cursor.pos_y
+			dlines := mu.min(b.lines.len - 1, b.cursor.pos_y + amount) - b.cursor.pos_y
 			b.move_updown(dlines)
 		}
 		.left {
@@ -390,14 +391,6 @@ fn (mut b Buffer) move_to_word(movement Movement) {
 		x = 0
 	}
 	b.cursor.set(x, y)
-}
-
-fn imax(x int, y int) int {
-	return if x < y { y } else { x }
-}
-
-fn imin(x int, y int) int {
-	return if x < y { x } else { y }
 }
 
 struct Cursor {

@@ -623,7 +623,7 @@ fn (app &App) draw_tiles() {
 	toffset := app.ui.tile_size + app.ui.padding_size
 	tiles_size := mu.min(app.ui.window_width, app.ui.window_height) - app.ui.border_size * 2
 	// Draw the padding around the tiles
-	app.gg.draw_rounded_rect(xstart, ystart, tiles_size / 2, tiles_size / 2, tiles_size / 24,
+	app.gg.draw_rounded_rect(xstart, ystart, tiles_size, tiles_size, tiles_size / 24,
 		app.theme.padding_color)
 	// Draw the actual tiles
 	for y in 0 .. 4 {
@@ -640,7 +640,7 @@ fn (app &App) draw_tiles() {
 			th := tw // square tiles, w == h
 			xoffset := xstart + app.ui.padding_size + x * toffset + (app.ui.tile_size - tw) / 2
 			yoffset := ystart + app.ui.padding_size + y * toffset + (app.ui.tile_size - th) / 2
-			app.gg.draw_rounded_rect(xoffset, yoffset, tw / 2, th / 2, tw / 8, tile_color)
+			app.gg.draw_rounded_rect(xoffset, yoffset, tw, th, tw / 8, tile_color)
 			if tidx != 0 { // 0 == blank spot
 				xpos := xoffset + tw / 2
 				ypos := yoffset + th / 2
