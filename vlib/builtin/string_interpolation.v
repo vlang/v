@@ -114,17 +114,18 @@ fn abs64(x i64) u64 {
 //___      |       |       |       |
 //_3333333333222222222211111111110000000000
 //_9876543210987654321098765432109876543210
-//_nPPPPPPPPBBBBWWWWWWWWWWDDDDDDDDSUAA=====
+//_nPPPPPPPPBBBBWWWWWWWWWWTDDDDDDDSUAA=====
 // = data type  5 bit  max 32 data type
 // A allign     2 bit  Note: for now only 1 used!
 // U uppercase  1 bit  0 do nothing, 1 do to_upper()
 // S sign       1 bit  show the sign if positive
-// D decimals   8 bit  number of decimals digit to show
+// D decimals   7 bit  number of decimals digit to show
+// T tail zeros 1 bit  1 remove tail zeros, 0 do nothing
 // W Width     10 bit  number of char for padding and indentation
 // B num base   4 bit  start from 2, 0 for base 10
 // P pad char 1/8 bit  padding char (in u32 format reduced to 1 bit as flag for `0` padding)
 //     --------------
-//     TOTAL:  39 bit
+//     TOTAL:  39/32 bit
 //=========================================
 
 // convert from data format to compact u64
@@ -133,9 +134,10 @@ pub fn get_str_intp_u64_format(fmt_type StrIntpType, in_width int, in_precision 
 	allign     := if in_width > 0 { u64(1 << 5) } else { u64(0) }  // two bit 0 .left 1 .rigth, for now we use only one
 	upper_case := if in_upper_case { u64(1 << 7) } else { u64(0) }
 	sign       := if in_sign { u64(1 << 8) } else { u64(0) }
-	precision  := if in_precision != 987698 { (u64(in_precision & 0xFF) << 9)  } else { u64(0xFF) << 9 }
+	precision  := if in_precision != 987698 { (u64(in_precision & 0x7F) << 9)  } else { u64(0x7F) << 9 }
+	tail_zeros := u64(1) << 16
 	base       := u64((in_base & 0xf) << 27)
-	res := u64( (u64(fmt_type) & 0x1F) | allign | upper_case | sign |  precision | (u64(width & 0x3FF) << 17) | base | (u64(in_pad_ch) << 31) )
+	res := u64( (u64(fmt_type) & 0x1F) | allign | upper_case | sign |  precision | tail_zeros | (u64(width & 0x3FF) << 17) | base | (u64(in_pad_ch) << 31) )
 	return res
 }
 
@@ -145,9 +147,10 @@ pub fn get_str_intp_u32_format(fmt_type StrIntpType, in_width int, in_precision 
 	allign     := if in_width > 0 { u32(1 << 5) } else { u32(0) }  // two bit 0 .left 1 .rigth, for now we use only one
 	upper_case := if in_upper_case { u32(1 << 7) } else { u32(0) }
 	sign       := if in_sign { u32(1 << 8) } else { u32(0) }
-	precision  := if in_precision != 987698 { (u32(in_precision & 0xFF) << 9)  } else { u32(0xFF) << 9 }
+	precision  := if in_precision != 987698 { (u32(in_precision & 0x7F) << 9)  } else { u32(0x7F) << 9 }
+	tail_zeros := u32(1) << 16
 	base       := u32((in_base & 0xf) << 27)
-	res := u32( (u32(fmt_type) & 0x1F) | allign | upper_case | sign |  precision | (u32(width & 0x3FF) << 17) | base | (u32(in_pad_ch & 1) << 31) )
+	res := u32( (u32(fmt_type) & 0x1F) | allign | upper_case | sign |  precision | tail_zeros | (u32(width & 0x3FF) << 17) | base | (u32(in_pad_ch & 1) << 31) )
 	return res
 }
 
@@ -159,7 +162,8 @@ fn (data StrIntpData) get_fmt_format(mut sb &strings.Builder) {
 	allign         := int((x >> 5) & 0x01)
 	upper_case     := if ((x >> 7) & 0x01) > 0 { true } else { false }
 	sign           := int((x >> 8) & 0x01)
-	precision      := int((x >> 9) & 0xFF)
+	precision      := int((x >> 9) & 0x7F)
+	//tail_zeros     := if ((x >> 16) & 0x01) > 0 { true } else { false }
 	width          := int(i16((x >> 17) & 0x3FF))
 	mut base       := int(x >> 27) & 0xF
 	fmt_pad_ch     := byte((x >> 31) & 0xFF)
@@ -182,18 +186,18 @@ fn (data StrIntpData) get_fmt_format(mut sb &strings.Builder) {
 	}
 
 	len0_set := if width > 0 { width } else { -1 }
-	len1_set := if precision == 0xFF { -1 } else {precision}
+	len1_set := if precision == 0x7F { -1 } else {precision}
 	sign_set := if sign == 1 {true} else {false} 
 
 
 	mut bf := strconv.BF_param {
-		pad_ch       : pad_ch    // padding char
-		len0         : len0_set  // default len for whole the number or string
-		len1         : len1_set  // number of decimal digits, if needed
-		positive     : true      // mandatory: the sign of the number passed
-		sign_flag    : sign_set  // flag for print sign as prefix in padding
-		allign       : .left     // alignment of the string
-		rm_tail_zero : false     // remove the tail zeros from floats
+		pad_ch       : pad_ch     // padding char
+		len0         : len0_set   // default len for whole the number or string
+		len1         : len1_set   // number of decimal digits, if needed
+		positive     : true       // mandatory: the sign of the number passed
+		sign_flag    : sign_set   // flag for print sign as prefix in padding
+		allign       : .left      // alignment of the string
+		rm_tail_zero : false // remove the tail zeros from floats
 	}
 
 	// allign
@@ -318,7 +322,7 @@ fn (data StrIntpData) get_fmt_format(mut sb &strings.Builder) {
 
 		// default settings for floats
 		mut use_default_str := false
-		if width == 0 && precision == 0xFF {
+		if width == 0 && precision == 0x7F {
 			bf.len1 = 3
 			use_default_str = true
 		}
@@ -526,7 +530,7 @@ pub:
 pub struct StrIntpData {
 pub:
 	str     string
-	//fmt     u64  // expandedn version for future use
+	//fmt     u64  // expanded version for future use, 64 bit
 	fmt     u32
 	d       StrIntpMem
 }
@@ -554,3 +558,21 @@ pub fn str_interpolation(data_len int, in_data voidptr) string {
 	return ret
 }
 
+//====================================================================================
+// Utility for the compiler "auto_str_methods.v"
+//====================================================================================
+/*
+// substitute old _STR calls
+// _STR("`%.*s\\000`", 2, ${elem_str_fn_name}(it));
+pub fn str_intp_s(in_str string) string {
+	fmt_type := StrIntpType.si_s
+	res := 'str_interpolation(2, (StrIntpData[]){{_SLIT("\'"), 0x${int(fmt_type).hex()}, {.d_s = ${in_str} }},{_SLIT("\'"), 0, {.d_c = 0 }}})'
+	return res
+}
+
+pub fn str_intp_g(in_str string) string {
+	fmt_type := int(StrIntpType.si_f32)// | 3 << 9
+	res := 'str_interpolation(1, (StrIntpData[]){{_SLIT(""), 0x${int(fmt_type).hex()}, {.d_f32 = ${in_str} }}})'
+	return res
+}
+*/
