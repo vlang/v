@@ -40,6 +40,11 @@ TCCOS := freebsd
 LDFLAGS += -lexecinfo
 endif
 
+ifeq ($(_SYS),NetBSD)
+TCCOS := netbsd
+LDFLAGS += -lexecinfo
+endif
+
 ifdef ANDROID_ROOT
 ANDROID := 1
 undefine LINUX
@@ -94,10 +99,11 @@ clean:
 	rm -rf $(TMPTCC)
 	rm -rf $(VC)
 
-latest_vc: $(VC)/.git/config
 ifndef local
+latest_vc: $(VC)/.git/config
 	cd $(VC) && $(GITCLEANPULL)
 else
+latest_vc:
 	@echo "Using local vc"
 endif
 
@@ -105,11 +111,12 @@ fresh_vc:
 	rm -rf $(VC)
 	$(GITFASTCLONE) $(VCREPO) $(VC)
 
-latest_tcc: $(TMPTCC)/.git/config
 ifndef ANDROID
 ifndef local
+latest_tcc: $(TMPTCC)/.git/config
 	cd $(TMPTCC) && $(GITCLEANPULL)
 else
+latest_tcc:
 	@echo "Using local tcc"
 endif
 endif
