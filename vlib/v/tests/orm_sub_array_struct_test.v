@@ -48,4 +48,3 @@ fn test_orm_array() {
 	assert parent.chields[0].name == 'abc'
 	assert parent.chields[1].name == 'def'
 }
-
