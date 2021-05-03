@@ -17,6 +17,8 @@ const (
 	double_quote = `"`
 	// char used as number separator
 	num_sep      = `_`
+	b_lf         = 10
+	b_cr         = 13
 )
 
 pub struct Scanner {
@@ -492,18 +494,22 @@ fn (mut s Scanner) ident_number() string {
 	}
 }
 
-[inline]
+[direct_array_access; inline]
 fn (mut s Scanner) skip_whitespace() {
-	// if s.is_vh { println('vh') return }
-	for s.pos < s.text.len && s.text[s.pos].is_space() {
-		if util.is_nl(s.text[s.pos]) && s.is_vh {
+	for s.pos < s.text.len {
+		c := s.text[s.pos]
+		if !c.is_space() {
 			return
 		}
-		if s.pos + 1 < s.text.len && s.text[s.pos] == `\r` && s.text[s.pos + 1] == `\n` {
+		c_is_nl := c == scanner.b_cr || c == scanner.b_lf
+		if c_is_nl && s.is_vh {
+			return
+		}
+		if s.pos + 1 < s.text.len && c == scanner.b_cr && s.text[s.pos + 1] == scanner.b_lf {
 			s.is_crlf = true
 		}
 		// Count \r\n as one line
-		if util.is_nl(s.text[s.pos]) && !s.expect('\r\n', s.pos - 1) {
+		if c_is_nl && !(s.pos > 0 && s.text[s.pos - 1] == scanner.b_cr && c == scanner.b_lf) {
 			s.inc_line_number()
 		}
 		s.pos++
@@ -975,7 +981,7 @@ fn (mut s Scanner) text_scan() token.Token {
 					start := s.pos + 1
 					s.ignore_line()
 					mut comment_line_end := s.pos
-					if s.text[s.pos - 1] == `\r` {
+					if s.text[s.pos - 1] == scanner.b_cr {
 						comment_line_end--
 					} else {
 						// fix line_nr, \n was read; the comment is marked on the next line
@@ -987,7 +993,7 @@ fn (mut s Scanner) text_scan() token.Token {
 						mut comment := s.line_comment
 						// Find out if this comment is on its own line (for vfmt)
 						mut is_separate_line_comment := true
-						for j := start - 2; j >= 0 && s.text[j] != `\n`; j-- {
+						for j := start - 2; j >= 0 && s.text[j] != scanner.b_lf; j-- {
 							if s.text[j] !in [`\t`, ` `] {
 								is_separate_line_comment = false
 							}
@@ -1015,7 +1021,7 @@ fn (mut s Scanner) text_scan() token.Token {
 							s.line_nr--
 							s.error('comment not terminated')
 						}
-						if s.text[s.pos] == `\n` {
+						if s.text[s.pos] == scanner.b_lf {
 							s.inc_line_number()
 							continue
 						}
@@ -1098,7 +1104,7 @@ fn (mut s Scanner) ident_string() string {
 	if start_char == s.quote
 		|| (start_char == s.inter_quote && (s.is_inter_start || s.is_enclosed_inter)) {
 		start++
-	} else if start_char == `\n` {
+	} else if start_char == scanner.b_lf {
 		s.inc_line_number()
 	}
 	s.is_inside_string = false
@@ -1120,10 +1126,10 @@ fn (mut s Scanner) ident_string() string {
 		if c == s.inter_quote && (s.is_inter_start || s.is_enclosed_inter) {
 			break
 		}
-		if c == `\r` {
+		if c == scanner.b_cr {
 			n_cr_chars++
 		}
-		if c == `\n` {
+		if c == scanner.b_lf {
 			s.inc_line_number()
 		}
 		// Don't allow \0
@@ -1288,9 +1294,9 @@ fn (mut s Scanner) ignore_line() {
 	s.inc_line_number()
 }
 
-[inline]
+[direct_array_access; inline]
 fn (mut s Scanner) eat_to_end_of_line() {
-	for s.pos < s.text.len && s.text[s.pos] != `\n` {
+	for s.pos < s.text.len && s.text[s.pos] != scanner.b_lf {
 		s.pos++
 	}
 }

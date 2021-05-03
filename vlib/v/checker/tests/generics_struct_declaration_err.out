@@ -1,0 +1,7 @@
+vlib/v/checker/tests/generics_struct_declaration_err.vv:5:1: error: generic struct declaration must specify the generic type names, e.g. Foo<T>
+    3 | }
+    4 |
+    5 | struct MyGenericChannelStruct {
+      | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    6 |     GenericChannelStruct<T>
+    7 |     msg string

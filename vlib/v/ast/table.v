@@ -19,10 +19,12 @@ pub mut:
 	cflags           []cflag.CFlag
 	redefined_fns    []string
 	fn_generic_types map[string][][]Type // for generic functions
+	interfaces       map[int]InterfaceDecl
 	cmod_prefix      string // needed for ast.type_to_str(Type) while vfmt; contains `os.`
 	is_fmt           bool
 	used_fns         map[string]bool // filled in by the checker, when pref.skip_unused = true;
 	used_consts      map[string]bool // filled in by the checker, when pref.skip_unused = true;
+	used_vweb_types  []Type // vweb context types, filled in by checker, when pref.skip_unused = true;
 	panic_handler    FnPanicHandler = default_table_panic_handler
 	panic_userdata   voidptr        = voidptr(0) // can be used to pass arbitrary data to panic_handler;
 	panic_npanics    int
@@ -43,6 +45,7 @@ pub fn (t &Table) free() {
 		t.cmod_prefix.free()
 		t.used_fns.free()
 		t.used_consts.free()
+		t.used_vweb_types.free()
 	}
 }
 
@@ -60,7 +63,6 @@ pub fn (t &Table) panic(message string) {
 
 pub struct Fn {
 pub:
-	params         []Param
 	return_type    Type
 	is_variadic    bool
 	language       Language
@@ -77,8 +79,12 @@ pub:
 	mod            string
 	ctdefine       string // compile time define. "myflag", when [if myflag] tag
 	attrs          []Attr
+	//
+	pos             token.Position
+	return_type_pos token.Position
 pub mut:
 	name      string
+	params    []Param
 	source_fn voidptr // set in the checker, while processing fn declarations
 	usages    int
 }
@@ -96,9 +102,24 @@ pub:
 	name        string
 	is_mut      bool
 	is_auto_rec bool
-	typ         Type
 	type_pos    token.Position
 	is_hidden   bool // interface first arg
+pub mut:
+	typ Type
+}
+
+pub fn (f Fn) new_method_with_receiver_type(new_type Type) Fn {
+	mut new_method := f
+	new_method.params = f.params.clone()
+	new_method.params[0].typ = new_type
+	return new_method
+}
+
+pub fn (f FnDecl) new_method_with_receiver_type(new_type Type) FnDecl {
+	mut new_method := f
+	new_method.params = f.params.clone()
+	new_method.params[0].typ = new_type
+	return new_method
 }
 
 fn (p &Param) equals(o &Param) bool {
@@ -211,6 +232,10 @@ pub fn (t &Table) known_fn(name string) bool {
 pub fn (mut t Table) register_fn(new_fn Fn) {
 	// println('reg fn $new_fn.name nr_args=$new_fn.args.len')
 	t.fns[new_fn.name] = new_fn
+}
+
+pub fn (mut t Table) register_interface(idecl InterfaceDecl) {
+	t.interfaces[idecl.typ] = idecl
 }
 
 pub fn (mut t TypeSymbol) register_method(new_fn Fn) int {
@@ -909,13 +934,14 @@ pub fn (t &Table) mktyp(typ Type) Type {
 	}
 }
 
-pub fn (mut t Table) register_fn_concrete_types(fn_name string, types []Type) {
+pub fn (mut t Table) register_fn_concrete_types(fn_name string, types []Type) bool {
 	mut a := t.fn_generic_types[fn_name]
 	if types in a {
-		return
+		return false
 	}
 	a << types
 	t.fn_generic_types[fn_name] = a
+	return true
 }
 
 // TODO: there is a bug when casting sumtype the other way if its pointer

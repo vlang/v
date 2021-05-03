@@ -79,14 +79,14 @@ mut:
 	timers                           &util.Timers = util.new_timers(false)
 	comptime_fields_type             map[string]ast.Type
 	fn_scope                         &ast.Scope = voidptr(0)
-	used_fns                         map[string]bool // used_fns['println'] == true
 	main_fn_decl_node                ast.FnDecl
 	match_exhaustive_cutoff_limit    int = 10
 	// TODO: these are here temporarily and used for deprecations; remove soon
-	using_new_err_struct bool
-	inside_selector_expr bool
-	inside_println_arg   bool
-	inside_decl_rhs      bool
+	using_new_err_struct     bool
+	inside_selector_expr     bool
+	inside_println_arg       bool
+	inside_decl_rhs          bool
+	need_recheck_generic_fns bool // need recheck generic fns because there are cascaded nested generic fn
 }
 
 pub fn new_checker(table &ast.Table, pref &pref.Preferences) Checker {
@@ -197,14 +197,20 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 	// post process generic functions. must be done after all files have been
 	// checked, to eunsure all generic calls are processed as this information
 	// is needed when the generic type is auto inferred from the call argument
-	// Check 2 times (in order to check nested generics fn)
-	for _ in 0 .. 2 {
+	// Check more times if there are more new registered fn concrete types
+	for {
 		for i in 0 .. ast_files.len {
 			file := unsafe { &ast_files[i] }
 			if file.generic_fns.len > 0 {
 				c.change_current_file(file)
 				c.post_process_generic_fns()
 			}
+		}
+		if c.need_recheck_generic_fns {
+			c.need_recheck_generic_fns = false
+			continue
+		} else {
+			break
 		}
 	}
 	// restore the original c.file && c.mod after post processing
@@ -360,25 +366,152 @@ pub fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 	}
 }
 
-pub fn (mut c Checker) interface_decl(decl ast.InterfaceDecl) {
-	c.check_valid_pascal_case(decl.name, 'interface name', decl.pos)
-	for method in decl.methods {
-		if decl.language == .v {
-			c.check_valid_snake_case(method.name, 'method name', method.pos)
-		}
-		c.ensure_type_exists(method.return_type, method.return_type_pos) or { return }
-		for param in method.params {
-			c.ensure_type_exists(param.typ, param.pos) or { return }
-		}
+pub fn (mut c Checker) expand_iface_embeds(idecl &ast.InterfaceDecl, level int, iface_embeds []ast.InterfaceEmbedding) []ast.InterfaceEmbedding {
+	// eprintln('> expand_iface_embeds: idecl.name: $idecl.name | level: $level | iface_embeds.len: $iface_embeds.len')
+	if level > 100 {
+		c.error('too many interface embedding levels: $level, for interface `$idecl.name`',
+			idecl.pos)
+		return []
 	}
-	for i, field in decl.fields {
-		if decl.language == .v {
-			c.check_valid_snake_case(field.name, 'field name', field.pos)
+	if iface_embeds.len == 0 {
+		return []
+	}
+	mut res := map[int]ast.InterfaceEmbedding{}
+	mut ares := []ast.InterfaceEmbedding{}
+	for ie in iface_embeds {
+		if iface_decl := c.table.interfaces[ie.typ] {
+			mut list := iface_decl.ifaces
+			if !iface_decl.are_ifaces_expanded {
+				list = c.expand_iface_embeds(idecl, level + 1, iface_decl.ifaces)
+				c.table.interfaces[ie.typ].ifaces = list
+				c.table.interfaces[ie.typ].are_ifaces_expanded = true
+			}
+			for partial in list {
+				res[partial.typ] = partial
+			}
 		}
-		c.ensure_type_exists(field.typ, field.pos) or { return }
-		for j in 0 .. i {
-			if field.name == decl.fields[j].name {
-				c.error('field name `$field.name` duplicate', field.pos)
+		res[ie.typ] = ie
+	}
+	for _, v in res {
+		ares << v
+	}
+	return ares
+}
+
+pub fn (mut c Checker) interface_decl(mut decl ast.InterfaceDecl) {
+	c.check_valid_pascal_case(decl.name, 'interface name', decl.pos)
+	mut decl_sym := c.table.get_type_symbol(decl.typ)
+	if mut decl_sym.info is ast.Interface {
+		if decl.ifaces.len > 0 {
+			all_ifaces := c.expand_iface_embeds(decl, 0, decl.ifaces)
+			// eprintln('> decl.name: $decl.name | decl.ifaces.len: $decl.ifaces.len | all_ifaces: $all_ifaces.len')
+			decl.ifaces = all_ifaces
+			mut emnames := map[string]int{}
+			mut emnames_ds := map[string]bool{}
+			mut emnames_ds_info := map[string]bool{}
+			mut efnames := map[string]int{}
+			mut efnames_ds_info := map[string]bool{}
+			for i, m in decl.methods {
+				emnames[m.name] = i
+				emnames_ds[m.name] = true
+				emnames_ds_info[m.name] = true
+			}
+			for i, f in decl.fields {
+				efnames[f.name] = i
+				efnames_ds_info[f.name] = true
+			}
+			//
+			for iface in all_ifaces {
+				isym := c.table.get_type_symbol(iface.typ)
+				if isym.kind != .interface_ {
+					c.error('interface `$decl.name` tries to embed `$isym.name`, but `$isym.name` is not an interface, but `$isym.kind`',
+						iface.pos)
+					continue
+				}
+				for f in isym.info.fields {
+					if !efnames_ds_info[f.name] {
+						efnames_ds_info[f.name] = true
+						decl_sym.info.fields << f
+					}
+				}
+				for m in isym.info.methods {
+					if !emnames_ds_info[m.name] {
+						emnames_ds_info[m.name] = true
+						decl_sym.info.methods << m.new_method_with_receiver_type(decl.typ)
+					}
+				}
+				for m in isym.methods {
+					if !emnames_ds[m.name] {
+						emnames_ds[m.name] = true
+						decl_sym.methods << m.new_method_with_receiver_type(decl.typ)
+					}
+				}
+				if iface_decl := c.table.interfaces[iface.typ] {
+					for f in iface_decl.fields {
+						if f.name in efnames {
+							// already existing method name, check for conflicts
+							ifield := decl.fields[efnames[f.name]]
+							if field := c.table.find_field_with_embeds(isym, f.name) {
+								if ifield.typ != field.typ {
+									exp := c.table.type_to_str(ifield.typ)
+									got := c.table.type_to_str(field.typ)
+									c.error('embedded interface `$iface_decl.name` conflicts existing field: `$ifield.name`, expecting type: `$exp`, got type: `$got`',
+										ifield.pos)
+								}
+							}
+						} else {
+							efnames[f.name] = decl.fields.len
+							decl.fields << f
+						}
+					}
+					for m in iface_decl.methods {
+						if m.name in emnames {
+							// already existing field name, check for conflicts
+							imethod := decl.methods[emnames[m.name]]
+							if em_fn := decl_sym.find_method(imethod.name) {
+								if m_fn := isym.find_method(m.name) {
+									msg := c.table.is_same_method(m_fn, em_fn)
+									if msg.len > 0 {
+										em_sig := c.table.fn_signature(em_fn, skip_receiver: true)
+										m_sig := c.table.fn_signature(m_fn, skip_receiver: true)
+										c.error('embedded interface `$iface_decl.name` causes conflict: $msg, for interface method `$em_sig` vs `$m_sig`',
+											imethod.pos)
+									}
+								}
+							}
+						} else {
+							emnames[m.name] = decl.methods.len
+							mut new_method := m.new_method_with_receiver_type(decl.typ)
+							new_method.pos = iface.pos
+							decl.methods << new_method
+						}
+					}
+				}
+			}
+		}
+		for i, method in decl.methods {
+			if decl.language == .v {
+				c.check_valid_snake_case(method.name, 'method name', method.pos)
+			}
+			c.ensure_type_exists(method.return_type, method.return_type_pos) or { return }
+			for param in method.params {
+				c.ensure_type_exists(param.typ, param.pos) or { return }
+			}
+			for j in 0 .. i {
+				if method.name == decl.methods[j].name {
+					c.error('duplicate method name `$method.name`', method.pos)
+				}
+			}
+		}
+		for i, field in decl.fields {
+			if decl.language == .v {
+				c.check_valid_snake_case(field.name, 'field name', field.pos)
+			}
+			c.ensure_type_exists(field.typ, field.pos) or { return }
+			for j in 0 .. i {
+				if field.name == decl.fields[j].name {
+					c.error('field name `$field.name` duplicate', field.pos)
+				}
 			}
 		}
 	}
@@ -389,8 +522,12 @@ pub fn (mut c Checker) struct_decl(mut decl ast.StructDecl) {
 		c.check_valid_pascal_case(decl.name, 'struct name', decl.pos)
 	}
 	mut struct_sym := c.table.find_type(decl.name) or { ast.TypeSymbol{} }
+	mut has_generic_types := false
 	if mut struct_sym.info is ast.Struct {
 		for embed in decl.embeds {
+			if embed.typ.has_flag(.generic) {
+				has_generic_types = true
+			}
 			embed_sym := c.table.get_type_symbol(embed.typ)
 			if embed_sym.kind != .struct_ {
 				c.error('`$embed_sym.name` is not a struct', embed.pos)
@@ -408,6 +545,9 @@ pub fn (mut c Checker) struct_decl(mut decl ast.StructDecl) {
 		}
 		for i, field in decl.fields {
 			c.ensure_type_exists(field.typ, field.type_pos) or { return }
+			if field.typ.has_flag(.generic) {
+				has_generic_types = true
+			}
 			if decl.language == .v {
 				c.check_valid_snake_case(field.name, 'field name', field.pos)
 			}
@@ -459,6 +599,10 @@ pub fn (mut c Checker) struct_decl(mut decl ast.StructDecl) {
 				}
 			}
 		}
+		if decl.generic_types.len == 0 && has_generic_types {
+			c.error('generic struct declaration must specify the generic type names, e.g. Foo<T>',
+				decl.pos)
+		}
 	}
 }
 
@@ -489,7 +633,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
 	// Make sure the first letter is capital, do not allow e.g. `x := string{}`,
 	// but `x := T{}` is ok.
 	if !c.is_builtin_mod && !c.inside_unsafe && type_sym.language == .v
-		&& c.cur_fn.cur_generic_types.len == 0 {
+		&& c.cur_fn.cur_concrete_types.len == 0 {
 		pos := type_sym.name.last_index('.') or { -1 }
 		first_letter := type_sym.name[pos + 1]
 		if !first_letter.is_capital() {
@@ -1530,7 +1674,9 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 		}
 	}
 	if has_generic {
-		c.table.register_fn_concrete_types(call_expr.name, concrete_types)
+		if c.table.register_fn_concrete_types(call_expr.name, concrete_types) {
+			c.need_recheck_generic_fns = true
+		}
 	}
 	// TODO: remove this for actual methods, use only for compiler magic
 	// FIXME: Argument count != 1 will break these
@@ -1979,10 +2125,6 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 	if fn_name == 'main' {
 		c.error('the `main` function cannot be called in the program', call_expr.pos)
 	}
-	if fn_name == 'typeof' {
-		// TODO: impl typeof properly (probably not going to be a fn call)
-		return ast.string_type
-	}
 	mut has_generic := false // foo<T>() instead of foo<int>()
 	mut concrete_types := []ast.Type{}
 	for concrete_type in call_expr.concrete_types {
@@ -1993,12 +2135,20 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 			concrete_types << concrete_type
 		}
 	}
+	if c.cur_fn.cur_concrete_types.len == 0 && has_generic {
+		c.error('generic fn using generic types cannot be called outside of generic fn',
+			call_expr.pos)
+	}
 	if has_generic {
+		mut no_exists := true
 		if c.mod != '' && !fn_name.contains('.') {
 			// Need to prepend the module when adding a generic type to a function
-			c.table.register_fn_concrete_types(c.mod + '.' + fn_name, concrete_types)
+			no_exists = c.table.register_fn_concrete_types(c.mod + '.' + fn_name, concrete_types)
 		} else {
-			c.table.register_fn_concrete_types(fn_name, concrete_types)
+			no_exists = c.table.register_fn_concrete_types(fn_name, concrete_types)
+		}
+		if no_exists {
+			c.need_recheck_generic_fns = true
 		}
 	}
 	if fn_name == 'json.encode' {
@@ -2087,7 +2237,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 			return ast.void_type
 		}
 	}
-	if !found && c.pref.is_script && !found {
+	if !found && c.pref.is_vsh {
 		os_name := 'os.$fn_name'
 		if f := c.table.find_fn(os_name) {
 			if f.generic_names.len == call_expr.concrete_types.len {
@@ -2732,7 +2882,7 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 	mut expected_types := [expected_type]
 	if expected_type_sym.info is ast.MultiReturn {
 		expected_types = expected_type_sym.info.types
-		if c.cur_fn.cur_generic_types.len > 0 {
+		if c.cur_fn.cur_concrete_types.len > 0 {
 			expected_types = expected_types.map(c.unwrap_generic(it))
 		}
 	}
@@ -3664,7 +3814,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.import_stmt(node)
 		}
 		ast.InterfaceDecl {
-			c.interface_decl(node)
+			c.interface_decl(mut node)
 		}
 		ast.Module {
 			c.mod = node.name
@@ -4185,7 +4335,7 @@ fn (mut c Checker) stmts(stmts []ast.Stmt) {
 
 pub fn (mut c Checker) unwrap_generic(typ ast.Type) ast.Type {
 	if typ.has_flag(.generic) {
-		if t_typ := c.table.resolve_generic_to_concrete(typ, c.cur_fn.generic_names, c.cur_fn.cur_generic_types,
+		if t_typ := c.table.resolve_generic_to_concrete(typ, c.cur_fn.generic_names, c.cur_fn.cur_concrete_types,
 			false)
 		{
 			return t_typ
@@ -6323,6 +6473,11 @@ pub fn (mut c Checker) warn(s string, pos token.Position) {
 }
 
 pub fn (mut c Checker) error(message string, pos token.Position) {
+	$if checker_exit_on_first_error ? {
+		eprintln('\n\n>> checker error: $message, pos: $pos')
+		print_backtrace()
+		exit(1)
+	}
 	if c.pref.translated && message.starts_with('mismatched types') {
 		// TODO move this
 		return
@@ -6599,26 +6754,26 @@ fn (mut c Checker) post_process_generic_fns() {
 	// Loop thru each generic function concrete type.
 	// Check each specific fn instantiation.
 	for i in 0 .. c.file.generic_fns.len {
-		if c.table.fn_generic_types.len == 0 {
-			// no concrete types, so just skip:
-			continue
-		}
 		mut node := c.file.generic_fns[i]
 		c.mod = node.mod
-		for generic_types in c.table.fn_generic_types[node.name] {
-			node.cur_generic_types = generic_types
+		for concrete_types in c.table.fn_generic_types[node.name] {
+			node.cur_concrete_types = concrete_types
 			c.fn_decl(mut node)
 			if node.name in ['vweb.run_app', 'vweb.run'] {
-				c.vweb_gen_types << generic_types
+				for ct in concrete_types {
+					if ct !in c.vweb_gen_types {
+						c.vweb_gen_types << ct
+					}
+				}
 			}
 		}
-		node.cur_generic_types = []
+		node.cur_concrete_types = []
 	}
 }
 
 fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	c.returns = false
-	if node.generic_names.len > 0 && node.cur_generic_types.len == 0 {
+	if node.generic_names.len > 0 && node.cur_concrete_types.len == 0 {
 		// Just remember the generic function for now.
 		// It will be processed later in c.post_process_generic_fns,
 		// after all other normal functions are processed.
@@ -6627,6 +6782,24 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		// the correct concrete types.
 		c.file.generic_fns << node
 		return
+	}
+	// Check generics fn/method without generic type parameters
+	mut need_generic_names := false
+	if node.generic_names.len == 0 {
+		if node.return_type.has_flag(.generic) {
+			need_generic_names = true
+		} else {
+			for param in node.params {
+				if param.typ.has_flag(.generic) {
+					need_generic_names = true
+					break
+				}
+			}
+		}
+		if need_generic_names {
+			c.error('generic function declaration must specify generic type names, e.g. foo<T>',
+				node.pos)
+		}
 	}
 	if node.language == .v && !c.is_builtin_mod {
 		c.check_valid_snake_case(node.name, 'function name', node.pos)
@@ -6638,6 +6811,15 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		if ct_name := node.attrs.find_comptime_define() {
 			c.error('only functions that do NOT return values can have `[if $ct_name]` tags',
 				node.pos)
+		}
+		if node.generic_names.len > 0 {
+			gs := c.table.get_type_symbol(node.return_type)
+			if gs.info is ast.Struct {
+				if gs.info.is_generic && !node.return_type.has_flag(.generic) {
+					c.error('return generic struct in fn declaration must specify the generic type names, e.g. Foo<T>',
+						node.return_type_pos)
+				}
+			}
 		}
 	}
 	if node.is_method {
@@ -6806,6 +6988,7 @@ fn (mut c Checker) verify_all_vweb_routes() {
 	if c.vweb_gen_types.len == 0 {
 		return
 	}
+	c.table.used_vweb_types = c.vweb_gen_types
 	typ_vweb_result := c.table.find_type_idx('vweb.Result')
 	old_file := c.file
 	for vgt in c.vweb_gen_types {

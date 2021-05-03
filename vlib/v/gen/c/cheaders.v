@@ -410,7 +410,6 @@ static inline uint64_t _wyr4(const uint8_t *p) {
 }
 #endif
 static inline uint64_t _wyr3(const uint8_t *p, size_t k) { return (((uint64_t)p[0])<<16)|(((uint64_t)p[k>>1])<<8)|p[k-1];}
-
 //wyhash main function
 static inline uint64_t wyhash(const void *key, size_t len, uint64_t seed, const uint64_t *secret){
 	const uint8_t *p=(const uint8_t *)key; seed^=*secret;	uint64_t	a,	b;
@@ -440,10 +439,10 @@ static inline uint64_t wyhash(const void *key, size_t len, uint64_t seed, const 
 static const uint64_t _wyp[4] = {0xa0761d6478bd642full, 0xe7037ed1a0b428dbull, 0x8ebc6af09c88c6e3ull, 0x589965cc75374cc3ull};
 
 //a useful 64bit-64bit mix function to produce deterministic pseudo random numbers that can pass BigCrush and PractRand
-static inline uint64_t wyhash64(uint64_t A, uint64_t B){ A^=_wyp[0]; B^=_wyp[1]; _wymum(&A,&B); return _wymix(A^_wyp[0],B^_wyp[1]);}
+static inline uint64_t wyhash64(uint64_t A, uint64_t B){ A^=0xa0761d6478bd642full; B^=0xe7037ed1a0b428dbull; _wymum(&A,&B); return _wymix(A^0xa0761d6478bd642full,B^0xe7037ed1a0b428dbull);}
 
 //The wyrand PRNG that pass BigCrush and PractRand
-static inline uint64_t wyrand(uint64_t *seed){ *seed+=_wyp[0]; return _wymix(*seed,*seed^_wyp[1]);}
+static inline uint64_t wyrand(uint64_t *seed){ *seed+=0xa0761d6478bd642full; return _wymix(*seed,*seed^0xe7037ed1a0b428dbull);}
 
 //convert any 64 bit pseudo random numbers to uniform distribution [0,1). It can be combined with wyrand, wyhash64 or wyhash.
 static inline double wy2u01(uint64_t r){ const double _wynorm=1.0/(1ull<<52); return (r>>12)*_wynorm;}
@@ -455,36 +454,6 @@ static inline double wy2gau(uint64_t r){ const double _wynorm=1.0/(1ull<<20); re
 //fast range integer random number generation on [0,k) credit to Daniel Lemire. May not work when WYHASH_32BIT_MUM=1. It can be combined with wyrand, wyhash64 or wyhash.
 static inline uint64_t wy2u0k(uint64_t r, uint64_t k){ _wymum(&r,&k); return k; }
 #endif
-
-//make your own secret
-static inline void make_secret(uint64_t seed, uint64_t *secret){
-	uint8_t c[] = {15, 23, 27, 29, 30, 39, 43, 45, 46, 51, 53, 54, 57, 58, 60, 71, 75, 77, 78, 83, 85, 86, 89, 90, 92, 99, 101, 102, 105, 106, 108, 113, 114, 116, 120, 135, 139, 141, 142, 147, 149, 150, 153, 154, 156, 163, 165, 166, 169, 170, 172, 177, 178, 180, 184, 195, 197, 198, 201, 202, 204, 209, 210, 212, 216, 225, 226, 228, 232, 240 };
-	for(size_t i=0;i<4;i++){
-		uint8_t ok;
-		do{
-			ok=1; secret[i]=0;
-			for(size_t j=0;j<64;j+=8) secret[i]|=((uint64_t)c[wyrand(&seed)%sizeof(c)])<<j;
-			if(secret[i]%2==0){ ok=0; continue; }
-			for(size_t j=0;j<i;j++) {
-#if defined(__GNUC__) || defined(__INTEL_COMPILER) || defined(__clang__)
-				if(__builtin_popcountll(secret[j]^secret[i])!=32){ ok=0; break; }
-#elif defined(_MSC_VER) && defined(_M_X64)
-				if(_mm_popcnt_u64(secret[j]^secret[i])!=32){ ok=0; break; }
-#else
-				//manual popcount
-				uint64_t x = secret[j]^secret[i];
-				x -= (x >> 1) & 0x5555555555555555;
-				x = (x & 0x3333333333333333) + ((x >> 2) & 0x3333333333333333);
-				x = (x + (x >> 4)) & 0x0f0f0f0f0f0f0f0f;
-				x = (x * 0x0101010101010101) >> 56;
-				if(x!=32){ ok=0; break; }
-#endif
-			}
-				if(!ok)continue;
-				for(uint64_t j=3;j<0x100000000ull;j+=2) if(secret[i]%j==0){ ok=0; break; }
-		}while(!ok);
-	}
-}
 #endif
 '
 	c_helper_macros = '//============================== HELPER C MACROS =============================*/

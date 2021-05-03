@@ -1,2 +1,2 @@
-fn (p A) foo() {}
+fn (p Abc) foo() {}
 

@@ -4,6 +4,7 @@
 module native
 
 import os
+import strings
 import v.ast
 import v.util
 import v.token
@@ -14,8 +15,9 @@ import term
 pub const builtins = ['println', 'exit']
 
 interface CodeGen {
-	g Gen
-	allocate_var(name string, size int, initial_val int)
+	g &Gen
+	gen_exit(mut g Gen, expr ast.Expr)
+	// XXX WHY gen_exit fn (expr ast.Expr)
 }
 
 pub struct Gen {
@@ -40,6 +42,7 @@ mut:
 	warnings             []errors.Warning
 	syms                 []Symbol
 	relocs               []Reloc
+	size_pos             []int
 	nlines               int
 }
 
@@ -50,11 +53,17 @@ enum Size {
 	_64
 }
 
-fn (g Gen) get_backend(pref &pref.Preferences) CodeGen {
-	if pref.arch == .arm64 {
-		return Arm64{}
+fn (g &Gen) get_backend() ?CodeGen {
+	match g.pref.arch {
+		.arm64 {
+			return Arm64{g}
+		}
+		.amd64 {
+			return Amd64{g}
+		}
+		else {}
 	}
-	return Amd64{}
+	return error('unsupported architecture')
 }
 
 pub fn gen(files []ast.File, table &ast.Table, out_name string, pref &pref.Preferences) (int, int) {
@@ -63,9 +72,11 @@ pub fn gen(files []ast.File, table &ast.Table, out_name string, pref &pref.Prefe
 		sect_header_name_pos: 0
 		out_name: out_name
 		pref: pref
-		cgen: &Amd64{}
 	}
-	g.cgen = g.get_backend(pref)
+	g.cgen = g.get_backend() or {
+		eprintln('No available backend for this configuration')
+		exit(1)
+	}
 	g.generate_header()
 	for file in files {
 		if file.warnings.len > 0 {
@@ -131,15 +142,6 @@ pub fn (mut g Gen) stmts(stmts []ast.Stmt) {
 	}
 }
 
-/*
-pub fn new_gen(out_name string) &Gen {
-	return &Gen{
-		sect_header_name_pos: 0
-		buf: []
-		out_name: out_name
-	}
-}
-*/
 pub fn (g &Gen) pos() i64 {
 	return g.buf.len
 }
@@ -153,6 +155,10 @@ fn (mut g Gen) write16(n int) {
 	// write 2 bytes
 	g.buf << byte(n)
 	g.buf << byte(n >> 8)
+}
+
+fn (mut g Gen) read32_at(at int) int {
+	return int(g.buf[at] | (g.buf[at + 1] << 8) | (g.buf[at + 2] << 16) | (g.buf[at + 3] << 24))
 }
 
 fn (mut g Gen) write32(n int) {
@@ -238,6 +244,27 @@ pub fn (mut g Gen) register_function_address(name string) {
 	g.fn_addr[name] = addr
 }
 
+fn (mut g Gen) println(comment string) {
+	g.nlines++
+	if !g.pref.is_verbose {
+		return
+	}
+	addr := g.debug_pos.hex()
+	// println('$g.debug_pos "$addr"')
+	print(term.red(strings.repeat(`0`, 6 - addr.len) + addr + '  '))
+	for i := g.debug_pos; i < g.buf.len; i++ {
+		s := g.buf[i].hex()
+		if s.len == 1 {
+			print(term.blue('0'))
+		}
+		gbihex := g.buf[i].hex()
+		hexstr := term.blue(gbihex) + ' '
+		print(hexstr)
+	}
+	g.debug_pos = g.buf.len
+	println(' ' + comment)
+}
+
 fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 	verror('for-in statement is not yet implemented')
 	/*
@@ -260,17 +287,8 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 }
 
 pub fn (mut g Gen) gen_exit(node ast.Expr) {
-	match g.pref.arch {
-		.amd64 {
-			g.gen_amd64_exit(node)
-		}
-		.arm64 {
-			g.gen_arm64_exit(node)
-		}
-		else {
-			verror('native exit not implemented for this architecture $g.pref.arch')
-		}
-	}
+	// check node type and then call the cgen method
+	g.cgen.gen_exit(mut g, node)
 }
 
 fn (mut g Gen) stmt(node ast.Stmt) {
@@ -327,8 +345,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.BoolLiteral {}
 		ast.CallExpr {
 			if node.name == 'exit' {
-				expr := node.args[0].expr
-				g.gen_exit(expr)
+				g.gen_exit(node.args[0].expr)
 				return
 			}
 			if node.name in ['println', 'print', 'eprintln', 'eprint'] {

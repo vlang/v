@@ -2,7 +2,7 @@ module picohttpparser
 
 pub struct Request {
 mut:
-	prev_len    int
+	prev_len int
 pub mut:
 	method      string
 	path        string
@@ -27,6 +27,7 @@ pub fn (mut r Request) parse_request(s string, max_headers int) int {
 		}
 		r.num_headers = u64(num_headers)
 	}
+	r.body = unsafe { (&s.str[pret]).vstring_literal_with_len(s.len - pret) }
 	r.prev_len = s.len
 	return pret
 }
