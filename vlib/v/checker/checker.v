@@ -6808,6 +6808,15 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			c.error('only functions that do NOT return values can have `[if $ct_name]` tags',
 				node.pos)
 		}
+		if node.generic_names.len > 0 {
+			gs := c.table.get_type_symbol(node.return_type)
+			if gs.info is ast.Struct {
+				if gs.info.is_generic && !node.return_type.has_flag(.generic) {
+					c.error('return generic struct in fn declaration must specify the generic type names, e.g. Foo<T>',
+						node.return_type_pos)
+				}
+			}
+		}
 	}
 	if node.is_method {
 		mut sym := c.table.get_type_symbol(node.receiver.typ)
