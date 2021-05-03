@@ -131,8 +131,8 @@ pub fn create(path string) ?File {
 	}
 }
 
-// open_stdin - return an os.File for stdin, so that you can use .get_line on it too.
-pub fn open_stdin() File {
+// stdin - return an os.File for stdin, so that you can use .get_line on it too.
+pub fn stdin() File {
 	return File{
 		fd: 0
 		cfile: C.stdin
