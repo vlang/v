@@ -2125,6 +2125,10 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 			concrete_types << concrete_type
 		}
 	}
+	if c.cur_fn.cur_concrete_types.len == 0 && has_generic {
+		c.error('generic fn using generic types cannot be called outside of generic fn',
+			call_expr.pos)
+	}
 	if has_generic {
 		mut no_exists := true
 		if c.mod != '' && !fn_name.contains('.') {
