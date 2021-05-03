@@ -158,6 +158,8 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []ast.Fi
 			continue
 		}
 	}
+
+	// handle assertions and testing framework callbacks:
 	if pref.is_debug {
 		all_fn_root_names << 'panic_debug'
 	}
@@ -173,6 +175,40 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []ast.Fi
 			all_fn_root_names << 'main.start_testing'
 		}
 	}
+
+	// handle interface implementation methods:
+	for isym in table.type_symbols {
+		if isym.kind != .interface_ {
+			continue
+		}
+		interface_info := isym.info as ast.Interface
+		if interface_info.methods.len == 0 {
+			continue
+		}
+		for itype in interface_info.types {
+			for method in interface_info.methods {
+				interface_implementation_method_name := '${itype}.$method.name'
+				all_fn_root_names << interface_implementation_method_name
+			}
+		}
+	}
+
+	// handle vweb magic router methods:
+	typ_vweb_result := table.find_type_idx('vweb.Result')
+	if typ_vweb_result != 0 {
+		for vgt in table.used_vweb_types {
+			sym_app := table.get_type_symbol(vgt)
+			for m in sym_app.methods {
+				if m.return_type == typ_vweb_result {
+					pvgt := vgt.set_nr_muls(1)
+					eprintln('vgt: $vgt | pvgt: $pvgt | sym_app.name: $sym_app.name | m.name: $m.name')
+					all_fn_root_names << '${pvgt}.$m.name'
+				}
+			}
+		}
+	}
+
+	//
 
 	mut walker := Walker{
 		table: table

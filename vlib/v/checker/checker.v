@@ -79,7 +79,6 @@ mut:
 	timers                           &util.Timers = util.new_timers(false)
 	comptime_fields_type             map[string]ast.Type
 	fn_scope                         &ast.Scope = voidptr(0)
-	used_fns                         map[string]bool // used_fns['println'] == true
 	main_fn_decl_node                ast.FnDecl
 	match_exhaustive_cutoff_limit    int = 10
 	// TODO: these are here temporarily and used for deprecations; remove soon
@@ -6746,7 +6745,11 @@ fn (mut c Checker) post_process_generic_fns() {
 			node.cur_concrete_types = concrete_types
 			c.fn_decl(mut node)
 			if node.name in ['vweb.run_app', 'vweb.run'] {
-				c.vweb_gen_types << concrete_types
+				for ct in concrete_types {
+					if ct !in c.vweb_gen_types {
+						c.vweb_gen_types << ct
+					}
+				}
 			}
 		}
 		node.cur_concrete_types = []
@@ -6961,6 +6964,7 @@ fn (mut c Checker) verify_all_vweb_routes() {
 	if c.vweb_gen_types.len == 0 {
 		return
 	}
+	c.table.used_vweb_types = c.vweb_gen_types
 	typ_vweb_result := c.table.find_type_idx('vweb.Result')
 	old_file := c.file
 	for vgt in c.vweb_gen_types {
