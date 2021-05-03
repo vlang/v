@@ -2804,8 +2804,7 @@ const (
 // left hand side of `=` or `:=` in `a,b,c := 1,2,3`
 fn (mut p Parser) global_decl() ast.GlobalDecl {
 	if !p.pref.translated && !p.pref.is_livemain && !p.builtin_mod && !p.pref.building_v
-		&& p.mod != 'ui' && p.mod != 'gg2' && p.mod != 'uiold' && !p.pref.enable_globals
-		&& !p.pref.is_fmt && p.mod !in parser.global_enabled_mods {
+		&& !p.pref.enable_globals && !p.pref.is_fmt && p.mod !in parser.global_enabled_mods {
 		p.error('use `v -enable-globals ...` to enable globals')
 		return ast.GlobalDecl{}
 	}
