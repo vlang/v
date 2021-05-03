@@ -522,8 +522,12 @@ pub fn (mut c Checker) struct_decl(mut decl ast.StructDecl) {
 		c.check_valid_pascal_case(decl.name, 'struct name', decl.pos)
 	}
 	mut struct_sym := c.table.find_type(decl.name) or { ast.TypeSymbol{} }
+	mut has_generic_types := false
 	if mut struct_sym.info is ast.Struct {
 		for embed in decl.embeds {
+			if embed.typ.has_flag(.generic) {
+				has_generic_types = true
+			}
 			embed_sym := c.table.get_type_symbol(embed.typ)
 			if embed_sym.kind != .struct_ {
 				c.error('`$embed_sym.name` is not a struct', embed.pos)
@@ -541,6 +545,9 @@ pub fn (mut c Checker) struct_decl(mut decl ast.StructDecl) {
 		}
 		for i, field in decl.fields {
 			c.ensure_type_exists(field.typ, field.type_pos) or { return }
+			if field.typ.has_flag(.generic) {
+				has_generic_types = true
+			}
 			if decl.language == .v {
 				c.check_valid_snake_case(field.name, 'field name', field.pos)
 			}
@@ -591,6 +598,10 @@ pub fn (mut c Checker) struct_decl(mut decl ast.StructDecl) {
 					}
 				}
 			}
+		}
+		if decl.generic_types.len == 0 && has_generic_types {
+			c.error('generic struct declaration must specify the generic type names, e.g. Foo<T>',
+				decl.pos)
 		}
 	}
 }
