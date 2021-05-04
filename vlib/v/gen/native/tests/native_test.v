@@ -7,8 +7,9 @@ fn test_native() {
 	$if !amd64 {
 		return
 	}
-	if os.user_os() != 'linux' {
-		eprintln('native tests can only be run on Linux for now.')
+	// some tests are running fine in macos
+	if os.user_os() != 'linux' && os.user_os() != 'macos' {
+		eprintln('native tests only run on Linux and macOS for now.')
 		exit(0)
 	}
 	mut bench := benchmark.new_benchmark()

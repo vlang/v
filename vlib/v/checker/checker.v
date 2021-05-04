@@ -79,7 +79,6 @@ mut:
 	timers                           &util.Timers = util.new_timers(false)
 	comptime_fields_type             map[string]ast.Type
 	fn_scope                         &ast.Scope = voidptr(0)
-	used_fns                         map[string]bool // used_fns['println'] == true
 	main_fn_decl_node                ast.FnDecl
 	match_exhaustive_cutoff_limit    int = 10
 	// TODO: these are here temporarily and used for deprecations; remove soon
@@ -523,8 +522,12 @@ pub fn (mut c Checker) struct_decl(mut decl ast.StructDecl) {
 		c.check_valid_pascal_case(decl.name, 'struct name', decl.pos)
 	}
 	mut struct_sym := c.table.find_type(decl.name) or { ast.TypeSymbol{} }
+	mut has_generic_types := false
 	if mut struct_sym.info is ast.Struct {
 		for embed in decl.embeds {
+			if embed.typ.has_flag(.generic) {
+				has_generic_types = true
+			}
 			embed_sym := c.table.get_type_symbol(embed.typ)
 			if embed_sym.kind != .struct_ {
 				c.error('`$embed_sym.name` is not a struct', embed.pos)
@@ -542,6 +545,9 @@ pub fn (mut c Checker) struct_decl(mut decl ast.StructDecl) {
 		}
 		for i, field in decl.fields {
 			c.ensure_type_exists(field.typ, field.type_pos) or { return }
+			if field.typ.has_flag(.generic) {
+				has_generic_types = true
+			}
 			if decl.language == .v {
 				c.check_valid_snake_case(field.name, 'field name', field.pos)
 			}
@@ -592,6 +598,10 @@ pub fn (mut c Checker) struct_decl(mut decl ast.StructDecl) {
 					}
 				}
 			}
+		}
+		if decl.generic_types.len == 0 && has_generic_types {
+			c.error('generic struct declaration must specify the generic type names, e.g. Foo<T>',
+				decl.pos)
 		}
 	}
 }
@@ -2124,6 +2134,10 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 		} else {
 			concrete_types << concrete_type
 		}
+	}
+	if c.cur_fn.cur_concrete_types.len == 0 && has_generic {
+		c.error('generic fn using generic types cannot be called outside of generic fn',
+			call_expr.pos)
 	}
 	if has_generic {
 		mut no_exists := true
@@ -6746,7 +6760,11 @@ fn (mut c Checker) post_process_generic_fns() {
 			node.cur_concrete_types = concrete_types
 			c.fn_decl(mut node)
 			if node.name in ['vweb.run_app', 'vweb.run'] {
-				c.vweb_gen_types << concrete_types
+				for ct in concrete_types {
+					if ct !in c.vweb_gen_types {
+						c.vweb_gen_types << ct
+					}
+				}
 			}
 		}
 		node.cur_concrete_types = []
@@ -6793,6 +6811,15 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		if ct_name := node.attrs.find_comptime_define() {
 			c.error('only functions that do NOT return values can have `[if $ct_name]` tags',
 				node.pos)
+		}
+		if node.generic_names.len > 0 {
+			gs := c.table.get_type_symbol(node.return_type)
+			if gs.info is ast.Struct {
+				if gs.info.is_generic && !node.return_type.has_flag(.generic) {
+					c.error('return generic struct in fn declaration must specify the generic type names, e.g. Foo<T>',
+						node.return_type_pos)
+				}
+			}
 		}
 	}
 	if node.is_method {
@@ -6961,6 +6988,7 @@ fn (mut c Checker) verify_all_vweb_routes() {
 	if c.vweb_gen_types.len == 0 {
 		return
 	}
+	c.table.used_vweb_types = c.vweb_gen_types
 	typ_vweb_result := c.table.find_type_idx('vweb.Result')
 	old_file := c.file
 	for vgt in c.vweb_gen_types {

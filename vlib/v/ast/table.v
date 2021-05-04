@@ -24,6 +24,7 @@ pub mut:
 	is_fmt           bool
 	used_fns         map[string]bool // filled in by the checker, when pref.skip_unused = true;
 	used_consts      map[string]bool // filled in by the checker, when pref.skip_unused = true;
+	used_vweb_types  []Type // vweb context types, filled in by checker, when pref.skip_unused = true;
 	panic_handler    FnPanicHandler = default_table_panic_handler
 	panic_userdata   voidptr        = voidptr(0) // can be used to pass arbitrary data to panic_handler;
 	panic_npanics    int
@@ -44,6 +45,7 @@ pub fn (t &Table) free() {
 		t.cmod_prefix.free()
 		t.used_fns.free()
 		t.used_consts.free()
+		t.used_vweb_types.free()
 	}
 }
 

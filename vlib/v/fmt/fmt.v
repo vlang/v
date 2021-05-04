@@ -1191,9 +1191,6 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 		}
 		// TODO: alignment, comments, etc.
 		mut ft := f.no_cur_mod(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
-		if !ft.contains('C.') && !ft.contains('JS.') && !ft.contains('fn (') {
-			ft = f.short_module(ft)
-		}
 		f.writeln('\t$field.name $ft')
 		f.mark_types_import_as_used(field.typ)
 	}

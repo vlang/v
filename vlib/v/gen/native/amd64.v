@@ -2,11 +2,10 @@ module native
 
 import term
 import v.ast
-import strings
 
 pub struct Amd64 {
 mut:
-	g Gen
+	g &Gen
 	// arm64 specific stuff for code generation
 }
 
@@ -130,28 +129,6 @@ fn (mut g Gen) jle(addr i64) {
 	g.println('jle')
 }
 
-fn (mut g Gen) println(comment string) {
-	g.nlines++
-	if !g.pref.is_verbose {
-		return
-	}
-	addr := g.debug_pos.hex()
-	// println('$g.debug_pos "$addr"')
-	print(term.red(strings.repeat(`0`, 6 - addr.len) + addr + '  '))
-	for i := g.debug_pos; i < g.buf.len; i++ {
-		s := g.buf[i].hex()
-		if s.len == 1 {
-			print(term.blue('0'))
-		}
-		gbihex := g.buf[i].hex()
-		hexstr := term.blue(gbihex) + ' '
-		print(hexstr)
-	}
-	g.debug_pos = g.buf.len
-	print(' ' + comment)
-	println('')
-}
-
 fn (mut g Gen) jl(addr i64) {
 	offset := 0xff - int(abs(addr - g.buf.len)) - 1
 	g.write8(0x7c)
@@ -177,7 +154,7 @@ fn (mut g Gen) mov64(reg Register, val i64) {
 			g.write8(0xbe)
 		}
 		else {
-			println('unhandled mov $reg')
+			eprintln('unhandled mov $reg')
 		}
 	}
 	g.write64(val)
@@ -352,13 +329,28 @@ pub fn (mut g Gen) gen_print(s string) {
 	//
 	g.strings << s
 	// g.string_addr[s] = str_pos
-	g.mov(.eax, 1)
+	g.mov(.eax, g.nsyscall_write())
 	g.mov(.edi, 1)
 	str_pos := g.buf.len + 2
 	g.str_pos << str_pos
 	g.mov64(.rsi, 0) // segment_start +  0x9f) // str pos // placeholder
 	g.mov(.edx, s.len) // len
 	g.syscall()
+}
+
+fn (mut g Gen) nsyscall_write() int {
+	match g.pref.os {
+		.linux {
+			return 1
+		}
+		.macos {
+			return 0x2000004
+		}
+		else {
+			verror('unsupported exit syscall for this platform')
+		}
+	}
+	return 0
 }
 
 fn (mut g Gen) nsyscall_exit() int {
@@ -374,6 +366,10 @@ fn (mut g Gen) nsyscall_exit() int {
 		}
 	}
 	return 0
+}
+
+pub fn (mut a Amd64) gen_exit(mut g Gen, node ast.Expr) {
+	g.gen_amd64_exit(node)
 }
 
 pub fn (mut g Gen) gen_amd64_exit(expr ast.Expr) {
@@ -621,10 +617,6 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 }
 
 fn (mut g Gen) fn_decl(node ast.FnDecl) {
-	if g.pref.arch == .arm64 {
-		g.fn_decl_arm64(node)
-		return
-	}
 	if g.pref.is_verbose {
 		println(term.green('\n$node.name:'))
 	}
@@ -635,6 +627,10 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		g.save_main_fn_addr()
 	} else {
 		g.register_function_address(node.name)
+	}
+	if g.pref.arch == .arm64 {
+		g.fn_decl_arm64(node)
+		return
 	}
 	g.push(.rbp)
 	g.mov_rbp_rsp()

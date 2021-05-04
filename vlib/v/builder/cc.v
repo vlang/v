@@ -386,8 +386,8 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		if v.pref.os == .linux {
 			ccoptions.linker_flags << '-ldl'
 		}
-		if v.pref.os == .freebsd {
-			// FreeBSD: backtrace needs execinfo library while linking
+		if v.pref.os in [.freebsd, .netbsd] {
+			// Free/NetBSD: backtrace needs execinfo library while linking
 			ccoptions.linker_flags << '-lexecinfo'
 		}
 	}

@@ -952,7 +952,7 @@ pub fn (s string) ends_with(p string) bool {
 		return false
 	}
 	for i in 0 .. p.len {
-		if p[i] != s[s.len - p.len + i] {
+		if unsafe { p.str[i] != s.str[s.len - p.len + i] } {
 			return false
 		}
 	}
@@ -1087,12 +1087,13 @@ pub fn (s string) find_between(start string, end string) string {
 }
 
 // is_space returns `true` if the byte is a white space character.
-// The following list is considered white space characters: ` `, `\n`, `\t`, `\v`, `\f`, `\r`, 0x85, 0xa0
+// The following list is considered white space characters: ` `, `\t`, `\n`, `\v`, `\f`, `\r`, 0x85, 0xa0
 // Example: assert byte(` `).is_space() == true
+[inline]
 pub fn (c byte) is_space() bool {
-	// 0x0085 is NEXT LINE (NEL)
-	// 0x00a0 is NO-BREAK SPACE
-	return c in [` `, `\n`, `\t`, `\v`, `\f`, `\r`, 0x85, 0xa0]
+	// 0x85 is NEXT LINE (NEL)
+	// 0xa0 is NO-BREAK SPACE
+	return c == 32 || (c > 8 && c < 14) || (c == 0x85) || (c == 0xa0)
 }
 
 // trim_space strips any of ` `, `\n`, `\t`, `\v`, `\f`, `\r` from the start and end of the string.

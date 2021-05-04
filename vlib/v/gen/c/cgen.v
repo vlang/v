@@ -14,18 +14,26 @@ import v.depgraph
 const (
 	// NB: some of the words in c_reserved, are not reserved in C,
 	// but are in C++, or have special meaning in V, thus need escaping too.
-	c_reserved = ['auto', 'break', 'calloc', 'case', 'char', 'class', 'const', 'continue', 'default',
-		'delete', 'do', 'double', 'else', 'enum', 'error', 'exit', 'export', 'extern', 'float',
-		'for', 'free', 'goto', 'if', 'inline', 'int', 'link', 'long', 'malloc', 'namespace', 'new',
-		'panic', 'register', 'restrict', 'return', 'short', 'signed', 'sizeof', 'static', 'struct',
-		'switch', 'typedef', 'typename', 'union', 'unix', 'unsigned', 'void', 'volatile', 'while',
-		'template',
-	]
+	c_reserved     = ['auto', 'break', 'calloc', 'case', 'char', 'class', 'const', 'continue',
+		'default', 'delete', 'do', 'double', 'else', 'enum', 'error', 'exit', 'export', 'extern',
+		'float', 'for', 'free', 'goto', 'if', 'inline', 'int', 'link', 'long', 'malloc', 'namespace',
+		'new', 'panic', 'register', 'restrict', 'return', 'short', 'signed', 'sizeof', 'static',
+		'struct', 'switch', 'typedef', 'typename', 'union', 'unix', 'unsigned', 'void', 'volatile',
+		'while', 'template']
+	c_reserved_map = string_array_to_map(c_reserved)
 	// same order as in token.Kind
-	cmp_str    = ['eq', 'ne', 'gt', 'lt', 'ge', 'le']
+	cmp_str        = ['eq', 'ne', 'gt', 'lt', 'ge', 'le']
 	// when operands are switched
-	cmp_rev    = ['eq', 'ne', 'lt', 'gt', 'le', 'ge']
+	cmp_rev        = ['eq', 'ne', 'lt', 'gt', 'le', 'ge']
 )
+
+fn string_array_to_map(a []string) map[string]bool {
+	mut res := map[string]bool{}
+	for x in a {
+		res[x] = true
+	}
+	return res
+}
 
 struct Gen {
 	pref         &pref.Preferences
@@ -5858,7 +5866,7 @@ fn op_to_fn_name(name string) string {
 [inline]
 fn c_name(name_ string) string {
 	name := util.no_dots(name_)
-	if name in c.c_reserved {
+	if name in c.c_reserved_map {
 		return 'v_$name'
 	}
 	return name
