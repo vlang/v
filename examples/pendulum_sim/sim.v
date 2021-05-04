@@ -1,11 +1,11 @@
-/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
-/* sim.v * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
-/* created by: jordan bonecutter * * * * * * * * * * * * * * * * * * * */
-/* jpbonecutter@gmail.com  * * * * * * * * * * * * * * * * * * * * * * */
-/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
-
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+// sim.v * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+// created by: jordan bonecutter * * * * * * * * * * * * * * * * * * *
+// jpbonecutter@gmail.com  * * * * * * * * * * * * * * * * * * * * * *
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
 import math
 import os
+import runtime
 
 struct Vec3D {
 	x f64
@@ -42,10 +42,10 @@ fn (v Vec3D) norm() f64 {
 }
 
 struct SimState {
-	mut:
+mut:
 	position Vec3D
 	velocity Vec3D
-	accel		 Vec3D
+	accel    Vec3D
 }
 
 // magnets lie at [
@@ -54,12 +54,12 @@ struct SimState {
 //	 -magnet_height
 // ]
 struct SimParams {
-	rope_length f64
-	bearing_mass f64
-	magnet_spacing f64
-	magnet_height f64
+	rope_length     f64
+	bearing_mass    f64
+	magnet_spacing  f64
+	magnet_height   f64
 	magnet_strength f64
-	gravity f64
+	gravity         f64
 }
 
 fn (params SimParams) get_rope_vector(state SimState) Vec3D {
@@ -174,12 +174,12 @@ fn (state SimState) done() bool {
 }
 
 struct PPMWriter {
-	mut:
+mut:
 	file os.File
 }
 
 struct ImageSettings {
-	width int
+	width  int
 	height int
 }
 
@@ -190,14 +190,12 @@ struct Pixel {
 }
 
 fn (mut writer PPMWriter) start_for_file(fname string, settings ImageSettings) {
-	writer.file = os.create(fname) or {
-		panic("can't create file ${fname}")
-	}
-	writer.file.writeln('P6 ${settings.width} ${settings.height} 255')
+	writer.file = os.create(fname) or { panic("can't create file $fname") }
+	writer.file.writeln('P6 $settings.width $settings.height 255') or {}
 }
 
 fn (mut writer PPMWriter) next_pixel(p Pixel) {
-	writer.file.write([p.r, p.g, p.b])
+	writer.file.write([p.r, p.g, p.b]) or {}
 }
 
 fn (mut writer PPMWriter) finish() {
@@ -209,7 +207,7 @@ fn sim_runner(mut state SimState, params SimParams) Pixel {
 	for _ in 0 .. 100000 {
 		state.increment(0.0005, params)
 		if state.done() {
-			println("done!")
+			println('done!')
 			break
 		}
 	}
@@ -240,24 +238,22 @@ fn sim_runner(mut state SimState, params SimParams) Pixel {
 	}
 }
 
-struct SimResult{
+struct SimResult {
 	id u64
 	p  Pixel
 }
 
-struct SimRequest{
-	id u64
-	params  SimParams
-	mut:
+struct SimRequest {
+	id     u64
+	params SimParams
+mut:
 	initial SimState
 }
 
 fn sim_worker(request_chan chan SimRequest, result_chan chan SimResult) {
 	// serve sim requests as they come in
 	for {
-		mut request := <-request_chan or {
-			break
-		}
+		mut request := <-request_chan or { break }
 
 		result_chan <- SimResult{
 			id: request.id
@@ -268,18 +264,18 @@ fn sim_worker(request_chan chan SimRequest, result_chan chan SimResult) {
 
 struct ValidPixel {
 	Pixel
-	mut:
+mut:
 	valid bool
 }
 
 fn image_worker(mut writer PPMWriter, result_chan chan SimResult, total_pixels u64) {
 	// as new pixels come in, write them to the image file
 	mut current_index := u64(0)
-	mut pixel_buf := []ValidPixel{len: int(total_pixels), init: ValidPixel{valid: false}}
+	mut pixel_buf := []ValidPixel{len: int(total_pixels), init: ValidPixel{
+		valid: false
+	}}
 	for {
-		result := <-result_chan or {
-			break
-		}
+		result := <-result_chan or { break }
 		pixel_buf[result.id].Pixel = result.p
 		pixel_buf[result.id].valid = true
 
@@ -294,9 +290,12 @@ fn image_worker(mut writer PPMWriter, result_chan chan SimResult, total_pixels u
 	}
 }
 
-const HEIGHT = 100
-const WIDTH  = 70
-const CORES = 12
+const height = 100
+
+const width = 70
+
+// customisable through setting VJOBS
+const parallel_workers = runtime.nr_jobs()
 
 fn main() {
 	params := SimParams{
@@ -310,8 +309,8 @@ fn main() {
 
 	mut writer := PPMWriter{}
 	writer.start_for_file('test.ppm', ImageSettings{
-		width: WIDTH
-		height: HEIGHT
+		width: width
+		height: height
 	})
 	defer {
 		writer.finish()
@@ -321,20 +320,20 @@ fn main() {
 	request_chan := chan SimRequest{}
 
 	// start a worker on each core
-	for _ in 0 .. CORES {
+	for _ in 0 .. parallel_workers {
 		go sim_worker(request_chan, result_chan)
 	}
 
-	go fn(request_chan chan SimRequest, params SimParams) {
+	go fn (request_chan chan SimRequest, params SimParams) {
 		mut index := u64(0)
-		for y in 0 .. HEIGHT {
+		for y in 0 .. height {
 			println(y)
-			for x in 0 .. WIDTH {
+			for x in 0 .. width {
 				// setup initial conditions
 				mut state := SimState{}
 				state.position = Vec3D{
-					x: 0.1 * ((f64(x) - 0.5*f64(WIDTH - 1)) / f64(WIDTH - 1))
-					y: 0.1 * ((f64(y) - 0.5*f64(HEIGHT - 1)) / f64(HEIGHT - 1))
+					x: 0.1 * ((f64(x) - 0.5 * f64(width - 1)) / f64(width - 1))
+					y: 0.1 * ((f64(y) - 0.5 * f64(height - 1)) / f64(height - 1))
 					z: 0.0
 				}
 				state.velocity = Vec3D{}
@@ -350,6 +349,5 @@ fn main() {
 		request_chan.close()
 	}(request_chan, params)
 
-	image_worker(mut writer, result_chan, WIDTH * HEIGHT)
+	image_worker(mut writer, result_chan, width * height)
 }
-
