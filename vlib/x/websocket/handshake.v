@@ -7,25 +7,30 @@ import strings
 // handshake manages the websocket handshake process
 fn (mut ws Client) handshake() ? {
 	nonce := get_nonce(ws.nonce_size)
-	seckey := base64.encode(nonce)
+	seckey := base64.encode_str(nonce)
 	mut sb := strings.new_builder(1024)
 	defer {
-		sb.free()
+		unsafe { sb.free() }
 	}
-	sb.write('GET ')
-	sb.write(ws.uri.resource)
-	sb.write(ws.uri.querystring)
-	sb.write(' HTTP/1.1\r\nHost: ')
-	sb.write(ws.uri.hostname)
-	sb.write(':')
-	sb.write(ws.uri.port)
-	sb.write('\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n')
-	sb.write('Sec-WebSocket-Key: ')
-	sb.write(seckey)
-	sb.write('\r\nSec-WebSocket-Version: 13\r\n\r\n')
+	sb.write_string('GET ')
+	sb.write_string(ws.uri.resource)
+	sb.write_string(ws.uri.querystring)
+	sb.write_string(' HTTP/1.1\r\nHost: ')
+	sb.write_string(ws.uri.hostname)
+	sb.write_string(':')
+	sb.write_string(ws.uri.port)
+	sb.write_string('\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n')
+	sb.write_string('Sec-WebSocket-Key: ')
+	sb.write_string(seckey)
+	sb.write_string('\r\nSec-WebSocket-Version: 13')
+	for key in ws.header.keys() {
+		val := ws.header.custom_values(key).join(',')
+		sb.write_string('\r\n$key:$val')
+	}
+	sb.write_string('\r\n\r\n')
 	handshake := sb.str()
 	defer {
-		handshake.free()
+		unsafe { handshake.free() }
 	}
 	handshake_bytes := handshake.bytes()
 	ws.debug_log('sending handshake: $handshake')
@@ -112,7 +117,7 @@ fn (mut ws Client) read_handshake_str() ?string {
 	mut msg := [1024]byte{}
 	mut buffer := [1]byte{}
 	for total_bytes_read < 1024 {
-		bytes_read := ws.socket_read_ptr(byteptr(&buffer), 1) ?
+		bytes_read := ws.socket_read_ptr(&buffer[0], 1) ?
 		if bytes_read == 0 {
 			return error_with_code('unexpected no response from handshake', 5)
 		}

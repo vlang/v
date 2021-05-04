@@ -3,6 +3,7 @@ module main
 import gg
 import gx
 import os
+import math
 
 const (
 	win_width  = 600
@@ -11,7 +12,7 @@ const (
 )
 
 const (
-	text  = '
+	text = '
 Once upon a midnight dreary, while I pondered, weak and weary,
 Over many a quaint and curious volume of forgotten lore—
     While I nodded, nearly napping, suddenly there came a tapping,
@@ -66,7 +67,11 @@ fn main() {
 	mut app := &App{
 		gg: 0
 	}
-	app.gg = gg.new_context({
+	mut font_path := os.resource_abs_path(os.join_path('..', 'assets', 'fonts', 'RobotoMono-Regular.ttf'))
+	$if android {
+		font_path = 'fonts/RobotoMono-Regular.ttf'
+	}
+	app.gg = gg.new_context(
 		width: win_width
 		height: win_height
 		use_ortho: true // This is needed for 2D drawing
@@ -75,16 +80,25 @@ fn main() {
 		user_data: app
 		bg_color: bg_color
 		frame_fn: frame
-		font_path: os.resource_abs_path('../assets/fonts/RobotoMono-Regular.ttf') // window_user_ptr: ctx
-	})
+		font_path: font_path // window_user_ptr: ctx
+		// native_rendering: true
+	)
 	app.gg.run()
 }
 
 fn frame(mut app App) {
 	app.gg.begin()
+	width := gg.window_size().width
+	mut scale_factor := math.round(f32(width) / win_width)
+	if scale_factor <= 0 {
+		scale_factor = 1
+	}
+	text_cfg := gx.TextCfg{
+		size: 16 * int(scale_factor)
+	}
 	mut y := 10
 	for line in lines {
-		app.gg.draw_text_def(10, y, line)
+		app.gg.draw_text(10, y, line, text_cfg)
 		y += 30
 	}
 	app.gg.end()

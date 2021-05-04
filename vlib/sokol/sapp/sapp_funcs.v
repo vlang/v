@@ -4,8 +4,10 @@ module sapp
 fn C.sapp_isvalid() bool
 /* returns the current framebuffer width in pixels */
 fn C.sapp_width() int
+fn C.sapp_widthf() f32
 /* returns the current framebuffer height in pixels */
 fn C.sapp_height() int
+fn C.sapp_heightf() f32
 /* returns true when high_dpi was requested and actually running in a high-dpi scenario */
 fn C.sapp_high_dpi() bool
 /* returns the dpi scaling factor (window pixels to framebuffer pixels) */

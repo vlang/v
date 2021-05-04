@@ -34,9 +34,9 @@ fn test_double_ptr() {
 
 fn test_ptr_infix() {
 	v := 4
-	mut q := unsafe {&v - 1}
-	q = unsafe {q + 3}
-	assert q == unsafe {&v + 2}
+	mut q := unsafe { &v - 1 }
+	q = unsafe { q + 3 }
+	assert ptr_str(q) == ptr_str(unsafe { &v + 2 })
 }
 
 struct S1 {
@@ -48,13 +48,13 @@ fn (s S1) f() {
 
 fn test_funcs() {
 	s := S1{}
-	unsafe {s.f()}
+	unsafe { s.f() }
 	_ = C.strerror(0) // [trusted] function prototype in builtin/cfns.c.v
 }
 
 fn test_if_expr_unsafe() {
 	i := 4
-	p := if true { unsafe {&i} } else { unsafe {&i} }
+	p := if true { unsafe { &i } } else { unsafe { &i } }
 	assert *p == 4
 }
 

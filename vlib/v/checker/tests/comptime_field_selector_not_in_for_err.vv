@@ -6,7 +6,7 @@ struct Foo {
 fn test<T>() {
 	mut t := T{}
 	name := 'test'
-	t.$name = '3'
+	t.$(name) = '3'
 }
 
 fn main() {

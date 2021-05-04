@@ -1,0 +1,105 @@
+name: Cross CI
+
+on:
+  push:
+    paths-ignore:
+      - "**.md"
+  pull_request:
+    paths-ignore:
+      - "**.md"
+
+jobs:
+
+  macos-cross:
+    runs-on: macOS-latest
+    timeout-minutes: 15
+    env:
+      VFLAGS: -cc clang
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 10
+          
+      - name: Install dependencies
+        run: |
+          brew install mingw-w64
+          export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
+          
+      - name: Build V
+        run: make
+
+      - name: Test symlink
+        run: ./v symlink
+        
+      - name: Cross-compilation to Linux
+        run: |
+          ./v -os linux cmd/v
+          # TODO: fix this: ./v -os linux examples/2048/2048.v
+          
+      - name: Cross-compilation to Windows
+        run: |
+          ./v -os windows cmd/v
+          ./v -os windows examples/2048/2048.v
+
+  linux-cross:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 15
+    env:
+      VFLAGS: -cc tcc -no-retry-compilation
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 10
+      - name: Install dependencies
+        run: |
+          sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind
+          sudo apt-get install --quiet -y mingw-w64 wine-stable winetricks
+      - name: Turn off the wine crash dialog
+        run: winetricks nocrashdialog
+        
+      - name: Build v
+        run: make
+        
+      - name: v.c can be compiled and run with -os cross
+        run: |
+          ./v -os cross -o /tmp/v.c cmd/v
+          gcc  -g -std=gnu11 -w -o v_from_vc /tmp/v.c  -lm -lpthread
+          ls -lart v_from_vc
+          ./v_from_vc version
+          
+      - name: v_win.c can be compiled and run with -os windows
+        run: |
+          ./v -os windows -o /tmp/v_win.c cmd/v
+          x86_64-w64-mingw32-gcc  /tmp/v_win.c -std=c99 -w -municode -o v_from_vc.exe
+          ls -lart v_from_vc.exe
+          wine v_from_vc.exe version
+          
+      - name: hello_world.v can be cross compiled to hello_world.exe
+        run: |
+          ./v -os windows examples/hello_world.v
+          ls -lart examples/hello_world.exe
+          wine examples/hello_world.exe
+          
+      - name: 2048.v can be cross compiled to 2048.exe
+        run: |
+          ./v -os windows examples/2048/2048.v
+          ls -lart examples/2048/2048.exe
+
+  windows-cross:
+    runs-on: windows-2019
+    timeout-minutes: 15
+    env:
+      VFLAGS: -cc msvc
+    steps:
+      - uses: actions/checkout@v2
+      - name: Build
+        run: |
+          echo %VFLAGS%
+          echo $VFLAGS
+          .\make.bat --verbose -msvc
+      - name: TODO v_win.c can be compiled and run with -os windows
+        run: |
+          .\v.exe -os windows -showcc -o v2.exe cmd\v
+          .\v.exe -os windows -o v_win.c cmd\v
+          dir v2.exe
+          dir v_win.c

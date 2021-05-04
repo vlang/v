@@ -3,4 +3,5 @@ vlib/v/checker/tests/assign_expr_type_err_a.vv:3:2: error: operator <<= not defi
     2 |     mut foo := 0.5
     3 |     foo <<= 1
       |     ~~~
-    4 | }
+    4 |     _ = foo
+    5 | }

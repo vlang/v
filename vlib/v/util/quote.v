@@ -58,7 +58,7 @@ pub fn smart_quote(str string, raw bool) string {
 						skip_next = true
 					}
 					// keep all valid escape sequences
-					else if next !in invalid_escapes {
+					else if next !in util.invalid_escapes {
 						toadd = '\\' + next
 						skip_next = true
 					} else {
@@ -90,7 +90,7 @@ pub fn smart_quote(str string, raw bool) string {
 				toadd = '\\n'
 			}
 		}
-		result.write(toadd)
+		result.write_string(toadd)
 		last = current
 	}
 	return result.str()

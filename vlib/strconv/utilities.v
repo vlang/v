@@ -227,12 +227,12 @@ f64 to string with string format
 
 */
 
-// f32_to_str_l return a string with the f32 converted in a strign in decimal notation
+// f32_to_str_l return a string with the f32 converted in a string in decimal notation
 pub fn f32_to_str_l(f f64) string {
 	return f64_to_str_l(f32(f))
 }
 
-// f64_to_str_l return a string with the f64 converted in a strign in decimal notation
+// f64_to_str_l return a string with the f64 converted in a string in decimal notation
 pub fn f64_to_str_l(f f64) string {
 	s := f64_to_str(f,18)
 
@@ -250,7 +250,7 @@ pub fn f64_to_str_l(f f64) string {
 	mut exp        := 0
 	mut exp_sgn    := 1
 
-	// get sign and deciaml parts
+	// get sign and decimal parts
 	for c in s {
 		if c == `-` {
 			sgn = -1
@@ -260,7 +260,8 @@ pub fn f64_to_str_l(f f64) string {
 			i++
 		}
 		else if c >= `0` && c <= `9` {
-			b[i1++] = c
+			b[i1] = c
+			i1++
 			i++
 		} else if c == `.` {
 			if sgn > 0 {
@@ -298,43 +299,51 @@ pub fn f64_to_str_l(f f64) string {
 
 	if sgn == 1 {
 		if m_sgn_flag {
-			res[r_i++] = `+`
+			res[r_i] = `+`
+			r_i++
 		}
 	} else {
-		res[r_i++] = `-`
+		res[r_i] = `-`
+		r_i++
 	}
 
 	i = 0
 	if exp_sgn >= 0 {
 		for b[i] != 0 {
-			res[r_i++] = b[i]
+			res[r_i] = b[i]
+			r_i++
 			i++
 			if i >= d_pos && exp >= 0 {
 				if exp == 0 {
-					res[r_i++] = `.`
+					res[r_i] = `.`
+					r_i++
 				}
 				exp--
 			}
 		}
 		for exp >= 0 {
-			res[r_i++] = `0`
+			res[r_i] = `0`
+			r_i++
 			exp--
 		}
 	} else {
 		mut dot_p := true
 		for exp > 0 {
-			res[r_i++] = `0`
+			res[r_i] = `0`
+			r_i++
 			exp--
 			if dot_p  {
-				res[r_i++] = `.`
+				res[r_i] = `.`
+				r_i++
 				dot_p = false
 			}
 		}
 		for b[i] != 0 {
-			res[r_i++] = b[i]
+			res[r_i] = b[i]
+			r_i++
 			i++
 		}
 	}
 	res[r_i] = 0
-	return tos(res.data,r_i)
+	return unsafe { tos(res.data,r_i) }
 }

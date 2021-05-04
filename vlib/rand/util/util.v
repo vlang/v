@@ -3,49 +3,49 @@
 // that can be found in the LICENSE file.
 module util
 
-import time
+import rand
 
-// Commonly used constants across RNGs - some taken from "Numerical Recipes".
-pub const (
-	lower_mask     = u64(0x00000000FFFFFFFF)
-	max_u32        = 0xFFFFFFFF
-	max_u64        = 0xFFFFFFFFFFFFFFFF
-	max_u32_as_f32 = f32(max_u32) + 1
-	max_u64_as_f64 = f64(max_u64) + 1
-	u31_mask       = u32(0x7FFFFFFF)
-	u63_mask       = u64(0x7FFFFFFFFFFFFFFF)
-)
-
-// nr_next returns a next value based on the previous value `prev`.
-[inline]
-fn nr_next(prev u32) u32 {
-	return prev * 1664525 + 1013904223
-}
-
-// time_seed_array returns the required number of u32s generated from system time.
-[inline]
-pub fn time_seed_array(count int) []u32 {
-	ctime := time.now()
-	mut seed := u32(ctime.unix_time() ^ ctime.microsecond)
-	mut seed_data := []u32{cap: count}
-	for _ in 0 .. count {
-		seed = nr_next(seed)
-		seed_data << nr_next(seed)
+// sample_nr returns a sample of the array without replacement. This means the indices cannot repeat and it restricts the sample size to be less than or equal to the size of the given array. Note that if the array has repeating elements, then the sample may have repeats as well.
+pub fn sample_nr<T>(array []T, k int) []T {
+	n := array.len
+	if k > n {
+		panic('Cannot sample $k elements without replacement from a $n-element array.')
 	}
-	return seed_data
+	mut results := []T{len: k}
+	mut indices := []int{len: n}
+	// Initialize with all indices
+	for i, mut v in indices {
+		v = i
+	}
+	shuffle(mut indices, k)
+	for i in 0 .. k {
+		results[i] = array[indices[i]]
+	}
+	return results
 }
 
-// time_seed_32 returns a 32-bit seed generated from system time.
-[inline]
-pub fn time_seed_32() u32 {
-	return time_seed_array(1)[0]
+// sample_r returns a sample of the array with replacement. This means the elements can repeat and the size of the sample may exceed the size of the array
+pub fn sample_r<T>(array []T, k int) []T {
+	n := array.len
+	mut results := []T{len: k}
+	for i in 0 .. k {
+		results[i] = array[rand.intn(n)]
+	}
+	return results
 }
 
-// time_seed_64 returns a 64-bit seed generated from system time.
-[inline]
-pub fn time_seed_64() u64 {
-	seed_data := time_seed_array(2)
-	lower := u64(seed_data[0])
-	upper := u64(seed_data[1])
-	return lower | (upper << 32)
+// shuffle randomizes the first `n` items of an array in place (all if `n` is 0)
+[direct_array_access]
+pub fn shuffle<T>(mut a []T, n int) {
+	if n < 0 || n > a.len {
+		panic("argument 'n' must be in range [0, a.len]")
+	}
+	cnt := if n == 0 { a.len - 1 } else { n }
+	for i in 0 .. cnt {
+		x := rand.int_in_range(i, a.len)
+		// swap
+		a_i := a[i]
+		a[i] = a[x]
+		a[x] = a_i
+	}
 }

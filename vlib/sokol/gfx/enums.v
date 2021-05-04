@@ -126,13 +126,14 @@ pub enum ImageType {
 }
 
 pub enum CubeFace {
-    pos_x
-    neg_x
-    pos_y
-    neg_y
-    pos_z
-    neg_z
-    num
+	pos_x
+	neg_x
+	pos_y
+	neg_y
+	pos_z
+	neg_z
+	num
+	_force_u32 = 0x7fffffff
 }
 
 pub enum ShaderStage {

@@ -17,7 +17,7 @@ fn check_cache_entry_fpath_invariants(x string, extension string) {
 fn testsuite_begin() {
 	os.setenv('VCACHE', vcache_folder, true)
 	// eprintln('testsuite_begin, vcache_folder = $vcache_folder')
-	os.rmdir_all(vcache_folder)
+	os.rmdir_all(vcache_folder) or {}
 	vcache.new_cache_manager([])
 	assert os.is_dir(vcache_folder)
 }
@@ -54,33 +54,25 @@ fn test_different_options_should_produce_different_cache_entries_for_same_key_an
 
 fn test_exists() {
 	mut cm := vcache.new_cache_manager([])
-	cm.exists('.o', 'abc') or {
-		assert true
-	}
+	cm.exists('.o', 'abc') or { assert true }
 	//
 	x := cm.save('.x', 'abc', '') or {
 		assert false
 		''
 	}
-	cm.exists('.o', 'abc') or {
-		assert true
-	}
+	cm.exists('.o', 'abc') or { assert true }
 	//
 	y := cm.save('.o', 'zbc', '') or {
 		assert false
 		''
 	}
-	cm.exists('.o', 'abc') or {
-		assert true
-	}
+	cm.exists('.o', 'abc') or { assert true }
 	//
 	z := cm.save('.o', 'abc', '') or {
 		assert false
 		''
 	}
-	cm.exists('.o', 'abc') or {
-		assert false
-	}
+	cm.exists('.o', 'abc') or { assert false }
 	//
 	assert os.is_file(x)
 	assert os.is_file(y)
@@ -104,6 +96,6 @@ fn test_readme_exists_and_is_readable() {
 
 fn testsuite_end() {
 	os.chdir(os.wd_at_startup)
-	os.rmdir_all(vcache_folder)
+	os.rmdir_all(vcache_folder) or {}
 	assert !os.is_dir(vcache_folder)
 }

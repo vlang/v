@@ -29,7 +29,13 @@
 // ```
 // Please note that you should let v load the zsh completions after the call to compinit
 //
-// # powershell //TODO
+// # powershell
+// To install auto-complete for V in PowerShell, simply do this
+// `v complete setup powershell >> $PROFILE`
+// and reload profile
+// `& $PROFILE`
+// If `$PROFILE` didn't exist yet, create it before
+// `New-Item -Type File -Force $PROFILE`
 //
 module main
 
@@ -43,7 +49,7 @@ const (
 // Snooped from cmd/v/v.v, vlib/v/pref/pref.v
 const (
 	auto_complete_commands    = [
-		/* simple_cmd */
+		// simple_cmd
 		'fmt',
 		'up',
 		'vet',
@@ -63,7 +69,7 @@ const (
 		'setup-freetype',
 		'doc',
 		'doctor',
-		/* commands */
+		// commands
 		'help',
 		'new',
 		'init',
@@ -119,11 +125,11 @@ const (
 		'-usecache',
 		'-prealloc',
 		'-parallel',
-		'-x64',
+		'-native',
 		'-W',
 		'-keepc',
 		'-w',
-		'-print_v_files',
+		'-print-v-files',
 		'-error-limit',
 		'-os',
 		'-printfn',
@@ -213,7 +219,8 @@ fn auto_complete(args []string) {
 			shell := sub_args[1]
 			mut setup := ''
 			match shell {
-				'bash' { setup = '
+				'bash' {
+					setup = '
 _v_completions() {
 	local src
 	local limit
@@ -227,15 +234,19 @@ _v_completions() {
 }
 
 complete -o nospace -F _v_completions v
-' }
-				'fish' { setup = '
+'
+				}
+				'fish' {
+					setup = '
 function __v_completions
 	# Send all words up to the one before the cursor
 	$vexe complete fish (commandline -cop)
 end
 complete -f -c v -a "(__v_completions)"
-' }
-				'zsh' { setup = '
+'
+				}
+				'zsh' {
+					setup = '
 #compdef v
 _v() {
 	local src
@@ -247,8 +258,18 @@ _v() {
 	fi
 }
 compdef _v v
-' }
-				// 'powershell' {} //TODO
+'
+				}
+				'powershell' {
+					setup = '
+Register-ArgumentCompleter -Native -CommandName v -ScriptBlock {
+	param(\$commandName, \$wordToComplete, \$cursorPosition)
+		$vexe complete powershell "\$wordToComplete" | ForEach-Object {
+			[System.Management.Automation.CompletionResult]::new(\$_, \$_, \'ParameterValue\', \$_)
+		}
+}
+'
+				}
 				else {}
 			}
 			println(setup)
@@ -264,7 +285,7 @@ compdef _v v
 			}
 			println(lines.join('\n'))
 		}
-		'fish' {
+		'fish', 'powershell' {
 			if sub_args.len <= 1 {
 				exit(0)
 			}
@@ -286,7 +307,6 @@ compdef _v v
 			}
 			println(lines.join('\n'))
 		}
-		// 'powershell' {} //TODO
 		else {}
 	}
 	exit(0)
@@ -295,11 +315,10 @@ compdef _v v
 // append_separator_if_dir is a utility function.that returns the input `path` appended an
 // OS dependant path separator if the `path` is a directory.
 fn append_separator_if_dir(path string) string {
-	return if os.is_dir(path) && !path.ends_with(os.path_separator) {
-		path + os.path_separator
-	} else {
-		path
+	if os.is_dir(path) && !path.ends_with(os.path_separator) {
+		return path + os.path_separator
 	}
+	return path
 }
 
 // auto_complete_request retuns a list of completions resolved from a full argument list.

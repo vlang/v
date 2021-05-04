@@ -1,4 +1,4 @@
-// Copyright (c) 2020 Raúl Hernández. All rights reserved.
+// Copyright (c) 2020-2021 Raúl Hernández. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module ui
@@ -108,13 +108,19 @@ pub enum KeyCode {
 	f10                  = 299
 	f11                  = 300
 	f12                  = 301
+	f13                  = 302
+	f14                  = 303
+	f15                  = 304
+	f16                  = 305
+	f17                  = 306
+	f18                  = 307
+	f19                  = 308
+	f20                  = 309
+	f21                  = 310
+	f22                  = 311
+	f23                  = 312
+	f24                  = 313
 }
-
-pub const (
-	shift = u32(1 << 0)
-	ctrl  = u32(1 << 1)
-	alt   = u32(1 << 2)
-)
 
 pub enum Direction {
 	unknown
@@ -142,6 +148,13 @@ pub enum EventType {
 	resized
 }
 
+[flag]
+pub enum Modifiers {
+	ctrl
+	shift
+	alt
+}
+
 pub struct Event {
 pub:
 	typ       EventType
@@ -154,7 +167,7 @@ pub:
 
 	// Keyboard event info
 	code      KeyCode
-	modifiers u32
+	modifiers Modifiers
 	ascii     byte
 	utf8      string
 
@@ -164,10 +177,10 @@ pub:
 }
 
 pub struct Context {
+	ExtraContext // contains fields specific to an implementation
 pub:
 	cfg 		  Config
 mut:
-	read_buf      []byte
 	print_buf     []byte
 	paused        bool
 	enable_su     bool
@@ -197,4 +210,39 @@ pub struct Config {
 	skip_init_checks     bool
 	// All kill signals to set up exit listeners on
 	reset                []int = [1, 2, 3, 4, 6, 7, 8, 9, 11, 13, 14, 15, 19]
+}
+
+[inline]
+fn (ctx &Context) init() {
+	if ctx.cfg.init_fn != voidptr(0) {
+		ctx.cfg.init_fn(ctx.cfg.user_data)
+	}
+}
+
+[inline]
+fn (ctx &Context) frame() {
+	if ctx.cfg.frame_fn != voidptr(0) {
+		ctx.cfg.frame_fn(ctx.cfg.user_data)
+	}
+}
+
+[inline]
+fn (ctx &Context) cleanup() {
+	if ctx.cfg.cleanup_fn != voidptr(0) {
+		ctx.cfg.cleanup_fn(ctx.cfg.user_data)
+	}
+}
+
+[inline]
+fn (ctx &Context) fail(error string) {
+	if ctx.cfg.fail_fn != voidptr(0) {
+		ctx.cfg.fail_fn(error)
+	}
+}
+
+[inline]
+fn (ctx &Context) event(event &Event) {
+	if ctx.cfg.event_fn != voidptr(0) {
+		ctx.cfg.event_fn(event, ctx.cfg.user_data)
+	}
 }

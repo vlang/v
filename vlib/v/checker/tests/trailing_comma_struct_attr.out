@@ -1,4 +1,4 @@
-vlib/v/checker/tests/trailing_comma_struct_attr.vv:3:31: error: unexpected `]`, expecting `name` 
+vlib/v/checker/tests/trailing_comma_struct_attr.vv:3:31: error: unexpected token `]`, expecting name
     1 | struct User {
     2 |     name string
     3 |     jobs []string [json:jobss;]

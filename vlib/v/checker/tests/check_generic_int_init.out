@@ -1,0 +1,6 @@
+vlib/v/checker/tests/check_generic_int_init.vv:2:9: error: type `int` is private
+    1 | fn test<T>() T {
+    2 |     return T{}
+      |            ~~~
+    3 | }
+    4 |

@@ -29,7 +29,7 @@ enum Char_parse_state {
 	reset_params
 }
 
-enum Align_text {
+pub enum Align_text {
 	right = 0
 	left
 	center
@@ -97,7 +97,8 @@ pub fn f64_to_str_lnd(f f64, dec_digit int) string {
 			i++
 		}
 		else if c >= `0` && c <= `9` {
-			b[i1++] = c
+			b[i1] = c
+			i1++
 			i++
 		} else if c == `.` {
 			if sgn > 0 {
@@ -136,46 +137,60 @@ pub fn f64_to_str_lnd(f f64, dec_digit int) string {
 
 	if sgn == 1 {
 		if m_sgn_flag {
-			res[r_i++] = `+`
+			res[r_i] = `+`
+			r_i++
 		}
 	} else {
-		res[r_i++] = `-`
+		res[r_i] = `-`
+		r_i++
 	}
 
 	i = 0
 	if exp_sgn >= 0 {
 		for b[i] != 0 {
-			res[r_i++] = b[i]
+			res[r_i] = b[i]
+			r_i++
 			i++
 			if i >= d_pos && exp >= 0 {
 				if exp == 0 {
 					dot_res_sp = r_i
-					res[r_i++] = `.`
+					res[r_i] = `.`
+					r_i++
 				}
 				exp--
 			}
 		}
 		for exp >= 0 {
-			res[r_i++] = `0`
+			res[r_i] = `0`
+			r_i++
 			exp--
 		}
 		//println("exp: $exp $r_i $dot_res_sp")
 	} else {
 		mut dot_p := true
 		for exp > 0 {
-			res[r_i++] = `0`
+			res[r_i] = `0`
+			r_i++
 			exp--
 			if dot_p  {
 				dot_res_sp = r_i
-				res[r_i++] = `.`
+				res[r_i] = `.`
+				r_i++
 				dot_p = false
 			}
 		}
 		for b[i] != 0 {
-			res[r_i++] = b[i]
+			res[r_i] = b[i]
+			r_i++
 			i++
 		}
 	}
+
+	// no more digits needed, stop here
+	if dec_digit <= 0 {
+		return unsafe { tos(res.data, dot_res_sp) }
+	}
+
 	//println("r_i-d_pos: ${r_i - d_pos}")
 	if dot_res_sp >= 0 {
 		if (r_i - dot_res_sp) > dec_digit {
@@ -183,18 +198,20 @@ pub fn f64_to_str_lnd(f f64, dec_digit int) string {
 		}
 		res[r_i] = 0
 		//println("result: [${tos(&res[0],r_i)}]")
-		return tos(res.data, r_i)
+		return unsafe { tos(res.data, r_i) }
 	} else {
 		if dec_digit > 0 {
 			mut c := 0
-			res[r_i++] = `.`
+			res[r_i] = `.`
+			r_i++
 			for c < dec_digit {
-				res[r_i++] = `0`
+				res[r_i] = `0`
+				r_i++
 				c++
 			}
 			res[r_i] = 0
 		}
-		return tos(res.data, r_i)
+		return unsafe { tos(res.data, r_i) }
 	}
 }
 
@@ -204,6 +221,7 @@ pub fn f64_to_str_lnd(f f64, dec_digit int) string {
 
 */
 pub struct BF_param {
+pub mut:
 	pad_ch       byte       = byte(` `)     // padding char
 	len0         int        = -1      // default len for whole the number or string
 	len1         int        = 6       // number of decimal digits, if needed
@@ -214,7 +232,10 @@ pub struct BF_param {
 }
 
 pub fn format_str(s string, p BF_param) string {
-	dif := p.len0 - s.len
+	if p.len0 <= 0 {
+		return s
+	}
+	dif := p.len0 - utf8_str_visible_length(s)
 	if dif <= 0 {
 		return s
 	}
@@ -224,7 +245,7 @@ pub fn format_str(s string, p BF_param) string {
 			res.write_b(p.pad_ch)
 		}
 	}
-	res.write(s)
+	res.write_string(s)
 	if p.allign == .left {
 		for i1 :=0; i1 < dif; i1++ {
 			res.write_b(p.pad_ch)
@@ -267,7 +288,7 @@ pub fn format_dec(d u64, p BF_param) string {
 			res.write_b(p.pad_ch)
 		}
 	}
-	res.write(s)
+	res.write_string(s)
 	if p.allign == .left {
 		for i1 :=0; i1 < dif; i1++ {
 			res.write_b(p.pad_ch)
@@ -321,7 +342,7 @@ pub fn format_fl(f f64, p BF_param) string {
 			res.write_b(p.pad_ch)
 		}
 	}
-	res.write(s)
+	res.write_string(s)
 	if p.allign == .left {
 		for i1 :=0; i1 < dif; i1++ {
 			res.write_b(p.pad_ch)
@@ -369,7 +390,7 @@ pub fn format_es(f f64, p BF_param) string {
 			res.write_b(p.pad_ch)
 		}
 	}
-	res.write(s)
+	res.write_string(s)
 	if p.allign == .left {
 		for i1 :=0; i1 < dif; i1++ {
 			res.write_b(p.pad_ch)
@@ -431,14 +452,14 @@ pub fn v_printf(str string, pt ... voidptr) {
 pub fn v_sprintf(str string, pt ... voidptr) string{
 	mut res := strings.new_builder(pt.len * 16)
 
-	mut i            := 0                // main strign index
+	mut i            := 0                // main string index
 	mut p_index      := 0                // parameter index
 	mut sign         := false            // sign flag
 	mut allign       := Align_text.right
 	mut len0         := -1               // forced length, if -1 free length
 	mut len1         := -1               // decimal part for floats
 	def_len1         := 6                // default value for len1
-	mut pad_ch       := byte(` `)              // pad char
+	mut pad_ch       := byte(` `)        // pad char
 
 	// prefix chars for Length field
 	mut ch1 := `0`  // +1 char if present else `0`
@@ -484,8 +505,8 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 		// pointer, manage it here
 		if ch == `p` && status == .field_char {
 			v_sprintf_panic(p_index, pt.len)
-			res.write("0x")
-			res.write(ptr_str(unsafe {pt[p_index]}))
+			res.write_string("0x")
+			res.write_string(ptr_str(unsafe {pt[p_index]}))
 			status = .reset_params
 			p_index++
 			i++
@@ -532,7 +553,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 				mut s := unsafe {*(&string(pt[p_index]))}
 				s = s[..len]
 				p_index++
-				res.write(s)
+				res.write_string(s)
 				status = .reset_params
 				i += 3
 				continue
@@ -672,7 +693,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 					}
 
 				}
-				res.write(format_dec(d1,{pad_ch: pad_ch, len0: len0, len1: 0, positive: positive, sign_flag: sign, allign: allign}))
+				res.write_string(format_dec(d1,{pad_ch: pad_ch, len0: len0, len1: 0, positive: positive, sign_flag: sign, allign: allign}))
 				status = .reset_params
 				p_index++
 				i++
@@ -715,7 +736,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 					}
 				}
 
-				res.write(format_dec(d1,{pad_ch: pad_ch, len0: len0, len1: 0, positive: positive, sign_flag: sign, allign: allign}))
+				res.write_string(format_dec(d1,{pad_ch: pad_ch, len0: len0, len1: 0, positive: positive, sign_flag: sign, allign: allign}))
 				status = .reset_params
 				p_index++
 				i++
@@ -764,7 +785,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 					s = s.to_upper()
 				}
 
-				res.write(format_str(s,{pad_ch: pad_ch, len0: len0, len1: 0, positive: true, sign_flag: false, allign: allign}))
+				res.write_string(format_str(s,{pad_ch: pad_ch, len0: len0, len1: 0, positive: true, sign_flag: false, allign: allign}))
 				status = .reset_params
 				p_index++
 				i++
@@ -778,7 +799,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 				positive := x >= f64(0.0)
 				len1 = if len1 >= 0 { len1 } else { def_len1 }
 				s := format_fl(f64(x), {pad_ch: pad_ch, len0: len0, len1: len1, positive: positive, sign_flag: sign, allign: allign})
-				res.write(if ch == `F` {s.to_upper()} else {s})
+				res.write_string(if ch == `F` {s.to_upper()} else {s})
 				status = .reset_params
 				p_index++
 				i++
@@ -790,7 +811,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 				positive := x >= f64(0.0)
 				len1 = if len1 >= 0 { len1 } else { def_len1 }
 				s := format_es(f64(x), {pad_ch: pad_ch, len0: len0, len1: len1, positive: positive, sign_flag: sign, allign: allign})
-				res.write(if ch == `E` {s.to_upper()} else {s})
+				res.write_string(if ch == `E` {s.to_upper()} else {s})
 				status = .reset_params
 				p_index++
 				i++
@@ -810,7 +831,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 					len1 = if len1 >= 0 { len1+1 } else { def_len1 }
 					s = format_es(x, {pad_ch: pad_ch, len0: len0, len1: len1, positive: positive, sign_flag: sign, allign: allign, rm_tail_zero: true})
 				}
-				res.write(if ch == `G` {s.to_upper()} else {s})
+				res.write_string(if ch == `G` {s.to_upper()} else {s})
 				status = .reset_params
 				p_index++
 				i++
@@ -822,7 +843,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 				v_sprintf_panic(p_index, pt.len)
 				s1 := unsafe{*(&string(pt[p_index]))}
 				pad_ch = ` `
-				res.write(format_str(s1, {pad_ch: pad_ch, len0: len0, len1: 0, positive: true, sign_flag: false, allign: allign}))
+				res.write_string(format_str(s1, {pad_ch: pad_ch, len0: len0, len1: 0, positive: true, sign_flag: false, allign: allign}))
 				status = .reset_params
 				p_index++
 				i++

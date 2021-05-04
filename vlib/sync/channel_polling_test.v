@@ -18,7 +18,7 @@ fn do_rec(ch chan int, resch chan i64, n int) {
 	mut sum := i64(0)
 	for _ in 0 .. n {
 		mut r := 0
-		for ch.try_pop(r) != .success {
+		for ch.try_pop(mut r) != .success {
 		}
 		sum += r
 	}

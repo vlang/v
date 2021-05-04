@@ -1,6 +1,16 @@
-const( str = 'abcdefghijklmnopqrstuvwxyz' num = 1234567890 )
-struct S1 { s1 string = str }
-struct S2 { s2 int = num }
+const (
+	str = 'abcdefghijklmnopqrstuvwxyz'
+	num = 1234567890
+)
+
+struct S1 {
+	s1 string = str
+}
+
+struct S2 {
+	s2 int = num
+}
+
 type Sum = S1 | S2
 
 fn test_as_cast_with_sumtype_fn_result() {

@@ -45,7 +45,13 @@ fn test_interpolation_array_to_string() {
 
 fn test_interpolation_array_of_map_to_string() {
 	mut ams := []map[string]string{}
-	ams << {'a': 'b', 'c': 'd'}
-	ams << {'e': 'f', 'g': 'h'}
+	ams << map{
+		'a': 'b'
+		'c': 'd'
+	}
+	ams << map{
+		'e': 'f'
+		'g': 'h'
+	}
 	assert '$ams' == "[{'a': 'b', 'c': 'd'}, {'e': 'f', 'g': 'h'}]"
 }

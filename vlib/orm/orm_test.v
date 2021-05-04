@@ -9,10 +9,11 @@ struct Module {
 	nr_downloads int
 }
 
+[table: 'userlist']
 struct User {
-	id             int
+	id             int    [primary; sql: serial]
 	age            int
-	name           string
+	name           string [sql: 'username']
 	is_customer    bool
 	skipped_string string [skip]
 }
@@ -24,11 +25,39 @@ struct Foo {
 fn test_orm_sqlite() {
 	db := sqlite.connect(':memory:') or { panic(err) }
 	db.exec('drop table if exists User')
-	db.exec("create table User (id integer primary key, age int default 0, name text default '', is_customer int default 0);")
+	sql db {
+		create table User
+	}
+
 	name := 'Peter'
-	db.exec("insert into User (name, age) values ('Sam', 29)")
-	db.exec("insert into User (name, age) values ('Peter', 31)")
-	db.exec("insert into User (name, age, is_customer) values ('Kate', 30, 1)")
+
+	sam := User{
+		age: 29
+		name: 'Sam'
+	}
+
+	peter := User{
+		age: 31
+		name: 'Peter'
+	}
+
+	k := User{
+		age: 30
+		name: 'Kate'
+		is_customer: true
+	}
+
+	sql db {
+		insert sam into User
+		insert peter into User
+		insert k into User
+	}
+
+	c := sql db {
+		select count from User where id != 1
+	}
+	assert c == 2
+
 	nr_all_users := sql db {
 		select count from User
 	}
@@ -104,6 +133,7 @@ fn test_orm_sqlite() {
 	sql db {
 		insert new_user into User
 	}
+
 	// db.insert<User>(user2)
 	x := sql db {
 		select from User where id == 4
@@ -127,6 +157,7 @@ fn test_orm_sqlite() {
 	sql db {
 		update User set age = 31 where name == 'Kate'
 	}
+
 	kate2 := sql db {
 		select from User where id == 3
 	}
@@ -136,6 +167,7 @@ fn test_orm_sqlite() {
 	sql db {
 		update User set age = 32, name = 'Kate N' where name == 'Kate'
 	}
+
 	mut kate3 := sql db {
 		select from User where id == 3
 	}
@@ -157,6 +189,7 @@ fn test_orm_sqlite() {
 	sql db {
 		update User set age = new_age, name = 'Kate N' where id == 3
 	}
+
 	kate3 = sql db {
 		select from User where id == 3
 	}
@@ -167,6 +200,7 @@ fn test_orm_sqlite() {
 	sql db {
 		update User set age = foo.age, name = 'Kate N' where id == 3
 	}
+
 	kate3 = sql db {
 		select from User where id == 3
 	}
@@ -209,10 +243,17 @@ fn test_orm_sqlite() {
 	sql db {
 		delete from User where age == 34
 	}
+
 	updated_oldest := sql db {
 		select from User order by age desc limit 1
 	}
 	assert updated_oldest.age == 31
+
+	db.exec('insert into User (name, age) values (NULL, 31)')
+	null_user := sql db {
+		select from User where id == 5
+	}
+	assert null_user.name == ''
 }
 
 fn test_orm_pg() {

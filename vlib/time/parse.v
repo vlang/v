@@ -13,16 +13,16 @@ pub fn parse(s string) ?Time {
 	}
 	shms := s[pos..]
 	hms := shms.split(':')
-	hour := hms[0][1..]
-	minute := hms[1]
-	second := hms[2]
+	hour_ := hms[0][1..]
+	minute_ := hms[1]
+	second_ := hms[2]
 	res := new_time(Time{
 		year: ymd[0].int()
 		month: ymd[1].int()
 		day: ymd[2].int()
-		hour: hour.int()
-		minute: minute.int()
-		second: second.int()
+		hour: hour_.int()
+		minute: minute_.int()
+		second: second_.int()
 	})
 	return res
 }
@@ -35,15 +35,12 @@ pub fn parse_rfc2822(s string) ?Time {
 	}
 	pos := months_string.index(fields[2]) or { return error('Invalid time format: $s') }
 	mm := pos / 3 + 1
-	mut tmstr := byteptr(0)
 	unsafe {
-		tmstr = malloc(s.len * 2)
+		tmstr := malloc(s.len * 2)
+		count := C.snprintf(&char(tmstr), (s.len * 2), c'%s-%02d-%s %s', fields[3].str,
+			mm, fields[1].str, fields[4].str)
+		return parse(tos(tmstr, count))
 	}
-	count := unsafe {
-		C.snprintf(charptr(tmstr), (s.len * 2), '%s-%02d-%s %s', fields[3].str, mm, fields[1].str,
-			fields[4].str)
-	}
-	return parse(tos(tmstr, count))
 }
 
 // ----- iso8601 -----
@@ -53,40 +50,40 @@ const (
 
 fn parse_iso8601_date(s string) ?(int, int, int) {
 	year, month, day, dummy := 0, 0, 0, byte(0)
-	count := unsafe { C.sscanf(charptr(s.str), '%4d-%2d-%2d%c', &year, &month, &day, &dummy) }
+	count := unsafe { C.sscanf(&char(s.str), c'%4d-%2d-%2d%c', &year, &month, &day, &dummy) }
 	if count != 3 {
-		return err_invalid_8601
+		return time.err_invalid_8601
 	}
 	return year, month, day
 }
 
 fn parse_iso8601_time(s string) ?(int, int, int, int, i64, bool) {
-	hour := 0
-	minute := 0
-	second := 0
-	microsecond := 0
+	hour_ := 0
+	minute_ := 0
+	second_ := 0
+	microsecond_ := 0
 	plus_min_z := `a`
 	offset_hour := 0
 	offset_minute := 0
 	mut count := unsafe {
-		C.sscanf(charptr(s.str), '%2d:%2d:%2d.%6d%c%2d:%2d', &hour, &minute, &second,
-			&microsecond, charptr(&plus_min_z), &offset_hour, &offset_minute)
+		C.sscanf(&char(s.str), c'%2d:%2d:%2d.%6d%c%2d:%2d', &hour_, &minute_, &second_,
+			&microsecond_, &char(&plus_min_z), &offset_hour, &offset_minute)
 	}
 	// Missread microsecond ([Sec Hour Minute].len == 3 < 4)
 	if count < 4 {
 		count = unsafe {
-			C.sscanf(charptr(s.str), '%2d:%2d:%2d%c%2d:%2d', &hour, &minute, &second,
-				charptr(&plus_min_z), &offset_hour, &offset_minute)
+			C.sscanf(&char(s.str), c'%2d:%2d:%2d%c%2d:%2d', &hour_, &minute_, &second_,
+				&char(&plus_min_z), &offset_hour, &offset_minute)
 		}
 		count++ // Increment count because skipped microsecond
 	}
 	if count < 4 {
-		return err_invalid_8601
+		return time.err_invalid_8601
 	}
 	is_local_time := plus_min_z == `a` && count == 4
 	is_utc := plus_min_z == `Z` && count == 5
 	if !(count == 7 || is_local_time || is_utc) {
-		return err_invalid_8601
+		return time.err_invalid_8601
 	}
 	if plus_min_z != `+` && plus_min_z != `-` && !is_utc && !is_local_time {
 		return error('Invalid 8601 format, expected `Z` or `+` or `-` as time separator')
@@ -101,7 +98,7 @@ fn parse_iso8601_time(s string) ?(int, int, int, int, i64, bool) {
 	if plus_min_z == `+` {
 		unix_offset *= -1
 	}
-	return hour, minute, second, microsecond, unix_offset, is_local_time
+	return hour_, minute_, second_, microsecond_, unix_offset, is_local_time
 }
 
 // parse_iso8601 parses rfc8601 time format yyyy-MM-ddTHH:mm:ss.dddddd+dd:dd as local time
@@ -113,21 +110,21 @@ pub fn parse_iso8601(s string) ?Time {
 	t_i := s.index('T') or { -1 }
 	parts := if t_i != -1 { [s[..t_i], s[t_i + 1..]] } else { s.split(' ') }
 	if !(parts.len == 1 || parts.len == 2) {
-		return err_invalid_8601
+		return time.err_invalid_8601
 	}
 	year, month, day := parse_iso8601_date(parts[0]) ?
-	mut hour, mut minute, mut second, mut microsecond, mut unix_offset, mut is_local_time := 0, 0, 0, 0, i64(0), true
+	mut hour_, mut minute_, mut second_, mut microsecond_, mut unix_offset, mut is_local_time := 0, 0, 0, 0, i64(0), true
 	if parts.len == 2 {
-		hour, minute, second, microsecond, unix_offset, is_local_time = parse_iso8601_time(parts[1]) ?
+		hour_, minute_, second_, microsecond_, unix_offset, is_local_time = parse_iso8601_time(parts[1]) ?
 	}
 	mut t := new_time(Time{
 		year: year
 		month: month
 		day: day
-		hour: hour
-		minute: minute
-		second: second
-		microsecond: microsecond
+		hour: hour_
+		minute: minute_
+		second: second_
+		microsecond: microsecond_
 	})
 	if is_local_time {
 		return t // Time already local time

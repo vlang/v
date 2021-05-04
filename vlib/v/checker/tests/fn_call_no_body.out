@@ -1,0 +1,13 @@
+vlib/v/checker/tests/fn_call_no_body.vv:7:9: error: cannot call a method that does not have a body
+    5 |
+    6 | fn main() {
+    7 |     Foo(0).f()
+      |            ~~~
+    8 |     f()
+    9 | }
+vlib/v/checker/tests/fn_call_no_body.vv:8:2: error: cannot call a function that does not have a body
+    6 | fn main() {
+    7 |     Foo(0).f()
+    8 |     f()
+      |     ~~~
+    9 | }

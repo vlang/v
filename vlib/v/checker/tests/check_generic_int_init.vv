@@ -1,0 +1,7 @@
+fn test<T>() T {
+	return T{}
+}
+
+fn main() {
+	_ := test<int>()
+}

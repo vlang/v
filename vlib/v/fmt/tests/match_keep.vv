@@ -1,5 +1,4 @@
-fn main() {
-	// Nested match
+fn nested_match() {
 	match 100 {
 		0...1 {
 			println('0 to 1')
@@ -11,7 +10,9 @@ fn main() {
 			}
 		}
 	}
-	// StructInit
+}
+
+fn branches_are_struct_inits() {
 	match 'a' {
 		'b' { SpamStruct{} }
 	}
@@ -25,19 +26,21 @@ fn main() {
 	match 'a' {
 		'b' {
 			SpamStruct{
-				// only a comment
+				// comment inside init
 			}
 		}
 	}
-	// CallExpr with or block
+}
+
+fn branches_are_call_exprs_with_or_blocks() {
 	match 'a' {
-		'b' { foo() or { panic(err) } }
+		'b' { foo() or { panic(err.msg) } }
 	}
 	match 'a' {
 		'b' {
 			foo() or {
 				// do stuff
-				panic(err)
+				panic(err.msg)
 			}
 		}
 	}
@@ -45,8 +48,29 @@ fn main() {
 		'b' {
 			foo() or {
 				another_stmt()
-				panic(err)
+				panic(err.msg)
 			}
 		}
+	}
+}
+
+fn keep_branch_linebreaks() {
+	a := 10
+	match a {
+		// first comment
+		10 {
+			println('10')
+		}
+		20 {
+			println('20')
+		}
+		else {}
+	}
+	match a {
+		// first comment
+		10 { println('10') }
+		// post_comment of the first branch
+		20 { println('20') }
+		else {}
 	}
 }

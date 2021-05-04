@@ -1,4 +1,5 @@
 import time
+import math
 
 const (
 	time_to_test = time.Time{
@@ -87,12 +88,14 @@ fn test_format_ss() {
 }
 
 fn test_format_ss_milli() {
-	assert '11.07.1980 21:23:42.123' == time_to_test.get_fmt_str(.dot, .hhmmss24_milli, .ddmmyyyy)
+	assert '11.07.1980 21:23:42.123' == time_to_test.get_fmt_str(.dot, .hhmmss24_milli,
+		.ddmmyyyy)
 	assert '1980-07-11 21:23:42.123' == time_to_test.format_ss_milli()
 }
 
 fn test_format_ss_micro() {
-	assert '11.07.1980 21:23:42.123456' == time_to_test.get_fmt_str(.dot, .hhmmss24_micro, .ddmmyyyy)
+	assert '11.07.1980 21:23:42.123456' == time_to_test.get_fmt_str(.dot, .hhmmss24_micro,
+		.ddmmyyyy)
 	assert '1980-07-11 21:23:42.123456' == time_to_test.format_ss_micro()
 }
 
@@ -206,7 +209,7 @@ fn test_utc() {
 
 fn test_unix_time() {
 	t1 := time.utc()
-	time.sleep_ms(50)
+	time.sleep(50 * time.millisecond)
 	t2 := time.utc()
 	ut1 := t1.unix_time()
 	ut2 := t2.unix_time()
@@ -220,4 +223,25 @@ fn test_unix_time() {
 	// println('utm1: $utm1 | utm2: $utm2')
 	assert utm2 - utm1 > 2
 	assert utm2 - utm1 < 999
+}
+
+fn test_offset() {
+	u := time.utc()
+	n := time.now()
+	//
+	mut diff_seconds := 0
+	if u.day != n.day {
+		if u.day > n.day {
+			diff_seconds = int(math.abs(((u.hour * 60 + u.minute) - (n.hour * 60 + n.minute)) * 60)) - 86400
+		} else {
+			diff_seconds = 86400 - int(math.abs(((u.hour * 60 + u.minute) - (n.hour * 60 + n.minute)) * 60))
+		}
+		if math.abs(u.day - n.day) > 1 { // different month
+			diff_seconds = diff_seconds * -1
+		}
+	} else { // same day
+		diff_seconds = ((n.hour * 60 + n.minute) - (u.hour * 60 + u.minute)) * 60
+	}
+
+	assert diff_seconds == time.offset()
 }

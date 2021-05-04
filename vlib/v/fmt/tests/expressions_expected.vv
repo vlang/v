@@ -53,7 +53,7 @@ fn main() {
 	println('this is quite a long string' +
 		' that is followd by an even longer part that should go to another line')
 	if (a == b && b > r) || (d > r) || (a < b) || (b < d && a + b > r)
-		|| (a + b + d >= 0 && r < 0)|| (a > b && d - r < b) {
+		|| (a + b + d >= 0 && r < 0) || (a > b && d - r < b) {
 		println('ok')
 	}
 }
@@ -79,4 +79,25 @@ fn (mut p Parser) name_expr() {
 
 fn set_nr_muls(t table.Type, nr_muls int) table.Type {
 	return int(t) & 0xff00ffff | (nr_muls << 16)
+}
+
+// Test what exprs are treated as multiline. The ternary if only functions as a wrapper.
+// When one expr in a branch doesn't fit a single line, the whole if will be unwrapped.
+fn multiline_exprs() {
+	// StructInit with at least one field
+	_ := if true {
+		Foo{}
+	} else {
+		Foo{
+			val: 123
+		}
+	}
+	// ConcatExpr with a multiline child expr
+	_, _ := if true {
+		1, Foo{
+			val: 123
+		}
+	} else {
+		2, Foo{}
+	}
 }

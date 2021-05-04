@@ -1,2 +1,2 @@
 cmd/tools/vvet/tests/parens_space_b.vv:1: error: Looks like you are adding a space before `)`
-NB: You can run `v fmt -w file.v` to fix these automatically
+NB: You can run `v fmt -w file.v` to fix these errors automatically

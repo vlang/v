@@ -4,6 +4,8 @@
 module time
 
 #include <time.h>
+#include <errno.h>
+
 struct C.tm {
 	tm_sec   int
 	tm_min   int
@@ -16,10 +18,10 @@ struct C.tm {
 	tm_isdst int
 }
 
-fn C.timegm(&tm) time_t
+fn C.timegm(&C.tm) time_t
 
 // fn C.gmtime_r(&tm, &gbuf)
-fn C.localtime_r(t &C.time_t, tm &C.tm)
+fn C.localtime_r(t &time_t, tm &C.tm)
 
 fn make_unix_time(t C.tm) int {
 	return int(C.timegm(&t))
@@ -28,11 +30,9 @@ fn make_unix_time(t C.tm) int {
 // local returns t with the location set to local time.
 pub fn (t Time) local() Time {
 	loc_tm := C.tm{}
-	C.localtime_r(time_t(&t.unix), &loc_tm)
+	C.localtime_r(voidptr(&t.unix), &loc_tm)
 	return convert_ctime(loc_tm, t.microsecond)
 }
-
-type time_t = voidptr
 
 // in most systems, these are __quad_t, which is an i64
 struct C.timespec {
@@ -43,6 +43,8 @@ mut:
 
 // the first arg is defined in include/bits/types.h as `__S32_TYPE`, which is `int`
 fn C.clock_gettime(int, &C.timespec)
+
+fn C.nanosleep(req &C.timespec, rem &C.timespec) int
 
 // sys_mono_now returns a *monotonically increasing time*, NOT a time adjusted for daylight savings, location etc.
 pub fn sys_mono_now() u64 {
@@ -75,7 +77,7 @@ fn linux_now() Time {
 	mut ts := C.timespec{}
 	C.clock_gettime(C.CLOCK_REALTIME, &ts)
 	loc_tm := C.tm{}
-	C.localtime_r(&ts.tv_sec, &loc_tm)
+	C.localtime_r(voidptr(&ts.tv_sec), &loc_tm)
 	return convert_ctime(loc_tm, int(ts.tv_nsec / 1000))
 }
 
@@ -125,4 +127,25 @@ pub fn zero_timespec() C.timespec {
 		tv_nsec: 0
 	}
 	return ts
+}
+
+// wait makes the calling thread sleep for a given duration (in nanoseconds).
+[deprecated: 'call time.sleep(n * time.second)']
+pub fn wait(duration Duration) {
+	ts := &C.timespec{duration / second, duration % second}
+	C.nanosleep(ts, C.NULL)
+}
+
+// sleep makes the calling thread sleep for a given duration (in nanoseconds).
+pub fn sleep(duration Duration) {
+	mut req := C.timespec{duration / second, duration % second}
+	rem := C.timespec{}
+	for C.nanosleep(&req, &rem) < 0 {
+		if C.errno == C.EINTR {
+			// Interrupted by a signal handler
+			req = rem
+		} else {
+			break
+		}
+	}
 }

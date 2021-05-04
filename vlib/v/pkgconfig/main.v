@@ -83,7 +83,7 @@ pub fn (mut m Main) run() ?string {
 	for arg in opt.args {
 		mut pcdep := load(arg, options) or {
 			if !opt.exists {
-				return error(err)
+				return err
 			}
 			continue
 		}
@@ -94,7 +94,7 @@ pub fn (mut m Main) run() ?string {
 			res += pcdep.description
 		}
 		if pc != 0 {
-			pc.extend(pcdep)
+			pc.extend(pcdep) ?
 		} else {
 			pc = pcdep
 		}

@@ -4,14 +4,16 @@
 module sys
 
 import math.bits
-import rand.util
+import rand.seed
+import rand.constants
 
 // Implementation note:
 // ====================
-// C.rand() is okay to use within its defined range of C.RAND_MAX.
+// C.rand returns a pseudorandom integer from 0 (inclusive) to C.RAND_MAX (exclusive)
+// C.rand() is okay to use within its defined range.
 // (See: https://web.archive.org/web/20180801210127/http://eternallyconfuzzled.com/arts/jsw_art_rand.aspx)
 // The problem is, this value varies with the libc implementation. On windows,
-// for example, RAND_MAX is usually a measly 32767, whereas on (newer) linux it's generaly
+// for example, RAND_MAX is usually a measly 32767, whereas on (newer) linux it's generally
 // 2147483647. The repetition period also varies wildly. In order to provide more entropy
 // without altering the underlying algorithm too much, this implementation simply
 // requests for more random bits until the necessary width for the integers is achieved.
@@ -23,20 +25,15 @@ const (
 )
 
 fn calculate_iterations_for(bits int) int {
-	base := bits / rand_bitsize
-	extra := if bits % rand_bitsize == 0 { 0 } else { 1 }
+	base := bits / sys.rand_bitsize
+	extra := if bits % sys.rand_bitsize == 0 { 0 } else { 1 }
 	return base + extra
 }
 
-// C.rand returns a pseudorandom integer from 0 (inclusive) to C.RAND_MAX (exclusive)
-fn C.rand() int
-
-// C.srand seeds the internal PRNG with the given int seed.
-// fn C.srand(seed int)
 // SysRNG is the PRNG provided by default in the libc implementiation that V uses.
 pub struct SysRNG {
 mut:
-	seed u32 = util.time_seed_32()
+	seed u32 = seed.time_seed_32()
 }
 
 // r.seed() sets the seed of the accepting SysRNG to the given data.
@@ -46,7 +43,7 @@ pub fn (mut r SysRNG) seed(seed_data []u32) {
 		exit(1)
 	}
 	r.seed = seed_data[0]
-	unsafe {C.srand(int(r.seed))}
+	C.srand(r.seed)
 }
 
 // r.default_rand() exposes the default behavior of the system's RNG
@@ -63,8 +60,8 @@ pub fn (r SysRNG) default_rand() int {
 [inline]
 pub fn (r SysRNG) u32() u32 {
 	mut result := u32(C.rand())
-	for i in 1 .. u32_iter_count {
-		result = result ^ (u32(C.rand()) << (rand_bitsize * i))
+	for i in 1 .. sys.u32_iter_count {
+		result = result ^ (u32(C.rand()) << (sys.rand_bitsize * i))
 	}
 	return result
 }
@@ -73,8 +70,8 @@ pub fn (r SysRNG) u32() u32 {
 [inline]
 pub fn (r SysRNG) u64() u64 {
 	mut result := u64(C.rand())
-	for i in 1 .. u64_iter_count {
-		result = result ^ (u64(C.rand()) << (rand_bitsize * i))
+	for i in 1 .. sys.u64_iter_count {
+		result = result ^ (u64(C.rand()) << (sys.rand_bitsize * i))
 	}
 	return result
 }
@@ -175,13 +172,13 @@ pub fn (r SysRNG) i64() i64 {
 // r.int31() returns a pseudorandom 31-bit int which is non-negative
 [inline]
 pub fn (r SysRNG) int31() int {
-	return int(r.u32() & util.u31_mask) // Set the 32nd bit to 0.
+	return int(r.u32() & constants.u31_mask) // Set the 32nd bit to 0.
 }
 
 // r.int63() returns a pseudorandom 63-bit int which is non-negative
 [inline]
 pub fn (r SysRNG) int63() i64 {
-	return i64(r.u64() & util.u63_mask) // Set the 64th bit to 0.
+	return i64(r.u64() & constants.u63_mask) // Set the 64th bit to 0.
 }
 
 // r.intn(max) returns a pseudorandom int that lies in [0, max)
@@ -228,13 +225,13 @@ pub fn (r SysRNG) i64_in_range(min i64, max i64) i64 {
 // r.f32() returns a pseudorandom f32 value between 0.0 (inclusive) and 1.0 (exclusive) i.e [0, 1)
 [inline]
 pub fn (r SysRNG) f32() f32 {
-	return f32(r.u32()) / util.max_u32_as_f32
+	return f32(r.u32()) / constants.max_u32_as_f32
 }
 
 // r.f64() returns a pseudorandom f64 value between 0.0 (inclusive) and 1.0 (exclusive) i.e [0, 1)
 [inline]
 pub fn (r SysRNG) f64() f64 {
-	return f64(r.u64()) / util.max_u64_as_f64
+	return f64(r.u64()) / constants.max_u64_as_f64
 }
 
 // r.f32n() returns a pseudorandom f32 value in [0, max)

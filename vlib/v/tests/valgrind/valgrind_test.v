@@ -17,15 +17,15 @@ const turn_off_vcolors = os.setenv('VCOLORS', 'never', true)
 // Use: `./v -d noskipcompile -d noskip vlib/v/tests/valgrind/valgrind_test.v` to ignore both
 //
 const skip_compile_files = [
-		'vlib/v/tests/valgrind/option_reassigned.v',
-	]
+	'vlib/v/tests/valgrind/option_reassigned.v',
+]
 
 const skip_valgrind_files = [
-		'vlib/v/tests/valgrind/struct_field.v',
-		'vlib/v/tests/valgrind/fn_returning_string_param.v',
-		'vlib/v/tests/valgrind/fn_with_return_should_free_local_vars.v',
-		'vlib/v/tests/valgrind/option_simple.v',
-	]
+	'vlib/v/tests/valgrind/struct_field.v',
+	'vlib/v/tests/valgrind/fn_returning_string_param.v',
+	'vlib/v/tests/valgrind/fn_with_return_should_free_local_vars.v',
+	'vlib/v/tests/valgrind/option_simple.v',
+]
 
 fn vprintln(s string) {
 	$if verbose ? {
@@ -53,13 +53,11 @@ fn test_all() {
 	files := os.ls(dir) or { panic(err) }
 	//
 	wrkdir := os.join_path(os.temp_dir(), 'vtests', 'valgrind')
-	os.mkdir_all(wrkdir)
+	os.mkdir_all(wrkdir) or { panic(err) }
 	os.chdir(wrkdir)
 	//
-	tests := vtest.filter_vtest_only(files.filter(it.ends_with('.v') && !it.ends_with('_test.v')),
-		
-		basepath: valgrind_test_path
-	)
+	only_ordinary_v_files := files.filter(it.ends_with('.v') && !it.ends_with('_test.v'))
+	tests := vtest.filter_vtest_only(only_ordinary_v_files, basepath: valgrind_test_path)
 	bench.set_total_expected_steps(tests.len)
 	for test in tests {
 		bench.step()
@@ -75,11 +73,7 @@ fn test_all() {
 		full_path_to_source_file := os.join_path(vroot, test)
 		compile_cmd := '$vexe -o $exe_filename -cg -cflags "-w" -autofree "$full_path_to_source_file"'
 		vprintln('compile cmd: ${util.bold(compile_cmd)}')
-		res := os.exec(compile_cmd) or {
-			bench.fail()
-			eprintln(bench.step_message_fail('valgrind $test failed'))
-			continue
-		}
+		res := os.execute(compile_cmd)
 		if res.exit_code != 0 {
 			bench.fail()
 			eprintln(bench.step_message_fail('file: $test could not be compiled.'))
@@ -95,11 +89,7 @@ fn test_all() {
 		}
 		valgrind_cmd := 'valgrind --error-exitcode=1 --leak-check=full $exe_filename'
 		vprintln('valgrind cmd: ${util.bold(valgrind_cmd)}')
-		valgrind_res := os.exec(valgrind_cmd) or {
-			bench.fail()
-			eprintln(bench.step_message_fail('valgrind could not be executed'))
-			continue
-		}
+		valgrind_res := os.execute(valgrind_cmd)
 		if valgrind_res.exit_code != 0 {
 			bench.fail()
 			eprintln(bench.step_message_fail('failed valgrind check for ${util.bold(test)}'))

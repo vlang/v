@@ -94,6 +94,14 @@ pub fn (d Dec32) get_string_32(neg bool, i_n_digit int, i_pad_digit int) string 
 		x++
 	}
 
+	// no decimal digits needed, end here
+	if i_n_digit == 0 {
+		unsafe {
+			buf[i]=0
+			return 	tos(byteptr(&buf[0]), i)
+		}
+	}
+
 	if out_len >= 1 {
 		buf[y - x] = `.`
 		x++
@@ -106,7 +114,8 @@ pub fn (d Dec32) get_string_32(neg bool, i_n_digit int, i_pad_digit int) string 
 	}
 
 	for fw_zeros > 0 {
-		buf[i++] = `0`
+		buf[i] = `0`
+		i++
 		fw_zeros--
 	}
 

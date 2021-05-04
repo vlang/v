@@ -1,11 +1,20 @@
-struct Cat{name string}
-struct Dog{name string}
+struct Cat {
+	name string
+}
+
+struct Dog {
+	name string
+}
 
 type Animal = Cat | Dog
 
 const (
-	cat = Cat{name: 'cat'}
-	dog = Dog{name: 'dog'}
+	cat = Cat{
+		name: 'cat'
+	}
+	dog = Dog{
+		name: 'dog'
+	}
 )
 
 fn test_shadow() {
@@ -15,7 +24,7 @@ fn test_shadow() {
 		Cat {
 			assert animal.name == cat.name
 		}
-		else{
+		else {
 			assert false
 		}
 	}
@@ -28,7 +37,7 @@ fn test_as() {
 		Dog {
 			assert animal.name == dog.name
 		}
-		else{
+		else {
 			assert false
 		}
 	}

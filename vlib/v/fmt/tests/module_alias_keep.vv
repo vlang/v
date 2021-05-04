@@ -1,5 +1,14 @@
 import time
 import semver as sv
+import term.ui as tui
+
+interface Inter {
+	code tui.KeyCode
+}
+
+struct TuiStruct {
+	code tui.KeyCode
+}
 
 fn foo(f time.Time) time.Time {
 	f2 := time.Time{}

@@ -9,7 +9,8 @@ const (
 
 pub struct TcpConn {
 pub mut:
-	sock TcpSocket
+	sock                 TcpSocket
+	max_write_chunk_size int = 4096
 mut:
 	write_deadline time.Time
 	read_deadline  time.Time
@@ -22,33 +23,45 @@ pub fn dial_tcp(address string) ?&TcpConn {
 	s.connect(address) ?
 	return &TcpConn{
 		sock: s
-		read_timeout: tcp_default_read_timeout
-		write_timeout: tcp_default_write_timeout
+		read_timeout: net.tcp_default_read_timeout
+		write_timeout: net.tcp_default_write_timeout
 	}
 }
 
 pub fn (mut c TcpConn) close() ? {
+	$if trace_tcp ? {
+		eprintln('    TcpConn.close | c.sock.handle: ${c.sock.handle:6}')
+	}
 	c.sock.close() ?
 	return none
 }
 
 // write_ptr blocks and attempts to write all data
-pub fn (mut c TcpConn) write_ptr(b byteptr, len int) ? {
+pub fn (mut c TcpConn) write_ptr(b &byte, len int) ?int {
 	$if trace_tcp ? {
-		eprintln('>>> TcpConn.write_ptr | c.sock.handle: $c.sock.handle | b: ${ptr_str(b)} len: $len |\n' +
+		eprintln('>>> TcpConn.write_ptr | c.sock.handle: ${c.sock.handle:6} | b: ${ptr_str(b)} len: ${len:6}')
+	}
+	$if trace_tcp_data_write ? {
+		eprintln('>>> TcpConn.write_ptr | data.len: ${len:6} | data: ' +
 			unsafe { b.vstring_with_len(len) })
 	}
 	unsafe {
-		mut ptr_base := byteptr(b)
+		mut ptr_base := &byte(b)
 		mut total_sent := 0
 		for total_sent < len {
 			ptr := ptr_base + total_sent
-			remaining := len - total_sent
-			mut sent := C.send(c.sock.handle, ptr, remaining, msg_nosignal)
+			mut chunk_size := len - total_sent
+			if chunk_size > c.max_write_chunk_size {
+				chunk_size = c.max_write_chunk_size
+			}
+			mut sent := C.send(c.sock.handle, ptr, chunk_size, msg_nosignal)
+			$if trace_tcp_data_write ? {
+				eprintln('>>> TcpConn.write_ptr | data chunk, total_sent: ${total_sent:6}, chunk_size: ${chunk_size:6}, sent: ${sent:6}, ptr: ${ptr_str(ptr)}')
+			}
 			if sent < 0 {
 				code := error_code()
 				if code == int(error_ewouldblock) {
-					c.wait_for_write()
+					c.wait_for_write() ?
 					continue
 				} else {
 					wrap_error(code) ?
@@ -56,26 +69,36 @@ pub fn (mut c TcpConn) write_ptr(b byteptr, len int) ? {
 			}
 			total_sent += sent
 		}
+		return total_sent
 	}
-	return none
 }
 
 // write blocks and attempts to write all data
-pub fn (mut c TcpConn) write(bytes []byte) ? {
+pub fn (mut c TcpConn) write(bytes []byte) ?int {
 	return c.write_ptr(bytes.data, bytes.len)
 }
 
 // write_str blocks and attempts to write all data
-pub fn (mut c TcpConn) write_str(s string) ? {
+[deprecated: 'use TcpConn.write_string() instead']
+pub fn (mut c TcpConn) write_str(s string) ?int {
 	return c.write_ptr(s.str, s.len)
 }
 
-pub fn (mut c TcpConn) read_ptr(buf_ptr byteptr, len int) ?int {
+// write_string blocks and attempts to write all data
+pub fn (mut c TcpConn) write_string(s string) ?int {
+	return c.write_ptr(s.str, s.len)
+}
+
+pub fn (mut c TcpConn) read_ptr(buf_ptr &byte, len int) ?int {
 	mut res := wrap_read_result(C.recv(c.sock.handle, buf_ptr, len, 0)) ?
 	$if trace_tcp ? {
-		eprintln('<<< TcpConn.read_ptr  | c.sock.handle: $c.sock.handle | buf_ptr: ${ptr_str(buf_ptr)} len: $len | res: $res')
+		eprintln('<<< TcpConn.read_ptr  | c.sock.handle: ${c.sock.handle:6} | buf_ptr: ${ptr_str(buf_ptr):8} len: ${len:6} | res: ${res:6}')
 	}
 	if res > 0 {
+		$if trace_tcp_data_read ? {
+			eprintln('<<< TcpConn.read_ptr  | 1 data.len: ${res:6} | data: ' +
+				unsafe { buf_ptr.vstring_with_len(res) })
+		}
 		return res
 	}
 	code := error_code()
@@ -83,7 +106,13 @@ pub fn (mut c TcpConn) read_ptr(buf_ptr byteptr, len int) ?int {
 		c.wait_for_read() ?
 		res = wrap_read_result(C.recv(c.sock.handle, buf_ptr, len, 0)) ?
 		$if trace_tcp ? {
-			eprintln('<<< TcpConn.read_ptr  | c.sock.handle: $c.sock.handle | buf_ptr: ${ptr_str(buf_ptr)} len: $len | res: $res')
+			eprintln('<<< TcpConn.read_ptr  | c.sock.handle: ${c.sock.handle:6} | buf_ptr: ${ptr_str(buf_ptr):8} len: ${len:6} | res: ${res:6}')
+		}
+		$if trace_tcp_data_read ? {
+			if res > 0 {
+				eprintln('<<< TcpConn.read_ptr  | 2 data.len: ${res:6} | data: ' +
+					unsafe { buf_ptr.vstring_with_len(res) })
+			}
 		}
 		return socket_error(res)
 	} else {
@@ -152,21 +181,21 @@ pub fn (c &TcpConn) peer_addr() ?Addr {
 }
 
 pub fn (c &TcpConn) peer_ip() ?string {
-	buf := [44]byte{}
+	buf := [44]char{}
 	peeraddr := C.sockaddr_in{}
 	speeraddr := sizeof(peeraddr)
 	socket_error(C.getpeername(c.sock.handle, unsafe { &C.sockaddr(&peeraddr) }, &speeraddr)) ?
-	cstr := C.inet_ntop(C.AF_INET, &peeraddr.sin_addr, buf, sizeof(buf))
+	cstr := &char(C.inet_ntop(SocketFamily.inet, &peeraddr.sin_addr, &buf[0], sizeof(buf)))
 	if cstr == 0 {
 		return error('net.peer_ip: inet_ntop failed')
 	}
-	res := cstring_to_vstring(cstr)
+	res := unsafe { cstring_to_vstring(cstr) }
 	return res
 }
 
-pub fn (c &TcpConn) str() string {
-	// TODO
-	return 'TcpConn {write_deadline: $c.write_deadline, read_deadline: $c.read_deadline, read_timeout: $c.read_timeout, write_timeout: $c.write_timeout, sock: $c.sock}'
+pub fn (c TcpConn) str() string {
+	s := c.sock.str().replace('\n', ' ').replace('  ', ' ')
+	return 'TcpConn{ write_deadline: $c.write_deadline, read_deadline: $c.read_deadline, read_timeout: $c.read_timeout, write_timeout: $c.write_timeout, sock: $s }'
 }
 
 pub struct TcpListener {
@@ -197,6 +226,9 @@ pub fn listen_tcp(port int) ?&TcpListener {
 }
 
 pub fn (mut l TcpListener) accept() ?&TcpConn {
+	$if trace_tcp ? {
+		eprintln('    TcpListener.accept | l.sock.handle: ${l.sock.handle:6}')
+	}
 	addr := C.sockaddr_storage{}
 	unsafe { C.memset(&addr, 0, sizeof(C.sockaddr_storage)) }
 	size := sizeof(C.sockaddr_storage)
@@ -211,10 +243,13 @@ pub fn (mut l TcpListener) accept() ?&TcpConn {
 		}
 	}
 	new_sock := tcp_socket_from_handle(new_handle) ?
+	$if trace_tcp ? {
+		eprintln('    TcpListener.accept | << new_sock.handle: ${new_sock.handle:6}')
+	}
 	return &TcpConn{
 		sock: new_sock
-		read_timeout: tcp_default_read_timeout
-		write_timeout: tcp_default_write_timeout
+		read_timeout: net.tcp_default_read_timeout
+		write_timeout: net.tcp_default_write_timeout
 	}
 }
 
@@ -242,6 +277,9 @@ pub fn (mut c TcpListener) wait_for_accept() ? {
 }
 
 pub fn (mut c TcpListener) close() ? {
+	$if trace_tcp ? {
+		eprintln('    TcpListener.close | c.sock.handle: ${c.sock.handle:6}')
+	}
 	c.sock.close() ?
 	return none
 }
@@ -260,13 +298,18 @@ fn new_tcp_socket() ?TcpSocket {
 	mut s := TcpSocket{
 		handle: sockfd
 	}
+	$if trace_tcp ? {
+		eprintln('    new_tcp_socket | s.handle: ${s.handle:6}')
+	}
 	// s.set_option_bool(.reuse_addr, true)?
 	s.set_option_int(.reuse_addr, 1) ?
-	$if windows {
-		t := true
-		socket_error(C.ioctlsocket(sockfd, fionbio, &t)) ?
-	} $else {
-		socket_error(C.fcntl(sockfd, C.F_SETFL, C.fcntl(sockfd, C.F_GETFL) | C.O_NONBLOCK))
+	$if !net_blocking_sockets ? {
+		$if windows {
+			t := u32(1) // true
+			socket_error(C.ioctlsocket(sockfd, fionbio, &t)) ?
+		} $else {
+			socket_error(C.fcntl(sockfd, C.F_SETFL, C.fcntl(sockfd, C.F_GETFL) | C.O_NONBLOCK)) ?
+		}
 	}
 	return s
 }
@@ -275,13 +318,18 @@ fn tcp_socket_from_handle(sockfd int) ?TcpSocket {
 	mut s := TcpSocket{
 		handle: sockfd
 	}
+	$if trace_tcp ? {
+		eprintln('    tcp_socket_from_handle | s.handle: ${s.handle:6}')
+	}
 	// s.set_option_bool(.reuse_addr, true)?
 	s.set_option_int(.reuse_addr, 1) ?
-	$if windows {
-		t := true
-		socket_error(C.ioctlsocket(sockfd, fionbio, &t)) ?
-	} $else {
-		socket_error(C.fcntl(sockfd, C.F_SETFL, C.fcntl(sockfd, C.F_GETFL) | C.O_NONBLOCK))
+	$if !net_blocking_sockets ? {
+		$if windows {
+			t := u32(1) // true
+			socket_error(C.ioctlsocket(sockfd, fionbio, &t)) ?
+		} $else {
+			socket_error(C.fcntl(sockfd, C.F_SETFL, C.fcntl(sockfd, C.F_GETFL) | C.O_NONBLOCK)) ?
+		}
 	}
 	return s
 }
@@ -294,7 +342,8 @@ pub fn (mut s TcpSocket) set_option_bool(opt SocketOption, value bool) ? {
 	// if opt !in opts_bool {
 	// 	return err_option_wrong_type
 	// }
-	socket_error(C.setsockopt(s.handle, C.SOL_SOCKET, int(opt), &value, sizeof(bool))) ?
+	x := int(value)
+	socket_error(C.setsockopt(s.handle, C.SOL_SOCKET, int(opt), &x, sizeof(int))) ?
 	return none
 }
 
@@ -304,6 +353,9 @@ pub fn (mut s TcpSocket) set_option_int(opt SocketOption, value int) ? {
 }
 
 fn (mut s TcpSocket) close() ? {
+	$if trace_tcp ? {
+		eprintln('    TcpSocket.close | s.handle: ${s.handle:6}')
+	}
 	return shutdown(s.handle)
 }
 
@@ -316,18 +368,21 @@ const (
 )
 
 fn (mut s TcpSocket) connect(a string) ? {
+	$if trace_tcp ? {
+		eprintln('    TcpSocket.connect | s.handle: ${s.handle:6} | a: $a')
+	}
 	addr := resolve_addr(a, .inet, .tcp) ?
 	res := C.connect(s.handle, &addr.addr, addr.len)
 	if res == 0 {
 		return none
 	}
 	_ := error_code()
-	write_result := s.@select(.write, connect_timeout) ?
+	write_result := s.@select(.write, net.connect_timeout) ?
 	if write_result {
 		// succeeded
 		return none
 	}
-	except_result := s.@select(.except, connect_timeout) ?
+	except_result := s.@select(.except, net.connect_timeout) ?
 	if except_result {
 		return err_connect_failed
 	}

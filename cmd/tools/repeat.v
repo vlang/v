@@ -41,8 +41,32 @@ mut:
 	nmaxs                   int // number of maximums to discard
 }
 
+[unsafe]
+fn (mut result CmdResult) free() {
+	unsafe {
+		result.cmd.free()
+		result.outputs.free()
+		result.oms.free()
+		result.summary.free()
+		result.timings.free()
+		result.atiming.free()
+	}
+}
+
+[unsafe]
+fn (mut context Context) free() {
+	unsafe {
+		context.commands.free()
+		context.results.free()
+		context.cmd_template.free()
+		context.cmd_params.free()
+		context.cline.free()
+		context.cgoback.free()
+	}
+}
+
 struct Aints {
-	values  []int
+	values []int
 mut:
 	imin    int
 	imax    int
@@ -50,6 +74,11 @@ mut:
 	stddev  f64
 	nmins   int // number of discarded fastest results
 	nmaxs   int // number of discarded slowest results
+}
+
+[unsafe]
+fn (mut a Aints) free() {
+	unsafe { a.values.free() }
 }
 
 fn new_aints(ovals []int, extreme_mins int, extreme_maxs int) Aints {
@@ -62,10 +91,13 @@ fn new_aints(ovals []int, extreme_mins int, extreme_maxs int) Aints {
 	mut imin := math.max_i32
 	mut imax := -math.max_i32
 	// discard the extremes:
-	mut vals := ovals.clone()
+	mut vals := []int{}
+	for x in ovals {
+		vals << x
+	}
 	vals.sort()
 	if vals.len > extreme_mins + extreme_maxs {
-		vals = vals[extreme_mins..vals.len - extreme_maxs]
+		vals = vals[extreme_mins..vals.len - extreme_maxs].clone()
 	} else {
 		vals = []
 	}
@@ -148,11 +180,14 @@ fn (mut context Context) parse_options() {
 		scripting.set_verbose(true)
 	}
 	commands := fp.finalize() or {
-		eprintln('Error: ' + err)
+		eprintln('Error: $err')
 		exit(1)
 	}
 	context.commands = context.expand_all_commands(commands)
-	context.results = []CmdResult{len: context.commands.len, init: CmdResult{}}
+	context.results = []CmdResult{len: context.commands.len, cap: 10, init: CmdResult{
+		outputs: []string{cap: 200}
+		timings: []int{cap: 200}
+	}}
 	if context.use_newline {
 		context.cline = '\n'
 		context.cgoback = '\n'
@@ -170,7 +205,8 @@ fn (mut context Context) expand_all_commands(commands []string) []string {
 	mut all_commands := []string{}
 	for cmd in commands {
 		maincmd := context.cmd_template.replace('{T}', cmd)
-		mut substituted_commands := [maincmd]
+		mut substituted_commands := []string{}
+		substituted_commands << maincmd
 		for paramk, paramlist in context.cmd_params {
 			for paramv in paramlist {
 				mut new_substituted_commands := []string{}
@@ -178,10 +214,14 @@ fn (mut context Context) expand_all_commands(commands []string) []string {
 					scmd := cscmd.replace(paramk, paramv)
 					new_substituted_commands << scmd
 				}
-				substituted_commands << new_substituted_commands
+				for sc in new_substituted_commands {
+					substituted_commands << sc
+				}
 			}
 		}
-		all_commands << substituted_commands
+		for sc in substituted_commands {
+			all_commands << sc
+		}
 	}
 	mut unique := map[string]int{}
 	for x in all_commands {
@@ -206,7 +246,10 @@ fn (mut context Context) run() {
 				for i in 1 .. context.warmup + 1 {
 					print('${context.cgoback}warming up run: ${i:4}/${context.warmup:-4} for ${cmd:-50s} took ${duration:6} ms ...')
 					mut sw := time.new_stopwatch({})
-					os.exec(cmd) or { continue }
+					res := os.execute(cmd)
+					if res.exit_code != 0 {
+						continue
+					}
 					duration = int(sw.elapsed().milliseconds())
 				}
 				run_warmups++
@@ -225,8 +268,12 @@ fn (mut context Context) run() {
 					eprintln('${i:10} non 0 exit code for cmd: $cmd')
 					continue
 				}
-				context.results[icmd].outputs <<
-					res.output.trim_right('\r\n').replace('\r\n', '\n').split('\n')
+				trimed_output := res.output.trim_right('\r\n')
+				trimed_normalized := trimed_output.replace('\r\n', '\n')
+				lines := trimed_normalized.split('\n')
+				for line in lines {
+					context.results[icmd].outputs << line
+				}
 				context.results[icmd].timings << duration
 				sum += duration
 				runs++
@@ -256,7 +303,7 @@ fn (mut context Context) run() {
 				summary[k] = s
 			}
 			// merge current raw results to the previous ones
-			old_oms := context.results[icmd].oms
+			old_oms := context.results[icmd].oms.move()
 			mut new_oms := map[string][]int{}
 			for k, v in m {
 				if old_oms[k].len == 0 {
@@ -266,7 +313,7 @@ fn (mut context Context) run() {
 					new_oms[k] << v
 				}
 			}
-			context.results[icmd].oms = new_oms
+			context.results[icmd].oms = new_oms.move()
 			// println('')
 		}
 	}
@@ -276,7 +323,7 @@ fn (mut context Context) run() {
 		for k, v in context.results[icmd].oms {
 			new_full_summary[k] = new_aints(v, context.nmins, context.nmaxs)
 		}
-		context.results[icmd].summary = new_full_summary
+		context.results[icmd].summary = new_full_summary.move()
 	}
 }
 
@@ -293,10 +340,12 @@ fn (mut context Context) show_diff_summary() {
 	println('Summary (commands are ordered by ascending mean time), after $context.series series of $context.count repetitions:')
 	base := context.results[0].atiming.average
 	mut first_cmd_percentage := f64(100.0)
+	mut first_marker := ''
 	for i, r in context.results {
+		first_marker = ' '
 		cpercent := (r.atiming.average / base) * 100 - 100
-		first_marker := if r.icmd == 0 { util.bold('>') } else { ' ' }
 		if r.icmd == 0 {
+			first_marker = util.bold('>')
 			first_cmd_percentage = cpercent
 		}
 		println(' $first_marker${(i + 1):3} | ${cpercent:5.1f}% slower | ${r.cmd:-57s} | $r.atiming')

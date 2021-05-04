@@ -9,9 +9,12 @@ fn append_to_file(fname string, s string) {
 		println('>>>> could not open file $fname for appending, err: $err ')
 		return
 	}
-	f.writeln(s)
-	//info := live.info()
-	//f.writeln('>>> reloads: ${info.reloads} | ok reloads: ${info.reloads_ok}')
+	f.writeln(s) or {
+		println('>>>> could not write to $fname, err: $err ')
+		return
+	}
+	// info := live.info()
+	// f.writeln('>>> reloads: ${info.reloads} | ok reloads: ${info.reloads_ok}')
 	f.close()
 }
 
@@ -29,6 +32,7 @@ fn pmessage() string {
 const (
 	delay = 20
 )
+
 fn edefault(name string, default string) string {
 	res := os.getenv(name)
 	if res == '' {
@@ -36,6 +40,7 @@ fn edefault(name string, default string) string {
 	}
 	return res
 }
+
 fn main() {
 	mut info := live.info()
 	info.recheck_period_ms = 5
@@ -45,14 +50,14 @@ fn main() {
 	pmessage()
 	max_cycles := edefault('LIVE_CYCLES', '1').int()
 	// NB: 1000 * 20 = maximum of ~20s runtime
-	for i:=0; i<max_cycles; i++ {
+	for i := 0; i < max_cycles; i++ {
 		s := pmessage()
 		myprintln(s)
 		append_to_file(os.resource_abs_path(s + '.txt'), s)
 		if s == 'STOP' {
 			break
 		}
-		time.sleep_ms(delay)
+		time.sleep(delay * time.millisecond)
 	}
 	pmessage()
 	pmessage()

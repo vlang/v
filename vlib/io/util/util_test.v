@@ -10,16 +10,16 @@ const (
 
 fn testsuite_begin() {
 	eprintln('testsuite_begin, tfolder = $tfolder')
-	os.rmdir_all(tfolder)
+	os.rmdir_all(tfolder) or { }
 	assert !os.is_dir(tfolder)
-	os.mkdir_all(tfolder)
+	os.mkdir_all(tfolder) or { panic(err) }
 	os.chdir(tfolder)
 	assert os.is_dir(tfolder)
 }
 
 fn testsuite_end() {
 	os.chdir(os.wd_at_startup)
-	os.rmdir_all(tfolder)
+	os.rmdir_all(tfolder) or { }
 	assert !os.is_dir(tfolder)
 	// eprintln('testsuite_end  , tfolder = $tfolder removed.')
 }
@@ -38,9 +38,9 @@ fn test_temp_file() {
 	assert f.is_opened
 	// Test pattern
 	f.close()
-	f, path = util.temp_file({
+	f, path = util.temp_file(
 		pattern: 'some_*_test.file'
-	}) or {
+	) or {
 		assert false
 		return
 	}
@@ -58,9 +58,9 @@ fn test_temp_file() {
 	// Test custom path
 	prev_path = path
 	f.close()
-	f, path = util.temp_file({
+	f, path = util.temp_file(
 		path: tfolder
-	}) or {
+	) or {
 		assert false
 		return
 	}
@@ -88,9 +88,9 @@ fn test_temp_dir() {
 	assert writable
 	mut prev_path := path
 	// Test pattern
-	path = util.temp_dir({
+	path = util.temp_dir(
 		pattern: 'some_*_test_dir'
-	}) or {
+	) or {
 		assert false
 		return
 	}
@@ -106,9 +106,9 @@ fn test_temp_dir() {
 	}
 	// Test custom path
 	prev_path = path
-	path = util.temp_dir({
+	path = util.temp_dir(
 		path: tfolder
-	}) or {
+	) or {
 		assert false
 		return
 	}

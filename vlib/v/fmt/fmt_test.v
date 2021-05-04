@@ -1,16 +1,21 @@
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
 import os
 import term
 import benchmark
 import v.ast
 import v.fmt
 import v.parser
-import v.table
 import v.pref
 import v.util
 
 const (
 	error_missing_vexe = 1
 	error_failed_tests = 2
+	fpref              = &pref.Preferences{
+		is_fmt: true
+	}
 )
 
 fn test_fmt() {
@@ -43,13 +48,11 @@ fn test_fmt() {
 			eprintln(fmt_bench.step_message_fail('cannot read from $opath'))
 			continue
 		}
-		table := table.new_table()
-		file_ast := parser.parse_file(ipath, table, .parse_comments, &pref.Preferences{
-			is_fmt: true
-		}, &ast.Scope{
+		table := ast.new_table()
+		file_ast := parser.parse_file(ipath, table, .parse_comments, fpref, &ast.Scope{
 			parent: 0
 		})
-		result_ocontent := fmt.fmt(file_ast, table, false)
+		result_ocontent := fmt.fmt(file_ast, table, fpref, false)
 		if expected_ocontent != result_ocontent {
 			fmt_bench.fail()
 			eprintln(fmt_bench.step_message_fail('file $ipath after formatting, does not look as expected.'))
@@ -58,7 +61,7 @@ fn test_fmt() {
 				continue
 			}
 			vfmt_result_file := os.join_path(tmpfolder, 'vfmt_run_over_$ifilename')
-			os.write_file(vfmt_result_file, result_ocontent)
+			os.write_file(vfmt_result_file, result_ocontent) or { panic(err) }
 			eprintln(util.color_compare_files(diff_cmd, opath, vfmt_result_file))
 			continue
 		}

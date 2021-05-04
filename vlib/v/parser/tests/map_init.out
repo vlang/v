@@ -1,0 +1,6 @@
+vlib/v/parser/tests/map_init.vv:3:22: error: `}` expected; explicit `map` initialization does not support parameters
+    1 | fn main() {
+    2 |     a := map[string]int{}
+    3 |     b := map[string]f64{cap: 10}
+      |                         ~~~
+    4 | }

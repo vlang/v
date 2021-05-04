@@ -3,6 +3,7 @@
 // Don't use this editor for any serious work.
 // A lot of funtionality is missing compared to your favourite editor :)
 import strings
+import math.mathutil as mu
 import os
 import term.ui as tui
 
@@ -26,7 +27,7 @@ pub:
 struct App {
 mut:
 	tui           &tui.Context = 0
-	ed            &Buffer = 0
+	ed            &Buffer      = 0
 	current_file  int
 	files         []string
 	status        string
@@ -44,7 +45,7 @@ fn (mut a App) set_status(msg string, duration_ms int) {
 fn (mut a App) save() {
 	if a.cfile().len > 0 {
 		b := a.ed
-		os.write_file(a.cfile(), b.raw())
+		os.write_file(a.cfile(), b.raw()) or { panic(err) }
 		a.set_status('Saved', 2000)
 	} else {
 		a.set_status('No file loaded', 4000)
@@ -79,7 +80,6 @@ fn (mut a App) visit_next_file() {
 	a.init_file()
 }
 
-
 fn (mut a App) footer() {
 	w, h := a.tui.window_width, a.tui.window_height
 	mut b := a.ed
@@ -99,16 +99,16 @@ fn (mut a App) footer() {
 	if a.t <= 0 {
 		status = ''
 	} else {
-		a.tui.set_bg_color({
+		a.tui.set_bg_color(
 			r: 200
 			g: 200
 			b: 200
-		})
-		a.tui.set_color({
+		)
+		a.tui.set_color(
 			r: 0
 			g: 0
 			b: 0
-		})
+		)
 		a.tui.draw_text((w + 4 - status.len) / 2, h - 1, ' $status ')
 		a.tui.reset()
 		a.t -= 33
@@ -118,8 +118,8 @@ fn (mut a App) footer() {
 struct Buffer {
 	tab_width int = 4
 pub mut:
-	lines     []string
-	cursor    Cursor
+	lines  []string
+	cursor Cursor
 }
 
 fn (b Buffer) flat() string {
@@ -301,9 +301,9 @@ fn (mut b Buffer) free() {
 		eprintln(@MOD + '.' + @STRUCT + '::' + @FN)
 	}
 	for line in b.lines {
-		line.free()
+		unsafe { line.free() }
 	}
-	unsafe {b.lines.free()}
+	unsafe { b.lines.free() }
 }
 
 fn (mut b Buffer) move_updown(amount int) {
@@ -330,11 +330,11 @@ fn (mut b Buffer) move_cursor(amount int, movement Movement) {
 			}
 		}
 		.page_up {
-			dlines := imin(b.cursor.pos_y, amount)
+			dlines := mu.min(b.cursor.pos_y, amount)
 			b.move_updown(-dlines)
 		}
 		.page_down {
-			dlines := imin(b.lines.len-1, b.cursor.pos_y + amount) - b.cursor.pos_y
+			dlines := mu.min(b.lines.len - 1, b.cursor.pos_y + amount) - b.cursor.pos_y
 			b.move_updown(dlines)
 		}
 		.left {
@@ -374,25 +374,23 @@ fn (mut b Buffer) move_to_word(movement Movement) {
 		x = 0
 	}
 	// first, move past all non-`a-zA-Z0-9_` characters
-	for x+a >= 0 && x+a < line.len && !(line[x+a].is_letter() || line[x+a].is_digit() || line[x+a] == `_`) { x += a }
+	for x + a >= 0 && x + a < line.len && !(line[x + a].is_letter()
+		|| line[x + a].is_digit() || line[x + a] == `_`) {
+		x += a
+	}
 	// then, move past all the letters and numbers
-	for x+a >= 0 && x+a < line.len &&  (line[x+a].is_letter() || line[x+a].is_digit() || line[x+a] == `_`) { x += a }
+	for x + a >= 0 && x + a < line.len && (line[x + a].is_letter()
+		|| line[x + a].is_digit() || line[x + a] == `_`) {
+		x += a
+	}
 	// if the cursor is out of bounds, move it to the next/previous line
 	if x + a >= 0 && x + a <= line.len {
 		x += a
-	} else if a < 0 && y+1 > b.lines.len && y-1 >= 0 {
+	} else if a < 0 && y + 1 > b.lines.len && y - 1 >= 0 {
 		y += a
 		x = 0
 	}
 	b.cursor.set(x, y)
-}
-
-fn imax(x int, y int) int {
-	return if x < y { y } else { x }
-}
-
-fn imin(x int, y int) int {
-	return if x < y { x } else { y }
 }
 
 struct Cursor {
@@ -443,9 +441,7 @@ fn (mut a App) init_file() {
 			// 'vico: ' +
 			a.tui.set_window_title(a.files[a.current_file])
 			mut b := a.ed
-			content := os.read_file(a.files[a.current_file]) or {
-				panic(err)
-			}
+			content := os.read_file(a.files[a.current_file]) or { panic(err) }
 			b.put(content)
 			a.ed.cursor.pos_x = init_x
 			a.ed.cursor.pos_y = init_y
@@ -494,6 +490,9 @@ fn event(e &tui.Event, x voidptr) {
 			.escape {
 				exit(0)
 			}
+			.enter {
+				buffer.put('\n')
+			}
 			.backspace {
 				buffer.del(-1)
 			}
@@ -501,17 +500,17 @@ fn event(e &tui.Event, x voidptr) {
 				buffer.del(1)
 			}
 			.left {
-				if e.modifiers == tui.ctrl {
+				if e.modifiers == .ctrl {
 					buffer.move_to_word(.left)
-				} else if e.modifiers == 0 {
+				} else if e.modifiers.is_empty() {
 					buffer.move_cursor(1, .left)
 				}
 				a.magnet_x = buffer.cursor.pos_x
 			}
 			.right {
-				if e.modifiers == tui.ctrl {
+				if e.modifiers == .ctrl {
 					buffer.move_to_word(.right)
-				} else if e.modifiers == 0 {
+				} else if e.modifiers.is_empty() {
 					buffer.move_cursor(1, .right)
 				}
 				a.magnet_x = buffer.cursor.pos_x
@@ -537,16 +536,16 @@ fn event(e &tui.Event, x voidptr) {
 				buffer.move_cursor(1, .end)
 			}
 			48...57, 97...122 { // 0-9a-zA-Z
-				if e.modifiers == tui.ctrl {
+				if e.modifiers == .ctrl {
 					if e.code == .s {
 						a.save()
 					}
-				} else if e.modifiers in [tui.shift, 0] {
-					buffer.put(e.ascii.str())
+				} else if !(e.modifiers.has(.ctrl | .alt) || e.code == .null) {
+					buffer.put(e.ascii.ascii_str())
 				}
 			}
 			else {
-				if e.modifiers == tui.alt {
+				if e.modifiers == .alt {
 					if e.code == .comma {
 						a.visit_prev_file()
 						return
@@ -573,12 +572,12 @@ fn main() {
 	mut a := &App{
 		files: files
 	}
-	a.tui = tui.init({
+	a.tui = tui.init(
 		user_data: a
 		init_fn: init
 		frame_fn: frame
 		event_fn: event
 		capture_events: true
-	})
-	a.tui.run()
+	)
+	a.tui.run() ?
 }

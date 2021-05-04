@@ -5,6 +5,7 @@ import v.util
 import v.pref
 import v.builder
 import v.ast
+import rand
 import term
 
 const (
@@ -60,8 +61,6 @@ fn main() {
 		}
 	}
 	howmany := app.api_differences.len
-	eprintln('NB: please, do run `git clean -xf` after this tool, or at least `find thirdparty/ |grep .o$|xargs rm`')
-	eprintln('otherwise, `./v test-self` may show false positives, due to .o files compiled with a cross compiler.')
 	if howmany > 0 {
 		eprintln(term.header('Found $howmany modules with different APIs', '='))
 		for m in app.api_differences.keys() {
@@ -95,7 +94,7 @@ fn (app App) gen_api_for_module_in_os(mod_name string, os_name string) string {
 	}
 	mpath := os.join_path('vlib', mod_name.replace('.', '/'))
 	tmpname := '/tmp/${mod_name}_${os_name}.c'
-	prefs, _ := pref.parse_args(['-os', os_name, '-o', tmpname, '-shared', mpath])
+	prefs, _ := pref.parse_args([], ['-os', os_name, '-o', tmpname, '-shared', mpath])
 	mut b := builder.new_builder(prefs)
 	b.compile_c()
 	mut res := []string{}
@@ -118,7 +117,7 @@ fn (app App) gen_api_for_module_in_os(mod_name string, os_name string) string {
 }
 
 fn (mut app App) compare_api(api_base string, api_os string, mod_name string, os_base string, os_target string) {
-	res := util.color_compare_strings(app.diff_cmd, api_base, api_os)
+	res := util.color_compare_strings(app.diff_cmd, rand.ulid(), api_base, api_os)
 	if res.len > 0 {
 		summary := 'Different APIs found for module: `$mod_name`, between OS base: `$os_base` and OS: `$os_target`'
 		eprintln(term.header(summary, '-'))

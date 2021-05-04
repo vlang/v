@@ -2,7 +2,7 @@ fn test_fixed_array_can_be_assigned() {
 	x := 2.32
 	mut v := [8]f64{}
 	assert v[1] == 0
-	v = [1.0, x, 3.0,4.0,5.0,6.0,7.0,8.0]!
+	v = [1.0, x, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]!
 	assert v[1] == x
 	v[1] = 2.0
 	for i, e in v {
@@ -18,16 +18,36 @@ fn test_fixed_array_can_be_assigned() {
 	assert v[1] == 3.0
 }
 
+fn test_fixed_array_assignment() {
+	mut a := [2]int{}
+	a[0] = 111
+	a[1] = 222
+	b := a
+	assert b[0] == a[0]
+	assert b[1] == a[1]
+	mut c := [2]int{}
+	c = a
+	assert c[0] == a[0]
+	assert c[1] == a[1]
+	d := [3]int{init: 333}
+	for val in d {
+		assert val == 333
+	}
+	e := [3]string{init: 'vlang'}
+	for val in e {
+		assert val == 'vlang'
+	}
+}
+
 fn test_fixed_array_can_be_used_in_declaration() {
 	x := 2.32
-	v := [1.0, x, 3.0,4.0,5.0,6.0,7.0,8.0]!
+	v := [1.0, x, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]!
 	assert v.len == 8
 	assert v[1] == x
 }
 
-
 struct Context {
-	pub mut:
+pub mut:
 	vb [8]f64
 }
 
@@ -51,7 +71,7 @@ fn test_fixed_array_can_be_assigned_to_a_struct_field() {
 }
 
 fn multiply_by_two(mut arr [3]int) {
-	for i in 0..arr.len {
+	for i in 0 .. arr.len {
 		arr[i] *= 2
 	}
 }
@@ -61,12 +81,12 @@ fn change_first_element(mut arr [3][3]int) {
 }
 
 fn test_fixed_array_can_be_passed_as_mut_arg() {
-	mut arr := [1,2,3]!
+	mut arr := [1, 2, 3]!
 	multiply_by_two(mut arr)
-	assert arr == [2,4,6]!
-	mut arr2 := [[1,2,3]!, [4,5,6]!, [7,8,9]!]!
+	assert arr == [2, 4, 6]!
+	mut arr2 := [[1, 2, 3]!, [4, 5, 6]!, [7, 8, 9]!]!
 	change_first_element(mut arr2)
-	assert arr2 == [[0,2,3]!, [4,5,6]!, [7,8,9]!]!
+	assert arr2 == [[0, 2, 3]!, [4, 5, 6]!, [7, 8, 9]!]!
 }
 
 fn test_iteration_over_fixed_array() {
@@ -96,6 +116,6 @@ fn calc_size(a [3]int) {
 }
 
 fn test_for_in_fixed_array() {
-	arr := [1,2,3]!
+	arr := [1, 2, 3]!
 	calc_size(arr)
 }

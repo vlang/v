@@ -13,7 +13,7 @@ fn test<T>() {
 	t.name = '2'
 	$for f in T.fields {
 		$if f.typ is string {
-			println(t.$f.name)
+			println(t.$(f.name))
 		}
 	}
 }

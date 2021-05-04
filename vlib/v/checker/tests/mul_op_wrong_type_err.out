@@ -2,55 +2,56 @@ vlib/v/checker/tests/mul_op_wrong_type_err.vv:5:13: error: mismatched types `Aaa
     3 | struct Aaa{}
     4 | fn main() {
     5 |     println(Aaa{} * 10)
-      |             ~~~~~
+      |             ~~~~~~~~~~
     6 |     println(10 * Aaa{})
     7 |     println([1,2,3] * 10)
-vlib/v/checker/tests/mul_op_wrong_type_err.vv:6:18: error: mismatched types `int literal` and `Aaa`
+vlib/v/checker/tests/mul_op_wrong_type_err.vv:6:13: error: mismatched types `int literal` and `Aaa`
     4 | fn main() {
     5 |     println(Aaa{} * 10)
     6 |     println(10 * Aaa{})
-      |                  ~~~~~
+      |             ~~~~~~~~~~
     7 |     println([1,2,3] * 10)
     8 |     println(10 * [1,2,3])
 vlib/v/checker/tests/mul_op_wrong_type_err.vv:7:13: error: mismatched types `[]int` and `int literal`
     5 |     println(Aaa{} * 10)
     6 |     println(10 * Aaa{})
     7 |     println([1,2,3] * 10)
-      |             ~~~~~~~
+      |             ~~~~~~~~~~~~
     8 |     println(10 * [1,2,3])
     9 |     a := map[string]int
-vlib/v/checker/tests/mul_op_wrong_type_err.vv:8:18: error: mismatched types `int literal` and `[]int`
+vlib/v/checker/tests/mul_op_wrong_type_err.vv:8:13: error: mismatched types `int literal` and `[]int`
     6 |     println(10 * Aaa{})
     7 |     println([1,2,3] * 10)
     8 |     println(10 * [1,2,3])
-      |                  ~~~~~~~
+      |             ~~~~~~~~~~~~
     9 |     a := map[string]int
    10 |     println(a * 10)
 vlib/v/checker/tests/mul_op_wrong_type_err.vv:10:13: error: mismatched types `map[string]int` and `int literal`
     8 |     println(10 * [1,2,3])
     9 |     a := map[string]int
    10 |     println(a * 10)
-      |             ^
+      |             ~~~~~~
    11 |     println(10 * a)
    12 |     c1 := cmplx.complex(1,-2)
-vlib/v/checker/tests/mul_op_wrong_type_err.vv:11:18: error: mismatched types `int literal` and `map[string]int`
+vlib/v/checker/tests/mul_op_wrong_type_err.vv:11:13: error: mismatched types `int literal` and `map[string]int`
     9 |     a := map[string]int
    10 |     println(a * 10)
    11 |     println(10 * a)
-      |                  ^
+      |             ~~~~~~
    12 |     c1 := cmplx.complex(1,-2)
    13 |     c2 := c1 * 2.0
-vlib/v/checker/tests/mul_op_wrong_type_err.vv:13:11: error: infix expr: cannot use `float literal` (right expression) as `math.complex.Complex`
+vlib/v/checker/tests/mul_op_wrong_type_err.vv:13:8: error: infix expr: cannot use `float literal` (right expression) as `math.complex.Complex`
    11 |     println(10 * a)
    12 |     c1 := cmplx.complex(1,-2)
    13 |     c2 := c1 * 2.0
-      |              ^
+      |           ~~~~~~~~
    14 |     println(c2)
    15 |     c3 := 2.0 * c1
-vlib/v/checker/tests/mul_op_wrong_type_err.vv:15:12: error: infix expr: cannot use `math.complex.Complex` (right expression) as `float literal`
+vlib/v/checker/tests/mul_op_wrong_type_err.vv:15:8: error: infix expr: cannot use `math.complex.Complex` (right expression) as `float literal`
    13 |     c2 := c1 * 2.0
    14 |     println(c2)
    15 |     c3 := 2.0 * c1
-      |               ^
+      |           ~~~~~~~~
    16 |     println(c3)
    17 | }
+

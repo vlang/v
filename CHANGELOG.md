@@ -1,9 +1,11 @@
-## V 0.2.3
-*Not yet released*
-- Allow interfaces to define fields, not just methods.
+-## V 0.2.4
+-*Not yet released*
+- Improved `unused variable` warning. Assigning to a variable no longer marks it as used.
+- Bare metal support.
 
-## V 0.2.2
+## V 0.2.2 - 0.2.3
 *22 Jan 2021*
+- Allow interfaces to define fields, not just methods.
 - `vweb` now uses struct embedding: `app.vweb.text('hello') => app.text('hello')`.
 - Consts can now be declared outside of `const()` blocks: `const x = 0`.
 - Overloading of  `>`, `<`, `!=`, `==`, `<=` and `>=` operators.
@@ -22,6 +24,14 @@
 - Advanced vdoc search on mobile layout.
 - string's `left()`/`right` were removed in favor of slicing syntax: `str[..pos]`.
 - gg: native graphics mode on macOS/iOS (using Cocoa Drawing API).
+- Full path to consts must be specified everywhere. This makes it easy to distinguish them
+from local variables.
+- `__offsetof` for low level needs (works like `offsetof` in C).
+- vfmt now preserves empty lines, like gofmt.
+- Support for compile time environment variables via `$env('ENV_VAR')`.
+- Allow method declaration of `==` and `<` operators and auto generate `!=`, `>`, `<=` and `>=`.
+- support `dump(expr)`, i.e. tracing of both the location, name and value of an expression
+- deprecate os.exec in favour of os.executable() which does *NOT* return an option, when the command was not found
 
 ## V 0.2.1
 *30 Dec 2020*
@@ -117,7 +127,6 @@ files with compilation errors.
 - High order functions improvements (functions can now be returned etc).
 - Anonymous functions that can be defined inside other functions.
 - Built-in JSON module is back.
-- Closures.
 - Lots and lots of new tests added, including output tests that test error messages.
 - Multiple errors are now printed, the compiler no longer stops after the first error.
 - The new JS backend using the AST parser (almost complete).
@@ -150,7 +159,7 @@ files with compilation errors.
 - os: `is_link()`, `is_dir()`, `exists()`.
 - Ranging through fixed size arrays.
 - Lots of fixes in ORM and vweb.
-- The first tutorial: [building a simple web application with vweb](https://github.com/vlang/v/blob/master/tutorials/building-a-simple-web-blog-with-vweb.md)
+- The first tutorial: [building a simple web application with vweb](https://github.com/vlang/v/blob/master/tutorials/building_a_simple_web_blog_with_vweb/README.md)
 - Match expressions now must be exhaustive.
 - freestanding: `malloc()`/`free()`.
 - `++` is now required instead of `+= 1` for consistency.
@@ -187,7 +196,7 @@ files with compilation errors.
 - `os.cp()` for copying files and directores.
 - Additional compile-time flags: `$if clang, msvc, mingw, x32, x64, big_endian, little_endian {`.
 - All C functions now have to be declared, all missing C functions have been defined.
-- Global variables (only with the `--enable-globals` flag)
+- Global variables (only with the `-enable-globals` flag)
     for low level applications like kernels and drivers.
 - Nothing can be cast to bool (previously code like `if bool(1) {` worked).
 - `<<` and `>>` now work with all integer types.

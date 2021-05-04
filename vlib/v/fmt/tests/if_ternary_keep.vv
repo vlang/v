@@ -1,0 +1,44 @@
+struct Foo {
+	n int
+	s string
+}
+
+fn valid_single_line() {
+	// Variable initialization
+	a, b := if true { 'a', 'b' } else { 'b', 'a' }
+	// Variable assignment
+	mut x := 'abc'
+	x = if x == 'def' { 'ghi' } else { 'def' }
+	// Array pushes
+	[0, 1] << if true { 2 } else { 3 }
+	// Empty or literal syntax struct inits
+	_ := if false { Foo{} } else { Foo{5, 6} }
+	// As argument for a function call
+	some_func(if cond { 'param1' } else { 'param2' })
+	// struct init
+	foo := Foo{
+		n: if true { 1 } else { 0 }
+		s: if false { 'false' } else { 'true' }
+	}
+}
+
+fn requires_multiple_lines() {
+	b := if bar {
+		// with comments inside
+		'some str'
+	} else {
+		'other str'
+	}
+}
+
+fn return_ternary(cond bool) int {
+	return if cond { 5 } else { 12 }
+}
+
+fn long_return_ternary() string {
+	return if false {
+		'spam and eggs'
+	} else {
+		'Lorem ipsum dolor sit amet, consectetur adipiscing elit.'
+	}
+}

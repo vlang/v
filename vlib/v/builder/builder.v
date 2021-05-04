@@ -1,10 +1,10 @@
 module builder
 
 import os
-import v.ast
-import v.table
+import v.token
 import v.pref
 import v.util
+import v.ast
 import v.vmod
 import v.checker
 import v.parser
@@ -21,19 +21,20 @@ mut:
 	out_name_c    string
 	out_name_js   string
 	max_nr_errors int = 100
+	stats_lines   int // size of backend generated source code in lines
+	stats_bytes   int // size of backend generated source code in bytes
 pub mut:
 	module_search_paths []string
 	parsed_files        []ast.File
 	cached_msvc         MsvcResult
-	table               &table.Table
-	timers              &util.Timers = util.new_timers(false)
+	table               &ast.Table
 	ccoptions           CcompilerOptions
 }
 
 pub fn new_builder(pref &pref.Preferences) Builder {
 	rdir := os.real_path(pref.path)
 	compiled_dir := if os.is_dir(rdir) { rdir } else { os.dir(rdir) }
-	mut table := table.new_table()
+	mut table := ast.new_table()
 	table.is_fmt = false
 	if pref.use_color == .always {
 		util.emanager.set_support_color(true)
@@ -41,14 +42,15 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 	if pref.use_color == .never {
 		util.emanager.set_support_color(false)
 	}
-	msvc := find_msvc() or {
+	msvc := find_msvc(pref.m64) or {
 		if pref.ccompiler == 'msvc' {
-			verror('Cannot find MSVC on this OS')
+			// verror('Cannot find MSVC on this OS')
 		}
 		MsvcResult{
 			valid: false
 		}
 	}
+	util.timing_set_should_print(pref.show_timings || pref.is_verbose)
 	return Builder{
 		pref: pref
 		table: table
@@ -57,13 +59,8 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 			parent: 0
 		}
 		compiled_dir: compiled_dir
-		max_nr_errors: if pref.error_limit > 0 {
-			pref.error_limit
-		} else {
-			100
-		}
+		max_nr_errors: if pref.error_limit > 0 { pref.error_limit } else { 100 }
 		cached_msvc: msvc
-		timers: util.new_timers(pref.show_timings || pref.is_verbose)
 	}
 	// max_nr_errors: pref.error_limit ?? 100 TODO potential syntax?
 }
@@ -97,29 +94,36 @@ pub fn (mut b Builder) parse_imports() {
 		for imp in ast_file.imports {
 			mod := imp.mod
 			if mod == 'builtin' {
-				verror('cannot import module "builtin"')
+				error_with_pos('cannot import module "builtin"', ast_file.path, imp.pos)
 				break
 			}
 			if mod in done_imports {
 				continue
 			}
 			import_path := b.find_module_path(mod, ast_file.path) or {
-				// v.parsers[i].error_with_token_index('cannot import module "$mod" (not found)', v.parsers[i].import_table.get_import_tok_idx(mod))
+				// v.parsers[i].error_with_token_index('cannot import module "$mod" (not found)', v.parsers[i].import_ast.get_import_tok_idx(mod))
 				// break
-				verror('cannot import module "$mod" (not found)')
+				error_with_pos('cannot import module "$mod" (not found)', ast_file.path,
+					imp.pos)
 				break
 			}
 			v_files := b.v_files_from_dir(import_path)
 			if v_files.len == 0 {
-				// v.parsers[i].error_with_token_index('cannot import module "$mod" (no .v files in "$import_path")', v.parsers[i].import_table.get_import_tok_idx(mod))
-				verror('cannot import module "$mod" (no .v files in "$import_path")')
+				// v.parsers[i].error_with_token_index('cannot import module "$mod" (no .v files in "$import_path")', v.parsers[i].import_ast.get_import_tok_idx(mod))
+				error_with_pos('cannot import module "$mod" (no .v files in "$import_path")',
+					ast_file.path, imp.pos)
 			}
 			// Add all imports referenced by these libs
 			parsed_files := parser.parse_files(v_files, b.table, b.pref, b.global_scope)
 			for file in parsed_files {
-				if file.mod.name != mod {
+				mut name := file.mod.name
+				if name == '' {
+					name = file.mod.short_name
+				}
+				if name != mod {
 					// v.parsers[pidx].error_with_token_index('bad module definition: ${v.parsers[pidx].file_path} imports module "$mod" but $file is defined as module `$p_mod`', 1
-					verror('bad module definition: $ast_file.path imports module "$mod" but $file.path is defined as module `$file.mod.name`')
+					error_with_pos('bad module definition: $ast_file.path imports module "$mod" but $file.path is defined as module `$name`',
+						ast_file.path, imp.pos)
 				}
 			}
 			b.parsed_files << parsed_files
@@ -231,7 +235,7 @@ fn module_path(mod string) string {
 	return mod.replace('.', os.path_separator)
 }
 
-// TODO: try to merge this & util.module functions to create a 
+// TODO: try to merge this & util.module functions to create a
 // reliable multi use function. see comments in util/module.v
 pub fn (b &Builder) find_module_path(mod string, fpath string) ?string {
 	// support @VROOT/v.mod relative paths:
@@ -285,8 +289,14 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) ?string {
 }
 
 fn (b &Builder) show_total_warns_and_errors_stats() {
+	if b.checker.nr_errors == 0 && b.checker.nr_warnings == 0 && b.checker.nr_notices == 0 {
+		return
+	}
 	if b.pref.is_stats {
-		println('checker summary: ${util.bold(b.checker.nr_errors.str())} V errors, ${util.bold(b.checker.nr_warnings.str())} V warnings')
+		estring := util.bold(b.checker.nr_errors.str())
+		wstring := util.bold(b.checker.nr_warnings.str())
+		nstring := util.bold(b.checker.nr_notices.str())
+		println('checker summary: $estring V errors, $wstring V warnings, $nstring V notices')
 	}
 }
 
@@ -303,6 +313,26 @@ fn (b &Builder) print_warnings_and_errors() {
 	if b.pref.is_verbose && b.checker.nr_warnings > 1 {
 		println('$b.checker.nr_warnings warnings')
 	}
+	if b.pref.is_verbose && b.checker.nr_notices > 1 {
+		println('$b.checker.nr_notices notices')
+	}
+	if b.checker.nr_notices > 0 && !b.pref.skip_warnings {
+		for i, err in b.checker.notices {
+			kind := if b.pref.is_verbose {
+				'$err.reporter notice #$b.checker.nr_notices:'
+			} else {
+				'notice:'
+			}
+			ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
+			eprintln(ferror)
+			if err.details.len > 0 {
+				eprintln('Details: $err.details')
+			}
+			if i > b.max_nr_errors {
+				return
+			}
+		}
+	}
 	if b.checker.nr_warnings > 0 && !b.pref.skip_warnings {
 		for i, err in b.checker.warnings {
 			kind := if b.pref.is_verbose {
@@ -313,7 +343,7 @@ fn (b &Builder) print_warnings_and_errors() {
 			ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
 			eprintln(ferror)
 			if err.details.len > 0 {
-				eprintln('details: $err.details')
+				eprintln('Details: $err.details')
 			}
 			// eprintln('')
 			if i > b.max_nr_errors {
@@ -335,7 +365,7 @@ fn (b &Builder) print_warnings_and_errors() {
 			ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
 			eprintln(ferror)
 			if err.details.len > 0 {
-				eprintln('details: $err.details')
+				eprintln('Details: $err.details')
 			}
 			// eprintln('')
 			if i > b.max_nr_errors {
@@ -367,7 +397,7 @@ fn (b &Builder) print_warnings_and_errors() {
 					}
 				}
 			}
-			if redefine_conflicts.len > 1 {
+			if redefines.len > 0 {
 				eprintln('redefinition of function `$fn_name`')
 				for redefine in redefines {
 					eprintln(util.formatted_error('conflicting declaration:', redefine.fheader,
@@ -390,14 +420,12 @@ struct FunctionRedefinition {
 	f       ast.FnDecl
 }
 
+fn error_with_pos(s string, fpath string, pos token.Position) {
+	ferror := util.formatted_error('builder error:', s, fpath, pos)
+	eprintln(ferror)
+	exit(1)
+}
+
 fn verror(s string) {
 	util.verror('builder error', s)
-}
-
-pub fn (mut b Builder) timing_start(label string) {
-	b.timers.start(label)
-}
-
-pub fn (mut b Builder) timing_measure(label string) {
-	b.timers.show(label)
 }

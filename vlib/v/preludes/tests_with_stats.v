@@ -78,8 +78,8 @@ fn (b &BenchedTests) fn_name() string {
 // Called at the end of the test program produced by `v -stats file_test.v`
 fn (mut b BenchedTests) end_testing() {
 	b.bench.stop()
-	println(inner_indent + b.bench.total_message('running V tests in "' + os.file_name(b.test_suit_file) +
-		'"'))
+	println(inner_indent + b.bench.total_message('running V tests in "' +
+		os.file_name(b.test_suit_file) + '"'))
 }
 
 // ///////////////////////////////////////////////////////////////////

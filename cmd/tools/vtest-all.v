@@ -5,10 +5,10 @@ import term
 import time
 
 const (
-	vexe = os.getenv('VEXE')
-	vroot = os.dir(vexe)
+	vexe        = os.getenv('VEXE')
+	vroot       = os.dir(vexe)
 	args_string = os.args[1..].join(' ')
-	vargs = args_string.all_before('test-all')
+	vargs       = args_string.all_before('test-all')
 )
 
 fn main() {
@@ -50,6 +50,18 @@ mut:
 fn get_all_commands() []Command {
 	mut res := []Command{}
 	res << Command{
+		line: '$vexe examples/hello_world.v'
+		okmsg: 'V can compile hello world.'
+	}
+	res << Command{
+		line: '$vexe -o vtmp cmd/v'
+		okmsg: 'V can compile itself.'
+	}
+	res << Command{
+		line: '$vexe -o vtmp_werror -cstrict cmd/v'
+		okmsg: 'V can compile itself with -cstrict too.'
+	}
+	res << Command{
 		line: '$vexe $vargs -progress test-cleancode'
 		okmsg: 'All important .v files are invariant when processed with `v fmt`'
 	}
@@ -62,21 +74,28 @@ fn get_all_commands() []Command {
 		okmsg: 'There are no _test.v file regressions.'
 	}
 	res << Command{
-		line: '$vexe $vargs -progress build-tools'
+		line: '$vexe $vargs -progress -W build-tools'
 		okmsg: 'All tools can be compiled.'
 	}
 	res << Command{
-		line: '$vexe $vargs -progress build-examples'
+		line: '$vexe $vargs -progress -W build-examples'
 		okmsg: 'All examples can be compiled.'
 	}
 	res << Command{
-		line: '$vexe run cmd/tools/check-md.v -hide-warnings -all'
+		line: '$vexe check-md -hide-warnings .'
 		label: 'Check ```v ``` code examples and formatting of .MD files...'
 		okmsg: 'All .md files look good.'
 	}
 	res << Command{
 		line: '$vexe install nedpals.args'
 		okmsg: '`v install` works.'
+	}
+	// NB: test that a program that depends on thirdparty libraries with its
+	// own #flags (tetris depends on gg, which uses sokol) can be compiled
+	// with -usecache:
+	res << Command{
+		line: '$vexe -usecache examples/tetris/tetris.v'
+		okmsg: '`v -usecache` works.'
 	}
 	$if macos {
 		res << Command{

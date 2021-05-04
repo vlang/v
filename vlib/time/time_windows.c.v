@@ -5,6 +5,7 @@ module time
 
 #include <time.h>
 // #include <sysinfoapi.h>
+
 struct C.tm {
 	tm_year int
 	tm_mon  int
@@ -28,11 +29,11 @@ struct SystemTime {
 	millisecond u16
 }
 
-fn C.GetSystemTimeAsFileTime(lpSystemTimeAsFileTime C._FILETIME)
+fn C.GetSystemTimeAsFileTime(lpSystemTimeAsFileTime &C._FILETIME)
 
-fn C.FileTimeToSystemTime()
+fn C.FileTimeToSystemTime(lpFileTime &C._FILETIME, lpSystemTime &SystemTime)
 
-fn C.SystemTimeToTzSpecificLocalTime()
+fn C.SystemTimeToTzSpecificLocalTime(lpTimeZoneInformation &C.TIME_ZONE_INFORMATION, lpUniversalTime &SystemTime, lpLocalTime &SystemTime)
 
 fn C.localtime_s(t &C.time_t, tm &C.tm)
 
@@ -49,7 +50,7 @@ struct C.timespec {
 	tv_nsec i64
 }
 
-fn C._mkgmtime(&C.tm) time_t
+fn C._mkgmtime(&C.tm) C.time_t
 
 fn C.QueryPerformanceCounter(&u64) C.BOOL
 
@@ -75,7 +76,7 @@ fn init_win_time_start() u64 {
 pub fn sys_mono_now() u64 {
 	tm := u64(0)
 	C.QueryPerformanceCounter(&tm) // XP or later never fail
-	return (tm - start_time) * 1000000000 / freq_time
+	return (tm - time.start_time) * 1000000000 / time.freq_time
 }
 
 // NB: vpc_now is used by `v -profile` .
@@ -113,8 +114,8 @@ pub fn (t Time) local() Time {
 		hour: st_local.hour
 		minute: st_local.minute
 		second: st_local.second // These are the same
-		microsecond: t.microsecond
-		unix: t.unix
+		microsecond: st_local.millisecond * 1000
+		unix: u64(st_local.unix_time())
 	}
 	return t_local
 }
@@ -210,4 +211,15 @@ pub fn solaris_utc() Time {
 pub struct C.timeval {
 	tv_sec  u64
 	tv_usec u64
+}
+
+// wait makes the calling thread sleep for a given duration (in nanoseconds).
+[deprecated: 'call time.sleep(n * time.second)']
+pub fn wait(duration Duration) {
+	C.Sleep(int(duration / millisecond))
+}
+
+// sleep makes the calling thread sleep for a given duration (in nanoseconds).
+pub fn sleep(duration Duration) {
+	C.Sleep(int(duration / millisecond))
 }

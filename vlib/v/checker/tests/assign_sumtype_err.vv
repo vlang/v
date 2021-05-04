@@ -11,4 +11,5 @@ fn main() {
 	stmt := Stmt(Decl{})
 	mut decl := Decl{}
 	decl = stmt
+	_ = decl
 }

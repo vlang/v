@@ -6,7 +6,7 @@ mut:
 }
 
 fn f(x int, y f64, shared s St) {
-	time.usleep(50000)
+	time.sleep(50 * time.millisecond)
 	lock s {
 		s.x = x * y
 	}

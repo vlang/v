@@ -40,6 +40,11 @@ TCCOS := freebsd
 LDFLAGS += -lexecinfo
 endif
 
+ifeq ($(_SYS),NetBSD)
+TCCOS := netbsd
+LDFLAGS += -lexecinfo
+endif
+
 ifdef ANDROID_ROOT
 ANDROID := 1
 undefine LINUX
@@ -60,7 +65,7 @@ else
 ifneq ($(filter x86%,$(TCCARCH)),)
 	TCCARCH := i386
 else
-ifeq ($(TCCARCH),aarch64)
+ifeq ($(TCCARCH),arm64)
 	TCCARCH := arm64
 else
 ifneq ($(filter arm%,$(TCCARCH)),)
@@ -73,44 +78,32 @@ endif
 
 .PHONY: all clean fresh_vc fresh_tcc
 
+ifdef prod
+VFLAGS+=-prod
+endif
+
 all: latest_vc latest_tcc
 ifdef WIN32
 	$(CC) $(CFLAGS) -g -std=c99 -municode -w -o $(V) $(VC)/$(VCFILE) $(LDFLAGS)
-ifdef prod
-	$(V) -prod self
-else
-	$(V) self
-endif
+	$(V) -o v2.exe $(VFLAGS) cmd/v
+	move /y v2.exe v.exe
 else
 	$(CC) $(CFLAGS) -g -std=gnu99 -w -o $(V) $(VC)/$(VCFILE) -lm -lpthread $(LDFLAGS)
-ifdef ANDROID
-	chmod 755 v
-endif
-
-ifdef prod
-	$(V) -prod self
-else
-	$(V) self
-endif
-
-ifndef ANDROID
-	$(MAKE) modules
-endif
+	$(V) -o v2.exe $(VFLAGS) cmd/v
+	mv -f v2.exe v  
 endif
 	@echo "V has been successfully built"
 	@$(V) -version
-
-#clean: clean_tmp
-#git clean -xf
 
 clean:
 	rm -rf $(TMPTCC)
 	rm -rf $(VC)
 
-latest_vc: $(VC)/.git/config
 ifndef local
+latest_vc: $(VC)/.git/config
 	cd $(VC) && $(GITCLEANPULL)
 else
+latest_vc:
 	@echo "Using local vc"
 endif
 
@@ -118,11 +111,12 @@ fresh_vc:
 	rm -rf $(VC)
 	$(GITFASTCLONE) $(VCREPO) $(VC)
 
-latest_tcc: $(TMPTCC)/.git/config
 ifndef ANDROID
 ifndef local
+latest_tcc: $(TMPTCC)/.git/config
 	cd $(TMPTCC) && $(GITCLEANPULL)
 else
+latest_tcc:
 	@echo "Using local tcc"
 endif
 endif
@@ -143,16 +137,16 @@ $(TMPTCC)/.git/config:
 $(VC)/.git/config:
 	$(MAKE) fresh_vc
 
+asan:
+	$(MAKE) all CFLAGS='-fsanitize=address,undefined'
+
 selfcompile:
 	$(V) -cg -o v cmd/v
 
 selfcompile-static:
 	$(V) -cg -cflags '--static' -o v-static cmd/v
 
-modules: module_builtin module_strings module_strconv
-module_builtin:
-	#$(V) build module vlib/builtin > /dev/null
-module_strings:
-	#$(V) build module vlib/strings > /dev/null
-module_strconv:
-	#$(V) build module vlib/strconv > /dev/null
+### NB: Please keep this Makefile and make.bat simple.
+install:
+	@echo 'Please use `sudo v symlink` instead.'
+    

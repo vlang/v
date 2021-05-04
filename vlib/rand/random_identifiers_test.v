@@ -40,7 +40,7 @@ fn test_ulids_generated_in_the_same_millisecond_have_the_same_prefix() {
 	t := time.utc().unix_time_milli()
 	mut ulid1 := ''
 	mut ulid2 := ''
-	mut ulid3 := ''    
+	mut ulid3 := ''
 	ulid1 = rand.ulid_at_millisecond(t)
 	ulid2 = rand.ulid_at_millisecond(t)
 	ulid3 = rand.ulid_at_millisecond(t)
@@ -53,9 +53,9 @@ fn test_ulids_generated_in_the_same_millisecond_have_the_same_prefix() {
 
 fn test_ulids_should_be_lexicographically_ordered_when_not_in_same_millisecond() {
 	ulid1 := rand.ulid()
-	time.sleep_ms(1)
+	time.sleep(1 * time.millisecond)
 	ulid2 := rand.ulid()
-	time.sleep_ms(1)
+	time.sleep(1 * time.millisecond)
 	ulid3 := rand.ulid()
 	mut all := [ulid3, ulid2, ulid1]
 	// eprintln('all before: $all')

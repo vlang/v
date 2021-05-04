@@ -14,7 +14,7 @@ fn test_anyfloat() {
 }
 
 fn g(x f32) f32 {
-	return x*x
+	return x * x
 }
 
 fn fabs(x f32) f32 {
@@ -26,7 +26,7 @@ fn test_call() {
 	r := g(f32(c) / 255.0)
 	assert fabs(r - 3.890949634755863) <= 1.e-6
 }
-		
+
 struct Tx {
 	x f32
 }
@@ -37,16 +37,16 @@ fn (s Tx) get() f32 {
 
 fn test_struct_init() {
 	c := 503
-	d := Tx {
-		x:  g(f32(c) / 255.0)
+	d := Tx{
+		x: g(f32(c) / 255.0)
 	}
 	assert fabs(d.get() - 3.890949634755863) < 1.e-6
 }
 
 fn struct_init_return() Tx {
 	c := 503
-	return Tx {
-		x:  g(f32(c) / 255.0)
+	return Tx{
+		x: g(f32(c) / 255.0)
 	}
 }
 
@@ -57,8 +57,8 @@ fn test_struct_init_return() {
 
 fn struct_init_ref_return() &Tx {
 	c := 503
-	return &Tx {
-		x:  g(f32(c) / 255.0)
+	return &Tx{
+		x: g(f32(c) / 255.0)
 	}
 }
 

@@ -1,0 +1,15 @@
+import os
+
+fn main() {
+	println('Hello world, args: $os.args')
+	i := 123
+	a := 'abc'
+	b := 'xyz'
+	e := 'a: $a b: $b i: $i'
+	d := 'a: ${a:5s} b: ${b:-5s} i: ${i:20d}'
+	println('a: $a $b xxx')
+	eprintln('e: $e')
+	_ = ' ${foo.method(bar).str()} '
+	println('(${some_struct.@type}, $some_struct.y)')
+	_ := 'CastExpr ${int(d.e).str()}'
+}

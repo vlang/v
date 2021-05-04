@@ -5,85 +5,90 @@ import testing
 import v.pref
 
 const (
+	skip_test_files               = [
+		'vlib/context/deadline_test.v' /* sometimes blocks */,
+	]
 	skip_with_fsanitize_memory    = [
-		'vlib/encoding/csv/reader_test.v',
-		'vlib/net/tcp_test.v',
 		'vlib/net/tcp_simple_client_server_test.v',
-		'vlib/net/udp_test.v',
 		'vlib/net/http/cookie_test.v',
 		'vlib/net/http/http_test.v',
 		'vlib/net/http/status_test.v',
+		'vlib/net/http/http_httpbin_test.v',
+		'vlib/net/http/header_test.v',
+		'vlib/net/udp_test.v',
+		'vlib/net/tcp_test.v',
 		'vlib/orm/orm_test.v',
 		'vlib/sqlite/sqlite_test.v',
+		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/vweb/tests/vweb_test.v',
-		'vlib/v/tests/unsafe_test.v',
+		'vlib/vweb/request_test.v',
+		'vlib/vweb/route_test.v',
 		'vlib/x/websocket/websocket_test.v',
-		'vlib/net/http/http_httpbin_test.v',
+		'vlib/crypto/rand/crypto_rand_read_test.v',
 	]
 	skip_with_fsanitize_address   = [
-		'vlib/encoding/base64/base64_test.v',
-		'vlib/encoding/csv/reader_test.v',
-		'vlib/flag/flag_test.v',
-		'vlib/io/util/util_test.v',
-		'vlib/io/reader_test.v',
-		'vlib/json/json_test.v',
-		'vlib/net/http/cookie_test.v',
-		'vlib/os/inode_test.v',
-		'vlib/os/os_test.v',
-		'vlib/regex/regex_test.v',
-		'vlib/semver/semver_test.v',
-		'vlib/sync/channel_opt_propagate_test.v',
-		'vlib/time/parse_test.v',
-		'vlib/v/fmt/fmt_keep_test.v',
-		'vlib/v/fmt/fmt_test.v',
-		'vlib/v/tests/array_init_test.v',
-		'vlib/v/doc/doc_test.v',
-		'vlib/v/tests/const_test.v',
-		'vlib/v/tests/fn_multiple_returns_test.v',
-		'vlib/v/tests/inout/compiler_test.v',
-		'vlib/v/tests/option_default_values_test.v',
-		'vlib/v/tests/option_test.v',
-		'vlib/v/tests/ptr_arithmetic_test.v',
-		'vlib/v/tests/str_gen_test.v',
-		'vlib/v/tests/unsafe_test.v',
-		'vlib/v/tests/vmod_parser_test.v',
-		'vlib/v/vcache/vcache_test.v',
-		'vlib/x/json2/decoder_test.v',
 		'vlib/x/websocket/websocket_test.v',
 	]
 	skip_with_fsanitize_undefined = [
-		'vlib/encoding/csv/reader_test.v',
+		'do_not_remove',
 	]
-	skip_test_files               = []string{}
+	skip_with_werror              = [
+		// -Wduplicated-branches
+		'vlib/v/tests/match_in_fn_call_test.v',
+		'vlib/v/tests/match_test.v',
+		'vlib/v/tests/unsafe_test.v',
+	]
+	skip_with_asan_compiler       = [
+		'do_not_remove',
+	]
+	skip_with_msan_compiler       = [
+		'do_not_remove',
+	]
 	skip_on_musl                  = [
 		'vlib/v/tests/profile/profile_test.v',
 	]
 	skip_on_ubuntu_musl           = [
-		/* 'vlib/v/gen/js/jsgen_test.v', */
+		//'vlib/v/gen/js/jsgen_test.v',
 		'vlib/net/http/cookie_test.v',
 		'vlib/net/http/http_test.v',
 		'vlib/net/http/status_test.v',
 		'vlib/net/websocket/ws_test.v',
 		'vlib/sqlite/sqlite_test.v',
 		'vlib/orm/orm_test.v',
+		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/clipboard/clipboard_test.v',
 		'vlib/vweb/tests/vweb_test.v',
+		'vlib/vweb/request_test.v',
+		'vlib/vweb/route_test.v',
 		'vlib/x/websocket/websocket_test.v',
 		'vlib/net/http/http_httpbin_test.v',
+		'vlib/net/http/header_test.v',
 	]
-	skip_on_linux                 = []string{}
+	skip_on_linux                 = [
+		'do_not_remove',
+	]
 	skip_on_non_linux             = [
-		'vlib/net/websocket/ws_test.v',
+		'do_not_remove',
 	]
 	skip_on_windows               = [
 		'vlib/orm/orm_test.v',
+		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/net/websocket/ws_test.v',
+		'vlib/net/unix/unix_test.v',
 		'vlib/x/websocket/websocket_test.v',
 		'vlib/vweb/tests/vweb_test.v',
+		'vlib/vweb/request_test.v',
+		'vlib/vweb/route_test.v',
 	]
-	skip_on_non_windows           = []string{}
-	skip_on_macos                 = []string{}
-	skip_on_non_macos             = []string{}
+	skip_on_non_windows           = [
+		'do_not_remove',
+	]
+	skip_on_macos                 = [
+		'do_not_remove',
+	]
+	skip_on_non_macos             = [
+		'do_not_remove',
+	]
 )
 
 // NB: musl misses openssl, thus the http tests can not be done there
@@ -95,25 +100,40 @@ fn main() {
 	args := os.args.clone()
 	args_string := args[1..].join(' ')
 	cmd_prefix := args_string.all_before('test-self')
-	title := 'testing all fixed tests'
+	title := 'testing vlib'
 	all_test_files := os.walk_ext(os.join_path(vroot, 'vlib'), '_test.v')
 	testing.eheader(title)
 	mut tsession := testing.new_test_session(cmd_prefix)
 	tsession.files << all_test_files
 	tsession.skip_files << skip_test_files
+	mut werror := false
 	mut sanitize_memory := false
 	mut sanitize_address := false
 	mut sanitize_undefined := false
+	mut asan_compiler := false
+	mut msan_compiler := false
 	for arg in args {
-		if '-fsanitize=memory' in arg {
+		if arg.contains('-asan-compiler') {
+			asan_compiler = true
+		}
+		if arg.contains('-msan-compiler') {
+			msan_compiler = true
+		}
+		if arg.contains('-Werror') || arg.contains('-cstrict') {
+			werror = true
+		}
+		if arg.contains('-fsanitize=memory') {
 			sanitize_memory = true
 		}
-		if '-fsanitize=address' in arg {
+		if arg.contains('-fsanitize=address') {
 			sanitize_address = true
 		}
-		if '-fsanitize=undefined' in arg {
+		if arg.contains('-fsanitize=undefined') {
 			sanitize_undefined = true
 		}
+	}
+	if werror {
+		tsession.skip_files << skip_with_werror
 	}
 	if sanitize_memory {
 		tsession.skip_files << skip_with_fsanitize_memory
@@ -123,6 +143,12 @@ fn main() {
 	}
 	if sanitize_undefined {
 		tsession.skip_files << skip_with_fsanitize_undefined
+	}
+	if asan_compiler {
+		tsession.skip_files << skip_with_asan_compiler
+	}
+	if msan_compiler {
+		tsession.skip_files << skip_with_msan_compiler
 	}
 	// println(tsession.skip_files)
 	if os.getenv('V_CI_MUSL').len > 0 {

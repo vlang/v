@@ -1,0 +1,7 @@
+vlib/v/parser/tests/struct_field_expected.vv:6:2: error: unexpected token `.`, expecting struct field name
+    4 | 
+    5 | x = {
+    6 |     .a : 'Alpha'
+      |     ^
+    7 |     .b : 'Beta'
+    8 | }

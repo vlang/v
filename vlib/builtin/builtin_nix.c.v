@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module builtin
 
-//pub fn vsyscall(id int
+// pub fn vsyscall(id int
 //
 
 /*
@@ -16,7 +16,6 @@ const (
 	stdout_value = 1
 	stderr_value  = 2
 )
-
 */
 
 fn builtin_init() {
@@ -49,7 +48,7 @@ fn print_backtrace_skipping_top_frames(xskipframes int) bool {
 fn print_backtrace_skipping_top_frames_mac(skipframes int) bool {
 	$if macos {
 		buffer := [100]voidptr{}
-		nr_ptrs := C.backtrace(buffer, 100)
+		nr_ptrs := C.backtrace(&buffer[0], 100)
 		if nr_ptrs < 2 {
 			eprintln('C.backtrace returned less than 2 frames')
 			return false
@@ -62,7 +61,7 @@ fn print_backtrace_skipping_top_frames_mac(skipframes int) bool {
 fn print_backtrace_skipping_top_frames_freebsd(skipframes int) bool {
 	$if freebsd {
 		buffer := [100]voidptr{}
-		nr_ptrs := C.backtrace(buffer, 100)
+		nr_ptrs := C.backtrace(&buffer[0], 100)
 		if nr_ptrs < 2 {
 			eprintln('C.backtrace returned less than 2 frames')
 			return false
@@ -72,7 +71,7 @@ fn print_backtrace_skipping_top_frames_freebsd(skipframes int) bool {
 	return true
 }
 
-fn C.tcc_backtrace(fmt charptr, other ...charptr) int
+fn C.tcc_backtrace(fmt &char) int
 fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 	$if android {
 		eprintln('On Android no backtrace is available.')
@@ -86,52 +85,57 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 	$if no_backtrace ? {
 		return false
 	} $else {
-		$if tinyc {
-			C.tcc_backtrace("Backtrace")
-			return false
-		}
-		buffer := [100]byteptr{}
-		nr_ptrs := C.backtrace(voidptr(buffer), 100)
-		if nr_ptrs < 2 {
-			eprintln('C.backtrace returned less than 2 frames')
-			return false
-		}
-		nr_actual_frames := nr_ptrs - skipframes
-		mut sframes := []string{}
-		//////csymbols := backtrace_symbols(*voidptr(&buffer[skipframes]), nr_actual_frames)
-		csymbols := C.backtrace_symbols(voidptr(&buffer[skipframes]), nr_actual_frames)
-		for i in 0 .. nr_actual_frames {
-			sframes << unsafe {tos2( byteptr(csymbols[i]) )}
-		}
-		for sframe in sframes {
-			executable := sframe.all_before('(')
-			addr := sframe.all_after('[').all_before(']')
-			beforeaddr := sframe.all_before('[')
-			cmd := 'addr2line -e $executable $addr'
-			// taken from os, to avoid depending on the os module inside builtin.v
-			f := C.popen(charptr(cmd.str), 'r')
-			if isnil(f) {
-				eprintln(sframe)
-				continue
+		$if !freestanding {
+			$if tinyc {
+				C.tcc_backtrace(c'Backtrace')
+				return false
 			}
-			buf := [1000]byte{}
-			mut output := ''
-			for C.fgets(charptr(buf), 1000, f) != 0 {
-				output += tos(byteptr(buf), vstrlen(byteptr(buf)))
+			buffer := [100]voidptr{}
+			nr_ptrs := C.backtrace(&buffer[0], 100)
+			if nr_ptrs < 2 {
+				eprintln('C.backtrace returned less than 2 frames')
+				return false
 			}
-			output = output.trim_space() + ':'
-			if C.pclose(f) != 0 {
-				eprintln(sframe)
-				continue
+			nr_actual_frames := nr_ptrs - skipframes
+			mut sframes := []string{}
+			//////csymbols := backtrace_symbols(*voidptr(&buffer[skipframes]), nr_actual_frames)
+			csymbols := C.backtrace_symbols(voidptr(&buffer[skipframes]), nr_actual_frames)
+			for i in 0 .. nr_actual_frames {
+				sframes << unsafe { tos2(&byte(csymbols[i])) }
 			}
-			if output in ['??:0:', '??:?:'] {
-				output = ''
+			for sframe in sframes {
+				executable := sframe.all_before('(')
+				addr := sframe.all_after('[').all_before(']')
+				beforeaddr := sframe.all_before('[')
+				cmd := 'addr2line -e $executable $addr'
+				// taken from os, to avoid depending on the os module inside builtin.v
+				f := C.popen(&char(cmd.str), c'r')
+				if isnil(f) {
+					eprintln(sframe)
+					continue
+				}
+				buf := [1000]byte{}
+				mut output := ''
+				unsafe {
+					bp := &buf[0]
+					for C.fgets(&char(bp), 1000, f) != 0 {
+						output += tos(bp, vstrlen(bp))
+					}
+				}
+				output = output.trim_space() + ':'
+				if C.pclose(f) != 0 {
+					eprintln(sframe)
+					continue
+				}
+				if output in ['??:0:', '??:?:'] {
+					output = ''
+				}
+				// See http://wiki.dwarfstd.org/index.php?title=Path_Discriminators
+				// NB: it is shortened here to just d. , just so that it fits, and so
+				// that the common error file:lineno: line format is enforced.
+				output = output.replace(' (discriminator', ': (d.')
+				eprintln('${output:-55s} | ${addr:14s} | $beforeaddr')
 			}
-			// See http://wiki.dwarfstd.org/index.php?title=Path_Discriminators
-			// NB: it is shortened here to just d. , just so that it fits, and so
-			// that the common error file:lineno: line format is enforced.
-			output = output.replace(' (discriminator', ': (d.')
-			eprintln('${output:-55s} | ${addr:14s} | $beforeaddr')
 		}
 	}
 	return true
@@ -141,5 +145,6 @@ fn break_if_debugger_attached() {
 	unsafe {
 		mut ptr := &voidptr(0)
 		*ptr = voidptr(0)
+		_ = ptr
 	}
 }

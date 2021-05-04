@@ -16,7 +16,7 @@ const (
 	]
 )
 
-// UI 
+// UI
 struct App_data {
 pub mut:
 	gg              &gg.Context
@@ -53,13 +53,13 @@ fn draw_frame(mut app App_data) {
 		sgl.v2f(510, 400)
 		sgl.end()
 		// update the text
-		mut txt1 := &app.ttf_render[0]
+		mut txt1 := unsafe { &app.ttf_render[0] }
 		if app.frame_c % 2 == 0 {
 			txt1.destroy_texture()
 			txt1.create_text(cframe_txt, 43)
 			txt1.create_texture()
 		}
-		// ----- decomment if you want text rotation ----		
+		// ----- decomment if you want text rotation ----
 		// txt1.bmp.angle = 3.141592 / 180 * f32(app.frame_c % 360)
 		// txt1.draw_text_bmp(app.gg, 300, 350)
 		// txt1.bmp.angle =  0
@@ -71,7 +71,7 @@ Frame: $app.frame_c
 But Vwill prevail for sure, V is the way!!
 òàèì@ò!£$%&
 "
-		txt1 = &app.ttf_render[1]
+		txt1 = unsafe { &app.ttf_render[1] }
 		if app.frame_c % 2 == 0 {
 			txt1.bmp.justify = false
 			if (app.frame_c >> 6) % 2 == 0 {
@@ -93,7 +93,7 @@ But Vwill prevail for sure, V is the way!!
 		txt1.draw_text_bmp(app.gg, 30 + (app.frame_c >> 1) & 0xFF, 200)
 		// draw mouse position
 		if app.mouse_x >= 0 {
-			txt1 = &app.ttf_render[2]
+			txt1 = unsafe { &app.ttf_render[2] }
 			txt1.destroy_texture()
 			txt1.create_text('$app.mouse_x,$app.mouse_y', 25)
 			txt1.create_texture()
@@ -108,7 +108,7 @@ But Vwill prevail for sure, V is the way!!
 	app.gg.end()
 }
 
-fn my_event_manager(mut ev sapp.Event, mut app App_data) {
+fn my_event_manager(mut ev gg.Event, mut app App_data) {
 	if ev.typ == .mouse_move {
 		app.mouse_x = int(ev.mouse_x)
 		app.mouse_y = int(ev.mouse_y)
@@ -145,7 +145,7 @@ fn main() {
 	app.ttf_render << &ttf.TTF_render_Sokol{
 		bmp: &ttf.BitMap{
 			tf: &(app.tf[0])
-			buf: malloc(32000000)
+			buf: unsafe { malloc(32000000) }
 			buf_size: (32000000)
 			color: 0xFF0000FF
 			// style: .raw

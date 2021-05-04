@@ -3,27 +3,35 @@ module builder
 import os
 import v.parser
 import v.pref
-import v.gen
+import v.util
+import v.gen.c
+import v.markused
 
 pub fn (mut b Builder) gen_c(v_files []string) string {
-	b.timing_start('PARSE')
+	util.timing_start('PARSE')
 	b.parsed_files = parser.parse_files(v_files, b.table, b.pref, b.global_scope)
 	b.parse_imports()
-	b.timing_measure('PARSE')
+	util.get_timers().show('SCAN')
+	util.get_timers().show('PARSE')
+	util.get_timers().show_if_exists('PARSE stmt')
 	if b.pref.only_check_syntax {
 		return ''
 	}
-	//
-	b.timing_start('CHECK')
-	b.generic_struct_insts_to_concrete()
+
+	util.timing_start('CHECK')
+	b.table.generic_struct_insts_to_concrete()
 	b.checker.check_files(b.parsed_files)
-	b.timing_measure('CHECK')
-	//
+	util.timing_measure('CHECK')
+
+	if b.pref.skip_unused {
+		markused.mark_used(mut b.table, b.pref, b.parsed_files)
+	}
+
 	b.print_warnings_and_errors()
 	// TODO: move gen.cgen() to c.gen()
-	b.timing_start('C GEN')
-	res := gen.cgen(b.parsed_files, b.table, b.pref)
-	b.timing_measure('C GEN')
+	util.timing_start('C GEN')
+	res := c.gen(b.parsed_files, b.table, b.pref)
+	util.timing_measure('C GEN')
 	// println('cgen done')
 	// println(res)
 	return res
@@ -35,8 +43,12 @@ pub fn (mut b Builder) build_c(v_files []string, out_file string) {
 	b.info('build_c($out_file)')
 	output2 := b.gen_c(v_files)
 	mut f := os.create(out_file) or { panic(err) }
-	f.writeln(output2)
+	f.writeln(output2) or { panic(err) }
 	f.close()
+	if b.pref.is_stats {
+		b.stats_lines = output2.count('\n') + 1
+		b.stats_bytes = output2.len
+	}
 	// os.write_file(out_file, b.gen_c(v_files))
 }
 
@@ -71,13 +83,5 @@ pub fn (mut b Builder) compile_c() {
 		out_name_c = b.get_vtmp_filename(b.pref.out_name, '.tmp.so.c')
 	}
 	b.build_c(files, out_name_c)
-	if b.pref.os == .ios {
-		bundle_name := b.pref.out_name.split('/').last()
-		bundle_id := if b.pref.bundle_id != '' { b.pref.bundle_id } else { 'app.vlang.$bundle_name' }
-		display_name := if b.pref.display_name != '' { b.pref.display_name } else { bundle_name }
-		os.mkdir('${display_name}.app')
-		os.write_file('${display_name}.app/Info.plist', make_ios_plist(display_name, bundle_id,
-			bundle_name, 1))
-	}
 	b.cc()
 }

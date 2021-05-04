@@ -1,7 +1,0 @@
-fn add(a int, b int) int {
-	return a + b
-}
-fn main() {
-	a := [1,2,3,4].map(add)
-	println(a)
-}

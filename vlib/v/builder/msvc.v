@@ -2,11 +2,13 @@ module builder
 
 import os
 import v.pref
+import v.util
 import v.cflag
 
 #flag windows -l shell32
 #flag windows -l dbghelp
 #flag windows -l advapi32
+
 struct MsvcResult {
 	full_cl_exe_path    string
 	exe_path            string
@@ -37,14 +39,14 @@ fn find_windows_kit_internal(key RegKey, versions []string) ?string {
 	$if windows {
 		unsafe {
 			for version in versions {
-				required_bytes := 0 // TODO mut
+				required_bytes := u32(0) // TODO mut
 				result := C.RegQueryValueEx(key, version.to_wide(), 0, 0, 0, &required_bytes)
 				length := required_bytes / 2
 				if result != 0 {
 					continue
 				}
 				alloc_length := (required_bytes + 2)
-				mut value := &u16(malloc(alloc_length))
+				mut value := &u16(malloc(int(alloc_length)))
 				if isnil(value) {
 					continue
 				}
@@ -77,11 +79,11 @@ struct WindowsKit {
 }
 
 // Try and find the root key for installed windows kits
-fn find_windows_kit_root(host_arch string) ?WindowsKit {
+fn find_windows_kit_root(target_arch string) ?WindowsKit {
 	$if windows {
 		root_key := RegKey(0)
 		path := 'SOFTWARE\\Microsoft\\Windows Kits\\Installed Roots'
-		rc := C.RegOpenKeyEx(hkey_local_machine, path.to_wide(), 0, key_query_value | key_wow64_32key | key_enumerate_sub_keys,
+		rc := C.RegOpenKeyEx(builder.hkey_local_machine, path.to_wide(), 0, builder.key_query_value | builder.key_wow64_32key | builder.key_enumerate_sub_keys,
 			&root_key)
 		// TODO: Fix defer inside ifs
 		// defer {
@@ -111,8 +113,8 @@ fn find_windows_kit_root(host_arch string) ?WindowsKit {
 		kit_include_highest := kit_lib_highest.replace('Lib', 'Include')
 		C.RegCloseKey(root_key)
 		return WindowsKit{
-			um_lib_path: kit_lib_highest + '\\um\\$host_arch'
-			ucrt_lib_path: kit_lib_highest + '\\ucrt\\$host_arch'
+			um_lib_path: kit_lib_highest + '\\um\\$target_arch'
+			ucrt_lib_path: kit_lib_highest + '\\ucrt\\$target_arch'
 			um_include_path: kit_include_highest + '\\um'
 			ucrt_include_path: kit_include_highest + '\\ucrt'
 			shared_include_path: kit_include_highest + '\\shared'
@@ -127,7 +129,7 @@ struct VsInstallation {
 	exe_path     string
 }
 
-fn find_vs(vswhere_dir string, host_arch string) ?VsInstallation {
+fn find_vs(vswhere_dir string, host_arch string, target_arch string) ?VsInstallation {
 	$if !windows {
 		return error('Host OS does not support finding a Visual Studio installation')
 	}
@@ -135,7 +137,10 @@ fn find_vs(vswhere_dir string, host_arch string) ?VsInstallation {
 	// VSWhere is guaranteed to be installed at this location now
 	// If its not there then end user needs to update their visual studio
 	// installation!
-	res := os.exec('"$vswhere_dir\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -prerelease -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath') ?
+	res := os.execute('"$vswhere_dir\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath')
+	if res.exit_code != 0 {
+		return error_with_code(res.output, res.exit_code)
+	}
 	res_output := res.output.trim_right('\r\n')
 	// println('res: "$res"')
 	version := os.read_file('$res_output\\VC\\Auxiliary\\Build\\Microsoft.VCToolsVersion.default.txt') or {
@@ -145,10 +150,10 @@ fn find_vs(vswhere_dir string, host_arch string) ?VsInstallation {
 	version2 := version // TODO remove. cgen option bug if expr
 	// println('version: $version')
 	v := if version.ends_with('\n') { version2[..version.len - 2] } else { version2 }
-	lib_path := '$res.output\\VC\\Tools\\MSVC\\$v\\lib\\$host_arch'
+	lib_path := '$res.output\\VC\\Tools\\MSVC\\$v\\lib\\$target_arch'
 	include_path := '$res.output\\VC\\Tools\\MSVC\\$v\\include'
 	if os.exists('$lib_path\\vcruntime.lib') {
-		p := '$res.output\\VC\\Tools\\MSVC\\$v\\bin\\Host$host_arch\\$host_arch'
+		p := '$res.output\\VC\\Tools\\MSVC\\$v\\bin\\Host$host_arch\\$target_arch'
 		// println('$lib_path $include_path')
 		return VsInstallation{
 			exe_path: p
@@ -160,7 +165,7 @@ fn find_vs(vswhere_dir string, host_arch string) ?VsInstallation {
 	return error('Unable to find vs exe folder')
 }
 
-fn find_msvc() ?MsvcResult {
+fn find_msvc(m64_target bool) ?MsvcResult {
 	$if windows {
 		processor_architecture := os.getenv('PROCESSOR_ARCHITECTURE')
 		vswhere_dir := if processor_architecture == 'x86' {
@@ -169,8 +174,20 @@ fn find_msvc() ?MsvcResult {
 			'%ProgramFiles(x86)%'
 		}
 		host_arch := if processor_architecture == 'x86' { 'X86' } else { 'X64' }
-		wk := find_windows_kit_root(host_arch) or { return error('Unable to find windows sdk') }
-		vs := find_vs(vswhere_dir, host_arch) or { return error('Unable to find visual studio') }
+		mut target_arch := 'X64'
+		if host_arch == 'X86' {
+			if !m64_target {
+				target_arch = 'X86'
+			}
+		} else if host_arch == 'X64' {
+			if !m64_target {
+				target_arch = 'X86'
+			}
+		}
+		wk := find_windows_kit_root(target_arch) or { return error('Unable to find windows sdk') }
+		vs := find_vs(vswhere_dir, host_arch, target_arch) or {
+			return error('Unable to find visual studio')
+		}
 		return MsvcResult{
 			full_cl_exe_path: os.real_path(vs.exe_path + os.path_separator + 'cl.exe')
 			exe_path: vs.exe_path
@@ -243,7 +260,7 @@ pub fn (mut v Builder) cc_msvc() {
 			println('`builtin.obj` not found')
 			exit(1)
 		}
-		for imp in v.table.imports {
+		for imp in v.ast.imports {
 			if imp == 'webview' {
 				continue
 			}
@@ -296,17 +313,18 @@ pub fn (mut v Builder) cc_msvc() {
 	os.write_file(out_name_cmd_line, args) or {
 		verror('Unable to write response file to "$out_name_cmd_line"')
 	}
-	cmd := '"$r.full_cl_exe_path" @$out_name_cmd_line'
+	cmd := '"$r.full_cl_exe_path" "@$out_name_cmd_line"'
 	// It is hard to see it at first, but the quotes above ARE balanced :-| ...
 	// Also the double quotes at the start ARE needed.
 	v.show_cc(cmd, out_name_cmd_line, args)
-	v.timing_start('C msvc')
-	res := os.exec(cmd) or {
-		println(err)
+	util.timing_start('C msvc')
+	res := os.execute(cmd)
+	if res.exit_code != 0 {
+		eprintln(res.output)
 		verror('msvc error')
 		return
 	}
-	v.timing_measure('C msvc')
+	util.timing_measure('C msvc')
 	if v.pref.show_c_output {
 		v.show_c_compiler_output(res)
 	} else {
@@ -315,7 +333,7 @@ pub fn (mut v Builder) cc_msvc() {
 	// println(res)
 	// println('C OUTPUT:')
 	// Always remove the object file - it is completely unnecessary
-	os.rm(out_name_obj)
+	os.rm(out_name_obj) or { panic(err) }
 }
 
 fn (mut v Builder) build_thirdparty_obj_file_with_msvc(path string, moduleflags []cflag.CFlag) {
@@ -353,11 +371,7 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(path string, moduleflags 
 	$if trace_thirdparty_obj_files ? {
 		println('>>> build_thirdparty_obj_file_with_msvc cmd: $cmd')
 	}
-	res := os.exec(cmd) or {
-		println('msvc: failed to execute msvc compiler (to build a thirdparty object); cmd: $cmd')
-		verror(err)
-		return
-	}
+	res := os.execute(cmd)
 	if res.exit_code != 0 {
 		println('msvc: failed to build a thirdparty object; cmd: $cmd')
 		verror(res.output)

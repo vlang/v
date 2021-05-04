@@ -25,9 +25,10 @@ fn test_type_alias_v2() {
 }
 
 struct Mystruct {
-	mut:
+mut:
 	i int
 }
+
 type Mystruct_2 = Mystruct
 
 fn test_type_alias_struct() {

@@ -1,7 +1,12 @@
 module fontstash
 
-#flag -I @VROOT/thirdparty/fontstash
+#flag -I @VEXEROOT/thirdparty/fontstash
 #define FONTSTASH_IMPLEMENTATION
+$if gcboehm ? {
+	#define FONTSTASH_MALLOC GC_MALLOC
+	#define FONTSTASH_REALLOC GC_REALLOC
+	#define FONTSTASH_FREE GC_FREE
+}
 #include "fontstash.h"
 #flag -I /usr/local/Cellar/freetype/2.10.2/include/freetype2
 //#flag -lfreetype
@@ -46,7 +51,7 @@ pub fn (s &C.FONScontext) reset_atlas(width int, height int) int {
 
 // Add fonts
 [inline]
-pub fn (s &C.FONScontext) get_font_by_name(name byteptr) int {
+pub fn (s &C.FONScontext) get_font_by_name(name &char) int {
 	return C.fonsGetFontByName(s, name)
 }
 
@@ -56,7 +61,7 @@ pub fn (s &C.FONScontext) add_fallback_font(base int, fallback int) int {
 }
 
 [inline]
-pub fn (s &C.FONScontext) add_font_mem(name byteptr, data byteptr, data_size int, free_data int) int {
+pub fn (s &C.FONScontext) add_font_mem(name &char, data &byte, data_size int, free_data int) int {
 	return C.fonsAddFontMem(s, name, data, data_size, free_data)
 }
 
@@ -109,13 +114,13 @@ pub fn (s &C.FONScontext) set_font(font int) {
 
 // Draw text
 [inline]
-pub fn (s &C.FONScontext) draw_text(x f32, y f32, str byteptr, end byteptr) f32 {
+pub fn (s &C.FONScontext) draw_text(x f32, y f32, str &char, end &char) f32 {
 	return C.fonsDrawText(s, x, y, str, end)
 }
 
 // Measure text
 [inline]
-pub fn (s &C.FONScontext) text_bounds(x f32, y f32, str byteptr, end byteptr, bounds &f32) f32 {
+pub fn (s &C.FONScontext) text_bounds(x f32, y f32, str &char, end &char, bounds &f32) f32 {
 	return C.fonsTextBounds(s, x, y, str, end, bounds)
 }
 
@@ -131,7 +136,7 @@ pub fn (s &C.FONScontext) vert_metrics(ascender &f32, descender &f32, lineh &f32
 
 // Text iterator
 [inline]
-pub fn (s &C.FONScontext) text_iter_init(iter &C.FONStextIter, x f32, y f32, str byteptr, end byteptr) int {
+pub fn (s &C.FONScontext) text_iter_init(iter &C.FONStextIter, x f32, y f32, str &char, end &char) int {
 	return C.fonsTextIterInit(s, iter, x, y, str, end)
 }
 
@@ -142,8 +147,8 @@ pub fn (s &C.FONScontext) text_iter_next(iter &C.FONStextIter, quad &C.FONSquad)
 
 // Pull texture changes
 [inline]
-pub fn (s &C.FONScontext) get_texture_data(width &int, height &int) byteptr {
-	return C.fonsGetTextureData(s, width, height)
+pub fn (s &C.FONScontext) get_texture_data(width &int, height &int) &byte {
+	return &byte(C.fonsGetTextureData(s, width, height))
 }
 
 [inline]

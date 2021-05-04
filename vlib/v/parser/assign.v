@@ -4,7 +4,6 @@
 module parser
 
 import v.ast
-import v.table
 
 fn (mut p Parser) assign_stmt() ast.Stmt {
 	exprs, comments := p.expr_list()
@@ -21,6 +20,12 @@ fn (mut p Parser) check_undefined_variables(exprs []ast.Expr, val ast.Expr) ? {
 						return error('undefined variable: `$val.name`')
 					}
 				}
+			}
+		}
+		ast.CallExpr {
+			p.check_undefined_variables(exprs, val.left) ?
+			for arg in val.args {
+				p.check_undefined_variables(exprs, arg.expr) ?
 			}
 		}
 		ast.InfixExpr {
@@ -93,34 +98,27 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 	p.next()
 	mut comments := []ast.Comment{cap: 2 * left_comments.len + 1}
 	comments << left_comments
-	comments << p.eat_comments()
+	comments << p.eat_comments({})
 	mut right_comments := []ast.Comment{}
 	mut right := []ast.Expr{cap: left.len}
-	if p.tok.kind == .key_go {
-		stmt := p.stmt(false)
-		go_stmt := stmt as ast.GoStmt
-		right << ast.GoExpr{
-			go_stmt: go_stmt
-			pos: go_stmt.pos
-		}
-	} else {
-		right, right_comments = p.expr_list()
-	}
+	right, right_comments = p.expr_list()
 	comments << right_comments
-	end_comments := p.eat_line_end_comments()
+	end_comments := p.eat_comments(same_line: true)
 	mut has_cross_var := false
 	if op == .decl_assign {
 		// a, b := a + 1, b
 		for r in right {
-			p.check_undefined_variables(left, r)
+			p.check_undefined_variables(left, r) or {
+				return p.error('check_undefined_variables failed')
+			}
 		}
 	} else if left.len > 1 {
 		// a, b = b, a
 		for r in right {
 			has_cross_var = p.check_cross_variables(left, r)
 			if op !in [.assign, .decl_assign] {
-				p.error_with_pos('unexpected $op.str(), expecting := or = or comma', pos)
-				return ast.Stmt{}
+				return p.error_with_pos('unexpected $op.str(), expecting := or = or comma',
+					pos)
 			}
 			if has_cross_var {
 				break
@@ -133,18 +131,16 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 			ast.Ident {
 				if op == .decl_assign {
 					if p.scope.known_var(lx.name) {
-						p.error_with_pos('redefinition of `$lx.name`', lx.pos)
-						return ast.Stmt{}
+						return p.error_with_pos('redefinition of `$lx.name`', lx.pos)
 					}
-					mut share := table.ShareType(0)
+					mut share := ast.ShareType(0)
 					if lx.info is ast.IdentVar {
 						iv := lx.info as ast.IdentVar
 						share = iv.share
 						if iv.is_static {
-							if !p.pref.translated {
-								p.error_with_pos('static variables are supported only in -translated mode',
+							if !p.pref.translated && !p.pref.is_fmt && !p.inside_unsafe_fn {
+								return p.error_with_pos('static variables are supported only in -translated mode or in [unsafe] fn',
 									lx.pos)
-								return ast.Stmt{}
 							}
 							is_static = true
 						}
@@ -152,10 +148,11 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 					r0 := right[0]
 					mut v := ast.Var{
 						name: lx.name
-						expr: if left.len == right.len { right[i] } else { ast.Expr{} }
+						expr: if left.len == right.len { right[i] } else { ast.empty_expr() }
 						share: share
 						is_mut: lx.is_mut || p.inside_for
 						pos: lx.pos
+						is_stack_obj: p.inside_for
 					}
 					if p.pref.autofree {
 						if r0 is ast.CallExpr {
@@ -175,9 +172,8 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 			}
 			ast.IndexExpr {
 				if op == .decl_assign {
-					p.error_with_pos('non-name `$lx.left[$lx.index]` on left side of `:=`',
+					return p.error_with_pos('non-name `$lx.left[$lx.index]` on left side of `:=`',
 						lx.pos)
-					return ast.Stmt{}
 				}
 				lx.is_setter = true
 			}
@@ -185,9 +181,8 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 			ast.PrefixExpr {}
 			ast.SelectorExpr {
 				if op == .decl_assign {
-					p.error_with_pos('struct fields can only be declared during the initialization',
+					return p.error_with_pos('struct fields can only be declared during the initialization',
 						lx.pos)
-					return ast.Stmt{}
 				}
 			}
 			else {

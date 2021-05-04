@@ -15,11 +15,13 @@ mut:
 fn main() {
 	mut color_action := C.sg_color_attachment_action{
 		action: gfx.Action(C.SG_ACTION_CLEAR)
+		value: C.sg_color{
+			r: 0.3
+			g: 0.3
+			b: 0.32
+			a: 1.0
+		}
 	}
-	color_action.val[0] = 0.3
-	color_action.val[1] = 0.3
-	color_action.val[2] = 0.32
-	color_action.val[3] = 1.0
 	mut pass_action := C.sg_pass_action{}
 	pass_action.colors[0] = color_action
 	state := &AppState{
@@ -46,7 +48,8 @@ fn init(mut state AppState) {
 	// or use DroidSerif-Regular.ttf
 	if bytes := os.read_bytes(os.resource_abs_path('../assets/fonts/RobotoMono-Regular.ttf')) {
 		println('loaded font: $bytes.len')
-		state.font_normal = C.fonsAddFontMem(state.fons, 'sans', bytes.data, bytes.len, false)
+		state.font_normal = C.fonsAddFontMem(state.fons, 'sans', bytes.data, bytes.len,
+			false)
 	}
 }
 
@@ -99,7 +102,8 @@ fn (state &AppState) render_font() {
 	C.fonsSetSize(state.fons, 20.0)
 	C.fonsSetFont(state.fons, state.font_normal)
 	C.fonsSetColor(state.fons, blue)
-	C.fonsDrawText(state.fons, dx, dy, c'Now is the time for all good men to come to the aid of the party.', C.NULL)
+	C.fonsDrawText(state.fons, dx, dy, c'Now is the time for all good men to come to the aid of the party.',
+		C.NULL)
 	dx = 300
 	dy = 350
 	C.fonsSetAlign(state.fons, C.FONS_ALIGN_LEFT | C.FONS_ALIGN_BASELINE)

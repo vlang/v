@@ -3,7 +3,6 @@ import flag
 import term
 import time
 import v.parser
-import v.table
 import v.ast
 import v.pref
 
@@ -13,11 +12,10 @@ const (
 	support_color = term.can_show_color_on_stderr() && term.can_show_color_on_stdout()
 	ecode_timeout = 101
 	ecode_memout  = 102
-	ecode_exec    = 103
-	ecode_details = {
-		'101': 'too slow'
-		'102': 'too memory hungry'
-		'103': 'worker executable not found'
+	ecode_details = map{
+		-1:  'worker executable not found'
+		101: 'too slow'
+		102: 'too memory hungry'
 	}
 )
 
@@ -35,9 +33,9 @@ mut:
 	cut_index  int      // the cut position in the source from context.path
 	max_index  int      // the maximum index (equivalent to the file content length)
 	// parser context in the worker processes:
-	table      table.Table
+	table      ast.Table
 	scope      ast.Scope
-	pref       pref.Preferences
+	pref       &pref.Preferences
 	period_ms  int  // print periodic progress
 	stop_print bool // stop printing the periodic progress
 }
@@ -49,7 +47,7 @@ fn main() {
 		context.log('> worker ${pid:5} starts parsing at cut_index: ${context.cut_index:5} | $context.path')
 		// A worker's process job is to try to parse a single given file in context.path.
 		// It can crash/panic freely.
-		context.table = table.new_table()
+		context.table = ast.new_table()
 		context.scope = &ast.Scope{
 			parent: 0
 		}
@@ -60,7 +58,7 @@ fn main() {
 		source = source[..context.cut_index]
 
 		go fn (ms int) {
-			time.sleep_ms(ms)
+			time.sleep(ms * time.millisecond)
 			exit(ecode_timeout)
 		}(context.timeout_ms)
 		_ := parser.parse_text(source, context.path, context.table, .skip_comments, context.pref,
@@ -96,7 +94,9 @@ fn main() {
 }
 
 fn process_cli_args() &Context {
-	mut context := &Context{}
+	mut context := &Context{
+		pref: pref.new_preferences()
+	}
 	context.myself = os.executable()
 	mut fp := flag.new_flag_parser(os.args_after('test-parser'))
 	fp.application(os.file_name(context.myself))
@@ -122,7 +122,7 @@ fn process_cli_args() &Context {
 		exit(0)
 	}
 	context.all_paths = fp.finalize() or {
-		context.error(err)
+		context.error(err.msg)
 		exit(1)
 	}
 	if !context.is_worker && context.all_paths.len == 0 {
@@ -215,10 +215,7 @@ fn (mut context Context) process_whole_file_in_worker(path string) (int, int) {
 		context.cut_index = i // needed for the progress bar
 		cmd := '"$context.myself" $verbosity --worker --timeout_ms ${context.timeout_ms:5} --cut_index ${i:5} --path "$path" '
 		context.log(cmd)
-		res := os.exec(cmd) or { os.Result{
-			output: err
-			exit_code: ecode_exec
-		} }
+		mut res := os.execute(cmd)
 		context.log('worker exit_code: $res.exit_code | worker output:\n$res.output')
 		if res.exit_code != 0 {
 			fails++
@@ -234,7 +231,7 @@ fn (mut context Context) process_whole_file_in_worker(path string) (int, int) {
 			err := if is_panic {
 				red('parser failure: panic')
 			} else {
-				red('parser failure: crash, ${ecode_details[res.exit_code.str()]}')
+				red('parser failure: crash, ${ecode_details[res.exit_code]}')
 			}
 			path_to_line := bold('$path:$line:$col:')
 			err_line := last_line.trim_left('\t')
@@ -257,7 +254,7 @@ fn (mut context Context) start_printing() {
 
 fn (mut context Context) stop_printing() {
 	context.stop_print = true
-	time.sleep_ms(context.period_ms / 5)
+	time.sleep(time.millisecond * context.period_ms / 5)
 }
 
 fn (mut context Context) print_status() {
@@ -282,7 +279,7 @@ fn (mut context Context) print_periodic_status() {
 	for !context.stop_print {
 		context.print_status()
 		for i := 0; i < 10 && !context.stop_print; i++ {
-			time.sleep_ms(context.period_ms / 10)
+			time.sleep(time.millisecond * context.period_ms / 10)
 			if context.cut_index > 50 && !printed_at_least_once {
 				context.print_status()
 				printed_at_least_once = true

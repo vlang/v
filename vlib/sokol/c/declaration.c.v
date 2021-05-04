@@ -4,16 +4,22 @@ pub const (
 	used_import = 1
 )
 
-#flag -I @VROOT/thirdparty/sokol
-#flag -I @VROOT/thirdparty/sokol/util
+#flag -I @VEXEROOT/thirdparty/sokol
+#flag -I @VEXEROOT/thirdparty/sokol/util
 #flag freebsd -I /usr/local/include
 #flag darwin -fobjc-arc
 #flag linux -lX11 -lGL -lXcursor -lXi
 #flag freebsd -L/usr/local/lib -lX11 -lGL -lXcursor -lXi
 #flag windows -lgdi32
 // METAL
-#flag darwin -DSOKOL_METAL
-#flag darwin -framework Metal -framework Cocoa -framework MetalKit -framework QuartzCore
+$if macos {
+	#flag -DSOKOL_METAL
+	#flag -framework Metal -framework Cocoa -framework MetalKit -framework QuartzCore
+}
+$if ios {
+	#flag -DSOKOL_METAL
+	#flag -framework Foundation -framework Metal -framework MetalKit -framework UIKit
+}
 // OPENGL
 #flag linux -DSOKOL_GLCORE33
 #flag freebsd -DSOKOL_GLCORE33
@@ -33,6 +39,14 @@ pub const (
 #flag freebsd -DSOKOL_NO_ENTRY
 #flag solaris -DSOKOL_NO_ENTRY
 // TODO end
+
+$if gcboehm ? {
+	#define SOKOL_MALLOC GC_MALLOC
+	#define SOKOL_CALLOC(n,m) GC_MALLOC((n)*(m))
+	#define SOKOL_REALLOC GC_REALLOC
+	#define SOKOL_FREE GC_FREE
+}
+
 #include "sokol_v.h"
 #include "sokol_app.h"
 #define SOKOL_IMPL

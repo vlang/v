@@ -16,3 +16,9 @@ _ = g() + 3
 // binary operands
 _ = 1 && 2
 _ = true || 2
+
+// boolean expressions
+_ = 1 == 1 && 2 == 2 || 3 == 3
+_ = 1 == 1
+	&& 2 == 2 || 3 == 3
+	&& 4 == 4

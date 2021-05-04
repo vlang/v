@@ -1,0 +1,166 @@
+name: Sanitized CI
+
+on:
+  push:
+    paths-ignore:
+      - "**.md"
+  pull_request:
+    paths-ignore:
+      - "**.md"
+
+jobs:
+  tests-sanitize-undefined-clang:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 60
+    env:
+      VFLAGS: -cc clang
+      VJOBS: 1
+      VTEST_SHOW_START: 1
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v1
+        with:
+          node-version: 12.x
+      - name: Install dependencies
+        run: |
+          sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev libgl-dev
+          sudo apt-get install clang
+      - name: Build V
+        run: make -j4 && ./v -cg -cstrict -o v cmd/v
+      - name: Self tests (-fsanitize=undefined)
+        run: ./v -cflags "-fsanitize=undefined" -o v2 cmd/v && ./v2 -cflags -fsanitize=undefined test-self
+      - name: Build examples (V compiled with -fsanitize=undefined)
+        run: ./v2 build-examples
+
+  tests-sanitize-undefined-gcc:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 60
+    env:
+      VFLAGS: -cc gcc
+      VJOBS: 1
+      VTEST_SHOW_START: 1
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v1
+        with:
+          node-version: 12.x
+      - name: Install dependencies
+        run: |
+          sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev libgl-dev
+      - name: Build V
+        run: make -j4 && ./v -cg -cstrict -o v cmd/v
+      - name: Self tests (-fsanitize=undefined)
+        run: ./v -cflags "-fsanitize=undefined" -o v2 cmd/v && ./v2 -cflags -fsanitize=undefined test-self
+      - name: Build examples (V compiled with -fsanitize=undefined)
+        run: ./v2 build-examples
+
+  tests-sanitize-address-clang:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 60
+    env:
+      VFLAGS: -cc clang
+      VJOBS: 1
+      VTEST_SHOW_START: 1
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v1
+        with:
+          node-version: 12.x
+      - name: Install dependencies
+        run: |
+          sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev libgl-dev
+          sudo apt-get install clang
+      - name: Build V
+        run: make -j4 && ./v -cg -cstrict -o v cmd/v
+      - name: Self tests (-fsanitize=address)
+        run: ASAN_OPTIONS=detect_leaks=0 ./v -cflags "-fsanitize=address,pointer-compare,pointer-subtract" test-self
+      - name: Self tests (V compiled with -fsanitize=address)
+        run:
+          ./v -cflags -fsanitize=address -o v cmd/v &&
+          ASAN_OPTIONS=detect_leaks=0 ./v -cc tcc test-self -asan-compiler
+      - name: Build examples (V compiled with -fsanitize=address)
+        run: ASAN_OPTIONS=detect_leaks=0 ./v build-examples
+
+  tests-sanitize-address-msvc:
+    runs-on: windows-2019
+    timeout-minutes: 60
+    env:
+      VFLAGS: -cc msvc
+      VJOBS: 1
+      VTEST_SHOW_START: 1
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v1
+        with:
+          node-version: 12.x
+      - name: Build
+        run: |
+          echo %VFLAGS%
+          echo $VFLAGS
+          .\make.bat -msvc
+          .\v.exe -cflags /WX self
+      - name: Install dependencies
+        run: |
+          .\v.exe setup-freetype
+          .\.github\workflows\windows-install-sqlite.bat
+      - name: Self tests (-fsanitize=address)
+        run: |
+          .\v.exe -cflags -fsanitize=address test-self
+
+  tests-sanitize-address-gcc:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 60
+    env:
+      VFLAGS: -cc gcc
+      VJOBS: 1
+      VTEST_SHOW_START: 1
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v1
+        with:
+          node-version: 12.x
+      - name: Install dependencies
+        run: |
+          sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev libgl-dev
+          sudo apt-get install clang
+      - name: Build V
+        run: make -j4 && ./v -cg -cstrict -o v cmd/v
+      - name: Self tests (-fsanitize=address)
+        run: ASAN_OPTIONS=detect_leaks=0 ./v -cflags -fsanitize=address test-self
+      - name: Self tests (V compiled with -fsanitize=address)
+        run:
+          ./v -cflags -fsanitize=address,pointer-compare,pointer-subtract -o v cmd/v &&
+          ASAN_OPTIONS=detect_leaks=0 ./v -cc tcc test-self -asan-compiler
+      - name: Build examples (V compiled with -fsanitize=address)
+        run: ASAN_OPTIONS=detect_leaks=0 ./v build-examples
+
+  tests-sanitize-memory-clang:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 60
+    env:
+      VFLAGS: -cc clang
+      VJOBS: 1
+      VTEST_SHOW_START: 1
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v1
+        with:
+          node-version: 12.x
+      - name: Install dependencies
+        run: |
+          sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev libgl-dev
+          sudo apt-get install clang
+      - name: Build V
+        run: make -j4 && ./v -cc clang -cg -cstrict -o v cmd/v
+      - name: Self tests (-fsanitize=memory)
+        run: ./v -cflags -fsanitize=memory test-self
+      - name: Self tests (V compiled with -fsanitize=memory)
+        run:
+          ./v -cflags -fsanitize=memory -o v cmd/v && ./v -cc tcc test-self -msan-compiler
+      - name: Build examples (V compiled with -fsanitize=memory)
+        run: ./v build-examples

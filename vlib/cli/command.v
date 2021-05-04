@@ -21,8 +21,8 @@ pub mut:
 	disable_help    bool
 	disable_version bool
 	disable_flags   bool
-	sort_flags      bool     = true
-	sort_commands   bool     = true
+	sort_flags      bool
+	sort_commands   bool
 	parent          &Command = 0
 	commands        []Command
 	flags           []Flag
@@ -210,7 +210,7 @@ fn (mut cmd Command) parse_commands() {
 			}
 		}
 	}
-	if cmd.is_root() && int(cmd.execute) == 0 {
+	if cmd.is_root() && isnil(cmd.execute) {
 		if !cmd.disable_help {
 			cmd.execute_help()
 			return
@@ -224,19 +224,19 @@ fn (mut cmd Command) parse_commands() {
 		}
 	}
 	cmd.check_required_flags()
-	if int(cmd.pre_execute) > 0 {
+	if !isnil(cmd.pre_execute) {
 		cmd.pre_execute(*cmd) or {
 			eprintln('cli preexecution error: $err')
 			exit(1)
 		}
 	}
-	if int(cmd.execute) > 0 {
+	if !isnil(cmd.execute) {
 		cmd.execute(*cmd) or {
 			eprintln('cli execution error: $err')
 			exit(1)
 		}
 	}
-	if int(cmd.post_execute) > 0 {
+	if !isnil(cmd.post_execute) {
 		cmd.post_execute(*cmd) or {
 			eprintln('cli postexecution error: $err')
 			exit(1)
@@ -259,7 +259,7 @@ fn (cmd Command) check_version_flag() {
 		version_flag := cmd.flags.get_bool('version') or { return } // ignore error and handle command normally
 		if version_flag {
 			version_cmd := cmd.commands.get('version') or { return } // ignore error and handle command normally
-			version_cmd.execute(version_cmd)
+			version_cmd.execute(version_cmd) or { panic(err) }
 			exit(0)
 		}
 	}
@@ -267,7 +267,7 @@ fn (cmd Command) check_version_flag() {
 
 fn (cmd Command) check_required_flags() {
 	for flag in cmd.flags {
-		if flag.required && flag.value.len > 0 {
+		if flag.required && flag.value.len == 0 {
 			full_name := cmd.full_name()
 			println('Flag `$flag.name` is required by `$full_name`')
 			exit(1)
@@ -280,7 +280,7 @@ fn (cmd Command) check_required_flags() {
 pub fn (cmd Command) execute_help() {
 	if cmd.commands.contains('help') {
 		help_cmd := cmd.commands.get('help') or { return } // ignore error and handle command normally
-		help_cmd.execute(help_cmd)
+		help_cmd.execute(help_cmd) or { panic(err) }
 	} else {
 		print(cmd.help_message())
 	}

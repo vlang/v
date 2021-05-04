@@ -99,7 +99,7 @@ fn (am AssetManager) combine(asset_type string, to_file bool) string {
 		os.mkdir(am.cache_dir) or { panic(err) }
 	}
 	mut file := os.create(out_file) or { panic(err) }
-	file.write(out.bytes())
+	file.write(out.bytes()) or { panic(err) }
 	file.close()
 	return out_file
 }
@@ -159,7 +159,7 @@ fn (mut am AssetManager) add(asset_type string, file string) bool {
 	} else if asset_type == 'js' {
 		am.js << asset
 	} else {
-		panic('$unknown_asset_type_error ($asset_type).')
+		panic('$assets.unknown_asset_type_error ($asset_type).')
 	}
 	return true
 }
@@ -176,7 +176,7 @@ fn (am AssetManager) exists(asset_type string, file string) bool {
 
 fn (am AssetManager) get_assets(asset_type string) []Asset {
 	if asset_type != 'css' && asset_type != 'js' {
-		panic('$unknown_asset_type_error ($asset_type).')
+		panic('$assets.unknown_asset_type_error ($asset_type).')
 	}
 	assets := if asset_type == 'css' { am.css } else { am.js }
 	return assets

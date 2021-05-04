@@ -34,8 +34,8 @@ fn event(e &tui.Event, x voidptr) {
 			app.is_drag = true
 			app.cur_rect = {
 				c: random_color()
-				x:  e.x
-				y:  e.y
+				x: e.x
+				y: e.y
 				x2: e.x
 				y2: e.y
 			}
@@ -43,20 +43,28 @@ fn event(e &tui.Event, x voidptr) {
 		.mouse_drag {
 			app.cur_rect.x2 = e.x
 			app.cur_rect.y2 = e.y
-		} .mouse_up {
+		}
+		.mouse_up {
 			app.rects << app.cur_rect
 			app.is_drag = false
-		} .key_down {
-			if e.code == .c { app.rects.clear() }
-			else if e.code == .escape { exit(0) }
-		} else {}
+		}
+		.key_down {
+			if e.code == .c {
+				app.rects.clear()
+			} else if e.code == .escape {
+				exit(0)
+			}
+		}
+		else {}
 	}
 	app.redraw = true
 }
 
 fn frame(x voidptr) {
 	mut app := &App(x)
-	if !app.redraw { return }
+	if !app.redraw {
+		return
+	}
 
 	app.tui.clear()
 
@@ -76,15 +84,14 @@ fn frame(x voidptr) {
 	app.redraw = false
 }
 
-
-mut app := &App{}
-app.tui = tui.init(
-	user_data: app,
-	event_fn: event,
-	frame_fn: frame
-
-	hide_cursor: true
-	frame_rate: 60
-)
-
-app.tui.run()
+fn main() {
+	mut app := &App{}
+	app.tui = tui.init(
+		user_data: app
+		event_fn: event
+		frame_fn: frame
+		hide_cursor: true
+		frame_rate: 60
+	)
+	app.tui.run() ?
+}

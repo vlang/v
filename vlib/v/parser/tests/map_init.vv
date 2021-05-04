@@ -1,0 +1,4 @@
+fn main() {
+	a := map[string]int{}
+	b := map[string]f64{cap: 10}
+}

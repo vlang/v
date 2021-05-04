@@ -1,7 +1,5 @@
 module arrays
 
-import rand
-
 fn test_min() {
 	a := [8, 2, 6, 4]
 	assert min<int>(a) == 2
@@ -44,31 +42,6 @@ fn test_idx_max() {
 	assert idx_max<byte>(c) == 1
 }
 
-fn test_shuffle() {
-	rand.seed([u32(1), 2]) // set seed to produce same results in order
-	a := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-	mut b := a.clone()
-	mut c := a.clone()
-	shuffle<int>(mut b, 0)
-	shuffle<int>(mut c, 0)
-	assert b == [6, 4, 5, 1, 9, 2, 10, 3, 8, 7]
-	assert c == [1, 6, 5, 8, 7, 2, 10, 9, 3, 4]
-	// test shuffling a slice
-	mut d := a.clone()
-	shuffle<int>(mut d[..5], 0)
-	assert d == [5, 2, 1, 3, 4, 6, 7, 8, 9, 10]
-	assert d[5..] == a[5..]
-	// test shuffling n items
-	mut e := a.clone()
-	shuffle<int>(mut e, 5)
-	assert e[..5] == [10, 3, 1, 8, 4]
-	assert e[5..] == [6, 7, 5, 9, 2]
-	// test shuffling empty array
-	mut f := a[..0]
-	shuffle<int>(mut f, 0)
-	assert f == []int{}
-}
-
 fn test_merge() {
 	a := [1, 3, 5, 5, 7]
 	b := [2, 4, 4, 5, 6, 8]
@@ -99,4 +72,16 @@ fn test_fixed_array_assignment() {
 	for val in e {
 		assert val == 'vlang'
 	}
+}
+
+fn test_group() {
+	x := [4, 5, 6]
+	y := [2, 1, 3]
+
+	z := group<int>(x, y)
+	assert z == [[4, 2], [5, 1], [6, 3]]
+	x2 := [8, 9]
+	z2 := group<int>(x2, y)
+	assert z2 == [[8, 2], [9, 1]]
+	assert group<int>(x, []int{}) == [][]int{}
 }

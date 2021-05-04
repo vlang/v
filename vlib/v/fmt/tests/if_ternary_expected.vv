@@ -1,0 +1,48 @@
+fn main() {
+	// This line is too long
+	sprogress := if b.no_cstep {
+		'TMP1/${b.nexpected_steps:1d}'
+	} else {
+		'${b.cstep:1d}/${b.nexpected_steps:1d}'
+	}
+	// Normal struct inits
+	_ := if true {
+		Foo{}
+	} else {
+		Foo{
+			x: 5
+		}
+	}
+	_ := if some_cond {
+		Bar{
+			a: 'bar'
+			b: 'also bar'
+		}
+	} else {
+		Bar{}
+	}
+}
+
+fn condition_is_very_long_infix() {
+	val := if the_first_condition && this_is_required_too
+		&& (another_cond || foobar_to_exceed_the_max_len) {
+		'true'
+	} else {
+		'false'
+	}
+}
+
+fn branches_are_long_fn_calls() {
+	_ := if nr_dims == 1 {
+		t.find_or_register_array(elem_type)
+	} else {
+		t.find_or_register_arra(t.find_or_register_array_with_dims(elem_type, nr_dims - 1))
+	}
+	// With another arg to make fn call exceed the max_len after if unwrapping
+	_ := if nr_dims == 1 {
+		t.find_or_register_array(elem_type)
+	} else {
+		t.find_or_register_arra(t.find_or_register_array_with_dims(elem_type, nr_dims - 1,
+			'some string'))
+	}
+}

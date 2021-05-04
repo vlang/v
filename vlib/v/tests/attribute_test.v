@@ -22,9 +22,7 @@ pub enum PubEnumAttrTest {
 	two
 }
 
-
-[attrone]
-[attrtwo]
+[attrone; attrtwo]
 pub enum EnumMultiAttrTest {
 	one
 	two
@@ -40,8 +38,7 @@ pub fn test_pub_fn_attribute() {
 	assert true
 }
 
-[attrone]
-[attrtwo]
+[attrone; attrtwo]
 fn test_fn_multi_attribute() {
 	assert true
 }

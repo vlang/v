@@ -3,13 +3,6 @@
 // that can be found in the LICENSE file.
 module os
 
-pub struct Result {
-pub:
-	exit_code int
-	output    string
-	// stderr string // TODO
-}
-
 pub const (
 	args          = []string{}
 	max_path_len  = 4096
@@ -23,10 +16,16 @@ const (
 	r_ok = 4
 )
 
-[deprecated]
-pub fn cp_r(osource_path string, odest_path string, overwrite bool) ? {
-	eprintln('warning: `os.cp_r` has been deprecated, use `os.cp_all` instead')
-	return cp_all(osource_path, odest_path, overwrite)
+pub struct Result {
+pub:
+	exit_code int
+	output    string
+	// stderr string // TODO
+}
+
+[unsafe]
+pub fn (mut result Result) free() {
+	unsafe { result.output.free() }
 }
 
 // cp_all will recursively copy `src` to `dst`,
@@ -46,13 +45,16 @@ pub fn cp_all(src string, dst string, overwrite bool) ? {
 		}
 		if exists(adjusted_path) {
 			if overwrite {
-				rm(adjusted_path)
+				rm(adjusted_path) ?
 			} else {
 				return error('Destination file path already exist')
 			}
 		}
 		cp(source_path, adjusted_path) ?
 		return
+	}
+	if !exists(dest_path) {
+		mkdir(dest_path) ?
 	}
 	if !is_dir(dest_path) {
 		return error('Destination path is not a valid directory')
@@ -62,11 +64,13 @@ pub fn cp_all(src string, dst string, overwrite bool) ? {
 		sp := join_path(source_path, file)
 		dp := join_path(dest_path, file)
 		if is_dir(sp) {
-			mkdir(dp) ?
+			if !exists(dp) {
+				mkdir(dp) ?
+			}
 		}
 		cp_all(sp, dp, overwrite) or {
-			rmdir(dp)
-			return error(err)
+			rmdir(dp) or { return err }
+			return err
 		}
 	}
 }
@@ -81,7 +85,9 @@ pub fn mv_by_cp(source string, target string) ? {
 // read_lines reads the file in `path` into an array of lines.
 pub fn read_lines(path string) ?[]string {
 	buf := read_file(path) ?
-	return buf.split_into_lines()
+	res := buf.split_into_lines()
+	unsafe { buf.free() }
+	return res
 }
 
 // read_ulines reads the file in `path` into an array of ustring lines.
@@ -135,18 +141,6 @@ pub fn sigint_to_signal_name(si int) string {
 	return 'unknown'
 }
 
-[deprecated]
-pub fn file_exists(_path string) bool {
-	eprintln('warning: `os.file_exists` has been deprecated, use `os.exists` instead')
-	return exists(_path)
-}
-
-[deprecated]
-pub fn rmdir_recursive(path string) {
-	eprintln('warning: `os.rmdir_recursive` has been deprecated, use `os.rmdir_all` instead')
-	rmdir_all(path)
-}
-
 // rmdir_all recursively removes the specified directory.
 pub fn rmdir_all(path string) ? {
 	mut ret_err := ''
@@ -154,11 +148,12 @@ pub fn rmdir_all(path string) ? {
 	for item in items {
 		fullpath := join_path(path, item)
 		if is_dir(fullpath) {
-			rmdir_all(fullpath)
+			rmdir_all(fullpath) or { ret_err = err.msg }
+		} else {
+			rm(fullpath) or { ret_err = err.msg }
 		}
-		rm(fullpath) or { ret_err = err }
 	}
-	rmdir(path) or { ret_err = err }
+	rmdir(path) or { ret_err = err.msg }
 	if ret_err.len > 0 {
 		return error(ret_err)
 	}
@@ -216,11 +211,23 @@ pub fn file_name(path string) string {
 	return path.all_after_last(path_separator)
 }
 
-// input returns a one-line string from stdin, after printing a prompt.
-pub fn input(prompt string) string {
+// input_opt returns a one-line string from stdin, after printing a prompt.
+// In the event of error (end of input), it returns `none`.
+pub fn input_opt(prompt string) ?string {
 	print(prompt)
 	flush()
-	return get_line()
+	res := get_raw_line()
+	if res.len > 0 {
+		return res.trim_right('\r\n')
+	}
+	return none
+}
+
+// input returns a one-line string from stdin, after printing a prompt.
+// In the event of error (end of input), it returns '<EOF>'.
+pub fn input(prompt string) string {
+	res := input_opt(prompt) or { return '<EOF>' }
+	return res
 }
 
 // get_line returns a one-line string from stdin
@@ -228,9 +235,8 @@ pub fn get_line() string {
 	str := get_raw_line()
 	$if windows {
 		return str.trim_right('\r\n')
-	} $else {
-		return str.trim_right('\n')
 	}
+	return str.trim_right('\n')
 }
 
 // get_lines returns an array of strings read from from stdin.
@@ -263,6 +269,25 @@ pub fn get_lines_joined() string {
 		inputstr += line
 	}
 	return inputstr
+}
+
+// get_raw_lines_joined reads *all* input lines from stdin.
+// It returns them as one large string. NB: unlike os.get_lines_joined,
+// empty lines (that contain only `\r\n` or `\n`), will be present in
+// the output.
+// Reading is stopped, only on EOF of stdin.
+pub fn get_raw_lines_joined() string {
+	mut line := ''
+	mut lines := []string{}
+	for {
+		line = get_raw_line()
+		if line.len <= 0 {
+			break
+		}
+		lines << line
+	}
+	res := lines.join('')
+	return res
 }
 
 // user_os returns current user operating system name.
@@ -315,14 +340,14 @@ pub fn home_dir() string {
 // write_file writes `text` data to a file in `path`.
 pub fn write_file(path string, text string) ? {
 	mut f := create(path) ?
-	f.write(text.bytes())
+	f.write_string(text) ?
 	f.close()
 }
 
 // write_file_array writes the data in `buffer` to a file in `path`.
 pub fn write_file_array(path string, buffer array) ? {
 	mut f := create(path) ?
-	f.write_bytes_at(buffer.data, (buffer.len * buffer.element_size), 0)
+	unsafe { f.write_ptr_at(buffer.data, (buffer.len * buffer.element_size), 0) }
 	f.close()
 }
 
@@ -330,11 +355,11 @@ pub fn write_file_array(path string, buffer array) ? {
 // It relies on path manipulation of os.args[0] and os.wd_at_startup, so it may not work properly in
 // all cases, but it should be better, than just using os.args[0] directly.
 fn executable_fallback() string {
-	if args.len == 0 {
+	if os.args.len == 0 {
 		// we are early in the bootstrap, os.args has not been initialized yet :-|
 		return ''
 	}
-	mut exepath := args[0]
+	mut exepath := os.args[0]
 	$if windows {
 		if !exepath.contains('.exe') {
 			exepath += '.exe'
@@ -342,7 +367,7 @@ fn executable_fallback() string {
 	}
 	if !is_abs_path(exepath) {
 		if exepath.contains(path_separator) {
-			exepath = join_path(wd_at_startup, exepath)
+			exepath = join_path(os.wd_at_startup, exepath)
 		} else {
 			// no choice but to try to walk the PATH folders :-| ...
 			foundpath := find_abs_path_of_executable(exepath) or { '' }
@@ -358,6 +383,9 @@ fn executable_fallback() string {
 // find_exe_path walks the environment PATH, just like most shell do, it returns
 // the absolute path of the executable if found
 pub fn find_abs_path_of_executable(exepath string) ?string {
+	if exepath == '' {
+		return error('expected non empty `exepath`')
+	}
 	if is_abs_path(exepath) {
 		return real_path(exepath)
 	}
@@ -380,12 +408,6 @@ pub fn find_abs_path_of_executable(exepath string) ?string {
 pub fn exists_in_system_path(prog string) bool {
 	find_abs_path_of_executable(prog) or { return false }
 	return true
-}
-
-[deprecated]
-pub fn dir_exists(path string) bool {
-	eprintln('warning: `os.dir_exists` has been deprecated, use `os.is_dir` instead')
-	return is_dir(path)
 }
 
 // is_file returns a `bool` indicating whether the given `path` is a file.
@@ -444,8 +466,12 @@ pub fn walk(path string, f fn (string)) {
 		return
 	}
 	mut files := ls(path) or { return }
+	mut local_path_separator := path_separator
+	if path.ends_with(path_separator) {
+		local_path_separator = ''
+	}
 	for file in files {
-		p := path + path_separator + file
+		p := path + local_path_separator + file
 		if is_dir(p) && !is_link(p) {
 			walk(p, f)
 		} else if exists(p) {
@@ -463,12 +489,6 @@ pub fn log(s string) {
 	//} $else {
 	println('os.log: ' + s)
 	//}
-}
-
-[deprecated]
-pub fn flush_stdout() {
-	eprintln('warning: `os.flush_stdout` has been deprecated, use `os.flush` instead')
-	flush()
 }
 
 // mkdir_all will create a valid full path of all directories given in `path`.
@@ -575,8 +595,10 @@ pub fn resource_abs_path(path string) string {
 	}
 	fp := join_path(base_path, path)
 	res := real_path(fp)
-	fp.free()
-	base_path.free()
+	unsafe {
+		fp.free()
+		base_path.free()
+	}
 	return res
 }
 
@@ -587,4 +609,35 @@ pub mut:
 	release  string
 	version  string
 	machine  string
+}
+
+[deprecated: 'use os.execute or os.execute_or_panic instead']
+pub fn exec(cmd string) ?Result {
+	res := execute(cmd)
+	if res.exit_code < 0 {
+		return error_with_code(res.output, -1)
+	}
+	return res
+}
+
+pub fn execute_or_panic(cmd string) Result {
+	res := execute(cmd)
+	if res.exit_code != 0 {
+		eprintln('failed    cmd: $cmd')
+		eprintln('failed   code: $res.exit_code')
+		panic(res.output)
+	}
+	return res
+}
+
+// is_atty returns 1 if the `fd` file descriptor is open and refers to a terminal
+pub fn is_atty(fd int) int {
+	$if windows {
+		mut mode := u32(0)
+		osfh := voidptr(C._get_osfhandle(fd))
+		C.GetConsoleMode(osfh, voidptr(&mode))
+		return int(mode)
+	} $else {
+		return C.isatty(fd)
+	}
 }

@@ -2,23 +2,16 @@ module main
 
 import os
 import v.doc
+import term
+import v.ast
+import v.scanner
+import v.token
+import strings
+import v.pref
 
 [inline]
 fn slug(title string) string {
 	return title.replace(' ', '-')
-}
-
-[inline]
-fn open_url(url string) {
-	$if windows {
-		os.system('start $url')
-	}
-	$if macos {
-		os.system('open $url')
-	}
-	$if linux {
-		os.system('xdg-open $url')
-	}
 }
 
 fn escape(str string) string {
@@ -56,7 +49,7 @@ fn trim_doc_node_description(description string) string {
 	if dn_description.len > 80 {
 		dn_description = dn_description[..80]
 	}
-	if '\n' in dn_description {
+	if dn_description.contains('\n') {
 		dn_description = dn_description.split('\n')[0]
 	}
 	// if \ is last character, it ends with \" which leads to a JS error
@@ -106,7 +99,7 @@ fn is_included(path string, ignore_paths []string) bool {
 		return true
 	}
 	for ignore_path in ignore_paths {
-		if ignore_path !in path {
+		if !path.contains(ignore_path) {
 			continue
 		}
 		return false
@@ -142,4 +135,141 @@ fn gen_footer_text(d &doc.Doc, include_timestamp bool) string {
 	generated_time := d.time_generated
 	time_str := '$generated_time.day $generated_time.smonth() $generated_time.year $generated_time.hhmmss()'
 	return '$footer_text Generated on: $time_str'
+}
+
+fn color_highlight(code string, tb &ast.Table) string {
+	builtin := ['bool', 'string', 'i8', 'i16', 'int', 'i64', 'i128', 'byte', 'u16', 'u32', 'u64',
+		'u128', 'rune', 'f32', 'f64', 'int_literal', 'float_literal', 'byteptr', 'voidptr', 'any']
+	highlight_code := fn (tok token.Token, typ HighlightTokenTyp) string {
+		mut lit := ''
+		match typ {
+			.unone, .operator, .punctuation {
+				lit = tok.kind.str()
+			}
+			.string {
+				use_double_quote := tok.lit.contains("'") && !tok.lit.contains('"')
+				unescaped_val := tok.lit.replace('\\\\', '\x01').replace_each(["\\'", "'", '\\"',
+					'"',
+				])
+				if use_double_quote {
+					s := unescaped_val.replace_each(['\x01', '\\\\', '"', '\\"'])
+					lit = term.yellow('"$s"')
+				} else {
+					s := unescaped_val.replace_each(['\x01', '\\\\', "'", "\\'"])
+					lit = term.yellow("'$s'")
+				}
+			}
+			.char {
+				lit = term.yellow('`$tok.lit`')
+			}
+			.keyword {
+				lit = term.bright_blue(tok.lit)
+			}
+			.builtin, .symbol {
+				lit = term.green(tok.lit)
+			}
+			.function {
+				lit = term.cyan(tok.lit)
+			}
+			.number, .module_ {
+				lit = term.bright_blue(tok.lit)
+			}
+			.boolean {
+				lit = term.bright_magenta(tok.lit)
+			}
+			.none_ {
+				lit = term.red(tok.lit)
+			}
+			.prefix {
+				lit = term.magenta(tok.lit)
+			}
+			else {
+				lit = tok.lit
+			}
+		}
+		return lit
+	}
+	mut s := scanner.new_scanner(code, .parse_comments, &pref.Preferences{ is_fmt: true })
+	mut prev_prev := token.Token{}
+	mut prev := token.Token{}
+	mut tok := s.scan()
+	mut next_tok := s.scan()
+	mut buf := strings.new_builder(200)
+	mut i := 0
+	for i < code.len {
+		if i == tok.pos {
+			mut tok_typ := HighlightTokenTyp.unone
+			match tok.kind {
+				.name {
+					if (tok.lit in builtin || tb.known_type(tok.lit))
+						&& (next_tok.kind != .lpar || prev.kind !in [.key_fn, .rpar]) {
+						tok_typ = .builtin
+					} else if
+						next_tok.kind in [.lcbr, .rpar, .eof, .comma, .pipe, .name, .rcbr, .assign, .key_pub, .key_mut, .pipe, .comma]
+						&& prev.kind in [.name, .amp, .rsbr, .key_type, .assign, .dot, .question, .rpar, .key_struct, .key_enum, .pipe, .key_interface]
+						&& (tok.lit[0].ascii_str().is_upper() || prev_prev.lit in ['C', 'JS']) {
+						tok_typ = .symbol
+					} else if next_tok.kind in [.lpar, .lt] {
+						tok_typ = .function
+					} else if next_tok.kind == .dot {
+						if tok.lit in ['C', 'JS'] {
+							tok_typ = .prefix
+						} else {
+							if tok.lit[0].ascii_str().is_upper() {
+								tok_typ = .symbol
+							} else {
+								tok_typ = .module_
+							}
+						}
+					} else if tok.lit in ['r', 'c'] && next_tok.kind == .string {
+						tok_typ = .prefix
+					} else {
+						tok_typ = .name
+					}
+				}
+				.comment {
+					tok_typ = .comment
+				}
+				.chartoken {
+					tok_typ = .char
+				}
+				.string {
+					tok_typ = .string
+				}
+				.number {
+					tok_typ = .number
+				}
+				.key_true, .key_false {
+					tok_typ = .boolean
+				}
+				.lpar, .lcbr, .rpar, .rcbr, .lsbr, .rsbr, .semicolon, .colon, .comma, .dot {
+					tok_typ = .punctuation
+				}
+				.key_none {
+					tok_typ = .none_
+				}
+				else {
+					if token.is_key(tok.lit) || token.is_decl(tok.kind) {
+						tok_typ = .keyword
+					} else if tok.kind == .decl_assign || tok.kind.is_assign() || tok.is_unary()
+						|| tok.kind.is_relational() || tok.kind.is_infix() {
+						tok_typ = .operator
+					}
+				}
+			}
+			buf.write_string(highlight_code(tok, tok_typ))
+			if prev_prev.kind == .eof || prev.kind == .eof || next_tok.kind == .eof {
+				break
+			}
+			prev_prev = prev
+			prev = tok
+			i = tok.pos + tok.len
+			tok = next_tok
+			next_tok = s.scan()
+		} else {
+			buf.write_b(code[i])
+			i++
+		}
+	}
+	return buf.str()
 }

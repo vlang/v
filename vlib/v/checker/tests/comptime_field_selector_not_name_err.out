@@ -1,7 +1,21 @@
-vlib/v/checker/tests/comptime_field_selector_not_name_err.vv:10:7: error: expected `string` instead of `FieldData` (e.g. `field.name`)
+vlib/v/checker/tests/comptime_field_selector_not_name_err.vv:10:8: error: expected `string` instead of `FieldData` (e.g. `field.name`)
     8 |     $for f in T.fields {
     9 |         $if f.typ is string {
-   10 |             t.$f = '3'
-      |                ^
-   11 |         }
-   12 |     }
+   10 |             t.$(f) = '3'
+      |                 ^
+   11 |             fv := Foo{}
+   12 |             _ = t.$(fv.name)
+vlib/v/checker/tests/comptime_field_selector_not_name_err.vv:12:12: error: unknown `$for` variable `fv`
+   10 |             t.$(f) = '3'
+   11 |             fv := Foo{}
+   12 |             _ = t.$(fv.name)
+      |                     ~~
+   13 |         }
+   14 |     }
+vlib/v/checker/tests/comptime_field_selector_not_name_err.vv:15:10: error: undefined ident: `f`
+   13 |         }
+   14 |     }
+   15 |     _ = t.$(f.name)
+      |             ^
+   16 | }
+   17 |

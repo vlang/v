@@ -2,7 +2,6 @@
 setlocal EnableDelayedExpansion EnableExtensions
 
 REM Option flags
-set /a invalid_cc=0
 set /a shift_counter=0
 set /a flag_local=0
 set /a flag_verbose=0
@@ -16,15 +15,19 @@ set target=build
 REM TCC variables
 set "tcc_url=https://github.com/vlang/tccbin"
 set "tcc_dir=%~dp0thirdparty\tcc"
-set "tcc_branch=thirdparty-windows-amd64"
+set "tcc_exe=%~dp0thirdparty\tcc\tcc.exe"
+if "%PROCESSOR_ARCHITECTURE%" == "x86" ( set "tcc_branch=thirdparty-windows-i386" ) else ( set "tcc_branch=thirdparty-windows-amd64" )
+if "%~1" == "-tcc32" set "tcc_branch=thirdparty-windows-i386"
 
 REM VC settings
 set "vc_url=https://github.com/vlang/vc"
 set "vc_dir=%~dp0vc"
 
-REM Let a particular environment specify their own TCC repo
+REM Let a particular environment specify their own TCC and VC repos (to help mirrors)
 if /I not ["%TCC_GIT%"] == [""] set "tcc_url=%TCC_GIT%"
 if /I not ["%TCC_BRANCH%"] == [""] set "tcc_branch=%TCC_BRANCH%"
+
+if /I not ["%VC_GIT%"] == [""] set "vc_url=%VC_GIT%"
 
 pushd %~dp0
 
@@ -43,7 +46,7 @@ if !shift_counter! LSS 1 (
 )
 
 REM Compiler option
-for %%g in (-gcc -msvc -tcc -clang) do (
+for %%g in (-gcc -msvc -tcc -tcc32 -clang) do (
     if "%~1" == "%%g" set compiler=%~1& set compiler=!compiler:~1!& shift& set /a shift_counter+=1& goto :verifyopt
 )
 
@@ -159,20 +162,35 @@ if !flag_local! NEQ 1 (
             cd ..>>"!log_file!" 2>NUL
         )
         popd
-    ) || (
-        echo Cloning vc...
-        echo  ^> Cloning from remote !vc_url!
-        if !flag_verbose! EQU 1 (
-            echo [Debug] git clone --depth 1 --quiet %vc_url%>>"!log_file!"
-            echo    git clone --depth 1 --quiet %vc_url%
-        )
-        git clone --depth 1 --quiet %vc_url%>>"!log_file!" 2>NUL
-    )
+    ) || call :cloning_vc
     echo.
 )
 
 echo Building V...
 if not [!compiler!] == [] goto :!compiler!_strap
+
+
+REM By default, use tcc, since we have it prebuilt:
+:tcc_strap
+:tcc32_strap
+echo  ^> Attempting to build v_win.c with TCC
+if !flag_verbose! EQU 1 (
+    echo [Debug] "!tcc_exe!" -ladvapi32 -bt10 -w -o v.exe vc\v_win.c>>"!log_file!"
+    echo    "!tcc_exe!" -ladvapi32 -bt10 -w -o v.exe vc\v_win.c
+)
+"!tcc_exe!" -ladvapi32 -bt10 -w -o v.exe vc\v_win.c>>"!log_file!" 2>NUL
+if %ERRORLEVEL% NEQ 0 goto :compile_error
+
+echo  ^> Compiling with .\v.exe self
+if !flag_verbose! EQU 1 (
+    echo [Debug] v.exe -cc "!tcc_exe!" self>>"!log_file!"
+    echo    v.exe -cc "!tcc_exe!" self
+)
+v.exe -cc "!tcc_exe!" self>>"!log_file!" 2>NUL
+if %ERRORLEVEL% NEQ 0 goto :clang_strap
+goto :success
+
+
 
 :clang_strap
 where /q clang
@@ -244,10 +262,10 @@ if "%PROCESSOR_ARCHITECTURE%" == "x86" (
 if not exist "%VsWhereDir%\Microsoft Visual Studio\Installer\vswhere.exe" (
 	echo  ^> MSVC not found
 	if not [!compiler!] == [] goto :error
-	goto :tcc_strap
+	goto :compile_error
 )
 
-for /f "usebackq tokens=*" %%i in (`"%VsWhereDir%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -prerelease -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do (
+for /f "usebackq tokens=*" %%i in (`"%VsWhereDir%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do (
 	set InstallDir=%%i
 )
 
@@ -281,25 +299,6 @@ del %ObjFile%>>"!log_file!" 2>>&1
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
 
-:tcc_strap
-if [!compiler!] == [] set /a invalid_cc=1
-echo  ^> Attempting to build v_win.c with TCC
-if !flag_verbose! EQU 1 (
-    echo [Debug] "!tcc_exe!" -std=c99 -municode -lws2_32 -lshell32 -ladvapi32 -bt10 -w -o v.exe vc\v_win.c>>"!log_file!"
-    echo    "!tcc_exe!" -std=c99 -municode -lws2_32 -lshell32 -ladvapi32 -bt10 -w -o v.exe vc\v_win.c
-)
-"!tcc_exe!" -std=c99 -municode -lws2_32 -lshell32 -ladvapi32 -bt10 -w -o v.exe vc\v_win.c>>"!log_file!" 2>NUL
-if %ERRORLEVEL% NEQ 0 goto :compile_error
-
-echo  ^> Compiling with .\v.exe self
-if !flag_verbose! EQU 1 (
-    echo [Debug] v.exe -cc "!tcc_exe!" self>>"!log_file!"
-    echo    v.exe -cc "!tcc_exe!" self
-)
-v.exe -cc "!tcc_exe!" self>>"!log_file!" 2>NUL
-if %ERRORLEVEL% NEQ 0 goto :compile_error
-goto :success
-
 :download_tcc
 pushd %tcc_dir% 2>NUL && (
     echo Updating TCC
@@ -310,16 +309,8 @@ pushd %tcc_dir% 2>NUL && (
     )
     git pull --quiet>>"!log_file!" 2>NUL
     popd
-) || (
-    echo Bootstraping TCC...
-    echo  ^> TCC not found
-    echo  ^> Downloading TCC from !tcc_url!
-    if !flag_verbose! EQU 1 (
-        echo [Debug] git clone --depth 1 --quiet --single-branch --branch !tcc_branch! !tcc_url! "%tcc_dir%">>"!log_file!"
-        echo    git clone --depth 1 --quiet --single-branch --branch !tcc_branch! !tcc_url! "%tcc_dir%"
-    )
-    git clone --depth 1 --quiet --single-branch --branch !tcc_branch! !tcc_url! "%tcc_dir%">>"!log_file!" 2>NUL
-)
+) || call :bootstrap_tcc
+
 for /f "usebackq delims=" %%i in (`dir "%tcc_dir%" /b /a /s tcc.exe`) do (
     set "attrib=%%~ai"
     set "dattrib=%attrib:~0,1%"
@@ -337,19 +328,13 @@ goto :error
 :error
 echo.
 echo Exiting from error
+type "!log_file!"
+echo ERROR: please follow the instructions in https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows
 exit /b 1
 
 :success
 echo  ^> V built successfully!
 echo  ^> To add V to your PATH, run `.\v.exe symlink`.
-if !invalid_cc! EQU 1 (
-    echo.
-    echo WARNING:  No C compiler was detected in your PATH. `tcc` was used temporarily
-    echo           to build V, but it may have some bugs and may not work in all cases.
-    echo           A more advanced C compiler like GCC or MSVC is recommended.
-    echo           https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows
-    echo.
-)
 
 :version
 echo.
@@ -362,18 +347,19 @@ echo Usage:
 echo     make.bat [target] [compiler] [options]
 echo.
 echo Compiler:
-echo     -msvc ^| -gcc ^| -tcc ^| -clang    Set C compiler
+echo     -msvc ^| -gcc ^| -tcc ^| -tcc32 ^| -clang    Set C compiler
 echo.
 echo Target:
-echo    build[default]                    Compiles V using the given C compiler
-echo    clean                             Clean build artifacts and debugging symbols
-echo    clean-all                         Cleanup entire ALL build artifacts and vc repository
-echo    help                              Display usage help for the given target
+echo     build[default]                    Compiles V using the given C compiler
+echo     clean                             Clean build artifacts and debugging symbols
+echo     clean-all                         Cleanup entire ALL build artifacts and vc repository
+echo     help                              Display usage help for the given target
 echo.
 echo Examples:
 echo     make.bat -msvc
 echo     make.bat -gcc --local --logpath output.log
-echo     make.bat build -fresh-tcc --local
+echo     make.bat build -tcc --local
+echo     make.bat -tcc32
 echo     make.bat help clean
 echo.
 echo Use "make help <target>" for more information about a target, for instance: "make help clean"
@@ -412,7 +398,7 @@ echo Usage:
 echo     make.bat build [compiler] [options]
 echo.
 echo Compiler:
-echo     -msvc ^| -gcc ^| -[fresh-]tcc ^| -clang    Set C compiler
+echo     -msvc ^| -gcc ^| -tcc ^| -tcc32 ^| -clang    Set C compiler
 echo.
 echo Options:
 echo    --local                           Use the local vc repository without
@@ -420,6 +406,27 @@ echo                                      syncing with remote
 echo    --logfile PATH                    Use the specified PATH as the log
 echo                                      file
 echo    --verbose                         Output compilation commands to stdout
+exit /b 0
+
+:bootstrap_tcc
+echo Bootstraping TCC...
+echo  ^> TCC not found
+if "!tcc_branch!" == "thirdparty-windows-i386" ( echo  ^> Downloading TCC32 from !tcc_url! ) else ( echo  ^> Downloading TCC64 from !tcc_url! )
+if !flag_verbose! EQU 1 (
+   echo [Debug] git clone --depth 1 --quiet --single-branch --branch !tcc_branch! !tcc_url! "%tcc_dir%">>"!log_file!"
+   echo    git clone --depth 1 --quiet --single-branch --branch !tcc_branch! !tcc_url! "%tcc_dir%"
+)
+git clone --depth 1 --quiet --single-branch --branch !tcc_branch! !tcc_url! "%tcc_dir%">>"!log_file!" 2>NUL
+exit /b 0
+
+:cloning_vc
+echo Cloning vc...
+echo  ^> Cloning from remote !vc_url!
+if !flag_verbose! EQU 1 (
+   echo [Debug] git clone --depth 1 --quiet %vc_url%>>"!log_file!"
+   echo    git clone --depth 1 --quiet %vc_url%
+)
+git clone --depth 1 --quiet %vc_url%>>"!log_file!" 2>NUL
 exit /b 0
 
 :eof

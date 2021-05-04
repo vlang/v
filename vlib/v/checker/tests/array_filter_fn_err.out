@@ -1,0 +1,27 @@
+vlib/v/checker/tests/array_filter_fn_err.vv:2:25: error: function needs exactly 1 argument
+    1 | fn main() {
+    2 |     a1 := [1,2,3,4].filter(fn(a int, b int) bool { return a > 0 })
+      |                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    3 |     println(a1)
+    4 |
+vlib/v/checker/tests/array_filter_fn_err.vv:5:25: error: type mismatch, should use `fn(a int) bool {...}`
+    3 |     println(a1)
+    4 |
+    5 |     a2 := [1,2,3,4].filter(fn(a string) bool { return a.len > 0 })
+      |                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    6 |     println(a2)
+    7 |
+vlib/v/checker/tests/array_filter_fn_err.vv:8:18: error: function needs exactly 1 argument
+    6 |     println(a2)
+    7 |
+    8 |     a3 := [1,2,3,4].filter(fil1)
+      |                     ~~~~~~~~~~~~
+    9 |     println(a3)
+   10 |
+vlib/v/checker/tests/array_filter_fn_err.vv:11:25: error: type mismatch, should use `fn(a int) bool {...}`
+    9 |     println(a3)
+   10 |
+   11 |     a4 := [1,2,3,4].filter(fil2)
+      |                            ~~~~
+   12 |     println(a4)
+   13 | }

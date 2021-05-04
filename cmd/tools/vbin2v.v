@@ -49,36 +49,35 @@ fn (context Context) footer() string {
 fn (context Context) file2v(bname string, fbytes []byte, bn_max int) string {
 	mut sb := strings.new_builder(1000)
 	bn_diff_len := bn_max - bname.len
-	sb.write('\t${bname}_len' + ' '.repeat(bn_diff_len - 4) + ' = $fbytes.len\n')
+	sb.write_string('\t${bname}_len' + ' '.repeat(bn_diff_len - 4) + ' = $fbytes.len\n')
 	fbyte := fbytes[0]
 	bnmae_line := '\t$bname' + ' '.repeat(bn_diff_len) + ' = [byte($fbyte), '
-	sb.write(bnmae_line)
+	sb.write_string(bnmae_line)
 	mut line_len := bnmae_line.len + 3
 	for i := 1; i < fbytes.len; i++ {
 		b := int(fbytes[i]).str()
 		if line_len > 94 {
 			sb.go_back(1)
-			sb.write('\n\t\t')
+			sb.write_string('\n\t\t')
 			line_len = 8
 		}
 		if i == fbytes.len - 1 {
-			sb.write(b)
+			sb.write_string(b)
 			line_len += b.len
 		} else {
-			sb.write('$b, ')
+			sb.write_string('$b, ')
 			line_len += b.len + 2
 		}
-
 	}
-	sb.write(']!\n')
+	sb.write_string(']!\n')
 	return sb.str()
 }
 
 fn (context Context) bname_and_bytes(file string) ?(string, []byte) {
 	fname := os.file_name(file)
-	fname_escpaed := fname.replace_each(['.', '_', '-', '_'])
-	byte_name := '$context.prefix$fname_escpaed'.to_lower()
-	fbytes := os.read_bytes(file) or { return error('Error: $err') }
+	fname_escaped := fname.replace_each(['.', '_', '-', '_'])
+	byte_name := '$context.prefix$fname_escaped'.to_lower()
+	fbytes := os.read_bytes(file) or { return error('Error: $err.msg') }
 	return byte_name, fbytes
 }
 
@@ -109,7 +108,7 @@ fn main() {
 		exit(0)
 	}
 	files := fp.finalize() or {
-		eprintln('Error: ' + err)
+		eprintln('Error: $err.msg')
 		exit(1)
 	}
 	real_files := files.filter(it != 'bin2v')
@@ -124,19 +123,19 @@ fn main() {
 	mut file_byte_map := map[string][]byte{}
 	for file in real_files {
 		bname, fbytes := context.bname_and_bytes(file) or {
-			eprintln(err)
-			continue
+			eprintln(err.msg)
+			exit(1)
 		}
 		file_byte_map[bname] = fbytes
 	}
 	max_bname := context.max_bname_len(file_byte_map.keys())
 	if context.write_file.len > 0 {
-		mut out_file := os.create(context.write_file) or { panic(err) }
-		out_file.write_str(context.header())
+		mut out_file := os.create(context.write_file) ?
+		out_file.write_string(context.header()) ?
 		for bname, fbytes in file_byte_map {
-			out_file.write_str(context.file2v(bname, fbytes, max_bname))
+			out_file.write_string(context.file2v(bname, fbytes, max_bname)) ?
 		}
-		out_file.write_str(context.footer())
+		out_file.write_string(context.footer()) ?
 	} else {
 		print(context.header())
 		for bname, fbytes in file_byte_map {

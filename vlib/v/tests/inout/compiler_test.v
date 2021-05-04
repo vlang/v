@@ -1,4 +1,8 @@
+// .out file:
+// To test a panic, remove everything after the long `===` line
+// You can also remove the line with 'line:' e.g. for a builtin fn
 import os
+import rand
 import term
 import v.util
 import v.util.vtest
@@ -18,28 +22,30 @@ fn test_all() {
 		println('no compiler tests found')
 		assert false
 	}
-	paths := vtest.filter_vtest_only(tests, 
-		basepath: dir
-	)
+	paths := vtest.filter_vtest_only(tests, basepath: dir)
 	for path in paths {
 		print(path + ' ')
 		program := path
-		compilation := os.exec('$vexe -o test -cflags "-w" -cg $program') or { panic(err) }
+		compilation := os.execute('$vexe -o test -cflags "-w" -cg $program')
+		if compilation.exit_code < 0 {
+			panic(compilation.output)
+		}
 		if compilation.exit_code != 0 {
 			panic('compilation failed: $compilation.output')
 		}
-		res := os.exec('./test') or {
+		res := os.execute('./test')
+		if res.exit_code < 0 {
 			println('nope')
-			panic(err)
+			panic(res.output)
 		}
 		$if windows {
-			os.rm('./test.exe')
+			os.rm('./test.exe') or {}
 			$if msvc {
-				os.rm('./test.ilk')
-				os.rm('./test.pdb')
+				os.rm('./test.ilk') or {}
+				os.rm('./test.pdb') or {}
 			}
 		} $else {
-			os.rm('./test')
+			os.rm('./test') or {}
 		}
 		// println('============')
 		// println(res.output)
@@ -52,7 +58,7 @@ fn test_all() {
 			n_found := normalize_panic_message(found, vroot)
 			n_expected := normalize_panic_message(expected, vroot)
 			if found.contains('================ V panic ================') {
-				if n_found.contains(n_expected) {
+				if n_found.starts_with(n_expected) {
 					println(term.green('OK (panic)'))
 					continue
 				} else {
@@ -72,7 +78,7 @@ fn test_all() {
 			println(found)
 			if diff_cmd != '' {
 				println(term.header('difference:', '-'))
-				println(util.color_compare_strings(diff_cmd, expected, found))
+				println(util.color_compare_strings(diff_cmd, rand.ulid(), expected, found))
 			} else {
 				println(term.h_divider('-'))
 			}
@@ -86,7 +92,10 @@ fn test_all() {
 
 fn normalize_panic_message(message string, vroot string) string {
 	mut msg := message.all_before('=========================================')
-	msg = msg.replace(vroot + os.path_separator, '')
+	// change windows to nix path
+	s := vroot.replace(os.path_separator, '/')
+	// remove vroot
+	msg = msg.replace(s + '/', '')
 	msg = msg.trim_space()
 	return msg
 }

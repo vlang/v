@@ -1,6 +1,6 @@
 <div align="center">
 <p>
-    <img width="80" src="https://raw.githubusercontent.com/donnisnoni95/v-logo/master/dist/v-logo.svg?sanitize=true">
+    <img width="80" src="https://raw.githubusercontent.com/vlang/v-logo/master/dist/v-logo.svg?sanitize=true">
 </p>
 <h1>The V Programming Language</h1>
 
@@ -26,14 +26,14 @@
 ## Key Features of V
 
 - Simplicity: the language can be learned in less than an hour
-- Fast compilation: ≈80k loc/s with a Clang backend,
-    ≈1 million loc/s with x64 and tcc backends *(Intel i5-7500, SSD, no optimization)*
+- Fast compilation: ≈110k loc/s with a Clang backend,
+    ≈1 million loc/s with native and tcc backends *(Intel i5-7500, SSD, no optimization)* ([demo video](https://www.youtube.com/watch?v=pvP6wmcl_Sc))
 - Easy to develop: V compiles itself in less than a second
 - Performance: as fast as C (V's main backend compiles to human readable C)
 - Safety: no null, no globals, no undefined behavior, immutability by default
 - C to V translation
 - Hot code reloading
-- [Innovative memory management](https://vlang.io/#memory)
+- [Innovative memory management](https://vlang.io/#memory) ([demo video](https://www.youtube.com/watch?v=gmB8ea8uLsM))
 - [Cross-platform UI library](https://github.com/vlang/ui)
 - Built-in graphics library
 - Easy cross compilation
@@ -52,7 +52,7 @@ There still may be minor syntax changes before the 1.0 release, but they will be
 automatically via `vfmt`, as has been done in the past.
 
 The V core APIs (primarily the `os` module) will still have minor changes until
-they are stabilized in 2020. Of course the APIs will grow after that, but without breaking
+they are stabilized in V 1.0. Of course the APIs will grow after that, but without breaking
 existing code.
 
 Unlike many other languages, V is not going to be always changing, with new features
@@ -137,7 +137,6 @@ git clone https://github.com/vlang/v
 cd v
 docker build -t vlang .
 docker run --rm -it vlang:latest
-v
 ```
 
 ### Docker with Alpine/musl
@@ -147,7 +146,6 @@ git clone https://github.com/vlang/v
 cd v
 docker build -t vlang --file=Dockerfile.alpine .
 docker run --rm -it vlang:latest
-/usr/local/v/v
 ```
 
 </details>
@@ -175,7 +173,7 @@ cd examples
 v hello_world.v && ./hello_world    # or simply
 v run hello_world.v                 # this builds the program and runs it right away
 
-v word_counter.v && ./word_counter cinderella.txt
+v run word_counter/word_counter.v word_counter/cinderella.txt
 v run news_fetcher.v
 v run tetris/tetris.v
 ```
@@ -244,9 +242,21 @@ Hello from V.js
 ```
 -->
 
+## Android graphical apps
+
+With V's `vab` tool, building V UI and graphical apps for Android can become as easy as:
+
+```
+./vab /path/to/v/examples/2048
+```
+
+[https://github.com/vlang/vab](https://github.com/vlang/vab).
+
+<img src="https://user-images.githubusercontent.com/768942/107622846-c13f3900-6c58-11eb-8a66-55db12979b73.png">
+
 ## Developing web applications
 
-Check out the [Building a simple web blog](https://github.com/vlang/v/blob/master/tutorials/building-a-simple-web-blog-with-vweb.md)
+Check out the [Building a simple web blog](https://github.com/vlang/v/blob/master/tutorials/building_a_simple_web_blog_with_vweb/README.md)
 tutorial and Gitly, a light and fast alternative to GitHub/GitLab:
 
 https://github.com/vlang/gitly

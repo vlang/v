@@ -1,7 +1,0 @@
-fn add(a string) string {
-	return a
-}
-fn main() {
-	a := [1,2,3,4].map(add)
-	println(a)
-}

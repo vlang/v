@@ -8,7 +8,7 @@ enum CloseTagType {
 }
 
 // Tag holds the information of an HTML tag.
-[ref_only]
+[heap]
 pub struct Tag {
 pub mut:
 	name               string
@@ -38,35 +38,31 @@ pub fn (tag Tag) text() string {
 		return '\n'
 	}
 	mut text_str := strings.new_builder(200)
-	text_str.write(tag.content.replace('\n', ''))
+	text_str.write_string(tag.content.replace('\n', ''))
 	for child in tag.children {
-		text_str.write(child.text())
+		text_str.write_string(child.text())
 	}
 	return text_str.str()
 }
 
 pub fn (tag &Tag) str() string {
 	mut html_str := strings.new_builder(200)
-	html_str.write('<$tag.name')
+	html_str.write_string('<$tag.name')
 	for key, value in tag.attributes {
-		html_str.write(' $key')
+		html_str.write_string(' $key')
 		if value.len > 0 {
-			html_str.write('="$value"')
+			html_str.write_string('="$value"')
 		}
 	}
-	html_str.write(if tag.closed && tag.close_type == .in_name {
-		'/>'
-	} else {
-		'>'
-	})
-	html_str.write(tag.content)
+	html_str.write_string(if tag.closed && tag.close_type == .in_name { '/>' } else { '>' })
+	html_str.write_string(tag.content)
 	if tag.children.len > 0 {
 		for child in tag.children {
-			html_str.write(child.str())
+			html_str.write_string(child.str())
 		}
 	}
 	if !tag.closed || tag.close_type == .new_tag {
-		html_str.write('</$tag.name>')
+		html_str.write_string('</$tag.name>')
 	}
 	return html_str.str()
 }

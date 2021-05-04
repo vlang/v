@@ -5,7 +5,7 @@ vlib/v/checker/tests/non_matching_functional_args.vv:27:6: error: cannot use `fn
       |         ~~~~~~~~~~~~~~~~~~
    28 |         t.rename()
    29 |         println(t.name)
-details: `main.MyFn`'s expected fn argument: `zzzz` is NOT a pointer, but the passed fn argument: `t` is a pointer
+Details: `main.MyFn`'s expected fn argument: `zzzz` is NOT a pointer, but the passed fn argument: `t` is a pointer
 vlib/v/checker/tests/non_matching_functional_args.vv:31:6: error: cannot use `fn (mut Table)` as `fn (Table)` in argument 1 to `sum`
    29 |         println(t.name)
    30 |     })
@@ -13,4 +13,4 @@ vlib/v/checker/tests/non_matching_functional_args.vv:31:6: error: cannot use `fn
       |         ~~~
    32 |     sum(yyy)
    33 | }
-details: `main.MyFn`'s expected fn argument: `zzzz` is NOT a pointer, but the passed fn argument: `mytable` is a pointer
+Details: `main.MyFn`'s expected fn argument: `zzzz` is NOT a pointer, but the passed fn argument: `mytable` is a pointer

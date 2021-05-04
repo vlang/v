@@ -6,5 +6,5 @@ fn test_u64_to_void_pointer_cast_via_fn_call() {
 	a := u64(100)
 	b := receive_u64_return_addr(a)
 	c := u64(b)
-	assert (a == c)
+	assert a == c
 }

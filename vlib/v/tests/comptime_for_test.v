@@ -39,7 +39,9 @@ fn test_comptime_for() {
 	println(@FN)
 	methods := ['run', 'method2', 'int_method1', 'int_method2', 'string_arg']
 	$for method in App.methods {
-		println('  method: $method.name | ' + no_lines('$method'))
+		// ensure each method is scoped under a new block in the generated code
+		x := '  method: $method.name | ' + no_lines('$method')
+		println(x)
 		assert method.name in methods
 	}
 }

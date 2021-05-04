@@ -1,9 +1,8 @@
 module doc
 
 import os
-import v.table
-import v.parser
 import v.ast
+import v.parser
 import v.pref
 
 // get_parent_mod returns the parent mod name, in dot format.
@@ -40,7 +39,7 @@ fn get_parent_mod(input_dir string) ?string {
 		}
 		return error('No V files found.')
 	}
-	tbl := table.new_table()
+	tbl := ast.new_table()
 	scope := &ast.Scope{
 		parent: 0
 	}
@@ -87,5 +86,5 @@ pub fn lookup_module(mod string) ?string {
 // generate_from_mod generates a documentation from a specific module.
 pub fn generate_from_mod(module_name string, pub_only bool, with_comments bool) ?Doc {
 	mod_path := lookup_module(module_name) ?
-	return generate(mod_path, pub_only, with_comments)
+	return generate(mod_path, pub_only, with_comments, .auto)
 }

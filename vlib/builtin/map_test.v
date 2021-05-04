@@ -128,13 +128,17 @@ fn test_map() {
 }
 
 fn test_map_init() {
-	m := {
-		'one': 1
+	one := 'one'
+	three := 'three'
+	m := map{
+		one:   1
 		'two': 2
+		three: 1 + 2
 	}
 	assert m['one'] == 1
 	assert m['two'] == 2
-	assert m['three'] == 0
+	assert m['three'] == 3
+	assert m['unknown'] == 0
 }
 
 fn test_string_map() {
@@ -192,9 +196,9 @@ fn test_various_map_value() {
 	mut m14 := map[string]voidptr{}
 	m14['test'] = voidptr(0)
 	assert m14['test'] == voidptr(0)
-	mut m15 := map[string]byteptr{}
-	m15['test'] = byteptr(0)
-	assert m15['test'] == byteptr(0)
+	mut m15 := map[string]&byte{}
+	m15['test'] = &byte(0)
+	assert m15['test'] == &byte(0)
 	mut m16 := map[string]i64{}
 	m16['test'] = i64(0)
 	assert m16['test'] == i64(0)
@@ -243,12 +247,84 @@ fn test_delete_size() {
 		for i in 0 .. 10 {
 			m[arr[i]] = i
 		}
-		assert (m.len == 10)
+		assert m.len == 10
 		println(m.len)
 		for i in 0 .. 10 {
 			m.delete(arr[i])
 		}
 	}
+}
+
+fn test_nested_for_in() {
+	mut m := map[string]int{}
+	for i in 0 .. 1000 {
+		m[i.str()] = i
+	}
+	mut i := 0
+	for key1, _ in m {
+		assert key1 == i.str()
+		i++
+		mut j := 0
+		for key2, _ in m {
+			assert key2 == j.str()
+			j++
+		}
+	}
+}
+
+fn test_delete_in_for_in() {
+	mut m := map[string]string{}
+	for i in 0 .. 1000 {
+		m[i.str()] = i.str()
+	}
+	mut i := 0
+	for key, _ in m {
+		assert key == i.str()
+		m.delete(key)
+		i++
+	}
+	assert m.str() == '{}'
+	assert m.len == 0
+}
+
+fn test_set_in_for_in() {
+	mut m := map[string]string{}
+	for i in 0 .. 10 {
+		m[i.str()] = i.str()
+	}
+	mut last_key := ''
+	mut i := 0
+	for key, _ in m {
+		m['10'] = '10'
+		assert key == i.str()
+		last_key = key
+		i++
+	}
+	assert last_key == '10'
+}
+
+fn test_delete_and_set_in_for_in() {
+	mut m := map[string]string{}
+	for i in 0 .. 1000 {
+		m[i.str()] = i.str()
+	}
+	mut i := 0
+	for key, _ in m {
+		assert key == i.str()
+		m.delete(key)
+		m[key] = i.str()
+		if i == 999 {
+			break
+		}
+		i++
+	}
+	assert m.len == 1000
+	i = 0
+	for key, _ in m {
+		assert m[key] == i.str()
+		i++
+	}
+	assert i == 1000
 }
 
 struct Mstruct1 {
@@ -270,25 +346,25 @@ fn test_map_assign() {
 	mut a := map[string]f64{}
 	mut b := map[string]int{}
 	mut c := map[string]u16{}
-	a = {
+	a = map{
 		'x': 12.4
 		'y': 3
 	}
-	b = {
+	b = map{
 		'u': -13
 		'v': 12
 	}
-	c = {
+	c = map{
 		's': u16(5)
 		't': 3
 	}
-	_ := Mstruct1{{
+	_ := Mstruct1{map{
 		'p': 12
 	}}
-	_ := Mstruct2{{
+	_ := Mstruct2{map{
 		'q': 1.7
 	}}
-	_ := Mstruct3{{
+	_ := Mstruct3{map{
 		'r': u16(6)
 		's': 5
 	}}
@@ -322,7 +398,7 @@ fn test_assign_directly() {
 }
 
 fn test_map_in_directly() {
-	for k, v in {
+	for k, v in map{
 		'aa': 1
 	} {
 		assert k == 'aa'
@@ -331,7 +407,7 @@ fn test_map_in_directly() {
 }
 
 fn test_plus_assign_string() {
-	mut m := {
+	mut m := map{
 		'one': ''
 	}
 	m['one'] += '1'
@@ -340,7 +416,7 @@ fn test_plus_assign_string() {
 }
 
 fn test_map_keys_to_array() {
-	m := {
+	m := map{
 		'a': 'b'
 		'c': 'd'
 	}
@@ -360,7 +436,7 @@ fn map_in_mut(mut m map[string]int) {
 }
 
 fn test_map_in_mut() {
-	mut m := {
+	mut m := map{
 		'one': 1
 	}
 	map_in_mut(mut m)
@@ -368,7 +444,7 @@ fn test_map_in_mut() {
 }
 
 fn test_map_in() {
-	m := {
+	m := map{
 		'Foo': 'bar'
 	}
 	if 'foo'.capitalize() in m {
@@ -400,7 +476,7 @@ fn mut_map_with_relation_op_in_fn(mut m map[string]int) {
 }
 
 fn test_mut_map_with_relation_op_in_fn() {
-	mut m := {
+	mut m := map{
 		'one': 1
 		'two': 2
 	}
@@ -414,7 +490,7 @@ fn test_mut_map_with_relation_op_in_fn() {
 }
 
 fn test_map_str_after_delete() {
-	mut m := {
+	mut m := map{
 		'first':  1
 		'second': 2
 		'third':  3
@@ -428,7 +504,7 @@ fn test_map_str_after_delete() {
 }
 
 fn test_modify_map_value() {
-	mut m1 := {
+	mut m1 := map{
 		'foo': 3
 		'bar': -7
 	}
@@ -439,7 +515,7 @@ fn test_modify_map_value() {
 }
 
 fn test_map_clone() {
-	mut nums := {
+	mut nums := map{
 		'foo': 1
 		'bar': 2
 	}
@@ -466,7 +542,7 @@ fn test_map_default_zero() {
 }
 
 fn test_map_or() {
-	m := {
+	m := map{
 		'first':  1
 		'second': 2
 		'third':  3
@@ -485,14 +561,35 @@ fn test_int_keys() {
 	m[5] += 24
 	m[5]++
 	assert m[5] == 25
-	m2 := {3:9 4:16 5:25}
+	mut m2 := map{
+		3: 9
+		4: 16
+		5: 25
+	}
+
+	four := 4
+	m2.delete(3)
+	m2.delete(four)
+	m2.delete(5)
+	assert m2.len == 0
+	assert m2[3] == 0
+	assert m2[4] == 0
+	assert m2[5] == 0
+	assert m2.keys() == []
+
+	m2 = map{
+		3: 9
+		4: 16
+		5: 25
+	}
+
 	assert m2.len == 3
 	// clone
 	mc := m.clone()
 	same := mc == m
 	assert same
 	assert mc.len == 3
-	assert mc.keys() == [3,4,5]
+	assert mc.keys() == [3, 4, 5]
 	mut all := []int{}
 	for k, v in mc {
 		assert m[k] == v
@@ -500,6 +597,35 @@ fn test_int_keys() {
 		all << v
 	}
 	assert all == [3, 9, 4, 16, 5, 25]
+
+	mut m3 := map{
+		1: 'one'
+		2: 'two'
+	}
+	assert m3[1] == 'one'
+	m3.delete(1)
+}
+
+enum Color {
+	red
+	green
+	blue
+}
+
+type ColorAlias = Color
+
+fn test_alias_enum() {
+	mut m := map[ColorAlias]string{}
+	m[Color.red] = 'hi'
+	assert m[Color.red] == 'hi'
+}
+
+fn test_enum_in_map() {
+	mut m := map[Color]string{}
+	m[Color.red] = 'hi'
+	assert Color.red in m
+	assert Color.green !in m
+	assert Color.blue !in m
 }
 
 fn test_voidptr_keys() {
@@ -513,14 +639,17 @@ fn test_voidptr_keys() {
 }
 
 fn test_rune_keys() {
-	mut m := {`!`:2 `%`:3}
+	mut m := map{
+		`!`: 2
+		`%`: 3
+	}
 	assert typeof(m).name == 'map[rune]int'
 	assert m[`!`] == 2
 	m[`@`] = 7
 	assert m.len == 3
 	println(m)
 	assert '$m' == '{`!`: 2, `%`: 3, `@`: 7}'
-	
+
 	mut a := []rune{}
 	for k, v in m {
 		a << k
@@ -530,62 +659,62 @@ fn test_rune_keys() {
 }
 
 fn test_eq() {
-	a := {
+	a := map{
 		'a': 1
 		'b': 2
 	}
-	assert a == {
+	assert a == map{
 		'a': 1
 		'b': 2
 	}
-	b := {
+	b := map{
 		'a': [[1]]
 		'b': [[2]]
 	}
-	assert b == {
+	assert b == map{
 		'a': [[1]]
 		'b': [[2]]
 	}
-	c := {
-		'a': {
+	c := map{
+		'a': map{
 			'11': 1
 		}
-		'b': {
+		'b': map{
 			'22': 2
 		}
 	}
-	assert c == {
-		'a': {
+	assert c == map{
+		'a': map{
 			'11': 1
 		}
-		'b': {
+		'b': map{
 			'22': 2
 		}
 	}
-	d := {
+	d := map{
 		'a': MValue{
 			name: 'aa'
-			misc: {
+			misc: map{
 				'11': '1'
 			}
 		}
 		'b': MValue{
 			name: 'bb'
-			misc: {
+			misc: map{
 				'22': '2'
 			}
 		}
 	}
-	assert d == {
+	assert d == map{
 		'a': MValue{
 			name: 'aa'
-			misc: {
+			misc: map{
 				'11': '1'
 			}
 		}
 		'b': MValue{
 			name: 'bb'
-			misc: {
+			misc: map{
 				'22': '2'
 			}
 		}
@@ -593,7 +722,213 @@ fn test_eq() {
 }
 
 fn test_non_string_key_map_str() {
-	assert {23: 4}.str() == '{23: 4}'
-	assert {`a`: 12, `b`: 13}.str() == '{`a`: 12, `b`: 13}'
-	assert {23: 'foo', 25: 'bar'}.str() == "{23: 'foo', 25: 'bar'}"
+	assert map{
+		23: 4
+	}.str() == '{23: 4}'
+	assert map{
+		`a`: 12
+		`b`: 13
+	}.str() == '{`a`: 12, `b`: 13}'
+	assert map{
+		23: 'foo'
+		25: 'bar'
+	}.str() == "{23: 'foo', 25: 'bar'}"
+}
+
+fn test_map_assign_empty_map_init() {
+	mut a := map{
+		'one': 1
+	}
+	a = map{}
+	println(a)
+	assert a == map[string]int{}
+	assert '$a' == '{}'
+}
+
+fn test_in_map_literal() {
+	assert 1 in map{
+		1: 'one'
+	}
+}
+
+fn test_byte_keys() {
+	mut m := map[byte]byte{}
+	byte_max := byte(255)
+	for i in byte(0) .. byte_max {
+		m[i] = i
+		assert m[i] == i
+	}
+	for k, v in m {
+		assert k == v
+	}
+	for i in byte(0) .. 100 {
+		m[i]++
+		assert m[i] == i + 1
+	}
+	assert m.len == byte_max
+	keys := m.keys()
+	for i in byte(0) .. byte_max {
+		assert keys[i] == i
+	}
+	for i in byte(0) .. byte_max {
+		m.delete(i)
+		assert m[i] == 0
+	}
+	assert m.len == 0
+}
+
+fn test_i16_keys() {
+	mut m := map[i16]i16{}
+	end := i16(1000)
+	for i in i16(0) .. end {
+		m[i] = i
+		assert m[i] == i
+	}
+	for k, v in m {
+		assert k == v
+	}
+	for i in i16(0) .. 500 {
+		m[i]++
+		assert m[i] == i + 1
+	}
+	assert m.len == end
+	keys := m.keys()
+	for i in i16(0) .. end {
+		assert keys[i] == i
+	}
+	for i in i16(0) .. end {
+		m.delete(i)
+		assert m[i] == 0
+	}
+	assert m.len == 0
+}
+
+fn test_u16_keys() {
+	mut m := map[u16]u16{}
+	end := u16(1000)
+	for i in u16(0) .. end {
+		m[i] = i
+		assert m[i] == i
+	}
+	for k, v in m {
+		assert k == v
+	}
+	for i in u16(0) .. 500 {
+		m[i]++
+		assert m[i] == i + 1
+	}
+	assert m.len == end
+	keys := m.keys()
+	for i in u16(0) .. end {
+		assert keys[i] == i
+	}
+	for i in u16(0) .. end {
+		m.delete(i)
+		assert m[i] == 0
+	}
+	assert m.len == 0
+}
+
+fn test_u32_keys() {
+	mut m := map[u32]u32{}
+	end := u32(1000)
+	for i in u32(0) .. end {
+		m[i] = i
+		assert m[i] == i
+	}
+	for k, v in m {
+		assert k == v
+	}
+	for i in u32(0) .. 500 {
+		m[i]++
+		assert m[i] == i + 1
+	}
+	assert m.len == end
+	keys := m.keys()
+	for i in u32(0) .. end {
+		assert keys[i] == i
+	}
+	for i in u32(0) .. end {
+		m.delete(i)
+		assert m[i] == 0
+	}
+	assert m.len == 0
+}
+
+fn test_int_keys2() {
+	mut m := map[int]int{}
+	end := 1000
+	for i in int(0) .. end {
+		m[i] = i
+		assert m[i] == i
+	}
+	for k, v in m {
+		assert k == v
+	}
+	for i in int(0) .. 500 {
+		m[i]++
+		assert m[i] == i + 1
+	}
+	assert m.len == end
+	keys := m.keys()
+	for i in int(0) .. end {
+		assert keys[i] == i
+	}
+	for i in int(0) .. end {
+		m.delete(i)
+		assert m[i] == 0
+	}
+	assert m.len == 0
+}
+
+fn test_i64_keys() {
+	mut m := map[i64]i64{}
+	end := i64(1000)
+	for i in i64(0) .. end {
+		m[i] = i
+		assert m[i] == i
+	}
+	for k, v in m {
+		assert k == v
+	}
+	for i in i64(0) .. 500 {
+		m[i]++
+		assert m[i] == i + 1
+	}
+	assert m.len == end
+	keys := m.keys()
+	for i in i64(0) .. end {
+		assert keys[i] == i
+	}
+	for i in i64(0) .. end {
+		m.delete(i)
+		assert m[i] == 0
+	}
+	assert m.len == 0
+}
+
+fn test_u64_keys() {
+	mut m := map[u64]u64{}
+	end := u64(1000)
+	for i in u64(0) .. end {
+		m[i] = i
+		assert m[i] == i
+	}
+	for k, v in m {
+		assert k == v
+	}
+	for i in u64(0) .. 500 {
+		m[i]++
+		assert m[i] == i + 1
+	}
+	assert m.len == end
+	keys := m.keys()
+	for i in u64(0) .. end {
+		assert keys[i] == i
+	}
+	for i in u64(0) .. end {
+		m.delete(i)
+		assert m[i] == 0
+	}
+	assert m.len == 0
 }

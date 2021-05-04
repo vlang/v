@@ -1,6 +1,8 @@
 Usage:
   v fmt [options] path_to_source.v [path_to_other_source.v]
   v fmt [options] path/to/dir [path/to/other_dir]
+  cat source.v | v fmt
+        Read source code from stdin, output formatted file to stdout.
 
 Formats the given V source files or recursively formats all files in the directory,
 then prints their formatted source to stdout.

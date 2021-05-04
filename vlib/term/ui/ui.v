@@ -1,4 +1,4 @@
-// Copyright (c) 2020 Raúl Hernández. All rights reserved.
+// Copyright (c) 2020-2021 Raúl Hernández. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module ui
@@ -29,25 +29,21 @@ pub fn (mut ctx Context) write(s string) {
 	if s == '' {
 		return
 	}
-	ctx.print_buf.push_many(s.str, s.len)
+	unsafe { ctx.print_buf.push_many(s.str, s.len) }
 }
 
 [inline]
 // flush displays the accumulated print buffer to the screen.
 pub fn (mut ctx Context) flush() {
-	$if windows {
-		// TODO
-	} $else {
-		// TODO: Diff the previous frame against this one, and only render things that changed?
-		if !ctx.enable_su {
-			C.write(C.STDOUT_FILENO, ctx.print_buf.data, ctx.print_buf.len)
-		} else {
-			C.write(C.STDOUT_FILENO, bsu.str, bsu.len)
-			C.write(C.STDOUT_FILENO, ctx.print_buf.data, ctx.print_buf.len)
-			C.write(C.STDOUT_FILENO, esu.str, esu.len)
-		}
-		ctx.print_buf.clear()
+	// TODO: Diff the previous frame against this one, and only render things that changed?
+	if !ctx.enable_su {
+		C.write(1, ctx.print_buf.data, ctx.print_buf.len)
+	} else {
+		C.write(1, bsu.str, bsu.len)
+		C.write(1, ctx.print_buf.data, ctx.print_buf.len)
+		C.write(1, esu.str, esu.len)
 	}
+	ctx.print_buf.clear()
 }
 
 // bold sets the character state to bold.
@@ -60,6 +56,18 @@ pub fn (mut ctx Context) bold() {
 // set_cursor_position positions the cusor at the given coordinates `x`,`y`.
 pub fn (mut ctx Context) set_cursor_position(x int, y int) {
 	ctx.write('\x1b[$y;${x}H')
+}
+
+[inline]
+// show_cursor will make the cursor appear if it is not already visible
+pub fn (mut ctx Context) show_cursor() {
+	ctx.write('\x1b[?25h')
+}
+
+// hide_cursor will make the cursor invisible
+[inline]
+pub fn (mut ctx Context) hide_cursor() {
+	ctx.write('\x1b[?25l')
 }
 
 [inline]
@@ -245,10 +253,4 @@ pub fn (mut ctx Context) draw_empty_rect(x int, y int, x2 int, y2 int) {
 pub fn (mut ctx Context) horizontal_separator(y int) {
 	ctx.set_cursor_position(0, y)
 	ctx.write(strings.repeat(/* `⎽` */`-`, ctx.window_width))
-}
-
-
-[inline]
-fn abs(a int) int {
-	return if a < 0 { -a } else { a }
 }

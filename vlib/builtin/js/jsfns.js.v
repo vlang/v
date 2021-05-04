@@ -8,11 +8,17 @@
 module builtin
 
 pub struct JS.Number {}
+
 pub struct JS.String {
 	length JS.Number
 }
+
 pub struct JS.Boolean {}
-pub struct JS.Array {}
+
+pub struct JS.Array {
+	length JS.Number
+}
+
 pub struct JS.Map {}
 
 // Type prototype functions
@@ -22,18 +28,27 @@ fn (v JS.Boolean) toString() JS.String
 fn (v JS.Array) toString() JS.String
 fn (v JS.Map) toString() JS.String
 
-fn (v JS.String) slice(a int, b int) JS.String
+// Hack for "`[]JS.String` is not a struct" when returning arr.length or arr.len
+// TODO: Fix []JS.String not a struct error
+fn native_str_arr_len(arr []JS.String) int {
+	len := 0
+	#len = arr.length
+
+	return len
+}
 
 // Top level functions
 fn JS.eval(string) any
-fn JS.parseInt(string, f64) f64
-fn JS.parseFloat(string) f64
+fn JS.parseInt(string, f64) JS.Number
+fn JS.parseFloat(string) JS.Number
 fn JS.isNaN(f64) bool
 fn JS.isFinite(f64) bool
 fn JS.decodeURI(string) string
 fn JS.decodeURIComponent(string) string
 fn JS.encodeURI(string) string
-type EncodeURIComponentArg = string | f64 | bool
+
+type EncodeURIComponentArg = bool | f64 | string
+
 fn JS.encodeURIComponent(EncodeURIComponentArg) string
 fn JS.escape(string) string
 fn JS.unescape(string) string
@@ -84,3 +99,18 @@ fn JS.Math.tan(f64) f64
 // JSON
 fn JS.JSON.stringify(any) string
 fn JS.JSON.parse(string) any
+
+// String
+fn (v JS.String) slice(a int, b int) JS.String
+fn (v JS.String) split(dot JS.String) []JS.String
+fn (s JS.String) indexOf(needle JS.String) int
+fn (s JS.String) lastIndexOf(needle JS.String) int
+
+fn (s JS.String) charAt(i int) JS.String
+fn (s JS.String) charCodeAt(i int) byte
+fn (s JS.String) toUpperCase() JS.String
+fn (s JS.String) toLowerCase() JS.String
+fn (s JS.String) concat(a JS.String) JS.String
+fn (s JS.String) includes(substr JS.String) bool
+fn (s JS.String) ends_with(substr JS.String) bool
+fn (s JS.String) starts_with(substr JS.String) bool

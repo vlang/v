@@ -15,8 +15,8 @@ fn (mut b Builder) get_vtmp_filename(base_file_name string, postfix string) stri
 	if !b.pref.reuse_tmpc {
 		uniq = '.$rand.u64()'
 	}
-	return os.real_path(os.join_path(vtmp, os.file_name(os.real_path(base_file_name)) +
-		'$uniq$postfix'))
+	fname := os.file_name(os.real_path(base_file_name)) + '$uniq$postfix'
+	return os.real_path(os.join_path(vtmp, fname))
 }
 
 pub fn compile(command string, pref &pref.Preferences) {
@@ -29,7 +29,7 @@ pub fn compile(command string, pref &pref.Preferences) {
 	}
 	os.is_writable_folder(output_folder) or {
 		// An early error here, is better than an unclear C error later:
-		verror(err)
+		verror(err.msg)
 		exit(1)
 	}
 	// Construct the V object from command line arguments
@@ -42,10 +42,31 @@ pub fn compile(command string, pref &pref.Preferences) {
 	match pref.backend {
 		.c { b.compile_c() }
 		.js { b.compile_js() }
-		.x64 { b.compile_x64() }
+		.native { b.compile_native() }
 	}
 	if pref.is_stats {
-		println('compilation took: ${util.bold(sw.elapsed().milliseconds().str())} ms')
+		compilation_time_micros := 1 + sw.elapsed().microseconds()
+		scompilation_time_ms := util.bold('${f64(compilation_time_micros) / 1000.0:6.3f}')
+		mut all_v_source_lines, mut all_v_source_bytes := 0, 0
+		for mut pf in b.parsed_files {
+			all_v_source_lines += pf.nr_lines
+			all_v_source_bytes += pf.nr_bytes
+		}
+		mut sall_v_source_lines := all_v_source_lines.str()
+		mut sall_v_source_bytes := all_v_source_bytes.str()
+		sall_v_source_lines = util.bold('${sall_v_source_lines:10s}')
+		sall_v_source_bytes = util.bold('${sall_v_source_bytes:10s}')
+		println('        V  source  code size: $sall_v_source_lines lines, $sall_v_source_bytes bytes')
+		//
+		mut slines := b.stats_lines.str()
+		mut sbytes := b.stats_bytes.str()
+		slines = util.bold('${slines:10s}')
+		sbytes = util.bold('${sbytes:10s}')
+		println('generated  target  code size: $slines lines, $sbytes bytes')
+		//
+		vlines_per_second := int(1_000_000.0 * f64(all_v_source_lines) / f64(compilation_time_micros))
+		svlines_per_second := util.bold(vlines_per_second.str())
+		println('compilation took: $scompilation_time_ms ms, compilation speed: $svlines_per_second vlines/s')
 	}
 	b.exit_on_invalid_syntax()
 	// running does not require the parsers anymore
@@ -85,43 +106,33 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 	if b.pref.only_check_syntax {
 		return
 	}
-	if b.pref.os == .ios && b.pref.is_ios_simulator == false {
-		panic('Running iOS apps on physical devices is not yet supported. Please run in the simulator using the -simulator flag.')
+	if b.pref.os == .ios {
+		panic('Running iOS apps is not supported yet.')
 	}
 	if b.pref.is_verbose {
 		println('============ running $b.pref.out_name ============')
 	}
-	if b.pref.os == .ios {
-		device := '"iPhone SE (2nd generation)"'
-		os.exec('xcrun simctl boot $device')
-		bundle_name := b.pref.out_name.split('/').last()
-		display_name := if b.pref.display_name != '' { b.pref.display_name } else { bundle_name }
-		os.exec('xcrun simctl install $device ${display_name}.app')
-		bundle_id := if b.pref.bundle_id != '' { b.pref.bundle_id } else { 'app.vlang.$bundle_name' }
-		os.exec('xcrun simctl launch $device $bundle_id')
-	} else {
-		exefile := os.real_path(b.pref.out_name)
-		mut cmd := '"$exefile"'
-		if b.pref.backend == .js {
-			jsfile := os.real_path('${b.pref.out_name}.js')
-			cmd = 'node "$jsfile"'
+	exefile := os.real_path(b.pref.out_name)
+	mut cmd := '"$exefile"'
+	if b.pref.backend == .js {
+		jsfile := os.real_path('${b.pref.out_name}.js')
+		cmd = 'node "$jsfile"'
+	}
+	for arg in b.pref.run_args {
+		// Determine if there are spaces in the parameters
+		if arg.index_byte(` `) > 0 {
+			cmd += ' "' + arg + '"'
+		} else {
+			cmd += ' ' + arg
 		}
-		for arg in b.pref.run_args {
-			// Determine if there are spaces in the parameters
-			if arg.index_byte(` `) > 0 {
-				cmd += ' "' + arg + '"'
-			} else {
-				cmd += ' ' + arg
-			}
-		}
-		if b.pref.is_verbose {
-			println('command to run executable: $cmd')
-		}
-		if b.pref.is_test || b.pref.is_run {
-			ret := os.system(cmd)
-			b.cleanup_run_executable_after_exit(exefile)
-			exit(ret)
-		}
+	}
+	if b.pref.is_verbose {
+		println('command to run executable: $cmd')
+	}
+	if b.pref.is_test || b.pref.is_run {
+		ret := os.system(cmd)
+		b.cleanup_run_executable_after_exit(exefile)
+		exit(ret)
 	}
 	exit(0)
 }
@@ -131,9 +142,9 @@ fn (mut v Builder) cleanup_run_executable_after_exit(exefile string) {
 		v.pref.vrun_elog('keeping executable: $exefile , because -keepc was passed')
 		return
 	}
-	if os.is_file(exefile) {
+	if os.is_executable(exefile) {
 		v.pref.vrun_elog('remove run executable: $exefile')
-		os.rm(exefile)
+		os.rm(exefile) or { panic(err) }
 	}
 }
 
@@ -187,12 +198,14 @@ pub fn (v Builder) get_builtin_files() []string {
 	for location in v.pref.lookup_path {
 		if os.exists(os.join_path(location, 'builtin')) {
 			mut builtin_files := []string{}
-			if v.pref.is_bare {
-				builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin', 'bare'))
-			} else if v.pref.backend == .js {
-				builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin', 'js'))
+			if v.pref.backend == .js {
+				builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin',
+					'js'))
 			} else {
 				builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin'))
+			}
+			if v.pref.is_bare {
+				builtin_files << v.v_files_from_dir(v.pref.bare_builtin_dir)
 			}
 			if v.pref.backend == .c {
 				// TODO JavaScript backend doesn't handle os for now
@@ -243,7 +256,7 @@ pub fn (v &Builder) get_user_files() []string {
 	if v.pref.is_prof {
 		user_files << os.join_path(preludes_path, 'profiled_program.v')
 	}
-	is_test := dir.ends_with('_test.v')
+	is_test := v.pref.is_test
 	mut is_internal_module_test := false
 	if is_test {
 		tcontent := os.read_file(dir) or {
@@ -280,8 +293,10 @@ pub fn (v &Builder) get_user_files() []string {
 		exit(1)
 	}
 	is_real_file := does_exist && !os.is_dir(dir)
-	if is_real_file && (dir.ends_with('.v') || dir.ends_with('.vsh') || dir.ends_with('.vv')) {
-		single_v_file := dir
+	resolved_link := if is_real_file && os.is_link(dir) { os.real_path(dir) } else { dir }
+	if is_real_file && (dir.ends_with('.v') || resolved_link.ends_with('.vsh')
+		|| dir.ends_with('.vv')) {
+		single_v_file := if resolved_link.ends_with('.vsh') { resolved_link } else { dir }
 		// Just compile one file and get parent dir
 		user_files << single_v_file
 		if v.pref.is_verbose {

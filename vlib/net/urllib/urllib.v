@@ -53,8 +53,9 @@ fn should_escape(c byte, mode EncodingMode) bool {
 		// we could possibly allow, and parse will reject them if we
 		// escape them (because hosts can`t use %-encoding for
 		// ASCII bytes).
-		if c in
-			[`!`, `$`, `&`, `\\`, `(`, `)`, `*`, `+`, `,`, `;`, `=`, `:`, `[`, `]`, `<`, `>`, `"`] {
+		if c in [`!`, `$`, `&`, `\\`, `(`, `)`, `*`, `+`, `,`, `;`, `=`, `:`, `[`, `]`, `<`, `>`,
+			`"`,
+		] {
 			return false
 		}
 	}
@@ -158,11 +159,16 @@ fn unescape(s_ string, mode EncodingMode) ?string {
 				}
 				n++
 				if i + 2 >= s.len || !ishex(s[i + 1]) || !ishex(s[i + 2]) {
+					if mode == .encode_query_component && i + 1 < s.len {
+						s = s[..i] + '%25' + s[(i + 1)..]
+						i += 4 // skip the %25 and the next character
+						continue
+					}
 					s = s[i..]
 					if s.len > 3 {
 						s = s[..3]
 					}
-					return error(error_msg(err_msg_escape, s))
+					return error(error_msg(urllib.err_msg_escape, s))
 				}
 				// Per https://tools.ietf.org/html/rfc3986#page-21
 				// in the host component %-encoding can only be used
@@ -170,8 +176,9 @@ fn unescape(s_ string, mode EncodingMode) ?string {
 				// But https://tools.ietf.org/html/rfc6874#section-2
 				// introduces %25 being allowed to escape a percent sign
 				// in IPv6 scoped-address literals. Yay.
-				if mode == .encode_host && unhex(s[i + 1]) < 8 && s[i..i + 3] != '%25' {
-					return error(error_msg(err_msg_escape, s[i..i + 3]))
+				if i + 3 >= s.len && mode == .encode_host && unhex(s[i + 1]) < 8
+					&& s[i..i + 3] != '%25' {
+					return error(error_msg(urllib.err_msg_escape, s[i..i + 3]))
 				}
 				if mode == .encode_zone {
 					// RFC 6874 says basically 'anything goes' for zone identifiers
@@ -181,9 +188,12 @@ fn unescape(s_ string, mode EncodingMode) ?string {
 					// That is, you can use escaping in the zone identifier but not
 					// to introduce bytes you couldn't just write directly.
 					// But Windows puts spaces here! Yay.
+					if i + 3 >= s.len {
+						return error(error_msg('unescape: invalid escape sequence', ''))
+					}
 					v := ((unhex(s[i + 1]) << byte(4)) | unhex(s[i + 2]))
 					if s[i..i + 3] != '%25' && v != ` ` && should_escape(v, .encode_host) {
-						error(error_msg(err_msg_escape, s[i..i + 3]))
+						error(error_msg(urllib.err_msg_escape, s[i..i + 3]))
 					}
 				}
 				i += 3
@@ -193,9 +203,8 @@ fn unescape(s_ string, mode EncodingMode) ?string {
 				i++
 			}
 			else {
-				if (mode == .encode_host ||
-					mode == .encode_zone) &&
-					s[i] < 0x80 && should_escape(s[i], mode) {
+				if (mode == .encode_host || mode == .encode_zone) && s[i] < 0x80
+					&& should_escape(s[i], mode) {
 					error(error_msg('unescape: invalid character in host name', s[i..i + 1]))
 				}
 				i++
@@ -205,23 +214,29 @@ fn unescape(s_ string, mode EncodingMode) ?string {
 	if n == 0 && !has_plus {
 		return s
 	}
+	if s.len < 2 * n {
+		return error(error_msg('unescape: invalid escape sequence', ''))
+	}
 	mut t := strings.new_builder(s.len - 2 * n)
 	for i := 0; i < s.len; i++ {
 		x := s[i]
 		match x {
 			`%` {
-				t.write(((unhex(s[i + 1]) << byte(4)) | unhex(s[i + 2])).ascii_str())
+				if i + 2 >= s.len {
+					return error(error_msg('unescape: invalid escape sequence', ''))
+				}
+				t.write_string(((unhex(s[i + 1]) << byte(4)) | unhex(s[i + 2])).ascii_str())
 				i += 2
 			}
 			`+` {
 				if mode == .encode_query_component {
-					t.write(' ')
+					t.write_string(' ')
 				} else {
-					t.write('+')
+					t.write_string('+')
 				}
 			}
 			else {
-				t.write(s[i].ascii_str())
+				t.write_string(s[i].ascii_str())
 			}
 		}
 	}
@@ -263,7 +278,7 @@ fn escape(s string, mode EncodingMode) string {
 	if required <= buf.len {
 		t = buf[..required]
 	} else {
-		t = []byte{len: (required)}
+		t = []byte{len: required}
 	}
 	if hex_count == 0 {
 		copy(t, s.bytes())
@@ -402,7 +417,7 @@ fn split_by_scheme(rawurl string) ?[]string {
 }
 
 fn get_scheme(rawurl string) ?string {
-	split := split_by_scheme(rawurl) or { return err }
+	split := split_by_scheme(rawurl) or { return err.msg }
 	return split[0]
 }
 
@@ -429,11 +444,12 @@ fn split(s string, sep byte, cutc bool) (string, string) {
 pub fn parse(rawurl string) ?URL {
 	// Cut off #frag
 	u, frag := split(rawurl, `#`, true)
-	mut url := parse_url(u, false) or { return error(error_msg(err_msg_parse, u)) }
+	mut url := parse_url(u, false) or { return error(error_msg(urllib.err_msg_parse, u)) }
 	if frag == '' {
 		return url
 	}
-	f := unescape(frag, .encode_fragment) or { return error(error_msg(err_msg_parse, u)) }
+	f := unescape(frag, .encode_fragment) or { return error(error_msg(urllib.err_msg_parse,
+		u)) }
 	url.fragment = f
 	return url
 }
@@ -570,7 +586,7 @@ fn parse_host(host string) ?string {
 		// parse an IP-Literal in RFC 3986 and RFC 6874.
 		// E.g., '[fe80::1]', '[fe80::1%25en0]', '[fe80::1]:80'.
 		mut i := host.last_index(']') or {
-			return error(error_msg("parse_host: missing \']\' in host", ''))
+			return error(error_msg("parse_host: missing ']' in host", ''))
 		}
 		mut colon_port := host[i + 1..]
 		if !valid_optional_port(colon_port) {
@@ -584,9 +600,9 @@ fn parse_host(host string) ?string {
 		// We do impose some restrictions on the zone, to avoid stupidity
 		// like newlines.
 		if zone := host[..i].index('%25') {
-			host1 := unescape(host[..zone], .encode_host) or { return err }
-			host2 := unescape(host[zone..i], .encode_zone) or { return err }
-			host3 := unescape(host[i..], .encode_host) or { return err }
+			host1 := unescape(host[..zone], .encode_host) or { return err.msg }
+			host2 := unescape(host[zone..i], .encode_zone) or { return err.msg }
+			host3 := unescape(host[i..], .encode_host) or { return err.msg }
 			return host1 + host2 + host3
 		}
 		if idx := host.last_index(':') {
@@ -597,7 +613,7 @@ fn parse_host(host string) ?string {
 			}
 		}
 	}
-	h := unescape(host, .encode_host) or { return err }
+	h := unescape(host, .encode_host) or { return err.msg }
 	return h
 	// host = h
 	// return host
@@ -715,27 +731,27 @@ fn valid_optional_port(port string) bool {
 pub fn (u URL) str() string {
 	mut buf := strings.new_builder(200)
 	if u.scheme != '' {
-		buf.write(u.scheme)
-		buf.write(':')
+		buf.write_string(u.scheme)
+		buf.write_string(':')
 	}
 	if u.opaque != '' {
-		buf.write(u.opaque)
+		buf.write_string(u.opaque)
 	} else {
 		if u.scheme != '' || u.host != '' || (u.user != 0 && !u.user.empty()) {
 			if u.host != '' || u.path != '' || !u.user.empty() {
-				buf.write('//')
+				buf.write_string('//')
 			}
 			if !u.user.empty() {
-				buf.write(u.user.str())
-				buf.write('@')
+				buf.write_string(u.user.str())
+				buf.write_string('@')
 			}
 			if u.host != '' {
-				buf.write(escape(u.host, .encode_host))
+				buf.write_string(escape(u.host, .encode_host))
 			}
 		}
 		path := u.escaped_path()
 		if path != '' && path[0] != `/` && u.host != '' {
-			buf.write('/')
+			buf.write_string('/')
 		}
 		if buf.len == 0 {
 			// RFC 3986 §4.2
@@ -745,19 +761,23 @@ pub fn (u URL) str() string {
 			// preceded by a dot-segment (e.g., './this:that') to make a relative-
 			// path reference.
 			i := path.index_byte(`:`)
-			if i > -1 && path[..i].index_byte(`/`) == -1 {
-				buf.write('./')
+			if i > -1 {
+				// TODO remove this when autofree handles tmp
+				// expressions like this
+				if i > -1 && path[..i].index_byte(`/`) == -1 {
+					buf.write_string('./')
+				}
 			}
 		}
-		buf.write(path)
+		buf.write_string(path)
 	}
 	if u.force_query || u.raw_query != '' {
-		buf.write('?')
-		buf.write(u.raw_query)
+		buf.write_string('?')
+		buf.write_string(u.raw_query)
 	}
 	if u.fragment != '' {
-		buf.write('#')
-		buf.write(escape(u.fragment, .encode_fragment))
+		buf.write_string('#')
+		buf.write_string(escape(u.fragment, .encode_fragment))
 	}
 	return buf.str()
 }
@@ -785,7 +805,7 @@ pub fn parse_query(query string) ?Values {
 // but any errors will be silent
 fn parse_query_silent(query string) Values {
 	mut m := new_values()
-	parse_query_values(mut m, query)
+	parse_query_values(mut m, query) or {}
 	return m
 }
 
@@ -845,11 +865,11 @@ pub fn (v Values) encode() string {
 		key_kscaped := query_escape(k)
 		for _, val in vs.data {
 			if buf.len > 0 {
-				buf.write('&')
+				buf.write_string('&')
 			}
-			buf.write(key_kscaped)
-			buf.write('=')
-			buf.write(query_escape(val))
+			buf.write_string(key_kscaped)
+			buf.write_string('=')
+			buf.write_string(query_escape(val))
 		}
 	}
 	return buf.str()
@@ -1029,7 +1049,8 @@ pub fn valid_userinfo(s string) bool {
 			continue
 		}
 		match r {
-			`-`, `.`, `_`, `:`, `~`, `!`, `$`, `&`, `\\`, `(`, `)`, `*`, `+`, `,`, `;`, `=`, `%`, `@` {
+			`-`, `.`, `_`, `:`, `~`, `!`, `$`, `&`, `\\`, `(`, `)`, `*`, `+`, `,`, `;`, `=`, `%`,
+			`@` {
 				continue
 			}
 			else {

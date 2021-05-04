@@ -1,9 +1,10 @@
 module big
 
 // Wrapper for https://github.com/kokke/tiny-bignum-c
-#flag -I @VROOT/thirdparty/bignum
-#flag @VROOT/thirdparty/bignum/bn.o
+#flag -I @VEXEROOT/thirdparty/bignum
+#flag @VEXEROOT/thirdparty/bignum/bn.o
 #include "bn.h"
+
 struct C.bn {
 mut:
 	array [32]u32
@@ -18,9 +19,9 @@ fn C.bignum_from_int(n &Number, i u64)
 
 fn C.bignum_to_int(n &Number) int
 
-fn C.bignum_from_string(n &Number, s byteptr, nbytes int)
+fn C.bignum_from_string(n &Number, s &char, nbytes int)
 
-fn C.bignum_to_string(n &Number, s byteptr, maxsize int)
+fn C.bignum_to_string(n &Number, s &char, maxsize int)
 
 // c = a + b
 fn C.bignum_add(a &Number, b &Number, c &Number)
@@ -103,7 +104,7 @@ pub fn from_hex_string(input string) Number {
 	padding := '0'.repeat((8 - s.len % 8) % 8)
 	s = padding + s
 	n := Number{}
-	C.bignum_from_string(&n, s.str, s.len)
+	C.bignum_from_string(&n, &char(s.str), s.len)
 	return n
 }
 
@@ -112,7 +113,7 @@ pub fn from_string(input string) Number {
 	mut n := from_int(0)
 	for _, c in input {
 		d := from_int(int(c - `0`))
-		n = (n * ten) + d
+		n = (n * big.ten) + d
 	}
 	return n
 }
@@ -136,7 +137,7 @@ pub fn (n Number) str() string {
 	mut x := n.clone()
 	div := Number{}
 	for !x.is_zero() {
-		mod := divmod(&x, &ten, &div)
+		mod := divmod(&x, &big.ten, &div)
 		digits << byte(mod.int()) + `0`
 		x = div
 	}
@@ -146,9 +147,13 @@ pub fn (n Number) str() string {
 // .hexstr returns a hexadecimal representation of the bignum `n`
 pub fn (n Number) hexstr() string {
 	mut buf := [8192]byte{}
-	// NB: C.bignum_to_string(), returns the HEXADECIMAL representation of the bignum n
-	C.bignum_to_string(&n, buf, 8192)
-	s := tos_clone(buf)
+	mut s := ''
+	unsafe {
+		bp := &buf[0]
+		// NB: C.bignum_to_string(), returns the HEXADECIMAL representation of the bignum n
+		C.bignum_to_string(&n, &char(bp), 8192)
+		s = tos_clone(bp)
+	}
 	if s.len == 0 {
 		return '0'
 	}

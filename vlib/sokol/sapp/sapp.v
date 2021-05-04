@@ -10,7 +10,7 @@ pub const (
 __global ( g_desc C.sapp_desc )
 
 pub fn create_desc() C.sg_desc {
-	mtl_desc := C.sg_mtl_context_desc{
+	metal_desc := C.sg_metal_context_desc{
 		device: metal_get_device()
 		renderpass_descriptor_cb: metal_get_renderpass_descriptor
 		drawable_cb: metal_get_drawable
@@ -23,7 +23,7 @@ pub fn create_desc() C.sg_desc {
 	}
 	return C.sg_desc{
 		context: C.sg_context_desc{
-			metal: mtl_desc
+			metal: metal_desc
 			d3d11: d3d11_desc
 		}
 		image_pool_size: 1000
@@ -128,21 +128,21 @@ pub fn frame_count() u64 {
 
 // write string into clipboard
 [inline]
-pub fn set_clipboard_string(str byteptr) {
+pub fn set_clipboard_string(str &char) {
 	C.sapp_set_clipboard_string(str)
 }
 
 // read string from clipboard (usually during SAPP_EVENTTYPE_CLIPBOARD_PASTED)
 [inline]
-pub fn get_clipboard_string() byteptr {
-	return C.sapp_get_clipboard_string()
+pub fn get_clipboard_string() &char {
+	return &char(C.sapp_get_clipboard_string())
 }
 
 // special run-function for SOKOL_NO_ENTRY (in standard mode this is an empty stub)
 [inline]
-pub fn run(desc &C.sapp_desc) int {
+pub fn run(desc &C.sapp_desc) {
 	g_desc = desc
-	return C.sapp_run(desc)
+	C.sapp_run(desc)
 }
 
 // GL: return true when GLES2 fallback is active (to detect fallback from GLES3)
@@ -160,65 +160,65 @@ pub fn html5_ask_leave_site(ask bool) {
 // Metal: get ARC-bridged pointer to Metal device object
 [inline]
 pub fn metal_get_device() voidptr {
-	return C.sapp_metal_get_device()
+	return voidptr(C.sapp_metal_get_device())
 }
 
 // Metal: get ARC-bridged pointer to this frame's renderpass descriptor
 [inline]
 pub fn metal_get_renderpass_descriptor() voidptr {
-	return C.sapp_metal_get_renderpass_descriptor()
+	return voidptr(C.sapp_metal_get_renderpass_descriptor())
 }
 
 // Metal: get ARC-bridged pointer to current drawable
 [inline]
 pub fn metal_get_drawable() voidptr {
-	return C.sapp_metal_get_drawable()
+	return voidptr(C.sapp_metal_get_drawable())
 }
 
 // macOS: get ARC-bridged pointer to macOS NSWindow
 [inline]
 pub fn macos_get_window() voidptr {
-	return C.sapp_macos_get_window()
+	return voidptr(C.sapp_macos_get_window())
 }
 
 // iOS: get ARC-bridged pointer to iOS UIWindow
 [inline]
 pub fn ios_get_window() voidptr {
-	return C.sapp_ios_get_window()
+	return voidptr(C.sapp_ios_get_window())
 }
 
 // D3D11: get pointer to ID3D11Device object
 [inline]
 pub fn d3d11_get_device() voidptr {
-	return C.sapp_d3d11_get_device()
+	return voidptr(C.sapp_d3d11_get_device())
 }
 
 // D3D11: get pointer to ID3D11DeviceContext object
 [inline]
 pub fn d3d11_get_device_context() voidptr {
-	return C.sapp_d3d11_get_device_context()
+	return voidptr(C.sapp_d3d11_get_device_context())
 }
 
 // D3D11: get pointer to ID3D11RenderTargetView object
 [inline]
 pub fn d3d11_get_render_target_view() voidptr {
-	return C.sapp_d3d11_get_render_target_view()
+	return voidptr(C.sapp_d3d11_get_render_target_view())
 }
 
 // D3D11: get pointer to ID3D11DepthStencilView
 [inline]
 pub fn d3d11_get_depth_stencil_view() voidptr {
-	return C.sapp_d3d11_get_depth_stencil_view()
+	return voidptr(C.sapp_d3d11_get_depth_stencil_view())
 }
 
 // Win32: get the HWND window handle
 [inline]
 pub fn win32_get_hwnd() voidptr {
-	return C.sapp_win32_get_hwnd()
+	return voidptr(C.sapp_win32_get_hwnd())
 }
 
 // Android: get native activity handle
 [inline]
 pub fn android_get_native_activity() voidptr {
-	return C.sapp_android_get_native_activity()
+	return voidptr(C.sapp_android_get_native_activity())
 }

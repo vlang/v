@@ -1,3 +1,9 @@
+import time // foo
+/*
+block
+comment
+*/
+
 fn fun() int {
 	return /* comment zero */ 0 // another comment
 }
@@ -51,4 +57,33 @@ fn main() {
 		println('else')
 	}
   return // empty return
+}
+
+fn insert_space() {
+	//abc
+}
+
+fn linebreaks_in_block_comments() {
+	/*foo
+	comment goes here!
+	bar*/
+	/*  spam
+	spaces make no difference there
+	eggs */
+}
+
+fn between_if_branches() {
+	if spam {
+	}
+
+	// remove the empty line above
+	else if eggs {
+	}
+
+	if spam2 {
+	}
+	// remove the empty line below
+
+	else {
+	}
 }

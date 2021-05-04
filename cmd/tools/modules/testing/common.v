@@ -4,11 +4,13 @@ import os
 import time
 import term
 import benchmark
-import sync
+import sync.pool
 import v.pref
 import v.util.vtest
 
 const github_job = os.getenv('GITHUB_JOB')
+
+const show_start = os.getenv('VTEST_SHOW_START') == '1'
 
 pub struct TestSession {
 pub mut:
@@ -33,6 +35,7 @@ enum MessageKind {
 	ok
 	fail
 	skip
+	info
 	sentinel
 }
 
@@ -62,7 +65,9 @@ pub fn (mut ts TestSession) print_messages() {
 			ts.nprint_ended <- 0
 			return
 		}
-		ts.nmessage_idx++
+		if rmessage.kind != .info {
+			ts.nmessage_idx++
+		}
 		msg := rmessage.message.replace_each([
 			'TMP1',
 			'${ts.nmessage_idx:1d}',
@@ -103,19 +108,8 @@ pub fn (mut ts TestSession) print_messages() {
 	}
 }
 
-fn is_nodejs_working() bool {
-	node_res := os.exec('node --version') or { return false }
-	if node_res.exit_code != 0 {
-		return false
-	}
-	return true
-}
-
 pub fn new_test_session(_vargs string) TestSession {
 	mut skip_files := []string{}
-	if !is_nodejs_working() {
-		skip_files << 'vlib/v/gen/js/jsgen_test.v'
-	}
 	$if solaris {
 		skip_files << 'examples/gg/gg2.v'
 		skip_files << 'examples/pico/pico.v'
@@ -124,15 +118,31 @@ pub fn new_test_session(_vargs string) TestSession {
 	}
 	$if macos {
 		skip_files << 'examples/database/mysql.v'
+		skip_files << 'examples/database/orm.v'
+		skip_files << 'examples/database/pg/customer.v'
 	}
 	$if windows {
 		skip_files << 'examples/database/mysql.v'
-		skip_files << 'examples/x/websocket/ping.v' // requires OpenSSL
-		skip_files << 'examples/x/websocket/client-server/client.v' // requires OpenSSL
-		skip_files << 'examples/x/websocket/client-server/server.v' // requires OpenSSL
+		skip_files << 'examples/database/orm.v'
+		skip_files << 'examples/websocket/ping.v' // requires OpenSSL
+		skip_files << 'examples/websocket/client-server/client.v' // requires OpenSSL
+		skip_files << 'examples/websocket/client-server/server.v' // requires OpenSSL
+		$if tinyc {
+			skip_files << 'examples/database/orm.v' // try fix it
+		}
 	}
-	if github_job != 'ubuntu-tcc' {
-		skip_files << 'examples/wkhtmltopdf.v' // needs installation of wkhtmltopdf from https://github.com/wkhtmltopdf/packaging/releases
+	if testing.github_job != 'sokol-shaders-can-be-compiled' {
+		// These examples need .h files that are produced from the supplied .glsl files,
+		// using by the shader compiler tools in https://github.com/floooh/sokol-tools-bin/archive/pre-feb2021-api-changes.tar.gz
+		skip_files << 'examples/sokol/02_cubes_glsl/cube_glsl.v'
+		skip_files << 'examples/sokol/03_march_tracing_glsl/rt_glsl.v'
+		skip_files << 'examples/sokol/04_multi_shader_glsl/rt_glsl.v'
+		skip_files << 'examples/sokol/05_instancing_glsl/rt_glsl.v'
+		// Skip obj_viewer code in the CI
+		skip_files << 'examples/sokol/06_obj_viewer/show_obj.v'
+	}
+	if testing.github_job != 'ubuntu-tcc' {
+		skip_files << 'examples/c_interop_wkhtmltopdf.v' // needs installation of wkhtmltopdf from https://github.com/wkhtmltopdf/packaging/releases
 		// the ttf_test.v is not interactive, but needs X11 headers to be installed, which is done only on ubuntu-tcc for now
 		skip_files << 'vlib/x/ttf/ttf_test.v'
 	}
@@ -191,24 +201,19 @@ pub fn (mut ts TestSession) test() {
 				continue
 			}
 		}
-		$if tinyc {
-			if file.contains('asm') {
-				continue
-			}
-		}
 		remaining_files << dot_relative_file
 	}
 	remaining_files = vtest.filter_vtest_only(remaining_files, fix_slashes: false)
 	ts.files = remaining_files
 	ts.benchmark.set_total_expected_steps(remaining_files.len)
-	mut pool_of_test_runners := sync.new_pool_processor(callback: worker_trunner)
+	mut pool_of_test_runners := pool.new_pool_processor(callback: worker_trunner)
 	// for handling messages across threads
 	ts.nmessages = chan LogMessage{cap: 10000}
 	ts.nprint_ended = chan int{cap: 0}
 	ts.nmessage_idx = 0
 	go ts.print_messages()
 	pool_of_test_runners.set_shared_context(ts)
-	pool_of_test_runners.work_on_pointers(remaining_files.pointers())
+	pool_of_test_runners.work_on_pointers(unsafe { remaining_files.pointers() })
 	ts.benchmark.stop()
 	ts.append_message(.sentinel, '') // send the sentinel
 	_ := <-ts.nprint_ended // wait for the stop of the printing thread
@@ -216,12 +221,12 @@ pub fn (mut ts TestSession) test() {
 	// cleanup generated .tmp.c files after successfull tests:
 	if ts.benchmark.nfail == 0 {
 		if ts.rm_binaries {
-			os.rmdir_all(ts.vtmp_dir)
+			os.rmdir_all(ts.vtmp_dir) or { panic(err) }
 		}
 	}
 }
 
-fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
+fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	mut ts := &TestSession(p.get_shared_context())
 	tmpd := ts.vtmp_dir
 	show_stats := '-stats' in ts.vargs.split(' ')
@@ -233,7 +238,7 @@ fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 		p.set_thread_context(idx, tls_bench)
 	}
 	tls_bench.no_cstep = true
-	dot_relative_file := p.get_string_item(idx)
+	dot_relative_file := p.get_item<string>(idx)
 	mut relative_file := dot_relative_file.replace('./', '')
 	if ts.root_relative {
 		relative_file = relative_file.replace(ts.vroot + os.path_separator, '')
@@ -242,12 +247,15 @@ fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 	// Ensure that the generated binaries will be stored in the temporary folder.
 	// Remove them after a test passes/fails.
 	fname := os.file_name(file)
-	generated_binary_fname := if os.user_os() == 'windows' { fname.replace('.v', '.exe') } else { fname.replace('.v',
-			'') }
+	generated_binary_fname := if os.user_os() == 'windows' {
+		fname.replace('.v', '.exe')
+	} else {
+		fname.replace('.v', '')
+	}
 	generated_binary_fpath := os.join_path(tmpd, generated_binary_fname)
 	if os.exists(generated_binary_fpath) {
 		if ts.rm_binaries {
-			os.rm(generated_binary_fpath)
+			os.rm(generated_binary_fpath) or { panic(err) }
 		}
 	}
 	mut cmd_options := [ts.vargs]
@@ -261,7 +269,7 @@ fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 		ts.benchmark.skip()
 		tls_bench.skip()
 		ts.append_message(.skip, tls_bench.step_message_skip(relative_file))
-		return sync.no_result
+		return pool.no_result
 	}
 	if show_stats {
 		ts.append_message(.ok, term.h_divider('-'))
@@ -273,15 +281,19 @@ fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 			ts.failed = true
 			ts.benchmark.fail()
 			tls_bench.fail()
-			return sync.no_result
+			return pool.no_result
 		}
 	} else {
-		r := os.exec(cmd) or {
+		if testing.show_start {
+			ts.append_message(.info, '                 starting $relative_file ...')
+		}
+		r := os.execute(cmd)
+		if r.exit_code < 0 {
 			ts.failed = true
 			ts.benchmark.fail()
 			tls_bench.fail()
 			ts.append_message(.fail, tls_bench.step_message_fail(relative_file))
-			return sync.no_result
+			return pool.no_result
 		}
 		if r.exit_code != 0 {
 			ts.failed = true
@@ -297,10 +309,10 @@ fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 	}
 	if os.exists(generated_binary_fpath) {
 		if ts.rm_binaries {
-			os.rm(generated_binary_fpath)
+			os.rm(generated_binary_fpath) or { panic(err) }
 		}
 	}
-	return sync.no_result
+	return pool.no_result
 }
 
 pub fn vlib_should_be_present(parent_dir string) {
@@ -332,18 +344,9 @@ pub fn prepare_test_session(zargs string, folder string, oskipped []string, main
 		if f.contains('modules') || f.contains('preludes') {
 			continue
 		}
-		// $if !linux {
-		// run pg example only on linux
-		if f.contains('/pg/') {
-			continue
-		}
-		// }
-		if f.contains('life_gg') || f.contains('/graph.v') || f.contains('rune.v') {
-			continue
-		}
 		$if windows {
-			// skip pico example on windows
-			if f.ends_with('examples\\pico\\pico.v') {
+			// skip pico and process/command examples on windows
+			if f.ends_with('examples\\pico\\pico.v') || f.ends_with('examples\\process\\command.v') {
 				continue
 			}
 		}
@@ -376,7 +379,10 @@ pub fn v_build_failing_skipped(zargs string, folder string, oskipped []string) b
 }
 
 pub fn build_v_cmd_failed(cmd string) bool {
-	res := os.exec(cmd) or { return true }
+	res := os.execute(cmd)
+	if res.exit_code < 0 {
+		return true
+	}
 	if res.exit_code != 0 {
 		eprintln('')
 		eprintln(res.output)
@@ -394,7 +400,9 @@ pub fn building_any_v_binaries_failed() bool {
 	os.chdir(parent_dir)
 	mut failed := false
 	v_build_commands := ['$vexe -o v_g             -g  cmd/v', '$vexe -o v_prod_g  -prod -g  cmd/v',
-		'$vexe -o v_cg            -cg cmd/v', '$vexe -o v_prod_cg -prod -cg cmd/v', '$vexe -o v_prod    -prod     cmd/v']
+		'$vexe -o v_cg            -cg cmd/v', '$vexe -o v_prod_cg -prod -cg cmd/v',
+		'$vexe -o v_prod    -prod     cmd/v',
+	]
 	mut bmark := benchmark.new_benchmark()
 	for cmd in v_build_commands {
 		bmark.step()
@@ -425,7 +433,7 @@ pub fn header(msg string) {
 pub fn setup_new_vtmp_folder() string {
 	now := time.sys_mono_now()
 	new_vtmp_dir := os.join_path(os.temp_dir(), 'v', 'test_session_$now')
-	os.mkdir_all(new_vtmp_dir)
+	os.mkdir_all(new_vtmp_dir) or { panic(err) }
 	os.setenv('VTMP', new_vtmp_dir, true)
 	return new_vtmp_dir
 }

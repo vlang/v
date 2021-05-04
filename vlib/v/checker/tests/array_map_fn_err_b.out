@@ -1,7 +1,0 @@
-vlib/v/checker/tests/array_map_fn_err_b.vv:5:21: error: type mismatch, should use `fn(a int) T {...}`
-    3 | }
-    4 | fn main() {
-    5 |     a := [1,2,3,4].map(add)
-      |                        ~~~
-    6 |     println(a)
-    7 | }

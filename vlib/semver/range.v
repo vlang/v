@@ -29,6 +29,16 @@ struct Range {
 	comparator_sets []ComparatorSet
 }
 
+struct InvalidComparatorCountError {
+	msg  string
+	code int
+}
+
+struct InvalidComparatorFormatError {
+	msg  string
+	code int
+}
+
 fn (r Range) satisfies(ver Version) bool {
 	mut final_result := false
 	for set in r.comparator_sets {
@@ -57,14 +67,14 @@ fn (c Comparator) satisfies(ver Version) bool {
 }
 
 fn parse_range(input string) ?Range {
-	raw_comparator_sets := input.split(comparator_set_sep)
+	raw_comparator_sets := input.split(semver.comparator_set_sep)
 	mut comparator_sets := []ComparatorSet{}
 	for raw_comp_set in raw_comparator_sets {
 		if can_expand(raw_comp_set) {
-			s := expand_comparator_set(raw_comp_set) or { return error(err) }
+			s := expand_comparator_set(raw_comp_set) or { return err }
 			comparator_sets << s
 		} else {
-			s := parse_comparator_set(raw_comp_set) or { return error(err) }
+			s := parse_comparator_set(raw_comp_set) or { return err }
 			comparator_sets << s
 		}
 	}
@@ -72,14 +82,18 @@ fn parse_range(input string) ?Range {
 }
 
 fn parse_comparator_set(input string) ?ComparatorSet {
-	raw_comparators := input.split(comparator_sep)
+	raw_comparators := input.split(semver.comparator_sep)
 	if raw_comparators.len > 2 {
-		return error('Invalid format of comparator set for input "$input"')
+		return IError(&InvalidComparatorFormatError{
+			msg: 'Invalid format of comparator set for input "$input"'
+		})
 	}
 	mut comparators := []Comparator{}
 	for raw_comp in raw_comparators {
 		c := parse_comparator(raw_comp) or {
-			return error('Invalid comparator "$raw_comp" in input "$input"')
+			return IError(&InvalidComparatorFormatError{
+				msg: 'Invalid comparator "$raw_comp" in input "$input"'
+			})
 		}
 		comparators << c
 	}
@@ -113,7 +127,7 @@ fn parse_comparator(input string) ?Comparator {
 fn parse_xrange(input string) ?Version {
 	mut raw_ver := parse(input).complete()
 	for typ in versions {
-		if raw_ver.raw_ints[typ].index_any(x_range_symbols) == -1 {
+		if raw_ver.raw_ints[typ].index_any(semver.x_range_symbols) == -1 {
 			continue
 		}
 		match typ {
@@ -139,8 +153,8 @@ fn parse_xrange(input string) ?Version {
 }
 
 fn can_expand(input string) bool {
-	return input[0] == `~` || input[0] == `^` || input.contains(hyphen_range_sep)
-		|| input.index_any(x_range_symbols) > -1
+	return input[0] == `~` || input[0] == `^` || input.contains(semver.hyphen_range_sep)
+		|| input.index_any(semver.x_range_symbols) > -1
 }
 
 fn expand_comparator_set(input string) ?ComparatorSet {
@@ -149,7 +163,7 @@ fn expand_comparator_set(input string) ?ComparatorSet {
 		`^` { return expand_caret(input[1..]) }
 		else {}
 	}
-	if input.contains(hyphen_range_sep) {
+	if input.contains(semver.hyphen_range_sep) {
 		return expand_hyphen(input)
 	}
 	return expand_xrange(input)
@@ -178,7 +192,7 @@ fn expand_caret(raw_version string) ?ComparatorSet {
 }
 
 fn expand_hyphen(raw_range string) ?ComparatorSet {
-	raw_versions := raw_range.split(hyphen_range_sep)
+	raw_versions := raw_range.split(semver.hyphen_range_sep)
 	if raw_versions.len != 2 {
 		return none
 	}

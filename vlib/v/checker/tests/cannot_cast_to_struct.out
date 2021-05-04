@@ -1,4 +1,4 @@
-vlib/v/checker/tests/cannot_cast_to_struct.vv:10:7: error: cannot convert struct `Abc` to struct `Test`
+vlib/v/checker/tests/cannot_cast_to_struct.vv:10:7: error: casting to struct is deprecated, use e.g. `Struct{...expr}` instead
     8 | 
     9 | fn main() {
    10 |     _ := Test(Abc{})

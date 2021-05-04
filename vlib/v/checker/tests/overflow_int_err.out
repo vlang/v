@@ -1,8 +1,8 @@
-vlib/v/checker/tests/overflow_int_err.vv:4:8: error: overflow in implicit type `int`, use explicit type casting instead
+vlib/v/checker/tests/overflow_int_err.vv:4:7: error: overflow in implicit type `int`, use explicit type casting instead
     2 |     a := -2147483648
     3 |     b := 2147483647
     4 |     c := -2147483649
-      |           ~~~~~~~~~~
+      |          ~~~~~~~~~~~
     5 |     d := 2147483648
     6 |     println(a)
 vlib/v/checker/tests/overflow_int_err.vv:5:7: error: overflow in implicit type `int`, use explicit type casting instead

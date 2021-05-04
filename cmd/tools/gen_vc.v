@@ -1,5 +1,12 @@
 module main
 
+import os
+import log
+import flag
+import time
+import vweb
+import net.urllib
+
 // This tool regenerates V's bootstrap .c files
 // every time the V master branch is updated.
 // if run with the --serve flag it will run in webhook
@@ -13,12 +20,6 @@ module main
 // --log-file  path to log file used when --log-to is 'file'
 // --dry-run   dont push anything to remote repo
 // --force     force update even if already up to date
-import os
-import log
-import flag
-import time
-import vweb
-import net.urllib
 
 // git credentials
 const (
@@ -43,13 +44,13 @@ const (
 	// version
 	app_version          = '0.1.2'
 	// description
-	app_description      = "This tool regenerates V\'s bootstrap .c files every time the V master branch is updated."
+	app_description      = "This tool regenerates V's bootstrap .c files every time the V master branch is updated."
 	// assume something went wrong if file size less than this
 	too_short_file_limit = 5000
 	// create a .c file for these os's
 	vc_build_oses        = [
 		'nix',
-		/* all nix based os */
+		// all nix based os
 		'windows',
 	]
 )
@@ -90,7 +91,7 @@ mut:
 struct WebhookServer {
 	vweb.Context
 mut:
-	gen_vc &GenVC
+	gen_vc &GenVC = 0 // initialized in init_server
 }
 
 // storage for flag options
@@ -147,16 +148,12 @@ fn new_gen_vc(flag_options FlagOptions) &GenVC {
 }
 
 // WebhookServer init
-pub fn (mut ws WebhookServer) init_once() {
+pub fn (mut ws WebhookServer) init_server() {
 	mut fp := flag.new_flag_parser(os.args.clone())
 	flag_options := parse_flags(mut fp)
 	ws.gen_vc = new_gen_vc(flag_options)
 	ws.gen_vc.init()
 	// ws.gen_vc = new_gen_vc(flag_options)
-}
-
-pub fn (mut ws WebhookServer) init() {
-	// ws.init_once()
 }
 
 pub fn (mut ws WebhookServer) index() {
@@ -188,14 +185,13 @@ fn parse_flags(mut fp flag.FlagParser) FlagOptions {
 		work_dir: fp.string('work-dir', 0, work_dir, 'gen_vc working directory')
 		purge: fp.bool('purge', 0, false, 'force purge the local repositories')
 		port: fp.int('port', 0, server_port, 'port for web server to listen on')
-		log_to: fp.string('log-to', 0, log_to, "log to is \'file\' or \'terminal\'")
-		log_file: fp.string('log-file', 0, log_file, "log file to use when log-to is \'file\'")
+		log_to: fp.string('log-to', 0, log_to, "log to is 'file' or 'terminal'")
+		log_file: fp.string('log-file', 0, log_file, "log file to use when log-to is 'file'")
 		dry_run: fp.bool('dry-run', 0, dry_run, 'when specified dont push anything to remote repo')
 		force: fp.bool('force', 0, false, 'force update even if already up to date')
 	}
 }
 
-// init
 fn (mut gen_vc GenVC) init() {
 	// purge repos if flag is passed
 	if gen_vc.options.purge {
@@ -275,9 +271,8 @@ fn (mut gen_vc GenVC) generate() {
 	gen_vc.assert_file_exists_and_is_not_too_short(v_exec, err_msg_make)
 	// build v.c for each os
 	for os_name in vc_build_oses {
-		vc_suffix := if os_name == 'nix' { '' } else { '_${os_name[..3]}' }
+		c_file := if os_name == 'nix' { 'v.c' } else { 'v_win.c' }
 		v_flags := if os_name == 'nix' { '-os cross' } else { '-os $os_name' }
-		c_file := 'v${vc_suffix}.c'
 		// try generate .c file
 		gen_vc.cmd_exec('$v_exec $v_flags -o $c_file $git_repo_dir_v/cmd/v')
 		// check if the c file seems ok
@@ -318,9 +313,10 @@ fn (mut gen_vc GenVC) command_execute(cmd string, dry bool) string {
 		return gen_vc.command_execute_dry(cmd)
 	}
 	gen_vc.logger.info('cmd: $cmd')
-	r := os.exec(cmd) or {
+	r := os.execute(cmd)
+	if r.exit_code < 0 {
 		gen_vc.logger.error('$err_msg_cmd_x: "$cmd" could not start.')
-		gen_vc.logger.error(err)
+		gen_vc.logger.error(r.output)
 		// something went wrong, better start fresh next time
 		gen_vc.purge_repos()
 		gen_vc.gen_error = true

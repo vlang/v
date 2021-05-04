@@ -5,13 +5,11 @@ module http
 
 import os
 
-pub fn download_file(url string, out string)? {
-	$if debug_http? {
+pub fn download_file(url string, out string) ? {
+	$if debug_http ? {
 		println('download file url=$url out=$out')
 	}
-	s := get(url) or {
-		return error(err)
-	}
-	os.write_file(out, s.text)
+	s := get(url) or { return err }
+	os.write_file(out, s.text) ?
 	// download_file_with_progress(url, out, empty, empty)
 }

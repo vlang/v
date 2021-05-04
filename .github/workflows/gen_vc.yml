@@ -1,0 +1,44 @@
+name: VC gen
+
+on:
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - "**.md"
+
+jobs:
+  build-vc:
+    runs-on: ubuntu-18.04
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build V
+      run: make
+    - name: Regenerate v.c and v_win.c
+      run: |
+        git config --global user.email "vlang-bot@users.noreply.github.com"
+        git config --global user.name "vlang-bot"
+
+        COMMIT_HASH=$(git rev-parse --short HEAD)
+        COMMIT_MSG=$(git log -1 --oneline --pretty='%s' HEAD)
+
+        rm -rf vc
+        git clone https://vlang-bot:${{ secrets.VLANG_BOT_SECRET }}@github.com/vlang/vc.git
+
+        rm -rf vc/v.c vc/v_win.c
+
+        ./v -o vc/v.c -os cross cmd/v
+        ./v -o vc/v_win.c -os windows cmd/v
+
+        sed -i "1s/^/#define V_COMMIT_HASH \"$COMMIT_HASH\"\n/" vc/v.c
+        sed -i "1s/^/#define V_COMMIT_HASH \"$COMMIT_HASH\"\n/" vc/v_win.c
+
+        # ensure the C files are over 5000 lines long, as a safety measure
+        [ $(wc -l < vc/v.c) -gt 5000 ]
+        [ $(wc -l < vc/v_win.c) -gt 5000 ]
+
+        git -C vc add v.c v_win.c
+        git -C vc commit -m "[v:master] $COMMIT_HASH - $COMMIT_MSG"
+
+        git -C vc pull --rebase origin master # in case there are recent commits
+        git -C vc push

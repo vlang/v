@@ -1,6 +1,6 @@
 module main
 
-import modc
+import v.tests.project_with_c_code_2.modc
 
 // passing array of Vtype to C
 // Vtype wraps a C type

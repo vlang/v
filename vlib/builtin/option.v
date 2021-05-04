@@ -3,81 +3,94 @@
 // that can be found in the LICENSE file.
 module builtin
 
-/*
-struct Option2<T> {
-	ok bool
-	is_none bool
-	error string
-	ecode int
-	data T
+// IError holds information about an error instance
+pub interface IError {
+	msg string
+	code int
 }
-*/
-// OptionBase is the the base of V's internal optional return system.
-struct OptionBase {
-	ok      bool
-	is_none bool
-	error   string
-	ecode   int
-	// Data is trailing after ecode
+
+// Error is the default implementation of IError, that is returned by e.g. `error()`
+pub struct Error {
+pub:
+	msg  string
+	code int
+}
+
+pub fn (err IError) str() string {
+	return match err {
+		None__ { 'none' }
+		Error { err.msg }
+		else { '$err.type_name(): $err.msg' }
+	}
+}
+
+const none__ = IError(&None__{})
+
+struct None__ {
+	msg  string
+	code int
+}
+
+fn (_ None__) str() string {
+	return 'none'
+}
+
+// error returns a default error instance containing the error given in `message`.
+// Example: `if ouch { return error('an error occurred') }`
+[inline]
+pub fn error(message string) IError {
+	return &Error{
+		msg: message
+	}
+}
+
+// error_with_code returns a default error instance containing the given `message` and error `code`.
+// `if ouch { return error_with_code('an error occurred', 1) }`
+[inline]
+pub fn error_with_code(message string, code int) IError {
+	return &Error{
+		msg: message
+		code: code
+	}
+}
+
+// Option is the base of V's internal optional return system.
+struct Option {
+	state byte
+	err   IError = none__
+	// Data is trailing after err
 	// and is not included in here but in the
 	// derived Option_xxx types
 }
 
-// `fn foo() ?Foo { return foo }` => `fn foo() ?Foo { return opt_ok(foo); }`
-fn opt_ok2(data voidptr, mut option OptionBase, size int) {
+fn opt_ok(data voidptr, mut option Option, size int) {
 	unsafe {
-		*option = OptionBase{
-			ok: true
-		}
-		// use ecode to get the end of OptionBase and then memcpy into it
-		C.memcpy(byteptr(&option.ecode) + sizeof(int), data, size)
+		*option = Option{}
+		// use err to get the end of OptionBase and then memcpy into it
+		C.memcpy(&byte(&option.err) + sizeof(IError), data, size)
 	}
 }
 
-// Option is the old option type used for bootstrapping
-struct Option {
-	ok      bool
-	is_none bool
-	error   string
-	ecode   int
+[unsafe]
+pub fn (e &Error) free() {
+	unsafe { e.msg.free() }
 }
 
-// str returns the string representation of the Option.
-pub fn (o Option) str() string {
-	if o.ok && !o.is_none {
-		return 'Option{ ok }'
-	}
-	if o.is_none {
-		return 'Option{ none }'
-	}
-	return 'Option{ error: "$o.error" }'
+[unsafe]
+pub fn (n &None__) free() {
+	unsafe { n.msg.free() }
 }
 
-// opt_none is used internally when returning `none`.
-fn opt_none() Option {
-	return Option{
-		ok: false
-		is_none: true
-	}
+[typedef]
+struct C.IError {
+	_object voidptr
 }
 
-// error returns an optional containing the error given in `message`.
-// `if ouch { return error('an error occurred') }`
-pub fn error(message string) Option {
-	return Option{
-		ok: false
-		is_none: false
-		error: message
-	}
-}
-
-// error_with_code returns an optional containing both error `message` and error `code`.
-// `if ouch { return error_with_code('an error occurred',1) }`
-pub fn error_with_code(message string, code int) Option {
-	return Option{
-		ok: false
-		is_none: false
-		error: message
-		ecode: code
+[unsafe]
+pub fn (ie &IError) free() {
+	unsafe {
+		ie.msg.free()
+		cie := &C.IError(ie)
+		free(cie._object)
 	}
 }

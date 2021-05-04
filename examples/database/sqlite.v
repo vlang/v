@@ -1,7 +1,7 @@
 import sqlite
 
 fn main() {
-	db := sqlite.connect(':memory:')?
+	db := sqlite.connect(':memory:') ?
 	db.exec("create table users (id integer primary key, name text default '');")
 
 	db.exec("insert into users (name) values ('Sam')")
@@ -15,7 +15,7 @@ fn main() {
 	assert name == 'Sam'
 
 	users, code := db.exec('select * from users')
-	println("SQL Result code: $code")
+	println('SQL Result code: $code')
 	for row in users {
 		println(row.vals)
 	}

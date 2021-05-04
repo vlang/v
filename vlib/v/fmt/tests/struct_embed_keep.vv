@@ -10,3 +10,8 @@ struct Bar {
 	y int
 	z string
 }
+
+struct Baz {
+	Foo
+	Test
+}

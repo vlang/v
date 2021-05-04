@@ -3,13 +3,33 @@ struct Foo {
 	age int
 }
 
-struct Foo2 {}
+struct Foo2 {b bool}
 
 fn main() {
-	f3 := 2
+	i := 2
 	_ := Foo{
-		...f3
+		...i
 		name: 'f2'
+	}
+	p := &i
+	_ = Foo{
+		...p
+	}
+	f2 := Foo2{}
+	_ = Foo{
+		...f2
+	}
+	_ = Foo{
+		...Foo{}
+	}
+}
+
+struct Empty {}
+
+fn empty() {
+	e := Empty{}
+	_ = Foo{
+		...e
 	}
 }
 

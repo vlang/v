@@ -8,8 +8,7 @@ import v.fmt
 import v.parser
 import v.pref
 import v.scanner
-import v.table
-import v.util
+import v.token
 
 // SymbolKind categorizes the symbols it documents.
 // The names are intentionally not in order as a guide when sorting the nodes.
@@ -28,6 +27,54 @@ pub enum SymbolKind {
 	struct_field
 }
 
+pub enum Platform {
+	auto
+	ios
+	macos
+	linux
+	windows
+	freebsd
+	openbsd
+	netbsd
+	dragonfly
+	js // for interoperability in prefs.OS
+	android
+	solaris
+	haiku
+	cross // TODO: add functionality for v doc -os cross whenever possible
+}
+
+// copy of pref.os_from_string
+pub fn platform_from_string(platform_str string) ?Platform {
+	match platform_str {
+		'all', 'cross' { return .cross }
+		'linux' { return .linux }
+		'windows' { return .windows }
+		'ios' { return .ios }
+		'macos' { return .macos }
+		'freebsd' { return .freebsd }
+		'openbsd' { return .openbsd }
+		'netbsd' { return .netbsd }
+		'dragonfly' { return .dragonfly }
+		'js' { return .js }
+		'solaris' { return .solaris }
+		'android' { return .android }
+		'haiku' { return .haiku }
+		'linux_or_macos', 'nix' { return .linux }
+		'' { return .auto }
+		else { return error('vdoc: invalid platform `$platform_str`') }
+	}
+}
+
+pub fn platform_from_filename(filename string) Platform {
+	suffix := filename.all_after_last('_').all_before('.c.v')
+	mut platform := platform_from_string(suffix) or { Platform.cross }
+	if platform == .auto {
+		platform = .cross
+	}
+	return platform
+}
+
 pub fn (sk SymbolKind) str() string {
 	return match sk {
 		.const_group { 'Constants' }
@@ -41,39 +88,33 @@ pub fn (sk SymbolKind) str() string {
 }
 
 pub struct Doc {
-	prefs &pref.Preferences = new_vdoc_preferences()
 pub mut:
+	prefs     &pref.Preferences = new_vdoc_preferences()
 	base_path string
-	table     &table.Table    = &table.Table{}
+	table     &ast.Table      = &ast.Table{}
 	checker   checker.Checker = checker.Checker{
 		table: 0
 		cur_fn: 0
 		pref: 0
 	}
-	fmt             fmt.Fmt
-	filename        string
-	pos             int
-	pub_only        bool = true
-	with_comments   bool = true
-	with_pos        bool
-	with_head       bool = true
-	is_vlib         bool
-	time_generated  time.Time
-	head            DocNode
-	contents        map[string]DocNode
-	scoped_contents map[string]DocNode
-	// for storing the contents of the file.
-	sources         map[string]string
-	parent_mod_name string
-	orig_mod_name   string
-	extract_vars    bool
-}
-
-pub struct DocPos {
-pub:
-	line int
-	col  int
-	len  int
+	fmt                 fmt.Fmt
+	filename            string
+	pos                 int
+	pub_only            bool = true
+	with_comments       bool = true
+	with_pos            bool
+	with_head           bool = true
+	is_vlib             bool
+	time_generated      time.Time
+	head                DocNode
+	contents            map[string]DocNode
+	scoped_contents     map[string]DocNode
+	parent_mod_name     string
+	orig_mod_name       string
+	extract_vars        bool
+	filter_symbol_names []string
+	common_symbols      []string
+	platform            Platform
 }
 
 pub struct DocNode {
@@ -81,7 +122,7 @@ pub mut:
 	name        string
 	content     string
 	comments    []DocComment
-	pos         DocPos = DocPos{-1, -1, 0}
+	pos         token.Position
 	file_path   string
 	kind        SymbolKind
 	deprecated  bool
@@ -91,28 +132,32 @@ pub mut:
 	attrs       map[string]string [json: attributes]
 	from_scope  bool
 	is_pub      bool              [json: public]
+	platform    Platform
 }
 
 // new_vdoc_preferences creates a new instance of pref.Preferences tailored for v.doc.
 pub fn new_vdoc_preferences() &pref.Preferences {
 	// vdoc should be able to parse as much user code as possible
 	// so its preferences should be permissive:
-	return &pref.Preferences{
+	mut pref := &pref.Preferences{
 		enable_globals: true
+		is_fmt: true
 	}
+	pref.fill_with_defaults()
+	return pref
 }
 
 // new creates a new instance of a `Doc` struct.
 pub fn new(input_path string) Doc {
 	mut d := Doc{
 		base_path: os.real_path(input_path)
-		table: table.new_table()
+		table: ast.new_table()
 		head: DocNode{}
 		contents: map[string]DocNode{}
-		sources: map[string]string{}
 		time_generated: time.now()
 	}
 	d.fmt = fmt.Fmt{
+		pref: d.prefs
 		indent: 0
 		is_debug: false
 		table: d.table
@@ -125,12 +170,20 @@ pub fn new(input_path string) Doc {
 // An option error is thrown if the symbol is not exposed to the public
 // (when `pub_only` is enabled) or the content's of the AST node is empty.
 pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
+	mut name := d.stmt_name(stmt)
+	if name in d.common_symbols {
+		return error('already documented')
+	}
+	if name.starts_with(d.orig_mod_name + '.') {
+		name = name.all_after(d.orig_mod_name + '.')
+	}
 	mut node := DocNode{
-		name: d.stmt_name(stmt)
+		name: name
 		content: d.stmt_signature(stmt)
-		pos: d.convert_pos(filename, stmt.position())
+		pos: stmt.pos
 		file_path: os.join_path(d.base_path, filename)
 		is_pub: d.stmt_pub(stmt)
+		platform: platform_from_filename(filename)
 	}
 	if (!node.is_pub && d.pub_only) || stmt is ast.GlobalDecl {
 		return error('symbol $node.name not public')
@@ -155,7 +208,7 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 					node.children << DocNode{
 						name: field.name.all_after(d.orig_mod_name + '.')
 						kind: .constant
-						pos: d.convert_pos(filename, field.pos)
+						pos: field.pos
 						return_type: ret_type
 					}
 				}
@@ -170,7 +223,7 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 						name: field.name
 						kind: .enum_field
 						parent_name: node.name
-						pos: d.convert_pos(filename, field.pos)
+						pos: field.pos
 						return_type: ret_type
 					}
 				}
@@ -192,7 +245,7 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 						name: field.name
 						kind: .struct_field
 						parent_name: node.name
-						pos: d.convert_pos(filename, field.pos)
+						pos: field.pos
 						return_type: ret_type
 					}
 				}
@@ -216,8 +269,8 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 						name: param.name
 						kind: .variable
 						parent_name: node.name
-						pos: d.convert_pos(filename, param.pos)
-						attrs: {
+						pos: param.pos
+						attrs: map{
 							'mut': param.is_mut.str()
 						}
 						return_type: d.type_to_str(param.typ)
@@ -228,6 +281,13 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 		else {
 			return error('invalid stmt type to document')
 		}
+	}
+	included := node.name in d.filter_symbol_names || node.parent_name in d.filter_symbol_names
+	if d.filter_symbol_names.len != 0 && !included {
+		return error('not included in the list of symbol names')
+	}
+	if d.prefs.os == .all {
+		d.common_symbols << node.name
 	}
 	return node
 }
@@ -246,7 +306,7 @@ pub fn (mut d Doc) file_ast(file_ast ast.File) map[string]DocNode {
 		}
 	}
 	mut preceeding_comments := []DocComment{}
-	mut imports_section := true
+	// mut imports_section := true
 	for sidx, stmt in stmts {
 		if stmt is ast.ExprStmt {
 			// Collect comments
@@ -278,7 +338,7 @@ pub fn (mut d Doc) file_ast(file_ast ast.File) map[string]DocNode {
 				d.head.comments << preceeding_comments
 			}
 			preceeding_comments = []
-			imports_section = false
+			// imports_section = false
 		}
 		if stmt is ast.Import {
 			continue
@@ -331,7 +391,7 @@ pub fn (mut d Doc) file_ast_with_pos(file_ast ast.File, pos int) map[string]DocN
 		vr_data := val as ast.Var
 		l_node := DocNode{
 			name: name
-			pos: d.convert_pos(os.base(file_ast.path), vr_data.pos)
+			pos: vr_data.pos
 			file_path: file_ast.path
 			from_scope: true
 			kind: .variable
@@ -351,8 +411,8 @@ pub fn (mut d Doc) generate() ? {
 	} else {
 		os.real_path(os.dir(d.base_path))
 	}
-	d.is_vlib = 'vlib' !in d.base_path
-	project_files := os.ls(d.base_path) or { return error_with_code(err, 0) }
+	d.is_vlib = !d.base_path.contains('vlib')
+	project_files := os.ls(d.base_path) or { return err }
 	v_files := d.prefs.should_compile_filtered_files(d.base_path, project_files)
 	if v_files.len == 0 {
 		return error_with_code('vdoc: No valid V files were found.', 1)
@@ -370,8 +430,6 @@ pub fn (mut d Doc) generate() ? {
 		if i == 0 {
 			d.parent_mod_name = get_parent_mod(d.base_path) or { '' }
 		}
-		filename := os.base(file_path)
-		d.sources[filename] = util.read_file(file_path) or { '' }
 		file_asts << parser.parse_file(file_path, d.table, comments_mode, d.prefs, global_scope)
 	}
 	return d.file_asts(file_asts)
@@ -383,7 +441,7 @@ pub fn (mut d Doc) file_asts(file_asts []ast.File) ? {
 	mut fname_has_set := false
 	d.orig_mod_name = file_asts[0].mod.name
 	for i, file_ast in file_asts {
-		if d.filename.len > 0 && d.filename in file_ast.path && !fname_has_set {
+		if d.filename.len > 0 && file_ast.path.contains(d.filename) && !fname_has_set {
 			d.filename = file_ast.path
 			fname_has_set = true
 		}
@@ -422,15 +480,27 @@ pub fn (mut d Doc) file_asts(file_asts []ast.File) ? {
 			}
 		}
 	}
+	if d.filter_symbol_names.len != 0 && d.contents.len != 0 {
+		for filter_name in d.filter_symbol_names {
+			if filter_name !in d.contents {
+				return error('vdoc: `$filter_name` symbol in module `$d.orig_mod_name` not found')
+			}
+		}
+	}
 	d.time_generated = time.now()
 }
 
 // generate documents a certain file directory and returns an
 // instance of `Doc` if it is successful. Otherwise, it will  throw an error.
-pub fn generate(input_path string, pub_only bool, with_comments bool) ?Doc {
+pub fn generate(input_path string, pub_only bool, with_comments bool, platform Platform, filter_symbol_names ...string) ?Doc {
+	if platform == .js {
+		return error('vdoc: Platform `$platform` is not supported.')
+	}
 	mut doc := new(input_path)
 	doc.pub_only = pub_only
 	doc.with_comments = with_comments
+	doc.filter_symbol_names = filter_symbol_names.filter(it.len != 0)
+	doc.prefs.os = if platform == .auto { pref.get_host_os() } else { pref.OS(int(platform)) }
 	doc.generate() ?
 	return doc
 }

@@ -27,28 +27,12 @@ fn (a Vec) % (b Vec) Vec {
 	return Vec{a.x % b.x, a.y % b.y}
 }
 
-fn (a Vec) > (b Vec) bool {
-	return a.x > b.x && a.y > b.y
-}
-
 fn (a Vec) < (b Vec) bool {
 	return a.x < b.x && a.y < b.y
 }
 
 fn (a Vec) == (b Vec) bool {
 	return a.x == b.y && a.y == b.x
-}
-
-fn (a Vec) != (b Vec) bool {
-	return !(a == b)
-}
-
-fn (a Vec) >= (b Vec) bool {
-	return a > b || a == b
-}
-
-fn (a Vec) <= (b Vec) bool {
-	return a < b || a == b
 }
 
 fn test_operator_overloading_with_string_interpolation() {
@@ -74,12 +58,12 @@ fn test_operator_overloading_with_string_interpolation() {
 	assert a.x % b.x == g.x
 	assert a.y % b.y == g.y
 	////// /////
-	assert b > a == true
-	assert a < b == true
-	assert b >= a == true
-	assert a <= b == true
-	assert (Vec{2, 3} == Vec{3, 2}) == true
-	assert (Vec{2, 3} != Vec{3, 2}) == false
+	assert b > a
+	assert a < b
+	assert b >= a
+	assert a <= b
+	assert Vec{2, 3} == Vec{3, 2}
+	assert !(Vec{2, 3} != Vec{3, 2})
 	////// /////
 	assert c.str() == '{6, 8}'
 	assert d.str() == '{-2, -2}'
@@ -95,5 +79,5 @@ fn test_operator_overloading_with_string_interpolation() {
 	ad *= Vec{2, 2}
 	assert ad.str() == '{8, 18}'
 	ad /= Vec{2, 2}
-	assert ad.str() == '{4, 9}' 
+	assert ad.str() == '{4, 9}'
 }

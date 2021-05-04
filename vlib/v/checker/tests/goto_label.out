@@ -1,0 +1,49 @@
+vlib/v/checker/tests/goto_label.vv:5:7: error: unknown label `a1`
+    3 |     goto f2
+    4 |     f1:
+    5 |     goto a1
+      |          ~~
+    6 |     _ = fn(){
+    7 |         goto f1
+vlib/v/checker/tests/goto_label.vv:7:8: error: unknown label `f1`
+    5 |     goto a1
+    6 |     _ = fn(){
+    7 |         goto f1
+      |              ~~
+    8 |         goto f2
+    9 |         goto a1
+vlib/v/checker/tests/goto_label.vv:8:8: error: unknown label `f2`
+    6 |     _ = fn(){
+    7 |         goto f1
+    8 |         goto f2
+      |              ~~
+    9 |         goto a1
+   10 |         a1:
+vlib/v/checker/tests/goto_label.vv:14:7: error: unknown label `a1`
+   12 |     }
+   13 |     f2:
+   14 |     goto a1
+      |          ~~
+   15 |     goto f1 // back
+   16 |     goto f2
+vlib/v/checker/tests/goto_label.vv:22:7: error: unknown label `f1`
+   20 |     goto g1 // forward
+   21 |     g1:
+   22 |     goto f1
+      |          ~~
+   23 |     goto a1
+   24 |     goto g1 // back
+vlib/v/checker/tests/goto_label.vv:23:7: error: unknown label `a1`
+   21 |     g1:
+   22 |     goto f1
+   23 |     goto a1
+      |          ~~
+   24 |     goto g1 // back
+   25 |     goto undefined
+vlib/v/checker/tests/goto_label.vv:25:7: error: unknown label `undefined`
+   23 |     goto a1
+   24 |     goto g1 // back
+   25 |     goto undefined
+      |          ~~~~~~~~~
+   26 | }}
+   27 |

@@ -82,17 +82,24 @@ fn new_ft(c FTConfig) ?&FT {
 			// Load default font
 		}
 	}
-	$if !android {
-		if c.font_path == '' || !os.exists(c.font_path) {
+
+	if c.font_path == '' || !os.exists(c.font_path) {
+		$if !android {
 			println('failed to load font "$c.font_path"')
 			return none
 		}
 	}
+
 	mut bytes := []byte{}
 	$if android {
-		bytes = os.read_apk_asset(c.font_path) or {
-			println('failed to load font "$c.font_path"')
-			return none
+		// First try any filesystem paths
+		bytes = os.read_bytes(c.font_path) or { []byte{} }
+		if bytes.len == 0 {
+			// ... then try the APK asset path
+			bytes = os.read_apk_asset(c.font_path) or {
+				println('failed to load font "$c.font_path"')
+				return none
+			}
 		}
 	} $else {
 		bytes = os.read_bytes(c.font_path) or {
@@ -100,8 +107,11 @@ fn new_ft(c FTConfig) ?&FT {
 			return none
 		}
 	}
-	bold_path := if c.custom_bold_font_path != '' { c.custom_bold_font_path } else { get_font_path_variant(c.font_path,
-			.bold) }
+	bold_path := if c.custom_bold_font_path != '' {
+		c.custom_bold_font_path
+	} else {
+		get_font_path_variant(c.font_path, .bold)
+	}
 	bytes_bold := os.read_bytes(bold_path) or {
 		debug_font_println('failed to load font "$bold_path"')
 		bytes
@@ -128,7 +138,7 @@ fn new_ft(c FTConfig) ?&FT {
 	}
 }
 
-fn (ctx &Context) set_cfg(cfg gx.TextCfg) {
+pub fn (ctx &Context) set_cfg(cfg gx.TextCfg) {
 	if !ctx.font_inited {
 		return
 	}
@@ -179,7 +189,7 @@ pub fn (ctx &Context) draw_text(x int, y int, text_ string, cfg gx.TextCfg) {
 	// }
 	ctx.set_cfg(cfg)
 	scale := if ctx.ft.scale == 0 { f32(1) } else { ctx.ft.scale }
-	C.fonsDrawText(ctx.ft.fons, x * scale, y * scale, text_.str, 0) // TODO: check offsets/alignment
+	C.fonsDrawText(ctx.ft.fons, x * scale, y * scale, &char(text_.str), 0) // TODO: check offsets/alignment
 }
 
 pub fn (ctx &Context) draw_text_def(x int, y int, text string) {
@@ -205,7 +215,7 @@ pub fn (ctx &Context) text_width(s string) int {
 		return 0
 	}
 	mut buf := [4]f32{}
-	C.fonsTextBounds(ctx.ft.fons, 0, 0, s.str, 0, buf)
+	C.fonsTextBounds(ctx.ft.fons, 0, 0, &char(s.str), 0, &buf[0])
 	if s.ends_with(' ') {
 		return int((buf[2] - buf[0]) / ctx.scale) +
 			ctx.text_width('i') // TODO fix this in fontstash?
@@ -226,7 +236,7 @@ pub fn (ctx &Context) text_height(s string) int {
 		return 0
 	}
 	mut buf := [4]f32{}
-	C.fonsTextBounds(ctx.ft.fons, 0, 0, s.str, 0, buf)
+	C.fonsTextBounds(ctx.ft.fons, 0, 0, &char(s.str), 0, &buf[0])
 	return int((buf[3] - buf[1]) / ctx.scale)
 }
 
@@ -236,7 +246,7 @@ pub fn (ctx &Context) text_size(s string) (int, int) {
 		return 0, 0
 	}
 	mut buf := [4]f32{}
-	C.fonsTextBounds(ctx.ft.fons, 0, 0, s.str, 0, buf)
+	C.fonsTextBounds(ctx.ft.fons, 0, 0, &char(s.str), 0, &buf[0])
 	return int((buf[2] - buf[0]) / ctx.scale), int((buf[3] - buf[1]) / ctx.scale)
 }
 
@@ -251,14 +261,46 @@ pub fn system_font_path() string {
 	mut fonts := ['Ubuntu-R.ttf', 'Arial.ttf', 'LiberationSans-Regular.ttf', 'NotoSans-Regular.ttf',
 		'FreeSans.ttf', 'DejaVuSans.ttf']
 	$if macos {
-		fonts = ['/System/Library/Fonts/SFNS.ttf', '/System/Library/Fonts/SFNSText.ttf', '/Library/Fonts/Arial.ttf']
+		fonts = ['/System/Library/Fonts/SFNS.ttf', '/System/Library/Fonts/SFNSText.ttf',
+			'/Library/Fonts/Arial.ttf',
+		]
 		for font in fonts {
 			if os.is_file(font) {
 				return font
 			}
 		}
 	}
-	s := os.exec('fc-list') or { panic('failed to fetch system fonts') }
+	$if android {
+		xml_files := ['/system/etc/system_fonts.xml', '/system/etc/fonts.xml',
+			'/etc/system_fonts.xml', '/etc/fonts.xml', '/data/fonts/fonts.xml',
+			'/etc/fallback_fonts.xml',
+		]
+		font_locations := ['/system/fonts', '/data/fonts']
+		for xml_file in xml_files {
+			if os.is_file(xml_file) && os.is_readable(xml_file) {
+				xml := os.read_file(xml_file) or { continue }
+				lines := xml.split('\n')
+				mut candidate_font := ''
+				for line in lines {
+					if line.contains('<font') {
+						candidate_font = line.all_after('>').all_before('<').trim(' \n\t\r')
+						if candidate_font.contains('.ttf') {
+							for location in font_locations {
+								candidate_path := os.join_path(location, candidate_font)
+								if os.is_file(candidate_path) && os.is_readable(candidate_path) {
+									return candidate_path
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	s := os.execute('fc-list')
+	if s.exit_code != 0 {
+		panic('failed to fetch system fonts')
+	}
 	system_fonts := s.output.split('\n')
 	for line in system_fonts {
 		for font in fonts {

@@ -36,6 +36,11 @@ pub fn qualify_module(mod string, file_path string) string {
 		return mod
 	}
 	clean_file_path := file_path.all_before_last('/')
+	// relative module (relative to working directory)
+	// TODO: find most stable solution & test with -usecache
+	if clean_file_path.replace(os.getwd() + os.path_separator, '') == mod {
+		return mod
+	}
 	if m1 := mod_path_to_full_name(mod, clean_file_path) {
 		$if trace_mod_path_to_full_name ? {
 			trace_mod_path_to_full_name(@LINE, mod, clean_file_path, m1)
@@ -56,7 +61,7 @@ pub fn mod_path_to_full_name(mod string, path string) ?string {
 	vmod_folders := ['vlib', '.vmodules', 'modules']
 	mut in_vmod_path := false
 	for vmod_folder in vmod_folders {
-		if vmod_folder + os.path_separator in path {
+		if path.contains(vmod_folder + os.path_separator) {
 			in_vmod_path = true
 			break
 		}

@@ -1,0 +1,58 @@
+import math { max, min }
+import cli { Command }
+import math.complex { Complex, complex }
+import os {
+	file_ext,
+	user_os,
+}
+import mod {
+	FnArg,
+	FnRet,
+	InterfaceField,
+	InterfaceMethodArg,
+	InterfaceMethodRet,
+	StructEmbed,
+	StructField,
+	StructMethodArg,
+	StructMethodRet,
+	StructRefField,
+}
+
+struct Struct {
+	StructEmbed
+	v   StructField
+	ref &StructRefField
+}
+
+fn (s Struct) method(v StructMethodArg) StructMethodRet {
+	return {}
+}
+
+interface Interface {
+	v InterfaceField
+	f(InterfaceMethodArg) InterfaceMethodRet
+}
+
+fn f(v FnArg) FnRet {
+	return {}
+}
+
+struct App {
+	command &Command
+}
+
+struct MyCommand {
+	Command
+}
+
+fn imaginary(im f64) Complex {
+	return complex(0, im)
+}
+
+fn main() {
+	println(max(0.1, 0.2))
+	println(min(0.1, 0.2))
+	println(user_os())
+	println(file_ext('main.v'))
+	println(imaginary(1))
+}

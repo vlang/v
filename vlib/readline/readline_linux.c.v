@@ -12,11 +12,12 @@ import os
 
 #include <termios.h>
 #include <sys/ioctl.h>
-fn C.tcgetattr() int
 
-fn C.tcsetattr() int
+fn C.tcgetattr(fd int, termios_p &C.termios) int
 
-fn C.raise()
+fn C.tcsetattr(fd int, optional_actions int, termios_p &C.termios) int
+
+fn C.raise(sig int)
 
 fn C.getppid() int
 
@@ -46,18 +47,18 @@ enum Action {
 // Please note that `enable_raw_mode` catches the `SIGUSER` (CTRL + C) signal.
 // For a method that does please see `enable_raw_mode_nosig`.
 pub fn (mut r Readline) enable_raw_mode() {
-	if C.tcgetattr(0, &r.orig_termios) == -1 {
+	if C.tcgetattr(0, unsafe { &C.termios(&r.orig_termios) }) == -1 {
 		r.is_tty = false
 		r.is_raw = false
 		return
 	}
 	mut raw := r.orig_termios
 	raw.c_iflag &= ~(C.BRKINT | C.ICRNL | C.INPCK | C.ISTRIP | C.IXON)
-	raw.c_cflag |= (C.CS8)
+	raw.c_cflag |= C.CS8
 	raw.c_lflag &= ~(C.ECHO | C.ICANON | C.IEXTEN | C.ISIG)
 	raw.c_cc[C.VMIN] = 1
 	raw.c_cc[C.VTIME] = 0
-	C.tcsetattr(0, C.TCSADRAIN, &raw)
+	C.tcsetattr(0, C.TCSADRAIN, unsafe { &C.termios(&raw) })
 	r.is_raw = true
 	r.is_tty = true
 }
@@ -67,18 +68,18 @@ pub fn (mut r Readline) enable_raw_mode() {
 // Please note that `enable_raw_mode_nosig` does not catch the `SIGUSER` (CTRL + C) signal
 // as opposed to `enable_raw_mode`.
 pub fn (mut r Readline) enable_raw_mode_nosig() {
-	if C.tcgetattr(0, &r.orig_termios) == -1 {
+	if C.tcgetattr(0, unsafe { &C.termios(&r.orig_termios) }) == -1 {
 		r.is_tty = false
 		r.is_raw = false
 		return
 	}
 	mut raw := r.orig_termios
 	raw.c_iflag &= ~(C.BRKINT | C.ICRNL | C.INPCK | C.ISTRIP | C.IXON)
-	raw.c_cflag |= (C.CS8)
+	raw.c_cflag |= C.CS8
 	raw.c_lflag &= ~(C.ECHO | C.ICANON | C.IEXTEN)
 	raw.c_cc[C.VMIN] = 1
 	raw.c_cc[C.VTIME] = 0
-	C.tcsetattr(0, C.TCSADRAIN, &raw)
+	C.tcsetattr(0, C.TCSADRAIN, unsafe { &C.termios(&raw) })
 	r.is_raw = true
 	r.is_tty = true
 }
@@ -87,7 +88,7 @@ pub fn (mut r Readline) enable_raw_mode_nosig() {
 // For a description of raw mode please see the `enable_raw_mode` method.
 pub fn (mut r Readline) disable_raw_mode() {
 	if r.is_raw {
-		C.tcsetattr(0, C.TCSADRAIN, &r.orig_termios)
+		C.tcsetattr(0, C.TCSADRAIN, unsafe { &C.termios(&r.orig_termios) })
 		r.is_raw = false
 	}
 }
@@ -172,19 +173,36 @@ pub fn read_line(prompt string) ?string {
 // analyse returns an `Action` based on the type of input byte given in `c`.
 fn (r Readline) analyse(c int) Action {
 	match byte(c) {
-		`\0`, 0x3, 0x4, 255 { return .eof } // NUL, End of Text, End of Transmission
-		`\n`, `\r` { return .commit_line }
-		`\f` { return .clear_screen } // CTRL + L
-		`\b`, 127 { return .delete_left } // BS, DEL
-		27 { return r.analyse_control() } // ESC
-		1 { return .move_cursor_begining } // ^A
-		5 { return .move_cursor_end } // ^E
-		26 { return .suspend } // CTRL + Z, SUB
-		else { return if c >= ` ` {
-				Action.insert_character
-			} else {
-				Action.nothing
-			} }
+		`\0`, 0x3, 0x4, 255 {
+			return .eof
+		} // NUL, End of Text, End of Transmission
+		`\n`, `\r` {
+			return .commit_line
+		}
+		`\f` {
+			return .clear_screen
+		} // CTRL + L
+		`\b`, 127 {
+			return .delete_left
+		} // BS, DEL
+		27 {
+			return r.analyse_control()
+		} // ESC
+		1 {
+			return .move_cursor_begining
+		} // ^A
+		5 {
+			return .move_cursor_end
+		} // ^E
+		26 {
+			return .suspend
+		} // CTRL + Z, SUB
+		else {
+			if c >= ` ` {
+				return Action.insert_character
+			}
+			return Action.nothing
+		}
 	}
 }
 
@@ -318,8 +336,11 @@ fn calculate_screen_position(x_in int, y_in int, screen_columns int, char_count 
 	out[0] = x
 	out[1] = y
 	for chars_remaining := char_count; chars_remaining > 0; {
-		chars_this_row := if (x + chars_remaining) < screen_columns { chars_remaining } else { screen_columns -
-				x }
+		chars_this_row := if (x + chars_remaining) < screen_columns {
+			chars_remaining
+		} else {
+			screen_columns - x
+		}
 		out[0] = x + chars_this_row
 		out[1] = y
 		chars_remaining -= chars_this_row
@@ -382,8 +403,8 @@ fn (mut r Readline) insert_character(c int) {
 	if !r.overwrite || r.cursor == r.current.len {
 		r.current = r.current.left(r.cursor).ustring().add(utf32_to_str(u32(c)).ustring()).add(r.current.right(r.cursor).ustring())
 	} else {
-		r.current = r.current.left(r.cursor).ustring().add(utf32_to_str(u32(c)).ustring()).add(r.current.right(r.cursor +
-			1).ustring())
+		r.current = r.current.left(r.cursor).ustring().add(utf32_to_str(u32(c)).ustring()).add(r.current.right(
+			r.cursor + 1).ustring())
 	}
 	r.cursor++
 	// Refresh the line to add the new character
@@ -445,6 +466,7 @@ fn (mut r Readline) move_cursor_begining() {
 	r.cursor = 0
 	r.refresh_line()
 }
+
 // move_cursor_end moves the cursor to the end of the current line.
 fn (mut r Readline) move_cursor_end() {
 	r.cursor = r.current.len

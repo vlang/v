@@ -6,9 +6,8 @@ import sokol.sfons
 import os
 import time
 
-
 const (
-text = '
+	text = '
 Once upon a midnight dreary, while I pondered, weak and weary,
 Over many a quaint and curious volume of forgotten lore—
     While I nodded, nearly napping, suddenly there came a tapping,
@@ -51,7 +50,7 @@ Soon again I heard a tapping somewhat louder than before.
 Let my heart be still a moment and this mystery explore;—
             ’Tis the wind and nothing more!”
 '
-lines = text.split('\n')
+	lines = text.split('\n')
 )
 
 struct AppState {
@@ -59,17 +58,19 @@ mut:
 	pass_action C.sg_pass_action
 	fons        &C.FONScontext
 	font_normal int
-	inited bool
+	inited      bool
 }
 
 fn main() {
 	mut color_action := C.sg_color_attachment_action{
 		action: gfx.Action(C.SG_ACTION_CLEAR)
+		value: C.sg_color{
+			r: 1.0
+			g: 1.0
+			b: 1.0
+			a: 1.0
+		}
 	}
-	color_action.val[0] = 1
-	color_action.val[1] = 1
-	color_action.val[2] = 1
-	color_action.val[3] = 1.0
 	mut pass_action := C.sg_pass_action{}
 	pass_action.colors[0] = color_action
 	state := &AppState{
@@ -100,7 +101,8 @@ fn init(user_data voidptr) {
 	// or use DroidSerif-Regular.ttf
 	if bytes := os.read_bytes(os.resource_abs_path('../assets/fonts/RobotoMono-Regular.ttf')) {
 		println('loaded font: $bytes.len')
-		state.font_normal = C.fonsAddFontMem(state.fons, 'sans', bytes.data, bytes.len, false)
+		state.font_normal = C.fonsAddFontMem(state.fons, 'sans', bytes.data, bytes.len,
+			false)
 	}
 }
 
@@ -112,12 +114,11 @@ fn frame(user_data voidptr) {
 	sgl.draw()
 	gfx.end_pass()
 	gfx.commit()
-	println(time.ticks()-t)
+	println(time.ticks() - t)
 }
 
 const (
-
-black = C.sfons_rgba(0, 0, 0, 255)
+	black = C.sfons_rgba(0, 0, 0, 255)
 )
 
 fn (mut state AppState) render_font() {

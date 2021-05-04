@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module os
 
-fn C.getenv(charptr) &char
+fn C.getenv(&char) &char
 
 // C.GetEnvironmentStringsW & C.FreeEnvironmentStringsW are defined only on windows
 fn C.GetEnvironmentStringsW() &u16
@@ -12,19 +12,21 @@ fn C.FreeEnvironmentStringsW(&u16) int
 
 // `getenv` returns the value of the environment variable named by the key.
 pub fn getenv(key string) string {
-	$if windows {
-		s := C._wgetenv(key.to_wide())
-		if s == 0 {
-			return ''
+	unsafe {
+		$if windows {
+			s := C._wgetenv(key.to_wide())
+			if s == 0 {
+				return ''
+			}
+			return string_from_wide(s)
+		} $else {
+			s := C.getenv(&char(key.str))
+			if s == voidptr(0) {
+				return ''
+			}
+			// NB: C.getenv *requires* that the result be copied.
+			return cstring_to_vstring(s)
 		}
-		return string_from_wide(s)
-	} $else {
-		s := C.getenv(charptr(key.str))
-		if s == voidptr(0) {
-			return ''
-		}
-		// NB: C.getenv *requires* that the result be copied.
-		return cstring_to_vstring(byteptr(s))
 	}
 }
 
@@ -34,19 +36,19 @@ pub fn setenv(name string, value string, overwrite bool) int {
 		format := '$name=$value'
 		if overwrite {
 			unsafe {
-				return C._putenv(charptr(format.str))
+				return C._putenv(&char(format.str))
 			}
 		} else {
 			if getenv(name).len == 0 {
 				unsafe {
-					return C._putenv(charptr(format.str))
+					return C._putenv(&char(format.str))
 				}
 			}
 		}
 		return -1
 	} $else {
 		unsafe {
-			return C.setenv(charptr(name.str), charptr(value.str), overwrite)
+			return C.setenv(&char(name.str), &char(value.str), overwrite)
 		}
 	}
 }
@@ -55,22 +57,28 @@ pub fn setenv(name string, value string, overwrite bool) int {
 pub fn unsetenv(name string) int {
 	$if windows {
 		format := '$name='
-		return C._putenv(charptr(format.str))
+		return C._putenv(&char(format.str))
 	} $else {
-		return C.unsetenv(charptr(name.str))
+		return C.unsetenv(&char(name.str))
 	}
 }
 
 // See: https://linux.die.net/man/5/environ for unix platforms.
 // See: https://docs.microsoft.com/bg-bg/windows/win32/api/processenv/nf-processenv-getenvironmentstrings
 // os.environ returns a map of all the current environment variables
+
+fn unix_environ() &&char {
+	// TODO: remove this helper function, when `&&char(C.environ)` works properly
+	return voidptr(C.environ)
+}
+
 pub fn environ() map[string]string {
 	mut res := map[string]string{}
 	$if windows {
 		mut estrings := C.GetEnvironmentStringsW()
 		mut eline := ''
 		for c := estrings; *c != 0; {
-			eline = string_from_wide(c)
+			eline = unsafe { string_from_wide(c) }
 			eq_index := eline.index_byte(`=`)
 			if eq_index > 0 {
 				res[eline[0..eq_index]] = eline[eq_index + 1..]
@@ -81,13 +89,19 @@ pub fn environ() map[string]string {
 		}
 		C.FreeEnvironmentStringsW(estrings)
 	} $else {
-		e := unsafe { &charptr(C.environ) }
-		for i := 0; !isnil(unsafe { e[i] }); i++ {
-			eline := unsafe { cstring_to_vstring(byteptr(e[i])) }
+		start := unix_environ()
+		mut i := 0
+		for {
+			x := unsafe { start[i] }
+			if x == 0 {
+				break
+			}
+			eline := unsafe { cstring_to_vstring(x) }
 			eq_index := eline.index_byte(`=`)
 			if eq_index > 0 {
 				res[eline[0..eq_index]] = eline[eq_index + 1..]
 			}
+			i++
 		}
 	}
 	return res

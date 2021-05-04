@@ -5,7 +5,7 @@ const (
 	queue_fill = 763
 )
 
-fn do_send(ch chan int, fin sync.Semaphore) {
+fn do_send(ch chan int, mut fin sync.Semaphore) {
 	for i in 0 .. queue_fill {
 		ch <- i
 	}
@@ -14,8 +14,8 @@ fn do_send(ch chan int, fin sync.Semaphore) {
 
 fn test_channel_len_cap() {
 	ch := chan int{cap: queue_len}
-	sem := sync.new_semaphore()
-	go do_send(ch, sem)
+	mut sem := sync.new_semaphore()
+	go do_send(ch, mut sem)
 	sem.wait()
 	assert ch.cap == queue_len
 	assert ch.len == queue_fill

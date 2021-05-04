@@ -3,7 +3,9 @@
 // that can be found in the LICENSE file.
 module util
 
+import math.mathutil as mu
 import os
+import strings
 import term
 import v.token
 
@@ -47,21 +49,23 @@ pub fn (e &EManager) set_support_color(b bool) {
 }
 
 pub fn bold(msg string) string {
-	if !emanager.support_color {
+	if !util.emanager.support_color {
 		return msg
 	}
 	return term.bold(msg)
 }
 
 fn color(kind string, msg string) string {
-	if !emanager.support_color {
+	if !util.emanager.support_color {
 		return msg
 	}
 	if kind.contains('error') {
 		return term.red(msg)
-	} else {
-		return term.magenta(msg)
 	}
+	if kind.contains('notice') {
+		return term.yellow(msg)
+	}
+	return term.magenta(msg)
 }
 
 // formatted_error - `kind` may be 'error' or 'warn'
@@ -79,9 +83,9 @@ pub fn formatted_error(kind string, omsg string, filepath string, pos token.Posi
 		}
 	}
 	//
-	source, column := filepath_pos_to_source_and_column(filepath, pos)
-	position := '$path:${pos.line_nr + 1}:${imax(1, column + 1)}:'
-	scontext := source_context(kind, source, column, pos).join('\n')
+	source := read_file(filepath) or { '' }
+	position := '$path:${pos.line_nr + 1}:${mu.max(1, pos.col + 1)}:'
+	scontext := source_context(kind, source, pos).join('\n')
 	final_position := bold(position)
 	final_kind := bold(color(kind, kind))
 	final_msg := emsg
@@ -90,35 +94,19 @@ pub fn formatted_error(kind string, omsg string, filepath string, pos token.Posi
 	return '$final_position $final_kind $final_msg$final_context'.trim_space()
 }
 
-pub fn filepath_pos_to_source_and_column(filepath string, pos token.Position) (string, int) {
-	// TODO: optimize this; may be use a cache.
-	// The column should not be so computationally hard to get.
-	source := read_file(filepath) or { '' }
-	mut p := imax(0, imin(source.len - 1, pos.pos))
-	if source.len > 0 {
-		for ; p >= 0; p-- {
-			if source[p] == `\n` || source[p] == `\r` {
-				break
-			}
-		}
-	}
-	column := imax(0, pos.pos - p - 1)
-	return source, column
-}
-
-pub fn source_context(kind string, source string, column int, pos token.Position) []string {
+pub fn source_context(kind string, source string, pos token.Position) []string {
 	mut clines := []string{}
 	if source.len == 0 {
 		return clines
 	}
 	source_lines := source.split_into_lines()
-	bline := imax(0, pos.line_nr - error_context_before)
-	aline := imax(0, imin(source_lines.len - 1, pos.line_nr + error_context_after))
+	bline := mu.max(0, pos.line_nr - util.error_context_before)
+	aline := mu.max(0, mu.min(source_lines.len - 1, pos.line_nr + util.error_context_after))
 	tab_spaces := '    '
 	for iline := bline; iline <= aline; iline++ {
 		sline := source_lines[iline]
-		start_column := imax(0, imin(column, sline.len))
-		end_column := imax(0, imin(column + imax(0, pos.len), sline.len))
+		start_column := mu.max(0, mu.min(pos.col, sline.len))
+		end_column := mu.max(0, mu.min(pos.col + mu.max(0, pos.len), sline.len))
 		cline := if iline == pos.line_nr {
 			sline[..start_column] + color(kind, sline[start_column..end_column]) +
 				sline[end_column..]
@@ -132,14 +120,22 @@ pub fn source_context(kind string, source string, column int, pos token.Position
 			// line, so that it prints the ^ character exactly on the *same spot*
 			// where it is needed. That is the reason we can not just
 			// use strings.repeat(` `, col) to form it.
-			mut pointerline := ''
-			for bchar in sline[..start_column] {
-				x := if bchar.is_space() { bchar } else { ` ` }
-				pointerline += x.ascii_str()
+			mut pointerline_builder := strings.new_builder(sline.len)
+			for i := 0; i < start_column; {
+				if sline[i].is_space() {
+					pointerline_builder.write_b(sline[i])
+					i++
+				} else {
+					char_len := utf8_char_len(sline[i])
+					spaces := ' '.repeat(utf8_str_visible_length(sline[i..i + char_len]))
+					pointerline_builder.write_string(spaces)
+					i += char_len
+				}
 			}
-			underline := if pos.len > 1 { '~'.repeat(end_column - start_column) } else { '^' }
-			pointerline += bold(color(kind, underline))
-			clines << '      | ' + pointerline.replace('\t', tab_spaces)
+			underline_len := utf8_str_visible_length(sline[start_column..end_column])
+			underline := if underline_len > 1 { '~'.repeat(underline_len) } else { '^' }
+			pointerline_builder.write_string(bold(color(kind, underline)))
+			clines << '      | ' + pointerline_builder.str().replace('\t', tab_spaces)
 		}
 	}
 	return clines

@@ -26,12 +26,12 @@ fn main() {
 struct App {
 	pass_action C.sg_pass_action
 mut:
-	width       int
-	height      int
-	frame       i64
-	last        i64
-	ps          particle.System
-	alpha_pip   C.sgl_pipeline
+	width     int
+	height    int
+	frame     i64
+	last      i64
+	ps        particle.System
+	alpha_pip C.sgl_pipeline
 }
 
 fn (mut a App) init() {
@@ -80,10 +80,17 @@ fn init(user_data voidptr) {
 	}
 	sgl.setup(&sgl_desc)
 	mut pipdesc := C.sg_pipeline_desc{}
-	unsafe {C.memset(&pipdesc, 0, sizeof(pipdesc))}
-	pipdesc.blend.enabled = true
-	pipdesc.blend.src_factor_rgb = gfx.BlendFactor(C.SG_BLENDFACTOR_SRC_ALPHA)
-	pipdesc.blend.dst_factor_rgb = gfx.BlendFactor(C.SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA)
+	unsafe { C.memset(&pipdesc, 0, sizeof(pipdesc)) }
+
+	color_state := C.sg_color_state{
+		blend: C.sg_blend_state{
+			enabled: true
+			src_factor_rgb: gfx.BlendFactor(C.SG_BLENDFACTOR_SRC_ALPHA)
+			dst_factor_rgb: gfx.BlendFactor(C.SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA)
+		}
+	}
+	pipdesc.colors[0] = color_state
+
 	app.alpha_pip = sgl.make_pipeline(&pipdesc)
 }
 

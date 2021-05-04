@@ -21,7 +21,7 @@ download the C version of the compiler and rebuild it from scratch.
 
 The architecture of the compiler is very simple and has three distinct steps:
 
-Parse/generate AST (`v.parser`) => Check types (`v.checker`) 
+Parse/generate AST (`v.parser`) => Check types (`v.checker`)
 => Generate C/JavaScript/machine code (`v.gen`)
 
 
@@ -33,7 +33,7 @@ The main files are:
 - Constructs the compiler object (`struct V`).
 - Creates a list of .v files that need to be parsed.
 - Creates a parser object for each file and runs `parse()` on them.
-- The correct backend is called (C, JS, x64), and a binary is compiled.
+- The correct backend is called (C, JS, native), and a binary is compiled.
 
 2. `v/scanner` The scanner's job is to parse a list of characters and convert
 them to tokens.
@@ -53,18 +53,18 @@ for objects by name, register new objects, modify types' fields, etc.
 the types are correct. Unresolved types are resolved, type information is added
 to the AST.
 
-7. `v/gen` C backend. It simply walks the AST and generates C code that can be
+7. `v/gen/c` C backend. It simply walks the AST and generates C code that can be
 compiled with Clang, GCC, Visual Studio, and TCC.
 
 8. `json.v` defines the json code generation. This file will be removed once V
 supports comptime code generation, and it will be possible to do this using the
 language's tools.
 
-9. `v/gen/x64` is the directory with all the machine code generation logic. It
+9. `v/gen/native` is the directory with all the machine code generation logic. It
 defines a set of functions that translate assembly instructions to machine code
 and build the binary from scratch byte by byte. It manually builds all headers,
 segments, sections, symtable, relocations, etc. Right now it only has basic
-support of the x64 platform/ELF format.
+support of the native platform (ELF, MACHO format).
 
 The rest of the directories are vlib modules: `builtin/` (strings, arrays,
 maps), `time/`, `os/`, etc. Their documentation is pretty clear.
@@ -171,11 +171,11 @@ their status.
 V allows you to pass custom flags using `-d my_flag` that can then be checked
 at compile time (see the documentation about
 [compile-time if](https://github.com/vlang/v/blob/master/doc/docs.md#compile-time-if)).
-There are numerous flags that can be passed when building the compiler 
-with `v self` or when creating a copy of the compiler, that will help 
+There are numerous flags that can be passed when building the compiler
+with `v self` or when creating a copy of the compiler, that will help
 you when debugging.
 
-Beware that the flags must be passed when building the compiler, 
+Beware that the flags must be passed when building the compiler,
 not the program, so do for example: `v -d time_parsing cmd/v` or
 `v -d trace_checker self`.
 Some flags can make the compiler very verbose, so it is recommended

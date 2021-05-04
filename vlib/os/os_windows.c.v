@@ -2,7 +2,9 @@ module os
 
 import strings
 
+#flag windows -l advapi32
 #include <process.h>
+
 pub const (
 	path_separator = '\\'
 	path_delimiter = ';'
@@ -11,6 +13,7 @@ pub const (
 // Ref - https://docs.microsoft.com/en-us/windows/desktop/winprog/windows-data-types
 // A handle to an object.
 pub type HANDLE = voidptr
+pub type HMODULE = voidptr
 
 // win: FILETIME
 // https://docs.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-filetime
@@ -62,7 +65,7 @@ mut:
 	dw_flags           u32
 	w_show_window      u16
 	cb_reserved2       u16
-	lp_reserved2       byteptr
+	lp_reserved2       &byte
 	h_std_input        voidptr
 	h_std_output       voidptr
 	h_std_error        voidptr
@@ -75,10 +78,10 @@ mut:
 	b_inherit_handle       bool
 }
 
-fn init_os_args_wide(argc int, argv &byteptr) []string {
+fn init_os_args_wide(argc int, argv &&byte) []string {
 	mut args_ := []string{}
 	for i in 0 .. argc {
-		args_ << string_from_wide(unsafe { &u16(argv[i]) })
+		args_ << unsafe { string_from_wide(&u16(argv[i])) }
 	}
 	return args_
 }
@@ -101,12 +104,12 @@ pub fn ls(path string) ?[]string {
 	// NOTE:TODO: once we have a way to convert utf16 wide character to utf8
 	// we should use FindFirstFileW and FindNextFileW
 	h_find_files := C.FindFirstFile(path_files.to_wide(), voidptr(&find_file_data))
-	first_filename := string_from_wide(&u16(find_file_data.c_file_name))
+	first_filename := unsafe { string_from_wide(&find_file_data.c_file_name[0]) }
 	if first_filename != '.' && first_filename != '..' {
 		dir_files << first_filename
 	}
 	for C.FindNextFile(h_find_files, voidptr(&find_file_data)) > 0 {
-		filename := string_from_wide(&u16(find_file_data.c_file_name))
+		filename := unsafe { string_from_wide(&find_file_data.c_file_name[0]) }
 		if filename != '.' && filename != '..' {
 			dir_files << filename.clone()
 		}
@@ -186,7 +189,7 @@ const (
 const (
 	sublang_neutral = 0x00
 	sublang_default = 0x01
-	lang_neutral    = (sublang_neutral)
+	lang_neutral    = sublang_neutral
 )
 
 // Ref - https://docs.microsoft.com/en-us/windows/win32/debug/system-error-codes--12000-15999-
@@ -199,11 +202,12 @@ const (
 fn ptr_win_get_error_msg(code u32) voidptr {
 	mut buf := voidptr(0)
 	// Check for code overflow
-	if code > u32(max_error_code) {
+	if code > u32(os.max_error_code) {
 		return buf
 	}
-	C.FormatMessage(format_message_allocate_buffer | format_message_from_system | format_message_ignore_inserts,
-		0, code, C.MAKELANGID(lang_neutral, sublang_default), voidptr(&buf), 0, 0)
+	C.FormatMessage(os.format_message_allocate_buffer | os.format_message_from_system | os.format_message_ignore_inserts,
+		0, code, C.MAKELANGID(os.lang_neutral, os.sublang_default), voidptr(&buf), 0,
+		0)
 	return buf
 }
 
@@ -216,13 +220,16 @@ pub fn get_error_msg(code int) string {
 	if ptr_text == 0 { // compare with null
 		return ''
 	}
-	return string_from_wide(ptr_text)
+	return unsafe { string_from_wide(ptr_text) }
 }
 
-// exec starts the specified command, waits for it to complete, and returns its output.
-pub fn exec(cmd string) ?Result {
+// execute starts the specified command, waits for it to complete, and returns its output.
+pub fn execute(cmd string) Result {
 	if cmd.contains(';') || cmd.contains('&&') || cmd.contains('||') || cmd.contains('\n') {
-		return error(';, &&, || and \\n are not allowed in shell commands')
+		return Result{
+			exit_code: -1
+			output: ';, &&, || and \\n are not allowed in shell commands'
+		}
 	}
 	mut child_stdin := &u32(0)
 	mut child_stdout_read := &u32(0)
@@ -235,17 +242,24 @@ pub fn exec(cmd string) ?Result {
 	if !create_pipe_ok {
 		error_num := int(C.GetLastError())
 		error_msg := get_error_msg(error_num)
-		return error_with_code('exec failed (CreatePipe): $error_msg', error_num)
+		return Result{
+			exit_code: error_num
+			output: 'exec failed (CreatePipe): $error_msg'
+		}
 	}
 	set_handle_info_ok := C.SetHandleInformation(child_stdout_read, C.HANDLE_FLAG_INHERIT,
 		0)
 	if !set_handle_info_ok {
 		error_num := int(C.GetLastError())
 		error_msg := get_error_msg(error_num)
-		return error_with_code('exec failed (SetHandleInformation): $error_msg', error_num)
+		return Result{
+			exit_code: error_num
+			output: 'exec failed (SetHandleInformation): $error_msg'
+		}
 	}
 	proc_info := ProcessInformation{}
 	start_info := StartupInfo{
+		lp_reserved2: 0
 		lp_reserved: 0
 		lp_desktop: 0
 		lp_title: 0
@@ -257,13 +271,15 @@ pub fn exec(cmd string) ?Result {
 	}
 	command_line := [32768]u16{}
 	C.ExpandEnvironmentStringsW(cmd.to_wide(), voidptr(&command_line), 32768)
-	create_process_ok := C.CreateProcessW(0, command_line, 0, 0, C.TRUE, 0, 0, 0, voidptr(&start_info),
-		voidptr(&proc_info))
+	create_process_ok := C.CreateProcessW(0, &command_line[0], 0, 0, C.TRUE, 0, 0, 0,
+		voidptr(&start_info), voidptr(&proc_info))
 	if !create_process_ok {
 		error_num := int(C.GetLastError())
 		error_msg := get_error_msg(error_num)
-		return error_with_code('exec failed (CreateProcess) with code $error_num: $error_msg cmd: $cmd',
-			error_num)
+		return Result{
+			exit_code: error_num
+			output: 'exec failed (CreateProcess) with code $error_num: $error_msg cmd: $cmd'
+		}
 	}
 	C.CloseHandle(child_stdin)
 	C.CloseHandle(child_stdout_write)
@@ -271,15 +287,18 @@ pub fn exec(cmd string) ?Result {
 	mut bytes_read := u32(0)
 	mut read_data := strings.new_builder(1024)
 	for {
-		readfile_result := C.ReadFile(child_stdout_read, buf, 1000, voidptr(&bytes_read),
-			0)
-		read_data.write_bytes(buf, int(bytes_read))
-		if readfile_result == false || int(bytes_read) == 0 {
+		mut result := false
+		unsafe {
+			result = C.ReadFile(child_stdout_read, &buf[0], 1000, voidptr(&bytes_read),
+				0)
+			read_data.write_ptr(&buf[0], int(bytes_read))
+		}
+		if result == false || int(bytes_read) == 0 {
 			break
 		}
 	}
 	soutput := read_data.str().trim_space()
-	read_data.free()
+	unsafe { read_data.free() }
 	exit_code := u32(0)
 	C.WaitForSingleObject(proc_info.h_process, C.INFINITE)
 	C.GetExitCodeProcess(proc_info.h_process, voidptr(&exit_code))
@@ -358,15 +377,36 @@ pub fn debugger_present() bool {
 }
 
 pub fn uname() Uname {
-	// TODO: implement `os.uname()` for windows
-	unknown := 'unknown'
+	sys_and_ver := execute('cmd /c ver').output.split('[')
+	nodename := hostname()
+	machine := getenv('PROCESSOR_ARCHITECTURE')
 	return Uname{
-		sysname: unknown
-		nodename: unknown
-		release: unknown
-		version: unknown
-		machine: unknown
+		sysname: sys_and_ver[0].trim_space()
+		nodename: nodename
+		release: sys_and_ver[1].replace(']', '')
+		version: sys_and_ver[0] + '[' + sys_and_ver[1]
+		machine: machine
 	}
+}
+
+pub fn hostname() string {
+	hostname := [255]u16{}
+	size := u32(255)
+	res := C.GetComputerNameW(&hostname[0], &size)
+	if !res {
+		return error(get_error_msg(int(C.GetLastError())))
+	}
+	return unsafe { string_from_wide(&hostname[0]) }
+}
+
+pub fn loginname() string {
+	loginname := [255]u16{}
+	size := u32(255)
+	res := C.GetUserNameW(&loginname[0], &size)
+	if !res {
+		return error(get_error_msg(int(C.GetLastError())))
+	}
+	return unsafe { string_from_wide(&loginname[0]) }
 }
 
 // `is_writable_folder` - `folder` exists and is writable to the process
@@ -382,7 +422,7 @@ pub fn is_writable_folder(folder string) ?bool {
 		return error('cannot write to folder $folder: $err')
 	}
 	f.close()
-	rm(tmp_perm_check)
+	rm(tmp_perm_check) ?
 	return true
 }
 

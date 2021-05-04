@@ -1,4 +1,5 @@
 import os
+import strings
 
 // This program is built and run via Valgrind to ensure there are no leaks with -autofree
 fn simple() {
@@ -210,15 +211,11 @@ fn if_expr() string {
 }
 
 fn return_if_expr() string {
-	return if true {
-		get_string('a' + 'b')
-	} else {
-		get_string('c' + 'd')
-	}
+	return if true { get_string('a' + 'b') } else { get_string('c' + 'd') }
 }
 
 fn loop_map() {
-	m := {
+	m := map{
 		'UK':     'London'
 		'France': 'Paris'
 	}
@@ -322,6 +319,11 @@ fn get_user() User {
 	return user
 }
 
+fn get_user2() User {
+	users := [User{'Peter', 25}, User{'Alice', 21}]
+	return users[0] // has to be cloned, since `users` are going to be freed at the end of the function
+}
+
 fn string_array_get() {
 	s := ['a', 'b', 'c']
 	x := s[0]
@@ -337,6 +339,37 @@ fn comp_if() {
 	println(s)
 }
 
+fn anon_fn() {
+}
+
+fn return_sb_str() string {
+	mut sb := strings.new_builder(100)
+	sb.write_string('hello')
+	return sb.str() // sb should be freed, but only after .str() is called
+}
+
+fn parse_header0(s string) ?string {
+	if !s.contains(':') {
+		return error('missing colon in header')
+	}
+	words := s.split_nth(':', 2)
+	x := words[0]
+	return x
+}
+
+fn parse_header1(s string) ?string {
+	if !s.contains(':') {
+		return error('missing colon in header')
+	}
+	words := s.split_nth(':', 2)
+	return words[0]
+}
+
+fn advanced_optionals() {
+	s := parse_header0('foo:bar') or { return }
+	s2 := parse_header1('foo:bar') or { return }
+}
+
 fn main() {
 	println('start')
 	simple()
@@ -347,7 +380,7 @@ fn main() {
 	str_tmp_expr_advanced_var_decl()
 	str_inter()
 	match_expr()
-	// optional_str()
+	optional_str()
 	// optional_return()
 	str_replace()
 	str_replace2()
@@ -360,9 +393,11 @@ fn main() {
 	free_before_return()
 	free_before_return_bool()
 	free_before_break()
+	s2 := return_sb_str()
 	// free_map()
 	// loop_map()
-	// free_array_except_returned_element()
+	advanced_optionals()
+	free_array_except_returned_element()
 	println('end')
 }
 

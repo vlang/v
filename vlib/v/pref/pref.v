@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module pref
 
+// import v.ast // TODO this results in a compiler bug
 import os.cmdline
 import os
 import v.vcache
@@ -14,6 +15,22 @@ pub enum BuildMode {
 	default_mode // `v -lib ~/v/os`
 	// build any module (generate os.o + os.vh)
 	build_module
+}
+
+pub enum AssertFailureMode {
+	default
+	aborts
+	backtraces
+}
+
+pub enum GarbageCollectionMode {
+	no_gc
+	boehm_full // full garbage collection mode
+	boehm_incr // incremental garbage colletion mode
+	boehm_full_opt // full garbage collection mode
+	boehm_incr_opt // incremental garbage colletion mode
+	boehm // default Boehm-GC mode for architecture
+	boehm_leak // leak detection mode (makes `gc_check_leaks()` work)
 }
 
 pub enum OutputMode {
@@ -30,7 +47,7 @@ pub enum ColorOutput {
 pub enum Backend {
 	c // The (default) C backend
 	js // The JavaScript backend
-	x64 // The x64 backend
+	native // The Native backend
 }
 
 pub enum CompilerType {
@@ -42,16 +59,28 @@ pub enum CompilerType {
 	cplusplus
 }
 
+pub enum Arch {
+	_auto
+	amd64 // aka x86_64
+	arm64 // 64-bit arm
+	arm32 // 32-bit arm
+	rv64 // 64-bit risc-v
+	rv32 // 32-bit risc-v
+	i386
+}
+
 const (
 	list_of_flags_with_param = ['o', 'd', 'define', 'b', 'backend', 'cc', 'os', 'target-os', 'cf',
-		'cflags', 'path']
+		'cflags', 'path', 'arch']
 )
 
+[heap]
 pub struct Preferences {
 pub mut:
 	os          OS // the OS to compile for
 	backend     Backend
 	build_mode  BuildMode
+	arch        Arch
 	output_mode OutputMode = .stdout
 	// verbosity           VerboseLevel
 	is_verbose bool
@@ -78,8 +107,10 @@ pub mut:
 	// NB: passing -cg instead of -g will set is_vlines to false and is_debug to true, thus making v generate cleaner C files,
 	// which are sometimes easier to debug / inspect manually than the .tmp.c files by plain -g (when/if v line number generation breaks).
 	// use cached modules to speed up compilation.
+	dump_c_flags string // `-dump-c-flags file.txt` - let V store all C flags, passed to the backend C compiler
+	// in `file.txt`, one C flag/value per line.
 	use_cache         bool // = true
-	retry_compilation bool = true
+	retry_compilation bool = true // retry the compilation with another C compiler, if tcc fails.
 	is_stats          bool // `v -stats file_test.v` will produce more detailed statistics for the tests that were run
 	// TODO Convert this into a []string
 	cflags string // Additional options which will be passed to the C compiler.
@@ -99,21 +130,20 @@ pub mut:
 	// This is on by default, since a vast majority of users do not
 	// work on the builtin module itself.
 	// generating_vh    bool
-	enable_globals bool // allow __global for low level code
-	is_fmt         bool
-	is_vet         bool
-	is_bare        bool
-	no_preludes    bool   // Prevents V from generating preludes in resulting .c files
-	custom_prelude string // Contents of custom V prelude that will be prepended before code in resulting .c files
-	lookup_path    []string
-	output_cross_c bool
-	prealloc       bool
-	vroot          string
-	out_name_c     string // full os.real_path to the generated .tmp.c file; set by builder.
-	out_name       string
-	display_name   string
-	bundle_id      string
-	path           string // Path to file/folder to compile
+	enable_globals   bool // allow __global for low level code
+	is_fmt           bool
+	is_vet           bool
+	is_bare          bool
+	no_preludes      bool   // Prevents V from generating preludes in resulting .c files
+	custom_prelude   string // Contents of custom V prelude that will be prepended before code in resulting .c files
+	lookup_path      []string
+	bare_builtin_dir string // Path to implementation of malloc, memset, etc. Only used if is_bare is true
+	output_cross_c   bool
+	prealloc         bool
+	vroot            string
+	out_name_c       string // full os.real_path to the generated .tmp.c file; set by builder.
+	out_name         string
+	path             string // Path to file/folder to compile
 	// -d vfmt and -d another=0 for `$if vfmt { will execute }` and `$if another ? { will NOT get here }`
 	compile_defines     []string    // just ['vfmt']
 	compile_defines_all []string    // contains both: ['vfmt','another']
@@ -132,15 +162,22 @@ pub mut:
 	is_vweb             bool // skip _ var warning in templates
 	only_check_syntax   bool // when true, just parse the files, then stop, before running checker
 	experimental        bool // enable experimental features
+	skip_unused         bool // skip generating C code for functions, that are not used
 	show_timings        bool // show how much time each compiler stage took
 	is_ios_simulator    bool
 	is_apk              bool     // build as Android .apk format
 	cleanup_files       []string // list of temporary *.tmp.c and *.tmp.c.rsp files. Cleaned up on successfull builds.
 	build_options       []string // list of options, that should be passed down to `build-module`, if needed for -usecache
 	cache_manager       vcache.CacheManager
+	is_help             bool // -h, -help or --help was passed
+	gc_mode             GarbageCollectionMode = .no_gc // .no_gc, .boehm, .boehm_leak, ...
+	is_cstrict          bool                  // turn on more C warnings; slightly slower
+	assert_failure_mode AssertFailureMode // whether to call abort() or print_backtrace() after an assertion failure
+	// checker settings:
+	checker_match_exhaustive_cutoff_limit int = 10
 }
 
-pub fn parse_args(args []string) (&Preferences, string) {
+pub fn parse_args(known_external_commands []string, args []string) (&Preferences, string) {
 	mut res := &Preferences{}
 	$if x64 {
 		res.m64 = true // follow V model by default
@@ -150,17 +187,49 @@ pub fn parse_args(args []string) (&Preferences, string) {
 	// for i, arg in args {
 	for i := 0; i < args.len; i++ {
 		arg := args[i]
-		current_args := args[i..]
+		current_args := args[i..].clone()
 		match arg {
 			'-apk' {
 				res.is_apk = true
 				res.build_options << arg
+			}
+			'-arch' {
+				target_arch := cmdline.option(current_args, '-arch', '')
+				i++
+				target_arch_kind := arch_from_string(target_arch) or {
+					eprintln('unknown architecture target `$target_arch`')
+					exit(1)
+				}
+				res.arch = target_arch_kind
+				res.build_options << '$arg $target_arch'
+			}
+			'-assert' {
+				assert_mode := cmdline.option(current_args, '-assert', '')
+				match assert_mode {
+					'aborts' {
+						res.assert_failure_mode = .aborts
+					}
+					'backtraces' {
+						res.assert_failure_mode = .backtraces
+					}
+					else {
+						eprintln('unknown assert mode `-gc $assert_mode`, supported modes are:`')
+						eprintln('  `-assert aborts`     .... calls abort() after assertion failure')
+						eprintln('  `-assert backtraces` .... calls print_backtrace() after assertion failure')
+						exit(1)
+					}
+				}
+				i++
 			}
 			'-show-timings' {
 				res.show_timings = true
 			}
 			'-check-syntax' {
 				res.only_check_syntax = true
+			}
+			'-h', '-help', '--help' {
+				// NB: help is *very important*, just respond to all variations:
+				res.is_help = true
 			}
 			'-v' {
 				// `-v` flag is for setting verbosity, but without any args it prints the version, like Clang
@@ -183,6 +252,59 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			'-silent' {
 				res.output_mode = .silent
 			}
+			'-cstrict' {
+				res.is_cstrict = true
+			}
+			'-gc' {
+				gc_mode := cmdline.option(current_args, '-gc', '')
+				match gc_mode {
+					'' {
+						res.gc_mode = .no_gc
+					}
+					'boehm_full' {
+						res.gc_mode = .boehm_full
+						parse_define(mut res, 'gcboehm')
+						parse_define(mut res, 'gcboehm_full')
+					}
+					'boehm_incr' {
+						res.gc_mode = .boehm_incr
+						parse_define(mut res, 'gcboehm')
+						parse_define(mut res, 'gcboehm_incr')
+					}
+					'boehm_full_opt' {
+						res.gc_mode = .boehm_full_opt
+						parse_define(mut res, 'gcboehm')
+						parse_define(mut res, 'gcboehm_full')
+						parse_define(mut res, 'gcboehm_opt')
+					}
+					'boehm_incr_opt' {
+						res.gc_mode = .boehm_incr_opt
+						parse_define(mut res, 'gcboehm')
+						parse_define(mut res, 'gcboehm_incr')
+						parse_define(mut res, 'gcboehm_opt')
+					}
+					'boehm' {
+						res.gc_mode = .boehm
+						parse_define(mut res, 'gcboehm')
+					}
+					'boehm_leak' {
+						res.gc_mode = .boehm_leak
+						parse_define(mut res, 'gcboehm')
+						parse_define(mut res, 'gcboehm_leak')
+					}
+					else {
+						eprintln('unknown garbage collection mode `-gc $gc_mode`, supported modes are:`')
+						eprintln('  `-gc boehm` ............ default mode for the platform')
+						eprintln('  `-gc boehm_full` ....... classic full collection')
+						eprintln('  `-gc boehm_incr` ....... incremental collection')
+						eprintln('  `-gc boehm_full_opt` ... optimized classic full collection')
+						eprintln('  `-gc boehm_incr_opt` ... optimized incremental collection')
+						eprintln('  `-gc boehm_leak` ....... leak detection (for debugging)')
+						exit(1)
+					}
+				}
+				i++
+			}
 			'-g' {
 				res.is_debug = true
 				res.is_vlines = true
@@ -192,6 +314,13 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				res.is_debug = true
 				res.is_vlines = false
 				res.build_options << arg
+			}
+			'-debug-tcc' {
+				res.ccompiler = 'tcc'
+				res.build_options << '$arg "$res.ccompiler"'
+				res.retry_compilation = false
+				res.show_cc = true
+				res.show_c_output = true
 			}
 			'-repl' {
 				res.is_repl = true
@@ -206,7 +335,11 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			'-shared' {
 				res.is_shared = true
 			}
-			'--enable-globals', '-enable-globals' {
+			'--enable-globals' {
+				eprintln('`--enable-globals` flag is deprecated, please use `-enable-globals` instead')
+				res.enable_globals = true
+			}
+			'-enable-globals' {
 				res.enable_globals = true
 			}
 			'-autofree' {
@@ -216,6 +349,9 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			'-manualfree' {
 				res.autofree = false
 				res.build_options << arg
+			}
+			'-skip-unused' {
+				res.skip_unused = true
 			}
 			'-compress' {
 				res.compress = true
@@ -254,7 +390,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			'-stats' {
 				res.is_stats = true
 			}
-			'-obfuscate' {
+			'-obf', '-obfuscate' {
 				res.obfuscate = true
 			}
 			'-translated' {
@@ -276,6 +412,10 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			'-show-c-output' {
 				res.show_c_output = true
 			}
+			'-dump-c-flags' {
+				res.dump_c_flags = cmdline.option(current_args, arg, '-')
+				i++
+			}
 			'-experimental' {
 				res.experimental = true
 			}
@@ -292,8 +432,8 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			'-parallel' {
 				res.is_parallel = true
 			}
-			'-x64' {
-				res.backend = .x64
+			'-native' {
+				res.backend = .native
 				res.build_options << arg
 			}
 			'-W' {
@@ -305,7 +445,11 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			'-w' {
 				res.skip_warnings = true
 			}
-			'-print_v_files' {
+			'-watch' {
+				eprintln('The -watch option is deprecated. Please use the watch command `v watch file.v` instead.')
+				exit(1)
+			}
+			'-print-v-files' {
 				res.print_v_files = true
 			}
 			'-error-limit' {
@@ -326,7 +470,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				res.build_options << '$arg $target_os'
 			}
 			'-printfn' {
-				res.printfn_list << cmdline.option(current_args, '-printfn', '')
+				res.printfn_list << cmdline.option(current_args, '-printfn', '').split(',')
 				i++
 			}
 			'-cflags' {
@@ -344,6 +488,11 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			'-cc' {
 				res.ccompiler = cmdline.option(current_args, '-cc', 'cc')
 				res.build_options << '$arg "$res.ccompiler"'
+				i++
+			}
+			'-checker-match-exhaustive-cutoff-limit' {
+				res.checker_match_exhaustive_cutoff_limit = cmdline.option(current_args,
+					arg, '10').int()
 				i++
 			}
 			'-o' {
@@ -369,6 +518,12 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				res.lookup_path = path.replace('|', os.path_delimiter).split(os.path_delimiter)
 				i++
 			}
+			'-bare-builtin-dir' {
+				bare_builtin_dir := cmdline.option(current_args, arg, '')
+				res.build_options << '$arg "$bare_builtin_dir"'
+				res.bare_builtin_dir = bare_builtin_dir
+				i++
+			}
 			'-custom-prelude' {
 				path := cmdline.option(current_args, '-custom-prelude', '')
 				res.build_options << '$arg $path'
@@ -379,21 +534,13 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				res.custom_prelude = prelude
 				i++
 			}
-			'-name' {
-				res.display_name = cmdline.option(current_args, '-name', '')
-				i++
-			}
-			'-bundle' {
-				res.bundle_id = cmdline.option(current_args, '-bundle', '')
-				i++
-			}
 			else {
-				if command == 'build' && (arg.ends_with('.v') || os.exists(command)) {
+				if command == 'build' && is_source_file(arg) {
 					eprintln('Use `v $arg` instead.')
 					exit(1)
 				}
 				if arg[0] == `-` {
-					if arg[1..] in list_of_flags_with_param {
+					if arg[1..] in pref.list_of_flags_with_param {
 						// skip parameter
 						i++
 						continue
@@ -405,6 +552,10 @@ pub fn parse_args(args []string) (&Preferences, string) {
 						if command == 'run' {
 							break
 						}
+					} else if is_source_file(command) && is_source_file(arg)
+						&& command !in known_external_commands {
+						eprintln('Too many targets. Specify just one target: <target.v|target_directory>.')
+						exit(1)
 					}
 					continue
 				}
@@ -413,26 +564,25 @@ pub fn parse_args(args []string) (&Preferences, string) {
 					command_pos = i
 					continue
 				}
-				if command !in ['', 'build-module'] {
+				if command != '' && command != 'build-module' {
 					// arguments for e.g. fmt should be checked elsewhere
 					continue
 				}
-				eprint('Unknown argument `$arg`')
-				eprintln(if command.len == 0 {
-					''
-				} else {
-					' for command `$command`'
-				})
+				extension := if command.len == 0 { '' } else { ' for command `$command`' }
+				eprintln('Unknown argument `$arg`$extension')
 				exit(1)
 			}
 		}
+	}
+	if res.is_debug {
+		parse_define(mut res, 'debug')
 	}
 	// res.use_cache = true
 	if command != 'doc' && res.out_name.ends_with('.v') {
 		eprintln('Cannot save output binary in a .v file.')
 		exit(1)
 	}
-	if command.ends_with('.v') || os.exists(command) {
+	if is_source_file(command) {
 		res.path = command
 	} else if command == 'run' {
 		res.is_run = true
@@ -451,15 +601,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				output_option = '-o "$tmp_exe_file_path"'
 			}
 			tmp_v_file_path := '${tmp_file_path}.v'
-			mut lines := []string{}
-			for {
-				iline := os.get_raw_line()
-				if iline.len == 0 {
-					break
-				}
-				lines << iline
-			}
-			contents := lines.join('')
+			contents := os.get_raw_lines_joined()
 			os.write_file(tmp_v_file_path, contents) or {
 				panic('Failed to create temporary file $tmp_v_file_path')
 			}
@@ -474,18 +616,21 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			//
 			if output_option.len != 0 {
 				res.vrun_elog('remove tmp exe file: $tmp_exe_file_path')
-				os.rm(tmp_exe_file_path)
+				os.rm(tmp_exe_file_path) or {}
 			}
 			res.vrun_elog('remove tmp v file: $tmp_v_file_path')
-			os.rm(tmp_v_file_path)
+			os.rm(tmp_v_file_path) or { panic(err) }
 			exit(tmp_result)
 		}
 		must_exist(res.path)
 		if !res.path.ends_with('.v') && os.is_executable(res.path) && os.is_file(res.path)
 			&& os.is_file(res.path + '.v') {
-			eprintln('It looks like you wanted to run "${res.path}.v", so we went ahead and did that since "$res.path" is an executable.')
+			eprintln('It looks like you wanted to run "${res.path}.v", so we went ahead and did that since "$res.path" is an execuast.')
 			res.path += '.v'
 		}
+	}
+	if !res.is_bare && res.bare_builtin_dir != '' {
+		eprintln('`-bare-builtin-dir` must be used with `-freestanding`')
 	}
 	if command == 'build-module' {
 		res.build_mode = .build_module
@@ -508,6 +653,41 @@ pub fn (pref &Preferences) vrun_elog(s string) {
 	}
 }
 
+pub fn arch_from_string(arch_str string) ?Arch {
+	match arch_str {
+		'amd64', 'x86_64', 'x64', 'x86' { // amd64 recommended
+
+			return Arch.amd64
+		}
+		'aarch64', 'arm64' { // arm64 recommended
+
+			return Arch.arm64
+		}
+		'aarch32', 'arm32', 'arm' { // arm32 recommended
+
+			return Arch.arm32
+		}
+		'rv64', 'riscv64', 'risc-v64', 'riscv', 'risc-v' { // rv64 recommended
+
+			return Arch.rv64
+		}
+		'rv32', 'riscv32' { // rv32 recommended
+
+			return Arch.rv32
+		}
+		'x86_32', 'x32', 'i386', 'IA-32', 'ia-32', 'ia32' { // i386 recommended
+
+			return Arch.i386
+		}
+		'' {
+			return ._auto
+		}
+		else {
+			return error('invalid arch: $arch_str')
+		}
+	}
+}
+
 fn must_exist(path string) {
 	if !os.exists(path) {
 		eprintln('v expects that `$path` exists, but it does not')
@@ -515,11 +695,16 @@ fn must_exist(path string) {
 	}
 }
 
+[inline]
+fn is_source_file(path string) bool {
+	return path.ends_with('.v') || os.exists(path)
+}
+
 pub fn backend_from_string(s string) ?Backend {
 	match s {
 		'c' { return .c }
 		'js' { return .js }
-		'x64' { return .x64 }
+		'native' { return .native }
 		else { return error('Unknown backend type $s') }
 	}
 }
@@ -530,26 +715,43 @@ pub fn cc_from_string(cc_str string) CompilerType {
 		return .gcc
 	}
 	// TODO
-	cc := cc_str.replace('\\', '/').split('/').last().all_before('.')
-	if '++' in cc {
+	normalized_cc := cc_str.replace('\\', '/')
+	normalized_cc_array := normalized_cc.split('/')
+	last_elem := normalized_cc_array.last()
+	cc := last_elem.all_before('.')
+	if cc.contains('++') {
 		return .cplusplus
 	}
-	if 'tcc' in cc {
+	if cc.contains('tcc') || cc.contains('tinyc') {
 		return .tinyc
 	}
-	if 'tinyc' in cc {
-		return .tinyc
-	}
-	if 'clang' in cc {
+	if cc.contains('clang') {
 		return .clang
 	}
-	if 'mingw' in cc {
+	if cc.contains('mingw') {
 		return .mingw
 	}
-	if 'msvc' in cc {
+	if cc.contains('msvc') {
 		return .msvc
 	}
 	return .gcc
+}
+
+pub fn get_host_arch() Arch {
+	$if amd64 {
+		return .amd64
+	}
+	// $if i386 {
+	// 	return .amd64
+	// }
+	// $if arm64 { // requires new vc
+	$if aarch64 {
+		return .arm64
+	}
+	// $if arm32 {
+	// 	return .arm32
+	// }
+	panic('unknown host OS')
 }
 
 fn parse_define(mut prefs Preferences, define string) {
