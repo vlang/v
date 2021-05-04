@@ -10,7 +10,5 @@ fn main() {
 		println('Hello world from V x64 machine code generator!')
 		i++
 	}
-	println('Hello again!')
-	test_fn()
-	println('done')
 }
+

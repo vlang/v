@@ -58,7 +58,7 @@ pub fn (mut e Eval) run_func(func ast.FnDecl, _args ...Object) {
 	}
 
 	if func.name in ['print', 'println', 'eprint', 'eprintln'] {
-		s := args[0].string() // stringify because println accepts string as argument
+		s := args[0].string() // stringify because println accepts anything as argument
 		match func.name {
 			'print' {
 				print(s)

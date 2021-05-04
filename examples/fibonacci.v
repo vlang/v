@@ -11,6 +11,7 @@ fn main() {
 	}
 
 	// Parse first argument and cast it to int
+
 	stop := os.args[1].int()
 	// Can only calculate correctly until rank 92
 	if stop > 92 {

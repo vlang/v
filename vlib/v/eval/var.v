@@ -37,6 +37,18 @@ pub fn (mut e Eval) set(expr ast.Expr, val Object, init bool, typ table.Type) {
 				e.local_vars[expr.name].val = val
 			}
 		}
+		ast.IndexExpr {
+			panic('>>$expr.pos, $e.cur_file')
+
+			// if init {
+			// 	e.error('index init assignment')
+			// } else {
+			// 	mut x := (e.local_vars[(expr.left as ast.Ident).name].val)
+			// 	if x is Array {
+			// 		x.val[(e.expr(expr.index, table.int_type_idx) as Int).val] = val
+			// 	}
+			// }
+		}
 		else {
 			panic('unknown left value to assign statment: $expr.type_name()')
 		}

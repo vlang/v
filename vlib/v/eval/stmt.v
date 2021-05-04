@@ -19,20 +19,26 @@ pub fn (mut e Eval) stmt(stmt ast.Stmt) {
 			e.expr(stmt.expr, stmt.typ)
 		}
 		ast.AssignStmt {
-			if stmt.left.len != 1 {
-				e.error('multiple values assignments are not supported')
+			// if stmt.left.len != 1 {
+			// 	e.error('multiple values assignments are not supported')
+			// }
+			mut rights := []Object{}
+			for i, right in stmt.right {
+				rights << e.expr(right, stmt.right_types[i])
 			}
-			right_expr := stmt.right[0]
-			mut right := e.expr(right_expr, stmt.right_types[0])
-			if right_expr is ast.CallExpr { // right is []Object and needs to be unpacked
-				right = (right as []Object)[0]
+			if rights[0] is []Object { // needs to be unpacked
+				e.error('multiple assignment from function is not supported')
 			}
 			match stmt.op {
 				.decl_assign {
-					e.set(stmt.left[0], right, true, stmt.left_types[0])
+					for i, left in stmt.left {
+						e.set(left, rights[i], true, stmt.left_types[i])
+					}
 				}
 				.assign {
-					e.set(stmt.left[0], right, false, stmt.left_types[0])
+					for i, left in stmt.left {
+						e.set(left, rights[i], false, stmt.left_types[i])
+					}
 				}
 				else {
 					e.error('unknown assign statment: $stmt.op')

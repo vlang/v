@@ -20,18 +20,27 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 			}
 			match expr.language {
 				.c {
+					if expr.is_method {
+						e.error('c does not have methods')
+					}
 					match expr.name.all_after('C.') {
 						'write' {
-							return Int{C.write((args[0] as Int).val, args[1] as voidptr,
-								(args[2] as Int).val), 32}
+							return Int{C.write(args[0].int_val(), args[1] as voidptr,
+								args[2].int_val()), 32}
 						}
 						'calloc' {
-							return Object(vcalloc(int((args[0] as Int).val * (args[1] as Int).val)))
+							return Object(vcalloc(int(args[0].int_val() * args[1].int_val())))
 						}
 						'getcwd' {
 							unsafe {
-								return Charptr(&i8(&char(C.getcwd(charptr(&char(args[0] as Charptr)),
-									(args[1] as Int).val))))
+								return Charptr(&char(C.getcwd(charptr(&char(args[0] as Charptr)),
+									args[1].int_val())))
+							}
+						}
+						'memcpy' {
+							unsafe {
+								return Object(voidptr(C.memcpy(args[0].voidptr_val(),
+									args[1].voidptr_val(), args[2].int_val())))
 							}
 						}
 						// 'printf' {
@@ -66,7 +75,11 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 					mut func := e.mods[mod][name] or { e.mods['builtin'][name] }
 					if func is ast.FnDecl {
 						e.run_func(func as ast.FnDecl, ...args)
-						return e.return_values
+						if e.return_values.len == 1 {
+							return e.return_values[0]
+						} else {
+							return e.return_values
+						}
 					}
 					e.error('unknown function: ${mod}.$name at line $expr.pos.line_nr')
 				}
@@ -105,28 +118,32 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 					if expr.has_else && i + 1 == expr.branches.len { // else branch
 						do_if = true
 					} else {
-						match (branch.cond as ast.Ident).name {
-							'windows' {
-								do_if = e.pref.os == .windows
+						if branch.cond is ast.Ident {
+							match branch.cond.name {
+								'windows' {
+									do_if = e.pref.os == .windows
+								}
+								'macos' {
+									do_if = e.pref.os == .macos
+								}
+								'linux' {
+									do_if = e.pref.os == .linux
+								}
+								'android' {
+									do_if = e.pref.os == .android
+								}
+								'freebsd' {
+									do_if = e.pref.os == .freebsd
+								}
+								'prealloc' {
+									do_if = e.pref.prealloc
+								}
+								else {
+									e.error('unknown compile time if: $branch.cond.name')
+								}
 							}
-							'macos' {
-								do_if = e.pref.os == .macos
-							}
-							'linux' {
-								do_if = e.pref.os == .linux
-							}
-							'android' {
-								do_if = e.pref.os == .android
-							}
-							'freebsd' {
-								do_if = e.pref.os == .freebsd
-							}
-							'prealloc' {
-								do_if = e.pref.prealloc
-							}
-							else {
-								e.error('unknown compile time if: ${(branch.cond as ast.Ident).name}')
-							}
+						} else if branch.cond is ast.PostfixExpr {
+							do_if = (branch.cond.expr as ast.Ident).name in e.pref.compile_defines
 						}
 					}
 					if do_if {
@@ -161,14 +178,11 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 			return e.infix_expr(left, right, expr.op, expecting)
 		}
 		ast.IntegerLiteral {
-			if expecting in ast.unsigned_integer_type_idxs {
-				return Uint{strconv.parse_uint(expr.val, 0, 64), i8(e.type_to_size(expecting))}
-			} else {
-				return Int{strconv.parse_int(expr.val, 0, 64), i8(e.type_to_size(expecting))}
-			}
+			// return u64(strconv.parse_uint(expr.val, 0, 64)
+			return i64(strconv.parse_int(expr.val, 0, 64)) // TODO: numbers larger than 2^63 (for u64)
 		}
 		ast.FloatLiteral {
-			return Float{strconv.atof64(expr.val), i8(e.type_to_size(expecting))}
+			return f64(strconv.atof64(expr.val))
 		}
 		ast.BoolLiteral {
 			return expr.val
@@ -192,9 +206,6 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 			}
 		}
 		ast.CastExpr {
-			if e.cur_mod == 'main' {
-				println('dsaiu')
-			}
 			x := e.expr(expr.expr, expr.expr_type)
 			if expr.typ in ast.signed_integer_type_idxs {
 				match x {
@@ -214,6 +225,32 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 						return Int{
 							val: i64(x.val)
 							size: i8(e.type_to_size(expr.typ))
+						}
+					}
+					i64 {
+						if expecting in ast.signed_integer_type_idxs {
+							return Int{
+								val: x
+								size: i8(e.type_to_size(expecting))
+							}
+						} else {
+							return Uint{
+								val: u64(x)
+								size: i8(e.type_to_size(expecting))
+							}
+						}
+					}
+					f64 {
+						if expecting in ast.signed_integer_type_idxs {
+							return Int{
+								val: i64(x)
+								size: i8(e.type_to_size(expecting))
+							}
+						} else {
+							return Uint{
+								val: u64(x)
+								size: i8(e.type_to_size(expecting))
+							}
 						}
 					}
 					else {
@@ -240,6 +277,25 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 							size: i8(e.type_to_size(expr.typ))
 						}
 					}
+					i64 {
+						return Uint{
+							val: u64(x)
+							size: i8(e.type_to_size(expr.typ))
+						}
+					}
+					f64 {
+						if expecting in ast.signed_integer_type_idxs {
+							return Int{
+								val: i64(x)
+								size: i8(e.type_to_size(expecting))
+							}
+						} else {
+							return Uint{
+								val: u64(x)
+								size: i8(e.type_to_size(expecting))
+							}
+						}
+					}
 					else {
 						e.error('unknown cast: ${e.table.get_type_symbol(expr.expr_type).str()} to ${e.table.get_type_symbol(expr.typ).str()}')
 					}
@@ -261,6 +317,12 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 					Float {
 						return Float{
 							val: f64(x.val)
+							size: i8(e.type_to_size(expr.typ))
+						}
+					}
+					f64 {
+						return Float{
+							val: x
 							size: i8(e.type_to_size(expr.typ))
 						}
 					}
@@ -293,7 +355,6 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 							return Object(Charptr(&i8(x)))
 						}
 						else {
-							println(e.local_vars['buf'])
 							e.error('unknown cast: ${e.table.get_type_symbol(expr.expr_type).str()} to ${e.table.get_type_symbol(expr.typ).str()}')
 						}
 					}
@@ -407,7 +468,6 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 					}
 				}
 				else {
-<<<<<<< Updated upstream
 					e.error('unhandled prefix expression $expr.op')
 				}
 			}
@@ -416,19 +476,26 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 			match expr.op {
 				.inc {
 					e.add(expr.expr, Int{1, 64})
-					return e.expr(expr.expr, table.i64_type_idx)
+					return e.expr(expr.expr, ast.i64_type_idx)
 				}
 				.dec {
 					e.add(expr.expr, Int{-1, 64})
-					return e.expr(expr.expr, table.i64_type_idx)
+					return e.expr(expr.expr, ast.i64_type_idx)
 				}
 				else {
 					e.error('unhandled postfix expression $expr.op')
-=======
-					panic(expr.op)
->>>>>>> Stashed changes
 				}
 			}
+		}
+		ast.StringInterLiteral {
+			mut res := expr.vals[0]
+
+			for i, exp in expr.exprs {
+				res += e.expr(exp, expr.expr_types[i]).string()
+				res += expr.vals[i + 1]
+			}
+
+			return res
 		}
 		else {
 			e.error('unhandled expression $expr.type_name()')
@@ -472,6 +539,9 @@ fn (e Eval) get_escape(r rune) rune {
 		}
 		`n` {
 			`\n`
+		}
+		`0` {
+			`\0`
 		}
 		else {
 			`e`
