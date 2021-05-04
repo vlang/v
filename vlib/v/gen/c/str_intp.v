@@ -211,19 +211,17 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	}
 
 	// write struct
-	//g.writeln("")
 	g.write(" str_interpolation(${data.len}, ")
 	g.write("(StrIntpData[]){")
 	for i, item in data {
-		//clean_str := item.str.replace('"',"'")
-		clean_str := item.str
-		mut slit := "_SLIT0"//"(string){.len=0}"
-		if clean_str.len > 0 {
-			slit = '_SLIT("${clean_str}")'
-		} 
+		if item.str.len > 0 {
+			g.write('{_SLIT("${item.str}"), ${item.fmt}, ${item.d}}')
+		} else {
+			g.write('{_SLIT0, ${item.fmt}, ${item.d}}')
+		}
 		
 
-		g.write('{${slit}, ${item.fmt}, ${item.d}}')
+		
 		if i < (data.len-1) {
 			g.write(', ')
 		}
