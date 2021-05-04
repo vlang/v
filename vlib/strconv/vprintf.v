@@ -8,6 +8,21 @@ This file contains string interpolation V functions
 module strconv
 import strings
 
+enum Char_parse_state {
+	start
+	norm_char
+	field_char
+	pad_ch
+	len_set_start
+	len_set_in
+
+	check_type
+	check_float
+	check_float_in
+
+	reset_params
+}
+
 pub fn v_printf(str string, pt ... voidptr) {
 	print(v_sprintf(str, pt))
 }
@@ -256,7 +271,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 					}
 
 				}
-				res.write_string(format_dec(d1,{pad_ch: pad_ch, len0: len0, len1: 0, positive: positive, sign_flag: sign, allign: allign}))
+				res.write_string(format_dec_old(d1,{pad_ch: pad_ch, len0: len0, len1: 0, positive: positive, sign_flag: sign, allign: allign}))
 				status = .reset_params
 				p_index++
 				i++
@@ -299,7 +314,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 					}
 				}
 
-				res.write_string(format_dec(d1,{pad_ch: pad_ch, len0: len0, len1: 0, positive: positive, sign_flag: sign, allign: allign}))
+				res.write_string(format_dec_old(d1,{pad_ch: pad_ch, len0: len0, len1: 0, positive: positive, sign_flag: sign, allign: allign}))
 				status = .reset_params
 				p_index++
 				i++
@@ -361,7 +376,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 				x := unsafe {*(&f64(pt[p_index]))}
 				positive := x >= f64(0.0)
 				len1 = if len1 >= 0 { len1 } else { def_len1 }
-				s := format_fl(f64(x), {pad_ch: pad_ch, len0: len0, len1: len1, positive: positive, sign_flag: sign, allign: allign})
+				s := format_fl_old(f64(x), {pad_ch: pad_ch, len0: len0, len1: len1, positive: positive, sign_flag: sign, allign: allign})
 				res.write_string(if ch == `F` {s.to_upper()} else {s})
 				status = .reset_params
 				p_index++
@@ -373,7 +388,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 				x := unsafe {*(&f64(pt[p_index]))}
 				positive := x >= f64(0.0)
 				len1 = if len1 >= 0 { len1 } else { def_len1 }
-				s := format_es(f64(x), {pad_ch: pad_ch, len0: len0, len1: len1, positive: positive, sign_flag: sign, allign: allign})
+				s := format_es_old(f64(x), {pad_ch: pad_ch, len0: len0, len1: len1, positive: positive, sign_flag: sign, allign: allign})
 				res.write_string(if ch == `E` {s.to_upper()} else {s})
 				status = .reset_params
 				p_index++
@@ -389,10 +404,10 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 				if tx < 999_999.0 && tx >= 0.00001 {
 					//println("Here g format_fl [$tx]")
 					len1 = if len1 >= 0 { len1+1 } else { def_len1 }
-					s = format_fl(x, {pad_ch: pad_ch, len0: len0, len1: len1, positive: positive, sign_flag: sign, allign: allign, rm_tail_zero: true})
+					s = format_fl_old(x, {pad_ch: pad_ch, len0: len0, len1: len1, positive: positive, sign_flag: sign, allign: allign, rm_tail_zero: true})
 				} else {
 					len1 = if len1 >= 0 { len1+1 } else { def_len1 }
-					s = format_es(x, {pad_ch: pad_ch, len0: len0, len1: len1, positive: positive, sign_flag: sign, allign: allign, rm_tail_zero: true})
+					s = format_es_old(x, {pad_ch: pad_ch, len0: len0, len1: len1, positive: positive, sign_flag: sign, allign: allign, rm_tail_zero: true})
 				}
 				res.write_string(if ch == `G` {s.to_upper()} else {s})
 				status = .reset_params
@@ -438,4 +453,229 @@ fn fabs(x f64) f64 {
 		return -x
 	}
 	return x
+}
+
+
+// strings.Builder version of format_fl
+[manualfree]
+pub fn format_fl_old(f f64, p BF_param) string {
+	unsafe{
+		mut s  := ""
+		//mut fs := "1.2343"
+		mut fs := f64_to_str_lnd1(if f >= 0.0 {f} else {-f}, p.len1)
+		//println("Dario")
+		//println(fs)
+
+		// error!!
+		if fs[0] == `[` {
+			s.free()
+			return fs
+		}
+
+		if p.rm_tail_zero {
+			tmp := fs
+			fs = remove_tail_zeros_old(fs)
+			tmp.free()
+		}
+		mut res := strings.new_builder( if p.len0 > fs.len { p.len0 } else { fs.len })
+
+		mut sign_len_diff := 0
+		if p.pad_ch == `0` {
+			if p.positive {
+				if p.sign_flag {
+					res.write_b(`+`)
+					sign_len_diff = -1
+				}
+			} else {
+				res.write_b(`-`)
+				sign_len_diff = -1
+			}
+			tmp := s
+			s = fs.clone()
+			tmp.free()
+		} else {
+			if p.positive {
+				if p.sign_flag {
+					tmp := s
+					s = "+" + fs
+					tmp.free()
+				} else {
+					tmp := s
+					s = fs.clone()
+					tmp.free()
+				}
+			} else {
+				tmp := s
+				s = "-" + fs
+				tmp.free()
+			}
+		}
+
+		dif := p.len0 - s.len + sign_len_diff
+
+		if p.allign == .right {
+			for i1 :=0; i1 < dif; i1++ {
+				res.write_b(p.pad_ch)
+			}
+		}
+		res.write_string(s)
+		if p.allign == .left {
+			for i1 :=0; i1 < dif; i1++ {
+				res.write_b(p.pad_ch)
+			}
+		}
+
+
+		s.free()
+		fs.free()
+		tmp_res := res.str()
+		res.free()
+		return tmp_res
+	}
+}
+
+[manualfree]
+pub fn format_es_old(f f64, p BF_param) string {
+	unsafe{
+		mut s := ""
+		mut fs := f64_to_str_pad(if f> 0 {f} else {-f},p.len1)
+		if p.rm_tail_zero {
+			fs = remove_tail_zeros_old(fs)
+		}
+		mut res := strings.new_builder( if p.len0 > fs.len { p.len0 } else { fs.len })
+
+		mut sign_len_diff := 0
+		if p.pad_ch == `0` {
+			if p.positive {
+				if p.sign_flag {
+					res.write_b(`+`)
+					sign_len_diff = -1
+				}
+			} else {
+				res.write_b(`-`)
+				sign_len_diff = -1
+			}
+			tmp := s
+			s = fs.clone()
+			tmp.free()
+		} else {
+			if p.positive {
+				if p.sign_flag {
+					tmp := s
+					s = "+" + fs
+					tmp.free()
+				} else {
+					tmp := s
+					s = fs.clone()
+					tmp.free()
+				}
+			} else {
+				tmp := s
+				s = "-" + fs
+				tmp.free()
+			}
+		}
+
+		dif := p.len0 - s.len + sign_len_diff
+		if p.allign == .right {
+			for i1 :=0; i1 < dif; i1++ {
+				res.write_b(p.pad_ch)
+			}
+		}
+		res.write_string(s)
+		if p.allign == .left {
+			for i1 :=0; i1 < dif; i1++ {
+				res.write_b(p.pad_ch)
+			}
+		}
+		s.free()
+		fs.free()
+		tmp_res := res.str()
+		res.free()
+		return tmp_res
+	}
+}
+
+pub fn remove_tail_zeros_old(s string) string {
+	mut i := 0
+	mut last_zero_start := -1
+	mut dot_pos         := -1
+	mut in_decimal := false
+	mut prev_ch := byte(0)
+	for i < s.len {
+		ch := unsafe {s.str[i]}
+		if ch == `.` {
+			in_decimal = true
+			dot_pos = i
+		}
+		else if in_decimal {
+			if ch == `0` && prev_ch != `0` {
+				last_zero_start = i
+			} else if ch >= `1` && ch <= `9` {
+				last_zero_start = -1
+			} else if ch == `e` {
+				break
+			}
+		}
+		prev_ch = ch
+		i++
+	}
+
+	mut tmp := ""
+	if last_zero_start > 0 {
+		if last_zero_start == dot_pos+1 {
+			tmp = s[..dot_pos] + s[i..]
+		}else {
+			tmp = s[..last_zero_start] + s[i..]
+		}
+	} else {
+		tmp = s
+	}
+	if unsafe {tmp.str[tmp.len-1]} == `.` {
+		return tmp[..tmp.len-1]
+	}
+	return tmp
+}
+
+// max int64 9223372036854775807
+pub fn format_dec_old(d u64, p BF_param) string {
+	mut s := ""
+	mut res := strings.new_builder(20)
+	mut sign_len_diff := 0
+	if p.pad_ch == `0` {
+		if p.positive {
+			if p.sign_flag {
+				res.write_b(`+`)
+				sign_len_diff = -1
+			}
+		} else {
+			res.write_b(`-`)
+			sign_len_diff = -1
+		}
+		s = d.str()
+	} else {
+		if p.positive {
+			if p.sign_flag {
+				s = "+" + d.str()
+			} else {
+				s = d.str()
+			}
+		} else {
+			s = "-" + d.str()
+		}
+	}
+	dif := p.len0 - s.len + sign_len_diff
+
+	if p.allign == .right {
+		for i1 :=0; i1 < dif; i1++ {
+			res.write_b(p.pad_ch)
+		}
+	}
+	res.write_string(s)
+	if p.allign == .left {
+		for i1 :=0; i1 < dif; i1++ {
+			res.write_b(p.pad_ch)
+		}
+	}
+	return res.str()
 }

@@ -514,15 +514,18 @@ pub fn format_es(f f64, p BF_param) string {
 	}
 }
 
-[direct_array]
-pub fn remove_tail_zeros_new(s string) string {
+//[direct_array]
+pub fn remove_tail_zeros(s string) string {
 	unsafe{
 		mut buf := malloc(s.len + 1)
 		mut i_d := 0
 		mut i_s := 0
+		
 		// skip spaces
-		for i_s < s.len && s[i_s] in [` `,`\t`] {
+		for i_s < s.len && s[i_s] !in [`-`,`+`] && s[i_s] >= `9` && s[i_s] <= `0`{
+			buf[i_d] = s[i_s]
 			i_s++
+			i_d++
 		}
 		// sign
 		if i_s < s.len && s[i_s] in [`-`,`+`] {
