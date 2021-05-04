@@ -159,6 +159,7 @@ fn (mut g Gen) sqlite3_stmt(node ast.SqlStmtLine, typ SqlType, db_expr ast.Expr)
 	g.writeln(');')
 	mut arr_stmt := []ast.SqlStmtLine{}
 	mut arr_fkeys := []string{}
+	mut arr_field_name := []string{}
 	if node.kind == .insert {
 		// build the object now (`x.name = ... x.id == ...`)
 		for i, field in node.fields {
@@ -203,6 +204,7 @@ fn (mut g Gen) sqlite3_stmt(node ast.SqlStmtLine, typ SqlType, db_expr ast.Expr)
 
 					arr_stmt << node.sub_structs[int(t)]
 					arr_fkeys << fkey
+					arr_field_name << field.name
 				}
 			} else {
 				g.writeln('sqlite3_bind_int($g.sql_stmt_name, ${i + 0} , $x); // stmt')
@@ -224,7 +226,7 @@ fn (mut g Gen) sqlite3_stmt(node ast.SqlStmtLine, typ SqlType, db_expr ast.Expr)
 		id_name := g.new_tmp_var()
 		g.writeln('int $id_name = string_int((*(string*)array_get((*(sqlite__Row*)array_get($res, 0)).vals, 0)));')
 
-		g.sql_arr_stmt(arr_stmt, arr_fkeys, id_name, db_expr)
+		g.sql_arr_stmt(arr_stmt, arr_fkeys, arr_field_name, id_name, db_expr)
 	}
 }
 
@@ -449,6 +451,7 @@ fn (mut g Gen) mysql_stmt(node ast.SqlStmtLine, typ SqlType, db_expr ast.Expr) {
 	g.writeln('memset($bind, 0, sizeof(MYSQL_BIND)*$g.sql_i);')
 	mut arr_stmt := []ast.SqlStmtLine{}
 	mut arr_fkeys := []string{}
+	mut arr_field_name := []string{}
 	if node.kind == .insert {
 		for i, field in node.fields {
 			if g.get_sql_field_type(field) == ast.Type(-1) {
@@ -510,6 +513,7 @@ fn (mut g Gen) mysql_stmt(node ast.SqlStmtLine, typ SqlType, db_expr ast.Expr) {
 
 					arr_stmt << node.sub_structs[int(t)]
 					arr_fkeys << fkey
+					arr_field_name << field.name
 				}
 			} else {
 				t, sym := g.mysql_buffer_typ_from_field(field)
@@ -549,7 +553,7 @@ fn (mut g Gen) mysql_stmt(node ast.SqlStmtLine, typ SqlType, db_expr ast.Expr) {
 		g.writeln('int $id_name = string_int(tos_clone(${rs}_row[0]));')
 		g.writeln('mysql_free_result($rs);')
 
-		g.sql_arr_stmt(arr_stmt, arr_fkeys, id_name, db_expr)
+		g.sql_arr_stmt(arr_stmt, arr_fkeys, arr_field_name, id_name, db_expr)
 	}
 }
 
@@ -826,6 +830,7 @@ fn (mut g Gen) psql_stmt(node ast.SqlStmtLine, typ SqlType, db_expr ast.Expr) {
 
 	mut arr_stmt := []ast.SqlStmtLine{}
 	mut arr_fkeys := []string{}
+	mut arr_field_name := []string{}
 	if node.kind == .insert {
 		for i, field in node.fields {
 			if g.get_sql_field_type(field) == ast.Type(-1) {
@@ -874,6 +879,7 @@ fn (mut g Gen) psql_stmt(node ast.SqlStmtLine, typ SqlType, db_expr ast.Expr) {
 
 					arr_stmt << node.sub_structs[int(t)]
 					arr_fkeys << fkey
+					arr_field_name << field.name
 				}
 			} else {
 				g.sql_buf = strings.new_builder(100)
@@ -894,8 +900,7 @@ fn (mut g Gen) psql_stmt(node ast.SqlStmtLine, typ SqlType, db_expr ast.Expr) {
 		g.writeln('if (${res}.state != 0) { IError err = ${res}.err; eprintln(_STR("\\000%.*s", 2, IError_str(err))); }')
 		id_name := g.new_tmp_var()
 		g.writeln('int $id_name = string_int((*(string*)array_get((*(pg__Row*)${res}.data).vals, 0)));')
-
-		g.sql_arr_stmt(arr_stmt, arr_fkeys, id_name, db_expr)
+		g.sql_arr_stmt(arr_stmt, arr_fkeys, arr_field_name, id_name, db_expr)
 	}
 }
 
@@ -1162,23 +1167,34 @@ fn (mut g Gen) sql_select_arr(field ast.StructField, node ast.SqlExpr, primary s
 	}
 }
 
-fn (mut g Gen) sql_arr_stmt(arr_stmt []ast.SqlStmtLine, arr_fkeys []string, id_name string, db_expr ast.Expr) {
+fn (mut g Gen) sql_arr_stmt(arr_stmt []ast.SqlStmtLine, arr_fkeys []string, arr_field_name []string, id_name string, db_expr ast.Expr) {
 	for i, s in arr_stmt {
 		cnt := g.new_tmp_var()
-		g.writeln('for (int $cnt = 0; $cnt < ${s.object_var_name}.len; $cnt++) {')
+		g.writeln('for (int $cnt = 0; $cnt < ${s.object_var_name}.${arr_field_name[i]}.len; $cnt++) {')
 		name := g.table.get_type_symbol(s.table_expr.typ).cname
 		tmp_var := g.new_tmp_var()
-		g.writeln('\t$name $tmp_var = (*($name*)array_get($s.object_var_name, $cnt));')
+		g.writeln('\t$name $tmp_var = (*($name*)array_get(${s.object_var_name}.${arr_field_name[i]}, $cnt));')
 
+		mut sub_structs := map[int]ast.SqlStmtLine{}
+
+		for key, sub in s.sub_structs {
+			sub_structs[key] = ast.SqlStmtLine{
+				pos: sub.pos
+				kind: sub.kind
+				table_expr: sub.table_expr
+				object_var_name: tmp_var
+				fields: sub.fields
+				sub_structs: sub.sub_structs
+			}
+		}
 		stmt := ast.SqlStmtLine{
 			pos: s.pos
 			kind: s.kind
 			table_expr: s.table_expr
 			object_var_name: tmp_var
 			fields: s.fields
-			sub_structs: s.sub_structs
+			sub_structs: sub_structs
 		}
-
 		tmp_fkey := g.sql_fkey
 		tmp_parent_id := g.sql_parent_id
 		g.sql_fkey = arr_fkeys[i]
