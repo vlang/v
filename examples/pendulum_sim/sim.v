@@ -3,13 +3,23 @@
 // created by: jordan bonecutter * * * * * * * * * * * * * * * * * * *
 // jpbonecutter@gmail.com  * * * * * * * * * * * * * * * * * * * * * *
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+//
+// I wrote the pendulum simulator to learn V, I think it could be a
+// good addition to the examples directory.
+// Essentially, the pendulum sim runs a simulation of a pendulum with
+// a metallic tip swinging over three magnets.
+// I run this simulation with the initial position at each pixel in an
+// image and color the pixel according to the magnet over which it
+// finally rests.
+// I used some fun features in V like coroutines, channels,
+// struct embedding, mutability, methods, and the like.
 import math
 import os
 import runtime
 
-const height = 100
-
 const width = 70
+
+const height = 100
 
 // customisable through setting VJOBS
 const parallel_workers = runtime.nr_jobs()
