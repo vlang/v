@@ -1,5 +1,7 @@
 module os
 
+#include <signal.h>
+
 pub enum Signal {
 	hup = 1
 	int
