@@ -7,6 +7,13 @@ import math
 import os
 import runtime
 
+const height = 100
+
+const width = 70
+
+// customisable through setting VJOBS
+const parallel_workers = runtime.nr_jobs()
+
 struct Vec3D {
 	x f64
 	y f64
@@ -289,13 +296,6 @@ fn image_worker(mut writer PPMWriter, result_chan chan SimResult, total_pixels u
 		}
 	}
 }
-
-const height = 100
-
-const width = 70
-
-// customisable through setting VJOBS
-const parallel_workers = runtime.nr_jobs()
 
 fn main() {
 	params := SimParams{
