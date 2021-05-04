@@ -210,85 +210,6 @@ pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
 	}
 }
 
-
-// strings.Builder version of format_fl
-[manualfree]
-pub fn format_fl(f f64, p BF_param) string {
-	unsafe{
-		mut s  := ""
-		//mut fs := "1.2343"
-		mut fs := f64_to_str_lnd1(if f >= 0.0 {f} else {-f}, p.len1)
-		//println("Dario")
-		//println(fs)
-
-		// error!!
-		if fs[0] == `[` {
-			s.free()
-			return fs
-		}
-
-		if p.rm_tail_zero {
-			tmp := fs
-			fs = remove_tail_zeros(fs)
-			tmp.free()
-		}
-		mut res := strings.new_builder( if p.len0 > fs.len { p.len0 } else { fs.len })
-
-		mut sign_len_diff := 0
-		if p.pad_ch == `0` {
-			if p.positive {
-				if p.sign_flag {
-					res.write_b(`+`)
-					sign_len_diff = -1
-				}
-			} else {
-				res.write_b(`-`)
-				sign_len_diff = -1
-			}
-			tmp := s
-			s = fs.clone()
-			tmp.free()
-		} else {
-			if p.positive {
-				if p.sign_flag {
-					tmp := s
-					s = "+" + fs
-					tmp.free()
-				} else {
-					tmp := s
-					s = fs.clone()
-					tmp.free()
-				}
-			} else {
-				tmp := s
-				s = "-" + fs
-				tmp.free()
-			}
-		}
-
-		dif := p.len0 - s.len + sign_len_diff
-
-		if p.allign == .right {
-			for i1 :=0; i1 < dif; i1++ {
-				res.write_b(p.pad_ch)
-			}
-		}
-		res.write_string(s)
-		if p.allign == .left {
-			for i1 :=0; i1 < dif; i1++ {
-				res.write_b(p.pad_ch)
-			}
-		}
-
-
-		s.free()
-		fs.free()
-		tmp_res := res.str()
-		res.free()
-		return tmp_res
-	}
-}
-
 [manualfree]
 pub fn f64_to_str_lnd1(f f64, dec_digit int) string {
 	unsafe{
@@ -453,6 +374,84 @@ pub fn f64_to_str_lnd1(f f64, dec_digit int) string {
 	}
 }
 
+// strings.Builder version of format_fl
+[manualfree]
+pub fn format_fl(f f64, p BF_param) string {
+	unsafe{
+		mut s  := ""
+		//mut fs := "1.2343"
+		mut fs := f64_to_str_lnd1(if f >= 0.0 {f} else {-f}, p.len1)
+		//println("Dario")
+		//println(fs)
+
+		// error!!
+		if fs[0] == `[` {
+			s.free()
+			return fs
+		}
+
+		if p.rm_tail_zero {
+			tmp := fs
+			fs = remove_tail_zeros(fs)
+			tmp.free()
+		}
+		mut res := strings.new_builder( if p.len0 > fs.len { p.len0 } else { fs.len })
+
+		mut sign_len_diff := 0
+		if p.pad_ch == `0` {
+			if p.positive {
+				if p.sign_flag {
+					res.write_b(`+`)
+					sign_len_diff = -1
+				}
+			} else {
+				res.write_b(`-`)
+				sign_len_diff = -1
+			}
+			tmp := s
+			s = fs.clone()
+			tmp.free()
+		} else {
+			if p.positive {
+				if p.sign_flag {
+					tmp := s
+					s = "+" + fs
+					tmp.free()
+				} else {
+					tmp := s
+					s = fs.clone()
+					tmp.free()
+				}
+			} else {
+				tmp := s
+				s = "-" + fs
+				tmp.free()
+			}
+		}
+
+		dif := p.len0 - s.len + sign_len_diff
+
+		if p.allign == .right {
+			for i1 :=0; i1 < dif; i1++ {
+				res.write_b(p.pad_ch)
+			}
+		}
+		res.write_string(s)
+		if p.allign == .left {
+			for i1 :=0; i1 < dif; i1++ {
+				res.write_b(p.pad_ch)
+			}
+		}
+
+
+		s.free()
+		fs.free()
+		tmp_res := res.str()
+		res.free()
+		return tmp_res
+	}
+}
+
 [manualfree]
 pub fn format_es(f f64, p BF_param) string {
 	unsafe{
@@ -512,5 +511,59 @@ pub fn format_es(f f64, p BF_param) string {
 		tmp_res := res.str()
 		res.free()
 		return tmp_res
+	}
+}
+
+[direct_array]
+pub fn remove_tail_zeros_new(s string) string {
+	unsafe{
+		mut buf := malloc(s.len + 1)
+		mut i_d := 0
+		mut i_s := 0
+		// skip spaces
+		for i_s < s.len && s[i_s] in [` `,`\t`] {
+			i_s++
+		}
+		// sign
+		if i_s < s.len && s[i_s] in [`-`,`+`] {
+			buf[i_d] = s[i_s]
+			i_s++
+			i_d++
+		}
+
+		// integer part
+		for i_s < s.len && s[i_s] >= `0` && s[i_s] <= `9` {
+			buf[i_d] = s[i_s]
+			i_s++
+			i_d++
+		}
+
+		// check decimals
+		if i_s < s.len && s[i_s] == `.` {
+			mut i_s1 := i_s + 1
+			mut sum := 0
+			for i_s1 < s.len && s[i_s1] >= `0` && s[i_s1] <= `9` {
+				sum += s[i_s1] - byte(`0`)
+				i_s1++
+			}
+			// decimal part must be copied
+			if sum > 0 {
+				for c_i in i_s .. i_s1 {
+					buf[i_d] = s[c_i]
+					i_d++
+				}
+			}
+			i_s = i_s1
+		}
+
+		// check exponent
+		for i_s < s.len {
+			buf[i_d] = s[i_s]
+			i_s++
+			i_d++
+		}
+
+		buf[i_d] = 0
+		return tos(buf, i_d+1)
 	}
 }
