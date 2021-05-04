@@ -134,7 +134,7 @@ pub fn create(path string) ?File {
 [deprecated: 'use os.stdin() instead']
 [deprecated_after: '2021-05-17']
 pub fn open_stdin() File {
-    return stdin()
+	return stdin()
 }
 
 // stdin - return an os.File for stdin, so that you can use .get_line on it too.

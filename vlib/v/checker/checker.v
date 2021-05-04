@@ -2135,7 +2135,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 			concrete_types << concrete_type
 		}
 	}
-	if c.cur_fn.cur_concrete_types.len == 0 && has_generic {
+	if !isnil(c.cur_fn) && c.cur_fn.cur_concrete_types.len == 0 && has_generic {
 		c.error('generic fn using generic types cannot be called outside of generic fn',
 			call_expr.pos)
 	}
@@ -2183,9 +2183,11 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 		// it was set to anon for checker errors, clear for gen
 		call_expr.name = ''
 		c.expr(call_expr.left)
-		anon_fn_sym := c.table.get_type_symbol(call_expr.left.typ)
-		func = (anon_fn_sym.info as ast.FnType).func
-		found = true
+		if call_expr.left.typ != ast.Type(0) {
+			anon_fn_sym := c.table.get_type_symbol(call_expr.left.typ)
+			func = (anon_fn_sym.info as ast.FnType).func
+			found = true
+		}
 	}
 	// try prefix with current module as it would have never gotten prefixed
 	if !found && !fn_name.contains('.') && call_expr.mod != 'builtin' {
@@ -2277,7 +2279,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 		&& func.mod != c.mod {
 		c.error('function `$func.name` is private', call_expr.pos)
 	}
-	if c.cur_fn != 0 && !c.cur_fn.is_deprecated && func.is_deprecated {
+	if !isnil(c.cur_fn) && !c.cur_fn.is_deprecated && func.is_deprecated {
 		c.deprecate_fnmethod('function', func.name, func, call_expr)
 	}
 	if func.is_unsafe && !c.inside_unsafe
@@ -6706,6 +6708,10 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 		} else {
 			ast.Type(0)
 		}
+		mut object_var_name := '${node.object_var_name}.$f.name'
+		if typ != f.typ {
+			object_var_name = node.object_var_name
+		}
 		mut n := ast.SqlStmtLine{
 			pos: node.pos
 			kind: node.kind
@@ -6713,7 +6719,7 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 				pos: node.table_expr.pos
 				typ: typ
 			}
-			object_var_name: '${node.object_var_name}.$f.name'
+			object_var_name: object_var_name
 		}
 		tmp_inside_sql := c.inside_sql
 		c.sql_stmt_line(mut n)

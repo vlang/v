@@ -81,6 +81,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []ast.Fi
 		'21.set',
 		'21.get_unsafe',
 		'21.set_unsafe',
+		'21.get_with_check' /* used for `x := a[i] or {}` */,
 		'21.clone_static',
 		'21.first',
 		'21.last',
@@ -188,8 +189,12 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []ast.Fi
 			continue
 		}
 		for itype in interface_info.types {
+			pitype := itype.set_nr_muls(1)
 			for method in interface_info.methods {
-				interface_implementation_method_name := '${itype}.$method.name'
+				interface_implementation_method_name := '${pitype}.$method.name'
+				$if trace_skip_unused_interface_methods ? {
+					eprintln('>> isym.name: $isym.name | interface_implementation_method_name: $interface_implementation_method_name')
+				}
 				all_fn_root_names << interface_implementation_method_name
 			}
 		}
@@ -203,7 +208,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []ast.Fi
 			for m in sym_app.methods {
 				if m.return_type == typ_vweb_result {
 					pvgt := vgt.set_nr_muls(1)
-					eprintln('vgt: $vgt | pvgt: $pvgt | sym_app.name: $sym_app.name | m.name: $m.name')
+					// eprintln('vgt: $vgt | pvgt: $pvgt | sym_app.name: $sym_app.name | m.name: $m.name')
 					all_fn_root_names << '${pvgt}.$m.name'
 				}
 			}

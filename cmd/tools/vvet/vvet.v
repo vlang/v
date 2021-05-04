@@ -95,6 +95,7 @@ fn (mut vt Vet) vet_file(path string) {
 	vt.file = path
 	mut prefs := pref.new_preferences()
 	prefs.is_vet = true
+	prefs.is_vsh = path.ends_with('.vsh')
 	table := ast.new_table()
 	vt.vprintln("vetting file '$path'...")
 	_, errors := parser.parse_vet_file(path, table, prefs)
