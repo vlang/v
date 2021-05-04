@@ -330,17 +330,31 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 	} else if p.peek_tok.kind == .dot && check_dot {
 		// `module.Type`
 		// /if !(p.tok.lit in p.table.imports) {
-		if !p.known_import(name) {
-			p.error('unknown module `$p.tok.lit`')
-			return 0
-		}
-		if p.tok.lit in p.imports {
-			p.register_used_import(p.tok.lit)
-		}
+		mut mod := name
+		mut mod_pos := p.tok.position()
 		p.next()
 		p.check(.dot)
+		mut mod_last_part := mod
+		for p.peek_tok.kind == .dot {
+			mod_pos = mod_pos.extend(p.tok.position())
+			mod_last_part = p.tok.lit
+			mod += '.$mod_last_part'
+			p.next()
+			p.check(.dot)
+		}
+		if !p.known_import(mod) {
+			mut msg := 'unknown module `$mod`'
+			if mod.len > mod_last_part.len && p.known_import(mod_last_part) {
+				msg += '; did you mean `$mod_last_part`?'
+			}
+			p.error_with_pos(msg, mod_pos)
+			return 0
+		}
+		if mod in p.imports {
+			p.register_used_import(mod)
+		}
 		// prefix with full module
-		name = '${p.imports[name]}.$p.tok.lit'
+		name = '${p.imports[mod]}.$p.tok.lit'
 		if p.tok.lit.len > 0 && !p.tok.lit[0].is_capital() {
 			p.error('imported types must start with a capital letter')
 			return 0
