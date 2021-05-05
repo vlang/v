@@ -368,6 +368,12 @@ fn test_min() {
 	}
 }
 
+fn test_sign() {
+	assert sign(-1) == -1
+	assert sign(0) == 0
+	assert sign(1) == 1
+}
+
 fn test_exp() {
 	for i := 0; i < math.vf_.len; i++ {
 		f := exp(math.vf_[i])

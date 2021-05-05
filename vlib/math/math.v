@@ -114,6 +114,17 @@ pub fn min(a f64, b f64) f64 {
 	return b
 }
 
+// sign returns the corresponding sign [-1, 0, 1] of the provided number.
+pub fn sign(n f64) int {
+	if n > 0 {
+		return 1
+	}
+	if n < 0 {
+		return -1
+	}
+	return 0
+}
+
 // radians convert from radians to degrees.
 pub fn radians(degrees f64) f64 {
 	return degrees * (pi / 180.0)
