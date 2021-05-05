@@ -3211,17 +3211,17 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					left.info = ident_var_info
 					if left_type != 0 {
 						match mut left.obj {
-							ast.Var { left.obj.typ = left_type }
-							ast.GlobalField { left.obj.typ = left_type }
+							ast.Var {
+								left.obj.typ = left_type
+								if left.obj.is_auto_deref {
+									left.obj.is_used = true
+								}
+							}
+							ast.GlobalField {
+								left.obj.typ = left_type
+							}
 							else {}
 						}
-						/*
-						if left.obj is ast.Var as v {
-							v.typ = left_type
-						} else if left.obj is ast.GlobalDecl as v {
-							v.typ = left_type
-						}
-						*/
 					}
 					if is_decl {
 						full_name := '${left.mod}.$left.name'
