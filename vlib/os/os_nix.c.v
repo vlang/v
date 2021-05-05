@@ -332,6 +332,16 @@ pub fn getpid() int {
 	return C.getpid()
 }
 
+[inline]
+pub fn getuid() int {
+	return C.getuid()
+}
+
+[inline]
+pub fn geteuid() int {
+	return C.geteuid()
+}
+
 // Turns the given bit on or off, depending on the `enable` parameter
 pub fn posix_set_permission_bit(path_s string, mode u32, enable bool) {
 	mut s := C.stat{}
