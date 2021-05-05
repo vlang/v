@@ -55,6 +55,10 @@ fn test_route_no_match() {
 			url: '/a/b/c/d'
 			route: '/a/b/c'
 		},
+		RoutePair{
+			url: '/a/b/c'
+			route: '/'
+		},
 	]
 	for test in tests {
 		test.test_no_match()

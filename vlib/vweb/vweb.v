@@ -443,7 +443,7 @@ fn route_matches(url_words []string, route_words []string) ?[]string {
 	}
 
 	// The last route can end with ... indicating an array
-	if !route_words[route_words.len - 1].ends_with('...') {
+	if route_words.len == 0 || !route_words[route_words.len - 1].ends_with('...') {
 		return none
 	}
 
