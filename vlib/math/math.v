@@ -116,7 +116,7 @@ pub fn min(a f64, b f64) f64 {
 
 // sign returns the corresponding sign [-1, 0, 1] of the provided number.
 pub fn sign(n f64) int {
-	if n > 0 {
+	return copysign(1, n)
 		return 1
 	}
 	if n < 0 {
