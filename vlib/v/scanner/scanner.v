@@ -215,11 +215,15 @@ fn (mut s Scanner) new_multiline_token(tok_kind token.Kind, lit string, len int,
 	}
 }
 
-[inline]
+[direct_array_access; inline]
 fn (mut s Scanner) ident_name() string {
 	start := s.pos
 	s.pos++
-	for s.pos < s.text.len && (util.is_name_char(s.text[s.pos]) || s.text[s.pos].is_digit()) {
+	for s.pos < s.text.len {
+		c := s.text[s.pos]
+		if !(util.is_name_char(c) || c.is_digit()) {
+			break
+		}
 		s.pos++
 	}
 	name := s.text[start..s.pos]
@@ -498,7 +502,7 @@ fn (mut s Scanner) ident_number() string {
 fn (mut s Scanner) skip_whitespace() {
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
-		if !c.is_space() {
+		if !(c == 32 || (c > 8 && c < 14) || (c == 0x85) || (c == 0xa0)) {
 			return
 		}
 		c_is_nl := c == scanner.b_cr || c == scanner.b_lf
@@ -595,7 +599,7 @@ pub fn (s &Scanner) peek_token(n int) token.Token {
 	return t
 }
 
-[inline]
+[direct_array_access; inline]
 fn (s &Scanner) look_ahead(n int) byte {
 	if s.pos + n < s.text.len {
 		return s.text[s.pos + n]
@@ -1082,6 +1086,7 @@ fn (s &Scanner) count_symbol_before(p int, sym byte) int {
 	return count
 }
 
+[direct_array_access]
 fn (mut s Scanner) ident_string() string {
 	q := s.text[s.pos]
 	is_quote := q == scanner.single_quote || q == scanner.double_quote
@@ -1274,7 +1279,7 @@ fn (mut s Scanner) ident_char() string {
 	return c
 }
 
-[inline]
+[direct_array_access; inline]
 fn (s &Scanner) expect(want string, start_pos int) bool {
 	end_pos := start_pos + want.len
 	if start_pos < 0 || end_pos < 0 || start_pos >= s.text.len || end_pos > s.text.len {
