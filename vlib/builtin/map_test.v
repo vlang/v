@@ -750,3 +750,185 @@ fn test_in_map_literal() {
 		1: 'one'
 	}
 }
+
+fn test_byte_keys() {
+	mut m := map[byte]byte{}
+	byte_max := byte(255)
+	for i in byte(0) .. byte_max {
+		m[i] = i
+		assert m[i] == i
+	}
+	for k, v in m {
+		assert k == v
+	}
+	for i in byte(0) .. 100 {
+		m[i]++
+		assert m[i] == i + 1
+	}
+	assert m.len == byte_max
+	keys := m.keys()
+	for i in byte(0) .. byte_max {
+		assert keys[i] == i
+	}
+	for i in byte(0) .. byte_max {
+		m.delete(i)
+		assert m[i] == 0
+	}
+	assert m.len == 0
+}
+
+fn test_i16_keys() {
+	mut m := map[i16]i16{}
+	end := i16(1000)
+	for i in i16(0) .. end {
+		m[i] = i
+		assert m[i] == i
+	}
+	for k, v in m {
+		assert k == v
+	}
+	for i in i16(0) .. 500 {
+		m[i]++
+		assert m[i] == i + 1
+	}
+	assert m.len == end
+	keys := m.keys()
+	for i in i16(0) .. end {
+		assert keys[i] == i
+	}
+	for i in i16(0) .. end {
+		m.delete(i)
+		assert m[i] == 0
+	}
+	assert m.len == 0
+}
+
+fn test_u16_keys() {
+	mut m := map[u16]u16{}
+	end := u16(1000)
+	for i in u16(0) .. end {
+		m[i] = i
+		assert m[i] == i
+	}
+	for k, v in m {
+		assert k == v
+	}
+	for i in u16(0) .. 500 {
+		m[i]++
+		assert m[i] == i + 1
+	}
+	assert m.len == end
+	keys := m.keys()
+	for i in u16(0) .. end {
+		assert keys[i] == i
+	}
+	for i in u16(0) .. end {
+		m.delete(i)
+		assert m[i] == 0
+	}
+	assert m.len == 0
+}
+
+fn test_u32_keys() {
+	mut m := map[u32]u32{}
+	end := u32(1000)
+	for i in u32(0) .. end {
+		m[i] = i
+		assert m[i] == i
+	}
+	for k, v in m {
+		assert k == v
+	}
+	for i in u32(0) .. 500 {
+		m[i]++
+		assert m[i] == i + 1
+	}
+	assert m.len == end
+	keys := m.keys()
+	for i in u32(0) .. end {
+		assert keys[i] == i
+	}
+	for i in u32(0) .. end {
+		m.delete(i)
+		assert m[i] == 0
+	}
+	assert m.len == 0
+}
+
+fn test_int_keys2() {
+	mut m := map[int]int{}
+	end := 1000
+	for i in int(0) .. end {
+		m[i] = i
+		assert m[i] == i
+	}
+	for k, v in m {
+		assert k == v
+	}
+	for i in int(0) .. 500 {
+		m[i]++
+		assert m[i] == i + 1
+	}
+	assert m.len == end
+	keys := m.keys()
+	for i in int(0) .. end {
+		assert keys[i] == i
+	}
+	for i in int(0) .. end {
+		m.delete(i)
+		assert m[i] == 0
+	}
+	assert m.len == 0
+}
+
+fn test_i64_keys() {
+	mut m := map[i64]i64{}
+	end := i64(1000)
+	for i in i64(0) .. end {
+		m[i] = i
+		assert m[i] == i
+	}
+	for k, v in m {
+		assert k == v
+	}
+	for i in i64(0) .. 500 {
+		m[i]++
+		assert m[i] == i + 1
+	}
+	assert m.len == end
+	keys := m.keys()
+	for i in i64(0) .. end {
+		assert keys[i] == i
+	}
+	for i in i64(0) .. end {
+		m.delete(i)
+		assert m[i] == 0
+	}
+	assert m.len == 0
+}
+
+fn test_u64_keys() {
+	mut m := map[u64]u64{}
+	end := u64(1000)
+	for i in u64(0) .. end {
+		m[i] = i
+		assert m[i] == i
+	}
+	for k, v in m {
+		assert k == v
+	}
+	for i in u64(0) .. 500 {
+		m[i]++
+		assert m[i] == i + 1
+	}
+	assert m.len == end
+	keys := m.keys()
+	for i in u64(0) .. end {
+		assert keys[i] == i
+	}
+	for i in u64(0) .. end {
+		m.delete(i)
+		assert m[i] == 0
+	}
+	assert m.len == 0
+}

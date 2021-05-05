@@ -37,6 +37,12 @@ fn main() {
 	//////
 	// /
 	// 123
+	match 0 {
+		0 {
+			0 // comment after an expression inside match
+		}
+		else {}
+	}
 }
 
 fn assign_comments() {

@@ -260,18 +260,31 @@ pub:
 	pos  token.Position
 }
 
+pub struct InterfaceEmbedding {
+pub:
+	name     string
+	typ      Type
+	pos      token.Position
+	comments []Comment
+}
+
 pub struct InterfaceDecl {
 pub:
 	name         string
+	typ          Type
 	name_pos     token.Position
 	language     Language
 	field_names  []string
 	is_pub       bool
-	methods      []FnDecl
 	mut_pos      int // mut:
-	fields       []StructField
 	pos          token.Position
 	pre_comments []Comment
+pub mut:
+	methods []FnDecl
+	fields  []StructField
+	//
+	ifaces              []InterfaceEmbedding
+	are_ifaces_expanded bool
 }
 
 pub struct StructInitField {
@@ -352,7 +365,6 @@ pub struct FnDecl {
 pub:
 	name            string
 	mod             string
-	params          []Param
 	is_deprecated   bool
 	is_pub          bool
 	is_variadic     bool
@@ -379,18 +391,19 @@ pub:
 	attrs           []Attr
 	skip_gen        bool // this function doesn't need to be generated (for example [if foo])
 pub mut:
-	stmts             []Stmt
-	defer_stmts       []DeferStmt
-	return_type       Type
-	return_type_pos   token.Position // `string` in `fn (u User) name() string` position
-	has_return        bool
-	comments          []Comment // comments *after* the header, but *before* `{`; used for InterfaceDecl
-	next_comments     []Comment // coments that are one line after the decl; used for InterfaceDecl
-	source_file       &File = 0
-	scope             &Scope
-	label_names       []string
-	pos               token.Position // function declaration position
-	cur_generic_types []Type
+	params             []Param
+	stmts              []Stmt
+	defer_stmts        []DeferStmt
+	return_type        Type
+	return_type_pos    token.Position // `string` in `fn (u User) name() string` position
+	has_return         bool
+	comments           []Comment // comments *after* the header, but *before* `{`; used for InterfaceDecl
+	next_comments      []Comment // coments that are one line after the decl; used for InterfaceDecl
+	source_file        &File = 0
+	scope              &Scope
+	label_names        []string
+	pos                token.Position // function declaration position
+	cur_concrete_types []Type // current concrete types, e.g. <int, string>
 }
 
 // break, continue

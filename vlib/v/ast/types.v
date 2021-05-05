@@ -735,6 +735,7 @@ pub mut:
 	types   []Type
 	fields  []StructField
 	methods []Fn
+	ifaces  []Type
 }
 
 pub struct Enum {
@@ -1025,7 +1026,11 @@ pub fn (t &Table) fn_signature(func &Fn, opts FnSignatureOpts) string {
 			sb.write_string('$param.name ')
 		}
 		styp := t.type_to_str(typ)
-		sb.write_string('$styp')
+		if i == func.params.len - 1 && func.is_variadic {
+			sb.write_string('...$styp')
+		} else {
+			sb.write_string('$styp')
+		}
 	}
 	sb.write_string(')')
 	if func.return_type != ast.void_type {

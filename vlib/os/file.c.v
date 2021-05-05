@@ -131,11 +131,35 @@ pub fn create(path string) ?File {
 	}
 }
 
-// open_stdin - return an os.File for stdin, so that you can use .get_line on it too.
+[deprecated: 'use os.stdin() instead']
+[deprecated_after: '2021-05-17']
 pub fn open_stdin() File {
+	return stdin()
+}
+
+// stdin - return an os.File for stdin, so that you can use .get_line on it too.
+pub fn stdin() File {
 	return File{
 		fd: 0
 		cfile: C.stdin
+		is_opened: true
+	}
+}
+
+// stdout - return an os.File for stdout
+pub fn stdout() File {
+	return File{
+		fd: 1
+		cfile: C.stdout
+		is_opened: true
+	}
+}
+
+// stderr - return an os.File for stderr
+pub fn stderr() File {
+	return File{
+		fd: 2
+		cfile: C.stderr
 		is_opened: true
 	}
 }

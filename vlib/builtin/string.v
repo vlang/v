@@ -275,12 +275,12 @@ pub fn (s string) replace_once(rep string, with string) string {
 
 // replace replaces all occurences of `rep` with the string passed in `with`.
 pub fn (s string) replace(rep string, with string) string {
-	if s.len == 0 || rep.len == 0 {
+	if s.len == 0 || rep.len == 0 || rep.len > s.len {
 		return s.clone()
 	}
 	// TODO PERF Allocating ints is expensive. Should be a stack array
 	// Get locations of all reps within this string
-	mut idxs := []int{}
+	mut idxs := []int{cap: s.len / rep.len}
 	defer {
 		unsafe { idxs.free() }
 	}
@@ -299,29 +299,27 @@ pub fn (s string) replace(rep string, with string) string {
 	}
 	// Now we know the number of replacements we need to do and we can calc the len of the new string
 	new_len := s.len + idxs.len * (with.len - rep.len)
-	mut b := unsafe { malloc(new_len + 1) } // add a newline just in case
+	mut b := unsafe { malloc(new_len + 1) } // add space for the null byte at the end
 	// Fill the new string
-	mut idx_pos := 0
-	mut cur_idx := idxs[idx_pos]
 	mut b_i := 0
-	for i := 0; i < s.len; i++ {
-		if i == cur_idx {
-			// Reached the location of rep, replace it with "with"
-			for j in 0 .. with.len {
-				unsafe {
-					b[b_i] = with[j]
-				}
-				b_i++
+	mut s_idx := 0
+	for _, rep_pos in idxs {
+		for i in s_idx .. rep_pos { // copy everything up to piece being replaced
+			unsafe {
+				b[b_i] = s[i]
 			}
-			// Skip the length of rep, since we just replaced it with "with"
-			i += rep.len - 1
-			// Go to the next index
-			idx_pos++
-			if idx_pos < idxs.len {
-				cur_idx = idxs[idx_pos]
+			b_i++
+		}
+		s_idx = rep_pos + rep.len // move string index past replacement
+		for i in 0 .. with.len { // copy replacement piece
+			unsafe {
+				b[b_i] = with[i]
 			}
-		} else {
-			// Rep doesnt start here, just copy
+			b_i++
+		}
+	}
+	if s_idx < s.len { // if any original after last replacement, copy it
+		for i in s_idx .. s.len {
 			unsafe {
 				b[b_i] = s[i]
 			}
@@ -954,7 +952,7 @@ pub fn (s string) ends_with(p string) bool {
 		return false
 	}
 	for i in 0 .. p.len {
-		if p[i] != s[s.len - p.len + i] {
+		if unsafe { p.str[i] != s.str[s.len - p.len + i] } {
 			return false
 		}
 	}
@@ -1089,12 +1087,13 @@ pub fn (s string) find_between(start string, end string) string {
 }
 
 // is_space returns `true` if the byte is a white space character.
-// The following list is considered white space characters: ` `, `\n`, `\t`, `\v`, `\f`, `\r`, 0x85, 0xa0
+// The following list is considered white space characters: ` `, `\t`, `\n`, `\v`, `\f`, `\r`, 0x85, 0xa0
 // Example: assert byte(` `).is_space() == true
+[inline]
 pub fn (c byte) is_space() bool {
-	// 0x0085 is NEXT LINE (NEL)
-	// 0x00a0 is NO-BREAK SPACE
-	return c in [` `, `\n`, `\t`, `\v`, `\f`, `\r`, 0x85, 0xa0]
+	// 0x85 is NEXT LINE (NEL)
+	// 0xa0 is NO-BREAK SPACE
+	return c == 32 || (c > 8 && c < 14) || (c == 0x85) || (c == 0xa0)
 }
 
 // trim_space strips any of ` `, `\n`, `\t`, `\v`, `\f`, `\r` from the start and end of the string.
@@ -1608,17 +1607,17 @@ pub fn (s string) after_char(dot byte) string {
 	return s[pos + 1..]
 }
 
-// join joins a string array into a string using `del` delimiter.
+// join joins a string array into a string using `sep` separator.
 // Example: assert ['Hello','V'].join(' ') == 'Hello V'
-pub fn (a []string) join(del string) string {
+pub fn (a []string) join(sep string) string {
 	if a.len == 0 {
 		return ''
 	}
 	mut len := 0
 	for val in a {
-		len += val.len + del.len
+		len += val.len + sep.len
 	}
-	len -= del.len
+	len -= sep.len
 	// Allocate enough memory
 	mut res := string{
 		str: unsafe { malloc(len + 1) }
@@ -1630,11 +1629,11 @@ pub fn (a []string) join(del string) string {
 			C.memcpy(res.str + idx, val.str, val.len)
 			idx += val.len
 		}
-		// Add del if it's not last
+		// Add sep if it's not last
 		if i != a.len - 1 {
 			unsafe {
-				C.memcpy(res.str + idx, del.str, del.len)
-				idx += del.len
+				C.memcpy(res.str + idx, sep.str, sep.len)
+				idx += sep.len
 			}
 		}
 	}

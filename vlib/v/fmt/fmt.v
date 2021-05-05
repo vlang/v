@@ -1180,15 +1180,17 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 		f.writeln('')
 	}
 	f.comments_after_last_field(node.pre_comments)
+	for iface in node.ifaces {
+		f.write('\t$iface.name')
+		f.comments(iface.comments, inline: true, has_nl: false, level: .indent)
+		f.writeln('')
+	}
 	for i, field in node.fields {
 		if i == node.mut_pos {
 			f.writeln('mut:')
 		}
 		// TODO: alignment, comments, etc.
 		mut ft := f.no_cur_mod(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
-		if !ft.contains('C.') && !ft.contains('JS.') && !ft.contains('fn (') {
-			ft = f.short_module(ft)
-		}
 		f.writeln('\t$field.name $ft')
 		f.mark_types_import_as_used(field.typ)
 	}

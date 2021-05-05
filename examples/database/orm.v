@@ -19,9 +19,9 @@ struct User {
 }
 
 struct Parent {
-	id      int      [primary; sql: serial]
-	name    string
-	chields []Chield [fkey: 'parent_id']
+	id       int      [primary; sql: serial]
+	name     string
+	children []Chield [fkey: 'parent_id']
 }
 
 struct Chield {
@@ -48,7 +48,7 @@ fn sqlite3_array() {
 
 	par := Parent{
 		name: 'test'
-		chields: [
+		children: [
 			Chield{
 				name: 'abc'
 			},
@@ -90,7 +90,7 @@ fn mysql_array() {
 
 	par := Parent{
 		name: 'test'
-		chields: [
+		children: [
 			Chield{
 				name: 'abc'
 			},
@@ -129,7 +129,7 @@ fn psql_array() {
 
 	par := Parent{
 		name: 'test'
-		chields: [
+		children: [
 			Chield{
 				name: 'abc'
 			},
