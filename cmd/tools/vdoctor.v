@@ -53,7 +53,7 @@ fn (mut a App) collect_info() {
 	}
 	//
 	mut os_details := ''
-	wsl_check := a.cmd(command: 'cat /proc/sys/kernel/osrelease')
+	wsl_check := os.read_file('/proc/sys/kernel/osrelease') or { 'error' }
 	if os_kind == 'linux' {
 		os_details = a.get_linux_os_name()
 		if a.cpu_info('flags').contains('hypervisor') {
@@ -70,10 +70,24 @@ fn (mut a App) collect_info() {
 		if wsl_check.contains('Microsoft') {
 			os_details += ' (WSL)'
 		}
-		// From https://unix.stackexchange.com/a/14346
-		awk_cmd := '[ "$(awk \'\$5=="/" {print \$1}\' </proc/1/mountinfo)" != "$(awk \'\$5=="/" {print \$1}\' </proc/$$/mountinfo)" ] ; echo \$?'
-		if a.cmd(command: awk_cmd) == '0' {
-			os_details += ' (chroot)'
+		// Check whether PID 1 (the init process)'s root directory
+		// is mounted from the same device/directory as the current
+		// process. If it's different, then we are running in a chroot
+		mut mount_fetch_fail := false
+		initproc_root := get_pid_root_dir(1) or {
+			mount_fetch_fail = true
+			''
+		}
+		currentproc_root := get_pid_root_dir(os.getpid()) or {
+			mount_fetch_fail = true
+			''
+		}
+		if !mount_fetch_fail {
+			if initproc_root != currentproc_root {
+				os_details += ' (chroot)'
+			}
+		} else {
+			os_details += ' (unknown whether chroot or not)'
 		}
 	} else if os_kind == 'macos' {
 		mut details := []string{}
@@ -198,7 +212,7 @@ fn (mut a App) get_linux_os_name() string {
 				if !os.is_file('/proc/version') {
 					continue
 				}
-				os_details = a.cmd(command: 'cat /proc/version')
+				os_details = os.read_file('/proc/version') or { 'could not read /proc/version' }
 				break
 			}
 			'uname' {
@@ -216,11 +230,8 @@ fn (mut a App) cpu_info(key string) string {
 	if a.cached_cpuinfo.len > 0 {
 		return a.cached_cpuinfo[key]
 	}
-	info := os.execute('cat /proc/cpuinfo')
-	if info.exit_code != 0 {
-		return '`cat /proc/cpuinfo` could not run'
-	}
-	a.cached_cpuinfo = a.parse(info.output, ':')
+	info := os.read_file('/proc/cpuinfo') or { return "could not read /proc/cpuinfo" }
+	a.cached_cpuinfo = a.parse(info, ':')
 	return a.cached_cpuinfo[key]
 }
 
@@ -254,6 +265,21 @@ fn (mut a App) report_info() {
 fn is_writable_dir(path string) bool {
 	res := os.is_writable_folder(path) or { false }
 	return res
+}
+
+fn get_pid_root_dir(pid int) ?string {
+	mounts := os.read_lines('/proc/$pid/mountinfo') or {
+		return error('could not read mountinfo for PID $pid')
+	}
+	for mnt in mounts {
+		mnt_args := mnt.fields()
+		mounted_at := mnt_args[4]
+		mount_source := mnt_args[0]
+		if mounted_at == '/' {
+			return mount_source
+		}
+	}
+	return error('no root mount was found for PID $pid')
 }
 
 fn main() {
