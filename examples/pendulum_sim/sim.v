@@ -15,14 +15,15 @@
 // struct embedding, mutability, methods, and the like.
 import math
 import os
+import term
 import runtime
-
-const width = 70
-
-const height = 100
 
 // customisable through setting VJOBS
 const parallel_workers = runtime.nr_jobs()
+
+const width = 800
+
+const height = 600
 
 struct Vec3D {
 	x f64
@@ -221,7 +222,7 @@ fn (mut writer PPMWriter) finish() {
 
 fn sim_runner(mut state SimState, params SimParams) Pixel {
 	// do the simulation!
-	for _ in 0 .. 100000 {
+	for _ in 0 .. 1000 {
 		state.increment(0.0005, params)
 		if state.done() {
 			println('done!')
@@ -336,8 +337,10 @@ fn main() {
 
 	go fn (request_chan chan SimRequest, params SimParams) {
 		mut index := u64(0)
+		println('')
 		for y in 0 .. height {
-			println(y)
+			term.clear_previous_line()
+			println('Line: $y')
 			for x in 0 .. width {
 				// setup initial conditions
 				mut state := SimState{}
