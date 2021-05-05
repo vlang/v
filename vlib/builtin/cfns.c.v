@@ -132,8 +132,6 @@ fn C.sigemptyset() int
 
 fn C.getcwd(buf &char, size size_t) &char
 
-fn C.signal(signal int, handlercb voidptr) voidptr
-
 [trusted]
 fn C.mktime() int
 

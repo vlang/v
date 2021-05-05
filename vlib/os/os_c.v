@@ -828,12 +828,6 @@ fn normalize_drive_letter(path string) string {
 	return path
 }
 
-// signal will assign `handler` callback to be called when `signum` signal is received.
-pub fn signal(signum int, handler voidptr) voidptr {
-	res := unsafe { C.signal(signum, handler) }
-	return res
-}
-
 // fork will fork the current system process and return the pid of the fork.
 pub fn fork() int {
 	mut pid := -1
