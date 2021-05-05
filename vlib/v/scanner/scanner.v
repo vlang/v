@@ -290,6 +290,7 @@ fn (mut s Scanner) ident_bin_number() string {
 	return number
 }
 
+[direct_array_access]
 fn (mut s Scanner) ident_hex_number() string {
 	mut has_wrong_digit := false
 	mut first_wrong_digit_pos := 0
@@ -373,6 +374,7 @@ fn (mut s Scanner) ident_oct_number() string {
 	return number
 }
 
+[direct_array_access]
 fn (mut s Scanner) ident_dec_number() string {
 	mut has_wrong_digit := false
 	mut first_wrong_digit_pos := 0
@@ -572,6 +574,7 @@ pub fn (mut s Scanner) scan() token.Token {
 	return s.buffer_scan()
 }
 
+[direct_array_access]
 pub fn (mut s Scanner) buffer_scan() token.Token {
 	for {
 		cidx := s.tidx
@@ -589,7 +592,7 @@ pub fn (mut s Scanner) buffer_scan() token.Token {
 	return s.new_eof_token()
 }
 
-[inline]
+[direct_array_access; inline]
 pub fn (s &Scanner) peek_token(n int) token.Token {
 	idx := s.tidx + n
 	if idx >= s.all_tokens.len {
@@ -608,6 +611,7 @@ fn (s &Scanner) look_ahead(n int) byte {
 	}
 }
 
+[direct_array_access]
 fn (mut s Scanner) text_scan() token.Token {
 	// The for loop here is so that instead of doing
 	// `return s.scan()` (which will use a new call stack frame),
