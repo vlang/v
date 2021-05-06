@@ -1069,9 +1069,9 @@ match x.bar {
 ```
 
 Mutable variables can change, and doing a cast would be unsafe.
-However, sometimes it's needed to have a type cast despite of mutability.
-In this case the developer has to mark the expression with a `mut` keyword
-to tell the compiler that you're aware of what you're doing.
+However, sometimes it's useful to type cast despite mutability.
+In such cases the developer must mark the expression with the `mut` keyword
+to tell the compiler that they know what they're doing.
 
 It works like this:
 ```v oksyntax
