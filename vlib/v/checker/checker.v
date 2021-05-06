@@ -754,9 +754,12 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
 						continue
 					}
 				}
+				mut expr_type := ast.Type(0)
+				mut expected_type := ast.Type(0)
 				if is_embed {
-					c.expected_type = embed_type
-					expr_type := c.expr(field.expr)
+					expected_type = embed_type
+					c.expected_type = expected_type
+					expr_type = c.expr(field.expr)
 					expr_type_sym := c.table.get_type_symbol(expr_type)
 					if expr_type != ast.void_type && expr_type_sym.kind != .placeholder {
 						c.check_expected(expr_type, embed_type) or {
@@ -769,8 +772,9 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
 				} else {
 					inited_fields << field_name
 					field_type_sym := c.table.get_type_symbol(info_field.typ)
-					c.expected_type = info_field.typ
-					mut expr_type := c.expr(field.expr)
+					expected_type = info_field.typ
+					c.expected_type = expected_type
+					expr_type = c.expr(field.expr)
 					if !info_field.typ.has_flag(.optional) {
 						expr_type = c.check_expr_opt_call(field.expr, expr_type)
 					}
@@ -797,6 +801,21 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
 					}
 					struct_init.fields[i].typ = expr_type
 					struct_init.fields[i].expected_type = info_field.typ
+				}
+				if expr_type.is_ptr() && expected_type.is_ptr() {
+					if mut field.expr is ast.Ident {
+						if mut field.expr.obj is ast.Var {
+							mut obj := unsafe { &field.expr.obj }
+							if c.fn_scope != voidptr(0) {
+								obj = c.fn_scope.find_var(field.expr.obj.name) or { unsafe { &field.expr.obj } }
+							}
+							if obj.is_stack_obj && !c.inside_unsafe {
+								sym := c.table.get_type_symbol(obj.typ.set_nr_muls(0))
+								c.error('`$field.expr.name` cannot be assigned outside `unsafe` blocks as it might refer to an object stored on stack. Consider declaring `$sym.name` as `[heap]`.',
+									field.expr.pos)
+							}
+						}
+					}
 				}
 			}
 			// Check uninitialized refs/sum types
