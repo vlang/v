@@ -653,7 +653,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 		is_variadic: is_variadic
 		return_type: return_type
 	}
-	name := 'anon_fn_${p.table.fn_type_signature(func)}_$p.tok.pos'
+	name := 'anon_fn_${p.unique_prefix}_${p.table.fn_type_signature(func)}_$p.tok.pos'
 	keep_fn_name := p.cur_fn_name
 	p.cur_fn_name = name
 	if p.tok.kind == .lcbr {

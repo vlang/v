@@ -9,12 +9,10 @@ import v.pref
 // mark_used walks the AST, starting at main() and marks all used fns transitively
 pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []ast.File) {
 	mut all_fns, all_consts := all_fn_and_const(ast_files)
-
 	util.timing_start(@METHOD)
 	defer {
 		util.timing_measure(@METHOD)
 	}
-
 	mut all_fn_root_names := [
 		'main.main',
 		'__new_array',

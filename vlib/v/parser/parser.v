@@ -11,6 +11,7 @@ import v.util
 import v.vet
 import v.errors
 import os
+import hash
 
 const (
 	builtin_functions = ['print', 'println', 'eprint', 'eprintln', 'isnil', 'panic', 'exit']
@@ -22,6 +23,7 @@ mut:
 	file_base         string       // "hello.v"
 	file_name         string       // "/home/user/hello.v"
 	file_name_dir     string       // "/home/user"
+	unique_prefix     string       // a hash of p.file_name, used for making anon fn generation unique
 	file_backend_mode ast.Language // .c for .c.v|.c.vv|.c.vsh files; .js for .js.v files, .amd64/.rv32/other arches for .amd64.v/.rv32.v/etc. files, .v otherwise.
 	scanner           &scanner.Scanner
 	comments_mode     scanner.CommentsMode = .skip_comments
@@ -141,6 +143,7 @@ pub fn (mut p Parser) set_path(path string) {
 	p.file_name = path
 	p.file_base = os.base(path)
 	p.file_name_dir = os.dir(path)
+	p.unique_prefix = hash.sum64_string(p.file_name, 13).hex_full()
 	if p.file_base.ends_with('_test.v') || p.file_base.ends_with('_test.vv') {
 		p.inside_test_file = true
 	}

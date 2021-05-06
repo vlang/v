@@ -5231,10 +5231,16 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		}
 		// g.zero_struct_fields(info, inited_fields)
 		// nr_fields = info.fields.len
-		for field in info.fields {
+		for mut field in info.fields {
 			if mut sym.info is ast.Struct {
-				equal_fields := sym.info.fields.filter(it.name == field.name)
-				if equal_fields.len == 0 {
+				mut found_equal_fields := 0
+				for mut sifield in sym.info.fields {
+					if sifield.name == field.name {
+						found_equal_fields++
+						break
+					}
+				}
+				if found_equal_fields == 0 {
 					continue
 				}
 			}

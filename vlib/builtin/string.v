@@ -742,7 +742,7 @@ pub fn (s string) index(p string) ?int {
 }
 
 // index_kmp does KMP search.
-[manualfree]
+[direct_array_access; manualfree]
 fn (s string) index_kmp(p string) int {
 	if p.len > s.len {
 		return -1
