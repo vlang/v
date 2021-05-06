@@ -812,7 +812,12 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
 							if obj.is_stack_obj && !c.inside_unsafe {
 								sym := c.table.get_type_symbol(obj.typ.set_nr_muls(0))
 								if !sym.is_heap() {
-									c.error('`$field.expr.name` cannot be assigned outside `unsafe` blocks as it might refer to an object stored on stack. Consider declaring `$sym.name` as `[heap]`.',
+									suggestion := if sym.kind == .struct_ {
+										'declaring `$sym.name` as `[heap]`'
+									} else {
+										'wrapping the `$sym.name` object in a `struct` declared as `[heap]`'
+									}
+									c.error('`$field.expr.name` cannot be assigned outside `unsafe` blocks as it might refer to an object stored on stack. Consider ${suggestion}.',
 										field.expr.pos)
 								}
 							}
@@ -2986,7 +2991,12 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 					if obj.is_stack_obj && !c.inside_unsafe {
 						type_sym := c.table.get_type_symbol(obj.typ.set_nr_muls(0))
 						if !type_sym.is_heap() {
-							c.error('`$r_expr.name` cannot be returned outside `unsafe` blocks as it might refer to an object stored on stack. Consider declaring `$type_sym.name` as `[heap]`.',
+							suggestion := if type_sym.kind == .struct_ {
+								'declaring `$type_sym.name` as `[heap]`'
+							} else {
+								'wrapping the `$type_sym.name` object in a `struct` declared as `[heap]`'
+							}
+							c.error('`$r_expr.name` cannot be returned outside `unsafe` blocks as it might refer to an object stored on stack. Consider ${suggestion}.',
 								r_expr.pos)
 						}
 					}
@@ -3225,7 +3235,12 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					if obj.is_stack_obj && !c.inside_unsafe {
 						type_sym := c.table.get_type_symbol(obj.typ.set_nr_muls(0))
 						if !type_sym.is_heap() {
-							c.error('`$right.name` cannot be assigned outside `unsafe` blocks as it might refer to an object stored on stack. Consider declaring `$type_sym.name` as `[heap]`.',
+							suggestion := if type_sym.kind == .struct_ {
+								'declaring `$type_sym.name` as `[heap]`'
+							} else {
+								'wrapping the `$type_sym.name` object in a `struct` declared as `[heap]`'
+							}
+							c.error('`$right.name` cannot be assigned outside `unsafe` blocks as it might refer to an object stored on stack. Consider ${suggestion}.',
 								right.pos)
 						}
 					}
@@ -6109,7 +6124,7 @@ pub fn (mut c Checker) mark_as_referenced(mut node ast.Expr) {
 					suggestion := if type_sym.kind == .struct_ {
 						'declaring `$type_sym.name` as `[heap]`'
 					} else {
-						'wrapping `$type_sym.name` in a `struct` declared as `[heap]`'
+						'wrapping the `$type_sym.name` object in a `struct` declared as `[heap]`'
 					}
 					c.error('`$node.name` cannot be referenced outside `unsafe` blocks as it might be stored on stack. Consider ${suggestion}.',
 						node.pos)
