@@ -2,7 +2,7 @@ module io
 
 // new_multiwriter returns a Writer that writes to all writers. The write
 // function of the returned Writer writes to all writers of the MultiWriter,
-// returns the length of bytes written, and iif any writer fails to write the
+// returns the length of bytes written, and if any writer fails to write the
 // full length an error is returned and writing to other writers stops, and if
 // any writer returns an error the error is returned immediately and writing to
 // other writers stops.
