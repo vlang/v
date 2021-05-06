@@ -6,7 +6,7 @@ pub:
 	writers []Writer
 }
 
-// Write writes to all writers of the MultiWriter. Returns the length of bytes
+// write writes to all writers of the MultiWriter. Returns the length of bytes
 // written. If any writer fails to write the full length an error is returned
 // and writing to other writers stops. If any writer returns an error the error
 // is returned immediately and writing to other writers stops.
