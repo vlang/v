@@ -510,7 +510,6 @@ pub mut:
 	is_or        bool // `x := foo() or { ... }`
 	is_tmp       bool // for tmp for loop vars, so that autofree can skip them
 	is_auto_heap bool // value whoes address goes out of scope
-	is_heap_ref  bool // *known* to be pointer to heap memory (ptr to [heap] struct)
 	is_stack_obj bool // may be pointer to stack value (`mut` or `&` arg and not [heap] struct)
 }
 

@@ -558,6 +558,15 @@ pub fn (t &TypeSymbol) sumtype_info() SumType {
 	}
 }
 
+pub fn (t &TypeSymbol) is_heap() bool {
+	if t.kind == .struct_ {
+		info := t.info as Struct
+		return info.is_heap
+	} else {
+		return false
+	}
+}
+
 /*
 pub fn (t TypeSymbol) str() string {
 	return t.name

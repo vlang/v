@@ -32,6 +32,7 @@ mut:
 	methods  map[string][]ast.FnDecl
 }
 
+[heap]
 struct JsGen {
 	table &ast.Table
 	pref  &pref.Preferences

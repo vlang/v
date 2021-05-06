@@ -811,8 +811,10 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
 							}
 							if obj.is_stack_obj && !c.inside_unsafe {
 								sym := c.table.get_type_symbol(obj.typ.set_nr_muls(0))
-								c.error('`$field.expr.name` cannot be assigned outside `unsafe` blocks as it might refer to an object stored on stack. Consider declaring `$sym.name` as `[heap]`.',
-									field.expr.pos)
+								if !sym.is_heap() {
+									c.error('`$field.expr.name` cannot be assigned outside `unsafe` blocks as it might refer to an object stored on stack. Consider declaring `$sym.name` as `[heap]`.',
+										field.expr.pos)
+								}
 							}
 						}
 					}
@@ -2983,8 +2985,10 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 					}
 					if obj.is_stack_obj && !c.inside_unsafe {
 						type_sym := c.table.get_type_symbol(obj.typ.set_nr_muls(0))
-						c.error('`$r_expr.name` cannot be returned outside `unsafe` blocks as it might refer to an object stored on stack. Consider declaring `$type_sym.name` as `[heap]`.',
-							r_expr.pos)
+						if !type_sym.is_heap() {
+							c.error('`$r_expr.name` cannot be returned outside `unsafe` blocks as it might refer to an object stored on stack. Consider declaring `$type_sym.name` as `[heap]`.',
+								r_expr.pos)
+						}
 					}
 				}
 			}
@@ -3220,8 +3224,10 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					}
 					if obj.is_stack_obj && !c.inside_unsafe {
 						type_sym := c.table.get_type_symbol(obj.typ.set_nr_muls(0))
-						c.error('`$right.name` cannot be assigned outside `unsafe` blocks as it might refer to an object stored on stack. Consider declaring `$type_sym.name` as `[heap]`.',
-							right.pos)
+						if !type_sym.is_heap() {
+							c.error('`$right.name` cannot be assigned outside `unsafe` blocks as it might refer to an object stored on stack. Consider declaring `$type_sym.name` as `[heap]`.',
+								right.pos)
+						}
 					}
 				}
 			}
@@ -6098,15 +6104,25 @@ pub fn (mut c Checker) mark_as_referenced(mut node ast.Expr) {
 				if c.fn_scope != voidptr(0) {
 					obj = c.fn_scope.find_var(node.obj.name) or { obj }
 				}
-				type_sym := c.table.get_type_symbol(obj.typ)
-				if obj.is_stack_obj {
-					c.error('`$node.name` cannot be referenced outside `unsafe` blocks as it might be stored on stack. Consider declaring `$type_sym.name` as `[heap]`.',
+				type_sym := c.table.get_type_symbol(obj.typ.set_nr_muls(0))
+				if obj.is_stack_obj && !type_sym.is_heap() {
+					suggestion := if type_sym.kind == .struct_ {
+						'declaring `$type_sym.name` as `[heap]`'
+					} else {
+						'wrapping `$type_sym.name` in a `struct` declared as `[heap]`'
+					}
+					c.error('`$node.name` cannot be referenced outside `unsafe` blocks as it might be stored on stack. Consider ${suggestion}.',
 						node.pos)
 				} else if type_sym.kind == .array_fixed {
 					c.error('cannot reference fixed array `$node.name` outside `unsafe` blocks as it is supposed to be stored on stack',
 						node.pos)
 				} else {
-					node.obj.is_auto_heap = !node.obj.is_heap_ref
+					if type_sym.kind == .struct_ {
+						info := type_sym.info as ast.Struct
+						if !info.is_heap {
+							node.obj.is_auto_heap = true
+						}
+					}
 				}
 			}
 		}
