@@ -2954,6 +2954,22 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 			c.error('fn `$c.cur_fn.name` expects you to return a reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
 				pos)
 		}
+		if exp_type.is_ptr() && got_typ.is_ptr() {
+			mut r_expr := &return_stmt.exprs[i]
+			if mut r_expr is ast.Ident {
+				if mut r_expr.obj is ast.Var {
+					mut obj := unsafe { &r_expr.obj }
+					if c.fn_scope != voidptr(0) {
+						obj = c.fn_scope.find_var(r_expr.obj.name) or { unsafe { &r_expr.obj } }
+					}
+					if obj.is_stack_obj && !c.inside_unsafe {
+						type_sym := c.table.get_type_symbol(obj.typ.set_nr_muls(0))
+						c.error('`$r_expr.name` cannot be returned outside `unsafe` blocks as it might refer to an object stored on stack. Consider declaring `$type_sym.name` as `[heap]`.',
+							r_expr.pos)
+					}
+				}
+			}
+		}
 	}
 	if exp_is_optional && return_stmt.exprs.len > 0 {
 		expr0 := return_stmt.exprs[0]
