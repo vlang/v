@@ -5,7 +5,7 @@ import v.util
 import v.gen.native
 
 pub fn (mut b Builder) build_native(v_files []string, out_file string) {
-	if b.pref.os != .linux || b.pref.os != .macos {
+	if b.pref.os !in [.linux, .macos] {
 		eprintln('Warning: v -native can only generate macOS and Linux binaries for now')
 	}
 	b.front_and_middle_stages(v_files) or { return }
