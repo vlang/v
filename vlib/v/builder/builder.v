@@ -84,6 +84,8 @@ pub fn (mut b Builder) middle_stages() ? {
 	b.checker.check_files(b.parsed_files)
 	util.timing_measure('CHECK')
 	b.print_warnings_and_errors()
+	//
+	b.table.complete_interface_check()
 	if b.pref.skip_unused {
 		markused.mark_used(mut b.table, b.pref, b.parsed_files)
 	}

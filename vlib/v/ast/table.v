@@ -1144,3 +1144,87 @@ pub fn (mut t Table) generic_struct_insts_to_concrete() {
 		}
 	}
 }
+
+// complete_interface_check does a MxN check for all M interfaces vs all N types, to determine what types implement what interfaces.
+// It short circuits most checks when an interface can not possibly be implemented by a type.
+pub fn (mut table Table) complete_interface_check() {
+	util.timing_start(@METHOD)
+	defer {
+		util.timing_measure(@METHOD)
+	}
+	for tk, mut tsym in table.type_symbols {
+		if tsym.kind != .struct_ {
+			continue
+		}
+		info := tsym.info as Struct
+		for _, mut idecl in table.interfaces {
+			if idecl.methods.len > tsym.methods.len {
+				continue
+			}
+			if idecl.fields.len > info.fields.len {
+				continue
+			}
+			table.does_type_implement_interface(tk, idecl.typ)
+		}
+	}
+}
+
+fn (mut table Table) does_type_implement_interface(typ Type, inter_typ Type) bool {
+	// TODO: merge with c.type_implements, which also does error reporting in addition
+	// to checking.
+	utyp := typ
+	if utyp.idx() == inter_typ.idx() {
+		// same type -> already casted to the interface
+		return true
+	}
+	if inter_typ.idx() == error_type_idx && utyp.idx() == none_type_idx {
+		// `none` "implements" the Error interface
+		return true
+	}
+	typ_sym := table.get_type_symbol(utyp)
+	if typ_sym.language != .v {
+		return false
+	}
+	mut inter_sym := table.get_type_symbol(inter_typ)
+	if typ_sym.kind == .interface_ && inter_sym.kind == .interface_ {
+		return false
+	}
+	// do not check the same type more than once
+	if mut inter_sym.info is Interface {
+		for t in inter_sym.info.types {
+			if t.idx() == utyp.idx() {
+				return true
+			}
+		}
+	}
+	imethods := if inter_sym.kind == .interface_ {
+		(inter_sym.info as Interface).methods
+	} else {
+		inter_sym.methods
+	}
+	for imethod in imethods {
+		if method := typ_sym.find_method(imethod.name) {
+			msg := table.is_same_method(imethod, method)
+			if msg.len > 0 {
+				return false
+			}
+			continue
+		}
+		return false
+	}
+	if mut inter_sym.info is Interface {
+		for ifield in inter_sym.info.fields {
+			if field := table.find_field_with_embeds(typ_sym, ifield.name) {
+				if ifield.typ != field.typ {
+					return false
+				} else if ifield.is_mut && !(field.is_mut || field.is_global) {
+					return false
+				}
+				continue
+			}
+			return false
+		}
+		inter_sym.info.types << utyp
+	}
+	return true
+}
