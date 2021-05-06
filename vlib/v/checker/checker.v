@@ -666,11 +666,6 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
 			c.error('struct `$type_sym.name` is declared with a `[noinit]` attribute, so ' +
 				'it cannot be initialized with `$type_sym.name{}`', struct_init.pos)
 		}
-		if info.is_heap && c.inside_decl_rhs && !c.inside_ref_lit && !c.inside_unsafe
-			&& !struct_init.typ.is_ptr() {
-			c.error('`$type_sym.name` type can only be used as a reference `&$type_sym.name` or inside a `struct` reference',
-				struct_init.pos)
-		}
 	}
 	if type_sym.name.len == 1 && c.cur_fn.generic_names.len == 0 {
 		c.error('unknown struct `$type_sym.name`', struct_init.pos)
@@ -3286,6 +3281,11 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 								left.obj.typ = left_type
 								if left.obj.is_auto_deref {
 									left.obj.is_used = true
+								}
+								if !left_type.is_ptr() {
+									if c.table.get_type_symbol(left_type).is_heap() {
+										left.obj.is_auto_heap = true
+									}
 								}
 							}
 							ast.GlobalField {
