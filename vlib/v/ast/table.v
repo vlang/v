@@ -764,12 +764,12 @@ pub fn (mut t Table) find_or_register_thread(return_type Type) int {
 
 pub fn (mut t Table) find_or_register_array(elem_type Type) int {
 	name := t.array_name(elem_type)
-	cname := t.array_cname(elem_type)
 	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 {
 		return existing_idx
 	}
+	cname := t.array_cname(elem_type)
 	// register
 	array_type_ := TypeSymbol{
 		parent_idx: array_type_idx
