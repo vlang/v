@@ -6096,7 +6096,7 @@ pub fn (mut c Checker) mark_as_referenced(mut node ast.Expr) {
 			if mut node.obj is ast.Var {
 				mut obj := unsafe { &node.obj }
 				if c.fn_scope != voidptr(0) {
-					obj = c.fn_scope.find_var(node.obj.name) or { unsafe { &node.obj } }
+					obj = c.fn_scope.find_var(node.obj.name) or { obj }
 				}
 				type_sym := c.table.get_type_symbol(obj.typ)
 				if obj.is_stack_obj {
@@ -6106,7 +6106,7 @@ pub fn (mut c Checker) mark_as_referenced(mut node ast.Expr) {
 					c.error('cannot reference fixed array `$node.name` outside `unsafe` blocks as it is supposed to be stored on stack',
 						node.pos)
 				} else {
-					node.obj.is_auto_heap = true
+					node.obj.is_auto_heap = !node.obj.is_heap_ref
 				}
 			}
 		}
