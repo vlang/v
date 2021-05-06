@@ -43,7 +43,7 @@ pub fn vec3(x f32, y f32, z f32) Vec3 {
 
 fn mat4(f &f32) Mat4 {
 	res := Mat4{
-		data: f
+		data: unsafe { f }
 	}
 	return res
 }

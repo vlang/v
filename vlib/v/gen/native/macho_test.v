@@ -3,7 +3,7 @@ import v.pref
 import v.ast
 
 fn test_macho() {
-	mut g := native.Gen{
+	mut g := &native.Gen{
 		pref: &pref.Preferences{}
 		out_name: 'test.bin'
 		table: &ast.Table{}
