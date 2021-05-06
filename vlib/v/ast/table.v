@@ -63,30 +63,29 @@ pub fn (t &Table) panic(message string) {
 
 pub struct Fn {
 pub:
-	return_type    Type
-	is_variadic    bool
-	language       Language
-	generic_names  []string
-	is_pub         bool
-	is_deprecated  bool // `[deprecated] fn abc(){}`
-	is_unsafe      bool // `[unsafe] fn abc(){}`
-	is_placeholder bool
-	is_main        bool // `fn main(){}`
-	is_test        bool // `fn test_abc(){}`
-	is_conditional bool // `[if abc]fn(){}`
-	is_keep_alive  bool // passed memory must not be freed (by GC) before function returns
-	no_body        bool // a pure declaration like `fn abc(x int)`; used in .vh files, C./JS. fns.
-	mod            string
-	ctdefine       string // compile time define. "myflag", when [if myflag] tag
-	attrs          []Attr
-	//
+	is_variadic     bool
+	language        Language
+	generic_names   []string
+	is_pub          bool
+	is_deprecated   bool // `[deprecated] fn abc(){}`
+	is_unsafe       bool // `[unsafe] fn abc(){}`
+	is_placeholder  bool
+	is_main         bool // `fn main(){}`
+	is_test         bool // `fn test_abc(){}`
+	is_conditional  bool // `[if abc]fn(){}`
+	is_keep_alive   bool // passed memory must not be freed (by GC) before function returns
+	no_body         bool // a pure declaration like `fn abc(x int)`; used in .vh files, C./JS. fns.
+	mod             string
+	ctdefine        string // compile time define. "myflag", when [if myflag] tag
+	attrs           []Attr
 	pos             token.Position
 	return_type_pos token.Position
 pub mut:
-	name      string
-	params    []Param
-	source_fn voidptr // set in the checker, while processing fn declarations
-	usages    int
+	return_type Type
+	name        string
+	params      []Param
+	source_fn   voidptr // set in the checker, while processing fn declarations
+	usages      int
 }
 
 fn (f &Fn) method_equals(o &Fn) bool {
@@ -1108,6 +1107,26 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 			}
 			return new_type(idx).derive(generic_type).clear_flag(.generic)
 		}
+	} else if mut sym.info is FnType {
+		mut func := sym.info.func
+		if func.return_type.has_flag(.generic) {
+			if typ := t.resolve_generic_to_concrete(func.return_type, generic_names, concrete_types,
+				is_inst)
+			{
+				func.return_type = typ
+			}
+		}
+		for mut param in func.params {
+			if param.typ.has_flag(.generic) {
+				if typ := t.resolve_generic_to_concrete(param.typ, generic_names, concrete_types,
+					is_inst)
+				{
+					param.typ = typ
+				}
+			}
+		}
+		idx := t.find_or_register_fn_type('', func, true, false)
+		return new_type(idx).derive(generic_type).clear_flag(.generic)
 	}
 	return none
 }
