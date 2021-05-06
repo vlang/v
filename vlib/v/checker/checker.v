@@ -807,7 +807,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
 						if mut field.expr.obj is ast.Var {
 							mut obj := unsafe { &field.expr.obj }
 							if c.fn_scope != voidptr(0) {
-								obj = c.fn_scope.find_var(field.expr.obj.name) or { unsafe { &field.expr.obj } }
+								obj = c.fn_scope.find_var(obj.name) or { obj }
 							}
 							if obj.is_stack_obj && !c.inside_unsafe {
 								sym := c.table.get_type_symbol(obj.typ.set_nr_muls(0))
@@ -2979,7 +2979,7 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 				if mut r_expr.obj is ast.Var {
 					mut obj := unsafe { &r_expr.obj }
 					if c.fn_scope != voidptr(0) {
-						obj = c.fn_scope.find_var(r_expr.obj.name) or { unsafe { &r_expr.obj } }
+						obj = c.fn_scope.find_var(r_expr.obj.name) or { obj }
 					}
 					if obj.is_stack_obj && !c.inside_unsafe {
 						type_sym := c.table.get_type_symbol(obj.typ.set_nr_muls(0))
@@ -3216,7 +3216,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 				if mut right.obj is ast.Var {
 					mut obj := unsafe { &right.obj }
 					if c.fn_scope != voidptr(0) {
-						obj = c.fn_scope.find_var(right.obj.name) or { unsafe { &right.obj } }
+						obj = c.fn_scope.find_var(right.obj.name) or { obj }
 					}
 					if obj.is_stack_obj && !c.inside_unsafe {
 						type_sym := c.table.get_type_symbol(obj.typ.set_nr_muls(0))
