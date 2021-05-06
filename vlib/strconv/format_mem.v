@@ -73,9 +73,9 @@ pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
 	// TODO: must be optimized
 	// max u64 18446744073709551615 => 20 byte
 	mut buf := [32]byte{}
-	mut i := 19
+	mut i := 20
 	mut d1 := d
-	for i >= (20 - n_char) {
+	for i >= (21 - n_char) {
 		buf[i] = byte(d1 % 10) + `0`
 		d1 = d1 / 10
 		i--
