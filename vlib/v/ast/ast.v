@@ -351,9 +351,10 @@ pub:
 // anonymous function
 pub struct AnonFn {
 pub mut:
-	decl    FnDecl
-	typ     Type // the type of anonymous fn. Both .typ and .decl.name are auto generated
-	has_gen bool // has been generated
+	decl           FnDecl
+	inherited_vars []Param
+	typ            Type // the type of anonymous fn. Both .typ and .decl.name are auto generated
+	has_gen        bool // has been generated
 }
 
 // function or method declaration
@@ -496,6 +497,7 @@ pub:
 	is_autofree_tmp bool
 	is_arg          bool // fn args should not be autofreed
 	is_auto_deref   bool
+	is_inherited    bool
 pub mut:
 	typ        Type
 	orig_type  Type   // original sumtype type; 0 if it's not a sumtype

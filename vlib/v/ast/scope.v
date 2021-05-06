@@ -163,6 +163,17 @@ pub fn (s &Scope) contains(pos int) bool {
 	return pos >= s.start_pos && pos <= s.end_pos
 }
 
+pub fn (s &Scope) has_inherited_vars() bool {
+	for _, obj in s.objects {
+		if obj is Var {
+			if obj.is_inherited {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 pub fn (sc Scope) show(depth int, max_depth int) string {
 	mut out := ''
 	mut indent := ''
