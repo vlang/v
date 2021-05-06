@@ -515,8 +515,6 @@ typedef int (*qsort_callback_func)(const void*, const void*);
 	#endif
 #endif
 
-//#include "fns.h"
-#include <signal.h>
 #include <stdarg.h> // for va_list
 
 //================================== GLOBALS =================================*/

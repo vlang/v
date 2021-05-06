@@ -342,7 +342,7 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 			p.next()
 			p.check(.dot)
 		}
-		if !p.known_import(mod) {
+		if !p.known_import(mod) && !p.pref.is_fmt {
 			mut msg := 'unknown module `$mod`'
 			if mod.len > mod_last_part.len && p.known_import(mod_last_part) {
 				msg += '; did you mean `$mod_last_part`?'
@@ -352,9 +352,10 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 		}
 		if mod in p.imports {
 			p.register_used_import(mod)
+			mod = p.imports[mod]
 		}
 		// prefix with full module
-		name = '${p.imports[mod]}.$p.tok.lit'
+		name = '${mod}.$p.tok.lit'
 		if p.tok.lit.len > 0 && !p.tok.lit[0].is_capital() {
 			p.error('imported types must start with a capital letter')
 			return 0
