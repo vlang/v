@@ -2737,7 +2737,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 	}
 	call_expr.is_noreturn = func.is_noreturn
 	if !found_in_args {
-		if _ := call_expr.scope.find_var(fn_name) {
+		if call_expr.scope.known_var(fn_name) {
 			c.error('ambiguous call to: `$fn_name`, may refer to fn `$fn_name` or variable `$fn_name`',
 				call_expr.pos)
 		}

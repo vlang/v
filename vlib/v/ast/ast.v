@@ -22,8 +22,6 @@ pub type Stmt = AsmStmt | AssertStmt | AssignStmt | Block | BranchStmt | CompFor
 	GlobalDecl | GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module | NodeError |
 	Return | SqlStmt | StructDecl | TypeDecl
 
-// NB: when you add a new Expr or Stmt type with a .pos field, remember to update
-// the .position() token.Position methods too.
 pub type ScopeObject = AsmRegister | ConstField | GlobalField | Var
 
 // TODO: replace Param
@@ -1539,7 +1537,7 @@ pub fn (expr Expr) position() token.Position {
 		AnonFn {
 			return expr.decl.pos
 		}
-		EmptyExpr {
+		CTempVar, EmptyExpr {
 			// println('compiler bug, unhandled EmptyExpr position()')
 			return token.Position{}
 		}
@@ -1570,9 +1568,6 @@ pub fn (expr Expr) position() token.Position {
 				col: left_pos.col
 				last_line: right_pos.last_line
 			}
-		}
-		CTempVar {
-			return token.Position{}
 		}
 		// Please, do NOT use else{} here.
 		// This match is exhaustive *on purpose*, to help force

@@ -264,7 +264,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		g.write(fn_header)
 	}
 	arg_start_pos := g.out.len
-	fargs, fargtypes, heap_promoted := g.fn_args(node.params, node.is_variadic, node.scope)
+	fargs, fargtypes, heap_promoted := g.fn_args(node.params, node.scope)
 	arg_str := g.out.after(arg_start_pos)
 	if node.no_body || ((g.pref.use_cache && g.pref.build_mode != .build_module) && node.is_builtin
 		&& !g.is_test) || skip {
@@ -386,6 +386,20 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	}
 }
 
+fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
+	if node.has_gen {
+		return
+	}
+	pos := g.out.len
+	was_anon_fn := g.anon_fn
+	g.anon_fn = true
+	g.stmt(node.decl)
+	g.anon_fn = was_anon_fn
+	fn_body := g.out.cut_to(pos)
+	g.anon_fn_definitions << fn_body
+	node.has_gen = true
+}
+
 fn (g &Gen) defer_flag_var(stmt &ast.DeferStmt) string {
 	return '${g.last_fn_c_name}_defer_$stmt.idx_in_fn'
 }
@@ -405,7 +419,7 @@ fn (mut g Gen) write_defer_stmts_when_needed() {
 }
 
 // fn decl args
-fn (mut g Gen) fn_args(args []ast.Param, is_variadic bool, scope &ast.Scope) ([]string, []string, []bool) {
+fn (mut g Gen) fn_args(args []ast.Param, scope &ast.Scope) ([]string, []string, []bool) {
 	mut fargs := []string{}
 	mut fargtypes := []string{}
 	mut heap_promoted := []bool{}
@@ -423,7 +437,7 @@ fn (mut g Gen) fn_args(args []ast.Param, is_variadic bool, scope &ast.Scope) ([]
 			func := info.func
 			g.write('${g.typ(func.return_type)} (*$caname)(')
 			g.definitions.write_string('${g.typ(func.return_type)} (*$caname)(')
-			g.fn_args(func.params, func.is_variadic, voidptr(0))
+			g.fn_args(func.params, voidptr(0))
 			g.write(')')
 			g.definitions.write_string(')')
 			fargs << caname
