@@ -455,7 +455,6 @@ fn fabs(x f64) f64 {
 	return x
 }
 
-
 // strings.Builder version of format_fl
 [manualfree]
 pub fn format_fl_old(f f64, p BF_param) string {

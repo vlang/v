@@ -37,7 +37,7 @@ fn main() {
 	// println('Checking out ${commit}...')
 	// exec('git checkout $commit')
 	println('  Building vprod...')
-	exec('v -o $vdir/vprod -prod $vdir/cmd/v')
+	exec('v -o $vdir/vprod -prod -prealloc $vdir/cmd/v')
 	// exec('v -o $vdir/vprod $vdir/cmd/v') // for faster debugging
 	diff1 := measure('$vdir/vprod -cc clang -o v.c -show-timings $vdir/cmd/v', 'v.c')
 	mut tcc_path := 'tcc'
