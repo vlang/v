@@ -23,6 +23,11 @@ General runnable tests for different features of the V compiler.
 Test output of running a V program matches an expected .out file.
 Check the source for how to test panics.
 
+* `vlib/v/tests/run_project_folders_test.v`
+Tests whether whole project folders can be compiled, and run.
+NB: Each project in these folders, should finish with exit code 0,
+and it should output `OK` as its last stdout line.
+
 ## Test building of actual V programs (examples, tools, V itself)
 
 * `v build-tools`

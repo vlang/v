@@ -1,29 +1,12 @@
 module builder
 
 import os
-import v.parser
 import v.pref
 import v.util
 import v.gen.js
-import v.markused
 
 pub fn (mut b Builder) gen_js(v_files []string) string {
-	util.timing_start('PARSE')
-	b.parsed_files = parser.parse_files(v_files, b.table, b.pref, b.global_scope)
-	b.parse_imports()
-	util.get_timers().show('SCAN')
-	util.get_timers().show('PARSE')
-	util.get_timers().show_if_exists('PARSE stmt')
-	//
-	util.timing_start('CHECK')
-	b.checker.check_files(b.parsed_files)
-	util.timing_measure('CHECK')
-	//
-	if b.pref.skip_unused {
-		markused.mark_used(mut b.table, b.pref, b.parsed_files)
-	}
-	b.print_warnings_and_errors()
-	//
+	b.front_and_middle_stages(v_files) or { return '' }
 	util.timing_start('JS GEN')
 	res := js.gen(b.parsed_files, b.table, b.pref)
 	util.timing_measure('JS GEN')

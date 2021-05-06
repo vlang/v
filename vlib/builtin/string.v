@@ -274,6 +274,7 @@ pub fn (s string) replace_once(rep string, with string) string {
 }
 
 // replace replaces all occurences of `rep` with the string passed in `with`.
+[direct_array_access]
 pub fn (s string) replace(rep string, with string) string {
 	if s.len == 0 || rep.len == 0 || rep.len > s.len {
 		return s.clone()
@@ -355,6 +356,7 @@ fn (mut a []RepIndex) sort2() {
 
 // replace_each replaces all occurences of the string pairs given in `vals`.
 // Example: assert 'ABCD'.replace_each(['B','C/','C','D','D','C']) == 'AC/DC'
+[direct_array_access]
 pub fn (s string) replace_each(vals []string) string {
 	if s.len == 0 || vals.len == 0 {
 		return s.clone()
@@ -575,6 +577,7 @@ pub fn (s string) split(delim string) []string {
 // It returns the first Nth parts. When N=0, return all the splits.
 // The last returned element has the remainder of the string, even if
 // the remainder contains more `delim` substrings.
+[direct_array_access]
 pub fn (s string) split_nth(delim string, nth int) []string {
 	mut res := []string{}
 	mut i := 0
@@ -653,8 +656,8 @@ pub fn (s string) split_into_lines() []string {
 	}
 	mut start := 0
 	for i := 0; i < s.len; i++ {
-		is_lf := unsafe { s.str[i] } == `\n`
-		is_crlf := i != s.len - 1 && unsafe { s.str[i] == `\r` && s.str[i + 1] == `\n` }
+		is_lf := unsafe { s.str[i] } == 10
+		is_crlf := i != s.len - 1 && unsafe { s.str[i] == 13 && s.str[i + 1] == 10 }
 		is_eol := is_lf || is_crlf
 		is_last := if is_crlf { i == s.len - 2 } else { i == s.len - 1 }
 		if is_eol || is_last {
@@ -739,7 +742,7 @@ pub fn (s string) index(p string) ?int {
 }
 
 // index_kmp does KMP search.
-[manualfree]
+[direct_array_access; manualfree]
 fn (s string) index_kmp(p string) int {
 	if p.len > s.len {
 		return -1
@@ -978,6 +981,7 @@ pub fn (s string) to_lower() string {
 
 // is_lower returns `true` if all characters in the string is lowercase.
 // Example: assert 'hello developer'.is_lower() == true
+[direct_array_access]
 pub fn (s string) is_lower() bool {
 	for i in 0 .. s.len {
 		if s[i] >= `A` && s[i] <= `Z` {
@@ -1006,6 +1010,7 @@ pub fn (s string) to_upper() string {
 
 // is_upper returns `true` if all characters in the string is uppercase.
 // Example: assert 'HELLO V'.is_upper() == true
+[direct_array_access]
 pub fn (s string) is_upper() bool {
 	for i in 0 .. s.len {
 		if s[i] >= `a` && s[i] <= `z` {
@@ -1017,6 +1022,7 @@ pub fn (s string) is_upper() bool {
 
 // capitalize returns the string with the first character capitalized.
 // Example: assert 'hello'.capitalize() == 'Hello'
+[direct_array_access]
 pub fn (s string) capitalize() string {
 	if s.len == 0 {
 		return ''
@@ -1034,6 +1040,7 @@ pub fn (s string) capitalize() string {
 
 // is_capital returns `true` if the first character in the string is a capital letter.
 // Example: assert 'Hello'.is_capital() == true
+[direct_array_access]
 pub fn (s string) is_capital() bool {
 	if s.len == 0 || !(s[0] >= `A` && s[0] <= `Z`) {
 		return false
@@ -1104,6 +1111,7 @@ pub fn (s string) trim_space() string {
 
 // trim strips any of the characters given in `cutset` from the start and end of the string.
 // Example: assert ' ffHello V ffff'.trim(' f') == 'Hello V'
+[direct_array_access]
 pub fn (s string) trim(cutset string) string {
 	if s.len < 1 || cutset.len < 1 {
 		return s.clone()
@@ -1136,6 +1144,7 @@ pub fn (s string) trim(cutset string) string {
 
 // trim_left strips any of the characters given in `cutset` from the left of the string.
 // Example: assert 'd Hello V developer'.trim_left(' d') == 'Hello V developer'
+[direct_array_access]
 pub fn (s string) trim_left(cutset string) string {
 	if s.len < 1 || cutset.len < 1 {
 		return s.clone()
@@ -1159,6 +1168,7 @@ pub fn (s string) trim_left(cutset string) string {
 
 // trim_right strips any of the characters given in `cutset` from the right of the string.
 // Example: assert ' Hello V d'.trim_right(' d') == ' Hello V'
+[direct_array_access]
 pub fn (s string) trim_right(cutset string) string {
 	if s.len < 1 || cutset.len < 1 {
 		return s.clone()
@@ -1731,7 +1741,7 @@ pub fn (s string) fields() []string {
 	mut is_in_word := false
 	mut is_space := false
 	for i, c in s {
-		is_space = c in [` `, `\t`, `\n`]
+		is_space = c in [32, 9, 10]
 		if !is_space {
 			word_len++
 		}
@@ -1773,6 +1783,7 @@ pub fn (s string) strip_margin() string {
 }
 
 // strip_margin_custom does the same as `strip_margin` but will use `del` as delimiter instead of `|`
+[direct_array_access]
 pub fn (s string) strip_margin_custom(del byte) string {
 	mut sep := del
 	if sep.is_space() {
@@ -1785,13 +1796,13 @@ pub fn (s string) strip_margin_custom(del byte) string {
 	mut ret := unsafe { malloc(s.len + 1) }
 	mut count := 0
 	for i := 0; i < s.len; i++ {
-		if s[i] in [`\n`, `\r`] {
+		if s[i] in [10, 13] {
 			unsafe {
 				ret[count] = s[i]
 			}
 			count++
 			// CRLF
-			if s[i] == `\r` && i < s.len - 1 && s[i + 1] == `\n` {
+			if s[i] == 13 && i < s.len - 1 && s[i + 1] == 10 {
 				unsafe {
 					ret[count] = s[i + 1]
 				}

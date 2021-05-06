@@ -63,30 +63,29 @@ pub fn (t &Table) panic(message string) {
 
 pub struct Fn {
 pub:
-	return_type    Type
-	is_variadic    bool
-	language       Language
-	generic_names  []string
-	is_pub         bool
-	is_deprecated  bool // `[deprecated] fn abc(){}`
-	is_unsafe      bool // `[unsafe] fn abc(){}`
-	is_placeholder bool
-	is_main        bool // `fn main(){}`
-	is_test        bool // `fn test_abc(){}`
-	is_conditional bool // `[if abc]fn(){}`
-	is_keep_alive  bool // passed memory must not be freed (by GC) before function returns
-	no_body        bool // a pure declaration like `fn abc(x int)`; used in .vh files, C./JS. fns.
-	mod            string
-	ctdefine       string // compile time define. "myflag", when [if myflag] tag
-	attrs          []Attr
-	//
+	is_variadic     bool
+	language        Language
+	generic_names   []string
+	is_pub          bool
+	is_deprecated   bool // `[deprecated] fn abc(){}`
+	is_unsafe       bool // `[unsafe] fn abc(){}`
+	is_placeholder  bool
+	is_main         bool // `fn main(){}`
+	is_test         bool // `fn test_abc(){}`
+	is_conditional  bool // `[if abc]fn(){}`
+	is_keep_alive   bool // passed memory must not be freed (by GC) before function returns
+	no_body         bool // a pure declaration like `fn abc(x int)`; used in .vh files, C./JS. fns.
+	mod             string
+	ctdefine        string // compile time define. "myflag", when [if myflag] tag
+	attrs           []Attr
 	pos             token.Position
 	return_type_pos token.Position
 pub mut:
-	name      string
-	params    []Param
-	source_fn voidptr // set in the checker, while processing fn declarations
-	usages    int
+	return_type Type
+	name        string
+	params      []Param
+	source_fn   voidptr // set in the checker, while processing fn declarations
+	usages      int
 }
 
 fn (f &Fn) method_equals(o &Fn) bool {
@@ -764,12 +763,12 @@ pub fn (mut t Table) find_or_register_thread(return_type Type) int {
 
 pub fn (mut t Table) find_or_register_array(elem_type Type) int {
 	name := t.array_name(elem_type)
-	cname := t.array_cname(elem_type)
 	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 {
 		return existing_idx
 	}
+	cname := t.array_cname(elem_type)
 	// register
 	array_type_ := TypeSymbol{
 		parent_idx: array_type_idx
@@ -1108,6 +1107,26 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 			}
 			return new_type(idx).derive(generic_type).clear_flag(.generic)
 		}
+	} else if mut sym.info is FnType {
+		mut func := sym.info.func
+		if func.return_type.has_flag(.generic) {
+			if typ := t.resolve_generic_to_concrete(func.return_type, generic_names, concrete_types,
+				is_inst)
+			{
+				func.return_type = typ
+			}
+		}
+		for mut param in func.params {
+			if param.typ.has_flag(.generic) {
+				if typ := t.resolve_generic_to_concrete(param.typ, generic_names, concrete_types,
+					is_inst)
+				{
+					param.typ = typ
+				}
+			}
+		}
+		idx := t.find_or_register_fn_type('', func, true, false)
+		return new_type(idx).derive(generic_type).clear_flag(.generic)
 	}
 	return none
 }
@@ -1143,4 +1162,88 @@ pub fn (mut t Table) generic_struct_insts_to_concrete() {
 			}
 		}
 	}
+}
+
+// complete_interface_check does a MxN check for all M interfaces vs all N types, to determine what types implement what interfaces.
+// It short circuits most checks when an interface can not possibly be implemented by a type.
+pub fn (mut table Table) complete_interface_check() {
+	util.timing_start(@METHOD)
+	defer {
+		util.timing_measure(@METHOD)
+	}
+	for tk, mut tsym in table.type_symbols {
+		if tsym.kind != .struct_ {
+			continue
+		}
+		info := tsym.info as Struct
+		for _, mut idecl in table.interfaces {
+			if idecl.methods.len > tsym.methods.len {
+				continue
+			}
+			if idecl.fields.len > info.fields.len {
+				continue
+			}
+			table.does_type_implement_interface(tk, idecl.typ)
+		}
+	}
+}
+
+fn (mut table Table) does_type_implement_interface(typ Type, inter_typ Type) bool {
+	// TODO: merge with c.type_implements, which also does error reporting in addition
+	// to checking.
+	utyp := typ
+	if utyp.idx() == inter_typ.idx() {
+		// same type -> already casted to the interface
+		return true
+	}
+	if inter_typ.idx() == error_type_idx && utyp.idx() == none_type_idx {
+		// `none` "implements" the Error interface
+		return true
+	}
+	typ_sym := table.get_type_symbol(utyp)
+	if typ_sym.language != .v {
+		return false
+	}
+	mut inter_sym := table.get_type_symbol(inter_typ)
+	if typ_sym.kind == .interface_ && inter_sym.kind == .interface_ {
+		return false
+	}
+	// do not check the same type more than once
+	if mut inter_sym.info is Interface {
+		for t in inter_sym.info.types {
+			if t.idx() == utyp.idx() {
+				return true
+			}
+		}
+	}
+	imethods := if inter_sym.kind == .interface_ {
+		(inter_sym.info as Interface).methods
+	} else {
+		inter_sym.methods
+	}
+	for imethod in imethods {
+		if method := typ_sym.find_method(imethod.name) {
+			msg := table.is_same_method(imethod, method)
+			if msg.len > 0 {
+				return false
+			}
+			continue
+		}
+		return false
+	}
+	if mut inter_sym.info is Interface {
+		for ifield in inter_sym.info.fields {
+			if field := table.find_field_with_embeds(typ_sym, ifield.name) {
+				if ifield.typ != field.typ {
+					return false
+				} else if ifield.is_mut && !(field.is_mut || field.is_global) {
+					return false
+				}
+				continue
+			}
+			return false
+		}
+		inter_sym.info.types << utyp
+	}
+	return true
 }

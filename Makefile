@@ -111,14 +111,12 @@ fresh_vc:
 	rm -rf $(VC)
 	$(GITFASTCLONE) $(VCREPO) $(VC)
 
-ifndef ANDROID
 ifndef local
 latest_tcc: $(TMPTCC)/.git/config
 	cd $(TMPTCC) && $(GITCLEANPULL)
 else
 latest_tcc:
 	@echo "Using local tcc"
-endif
 endif
 
 fresh_tcc:
