@@ -68,4 +68,9 @@ fn main() {
 	println(arr.filter(bar(true)))
 	println(arr.any(bar(true)))
 	println(arr.all(bar(true)))
+
+	match bar(0) {
+		0 { }
+		else { }
+	}
 }
