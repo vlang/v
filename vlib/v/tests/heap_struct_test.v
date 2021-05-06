@@ -27,13 +27,17 @@ fn pass_qwe(q &Qwe) &Qwe {
 }
 
 fn get_ref_structs() (&Abc, &St, &Qwe) {
-	a := Abc{ n: 3 }
-	b := St{
-		Abc{ n: 7 }
+	a := Abc{
+		n: 3
 	}
+	b := St{Abc{
+		n: 7
+	}}
 	x := Qwe{
 		f: 12.25
-		a: Abc{ n: 23 }
+		a: Abc{
+			n: 23
+		}
 	}
 	aa := pass_abc(&a)
 	bb := pass_st(&b)
@@ -55,4 +59,3 @@ fn test_ref_struct() {
 	assert v.n == 7
 	assert w.a.n == 23
 }
-
