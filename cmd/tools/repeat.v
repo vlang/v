@@ -287,7 +287,8 @@ fn (mut context Context) run() {
 			context.clear_line()
 			print(context.cgoback)
 			mut m := map[string][]int{}
-			for o in context.results[icmd].outputs {
+			ioutputs := context.results[icmd].outputs
+			for o in ioutputs {
 				x := o.split(':')
 				if x.len > 1 {
 					k := x[0]
