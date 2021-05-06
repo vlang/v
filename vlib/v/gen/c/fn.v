@@ -371,18 +371,11 @@ fn (mut g Gen) fn_args(args []ast.Param, is_variadic bool) ([]string, []string) 
 		if arg_type_sym.kind == .function {
 			info := arg_type_sym.info as ast.FnType
 			func := info.func
-			if !info.is_anon {
-				g.write(arg_type_name + ' ' + caname)
-				g.definitions.write_string(arg_type_name + ' ' + caname)
-				fargs << caname
-				fargtypes << arg_type_name
-			} else {
-				g.write('${g.typ(func.return_type)} (*$caname)(')
-				g.definitions.write_string('${g.typ(func.return_type)} (*$caname)(')
-				g.fn_args(func.params, func.is_variadic)
-				g.write(')')
-				g.definitions.write_string(')')
-			}
+			g.write('${g.typ(func.return_type)} (*$caname)(')
+			g.definitions.write_string('${g.typ(func.return_type)} (*$caname)(')
+			g.fn_args(func.params, func.is_variadic)
+			g.write(')')
+			g.definitions.write_string(')')
 		} else {
 			s := '$arg_type_name $caname'
 			g.write(s)
