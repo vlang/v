@@ -33,181 +33,63 @@ pub fn format_str_sb(s string, p BF_param, mut sb strings.Builder) {
 	}
 }
 
-/*
-pub fn fast_str(d u64) string {
-	if d == 0 {
-		return "0"
-	}
-
-	n_char := decimal_len_64(d)
-	
-	// max u64 18446744073709551615 => 20 byte
-	mut buf := [20]byte{}
-	mut i := 19
-	mut d1 := d
-	free_byte := 20 - n_char
-	for i >= free_byte {
-		buf[i] = byte(d1 % 10) + `0`
-		d1 = d1 / 10
-		i--
-	}
-	i++
-	unsafe {
-		ret := tos(&buf[0] + i, n_char).clone()
-		return ret
-	}
-}
-
-
-pub fn fast_str_ptr(d u64, n_char int) byteptr {
-	//mut n_char := decimal_len_64(d)
-	
-	// max u64 18446744073709551615 => 20 byte
-	mut buf := [20]byte{}
-	
-	if d == 0 {
-		buf[0] = 0
-		unsafe{
-			return &buf[0]
-		}
-	}
-	mut i := 19
-	mut d1 := d
-	free_byte := 20 - n_char
-	for i >= free_byte {
-		buf[i] = byte(d1 % 10) + `0`
-		d1 = d1 / 10
-		i--
-	}
-	i++
-	unsafe{
-		return &buf[0] + i
-	}
-}
-*/
-
-/*
-// strings.Builder version of format_dec
-[manualfree]
+// format_dec_sb format a u64 
 pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
-	mut n_char := decimal_len_64(d)
-	dif := p.len0 - n_char
-	
-	// max u64 18446744073709551615 => 20 byte
-	buf := [20]byte{}
-	mut i := 19
-	mut d1 := d
-	for i > (20 - n_char) {
-		buf[i] = d1 % 10
-		d1 = d1 / 10
-		i--
-	}
-	
-	// add sign lenght
-	n_char += if !p.positive { 1 } else { if p.sign_flag { 1 } else { 0 } }
+	mut n_char := dec_digits(d)
+	sign_len := if !p.positive || p.sign_flag { 1 } else { 0 }
+	number_len := sign_len + n_char
+	dif := p.len0 - number_len
+	mut sign_written := false
 
-	if p.pad_ch == `0` {
-		if p.positive {
-			if p.sign_flag {
-				res.write_b(`+`)
-			}
-		} else {
-			res.write_b(`-`)
-		}
-
-		
-		if p.allign == .right {
-			for i1 :=0; i1 < dif; i1++ {
-				res.write_b(p.pad_ch)
-			}
-		}
-		if p.sign_flag && p.positive {
-			res.write_b(`+`)
-		}
-		res.write_string(s)
-		if p.allign == .left {
-			for i1 :=0; i1 < dif; i1++ {
-				res.write_b(p.pad_ch)
-			}
-		}
-	} else {
-		if p.allign == .right {
-			for i1 :=0; i1 < dif; i1++ {
-				res.write_b(p.pad_ch)
-			}
-		}
-		if p.sign_flag && p.positive {
-			res.write_b(`+`)
-		}
-		if p.positive {
-			if p.sign_flag {
-				res.write_b(`+`)
-			}
-		} else {
-			res.write_b(`-`)
-		}
-		res.write_string(s)
-		if p.allign == .left {
-			for i1 :=0; i1 < dif; i1++ {
-				res.write_b(p.pad_ch)
-			}
-		}
-
-	}
-	unsafe{s.free()}
-}
-*/
-
-
-// strings.Builder version of format_dec
-[manualfree]
-pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
-	unsafe{
-		mut s := ""
-		mut sign_len_diff := 0
+	if p.allign == .right {
 		if p.pad_ch == `0` {
 			if p.positive {
 				if p.sign_flag {
 					res.write_b(`+`)
-					sign_len_diff = -1
+					sign_written = true
 				}
 			} else {
 				res.write_b(`-`)
-				sign_len_diff = -1
-			}
-			s = d.str()
-		} else {
-			if p.positive {
-				if p.sign_flag {
-					tmp := s
-					s = "+" + d.str()
-					tmp.free()
-				} else {
-					tmp := s
-					s = d.str()
-					tmp.free()
-				}
-			} else {
-				tmp := s
-				s = "-" + d.str()
-				tmp.free()
+				sign_written = true
 			}
 		}
-		dif := p.len0 - s.len + sign_len_diff
+		// write the pad chars
+		for i1 :=0; i1 < dif; i1++ {
+			res.write_b(p.pad_ch)
+		}
+	} 
 
-		if p.allign == .right {
-			for i1 :=0; i1 < dif; i1++ {
-				res.write_b(p.pad_ch)
+	if !sign_written {
+		// no pad char, write the sign before the number
+		if p.positive {
+			if p.sign_flag {
+				res.write_b(`+`)
 			}
-		}
-		res.write_string(s)
-		s.free()
-		if p.allign == .left {
-			for i1 :=0; i1 < dif; i1++ {
-				res.write_b(p.pad_ch)
-			}
+		} else {
+			res.write_b(`-`)
 		}
 	}
+
+	// TODO: must be optimized
+	// max u64 18446744073709551615 => 20 byte
+	mut buf := [32]byte{}
+	mut i := 19
+	mut d1 := d
+	for i >= (20 - n_char) {
+		buf[i] = byte(d1 % 10) + `0`
+		d1 = d1 / 10
+		i--
+	}
+	i++
+
+	unsafe{ res.write_ptr(&buf[i],n_char) }
+
+	if p.allign == .left {
+		for i1 :=0; i1 < dif; i1++ {
+			res.write_b(p.pad_ch)
+		}
+	}
+	return
 }
 
 [manualfree]
