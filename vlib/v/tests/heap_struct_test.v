@@ -14,7 +14,19 @@ mut:
 	a Abc
 }
 
-fn main() {
+fn pass_abc(q &Abc) &Abc {
+	return q
+}
+
+fn pass_st(q &St) &St {
+	return q
+}
+
+fn pass_qwe(q &Qwe) &Qwe {
+	return q
+}
+
+fn get_ref_structs() (&Abc, &St, &Qwe) {
 	a := Abc{ n: 3 }
 	b := St{
 		Abc{ n: 7 }
@@ -23,5 +35,24 @@ fn main() {
 		f: 12.25
 		a: Abc{ n: 23 }
 	}
-	println('$a.n $b.n $x.a.n')
+	aa := pass_abc(&a)
+	bb := pass_st(&b)
+	xx := pass_qwe(&x)
+	return aa, bb, xx
 }
+
+fn owerwrite_stack() f64 {
+	a := 12.5
+	b := 3.5
+	c := a + b
+	return c
+}
+
+fn test_ref_struct() {
+	u, v, w := get_ref_structs()
+	d := owerwrite_stack()
+	assert u.n == 3
+	assert v.n == 7
+	assert w.a.n == 23
+}
+
