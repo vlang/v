@@ -1686,6 +1686,25 @@ fn (mut g Gen) write_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) {
 	g.auto_fn_definitions << sb.str()
 }
 
+fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp_is_ptr bool, exp_styp string, got_is_ptr bool, got_styp string) {
+	mut rparen_n := 1
+	if exp_is_ptr {
+		g.write('HEAP($exp_styp, ')
+		rparen_n++
+	}
+	g.write('${fname}(')
+	if !got_is_ptr {
+		if expr.is_lvalue() {
+			g.write('&')
+		} else {
+			g.write('ADDR($got_styp, (')
+			rparen_n += 2
+		}
+	}
+	g.expr(expr)
+	g.write(')'.repeat(rparen_n))
+}
+
 // use instead of expr() when you need to cast to a different type
 fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_type ast.Type) {
 	got_type := g.table.mktyp(got_type_raw)
@@ -1705,18 +1724,9 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		&& !expected_type.has_flag(.optional) {
 		got_styp := g.cc_type(got_type, true)
 		exp_styp := g.cc_type(expected_type, true)
-		if expected_is_ptr {
-			g.write('HEAP($exp_styp, ')
-		}
-		g.write('I_${got_styp}_to_Interface_${exp_styp}(')
-		if !got_is_ptr {
-			g.write('&')
-		}
-		g.expr(expr)
-		g.write(')')
-		if expected_is_ptr {
-			g.write(')')
-		}
+		fname := 'I_${got_styp}_to_Interface_$exp_styp'
+		g.call_cfn_for_casting_expr(fname, expr, expected_is_ptr, exp_styp, got_is_ptr,
+			got_styp)
 		return
 	}
 	// cast to sum type
@@ -1745,21 +1755,9 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 				g.expr(expr)
 			} else {
 				g.write_sumtype_casting_fn(got_type, expected_type)
-				if expected_is_ptr {
-					g.write('HEAP($exp_sym.cname, ')
-				}
-				g.write('${got_sym.cname}_to_sumtype_${exp_sym.cname}(')
-				if !got_is_ptr {
-					g.write('ADDR($got_styp, (')
-					g.expr(expr)
-					g.write(')))')
-				} else {
-					g.expr(expr)
-					g.write(')')
-				}
-				if expected_is_ptr {
-					g.write(')')
-				}
+				fname := '${got_sym.cname}_to_sumtype_$exp_sym.cname'
+				g.call_cfn_for_casting_expr(fname, expr, expected_is_ptr, exp_sym.cname,
+					got_is_ptr, got_styp)
 			}
 			return
 		}
