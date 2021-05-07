@@ -156,7 +156,6 @@ fn main() {
 
 	expected_result := readline.read_line('What did you expect to see? ') or {
 		// Ctrl-C was pressed
-		pressed
 		eprintln('\nCanceled')
 		exit(1)
 	}
