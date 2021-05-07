@@ -1,7 +1,5 @@
 module hash
 
-//#flag -I @VEXEROOT/thirdparty/wyhash
-//#include "wyhash.h"
 fn C.wyhash(byteptr, u64, u64, &u64) u64
 fn C.wyhash64(u64, u64) u64
 
