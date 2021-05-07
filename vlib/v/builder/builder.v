@@ -9,6 +9,7 @@ import v.vmod
 import v.checker
 import v.parser
 import v.depgraph
+import v.markused
 
 pub struct Builder {
 pub:
@@ -63,6 +64,36 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 		cached_msvc: msvc
 	}
 	// max_nr_errors: pref.error_limit ?? 100 TODO potential syntax?
+}
+
+pub fn (mut b Builder) front_stages(v_files []string) ? {
+	util.timing_start('PARSE')
+	b.parsed_files = parser.parse_files(v_files, b.table, b.pref, b.global_scope)
+	b.parse_imports()
+	util.get_timers().show('SCAN')
+	util.get_timers().show('PARSE')
+	util.get_timers().show_if_exists('PARSE stmt')
+	if b.pref.only_check_syntax {
+		return error('stop_after_parser')
+	}
+}
+
+pub fn (mut b Builder) middle_stages() ? {
+	util.timing_start('CHECK')
+	b.table.generic_struct_insts_to_concrete()
+	b.checker.check_files(b.parsed_files)
+	util.timing_measure('CHECK')
+	b.print_warnings_and_errors()
+	//
+	b.table.complete_interface_check()
+	if b.pref.skip_unused {
+		markused.mark_used(mut b.table, b.pref, b.parsed_files)
+	}
+}
+
+pub fn (mut b Builder) front_and_middle_stages(v_files []string) ? {
+	b.front_stages(v_files) ?
+	b.middle_stages() ?
 }
 
 // parse all deps from already parsed files
