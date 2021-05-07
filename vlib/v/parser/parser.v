@@ -11,7 +11,7 @@ import v.util
 import v.vet
 import v.errors
 import os
-import hash
+import hash.fnv1a
 
 const (
 	builtin_functions = ['print', 'println', 'eprint', 'eprintln', 'isnil', 'panic', 'exit']
@@ -143,7 +143,8 @@ pub fn (mut p Parser) set_path(path string) {
 	p.file_name = path
 	p.file_base = os.base(path)
 	p.file_name_dir = os.dir(path)
-	p.unique_prefix = hash.sum64_string(p.file_name, 13).hex_full()
+	hash := fnv1a.sum64_string(path)
+	p.unique_prefix = hash.hex_full()
 	if p.file_base.ends_with('_test.v') || p.file_base.ends_with('_test.vv') {
 		p.inside_test_file = true
 	}
