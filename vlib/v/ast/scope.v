@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module ast
 
+[heap]
 pub struct Scope {
 pub mut:
 	// mut:

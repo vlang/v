@@ -100,6 +100,7 @@ pub:
 	native_rendering  bool // Cocoa on macOS/iOS, GDI+ on Windows
 }
 
+[heap]
 pub struct Context {
 	render_text bool
 mut:

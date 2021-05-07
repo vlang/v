@@ -152,7 +152,7 @@ pub fn (mut c Checker) check2(ast_file &ast.File) []errors.Error {
 }
 
 pub fn (mut c Checker) change_current_file(file &ast.File) {
-	c.file = file
+	c.file = unsafe { file }
 	c.vmod_file_content = ''
 	c.mod = file.mod.name
 }
@@ -666,11 +666,6 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
 			c.error('struct `$type_sym.name` is declared with a `[noinit]` attribute, so ' +
 				'it cannot be initialized with `$type_sym.name{}`', struct_init.pos)
 		}
-		if info.is_heap && c.inside_decl_rhs && !c.inside_ref_lit && !c.inside_unsafe
-			&& !struct_init.typ.is_ptr() {
-			c.error('`$type_sym.name` type can only be used as a reference `&$type_sym.name` or inside a `struct` reference',
-				struct_init.pos)
-		}
 	}
 	if type_sym.name.len == 1 && c.cur_fn.generic_names.len == 0 {
 		c.error('unknown struct `$type_sym.name`', struct_init.pos)
@@ -754,9 +749,12 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
 						continue
 					}
 				}
+				mut expr_type := ast.Type(0)
+				mut expected_type := ast.Type(0)
 				if is_embed {
-					c.expected_type = embed_type
-					expr_type := c.expr(field.expr)
+					expected_type = embed_type
+					c.expected_type = expected_type
+					expr_type = c.expr(field.expr)
 					expr_type_sym := c.table.get_type_symbol(expr_type)
 					if expr_type != ast.void_type && expr_type_sym.kind != .placeholder {
 						c.check_expected(expr_type, embed_type) or {
@@ -769,8 +767,9 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
 				} else {
 					inited_fields << field_name
 					field_type_sym := c.table.get_type_symbol(info_field.typ)
-					c.expected_type = info_field.typ
-					mut expr_type := c.expr(field.expr)
+					expected_type = info_field.typ
+					c.expected_type = expected_type
+					expr_type = c.expr(field.expr)
 					if !info_field.typ.has_flag(.optional) {
 						expr_type = c.check_expr_opt_call(field.expr, expr_type)
 					}
@@ -797,6 +796,28 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
 					}
 					struct_init.fields[i].typ = expr_type
 					struct_init.fields[i].expected_type = info_field.typ
+				}
+				if expr_type.is_ptr() && expected_type.is_ptr() {
+					if mut field.expr is ast.Ident {
+						if mut field.expr.obj is ast.Var {
+							mut obj := unsafe { &field.expr.obj }
+							if c.fn_scope != voidptr(0) {
+								obj = c.fn_scope.find_var(obj.name) or { obj }
+							}
+							if obj.is_stack_obj && !c.inside_unsafe {
+								sym := c.table.get_type_symbol(obj.typ.set_nr_muls(0))
+								if !sym.is_heap() {
+									suggestion := if sym.kind == .struct_ {
+										'declaring `$sym.name` as `[heap]`'
+									} else {
+										'wrapping the `$sym.name` object in a `struct` declared as `[heap]`'
+									}
+									c.error('`$field.expr.name` cannot be assigned outside `unsafe` blocks as it might refer to an object stored on stack. Consider ${suggestion}.',
+										field.expr.pos)
+								}
+							}
+						}
+					}
 				}
 			}
 			// Check uninitialized refs/sum types
@@ -2954,6 +2975,29 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 			c.error('fn `$c.cur_fn.name` expects you to return a reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
 				pos)
 		}
+		if exp_type.is_ptr() && got_typ.is_ptr() {
+			mut r_expr := &return_stmt.exprs[i]
+			if mut r_expr is ast.Ident {
+				if mut r_expr.obj is ast.Var {
+					mut obj := unsafe { &r_expr.obj }
+					if c.fn_scope != voidptr(0) {
+						obj = c.fn_scope.find_var(r_expr.obj.name) or { obj }
+					}
+					if obj.is_stack_obj && !c.inside_unsafe {
+						type_sym := c.table.get_type_symbol(obj.typ.set_nr_muls(0))
+						if !type_sym.is_heap() {
+							suggestion := if type_sym.kind == .struct_ {
+								'declaring `$type_sym.name` as `[heap]`'
+							} else {
+								'wrapping the `$type_sym.name` object in a `struct` declared as `[heap]`'
+							}
+							c.error('`$r_expr.name` cannot be returned outside `unsafe` blocks as it might refer to an object stored on stack. Consider ${suggestion}.',
+								r_expr.pos)
+						}
+					}
+				}
+			}
+		}
 	}
 	if exp_is_optional && return_stmt.exprs.len > 0 {
 		expr0 := return_stmt.exprs[0]
@@ -3176,6 +3220,28 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			c.fail_if_immutable(left)
 			// left_type = c.expr(left)
 		}
+		if right_type.is_ptr() && left_type.is_ptr() {
+			if mut right is ast.Ident {
+				if mut right.obj is ast.Var {
+					mut obj := unsafe { &right.obj }
+					if c.fn_scope != voidptr(0) {
+						obj = c.fn_scope.find_var(right.obj.name) or { obj }
+					}
+					if obj.is_stack_obj && !c.inside_unsafe {
+						type_sym := c.table.get_type_symbol(obj.typ.set_nr_muls(0))
+						if !type_sym.is_heap() {
+							suggestion := if type_sym.kind == .struct_ {
+								'declaring `$type_sym.name` as `[heap]`'
+							} else {
+								'wrapping the `$type_sym.name` object in a `struct` declared as `[heap]`'
+							}
+							c.error('`$right.name` cannot be assigned outside `unsafe` blocks as it might refer to an object stored on stack. Consider ${suggestion}.',
+								right.pos)
+						}
+					}
+				}
+			}
+		}
 		assign_stmt.left_types << left_type
 		match mut left {
 			ast.Ident {
@@ -3215,6 +3281,11 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 								left.obj.typ = left_type
 								if left.obj.is_auto_deref {
 									left.obj.is_used = true
+								}
+								if !left_type.is_ptr() {
+									if c.table.get_type_symbol(left_type).is_heap() {
+										left.obj.is_auto_heap = true
+									}
 								}
 							}
 							ast.GlobalField {
@@ -6046,17 +6117,27 @@ pub fn (mut c Checker) mark_as_referenced(mut node ast.Expr) {
 			if mut node.obj is ast.Var {
 				mut obj := unsafe { &node.obj }
 				if c.fn_scope != voidptr(0) {
-					obj = c.fn_scope.find_var(node.obj.name) or { unsafe { &node.obj } }
+					obj = c.fn_scope.find_var(node.obj.name) or { obj }
 				}
-				type_sym := c.table.get_type_symbol(obj.typ)
-				if obj.is_stack_obj {
-					c.error('`$node.name` cannot be referenced outside `unsafe` blocks as it might be stored on stack. Consider declaring `$type_sym.name` as `[heap]`.',
+				type_sym := c.table.get_type_symbol(obj.typ.set_nr_muls(0))
+				if obj.is_stack_obj && !type_sym.is_heap() {
+					suggestion := if type_sym.kind == .struct_ {
+						'declaring `$type_sym.name` as `[heap]`'
+					} else {
+						'wrapping the `$type_sym.name` object in a `struct` declared as `[heap]`'
+					}
+					c.error('`$node.name` cannot be referenced outside `unsafe` blocks as it might be stored on stack. Consider ${suggestion}.',
 						node.pos)
 				} else if type_sym.kind == .array_fixed {
 					c.error('cannot reference fixed array `$node.name` outside `unsafe` blocks as it is supposed to be stored on stack',
 						node.pos)
 				} else {
-					node.obj.is_auto_heap = true
+					if type_sym.kind == .struct_ {
+						info := type_sym.info as ast.Struct
+						if !info.is_heap {
+							node.obj.is_auto_heap = true
+						}
+					}
 				}
 			}
 		}
@@ -6930,7 +7011,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 	}
 	c.expected_type = ast.void_type
-	c.cur_fn = node
+	c.cur_fn = unsafe { node }
 	// Add return if `fn(...) ? {...}` have no return at end
 	if node.return_type != ast.void_type && node.return_type.has_flag(.optional)
 		&& (node.stmts.len == 0 || node.stmts[node.stmts.len - 1] !is ast.Return) {

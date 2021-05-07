@@ -150,6 +150,7 @@ pub fn (b &C.sg_bindings) append_index_buffer(data voidptr, element_size int, el
 	return C.sg_append_buffer(b.index_buffer, &range)
 }
 
+[heap]
 pub struct C.sg_shader_desc {
 pub mut:
 	_start_canary u32
