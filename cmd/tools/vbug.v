@@ -155,7 +155,7 @@ fn main() {
 	}
 
 	expected_result := readline.read_line('What did you expect to see? ') or {
-		eprintln('canceled')
+		eprintln('\nCanceled')
 		exit(1)
 	}
 	// open prefilled issue creation page, or print link as a fallback
