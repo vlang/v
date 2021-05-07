@@ -119,9 +119,15 @@ pub fn min(a f64, b f64) f64 {
 	return b
 }
 
-// sign returns the corresponding sign [-1, 0, 1] of the provided number.
+// sign returns the corresponding sign [-1.0, 1.0] of the provided number.
 [inline]
-pub fn sign(n f64) int {
+pub fn sign(n f64) f64 {
+	return copysign(1.0, n)
+}
+
+// isign returns the corresponding sign [-1, 1] of the provided number.
+[inline]
+pub fn isign(n f64) int {
 	return int(copysign(1.0, n))
 }
 
