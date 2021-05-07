@@ -370,6 +370,7 @@ fn test_min() {
 
 fn test_isign() {
 	assert isign(inf(-1)) == -1
+	assert isign(-72234878292.4586129) == -1
 	assert isign(-10) == -1
 	assert isign(-pi) == -1
 	assert isign(-1) == -1
@@ -378,6 +379,7 @@ fn test_isign() {
 	assert isign(-0.0) == -1
 	//
 	assert isign(inf(1)) == 1
+	assert isign(72234878292.4586129) == 1
 	assert isign(10) == 1
 	assert isign(pi) == 1
 	assert isign(1) == 1
@@ -389,6 +391,7 @@ fn test_isign() {
 
 fn test_sign() {
 	assert sign(inf(-1)) == -1.0
+	assert sign(-72234878292.4586129) == -1.0
 	assert sign(-10) == -1.0
 	assert sign(-pi) == -1.0
 	assert sign(-1) == -1.0
@@ -397,6 +400,7 @@ fn test_sign() {
 	assert sign(-0.0) == -1.0
 	//
 	assert sign(inf(1)) == 1.0
+	assert sign(72234878292.4586129) == 1	
 	assert sign(10) == 1.0
 	assert sign(pi) == 1.0
 	assert sign(1) == 1.0
