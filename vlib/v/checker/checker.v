@@ -1620,7 +1620,7 @@ fn (mut c Checker) check_return_generics_struct(return_type ast.Type, mut call_e
 					generic_names := rts.info.generic_types.map(c.table.get_type_symbol(it).name)
 					for i, _ in fields {
 						if t_typ := c.table.resolve_generic_to_concrete(fields[i].typ,
-							generic_names, concrete_types, false)
+							generic_names, concrete_types, true)
 						{
 							fields[i].typ = t_typ
 						}
