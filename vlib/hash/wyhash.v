@@ -25,15 +25,17 @@ const (
 
 [inline]
 pub fn sum64_string(key string, seed u64) u64 {
-	return wyhash64(key.str, u64(key.len), seed)
+	return wyhash_c(key.str, u64(key.len), seed)
 }
 
 [inline]
 pub fn sum64(key []byte, seed u64) u64 {
-	return wyhash64(byteptr(key.data), u64(key.len), seed)
+	return wyhash_c(byteptr(key.data), u64(key.len), seed)
 }
 
+// This is an outdated version of wyhash with memory errors!
 [inline]
+[deprecated]
 fn wyhash64(key byteptr, len u64, seed_ u64) u64 {
 	if len == 0 {
 		return 0
