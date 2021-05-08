@@ -1854,7 +1854,12 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 				c.error('when forwarding a variadic variable, it must be the final argument',
 					arg.pos)
 			}
-			if exp_arg_sym.kind == .interface_ {
+			mut final_arg_sym := exp_arg_sym
+			if method.is_variadic && exp_arg_sym.info is ast.Array {
+				final_arg_sym = c.table.get_type_symbol(exp_arg_sym.array_info().elem_type)
+			}
+			// Handle expected interface
+			if final_arg_sym.kind == .interface_ {
 				c.type_implements(got_arg_typ, exp_arg_typ, arg.expr.position())
 				continue
 			}
@@ -2436,8 +2441,12 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 				c.fail_if_unreadable(call_arg.expr, typ, 'argument')
 			}
 		}
+		mut final_arg_sym := arg_typ_sym
+		if func.is_variadic && arg_typ_sym.info is ast.Array {
+			final_arg_sym = c.table.get_type_symbol(arg_typ_sym.array_info().elem_type)
+		}
 		// Handle expected interface
-		if arg_typ_sym.kind == .interface_ {
+		if final_arg_sym.kind == .interface_ {
 			c.type_implements(typ, param.typ, call_arg.expr.position())
 			continue
 		}
