@@ -1639,9 +1639,9 @@ fn (mut c Checker) check_return_generics_struct(return_type ast.Type, mut call_e
 				mut fields := rts.info.fields.clone()
 				if rts.info.generic_types.len == concrete_types.len {
 					generic_names := rts.info.generic_types.map(c.table.get_type_symbol(it).name)
-					for i, _ in fields {
+					for i in 0 .. fields.len {
 						if t_typ := c.table.resolve_generic_to_concrete(fields[i].typ,
-							generic_names, concrete_types, false)
+							generic_names, concrete_types, true)
 						{
 							fields[i].typ = t_typ
 						}
