@@ -72,28 +72,24 @@ pub fn (mut b Builder) go_back(n int) {
 	b.len -= n
 }
 
-fn bytes2string(b []byte) string {
-	mut copy := b.clone()
-	copy << byte(0)
-	return unsafe { tos(copy.data, copy.len - 1) }
-}
-
 // cut_last cuts the last `n` bytes from the buffer and returns them
 pub fn (mut b Builder) cut_last(n int) string {
-	res := bytes2string(b.buf[b.len - n..])
+	res := b.buf[b.len - n..].bytestr()
 	b.buf.trim(b.buf.len - n)
 	b.len -= n
 	return res
 }
 
-/*
+// cut_to cuts the string after `pos` and returns it.
+// if `pos` is superior to builder length, returns an empty string
+// and cancel further operations
 pub fn (mut b Builder) cut_to(pos int) string {
-	res := bytes2string( b.buf[pos..] )
-	b.buf.trim(pos)
-	b.len = pos
-	return res
+	if pos > b.len {
+		return ''
+	}
+	return b.cut_last(b.buf.len - pos)
 }
-*/
+
 // go_back_to resets the buffer to the given position `pos`
 // NB: pos should be < than the existing buffer length.
 pub fn (mut b Builder) go_back_to(pos int) {
@@ -119,7 +115,7 @@ pub fn (b &Builder) last_n(n int) string {
 	if n > b.len {
 		return ''
 	}
-	return bytes2string(b.buf[b.len - n..])
+	return b.buf[b.len - n..].bytestr()
 }
 
 // buf == 'hello world'
@@ -128,7 +124,7 @@ pub fn (b &Builder) after(n int) string {
 	if n >= b.len {
 		return ''
 	}
-	return bytes2string(b.buf[n..])
+	return b.buf[n..].bytestr()
 }
 
 // str returns a copy of all of the accumulated buffer content.

@@ -13,7 +13,7 @@ mut:
 }
 
 fn my_audio_stream_callback(buffer &f32, num_frames int, num_channels int, mut acontext AppState) {
-	mut soundbuffer := buffer
+	mut soundbuffer := unsafe { buffer }
 	for frame := 0; frame < num_frames; frame++ {
 		t := int(f32(acontext.frame_0 + frame) * 0.245)
 		// "Techno" by Gabriel Miceli

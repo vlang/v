@@ -171,7 +171,7 @@ fn (mut context Context) get_changed_vfiles() int {
 }
 
 fn change_detection_loop(ocontext &Context) {
-	mut context := ocontext
+	mut context := unsafe { ocontext }
 	for {
 		if context.v_cycles >= max_v_cycles || context.scan_cycles >= max_scan_cycles {
 			context.is_exiting = true

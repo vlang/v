@@ -37,7 +37,7 @@ pub struct SSEMessage {
 
 pub fn new_connection(conn &net.TcpConn) &SSEConnection {
 	return &SSEConnection{
-		conn: conn
+		conn: unsafe { conn }
 	}
 }
 

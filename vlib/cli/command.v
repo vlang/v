@@ -94,7 +94,7 @@ pub fn (mut cmd Command) add_command(command Command) {
 		println('Command with the name `$subcmd.name` already exists')
 		exit(1)
 	}
-	subcmd.parent = cmd
+	subcmd.parent = unsafe { cmd }
 	cmd.commands << subcmd
 }
 
@@ -102,7 +102,7 @@ pub fn (mut cmd Command) add_command(command Command) {
 // is linked as a chain.
 pub fn (mut cmd Command) setup() {
 	for mut subcmd in cmd.commands {
-		subcmd.parent = cmd
+		subcmd.parent = unsafe { cmd }
 		subcmd.setup()
 	}
 }

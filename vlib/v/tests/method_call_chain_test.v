@@ -11,17 +11,17 @@ fn new(x int) &Test {
 
 fn (mut t Test) inc() &Test {
 	t.val++
-	return t
+	return unsafe { t }
 }
 
 fn (mut t Test) add(x int) &Test {
 	t.val += x
-	return t
+	return unsafe { t }
 }
 
 fn (mut t Test) div(x int) &Test {
 	t.val /= x
-	return t
+	return unsafe { t }
 }
 
 fn test_method_call_chains() {
