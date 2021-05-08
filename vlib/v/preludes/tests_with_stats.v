@@ -26,13 +26,13 @@ mut:
 // ///////////////////////////////////////////////////////////////////
 // Called at the start of the test program produced by `v -stats file_test.v`
 fn start_testing(total_number_of_tests int, vfilename string) BenchedTests {
-	mut b := BenchedTests{
+	mut benched_tests_res := BenchedTests{
 		bench: benchmark.new_benchmark()
 	}
-	b.bench.set_total_expected_steps(total_number_of_tests)
-	b.test_suit_file = vfilename
-	println('running tests in: $b.test_suit_file')
-	return b
+	benched_tests_res.bench.set_total_expected_steps(total_number_of_tests)
+	benched_tests_res.test_suit_file = vfilename
+	println('running tests in: $benched_tests_res.test_suit_file')
+	return benched_tests_res
 }
 
 // Called before each test_ function, defined in file_test.v
