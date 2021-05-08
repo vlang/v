@@ -21,7 +21,8 @@ const int_max = int(0x7FFFFFFF)
 const (
 	valid_comp_if_os            = ['windows', 'ios', 'macos', 'mach', 'darwin', 'hpux', 'gnu',
 		'qnx', 'linux', 'freebsd', 'openbsd', 'netbsd', 'bsd', 'dragonfly', 'android', 'solaris',
-		'haiku', 'linux_or_macos']
+		'haiku',
+	]
 	valid_comp_if_compilers     = ['gcc', 'tinyc', 'clang', 'mingw', 'msvc', 'cplusplus']
 	valid_comp_if_platforms     = ['amd64', 'aarch64', 'arm64', 'x64', 'x32', 'little_endian',
 		'big_endian',
@@ -6024,6 +6025,11 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 					else { return false }
 				}
 			} else if cond.name !in c.pref.compile_defines_all {
+				if cond.name == 'linux_or_macos' {
+					c.error('linux_or_macos is deprecated, please use `\$if linux || macos {` instead',
+						cond.pos)
+					return false
+				}
 				// `$if some_var {}`
 				typ := c.expr(cond)
 				if cond.obj !is ast.Var && cond.obj !is ast.ConstField
