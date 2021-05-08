@@ -543,9 +543,6 @@ fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) ?string 
 		'haiku' {
 			return '__haiku__'
 		}
-		'linux_or_macos' {
-			return ''
-		}
 		//
 		'js' {
 			return '_VJS'

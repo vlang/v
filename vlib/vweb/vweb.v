@@ -329,7 +329,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	}
 	app.Context = Context{
 		req: req
-		conn: conn
+		conn: unsafe { conn }
 		form: map[string]string{}
 		static_files: app.static_files
 		static_mime_types: app.static_mime_types

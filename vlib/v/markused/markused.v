@@ -98,6 +98,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []ast.Fi
 		'65557.set',
 		'65557.set_unsafe',
 		// TODO: process the _vinit const initializations automatically too
+		'json__decode_string',
 		'os.getwd',
 		'os.init_os_args',
 		'os.init_os_args_wide',
@@ -155,6 +156,11 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []ast.Fi
 			}
 		}
 		if mfn.is_pub && pref.is_shared {
+			all_fn_root_names << k
+			continue
+		}
+		if mfn.name in ['+', '-', '*', '%', '/', '<', '=='] {
+			// TODO: mark the used operators in the checker
 			all_fn_root_names << k
 			continue
 		}

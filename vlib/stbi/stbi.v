@@ -18,13 +18,13 @@ pub mut:
 	ext         string
 }
 
-fn C.stbi_load(filename charptr, x &int, y &int, channels_in_file &int, desired_channels int) byteptr
+fn C.stbi_load(filename &char, x &int, y &int, channels_in_file &int, desired_channels int) &byte
 
-fn C.stbi_load_from_file(f voidptr, x &int, y &int, channels_in_file &int, desired_channels int) byteptr
+fn C.stbi_load_from_file(f voidptr, x &int, y &int, channels_in_file &int, desired_channels int) &byte
 
-fn C.stbi_load_from_memory(buffer byteptr, len int, x &int, y &int, channels_in_file &int, desired_channels int) byteptr
+fn C.stbi_load_from_memory(buffer &byte, len int, x &int, y &int, channels_in_file &int, desired_channels int) &byte
 
-fn C.stbi_image_free(retval_from_stbi_load byteptr)
+fn C.stbi_image_free(retval_from_stbi_load &byte)
 
 fn C.stbi_set_flip_vertically_on_load(should_flip int)
 
@@ -41,7 +41,8 @@ pub fn load(path string) ?Image {
 	}
 	// flag := if ext == 'png' { C.STBI_rgb_alpha } else { 0 }
 	desired_channels := if ext == 'png' { 4 } else { 0 }
-	res.data = C.stbi_load(&char(path.str), &res.width, &res.height, &res.nr_channels, desired_channels)
+	res.data = C.stbi_load(&char(path.str), &res.width, &res.height, &res.nr_channels,
+		desired_channels)
 	if desired_channels == 4 && res.nr_channels == 3 {
 		// Fix an alpha png bug
 		res.nr_channels = 4
@@ -52,7 +53,7 @@ pub fn load(path string) ?Image {
 	return res
 }
 
-pub fn load_from_memory(buf byteptr, bufsize int) ?Image {
+pub fn load_from_memory(buf &byte, bufsize int) ?Image {
 	mut res := Image{
 		ok: true
 		data: 0

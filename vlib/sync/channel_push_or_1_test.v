@@ -1,4 +1,5 @@
 const n = 1000
+
 const c = 100
 
 fn f(ch chan int) {
@@ -13,9 +14,8 @@ fn test_push_or_unbuffered() {
 	go f(ch)
 	mut j := 0
 	for {
-		ch <- j or {
-			break
-		}
+		ch <- j or { break }
+
 		j++
 	}
 	assert j == n
@@ -26,9 +26,8 @@ fn test_push_or_buffered() {
 	go f(ch)
 	mut j := 0
 	for {
-		ch <- j or {
-			break
-		}
+		ch <- j or { break }
+
 		j++
 	}
 	// we don't know how many elements are in the buffer when the channel
@@ -40,9 +39,8 @@ fn test_push_or_buffered() {
 fn g(ch chan int, res chan int) {
 	mut j := 0
 	for {
-		ch <- j or {
-			break
-		}
+		ch <- j or { break }
+
 		j++
 	}
 	println('done $j')

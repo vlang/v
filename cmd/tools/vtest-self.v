@@ -105,7 +105,7 @@ fn main() {
 	title := 'testing vlib'
 	all_test_files := os.walk_ext(os.join_path(vroot, 'vlib'), '_test.v')
 	testing.eheader(title)
-	mut tsession := testing.new_test_session(cmd_prefix)
+	mut tsession := testing.new_test_session(cmd_prefix, true)
 	tsession.files << all_test_files
 	tsession.skip_files << skip_test_files
 	mut werror := false

@@ -1,5 +1,6 @@
 import time
 // 1 line comment // 1 line comment
+
 /*
 multi line comment (1)
 multi line comment (2)
@@ -43,11 +44,12 @@ type F6 = fn (int, int)
 
 type F7 = fn (time.Time, int)
 
-fn C.atoi(byteptr) int
+fn C.atoi(&byte) int
 fn C.freec(ptr voidptr)
 
 [trusted]
 fn C.exitc(code int)
+
 // above checks attribute doesn't conflict with `freec` return type
 
 fn foo() {

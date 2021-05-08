@@ -2,8 +2,8 @@ module gfx
 
 pub fn create_clear_pass(r f32, g f32, b f32, a f32) C.sg_pass_action {
 	mut color_action := C.sg_color_attachment_action{
-		action: gfx.Action(C.SG_ACTION_CLEAR)
-		value: C.sg_color {
+		action: Action(C.SG_ACTION_CLEAR)
+		value: C.sg_color{
 			r: r
 			g: g
 			b: b

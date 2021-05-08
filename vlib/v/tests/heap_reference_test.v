@@ -26,7 +26,7 @@ pub fn (mut gitstructure GitStructure) repo_get(name string) ?&GitRepo {
 }
 
 fn test_opt_ref_return() {
-	mut gitstruct := &GitStructure{
+	mut gitstruct := GitStructure{
 		root: 'r'
 		repos: [
 			&GitRepo{

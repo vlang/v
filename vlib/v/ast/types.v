@@ -64,6 +64,7 @@ pub fn pref_arch_to_table_language(pref_arch pref.Arch) Language {
 // * Table.type_kind(typ) not TypeSymbol.kind.
 // Each TypeSymbol is entered into `Table.types`.
 // See also: Table.get_type_symbol.
+
 pub struct TypeSymbol {
 pub:
 	parent_idx int
@@ -554,6 +555,15 @@ pub fn (t &TypeSymbol) sumtype_info() SumType {
 	match mut t.info {
 		SumType { return t.info }
 		else { panic('TypeSymbol.sumtype_info(): no sumtype info for type: $t.name') }
+	}
+}
+
+pub fn (t &TypeSymbol) is_heap() bool {
+	if t.kind == .struct_ {
+		info := t.info as Struct
+		return info.is_heap
+	} else {
+		return false
 	}
 }
 

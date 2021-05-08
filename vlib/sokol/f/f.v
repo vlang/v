@@ -4,7 +4,7 @@ import fontstash
 import sokol.c
 
 pub const (
-  used_import = fontstash.used_import + c.used_import
+	used_import = fontstash.used_import + c.used_import
 )
 
 #flag linux -I.

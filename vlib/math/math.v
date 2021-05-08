@@ -31,11 +31,13 @@ pub fn aprox_cos(a f64) f64 {
 }
 
 // copysign returns a value with the magnitude of x and the sign of y
+[inline]
 pub fn copysign(x f64, y f64) f64 {
 	return f64_from_bits((f64_bits(x) & ~sign_mask) | (f64_bits(y) & sign_mask))
 }
 
 // degrees convert from degrees to radians.
+[inline]
 pub fn degrees(radians f64) f64 {
 	return radians * (180.0 / pi)
 }
@@ -59,6 +61,7 @@ pub fn digits(_n int, base int) []int {
 	return res
 }
 
+[inline]
 pub fn fabs(x f64) f64 {
 	if x < 0.0 {
 		return -x
@@ -99,6 +102,7 @@ pub fn lcm(a i64, b i64) i64 {
 }
 
 // max returns the maximum value of the two provided.
+[inline]
 pub fn max(a f64, b f64) f64 {
 	if a > b {
 		return a
@@ -107,6 +111,7 @@ pub fn max(a f64, b f64) f64 {
 }
 
 // min returns the minimum value of the two provided.
+[inline]
 pub fn min(a f64, b f64) f64 {
 	if a < b {
 		return a
@@ -114,12 +119,30 @@ pub fn min(a f64, b f64) f64 {
 	return b
 }
 
+// sign returns the corresponding sign -1.0, 1.0 of the provided number.
+// if n is not a number, its sign is nan too.
+[inline]
+pub fn sign(n f64) f64 {
+	if is_nan(n) {
+		return nan()
+	}
+	return copysign(1.0, n)
+}
+
+// signi returns the corresponding sign -1.0, 1.0 of the provided number.
+[inline]
+pub fn signi(n f64) int {
+	return int(copysign(1.0, n))
+}
+
 // radians convert from radians to degrees.
+[inline]
 pub fn radians(degrees f64) f64 {
 	return degrees * (pi / 180.0)
 }
 
 // signbit returns a value with the boolean representation of the sign for x
+[inline]
 pub fn signbit(x f64) bool {
 	return f64_bits(x) & sign_mask != 0
 }
