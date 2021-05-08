@@ -34,8 +34,7 @@ pub fn sum64(key []byte, seed u64) u64 {
 }
 
 // This is an outdated version of wyhash with memory errors!
-[inline]
-[deprecated]
+[deprecated; inline]
 fn wyhash64(key &byte, len u64, seed_ u64) u64 {
 	if len == 0 {
 		return 0
