@@ -4261,7 +4261,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 				node.pos)
 		}
 		if c.mod == 'main' {
-			c.error('hash statements are not allowed in the main module. Please place them in a separate module.',
+			c.error('hash statements are not allowed in the main module. Place them in a separate module.',
 				node.pos)
 		}
 		return
@@ -4757,10 +4757,10 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	expr_is_ptr := node.expr_type.is_ptr() || n_e_t_idx in ast.pointer_type_idxs
 	if expr_is_ptr && to_type_sym.kind == .string && !node.in_prexpr {
 		if node.has_arg {
-			c.warn('to convert a C string buffer pointer to a V string, please use x.vstring_with_len(len) instead of string(x,len)',
+			c.warn('to convert a C string buffer pointer to a V string, use x.vstring_with_len(len) instead of string(x,len)',
 				node.pos)
 		} else {
-			c.warn('to convert a C string buffer pointer to a V string, please use x.vstring() instead of string(x)',
+			c.warn('to convert a C string buffer pointer to a V string, use x.vstring() instead of string(x)',
 				node.pos)
 		}
 	}
@@ -6035,7 +6035,7 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 				}
 			} else if cond.name !in c.pref.compile_defines_all {
 				if cond.name == 'linux_or_macos' {
-					c.error('linux_or_macos is deprecated, please use `\$if linux || macos {` instead',
+					c.error('linux_or_macos is deprecated, use `\$if linux || macos {` instead',
 						cond.pos)
 					return false
 				}
