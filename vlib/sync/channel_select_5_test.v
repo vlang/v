@@ -47,15 +47,15 @@ fn test_select() {
 		}
 	}
 	// Use Gauß' formula
-	expected_sum :=  i64(30000) * (30000 - 1) / 2
+	expected_sum := i64(30000) * (30000 - 1) / 2
 	assert sum == expected_sum
 
-	mut sumrec := <- chsum
-	sumrec += <- chsum
-	sumrec += <- chsum
+	mut sumrec := <-chsum
+	sumrec += <-chsum
+	sumrec += <-chsum
 	// Empty receive buffer
 	for _ in 0 .. recch.cap {
-		sumrec += <- recch
+		sumrec += <-recch
 	}
 	assert sumrec == i64(30000 + recch.cap) * (30000 + recch.cap - 1) / 2
 }

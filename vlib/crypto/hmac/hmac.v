@@ -11,7 +11,7 @@ const (
 )
 
 // new returns a HMAC byte array, depending on the hash algorithm used.
-pub fn new(key []byte, data []byte, hash_func fn (bytes []byte) []byte, blocksize int) []byte {
+pub fn new(key []byte, data []byte, hash_func fn ([]byte) []byte, blocksize int) []byte {
 	mut b_key := []byte{}
 	if key.len <= blocksize {
 		b_key = key.clone() // TODO: remove .clone() once https://github.com/vlang/v/issues/6604 gets fixed
@@ -19,16 +19,16 @@ pub fn new(key []byte, data []byte, hash_func fn (bytes []byte) []byte, blocksiz
 		b_key = hash_func(key)
 	}
 	if b_key.len < blocksize {
-		b_key << npad[..blocksize - b_key.len]
+		b_key << hmac.npad[..blocksize - b_key.len]
 	}
 	mut inner := []byte{}
-	for i, b in ipad[..blocksize] {
+	for i, b in hmac.ipad[..blocksize] {
 		inner << b_key[i] ^ b
 	}
 	inner << data
 	inner_hash := hash_func(inner)
 	mut outer := []byte{cap: b_key.len}
-	for i, b in opad[..blocksize] {
+	for i, b in hmac.opad[..blocksize] {
 		outer << b_key[i] ^ b
 	}
 	outer << inner_hash

@@ -36,13 +36,13 @@ mut:
 }
 
 fn (mut d Digest) reset() {
-	d.x = []byte{len: (chunk)}
+	d.x = []byte{len: sha1.chunk}
 	d.h = []u32{len: (5)}
-	d.h[0] = u32(init0)
-	d.h[1] = u32(init1)
-	d.h[2] = u32(init2)
-	d.h[3] = u32(init3)
-	d.h[4] = u32(init4)
+	d.h[0] = u32(sha1.init0)
+	d.h[1] = u32(sha1.init1)
+	d.h[2] = u32(sha1.init2)
+	d.h[3] = u32(sha1.init3)
+	d.h[4] = u32(sha1.init4)
 	d.nx = 0
 	d.len = 0
 }
@@ -64,7 +64,7 @@ pub fn (mut d Digest) write(p_ []byte) ?int {
 		if d.nx > 0 {
 			n := copy(d.x[d.nx..], p)
 			d.nx += n
-			if d.nx == chunk {
+			if d.nx == sha1.chunk {
 				block(mut d, d.x)
 				d.nx = 0
 			}
@@ -74,8 +74,8 @@ pub fn (mut d Digest) write(p_ []byte) ?int {
 				p = p[n..]
 			}
 		}
-		if p.len >= chunk {
-			n := p.len & ~(chunk - 1)
+		if p.len >= sha1.chunk {
+			n := p.len & ~(sha1.chunk - 1)
 			block(mut d, p[..n])
 			if n >= p.len {
 				p = []
@@ -117,7 +117,7 @@ fn (mut d Digest) checksum() []byte {
 	len <<= 3
 	binary.big_endian_put_u64(mut tmp, len)
 	d.write(tmp[..8]) or { panic(err) }
-	mut digest := []byte{len: (size)}
+	mut digest := []byte{len: sha1.size}
 	binary.big_endian_put_u32(mut digest, d.h[0])
 	binary.big_endian_put_u32(mut digest[4..], d.h[1])
 	binary.big_endian_put_u32(mut digest[8..], d.h[2])
@@ -141,12 +141,12 @@ fn block(mut dig Digest, p []byte) {
 
 // size returns the size of the checksum in bytes.
 pub fn (d &Digest) size() int {
-	return size
+	return sha1.size
 }
 
 // block_size returns the block size of the checksum in bytes.
 pub fn (d &Digest) block_size() int {
-	return block_size
+	return sha1.block_size
 }
 
 // hexhash returns a hexadecimal SHA1 hash sum `string` of `s`.

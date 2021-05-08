@@ -22,7 +22,7 @@ fn main() {
 	backend_pos := args_before.index('-b')
 	backend := if backend_pos == -1 { '.c' } else { args_before[backend_pos + 1] } // this giant mess because closures are not implemented
 
-	mut ts := testing.new_test_session(args_before.join(' '))
+	mut ts := testing.new_test_session(args_before.join(' '), true)
 	for targ in args_after {
 		if os.is_dir(targ) {
 			// Fetch all tests from the directory

@@ -43,7 +43,9 @@ pub interface PRNG {
 	f64_in_range(min f64, max f64) f64
 }
 
-__global ( default_rng &PRNG )
+__global (
+	default_rng &PRNG
+)
 
 // init initializes the default RNG.
 fn init() {
@@ -63,7 +65,7 @@ pub fn get_current_rng() &PRNG {
 }
 
 // set_rng changes the default RNG from wyrand.WyRandRNG (or whatever the last RNG was) to the one
-// provided by the user. Note that this new RNG must be seeded manually with a constant seed or the 
+// provided by the user. Note that this new RNG must be seeded manually with a constant seed or the
 // `seed.time_seed_array()` method. Also, it is recommended to store the old RNG in a variable and
 // should be restored if work with the custom RNG is complete. It is not necessary to restore if the
 // program terminates soon afterwards.

@@ -60,7 +60,8 @@ fn (mut ctx Context) termios_setup() ? {
 	// store the current title, so restore_terminal_state can get it back
 	save_title()
 
-	if !ctx.cfg.skip_init_checks && !(os.is_atty(C.STDIN_FILENO) != 0 && os.is_atty(C.STDOUT_FILENO) != 0) {
+	if !ctx.cfg.skip_init_checks && !(os.is_atty(C.STDIN_FILENO) != 0
+		&& os.is_atty(C.STDOUT_FILENO) != 0) {
 		return error('not running under a TTY')
 	}
 
@@ -230,7 +231,7 @@ fn (mut ctx Context) termios_loop() {
 			sw.restart()
 			if ctx.cfg.event_fn != voidptr(0) {
 				unsafe {
-					len := C.read(C.STDIN_FILENO, byteptr(ctx.read_buf.data) + ctx.read_buf.len,
+					len := C.read(C.STDIN_FILENO, &byte(ctx.read_buf.data) + ctx.read_buf.len,
 						ctx.read_buf.cap - ctx.read_buf.len)
 					ctx.resize_arr(ctx.read_buf.len + len)
 				}

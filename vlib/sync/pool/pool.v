@@ -1,7 +1,6 @@
 module pool
 
 import sync
-
 import runtime
 
 [trusted]
@@ -12,7 +11,7 @@ pub const (
 )
 
 pub struct PoolProcessor {
-	thread_cb       voidptr
+	thread_cb voidptr
 mut:
 	njobs           int
 	items           []voidptr
@@ -46,7 +45,7 @@ pub fn new_pool_processor(context PoolProcessorConfig) &PoolProcessor {
 	if isnil(context.callback) {
 		panic('You need to pass a valid callback to new_pool_processor.')
 	}
-	mut pool := &PoolProcessor {
+	mut pool := &PoolProcessor{
 		items: []
 		results: []
 		shared_context: voidptr(0)
@@ -74,7 +73,7 @@ pub fn (mut pool PoolProcessor) set_max_jobs(njobs int) {
 // work_on_items returns *after* all threads finish.
 // You can optionally call get_results after that.
 pub fn (mut pool PoolProcessor) work_on_items<T>(items []T) {
-	pool.work_on_pointers( unsafe { items.pointers() } )
+	pool.work_on_pointers(unsafe { items.pointers() })
 }
 
 pub fn (mut pool PoolProcessor) work_on_pointers(items []voidptr) {
@@ -86,15 +85,15 @@ pub fn (mut pool PoolProcessor) work_on_pointers(items []voidptr) {
 	pool.results = []
 	pool.thread_contexts = []
 	pool.items << items
-	pool.results = []voidptr{len:(pool.items.len)}
-	pool.thread_contexts << []voidptr{len:(pool.items.len)}
+	pool.results = []voidptr{len: (pool.items.len)}
+	pool.thread_contexts << []voidptr{len: (pool.items.len)}
 	pool.waitgroup.add(njobs)
 	for i := 0; i < njobs; i++ {
 		if njobs > 1 {
-			go process_in_thread(mut pool,i)
+			go process_in_thread(mut pool, i)
 		} else {
 			// do not run concurrently, just use the same thread:
-			process_in_thread(mut pool,i)
+			process_in_thread(mut pool, i)
 		}
 	}
 	pool.waitgroup.wait()

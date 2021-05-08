@@ -7,7 +7,6 @@
 // main thread where the total sum is compare to the expected value.
 import time
 import os
-import sync
 
 fn do_rec(ch chan int, resch chan i64, n int) {
 	mut sum := i64(0)

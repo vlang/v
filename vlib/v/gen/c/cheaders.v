@@ -660,7 +660,8 @@ static void* g_live_info = NULL;
 #ifdef _VFREESTANDING
 #undef _VFREESTANDING
 #endif
-' + c_wyhash
+' +
+		c_wyhash
 	c_builtin_types = '
 //================================== builtin types ================================*/
 typedef int64_t i64;
@@ -734,5 +735,6 @@ static voidptr memfreedup(voidptr ptr, voidptr src, int sz) {
 	return memdup(src, sz);
 }
 
-' + c_wyhash
+' +
+		c_wyhash
 )

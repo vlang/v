@@ -36,11 +36,11 @@ pub:
 	dbname   string
 }
 
-fn C.PQconnectdb(a byteptr) &C.PGconn
+fn C.PQconnectdb(a &byte) &C.PGconn
 
-fn C.PQerrorMessage(voidptr) byteptr
+fn C.PQerrorMessage(voidptr) &byte
 
-fn C.PQgetvalue(&C.PGResult, int, int) byteptr
+fn C.PQgetvalue(&C.PGResult, int, int) &byte
 
 fn C.PQstatus(voidptr) int
 
@@ -50,20 +50,20 @@ fn C.PQntuples(&C.PGResult) int
 
 fn C.PQnfields(&C.PGResult) int
 
-fn C.PQexec(voidptr, byteptr) &C.PGResult
+fn C.PQexec(voidptr, &byte) &C.PGResult
 
 // Params:
 // const Oid *paramTypes
 // const char *const *paramValues
 // const int *paramLengths
 // const int *paramFormats
-fn C.PQexecParams(conn voidptr, command byteptr, nParams int, paramTypes int, paramValues byteptr, paramLengths int, paramFormats int, resultFormat int) &C.PGResult
+fn C.PQexecParams(conn voidptr, command &byte, nParams int, paramTypes int, paramValues &byte, paramLengths int, paramFormats int, resultFormat int) &C.PGResult
 
-fn C.PQputCopyData(conn voidptr, buffer byteptr, nbytes int) int
+fn C.PQputCopyData(conn voidptr, buffer &byte, nbytes int) int
 
 fn C.PQputCopyEnd(voidptr, &byte) int
 
-fn C.PQgetCopyData(conn voidptr, buffer &byteptr, async int) int
+fn C.PQgetCopyData(conn voidptr, buffer &&byte, async int) int
 
 fn C.PQclear(&C.PGResult) voidptr
 
@@ -186,7 +186,7 @@ pub fn (db DB) exec_one(query string) ?Row {
 
 // exec_param_many executes a query with the provided parameters
 pub fn (db DB) exec_param_many(query string, params []string) ?[]Row {
-	mut param_vals := []charptr{len: params.len}
+	mut param_vals := []&char{len: params.len}
 	for i in 0 .. params.len {
 		param_vals[i] = params[i].str
 	}
@@ -252,11 +252,11 @@ pub fn (db DB) copy_expert(query string, file io.ReaderWriter) ?int {
 		}
 	} else if status == C.PGRES_COPY_OUT {
 		for {
-			address := byteptr(0)
+			address := &byte(0)
 			n_bytes := C.PQgetCopyData(db.conn, &address, 0)
 			if n_bytes > 0 {
 				mut local_buf := []byte{len: n_bytes}
-				unsafe { C.memcpy(byteptr(local_buf.data), address, n_bytes) }
+				unsafe { C.memcpy(&byte(local_buf.data), address, n_bytes) }
 				file.write(local_buf) or {
 					C.PQfreemem(address)
 					return err

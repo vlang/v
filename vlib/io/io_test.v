@@ -36,8 +36,6 @@ fn test_copy() {
 	dst := Writ{
 		bytes: []byte{}
 	}
-	io.cp(dst, src) or {
-		assert false
-	}
+	io.cp(dst, src) or { assert false }
 	assert dst.bytes == src.bytes
 }

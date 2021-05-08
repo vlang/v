@@ -234,7 +234,7 @@ pub fn zip_files(path_to_file []string, path_to_export_zip string) ? {
 }
 
 /*
-TODO add 
+TODO add
 // zip all files in directory to zip file
 pub fn zip_folder(path_to_dir string, path_to_export_zip string) {
 
