@@ -400,14 +400,15 @@ fn test_sign() {
 	assert sign(-0.0) == -1.0
 	//
 	assert sign(inf(1)) == 1.0
-	assert sign(72234878292.4586129) == 1	
+	assert sign(72234878292.4586129) == 1
 	assert sign(10) == 1.0
 	assert sign(pi) == 1.0
 	assert sign(1) == 1.0
 	assert sign(0.000000000001) == 1.0
 	assert sign(0.000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001) == 1.0
 	assert sign(0.0) == 1.0
-	assert sign(nan()) == 1.0
+	assert is_nan(sign(nan()))
+	assert is_nan(sign(-nan()))
 }
 
 fn test_exp() {
@@ -618,7 +619,7 @@ fn test_round() {
 		[f64(4503599627370495.5), 4503599627370496], /* 1 bit fraction, rounding to 0 bit fractian */
 		[f64(4503599627370497), 4503599627370497], /* large integer */
 	]
-	_ := vfround_even_sc_[0][0]    
+	_ := vfround_even_sc_[0][0]
 	for i := 0; i < vfround_sc_.len; i++ {
 		f := round(vfround_sc_[i][0])
 		assert alike(vfround_sc_[i][1], f)

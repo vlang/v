@@ -122,6 +122,9 @@ pub fn min(a f64, b f64) f64 {
 // sign returns the corresponding sign [-1.0, 1.0] of the provided number.
 [inline]
 pub fn sign(n f64) f64 {
+	if is_nan(n) {
+		return nan()
+	}
 	return copysign(1.0, n)
 }
 
