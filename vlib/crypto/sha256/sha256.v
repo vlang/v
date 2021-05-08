@@ -124,7 +124,7 @@ fn (mut d Digest) write(p_ []byte) ?int {
 	}
 }
 
-fn (d &Digest) sum(b_in []byte) []byte {
+pub fn (d &Digest) sum(b_in []byte) []byte {
 	// Make a copy of d so that caller can keep writing and summing.
 	mut d0 := *d
 	hash := d0.checksum()
