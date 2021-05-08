@@ -5091,7 +5091,8 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ
 		}
 	} else {
 		if unwrap_option {
-			g.inits[mod].writeln(g.expr_string_surround('\t$cname = *($styp*)', expr, '.data;'))
+			g.inits[mod].writeln(g.expr_string_surround('\t$cname = *($styp*)', expr,
+				'.data;'))
 		} else {
 			g.inits[mod].writeln(g.expr_string_surround('\t$cname = ', expr, ';'))
 		}
