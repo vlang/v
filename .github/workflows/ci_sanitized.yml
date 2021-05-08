@@ -23,7 +23,7 @@ jobs:
           node-version: 12.x
       - name: Install dependencies
         run: |
-		  sudo apt upgrade
+          sudo apt update
           sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
           sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev libgl-dev
           sudo apt-get install clang
@@ -48,7 +48,7 @@ jobs:
           node-version: 12.x
       - name: Install dependencies
         run: |
-		  sudo apt upgrade
+          sudo apt update
           sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
           sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev libgl-dev
       - name: Build V
@@ -72,7 +72,7 @@ jobs:
           node-version: 12.x
       - name: Install dependencies
         run: |
-		  sudo apt upgrade
+          sudo apt update
           sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
           sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev libgl-dev
           sudo apt-get install clang
@@ -127,7 +127,7 @@ jobs:
           node-version: 12.x
       - name: Install dependencies
         run: |
-		  sudo apt upgrade
+          sudo apt update
           sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
           sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev libgl-dev
           sudo apt-get install clang
@@ -156,7 +156,7 @@ jobs:
           node-version: 12.x
       - name: Install dependencies
         run: |
-		  sudo apt upgrade
+          sudo apt update
           sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
           sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev libgl-dev
           sudo apt-get install clang
