@@ -16,6 +16,7 @@ const (
 	orange     = ui.Color{255, 140, 0}
 )
 
+[heap]
 struct App {
 mut:
 	tui    &ui.Context = 0
@@ -238,6 +239,7 @@ fn (mut b Ball) update(dt f32) {
 	b.pos.y += b.vel.y * b.acc.y * dt
 }
 
+[heap]
 struct Game {
 mut:
 	app     &App = 0

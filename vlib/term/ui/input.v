@@ -179,7 +179,7 @@ pub:
 pub struct Context {
 	ExtraContext // contains fields specific to an implementation
 pub:
-	cfg 		  Config
+	cfg 		  Config // adsasdas
 mut:
 	print_buf     []byte
 	paused        bool

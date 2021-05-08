@@ -23,8 +23,8 @@ const (
 	esu = '\x1bP=2s\x1b\\'
 )
 
-[inline]
 // write puts the string `s` into the print buffer.
+[inline]
 pub fn (mut ctx Context) write(s string) {
 	if s == '' {
 		return
@@ -32,16 +32,16 @@ pub fn (mut ctx Context) write(s string) {
 	unsafe { ctx.print_buf.push_many(s.str, s.len) }
 }
 
-[inline]
 // flush displays the accumulated print buffer to the screen.
+[inline]
 pub fn (mut ctx Context) flush() {
 	// TODO: Diff the previous frame against this one, and only render things that changed?
 	if !ctx.enable_su {
 		C.write(1, ctx.print_buf.data, ctx.print_buf.len)
 	} else {
-		C.write(1, bsu.str, bsu.len)
+		C.write(1, ui.bsu.str, ui.bsu.len)
 		C.write(1, ctx.print_buf.data, ctx.print_buf.len)
-		C.write(1, esu.str, esu.len)
+		C.write(1, ui.esu.str, ui.esu.len)
 	}
 	ctx.print_buf.clear()
 }
@@ -52,14 +52,14 @@ pub fn (mut ctx Context) bold() {
 	ctx.write('\x1b[1m')
 }
 
-[inline]
 // set_cursor_position positions the cusor at the given coordinates `x`,`y`.
+[inline]
 pub fn (mut ctx Context) set_cursor_position(x int, y int) {
 	ctx.write('\x1b[$y;${x}H')
 }
 
-[inline]
 // show_cursor will make the cursor appear if it is not already visible
+[inline]
 pub fn (mut ctx Context) show_cursor() {
 	ctx.write('\x1b[?25h')
 }
@@ -70,8 +70,8 @@ pub fn (mut ctx Context) hide_cursor() {
 	ctx.write('\x1b[?25l')
 }
 
-[inline]
 // set_color sets the current foreground color used by any succeeding `draw_*` calls.
+[inline]
 pub fn (mut ctx Context) set_color(c Color) {
 	if ctx.enable_rgb {
 		ctx.write('\x1b[38;2;${int(c.r)};${int(c.g)};${int(c.b)}m')
@@ -80,8 +80,8 @@ pub fn (mut ctx Context) set_color(c Color) {
 	}
 }
 
-[inline]
 // set_color sets the current background color used by any succeeding `draw_*` calls.
+[inline]
 pub fn (mut ctx Context) set_bg_color(c Color) {
 	if ctx.enable_rgb {
 		ctx.write('\x1b[48;2;${int(c.r)};${int(c.g)};${int(c.b)}m')
@@ -90,20 +90,20 @@ pub fn (mut ctx Context) set_bg_color(c Color) {
 	}
 }
 
-[inline]
 // reset_color sets the current foreground color back to it's default value.
+[inline]
 pub fn (mut ctx Context) reset_color() {
 	ctx.write('\x1b[39m')
 }
 
-[inline]
 // reset_bg_color sets the current background color back to it's default value.
+[inline]
 pub fn (mut ctx Context) reset_bg_color() {
 	ctx.write('\x1b[49m')
 }
 
-[inline]
 // reset restores the state of all colors and text formats back to their default values.
+[inline]
 pub fn (mut ctx Context) reset() {
 	ctx.write('\x1b[0m')
 }
@@ -113,21 +113,21 @@ pub fn (mut ctx Context) clear() {
 	ctx.write('\x1b[2J\x1b[3J')
 }
 
-[inline]
 // set_window_title sets the string `s` as the window title.
+[inline]
 pub fn (mut ctx Context) set_window_title(s string) {
 	print('\x1b]0;$s\x07')
 }
 
-[inline]
 // draw_point draws a point at position `x`,`y`.
+[inline]
 pub fn (mut ctx Context) draw_point(x int, y int) {
 	ctx.set_cursor_position(x, y)
 	ctx.write(' ')
 }
 
-[inline]
 // draw_text draws the string `s`, starting from position `x`,`y`.
+[inline]
 pub fn (mut ctx Context) draw_text(x int, y int, s string) {
 	ctx.set_cursor_position(x, y)
 	ctx.write(s)
@@ -248,9 +248,9 @@ pub fn (mut ctx Context) draw_empty_rect(x int, y int, x2 int, y2 int) {
 	ctx.draw_line(x2, y, x2, y2)
 }
 
-[inline]
 // horizontal_separator draws a horizontal separator, spanning the width of the screen.
+[inline]
 pub fn (mut ctx Context) horizontal_separator(y int) {
 	ctx.set_cursor_position(0, y)
-	ctx.write(strings.repeat(/* `⎽` */`-`, ctx.window_width))
+	ctx.write(strings.repeat(`-`, ctx.window_width)) // /* `⎽` */
 }

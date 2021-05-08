@@ -1,11 +1,17 @@
 module audio
 
+$if linux {
+	// provide a nicer error for the user that does not have ALSA installed
+	#include <alsa/asoundlib.h> # Please install the `libasound2-dev` package
+}
+
 #flag -I @VEXEROOT/thirdparty/sokol
 #define SOKOL_IMPL
 #include "sokol_audio.h"
 #flag linux -lasound
 #flag darwin -framework AudioToolbox
 #flag windows -lole32
+
 //
 pub type FNStreamingCB = fn (buffer &f32, num_frames int, num_channels int)
 

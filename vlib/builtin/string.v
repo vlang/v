@@ -77,7 +77,7 @@ pub fn tos(s &byte, len int) string {
 		panic('tos(): nil string')
 	}
 	return string{
-		str: s
+		str: unsafe { s }
 		len: len
 	}
 }
@@ -96,7 +96,7 @@ pub fn tos2(s &byte) string {
 		panic('tos2: nil string')
 	}
 	return string{
-		str: s
+		str: unsafe { s }
 		len: unsafe { vstrlen(s) }
 	}
 }
@@ -146,7 +146,7 @@ pub fn tos_lit(s &char) string {
 [unsafe]
 pub fn (bp &byte) vstring() string {
 	return string{
-		str: bp
+		str: unsafe { bp }
 		len: unsafe { C.strlen(&char(bp)) }
 	}
 }
@@ -156,7 +156,7 @@ pub fn (bp &byte) vstring() string {
 [unsafe]
 pub fn (bp &byte) vstring_with_len(len int) string {
 	return string{
-		str: bp
+		str: unsafe { bp }
 		len: len
 		is_lit: 0
 	}
@@ -194,7 +194,7 @@ pub fn (cp &char) vstring_with_len(len int) string {
 [unsafe]
 pub fn (bp &byte) vstring_literal() string {
 	return string{
-		str: bp
+		str: unsafe { bp }
 		len: unsafe { C.strlen(&char(bp)) }
 		is_lit: 1
 	}
@@ -205,7 +205,7 @@ pub fn (bp &byte) vstring_literal() string {
 [unsafe]
 pub fn (bp &byte) vstring_literal_with_len(len int) string {
 	return string{
-		str: bp
+		str: unsafe { bp }
 		len: len
 		is_lit: 1
 	}

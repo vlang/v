@@ -43,7 +43,7 @@ fn (mut ctx Context) println(s string) {
 }
 
 fn do_timeout(c &Context) {
-	mut ctx := c
+	mut ctx := unsafe { c }
 	time.sleep(ctx.timeout_ms * time.millisecond)
 	exit(ctx.exitcode)
 }

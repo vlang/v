@@ -6,21 +6,7 @@ import v.util
 
 const (
 	known_failing_exceptions = [
-		'vlib/crypto/aes/const.v',
-		// multiple narrow columns of []string turned to 1 long single column, otherwise works
-		'vlib/v/gen/js/tests/life.v',
-		// error: unexpected `,`, expecting ), on JS.setInterval(fn () { show(game) game = step(game) }, 500)
-		'vlib/builtin/js/builtin.v',
-		// JS.console.error(s) => JS.error(s), JS.process.exit(c) => JS.exit(c)
-		'vlib/builtin/js/jsfns_node.js.v',
-		'vlib/builtin/js/jsfns.js.v',
-		'vlib/builtin/js/jsfns_browser.js.v',
-		// total chaos (duplicated code several times) in array_eq_test.v
-		'vlib/builtin/array_eq_test.v',
-		// the fn args are removed, then `cb fn (picohttpparser.Request, mut picohttpparser.Response)` can not be reparsed
-		'vlib/picoev/picoev.v',
-		// the preprocessor directives are formated to the V standard, even though they are in a string literal
-		'vlib/v/gen/c/cheaders.v',
+		'vlib/crypto/aes/const.v' /* const array wrapped in too many lines */,
 	]
 )
 
@@ -33,7 +19,7 @@ fn v_test_formatting(vargs string) {
 	all_v_files := v_files()
 	util.prepare_tool_when_needed('vfmt.v')
 	testing.eheader('Run "v fmt" over all .v files')
-	mut vfmt_test_session := testing.new_test_session('$vargs fmt -worker')
+	mut vfmt_test_session := testing.new_test_session('$vargs fmt -worker', false)
 	vfmt_test_session.files << all_v_files
 	vfmt_test_session.skip_files << known_failing_exceptions
 	vfmt_test_session.test()

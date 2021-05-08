@@ -1,18 +1,19 @@
-struct Qwe {
+[heap]
+struct Hwe {
 mut:
 	n int
 }
 
-fn mut_x(mut x Qwe) &Qwe {
+fn mut_x(mut x Hwe) &Hwe {
 	n := x.n
 	// defer statement should not have run, yet
 	assert n == 10
 	x.n += 5
-	return unsafe { &x }
+	return &x
 }
 
-fn deferer() &Qwe {
-	mut s := &Qwe{
+fn deferer() &Hwe {
+	mut s := &Hwe{
 		n: 10
 	}
 	defer {
@@ -26,6 +27,15 @@ fn test_defer_in_return() {
 	q := deferer()
 	// both `mut_x()` and `defer` have been run
 	assert q.n == 17
+}
+
+struct Qwe {
+mut:
+	n int
+}
+
+fn ret_ref(mut x Qwe) &Qwe {
+	return unsafe { x }
 }
 
 fn defer_multi_ret(mut a Qwe) (int, f64) {

@@ -1,4 +1,4 @@
-import atomic2
+import sync.atomic2
 import sync
 
 const (

@@ -5,12 +5,10 @@ const (
 )
 
 pub fn cp(dst Writer, src Reader) ? {
-	mut buf := []byte{len: buf_max_len}
+	mut buf := []byte{len: io.buf_max_len}
 	for {
 		len := src.read(mut buf) or { break }
-		dst.write(buf[..len]) or {
-			return err
-		}
+		dst.write(buf[..len]) or { return err }
 	}
 	unsafe {
 		buf.free()
