@@ -2276,12 +2276,20 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 	if !found {
 		if v := call_expr.scope.find_var(fn_name) {
 			if v.typ != 0 {
-				vts := c.table.get_type_symbol(c.unwrap_generic(v.typ))
-				if vts.kind == .function {
-					info := vts.info as ast.FnType
+				generic_vts := c.table.get_type_symbol(v.typ)
+				if generic_vts.kind == .function {
+					info := generic_vts.info as ast.FnType
 					func = info.func
 					found = true
 					found_in_args = true
+				} else {
+					vts := c.table.get_type_symbol(c.unwrap_generic(v.typ))
+					if vts.kind == .function {
+						info := vts.info as ast.FnType
+						func = info.func
+						found = true
+						found_in_args = true
+					}
 				}
 			}
 		}
