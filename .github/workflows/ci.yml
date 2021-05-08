@@ -48,6 +48,7 @@ jobs:
       - uses: actions/checkout@v2
       - name: Install dependencies
         run: |
+          sudo apt update
           sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind
           sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev libgl-dev
           ## The following is needed for examples/wkhtmltopdf.v
@@ -109,6 +110,7 @@ jobs:
       - uses: actions/checkout@v2
       - name: Install dependencies
         run: |
+          sudo apt update
           sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind
           sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev libgl-dev
           sudo apt-get install --quiet -y libgc-dev
@@ -164,6 +166,7 @@ jobs:
           fetch-depth: 10
       - name: Install dependencies
         run: |
+          sudo apt update
           sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind
           sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev libgl-dev
           sudo apt-get install --quiet -y xfonts-75dpi xfonts-base
@@ -336,6 +339,7 @@ jobs:
           node-version: 12.x
       - name: Install dependencies
         run: |
+          sudo apt update
           sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
           sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev libgl-dev
       - name: Build V
@@ -430,6 +434,7 @@ jobs:
           node-version: 12.x
       - name: Install dependencies
         run: |
+          sudo apt update
           sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
           sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev libgl-dev
           sudo apt-get install clang
