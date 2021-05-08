@@ -26,4 +26,8 @@ fn test_wyhash() {
 		// println(' # EXPECTED: $test.expected | $test.expected.hex()')
 		assert got == test.expected
 	}
+
+	s := '/v/vmaster/vlib/v/fmt/tests/maps_of_fns_with_string_keys_keep.vv'
+	x := sum64_string(s, 5).hex_full()
+	println(x)
 }
