@@ -119,7 +119,8 @@ pub fn min(a f64, b f64) f64 {
 	return b
 }
 
-// sign returns the corresponding sign [-1.0, 1.0] of the provided number.
+// sign returns the corresponding sign -1.0, 1.0 of the provided number.
+// if n is not a number, its sign is nan too.
 [inline]
 pub fn sign(n f64) f64 {
 	if is_nan(n) {
@@ -128,7 +129,7 @@ pub fn sign(n f64) f64 {
 	return copysign(1.0, n)
 }
 
-// signi returns the corresponding sign [-1, 1] of the provided number.
+// signi returns the corresponding sign -1.0, 1.0 of the provided number.
 [inline]
 pub fn signi(n f64) int {
 	return int(copysign(1.0, n))
