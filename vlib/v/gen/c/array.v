@@ -113,7 +113,12 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 	for i, expr in node.exprs {
 		g.expr_with_cast(expr, node.expr_types[i], node.elem_type)
 		if i != len - 1 {
-			g.write(', ')
+			if i > 0 && i & 7 == 0 { // i > 0 && i % 8 == 0
+				g.writeln(',')
+				g.write('\t\t')
+			} else {
+				g.write(', ')
+			}
 		}
 	}
 	g.write('}))')
