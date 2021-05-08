@@ -3,7 +3,7 @@ module gfx
 import sokol.c
 
 pub const (
-	version = 1
+	version     = 1
 	used_import = c.used_import
 )
 
@@ -171,7 +171,7 @@ pub fn query_pixelformat(fmt PixelFormat) C.sg_pixelformat_info {
 	return C.sg_query_pixelformat(fmt)
 }
 
-/* get current state of a resource (INITIAL, ALLOC, VALID, FAILED, INVALID) */
+// get current state of a resource (INITIAL, ALLOC, VALID, FAILED, INVALID)
 [inline]
 pub fn query_buffer_state(buf C.sg_buffer) C.sg_resource_state {
 	return C.sg_query_buffer_state(buf)
@@ -249,7 +249,7 @@ pub fn query_pass_defaults(desc &C.sg_pass) C.sg_pass_desc {
 	return C.sg_query_pass_defaults(unsafe { &C.sg_pass_desc(desc) })
 }
 
-/* rendering contexts (optional) */
+// rendering contexts (optional)
 [inline]
 pub fn setup_context() C.sg_context {
 	return C.sg_setup_context()

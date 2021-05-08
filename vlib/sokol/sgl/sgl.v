@@ -6,7 +6,7 @@ pub const (
 	version = gfx.version + 1
 )
 
-/* setup/shutdown/misc */
+// setup/shutdown/misc
 [inline]
 pub fn setup(desc &C.sgl_desc_t) {
 	C.sgl_setup(desc)
@@ -37,7 +37,7 @@ pub fn deg(rad f32) f32 {
 	return C.sgl_deg(rad)
 }
 
-/* create and destroy pipeline objects */
+// create and destroy pipeline objects
 [inline]
 pub fn make_pipeline(desc &C.sg_pipeline_desc) C.sgl_pipeline {
 	return C.sgl_make_pipeline(desc)
@@ -48,7 +48,7 @@ pub fn destroy_pipeline(pip C.sgl_pipeline) {
 	C.sgl_destroy_pipeline(pip)
 }
 
-/* render state functions */
+// render state functions
 [inline]
 pub fn viewport(x int, y int, w int, h int, origin_top_left bool) {
 	C.sgl_viewport(x, y, w, h, origin_top_left)
@@ -74,7 +74,7 @@ pub fn texture(img C.sg_image) {
 	C.sgl_texture(img)
 }
 
-/* pipeline stack functions */
+// pipeline stack functions
 [inline]
 pub fn default_pipeline() {
 	C.sgl_default_pipeline()
@@ -95,7 +95,7 @@ pub fn pop_pipeline() {
 	C.sgl_pop_pipeline()
 }
 
-/* matrix stack functions */
+// matrix stack functions
 [inline]
 pub fn matrix_mode_modelview() {
 	C.sgl_matrix_mode_modelview()
@@ -181,7 +181,7 @@ pub fn pop_matrix() {
 	C.sgl_pop_matrix()
 }
 
-/* these functions only set the internal 'current texcoord / color' (valid inside or outside begin/end) */
+// these functions only set the internal 'current texcoord / color' (valid inside or outside begin/end)
 [inline]
 pub fn t2f(u f32, v f32) {
 	C.sgl_t2f(u, v)
@@ -212,7 +212,7 @@ pub fn c1i(rgba u32) {
 	C.sgl_c1i(rgba)
 }
 
-/* define primitives, each begin/end is one draw command */
+// define primitives, each begin/end is one draw command
 [inline]
 pub fn begin_points() {
 	C.sgl_begin_points()
@@ -368,9 +368,8 @@ pub fn end() {
 	C.sgl_end()
 }
 
-/* render everything */
+// render everything
 [inline]
 pub fn draw() {
 	C.sgl_draw()
 }
-

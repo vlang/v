@@ -42,7 +42,7 @@ fn block_generic(mut dig Digest, p_ []byte) {
 			mut i := 0
 			for i < 16 {
 				f := b & c | (~b) & d
-				t := bits.rotate_left_32(a, 5) + f + e + w[i & 0xf] + u32(_k0)
+				t := bits.rotate_left_32(a, 5) + f + e + w[i & 0xf] + u32(sha1._k0)
 				e = d
 				d = c
 				c = bits.rotate_left_32(b, 30)
@@ -51,10 +51,10 @@ fn block_generic(mut dig Digest, p_ []byte) {
 				i++
 			}
 			for i < 20 {
-				tmp := w[(i - 3) & 0xf] ^ w[(i - 8) & 0xf] ^ w[(i - 14) & 0xf] ^ w[(i) & 0xf]
+				tmp := w[(i - 3) & 0xf] ^ w[(i - 8) & 0xf] ^ w[(i - 14) & 0xf] ^ w[i & 0xf]
 				w[i & 0xf] = (tmp << 1) | (tmp >> (32 - 1))
 				f := b & c | (~b) & d
-				t := bits.rotate_left_32(a, 5) + f + e + w[i & 0xf] + u32(_k0)
+				t := bits.rotate_left_32(a, 5) + f + e + w[i & 0xf] + u32(sha1._k0)
 				e = d
 				d = c
 				c = bits.rotate_left_32(b, 30)
@@ -63,10 +63,10 @@ fn block_generic(mut dig Digest, p_ []byte) {
 				i++
 			}
 			for i < 40 {
-				tmp := w[(i - 3) & 0xf] ^ w[(i - 8) & 0xf] ^ w[(i - 14) & 0xf] ^ w[(i) & 0xf]
+				tmp := w[(i - 3) & 0xf] ^ w[(i - 8) & 0xf] ^ w[(i - 14) & 0xf] ^ w[i & 0xf]
 				w[i & 0xf] = (tmp << 1) | (tmp >> (32 - 1))
 				f := b ^ c ^ d
-				t := bits.rotate_left_32(a, 5) + f + e + w[i & 0xf] + u32(_k1)
+				t := bits.rotate_left_32(a, 5) + f + e + w[i & 0xf] + u32(sha1._k1)
 				e = d
 				d = c
 				c = bits.rotate_left_32(b, 30)
@@ -75,10 +75,10 @@ fn block_generic(mut dig Digest, p_ []byte) {
 				i++
 			}
 			for i < 60 {
-				tmp := w[(i - 3) & 0xf] ^ w[(i - 8) & 0xf] ^ w[(i - 14) & 0xf] ^ w[(i) & 0xf]
+				tmp := w[(i - 3) & 0xf] ^ w[(i - 8) & 0xf] ^ w[(i - 14) & 0xf] ^ w[i & 0xf]
 				w[i & 0xf] = (tmp << 1) | (tmp >> (32 - 1))
 				f := ((b | c) & d) | (b & c)
-				t := bits.rotate_left_32(a, 5) + f + e + w[i & 0xf] + u32(_k2)
+				t := bits.rotate_left_32(a, 5) + f + e + w[i & 0xf] + u32(sha1._k2)
 				e = d
 				d = c
 				c = bits.rotate_left_32(b, 30)
@@ -87,10 +87,10 @@ fn block_generic(mut dig Digest, p_ []byte) {
 				i++
 			}
 			for i < 80 {
-				tmp := w[(i - 3) & 0xf] ^ w[(i - 8) & 0xf] ^ w[(i - 14) & 0xf] ^ w[(i) & 0xf]
+				tmp := w[(i - 3) & 0xf] ^ w[(i - 8) & 0xf] ^ w[(i - 14) & 0xf] ^ w[i & 0xf]
 				w[i & 0xf] = (tmp << 1) | (tmp >> (32 - 1))
 				f := b ^ c ^ d
-				t := bits.rotate_left_32(a, 5) + f + e + w[i & 0xf] + u32(_k3)
+				t := bits.rotate_left_32(a, 5) + f + e + w[i & 0xf] + u32(sha1._k3)
 				e = d
 				d = c
 				c = bits.rotate_left_32(b, 30)

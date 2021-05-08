@@ -2,7 +2,7 @@ module gx
 
 pub struct Image {
 mut:
-	obj    voidptr
+	obj voidptr
 pub:
 	id     int
 	width  int

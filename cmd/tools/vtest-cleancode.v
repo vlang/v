@@ -3,6 +3,7 @@ module main
 import os
 import testing
 import v.util
+import arrays
 
 const (
 	vet_known_failing_exceptions    = []string{}
@@ -31,70 +32,30 @@ const (
 		'vlib/builtin/int.v' /* TODO byteptr: vfmt converts `pub fn (nn byteptr) str() string {` to `nn &byte` and that conflicts with `nn byte` */,
 		'vlib/builtin/string_charptr_byteptr_helpers.v' /* TODO byteptr: a temporary shim to ease the byteptr=>&byte transition */,
 		'vlib/v/tests/fn_high_test.v', /* param name removed */
-		'vlib/v/tests/fn_test.v', /* bad comment formatting */
 		'vlib/v/tests/generics_return_generics_struct_test.v', /* generic fn param removed */
 		'vlib/v/tests/interop_test.v', /* bad comment formatting */
 		'vlib/v/tests/generics_test.v', /* multi_generic_args<Foo<int>, Foo<int> >(...) becomes .... Foo<int>>(...) which does not parse */
 		'vlib/v/tests/string_interpolation_test.v' /* TODO byteptr: &byte.str() behaves differently than byteptr.str() */,
 		'vlib/v/gen/js/tests/js.v', /* local `hello` fn, gets replaced with module `hello` aliased as `hl` */
-		'examples/c_interop_wkhtmltopdf.v', /* &charptr --> &&char */
-		'vlib/v/gen/c/cheaders.v' /* infix wrapping error */,
+		'examples/c_interop_wkhtmltopdf.v' /* &charptr --> &&char */,
 	]
 	vfmt_verify_list                = [
 		'cmd/',
 		'examples/',
 		'tutorials/',
-		'vlib/arrays/',
-		'vlib/benchmark/',
-		'vlib/bitfield/',
-		'vlib/builtin/',
-		'vlib/cli/',
-		'vlib/dl/',
-		'vlib/encoding/utf8/',
-		'vlib/flag/',
-		'vlib/gg/',
-		'vlib/math/bits/bits.v',
-		'vlib/orm/',
-		'vlib/runtime/',
-		'vlib/term/colors.v',
-		'vlib/term/term.v',
-		'vlib/v/ast/',
-		'vlib/v/builder/',
-		'vlib/v/cflag/',
-		'vlib/v/checker/',
-		'vlib/v/depgraph/',
-		'vlib/v/doc/',
-		'vlib/v/embed_file/',
-		'vlib/v/errors/',
-		'vlib/v/eval/',
-		'vlib/v/fmt/',
-		'vlib/v/gen/c/',
-		'vlib/v/gen/js/',
-		'vlib/v/gen/native/',
-		'vlib/v/live/',
-		'vlib/v/markused/',
-		'vlib/v/parser/',
-		'vlib/v/pkgconfig/',
-		'vlib/v/pref/',
-		'vlib/v/preludes',
-		'vlib/v/scanner/',
-		'vlib/v/tests/',
-		'vlib/v/token/',
-		'vlib/v/util/',
-		'vlib/v/vcache/',
-		'vlib/v/vet/',
-		'vlib/v/vmod/',
-		'vlib/cli/',
-		'vlib/flag/',
-		'vlib/math/big/',
-		'vlib/os/',
-		'vlib/semver/',
-		'vlib/strings/',
-		'vlib/time/',
-		'vlib/vweb/',
-		'vlib/x/json2',
-		'vlib/x/websocket/',
+		'vlib/',
 	]
+	vfmt_known_failing_exceptions   = arrays.merge(verify_known_failing_exceptions, [
+		'vlib/strconv/' /* prevent conflicts, till the new pure V string interpolation is merged */,
+		'vlib/net/' /* prevent conflicts, till ipv6 support is merged */,
+		'vlib/term/ui/input.v' /* comment after a struct embed is removed */,
+		'vlib/regex/regex_test.v' /* contains meaningfull formatting of the test case data */,
+		'vlib/readline/readline_test.v' /* vfmt eats `{ Readline }` from `import readline { Readline }` */,
+		'vlib/glm/glm.v' /* `mut res &f32` => `mut res f32`, which then fails to compile */,
+		'vlib/fontstash/fontstash_structs.v' /* eats fn arg names for inline callback types in struct field declarations */,
+		'vlib/crypto/sha512/sha512block_generic.v' /* formatting of large constant arrays wraps to too many lines */,
+		'vlib/crypto/aes/const.v' /* formatting of large constant arrays wraps to too many lines */,
+	])
 )
 
 const (
@@ -113,7 +74,7 @@ fn tsession(vargs string, tool_source string, tool_cmd string, tool_args string,
 	os.chdir(vroot)
 	title_message := 'running $tool_cmd over most .v files'
 	testing.eheader(title_message)
-	mut test_session := testing.new_test_session('$vargs $tool_args')
+	mut test_session := testing.new_test_session('$vargs $tool_args', false)
 	test_session.files << flist
 	test_session.skip_files << slist
 	util.prepare_tool_when_needed(tool_source)
@@ -128,10 +89,11 @@ fn tsession(vargs string, tool_source string, tool_cmd string, tool_args string,
 fn v_test_vetting(vargs string) {
 	expanded_vet_list := util.find_all_v_files(vet_folders) or { return }
 	vet_session := tsession(vargs, 'vvet', 'v vet', 'vet', expanded_vet_list, vet_known_failing_exceptions)
+	//
 	fmt_cmd, fmt_args := if is_fix { 'v fmt -w', 'fmt -w' } else { 'v fmt -verify', 'fmt -verify' }
-	expanded_vfmt_list := util.find_all_v_files(vfmt_verify_list) or { return }
-	verify_session := tsession(vargs, 'vfmt.v', fmt_cmd, fmt_args, expanded_vfmt_list,
-		verify_known_failing_exceptions)
+	vfmt_list := util.find_all_v_files(vfmt_verify_list) or { return }
+	exceptions := util.find_all_v_files(vfmt_known_failing_exceptions) or { return }
+	verify_session := tsession(vargs, 'vfmt.v', fmt_cmd, fmt_args, vfmt_list, exceptions)
 	//
 	if vet_session.benchmark.nfail > 0 || verify_session.benchmark.nfail > 0 {
 		eprintln('\n')

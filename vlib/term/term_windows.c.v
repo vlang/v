@@ -39,7 +39,7 @@ mut:
 [typedef]
 struct C.CHAR_INFO {
 mut:
-	Char C.uChar
+	Char       C.uChar
 	Attributes u16
 }
 

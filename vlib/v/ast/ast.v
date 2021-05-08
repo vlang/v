@@ -249,15 +249,9 @@ pub mut:
 
 pub struct Embed {
 pub:
-	typ Type
-	pos token.Position
-}
-
-pub struct StructEmbedding {
-pub:
-	name string
-	typ  Type
-	pos  token.Position
+	typ      Type
+	pos      token.Position
+	comments []Comment
 }
 
 pub struct InterfaceEmbedding {

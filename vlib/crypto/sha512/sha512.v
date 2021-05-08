@@ -72,47 +72,47 @@ mut:
 
 fn (mut d Digest) reset() {
 	d.h = []u64{len: (8)}
-	d.x = []byte{len: (chunk)}
+	d.x = []byte{len: sha512.chunk}
 	match d.function {
 		.sha384 {
-			d.h[0] = init0_384
-			d.h[1] = init1_384
-			d.h[2] = init2_384
-			d.h[3] = init3_384
-			d.h[4] = init4_384
-			d.h[5] = init5_384
-			d.h[6] = init6_384
-			d.h[7] = init7_384
+			d.h[0] = sha512.init0_384
+			d.h[1] = sha512.init1_384
+			d.h[2] = sha512.init2_384
+			d.h[3] = sha512.init3_384
+			d.h[4] = sha512.init4_384
+			d.h[5] = sha512.init5_384
+			d.h[6] = sha512.init6_384
+			d.h[7] = sha512.init7_384
 		}
 		.sha512_224 {
-			d.h[0] = init0_224
-			d.h[1] = init1_224
-			d.h[2] = init2_224
-			d.h[3] = init3_224
-			d.h[4] = init4_224
-			d.h[5] = init5_224
-			d.h[6] = init6_224
-			d.h[7] = init7_224
+			d.h[0] = sha512.init0_224
+			d.h[1] = sha512.init1_224
+			d.h[2] = sha512.init2_224
+			d.h[3] = sha512.init3_224
+			d.h[4] = sha512.init4_224
+			d.h[5] = sha512.init5_224
+			d.h[6] = sha512.init6_224
+			d.h[7] = sha512.init7_224
 		}
 		.sha512_256 {
-			d.h[0] = init0_256
-			d.h[1] = init1_256
-			d.h[2] = init2_256
-			d.h[3] = init3_256
-			d.h[4] = init4_256
-			d.h[5] = init5_256
-			d.h[6] = init6_256
-			d.h[7] = init7_256
+			d.h[0] = sha512.init0_256
+			d.h[1] = sha512.init1_256
+			d.h[2] = sha512.init2_256
+			d.h[3] = sha512.init3_256
+			d.h[4] = sha512.init4_256
+			d.h[5] = sha512.init5_256
+			d.h[6] = sha512.init6_256
+			d.h[7] = sha512.init7_256
 		}
 		else {
-			d.h[0] = init0
-			d.h[1] = init1
-			d.h[2] = init2
-			d.h[3] = init3
-			d.h[4] = init4
-			d.h[5] = init5
-			d.h[6] = init6
-			d.h[7] = init7
+			d.h[0] = sha512.init0
+			d.h[1] = sha512.init1
+			d.h[2] = sha512.init2
+			d.h[3] = sha512.init3
+			d.h[4] = sha512.init4
+			d.h[5] = sha512.init5
+			d.h[6] = sha512.init6
+			d.h[7] = sha512.init7
 		}
 	}
 	d.nx = 0
@@ -157,7 +157,7 @@ fn (mut d Digest) write(p_ []byte) ?int {
 		if d.nx > 0 {
 			n := copy(d.x[d.nx..], p)
 			d.nx += n
-			if d.nx == chunk {
+			if d.nx == sha512.chunk {
 				block(mut d, d.x)
 				d.nx = 0
 			}
@@ -167,8 +167,8 @@ fn (mut d Digest) write(p_ []byte) ?int {
 				p = p[n..]
 			}
 		}
-		if p.len >= chunk {
-			n := p.len & ~(chunk - 1)
+		if p.len >= sha512.chunk {
+			n := p.len & ~(sha512.chunk - 1)
 			block(mut d, p[..n])
 			if n >= p.len {
 				p = []
@@ -190,17 +190,17 @@ fn (d &Digest) sum(b_in []byte) []byte {
 	mut b_out := b_in.clone()
 	match d0.function {
 		.sha384 {
-			for b in hash[..size384] {
+			for b in hash[..sha512.size384] {
 				b_out << b
 			}
 		}
 		.sha512_224 {
-			for b in hash[..size224] {
+			for b in hash[..sha512.size224] {
 				b_out << b
 			}
 		}
 		.sha512_256 {
-			for b in hash[..size256] {
+			for b in hash[..sha512.size256] {
 				b_out << b
 			}
 		}
@@ -231,7 +231,7 @@ fn (mut d Digest) checksum() []byte {
 	if d.nx != 0 {
 		panic('d.nx != 0')
 	}
-	mut digest := []byte{len: (size)}
+	mut digest := []byte{len: sha512.size}
 	binary.big_endian_put_u64(mut digest, d.h[0])
 	binary.big_endian_put_u64(mut digest[8..], d.h[1])
 	binary.big_endian_put_u64(mut digest[16..], d.h[2])
@@ -257,8 +257,8 @@ pub fn sum384(data []byte) []byte {
 	mut d := new_digest(.sha384)
 	d.write(data) or { panic(err) }
 	sum := d.checksum()
-	sum384 := []byte{len: (size384)}
-	copy(sum384, sum[..size384])
+	sum384 := []byte{len: sha512.size384}
+	copy(sum384, sum[..sha512.size384])
 	return sum384
 }
 
@@ -267,8 +267,8 @@ pub fn sum512_224(data []byte) []byte {
 	mut d := new_digest(.sha512_224)
 	d.write(data) or { panic(err) }
 	sum := d.checksum()
-	sum224 := []byte{len: (size224)}
-	copy(sum224, sum[..size224])
+	sum224 := []byte{len: sha512.size224}
+	copy(sum224, sum[..sha512.size224])
 	return sum224
 }
 
@@ -277,8 +277,8 @@ pub fn sum512_256(data []byte) []byte {
 	mut d := new_digest(.sha512_256)
 	d.write(data) or { panic(err) }
 	sum := d.checksum()
-	sum256 := []byte{len: (size256)}
-	copy(sum256, sum[..size256])
+	sum256 := []byte{len: sha512.size256}
+	copy(sum256, sum[..sha512.size256])
 	return sum256
 }
 
@@ -291,16 +291,16 @@ fn block(mut dig Digest, p []byte) {
 // size returns the size of the checksum in bytes.
 pub fn (d &Digest) size() int {
 	match d.function {
-		.sha512_224 { return size224 }
-		.sha512_256 { return size256 }
-		.sha384 { return size384 }
-		else { return size }
+		.sha512_224 { return sha512.size224 }
+		.sha512_256 { return sha512.size256 }
+		.sha384 { return sha512.size384 }
+		else { return sha512.size }
 	}
 }
 
 // block_size returns the block size of the checksum in bytes.
 pub fn (d &Digest) block_size() int {
-	return block_size
+	return sha512.block_size
 }
 
 // hexhash returns a hexadecimal SHA512 hash sum `string` of `s`.

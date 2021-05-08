@@ -83,7 +83,7 @@ pub fn (mut s Subscriber) subscribe_method(name string, handler EventHandlerFn, 
 	}
 }
 
-// unsubscribe_method unsubscribe a receiver for only one method 
+// unsubscribe_method unsubscribe a receiver for only one method
 pub fn (mut s Subscriber) unsubscribe_method(name string, receiver voidptr) {
 	s.registry.events = s.registry.events.filter(!(it.name == name && it.receiver == receiver))
 }
@@ -104,8 +104,6 @@ pub fn (mut s Subscriber) subscribe_once(name string, handler EventHandlerFn) {
 pub fn (s &Subscriber) is_subscribed(name string) bool {
 	return s.registry.check_subscriber(name)
 }
-
-
 
 // is_subscribed_method checks whether a receiver was already subscribed for any events
 pub fn (s &Subscriber) is_subscribed_method(name string, receiver voidptr) bool {

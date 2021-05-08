@@ -1639,9 +1639,9 @@ fn (mut c Checker) check_return_generics_struct(return_type ast.Type, mut call_e
 				mut fields := rts.info.fields.clone()
 				if rts.info.generic_types.len == concrete_types.len {
 					generic_names := rts.info.generic_types.map(c.table.get_type_symbol(it).name)
-					for i, _ in fields {
+					for i in 0 .. fields.len {
 						if t_typ := c.table.resolve_generic_to_concrete(fields[i].typ,
-							generic_names, concrete_types, false)
+							generic_names, concrete_types, true)
 						{
 							fields[i].typ = t_typ
 						}
@@ -2276,7 +2276,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 	if !found {
 		if v := call_expr.scope.find_var(fn_name) {
 			if v.typ != 0 {
-				vts := c.table.get_type_symbol(v.typ)
+				vts := c.table.get_type_symbol(c.unwrap_generic(v.typ))
 				if vts.kind == .function {
 					info := vts.info as ast.FnType
 					func = info.func
@@ -5206,6 +5206,7 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	// since it is used in c.match_exprs() it saves checking twice
 	node.cond_type = c.table.mktyp(cond_type)
 	c.ensure_type_exists(node.cond_type, node.pos) or { return ast.void_type }
+	c.check_expr_opt_call(node.cond, cond_type)
 	cond_type_sym := c.table.get_type_symbol(cond_type)
 	if cond_type_sym.kind !in [.interface_, .sum_type] {
 		node.is_sum_type = false
