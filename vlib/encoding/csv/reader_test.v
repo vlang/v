@@ -5,9 +5,7 @@ fn test_encoding_csv_reader() {
 	mut csv_reader := csv.new_reader(data)
 	mut row_count := 0
 	for {
-		row := csv_reader.read() or {
-			break
-		}
+		row := csv_reader.read() or { break }
 		row_count++
 		if row_count == 1 {
 			assert row[0] == 'name'
@@ -35,9 +33,7 @@ fn test_line_break_lf() {
 	mut csv_reader := csv.new_reader(lf_data)
 	mut row_count := 0
 	for {
-		row := csv_reader.read() or {
-			break
-		}
+		row := csv_reader.read() or { break }
 		row_count++
 		if row_count == 1 {
 			assert row[0] == 'name'
@@ -55,9 +51,7 @@ fn test_line_break_cr() {
 	mut csv_reader := csv.new_reader(cr_data)
 	mut row_count := 0
 	for {
-		row := csv_reader.read() or {
-			break
-		}
+		row := csv_reader.read() or { break }
 		row_count++
 		if row_count == 1 {
 			assert row[0] == 'name'
@@ -75,9 +69,7 @@ fn test_line_break_crlf() {
 	mut csv_reader := csv.new_reader(crlf_data)
 	mut row_count := 0
 	for {
-		row := csv_reader.read() or {
-			break
-		}
+		row := csv_reader.read() or { break }
 		row_count++
 		if row_count == 1 {
 			assert row[0] == 'name'
@@ -95,9 +87,7 @@ fn test_no_line_ending() {
 	mut csv_reader := csv.new_reader(data)
 	mut row_count := 0
 	for {
-		csv_reader.read() or {
-			break
-		}
+		csv_reader.read() or { break }
 		row_count++
 	}
 	assert row_count == 2
@@ -108,9 +98,7 @@ fn test_last_field_empty() {
 	mut csv_reader := csv.new_reader(data)
 	mut row_count := 0
 	for {
-		row := csv_reader.read() or {
-			break
-		}
+		row := csv_reader.read() or { break }
 		row_count++
 		if row_count == 1 {
 			assert row[0] == 'name'
@@ -133,9 +121,7 @@ fn test_empty_line() {
 	mut csv_reader := csv.new_reader(data)
 	mut row_count := 0
 	for {
-		row := csv_reader.read() or {
-			break
-		}
+		row := csv_reader.read() or { break }
 		row_count++
 		if row_count == 1 {
 			assert row[0] == 'name'
@@ -160,9 +146,7 @@ fn test_field_multiple_line() {
 	mut csv_reader := csv.new_reader(data)
 	mut row_count := 0
 	for {
-		row := csv_reader.read() or {
-			break
-		}
+		row := csv_reader.read() or { break }
 		row_count++
 		if row_count == 1 {
 			assert row[0] == 'name'
@@ -182,9 +166,7 @@ fn test_field_quotes_for_parts() {
 	mut csv_reader := csv.new_reader(data)
 	mut row_count := 0
 	for {
-		row := csv_reader.read() or {
-			break
-		}
+		row := csv_reader.read() or { break }
 		row_count++
 		if row_count == 1 {
 			assert row[0] == 'a1'

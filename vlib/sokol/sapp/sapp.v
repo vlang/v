@@ -7,7 +7,9 @@ pub const (
 )
 
 // Android needs a global reference to `g_desc`
-__global ( g_desc C.sapp_desc )
+__global (
+	g_desc C.sapp_desc
+)
 
 pub fn create_desc() C.sg_desc {
 	metal_desc := C.sg_metal_context_desc{

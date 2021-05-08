@@ -12,7 +12,7 @@ fn cmp(a f32, b f32) bool {
 fn test_ortho() {
 	projection := glm.ortho(0, 200, 400, 0)
 	$if debug {
-		println(unsafe {projection.data[0]})
+		println(unsafe { projection.data[0] })
 	}
 	unsafe {
 		assert cmp(projection.data[0], 0.01)
@@ -73,7 +73,7 @@ fn test_rotate() {
 	m2 = glm.rotate(1, glm.vec3(0, 1, 0), m2)
 	mut same := true
 	for i in 0 .. 15 {
-		if unsafe {m1.data[i]} != unsafe {m2.data[i]} {
+		if unsafe { m1.data[i] } != unsafe { m2.data[i] } {
 			same = false
 		}
 	}
@@ -150,6 +150,6 @@ fn test_mult1() {
 	b := glm.Mat4{bdata}
 	a = glm.mult(a, b)
 	for i in 0 .. 15 {
-		assert unsafe {a.data[i]} == unsafe {expected[i]}
+		assert unsafe { a.data[i] } == unsafe { expected[i] }
 	}
 }

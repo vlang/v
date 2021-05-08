@@ -1,7 +1,7 @@
 import sync
 
 const (
-	queue_len = 1000
+	queue_len  = 1000
 	queue_fill = 763
 )
 

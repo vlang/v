@@ -1,4 +1,3 @@
-
 // Channel Benchmark
 //
 // `nobj` integers are sent thru a channel with queue length`buflen`

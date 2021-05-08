@@ -31,9 +31,9 @@ fn init_color_table() []int {
 	color_table_[15] = 0xffffff
 	// color palette
 	for i in 0 .. 216 {
-		r := value_range[(i / 36) % 6]
-		g := value_range[(i / 6) % 6]
-		b := value_range[i % 6]
+		r := ui.value_range[(i / 36) % 6]
+		g := ui.value_range[(i / 6) % 6]
+		b := ui.value_range[i % 6]
 		color_table_[i + 16] = ((r << 16) & 0xffffff) + ((g << 8) & 0xffff) + (b & 0xff)
 	}
 	// grayscale
@@ -70,7 +70,7 @@ fn lookup_rgb(r int, g int, b int) int {
 	color := (r << 16) + (g << 8) + b
 	// lookup extended colors only, coz non-extended can be changed by users.
 	for i in 16 .. 256 {
-		if color_table[i] == color {
+		if ui.color_table[i] == color {
 			return i
 		}
 	}

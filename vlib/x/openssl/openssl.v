@@ -1,33 +1,8 @@
 module openssl
 
-import net.openssl
 import net
+import net.openssl as nssl
 import time
-
-// const (
-// is_used = openssl.is_used
-// )
-pub struct SSLConn {
-mut:
-	sslctx   &C.SSL_CTX
-	ssl      &C.SSL
-	handle   int
-	duration time.Duration
-}
-
-enum Select {
-	read
-	write
-	except
-}
-
-pub fn new_ssl_conn() &SSLConn {
-	return &SSLConn{
-		sslctx: 0
-		ssl: 0
-		handle: 0
-	}
-}
 
 // shutdown closes the ssl connection and do clean up
 pub fn (mut s SSLConn) shutdown() ? {
@@ -36,7 +11,7 @@ pub fn (mut s SSLConn) shutdown() ? {
 		for {
 			res = C.SSL_shutdown(voidptr(s.ssl))
 			if res < 0 {
-				err_res := openssl.ssl_error(res, s.ssl) or {
+				err_res := nssl.ssl_error(res, s.ssl) or {
 					break // We break to free rest of resources
 				}
 				if err_res == .ssl_error_want_read {
@@ -102,7 +77,7 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ? {
 	// C.SSL_CTX_set_options(s.sslctx, flags)
 	// mut res := C.SSL_CTX_load_verify_locations(s.sslctx, 'random-org-chain.pem', 0)
 
-	s.ssl = unsafe { &C.SSL(C.SSL_new(voidptr(s.sslctx))) }
+	s.ssl = unsafe { &C.SSL(C.SSL_new(s.sslctx)) }
 	if s.ssl == 0 {
 		return error("Couldn't create OpenSSL instance.")
 	}
@@ -124,7 +99,7 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ? {
 	for {
 		res = C.SSL_connect(voidptr(s.ssl))
 		if res != 1 {
-			err_res := openssl.ssl_error(res, s.ssl) ?
+			err_res := nssl.ssl_error(res, s.ssl) ?
 			if err_res == .ssl_error_want_read {
 				for {
 					ready := @select(s.handle, .read, s.duration) ?
@@ -148,12 +123,12 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ? {
 	}
 }
 
-pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr byteptr, len int) ?int {
+pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &byte, len int) ?int {
 	mut res := 0
 	for {
 		res = C.SSL_read(voidptr(s.ssl), buf_ptr, len)
 		if res < 0 {
-			err_res := openssl.ssl_error(res, s.ssl) ?
+			err_res := nssl.ssl_error(res, s.ssl) ?
 			if err_res == .ssl_error_want_read {
 				for {
 					ready := @select(s.handle, .read, s.duration) ?
@@ -181,21 +156,21 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr byteptr, len int) ?int {
 }
 
 pub fn (mut s SSLConn) read_into(mut buffer []byte) ?int {
-	res := s.socket_read_into_ptr(byteptr(buffer.data), buffer.len) ?
+	res := s.socket_read_into_ptr(&byte(buffer.data), buffer.len) ?
 	return res
 }
 
 // write number of bytes to SSL connection
 pub fn (mut s SSLConn) write(bytes []byte) ?int {
 	unsafe {
-		mut ptr_base := byteptr(bytes.data)
+		mut ptr_base := &byte(bytes.data)
 		mut total_sent := 0
 		for total_sent < bytes.len {
 			ptr := ptr_base + total_sent
 			remaining := bytes.len - total_sent
 			mut sent := C.SSL_write(voidptr(s.ssl), ptr, remaining)
 			if sent <= 0 {
-				err_res := openssl.ssl_error(sent, s.ssl) ?
+				err_res := nssl.ssl_error(sent, s.ssl) ?
 				if err_res == .ssl_error_want_read {
 					for {
 						ready := @select(s.handle, .read, s.duration) ?

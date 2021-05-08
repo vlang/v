@@ -33,7 +33,7 @@ pub struct Field {
 }
 
 // fetch_row - fetches the next row from a result.
-pub fn (r Result) fetch_row() &byteptr {
+pub fn (r Result) fetch_row() &&byte {
 	return C.mysql_fetch_row(r.result)
 }
 
@@ -58,7 +58,7 @@ pub fn (r Result) rows() []Row {
 			if unsafe { rr[i] == 0 } {
 				row.vals << ''
 			} else {
-				row.vals << mystring(unsafe { byteptr(rr[i]) })
+				row.vals << mystring(unsafe { &byte(rr[i]) })
 			}
 		}
 		rows << row
@@ -66,7 +66,7 @@ pub fn (r Result) rows() []Row {
 	return rows
 }
 
-// maps - returns an array of maps, each containing a set of 
+// maps - returns an array of maps, each containing a set of
 // field name: field value pairs.
 pub fn (r Result) maps() []map[string]string {
 	mut array_map := []map[string]string{}
