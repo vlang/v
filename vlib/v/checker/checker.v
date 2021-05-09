@@ -65,6 +65,7 @@ pub mut:
 	inside_const   bool
 	inside_anon_fn bool
 	inside_ref_lit bool
+	inside_defer   bool
 	inside_fn_arg  bool // `a`, `b` in `a.f(b)`
 	skip_flags     bool // should `#flag` and `#include` be skipped
 mut:
@@ -3835,7 +3836,19 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 				node.idx_in_fn = c.cur_fn.defer_stmts.len
 				c.cur_fn.defer_stmts << unsafe { &node }
 			}
+			c.inside_defer = true
+			for i, ident in node.used_vars {
+				mut id := ident
+				if id.info is ast.IdentVar {
+					mut info := id.info as ast.IdentVar
+					typ := c.ident(mut id)
+					info.typ = typ
+					id.info = info
+					node.used_vars[i] = id
+				}
+			}
 			c.stmts(node.stmts)
+			c.inside_defer = false
 		}
 		ast.EnumDecl {
 			c.enum_decl(node)

@@ -103,6 +103,11 @@ mut:
 	defer_stmts            []ast.DeferStmt
 	defer_ifdef            string
 	defer_profile_code     string
+	defer_tmp_vars         [][]ast.Ident
+	defer_org_vars         [][]ast.Ident
+	defer_org_var_names    [][]string
+	inside_defer           bool
+	defer_idx              int
 	str_types              []string     // types that need automatic str() generation
 	threaded_fns           []string     // for generating unique wrapper types and fns for `go xxx()`
 	waiter_fns             []string     // functions that wait for `go xxx()` to finish
@@ -1122,6 +1127,12 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			mut defer_stmt := node
 			defer_stmt.ifdef = g.defer_ifdef
 			g.writeln('${g.defer_flag_var(defer_stmt)} = true;')
+			for i in 0..g.defer_tmp_vars[defer_stmt.idx_in_fn].len {
+				g.ident(g.defer_tmp_vars[defer_stmt.idx_in_fn][i])
+				g.write(' = ')
+				g.ident(g.defer_org_vars[defer_stmt.idx_in_fn][i])
+				g.writeln(';')
+			}
 			g.defer_stmts << defer_stmt
 		}
 		ast.EnumDecl {
@@ -1304,6 +1315,8 @@ fn (mut g Gen) write_defer_stmts() {
 		g.writeln('// Defer begin')
 		g.writeln('if (${g.defer_flag_var(defer_stmt)}) {')
 		g.indent++
+		g.inside_defer = true
+		g.defer_idx = defer_stmt.idx_in_fn
 		if defer_stmt.ifdef.len > 0 {
 			g.writeln(defer_stmt.ifdef)
 			g.stmts(defer_stmt.stmts)
@@ -1315,6 +1328,7 @@ fn (mut g Gen) write_defer_stmts() {
 			g.indent++
 		}
 		g.indent--
+		g.inside_defer = false
 		g.writeln('}')
 		g.writeln('// Defer end')
 	}
@@ -4382,7 +4396,24 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 	}
 }
 
-fn (mut g Gen) ident(node ast.Ident) {
+fn (mut g Gen) ident(nd ast.Ident) {
+	mut node := nd
+	if g.inside_defer {
+		if node in g.defer_org_vars[g.defer_idx] {
+			mut idx := -1
+			for i, n in g.defer_org_vars[g.defer_idx] {
+				if n == node {
+					eprintln('found $i')
+					idx = i
+				}
+			}
+			if idx == -1 {
+				g.error('Defer tmp var was not found', nd.pos)
+				return
+			}
+			node = g.defer_tmp_vars[g.defer_idx][idx]
+		}
+	}
 	prevent_sum_type_unwrapping_once := g.prevent_sum_type_unwrapping_once
 	g.prevent_sum_type_unwrapping_once = false
 	if node.name == 'lld' {

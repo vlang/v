@@ -77,6 +77,8 @@ mut:
 	inside_asm_template bool
 	inside_asm          bool
 	global_labels       []string
+	inside_defer        bool
+	defer_vars          []ast.Ident
 }
 
 // for tests
@@ -790,9 +792,13 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 		.key_defer {
 			p.next()
 			spos := p.tok.position()
+			p.inside_defer = true
+			p.defer_vars = []ast.Ident{}
 			stmts := p.parse_block()
+			p.inside_defer = false
 			return ast.DeferStmt{
 				stmts: stmts
+				used_vars: p.defer_vars
 				pos: spos.extend_with_last_line(p.tok.position(), p.prev_tok.line_nr)
 			}
 		}
@@ -1955,7 +1961,11 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 				} else if p.peek_tok.kind == .dot && p.peek_token(2).kind != .eof
 					&& p.peek_token(2).lit.len == 0 {
 					// incomplete module selector must be handled by dot_expr instead
-					node = p.parse_ident(language)
+					ident := p.parse_ident(language)
+					node = ident
+					if p.inside_defer {
+						p.defer_vars << ident
+					}
 					return node
 				}
 			}
@@ -1976,7 +1986,11 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	same_line := p.tok.line_nr == p.peek_tok.line_nr
 	// `(` must be on same line as name token otherwise it's a ParExpr
 	if !same_line && p.peek_tok.kind == .lpar {
-		node = p.parse_ident(language)
+		ident := p.parse_ident(language)
+		node = ident
+		if p.inside_defer {
+			p.defer_vars << ident
+		}
 	} else if p.peek_tok.kind == .lpar
 		|| (is_optional && p.peek_token(2).kind == .lpar) || p.is_generic_call() {
 		// foo(), foo<int>() or type() cast
@@ -2088,7 +2102,11 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		// JS. function call with more than 1 dot
 		node = p.call_expr(language, mod)
 	} else {
-		node = p.parse_ident(language)
+		ident := p.parse_ident(language)
+		node = ident
+		if p.inside_defer {
+			p.defer_vars << ident
+		}
 	}
 	p.expr_mod = ''
 	return node

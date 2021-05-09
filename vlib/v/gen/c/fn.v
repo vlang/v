@@ -99,6 +99,9 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 	// TODO For some reason, build fails with autofree with this line
 	// as it's only informative, comment it for now
 	// g.gen_attrs(it.attrs)
+	g.defer_org_vars = [][]ast.Ident{len: node.defer_stmts.len}
+	g.defer_tmp_vars = [][]ast.Ident{len: node.defer_stmts.len}
+	g.defer_org_var_names = [][]string{len: node.defer_stmts.len}
 	if node.language == .c {
 		// || node.no_body {
 		return
@@ -262,6 +265,25 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 	g.writeln(') {')
 	for defer_stmt in node.defer_stmts {
 		g.writeln('bool ${g.defer_flag_var(defer_stmt)} = false;')
+		g.defer_org_vars[defer_stmt.idx_in_fn] = []ast.Ident{len: defer_stmt.used_vars.len}
+		g.defer_tmp_vars[defer_stmt.idx_in_fn] = []ast.Ident{len: defer_stmt.used_vars.len}
+		g.defer_org_var_names[defer_stmt.idx_in_fn] = []string{len: defer_stmt.used_vars.len}
+		g.defer_idx = defer_stmt.idx_in_fn
+		for i, ident in defer_stmt.used_vars {
+			mut ident_ := ident
+			if ident.info is ast.IdentVar {
+				info := ident_.info
+				tmp_var := g.new_tmp_var()
+				ident_.name = tmp_var
+				ident_.kind = .variable
+				g.defer_org_vars[defer_stmt.idx_in_fn][i] = ident
+				g.defer_tmp_vars[defer_stmt.idx_in_fn][i] = ident_
+				g.defer_org_var_names[defer_stmt.idx_in_fn][i] = ident.name
+				g.writeln('${g.typ(info.typ)} $tmp_var; // $ident.name')
+			}
+		}
+		mut stmts := defer_stmt.stmts
+		g.edit_defer_stmts(mut stmts)
 	}
 	if is_live_wrap {
 		// The live function just calls its implementation dual, while ensuring
@@ -1312,4 +1334,151 @@ fn (mut g Gen) write_fn_attrs(attrs []ast.Attr) string {
 		}
 	}
 	return msvc_attrs
+}
+
+fn (mut g Gen) edit_defer_stmts(mut stmts []ast.Stmt) {
+	for i, s in stmts {
+		mut stmt := s
+		match mut stmt {
+			ast.AsmStmt {
+				mut out := []ast.AsmIO{}
+				mut inpt := []ast.AsmIO{}
+				for o in stmt.output {
+					out << ast.AsmIO{
+						alias: o.alias
+						constraint: o.constraint
+						expr: g.edit_defer_expr(o.expr)
+						comments: o.comments
+						typ: o.typ
+						pos: o.pos
+					}
+				}
+				for inp in stmt.input {
+					inpt << ast.AsmIO{
+						alias: inp.alias
+						constraint: inp.constraint
+						expr: g.edit_defer_expr(inp.expr)
+						comments: inp.comments
+						typ: inp.typ
+						pos: inp.pos
+					}
+				}
+				stmt.output = out
+				stmt.input = inpt
+			}
+			ast.AssertStmt {
+				stmt.expr = g.edit_defer_expr(stmt.expr)
+			}
+			ast.AssignStmt {
+				for ii, rh in stmt.right {
+					mut r := g.edit_defer_expr(rh)
+					stmt.right[ii] = r
+				}
+				for ii, lh in stmt.left {
+					mut l := g.edit_defer_expr(lh)
+					stmt.left[ii] = l
+				}
+			}
+			ast.Block {
+				mut st := stmt.stmts
+				g.edit_defer_stmts(mut &st)
+				stmt = ast.Block{
+					is_unsafe: stmt.is_unsafe
+					pos: stmt.pos
+					stmts: st
+				}
+			}
+			ast.ExprStmt {
+				mut e := g.edit_defer_expr(stmt.expr)
+				stmt = ast.ExprStmt{
+					expr: e
+					pos: stmt.pos
+					comments: stmt.comments
+					is_expr: stmt.is_expr
+					typ: stmt.typ
+				}
+			}
+			ast.ForInStmt {
+				mut cond := g.edit_defer_expr(stmt.cond)
+				mut high := g.edit_defer_expr(stmt.high)
+				mut st := stmt.stmts				
+				g.edit_defer_stmts(mut st)
+				stmt = ast.ForInStmt{
+					key_var: stmt.key_var
+					val_var: stmt.val_var
+					cond: cond
+					is_range: stmt.is_range
+					high: high
+					stmts: st
+					pos: stmt.pos
+					val_is_mut: stmt.val_is_mut
+					key_type: stmt.key_type
+					val_type: stmt.val_type
+					cond_type: stmt.cond_type
+					kind: stmt.kind
+					label: stmt.label
+					scope: stmt.scope
+				}
+			}
+			ast.ForStmt {
+				mut cond := g.edit_defer_expr(stmt.cond)
+				mut st := stmt.stmts
+				g.edit_defer_stmts(mut st)
+				stmt = ast.ForStmt{
+					cond: cond
+					stmts: stmts
+					is_inf: stmt.is_inf
+					pos: stmt.pos
+					label: stmt.label
+					scope: stmt.scope
+				}
+			}
+			ast.ForCStmt {
+				mut init := []ast.Stmt{len: 1, init: stmt.init}
+				mut cond := g.edit_defer_expr(stmt.cond)
+				mut inc := []ast.Stmt{len: 1, init: stmt.inc}
+				mut st := stmt.stmts
+				g.edit_defer_stmts(mut init)
+				g.edit_defer_stmts(mut inc)
+				g.edit_defer_stmts(mut st)
+				stmt = ast.ForCStmt{
+					init: init[0]
+					has_init: stmt.has_init
+					cond: cond
+					has_cond: stmt.has_cond
+					inc: inc[0]
+					has_inc: stmt.has_inc
+					is_multi: stmt.is_multi
+					stmts: st
+					pos: stmt.pos
+					label: stmt.label
+					scope: stmt.scope
+				}
+			}
+			else {}
+		}
+		stmts[i] = stmt
+	}
+}
+
+fn (mut g Gen) edit_defer_expr(expr ast.Expr) ast.Expr {
+	match mut expr {
+		ast.Ident {
+			if expr.name in g.defer_org_var_names[g.defer_idx] {
+				mut idx := -1
+				for i, n in g.defer_org_vars[g.defer_idx] {
+					if n.name == expr.name {
+						eprintln('found $i')
+						idx = i
+					}
+				}
+				return g.defer_tmp_vars[g.defer_idx][idx]
+			}
+		}
+		ast.CallExpr {
+			expr.left = g.edit_defer_expr(expr.left)
+		}
+		else {}
+	}
+	return expr
 }
