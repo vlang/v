@@ -15,7 +15,7 @@ import v.ast
 import v.util
 import strings
 
-fn (mut g Gen) str_format2(node ast.StringInterLiteral, i int) (u64, string) {
+fn (mut g Gen) str_format(node ast.StringInterLiteral, i int) (u64, string) {
 	mut base := 0 // numeric base
 	mut upper_case := false // set upercase for the result string
 	mut typ := g.unwrap_generic(node.expr_types[i])
@@ -199,7 +199,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			break			
 		}
 		
-		ft_u64, ft_str := g.str_format2(node, i)
+		ft_u64, ft_str := g.str_format(node, i)
 		ft_data := g.str_val(node, i)
 		
 
