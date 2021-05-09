@@ -39,14 +39,16 @@ fn main() {
 	println('  Building vprod...')
 	exec('v -o $vdir/vprod -prod -prealloc $vdir/cmd/v')
 	// exec('v -o $vdir/vprod $vdir/cmd/v') // for faster debugging
-	diff1 := measure('$vdir/vprod -skip-unused -cc clang -o v.c -show-timings $vdir/cmd/v', 'v.c')
+	diff1 := measure('$vdir/vprod -skip-unused -cc clang -o v.c -show-timings $vdir/cmd/v',
+		'v.c')
 	mut tcc_path := 'tcc'
 	$if freebsd {
 		tcc_path = '/usr/local/bin/tcc'
 	}
 	diff2 := measure('$vdir/vprod -skip-unused -cc $tcc_path -o v2 $vdir/cmd/v', 'v2')
 	diff3 := 0 // measure('$vdir/vprod -native $vdir/cmd/tools/1mil.v', 'native 1mil')
-	diff4 := measure('$vdir/vprod -skip-unused -cc clang $vdir/examples/hello_world.v', 'hello.v')
+	diff4 := measure('$vdir/vprod -skip-unused -cc clang $vdir/examples/hello_world.v',
+		'hello.v')
 	vc_size := os.file_size('v.c') / 1000
 	// scan/parse/check/cgen
 	scan, parse, check, cgen, vlines := measure_steps(vdir)
