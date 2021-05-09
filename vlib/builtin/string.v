@@ -661,7 +661,7 @@ pub fn (s string) split_into_lines() []string {
 	for i := 0; i <= s.len; i++ {
 		unsafe {
 			if s.str[i] == 10 || i == s.len {
-				end = if i > 0 && s[i-1] == 13 { i - 1 } else { i }
+				end = if i > 0 && s[i - 1] == 13 { i - 1 } else { i }
 				res << s[start..end]
 				i++
 				start = i
