@@ -1,6 +1,4 @@
-module strconv
-
-/*
+/*=============================================================================
 
 f32 to string
 
@@ -18,8 +16,8 @@ Pages 270–282 https://doi.org/10.1145/3192366.3192369
 inspired by the Go version here:
 https://github.com/cespare/ryu/tree/ba56a33f39e3bbbfa409095d0f9ae168a595feea
 
-*/
-
+=============================================================================*/
+module strconv
 
 // pow of ten table used by n_digit reduction
 const(
@@ -39,11 +37,9 @@ const(
 	]
 )
 
-/*
-
- Conversion Functions
-
-*/
+//=============================================================================
+// Conversion Functions
+//=============================================================================
 const(
 	mantbits32  = u32(23)
 	expbits32   = u32(8)
@@ -53,11 +49,13 @@ const(
 
 // max 46 char
 // -3.40282346638528859811704183484516925440e+38
+[direct_array_access]
 pub fn (d Dec32) get_string_32(neg bool, i_n_digit int, i_pad_digit int) string {
 	n_digit          := i_n_digit + 1
 	pad_digit        := i_pad_digit + 1
 	mut out          := d.m
-	mut out_len      := decimal_len_32(out)
+	//mut out_len      := decimal_len_32(out)
+	mut out_len      := dec_digits(out)
 	out_len_original := out_len
 
 	mut fw_zeros := 0
@@ -119,15 +117,6 @@ pub fn (d Dec32) get_string_32(neg bool, i_n_digit int, i_pad_digit int) string 
 		fw_zeros--
 	}
 
-	/*
-	x=0
-	for x<buf.len {
-		C.printf("d:%c\n",buf[x])
-		x++
-	}
-	C.printf("\n")
-	*/
-
 	buf[i]=`e`
 	i++
 
@@ -150,13 +139,6 @@ pub fn (d Dec32) get_string_32(neg bool, i_n_digit int, i_pad_digit int) string 
 	i++
 	buf[i]=0
 
-	/*
-	x=0
-	for x<buf.len {
-		C.printf("d:%c\n",buf[x])
-		x++
-	}
-	*/
 	return unsafe {
 		tos(byteptr(&buf[0]), i)
 	}
@@ -327,15 +309,19 @@ pub fn f32_to_decimal(mant u32, exp u32) Dec32 {
 	return Dec32{m: out e: e10 + removed}
 }
 
+//=============================================================================
+// String Functions
+//=============================================================================
+
 // f32_to_str return a string in scientific notation with max n_digit after the dot
 pub fn f32_to_str(f f32, n_digit int) string {
 	mut u1 := Uf32{}
 	u1.f = f
 	u := unsafe {u1.u}
 
-	neg   := (u>>(mantbits32+expbits32)) != 0
-	mant  := u & ((u32(1)<<mantbits32) - u32(1))
-	exp   := (u >> mantbits32) & ((u32(1)<<expbits32) - u32(1))
+	neg   := (u >> (mantbits32 + expbits32)) != 0
+	mant  := u & ((u32(1) << mantbits32) - u32(1))
+	exp   := (u >> mantbits32) & ((u32(1) << expbits32) - u32(1))
 
 	//println("${neg} ${mant} e ${exp-bias32}")
 
@@ -360,9 +346,9 @@ pub fn f32_to_str_pad(f f32, n_digit int) string {
 	u1.f = f
 	u := unsafe {u1.u}
 
-	neg   := (u>>(mantbits32+expbits32)) != 0
-	mant  := u & ((u32(1)<<mantbits32) - u32(1))
-	exp   := (u >> mantbits32) & ((u32(1)<<expbits32) - u32(1))
+	neg   := (u >> (mantbits32 + expbits32)) != 0
+	mant  := u & ((u32(1) << mantbits32) - u32(1))
+	exp   := (u >> mantbits32) & ((u32(1) << expbits32) - u32(1))
 
 	//println("${neg} ${mant} e ${exp-bias32}")
 

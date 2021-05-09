@@ -82,6 +82,7 @@ fn get_string_special(neg bool, expZero bool, mantZero bool) string {
 
 */
 // decimal_len_32 return the number of decimal digits of the input
+[deprecated]
 pub fn decimal_len_32(u u32) int {
 	// Function precondition: u is not a 10-digit number.
 	// (9 digits are sufficient for round-tripping.)
@@ -173,6 +174,7 @@ fn pow5_bits(e int) int {
  64 bit functions
 
 */
+[deprecated]
 // decimal_len_64 return the number of decimal digits of the input
 pub fn decimal_len_64(u u64) int {
 	// http://graphics.stanford.edu/~seander/bithacks.html#IntegerLog10
