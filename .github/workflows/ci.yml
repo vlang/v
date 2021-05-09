@@ -70,6 +70,8 @@ jobs:
       #        ./v -silent test-all
       - name: v self compilation
         run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
+      - name: v self compilation with -skip-unused
+        run: ./v -skip-unused -o v2 cmd/v && ./v2 -skip-unused -o v3 cmd/v && ./v3 -skip-unused -o v4 cmd/v
       - name: v doctor
         run: |
           ./v doctor
