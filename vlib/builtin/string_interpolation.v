@@ -573,7 +573,7 @@ pub fn str_intp_s(in_str string) string {
 }
 
 pub fn str_intp_g(in_str string) string {
-	fmt_type := int(StrIntpType.si_f32)// | 3 << 9
+	fmt_type := int(StrIntpType.si_f32)// | 3 << 9 // fix to 3 decimal digits
 	res := 'str_interpolation(1, (StrIntpData[]){{_SLIT(""), 0x${int(fmt_type).hex()}, {.d_f32 = ${in_str} }}})'
 	return res
 }
