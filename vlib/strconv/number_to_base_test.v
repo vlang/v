@@ -26,7 +26,7 @@ fn test_format_int() {
 	}
 }
 
-fn test_format_uint() {
+fn test_format_uint() ? {
 	assert strconv.format_uint(0, 2) == '0'
 	assert strconv.format_int(255, 2) == '11111111'
 	assert strconv.format_int(255, 8) == '377'
@@ -35,6 +35,7 @@ fn test_format_uint() {
 	assert strconv.format_uint(18446744073709551615, 2) ==
 		'1111111111111111111111111111111111111111111111111111111111111111'
 	assert strconv.format_uint(18446744073709551615, 16) == 'ffffffffffffffff'
-	assert strconv.parse_int('baobab', 36, 64) == 683058467
+	i := strconv.parse_int('baobab', 36, 64) ?
+	assert i == 683058467
 	assert strconv.format_uint(683058467, 36) == 'baobab'
 }
