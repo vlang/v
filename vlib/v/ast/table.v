@@ -1030,8 +1030,7 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 		typ := concrete_types[index]
 		return typ.derive(generic_type).clear_flag(.generic)
 	} else if sym.kind == .array {
-		info := sym.info as Array
-		mut elem_type := info.elem_type
+		mut elem_type := (sym.info as Array).elem_type
 		mut elem_sym := t.get_type_symbol(elem_type)
 		mut dims := 1
 		for mut elem_sym.info is Array {
@@ -1045,9 +1044,8 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 			idx := t.find_or_register_array_with_dims(typ, dims)
 			return new_type(idx).derive(generic_type).clear_flag(.generic)
 		}
-	} else if sym.kind == .chan {
-		info := sym.info as Chan
-		if typ := t.resolve_generic_to_concrete(info.elem_type, generic_names, concrete_types,
+	} else if mut sym.info is Chan {
+		if typ := t.resolve_generic_to_concrete(sym.info.elem_type, generic_names, concrete_types,
 			is_inst)
 		{
 			idx := t.find_or_register_chan(typ, typ.nr_muls() > 0)

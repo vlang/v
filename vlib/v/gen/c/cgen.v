@@ -584,6 +584,20 @@ fn (mut g Gen) expr_string(expr ast.Expr) string {
 	return expr_str.trim_space()
 }
 
+// Surround a potentially multi-statement expression safely with `prepend` and `append`.
+// (and create a statement)
+fn (mut g Gen) expr_string_surround(prepend string, expr ast.Expr, append string) string {
+	pos := g.out.len
+	g.stmt_path_pos << pos
+	g.write(prepend)
+	g.expr(expr)
+	g.write(append)
+	expr_str := g.out.after(pos)
+	g.out.go_back(expr_str.len)
+	g.stmt_path_pos.delete_last()
+	return expr_str
+}
+
 // TODO this really shouldnt be seperate from typ
 // but I(emily) would rather have this generation
 // all unified in one place so that it doesnt break
@@ -4993,11 +5007,6 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 		}
 
 		name := c_name(field.name)
-		// TODO hack. Cut the generated value and paste it into definitions.
-		pos := g.out.len
-		g.expr(field.expr)
-		val := g.out.after(pos)
-		g.out.go_back(val.len)
 		/*
 		if field.typ == ast.byte_type {
 			g.const_decl_simple_define(name, val)
@@ -5014,40 +5023,43 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 			}
 		} else {
 		*/
+		field_expr := field.expr
 		match field.expr {
 			ast.CharLiteral, ast.FloatLiteral, ast.IntegerLiteral {
-				g.const_decl_simple_define(name, val)
+				// "Simple" expressions are not going to need multiple statements,
+				// only the ones which are inited later, so it's safe to use expr_string
+				g.const_decl_simple_define(name, g.expr_string(field_expr))
 			}
 			ast.ArrayInit {
 				if field.expr.is_fixed {
 					styp := g.typ(field.expr.typ)
 					if g.pref.build_mode != .build_module {
+						val := g.expr_string(field.expr)
 						g.definitions.writeln('$styp _const_$name = $val; // fixed array const')
 					} else {
 						g.definitions.writeln('$styp _const_$name; // fixed array const')
 					}
 				} else {
-					g.const_decl_init_later(field.mod, name, val, field.typ, false)
+					g.const_decl_init_later(field.mod, name, field.expr, field.typ, false)
 				}
 			}
 			ast.StringLiteral {
 				g.definitions.writeln('string _const_$name; // a string literal, inited later')
 				if g.pref.build_mode != .build_module {
+					val := g.expr_string(field.expr)
 					g.stringliterals.writeln('\t_const_$name = $val;')
 				}
 			}
 			ast.CallExpr {
-				if val.starts_with('Option_') {
-					g.inits[field.mod].writeln(val)
+				if field.expr.return_type.has_flag(.optional) {
 					unwrap_option := field.expr.or_block.kind != .absent
-					g.const_decl_init_later(field.mod, name, g.current_tmp_var(), field.typ,
-						unwrap_option)
+					g.const_decl_init_later(field.mod, name, field.expr, field.typ, unwrap_option)
 				} else {
-					g.const_decl_init_later(field.mod, name, val, field.typ, false)
+					g.const_decl_init_later(field.mod, name, field.expr, field.typ, false)
 				}
 			}
 			else {
-				g.const_decl_init_later(field.mod, name, val, field.typ, false)
+				g.const_decl_init_later(field.mod, name, field.expr, field.typ, false)
 			}
 		}
 	}
@@ -5062,7 +5074,7 @@ fn (mut g Gen) const_decl_simple_define(name string, val string) {
 	g.definitions.writeln(val)
 }
 
-fn (mut g Gen) const_decl_init_later(mod string, name string, val string, typ ast.Type, unwrap_option bool) {
+fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ ast.Type, unwrap_option bool) {
 	// Initialize more complex consts in `void _vinit/2{}`
 	// (C doesn't allow init expressions that can't be resolved at compile time).
 	mut styp := g.typ(typ)
@@ -5079,9 +5091,10 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, val string, typ as
 		}
 	} else {
 		if unwrap_option {
-			g.inits[mod].writeln('\t$cname = *($styp*)${val}.data;')
+			g.inits[mod].writeln(g.expr_string_surround('\t$cname = *($styp*)', expr,
+				'.data;'))
 		} else {
-			g.inits[mod].writeln('\t$cname = $val;')
+			g.inits[mod].writeln(g.expr_string_surround('\t$cname = ', expr, ';'))
 		}
 	}
 	if g.is_autofree {
