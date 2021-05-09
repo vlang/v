@@ -59,6 +59,70 @@ fn testsuite_end() ? {
 	assert !os.is_dir(tfolder)
 }
 
+// test_read_eof_last_read_partial_buffer_fill tests that when reading a file
+// the end-of-file is detected and results in a none error being returned. This
+// test simulates file reading where the end-of-file is reached inside an fread
+// containing data.
+fn test_read_eof_last_read_partial_buffer_fill() ? {
+	mut f := os.open_file(tfile, 'w') ?
+	bw := []byte{len:199, init:5}
+	f.write(bw) ?
+	f.close()
+
+	f = os.open_file(tfile, 'r') ?
+	mut br := []byte{len:100}
+	// Read first 100 bytes of 199 byte file, should fill buffer with no error.
+	n0 := f.read(mut br) ?
+	assert n0 == 100
+	// Read remaining 99 bytes of 199 byte file, should fill buffer with no
+	// error, even though end-of-file was reached.
+	n1 := f.read(mut br) ?
+	assert n1 == 99
+	// Read again, end-of-file was previously reached so should return none
+	// error.
+	if _ := f.read(mut br) {
+		// This is not intended behavior because the read function should
+		// not return a number of bytes read when end-of-file is reached.
+		assert false
+	} else {
+		// Expect none to have been returned when end-of-file.
+		assert err is none
+	}
+	f.close()
+}
+
+// test_read_eof_last_read_full_buffer_fill tests that when reading a file the
+// end-of-file is detected and results in a none error being returned. This test
+// simulates file reading where the end-of-file is reached at the beinning of an
+// fread that returns no data.
+fn test_read_eof_last_read_full_buffer_fill() ? {
+	mut f := os.open_file(tfile, 'w') ?
+	bw := []byte{len:200, init:5}
+	f.write(bw) ?
+	f.close()
+
+	f = os.open_file(tfile, 'r') ?
+	mut br := []byte{len:100}
+	// Read first 100 bytes of 200 byte file, should fill buffer with no error.
+	n0 := f.read(mut br) ?
+	assert n0 == 100
+	// Read remaining 100 bytes of 200 byte file, should fill buffer with no
+	// error. The end-of-file isn't reached yet, but there is no more data.
+	n1 := f.read(mut br) ?
+	assert n1 == 100
+	// Read again, end-of-file was previously reached so should return none
+	// error.
+	if _ := f.read(mut br) {
+		// This is not intended behavior because the read function should
+		// not return a number of bytes read when end-of-file is reached.
+		assert false
+	} else {
+		// Expect none to have been returned when end-of-file.
+		assert err is none
+	}
+	f.close()
+}
+
 fn test_write_struct() ? {
 	os.rm(tfile) or {} // FIXME This is a workaround for macos, because the file isn't truncated when open with 'w'
 	size_of_point := int(sizeof(Point))
