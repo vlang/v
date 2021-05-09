@@ -1127,7 +1127,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			mut defer_stmt := node
 			defer_stmt.ifdef = g.defer_ifdef
 			g.writeln('${g.defer_flag_var(defer_stmt)} = true;')
-			for i in 0..g.defer_tmp_vars[defer_stmt.idx_in_fn].len {
+			for i in 0 .. g.defer_tmp_vars[defer_stmt.idx_in_fn].len {
 				g.ident(g.defer_tmp_vars[defer_stmt.idx_in_fn][i])
 				g.write(' = ')
 				g.ident(g.defer_org_vars[defer_stmt.idx_in_fn][i])

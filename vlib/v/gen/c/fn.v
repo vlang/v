@@ -1401,7 +1401,7 @@ fn (mut g Gen) edit_defer_stmts(mut stmts []ast.Stmt) {
 			ast.ForInStmt {
 				mut cond := g.edit_defer_expr(stmt.cond)
 				mut high := g.edit_defer_expr(stmt.high)
-				mut st := stmt.stmts				
+				mut st := stmt.stmts
 				g.edit_defer_stmts(mut st)
 				stmt = ast.ForInStmt{
 					key_var: stmt.key_var
