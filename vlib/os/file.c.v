@@ -391,12 +391,30 @@ pub fn (f &File) read(mut buf []byte) ?int {
 	if buf.len == 0 {
 		return 0
 	}
-	C.errno = 0
 	nbytes := int(C.fread(buf.data, 1, buf.len, f.cfile))
-	if C.errno != 0 {
-		return error(posix_get_error_msg(C.errno))
+	// If bytes were read, inform the caller.
+	if nbytes > 0 {
+		return nbytes
 	}
-	return nbytes
+	// If no bytes read, check for errors and end-of-file.
+	// If fread encountered end-of-file return the none error. Note that fread
+	// may read data and encounter the end-of-file, but we shouldn't return none
+	// in that case which is why we only check for end-of-file if no data was
+	// read. The caller will get none on their next call because there will be
+	// no data available and the end-of-file will be encountered again.
+	if C.feof(f.cfile) != 0 {
+		return none
+	}
+	// If fread encountered an error, return it. Note that fread and ferror do
+	// not tell us what the error was, so we can't return anything more specific
+	// than there was an error. This is because fread and ferror do not set
+	// errno.
+	if C.ferror(f.cfile) != 0 {
+		return error("read failed: $f.cfile")
+	}
+
+	// No data read, and no errors or end-of-file detected.
+	return 0
 }
 
 // read_at reads `buf.len` bytes starting at file byte offset `pos`, in `buf`.
