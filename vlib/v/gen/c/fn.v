@@ -273,16 +273,20 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 		for i, ident in defer_stmt.used_vars {
 			mut ident_ := ident
 			if ident.info is ast.IdentVar {
-				info := ident_.info
-				mut tmp_var := g.defer_used_vars[ident.name]
+				mut info := ident_.info
+				mut tmp_var := ''
 				mut write := false
 				if ident.name !in g.defer_used_vars {
 					write = true
 					tmp_var = g.new_tmp_var()
 					g.defer_used_vars[ident.name] = tmp_var
+				} else {
+					tmp_var = g.defer_used_vars[ident.name].clone()
 				}
 				ident_.name = tmp_var
 				ident_.kind = .variable
+				info.typ = info.typ.set_nr_muls(1)
+				ident_.info = info
 				g.defer_org_vars[defer_stmt.idx_in_fn][i] = ident
 				g.defer_tmp_vars[defer_stmt.idx_in_fn][i] = ident_
 				g.defer_org_var_names[defer_stmt.idx_in_fn][i] = ident.name

@@ -1144,9 +1144,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.writeln('${g.defer_flag_var(defer_stmt)} = true;')
 			for i in 0 .. g.defer_tmp_vars[defer_stmt.idx_in_fn].len {
 				g.ident(g.defer_tmp_vars[defer_stmt.idx_in_fn][i])
-				g.write(' = ')
+				g.write(' = &(')
 				g.ident(g.defer_org_vars[defer_stmt.idx_in_fn][i])
-				g.writeln(';')
+				g.writeln(');')
 			}
 			g.defer_stmts << defer_stmt
 		}
@@ -3738,6 +3738,8 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			elem_type_str := g.typ(info.elem_type)
 			elem_sym := g.table.get_type_symbol(info.elem_type)
 			g.write('array_push((array*)')
+			eprintln(node.left)
+			eprintln(left_type.is_ptr())
 			if !left_type.is_ptr() {
 				g.write('&')
 			}
@@ -4418,7 +4420,6 @@ fn (mut g Gen) ident(nd ast.Ident) {
 			mut idx := -1
 			for i, n in g.defer_org_vars[g.defer_idx] {
 				if n == node {
-					eprintln('found $i')
 					idx = i
 				}
 			}

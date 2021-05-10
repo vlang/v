@@ -127,3 +127,10 @@ fn test_defer_access() {
 		}
 	}
 }
+
+fn test_defer_arrays() {
+	mut ia := []int{}
+	defer {
+		ia << 1
+	}
+}
