@@ -1,3 +1,4 @@
+module strconv
 /*=============================================================================
 
 f64 to string
@@ -17,7 +18,6 @@ inspired by the Go version here:
 https://github.com/cespare/ryu/tree/ba56a33f39e3bbbfa409095d0f9ae168a595feea
 
 =============================================================================*/
-module strconv
 
 // pow of ten table used by n_digit reduction
 const(

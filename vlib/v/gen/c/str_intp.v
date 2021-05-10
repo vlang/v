@@ -211,7 +211,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	}
 
 	// write struct
-	g.write(" str_interpolation(${data.len}, ")
+	g.write(" str_intp(${data.len}, ")
 	g.write("(StrIntpData[]){")
 	for i, item in data {
 		if item.str.len > 0 {
@@ -219,8 +219,6 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		} else {
 			g.write('{_SLIT0, ${item.fmt}, ${item.d}}')
 		}
-		
-
 		
 		if i < (data.len-1) {
 			g.write(', ')

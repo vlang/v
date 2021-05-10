@@ -458,9 +458,11 @@ static inline uint64_t wy2u0k(uint64_t r, uint64_t k){ _wymum(&r,&k); return k; 
 '
 	c_helper_macros = '//============================== HELPER C MACROS =============================*/
 //#define tos4(s, slen) ((string){.str=(s), .len=(slen)})
+// _SLIT0 is used as NULL string for literal arguments
 // `"" s` is used to enforce a string literal argument
-#define _SLIT0 (string){.len=0}
+#define _SLIT0 (string){.len=0} 
 #define _SLIT(s) ((string){.str=(byteptr)("" s), .len=(sizeof(s)-1), .is_lit=1})
+//#define _SLIT(s) ((string){.str=(byteptr)("" s), .len=(sizeof(s)-1), .is_lit=1})
 // take the address of an rvalue
 #define ADDR(type, expr) (&((type[]){expr}[0]))
 // copy something to the heap

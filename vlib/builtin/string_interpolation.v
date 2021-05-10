@@ -537,7 +537,7 @@ pub:
 
 // interpolation function
 [manualfree]
-pub fn str_interpolation(data_len int, in_data voidptr) string {
+pub fn str_intp(data_len int, in_data voidptr) string {
 	mut res := strings.new_builder(256)
 	unsafe{	
 		mut i := 0
@@ -568,13 +568,13 @@ pub fn str_interpolation(data_len int, in_data voidptr) string {
 // _STR("`%.*s\\000`", 2, ${elem_str_fn_name}(it));
 pub fn str_intp_s(in_str string) string {
 	fmt_type := StrIntpType.si_s
-	res := 'str_interpolation(2, (StrIntpData[]){{_SLIT("\'"), 0x${int(fmt_type).hex()}, {.d_s = ${in_str} }},{_SLIT("\'"), 0, {.d_c = 0 }}})'
+	res := 'str_intp(2, (StrIntpData[]){{_SLIT("\'"), 0x${int(fmt_type).hex()}, {.d_s = ${in_str} }},{_SLIT("\'"), 0, {.d_c = 0 }}})'
 	return res
 }
 
 pub fn str_intp_g(in_str string) string {
 	fmt_type := int(StrIntpType.si_f32)// | 3 << 9 // fix to 3 decimal digits
-	res := 'str_interpolation(1, (StrIntpData[]){{_SLIT(""), 0x${int(fmt_type).hex()}, {.d_f32 = ${in_str} }}})'
+	res := 'str_intp(1, (StrIntpData[]){{_SLIT(""), 0x${int(fmt_type).hex()}, {.d_f32 = ${in_str} }}})'
 	return res
 }
 */
