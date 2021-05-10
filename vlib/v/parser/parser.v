@@ -1964,7 +1964,9 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 					ident := p.parse_ident(language)
 					node = ident
 					if p.inside_defer {
-						p.defer_vars << ident
+						if p.defer_vars.filter(it.name == ident.name && it.mod == ident.mod).len == 0 {
+							p.defer_vars << ident
+						}
 					}
 					return node
 				}
@@ -1989,7 +1991,9 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		ident := p.parse_ident(language)
 		node = ident
 		if p.inside_defer {
-			p.defer_vars << ident
+			if p.defer_vars.filter(it.name == ident.name && it.mod == ident.mod).len == 0 {
+				p.defer_vars << ident
+			}
 		}
 	} else if p.peek_tok.kind == .lpar
 		|| (is_optional && p.peek_token(2).kind == .lpar) || p.is_generic_call() {
@@ -2105,7 +2109,9 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		ident := p.parse_ident(language)
 		node = ident
 		if p.inside_defer {
-			p.defer_vars << ident
+			if p.defer_vars.filter(it.name == ident.name && it.mod == ident.mod).len == 0 {
+				p.defer_vars << ident
+			}
 		}
 	}
 	p.expr_mod = ''

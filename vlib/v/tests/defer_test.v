@@ -117,3 +117,13 @@ fn test_defer_order() {
 		assert i == 1
 	}
 }
+
+fn test_defer_access() {
+	if true {
+		mut i := 0
+		defer {
+			i++
+			assert i == 1
+		}
+	}
+}

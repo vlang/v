@@ -102,6 +102,7 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 	g.defer_org_vars = [][]ast.Ident{len: node.defer_stmts.len}
 	g.defer_tmp_vars = [][]ast.Ident{len: node.defer_stmts.len}
 	g.defer_org_var_names = [][]string{len: node.defer_stmts.len}
+	g.defer_used_vars = map[string]string
 	if node.language == .c {
 		// || node.no_body {
 		return
@@ -273,13 +274,21 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 			mut ident_ := ident
 			if ident.info is ast.IdentVar {
 				info := ident_.info
-				tmp_var := g.new_tmp_var()
+				mut tmp_var := g.defer_used_vars[ident.name]
+				mut write := false
+				if ident.name !in g.defer_used_vars {
+					write = true
+					tmp_var = g.new_tmp_var()
+					g.defer_used_vars[ident.name] = tmp_var
+				}
 				ident_.name = tmp_var
 				ident_.kind = .variable
 				g.defer_org_vars[defer_stmt.idx_in_fn][i] = ident
 				g.defer_tmp_vars[defer_stmt.idx_in_fn][i] = ident_
 				g.defer_org_var_names[defer_stmt.idx_in_fn][i] = ident.name
-				g.writeln('${g.typ(info.typ)} $tmp_var; // $ident.name')
+				if write {
+					g.writeln('${g.typ(info.typ)} $tmp_var; // $ident.name')
+				}
 			}
 		}
 		mut stmts := defer_stmt.stmts
@@ -1336,6 +1345,7 @@ fn (mut g Gen) write_fn_attrs(attrs []ast.Attr) string {
 	return msvc_attrs
 }
 
+// TODO add all nessecary expression which can get used in defer statements
 fn (mut g Gen) edit_defer_stmts(mut stmts []ast.Stmt) {
 	for i, s in stmts {
 		mut stmt := s
@@ -1461,6 +1471,7 @@ fn (mut g Gen) edit_defer_stmts(mut stmts []ast.Stmt) {
 	}
 }
 
+// TODO add all nessecary expression which can get used in defer statements
 fn (mut g Gen) edit_defer_expr(expr ast.Expr) ast.Expr {
 	match mut expr {
 		ast.Ident {
@@ -1477,6 +1488,251 @@ fn (mut g Gen) edit_defer_expr(expr ast.Expr) ast.Expr {
 		}
 		ast.CallExpr {
 			expr.left = g.edit_defer_expr(expr.left)
+			mut callargs := []ast.CallArg{}
+			for arg in expr.args {
+				callargs << ast.CallArg{
+					is_mut: arg.is_mut
+					share: arg.share
+					expr: g.edit_defer_expr(arg.expr)
+					comments: arg.comments
+					typ: arg.typ
+					is_tmp_autofree: arg.is_tmp_autofree
+					pos: arg.pos
+				}
+			}
+			expr.args = callargs
+			mut stmts := expr.or_block.stmts
+			g.edit_defer_stmts(mut stmts)
+			expr.or_block = ast.OrExpr{
+				stmts: stmts
+				kind: expr.or_block.kind
+				pos: expr.or_block.pos
+			}
+		}
+		ast.SelectorExpr {
+			expr.expr = g.edit_defer_expr(expr.expr)
+		}
+		ast.StringInterLiteral {
+			mut exprs := []ast.Expr{}
+			for e in expr.exprs {
+				exprs << g.edit_defer_expr(e)
+			}
+			expr = ast.StringInterLiteral{
+				vals: expr.vals
+				exprs: exprs
+				fwidths: expr.fwidths
+				precisions: expr.precisions
+				pluss: expr.pluss
+				fills: expr.fills
+				fmt_poss: expr.fmt_poss
+				pos: expr.pos
+				expr_types: expr.expr_types
+				fmts: expr.fmts
+				need_fmts: expr.need_fmts
+			}
+		}
+		ast.StructInit{
+			expr.update_expr = g.edit_defer_expr(expr.update_expr)
+			for i, field in expr.fields {
+				expr.fields[i] = ast.StructInitField{
+					expr: g.edit_defer_expr(field.expr)
+					pos: field.pos
+					name_pos: field.name_pos
+					comments: field.comments
+					next_comments: field.next_comments
+					name: field.name
+					typ: field.typ
+					expected_type: field.expected_type
+					parent_type: field.parent_type
+				}
+			}
+
+			for i, embed in expr.embeds {
+				expr.embeds[i] = ast.StructInitEmbed{
+					expr: g.edit_defer_expr(embed.expr)
+					pos: embed.pos
+					comments: embed.comments
+					next_comments: embed.next_comments
+					name: embed.name
+					typ: embed.typ
+					expected_type: embed.expected_type
+				}
+			}
+		}
+		ast.InfixExpr{
+			expr.left = g.edit_defer_expr(expr.left)
+			expr.right = g.edit_defer_expr(expr.right)
+			mut stmts := expr.or_block.stmts
+			g.edit_defer_stmts(mut stmts)
+			expr.or_block = ast.OrExpr{
+				stmts: stmts
+				kind: expr.or_block.kind
+				pos: expr.or_block.pos
+			}
+		}
+		ast.PostfixExpr{
+			expr = ast.PostfixExpr{
+				op: expr.op
+				expr: g.edit_defer_expr(expr.expr)
+				pos: expr.pos
+				auto_locked: expr.auto_locked
+			}
+		}
+		ast.PrefixExpr {
+			expr.right = g.edit_defer_expr(expr.right)
+			mut stmts := expr.or_block.stmts
+			g.edit_defer_stmts(mut stmts)
+			expr.or_block = ast.OrExpr{
+				stmts: stmts
+				kind: expr.or_block.kind
+				pos: expr.or_block.pos
+			}
+		}
+		ast.IndexExpr {
+			mut stmts := expr.or_expr.stmts
+			g.edit_defer_stmts(mut stmts)
+			expr = ast.IndexExpr{
+				pos: expr.pos
+				index: g.edit_defer_expr(expr.index)
+				or_expr: ast.OrExpr{
+					stmts: stmts
+					kind: expr.or_expr.kind
+					pos: expr.or_expr.pos
+				}
+				left: g.edit_defer_expr(expr.left)
+				left_type: expr.left_type
+				is_setter: expr.is_setter
+				is_map: expr.is_map
+				is_array: expr.is_array
+				is_farray: expr.is_farray
+				is_option: expr.is_option
+			}
+		}
+		ast.IfExpr {
+			for i, branch in expr.branches {
+				mut stmts := branch.stmts
+				g.edit_defer_stmts(mut stmts)
+				expr.branches[i] = ast.IfBranch{
+					cond: g.edit_defer_expr(branch.cond)
+					pos: branch.pos
+					body_pos: branch.body_pos
+					comments: branch.comments
+					stmts: stmts
+					scope: branch.scope
+				}
+			}
+			expr = ast.IfExpr{
+				is_comptime: expr.is_comptime
+				tok_kind: expr.tok_kind
+				left: g.edit_defer_expr(expr.left)
+				pos: expr.pos
+				post_comments: expr.post_comments
+				branches: expr.branches
+				is_expr: expr.is_expr
+				typ: expr.typ
+				has_else: expr.has_else
+			}
+		}
+		ast.UnsafeExpr{
+			expr = ast.UnsafeExpr{
+				expr: g.edit_defer_expr(expr.expr)
+				pos: expr.pos
+			}
+		}
+		ast.LockExpr{
+			mut stmts := expr.stmts
+			g.edit_defer_stmts(mut stmts)
+			for i, l in expr.lockeds {
+				expr.lockeds[i] = g.edit_defer_expr(ast.Expr(l)) as ast.Ident
+			}
+			expr = ast.LockExpr{
+				stmts: stmts
+				is_rlock: expr.is_rlock
+				pos: expr.pos
+				lockeds: expr.lockeds
+				is_expr: expr.is_expr
+				typ: expr.typ
+			}
+		}
+		ast.MatchExpr{
+			mut branches := []ast.MatchBranch{}
+
+			for b in expr.branches {
+				mut stmts := b.stmts
+				g.edit_defer_stmts(mut stmts)
+				mut exprs := []ast.Expr{}
+				for e in b.exprs {
+					exprs << g.edit_defer_expr(e)
+				}
+				branches << ast.MatchBranch{
+					exprs: exprs
+					ecmnts: b.ecmnts
+					stmts: stmts
+					pos: b.pos
+					is_else: b.is_else
+					post_comments: b.post_comments
+					scope: b.scope
+				}
+			}
+			expr = ast.MatchExpr{
+				tok_kind: expr.tok_kind
+				cond: g.edit_defer_expr(expr.cond)
+				branches: branches
+				pos: expr.pos
+				comments: expr.comments
+				is_expr: expr.is_expr
+				return_type: expr.return_type
+				cond_type: expr.cond_type
+				expected_type: expr.expected_type
+				is_sum_type: expr.is_sum_type
+			}
+		}
+		ast.SelectExpr{
+			mut branches := []ast.SelectBranch{}
+
+			for b in expr.branches {
+				mut stmt := []ast.Stmt{len: 1, init: b.stmt}
+				mut stmts := b.stmts
+				g.edit_defer_stmts(mut stmt)
+				g.edit_defer_stmts(mut stmts)
+				branches << ast.SelectBranch{
+					stmt: stmt[0]
+					stmts: stmts
+					pos: b.pos
+					comment: b.comment
+					is_else: b.is_else
+					is_timeout: b.is_timeout
+					post_comments: b.post_comments
+				}
+			}
+
+			expr = ast.SelectExpr{
+				branches: branches
+				pos: expr.pos
+				has_exception: expr.has_exception
+				is_expr: expr.is_expr
+				expected_type: expr.expected_type
+			}
+		}
+		ast.AsCast{
+			expr = ast.AsCast{
+				expr: g.edit_defer_expr(expr.expr)
+				typ: expr.typ
+				pos: expr.pos
+				expr_type: expr.expr_type
+			}
+		}
+		ast.CastExpr{
+			expr = ast.CastExpr{
+				expr: g.edit_defer_expr(expr.expr)
+				arg: g.edit_defer_expr(expr.arg)
+				typ: expr.typ
+				pos: expr.pos
+				typname: expr.typname
+				expr_type: expr.expr_type
+				has_arg: expr.has_arg
+				in_prexpr: expr.in_prexpr
+			}
 		}
 		else {}
 	}

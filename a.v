@@ -1,10 +1,18 @@
-import os
+struct Test {
+	a string
+}
+
+fn (test Test) abc(a string) {}
 
 fn main() {
 	if true {
-		mut f := os.open('file.txt') or {
-			panic('error')
+		test := Test{
+			a: 'abc'
 		}
-		defer { f.close() }
+		mut a := ''
+		defer {
+			a = if a.len == 0 { 'test' } else { 'abc' }
+			test.abc(a)
+		}
 	}
 }

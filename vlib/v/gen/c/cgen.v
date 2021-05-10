@@ -106,6 +106,7 @@ mut:
 	defer_tmp_vars         [][]ast.Ident
 	defer_org_vars         [][]ast.Ident
 	defer_org_var_names    [][]string
+	defer_used_vars        map[string]string
 	inside_defer           bool
 	defer_idx              int
 	str_types              []string     // types that need automatic str() generation
