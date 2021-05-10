@@ -1,8 +1,6 @@
-module strconv
+/*=============================================================================
 
-/*
-
-f32 to string
+f64 to string
 
 Copyright (c) 2019-2021 Dario Deledda. All rights reserved.
 Use of this source code is governed by an MIT license
@@ -18,7 +16,8 @@ Pages 270–282 https://doi.org/10.1145/3192366.3192369
 inspired by the Go version here:
 https://github.com/cespare/ryu/tree/ba56a33f39e3bbbfa409095d0f9ae168a595feea
 
-*/
+=============================================================================*/
+module strconv
 
 // pow of ten table used by n_digit reduction
 const(
@@ -46,11 +45,9 @@ const(
 	]
 )
 
-/*
-
-Conversion Functions
-
-*/
+//=============================================================================
+// Conversion Functions
+//=============================================================================
 const(
 	mantbits64  = u32(52)
 	expbits64   = u32(11)
@@ -58,12 +55,14 @@ const(
 	maxexp64    = 2047
 )
 
+[direct_array_access]
 fn (d Dec64) get_string_64(neg bool, i_n_digit int, i_pad_digit int) string {
-	mut n_digit          := i_n_digit + 1
+	mut n_digit      := i_n_digit + 1
 	pad_digit        := i_pad_digit + 1
 	mut out          := d.m
 	mut d_exp        := d.e
-	mut out_len      := decimal_len_64(out)
+	// mut out_len      := decimal_len_64(out)
+	mut out_len      := dec_digits(out)
 	out_len_original := out_len
 
 	mut fw_zeros := 0
@@ -75,7 +74,7 @@ fn (d Dec64) get_string_64(neg bool, i_n_digit int, i_pad_digit int) string {
 	mut i := 0
 
 	if neg {
-		buf[i]=`-`
+		buf[i] = `-`
 		i++
 	}
 
@@ -88,9 +87,9 @@ fn (d Dec64) get_string_64(neg bool, i_n_digit int, i_pad_digit int) string {
 	if n_digit < out_len {
 		//println("out:[$out]")
 		out += ten_pow_table_64[out_len - n_digit - 1] * 5   // round to up
-		out /= ten_pow_table_64[out_len - n_digit ]
+		out /= ten_pow_table_64[out_len - n_digit]
 		//println("out1:[$out] ${d.m / ten_pow_table_64[out_len - n_digit ]}")
-		if d.m / ten_pow_table_64[out_len - n_digit ] < out {
+		if d.m / ten_pow_table_64[out_len - n_digit] < out {
 			d_exp++
 			n_digit++
 		}
@@ -103,8 +102,8 @@ fn (d Dec64) get_string_64(neg bool, i_n_digit int, i_pad_digit int) string {
 
 	y := i + out_len
 	mut x := 0
-	for x < (out_len-disp-1) {
-		buf[y - x] = `0` + byte(out%10)
+	for x < (out_len - disp - 1) {
+		buf[y - x] = `0` + byte(out % 10)
 		out /= 10
 		i++
 		x++
@@ -114,7 +113,7 @@ fn (d Dec64) get_string_64(neg bool, i_n_digit int, i_pad_digit int) string {
 	if i_n_digit == 0 {
 		unsafe {
 			buf[i]=0
-			return 	tos(byteptr(&buf[0]), i)
+			return tos(byteptr(&buf[0]), i)
 		}
 	}
 
@@ -125,7 +124,7 @@ fn (d Dec64) get_string_64(neg bool, i_n_digit int, i_pad_digit int) string {
 	}
 
 	if y-x >= 0 {
-		buf[y - x] = `0` + byte(out%10)
+		buf[y - x] = `0` + byte(out % 10)
 		i++
 	}
 
@@ -134,15 +133,6 @@ fn (d Dec64) get_string_64(neg bool, i_n_digit int, i_pad_digit int) string {
 		i++
 		fw_zeros--
 	}
-
-	/*
-	x=0
-	for x<buf.len {
-		C.printf("d:%c\n",buf[x])
-		x++
-	}
-	C.printf("\n")
-	*/
 
 	buf[i]=`e`
 	i++
@@ -172,14 +162,6 @@ fn (d Dec64) get_string_64(neg bool, i_n_digit int, i_pad_digit int) string {
 	i++
 	buf[i]=0
 
-
-	/*
-	x=0
-	for x<buf.len {
-		C.printf("d:%c\n",buf[x])
-		x++
-	}
-	*/
 	return unsafe {
 		tos(byteptr(&buf[0]), i)
 	}
@@ -216,7 +198,7 @@ fn f64_to_decimal(mant u64, exp u64) Dec64 {
 		m2 = mant
 	} else {
 		e2 = int(exp) - bias64 - int(mantbits64) - 2
-		m2 = (u64(1)<<mantbits64) | mant
+		m2 = (u64(1) << mantbits64) | mant
 	}
 	even          := (m2 & 1) == 0
 	accept_bounds := even
@@ -249,14 +231,14 @@ fn f64_to_decimal(mant u64, exp u64) Dec64 {
 			// Smaller values may still be safe, but it's more
 			// difficult to reason about them. Only one of mp, mv,
 			// and mm can be a multiple of 5, if any.
-			if mv%5 == 0 {
+			if mv % 5 == 0 {
 				vr_is_trailing_zeros = multiple_of_power_of_five_64(mv, q)
 			} else if accept_bounds {
 				// Same as min(e2 + (^mm & 1), pow5Factor64(mm)) >= q
 				// <=> e2 + (^mm & 1) >= q && pow5Factor64(mm) >= q
 				// <=> true && pow5Factor64(mm) >= q, since e2 >= q.
-				vm_is_trailing_zeros = multiple_of_power_of_five_64(mv-1-mm_shift, q)
-			} else if multiple_of_power_of_five_64(mv+2, q) {
+				vm_is_trailing_zeros = multiple_of_power_of_five_64(mv - 1 - mm_shift, q)
+			} else if multiple_of_power_of_five_64(mv + 2, q) {
 				vp--
 			}
 		}
@@ -302,7 +284,7 @@ fn f64_to_decimal(mant u64, exp u64) Dec64 {
 		// General case, which happens rarely (~0.7%).
 		for {
 			vp_div_10 := vp / 10
-			vm_div_10  := vm / 10
+			vm_div_10 := vm / 10
 			if vp_div_10 <= vm_div_10 {
 				break
 			}
@@ -376,15 +358,19 @@ fn f64_to_decimal(mant u64, exp u64) Dec64 {
 	return Dec64{m: out, e: e10 + removed}
 }
 
+//=============================================================================
+// String Functions
+//=============================================================================
+
 // f64_to_str return a string in scientific notation with max n_digit after the dot
 pub fn f64_to_str(f f64, n_digit int) string {
 	mut u1 := Uf64{}
 	u1.f = f
 	u := unsafe {u1.u}
 
-	neg   := (u>>(mantbits64+expbits64)) != 0
-	mant  := u & ((u64(1)<<mantbits64) - u64(1))
-	exp   := (u >> mantbits64) & ((u64(1)<<expbits64) - u64(1))
+	neg   := (u >> (mantbits64 + expbits64)) != 0
+	mant  := u & ((u64(1) << mantbits64) - u64(1))
+	exp   := (u >> mantbits64) & ((u64(1) << expbits64) - u64(1))
 	//println("s:${neg} mant:${mant} exp:${exp} float:${f} byte:${u1.u:016lx}")
 
 	// Exit early for easy cases.
@@ -407,9 +393,9 @@ pub fn f64_to_str_pad(f f64, n_digit int) string {
 	u1.f = f
 	u := unsafe {u1.u}
 
-	neg   := (u>>(mantbits64+expbits64)) != 0
-	mant  := u & ((u64(1)<<mantbits64) - u64(1))
-	exp   := (u >> mantbits64) & ((u64(1)<<expbits64) - u64(1))
+	neg   := (u >> (mantbits64 + expbits64)) != 0
+	mant  := u & ((u64(1) << mantbits64) - u64(1))
+	exp   := (u >> mantbits64) & ((u64(1) << expbits64) - u64(1))
 	//println("s:${neg} mant:${mant} exp:${exp} float:${f} byte:${u1.u:016lx}")
 
 	// Exit early for easy cases.
