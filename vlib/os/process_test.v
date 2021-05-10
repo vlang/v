@@ -52,6 +52,7 @@ fn test_run() {
 	//
 	eprintln('polling iterations: $i')
 	assert i < 50
+	p.close()
 }
 
 fn test_wait() {
@@ -61,6 +62,7 @@ fn test_wait() {
 	assert p.status == .exited
 	assert p.code == 0
 	assert p.pid != os.getpid()
+	p.close()
 }
 
 fn test_slurping_output() {
@@ -73,6 +75,7 @@ fn test_slurping_output() {
 	assert p.code == 0
 	output := p.stdout_slurp().trim_space()
 	errors := p.stderr_slurp().trim_space()
+	p.close()
 	$if trace_process_output ? {
 		eprintln('---------------------------')
 		eprintln('p output: "$output"')
