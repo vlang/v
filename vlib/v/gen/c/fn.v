@@ -1481,7 +1481,6 @@ fn (mut g Gen) edit_defer_expr(expr ast.Expr) ast.Expr {
 				mut idx := -1
 				for i, n in g.defer_org_vars[g.defer_idx] {
 					if n.name == expr.name {
-						eprintln('found $i')
 						idx = i
 					}
 				}
