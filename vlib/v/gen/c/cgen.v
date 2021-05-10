@@ -5577,7 +5577,7 @@ fn (mut g Gen) write_types(types []ast.TypeSymbol) {
 						g.type_definitions.writeln('\t$type_name $field_name;')
 					}
 				} else {
-					g.type_definitions.writeln('EMPTY_STRUCT_DECLARATION;')
+					g.type_definitions.writeln('\tEMPTY_STRUCT_DECLARATION;')
 				}
 				// g.type_definitions.writeln('} $name;\n')
 				//
@@ -5586,7 +5586,7 @@ fn (mut g Gen) write_types(types []ast.TypeSymbol) {
 				} else {
 					''
 				}
-				g.type_definitions.writeln('} $attrs;\n')
+				g.type_definitions.writeln('}$attrs;\n')
 			}
 			ast.Alias {
 				// ast.Alias { TODO
