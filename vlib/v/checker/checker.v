@@ -209,9 +209,8 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 		}
 		if !c.need_recheck_generic_fns {
 			break
-		} else {
-			c.need_recheck_generic_fns = false
 		}
+		c.need_recheck_generic_fns = false
 	}
 	// restore the original c.file && c.mod after post processing
 	c.change_current_file(last_file)
