@@ -422,7 +422,7 @@ pub fn is_abs_path(path string) bool {
 	}
 	$if windows {
 		return path[0] == `/` || // incase we're in MingGW bash
-		(path[0].is_letter() && path[1] == `:`)
+		(path[0].is_letter() && path.len > 1 && path[1] == `:`)
 	}
 	return path[0] == `/`
 }
