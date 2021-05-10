@@ -4,6 +4,8 @@
 import os
 import time
 
+const voptions = ' -skip-unused -show-timings -stats '
+
 fn main() {
 	exe := os.executable()
 	dir := os.dir(exe)
@@ -39,14 +41,14 @@ fn main() {
 	println('  Building vprod...')
 	exec('v -o $vdir/vprod -prod -prealloc $vdir/cmd/v')
 	// exec('v -o $vdir/vprod $vdir/cmd/v') // for faster debugging
-	diff1 := measure('$vdir/vprod -cc clang -o v.c -show-timings $vdir/cmd/v', 'v.c')
+	diff1 := measure('$vdir/vprod $voptions -o v.c $vdir/cmd/v', 'v.c')
 	mut tcc_path := 'tcc'
 	$if freebsd {
 		tcc_path = '/usr/local/bin/tcc'
 	}
-	diff2 := measure('$vdir/vprod -cc $tcc_path -o v2 $vdir/cmd/v', 'v2')
+	diff2 := measure('$vdir/vprod $voptions -cc $tcc_path -o v2 $vdir/cmd/v', 'v2')
 	diff3 := 0 // measure('$vdir/vprod -native $vdir/cmd/tools/1mil.v', 'native 1mil')
-	diff4 := measure('$vdir/vprod -cc clang $vdir/examples/hello_world.v', 'hello.v')
+	diff4 := measure('$vdir/vprod $voptions -cc clang $vdir/examples/hello_world.v', 'hello.v')
 	vc_size := os.file_size('v.c') / 1000
 	// scan/parse/check/cgen
 	scan, parse, check, cgen, vlines := measure_steps(vdir)
@@ -120,7 +122,7 @@ fn measure(cmd string, description string) int {
 }
 
 fn measure_steps(vdir string) (int, int, int, int, int) {
-	resp := os.execute_or_panic('$vdir/vprod -o v.c -show-timings -stats $vdir/cmd/v')
+	resp := os.execute_or_panic('$vdir/vprod $voptions -o v.c $vdir/cmd/v')
 
 	mut scan, mut parse, mut check, mut cgen, mut vlines := 0, 0, 0, 0, 0
 	lines := resp.output.split_into_lines()

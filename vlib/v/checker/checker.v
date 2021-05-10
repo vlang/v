@@ -81,6 +81,7 @@ mut:
 	timers                           &util.Timers = util.new_timers(false)
 	comptime_fields_type             map[string]ast.Type
 	fn_scope                         &ast.Scope = voidptr(0)
+	cur_concrete_types               []ast.Type // current concrete types, e.g. <int, string>
 	main_fn_decl_node                ast.FnDecl
 	match_exhaustive_cutoff_limit    int = 10
 	// TODO: these are here temporarily and used for deprecations; remove soon
@@ -635,7 +636,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
 	// Make sure the first letter is capital, do not allow e.g. `x := string{}`,
 	// but `x := T{}` is ok.
 	if !c.is_builtin_mod && !c.inside_unsafe && type_sym.language == .v
-		&& c.cur_fn.cur_concrete_types.len == 0 {
+		&& c.cur_concrete_types.len == 0 {
 		pos := type_sym.name.last_index('.') or { -1 }
 		first_letter := type_sym.name[pos + 1]
 		if !first_letter.is_capital() {
@@ -1855,7 +1856,12 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 				c.error('when forwarding a variadic variable, it must be the final argument',
 					arg.pos)
 			}
-			if exp_arg_sym.kind == .interface_ {
+			mut final_arg_sym := exp_arg_sym
+			if method.is_variadic && exp_arg_sym.info is ast.Array {
+				final_arg_sym = c.table.get_type_symbol(exp_arg_sym.array_info().elem_type)
+			}
+			// Handle expected interface
+			if final_arg_sym.kind == .interface_ {
 				c.type_implements(got_arg_typ, exp_arg_typ, arg.expr.position())
 				continue
 			}
@@ -2158,7 +2164,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 			concrete_types << concrete_type
 		}
 	}
-	if !isnil(c.cur_fn) && c.cur_fn.cur_concrete_types.len == 0 && has_generic {
+	if !isnil(c.cur_fn) && c.cur_concrete_types.len == 0 && has_generic {
 		c.error('generic fn using generic types cannot be called outside of generic fn',
 			call_expr.pos)
 	}
@@ -2437,8 +2443,12 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 				c.fail_if_unreadable(call_arg.expr, typ, 'argument')
 			}
 		}
+		mut final_arg_sym := arg_typ_sym
+		if func.is_variadic && arg_typ_sym.info is ast.Array {
+			final_arg_sym = c.table.get_type_symbol(arg_typ_sym.array_info().elem_type)
+		}
 		// Handle expected interface
-		if arg_typ_sym.kind == .interface_ {
+		if final_arg_sym.kind == .interface_ {
 			c.type_implements(typ, param.typ, call_arg.expr.position())
 			continue
 		}
@@ -2915,7 +2925,7 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 	mut expected_types := [expected_type]
 	if expected_type_sym.info is ast.MultiReturn {
 		expected_types = expected_type_sym.info.types
-		if c.cur_fn.cur_concrete_types.len > 0 {
+		if c.cur_concrete_types.len > 0 {
 			expected_types = expected_types.map(c.unwrap_generic(it))
 		}
 	}
@@ -4265,7 +4275,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 				node.pos)
 		}
 		if c.mod == 'main' {
-			c.error('hash statements are not allowed in the main module. Please place them in a separate module.',
+			c.error('hash statements are not allowed in the main module. Place them in a separate module.',
 				node.pos)
 		}
 		return
@@ -4430,7 +4440,7 @@ fn (mut c Checker) stmts(stmts []ast.Stmt) {
 
 pub fn (mut c Checker) unwrap_generic(typ ast.Type) ast.Type {
 	if typ.has_flag(.generic) {
-		if t_typ := c.table.resolve_generic_to_concrete(typ, c.cur_fn.generic_names, c.cur_fn.cur_concrete_types,
+		if t_typ := c.table.resolve_generic_to_concrete(typ, c.cur_fn.generic_names, c.cur_concrete_types,
 			false)
 		{
 			return t_typ
@@ -4761,10 +4771,10 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	expr_is_ptr := node.expr_type.is_ptr() || n_e_t_idx in ast.pointer_type_idxs
 	if expr_is_ptr && to_type_sym.kind == .string && !node.in_prexpr {
 		if node.has_arg {
-			c.warn('to convert a C string buffer pointer to a V string, please use x.vstring_with_len(len) instead of string(x,len)',
+			c.warn('to convert a C string buffer pointer to a V string, use x.vstring_with_len(len) instead of string(x,len)',
 				node.pos)
 		} else {
-			c.warn('to convert a C string buffer pointer to a V string, please use x.vstring() instead of string(x)',
+			c.warn('to convert a C string buffer pointer to a V string, use x.vstring() instead of string(x)',
 				node.pos)
 		}
 	}
@@ -6039,7 +6049,7 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 				}
 			} else if cond.name !in c.pref.compile_defines_all {
 				if cond.name == 'linux_or_macos' {
-					c.error('linux_or_macos is deprecated, please use `\$if linux || macos {` instead',
+					c.error('linux_or_macos is deprecated, use `\$if linux || macos {` instead',
 						cond.pos)
 					return false
 				}
@@ -6872,7 +6882,7 @@ fn (mut c Checker) post_process_generic_fns() {
 		mut node := c.file.generic_fns[i]
 		c.mod = node.mod
 		for concrete_types in c.table.fn_generic_types[node.name] {
-			node.cur_concrete_types = concrete_types
+			c.cur_concrete_types = concrete_types
 			c.fn_decl(mut node)
 			if node.name in ['vweb.run_app', 'vweb.run'] {
 				for ct in concrete_types {
@@ -6882,13 +6892,13 @@ fn (mut c Checker) post_process_generic_fns() {
 				}
 			}
 		}
-		node.cur_concrete_types = []
+		c.cur_concrete_types = []
 	}
 }
 
 fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	c.returns = false
-	if node.generic_names.len > 0 && node.cur_concrete_types.len == 0 {
+	if node.generic_names.len > 0 && c.cur_concrete_types.len == 0 {
 		// Just remember the generic function for now.
 		// It will be processed later in c.post_process_generic_fns,
 		// after all other normal functions are processed.
