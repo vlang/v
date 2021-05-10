@@ -102,7 +102,7 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 	g.defer_org_vars = [][]ast.Ident{len: node.defer_stmts.len}
 	g.defer_tmp_vars = [][]ast.Ident{len: node.defer_stmts.len}
 	g.defer_org_var_names = [][]string{len: node.defer_stmts.len}
-	g.defer_used_vars = map[string]string
+	g.defer_used_vars = map[string]string{}
 	if node.language == .c {
 		// || node.no_body {
 		return
@@ -1533,7 +1533,7 @@ fn (mut g Gen) edit_defer_expr(expr ast.Expr) ast.Expr {
 				need_fmts: expr.need_fmts
 			}
 		}
-		ast.StructInit{
+		ast.StructInit {
 			expr.update_expr = g.edit_defer_expr(expr.update_expr)
 			for i, field in expr.fields {
 				expr.fields[i] = ast.StructInitField{
@@ -1561,7 +1561,7 @@ fn (mut g Gen) edit_defer_expr(expr ast.Expr) ast.Expr {
 				}
 			}
 		}
-		ast.InfixExpr{
+		ast.InfixExpr {
 			expr.left = g.edit_defer_expr(expr.left)
 			expr.right = g.edit_defer_expr(expr.right)
 			mut stmts := expr.or_block.stmts
@@ -1572,7 +1572,7 @@ fn (mut g Gen) edit_defer_expr(expr ast.Expr) ast.Expr {
 				pos: expr.or_block.pos
 			}
 		}
-		ast.PostfixExpr{
+		ast.PostfixExpr {
 			expr = ast.PostfixExpr{
 				op: expr.op
 				expr: g.edit_defer_expr(expr.expr)
@@ -1635,13 +1635,13 @@ fn (mut g Gen) edit_defer_expr(expr ast.Expr) ast.Expr {
 				has_else: expr.has_else
 			}
 		}
-		ast.UnsafeExpr{
+		ast.UnsafeExpr {
 			expr = ast.UnsafeExpr{
 				expr: g.edit_defer_expr(expr.expr)
 				pos: expr.pos
 			}
 		}
-		ast.LockExpr{
+		ast.LockExpr {
 			mut stmts := expr.stmts
 			g.edit_defer_stmts(mut stmts)
 			for i, l in expr.lockeds {
@@ -1656,7 +1656,7 @@ fn (mut g Gen) edit_defer_expr(expr ast.Expr) ast.Expr {
 				typ: expr.typ
 			}
 		}
-		ast.MatchExpr{
+		ast.MatchExpr {
 			mut branches := []ast.MatchBranch{}
 
 			for b in expr.branches {
@@ -1689,7 +1689,7 @@ fn (mut g Gen) edit_defer_expr(expr ast.Expr) ast.Expr {
 				is_sum_type: expr.is_sum_type
 			}
 		}
-		ast.SelectExpr{
+		ast.SelectExpr {
 			mut branches := []ast.SelectBranch{}
 
 			for b in expr.branches {
@@ -1716,7 +1716,7 @@ fn (mut g Gen) edit_defer_expr(expr ast.Expr) ast.Expr {
 				expected_type: expr.expected_type
 			}
 		}
-		ast.AsCast{
+		ast.AsCast {
 			expr = ast.AsCast{
 				expr: g.edit_defer_expr(expr.expr)
 				typ: expr.typ
@@ -1724,7 +1724,7 @@ fn (mut g Gen) edit_defer_expr(expr ast.Expr) ast.Expr {
 				expr_type: expr.expr_type
 			}
 		}
-		ast.CastExpr{
+		ast.CastExpr {
 			expr = ast.CastExpr{
 				expr: g.edit_defer_expr(expr.expr)
 				arg: g.edit_defer_expr(expr.arg)
