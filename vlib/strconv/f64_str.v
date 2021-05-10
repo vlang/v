@@ -231,7 +231,7 @@ fn f64_to_decimal(mant u64, exp u64) Dec64 {
 			// Smaller values may still be safe, but it's more
 			// difficult to reason about them. Only one of mp, mv,
 			// and mm can be a multiple of 5, if any.
-			if mv%5 == 0 {
+			if mv % 5 == 0 {
 				vr_is_trailing_zeros = multiple_of_power_of_five_64(mv, q)
 			} else if accept_bounds {
 				// Same as min(e2 + (^mm & 1), pow5Factor64(mm)) >= q

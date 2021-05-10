@@ -215,7 +215,7 @@ fn f32_to_decimal(mant u32, exp u32) Dec32 {
 			// The largest power of 5 that fits in 24 bits is 5^10,
 			// but q <= 9 seems to be safe as well. Only one of mp,
 			// mv, and mm can be a multiple of 5, if any.
-			if mv%5 == 0 {
+			if mv % 5 == 0 {
 				vr_is_trailing_zeros = multiple_of_power_of_five_32(mv, q)
 			} else if accept_bounds {
 				vm_is_trailing_zeros = multiple_of_power_of_five_32(mm, q)
