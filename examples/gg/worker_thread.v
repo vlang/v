@@ -74,8 +74,7 @@ fn frame(mut app App) {
 
 	// Try a pop from the channel
 	mut count := i64(0)
-	app.ch.try_pop(mut count)
-	if count > 0 {
+	if app.ch.try_pop(mut count) == .success {
 		// A value was assigned - increase the counter
 		app.counter += i64(f64(count) / time.second)
 	}
