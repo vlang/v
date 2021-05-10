@@ -490,7 +490,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		ast.NodeError {}
 		ast.EmptyExpr {}
 		ast.AnonFn {
-			f.fn_decl(node.decl)
+			f.anon_fn(node)
 		}
 		ast.ArrayDecompose {
 			f.array_decompose(node)
@@ -867,6 +867,15 @@ pub fn (mut f Fmt) enum_decl(node ast.EnumDecl) {
 pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
 	f.attrs(node.attrs)
 	f.write(node.stringify(f.table, f.cur_mod, f.mod2alias)) // `Expr` instead of `ast.Expr` in mod ast
+	f.fn_body(node)
+}
+
+pub fn (mut f Fmt) anon_fn(node ast.AnonFn) {
+	f.write(node.stringify(f.table, f.cur_mod, f.mod2alias)) // `Expr` instead of `ast.Expr` in mod ast
+	f.fn_body(node.decl)
+}
+
+fn (mut f Fmt) fn_body(node ast.FnDecl) {
 	if node.language == .v {
 		if !node.no_body {
 			f.write(' {')
@@ -1006,7 +1015,7 @@ pub fn (mut f Fmt) global_decl(node ast.GlobalDecl) {
 
 pub fn (mut f Fmt) go_expr(node ast.GoExpr) {
 	f.write('go ')
-	f.expr(node.call_expr)
+	f.call_expr(node.call_expr)
 }
 
 pub fn (mut f Fmt) goto_label(node ast.GotoLabel) {
@@ -1499,7 +1508,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 	} else {
 		f.write_language_prefix(node.language)
 		if node.left is ast.AnonFn {
-			f.fn_decl(node.left.decl)
+			f.anon_fn(node.left)
 		} else if node.language != .v {
 			f.write('${node.name.after_char(`.`)}')
 		} else {
