@@ -28,7 +28,7 @@ pub mut:
 	panic_handler    FnPanicHandler = default_table_panic_handler
 	panic_userdata   voidptr        = voidptr(0) // can be used to pass arbitrary data to panic_handler;
 	panic_npanics    int
-	cur_fn           &FnDecl // previously stored in Checker.cur_fn and Gen.cur_fn
+	cur_fn           &FnDecl = 0 // previously stored in Checker.cur_fn and Gen.cur_fn
 }
 
 [unsafe]
