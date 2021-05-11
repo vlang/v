@@ -243,7 +243,7 @@ fn (a string) clone_static() string {
 
 // clone returns a copy of the V string `a`.
 pub fn (a string) clone() string {
-	if a == '' {
+	if a.len == 0 {
 		// TODO perf? an extra check in each clone() is not nice.
 		return ''
 	}
@@ -1733,7 +1733,8 @@ pub fn (s string) repeat(count int) string {
 }
 
 // fields returns a string array of the string split by `\t` and ` `
-// Example: assert '\t\tv = v'.fields() == ['', '', 'v', '=', 'v']
+// Example: assert '\t\tv = v'.fields() == ['v', '=', 'v']
+// Example: assert '  sss   ssss'.fields() == ['sss', 'ssss']
 pub fn (s string) fields() []string {
 	mut res := []string{}
 	mut word_start := 0
@@ -1826,12 +1827,4 @@ pub fn (s string) strip_margin_custom(del byte) string {
 		ret[count] = 0
 		return ret.vstring_with_len(count)
 	}
-}
-
-// split_by_whitespace - extract only the non whitespace tokens/words from the given string `s`.
-// example: '  sss   ssss'.split_by_whitespace() => ['sss', 'ssss']
-
-[deprecated: 'use string.fields() instead']
-pub fn (s string) split_by_whitespace() []string {
-	return s.fields()
 }
