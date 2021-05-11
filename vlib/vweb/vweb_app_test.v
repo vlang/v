@@ -3,7 +3,6 @@ module main
 import vweb
 import time
 import sqlite
-import json
 
 struct App {
 	vweb.Context
@@ -12,24 +11,18 @@ pub mut:
 	user_id string
 }
 
-fn main() {
-	vweb.run(&App{}, 8081)
+struct Article {
+	id    int
+	title string
+	text  string
 }
 
-/*
-pub fn (mut app App) index_text() vweb.Result {
-	app.vweb.text('Hello, world from vweb!')
-	return vweb.Result{}
-}
-
-pub fn (app &App) index_html() vweb.Result {
-	message := 'Hello, world from Vweb!'
-	return $vweb.html()
-}
-*/
-pub fn (app &App) index() vweb.Result {
-	articles := app.find_all_articles()
-	return $vweb.html()
+fn test_a_vweb_application_compiles() {
+	go fn() {
+		time.sleep(2 * time.second)
+		exit(0)
+	}()
+	vweb.run(&App{}, 18081)
 }
 
 pub fn (mut app App) init_server() {
@@ -43,10 +36,6 @@ pub fn (mut app App) init_server() {
 
 pub fn (mut app App) before_request() {
 	app.user_id = app.get_cookie('id') or { '0' }
-}
-
-pub fn (mut app App) new() vweb.Result {
-	return $vweb.html()
 }
 
 ['/new_article'; post]
@@ -67,12 +56,6 @@ pub fn (mut app App) new_article() vweb.Result {
 	}
 
 	return app.redirect('/')
-}
-
-pub fn (mut app App) articles() {
-	articles := app.find_all_articles()
-	x := json.encode(articles)
-	app.json(x)
 }
 
 fn (mut app App) time() {
