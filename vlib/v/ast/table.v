@@ -1113,6 +1113,9 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 	mut sym := t.get_type_symbol(generic_type)
 	if sym.name in generic_names {
 		index := generic_names.index(sym.name)
+		if index >= concrete_types.len {
+			return none
+		}
 		typ := concrete_types[index]
 		return typ.derive(generic_type).clear_flag(.generic)
 	} else if sym.kind == .array {
