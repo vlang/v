@@ -5755,7 +5755,6 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						checked_type := c.unwrap_generic((left as ast.TypeNode).typ)
 						should_skip = !c.table.type_implements_interface(checked_type,
 							got_type)
-						eprintln('> checked_type: $checked_type | got_type: $got_type | should_skip: $should_skip')
 					} else if left is ast.TypeNode {
 						is_comptime_type_is_expr = true
 						left_type := c.unwrap_generic(left.typ)
