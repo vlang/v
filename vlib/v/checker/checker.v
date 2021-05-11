@@ -201,28 +201,25 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 	// is needed when the generic type is auto inferred from the call argument
 	// Check more times if there are more new registered fn concrete types
 	for {
-		for i in 0 .. ast_files.len {
-			file := unsafe { &ast_files[i] }
+		for file in ast_files {
 			if file.generic_fns.len > 0 {
 				c.change_current_file(file)
 				c.post_process_generic_fns()
 			}
 		}
-		if c.need_recheck_generic_fns {
-			c.need_recheck_generic_fns = false
-			continue
-		} else {
+		if !c.need_recheck_generic_fns {
 			break
 		}
+		c.need_recheck_generic_fns = false
 	}
 	// restore the original c.file && c.mod after post processing
 	c.change_current_file(last_file)
 	c.timers.show('checker_post_process_generic_fns')
-	//
+
 	c.timers.start('checker_verify_all_vweb_routes')
 	c.verify_all_vweb_routes()
 	c.timers.show('checker_verify_all_vweb_routes')
-	//
+
 	if c.pref.is_test {
 		mut n_test_fns := 0
 		for _, f in c.table.fns {
