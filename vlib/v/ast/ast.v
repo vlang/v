@@ -743,6 +743,7 @@ pub mut:
 	lockeds []Ident // `x`, `y` in `lock x, y {`
 	is_expr bool
 	typ     Type
+	scope   &Scope
 }
 
 pub struct MatchExpr {
