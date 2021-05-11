@@ -477,11 +477,13 @@ pub fn remove_tail_zeros(s string) string {
 			i_s = i_s1
 		}
 
-		// check exponent
-		for i_s < s.len {
-			buf[i_d] = s[i_s]
-			i_s++
-			i_d++
+		if s[i_s] != `.` {
+			// check exponent
+			for i_s < s.len {
+				buf[i_d] = s[i_s]
+				i_s++
+				i_d++
+			}
 		}
 
 		buf[i_d] = 0

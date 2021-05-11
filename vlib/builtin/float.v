@@ -12,6 +12,7 @@ import strconv
 // str return a `f64` as `string` in suitable notation.
 [inline]
 pub fn (x f64) str() string {
+	if x == 0 { return "0" }
 	abs_x := f64_abs(x)
 	if abs_x >= 0.0001 && abs_x < 1.0e6 {
 		return strconv.f64_to_str_l(x)
@@ -53,6 +54,7 @@ pub fn (x f64) strlong() string {
 // str returns a `f32` as `string` in suitable notation.
 [inline]
 pub fn (x f32) str() string {
+	if x == 0 { return "0" }
 	abs_x := f32_abs(x)
 	if abs_x >= 0.0001 && abs_x < 1.0e6 {
 		return strconv.f32_to_str_l(x)

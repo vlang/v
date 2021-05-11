@@ -240,6 +240,13 @@ fn (mut g Gen) gen_str_for_array(info ast.Array, styp string, str_fn_name string
 				g.auto_str_funcs.writeln('\t\tstring x = indent_${elem_str_fn_name}(it, indent_count);')
 			}
 		} else if sym.kind in [.f32, .f64] {
+/*
+			if sym.kind == .f32 { 
+				g.auto_str_funcs.writeln('\t\tstring x = ${str_intp_g32("it")};')
+			} else {
+				g.auto_str_funcs.writeln('\t\tstring x = ${str_intp_g64("it")};')
+			}
+*/			
 			g.auto_str_funcs.writeln('\t\tstring x = _STR("%g", 1, it);')
 		} else if sym.kind == .rune {
 			g.auto_str_funcs.writeln('\t\tstring x = _STR("`%.*s\\000`", 2, ${elem_str_fn_name}(it));')

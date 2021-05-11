@@ -364,6 +364,12 @@ pub fn fxx_to_str_l_parse(s string) string {
 			i++
 		}
 	}
+/*
+	// remove the dot form the numbers like 2.
+	if r_i > 1 && res[r_i-1] == `.` {
+		r_i--
+	}
+*/	
 	res[r_i] = 0
 	return unsafe { tos(res.data,r_i) }
 }

@@ -129,26 +129,26 @@ fn abs64(x i64) u64 {
 //=========================================
 
 // convert from data format to compact u64
-pub fn get_str_intp_u64_format(fmt_type StrIntpType, in_width int, in_precision int, in_sign bool, in_pad_ch u8, in_base int, in_upper_case bool) u64 {
+pub fn get_str_intp_u64_format(fmt_type StrIntpType, in_width int, in_precision int, in_tail_zeros bool, in_sign bool, in_pad_ch u8, in_base int, in_upper_case bool) u64 {
 	width      := if in_width != 0 { abs64(in_width) } else { u64(0) }
 	allign     := if in_width > 0 { u64(1 << 5) } else { u64(0) }  // two bit 0 .left 1 .rigth, for now we use only one
 	upper_case := if in_upper_case { u64(1 << 7) } else { u64(0) }
 	sign       := if in_sign { u64(1 << 8) } else { u64(0) }
 	precision  := if in_precision != 987698 { (u64(in_precision & 0x7F) << 9)  } else { u64(0x7F) << 9 }
-	tail_zeros := u64(1) << 16
+	tail_zeros := if in_tail_zeros {u32(1) << 16} else { u32(0) }
 	base       := u64((in_base & 0xf) << 27)
 	res := u64( (u64(fmt_type) & 0x1F) | allign | upper_case | sign |  precision | tail_zeros | (u64(width & 0x3FF) << 17) | base | (u64(in_pad_ch) << 31) )
 	return res
 }
 
 // convert from data format to compact u32
-pub fn get_str_intp_u32_format(fmt_type StrIntpType, in_width int, in_precision int, in_sign bool, in_pad_ch u8, in_base int, in_upper_case bool) u32 {
+pub fn get_str_intp_u32_format(fmt_type StrIntpType, in_width int, in_precision int, in_tail_zeros bool, in_sign bool, in_pad_ch u8, in_base int, in_upper_case bool) u32 {
 	width      := if in_width != 0 { abs64(in_width) } else { u32(0) }
 	allign     := if in_width > 0 { u32(1 << 5) } else { u32(0) }  // two bit 0 .left 1 .rigth, for now we use only one
 	upper_case := if in_upper_case { u32(1 << 7) } else { u32(0) }
 	sign       := if in_sign { u32(1 << 8) } else { u32(0) }
 	precision  := if in_precision != 987698 { (u32(in_precision & 0x7F) << 9)  } else { u32(0x7F) << 9 }
-	tail_zeros := u32(1) << 16
+	tail_zeros := if in_tail_zeros {u32(1) << 16} else { u32(0) }
 	base       := u32((in_base & 0xf) << 27)
 	res := u32( (u32(fmt_type) & 0x1F) | allign | upper_case | sign |  precision | tail_zeros | (u32(width & 0x3FF) << 17) | base | (u32(in_pad_ch & 1) << 31) )
 	return res
@@ -163,7 +163,7 @@ fn (data StrIntpData) get_fmt_format(mut sb &strings.Builder) {
 	upper_case     := if ((x >> 7) & 0x01) > 0 { true } else { false }
 	sign           := int((x >> 8) & 0x01)
 	precision      := int((x >> 9) & 0x7F)
-	//tail_zeros     := if ((x >> 16) & 0x01) > 0 { true } else { false }
+	tail_zeros     := if ((x >> 16) & 0x01) > 0 { true } else { false }
 	width          := int(i16((x >> 17) & 0x3FF))
 	mut base       := int(x >> 27) & 0xF
 	fmt_pad_ch     := byte((x >> 31) & 0xFF)
@@ -197,7 +197,7 @@ fn (data StrIntpData) get_fmt_format(mut sb &strings.Builder) {
 		positive     : true       // mandatory: the sign of the number passed
 		sign_flag    : sign_set   // flag for print sign as prefix in padding
 		allign       : .left      // alignment of the string
-		rm_tail_zero : false // remove the tail zeros from floats
+		rm_tail_zero : tail_zeros // false // remove the tail zeros from floats
 	}
 
 	// allign
@@ -563,18 +563,24 @@ pub fn str_intp(data_len int, in_data voidptr) string {
 //====================================================================================
 // Utility for the compiler "auto_str_methods.v"
 //====================================================================================
-/*
+
 // substitute old _STR calls
 // _STR("`%.*s\\000`", 2, ${elem_str_fn_name}(it));
 pub fn str_intp_s(in_str string) string {
-	fmt_type := StrIntpType.si_s
+	fmt_type := get_str_intp_u32_format(StrIntpType.si_s, -1, 3, false, false, 0, 0, false)
+	//fmt_type := StrIntpType.si_s
 	res := 'str_intp(2, (StrIntpData[]){{_SLIT("\'"), 0x${int(fmt_type).hex()}, {.d_s = ${in_str} }},{_SLIT("\'"), 0, {.d_c = 0 }}})'
 	return res
 }
 
-pub fn str_intp_g(in_str string) string {
-	fmt_type := int(StrIntpType.si_f32)// | 3 << 9 // fix to 3 decimal digits
+pub fn str_intp_g32(in_str string) string {
+	fmt_type := get_str_intp_u32_format(StrIntpType.si_f32, 0, 987698, true, false, 0, 0, false)
 	res := 'str_intp(1, (StrIntpData[]){{_SLIT(""), 0x${int(fmt_type).hex()}, {.d_f32 = ${in_str} }}})'
 	return res
 }
-*/
+
+pub fn str_intp_g64(in_str string) string {
+	fmt_type := get_str_intp_u32_format(StrIntpType.si_f64, 0, 987698, true, false, 0, 0, false)
+	res := 'str_intp(1, (StrIntpData[]){{_SLIT(""), 0x${int(fmt_type).hex()}, {.d_f64 = ${in_str} }}})'
+	return res
+}

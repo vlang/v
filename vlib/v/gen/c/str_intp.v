@@ -23,7 +23,7 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int) (u64, string) {
 	if sym.kind == .alias {
 		typ = (sym.info as ast.Alias).parent_type
 	}
-
+	mut remove_tail_zeros := false
 	fspec := node.fmts[i]
 	mut fmt_type := StrIntpType{}
 
@@ -45,6 +45,7 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int) (u64, string) {
 				ast.f64_type { fmt_type = .si_g64 }
 				else { fmt_type = .si_g64 }
 			}
+			remove_tail_zeros = true
 		} else if fspec in [`e`,`E`] {
 			match typ {
 				ast.f32_type { fmt_type = .si_e32 }
@@ -99,7 +100,7 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int) (u64, string) {
 	if node.fills[i] {
 		pad_ch = u8(`0`)
 	}
-	res := get_str_intp_u64_format(fmt_type, node.fwidths[i], node.precisions[i], node.pluss[i], pad_ch, base, upper_case)
+	res := get_str_intp_u64_format(fmt_type, node.fwidths[i], node.precisions[i], remove_tail_zeros, node.pluss[i], pad_ch, base, upper_case)
 	*/
 
 	// pad filling 32bit format
@@ -107,7 +108,7 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int) (u64, string) {
 	if node.fills[i] {
 		pad_ch = 1
 	}
-	res := get_str_intp_u32_format(fmt_type, node.fwidths[i], node.precisions[i], node.pluss[i], pad_ch, base, upper_case)
+	res := get_str_intp_u32_format(fmt_type, node.fwidths[i], node.precisions[i], remove_tail_zeros, node.pluss[i], pad_ch, base, upper_case)
 	//
 	return res, fmt_type.str()
 }
