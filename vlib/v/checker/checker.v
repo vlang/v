@@ -5982,7 +5982,8 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 						type_node := cond.right as ast.TypeNode
 						sym := c.table.get_type_symbol(type_node.typ)
 						if sym.kind != .interface_ {
-							c.error('`$sym.name` is not an interface', cond.right.position())
+							c.expr(cond.left)
+							// c.error('`$sym.name` is not an interface', cond.right.position())
 						}
 						return false
 					} else if cond.left is ast.SelectorExpr || cond.left is ast.TypeNode {

@@ -319,7 +319,8 @@ fn (mut g Gen) comp_if_cond(cond ast.Expr) bool {
 					got_type := (cond.right as ast.TypeNode).typ
 					// Handle `$if x is Interface {`
 					// mut matches_interface := 'false'
-					if left is ast.TypeNode && cond.right is ast.TypeNode {
+					if left is ast.TypeNode && cond.right is ast.TypeNode
+						&& g.table.get_type_symbol(got_type).kind == .interface_ {
 						// `$if Foo is Interface {`
 						interface_sym := g.table.get_type_symbol(got_type)
 						if interface_sym.info is ast.Interface {
