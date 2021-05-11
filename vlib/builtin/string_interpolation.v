@@ -547,7 +547,7 @@ pub fn str_intp(data_len int, in_data voidptr) string {
 			if data.str.len != 0 {
 				res.write_string(data.str)
 			}
-			// skip only string records
+			// skip empty data
 			if data.fmt != 0 {
 				data.get_fmt_format(mut &res)
 			}

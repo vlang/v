@@ -213,7 +213,12 @@ fn (mut g Gen) gen_str_for_alias(info ast.Alias, styp string, str_fn_name string
 	g.auto_str_funcs.writeln('\tfor (int i = 0; i < indent_count; ++i) {')
 	g.auto_str_funcs.writeln('\t\tindents = string_add(indents, _SLIT("    "));')
 	g.auto_str_funcs.writeln('\t}')
-	g.auto_str_funcs.writeln('\treturn _STR("%.*s\\000${clean_type_v_type_name}(%.*s\\000)", 3, indents, ${parent_str_fn_name}(it));')
+	
+	g.auto_str_funcs.writeln('\treturn str_intp(3, (StrIntpData[]){{_SLIT0, 0x${int(StrIntpType.si_s).hex()}, {.d_s = indents }}, {_SLIT("${clean_type_v_type_name}("), 0x${int(StrIntpType.si_s).hex()}, {.d_s = ${parent_str_fn_name}(it) }}, {_SLIT(")"), 0, {.d_c = 0 }} });')
+	//g.auto_str_funcs.writeln(tmp_str)
+
+	//g.auto_str_funcs.writeln('\treturn _STR("%.*s\\000${clean_type_v_type_name}(%.*s\\000)", 3, indents, ${parent_str_fn_name}(it));')
+
 	g.auto_str_funcs.writeln('}')
 }
 
