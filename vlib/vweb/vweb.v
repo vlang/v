@@ -284,27 +284,49 @@ pub fn (ctx &Context) get_header(key string) string {
 	return ctx.req.header.get_custom(key) or { '' }
 }
 
+/*
 pub fn run<T>(port int) {
-	mut app := T{}
-	run_app<T>(mut app, port)
+	mut x := &T{}
+	run_app(mut x, port)
+}
+*/
+
+interface DbInterface {
+	db voidptr
 }
 
-pub fn run_app<T>(mut app T, port int) {
+// run_app
+pub fn run<T>(global_app &T, port int) {
+	// x := global_app.clone()
+	// mut global_app := &T{}
+	// mut app := &T{}
+	// run_app<T>(mut app, port)
+
 	mut l := net.listen_tcp(port) or { panic('failed to listen') }
 	println('[Vweb] Running app on http://localhost:$port')
-	app.Context = Context{
-		conn: 0
-	}
-	app.init_server()
-	$for method in T.methods {
-		$if method.return_type is Result {
-			// check routes for validity
-		}
-	}
+	// app.Context = Context{
+	// conn: 0
+	//}
+	// app.init_server()
+	// global_app.init_server()
+	//$for method in T.methods {
+	//$if method.return_type is Result {
+	// check routes for validity
+	//}
+	//}
 	for {
+		// Create a new app object for each connection, copy global data like db connections
+		mut request_app := T{}
+		$if T is DbInterface {
+			request_app.db = global_app.db
+		} $else {
+			// println('vweb no db')
+		}
+		// request_app.Context = Context{
+		// conn: 0
+		//}
 		mut conn := l.accept() or { panic('accept() failed') }
-		// TODO: running handle_conn concurrently results in a race-condition
-		handle_conn<T>(mut conn, mut app)
+		handle_conn<T>(mut conn, mut request_app)
 	}
 }
 

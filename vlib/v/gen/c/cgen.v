@@ -120,22 +120,22 @@ mut:
 	is_builtin_mod         bool
 	hotcode_fn_names       []string
 	embedded_files         []ast.EmbeddedFile
-	cur_fn                 ast.FnDecl
-	cur_concrete_types     []ast.Type // current concrete types, e.g. <int, string>
-	sql_i                  int
-	sql_stmt_name          string
-	sql_bind_name          string
-	sql_idents             []string
-	sql_idents_types       []ast.Type
-	sql_left_type          ast.Type
-	sql_table_name         string
-	sql_fkey               string
-	sql_parent_id          string
-	sql_side               SqlExprSide // left or right, to distinguish idents in `name == name`
-	inside_vweb_tmpl       bool
-	inside_return          bool
-	inside_or_block        bool
-	strs_to_free0          []string // strings.Builder
+	// cur_fn                 ast.FnDecl
+	cur_concrete_types []ast.Type // current concrete types, e.g. <int, string>
+	sql_i              int
+	sql_stmt_name      string
+	sql_bind_name      string
+	sql_idents         []string
+	sql_idents_types   []ast.Type
+	sql_left_type      ast.Type
+	sql_table_name     string
+	sql_fkey           string
+	sql_parent_id      string
+	sql_side           SqlExprSide // left or right, to distinguish idents in `name == name`
+	inside_vweb_tmpl   bool
+	inside_return      bool
+	inside_or_block    bool
+	strs_to_free0      []string // strings.Builder
 	// strs_to_free          []string // strings.Builder
 	inside_call           bool
 	has_main              bool
@@ -6369,38 +6369,40 @@ fn (mut g Gen) interface_table() string {
 			}
 			already_generated_mwrappers[interface_index_name] = current_iinidx
 			current_iinidx++
-			// eprintln('>>> current_iinidx: ${current_iinidx-iinidx_minimum_base} | interface_index_name: $interface_index_name')
-			sb.writeln('$staticprefix $interface_name I_${cctype}_to_Interface_${interface_name}($cctype* x);')
-			mut cast_struct := strings.new_builder(100)
-			cast_struct.writeln('($interface_name) {')
-			cast_struct.writeln('\t\t._$cctype = x,')
-			cast_struct.writeln('\t\t._typ = $interface_index_name,')
-			for field in inter_info.fields {
-				cname := c_name(field.name)
-				field_styp := g.typ(field.typ)
-				if _ := st_sym.find_field(field.name) {
-					cast_struct.writeln('\t\t.$cname = ($field_styp*)((char*)x + __offsetof_ptr(x, $cctype, $cname)),')
-				} else {
-					// the field is embedded in another struct
-					cast_struct.write_string('\t\t.$cname = ($field_styp*)((char*)x')
-					for embed_type in st_sym.struct_info().embeds {
-						embed_sym := g.table.get_type_symbol(embed_type)
-						if _ := embed_sym.find_field(field.name) {
-							cast_struct.write_string(' + __offsetof_ptr(x, $cctype, $embed_sym.embed_name()) + __offsetof_ptr(x, $embed_sym.cname, $cname)')
-							break
+			if ityp.name != 'vweb.DbInterface' { // TODO remove this
+				// eprintln('>>> current_iinidx: ${current_iinidx-iinidx_minimum_base} | interface_index_name: $interface_index_name')
+				sb.writeln('$staticprefix $interface_name I_${cctype}_to_Interface_${interface_name}($cctype* x);')
+				mut cast_struct := strings.new_builder(100)
+				cast_struct.writeln('($interface_name) {')
+				cast_struct.writeln('\t\t._$cctype = x,')
+				cast_struct.writeln('\t\t._typ = $interface_index_name,')
+				for field in inter_info.fields {
+					cname := c_name(field.name)
+					field_styp := g.typ(field.typ)
+					if _ := st_sym.find_field(field.name) {
+						cast_struct.writeln('\t\t.$cname = ($field_styp*)((char*)x + __offsetof_ptr(x, $cctype, $cname)),')
+					} else {
+						// the field is embedded in another struct
+						cast_struct.write_string('\t\t.$cname = ($field_styp*)((char*)x')
+						for embed_type in st_sym.struct_info().embeds {
+							embed_sym := g.table.get_type_symbol(embed_type)
+							if _ := embed_sym.find_field(field.name) {
+								cast_struct.write_string(' + __offsetof_ptr(x, $cctype, $embed_sym.embed_name()) + __offsetof_ptr(x, $embed_sym.cname, $cname)')
+								break
+							}
 						}
+						cast_struct.writeln('),')
 					}
-					cast_struct.writeln('),')
 				}
-			}
-			cast_struct.write_string('\t}')
-			cast_struct_str := cast_struct.str()
+				cast_struct.write_string('\t}')
+				cast_struct_str := cast_struct.str()
 
-			cast_functions.writeln('
+				cast_functions.writeln('
 // Casting functions for converting "$cctype" to interface "$interface_name"
 $staticprefix inline $interface_name I_${cctype}_to_Interface_${interface_name}($cctype* x) {
 	return $cast_struct_str;
 }')
+			}
 
 			if g.pref.build_mode != .build_module {
 				methods_struct.writeln('\t{')

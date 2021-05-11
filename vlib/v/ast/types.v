@@ -741,7 +741,7 @@ pub mut:
 
 pub struct Interface {
 pub mut:
-	types   []Type
+	types   []Type // all types that implement this interface
 	fields  []StructField
 	methods []Fn
 	ifaces  []Type
