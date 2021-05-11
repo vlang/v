@@ -1142,19 +1142,20 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					g.writeln('goto ${node.label}__continue;')
 				}
 			} else {
-				match g.inner_loop {
+				inner_loop := g.inner_loop
+				match inner_loop {
 					ast.ForCStmt {
-						if (g.inner_loop as ast.ForCStmt).scope.contains(g.@lock.pos.pos) {
+						if inner_loop.scope.contains(g.@lock.pos.pos) {
 							g.unlock_locks()
 						}
 					}
 					ast.ForInStmt {
-						if (g.inner_loop as ast.ForInStmt).scope.contains(g.@lock.pos.pos) {
+						if inner_loop.scope.contains(g.@lock.pos.pos) {
 							g.unlock_locks()
 						}
 					}
 					ast.ForStmt {
-						if (g.inner_loop as ast.ForStmt).scope.contains(g.@lock.pos.pos) {
+						if inner_loop.scope.contains(g.@lock.pos.pos) {
 							g.unlock_locks()
 						}
 					}
@@ -4828,9 +4829,6 @@ fn (mut g Gen) gen_optional_error(target_type ast.Type, expr ast.Expr) {
 
 fn (mut g Gen) return_stmt(node ast.Return) {
 	g.write_v_source_line_info(node.pos)
-	// unlock all mutexes, in case we are in a lock statement
-	g.unlock_locks()
-
 	if node.exprs.len > 0 {
 		// skip `return $vweb.html()`
 		if node.exprs[0] is ast.ComptimeCall {
@@ -4839,6 +4837,10 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			return
 		}
 	}
+
+	// unlock all mutexes, in case we are in a lock statement
+	g.unlock_locks()
+
 	g.inside_return = true
 	defer {
 		g.inside_return = false
