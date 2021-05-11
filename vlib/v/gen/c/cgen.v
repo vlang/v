@@ -4838,9 +4838,6 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		}
 	}
 
-	// unlock all mutexes, in case we are in a lock statement. defers are not allowed in lock statements
-	g.unlock_locks()
-
 	g.inside_return = true
 	defer {
 		g.inside_return = false
