@@ -74,7 +74,9 @@ x := 10
 5+7
 8+4
 '
-	table := &ast.Table{}
+	table := &ast.Table{
+		cur_fn: 0
+	}
 	vpref := &pref.Preferences{}
 	gscope := &ast.Scope{
 		parent: 0

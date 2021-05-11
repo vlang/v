@@ -30,13 +30,13 @@ fn main() {
 	assert timeout > 0
 	go exit_after_timeout(timeout)
 	//
-	mut app := &App{
+	app := &App{
 		port: http_port
 		timeout: timeout
 	}
 	eprintln('>> webserver: started on http://127.0.0.1:$app.port/ , with maximum runtime of $app.timeout milliseconds.')
 	// vweb.run<App>(mut app, http_port)
-	vweb.run(mut app, http_port)
+	vweb.run(app, http_port)
 }
 
 // pub fn (mut app App) init_server() {
