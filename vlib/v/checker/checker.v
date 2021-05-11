@@ -2563,7 +2563,7 @@ fn semicolonize(main string, details string) string {
 
 fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos token.Position) bool {
 	$if debug_interface_type_implements ? {
-		eprintln('> type_implements typ: $typ.debug() | inter_typ: $interface_typ.debug()')
+		eprintln('> type_implements typ: $typ.debug() | inter_typ: $interface_type.debug()')
 	}
 	utyp := c.unwrap_generic(typ)
 	typ_sym := c.table.get_type_symbol(utyp)
