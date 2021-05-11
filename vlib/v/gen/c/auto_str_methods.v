@@ -5,6 +5,32 @@ module c
 import v.ast
 import v.util
 
+
+pub enum StrIntpType {
+	si_no_str = 0  // no parameter to print only fix string
+	si_c
+	
+	si_u8
+	si_i8
+	si_u16
+	si_i16
+	si_u32
+	si_i32
+	si_u64
+	si_i64
+
+	si_e32
+	si_e64
+	si_f32
+	si_f64
+	si_g32
+	si_g64
+
+	si_s
+	si_p
+	si_vp
+}
+
 fn should_use_indent_func(kind ast.Kind) bool {
 	return kind in [.struct_, .alias, .array, .array_fixed, .map, .sum_type, .interface_]
 }
@@ -249,9 +275,18 @@ fn (mut g Gen) gen_str_for_array(info ast.Array, styp string, str_fn_name string
 */			
 			g.auto_str_funcs.writeln('\t\tstring x = _STR("%g", 1, it);')
 		} else if sym.kind == .rune {
-			g.auto_str_funcs.writeln('\t\tstring x = _STR("`%.*s\\000`", 2, ${elem_str_fn_name}(it));')
+		
+			// Rune are managed at this level as strings
+			tmp_str := 'str_intp(2, (StrIntpData[]){{_SLIT("\`"), 0x${int(StrIntpType.si_s).hex()}, {.d_s = ${elem_str_fn_name}(it) }},{_SLIT("\`"), 0, {.d_c = 0 }}})'
+			g.auto_str_funcs.writeln('\t\tstring x = ${tmp_str};')
+		
+		//	g.auto_str_funcs.writeln('\t\tstring x = _STR("`%.*s\\000`", 2, ${elem_str_fn_name}(it));')
 		} else if sym.kind == .string {
-			g.auto_str_funcs.writeln('\t\tstring x = _STR("\'%.*s\\000\'", 2, it);')
+		
+			tmp_str := 'str_intp(2, (StrIntpData[]){{_SLIT("\'"), 0x${int(StrIntpType.si_s).hex()}, {.d_s = it }},{_SLIT("\'"), 0, {.d_c = 0 }}})'
+			g.auto_str_funcs.writeln('\t\tstring x = ${tmp_str};')
+		
+		//	g.auto_str_funcs.writeln('\t\tstring x = _STR("\'%.*s\\000\'", 2, it);')
 		} else {
 			// There is a custom .str() method, so use it.
 			// NB: we need to take account of whether the user has defined
@@ -319,9 +354,17 @@ fn (mut g Gen) gen_str_for_array_fixed(info ast.ArrayFixed, styp string, str_fn_
 		} else if sym.kind in [.f32, .f64] {
 			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _STR("%g", 1, a[i]));')
 		} else if sym.kind == .string {
-			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _STR("\'%.*s\\000\'", 2, a[i]));')
+		
+			tmp_str := 'str_intp(2, (StrIntpData[]){{_SLIT("\'"), 0x${int(StrIntpType.si_s).hex()}, {.d_s = a[i] }},{_SLIT("\'"), 0, {.d_c = 0 }}})'
+			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${tmp_str});')
+		
+			//g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _STR("\'%.*s\\000\'", 2, a[i]));')
 		} else if sym.kind == .rune {
-			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _STR("`%.*s\\000`", 2, ${elem_str_fn_name}(a[i])));')
+			
+			tmp_str := 'str_intp(2, (StrIntpData[]){{_SLIT("\`"), 0x${int(StrIntpType.si_s).hex()}, {.d_s = ${elem_str_fn_name}(a[i]) }},{_SLIT("\`"), 0, {.d_c = 0 }}})'
+			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${tmp_str});')
+		
+			//g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _STR("`%.*s\\000`", 2, ${elem_str_fn_name}(a[i])));')
 		} else {
 			if (str_method_expects_ptr && is_elem_ptr) || (!str_method_expects_ptr && !is_elem_ptr) {
 				g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${elem_str_fn_name}(a[i]));')

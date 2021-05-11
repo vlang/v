@@ -566,13 +566,16 @@ pub fn str_intp(data_len int, in_data voidptr) string {
 
 // substitute old _STR calls
 // _STR("`%.*s\\000`", 2, ${elem_str_fn_name}(it));
+/*
 pub fn str_intp_s(in_str string) string {
-	fmt_type := get_str_intp_u32_format(StrIntpType.si_s, -1, 3, false, false, 0, 0, false)
+	//fmt_type := get_str_intp_u32_format(StrIntpType.si_s, -1, 3, false, false, 0, 0, false)
 	//fmt_type := StrIntpType.si_s
-	res := 'str_intp(2, (StrIntpData[]){{_SLIT("\'"), 0x${int(fmt_type).hex()}, {.d_s = ${in_str} }},{_SLIT("\'"), 0, {.d_c = 0 }}})'
+	//res := 'str_intp(2, (StrIntpData[]){{_SLIT("\'"), 0x${int(fmt_type).hex()}, {.d_s = ${in_str} }},{_SLIT("\'"), 0, {.d_c = 0 }}})'
+	res := 'str_intp(2, (StrIntpData[]){{_SLIT("\'"), 0x${int(StrIntpType.si_s).hex()}, {.d_s = ${in_str} }},{_SLIT("\'"), 0, {.d_c = 0 }}})'
+
 	return res
 }
-
+*/
 pub fn str_intp_g32(in_str string) string {
 	fmt_type := get_str_intp_u32_format(StrIntpType.si_f32, 0, 987698, true, false, 0, 0, false)
 	res := 'str_intp(1, (StrIntpData[]){{_SLIT(""), 0x${int(fmt_type).hex()}, {.d_f32 = ${in_str} }}})'
