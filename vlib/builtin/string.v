@@ -648,32 +648,29 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 }
 
 // split_into_lines splits the string by newline characters.
-// Both `\n` and `\r\n` newline endings is supported.
+// newlines are stripped.
+// Both `\n` and `\r\n` newline endings are supported.
+[direct_array_access]
 pub fn (s string) split_into_lines() []string {
 	mut res := []string{}
 	if s.len == 0 {
 		return res
 	}
 	mut start := 0
+	mut end := 0
 	for i := 0; i < s.len; i++ {
-		is_lf := unsafe { s.str[i] } == 10
-		is_crlf := i != s.len - 1 && unsafe { s.str[i] == 13 && s.str[i + 1] == 10 }
-		is_eol := is_lf || is_crlf
-		is_last := if is_crlf { i == s.len - 2 } else { i == s.len - 1 }
-		if is_eol || is_last {
-			if is_last && !is_eol {
-				i++
-			}
-			line := s.substr(start, i)
-			res << line
-			if is_crlf {
-				i++
-			}
+		if s[i] == 10 {
+			end = if i > 0 && s[i - 1] == 13 { i - 1 } else { i }
+			res << if start == end { '' } else { s[start..end] }
 			start = i + 1
 		}
 	}
+	if start < s.len {
+		res << s[start..]
+	}
 	return res
 }
+
 
 // used internally for [2..4]
 fn (s string) substr2(start int, _end int, end_max bool) string {
