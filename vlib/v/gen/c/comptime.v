@@ -65,7 +65,7 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 		}
 		return
 	}
-	g.writeln('// \$method call. sym="$node.sym.name"')
+	g.trace_autofree('// \$method call. sym="$node.sym.name"')
 	if node.method_name == 'method' {
 		// `app.$method()`
 		m := node.sym.find_method(g.comp_for_method) or { return }
