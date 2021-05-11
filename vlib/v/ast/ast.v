@@ -714,6 +714,7 @@ pub mut:
 	is_expr  bool
 	typ      Type
 	has_else bool
+	// implements bool // comptime $if implements interface
 }
 
 pub struct IfBranch {

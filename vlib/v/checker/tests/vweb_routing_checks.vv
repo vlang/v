@@ -43,6 +43,5 @@ pub fn (mut app App) index() {
 
 fn main() {
 	port := 8181
-	mut app := App{}
-	vweb.run_app<App>(mut app, port)
+	vweb.run<App>(&App{}, port)
 }

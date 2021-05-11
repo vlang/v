@@ -120,22 +120,22 @@ mut:
 	is_builtin_mod         bool
 	hotcode_fn_names       []string
 	embedded_files         []ast.EmbeddedFile
-	cur_fn                 ast.FnDecl
-	cur_concrete_types     []ast.Type // current concrete types, e.g. <int, string>
-	sql_i                  int
-	sql_stmt_name          string
-	sql_bind_name          string
-	sql_idents             []string
-	sql_idents_types       []ast.Type
-	sql_left_type          ast.Type
-	sql_table_name         string
-	sql_fkey               string
-	sql_parent_id          string
-	sql_side               SqlExprSide // left or right, to distinguish idents in `name == name`
-	inside_vweb_tmpl       bool
-	inside_return          bool
-	inside_or_block        bool
-	strs_to_free0          []string // strings.Builder
+	// cur_fn                 ast.FnDecl
+	cur_concrete_types []ast.Type // current concrete types, e.g. <int, string>
+	sql_i              int
+	sql_stmt_name      string
+	sql_bind_name      string
+	sql_idents         []string
+	sql_idents_types   []ast.Type
+	sql_left_type      ast.Type
+	sql_table_name     string
+	sql_fkey           string
+	sql_parent_id      string
+	sql_side           SqlExprSide // left or right, to distinguish idents in `name == name`
+	inside_vweb_tmpl   bool
+	inside_return      bool
+	inside_or_block    bool
+	strs_to_free0      []string // strings.Builder
 	// strs_to_free          []string // strings.Builder
 	inside_call           bool
 	has_main              bool
@@ -1034,8 +1034,8 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 		stmt := stmts[0]
 		// stmt := stmts[stmts.len-1]
 		if stmt !is ast.FnDecl && g.inside_ternary == 0 {
-			// g.writeln('// autofree scope')
-			// g.writeln('// autofree_scope_vars($stmt.pos.pos) | ${typeof(stmt)}')
+			// g.trace_autofree('// autofree scope')
+			// g.trace_autofree('// autofree_scope_vars($stmt.pos.pos) | ${typeof(stmt)}')
 			// go back 1 position is important so we dont get the
 			// internal scope of for loops and possibly other nodes
 			// g.autofree_scope_vars(stmt.pos.pos - 1)
@@ -1116,7 +1116,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			} else {
 				// continue or break
 				if g.is_autofree && !g.is_builtin_mod {
-					g.writeln('// free before continue/break')
+					g.trace_autofree('// free before continue/break')
 					g.autofree_scope_vars_stop(node.pos.pos - 1, node.pos.line_nr, true,
 						g.branch_parent_pos)
 				}
@@ -2373,7 +2373,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			}
 			else {}
 		}
-		right_sym := g.table.get_type_symbol(val_type)
+		right_sym := g.table.get_type_symbol(g.unwrap_generic(val_type))
 		is_fixed_array_copy := right_sym.kind == .array_fixed && val is ast.Ident
 		g.is_assign_lhs = true
 		g.assign_op = assign_stmt.op
@@ -2719,9 +2719,14 @@ fn (mut g Gen) autofree_scope_vars_stop(pos int, line_nr int, free_parent_scopes
 		// TODO why can scope.pos be 0? (only outside fns?)
 		return
 	}
-	g.writeln('// autofree_scope_vars(pos=$pos line_nr=$line_nr scope.pos=$scope.start_pos scope.end_pos=$scope.end_pos)')
+	g.trace_autofree('// autofree_scope_vars(pos=$pos line_nr=$line_nr scope.pos=$scope.start_pos scope.end_pos=$scope.end_pos)')
 	g.autofree_scope_vars2(scope, scope.start_pos, scope.end_pos, line_nr, free_parent_scopes,
 		stop_pos)
+}
+
+[if trace_autofree]
+fn (mut g Gen) trace_autofree(line string) {
+	g.writeln(line)
 }
 
 // fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, end_pos int) {
@@ -2732,20 +2737,20 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 	for _, obj in scope.objects {
 		match obj {
 			ast.Var {
-				g.writeln('// var "$obj.name" var.pos=$obj.pos.pos var.line_nr=$obj.pos.line_nr')
+				g.trace_autofree('// var "$obj.name" var.pos=$obj.pos.pos var.line_nr=$obj.pos.line_nr')
 				if obj.name == g.returned_var_name {
-					g.writeln('// skipping returned var')
+					g.trace_autofree('// skipping returned var')
 					continue
 				}
 				if obj.is_or {
 					// Skip vars inited with the `or {}`, since they are generated
 					// after the or block in C.
-					g.writeln('// skipping `or{}` var "$obj.name"')
+					g.trace_autofree('// skipping `or{}` var "$obj.name"')
 					continue
 				}
 				if obj.is_tmp {
 					// Skip for loop vars
-					g.writeln('// skipping tmp var "$obj.name"')
+					g.trace_autofree('// skipping tmp var "$obj.name"')
 					continue
 				}
 				// if var.typ == 0 {
@@ -2778,7 +2783,7 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 	// if !isnil(scope.parent) && line_nr > 0 {
 	if free_parent_scopes && !isnil(scope.parent)
 		&& (stop_pos == -1 || scope.parent.start_pos >= stop_pos) {
-		g.writeln('// af parent scope:')
+		g.trace_autofree('// af parent scope:')
 		g.autofree_scope_vars2(scope.parent, start_pos, end_pos, line_nr, true, stop_pos)
 	}
 }
@@ -2801,7 +2806,7 @@ fn (mut g Gen) autofree_variable(v ast.Var) {
 		// Don't free simple string literals.
 		match v.expr {
 			ast.StringLiteral {
-				g.writeln('// str literal')
+				g.trace_autofree('// str literal')
 			}
 			else {
 				// NOTE/TODO: assign_stmt multi returns variables have no expr
@@ -4771,7 +4776,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			g.writeln('return ($styp){0};')
 		} else {
 			if g.is_autofree {
-				g.writeln('// free before return (no values returned)')
+				g.trace_autofree('// free before return (no values returned)')
 				g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 			}
 			g.writeln('return;')
@@ -5577,7 +5582,7 @@ fn (mut g Gen) write_types(types []ast.TypeSymbol) {
 						g.type_definitions.writeln('\t$type_name $field_name;')
 					}
 				} else {
-					g.type_definitions.writeln('EMPTY_STRUCT_DECLARATION;')
+					g.type_definitions.writeln('\tEMPTY_STRUCT_DECLARATION;')
 				}
 				// g.type_definitions.writeln('} $name;\n')
 				//
@@ -5586,7 +5591,7 @@ fn (mut g Gen) write_types(types []ast.TypeSymbol) {
 				} else {
 					''
 				}
-				g.type_definitions.writeln('} $attrs;\n')
+				g.type_definitions.writeln('}$attrs;\n')
 			}
 			ast.Alias {
 				// ast.Alias { TODO
@@ -6369,38 +6374,40 @@ fn (mut g Gen) interface_table() string {
 			}
 			already_generated_mwrappers[interface_index_name] = current_iinidx
 			current_iinidx++
-			// eprintln('>>> current_iinidx: ${current_iinidx-iinidx_minimum_base} | interface_index_name: $interface_index_name')
-			sb.writeln('$staticprefix $interface_name I_${cctype}_to_Interface_${interface_name}($cctype* x);')
-			mut cast_struct := strings.new_builder(100)
-			cast_struct.writeln('($interface_name) {')
-			cast_struct.writeln('\t\t._$cctype = x,')
-			cast_struct.writeln('\t\t._typ = $interface_index_name,')
-			for field in inter_info.fields {
-				cname := c_name(field.name)
-				field_styp := g.typ(field.typ)
-				if _ := st_sym.find_field(field.name) {
-					cast_struct.writeln('\t\t.$cname = ($field_styp*)((char*)x + __offsetof_ptr(x, $cctype, $cname)),')
-				} else {
-					// the field is embedded in another struct
-					cast_struct.write_string('\t\t.$cname = ($field_styp*)((char*)x')
-					for embed_type in st_sym.struct_info().embeds {
-						embed_sym := g.table.get_type_symbol(embed_type)
-						if _ := embed_sym.find_field(field.name) {
-							cast_struct.write_string(' + __offsetof_ptr(x, $cctype, $embed_sym.embed_name()) + __offsetof_ptr(x, $embed_sym.cname, $cname)')
-							break
+			if ityp.name != 'vweb.DbInterface' { // TODO remove this
+				// eprintln('>>> current_iinidx: ${current_iinidx-iinidx_minimum_base} | interface_index_name: $interface_index_name')
+				sb.writeln('$staticprefix $interface_name I_${cctype}_to_Interface_${interface_name}($cctype* x);')
+				mut cast_struct := strings.new_builder(100)
+				cast_struct.writeln('($interface_name) {')
+				cast_struct.writeln('\t\t._$cctype = x,')
+				cast_struct.writeln('\t\t._typ = $interface_index_name,')
+				for field in inter_info.fields {
+					cname := c_name(field.name)
+					field_styp := g.typ(field.typ)
+					if _ := st_sym.find_field(field.name) {
+						cast_struct.writeln('\t\t.$cname = ($field_styp*)((char*)x + __offsetof_ptr(x, $cctype, $cname)),')
+					} else {
+						// the field is embedded in another struct
+						cast_struct.write_string('\t\t.$cname = ($field_styp*)((char*)x')
+						for embed_type in st_sym.struct_info().embeds {
+							embed_sym := g.table.get_type_symbol(embed_type)
+							if _ := embed_sym.find_field(field.name) {
+								cast_struct.write_string(' + __offsetof_ptr(x, $cctype, $embed_sym.embed_name()) + __offsetof_ptr(x, $embed_sym.cname, $cname)')
+								break
+							}
 						}
+						cast_struct.writeln('),')
 					}
-					cast_struct.writeln('),')
 				}
-			}
-			cast_struct.write_string('\t}')
-			cast_struct_str := cast_struct.str()
+				cast_struct.write_string('\t}')
+				cast_struct_str := cast_struct.str()
 
-			cast_functions.writeln('
+				cast_functions.writeln('
 // Casting functions for converting "$cctype" to interface "$interface_name"
 $staticprefix inline $interface_name I_${cctype}_to_Interface_${interface_name}($cctype* x) {
 	return $cast_struct_str;
 }')
+			}
 
 			if g.pref.build_mode != .build_module {
 				methods_struct.writeln('\t{')

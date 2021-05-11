@@ -467,7 +467,8 @@ pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Typ
 			node.need_fmts[i] = fmt != c.get_default_fmt(ftyp, typ)
 		}
 		// check recursive str
-		if c.cur_fn.is_method && c.cur_fn.name == 'str' && c.cur_fn.receiver.name == expr.str() {
+		if c.table.cur_fn.is_method && c.table.cur_fn.name == 'str'
+			&& c.table.cur_fn.receiver.name == expr.str() {
 			c.error('cannot call `str()` method recursively', expr.position())
 		}
 	}
@@ -527,7 +528,7 @@ pub fn (mut c Checker) infer_fn_generic_types(f ast.Fn, mut call_expr ast.CallEx
 					mut param_elem_sym := c.table.get_type_symbol(param_elem_info.elem_type)
 					for {
 						if arg_elem_sym.kind == .array && param_elem_sym.kind == .array
-							&& param_elem_sym.name !in c.cur_fn.generic_names {
+							&& param_elem_sym.name !in c.table.cur_fn.generic_names {
 							arg_elem_info = arg_elem_sym.info as ast.Array
 							arg_elem_sym = c.table.get_type_symbol(arg_elem_info.elem_type)
 							param_elem_info = param_elem_sym.info as ast.Array

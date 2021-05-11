@@ -47,15 +47,15 @@ pub mut:
 	notices          []errors.Notice
 	error_lines      []int // to avoid printing multiple errors for the same line
 	expected_type    ast.Type
-	expected_or_type ast.Type    // fn() or { 'this type' } eg. string. expected or block type
-	cur_fn           &ast.FnDecl // current function
-	const_decl       string
-	const_deps       []string
-	const_names      []string
-	global_names     []string
-	locked_names     []string // vars that are currently locked
-	rlocked_names    []string // vars that are currently read-locked
-	in_for_count     int      // if checker is currently in a for loop
+	expected_or_type ast.Type // fn() or { 'this type' } eg. string. expected or block type
+	// cur_fn           &ast.FnDecl // current function
+	const_decl    string
+	const_deps    []string
+	const_names   []string
+	global_names  []string
+	locked_names  []string // vars that are currently locked
+	rlocked_names []string // vars that are currently read-locked
+	in_for_count  int      // if checker is currently in a for loop
 	// checked_ident  string // to avoid infinite checker loops
 	returns        bool
 	scope_returns  bool
@@ -99,7 +99,6 @@ pub fn new_checker(table &ast.Table, pref &pref.Preferences) Checker {
 	return Checker{
 		table: table
 		pref: pref
-		cur_fn: 0
 		timers: util.new_timers(timers_should_print)
 		match_exhaustive_cutoff_limit: pref.checker_match_exhaustive_cutoff_limit
 	}
@@ -201,28 +200,25 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 	// is needed when the generic type is auto inferred from the call argument
 	// Check more times if there are more new registered fn concrete types
 	for {
-		for i in 0 .. ast_files.len {
-			file := unsafe { &ast_files[i] }
+		for file in ast_files {
 			if file.generic_fns.len > 0 {
 				c.change_current_file(file)
 				c.post_process_generic_fns()
 			}
 		}
-		if c.need_recheck_generic_fns {
-			c.need_recheck_generic_fns = false
-			continue
-		} else {
+		if !c.need_recheck_generic_fns {
 			break
 		}
+		c.need_recheck_generic_fns = false
 	}
 	// restore the original c.file && c.mod after post processing
 	c.change_current_file(last_file)
 	c.timers.show('checker_post_process_generic_fns')
-	//
+
 	c.timers.start('checker_verify_all_vweb_routes')
 	c.verify_all_vweb_routes()
 	c.timers.show('checker_verify_all_vweb_routes')
-	//
+
 	if c.pref.is_test {
 		mut n_test_fns := 0
 		for _, f in c.table.fns {
@@ -669,7 +665,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) ast.Type {
 				'it cannot be initialized with `$type_sym.name{}`', struct_init.pos)
 		}
 	}
-	if type_sym.name.len == 1 && c.cur_fn.generic_names.len == 0 {
+	if type_sym.name.len == 1 && c.table.cur_fn.generic_names.len == 0 {
 		c.error('unknown struct `$type_sym.name`', struct_init.pos)
 		return 0
 	}
@@ -1534,10 +1530,10 @@ pub fn (mut c Checker) call_expr(mut call_expr ast.CallExpr) ast.Type {
 	c.expected_or_type = call_expr.return_type.clear_flag(.optional)
 	c.stmts(call_expr.or_block.stmts)
 	c.expected_or_type = ast.void_type
-	if call_expr.or_block.kind == .propagate && !c.cur_fn.return_type.has_flag(.optional)
+	if call_expr.or_block.kind == .propagate && !c.table.cur_fn.return_type.has_flag(.optional)
 		&& !c.inside_const {
-		if !c.cur_fn.is_main {
-			c.error('to propagate the optional call, `$c.cur_fn.name` must return an optional',
+		if !c.table.cur_fn.is_main {
+			c.error('to propagate the optional call, `$c.table.cur_fn.name` must return an optional',
 				call_expr.or_block.pos)
 		}
 	}
@@ -1919,7 +1915,7 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 			c.warn('method `${left_type_sym.name}.$method_name` must be called from an `unsafe` block',
 				call_expr.pos)
 		}
-		if !c.cur_fn.is_deprecated && method.is_deprecated {
+		if !c.table.cur_fn.is_deprecated && method.is_deprecated {
 			c.deprecate_fnmethod('method', '${left_type_sym.name}.$method.name', method,
 				call_expr)
 		}
@@ -2163,7 +2159,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 			concrete_types << concrete_type
 		}
 	}
-	if !isnil(c.cur_fn) && c.cur_concrete_types.len == 0 && has_generic {
+	if !isnil(c.table.cur_fn) && c.cur_concrete_types.len == 0 && has_generic {
 		c.error('generic fn using generic types cannot be called outside of generic fn',
 			call_expr.pos)
 	}
@@ -2315,7 +2311,7 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 		&& func.mod != c.mod {
 		c.error('function `$func.name` is private', call_expr.pos)
 	}
-	if !isnil(c.cur_fn) && !c.cur_fn.is_deprecated && func.is_deprecated {
+	if !isnil(c.table.cur_fn) && !c.table.cur_fn.is_deprecated && func.is_deprecated {
 		c.deprecate_fnmethod('function', func.name, func, call_expr)
 	}
 	if func.is_unsafe && !c.inside_unsafe
@@ -2565,13 +2561,13 @@ fn semicolonize(main string, details string) string {
 	return '$main; $details'
 }
 
-fn (mut c Checker) type_implements(typ ast.Type, inter_typ ast.Type, pos token.Position) bool {
+fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos token.Position) bool {
 	$if debug_interface_type_implements ? {
-		eprintln('> type_implements typ: $typ.debug() | inter_typ: $inter_typ.debug()')
+		eprintln('> type_implements typ: $typ.debug() | inter_typ: $interface_type.debug()')
 	}
 	utyp := c.unwrap_generic(typ)
 	typ_sym := c.table.get_type_symbol(utyp)
-	mut inter_sym := c.table.get_type_symbol(inter_typ)
+	mut inter_sym := c.table.get_type_symbol(interface_type)
 	// do not check the same type more than once
 	if mut inter_sym.info is ast.Interface {
 		for t in inter_sym.info.types {
@@ -2581,11 +2577,11 @@ fn (mut c Checker) type_implements(typ ast.Type, inter_typ ast.Type, pos token.P
 		}
 	}
 	styp := c.table.type_to_str(utyp)
-	if utyp.idx() == inter_typ.idx() {
+	if utyp.idx() == interface_type.idx() {
 		// same type -> already casted to the interface
 		return true
 	}
-	if inter_typ.idx() == ast.error_type_idx && utyp.idx() == ast.none_type_idx {
+	if interface_type.idx() == ast.error_type_idx && utyp.idx() == ast.none_type_idx {
 		// `none` "implements" the Error interface
 		return true
 	}
@@ -2598,6 +2594,7 @@ fn (mut c Checker) type_implements(typ ast.Type, inter_typ ast.Type, pos token.P
 	} else {
 		inter_sym.methods
 	}
+	// Verify methods
 	for imethod in imethods {
 		if method := typ_sym.find_method(imethod.name) {
 			msg := c.table.is_same_method(imethod, method)
@@ -2613,6 +2610,7 @@ fn (mut c Checker) type_implements(typ ast.Type, inter_typ ast.Type, pos token.P
 		c.error("`$styp` doesn't implement method `$imethod.name` of interface `$inter_sym.name`",
 			pos)
 	}
+	// Verify fields
 	if mut inter_sym.info is ast.Interface {
 		for ifield in inter_sym.info.fields {
 			if field := c.table.find_field_with_embeds(typ_sym, ifield.name) {
@@ -2665,9 +2663,9 @@ pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast
 
 pub fn (mut c Checker) check_or_expr(or_expr ast.OrExpr, ret_type ast.Type, expr_return_type ast.Type) {
 	if or_expr.kind == .propagate {
-		if !c.cur_fn.return_type.has_flag(.optional) && c.cur_fn.name != 'main.main'
+		if !c.table.cur_fn.return_type.has_flag(.optional) && c.table.cur_fn.name != 'main.main'
 			&& !c.inside_const {
-			c.error('to propagate the optional call, `$c.cur_fn.name` must return an optional',
+			c.error('to propagate the optional call, `$c.table.cur_fn.name` must return an optional',
 				or_expr.pos)
 		}
 		return
@@ -2766,7 +2764,7 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) ast.Typ
 	match mut selector_expr.expr {
 		ast.Ident {
 			name := selector_expr.expr.name
-			valid_generic := util.is_generic_type_name(name) && name in c.cur_fn.generic_names
+			valid_generic := util.is_generic_type_name(name) && name in c.table.cur_fn.generic_names
 			if valid_generic {
 				name_type = ast.Type(c.table.find_type_idx(name)).set_flag(.generic)
 			}
@@ -2904,10 +2902,10 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) ast.Typ
 
 // TODO: non deferred
 pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
-	c.expected_type = c.cur_fn.return_type
+	c.expected_type = c.table.cur_fn.return_type
 	expected_type := c.unwrap_generic(c.expected_type)
 	expected_type_sym := c.table.get_type_symbol(expected_type)
-	if return_stmt.exprs.len > 0 && c.cur_fn.return_type == ast.void_type {
+	if return_stmt.exprs.len > 0 && c.table.cur_fn.return_type == ast.void_type {
 		c.error('unexpected argument, current function does not return anything', return_stmt.exprs[0].position())
 		return
 	} else if return_stmt.exprs.len == 0 && !(c.expected_type == ast.void_type
@@ -2982,7 +2980,7 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 			if return_stmt.exprs[i].is_auto_deref_var() {
 				continue
 			}
-			c.error('fn `$c.cur_fn.name` expects you to return a non reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
+			c.error('fn `$c.table.cur_fn.name` expects you to return a non reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
 				pos)
 		}
 		if (exp_type.is_ptr() || exp_type.is_pointer())
@@ -2991,7 +2989,7 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 			if return_stmt.exprs[i].is_auto_deref_var() {
 				continue
 			}
-			c.error('fn `$c.cur_fn.name` expects you to return a reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
+			c.error('fn `$c.table.cur_fn.name` expects you to return a reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
 				pos)
 		}
 		if exp_type.is_ptr() && got_typ.is_ptr() {
@@ -3842,8 +3840,8 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		}
 		ast.DeferStmt {
 			if node.idx_in_fn < 0 {
-				node.idx_in_fn = c.cur_fn.defer_stmts.len
-				c.cur_fn.defer_stmts << unsafe { &node }
+				node.idx_in_fn = c.table.cur_fn.defer_stmts.len
+				c.table.cur_fn.defer_stmts << unsafe { &node }
 			}
 			c.stmts(node.stmts)
 		}
@@ -3894,7 +3892,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 				c.warn('`goto` requires `unsafe` (consider using labelled break/continue)',
 					node.pos)
 			}
-			if node.name !in c.cur_fn.label_names {
+			if node.name !in c.table.cur_fn.label_names {
 				c.error('unknown label `$node.name`', node.pos)
 			}
 			// TODO: check label doesn't bypass variable declarations
@@ -4427,8 +4425,8 @@ fn (mut c Checker) stmts(stmts []ast.Stmt) {
 
 pub fn (mut c Checker) unwrap_generic(typ ast.Type) ast.Type {
 	if typ.has_flag(.generic) {
-		if t_typ := c.table.resolve_generic_to_concrete(typ, c.cur_fn.generic_names, c.cur_concrete_types,
-			false)
+		if t_typ := c.table.resolve_generic_to_concrete(typ, c.table.cur_fn.generic_names,
+			c.cur_concrete_types, false)
 		{
 			return t_typ
 		}
@@ -4456,11 +4454,11 @@ pub fn (mut c Checker) expr(node ast.Expr) ast.Type {
 		}
 		ast.AnonFn {
 			c.inside_anon_fn = true
-			keep_fn := c.cur_fn
-			c.cur_fn = unsafe { &node.decl }
+			keep_fn := c.table.cur_fn
+			c.table.cur_fn = unsafe { &node.decl }
 			c.stmts(node.decl.stmts)
 			c.fn_decl(mut node.decl)
-			c.cur_fn = keep_fn
+			c.table.cur_fn = keep_fn
 			c.inside_anon_fn = false
 			return node.typ
 		}
@@ -4942,23 +4940,23 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 fn (mut c Checker) at_expr(mut node ast.AtExpr) ast.Type {
 	match node.kind {
 		.fn_name {
-			node.val = c.cur_fn.name.all_after_last('.')
+			node.val = c.table.cur_fn.name.all_after_last('.')
 		}
 		.method_name {
-			fname := c.cur_fn.name.all_after_last('.')
-			if c.cur_fn.is_method {
-				node.val = c.table.type_to_str(c.cur_fn.receiver.typ).all_after_last('.') + '.' +
-					fname
+			fname := c.table.cur_fn.name.all_after_last('.')
+			if c.table.cur_fn.is_method {
+				node.val = c.table.type_to_str(c.table.cur_fn.receiver.typ).all_after_last('.') +
+					'.' + fname
 			} else {
 				node.val = fname
 			}
 		}
 		.mod_name {
-			node.val = c.cur_fn.mod
+			node.val = c.table.cur_fn.mod
 		}
 		.struct_name {
-			if c.cur_fn.is_method {
-				node.val = c.table.type_to_str(c.cur_fn.receiver.typ).all_after_last('.')
+			if c.table.cur_fn.is_method {
+				node.val = c.table.type_to_str(c.table.cur_fn.receiver.typ).all_after_last('.')
 			} else {
 				node.val = ''
 			}
@@ -5751,6 +5749,12 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						comptime_field_name = left.expr.str()
 						c.comptime_fields_type[comptime_field_name] = got_type
 						is_comptime_type_is_expr = true
+					} else if branch.cond.right is ast.TypeNode && left is ast.TypeNode
+						&& sym.kind == .interface_ {
+						// is interface
+						checked_type := c.unwrap_generic((left as ast.TypeNode).typ)
+						should_skip = !c.table.type_implements_interface(checked_type,
+							got_type)
 					} else if left is ast.TypeNode {
 						is_comptime_type_is_expr = true
 						left_type := c.unwrap_generic(left.typ)
@@ -5935,8 +5939,8 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 	return node.typ
 }
 
-// comp_if_branch checks the condition of a compile-time `if` branch. It returns a `bool` that
-// saying whether that branch's contents should be skipped (targets a different os for example)
+// comp_if_branch checks the condition of a compile-time `if` branch. It returns `true`
+// if that branch's contents should be skipped (targets a different os for example)
 fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 	// TODO: better error messages here
 	match cond {
@@ -5974,12 +5978,21 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 					return l && r // skip (return true) only if both should be skipped
 				}
 				.key_is, .not_is {
-					if cond.left is ast.SelectorExpr || cond.left is ast.TypeNode {
-						// $if method.@type is string
+					if cond.left is ast.TypeNode && cond.right is ast.TypeNode {
+						// `$if Foo is Interface {`
+						type_node := cond.right as ast.TypeNode
+						sym := c.table.get_type_symbol(type_node.typ)
+						if sym.kind != .interface_ {
+							c.expr(cond.left)
+							// c.error('`$sym.name` is not an interface', cond.right.position())
+						}
+						return false
+					} else if cond.left is ast.SelectorExpr || cond.left is ast.TypeNode {
+						// `$if method.@type is string`
 						c.expr(cond.left)
 						return false
 					} else {
-						c.error('invalid `\$if` condition: expected a type or selector expression',
+						c.error('invalid `\$if` condition: expected a type or a selector expression or an interface check',
 							cond.left.position())
 					}
 				}
@@ -6871,7 +6884,7 @@ fn (mut c Checker) post_process_generic_fns() {
 		for concrete_types in c.table.fn_generic_types[node.name] {
 			c.cur_concrete_types = concrete_types
 			c.fn_decl(mut node)
-			if node.name in ['vweb.run_app', 'vweb.run'] {
+			if node.name == 'vweb.run' {
 				for ct in concrete_types {
 					if ct !in c.vweb_gen_types {
 						c.vweb_gen_types << ct
@@ -7036,7 +7049,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 	}
 	c.expected_type = ast.void_type
-	c.cur_fn = unsafe { node }
+	c.table.cur_fn = unsafe { node }
+	// c.table.cur_fn = node
 	// Add return if `fn(...) ? {...}` have no return at end
 	if node.return_type != ast.void_type && node.return_type.has_flag(.optional)
 		&& (node.stmts.len == 0 || node.stmts[node.stmts.len - 1] !is ast.Return) {
