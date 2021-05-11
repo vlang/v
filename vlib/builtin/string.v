@@ -671,7 +671,6 @@ pub fn (s string) split_into_lines() []string {
 	return res
 }
 
-
 // used internally for [2..4]
 fn (s string) substr2(start int, _end int, end_max bool) string {
 	end := if end_max { s.len } else { _end }
