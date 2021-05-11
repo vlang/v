@@ -83,7 +83,7 @@ mut:
 	optionals              []string // to avoid duplicates TODO perf, use map
 	chan_pop_optionals     []string // types for `x := <-ch or {...}`
 	chan_push_optionals    []string // types for `ch <- x or {...}`
-	@lock                  ast.LockExpr
+	cur_lock               ast.LockExpr
 	mtxs                   string // array of mutexes if the `lock` has multiple variables
 	labeled_loops          map[string]&ast.Stmt
 	inner_loop             &ast.Stmt
@@ -1118,17 +1118,17 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				}
 				match x {
 					ast.ForCStmt {
-						if x.scope.contains(g.@lock.pos.pos) {
+						if x.scope.contains(g.cur_lock.pos.pos) {
 							g.unlock_locks()
 						}
 					}
 					ast.ForInStmt {
-						if x.scope.contains(g.@lock.pos.pos) {
+						if x.scope.contains(g.cur_lock.pos.pos) {
 							g.unlock_locks()
 						}
 					}
 					ast.ForStmt {
-						if x.scope.contains(g.@lock.pos.pos) {
+						if x.scope.contains(g.cur_lock.pos.pos) {
 							g.unlock_locks()
 						}
 					}
@@ -1145,17 +1145,17 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				inner_loop := g.inner_loop
 				match inner_loop {
 					ast.ForCStmt {
-						if inner_loop.scope.contains(g.@lock.pos.pos) {
+						if inner_loop.scope.contains(g.cur_lock.pos.pos) {
 							g.unlock_locks()
 						}
 					}
 					ast.ForInStmt {
-						if inner_loop.scope.contains(g.@lock.pos.pos) {
+						if inner_loop.scope.contains(g.cur_lock.pos.pos) {
 							g.unlock_locks()
 						}
 					}
 					ast.ForStmt {
-						if inner_loop.scope.contains(g.@lock.pos.pos) {
+						if inner_loop.scope.contains(g.cur_lock.pos.pos) {
 							g.unlock_locks()
 						}
 					}
@@ -3935,9 +3935,9 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 }
 
 fn (mut g Gen) lock_expr(node ast.LockExpr) {
-	g.@lock = unsafe { node } // is ok because it is discarded at end of fn
+	g.cur_lock = unsafe { node } // is ok because it is discarded at end of fn
 	defer {
-		g.@lock = ast.LockExpr{
+		g.cur_lock = ast.LockExpr{
 			scope: 0
 		}
 	}
@@ -4010,15 +4010,15 @@ fn (mut g Gen) lock_expr(node ast.LockExpr) {
 }
 
 fn (mut g Gen) unlock_locks() {
-	if g.@lock.lockeds.len == 0 {
-	} else if g.@lock.lockeds.len == 1 {
-		id := g.@lock.lockeds[0]
+	if g.cur_lock.lockeds.len == 0 {
+	} else if g.cur_lock.lockeds.len == 1 {
+		id := g.cur_lock.lockeds[0]
 		name := id.name
 		deref := if id.is_mut { '->' } else { '.' }
-		lock_prefix := if g.@lock.is_rlock[0] { 'r' } else { '' }
+		lock_prefix := if g.cur_lock.is_rlock[0] { 'r' } else { '' }
 		g.writeln('sync__RwMutex_${lock_prefix}unlock(&$name${deref}mtx);')
 	} else {
-		g.writeln('for (int $g.mtxs=${g.@lock.lockeds.len - 1}; $g.mtxs>=0; $g.mtxs--) {')
+		g.writeln('for (int $g.mtxs=${g.cur_lock.lockeds.len - 1}; $g.mtxs>=0; $g.mtxs--) {')
 		g.writeln('\tif ($g.mtxs && _arr_$g.mtxs[$g.mtxs] == _arr_$g.mtxs[$g.mtxs-1]) continue;')
 		g.writeln('\tif (_isrlck_$g.mtxs[$g.mtxs])')
 		g.writeln('\t\tsync__RwMutex_runlock((sync__RwMutex*)_arr_$g.mtxs[$g.mtxs]);')
