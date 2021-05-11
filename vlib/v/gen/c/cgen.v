@@ -2373,7 +2373,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			}
 			else {}
 		}
-		right_sym := g.table.get_type_symbol(g.unwrap_generic(val_type))
+		right_sym := g.table.get_type_symbol(val_type)
 		is_fixed_array_copy := right_sym.kind == .array_fixed && val is ast.Ident
 		g.is_assign_lhs = true
 		g.assign_op = assign_stmt.op
