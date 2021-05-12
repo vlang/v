@@ -32,7 +32,9 @@ pub enum StrIntpType {
 }
 
 const (
-	si_s_code = "0x" + int(StrIntpType.si_s).hex() // code for a simple string
+	// BUG: this const is not released from the memory! use a const for now
+	//si_s_code = "0x" + int(StrIntpType.si_s).hex() // code for a simple string
+	si_s_code = "0xfe10"
 )
 
 fn should_use_indent_func(kind ast.Kind) bool {
@@ -188,16 +190,24 @@ fn (mut g Gen) gen_str_for_option(typ ast.Type, styp string, str_fn_name string)
 	g.auto_str_funcs.writeln('\tstring res;')
 	g.auto_str_funcs.writeln('\tif (it.state == 0) {')
 	if sym.kind == .string {
-		g.auto_str_funcs.writeln('\t\tres = _STR("\'%.*s\\000\'", 2, ${parent_str_fn_name}(*($sym.cname*)it.data));')
+		tmp_res := "${parent_str_fn_name}(*($sym.cname*)it.data)"
+		g.auto_str_funcs.writeln('\t\tres = ${str_intp_sq(tmp_res)};')
+		//g.auto_str_funcs.writeln('\t\tres = _STR("\'%.*s\\000\'", 2, ${parent_str_fn_name}(*($sym.cname*)it.data));')
 	} else if should_use_indent_func(sym.kind) && !sym_has_str_method {
 		g.auto_str_funcs.writeln('\t\tres = indent_${parent_str_fn_name}(*($sym.cname*)it.data, indent_count);')
 	} else {
 		g.auto_str_funcs.writeln('\t\tres = ${parent_str_fn_name}(*($sym.cname*)it.data);')
 	}
 	g.auto_str_funcs.writeln('\t} else {')
-	g.auto_str_funcs.writeln('\t\tres = _STR("error: %.*s\\000", 2, IError_str(it.err));')
+	
+	tmp_str := str_intp_sub("error: %%", "IError_str(it.err)")
+	g.auto_str_funcs.writeln('\t\tres = ${tmp_str};')
+	//g.auto_str_funcs.writeln('\t\tres = _STR("error: %.*s\\000", 2, IError_str(it.err));')
+	
 	g.auto_str_funcs.writeln('\t}')
-	g.auto_str_funcs.writeln('\treturn _STR("Option(%.*s\\000)", 2, res);')
+	
+	g.auto_str_funcs.writeln('\treturn ${str_intp_sub("Option(%%)", "res")};')
+	//g.auto_str_funcs.writeln('\treturn _STR("Option(%.*s\\000)", 2, res);')
 	g.auto_str_funcs.writeln('}')
 }
 
@@ -364,17 +374,20 @@ fn (mut g Gen) gen_str_for_array_fixed(info ast.ArrayFixed, styp string, str_fn_
 		} else if sym.kind in [.f32, .f64] {
 			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _STR("%g", 1, a[i]));')
 		} else if sym.kind == .string {
-		
+			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${str_intp_sq("a[i]")});')
+		/*
 			tmp_str := 'str_intp(2, (StrIntpData[]){{_SLIT("\'"), ${si_s_code}, {.d_s = a[i] }},{_SLIT("\'"), 0, {.d_c = 0 }}})'
 			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${tmp_str});')
-		
-			//g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _STR("\'%.*s\\000\'", 2, a[i]));')
+		*/
+		//	g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _STR("\'%.*s\\000\'", 2, a[i]));')
 		} else if sym.kind == .rune {
-			
+			tmp_str := str_intp_rune("${elem_str_fn_name}(a[i])")
+			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${tmp_str});')
+		/*	
 			tmp_str := 'str_intp(2, (StrIntpData[]){{_SLIT("\`"), ${si_s_code}, {.d_s = ${elem_str_fn_name}(a[i]) }},{_SLIT("\`"), 0, {.d_c = 0 }}})'
 			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${tmp_str});')
-		
-			//g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _STR("`%.*s\\000`", 2, ${elem_str_fn_name}(a[i])));')
+		*/
+		//	g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _STR("`%.*s\\000`", 2, ${elem_str_fn_name}(a[i])));')
 		} else {
 			if (str_method_expects_ptr && is_elem_ptr) || (!str_method_expects_ptr && !is_elem_ptr) {
 				g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${elem_str_fn_name}(a[i]));')
@@ -436,9 +449,12 @@ fn (mut g Gen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) {
 		g.auto_str_funcs.writeln('\t\t$key_styp key = *($key_styp*)DenseArray_key(&m.key_values, i);')
 	}
 	if key_sym.kind == .string {
-		g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _STR("\'%.*s\\000\'", 2, key));')
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${str_intp_sq("key")});')
+		//g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _STR("\'%.*s\\000\'", 2, key));')
 	} else if key_sym.kind == .rune {
-		g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _STR("`%.*s\\000`", 2, ${key_str_fn_name}(key)));')
+		tmp_str := str_intp_rune("${key_str_fn_name}(key)")
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${tmp_str});')
+		//g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _STR("`%.*s\\000`", 2, ${key_str_fn_name}(key)));')
 	} else {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${key_str_fn_name}(key));')
 	}
@@ -446,13 +462,17 @@ fn (mut g Gen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) {
 	if val_sym.kind == .function {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${elem_str_fn_name}());')
 	} else if val_sym.kind == .string {
-		g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _STR("\'%.*s\\000\'", 2, *($val_styp*)DenseArray_value(&m.key_values, i)));')
+		tmp_str := str_intp_sq("*($val_styp*)DenseArray_value(&m.key_values, i)")
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${tmp_str});')
+		//g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _STR("\'%.*s\\000\'", 2, *($val_styp*)DenseArray_value(&m.key_values, i)));')
 	} else if should_use_indent_func(val_sym.kind) && !val_sym.has_method('str') {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, indent_${elem_str_fn_name}(*($val_styp*)DenseArray_value(&m.key_values, i), indent_count));')
 	} else if val_sym.kind in [.f32, .f64] {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _STR("%g", 1, *($val_styp*)DenseArray_value(&m.key_values, i)));')
 	} else if val_sym.kind == .rune {
-		g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _STR("`%.*s\\000`", 2, ${elem_str_fn_name}(*($val_styp*)DenseArray_value(&m.key_values, i))));')
+		tmp_str := str_intp_rune("${elem_str_fn_name}(*($val_styp*)DenseArray_value(&m.key_values, i))")
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${tmp_str});')
+		//g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _STR("`%.*s\\000`", 2, ${elem_str_fn_name}(*($val_styp*)DenseArray_value(&m.key_values, i))));')
 	} else {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${elem_str_fn_name}(*($val_styp*)DenseArray_value(&m.key_values, i)));')
 	}
@@ -498,7 +518,9 @@ fn (mut g Gen) gen_str_for_multi_return(info ast.MultiReturn, styp string, str_f
 		} else if sym.kind in [.f32, .f64] {
 			g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _STR("%g", 1, a.arg$i));')
 		} else if sym.kind == .string {
-			g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _STR("\'%.*s\\000\'", 2, a.arg$i));')
+			tmp_str := str_intp_sq("a.arg$i")
+			g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, ${tmp_str});')
+			//g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _STR("\'%.*s\\000\'", 2, a.arg$i));')
 		} else if sym.kind == .function {
 			g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, ${arg_str_fn_name}());')
 		} else {

@@ -565,17 +565,26 @@ pub fn str_intp(data_len int, in_data voidptr) string {
 //====================================================================================
 
 // substitute old _STR calls
-// _STR("`%.*s\\000`", 2, ${elem_str_fn_name}(it));
-/*
-pub fn str_intp_s(in_str string) string {
-	//fmt_type := get_str_intp_u32_format(StrIntpType.si_s, -1, 3, false, false, 0, 0, false)
-	//fmt_type := StrIntpType.si_s
-	//res := 'str_intp(2, (StrIntpData[]){{_SLIT("\'"), 0x${int(fmt_type).hex()}, {.d_s = ${in_str} }},{_SLIT("\'"), 0, {.d_c = 0 }}})'
-	res := 'str_intp(2, (StrIntpData[]){{_SLIT("\'"), 0x${int(StrIntpType.si_s).hex()}, {.d_s = ${in_str} }},{_SLIT("\'"), 0, {.d_c = 0 }}})'
 
-	return res
+const (
+	// BUG: this const is not released from the memory! use a const for now
+	//si_s_code = "0x" + int(StrIntpType.si_s).hex() // code for a simple string
+	si_s_code = "0xfe10"
+)
+
+// replace _STR("\'%.*s\\000\'", 2, in_str)
+[inline]
+pub fn str_intp_sq(in_str string) string {
+	return 'str_intp(2, (StrIntpData[]){{_SLIT("\'"), ${si_s_code}, {.d_s = ${in_str}}},{_SLIT("\'"), 0, {.d_c = 0 }}})'
 }
-*/
+
+// replace _STR("\`%.*s\\000\`", 2, in_str)
+[inline]
+pub fn str_intp_rune(in_str string) string {
+	return 'str_intp(2, (StrIntpData[]){{_SLIT("\`"), ${si_s_code}, {.d_s = ${in_str}}},{_SLIT("\`"), 0, {.d_c = 0 }}})'
+}
+
+
 pub fn str_intp_g32(in_str string) string {
 	fmt_type := get_str_intp_u32_format(StrIntpType.si_f32, 0, 987698, true, false, 0, 0, false)
 	res := 'str_intp(1, (StrIntpData[]){{_SLIT(""), 0x${int(fmt_type).hex()}, {.d_f32 = ${in_str} }}})'
@@ -586,4 +595,14 @@ pub fn str_intp_g64(in_str string) string {
 	fmt_type := get_str_intp_u32_format(StrIntpType.si_f64, 0, 987698, true, false, 0, 0, false)
 	res := 'str_intp(1, (StrIntpData[]){{_SLIT(""), 0x${int(fmt_type).hex()}, {.d_f64 = ${in_str} }}})'
 	return res
+}
+
+// replace %% with the in_str
+pub fn str_intp_sub(base_str string, in_str string) string {
+	index := base_str.index("%%") or {eprintln("No strin interpolation %% parameteres") exit(1)}
+	//return base_str[..index] + in_str + base_str[index+2..]
+	if index + 2 < base_str.len {
+		return 'str_intp(2, (StrIntpData[]){{_SLIT("${base_str[..index]}"), ${si_s_code}, {.d_s = ${in_str} }},{_SLIT("${base_str[index+2..]}"), 0, {.d_c = 0}}})'
+	}
+	return 'str_intp(1, (StrIntpData[]){{_SLIT("${base_str[..index]}"), ${si_s_code}, {.d_s = ${in_str} }}})'
 }
