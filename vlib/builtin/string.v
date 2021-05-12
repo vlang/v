@@ -243,7 +243,7 @@ fn (a string) clone_static() string {
 
 // clone returns a copy of the V string `a`.
 pub fn (a string) clone() string {
-	if a == '' {
+	if a.len == 0 {
 		// TODO perf? an extra check in each clone() is not nice.
 		return ''
 	}
@@ -648,29 +648,25 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 }
 
 // split_into_lines splits the string by newline characters.
-// Both `\n` and `\r\n` newline endings is supported.
+// newlines are stripped.
+// Both `\n` and `\r\n` newline endings are supported.
+[direct_array_access]
 pub fn (s string) split_into_lines() []string {
 	mut res := []string{}
 	if s.len == 0 {
 		return res
 	}
 	mut start := 0
+	mut end := 0
 	for i := 0; i < s.len; i++ {
-		is_lf := unsafe { s.str[i] } == 10
-		is_crlf := i != s.len - 1 && unsafe { s.str[i] == 13 && s.str[i + 1] == 10 }
-		is_eol := is_lf || is_crlf
-		is_last := if is_crlf { i == s.len - 2 } else { i == s.len - 1 }
-		if is_eol || is_last {
-			if is_last && !is_eol {
-				i++
-			}
-			line := s.substr(start, i)
-			res << line
-			if is_crlf {
-				i++
-			}
+		if s[i] == 10 {
+			end = if i > 0 && s[i - 1] == 13 { i - 1 } else { i }
+			res << if start == end { '' } else { s[start..end] }
 			start = i + 1
 		}
+	}
+	if start < s.len {
+		res << s[start..]
 	}
 	return res
 }
@@ -1733,7 +1729,8 @@ pub fn (s string) repeat(count int) string {
 }
 
 // fields returns a string array of the string split by `\t` and ` `
-// Example: assert '\t\tv = v'.fields() == ['', '', 'v', '=', 'v']
+// Example: assert '\t\tv = v'.fields() == ['v', '=', 'v']
+// Example: assert '  sss   ssss'.fields() == ['sss', 'ssss']
 pub fn (s string) fields() []string {
 	mut res := []string{}
 	mut word_start := 0
@@ -1826,12 +1823,4 @@ pub fn (s string) strip_margin_custom(del byte) string {
 		ret[count] = 0
 		return ret.vstring_with_len(count)
 	}
-}
-
-// split_by_whitespace - extract only the non whitespace tokens/words from the given string `s`.
-// example: '  sss   ssss'.split_by_whitespace() => ['sss', 'ssss']
-
-[deprecated: 'use string.fields() instead']
-pub fn (s string) split_by_whitespace() []string {
-	return s.fields()
 }

@@ -95,7 +95,7 @@ fn (mut g Gen) process_fn_decl(node ast.FnDecl) {
 	}
 }
 
-fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
+fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	// TODO For some reason, build fails with autofree with this line
 	// as it's only informative, comment it for now
 	// g.gen_attrs(it.attrs)
@@ -143,11 +143,14 @@ fn (mut g Gen) gen_fn_decl(node ast.FnDecl, skip bool) {
 		g.cur_concrete_types = []
 		return
 	}
-	cur_fn_save := g.cur_fn
+	cur_fn_save := g.table.cur_fn
 	defer {
-		g.cur_fn = cur_fn_save
+		g.table.cur_fn = cur_fn_save
 	}
-	g.cur_fn = node
+	unsafe {
+		// TODO remove unsafe
+		g.table.cur_fn = node
+	}
 	fn_start_pos := g.out.len
 	g.write_v_source_line_info(node.pos)
 	msvc_attrs := g.write_fn_attrs(node.attrs)
@@ -474,8 +477,8 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 
 pub fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
 	if typ.has_flag(.generic) {
-		if t_typ := g.table.resolve_generic_to_concrete(typ, g.cur_fn.generic_names, g.cur_concrete_types,
-			false)
+		if t_typ := g.table.resolve_generic_to_concrete(typ, g.table.cur_fn.generic_names,
+			g.cur_concrete_types, false)
 		{
 			return t_typ
 		}

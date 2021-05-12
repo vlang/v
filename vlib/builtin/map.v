@@ -3,8 +3,9 @@
 // that can be found in the LICENSE file.
 module builtin
 
-// import hash.wyhash as hash
-import hash
+fn C.wyhash(&byte, u64, u64, &u64) u64
+
+fn C.wyhash64(u64, u64) u64
 
 /*
 This is a highly optimized hashmap implementation. It has several traits that
@@ -247,23 +248,23 @@ pub mut:
 
 fn map_hash_string(pkey voidptr) u64 {
 	key := *unsafe { &string(pkey) }
-	return hash.wyhash_c(key.str, u64(key.len), 0)
+	return C.wyhash(key.str, u64(key.len), 0, &u64(C._wyp))
 }
 
 fn map_hash_int_1(pkey voidptr) u64 {
-	return hash.wyhash64_c(*unsafe { &byte(pkey) }, 0)
+	return C.wyhash64(*unsafe { &byte(pkey) }, 0)
 }
 
 fn map_hash_int_2(pkey voidptr) u64 {
-	return hash.wyhash64_c(*unsafe { &u16(pkey) }, 0)
+	return C.wyhash64(*unsafe { &u16(pkey) }, 0)
 }
 
 fn map_hash_int_4(pkey voidptr) u64 {
-	return hash.wyhash64_c(*unsafe { &u32(pkey) }, 0)
+	return C.wyhash64(*unsafe { &u32(pkey) }, 0)
 }
 
 fn map_hash_int_8(pkey voidptr) u64 {
-	return hash.wyhash64_c(*unsafe { &u64(pkey) }, 0)
+	return C.wyhash64(*unsafe { &u64(pkey) }, 0)
 }
 
 fn map_eq_string(a voidptr, b voidptr) bool {

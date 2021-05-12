@@ -6,7 +6,7 @@ module io
 // full length an error is returned and writing to other writers stops, and if
 // any writer returns an error the error is returned immediately and writing to
 // other writers stops.
-pub fn new_multi_writer(writers []Writer) Writer {
+pub fn new_multi_writer(writers ...Writer) Writer {
 	return &MultiWriter{
 		writers: writers
 	}
