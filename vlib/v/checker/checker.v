@@ -1613,19 +1613,23 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, call_exp
 	}
 }
 
-fn (mut c Checker) check_return_generics_struct(return_type ast.Type, mut call_expr ast.CallExpr, concrete_types []ast.Type) {
+fn (mut c Checker) check_return_generics_struct(return_type ast.Type, mut call_expr ast.CallExpr, generic_names []string, concrete_types []ast.Type) {
 	rts := c.table.get_type_symbol(return_type)
 	if rts.info is ast.Struct {
 		if rts.info.is_generic {
 			mut nrt := '$rts.name<'
 			mut c_nrt := '${rts.name}_T_'
-			for i in 0 .. call_expr.concrete_types.len {
-				gts := c.table.get_type_symbol(call_expr.concrete_types[i])
-				nrt += gts.name
-				c_nrt += gts.name
-				if i != call_expr.concrete_types.len - 1 {
-					nrt += ','
-					c_nrt += '_'
+			for i in 0 .. rts.info.generic_types.len {
+				if ct := c.table.resolve_generic_to_concrete(rts.info.generic_types[i],
+					generic_names, concrete_types, false)
+				{
+					gts := c.table.get_type_symbol(ct)
+					nrt += gts.name
+					c_nrt += gts.name
+					if i != rts.info.generic_types.len - 1 {
+						nrt += ','
+						c_nrt += '_'
+					}
 				}
 			}
 			nrt += '>'
@@ -1635,8 +1639,7 @@ fn (mut c Checker) check_return_generics_struct(return_type ast.Type, mut call_e
 				call_expr.return_type = ast.new_type(idx).derive(return_type).clear_flag(.generic)
 			} else {
 				mut fields := rts.info.fields.clone()
-				if rts.info.generic_types.len == concrete_types.len {
-					generic_names := rts.info.generic_types.map(c.table.get_type_symbol(it).name)
+				if generic_names.len == concrete_types.len {
 					for i in 0 .. fields.len {
 						if t_typ := c.table.resolve_generic_to_concrete(fields[i].typ,
 							generic_names, concrete_types, true)
@@ -1941,7 +1944,8 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 		}
 		// resolve return generics struct to concrete type
 		if method.generic_names.len > 0 && method.return_type.has_flag(.generic) {
-			c.check_return_generics_struct(method.return_type, mut call_expr, concrete_types)
+			c.check_return_generics_struct(method.return_type, mut call_expr, method.generic_names,
+				concrete_types)
 		} else {
 			call_expr.return_type = method.return_type
 		}
@@ -2500,7 +2504,8 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 	}
 	// resolve return generics struct to concrete type
 	if func.generic_names.len > 0 && func.return_type.has_flag(.generic) {
-		c.check_return_generics_struct(func.return_type, mut call_expr, concrete_types)
+		c.check_return_generics_struct(func.return_type, mut call_expr, func.generic_names,
+			concrete_types)
 	} else {
 		call_expr.return_type = func.return_type
 	}
