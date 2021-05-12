@@ -407,7 +407,7 @@ pub fn (f &File) read(mut buf []byte) ?int {
 		// than there was an error. This is because fread and ferror do not set
 		// errno.
 		if C.ferror(f.cfile) != 0 {
-			return error("read failed: $f.cfile")
+			return error("file read error")
 		}
 	}
 	return nbytes
