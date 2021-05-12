@@ -754,7 +754,7 @@ fn (mut g Gen) gen_str_for_interface(info ast.Interface, styp string, str_fn_nam
 				{_SLIT("\')"), 0, {.d_c = 0 }}
 			})'
 			g.auto_str_funcs.write_string('\tif (x._typ == _${styp}_${subtype.cname}_index)')
-			g.auto_str_funcs.write_string(' return ${res}; /*dario*/ ')
+			g.auto_str_funcs.write_string(' return ${res};')
 		} else {
 	 		mut val := '${func_name}(${deref}($subtype.cname*)x._$subtype.cname'
 			if should_use_indent_func(subtype.kind) && !sym_has_str_method {
@@ -766,7 +766,7 @@ fn (mut g Gen) gen_str_for_interface(info ast.Interface, styp string, str_fn_nam
 				{_SLIT(")"), 0, {.d_c = 0 }}
 			})'
 			g.auto_str_funcs.write_string('\tif (x._typ == _${styp}_${subtype.cname}_index)')
-			g.auto_str_funcs.write_string(' return ${res}; /*dario*/ ')
+			g.auto_str_funcs.write_string(' return ${res};')
 		}
 
 		//------------------------------------------
@@ -811,10 +811,6 @@ fn (mut g Gen) gen_str_for_union_sum_type(info ast.SumType, styp string, str_fn_
 	clean_sum_type_v_type_name = util.strip_main_name(clean_sum_type_v_type_name)
 	g.auto_str_funcs.writeln('\tswitch(x._typ) {')
 	for typ in info.variants {
-		mut value_fmt := '%.*s\\000'
-		if typ == ast.string_type {
-			value_fmt = "'$value_fmt'"
-		}
 		typ_str := g.typ(typ)
 		mut func_name := if typ_str in gen_fn_names {
 			gen_fn_names[typ_str]
@@ -827,11 +823,46 @@ fn (mut g Gen) gen_str_for_union_sum_type(info ast.SumType, styp string, str_fn_
 		if should_use_indent_func(sym.kind) && !sym_has_str_method {
 			func_name = 'indent_$func_name'
 		}
+		
+		//------------------------------------------
+		// str_intp
+		if typ == ast.string_type {
+			mut val := '${func_name}(${deref}($typ_str*)x._$sym.cname'
+			if should_use_indent_func(sym.kind) && !sym_has_str_method {
+				val += ', indent_count'
+			}
+			val += ')'
+			res := 'str_intp(2, (StrIntpData[]){
+				{_SLIT("${clean_sum_type_v_type_name}(\'"), ${si_s_code}, {.d_s = ${val}}},
+				{_SLIT("\')"), 0, {.d_c = 0 }}
+			})'
+			g.auto_str_funcs.write_string('\t\tcase $typ: return ${res};')
+		} else {
+			mut val := '${func_name}(${deref}($typ_str*)x._$sym.cname'
+			if should_use_indent_func(sym.kind) && !sym_has_str_method {
+				val += ', indent_count'
+			}
+			val += ')'
+			res := 'str_intp(2, (StrIntpData[]){
+				{_SLIT("${clean_sum_type_v_type_name}("), ${si_s_code}, {.d_s = ${val}}},
+				{_SLIT(")"), 0, {.d_c = 0 }}
+			})'
+			g.auto_str_funcs.write_string('\t\tcase $typ: return ${res};')
+		}
+
+		//------------------------------------------
+/*
+		mut value_fmt := '%.*s\\000'
+		if typ == ast.string_type {
+			value_fmt = "'$value_fmt'"
+		}
 		g.auto_str_funcs.write_string('\t\tcase $typ: return _STR("${clean_sum_type_v_type_name}($value_fmt)", 2, ${func_name}(${deref}($typ_str*)x._$sym.cname')
 		if should_use_indent_func(sym.kind) && !sym_has_str_method {
 			g.auto_str_funcs.write_string(', indent_count')
 		}
 		g.auto_str_funcs.writeln('));')
+*/
+		//------------------------------------------
 	}
 	g.auto_str_funcs.writeln('\t\tdefault: return _SLIT("unknown sum type value");')
 	g.auto_str_funcs.writeln('\t}')
