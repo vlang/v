@@ -1180,11 +1180,15 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 	} else if mut sym.info is Struct {
 		if sym.info.is_generic && is_inst {
 			mut nrt := '$sym.name<'
-			for i in 0 .. concrete_types.len {
-				gts := t.get_type_symbol(concrete_types[i])
-				nrt += gts.name
-				if i != concrete_types.len - 1 {
-					nrt += ','
+			for i in 0 .. sym.info.generic_types.len {
+				if ct := t.resolve_generic_to_concrete(sym.info.generic_types[i], generic_names,
+					concrete_types, false)
+				{
+					gts := t.get_type_symbol(ct)
+					nrt += gts.name
+					if i != sym.info.generic_types.len - 1 {
+						nrt += ','
+					}
 				}
 			}
 			nrt += '>'
