@@ -392,9 +392,8 @@ pub fn (f &File) read(mut buf []byte) ?int {
 		return 0
 	}
 	nbytes := int(C.fread(buf.data, 1, buf.len, f.cfile))
-	// If no bytes were read, check for errors or eof.
+	// If no bytes were read, check for errors and end-of-file.
 	if nbytes <= 0 {
-		// If no bytes read, check for errors and end-of-file.
 		// If fread encountered end-of-file return the none error. Note that fread
 		// may read data and encounter the end-of-file, but we shouldn't return none
 		// in that case which is why we only check for end-of-file if no data was
