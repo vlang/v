@@ -299,12 +299,12 @@ fn (mut g Gen) gen_str_for_array(info ast.Array, styp string, str_fn_name string
 		} else if sym.kind == .rune {
 		
 			// Rune are managed at this level as strings
-			g.auto_str_funcs.writeln('\t\tstring x = str_intp(2, (StrIntpData[]){{_SLIT("\`"), ${si_s_code}, {.d_s = ${elem_str_fn_name}(it) }},{_SLIT("\`"), 0, {.d_c = 0 }}});')
+			g.auto_str_funcs.writeln('\t\tstring x = str_intp(2, (StrIntpData[]){{_SLIT("\`"), ${si_s_code}, {.d_s = ${elem_str_fn_name}(it) }}, {_SLIT("\`"), 0, {.d_c = 0 }}});')
 		
 		//	g.auto_str_funcs.writeln('\t\tstring x = _STR("`%.*s\\000`", 2, ${elem_str_fn_name}(it));')
 		} else if sym.kind == .string {
 		
-			g.auto_str_funcs.writeln('\t\tstring x = str_intp(2, (StrIntpData[]){{_SLIT("\'"), ${si_s_code}, {.d_s = it }},{_SLIT("\'"), 0, {.d_c = 0 }}});')
+			g.auto_str_funcs.writeln('\t\tstring x = str_intp(2, (StrIntpData[]){{_SLIT("\'"), ${si_s_code}, {.d_s = it }}, {_SLIT("\'"), 0, {.d_c = 0 }}});')
 		
 		//	g.auto_str_funcs.writeln('\t\tstring x = _STR("\'%.*s\\000\'", 2, it);')
 		} else {
@@ -739,6 +739,39 @@ fn (mut g Gen) gen_str_for_interface(info ast.Interface, styp string, str_fn_nam
 		if should_use_indent_func(subtype.kind) && !sym_has_str_method {
 			func_name = 'indent_$func_name'
 		}
+
+		//------------------------------------------
+		// str_intp
+		deref := if sym_has_str_method && str_method_expects_ptr { ' ' } else { '*' }
+	 	if typ == ast.string_type {
+	 		mut val := '${func_name}(${deref}($subtype.cname*)x._$subtype.cname'
+			if should_use_indent_func(subtype.kind) && !sym_has_str_method {
+				val += ', indent_count'
+			}
+			val += ')'
+			res := 'str_intp(2, (StrIntpData[]){
+				{_SLIT("${clean_interface_v_type_name}(\'"), ${si_s_code}, {.d_s = ${val}}},
+				{_SLIT("\')"), 0, {.d_c = 0 }}
+			})'
+			g.auto_str_funcs.write_string('\tif (x._typ == _${styp}_${subtype.cname}_index)')
+			g.auto_str_funcs.write_string(' return ${res}; /*dario*/ ')
+		} else {
+	 		mut val := '${func_name}(${deref}($subtype.cname*)x._$subtype.cname'
+			if should_use_indent_func(subtype.kind) && !sym_has_str_method {
+				val += ', indent_count'
+			}
+			val += ')'
+			res := 'str_intp(2, (StrIntpData[]){
+				{_SLIT("${clean_interface_v_type_name}("), ${si_s_code}, {.d_s = ${val}}},
+				{_SLIT(")"), 0, {.d_c = 0 }}
+			})'
+			g.auto_str_funcs.write_string('\tif (x._typ == _${styp}_${subtype.cname}_index)')
+			g.auto_str_funcs.write_string(' return ${res}; /*dario*/ ')
+		}
+
+		//------------------------------------------
+/*
+
 		deref := if sym_has_str_method && str_method_expects_ptr { ' ' } else { '*' }
 		value_fmt := if typ == ast.string_type { "'%.*s\\000'" } else { '%.*s\\000' }
 
@@ -749,6 +782,8 @@ fn (mut g Gen) gen_str_for_interface(info ast.Interface, styp string, str_fn_nam
 			g.auto_str_funcs.write_string(', indent_count')
 		}
 		g.auto_str_funcs.writeln('));')
+*/
+		//------------------------------------------
 	}
 	g.auto_str_funcs.writeln('\treturn _SLIT("unknown interface value");')
 	g.auto_str_funcs.writeln('}')
