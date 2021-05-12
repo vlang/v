@@ -121,21 +121,21 @@ pub fn (mut c Checker) check(ast_file &ast.File) {
 }
 
 pub fn (mut c Checker) check_scope_vars(sc &ast.Scope) {
-	for _, obj in sc.objects {
-		match obj {
-			ast.Var {
-				if !c.pref.is_repl {
-					if !obj.is_used && obj.name[0] != `_` && !c.file.is_test {
+	if !c.pref.is_repl && !c.file.is_test {
+		for _, obj in sc.objects {
+			match obj {
+				ast.Var {
+					if !obj.is_used && obj.name[0] != `_` {
 						c.warn('unused variable: `$obj.name`', obj.pos)
 					}
+					if obj.is_mut && !obj.is_changed && !c.is_builtin_mod && obj.name != 'it' {
+						// if obj.is_mut && !obj.is_changed && !c.is_builtin {  //TODO C error bad field not checked
+						// c.warn('`$obj.name` is declared as mutable, but it was never changed',
+						// obj.pos)
+					}
 				}
-				if obj.is_mut && !obj.is_changed && !c.is_builtin_mod && obj.name != 'it' {
-					// if obj.is_mut && !obj.is_changed && !c.is_builtin {  //TODO C error bad field not checked
-					// c.warn('`$obj.name` is declared as mutable, but it was never changed',
-					// obj.pos)
-				}
+				else {}
 			}
-			else {}
 		}
 	}
 	for child in sc.children {
@@ -3323,9 +3323,24 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			}
 			ast.PrefixExpr {
 				// Do now allow `*x = y` outside `unsafe`
-				if left.op == .mul && !c.inside_unsafe {
-					c.error('modifying variables via dereferencing can only be done in `unsafe` blocks',
-						assign_stmt.pos)
+				if left.op == .mul {
+					if !c.inside_unsafe {
+						c.error('modifying variables via dereferencing can only be done in `unsafe` blocks',
+							assign_stmt.pos)
+					} else {
+						// mark `p` in `*p = val` as used:
+						match mut left.right {
+							ast.Ident {
+								match mut left.right.obj {
+									ast.Var {
+										left.right.obj.is_used = true
+									}
+									else {}
+								}
+							}
+							else {}
+						}
+					}
 				}
 				if is_decl {
 					c.error('non-name on the left side of `:=`', left.pos)
@@ -3842,6 +3857,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			if node.idx_in_fn < 0 {
 				node.idx_in_fn = c.table.cur_fn.defer_stmts.len
 				c.table.cur_fn.defer_stmts << unsafe { &node }
+			}
+			if c.locked_names.len != 0 || c.rlocked_names.len != 0 {
+				c.error('defers are not allowed in lock statements', node.pos)
 			}
 			c.stmts(node.stmts)
 		}
