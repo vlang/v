@@ -31,6 +31,10 @@ pub enum StrIntpType {
 	si_vp
 }
 
+const (
+	si_s_code = "0x" + int(StrIntpType.si_s).hex() // code for a simple string
+)
+
 fn should_use_indent_func(kind ast.Kind) bool {
 	return kind in [.struct_, .alias, .array, .array_fixed, .map, .sum_type, .interface_]
 }
@@ -214,9 +218,12 @@ fn (mut g Gen) gen_str_for_alias(info ast.Alias, styp string, str_fn_name string
 	g.auto_str_funcs.writeln('\t\tindents = string_add(indents, _SLIT("    "));')
 	g.auto_str_funcs.writeln('\t}')
 	
-	g.auto_str_funcs.writeln('\treturn str_intp(3, (StrIntpData[]){{_SLIT0, 0x${int(StrIntpType.si_s).hex()}, {.d_s = indents }}, {_SLIT("${clean_type_v_type_name}("), 0x${int(StrIntpType.si_s).hex()}, {.d_s = ${parent_str_fn_name}(it) }}, {_SLIT(")"), 0, {.d_c = 0 }} });')
-	//g.auto_str_funcs.writeln(tmp_str)
-
+	g.auto_str_funcs.writeln('\treturn str_intp(3, (StrIntpData[]){
+		{_SLIT0, ${si_s_code}, {.d_s = indents }},
+		{_SLIT("${clean_type_v_type_name}("), ${si_s_code}, {.d_s = ${parent_str_fn_name}(it) }},
+		{_SLIT(")"), 0, {.d_c = 0 }} 
+	});')
+	
 	//g.auto_str_funcs.writeln('\treturn _STR("%.*s\\000${clean_type_v_type_name}(%.*s\\000)", 3, indents, ${parent_str_fn_name}(it));')
 
 	g.auto_str_funcs.writeln('}')
@@ -282,14 +289,12 @@ fn (mut g Gen) gen_str_for_array(info ast.Array, styp string, str_fn_name string
 		} else if sym.kind == .rune {
 		
 			// Rune are managed at this level as strings
-			tmp_str := 'str_intp(2, (StrIntpData[]){{_SLIT("\`"), 0x${int(StrIntpType.si_s).hex()}, {.d_s = ${elem_str_fn_name}(it) }},{_SLIT("\`"), 0, {.d_c = 0 }}})'
-			g.auto_str_funcs.writeln('\t\tstring x = ${tmp_str};')
+			g.auto_str_funcs.writeln('\t\tstring x = str_intp(2, (StrIntpData[]){{_SLIT("\`"), ${si_s_code}, {.d_s = ${elem_str_fn_name}(it) }},{_SLIT("\`"), 0, {.d_c = 0 }}});')
 		
 		//	g.auto_str_funcs.writeln('\t\tstring x = _STR("`%.*s\\000`", 2, ${elem_str_fn_name}(it));')
 		} else if sym.kind == .string {
 		
-			tmp_str := 'str_intp(2, (StrIntpData[]){{_SLIT("\'"), 0x${int(StrIntpType.si_s).hex()}, {.d_s = it }},{_SLIT("\'"), 0, {.d_c = 0 }}})'
-			g.auto_str_funcs.writeln('\t\tstring x = ${tmp_str};')
+			g.auto_str_funcs.writeln('\t\tstring x = str_intp(2, (StrIntpData[]){{_SLIT("\'"), ${si_s_code}, {.d_s = it }},{_SLIT("\'"), 0, {.d_c = 0 }}});')
 		
 		//	g.auto_str_funcs.writeln('\t\tstring x = _STR("\'%.*s\\000\'", 2, it);')
 		} else {
@@ -360,13 +365,13 @@ fn (mut g Gen) gen_str_for_array_fixed(info ast.ArrayFixed, styp string, str_fn_
 			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _STR("%g", 1, a[i]));')
 		} else if sym.kind == .string {
 		
-			tmp_str := 'str_intp(2, (StrIntpData[]){{_SLIT("\'"), 0x${int(StrIntpType.si_s).hex()}, {.d_s = a[i] }},{_SLIT("\'"), 0, {.d_c = 0 }}})'
+			tmp_str := 'str_intp(2, (StrIntpData[]){{_SLIT("\'"), ${si_s_code}, {.d_s = a[i] }},{_SLIT("\'"), 0, {.d_c = 0 }}})'
 			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${tmp_str});')
 		
 			//g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _STR("\'%.*s\\000\'", 2, a[i]));')
 		} else if sym.kind == .rune {
 			
-			tmp_str := 'str_intp(2, (StrIntpData[]){{_SLIT("\`"), 0x${int(StrIntpType.si_s).hex()}, {.d_s = ${elem_str_fn_name}(a[i]) }},{_SLIT("\`"), 0, {.d_c = 0 }}})'
+			tmp_str := 'str_intp(2, (StrIntpData[]){{_SLIT("\`"), ${si_s_code}, {.d_s = ${elem_str_fn_name}(a[i]) }},{_SLIT("\`"), 0, {.d_c = 0 }}})'
 			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${tmp_str});')
 		
 			//g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _STR("`%.*s\\000`", 2, ${elem_str_fn_name}(a[i])));')
