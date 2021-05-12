@@ -160,9 +160,10 @@ fn (mut r Reader) read_record() ?[]string {
 			if next == r.delimiter {
 				fields << line[..j]
 				if j + 2 == line.len {
-					break
+					line = ''
+				} else {
+					line = line[j + 2..]
 				}
-				line = line[j + 2..]
 				continue
 			}
 		}

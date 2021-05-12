@@ -111,6 +111,7 @@ fn test_last_field_empty() {
 		} else if row_count == 3 {
 			assert row[0] == 'two'
 			assert row[1] == 'second'
+			assert row[2] == ''
 		}
 	}
 	assert row_count == 3
