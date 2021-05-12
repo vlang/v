@@ -31,6 +31,8 @@ pub type Node = CallArg | ConstField | EmptyNode | EnumField | Expr | File | Glo
 	IfBranch | MatchBranch | NodeError | Param | ScopeObject | SelectBranch | Stmt | StructField |
 	StructInitField
 
+pub type Lockable = Ident | SelectorExpr
+
 pub struct TypeNode {
 pub:
 	typ Type
@@ -740,7 +742,7 @@ pub:
 	is_rlock []bool
 	pos      token.Position
 pub mut:
-	lockeds []Ident // `x`, `y` in `lock x, y {`
+	lockeds []Lockable // `x`, `y.z` in `lock x, y.z {`
 	is_expr bool
 	typ     Type
 	scope   &Scope
