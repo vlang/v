@@ -375,19 +375,11 @@ fn (mut g Gen) gen_str_for_array_fixed(info ast.ArrayFixed, styp string, str_fn_
 			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _STR("%g", 1, a[i]));')
 		} else if sym.kind == .string {
 			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${str_intp_sq("a[i]")});')
-		/*
-			tmp_str := 'str_intp(2, (StrIntpData[]){{_SLIT("\'"), ${si_s_code}, {.d_s = a[i] }},{_SLIT("\'"), 0, {.d_c = 0 }}})'
-			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${tmp_str});')
-		*/
-		//	g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _STR("\'%.*s\\000\'", 2, a[i]));')
+			//g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _STR("\'%.*s\\000\'", 2, a[i]));')
 		} else if sym.kind == .rune {
 			tmp_str := str_intp_rune("${elem_str_fn_name}(a[i])")
 			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${tmp_str});')
-		/*	
-			tmp_str := 'str_intp(2, (StrIntpData[]){{_SLIT("\`"), ${si_s_code}, {.d_s = ${elem_str_fn_name}(a[i]) }},{_SLIT("\`"), 0, {.d_c = 0 }}})'
-			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${tmp_str});')
-		*/
-		//	g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _STR("`%.*s\\000`", 2, ${elem_str_fn_name}(a[i])));')
+			//g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _STR("`%.*s\\000`", 2, ${elem_str_fn_name}(a[i])));')
 		} else {
 			if (str_method_expects_ptr && is_elem_ptr) || (!str_method_expects_ptr && !is_elem_ptr) {
 				g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${elem_str_fn_name}(a[i]));')
