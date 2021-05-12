@@ -116,6 +116,44 @@ fn test_last_field_empty() {
 	assert row_count == 3
 }
 
+fn test_empty_fields_no_quotes() {
+	data := '1,2,3,4\n,6,7,8\n9,,11,12\n13,14,,16\n17,18,19,\n'
+
+	mut csv_reader := csv.new_reader(data)
+	mut row_count := 0
+	for {
+		row := csv_reader.read() or { break }
+		row_count++
+		if row_count == 1 {
+			assert row[0] == '1'
+			assert row[1] == '2'
+			assert row[2] == '3'
+			assert row[3] == '4'
+		} else if row_count == 2 {
+			assert row[0] == ''
+			assert row[1] == '6'
+			assert row[2] == '7'
+			assert row[3] == '8'
+		} else if row_count == 3 {
+			assert row[0] == '9'
+			assert row[1] == ''
+			assert row[2] == '11'
+			assert row[3] == '12'
+		} else if row_count == 4 {
+			assert row[0] == '13'
+			assert row[1] == '14'
+			assert row[2] == ''
+			assert row[3] == '16'
+		} else if row_count == 5 {
+			assert row[0] == '17'
+			assert row[1] == '18'
+			assert row[2] == '19'
+			assert row[3] == ''
+		}
+	}
+	assert row_count == 5
+}
+
 fn test_empty_line() {
 	data := '"name","description","value"\n\n\n"one","first","1"\n\n"two","second",\n'
 	mut csv_reader := csv.new_reader(data)

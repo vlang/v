@@ -134,7 +134,7 @@ fn (mut r Reader) read_record() ?[]string {
 			need_read = false
 			keep_raw = false
 		}
-		if line[0] != `"` { // not quoted
+		if line.len == 0 || line[0] != `"` { // not quoted
 			j := line.index(r.delimiter.ascii_str()) or {
 				// last
 				fields << line[..line.len]
