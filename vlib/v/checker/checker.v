@@ -3843,6 +3843,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 				node.idx_in_fn = c.table.cur_fn.defer_stmts.len
 				c.table.cur_fn.defer_stmts << unsafe { &node }
 			}
+			if c.locked_names.len != 0 || c.rlocked_names.len != 0 {
+				c.error('defers are not allowed in lock statements', node.pos)
+			}
 			c.stmts(node.stmts)
 		}
 		ast.EnumDecl {
