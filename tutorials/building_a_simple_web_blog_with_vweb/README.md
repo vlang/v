@@ -66,7 +66,7 @@ struct App {
 }
 
 fn main() {
-	vweb.run<App>(8081)
+	vweb.run(&App{}, 8081)
 }
 
 pub fn (mut app App) index() vweb.Result {

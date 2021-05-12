@@ -5,12 +5,14 @@ module os
 // ProcessState.stopped - the process was running, but was stopped temporarily
 // ProcessState.exited - the process has finished/exited
 // ProcessState.aborted - the process was terminated by a signal
+// ProcessState.closed - the process resources like opened file descriptors were freed/discarded, final state.
 pub enum ProcessState {
 	not_started
 	running
 	stopped
 	exited
 	aborted
+	closed
 }
 
 [heap]
@@ -130,6 +132,34 @@ pub fn (mut p Process) wait() {
 	}
 	p._wait()
 	return
+}
+
+// close - free the OS resources associated with the process.
+// Can be called multiple times, but will free the resources just once.
+// This sets the process state to .closed, which is final.
+pub fn (mut p Process) close() {
+	if p.status in [.not_started, .closed] {
+		return
+	}
+	p.status = .closed
+	$if !windows {
+		for i in 0 .. 3 {
+			if p.stdio_fd[i] != 0 {
+				fd_close(p.stdio_fd[i])
+			}
+		}
+	}
+}
+
+[unsafe]
+pub fn (mut p Process) free() {
+	p.close()
+	unsafe {
+		p.filename.free()
+		p.err.free()
+		p.args.free()
+		p.env.free()
+	}
 }
 
 //

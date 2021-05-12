@@ -245,6 +245,7 @@ fn (mut context Context) compilation_runner_loop() {
 			}
 			if !context.child_process.is_alive() {
 				context.child_process.wait()
+				context.child_process.close()
 				break
 			}
 		}
@@ -315,18 +316,20 @@ fn (mut context Context) manager_main() {
 			time.sleep(200 * time.millisecond)
 		}
 		if !(worker_process.code == 255 && worker_process.status == .exited) {
+			worker_process.close()
 			break
 		}
+		worker_process.close()
 	}
 }
 
 fn (mut context Context) worker_main() {
 	context.rerun_channel = chan RerunCommand{cap: 10}
-	os.signal(C.SIGINT, fn () {
+	os.signal_opt(.int, fn (_ os.Signal) {
 		mut context := unsafe { &Context(voidptr(&ccontext)) }
 		context.is_exiting = true
 		context.kill_pgroup()
-	})
+	}) or { panic(err) }
 	go context.compilation_runner_loop()
 	change_detection_loop(context)
 }
