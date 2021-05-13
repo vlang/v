@@ -7,9 +7,10 @@ fn (mut p Parser) lock_expr() ast.LockExpr {
 	p.register_auto_import('sync')
 	p.open_scope()
 	mut pos := p.tok.position()
-	mut lockeds := []ast.Ident{}
+	mut lockeds := []ast.Expr{}
+	mut comments := []ast.Comment{}
 	mut is_rlocked := []bool{}
-	outer: for {
+	for {
 		if p.tok.kind == .lcbr {
 			break
 		}
@@ -18,26 +19,22 @@ fn (mut p Parser) lock_expr() ast.LockExpr {
 			p.error_with_pos('unexpected $p.tok, expected `lock` or `rlock`', p.tok.position())
 		}
 		p.next()
-		for p.tok.kind == .name {
-			lockeds << ast.Ident{
-				language: ast.Language.v
-				pos: p.tok.position()
-				mod: p.mod
-				name: p.tok.lit
-				is_mut: true
-				info: ast.IdentVar{}
-				scope: p.scope
+		exprs, comms := p.expr_list()
+		for e in exprs {
+			if !e.is_lockable() {
+				p.error_with_pos('`$e` cannot be locked - only `x` or `x.y` are supported', e.position())
 			}
+			lockeds << e
 			is_rlocked << is_rlock
+		}
+		comments << comms
+		p.next()
+		if p.tok.kind == .lcbr {
+			break
+		}
+		if p.tok.kind == .semicolon {
 			p.next()
-			if p.tok.kind == .lcbr {
-				break outer
-			}
-			if p.tok.kind == .semicolon {
-				p.next()
-				break
-			}
-			p.check(.comma)
+			continue
 		}
 	}
 	stmts := p.parse_block_no_scope(false)
