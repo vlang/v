@@ -1407,11 +1407,23 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 							expr.pos)
 					}
 					if field_info.typ.has_flag(.shared_f) {
-						type_str := c.table.type_to_str(expr.expr_type)
-						c.error('you have to create a handle and `lock` it to modify `shared` field `$expr.field_name` of struct `$type_str`',
-							expr.pos)
+						expr_name := '${expr.expr}.${expr.field_name}'
+						if expr_name !in c.locked_names {
+							if c.locked_names.len > 0 || c.rlocked_names.len > 0 {
+								if expr_name in c.rlocked_names {
+									c.error('$expr_name has an `rlock` but needs a `lock`',
+										expr.pos)
+								} else {
+									c.error('$expr_name must be added to the `lock` list above',
+										expr.pos)
+								}
+							}
+							to_lock = expr_name
+							pos = expr.pos
+						}
+					} else {
+						to_lock, pos = c.fail_if_immutable(expr.expr)
 					}
-					to_lock, pos = c.fail_if_immutable(expr.expr)
 					if to_lock != '' {
 						// No automatic lock for struct access
 						explicit_lock_needed = true
