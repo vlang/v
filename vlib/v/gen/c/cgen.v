@@ -1708,11 +1708,12 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp_is_ptr
 	}
 	g.write('${fname}(')
 	if !got_is_ptr {
-		if expr.is_lvalue() {
-			g.write('&')
-		} else {
+		if !expr.is_lvalue()
+			|| (expr is ast.Ident && is_simple_define_const((expr as ast.Ident).obj)) {
 			g.write('ADDR($got_styp, (')
 			rparen_n += 2
+		} else {
+			g.write('&')
 		}
 	}
 	g.expr(expr)
@@ -5028,11 +5029,6 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 		*/
 		field_expr := field.expr
 		match field.expr {
-			ast.CharLiteral, ast.FloatLiteral, ast.IntegerLiteral {
-				// "Simple" expressions are not going to need multiple statements,
-				// only the ones which are inited later, so it's safe to use expr_string
-				g.const_decl_simple_define(name, g.expr_string(field_expr))
-			}
 			ast.ArrayInit {
 				if field.expr.is_fixed {
 					styp := g.typ(field.expr.typ)
@@ -5062,10 +5058,26 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 				}
 			}
 			else {
-				g.const_decl_init_later(field.mod, name, field.expr, field.typ, false)
+				if is_simple_define_const(field) {
+					// "Simple" expressions are not going to need multiple statements,
+					// only the ones which are inited later, so it's safe to use expr_string
+					g.const_decl_simple_define(name, g.expr_string(field_expr))
+				} else {
+					g.const_decl_init_later(field.mod, name, field.expr, field.typ, false)
+				}
 			}
 		}
 	}
+}
+
+fn is_simple_define_const(obj ast.ScopeObject) bool {
+	if obj is ast.ConstField {
+		return match obj.expr {
+			ast.CharLiteral, ast.FloatLiteral, ast.IntegerLiteral { true }
+			else { false }
+		}
+	}
+	return false
 }
 
 fn (mut g Gen) const_decl_simple_define(name string, val string) {
