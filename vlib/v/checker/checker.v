@@ -5679,24 +5679,21 @@ pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) ast.Type {
 		c.error('nested `lock`/`rlock` not allowed', node.pos)
 	}
 	for i in 0 .. node.lockeds.len {
-		c.ident(mut node.lockeds[i])
-		id := node.lockeds[i]
-		if mut id.obj is ast.Var {
-			if id.obj.typ.share() != .shared_t {
-				c.error('`$id.name` must be declared `shared` to be locked', id.pos)
-			}
-		} else {
-			c.error('`$id.name` is not a variable and cannot be locked', id.pos)
+		e_typ := c.expr(node.lockeds[i])
+		id_name := node.lockeds[i].str()
+		if !e_typ.has_flag(.shared_f) {
+			c.error('`$id_name` must be declared `shared` to be locked', node.lockeds[i].position())
 		}
-		if id.name in c.locked_names {
-			c.error('`$id.name` is already locked', id.pos)
-		} else if id.name in c.rlocked_names {
-			c.error('`$id.name` is already read-locked', id.pos)
+		// c.error('`$id.name` is not a variable and cannot be locked', id.pos)
+		if id_name in c.locked_names {
+			c.error('`$id_name` is already locked', node.lockeds[i].position())
+		} else if id_name in c.rlocked_names {
+			c.error('`$id_name` is already read-locked', node.lockeds[i].position())
 		}
 		if node.is_rlock[i] {
-			c.rlocked_names << id.name
+			c.rlocked_names << id_name
 		} else {
-			c.locked_names << id.name
+			c.locked_names << id_name
 		}
 	}
 	c.stmts(node.stmts)
