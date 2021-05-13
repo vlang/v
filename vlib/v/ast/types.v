@@ -426,7 +426,7 @@ pub mut:
 }
 
 pub struct FnType {
-pub:
+pub mut:
 	is_anon  bool
 	has_decl bool
 	func     Fn
