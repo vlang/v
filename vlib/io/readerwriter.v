@@ -12,6 +12,7 @@ pub interface ReaderWriter {
 // a seperate reader and writer (see fn make_readerwriter)
 struct ReaderWriterImpl {
 	r Reader
+mut:
 	w Writer
 }
 

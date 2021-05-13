@@ -19,9 +19,9 @@ fn setup() (&net.TcpListener, &net.TcpConn, &net.TcpConn) {
 }
 
 fn cleanup(mut server net.TcpListener, mut client net.TcpConn, mut socket net.TcpConn) {
-	server.close() or { }
-	client.close() or { }
-	socket.close() or { }
+	server.close() or {}
+	client.close() or {}
+	socket.close() or {}
 }
 
 fn test_socket() {
@@ -74,9 +74,7 @@ fn test_socket_write_and_read() {
 
 fn test_socket_read_line() {
 	mut server, mut client, mut socket := setup()
-	mut reader := io.new_buffered_reader(
-		reader: io.make_reader(client)
-	)
+	mut reader := io.new_buffered_reader(reader: client)
 	defer {
 		cleanup(mut server, mut client, mut socket)
 	}
@@ -108,7 +106,7 @@ fn test_socket_write_fail_without_panic() {
 	// ensure that socket.write (i.e. done on the server side)
 	// continues to work, even when the client side has been disconnected
 	// this test is important for a stable long standing server
-	client.close() or { }
+	client.close() or {}
 	$if solaris {
 		return
 	}
@@ -123,9 +121,7 @@ fn test_socket_write_fail_without_panic() {
 
 fn test_socket_read_line_long_line_without_eol() {
 	mut server, mut client, mut socket := setup()
-	mut reader := io.new_buffered_reader(
-		reader: io.make_reader(client)
-	)
+	mut reader := io.new_buffered_reader(reader: client)
 	defer {
 		cleanup(mut server, mut client, mut socket)
 	}
