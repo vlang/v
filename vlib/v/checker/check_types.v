@@ -549,6 +549,13 @@ pub fn (mut c Checker) infer_fn_generic_types(f ast.Fn, mut call_expr ast.CallEx
 					}
 				} else if param.typ.has_flag(.variadic) {
 					to_set = c.table.mktyp(arg.typ)
+				} else if arg_sym.kind == .struct_ {
+					info := arg_sym.info as ast.Struct
+					generic_names := info.generic_types.map(c.table.get_type_symbol(it).name)
+					if gt_name in generic_names {
+						idx := generic_names.index(gt_name)
+						to_set = info.concrete_types[idx]
+					}
 				}
 			}
 
