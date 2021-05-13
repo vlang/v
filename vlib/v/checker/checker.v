@@ -121,21 +121,21 @@ pub fn (mut c Checker) check(ast_file &ast.File) {
 }
 
 pub fn (mut c Checker) check_scope_vars(sc &ast.Scope) {
-	for _, obj in sc.objects {
-		match obj {
-			ast.Var {
-				if !c.pref.is_repl {
-					if !obj.is_used && obj.name[0] != `_` && !c.file.is_test {
+	if !c.pref.is_repl && !c.file.is_test {
+		for _, obj in sc.objects {
+			match obj {
+				ast.Var {
+					if !obj.is_used && obj.name[0] != `_` {
 						c.warn('unused variable: `$obj.name`', obj.pos)
 					}
+					if obj.is_mut && !obj.is_changed && !c.is_builtin_mod && obj.name != 'it' {
+						// if obj.is_mut && !obj.is_changed && !c.is_builtin {  //TODO C error bad field not checked
+						// c.warn('`$obj.name` is declared as mutable, but it was never changed',
+						// obj.pos)
+					}
 				}
-				if obj.is_mut && !obj.is_changed && !c.is_builtin_mod && obj.name != 'it' {
-					// if obj.is_mut && !obj.is_changed && !c.is_builtin {  //TODO C error bad field not checked
-					// c.warn('`$obj.name` is declared as mutable, but it was never changed',
-					// obj.pos)
-				}
+				else {}
 			}
-			else {}
 		}
 	}
 	for child in sc.children {
@@ -1613,19 +1613,23 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, call_exp
 	}
 }
 
-fn (mut c Checker) check_return_generics_struct(return_type ast.Type, mut call_expr ast.CallExpr, concrete_types []ast.Type) {
+fn (mut c Checker) check_return_generics_struct(return_type ast.Type, mut call_expr ast.CallExpr, generic_names []string, concrete_types []ast.Type) {
 	rts := c.table.get_type_symbol(return_type)
 	if rts.info is ast.Struct {
 		if rts.info.is_generic {
 			mut nrt := '$rts.name<'
 			mut c_nrt := '${rts.name}_T_'
-			for i in 0 .. call_expr.concrete_types.len {
-				gts := c.table.get_type_symbol(call_expr.concrete_types[i])
-				nrt += gts.name
-				c_nrt += gts.name
-				if i != call_expr.concrete_types.len - 1 {
-					nrt += ','
-					c_nrt += '_'
+			for i in 0 .. rts.info.generic_types.len {
+				if ct := c.table.resolve_generic_to_concrete(rts.info.generic_types[i],
+					generic_names, concrete_types, false)
+				{
+					gts := c.table.get_type_symbol(ct)
+					nrt += gts.name
+					c_nrt += gts.name
+					if i != rts.info.generic_types.len - 1 {
+						nrt += ','
+						c_nrt += '_'
+					}
 				}
 			}
 			nrt += '>'
@@ -1635,8 +1639,7 @@ fn (mut c Checker) check_return_generics_struct(return_type ast.Type, mut call_e
 				call_expr.return_type = ast.new_type(idx).derive(return_type).clear_flag(.generic)
 			} else {
 				mut fields := rts.info.fields.clone()
-				if rts.info.generic_types.len == concrete_types.len {
-					generic_names := rts.info.generic_types.map(c.table.get_type_symbol(it).name)
+				if generic_names.len == concrete_types.len {
 					for i in 0 .. fields.len {
 						if t_typ := c.table.resolve_generic_to_concrete(fields[i].typ,
 							generic_names, concrete_types, true)
@@ -1941,7 +1944,8 @@ pub fn (mut c Checker) method_call(mut call_expr ast.CallExpr) ast.Type {
 		}
 		// resolve return generics struct to concrete type
 		if method.generic_names.len > 0 && method.return_type.has_flag(.generic) {
-			c.check_return_generics_struct(method.return_type, mut call_expr, concrete_types)
+			c.check_return_generics_struct(method.return_type, mut call_expr, method.generic_names,
+				concrete_types)
 		} else {
 			call_expr.return_type = method.return_type
 		}
@@ -2500,7 +2504,8 @@ pub fn (mut c Checker) fn_call(mut call_expr ast.CallExpr) ast.Type {
 	}
 	// resolve return generics struct to concrete type
 	if func.generic_names.len > 0 && func.return_type.has_flag(.generic) {
-		c.check_return_generics_struct(func.return_type, mut call_expr, concrete_types)
+		c.check_return_generics_struct(func.return_type, mut call_expr, func.generic_names,
+			concrete_types)
 	} else {
 		call_expr.return_type = func.return_type
 	}
@@ -3323,9 +3328,24 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			}
 			ast.PrefixExpr {
 				// Do now allow `*x = y` outside `unsafe`
-				if left.op == .mul && !c.inside_unsafe {
-					c.error('modifying variables via dereferencing can only be done in `unsafe` blocks',
-						assign_stmt.pos)
+				if left.op == .mul {
+					if !c.inside_unsafe {
+						c.error('modifying variables via dereferencing can only be done in `unsafe` blocks',
+							assign_stmt.pos)
+					} else {
+						// mark `p` in `*p = val` as used:
+						match mut left.right {
+							ast.Ident {
+								match mut left.right.obj {
+									ast.Var {
+										left.right.obj.is_used = true
+									}
+									else {}
+								}
+							}
+							else {}
+						}
+					}
 				}
 				if is_decl {
 					c.error('non-name on the left side of `:=`', left.pos)
@@ -3842,6 +3862,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			if node.idx_in_fn < 0 {
 				node.idx_in_fn = c.table.cur_fn.defer_stmts.len
 				c.table.cur_fn.defer_stmts << unsafe { &node }
+			}
+			if c.locked_names.len != 0 || c.rlocked_names.len != 0 {
+				c.error('defers are not allowed in lock statements', node.pos)
 			}
 			c.stmts(node.stmts)
 		}

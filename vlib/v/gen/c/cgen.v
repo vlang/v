@@ -83,10 +83,14 @@ mut:
 	optionals              []string // to avoid duplicates TODO perf, use map
 	chan_pop_optionals     []string // types for `x := <-ch or {...}`
 	chan_push_optionals    []string // types for `ch <- x or {...}`
-	shareds                []int    // types with hidden mutex for which decl has been emitted
-	inside_ternary         int      // ?: comma separated statements on a single line
-	inside_map_postfix     bool     // inside map++/-- postfix expr
-	inside_map_infix       bool     // inside map<</+=/-= infix expr
+	cur_lock               ast.LockExpr
+	mtxs                   string // array of mutexes if the `lock` has multiple variables
+	labeled_loops          map[string]&ast.Stmt
+	inner_loop             &ast.Stmt
+	shareds                []int // types with hidden mutex for which decl has been emitted
+	inside_ternary         int   // ?: comma separated statements on a single line
+	inside_map_postfix     bool  // inside map++/-- postfix expr
+	inside_map_infix       bool  // inside map<</+=/-= infix expr
 	inside_map_index       bool
 	inside_opt_data        bool
 	inside_if_optional     bool
@@ -217,6 +221,7 @@ pub fn gen(files []ast.File, table &ast.Table, pref &pref.Preferences) string {
 		indent: -1
 		module_built: module_built
 		timers: util.new_timers(timers_should_print)
+		inner_loop: &ast.EmptyStmt{}
 	}
 	g.timers.start('cgen init')
 	for mod in g.table.modules {
@@ -1106,7 +1111,30 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.BranchStmt {
 			g.write_v_source_line_info(node.pos)
+
 			if node.label != '' {
+				x := g.labeled_loops[node.label] or {
+					panic('$node.label doesn\'t exist $g.file.path, $node.pos')
+				}
+				match x {
+					ast.ForCStmt {
+						if x.scope.contains(g.cur_lock.pos.pos) {
+							g.unlock_locks()
+						}
+					}
+					ast.ForInStmt {
+						if x.scope.contains(g.cur_lock.pos.pos) {
+							g.unlock_locks()
+						}
+					}
+					ast.ForStmt {
+						if x.scope.contains(g.cur_lock.pos.pos) {
+							g.unlock_locks()
+						}
+					}
+					else {}
+				}
+
 				if node.kind == .key_break {
 					g.writeln('goto ${node.label}__break;')
 				} else {
@@ -1114,6 +1142,25 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					g.writeln('goto ${node.label}__continue;')
 				}
 			} else {
+				inner_loop := g.inner_loop
+				match inner_loop {
+					ast.ForCStmt {
+						if inner_loop.scope.contains(g.cur_lock.pos.pos) {
+							g.unlock_locks()
+						}
+					}
+					ast.ForInStmt {
+						if inner_loop.scope.contains(g.cur_lock.pos.pos) {
+							g.unlock_locks()
+						}
+					}
+					ast.ForStmt {
+						if inner_loop.scope.contains(g.cur_lock.pos.pos) {
+							g.unlock_locks()
+						}
+					}
+					else {}
+				}
 				// continue or break
 				if g.is_autofree && !g.is_builtin_mod {
 					g.trace_autofree('// free before continue/break')
@@ -1192,23 +1239,44 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.ForCStmt {
 			prev_branch_parent_pos := g.branch_parent_pos
 			g.branch_parent_pos = node.pos.pos
+			save_inner_loop := g.inner_loop
+			g.inner_loop = unsafe { &node }
+			if node.label != '' {
+				g.labeled_loops[node.label] = unsafe { &node }
+			}
 			g.write_v_source_line_info(node.pos)
 			g.for_c_stmt(node)
 			g.branch_parent_pos = prev_branch_parent_pos
+			g.labeled_loops.delete(node.label)
+			g.inner_loop = save_inner_loop
 		}
 		ast.ForInStmt {
 			prev_branch_parent_pos := g.branch_parent_pos
 			g.branch_parent_pos = node.pos.pos
+			save_inner_loop := g.inner_loop
+			g.inner_loop = unsafe { &node }
+			if node.label != '' {
+				g.labeled_loops[node.label] = unsafe { &node }
+			}
 			g.write_v_source_line_info(node.pos)
 			g.for_in_stmt(node)
 			g.branch_parent_pos = prev_branch_parent_pos
+			g.labeled_loops.delete(node.label)
+			g.inner_loop = save_inner_loop
 		}
 		ast.ForStmt {
 			prev_branch_parent_pos := g.branch_parent_pos
 			g.branch_parent_pos = node.pos.pos
+			save_inner_loop := g.inner_loop
+			g.inner_loop = unsafe { &node }
+			if node.label != '' {
+				g.labeled_loops[node.label] = unsafe { &node }
+			}
 			g.write_v_source_line_info(node.pos)
 			g.for_stmt(node)
 			g.branch_parent_pos = prev_branch_parent_pos
+			g.labeled_loops.delete(node.label)
+			g.inner_loop = save_inner_loop
 		}
 		ast.GlobalDecl {
 			g.global_decl(node)
@@ -3872,6 +3940,12 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 }
 
 fn (mut g Gen) lock_expr(node ast.LockExpr) {
+	g.cur_lock = unsafe { node } // is ok because it is discarded at end of fn
+	defer {
+		g.cur_lock = ast.LockExpr{
+			scope: 0
+		}
+	}
 	tmp_result := if node.is_expr { g.new_tmp_var() } else { '' }
 	mut cur_line := ''
 	if node.is_expr {
@@ -3920,34 +3994,42 @@ fn (mut g Gen) lock_expr(node ast.LockExpr) {
 		g.writeln('\t\tsync__RwMutex_lock((sync__RwMutex*)_arr_$mtxs[$mtxs]);')
 		g.writeln('}')
 	}
+	println('')
+	g.mtxs = mtxs
+	defer {
+		g.mtxs = ''
+	}
+
 	g.writeln('/*lock*/ {')
 	g.stmts_with_tmp_var(node.stmts, tmp_result)
 	if node.is_expr {
 		g.writeln(';')
 	}
 	g.writeln('}')
-	if node.lockeds.len == 0 {
-		// this should not happen
-	} else if node.lockeds.len == 1 {
-		id := node.lockeds[0]
-		name := id.name
-		deref := if id.is_mut { '->' } else { '.' }
-		lock_prefix := if node.is_rlock[0] { 'r' } else { '' }
-		g.writeln('sync__RwMutex_${lock_prefix}unlock(&$name${deref}mtx);')
-	} else {
-		// unlock in reverse order
-		g.writeln('for (int $mtxs=${node.lockeds.len - 1}; $mtxs>=0; $mtxs--) {')
-		g.writeln('\tif ($mtxs && _arr_$mtxs[$mtxs] == _arr_$mtxs[$mtxs-1]) continue;')
-		g.writeln('\tif (_isrlck_$mtxs[$mtxs])')
-		g.writeln('\t\tsync__RwMutex_runlock((sync__RwMutex*)_arr_$mtxs[$mtxs]);')
-		g.writeln('\telse')
-		g.writeln('\t\tsync__RwMutex_unlock((sync__RwMutex*)_arr_$mtxs[$mtxs]);')
-		g.write('}')
-	}
+	g.unlock_locks()
 	if node.is_expr {
 		g.writeln('')
 		g.write(cur_line)
 		g.write('$tmp_result')
+	}
+}
+
+fn (mut g Gen) unlock_locks() {
+	if g.cur_lock.lockeds.len == 0 {
+	} else if g.cur_lock.lockeds.len == 1 {
+		id := g.cur_lock.lockeds[0]
+		name := id.name
+		deref := if id.is_mut { '->' } else { '.' }
+		lock_prefix := if g.cur_lock.is_rlock[0] { 'r' } else { '' }
+		g.writeln('sync__RwMutex_${lock_prefix}unlock(&$name${deref}mtx);')
+	} else {
+		g.writeln('for (int $g.mtxs=${g.cur_lock.lockeds.len - 1}; $g.mtxs>=0; $g.mtxs--) {')
+		g.writeln('\tif ($g.mtxs && _arr_$g.mtxs[$g.mtxs] == _arr_$g.mtxs[$g.mtxs-1]) continue;')
+		g.writeln('\tif (_isrlck_$g.mtxs[$g.mtxs])')
+		g.writeln('\t\tsync__RwMutex_runlock((sync__RwMutex*)_arr_$g.mtxs[$g.mtxs]);')
+		g.writeln('\telse')
+		g.writeln('\t\tsync__RwMutex_unlock((sync__RwMutex*)_arr_$g.mtxs[$g.mtxs]);')
+		g.write('}')
 	}
 }
 
@@ -4760,6 +4842,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			return
 		}
 	}
+
 	g.inside_return = true
 	defer {
 		g.inside_return = false
