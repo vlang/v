@@ -523,7 +523,15 @@ fn (mut g Gen) gen_str_for_multi_return(info ast.MultiReturn, styp string, str_f
 		if should_use_indent_func(sym.kind) && !sym_has_str_method {
 			g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, ${arg_str_fn_name}(a.arg$i));')
 		} else if sym.kind in [.f32, .f64] {
-			g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _STR("%g", 1, a.arg$i));')
+
+			if sym.kind == .f32 {
+				tmp_val := str_intp_g32("a.arg$i")
+				g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, ${tmp_val});')
+			} else {
+				tmp_val := str_intp_g64("a.arg$i")
+				g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, ${tmp_val});')
+			}
+			//g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _STR("%g", 1, a.arg$i));')
 		} else if sym.kind == .string {
 			tmp_str := str_intp_sq("a.arg$i")
 			g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, ${tmp_str});')
