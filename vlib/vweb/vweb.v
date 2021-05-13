@@ -337,7 +337,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	defer {
 		conn.close() or {}
 	}
-	mut reader := io.new_buffered_reader(reader: io.make_reader(conn))
+	mut reader := io.new_buffered_reader(reader: conn)
 	defer {
 		reader.free()
 	}
