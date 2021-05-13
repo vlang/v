@@ -4,11 +4,15 @@
 module math
 
 #include <math.h>
+
 $if windows {
 	$if tinyc {
 		#flag @VEXEROOT/thirdparty/tcc/lib/openlibm.o
 	}
+} $else {
+	#flag -lm
 }
+
 fn C.acos(x f64) f64
 
 fn C.asin(x f64) f64

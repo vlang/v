@@ -9,6 +9,15 @@ $if gcboehm ? {
 }
 #include "fontstash.h"
 #flag -I /usr/local/Cellar/freetype/2.10.2/include/freetype2
+
+$if windows {
+	$if tinyc {
+		#flag @VEXEROOT/thirdparty/tcc/lib/openlibm.o
+	}
+} $else {
+	#flag -lm
+}
+
 //#flag -lfreetype
 pub const (
 	// TODO: fontstash.used_import is used to keep v from warning about unused imports
