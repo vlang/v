@@ -372,7 +372,14 @@ fn (mut g Gen) gen_str_for_array_fixed(info ast.ArrayFixed, styp string, str_fn_
 		if should_use_indent_func(sym.kind) && !sym_has_str_method {
 			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${elem_str_fn_name}(a[i]));')
 		} else if sym.kind in [.f32, .f64] {
-			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _STR("%g", 1, a[i]));')
+
+			if sym.kind == .f32 {
+				g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${str_intp_g32("a[i]")} );')
+			} else {
+				g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${str_intp_g64("a[i]")} );')
+			}
+			//g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _STR("%g", 1, a[i]));')
+		
 		} else if sym.kind == .string {
 			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${str_intp_sq("a[i]")});')
 			//g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _STR("\'%.*s\\000\'", 2, a[i]));')
@@ -460,7 +467,15 @@ fn (mut g Gen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) {
 	} else if should_use_indent_func(val_sym.kind) && !val_sym.has_method('str') {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, indent_${elem_str_fn_name}(*($val_styp*)DenseArray_value(&m.key_values, i), indent_count));')
 	} else if val_sym.kind in [.f32, .f64] {
-		g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _STR("%g", 1, *($val_styp*)DenseArray_value(&m.key_values, i)));')
+		
+		tmp_val := "*($val_styp*)DenseArray_value(&m.key_values, i)"
+		if val_sym.kind == .f32 {
+			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${str_intp_g32(tmp_val)});')
+		} else {
+			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${str_intp_g64(tmp_val)});')
+		}
+		//g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _STR("%g", 1, *($val_styp*)DenseArray_value(&m.key_values, i)));')
+	
 	} else if val_sym.kind == .rune {
 		tmp_str := str_intp_rune("${elem_str_fn_name}(*($val_styp*)DenseArray_value(&m.key_values, i))")
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${tmp_str});')
