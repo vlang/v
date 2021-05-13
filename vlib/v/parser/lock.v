@@ -11,26 +11,24 @@ fn (mut p Parser) lock_expr() ast.LockExpr {
 	mut comments := []ast.Comment{}
 	mut is_rlocked := []bool{}
 	for {
-		if p.tok.kind == .lcbr {
-			break
-		}
 		is_rlock := p.tok.kind == .key_rlock
 		if !is_rlock && p.tok.kind != .key_lock {
 			p.error_with_pos('unexpected $p.tok, expected `lock` or `rlock`', p.tok.position())
 		}
 		p.next()
-		exprs, comms := p.expr_list()
-		for e in exprs {
-			if !e.is_lockable() {
-				p.error_with_pos('`$e` cannot be locked - only `x` or `x.y` are supported', e.position())
-			}
-			lockeds << e
-			is_rlocked << is_rlock
-		}
-		comments << comms
-		p.next()
 		if p.tok.kind == .lcbr {
 			break
+		}
+		if p.tok.kind == .name {
+			exprs, comms := p.expr_list()
+			for e in exprs {
+				if !e.is_lockable() {
+					p.error_with_pos('`$e` cannot be locked - only `x` or `x.y` are supported', e.position())
+				}
+				lockeds << e
+				is_rlocked << is_rlock
+			}
+			comments << comms
 		}
 		if p.tok.kind == .semicolon {
 			p.next()
