@@ -554,7 +554,7 @@ pub fn (mut c Checker) infer_fn_generic_types(f ast.Fn, mut call_expr ast.CallEx
 					generic_names := info.generic_types.map(c.table.get_type_symbol(it).name)
 					if gt_name in generic_names {
 						idx := generic_names.index(gt_name)
-						to_set = info.concrete_types[idx]
+						typ = info.concrete_types[idx]
 					}
 				}
 			}
