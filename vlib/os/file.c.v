@@ -340,7 +340,7 @@ fn fread(ptr voidptr, item_size int, items int, stream &C.FILE) ?int {
 		// than there was an error. This is because fread and ferror do not set
 		// errno.
 		if C.ferror(stream) != 0 {
-			return error("file read error")
+			return error('file read error')
 		}
 	}
 	return nbytes

@@ -65,12 +65,12 @@ fn testsuite_end() ? {
 // containing data.
 fn test_read_eof_last_read_partial_buffer_fill() ? {
 	mut f := os.open_file(tfile, 'w') ?
-	bw := []byte{len:199, init:5}
+	bw := []byte{len: 199, init: 5}
 	f.write(bw) ?
 	f.close()
 
 	f = os.open_file(tfile, 'r') ?
-	mut br := []byte{len:100}
+	mut br := []byte{len: 100}
 	// Read first 100 bytes of 199 byte file, should fill buffer with no error.
 	n0 := f.read(mut br) ?
 	assert n0 == 100
@@ -97,12 +97,12 @@ fn test_read_eof_last_read_partial_buffer_fill() ? {
 // fread that returns no data.
 fn test_read_eof_last_read_full_buffer_fill() ? {
 	mut f := os.open_file(tfile, 'w') ?
-	bw := []byte{len:200, init:5}
+	bw := []byte{len: 200, init: 5}
 	f.write(bw) ?
 	f.close()
 
 	f = os.open_file(tfile, 'r') ?
-	mut br := []byte{len:100}
+	mut br := []byte{len: 100}
 	// Read first 100 bytes of 200 byte file, should fill buffer with no error.
 	n0 := f.read(mut br) ?
 	assert n0 == 100
