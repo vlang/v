@@ -14,7 +14,7 @@ pub fn new_multi_writer(writers ...Writer) Writer {
 
 // MultiWriter writes to all its writers.
 pub struct MultiWriter {
-pub:
+pub mut:
 	writers []Writer
 }
 
@@ -22,8 +22,8 @@ pub:
 // written. If any writer fails to write the full length an error is returned
 // and writing to other writers stops. If any writer returns an error the error
 // is returned immediately and writing to other writers stops.
-pub fn (m MultiWriter) write(buf []byte) ?int {
-	for w in m.writers {
+pub fn (mut m MultiWriter) write(buf []byte) ?int {
+	for mut w in m.writers {
 		n := w.write(buf) ?
 		if n != buf.len {
 			return error('io: incomplete write to writer of MultiWriter')
