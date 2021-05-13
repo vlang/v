@@ -383,7 +383,7 @@ fn (data StrIntpData) get_fmt_format(mut sb &strings.Builder) {
 			.si_g32 {
 				//println("HERE: g32")
 				if use_default_str {
-					mut f := data.d.d_f32.str()
+					mut f := data.d.d_f32.strg()
 					if upper_case {
 						tmp := f
 						f = f.to_upper()
@@ -418,7 +418,7 @@ fn (data StrIntpData) get_fmt_format(mut sb &strings.Builder) {
 			.si_g64 {
 				//println("HERE: g64")
 				if use_default_str {
-					mut f := data.d.d_f64.str()
+					mut f := data.d.d_f64.strg()
 					if upper_case {
 						tmp := f
 						f = f.to_upper()
@@ -570,6 +570,8 @@ const (
 	// BUG: this const is not released from the memory! use a const for now
 	//si_s_code = "0x" + int(StrIntpType.si_s).hex() // code for a simple string
 	si_s_code = "0xfe10"
+	si_g32_code = "0xfe0f"
+	si_g64_code = "0xfe0f"
 )
 
 // replace _STR("\'%.*s\\000\'", 2, in_str)
@@ -584,17 +586,14 @@ pub fn str_intp_rune(in_str string) string {
 	return 'str_intp(2, (StrIntpData[]){{_SLIT("\`"), ${si_s_code}, {.d_s = ${in_str}}},{_SLIT("\`"), 0, {.d_c = 0 }}})'
 }
 
-
+[inline]
 pub fn str_intp_g32(in_str string) string {
-	fmt_type := get_str_intp_u32_format(StrIntpType.si_f32, 0, 987698, true, false, 0, 0, false)
-	res := 'str_intp(1, (StrIntpData[]){{_SLIT(""), 0x${int(fmt_type).hex()}, {.d_f32 = ${in_str} }}})'
-	return res
+	return 'str_intp(1, (StrIntpData[]){{_SLIT(""), ${si_g32_code}, {.d_f32 = ${in_str} }}})'
 }
 
+[inline]
 pub fn str_intp_g64(in_str string) string {
-	fmt_type := get_str_intp_u32_format(StrIntpType.si_f64, 0, 987698, true, false, 0, 0, false)
-	res := 'str_intp(1, (StrIntpData[]){{_SLIT(""), 0x${int(fmt_type).hex()}, {.d_f64 = ${in_str} }}})'
-	return res
+	return 'str_intp(1, (StrIntpData[]){{_SLIT(""), ${si_g64_code}, {.d_f64 = ${in_str} }}})'
 }
 
 // replace %% with the in_str

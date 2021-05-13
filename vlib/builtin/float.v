@@ -21,6 +21,17 @@ pub fn (x f64) str() string {
 	}
 }
 
+[inline]
+pub fn (x f64) strg() string {
+	if x == 0 { return "0" }
+	abs_x := f64_abs(x)
+	if abs_x >= 0.0001 && abs_x < 1.0e6 {
+		return strconv.f64_to_str_l_no_dot(x)
+	} else {
+		return strconv.ftoa_64(x)
+	}
+}
+
 // str returns the value of the `float_literal` as a `string`.
 [inline]
 pub fn (d float_literal) str() string {
@@ -58,6 +69,17 @@ pub fn (x f32) str() string {
 	abs_x := f32_abs(x)
 	if abs_x >= 0.0001 && abs_x < 1.0e6 {
 		return strconv.f32_to_str_l(x)
+	} else {
+		return strconv.ftoa_32(x)
+	}
+}
+
+[inline]
+pub fn (x f32) strg() string {
+	if x == 0 { return "0" }
+	abs_x := f32_abs(x)
+	if abs_x >= 0.0001 && abs_x < 1.0e6 {
+		return strconv.f32_to_str_l_no_dot(x)
 	} else {
 		return strconv.ftoa_32(x)
 	}
