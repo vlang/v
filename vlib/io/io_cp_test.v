@@ -6,7 +6,7 @@ fn test_cp() ? {
 	defer {
 		f.close()
 	}
-	mut r := io.new_buffered_reader(reader: io.make_reader(f))
+	mut r := io.new_buffered_reader(reader: f)
 	mut stdout := os.stdout()
 	io.cp(r, mut stdout) ?
 	assert true
