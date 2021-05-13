@@ -2,7 +2,8 @@ import io
 import os
 
 fn test_cp() ? {
-	mut f := os.open(@FILE) or { panic(err) }
+	my_source := @FILE
+	mut f := os.open(my_source) or { panic(err) }
 	defer {
 		f.close()
 	}
