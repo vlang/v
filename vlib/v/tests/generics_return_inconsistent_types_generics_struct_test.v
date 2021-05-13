@@ -3,7 +3,7 @@ pub struct Optional<T> {
 mut:
 	value T
 	some  bool
-	typ string
+	typ   string
 }
 
 pub fn new_some<T, B>(value T, b B) Optional<T> {
