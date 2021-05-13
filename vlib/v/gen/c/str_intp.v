@@ -39,7 +39,7 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int) (u64, string) {
 			fmt_type = .si_s
 		}
 	} else if typ.is_float() {
-		if fspec in [`g`,`G`] {  
+		if fspec in [`g`,`G`] {
 			match typ {
 				ast.f32_type { fmt_type = .si_g32 }
 				ast.f64_type { fmt_type = .si_g64 }

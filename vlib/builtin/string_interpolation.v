@@ -570,7 +570,7 @@ const (
 	// BUG: this const is not released from the memory! use a const for now
 	//si_s_code = "0x" + int(StrIntpType.si_s).hex() // code for a simple string
 	si_s_code = "0xfe10"
-	si_g32_code = "0xfe0f"
+	si_g32_code = "0xfe0e"
 	si_g64_code = "0xfe0f"
 )
 
