@@ -3956,26 +3956,29 @@ fn (mut g Gen) lock_expr(node ast.LockExpr) {
 	if node.lockeds.len == 0 {
 		// this should not happen
 	} else if node.lockeds.len == 1 {
-		name := node.lockeds[0].str()
 		lock_prefix := if node.is_rlock[0] { 'r' } else { '' }
-		g.writeln('sync__RwMutex_${lock_prefix}lock(&$name->mtx);')
+		g.write('sync__RwMutex_${lock_prefix}lock(&')
+		g.expr(node.lockeds[0])
+		g.writeln('->mtx);')
 	} else {
 		mtxs = g.new_tmp_var()
 		g.writeln('uintptr_t _arr_$mtxs[$node.lockeds.len];')
 		g.writeln('bool _isrlck_$mtxs[$node.lockeds.len];')
 		mut j := 0
-		for i, id in node.lockeds {
-			if !node.is_rlock[i] {
-				name := id.str()
-				g.writeln('_arr_$mtxs[$j] = (uintptr_t)&$name->mtx;')
+		for i, is_rlock in node.is_rlock {
+			if !is_rlock {
+				g.writeln('_arr_$mtxs[$j] = (uintptr_t)&')
+				g.expr(node.lockeds[i])
+				g.writeln('->mtx;')
 				g.writeln('_isrlck_$mtxs[$j] = false;')
 				j++
 			}
 		}
-		for i, id in node.lockeds {
-			if node.is_rlock[i] {
-				name := id.str()
-				g.writeln('_arr_$mtxs[$j] = (uintptr_t)&$name->mtx;')
+		for i, is_rlock in node.is_rlock {
+			if is_rlock {
+				g.write('_arr_$mtxs[$j] = (uintptr_t)&')
+				g.expr(node.lockeds[i])
+				g.writeln('->mtx;')
 				g.writeln('_isrlck_$mtxs[$j] = true;')
 				j++
 			}
@@ -4012,10 +4015,10 @@ fn (mut g Gen) lock_expr(node ast.LockExpr) {
 fn (mut g Gen) unlock_locks() {
 	if g.cur_lock.lockeds.len == 0 {
 	} else if g.cur_lock.lockeds.len == 1 {
-		id := g.cur_lock.lockeds[0]
-		name := id.str()
 		lock_prefix := if g.cur_lock.is_rlock[0] { 'r' } else { '' }
-		g.writeln('sync__RwMutex_${lock_prefix}unlock(&$name->mtx);')
+		g.write('sync__RwMutex_${lock_prefix}unlock(&')
+		g.expr(g.cur_lock.lockeds[0])
+		g.write('->mtx);')
 	} else {
 		g.writeln('for (int $g.mtxs=${g.cur_lock.lockeds.len - 1}; $g.mtxs>=0; $g.mtxs--) {')
 		g.writeln('\tif ($g.mtxs && _arr_$g.mtxs[$g.mtxs] == _arr_$g.mtxs[$g.mtxs-1]) continue;')
