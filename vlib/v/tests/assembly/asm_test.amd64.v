@@ -136,17 +136,37 @@ fn test_rip_relative_label() {
 		; =r (a)
 	}
 	assert a == 48321074923
-
-	mut b := i64(4)
-	asm amd64 {
-		mov b, one_two_three // see below
-		; =r (b)
-	}
-	assert b == 48321074923
 }
 
 asm amd64 {
 	.global one_two_three
 	one_two_three:
 	.quad 48321074923
+}
+
+fn test_flag_output() {
+	a, b := 4, 9
+	mut out := false
+	asm amd64 {
+		cmp a, b
+		; =@ccl (out)
+		; r (a)
+		  r (b)
+	}
+	assert out
+	asm amd64 {
+		cmp b, a
+		; =@ccl (out)
+		; r (a)
+		  r (b)
+	}
+	assert !out
+
+	zero := 0
+	asm amd64 {
+		cmp zero, zero
+		; =@ccz (out)
+		; r (zero)
+	}
+	assert out
 }
