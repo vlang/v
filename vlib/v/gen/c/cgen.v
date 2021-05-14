@@ -3967,7 +3967,7 @@ fn (mut g Gen) lock_expr(node ast.LockExpr) {
 		mut j := 0
 		for i, is_rlock in node.is_rlock {
 			if !is_rlock {
-				g.writeln('_arr_$mtxs[$j] = (uintptr_t)&')
+				g.write('_arr_$mtxs[$j] = (uintptr_t)&')
 				g.expr(node.lockeds[i])
 				g.writeln('->mtx;')
 				g.writeln('_isrlck_$mtxs[$j] = false;')
@@ -3983,7 +3983,18 @@ fn (mut g Gen) lock_expr(node ast.LockExpr) {
 				j++
 			}
 		}
-		g.writeln('__sort_ptr(_arr_$mtxs, _isrlck_$mtxs, $node.lockeds.len);')
+		if node.lockeds.len == 2 {
+			g.writeln('if (_arr_$mtxs[0] > _arr_$mtxs[1]) {')
+			g.writeln('\tuintptr_t _ptr_$mtxs = _arr_$mtxs[0];')
+			g.writeln('\t_arr_$mtxs[0] = _arr_$mtxs[1];')
+			g.writeln('\t_arr_$mtxs[1] = _ptr_$mtxs;')
+			g.writeln('\tbool _bool_$mtxs = _isrlck_$mtxs[0];')
+			g.writeln('\t_isrlck_$mtxs[0] = _isrlck_$mtxs[1];')
+			g.writeln('\t_isrlck_$mtxs[1] = _bool_$mtxs;')
+			g.writeln('}')
+		} else {
+			g.writeln('__sort_ptr(_arr_$mtxs, _isrlck_$mtxs, $node.lockeds.len);')
+		}
 		g.writeln('for (int $mtxs=0; $mtxs<$node.lockeds.len; $mtxs++) {')
 		g.writeln('\tif ($mtxs && _arr_$mtxs[$mtxs] == _arr_$mtxs[$mtxs-1]) continue;')
 		g.writeln('\tif (_isrlck_$mtxs[$mtxs])')
