@@ -401,7 +401,7 @@ pub fn (mut c Checker) fail_if_unreadable(expr ast.Expr, typ ast.Type, what stri
 			if typ.has_flag(.shared_f) {
 				if expr.name !in c.rlocked_names && expr.name !in c.locked_names {
 					action := if what == 'argument' { 'passed' } else { 'used' }
-					c.error('$expr.name is `shared` and must be `rlock`ed or `lock`ed to be $action as non-mut $what',
+					c.error('`$expr.name` is `shared` and must be `rlock`ed or `lock`ed to be $action as non-mut $what',
 						expr.pos)
 				}
 			}
@@ -413,7 +413,7 @@ pub fn (mut c Checker) fail_if_unreadable(expr ast.Expr, typ ast.Type, what stri
 				expr_name := '${expr.expr}.$expr.field_name'
 				if expr_name !in c.rlocked_names && expr_name !in c.locked_names {
 					action := if what == 'argument' { 'passed' } else { 'used' }
-					c.error('$expr_name is `shared` and must be `rlock`ed or `lock`ed to be $action as non-mut $what',
+					c.error('`$expr_name` is `shared` and must be `rlock`ed or `lock`ed to be $action as non-mut $what',
 						expr.pos)
 				}
 				return
