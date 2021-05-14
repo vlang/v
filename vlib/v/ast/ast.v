@@ -1180,7 +1180,7 @@ pub mut:
 pub struct AsmIO {
 pub:
 	alias      string    // [alias_a]
-	constraint string    // '=r'
+	constraint string    // '=r' TODO: allow all backends to easily use this with a struct
 	expr       Expr      // (a)
 	comments   []Comment // // this is a comment
 	typ        Type
