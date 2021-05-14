@@ -10,7 +10,8 @@ fn (mut p Parser) lockable() ast.Expr {
 	mut pos := p.tok.position()
 	for {
 		if p.tok.kind != .name {
-			p.error_with_pos('unexpected `$p.tok.lit` (field/variable name expected)', p.tok.position())
+			p.error_with_pos('unexpected `$p.tok.lit` (field/variable name expected)',
+				p.tok.position())
 		}
 		names << p.tok.lit
 		positions << pos
@@ -83,7 +84,8 @@ fn (mut p Parser) lock_expr() ast.LockExpr {
 			exprs, comms := p.lockable_list()
 			for e in exprs {
 				if !e.is_lockable() {
-					p.error_with_pos('`$e` cannot be locked - only `x` or `x.y` are supported', e.position())
+					p.error_with_pos('`$e` cannot be locked - only `x` or `x.y` are supported',
+						e.position())
 				}
 				lockeds << e
 				is_rlocked << is_rlock

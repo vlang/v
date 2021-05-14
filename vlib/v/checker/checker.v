@@ -1407,7 +1407,7 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 							expr.pos)
 					}
 					if field_info.typ.has_flag(.shared_f) {
-						expr_name := '${expr.expr}.${expr.field_name}'
+						expr_name := '${expr.expr}.$expr.field_name'
 						if expr_name !in c.locked_names {
 							if c.locked_names.len > 0 || c.rlocked_names.len > 0 {
 								if expr_name in c.rlocked_names {
@@ -5694,12 +5694,9 @@ pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) ast.Type {
 		e_typ := c.expr(node.lockeds[i])
 		id_name := node.lockeds[i].str()
 		if !e_typ.has_flag(.shared_f) {
-			obj_type := if node.lockeds[i] is ast.Ident {
-				'variable'
-			} else {
-				'struct element'
-			}
-			c.error('`$id_name` must be declared as `shared` $obj_type to be locked', node.lockeds[i].position())
+			obj_type := if node.lockeds[i] is ast.Ident { 'variable' } else { 'struct element' }
+			c.error('`$id_name` must be declared as `shared` $obj_type to be locked',
+				node.lockeds[i].position())
 		}
 		if id_name in c.locked_names {
 			c.error('`$id_name` is already locked', node.lockeds[i].position())
