@@ -40,6 +40,8 @@ $if ios {
 #flag solaris -DSOKOL_NO_ENTRY
 // TODO end
 
+#flag linux -ldl
+
 $if gcboehm ? {
 	#define SOKOL_MALLOC GC_MALLOC
 	#define SOKOL_CALLOC(n,m) GC_MALLOC((n)*(m))
