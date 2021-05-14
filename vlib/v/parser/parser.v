@@ -1383,15 +1383,12 @@ fn (mut p Parser) asm_ios(output bool) []ast.AsmIO {
 			if constraint != '' {
 				p.next()
 			}
-			if p.tok.kind == .assign {
-				constraint += '='
-				p.next()
-			} else if p.tok.kind == .plus {
-				constraint += '+'
-				p.next()
-			}
 			constraint += p.tok.lit
-			p.check(.name)
+			if p.tok.kind == .at {
+				p.next()
+			} else {
+				p.check(.name)
+			}
 		}
 		mut expr := p.expr(0)
 		if mut expr is ast.ParExpr {

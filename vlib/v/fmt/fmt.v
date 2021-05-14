@@ -727,6 +727,9 @@ fn (mut f Fmt) asm_stmt(stmt ast.AsmStmt) {
 	}
 	f.indent--
 	f.writeln('}')
+	if stmt.is_top_level {
+		f.writeln('')
+	}
 }
 
 fn (mut f Fmt) asm_arg(arg ast.AsmArg) {
