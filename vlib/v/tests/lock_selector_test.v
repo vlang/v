@@ -1,4 +1,4 @@
-struct St{
+struct St {
 mut:
 	x f64
 }
@@ -23,8 +23,12 @@ fn (g Gen) set_val() bool {
 }
 
 fn (g &Gen) inc_val() {
-	shared q := St{x: 1.0}
-	shared v := St{x: 0.25}
+	shared q := St{
+		x: 1.0
+	}
+	shared v := St{
+		x: 0.25
+	}
 	lock q, g.s, v {
 		g.s.x += q.x
 		g.s.x += v.x
@@ -33,10 +37,14 @@ fn (g &Gen) inc_val() {
 
 fn test_lock_selector_expression() {
 	g := Gen{
-		s: St{x: 12.5}
+		s: St{
+			x: 12.5
+		}
 	}
 	g.set_val()
 	g.inc_val()
-	a := rlock g.s { g.s.get_f64() }
+	a := rlock g.s {
+		g.s.get_f64()
+	}
 	assert a == 7.5
 }
