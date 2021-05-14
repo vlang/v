@@ -65,6 +65,35 @@ pub fn (x StrIntpType) str() string {
 	}
 }
 
+/*
+pub fn (x StrIntpType) data_str() string {
+	match x {
+		.si_no_str{ return "no_str" }
+		.si_c     { return "d_c" }
+		
+		.si_u8    { return "d_u8" }
+		.si_i8    { return "d_i8" }
+		.si_u16   { return "d_u16" }
+		.si_i16   { return "d_i16" }
+		.si_u32   { return "d_u32" }
+		.si_i32   { return "d_i32" }
+		.si_u64   { return "d_u64" }
+		.si_i64   { return "d_i64" }
+		
+		.si_f32   { return "d_f32" }
+		.si_f64   { return "d_f64" }
+		.si_g32   { return "d_f32" }  // g32 format use f32 data
+		.si_g64   { return "d_f64" }  // g64 format use f64 data
+		.si_e32   { return "d_f32" }  // e32 format use f32 data
+		.si_e64   { return "d_f64" }  // e64 format use f64 data
+
+		.si_s     { return "d_s" }
+		.si_p     { return "d_p" }
+		.si_vp    { return "d_vp" }
+	}
+}
+*/
+
 //=============================================================================
 // Union data
 //=============================================================================
