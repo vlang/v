@@ -1401,11 +1401,6 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 						c.error('unknown field `${type_str}.$expr.field_name`', expr.pos)
 						return '', pos
 					}
-					if !field_info.is_mut && !c.pref.translated {
-						type_str := c.table.type_to_str(expr.expr_type)
-						c.error('field `$expr.field_name` of struct `$type_str` is immutable',
-							expr.pos)
-					}
 					if field_info.typ.has_flag(.shared_f) {
 						expr_name := '${expr.expr}.$expr.field_name'
 						if expr_name !in c.locked_names {
@@ -1422,6 +1417,11 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 							pos = expr.pos
 						}
 					} else {
+						if !field_info.is_mut && !c.pref.translated {
+							type_str := c.table.type_to_str(expr.expr_type)
+							c.error('field `$expr.field_name` of struct `$type_str` is immutable',
+								expr.pos)
+						}
 						to_lock, pos = c.fail_if_immutable(expr.expr)
 					}
 					if to_lock != '' {
