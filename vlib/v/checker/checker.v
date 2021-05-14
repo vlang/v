@@ -5694,9 +5694,13 @@ pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) ast.Type {
 		e_typ := c.expr(node.lockeds[i])
 		id_name := node.lockeds[i].str()
 		if !e_typ.has_flag(.shared_f) {
-			c.error('`$id_name` must be declared `shared` to be locked', node.lockeds[i].position())
+			obj_type := if node.lockeds[i] is ast.Ident {
+				'variable'
+			} else {
+				'struct element'
+			}
+			c.error('`$id_name` must be declared as `shared` $obj_type to be locked', node.lockeds[i].position())
 		}
-		// c.error('`$id.name` is not a variable and cannot be locked', id.pos)
 		if id_name in c.locked_names {
 			c.error('`$id_name` is already locked', node.lockeds[i].position())
 		} else if id_name in c.rlocked_names {
