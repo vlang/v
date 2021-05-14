@@ -10,23 +10,22 @@ const (
 )
 
 fn test_return_lock() {
+	start := time.now()
 	shared s := AA{'3'}
-	go printer(shared s)
-	go fn (shared s AA) {
-		start := time.now()
+	go printer(shared s, start)
+	go fn (shared s AA, start time.Time) {
 		for {
 			reader(shared s)
 			if time.now() - start > sleep_time {
 				exit(0)
 			}
 		}
-	}(shared s)
+	}(shared s, start)
 	time.sleep(sleep_time * 2)
 	assert false
 }
 
-fn printer(shared s AA) {
-	start := time.now()
+fn printer(shared s AA, start time.Time) {
 	for {
 		lock s {
 			assert s.b in ['0', '1', '2', '3', '4', '5']
