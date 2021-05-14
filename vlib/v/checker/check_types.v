@@ -508,14 +508,12 @@ pub fn (mut c Checker) infer_fn_generic_types(f ast.Fn, mut call_expr ast.CallEx
 
 			if param.typ.has_flag(.generic) && param_type_sym.name == gt_name {
 				to_set = c.table.mktyp(arg.typ)
-				mut sym := c.table.get_type_symbol(arg.typ)
-				if mut sym.info is ast.FnType {
-					if !sym.info.is_anon {
-						sym.info.func.name = ''
-						idx := c.table.find_or_register_fn_type(c.mod, sym.info.func,
-							true, false)
-						to_set = ast.new_type(idx).derive(arg.typ)
-					}
+				sym := c.table.get_type_symbol(arg.typ)
+				if sym.info is ast.FnType {
+					mut func := sym.info.func
+					func.name = ''
+					idx := c.table.find_or_register_fn_type(c.mod, func, true, false)
+					to_set = ast.new_type(idx).derive(arg.typ)
 				}
 				if arg.expr.is_auto_deref_var() {
 					to_set = to_set.deref()

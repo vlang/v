@@ -873,7 +873,7 @@ fn (mut s Scanner) text_scan() token.Token {
 					return s.new_token(.name, '@' + name, name.len + 1)
 				}
 				// @FN, @STRUCT, @MOD etc. See full list in token.valid_at_tokens
-				if '@' + name in token.valid_at_tokens {
+				if '@' + name in token.valid_at_tokens || name.starts_with('cc') { // `=@cccond` in inline assembly
 					return s.new_token(.at, '@' + name, name.len + 1)
 				}
 				if !token.is_key(name) {

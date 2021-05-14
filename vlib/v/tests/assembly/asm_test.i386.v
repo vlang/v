@@ -125,3 +125,30 @@ fn (m Manu) str() string {
 		}
 	}
 }
+
+fn test_flag_output() {
+	a, b := 4, 9
+	mut out := false
+	asm amd64 {
+		cmp a, b
+		; =@ccl (out)
+		; r (a)
+		  r (b)
+	}
+	assert out
+	asm amd64 {
+		cmp b, a
+		; =@ccl (out)
+		; r (a)
+		  r (b)
+	}
+	assert !out
+
+	zero := 0
+	asm amd64 {
+		cmp zero, zero
+		; =@ccz (out)
+		; r (zero)
+	}
+	assert out
+}
