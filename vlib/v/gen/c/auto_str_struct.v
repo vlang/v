@@ -122,15 +122,19 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 			base_fmt := g.type_to_fmt1(field.typ)
 			
 			mut quote_str := ""
+			mut prefix := ""
 			sym := g.table.get_type_symbol(field.typ)
 			if sym.kind == .string {
 				quote_str = "'"
+			} else if field.typ in ast.charptr_types {
+				quote_str = '\\"'
+				prefix    = 'C'
 			}
 
 			if i == 0 {
-				g.auto_str_funcs.write_string('\t\t{_SLIT0, ${si_s_code}, {.d_s=indents}}, {_SLIT("    $field.name: $ptr_amp"), 0, {}}, ')
+				g.auto_str_funcs.write_string('\t\t{_SLIT0, ${si_s_code}, {.d_s=indents}}, {_SLIT("    $field.name: $ptr_amp$prefix"), 0, {}}, ')
 			} else {
-				g.auto_str_funcs.write_string('\t\t{_SLIT("\\n"), ${si_s_code}, {.d_s=indents}}, {_SLIT("    $field.name: $ptr_amp"), 0, {}}, ')
+				g.auto_str_funcs.write_string('\t\t{_SLIT("\\n"), ${si_s_code}, {.d_s=indents}}, {_SLIT("    $field.name: $ptr_amp$prefix"), 0, {}}, ')
 			}
 
 			//sym := g.table.get_type_symbol(field.typ)
@@ -161,7 +165,12 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 			if styp == field_styp {
 				g.auto_str_funcs.write_string('_SLIT("<circular>")')
 			} else {
-				g.auto_str_funcs.write_string(func)
+				// manage C charptr
+				if field.typ in ast.charptr_types {
+					g.auto_str_funcs.write_string("tos2((byteptr)$func)")
+				} else {
+					g.auto_str_funcs.write_string(func)
+				}
 			}
 			
 			g.auto_str_funcs.write_string('}}, {_SLIT("${quote_str}"),0},\n')
