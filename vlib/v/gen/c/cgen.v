@@ -3100,7 +3100,11 @@ fn (mut g Gen) expr(node ast.Expr) {
 			if node.val == r'\`' {
 				g.write("'`'")
 			} else {
-				g.write("L'$node.val'")
+				if utf8_str_len(node.val) < node.val.len {
+					g.write("L'$node.val'")
+				} else {
+					g.write("'$node.val'")
+				}
 			}
 		}
 		ast.DumpExpr {
