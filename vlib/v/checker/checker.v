@@ -939,7 +939,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) ast.Type {
 		}
 	}
 	mut return_type := left_type
-	if infix_expr.op != .key_is {
+	if !c.pref.use_cache && infix_expr.op != .key_is {
 		match mut infix_expr.left {
 			ast.Ident, ast.SelectorExpr {
 				if infix_expr.left.is_mut {
@@ -5073,7 +5073,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) ast.Type {
 		return info.typ
 	} else if ident.kind == .unresolved {
 		// first use
-		if ident.tok_kind == .assign && ident.is_mut {
+		if !c.pref.use_cache && ident.tok_kind == .assign && ident.is_mut {
 			c.error('`mut` not allowed with `=` (use `:=` to declare a variable)', ident.pos)
 		}
 		if obj := ident.scope.find(ident.name) {
