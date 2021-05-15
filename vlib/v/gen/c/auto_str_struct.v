@@ -3,34 +3,6 @@ module c
 import v.ast
 import v.util
 
-
-/* --- This is only for references ---
-pub enum StrIntpType {
-	si_no_str = 0  // no parameter to print only fix string
-	si_c
-	
-	si_u8
-	si_i8
-	si_u16
-	si_i16
-	si_u32
-	si_i32
-	si_u64
-	si_i64
-
-	si_e32
-	si_e64
-	si_f32
-	si_f64
-	si_g32
-	si_g64
-
-	si_s
-	si_p
-	si_vp
-}
-*/
-
 fn (g &Gen) type_to_fmt1(typ ast.Type) StrIntpType {
 	if typ == ast.byte_type_idx {
 		return .si_u8
@@ -235,11 +207,170 @@ fn struct_auto_str_func1(sym &ast.TypeSymbol, field_type ast.Type, fn_name strin
 
 			fmt_type := StrIntpType.si_i32
 			return 'str_intp(1, (StrIntpData[]){{_SLIT0, ${u32(fmt_type) | 0xfe00}, {.d_i32 = *${method_str} }}})'
-
 		}
-
 		return method_str
+	}
+}
+
+//=============================================================================
+// OLD CODE
+//=============================================================================
 /*
+fn (g &Gen) type_to_fmt(typ ast.Type) string {
+	if typ == ast.byte_type_idx {
+		return '%hhx\\000'
+	}
+	if typ == ast.char_type_idx {
+		return '%c\\000'
+	}
+	if typ == ast.voidptr_type_idx || typ in ast.byteptr_types {
+		return '%p\\000'
+	}
+	if typ in ast.charptr_types {
+		return '%C\\000' // a C string
+	}
+	sym := g.table.get_type_symbol(typ)
+	if typ.is_ptr() && (typ.is_int_valptr() || typ.is_float_valptr()) {
+		return '%.*s\\000'
+	} else if sym.kind in [.struct_, .array, .array_fixed, .map, .bool, .enum_, .interface_,
+		.sum_type, .function, .alias] {
+		return '%.*s\\000'
+	} else if sym.kind == .string {
+		return "'%.*s\\000'"
+	} else if sym.kind in [.f32, .f64] {
+		return '%g\\000' // g removes trailing zeros unlike %f
+	} else if sym.kind == .int {
+		return '%d\\000'
+	} else if sym.kind == .u32 {
+		return '%u\\000'
+	} else if sym.kind == .u64 {
+		return '%llu\\000'
+	} else if sym.kind == .i64 {
+		return '%lld\\000'
+	}
+	return '%d\\000'
+}
+
+fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name string) {
+
+	//g.gen_str_for_struct1(info, styp, str_fn_name)
+
+	// TODO: short it if possible
+	// generates all definitions of substructs
+	mut fnames2strfunc := map{
+		'': ''
+	}
+	for field in info.fields {
+		sym := g.table.get_type_symbol(field.typ)
+		if !sym.has_method('str') {
+			mut typ := field.typ
+			if typ.is_ptr() {
+				typ = typ.deref()
+			}
+			field_styp := g.typ(typ)
+			field_fn_name := g.gen_str_for_type(field.typ)
+			fnames2strfunc[field_styp] = field_fn_name
+		}
+	}
+	// _str() functions should have a single argument, the indenting ones take 2:
+	g.type_definitions.writeln('static string ${str_fn_name}($styp it); // auto')
+	g.auto_str_funcs.writeln('static string ${str_fn_name}($styp it) { return indent_${str_fn_name}(it, 0);}')
+	g.type_definitions.writeln('static string indent_${str_fn_name}($styp it, int indent_count); // auto')
+	g.auto_str_funcs.writeln('static string indent_${str_fn_name}($styp it, int indent_count) {')
+	mut clean_struct_v_type_name := styp.replace('__', '.')
+	if clean_struct_v_type_name.contains('_T_') {
+		// TODO: this is a bit hacky. styp shouldn't be even parsed with _T_
+		// use something different than g.typ for styp
+		clean_struct_v_type_name =
+			clean_struct_v_type_name.replace('Array_', '[]').replace('_T_', '<').replace('_', ', ') +
+			'>'
+	}
+	clean_struct_v_type_name = util.strip_main_name(clean_struct_v_type_name)
+	// generate ident / indent length = 4 spaces
+	g.auto_str_funcs.writeln('\tstring indents = _SLIT("");')
+	g.auto_str_funcs.writeln('\tfor (int i = 0; i < indent_count; ++i) {')
+	g.auto_str_funcs.writeln('\t\tindents = string_add(indents, _SLIT("    "));')
+	g.auto_str_funcs.writeln('\t}')
+	if info.fields.len == 0 {
+		g.auto_str_funcs.write_string('\treturn _SLIT("$clean_struct_v_type_name{}");')
+	} else {
+		g.auto_str_funcs.write_string('\treturn _STR("$clean_struct_v_type_name{\\n"')
+		for field in info.fields {
+			mut fmt := if field.typ.is_ptr() { '&' } else { '' }
+			fmt += g.type_to_fmt(field.typ)
+			g.auto_str_funcs.writeln('\t\t"%.*s\\000    $field.name: $fmt\\n"')
+		}
+		g.auto_str_funcs.write_string('\t\t"%.*s\\000}", ${2 * (info.fields.len + 1)}')
+		if info.fields.len > 0 {
+			g.auto_str_funcs.write_string(',\n\t\t')
+			for i, field in info.fields {
+				sym := g.table.get_type_symbol(field.typ)
+				has_custom_str := sym.has_method('str')
+				mut field_styp := g.typ(field.typ).replace('*', '')
+				field_styp_fn_name := if has_custom_str {
+					'${field_styp}_str'
+				} else {
+					fnames2strfunc[field_styp]
+				}
+				g.auto_str_funcs.write_string('indents, ')
+				mut func := struct_auto_str_func(sym, field.typ, field_styp_fn_name, field.name)
+				// reference types can be "nil"
+				if field.typ.is_ptr() && !(field.typ in ast.charptr_types
+					|| field.typ in ast.byteptr_types
+					|| field.typ == ast.voidptr_type_idx) {
+					g.auto_str_funcs.write_string('isnil(it.${c_name(field.name)})')
+					g.auto_str_funcs.write_string(' ? _SLIT("nil") : ')
+					// struct, floats and ints have a special case through the _str function
+					if sym.kind != .struct_ && !field.typ.is_int_valptr()
+						&& !field.typ.is_float_valptr() {
+						g.auto_str_funcs.write_string('*')
+					}
+				}
+				// handle circular ref type of struct to the struct itself
+				if styp == field_styp {
+					g.auto_str_funcs.write_string('_SLIT("<circular>")')
+				} else {
+					g.auto_str_funcs.write_string(func)
+				}
+
+				if i < info.fields.len - 1 {
+					g.auto_str_funcs.write_string(',\n\t\t')
+				}
+			}
+		}
+		g.auto_str_funcs.writeln(',')
+		g.auto_str_funcs.writeln('\t\tindents);')
+	}
+	g.auto_str_funcs.writeln('}')
+}
+
+fn struct_auto_str_func(sym &ast.TypeSymbol, field_type ast.Type, fn_name string, field_name string) string {
+	has_custom_str, expects_ptr, _ := sym.str_method_info()
+	if sym.kind == .enum_ {
+		return '${fn_name}(it.${c_name(field_name)})'
+	} else if should_use_indent_func(sym.kind) {
+		mut obj := 'it.${c_name(field_name)}'
+		if field_type.is_ptr() && !expects_ptr {
+			obj = '*$obj'
+		}
+		if has_custom_str {
+			return '${fn_name}($obj)'
+		}
+		return 'indent_${fn_name}($obj, indent_count + 1)'
+	} else if sym.kind in [.array, .array_fixed, .map, .sum_type] {
+		if has_custom_str {
+			return '${fn_name}(it.${c_name(field_name)})'
+		}
+		return 'indent_${fn_name}(it.${c_name(field_name)}, indent_count + 1)'
+	} else if sym.kind == .function {
+		return '${fn_name}()'
+	} else {
+		mut method_str := 'it.${c_name(field_name)}'
+		if sym.kind == .bool {
+			method_str += ' ? _SLIT("true") : _SLIT("false")'
+		} else if (field_type.is_int_valptr() || field_type.is_float_valptr())
+			&& field_type.is_ptr() && !expects_ptr {
+			// ptr int can be "nil", so this needs to be castet to a string
 			fmt := if sym.kind in [.f32, .f64] {
 				'%g\\000'
 			} else if sym.kind == .u64 {
@@ -248,9 +379,8 @@ fn struct_auto_str_func1(sym &ast.TypeSymbol, field_type ast.Type, fn_name strin
 				'%d\\000'
 			}
 			method_str = '_STR("$fmt", 2, *$method_str)'
-
 		}
 		return method_str
-*/
 	}
 }
+*/
