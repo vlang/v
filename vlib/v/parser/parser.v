@@ -3073,6 +3073,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		}
 		is_public: is_pub
 	})
+	type_end_pos := p.prev_tok.position()
 	if idx == -1 {
 		p.error_with_pos('cannot register alias `$name`, another type with this name exists',
 			decl_pos.extend(type_alias_pos))
@@ -3087,7 +3088,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		name: name
 		is_pub: is_pub
 		parent_type: parent_type
-		type_pos: type_pos
+		type_pos: type_pos.extend(type_end_pos)
 		pos: decl_pos
 		comments: comments
 	}
