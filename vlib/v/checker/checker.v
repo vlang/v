@@ -315,7 +315,7 @@ pub fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
 	c.ensure_type_exists(node.parent_type, node.type_pos) or { return }
 	typ_sym := c.table.get_type_symbol(node.parent_type)
 	if typ_sym.kind in [.placeholder, .int_literal, .float_literal] {
-		c.error("type `$typ_sym.name` doesn't exist", node.type_pos)
+		c.error('unknown type `$typ_sym.name`', node.type_pos)
 	} else if typ_sym.kind == .alias {
 		orig_sym := c.table.get_type_symbol((typ_sym.info as ast.Alias).parent_type)
 		c.error('type `$typ_sym.str()` is an alias, use the original alias type `$orig_sym.name` instead',
@@ -333,13 +333,13 @@ pub fn (mut c Checker) fn_type_decl(node ast.FnTypeDecl) {
 	c.ensure_type_exists(fn_info.return_type, fn_info.return_type_pos) or {}
 	ret_sym := c.table.get_type_symbol(fn_info.return_type)
 	if ret_sym.kind == .placeholder {
-		c.error("type `$ret_sym.name` doesn't exist", fn_info.return_type_pos)
+		c.error('unknown type `$ret_sym.name`', fn_info.return_type_pos)
 	}
 	for arg in fn_info.params {
 		c.ensure_type_exists(arg.typ, arg.type_pos) or { return }
 		arg_sym := c.table.get_type_symbol(arg.typ)
 		if arg_sym.kind == .placeholder {
-			c.error("type `$arg_sym.name` doesn't exist", arg.type_pos)
+			c.error('unknown type `$arg_sym.name`', arg.type_pos)
 		}
 	}
 }
@@ -357,7 +357,7 @@ pub fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 			c.error('sum type $node.name cannot hold the type `$sym.name` more than once',
 				variant.pos)
 		} else if sym.kind in [.placeholder, .int_literal, .float_literal] {
-			c.error("type `$sym.name` doesn't exist", variant.pos)
+			c.error('unknown type `$sym.name`', variant.pos)
 		} else if sym.kind == .interface_ {
 			c.error('sum type cannot hold an interface', variant.pos)
 		}
