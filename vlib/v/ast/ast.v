@@ -740,10 +740,11 @@ pub:
 	is_rlock []bool
 	pos      token.Position
 pub mut:
-	lockeds []Ident // `x`, `y` in `lock x, y {`
-	is_expr bool
-	typ     Type
-	scope   &Scope
+	lockeds  []Expr // `x`, `y.z` in `lock x, y.z {`
+	comments []Comment
+	is_expr  bool
+	typ      Type
+	scope    &Scope
 }
 
 pub struct MatchExpr {
@@ -1594,6 +1595,21 @@ pub fn (expr Expr) is_auto_deref_var() bool {
 		else {}
 	}
 	return false
+}
+
+// returns if an expression can be used in `lock x, y.z {`
+pub fn (e &Expr) is_lockable() bool {
+	match e {
+		Ident {
+			return true
+		}
+		SelectorExpr {
+			return e.expr.is_lockable()
+		}
+		else {
+			return false
+		}
+	}
 }
 
 // check if stmt can be an expression in C
