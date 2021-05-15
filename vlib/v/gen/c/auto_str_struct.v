@@ -218,6 +218,28 @@ fn struct_auto_str_func1(sym &ast.TypeSymbol, field_type ast.Type, fn_name strin
 		} else if (field_type.is_int_valptr() || field_type.is_float_valptr())
 			&& field_type.is_ptr() && !expects_ptr {
 			// ptr int can be "nil", so this needs to be castet to a string
+
+			if sym.kind == .f32 {
+				return 'str_intp(1, (StrIntpData[]){
+					{_SLIT0, ${si_g32_code}, {.d_f32 = *${method_str} }}
+				})'
+			} else if sym.kind == .f64 {
+				return 'str_intp(1, (StrIntpData[]){
+					{_SLIT0, ${si_g64_code}, {.d_f64 = *${method_str} }}
+				})'
+			}
+			else if sym.kind == .u64 {
+				fmt_type := StrIntpType.si_u64
+				return 'str_intp(1, (StrIntpData[]){{_SLIT0, ${u32(fmt_type) | 0xfe00}, {.d_u64 = *${method_str} }}})'
+			}
+
+			fmt_type := StrIntpType.si_i32
+			return 'str_intp(1, (StrIntpData[]){{_SLIT0, ${u32(fmt_type) | 0xfe00}, {.d_i32 = *${method_str} }}})'
+
+		}
+
+		return method_str
+/*
 			fmt := if sym.kind in [.f32, .f64] {
 				'%g\\000'
 			} else if sym.kind == .u64 {
@@ -226,7 +248,9 @@ fn struct_auto_str_func1(sym &ast.TypeSymbol, field_type ast.Type, fn_name strin
 				'%d\\000'
 			}
 			method_str = '_STR("$fmt", 2, *$method_str)'
+
 		}
 		return method_str
+*/
 	}
 }
