@@ -407,8 +407,8 @@ pub fn (mut g Gen) init() {
 		} else {
 			g.cheaders.writeln(c_headers)
 		}
-		g.definitions.writeln('string _STR(const char*, int, ...);')
-		g.definitions.writeln('string _STR_TMP(const char*, ...);')
+		//g.definitions.writeln('string _STR(const char*, int, ...);')
+		//g.definitions.writeln('string _STR_TMP(const char*, ...);')
 	}
 	if g.pref.os == .ios {
 		g.cheaders.writeln('#define __TARGET_IOS__ 1')
