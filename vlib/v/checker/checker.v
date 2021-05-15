@@ -939,7 +939,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) ast.Type {
 		}
 	}
 	mut return_type := left_type
-	if infix_expr.op != .key_is {
+	if !c.pref.use_cache && infix_expr.op != .key_is {
 		match mut infix_expr.left {
 			ast.Ident, ast.SelectorExpr {
 				if infix_expr.left.is_mut {
@@ -1401,17 +1401,29 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 						c.error('unknown field `${type_str}.$expr.field_name`', expr.pos)
 						return '', pos
 					}
-					if !field_info.is_mut && !c.pref.translated {
-						type_str := c.table.type_to_str(expr.expr_type)
-						c.error('field `$expr.field_name` of struct `$type_str` is immutable',
-							expr.pos)
-					}
 					if field_info.typ.has_flag(.shared_f) {
-						type_str := c.table.type_to_str(expr.expr_type)
-						c.error('you have to create a handle and `lock` it to modify `shared` field `$expr.field_name` of struct `$type_str`',
-							expr.pos)
+						expr_name := '${expr.expr}.$expr.field_name'
+						if expr_name !in c.locked_names {
+							if c.locked_names.len > 0 || c.rlocked_names.len > 0 {
+								if expr_name in c.rlocked_names {
+									c.error('$expr_name has an `rlock` but needs a `lock`',
+										expr.pos)
+								} else {
+									c.error('$expr_name must be added to the `lock` list above',
+										expr.pos)
+								}
+							}
+							to_lock = expr_name
+							pos = expr.pos
+						}
+					} else {
+						if !field_info.is_mut && !c.pref.translated {
+							type_str := c.table.type_to_str(expr.expr_type)
+							c.error('field `$expr.field_name` of struct `$type_str` is immutable',
+								expr.pos)
+						}
+						to_lock, pos = c.fail_if_immutable(expr.expr)
 					}
-					to_lock, pos = c.fail_if_immutable(expr.expr)
 					if to_lock != '' {
 						// No automatic lock for struct access
 						explicit_lock_needed = true
@@ -5061,7 +5073,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) ast.Type {
 		return info.typ
 	} else if ident.kind == .unresolved {
 		// first use
-		if ident.tok_kind == .assign && ident.is_mut {
+		if !c.pref.use_cache && ident.tok_kind == .assign && ident.is_mut {
 			c.error('`mut` not allowed with `=` (use `:=` to declare a variable)', ident.pos)
 		}
 		if obj := ident.scope.find(ident.name) {
@@ -5679,24 +5691,22 @@ pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) ast.Type {
 		c.error('nested `lock`/`rlock` not allowed', node.pos)
 	}
 	for i in 0 .. node.lockeds.len {
-		c.ident(mut node.lockeds[i])
-		id := node.lockeds[i]
-		if mut id.obj is ast.Var {
-			if id.obj.typ.share() != .shared_t {
-				c.error('`$id.name` must be declared `shared` to be locked', id.pos)
-			}
-		} else {
-			c.error('`$id.name` is not a variable and cannot be locked', id.pos)
+		e_typ := c.expr(node.lockeds[i])
+		id_name := node.lockeds[i].str()
+		if !e_typ.has_flag(.shared_f) {
+			obj_type := if node.lockeds[i] is ast.Ident { 'variable' } else { 'struct element' }
+			c.error('`$id_name` must be declared as `shared` $obj_type to be locked',
+				node.lockeds[i].position())
 		}
-		if id.name in c.locked_names {
-			c.error('`$id.name` is already locked', id.pos)
-		} else if id.name in c.rlocked_names {
-			c.error('`$id.name` is already read-locked', id.pos)
+		if id_name in c.locked_names {
+			c.error('`$id_name` is already locked', node.lockeds[i].position())
+		} else if id_name in c.rlocked_names {
+			c.error('`$id_name` is already read-locked', node.lockeds[i].position())
 		}
 		if node.is_rlock[i] {
-			c.rlocked_names << id.name
+			c.rlocked_names << id_name
 		} else {
-			c.locked_names << id.name
+			c.locked_names << id_name
 		}
 	}
 	c.stmts(node.stmts)
