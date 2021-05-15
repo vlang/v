@@ -128,9 +128,9 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 			}
 
 			if i == 0 {
-				g.auto_str_funcs.write_string('\t\t{_SLIT0, ${si_s_code}, {.d_s=indents}}, {_SLIT("    $field.name: "), 0, {}}, ')
+				g.auto_str_funcs.write_string('\t\t{_SLIT0, ${si_s_code}, {.d_s=indents}}, {_SLIT("    $field.name: $ptr_amp"), 0, {}}, ')
 			} else {
-				g.auto_str_funcs.write_string('\t\t{_SLIT("\\n"), ${si_s_code}, {.d_s=indents}}, {_SLIT("    $field.name: "), 0, {}}, ')
+				g.auto_str_funcs.write_string('\t\t{_SLIT("\\n"), ${si_s_code}, {.d_s=indents}}, {_SLIT("    $field.name: $ptr_amp"), 0, {}}, ')
 			}
 
 			//sym := g.table.get_type_symbol(field.typ)
@@ -141,7 +141,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 			} else {
 				fnames2strfunc[field_styp]
 			}
-			g.auto_str_funcs.write_string('{_SLIT("${quote_str}"), ${int(base_fmt)}, {.${data_str(base_fmt)}=${ptr_amp}')
+			g.auto_str_funcs.write_string('{_SLIT("${quote_str}"), ${int(base_fmt)}, {.${data_str(base_fmt)}=')
 
 			mut func := struct_auto_str_func1(sym, field.typ, field_styp_fn_name, field.name)
 
@@ -156,13 +156,14 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 					&& !field.typ.is_float_valptr() {
 					g.auto_str_funcs.write_string('*')
 				}
-			}
+			} 
 			// handle circular ref type of struct to the struct itself
 			if styp == field_styp {
 				g.auto_str_funcs.write_string('_SLIT("<circular>")')
 			} else {
 				g.auto_str_funcs.write_string(func)
 			}
+			
 			g.auto_str_funcs.write_string('}}, {_SLIT("${quote_str}"),0},\n')
 		}
 		g.auto_str_funcs.write_string('\t\t{_SLIT("\\n"), ${si_s_code}, {.d_s=indents}}, {_SLIT("}"), 0, {}},\n')
