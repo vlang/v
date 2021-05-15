@@ -127,6 +127,7 @@ fn (mut g Gen) gen_str_default(sym ast.TypeSymbol, styp string, str_fn_name stri
 	g.auto_str_funcs.writeln('}')
 }
 
+/*
 fn (g &Gen) type_to_fmt(typ ast.Type) string {
 	if typ == ast.byte_type_idx {
 		return '%hhx\\000'
@@ -161,6 +162,7 @@ fn (g &Gen) type_to_fmt(typ ast.Type) string {
 	}
 	return '%d\\000'
 }
+*/
 
 fn (mut g Gen) gen_str_for_type(typ ast.Type) string {
 	styp := g.typ(typ).replace('*', '')
@@ -614,7 +616,8 @@ fn (mut g Gen) gen_str_for_multi_return(info ast.MultiReturn, styp string, str_f
 	g.auto_str_funcs.writeln('}')
 }
 
-fn (mut g Gen) gen_str_for_struct1(info ast.Struct, styp string, str_fn_name string) {
+/*
+fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name string) {
 
 	//g.gen_str_for_struct1(info, styp, str_fn_name)
 
@@ -746,6 +749,7 @@ fn struct_auto_str_func(sym &ast.TypeSymbol, field_type ast.Type, fn_name string
 		return method_str
 	}
 }
+*/
 
 fn (mut g Gen) gen_str_for_enum(info ast.Enum, styp string, str_fn_name string) {
 	s := util.no_dots(styp)

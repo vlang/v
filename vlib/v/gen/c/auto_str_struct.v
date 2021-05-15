@@ -4,7 +4,7 @@ import v.ast
 import v.util
 
 
-/*
+/* --- This is only for references ---
 pub enum StrIntpType {
 	si_no_str = 0  // no parameter to print only fix string
 	si_c
@@ -56,9 +56,9 @@ fn (g &Gen) type_to_fmt1(typ ast.Type) StrIntpType {
 		//return "'%.*s\\000'"
 	} else if sym.kind in [.f32, .f64] {
 		if sym.kind == .f32 {
-			return .si_f32
+			return .si_g32
 		}
-		return .si_f64
+		return .si_g64
 	} else if sym.kind == .int {
 		return .si_i32
 	} else if sym.kind == .u32 {
@@ -121,6 +121,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 			mut ptr_amp := if field.typ.is_ptr() { '&' } else { '' }
 			base_fmt := g.type_to_fmt1(field.typ)
 			
+			// manage prefix and quote symbol for the filed
 			mut quote_str := ""
 			mut prefix := ""
 			sym := g.table.get_type_symbol(field.typ)
@@ -131,13 +132,14 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 				prefix    = 'C'
 			}
 
+			// first fields doesn't need \n
 			if i == 0 {
 				g.auto_str_funcs.write_string('\t\t{_SLIT0, ${si_s_code}, {.d_s=indents}}, {_SLIT("    $field.name: $ptr_amp$prefix"), 0, {}}, ')
 			} else {
 				g.auto_str_funcs.write_string('\t\t{_SLIT("\\n"), ${si_s_code}, {.d_s=indents}}, {_SLIT("    $field.name: $ptr_amp$prefix"), 0, {}}, ')
 			}
 
-			//sym := g.table.get_type_symbol(field.typ)
+			// custom methods management
 			has_custom_str := sym.has_method('str')
 			mut field_styp := g.typ(field.typ).replace('*', '')
 			field_styp_fn_name := if has_custom_str {
@@ -145,11 +147,18 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 			} else {
 				fnames2strfunc[field_styp]
 			}
-			g.auto_str_funcs.write_string('{_SLIT("${quote_str}"), ${int(base_fmt)}, {.${data_str(base_fmt)}=')
+
+			// manage the fact hat with float we use always the g representation
+			if sym.kind !in [.f32, .f64] {
+				g.auto_str_funcs.write_string('{_SLIT("${quote_str}"), ${int(base_fmt)}, {.${data_str(base_fmt)}=')
+			} else {
+				g_fmt := "0x"+(u32(base_fmt) | u32(0x7F) << 9).hex()
+				g.auto_str_funcs.write_string('{_SLIT("${quote_str}"), ${g_fmt}, {.${data_str(base_fmt)}=')
+			}
 
 			mut func := struct_auto_str_func1(sym, field.typ, field_styp_fn_name, field.name)
 
-			// reference types can be "nil"
+			// manage reference types can be "nil"
 			if field.typ.is_ptr() && !(field.typ in ast.charptr_types
 				|| field.typ in ast.byteptr_types
 				|| field.typ == ast.voidptr_type_idx) {
