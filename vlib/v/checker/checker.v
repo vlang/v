@@ -3098,6 +3098,11 @@ pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 	if decl.fields.len == 0 {
 		c.error('enum cannot be empty', decl.pos)
 	}
+	/*
+	if decl.is_pub && c.mod == 'builtin' {
+		c.error('`builtin` module cannot have enums', decl.pos)
+	}
+	*/
 	for i, field in decl.fields {
 		if !c.pref.experimental && util.contains_capital(field.name) {
 			// TODO C2V uses hundreds of enums with capitals, remove -experimental check once it's handled
