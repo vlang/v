@@ -77,6 +77,7 @@ mut:
 	v_cycles        int      // how many times the worker has restarted the V compiler
 	scan_cycles     int      // how many times the worker has scanned for source file changes
 	clear_terminal  bool     // whether to clear the terminal before each re-run
+	silent          bool     // when true, watch will not print a timestamp line before each re-run
 	add_files       []string // path to additional files that have to be watched for changes
 	ignore_exts     []string // extensions of files that will be ignored, even if they change (useful for sqlite.db files for example)
 }
@@ -214,7 +215,9 @@ fn (mut context Context) compilation_runner_loop() {
 		if context.clear_terminal {
 			term.clear()
 		}
-		eprintln('$timestamp: $cmd | pid: ${context.child_process.pid:7d} | reload cycle: ${context.v_cycles:5d}')
+		if !context.silent {
+			eprintln('$timestamp: $cmd | pid: ${context.child_process.pid:7d} | reload cycle: ${context.v_cycles:5d}')
+		}
 		for {
 			mut cmds := []RerunCommand{}
 			for {
@@ -269,10 +272,11 @@ fn main() {
 	}
 	fp.version('0.0.2')
 	fp.description('Collect all .v files needed for a compilation, then re-run the compilation when any of the source changes.')
-	fp.arguments_description('[--clear] [--ignore .db] [--add /path/to/a/file.v] [run] program.v')
+	fp.arguments_description('[--silent] [--clear] [--ignore .db] [--add /path/to/a/file.v] [run] program.v')
 	fp.allow_unknown_args()
 	fp.limit_free_args_to_at_least(1)
 	context.is_worker = fp.bool('vwatchworker', 0, false, 'Internal flag. Used to distinguish vwatch manager and worker processes.')
+	context.silent = fp.bool('silent', `s`, false, 'Be more silent; do not print the watch timestamp before each re-run.')
 	context.clear_terminal = fp.bool('clear', `c`, false, 'Clears the terminal before each re-run.')
 	context.add_files = fp.string('add', `a`, '', 'Add more files to be watched. Useful with `v watch -add=/tmp/feature.v run cmd/v /tmp/feature.v`, when you want to change *both* the compiler, and the feature.v file.').split(',')
 	context.ignore_exts = fp.string('ignore', `i`, '', 'Ignore files having these extensions. Useful with `v watch -ignore=.db run server.v`, if your server writes to an sqlite.db file in the same folder.').split(',')

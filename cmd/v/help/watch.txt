@@ -5,6 +5,8 @@ Description:
 any of the .v source files changes, it re-runs the compilation.
 
 Options:
+  -s, --silent              Be more silent; do not print the watch timestamp before each re-run.
+
   -c, --clear               Clears the terminal before each re-run.
 
   -a, --add <string>        Add more files to be watched.
